@@ -1174,17 +1174,21 @@ STDCALL void NdisMDeregisterAdapterShutdownHandler(struct ndis_handle *handle)
  */
 void ndis_irq_bh(void *data)
 {
-	struct ndis_irq *irqhandle = (struct ndis_irq *) data;
-	struct ndis_handle *handle = irqhandle->handle;
+	struct ndis_irq *ndis_irq = (struct ndis_irq *) data;
+	struct ndis_handle *handle = ndis_irq->handle;
 
-	if (handle->driver->miniport_char.disable_interrupts)
-		handle->driver->miniport_char.disable_interrupts(handle->adapter_ctx);
-
-	if (handle->ndis_irq_enabled)
+	if (ndis_irq->enabled)
+	{
 		handle->driver->miniport_char.handle_interrupt(handle->adapter_ctx);
-
-	if (handle->driver->miniport_char.enable_interrupts)
-		handle->driver->miniport_char.enable_interrupts(handle->adapter_ctx);
+		
+		if (!handle->ndis_irq->shared)
+		{
+			if (handle->driver->miniport_char.enable_interrupts)
+				handle->driver->miniport_char.enable_interrupts(handle->adapter_ctx);
+			else
+				printk(KERN_ERR "%s: irq not shared and no function to enable interrupts\n", __FUNCTION__);
+		}
+	}
 }
 
 /*
@@ -1196,14 +1200,21 @@ irqreturn_t ndis_irq_th(int irq, void *data, struct pt_regs *pt_regs)
 	int recognized = 0;
 	int handle_interrupt = 0;
 
-	struct ndis_irq *irqhandle = (struct ndis_irq *) data;
-	struct ndis_handle *handle = irqhandle->handle; 
+	struct ndis_irq *ndis_irq = (struct ndis_irq *) data;
+	struct ndis_handle *handle = ndis_irq->handle; 
 
 	/* We need a lock here in order to implement NdisMSynchronizeWithInterrupt,
 	  however the ISR is really fast anyway so it should not hurt performance */
-	spin_lock(&irqhandle->spinlock);
-	handle->driver->miniport_char.isr(&recognized, &handle_interrupt, handle->adapter_ctx);
-	spin_unlock(&irqhandle->spinlock);
+	spin_lock_irq(ndis_irq->spinlock);
+	if (handle->ndis_irq->req_isr)
+		handle->driver->miniport_char.isr(&recognized, &handle_interrupt, handle->adapter_ctx);
+	else //if (handle->driver->miniport_char.disable_interrupts)
+	{
+		handle->driver->miniport_char.disable_interrupts(handle->adapter_ctx);
+		/* it is not shared interrupt, so handler must be called */
+		recognized = handle_interrupt = 1;
+	}
+	spin_unlock_irq(ndis_irq->spinlock);
 
 	if(recognized && handle_interrupt)
 		schedule_work(&handle->irq_bh);
@@ -1219,38 +1230,37 @@ irqreturn_t ndis_irq_th(int irq, void *data, struct pt_regs *pt_regs)
  * Register an irq
  *
  */
-STDCALL unsigned int NdisMRegisterInterrupt(struct ndis_irq **ndis_irq_ptr,
+STDCALL unsigned int NdisMRegisterInterrupt(struct ndis_irq *ndis_irq,
                                             struct ndis_handle *handle,
 					    unsigned int vector,
 					    unsigned int level,
-					    char req_isr,
-					    char shared,
+					    unsigned char req_isr,
+					    unsigned char shared,
 					    unsigned int mode)
 {
-	struct ndis_irq *ndis_irq; 
+	DBGTRACE("%s. %08x, vector:%d, level:%d, req_isr:%d, shared:%d, mode:%d sp:%08x\n", __FUNCTION__, (int)ndis_irq, vector, level, req_isr, shared, mode, (int)getSp());
 
-	DBGTRACE("%s. %08x, vector:%d, level:%d, req_isr:%d, shared:%d, mode:%d sp:%08x\n", __FUNCTION__, (int)ndis_irq_ptr, vector, level, req_isr, shared, mode, (int)getSp());
+	ndis_irq->spinlock = kmalloc(sizeof(spinlock_t), GFP_KERNEL);
+	if (ndis_irq->spinlock == NULL)
+		return NDIS_STATUS_RESOURCES;
 
-	*ndis_irq_ptr = (struct ndis_irq*) kmalloc(sizeof(struct ndis_irq), GFP_KERNEL);
-	
-	if(!*ndis_irq_ptr)
-		return NDIS_STATUS_FAILURE;
-
-	ndis_irq = *ndis_irq_ptr;
-	handle->irq = vector;
-
-	spin_lock_init(&ndis_irq->spinlock);
 	ndis_irq->irq = vector;
 	ndis_irq->handle = handle;
+	ndis_irq->req_isr = req_isr;
+	if (shared && !req_isr)
+		printk(KERN_ERR "%s: shared but dynamic interrupt!\n",
+		       __FUNCTION__);
+	ndis_irq->shared = shared;
+	spin_lock_init(ndis_irq->spinlock);
+	handle->ndis_irq = ndis_irq;
 
 	INIT_WORK(&handle->irq_bh, &ndis_irq_bh, ndis_irq);
 	if(request_irq(vector, ndis_irq_th, shared? SA_SHIRQ : 0,
 				   "ndiswrapper", ndis_irq))
 	{
-		kfree(ndis_irq);
-		return NDIS_STATUS_FAILURE;
+		return NDIS_STATUS_RESOURCES;
 	}
-	handle->ndis_irq_enabled = 1;
+	ndis_irq->enabled = 1;
 	return NDIS_STATUS_SUCCESS;
 }
 
@@ -1258,18 +1268,15 @@ STDCALL unsigned int NdisMRegisterInterrupt(struct ndis_irq **ndis_irq_ptr,
  * Deregister an irq
  *
  */
-STDCALL void NdisMDeregisterInterrupt(struct ndis_irq **ndis_irq_ptr)
+STDCALL void NdisMDeregisterInterrupt(struct ndis_irq *ndis_irq)
 {
-	struct ndis_irq *ndis_irq = *ndis_irq_ptr;
-	struct ndis_handle *handle = ndis_irq->handle;
-
 	DBGTRACE("%s: %08x %d %08x\n", __FUNCTION__, (int)ndis_irq, ndis_irq->irq, (int)ndis_irq->handle);
 
 	if(ndis_irq)
 	{
-		handle->ndis_irq_enabled = 0;
+		ndis_irq->enabled = 0;
 		free_irq(ndis_irq->irq, ndis_irq);
-		kfree(ndis_irq);
+		kfree(ndis_irq->spinlock);
 	}
 }
 
@@ -1278,21 +1285,22 @@ STDCALL void NdisMDeregisterInterrupt(struct ndis_irq **ndis_irq_ptr)
  * Run func synchorinized with the isr.
  *
  */
-typedef unsigned int (*sync_func_t)(void *ctx);
-STDCALL char NdisMSynchronizeWithInterrupt(struct ndis_irq **ndis_irq_ptr,
-                                           STDCALL sync_func_t func,
-					   void *ctx)
+STDCALL unsigned char NdisMSynchronizeWithInterrupt(struct ndis_irq *ndis_irq,
+						    void *func, void *ctx)
 {
-	unsigned int ret;
-	unsigned long flags;
-	struct ndis_irq *ndis_irq = *ndis_irq_ptr;
-	DBGTRACE("%s: %08x %08x %08x %08x\n", __FUNCTION__, (int) ndis_irq, (int) ndis_irq_ptr, (int) func, (int) ctx);
+	unsigned char ret;
+	DBGTRACE("%s: %08x %08x %08x %08x\n", __FUNCTION__, (int) ndis_irq, (int) ndis_irq, (int) func, (int) ctx);
+	STDCALL unsigned char (*sync_func)(void *ctx);
 
-	spin_lock_irqsave(&ndis_irq->spinlock, flags);
-	ret = func(ctx);
-	spin_unlock_irqrestore(&ndis_irq->spinlock, flags);
+	if (func == NULL || ctx == NULL)
+		return 0;
 
-	DBGTRACE("%s: Past func\n", __FUNCTION__);
+	sync_func = func;
+	spin_lock(ndis_irq->spinlock);
+	ret = sync_func(ctx);
+	spin_unlock(ndis_irq->spinlock);
+
+	DBGTRACE("%s: Past func (%u)\n", __FUNCTION__, ret);
 	return ret;
 }
 

@@ -567,6 +567,7 @@ static int send_packet(struct ndis_handle *handle, struct ndis_packet *packet)
 
 	DBGTRACE("%s: packet = %p\n", __FUNCTION__, packet);
 
+	spin_lock(&handle->send_packet_lock);
 	if(handle->driver->miniport_char.send_packets)
 	{
 		struct ndis_packet *packets[1];
@@ -596,6 +597,7 @@ static int send_packet(struct ndis_handle *handle, struct ndis_packet *packet)
 		DBGTRACE("%s: No send handler\n", __FUNCTION__);
 		res = NDIS_STATUS_FAILURE;
 	}
+	spin_unlock(&handle->send_packet_lock);
 
 	DBGTRACE("send_packets returning %08X\n", res);
 
@@ -900,7 +902,7 @@ static int setup_dev(struct net_device *dev)
 	{
 		dev->dev_addr[i] = mac[i];
 	}
-	dev->irq = handle->irq;
+	dev->irq = handle->ndis_irq->irq;
 	dev->mem_start = handle->mem_start;		
 	dev->mem_end = handle->mem_end;		
 	
@@ -965,6 +967,8 @@ static int ndis_init_one(struct pci_dev *pdev,
 	handle->send_status = 0;
 	handle->packet = NULL;
 
+	spin_lock_init(&handle->send_packet_lock);
+
 	INIT_WORK(&handle->xmit_work, xmit_bh, handle); 	
 	spin_lock_init(&handle->xmit_ring_lock);
 	handle->xmit_ring_start = 0;
@@ -995,8 +999,6 @@ static int ndis_init_one(struct pci_dev *pdev,
 	
 	handle->map_count = 0;
 	handle->map_dma_addr = NULL; 
-
-	handle->ndis_irq_enabled = 0;
 
 	handle->nick[0] = 0;
 
