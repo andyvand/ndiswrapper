@@ -1482,7 +1482,7 @@ STDCALL BOOLEAN WRAP_EXPORT(NdisMSynchronizeWithInterrupt)
 
 	sync_func = func;
 	spin_lock_irqsave(K_SPINLOCK(&(ndis_irq->lock)), flags);
-	ret = sync_func(ctx);
+	ret = LIN2WIN1(sync_func, ctx);
 	spin_unlock_irqrestore(K_SPINLOCK(&(ndis_irq->lock)), flags);
 
 	DBGTRACE5("sync_func returns %u", ret);
@@ -2094,7 +2094,7 @@ static void ndis_worker(void *data)
 			DBGTRACE3("Calling work at %p with parameter %p",
 				  sched_work_item->func,
 				  sched_work_item->ctx);
-			sched_work_item->func(sched_work_item,
+			LIN2WIN2(sched_work_item->func,sched_work_item,
 					      sched_work_item->ctx);
 			break;
 
@@ -2104,7 +2104,7 @@ static void ndis_worker(void *data)
 
 			DBGTRACE3("Calling work at %p with parameter %p",
 				  io_work_item->func, io_work_item->ctx);
-			io_work_item->func(io_work_item->device_object,
+			LIN2WIN2(io_work_item->func,io_work_item->device_object,
 					   io_work_item->ctx);
 			break;
 
