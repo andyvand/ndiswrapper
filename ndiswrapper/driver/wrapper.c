@@ -1227,14 +1227,14 @@ static void check_capa(struct ndis_handle *handle)
 	TRACEENTER1("%s", "");
 
 	/* check if WEP is supported */
-	if (set_encr_mode(handle, Ndis802_11Encryption1Enabled) ||
-	    miniport_query_int(handle, OID_802_11_ENCRYPTION_STATUS, &i))
-		;
-	else
+	if (set_encr_mode(handle, Ndis802_11Encryption1Enabled) == 0 &&
+	    miniport_query_int(handle,
+			       OID_802_11_ENCRYPTION_STATUS, &i) == 0 &&
+	    (i == Ndis802_11Encryption1Enabled ||
+	     i == Ndis802_11Encryption1KeyAbsent))
 		set_bit(CAPA_WEP, &handle->capa);
 
 	/* check if WPA is supported */
-	set_encr_mode(handle, Ndis802_11EncryptionDisabled);
 	DBGTRACE2("%s", "");
 	if (set_auth_mode(handle, Ndis802_11AuthModeWPA) ||
 	    miniport_query_int(handle, OID_802_11_AUTHENTICATION_MODE, &i) ||
@@ -1242,29 +1242,28 @@ static void check_capa(struct ndis_handle *handle)
 		TRACEEXIT1(return);
 
 	/* check for highest encryption */
-	for (mode = Ndis802_11Encryption3Enabled;
-	     mode != Ndis802_11EncryptionDisabled; ) {
-		DBGTRACE1("checking encryption mode %d", mode);
-		if (set_encr_mode(handle, mode) ||
-		    miniport_query_int(handle, OID_802_11_ENCRYPTION_STATUS,
-				       &i))
-			i = Ndis802_11EncryptionDisabled;
+	if (set_encr_mode(handle, Ndis802_11Encryption3Enabled) == 0 &&
+	    miniport_query_int(handle,
+			       OID_802_11_ENCRYPTION_STATUS, &i) == 0 &&
+	    (i == Ndis802_11Encryption3Enabled ||
+	     i == Ndis802_11Encryption3KeyAbsent))
+		mode = Ndis802_11Encryption3Enabled;
+	else if (set_encr_mode(handle, Ndis802_11Encryption2Enabled) == 0 &&
+		 miniport_query_int(handle,
+				    OID_802_11_ENCRYPTION_STATUS, &i) == 0 &&
+		 (i == Ndis802_11Encryption2Enabled ||
+		  i == Ndis802_11Encryption2KeyAbsent))
+		mode = Ndis802_11Encryption2Enabled;
+	else if (set_encr_mode(handle, Ndis802_11Encryption1Enabled) == 0 &&
+		 miniport_query_int(handle,
+				    OID_802_11_ENCRYPTION_STATUS, &i) == 0 &&
+		 (i == Ndis802_11Encryption1Enabled ||
+		  i == Ndis802_11Encryption1KeyAbsent))
+		mode = Ndis802_11Encryption1Enabled;
+	else
+		mode = Ndis802_11EncryptionDisabled;
 
-		if (mode == Ndis802_11Encryption3Enabled) {
-			if (i == mode || i == Ndis802_11Encryption3KeyAbsent)
-				break;
-			else
-				mode = Ndis802_11Encryption2Enabled;
-		} else if (mode == Ndis802_11Encryption2Enabled) {
-			if (i == mode || i == Ndis802_11Encryption2KeyAbsent)
-				break;
-			else
-				mode =Ndis802_11Encryption1Enabled;
-		} else
-			mode = Ndis802_11EncryptionDisabled;
-	}
 	DBGTRACE1("highest encryption mode supported = %d", mode);
-	set_encr_mode(handle, mode);
 
 	if (mode == Ndis802_11EncryptionDisabled)
 		TRACEEXIT1(return);
@@ -1375,14 +1374,14 @@ int setup_dev(struct net_device *dev)
 	strncpy(dev->name, if_name, IFNAMSIZ-1);
 	dev->name[IFNAMSIZ-1] = '\0';
 
-	DBGTRACE1("%s: Querying for mac", DRIVER_NAME);
+	DBGTRACE1("%s: querying for mac", DRIVER_NAME);
 	res = miniport_query_info(handle, OID_802_3_CURRENT_ADDRESS,
 				  &mac[0], sizeof(mac));
-	DBGTRACE1("mac:" MACSTR, MAC2STR(mac));
 	if (res) {
 		ERROR("%s", "unable to get mac address from driver");
 		return -EINVAL;
 	}
+	DBGTRACE1("mac:" MACSTR, MAC2STR(mac));
 	memcpy(&dev->dev_addr, mac, ETH_ALEN);
 
 	handle->max_send_packets = 1;

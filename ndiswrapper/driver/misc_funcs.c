@@ -784,7 +784,7 @@ STDCALL NT_STATUS WRAP_EXPORT(RtlUnicodeStringToInteger)
 	str = ustring->buf;
 
 	negsign = 0;
-	switch (((char)*str)) {
+	switch ((char)*str) {
 	case '-':
 		negsign = 1;
 		/* fall through */
