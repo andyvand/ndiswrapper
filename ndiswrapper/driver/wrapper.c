@@ -67,10 +67,6 @@ NW_MODULE_PARM_INT(hangcheck_interval, 0600);
 MODULE_PARM_DESC(hangcheck_interval, "The interval, in seconds, for checking"
 		 " if driver is hung. (default: 0)");
 
-extern struct list_head wrap_allocs;
-extern struct wrap_spinlock wrap_allocs_lock;
-extern struct wrap_spinlock dispatch_event_lock;
-
 static void ndis_set_rx_mode(struct net_device *dev);
 
 /*
@@ -1570,16 +1566,19 @@ static int __init wrapper_init(void)
 #endif
 		);
 
-	if (loader_init())
-		TRACEEXIT1(return -EPERM);
-	if (ndis_init()) {
+	if (loader_init() || ntoskrnl_init() || misc_funcs_init() ||
+	    ndis_init()) {
 		module_cleanup();
+		ERROR("couldn't initialize %s", DRIVER_NAME);
 		TRACEEXIT1(return -EPERM);
-	}		
-	usb_init();
-	INIT_LIST_HEAD(&wrap_allocs);
-	wrap_spin_lock_init(&wrap_allocs_lock);
-	wrap_spin_lock_init(&dispatch_event_lock);
+	}
+#ifdef CONFIG_USB
+	if (usb_init()) {
+		module_cleanup();
+		ERROR("couldn't initialize %s", DRIVER_NAME);
+		TRACEEXIT1(return -EPERM);
+	}
+#endif
 	ndiswrapper_procfs_init();
 	DBGTRACE1("%s", "calling loadndisdriver");
 	err = call_usermodehelper("/sbin/loadndisdriver", argv, env

@@ -354,8 +354,12 @@ struct wrapper_timer {
 	struct wrap_spinlock lock;
 };
 
+int ntoskrnl_init(void);
+void ntoskrnl_exit(void);
 int load_pe_images(struct pe_image[], int n);
 
+int misc_funcs_init(void);
+void misc_funcs_exit(void);
 void *wrap_kmalloc(size_t size, int flags);
 void wrap_kfree(void *ptr);
 void wrap_kfree_all(void);
@@ -429,23 +433,23 @@ static inline void wrap_spin_lock_init(struct wrap_spinlock *lock)
 #ifndef CONFIG_DEBUG_SPINLOCK
 	check_spin_lock_size(lock->klock);
 #endif
-	spin_lock_init(WRAP_SPINLOCK(lock));
+	spin_lock_init(W_SPINLOCK(lock));
 	lock->use_bh = 0;
 }
 
-#define wrap_spin_lock(lock, irql) do {		\
-		if (irql == DISPATCH_LEVEL) {			\
+#define wrap_spin_lock(lock, irql) do {					\
+		if (irql == DISPATCH_LEVEL) {				\
 			if (KeGetCurrentIrql() == DISPATCH_LEVEL) {	\
-				spin_lock(WRAP_SPINLOCK(lock));		\
+				spin_lock(W_SPINLOCK(lock));		\
 				(lock)->use_bh = 0;			\
 			} else {					\
-				spin_lock_bh(WRAP_SPINLOCK(lock));	\
+				spin_lock_bh(W_SPINLOCK(lock));		\
 				(lock)->use_bh = 1;			\
 			}						\
 			if (!in_atomic())				\
 				WARNING("!in_atomic()");		\
 		} else {						\
-			spin_lock(WRAP_SPINLOCK(lock));			\
+			spin_lock(W_SPINLOCK(lock));			\
 			(lock)->use_bh = 0;				\
 		}							\
 	} while (0)
@@ -454,9 +458,9 @@ static inline void wrap_spin_lock_init(struct wrap_spinlock *lock)
 		if ((lock)->use_bh) {				\
 			if (!in_atomic())			\
 				WARNING("!in_atomic()");	\
-			spin_unlock_bh(WRAP_SPINLOCK(lock));	\
+			spin_unlock_bh(W_SPINLOCK(lock));	\
 		} else {					\
-			spin_unlock(WRAP_SPINLOCK(lock));	\
+			spin_unlock(W_SPINLOCK(lock));		\
 		}						\
 	} while (0)
 

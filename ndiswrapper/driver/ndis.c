@@ -28,10 +28,9 @@
 #include "wrapper.h"
 
 extern struct list_head ndis_drivers;
+extern struct wrap_spinlock ntoskrnl_lock;
 
-struct list_head handle_ctx_list;
-struct wrap_spinlock atomic_lock;
-struct wrap_spinlock cancel_lock;
+static struct list_head handle_ctx_list;
 
 static struct work_struct ndis_work;
 static struct list_head ndis_work_list;
@@ -49,9 +48,6 @@ int ndis_init(void)
 	INIT_LIST_HEAD(&ndis_work_list);
 	INIT_LIST_HEAD(&handle_ctx_list);
 	wrap_spin_lock_init(&ndis_work_list_lock);
-
-	wrap_spin_lock_init(&atomic_lock);
-	wrap_spin_lock_init(&cancel_lock);
 	return 0;
 }
 
@@ -117,7 +113,7 @@ static void free_handle_ctx(struct ndis_handle *handle)
 {
 	struct list_head *cur, *tmp;
 
-	wrap_spin_lock(&atomic_lock, PASSIVE_LEVEL);
+	wrap_spin_lock(&ntoskrnl_lock, PASSIVE_LEVEL);
 	list_for_each_safe(cur, tmp, &handle_ctx_list) {
 		struct handle_ctx_entry *handle_ctx =
 			list_entry(cur, struct handle_ctx_entry, list);
@@ -126,7 +122,7 @@ static void free_handle_ctx(struct ndis_handle *handle)
 			kfree(handle_ctx);
 		}
 	}
-	wrap_spin_unlock(&atomic_lock);
+	wrap_spin_unlock(&ntoskrnl_lock);
 	return;
 }
 
@@ -701,12 +697,12 @@ STDCALL void WRAP_EXPORT(NdisMSetAttributesEx)
 	if (handle_ctx) {
 		handle_ctx->handle = handle;
 		handle_ctx->ctx = adapter_ctx;
-		/* atomic_lock is not meant for use here, but since this
+		/* ntoskrnl_lock is not meant for use here, but since this
 		 * function is called during initialization only,
 		 * no harm abusing it */
-		wrap_spin_lock(&atomic_lock, PASSIVE_LEVEL);
+		wrap_spin_lock(&ntoskrnl_lock, PASSIVE_LEVEL);
 		list_add(&handle_ctx->list, &handle_ctx_list);
-		wrap_spin_unlock(&atomic_lock);
+		wrap_spin_unlock(&ntoskrnl_lock);
 	}
 
 	if (attributes & NDIS_ATTRIBUTE_BUS_MASTER)
@@ -739,14 +735,14 @@ static struct ndis_handle *ctx_to_handle(void *ctx)
 {
 	struct handle_ctx_entry *handle_ctx;
 
-	wrap_spin_lock(&atomic_lock, PASSIVE_LEVEL);
+	wrap_spin_lock(&ntoskrnl_lock, PASSIVE_LEVEL);
 	list_for_each_entry(handle_ctx, &handle_ctx_list, list) {
 		if (handle_ctx->ctx == ctx) {
-			wrap_spin_unlock(&atomic_lock);
+			wrap_spin_unlock(&ntoskrnl_lock);
 			return handle_ctx->handle;
 		}
 	}
-	wrap_spin_unlock(&atomic_lock);
+	wrap_spin_unlock(&ntoskrnl_lock);
 
 	return NULL;
 }
@@ -1971,10 +1967,10 @@ STDCALL LONG WRAP_EXPORT(NdisInterlockedDecrement)
 	LONG x;
 
 	TRACEENTER4("%s", "");
-	wrap_spin_lock(&atomic_lock, PASSIVE_LEVEL);
+	wrap_spin_lock(&ntoskrnl_lock, PASSIVE_LEVEL);
 	(*val)--;
 	x = *val;
-	wrap_spin_unlock(&atomic_lock);
+	wrap_spin_unlock(&ntoskrnl_lock);
 	TRACEEXIT4(return x);
 }
 
@@ -1984,10 +1980,10 @@ STDCALL LONG WRAP_EXPORT(NdisInterlockedIncrement)
 	LONG x;
 
 	TRACEENTER4("%s", "");
-	wrap_spin_lock(&atomic_lock, PASSIVE_LEVEL);
+	wrap_spin_lock(&ntoskrnl_lock, PASSIVE_LEVEL);
 	(*val)++;
 	x = *val;
-	wrap_spin_unlock(&atomic_lock);
+	wrap_spin_unlock(&ntoskrnl_lock);
 	TRACEEXIT4(return x);
 }
 

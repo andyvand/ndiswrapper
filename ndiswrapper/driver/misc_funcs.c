@@ -21,8 +21,20 @@
 
 #include "ndis.h"
 
-struct list_head wrap_allocs;
-struct wrap_spinlock wrap_allocs_lock;
+static struct list_head wrap_allocs;
+static struct wrap_spinlock wrap_allocs_lock;
+
+int misc_funcs_init(void)
+{
+	INIT_LIST_HEAD(&wrap_allocs);
+	wrap_spin_lock_init(&wrap_allocs_lock);
+	return 0;
+}
+
+void misc_funcs_exit(void)
+{
+	return;
+}
 
 void *wrap_kmalloc(size_t size, int flags)
 {

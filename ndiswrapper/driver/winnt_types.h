@@ -173,9 +173,9 @@ struct wrap_spinlock {
 	KIRQL use_bh;
 };
 typedef struct wrap_spinlock *KSPIN_LOCK;
-#define WRAP_SPINLOCK(lock) &((lock)->spinlock)
+#define W_SPINLOCK(lock) &((lock)->spinlock)
 #define K_SPINLOCK(lock) &((*lock)->spinlock)
-
+#define W_KSPINLOCK(lock) (lock)
 #else
 
 typedef union {
@@ -187,8 +187,9 @@ struct wrap_spinlock {
 	KIRQL use_bh;
 };
 
-#define WRAP_SPINLOCK(lock) &((lock)->klock.spinlock)
+#define W_SPINLOCK(lock) &((lock)->klock.spinlock)
 #define K_SPINLOCK(lock) &(lock)->spinlock
+#define W_KSPINLOCK(lock) &(lock)->klock
 #endif
 
 struct kdpc {
