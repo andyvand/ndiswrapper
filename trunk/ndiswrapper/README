@@ -17,7 +17,9 @@ The following chipsets are known to work:
    * Intel Centrino (2100)
    * Admtek (8211)
    * Atheros (AR5004)
-
+   * SMC2802 V2
+   * 3Com 3CRSHPW796
+   * TI AC111
 
 Installation
 ============
