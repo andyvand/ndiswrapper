@@ -25,6 +25,9 @@ install: all
 	install -D -m 755 loadndisdriver $(sbindir)/loadndisdriver
 	install -D -m 755 ndiswrapper $(usrsbindir)/ndiswrapper
 	install -D -m 755 ndiswrapper-buginfo $(usrsbindir)/ndiswrapper-buginfo
+	@echo "Windows driver configuration file format has changed since" \   
+		  "1.0-rc2. You must re-install Windows drivers if they were" \   
+		  "installed before."
 
 dist:
 	@for file in $(DISTFILES); do \
