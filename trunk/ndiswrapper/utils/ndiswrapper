@@ -564,6 +564,10 @@ sub parseDevice
 	}
 	if(!$dev)
 	{
+		$dev = getSection("$device_sect.NTx86");
+	}
+	if(!$dev)
+	{
 		$dev = getSection("$device_sect");
 	}
 
