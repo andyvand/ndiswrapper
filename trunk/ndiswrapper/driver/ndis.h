@@ -438,7 +438,7 @@ struct ndis_driver {
 	void *fast_io_dispatch;
 	void *driver_init;
 	void *driver_start_io;
-	void *driver_unload;
+	void (*driver_unload)(struct ndis_driver *driver) STDCALL;
 	void *major_func[IRP_MJ_MAXIMUM_FUNCTION + 1];
 
 	/* rest is ndiswrapper specific info */

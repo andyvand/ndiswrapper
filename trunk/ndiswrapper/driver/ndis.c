@@ -2457,6 +2457,14 @@ STDCALL void WRAP_EXPORT(NdisMGetDeviceProperty)
 	}
 }
 
+STDCALL void WRAP_EXPORT(NdisMRegisterUnloadHandler)
+	(struct ndis_driver *driver, void *unload)
+{
+	if (driver)
+		driver->driver_unload = unload;
+	return;
+}
+
 STDCALL ULONG WRAP_EXPORT(NdisReadPcmciaAttributeMemory)
 	(struct ndis_handle *handle, ULONG offset, void *buffer, ULONG length)
 {
@@ -2484,12 +2492,6 @@ STDCALL void WRAP_EXPORT(NdisMRemoveMiniport)(void) { UNIMPL(); }
 STDCALL void WRAP_EXPORT(RndisMIndicateReceive)(void) { UNIMPL(); }
 
 STDCALL void WRAP_EXPORT(NdisMCoActivateVcComplete)(void){UNIMPL();}
-STDCALL void WRAP_EXPORT(NdisMRegisterUnloadHandler)
-	(struct ndis_handle *handle, void *unload)
-{
-	UNIMPL();
-	return;
-}
 
 STDCALL void WRAP_EXPORT(NdisMCoDeactivateVcComplete)(void)
 {

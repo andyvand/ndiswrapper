@@ -606,6 +606,8 @@ static void unload_ndis_driver(struct ndis_driver *driver)
 	int i;
 
 	DBGTRACE1("freeing %d images", driver->num_pe_images);
+	if (driver->driver_unload)
+		driver->driver_unload(driver);
 	for (i = 0; i < driver->num_pe_images; i++)
 		if (driver->pe_images[i].image)
 			vfree(driver->pe_images[i].image);
