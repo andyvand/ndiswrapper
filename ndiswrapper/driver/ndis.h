@@ -403,7 +403,6 @@ struct packed ndis_handle
 struct ndis_timer
 {
 	struct timer_list timer;
-	struct work_struct bh;
 	void *func;
 	void *ctx;
 	int repeat;
