@@ -475,24 +475,25 @@ static struct ndis_packet *alloc_packet(struct ndis_handle *handle,
 	packet->private.buffer_head = buffer;
 	packet->private.buffer_tail = buffer;
 
-	if (handle->dma_type == SG_DMA_DISABLED) {
+	if (handle->use_sg_dma)
 		packet->ndis_sg_element.address =
 			PCI_DMA_MAP_SINGLE(handle->dev.pci,
 					   MmGetMdlVirtualAddress(buffer),
 					   MmGetMdlByteCount(buffer),
 					   PCI_DMA_TODEVICE);
-		packet->ndis_sg_element.length = MmGetMdlByteCount(buffer);
-		packet->ndis_sg_list.nent = 1;
-		packet->ndis_sg_list.elements = &packet->ndis_sg_element;
-		packet->extension.info[ScatterGatherListPacketInfo] =
-			&packet->ndis_sg_list;
-	}
+
+	packet->ndis_sg_element.length = MmGetMdlByteCount(buffer);
+	packet->ndis_sg_list.nent = 1;
+	packet->ndis_sg_list.elements = &packet->ndis_sg_element;
+	packet->extension.info[ScatterGatherListPacketInfo] =
+		&packet->ndis_sg_list;
+
 	return packet;
 }
 
 static void free_packet(struct ndis_handle *handle, struct ndis_packet *packet)
 {
-	ndis_buffer *b, *tail;
+	ndis_buffer *buffer;
 
 	TRACEENTER3("packet: %p", packet);
 	if (!packet) {
@@ -500,127 +501,20 @@ static void free_packet(struct ndis_handle *handle, struct ndis_packet *packet)
 		return;
 	}
 
-	if (handle->dma_type == SG_DMA_ENABLED) {
-		/* FIXME: do USB drivers call this? */
-		UNMAP_SG(handle->dev.pci, packet->sg_list,
-			 packet->sg_ents, PCI_DMA_TODEVICE);
-		kfree(packet->ndis_sg_elements);
-		kfree(packet->sg_list);
-	} else if (handle->dma_type == SG_DMA_DISABLED) {
-		ndis_buffer *buffer = packet->private.buffer_head;
-
+	buffer = packet->private.buffer_head;
+	if (handle->use_sg_dma)
 		PCI_DMA_UNMAP_SINGLE(handle->dev.pci,
-				     packet->ndis_sg_elements[0].address,
-				     MmGetMdlByteCount(buffer),
+				     packet->ndis_sg_element.address,
+				     packet->ndis_sg_element.length,
 				     PCI_DMA_TODEVICE);
-	}
 
-	b = packet->private.buffer_head;
-	tail = packet->private.buffer_tail;
-	while (b != tail) {
-		ndis_buffer *t = b;
+	DBGTRACE3("freeing buffer %p", buffer);
+	kfree(MmGetMdlVirtualAddress(buffer));
+	IoFreeMdl(buffer);
 
-		DBGTRACE3("freeing buffer %p", b);
-		b = b->next;
-		kfree(MmGetMdlVirtualAddress(t));
-		IoFreeMdl(t);
-	}
-	if (b) {
-		DBGTRACE3("freeing buffer %p", b);
-		kfree(MmGetMdlVirtualAddress(b));
-		IoFreeMdl(b);
-	}
 	DBGTRACE3("freeing packet %p", packet);
 	kfree(packet);
 	TRACEEXIT3(return);
-}
-
-/* build scatter/gather list from the buffers of packet array; this
- * function should be called with spinlock held at DISPATCH_LEVEL */
-static int send_packets_sg_dma(struct ndis_handle *handle, int n)
-{
-	struct scatterlist *sg_list;
-	struct ndis_sg_element *ndis_sg_elements;
-	ndis_buffer *buffer;
-	struct ndis_packet *packet;
-	int i, sg_ents;
-	struct miniport_char *miniport = &handle->driver->miniport_char;
-
-	sg_list = kmalloc(sizeof(*sg_list) * n, GFP_ATOMIC);
-	if (!sg_list) {
-		ERROR("couldn't allocate memory");
-		return 0;
-	}
-	for (i = 0; i < n; i++) {
-		packet = handle->xmit_array[i];
-		buffer = packet->private.buffer_head;
-		sg_init_one(&sg_list[i], MmGetMdlVirtualAddress(buffer),
-			    MmGetMdlByteCount(buffer));
-	}
-	sg_ents = MAP_SG(handle->dev.pci, sg_list, n, PCI_DMA_TODEVICE);
-	DBGTRACE3("got %d sg_ents from %d packets", sg_ents, n);
-	if (sg_ents == 0) {
-		ERROR("dma map failed");
-		kfree(sg_list);
-		TRACEEXIT3(return 0);
-	}
-	ndis_sg_elements = kmalloc(sizeof(*ndis_sg_elements) * sg_ents,
-				   GFP_ATOMIC);
-	if (!ndis_sg_elements) {
-		ERROR("coudln't allocate memory");
-		kfree(sg_list);
-		UNMAP_SG(handle->dev.pci, sg_list, sg_ents,
-			 PCI_DMA_TODEVICE);
-		kfree(sg_list);
-		return 0;
-	}
-	for (i = 0; i < sg_ents; i++) {
-		ndis_sg_elements[i].address = sg_dma_address(&sg_list[i]);
-		ndis_sg_elements[i].length = sg_dma_len(&sg_list[i]);
-		DBGTRACE3("address: %08x", (u32)ndis_sg_elements[i].address);
-	}
-	/* we merge all packets into first packet by creating chain of
-	 * buffers of these packets */
-	for (i = n - 1; i >= sg_ents; i--) {
-		DBGTRACE3("freeing packet %p", handle->xmit_array[i]);
-		kfree(handle->xmit_array[i]->private.buffer_head);
-		kfree(handle->xmit_array[i]);
-	}
-	handle->xmit_array[0]->private.buffer_tail =
-		handle->xmit_array[sg_ents-1]->private.buffer_head;
-	for (; i > 0; i--) {
-		buffer = handle->xmit_array[i]->private.buffer_head;
-		handle->xmit_array[i-1]->private.buffer_head->next =
-			buffer;
-		DBGTRACE3("adjusting buffer[%d]: %p, %p, %d, %d", i,
-			  buffer->startva,
-			  phys_to_virt(ndis_sg_elements[i].address),
-			  buffer->bytecount, ndis_sg_elements[i].length);
-		buffer->startva = phys_to_virt(ndis_sg_elements[i].address);
-		buffer->bytecount = ndis_sg_elements[i].length;
-		kfree(handle->xmit_array[i]);
-	}
-	buffer = handle->xmit_array[0]->private.buffer_head;
-	DBGTRACE3("adjusting buffer[0]: %p, %p, %d, %d",
-		  buffer->startva, phys_to_virt(ndis_sg_elements[0].address),
-		  buffer->bytecount, ndis_sg_elements[0].length);
-	buffer->startva = phys_to_virt(ndis_sg_elements[0].address);
-	buffer->bytecount = ndis_sg_elements[0].length;
-
-	packet = handle->xmit_array[0];
-	packet->sg_ents = sg_ents;
-	packet->sg_list = sg_list;
-	packet->ndis_sg_list.nent = sg_ents;
-	packet->ndis_sg_elements = ndis_sg_elements;
-	packet->ndis_sg_list.elements = packet->ndis_sg_elements;
-	packet->extension.info[ScatterGatherListPacketInfo] =
-		&packet->ndis_sg_list;
-	packet->sg_ents = n;
-	DBGTRACE3("initialized sg_list %p in packet %p", sg_list, packet);
-	DBGTRACE3("sending %d packets", n);
-	LIN2WIN3(miniport->send_packets, handle->adapter_ctx,
-		 handle->xmit_array, 1);
-	TRACEEXIT3(return n);
 }
 
 /*
@@ -650,14 +544,8 @@ static int send_packets(struct ndis_handle *handle, unsigned int start,
 			int j = (start + i) % XMIT_RING_SIZE;
 			handle->xmit_array[i] = handle->xmit_ring[j];
 		}
-		if (handle->dma_type == SG_DMA_ENABLED)
-			/* sending more than one packet at a time
-			 * slows down RTL8180L driver quite a lot; for
-			 * now, we don't utilize SG DMA */
-			n = send_packets_sg_dma(handle, 1);
-		else
-			LIN2WIN3(miniport->send_packets, handle->adapter_ctx,
-				 handle->xmit_array, n);
+		LIN2WIN3(miniport->send_packets, handle->adapter_ctx,
+			 handle->xmit_array, n);
 		DBGTRACE3("sent");
 		if (test_bit(ATTR_SERIALIZED, &handle->attributes)) {
 			for (sent = 0; sent < n && handle->send_ok;

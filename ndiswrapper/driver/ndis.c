@@ -2129,15 +2129,7 @@ STDCALL NDIS_STATUS WRAP_EXPORT(NdisMInitializeScatterGatherDma)
 	if (dma_size != NDIS_DMA_64BITS)
 		ERROR("DMA size is not 64-bits");
 #endif
-	handle->dma_type = SG_DMA_TYPE;
-	/*
-	if (handle->dma_type == SG_DMA_ENABLED)
-		printk(KERN_INFO "%s: driver %s uses scatter/gather DMA\n",
-		       DRIVER_NAME, handle->driver->name);
-	else
-		printk(KERN_INFO "%s: scatter/gather DMA disabled for "
-		       "driver %s\n", DRIVER_NAME, handle->driver->name);
-	*/
+	handle->use_sg_dma = 1;
 	return NDIS_STATUS_SUCCESS;
 }
 
@@ -2542,11 +2534,6 @@ STDCALL void WRAP_EXPORT(NdisMStartBufferPhysicalMapping)
 {
 	TRACEENTER3("phy_map_reg: %u", phy_map_reg);
 
-	if (handle->dma_type) {
-		ERROR("can't use physical mapping and scatter/gather");
-		*array_size = 0;
-		return;
-	}
 	if (!write_to_dev) {
 		ERROR( "dma from device not supported (%d)", write_to_dev);
 		*array_size = 0;
@@ -2586,10 +2573,6 @@ STDCALL void WRAP_EXPORT(NdisMCompleteBufferPhysicalMapping)
 {
 	TRACEENTER3("%p %u (%u)", handle, phy_map_reg, handle->map_count);
 
-	if (handle->dma_type) {
-		ERROR("can't use physical mapping and scatter/gather");
-		return;
-	}
 	if (phy_map_reg > handle->map_count) {
 		ERROR("map_register too big (%u > %u)",
 		      phy_map_reg, handle->map_count);
