@@ -16,6 +16,9 @@
 
 #include "ndiswrapper.h"
 
+#define MAX_STR_LEN 512
+
+#define PASSIVE_LEVEL 0
 #define DISPATCH_LEVEL 2
 
 struct slist_entry
@@ -126,6 +129,11 @@ void wrapper_init_timer(struct ktimer *ktimer, void *handle);
 int wrapper_set_timer(struct wrapper_timer *wrapper_timer,
                       unsigned long expires, unsigned long repeat);
 void wrapper_cancel_timer(struct wrapper_timer *wrapper_timer, char *canceled);
+
+extern STDCALL void KeInitializeSpinLock(KSPIN_LOCK *lock);
+extern STDCALL void KeAcquireSpinLock(KSPIN_LOCK *lock, KIRQL *oldirql);
+extern STDCALL void KeReleaseSpinLock(KSPIN_LOCK *lock, KIRQL newirql);
+extern STDCALL KIRQL KeGetCurrentIrql(void);
 
 static inline void wrapper_set_timer_dpc(struct wrapper_timer *wrapper_timer,
                                          struct kdpc *kdpc)

@@ -33,14 +33,14 @@ STDCALL void WRITE_REGISTER_UCHAR(unsigned int reg, unsigned char val)
 
 STDCALL void KeInitializeTimer(struct ktimer *ktimer)
 {
-	DBGTRACE("%s: %p\n", __FUNCTION__, ktimer);
+	TRACEENTER4("%p", ktimer);
 	wrapper_init_timer(ktimer, NULL);
 	ktimer->dispatch_header.signal_state = 0;
 }
 
 STDCALL void KeInitializeDpc(struct kdpc *kdpc, void *func, void *ctx)
 {
-	DBGTRACE("%s: %p, %p, %p\n", __FUNCTION__, kdpc, func, ctx);
+	TRACEENTER4("%p, %p, %p", kdpc, func, ctx);
 	init_dpc(kdpc, func, ctx);
 }
 
@@ -50,8 +50,7 @@ STDCALL int KeSetTimerEx(struct ktimer *ktimer, __s64 due_time,
 	unsigned long expires;
 	unsigned long repeat;
 	
-	DBGTRACE("%s: %p, %ld, %u, %p\n",
-		 __FUNCTION__, ktimer, (long)due_time, period, kdpc);
+	TRACEENTER4("%p, %ld, %u, %p", ktimer, (long)due_time, period, kdpc);
 	
 	if (ktimer == NULL)
 		return 0;
@@ -69,50 +68,94 @@ STDCALL int KeCancelTimer(struct ktimer *ktimer)
 {
 	char canceled;
 
-	DBGTRACE("%s(entry): %p\n", __FUNCTION__, ktimer);
+	TRACEENTER4("%p", ktimer);
 	wrapper_cancel_timer(ktimer->wrapper_timer, &canceled);
 	return canceled;
+}
+
+STDCALL KIRQL KeGetCurrentIrql(void)
+{
+	KIRQL irql;
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
+	irql = (preempt_count() >= SOFTIRQ_OFFSET) ?
+		DISPATCH_LEVEL : PASSIVE_LEVEL;
+#else
+	irql = (local_bh_count > 0) ? DISPATCH_LEVEL: PASSIVE_LEVEL;
+#endif
+	return irql;
 }
 
 STDCALL void KeInitializeSpinLock(KSPIN_LOCK *lock)
 {
 	spinlock_t *spin_lock;
 
-	DBGTRACE("%s: lock = %p, *lock = %p\n", __FUNCTION__, lock, *lock);
+	TRACEENTER4("lock = %p, *lock = %p", lock, *lock);
 
 	if (!lock)
-		printk(KERN_ERR "%s: lock %p is not valid pointer?\n",
+	{
+		printk(KERN_ERR "%s: lock %p is not valid pointer!\n",
 			   __FUNCTION__, lock);
+		return;
+	}
 	spin_lock = wrap_kmalloc(sizeof(spinlock_t), GFP_KERNEL);
 	if (!spin_lock)
 		printk(KERN_ERR "%s: couldn't allocate space for spinlock\n",
 			   __FUNCTION__);
 	else
 	{
-		DBGTRACE("%s: allocated spinlock %p\n", __FUNCTION__, spin_lock);
+		DBGTRACE4("allocated spinlock %p", spin_lock);
 		spin_lock_init(spin_lock);
 		*lock = (KSPIN_LOCK)spin_lock;
 	}
 }
 
-STDCALL void KeAcquireSpinLock(KSPIN_LOCK *lock, KIRQL *irql)
+STDCALL void KeAcquireSpinLock(KSPIN_LOCK *lock, KIRQL *oldirql)
 {
-	DBGTRACE("%s: lock = %p, *lock = %p\n", __FUNCTION__, lock, (void *)*lock);
-	if (lock && *lock)
+	TRACEENTER4("lock = %p, *lock = %p", lock, (void *)*lock);
+
+	if (!lock)
+	{
+		printk(KERN_ERR "%s: lock %p is not a valid pointer!\n",
+		       __FUNCTION__, lock);
+		return;
+	}
+
+	if (!*lock)
+	{
+		printk(KERN_WARNING "%s: Buggy NDIS driver trying to use uninitialized lock. Trying to recover...", DRV_NAME);
+		KeInitializeSpinLock(lock);
+		if (*lock)
+			printk(KERN_WARNING "ok\n");
+		else
+		{
+			printk(KERN_WARNING "failed\n");
+			BUG();
+		}
+	}
+	*oldirql = KeGetCurrentIrql();
+	if (*oldirql == DISPATCH_LEVEL)
 		spin_lock((spinlock_t *)(*lock));
-	else
-		printk(KERN_ERR "%s: lock %p is not initialized?\n",
-			   __FUNCTION__, lock);
+	else // *oldirql = PASSIVE_LEVEL
+		spin_lock_bh((spinlock_t *)(*lock));
+
+	TRACEEXIT4(return);
 }
 
-STDCALL void KeReleaseSpinLock(KSPIN_LOCK *lock, KIRQL *oldirql)
+STDCALL void KeReleaseSpinLock(KSPIN_LOCK *lock, KIRQL newirql)
 {
-	DBGTRACE("%s: lock = %p, *lock = %p\n", __FUNCTION__, lock, (void *)*lock);
-	if (lock && *lock)
-		spin_unlock((spinlock_t *)(*lock));
+	TRACEENTER4("lock = %p, *lock = %p", lock, (void *)*lock);
+
+	if (!lock || !*lock)
+	{
+		printk(KERN_ERR "%s: lock %p is not a valid spinlock!\n",
+		       __FUNCTION__, lock);
+		return;
+	}
+
+	if (newirql < DISPATCH_LEVEL)
+		spin_unlock_bh((spinlock_t *)(*lock));
 	else
-		printk(KERN_ERR "%s: lock %p is not initialized?\n",
-			   __FUNCTION__, lock);
+		spin_unlock((spinlock_t *)(*lock));
 }
 
 _FASTCALL struct slist_entry *
@@ -123,7 +166,7 @@ ExInterlockedPushEntrySList(int dummy,
 	struct slist_entry *oldhead;
 	KIRQL irql;
 
-	DBGTRACE("%s Entry: head = %p, entry = %p\n", __FUNCTION__, head, entry);
+	TRACEENTER3("head = %p, entry = %p", head, entry);
 
 //	__asm__ __volatile__ ("" : "=c" (head), "=d" (entry));
 
@@ -131,8 +174,8 @@ ExInterlockedPushEntrySList(int dummy,
 	oldhead = head->list.next;
 	entry->next = head->list.next;
 	head->list.next = entry;
-	KeReleaseSpinLock(lock, &irql);
-	DBGTRACE("%s exit head = %p, oldhead = %p\n", __FUNCTION__, head, oldhead);
+	KeReleaseSpinLock(lock, irql);
+	DBGTRACE3("head = %p, oldhead = %p", head, oldhead);
 	return(oldhead);
 }
 
@@ -142,7 +185,7 @@ ExInterlockedPopEntrySList(int dummy, KSPIN_LOCK *lock,union slist_head *head)
 	struct slist_entry *first;
 	KIRQL irql;
 	
-	DBGTRACE("%s: head = %p\n", __FUNCTION__, head);
+	TRACEENTER3("head = %p", head);
 //	__asm__ __volatile__ ("" : "=c" (head));
 	KeAcquireSpinLock(lock, &irql);
 	first = NULL;
@@ -154,13 +197,13 @@ ExInterlockedPopEntrySList(int dummy, KSPIN_LOCK *lock,union slist_head *head)
 			head->list.next = first->next;
 		}
 	}
-	KeReleaseSpinLock(lock, &irql);
-	DBGTRACE("%s: Exit, returning %p\n", __FUNCTION__, first);
+	KeReleaseSpinLock(lock, irql);
+	DBGTRACE3("returning %p", first);
 	return first;
 }
 
 STDCALL void *lookaside_def_alloc_func(POOL_TYPE pool_type,
-									   unsigned long size, unsigned long tag)
+				       unsigned long size, unsigned long tag)
 {
 	return kmalloc(size, GFP_ATOMIC);
 }
@@ -171,16 +214,16 @@ STDCALL void lookaside_def_free_func(void *buffer)
 }
 
 STDCALL void
- ExInitializeNPagedLookasideList(struct npaged_lookaside_list *lookaside,
+ExInitializeNPagedLookasideList(struct npaged_lookaside_list *lookaside,
 				 LOOKASIDE_ALLOC_FUNC *alloc_func,
 				 LOOKASIDE_FREE_FUNC *free_func,
 				 unsigned long flags, unsigned long size,
 				 unsigned long tag, unsigned short depth)
 {
-	DBGTRACE("%s: Entry, lookaside: %p, size: %lu, flags: %lu,"
-		 " head: %p, size of lookaside: %u\n",
-		 __FUNCTION__, lookaside, size, flags,
-		 lookaside->head.list.next, sizeof(struct npaged_lookaside_list));
+	TRACEENTER3("lookaside: %p, size: %lu, flags: %lu,"
+		    " head: %p, size of lookaside: %u\n",
+		    lookaside, size, flags, lookaside->head.list.next,
+		    sizeof(struct npaged_lookaside_list));
 
 	memset(lookaside, 0, sizeof(*lookaside));
 
@@ -199,8 +242,7 @@ STDCALL void
 		lookaside->free_func = lookaside_def_free_func;
 
 	KeInitializeSpinLock(&lookaside->obsolete);
-	DBGTRACE("%s: Exit\n", __FUNCTION__);
-	return ;
+	TRACEEXIT3(return);
 }
  
 STDCALL void
@@ -208,7 +250,7 @@ ExDeleteNPagedLookasideList(struct npaged_lookaside_list *lookaside)
 {
 	struct slist_entry *entry, *p;
 	
-	DBGTRACE("%s: Entry, lookaside = %p\n", __FUNCTION__, lookaside);
+	TRACEENTER3("ookaside = %p", lookaside);
 	entry = lookaside->head.list.next;
 	while (entry)
 	{
@@ -216,14 +258,14 @@ ExDeleteNPagedLookasideList(struct npaged_lookaside_list *lookaside)
 		entry = entry->next;
 		lookaside->free_func(p);
 	}
-	DBGTRACE("%s: Exit\n", __FUNCTION__);
+	TRACEEXIT4(return);
 }
 
 
 _FASTCALL void
 ExInterlockedAddLargeStatistic(int dummy, u32 n, u64 *plint)
 {
-	DBGTRACE("%s: Stat %p = %llu, n = %u\n", __FUNCTION__, plint, *plint, n);
+	TRACEENTER3("Stat %p = %llu, n = %u", plint, *plint, n);
 	*plint += n;
 }
 
@@ -235,21 +277,20 @@ STDCALL void *MmMapIoSpace(__s64 phys_addr,
 		virt = ioremap(phys_addr, size);
 	else
 		virt = ioremap_nocache(phys_addr, size);
-	DBGTRACE("%s: %Lx, %lu, %d: %p\n",
-		 __FUNCTION__, phys_addr, size, cache, virt);
+	DBGTRACE3("%Lx, %lu, %d: %p", phys_addr, size, cache, virt);
 	return virt;
 }
 
 STDCALL void MmUnmapIoSpace(void *addr, unsigned long size)
 {
-	DBGTRACE("%s: %p, %lu\n", __FUNCTION__, addr, size);
+	TRACEENTER3("%p, %lu", addr, size);
 	iounmap(addr);
 	return;
 }
 
 STDCALL int IoIsWdmVersionAvailable(unsigned char major, unsigned char minor)
 {
-	DBGTRACE("%s: %d, %d\n", __FUNCTION__, major, minor);
+	TRACEENTER3("%d, %d", major, minor);
 	if (major == 1 &&
 	    (minor == 0x30 || // Windows 2003
 	     minor == 0x20 || // Windows XP
@@ -299,7 +340,7 @@ NOREGPARM unsigned long DbgPrint(char *format, ...)
 
 void DbgBreakPoint(void)
 {
-	printk("Warning: Your Windows driver called DbgBreakPoint()! We should raise a blue screen now... ;o)\n");
+	UNIMPL();
 }
 
 void IofCompleteRequest(void){UNIMPL();}
@@ -349,6 +390,7 @@ struct wrap_func ntos_wrap_funcs[] =
 	WRAP_FUNC_ENTRY(KeAcquireSpinLock),
 	WRAP_FUNC_ENTRY(KeCancelTimer),
 	WRAP_FUNC_ENTRY(KeClearEvent),
+	WRAP_FUNC_ENTRY(KeGetCurrentIrql),
 	WRAP_FUNC_ENTRY(KeInitializeDpc),
 	WRAP_FUNC_ENTRY(KeInitializeEvent),
 	WRAP_FUNC_ENTRY(KeInitializeSpinLock),

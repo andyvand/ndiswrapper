@@ -94,12 +94,6 @@
 #endif
 
 
-#ifdef DEBUG
-#define DBGTRACE(s, args...) printk(s, args)
-#else
-#define DBGTRACE(s, ...)
-#endif
-
 #define KMALLOC_THRESHOLD 131072
 
 #define TICKSPERSEC             10000000
@@ -133,5 +127,45 @@ struct wrap_alloc
 void *wrap_kmalloc(size_t size, int flags);
 void wrap_kfree(void *ptr);
 void wrap_kfree_all(void);
+
+/* DEBUG macros */
+
+#define DBGTRACE(fmt, ...) printk("%s(%d) " fmt "\n", \
+				  __FUNCTION__, __LINE__, ## __VA_ARGS__)
+
+#define DBGTRACE1(fmt, ...) (void)0
+#define DBGTRACE2(fmt, ...) (void)0
+#define DBGTRACE3(fmt, ...) (void)0
+#define DBGTRACE4(fmt, ...) (void)0
+
+#if defined DEBUG && DEBUG >= 1
+#undef DBGTRACE1
+#define DBGTRACE1(fmt, ...) DBGTRACE(fmt, ## __VA_ARGS__)
+#endif
+
+#if defined DEBUG && DEBUG >= 2
+#undef DBGTRACE2
+#define DBGTRACE2(fmt, ...) DBGTRACE(fmt, ## __VA_ARGS__)
+#endif
+
+#if defined DEBUG && DEBUG >= 3
+#undef DBGTRACE3
+#define DBGTRACE3(fmt, ...) DBGTRACE(fmt, ## __VA_ARGS__)
+#endif
+
+#if defined DEBUG && DEBUG >= 4
+#undef DBGTRACE4
+#define DBGTRACE4(fmt, ...) DBGTRACE(fmt, ## __VA_ARGS__)
+#endif
+
+#define TRACEENTER1(fmt, ...) DBGTRACE1("Enter " fmt, ## __VA_ARGS__)
+#define TRACEENTER2(fmt, ...) DBGTRACE2("Enter " fmt, ## __VA_ARGS__)
+#define TRACEENTER3(fmt, ...) DBGTRACE3("Enter " fmt, ## __VA_ARGS__)
+#define TRACEENTER4(fmt, ...) DBGTRACE4("Enter " fmt, ## __VA_ARGS__)
+
+#define TRACEEXIT1(stmt) do { DBGTRACE1("Exit"); stmt; } while(0)
+#define TRACEEXIT2(stmt) do { DBGTRACE2("Exit"); stmt; } while(0)
+#define TRACEEXIT3(stmt) do { DBGTRACE3("Exit"); stmt; } while(0)
+#define TRACEEXIT4(stmt) do { DBGTRACE4("Exit"); stmt; } while(0)
 
 #endif // NDISWRAPPER_H

@@ -80,7 +80,8 @@ int doreset(struct ndis_handle *handle)
 {
 	int res;
 	int addressing_reset;
-	DBGTRACE("%s: Enter\n", __FUNCTION__);
+
+	TRACEENTER3();
 
 	if (down_interruptible(&handle->ndis_comm_mutex))
 		return NDIS_STATUS_FAILURE;
@@ -101,8 +102,7 @@ int doreset(struct ndis_handle *handle)
 
 out:
 	up(&handle->ndis_comm_mutex);
-	DBGTRACE("%s: Exit\n", __FUNCTION__);
-	return res;
+	TRACEEXIT3(return res);
 	
 }
 
@@ -114,8 +114,7 @@ int doquery(struct ndis_handle *handle, unsigned int oid, char *buf, int bufsize
 {
 	int res;
 
-//	DBGTRACE("%s: Enter\n", __FUNCTION__);
-//	DBGTRACE("Calling query at %08x rva(%08x)\n", (int)handle->driver->miniport_char.query, (int)handle->driver->miniport_char.query - image_offset);
+	TRACEENTER3("Calling query at %08x rva(%08x)", (int)handle->driver->miniport_char.query, (int)handle->driver->miniport_char.query - image_offset);
 
 	if (down_interruptible(&handle->ndis_comm_mutex))
 		return NDIS_STATUS_FAILURE;
@@ -136,8 +135,7 @@ int doquery(struct ndis_handle *handle, unsigned int oid, char *buf, int bufsize
 
 out:
 	up(&handle->ndis_comm_mutex);
-//	DBGTRACE("%s: Exit\n", __FUNCTION__);
-	return res;
+	TRACEEXIT3(return res);
 	
 }
 
@@ -149,8 +147,7 @@ int dosetinfo(struct ndis_handle *handle, unsigned int oid, char *buf, int bufsi
 {
 	int res;
 
-//	DBGTRACE("%s: Enter\n", __FUNCTION__);
-//	DBGTRACE("Calling setinfo at %08x rva(%08x)\n", (int)handle->driver->miniport_char.setinfo, (int)handle->driver->miniport_char.setinfo - image_offset);
+	TRACEENTER3("Calling setinfo at %08x rva(%08x)", (int)handle->driver->miniport_char.setinfo, (int)handle->driver->miniport_char.setinfo - image_offset);
 
 	if (down_interruptible(&handle->ndis_comm_mutex))
 		return NDIS_STATUS_FAILURE;
@@ -171,8 +168,7 @@ int dosetinfo(struct ndis_handle *handle, unsigned int oid, char *buf, int bufsi
 
 out:
 	up(&handle->ndis_comm_mutex);
-//	DBGTRACE("%s: Enter\n", __FUNCTION__);
-	return res;
+	TRACEEXIT3(return res);
 
 }
 
@@ -185,13 +181,12 @@ int query_int(struct ndis_handle *handle, int oid, int *data)
 {
 	unsigned int res, written, needed;
 
-//	DBGTRACE("%s: Enter\n", __FUNCTION__);
+	TRACEENTER3();
 	res = doquery(handle, oid, (char*)data, sizeof(int), &written, &needed);
 	if(!res)
 		return 0;
 	*data = 0;
-//	DBGTRACE("%s: Enter\n", __FUNCTION__);
-	return res;
+	TRACEEXIT3(return res);
 }
 
 /*
@@ -223,32 +218,35 @@ static int call_init(struct ndis_handle *handle)
 	__u32 res, res2;
 	__u32 selected_medium;
 	__u32 mediumtypes[] = {0,1,2,3,4,5,6,7,8,9,10,11,12};
-	DBGTRACE("Calling init at %08X rva(%08X)\n", (int)handle->driver->miniport_char.init, (int)handle->driver->miniport_char.init - image_offset);
+
+	TRACEENTER1("Calling NDIS driver init routine at %08X rva(%08X)", (int)handle->driver->miniport_char.init, (int)handle->driver->miniport_char.init - image_offset);
 	res = handle->driver->miniport_char.init(&res2, &selected_medium, mediumtypes, 13, handle, handle);
-	DBGTRACE("past init res: %08X\n\n", res);
+	DBGTRACE1("init returns %08X", res);
 	return res != 0;
 }
 
 static void call_halt(struct ndis_handle *handle)
 {
-	DBGTRACE("Calling halt at %08X rva(%08X)\n", (int)handle->driver->miniport_char.halt, (int)handle->driver->miniport_char.halt - image_offset);
+	TRACEENTER1("Calling NDIS driver halt at %08X rva(%08X)", (int)handle->driver->miniport_char.halt, (int)handle->driver->miniport_char.halt - image_offset);
 
 	set_int(handle, NDIS_OID_PNP_SET_POWER, NDIS_PM_STATE_D3);
 
 	handle->driver->miniport_char.halt(handle->adapter_ctx);
 	pci_set_power_state(handle->pci_dev, 3);
+	TRACEEXIT1(return);
 }
 
 static unsigned int call_entry(struct ndis_driver *driver)
 {
 	int res;
 	char regpath[] = {'a', 0, 'b', 0, 0, 0};
-	DBGTRACE("Calling entry at %08X rva(%08X)\n", (int)driver->entry, (int)driver->entry - image_offset);
+
+	TRACEENTER1("Calling NDIS driver entry at %08X rva(%08X)", (int)driver->entry, (int)driver->entry - image_offset);
 	res = driver->entry((void*)driver, regpath);
-	DBGTRACE("Past entry: Version: %d.%d\n\n", driver->miniport_char.majorVersion, driver->miniport_char.minorVersion);
+	DBGTRACE1("Past entry: Version: %d.%dn", driver->miniport_char.majorVersion, driver->miniport_char.minorVersion);
 
 	/* Dump addresses of driver suppoled callbacks */
-#ifdef DEBUG
+#if defined DEBUG && DEBUG >= 1
 	if(res == 0) {
 		int i;
 		int *adr = (int*) &driver->miniport_char.hangcheck;
@@ -273,7 +271,7 @@ static unsigned int call_entry(struct ndis_driver *driver)
 		
 		for(i = 0; i < 16; i++)
 		{
-			DBGTRACE("%08X (rva %08X):%s\n", adr[i], adr[i]?adr[i] - image_offset:0, name[i]); 
+			DBGTRACE1("%08X (rva %08X):%s", adr[i], adr[i]?adr[i] - image_offset:0, name[i]); 
 		}
 	}
 #endif
@@ -286,14 +284,14 @@ static void hangcheck_bh(void *data)
 {
 	struct ndis_handle *handle = (struct ndis_handle *)data;
 
-	DBGTRACE("%s: Hangcheck timer\n", __FUNCTION__);
+	TRACEENTER1();
 	if(handle->driver->miniport_char.hangcheck(handle->adapter_ctx))
 	{
 		int res;
 		handle->reset_status = 0;
 		printk(KERN_INFO "ndiswrapper: Hangcheck returned true. Resetting!\n");
 		res = doreset(handle);
-		DBGTRACE("%s : %08X, %d\n", __FUNCTION__, res, handle->reset_status);
+		DBGTRACE1("reset returns %08X, %d", res, handle->reset_status);
 	}
 }
 
@@ -401,7 +399,7 @@ void statcollector_del(struct ndis_handle *handle)
 
 static int ndis_open(struct net_device *dev)
 {
-	DBGTRACE("%s\n", __FUNCTION__);
+	TRACEENTER1();
 	netif_start_queue(dev);
 	return 0;
 }
@@ -409,7 +407,7 @@ static int ndis_open(struct net_device *dev)
 
 static int ndis_close(struct net_device *dev)
 {
-	DBGTRACE("%s\n", __FUNCTION__);
+	TRACEENTER1();
 	netif_stop_queue(dev);
 	return 0;
 }
@@ -448,7 +446,7 @@ static void set_multicast_list(struct net_device *dev, struct ndis_handle *handl
 		list += 6;
 		size += 6;
 	}
-	DBGTRACE("%s: %d entries. size=%d\n", __FUNCTION__, dev->mc_count, size);
+	DBGTRACE1("%d entries. size=%d", dev->mc_count, size);
 
 	res = dosetinfo(handle, OID_802_3_MULTICAST_LIST, list,
 	                size, &written, &needed);
@@ -469,13 +467,13 @@ static void ndis_set_rx_mode_proc(void *param)
 	int res;
 	unsigned int written, needed;
 
-	DBGTRACE("%s\n", __FUNCTION__);
+	TRACEENTER1();
 	packet_filter = (NDIS_PACKET_TYPE_DIRECTED |
 	                 NDIS_PACKET_TYPE_BROADCAST |
 	                 NDIS_PACKET_TYPE_ALL_MULTICAST);
 
 	if (dev->flags & IFF_PROMISC) {
-		DBGTRACE("%s: Going into promiscuous mode\n", __FUNCTION__);
+		DBGTRACE1("%s", "Going into promiscuous mode");
 		packet_filter |= NDIS_PACKET_TYPE_PROMISCUOUS;
 	}
 	else if ((dev->mc_count > handle->multicast_list_size) ||
@@ -483,7 +481,7 @@ static void ndis_set_rx_mode_proc(void *param)
 	         (handle->multicast_list == 0))
 	{
 		/* Too many to filter perfectly -- accept all multicasts. */
-		DBGTRACE("%s: Multicast list to long. Accepting all\n", __FUNCTION__);
+		DBGTRACE1("%s", "Multicast list to long. Accepting all\n");
 		packet_filter |= NDIS_PACKET_TYPE_ALL_MULTICAST;
 	}
 	else if(dev->mc_count > 0)
@@ -563,7 +561,7 @@ static struct ndis_packet *init_packet(struct ndis_handle *handle,
 	packet->buffer_head = buffer;
 	packet->buffer_tail = buffer;
 
-	//DBGTRACE("Buffer: %08X, data %08X, len %d\n", (int)buffer, (int)buffer->data, (int)buffer->len); 	
+	//DBGTRACE4("Buffer: %08X, data %08X, len %d\n", (int)buffer, (int)buffer->data, (int)buffer->len); 	
 	return packet;
 }
 
@@ -590,13 +588,13 @@ static int send_packet(struct ndis_handle *handle, struct ndis_packet *packet)
 {
 	int res;
 
-	DBGTRACE("%s: packet = %p\n", __FUNCTION__, packet);
+	TRACEENTER3("packet = %p", packet);
 
 	if(handle->driver->miniport_char.send_packets)
 	{
 		struct ndis_packet *packets[1];
 		packets[0] = packet;
-//		DBGTRACE("Calling send_packets at %08X rva(%08X)\n", (int)handle->driver->miniport_char.send_packets, (int)handle->driver->miniport_char.send_packets - image_offset);
+//		DBGTRACE3("Calling send_packets at %08X rva(%08X)", (int)handle->driver->miniport_char.send_packets, (int)handle->driver->miniport_char.send_packets - image_offset);
 		handle->driver->miniport_char.send_packets(handle->adapter_ctx, &packets[0], 1);
 		
 
@@ -613,18 +611,18 @@ static int send_packet(struct ndis_handle *handle, struct ndis_packet *packet)
 	}
 	else if(handle->driver->miniport_char.send)
 	{
-//		DBGTRACE("Calling send at %08X rva(%08X)\n", (int)handle->driver->miniport_char.send, (int)handle->driver->miniport_char.send_packets - image_offset);
+//		DBGTRACE3("Calling send at %08X rva(%08X)", (int)handle->driver->miniport_char.send, (int)handle->driver->miniport_char.send_packets - image_offset);
 		res = handle->driver->miniport_char.send(handle->adapter_ctx, packet, 0);
 	}
 	else
 	{
-		DBGTRACE("%s: No send handler\n", __FUNCTION__);
+		DBGTRACE3("%s", "No send handler");
 		res = NDIS_STATUS_FAILURE;
 	}
 
-	DBGTRACE("send_packets returning %08X\n", res);
+	DBGTRACE3("send_packets returning %08X", res);
 
-	return res;
+	TRACEEXIT3(return res);
 }
 
 
@@ -634,8 +632,7 @@ static void xmit_bh(void *param)
 	struct ndis_buffer *buffer;
 	int res;
 
-	DBGTRACE("%s: Enter: send status is %08X\n",
-		 __FUNCTION__, handle->send_status);
+	TRACEENTER3("send status is %08X", handle->send_status);
 	if (down_interruptible(&handle->ndis_comm_mutex))
 		return;
 	while (handle->send_status == 0)
@@ -713,9 +710,8 @@ static void xmit_bh(void *param)
 			netif_wake_queue(handle->net_dev);
 		spin_unlock_bh(&handle->xmit_ring_lock);
 	}
-	DBGTRACE("%s: Exit\n", __FUNCTION__);
 	up(&handle->ndis_comm_mutex);
-	return;
+	TRACEEXIT3(return);
 }
 
 /*
@@ -768,7 +764,7 @@ static int start_xmit(struct sk_buff *skb, struct net_device *dev)
  */
 void sendpacket_done(struct ndis_handle *handle, struct ndis_packet *packet)
 {
-	DBGTRACE("%s: Enter\n", __FUNCTION__);
+	TRACEENTER3();
 	handle->stats.tx_bytes += packet->len;
 	handle->stats.tx_packets++;
 
@@ -781,8 +777,6 @@ static int ndis_suspend(struct pci_dev *pdev, u32 state)
 	struct ndis_handle *handle;
 	int res;
 
-	DBGTRACE("%s called with %p, %d\n",
-			 __FUNCTION__, pdev, state);
 	if (!pdev)
 		return -1;
 	handle = pci_get_drvdata(pdev);
@@ -794,16 +788,15 @@ static int ndis_suspend(struct pci_dev *pdev, u32 state)
 		return 0;
 
 	res = query_int(handle, NDIS_OID_PNP_QUERY_POWER, &handle->pm_state);
-	DBGTRACE("%s: query power to state %d returns %d\n",
+	DBGTRACE2("%s: query power to state %d returns %d",
 			 dev->name, handle->pm_state, res);
 	if (res)
 		printk(KERN_INFO "%s: device doesn't support pnp capabilities for power management? (%08X)\n", dev->name, res);
 
 	/* do we need this? */
-//		DBGTRACE("%s: stopping queue\n", dev->name);
 //		netif_stop_queue(dev);
 
-	DBGTRACE("%s: detaching device\n", dev->name);
+	DBGTRACE2("%s: detaching device", dev->name);
 	netif_device_detach(dev);
 	
 	if (state == 1)
@@ -815,11 +808,11 @@ static int ndis_suspend(struct pci_dev *pdev, u32 state)
 	res = set_int(handle, NDIS_OID_PNP_SET_POWER, handle->pm_state);
 	pci_save_state(pdev, handle->pci_state);
 	pci_set_power_state(pdev, state);
-	DBGTRACE("%s: setting power to state %d returns %d\n",
+	DBGTRACE2("%s: setting power to state %d returns %d",
 			 dev->name, handle->pm_state, res);
 	if (res)
 		printk(KERN_INFO "%s: device doesn't support pnp capabilities for power management? (%08X)\n", dev->name, res);
-	DBGTRACE(KERN_INFO "%s: device suspended!\n", dev->name);
+	DBGTRACE2("%s: device suspended!\n", dev->name);
 	return 0;
 }
 
@@ -829,8 +822,6 @@ static int ndis_resume(struct pci_dev *pdev)
 	struct ndis_handle *handle;
 	int res;
 
-	DBGTRACE("%s called with %p\n",
-		 __FUNCTION__, pdev);
 	if (!pdev)
 		return -1;
 	handle = pci_get_drvdata(pdev);
@@ -845,20 +836,185 @@ static int ndis_resume(struct pci_dev *pdev)
 	pci_set_power_state(pdev, 0);
 	pci_restore_state(pdev, handle->pci_state);
 	res = set_int(handle, NDIS_OID_PNP_SET_POWER, handle->pm_state);
-	DBGTRACE("%s: setting power to state %d returns %d\n",
+	DBGTRACE2("%s: setting power to state %d returns %d",
 			 dev->name, handle->pm_state, res);
 	if (res)
 		printk(KERN_INFO "%s: device doesn't support pnp capabilities for power management? (%08X)\n", dev->name, res);
 	
-	DBGTRACE("%s: attaching device\n", dev->name);
+	DBGTRACE2("%s: attaching device\n", dev->name);
 	netif_device_attach(dev);
 	
 	/* do we need this? */
-//		DBGTRACE("%s: starting queue\n", dev->name);
 //		netif_wake_queue(dev);
 	
-	DBGTRACE("%s: device resumed!\n", dev->name);
+	DBGTRACE2("%s: device resumed!", dev->name);
 	return 0;
+}
+
+static void wrapper_worker_proc(void *param)
+{
+	struct ndis_handle *handle = (struct ndis_handle *)param;
+	
+	printk("%s: Entry (%lu)\n", __FUNCTION__, handle->wrapper_work);
+	if (test_and_clear_bit(WRAPPER_LINK_STATUS, &handle->wrapper_work))
+	{
+		char *assoc_info;
+		struct ndis_assoc_info *ndis_assoc_info;
+		char wpa_assoc_info[512];
+		char *p, *offset;
+		int i;
+		union iwreq_data wrqu;
+
+		unsigned int res, written, needed;
+		char *dbg_buf;
+		
+		if (netif_carrier_ok(handle->net_dev))
+			printk("%s: netif_carrier is ok\n", __FUNCTION__);
+
+		assoc_info = kmalloc(sizeof(*ndis_assoc_info) + 512,
+				     GFP_KERNEL);
+		if (!assoc_info)
+			return;
+		memset(assoc_info, 0, sizeof(*ndis_assoc_info) + 512);
+
+		ndis_assoc_info = (struct ndis_assoc_info *)assoc_info;
+		ndis_assoc_info->length = sizeof(*ndis_assoc_info);
+		ndis_assoc_info->offset_req_ies = sizeof(*ndis_assoc_info);
+		ndis_assoc_info->req_ie_length = 256;
+		ndis_assoc_info->offset_resp_ies = sizeof(*ndis_assoc_info) +
+			ndis_assoc_info->req_ie_length;
+		ndis_assoc_info->resp_ie_length = 256;
+
+		res = doquery(handle, NDIS_OID_ASSOC_INFO,
+			      assoc_info, sizeof(ndis_assoc_info) + 512,
+			      &written, &needed);
+		if (res)
+		{
+			printk(KERN_ERR "%s: query assoc_info failed (%08X)\n",
+			       __FUNCTION__, res);
+			kfree(assoc_info);
+			return;
+		}
+		printk(KERN_INFO "ndis_assoc_info: length = %lu, req_ies = %u, req_ie_length = %lu, offset_req_ies = %lu, resp_ies = %u, resp_ie_length = %lu, offset_resp_ies = %lu\n",
+		       ndis_assoc_info->length,
+		       ndis_assoc_info->req_ies,
+		       ndis_assoc_info->req_ie_length,
+		       ndis_assoc_info->offset_req_ies,
+		       ndis_assoc_info->resp_ies,
+		       ndis_assoc_info->resp_ie_length,
+		       ndis_assoc_info->offset_resp_ies);
+
+		dbg_buf = kmalloc(2048, GFP_KERNEL);
+		if (dbg_buf)
+		{
+			int i;
+			char *dp = dbg_buf;
+			for (i = 0; i < written; i++)
+				dp += sprintf(dp,"%02x ", assoc_info[i]);
+			*dp = '\0';
+			printk(KERN_INFO "assoc_info (%d): %s\n",
+			       dp - dbg_buf, dbg_buf);
+			kfree(dbg_buf);
+		}
+		p = wpa_assoc_info;
+		p += sprintf(p, "ASSOCINFO(ReqIEs=");
+		offset = ((char *)ndis_assoc_info) +
+			ndis_assoc_info->offset_req_ies;
+		for (i = 0 ; i < 256 && i < ndis_assoc_info->req_ie_length ;
+		     i++)
+			p += sprintf(p, "%02x", *(offset + i));
+			
+		p += sprintf(p, " RespIEs=");
+		offset = ((char *)ndis_assoc_info) + 
+			ndis_assoc_info->offset_resp_ies;
+		for (i = 0 ; i < 256 && i < ndis_assoc_info->resp_ie_length ;
+		     i++)
+			p += sprintf(p, "%02x", *(offset + i));
+
+		p += sprintf(p, ")");
+
+		memset(&wrqu, 0, sizeof(wrqu));
+		wrqu.data.length = p - wpa_assoc_info;
+		printk(KERN_INFO "%s: adding %d bytes\n",
+		       __FUNCTION__, wrqu.data.length);
+		wireless_send_event(handle->net_dev, IWEVCUSTOM, &wrqu,
+				    wpa_assoc_info);
+		kfree(assoc_info);
+	}
+}
+
+static void check_wpa(struct ndis_handle *handle)
+{
+	int i, mode;
+	unsigned int res, written, needed;
+	struct ndis_assoc_info ndis_assoc_info;
+	struct ndis_key ndis_key;
+
+	TRACEENTER1();
+	handle->wpa_capa = 0;
+	res = set_int(handle, NDIS_OID_AUTH_MODE, AUTHMODE_WPAPSK);
+	if (res)
+		return;
+	res = query_int(handle, NDIS_OID_AUTH_MODE, &i);
+	if (res || i != AUTHMODE_WPAPSK)
+		return;
+	
+	DBGTRACE("checking for encr");
+	/* check for highest encryption */
+	mode = WEP_ENCR3_ENABLED;
+	while (mode)
+	{
+		DBGTRACE("checking wep mode %d", mode);
+		res = set_int(handle, NDIS_OID_WEP_STATUS, mode);
+		DBGTRACE("wep_set ret = %08X", res);
+		if (!res)
+			res = query_int(handle, NDIS_OID_WEP_STATUS, &i);
+		DBGTRACE("got wep mode %d (%08X)", i, res);
+		if (!res && i == mode)
+			break;
+
+		if (mode == WEP_ENCR3_ENABLED)
+			mode = WEP_ENCR2_ENABLED;
+		else if (mode == WEP_ENCR2_ENABLED)
+			mode = WEP_ENCR1_ENABLED;
+		else
+		{
+			printk(KERN_ERR
+			       "%s: wrong wep mode in %s (%d)\n",
+			       handle->net_dev->name, __FUNCTION__, mode);
+			mode = WEP_DISABLED;
+		}
+	}
+	DBGTRACE("wep_mode = %d", mode);
+	handle->wep_mode = WEP_ENCR2_ENABLED;
+			
+//	if (handle->wep_mode == WEP_ENCR3_ENABLED ||
+//	    handle->wep_mode == WEP_ENCR2_ENABLED)
+	if (handle->wep_mode != WEP_DISABLED)
+	{
+		printk("%s: checking key\n", __FUNCTION__);
+		ndis_key.key_len = 32;
+		ndis_key.key_index = 0xC0000001;
+		ndis_key.length = sizeof(ndis_key) + 4;
+		res = dosetinfo(handle, NDIS_OID_ADD_KEY, (char *)&ndis_key,
+				sizeof(ndis_key) + 4, &written, &needed);
+
+		printk("%s: add key returns %08X, needed = %d, size = %d\n",
+			 __FUNCTION__, res, needed, sizeof(ndis_key));
+		if (res != NDIS_STATUS_INVALID_DATA)
+			return;
+		res = doquery(handle, NDIS_OID_ASSOC_INFO,
+			      (char *)&ndis_assoc_info,
+			      sizeof(ndis_assoc_info), &written, &needed);
+		printk("%s: assoc info returns %d\n", __FUNCTION__, res);
+		if (res)
+			return;
+		handle->wpa_capa = 1;
+	}
+
+	printk("%s: wpa is enabled? = %d\n",
+		 handle->net_dev->name, handle->wpa_capa);
+	return;
 }
 
 static int setup_dev(struct net_device *dev)
@@ -882,10 +1038,10 @@ static int setup_dev(struct net_device *dev)
 	strncpy(dev->name, if_name, IFNAMSIZ-1);
 	dev->name[IFNAMSIZ-1] = '\0';
 
-	DBGTRACE("%s: Querying for mac\n", __FUNCTION__);
+	DBGTRACE1("%s: Querying for mac", DRV_NAME);
 	res = doquery(handle, 0x01010102, &mac[0], sizeof(mac),
 		      &written, &needed);
-	DBGTRACE("mac:%02x:%02x:%02x:%02x:%02x:%02x\n",
+	DBGTRACE1("mac:%02x:%02x:%02x:%02x:%02x:%02x",
 		 mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
 
 	if(res)
@@ -909,12 +1065,21 @@ static int setup_dev(struct net_device *dev)
 	res = query_int(handle, OID_802_3_MAXIMUM_LIST_SIZE, &i);
 	if(res == NDIS_STATUS_SUCCESS)
 	{
-		DBGTRACE("Multicast list size is %d\n", i);
+		DBGTRACE1("Multicast list size is %d", i);
 		handle->multicast_list_size = i;
 	}
 
 	if(handle->multicast_list_size)
 		handle->multicast_list = kmalloc(handle->multicast_list_size * 6, GFP_KERNEL);
+
+#ifdef DEBUG_WPA
+	wrqu.param.value = NDIS_PRIV_ACCEPT_ALL;
+	if (ndis_set_priv_filter(dev, NULL, &wrqu, NULL))
+		printk(KERN_ERR "%s: Unable to set privacy filter\n",
+		       DRV_NAME);
+
+	check_wpa(handle);
+#endif
 
 	ndis_set_rx_mode_proc(dev);
 	
@@ -964,7 +1129,8 @@ static int ndis_init_one(struct pci_dev *pdev,
 	struct ndis_handle *handle;
 	struct net_device *dev;
 
-	DBGTRACE("%s %04x:%04x:%04x:%04x\n", __FUNCTION__, ent->vendor, ent->device, ent->subvendor, ent->subdevice);
+	TRACEENTER1("%04x:%04x:%04x:%04x", ent->vendor, ent->device,
+		    ent->subvendor, ent->subdevice);
 	if(device->fuzzy)
 	{
 		printk(KERN_WARNING "This driver (%s) is not for your hardware. " \
@@ -1020,9 +1186,9 @@ static int ndis_init_one(struct pci_dev *pdev,
 	handle->indicate_receive_packet = &NdisMIndicateReceivePacket;
 	handle->send_complete = &NdisMSendComplete;
 	handle->send_resource_avail = &NdisMSendResourcesAvailable;
-	handle->indicate_status = &NdisIndicateStatus;
-	handle->indicate_status_complete = &NdisIndicateStatusComplete;
-	handle->query_complete = &NdisMQueryInformationComplete;
+	handle->indicate_status = &NdisIndicateStatus;	
+	handle->indicate_status_complete = &NdisIndicateStatusComplete;	
+	handle->query_complete = &NdisMQueryInformationComplete;	
 	handle->set_complete = &NdisMSetInformationComplete;
 	handle->reset_complete = &NdisMResetComplete;
 	
@@ -1039,6 +1205,8 @@ static int ndis_init_one(struct pci_dev *pdev,
 	memset(&handle->essid, 0, sizeof(handle->essid));
 	memset(&handle->wep_info, 0, sizeof(handle->wep_info));
 	
+	INIT_WORK(&handle->wrapper_worker, wrapper_worker_proc, handle);
+
 	res = pci_enable_device(pdev);
 	if(res)
 		goto out_enable;
@@ -1061,7 +1229,6 @@ static int ndis_init_one(struct pci_dev *pdev,
 	/* do we need to power up the card explicitly? */
 	set_int(handle, NDIS_OID_PNP_SET_POWER, NDIS_PM_STATE_D0);
 	handle->pm_state = NDIS_PM_STATE_D0;
-//	doreset(handle);
 	
 	if(setup_dev(handle->net_dev))
 	{
@@ -1120,7 +1287,7 @@ static void __devexit ndis_remove_one(struct pci_dev *pdev)
 {
 	struct ndis_handle *handle = (struct ndis_handle *) pci_get_drvdata(pdev);
 
-	DBGTRACE("\n%s\n", __FUNCTION__);
+	TRACEENTER1();
 
 	ndiswrapper_procfs_remove_iface(handle);
 	statcollector_del(handle);
@@ -1170,7 +1337,7 @@ static int start_driver(struct ndis_driver *driver)
 		return -EINVAL;
 	}
 
-	DBGTRACE("%s: Nr devices: %d\n", __FUNCTION__, driver->nr_devices);
+	DBGTRACE1("Nr devices: %d", driver->nr_devices);
 
 	driver->pci_idtable = kmalloc(sizeof(struct pci_device_id)*(driver->nr_devices+1), GFP_KERNEL);
 	if(!driver->pci_idtable)
@@ -1188,12 +1355,11 @@ static int start_driver(struct ndis_driver *driver)
 		driver->pci_idtable[i].class_mask = 0;
 		driver->pci_idtable[i].driver_data = (unsigned long) device;
 
-		DBGTRACE("%s Adding %04x:%04x:%04x:%04x to pci idtable\n", __FUNCTION__, device->pci_vendor, device->pci_device, device->pci_subvendor, device->pci_subdevice);
+		DBGTRACE1("Adding %04x:%04x:%04x:%04x to pci idtable", device->pci_vendor, device->pci_device, device->pci_subvendor, device->pci_subdevice);
 
 		device = (struct ndis_device*) device->list.next;
 	}
 
-	DBGTRACE("%s", "\n");
 	memset(&driver->pci_driver, 0, sizeof(driver->pci_driver));
 	driver->pci_driver.name = driver->name;
 	driver->pci_driver.id_table = driver->pci_idtable;
@@ -1220,7 +1386,7 @@ static struct ndis_driver *load_driver(struct put_file *put_driver)
 	struct ndis_driver *driver;
 	int namelen;
 
-	DBGTRACE("Putting driver size %d\n", put_driver->size);
+	DBGTRACE1("Putting driver size %d", put_driver->size);
 
 	driver = kmalloc(sizeof(struct ndis_driver), GFP_KERNEL);
 	if(!driver)
@@ -1241,7 +1407,7 @@ static struct ndis_driver *load_driver(struct put_file *put_driver)
 	driver->name[namelen-1] = 0;
 
 	driver->image = vmalloc(put_driver->size);
-	DBGTRACE("Image is at %08X\n", (int)driver->image);
+	DBGTRACE1("Image is at %08X", (int)driver->image);
 	if(!driver->image)
 	{
 		printk(KERN_ERR "Unable to allocate mem for driver\n");
@@ -1310,7 +1476,7 @@ static int add_file(struct ndis_driver *driver, struct put_file *put_file)
 	struct ndis_file *file;
 	int namelen;
 
-	DBGTRACE("Putting file size %d\n", put_file->size);
+	DBGTRACE1("Putting file size %d", put_file->size);
 
 	file = kmalloc(sizeof(struct ndis_file), GFP_KERNEL);
 	if(!file)
@@ -1374,7 +1540,7 @@ static struct ndis_device *add_device(struct ndis_driver *driver, struct put_dev
 	device->pci_subdevice = put_device->pci_subdevice;
 	device->fuzzy = put_device->fuzzy;
 
-	DBGTRACE("%s %04x:%04x:%04x:%04x %d\n", __FUNCTION__, device->pci_vendor, device->pci_device, device->pci_subvendor, device->pci_subdevice, device->fuzzy);
+	DBGTRACE1("%04x:%04x:%04x:%04x %d", device->pci_vendor, device->pci_device, device->pci_subvendor, device->pci_subdevice, device->fuzzy);
 	
 	if(put_device->pci_subvendor == -1)
 	{
@@ -1441,8 +1607,8 @@ setting_fail:
 static void delete_device(struct ndis_device *device)
 {
 	struct list_head *curr, *tmp2;
-	DBGTRACE("%s\n", __FUNCTION__);
 
+	TRACEENTER1();
 	list_for_each_safe(curr, tmp2, &device->settings)
 	{
 		struct ndis_setting *setting = (struct ndis_setting*) curr;
@@ -1451,6 +1617,7 @@ static void delete_device(struct ndis_device *device)
 		kfree(setting);
 	}
 	kfree(device);
+	TRACEEXIT1(return);
 }
 
 
@@ -1485,7 +1652,7 @@ static void unload_driver(struct ndis_driver *driver)
 	list_for_each_safe(curr, tmp2, &driver->files)
 	{
 		struct ndis_file *file = (struct ndis_file*) curr;
-		DBGTRACE("%s Deleting file %s\n", __FUNCTION__, file->name);
+		DBGTRACE1("Deleting file %s", file->name);
 		vfree(file->data);
 		kfree(file);
 	}
@@ -1509,11 +1676,10 @@ static int misc_release(struct inode *inode, struct file *file)
 	if(!file->private_data)
 		return 0;
 
-	DBGTRACE("%s Removing partially loaded driver\n", __FUNCTION__);
+	TRACEENTER1("%s", "Removing partially loaded driver");
 	unload_driver((struct ndis_driver *)file->private_data);
 	file->private_data = 0;
-	DBGTRACE("%s Remove done\n", __FUNCTION__);
-	return 0;	
+	TRACEEXIT1(return 0);	
 }
 
 
