@@ -502,21 +502,14 @@ _FASTCALL unsigned long IofCallDriver(int dummy, struct irp *irp,
 	} else
 		ERROR("major_fn %08X NOT IMPLEMENTED!\n", stack->major_fn);
 
-	irp->io_status.status = ret;
-	if (irp->user_status)
-		irp->user_status->status = ret;
-
 	if (ret == STATUS_PENDING) {
 		stack->control |= IS_PENDING;
 		free_irp = 0;
-	}
-	/*
-	 * Not sure what to do: if the IRP can be completed sychronously,
-	 * do we also have to call the completion handler and set the user
-	 * event? For now, we do not so...
-	 */
-#if 0
 	} else {
+		irp->io_status.status = ret;
+		if (irp->user_status)
+			irp->user_status->status = ret;
+
 		if (stack->completion_handler) {
 			if (((ret == 0) &&
 			     (stack->control & CALL_ON_SUCCESS)) ||
@@ -534,7 +527,6 @@ _FASTCALL unsigned long IofCallDriver(int dummy, struct irp *irp,
 			NdisSetEvent((struct ndis_event *)irp->user_event);
 		}
 	}
-#endif
 
 	/* To-Do: what about IRP_DEALLOCATE_BUFFER...? */
 	if (free_irp) {
