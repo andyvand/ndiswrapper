@@ -76,7 +76,7 @@ STDCALL BOOLEAN WRAP_EXPORT(KeSetTimerEx)
 	else
 		ms = HZ * due_time / 10000;
 	repeat = HZ * (period / 1000);
-	expires = msecs_to_jiffies(ms);
+	expires = HZ * ms / 1000;
 	return wrapper_set_timer(ktimer->wrapper_timer, expires, repeat, kdpc);
 }
 
@@ -483,15 +483,16 @@ STDCALL NT_STATUS WRAP_EXPORT(KeWaitForSingleObject)
 			TRACEEXIT2(return STATUS_TIMEOUT);
 		else if (*timeout > 0) {
 			long d = (*timeout) - ticks_1601();
-			/* many drivers call this function with much smaller numbers
-			 * that suggest either drivers are broken or explanation for
-			 * this is wrong */
+			/* many drivers call this function with much
+			 * smaller numbers that suggest either drivers
+			 * are broken or explanation for this is
+			 * wrong */
 			if (d > 0)
-				wait_jiffies = msecs_to_jiffies(d / 10000);
+				wait_jiffies = HZ * d / 10000000;
 			else
 				wait_jiffies = 0;
 		} else
-			wait_jiffies = msecs_to_jiffies((-(*timeout)) / 10000);
+			wait_jiffies = HZ * (-(*timeout)) / 10000000;
 	} else
 		wait_jiffies = 0;
 
@@ -1055,9 +1056,9 @@ STDCALL NT_STATUS WRAP_EXPORT(KeDelayExecutionThread)
 		ERROR("illegal wait_mode %d", wait_mode);
 
 	if (t < 0)
-		timeout = msecs_to_jiffies((-t) / 10000);
+		timeout = HZ * (-t) / 10000000;
 	else
-		timeout = jiffies - msecs_to_jiffies(t / 10000);
+		timeout = HZ * t / 10000000 - jiffies;
 
 	if (timeout <= 0)
 		TRACEEXIT3(return STATUS_SUCCESS);
