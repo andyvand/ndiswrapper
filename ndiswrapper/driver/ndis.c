@@ -1032,143 +1032,64 @@ STDCALL void NdisFreePacket(void *packet)
 	}
 }
 
-/*
- * Timer function.
- */
-void ndis_timer_handler(unsigned long data)
-{
-	struct ndis_timer *timer = (struct ndis_timer*) data;
-	STDCALL void (*func)(void *res1, void *data, void *res3, void *res4) = timer->func;
-
-	if (!timer->active)
-		return;
-	if (timer->repeat)
-	{
-		timer->timer.expires = jiffies + timer->repeat;
-		add_timer(&timer->timer);
-	}
-	else
-		timer->active = 0;
-	func(0, timer->ctx, 0, 0);
-}
-
-
-STDCALL void NdisMInitializeTimer(struct ndis_timer **timer_handle,
+STDCALL void NdisMInitializeTimer(struct ndis_miniport_timer *timer_handle,
                                   struct ndis_handle *handle,
 				  void *func,
 				  void *ctx)
 {
-	struct ndis_timer *timer;
-	DBGTRACE("%s: %08x %08x, %08x, %08x\n", __FUNCTION__ , (int)timer_handle, (int)handle, (int)func, (int)ctx);
-	timer = kmalloc(sizeof(struct ndis_timer), GFP_KERNEL);
-	if(!timer)
-	{
-		printk("%s: Cannot malloc mem for timer\n", DRV_NAME);
-		timer_handle = NULL;
-		return;
-	}
-
-	init_timer(&timer->timer);
-	timer->timer.data = (unsigned long) timer;
-	timer->timer.function = &ndis_timer_handler;
-	timer->func = func;
-	timer->ctx = ctx;
-	timer->active = 0;
-	*timer_handle = timer;
-	timer->timer_handle = timer_handle;
-	if (handle)
-		list_add(&timer->list, &handle->timers);
-	DBGTRACE("Allocated timer at %08x\n", (int)timer);
+	wrapper_init_timer(&timer_handle->kdpc, handle, func, ctx);
 }
 
-STDCALL void NdisInitializeTimer(struct ndis_timer **timer,
+STDCALL void NdisInitializeTimer(struct ndis_timer *timer_handle,
 								 void *func, void *ctx)
 {
 	DBGTRACE("%s(entry): %p, %p, %p\n",
-			 __FUNCTION__, timer, func, ctx);
-	NdisMInitializeTimer(timer, NULL, func, ctx);
+			 __FUNCTION__, timer_handle, func, ctx);
+	wrapper_init_timer(&timer_handle->kdpc, NULL, func, ctx);
 	DBGTRACE("%s(exit): %p, %p, %p\n",
-			 __FUNCTION__, timer, func, ctx);
+			 __FUNCTION__, timer_handle, func, ctx);
 }
 
 /*
  * Start a one shot timer.
  */
-STDCALL void NdisSetTimer(struct ndis_timer **timer_handle, unsigned int ms)
+STDCALL void NdisSetTimer(struct ndis_timer *timer_handle, unsigned int ms)
 {
-	struct ndis_timer *ndis_timer = *timer_handle;
+	struct kdpc *kdpc = &timer_handle->kdpc;
 	unsigned long expires = jiffies + (ms * HZ) / 1000;
 
-	if(!ndis_timer)
-	{
-		printk("%s: Driver calling NdisSetTimer on an uninitilized timer\n", DRV_NAME);		
-		return;
-	}
-	
-	ndis_timer->repeat = 0;
-	if(ndis_timer->active)
-		mod_timer(&ndis_timer->timer, expires);
-	else
-	{
-		ndis_timer->timer.expires = expires;
-		add_timer(&ndis_timer->timer);
-	}
-	ndis_timer->active = 1;
+	wrapper_set_timer(kdpc, expires, 0);
 	return;
 }
 
 /*
  * Start a repeated timer.
  */
-STDCALL void NdisMSetPeriodicTimer(struct ndis_timer **timer_handle,
+STDCALL void NdisMSetPeriodicTimer(struct ndis_miniport_timer *timer_handle,
                                    unsigned int ms)
 {
-
-	struct ndis_timer *ndis_timer = *timer_handle;
+	struct kdpc *kdpc = &timer_handle->kdpc;
 	unsigned long expires = jiffies + (ms * HZ) / 1000;
+	unsigned long repeat = ms * HZ / 1000;
 
-	if(!ndis_timer)
-	{
-		printk("%s: Driver calling NdisSetPeriodicTimer on an uninitilized timer\n", DRV_NAME);		
-		return;
-	}
-
-	DBGTRACE("%s: entry\n", __FUNCTION__);
-	ndis_timer->repeat = (ms * HZ) / 1000;
-	if(ndis_timer->active)
-		mod_timer(&ndis_timer->timer, expires);
-	else
-	{
-		ndis_timer->timer.expires = expires;
-		add_timer(&ndis_timer->timer);
-	}
-	ndis_timer->active = 1;
+	wrapper_set_timer(kdpc, expires, repeat);
 	return;
 }
 
 /*
  * Cancel a pending timer
  */
-STDCALL void NdisMCancelTimer(struct ndis_timer **timer_handle, char *canceled)
+STDCALL void NdisMCancelTimer(struct ndis_miniport_timer *timer_handle,
+							  char *canceled)
 {
-	struct ndis_timer *ndis_timer = *timer_handle;
-
 	DBGTRACE("%s\n", __FUNCTION__);
-	if(!ndis_timer)
-	{
-		printk("%s: Driver calling NdisCancelTimer on an uninitilized timer\n", DRV_NAME);		
-		return;
-	}
-
-	ndis_timer->repeat = 0;
-	*canceled = del_timer_sync(&(*timer_handle)->timer);
-	ndis_timer->active = 0;
+	wrapper_cancel_timer(&timer_handle->kdpc, canceled);
 	return;
 }
 
-STDCALL void NdisCancelTimer(struct ndis_timer **timer, char *cancelled)
+STDCALL void NdisCancelTimer(struct ndis_timer *timer_handle, char *canceled)
 {
-	NdisMCancelTimer(timer, cancelled);
+	wrapper_cancel_timer(&timer_handle->kdpc, canceled);
 }
 
 /*

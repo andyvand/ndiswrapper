@@ -446,13 +446,17 @@ struct packed ndis_handle
 
 struct ndis_timer
 {
-	struct list_head list;
-	struct ndis_timer **timer_handle;
-	struct timer_list timer;
-	void *func;
-	void *ctx;
-	int repeat;
-	int active;
+	struct ktimer timer;
+	struct kdpc kdpc;
+};
+
+struct ndis_miniport_timer
+{
+	struct ktimer ktimer;
+	struct kdpc kdpc;
+	void *timer_func;
+	void *timer_ctx;
+	struct ndis_miniport_timer *next;
 };
 
 struct packed ndis_resource_entry
@@ -536,12 +540,6 @@ STDCALL void NdisIndicateStatusComplete(struct ndis_handle *handle) STDCALL;
 STDCALL void NdisMQueryInformationComplete(struct ndis_handle *handle, unsigned int status) STDCALL;
 STDCALL void NdisMSetInformationComplete(struct ndis_handle *handle, unsigned int status) STDCALL;
 STDCALL void NdisMResetComplete(struct ndis_handle *handle, int status, int reset_status);
-STDCALL void NdisMCancelTimer(struct ndis_timer **timer_handle, char *canceled);
-
-void ndis_timer_handler_bh(void *data);
-STDCALL void NdisSetTimer(struct ndis_timer **timer_handle, unsigned int ms);
-STDCALL void NdisMSetPeriodicTimer(struct ndis_timer **timer_handle,
-								   unsigned int ms);
 
 STDCALL int RtlUnicodeStringToAnsiString(struct ustring *dst, struct ustring *src, unsigned int dup) STDCALL;
 STDCALL int RtlAnsiStringToUnicodeString(struct ustring *dst, struct ustring *src, unsigned int dup) STDCALL;
