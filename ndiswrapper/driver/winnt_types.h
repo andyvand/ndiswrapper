@@ -30,10 +30,12 @@
 #define STATUS_FAILURE                  0xC0000001
 #define STATUS_INVALID_PARAMETER        0xC000000D
 #define STATUS_MORE_PROCESSING_REQUIRED 0xC0000016
+#define STATUS_ACCESS_DENIED            0xC0000022
 #define STATUS_BUFFER_TOO_SMALL         0xC0000023
 #define STATUS_RESOURCES                0xC000009A
 #define STATUS_NOT_SUPPORTED            0xC00000BB
 #define STATUS_INVALID_PARAMETER        0xC000000D
+#define STATUS_INSUFFICIENT_RESOURCES	0xC000009A
 #define STATUS_INVALID_PARAMETER_2      0xC00000F0
 #define STATUS_CANCELLED                0xC0000120
 
@@ -114,6 +116,7 @@ typedef unsigned long ULONG_PTR;
 
 typedef ULONG_PTR SIZE_T;
 typedef ULONG_PTR	KAFFINITY;
+typedef ULONG ACCESS_MASK;
 
 struct ansi_string {
 	USHORT len;
@@ -127,59 +130,46 @@ struct unicode_string {
 	wchar_t *buf;
 };
 
-struct slist_entry {
-	struct slist_entry *next;
+struct nt_slist_entry {
+	struct nt_slist_entry *next;
 };
 
-union slist_head {
+union nt_slist_head {
 	ULONGLONG align;
 	struct {
-		struct slist_entry  *next;
+		struct nt_slist_entry *next;
 		USHORT depth;
 		USHORT sequence;
 	} list;
 };
 
-struct list_entry {
-	struct list_entry *fwd_link;
-	struct list_entry *bwd_link;
-};
-
-struct dispatch_header {
-	UCHAR type;
-	UCHAR absolute;
-	UCHAR size;
-	UCHAR inserted;
-	LONG signal_state;
-	struct list_head wait_list_head;
-};
-
-struct kevent {
-	struct dispatch_header header;
+struct nt_list_entry {
+	struct nt_list_entry *next;
+	struct nt_list_entry *prev;
 };
 
 typedef ULONG_PTR KSPIN_LOCK;
+
+struct kdpc;
+typedef STDCALL void (*DPC)(struct kdpc *kdpc, void *ctx, void *arg1,
+			    void *arg2);
 
 struct kdpc {
 	SHORT type;
 	UCHAR number;
 	UCHAR importance;
-	struct list_entry dpc_list_entry;
+	struct nt_list_entry dpc_list_entry;
 
-	void *func;
+	DPC func;
 	void *ctx;
 	void *arg1;
 	void *arg2;
-	KSPIN_LOCK lock;
+	ULONG_PTR *lock;
 };
 
 enum pool_type {
-	NonPagedPool,
-	PagedPool,
-	NonPagedPoolMustSucceed,
-	DontUseThisType,
-	NonPagedPoolCacheAligned,
-	PagedPoolCacheAligned,
+	NonPagedPool, PagedPool, NonPagedPoolMustSucceed, DontUseThisType,
+	NonPagedPoolCacheAligned, PagedPoolCacheAligned,
 	NonPagedPoolCacheAlignedMustS
 };
 
@@ -188,19 +178,13 @@ enum memory_caching_type_orig {
 };
 
 enum memory_caching_type {
-	MmNonCached = FALSE,
-	MmCached = TRUE,
-	MmWriteCombined = MmFrameBufferCached,
-	MmHardwareCoherentCached,
-	MmNonCachedUnordered,
-	MmUSWCCached,
-	MmMaximumCacheType
+	MmNonCached = FALSE, MmCached = TRUE,
+	MmWriteCombined = MmFrameBufferCached, MmHardwareCoherentCached,
+	MmNonCachedUnordered, MmUSWCCached, MmMaximumCacheType
 };
 
 enum lock_operation {
-	IoReadAccess,
-	IoWriteAccess,
-	IoModifyAccess
+	IoReadAccess, IoWriteAccess, IoModifyAccess
 };
 
 struct mdl {
@@ -248,7 +232,7 @@ struct mdl {
 	}
 
 struct device_queue_entry {
-	struct list_entry list_entry;
+	struct nt_list_entry list;
 	ULONG sort_key;
 	BOOLEAN inserted;
 };
@@ -265,21 +249,77 @@ struct wait_ctx_block {
 struct kdevice_queue {
 	USHORT type;
 	USHORT size;
-	struct list_entry devlist_head;
+	struct nt_list_entry devlist_head;
 	KSPIN_LOCK lock;
 	BOOLEAN busy;
 };
 
-struct kdpc;
+struct wrapper_timer;
+struct dispatch_header {
+	UCHAR type;
+	UCHAR absolute;
+	UCHAR size;
+	UCHAR inserted;
+	LONG signal_state;
+	struct nt_list_entry wait_list;
+};
+
+/* objects that use dispatch_header have it as the first field, so
+ * whenever we need to initialize dispatch_header, we can convert that
+ * object into a kevent and access dispatch_header */
+struct kevent {
+	struct dispatch_header dh;
+};
+
+struct ktimer {
+	struct dispatch_header dh;
+	ULONGLONG due_time;
+	struct nt_list_entry list;
+	/* Instead of using Dpc's, we implement timers with Linux
+	 * timers for simplicity; however, Linux timers need 'struct
+	 * timer_list' field, which won't fit in ktimer. Instead of
+	 * padding the ktimer structure, we replace *kdpc field with
+	 * *wrapper_timer and allocate memory for it when ktimer is
+	 * initialized */
+	/* struct kdpc *kdpc; */
+	struct wrapper_timer *wrapper_timer;
+	LONG period;
+};
+
+struct kmutex {
+	struct dispatch_header dh;
+	union {
+		struct nt_list_entry list;
+		UINT count;
+	} u;
+	void *owner_thread;
+	BOOLEAN abandoned;
+	BOOLEAN apc_disable;
+};
+
+struct ksemaphore {
+	struct dispatch_header dh;
+	LONG limit;
+};
+
+struct obj_mgr_obj {
+	struct dispatch_header dh;
+	struct nt_list_entry list;
+	void *handle;
+	LONG ref_count;
+};
+
 struct irp;
+struct dev_obj_ext;
+struct driver_object;
 
 struct device_object {
 	SHORT type;
 	USHORT size;
 	LONG ref_count;
-	void *drv_obj;
-	struct device_object *next_dev;
-	void *attached_dev;
+	struct driver_object *drv_obj;
+	struct device_object *next;
+	struct device_object *attached;
 	struct irp *current_irp;
 	void *io_timer;
 	ULONG flags;
@@ -288,7 +328,7 @@ struct device_object {
 	void *dev_ext;
 	BYTE stack_size;
 	union {
-		struct list_entry list_entry;
+		struct nt_list_entry queue_list;
 		struct wait_ctx_block wcb;
 	} queue;
 	ULONG align_req;
@@ -296,10 +336,10 @@ struct device_object {
 	struct kdpc dpc;
 	UINT active_threads;
 	void *security_desc;
-	struct kevent dev_lock;
+	struct kevent lock;
 	USHORT sector_size;
 	USHORT spare;
-	void *dev_obj_ext;
+	struct dev_obj_ext *dev_obj_ext;
 	void *reserved;
 
 	/* ndiswrapper-specific data */
@@ -309,10 +349,157 @@ struct device_object {
 	void *handle;
 };
 
+struct dev_obj_ext {
+	CSHORT type;
+	CSHORT size;
+	struct device_object *dev_obj;
+};
+
 struct io_status_block {
 	NTSTATUS status;
 	ULONG status_info;
 };
+
+struct kdevice_queue_entry {
+	struct nt_list_entry dev_list;
+	ULONG sort_key;
+	BOOLEAN inserted;
+};
+
+#define DEVICE_TYPE ULONG
+
+struct wait_context_block {
+	struct kdevice_queue_entry wait_queue_entry;
+	void *device_routine;
+	void *device_context;
+	ULONG num_regs;
+	void *device_object;
+	void *current_irp;
+	void *buffer_chaining_dpc;
+};
+
+struct driver_extension;
+
+struct driver_object {
+	CSHORT type;
+	CSHORT size;
+	struct device_object *dev_obj;
+	ULONG flags;
+	void *driver_start;
+	ULONG driver_size;
+	void *driver_section;
+	struct driver_extension *drv_ext;
+	struct unicode_string driver_name;
+	struct unicode_string *hardware_database;
+	void *fast_io_dispatch;
+	void *driver_init;
+	void *driver_start_io;
+	void (*driver_unload)(struct driver_object *driver) STDCALL;
+	void *major_func[IRP_MJ_MAXIMUM_FUNCTION + 1];
+};
+
+struct driver_extension {
+	struct drier_object *drv_obj;
+	void *add_device_func;
+	ULONG count;
+	struct unicode_string service_key_name;
+	struct nt_list_entry custom_ext;
+};
+
+struct custom_ext {
+	struct nt_list_entry list;
+	void *client_id;
+};
+
+/* device object flags */
+#define DO_VERIFY_VOLUME		0x00000002
+#define DO_BUFFERED_IO			0x00000004
+#define DO_EXCLUSIVE			0x00000008
+#define DO_DIRECT_IO			0x00000010
+#define DO_MAP_IO_BUFFER		0x00000020
+#define DO_DEVICE_HAS_NAME		0x00000040
+#define DO_DEVICE_INITIALIZING		0x00000080
+#define DO_SYSTEM_BOOT_PARTITION	0x00000100
+#define DO_LONG_TERM_REQUESTS		0x00000200
+#define DO_NEVER_LAST_DEVICE		0x00000400
+#define DO_SHUTDOWN_REGISTERED		0x00000800
+#define DO_BUS_ENUMERATED_DEVICE	0x00001000
+#define DO_POWER_PAGABLE		0x00002000
+#define DO_POWER_INRUSH			0x00004000
+#define DO_LOW_PRIORITY_FILESYSTEM	0x00010000
+
+/* Various supported device types (used with IoCreateDevice()) */
+
+#define FILE_DEVICE_BEEP		0x00000001
+#define FILE_DEVICE_CD_ROM		0x00000002
+#define FILE_DEVICE_CD_ROM_FILE_SYSTEM	0x00000003
+#define FILE_DEVICE_CONTROLLER		0x00000004
+#define FILE_DEVICE_DATALINK		0x00000005
+#define FILE_DEVICE_DFS			0x00000006
+#define FILE_DEVICE_DISK		0x00000007
+#define FILE_DEVICE_DISK_FILE_SYSTEM	0x00000008
+#define FILE_DEVICE_FILE_SYSTEM		0x00000009
+#define FILE_DEVICE_INPORT_PORT		0x0000000A
+#define FILE_DEVICE_KEYBOARD		0x0000000B
+#define FILE_DEVICE_MAILSLOT		0x0000000C
+#define FILE_DEVICE_MIDI_IN		0x0000000D
+#define FILE_DEVICE_MIDI_OUT		0x0000000E
+#define FILE_DEVICE_MOUSE		0x0000000F
+#define FILE_DEVICE_MULTI_UNC_PROVIDER	0x00000010
+#define FILE_DEVICE_NAMED_PIPE		0x00000011
+#define FILE_DEVICE_NETWORK		0x00000012
+#define FILE_DEVICE_NETWORK_BROWSER	0x00000013
+#define FILE_DEVICE_NETWORK_FILE_SYSTEM	0x00000014
+#define FILE_DEVICE_NULL		0x00000015
+#define FILE_DEVICE_PARALLEL_PORT	0x00000016
+#define FILE_DEVICE_PHYSICAL_NETCARD	0x00000017
+#define FILE_DEVICE_PRINTER		0x00000018
+#define FILE_DEVICE_SCANNER		0x00000019
+#define FILE_DEVICE_SERIAL_MOUSE_PORT	0x0000001A
+#define FILE_DEVICE_SERIAL_PORT		0x0000001B
+#define FILE_DEVICE_SCREEN		0x0000001C
+#define FILE_DEVICE_SOUND		0x0000001D
+#define FILE_DEVICE_STREAMS		0x0000001E
+#define FILE_DEVICE_TAPE		0x0000001F
+#define FILE_DEVICE_TAPE_FILE_SYSTEM	0x00000020
+#define FILE_DEVICE_TRANSPORT		0x00000021
+#define FILE_DEVICE_UNKNOWN		0x00000022
+#define FILE_DEVICE_VIDEO		0x00000023
+#define FILE_DEVICE_VIRTUAL_DISK	0x00000024
+#define FILE_DEVICE_WAVE_IN		0x00000025
+#define FILE_DEVICE_WAVE_OUT		0x00000026
+#define FILE_DEVICE_8042_PORT		0x00000027
+#define FILE_DEVICE_NETWORK_REDIRECTOR	0x00000028
+#define FILE_DEVICE_BATTERY		0x00000029
+#define FILE_DEVICE_BUS_EXTENDER	0x0000002A
+#define FILE_DEVICE_MODEM		0x0000002B
+#define FILE_DEVICE_VDM			0x0000002C
+#define FILE_DEVICE_MASS_STORAGE	0x0000002D
+#define FILE_DEVICE_SMB			0x0000002E
+#define FILE_DEVICE_KS			0x0000002F
+#define FILE_DEVICE_CHANGER		0x00000030
+#define FILE_DEVICE_SMARTCARD		0x00000031
+#define FILE_DEVICE_ACPI		0x00000032
+#define FILE_DEVICE_DVD			0x00000033
+#define FILE_DEVICE_FULLSCREEN_VIDEO	0x00000034
+#define FILE_DEVICE_DFS_FILE_SYSTEM	0x00000035
+#define FILE_DEVICE_DFS_VOLUME		0x00000036
+#define FILE_DEVICE_SERENUM		0x00000037
+#define FILE_DEVICE_TERMSRV		0x00000038
+#define FILE_DEVICE_KSEC		0x00000039
+#define FILE_DEVICE_FIPS		0x0000003A
+
+/* Device characteristics */
+
+#define FILE_REMOVABLE_MEDIA		0x00000001
+#define FILE_READ_ONLY_DEVICE		0x00000002
+#define FILE_FLOPPY_DISKETTE		0x00000004
+#define FILE_WRITE_ONCE_MEDIA		0x00000008
+#define FILE_REMOTE_DEVICE		0x00000010
+#define FILE_DEVICE_IS_MOUNTED		0x00000020
+#define FILE_VIRTUAL_VOLUME		0x00000040
+#define FILE_AUTOGENERATED_DEVICE_NAME	0x00000080
+#define FILE_DEVICE_SECURE_OPEN		0x00000100
 
 #ifdef CONFIG_X86_64
 #define POINTER_ALIGNMENT
@@ -370,7 +557,7 @@ struct kapc {
 	CSHORT size;
 	ULONG spare0;
 	struct kthread *thread;
-	struct list_entry apc_list_entry;
+	struct nt_list_entry list;
 	void *kernele_routine;
 	void *rundown_routine;
 	void *normal_routine;
@@ -382,16 +569,8 @@ struct kapc {
 	BOOLEAN inserted;
 };
 
-struct kdevice_queue_entry {
-	struct list_entry dev_list_entry;
-	ULONG sort_key;
-	BOOLEAN inserted;
-};
-
 enum irp_work_type {
-	IRP_WORK_NONE,
-	IRP_WORK_COMPLETE,
-	IRP_WORK_CANCEL,
+	IRP_WORK_NONE, IRP_WORK_COMPLETE, IRP_WORK_CANCEL,
 };
 
 struct irp {
@@ -404,7 +583,7 @@ struct irp {
 		void *sys_buf;
 	} associated_irp;
 
-	struct list_entry thread_list_entry;
+	struct nt_list_entry threads;
 
 	struct io_status_block io_status;
 	KPROCESSOR_MODE requestor_mode;
@@ -442,7 +621,7 @@ struct irp {
 			void *thread;
 			char *aux_buf;
 			struct {
-				struct list_entry list_entry;
+				struct nt_list_entry list;
 				union {
 					struct io_stack_location *
 					current_stack_location;
@@ -467,10 +646,7 @@ struct irp {
 	(irp)->tail.overlay.dev_q.context.driver_context
 
 enum nt_obj_type {
-	NT_OBJ_EVENT,
-	NT_OBJ_MUTEX,
-	NT_OBJ_THREAD,
-	NT_OBJ_TIMER,
+	NT_OBJ_EVENT, NT_OBJ_MUTEX, NT_OBJ_THREAD, NT_OBJ_TIMER,
 };
 
 struct common_body_header {
@@ -480,7 +656,7 @@ struct common_body_header {
 
 struct object_header {
 	struct unicode_string name;
-	struct list_entry entry;
+	struct nt_list_entry list;
 	LONG ref_count;
 	LONG handle_count;
 	BOOLEAN close_in_process;
@@ -493,93 +669,41 @@ struct object_header {
 	CSHORT size;
 };
 
-struct ktimer {
-	struct dispatch_header dispatch_header;
-	ULONGLONG due_time;
-	struct list_entry timer_list;
-	/* the space for kdpc is used for wrapper timer */
-	/* struct kdpc *kdpc; */
-	struct wrapper_timer *wrapper_timer;
-	LONG period;
-};
-
-struct kmutex {
-	struct dispatch_header dispatch_header;
-	union {
-		struct list_entry list_entry;
-		UINT count;
-	} u;
-	void *owner_thread;
-	BOOLEAN abandoned;
-	BOOLEAN apc_disable;
-};
-
 enum work_queue_type {
-	CriticalWorkQueue,
-	DelayedWorkQueue,
-	HyperCriticalWorkQueue,
+	CriticalWorkQueue, DelayedWorkQueue, HyperCriticalWorkQueue,
 	MaximumWorkQueue
 };
 
 enum wait_type {
-	WaitAll,
-	WaitAny
+	WaitAll, WaitAny
 };
 
 struct wait_block {
-	struct list_entry list_entry;
+	struct nt_list_entry list_entry;
 	void *thread;
-	struct dispatch_header *object;
+	void *object;
 	struct wait_block *next;
 	USHORT wait_key;
 	USHORT wait_type;
 };
 
-enum event_type {
-	NotificationEvent,
-	SynchronizationEvent
-};
+enum event_type {NotificationEvent, SynchronizationEvent};
 
 enum mm_page_priority {
-	LowPagePriority,
-	NormalPagePriority = 16,
-	HighPagePriority = 32
+	LowPagePriority, NormalPagePriority = 16, HighPagePriority = 32
 };
 
 enum kinterrupt_mode {
-	LevelSensitive,
-	Latched
+	LevelSensitive, Latched
 };
 
 enum ntos_wait_reason {
-	Executive,
-	FreePage,
-	PageIn,
-	PoolAllocation,
-	DelayExecution,
-	Suspended,
-	UserRequest,
-	WrExecutive,
-	WrFreePage,
-	WrPageIn,
-	WrPoolAllocation,
-	WrDelayExecution,
-	WrSuspended,
-	WrUserRequest,
-	WrEventPair,
-	WrQueue,
-	WrLpcReceive,
-	WrLpcReply,
-	WrVirtualMemory,
-	WrPageOut,
-	WrRendezvous,
-	Spare2,
-	Spare3,
-	Spare4,
-	Spare5,
-	Spare6,
-	WrKernel,
-	MaximumWaitReason
+	Executive, FreePage, PageIn, PoolAllocation, DelayExecution,
+	Suspended, UserRequest, WrExecutive, WrFreePage, WrPageIn,
+	WrPoolAllocation, WrDelayExecution, WrSuspended, WrUserRequest,
+	WrEventPair, WrQueue, WrLpcReceive, WrLpcReply, WrVirtualMemory,
+	WrPageOut, WrRendezvous, Spare2, Spare3, Spare4, Spare5, Spare6,
+	WrKernel, MaximumWaitReason
 };
 
 typedef enum ntos_wait_reason KWAIT_REASON;
@@ -589,7 +713,7 @@ typedef STDCALL void *LOOKASIDE_ALLOC_FUNC(enum pool_type pool_type,
 typedef STDCALL void LOOKASIDE_FREE_FUNC(void *);
 
 struct npaged_lookaside_list {
-	union slist_head head;
+	union nt_slist_head head;
 	USHORT depth;
 	USHORT maxdepth;
 	ULONG totalallocs;
@@ -601,7 +725,7 @@ struct npaged_lookaside_list {
 	ULONG size;
 	LOOKASIDE_ALLOC_FUNC *alloc_func;
 	LOOKASIDE_FREE_FUNC *free_func;
-	struct list_entry listent;
+	struct nt_list_entry list;
 	ULONG lasttotallocs;
 	ULONG lastallocmisses;
 	ULONG pad[2];
@@ -609,37 +733,146 @@ struct npaged_lookaside_list {
 };
 
 enum device_registry_property {
-	DevicePropertyDeviceDescription,
-	DevicePropertyHardwareID,
-	DevicePropertyCompatibleIDs,
-	DevicePropertyBootConfiguration,
+	DevicePropertyDeviceDescription, DevicePropertyHardwareID,
+	DevicePropertyCompatibleIDs, DevicePropertyBootConfiguration,
 	DevicePropertyBootConfigurationTranslated,
-	DevicePropertyClassName,
-	DevicePropertyClassGuid,
-	DevicePropertyDriverKeyName,
-	DevicePropertyManufacturer,
-	DevicePropertyFriendlyName,
-	DevicePropertyLocationInformation,
-	DevicePropertyPhysicalDeviceObjectName,
-	DevicePropertyBusTypeGuid,
-	DevicePropertyLegacyBusType,
-	DevicePropertyBusNumber,
-	DevicePropertyEnumeratorName,
-	DevicePropertyAddress,
-	DevicePropertyUINumber,
-	DevicePropertyInstallState,
+	DevicePropertyClassName, DevicePropertyClassGuid,
+	DevicePropertyDriverKeyName, DevicePropertyManufacturer,
+	DevicePropertyFriendlyName, DevicePropertyLocationInformation,
+	DevicePropertyPhysicalDeviceObjectName, DevicePropertyBusTypeGuid,
+	DevicePropertyLegacyBusType, DevicePropertyBusNumber,
+	DevicePropertyEnumeratorName, DevicePropertyAddress,
+	DevicePropertyUINumber, DevicePropertyInstallState,
 	DevicePropertyRemovalPolicy
 };
 
 enum trace_information_class {
-	TraceIdClass,
-	TraceHandleClass,
-	TraceEnableFlagsClass,
-	TraceEnableLevelClass,
-	GlobalLoggerHandleClass,
-	EventLoggerHandleClass,
-	AllLoggerHandlesClass,
-	TraceHandleByNameClass
+	TraceIdClass, TraceHandleClass, TraceEnableFlagsClass,
+	TraceEnableLevelClass, GlobalLoggerHandleClass, EventLoggerHandleClass,
+	AllLoggerHandlesClass, TraceHandleByNameClass
 };
+
+/* some of the functions below are slightly different from DDK's
+ * implementation; e.g., Insert functions return appropriate
+ * pointer */
+
+static inline void InitializeListHead(struct nt_list_entry *head)
+{
+	head->next = head->prev = head;
+}
+
+static inline BOOLEAN IsListEmpty(struct nt_list_entry *head)
+{
+	if (head->next == head)
+		return TRUE;
+	else
+		return FALSE;
+}
+
+static inline void RemoveEntryList(struct nt_list_entry *entry)
+{
+	struct nt_list_entry *prev, *next;
+
+	next = entry->next;
+	prev = entry->prev;
+	prev->next = next;
+	next->prev = prev;
+}
+
+static inline struct nt_list_entry *RemoveHeadList(struct nt_list_entry *head)
+{
+	struct nt_list_entry *next, *entry;
+
+	if (IsListEmpty(head))
+		return NULL;
+	else {
+		entry = head->next;
+		next = entry->next;
+		head->next = next;
+		next->prev = head;
+		return entry;
+	}
+}
+
+static inline struct nt_list_entry *RemoveTailList(struct nt_list_entry *head)
+{
+	struct nt_list_entry *prev, *entry;
+
+	if (IsListEmpty(head))
+		return NULL;
+	else {
+		entry = head->prev;
+		prev = entry->prev;
+		head->prev = prev;
+		prev->next = head;
+		return entry;
+	}
+}
+
+static inline struct nt_list_entry *InsertHeadList(struct nt_list_entry *head,
+						   struct nt_list_entry *entry)
+{
+	struct nt_list_entry *next, *first;
+
+	if (IsListEmpty(head))
+		first = NULL;
+	else
+		first = head->next;
+
+	next = head->next;
+	entry->next = next;
+	entry->prev = head;
+	next->prev = entry;
+	head->next = entry;
+	return first;
+}
+
+static inline struct nt_list_entry *InsertTailList(struct nt_list_entry *head,
+						   struct nt_list_entry *entry)
+{
+	struct nt_list_entry *prev, *last;
+
+	if (IsListEmpty(head))
+		last = NULL;
+	else
+		last = head->prev;
+
+	prev = head->prev;
+	entry->next = head;
+	entry->prev = prev;
+	prev->next = entry;
+	head->prev = entry;
+	return last;
+}
+
+#define nt_list_for_each(pos, head)					\
+	for (pos = (head)->next; prefetch(pos->next), pos != (head);	\
+	     pos = pos->next)
+
+static inline struct nt_slist_entry *
+PushEntryList(union nt_slist_head *head, struct nt_slist_entry *entry)
+{
+	struct nt_slist_entry *oldhead;
+
+	oldhead = head->list.next;
+	entry->next = head->list.next;
+	head->list.next = entry;
+	head->list.depth++;
+	head->list.sequence++;
+	return oldhead;
+}
+
+static inline struct nt_slist_entry *PopEntryList(union nt_slist_head *head)
+{
+	struct nt_slist_entry *first;
+
+	first = head->list.next;
+	if (first) {
+		head->list.next = first->next;
+		head->list.depth--;
+		head->list.sequence++;
+	}
+	return first;
+}
 
 #endif /* WINNT_TYPES_H */

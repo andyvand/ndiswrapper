@@ -30,6 +30,7 @@
 #include <linux/random.h>
 #include <linux/ctype.h>
 #include <linux/usb.h>
+#include <linux/list.h>
 
 #include <linux/spinlock.h>
 #include <asm/mman.h>
@@ -48,7 +49,8 @@
 #define CONFIG_USB 1
 #endif
 
-#define addr_offset(driver) (__builtin_return_address(0) - (driver)->entry)
+#define addr_offset(drvr) (__builtin_return_address(0) - \
+			     (drvr)->drv_obj->driver_start)
 
 /* Workqueue / task queue backwards compatibility stuff */
 #if LINUX_VERSION_CODE > KERNEL_VERSION(2,5,41)
@@ -305,10 +307,6 @@ do {									\
 #define SECS_1601_TO_1970       ((369 * 365 + 89) * (u64)SECSPERDAY)
 #define TICKS_1601_TO_1970      (SECS_1601_TO_1970 * TICKSPERSEC)
 
-#define UNIMPL() do {							\
-		printk(KERN_ERR "%s --UNIMPLEMENTED--\n", __FUNCTION__ ); \
-	} while (0)
-
 typedef void (*WRAP_EXPORT_FUNC)(void);
 
 struct wrap_export {
@@ -352,15 +350,18 @@ extern KSPIN_LOCK cancel_lock;
 
 #define WRAPPER_TIMER_MAGIC 47697249
 struct wrapper_timer {
-	struct list_head list;
+	/* wrapper_timer replaces kdpc field in ktimer; if some
+	 * (nasty) driver passes ktimer->kdpc to other functions,
+	 * having kdpc as first field of wrapper_timer will work as
+	 * expected */
+	struct kdpc *kdpc;
+	struct nt_list_entry list;
 	struct timer_list timer;
 #ifdef DEBUG_TIMER
 	unsigned long wrapper_timer_magic;
 #endif
 	long repeat;
 	int active;
-	struct ktimer *ktimer;
-	struct kdpc *kdpc;
 	KSPIN_LOCK lock;
 };
 
@@ -376,16 +377,43 @@ STDCALL void KeInitializeEvent(struct kevent *kevent,
 			       enum event_type type, BOOLEAN state);
 STDCALL LONG KeSetEvent(struct kevent *kevent, KPRIORITY incr, BOOLEAN wait);
 STDCALL LONG KeResetEvent(struct kevent *kevent);
-STDCALL NTSTATUS KeWaitForSingleObject(void *object, KWAIT_REASON reason,
-					KPROCESSOR_MODE waitmode,
-					BOOLEAN alertable,
-					LARGE_INTEGER *timeout);
+STDCALL void KeClearEvent(struct kevent *kevent);
+STDCALL void KeInitializeDpc(struct kdpc *kdpc, void *func, void *ctx);
+STDCALL NTSTATUS KeWaitForSingleObject(struct kevent *object,
+				       KWAIT_REASON reason,
+				       KPROCESSOR_MODE waitmode,
+				       BOOLEAN alertable,
+				       LARGE_INTEGER *timeout);
 struct mdl *allocate_init_mdl(void *virt, ULONG length);
 void free_mdl(struct mdl *mdl);
 STDCALL struct mdl *IoAllocateMdl(void *virt, ULONG length, BOOLEAN second_buf,
 				  BOOLEAN charge_quota, struct irp *irp);
 STDCALL void IoFreeMdl(struct mdl *mdl);
 STDCALL void NdisFreeBuffer(ndis_buffer *buffer);
+_FASTCALL LONG InterlockedDecrement(FASTCALL_DECL_1(LONG volatile *val));
+_FASTCALL LONG InterlockedIncrement(FASTCALL_DECL_1(LONG volatile *val));
+STDCALL struct nt_list_entry *
+ExInterlockedInsertHeadList(struct nt_list_entry *head,
+			    struct nt_list_entry *entry, KSPIN_LOCK *lock);
+STDCALL struct nt_list_entry *
+ExInterlockedInsertTailList(struct nt_list_entry *head,
+			    struct nt_list_entry *entry, KSPIN_LOCK *lock);
+STDCALL struct nt_list_entry *
+ExInterlockedRemoveHeadList(struct nt_list_entry *head, KSPIN_LOCK *lock);
+STDCALL NTSTATUS IoCreateDevice(struct driver_object *driver,
+				ULONG dev_ext_length,
+				struct unicode_string *dev_name,
+				DEVICE_TYPE dev_type,
+				ULONG dev_chars, BOOLEAN exclusive,
+				struct device_object **dev_obj);
+STDCALL NTSTATUS
+IoAllocateDriverObjectExtension(struct driver_object *drv_obj,
+				void *client_id, ULONG extlen, void **ext);
+STDCALL void *IoGetDriverObjectExtension(struct driver_object *drv,
+					 void *client_id);
+STDCALL void KeInitializeEvent(struct kevent *kevent, enum event_type type,
+			       BOOLEAN state);
+void free_custom_ext(struct driver_extension *drv_obj_ext);
 ULONGLONG ticks_1601(void);
 
 STDCALL KIRQL KeGetCurrentIrql(void);
@@ -414,6 +442,14 @@ STDCALL void RtlInitString(struct ansi_string *dst, CHAR *src);
 STDCALL void RtlFreeUnicodeString(struct unicode_string *string);
 STDCALL void RtlFreeAnsiString(struct ansi_string *string);
 
+void *wrap_kmalloc(size_t size, int flags);
+void wrap_kfree(void *ptr);
+void wrapper_init_timer(struct ktimer *ktimer, void *handle,
+			struct kdpc *kdpc);
+int wrapper_set_timer(struct ktimer *ktimer, unsigned long expires,
+		      unsigned long repeat, struct kdpc *kdpc);
+void wrapper_cancel_timer(struct ktimer *ktimer, char *canceled);
+
 unsigned long lin_to_win1(void *func, unsigned long);
 unsigned long lin_to_win2(void *func, unsigned long, unsigned long);
 unsigned long lin_to_win3(void *func, unsigned long, unsigned long,
@@ -432,6 +468,8 @@ unsigned long lin_to_win6(void *func, unsigned long, unsigned long,
 #define WARNING(fmt, ...) MSG(KERN_WARNING, fmt, ## __VA_ARGS__)
 #define ERROR(fmt, ...) MSG(KERN_ERR, fmt , ## __VA_ARGS__)
 #define INFO(fmt, ...) MSG(KERN_INFO, fmt , ## __VA_ARGS__)
+
+#define UNIMPL() ERROR("--UNIMPLEMENTED--")
 
 static inline KIRQL current_irql(void)
 {
@@ -557,18 +595,6 @@ do {									\
 	local_irq_restore(flags);					\
 	preempt_enable();						\
 } while (0)
-
-static inline void wrapper_set_timer_dpc(struct wrapper_timer *wrapper_timer,
-                                         struct kdpc *kdpc)
-{
-	wrapper_timer->kdpc = kdpc;
-}
-
-static inline void init_dpc(struct kdpc *kdpc, void *func, void *ctx)
-{
-	kdpc->func = func;
-	kdpc->ctx  = ctx;
-}
 
 static inline ULONG SPAN_PAGES(ULONG_PTR ptr, SIZE_T length)
 {
