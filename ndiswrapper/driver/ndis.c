@@ -755,6 +755,7 @@ STDCALL void NdisAllocateSpinLock(struct ndis_spin_lock *lock)
 	else
 		printk(KERN_ERR "%s: couldn't allocate spinlock (%s)\n",
 			   DRV_NAME, __FUNCTION__);
+	lock->kirql = 0;
 }
 
 STDCALL void NdisFreeSpinLock(struct ndis_spin_lock *lock)
@@ -767,31 +768,55 @@ STDCALL void NdisFreeSpinLock(struct ndis_spin_lock *lock)
 	if(lock->spin_lock)
 		kfree(lock->spin_lock);
 	lock->spin_lock = NULL;
+	lock->kirql = 0;
 }
+
+static spinlock_t spin_lock_kirql = SPIN_LOCK_UNLOCKED;
 
 STDCALL void NdisAcquireSpinLock(struct ndis_spin_lock *lock)
 {
 	DBGTRACE("%s: locking %p\n", __FUNCTION__, lock->spin_lock);
-	spin_lock(lock->spin_lock);
+	spin_lock(&spin_lock_kirql);
+	if (lock->kirql)
+	{
+		spin_unlock(&spin_lock_kirql);
+		DBGTRACE("%s: lock %p is already locked\n",
+				 __FUNCTION__, lock->spin_lock);
+	}
+	else
+	{
+		lock->kirql = 1;
+		spin_unlock(&spin_lock_kirql);
+		spin_lock(lock->spin_lock);
+	}
 }
 
 STDCALL void NdisReleaseSpinLock(struct ndis_spin_lock *lock)
 {
 	DBGTRACE("%s: unlocking %p\n", __FUNCTION__, lock->spin_lock);
-	spin_unlock(lock->spin_lock);
+	spin_lock(&spin_lock_kirql);
+	if (lock->kirql)
+	{
+		lock->kirql = 0;
+		spin_unlock(&spin_lock_kirql);
+		spin_unlock(lock->spin_lock);
+	}
+	else
+	{
+		spin_unlock(&spin_lock_kirql);
+		DBGTRACE("%s: lock %p is not locked\n", __FUNCTION__, lock->spin_lock);
+	}
 }
 
 
 STDCALL void NdisDprAcquireSpinLock(struct ndis_spin_lock *lock)
 {
-	DBGTRACE("%s: locking %p\n", __FUNCTION__, lock->spin_lock);
-	spin_lock(lock->spin_lock);
+	NdisAcquireSpinLock(lock);
 }
 
 STDCALL void NdisDprReleaseSpinLock(struct ndis_spin_lock *lock)
 {
-	DBGTRACE("%s: unlocking %p\n", __FUNCTION__, lock->spin_lock);
-	spin_unlock(lock->spin_lock);
+	NdisReleaseSpinLock(lock);
 }
 
 
