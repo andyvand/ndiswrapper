@@ -1,168 +1,53 @@
-* Quickstart guide *
-====================
+ndiswrapper (version 0.4)
 
-0. Use install.sh script
-------------------------
-* Execute install.sh script in the ndiswrapper directory. This should create
-  the driver and configure modules. However, this is not tested extensively,
-  so this may not work for you.
-  * If it works for you, ignore steps below.
-  * If it doesn't work for you, follow the steps below (and mail to the
-    mailing list describing why install.sh script failed).
+What is it?
+===========
 
-1. Compile the driver
----------------------
-* You need a recent 2.6.0 or 2.4 kernel with source. 
-* Make sure there is a link to the source from the modules directory:
-  '/lib/modules/<VERSION>/build' should be a link to the kernel
-  source, where <VERSION> is the version of the kernel you are running.
-* The driver has known problems with SMP and will not work reliably with
-  it.
+Some vendors refuses to release specs or even a binary linux-driver
+for their WLAN cards. This project tries to solve this problem by
+making a kernel module that can load Ndis (windows network driver API)
+drivers.
 
-Go to the driver directory and run:
 
-   > make install
+Status
+======
 
-2. Compile the loader:
-----------------------
-You need flex tool. 
-Go to the utils directory and run (irrepsecitve of what kernel you are
-running):
+The following chipsets are known to work:
+   * Broadcom (4301, 94306)
+   * Intel Centrino (2100)
+   * Admtek (8211)
+   * Atheros (AR5004)
 
-> make
 
-This should produce a loadndisdriver executable. Copy loadndisdriver to
-/usr/sbin.
+Installation
+============
 
-3. Get the windows driver
--------------------------
-Download the Windows XP drivers for your card and locate the .sys and
-.inf file. Copy these files to /lib/windrivers directory.
-   
-4. Find out the PCI vendor and device of you WLAN card.
--------------------------------------------------------
+See the INSTALL document for instruction on how to compile and install
+ndiswrapper.
 
-You can do this step in two ways. 
+Problems
+========
 
-a) Run
+Note that the project is still evolving. Support for working with
+other wireless tools (e.g., monitoring tools) is very limited at the
+moment.
 
-   > lspci -n | grep `lspci | awk '/802.11/ {print $1}'` | awk  '{print $4}
+Before sending bug reports, please check archives of mailing list and
+public forum available at project home page:
+http://ndiswrapper.sourceforge.net. Follow the instructions below when
+sending a bug report:
 
-   This should produce output such as '14e4:4301'. If it does, then the
-   vendor ID is 14e4 and device ID is 4301. 
+   * Enable DEBUG option the Makefile in driver directory and
+     recompile all sources. Report dmesg output. Without this step,
+     proper feedback may not be possible.  Include details about your
+     card, chipset (reported by lspci), distribution, kernel version
+     in the post.
 
-b) If step a) fails, or if you want to do it manually, run
+   * Check if latest CVS works.
 
-   > lspci
-   ...
-   00:0a.2 FLASH memory: ENE Technology Inc: Unknown device 0510
-   00:0c.0 Network controller: Broadcom Corporation BCM4301 802.11b (rev 02)
-   00:0d.0 Ethernet controller: 3Com Corporation 3c940 1000Base? (rev 12)
-   ...
+   * Check the archives of mailing list and the forum for any solution
+     to similar problems. Both these have search facility.
 
-   In this example, 00:0c.0 is the PCI ID of the wireless card. This
-   varies from system to system. An easy way to look for the card is to
-   grep for 802.11:
-
-   > lspci | grep 802.11
-   00:0c.0 Network controller: Broadcom Corporation BCM4301 802.11b (rev 02)
-
-   Now look for vendor id and driver id for the same card:
-
-   > lspci -n
-   ...
-   00:0a.2 Class 0501: 1524:0510
-   00:0c.0 Class 0280: 14e4:4301 (rev 02)
-   00:0d.0 Class 0200: 10b7:1700 (rev 12)
-   ...
-
-   Here, the second line begins with the PCI ID noted above: 00:0c.0
-
-   So the vendor ID is 14e4 and the device ID is 4301 in this case.
-
-5. Load the kernel module
--------------------------
-
-Load the module:
-
-   > insmod ndiswrapper
-
-6. Load the windows driver
---------------------------
-From the ndiswrapper directory, run:
-
-> /usr/sbin/loadndisdriver <vendor> <device> <sysfile> <inffile>
-
-where <vendor> is the vendor ID and <device> is the device ID noted in
-step 4, <sysfile> is the full path to the .sys file and <inffile> is the
-full path to .inf file of the windows driver copied in step 3.
-
-If you get no error the driver should now be loaded and active.
-
-7. Configure interface
-----------------------
-Use iwconfig to configure wireless network interface. First, locate
-the wireless interface:
-
-> iwconfig
-
-This will print the wireless interface (eth0 or eth1 or eth2 ...). In
-the examples below ethX is used; replace ethX with the interface
-reported by iwconfig above.
-
-Set the operating mode of the interface according to your setup. In
-most cases, it is Managed: 
-
-> iwconfig ethX mode Managed
-
-If you use encryption (WEP), set the key:
-
-> iwconfig ethX key XXXXXXXX
-
-(You can use 6 hex digits for 40-bit encryption or 10  hex digits for
-128-bit encryption).
-
-Set the SSID:
-
-> iwconfig ethX essid ESSID
-
-Replace ESSID with the SSID used by your AP (access point or router).
-
-Now, setup the network parameters for the interface ethX. This varies
-from distribution to distribution. Refer to your distribution's
-documents on how to do this. Once this is done, you can use network
-tools to bring up the network; e.g.,
-
-> ifup ethX
-
-or
-
-> ifconfig ethX up
-
-8. Automate
------------
-When you have a wokring setup you may want to automate the driver-loading
-
-a) Create alias for the interface:
-
-   alias ethX ndiswrapper
-
-b) 
-    For kernel 2.6:
-
-   * Add this line to /etc/modprobe.conf:
-
-        install ndiswrapper /sbin/modprobe --ignore-instasll ndiswrapper;/usr/sbin/loadndisdriver <vendor> <device> /lib/windrivers/<sysfile> /lib/windrivers/<inffile>
-
-     Fedora Core 1 (and probably Redhat 9) with kernel 2.6.0 seem to
-     have a slight bug which cause ifup to not recoginize the install
-     line in modprobe.conf. See 
-     http://bugzilla.redhat.com/bugzilla/show_bug.cgi?id=110415
-     for more info and a patch.
-
-   For kernel 2.4:
-
-   * Add this line to /etc/modules.conf:
-
-     post-install ndiswrapper /usr/sbin/loadndisdriver <vendor> <device>  /lib/windrivers/<sysfile> /lib/windrivers/<inffile>
-
+   * Use alternate windows driver; see the 'Supported Cards' page on
+     the project homepage for a driver that is known to work for your
+     chipset.
