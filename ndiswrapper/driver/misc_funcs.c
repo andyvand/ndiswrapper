@@ -625,6 +625,7 @@ struct wrap_func misc_wrap_funcs[] =
 	{"tolower",   (WRAP_FUNC *)wrap_tolower},
 	{"vsnprintf",   (WRAP_FUNC *)wrap_vsnprintf},
 	{"vsprintf",   (WRAP_FUNC *)wrap_vsprintf},
+	{"_sprintf",   (WRAP_FUNC *)wrap_sprintf},
 	{"_vsnprintf",   (WRAP_FUNC *)wrap_vsnprintf},
 	{"_vsprintf",   (WRAP_FUNC *)wrap_vsprintf},
 
