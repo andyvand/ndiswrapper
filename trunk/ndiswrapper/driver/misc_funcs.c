@@ -143,6 +143,28 @@ STDCALL int RtlEqualUnicodeString(struct ustring *str1, struct ustring *str2, in
 	return 0;
 }
 
+STDCALL void RtlCopyUnicodeString(struct ustring *dest, struct ustring *source)
+{
+	int i, end;
+	DBGTRACE("%s\n", __FUNCTION__);
+
+	if (source == 0) {
+		dest->len = 0;
+		return;
+	}
+
+	if (source->len > dest->buflen) {
+		end = dest->buflen;
+	} else {
+		end = source->len;
+	}
+
+	for (i = 0; i < end; i++) {
+		dest->buf[i] = source->buf[i];
+	}
+	dest->len = end;
+}
+
 STDCALL void RtlAnsiStringToUnicodeString(char *dst, char *src, unsigned int dup)
 {
 	UNIMPL();

@@ -174,6 +174,58 @@ STDCALL void NdisCloseConfiguration(void *confhandle)
 	DBGTRACE("%s: confhandle: %08x\n", __FUNCTION__, (int) confhandle);
 }
 
+STDCALL void NdisOpenFile(unsigned int *status,
+			  void **filehandle,
+			  unsigned int *filelength,
+			  char *filename,
+			  unsigned long highest_address)
+{
+	DBGTRACE("%s: Filename: %s Highest Address: %08x\n", __FUNCTION__, filename, (int) highest_address);
+	*status = NDIS_STATUS_FILE_NOT_FOUND;
+}
+			   
+STDCALL void NdisCloseFile(void *filehandle)
+{
+	DBGTRACE("%s: Handle: %08x\n", __FUNCTION__, (int) filehandle);
+}
+
+STDCALL void NdisMapFile(unsigned int *status,
+			 void **mappedbuffer,
+			 void *filehandle)
+{
+	DBGTRACE("%s: Handle: %08x\n", __FUNCTION__, (int) filehandle);
+	*status = NDIS_STATUS_ALREADY_MAPPED;
+}
+
+STDCALL void NdisUnmapFile(void *filehandle)
+{
+	DBGTRACE("%s: Handle: %08x\n", __FUNCTION__, (int) filehandle);
+}
+
+/*  returns the number of milliseconds that have elapsed since the system
+    was booted. */
+STDCALL void NdisGetSystemUpTime(unsigned int *systemuptime)
+{
+	DBGTRACE("%s: FIXME: returning 70000\n", __FUNCTION__);
+	/* FIXME XXX
+	   I suspect this is being used to seed a RNG, so returnng a static
+	   value is very insecure.
+	*/
+	*systemuptime = 70000;
+}
+
+STDCALL void NdisGetBufferPhysicalArraySize(void **buffer,
+					    unsigned int *arraysize)
+{
+	int i = 0;
+	unsigned long *mdl = *buffer;
+	DBGTRACE("%s: Buffer: %08x\n", __FUNCTION__, (int) buffer);
+	while (mdl) {
+		i++;
+		mdl = (void*) *mdl;
+	}
+	*arraysize = i;
+}
 
 struct internal_parameters
 {

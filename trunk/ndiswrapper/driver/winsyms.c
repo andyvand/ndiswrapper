@@ -98,6 +98,13 @@ void NdisGetFirstBufferFromPacketSafe(void);
 void NdisUnchainBufferAtFront(void);
 void NdisScheduleWorkItem(void);
 
+void NdisMapFile(void);
+void NdisCloseFile(void);
+void NdisOpenFile(void);
+void NdisGetSystemUpTime(void);
+void NdisUnmapFile(void);
+void NdisGetBufferPhysicalArraySize(void);
+
 void NdisMSetAttributes(void);
 void EthFilterDprIndicateReceiveComplete(void);
 void EthFilterDprIndicateReceive(void);
@@ -154,6 +161,8 @@ void _allmul(void);
 void my_strlen(void);
 void my_memcpy(void);
 void my_memset(void);
+
+void RtlCopyUnicodeString(void);
 
 void _alldiv(void);
 void RtlCompareMemory(void);
@@ -248,6 +257,13 @@ func("NdisInitializeEvent"                  , NdisInitializeEvent),
 func("NdisMGetDmaAlignment"                 , NdisMGetDmaAlignment),
 func("NdisUnicodeStringToAnsiString"        , NdisUnicodeStringToAnsiString),
 
+func("NdisMapFile"			    , NdisMapFile),
+func("NdisCloseFile"			    , NdisCloseFile),
+func("NdisOpenFile"			    , NdisOpenFile),
+func("NdisGetSystemUpTime"		    , NdisGetSystemUpTime),
+func("NdisUnmapFile"			    , NdisUnmapFile),
+func("NdisGetBufferPhysicalArraySize"	    , NdisGetBufferPhysicalArraySize),
+
 
 func("NdisResetEvent"                       , NdisResetEvent),
 func("NdisInitializeString"                 , NdisInitializeString),
@@ -312,6 +328,8 @@ func("_allmul"                              , _allmul),
 func("strlen"                               , my_strlen),
 func("memcpy"                               , my_memcpy),
 func("memset"                               , my_memset),
+
+func("RtlCopyUnicodeString"		    , RtlCopyUnicodeString),
 
 func("_alldiv"                              , _alldiv),
 func("RtlCompareMemory"                     , RtlCompareMemory),
