@@ -34,7 +34,7 @@ ndis.o:	ndis.c ndis.h
 proc.o : proc.c ndis.h
 
 ifdef DBG_REALTEK
-CFLAGS += -DBG_REALTEK
+CFLAGS += -DDBG_REALTEK
 
 rt8180.o : rt8180.c
 endif
