@@ -1224,20 +1224,21 @@ static int wpa_set_key(struct net_device *dev, struct iw_request_info *info,
 {
 	struct ndis_handle *handle = (struct ndis_handle *)dev->priv;
 	struct ndis_wpa_key ndis_key;
-	struct wpa_key *wpa_key = (struct wpa_key *)wrqu->data.pointer;
+	struct wpa_key wpa_key;
 	int i, res, written, needed;
 	
+	copy_from_user(&wpa_key, wrqu->data.pointer, sizeof(wpa_key));
 	TRACEENTER1("alg = %d, key_index = %d",
-		    wpa_key->alg, wpa_key->key_index);
+		    wpa_key.alg, wpa_key.key_index);
 	
-	if (wpa_key->alg == WPA_ALG_NONE || wpa_key->key_len == 0)
+	if (wpa_key.alg == WPA_ALG_NONE || wpa_key.key_len == 0)
 	{
 		struct ndis_remove_key ndis_remove_key;
 
 		ndis_remove_key.struct_size = sizeof(ndis_remove_key);
-		ndis_remove_key.index = wpa_key->key_index;
-		if (wpa_key->addr)
-			memcpy(&ndis_remove_key.bssid, wpa_key->addr,
+		ndis_remove_key.index = wpa_key.key_index;
+		if (wpa_key.addr)
+			memcpy(&ndis_remove_key.bssid, wpa_key.addr,
 			       ETH_ALEN);
 		else
 			memset(&ndis_remove_key.bssid, 0xff, ETH_ALEN);
@@ -1250,18 +1251,18 @@ static int wpa_set_key(struct net_device *dev, struct iw_request_info *info,
 			       res, needed, sizeof(ndis_remove_key));
 			TRACEEXIT(return -EINVAL);
 		}
-		if (wpa_key->key_index >= 0 &&
-		    wpa_key->key_index < MAX_ENCR_KEYS)
+		if (wpa_key.key_index >= 0 &&
+		    wpa_key.key_index < MAX_ENCR_KEYS)
 		{
-			handle->encr_info.keys[wpa_key->key_index].length = 0;
-			if (wpa_key->key_index == handle->encr_info.active)
+			handle->encr_info.keys[wpa_key.key_index].length = 0;
+			if (wpa_key.key_index == handle->encr_info.active)
 				set_encr_mode(handle, ENCR_DISABLED);
 		}
 
 		TRACEEXIT(return 0);
 	}
 
-	if (wpa_key->alg == WPA_ALG_WEP)
+	if (wpa_key.alg == WPA_ALG_WEP)
 	{
 		union iwreq_data encr_req;
 		unsigned char key[IW_ENCODING_TOKEN_MAX];
@@ -1271,13 +1272,13 @@ static int wpa_set_key(struct net_device *dev, struct iw_request_info *info,
 			TRACEEXIT(return -EINVAL);
 
 		memset(&encr_req, 0, sizeof(encr_req));
-		encr_req.data.flags = wpa_key->key_index;
+		encr_req.data.flags = wpa_key.key_index;
 		/* auth mode is set with set_auth_alg */
 		if (handle->auth_mode == AUTHMODE_OPEN)
 			encr_req.data.flags |= IW_ENCODE_OPEN;
 		else
 			encr_req.data.flags |= IW_ENCODE_RESTRICTED;
-		i = key_str_to_hex(wpa_key->key, key, wpa_key->key_len);
+		i = key_str_to_hex(wpa_key.key, key, wpa_key.key_len);
 		if (i < 0)
 			TRACEEXIT(return -EINVAL);
 		encr_req.data.length = i;
@@ -1292,28 +1293,39 @@ static int wpa_set_key(struct net_device *dev, struct iw_request_info *info,
 	if (!test_bit(CAPA_WPA, &handle->capa))
 		TRACEEXIT1(return -EINVAL);
 
-	if (wpa_key->key_len > sizeof(ndis_key.key))
+	if (wpa_key.key_len > sizeof(ndis_key.key))
 	{
-		DBGTRACE("incorrect key length (%d)", wpa_key->key_len);
+		DBGTRACE("incorrect key length (%d)", wpa_key.key_len);
 		TRACEEXIT1(return -EINVAL);
 	}
 	
-	DBGTRACE("adding key %d, %d", wpa_key->key_index, wpa_key->key_len);
+	DBGTRACE("adding key %d, %d", wpa_key.key_index, wpa_key.key_len);
 	memset(&ndis_key, 0, sizeof(ndis_key));
 
-	memcpy(&ndis_key.key, wpa_key->key, wpa_key->key_len);
+	if (wpa_key.key_len > IW_ENCODING_TOKEN_MAX)
+	{
+		DBGTRACE1("incorrect key? length = (%d)", wpa_key.key_len);
+		TRACEEXIT1(return -EINVAL);
+	}
+	memcpy(&ndis_key.key, wpa_key.key, wpa_key.key_len);
 
 	ndis_key.struct_size = sizeof(ndis_key);
-	ndis_key.length = wpa_key->key_len;
+	ndis_key.length = wpa_key.key_len;
 
-	for (i = 0, ndis_key.rsc = 0 ; i < wpa_key->seq_len ; i++)
-		ndis_key.rsc |= (wpa_key->seq[i] << (i * 8));
+	if (wpa_key.seq_len > IW_ENCODING_TOKEN_MAX)
+	{
+		DBGTRACE1("incorrect seq? length = (%d)", wpa_key.seq_len);
+		TRACEEXIT1(return -EINVAL);
+	}
+
+	for (i = 0, ndis_key.rsc = 0 ; i < wpa_key.seq_len ; i++)
+		ndis_key.rsc |= (wpa_key.seq[i] << (i * 8));
 	
-	ndis_key.index = wpa_key->key_index;
-	if (wpa_key->key_index == 0) /* pairwise key */
+	ndis_key.index = wpa_key.key_index;
+	if (wpa_key.key_index == 0) /* pairwise key */
 		ndis_key.index |= (1 << 31) | (1 << 30);
 
-	if (!memcmp(wpa_key->addr, "\xff\xff\xff\xff\xff\xff", ETH_ALEN))
+	if (!memcmp(wpa_key.addr, "\xff\xff\xff\xff\xff\xff", ETH_ALEN))
 	{
 		mac_address ap_addr;
 
@@ -1321,10 +1333,10 @@ static int wpa_set_key(struct net_device *dev, struct iw_request_info *info,
 		memcpy(&ndis_key.bssid, &ap_addr, ETH_ALEN);
 	}
 	else
-		memcpy(&ndis_key.bssid, wpa_key->addr, ETH_ALEN);
+		memcpy(&ndis_key.bssid, wpa_key.addr, ETH_ALEN);
 	DBGTRACE("bssid " MACSTR, MAC2STR(ndis_key.bssid));
 
-	if (wpa_key->alg == WPA_ALG_TKIP && wpa_key->key_len == 32)
+	if (wpa_key.alg == WPA_ALG_TKIP && wpa_key.key_len == 32)
 	{
 		/* wpa_supplicant gives us the Michael MIC RX/TX keys in
 		 * different order than NDIS spec, so swap the order here. */
@@ -1342,10 +1354,10 @@ static int wpa_set_key(struct net_device *dev, struct iw_request_info *info,
 			 res, written, needed, ndis_key.struct_size);
 		TRACEEXIT(return -EINVAL);
 	}
-	memcpy(&handle->encr_info.keys[wpa_key->key_index].key, &ndis_key.key,
+	memcpy(&handle->encr_info.keys[wpa_key.key_index].key, &ndis_key.key,
 	       NDIS_ENCODING_TOKEN_MAX);
-	handle->encr_info.keys[wpa_key->key_index].length = 
-		wpa_key->key_len;
+	handle->encr_info.keys[wpa_key.key_index].length = 
+		wpa_key.key_len;
 	TRACEEXIT(return 0);
 }
 
@@ -1358,44 +1370,46 @@ static int wpa_disassociate(struct net_device *dev,
 	TRACEENTER("%s", "");
 	/* FIXME: clear keys, essid etc. */
 	handle->essid.length = 0;
-	if (set_int(handle, NDIS_OID_DISASSOCIATE, 0))
+	/* calling NDIS_OID_DISASSOCIATE here turns off the radio and further
+	 * communication is not possible, so do a reset */
+	if (doreset(handle))
 		TRACEEXIT(return -EOPNOTSUPP);
 	TRACEEXIT(return 0);
 }
 
 static int wpa_associate(struct net_device *dev,
-			      struct iw_request_info *info,
-			      union iwreq_data *wrqu, char *extra)
+			 struct iw_request_info *info,
+			 union iwreq_data *wrqu, char *extra)
 {
 	struct ndis_handle *handle = (struct ndis_handle *)dev->priv;
-	struct wpa_assoc_info *wpa_assoc_info =
-		(struct wpa_assoc_info *)wrqu->data.pointer;
-	char buf[IW_ESSID_MAX_SIZE];
+	struct wpa_assoc_info wpa_assoc_info;
 	
 	TRACEENTER("%s", "");
+	copy_from_user(&wpa_assoc_info, wrqu->data.pointer,
+		       sizeof(wpa_assoc_info));
 	DBGTRACE("key_mgmt_suite = %d, pairwise_suite = %d, group_suite= %d",
-		 wpa_assoc_info->key_mgmt_suite,
-		 wpa_assoc_info->pairwise_suite, wpa_assoc_info->group_suite);
-	if (wpa_assoc_info->key_mgmt_suite != KEY_MGMT_PSK &&
-	    wpa_assoc_info->key_mgmt_suite != KEY_MGMT_NONE)
+		 wpa_assoc_info.key_mgmt_suite,
+		 wpa_assoc_info.pairwise_suite, wpa_assoc_info.group_suite);
+	if (wpa_assoc_info.key_mgmt_suite != KEY_MGMT_PSK &&
+	    wpa_assoc_info.key_mgmt_suite != KEY_MGMT_NONE)
 		TRACEEXIT(return -EINVAL);
 
-	switch (wpa_assoc_info->key_mgmt_suite)
+	switch (wpa_assoc_info.key_mgmt_suite)
 	{
 	case KEY_MGMT_PSK:
 		if (set_auth_mode(handle, AUTHMODE_WPAPSK))
 			TRACEEXIT(return -EINVAL);
 		break;
 	case KEY_MGMT_NONE:
-		if (wpa_assoc_info->group_suite != CIPHER_WEP104 &&
-		    wpa_assoc_info->group_suite != CIPHER_WEP40)
+		if (wpa_assoc_info.group_suite != CIPHER_WEP104 &&
+		    wpa_assoc_info.group_suite != CIPHER_WEP40)
 			TRACEEXIT(return -EINVAL);
 		break;
 	default:
 		TRACEEXIT(return -EINVAL);
 	}
 
-	switch (wpa_assoc_info->group_suite)
+	switch (wpa_assoc_info.group_suite)
 	{
 	case CIPHER_CCMP:
 		if (!test_bit(CAPA_AES, &handle->capa) ||
@@ -1416,8 +1430,7 @@ static int wpa_associate(struct net_device *dev,
 		TRACEEXIT(return -EINVAL);
 	}
 
-	memcpy(buf, wpa_assoc_info->ssid, wpa_assoc_info->ssid_len);
-	if (set_essid(handle, buf, wpa_assoc_info->ssid_len))
+	if (set_essid(handle, wpa_assoc_info.ssid, wpa_assoc_info.ssid_len))
 		TRACEEXIT(return -EINVAL);
 
 	TRACEEXIT(return 0);
@@ -1440,7 +1453,9 @@ static int wpa_deauthenticate(struct net_device *dev,
 	TRACEENTER(MACSTR, MAC2STR(wrqu->ap_addr.sa_data));
 	/* FIXME: clear keys, essid etc. */
 	handle->essid.length = 0;
-	if (set_int(handle, NDIS_OID_DISASSOCIATE, 0))
+	/* calling NDIS_OID_DISASSOCIATE here turns off the radio and further
+	 * communication is not possible, so do a reset */
+	if (doreset(handle))
 		TRACEEXIT(return -EOPNOTSUPP);
 	TRACEEXIT(return 0);
 	return 0;
