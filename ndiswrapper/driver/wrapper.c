@@ -1201,8 +1201,7 @@ static void wrapper_worker_proc(void *param)
 		if (!res) {
 			hangcheck_add(handle);
 			stats_timer_add(handle);
-			miniport_set_int(handle, OID_802_11_BSSID_LIST_SCAN,
-					 0);
+			set_scan(handle);
 			set_bit(SET_ESSID, &handle->wrapper_work);
 			schedule_work(&handle->wrapper_worker);
 
@@ -1476,7 +1475,7 @@ int setup_dev(struct net_device *dev)
 	set_essid(handle, "", 0);
 
 	/* some cards (e.g., RaLink) need a scan before they can associate */
-	miniport_set_int(handle, OID_802_11_BSSID_LIST_SCAN, 0);
+	set_scan(handle);
 
 	hangcheck_add(handle);
 	stats_timer_add(handle);

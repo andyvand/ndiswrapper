@@ -943,11 +943,9 @@ static char *ndis_translate_scan(struct net_device *dev, char *event,
 	TRACEEXIT1(return event);
 }
 
-static int iw_set_scan(struct net_device *dev, struct iw_request_info *info,
-		       union iwreq_data *wrqu, char *extra)
+int set_scan(struct ndis_handle *handle)
 {
-	struct ndis_handle *handle = dev->priv;
-	unsigned int res = 0;
+	NDIS_STATUS res;
 
 	TRACEENTER1("%s", "");
 	/* let the card do background scanning for 6 seconds, as per NDIS */
@@ -963,6 +961,14 @@ static int iw_set_scan(struct net_device *dev, struct iw_request_info *info,
 		TRACEEXIT1(return 0);
 }
 
+static int iw_set_scan(struct net_device *dev, struct iw_request_info *info,
+		       union iwreq_data *wrqu, char *extra)
+{
+	struct ndis_handle *handle = dev->priv;
+	
+	return set_scan(handle);
+}
+
 static int iw_get_scan(struct net_device *dev, struct iw_request_info *info,
 		       union iwreq_data *wrqu, char *extra)
 {
@@ -974,8 +980,6 @@ static int iw_get_scan(struct net_device *dev, struct iw_request_info *info,
 	struct ndis_ssid_item *cur_item ;
 
 	TRACEENTER1("%s", "");
-	if (!handle->scan_timestamp)
-		TRACEEXIT1(return -EOPNOTSUPP);
 
 	if (time_before(jiffies, handle->scan_timestamp + 3 * HZ))
 		return -EAGAIN;
