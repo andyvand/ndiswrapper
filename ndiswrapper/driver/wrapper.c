@@ -55,6 +55,55 @@ static spinlock_t driverlist_lock = SPIN_LOCK_UNLOCKED;
 
 extern int image_offset;
 
+
+/*
+ * Perform a sync query and deal with the possibility of an async query.
+ *
+ */
+static int doquery(struct ndis_handle *handle, unsigned int oid, char *buf, int bufsize, unsigned int *written , unsigned int *needed)
+{
+	int res;
+
+	spin_lock(&handle->query_lock);
+
+	handle->query_wait_done = 0;
+	DBGTRACE("Calling query at %08x rva(%08x)\n", (int)handle->driver->miniport_char.query, (int)handle->driver->miniport_char.query - image_offset);
+	res = handle->driver->miniport_char.query(handle->adapter_ctx, oid, buf, bufsize, written, needed);
+
+	if(!res)
+		goto out;
+
+	if(res != NDIS_STATUS_PENDING)
+		goto out;
+		
+	/* This is a very bad way to wait but we cannot sleap here as when ifconfig gathers statistics we
+	 * get a query from a context where is_atomic() = 1
+	 */
+	while(handle->query_wait_done == 0);
+	 
+	res = handle->query_wait_res;
+
+out:
+	spin_unlock(&handle->query_lock);
+	return res;
+	
+}
+
+
+/*
+ *
+ *
+ * Called via function pointer if query returns NDIS_STATUS_PENDING
+ */
+STDCALL void NdisMQueryInformationComplete(struct ndis_handle *handle, unsigned int status)
+{
+	DBGTRACE("%s: %08x\n", __FUNCTION__, status);
+	handle->query_wait_res = status;
+	handle->query_wait_done = 1;
+}
+
+
+
 /*
  * Make a query that has an int as the result.
  *
@@ -63,7 +112,7 @@ static int query_int(struct ndis_handle *handle, int oid, int *data)
 {
 	unsigned int res, written, needed;
 
-	res = handle->driver->miniport_char.query(handle->adapter_ctx, oid, (char*)data, 4, &written, &needed);
+	res = doquery(handle, oid, (char*)data, 4, &written, &needed);
 	if(!res)
 		return 0;
 	*data = 0;
@@ -118,7 +167,7 @@ static int ndis_get_essid(struct net_device *dev,
 	unsigned int res, written, needed;
 	struct essid_req req;
 
-	res = handle->driver->miniport_char.query(handle->adapter_ctx, NDIS_OID_ESSID, (char*)&req, sizeof(req), &written, &needed);
+	res = doquery(handle, NDIS_OID_ESSID, (char*)&req, sizeof(req), &written, &needed);
 	if(res)
 		return -1;
 
@@ -201,7 +250,7 @@ static int ndis_get_freq(struct net_device *dev, struct iw_request_info *info,
 	unsigned int res, written, needed;
 	struct ndis_configuration req;
 
-	res = handle->driver->miniport_char.query(handle->adapter_ctx, NDIS_OID_CONFIGURATION, (char*)&req, sizeof(req), &written, &needed);
+	res = doquery(handle, NDIS_OID_CONFIGURATION, (char*)&req, sizeof(req), &written, &needed);
 	if(res)
 		return -1;
 
@@ -293,7 +342,7 @@ static int ndis_get_ap_address(struct net_device *dev, struct iw_request_info *i
 	unsigned int res, written, needed;
 	__u8 mac_address[6];
 
-	res = handle->driver->miniport_char.query(handle->adapter_ctx, NDIS_OID_BSSID, (char*)&mac_address, sizeof(mac_address), &written, &needed);
+	res = doquery(handle, NDIS_OID_BSSID, (char*)&mac_address, sizeof(mac_address), &written, &needed);
 	if(res)
 		return -1;
 
@@ -452,6 +501,7 @@ static int ndis_start_xmit(struct sk_buff *skb, struct net_device *dev)
 	struct ndis_handle *handle = dev->priv;
 	struct ndis_buffer *buffer;
 	struct ndis_packet *packet;
+	int i = 0;
 	
 	char *data = kmalloc(skb->len, GFP_ATOMIC);
 	if(!data)
@@ -476,8 +526,27 @@ static int ndis_start_xmit(struct sk_buff *skb, struct net_device *dev)
 	
 	memset(packet, 0, sizeof(*packet));
 
-	/* Poision extra packet info */
-	memset(&packet->fill, 0x03, sizeof(packet->fill));
+#ifdef DEBUG
+	{
+		/* Poision extra packet info */
+		int *x = (int*) &packet->ext1;
+		for(i = 0; i <= 12; i++)
+		{
+			x[i] = i;
+		}
+	}
+#endif
+
+	
+	if(handle->use_scatter_gather)
+	{
+		packet->dataphys = pci_map_single(handle->pci_dev, data, skb->len, PCI_DMA_TODEVICE);
+		packet->scatterlist.len = 1;
+		packet->scatterlist.entry.physlo = packet->dataphys;		
+		packet->scatterlist.entry.physhi = 0;		
+		packet->scatterlist.entry.len = skb->len;
+		packet->scatter_gather_ext = &packet->scatterlist; 
+	}
 
 	packet->oob_offset = (int)(&packet->timesent1) - (int)packet;
 
@@ -513,9 +582,7 @@ static int ndis_start_xmit(struct sk_buff *skb, struct net_device *dev)
 		{
 			return 0;
 		}
-		kfree(data);
-		kfree(buffer);
-		kfree(packet);
+		ndis_sendpacket_done(handle, packet);
 		return 0;
 	}
 	else
@@ -526,47 +593,23 @@ static int ndis_start_xmit(struct sk_buff *skb, struct net_device *dev)
 	return 0;
 }
 
-
 /*
- * Perform a query and deal with the async nature of query.
- *
- * TODO: This function must be protected bu a semaphone or something because
- * it's not reentrent.
+ * Free and unmap a packet created in xmit
  */
-static int doquery(struct ndis_handle *handle, unsigned int oid, char *buf, int bufsize, unsigned int *written , unsigned int *needed)
+void ndis_sendpacket_done(struct ndis_handle *handle, struct ndis_packet *packet)
 {
-	int res, sleepres;
-	DBGTRACE("Calling query at %08x rva(%08x)\n", (int)handle->driver->miniport_char.query, (int)handle->driver->miniport_char.query - image_offset);
-
-	handle->query_wait_done = 0;
-	res = handle->driver->miniport_char.query(handle->adapter_ctx, oid, buf, bufsize, written, needed);
-
-	if(!res)
-		return 0;
-
-	if(res != NDIS_STATUS_PENDING)
-		return res;
-	
-	do
+	if(packet->dataphys)
 	{
-		sleepres = wait_event_interruptible(handle->query_wait, (handle->query_wait_done =! 0));
-	} while(sleepres);
-	return handle->query_wait_res;
+		pci_unmap_single(handle->pci_dev, packet->dataphys, packet->len, PCI_DMA_TODEVICE);
+	}
+	
+	kfree(packet->buffer_head->data);
+	kfree(packet->buffer_head);
+	kfree(packet);
 }
 
 
-/*
- *
- *
- * Called via function pointer if query returns NDIS_STATUS_PENDING
- */
-STDCALL void NdisMQueryInformationComplete(struct ndis_handle *handle, unsigned int status)
-{
-	DBGTRACE("%s: %08x\n", __FUNCTION__, status);
-	handle->query_wait_res = status;
-	handle->query_wait_done = 1;
-	wake_up(&handle->query_wait);
-}
+
 
 
 
@@ -640,8 +683,6 @@ static int __devinit ndis_init_one(struct pci_dev *pdev,
 	handle->net_dev = dev;
 	pci_set_drvdata(pdev, handle);
 
-	init_waitqueue_head(&handle->query_wait);
-	
 	/* Poision this because it may contain function pointers */
 	memset(&handle->fill1, 0x12, sizeof(handle->fill1));
 	memset(&handle->fill2, 0x13, sizeof(handle->fill2));
