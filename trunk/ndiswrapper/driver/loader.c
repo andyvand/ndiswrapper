@@ -590,7 +590,7 @@ static unsigned int call_entry(struct ndis_driver *driver)
 
 			entry = driver->pe_images[i].entry;
 			DBGTRACE1("entry: %p, %p", entry, *entry);
-			res = entry((void*)driver, &reg_string);
+			res = entry((void *)driver, &reg_string);
 			ret |= res;
 			DBGTRACE1("entry returns %08X", res);
 			DBGTRACE1("driver version: %d.%dn",

@@ -1486,6 +1486,7 @@ NdisMIndicateStatus(struct ndis_handle *handle,
 	if (status == NDIS_STATUS_MEDIA_DISCONNECT) {
 		handle->link_status = 0;
 		handle->send_ok = 0;
+		DBGTRACE2("send_ok = 0");
 		set_bit(WRAPPER_LINK_STATUS, &handle->wrapper_work);
 		schedule_work(&handle->wrapper_worker);
 	}
@@ -1493,6 +1494,7 @@ NdisMIndicateStatus(struct ndis_handle *handle,
 	if (status == NDIS_STATUS_MEDIA_CONNECT) {
 		handle->link_status = 1;
 		handle->send_ok = 1;
+		DBGTRACE2("send_ok = 1");
 		set_bit(WRAPPER_LINK_STATUS, &handle->wrapper_work);
 		schedule_work(&handle->wrapper_worker);
 	}
