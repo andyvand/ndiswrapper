@@ -146,13 +146,13 @@ STDCALL void WRAP_EXPORT(NdisTerminateWrapper)
 	TRACEEXIT1(return);
 }
 
+/* Register a miniport with NDIS. Called from driver entry */
 STDCALL NDIS_STATUS WRAP_EXPORT(NdisMRegisterMiniport)
-	(struct driver_object *drv_obj,
+	(struct ndis_driver *ndis_driver,
 	 struct miniport_char *miniport_char, UINT char_len)
 {
 	int i, min_length;
 	int *func;
-	struct ndis_driver *driver;
 	char *miniport_funcs[] = {
 		"query",
 		"reconfig",
@@ -174,38 +174,31 @@ STDCALL NDIS_STATUS WRAP_EXPORT(NdisMRegisterMiniport)
 		"adapter_shutdown",
 	};
 
-	min_length = ((char *)&miniport_char->co_create_vc) -
-		((char *)miniport_char);
+	min_length = ((char *) &miniport_char->co_create_vc) -
+		((char *) miniport_char);
 
-	TRACEENTER1("%p %p %d", drv_obj, miniport_char, char_len);
+	TRACEENTER1("driver: %p %p %d", ndis_driver, miniport_char, char_len);
 
 	if (miniport_char->majorVersion < 4) {
-		ERROR("Driver is using ndis version %d which is too old.",
-		      miniport_char->majorVersion);
+		ERROR("Driver %s using ndis version %d which is too old.",
+		      ndis_driver->name, miniport_char->majorVersion);
 		TRACEEXIT1(return NDIS_STATUS_BAD_VERSION);
 	}
 
 	if (char_len < min_length) {
-		ERROR("Characteristics length %d is too small",
-		      char_len);
+		ERROR("Characteristics length %d is too small for driver %s",
+		      char_len, ndis_driver->name);
 		TRACEEXIT1(return NDIS_STATUS_BAD_CHARACTERISTICS);
 	}
 
 	DBGTRACE1("Version %d.%d", miniport_char->majorVersion,
 		  miniport_char->minorVersion);
 	DBGTRACE1("Len: %08x:%u", char_len, (u32)sizeof(struct miniport_char));
-
-	driver = IoGetDriverObjectExtension(drv_obj,
-					    (void *)CE_NDIS_DRIVER_CLIENT_ID);
-	TRACEENTER1("driver: %p", driver);
-	if (!driver) {
-		ERROR("couldn't find ndis_driver - bug in %s?", DRIVER_NAME);
-		TRACEEXIT1(return -EINVAL);
-	}
-	memcpy(&driver->miniport, miniport_char, sizeof(*miniport_char));
+	memcpy(&ndis_driver->miniport, miniport_char,
+	       sizeof(struct miniport_char));
 
 	i = 0;
-	func = (int *)&driver->miniport.query;
+	func = (int *)&ndis_driver->miniport.query;
 	while (i < sizeof(miniport_funcs) / sizeof(miniport_funcs[0])) {
 		DBGTRACE2("miniport function '%s' is at %lx",
 			  miniport_funcs[i], (unsigned long)func[i]);
@@ -444,9 +437,9 @@ STDCALL void WRAP_EXPORT(NdisCloseFile)
 STDCALL void WRAP_EXPORT(NdisGetSystemUpTime)
 	(ULONG *systemuptime)
 {
-	TRACEENTER4("%s", "");
-	*systemuptime = 10 * jiffies / HZ;
-	TRACEEXIT4(return);
+	TRACEENTER5("");
+	*systemuptime = 1000 * jiffies / HZ;
+	TRACEEXIT5(return);
 }
 
 /* called as macro */
@@ -803,10 +796,11 @@ STDCALL ULONG WRAP_EXPORT(NdisReadPciSlotInformation)
 	 ULONG offset, char *buf, ULONG len)
 {
 	int i;
+	TRACEENTER3("%d", len);
 	for (i = 0; i < len; i++)
 		pci_read_config_byte(handle->dev.pci, offset+i, &buf[i]);
 
-	return len;
+	TRACEEXIT3(return len);
 }
 
 STDCALL ULONG WRAP_EXPORT(NdisWritePciSlotInformation)
@@ -814,10 +808,11 @@ STDCALL ULONG WRAP_EXPORT(NdisWritePciSlotInformation)
 	 ULONG offset, char *buf, ULONG len)
 {
 	int i;
+	TRACEENTER3("%d", len);
 	for (i = 0; i < len; i++)
 		pci_write_config_byte(handle->dev.pci, offset+i, buf[i]);
 
-	return len;
+	TRACEEXIT3(return len);
 }
 
 STDCALL void WRAP_EXPORT(NdisMQueryAdapterResources)
@@ -926,6 +921,7 @@ STDCALL void WRAP_EXPORT(NdisMUnmapIoSpace)
 {
 	TRACEENTER2("%p, %d", virtaddr, len);
 	iounmap(virtaddr);
+	TRACEEXIT2(return);
 }
 
 STDCALL void WRAP_EXPORT(NdisAllocateSpinLock)
@@ -934,7 +930,7 @@ STDCALL void WRAP_EXPORT(NdisAllocateSpinLock)
 	TRACEENTER4("lock %p", lock);
 
 	KeInitializeSpinLock(&lock->klock);
-
+	lock->irql = PASSIVE_LEVEL;
 	TRACEEXIT4(return);
 }
 
@@ -980,9 +976,10 @@ STDCALL void WRAP_EXPORT(NdisDprReleaseSpinLock)
 STDCALL void WRAP_EXPORT(NdisInitializeReadWriteLock)
 	(struct ndis_rw_lock *rw_lock)
 {
+	TRACEENTER3("%p", rw_lock);
 	memset(rw_lock, 0, sizeof(*rw_lock));
 	KeInitializeSpinLock(&rw_lock->u.s.klock);
-	return;
+	TRACEEXIT3(return);
 }
 
 STDCALL NDIS_STATUS WRAP_EXPORT(NdisMAllocateMapRegisters)
@@ -1286,10 +1283,11 @@ STDCALL UINT WRAP_EXPORT(NdisPacketPoolUsage)
 	UINT i;
 	KIRQL irql;
 
+	TRACEENTER4("");
 	irql = kspin_lock_irql(&pool->lock, DISPATCH_LEVEL);
 	i = pool->num_allocated_descr;
 	kspin_unlock_irql(&pool->lock, irql);
-	return i;
+	TRACEEXIT4(return i);
 }
 
 struct ndis_packet *allocate_ndis_packet(void)
@@ -2166,12 +2164,12 @@ NdisMSetInformationComplete(struct ndis_handle *handle, NDIS_STATUS status)
 }
 
 STDCALL void WRAP_EXPORT(NdisMSleep)
-	(ULONG us_to_sleep)
+	(ULONG us)
 {
-	TRACEENTER4("us: %u", us_to_sleep);
-	if (us_to_sleep > 0) {
+	TRACEENTER4("us: %u", us);
+	if (us > 0) {
 		set_current_state(TASK_INTERRUPTIBLE);
-		schedule_timeout((us_to_sleep * HZ)/1000000);
+		schedule_timeout(HZ * us / 1000000);
 		DBGTRACE4("%s", "woke up");
 	}
 	TRACEEXIT4(return);
@@ -2308,7 +2306,7 @@ STDCALL void
 NdisMResetComplete(struct ndis_handle *handle, NDIS_STATUS status,
 		   BOOLEAN address_reset)
 {
-	TRACEENTER2("status: %08X, reset status: %u", status,
+	TRACEENTER3("status: %08X, reset status: %u", status,
 		    address_reset);
 
 	handle->ndis_comm_res = status;
@@ -2425,19 +2423,20 @@ STDCALL struct ndis_io_work_item *WRAP_EXPORT(IoAllocateWorkItem)
 {
 	struct ndis_io_work_item *io_work_item;
 
+	TRACEENTER3("%p", device_object);
 	io_work_item = kmalloc(sizeof(*io_work_item), GFP_ATOMIC);
 	if (!io_work_item)
-		return NULL;
+		TRACEEXIT3(return NULL);
 
 	io_work_item->device_object = device_object;
-	return io_work_item;
+	TRACEEXIT3(return io_work_item);
 }
 
 STDCALL void WRAP_EXPORT(IoFreeWorkItem)
 	(struct ndis_io_work_item *io_work_item)
 {
 	kfree(io_work_item);
-	return;
+	TRACEEXIT3(return);
 }
 
 STDCALL void WRAP_EXPORT(IoQueueWorkItem)
@@ -2711,7 +2710,7 @@ STDCALL NDIS_STATUS WRAP_EXPORT(NdisMRegisterDevice)
 	TRACEENTER1("%p, %p", *dev_handle, handle);
 	*dev_handle = handle;
 	*dev_object = handle->device_obj;
-	return NDIS_STATUS_SUCCESS;
+	TRACEEXIT1(return NDIS_STATUS_SUCCESS);
 }
 
 STDCALL NDIS_STATUS WRAP_EXPORT(NdisMDeregisterDevice)

@@ -372,13 +372,6 @@ struct wrapper_timer {
 	KSPIN_LOCK lock;
 };
 
-struct qdpc {
-	struct nt_list list;
-	struct kdpc *kdpc;
-	void *arg1;
-	void *arg2;
-};
-
 typedef struct mdl ndis_buffer;
 
 int ntoskernel_init(void);
@@ -393,6 +386,10 @@ STDCALL LONG KeSetEvent(struct kevent *kevent, KPRIORITY incr, BOOLEAN wait);
 STDCALL LONG KeResetEvent(struct kevent *kevent);
 STDCALL void KeClearEvent(struct kevent *kevent);
 STDCALL void KeInitializeDpc(struct kdpc *kdpc, void *func, void *ctx);
+BOOLEAN insert_kdpc_work(struct kdpc *kdpc);
+BOOLEAN remove_kdpc_work(struct kdpc *kdpc);
+STDCALL BOOLEAN KeInsertQueueDpc(struct kdpc *kdpc, void *arg1, void *arg2);
+STDCALL BOOLEAN KeRemoveQueueDpc(struct kdpc *kdpc);
 STDCALL NTSTATUS KeWaitForSingleObject(struct kevent *object,
 				       KWAIT_REASON reason,
 				       KPROCESSOR_MODE waitmode,
@@ -429,6 +426,8 @@ STDCALL void KeInitializeEvent(struct kevent *kevent, enum event_type type,
 			       BOOLEAN state);
 void free_custom_ext(struct driver_extension *drv_obj_ext);
 ULONGLONG ticks_1601(void);
+STDCALL NTSTATUS NdisAddDevice(struct driver_object *drv_obj,
+			       struct device_object *pdo);
 
 STDCALL KIRQL KeGetCurrentIrql(void);
 STDCALL void KeInitializeSpinLock(KSPIN_LOCK *lock);
