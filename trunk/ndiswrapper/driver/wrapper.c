@@ -1114,9 +1114,19 @@ static void wrapper_worker_proc(void *param)
 
 		if (handle->link_status == 0)
 		{
-			for (i = 0; i < MAX_ENCR_KEYS; i++)
-				handle->encr_info.keys[i].length = 0;
+			set_auth_mode(handle, handle->auth_mode);
 
+			for (i = 0; i < MAX_ENCR_KEYS; i++)
+				if (handle->encr_info.keys[i].length != 0) {
+					dosetinfo(handle, NDIS_OID_ADD_WEP,
+					    (char *)&handle->encr_info.keys[i],
+					    sizeof(struct encr_key),
+					    &written, &needed);
+					set_encr_mode(handle, ENCR1_ENABLED);
+				}
+
+			set_essid(handle, handle->essid.essid,
+			          handle->essid.length);
 			return;
 		}
 
