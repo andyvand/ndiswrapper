@@ -1,5 +1,8 @@
 Versoin 1.1 2005-XX-XX
 ======================
+1.1rc3:
+* Fixes bugs in 1.1rc2 that crashed some drivers.
+
 1.1rc2:
 * Memory leak with 64-bit Broadcom driver fixed
 * Crash when module is removed with Marvell driver fixed
