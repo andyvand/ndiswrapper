@@ -934,7 +934,8 @@ STDCALL void WRAP_EXPORT(NdisFreeSpinLock)
 	(struct ndis_spinlock *lock)
 {
 	TRACEENTER4("lock %p", lock);
-	lock->use_bh = PASSIVE_LEVEL;
+	lock->klock = 0;
+	free_kspin_lock(lock->klock);
 
 	TRACEEXIT4(return);
 }
@@ -947,7 +948,7 @@ STDCALL void WRAP_EXPORT(NdisAcquireSpinLock)
 	 * calling NdisAcquireSpinLock and in those cases, lock seems
 	 * to be set to 0, so check if that is the case and initialize
 	 * it */
-	if (lock->klock == 0) {
+	if (!valid_kspin_lock(lock->klock)) {
 		WARNING("Windows driver is using uninitialized spinlock %p",
 			lock);
 		NdisAllocateSpinLock(lock);

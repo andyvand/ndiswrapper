@@ -40,6 +40,7 @@ int ntoskrnl_init(void)
 
 void ntoskrnl_exit(void)
 {
+	free_kspin_lock(ntoskrnl_lock);
 	return;
 }
 
@@ -129,9 +130,10 @@ STDCALL KIRQL WRAP_EXPORT(KeGetCurrentIrql)
 STDCALL void WRAP_EXPORT(KeInitializeSpinLock)
 	(KSPIN_LOCK *lock)
 {
-	allocate_kspin_lock(lock);
-	if (*lock == 0)
-		ERROR("couldn't allocate spinlock");
+	INFO("spinlock: %d", *lock);
+	if (!valid_kspin_lock(*lock))
+		allocate_kspin_lock(lock);
+	wrap_spin_lock_init(kspin_wrap_lock(*lock));
 }
 
 STDCALL void WRAP_EXPORT(KeAcquireSpinLock)

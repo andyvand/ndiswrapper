@@ -487,6 +487,7 @@ void allocate_kspin_lock(KSPIN_LOCK *lock);
 void free_kspin_lock(KSPIN_LOCK lock);
 void check_kspin_lock(KSPIN_LOCK lock);
 struct wrap_spinlock *kspin_wrap_lock(KSPIN_LOCK kspin_lock);
+int valid_kspin_lock(KSPIN_LOCK kspin_lock);
 
 static inline void wrapper_set_timer_dpc(struct wrapper_timer *wrapper_timer,
                                          struct kdpc *kdpc)

@@ -126,13 +126,31 @@ void free_kspin_lock(KSPIN_LOCK kspin_lock)
 
 	r = kspin_lock / SPINLOCK_COLUMNS;
 	c = kspin_lock % SPINLOCK_COLUMNS;
-	if (r == 0 && c == 0)
-		ERROR("%d is not a valid spinlock", (u32)kspin_lock);
+	if ((r == 0 && c == 0) || !test_bit(c, &wrap_spinlock_bitmap[r]))
+		ERROR("buggy Windows driver freeing uninitialized spinlock %d",
+		      (u32)kspin_lock);
 	else {
 		clear_bit(c, &wrap_spinlock_bitmap[r]);
 		DBGTRACE2("freed spinlock at %d (row: %d, column: %d)",
 			  (u32)kspin_lock, r, c);
 	}
+}
+
+int valid_kspin_lock(KSPIN_LOCK kspin_lock)
+{
+	unsigned int r, c;
+
+	if (kspin_lock == 0)
+		return FALSE;
+
+	r = kspin_lock / SPINLOCK_COLUMNS;
+	c = kspin_lock % SPINLOCK_COLUMNS;
+
+	if (r >= SPINLOCK_ROWS || c >= SPINLOCK_COLUMNS)
+		return FALSE;
+	else if (!test_bit(c, &wrap_spinlock_bitmap[r]))
+		return FALSE;
+	return TRUE;
 }
 
 /* given kspin_lock, return wrap_spinlock mapped at that index */
