@@ -67,6 +67,8 @@ NW_MODULE_PARM_INT(hangcheck_interval, 0600);
 MODULE_PARM_DESC(hangcheck_interval, "The interval, in seconds, for checking"
 		 " if driver is hung. (default: 0)");
 
+MODULE_AUTHOR("ndiswrapper team <ndiswrapper-general@lists.sourceforge.net>");
+MODULE_VERSION(NDISWRAPPER_VERSION);
 static void ndis_set_rx_mode(struct net_device *dev);
 static void set_multicast_list(struct net_device *dev,
 			       struct ndis_handle *handle);
