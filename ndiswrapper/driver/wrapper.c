@@ -1305,7 +1305,6 @@ static void unload_driver(struct ndis_driver *driver)
 	}
 	kfree(driver);
 
-	wrapper_kfree_all();
 }
 
 /*
