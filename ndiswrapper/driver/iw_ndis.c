@@ -1552,7 +1552,7 @@ static int iw_set_pmksa(struct net_device *dev,
 
 	res = miniport_set_info(handle, OID_802_11_PMKID, &pmkid,
 				sizeof(pmkid));
-	DEBUGTRACE2("OID_802_11_PMKID -> %d", res);
+	DBGTRACE2("OID_802_11_PMKID -> %d", res);
 	if (res)
 		return -EINVAL;
 

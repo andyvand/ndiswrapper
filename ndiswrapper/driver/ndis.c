@@ -986,7 +986,7 @@ STDCALL NDIS_STATUS WRAP_EXPORT(NdisMAllocateMapRegisters)
 
 	if (handle->map_count > 0) {
 		DBGTRACE2("%s: map registers already allocated: %u",
-			 handle->net_dev->name, handle->map_count);
+			  handle->net_dev->name, handle->map_count);
 		TRACEEXIT2(return NDIS_STATUS_RESOURCES);
 	}
 
@@ -1733,7 +1733,7 @@ NdisMIndicateStatus(struct ndis_handle *handle,
 		struct ndis_auth_req *auth_req;
 		struct ndis_radio_status_indication *radio_status;
 
-		DEBUGTRACE2("status_type=%d", si->status_type);
+		DBGTRACE2("status_type=%d", si->status_type);
 
 		switch (si->status_type) {
 		case Ndis802_11StatusType_Authentication:
@@ -1774,19 +1774,19 @@ NdisMIndicateStatus(struct ndis_handle *handle,
 			}
 
 			end = (u8 *)buf + len;
-			DEBUGTRACE2("PMKID_CANDIDATE_LIST ver %ld "
-				    "num_cand %ld",
-				    cand->version, cand->num_candidates);
+			DBGTRACE2("PMKID_CANDIDATE_LIST ver %ld "
+				  "num_cand %ld",
+				  cand->version, cand->num_candidates);
 			for (i = 0; i < cand->num_candidates; i++) {
 				struct ndis_pmkid_candidate *c =
 					&cand->candidates[i];
 				if ((u8 *)(c + 1) > end) {
-					DEBUGTRACE2("Truncated "
+					DBGTRACE2("Truncated "
 						    "PMKID_CANDIDATE_LIST");
 					break;
 				}
-				DEBUGTRACE2("%ld: " MACSTR " 0x%lx",
-					    i, MAC2STR(c->bssid), c->flags);
+				DBGTRACE2("%ld: " MACSTR " 0x%lx",
+					  i, MAC2STR(c->bssid), c->flags);
 #if WIRELESS_EXT > 17
 				{
 					struct iw_pmkid_cand pcand;
