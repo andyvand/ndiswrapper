@@ -132,8 +132,8 @@ void STDCALL usb_cancel_transfer(struct device_object *dev_obj,
 
 	TRACEENTER2("irp = %p", irp);
 
-	/* while this function can run at DISPATCH_LEVEL, usb_unlink_urb will only
-	 * work successfully in schedulable context */
+	/* while this function can run at DISPATCH_LEVEL, usb_unlink/kill_urb will
+	 * only work successfully in schedulable context */
 	spin_lock_bh(&canceled_irps_lock);
 	list_add_tail(&irp->cancel_list_entry, &canceled_irps);
 	spin_unlock_bh(&canceled_irps_lock);
@@ -163,8 +163,12 @@ void usb_cancel_worker(void *dummy)
 
 		urb = irp->driver_context[3];
 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,8)
+		usb_kill_urb(urb);
+#else
 		if (usb_unlink_urb(urb) < 0)
 			TRACEEXIT2(return);
+#endif
 
 		if (urb->setup_packet)
 			kfree(urb->setup_packet);
