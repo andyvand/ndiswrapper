@@ -686,8 +686,8 @@ STDCALL static void WRAP_EXPORT(NdisMSetAttributesEx)
 	if (!(attributes & NDIS_ATTRIBUTE_NO_HALT_ON_SUSPEND))
 		set_bit(ATTR_HALT_ON_SUSPEND, &handle->attributes);
 
-	/* less than 3 seconds seem to be problematic */
-	if (hangcheck_interval >= 0) {
+	if (handle->hangcheck_interval >= 0) {
+		/* less than 3 seconds seem to be problematic */
 		if (hangcheck_interval > 2)
 			handle->hangcheck_interval = 2*hangcheck_interval * HZ;
 		else
@@ -2235,7 +2235,7 @@ STDCALL static void WRAP_EXPORT(NdisMStartBufferPhysicalMapping)
 	}
 
 	if (handle->map_dma_addr[phy_map_reg] != 0) {
-		ERROR("map register already used (%lu)", phy_map_reg);
+//		ERROR("map register already used (%lu)", phy_map_reg);
 		*array_size = 0;
 		return;
 	}
@@ -2268,7 +2268,7 @@ STDCALL static void WRAP_EXPORT(NdisMCompleteBufferPhysicalMapping)
 	}
 
 	if (handle->map_dma_addr[phy_map_reg] == 0) {
-		ERROR("map register not used (%lu)", phy_map_reg);
+//		ERROR("map register not used (%lu)", phy_map_reg);
 		return;
 	}
 
