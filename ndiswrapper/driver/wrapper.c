@@ -210,6 +210,8 @@ static int ndis_set_essid(struct net_device *dev,
 	}
 	
 	res = dosetinfo(handle, NDIS_OID_ESSID, (char*)&req, sizeof(req), &written, &needed);
+	set_current_state(TASK_INTERRUPTIBLE);
+	schedule_timeout(HZ);
 	res = dosetinfo(handle, NDIS_OID_ESSID, (char*)&req, sizeof(req), &written, &needed);
 	if(res)
 	{
@@ -605,6 +607,19 @@ static int ndis_set_wep(struct net_device *dev, struct iw_request_info *info,
 	}
 	else
 	{
+		if (wrqu->data.flags & IW_ENCODE_RESTRICTED)
+			auth_mode = NDIS_ENCODE_RESTRICTED;
+		else if (wrqu->data.flags & IW_ENCODE_OPEN)
+			auth_mode = NDIS_ENCODE_OPEN;
+		else
+			auth_mode = NDIS_ENCODE_RESTRICTED;
+		res = set_int(handle, NDIS_OID_AUTH_MODE, auth_mode);
+		if (res)
+		{
+			printk(KERN_INFO "%s: setting authentication mode failed (%08X)\n", dev->name, res);
+			return -EINVAL;
+		}
+
 		/* set key only if one is given */
 		if (wrqu->data.length > 0)
 		{
@@ -623,19 +638,6 @@ static int ndis_set_wep(struct net_device *dev, struct iw_request_info *info,
 				return -EINVAL;
 			}
 			memcpy(&handle->wep, &req, sizeof(req));
-		}
-
-		if (wrqu->data.flags & IW_ENCODE_RESTRICTED)
-			auth_mode = NDIS_ENCODE_RESTRICTED;
-		else if (wrqu->data.flags & IW_ENCODE_OPEN)
-			auth_mode = NDIS_ENCODE_OPEN;
-		else
-			auth_mode = NDIS_ENCODE_RESTRICTED;
-		res = set_int(handle, NDIS_OID_AUTH_MODE, auth_mode);
-		if (res)
-		{
-			printk(KERN_INFO "%s: setting authentication mode failed (%08X)\n", dev->name, res);
-			return -EINVAL;
 		}
 
 		res = set_int(handle, NDIS_OID_WEP_STATUS, NDIS_ENCODE_ENABLED);
