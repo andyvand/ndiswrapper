@@ -77,18 +77,17 @@ static void wrap_free_timers(struct ndis_handle *handle)
 	/* Cancel any timers left by bugyy windows driver
 	 * Also free the memory for timers
 	 */
-	while (1)
-	{
+	while (1) {
 		struct wrapper_timer *timer;
-		spin_lock_bh(&handle->timers_lock);
+		wrap_spin_lock(&handle->timers_lock);
 		if (list_empty(&handle->timers)) {
-			spin_unlock_bh(&handle->timers_lock);
+			wrap_spin_unlock(&handle->timers_lock);
 			break;
 		}
 
 		timer = (struct wrapper_timer*) handle->timers.next;
 		list_del(&timer->list);
-		spin_unlock_bh(&handle->timers_lock);
+		wrap_spin_unlock(&handle->timers_lock);
 
 		DBGTRACE1("fixing up timer %p, timer->list %p",
 			  timer, &timer->list);
