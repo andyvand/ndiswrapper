@@ -101,7 +101,7 @@ KeGetCurrentIrql(void)
 STDCALL void
 KeInitializeSpinLock(KSPIN_LOCK *lock)
 {
-	struct wrap_spinlock *spin_lock;
+	struct wrap_spinlock *wrap_lock;
 
 	if (!lock)
 	{
@@ -109,24 +109,24 @@ KeInitializeSpinLock(KSPIN_LOCK *lock)
 		return;
 	}
 
-	spin_lock = wrap_kmalloc(sizeof(struct wrap_spinlock), GFP_ATOMIC);
-	if (!spin_lock)
+	wrap_lock = wrap_kmalloc(sizeof(struct wrap_spinlock), GFP_ATOMIC);
+	if (!wrap_lock)
 		ERROR("%s", "Couldn't allocate space for spinlock");
 	else
 	{
-		DBGTRACE4("allocated spinlock %p", spin_lock);
-		wrap_spin_lock_init(spin_lock);
-		*lock = (KSPIN_LOCK)spin_lock;
+		DBGTRACE4("allocated spinlock %p", wrap_lock);
+		wrap_spin_lock_init(wrap_lock);
+		*lock = wrap_lock;
 	}
 }
 
-STDCALL static void
+STDCALL void
 KeAcquireSpinLock(KSPIN_LOCK *lock, KIRQL *irql)
 {
 	*irql = KfAcquireSpinLock(0, 0, lock);
 }
 
-STDCALL static void
+STDCALL void
 KeReleaseSpinLock(KSPIN_LOCK *lock, KIRQL oldirql)
 {
 	KfReleaseSpinLock(0, oldirql, lock);

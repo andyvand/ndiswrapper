@@ -77,8 +77,8 @@ KeStallExecutionProcessor(unsigned long usecs)
 	udelay(usecs);
 }
 
-_FASTCALL static KIRQL
-KfRaiseIrql(int dummy1, int dummy2, unsigned char newirql)
+_FASTCALL KIRQL
+KfRaiseIrql(int dummy1, int dummy2, KIRQL newirql)
 {
 	KIRQL irql;
 
@@ -96,8 +96,8 @@ KfRaiseIrql(int dummy1, int dummy2, unsigned char newirql)
 	TRACEEXIT4(return irql);
 }
 	
-_FASTCALL static void
-KfLowerIrql(int dummy1, int dummy2, unsigned char oldirql)
+_FASTCALL void
+KfLowerIrql(int dummy1, int dummy2, KIRQL oldirql)
 {
 	TRACEENTER4("irql = %d", oldirql);
 
@@ -115,47 +115,49 @@ KfLowerIrql(int dummy1, int dummy2, unsigned char oldirql)
 _FASTCALL KIRQL
 KfAcquireSpinLock(int dummy1, int dummy2, KSPIN_LOCK *lock)
 {
-	KIRQL irql;
+	TRACEENTER4("lock = %p", lock);
 
-	TRACEENTER4("lock = %p, *lock = %p", lock, (void *)lock);
-
-	if (!lock)
-	{
+	if (!lock) {
 		ERROR("%s", "invalid lock");
 		TRACEEXIT4(return PASSIVE_LEVEL);
 	}
 
-	if (!*lock)
-	{
+	if (!*lock) {
 		printk(KERN_WARNING "Buggy Windows driver trying to use "
 		       "uninitialized lock. Trying to recover...");
 		KeInitializeSpinLock(lock);
 		if (*lock)
 			printk(KERN_WARNING "ok\n");
-		else
-		{
+		else {
 			printk(KERN_WARNING "failed\n");
 			BUG();
 		}
-	}
+	} else if ((*lock)->magic != WRAPPER_SPIN_LOCK_MAGIC)
+		ERROR("uninitialized spinlock %p", *lock);
 
-	irql = KfRaiseIrql(0, 0, DISPATCH_LEVEL);
-	wrap_spin_lock((struct wrap_spinlock *)*lock);
-	TRACEEXIT4(return irql);
+	wrap_spin_lock(*lock);
+	
+	TRACEEXIT4(return (*lock)->irql);
 }
 
 _FASTCALL void
 KfReleaseSpinLock(int dummy, KIRQL oldirql, KSPIN_LOCK *lock)
 {
-	TRACEENTER4("lock = %p, *lock = %p, irql = %d",
-		    lock, (void *)*lock, oldirql);
+	struct wrap_spinlock *wrap_lock;
 
-	if (!lock || !*lock)
+	TRACEENTER4("lock = %p, irql = %d", lock, oldirql);
+
+	if (!lock || !*lock) {
 		ERROR("invalid spin lock %p", lock);
-	else
-		wrap_spin_unlock((struct wrap_spinlock *)*lock);
+		TRACEEXIT4(return);
+	}
+	
+	wrap_lock = *lock;
+	if (oldirql != wrap_lock->irql)
+		ERROR("invlid irql %d", oldirql);
 
-	KfLowerIrql(0, 0, oldirql);
+	wrap_spin_unlock(wrap_lock);
+
 	TRACEEXIT4(return);
 }
 

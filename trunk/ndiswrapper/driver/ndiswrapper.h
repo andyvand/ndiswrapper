@@ -16,23 +16,7 @@
 #ifndef NDISWRAPPER_H
 #define NDISWRAPPER_H
 
-#include <linux/types.h>
-#include <linux/timer.h>
-
-#include <linux/netdevice.h>
-#include <linux/wireless.h>
-#include <linux/pci.h>
-#include <linux/wait.h>
-#include <linux/pm.h>
-#include <linux/delay.h>
-#include <linux/mm.h>
-#include <linux/random.h>
-#include <linux/ctype.h>
-#include <linux/usb.h>
-#include <asm/mman.h>
-#include <asm/atomic.h>
-
-#include <linux/version.h>
+#include "ntoskernel.h"
 
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,7)
 #include <linux/kthread.h>
@@ -43,11 +27,6 @@
 #endif
 
 #define DRV_NAME "ndiswrapper"
-
-#define STDCALL __attribute__((__stdcall__, regparm(0)))
-#define NOREGPARM __attribute__((regparm(0)))
-#define packed __attribute__((packed))
-#define _FASTCALL __attribute__((__stdcall__)) __attribute__((regparm (3)))
 
 /* Workqueue / task queue backwards compatibility stuff */
 #if LINUX_VERSION_CODE > KERNEL_VERSION(2,5,41)
@@ -281,24 +260,6 @@ void wrap_kfree_all(void);
 #define TRACEEXIT4(stmt) do { DBGTRACE4("%s", "Exit"); stmt; } while(0)
 #define TRACEEXIT5(stmt) do { DBGTRACE5("%s", "Exit"); stmt; } while(0)
 
-#define MAC2STR(a) (a)[0], (a)[1], (a)[2], (a)[3], (a)[4], (a)[5]
-#define MACSTR "%02x:%02x:%02x:%02x:%02x:%02x"
-
-#define NDIS_SPIN_LOCK_MAGIC 137
-
-struct packed wrap_spinlock
-{
-	spinlock_t spinlock;
-	unsigned short magic;
-};
-
-static inline void wrap_spin_lock_init(struct wrap_spinlock *lock)
-{
-	TRACEENTER5("lock: %p", lock);
-	spin_lock_init(&lock->spinlock);
-	lock->magic = NDIS_SPIN_LOCK_MAGIC;
-	TRACEEXIT5(return);
-}
 #if defined DEBUG
 #define ASSERT(expr) \
 if(!(expr)) { \
@@ -308,18 +269,8 @@ if(!(expr)) { \
 #define ASSERT(expr)
 #endif
 
-static inline void wrap_spin_lock(struct wrap_spinlock *lock)
-{
-	TRACEENTER5("lock: %p", lock);
-	spin_lock(&lock->spinlock);
-	TRACEEXIT5(return);
-}
+#define MAC2STR(a) (a)[0], (a)[1], (a)[2], (a)[3], (a)[4], (a)[5]
+#define MACSTR "%02x:%02x:%02x:%02x:%02x:%02x"
 
-static inline void wrap_spin_unlock(struct wrap_spinlock *lock)
-{
-	TRACEENTER5("lock: %p", lock);
-	spin_unlock(&lock->spinlock);
-	TRACEEXIT5(return);
-}
 
 #endif // NDISWRAPPER_H
