@@ -87,6 +87,18 @@ typedef INT NT_STATUS;
 typedef LARGE_INTEGER	PHYSICAL_ADDRESS;
 typedef ULONG_PTR	KAFFINITY;
 
+struct ansi_string {
+	USHORT len;
+	USHORT buflen;
+	char *buf;
+};
+
+struct unicode_string {
+	USHORT len;
+	USHORT buflen;
+	wchar_t *buf;
+};
+
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,7)
 #include <linux/kthread.h>
 #endif
@@ -335,12 +347,6 @@ struct pe_image {
 
 	IMAGE_NT_HEADERS *nt_hdr;
 	IMAGE_OPTIONAL_HEADER *opt_hdr;
-};
-
-struct ustring {
-	USHORT len;
-	USHORT buflen;
-	char *buf;
 };
 
 struct slist_entry {
