@@ -41,7 +41,7 @@ int unicodeToStr(char *dst, struct ustring *src, int dstlen)
 	while(buf[0] || buf[1]) {
 		if(i >= dstlen)
 		{
-			printk("%s failed. Buffer to small\n", __FUNCTION__);
+			printk(KERN_ERR "%s failed. Buffer to small\n", __FUNCTION__);
 			return -1;	
 		}
 		dst[i++] = buf[0];
@@ -93,7 +93,7 @@ STDCALL int NdisMRegisterMiniport(struct ndis_handle *ndis_handle,
 		return NDIS_STATUS_BAD_CHAR;
 	}
 
-	printk("Version %d.%d\n", miniport_char->majorVersion, miniport_char->minorVersion);
+	printk(KERN_INFO "Version %d.%d\n", miniport_char->majorVersion, miniport_char->minorVersion);
 	DBGTRACE("Len: %08x:%08x\n", char_len, sizeof(struct miniport_char));
 	memcpy(&ndis_handle->miniport_char, miniport_char, sizeof(struct miniport_char));
 
@@ -146,7 +146,7 @@ void NdisWriteErrorLogEntry(struct ndis_handle *handle,
 			    unsigned int length,
 			    unsigned int p1)
 {
-	printk("%s: error: %08x, %d %d\n", __FUNCTION__, (int)error, (int) length, (int)p1);
+	printk(KERN_ERR "%s: error: %08x, %d %d\n", __FUNCTION__, (int)error, (int) length, (int)p1);
 }
 
 
@@ -265,7 +265,7 @@ STDCALL void NdisReadConfiguration(unsigned int *status,
 	{
 		if(strcmp(keyname, internal_parameters[i].name) == 0)
 		{
-			printk("%s: Builting found value for %s\n", __FUNCTION__, keyname);
+			DBGTRACE("%s: Builting found value for %s\n", __FUNCTION__, keyname);
 			
 			*dest = &internal_parameters[i].value;
 			*status = NDIS_STATUS_SUCCESS;
@@ -273,7 +273,7 @@ STDCALL void NdisReadConfiguration(unsigned int *status,
 		}
 	}
 	
-	printk("%s: Key not found type:%d. key:%s\n", __FUNCTION__, type, keyname);
+	DBGTRACE(KERN_INFO "%s: Key not found type:%d. key:%s\n", __FUNCTION__, type, keyname);
 
 	*dest = (struct conf_parameter*)0;
 	*status = NDIS_STATUS_FAILIURE;
@@ -420,7 +420,7 @@ STDCALL unsigned int NdisMMapIoSpace(void **virt,
 	DBGTRACE("%s: %08x, %d\n", __FUNCTION__, (int)phys, len);
 	*virt = ioremap(phys, len);
 	if(*virt == NULL) {
-		printk("IORemap failed\n");
+		printk(KERN_ERR "IORemap failed\n");
 		return NDIS_STATUS_FAILIURE;
 	}
 	
@@ -491,7 +491,7 @@ STDCALL void NdisMAllocateSharedMemory(struct ndis_handle *handle,
 	void *v = pci_alloc_consistent(handle->pci_dev, size, &p);  
 	if(!v)
 	{
-		printk("failed to allocate shared mem\n");
+		printk(KERN_ERR "failed to allocate shared mem\n");
 	}
 
 	*(char**)virt = v;
@@ -589,7 +589,7 @@ STDCALL void NdisAllocatePacket(unsigned int *status, struct ndis_packet **packe
 	struct ndis_packet *packet = (struct ndis_packet*) kmalloc(sizeof(struct ndis_packet), GFP_KERNEL);
 	if(!packet)
 	{
-		printk("%s failed\n", __FUNCTION__);
+		printk(KERN_ERR "%s failed\n", __FUNCTION__);
 		*packet_out = NULL;
 		*status = NDIS_STATUS_FAILIURE;
 		return;
@@ -898,25 +898,25 @@ STDCALL unsigned long NDIS_BUFFER_TO_SPAN_PAGES(void *buffer)
 
 
 /* Unimplemented...*/
-STDCALL void NdisInitAnsiString(void *src, void *dst) { printk("%s --UNIMPLEMENTED--\n", __FUNCTION__ );}
-STDCALL void NdisOpenConfigurationKeyByName(unsigned int *status, void *handle, void *key, void *subkeyhandle){ printk("%s --UNIMPLEMENTED--\n", __FUNCTION__ );}
-STDCALL void NdisWriteConfiguration(unsigned int *status, void *handle, void *keyword, void *val){ printk("%s --UNIMPLEMENTED--\n", __FUNCTION__ );}
-STDCALL unsigned int NdisAnsiStringToUnicodeString(void *dst, void *src){printk("%s --UNIMPLEMENTED--\n", __FUNCTION__ );return 0;}
-STDCALL void NdisQueryBufferOffset(void *buffer, unsigned int offset, unsigned int length){printk("%s --UNIMPLEMENTED--\n", __FUNCTION__ ); }
-STDCALL void NdisMGetDeviceProperty(void *handle, void **p1, void **p2, void **p3, void**p4, void**p5){printk("%s --UNIMPLEMENTED--\n", __FUNCTION__ );}
-STDCALL unsigned long NdisWritePcmciaAttributeMemory(void *handle, unsigned int offset, void *buffer, unsigned int length){printk("%s --UNIMPLEMENTED--\n", __FUNCTION__ );return 0;}
-STDCALL  unsigned long NdisReadPcmciaAttributeMemory(void *handle, unsigned int offset, void *buffer, unsigned int length){printk("%s --UNIMPLEMENTED--\n", __FUNCTION__ );return 0;}
+STDCALL void NdisInitAnsiString(void *src, void *dst) { printk(KERN_ERR "%s --UNIMPLEMENTED--\n", __FUNCTION__ );}
+STDCALL void NdisOpenConfigurationKeyByName(unsigned int *status, void *handle, void *key, void *subkeyhandle){ printk(KERN_ERR "%s --UNIMPLEMENTED--\n", __FUNCTION__ );}
+STDCALL void NdisWriteConfiguration(unsigned int *status, void *handle, void *keyword, void *val){ printk(KERN_ERR "%s --UNIMPLEMENTED--\n", __FUNCTION__ );}
+STDCALL unsigned int NdisAnsiStringToUnicodeString(void *dst, void *src){printk(KERN_ERR "%s --UNIMPLEMENTED--\n", __FUNCTION__ );return 0;}
+STDCALL void NdisQueryBufferOffset(void *buffer, unsigned int offset, unsigned int length){printk(KERN_ERR "%s --UNIMPLEMENTED--\n", __FUNCTION__ ); }
+STDCALL void NdisMGetDeviceProperty(void *handle, void **p1, void **p2, void **p3, void**p4, void**p5){printk(KERN_ERR "%s --UNIMPLEMENTED--\n", __FUNCTION__ );}
+STDCALL unsigned long NdisWritePcmciaAttributeMemory(void *handle, unsigned int offset, void *buffer, unsigned int length){printk(KERN_ERR "%s --UNIMPLEMENTED--\n", __FUNCTION__ );return 0;}
+STDCALL  unsigned long NdisReadPcmciaAttributeMemory(void *handle, unsigned int offset, void *buffer, unsigned int length){printk(KERN_ERR "%s --UNIMPLEMENTED--\n", __FUNCTION__ );return 0;}
 
-void NdisMRegisterIoPortRange(void){ printk("%s --UNIMPLEMENTED--\n", __FUNCTION__ );}
-void NdisInterlockedDecrement(void){ printk("%s --UNIMPLEMENTED--\n", __FUNCTION__ );}
-void NdisGetCurrentSystemTime(void){ printk("%s --UNIMPLEMENTED--\n", __FUNCTION__ );}
-void NdisMDeregisterIoPortRange(void){ printk("%s --UNIMPLEMENTED--\n", __FUNCTION__ );}
-void NdisWaitEvent(void){ printk("%s --UNIMPLEMENTED--\n", __FUNCTION__ );}
-void NdisDprAcquireSpinLock(void){ printk("%s --UNIMPLEMENTED--\n", __FUNCTION__ );}
-void NdisDprReleaseSpinLock(void){ printk("%s --UNIMPLEMENTED--\n", __FUNCTION__ );}
-void NdisInterlockedIncrement(void){ printk("%s --UNIMPLEMENTED--\n", __FUNCTION__ );}
-void NdisSetEvent(void){ printk("%s --UNIMPLEMENTED--\n", __FUNCTION__ );}
-void NdisMInitializeScatterGatherDma(void){ printk("%s --UNIMPLEMENTED--\n", __FUNCTION__ );}
-void NdisSystemProcessorCount(void){ printk("%s --UNIMPLEMENTED--\n", __FUNCTION__ );}
-void NdisInitializeEvent(void){ printk("%s --UNIMPLEMENTED--\n", __FUNCTION__ );}
+void NdisMRegisterIoPortRange(void){ printk(KERN_ERR "%s --UNIMPLEMENTED--\n", __FUNCTION__ );}
+void NdisInterlockedDecrement(void){ printk(KERN_ERR "%s --UNIMPLEMENTED--\n", __FUNCTION__ );}
+void NdisGetCurrentSystemTime(void){ printk(KERN_ERR "%s --UNIMPLEMENTED--\n", __FUNCTION__ );}
+void NdisMDeregisterIoPortRange(void){ printk(KERN_ERR "%s --UNIMPLEMENTED--\n", __FUNCTION__ );}
+void NdisWaitEvent(void){ printk(KERN_ERR "%s --UNIMPLEMENTED--\n", __FUNCTION__ );}
+void NdisDprAcquireSpinLock(void){ printk(KERN_ERR "%s --UNIMPLEMENTED--\n", __FUNCTION__ );}
+void NdisDprReleaseSpinLock(void){ printk(KERN_ERR "%s --UNIMPLEMENTED--\n", __FUNCTION__ );}
+void NdisInterlockedIncrement(void){ printk(KERN_ERR "%s --UNIMPLEMENTED--\n", __FUNCTION__ );}
+void NdisSetEvent(void){ printk(KERN_ERR "%s --UNIMPLEMENTED--\n", __FUNCTION__ );}
+void NdisMInitializeScatterGatherDma(void){ printk(KERN_ERR "%s --UNIMPLEMENTED--\n", __FUNCTION__ );}
+void NdisSystemProcessorCount(void){ printk(KERN_ERR "%s --UNIMPLEMENTED--\n", __FUNCTION__ );}
+void NdisInitializeEvent(void){ printk(KERN_ERR "%s --UNIMPLEMENTED--\n", __FUNCTION__ );}
 
