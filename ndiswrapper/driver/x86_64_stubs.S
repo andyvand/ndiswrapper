@@ -51,8 +51,11 @@ _win_to_lin:
 				# due to 4 more push'es %r11 to %rdi
 	mov	0x50(%rsp), %r9	# arg6
 	mov	%rax, %r11
-	xor	%rax, %rax	# number of SSE regs for variadic funcs
+	mov	0x58(%rsp), %rax
+	push	%rax		# arg7
+	xor	%al, %al	# number of SSE regs for variadic funcs
 	call	*%r11
+	pop	%r11
 	pop	%rdi
 	pop	%rsi
 	pop	%r10
