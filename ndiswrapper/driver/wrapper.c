@@ -36,6 +36,15 @@
 
 #define DRV_NAME "ndiswrapper"
 
+
+/* Define this if you are developing and ndis_init_one crashes.
+   When using the old PCI-API a reboot is not needed when this
+   function crashes. A simple rmmod -f will do the trick and
+   you can try again.
+*/
+/*#define DBG_OLD_PCI*/
+
+
 /* List of loaded drivers */
 static LIST_HEAD(driverlist);
 
@@ -446,9 +455,9 @@ static int __devinit ndis_init_one(struct pci_dev *pdev,
 	pci_set_drvdata(pdev, handle);
 
 	/* Poision this because it may contain function pointers */
-	memset(&handle->fill1, 0x11, sizeof(handle->fill1));
-	memset(&handle->fill2, 0x11, sizeof(handle->fill2));
-	memset(&handle->fill3, 0x11, sizeof(handle->fill3));
+	memset(&handle->fill1, 0x12, sizeof(handle->fill1));
+	memset(&handle->fill2, 0x13, sizeof(handle->fill2));
+	memset(&handle->fill3, 0x14, sizeof(handle->fill3));
 
 	handle->indicate_receive_packet = &NdisMIndicateReceivePacket;
 	handle->send_complete = &NdisMSendComplete;
@@ -526,7 +535,7 @@ static struct miscdevice wrapper_misc = {
  */
 static int start_driver(struct ndis_driver *driver)
 {
-	int res;
+	int res = 0;
 
 	if(call_entry(driver))
 	{
@@ -540,9 +549,11 @@ static int start_driver(struct ndis_driver *driver)
 	driver->pci_driver.probe = ndis_init_one;
 	driver->pci_driver.remove = ndis_remove_one;	
 	
+#ifndef DBG_OLD_PCI
 	res = pci_module_init(&driver->pci_driver);
 	if(!res)
 		driver->pci_registered = 1;
+#endif
 	return res;
 }
 
@@ -723,7 +734,14 @@ static void unload_driver(struct ndis_driver *driver)
 	DBGTRACE("%s\n", __FUNCTION__);
 	if(driver->pci_registered)
 		pci_unregister_driver(&driver->pci_driver);
-
+#ifdef DBG_OLD_PCI
+	{
+		struct pci_dev *pdev = 0;
+		pdev = pci_find_device(driver->pci_id[0].vendor, driver->pci_id[0].device, pdev);
+		if(pdev)
+			ndis_remove_one(pdev);
+	}
+#endif
 	spin_lock(&driverlist_lock);
 	list_del(&driver->list);
 	spin_unlock(&driverlist_lock);
@@ -764,7 +782,14 @@ static int misc_ioctl(struct inode *inode, struct file *file, unsigned int cmd, 
 		{
 			struct ndis_driver *driver= file->private_data;
 			int res = start_driver(driver);
-
+#ifdef DBG_OLD_PCI
+			{
+				struct pci_dev *pdev = 0;
+				pdev = pci_find_device(driver->pci_id[0].vendor, driver->pci_id[0].device, pdev);
+				if(pdev)
+					ndis_init_one(pdev, &driver->pci_id[0]);
+			}
+#endif
 			file->private_data = NULL;
 
 			if(res)

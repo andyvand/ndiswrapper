@@ -38,7 +38,7 @@ int unicodeToStr(char *dst, struct ustring *src, int dstlen)
 {
 	char *buf = src->buf;
 	int i = 0;
-	while(buf[0] || buf[1]) {
+	while((i/2 < src->len) && (buf[0] || buf[1])) {
 		if(i >= dstlen)
 		{
 			printk(KERN_ERR "%s failed. Buffer to small\n", __FUNCTION__);
@@ -329,16 +329,6 @@ STDCALL void NdisMQueryAdapterResources(unsigned int *status,
 
 	/* Put all memory and port resources */
 	i = 0;
-
-	/* Put IRQ resource */
-	entry = &resource_list->list[len++];
-	entry->type = 2;
-	entry->share = 0;
-	entry->flags = 0;
-	entry->param1 = pci_dev->irq; //Level
-	entry->param2 = pci_dev->irq; //Vector
-	entry->param3 = -1;  //affinity
-
 	while(pci_resource_start(pci_dev, i))
 	{
 		entry = &resource_list->list[len++];
@@ -349,9 +339,11 @@ STDCALL void NdisMQueryAdapterResources(unsigned int *status,
 
 			//Param 2 and 3 seems to be swapped...investigate...
 			entry->param1 = pci_resource_start(pci_dev, i);		
-			entry->param3 =0;
+			entry->param3 = 0;
 			entry->param2 = pci_resource_len(pci_dev, i);		
 		}
+
+		
 		
 		else if(pci_resource_flags(pci_dev, i) & IORESOURCE_IO)
 		{
@@ -360,17 +352,27 @@ STDCALL void NdisMQueryAdapterResources(unsigned int *status,
 			entry->flags = 1;
 			//Param 2 and 3 seems to be swapped...investigate...
 			entry->param1 = pci_resource_start(pci_dev, i);		
-			entry->param3 =0;
-			entry->param2 = pci_resource_len(pci_dev, i);		
+			entry->param2 = 0;
+			entry->param3 = pci_resource_len(pci_dev, i);		
 		}
 		
-
 		i++;
 	}
+
+
+	/* Put IRQ resource */
+	entry = &resource_list->list[len++];
+	entry->type = 2;
+	entry->share = 0;
+	entry->flags = 0;
+	entry->param1 = pci_dev->irq; //Level
+	entry->param2 = pci_dev->irq; //Vector
+	entry->param3 = -1;  //affinity
 
 	resource_list->length = len;
 	*size = (char*) (&resource_list->list[len]) - (char*)resource_list;
 	*status = NDIS_STATUS_SUCCESS;
+
 
 #ifdef DEBUG
 	{
@@ -378,7 +380,7 @@ STDCALL void NdisMQueryAdapterResources(unsigned int *status,
 
 		for(i = 0; i < len; i++)
 		{
-			DBGTRACE("Resource: %d: %08x %08x %08x\n", resource_list->list[i].type, resource_list->list[i].param1, resource_list->list[i].param2, resource_list->list[i].param3); 
+			DBGTRACE("Resource: %d: %08x %08x %08x, %d\n", resource_list->list[i].type, resource_list->list[i].param1, resource_list->list[i].param2, resource_list->list[i].param3, resource_list->list[i].flags); 
 		}	
 	}
 #endif
@@ -910,7 +912,13 @@ STDCALL unsigned long NdisWritePcmciaAttributeMemory(void *handle, unsigned int 
 STDCALL unsigned long NdisReadPcmciaAttributeMemory(void *handle, unsigned int offset, void *buffer, unsigned int length){UNIMPL();return 0;}
 STDCALL void NdisInitializeEvent(void *event){UNIMPL();}
 
-void NdisMRegisterIoPortRange(void){UNIMPL();}
+unsigned int NdisMRegisterIoPortRange(void **virt, struct ndis_handle *handle, unsigned int start, unsigned int len)
+{
+	DBGTRACE("%s %08x %08x\n", __FUNCTION__, start, len);
+	*virt = (void*) start;
+	return NDIS_STATUS_SUCCESS;
+}
+
 void NdisInterlockedDecrement(void){UNIMPL();}
 void NdisGetCurrentSystemTime(void){UNIMPL();}
 void NdisMDeregisterIoPortRange(void){UNIMPL();}
