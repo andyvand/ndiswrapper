@@ -550,8 +550,7 @@ static int send_packets(struct ndis_handle *handle, unsigned int start,
 			 handle->xmit_array, n);
 		DBGTRACE3("sent");
 		if (test_bit(ATTR_SERIALIZED, &handle->attributes)) {
-			for (sent = 0; sent < n && handle->send_ok;
-			     sent++) {
+			for (sent = 0; sent < n && handle->send_ok; sent++) {
 				packet = handle->xmit_array[sent];
 				switch(packet->status) {
 				case NDIS_STATUS_SUCCESS:
@@ -665,7 +664,7 @@ static int start_xmit(struct sk_buff *skb, struct net_device *dev)
 	}
 	packet = allocate_send_packet(handle, buffer);
 	if (!packet) {
-		IoFreeMdl(buffer);
+		free_mdl(buffer);
 		kfree(data);
 		return 1;
 	}
