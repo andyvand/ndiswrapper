@@ -447,7 +447,7 @@ IoAllocateIrp(char stack_size, unsigned char charge_quota)
 }
 
 STDCALL static void
-IoInitializeIrp(struct irp *irp, unsigned short size, unsigned char stack_size)
+IoInitializeIrp(struct irp *irp, unsigned short size, char stack_size)
 {
 	TRACEENTER3("irp = %p, size = %d, stack_size = %d",
 		    irp, size, stack_size);
@@ -769,8 +769,8 @@ IoGetDeviceProperty(struct device_object *dev_obj, int dev_property,
                     unsigned long buffer_len, void *buffer,
                     unsigned long *result_len)
 {
-	TRACEENTER1("dev_obj = %p, dev_property = %d, buffer_len = %d, "
-		"buffer = %p, result_len = %d", dev_obj, dev_property,
+	TRACEENTER1("dev_obj = %p, dev_property = %d, buffer_len = %lu, "
+		"buffer = %p, result_len = %p", dev_obj, dev_property,
 		buffer_len, buffer, result_len);
 
 return STATUS_FAILURE;

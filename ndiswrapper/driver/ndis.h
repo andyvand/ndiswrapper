@@ -521,6 +521,13 @@ enum wrapper_work
 	SET_ESSID,
 };
 
+enum ndis_attributes
+{
+	ATTR_SERIALIZED,
+	ATTR_SURPRISE_REMOVE,
+	ATTR_HALT_ON_SUSPEND,
+};
+
 enum op_mode
 {
 	NDIS_MODE_ADHOC,
@@ -532,6 +539,7 @@ enum hw_status
 {
 	HW_NORMAL,
 	HW_SUSPENDED,
+	HW_HALTED,
 	HW_UNAVAILABLE,
 };
 
@@ -742,7 +750,7 @@ struct packed ndis_handle
 	struct work_struct wrapper_worker;
 	unsigned long wrapper_work;
 
-	unsigned short surprise_remove;
+	unsigned long attributes;
 };
 
 struct ndis_timer
