@@ -370,71 +370,67 @@ static unsigned int call_entry(struct ndis_driver *driver)
 	return ret;
 }
 
-static void hangcheck_reinit(struct ndis_handle *handle);
-
-static void hangcheck_bh(void *data)
-{
-	struct ndis_handle *handle = (struct ndis_handle *)data;
-	KIRQL irql;
-
-	TRACEENTER3("%s", "");
-	if (handle->reset_status == 0) {
-		int need_reset = 0;
-		irql = raise_irql(DISPATCH_LEVEL);
-	    if (handle->driver->miniport_char.hangcheck(handle->adapter_ctx))
-			need_reset = 1;
-		lower_irql(irql);
-		if (need_reset) {
-			int res;
-			INFO("Hangcheck returned true. Resetting %s!",
-				 handle->net_dev->name);
-			res = miniport_reset(handle);
-			DBGTRACE3("reset returns %08X, %d", res, handle->reset_status);
-		}
-	}
-	TRACEEXIT3(return);
-}
-
 static void hangcheck_proc(unsigned long data)
 {
 	struct ndis_handle *handle = (struct ndis_handle *)data;
-	schedule_work(&handle->hangcheck_work);
-	hangcheck_reinit(handle);
-}
 
-static void hangcheck_reinit(struct ndis_handle *handle)
-{
-	handle->hangcheck_timer.data = (unsigned long) handle;
-	handle->hangcheck_timer.function = &hangcheck_proc;
-	handle->hangcheck_timer.expires = jiffies + handle->hangcheck_interval;
-	add_timer(&handle->hangcheck_timer);
+	TRACEENTER3("%s", "");
+	/* MiniportCheckForHang runs at DISPATCH_LEVEL */
+	/* since hangcheck_proc function is bh, it already runs at
+	 * DISPATCH_LEVEL, so no need to raise irql */
+	if (handle->reset_status == 0 &&
+	    handle->driver->miniport_char.hangcheck(handle->adapter_ctx)) {
+		int res;
+		WARNING("Hangcheck returned true. Resetting %s!",
+			handle->net_dev->name);
+		res = miniport_reset(handle);
+		DBGTRACE3("reset returns %08X, %d", res, handle->reset_status);
+	}
 
+	spin_lock(&handle->timers_lock);
+	if (handle->hangcheck_active) {
+		handle->hangcheck_timer.expires = 
+			jiffies + handle->hangcheck_interval;
+		add_timer(&handle->hangcheck_timer);
+	}
+	spin_unlock(&handle->timers_lock);
+
+	TRACEEXIT3(return);
 }
 
 void hangcheck_add(struct ndis_handle *handle)
 {
-	if(!handle->driver->miniport_char.hangcheck ||
-	   handle->hangcheck_interval <= 0)
+	if (!handle->driver->miniport_char.hangcheck ||
+	    handle->hangcheck_interval <= 0) {
+		handle->hangcheck_active = 0;
 		return;
+	}
 
-	INIT_WORK(&handle->hangcheck_work, &hangcheck_bh, handle);
 	init_timer(&handle->hangcheck_timer);
-	hangcheck_reinit(handle);
+	handle->hangcheck_timer.data = (unsigned long) handle;
+	handle->hangcheck_timer.function = &hangcheck_proc;
+
+	add_timer(&handle->hangcheck_timer);
+	handle->hangcheck_active = 1;
+	return;
 }
 
 void hangcheck_del(struct ndis_handle *handle)
 {
-	if(!handle->driver->miniport_char.hangcheck ||
-	   handle->hangcheck_interval <= 0)
+	if (!handle->driver->miniport_char.hangcheck ||
+	    handle->hangcheck_interval <= 0)
 		return;
 
-	del_timer_sync(&handle->hangcheck_timer);
+	spin_lock_bh(&handle->timers_lock);
+	handle->hangcheck_active = 0;
+	del_timer(&handle->hangcheck_timer);
+	spin_unlock_bh(&handle->timers_lock);
 }
 
 
 static void statcollector_reinit(struct ndis_handle *handle);
 
-static void statcollector_bh(void *data)
+static void statcollector_proc(void *data)
 {
 	struct ndis_handle *handle = (struct ndis_handle *)data;
 	unsigned int res, written, needed;
@@ -489,7 +485,7 @@ static void statcollector_reinit(struct ndis_handle *handle)
 
 static void statcollector_add(struct ndis_handle *handle)
 {
-	INIT_WORK(&handle->statcollector_work, &statcollector_bh, handle);
+	INIT_WORK(&handle->statcollector_work, &statcollector_proc, handle);
 	init_timer(&handle->statcollector_timer);
 	statcollector_reinit(handle);
 }
@@ -1008,11 +1004,20 @@ int ndis_resume_pci(struct pci_dev *pdev)
 		}
 		*/
 
-		if (miniport->hangcheck &&
-		    miniport->hangcheck(handle->adapter_ctx))
-		{
-			DBGTRACE2("%s", "resetting device");
-			miniport_reset(handle);
+		/* this is ugly; calling hangcheck outside of
+		   hangcheck timer bh is not correct - why do we need
+		   reset here? */
+		if (miniport->hangcheck) {
+			KIRQL irql;
+			int need_reset;
+
+			irql = raise_irql(DISPATCH_LEVEL);
+			need_reset = miniport->hangcheck(handle->adapter_ctx);
+			lower_irql(irql);
+			if (need_reset) {
+				DBGTRACE2("%s", "resetting device");
+				miniport_reset(handle);
+			}
 		}
 	}
 	miniport_set_int(handle, NDIS_OID_BSSID_LIST_SCAN, 0);
@@ -1521,6 +1526,7 @@ static struct net_device *ndis_init_netdev(struct ndis_handle **phandle,
 	handle->nick[0] = 0;
 
 	handle->hangcheck_interval = hangcheck_interval;
+	handle->hangcheck_active = 0;
 	handle->scan_timestamp = 0;
 
 	memset(&handle->essid, 0, sizeof(handle->essid));

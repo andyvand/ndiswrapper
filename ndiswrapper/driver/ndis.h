@@ -741,8 +741,8 @@ struct packed ndis_handle
 	dma_addr_t *map_dma_addr;
 
 	int hangcheck_interval;
+	int hangcheck_active;
 	struct timer_list hangcheck_timer;
-	struct work_struct hangcheck_work;
 	int reset_status;
 
 	struct timer_list statcollector_timer;
