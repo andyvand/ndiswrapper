@@ -25,6 +25,9 @@
 struct list_head wrap_allocs;
 struct wrap_spinlock wrap_allocs_lock;
 
+DECLARE_WAIT_QUEUE_HEAD(dispatch_event_wq);
+struct wrap_spinlock dispatch_event_lock;
+
 void *wrap_kmalloc(size_t size, int flags)
 {
 	struct wrap_alloc *alloc;
@@ -228,6 +231,61 @@ void wrapper_cancel_timer(struct wrapper_timer *timer, char *canceled)
 	*canceled = del_timer(&timer->timer);
 	spin_unlock_bh(&timer->lock);
 	TRACEEXIT5(return);
+}
+
+void
+wrapper_init_event(struct dispatch_header *header, int type, int state)
+{
+	TRACEENTER3("header = %p, type = %d, state = %d",
+		    header, type, state);
+	wrap_spin_lock(&dispatch_event_lock);
+	header->type = type;
+	header->signal_state = state;
+	wrap_spin_unlock(&dispatch_event_lock);
+	return;
+}
+
+void
+wrapper_set_event(struct dispatch_header *header)
+{
+	TRACEENTER3("%p", header);
+	header->signal_state = 1;
+	/* FIXME: check if it is synchronization event or not; for
+	 * synchronization events, only one process must be woken up.
+	 * Or is it guaranteed that for synchronization events, the
+	 * header is unique? In that case, we can ignore this check.
+	 */
+	wake_up_interruptible(&dispatch_event_wq);
+	DBGTRACE3("woken up %p", header);
+	if (header->type == SYNCHRONIZATION_EVENT)
+		header->signal_state = 0;
+}
+
+void
+wrapper_reset_event(struct dispatch_header *header)
+{
+	header->signal_state = 0;
+}
+
+unsigned int
+wrapper_wait_event(struct dispatch_header *header, int ms)
+{
+	TRACEENTER3("%p, ms = %u", header, ms);
+
+	if (header->signal_state)
+		TRACEEXIT3(return header->signal_state);
+
+	if (ms == 0)
+		wait_event_interruptible(dispatch_event_wq,
+					 header->signal_state == 1);
+	else
+		wait_event_interruptible_timeout(dispatch_event_wq,
+						 header->signal_state == 1,
+						 (ms * HZ)/1000);
+	DBGTRACE3("%p, type = %d woke up (%ld)",
+		  header, header->type, header->signal_state);
+
+	TRACEEXIT3(return header->signal_state);
 }
 
 NOREGPARM int wrap_sprintf(char *buf, const char *format, ...)
@@ -641,6 +699,8 @@ void packet_recycler(void *param)
 	while (1)
 	{
 		struct ndis_packet * packet = NULL;
+		struct miniport_char *miniport;
+		miniport = &handle->driver->miniport_char;
 
 		wrap_spin_lock(&handle->recycle_packets_lock);
 		if (list_empty(&handle->recycle_packets))
@@ -650,11 +710,15 @@ void packet_recycler(void *param)
 		}
 		else
 		{
-			packet = (struct ndis_packet*) handle->recycle_packets.next;
+			packet = (struct ndis_packet*)
+				handle->recycle_packets.next;
 
 			list_del(handle->recycle_packets.next);
 			DBGTRACE3("Picking packet at %p!", packet);
-			packet = (struct ndis_packet*) ((char*)packet - ((char*) &packet->recycle_list - (char*) &packet->nr_pages));
+			packet = (struct ndis_packet*)
+				((char*)packet -
+				 ((char*) &packet->recycle_list -
+				  (char*) &packet->nr_pages));
 		}
 
 		wrap_spin_unlock(&handle->recycle_packets_lock);
@@ -663,9 +727,20 @@ void packet_recycler(void *param)
 			break;
 
 		packet->status = NDIS_STATUS_SUCCESS;
-		handle->driver->miniport_char.return_packet(handle->adapter_ctx, packet);
+		miniport->return_packet(handle->adapter_ctx, packet);
 	}
 	TRACEEXIT3(return);
+}
+
+u64 ticks_1601(void)
+{
+	struct timeval now;
+	u64 ticks;
+
+	do_gettimeofday(&now);
+	ticks = (u64) now.tv_sec * TICKSPERSEC;
+	ticks += now.tv_usec * 10 + TICKS_1601_TO_1970;
+	return ticks;
 }
 
 int getSp(void)

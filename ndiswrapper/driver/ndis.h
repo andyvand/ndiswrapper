@@ -819,7 +819,7 @@ struct packed ndis_resource_list
 
 struct ndis_event
 {
-	struct kevent event;
+	struct kevent kevent;
 };
 
 #define NDIS_MAX_RATES 16

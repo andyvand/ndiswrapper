@@ -39,6 +39,9 @@
 
 #define MAX_STR_LEN 512
 
+#define TRUE 1
+#define FALSE 0
+
 #define PASSIVE_LEVEL 0
 #define DISPATCH_LEVEL 2
 
@@ -253,6 +256,14 @@ struct packed irp {
 	struct list_head cancel_list_entry;
 };
 
+enum nt_obj_type
+{
+	NT_OBJ_EVENT,
+	NT_OBJ_MUTEX,
+	NT_OBJ_THREAD,
+	NT_OBJ_TIMER,
+};
+
 struct ktimer
 {
 	struct dispatch_header dispatch_header;
@@ -262,6 +273,17 @@ struct ktimer
 	/* struct kdpc *kdpc; */
 	struct wrapper_timer *wrapper_timer;
 	long period;
+};
+
+struct kmutex
+{
+	struct dispatch_header dispatch_header;
+	/* struct list_entry list_entry */
+	unsigned int count;
+	unsigned int dummy;
+	void *owner_thread;
+	BOOLEAN abandoned;
+	unsigned char apc_disable;
 };
 
 #define NOTIFICATION_TIMER 1
@@ -327,6 +349,11 @@ int wrapper_set_timer(struct wrapper_timer *wrapper_timer,
                       unsigned long expires, unsigned long repeat,
                       struct kdpc *kdpc);
 void wrapper_cancel_timer(struct wrapper_timer *wrapper_timer, char *canceled);
+void wrapper_init_event(struct dispatch_header *header, int type, int state);
+void wrapper_set_event(struct dispatch_header *header);
+void wrapper_reset_event(struct dispatch_header *header);
+unsigned int wrapper_wait_event(struct dispatch_header *header, int ms);
+u64 ticks_1601(void);
 
 static inline void wrapper_set_timer_dpc(struct wrapper_timer *wrapper_timer,
                                          struct kdpc *kdpc)

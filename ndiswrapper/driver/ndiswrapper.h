@@ -169,6 +169,7 @@ do {									\
 
 #define KMALLOC_THRESHOLD 131072
 
+/* TICK is 100ns */
 #define TICKSPERSEC             10000000
 #define SECSPERDAY              86400
 
