@@ -17,7 +17,7 @@ KVERS := $(shell echo $(KVER) |  sed -e 's/\([^\.]*\)\.\([^\.]*\)\..*/\1\2/')
 KSRC  := /lib/modules/$(KVER)/build
 
 
-INST_DIR := /lib/modules/$(shell uname -r)/misc
+INST_DIR := /lib/modules/$(KVER)/misc
 
 SRC_DIR=$(shell pwd)
 
