@@ -1376,6 +1376,23 @@ _FASTCALL void WRAP_EXPORT(ObDereferenceObject)
 	TRACEEXIT3(return);
 }
 
+STDCALL NTSTATUS ZwClose(void *object)
+{
+	ObfDereferenceObject(FASTCALL_ARGS_1(object));
+	TRACEEXIT3(return STATUS_SUCCESS);
+}
+
+STDCALL LARGE_INTEGER WRAP_EXPORT(KeQueryPerformanceCounter)
+	(LARGE_INTEGER *counter)
+{
+	unsigned long res;
+
+	res = jiffies;
+	if (counter)
+		*counter = res;
+	return res;
+}
+
 NOREGPARM NTSTATUS WRAP_EXPORT(WmiTraceMessage)
 	(void *tracehandle, ULONG message_flags,
 	 void *message_guid, USHORT message_no, ...)

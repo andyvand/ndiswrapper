@@ -2609,6 +2609,20 @@ STDCALL void WRAP_EXPORT(NdisMRegisterUnloadHandler)
 	return;
 }
 
+STDCALL NDIS_STATUS WRAP_EXPORT(NdisMQueryAdapterInstanceName)
+	(struct unicode_string *name, struct ndis_handle *handle)
+{
+	struct ansi_string ansi_string;
+
+	if (handle->driver->bustype == NDIS_PCI_BUS)
+		ansi_string.buf = "PCI Ethernet Adapter";
+	else
+		ansi_string.buf = "USB Ethernet Adapter";
+	if (RtlAnsiStringToUnicodeString(name, &ansi_string, 1))
+		TRACEEXIT2(return NDIS_STATUS_RESOURCES);
+	else
+		TRACEEXIT2(return NDIS_STATUS_SUCCESS);
+}
 
 STDCALL ULONG WRAP_EXPORT(NdisReadPcmciaAttributeMemory)
 	(struct ndis_handle *handle, ULONG offset, void *buffer, ULONG length)
