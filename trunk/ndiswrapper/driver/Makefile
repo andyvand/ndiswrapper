@@ -96,6 +96,9 @@ CFLAGS  += -DLINUX -D__KERNEL__ -DMODULE -I$(KSRC)/include \
 
 default: $(OBJS)
 	$(LD) -r -o $(MODULE) $(OBJS)
+	@ echo -e "\n**\nPlease re-install utils and Windows drivers, as "
+	@ echo -e "file formats have changed since 0.9 release.\n"
+
 clean:
 	rm -f $(MODULE) $(OBJS)
 
@@ -106,6 +109,8 @@ ndiswrapper-objs := $(OBJS)
 
 default:
 	$(MAKE) -C $(KSRC) SUBDIRS=$(SRC_DIR) DRV_VERSION=$(DRV_VERSION) modules
+	@ echo -e "\n**\nPlease re-install utils and Windows drivers, as "
+	@ echo -e "file formats have changed since 0.9 release.\n"
 
 clean:
 	rm -f $(MODULE) ndiswrapper.o $(OBJS) .ndiswrapper.ko.cmd ndiswrapper.mod.[oc] .*.o.cmd *~
