@@ -1201,8 +1201,8 @@ static int ndis_set_key(struct net_device *dev, struct iw_request_info *info,
 				&written, &needed);
 		if (res)
 		{
-			printk(KERN_ERR "%s: removing key failed with %08X, %d, %d\n",
-			       __FUNCTION__, res, needed, sizeof(ndis_remove_key));
+			DBGTRACE("removing key failed with %08X, %d, %d",
+			       res, needed, sizeof(ndis_remove_key));
 			return 0;
 		}
 		return 0;
@@ -1238,17 +1238,18 @@ static int ndis_set_key(struct net_device *dev, struct iw_request_info *info,
 
 	if (wpa_key->key_len > sizeof(ndis_key.key))
 	{
-		printk(KERN_ERR "%s: incorrect key length (%d)\n",
-		       dev->name, wpa_key->key_len);
+		DBGTRACE("incorrect key length (%d)", wpa_key->key_len);
 		TRACEEXIT1(return -EINVAL);
 	}
 	
 	DBGTRACE("adding key %d, %d", wpa_key->key_index, wpa_key->key_len);
+
+	ndis_key.length = sizeof(ndis_key);
 	ndis_key.key_index = wpa_key->key_index;
-	if (wpa_key->set_tx)
-		ndis_key.key_index |= (1 << 31);
-	else
+	ndis_key.key_index |= (1 << 31);
+	if (wpa_key->key_index == 0)
 		ndis_key.key_index |= (1 << 30);
+
 	ndis_key.key_len = wpa_key->key_len;
 	memcpy(&ndis_key.key, wpa_key->key, wpa_key->key_len);
 	
@@ -1258,13 +1259,11 @@ static int ndis_set_key(struct net_device *dev, struct iw_request_info *info,
 		ndis_key.key_rsc |= (wpa_key->seq[i] << (i * 8));
 	
 	res = dosetinfo(handle, NDIS_OID_ADD_KEY, (char *)&ndis_key,
-			sizeof(ndis_key) - 
-			sizeof(ndis_key.key) + ndis_key.key_len,
-			&written, &needed);
+			ndis_key.length, &written, &needed);
 	if (res)
 	{
-		printk(KERN_ERR "%s: adding key failed (%08X)\n",
-		       dev->name, res);
+		DBGTRACE("adding key failed (%08X), %d, %d, %lu",
+			 res, written, needed, ndis_key.length);
 		TRACEEXIT1(return -EINVAL);
 	}
 	

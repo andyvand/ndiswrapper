@@ -346,10 +346,10 @@ struct ndis_key
 	unsigned long key_len;
 	mac_address bssid;
 	unsigned long long key_rsc;
-	unsigned char key[32];
+	unsigned char key[36];
 };
 
-struct packed ndis_remove_key
+struct ndis_remove_key
 {
 	unsigned long length;
 	unsigned long key_index;
