@@ -1412,8 +1412,8 @@ STDCALL void WRAP_EXPORT(NdisMDeregisterInterrupt)
 		 */
 #if LINUX_KERNEL_VERSION >= KERNEL_VERSION(2,6,0)
 		flush_scheduled_work();
-		set_current_state(TASK_INTERRUPTIBLE);
-		schedule_timeout(HZ/100);
+//		set_current_state(TASK_INTERRUPTIBLE);
+//		schedule_timeout(HZ/100);
 #else
 		set_current_state(TASK_INTERRUPTIBLE);
 		schedule_timeout(HZ/10);
