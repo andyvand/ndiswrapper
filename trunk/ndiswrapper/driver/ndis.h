@@ -43,14 +43,6 @@ typedef ULONG ndis_oid;
 
 typedef uint64_t NDIS_PHY_ADDRESS;
 
-enum dma_type {
-	MAP_DMA,
-	SG_DMA_DISABLED,
-	SG_DMA_ENABLED
-};
-
-#define SG_DMA_TYPE SG_DMA_DISABLED
-
 struct ndis_sg_element {
 	PHYSICAL_ADDRESS address;
 	ULONG length;
@@ -893,7 +885,7 @@ struct ndis_handle {
 	int ndis_comm_done;
 
 	int serialized;
-	enum dma_type dma_type;
+	int use_sg_dma;
 	int map_count;
 	int multicast_list_size;
 	char *multicast_list;
