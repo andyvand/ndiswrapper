@@ -1407,6 +1407,7 @@ out_nodev:
  * This function should not be marked __devinit because ndiswrapper
  * adds id's dynamically.
  */
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
 static int ndis_init_one_usb(struct usb_interface *intf,
                              const struct usb_device_id *usb_id)
 {
@@ -1469,6 +1470,7 @@ out_start:
 out_nodev:
 	TRACEEXIT1(return res);
 }
+#endif /* support on 2.4 not implemented */
 
 static void __devexit ndis_remove_one(struct ndis_handle *handle)
 {
@@ -1534,6 +1536,7 @@ static void __devexit ndis_remove_one_pci(struct pci_dev *pdev)
 /*
  * Remove one USB device.
  */
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
 static void __devexit ndis_remove_one_usb(struct usb_interface *intf)
 {
 	struct ndis_handle *handle =
@@ -1543,6 +1546,7 @@ static void __devexit ndis_remove_one_usb(struct usb_interface *intf)
 
 	ndis_remove_one(handle);
 }
+#endif /* support on 2.4 not implemented */
 
 /* Register one ndis driver with pci subsystem. */
 static int start_driver(struct ndis_driver *driver)
@@ -1601,7 +1605,9 @@ static int start_driver(struct ndis_driver *driver)
 		if(!res)
 			driver->dev_registered = 1;
 #endif
-	} else { /* USB */
+	}
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
+	else { /* USB */
 		driver->idtable.usb = kmalloc(sizeof(struct usb_device_id)*(driver->nr_devices+1), GFP_KERNEL);
 		if(!driver->idtable.usb)
 			return -ENOMEM;
@@ -1633,6 +1639,8 @@ static int start_driver(struct ndis_driver *driver)
 		if(!res)
 			driver->dev_registered = 1;
 	}
+#endif /* support on 2.4 not implemented */
+
 	return res;
 }
 
@@ -1814,10 +1822,14 @@ static struct ndis_device *add_device(struct ndis_driver *driver,
 		} else {
 			list_add(&device->list, &driver->devices);
 		}
-	} else if (device->bustype == 0) {      /* 0: USB */
+	}
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
+	else if (device->bustype == 0) {      /* 0: USB */
 		DBGTRACE1("USB:%04x:%04x\n", device->vendor, device->device);
 		list_add(&device->list, &driver->devices);
-	} else {
+	}
+#endif /* support on 2.4 not implemented */
+	else {
 		kfree(device);
 		return NULL;
 	}
@@ -1908,8 +1920,10 @@ static void unload_driver(struct ndis_driver *driver)
 	if (driver->dev_registered) {
 		if (driver->bustype == 5)
 			pci_unregister_driver(&driver->driver.pci);
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
 		else
 			usb_deregister(&driver->driver.usb);
+#endif /* support on 2.4 not implemented */
 	}
 #ifdef DEBUG_CRASH_ON_INIT
 	if (driver->bustype == 5) {
