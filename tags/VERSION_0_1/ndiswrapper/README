@@ -1,0 +1,60 @@
+* Quickstart guide *
+====================
+
+1. Compile the driver
+---------------------
+* You need kernel 2.6.0-test8 or higher!
+* Make sure your kernel complied without framepointer and Sleep-inside-spinlock debugging
+  See the kernel hacking menu
+> cd driver
+> make
+
+This should produce a ndiswrapper.ko if all goes well.
+
+2. Compile the loader:
+----------------------
+> cd utils
+> make
+
+This should produce a loaddriver executable.
+
+3. Get the windows driver
+-------------------------
+Download the Windows XP drivers for your card and locate the .sys and .inf file.
+Copy these files someplace.
+   
+4. Find out the PCI vendor and device of you WLAN card.
+-------------------------------------------------------
+> lspci
+...
+00:0a.2 FLASH memory: ENE Technology Inc: Unknown device 0510
+00:0c.0 Network controller: Broadcom Corporation BCM4301 802.11b (rev 02) <--- This is my card. Now remember the bus and slot number (00:0c.0).
+00:0d.0 Ethernet controller: 3Com Corporation 3c940 1000Base? (rev 12)
+...
+
+> lspci -n
+
+...
+00:0a.2 Class 0501: 1524:0510
+00:0c.0 Class 0280: 14e4:4301 (rev 02)  <--- Numerical id of my card.
+00:0d.0 Class 0200: 10b7:1700 (rev 12)
+...
+
+The vendor is 14e4 and the device is is 4301.
+
+5. Load the kernel module
+-------------------------
+> insmod driver/ndiswrapper.ko
+
+6. Load the windows driver
+--------------------------
+>utils/loadriver 14e4 4301 /path/to/bcmwl5.sys /path/to/bcmwl5.inf
+
+If you get no error the driver should now be loaded and active.
+
+7. Configure driver
+-------------------
+Use the normal ifconfig, iwconfig etc.
+
+
+
