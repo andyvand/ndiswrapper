@@ -445,7 +445,7 @@ STDCALL void WRAP_EXPORT(ExInitializeNPagedLookasideList)
 STDCALL void WRAP_EXPORT(ExDeleteNPagedLookasideList)
 	(struct npaged_lookaside_list *lookaside)
 {
-	struct nt_slist_entry *entry;
+	struct nt_slist_entry *entry, *p;
 
 	TRACEENTER3("lookaside = %p", lookaside);
 	entry = lookaside->head.list.next;
