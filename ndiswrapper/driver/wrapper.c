@@ -1516,7 +1516,7 @@ static int ndis_suspend(struct pci_dev *pdev, u32 state)
 	struct ndis_handle *handle;
 	int res;
 
-	DBGTRACE("%s called with %p, %d\n",
+	printk("%s called with %p, %d\n",
 			 __FUNCTION__, pdev, state);
 	if (!pdev)
 		return -1;
@@ -1549,10 +1549,13 @@ static int ndis_suspend(struct pci_dev *pdev, u32 state)
 	else
 		handle->pm_state = NDIS_PM_STATE_D3;
 	res = set_int(handle, NDIS_OID_PNP_SET_POWER, handle->pm_state);
+	pci_save_state(pdev, handle->pci_state);
+	pci_set_power_state(pdev, state);
 	DBGTRACE("%s: setting power to state %d returns %d\n",
 			 dev->name, handle->pm_state, res);
 	if (res)
 		printk(KERN_INFO "%s: device doesn't support pnp capabilities for power management? (%08X)\n", dev->name, res);
+	DBGTRACE(KERN_INFO "%s: device suspended!\n", dev->name);
 	return 0;
 }
 
@@ -1575,6 +1578,8 @@ static int ndis_resume(struct pci_dev *pdev)
 		return 0;
 	
 	handle->pm_state = NDIS_PM_STATE_D0;
+	pci_set_power_state(pdev, 0);
+	pci_restore_state(pdev, NULL);
 	res = set_int(handle, NDIS_OID_PNP_SET_POWER, handle->pm_state);
 	DBGTRACE("%s: setting power to state %d returns %d\n",
 			 dev->name, handle->pm_state, res);
@@ -1589,6 +1594,7 @@ static int ndis_resume(struct pci_dev *pdev)
 //		netif_wake_queue(dev);
 	
 	add_scan_timer((unsigned long)handle);
+	DBGTRACE("%s: device resumed!\n", dev->name);
 	return 0;
 }
 
