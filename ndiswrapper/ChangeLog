@@ -1,4 +1,4 @@
-Version 0.5 2004-03-yy
+Version 0.5 2004-03-dd
 ======================
 * Integrated RPM packaging.
 * Better makefiles.
@@ -9,6 +9,11 @@ Version 0.5 2004-03-yy
 * Powerup the card during initializtion so ndiswrapper works if the card is in
   powered down state.
 * Background AP scanning is removed, so it doesn't affect IP traffic anymore.
+* WEP key and essid can be set in any order, not necessarily key first and
+  essid later.
+* Essid is set twice with a delay in between so that it gets set properly
+  the first time after the machine is booted.
+  
 
 Version 0.4 2004-01-05
 ======================
