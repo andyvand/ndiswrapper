@@ -7,9 +7,7 @@ Standards-Version: 3.6.0
 
 Package: ndiswrapper-source
 Provides: ndiswrapper-source-#NDISVERS#
-Depends: ndiswrapper-utils-#NDISVERS#
 Architecture: i386
-Depends: build-essential, debhelper (>> 4.0.0)
 Description: User space tools for ndiswrapper
  Some wireless LAN vendors refuse to release hardware specifications or
  drivers for their products for operating systems other than Microsoft

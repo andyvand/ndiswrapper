@@ -61,7 +61,7 @@ common-epilog:
 	dh_strip
 	dh_compress 
 	dh_fixperms
-#	dh_perl
+	dh_perl
 #	dh_python
 	dh_makeshlibs
 	dh_installdeb
