@@ -27,7 +27,7 @@ struct wrap_spinlock wrap_allocs_lock;
 void *wrap_kmalloc(size_t size, int flags)
 {
 	struct wrap_alloc *alloc;
-	TRACEENTER4("size = %d, flags = %d", size, flags);
+	TRACEENTER4("size = %ld, flags = %d", size, flags);
 	if ((flags & GFP_ATOMIC) || irqs_disabled())
 		alloc = kmalloc(sizeof(*alloc), GFP_ATOMIC);
 	else
@@ -821,8 +821,7 @@ void dump_bytes(const char *where, const u8 *ip)
 	memset(code, 0, sizeof(code));
 	for (i = j = 0; i < 16; i++, j += 3) {
 		if (j+3 > sizeof(code))
-			ERROR("not enough space: %u > %u",
-			      j+3, (unsigned int)sizeof(code));
+			ERROR("not enough space: %u > %u", j+3, (unsigned int)sizeof(code));
 		else
 			sprintf(&code[j], "%02x ", ip[i]);
 	}

@@ -304,7 +304,7 @@ static int load_sys_files(struct ndis_driver *driver,
 		pe_image->name[MAX_DRIVER_NAME_LEN-1] = 0;
 		memcpy(pe_image->name, load_driver->sys_files[i].name,
 		       MAX_DRIVER_NAME_LEN);
-		DBGTRACE1("image size: %d bytes",
+		DBGTRACE1("image size: %ld bytes",
 			  load_driver->sys_files[i].size);
 
 #ifdef CONFIG_X86_64BIT
@@ -774,7 +774,7 @@ static int wrapper_ioctl(struct inode *inode, struct file *file,
 	struct load_driver *load_driver;
 	int res;
 
-	TRACEENTER1("cmd: %u (%u)", cmd, NDIS_ADD_DRIVER);
+	TRACEENTER1("cmd: %u (%lu)", cmd, NDIS_ADD_DRIVER);
 
 	res = 0;
 	switch (cmd) {

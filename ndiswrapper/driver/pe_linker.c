@@ -229,15 +229,14 @@ static int import(void *image, struct coffpe_import_dirent *dirent, char *dll)
 
 		adr = get_export(symname);
 		if (adr != NULL)
-			DBGTRACE1("found symbol: %s:%s, rva = %08X",
-				  dll, symname, (ULONG_PTR)address_tbl[i]);
+			DBGTRACE1("found symbol: %s:%s, rva = %lu",
+				  dll, symname, (unsigned long)address_tbl[i]);
 		if (adr == NULL) {
 			ERROR("Unknown symbol: %s:%s", dll, symname);
 			ret = -1;
 		}
-		DBGTRACE1("Importing rva: %08X, %08X, %08X: %s : %s",
-			  (UINT)address_tbl[i], (UINT)adr,
-			  ((UINT)address_tbl[i] - (UINT)image), dll, symname);
+		DBGTRACE1("Importing rva: %p, %08X: %s : %s",
+			  (void *)(address_tbl[i]), (UINT)adr, dll, symname);
 		address_tbl[i] = (ULONG_PTR)adr;
 	}
 	return ret;
@@ -269,9 +268,9 @@ static int read_exports(void *image, struct nt_header *nt_hdr, char *dll)
 					   nt_hdr->opt_hdr.export_tbl.size))
 			DBGTRACE1("%s", "forwarder rva");
 
-		DBGTRACE1("export symbol: %s, at %08X",
+		DBGTRACE1("export symbol: %s, at %p",
 		     (char *)(image + *name_table),
-		     (uint32_t)(image + *export_addr_table));
+		     (void *)(image + *export_addr_table));
 		     
 		exports[num_exports].dll = dll;
 		exports[num_exports].name = (char *)(image + *name_table);

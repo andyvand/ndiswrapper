@@ -165,7 +165,7 @@ STDCALL static NDIS_STATUS WRAP_EXPORT(NdisMRegisterMiniport)
 
 	DBGTRACE1("Version %d.%d", miniport_char->majorVersion,
 		 miniport_char->minorVersion);
-	DBGTRACE1("Len: %08x:%08x", char_len, sizeof(struct miniport_char));
+	DBGTRACE1("Len: %08x:%lu", char_len, sizeof(struct miniport_char));
 	memcpy(&ndis_driver->miniport_char, miniport_char,
 	       sizeof(struct miniport_char));
 
@@ -232,8 +232,7 @@ STDCALL static void WRAP_EXPORT(NdisFreeMemory)
 		 * correct. So we use worker for it */
 		ndis_work_entry = kmalloc(sizeof(*ndis_work_entry),
 					  GFP_ATOMIC);
-		if (!ndis_work_entry)
-			BUG();
+		BUG_ON(!ndis_work_entry);
 
 		ndis_work_entry->type = NDIS_FREE_MEM_WORK_ITEM;
 		free_mem = &ndis_work_entry->entry.free_mem_work_item;
@@ -830,7 +829,7 @@ STDCALL static NDIS_STATUS WRAP_EXPORT(NdisMMapIoSpace)
 
 	addr = (ULONG_PTR)phy_addr.quad;
 
-	TRACEENTER2("%u, %u", addr, len);
+	TRACEENTER2("%p, %u", (void *)addr, len);
 	*virt = ioremap(addr, len);
 	if (*virt == NULL) {
 		ERROR("%s", "ioremap failed");
@@ -1446,8 +1445,7 @@ STDCALL static BOOLEAN WRAP_EXPORT(NdisMSynchronizeWithInterrupt)
 	unsigned char (*sync_func)(void *ctx) STDCALL;
 	unsigned long flags;
 
-	TRACEENTER5("%08x %08x %08x %08x\n", (int) ndis_irq,
-		    (int) ndis_irq, (int) func, (int) ctx);
+	TRACEENTER5("%p %p %p\n", ndis_irq, func, ctx);
 
 	if (func == NULL || ctx == NULL)
 		TRACEEXIT5(return 0);
@@ -1846,7 +1844,7 @@ STDCALL static NDIS_STATUS WRAP_EXPORT(NdisMRegisterIoPortRange)
 	(void **virt, struct ndis_handle *handle, UINT start, UINT len)
 {
 	ULONG_PTR p;
-	TRACEENTER3("%p %u", start, len);
+	TRACEENTER3("%u %u", start, len);
 	p = start;
 	*virt = (void *)p;
 	return NDIS_STATUS_SUCCESS;
