@@ -88,6 +88,12 @@ static struct mscoff_hdr *check_coff_hdr(void *image, int size, int offset)
 	if(hdr->stdhdr.num_sections == 0)
 		return 0;
 
+	if(hdr->section_alignment != hdr->file_alignment)
+	{
+		printk(KERN_ERR "%s: Alignment mismatch: secion: 0x%lx, file: 0x%lx\n", DRV_NAME, hdr->section_alignment, hdr->file_alignment);
+		return 0;
+	}
+
 	return hdr;
 }
 
