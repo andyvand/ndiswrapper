@@ -18,18 +18,19 @@
 #include "usb.h"
 #include <linux/time.h>
 
-DECLARE_WAIT_QUEUE_HEAD(dispatch_event_wq);
+static wait_queue_head_t dispatch_event_wq;
 static unsigned char global_signal_state = 0;
-static struct wrap_spinlock dispatch_event_lock;
+static spinlock_t dispatch_event_lock;
+spinlock_t irp_cancel_lock;
 KSPIN_LOCK ntoskrnl_lock;
-struct wrap_spinlock irp_cancel_lock;
 
 int ntoskrnl_init(void)
 {
-	wrap_spin_lock_init(&dispatch_event_lock);
+	spin_lock_init(&dispatch_event_lock);
+	spin_lock_init(&irp_cancel_lock);
 	if (!map_kspin_lock(&ntoskrnl_lock))
 		return -ENOMEM;
-	wrap_spin_lock_init(&irp_cancel_lock);
+	init_waitqueue_head(&dispatch_event_wq);
 	return 0;
 }
 
@@ -414,11 +415,11 @@ STDCALL void WRAP_EXPORT(KeInitializeEvent)
 {
 	TRACEENTER3("event = %p, type = %d, state = %d",
 		    kevent, type, state);
-	wrap_spin_lock(&dispatch_event_lock, PASSIVE_LEVEL);
+	spin_lock(&dispatch_event_lock);
 	kevent->header.type = type;
 	kevent->header.signal_state = state;
 	kevent->header.inserted = 0;
-	wrap_spin_unlock(&dispatch_event_lock);
+	spin_unlock(&dispatch_event_lock);
 }
 
 STDCALL LONG WRAP_EXPORT(KeSetEvent)
@@ -431,7 +432,7 @@ STDCALL LONG WRAP_EXPORT(KeSetEvent)
 	if (wait == TRUE)
 		WARNING("wait = %d, not yet implemented", wait);
 
-	wrap_spin_lock(&dispatch_event_lock, PASSIVE_LEVEL);
+	spin_lock(&dispatch_event_lock);
 	kevent->header.signal_state = TRUE;
 	kevent->header.absolute = TRUE;
 	global_signal_state = TRUE;
@@ -441,7 +442,7 @@ STDCALL LONG WRAP_EXPORT(KeSetEvent)
 		wake_up_all(&dispatch_event_wq);
 //	global_signal_state = FALSE;
 	DBGTRACE3("woken up %p", kevent);
-	wrap_spin_unlock(&dispatch_event_lock);
+	spin_unlock(&dispatch_event_lock);
 	TRACEEXIT3(return old_state);
 }
 
@@ -660,7 +661,7 @@ STDCALL NT_STATUS WRAP_EXPORT(KeWaitForMultipleObjects)
 					(global_signal_state == TRUE),
 					wait_jiffies);
 		}
-		wrap_spin_lock(&dispatch_event_lock, PASSIVE_LEVEL);
+		spin_lock(&dispatch_event_lock);
 		if (res > 0) {
 			for (i = 0; i < count; i++) {
 				kevent = (struct kevent *)object[i];
@@ -677,7 +678,7 @@ STDCALL NT_STATUS WRAP_EXPORT(KeWaitForMultipleObjects)
 				}
 			}
 		}
-		wrap_spin_unlock(&dispatch_event_lock);
+		spin_unlock(&dispatch_event_lock);
 		if (res > 0)
 			wait_jiffies = res;
 		if (wait_type == WaitAny)
@@ -872,18 +873,18 @@ STDCALL BOOLEAN WRAP_EXPORT(IoCancelIrp)
 	TRACEENTER2("irp = %p", irp);
 
 	irql = KeGetCurrentIrql();
-	wrap_spin_lock(&irp_cancel_lock, PASSIVE_LEVEL);
+	spin_lock(&irp_cancel_lock);
 	cancel_routine = xchg(&irp->cancel_routine, NULL);
 
 	if (cancel_routine) {
 		irp->cancel_irql = irql;
 		irp->pending_returned = 1;
 		irp->cancel = 1;
-		wrap_spin_unlock(&irp_cancel_lock);
+		spin_unlock(&irp_cancel_lock);
 		cancel_routine(stack->dev_obj, irp);
 		TRACEEXIT2(return 1);
 	} else {
-		wrap_spin_unlock(&irp_cancel_lock);
+		spin_unlock(&irp_cancel_lock);
 		TRACEEXIT2(return 0);
 	}
 }
@@ -1330,14 +1331,14 @@ STDCALL void WRAP_EXPORT(KeInitializeMutex)
 STDCALL LONG WRAP_EXPORT(KeReleaseMutex)
 	(struct kmutex *mutex, BOOLEAN wait)
 {
-	wrap_spin_lock(&dispatch_event_lock, PASSIVE_LEVEL);
+	spin_lock(&dispatch_event_lock);
 	mutex->u.count--;
 	if (mutex->u.count == 0) {
 		mutex->owner_thread = NULL;
-		wrap_spin_unlock(&dispatch_event_lock);
+		spin_unlock(&dispatch_event_lock);
 		KeSetEvent((struct kevent *)&mutex->dispatch_header, 0, 0);
 	} else
-		wrap_spin_unlock(&dispatch_event_lock);
+		spin_unlock(&dispatch_event_lock);
 	return mutex->u.count;
 }
 
