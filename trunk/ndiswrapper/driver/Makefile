@@ -24,7 +24,10 @@ KVER := $(shell uname -r)
 endif
 
 KVERS := $(shell echo $(KVER) |  sed -e 's/\([^\.]*\)\.\([^\.]*\)\..*/\1\2/')
+
+ifndef KSRC
 KSRC  := /lib/modules/$(KVER)/build
+endif
 
 INST_DIR := /lib/modules/$(KVER)/misc
 
@@ -114,6 +117,7 @@ default:
 
 clean:
 	rm -f $(MODULE) ndiswrapper.o $(OBJS) .ndiswrapper.ko.cmd ndiswrapper.mod.[oc] .*.o.cmd *~
+	rm -rf .tmp_versions
 
 endif
 
