@@ -1371,7 +1371,7 @@ struct net_device *ndis_init_netdev(struct ndis_handle **phandle,
 	/* Poison the fileds as they may contain function pointers
 	 * which my be called by the driver */
 	for (i = 0, ip = (int *)&handle->signature;
-	     (void *)&ip[i] < (void *)&handle->device_type; i++)
+	     (void *)&ip[i] < (void *)&handle->dev.pci; i++)
 		ip[i] = 0x1000+i;
 
 	handle->driver = driver;

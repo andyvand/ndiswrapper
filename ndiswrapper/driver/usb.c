@@ -280,10 +280,12 @@ unsigned long usb_bulk_or_intr_trans(struct usb_device *dev,
 		ERROR("unknown pipe type: %d", pipe_handle.encoded.pipeType);
 		return -EINVAL;
 	}
+#if 0
 	if ((nt_urb->bulkIntrTrans.transferFlags &
 	     (USBD_TRANSFER_DIRECTION_IN | USBD_SHORT_TRANSFER_OK)) ==
 	     USBD_TRANSFER_DIRECTION_IN)
 		urb->transfer_flags |= URB_SHORT_NOT_OK;
+#endif
 
 #ifdef DUMPURBS
 	if (!(urb->pipe & USB_DIR_IN)) {
@@ -323,7 +325,8 @@ unsigned long usb_bulk_or_intr_trans(struct usb_device *dev,
 	/* FIXME: we should better check what GFP_ is required */
 	ret = WRAP_SUBMIT_URB(urb, GFP_ATOMIC);
 	if (ret != 0) {
-		ERROR("usb_submit_urb() = %d", ret);
+		ERROR("usb_submit_urb() = %d, length = %lu", ret,
+		      nt_urb->bulkIntrTrans.transferBufLen);
 		usb_free_urb(urb);
 		if (irp->driver_context[2])
 			kfree(irp->driver_context[2]);
@@ -360,21 +363,23 @@ unsigned long usb_vendor_or_class_intf(struct usb_device *dev,
 		return -ENOMEM;
 	}
 
+	req_type = USB_TYPE_VENDOR | USB_RECIP_DEVICE |
+		nt_urb->venClsReq.reservedBits;
+
+	if (nt_urb->venClsReq.transferFlags & USBD_TRANSFER_DIRECTION_IN) {
+		pipe = usb_rcvctrlpipe(dev, 0);
+		req_type |= USB_DIR_IN;
+	} else {
+		pipe = usb_sndctrlpipe(dev, 0);
+		req_type |= USB_DIR_OUT;
+	}
+
 	dr = kmalloc(sizeof(struct usb_ctrlrequest), GFP_ATOMIC);
 	if (!dr) {
 		ERROR("%s", "kmalloc failed!");
 		usb_free_urb(urb);
 		return -ENOMEM;
 	}
-
-	req_type = /*USB_TYPE_VENDOR | USB_RECIP_INTERFACE |*/
-		nt_urb->venClsReq.reservedBits;
-
-	if (nt_urb->venClsReq.transferFlags & USBD_TRANSFER_DIRECTION_IN) {
-		pipe = usb_rcvctrlpipe(dev, 0);
-		req_type |= USB_DIR_IN;
-	} else
-		pipe = usb_sndctrlpipe(dev, 0);
 
 	dr->bRequestType = req_type;
 	dr->bRequest     = nt_urb->venClsReq.request;
@@ -386,10 +391,12 @@ unsigned long usb_vendor_or_class_intf(struct usb_device *dev,
 		nt_urb->venClsReq.transferBuf,
 		nt_urb->venClsReq.transferBufLen, usb_transfer_complete, irp);
 
+#if 0
 	if ((nt_urb->venClsReq.transferFlags &
 	     (USBD_TRANSFER_DIRECTION_IN | USBD_SHORT_TRANSFER_OK)) ==
 	     USBD_TRANSFER_DIRECTION_IN)
 		urb->transfer_flags |= URB_SHORT_NOT_OK;
+#endif
 
 #ifdef DUMPURBS
 	if (!(urb->pipe & USB_DIR_IN)) {
@@ -631,6 +638,7 @@ unsigned long usb_submit_nt_urb(struct usb_device *dev, union nt_urb *nt_urb,
 		case FUNC_VENDOR_DEVICE:
 		case FUNC_VENDOR_INTERFACE:
 		case FUNC_CLASS_INTERFACE:
+			DBGTRACE3("func: %d", nt_urb->header.function);
 			ret = usb_vendor_or_class_intf(dev, nt_urb, irp);
 			if (ret < 0)
 				break;

@@ -776,7 +776,6 @@ struct packed ndis_handle {
 	/* keep a barrier in cases of over-stepping */
 	char barrier[200];
 
-	int device_type;
 	union {
 		struct pci_dev *pci;
 		struct usb_device *usb;
@@ -786,7 +785,6 @@ struct packed ndis_handle {
 	struct usb_interface *intf;
 #endif
 	struct net_device *net_dev;
-//	void *adapter_ctx;
 	void *shutdown_ctx;
 
 	struct work_struct irq_work;

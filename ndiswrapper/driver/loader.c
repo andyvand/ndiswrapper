@@ -49,6 +49,7 @@ static struct usb_device_id *ndiswrapper_usb_devices;
 static struct pci_driver ndiswrapper_pci_driver;
 static struct usb_driver ndiswrapper_usb_driver;
 
+/* load driver for given device, if not already loaded */
 static struct ndis_driver *ndiswrapper_load_driver(struct ndis_device *device)
 {
 	char v[10], d[10], sv[10], sd[10];
@@ -200,7 +201,7 @@ static int ndiswrapper_add_one_pci_dev(struct pci_dev *pdev,
 	 */
 	/*
 	if (miniport->pnp_event_notify) {
-		INFO("%s", "calling pnp_event_notify");
+		DBGTRACE3("%s", "calling pnp_event_notify");
 		miniport->pnp_event_notify(handle, NDIS_PNP_PROFILE_CHANGED,
 					 &profile_inf, sizeof(profile_inf));
 	}
@@ -316,11 +317,11 @@ static void *ndiswrapper_add_one_usb_dev(struct usb_device *udev,
 	miniport = &handle->driver->miniport_char;
 	/*
 	if (miniport->pnp_event_notify) {
-		INFO("%s", "calling pnp_event_notify");
+		DBGTRACE3("%s", "calling pnp_event_notify");
 		miniport->pnp_event_notify(handle->adapter_ctx,
 					   NDIS_PNP_PROFILE_CHANGED,
 					   &profile_inf, sizeof(profile_inf));
-		INFO("%s", "done");
+		DBGTRACE3("%s", "done");
 	}
 	*/
 
@@ -359,7 +360,7 @@ out_nodev:
 
 #ifdef CONFIG_USB
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
-static void __devexit
+static void
 ndiswrapper_remove_one_usb_dev(struct usb_interface *intf)
 {
 	struct ndis_handle *handle =
@@ -367,28 +368,30 @@ ndiswrapper_remove_one_usb_dev(struct usb_interface *intf)
 
 	TRACEENTER1("");
 
+	usb_set_intfdata(intf, NULL);
 	if (!handle)
 		TRACEEXIT1(return);
 	ndiswrapper_remove_one_dev(handle);
 	atomic_dec(&handle->driver->users);
 }
 #else
-static void __devexit
+static void
 ndiswrapper_remove_one_usb_dev(struct usb_device *udev, void *ptr)
 {
 	struct ndis_handle *handle = (struct ndis_handle *)ptr;
 
 	TRACEENTER1("");
 
+	usb_set_intfdata(intf, NULL);
 	if (!handle)
 		TRACEEXIT1(return);
-	ndiswrapper_remove_one(handle);
+	ndiswrapper_remove_one_dev(handle);
 	atomic_dec(&handle->driver->users);
 }
 #endif
 #endif /* CONFIG_USB */
 
-/* load the driver from userspace. */
+/* load the driver files from userspace. */
 static int load_sys_files(struct ndis_driver *driver,
 			  struct load_driver *load_driver)
 {
@@ -453,7 +456,7 @@ static int load_sys_files(struct ndis_driver *driver,
 
 }
 
-/* load a file from userspace and put on list of files. */
+/* load firmware files from userspace */
 static int load_bin_files(struct ndis_driver *driver,
 			  struct load_driver *load_driver)
 {
@@ -504,6 +507,7 @@ static int load_bin_files(struct ndis_driver *driver,
 	}
 }
 
+/* load settnigs for a device */
 static int load_settings(struct ndis_driver *ndis_driver,
 			 struct load_driver *load_driver)
 {
@@ -589,6 +593,8 @@ static void unload_ndis_device(struct ndis_device *device)
 	TRACEEXIT1(return);
 }
 
+/* at the time this function is called, devices are deregistered, so
+ * safe to remove the driver without any checks */
 static void unload_ndis_driver(struct ndis_driver *driver)
 {
 	int i;
@@ -667,6 +673,7 @@ static int add_driver(struct ndis_driver *driver)
 	TRACEEXIT1(return 0);
 }
 
+/* load a driver from userspace and initialize it */
 static int load_ndis_driver(struct load_driver *load_driver)
 {
 	struct ndis_driver *ndis_driver;
@@ -701,18 +708,17 @@ static int load_ndis_driver(struct load_driver *load_driver)
 /* register all devices (for all drivers) installed */
 static int register_devices(struct load_devices *load_devices)
 {
-	int i, n, res, num_pci, num_usb;
+	int i, res, num_pci, num_usb;
 	struct load_device *devices;
 
-	num_ndis_devices = load_devices->count;
-	devices = vmalloc(num_ndis_devices * sizeof(struct load_device));
+	devices = vmalloc(load_devices->count * sizeof(struct load_device));
 	if (!devices) {
 		ERROR("couldn't allocate memory");
 		TRACEEXIT1(return -ENOMEM);
 	}
 
 	if (copy_from_user(devices, load_devices->devices,
-			   num_ndis_devices * sizeof(struct load_device))) {
+			   load_devices->count * sizeof(struct load_device))) {
 		ERROR("couldn't copy from user space");
 		goto err_devices;
 	}
@@ -720,7 +726,7 @@ static int register_devices(struct load_devices *load_devices)
 	num_pci = num_usb = 0;
 	ndiswrapper_pci_devices = NULL;
 	ndiswrapper_usb_devices = NULL;
-	for (i = 0; i < num_ndis_devices; i++)
+	for (i = 0; i < load_devices->count; i++)
 		if (devices[i].bustype == NDIS_PCI_BUS)
 			num_pci++;
 		else if (devices[i].bustype == NDIS_USB_BUS)
@@ -728,6 +734,7 @@ static int register_devices(struct load_devices *load_devices)
 		else
 			WARNING("bus type %d is not valid",
 				devices[i].bustype);
+	num_ndis_devices = num_pci + num_usb;
 	if (num_pci > 0) {
 		ndiswrapper_pci_devices =
 			kmalloc((num_pci + 1) * sizeof(struct pci_device_id),
@@ -761,9 +768,11 @@ static int register_devices(struct load_devices *load_devices)
 
 	memset(ndis_devices, 0, num_ndis_devices * sizeof(*ndis_devices));
 	num_usb = num_pci = 0;
-	for (i = n = 0; i < num_ndis_devices; i++) {
+	for (i = 0; i < load_devices->count; i++) {
 		struct load_device *device = &devices[i];
-		struct ndis_device *ndis_device = &ndis_devices[n];
+		struct ndis_device *ndis_device;
+
+		ndis_device = &ndis_devices[num_pci + num_usb];
 
 		INIT_LIST_HEAD(&ndis_device->settings);
 		memcpy(&ndis_device->driver_name, device->driver_name,
@@ -797,7 +806,8 @@ static int register_devices(struct load_devices *load_devices)
 					device->subdevice;
 			ndiswrapper_pci_devices[num_pci].class = 0;
 			ndiswrapper_pci_devices[num_pci].class_mask = 0;
-			ndiswrapper_pci_devices[num_pci].driver_data = n++;
+			ndiswrapper_pci_devices[num_pci].driver_data =
+				num_pci + num_usb;
 			num_pci++;
 			DBGTRACE1("pci device %d added", num_pci);
 			DBGTRACE1("adding %04x:%04x:%04x:%04x to pci idtable",
@@ -810,7 +820,8 @@ static int register_devices(struct load_devices *load_devices)
 				device->device;
 			ndiswrapper_usb_devices[num_usb].match_flags =
 				USB_DEVICE_ID_MATCH_DEVICE;
-			ndiswrapper_usb_devices[num_usb].driver_info = n++;
+			ndiswrapper_usb_devices[num_usb].driver_info =
+				num_pci + num_usb;
 			num_usb++;
 			DBGTRACE1("usb device %d added", num_usb);
 			DBGTRACE1("adding %04x:%04x to usb idtable",
@@ -838,11 +849,12 @@ static int register_devices(struct load_devices *load_devices)
 	if (ndiswrapper_usb_devices) {
 		memset(&ndiswrapper_usb_driver, 0,
 			       sizeof(ndiswrapper_usb_driver));
+		ndiswrapper_usb_driver.owner = THIS_MODULE;
 		ndiswrapper_usb_driver.name = DRIVER_NAME;
 		ndiswrapper_usb_driver.id_table = ndiswrapper_usb_devices;
 		ndiswrapper_usb_driver.probe = ndiswrapper_add_one_usb_dev;
 		ndiswrapper_usb_driver.disconnect =
-			__devexit_p(ndiswrapper_remove_one_usb_dev);
+			ndiswrapper_remove_one_usb_dev;
 		res = usb_register(&ndiswrapper_usb_driver);
 		if (res) {
 			ERROR("couldn't register ndiswrapper usb driver");
