@@ -353,7 +353,7 @@ static int procfs_write_settings(struct file *file, const char *buf,
 		if (set_encr_mode(handle, i))
 			return -EINVAL;
 	} else {
-		int i, res = -1;
+		int res = -1;
 		struct device_setting *dev_setting;
 
 		if (!p)

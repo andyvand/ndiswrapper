@@ -587,93 +587,97 @@ static void free_packet(struct ndis_handle *handle, struct ndis_packet *packet)
 /*
  * MiniportSend and MiniportSendPackets
  */
-
-/* this function is called in BH disabled context, so no need to raise
- * IRQL for MiniportSend(Packets) functions */
-static int send_packet(struct ndis_handle *handle, struct ndis_packet *packet)
+static int send_packets(struct ndis_handle *handle, unsigned int start,
+			unsigned int pending)
 {
 	int res;
 	struct miniport_char *miniport = &handle->driver->miniport_char;
 	KIRQL irql;
+	unsigned int sent, n;
 
-	TRACEENTER3("packet = %p", packet);
+	TRACEENTER3("handle = %p", handle);
+
 	if (miniport->send_packets) {
-		struct ndis_packet *packets[1];
+		unsigned int i;
+		if (pending > handle->max_send_packets)
+			n = handle->max_send_packets;
+		else
+			n = pending;
+		if (n > 1)
+			DBGTRACE3("sending %d packets", n);
 
-		packets[0] = packet;
+		/* copy packets from xmit_ring to linear xmit_array array */
+		for (i = 0; i < n; i++) {
+			int j = (start + i) % XMIT_RING_SIZE;
+			handle->xmit_array[i] = handle->xmit_ring[j];
+		}
 		irql = raise_irql(DISPATCH_LEVEL);
 		miniport->send_packets(handle->adapter_ctx,
-				       &packets[0], 1);
+				       handle->xmit_array, n);
 		lower_irql(irql);
 		if (test_bit(ATTR_SERIALIZED, &handle->attributes)) {
-			/* serialized miniports set packet->status */
-			res = packet->status;
-		} else {
-			/* deserialized miniports call NdisMSendComplete */
-			res = NDIS_STATUS_PENDING;
-		}
-	} else if (miniport->send) {
+			for (sent = 0; sent < n && !handle->send_status;
+			     sent++) {
+				switch(handle->xmit_array[sent]->status) {
+				case NDIS_STATUS_SUCCESS:
+					sendpacket_done(handle,
+							handle->xmit_array[sent]);
+					break;
+				case NDIS_STATUS_PENDING:
+					break;
+				case NDIS_STATUS_RESOURCES:
+					handle->send_status =
+						NDIS_STATUS_RESOURCES;
+					break;
+				case NDIS_STATUS_FAILURE:
+				default:
+					free_packet(handle,
+						    handle->xmit_array[sent]);
+					break;
+				}
+			}
+		} else
+			sent = n;
+	} else {
+		struct ndis_packet *packet = handle->xmit_ring[start];
 		irql = raise_irql(DISPATCH_LEVEL);
 		res = miniport->send(handle->adapter_ctx, packet, 0);
 		lower_irql(irql);
-	} else {
-		DBGTRACE3("%s", "No send handler");
-		res = NDIS_STATUS_FAILURE;
+
+		sent = 1;
+		switch (res) {
+		case NDIS_STATUS_SUCCESS:
+			sendpacket_done(handle, packet);
+			break;
+		case NDIS_STATUS_PENDING:
+			break;
+		case NDIS_STATUS_RESOURCES:
+			handle->send_status = res;
+			sent = 0;
+			break;
+		case NDIS_STATUS_FAILURE:
+			free_packet(handle, packet);
+			break;
+		}
 	}
-
-	DBGTRACE3("send_packets returning %08X", res);
-
-	TRACEEXIT3(return res);
+	TRACEEXIT3(return sent);
 }
 
 static void xmit_bh(void *param)
 {
 	struct ndis_handle *handle = (struct ndis_handle *)param;
-	struct ndis_packet *packet;
-	int res;
+	int n;
 
 	TRACEENTER3("send status is %08X", handle->send_status);
 
 	while (handle->send_status == 0 && handle->xmit_ring_pending > 0) {
-		packet = handle->xmit_ring[handle->xmit_ring_start];
-		res = send_packet(handle, packet);
-
-		/* If the driver returns...
-		 * NDIS_STATUS_SUCCESS - we own the packet and
-		 *    driver will not call NdisMSendComplete.
-		 * NDIS_STATUS_PENDING - the driver owns the packet
-		 *    and will return it using NdisMSendComplete.
-		 * NDIS_STATUS_RESOURCES - (driver is serialized)
-		 *    Requeue it when resources are available.
-		 * NDIS_STATUS_FAILURE - drop the packet?
-		 */
-		switch (res) {
-		case NDIS_STATUS_SUCCESS:
-			sendpacket_done(handle, packet);
-			handle->send_status = 0;
-			break;
-		case NDIS_STATUS_PENDING:
-			break;
-		case NDIS_STATUS_RESOURCES:
-			/* serialized driver - this packet will be
-			 * tried again */
-			handle->send_status = res;
-			return;
-
-		case NDIS_STATUS_FAILURE:
-			/* free and drop the packet */
-			free_packet(handle, packet);
-			break;
-		default:
-			ERROR("Unknown status code %08X", res);
-			free_packet(handle, packet);
-			break;
-		}
+		n = send_packets(handle, handle->xmit_ring_start,
+				 handle->xmit_ring_pending);
 
 		wrap_spin_lock(&handle->xmit_ring_lock);
 		handle->xmit_ring_start =
-			(handle->xmit_ring_start + 1) % XMIT_RING_SIZE;
-		handle->xmit_ring_pending--;
+			(handle->xmit_ring_start + n) % XMIT_RING_SIZE;
+		handle->xmit_ring_pending -= n;
 		wrap_spin_unlock(&handle->xmit_ring_lock);
 		if (netif_queue_stopped(handle->net_dev))
 			netif_wake_queue(handle->net_dev);
@@ -841,8 +845,7 @@ int ndis_resume_pci(struct pci_dev *pdev)
 
 		miniport = &handle->driver->miniport_char;
 		/*
-		if (miniport->pnp_event_notify)
-		{
+		if (miniport->pnp_event_notify) {
 			INFO("%s", "calling pnp_event_notify");
 			miniport->pnp_event_notify(handle,
 			NDIS_PNP_PROFILE_CHANGED,
@@ -1361,6 +1364,28 @@ int setup_dev(struct net_device *dev)
 		return -EINVAL;
 	}
 	memcpy(&dev->dev_addr, mac, ETH_ALEN);
+
+	handle->max_send_packets = 1;
+	if (handle->driver->miniport_char.send_packets) {
+		res = miniport_query_int(handle, OID_GEN_MAXIMUM_SEND_PACKETS,
+					 &handle->max_send_packets);
+		DBGTRACE2("maximum send packets supported by driver: %d",
+			  handle->max_send_packets);
+		if (res == NDIS_STATUS_NOT_SUPPORTED)
+			handle->max_send_packets = 1;
+		else if (handle->max_send_packets > XMIT_RING_SIZE)
+			handle->max_send_packets = XMIT_RING_SIZE;
+
+		handle->xmit_array = kmalloc(sizeof(struct ndis_packet *) *
+					     handle->max_send_packets,
+					     GFP_KERNEL);
+		if (!handle->xmit_array) {
+			ERROR("couldn't allocate memory for tx_packets");
+			return -EINVAL;
+		}
+	}
+	DBGTRACE2("maximum send packets used by ndiswrapper: %d",
+		  handle->max_send_packets);
 
 	memset(&wrqu, 0, sizeof(wrqu));
 

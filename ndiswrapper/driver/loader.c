@@ -716,11 +716,7 @@ static int start_driver(struct ndis_driver *driver)
 		}
 #endif
 	} else if (driver->bustype == NDIS_USB_BUS) {
-#ifndef CONFIG_USB
-		printk(KERN_ERR "driver %s requires USB support, but USB "
-		       "is not supported in this kernel", driver->name);
-		TRACEEXIT1(return -EINVAL);
-#endif
+#ifdef CONFIG_USB
 		driver->idtable.usb =
 			kmalloc(sizeof(struct usb_device_id) *
 			        (driver->nr_devices+1), GFP_KERNEL);
@@ -748,12 +744,6 @@ static int start_driver(struct ndis_driver *driver)
 		driver->driver.usb.probe = ndis_init_one_usb;
 		driver->driver.usb.disconnect =
 			__devexit_p(ndis_remove_one_usb);
-		/* Currently, suspend/resume is experimental for USB
-		 * and therefore disabled. */
-#if 0
-		driver->driver.usb.suspend = ndis_suspend_usb;
-		driver->driver.usb.resume = ndis_resume_usb;
-#endif
 		res = usb_register(&driver->driver.usb);
 		if (res) {
 			ERROR("couldn't register driver %s", driver->name);
@@ -762,6 +752,11 @@ static int start_driver(struct ndis_driver *driver)
 			driver->dev_registered = 1;
 			TRACEEXIT1(return 0);
 		}
+#else
+		printk(KERN_ERR "driver %s requires USB support, but USB "
+		       "is not supported in this kernel", driver->name);
+		TRACEEXIT1(return -EINVAL);
+#endif
 	} else {
 		printk(KERN_ERR "bus type %d of driver %s unsupported\n",
 		       driver->bustype, driver->name);
