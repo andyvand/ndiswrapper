@@ -134,8 +134,12 @@ do {									\
 	__ret;								\
 })
 
+#ifndef preempt_enable
 #define preempt_enable()  (void)0
+#endif
+#ifndef preempt_disable
 #define preempt_disable() (void)0
+#endif
 #endif // LINUX_VERSION_CODE <= KERNEL_VERSION(2,6,0)
 
 /* Interrupt backwards compatibility stuff */
