@@ -447,6 +447,26 @@ enum nt_obj_type {
 	NT_OBJ_TIMER,
 };
 
+struct common_body_header {
+	CSHORT type;
+	CSHORT size;
+};
+
+struct object_header {
+	struct unicode_string name;
+	struct list_entry entry;
+	LONG ref_count;
+	LONG handle_count;
+	BOOLEAN close_in_process;
+	BOOLEAN permanent;
+	BOOLEAN inherit;
+	void *parent;
+	void *object_type;
+	void *security_desc;
+	CSHORT type;
+	CSHORT size;
+};
+
 struct ktimer {
 	struct dispatch_header dispatch_header;
 	ULONGLONG due_time;

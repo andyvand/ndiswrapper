@@ -243,7 +243,7 @@ STDCALL void WRAP_EXPORT(NdisFreeMemory)
 	struct ndis_work_entry *ndis_work_entry;
 	struct ndis_free_mem_work_item *free_mem;
 
-	TRACEENTER3("addr = %p, length = %u, flags = %08X", addr, length, flags);
+	TRACEENTER3("addr = %p, flags = %08X", addr, flags);
 
 	if (!addr)
 		TRACEEXIT3(return);

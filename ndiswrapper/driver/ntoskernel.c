@@ -1342,6 +1342,38 @@ STDCALL LONG WRAP_EXPORT(KeReleaseMutex)
 	return mutex->u.count;
 }
 
+_FASTCALL void WRAP_EXPORT(ObfDereferenceObject)
+	(FASTCALL_DECL_1(void *object))
+{
+	struct object_header *header;
+	LONG ref_count;
+	BOOLEAN permanent;
+	ULONG handle_count;
+
+	if (!object)
+		TRACEEXIT3(return);
+
+	header = container_of(&((struct common_body_header *)object)->type,
+			      struct object_header, type);
+	permanent = header->permanent;
+	handle_count = header->handle_count;
+	ref_count = InterlockedDecrement(FASTCALL_ARGS_1(&header->ref_count));
+	if (ref_count < 0 || permanent)
+		TRACEEXIT3(return);
+	/* since we didn't allocate it, we don't free it */
+	/*
+	  if (ref_count == 0 && handle_count == 0)
+		kfree(header);
+	*/
+	TRACEEXIT3(return);
+}
+
+_FASTCALL void WRAP_EXPORT(ObDereferenceObject)
+	(FASTCALL_DECL_1(void *object))
+{
+	ObfDereferenceObject(FASTCALL_ARGS_1(object));
+	TRACEEXIT3(return);
+}
 
 NOREGPARM NT_STATUS WRAP_EXPORT(WmiTraceMessage)
 	(void *tracehandle, ULONG message_flags,
