@@ -141,9 +141,6 @@ struct ndis_packet {
 	struct ndis_packet_extension extension;
 
 	/* ndiswrapper specific info */
-	/* Atheros driver messes up private.pool field, so we use
-	 * another field to store pool */
-	void *pool;
 	struct ndis_packet *next;
 	struct scatterlist *sg_list;
 	unsigned int sg_ents;
