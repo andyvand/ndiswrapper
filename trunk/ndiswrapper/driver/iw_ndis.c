@@ -1545,14 +1545,7 @@ static int wpa_associate(struct net_device *dev,
 		TRACEEXIT(return -EINVAL);
 	}
 
-	if (set_auth_mode(handle, auth_mode))
-		TRACEEXIT(return -EINVAL);
-	if (set_encr_mode(handle, encr_mode))
-		TRACEEXIT(return -EINVAL);
-
-	if (set_essid(handle, ssid, wpa_assoc_info.ssid_len))
-		TRACEEXIT(return -EINVAL);
-
+	/* set channel */
 	for (i = 0; i < (sizeof(freq_chan)/sizeof(freq_chan[0])); i++)
 	{
 		if (wpa_assoc_info.freq == freq_chan[i])
@@ -1566,8 +1559,34 @@ static int wpa_associate(struct net_device *dev,
 		}
 	}
 
-	if (set_auth_mode(handle, auth_mode))
+	/* set ssid */
+	if (set_essid(handle, ssid, wpa_assoc_info.ssid_len))
 		TRACEEXIT(return -EINVAL);
+
+	/* set encryption/authentication modes until they are set */
+	for (i = 0; i < 4; i++)
+	{
+		int mode, done;
+
+		done = 1;
+
+		if (set_auth_mode(handle, auth_mode))
+			TRACEEXIT(return -EINVAL);
+		if (set_encr_mode(handle, encr_mode))
+			TRACEEXIT(return -EINVAL);
+
+		query_int(handle, NDIS_OID_AUTH_MODE, &mode);
+		if (mode != auth_mode)
+			done = 0;
+		query_int(handle, NDIS_OID_ENCR_STATUS, &mode);
+		if (mode != encr_mode)
+			done = 0;
+
+		if (done)
+			break;
+		set_current_state(TASK_INTERRUPTIBLE);
+		schedule_timeout(HZ/100);
+	}
 
 	TRACEEXIT(return 0);
 }
