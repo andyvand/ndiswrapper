@@ -70,13 +70,16 @@ iwconfig command:
 
 #iwconfig ethX mode Managed essid someid
 
+If you use vendor tools always make sure that mode is set to Managed.
+Auto will not work!
+
 8. Automate
 -----------
 When you have a wokring setup you may want to automate the driver-loading
 
-* First write a script that does insmod and loaddriver.
-
 For kernel 2.6 do:
+
+* First write a script that does insmod and loaddriver.
 
 * Add this line to /etc/modprobe.conf:
 install ethX <path to your script>
@@ -90,5 +93,7 @@ a patch.
 
 For kernel 2.4 do:
 
-To be written.
+* Add these line to /etc/modules.conf:
+alias eth1 ndiswrapper
+post-install ethX /path/to/loaddriver x y  /path/to/driver.sys /path/to/driver.inf 
 
