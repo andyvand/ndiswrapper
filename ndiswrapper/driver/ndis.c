@@ -709,7 +709,6 @@ STDCALL void NdisMSetPeriodicTimer(struct ndis_timer **timer_handle,
 {
 
 	struct ndis_timer *ndis_timer = *timer_handle;
-	DBGTRACE("%s %08x, %d\n", __FUNCTION__, (int)ndis_timer, ms);
 	ndis_timer->timer.expires = jiffies + (ms * HZ) / 1000;
 	ndis_timer->repeat = (ms * HZ) / 1000;
 	add_timer(&ndis_timer->timer);
@@ -720,6 +719,7 @@ STDCALL void NdisMSetPeriodicTimer(struct ndis_timer **timer_handle,
  */
 STDCALL void NdisMCancelTimer(struct ndis_timer **timer_handle, char *canceled)
 {
+	DBGTRACE("%s\n", __FUNCTION__);
 	(*timer_handle)->repeat = 0;
 	*canceled = del_timer_sync(&(*timer_handle)->timer);
 }
@@ -1039,7 +1039,7 @@ STDCALL void NdisInitializeEvent(struct ndis_event *event)
 	event->state = 0;
 }
                                                                                                                                                                                                                                     
-int NdisWaitEvent(struct ndis_event *event, int timeout)
+STDCALL int NdisWaitEvent(struct ndis_event *event, int timeout)
 {
 	DBGTRACE("%s %08x %08x\n", __FUNCTION__, (int)event, timeout);
 	wait_event(event_wq, event->state == 1);
@@ -1047,21 +1047,13 @@ int NdisWaitEvent(struct ndis_event *event, int timeout)
 	return 1;
 }
 
-void NdisSetEvent(struct ndis_event *event)
+STDCALL void NdisSetEvent(struct ndis_event *event)
 {
-	int i;
-	int *x = (int*) getSp();
-	DBGTRACE("%s %08x\n", __FUNCTION__, (int)event);
-	for(i = 0; i < 10; i++)
-	{
-		printk("%08x\n", x[i]);
-	}
-
 	event->state = 1;
 	wake_up(&event_wq);
 }
 
-void NdisResetEvent(struct ndis_event *event)
+STDCALL void NdisResetEvent(struct ndis_event *event)
 {
 	DBGTRACE("%s %08x\n", __FUNCTION__, (int)event);
 	event->state = 0;
