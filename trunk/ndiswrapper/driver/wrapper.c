@@ -43,13 +43,15 @@
 #endif
 
 #ifndef NDISWRAPPER_VERSION
-#error You must run make from the toplevel directory
+#error ndiswrapper version is not defined; run 'make' only from ndiswrapper \
+	directory or driver directory
 #endif
 
 static char *if_name = "wlan%d";
 int proc_uid, proc_gid;
 static int hangcheck_interval;
 int debug;
+spinlock_t spinlock_kspin_lock;
 
 NW_MODULE_PARM_STRING(if_name, 0400);
 MODULE_PARM_DESC(if_name, "Network interface name or template "
@@ -455,15 +457,14 @@ static void ndis_set_rx_mode(struct net_device *dev)
 	schedule_work(&handle->wrapper_worker);
 }
 
-static struct ndis_packet *alloc_packet(struct ndis_handle *handle,
-					ndis_buffer *buffer)
+static struct ndis_packet *allocate_send_packet(struct ndis_handle *handle,
+						ndis_buffer *buffer)
 {
 	struct ndis_packet *packet;
 
-	packet = kmalloc(sizeof(struct ndis_packet), GFP_ATOMIC);
+	packet = allocate_ndis_packet();
 	if (!packet)
 		return NULL;
-
 	memset(packet, 0, sizeof(*packet));
 
 	packet->private.oob_offset = offsetof(struct ndis_packet, oob_tx);
@@ -492,7 +493,8 @@ static struct ndis_packet *alloc_packet(struct ndis_handle *handle,
 	return packet;
 }
 
-static void free_packet(struct ndis_handle *handle, struct ndis_packet *packet)
+static void free_send_packet(struct ndis_handle *handle,
+			     struct ndis_packet *packet)
 {
 	ndis_buffer *buffer;
 
@@ -511,10 +513,10 @@ static void free_packet(struct ndis_handle *handle, struct ndis_packet *packet)
 
 	DBGTRACE3("freeing buffer %p", buffer);
 	kfree(MmGetMdlVirtualAddress(buffer));
-	IoFreeMdl(buffer);
+	free_mdl(buffer);
 
 	DBGTRACE3("freeing packet %p", packet);
-	kfree(packet);
+	free_ndis_packet(packet);
 	TRACEEXIT3(return);
 }
 
@@ -540,7 +542,7 @@ static int send_packets(struct ndis_handle *handle, unsigned int start,
 
 	if (miniport->send_packets) {
 		unsigned int i;
-		/* copy packets from xmit_ring to linear xmit_array array */
+		/* copy packets from xmit ring to linear xmit array */
 		for (i = 0; i < n; i++) {
 			int j = (start + i) % XMIT_RING_SIZE;
 			handle->xmit_array[i] = handle->xmit_ring[j];
@@ -563,7 +565,7 @@ static int send_packets(struct ndis_handle *handle, unsigned int start,
 					break;
 				case NDIS_STATUS_FAILURE:
 				default:
-					free_packet(handle, packet);
+					free_send_packet(handle, packet);
 					break;
 				}
 			}
@@ -586,7 +588,7 @@ static int send_packets(struct ndis_handle *handle, unsigned int start,
 			sent = 0;
 			break;
 		case NDIS_STATUS_FAILURE:
-			free_packet(handle, packet);
+			free_send_packet(handle, packet);
 			break;
 		}
 	}
@@ -633,7 +635,7 @@ void sendpacket_done(struct ndis_handle *handle, struct ndis_packet *packet)
 	irql = kspin_lock(&handle->send_packet_done_lock, PASSIVE_LEVEL);
 	handle->stats.tx_bytes += packet->private.len;
 	handle->stats.tx_packets++;
-	free_packet(handle, packet);
+	free_send_packet(handle, packet);
 	kspin_unlock(&handle->send_packet_done_lock, irql);
 	TRACEEXIT3(return);
 }
@@ -657,20 +659,19 @@ static int start_xmit(struct sk_buff *skb, struct net_device *dev)
 	if (!data)
 		return 1;
 
-	buffer = IoAllocateMdl(data, skb->len, FALSE, FALSE, NULL);
+	buffer = allocate_init_mdl(data, skb->len);
 	if (!buffer) {
 		kfree(data);
 		return 1;
 	}
-	MmInitializeMdl(buffer, data, skb->len);
-
-	skb_copy_and_csum_dev(skb, data);
-	packet = alloc_packet(handle, buffer);
+	packet = allocate_send_packet(handle, buffer);
 	if (!packet) {
 		IoFreeMdl(buffer);
 		kfree(data);
 		return 1;
 	}
+
+	skb_copy_and_csum_dev(skb, data);
 	dev_kfree_skb(skb);
 
 	irql = kspin_lock(&handle->xmit_lock, DISPATCH_LEVEL);
@@ -802,7 +803,7 @@ void ndiswrapper_remove_one_dev(struct ndis_handle *handle)
 		struct ndis_packet *packet;
 
 		packet = handle->xmit_ring[handle->xmit_ring_start];
-		free_packet(handle, packet);
+		free_send_packet(handle, packet);
 		handle->xmit_ring_start =
 			(handle->xmit_ring_start + 1) % XMIT_RING_SIZE;
 		handle->xmit_ring_pending--;
@@ -1495,6 +1496,7 @@ static int __init wrapper_init(void)
 	char *env[] = {NULL};
 	int err;
 
+	spin_lock_init(&spinlock_kspin_lock);
 #if defined(DEBUG) && DEBUG > 0
 	debug = DEBUG;
 #else

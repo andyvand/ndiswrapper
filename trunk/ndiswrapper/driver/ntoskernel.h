@@ -18,6 +18,7 @@
 
 #include <linux/types.h>
 #include <linux/timer.h>
+#include <linux/time.h>
 
 #include <linux/netdevice.h>
 #include <linux/wireless.h>
@@ -379,6 +380,8 @@ STDCALL NTSTATUS KeWaitForSingleObject(void *object, KWAIT_REASON reason,
 					KPROCESSOR_MODE waitmode,
 					BOOLEAN alertable,
 					LARGE_INTEGER *timeout);
+struct mdl *allocate_init_mdl(void *virt, ULONG length);
+void free_mdl(struct mdl *mdl);
 STDCALL struct mdl *IoAllocateMdl(void *virt, ULONG length, BOOLEAN second_buf,
 				  BOOLEAN charge_quota, struct irp *irp);
 STDCALL void IoFreeMdl(struct mdl *mdl);

@@ -39,6 +39,12 @@ static KSPIN_LOCK ndis_work_list_lock;
 static void ndis_worker(void *data);
 static void free_handle_ctx(struct ndis_handle *handle);
 
+/* Some drivers allocate all NDIS_PACKETs they need at the beginning
+ * and others allocate them quite often - every time a packet is
+ * sent/received. We use cache pool for this to avoid memory
+ * fragmentation, just like MDLs */
+static kmem_cache_t *packet_cache;
+
 /* ndis_init is called once when module is loaded */
 int ndis_init(void)
 {
@@ -47,12 +53,22 @@ int ndis_init(void)
 	INIT_LIST_HEAD(&ndis_work_list);
 	INIT_LIST_HEAD(&handle_ctx_list);
 	kspin_lock_init(&ndis_work_list_lock);
+	packet_cache = kmem_cache_create("ndis_packet",
+					 sizeof(struct ndis_packet), 0, 0,
+					 NULL, NULL);
+	if (!packet_cache) {
+		ERROR("couldn't allocate packet cache");
+		return -ENOMEM;
+	}
 	return 0;
 }
 
 /* ndis_exit is called once when module is removed */
 void ndis_exit(void)
 {
+	if (kmem_cache_destroy(packet_cache))
+		ERROR("Windows driver didn't free packet(s)");
+	return;
 }
 
 /* ndis_exit_handle is called for each handle */
@@ -1033,6 +1049,19 @@ STDCALL void WRAP_EXPORT(NdisMFreeSharedMemory)
 	TRACEEXIT3(return);
 }
 
+/* Some drivers allocate NDIS_BUFFER (aka MDL) very often; instead of
+ * allocating and freeing with kernel functions, we chain them into
+ * ndis_buffer_pool. When an MDL is freed, it is added to the list of
+ * free MDLs. When allocated, we first check if there is one in free
+ * list and if so just return it; otherwise, we allocate a new one and
+ * return that. This reduces memory fragmentation. Windows DDK says
+ * that the driver itself shouldn't check what is returned in
+ * pool_handle, presumably because buffer pools are not used in
+ * XP. However, as long as driver follows rest of the semantics - that
+ * it should indicate maximum number of MDLs used with num_descr and
+ * pass the same pool_handle in other buffer functions, this should
+ * work. Sadly, though, NdisFreeBuffer doesn't pass the pool_handle,
+ * so we use 'process' field of MDL to store pool_handle. */
 STDCALL void WRAP_EXPORT(NdisAllocateBufferPool)
 	(NDIS_STATUS *status, struct ndis_buffer_pool **pool_handle,
 	 UINT num_descr)
@@ -1221,6 +1250,16 @@ STDCALL UINT WRAP_EXPORT(NdisPacketPoolUsage)
 	return i;
 }
 
+struct ndis_packet *allocate_ndis_packet(void)
+{
+	return kmem_cache_alloc(packet_cache, GFP_ATOMIC);
+}
+
+void free_ndis_packet(struct ndis_packet *packet)
+{
+	kmem_cache_free(packet_cache, packet);
+}
+
 STDCALL void WRAP_EXPORT(NdisAllocatePacket)
 	(NDIS_STATUS *status, struct ndis_packet **packet,
 	 struct ndis_packet_pool *pool)
@@ -1240,7 +1279,7 @@ STDCALL void WRAP_EXPORT(NdisAllocatePacket)
 			descr = pool->free_descr;
 			pool->free_descr = descr->next;
 		} else
-			descr = kmalloc(sizeof(*descr), GFP_ATOMIC);
+			descr = kmem_cache_alloc(packet_cache, GFP_ATOMIC);
 	}
 
 	if (descr) {
@@ -1297,7 +1336,7 @@ STDCALL void WRAP_EXPORT(NdisFreePacketPool)
 	while (cur) {
 		prev = cur;
 		cur = cur->next;
-		kfree(prev);
+		kmem_cache_free(packet_cache, prev);
 	}
 	kspin_unlock(&pool->lock, irql);
 	kfree(pool);
