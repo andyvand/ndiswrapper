@@ -586,6 +586,7 @@ _FASTCALL static unsigned long IofCallDriver(int dummy, struct irp *irp,
 
 	if (stack->major_fn == IRP_MJ_INTERNAL_DEVICE_CONTROL) {
 		switch (stack->params.ioctl.code) {
+#ifdef CONFIG_USB
 			case IOCTL_INTERNAL_USB_SUBMIT_URB:
 				ret = usb_submit_nt_urb(dev_obj->device.usb,
 					stack->params.generic.arg1, irp);
@@ -594,6 +595,7 @@ _FASTCALL static unsigned long IofCallDriver(int dummy, struct irp *irp,
 			case IOCTL_INTERNAL_USB_RESET_PORT:
 				ret = usb_reset_port(dev_obj->device.usb);
 				break;
+#endif
 
 			default:
 				ERROR("ioctl %08lX NOT IMPLEMENTED!\n",

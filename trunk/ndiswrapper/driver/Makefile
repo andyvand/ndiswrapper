@@ -45,7 +45,18 @@ ntoskernel.h : ndiswrapper.h
 usb.o: usb.c usb.h ndis.h
 
 OBJS := wrapper.o iw_ndis.o pe_loader.o ntoskernel.o ndis.o \
-		  misc_funcs.o proc.o divdi3.o hal.o usb.o
+		  misc_funcs.o proc.o divdi3.o hal.o
+
+ifeq ($(KPSUB),24)
+-include $(KSRC)/.config
+endif
+
+ifeq ($(CONFIG_USB),y)
+OBJS += usb.o
+endif
+ifeq ($(CONFIG_USB),m)
+OBJS += usb.o
+endif
 
 ifdef DEBUG
 CFLAGS += -DDEBUG=$(DEBUG) -g -DDEBUG_TIMER
