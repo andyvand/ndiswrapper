@@ -85,7 +85,7 @@ fi
 
 # locate PCI id
 
-NCARDS=$(lspci | grep 802.11 | wc -l)
+NCARDS=$(lspci | grep 'Network controller' | egrep (802.11|Wireless) | wc -l)
 
 if [ ${NCARDS} -gt 1 ]; then
     error "You seem to have more than one 802.11 card; report output of lspci"
@@ -151,7 +151,7 @@ fi
 # install loaddriver and create loadndiswrapper
 
 while :; do
-    get_resp "Which directory should the loaddriver be installed in?" \
+    get_resp "Which directory should the loadndisdriver be installed in?" \
 	"${LOADER_DIR}"
     LOADER_DIR=${RESP}
 
