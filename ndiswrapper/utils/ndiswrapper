@@ -21,7 +21,7 @@ my @sections;
 my %strings;
 my %version;
 my $driver_name;
-my $confdir = "/etc/ndiswrapper";
+my $confdir = "/tmp/ndiswrapper";
 my $hotplug_conf = "modules.ndiswrapper";
 my $instdir;
 my %fuzzlist;
@@ -811,28 +811,30 @@ sub copyfiles
 
 	  last if (!$line);
 	  last if ($line =~ /^\[/);
-
-		{
-			$line =~ s/^;//;
-			$line = trim(remComment($line));
-			$line =~ s/,+.*//;
-			$line = trim($line);
-			my $nocopy = 0;
-			for(my $j = 0; $j < @copy_blacklist; $j++)
+	  my @files = split(",", $line);
+	  for (my $j = 0; $j < @files; $j++)
+	    {
+	      my $file = $files[$j];
+	      $file =~ s/^;//;
+	      $file = trim(remComment($file));
+	      $file =~ s/,+.*//;
+	      $file = trim($file);
+	      my $nocopy = 0;
+	      for(my $k = 0; $k < @copy_blacklist; $k++)
 			{
-				if($copy_blacklist[$j] eq lc($line))
+				if($copy_blacklist[$k] eq lc($file))
 				{
 					$nocopy = 1;
 				}
 			}
 
-			my $dir = finddir($line);
+			my $dir = finddir($file);
 			if($dir)
 			{
 				$dir = findfile("", $dir);
 			}
 
-			my $realname = findfile($dir, $line);
+			my $realname = findfile($dir, $file);
 
 			if($realname)
 			{
@@ -850,7 +852,7 @@ sub copyfiles
 			}
 			else
 			{
-				print STDERR "Warning: Cannot locate $line\n";
+				print STDERR "Warning: Cannot locate $file\n";
 			}
 			
 		}
