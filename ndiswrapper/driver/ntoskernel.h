@@ -815,6 +815,8 @@ IofCompleteRequest(FASTCALL_DECL_2(struct irp *irp, CHAR prio_boost));
 _FASTCALL void
 KefReleaseSpinLockFromDpcLevel(FASTCALL_DECL_1(KSPIN_LOCK *lock));
 
+void dump_bytes(const char *where, const u8 *ip);
+
 #define raise_irql(irql) KfRaiseIrql(FASTCALL_ARGS_1(irql))
 #define lower_irql(irql) KfLowerIrql(FASTCALL_ARGS_1(irql))
 

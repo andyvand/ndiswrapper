@@ -793,23 +793,40 @@ ULONGLONG ticks_1601(void)
 
 void *get_sp(void)
 {
-	volatile unsigned long i;
+	ULONG_PTR i;
 
 #ifdef CONFIG_X86_64
-	asm("movq %rsp,(%rsp,1)");
+	asm("movq %%rsp, %0\n" : "=g"(i));
 #else
-	asm("movl %esp,(%esp,1)");
+	asm("movl %%esp, %0\n" : "=g"(i));
 #endif
 
 	return (void *)i;
 }
 
-void inline my_dumpstack(void)
+void inline dump_stack(void)
 {
 	void *sp = get_sp();
 	int i;
 	for (i = 0; i < 20; i++)
-		printk("%p\n", (void *)((long *)sp)[i]);
+		printk(KERN_DEBUG "sp[%d] = %p\n",
+		       i, (void *)((ULONG_PTR *)sp)[i]);
+}
+
+void dump_bytes(const char *where, const u8 *ip)
+{
+	int i, j;
+	u8 code[50];
+
+	memset(code, 0, sizeof(code));
+	for (i = j = 0; i < 16; i++, j += 3) {
+		if (j+3 > sizeof(code))
+			ERROR("not enough space: %d > %d", j+3, sizeof(code));
+		else
+			sprintf(&code[j], "%02x ", ip[i]);
+	}
+	code[sizeof(code)-1] = 0;
+	printk(KERN_DEBUG "%s: %p: %s\n", where, ip, code);
 }
 
 #include "misc_funcs_exports.h"

@@ -235,9 +235,9 @@ static int import(void *image, struct coffpe_import_dirent *dirent, char *dll)
 			ERROR("Unknown symbol: %s:%s", dll, symname);
 			ret = -1;
 		}
-		DBGTRACE1("Importing rva %08X: %s : %s",
-			  ((UINT)&address_tbl[i] - (UINT)image),
-			  dll, symname); 
+		DBGTRACE1("Importing rva: %08X, %08X, %08X: %s : %s",
+			  (UINT)address_tbl[i], (UINT)adr,
+			  ((UINT)address_tbl[i] - (UINT)image), dll, symname);
 		address_tbl[i] = (ULONG_PTR)adr;
 	}
 	return ret;
