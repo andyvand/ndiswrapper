@@ -280,8 +280,6 @@ void call_halt(struct ndis_handle *handle)
 
 static void free_timers(struct ndis_handle *handle)
 {
-	char x;
-
 	/* Cancel any timers left by bugyy windows driver
 	 * Also free the memory for timers
 	 */
@@ -292,12 +290,8 @@ static void free_timers(struct ndis_handle *handle)
 		DBGTRACE1("fixing up timer %p, timer->list %p",
 			  timer, &timer->list);
 		list_del(&timer->list);
-		if (timer->active)
-		{
-			WARNING("%s", "Fixing an active timer left "
-				" by buggy windows driver");
-			wrapper_cancel_timer(timer, &x);
-		}
+		timer->repeat = 0;
+		del_timer_sync(&timer->timer);
 		wrap_kfree(timer);
 	}
 }

@@ -1262,7 +1262,7 @@ NdisSetTimer(struct ndis_timer *timer_handle, unsigned int ms)
 	unsigned long expires = jiffies + (ms * HZ) / 1000;
 
 	TRACEENTER4("%p, %u", timer_handle, ms);
-	wrapper_set_timer(timer_handle->ktimer.wrapper_timer, expires, 0);
+	wrapper_set_timer(timer_handle->ktimer.wrapper_timer, expires, 0, NULL);
 	TRACEEXIT4(return);
 }
 
@@ -1274,7 +1274,8 @@ NdisMSetPeriodicTimer(struct ndis_miniport_timer *timer_handle,
 	unsigned long repeat = ms * HZ / 1000;
 
 	TRACEENTER4("%p, %u", timer_handle, ms);
-	wrapper_set_timer(timer_handle->ktimer.wrapper_timer, expires, repeat);
+	wrapper_set_timer(timer_handle->ktimer.wrapper_timer,
+	                  expires, repeat, NULL);
 	TRACEEXIT4(return);
 }
 
