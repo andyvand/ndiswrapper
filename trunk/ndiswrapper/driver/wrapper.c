@@ -972,7 +972,7 @@ int ndis_suspend_usb(struct usb_interface *intf, u32 state)
 		return 0;
 
 	DBGTRACE2("%s: detaching device", dev->name);
-	netif_device_detach(dev);
+//	netif_device_detach(dev);
 	hangcheck_del(handle);
 	statcollector_del(handle);
 
@@ -980,17 +980,21 @@ int ndis_suspend_usb(struct usb_interface *intf, u32 state)
 	pm_state = NDIS_PM_STATE_D3;
 	/* use copy; query_power changes this value */
 	i = pm_state;
+	/*
 	res = query_int(handle, NDIS_OID_PNP_QUERY_POWER, &i);
 	DBGTRACE2("%s: query power to state %d returns %08X",
 		  dev->name, pm_state, res);
 	if (res)
 		WARNING("No pnp capabilities for pm (%08X)", res);
+	*/
 
+	/*
 	res = set_int(handle, NDIS_OID_PNP_SET_POWER, pm_state);
 	DBGTRACE2("%s: setting power to state %d returns %08X",
 		  dev->name, pm_state, res);
 	if (res)
 		WARNING("No pnp capabilities for pm (%08X)", res);
+	*/
 	set_bit(HW_SUSPENDED, &handle->hw_status);
 
 	DBGTRACE2("%s: device suspended", dev->name);
@@ -1013,11 +1017,13 @@ int ndis_resume_usb(struct usb_interface *intf)
 	if (!test_bit(HW_SUSPENDED, &handle->hw_status))
 		return 0;
 
+	/*
 	res = set_int(handle, NDIS_OID_PNP_SET_POWER, NDIS_PM_STATE_D0);
 	DBGTRACE2("%s: setting power to state %d returns %d",
 	     dev->name, NDIS_PM_STATE_D0, res);
 	if (res)
 		WARNING("No pnp capabilities for pm (%08X)", res);
+	*/
 
 	miniport = &handle->driver->miniport_char;
 	/*
@@ -1029,17 +1035,19 @@ int ndis_resume_usb(struct usb_interface *intf)
 	}
 	*/
 
+	/*
 	if (miniport->hangcheck && miniport->hangcheck(handle->adapter_ctx))
 	{
 		DBGTRACE2("%s", "resetting device");
 		doreset(handle);
 	}
+	*/
 	set_int(handle, NDIS_OID_BSSID_LIST_SCAN, 0);
 
 	set_bit(SET_ESSID, &handle->wrapper_work);
 	schedule_work(&handle->wrapper_worker);
 
-	netif_device_attach(dev);
+	//netif_device_attach(dev);
 
 	hangcheck_add(handle);
 	statcollector_add(handle);
@@ -1069,6 +1077,16 @@ static void wrapper_worker_proc(void *param)
 		const int assoc_size = sizeof(*ndis_assoc_info) +
 			IW_CUSTOM_MAX;
 
+		if (handle->link_status == 0)
+		{
+			for (i = 0; i < MAX_ENCR_KEYS; i++)
+			{
+				handle->encr_info.keys[i].length = 0;
+				memset(&handle->encr_info.keys[i].key[i], 0,
+						sizeof(handle->encr_info.keys[i].length));
+			}
+			return;
+		}
 		if (handle->auth_mode != AUTHMODE_WPA &&
 		    handle->auth_mode != AUTHMODE_WPAPSK)
 			return;
@@ -1534,6 +1552,7 @@ static void *ndis_init_one_usb(struct usb_device *udev, unsigned int ifnum,
 	struct ndis_handle *handle;
 	struct net_device *dev;
 	struct miniport_char *miniport;
+//	unsigned long profile_inf = NDIS_POWER_PROFILE_AC;
 
 	TRACEENTER1("%04x:%04x\n", usb_id->idVendor, usb_id->idProduct);
 
@@ -1565,14 +1584,15 @@ static void *ndis_init_one_usb(struct usb_device *udev, unsigned int ifnum,
 	/* do we need to power up the card explicitly? */
 	set_int(handle, NDIS_OID_PNP_SET_POWER, NDIS_PM_STATE_D0);
 	miniport = &handle->driver->miniport_char;
-
-	/* WUSB54G requires it, maybe other USB drivers as well... */
-	doreset(handle);
-
-	/* Wait a little to let card power up otherwise ifup might fail after
-	   boot */
-	set_current_state(TASK_INTERRUPTIBLE);
-	schedule_timeout(HZ);
+	/*
+	if (miniport->pnp_event_notify)
+	{
+		INFO("%s", "calling pnp_event_notify");
+		miniport->pnp_event_notify(handle->adapter_ctx, NDIS_PNP_PROFILE_CHANGED,
+					 &profile_inf, sizeof(profile_inf));
+		INFO("%s", "done");
+	}
+	*/
 
 	if(setup_dev(handle->net_dev)) {
 		ERROR("%s", "Couldn't setup interface");
@@ -1582,6 +1602,12 @@ static void *ndis_init_one_usb(struct usb_device *udev, unsigned int ifnum,
 	hangcheck_add(handle);
 	statcollector_add(handle);
 	ndiswrapper_procfs_add_iface(handle);
+	set_current_state(TASK_INTERRUPTIBLE);
+	schedule_timeout(HZ);
+
+	/* WUSB54G requires it, maybe other USB drivers as well... */
+	doreset(handle);
+
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
 	TRACEEXIT1(return 0);
 #else
@@ -1624,7 +1650,22 @@ static void __devexit ndis_remove_one(struct ndis_handle *handle)
 
 	/* Make sure all queued packets have been pushed out from
 	 * xmit_bh before we call halt */
-	flush_scheduled_work();
+//	flush_scheduled_work();
+	
+	wrap_spin_lock(&handle->xmit_ring_lock);
+	while (handle->xmit_ring_pending)
+	{
+		struct ndis_buffer *buffer;
+
+		buffer = handle->xmit_ring[handle->xmit_ring_start];
+		kfree(buffer->data);
+		kfree(buffer);
+		handle->xmit_ring_start =
+			(handle->xmit_ring_start + 1) % XMIT_RING_SIZE;
+		handle->xmit_ring_pending--;
+	}
+	wrap_spin_unlock(&handle->xmit_ring_lock);
+		
 	netif_carrier_off(handle->net_dev);
 
 	if (handle->phys_device_obj)
