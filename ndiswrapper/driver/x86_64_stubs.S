@@ -44,14 +44,14 @@ lin_to_win1:
 	# 8  - arg2   -20
 	# 0  - arg1   -28
 lin_to_win5:
-	sub 0x28, %rsp
+	sub $0x28, %rsp
 	mov %r9, 0x20(%rsp)
 	mov %r8, %r9
 	mov %rcx, %r8
 				#   arg2 is already in %rdx
 	mov %rsi, %rcx
 	call *%rdi
-	add 0x28, %rsp
+	add $0x28, %rsp
 	ret
 
 	# 38 / 8  - lin-arg7
@@ -64,16 +64,16 @@ lin_to_win5:
 	# 8  - arg2   -28
 	# 0  - arg1   -30
 lin_to_win6:
-	sub 0x30, %rsp
-	mov 0x38(%rsp), %eax
-	mov %eax, 0x28(%rsp)
+	sub $0x30, %rsp
+	mov 0x38(%rsp), %rax
+	mov %rax, 0x28(%rsp)
 	mov %r9, 0x20(%rsp)
 	mov %r8, %r9
 	mov %rcx, %r8
 				#   arg2 is already in %rdx
 	mov %rsi, %rcx
 	call *%rdi
-	add 0x30, %rsp
+	add $0x30, %rsp
 	ret
 
 
