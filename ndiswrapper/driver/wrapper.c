@@ -1681,20 +1681,6 @@ static int setup_dev(struct net_device *dev)
 		return -1;
 	}
 
-	res = doquery(handle, NDIS_OID_CONFIGURATION, (char *)&ndis_config,
-				  sizeof(ndis_config), &written, &needed);
-	if (res)
-		printk(KERN_ERR "%s: Unable to get the configuration (%08x)\n",
-			   DRV_NAME, res);
-	ndis_config.fh_config.hop_pattern = 0;
-	ndis_config.fh_config.hop_set = 0;
-	ndis_config.fh_config.dwell_time = 0;
-	res = dosetinfo(handle, NDIS_OID_CONFIGURATION, (char *)&ndis_config,
-					sizeof(ndis_config), &written, &needed);
-	if (res)
-		printk(KERN_ERR "%s: Unable to set the configuration (%08X)\n",
-			   DRV_NAME, res);
-
 	packet_filter = (NDIS_PACKET_TYPE_DIRECTED| NDIS_PACKET_TYPE_MULTICAST|
 					 NDIS_PACKET_TYPE_BROADCAST);
 	res = dosetinfo(handle, NDIS_OID_PACKET_FILTER, (char *)&packet_filter,
