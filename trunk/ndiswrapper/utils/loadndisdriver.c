@@ -28,6 +28,8 @@
 #include <limits.h>
 #include <ctype.h>
 #include <dirent.h>
+#include <syslog.h>
+#include <stdlib.h>
 
 #include "../driver/wrapper.h"
 
@@ -38,7 +40,19 @@
 
 void read_conf(FILE *input);
 
-const char *confdir = "/etc/ndiswrapper";
+static const char *confdir = "/etc/ndiswrapper";
+
+static int debug;
+
+#ifndef DRV_VERSION
+#error Compile this file with 'make' in the 'utils' \
+	directory only
+#endif
+
+#define error(args...) do { if (debug)		\
+			syslog(LOG_KERN | LOG_ERR, ## args);} while (0)
+#define info(args...) do { if (debug)		\
+			syslog(LOG_KERN | LOG_INFO, ## args);} while (0)
 
 static int get_filesize(int fd)
 {
@@ -92,7 +106,7 @@ static int put_file(int device, char *filename, int ioctl_nr)
 	put_file.size = size;
 	if (!image)
 	{
-		printf("Unable to locate file.\n");
+		error("Unable to locate file.\n");
 		return -EINVAL;
 	}
 
@@ -106,38 +120,95 @@ static int put_file(int device, char *filename, int ioctl_nr)
 }
 
 
-static int confname_to_put_device(const char *name_orig, struct put_device *put_device)
+static int confname_to_put_device(const char *name_orig,
+				  struct put_device *put_device)
 {
 	char *s;
 	char *name = strdup(name_orig);
-		
+
 	s = basename(name);
 	s[strlen(s)-5] = 0;
 
 	if(strlen(s) == 9)
 	{
-		sscanf(s, "%04x:%04x", &put_device->pci_vendor, &put_device->pci_device);
+		sscanf(s, "%04x:%04x", &put_device->pci_vendor,
+		       &put_device->pci_device);
 		put_device->pci_subdevice = -1;
 		put_device->pci_subvendor = -1;
 	}
-	else if(strlen(s) == 19) 
+	else if(strlen(s) == 19)
 	{
-		sscanf(s, "%04x:%04x:%04x:%04x", &put_device->pci_vendor, &put_device->pci_device, &put_device->pci_subvendor, &put_device->pci_subdevice);
+		sscanf(s, "%04x:%04x:%04x:%04x", &put_device->pci_vendor,
+		       &put_device->pci_device, &put_device->pci_subvendor,
+		       &put_device->pci_subdevice);
 	}
-	
+
 	free(name);
 	return 0;
 }
 
 
-static int put_pci_device(int device, char *conf_file_name)
+static int parse_setting_line(const char *setting_line, char *setting_name,
+			      char *setting_val)
+{
+	const char *s;
+	char *val, *end;
+	int i;
+
+	// We try to be really paranoid parsing settings
+	for (s = setting_line; isspace(*s); s++)
+		;
+
+	// ignore comments and blank lines
+	if (*s == '#' || *s == ';' || *s == '\0')
+		return 0;
+	if ((val = strchr(s, '|')) == NULL ||
+	     (end = strchr(s, '\n')) == NULL)
+	{
+		error("invalid setting1: %s\n", setting_line);
+		return -EINVAL;
+	}
+	for (i = 0; s != val && i < NAME_LEN; s++, i++)
+		setting_name[i] = *s;
+	setting_name[i] = 0;
+	if (*s != '|')
+	{
+		error("invalid setting2: %s\n", setting_line);
+		return -EINVAL;
+	}
+
+	for (i = 0, s++; s != end && i < VAL_LEN ; s++, i++)
+		setting_val[i] = *s;
+	setting_val[i] = 0;
+	if (*s != '\n')
+	{
+		error("invalid setting3: %s\n", setting_line);
+		return -EINVAL;
+	}
+//	info("Found setting: name=%s, val=\"%s\"\n",
+//	       setting_name, setting_val);
+
+	// setting_val can be empty, but not value
+	if (strlen(setting_name) == 0)
+	{
+		error("invalid setting: \"%s\"\n", setting_line);
+		return -EINVAL;
+	}
+
+	return 1;
+}
+
+
+static int put_device(int device, char *conf_file_name)
 {
 
 	struct put_device put_device;
 	char setting_line[SETTING_LEN];
 	struct stat statbuf;
 	FILE *config;
-	
+	char setting_name[NAME_LEN], setting_val[VAL_LEN];
+	int ret;
+
 	if(lstat(conf_file_name, &statbuf))
 	{
 		perror("unable to open config file");
@@ -155,68 +226,39 @@ static int put_pci_device(int device, char *conf_file_name)
 	}
 
 	confname_to_put_device(conf_file_name, &put_device);
-	//printf("%04x:%04x:%04x:%04x\n", put_device.pci_vendor, put_device.pci_device, put_device.pci_subvendor, put_device.pci_subdevice);
 
-	if (ioctl(device, NDIS_PUTDEVICE, &put_device))
-	{
-		perror("Unable to put device (check dmesg for more info)");
-		return -EINVAL;
-	}
-
+	put_device.bustype = -1;
 	while (fgets(setting_line, SETTING_LEN-1, config))
 	{
-		char *val, *s, *end;
-		char setting_name[NAME_LEN], setting_val[VAL_LEN];
-		int i;
-
 		setting_line[SETTING_LEN-1] = 0;
-
-		// We try to be really paranoid parsing settings
-		for (s = setting_line; isspace(*s); s++)
-			;
-		// ignore comments and blank lines
-		if (*s == '#' || *s == ';' || *s == '\0')
+		ret = parse_setting_line(setting_line, setting_name,
+					 setting_val);
+		if (ret == 0)
 			continue;
-		if ((val = strchr(s, '|')) == NULL ||
-		     (end = strchr(s, '\n')) == NULL)
-		{
-			printf("invalid setting1: %s\n", setting_line);
-			goto unload;
-		}
-		for (i = 0; s != val && i < NAME_LEN; s++, i++)
-			setting_name[i] = *s;
-		setting_name[i] = 0;
-		if (*s != '|')
-		{
-			printf("invalid setting2: %s\n", setting_line);
-			goto unload;
-		}
+		if (ret < 0)
+			return -EINVAL;
 
-		for (i = 0, s++; s != end && i < VAL_LEN ; s++, i++)
-			setting_val[i] = *s;
-		setting_val[i] = 0;
-		if (*s != '\n')
+		else if (strcmp(setting_name, "BusType") == 0)
 		{
-			printf("invalid setting3: %s\n", setting_line);
-			goto unload;
-		}
-//		printf("Found setting: name=%s, val=\"%s\"\n",
-//		       setting_name, setting_val);
+			put_device.bustype = strtol(setting_val, NULL, 10);
+			if (put_device.bustype != 0 &&
+			    put_device.bustype != 5)
+			{
+				perror("invalid bustype");
+				return -EINVAL;
+			}
 
-		// setting_val can be empty, but not value
-		if (strlen(setting_name) == 0)
+			if (ioctl(device, NDIS_PUTDEVICE, &put_device))
+			{
+				perror("Unable to put device "
+				       "(check dmesg for more info)");
+				return -EINVAL;
+			}
+		}
+		else
 		{
-			printf("invalid setting: \"%s\"\n", setting_line);
-			goto unload;
-		}
-
-		if (strcmp(setting_name, "ndis_provider") == 0)
-			printf("Provider: %s\n", setting_val);
-		else if (strcmp(setting_name, "ndis_version") == 0)
-			printf("Version: %s\n", setting_val);
-		else {
 			struct put_setting setting;
-			
+
 			setting.name_len = strlen(setting_name);
 			setting.val_str_len = strlen(setting_val);
 			setting.name = setting_name;
@@ -224,18 +266,15 @@ static int put_pci_device(int device, char *conf_file_name)
 
 			if (ioctl(device, NDIS_PUTSETTING, &setting))
 			{
-				printf("Error adding setting: %s\n", setting_name);
-				goto unload;
+				error("Error adding setting: %s\n",
+				       setting_name);
+				return -EINVAL;
 			}
 		}
 	}
 	fclose(config);
 
-	//printf("Calling startdriver ioctl\n");
-	
 	return 0;
-unload:
-	return -EINVAL;
 }
 
 /*
@@ -246,21 +285,21 @@ static int load(int device, char *confdir)
 	int err;
 	struct dirent *dirent;
 	DIR *dir;
-	
+
 	if(chdir(confdir))
 	{
-		fprintf(stderr, "Unable to open config dir %s\n", confdir);
+		error("Unable to open config dir %s\n", confdir);
 		return -1;
 	}
-	
+
 	dir = opendir(".");
 	if(!dir)
 	{
-		fprintf(stderr, "Unable to open config dir %s\n", confdir);
+		error("Unable to open config dir %s\n", confdir);
 		chdir("..");
 		return -1;
 	}
-	
+
 	/* Locate the .sys first */
 	while((dirent = readdir(dir)))
 	{
@@ -268,7 +307,8 @@ static int load(int device, char *confdir)
 		len = strlen(dirent->d_name);
 		if(len > 4 && strcmp(&dirent->d_name[len-4], ".sys") == 0)
 		{
-			if((err = put_file(device, dirent->d_name, NDIS_PUTDRIVER)) != 0)
+			if((err = put_file(device, dirent->d_name,
+					   NDIS_PUTDRIVER)) != 0)
 			{
 				chdir("..");
 				return err;
@@ -276,7 +316,7 @@ static int load(int device, char *confdir)
 			break;
 		}
 	}
-	rewinddir(dir);	
+	rewinddir(dir);
 
 	/* Now add all .conf and other files */
 	while((dirent = readdir(dir)))
@@ -285,7 +325,7 @@ static int load(int device, char *confdir)
 		len = strlen(dirent->d_name);
 		if(len > 5 && strcmp(&dirent->d_name[len-5], ".conf") == 0)
 		{
-			put_pci_device(device, dirent->d_name);
+			put_device(device, dirent->d_name);
 		}
 		else
 		{
@@ -293,13 +333,13 @@ static int load(int device, char *confdir)
 				continue;
 			if(strcmp(dirent->d_name, "..") == 0)
 				continue;
-			if(len > 4 && strcmp(&dirent->d_name[len-4], ".sys") == 0)
+			if(len > 4 && !strcmp(&dirent->d_name[len-4], ".sys"))
 				continue;
-			if(len > 4 && strcmp(&dirent->d_name[len-4], ".inf") == 0)
+			if(len > 4 && !strcmp(&dirent->d_name[len-4], ".inf"))
 				continue;
-			if(len > 4 && strcmp(&dirent->d_name[len-4], ".dll") == 0)
+			if(len > 4 && !strcmp(&dirent->d_name[len-4], ".dll"))
 				continue;
-			if(len > 4 && strcmp(&dirent->d_name[len-4], ".exe") == 0)
+			if(len > 4 && !strcmp(&dirent->d_name[len-4], ".exe"))
 				continue;
 			put_file(device, dirent->d_name, NDIS_PUTFILE);
 		}
@@ -340,7 +380,7 @@ static int loadall(int device)
 
 		load(device, dirent->d_name);
 	}
-	closedir(dir);	
+	closedir(dir);
 	return 0;
 }
 
@@ -396,26 +436,26 @@ int main(int argc, char *argv[0])
 {
 	int device, misc_minor, res;
 
-	if(argc != 2)
+	if (argc < 3)
 	{
-		printf("Usage: %s [-a] [driver]\n", argv[0]);
+		error("Usage: %s <debug> <version> [-a] [driver]\n", argv[0]);
 		return -EINVAL;
 	}
 
 	if((res = chdir(confdir)))
 	{
-		fprintf(stderr, "%s does not exist\n", confdir);
+		error("%s does not exist\n", confdir);
 		return res;
 	}
-	
+
 	misc_minor = get_misc_minor();
 	if(misc_minor == -1)
 	{
-		printf("%s: cannot find minor for kernel module. Module loaded?\n",
-			   argv[0]);
+		error("%s: cannot find minor for kernel module."
+		       "Module loaded?\n", argv[0]);
 		return -EINVAL;
 	}
-	
+
 	device = open_misc_device(misc_minor);
 	if(device == -1)
 	{
@@ -424,16 +464,26 @@ int main(int argc, char *argv[0])
 	}
 
 	dotaint();
-	if(strcmp(argv[1], "-a") == 0)
+
+	debug = atoi(argv[1]);
+	if (debug < 0)
+		return -EINVAL;
+
+	if (strcmp(argv[2], DRV_VERSION))
+		return -EINVAL;
+
+	openlog("loadndisdriver", LOG_CONS | LOG_ODELAY, LOG_KERN);
+	if(strcmp(argv[3], "-a") == 0)
 		res = loadall(device);
 	else
-		res = load(device, argv[1]); 	
+		res = load(device, argv[3]);
 
 	if (!res)
 	{
-//		printf("Drivers loaded successfully\n");
+		info("Drivers loaded successfully\n");
 	}
-	
+
+	closelog();
 	close(device);
 	return res;
 }
