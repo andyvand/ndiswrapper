@@ -1,7 +1,6 @@
-loadndisdriver_OBJS = loadndisdriver.o inf-parser.o
+loadndisdriver_OBJS = loadndisdriver.o
 
-CFLAGS = -g -Wall
-LEX = flex
+CFLAGS = -Wall -g
 
 loadndisdriver: $(loadndisdriver_OBJS) ../driver/wrapper.h
 	gcc -o loadndisdriver $(loadndisdriver_OBJS)
