@@ -1548,7 +1548,7 @@ STDCALL long NdisInterlockedDecrement(long *val)
 	long x;
 //	DBGTRACE("%s: entry\n", __FUNCTION__);
 	spin_lock_irqsave(&atomic_lock, flags);
-	*val--;
+	(*val)--;
 	x = *val;
 	spin_unlock_irqrestore(&atomic_lock, flags);
 	return x;
@@ -1560,7 +1560,7 @@ STDCALL long NdisInterlockedIncrement(long *val)
 	long x;
 //	DBGTRACE("%s: entry\n", __FUNCTION__);
 	spin_lock_irqsave(&atomic_lock, flags);
-	*val++;
+	(*val)++;
 	x = *val;
 	spin_unlock_irqrestore(&atomic_lock, flags);
 	return x;
