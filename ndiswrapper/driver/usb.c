@@ -253,7 +253,7 @@ unsigned long usb_bulk_or_intr_trans(struct usb_device *dev,
 	union pipe_handle pipe_handle;
 	struct urb *urb;
 	unsigned int pipe;
-	int ret;
+	int i, ret;
 	UCHAR endpoint;
 
 	ASSERT(!nt_urb->bulkIntrTrans.transferBufMdl);
@@ -294,7 +294,22 @@ unsigned long usb_bulk_or_intr_trans(struct usb_device *dev,
 			pipe = usb_rcvisocpipe(dev, endpoint);
 		else
 			pipe = usb_sndisocpipe(dev, endpoint);
+		urb->dev = dev;
+		urb->context = irp;
+		urb->pipe = pipe;
+		urb->interval = 1;
+		urb->transfer_flags = nt_urb->isochTrans.transferFlags;
+		urb->transfer_buffer = nt_urb->isochTrans.transferBuf;
+		urb->complete = usb_transfer_complete;
+		urb->number_of_packets = nt_urb->isochTrans.numPackets;
+		urb->transfer_buffer_length =
+			nt_urb->isochTrans.transferBufLen;
+		for (i = 0; i < urb->transfer_buffer_length; i++) {
+			urb->iso_frame_desc[i].offset = i;
+			urb->iso_frame_desc[i].length = 1;
+		}
 		break;
+
 	case USB_ENDPOINT_XFER_BULK:
 		if (nt_urb->bulkIntrTrans.transferFlags &
 		    USBD_TRANSFER_DIRECTION_IN)
@@ -587,7 +602,7 @@ unsigned long usb_submit_nt_urb(struct usb_device *dev, union nt_urb *nt_urb,
 			  nt_urb->ctrlDescReq.transferBufLen);
 
 		ret = usb_get_descriptor(dev, nt_urb->ctrlDescReq.desctype,
-					 nt_urb->ctrlDescReq.descindex,
+					 nt_urb->ctrlDescReq.index,
 					 nt_urb->ctrlDescReq.transferBuf,
 					 nt_urb->ctrlDescReq.transferBufLen);
 		if (ret < 0) {

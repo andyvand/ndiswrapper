@@ -692,7 +692,7 @@ STDCALL NTSTATUS WRAP_EXPORT(KeDelayExecutionThread)
 	long timeout;
 	long t = *interval;
 
-	TRACEENTER3("thread: %p", get_current());
+	TRACEENTER3("thread: %p, interval: %ld", get_current(), t);
 	if (wait_mode != 0)
 		ERROR("illegal wait_mode %d", wait_mode);
 
