@@ -81,6 +81,15 @@ log "module is at:"
 log_cmd "find /lib/modules/$KVERS/ -name ndiswrapper\* | xargs ls -l"
 log ""
 
+# pci devices
+newblock
+log "PCI devices:"
+log_cmd "lspci -n"
+log ""
+log "USB devices:"
+log_cmd "lsusb"
+log ""
+
 while(true); do
     echo "Is it okay to shutdown 'wlan0' interface and reload the module?"
     echo "If loading the module crashes kernel, then say N here"
