@@ -107,8 +107,10 @@ _FASTCALL void WRAP_EXPORT(KfLowerIrql)
 #if DEBUG_IRQL
 		KIRQL irql;
 		irql = KeGetCurrentIrql();
-		if (irql != DISPATCH_LEVEL)
+		if (irql != DISPATCH_LEVEL) {
 			WARNING("IRQL %d != DISPATCH_LEVEL", irql);
+			return;
+		}
 #endif
 		preempt_enable();
 		local_bh_enable();
@@ -146,9 +148,11 @@ _FASTCALL static void WRAP_EXPORT(KefAcquireSpinLockAtDpcLevel)
 	KIRQL irql;
 	TRACEENTER4("lock = %p", lock);
 
+#if DEBUG_IRQL
 	irql = KeGetCurrentIrql();
 	if (irql != DISPATCH_LEVEL)
 		ERROR("irql %d != DISPATCH_LEVEL", irql);
+#endif
 	spin_lock(&lock->spinlock);
 	TRACEEXIT4(return);
 }
@@ -157,8 +161,11 @@ _FASTCALL void WRAP_EXPORT(KefReleaseSpinLockFromDpcLevel)
 	(FASTCALL_DECL_1(KSPIN_LOCK *lock))
 {
 	TRACEENTER4("lock = %p", lock);
+
+#ifdef DEBUG_IRQL
 	if (KeGetCurrentIrql() != DISPATCH_LEVEL)
-		ERROR("%s", "irql != DISPATCH_LEVEL");
+		ERROR("irql != DISPATCH_LEVEL");
+#endif
 
 	spin_unlock(&lock->spinlock);
 
