@@ -766,7 +766,15 @@ void IofCompleteRequest(void){UNIMPL();}
 void IoReleaseCancelSpinLock(void){UNIMPL();}
 void KfReleaseSpinLock(void){UNIMPL();}
 void KeInitializeEvent(void *event){UNIMPL();}
-void RtlCompareMemory(void){UNIMPL();}
+
+unsigned long RtlCompareMemory(char *b, char *a, unsigned long len)
+{
+	unsigned long i;
+	DBGTRACE("%s: Entry\n", __FUNCTION__);
+
+	for(i = 0; (i < len) && a[i] == b[i]; i++);
+		return i;
+}
 
 STDCALL __s64 _alldiv(__s64 a, __s64 b)
 {
