@@ -1351,11 +1351,70 @@ static void check_capa(struct ndis_handle *handle)
 	TRACEEXIT1(return);
 }
 
+int ndis_reinit(struct ndis_handle *handle)
+{
+	/* instead of implementing full shutdown/restart, we (ab)use
+	 * suspend/resume functionality */
+
+	int i = test_bit(ATTR_HALT_ON_SUSPEND, &handle->attributes);
+	set_bit(ATTR_HALT_ON_SUSPEND, &handle->attributes);
+	if (handle->device->bustype == 5) {
+		ndis_suspend_pci(handle->dev.pci, 3);
+		ndis_resume_pci(handle->dev.pci);
+	}
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0) && defined(CONFIG_USB)
+	else {
+		ndis_suspend_usb(handle->intf, 3);
+		ndis_resume_usb(handle->intf);
+	}
+#endif
+	if (!i)
+		clear_bit(ATTR_HALT_ON_SUSPEND, &handle->attributes);
+	return 0;
+}
+
+int ndis_set_mac_addr(struct net_device *dev, void *p)
+{
+	struct ndis_handle *handle = netdev_priv(dev);
+	struct sockaddr *addr = p;
+	struct ndis_config_param param;
+	struct ustring key, ansi;
+	unsigned int ret;
+	unsigned char mac_string[3 * ETH_ALEN];
+	
+	/* string <-> ansi <-> unicode conversion is driving me nuts */
+	ansi.buf = "mac_address";
+	ansi.buflen = ansi.len = strlen(ansi.buf);
+	if (RtlAnsiStringToUnicodeString(&key, &ansi, 1))
+		TRACEEXIT1(return -EINVAL);
+
+	if (mac_to_string(mac_string, addr->sa_data, sizeof(mac_string))) {
+		RtlFreeUnicodeString(&key);
+		TRACEEXIT1(return -EINVAL);
+	}
+	ansi.buf = mac_string;
+	ansi.buflen = ansi.len = sizeof(mac_string);
+	if (RtlAnsiStringToUnicodeString(&param.data.ustring, &ansi, 1) !=
+	    NDIS_STATUS_SUCCESS) {
+		RtlFreeUnicodeString(&key);
+		TRACEEXIT1(return -EINVAL);
+	}
+	param.type = NDIS_SETTING_STRING;
+	NdisWriteConfiguration(&ret, handle, &key, &param);
+	if (ret != NDIS_STATUS_SUCCESS)
+		TRACEEXIT1(return -EINVAL);
+	ndis_reinit(handle);
+	memcpy(dev->dev_addr, addr->sa_data, dev->addr_len);
+	RtlFreeUnicodeString(&key);
+	RtlFreeUnicodeString(&param.data.ustring);
+	TRACEEXIT1(return 0);
+}
+
 static int setup_dev(struct net_device *dev)
 {
 	struct ndis_handle *handle = dev->priv;
+	unsigned int i, res, written, needed;
 	mac_address mac;
-	unsigned int i, written, needed, res;
 	union iwreq_data wrqu;
 
 	if (strlen(if_name) > (IFNAMSIZ-1))
@@ -1367,15 +1426,14 @@ static int setup_dev(struct net_device *dev)
 	dev->name[IFNAMSIZ-1] = '\0';
 
 	DBGTRACE1("%s: Querying for mac", DRV_NAME);
-	res = miniport_query_info(handle, 0x01010102, &mac[0], sizeof(mac),
-				  &written, &needed);
+	res = miniport_query_info(handle, OID_802_3_CURRENT_ADDRESS,
+				  &mac[0], sizeof(mac), &written, &needed);
 	DBGTRACE1("mac:" MACSTR, MAC2STR(mac));
-
-	if(res)
-	{
+	if (res) {
 		ERROR("%s", "unable to get mac address from driver");
-		return -1;
+		return -EINVAL;
 	}
+	memcpy(&dev->dev_addr, mac, ETH_ALEN);
 
 	memset(&wrqu, 0, sizeof(wrqu));
 
@@ -1407,10 +1465,10 @@ static int setup_dev(struct net_device *dev)
 	dev->get_wireless_stats = get_wireless_stats;
 	dev->wireless_handlers	= (struct iw_handler_def *)&ndis_handler_def;
 	dev->set_multicast_list = ndis_set_rx_mode;
+	dev->set_mac_address = ndis_set_mac_addr;
 #ifdef HAVE_ETHTOOL
 	dev->ethtool_ops = &ndis_ethtool_ops;
 #endif
-	memcpy(&dev->dev_addr, mac, ETH_ALEN);
 	if (handle->ndis_irq)
 		dev->irq = handle->ndis_irq->irq;
 	dev->mem_start = handle->mem_start;
@@ -1424,7 +1482,8 @@ static int setup_dev(struct net_device *dev)
 	}
 
 	printk(KERN_INFO "%s: %s ethernet device " MACSTR " using driver %s\n",
-	       dev->name, DRV_NAME, MAC2STR(mac), handle->driver->name);
+	       dev->name, DRV_NAME, MAC2STR(dev->dev_addr),
+	       handle->driver->name);
 
 	check_capa(handle);
 
@@ -2206,18 +2265,18 @@ static int add_setting(struct ndis_device *device,
 	setting->name[put_setting->name_len] = 0;
 	if (copy_from_user(setting->name, put_setting->name,
 			   put_setting->name_len) ||
-	    copy_from_user(setting->val_str, put_setting->value,
+	    copy_from_user(setting->value, put_setting->value,
 			   put_setting->val_str_len)) {
 		kfree(setting);
 		kfree(setting->name);
 		return -EINVAL;
 	}
 
-	setting->val_str[put_setting->val_str_len] = 0;
-	setting->value.type = NDIS_SETTING_NONE;
+	setting->value[put_setting->val_str_len] = 0;
+	setting->config_param.type = NDIS_SETTING_NONE;
 
 	if (strcmp(setting->name, "ndis_version") == 0) {
-		memcpy(device->driver->version, setting->val_str,
+		memcpy(device->driver->version, setting->value,
 		       put_setting->val_str_len);
 		device->driver->version[put_setting->val_str_len] = 0;
 		kfree(setting->name);
@@ -2238,6 +2297,9 @@ static void delete_device(struct ndis_device *device)
 	list_for_each_safe(curr, tmp2, &device->settings)
 	{
 		struct ndis_setting *setting = (struct ndis_setting*) curr;
+		if (setting->config_param.type == NDIS_SETTING_STRING &&
+		    setting->config_param.data.ustring.buf)
+			RtlFreeUnicodeString(&setting->config_param.data.ustring);
 		kfree(setting->name);
 		kfree(setting);
 	}
