@@ -981,6 +981,7 @@ static int __devinit ndis_init_one(struct pci_dev *pdev,
 
 	handle->driver = driver;
 	handle->net_dev = dev;
+	spin_lock_init(&handle->query_lock);
 	pci_set_drvdata(pdev, handle);
 
 	/* Poision this because it may contain function pointers */
