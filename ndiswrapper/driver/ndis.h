@@ -315,6 +315,7 @@ struct packed ndis_configuration
 	} fh_config;
 };
 
+#define XMIT_RING_SIZE 16
 /*
  * This is the per device struct. One per PCI-device exists.
  *
@@ -352,8 +353,10 @@ struct packed ndis_handle
 	struct ndis_driver *driver;
 	
 	struct work_struct xmit_work;
-	spinlock_t xmit_queue_lock;
-	struct ndis_buffer *xmit_queue;
+	spinlock_t xmit_ring_lock;
+	struct ndis_buffer *xmit_ring[XMIT_RING_SIZE];
+	unsigned int xmit_ring_start;
+	unsigned int xmit_ring_pending;
 	
 	struct semaphore query_mutex;
 	wait_queue_head_t query_wqhead;

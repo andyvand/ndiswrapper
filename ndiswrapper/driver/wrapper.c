@@ -1221,7 +1221,6 @@ static int ndis_ioctl(struct net_device *dev, struct ifreq *rq, int cmd)
 	return rc;
 }
 
-
 static void send_one(struct ndis_handle *handle, struct ndis_buffer *buffer)
 {
 	struct ndis_packet *packet;
@@ -1316,16 +1315,27 @@ static void xmit_bh(void *param)
 
 	while(1)
 	{
-		spin_lock_irqsave(&handle->xmit_queue_lock, flags);
-		buffer = handle->xmit_queue;
-		if(buffer && buffer->next)
-			handle->xmit_queue = buffer->next;
-		else
-			handle->xmit_queue = 0;
-		spin_unlock_irqrestore(&handle->xmit_queue_lock, flags);
-
-		if(!buffer)
+		spin_lock_irqsave(&handle->xmit_ring_lock, flags);
+		if (!handle->xmit_ring_pending)
+		{
+			spin_unlock_irqrestore(&handle->xmit_ring_lock, flags);
 			break;
+		}
+		if (handle->xmit_ring_pending < 0)
+		{
+			printk(KERN_ERR "%s: xmit_ring_pending is %d\n",
+			       DRV_NAME, handle->xmit_ring_pending);
+			spin_unlock_irqrestore(&handle->xmit_ring_lock, flags);
+			return;
+		}
+		buffer = handle->xmit_ring[handle->xmit_ring_start];
+		handle->xmit_ring_start =
+			(handle->xmit_ring_start + 1) % XMIT_RING_SIZE;
+		handle->xmit_ring_pending--;
+		if (netif_queue_stopped(handle->net_dev))
+			netif_wake_queue(handle->net_dev);
+		spin_unlock_irqrestore(&handle->xmit_ring_lock, flags);
+
 		send_one(handle, buffer);
 	}
 }
@@ -1338,45 +1348,50 @@ static void xmit_bh(void *param)
 static int ndis_start_xmit(struct sk_buff *skb, struct net_device *dev)
 {
 	struct ndis_handle *handle = dev->priv;
-	struct ndis_buffer *buffer, *tmp;
+	struct ndis_buffer *buffer;
+	unsigned int xmit_ring_next_slot;
 	unsigned long flags;
 	
 	char *data = kmalloc(skb->len, GFP_ATOMIC);
 	if(!data)
-		return 0;
+	{
+		return 1;
+	}
 
 	buffer = kmalloc(sizeof(struct ndis_buffer), GFP_ATOMIC);
 	if(!buffer)
 	{
 		kfree(data);
-		return 0;
+		return 1;
 	}
 
 	skb_copy_and_csum_dev(skb, data);
-
 	buffer->data = data;
 	buffer->next = 0;
 	buffer->len = skb->len;
-
-	/* Insert buffer into queue */
-	spin_lock_irqsave(&handle->xmit_queue_lock, flags);
-	if(!handle->xmit_queue) {
-		handle->xmit_queue = buffer;
-	}
-	else {
-		tmp = handle->xmit_queue;
-		while(tmp->next)
-			tmp = tmp->next;
-		tmp->next = buffer;
-	}
-	spin_unlock_irqrestore(&handle->xmit_queue_lock, flags);
-
 	dev_kfree_skb(skb);
+
+	spin_lock_irqsave(&handle->xmit_ring_lock, flags);
+	if (handle->xmit_ring_pending >= XMIT_RING_SIZE)
+	{
+		printk(KERN_ERR "%s: xmit_ring overflow (%d)\n",
+		       dev->name, handle->xmit_ring_pending);
+		spin_unlock_irqrestore(&handle->xmit_ring_lock, flags);
+		return 1;
+	}
+	xmit_ring_next_slot =
+		(handle->xmit_ring_start + handle->xmit_ring_pending) % XMIT_RING_SIZE;
+	handle->xmit_ring[xmit_ring_next_slot] = buffer;
+	handle->xmit_ring_pending++;
+	if (handle->xmit_ring_pending == XMIT_RING_SIZE)
+		netif_stop_queue(handle->net_dev);
+	spin_unlock_irqrestore(&handle->xmit_ring_lock, flags);
+
 	schedule_work(&handle->xmit_work);
-	
+
 	return 0;
-	
 }
+
 
 /*
  * Free and unmap a packet created in xmit
@@ -1421,8 +1436,8 @@ int ndiswrapper_pm_callback(struct pm_dev *pm_dev, pm_request_t rqst,
 		apscan_del(handle);
 
 		/* do we need this? */
-		DBGTRACE("%s: stopping queue\n", dev->name);
-		netif_stop_queue(dev);
+//		DBGTRACE("%s: stopping queue\n", dev->name);
+//		netif_stop_queue(dev);
 
 		DBGTRACE("%s: detaching device\n", dev->name);
 		netif_device_detach(dev);
@@ -1450,8 +1465,8 @@ int ndiswrapper_pm_callback(struct pm_dev *pm_dev, pm_request_t rqst,
 		netif_device_attach(dev);
 
 		/* do we need this? */
-		DBGTRACE("%s: starting queue\n", dev->name);
-		netif_wake_queue(dev);
+//		DBGTRACE("%s: starting queue\n", dev->name);
+//		netif_wake_queue(dev);
 
 		add_scan_timer((unsigned long)handle);
 		break;
@@ -1582,7 +1597,9 @@ static int __devinit ndis_init_one(struct pci_dev *pdev,
 	init_waitqueue_head(&handle->setinfo_wqhead);
 
 	INIT_WORK(&handle->xmit_work, xmit_bh, handle); 	
-	handle->xmit_queue_lock = SPIN_LOCK_UNLOCKED;
+	handle->xmit_ring_lock = SPIN_LOCK_UNLOCKED;
+	handle->xmit_ring_start = 0;
+	handle->xmit_ring_pending = 0;
 
 	/* Poision this because it may contain function pointers */
 	memset(&handle->fill1, 0x12, sizeof(handle->fill1));
