@@ -3,7 +3,7 @@
 DISTFILES=divdi3.c hal.c iw_ndis.c iw_ndis.h loader.c loader.h \
 		longlong.h Makefile misc_funcs.c ndis.c ndis.h \
 		ndiswrapper.h ntoskernel.c ntoskernel.h \
-		pe_linker.c proc.c usb.c usb.h winnt_pe.h winnt_types.h \
+		pe_linker.c pe_linker.h proc.c usb.c usb.h winnt_types.h \
 		wrapper.c wrapper.h x86_64_stubs.S
 
 KVERS ?= $(shell uname -r)
