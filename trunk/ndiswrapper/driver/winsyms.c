@@ -195,6 +195,7 @@ void ExDeleteNPagedLookasideList(void);
 void ExInitializeNPagedLookasideList(void);
 void ExInterlockedPopEntrySList(void);
 void ExInterlockedPushEntrySList(void);
+void ExInterlockedAddLargeStatistic(void);
 void MmMapIoSpace(void);
 void MmUnmapIoSpace(void);
 void KeInitializeTimer(void);
@@ -390,6 +391,7 @@ func("ExDeleteNPagedLookasideList"          , ExDeleteNPagedLookasideList),
 func("ExInitializeNPagedLookasideList"      , ExInitializeNPagedLookasideList),
 func("ExInterlockedPopEntrySList"           , ExInterlockedPopEntrySList),
 func("ExInterlockedPushEntrySList"          , ExInterlockedPushEntrySList),
+func("ExInterlockedAddLargeStatistic"       , ExInterlockedAddLargeStatistic),
 func("MmMapIoSpace"                         , MmMapIoSpace),
 func("MmUnmapIoSpace"                       , MmUnmapIoSpace),
 func("KeInitializeTimer"                    , KeInitializeTimer),

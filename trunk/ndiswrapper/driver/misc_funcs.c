@@ -23,6 +23,66 @@
 #include "ndis.h"
 #include "ntoskernel.h"
 
+static struct wrapper_alloc *wrapper_alloc_head;
+
+void *wrap_kmalloc(size_t size, int flags)
+{
+	struct wrapper_alloc *entry =
+		kmalloc(sizeof(struct wrapper_alloc), GFP_KERNEL);
+	if (!entry)
+	{
+		printk(KERN_ERR "%s: couldn't allocate memory\n", __FUNCTION__);
+		return NULL;
+	}
+	
+	entry->ptr = kmalloc(size, flags);
+	entry->next = wrapper_alloc_head;
+	wrapper_alloc_head = entry;
+	return entry->ptr;
+}
+
+void wrapper_kfree(void *ptr)
+{
+	struct wrapper_alloc *cur, *prev;
+
+	for (cur = wrapper_alloc_head, prev = NULL; cur ;
+		 prev = cur, cur = cur->next)
+	{
+		if (cur->ptr == ptr)
+			break;
+	}
+
+	if (!cur)
+	{
+		printk(KERN_ERR "%s: ptr %p is not allocated by wrapper?\n",
+			   __FUNCTION__, ptr);
+		return;
+	}
+
+	if (prev)
+		prev->next = cur->next;
+	else
+	{
+		if (cur != wrapper_alloc_head)
+			printk(KERN_ERR "%s: cur %p is not = head %p\n",
+				   __FUNCTION__, cur, wrapper_alloc_head);
+		else
+			wrapper_alloc_head = wrapper_alloc_head->next;
+	}
+	kfree(ptr);
+}
+
+void wrapper_kfree_all(void)
+{
+	struct wrapper_alloc *entry;
+
+	for (entry = wrapper_alloc_head; entry; entry = entry->next)
+		kfree(entry->ptr);
+
+	wrapper_alloc_head = NULL;
+}
+	
+
 /** Functions from CIPE **/
 void DbgPrint(char *str, int x, int y, int z)
 {
@@ -376,66 +436,73 @@ STDCALL int KeGetCurrentIrql(void)
 	return DISPATCH_LEVEL;
 }
 
-STDCALL void KeInitializeSpinLock(PKSPIN_LOCK ndis_kspin_lock)
+STDCALL void KeInitializeSpinLock(KSPIN_LOCK *lock)
 {
-	printk(KERN_INFO "%s: lock = %p, *lock = %lu\n",
-		 __FUNCTION__, ndis_kspin_lock, *ndis_kspin_lock);
-	spinlock_t *lock = (spinlock_t *)(ndis_kspin_lock);
-	*lock = SPIN_LOCK_UNLOCKED;
+	spinlock_t *spin_lock;
+
+	DBGTRACE("%s: lock = %p, *lock = %lu\n", __FUNCTION__, lock, *lock);
+
+	spin_lock = wrap_kmalloc(sizeof(spinlock_t), GFP_KERNEL);
+	if (!spin_lock)
+		printk(KERN_ERR "%s: couldn't allocate space for spinlock\n",
+			   __FUNCTION__);
+	else
+	{
+		DBGTRACE("%s: allocated spinlock %p\n", spin_lock);
+		spin_lock_init(spin_lock);
+		*lock = (KSPIN_LOCK)spin_lock;
+	}
 }
 
-STDCALL void KeAcquireSpinLock(PKSPIN_LOCK ndis_kspin_lock, KIRQL *oldirql)
+STDCALL void KeAcquireSpinLock(KSPIN_LOCK *lock, KIRQL *irql)
 {
-	printk(KERN_INFO "%s: lock = %p, *lock = %lu\n",
-		 __FUNCTION__, ndis_kspin_lock, *ndis_kspin_lock);
-	spin_lock_irq((spinlock_t *)(ndis_kspin_lock));
+	printk(KERN_INFO "%s: lock = %p, *lock = %p\n",
+		   __FUNCTION__, lock, (void *)*lock);
+	spin_lock_irq((spinlock_t *)(*lock));
 }
 
-STDCALL void KeReleaseSpinLock(PKSPIN_LOCK ndis_kspin_lock, KIRQL *oldirql)
+STDCALL void KeReleaseSpinLock(KSPIN_LOCK *lock, KIRQL *oldirql)
 {
-	printk(KERN_INFO "%s: lock = %p, *lock = %lu\n",
-		 __FUNCTION__, ndis_kspin_lock, *ndis_kspin_lock);
-	spin_unlock_irq((spinlock_t *)(ndis_kspin_lock));
+	printk(KERN_INFO "%s: lock = %p, *lock = %p\n",
+		   __FUNCTION__, lock, (void *)*lock);
+	spin_unlock_irq((spinlock_t *)(*lock));
 }
 
-STDCALL void KfAcquireSpinLock(PKSPIN_LOCK ndis_kspin_lock, KIRQL *oldirql)
+STDCALL void KfAcquireSpinLock(KSPIN_LOCK *lock, KIRQL *oldirql)
 {
-	KeAcquireSpinLock(ndis_kspin_lock, oldirql);
+	KeAcquireSpinLock(lock, oldirql);
 }
 
 _FASTCALL struct slist_entry *
 ExInterlockedPushEntrySList(int dummy, 
 			    struct slist_entry *entry,union slist_head *head,
-			    PKSPIN_LOCK lock)
+			    KSPIN_LOCK *lock)
 {
-
 	struct slist_entry *oldhead;
+	KIRQL irql;
 
-	printk(KERN_INFO "%s Entry: head = %p, entry = %p\n",
-			__FUNCTION__, head, entry);
+	DBGTRACE("%s Entry: head = %p, entry = %p\n", __FUNCTION__, head, entry);
 
 //	__asm__ __volatile__ ("" : "=c" (head), "=d" (entry));
 
+	KeAcquireSpinLock(lock, &irql);
 	oldhead = head->list.next;
 	entry->next = head->list.next;
 	head->list.next = entry;
-	printk(KERN_INFO "%s exit head = %p, oldhead = %p\n",
-			__FUNCTION__, head, oldhead);
+	KeReleaseSpinLock(lock, &irql);
+	DBGTRACE("%s exit head = %p, oldhead = %p\n", __FUNCTION__, head, oldhead);
 	return(oldhead);
-
 }
 
-_FASTCALL
-struct slist_entry *ExInterlockedPopEntrySList(int dummy, 
-					       PKSPIN_LOCK ndis_kspin_lock,union slist_head *head)
+_FASTCALL struct slist_entry *
+ExInterlockedPopEntrySList(int dummy, KSPIN_LOCK *lock,union slist_head *head)
 {
 	struct slist_entry *first;
-//	KIRQL oldlvl;
+	KIRQL irql;
 	
-	printk(KERN_INFO "%s: head = %p\n",
-	       __FUNCTION__, head);
+	DBGTRACE("%s: head = %p\n", __FUNCTION__, head);
 //	__asm__ __volatile__ ("" : "=c" (head));
-//	KeAcquireSpinLock(ndis_kspin_lock, &oldlvl);
+	KeAcquireSpinLock(lock, &irql);
 	first = NULL;
 	if (head)
 	{
@@ -445,7 +512,7 @@ struct slist_entry *ExInterlockedPopEntrySList(int dummy,
 			head->list.next = first->next;
 		}
 	}
-//	KeReleaseSpinLock(ndis_kspin_lock, &oldlvl);
+	KeReleaseSpinLock(lock, &irql);
 	DBGTRACE("%s: Exit, returning %p\n", __FUNCTION__, first);
 	return first;
 }
@@ -453,107 +520,71 @@ struct slist_entry *ExInterlockedPopEntrySList(int dummy,
 kmem_cache_t *g_kmem_cache;
 struct npaged_lookaside_list *g_lookaside;
 
-STDCALL void *lookaside_def_alloc_func(POOL_TYPE pool_type, unsigned long size, unsigned long tag)
+STDCALL void *lookaside_def_alloc_func(POOL_TYPE pool_type,
+									   unsigned long size, unsigned long tag)
 {
-	char *mem;
-//	struct slist_entry *entry;
-
-	printk(KERN_INFO "%s called, size = %lu\n", __FUNCTION__, size);
-//	entry = kmalloc(sizeof(struct slist_entry), GFP_ATOMIC);
-	mem = kmem_cache_alloc(g_kmem_cache, GFP_ATOMIC);
-	printk(KERN_INFO "%s allocates %p\n", __FUNCTION__, mem);
-	if (!mem)
-		printk(KERN_INFO "%s: alloc failed\n", __FUNCTION__);
-	/*
-	else
-	{
-		entry->next = g_lookaside->head.list.next;
-		g_lookaside->head.list.next = entry;
-	}
-	*/
-	return mem;
+	return kmalloc(size, GFP_KERNEL);
 }
 
 STDCALL void lookaside_def_free_func(void *buffer)
 {
-	printk(KERN_INFO "%s Entry\n", __FUNCTION__);
-	kmem_cache_free(g_kmem_cache, buffer);
-	printk(KERN_INFO "%s Exit\n", __FUNCTION__);
+	kfree(buffer);
 }
 
-STDCALL void ExInitializeNPagedLookasideList(struct npaged_lookaside_list *lookaside, LOOKASIDE_ALLOC_FUNC *alloc_func, LOOKASIDE_FREE_FUNC *free_func, unsigned long flags, unsigned long size, unsigned long tag, unsigned short depth)
+STDCALL void
+ ExInitializeNPagedLookasideList(struct npaged_lookaside_list *lookaside,
+								 LOOKASIDE_ALLOC_FUNC *alloc_func,
+								 LOOKASIDE_FREE_FUNC *free_func,
+								 unsigned long flags, unsigned long size,
+								 unsigned long tag, unsigned short depth)
 {
-	
-	int align;
 	DBGTRACE("%s: Entry, lookaside: %p, size: %lu, flags: %lu,"
 		 " head: %p, size of lookaside: %u\n",
 		 __FUNCTION__, lookaside, size, flags,
 		 lookaside->head.list.next, sizeof(struct npaged_lookaside_list));
-	if (lookaside)
-	{
-		/*
-		lookaside->totalallocs = 0;
-		lookaside->allocmisses = 0;
-		lookaside->totalfrees = 0;
-		lookaside->freemisses = 0;
-		*/
-		lookaside->size = size;
-		lookaside->tag = tag;
-		if (alloc_func)
-			lookaside->alloc_func = alloc_func;
-		else
-			lookaside->alloc_func = lookaside_def_alloc_func;
-		if (free_func)
-			lookaside->free_func = free_func;
-		else
-			lookaside->free_func = lookaside_def_free_func;
-		
-		/*
-		lookaside->head.align = 0;
-		lookaside->depth = 0;
-		lookaside->maxdepth = 0;
-		lookaside->obsolete = 0;
-		*/
-		KeInitializeSpinLock(&lookaside->obsolete);
-		if (size > PAGE_SIZE)
-			align = PAGE_SIZE;
-		else
-			align = 8;
-		g_kmem_cache =
-			kmem_cache_create("ndiswrapper", size, 0,
-					  SLAB_HWCACHE_ALIGN, 0, 0);
-		g_lookaside = lookaside;
-	}
+
+	memset(lookaside, 0, sizeof(*lookaside));
+
+	lookaside->size = size;
+	lookaside->tag = tag;
+	lookaside->depth = 4;
+	lookaside->maxdepth = 256;
+
+	if (alloc_func)
+		lookaside->alloc_func = alloc_func;
+	else
+		lookaside->alloc_func = lookaside_def_alloc_func;
+	if (free_func)
+		lookaside->free_func = free_func;
+	else
+		lookaside->free_func = lookaside_def_free_func;
+
 	DBGTRACE("%s: Exit\n", __FUNCTION__);
 	return ;
 }
  
-STDCALL void ExDeleteNPagedLookasideList(struct npaged_lookaside_list *lookaside)
+STDCALL void
+ ExDeleteNPagedLookasideList(struct npaged_lookaside_list *lookaside)
 {
+	struct slist_entry *entry, *p;
+	
 	DBGTRACE("%s: Entry, lookaside = %p\n", __FUNCTION__, lookaside);
-	if (lookaside)
+	entry = lookaside->head.list.next;
+	while (entry)
 	{
-//		struct slist_entry *entry, *p;
-		if (g_kmem_cache)
-		{
-			if (kmem_cache_destroy(g_kmem_cache))
-				printk(KERN_INFO "cache_destroy failed\n");
-		} else
-			printk(KERN_INFO "%s: kmem_cache is NULL\n",
-			       __FUNCTION__);
-		/*
-		entry = lookaside->head.list.next; 
-		while (entry)
-		{
-			p = entry;
-			entry = entry->next;
-			kfree(p);
-		}
-		*/
+		p = entry;
+		entry = entry->next;
+		kfree(p);
 	}
-	else
-		printk(KERN_INFO "%s: lookaside is NULL\n", __FUNCTION__);
-	g_kmem_cache = NULL;
+	DBGTRACE("%s: Exit\n", __FUNCTION__);
+}
+
+
+_FASTCALL void
+ExInterlockedAddLargeStatistic(int dummy, u32 n, u64 *plint)
+{
+	DBGTRACE("%s: Stat %p = %llu, n = %u\n", __FUNCTION__, plint, *plint, n);
+	*plint += n;
 }
 
 STDCALL void *MmMapIoSpace(unsigned int phys_addr,

@@ -31,7 +31,7 @@ union slist_head {
 	} list;
 };
 
-typedef unsigned long KSPIN_LOCK, *PKSPIN_LOCK;
+typedef unsigned long KSPIN_LOCK;
 typedef unsigned char KIRQL;
 
 struct list_entry
@@ -91,4 +91,11 @@ struct packed npaged_lookaside_list {
 	KSPIN_LOCK obsolete;
 };
 
+struct wrapper_alloc
+{
+	void *ptr;
+	struct wrapper_alloc *next;
+};
+
+void wrapper_kfree_all(void);
 #endif // _NTOSKERNEL_H_
