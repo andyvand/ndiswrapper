@@ -807,7 +807,7 @@ void *get_sp(void)
 	return (void *)i;
 }
 
-void inline dump_stack(void)
+void dump_stack(void)
 {
 	void *sp = get_sp();
 	int i;

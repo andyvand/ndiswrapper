@@ -4,7 +4,7 @@ DISTFILES=divdi3.c hal.c iw_ndis.c iw_ndis.h loader.c loader.h \
 				   longlong.h Makefile misc_funcs.c ndis.c ndis.h \
 				   ndiswrapper.h ntoskernel.c ntoskernel.h \
 				   pe_linker.c pe_linker.h proc.c usb.c usb.h \
-				   wrapper.c wrapper.h
+				   winnt_pe.h winnt_types.h wrapper.c wrapper.h
 
 KVERS ?= $(shell uname -r)
 KSRC  ?= /lib/modules/$(KVERS)/build
@@ -87,7 +87,7 @@ wrapper.o: wrapper.c wrapper.h pe_linker.h iw_ndis.h ntoskernel.h loader.h
 iw_ndis.h: ndis.h
 loader.h: ndiswrapper.h
 ndis.h: ntoskernel.h
-ntoskernel.h: ndiswrapper.h
+ntoskernel.h: ndiswrapper.h winnt_types.h winnt_pe.h
 pe_linker.h: ntoskernel.h
 usb.h: ntoskernel.h
 wrapper.h: ndis.h

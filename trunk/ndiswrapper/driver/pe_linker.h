@@ -30,8 +30,8 @@
 #define COFF_CHAR_32BIT 0x0100
 #define COFF_CHAR_DLL 0x2000
 
-#define COFF_MAGIC_PE32 0x10b
-#define COFF_MAGIC_PE32PLUS 0x20b
+#define COFF_MAGIC_PE32 0x010b
+#define COFF_MAGIC_PE32PLUS 0x020b
 
 #define COFF_FIXUP_ABSOLUTE 0
 #define COFF_FIXUP_HIGH16 1
@@ -186,7 +186,7 @@ struct exports
 {
 	char *dll;
 	char *name;
-	ULONG_PTR addr;
+	WRAP_EXPORT_FUNC addr;
 };
 
 #pragma pack()
