@@ -1466,7 +1466,7 @@ static int wpa_disassociate(struct net_device *dev,
 {
 	struct ndis_handle *handle = (struct ndis_handle *)dev->priv;
 	mac_address ap_addr;
-	char buf[NDIS_ESSID_MAX_SIZE];
+	unsigned char buf[NDIS_ESSID_MAX_SIZE];
 	int i;
 	
 	TRACEENTER("%s", "");
@@ -1617,7 +1617,7 @@ static int wpa_deauthenticate(struct net_device *dev,
 	struct ndis_handle *handle = (struct ndis_handle *)dev->priv;
 	mac_address ap_addr;
 	int i;
-	char buf[NDIS_ESSID_MAX_SIZE];
+	unsigned char buf[NDIS_ESSID_MAX_SIZE];
 	
 	TRACEENTER("%s", "");
 	for (i = 0; i < MAX_ENCR_KEYS; i++)
