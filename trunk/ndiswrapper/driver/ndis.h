@@ -312,11 +312,12 @@ struct ndis_setting_val
 	} data;
 };
 
+#define MAX_NDIS_SETTING_VAL_LENGTH 64
 struct ndis_setting
 {
 	struct list_head list;
 	char *name;
-	char *val_str;
+	char val_str[MAX_NDIS_SETTING_VAL_LENGTH];
 	struct ndis_setting_val value;
 };
 
@@ -836,6 +837,7 @@ struct auth_req
 };
 
 void sendpacket_done(struct ndis_handle *handle, struct ndis_packet *packet);
+
 STDCALL void NdisMIndicateReceivePacket(struct ndis_handle *handle,
 					struct ndis_packet **packets,
 					unsigned int nr_packets);

@@ -403,31 +403,21 @@ static int ndis_decode_setting(struct ndis_setting *setting,
 	switch(val->type)
 	{
 	case NDIS_SETTING_INT:
-		setting->val_str = kmalloc(sizeof(long) + 1, GFP_KERNEL);
-		if (setting->val_str == NULL)
-			return NDIS_STATUS_RESOURCES;
 		snprintf(setting->val_str, sizeof(long), "%lu",
 			 (unsigned long)val->data.intval);
 		setting->val_str[sizeof(long)] = 0;
 		break;
 	case NDIS_SETTING_HEXINT:
-		setting->val_str = kmalloc(sizeof(long) + 1, GFP_KERNEL);
-		if (setting->val_str == NULL)
-			return NDIS_STATUS_RESOURCES;
 		snprintf(setting->val_str, sizeof(long), "%lx",
 			 (unsigned long)val->data.intval);
 		setting->val_str[sizeof(long)] = 0;
 		break;
 	case NDIS_SETTING_STRING:
-		setting->val_str = kmalloc(MAX_STR_LEN, GFP_KERNEL);
-		if (setting->val_str == NULL)
-			return NDIS_STATUS_RESOURCES;
 		ansi.buf = setting->val_str;
 		ansi.buflen = MAX_STR_LEN;
 		if (RtlUnicodeStringToAnsiString(&ansi, &val->data.ustring, 0)
 		    || ansi.len >= MAX_STR_LEN)
 		{
-			kfree(setting->val_str);
 			return NDIS_STATUS_FAILURE;
 		}
 		break;
@@ -523,7 +513,6 @@ NdisWriteConfiguration(unsigned int *status, struct ndis_handle *handle,
 	{
 		if(strcmp(keyname, setting->name) == 0)
 		{
-			kfree(setting->val_str);
 			if (setting->value.type == NDIS_SETTING_STRING)
 				kfree(setting->value.data.ustring.buf);
 			*status = ndis_decode_setting(setting, val);
