@@ -460,7 +460,7 @@ static void statcollector_bh(void *data)
 			(__u32)ndis_stats.ack_fail +
 			(__u32)ndis_stats.frame_dup;
 
-		if (ndis_stats.tx_frag)
+		if ((__u32)ndis_stats.tx_frag)
 			iw_stats->qual.qual = 100 - 100 *
 				((__u32)ndis_stats.retry +
 				 2 * (__u32)ndis_stats.multi_retry +
