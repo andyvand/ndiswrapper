@@ -182,7 +182,7 @@ clean-utils: build-utils-prep
 common-prolog:
 	dh_testdir
 	dh_testroot
-	dh_installchangelogs ChangeLog
+#	dh_installchangelogs ChangeLog
 	dh_installdocs
 	dh_installexamples
 #	dh_installmenu
