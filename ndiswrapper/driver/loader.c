@@ -717,6 +717,10 @@ static int register_devices(struct load_devices *load_devices)
 	int i, res, num_pci, num_usb;
 	struct load_device *devices;
 
+	devices = NULL;
+	ndiswrapper_pci_devices = NULL;
+	ndiswrapper_usb_devices = NULL;
+	ndis_devices = NULL;
 	devices = vmalloc(load_devices->count * sizeof(struct load_device));
 	if (!devices) {
 		ERROR("couldn't allocate memory");
@@ -726,12 +730,10 @@ static int register_devices(struct load_devices *load_devices)
 	if (copy_from_user(devices, load_devices->devices,
 			   load_devices->count * sizeof(struct load_device))) {
 		ERROR("couldn't copy from user space");
-		goto err_devices;
+		goto err;
 	}
 
 	num_pci = num_usb = 0;
-	ndiswrapper_pci_devices = NULL;
-	ndiswrapper_usb_devices = NULL;
 	for (i = 0; i < load_devices->count; i++)
 		if (devices[i].bustype == NDIS_PCI_BUS)
 			num_pci++;
@@ -747,7 +749,7 @@ static int register_devices(struct load_devices *load_devices)
 				GFP_KERNEL);
 		if (!ndiswrapper_pci_devices) {
 			ERROR("couldn't allocate memory");
-			goto err_devices;
+			goto err;
 		}
 		memset(ndiswrapper_pci_devices, 0,
 		       (num_pci + 1) * sizeof(struct pci_device_id));
@@ -759,17 +761,16 @@ static int register_devices(struct load_devices *load_devices)
 				GFP_KERNEL);
 		if (!ndiswrapper_usb_devices) {
 			ERROR("couldn't allocate memory");
-			goto err_pci_devices;
+			goto err;
 		}
 		memset(ndiswrapper_usb_devices, 0,
 		       (num_usb + 1) * sizeof(struct usb_device_id));
 	}
 
-	ndis_devices = NULL;
 	ndis_devices = vmalloc(num_ndis_devices * sizeof(*ndis_devices));
 	if (!ndis_devices) {
 		ERROR("couldn't allocate memory");
-		goto err_pci_devices;
+		goto err;
 	}
 
 	memset(ndis_devices, 0, num_ndis_devices * sizeof(*ndis_devices));
@@ -834,7 +835,7 @@ static int register_devices(struct load_devices *load_devices)
 				  device->vendor, device->device);
 		}
 	}
-	vfree(devices);
+
 	if (ndiswrapper_pci_devices) {
 		memset(&ndiswrapper_pci_driver, 0,
 			       sizeof(ndiswrapper_pci_driver));
@@ -848,10 +849,9 @@ static int register_devices(struct load_devices *load_devices)
 		res = pci_register_driver(&ndiswrapper_pci_driver);
 		if (res < 0) {
 			ERROR("couldn't register ndiswrapper pci driver");
-			goto err_ndis_device;
+			goto err;
 		}
 	}
-
 	if (ndiswrapper_usb_devices) {
 		memset(&ndiswrapper_usb_driver, 0,
 			       sizeof(ndiswrapper_usb_driver));
@@ -864,20 +864,25 @@ static int register_devices(struct load_devices *load_devices)
 		res = usb_register(&ndiswrapper_usb_driver);
 		if (res < 0) {
 			ERROR("couldn't register ndiswrapper usb driver");
-			goto err_ndis_device;
+			goto err;
 		}
 	}
 
+	vfree(devices);
 	TRACEEXIT1(return 0);
 
-err_ndis_device:
+err:
 	if (ndis_devices)
 		vfree(ndis_devices);
-	kfree(ndiswrapper_usb_devices);
-err_pci_devices:
-	kfree(ndiswrapper_pci_devices);
-err_devices:
-	vfree(devices);
+	ndis_devices = NULL;
+	if (ndiswrapper_usb_devices)
+		kfree(ndiswrapper_usb_devices);
+	ndiswrapper_usb_devices = NULL;
+	if (ndiswrapper_pci_devices)
+		kfree(ndiswrapper_pci_devices);
+	ndiswrapper_pci_devices = NULL;
+	if (devices)
+		vfree(devices);
 	TRACEEXIT1(return -EINVAL);
 }
 
@@ -967,10 +972,12 @@ void loader_exit(void)
 	if (ndiswrapper_usb_devices) {
 		usb_deregister(&ndiswrapper_usb_driver);
 		kfree(ndiswrapper_usb_devices);
+		ndiswrapper_usb_devices = NULL;
 	}
 	if (ndiswrapper_pci_devices) {
 		pci_unregister_driver(&ndiswrapper_pci_driver);
 		kfree(ndiswrapper_pci_devices);
+		ndiswrapper_pci_devices = NULL;
 	}
 	spin_lock(&loader_lock);
 	if (ndis_devices) {
@@ -978,6 +985,7 @@ void loader_exit(void)
 			unload_ndis_device(&ndis_devices[i]);
 
 		vfree(ndis_devices);
+		ndis_devices = NULL:
 	}
 
 	while (!list_empty(&ndis_drivers)) {
