@@ -463,13 +463,13 @@ static struct ndis_packet *alloc_packet(struct ndis_handle *handle,
 	if (!packet)
 		return NULL;
 
-	memset(packet, 0, sizeof(*packet));
+//	memset(packet, 0, sizeof(*packet));
 
 	packet->private.oob_offset = offsetof(struct ndis_packet, oob_tx);
 	packet->private.nr_pages = NDIS_BUFFER_TO_SPAN_PAGES(buffer);
-	packet->private.len = buffer->bytecount;
+	packet->private.len = MmGetMdlByteCount(buffer);
 	packet->private.count = 1;
-	packet->private.valid_counts = 1;
+	packet->private.valid_counts = TRUE;
 
 	packet->private.buffer_head = buffer;
 	packet->private.buffer_tail = buffer;
@@ -769,7 +769,7 @@ static int start_xmit(struct sk_buff *skb, struct net_device *dev)
 		kfree(data);
 		return 1;
 	}
-	memset(buffer, 0, sizeof(*buffer));
+//	memset(buffer, 0, sizeof(*buffer));
 
 	skb_copy_and_csum_dev(skb, data);
 	buffer->startva = data;
