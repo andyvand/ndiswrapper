@@ -234,11 +234,12 @@ struct internal_parameters internal_parameters[] = {
 		.name = "PwrOut",
 		.value = {0, 100}
 	},
+/*
 	{
 		.name = "ForcePIO",
 		.value = {0, 1}
 	},
-	{
+*/	{
 		.name = 0,
 		.value= {0,0}
 	}
@@ -485,6 +486,7 @@ STDCALL void NdisMAllocateSharedMemory(struct ndis_handle *handle,
 	//printk("%s: handle=%08x. size=%08x, cached=%08x, virt=%08x, phys=%08x\n", __FUNCTION__ , (int)handle, size, cached, (int)virt, (int)phys);
 
 	void *v = pci_alloc_consistent(handle->pci_dev, size, &p);  
+	//printk("Allocated shared at %08x (bus: %08x). Virt %08x phys %08x\n", (int)v, (int)p, (int)virt, (int)phys);
 	
 	if(!v)
 	{
