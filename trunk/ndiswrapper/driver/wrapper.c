@@ -1684,9 +1684,9 @@ static int setup_dev(struct net_device *dev)
 		       DRV_NAME, dev->name);
 	else
 		printk(KERN_INFO "%s: %s ethernet device "
-		       "%02x:%02x:%02x:%02x:%02x:%02x\n",
+		       "%02x:%02x:%02x:%02x:%02x:%02x using driver %s\n",
 		       dev->name, DRV_NAME,
-		       mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
+		       mac[0], mac[1], mac[2], mac[3], mac[4], mac[5], handle->driver->name);
 	return res;
 }
 
@@ -1867,7 +1867,7 @@ static int start_driver(struct ndis_driver *driver)
 		return -EINVAL;
 	}
 
-	printk("Nr drivers: %d\n", driver->nr_devices);
+	DBGTRACE("%s: Nr devices: %d\n", __FUNCTION__, driver->nr_devices);
 
 	driver->pci_idtable = kmalloc(sizeof(struct pci_device_id)*(driver->nr_devices+1), GFP_KERNEL);
 	if(!driver->pci_idtable)
@@ -1993,6 +1993,7 @@ static int add_driver(struct ndis_driver *driver)
 		return -EBUSY;
 	}
 	
+	printk(KERN_INFO "ndiswrapper adding %s\n", driver->name);  
 	return 0;
 }
 
@@ -2238,6 +2239,8 @@ void init_ndis_work(void);
 
 static int __init wrapper_init(void)
 {
+	char *argv[] = {"loadndisdriver", "-a", 0};
+	char *env[] = {0};	
 	int err;
 
 	printk(KERN_INFO "ndiswrapper version %s loaded\n", DRV_VERSION);
@@ -2247,6 +2250,7 @@ static int __init wrapper_init(void)
         }
 
 	init_ndis_work();
+	call_usermodehelper("/sbin/loadndisdriver", argv, env, 0);	
 	return 0;
 }
 
