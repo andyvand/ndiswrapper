@@ -21,14 +21,19 @@
 
 #include "ndis.h"
 
-unsigned long RtlCompareMemory(char *b, char *a, unsigned long len)
+STDCALL size_t RtlCompareMemory(const void *a, const void *b, size_t len)
 {
-	unsigned long i;
+	size_t i, same;
+	char *x, *y;
+	
 	DBGTRACE("%s: Entry\n", __FUNCTION__);
 
-	for(i = 0; (i < len) && a[i] == b[i]; i++)
-		;
-	return i;
+	x = (char *)a;
+	y = (char *)b;
+	for(i = same = 0; i < len; i++)
+		if (x[i] == y[i])
+			same++;
+	return same;
 }
 
 STDCALL long RtlCompareString(const struct ustring *s1,
