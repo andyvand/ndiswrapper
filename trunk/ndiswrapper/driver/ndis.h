@@ -18,6 +18,10 @@
 
 #include "ntoskernel.h"
 
+#define NDIS_DMA_24BITS 0
+#define NDIS_DMA_32BITS 1
+#define NDIS_DMA_64BITS 2
+
 typedef UINT NDIS_STATUS;
 typedef UCHAR NDIS_DMA_SIZE;
 typedef LONG ndis_rssi;

@@ -1792,7 +1792,8 @@ NdisMTransferDataComplete(struct ndis_handle *handle,
 		TRACEEXIT3(return);
 	}
 
-	skb_size = sizeof(packet->header)+packet->look_ahead_size+bytes_txed;
+	skb_size = sizeof(packet->header) + packet->look_ahead_size +
+		bytes_txed;
 
 	skb = dev_alloc_skb(skb_size);
 	if (!skb) {
@@ -1804,11 +1805,11 @@ NdisMTransferDataComplete(struct ndis_handle *handle,
 
 	skb->dev = handle->net_dev;
 	memcpy(skb->data, packet->header, sizeof(packet->header));
-	memcpy(skb->data+sizeof(packet->header), packet->look_ahead,
+	memcpy(skb->data + sizeof(packet->header), packet->look_ahead,
 	       packet->look_ahead_size);
-	memcpy(skb->data+sizeof(packet->header)+packet->look_ahead_size,
-	       packet->private.buffer_head->startva +
-	       packet->private.buffer_head->byteoffset, bytes_txed);
+	memcpy(skb->data + sizeof(packet->header) + packet->look_ahead_size,
+	       MmGetMdlVirtualAddress(packet->private.buffer_head),
+	       bytes_txed);
 	kfree(packet->look_ahead);
 	NdisFreePacket(packet);
 	skb_put(skb, skb_size);
@@ -1974,9 +1975,13 @@ STDCALL struct list_entry * WRAP_EXPORT(NdisInterlockedRemoveHeadList)
 }
 
 STDCALL NDIS_STATUS WRAP_EXPORT(NdisMInitializeScatterGatherDma)
-	(struct ndis_handle *handle, BOOLEAN is64bit, ULONG max_phy_map)
+	(struct ndis_handle *handle, UCHAR dma_size, ULONG max_phy_map)
 {
-	TRACEENTER2("64bit=%d, maxtransfer=%u", is64bit, max_phy_map);
+	TRACEENTER2("dma_size=%d, maxtransfer=%u", dma_size, max_phy_map);
+#ifdef CONFIG_X86_64
+	if (dma_size != NDIS_DMA_64BITS)
+		ERROR("DMA size is not 64-bits");
+#endif
 	handle->use_scatter_gather = 1;
 	return NDIS_STATUS_SUCCESS;
 }
@@ -2314,6 +2319,12 @@ STDCALL void WRAP_EXPORT(NdisMStartBufferPhysicalMapping)
 {
 	dma_addr_t dma_addr;
 	TRACEENTER3("phy_map_reg: %u", phy_map_reg);
+
+	if (handle->use_scatter_gather) {
+		ERROR("can't use physical mapping and scatter/gather");
+		*array_size = 0;
+		return;
+	}
 	if (!write_to_dev) {
 		ERROR( "dma from device not supported (%d)", write_to_dev);
 		*array_size = 0;
@@ -2329,16 +2340,18 @@ STDCALL void WRAP_EXPORT(NdisMStartBufferPhysicalMapping)
 
 	if (handle->map_dma_addr[phy_map_reg] != 0) {
 //		ERROR("map register already used (%lu)", phy_map_reg);
-		*array_size = 0;
+		*array_size = 1;
 		return;
 	}
 
 	// map buffer
 	/* FIXME: do USB drivers call this? */
-	dma_addr = PCI_DMA_MAP_SINGLE(handle->dev.pci, buf->startva,
-				      buf->size, PCI_DMA_TODEVICE);
+	dma_addr = PCI_DMA_MAP_SINGLE(handle->dev.pci,
+				      MmGetMdlVirtualAddress(buf),
+				      MmGetMdlByteCount(buf),
+				      PCI_DMA_TODEVICE);
 	phy_addr_array[0].phy_addr.quad = dma_addr;
-	phy_addr_array[0].length= buf->size;
+	phy_addr_array[0].length= MmGetMdlByteCount(buf);
 
 	*array_size = 1;
 
@@ -2352,6 +2365,10 @@ STDCALL void WRAP_EXPORT(NdisMCompleteBufferPhysicalMapping)
 {
 	TRACEENTER3("%p %u (%u)", handle, phy_map_reg, handle->map_count);
 
+	if (handle->use_scatter_gather) {
+		ERROR("can't use physical mapping and scatter/gather");
+		return;
+	}
 	if (phy_map_reg > handle->map_count) {
 		ERROR("map_register too big (%u > %u)",
 		      phy_map_reg, handle->map_count);
@@ -2367,7 +2384,7 @@ STDCALL void WRAP_EXPORT(NdisMCompleteBufferPhysicalMapping)
 	/* FIXME: do USB drivers call this? */
 	PCI_DMA_UNMAP_SINGLE(handle->dev.pci,
 			     handle->map_dma_addr[phy_map_reg],
-			     buf->size, PCI_DMA_TODEVICE);
+			     MmGetMdlByteCount(buf), PCI_DMA_TODEVICE);
 
 	// clear mapping index
 	handle->map_dma_addr[phy_map_reg] = 0;
@@ -2459,8 +2476,7 @@ STDCALL void WRAP_EXPORT(NdisMGetDeviceProperty)
 }
 
 STDCALL ULONG WRAP_EXPORT(NdisReadPcmciaAttributeMemory)
-	(struct ndis_handle *handle, ULONG offset, void *buffer,
-	 ULONG length)
+	(struct ndis_handle *handle, ULONG offset, void *buffer, ULONG length)
 {
 	UNIMPL();
 	return 0;

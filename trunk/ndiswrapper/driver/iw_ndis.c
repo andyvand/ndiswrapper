@@ -40,14 +40,13 @@ int set_essid(struct ndis_handle *handle, const char *ssid, int ssid_len)
 	memset(&req, 0, sizeof(req));
 	
 	if (ssid_len == 0)
-		req.length = 0;
+		req.length = 1;
 	else {
-		if (ssid_len > (IW_ESSID_MAX_SIZE + 1))
+		if (ssid_len > NDIS_ESSID_MAX_SIZE)
 			return -EINVAL;
 
 		req.length = ssid_len;
 		memcpy(&req.essid, ssid, req.length);
-		req.essid[req.length] = 0;
 		DBGTRACE1("ssid = '%s'", req.essid);
 	}
 	
@@ -67,8 +66,12 @@ static int iw_set_essid(struct net_device *dev, struct iw_request_info *info,
 
 	memset(ssid, 0, sizeof(ssid));
 	/* iwconfig adds 1 to the actual length */
+	/* there is no way to turn off essid other than to set to
+	 * random bytes; instead, we use off to mean any */
 	if (wrqu->essid.flags)
 		wrqu->essid.length--;
+	else
+		wrqu->essid.length = 0;
 
 	if (wrqu->essid.length > IW_ESSID_MAX_SIZE)
 		TRACEEXIT1(return -EINVAL);
