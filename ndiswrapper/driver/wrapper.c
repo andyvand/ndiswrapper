@@ -853,13 +853,16 @@ static void hangcheck_reinit(struct ndis_handle *handle)
 {
 	handle->hangcheck_timer.data = (unsigned long) handle;
 	handle->hangcheck_timer.function = &hangcheck;
-	handle->hangcheck_timer.expires = jiffies + handle->hangcheck_interval;;
+	handle->hangcheck_timer.expires = jiffies + handle->hangcheck_interval;
 	add_timer(&handle->hangcheck_timer);
 
 }
 
 static void hangcheck_add(struct ndis_handle *handle)
 {
+	if(!handle->driver->miniport_char.hangcheck)
+		return;
+
 	INIT_WORK(&handle->hangcheck_work, &hangcheck_bh, handle);
 	init_timer(&handle->hangcheck_timer);
 	hangcheck_reinit(handle);
@@ -867,6 +870,9 @@ static void hangcheck_add(struct ndis_handle *handle)
 
 static void hangcheck_del(struct ndis_handle *handle)
 {
+	if(!handle->driver->miniport_char.hangcheck)
+		return;
+
 	del_timer_sync(&handle->hangcheck_timer);
 }
 
