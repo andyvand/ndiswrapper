@@ -876,7 +876,8 @@ int ndis_suspend_pci(struct pci_dev *pdev, u32 state)
 		return -1;
 	dev = handle->net_dev;
 
-	if (test_bit(HW_SUSPENDED, &handle->hw_status))
+	if (test_bit(HW_SUSPENDED, &handle->hw_status) ||
+	    test_bit(HW_HALTED, &handle->hw_status))
 		return 0;
 
 	DBGTRACE2("%s: detaching device", dev->name);
@@ -901,7 +902,8 @@ int ndis_suspend_pci(struct pci_dev *pdev, u32 state)
 			  dev->name, pm_state, res);
 		if (res)
 		{
-			WARNING("No pnp capabilities for pm (%08X)", res);
+			WARNING("No pnp capabilities for pm (%08X); halting",
+				res);
 			call_halt(handle);
 			set_bit(HW_HALTED, &handle->hw_status);
 		}
@@ -979,6 +981,7 @@ int ndis_resume_pci(struct pci_dev *pdev)
 
 	hangcheck_add(handle);
 	statcollector_add(handle);
+	clear_bit(HW_HALTED, &handle->hw_status);
 	clear_bit(HW_SUSPENDED, &handle->hw_status);
 	DBGTRACE2("%s: device resumed", dev->name);
 	return 0;
