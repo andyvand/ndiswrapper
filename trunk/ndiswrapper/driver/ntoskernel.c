@@ -460,7 +460,7 @@ STDCALL LONG WRAP_EXPORT(KeSetEvent)
 	spin_lock(&dispatch_event_lock);
 	kevent->header.signal_state = TRUE;
 	if (kevent->header.type == SynchronizationEvent)
-		kevent->header.signal_state = FALSE;
+		wake_up_nr(&dispatch_event_wq, 1);
 	else
 		wake_up_all(&dispatch_event_wq);
 	DBGTRACE3("woken up %p", kevent);
