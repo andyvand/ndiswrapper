@@ -823,6 +823,7 @@ static int register_devices(struct load_devices *load_devices)
 			DBGTRACE1("adding %04x:%04x:%04x:%04x to pci idtable",
 				  device->vendor, device->device,
 				  device->subvendor, device->subdevice);
+#ifdef CONFIG_USB
 		} else if (device->bustype == NDIS_USB_BUS) {
 			ndiswrapper_usb_devices[num_usb].idVendor =
 				device->vendor;
@@ -836,6 +837,10 @@ static int register_devices(struct load_devices *load_devices)
 			DBGTRACE1("usb device %d added", num_usb);
 			DBGTRACE1("adding %04x:%04x to usb idtable",
 				  device->vendor, device->device);
+#endif
+		} else {
+			ERROR("system doesn't support bus type %d",
+			      device->bustype);
 		}
 	}
 
@@ -855,6 +860,7 @@ static int register_devices(struct load_devices *load_devices)
 			goto err;
 		}
 	}
+#ifdef CONFIG_USB
 	if (ndiswrapper_usb_devices) {
 		memset(&ndiswrapper_usb_driver, 0,
 			       sizeof(ndiswrapper_usb_driver));
@@ -870,6 +876,7 @@ static int register_devices(struct load_devices *load_devices)
 			goto err;
 		}
 	}
+#endif
 
 	vfree(devices);
 	TRACEEXIT1(return 0);
@@ -971,11 +978,13 @@ void loader_exit(void)
 	TRACEENTER1("");
 	misc_deregister(&wrapper_misc);
 
+#ifdef CONFIG_USB
 	if (ndiswrapper_usb_devices) {
 		usb_deregister(&ndiswrapper_usb_driver);
 		kfree(ndiswrapper_usb_devices);
 		ndiswrapper_usb_devices = NULL;
 	}
+#endif
 	if (ndiswrapper_pci_devices) {
 		pci_unregister_driver(&ndiswrapper_pci_driver);
 		kfree(ndiswrapper_pci_devices);
