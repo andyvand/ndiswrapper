@@ -235,10 +235,10 @@ struct mdl {
 	ULONG byteoffset;
 };
 
-#define MmGetSystemAddressForMdlSafe(mdl,p) ((mdl)->startva)
+#define MmGetMdlBaseVa(mdl) ((mdl)->startva)
 #define MmGetMdlByteCount(mdl) ((mdl)->bytecount)
-#define MmGetMdlVirtualAddress(mdl) ((char *)(mdl)->startva + \
-				     (mdl)->byteoffset)
+#define MmGetMdlVirtualAddress(mdl) ((void *)((char *)(mdl)->startva +	\
+					      (mdl)->byteoffset))
 #define MmGetMdlByteOffset(mdl) ((mdl)->byteoffset)
 
 

@@ -506,6 +506,7 @@ unsigned long usb_select_configuration(struct usb_device *dev,
 	struct usb_interface *intf;
 	struct usbd_pipe_information *pipe_info;
 	int i, ret;
+	struct usb_endpoint_descriptor *desc;
 
 	ASSERT(nt_urb->selConf.config->bNumInterfaces == 1);
 	DBGTRACE2("intf.intfNum = %d, intf.altSet = %d",
@@ -526,13 +527,9 @@ unsigned long usb_select_configuration(struct usb_device *dev,
 
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
 	for (i = 0; i < CUR_ALT_SETTING(intf)->desc.bNumEndpoints; i++) {
-		struct usb_endpoint_descriptor *desc;
-
 		desc = &(CUR_ALT_SETTING(intf)->endpoint + i)->desc;
 #else
 	for (i = 0; i < CUR_ALT_SETTING(intf).bNumEndpoints; i++) {
-		struct usb_endpoint_descriptor *desc;
-
 		desc = &((CUR_ALT_SETTING(intf)).endpoint[i]);
 #endif
 		pipe_info = &nt_urb->selConf.intf.pipes[i];
