@@ -125,6 +125,8 @@ static int procfs_read_encr(char *page, char **start, off_t off,
 		p += sprintf(p, "status=%sabled\n",
 			     (encr_status == ENCR_DISABLED) ? "dis" : "en");
 		p += sprintf(p, "auth_mode=%s\n",
+			     (auth_mode == AUTHMODE_AUTO) ?
+			     "auto" :
 			     (auth_mode == AUTHMODE_RESTRICTED) ?
 			     "restricted" : "open");
 	}
@@ -245,7 +247,7 @@ static int procfs_read_settings(char *page, char **start, off_t off,
 	return (p - page);
 }
 
-static int procfs_write_settings(struct file *file, const char __user *buf,
+static int procfs_write_settings(struct file *file, const char *buf,
 				 unsigned long count, void *data)
 {
 	struct ndis_handle *handle = (struct ndis_handle *)data;
