@@ -570,15 +570,15 @@ static int load_settings(struct ndis_driver *ndis_driver,
 /* this function is called while holding load_lock spinlock */
 static void unload_ndis_device(struct ndis_device *device)
 {
-	TRACEENTER1("unloading device %s, bustype %d",
-		    device->driver_name, device->bustype);
+	TRACEENTER1("unloading device %04X:%04X:%04X:%04X, driver %s",
+		    device->vendor, device->device, device->subvendor,
+		    device->subdevice, device->driver_name);
 
 	while (!list_empty(&device->settings)) {
 		struct device_setting *setting =
 			(struct device_setting *)device->settings.next;
 		struct ndis_config_param *param =
 			&setting->config_param;
-		DBGTRACE1("freeing setting %s", setting->name);
 		if (param->type == NDIS_CONFIG_PARAM_STRING)
 			RtlFreeUnicodeString(&param->data.ustring);
 		list_del(&setting->list);

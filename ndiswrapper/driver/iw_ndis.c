@@ -1,4 +1,4 @@
-/*
+ /*
  *  Copyright (C) 2003-2004 Pontus Fuchs, Giridhar Pemmasani
  *
  *  This program is free software; you can redistribute it and/or modify
@@ -1233,9 +1233,6 @@ static int wpa_set_wpa(struct net_device *dev, struct iw_request_info *info,
 	DBGTRACE1("flags = %d,  handle->capa = %ld",
 		  wrqu->data.flags, handle->capa);
 	
-	if (set_mode(handle, NDIS_MODE_INFRA))
-		TRACEEXIT2(return -1);
-
 	if (test_bit(CAPA_WPA, &handle->capa))
 		TRACEEXIT2(return 0);
 	else {
@@ -1289,10 +1286,6 @@ static int wpa_set_key(struct net_device *dev, struct iw_request_info *info,
 			TRACEEXIT2(return 0);
 	}
 
-	/* alg is either WPA_ALG_TKIP or WPA_ALG_CCMP */
-	if (!test_bit(CAPA_WPA, &handle->capa))
-		TRACEEXIT2(return -1);
-
 	if (wpa_key.key_len > sizeof(ndis_key.key)) {
 		DBGTRACE2("incorrect key length (%u)", (u32)wpa_key.key_len);
 		TRACEEXIT2(return -1);
@@ -1319,10 +1312,16 @@ static int wpa_set_key(struct net_device *dev, struct iw_request_info *info,
 		ndis_key.index |= 1 << 29;
 	}
 
-	if (wpa_key.addr == NULL || memcmp(addr, "\xff\xff\xff\xff\xff\xff",
-				   ETH_ALEN) == 0) {
+	DBGTRACE1("op_mode = %d, key.addr = %p, addr = " MACSTR,
+		  handle->op_mode, wpa_key.addr, MAC2STR(addr));
+
+	if (wpa_key.addr == NULL ||
+	    memcmp(addr, "\xff\xff\xff\xff\xff\xff", ETH_ALEN) == 0) {
 		/* group key */
-		get_ap_address(handle, ndis_key.bssid);
+		if (handle->op_mode == NDIS_MODE_ADHOC)
+			memset(ndis_key.bssid, 0xff, ETH_ALEN);
+		else
+			get_ap_address(handle, ndis_key.bssid);
 	} else {
 		/* pairwise key */
 		ndis_key.index |= (1 << 30);
@@ -1383,11 +1382,7 @@ static int wpa_disassociate(struct net_device *dev,
 	for (i = 0; i < sizeof(buf); i++)
 		buf[i] = 'a' + (buf[i] % ('z' - 'a'));
 	set_essid(handle, buf, sizeof(buf));
-	get_ap_address(handle, ap_addr);
-	if (memcmp(ap_addr, "\x00\x00\x00\x00\x00\x00", ETH_ALEN))
-		TRACEEXIT2(return -1);
-	else
-		TRACEEXIT2(return 0);
+	TRACEEXIT2(return 0);
 }
 
 static int wpa_associate(struct net_device *dev,
@@ -1396,8 +1391,8 @@ static int wpa_associate(struct net_device *dev,
 {
 	struct ndis_handle *handle = (struct ndis_handle *)dev->priv;
 	struct wpa_assoc_info wpa_assoc_info;
-	char ssid[NDIS_ESSID_MAX_SIZE], ie;
-	int auth_mode, encr_mode, wpa2 = 0, size;
+	char ssid[NDIS_ESSID_MAX_SIZE];
+	int auth_mode, encr_mode, priv_mode, size;
 	
 	TRACEENTER2("%s", "");
 
@@ -1415,12 +1410,11 @@ static int wpa_associate(struct net_device *dev,
 			   wpa_assoc_info.ssid_len))
 		TRACEEXIT1(return -1);
 
-	if (wpa_assoc_info.wpa_ie_len > 0 &&
-	    copy_from_user(&ie, wpa_assoc_info.wpa_ie, 1) == 0 &&
-	    ie == WLAN_EID_RSN) {
-		wpa2 = 1;
-	}
-	
+	if (wpa_assoc_info.mode == IEEE80211_MODE_IBSS)
+		set_mode(handle, NDIS_MODE_ADHOC);
+	else
+		set_mode(handle, NDIS_MODE_INFRA);
+
 	DBGTRACE1("key_mgmt_suite = %d, pairwise_suite = %d, group_suite= %d",
 		  wpa_assoc_info.key_mgmt_suite,
 		  wpa_assoc_info.pairwise_suite, wpa_assoc_info.group_suite);
@@ -1429,55 +1423,55 @@ static int wpa_associate(struct net_device *dev,
 	    wpa_assoc_info.key_mgmt_suite != KEY_MGMT_NONE)
 		TRACEEXIT2(return -1);
 
+	if (wpa_assoc_info.wpa_ie == NULL || wpa_assoc_info.wpa_ie_len == 0) {
+		if (wpa_assoc_info.auth_alg & AUTH_ALG_SHARED_KEY) {
+			if (wpa_assoc_info.auth_alg & AUTH_ALG_OPEN_SYSTEM)
+				auth_mode = AUTHMODE_AUTO;
+			else
+				auth_mode = AUTHMODE_RESTRICTED;
+		} else
+			auth_mode = AUTHMODE_OPEN;
+		priv_mode = NDIS_PRIV_ACCEPT_ALL;
+	} else if (wpa_assoc_info.wpa_ie[0] == RSN_INFO_ELEM) {
+		priv_mode = NDIS_PRIV_WEP;
+		if (wpa_assoc_info.key_mgmt_suite == KEY_MGMT_PSK)
+			auth_mode = AUTHMODE_WPA2PSK;
+		else
+			auth_mode = AUTHMODE_WPA2;
+	} else {
+		priv_mode = NDIS_PRIV_WEP;
+		if (wpa_assoc_info.key_mgmt_suite == KEY_MGMT_WPA_NONE)
+			auth_mode = AUTHMODE_WPANONE;
+		else if (wpa_assoc_info.key_mgmt_suite == KEY_MGMT_PSK)
+			auth_mode = AUTHMODE_WPAPSK;
+		else
+			auth_mode = AUTHMODE_WPA;
+	}
+
 	switch (wpa_assoc_info.pairwise_suite) {
 	case CIPHER_CCMP:
-		if (!test_bit(CAPA_AES, &handle->capa))
-			TRACEEXIT2(return -1);
 		encr_mode = ENCR3_ENABLED;
 		break;
 	case CIPHER_TKIP:
-		if (!test_bit(CAPA_TKIP, &handle->capa))
-			TRACEEXIT2(return -1);
-		encr_mode =  ENCR2_ENABLED;
+		encr_mode = ENCR2_ENABLED;
 		break;
-	case CIPHER_WEP104:
 	case CIPHER_WEP40:
-		if (test_bit(CAPA_ENCR_NONE, &handle->capa))
-			TRACEEXIT2(return -1);
+	case CIPHER_WEP104:
 		encr_mode = ENCR1_ENABLED;
 		break;
-	default:
-		TRACEEXIT2(return -1);
-	}
-
-	switch (wpa_assoc_info.key_mgmt_suite) {
-	case KEY_MGMT_PSK:
-		if (!test_bit(CAPA_WPA, &handle->capa))
-			TRACEEXIT2(return -1);
-		auth_mode = wpa2 ? AUTHMODE_WPA2PSK : AUTHMODE_WPAPSK;
-		break;
-	case KEY_MGMT_802_1X:
-		if (!test_bit(CAPA_WPA, &handle->capa))
-			TRACEEXIT2(return -1);
-		auth_mode = wpa2 ? AUTHMODE_WPA2 : AUTHMODE_WPA;
-		break;
-	case KEY_MGMT_NONE:
-		if (wpa_assoc_info.group_suite != CIPHER_WEP104 &&
-		    wpa_assoc_info.group_suite != CIPHER_WEP40)
-			TRACEEXIT2(return -1);
-		if (wpa_assoc_info.auth_alg & AUTH_ALG_SHARED_KEY)
-			auth_mode = AUTHMODE_RESTRICTED;
+	case CIPHER_NONE:
+		if (wpa_assoc_info.group_suite == CIPHER_CCMP)
+			encr_mode = ENCR3_ENABLED;
 		else
-			auth_mode = AUTHMODE_OPEN;
+			encr_mode = ENCR2_ENABLED;
 		break;
 	default:
-		TRACEEXIT2(return -1);
-	}
+		encr_mode = ENCR_DISABLED;
+	};
 
-	if (set_auth_mode(handle, auth_mode))
-		TRACEEXIT2(return -1);
-	if (set_encr_mode(handle, encr_mode))
-		TRACEEXIT2(return -1);
+	set_privacy_filter(handle, priv_mode);
+	set_auth_mode(handle, auth_mode);
+	set_encr_mode(handle, encr_mode);
 
 #if 0
 	/* set channel */
@@ -1492,7 +1486,6 @@ static int wpa_associate(struct net_device *dev,
 		}
 	}
 #endif
-
 	/* set ssid */
 	if (set_essid(handle, ssid, wpa_assoc_info.ssid_len))
 		TRACEEXIT2(return -1);
