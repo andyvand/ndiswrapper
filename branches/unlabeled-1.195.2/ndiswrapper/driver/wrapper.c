@@ -950,25 +950,26 @@ static void check_wpa(struct ndis_handle *handle)
 	struct ndis_assoc_info ndis_assoc_info;
 	struct ndis_key ndis_key;
 
-	printk("%s: Entry\n", __FUNCTION__);
+	TRACEENTER1();
 	handle->wpa_capa = 0;
-	res = set_int(handle, NDIS_OID_AUTH_MODE, AUTHMODE_WPA);
+	res = set_int(handle, NDIS_OID_AUTH_MODE, AUTHMODE_WPAPSK);
 	if (res)
 		return;
 	res = query_int(handle, NDIS_OID_AUTH_MODE, &i);
-	if (res || i != AUTHMODE_WPA)
+	if (res || i != AUTHMODE_WPAPSK)
 		return;
 	
-	printk("%s: checking for encr\n", __FUNCTION__);
+	DBGTRACE("checking for encr");
 	/* check for highest encryption */
 	mode = WEP_ENCR3_ENABLED;
 	while (mode)
 	{
-		printk("%s: checking wep mode %d\n", __FUNCTION__, mode);
+		DBGTRACE("checking wep mode %d", mode);
 		res = set_int(handle, NDIS_OID_WEP_STATUS, mode);
+		DBGTRACE("wep_set ret = %08X", res);
 		if (!res)
 			res = query_int(handle, NDIS_OID_WEP_STATUS, &i);
-		printk("%s: get wep mode %d\n", __FUNCTION__, i);
+		DBGTRACE("got wep mode %d (%08X)", i, res);
 		if (!res && i == mode)
 			break;
 
@@ -984,8 +985,8 @@ static void check_wpa(struct ndis_handle *handle)
 			mode = WEP_DISABLED;
 		}
 	}
-	handle->wep_mode = mode;
-	printk("%s: wep_mode = %d\n", __FUNCTION__, mode);
+	DBGTRACE("wep_mode = %d", mode);
+	handle->wep_mode = WEP_ENCR2_ENABLED;
 			
 //	if (handle->wep_mode == WEP_ENCR3_ENABLED ||
 //	    handle->wep_mode == WEP_ENCR2_ENABLED)
@@ -1071,12 +1072,14 @@ static int setup_dev(struct net_device *dev)
 	if(handle->multicast_list_size)
 		handle->multicast_list = kmalloc(handle->multicast_list_size * 6, GFP_KERNEL);
 
+#ifdef DEBUG_WPA
 	wrqu.param.value = NDIS_PRIV_ACCEPT_ALL;
 	if (ndis_set_priv_filter(dev, NULL, &wrqu, NULL))
 		printk(KERN_ERR "%s: Unable to set privacy filter\n",
 		       DRV_NAME);
 
 	check_wpa(handle);
+#endif
 
 	ndis_set_rx_mode_proc(dev);
 	

@@ -1071,8 +1071,8 @@ int ndis_set_wpa(struct net_device *dev, struct iw_request_info *info,
 	struct ndis_handle *handle = (struct ndis_handle *)dev->priv;
 	unsigned int res;
 	
-	printk(KERN_INFO "%s called, flags = %d, encr_alg = %d, handle->capa = %d, handle->encr_alg = %d\n",
-	       __FUNCTION__, wrqu->data.flags, handle->encr_alg,
+	DBGTRACE("flags = %d, encr_alg = %d, handle->capa = %d, "
+		 "handle->encr_alg = %d", wrqu->data.flags, handle->encr_alg,
 	       handle->wpa_capa, handle->encr_alg);
 	
 	if (!wrqu->data.flags)
@@ -1091,8 +1091,11 @@ int ndis_set_wpa(struct net_device *dev, struct iw_request_info *info,
 	if (!handle->wpa_capa)
 		return -1;
 
-	printk("%s: enabling wpa, authmode = %d, wepmode = %d\n",
-		 __FUNCTION__, handle->auth_mode, handle->wep_mode);
+	DBGTRACE("authmode = %d, wepmode = %d", handle->auth_mode,
+		 handle->wep_mode);
+	handle->auth_mode = AUTHMODE_WPAPSK;
+	handle->wep_mode = WEP_ENCR2_ENABLED;
+
 	if (handle->auth_mode == AUTHMODE_WPA ||
 	    handle->auth_mode == AUTHMODE_WPAPSK)
 	{
@@ -1107,15 +1110,14 @@ int ndis_set_wpa(struct net_device *dev, struct iw_request_info *info,
 	if (handle->wep_mode == WEP_ENCR3_ENABLED ||
 	    handle->wep_mode == WEP_ENCR2_ENABLED)
 	{
-		res = set_int(handle, NDIS_OID_WEP_STATUS,
-			      handle->wep_mode);
+		res = set_int(handle, NDIS_OID_WEP_STATUS, handle->wep_mode);
 		if (res)
 			return -1;
 	}
 	else
 		return -1;
 	
-	printk("%s: wpa enabled\n", __FUNCTION__);
+	DBGTRACE("%s", "wpa enabled");
 	return 0;
 }
 

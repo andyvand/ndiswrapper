@@ -929,6 +929,7 @@ STDCALL void NdisMFreeSharedMemory(struct ndis_handle *handle,
 {
 	TRACEENTER3();
 	PCI_DMA_FREE_COHERENT(handle->pci_dev, size, virt, physlow);
+	TRACEEXIT3(return);
 }
 
 
@@ -945,6 +946,7 @@ STDCALL void NdisAllocateBufferPool(unsigned int *status,
 
 STDCALL void NdisFreeBufferPool(void *poolhandle)
 {
+	TRACEENTER3();
 	/* Make sure all packets are recycled */
 	flush_scheduled_work();
 
@@ -1048,6 +1050,7 @@ STDCALL void NdisAllocatePacketPoolEx(unsigned int *status,
 {
 	TRACEENTER3();
 	NdisAllocatePacketPool(status, poolhandle, size, rsvlen);
+	TRACEEXIT3(return);
 }
 
 STDCALL unsigned int NdisPacketPoolUsage(void *poolhandle)
