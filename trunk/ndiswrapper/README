@@ -4,7 +4,6 @@
 1. Compile the driver
 ---------------------
 * You need a recent 2.6.0 or 2.4 kernel
-* Make sure your kernel complied without framepointer (See the kernel hacking menu)
 
 Go to the driver directory and run
 
@@ -70,4 +69,26 @@ until I have investigated why you should use the following format for your
 iwconfig command:
 
 #iwconfig ethX mode Managed essid someid
+
+8. Automate
+-----------
+When you have a wokring setup you may want to automate the driver-loading
+
+* First write a script that does insmod and loaddriver.
+
+For kernel 2.6 do:
+
+* Add this line to /etc/modprobe.conf:
+install ethX <path to your script>
+
+Now you should be able to do modprobe ethX
+
+Fedora Core 1 (and probably Redhat 9) with kernel 2.6.0 seem to have a slight
+bug which cause ifup to not recoginize the install line in modprobe.conf. See 
+http://bugzilla.redhat.com/bugzilla/show_bug.cgi?id=110415 for more info and
+a patch.
+
+For kernel 2.4 do:
+
+To be written.
 
