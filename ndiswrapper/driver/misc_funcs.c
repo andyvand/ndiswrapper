@@ -528,13 +528,10 @@ ExInterlockedPopEntrySList(int dummy, KSPIN_LOCK *lock,union slist_head *head)
 	return first;
 }
 
-kmem_cache_t *g_kmem_cache;
-struct npaged_lookaside_list *g_lookaside;
-
 STDCALL void *lookaside_def_alloc_func(POOL_TYPE pool_type,
 									   unsigned long size, unsigned long tag)
 {
-	return kmalloc(size, GFP_KERNEL);
+	return kmalloc(size, GFP_ATOMIC);
 }
 
 STDCALL void lookaside_def_free_func(void *buffer)

@@ -167,8 +167,8 @@ struct miniport_char
 	unsigned int reserved;
 
 	int (*hangcheck)(void *ctx) STDCALL;
-	void * DisableInterruptHandler;
-	void * EnableInterruptHandler;
+	void (*disable_interrupts)(void *ctx) STDCALL;
+	void (*enable_interrupts)(void *ctx) STDCALL;
 
 	/* Stop miniport */
 	void (*halt)(void *ctx) STDCALL;
