@@ -92,6 +92,27 @@ prereq_check:
 		       argument to make";\
 		exit 1;\
 	  fi
+	  @ if [ $(KPSUB) -eq 26 ]; then \
+		   if grep -q CONFIG_4KSTACKS $(KSRC)/.config; then \
+			  if grep -q "CONFIG_4KSTACKS=y" $(KSRC)/.config; then \
+				echo; echo; \
+			  	echo "WARNING: Kernel is compiled with 4K stack size option"\
+					 "(CONFIG_4KSTACKS); many Windows drivers will"\
+					 "not work with this option enabled. Disable"\
+					 "CONFIG_4KSTACKS option, recompile and install"\
+					 "kernel";\
+				echo; echo; \
+			  fi;\
+			else \
+				echo; echo; \
+			   echo "WARNING: Kernel seems to have 4K size stack option" \
+			     "(CONFIG_4KSTACKS) removed; many Windows drivers will"\
+			     "need at least 8K size stacks."\
+			     "You should read wiki about 4K size stack issue."\
+				 "Don't complain about crashes until you resolve this."; \
+				echo; echo; \
+			fi;\
+		fi
 
 clean:
 	rm -rf $(MODULE) ndiswrapper.o $(OBJS) usb.o .*.ko.cmd .*.o.cmd \

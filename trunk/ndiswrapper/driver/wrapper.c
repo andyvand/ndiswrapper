@@ -42,12 +42,6 @@
 #error You must run make from the toplevel directory
 #endif
 
-#ifdef CONFIG_4KSTACKS
-#warning Most windows drivers do not work with 4K stacks. \
-	Disable 4K stack option (CONFIG_4K_STACKS) in the kernel; otherwise \
-	most likely the kernel crashes.
-#endif
-
 /* Define this if you are developing and ndis_init_one crashes.
    When using the old PCI-API a reboot is not needed when this
    function crashes. A simple rmmod -f will do the trick and
