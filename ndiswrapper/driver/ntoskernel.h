@@ -371,7 +371,7 @@ struct wrapper_timer {
 };
 
 struct qdpc {
-	struct list_head list;
+	struct nt_list_entry list;
 	struct kdpc *kdpc;
 	void *arg1;
 	void *arg2;

@@ -28,7 +28,7 @@
 #define CACHE_MDL_PAGES 2
 #define CACHE_MDL_SIZE (sizeof(struct mdl) + (sizeof(ULONG) * CACHE_MDL_PAGES))
 struct wrap_mdl {
-	struct list_head list;
+	struct nt_list_entry list;
 	char mdl[CACHE_MDL_SIZE];
 };
 
@@ -36,12 +36,14 @@ static KSPIN_LOCK kevent_lock;
 KSPIN_LOCK irp_cancel_lock;
 KSPIN_LOCK ntoskernel_lock;
 static kmem_cache_t *mdl_cache;
-static struct list_head wrap_mdl_list;
+static struct nt_list_entry wrap_mdl_list;
 static struct nt_list_entry obj_mgr_obj_list;
 
 static struct work_struct qdpc_work;
-static struct list_head qdpc_list;
+static struct nt_list_entry qdpc_list;
 static void dpc_worker(void *data);
+
+static struct nt_list_entry callback_objects;
 
 WRAP_EXPORT_MAP("KeTickCount", &jiffies);
 
@@ -51,8 +53,8 @@ int ntoskernel_init(void)
 	kspin_lock_init(&irp_cancel_lock);
 	kspin_lock_init(&ntoskernel_lock);
 	InitializeListHead(&obj_mgr_obj_list);
-	INIT_LIST_HEAD(&wrap_mdl_list);
-	INIT_LIST_HEAD(&qdpc_list);
+	InitializeListHead(&wrap_mdl_list);
+	InitializeListHead(&qdpc_list);
 	INIT_WORK(&qdpc_work, &dpc_worker, NULL);
 	mdl_cache = kmem_cache_create("ndis_mdl", sizeof(struct wrap_mdl),
 				      0, 0, NULL, NULL);
@@ -65,16 +67,16 @@ int ntoskernel_init(void)
 
 void ntoskernel_exit(void)
 {
+	struct nt_list_entry *cur;
 	if (mdl_cache) {
 		kspin_lock(&ntoskernel_lock);
-		if (!list_empty(&wrap_mdl_list)) {
-			struct list_head *cur, *tmp;
+		if (!IsListEmpty(&wrap_mdl_list)) {
 			ERROR("Windows driver didn't free all MDLs; "
 			      "freeing them now");
-			list_for_each_safe(cur, tmp, &wrap_mdl_list) {
+			while ((cur = RemoveHeadList(&wrap_mdl_list))) {
 				struct wrap_mdl *p;
 				struct mdl *mdl;
-				p = list_entry(cur, struct wrap_mdl, list);
+				p = container_of(cur, struct wrap_mdl, list);
 				mdl = (struct mdl *)p->mdl;
 				if (mdl->flags & MDL_CACHE_ALLOCATED)
 					kmem_cache_free(mdl_cache, p);
@@ -82,11 +84,23 @@ void ntoskernel_exit(void)
 					kfree(p);
 			}
 		}
-		INIT_LIST_HEAD(&wrap_mdl_list);
 		kspin_unlock(&ntoskernel_lock);
 		kmem_cache_destroy(mdl_cache);
 		mdl_cache = NULL;
 	}
+	kspin_lock(&ntoskernel_lock);
+	while ((cur = RemoveHeadList(&callback_objects))) {
+		struct callback_object *object;
+		struct nt_list_entry *ent;
+		object = container_of(cur, struct callback_object, list);
+		while ((ent = RemoveHeadList(&object->callback_funcs))) {
+			struct callback_func *f;
+			f = container_of(ent, struct callback_func, list);
+			kfree(f);
+		}
+		kfree(object);
+	}
+	kspin_unlock(&ntoskernel_lock);
 	return;
 }
 
@@ -252,6 +266,7 @@ STDCALL void WRAP_EXPORT(KeInitializeDpc)
 
 static void dpc_worker(void *data)
 {
+	struct nt_list_entry *entry;
 	struct qdpc *qdpc;
 	struct kdpc *kdpc;
 	KIRQL irql;
@@ -259,20 +274,15 @@ static void dpc_worker(void *data)
 
 	while (1) {
 		irql = kspin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL);
-		if (list_empty(&qdpc_list))
-			qdpc = NULL;
-		else {
-			qdpc = list_entry(qdpc_list.next,
-					  struct qdpc, list);
-			list_del(&qdpc->list);
-		}
+		entry = RemoveHeadList(&qdpc_list);
 		kspin_unlock_irql(&ntoskernel_lock, irql);
-		if (!qdpc)
+		if (!entry)
 			break;
+		qdpc = container_of(entry, struct qdpc, list);
 		kdpc = qdpc->kdpc;
 		dpc_func = kdpc->func;
 		irql = raise_irql(DISPATCH_LEVEL);
-		dpc_func(kdpc, kdpc->ctx, qdpc->arg1, qdpc->arg2);
+		LIN2WIN4(dpc_func, kdpc, kdpc->ctx, qdpc->arg1, qdpc->arg2);
 		lower_irql(irql);
 		kfree(qdpc);
 	}
@@ -280,7 +290,7 @@ static void dpc_worker(void *data)
 
 STDCALL BOOLEAN KeInsertQueueDpc(struct kdpc *kdpc, void *arg1, void *arg2)
 {
-	struct list_head *cur;
+	struct nt_list_entry *cur;
 	struct qdpc *qdpc;
 
 	qdpc = kmalloc(sizeof(*qdpc), GFP_ATOMIC);
@@ -292,15 +302,14 @@ STDCALL BOOLEAN KeInsertQueueDpc(struct kdpc *kdpc, void *arg1, void *arg2)
 	qdpc->arg1 = arg1;
 	qdpc->arg2 = arg2;
 	kspin_lock(&ntoskernel_lock);
-	list_for_each(cur, &qdpc_list) {
-		struct qdpc *ent;
-		ent = list_entry(cur, struct qdpc, list);
-		if (ent->kdpc == kdpc) {
+	nt_list_for_each(cur, &qdpc_list) {
+		qdpc = container_of(cur, struct qdpc, list);
+		if (qdpc->kdpc == kdpc) {
 			kspin_unlock(&ntoskernel_lock);
 			return FALSE;
 		}
 	}
-	list_add(&qdpc->list, &qdpc_list);
+	InsertTailList(&qdpc_list, &qdpc->list);
 	kspin_unlock(&ntoskernel_lock);
 	schedule_work(&qdpc_work);
 	return TRUE;
@@ -309,13 +318,13 @@ STDCALL BOOLEAN KeInsertQueueDpc(struct kdpc *kdpc, void *arg1, void *arg2)
 STDCALL BOOLEAN KeRemoveQueueDpc(struct kdpc *kdpc)
 {
 	KIRQL irql;
-	struct list_head *cur;
+	struct nt_list_entry *cur;
 
 	irql = kspin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL);
-	list_for_each(cur, &qdpc_list) {
-		struct qdpc *qdpc = list_entry(cur, struct qdpc, list);
+	nt_list_for_each(cur, &qdpc_list) {
+		struct qdpc *qdpc = container_of(cur, struct qdpc, list);
 		if (qdpc->kdpc == kdpc) {
-			list_del(&qdpc->list);
+			RemoveEntryList(&qdpc->list);
 			kspin_unlock_irql(&ntoskernel_lock, irql);
 			kfree(qdpc);
 			return TRUE;
@@ -538,6 +547,93 @@ STDCALL void WRAP_EXPORT(ExDeleteNPagedLookasideList)
 		lookaside->free_func(p);
 	}
 	TRACEEXIT4(return);
+}
+
+STDCALL NTSTATUS WRAP_EXPORT(ExCreateCallback)
+	(struct callback_object **object, struct object_attributes *attributes,
+	 BOOLEAN create, BOOLEAN allow_multiple_callbacks)
+{
+	struct callback_object *obj;
+	struct nt_list_entry *cur;
+
+	TRACEENTER2("");
+	kspin_lock(&ntoskernel_lock);
+	nt_list_for_each(cur, &callback_objects) {
+		obj = container_of(cur, struct callback_object,
+				   callback_funcs);
+		if (obj->attributes == attributes) {
+			kspin_unlock(&ntoskernel_lock);
+			*object = obj;
+			return STATUS_SUCCESS;
+		}
+	}
+	kspin_unlock(&ntoskernel_lock);
+	obj = kmalloc(sizeof(*obj), GFP_KERNEL);
+	if (!obj)
+		TRACEEXIT2(return STATUS_INSUFFICIENT_RESOURCES);
+	InitializeListHead(&obj->callback_funcs);
+	kspin_lock_init(&obj->lock);
+	obj->allow_multiple_callbacks = allow_multiple_callbacks;
+	obj->attributes = attributes;
+	*object = obj;
+	TRACEEXIT2(return STATUS_SUCCESS);
+}
+
+STDCALL void *WRAP_EXPORT(ExRegisterCallback)
+	(struct callback_object *object, PCALLBACK_FUNCTION func,
+	 void *context)
+{
+	struct callback_func *callback;
+
+	TRACEENTER2("");
+	kspin_lock(&object->lock);
+	if (object->allow_multiple_callbacks == FALSE &&
+	    !IsListEmpty(&object->callback_funcs)) {
+		kspin_unlock(&object->lock);
+		TRACEEXIT2(return NULL);
+	}
+	kspin_unlock(&ntoskernel_lock);
+	callback = kmalloc(sizeof(*callback), GFP_KERNEL);
+	if (!callback) {
+		ERROR("couldn't allocate memory");
+		return NULL;
+	}
+	callback->func = func;
+	callback->context = context;
+	callback->object = object;
+	kspin_lock(&object->lock);
+	InsertTailList(&object->callback_funcs, &callback->list);
+	kspin_unlock(&object->lock);
+	TRACEEXIT(return callback);
+}
+
+STDCALL void WRAP_EXPORT(ExUnregisterCallback)
+	(struct callback_func *callback)
+{
+	struct callback_object *object;
+
+	if (!callback)
+		return;
+	object = callback->object;
+	kspin_lock(&object->lock);
+	RemoveEntryList(&callback->list);
+	kspin_unlock(&object->lock);
+	return;
+}
+
+STDCALL void WRAP_EXPORT(ExNotifyCallback)
+	(struct callback_object *object, void *arg1, void *arg2)
+{
+	struct nt_list_entry *cur;
+	struct callback_func *callback;
+
+	kspin_lock(&object->lock);
+	nt_list_for_each(cur, &object->callback_funcs){
+		callback = container_of(cur, struct callback_func, list);
+		LIN2WIN3(callback->func, callback->context, arg1, arg2);
+	}
+	kspin_unlock(&object->lock);
+	return;
 }
 
 STDCALL void WRAP_EXPORT(KeInitializeEvent)
@@ -874,7 +970,6 @@ STDCALL NTSTATUS WRAP_EXPORT(KeDelayExecutionThread)
 		set_current_state(TASK_UNINTERRUPTIBLE);
 
 	res = schedule_timeout(timeout);
-
 	if (res == 0)
 		TRACEEXIT3(return STATUS_SUCCESS);
 	else
@@ -1524,7 +1619,7 @@ struct mdl *allocate_init_mdl(void *virt, ULONG length)
 			return NULL;
 		DBGTRACE3("allocated mdl cache: %p", wrap_mdl);
 		kspin_lock(&ntoskernel_lock);
-		list_add(&wrap_mdl->list, &wrap_mdl_list);
+		InsertHeadList(&wrap_mdl_list, &wrap_mdl->list);
 		kspin_unlock(&ntoskernel_lock);
 		mdl = (struct mdl *)wrap_mdl->mdl;
 		memset(mdl, 0, CACHE_MDL_SIZE);
@@ -1541,7 +1636,7 @@ struct mdl *allocate_init_mdl(void *virt, ULONG length)
 		DBGTRACE3("allocated mdl: %p", wrap_mdl);
 		mdl = (struct mdl *)wrap_mdl->mdl;
 		kspin_lock(&ntoskernel_lock);
-		list_add(&wrap_mdl->list, &wrap_mdl_list);
+		InsertHeadList(&wrap_mdl_list, &wrap_mdl->list);
 		kspin_unlock(&ntoskernel_lock);
 		memset(mdl, 0, mdl_size);
 		MmInitializeMdl(mdl, virt, length);
@@ -1557,7 +1652,6 @@ void free_mdl(struct mdl *mdl)
 	 * must call NdisFreeBuffer if it is allocated with Ndis
 	 * function. We set 'process' field in Ndis functions. */
 	if (mdl) {
-		
 		if (mdl->process)
 			NdisFreeBuffer(mdl);
 		else {
@@ -1565,18 +1659,21 @@ void free_mdl(struct mdl *mdl)
 			wrap_mdl = (struct wrap_mdl *)
 				((char *)mdl - offsetof(struct wrap_mdl, mdl));
 			kspin_lock(&ntoskernel_lock);
-			list_del(&wrap_mdl->list);
+			RemoveEntryList(&wrap_mdl->list);
 			kspin_unlock(&ntoskernel_lock);
 
 			if (mdl->flags & MDL_CACHE_ALLOCATED) {
-				DBGTRACE3("freeing mdl cache: %p (%hu)", wrap_mdl, mdl->flags);
+				DBGTRACE3("freeing mdl cache: %p (%hu)",
+					  wrap_mdl, mdl->flags);
 				kmem_cache_free(mdl_cache, wrap_mdl);
 			} else {
-				DBGTRACE3("freeing mdl: %p (%hu)", wrap_mdl, mdl->flags);
+				DBGTRACE3("freeing mdl: %p (%hu)",
+					  wrap_mdl, mdl->flags);
 				kfree(wrap_mdl);
 			}
 		}
 	}
+	return;
 }
 
 STDCALL struct mdl *WRAP_EXPORT(IoAllocateMdl)
@@ -1765,6 +1862,8 @@ _FASTCALL void WRAP_EXPORT(ObfDereferenceObject)
 			obj_mgr_obj->ref_count--;
 			if (obj_mgr_obj->ref_count == 0) {
 				RemoveEntryList(&obj_mgr_obj->list);
+				/* FIXME: should we delete the handle too? */
+				/* kfree(obj_mgr_obj->handle); */
 				kfree(obj_mgr_obj);
 			}
 			kspin_unlock(&ntoskernel_lock);
@@ -1883,6 +1982,13 @@ STDCALL void WRAP_EXPORT(KeBugCheckEx)
 {
 	UNIMPL();
 	return;
+}
+
+STDCALL ULONG WRAP_EXPORT(ExSetTimerResolution)
+	(ULONG time, BOOLEAN set)
+{
+	/* yet another proof that they must be on crack */
+	return time;
 }
 
 STDCALL void WRAP_EXPORT(DbgBreakPoint)(void){UNIMPL();}

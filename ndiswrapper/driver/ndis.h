@@ -153,7 +153,7 @@ struct ndis_packet {
 };
 
 struct wrap_ndis_packet {
-	struct list_head list;
+	struct nt_list_entry list;
 	struct ndis_packet ndis_packet;
 };
 
