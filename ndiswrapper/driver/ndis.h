@@ -26,7 +26,7 @@
 #include <linux/version.h>
 
 /* Define this to enable debugging */
-/*#define DEBUG 1*/
+#define DEBUG 1
 
 
 /* Workqueue / task queue backwards compatibility stuff */
