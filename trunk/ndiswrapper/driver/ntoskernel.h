@@ -297,8 +297,10 @@ struct wrap_export {
 
 #ifdef CONFIG_X86_64
 #define WRAP_EXPORT_SYMBOL(f) {#f, (WRAP_EXPORT_FUNC)x86_64_ ## f}
+#define WRAP_EXPORT_WIN_FUNC(f) {#f, (WRAP_EXPORT_FUNC)x86_64__win_ ## f}
 #else
 #define WRAP_EXPORT_SYMBOL(f) {#f, (WRAP_EXPORT_FUNC)f}
+#define WRAP_EXPORT_WIN_FUNC(f) {#f, (WRAP_EXPORT_FUNC)_win_ ## f}
 #endif
 /* map name s to function f - if f is different from s */
 #define WRAP_EXPORT_MAP(s,f)

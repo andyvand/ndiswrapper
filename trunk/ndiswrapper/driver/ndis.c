@@ -64,7 +64,8 @@ void ndis_exit_handle(struct ndis_handle *handle)
 	if (handle->ndis_irq) {
 		unsigned long flags;
 
-		spin_lock_irqsave(K_SPINLOCK(&(handle->ndis_irq->lock)), flags);
+		spin_lock_irqsave(K_SPINLOCK(&(handle->ndis_irq->lock)),
+				  flags);
 		if (miniport->disable_interrupts)
 			LIN2WIN1(miniport->disable_interrupts,
 				 handle->adapter_ctx);
@@ -2094,8 +2095,8 @@ static void ndis_worker(void *data)
 			DBGTRACE3("Calling work at %p with parameter %p",
 				  sched_work_item->func,
 				  sched_work_item->ctx);
-			LIN2WIN2(sched_work_item->func,sched_work_item,
-					      sched_work_item->ctx);
+			LIN2WIN2(sched_work_item->func, sched_work_item,
+				 sched_work_item->ctx);
 			break;
 
 		case NDIS_IO_WORK_ITEM:
@@ -2104,8 +2105,9 @@ static void ndis_worker(void *data)
 
 			DBGTRACE3("Calling work at %p with parameter %p",
 				  io_work_item->func, io_work_item->ctx);
-			LIN2WIN2(io_work_item->func,io_work_item->device_object,
-					   io_work_item->ctx);
+			LIN2WIN2(io_work_item->func,
+				io_work_item->device_object,
+				io_work_item->ctx);
 			break;
 
 		case NDIS_ALLOC_MEM_WORK_ITEM:

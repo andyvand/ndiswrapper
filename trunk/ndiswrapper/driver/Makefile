@@ -131,8 +131,8 @@ endif
 		echo "#endif"; \
 		echo "struct wrap_export $(basename $<)_exports[] = {";\
 		sed -n \
-			-e 's/.*WRAP_EXPORT(\(_wrap_\)\([^)]\+\)).*/     \
-				   {"\2", (WRAP_EXPORT_FUNC)\1\2},/p' \
+			-e 's/.*WRAP_EXPORT(\(_win_\)\([^)]\+\)).*/     \
+				   WRAP_EXPORT_WIN_FUNC(\2),/p' \
 			-e 's/.*WRAP_EXPORT(\([^)]\+\)).*/   \
 				   WRAP_EXPORT_SYMBOL(\1),/p' \
 			-e 's/.*WRAP_EXPORT_MAP(\("[^"]\+"\)[ ,\n]\+\([^)]\+\)).*/   \
