@@ -171,6 +171,24 @@ NOREGPARM int my_vsprintf (char *str, const char *format, va_list ap)
 	return vsprintf(str, format, ap);
 }
 
+NOREGPARM int my_snprintf(char *buf, size_t count, const char *format, ...)
+{
+	va_list args;
+	int res;
+	
+	va_start(args, format);
+	res = snprintf(buf, count, format, args);
+	va_end(args);
+	return res;
+}
+
+NOREGPARM int my_vsnprintf (char *str, size_t size,
+							const char *format, va_list ap)
+{
+	return vsnprintf(str, size, format, ap);
+}
+
+
 NOREGPARM char *my_strncpy(char *dst, char *src, int n)
 {
 	return strncpy(dst, src, n);
