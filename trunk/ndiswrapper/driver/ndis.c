@@ -180,7 +180,7 @@ STDCALL void NdisFreeMemory(void *adr, unsigned int length, unsigned int flags)
  *
  * This function should not be STDCALL because it's a variable args function. 
  */
-void NdisWriteErrorLogEntry(struct ndis_handle *handle,
+NOREGPARM void NdisWriteErrorLogEntry(struct ndis_handle *handle,
 	                    unsigned int error,
 			    unsigned int length,
 			    unsigned int p1)
