@@ -1447,18 +1447,17 @@ STDCALL void NdisMIndicateStatus(struct ndis_handle *handle,
 				 unsigned int len)
 {
 	TRACEENTER1("%08x", status);
+
 	if (status == NDIS_STATUS_MEDIA_CONNECT)
 	{
 		handle->link_status = 1;
 		set_bit(WRAPPER_LINK_STATUS, &handle->wrapper_work);
 		schedule_work(&handle->wrapper_worker);
 	}
+
 	if (status == NDIS_STATUS_MEDIA_DISCONNECT)
-	{
 		handle->link_status = 0;
-		set_bit(WRAPPER_LINK_STATUS, &handle->wrapper_work);
-		schedule_work(&handle->wrapper_worker);
-	}
+
 	if (status == NDIS_STATUS_MEDIA_SPECIFIC_INDICATION && buf)
 	{
 		struct status_indication *status =

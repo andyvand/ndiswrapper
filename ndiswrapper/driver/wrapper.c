@@ -909,6 +909,9 @@ static void wrapper_worker_proc(void *param)
 
 		unsigned int res, written, needed;
 		
+		if (!test_bit(CAPA_WPA, &handle->capa))
+			return;
+
 		assoc_info = kmalloc(sizeof(*ndis_assoc_info) + 512,
 				     GFP_KERNEL);
 		if (!assoc_info)
@@ -992,22 +995,17 @@ static void check_wpa(struct ndis_handle *handle)
 	struct ndis_key ndis_key;
 
 	TRACEENTER1("%s", "");
-	handle->wpa_capa = 0;
-	if (set_auth_mode(handle, AUTHMODE_WPA))
+	if (set_auth_mode(handle, AUTHMODE_WPA) ||
+	    query_int(handle, NDIS_OID_AUTH_MODE, &i) || i != AUTHMODE_WPA)
 		TRACEEXIT1(return);
-	res = query_int(handle, NDIS_OID_AUTH_MODE, &i);
-	if (res || i != AUTHMODE_WPA)
-		TRACEEXIT1(return);
-	
-	DBGTRACE("%s", "checking for encr");
+
 	/* check for highest encryption */
 	mode = WEP_ENCR3_ENABLED;
-	for (;;) // while (mode)
+	for (;;)
 	{
 		DBGTRACE("checking wep mode %d", mode);
 		if (!set_wep_mode(handle, mode) &&
-		    !query_int(handle, NDIS_OID_WEP_STATUS, &i) &&
-		    i == mode)
+		    !query_int(handle, NDIS_OID_WEP_STATUS, &i) && i == mode)
 			break;
 
 		if (mode == WEP_ENCR3_ENABLED)
@@ -1016,37 +1014,35 @@ static void check_wpa(struct ndis_handle *handle)
 			mode = WEP_ENCR1_ENABLED;
 		else
 		{
-			ERROR("wrong wep mode %d", mode);
 			mode = WEP_DISABLED;
 			break;
 		}
 	}
 	DBGTRACE("wep_mode = %d", mode);
 	set_wep_mode(handle, mode);
-			
-	if (handle->wep_mode != WEP_DISABLED)
-	{
-		ndis_key.key_len = 32;
-		ndis_key.key_index = 0xC0000001;
-		ndis_key.length = sizeof(ndis_key);
-		res = dosetinfo(handle, NDIS_OID_ADD_KEY, (char *)&ndis_key,
-				ndis_key.length, &written, &needed);
 
-		DBGTRACE("add key returns %08X, needed = %d, size = %d\n",
-			 res, needed, sizeof(ndis_key));
-		if (res != NDIS_STATUS_INVALID_DATA)
-			TRACEEXIT1(return);
-		res = doquery(handle, NDIS_OID_ASSOC_INFO,
-			      (char *)&ndis_assoc_info,
-			      sizeof(ndis_assoc_info), &written, &needed);
-		DBGTRACE("assoc info returns %d", res);
-		if (res)
-			TRACEEXIT1(return);
-		handle->wpa_capa = 1;
-	}
+	if (handle->wep_mode == WEP_DISABLED)
+		TRACEEXIT1(return);
 
-	DBGTRACE("%s: wpa is enabled? = %d\n",
-		 handle->net_dev->name, handle->wpa_capa);
+	ndis_key.key_len = 32;
+	ndis_key.key_index = 0xC0000001;
+	ndis_key.length = sizeof(ndis_key);
+	res = dosetinfo(handle, NDIS_OID_ADD_KEY, (char *)&ndis_key,
+			ndis_key.length, &written, &needed);
+
+	DBGTRACE("add key returns %08X, needed = %d, size = %d\n",
+		 res, needed, sizeof(ndis_key));
+	if (res != NDIS_STATUS_INVALID_DATA)
+		TRACEEXIT1(return);
+	res = doquery(handle, NDIS_OID_ASSOC_INFO,
+		      (char *)&ndis_assoc_info,
+		      sizeof(ndis_assoc_info), &written, &needed);
+	DBGTRACE("assoc info returns %d", res);
+	if (res)
+		TRACEEXIT1(return);
+	set_bit(CAPA_WPA, &handle->capa);
+
+	DBGTRACE("capbilities = %ld\n", handle->capa);
 	TRACEEXIT1(return);
 }
 
@@ -1098,14 +1094,12 @@ static int setup_dev(struct net_device *dev)
 		handle->multicast_list = 
 			kmalloc(handle->multicast_list_size * 6, GFP_KERNEL);
 
-#ifdef WPA
 	DBGTRACE1("%s", "checking if WPA is supported");
 	wrqu.param.value = NDIS_PRIV_ACCEPT_ALL;
 	if (ndis_set_priv_filter(dev, NULL, &wrqu, NULL))
 		WARNING("%s", "Unable to set privacy filter");
 
 	check_wpa(handle);
-#endif
 	ndis_set_rx_mode_proc(dev);
 	
 	dev->open = ndis_open;
@@ -1196,6 +1190,7 @@ static int ndis_init_one(struct pci_dev *pdev, const struct pci_device_id *ent)
 	handle->wep_mode = WEP_NOKEY;
 	handle->auth_mode = AUTHMODE_OPEN;
 	handle->encr_alg = WPA_ALG_NONE;
+	handle->capa = 0;
 
 	wrap_spin_lock_init(&handle->recycle_packets_lock);
 	INIT_LIST_HEAD(&handle->recycle_packets);
