@@ -1222,24 +1222,51 @@ STDCALL void WRAP_EXPORT(IoFreeMdl)
 	TRACEEXIT3(return);
 }
 
+/* FIXME: We don't update MDL to physical page mapping, since in Linux
+ * the pages are in memory anyway; if a driver treats an MDL as
+ * opaque, we should be safe; otherwise, the driver may break */
 STDCALL void WRAP_EXPORT(MmBuildMdlForNonPagedPool)
 	(struct mdl *mdl)
 {
+	mdl->flags |= MDL_SOURCE_IS_NONPAGED_POOL;
 	mdl->mappedsystemva = MmGetMdlVirtualAddress(mdl);
 	return;
 }
 
+STDCALL void *WRAP_EXPORT(MmMapLockedPages)
+	(struct mdl *mdl, KPROCESSOR_MODE access_mode)
+{
+	mdl->flags |= MDL_MAPPED_TO_SYSTEM_VA;
+	return MmGetMdlVirtualAddress(mdl);
+}
+
 STDCALL void *WRAP_EXPORT(MmMapLockedPagesSpecifyCache)
-	(struct mdl *mdl, KPROCESSOR_MODE mode,
+	(struct mdl *mdl, KPROCESSOR_MODE access_mode,
 	 enum memory_caching_type cache_type, void *base_address,
 	 ULONG bug_check, enum mm_page_priority priority)
 {
-	return MmGetMdlVirtualAddress(mdl);
+	return MmMapLockedPages(mdl, access_mode);
 }
 
 STDCALL void WRAP_EXPORT(MmUnmapLockedPages)
 	(void *base, struct mdl *mdl)
 {
+	mdl->flags &= ~MDL_MAPPED_TO_SYSTEM_VA;
+	return;
+}
+
+STDCALL void WRAP_EXPORT(MmProbeAndLockPages)
+	(struct mdl *mdl, KPROCESSOR_MODE access_mode,
+	 enum lock_operation operation)
+{
+	mdl->flags |= MDL_PAGES_LOCKED;
+	return;
+}
+
+STDCALL void WRAP_EXPORT(MmUnlockPages)
+	(struct mdl *mdl)
+{
+	mdl->flags &= ~MDL_PAGES_LOCKED;
 	return;
 }
 
@@ -1350,11 +1377,8 @@ STDCALL void WRAP_EXPORT(IoReleaseCancelSpinLock)(void){UNIMPL();}
 STDCALL void WRAP_EXPORT(IoDeleteDevice)(void){UNIMPL();}
 STDCALL void WRAP_EXPORT(IoCreateSymbolicLink)(void){UNIMPL();}
 STDCALL void WRAP_EXPORT(IoCreateUnprotectedSymbolicLink)(void){UNIMPL();}
-STDCALL void WRAP_EXPORT(MmMapLockedPages)(void){UNIMPL();}
 STDCALL void WRAP_EXPORT(IoCreateDevice)(void){UNIMPL();}
 STDCALL void WRAP_EXPORT(IoDeleteSymbolicLink)(void){UNIMPL();}
-STDCALL void WRAP_EXPORT(MmProbeAndLockPages)(void){UNIMPL();}
-STDCALL void WRAP_EXPORT(MmUnlockPages)(void){UNIMPL();}
 STDCALL void WRAP_EXPORT(ObfReferenceObject)(void){UNIMPL();}
 STDCALL void WRAP_EXPORT(ObReferenceObjectByHandle)(void){UNIMPL();}
 STDCALL void WRAP_EXPORT(_except_handler3)(void){UNIMPL();}

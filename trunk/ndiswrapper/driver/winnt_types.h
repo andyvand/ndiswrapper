@@ -197,6 +197,12 @@ enum memory_caching_type {
 	MmMaximumCacheType
 };
 
+enum lock_operation {
+	IoReadAccess,
+	IoWriteAccess,
+	IoModifyAccess
+};
+
 struct mdl {
 	struct mdl* next;
 	CSHORT size;
