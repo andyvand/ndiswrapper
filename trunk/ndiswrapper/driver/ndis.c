@@ -1884,7 +1884,7 @@ NdisInterlockedInsertHeadList(struct list_entry *head,
 {
 	struct list_entry *flink;
 
-	TRACEENTER1("lock: %p", lock);
+	TRACEENTER4("lock: %p", lock);
 	NdisAcquireSpinLock(lock);
 
 	flink = head->fwd_link;
@@ -1894,7 +1894,7 @@ NdisInterlockedInsertHeadList(struct list_entry *head,
 	head->fwd_link = entry;
 
 	NdisReleaseSpinLock(lock);
-	TRACEEXIT1(return (flink != head) ? flink : NULL);
+	TRACEEXIT4(return (flink != head) ? flink : NULL);
 }
 
 STDCALL static struct list_entry *
@@ -1904,7 +1904,7 @@ NdisInterlockedInsertTailList(struct list_entry *head,
 {
 	struct list_entry *flink;
 
-	TRACEENTER1("lock: %p", lock);
+	TRACEENTER4("lock: %p", lock);
 	NdisAcquireSpinLock(lock);
 
 	flink = head->bwd_link;
@@ -1914,7 +1914,7 @@ NdisInterlockedInsertTailList(struct list_entry *head,
 	head->bwd_link = entry;
 
 	NdisReleaseSpinLock(lock);
-	TRACEEXIT1(return (flink != head) ? flink : NULL);
+	TRACEEXIT4(return (flink != head) ? flink : NULL);
 }
 
 STDCALL static struct list_entry *
@@ -1923,7 +1923,7 @@ NdisInterlockedRemoveHeadList(struct list_entry *head,
 {
 	struct list_entry *flink;
 
-	TRACEENTER1("lock: %p", lock);
+	TRACEENTER4("lock: %p", lock);
 	NdisAcquireSpinLock(lock);
 
 	flink = head->fwd_link;
@@ -1931,7 +1931,7 @@ NdisInterlockedRemoveHeadList(struct list_entry *head,
 	head->fwd_link->bwd_link = head;
 
 	NdisReleaseSpinLock(lock);
-	TRACEEXIT1(return (flink != head) ? flink : NULL);
+	TRACEEXIT4(return (flink != head) ? flink : NULL);
 }
 
 STDCALL static int
