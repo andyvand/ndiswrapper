@@ -31,8 +31,6 @@ struct list_head handle_ctx_list;
 struct wrap_spinlock atomic_lock;
 struct wrap_spinlock cancel_lock;
 
-DECLARE_WAIT_QUEUE_HEAD(event_wq);
-
 static struct work_struct ndis_work;
 static struct list_head ndis_work_list;
 static struct wrap_spinlock ndis_work_list_lock;
@@ -1863,16 +1861,10 @@ NdisMSleep(unsigned long us_to_sleep)
 	TRACEEXIT4(return);
 }
 
-STDCALL static void
+STDCALL void
 NdisGetCurrentSystemTime(u64 *time)
 {
-	struct timeval now;
-	u64 t;
-
-	do_gettimeofday(&now);
-	t = (u64) now.tv_sec * TICKSPERSEC;
-	t += now.tv_usec * 10 + TICKS_1601_TO_1970;
-	*time = t;
+	*time = ticks_1601();
 }
 
 STDCALL static unsigned int
@@ -2010,51 +2002,37 @@ NdisSystemProcessorCount(void)
 }
 
 STDCALL static void
-NdisInitializeEvent(struct ndis_event *event)
+NdisInitializeEvent(struct ndis_event *ndis_event)
 {
-	TRACEENTER3("%08x", (int)event);
-	event->event.header.type = NOTIFICATION_EVENT;
-	event->event.header.signal_state = 0;
+	TRACEENTER3("%p", ndis_event);
+	wrapper_init_event(&ndis_event->kevent.header, NOTIFICATION_EVENT, 0);
 }
 
 STDCALL int
-NdisWaitEvent(struct ndis_event *event, unsigned int timeout)
+NdisWaitEvent(struct ndis_event *ndis_event, unsigned int ms)
 {
 	int res;
 
-	TRACEENTER3("%p %d", event, timeout);
-	if (event->event.header.signal_state)
-		TRACEEXIT3(return 1);
-	if (!timeout) {
-		wait_event_interruptible(event_wq,
-			event->event.header.signal_state == 1);
-		return 1;
-	}
-
-	res = wait_event_interruptible_timeout(event_wq,
-		event->event.header.signal_state == 1, (timeout * HZ)/1000);
-	DBGTRACE3("%p Woke up (%ld)", event,
-		event->event.header.signal_state);
-
-	if (event->event.header.signal_state == 1)
-		TRACEEXIT3(return 1);
-
-	TRACEEXIT3(return 0);
+	TRACEENTER3("%p %u", ndis_event, ms);
+	res = wrapper_wait_event(&ndis_event->kevent.header, ms);
+	if (res)
+		TRACEEXIT3(return TRUE);
+	else
+		TRACEEXIT3(return FALSE);
 }
 
 STDCALL void
-NdisSetEvent(struct ndis_event *event)
+NdisSetEvent(struct ndis_event *ndis_event)
 {
-	TRACEENTER3("%p", event);
-	event->event.header.signal_state = 1;
-	wake_up_interruptible(&event_wq);
+	TRACEENTER3("%p", ndis_event);
+	wrapper_set_event(&ndis_event->kevent.header);
 }
 
 STDCALL static void
-NdisResetEvent(struct ndis_event *event)
+NdisResetEvent(struct ndis_event *ndis_event)
 {
-	TRACEENTER3("%p", event);
-	event->event.header.signal_state = 0;
+	TRACEENTER3("%p", ndis_event);
+	wrapper_reset_event(&ndis_event->kevent.header);
 }
 
 /* called via function pointer */

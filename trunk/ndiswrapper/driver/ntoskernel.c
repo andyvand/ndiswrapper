@@ -290,37 +290,45 @@ IoIsWdmVersionAvailable(unsigned char major, unsigned char minor)
 }
 
 STDCALL static void
-KeInitializeEvent(struct kevent *event, int event_type, int state)
+KeInitializeEvent(struct kevent *kevent, int type, int state)
 {
-	TRACEENTER("event = %p, event_type = %d, state = %d",
-		event, event_type, state);
-	event->header.type         = event_type;
-	event->header.signal_state = state;
+	TRACEENTER3("event = %p, type = %d, state = %d",
+		    kevent, type, state);
+	wrapper_init_event(&kevent->header, type, state);
 }
 
 STDCALL static long
-KeSetEvent(struct kevent *event, int incr, int wait)
+KeSetEvent(struct kevent *kevent, int incr, int wait)
 {
-	TRACEENTER("event = %p, incr = %d, wait = %d", event, incr, wait);
-	NdisSetEvent((struct ndis_event *)event);
-	return STATUS_SUCCESS;
+	long old_state = kevent->header.signal_state;
+
+	TRACEENTER3("event = %p, type = %d, wait = %d",
+		    kevent, kevent->header.type, wait);
+	if (wait == TRUE)
+		WARNING("wait = %d, not yet implemented", wait);
+
+	if (old_state == 0) {
+		wrapper_set_event(&kevent->header);
+		kevent->header.signal_state = 0;
+	}
+	TRACEEXIT3(return old_state);
 }
 
 STDCALL static void
-KeClearEvent(struct kevent *event)
+KeClearEvent(struct kevent *kevent)
 {
-	TRACEENTER("event = %p", event);
-	event->header.signal_state = 0;
+	TRACEENTER3("event = %p", kevent);
+	wrapper_reset_event(&kevent->header);
 }
 
 STDCALL static long
-KeResetEvent(struct kevent *event)
+KeResetEvent(struct kevent *kevent)
 {
-	long old_state = event->header.signal_state;
+	long old_state = kevent->header.signal_state;
 
-	TRACEENTER("event = %p", event);
-	event->header.signal_state = 0;
-	return old_state;
+	TRACEENTER3("event = %p", kevent);
+	wrapper_reset_event(&kevent->header);
+	TRACEEXIT3(return old_state);
 }
 
 STDCALL static unsigned int
@@ -328,36 +336,39 @@ KeWaitForSingleObject(void *object, unsigned int reason,
 		      unsigned int waitmode, unsigned short alertable,
 		      s64 *timeout)
 {
-	unsigned int ndis_timeout = 0;
+	struct kevent *kevent = (struct kevent *)object;
+	struct dispatch_header *header = &kevent->header;
+	unsigned int ms;
+	int res;
 
 	/* Note: for now, object can only point to an event */
-	TRACEENTER3("object = %p, reason = %u, waitmode = %u, alertable = %u,"
+	TRACEENTER2("object = %p, reason = %u, waitmode = %u, alertable = %u,"
 		" timeout = %p", object, reason, waitmode, alertable,
 		timeout);
 
+	DBGTRACE2("object type = %d, size = %d", header->type, header->size);
+
 	if (timeout) {
-		DBGTRACE3("timeout = %Ld", *timeout);
-		if (*timeout > 0) {
-			ndis_timeout = (*timeout) / 10000;
-		} else if (*timeout == 0) {
-			if (((struct kevent *)object)->header.signal_state)
-				TRACEEXIT3(return STATUS_SUCCESS);
+		DBGTRACE2("timeout = %Ld", *timeout);
+		if (*timeout == 0) {
+			if (header->signal_state)
+				TRACEEXIT2(return STATUS_SUCCESS);
 			else
-				TRACEEXIT3(return STATUS_TIMEOUT);
-		} else {
-			unsigned int msecs = (-(*timeout)) / 10000;
-			ndis_timeout = 1000 / HZ * (jiffies +
-						    (HZ / 1000 * msecs));
-		}
-	}
+				TRACEEXIT2(return STATUS_TIMEOUT);
+		} else if (*timeout > 0) {
+			ms = ((*timeout) - ticks_1601()) / 10000;
+		} else
+			ms = (-(*timeout)) / 10000;
+	} else
+		ms = 0;
 
-	DBGTRACE3("ndis_timeout = %u", ndis_timeout);
-	if (!NdisWaitEvent(object, ndis_timeout))
-		TRACEEXIT3(return STATUS_TIMEOUT);
+	DBGTRACE2("wait ms = %u", ms);
+	res = wrapper_wait_event(header, ms);
+	if (res)
+		TRACEEXIT2(return STATUS_SUCCESS);
+	else
+		TRACEEXIT2(return STATUS_TIMEOUT);
 
-	if (((struct kevent *)object)->header.type == SYNCHRONIZATION_EVENT)
-		((struct kevent *)object)->header.signal_state = 0;
-	TRACEEXIT3(return STATUS_SUCCESS);
 }
 
 STDCALL static void
@@ -516,7 +527,7 @@ IofCompleteRequest(int dummy, char prio_boost, struct irp *irp)
 
 	if (irp->user_event) {
 		DBGTRACE3("setting event %p", irp->user_event);
-		NdisSetEvent((struct ndis_event *)irp->user_event);
+		wrapper_set_event(&irp->user_event->header);
 	}
 
 	/* To-Do: what about IRP_DEALLOCATE_BUFFER...? */
@@ -610,7 +621,7 @@ _FASTCALL static unsigned long IofCallDriver(int dummy, struct irp *irp,
 
 		if (irp->user_event) {
 			DBGTRACE3("setting event %p", irp->user_event);
-			NdisSetEvent((struct ndis_event *)irp->user_event);
+			wrapper_set_event(&irp->user_event->header);
 		}
 	}
 
@@ -670,7 +681,11 @@ PsCreateSystemThread(void **phandle, unsigned long access, void *obj_attr,
 	*phandle = find_task_by_pid(pid);
 	DBGTRACE2("*phandle = %p", *phandle);
 #else
-	*phandle = kthread_run(kthread_trampoline, ctx, "ndiswrapper");
+	*phandle = kthread_run(kthread_trampoline, ctx,
+#ifdef CONFIG_SOFTWARE_SUSPEND2
+			       0,
+#endif
+			       "ndiswrapper");
 	DBGTRACE2("*phandle = %p", *phandle);
 	if (IS_ERR(*phandle)) {
 		kfree(ctx);

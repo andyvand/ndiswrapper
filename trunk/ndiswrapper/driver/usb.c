@@ -125,7 +125,7 @@ void usb_transfer_complete_tasklet(unsigned long dummy)
 	}
 }
 
-void STDCALL usb_cancel_transfer(struct device_object *dev_obj,
+STDCALL void usb_cancel_transfer(struct device_object *dev_obj,
                                  struct irp *irp)
 {
 	wrap_spin_unlock(&cancel_lock);
@@ -163,6 +163,7 @@ void usb_cancel_worker(void *dummy)
 
 		urb = irp->driver_context[3];
 
+		DBGTRACE3("urb = %p", urb);
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,8)
 		usb_kill_urb(urb);
 #else

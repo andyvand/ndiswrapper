@@ -81,6 +81,7 @@ static struct wrap_spinlock driverlist_lock;
 
 extern struct list_head wrap_allocs;
 extern struct wrap_spinlock wrap_allocs_lock;
+extern struct wrap_spinlock dispatch_event_lock;
 
 extern struct list_head handle_ctx_list;
 
@@ -254,8 +255,12 @@ int call_init(struct ndis_handle *handle)
 	}
 	res = miniport->init(&res2, &selected_medium, mediumtypes, 13, handle,
 			     handle);
-	DBGTRACE1("init returns %08X", res);
-	return res != 0;
+	if (res) {
+		printk(KERN_WARNING "Windows driver failed to initialize the"
+		       " device (%08X)", res);
+		return res;
+	}
+	return 0;
 }
 
 void call_halt(struct ndis_handle *handle)
@@ -927,7 +932,11 @@ int ndis_suspend_pci(struct pci_dev *pdev, u32 state)
 			set_bit(HW_SUSPENDED, &handle->hw_status);
 		}
 	}
+#if LINUX_VERSION_CODE > KERNEL_VERSION(2,6,9)
+	pci_save_state(pdev);
+#else
 	pci_save_state(pdev, handle->pci_state);
+#endif
 	pci_set_power_state(pdev, state);
 
 	DBGTRACE2("%s: device suspended", dev->name);
@@ -954,7 +963,11 @@ int ndis_resume_pci(struct pci_dev *pdev)
 		return 0;
 
 	pci_set_power_state(pdev, 0);
+#if LINUX_VERSION_CODE > KERNEL_VERSION(2,6,9)
+	pci_restore_state(pdev);
+#else
 	pci_restore_state(pdev, handle->pci_state);
+#endif
 	if (test_bit(HW_HALTED, &handle->hw_status))
 		res = call_init(handle);
 	else
@@ -1536,7 +1549,9 @@ static int ndis_init_one_pci(struct pci_dev *pdev,
 		goto out_regions;
 
 	pci_set_power_state(pdev, 0);
+#if LINUX_VERSION_CODE <= KERNEL_VERSION(2,6,9)
 	pci_restore_state(pdev, NULL);
+#endif
 
 	DBGTRACE1("%s", "Calling ndis init routine");
 	if(call_init(handle))
@@ -1641,7 +1656,7 @@ static void *ndis_init_one_usb(struct usb_device *udev, unsigned int ifnum,
 #endif
 
 	TRACEENTER1("%s", "Calling ndis init routine");
-	if(call_init(handle)) {
+	if (call_init(handle)) {
 		ERROR("%s", "Windows driver couldn't initialize the device");
 		res = -EINVAL;
 		goto out_start;
@@ -2426,6 +2441,7 @@ static int __init wrapper_init(void)
 	INIT_LIST_HEAD(&handle_ctx_list);
 	wrap_spin_lock_init(&wrap_allocs_lock);
 	wrap_spin_lock_init(&driverlist_lock);
+	wrap_spin_lock_init(&dispatch_event_lock);
 	ndiswrapper_procfs_init();
 	DBGTRACE1("%s", "calling loadndisdriver");
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
