@@ -339,6 +339,7 @@ struct ndis_timer
 	void *func;
 	void *ctx;
 	int repeat;
+	int active;
 };
 
 struct packed ndis_resource_entry

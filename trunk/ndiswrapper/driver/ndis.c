@@ -779,6 +779,8 @@ void ndis_timer_handler_bh(void *data)
 		timer->timer.expires = jiffies + timer->repeat;
 		add_timer(&timer->timer);
 	}
+	else
+		timer->active = 0;
 }
 
 
@@ -808,6 +810,7 @@ STDCALL void NdisMInitializeTimer(struct ndis_timer **timer_handle,
 	timer->timer.function = &ndis_timer_handler;
 	timer->func = func;
 	timer->ctx = ctx;
+	timer->active = 0;
 	INIT_WORK(&timer->bh, &ndis_timer_handler_bh, timer);
 	*timer_handle = timer;
 	DBGTRACE("Allocated timer at %08x\n", (int)timer);
@@ -822,7 +825,10 @@ STDCALL void NdisSetTimer(struct ndis_timer **timer_handle, unsigned int ms)
 	struct ndis_timer *ndis_timer = *timer_handle;
 	ndis_timer->timer.expires = jiffies + (ms * HZ) / 1000;
 	ndis_timer->repeat = 0;
+	if(ndis_timer->active)
+		del_timer(&ndis_timer->timer);
 	add_timer(&ndis_timer->timer);
+	ndis_timer->active = 1;
 }
 
 /*
@@ -835,7 +841,10 @@ STDCALL void NdisMSetPeriodicTimer(struct ndis_timer **timer_handle,
 	struct ndis_timer *ndis_timer = *timer_handle;
 	ndis_timer->timer.expires = jiffies + (ms * HZ) / 1000;
 	ndis_timer->repeat = (ms * HZ) / 1000;
+	if(ndis_timer->active)
+		del_timer(&ndis_timer->timer);
 	add_timer(&ndis_timer->timer);
+	ndis_timer->active = 1;
 }
 
 /*
@@ -846,6 +855,7 @@ STDCALL void NdisMCancelTimer(struct ndis_timer **timer_handle, char *canceled)
 	DBGTRACE("%s\n", __FUNCTION__);
 	(*timer_handle)->repeat = 0;
 	*canceled = del_timer_sync(&(*timer_handle)->timer);
+	(*timer_handle)->active = 0;
 }
 
 
