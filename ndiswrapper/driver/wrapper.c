@@ -891,7 +891,7 @@ int ndis_suspend(struct pci_dev *pdev, u32 state)
 		WARNING("No pnp capabilities for pm (%08X)", res);
 
 	res = set_int(handle, NDIS_OID_PNP_SET_POWER, pm_state);
-	INFO("suspending returns %08X", res);
+	DBGTRACE2("suspending returns %08X", res);
 	pci_save_state(pdev, handle->pci_state);
 	pci_set_power_state(pdev, state);
 	DBGTRACE2("%s: setting power to state %d returns %08X",
@@ -1094,8 +1094,8 @@ static void check_capa(struct ndis_handle *handle)
 	if (handle->encr_mode == ENCR_DISABLED ||
 	    handle->encr_mode == ENCR1_ENABLED)
 	{
-		INFO("ndiswrapper device %s doesn't support WPA ",
-		     handle->net_dev->name);
+		printk(KERN_INFO "ndiswrapper device %s doesn't support WPA",
+		       handle->net_dev->name);
 		TRACEEXIT1(return);
 	}
 
@@ -1116,13 +1116,13 @@ static void check_capa(struct ndis_handle *handle)
 		TRACEEXIT1(return);
 	set_bit(CAPA_WPA, &handle->capa);
 
-	DBGTRACE("capbilities = %ld\n", handle->capa);
+	DBGTRACE("capbilities = %ld", handle->capa);
 	if (test_bit(CAPA_AES, &handle->capa))
-		INFO("ndiswrapper device %s supports WPA with "
-		     "AES/CCMP and TKIP ciphers\n", handle->net_dev->name);
+		printk(KERN_INFO "ndiswrapper device %s supports WPA with "
+		       "AES/CCMP and TKIP ciphers\n", handle->net_dev->name);
 	else
-		INFO("ndiswrapper device %s supports WPA with TKIP cipher\n",
-		     handle->net_dev->name);
+		printk(KERN_INFO "ndiswrapper device %s supports "
+		       " WPA with TKIP cipher\n", handle->net_dev->name);
 	TRACEEXIT1(return);
 }
 
@@ -1197,8 +1197,8 @@ static int setup_dev(struct net_device *dev)
 		return res;
 	}
 
-	INFO("%s: %s ethernet device " MACSTR " using driver %s\n",
-	     dev->name, DRV_NAME, MAC2STR(mac), handle->driver->name);
+	printk(KERN_INFO "%s: %s ethernet device " MACSTR " using driver %s\n",
+	       dev->name, DRV_NAME, MAC2STR(mac), handle->driver->name);
 
 	check_capa(handle);
 	/* check_capa changes auth_mode and encr_mode, so set them again */
@@ -1325,15 +1325,15 @@ static int ndis_init_one_pci(struct pci_dev *pdev,
 		    ent->subvendor, ent->subdevice);
 	if(device->fuzzy)
 	{
-		WARNING("This driver (%s) is not for your hardware. " \
-		        "It's likely to work anyway but have it in " \
-		        "mind if you have problem.\n", device->driver->name);
+		printk(KERN_WARNING "This driver (%s) is not for your "
+		       "hardware. It's likely to work anyway but have it in "
+		       "mind if you have problem.\n", device->driver->name);
 	}
 
 	dev = ndis_init_netdev(&handle, device, driver);
 	if(!dev)
 	{
-		ERROR("%s", "Unable to alloc etherdev\n");
+		printk(KERN_ERR "Unable to alloc etherdev\n");
 		res = -ENOMEM;
 		goto out_nodev;
 	}
@@ -1825,7 +1825,7 @@ static struct ndis_device *add_device(struct ndis_driver *driver,
 
 	if ((driver->bustype >= 0) &&
 	    (driver->bustype != put_device->bustype)) {
-		ERROR("%s", "Each driver can only support a single bustype\n");
+		ERROR("%s", "Each driver can only support a single bustype");
 		return NULL;
 	}
 
@@ -2084,8 +2084,8 @@ static int misc_ioctl(struct inode *inode, struct file *file,
 			if (res)
 				unload_driver(driver);
 			else
-				INFO("%s: driver %s (%s) added\n",
-				     DRV_NAME, driver->name, driver->version);
+				printk(KERN_INFO "%s: driver %s (%s) added\n",
+				       DRV_NAME, driver->name, driver->version);
 			return res;
 		}
 		break;
@@ -2102,7 +2102,7 @@ static int misc_ioctl(struct inode *inode, struct file *file,
 		}
 		break;
 	default:
-		ERROR("Unknown ioctl %08X\n", cmd);
+		ERROR("Unknown ioctl %08X", cmd);
 		return -EINVAL;
 		break;
 	}
@@ -2146,8 +2146,8 @@ static int __init wrapper_init(void)
 	char *env[] = {0};
 	int err;
 
-	INFO("%s version %s%s loaded (preempt=%s,smp=%s)\n",
-	     DRV_NAME, NDISWRAPPER_VERSION, EXTRA_VERSION,
+	printk(KERN_INFO "%s version %s%s loaded (preempt=%s,smp=%s)\n",
+	       DRV_NAME, NDISWRAPPER_VERSION, EXTRA_VERSION,
 #if defined CONFIG_PREEMPT
 	       "yes",
 #else

@@ -1395,7 +1395,7 @@ NdisMRegisterInterrupt(struct ndis_irq *ndis_irq, struct ndis_handle *handle,
 		TRACEEXIT1(return NDIS_STATUS_RESOURCES);
 	}
 	ndis_irq->enabled = 1;
-	INFO("%s: using irq %d\n", DRV_NAME, vector);
+	printk(KERN_INFO "%s: using irq %d\n", DRV_NAME, vector);
 	TRACEEXIT1(return NDIS_STATUS_SUCCESS);
 }
 
