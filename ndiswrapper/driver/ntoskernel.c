@@ -13,7 +13,7 @@
  *
  */
 
-#include "ntoskernel.h"
+#include "ndiswrapper.h"
 #include "wrapper.h"
 #include "ndis.h"
 #include "usb.h"
