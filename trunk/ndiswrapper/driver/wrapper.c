@@ -544,7 +544,9 @@ static void ndis_set_rx_mode_proc(void *param)
 
 	if (dev->flags & IFF_PROMISC) {
 		DBGTRACE1("%s", "Going into promiscuous mode");
-		packet_filter |= NDIS_PACKET_TYPE_PROMISCUOUS;
+		printk(KERN_WARNING "promiscuous mode is not supported by NDIS"
+		       ";only packets sent from/to this host will be seen\n");
+		packet_filter |= NDIS_PACKET_TYPE_ALL_LOCAL;
 	}
 	else if ((dev->mc_count > handle->multicast_list_size) ||
 	         (dev->flags & IFF_ALLMULTI) ||
