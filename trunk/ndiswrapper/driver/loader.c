@@ -21,10 +21,10 @@
 #include <linux/module.h>
 #include <linux/mm.h>
 #include <asm/pgalloc.h>
-#ifdef USE_WORKQUEUE
+
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
 #include <asm/tlbflush.h>
 #endif
-
 
 #define RADR(base, rva, type) (type) ((char*)base + rva)
 
