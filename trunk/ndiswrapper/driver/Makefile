@@ -1,6 +1,8 @@
-#Comment out this line to disable debugging
-CFLAGS += -DDEBUG
+# Unomment the line below to enable debugging
+#CFLAGS += -DDEBUG
 
+# Uncomment the line below to enable power management (to avoid
+# removing and loading module when laptop is suspended/resumed)
 #CFLAGS += -DTEST_PM
 
 KSRC  := /lib/modules/$(shell uname -r)/build
@@ -29,6 +31,8 @@ misc_funcs.o:	misc_funcs.c ndis.h
 
 ndis.o:	ndis.c ndis.h
 
+proc.o : proc.c ndis.h
+
 prereq_check:
 	@ if [ ! -f $(KSRC)/include/linux/version.h ]; then \
 		echo "You don't seem to have sources for your kernel; \
@@ -37,7 +41,7 @@ prereq_check:
 	  fi
 
 
-OBJS   := wrapper.o loader.o winsyms.o ndis.o misc_funcs.o
+OBJS   := wrapper.o loader.o winsyms.o ndis.o misc_funcs.o proc.o
 
 ifeq ($(KVERS),24)
 MODULE := ndiswrapper.o
