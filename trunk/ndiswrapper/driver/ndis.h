@@ -16,6 +16,7 @@
 #define NDIS_H
 
 #include "ntoskernel.h"
+#include "wrapper.h"
 
 struct packed ndis_scatterentry
 {
@@ -322,7 +323,8 @@ struct ndis_file
 struct ndis_driver
 {
 	struct list_head list;
-	char name[32];
+	char name[DRIVERNAME_MAX];
+	char version[NDIS_VERSION_STRING_MAX];
 
 	struct list_head devices;
 	struct list_head files;
@@ -479,6 +481,13 @@ enum op_mode
 	NDIS_MODE_ADHOC,
 	NDIS_MODE_INFRA,
 	NDIS_MODE_AUTO
+};
+
+enum hw_status
+{
+	HW_NORMAL,
+	HW_SUSPENDED,
+	HW_UNAVAILABLE,
 };
 
 #define MAX_ENCR_KEYS 4
@@ -659,7 +668,7 @@ struct packed ndis_handle
 	char nick[IW_ESSID_MAX_SIZE+1];
 
 	u32 pci_state[16];
-	unsigned int pm_state;
+	unsigned long hw_status;
 
 	struct ndis_essid essid;
 
@@ -849,6 +858,11 @@ int set_int(struct ndis_handle *handle, int oid, int data);
 int query_int(struct ndis_handle *handle, int oid, int *data);
 int doreset(struct ndis_handle *handle);
 void ndis_set_rx_mode(struct net_device *dev);
+void hangcheck_add(struct ndis_handle *handle);
+void hangcheck_del(struct ndis_handle *handle);
+int ndis_suspend(struct pci_dev *pdev, u32 state);
+int ndis_resume(struct pci_dev *pdev);
+
 
 void packet_recycler(void *param);
 
