@@ -68,6 +68,17 @@ int getSp(void)
 	return i;
 }
 
+void inline my_dumpstack(void)
+{
+	int *sp = (int*) getSp();
+	int i;
+	for(i = 0; i < 20; i++)
+	{
+		printk("%08x\n", sp[i]);
+	}
+}
+
+
 
 int unicodeToStr(char *dst, struct ustring *src, int dstlen)
 {
