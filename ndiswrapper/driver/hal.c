@@ -134,7 +134,6 @@ _FASTCALL void WRAP_EXPORT(KfReleaseSpinLock)
 {
 	TRACEENTER4("lock = %p, irql = %d", lock, newirql);
 	kspin_unlock_irql(lock, newirql);
-
 	TRACEEXIT4(return);
 }
 
@@ -144,7 +143,6 @@ _FASTCALL void WRAP_EXPORT(KefAcquireSpinLockAtDpcLevel)
 	KIRQL irql;
 
 	TRACEENTER4("lock = %p", lock);
-
 #if DEBUG_IRQL
 	irql = current_irql();
 	if (irql != DISPATCH_LEVEL)
@@ -163,7 +161,6 @@ _FASTCALL void WRAP_EXPORT(KefReleaseSpinLockFromDpcLevel)
 		ERROR("irql != DISPATCH_LEVEL");
 #endif
 	kspin_unlock(lock);
-
 	TRACEEXIT4(return);
 }
 
