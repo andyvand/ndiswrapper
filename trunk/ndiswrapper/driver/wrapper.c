@@ -310,13 +310,13 @@ static void hangcheck_proc(unsigned long data)
 		}
 	}
 
-	spin_lock(&handle->timers_lock);
+	spin_lock_bh(&handle->timers_lock);
 	if (handle->hangcheck_active) {
 		handle->hangcheck_timer.expires =
 			jiffies + handle->hangcheck_interval;
 		add_timer(&handle->hangcheck_timer);
 	}
-	spin_unlock(&handle->timers_lock);
+	spin_unlock_bh(&handle->timers_lock);
 
 	TRACEEXIT3(return);
 }
@@ -333,10 +333,10 @@ void hangcheck_add(struct ndis_handle *handle)
 	handle->hangcheck_timer.data = (unsigned long)handle;
 	handle->hangcheck_timer.function = &hangcheck_proc;
 
-	spin_lock(&handle->timers_lock);
+	spin_lock_bh(&handle->timers_lock);
 	add_timer(&handle->hangcheck_timer);
 	handle->hangcheck_active = 1;
-	spin_unlock(&handle->timers_lock);
+	spin_unlock_bh(&handle->timers_lock);
 	return;
 }
 
@@ -346,10 +346,10 @@ void hangcheck_del(struct ndis_handle *handle)
 	    handle->hangcheck_interval <= 0)
 		return;
 
-	spin_lock(&handle->timers_lock);
+	spin_lock_bh(&handle->timers_lock);
 	handle->hangcheck_active = 0;
 	del_timer(&handle->hangcheck_timer);
-	spin_unlock(&handle->timers_lock);
+	spin_unlock_bh(&handle->timers_lock);
 }
 
 static void stats_proc(unsigned long data)
@@ -373,9 +373,9 @@ static void stats_timer_add(struct ndis_handle *handle)
 
 static void stats_timer_del(struct ndis_handle *handle)
 {
-	spin_lock(&handle->timers_lock);
+	spin_lock_bh(&handle->timers_lock);
 	del_timer_sync(&handle->stats_timer);
-	spin_unlock(&handle->timers_lock);
+	spin_unlock_bh(&handle->timers_lock);
 }
 
 static int ndis_open(struct net_device *dev)
@@ -731,11 +731,11 @@ static void xmit_worker(void *param)
 void sendpacket_done(struct ndis_handle *handle, struct ndis_packet *packet)
 {
 	TRACEENTER3("%s", "");
-	spin_lock(&handle->send_packet_done_lock);
+	spin_lock_bh(&handle->send_packet_done_lock);
 	handle->stats.tx_bytes += packet->private.len;
 	handle->stats.tx_packets++;
 	free_packet(handle, packet);
-	spin_unlock(&handle->send_packet_done_lock);
+	spin_unlock_bh(&handle->send_packet_done_lock);
 	TRACEEXIT3(return);
 }
 
@@ -776,7 +776,7 @@ static int start_xmit(struct sk_buff *skb, struct net_device *dev)
 	}
 	dev_kfree_skb(skb);
 
-	spin_lock(&handle->xmit_lock);
+	spin_lock_bh(&handle->xmit_lock);
 	xmit_ring_next_slot =
 		(handle->xmit_ring_start +
 		 handle->xmit_ring_pending) % XMIT_RING_SIZE;
@@ -784,7 +784,7 @@ static int start_xmit(struct sk_buff *skb, struct net_device *dev)
 	handle->xmit_ring_pending++;
 	if (handle->xmit_ring_pending == XMIT_RING_SIZE)
 		netif_stop_queue(handle->net_dev);
-	spin_unlock(&handle->xmit_lock);
+	spin_unlock_bh(&handle->xmit_lock);
 
 	schedule_work(&handle->xmit_work);
 
