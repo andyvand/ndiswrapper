@@ -582,6 +582,52 @@ static int ndis_get_scan(struct net_device *dev, struct iw_request_info *info,
 	return 0;
 }
 
+static int ndis_set_power_mode(struct net_device *dev,
+		struct iw_request_info *info, union iwreq_data *wrqu,
+		char *extra)
+{
+	struct ndis_handle *handle = dev->priv;
+	int res, power_mode;
+
+	if (wrqu->power.disabled == 1)
+		power_mode = NDIS_POWER_OFF;
+	else if (wrqu->power.flags & IW_POWER_MIN)
+		power_mode = NDIS_POWER_MIN;
+	else // if (wrqu->power.flags & IW_POWER_MAX)
+		power_mode = NDIS_POWER_MAX;
+
+	res = set_int(handle, NDIS_OID_POWER_MODE, power_mode);
+	if (res)
+		return -1;
+	return 0;
+}
+
+static int ndis_get_power_mode(struct net_device *dev,
+		struct iw_request_info *info, union iwreq_data *wrqu,
+		char *extra)
+{
+	struct ndis_handle *handle = dev->priv;
+	int res, power_mode;
+
+	res = query_int(handle, NDIS_OID_POWER_MODE, &power_mode);
+	if (res)
+		return -1;
+	if (power_mode == NDIS_POWER_OFF)
+		wrqu->power.disabled = 1;
+	else
+	{
+		wrqu->power.flags |= IW_POWER_ALL_R;
+		wrqu->power.flags |= IW_POWER_TIMEOUT;
+		wrqu->power.value = 0;
+
+		if (power_mode == NDIS_POWER_MIN)
+			wrqu->power.flags |= IW_POWER_MIN;
+		else // if (power_mode == NDIS_POWER_MAX)
+			wrqu->power.flags |= IW_POWER_MAX;
+	}
+	return 0;
+}
+
 static const iw_handler	ndis_handler[] = {
 	//[SIOCGIWSENS    - SIOCIWFIRST] = ndis_get_sens,
 	[SIOCGIWNAME	- SIOCIWFIRST] = ndis_get_name,
@@ -600,6 +646,8 @@ static const iw_handler	ndis_handler[] = {
 	[SIOCGIWENCODE	- SIOCIWFIRST] = ndis_get_wep,
 	[SIOCSIWSCAN	- SIOCIWFIRST] = ndis_set_scan,
 	[SIOCGIWSCAN	- SIOCIWFIRST] = ndis_get_scan,
+	[SIOCGIWPOWER	- SIOCIWFIRST] = ndis_get_power_mode,
+	[SIOCSIWPOWER	- SIOCIWFIRST] = ndis_set_power_mode,
 };
 
 static const struct iw_handler_def ndis_handler_def = {

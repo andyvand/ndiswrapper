@@ -419,6 +419,10 @@ struct packed list_scan
 #define NDIS_PRIV_ACCEPT_ALL 0
 #define NDIS_PRIV_WEP 1
 
+#define NDIS_POWER_OFF 0
+#define NDIS_POWER_MAX 1
+#define NDIS_POWER_MIN 2
+
 void ndis_sendpacket_done(struct ndis_handle *handle, struct ndis_packet *packet);
 
 
@@ -450,6 +454,7 @@ void NdisMQueryInformationComplete(struct ndis_handle *handle, unsigned int stat
 #define NDIS_OID_NETWORK_TYPE_IN_USE 0x0D010204
 #define NDIS_OID_BSSID_LIST_SCAN    0x0D01011A
 #define NDIS_OID_BSSID_LIST         0x0D010217
+#define NDIS_OID_POWER_MODE         0x0D010216
 
 
 /* general OIDs */
