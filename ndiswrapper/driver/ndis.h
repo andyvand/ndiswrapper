@@ -357,7 +357,7 @@ struct packed ndis_essid
 };
 
 #define NDIS_ENCODING_TOKEN_MAX 32
-struct packed ndis_wep_key
+struct packed ndis_encr_key
 {
 	unsigned long struct_size;
 	unsigned long index;
@@ -395,17 +395,16 @@ enum auth_mode
 	AUTHMODE_WPANONE
 };
 
-enum wep_mode
+enum encr_mode
 {
-	WEP_ENABLED,
-	WEP_ENCR1_ENABLED = WEP_ENABLED,
-	WEP_DISABLED,
-	WEP_NOKEY,
-	WEP_NO_SUPPORT,
-	WEP_ENCR2_ENABLED,
-	WEP_ENCR2_ABSENT,
-	WEP_ENCR3_ENABLED,
-	WEP_ENCR3_ABSENT
+	ENCR1_ENABLED,
+	ENCR_DISABLED,
+	ENCR1_NOKEY,
+	ENCR1_NO_SUPPORT,
+	ENCR2_ENABLED,
+	ENCR2_ABSENT,
+	ENCR3_ENABLED,
+	ENCR3_ABSENT,
 };
 
 struct fixed_ies
@@ -457,14 +456,14 @@ enum op_mode
 	NDIS_MODE_AUTO
 };
 
-#define MAX_WEP_KEYS 4
-struct wep_info
+#define MAX_ENCR_KEYS 4
+struct encr_info
 {
-	struct wep_key
+	struct encr_key
 	{
 		unsigned int length;
 		unsigned char key[NDIS_ENCODING_TOKEN_MAX];
-	} keys[MAX_WEP_KEYS];
+	} keys[MAX_ENCR_KEYS];
 	int active;
 };
 
@@ -631,7 +630,7 @@ struct packed ndis_handle
 	unsigned long scan_timestamp;
 
 	u32 link_status;
-	struct wep_info wep_info;
+	struct encr_info encr_info;
 	char nick[IW_ESSID_MAX_SIZE+1];
 
 	u32 pci_state[16];
@@ -641,7 +640,7 @@ struct packed ndis_handle
 
 	unsigned long capa;
 	enum auth_mode auth_mode;
-	enum wep_mode wep_mode;
+	enum encr_mode encr_mode;
 	enum op_mode op_mode;
 
 	struct list_head recycle_packets;
@@ -839,7 +838,7 @@ int stricmp(const char *s1, const char *s2);
 #define NDIS_OID_PACKET_FILTER      0x0001010E
 #define NDIS_OID_ADD_WEP            0x0D010113
 #define NDIS_OID_REMOVE_WEP         0x0D010114
-#define NDIS_OID_WEP_STATUS         0x0D01011B
+#define NDIS_OID_ENCR_STATUS        0x0D01011B
 #define NDIS_OID_AUTH_MODE          0x0D010118
 #define NDIS_OID_PRIVACY_FILTER     0x0D010119
 #define NDIS_OID_NETWORK_TYPE_IN_USE 0x0D010204
@@ -1008,10 +1007,10 @@ int stricmp(const char *s1, const char *s2);
 
 enum capa_list
 {
-	CAPA_WEP = WEP_ENCR1_ENABLED,
-	CAPA_WEP_NONE = WEP_DISABLED,
-	CAPA_TKIP = WEP_ENCR2_ENABLED,
-	CAPA_AES = WEP_ENCR3_ENABLED,
+	CAPA_ENCR1 = ENCR1_ENABLED,
+	CAPA_ENCR_NONE = ENCR_DISABLED,
+	CAPA_TKIP = ENCR2_ENABLED,
+	CAPA_AES = ENCR3_ENABLED,
 	CAPA_WPA,
 };
 

@@ -474,18 +474,18 @@ int set_auth_mode(struct ndis_handle *handle, int auth_mode)
 	}
 }
 
-int set_wep_mode(struct ndis_handle *handle, int wep_mode)
+int set_encr_mode(struct ndis_handle *handle, int encr_mode)
 {
 	unsigned int res;
-	res = set_int(handle, NDIS_OID_WEP_STATUS, wep_mode);
+	res = set_int(handle, NDIS_OID_ENCR_STATUS, encr_mode);
 	if (res == NDIS_STATUS_INVALID_DATA)
 	{
-		WARNING("setting wep mode failed (%08X)", res);
+		WARNING("setting encryption mode failed (%08X)", res);
 		return -EINVAL;
 	}
 	else
 	{
-		handle->wep_mode = wep_mode;
+		handle->encr_mode = encr_mode;
 		return 0;
 	}
 }
@@ -495,7 +495,7 @@ static int iw_get_encr(struct net_device *dev, struct iw_request_info *info,
 {
 	struct ndis_handle *handle = dev->priv;
 	int status, res, index;
-	struct wep_info *wep_info = &handle->wep_info;
+	struct encr_info *encr_info = &handle->encr_info;
 
 	TRACEENTER1("%s", "");
 	wrqu->data.length = 0;
@@ -503,25 +503,25 @@ static int iw_get_encr(struct net_device *dev, struct iw_request_info *info,
 
 	index = (wrqu->data.flags & IW_ENCODE_INDEX);
 	DBGTRACE2("index = %u", index);
-	if (index && (index <= 0 || index > MAX_WEP_KEYS))
+	if (index && (index <= 0 || index > MAX_ENCR_KEYS))
 	{
-		WARNING("wep index out of range (%u)", index);
+		WARNING("encryption index out of range (%u)", index);
 		TRACEEXIT1(return -EINVAL);
 	}
 
 	if (index == 0)
-		index = wep_info->active;
+		index = encr_info->active;
 	else	
 		index--;
 
-	if (index != wep_info->active)
+	if (index != encr_info->active)
 	{
-		if (wep_info->keys[index].length > 0)
+		if (encr_info->keys[index].length > 0)
 		{
 			wrqu->data.flags |= IW_ENCODE_ENABLED;
-			wrqu->data.length = wep_info->keys[index].length;
-			memcpy(extra, wep_info->keys[index].key,
-			       wep_info->keys[index].length);
+			wrqu->data.length = encr_info->keys[index].length;
+			memcpy(extra, encr_info->keys[index].key,
+			       encr_info->keys[index].length);
 		}
 		else
 			wrqu->data.flags |= IW_ENCODE_DISABLED;
@@ -530,23 +530,23 @@ static int iw_get_encr(struct net_device *dev, struct iw_request_info *info,
 	}
 	
 	/* active key */
-	res = query_int(handle, NDIS_OID_WEP_STATUS, &status);
+	res = query_int(handle, NDIS_OID_ENCR_STATUS, &status);
 	if (res == NDIS_STATUS_NOT_SUPPORTED)
 	{
-		WARNING("getting wep status failed (%08X)", res);
+		WARNING("getting encryption status failed (%08X)", res);
 		TRACEEXIT1(return -EOPNOTSUPP);
 	}
 
-	if (status == WEP_ENABLED)
+	if (status == ENCR1_ENABLED)
 	{
 		wrqu->data.flags |= IW_ENCODE_ENABLED | (index+1);
-		wrqu->data.length = wep_info->keys[index].length;
-		memcpy(extra, wep_info->keys[index].key,
-		       wep_info->keys[index].length);
+		wrqu->data.length = encr_info->keys[index].length;
+		memcpy(extra, encr_info->keys[index].key,
+		       encr_info->keys[index].length);
 	}
-	else if (status == WEP_DISABLED)
+	else if (status == ENCR_DISABLED)
 		wrqu->data.flags |= IW_ENCODE_DISABLED;
-	else if (status == WEP_NOKEY)
+	else if (status == ENCR1_NOKEY)
 		wrqu->data.flags |= IW_ENCODE_NOKEY;
 
 	res = query_int(handle, NDIS_OID_AUTH_MODE, &status);
@@ -569,28 +569,28 @@ static int iw_set_encr(struct net_device *dev, struct iw_request_info *info,
 {
 	struct ndis_handle *handle = dev->priv;
 	unsigned int res, written, needed, index;
-	struct wep_info *wep_info = &handle->wep_info;
-	struct ndis_wep_key ndis_key;
+	struct encr_info *encr_info = &handle->encr_info;
+	struct ndis_encr_key ndis_key;
 	
 	TRACEENTER1("%s", "");
 	index = (wrqu->encoding.flags & IW_ENCODE_INDEX);
 	DBGTRACE2("index = %u", index);
-	if (index > MAX_WEP_KEYS)
+	if (index > MAX_ENCR_KEYS)
 	{
-		WARNING("wep index out of range (%u)", index);
+		WARNING("encryption index out of range (%u)", index);
 		TRACEEXIT1(return -EINVAL);
 	}
 
 	if (index <= 0)
-		index = wep_info->active;
+		index = encr_info->active;
 	else	
 		index--;
 
 	/* store the key if given */
 	if(wrqu->data.length > 0)
 	{
-		wep_info->keys[index].length = wrqu->data.length;
-		memcpy(&wep_info->keys[index].key, extra,
+		encr_info->keys[index].length = wrqu->data.length;
+		memcpy(&encr_info->keys[index].key, extra,
 		       wrqu->data.length);		
 	}
 
@@ -603,65 +603,65 @@ static int iw_set_encr(struct net_device *dev, struct iw_request_info *info,
 				&written, &needed);
 		if (res == NDIS_STATUS_INVALID_DATA)
 		{
-			WARNING("removing wep key %d failed (%08X)",
+			WARNING("removing encryption key %d failed (%08X)",
 				index, res);
 			TRACEEXIT1(return -EINVAL);
 		}
-		wep_info->keys[index].length = 0;
+		encr_info->keys[index].length = 0;
 		
-		/* if it is active key, disable wep */
-		if (index == wep_info->active)
+		/* if it is active key, disable encryption */
+		if (index == encr_info->active)
 		{
-			res = set_wep_mode(handle, WEP_DISABLED);
+			res = set_encr_mode(handle, ENCR_DISABLED);
 			if (res)
-				WARNING("changing wep status failed (%08X)",
+				WARNING("changing encr status failed (%08X)",
 					res);
 		}
 		TRACEEXIT1(return 0);
 	}
 
-	if (wep_info->keys[index].length > 0)
+	if (encr_info->keys[index].length > 0)
 	{
 		ndis_key.struct_size = sizeof(ndis_key);
 		ndis_key.index = index;
 
-		if (index == wep_info->active || (wrqu->data.length == 0))
+		if (index == encr_info->active || (wrqu->data.length == 0))
 		{
 			DBGTRACE2("setting key %d as tx key", index);
 			ndis_key.index |= 1 << 31;
-			wep_info->active = index;
+			encr_info->active = index;
 		}
 
-		ndis_key.length = wep_info->keys[index].length;
-		memcpy(&ndis_key.key, wep_info->keys[index].key,
-		       wep_info->keys[index].length);
-
-		DBGTRACE("key length = %ld", ndis_key.length);
-		res = set_wep_mode(handle, WEP_ENABLED);
-		if (res)
-			WARNING("changing wep status failed (%08X)", res);
+		ndis_key.length = encr_info->keys[index].length;
+		memcpy(&ndis_key.key, encr_info->keys[index].key,
+		       encr_info->keys[index].length);
 
 		res = dosetinfo(handle, NDIS_OID_ADD_WEP, (char *)&ndis_key,
 				sizeof(ndis_key), &written, &needed);
 		if (res == NDIS_STATUS_INVALID_DATA)
 		{
-			WARNING("adding wep key %d failed (%08X)",
+			WARNING("adding encryption key %d failed (%08X)",
 				index, res);
 			TRACEEXIT1(return -EINVAL);
 		}
 
-		/* ndis drivers want essid to be set after setting wep */
+		DBGTRACE("key length = %ld", ndis_key.length);
+		res = set_encr_mode(handle, ENCR1_ENABLED);
+		if (res)
+			WARNING("changing encr status failed (%08X)", res);
+
+		/* ndis drivers want essid to be set after setting encr */
 		set_essid(handle, handle->essid.essid, handle->essid.length);
 	}
 
-	/* global wep state (for all keys) */
+	/* global encryption state (for all keys) */
 	if (wrqu->data.flags & IW_ENCODE_OPEN)
 		res = set_auth_mode(handle, AUTHMODE_OPEN);
 	else // if (wrqu->data.flags & IW_ENCODE_RESTRICTED)
 		res = set_auth_mode(handle, AUTHMODE_RESTRICTED);
 	if (res)
 	{
-		WARNING("setting wep mode failed (%08X)", res);
+		WARNING("setting authentication mode failed (%08X)", res);
 		TRACEEXIT1(return -EINVAL);
 	}
 
@@ -1247,11 +1247,11 @@ static int wpa_set_key(struct net_device *dev, struct iw_request_info *info,
 			TRACEEXIT(return -EINVAL);
 		}
 		if (wpa_key->key_index >= 0 &&
-		    wpa_key->key_index < MAX_WEP_KEYS)
+		    wpa_key->key_index < MAX_ENCR_KEYS)
 		{
-			handle->wep_info.keys[wpa_key->key_index].length = 0;
-			if (wpa_key->key_index == handle->wep_info.active)
-				set_wep_mode(handle, WEP_DISABLED);
+			handle->encr_info.keys[wpa_key->key_index].length = 0;
+			if (wpa_key->key_index == handle->encr_info.active)
+				set_encr_mode(handle, ENCR_DISABLED);
 		}
 
 		TRACEEXIT(return 0);
@@ -1259,26 +1259,26 @@ static int wpa_set_key(struct net_device *dev, struct iw_request_info *info,
 
 	if (wpa_key->alg == WPA_ALG_WEP)
 	{
-		union iwreq_data wep_req;
+		union iwreq_data encr_req;
 		unsigned char key[IW_ENCODING_TOKEN_MAX];
 		int i;
 
-		if (test_bit(CAPA_WEP_NONE, &handle->capa))
+		if (test_bit(CAPA_ENCR_NONE, &handle->capa))
 			TRACEEXIT(return -EINVAL);
 
-		memset(&wep_req, 0, sizeof(wep_req));
-		wep_req.data.flags = wpa_key->key_index;
+		memset(&encr_req, 0, sizeof(encr_req));
+		encr_req.data.flags = wpa_key->key_index;
 		/* auth mode is set with set_auth_alg */
 		if (handle->auth_mode == AUTHMODE_OPEN)
-			wep_req.data.flags |= IW_ENCODE_OPEN;
+			encr_req.data.flags |= IW_ENCODE_OPEN;
 		else
-			wep_req.data.flags |= IW_ENCODE_RESTRICTED;
+			encr_req.data.flags |= IW_ENCODE_RESTRICTED;
 		i = key_str_to_hex(wpa_key->key, key, wpa_key->key_len);
 		if (i < 0)
 			TRACEEXIT(return -EINVAL);
-		wep_req.data.length = i;
-		wep_req.data.pointer = key;
-		if (iw_set_encr(dev, info, &wep_req, key))
+		encr_req.data.length = i;
+		encr_req.data.pointer = key;
+		if (iw_set_encr(dev, info, &encr_req, key))
 			TRACEEXIT(return -EINVAL);
 		else
 			TRACEEXIT(return 0);
@@ -1309,8 +1309,7 @@ static int wpa_set_key(struct net_device *dev, struct iw_request_info *info,
 	if (wpa_key->key_index == 0) /* pairwise key */
 		ndis_key.index |= (1 << 31) | (1 << 30);
 
-	DBGTRACE("bssid " MACSTR, MAC2STR(wpa_key->addr));
-	if (!memcmp(wpa_key->addr, "\xFF\xFF\xFF\xFF\xFF\xFF", ETH_ALEN))
+	if (!memcmp(wpa_key->addr, "\xff\xff\xff\xff\xff\xff", ETH_ALEN))
 	{
 		mac_address ap_addr;
 
@@ -1319,6 +1318,7 @@ static int wpa_set_key(struct net_device *dev, struct iw_request_info *info,
 	}
 	else
 		memcpy(&ndis_key.bssid, wpa_key->addr, ETH_ALEN);
+	DBGTRACE("bssid " MACSTR, MAC2STR(wpa_key->addr));
 
 	if (wpa_key->alg == WPA_ALG_TKIP && wpa_key->key_len == 32)
 	{
@@ -1338,7 +1338,10 @@ static int wpa_set_key(struct net_device *dev, struct iw_request_info *info,
 			 res, written, needed, ndis_key.struct_size);
 		TRACEEXIT(return -EINVAL);
 	}
-	
+	memcpy(&handle->encr_info.keys[wpa_key->key_index].key, &ndis_key.key,
+	       NDIS_ENCODING_TOKEN_MAX);
+	handle->encr_info.keys[wpa_key->key_index].length = 
+		wpa_key->key_len;
 	TRACEEXIT(return 0);
 }
 
@@ -1391,17 +1394,17 @@ static int wpa_associate(struct net_device *dev,
 	{
 	case CIPHER_CCMP:
 		if (!test_bit(CAPA_AES, &handle->capa) ||
-		    set_wep_mode(handle, WEP_ENCR3_ENABLED))
+		    set_encr_mode(handle, ENCR3_ENABLED))
 			TRACEEXIT(return -EINVAL);
 		break;
 	case CIPHER_TKIP:
 		if (!test_bit(CAPA_WPA, &handle->capa) ||
-		    set_wep_mode(handle, WEP_ENCR2_ENABLED))
+		    set_encr_mode(handle, ENCR2_ENABLED))
 			TRACEEXIT(return -EINVAL);
 		break;
 	case CIPHER_WEP104:
 	case CIPHER_WEP40:
-		if (test_bit(CAPA_WEP_NONE, &handle->capa))
+		if (test_bit(CAPA_ENCR_NONE, &handle->capa))
 			TRACEEXIT(return -EINVAL);
 		break;
 	default:
