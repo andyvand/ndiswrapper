@@ -517,6 +517,8 @@ STDCALL void NdisAllocateBufferPool(unsigned int *status,
 	*status = NDIS_STATUS_SUCCESS;
 }
 
+
+
 STDCALL void NdisFreeBufferPool(void *poolhandle)
 {
 	DBGTRACE("%s: %08x\n", __FUNCTION__, (int)poolhandle);
@@ -574,6 +576,17 @@ STDCALL void NdisQueryBufferSafe(struct ndis_buffer *buf, void **addr, unsigned 
 	*len = buf->len;
 }                                
 
+STDCALL void *NdisBufferVirtualAddress(struct ndis_buffer *buf)
+{
+	return buf->data; 
+}
+
+STDCALL unsigned long NdisBufferLength(struct ndis_buffer *buf)
+{
+	return buf->len;
+}
+
+
 STDCALL void NdisAllocatePacketPool(unsigned int *status,
                                     unsigned int *poolhandle,
 				    unsigned int size,
@@ -583,6 +596,17 @@ STDCALL void NdisAllocatePacketPool(unsigned int *status,
 	*poolhandle = 0xa000fff4;
 	*status = NDIS_STATUS_SUCCESS;
 }
+
+STDCALL void NdisAllocatePacketPoolEx(unsigned int *status,
+                                      unsigned int *poolhandle,
+				      unsigned int size,
+				      unsigned int overflowsize,
+				      unsigned int rsvlen)
+{
+	NdisAllocatePacketPool(status, poolhandle, size, rsvlen);
+}
+
+
 
 STDCALL void NdisFreePacketPool(void *poolhandle)
 {
@@ -1129,8 +1153,4 @@ STDCALL void EthFilterDprIndicateReceive(void){UNIMPL();}
 STDCALL void NdisMStartBufferPhysicalMapping(void){UNIMPL();}
 STDCALL void NdisMCompleteBufferPhysicalMapping(void){UNIMPL();}
 STDCALL void NdisMPciAssignResources(void){UNIMPL();}
-
-STDCALL void NdisBufferVirtualAddress(void){UNIMPL();}
-STDCALL void NdisBufferLength(void){UNIMPL();}
-STDCALL void NdisAllocatePacketPoolEx(void){UNIMPL();}
 
