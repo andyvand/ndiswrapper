@@ -1283,7 +1283,7 @@ int setup_dev(struct net_device *dev)
 
 	miniport_set_int(handle, NDIS_OID_POWER_MODE, NDIS_POWER_OFF);
 	set_mode(handle, NDIS_MODE_INFRA);
-	set_essid(handle, handle->essid.essid, handle->essid.length);
+	set_essid(handle, "", 0);
 
 	res = miniport_query_int(handle, OID_802_3_MAXIMUM_LIST_SIZE, &i);
 	if (res == NDIS_STATUS_SUCCESS) {
@@ -1474,8 +1474,12 @@ static int __init wrapper_init(void)
 #endif
 		);
 
-	loader_init();
-	ndis_init();
+	if (loader_init())
+		TRACEEXIT1(return -EPERM);
+	if (ndis_init()) {
+		module_cleanup();
+		TRACEEXIT1(return -EPERM);
+	}		
 	INIT_LIST_HEAD(&wrap_allocs);
 	wrap_spin_lock_init(&wrap_allocs_lock);
 	wrap_spin_lock_init(&dispatch_event_lock);

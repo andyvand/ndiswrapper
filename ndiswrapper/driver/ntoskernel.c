@@ -1100,7 +1100,6 @@ STDCALL NT_STATUS WRAP_EXPORT(IoGetDeviceProperty)
 	struct ndis_handle *handle;
 	char buf[32];
 
-	snprintf(buf, sizeof(buf), "%s", "usb8023k.sys");
 	handle = (struct ndis_handle *)dev_obj->handle;
 
 	TRACEENTER1("dev_obj = %p, dev_property = %d, buffer_len = %u, "
@@ -1142,7 +1141,9 @@ STDCALL NT_STATUS WRAP_EXPORT(IoGetDeviceProperty)
 				TRACEEXIT1(return STATUS_SUCCESS);
 			}
 		} else {
-			*result_len = 2 * (strlen(buf) + 1);
+			ansi.len = snprintf(buf, sizeof(buf), "%d",
+					    handle->dev.usb->devnum);
+			*result_len = 2 * (ansi.len + 1);
 			TRACEEXIT1(return STATUS_BUFFER_TOO_SMALL);
 		}
 		break;

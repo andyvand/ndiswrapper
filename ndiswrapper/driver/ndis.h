@@ -905,7 +905,7 @@ STDCALL void RtlFreeUnicodeString(struct ustring *string);
 STDCALL void RtlFreeAnsiString(struct ustring *string);
 
 void *get_sp(void);
-void ndis_init(void);
+int ndis_init(void);
 void ndis_exit_handle(struct ndis_handle *handle);
 void ndis_exit(void);
 

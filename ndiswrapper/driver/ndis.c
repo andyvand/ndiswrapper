@@ -42,7 +42,7 @@ static void wrap_free_timers(struct ndis_handle *handle);
 static void free_handle_ctx(struct ndis_handle *handle);
 
 /* ndis_init is called once when module is loaded */
-void ndis_init(void)
+int ndis_init(void)
 {
 	INIT_WORK(&ndis_work, &ndis_worker, NULL);
 	INIT_LIST_HEAD(&ndis_work_list);
@@ -51,7 +51,7 @@ void ndis_init(void)
 
 	wrap_spin_lock_init(&atomic_lock);
 	wrap_spin_lock_init(&cancel_lock);
-	return;
+	return 0;
 }
 
 /* ndis_exit_handle is called for each handle */
