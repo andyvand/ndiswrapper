@@ -17,7 +17,7 @@
 
 #include "ndis.h"
 
-struct ndis_wpa_key {
+struct ndis_add_key {
 	ULONG struct_size;
 	ULONG index;
 	ULONG length;

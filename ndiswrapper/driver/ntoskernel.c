@@ -304,10 +304,11 @@ STDCALL static void WRAP_EXPORT(ExDeleteNPagedLookasideList)
 _FASTCALL static void WRAP_EXPORT(ExInterlockedAddLargeStatistic)
 	(FASTCALL_DECL_2(LARGE_INTEGER *plint, ULONG n))
 {
+	unsigned long flags;
 	TRACEENTER3("Stat %p = %llu, n = %u", plint, *plint, n);
-	wrap_spin_lock(&atomic_lock, PASSIVE_LEVEL);
+	spin_lock_irqsave(&atomic_lock.lock.spinlock, flags);
 	*plint += n;
-	wrap_spin_unlock(&atomic_lock);
+	spin_unlock_irqrestore(&atomic_lock.lock.spinlock, flags);
 }
 
 STDCALL static void * WRAP_EXPORT(MmMapIoSpace)

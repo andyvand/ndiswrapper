@@ -399,16 +399,15 @@ static int ndis_close(struct net_device *dev)
 }
 
 /*
- * query functions may not be called from this function as
- * they might sleep which is not allowed from the context this function
- * is running in.
+ * query functions may not be called from this function as they might
+ * sleep which is not allowed from the context this function is
+ * running in.
  */
 static struct net_device_stats *ndis_get_stats(struct net_device *dev)
 {
 	struct ndis_handle *handle = dev->priv;
 	return &handle->stats;
 }
-
 
 static int ndis_ioctl(struct net_device *dev, struct ifreq *rq, int cmd)
 {
@@ -426,9 +425,9 @@ static void set_multicast_list(struct net_device *dev,
 
 	for (i = 0, mclist = dev->mc_list; mclist && i < dev->mc_count;
 	     i++, mclist = mclist->next) {
-		memcpy(list, mclist->dmi_addr, 6);
-		list += 6;
-		size += 6;
+		memcpy(list, mclist->dmi_addr, ETH_ALEN);
+		list += ETH_ALEN;
+		size += ETH_ALEN;
 	}
 	DBGTRACE1("%d entries. size=%d", dev->mc_count, size);
 
@@ -612,8 +611,7 @@ static void xmit_worker(void *param)
 }
 
 /*
- * Free and unmap a packet created in xmit
- * This function should be called while holding send_packet_lock
+ * Free and unmap packet created in xmit
  */
 void sendpacket_done(struct ndis_handle *handle, struct ndis_packet *packet)
 {
@@ -796,15 +794,7 @@ void ndis_remove_one(struct ndis_handle *handle)
 	}
 	wrap_spin_unlock(&handle->xmit_ring_lock);
 
-	DBGTRACE1("%d, %p",
-		  test_bit(ATTR_SURPRISE_REMOVE, &handle->attributes),
-		  miniport->pnp_event_notify);
-	if (test_bit(ATTR_SURPRISE_REMOVE, &handle->attributes) &&
-	    miniport->pnp_event_notify) {
-		miniport->pnp_event_notify(handle->adapter_ctx,
-					   NDIS_PNP_SURPRISE_REMOVED,
-					   NULL, 0);
-	}
+	miniport_set_int(handle, NDIS_OID_DISASSOCIATE, 0);
 
 	if (handle->phys_device_obj)
 		kfree(handle->phys_device_obj);
@@ -820,7 +810,16 @@ void ndis_remove_one(struct ndis_handle *handle)
 	printk(KERN_INFO "%s: device %s removed\n", DRV_NAME,
 	       handle->net_dev->name);
 
-	miniport_set_int(handle, NDIS_OID_DISASSOCIATE, 0);
+	DBGTRACE1("%d, %p",
+		  test_bit(ATTR_SURPRISE_REMOVE, &handle->attributes),
+		  miniport->pnp_event_notify);
+	if (test_bit(ATTR_SURPRISE_REMOVE, &handle->attributes) &&
+	    miniport->pnp_event_notify) {
+		miniport->pnp_event_notify(handle->adapter_ctx,
+					   NDIS_PNP_SURPRISE_REMOVED,
+					   NULL, 0);
+	}
+
 	DBGTRACE1("halting device %s", handle->driver->name);
 	miniport_halt(handle);
 	DBGTRACE1("halt successful");
@@ -1098,7 +1097,7 @@ static void check_capa(struct ndis_handle *handle)
 	int i, mode;
 	unsigned int res;
 	struct ndis_assoc_info ndis_assoc_info;
-	struct ndis_wpa_key ndis_key;
+	struct ndis_add_key ndis_key;
 
 	TRACEENTER1("%s", "");
 
@@ -1293,7 +1292,8 @@ int setup_dev(struct net_device *dev)
 
 	if (handle->multicast_list_size)
 		handle->multicast_list =
-			kmalloc(handle->multicast_list_size * 6, GFP_KERNEL);
+			kmalloc(handle->multicast_list_size * ETH_ALEN,
+				GFP_KERNEL);
 
 	if (set_privacy_filter(handle, NDIS_PRIV_ACCEPT_ALL))
 		WARNING("%s", "Unable to set privacy filter");
