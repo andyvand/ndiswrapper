@@ -1510,14 +1510,12 @@ STDCALL void WRAP_EXPORT(NdisMDeregisterInterrupt)
 		 */
 #if LINUX_KERNEL_VERSION >= KERNEL_VERSION(2,6,0)
 		flush_scheduled_work();
-//		set_current_state(TASK_INTERRUPTIBLE);
-//		schedule_timeout(HZ/100);
 #else
 		set_current_state(TASK_INTERRUPTIBLE);
 		schedule_timeout(HZ/10);
 #endif
 		free_irq(ndis_irq->irq.irq, ndis_irq);
-		if (map_kspin_lock(&ndis_irq->lock))
+		if (unmap_kspin_lock(&ndis_irq->lock))
 			ERROR("IRQ spinlock %p is already freed?",
 			      &ndis_irq->lock);
 		ndis_irq->handle = NULL;
