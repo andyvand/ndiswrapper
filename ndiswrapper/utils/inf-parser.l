@@ -262,8 +262,11 @@ static int addPciId(int vendor, int device)
 
 <SettingsSection>AddReg[ \t]*=[ \t]*        BEGIN(FoundAddReg);
 <FoundAddReg>[^=\n]+[ \t]*                  { addSettingsSections(yytext); BEGIN(INITIAL); }
-<SettingsSection>HKR,[ \t]*Ndi\\[Pp]arams\\ BEGIN(FoundSetting);
+<SettingsSection>HKR,[ \t]*,[ \t]*  BEGIN(FoundSetting);
+<SettingsSection>HKR,[ \t]*N[dD][iI]\\[Pp]arams\\ BEGIN(FoundSetting);
 <FoundSetting>[^, \t\n]+                    { strncpy(name, yytext, 80); BEGIN(NeedValue); }
+
+<NeedValue>[ \t]*,[ \t]+,[ \t]* BEGIN(FoundValue);
 
 <NeedValue>[ \t]*,[ \t]*[dD]efault[ \t]*,[^,\n]*,[ \t]* BEGIN(FoundValue);
 <NeedValue>[ \t]*,[^,\n]*,[^,\n]*,[ \t]*                BEGIN(SettingsSection);
