@@ -21,6 +21,18 @@
 #define PASSIVE_LEVEL 0
 #define DISPATCH_LEVEL 2
 
+#define STATUS_SUCCESS			0
+#define STATUS_PENDING			0x00000103
+#define STATUS_FAILURE			0xC0000001
+#define STATUS_MORE_PROCESSING_REQUIRED	0xC0000016
+#define STATUS_NOT_SUPPORTED		0xC00000BB
+
+#define IS_PENDING			0x01
+#define CALL_ON_CANCEL			0x20
+#define CALL_ON_SUCCESS			0x40
+#define CALL_ON_ERROR			0x80
+
+
 struct slist_entry
 {
 	struct slist_entry  *next;
@@ -86,6 +98,108 @@ struct kdpc
 	void *arg1;
 	void *arg2;
 	unsigned long *lock;
+};
+
+struct irp;
+
+struct packed device_object
+{
+	short type;
+	unsigned short size;
+	long fill1;
+	void *drv_obj;
+	struct device_object *next_dev;
+	void *fill2;
+	struct irp *current_irp;
+	void *fill4;
+	unsigned long flags;
+	unsigned long characteristics;
+	void *fill5;
+	void *dev_ext;
+	unsigned long dev_type;
+	char stack_size;
+	char fill6[3+10*4];
+	unsigned long align_req;
+	char fill7[100]; /* more than required */
+
+	/* ndiswrapper-specific data */
+	union {
+		struct usb_device *usb;
+	} device;
+};
+
+struct io_status_block {
+	long status;
+	unsigned long *status_info;
+};
+
+#define IRP_MJ_DEVICE_CONTROL           0x0E
+#define IRP_MJ_INTERNAL_DEVICE_CONTROL  0x0F
+
+struct packed io_stack_location {
+	char major_fn;
+	char minor_fn;
+	char flags;
+	char control;
+	union {
+		struct {
+			unsigned long output_buf_len;
+			unsigned long input_buf_len; /*align to pointer size*/
+			unsigned long code; /*align to pointer size*/
+			void *type3_input_buf;
+		} ioctl;
+		struct {
+			void *arg1;
+			void *arg2;
+			void *arg3;
+			void *arg4;
+		} generic;
+	} params;
+	struct device_object *dev_obj;
+	void *fill;
+	unsigned long (*completion_handler)(struct device_object *,
+	                                    struct irp *, void *) STDCALL;
+	void *handler_arg;
+};
+
+struct packed irp {
+	short type;
+	unsigned short size;
+	void *mdl;
+	unsigned long flags;
+	union {
+		struct irp *master_irp;
+		void *sys_buf;
+	} associated_irp;
+
+	void *fill1[2];
+
+	struct io_status_block io_status;
+	char requestor_mode;
+	unsigned char pending_returned;
+	char stack_size;
+	char stack_pos;
+	unsigned char cancel;
+	unsigned char cancel_irql;
+
+	char fill2[2];
+
+	struct io_status_block *user_status;
+	struct kevent *user_event;
+
+	void *fill3[2];
+
+	void (*cancel_routine)(struct device_object *, struct irp *) STDCALL;
+	void *user_buf;
+	void *driver_context[4];
+	void *thread;
+
+	void *fill4;
+
+	struct list_entry list_entry;
+	struct io_stack_location *current_stack_location;
+
+	void *fill5[3];
 };
 
 struct ktimer

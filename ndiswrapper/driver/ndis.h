@@ -328,13 +328,22 @@ struct ndis_driver
 
 	struct list_head devices;
 	struct list_head files;
-	struct pci_driver pci_driver;
-	struct pci_device_id *pci_idtable;
+
+	int bustype;
+
+	union {
+		struct pci_driver pci;
+		struct usb_driver usb;
+	} driver;
+	union {
+		struct pci_device_id *pci;
+		struct usb_device_id *usb;
+	} idtable;
 
 	int nr_devices;
 	int started;
 
-	unsigned int pci_registered;
+	unsigned int dev_registered;
 
 	void *image;
 	unsigned int (*entry)(void *obj, char *p2) STDCALL;
@@ -343,7 +352,7 @@ struct ndis_driver
 };
 
 /*
- * There is one of these per handeled pci-id
+ * There is one of these per handeled device-id
  *
  */
 struct ndis_device
@@ -352,8 +361,9 @@ struct ndis_device
 	struct list_head settings;
 	struct ndis_driver *driver;
 
-	int pci_vendor;
-	int pci_device;
+	int bustype;
+	int vendor;
+	int device;
 	int pci_subvendor;
 	int pci_subdevice;
 	int fuzzy;
@@ -613,7 +623,11 @@ struct packed ndis_handle
 
 	char fill3[200];
 
-	struct pci_dev *pci_dev;
+	union {
+		struct pci_dev *pci;
+		struct usb_device *usb;
+		void *ptr;
+	} dev;
 	struct net_device *net_dev;
 	void *adapter_ctx;
 	void *shutdown_ctx;
@@ -629,6 +643,7 @@ struct packed ndis_handle
 	struct ndis_wireless_stats ndis_stats;
 	struct ndis_driver *driver;
 	struct ndis_device *device;
+	struct device_object *phy_dev;
 
 	struct work_struct xmit_work;
 	struct wrap_spinlock xmit_ring_lock;
@@ -824,6 +839,7 @@ STDCALL void NdisMSetInformationComplete(struct ndis_handle *handle,
 STDCALL void NdisMResetComplete(struct ndis_handle *handle, int status,
 				int reset_status);
 STDCALL unsigned long NDIS_BUFFER_TO_SPAN_PAGES(struct ndis_buffer *buffer);
+STDCALL void NdisSetEvent(struct ndis_event *event);
 STDCALL void NdisMDeregisterInterrupt(struct ndis_irq *ndis_irq);
 STDCALL void EthRxIndicateHandler(void *adapter_ctx, void *rx_ctx,
 				  char *header1, char *header,

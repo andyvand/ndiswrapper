@@ -31,12 +31,12 @@ struct del_driver {
 };
 
 struct put_device {
-	int pci_vendor;
-	int pci_device;
+	int bustype;
+	int vendor;
+	int device;
 	int pci_subvendor;
 	int pci_subdevice;
 	int fuzzy;
-	int bustype;
 };
 
 struct put_setting

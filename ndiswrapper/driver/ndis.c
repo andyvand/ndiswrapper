@@ -645,7 +645,7 @@ NdisMSetAttributesEx(struct ndis_handle *handle, void* adapter_ctx,
 
 	if (attributes & NDIS_ATTRIBUTE_BUS_MASTER)
 	{
-		pci_set_master(handle->pci_dev);
+		pci_set_master(handle->dev.pci);
 	}
 
 	if (attributes & NDIS_ATTRIBUTE_DESERIALIZE)
@@ -714,7 +714,7 @@ NdisReadPciSlotInformation(struct ndis_handle *handle, unsigned int slot,
 	int i;
 	for(i = 0; i < len; i++)
 	{
-		pci_read_config_byte(handle->pci_dev, offset+i, &buf[i]);
+		pci_read_config_byte(handle->dev.pci, offset+i, &buf[i]);
 	}
 	return len;
 }
@@ -726,7 +726,7 @@ NdisWritePciSlotInformation(struct ndis_handle *handle, unsigned int slot,
 	int i;
 	for(i = 0; i < len; i++)
 	{
-		pci_write_config_byte(handle->pci_dev, offset+i, buf[i]);
+		pci_write_config_byte(handle->dev.pci, offset+i, buf[i]);
 	}
 	return len;
 }
@@ -738,7 +738,8 @@ NdisMQueryAdapterResources(unsigned int *status, struct ndis_handle *handle,
 {
 	int i;
 	int len = 0;
-	struct pci_dev *pci_dev = handle->pci_dev;
+// XXXXXXXXXXXXXXX   FIX-ME!   XXXXXXXXXXXXXXXXXXXXX
+	struct pci_dev *pci_dev = handle->dev.pci;
 	struct ndis_resource_entry *entry;
 	TRACEENTER2("handle: %08x. buf: %08x, len: %d. IRQ:%d", (int)handle,
 		    (int)resource_list, *size, pci_dev->irq);
@@ -962,7 +963,8 @@ NdisMAllocateSharedMemory(struct ndis_handle *handle, unsigned long size,
 //	if (handle->map_dma_addr == NULL)
 //		printk(KERN_ERR "%s: DMA map address is not set!\n",
 //		       __FUNCTION__);
-	v = PCI_DMA_ALLOC_COHERENT(handle->pci_dev, size, &p);
+// XXXXXXXXXXXXXXX   FIX-ME!?   XXXXXXXXXXXXXXXXXXXXX
+	v = PCI_DMA_ALLOC_COHERENT(handle->dev.pci, size, &p);
 	if(!v)
 	{
 		ERROR("Failed to allocate DMA coherent memory. "
@@ -1048,7 +1050,8 @@ NdisMFreeSharedMemory(struct ndis_handle *handle, unsigned int size,
 		      unsigned int physlow, unsigned int physhigh)
 {
 	TRACEENTER3("%s", "");
-	PCI_DMA_FREE_COHERENT(handle->pci_dev, size, virt, physlow);
+// XXXXXXXXXXXXXXX   FIX-ME!?   XXXXXXXXXXXXXXXXXXXXX
+	PCI_DMA_FREE_COHERENT(handle->dev.pci, size, virt, physlow);
 	TRACEEXIT3(return);
 }
 
@@ -1996,7 +1999,7 @@ NdisWaitEvent(struct ndis_event *event, int timeout)
 	TRACEEXIT3(return 0);
 }
 
-STDCALL static void
+STDCALL void
 NdisSetEvent(struct ndis_event *event)
 {
 	event->state = 1;
@@ -2188,8 +2191,9 @@ NdisMStartBufferPhysicalMapping(struct ndis_handle *handle,
 	}
 
 	// map buffer
+// XXXXXXXXXXXXXXX   FIX-ME!   XXXXXXXXXXXXXXXXXXXXX
 	phy_addr_array[0].phy_addr.low =
-		PCI_DMA_MAP_SINGLE(handle->pci_dev, buf->data, buf->len,
+		PCI_DMA_MAP_SINGLE(handle->dev.pci, buf->data, buf->len,
 				   PCI_DMA_TODEVICE);
 	phy_addr_array[0].phy_addr.high = 0;
 	phy_addr_array[0].length= buf->len;
@@ -2222,7 +2226,8 @@ NdisMCompleteBufferPhysicalMapping(struct ndis_handle *handle,
 	}
 
 	// unmap buffer
-	PCI_DMA_UNMAP_SINGLE(handle->pci_dev,
+// XXXXXXXXXXXXXXX   FIX-ME!   XXXXXXXXXXXXXXXXXXXXX
+	PCI_DMA_UNMAP_SINGLE(handle->dev.pci,
 			     handle->map_dma_addr[phy_map_reg],
 			     buf->len, PCI_DMA_TODEVICE);
 
@@ -2247,12 +2252,64 @@ NdisMDeregisterDevice(struct ndis_handle *handle)
 }
 
 STDCALL static void
-NdisMGetDeviceProperty(struct ndis_handle handle, void **phy_dev,
+NdisMGetDeviceProperty(struct ndis_handle *handle, void **phy_dev,
 		       void **func_dev, void **next_dev, void **alloc_res,
 		       void**trans_res)
 {
-	TRACEENTER1("%s", "");
-	return;
+	TRACEENTER2("phy_dev = %p, func_dev = %p, next_dev = %p, "
+		"alloc_res = %p, trans_res = %p\n", phy_dev, func_dev,
+		next_dev, alloc_res, trans_res);
+
+	if (phy_dev) {
+		if (!handle->phy_dev) {
+			handle->phy_dev = kmalloc(
+				sizeof(struct device_object), GFP_KERNEL);
+			if (!handle->phy_dev) {
+				ERROR("%s", "unable to allocate "
+					"DEVICE_OBJECT structure!");
+				BUG();
+			}
+
+			{
+				int i;
+				for (i = 0;
+				     i < (sizeof(*handle->phy_dev)/sizeof(void *));
+				     i++)
+					((int *)handle->phy_dev)[i] = 0x00000A00;
+			}
+			handle->phy_dev->next_dev        = (void *)0x00000900;
+			handle->phy_dev->current_irp     = (void *)0x00000800;
+			/* flags: DO_BUFFERED_IO + DO_BUS_ENUMERATED_DEVICE */
+			handle->phy_dev->flags           = 0x00001004;
+			handle->phy_dev->characteristics = 01;
+			/* dev_type: FILE_DEVICE_UNKNOWN */
+			handle->phy_dev->dev_type        = 0x00000022;
+			handle->phy_dev->stack_size      = 1;
+
+			handle->phy_dev->device.usb = handle->dev.usb;
+		}
+		*phy_dev = handle->phy_dev;
+	}
+
+	if (func_dev) {
+		ERROR("%s", "request for func_dev not yet supported!");
+		*func_dev = (void *)0x00000B00;
+	}
+
+	if (next_dev) {
+		ERROR("%s", "request for next_dev not yet supported!");
+		*next_dev = (void *)0x00000C00;
+	}
+
+	if (alloc_res) {
+		ERROR("%s", "request for alloc_res not yet supported!");
+		*alloc_res = (void *)0x00000D00;
+	}
+
+	if (trans_res) {
+		ERROR("%s", "request for trans_res not yet supported!");
+		*trans_res = (void *)0x00000E00;
+	}
 }
 
 STDCALL static unsigned long

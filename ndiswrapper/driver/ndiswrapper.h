@@ -28,6 +28,7 @@
 #include <linux/mm.h>
 #include <linux/random.h>
 #include <linux/ctype.h>
+#include <linux/usb.h>
 #include <asm/mman.h>
 #include <asm/atomic.h>
 
@@ -266,6 +267,14 @@ static inline void wrap_spin_lock_init(struct wrap_spinlock *lock)
 	atomic_set(&lock->in_use, 0);
 	TRACEEXIT5(return);
 }
+#if defined DEBUG
+#define ASSERT(expr) \
+if(!(expr)) { \
+	ERROR("Assertion failed! %s\n", (#expr)); \
+}
+#else
+#define ASSERT(expr)
+#endif
 
 static inline void wrap_spin_lock(struct wrap_spinlock *lock)
 {
