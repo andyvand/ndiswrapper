@@ -212,26 +212,45 @@ struct handle_ctx_entry
 	void *ctx;
 };
 
-struct ndis_alloc_entry
+struct ndis_sched_work_item
 {
-	struct list_head list;
+	void *ctx;
+	void (*func)(struct ndis_sched_work_item *, void *) STDCALL;
+	unsigned char reserved[8 * sizeof(void *)];
+};
+
+struct ndis_alloc_mem
+{
 	struct ndis_handle *handle;
 	unsigned long size;
-	unsigned char cached;
+	char cached;
 	void *ctx;
 };
 
-struct ndis_work
+struct ndis_free_mem
 {
-	void *ctx;
-	void (*func)(struct ndis_work *work, void *ctx) STDCALL;
-	struct list_head list;
+	void *addr;
+	unsigned int length;
+	unsigned int flags;
 };
 
-struct ndis_workentry
+enum ndis_work_entry_type
+{
+	_NDIS_SCHED_WORK,
+	_NDIS_ALLOC_MEM,
+	_NDIS_FREE_MEM,
+};
+
+struct ndis_work_entry
 {
 	struct list_head list;
-	struct ndis_work *work;
+	enum ndis_work_entry_type type;
+	union
+	{
+		struct ndis_sched_work_item *sched_work_item;
+		struct ndis_alloc_mem alloc_mem;
+		struct ndis_free_mem free_mem;
+	} entry;
 };
 
 struct kevent
