@@ -1142,8 +1142,8 @@ STDCALL struct mdl *WRAP_EXPORT(IoAllocateMdl)
 	if (!mdl)
 		return NULL;
 
+	memset(mdl, 0, sizeof(*mdl));
 	MmInitializeMdl(mdl, virt, length);
-	mdl->process = NULL;
 	if (irp) {
 		if (second_buf == TRUE) {
 			struct mdl *last;
@@ -1161,17 +1161,8 @@ STDCALL struct mdl *WRAP_EXPORT(IoAllocateMdl)
 STDCALL void WRAP_EXPORT(IoFreeMdl)
 	(struct mdl *mdl)
 {
-	/* 64-bit driver for Broadcom allocates Mdl with
-	 * NdisAllocateBuffer and frees with IoFreeMdl. Since we need
-	 * to treat buffers allocated with Ndis calls differently, we
-	 * must call NdisFreeBuffer if it is allocated with Ndis
-	 * function. We set 'process' field in Ndis functions. */
-	if (mdl) {
-		if (mdl->process)
-			NdisFreeBuffer(mdl);
-		else
-			kfree(mdl);
-	}
+	if (mdl)
+		kfree(mdl);
 	TRACEEXIT3(return);
 }
 

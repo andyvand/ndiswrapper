@@ -68,11 +68,7 @@ struct ndis_phy_addr_unit {
 	UINT length;
 };
 
-struct ndis_buffer_pool {
-	int num_buffers;
-	spinlock_t lock;
-	ndis_buffer *buffers;
-};
+typedef struct mdl ndis_buffer;
 
 enum ndis_per_packet_info {
 	TcpIpChecksumPacketInfo,
