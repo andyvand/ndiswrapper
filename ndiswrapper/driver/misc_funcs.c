@@ -174,7 +174,7 @@ int wrapper_set_timer(struct wrapper_timer *timer,
 
 void wrapper_cancel_timer(struct wrapper_timer *timer, char *canceled)
 {
-	DBGTRACE("%s\n", __FUNCTION__);
+	DBGTRACE("%s: timer = %p, canceled = %p\n", __FUNCTION__, timer, canceled);
 	if(!timer)
 	{
 		printk("%s: Driver calling NdisCancelTimer on an uninitilized timer\n", DRV_NAME);		

@@ -179,18 +179,31 @@ struct ndis_workentry
 	struct ndis_work *work;
 };
 
-
+struct kevent
+{
+	struct dispatch_header header;
+};
 
 struct ndis_irq
 {
+	/* void *intr_obj is used for irq */
 	int irq;
-	struct ndis_handle *handle;
-
+	/* KSPIN_LOCK lock (pointer to unsigned long) is used for spinlock */
 	/* Taken by ISR, DisableInterrupt and SynchronizeWithInterrupt */
-	spinlock_t spinlock;
+	spinlock_t *spinlock;
+	void *id;
+	void *isr;
+	void *dpc;
 
+	struct kdpc intr_dpc;
+	struct ndis_handle *handle;
+	unsigned char dpc_count;
+	/* unsigned char filler1 is used for enabled */
+	unsigned char enabled;
+	struct kevent completed_event;
+	unsigned char shared;
+	unsigned char req_isr;
 };
-
 
 struct ndis_linux_spin_lock
 {
@@ -413,9 +426,8 @@ struct packed ndis_handle
 	void *shutdown_ctx;
 
 	struct work_struct irq_bh;
-	int ndis_irq_enabled;
 
-	int irq;
+	struct ndis_irq *ndis_irq;
 	unsigned long mem_start;
 	unsigned long mem_end;
 
@@ -431,8 +443,11 @@ struct packed ndis_handle
 	unsigned int xmit_ring_start;
 	unsigned int xmit_ring_pending;
 	
+	spinlock_t send_status_lock;
 	int send_status;
 	struct ndis_packet *packet;
+
+	spinlock_t send_packet_lock;
 
 	struct semaphore query_set_mutex;
 	wait_queue_head_t query_set_wqhead;
