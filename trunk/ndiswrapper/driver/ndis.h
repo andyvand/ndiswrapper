@@ -432,7 +432,7 @@ struct packed ndis_handle
 	unsigned int xmit_ring_pending;
 	
 	int send_status;
-	spinlock_t send_status_lock;
+	struct ndis_packet *packet;
 
 	struct semaphore query_set_mutex;
 	wait_queue_head_t query_set_wqhead;

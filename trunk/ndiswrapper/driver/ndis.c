@@ -1413,18 +1413,14 @@ STDCALL void NdisMSendComplete(struct ndis_handle *handle, struct ndis_packet *p
 	/* In case a serialized driver has requested a pause by returning NDIS_STATUS_RESOURCES we
 	 * need to give the send-code a kick again.
 	 */
-	spin_lock(&handle->send_status_lock);
 	handle->send_status = 0;
-	spin_unlock(&handle->send_status_lock);
 	schedule_work(&handle->xmit_work);
 }
 
 STDCALL void NdisMSendResourcesAvailable(struct ndis_handle *handle)
 {
 	DBGTRACE("%s: Enter\n", __FUNCTION__);
-	spin_lock(&handle->send_status_lock);
 	handle->send_status = 0;
-	spin_unlock(&handle->send_status_lock);
 	schedule_work(&handle->xmit_work);
 }
 
