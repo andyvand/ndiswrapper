@@ -26,15 +26,18 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <limits.h>
+#include <ctype.h>
 
 #include "../driver/wrapper.h"
-#include "loadndisdriver.h"
 
-/* prototype for function found in inf-parser */
-extern void read_inf(FILE *input);
+#define SETTING_LEN 1024
+#define NAME_LEN 200
+#define TYPE_LEN 200
+#define VAL_LEN 200
 
-/* need to keep the driver as a global so the parser calls can use it */
-static int device = -1, dumpinf = 0;
+static char *def_config = "/etc/ndiswrapper/config";
+
+void read_conf(FILE *input);
 
 static int get_filesize(int fd)
 {
@@ -59,158 +62,156 @@ static int dotaint(void)
 	return 0;
 }
 
-
-static char provider[80] = {0};
-static char manufacturer[80] = {0};
-
-void found_setting(char *name, char *value)
-{
-	if (strcmp(name, "Provider") == 0)
-		strncpy(provider, value, 80);
-	else if (strcmp(name, provider) == 0)
-		strncpy(manufacturer, value, 80);
-	else if (strcmp(name, "DriverVer") == 0)
-		printf("Driver version: %s\n", value);
-	else if (strcmp(name, "NetworkAddress") == 0)
-		return;
-	else if (dumpinf)
-		printf("Setting found: %s = %s\n", name, value);
-	else
-	{
-		struct put_setting setting;
-		struct setting_payload payload;
-	
-		if (strcmp(name, "Locale") == 0)
-			value = "0";
-
-		payload.data = atoi(value);
-		setting.type = 0;
-		setting.name_len = strlen(name);
-		setting.name = name;
-		setting.payload = &payload;
-		setting.payload_len = sizeof(payload);
-
-		printf("Adding setting: %s\t= %s\n", name, value);
-		if(ioctl(device, NDIS_PUTSETTING, &setting))
-		{
-			perror("Unable to put setting (check dmesg for more info)");
-			exit(1);
-		}
-	}
-}
-
-unsigned int found_heading(char *name)
-{
-	int x, start = 0;
-	for(x = 0; manufacturer[x] != '\0'; x++)
-		if (manufacturer[x] == ',')
-		{
-			//	printf("%s == %s\n", name, manufacturer + start);
-
-			if (strncmp(name, manufacturer + start, x - start) == 0)
-				return FOUND_DEVICES;
-			start = x + 1;
-		}
-	//	printf("%s == %s\n", name, manufacturer + start);
-	if (strcmp(name, manufacturer + start) == 0)
-		return FOUND_DEVICES;
-	return IGNORE_SECTION;
-}
-
-void found_pci_id(unsigned short vendor, unsigned short device)
-{
-	if (dumpinf)
-		printf("PCI ID: %4.4X:%4.4X\n", vendor, device);
-}
-
-/*
- * Read an inf-file and extract things needed. This is very primitive right now
- * so don't be suprised if some files are misinterpreted right now...
- */
-static int loadsettings(char *inf_name)
-{
-	FILE *inf = fopen(inf_name, "r");
-	if(!inf)
-	{
-		perror("Unable to load inf-file");
-		return 1;
-	}
-
-	/* call the lex generated parser */
-	printf("Parsing the inf file.\n");
-	read_inf(inf);
-
-	fclose(inf);
-	return 0;
-}
-
-	
 /*
  * Open a windows driver and pass it to the kernel module.
  */
-static int load(int pci_vendor, int pci_device, char *driver_name, char *inf_name, int device)
+static int load(int device, char *config_file_name)
 {
-	struct put_driver put_driver;
 	int driver, size;
-	char *driver_basename;
-	void * image;
+	FILE *config;
+	void * image = NULL;
+	char setting_line[SETTING_LEN];
 
-	driver = open(driver_name, O_RDONLY);
-	if(driver == -1)
+	if ((config = fopen(config_file_name, "r")) == NULL)
 	{
-		perror("Unable to open driver");
-		return 1;
+		perror("unable to open config file");
+		return -EINVAL;
 	}
 
-	size = get_filesize(driver);
-	image = mmap(0, size, PROT_READ, MAP_PRIVATE, driver, 0);
-
-	if((int)image == -1)
+	while (fgets(setting_line, SETTING_LEN-1, config))
 	{
-		perror("Unable to mmap driver");
-		return 1;
-	}
+		char *equals, *val, *s, *end;
+		char setting_name[NAME_LEN],
+			setting_type[TYPE_LEN], setting_val[VAL_LEN];
+		int i;
 
-	put_driver.pci_vendor = pci_vendor;
-	put_driver.pci_device = pci_device;
-	put_driver.size = size;
-	put_driver.data = image;
+		setting_line[SETTING_LEN-1] = 0;
+
+		// We try to be really paranoid parsing settings
+		for (s = setting_line; isspace(*s); s++)
+			;
+		// ignore comments and blank lines
+		if (*s == '#' || *s == ';' || *s == '\0')
+			continue;
+		if ((equals = strchr(s, '=')) == NULL ||
+		    (val = strchr(s, '|')) == NULL ||
+		     (end = strchr(s, '\n')) == NULL)
+		{
+			printf("invalid setting: %s\n", setting_line);
+			goto unload;
+		}
+		for (i = 0; s != equals && i < NAME_LEN; s++, i++)
+			setting_name[i] = *s;
+		setting_name[i] = 0;
+		if (*s != '=')
+		{
+			printf("invalid setting: %s\n", setting_line);
+			goto unload;
+		}
+		for (i = 0, s++; s != val && i < TYPE_LEN; s++, i++)
+			setting_type[i] = *s;
+		setting_type[i] = 0;
+		if (*s != '|')
+		{
+			printf("invalid setting: %s\n", setting_line);
+			goto unload;
+		}
+		for (i = 0, s++; s != end && i < VAL_LEN ; s++, i++)
+			setting_val[i] = *s;
+		setting_val[i] = 0;
+		if (*s != '\n')
+		{
+			printf("invalid setting: %s\n", setting_line);
+			goto unload;
+		}
+		printf("Found setting: name=%s, type=%s, val=\"%s\"\n",
+		       setting_name, setting_type, setting_val);
+
+		// setting_val can be empty, but not others
+		if (strlen(setting_name) == 0 || strlen(setting_type) == 0)
+		{
+			printf("invalid setting: \"%s\"\n", setting_line);
+			goto unload;
+		}
+
+		if (strcmp(setting_name, "ndis_driver") == 0)
+		{
+			driver = open(setting_val, O_RDONLY);
+			if(driver == -1)
+			{
+				perror("Unable to open driver");
+				return -EINVAL;
+			}
+			size = get_filesize(driver);
+			image = mmap(0, size, PROT_READ, MAP_PRIVATE,
+				     driver, 0);
+			if((int)image == -1)
+			{
+				perror("Unable to mmap driver");
+				fclose(config);
+				close(driver);
+				return -EINVAL;
+			}
+		}
+		else if (strcmp(setting_name, "ndis_pci_id") == 0)
+		{
+			struct put_driver put_driver;
 	
-	driver_basename = basename(driver_name);
-	strncpy(put_driver.name, driver_basename, sizeof(put_driver.name));
-	put_driver.name[sizeof(put_driver.name)-1] = 0;
+			strncpy(put_driver.name, "ndiswrapper",
+				sizeof(put_driver.name));
+			put_driver.name[sizeof(put_driver.name)-1] = 0;
+			put_driver.pci_vendor = strtol(setting_type, NULL, 16);
+			put_driver.pci_device = strtol(setting_val, NULL, 16);
+			put_driver.size = size;
+			if (!image)
+			{
+				printf("Unable to locate driver, config file corrupted?\n");
+				return -EINVAL;
+			}
 
-	dotaint();
-	printf("Calling putdriver ioctl\n");
-	if(ioctl(device, NDIS_PUTDRIVER, &put_driver))
-	{
-		perror("Unable to put driver (check dmesg for more info)");
-		return 1;
+			put_driver.data = image;
+			printf("Calling putdriver ioctl\n");
+			if (ioctl(device, NDIS_PUTDRIVER, &put_driver))
+			{
+				perror("Unable to put driver (check dmesg for more info)");
+				return -EINVAL;
+			}
+		}
+		else if (strcmp(setting_name, "ndis_provider") == 0)
+			printf("Provider: %s\n", setting_val);
+		else if (strcmp(setting_name, "ndis_version") == 0)
+			printf("Version: %s\n", setting_val);
+		else {
+			struct put_setting setting;
+			
+			setting.name_len = strlen(setting_name);
+			setting.val_str_len = strlen(setting_val);
+			setting.name = setting_name;
+			setting.val_str = setting_val;
 
-	}
-
-	if(!loadsettings(inf_name))
-	{
-		printf("Calling startdriver ioctl\n");
-
-		if(ioctl(device, NDIS_STARTDRIVER, 0))
-		{
-			perror("Unable to start driver (check dmesg for more info)");
-			return 1;
+			if (ioctl(device, NDIS_PUTSETTING, &setting))
+			{
+				printf("Error adding setting: %s\n", setting_name);
+				goto unload;
+			}
 		}
 	}
-	else
-	{
-		printf("Loadsettings failed\n");
-		if(ioctl(device, NDIS_CANCELLOAD, 0))
-		{
-			return 1;
-		}
-	}
-
+	fclose(config);
 	close(driver);
 
+	printf("Calling startdriver ioctl\n");
+	
+	if(ioctl(device, NDIS_STARTDRIVER, 0))
+	{
+		perror("Unable to start driver (check dmesg for more info)");
+		goto unload;
+	}
+
 	return 0;
+unload:
+	ioctl(device, NDIS_CANCELLOAD, 0);
+	printf("Driver loading is canceled\n");
+	return -EINVAL;
 }
 
 /*
@@ -261,73 +262,44 @@ static int get_misc_minor()
 }
 
 
-/*
- * Convert string with hex value to integer
- */
-static int hexatoi(char *s)
+int main(int argc, char *argv[0])
 {
-	int i;
-	if (sscanf(s, "%x", &i) != 1)
-		return -1;
-	return i;
-}
+	int device, misc_minor, res;
+	char conf_file_name[200];
 
-int main(int argc, char* argv[])
-{
-	int x, vendorid = -1, deviceid = -1, retval = 1;
-	char *driver = NULL, *information = NULL;
-
-	for(x = 1; x < argc; x++)
-		if (strcmp(argv[x], "-d") == 0 ||
-			strcmp(argv[x], "--dump-info") == 0)
-			dumpinf = 1;
-		else if (strcasecmp(argv[x] + strlen(argv[x]) - 4, ".sys") == 0)
-			driver = argv[x];
-		else if (strcasecmp(argv[x] + strlen(argv[x]) - 4, ".inf") == 0)
-			information = argv[x];
-		else
-		{
-			int temp = hexatoi(argv[x]);
-			if (temp != -1)
-			{
-				if (vendorid == -1)
-					vendorid = temp;
-				else if (deviceid == -1)
-					deviceid = temp;
-				else
-				{
-					fprintf(stderr, "Vendor and device ids already specified.  Useless number: %s", argv[x]);
-					vendorid = -1;
-					break;
-				}
-			}
-		}
-
-	if (dumpinf &&
-		information != NULL)
-		loadsettings(information);
-	else if (vendorid == -1 ||
-			 deviceid == -1 ||
-			 driver == NULL ||
-			 information == NULL)
-		fprintf(stderr, "Usage: %s [OPTIONS] pci_vendor pci_device windowsdriver.sys windowsdriver.inf \n", argv[0]);
-	else
+	misc_minor = get_misc_minor();
+	if(misc_minor == -1)
 	{
-		int misc_minor = get_misc_minor();
-		if(misc_minor == -1)
-			fprintf(stderr, "Cannot find minor for kernel module. Module loaded?\n");
-		else
-		{
-			device = open_misc_device(misc_minor);
-			if(device == -1)
-				perror("Unable to open kernel driver");
-			else
-			{
-				load(vendorid, deviceid, driver, information, device);
-				close(device);
-				retval = 0;
-			}
-		}
+		printf("%s: cannot find minor for kernel module. Module loaded?\n",
+			   argv[0]);
+		return -EINVAL;
 	}
-	return retval;
+	
+	device = open_misc_device(misc_minor);
+	if(device == -1)
+	{
+		perror("Unable to open kernel driver");
+		return -EINVAL;
+	}
+
+	if (argc > 1)
+	{
+		if (*argv[1] == '/') // assume it is full path
+			strncpy(conf_file_name, argv[1], sizeof(conf_file_name));
+		else
+			snprintf(conf_file_name, sizeof(conf_file_name), "%s/%s",
+					 "/etc/ndiswrapper", argv[1]);
+	}
+	else
+		strncpy(conf_file_name, def_config, sizeof(conf_file_name));
+
+	res = load(device, conf_file_name);
+	if (!res)
+	{
+		printf("driver loaded successfully\n");
+		dotaint();
+	}
+	close(device);
+
+	return res;
 }
