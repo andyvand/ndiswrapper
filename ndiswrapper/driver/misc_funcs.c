@@ -353,6 +353,8 @@ void DbgBreakPoint(void)
 	UNIMPL();
 }
 
+void NdisMRemoveMiniport(void) { UNIMPL(); }
+
 #ifdef DBG_ATHEROS
 STDCALL void *MmMapIoSpace(unsigned int phys_addr,
 						   unsigned long size, int cache)
@@ -586,12 +588,12 @@ STDCALL void NdisCancelTimer(struct ndis_timer **timer, char *cancelled)
 	NdisMCancelTimer(timer, cancelled);
 }
 
-STDCALL void NdisInitializeTimer(struct ndis_timer **timer_handle,
+STDCALL void NdisInitializeTimer(struct ndis_timer *timer,
 								 void *func, void *ctx)
 {
 	DBGTRACE("%s(entry): %p, %p, %p, %p\n",
 			 __FUNCTION__, timer_handle, *timer_handle, func, ctx);
-	NdisMInitializeTimer(timer_handle, NULL, func, ctx);
+//	NdisMInitializeTimer(timer_handle, NULL, func, ctx);
 	DBGTRACE("%s(exit): %p, %p, %p, %p\n",
 			 __FUNCTION__, timer_handle, *timer_handle, func, ctx);
 }
@@ -602,5 +604,4 @@ void NdisMRegisterDevice(void) { UNIMPL(); }
 void NdisMDeregisterDevice(void) { UNIMPL(); }
 void NdisCancelTimer(void) { UNIMPL(); }
 void NdisInitializeTimer(void) { UNIMPL(); }
-void NdisMRemoveMiniport(void) { UNIMPL(); }
 #endif // DBG_TI
