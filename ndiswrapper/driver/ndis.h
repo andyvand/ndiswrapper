@@ -314,7 +314,7 @@ struct ndis_irq
 	int irq;
 	/* KSPIN_LOCK lock (pointer to unsigned long) is used for spinlock */
 	/* Taken by ISR, DisableInterrupt and SynchronizeWithInterrupt */
-	struct wrap_spinlock *spinlock;
+	spinlock_t *spinlock;
 	void *id;
 	void *isr;
 	void *dpc;

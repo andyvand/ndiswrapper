@@ -1347,6 +1347,7 @@ irqreturn_t ndis_irq_th(int irq, void *data, struct pt_regs *pt_regs)
 	struct ndis_irq *ndis_irq = (struct ndis_irq *) data;
 	struct ndis_handle *handle;
 	struct miniport_char *miniport;
+	unsigned long flags;
 
 	if (!ndis_irq || !ndis_irq->handle)
 		return IRQ_NONE;
@@ -1354,7 +1355,7 @@ irqreturn_t ndis_irq_th(int irq, void *data, struct pt_regs *pt_regs)
 	miniport = &handle->driver->miniport_char;
 	/* this spinlock should be shared with NdisMSynchronizeWithInterrupt
 	 */
-	wrap_spin_lock(ndis_irq->spinlock);
+	spin_lock_irqsave(ndis_irq->spinlock, flags);
 	if (ndis_irq->req_isr)
 		miniport->isr(&recognized, &handled, handle->adapter_ctx);
 	else //if (miniport->disable_interrupts)
@@ -1363,7 +1364,7 @@ irqreturn_t ndis_irq_th(int irq, void *data, struct pt_regs *pt_regs)
 		/* it is not shared interrupt, so handler must be called */
 		recognized = handled = 1;
 	}
-	wrap_spin_unlock(ndis_irq->spinlock);
+	spin_unlock_irqrestore(ndis_irq->spinlock, flags);
 
 	if (recognized && handled)
 		schedule_work(&handle->irq_bh);
@@ -1384,8 +1385,7 @@ NdisMRegisterInterrupt(struct ndis_irq *ndis_irq, struct ndis_handle *handle,
 		    "mode:%d sp:%08x",(int)ndis_irq, vector, level, req_isr,
 		    shared, mode, (int)getSp());
 
-	ndis_irq->spinlock = kmalloc(sizeof(struct wrap_spinlock),
-				     GFP_KERNEL);
+	ndis_irq->spinlock = kmalloc(sizeof(spinlock_t), GFP_KERNEL);
 	if (ndis_irq->spinlock == NULL)
 		TRACEEXIT1(return NDIS_STATUS_RESOURCES);
 
@@ -1395,7 +1395,7 @@ NdisMRegisterInterrupt(struct ndis_irq *ndis_irq, struct ndis_handle *handle,
 	if (shared && !req_isr)
 		WARNING("%s", "shared but dynamic interrupt!");
 	ndis_irq->shared = shared;
-	wrap_spin_lock_init(ndis_irq->spinlock);
+	spin_lock_init(ndis_irq->spinlock);
 	handle->ndis_irq = ndis_irq;
 
 	INIT_WORK(&handle->irq_bh, &ndis_irq_bh, ndis_irq);
@@ -1442,6 +1442,7 @@ NdisMSynchronizeWithInterrupt(struct ndis_irq *ndis_irq, void *func, void *ctx)
 {
 	unsigned char ret;
 	unsigned char (*sync_func)(void *ctx) STDCALL;
+	unsigned long flags;
 
 	TRACEENTER5("%08x %08x %08x %08x\n", (int) ndis_irq,
 		    (int) ndis_irq, (int) func, (int) ctx);
@@ -1450,9 +1451,9 @@ NdisMSynchronizeWithInterrupt(struct ndis_irq *ndis_irq, void *func, void *ctx)
 		TRACEEXIT5(return 0);
 
 	sync_func = func;
-	wrap_spin_lock(ndis_irq->spinlock);
+	spin_lock_irqsave(ndis_irq->spinlock, flags);
 	ret = sync_func(ctx);
-	wrap_spin_unlock(ndis_irq->spinlock);
+	spin_unlock_irqrestore(ndis_irq->spinlock, flags);
 
 	DBGTRACE5("sync_func returns %u", ret);
 	TRACEEXIT5(return ret);
