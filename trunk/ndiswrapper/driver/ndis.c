@@ -1026,7 +1026,8 @@ STDCALL void NdisAllocatePacket(unsigned int *status, struct ndis_packet **packe
 	packet->pool = (void*) 0xa000fff4; 
 	packet->packet_flags = 0xc0;
 	
-#ifdef DEBUG
+/* See comment in wrapper.c/send_one about this */	
+#if 0
 	{
 		int i = 0;
 		/* Poision extra packet info */

@@ -1420,7 +1420,12 @@ static void send_one(struct ndis_handle *handle, struct ndis_buffer *buffer)
 	
 	memset(packet, 0, sizeof(*packet));
 	
-#ifdef DEBUG
+
+/* Enable this if you want to poison the packet-info during debugging.
+ * This is not enabled when debug is defined because one card I have
+ * silently faild if this was on.
+ */
+#if 0
 	{
 		int i = 0;
 		/* Poision extra packet info */
@@ -1444,7 +1449,6 @@ static void send_one(struct ndis_handle *handle, struct ndis_buffer *buffer)
 
 	packet->oob_offset = (int)(&packet->timesent1) - (int)packet;
 
-
 	packet->nr_pages = 1;
 	packet->len = buffer->len;
 	packet->count = 1;
@@ -1454,7 +1458,6 @@ static void send_one(struct ndis_handle *handle, struct ndis_buffer *buffer)
 	packet->buffer_tail = buffer;
 
 	//DBGTRACE("Buffer: %08X, data %08X, len %d\n", (int)buffer, (int)buffer->data, (int)buffer->len); 	
-
 
 	if(handle->driver->miniport_char.send_packets)
 	{
