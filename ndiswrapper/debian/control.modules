@@ -1,13 +1,13 @@
 Source: ndiswrapper
 Section: misc
 Priority: optional
-Maintainer: #MAINT# <#MAINTEMAIL#>
+Maintainer: #MAINT#
 Build-Depends: debhelper (>> 4.0.0)
 Standards-Version: 3.6.0
 
-Package: ndiswrapper-module
+Package: ndiswrapper-modules
 Architecture: i386
-Provides: ndiswrapper-module
+Provides: ndiswrapper-modules
 Suggests: kernel-package
 Depends: ndiswrapper-utils-#NDISVERS#
 Description: Linux kernel module for NdisWrapper
