@@ -515,15 +515,12 @@ int set_auth_mode(struct ndis_handle *handle, int auth_mode)
 {
 	unsigned int res;
 	res = miniport_set_int(handle, NDIS_OID_AUTH_MODE, auth_mode);
-	if (res == NDIS_STATUS_INVALID_DATA)
-	{
+	if (res == NDIS_STATUS_INVALID_DATA) {
 		WARNING("setting auth mode failed (%08X)", res);
-		return -EINVAL;
-	}
-	else
-	{
+		TRACEEXIT2(return -EINVAL);
+	} else {
 		handle->auth_mode = auth_mode;
-		return 0;
+		TRACEEXIT2(return 0);
 	}
 }
 
@@ -1283,44 +1280,10 @@ static int wpa_set_wpa(struct net_device *dev, struct iw_request_info *info,
 	
 	if (test_bit(CAPA_WPA, &handle->capa))
 		TRACEEXIT(return 0);
-	else
-	{
+	else {
 		WARNING("%s", "driver is not WPA capable");
-		TRACEEXIT(return -EINVAL);
+		TRACEEXIT(return -1);
 	}
-}
-
-static int remove_key(struct ndis_handle *handle, int key_index,
-		      mac_address bssid)
-{
-	struct ndis_remove_key ndis_remove_key;
-	int res, written, needed;
-
-	TRACEENTER1("%p, %d", handle, key_index);
-	ndis_remove_key.struct_size = sizeof(ndis_remove_key);
-	ndis_remove_key.index = key_index;
-	if (key_index == 0)
-		ndis_remove_key.index = (1 << 30);
-	memcpy(&ndis_remove_key.bssid, bssid, ETH_ALEN);
-
-	if (key_index < 0 || key_index >= MAX_ENCR_KEYS)
-		TRACEEXIT1(return -EINVAL);
-
-	/* TI drivers crash if REMOVE_KEY is called */
-	if (handle->device->vendor != 0x104c) {
-		res = miniport_set_info(handle, NDIS_OID_REMOVE_KEY,
-					(char *)&ndis_remove_key,
-					sizeof(ndis_remove_key),
-					&written, &needed);
-		if (res == NDIS_STATUS_INVALID_DATA) {
-			DBGTRACE("removing key failed with %08X", res);
-			TRACEEXIT(return -EINVAL);
-		}
-		handle->encr_info.keys[key_index].length = 0;
-		if (key_index == handle->encr_info.active)
-			set_encr_mode(handle, ENCR_DISABLED);
-	}
-	TRACEEXIT1(return 0);
 }
 
 static int wpa_set_key(struct net_device *dev, struct iw_request_info *info,
@@ -1332,41 +1295,27 @@ static int wpa_set_key(struct net_device *dev, struct iw_request_info *info,
 	int i, res, written, needed;
 	u8 addr[ETH_ALEN];
 	u8 seq[IW_ENCODING_TOKEN_MAX];
-	u8 usrkey[IW_ENCODING_TOKEN_MAX];
+	u8 key[IW_ENCODING_TOKEN_MAX];
+	unsigned int add_remove_oid;
 
 	copy_from_user(&wpa_key, wrqu->data.pointer, sizeof(wpa_key));
-	if(wpa_key.addr)
+	if (wpa_key.addr)
 		copy_from_user(&addr, wpa_key.addr, ETH_ALEN);
 
-	if(wpa_key.seq)
+	if (wpa_key.seq)
 		copy_from_user(&seq, wpa_key.seq, IW_ENCODING_TOKEN_MAX);
 
-	if(wpa_key.key)
-		copy_from_user(&usrkey, wpa_key.key, IW_ENCODING_TOKEN_MAX);
+	if (wpa_key.key)
+		copy_from_user(&key, wpa_key.key, IW_ENCODING_TOKEN_MAX);
 	
 	TRACEENTER1("alg = %d, key_index = %d",
 		    wpa_key.alg, wpa_key.key_index);
 	
-	if (wpa_key.alg == WPA_ALG_NONE || wpa_key.key_len == 0)
-	{
-	    	mac_address bssid;
-		if (wpa_key.addr)
-			memcpy(&bssid, addr, ETH_ALEN);
-		else
-			memset(&bssid, 0xff, ETH_ALEN);
-
-		if (remove_key(handle, wpa_key.key_index, bssid))
-			TRACEEXIT1(return -EINVAL);
-		else
-			TRACEEXIT(return 0);
-	}
-
-	if (wpa_key.alg == WPA_ALG_WEP)
-	{
+	if (wpa_key.alg == WPA_ALG_WEP) {
 		union iwreq_data encr_req;
 
 		if (test_bit(CAPA_ENCR_NONE, &handle->capa))
-			TRACEEXIT(return -EINVAL);
+			TRACEEXIT(return -1);
 
 		memset(&encr_req, 0, sizeof(encr_req));
 		encr_req.encoding.flags |= wpa_key.key_index + 1;
@@ -1376,15 +1325,15 @@ static int wpa_set_key(struct net_device *dev, struct iw_request_info *info,
 		else
 			encr_req.encoding.flags |= IW_ENCODE_RESTRICTED;
 		encr_req.encoding.length = wpa_key.key_len;
-		encr_req.encoding.pointer = &usrkey[0];
-		if (iw_set_encr(dev, info, &encr_req, usrkey))
-			TRACEEXIT(return -EINVAL);
+		encr_req.encoding.pointer = &key[0];
+		if (iw_set_encr(dev, info, &encr_req, key))
+			TRACEEXIT(return -1);
 		else {
 			if (wpa_key.set_tx) {
 				encr_req.encoding.pointer = NULL;
 				encr_req.encoding.length = 0;
-				if (iw_set_encr(dev, info, &encr_req, usrkey))
-					TRACEEXIT(return -EINVAL);
+				if (iw_set_encr(dev, info, &encr_req, key))
+					TRACEEXIT(return -1);
 			}
 			TRACEEXIT(return 0);
 		}
@@ -1392,77 +1341,80 @@ static int wpa_set_key(struct net_device *dev, struct iw_request_info *info,
 
 	/* alg is either WPA_ALG_TKIP or WPA_ALG_CCMP */
 	if (!test_bit(CAPA_WPA, &handle->capa))
-		TRACEEXIT1(return -EINVAL);
+		TRACEEXIT1(return -1);
 
-	if (wpa_key.key_len > sizeof(ndis_key.key))
-	{
+	if (wpa_key.key_len > sizeof(ndis_key.key)) {
 		DBGTRACE("incorrect key length (%d)", wpa_key.key_len);
-		TRACEEXIT1(return -EINVAL);
+		TRACEEXIT1(return -1);
 	}
 	
+	if (wpa_key.seq_len > IW_ENCODING_TOKEN_MAX) {
+		DBGTRACE1("incorrect seq? length = (%d)", wpa_key.seq_len);
+		TRACEEXIT1(return -1);
+	}
+
 	DBGTRACE("adding key %d, %d", wpa_key.key_index, wpa_key.key_len);
 	memset(&ndis_key, 0, sizeof(ndis_key));
 
-	if (wpa_key.key_len > IW_ENCODING_TOKEN_MAX)
-	{
-		DBGTRACE1("incorrect key? length = (%d)", wpa_key.key_len);
-		TRACEEXIT1(return -EINVAL);
-	}
-	memcpy(&ndis_key.key, usrkey, wpa_key.key_len);
-
 	ndis_key.struct_size = sizeof(ndis_key);
 	ndis_key.length = wpa_key.key_len;
+	ndis_key.index = wpa_key.key_index;
 
-	if (wpa_key.seq_len > IW_ENCODING_TOKEN_MAX)
-	{
-		DBGTRACE1("incorrect seq? length = (%d)", wpa_key.seq_len);
-		TRACEEXIT1(return -EINVAL);
-	}
+	if (wpa_key.seq && wpa_key.seq_len > 0) {
+		for (i = 0, ndis_key.rsc = 0 ; i < wpa_key.seq_len ; i++)
+			ndis_key.rsc |= (seq[i] << (i * 8));
 
-	for (i = 0, ndis_key.rsc = 0 ; i < wpa_key.seq_len ; i++)
-		ndis_key.rsc |= (seq[i] << (i * 8));
-
-	if (wpa_key.key_index == 0) /* pairwise key */
-		ndis_key.index = (1 << 31) | (1 << 30);
-	else
-		ndis_key.index = wpa_key.key_index;
-
-	if (wpa_key.seq_len > 0)
 		ndis_key.index |= 1 << 29;
-
-	if (!memcmp(&addr, "\xff\xff\xff\xff\xff\xff", ETH_ALEN))
-	{
-		mac_address ap_addr;
-
-		get_ap_address(handle, ap_addr);
-		memcpy(&ndis_key.bssid, &ap_addr, ETH_ALEN);
 	}
-	else
+
+	if (wpa_key.addr == NULL || memcmp(addr, "\xff\xff\xff\xff\xff\xff",
+				   ETH_ALEN) == 0) {
+		/* group key */
+		get_ap_address(handle, ndis_key.bssid);
+	} else {
+		/* pairwise key */
+		ndis_key.index |= (1 << 30);
 		memcpy(&ndis_key.bssid, addr, ETH_ALEN);
+	}
+		
 	DBGTRACE("bssid " MACSTR, MAC2STR(ndis_key.bssid));
 
-	if (wpa_key.alg == WPA_ALG_TKIP && wpa_key.key_len == 32)
-	{
+	if (wpa_key.set_tx)
+		ndis_key.index |= (1 << 31);
+
+	if (wpa_key.alg == WPA_ALG_TKIP && wpa_key.key_len == 32) {
 		/* wpa_supplicant gives us the Michael MIC RX/TX keys in
 		 * different order than NDIS spec, so swap the order here. */
-		u8 tmp[8];
-		memcpy(tmp, ndis_key.key + 16, 8);
-		memcpy(ndis_key.key + 16, ndis_key.key + 24, 8);
-		memcpy(ndis_key.key + 24, tmp, 8);
-	}
+		memcpy(ndis_key.key, key, 16);
+		memcpy(ndis_key.key + 16, key + 24, 8);
+		memcpy(ndis_key.key + 24, key + 16, 8);
+	} else
+		memcpy(ndis_key.key, key, wpa_key.key_len);
 
-	res = miniport_set_info(handle, NDIS_OID_ADD_KEY, (char *)&ndis_key,
+	if (wpa_key.alg == WPA_ALG_NONE || wpa_key.key_len == 0)
+		add_remove_oid = NDIS_OID_REMOVE_KEY;
+	else
+		add_remove_oid = NDIS_OID_ADD_KEY;
+
+	res = miniport_set_info(handle, add_remove_oid, (char *)&ndis_key,
 				ndis_key.struct_size, &written, &needed);
-	if (res == NDIS_STATUS_INVALID_DATA)
-	{
+	if (res == NDIS_STATUS_INVALID_DATA) {
 		DBGTRACE("adding key failed (%08X), %d, %d, %lu",
 			 res, written, needed, ndis_key.struct_size);
-		TRACEEXIT(return -EINVAL);
+		TRACEEXIT(return -1);
 	}
-	memcpy(&handle->encr_info.keys[wpa_key.key_index].key, &usrkey,
-	       wpa_key.key_len);
-	handle->encr_info.keys[wpa_key.key_index].length = wpa_key.key_len;
-	DBGTRACE("key %d added", wpa_key.key_index);
+	if (add_remove_oid == NDIS_OID_REMOVE_KEY) {
+		handle->encr_info.keys[wpa_key.key_index].length = 0;
+		memset(&handle->encr_info.keys[wpa_key.key_index].key, 0,
+		       wpa_key.key_len);
+		DBGTRACE("key %d removed", wpa_key.key_index);
+	} else {
+		handle->encr_info.keys[wpa_key.key_index].length = 
+			wpa_key.key_len;
+		memcpy(&handle->encr_info.keys[wpa_key.key_index].key,
+		       &ndis_key.key, wpa_key.key_len);
+		DBGTRACE("key %d added", wpa_key.key_index);
+	}
 
 	TRACEEXIT(return 0);
 }
@@ -1474,21 +1426,25 @@ static int wpa_disassociate(struct net_device *dev,
 	struct ndis_handle *handle = (struct ndis_handle *)dev->priv;
 	mac_address ap_addr;
 	unsigned char buf[NDIS_ESSID_MAX_SIZE];
-	int i;
+	int i, n;
 	
 	TRACEENTER("%s", "");
-	get_ap_address(handle, ap_addr);
-	DBGTRACE1("bssid " MACSTR, MAC2STR(ap_addr));
-	while (memcmp(ap_addr, "\x00\x00\x00\x00\x00\x00", ETH_ALEN)) {
+	n = 0;
+	do {
 		get_random_bytes(buf, sizeof(buf));
 		for (i = 0; i < sizeof(buf); i++)
 			buf[i] = 'a' + (buf[i] % ('z' - 'a'));
 		set_essid(handle, buf, sizeof(buf));
 		get_ap_address(handle, ap_addr);
+		if (memcmp(ap_addr, "\x00\x00\x00\x00\x00\x00", ETH_ALEN))
+			break;
 		DBGTRACE1("bssid " MACSTR, MAC2STR(ap_addr));
-	}
-	DBGTRACE1("bssid " MACSTR, MAC2STR(ap_addr));
-	TRACEEXIT(return 0);
+	} while (n++ < 4);
+
+	if (n < 4)
+		TRACEEXIT(return 0);
+	else
+		TRACEEXIT(return -1);
 }
 
 static int wpa_associate(struct net_device *dev,
@@ -1498,7 +1454,7 @@ static int wpa_associate(struct net_device *dev,
 	struct ndis_handle *handle = (struct ndis_handle *)dev->priv;
 	struct wpa_assoc_info wpa_assoc_info;
 	char ssid[NDIS_ESSID_MAX_SIZE], ie;
-	int i, auth_mode, encr_mode, wpa2 = 0;
+	int auth_mode, encr_mode, wpa2 = 0;
 	
 	TRACEENTER("%s", "");
 	copy_from_user(&wpa_assoc_info, wrqu->data.pointer,
@@ -1517,96 +1473,72 @@ static int wpa_associate(struct net_device *dev,
 	if (wpa_assoc_info.key_mgmt_suite != KEY_MGMT_PSK &&
 	    wpa_assoc_info.key_mgmt_suite != KEY_MGMT_802_1X &&
 	    wpa_assoc_info.key_mgmt_suite != KEY_MGMT_NONE)
-		TRACEEXIT(return -EINVAL);
+		TRACEEXIT(return -1);
 
-	switch (wpa_assoc_info.group_suite)
-	{
+	switch (wpa_assoc_info.group_suite) {
 	case CIPHER_CCMP:
 		if (!test_bit(CAPA_AES, &handle->capa))
-			TRACEEXIT(return -EINVAL);
-	    encr_mode = ENCR3_ENABLED;
+			TRACEEXIT(return -1);
+		encr_mode = ENCR3_ENABLED;
 		break;
 	case CIPHER_TKIP:
-		if (!test_bit(CAPA_WPA, &handle->capa))
-			TRACEEXIT(return -EINVAL);
-	    encr_mode =  ENCR2_ENABLED;
+		if (!test_bit(CAPA_TKIP, &handle->capa))
+			TRACEEXIT(return -1);
+		encr_mode =  ENCR2_ENABLED;
 		break;
 	case CIPHER_WEP104:
 	case CIPHER_WEP40:
 		if (test_bit(CAPA_ENCR_NONE, &handle->capa))
-			TRACEEXIT(return -EINVAL);
+			TRACEEXIT(return -1);
 		encr_mode = ENCR1_ENABLED;
 		break;
 	default:
-		TRACEEXIT(return -EINVAL);
+		TRACEEXIT(return -1);
 	}
 
-	switch (wpa_assoc_info.key_mgmt_suite)
-	{
+	switch (wpa_assoc_info.key_mgmt_suite) {
 	case KEY_MGMT_PSK:
 		if (!test_bit(CAPA_WPA, &handle->capa))
-			TRACEEXIT(return -EINVAL);
+			TRACEEXIT(return -1);
 		auth_mode = wpa2 ? AUTHMODE_WPA2PSK : AUTHMODE_WPAPSK;
 		break;
 	case KEY_MGMT_802_1X:
 		if (!test_bit(CAPA_WPA, &handle->capa))
-			TRACEEXIT(return -EINVAL);
+			TRACEEXIT(return -1);
 		auth_mode = wpa2 ? AUTHMODE_WPA2 : AUTHMODE_WPA;
 		break;
 	case KEY_MGMT_NONE:
 		if (wpa_assoc_info.group_suite != CIPHER_WEP104 &&
 		    wpa_assoc_info.group_suite != CIPHER_WEP40)
-			TRACEEXIT(return -EINVAL);
+			TRACEEXIT(return -1);
 		auth_mode = handle->auth_mode;
 		break;
 	default:
-		TRACEEXIT(return -EINVAL);
+		TRACEEXIT(return -1);
 	}
 
-	/* set encryption/authentication modes until they are set */
-	for (i = 0; i < 4; i++)
-	{
-		int mode, done;
-
-		done = 1;
-
-		if (set_auth_mode(handle, auth_mode))
-			TRACEEXIT(return -EINVAL);
-		if (set_encr_mode(handle, encr_mode))
-			TRACEEXIT(return -EINVAL);
-
-		miniport_query_int(handle, NDIS_OID_AUTH_MODE, &mode);
-		if (mode != auth_mode)
-			done = 0;
-		miniport_query_int(handle, NDIS_OID_ENCR_STATUS, &mode);
-		if (mode != encr_mode)
-			done = 0;
-
-		if (done)
-			break;
-		set_current_state(TASK_INTERRUPTIBLE);
-		schedule_timeout(HZ/100);
-	}
+	if (set_auth_mode(handle, auth_mode))
+		TRACEEXIT(return -1);
+	if (set_encr_mode(handle, encr_mode))
+		TRACEEXIT(return -1);
 
 #if 0
 	/* set channel */
-	for (i = 0; i < (sizeof(freq_chan)/sizeof(freq_chan[0])); i++)
-	{
-		if (wpa_assoc_info.freq == freq_chan[i])
-		{
+	for (i = 0; i < (sizeof(freq_chan)/sizeof(freq_chan[0])); i++) {
+		if (wpa_assoc_info.freq == freq_chan[i]) {
 			union iwreq_data freq_req;
 
 			memset(&freq_req, 0, sizeof(freq_req));
 			freq_req.freq.m = i;
 			if (iw_set_freq(dev, NULL, &freq_req, NULL))
-				TRACEEXIT(return -EINVAL);
+				TRACEEXIT(return -1);
 		}
 	}
 #endif
 
 	/* set ssid */
 	if (set_essid(handle, ssid, wpa_assoc_info.ssid_len))
-		TRACEEXIT(return -EINVAL);
+		TRACEEXIT(return -1);
 
 	TRACEEXIT(return 0);
 }
@@ -1623,27 +1555,11 @@ static int wpa_deauthenticate(struct net_device *dev,
 			      struct iw_request_info *info,
 			      union iwreq_data *wrqu, char *extra)
 {
-	struct ndis_handle *handle = (struct ndis_handle *)dev->priv;
-	mac_address ap_addr;
-	int i;
-	unsigned char buf[NDIS_ESSID_MAX_SIZE];
+	int ret;
 	
 	TRACEENTER("%s", "");
-	for (i = 0; i < MAX_ENCR_KEYS; i++)
-		handle->encr_info.keys[i].length = 0;
-//	set_essid(handle, "", 0);
-	get_ap_address(handle, ap_addr);
-	DBGTRACE1("bssid " MACSTR, MAC2STR(ap_addr));
-	while (memcmp(ap_addr, "\x00\x00\x00\x00\x00\x00", ETH_ALEN)) {
-		get_random_bytes(buf, sizeof(buf));
-		for (i = 0; i < sizeof(buf); i++)
-			buf[i] = 'a' + (buf[i] % ('z' - 'a'));
-		set_essid(handle, buf, sizeof(buf));
-		get_ap_address(handle, ap_addr);
-		DBGTRACE1("bssid " MACSTR, MAC2STR(ap_addr));
-	}
-	DBGTRACE1("bssid " MACSTR, MAC2STR(ap_addr));
-	TRACEEXIT(return 0);
+	ret = wpa_disassociate(dev, info, wrqu, extra);
+	TRACEEXIT(return ret);
 }
 
 int set_privacy_filter(struct ndis_handle *handle, int flags)
@@ -1652,8 +1568,7 @@ int set_privacy_filter(struct ndis_handle *handle, int flags)
 
 	TRACEENTER("filter: %d", flags);
 	res = miniport_set_int(handle, NDIS_OID_PRIVACY_FILTER, flags);
-	if (res == NDIS_STATUS_INVALID_DATA)
-	{
+	if (res == NDIS_STATUS_INVALID_DATA) {
 		WARNING("setting privacy filter to %d failed (%08X)",
 			flags, res);
 		TRACEEXIT(return -EINVAL);
@@ -1674,7 +1589,7 @@ static int wpa_set_privacy_filter(struct net_device *dev,
 	else
 		flags = NDIS_PRIV_ACCEPT_ALL;
 	if (set_privacy_filter(handle, flags))
-		TRACEEXIT(return -EINVAL);
+		TRACEEXIT(return -1);
 	TRACEEXIT(return 0);
 }
 
@@ -1690,7 +1605,7 @@ static int wpa_set_auth_alg(struct net_device *dev,
 	else if (wrqu->param.value == AUTH_ALG_SHARED_KEY)
 		mode = AUTHMODE_RESTRICTED;
 	else
-		TRACEEXIT(return -EINVAL);
+		TRACEEXIT(return -1);
 
 	DBGTRACE2("%d", mode);
 
@@ -1698,7 +1613,7 @@ static int wpa_set_auth_alg(struct net_device *dev,
 	 * mode is used, so we try with AUTO mode always hoping the driver
 	 * chooses what is appropriate */
 	if (set_auth_mode(handle, mode))
-		TRACEEXIT(return -EINVAL);
+		TRACEEXIT(return -1);
 	TRACEEXIT(return 0);
 }
 
