@@ -22,6 +22,8 @@
 DECLARE_WAIT_QUEUE_HEAD(dispatch_event_wq);
 struct wrap_spinlock dispatch_event_lock;
 
+WRAP_EXPORT_MAP("KeTickCount", &jiffies);
+
 STDCALL static void WRAP_EXPORT(WRITE_REGISTER_ULONG)
 	(void *reg, unsigned int val)
 {
