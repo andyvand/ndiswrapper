@@ -551,8 +551,17 @@ static int send_one(struct ndis_handle *handle, struct ndis_buffer *buffer)
 		handle->driver->miniport_char.send_packets(handle->adapter_ctx, &packets[0], 1);
 		spin_unlock(&handle->send_packet_lock);
 		
-		/* Deserialized miniports always call NdisMSendComplete */
-		res = NDIS_STATUS_PENDING;
+
+		if(!handle->serialized)
+		{
+			/* Deserialized miniports always call NdisMSendComplete */
+			res = NDIS_STATUS_PENDING;
+		}
+		else
+		{
+			/* Serialized miniports sets packet->status */
+			res = packet->status;
+		}
 	}
 	else if(handle->driver->miniport_char.send)
 	{
@@ -571,20 +580,21 @@ static int send_one(struct ndis_handle *handle, struct ndis_buffer *buffer)
 		
 
 	/* If the driver returns...
-	 * NDIS_STATUS_SUCCESS we still own the packet and driver will not call NdisMSendComplete.
-	 * NDIS_STATUS_PENDING the driver owns the packet and will return it using NdisMSendComplete.
-	 * NDIS_STATUS_RESOURCES and driver is deserialized: Drop it!
-	 * NDIS_STATUS_RESOURCES and driver is serialized: Requeue it!
+	 * NDIS_STATUS_SUCCESS - we still own the packet and driver will not call NdisMSendComplete.
+	 * NDIS_STATUS_PENDING - the driver owns the packet and will return it using NdisMSendComplete.
+	 * NDIS_STATUS_RESOURCES - and driver is serialized: Requeue it!
+	 * any other status - we still own it.
 	 */
 	if(res == NDIS_STATUS_RESOURCES && handle->serialized)
 	{
 		return 1;		
 	}
 
-	if(res == NDIS_STATUS_SUCCESS)
+	if(res == NDIS_STATUS_PENDING)
 	{
-		ndis_sendpacket_done(handle, packet);
+		return 0;
 	}
+	ndis_sendpacket_done(handle, packet);
 	return 0;
 }
 
