@@ -654,8 +654,8 @@ static int start_xmit(struct sk_buff *skb, struct net_device *dev)
 	skb_copy_and_csum_dev(skb, data);
 	buffer->startva = data;
 	buffer->next = NULL;
-	buffer->bytecount = skb->len;
 	buffer->byteoffset = 0;
+	buffer->bytecount = skb->len;
 	buffer->size = skb->len;
 	packet = alloc_packet(handle, buffer);
 	if (!packet) {

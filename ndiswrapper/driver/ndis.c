@@ -421,7 +421,7 @@ STDCALL ULONG WRAP_EXPORT(NDIS_BUFFER_TO_SPAN_PAGES)
 	if (buffer == NULL)
 		return 0;
 
-	if (buffer->size == 0)
+	if (MmGetMdlByteCount(buffer) == 0)
 		return 1;
 
 	start = (ULONG_PTR)(MmGetMdlVirtualAddress(buffer));
@@ -1106,7 +1106,7 @@ STDCALL void WRAP_EXPORT(NdisAdjustBufferLength)
 	(ndis_buffer *buf, UINT len)
 {
 	TRACEENTER4("%s", "");
-	buf->size = len;
+	buf->bytecount = len;
 }
 
 STDCALL void WRAP_EXPORT(NdisQueryBuffer)
@@ -1114,7 +1114,7 @@ STDCALL void WRAP_EXPORT(NdisQueryBuffer)
 {
 	TRACEENTER3("%s", "");
 	if (adr)
-		*adr = MmGetSystemAddressForMdlSafe(buf, NormalPagePriority);
+		*adr = MmGetMdlBaseVa(buf);
 	if (len)
 		*len = MmGetMdlByteCount(buf);
 }
@@ -1125,7 +1125,7 @@ STDCALL void WRAP_EXPORT(NdisQueryBufferSafe)
 {
 	TRACEENTER3("%p, %p, %p", buf, adr, len);
 	if (adr)
-		*adr = MmGetSystemAddressForMdlSafe(buf, priority);
+		*adr = MmGetMdlBaseVa(buf);
 	if (len)
 		*len = MmGetMdlByteCount(buf);
 }
@@ -1134,7 +1134,7 @@ STDCALL void *WRAP_EXPORT(NdisBufferVirtualAddress)
 	(ndis_buffer *buf)
 {
 	TRACEENTER3("%s", "");
-	return MmGetSystemAddressForMdlSafe(buf, NormalPagePriority);
+	return MmGetMdlBaseVa(buf);
 }
 
 STDCALL ULONG WRAP_EXPORT(NdisBufferLength)
@@ -1581,7 +1581,7 @@ NdisMIndicateReceivePacket(struct ndis_handle *handle,
 
 		buffer = packet->private.buffer_head;
 
-		skb = dev_alloc_skb(buffer->size);
+		skb = dev_alloc_skb(MmGetMdlByteCount(buffer));
 		if (skb) {
 			skb->dev = handle->net_dev;
 			eth_copy_and_sum(skb, MmGetMdlVirtualAddress(buffer),
@@ -2308,8 +2308,7 @@ STDCALL void WRAP_EXPORT(NdisGetFirstBufferFromPacketSafe)
 	TRACEENTER3("%p", b);
 	*first_buffer = b;
 	if (b) {
-		*first_buffer_va =
-			MmGetSystemAddressForMdlSafe(b, NormalPagePriority);
+		*first_buffer_va = MmGetMdlBaseVa(b);
 		*first_buffer_length = *total_buffer_length =
 			MmGetMdlByteCount(b);
 		for (b = b->next; b != NULL; b = b->next)
@@ -2425,7 +2424,7 @@ STDCALL void WRAP_EXPORT(NdisMStartBufferPhysicalMapping)
 		PCI_DMA_MAP_SINGLE(handle->dev.pci,
 				   MmGetMdlVirtualAddress(buf),
 				   MmGetMdlByteCount(buf), PCI_DMA_TODEVICE);
-	phy_addr_array[0].length= MmGetMdlByteCount(buf);
+	phy_addr_array[0].length = MmGetMdlByteCount(buf);
 
 	*array_size = 1;
 
