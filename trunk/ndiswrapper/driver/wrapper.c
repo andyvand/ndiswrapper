@@ -1250,6 +1250,9 @@ static void statcollector_bh(void *data)
 	struct ndis_wireless_stats ndis_stats;
 	long rssi;
 
+	if (in_atomic())
+		return;
+
 	res = doquery(handle, NDIS_OID_RSSI, (char *)&rssi, sizeof(rssi),
 				  &written, &needed);
 	if (!res)
