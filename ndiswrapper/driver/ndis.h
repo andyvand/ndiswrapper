@@ -850,7 +850,7 @@ struct ndis_handle {
 	unsigned int xmit_ring_start;
 	unsigned int xmit_ring_pending;
 	unsigned int max_send_packets;
-	spinlock_t xmit_lock;
+	struct wrap_spinlock xmit_lock;
 
 	unsigned char send_ok;
 	spinlock_t send_packet_done_lock;

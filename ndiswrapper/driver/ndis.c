@@ -1191,6 +1191,15 @@ STDCALL void WRAP_EXPORT(NdisDprAllocatePacket)
 	NdisAllocatePacket(status, packet_out, poolhandle);
 }
 
+STDCALL void WRAP_EXPORT(NdisFreePacket)
+	(struct ndis_packet *packet)
+{
+	TRACEENTER3("%s", "");
+	if (packet)
+		kfree(packet);
+	TRACEEXIT3(return);
+}
+
 STDCALL void WRAP_EXPORT(NdisSend)
 	(NDIS_STATUS *status, struct ndis_handle *handle,
 	 struct ndis_packet *packet)
@@ -1242,15 +1251,6 @@ STDCALL void WRAP_EXPORT(NdisSend)
 			break;
 		}
 	}
-	TRACEEXIT3(return);
-}
-
-STDCALL void WRAP_EXPORT(NdisFreePacket)
-	(struct ndis_packet *packet)
-{
-	TRACEENTER3("%s", "");
-	if (packet)
-		kfree(packet);
 	TRACEEXIT3(return);
 }
 
