@@ -1040,10 +1040,8 @@ STDCALL void NdisMIndicateReceivePacket(struct ndis_handle *handle, struct ndis_
 			handle->stats.rx_packets++;
 			netif_rx(skb);
 		}
-		DBGTRACE("%s Calling return packet\n", __FUNCTION__);
 		handle->driver->miniport_char.return_packet(handle->adapter_ctx,  packet);
 	}
-	DBGTRACE("%s Done!\n", __FUNCTION__);
 }
 
 /*
@@ -1303,8 +1301,6 @@ STDCALL void NdisUnchainBufferAtBack(struct ndis_packet *packet, struct ndis_buf
 STDCALL void NdisUnchainBufferAtFront(struct ndis_packet *packet, struct ndis_buffer **buffer)
 {
 	struct ndis_buffer *b = packet->buffer_head;
-
-	DBGTRACE("%s\n", __FUNCTION__);
 
 	if(!b) {
 		/* No buffer in packet */
