@@ -21,7 +21,6 @@
 #include <linux/rtnetlink.h>
 
 #include "iw_ndis.h"
-#include "wpa_ndiswrapper.h"
 
 static int freq_chan[] = { 2412, 2417, 2422, 2427, 2432, 2437, 2442,
 			   2447, 2452, 2457, 2462, 2467, 2472, 2484 };
@@ -515,26 +514,28 @@ static int ndis_get_encr(struct net_device *dev, struct iw_request_info *info,
 int set_auth_mode(struct ndis_handle *handle, int auth_mode)
 {
 	unsigned int res;
+	TRACEENTER1("auth_mode = %d", auth_mode);
 	res = set_int(handle, NDIS_OID_AUTH_MODE, auth_mode);
 	if (res)
-		return -EINVAL;
+		TRACEEXIT1(return -EINVAL);
 	else
 	{
 		handle->auth_mode = auth_mode;
-		return 0;
+		TRACEEXIT1(return 0);
 	}
 }
 
 int set_wep_mode(struct ndis_handle *handle, int wep_mode)
 {
 	unsigned int res;
+	TRACEENTER1("wep_mode = %d", wep_mode);
 	res = set_int(handle, NDIS_OID_WEP_STATUS, wep_mode);
 	if (res)
-		return -EINVAL;
+		TRACEEXIT1(return -EINVAL);
 	else
 	{
 		handle->wep_mode = wep_mode;
-		return 0;
+		TRACEEXIT1(return 0);
 	}
 }
 
@@ -627,8 +628,8 @@ static int ndis_set_encr(struct net_device *dev, struct iw_request_info *info,
 		}
 
 		/* ndis drivers want essid to be set after setting wep */
-		set_bit(SET_ESSID, &handle->wrapper_work);
-		schedule_work(&handle->wrapper_worker);
+//		set_bit(SET_ESSID, &handle->wrapper_work);
+//		schedule_work(&handle->wrapper_worker);
 	}
 
 	/* global wep state (for all keys) */
@@ -1181,7 +1182,7 @@ static int ndis_set_key(struct net_device *dev, struct iw_request_info *info,
 	struct wpa_key *wpa_key = (struct wpa_key *)wrqu->data.pointer;
 	int i, res, written, needed;
 	
-	TRACEENTER("alg = %d", wpa_key->alg);
+	TRACEENTER("alg = %d, key = %d", wpa_key->alg, wpa_key->key_index);
 	
 	if (wpa_key->alg == WPA_ALG_NONE || wpa_key->key_len == 0)
 	{
@@ -1297,7 +1298,8 @@ static int ndis_set_key(struct net_device *dev, struct iw_request_info *info,
 	}
 	
 	/* FIXME: check for TKIP -> encr mode */
-	handle->encr_alg = wpa_key->alg;
+	if (wpa_key->key_index == 0)
+		handle->encr_alg = wpa_key->alg;
 	DBGTRACE("encr_alg = %d", handle->encr_alg);
 	TRACEEXIT(return 0);
 }
