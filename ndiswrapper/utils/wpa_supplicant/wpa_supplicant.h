@@ -8,7 +8,7 @@ struct wpa_supplicant;
 
 typedef enum {
 	EVENT_ASSOC, EVENT_DISASSOC, EVENT_MICHAEL_MIC_FAILURE,
-	EVENT_SCAN_RESULTS, EVENT_ASSOCINFO
+	EVENT_SCAN_RESULTS, EVENT_ASSOCINFO, EVENT_INTERFACE_STATUS,
 } wpa_event_type;
 
 union wpa_event_data {
@@ -22,6 +22,12 @@ union wpa_event_data {
 	struct {
 		int unicast;
 	} michael_mic_failure;
+	struct {
+		char ifname[20];
+		enum {
+			EVENT_INTERFACE_ADDED, EVENT_INTERFACE_REMOVED
+		} ievent;
+	} interface_status;
 };
 
 /**
@@ -100,44 +106,6 @@ void wpa_hexdump(int level, const char *title, const u8 *buf, size_t len);
  */
 void wpa_hexdump_ascii(int level, const char *title, const u8 *buf,
 		       size_t len);
-
-/**
- * wpa_eapol_send - send IEEE 802.1X EAPOL packet to the Authenticator
- * @wpa_s: pointer to wpa_supplicant data
- * @type: IEEE 802.1X packet type (IEEE802_1X_TYPE_*)
- * @buf: EAPOL payload (after IEEE 802.1X header)
- * @len: EAPOL payload length
- * @preauth: whether this packet is for pre-authentication peer (different
- *	target and ethertype)
- *
- * This function adds Ethernet and IEEE 802.1X header and sends the EAPOL frame
- * to the current Authenticator or in case of pre-authentication, to the peer
- * of the authentication.
- */
-int wpa_eapol_send(struct wpa_supplicant *wpa_s, int type,
-		   u8 *buf, size_t len, int preauth);
-
-/**
- * wpa_eapol_set_wep_key - set WEP key for the driver
- * @wpa_s: pointer to wpa_supplicant data
- * @unicast: 1 = individual unicast key, 0 = broadcast key
- * @keyidx: WEP key index (0..3)
- * @key: pointer to key data
- * @keylen: key length in bytes
- *
- * Returns 0 on success or < 0 on error.
- */
-int wpa_eapol_set_wep_key(struct wpa_supplicant *wpa_s, int unicast,
-			  int keyidx, u8 *key, size_t keylen);
-
-/**
- * wpa_supplicant_notify_eapol_done - notify that EAPOL state machine is done
- * @wpa_s: pointer to wpa_supplicant data
- *
- * Notify WPA Supplicant that EAPOL state machines has completed key
- * negotiation.
- */
-void wpa_supplicant_notify_eapol_done(struct wpa_supplicant *wpa_s);
 
 const char * wpa_ssid_txt(u8 *ssid, size_t ssid_len);
 

@@ -30,9 +30,10 @@ mkconfig:
 		exit 1; \
 	fi
 	echo CONFIG_DRIVER_HOSTAP=y >> .config
+	echo CONFIG_DRIVER_WEXT=y >> .config
 	echo CONFIG_WIRELESS_EXTENSION=y >> .config
 
-OBJS = wpa_supplicant.o wpa.o config.o l2_packet.o ctrl_iface.o \
+OBJS = config.o ctrl_iface.o \
 	eloop.o common.o md5.o \
 	rc4.o sha1.o aes_wrap.o
 OBJS_p = wpa_passphrase.o sha1.o
@@ -40,9 +41,18 @@ OBJS_c = wpa_cli.o wpa_ctrl.o
 
 -include .config
 
+ifdef CONFIG_EAPOL_TEST
+CFLAGS += -Werror -DEAPOL_TEST
+endif
+
 ifdef CONFIG_DRIVER_HOSTAP
 CFLAGS += -DCONFIG_DRIVER_HOSTAP
 OBJS += driver_hostap.o
+CONFIG_WIRELESS_EXTENSION=y
+endif
+
+ifdef CONFIG_DRIVER_WEXT
+CFLAGS += -DCONFIG_DRIVER_WEXT
 CONFIG_WIRELESS_EXTENSION=y
 endif
 
@@ -67,10 +77,15 @@ OBJS += driver_madwifi.o
 CONFIG_WIRELESS_EXTENSION=y
 endif
 
-ifdef CONFIG_IEEE8021X_EAPOL
-# IEEE 802.1X/EAPOL state machines (e.g., for RADIUS authentication)
-CFLAGS += -DIEEE8021X_EAPOL
-OBJS += eapol_sm.o eap.o
+ifdef CONFIG_DRIVER_ATMEL
+CFLAGS += -DCONFIG_DRIVER_ATMEL
+OBJS += driver_atmel.o
+CONFIG_WIRELESS_EXTENSION=y
+endif
+
+ifdef CONFIG_DRIVER_NDISWRAPPER
+CFLAGS += -DCONFIG_DRIVER_NDISWRAPPER
+OBJS += driver_ndiswrapper.o
 endif
 
 ifdef CONFIG_EAP_TLS
@@ -78,6 +93,7 @@ ifdef CONFIG_EAP_TLS
 CFLAGS += -DEAP_TLS
 OBJS += eap_tls.o
 TLS_FUNCS=y
+CONFIG_IEEE8021X_EAPOL=y
 endif
 
 ifdef CONFIG_EAP_PEAP
@@ -86,6 +102,7 @@ CFLAGS += -DEAP_PEAP
 OBJS += eap_peap.o
 TLS_FUNCS=y
 CONFIG_MSCHAPV2=y
+CONFIG_IEEE8021X_EAPOL=y
 endif
 
 ifdef CONFIG_EAP_TTLS
@@ -95,12 +112,14 @@ OBJS += eap_ttls.o
 MS_FUNCS=y
 TLS_FUNCS=y
 CONFIG_EAP_MD5=y
+CONFIG_IEEE8021X_EAPOL=y
 endif
 
 ifdef CONFIG_EAP_MD5
 # EAP-MD5 (also used by EAP-TTLS)
 CFLAGS += -DEAP_MD5
 OBJS += eap_md5.o
+CONFIG_IEEE8021X_EAPOL=y
 endif
 
 ifdef CONFIG_MSCHAPV2
@@ -108,18 +127,42 @@ ifdef CONFIG_MSCHAPV2
 CFLAGS += -DEAP_MSCHAPv2
 OBJS += eap_mschapv2.o
 MS_FUNCS=y
+CONFIG_IEEE8021X_EAPOL=y
 endif
 
 ifdef CONFIG_EAP_GTC
 # EAP-GTC (also used by EAP-PEAP)
 CFLAGS += -DEAP_GTC
 OBJS += eap_gtc.o
+CONFIG_IEEE8021X_EAPOL=y
+endif
+
+ifdef CONFIG_EAP_OTP
+# EAP-OTP
+CFLAGS += -DEAP_OTP
+OBJS += eap_otp.o
+CONFIG_IEEE8021X_EAPOL=y
 endif
 
 ifdef CONFIG_EAP_SIM
 # EAP-SIM
 CFLAGS += -DEAP_SIM
 OBJS += eap_sim.o
+CONFIG_IEEE8021X_EAPOL=y
+endif
+
+ifdef CONFIG_EAP_LEAP
+# EAP-LEAP
+CFLAGS += -DEAP_LEAP
+OBJS += eap_leap.o
+MS_FUNCS=y
+CONFIG_IEEE8021X_EAPOL=y
+endif
+
+ifdef CONFIG_IEEE8021X_EAPOL
+# IEEE 802.1X/EAPOL state machines (e.g., for RADIUS authentication)
+CFLAGS += -DIEEE8021X_EAPOL
+OBJS += eapol_sm.o eap.o
 endif
 
 ifdef CONFIG_PCSC
@@ -150,13 +193,14 @@ CFLAGS += -DCONFIG_WIRELESS_EXTENSION
 OBJS += driver_wext.o
 endif
 
-ifdef CONFIG_DRIVER_NDISWRAPPER
-CFLAGS += -DCONFIG_DRIVER_NDISWRAPPER
-OBJS += driver_ndiswrapper.o
-endif
+OBJS_t := $(OBJS) eapol_test.o ../hostapd/radius.o radius_client.o
+OBJS += wpa_supplicant.o wpa.o l2_packet.o
 
 wpa_supplicant: .config $(OBJS)
 	$(CC) -o wpa_supplicant $(OBJS) $(LIBS)
+
+eapol_test: .config $(OBJS_t)
+	$(CC) -o eapol_test $(OBJS_t) $(LIBS)
 
 wpa_passphrase: $(OBJS_p)
 	$(CC) -o wpa_passphrase $(OBJS_p) $(LIBS_p)

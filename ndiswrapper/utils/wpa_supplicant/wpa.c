@@ -781,7 +781,7 @@ static void wpa_pmk_to_ptk(u8 *pmk, u8 *addr1, u8 *addr2,
 }
 
 
-static struct wpa_ssid * wpa_supplicant_get_ssid(struct wpa_supplicant *wpa_s)
+struct wpa_ssid * wpa_supplicant_get_ssid(struct wpa_supplicant *wpa_s)
 {
 	struct wpa_ssid *entry;
 	u8 ssid[MAX_SSID_LEN];
@@ -800,7 +800,6 @@ static struct wpa_ssid * wpa_supplicant_get_ssid(struct wpa_supplicant *wpa_s)
 	}
 
 	entry = wpa_s->conf->ssid;
-	wpa_printf(MSG_INFO, "ssid_len = %d\n", ssid_len);
 	while (entry) {
 		if (ssid_len == entry->ssid_len &&
 		    memcmp(ssid, entry->ssid, ssid_len) == 0 &&
@@ -998,8 +997,16 @@ static void wpa_supplicant_process_1_of_4(struct wpa_supplicant *wpa_s,
 	reply->key_data_length = host_to_be16(wpa_ie_len);
 	memcpy(reply->key_data, wpa_ie, wpa_ie_len);
 
-	memcpy(wpa_s->snonce, wpa_s->counter, WPA_NONCE_LEN);
-	inc_byte_array(wpa_s->counter, WPA_NONCE_LEN);
+	if (wpa_s->renew_snonce) {
+		if (hostapd_get_rand(wpa_s->snonce, WPA_NONCE_LEN)) {
+			wpa_msg(wpa_s, MSG_WARNING, "WPA: Failed to get "
+				"random data for SNonce");
+			return;
+		}
+		wpa_s->renew_snonce = 0;
+		wpa_hexdump(MSG_DEBUG, "WPA: Renewed SNonce",
+			    wpa_s->snonce, WPA_NONCE_LEN);
+	}
 	memcpy(reply->key_nonce, wpa_s->snonce, WPA_NONCE_LEN);
 	ptk = &wpa_s->tptk;
 	memcpy(wpa_s->anonce, key->key_nonce, WPA_NONCE_LEN);
@@ -1193,6 +1200,11 @@ static void wpa_supplicant_process_3_of_4(struct wpa_supplicant *wpa_s,
 	l2_packet_send(wpa_s->l2, rbuf, rlen);
 	eapol_sm_notify_tx_eapol_key(wpa_s->eapol);
 	free(rbuf);
+
+	/* SNonce was successfully used in msg 3/4, so mark it to be renewed
+	 * for the next 4-Way Handshake. If msg 3 is received again, the old
+	 * SNonce will still be used to avoid changing PTK. */
+	wpa_s->renew_snonce = 1;
 
 	if (key_info & WPA_KEY_INFO_INSTALL) {
 		int alg, keylen, rsclen;
@@ -1875,28 +1887,6 @@ void wpa_supplicant_rx_eapol(void *ctx, unsigned char *src_addr,
 }
 
 
-int wpa_supplicant_init_counter(struct wpa_supplicant *wpa_s)
-{
-	u8 buf[ETH_ALEN + 8];
-	struct timeval tv;
-	u32 val;
-	u8 key[32];
-
-	if (hostapd_get_rand(key, 32))
-		return -1;
-	memcpy(buf, wpa_s->own_addr, ETH_ALEN);
-	gettimeofday(&tv, NULL);
-	val = tv.tv_sec;
-	memcpy(buf + ETH_ALEN, &val, 4);
-	val = tv.tv_usec;
-	memcpy(buf + ETH_ALEN + 4, &val, 4);
-
-	sha1_prf(key, 32, "Init Counter", buf, sizeof(buf),
-		 wpa_s->counter, sizeof(wpa_s->counter));
-	return 0;
-}
-
-
 static int wpa_cipher_bits(int cipher)
 {
 	switch (cipher) {
@@ -2072,6 +2062,9 @@ static void rsn_preauth_timeout(void *eloop_ctx, void *timeout_ctx)
 
 int rsn_preauth_init(struct wpa_supplicant *wpa_s, u8 *dst)
 {
+	struct eapol_config eapol_conf;
+	struct eapol_ctx *ctx;
+
 	if (wpa_s->preauth_eapol)
 		return -1;
 
@@ -2086,16 +2079,33 @@ int rsn_preauth_init(struct wpa_supplicant *wpa_s, u8 *dst)
 		return -2;
 	}
 
-	wpa_s->preauth_eapol = eapol_sm_init(wpa_s, 1);
+	ctx = malloc(sizeof(*ctx));
+	if (ctx == NULL) {
+		wpa_printf(MSG_WARNING, "Failed to allocate EAPOL context.");
+		return -4;
+	}
+	memset(ctx, 0, sizeof(*ctx));
+	ctx->ctx = wpa_s;
+	ctx->preauth = 1;
+	ctx->cb = rsn_preauth_eapol_cb;
+	ctx->cb_ctx = wpa_s;
+	ctx->scard_ctx = wpa_s->scard;
+	ctx->eapol_done_cb = wpa_supplicant_notify_eapol_done;
+	ctx->eapol_send = wpa_eapol_send_preauth;
+
+	wpa_s->preauth_eapol = eapol_sm_init(ctx);
 	if (wpa_s->preauth_eapol == NULL) {
+		free(ctx);
 		wpa_printf(MSG_WARNING, "RSN: Failed to initialize EAPOL "
 			   "state machines for pre-authentication");
 		return -3;
 	}
-	eapol_sm_notify_config(wpa_s->preauth_eapol, wpa_s->current_ssid, 0);
+	memset(&eapol_conf, 0, sizeof(eapol_conf));
+	eapol_conf.accept_802_1x_keys = 0;
+	eapol_conf.required_keys = 0;
+	eapol_sm_notify_config(wpa_s->preauth_eapol, wpa_s->current_ssid,
+			       &eapol_conf);
 	memcpy(wpa_s->preauth_bssid, dst, ETH_ALEN);
-	eapol_sm_register_cb(wpa_s->preauth_eapol, rsn_preauth_eapol_cb,
-			     wpa_s);
 
 	eapol_sm_notify_portValid(wpa_s->preauth_eapol, TRUE);
 	/* 802.1X::portControl = Auto */
@@ -2133,8 +2143,7 @@ static void rsn_preauth_candidate_process(struct wpa_supplicant *wpa_s)
 	if (wpa_s->preauth_eapol ||
 	    wpa_s->proto != WPA_PROTO_RSN ||
 	    wpa_s->wpa_state != WPA_COMPLETED ||
-	    wpa_s->key_mgmt != WPA_KEY_MGMT_IEEE8021X ||
-	    !wpa_s->current_supports_preauth) {
+	    wpa_s->key_mgmt != WPA_KEY_MGMT_IEEE8021X) {
 		wpa_msg(wpa_s, MSG_DEBUG, "RSN: not in suitable state for new "
 			"pre-authentication");
 		return; /* invalid state for new pre-auth */
@@ -2170,6 +2179,9 @@ void rsn_preauth_scan_results(struct wpa_supplicant *wpa_s,
 	struct wpa_ie_data ie;
 	int i;
 	struct rsn_pmksa_candidate *candidate;
+
+	if (wpa_s->current_ssid == NULL)
+		return;
 
 	pmksa_candidate_free(wpa_s);
 

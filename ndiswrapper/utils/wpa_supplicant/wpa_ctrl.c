@@ -64,6 +64,7 @@ struct wpa_ctrl * wpa_ctrl_open(const char *ctrl_path)
 		    sizeof(ctrl->dest.sun_family) +
 		    strlen(ctrl->dest.sun_path)) < 0) {
 		close(ctrl->s);
+		unlink(ctrl->local.sun_path);
 		free(ctrl);
 		return NULL;
 	}
@@ -81,7 +82,8 @@ void wpa_ctrl_close(struct wpa_ctrl *ctrl)
 
 
 int wpa_ctrl_request(struct wpa_ctrl *ctrl, char *cmd, size_t cmd_len,
-		     char *reply, size_t *reply_len)
+		     char *reply, size_t *reply_len,
+		     void (*msg_cb)(char *msg, size_t len))
 {
 	struct timeval tv;
 	int res;
@@ -90,18 +92,36 @@ int wpa_ctrl_request(struct wpa_ctrl *ctrl, char *cmd, size_t cmd_len,
 	if (send(ctrl->s, cmd, cmd_len, 0) < 0)
 		return -1;
 
-	tv.tv_sec = 2;
-	tv.tv_usec = 0;
-	FD_ZERO(&rfds);
-	FD_SET(ctrl->s, &rfds);
-	res = select(ctrl->s + 1, &rfds, NULL, NULL, &tv);
-	if (FD_ISSET(ctrl->s, &rfds)) {
-		res = recv(ctrl->s, reply, *reply_len, 0);
-		if (res < 0)
-			return res;
-		*reply_len = res;
-	} else {
-		return -2;
+	for (;;) {
+		tv.tv_sec = 2;
+		tv.tv_usec = 0;
+		FD_ZERO(&rfds);
+		FD_SET(ctrl->s, &rfds);
+		res = select(ctrl->s + 1, &rfds, NULL, NULL, &tv);
+		if (FD_ISSET(ctrl->s, &rfds)) {
+			res = recv(ctrl->s, reply, *reply_len, 0);
+			if (res < 0)
+				return res;
+			if (res > 0 && reply[0] == '<') {
+				/* This is an unsolicited message from
+				 * wpa_supplicant, not the reply to the
+				 * request. Use msg_cb to report this to the
+				 * caller. */
+				if (msg_cb) {
+					/* Make sure the message is nul
+					 * terminated. */
+					if (res == *reply_len)
+						res = (*reply_len) - 1;
+					reply[res] = '\0';
+					msg_cb(reply, res);
+				}
+				continue;
+			}
+			*reply_len = res;
+			break;
+		} else {
+			return -2;
+		}
 	}
 	return 0;
 }
@@ -114,7 +134,7 @@ static int wpa_ctrl_attach_helper(struct wpa_ctrl *ctrl, int attach)
 	size_t len = 10;
 
 	ret = wpa_ctrl_request(ctrl, attach ? "ATTACH" : "DETACH", 6,
-			       buf, &len);
+			       buf, &len, NULL);
 	if (ret < 0)
 		return ret;
 	if (len == 3 && memcmp(buf, "OK\n", 3) == 0)

@@ -35,6 +35,7 @@ static void eapol_sm_getSuppRsp(struct eapol_sm *sm);
 static void eapol_sm_txSuppRsp(struct eapol_sm *sm);
 static void eapol_sm_abortSupp(struct eapol_sm *sm);
 static void eapol_sm_abort_cached(struct eapol_sm *sm);
+static void eapol_sm_step_timeout(void *eloop_ctx, void *timeout_ctx);
 
 
 /* Definitions for clarifying state machine implementation */
@@ -89,17 +90,21 @@ SM_STATE(SUPP_PAE, LOGOFF)
 	SM_ENTRY(SUPP_PAE, LOGOFF);
 	eapol_sm_txLogoff(sm);
 	sm->logoffSent = TRUE;
-	sm->portStatus = Unauthorized;
+	sm->suppPortStatus = Unauthorized;
 }
 
 
 SM_STATE(SUPP_PAE, DISCONNECTED)
 {
 	SM_ENTRY(SUPP_PAE, DISCONNECTED);
+	sm->sPortMode = Auto;
 	sm->startCount = 0;
 	sm->logoffSent = FALSE;
-	sm->portStatus = Unauthorized;
+	sm->suppPortStatus = Unauthorized;
 	sm->suppAbort = TRUE;
+
+	sm->unicast_key_received = FALSE;
+	sm->broadcast_key_received = FALSE;
 }
 
 
@@ -130,7 +135,7 @@ SM_STATE(SUPP_PAE, HELD)
 {
 	SM_ENTRY(SUPP_PAE, HELD);
 	sm->heldWhile = sm->heldPeriod;
-	sm->portStatus = Unauthorized;
+	sm->suppPortStatus = Unauthorized;
 	sm->cb_status = EAPOL_CB_FAILURE;
 }
 
@@ -138,7 +143,7 @@ SM_STATE(SUPP_PAE, HELD)
 SM_STATE(SUPP_PAE, AUTHENTICATED)
 {
 	SM_ENTRY(SUPP_PAE, AUTHENTICATED);
-	sm->portStatus = Authorized;
+	sm->suppPortStatus = Authorized;
 	sm->cb_status = EAPOL_CB_SUCCESS;
 }
 
@@ -150,13 +155,40 @@ SM_STATE(SUPP_PAE, RESTART)
 }
 
 
+SM_STATE(SUPP_PAE, S_FORCE_AUTH)
+{
+	SM_ENTRY(SUPP_PAE, S_FORCE_AUTH);
+	sm->suppPortStatus = Authorized;
+	sm->sPortMode = ForceAuthorized;
+}
+
+
+SM_STATE(SUPP_PAE, S_FORCE_UNAUTH)
+{
+	SM_ENTRY(SUPP_PAE, S_FORCE_UNAUTH);
+	sm->suppPortStatus = Unauthorized;
+	sm->sPortMode = ForceUnauthorized;
+	eapol_sm_txLogoff(sm);
+}
+
+
 SM_STEP(SUPP_PAE)
 {
 	if ((sm->userLogoff && !sm->logoffSent) &&
 	    !(sm->initialize || !sm->portEnabled))
 		SM_ENTER_GLOBAL(SUPP_PAE, LOGOFF);
-	else if (sm->initialize || !sm->portEnabled)
+	else if (((sm->portControl == Auto) &&
+		  (sm->sPortMode != sm->portControl)) ||
+		 sm->initialize || !sm->portEnabled)
 		SM_ENTER_GLOBAL(SUPP_PAE, DISCONNECTED);
+	else if ((sm->portControl == ForceAuthorized) &&
+		 (sm->sPortMode != sm->portControl) &&
+		 !(sm->initialize || !sm->portEnabled))
+		SM_ENTER_GLOBAL(SUPP_PAE, S_FORCE_AUTH);
+	else if ((sm->portControl == ForceUnauthorized) &&
+		 (sm->sPortMode != sm->portControl) &&
+		 !(sm->initialize || !sm->portEnabled))
+		SM_ENTER_GLOBAL(SUPP_PAE, S_FORCE_UNAUTH);
 	else switch (sm->SUPP_PAE_state) {
 	case SUPP_PAE_UNKNOWN:
 		break;
@@ -184,6 +216,16 @@ SM_STEP(SUPP_PAE)
 			SM_ENTER(SUPP_PAE, HELD);
 		break;
 	case SUPP_PAE_AUTHENTICATING:
+		if (sm->eapSuccess && !sm->portValid &&
+		    sm->conf.accept_802_1x_keys &&
+		    sm->conf.required_keys == 0) {
+			wpa_printf(MSG_DEBUG, "EAPOL: IEEE 802.1X for "
+				   "plaintext connection; no EAPOL-Key frames "
+				   "required");
+			sm->portValid = TRUE;
+			if (sm->ctx->eapol_done_cb)
+				sm->ctx->eapol_done_cb(sm->ctx->ctx);
+		}
 		if (sm->eapSuccess && sm->portValid)
 			SM_ENTER(SUPP_PAE, AUTHENTICATED);
 		else if (sm->eapFail || (sm->keyDone && !sm->portValid))
@@ -206,6 +248,10 @@ SM_STEP(SUPP_PAE)
 	case SUPP_PAE_RESTART:
 		if (!sm->eapRestart)
 			SM_ENTER(SUPP_PAE, AUTHENTICATING);
+		break;
+	case SUPP_PAE_S_FORCE_AUTH:
+		break;
+	case SUPP_PAE_S_FORCE_UNAUTH:
 		break;
 	}
 }
@@ -372,8 +418,7 @@ SM_STEP(SUPP_BE)
 static void eapol_sm_txLogoff(struct eapol_sm *sm)
 {
 	wpa_printf(MSG_DEBUG, "EAPOL: txLogoff");
-	wpa_eapol_send(sm->ctx, IEEE802_1X_TYPE_EAPOL_LOGOFF, "", 0,
-		       sm->preauth);
+	sm->ctx->eapol_send(sm->ctx->ctx, IEEE802_1X_TYPE_EAPOL_LOGOFF, "", 0);
 	sm->dot1xSuppEapolLogoffFramesTx++;
 	sm->dot1xSuppEapolFramesTx++;
 }
@@ -382,8 +427,7 @@ static void eapol_sm_txLogoff(struct eapol_sm *sm)
 static void eapol_sm_txStart(struct eapol_sm *sm)
 {
 	wpa_printf(MSG_DEBUG, "EAPOL: txStart");
-	wpa_eapol_send(sm->ctx, IEEE802_1X_TYPE_EAPOL_START, "", 0,
-		sm->preauth);
+	sm->ctx->eapol_send(sm->ctx->ctx, IEEE802_1X_TYPE_EAPOL_START, "", 0);
 	sm->dot1xSuppEapolStartFramesTx++;
 	sm->dot1xSuppEapolFramesTx++;
 }
@@ -405,13 +449,13 @@ static void eapol_sm_processKey(struct eapol_sm *sm)
 	struct eap_key_data keydata;
 	u8 orig_key_sign[IEEE8021X_KEY_SIGN_LEN], datakey[32];
 	u8 ekey[IEEE8021X_KEY_IV_LEN + IEEE8021X_ENCR_KEY_LEN];
-	int key_len;
+	int key_len, res, sign_key_len, encr_key_len;
 
 	wpa_printf(MSG_DEBUG, "EAPOL: processKey");
 	if (sm->last_rx_key == NULL)
 		return;
 
-	if (!sm->accept_802_1x_keys) {
+	if (!sm->conf.accept_802_1x_keys) {
 		wpa_printf(MSG_WARNING, "EAPOL: Received IEEE 802.1X EAPOL-Key"
 			   " even though this was not accepted - "
 			   "ignoring this packet");
@@ -429,9 +473,28 @@ static void eapol_sm_processKey(struct eapol_sm *sm)
 		   hdr->version, hdr->type, htons(hdr->length),
 		   key->type, ntohs(key->key_length), key->key_index);
 
-	if (eapol_sm_get_key(sm, (u8 *) &keydata, sizeof(keydata))) {
+	sign_key_len = IEEE8021X_SIGN_KEY_LEN;
+	encr_key_len = IEEE8021X_ENCR_KEY_LEN;
+	res = eapol_sm_get_key(sm, (u8 *) &keydata, sizeof(keydata));
+	if (res < 0) {
 		wpa_printf(MSG_DEBUG, "EAPOL: Could not get master key for "
 			   "decrypting EAPOL-Key keys");
+		return;
+	}
+	if (res == 16) {
+		/* LEAP derives only 16 bytes of keying material. */
+		res = eapol_sm_get_key(sm, (u8 *) &keydata, 16);
+		if (res) {
+			wpa_printf(MSG_DEBUG, "EAPOL: Could not get LEAP "
+				   "master key for decrypting EAPOL-Key keys");
+			return;
+		}
+		sign_key_len = 16;
+		encr_key_len = 16;
+		memcpy(keydata.sign_key, keydata.encr_key, 16);
+	} else if (res) {
+		wpa_printf(MSG_DEBUG, "EAPOL: Could not get enough master key "
+			   "data for decrypting EAPOL-Key keys (res=%d)", res);
 		return;
 	}
 
@@ -452,7 +515,7 @@ static void eapol_sm_processKey(struct eapol_sm *sm)
 	/* Verify key signature (HMAC-MD5) */
 	memcpy(orig_key_sign, key->key_signature, IEEE8021X_KEY_SIGN_LEN);
 	memset(key->key_signature, 0, IEEE8021X_KEY_SIGN_LEN);
-	hmac_md5(keydata.sign_key, IEEE8021X_SIGN_KEY_LEN,
+	hmac_md5(keydata.sign_key, sign_key_len,
 		 sm->last_rx_key, sizeof(*hdr) + htons(hdr->length),
 		 key->key_signature);
 	if (memcmp(orig_key_sign, key->key_signature, IEEE8021X_KEY_SIGN_LEN)
@@ -474,20 +537,24 @@ static void eapol_sm_processKey(struct eapol_sm *sm)
 	if (key_len == ntohs(key->key_length)) {
 		memcpy(ekey, key->key_iv, IEEE8021X_KEY_IV_LEN);
 		memcpy(ekey + IEEE8021X_KEY_IV_LEN, keydata.encr_key,
-		       IEEE8021X_ENCR_KEY_LEN);
+		       encr_key_len);
 		memcpy(datakey, key + 1, key_len);
 		rc4(datakey, key_len, ekey,
-		    IEEE8021X_KEY_IV_LEN + IEEE8021X_ENCR_KEY_LEN);
+		    IEEE8021X_KEY_IV_LEN + encr_key_len);
 		wpa_hexdump(MSG_DEBUG, "EAPOL: Decrypted(RC4) key",
 			    datakey, key_len);
 	} else if (key_len == 0) {
-		memcpy(datakey,
-		       keydata.encr_key + sizeof(keydata.encr_key) - key_len,
-		       key_len);
-		wpa_hexdump(MSG_DEBUG, "EAPOL: Least signifact part of "
-			    "MS-MPPE-Send-Key as data encryption key",
-			    datakey, key_len);
+		/* IEEE 802.1X-REV specifies that least significant Key Length
+		 * octets from MS-MPPE-Send-Key are used as the key if the key
+		 * data is not present. This seems to be meaning the beginning
+		 * of the MS-MPPE-Send-Key. In addition, MS-MPPE-Send-Key in
+		 * Supplicant corresponds to MS-MPPE-Recv-Key in Authenticator.
+		 * Anyway, taking the beginning of the keying material from EAP
+		 * seems to interoperate with Authenticators. */
 		key_len = ntohs(key->key_length);
+		memcpy(datakey, keydata.encr_key, key_len);
+		wpa_hexdump(MSG_DEBUG, "EAPOL: using part of EAP keying "
+			    "material data encryption key", datakey, key_len);
 	} else {
 		wpa_printf(MSG_DEBUG, "EAPOL: Invalid key data length %d "
 			   "(key_length=%d)", key_len, ntohs(key->key_length));
@@ -504,18 +571,30 @@ static void eapol_sm_processKey(struct eapol_sm *sm)
 		   "unicast" : "broadcast",
 		   key->key_index & IEEE8021X_KEY_INDEX_MASK, key_len);
 
-	if (wpa_eapol_set_wep_key(sm->ctx,
-				  key->key_index & IEEE8021X_KEY_INDEX_FLAG,
-				  key->key_index & IEEE8021X_KEY_INDEX_MASK,
-				  datakey, key_len) < 0) {
+	if (sm->ctx->set_wep_key &&
+	    sm->ctx->set_wep_key(sm->ctx->ctx,
+				 key->key_index & IEEE8021X_KEY_INDEX_FLAG,
+				 key->key_index & IEEE8021X_KEY_INDEX_MASK,
+				 datakey, key_len) < 0) {
 		wpa_printf(MSG_WARNING, "EAPOL: Failed to set WEP key to the "
 			   " driver.");
 	} else {
-		/* TODO: maybe wait for both broadcast and unicast key?
-		 * Or better yet, make this configurable.. 1) both required,
-		 * 2) only broadcast key required, 3) no keys required */
-		sm->portValid = TRUE;
-		wpa_supplicant_notify_eapol_done(sm->ctx);
+		if (key->key_index & IEEE8021X_KEY_INDEX_FLAG)
+			sm->unicast_key_received = TRUE;
+		else
+			sm->broadcast_key_received = TRUE;
+
+		if ((sm->unicast_key_received ||
+		     !(sm->conf.required_keys & EAPOL_REQUIRE_KEY_UNICAST)) &&
+		    (sm->broadcast_key_received ||
+		     !(sm->conf.required_keys & EAPOL_REQUIRE_KEY_BROADCAST)))
+		{
+			wpa_printf(MSG_DEBUG, "EAPOL: all required EAPOL-Key "
+				   "frames received");
+			sm->portValid = TRUE;
+			if (sm->ctx->eapol_done_cb)
+				sm->ctx->eapol_done_cb(sm->ctx->ctx);
+		}
 	}
 }
 
@@ -537,9 +616,8 @@ static void eapol_sm_txSuppRsp(struct eapol_sm *sm)
 	}
 
 	/* Send EAP-Packet from the EAP layer to the Authenticator */
-	wpa_eapol_send(sm->ctx, IEEE802_1X_TYPE_EAP_PACKET,
-		       sm->eap->eapRespData, sm->eap->eapRespDataLen,
-		       sm->preauth);
+	sm->ctx->eapol_send(sm->ctx->ctx, IEEE802_1X_TYPE_EAP_PACKET,
+			    sm->eap->eapRespData, sm->eap->eapRespDataLen);
 
 	/* eapRespData is not used anymore, so free it here */
 	free(sm->eap->eapRespData);
@@ -566,7 +644,7 @@ static void eapol_sm_abortSupp(struct eapol_sm *sm)
 }
 
 
-struct eapol_sm *eapol_sm_init(void *ctx, int preauth)
+struct eapol_sm *eapol_sm_init(struct eapol_ctx *ctx)
 {
 	struct eapol_sm *sm;
 	sm = malloc(sizeof(*sm));
@@ -574,7 +652,8 @@ struct eapol_sm *eapol_sm_init(void *ctx, int preauth)
 		return NULL;
 	memset(sm, 0, sizeof(*sm));
 	sm->ctx = ctx;
-	sm->preauth = preauth;
+
+	sm->portControl = Auto;
 
 	/* Supplicant PAE state machine */
 	sm->heldPeriod = 60;
@@ -606,29 +685,41 @@ void eapol_sm_deinit(struct eapol_sm *sm)
 {
 	if (sm == NULL)
 		return;
+	eloop_cancel_timeout(eapol_sm_step_timeout, NULL, sm);
 	eloop_cancel_timeout(eapol_port_timers_tick, NULL, sm);
 	eap_sm_deinit(sm->eap);
 	free(sm->last_rx_key);
 	free(sm->eapReqData);
+	free(sm->ctx);
 	free(sm);
+}
+
+
+static void eapol_sm_step_timeout(void *eloop_ctx, void *timeout_ctx)
+{
+	eapol_sm_step(timeout_ctx);
 }
 
 
 void eapol_sm_step(struct eapol_sm *sm)
 {
-	do {
-		sm->changed = FALSE;
-		SM_STEP_RUN(SUPP_PAE);
-		SM_STEP_RUN(KEY_RX);
-		SM_STEP_RUN(SUPP_BE);
-		if (eap_sm_step(sm->eap))
-			sm->changed = TRUE;
-	} while (sm->changed);
+	sm->changed = FALSE;
+	SM_STEP_RUN(SUPP_PAE);
+	SM_STEP_RUN(KEY_RX);
+	SM_STEP_RUN(SUPP_BE);
+	if (eap_sm_step(sm->eap))
+		sm->changed = TRUE;
+	if (sm->changed) {
+		/* restart EAPOL state machine step from timeout call in order
+		 * to allow other events to be processed. */
+		eloop_cancel_timeout(eapol_sm_step_timeout, NULL, sm);
+		eloop_register_timeout(0, 0, eapol_sm_step_timeout, NULL, sm);
+	}
 
-	if (sm->cb && sm->cb_status != EAPOL_CB_IN_PROGRESS) {
+	if (sm->ctx->cb && sm->cb_status != EAPOL_CB_IN_PROGRESS) {
 		int success = sm->cb_status == EAPOL_CB_SUCCESS ? 1 : 0;
 		sm->cb_status = EAPOL_CB_IN_PROGRESS;
-		sm->cb(sm, success, sm->cb_ctx);
+		sm->ctx->cb(sm, success, sm->ctx->cb_ctx);
 	}
 
 }
@@ -682,12 +773,27 @@ static const char *eapol_supp_be_state(int state)
 }
 
 
-static const char *eapol_port_status(int status)
+static const char * eapol_port_status(PortStatus status)
 {
 	if (status == Authorized)
 		return "Authorized";
 	else
 		return "Unauthorized";
+}
+
+
+static const char * eapol_port_control(PortControl ctrl)
+{
+	switch (ctrl) {
+	case Auto:
+		return "Auto";
+	case ForceUnauthorized:
+		return "ForceUnauthorized";
+	case ForceAuthorized:
+		return "ForceAuthorized";
+	default:
+		return "Unknown";
+	}
 }
 
 
@@ -719,14 +825,16 @@ int eapol_sm_get_status(struct eapol_sm *sm, char *buf, size_t buflen)
 		       "authPeriod=%d\n"
 		       "startPeriod=%d\n"
 		       "maxStart=%d\n"
-		       "portStatus=%s\n"
+		       "suppPortStatus=%s\n"
+		       "portControl=%s\n"
 		       "Supplicant Backend state=%s\n",
 		       eapol_supp_pae_state(sm->SUPP_PAE_state),
 		       sm->heldPeriod,
 		       sm->authPeriod,
 		       sm->startPeriod,
 		       sm->maxStart,
-		       eapol_port_status(sm->portStatus),
+		       eapol_port_status(sm->suppPortStatus),
+		       eapol_port_control(sm->portControl),
 		       eapol_supp_be_state(sm->SUPP_BE_state));
 	len += eap_sm_get_status(sm->eap, buf + len, buflen - len);
 	return len;
@@ -762,7 +870,7 @@ int eapol_sm_get_mib(struct eapol_sm *sm, char *buf, size_t buflen)
 		       sm->authPeriod,
 		       sm->startPeriod,
 		       sm->maxStart,
-		       sm->portStatus == Authorized ?
+		       sm->suppPortStatus == Authorized ?
 		       "Authorized" : "Unauthorized",
 		       sm->SUPP_BE_state,
 		       sm->dot1xSuppEapolFramesRx,
@@ -915,12 +1023,18 @@ void eapol_sm_notify_eap_fail(struct eapol_sm *sm, Boolean fail)
 
 
 void eapol_sm_notify_config(struct eapol_sm *sm, struct wpa_ssid *config,
-			    int accept_802_1x_keys)
+			    struct eapol_config *conf)
 {
-	if (sm) {
-		sm->config = config;
-		sm->accept_802_1x_keys = accept_802_1x_keys;
-	}
+	if (sm == NULL)
+		return;
+
+	sm->config = config;
+
+	if (conf == NULL)
+		return;
+
+	sm->conf.accept_802_1x_keys = conf->accept_802_1x_keys;
+	sm->conf.required_keys = conf->required_keys;
 }
 
 
@@ -950,7 +1064,7 @@ void eapol_sm_notify_cached(struct eapol_sm *sm)
 	if (sm == NULL)
 		return;
 	sm->SUPP_PAE_state = SUPP_PAE_AUTHENTICATED;
-	sm->portStatus = Authorized;
+	sm->suppPortStatus = Authorized;
 	if (sm->eap) {
 		sm->eap->decision = DECISION_COND_SUCC;
 		sm->eap->EAP_state = EAP_SUCCESS;
@@ -975,29 +1089,46 @@ static void eapol_sm_abort_cached(struct eapol_sm *sm)
 		return;
 	sm->cached_pmk = FALSE;
 	sm->SUPP_PAE_state = SUPP_PAE_CONNECTING;
-	sm->portStatus = Unauthorized;
+	sm->suppPortStatus = Unauthorized;
 	sm->eapRestart= TRUE;
-}
-
-
-void eapol_sm_register_cb(struct eapol_sm *sm,
-			  void (*cb)(struct eapol_sm *eapol, int success,
-				     void *ctx), void *ctx)
-{
-	sm->cb = cb;
-	sm->cb_ctx = ctx;
-}
-
-
-void eapol_sm_register_msg_ctx(struct eapol_sm *sm, void *ctx)
-{
-	if (sm)
-		sm->msg_ctx = ctx;
 }
 
 
 void eapol_sm_register_scard_ctx(struct eapol_sm *sm, void *ctx)
 {
 	if (sm)
-		sm->scard_ctx = ctx;
+		sm->ctx->scard_ctx = ctx;
+}
+
+
+void eapol_sm_notify_portControl(struct eapol_sm *sm, PortControl portControl)
+{
+	if (sm == NULL)
+		return;
+	wpa_printf(MSG_DEBUG, "EAPOL: External notification - "
+		   "portControl=%s", eapol_port_control(portControl));
+	sm->portControl = portControl;
+	eapol_sm_step(sm);
+}
+
+
+void eapol_sm_notify_ctrl_attached(struct eapol_sm *sm)
+{
+	if (sm == NULL)
+		return;
+	eap_sm_notify_ctrl_attached(sm->eap);
+}
+
+
+void eapol_sm_notify_ctrl_response(struct eapol_sm *sm)
+{
+	if (sm == NULL)
+		return;
+	if (sm->eapReqData && !sm->eapReq) {
+		wpa_printf(MSG_DEBUG, "EAPOL: received control response (user "
+			   "input) notification - retrying pending EAP "
+			   "Request");
+		sm->eapolEap = TRUE;
+		eapol_sm_step(sm);
+	}
 }

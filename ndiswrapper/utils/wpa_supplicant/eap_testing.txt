@@ -28,9 +28,56 @@ either server access or evaluation version, please contact me
 (jkmaline@cc.hut.fi).
 
 
+Test matrix
+
++) tested successfully
+F) failed
+-) server did not support
+?) not tested
+
+			Free-	Micro-	Funk	Funk	Meeting	Radiat-	Interl-
+			RADIUS	soft	Odyssey	Steel-	house	or	ink RAD
+				IAS		Belted	Aegis		-Series
+EAP-MD5			+	-	-	+	+	+	+
+EAP-GTC			+	-	-	?	+	+	+
+EAP-OTP			-	-	-	-	-	+	-
+EAP-MSCHAPv2		+	-	-	+	+	+	+
+EAP-TLS			+	+	+	+	+	+	+
+EAP-PEAPv0/MSCHAPv2	+	+	+	+	+	+	+
+EAP-PEAPv0/GTC		+	-	+	-	+	+	+
+EAP-PEAPv0/OTP		-	-	-	-	-	+	-
+EAP-PEAPv0/MD5		+	-	-	+	+	+	+
+EAP-PEAPv0/TLS		-	+	-	+	+	+	F
+EAP-PEAPv1/MSCHAPv2	-	-	+ 1)	+ 1)	+ 1)	+	+ 1)
+EAP-PEAPv1/GTC		-	-	+ 1)	+ 1)	+ 1)	+	+ 1)
+EAP-PEAPv1/OTP		-	-	-	-	-	+	-
+EAP-PEAPv1/MD5		-	-	-	+ 1)	+ 1)	+	+ 1)
+EAP-PEAPv1/TLS		-	-	-	+ 1)	+ 1)	+	F
+EAP-TTLS/CHAP		+	-	+ 2)	+	+	+	+
+EAP-TTLS/MSCHAP		+	-	+	+	+	+	+
+EAP-TTLS/MSCHAPv2	+	-	+	+	+	+	+
+EAP-TTLS/PAP		+	-	+	+	+	+	+
+EAP-TTLS/EAP-MD5	+	-	+ 2)	+	+	+	+
+EAP-TTLS/EAP-GTC	+	-	+ 2)	?	+	+	+
+EAP-TTLS/EAP-OTP	-	-	-	-	-	+	-
+EAP-TTLS/EAP-MSCHAPv2	+	-	+ 2)	+	+	+	+
+EAP-TTLS/EAP-TLS	-	-	+ 2)	+	F	+	+
+EAP-SIM			+ 3)	-	-	?	-	?	-
+LEAP	4)		+	-	+	?	+	+	F
+
+1) PEAPv1 required old label, "client EAP encryption" instead of "client PEAP
+   encryption", during key derivation (requires phase1="peaplabel=0" in the
+   network configuration in wpa_supplicant.conf)
+2) used FreeRADIUS as inner auth server
+3) required a patch to FreeRADIUS to fix EAP-SIM
+4) LEAP was also tested successfully with a Cisco 1200 AP (used both as the
+   Authenticator and Authentication server); but this is not part of the
+   automated tests
+
+
 Automated tests:
 
-FreeRADIUS (CVS snapshot)
+FreeRADIUS (1.0pre and CVS snapshot)
 - EAP-MD5-Challenge
 - EAP-GTC
 - EAP-MSCHAPv2
@@ -60,14 +107,16 @@ Microsoft Windows Server 2003 / IAS
 Funk Odyssey 2.01.00.653
 - EAP-TLS
 - EAP-PEAPv0 / MSCHAPv2
-- EAP-PEAPv1 / MSCHAPv2
 - EAP-PEAPv0 / GTC
+- EAP-PEAPv1 / MSCHAPv2
 - EAP-PEAPv1 / GTC
+  Note: PEAPv1 requires TLS key derivation to use label "client EAP encryption"
 - EAP-TTLS / CHAP (using FreeRADIUS as inner auth srv)
 - EAP-TTLS / MSCHAP
 - EAP-TTLS / MSCHAPv2
 - EAP-TTLS / PAP
 - EAP-TTLS / EAP-MD5-Challenge (using FreeRADIUS as inner auth srv)
+- EAP-TTLS / EAP-GTC (using FreeRADIUS as inner auth srv)
 - EAP-TTLS / EAP-MSCHAPv2 (using FreeRADIUS as inner auth srv)
 - EAP-TTLS / EAP-TLS (using FreeRADIUS as inner auth srv)
 * not supported in Odyssey:
@@ -76,6 +125,26 @@ Funk Odyssey 2.01.00.653
   - EAP-MSCHAPv2
   - EAP-PEAP / MD5-Challenge
   - EAP-PEAP / TLS
+
+Funk Steel-Belted Radius Enterprise Edition v4.71.739
+- EAP-MD5-Challenge
+- EAP-MSCHAPv2
+- EAP-TLS
+- EAP-PEAPv0 / MSCHAPv2
+- EAP-PEAPv0 / MD5
+- EAP-PEAPv0 / TLS
+- EAP-PEAPv1 / MSCHAPv2
+- EAP-PEAPv1 / MD5
+- EAP-PEAPv1 / GTC
+- EAP-PEAPv1 / TLS
+  Note: PEAPv1 requires TLS key derivation to use label "client EAP encryption"
+- EAP-TTLS / CHAP
+- EAP-TTLS / MSCHAP
+- EAP-TTLS / MSCHAPv2
+- EAP-TTLS / PAP
+- EAP-TTLS / EAP-MD5-Challenge
+- EAP-TTLS / EAP-MSCHAPv2
+- EAP-TTLS / EAP-TLS
 
 Meetinghouse Aegis 1.1.4
 - EAP-MD5-Challenge
@@ -86,6 +155,11 @@ Meetinghouse Aegis 1.1.4
 - EAP-PEAPv0 / TLS
 - EAP-PEAPv0 / GTC
 - EAP-PEAPv0 / MD5-Challenge
+- EAP-PEAPv1 / MSCHAPv2
+- EAP-PEAPv1 / TLS
+- EAP-PEAPv1 / GTC
+- EAP-PEAPv1 / MD5-Challenge
+  Note: PEAPv1 requires TLS key derivation to use label "client EAP encryption"
 - EAP-TTLS / CHAP
 - EAP-TTLS / MSCHAP
 - EAP-TTLS / MSCHAPv2
@@ -104,3 +178,62 @@ Meetinghouse Aegis 1.1.4
      1328 bytes of EAP-Message and this may go beyond the fragmentation
      limit with AVP encapsulation and TLS tunneling. Note: EAP-PEAP/TLS
      did work, so this issue seems to be with something TTLS specific.)
+
+Radiator 3.9 (eval, with all patches up to and including 2004-06-23)
+- EAP-MD5-Challenge
+- EAP-GTC
+- EAP-OTP
+- EAP-MSCHAPv2
+- EAP-TLS
+- EAP-PEAPv0 / MSCHAPv2
+- EAP-PEAPv0 / GTC
+- EAP-PEAPv0 / OTP
+- EAP-PEAPv0 / MD5-Challenge
+- EAP-PEAPv0 / TLS
+  Note: Needed to use unknown identity in outer auth and some times the server
+	seems to get confused and fails to send proper Phase 2 data.
+- EAP-PEAPv1 / MSCHAPv2
+- EAP-PEAPv1 / GTC
+- EAP-PEAPv1 / OTP
+- EAP-PEAPv1 / MD5-Challenge
+- EAP-PEAPv1 / TLS
+  Note: This has some additional requirements for EAPTLS_MaxFragmentSize.
+        Using 1300 for outer auth and 500 for inner auth seemed to work.
+  Note: Needed to use unknown identity in outer auth and some times the server
+	seems to get confused and fails to send proper Phase 2 data.
+- EAP-TTLS / CHAP
+- EAP-TTLS / MSCHAP
+- EAP-TTLS / MSCHAPv2
+- EAP-TTLS / PAP
+- EAP-TTLS / EAP-MD5-Challenge
+- EAP-TTLS / EAP-GTC
+- EAP-TTLS / EAP-OTP
+- EAP-TTLS / EAP-MSCHAPv2
+- EAP-TTLS / EAP-TLS
+  Note: This has some additional requirements for EAPTLS_MaxFragmentSize.
+        Using 1300 for outer auth and 500 for inner auth seemed to work.
+
+Interlink Networks RAD-Series 6.1.2.7
+- EAP-MD5-Challenge
+- EAP-GTC
+- EAP-MSCHAPv2
+- EAP-TLS
+- EAP-PEAPv0 / MSCHAPv2
+- EAP-PEAPv0 / GTC
+- EAP-PEAPv0 / MD5-Challenge
+- EAP-PEAPv1 / MSCHAPv2
+- EAP-PEAPv1 / GTC
+- EAP-PEAPv1 / MD5-Challenge
+  Note: PEAPv1 requires TLS key derivation to use label "client EAP encryption"
+- EAP-TTLS / CHAP
+- EAP-TTLS / MSCHAP
+- EAP-TTLS / MSCHAPv2
+- EAP-TTLS / PAP
+- EAP-TTLS / EAP-MD5-Challenge
+- EAP-TTLS / EAP-GTC
+- EAP-TTLS / EAP-MSCHAPv2
+- EAP-TTLS / EAP-TLS
+* did not work
+  - EAP-PEAPv0 / TLS
+  - EAP-PEAPv1 / TLS
+    (Failed to decrypt Phase 2 data)

@@ -1,6 +1,56 @@
 ChangeLog for wpa_supplicant
 
-????-??-?? - v0.2.3
+????-??-?? - v0.2.4
+	* resolved couple of interoperability issues with EAP-PEAPv1 and
+	  Phase 2 (inner EAP) fragment reassembly
+	* driver_madwifi: fixed WEP key configuration for IEEE 802.1X when the
+	  AP is using non-zero key index for the unicast key and key index zero
+	  for the broadcast key
+	* driver_hostap: fixed IEEE 802.1X WEP key updates and
+	  re-authentication by allowing unencrypted EAPOL frames when not using
+	  WPA
+	* added a new driver interface, 'wext', which uses only standard,
+	  driver independent functionality in Linux wireless extensions;
+	  currently, this can be used only for non-WPA IEEE 802.1X mode, but
+	  eventually, this is to be extended to support full WPA/WPA2 once
+	  Linux wireless extensions get support for this
+	* added support for mode in which the driver is responsible for AP
+	  scanning and selection; this is disabled by default and can be
+	  enabled with global ap_scan=0 variable in wpa_supplicant.conf;
+	  this mode can be used, e.g., with generic 'wext' driver interface to
+	  use wpa_supplicant as IEEE 802.1X Supplicant with any Linux driver
+	  supporting wireless extensions.
+	* driver_madwifi: fixed WPA2 configuration and scan_ssid=1 (e.g.,
+	  operation with an AP that does not include SSID in the Beacon frames)
+	* added support for new EAP authentication methods:
+	  EAP-TTLS/EAP-OTP, EAP-PEAPv0/OTP, EAP-PEAPv1/OTP, EAP-OTP
+	* added support for asking one-time-passwords from frontends (e.g.,
+	  wpa_cli); this 'otp' command works otherwise like 'password' command,
+	  but the password is used only once and the frontend will be asked for
+	  a new password whenever a request from authenticator requires a
+	  password; this can be used with both EAP-OTP and EAP-GTC
+	* changed wpa_cli to automatically re-establish connection so that it
+	  does not need to be re-started when wpa_supplicant is terminated and
+	  started again
+	* improved user data (identity/password/otp) requests through
+	  frontends: process pending EAPOL packets after getting new
+	  information so that full authentication does not need to be
+	  restarted; in addition, send pending requests again whenever a new
+	  frontend is attached
+	* changed control frontends to use a new directory for socket files to
+	  make it easier for wpa_cli to automatically select between interfaces
+	  and to provide access control for the control interface;
+	  wpa_supplicant.conf: ctrl_interface is now a path
+	  (/var/run/wpa_supplicant is the recommended path) and
+	  ctrl_interface_group can be used to select which group gets access to
+	  the control interface;
+	  wpa_cli: by default, try to connect to the first interface available
+	  in /var/run/wpa_supplicant; this path can be overriden with -p option
+	  and an interface can be selected with -i option (i.e., in most common
+	  cases, wpa_cli does not need to get any arguments)
+	* added support for LEAP
+
+2004-06-20 - v0.2.3
 	* sort scan results to improve AP selection
 	* fixed control interface socket removal for some error cases
 	* improved scan requesting and authentication timeout
@@ -17,6 +67,12 @@ ChangeLog for wpa_supplicant
 	  from the station)
 	* added GSM SIM/USIM interface for GSM authentication algorithm for
 	  EAP-SIM; this requires pcsc-lite
+	* added support for ATMEL AT76C5XXx driver
+	* fixed IEEE 802.1X WEP key derivation in the case where Authenticator
+	  does not include key data in the EAPOL-Key frame (i.e., part of
+	  EAP keying material is used as data encryption key)
+	* added support for using plaintext and static WEP networks
+	  (key_mgmt=NONE)
 
 2004-05-31 - v0.2.2
 	* added support for new EAP authentication methods:

@@ -141,6 +141,9 @@ static void * eap_ttls_init(struct eap_sm *sm)
 		} else if (strstr(config->phase2, "autheap=GTC")) {
 			data->phase2_eap_type = EAP_TYPE_GTC;
 			selected = "EAP-GTC";
+		} else if (strstr(config->phase2, "autheap=OTP")) {
+			data->phase2_eap_type = EAP_TYPE_OTP;
+			selected = "EAP-OTP";
 		} else if (strstr(config->phase2, "autheap=TLS")) {
 			data->phase2_eap_type = EAP_TYPE_TLS;
 			selected = "EAP-TLS";
@@ -323,6 +326,7 @@ static int eap_ttls_phase2_request_eap(struct eap_sm *sm,
 		break;
 	case EAP_TYPE_MSCHAPV2:
 	case EAP_TYPE_GTC:
+	case EAP_TYPE_OTP:
 	case EAP_TYPE_MD5:
 	case EAP_TYPE_TLS:
 		wpa_printf(MSG_DEBUG, "EAP-TTLS: Phase 2 EAP packet");
@@ -736,8 +740,23 @@ static int eap_ttls_decrypt(struct eap_sm *sm,
 		in_decrypted[sizeof(*hdr)] = EAP_TYPE_IDENTITY;
 		goto process_eap;
 	}
+
+	BIO_write(data->ssl.ssl_in, in_data, in_len);
+
+	if (data->ssl.tls_in_left > in_len) {
+		data->ssl.tls_in_left -= in_len;
+		wpa_printf(MSG_DEBUG, "EAP-TTLS: Need %d bytes more"
+			   " input data", data->ssl.tls_in_left);
+		return 1;
+	} else
+		data->ssl.tls_in_left = 0;
+
+	BIO_reset(data->ssl.ssl_out);
+
 	data->phase2_start = 0;
 	buf_len = in_len;
+	if (data->ssl.tls_in_total > buf_len)
+		buf_len = data->ssl.tls_in_total;
 	in_decrypted = malloc(buf_len);
 	if (in_decrypted == NULL) {
 		wpa_printf(MSG_WARNING, "EAP-TTLS: failed to allocate memory "
@@ -745,9 +764,6 @@ static int eap_ttls_decrypt(struct eap_sm *sm,
 		ret = -1;
 		goto done;
 	}
-
-	BIO_write(data->ssl.ssl_in, in_data, in_len);
-	BIO_reset(data->ssl.ssl_out);
 
 	len_decrypted = SSL_read(data->ssl.ssl, in_decrypted, buf_len);
 	if (len_decrypted < 0) {
@@ -1019,8 +1035,10 @@ static u8 * eap_ttls_process(struct eap_sm *sm, void *priv,
 			pos[3];
 		wpa_printf(MSG_DEBUG, "EAP-TTLS: TLS Message Length: %d",
 			   tls_msg_len);
-		if (data->ssl.tls_in_left == 0)
+		if (data->ssl.tls_in_left == 0) {
+			data->ssl.tls_in_total = tls_msg_len;
 			data->ssl.tls_in_left = tls_msg_len;
+		}
 		pos += 4;
 		left -= 4;
 	}

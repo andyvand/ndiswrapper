@@ -101,9 +101,8 @@ int wpa_driver_wext_get_ssid(const char *ifname, char *ssid)
 		perror("ioctl[SIOCGIWESSID]");
 		ret = -1;
 	} else
-		ret = iwr.u.essid.length - 1;
+		ret = iwr.u.essid.length;
 
-	wpa_printf(MSG_INFO, "ssid: %d, %s\n", iwr.u.essid.length, iwr.u.essid.pointer);
 	close(s);
 	return ret;
 }
@@ -127,7 +126,8 @@ int wpa_driver_wext_set_ssid(const char *ifname, const char *ssid,
 
 	memset(&iwr, 0, sizeof(iwr));
 	strncpy(iwr.ifr_name, ifname, IFNAMSIZ);
-	iwr.u.essid.flags = 1;
+	/* flags: 1 = ESSID is active, 0 = not (promiscuous) */
+	iwr.u.essid.flags = (ssid_len != 0);
 	memset(buf, 0, sizeof(buf));
 	memcpy(buf, ssid, ssid_len);
 	iwr.u.essid.pointer = (caddr_t) buf;
@@ -283,6 +283,27 @@ static void wpa_driver_wext_event_wireless(void *ctx, char *data, int len)
 }
 
 
+static void wpa_driver_wext_event_link(void *ctx, char *buf, size_t len,
+				       int del)
+{
+	union wpa_event_data event;
+
+	memset(&event, 0, sizeof(event));
+	if (len > sizeof(event.interface_status.ifname))
+		len = sizeof(event.interface_status.ifname) - 1;
+	memcpy(event.interface_status.ifname, buf, len);
+	event.interface_status.ievent = del ? EVENT_INTERFACE_REMOVED :
+		EVENT_INTERFACE_ADDED;
+
+	wpa_printf(MSG_DEBUG, "RTM_%sLINK, IFLA_IFNAME: Interface '%s' %s",
+		   del ? "DEL" : "NEW",
+		   event.interface_status.ifname,
+		   del ? "removed" : "added");
+
+	wpa_supplicant_event(ctx, EVENT_INTERFACE_STATUS, &event);
+}
+
+
 static void wpa_driver_wext_event_rtm_newlink(void *ctx, struct nlmsghdr *h,
 					      int len)
 {
@@ -309,8 +330,44 @@ static void wpa_driver_wext_event_rtm_newlink(void *ctx, struct nlmsghdr *h,
 	while (RTA_OK(attr, attrlen)) {
 		if (attr->rta_type == IFLA_WIRELESS) {
 			wpa_driver_wext_event_wireless(
-				ctx,((char *) attr) + rta_len,
+				ctx, ((char *) attr) + rta_len,
 				attr->rta_len - rta_len);
+		} else if (attr->rta_type == IFLA_IFNAME) {
+			wpa_driver_wext_event_link(ctx,
+						   ((char *) attr) + rta_len,
+						   attr->rta_len - rta_len, 0);
+		}
+		attr = RTA_NEXT(attr, attrlen);
+	}
+}
+
+
+static void wpa_driver_wext_event_rtm_dellink(void *ctx, struct nlmsghdr *h,
+					      int len)
+{
+	struct ifinfomsg *ifi;
+	int attrlen, nlmsg_len, rta_len;
+	struct rtattr * attr;
+
+	if (len < sizeof(*ifi))
+		return;
+
+	ifi = NLMSG_DATA(h);
+
+	nlmsg_len = NLMSG_ALIGN(sizeof(struct ifinfomsg));
+
+	attrlen = h->nlmsg_len - nlmsg_len;
+	if (attrlen < 0)
+		return;
+
+	attr = (struct rtattr *) (((char *) ifi) + nlmsg_len);
+
+	rta_len = RTA_ALIGN(sizeof(struct rtattr));
+	while (RTA_OK(attr, attrlen)) {
+		if (attr->rta_type == IFLA_IFNAME) {
+			wpa_driver_wext_event_link(ctx,
+						   ((char *) attr) + rta_len,
+						   attr->rta_len - rta_len, 1);
 		}
 		attr = RTA_NEXT(attr, attrlen);
 	}
@@ -351,6 +408,9 @@ static void wpa_driver_wext_event_receive(int sock, void *eloop_ctx,
 		switch (h->nlmsg_type) {
 		case RTM_NEWLINK:
 			wpa_driver_wext_event_rtm_newlink(eloop_ctx, h, plen);
+			break;
+		case RTM_DELLINK:
+			wpa_driver_wext_event_rtm_dellink(eloop_ctx, h, plen);
 			break;
 		}
 
@@ -656,3 +716,131 @@ int wpa_driver_wext_get_scan_results(const char *ifname,
 	close(s);
 	return first ? 0 : ap_num + 1;
 }
+
+
+static int wpa_driver_wext_set_wpa(const char *ifname, int enabled)
+{
+	wpa_printf(MSG_DEBUG, "%s: enabled=%d - not yet implemented",
+		   __FUNCTION__, enabled);
+	return 0;
+}
+
+
+static int wpa_driver_wext_set_key(const char *ifname, wpa_alg alg,
+				   unsigned char *addr, int key_idx,
+				   int set_tx, u8 *seq, size_t seq_len,
+				   u8 *key, size_t key_len)
+{
+	struct iwreq iwr;
+	int s, ret = 0;
+
+	wpa_printf(MSG_DEBUG, "%s: alg=%d key_idx=%d set_tx=%d seq_len=%d "
+		   "key_len=%d",
+		   __FUNCTION__, alg, key_idx, set_tx, seq_len, key_len);
+
+	if (alg != WPA_ALG_NONE && alg != WPA_ALG_WEP) {
+		wpa_printf(MSG_DEBUG, "%s: alg=%d not yet supported",
+			   __FUNCTION__, alg);
+		/* TODO: add support for this once Linux wireless extensions
+		 * get support for WPA */
+		return -1;
+	}
+
+	s = socket(PF_INET, SOCK_DGRAM, 0);
+	if (s < 0) {
+		perror("socket[PF_INET,SOCK_DGRAM]");
+		return -1;
+	}
+
+	memset(&iwr, 0, sizeof(iwr));
+	strncpy(iwr.ifr_name, ifname, IFNAMSIZ);
+	iwr.u.encoding.flags = key_idx + 1;
+	if (alg == WPA_ALG_NONE)
+		iwr.u.encoding.flags |= IW_ENCODE_DISABLED;
+	iwr.u.encoding.pointer = (caddr_t) key;
+	iwr.u.encoding.length = key_len;
+
+	if (ioctl(s, SIOCSIWENCODE, &iwr) < 0) {
+		perror("ioctl[SIOCSIWENCODE]");
+		ret = -1;
+	}
+
+	if (set_tx && alg != WPA_ALG_NONE) {
+		memset(&iwr, 0, sizeof(iwr));
+		strncpy(iwr.ifr_name, ifname, IFNAMSIZ);
+		iwr.u.encoding.flags = key_idx + 1;
+		iwr.u.encoding.pointer = (caddr_t) key;
+		iwr.u.encoding.length = 0;
+		if (ioctl(s, SIOCSIWENCODE, &iwr) < 0) {
+			perror("ioctl[SIOCSIWENCODE] (set_tx)");
+			ret = -1;
+		}
+	}
+
+	close(s);
+	return ret;
+}
+
+
+static int wpa_driver_wext_set_countermeasures(const char *ifname,
+					       int enabled)
+{
+	wpa_printf(MSG_DEBUG, "%s: enabled=%d - not yet implemented",
+		   __FUNCTION__, enabled);
+	return 0;
+}
+
+
+static int wpa_driver_wext_set_drop_unencrypted(const char *ifname,
+						int enabled)
+{
+	wpa_printf(MSG_DEBUG, "%s: enabled=%d - not yet implemented",
+		   __FUNCTION__, enabled);
+	return 0;
+}
+
+
+static int wpa_driver_wext_deauthenticate(const char *ifname, u8 *addr,
+					  int reason_code)
+{
+	wpa_printf(MSG_DEBUG, "%s - not yet implemented", __FUNCTION__);
+	return 0;
+}
+
+
+static int wpa_driver_wext_disassociate(const char *ifname, u8 *addr,
+					int reason_code)
+{
+	wpa_printf(MSG_DEBUG, "%s - not yet implemented", __FUNCTION__);
+	return 0;
+}
+
+
+static int wpa_driver_wext_associate(const char *ifname, const char *bssid,
+				     const char *ssid, size_t ssid_len,
+				     int freq,
+				     const char *wpa_ie, size_t wpa_ie_len,
+				     wpa_cipher pairwise_suite,
+				     wpa_cipher group_suite,
+				     wpa_key_mgmt key_mgmt_suite)
+{
+	wpa_printf(MSG_DEBUG, "%s - not yet implemented", __FUNCTION__);
+	return 0;
+}
+
+
+struct wpa_driver_ops wpa_driver_wext_ops = {
+	.get_bssid = wpa_driver_wext_get_bssid,
+	.get_ssid = wpa_driver_wext_get_ssid,
+	.set_wpa = wpa_driver_wext_set_wpa,
+	.set_key = wpa_driver_wext_set_key,
+	.events_init = wpa_driver_wext_events_init,
+	.events_deinit = wpa_driver_wext_events_deinit,
+	.set_countermeasures = wpa_driver_wext_set_countermeasures,
+	.set_drop_unencrypted = wpa_driver_wext_set_drop_unencrypted,
+	.scan = wpa_driver_wext_scan,
+	.get_scan_results = wpa_driver_wext_get_scan_results,
+	.deauthenticate = wpa_driver_wext_deauthenticate,
+	.disassociate = wpa_driver_wext_disassociate,
+	.associate = wpa_driver_wext_associate,
+};

@@ -15,6 +15,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
+#include <grp.h>
 
 #include "common.h"
 #include "wpa.h"
@@ -102,7 +103,13 @@ static int wpa_config_parse_ssid(struct wpa_ssid *ssid, int line,
 {
 	free(ssid->ssid);
 	ssid->ssid = wpa_config_parse_string(value, &ssid->ssid_len);
+	if (ssid->ssid == NULL) {
+		wpa_printf(MSG_ERROR, "Line %d: Invalid SSID '%s'.",
+			   line, value);
+		return -1;
+	}
 	if (ssid->ssid_len > MAX_SSID_LEN) {
+		free(ssid->ssid);
 		wpa_printf(MSG_ERROR, "Line %d: Too long SSID '%s'.",
 			   line, value);
 		return -1;
@@ -373,20 +380,42 @@ static int wpa_config_parse_group(struct wpa_ssid *ssid, int line,
 
 static u8 wpa_config_eap_txt_to_type(const char *value)
 {
+#ifdef EAP_MD5
 	if (strcmp(value, "MD5") == 0)
 		return EAP_TYPE_MD5;
+#endif /* EAP_MD5 */
+#ifdef EAP_TLS
 	if (strcmp(value, "TLS") == 0)
 		return EAP_TYPE_TLS;
+#endif /* EAP_TLS */
+#ifdef EAP_PEAP
 	if (strcmp(value, "PEAP") == 0)
 		return EAP_TYPE_PEAP;
+#endif /* EAP_PEAP */
+#ifdef EAP_TTLS
 	if (strcmp(value, "TTLS") == 0)
 		return EAP_TYPE_TTLS;
+#endif /* EAP_TTLS */
+#ifdef EAP_MSCHAPv2
 	if (strcmp(value, "MSCHAPV2") == 0)
 		return EAP_TYPE_MSCHAPV2;
+#endif /* EAP_MSCHAPv2 */
+#ifdef EAP_GTC
 	if (strcmp(value, "GTC") == 0)
 		return EAP_TYPE_GTC;
+#endif /* EAP_GTC */
+#ifdef EAP_OTP
+	if (strcmp(value, "OTP") == 0)
+		return EAP_TYPE_OTP;
+#endif /* EAP_OTP */
+#ifdef EAP_SIM
 	if (strcmp(value, "SIM") == 0)
 		return EAP_TYPE_SIM;
+#endif /* EAP_SIM */
+#ifdef EAP_LEAP
+	if (strcmp(value, "LEAP") == 0)
+		return EAP_TYPE_LEAP;
+#endif /* EAP_LEAP */
 	return EAP_TYPE_NONE;
 }
 
@@ -423,8 +452,15 @@ static int wpa_config_parse_eap(struct wpa_ssid *ssid, int line,
 		if (methods[num_methods] == EAP_TYPE_NONE) {
 			wpa_printf(MSG_ERROR, "Line %d: unknown EAP method "
 				   "'%s'", line, start);
+			wpa_printf(MSG_ERROR, "You may need to add support for"
+				   " this EAP method during wpa_supplicant\n"
+				   "build time configuration.\n"
+				   "See README for more information.");
 			errors++;
-		}
+		} else if (methods[num_methods] == EAP_TYPE_LEAP)
+			ssid->leap++;
+		else
+			ssid->non_leap++;
 		num_methods++;
 		if (last)
 			break;
@@ -690,6 +726,81 @@ static int wpa_config_parse_pin(struct wpa_ssid *ssid, int line,
 }
 
 
+static int wpa_config_parse_eapol_flags(struct wpa_ssid *ssid, int line,
+					const char *value)
+{
+	ssid->eapol_flags = atoi(value);
+	wpa_printf(MSG_MSGDUMP, "eapol_flags=0x%x", ssid->eapol_flags);
+	return 0;
+}
+
+
+static int wpa_config_parse_wep_key(u8 *key, size_t *len, int line,
+				    const char *value, int idx)
+{
+	char *buf, title[20];
+
+	buf = wpa_config_parse_string(value, len);
+	if (buf == NULL) {
+		wpa_printf(MSG_ERROR, "Line %d: Invalid WEP key %d '%s'.",
+			   line, idx, value);
+		return -1;
+	}
+	if (*len > MAX_WEP_KEY_LEN) {
+		wpa_printf(MSG_ERROR, "Line %d: Too long WEP key %d '%s'.",
+			   line, idx, value);
+		free(buf);
+		return -1;
+	}
+	memcpy(key, buf, *len);
+	free(buf);
+	snprintf(title, sizeof(title), "wep_key%d", idx);
+	wpa_hexdump(MSG_MSGDUMP, title, key, *len);
+	return 0;
+}
+
+
+static int wpa_config_parse_wep_key0(struct wpa_ssid *ssid, int line,
+				     const char *value)
+{
+	return wpa_config_parse_wep_key(ssid->wep_key[0],
+					&ssid->wep_key_len[0], line, value, 0);
+}
+
+
+static int wpa_config_parse_wep_key1(struct wpa_ssid *ssid, int line,
+				     const char *value)
+{
+	return wpa_config_parse_wep_key(ssid->wep_key[1],
+					&ssid->wep_key_len[1], line, value, 1);
+}
+
+
+static int wpa_config_parse_wep_key2(struct wpa_ssid *ssid, int line,
+				     const char *value)
+{
+	return wpa_config_parse_wep_key(ssid->wep_key[2],
+					&ssid->wep_key_len[2], line, value, 2);
+}
+
+
+static int wpa_config_parse_wep_key3(struct wpa_ssid *ssid, int line,
+				     const char *value)
+{
+	return wpa_config_parse_wep_key(ssid->wep_key[3],
+					&ssid->wep_key_len[3], line, value, 3);
+}
+
+
+static int wpa_config_parse_wep_tx_keyidx(struct wpa_ssid *ssid, int line,
+					  const char *value)
+{
+	ssid->eapol_flags = atoi(value);
+	wpa_printf(MSG_MSGDUMP, "wep_tx_keyidx=%d", ssid->wep_tx_keyidx);
+	return 0;
+}
+
+
 static struct wpa_ssid_fields {
 	char *name;
 	int (*parser)(struct wpa_ssid *ssid, int line, const char *value);
@@ -718,6 +829,12 @@ static struct wpa_ssid_fields {
 	{ "phase2", wpa_config_parse_phase2 },
 	{ "pcsc", wpa_config_parse_pcsc },
 	{ "pin", wpa_config_parse_pin },
+	{ "eapol_flags", wpa_config_parse_eapol_flags },
+	{ "wep_key0", wpa_config_parse_wep_key0 },
+	{ "wep_key1", wpa_config_parse_wep_key1 },
+	{ "wep_key2", wpa_config_parse_wep_key2 },
+	{ "wep_key3", wpa_config_parse_wep_key3 },
+	{ "wep_tx_keyidx", wpa_config_parse_wep_tx_keyidx },
 };
 
 #define NUM_SSID_FIELDS (sizeof(ssid_fields) / sizeof(ssid_fields[0]))
@@ -742,6 +859,8 @@ static struct wpa_ssid * wpa_config_read_network(FILE *f, int *line, int id)
 	ssid->group_cipher = WPA_CIPHER_CCMP | WPA_CIPHER_TKIP |
 		WPA_CIPHER_WEP104 | WPA_CIPHER_WEP40;
 	ssid->key_mgmt = WPA_KEY_MGMT_PSK | WPA_KEY_MGMT_IEEE8021X;
+	ssid->eapol_flags = EAPOL_FLAG_REQUIRE_KEY_UNICAST |
+		EAPOL_FLAG_REQUIRE_KEY_BROADCAST;
 
 	while ((pos = wpa_config_get_line(buf, sizeof(buf), f, line))) {
 		if (strcmp(pos, "}") == 0) {
@@ -833,6 +952,7 @@ struct wpa_config * wpa_config_read(const char *config_file)
 		return NULL;
 	memset(config, 0, sizeof(*config));
 	config->eapol_version = 1;
+	config->ap_scan = 1;
 	wpa_printf(MSG_DEBUG, "Reading configuration file '%s'",
 		   config_file);
 	f = fopen(config_file, "r");
@@ -861,6 +981,30 @@ struct wpa_config * wpa_config_read(const char *config_file)
 			config->ctrl_interface = strdup(pos + 15);
 			wpa_printf(MSG_DEBUG, "ctrl_interface='%s'",
 				   config->ctrl_interface);
+		} else if (strncmp(pos, "ctrl_interface_group=", 21) == 0) {
+			struct group *grp;
+			char *endp;
+			const char *group = pos + 21;
+
+			grp = getgrnam(group);
+			if (grp) {
+				config->ctrl_interface_gid = grp->gr_gid;
+				wpa_printf(MSG_DEBUG, "ctrl_interface_group=%d"
+					   " (from group name '%s')",
+					   config->ctrl_interface_gid, group);
+				continue;
+			}
+
+			/* Group name not found - try to parse this as gid */
+			config->ctrl_interface_gid = strtol(group, &endp, 10);
+			if (*group == '\0' || *endp != '\0') {
+				wpa_printf(MSG_DEBUG, "Line %d: Invalid group "
+					   "'%s'", line, group);
+				errors++;
+				continue;
+			}
+			wpa_printf(MSG_DEBUG, "ctrl_interface_group=%d",
+				   config->ctrl_interface_gid);
 		} else if (strncmp(pos, "eapol_version=", 14) == 0) {
 			config->eapol_version = atoi(pos + 14);
 			if (config->eapol_version < 1 ||
@@ -873,6 +1017,9 @@ struct wpa_config * wpa_config_read(const char *config_file)
 			}
 			wpa_printf(MSG_DEBUG, "eapol_version=%d",
 				   config->eapol_version);
+		} else if (strncmp(pos, "ap_scan=", 8) == 0) {
+			config->ap_scan = atoi(pos + 8);
+			wpa_printf(MSG_DEBUG, "ap_scan=%d", config->ap_scan);
 		} else {
 			wpa_printf(MSG_ERROR, "Line %d: Invalid configuration "
 				   "line '%s'.", line, pos);
@@ -919,6 +1066,8 @@ void wpa_config_free(struct wpa_config *config)
 		free(prev->phase2);
 		free(prev->pcsc);
 		free(prev->pin);
+		free(prev->otp);
+		free(prev->pending_req_otp);
 		free(prev);
 	}
 	free(config->ctrl_interface);

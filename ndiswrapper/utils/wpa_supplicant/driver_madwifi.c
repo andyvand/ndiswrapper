@@ -184,7 +184,7 @@ wpa_driver_madwifi_set_wpa(const char *ifname, int enabled)
 		ret = -1;
 	if (set80211param(ifname, IEEE80211_PARAM_PRIVACY, enabled, 1) < 0)
 		ret = -1;
-	if (set80211param(ifname, IEEE80211_PARAM_WPA, enabled, 1) < 0)
+	if (set80211param(ifname, IEEE80211_PARAM_WPA, enabled ? 3 : 0, 1) < 0)
 		ret = -1;
 
 	return ret;
@@ -253,21 +253,13 @@ wpa_driver_madwifi_set_key(const char *ifname, wpa_alg alg,
 
 	memset(&wk, 0, sizeof(wk));
 	wk.ik_type = cipher;
-	if (key_idx == 0) {
-		/*
-		 * PTK; install as the unicast key.
-		 */
-		wk.ik_keyix = IEEE80211_KEYIX_NONE;
-		wk.ik_flags = IEEE80211_KEY_XMIT | IEEE80211_KEY_RECV;
+	wk.ik_flags = IEEE80211_KEY_RECV;
+	if (set_tx) {
+		wk.ik_flags |= IEEE80211_KEY_XMIT | IEEE80211_KEY_DEFAULT;
 		memcpy(wk.ik_macaddr, addr, IEEE80211_ADDR_LEN);
-	} else {
-		/*
-		 * GTK; install as the default key.
-		 */
-		wk.ik_keyix = key_idx;
-		wk.ik_flags = IEEE80211_KEY_RECV | IEEE80211_KEY_DEFAULT;
+	} else
 		memset(wk.ik_macaddr, 0, IEEE80211_ADDR_LEN);
-	}
+	wk.ik_keyix = key_idx;
 	wk.ik_keylen = key_len;
 	memcpy(&wk.ik_keyrsc, seq, seq_len);
 	memcpy(wk.ik_keydata, key, key_len);
@@ -363,6 +355,10 @@ wpa_driver_madwifi_scan(const char *ifname,
 
 	memset(&iwr, 0, sizeof(iwr));
 	strncpy(iwr.ifr_name, ifname, IFNAMSIZ);
+
+	/* set desired ssid before scan */
+	if (wpa_driver_wext_set_ssid(ifname, ssid, ssid_len) < 0)
+		return -1;
 
 	if (ioctl(s, SIOCSIWSCAN, &iwr) < 0) {
 		perror("ioctl[SIOCSIWSCAN]");

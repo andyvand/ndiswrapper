@@ -10,7 +10,9 @@
  */
 #define SCARD_FILE_MF		0x3F00
 #define SCARD_FILE_GSM_DF	0x7F20
+#define SCARD_FILE_UMTS_DF	0x7F50
 #define SCARD_FILE_GSM_EF_IMSI	0x6F07
+#define SCARD_FILE_EF_ICCID	0x2FE2
 
 #define SCARD_CHV1_OFFSET	13
 #define SCARD_CHV1_FLAG		0x80
@@ -23,7 +25,7 @@ typedef enum {
 
 
 #ifdef PCSC_FUNCS
-struct scard_data * scard_init(scard_sim_type sim_type);
+struct scard_data * scard_init(scard_sim_type sim_type, char *pin);
 void scard_deinit(struct scard_data *scard);
 
 int scard_get_imsi(struct scard_data *scard, char *imsi, size_t *len);
@@ -35,7 +37,8 @@ int scard_verify_pin(struct scard_data *scard, char *pin);
 
 #else /* PCSC_FUNCS */
 
-static inline struct scard_data * scard_init(scard_sim_type sim_type)
+static inline struct scard_data * scard_init(scard_sim_type sim_type,
+					     char *pin)
 {
 	return NULL;
 }
