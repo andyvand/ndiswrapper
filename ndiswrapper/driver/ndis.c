@@ -146,7 +146,11 @@ void NdisWriteErrorLogEntry(struct ndis_handle *handle,
 			    unsigned int length,
 			    unsigned int p1)
 {
-	printk(KERN_ERR "%s: error: %08x, %d %d\n", __FUNCTION__, (int)error, (int) length, (int)p1);
+	int *sp;
+	printk(KERN_ERR "%s: error: %08x, %d %08x\n", __FUNCTION__, (int)error, (int) length, (int)p1);
+	sp = (int*) getSp();
+	printk("Possibly from rva %08x\n", sp[8] - image_offset);
+	printk("08 %08x\n", sp[8]);
 }
 
 
@@ -174,21 +178,26 @@ struct internal_parameters
 struct internal_parameters internal_parameters[] = { 
 	{
 		.name = "NdisVersion",
-		.val = {0, 0x00050000}
+		.val = {.type = 0, .data = {.intval = 0x00050000}}
 	},
 
 	{
 		.name = "Environment",
-		.val = {0, 1}
+		.val = {.type = 0, .data = {.intval = 1}}
 	},
 
 	{
 		.name = "BusType",
-		.val = {0, 5}
+		.val = {.type = 0, .data = {.intval = 5}}
+	},
+
+	{
+		.name = "media_type",
+		.val = {.type = 2, .data = {.ustring = {20, 22, "A\0u\0t\0o\0s\0e\0l\0e\0c\0t\0\0"}}}
 	},
 	{
 		.name = 0,
-		.val= {0,0}
+		.val = {.type = 0, .data = {.intval = 0}}
 	}
 };
 
@@ -205,7 +214,6 @@ STDCALL void NdisReadConfiguration(unsigned int *status,
 	unicodeToStr(keyname, key, sizeof(keyname));
 
 	/* Search built in keys */
-
 	for(i = 0; internal_parameters[i].name; i++)
 	{
 		if(strcmp(keyname, internal_parameters[i].name) == 0)
@@ -223,7 +231,7 @@ STDCALL void NdisReadConfiguration(unsigned int *status,
 	{
 		if(strcmp(keyname, setting->name) == 0)
 		{
-			DBGTRACE("%s: From inf found value for %s: %d\n", __FUNCTION__, keyname, setting->val.data);
+			DBGTRACE("%s: From inf found value for %s: %d\n", __FUNCTION__, keyname, setting->val.data.intval);
 
 			*dest =& setting->val;
 			*status = NDIS_STATUS_SUCCESS;
@@ -321,18 +329,6 @@ STDCALL void NdisMQueryAdapterResources(unsigned int *status,
 
 	/* Put all memory and port resources */
 	i = 0;
-	while(pci_resource_start(pci_dev, i))
-	{
-		entry = &resource_list->list[len++];
-		entry->type = 3;
-		entry->share = 0;
-
-		//Param 2 and 3 seems to be swapped...investigate...
-		entry->param1 = pci_resource_start(pci_dev, i);		
-		entry->param3 =0;
-		entry->param2 = pci_resource_len(pci_dev, i);		
-		i++;
-	}
 
 	/* Put IRQ resource */
 	entry = &resource_list->list[len++];
@@ -343,21 +339,49 @@ STDCALL void NdisMQueryAdapterResources(unsigned int *status,
 	entry->param2 = pci_dev->irq; //Vector
 	entry->param3 = -1;  //affinity
 
-	
+	while(pci_resource_start(pci_dev, i))
+	{
+		entry = &resource_list->list[len++];
+		if(pci_resource_flags(pci_dev, i) & IORESOURCE_MEM)
+		{
+			entry->type = 3;
+			entry->share = 0;
+
+			//Param 2 and 3 seems to be swapped...investigate...
+			entry->param1 = pci_resource_start(pci_dev, i);		
+			entry->param3 =0;
+			entry->param2 = pci_resource_len(pci_dev, i);		
+		}
+		
+		else if(pci_resource_flags(pci_dev, i) & IORESOURCE_IO)
+		{
+			entry->type = 1;
+			entry->share = 0;
+			entry->flags = 1;
+			//Param 2 and 3 seems to be swapped...investigate...
+			entry->param1 = pci_resource_start(pci_dev, i);		
+			entry->param3 =0;
+			entry->param2 = pci_resource_len(pci_dev, i);		
+		}
+		
+
+		i++;
+	}
+
 	resource_list->length = len;
 	*size = (char*) (&resource_list->list[len]) - (char*)resource_list;
 	*status = NDIS_STATUS_SUCCESS;
+
+#ifdef DEBUG
 	{
-		/* Now dump for debugging... */
 		DBGTRACE("resource list v%d.%d len %d, size=%d\n", resource_list->version, resource_list->revision, resource_list->length, *size);
 
 		for(i = 0; i < len; i++)
 		{
 			DBGTRACE("Resource: %d: %08x %08x %08x\n", resource_list->list[i].type, resource_list->list[i].param1, resource_list->list[i].param2, resource_list->list[i].param3); 
-		}
-
-		
+		}	
 	}
+#endif
 	return;
 }
 
@@ -865,6 +889,7 @@ STDCALL void NdisQueryBufferOffset(void *buffer, unsigned int offset, unsigned i
 STDCALL void NdisMGetDeviceProperty(void *handle, void **p1, void **p2, void **p3, void**p4, void**p5){UNIMPL();}
 STDCALL unsigned long NdisWritePcmciaAttributeMemory(void *handle, unsigned int offset, void *buffer, unsigned int length){UNIMPL();return 0;}
 STDCALL unsigned long NdisReadPcmciaAttributeMemory(void *handle, unsigned int offset, void *buffer, unsigned int length){UNIMPL();return 0;}
+STDCALL void NdisInitializeEvent(void *event){UNIMPL();}
 
 void NdisMRegisterIoPortRange(void){UNIMPL();}
 void NdisInterlockedDecrement(void){UNIMPL();}
@@ -877,7 +902,6 @@ void NdisInterlockedIncrement(void){UNIMPL();}
 void NdisSetEvent(void){UNIMPL();}
 void NdisMInitializeScatterGatherDma(void){UNIMPL();}
 void NdisSystemProcessorCount(void){UNIMPL();}
-void NdisInitializeEvent(void){UNIMPL();}
 void NdisMGetDmaAlignment(void){UNIMPL();}
 void NdisUnicodeStringToAnsiString(void){UNIMPL();}
 
