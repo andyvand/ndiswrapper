@@ -1442,7 +1442,7 @@ static int setup_dev(struct net_device *dev)
 static struct net_device *ndis_init_netdev(struct ndis_handle **phandle,
                                            struct ndis_device *device,
                                            struct ndis_driver *driver,
-					   struct device *netdev)
+					   void *netdev)
 {
 	int i, *ip;
 	struct net_device *dev;
@@ -1561,7 +1561,11 @@ static int ndis_init_one_pci(struct pci_dev *pdev,
 		       "mind if you have problem.\n", device->driver->name);
 	}
 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
 	dev = ndis_init_netdev(&handle, device, driver, &pdev->dev);
+#else
+	dev = ndis_init_netdev(&handle, device, driver, NULL);
+#endif
 	if(!dev)
 	{
 		printk(KERN_ERR "Unable to alloc etherdev\n");
