@@ -718,53 +718,16 @@ char *ndis_translate_scan(struct net_device *dev, char *event, char *end_buf,
 
 static int ndis_list_scan(struct ndis_handle *handle)
 {
-	int res;
+	unsigned int res, written, needed;
+	struct iw_statistics *iw_stats = &handle->wireless_stats;
+	struct ndis_wireless_stats ndis_stats;
+	struct net_device *dev = handle->net_dev;
+	long rssi;
 
 	res = set_int(handle, NDIS_OID_BSSID_LIST_SCAN, 0);
 	if (res)
 		printk(KERN_ERR "BSSID list scan failed with %d\n", res);
 	
-	return res;
-}
-
-static int ndis_set_scan(struct net_device *dev, struct iw_request_info *info,
-			   union iwreq_data *wrqu, char *extra)
-{
-	/* all work is now done by timer func ndis_list_scan */
-	return 0;
-}
-
-static int ndis_get_scan(struct net_device *dev, struct iw_request_info *info,
-			   union iwreq_data *wrqu, char *extra)
-{
-	struct ndis_handle *handle = dev->priv;
-	int i, res, written, needed;
-	struct list_scan list_scan;
-	char *event = extra;
-	char *cur_item ;
-	struct iw_statistics *iw_stats = &handle->wireless_stats;
-	long rssi;
-	struct ndis_wireless_stats ndis_stats;
-
-	written = needed = 0;
-	res = doquery(handle, NDIS_OID_BSSID_LIST, (char*)&list_scan, sizeof(list_scan), &written, &needed);
-	if (needed > 0)
-		printk(KERN_ERR "Not enough space for all APs available\n");
-	if (res)
-		return -1;
-
-	for (i = 0, cur_item = (char *)&(list_scan.items[0]) ;
-	     i < list_scan.num_items && i < MAX_SCAN_LIST_ITEMS ; i++)
-	{
-		char *prev_item = cur_item ;
-		event = ndis_translate_scan(dev, event,
-					    extra + IW_SCAN_MAX_DATA,
-					    (struct ssid_item *)cur_item);
-		cur_item += ((struct ssid_item *)prev_item)->length;
-	}
-	wrqu->data.length = event - extra;
-	wrqu->data.flags = 0;
-
 	if (doquery(handle, NDIS_OID_RSSI, (char *)&rssi, sizeof(rssi),
 		    &written, &needed))
 		printk(KERN_INFO "%s: get rssi failed\n", dev->name);
@@ -788,6 +751,43 @@ static int ndis_get_scan(struct net_device *dev, struct iw_request_info *info,
 			iw_stats->qual.qual = 100;
 		DBGTRACE("%s: quality = %d\n", dev->name, iw_stats->qual.qual);
 	}
+	return res;
+}
+
+static int ndis_set_scan(struct net_device *dev, struct iw_request_info *info,
+			   union iwreq_data *wrqu, char *extra)
+{
+	/* all work is now done by timer func ndis_list_scan */
+	return 0;
+}
+
+static int ndis_get_scan(struct net_device *dev, struct iw_request_info *info,
+			   union iwreq_data *wrqu, char *extra)
+{
+	struct ndis_handle *handle = dev->priv;
+	int i, res, written, needed;
+	struct list_scan list_scan;
+	char *event = extra;
+	char *cur_item ;
+
+	written = needed = 0;
+	res = doquery(handle, NDIS_OID_BSSID_LIST, (char*)&list_scan, sizeof(list_scan), &written, &needed);
+	if (needed > 0)
+		printk(KERN_ERR "Not enough space for all APs available\n");
+	if (res)
+		return -1;
+
+	for (i = 0, cur_item = (char *)&(list_scan.items[0]) ;
+	     i < list_scan.num_items && i < MAX_SCAN_LIST_ITEMS ; i++)
+	{
+		char *prev_item = cur_item ;
+		event = ndis_translate_scan(dev, event,
+					    extra + IW_SCAN_MAX_DATA,
+					    (struct ssid_item *)cur_item);
+		cur_item += ((struct ssid_item *)prev_item)->length;
+	}
+	wrqu->data.length = event - extra;
+	wrqu->data.flags = 0;
 
 	return 0;
 }
@@ -1108,6 +1108,7 @@ void hangcheck_del(struct ndis_handle *handle)
 static int ndis_open(struct net_device *dev)
 {
 	DBGTRACE("%s\n", __FUNCTION__);
+	netif_start_queue(dev);
 	return 0;
 }
 
@@ -1115,6 +1116,7 @@ static int ndis_open(struct net_device *dev)
 static int ndis_close(struct net_device *dev)
 {
 	DBGTRACE("%s\n", __FUNCTION__);
+	netif_stop_queue(dev);
 	return 0;
 }
 
@@ -1577,7 +1579,6 @@ static void __devexit ndis_remove_one(struct pci_dev *pdev)
 		pm_unregister(handle->pm);
 
 #ifndef DEBUG_CRASH_ON_INIT
-	netif_stop_queue(handle->net_dev);
 	unregister_netdev(handle->net_dev);
 	set_int(handle, NDIS_OID_DISASSOCIATE, 0);
 	call_halt(handle);
@@ -1585,7 +1586,6 @@ static void __devexit ndis_remove_one(struct pci_dev *pdev)
 	if(handle->net_dev)
 		free_netdev(handle->net_dev);
 #endif
-	flush_scheduled_work();
 	pci_release_regions(pdev);
 	pci_disable_device(pdev);
 }
