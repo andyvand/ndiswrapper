@@ -1122,19 +1122,6 @@ static int iw_get_range(struct net_device *dev, struct iw_request_info *info,
 	return 0;
 }
 
-static int iw_reset(struct net_device *dev, struct iw_request_info *info,
-		    union iwreq_data *wrqu, char *extra)
-{
-	int res;
-	res = doreset(dev->priv);
-	if (res)
-	{
-		WARNING("reset returns %08X", res);
-		return -EINVAL;
-	}
-	return 0;
-}
-
 static const iw_handler	ndis_handler[] = {
 	[SIOCGIWNAME	- SIOCIWFIRST] = iw_get_name,
 	[SIOCSIWESSID	- SIOCIWFIRST] = iw_set_essid,
@@ -1165,6 +1152,49 @@ static const iw_handler	ndis_handler[] = {
 	[SIOCSIWNICKN	- SIOCIWFIRST] = iw_set_nick,
 	[SIOCSIWCOMMIT	- SIOCIWFIRST] = iw_set_dummy,
 };
+
+/* private ioctl's */
+
+static int priv_reset(struct net_device *dev, struct iw_request_info *info,
+		      union iwreq_data *wrqu, char *extra)
+{
+	int res;
+	res = doreset(dev->priv);
+	if (res)
+	{
+		WARNING("reset returns %08X", res);
+		return -EINVAL;
+	}
+	return 0;
+}
+
+static int priv_power_profile(struct net_device *dev,
+			      struct iw_request_info *info,
+			      union iwreq_data *wrqu, char *extra)
+{
+	struct ndis_handle *handle = dev->priv;
+	struct miniport_char *miniport = &handle->driver->miniport_char;
+	unsigned long profile_inf;
+
+	miniport = &handle->driver->miniport_char;
+	/* According NDIS, pnp_event_notify should be called whenever power
+	 * is set to D0
+	 * Only NDIS 5.1 drivers are required to supply this function; some
+	 * drivers don't seem to support it (at least Orinoco)
+	 */
+	if (!miniport->pnp_event_notify)
+		TRACEEXIT(return -EOPNOTSUPP);
+
+	/* 1 for AC and 0 for Battery */
+	if (wrqu->param.value)
+		profile_inf = NDIS_POWER_PROFILE_AC;
+	else
+		profile_inf = NDIS_POWER_PROFILE_BATTERY;
+	
+	miniport->pnp_event_notify(handle, NDIS_PNP_PROFILE_CHANGE,
+				   &profile_inf, sizeof(profile_inf));
+	TRACEEXIT(return 0);
+}
 
 /* WPA support */
 
@@ -1503,7 +1533,7 @@ static int wpa_deauthenticate(struct net_device *dev,
 	TRACEEXIT(return 0);
 }
 
-int set_priv_filter(struct ndis_handle *handle, int flags)
+int set_privacy_filter(struct ndis_handle *handle, int flags)
 {
 	int res;
 
@@ -1518,9 +1548,9 @@ int set_priv_filter(struct ndis_handle *handle, int flags)
 	TRACEEXIT(return 0);
 }
 
-static int wpa_set_priv_filter(struct net_device *dev,
-			       struct iw_request_info *info,
-			       union iwreq_data *wrqu, char *extra)
+static int wpa_set_privacy_filter(struct net_device *dev,
+				  struct iw_request_info *info,
+				  union iwreq_data *wrqu, char *extra)
 {
 	struct ndis_handle *handle = (struct ndis_handle *)dev->priv;
 	int flags;
@@ -1530,7 +1560,7 @@ static int wpa_set_priv_filter(struct net_device *dev,
 		flags = NDIS_PRIV_WEP;
 	else
 		flags = NDIS_PRIV_ACCEPT_ALL;
-	if (set_priv_filter(handle, flags))
+	if (set_privacy_filter(handle, flags))
 		TRACEEXIT(return -EINVAL);
 	TRACEEXIT(return 0);
 }
@@ -1573,18 +1603,21 @@ static const struct iw_priv_args priv_args[] = {
 	 "deauthenticate"},
 	{WPA_SET_AUTH_ALG, IW_PRIV_TYPE_INT | IW_PRIV_SIZE_FIXED | 1, 0,
 	 "auth_alg"},
+	{PRIV_POWER_PROFILE, IW_PRIV_TYPE_INT | IW_PRIV_SIZE_FIXED | 1, 0,
+	 "power_profile"},
 };
 
 static const iw_handler priv_handler[] = {
-	[PRIV_RESET 		- SIOCIWFIRSTPRIV] = iw_reset,
+	[PRIV_RESET 		- SIOCIWFIRSTPRIV] = priv_reset,
 	[WPA_SET_WPA 		- SIOCIWFIRSTPRIV] = wpa_set_wpa,
 	[WPA_SET_KEY 		- SIOCIWFIRSTPRIV] = wpa_set_key,
 	[WPA_ASSOCIATE 		- SIOCIWFIRSTPRIV] = wpa_associate,
 	[WPA_DISASSOCIATE 	- SIOCIWFIRSTPRIV] = wpa_disassociate,
-	[WPA_DROP_UNENCRYPTED 	- SIOCIWFIRSTPRIV] = wpa_set_priv_filter,
+	[WPA_DROP_UNENCRYPTED 	- SIOCIWFIRSTPRIV] = wpa_set_privacy_filter,
 	[WPA_SET_COUNTERMEASURES- SIOCIWFIRSTPRIV] = wpa_set_countermeasures,
 	[WPA_DEAUTHENTICATE 	- SIOCIWFIRSTPRIV] = wpa_deauthenticate,
 	[WPA_SET_AUTH_ALG 	- SIOCIWFIRSTPRIV] = wpa_set_auth_alg,
+	[PRIV_POWER_PROFILE 	- SIOCIWFIRSTPRIV] = priv_power_profile,
 };
 
 const struct iw_handler_def ndis_handler_def = {

@@ -875,7 +875,9 @@ static int ndis_resume(struct pci_dev *pdev)
 {
 	struct net_device *dev;
 	struct ndis_handle *handle;
+	struct miniport_char *miniport;
 	int res;
+//	unsigned long profile_inf = NDIS_POWER_PROFILE_AC;
 
 	if (!pdev)
 		return -1;
@@ -895,6 +897,19 @@ static int ndis_resume(struct pci_dev *pdev)
 			 dev->name, handle->pm_state, res);
 	if (res)
 		WARNING("No pnp capabilities for pm (%08X)", res);
+
+	miniport = &handle->driver->miniport_char;
+	/*
+	if (miniport->pnp_event_notify)
+	{
+		INFO("%s", "calling pnp_event_notify");
+		miniport->pnp_event_notify(handle, NDIS_PNP_PROFILE_CHANGE,
+					 &profile_inf, sizeof(profile_inf));
+	}
+	*/
+
+	doreset(handle);
+	set_int(handle, NDIS_OID_BSSID_LIST_SCAN, 0);
 
 	DBGTRACE2("%s: attaching device\n", dev->name);
 	netif_device_attach(dev);
@@ -1114,7 +1129,7 @@ static int setup_dev(struct net_device *dev)
 		handle->multicast_list =
 			kmalloc(handle->multicast_list_size * 6, GFP_KERNEL);
 
-	if (set_priv_filter(handle, NDIS_PRIV_ACCEPT_ALL))
+	if (set_privacy_filter(handle, NDIS_PRIV_ACCEPT_ALL))
 		WARNING("%s", "Unable to set privacy filter");
 
 	ndis_set_rx_mode_proc(dev);
@@ -1169,6 +1184,8 @@ static int ndis_init_one(struct pci_dev *pdev, const struct pci_device_id *ent)
 	struct ndis_driver *driver = device->driver;
 	struct ndis_handle *handle;
 	struct net_device *dev;
+	struct miniport_char *miniport;
+//	unsigned long profile_inf = NDIS_POWER_PROFILE_AC;
 
 	TRACEENTER1("%04x:%04x:%04x:%04x", ent->vendor, ent->device,
 		    ent->subvendor, ent->subdevice);
@@ -1283,6 +1300,20 @@ static int ndis_init_one(struct pci_dev *pdev, const struct pci_device_id *ent)
 	/* do we need to power up the card explicitly? */
 	handle->pm_state = NDIS_PM_STATE_D0;
 	set_int(handle, NDIS_OID_PNP_SET_POWER, handle->pm_state);
+	miniport = &handle->driver->miniport_char;
+	/* According NDIS, pnp_event_notify should be called whenever power
+	 * is set to D0
+	 * Only NDIS 5.1 drivers are required to supply this function; some
+	 * drivers don't seem to support it (at least Orinoco)
+	 */
+	/*
+	if (miniport->pnp_event_notify)
+	{
+		INFO("%s", "calling pnp_event_notify");
+		miniport->pnp_event_notify(handle, NDIS_PNP_PROFILE_CHANGE,
+					 &profile_inf, sizeof(profile_inf));
+	}
+	*/
 
 	/* SMC 2802W V2 cards need reset (any others need it too?) */
 	if (ent->vendor == 0x1260)
