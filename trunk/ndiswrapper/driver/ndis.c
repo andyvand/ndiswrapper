@@ -859,7 +859,8 @@ STDCALL void NdisMAllocateSharedMemory(struct ndis_handle *handle,
 	void *v = pci_alloc_consistent(handle->pci_dev, size, &p);  
 	if(!v)
 	{
-		printk(KERN_ERR "failed to allocate shared mem\n");
+		printk(KERN_ERR "Failed to allocate DMA coherent memory. "
+		                "Windows driver requested %d bytes memory\n", size);
 	}
 
 	*(char**)virt = v;
