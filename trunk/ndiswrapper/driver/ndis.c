@@ -201,7 +201,7 @@ STDCALL NDIS_STATUS WRAP_EXPORT(NdisAllocateMemory)
 	TRACEEXIT3(return NDIS_STATUS_FAILURE);
 }
 
-STDCALL unsigned int WRAP_EXPORT(NdisAllocateMemoryWithTag)
+STDCALL NDIS_STATUS WRAP_EXPORT(NdisAllocateMemoryWithTag)
 	(void **dest, UINT length, ULONG tag)
 {
 	NDIS_PHY_ADDRESS addr;
@@ -448,12 +448,14 @@ static int ndis_encode_setting(struct device_setting *setting,
 	case NDIS_CONFIG_PARAM_INT:
 		setting->config_param.data.intval =
 			simple_strtol(setting->value, NULL, 0);
-		DBGTRACE1("value = %lu", setting->config_param.data.intval);
+		DBGTRACE1("value = %u",
+			  (ULONG)setting->config_param.data.intval);
 		break;
 	case NDIS_CONFIG_PARAM_HEXINT:
 		setting->config_param.data.intval =
 			simple_strtol(setting->value, NULL, 16);
-		DBGTRACE2("value = %lu", setting->config_param.data.intval);
+		DBGTRACE2("value = %u",
+			  (ULONG)setting->config_param.data.intval);
 		break;
 	case NDIS_CONFIG_PARAM_STRING:
 		ansi.buflen = ansi.len = strlen(setting->value);
@@ -484,14 +486,12 @@ static int ndis_decode_setting(struct device_setting *setting,
 
 	switch(val->type) {
 	case NDIS_CONFIG_PARAM_INT:
-		snprintf(setting->value, sizeof(long), "%lu",
-			 (unsigned long)val->data.intval);
-		setting->value[sizeof(long)] = 0;
+		snprintf(setting->value, sizeof(u32), "%u", val->data.intval);
+		setting->value[sizeof(ULONG)] = 0;
 		break;
 	case NDIS_CONFIG_PARAM_HEXINT:
-		snprintf(setting->value, sizeof(long), "%lx",
-			 (unsigned long)val->data.intval);
-		setting->value[sizeof(long)] = 0;
+		snprintf(setting->value, sizeof(u32), "%x", val->data.intval);
+		setting->value[sizeof(ULONG)] = 0;
 		break;
 	case NDIS_CONFIG_PARAM_STRING:
 		ansi.buf = setting->value;
@@ -967,13 +967,13 @@ STDCALL void WRAP_EXPORT(NdisMFreeMapRegisters)
 }
 
 STDCALL void WRAP_EXPORT(NdisMAllocateSharedMemory)
-	(struct ndis_handle *handle, unsigned long size,
-	 char cached, void **virt, NDIS_PHY_ADDRESS *phys)
+	(struct ndis_handle *handle, ULONG size,
+	 BOOLEAN cached, void **virt, NDIS_PHY_ADDRESS *phys)
 {
 	dma_addr_t p;
 	void *v;
 
-	TRACEENTER3("map count: %d, size: %lu, cached: %d",
+	TRACEENTER3("map count: %d, size: %u, cached: %d",
 		    handle->map_count, size, cached);
 
 //	if (handle->map_dma_addr == NULL)
@@ -982,7 +982,7 @@ STDCALL void WRAP_EXPORT(NdisMAllocateSharedMemory)
 	v = PCI_DMA_ALLOC_COHERENT(handle->dev.pci, size, &p);
 	if (!v) {
 		ERROR("Failed to allocate DMA coherent memory. "
-		      "Windows driver requested %ld bytes of "
+		      "Windows driver requested %d bytes of "
 		      "%scached memory\n", size, cached ? "" : "un-");
 	}
 
@@ -1883,7 +1883,7 @@ STDCALL NDIS_STATUS WRAP_EXPORT(NdisMRegisterIoPortRange)
 	(void **virt, struct ndis_handle *handle, UINT start, UINT len)
 {
 	TRACEENTER3("%08x %08x", start, len);
-	*virt = (void*)(unsigned long) start;
+	*virt = (void *)(ULONG_PTR)start;
 	return NDIS_STATUS_SUCCESS;
 }
 

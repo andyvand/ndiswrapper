@@ -18,16 +18,19 @@
 
 #include "ndis.h"
 
-int miniport_reset(struct ndis_handle *handle);
-int miniport_query_info_needed(struct ndis_handle *handle, ndis_oid oid,
-			       void *buf, ULONG bufsize, ULONG *needed);
-int miniport_query_info(struct ndis_handle *handle, ndis_oid oid,
-			void *buf, ULONG bufsize);
-int miniport_set_info(struct ndis_handle *handle, ndis_oid oid, void *buf,
-		      ULONG bufsize);
-int miniport_query_int(struct ndis_handle *handle, ndis_oid oid, void *data);
-int miniport_set_int(struct ndis_handle *handle, ndis_oid oid, ULONG data);
-int miniport_init(struct ndis_handle *handle);
+NDIS_STATUS miniport_reset(struct ndis_handle *handle);
+NDIS_STATUS miniport_query_info_needed(struct ndis_handle *handle,
+				       ndis_oid oid, void *buf,
+				       ULONG bufsize, ULONG *needed);
+NDIS_STATUS miniport_query_info(struct ndis_handle *handle, ndis_oid oid,
+				void *buf, ULONG bufsize);
+NDIS_STATUS miniport_set_info(struct ndis_handle *handle, ndis_oid oid,
+			      void *buf, ULONG bufsize);
+NDIS_STATUS miniport_query_int(struct ndis_handle *handle, ndis_oid oid,
+			       void *data);
+NDIS_STATUS miniport_set_int(struct ndis_handle *handle, ndis_oid oid,
+			     ULONG data);
+NDIS_STATUS miniport_init(struct ndis_handle *handle);
 void miniport_halt(struct ndis_handle *handle);
 void hangcheck_add(struct ndis_handle *handle);
 void hangcheck_del(struct ndis_handle *handle);

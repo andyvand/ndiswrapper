@@ -882,8 +882,8 @@ static int wrapper_ioctl(struct inode *inode, struct file *file,
 	struct load_devices devices;
 	int res;
 
-	TRACEENTER1("cmd: %u (%u, %u)",
-		    cmd, NDIS_REGISTER_DEVICES, NDIS_LOAD_DRIVER);
+	TRACEENTER1("cmd: %u (%u, %u)", cmd, (u32)NDIS_REGISTER_DEVICES,
+		    (u32)NDIS_LOAD_DRIVER);
 
 	res = 0;
 	switch (cmd) {

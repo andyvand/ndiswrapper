@@ -72,9 +72,9 @@ static void ndis_set_rx_mode(struct net_device *dev);
 /*
  * MiniportReset
  */
-int miniport_reset(struct ndis_handle *handle)
+NDIS_STATUS miniport_reset(struct ndis_handle *handle)
 {
-	unsigned int res = 0;
+	NDIS_STATUS res = 0;
 	KIRQL irql;
 	struct miniport_char *miniport = &handle->driver->miniport_char;
 
@@ -137,10 +137,11 @@ int miniport_reset(struct ndis_handle *handle)
  * Perform a sync query and deal with the possibility of an async operation.
  * This function must be called from process context as it will sleep.
  */
-int miniport_query_info_needed(struct ndis_handle *handle, ndis_oid oid,
-			       void *buf, ULONG bufsize, ULONG *needed)
+NDIS_STATUS miniport_query_info_needed(struct ndis_handle *handle,
+				       ndis_oid oid, void *buf,
+				       ULONG bufsize, ULONG *needed)
 {
-	unsigned int res;
+	NDIS_STATUS res;
 	ULONG written;
 	KIRQL irql;
 	struct miniport_char *miniport = &handle->driver->miniport_char;
@@ -169,10 +170,10 @@ int miniport_query_info_needed(struct ndis_handle *handle, ndis_oid oid,
 	TRACEEXIT3(return res);
 }
 
-int miniport_query_info(struct ndis_handle *handle, ndis_oid oid,
-			void *buf, ULONG bufsize)
+NDIS_STATUS miniport_query_info(struct ndis_handle *handle, ndis_oid oid,
+				void *buf, ULONG bufsize)
 {
-	unsigned int res;
+	NDIS_STATUS res;
 	ULONG needed;
 
 	res = miniport_query_info_needed(handle, oid, buf, bufsize, &needed);
@@ -184,10 +185,10 @@ int miniport_query_info(struct ndis_handle *handle, ndis_oid oid,
  * Perform a sync setinfo and deal with the possibility of an async operation.
  * This function must be called from process context as it will sleep.
  */
-int miniport_set_info(struct ndis_handle *handle, ndis_oid oid, void *buf,
-		      ULONG bufsize)
+NDIS_STATUS miniport_set_info(struct ndis_handle *handle, ndis_oid oid,
+			      void *buf, ULONG bufsize)
 {
-	unsigned int res;
+	NDIS_STATUS res;
 	ULONG written, needed;
 	KIRQL irql;
 	struct miniport_char *miniport = &handle->driver->miniport_char;
@@ -220,9 +221,10 @@ int miniport_set_info(struct ndis_handle *handle, ndis_oid oid, void *buf,
 }
 
 /* Make a query that has an int as the result. */
-int miniport_query_int(struct ndis_handle *handle, ndis_oid oid, void *data)
+NDIS_STATUS miniport_query_int(struct ndis_handle *handle, ndis_oid oid,
+			       void *data)
 {
-	unsigned int res;
+	NDIS_STATUS res;
 
 	res = miniport_query_info(handle, oid, (char *)data, sizeof(ULONG));
 	if (!res)
@@ -232,7 +234,8 @@ int miniport_query_int(struct ndis_handle *handle, ndis_oid oid, void *data)
 }
 
 /* Set an int */
-int miniport_set_int(struct ndis_handle *handle, ndis_oid oid, ULONG data)
+NDIS_STATUS miniport_set_int(struct ndis_handle *handle, ndis_oid oid,
+			     ULONG data)
 {
 	return miniport_set_info(handle, oid, (char *)&data, sizeof(data));
 }
@@ -252,10 +255,10 @@ static struct ethtool_ops ndis_ethtool_ops = {
 /*
  * MiniportInitialize
  */
-int miniport_init(struct ndis_handle *handle)
+NDIS_STATUS miniport_init(struct ndis_handle *handle)
 {
-	NDIS_STATUS status;
-	UINT medium_index, res;
+	NDIS_STATUS status, res;
+	UINT medium_index;
 	UINT medium_array[] = {NdisMedium802_3};
 	struct miniport_char *miniport = &handle->driver->miniport_char;
 
@@ -299,7 +302,7 @@ static void hangcheck_proc(unsigned long data)
 	TRACEENTER3("%s", "");
 	
 	if (handle->reset_status == 0) {
-		int res;
+		NDIS_STATUS res;
 		struct miniport_char *miniport;
 
 		miniport = &handle->driver->miniport_char;
@@ -423,9 +426,9 @@ static void set_multicast_list(struct net_device *dev,
 			       struct ndis_handle *handle)
 {
 	struct dev_mc_list *mclist;
-	int i;
+	int i, size = 0;
 	char *list = handle->multicast_list;
-	int size = 0, res;
+	NDIS_STATUS res;
 
 	for (i = 0, mclist = dev->mc_list; mclist && i < dev->mc_count;
 	     i++, mclist = mclist->next) {
@@ -515,7 +518,7 @@ static void free_packet(struct ndis_handle *handle, struct ndis_packet *packet)
 static int send_packets(struct ndis_handle *handle, unsigned int start,
 			unsigned int pending)
 {
-	int res;
+	NDIS_STATUS res;
 	struct miniport_char *miniport = &handle->driver->miniport_char;
 	unsigned int sent, n;
 	struct ndis_packet *packet;
@@ -685,7 +688,8 @@ int ndiswrapper_suspend_pci(struct pci_dev *pdev, u32 state)
 {
 	struct net_device *dev;
 	struct ndis_handle *handle;
-	int res, pm_state;
+	int pm_state;
+	NDIS_STATUS res;
 
 	if (!pdev)
 		return -1;
@@ -838,7 +842,8 @@ static void link_status_handler(struct ndis_handle *handle)
 	struct ndis_assoc_info *ndis_assoc_info;
 	unsigned char *wpa_assoc_info, *assoc_info, *p, *ies;
 	union iwreq_data wrqu;
-	unsigned int i, res;
+	unsigned int i;
+	NDIS_STATUS res;
 	const int assoc_size = sizeof(*ndis_assoc_info) + IW_CUSTOM_MAX;
 	struct encr_info *encr_info = &handle->encr_info;
 
@@ -951,7 +956,7 @@ static void set_packet_filter(struct ndis_handle *handle)
 {
 	struct net_device *dev = (struct net_device *)handle->net_dev;
 	ULONG packet_filter;
-	unsigned int res;
+	NDIS_STATUS res;
 
 	packet_filter = (NDIS_PACKET_TYPE_DIRECTED |
 			 NDIS_PACKET_TYPE_BROADCAST |
@@ -987,7 +992,7 @@ static void update_wireless_stats(struct ndis_handle *handle)
 	struct iw_statistics *iw_stats = &handle->wireless_stats;
 	struct ndis_wireless_stats ndis_stats;
 	ndis_rssi rssi;
-	unsigned int res;
+	NDIS_STATUS res;
 
 	if (handle->reset_status)
 		return;
@@ -1052,7 +1057,7 @@ static void wrapper_worker_proc(void *param)
 		update_wireless_stats(handle);
 
 	if (test_and_clear_bit(SUSPEND_RESUME, &handle->wrapper_work)) {
-		unsigned int res;
+		NDIS_STATUS res;
 		struct net_device *net_dev = handle->net_dev;
 
 		if (test_bit(HW_HALTED, &handle->hw_status)) {
@@ -1104,7 +1109,7 @@ static void wrapper_worker_proc(void *param)
 static void check_capa(struct ndis_handle *handle)
 {
 	int i, mode;
-	unsigned int res;
+	NDIS_STATUS res;
 	struct ndis_assoc_info ndis_assoc_info;
 	struct ndis_add_key ndis_key;
 
@@ -1206,7 +1211,8 @@ static int ndis_set_mac_addr(struct net_device *dev, void *p)
 	struct ndis_config_param param;
 	struct unicode_string key;
 	struct ansi_string ansi;
-	unsigned int i, ret;
+	unsigned int i;
+	NDIS_STATUS res;
 	unsigned char mac_string[3 * ETH_ALEN];
 	mac_address mac;
 
@@ -1215,10 +1221,10 @@ static int ndis_set_mac_addr(struct net_device *dev, void *p)
 	for (i = 0; i < sizeof(mac); i++)
 		mac[i] = addr->sa_data[i];
 	memset(mac_string, 0, sizeof(mac_string));
-	ret = snprintf(mac_string, sizeof(mac_string), MACSTR,
+	res = snprintf(mac_string, sizeof(mac_string), MACSTR,
 		       MAC2STR(mac));
-	DBGTRACE2("ret = %d, mac_tring = %s", ret, mac_string);
-	if (ret != (sizeof(mac_string) - 1))
+	DBGTRACE2("res = %d, mac_tring = %s", res, mac_string);
+	if (res != (sizeof(mac_string) - 1))
 		TRACEEXIT1(return -EINVAL);
 
 	ansi.buf = "mac_address";
@@ -1234,8 +1240,8 @@ static int ndis_set_mac_addr(struct net_device *dev, void *p)
 		TRACEEXIT1(return -EINVAL);
 	}
 	param.type = NDIS_CONFIG_PARAM_STRING;
-	NdisWriteConfiguration(&ret, handle, &key, &param);
-	if (ret != NDIS_STATUS_SUCCESS)
+	NdisWriteConfiguration(&res, handle, &key, &param);
+	if (res != NDIS_STATUS_SUCCESS)
 		TRACEEXIT1(return -EINVAL);
 	ndis_reinit(handle);
 	memcpy(dev->dev_addr, addr->sa_data, dev->addr_len);
@@ -1247,7 +1253,8 @@ static int ndis_set_mac_addr(struct net_device *dev, void *p)
 int setup_dev(struct net_device *dev)
 {
 	struct ndis_handle *handle = dev->priv;
-	unsigned int i, res;
+	unsigned int i;
+	NDIS_STATUS res;
 	mac_address mac;
 	union iwreq_data wrqu;
 

@@ -79,40 +79,39 @@
 #define NOREGPARM __attribute__((regparm(0)))
 #define packed __attribute__((packed))
 
-typedef uint8_t BOOLEAN;
-typedef uint8_t  BYTE;
-typedef uint8_t  *LPBYTE;
-typedef int16_t  SHORT;
-typedef uint16_t USHORT;
-typedef uint16_t WORD;
-typedef uint32_t DWORD;
-typedef int32_t  LONG;
-typedef uint32_t ULONG;
-typedef uint64_t ULONGLONG;
-typedef uint64_t ULONGULONG;
+typedef __u8	BOOLEAN;
+typedef __u8	BYTE;
+typedef __u8	*LPBYTE;
+typedef __s8	CHAR;
+typedef __u8	UCHAR;
+typedef __s16	SHORT;
+typedef __u16	USHORT;
+typedef __u16	WORD;
+typedef __s32	INT;
+typedef __u32	UINT;
+typedef __u32	DWORD;
+typedef __u32	LONG;
+typedef __u32	ULONG;
+typedef __u64	ULONGLONG;
+typedef __u64	ULONGULONG;
 
 typedef size_t SIZE_T;
 typedef SHORT wchar_t;
-typedef short CSHORT;
-typedef int32_t INT;
+typedef SHORT CSHORT;
 typedef long long LARGE_INTEGER;
-typedef uint32_t UINT;
-
-typedef char CHAR;
-typedef unsigned char UCHAR;
 
 typedef LONG NTSTATUS;
 
 typedef LONG KPRIORITY;
 typedef INT NT_STATUS;
 typedef LARGE_INTEGER	PHYSICAL_ADDRESS;
-typedef unsigned char KIRQL;
+typedef UCHAR KIRQL;
 typedef CHAR KPROCESSOR_MODE;
 
 #ifdef CONFIG_X86_64
-typedef uint64_t ULONG_PTR;
+typedef __u64 ULONG_PTR;
 #else
-typedef uint32_t ULONG_PTR;
+typedef __u32 ULONG_PTR;
 #endif
 
 typedef ULONG_PTR	KAFFINITY;
