@@ -950,7 +950,7 @@ STDCALL void NdisMAllocateSharedMemory(struct ndis_handle *handle,
 }
 
 static struct list_head alloc_list;
-static spinlock_t alloc_list_lock = SPIN_LOCK_UNLOCKED;
+static struct wrap_spinlock alloc_list_lock;
 static struct work_struct alloc_work;
 
 static void alloc_worker(void *data)
@@ -959,19 +959,21 @@ static void alloc_worker(void *data)
 	void *virt;
 	struct ndis_phy_address phys;
 	struct ndis_handle *handle;
+	struct miniport_char *miniport;
 
 	TRACEENTER3("%s", "");
 	while (1)
 	{
-		spin_lock(&alloc_list_lock);
+		wrap_spin_lock(&alloc_list_lock);
 		if (list_empty(&alloc_list))
 			alloc_entry = NULL;
 		else
 		{
-			alloc_entry = (struct ndis_alloc_entry*) alloc_list.next;
+			alloc_entry = 
+				(struct ndis_alloc_entry *)alloc_list.next;
 			list_del(&alloc_entry->list);
 		}
-		spin_unlock(&alloc_list_lock);
+		wrap_spin_unlock(&alloc_list_lock);
 
 		if (!alloc_entry)
 		{
@@ -979,16 +981,15 @@ static void alloc_worker(void *data)
 			break;
 		}
 		
-		DBGTRACE3("Allocating %scached memory of length %d",
+		DBGTRACE3("Allocating %scached memory of length %ld",
 			  alloc_entry->cached ? "" : "un-",
-			  (int)alloc_entry->length);
+			  alloc_entry->length);
 		handle = (struct ndis_handle *)alloc_entry->handle;
+		miniport = &handle->driver->miniport_char;
 		NdisMAllocateSharedMemory(handle, alloc_entry->size,
 					  alloc_entry->cached, &virt, &phys);
-		if (*((char *)virt))
-			handle->driver->miniport_char.alloc_complete(handle, virt,
-					       &phys, alloc_entry->size,
-					       alloc_entry->ctx);
+		miniport->alloc_complete(handle, virt, &phys,
+					 alloc_entry->size, alloc_entry->ctx);
 		kfree(alloc_entry);
 	}
 	TRACEEXIT3(return);
@@ -998,6 +999,7 @@ void init_alloc_work(void)
 {
 	INIT_WORK(&alloc_work, alloc_worker, NULL);
 	INIT_LIST_HEAD(&alloc_list);
+	wrap_spin_lock_init(&alloc_list_lock);
 }
 
 STDCALL static int NdisMAllocateSharedMemoryAsync(struct ndis_handle *handle,
@@ -1016,9 +1018,9 @@ STDCALL static int NdisMAllocateSharedMemoryAsync(struct ndis_handle *handle,
 	alloc_entry->cached = cached;
 	alloc_entry->ctx = ctx;
 	
-	spin_lock(&alloc_list_lock);
+	wrap_spin_lock(&alloc_list_lock);
 	list_add_tail(&alloc_entry->list, &alloc_list);
-	spin_unlock(&alloc_list_lock);
+	wrap_spin_unlock(&alloc_list_lock);
 	
 	schedule_work(&alloc_work);
 	TRACEEXIT3(return NDIS_STATUS_PENDING);
@@ -1820,8 +1822,6 @@ STDCALL void NdisInitializeEvent(struct ndis_event *event)
 	event->state = 0;
 }
 
-static struct work_struct work;
-
 STDCALL int NdisWaitEvent(struct ndis_event *event, int timeout)
 {
 	int res;
@@ -1870,8 +1870,9 @@ STDCALL void NdisMResetComplete(struct ndis_handle *handle, int status,
 	TRACEEXIT3(return);
 }
 		  
-LIST_HEAD(worklist);
-spinlock_t worklist_lock = SPIN_LOCK_UNLOCKED;
+static struct work_struct work;
+static struct list_head worklist;
+static struct wrap_spinlock worklist_lock;
 
 static void worker(void *context)
 {
@@ -1881,7 +1882,7 @@ static void worker(void *context)
 	TRACEENTER3("%s", "");
 	while (1)
 	{
-		spin_lock(&worklist_lock);
+		wrap_spin_lock(&worklist_lock);
 		if (list_empty(&worklist))
 			workentry = NULL;
 		else
@@ -1889,7 +1890,7 @@ static void worker(void *context)
 			workentry = (struct ndis_workentry*) worklist.next;
 			list_del(&workentry->list);
 		}
-		spin_unlock(&worklist_lock);
+		wrap_spin_unlock(&worklist_lock);
 
 		if (!workentry)
 		{
@@ -1912,6 +1913,8 @@ static void worker(void *context)
 void init_ndis_work(void)
 {
 	INIT_WORK(&work, &worker, NULL); 
+	INIT_LIST_HEAD(&worklist);
+	wrap_spin_lock_init(&worklist_lock);
 }
 
 STDCALL static int NdisScheduleWorkItem(struct ndis_work *ndis_work)
@@ -1927,9 +1930,9 @@ STDCALL static int NdisScheduleWorkItem(struct ndis_work *ndis_work)
 	}
 	workentry->work = ndis_work;
 	
-	spin_lock(&worklist_lock);
+	wrap_spin_lock(&worklist_lock);
 	list_add_tail(&workentry->list, &worklist);
-	spin_unlock(&worklist_lock);
+	wrap_spin_unlock(&worklist_lock);
 	
 	schedule_work(&work);
 	TRACEEXIT3(return NDIS_STATUS_SUCCESS);
