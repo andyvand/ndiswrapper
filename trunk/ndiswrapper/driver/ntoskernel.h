@@ -39,6 +39,10 @@
 #include "ndiswrapper.h"
 #include "winnt_pe.h"
 
+/* set DEBUG_SPINLOCK to non-zero to see if a Windows driver is
+ abusing spinlocks or spinlock implementation in ndiswrapper is buggy */
+#define DEBUG_SPINLOCK 1
+
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,7)
 #include <linux/kthread.h>
 #endif
@@ -57,7 +61,6 @@
  */
 typedef struct workqueue_struct *workqueue;
 #include <asm/dma-mapping.h>
-#include <linux/scatterlist.h>
 
 #define PCI_DMA_ALLOC_COHERENT(pci_dev,size,dma_handle) \
 	dma_alloc_coherent(&pci_dev->dev,size,dma_handle, \
@@ -83,11 +86,6 @@ typedef struct workqueue_struct *workqueue;
 	pci_map_single(dev,addr,size,direction)
 #define PCI_DMA_UNMAP_SINGLE(dev,dma_handle,size,direction) \
 	pci_unmap_single(dev,dma_handle,size,direction)
-#define sg_init_one(sg, addr, len) do {			 \
-		(sg)->page = virt_to_page(addr);		 \
-		(sg)->offset = (unsigned long)addr & ~PAGE_MASK; \
-		(sg)->length = len;				 \
-	} while (0)
 #define MAP_SG(dev, sglist, nents, direction) \
 	pci_map_sg(dev, sglist, nents, direction)
 #define UNMAP_SG(dev, sglist, nents, direction) \
@@ -127,6 +125,20 @@ typedef task_queue workqueue;
 #define __GFP_NOWARN 0
 
 #endif // LINUX_VERSION_CODE
+
+#ifndef offset_in_page
+#define offset_in_page(p) ((unsigned long)(p) & ~PAGE_MASK)
+#endif
+
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,10)
+#include <linux/scatterlist.h>
+#else
+#define sg_init_one(sg, addr, len) do {				 \
+		(sg)->page = virt_to_page(addr);		 \
+		(sg)->offset = offset_in_page(addr);		 \
+		(sg)->length = len;				 \
+	} while (0)
+#endif // KERNEL_VERSION(2,6,9)
 
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,4,23)
 #define HAVE_ETHTOOL 1
@@ -317,6 +329,11 @@ struct wrap_export {
 #define WRAP_EXPORT_MAP(s,f)
 #define WRAP_EXPORT(x) x
 
+extern struct wrap_spinlock *wrap_spinlock_array[];
+typedef unsigned long spinlock_bitmap_t;
+#define SPINLOCK_COLUMNS (sizeof(spinlock_bitmap_t) * 8)
+#define SPINLOCK_ROWS 20
+
 struct wrap_alloc {
 	struct list_head list;
 	void *ptr;
@@ -418,51 +435,58 @@ unsigned long lin_to_win6(void *func, unsigned long, unsigned long,
 #define ERROR(fmt, ...) MSG(KERN_ERR, fmt , ## __VA_ARGS__)
 #define INFO(fmt, ...) MSG(KERN_INFO, fmt , ## __VA_ARGS__)
 
-#define check_spin_lock_size(lock) do {				\
-		if (sizeof(lock) > sizeof(ULONG_PTR)) {		\
-			ERROR("spinlock used is not compatible with "	\
-			      "KSPIN_LOCK; is CONFIG_DEBUG_SPINLOCK "	\
-			      "disabled? %u, %u",			\
-			      (unsigned int)sizeof(lock),		\
-			      (unsigned int)sizeof(ULONG_PTR));		\
-		}							\
-	} while (0)
-
 static inline void wrap_spin_lock_init(struct wrap_spinlock *lock)
 {
-#ifndef CONFIG_DEBUG_SPINLOCK
-	check_spin_lock_size(lock->klock);
-#endif
-	spin_lock_init(W_SPINLOCK(lock));
+	spin_lock_init(&(lock)->spinlock);
 	lock->use_bh = 0;
 }
 
-#define wrap_spin_lock(lock, irql) do {					\
-		if (irql == DISPATCH_LEVEL) {				\
-			if (KeGetCurrentIrql() == DISPATCH_LEVEL) {	\
-				spin_lock(W_SPINLOCK(lock));		\
-				(lock)->use_bh = 0;			\
-			} else {					\
-				spin_lock_bh(W_SPINLOCK(lock));		\
-				(lock)->use_bh = 1;			\
-			}						\
+#define wrap_spin_lock(lock, newirql)				 \
+({							 \
+	(lock)->irql = KeGetCurrentIrql();			 \
+	if (newirql == DISPATCH_LEVEL) {			 \
+		if ((lock)->irql == DISPATCH_LEVEL) {		 \
+			spin_lock(&(lock)->spinlock);		 \
+			(lock)->use_bh = 0;			 \
+		} else {					 \
+			spin_lock_bh(&(lock)->spinlock);	 \
+			(lock)->use_bh = 1;			 \
+		}						 \
+		if (!in_atomic())				 \
+			WARNING("!in_atomic()");		 \
+	} else {						 \
+		spin_lock(&(lock)->spinlock);			 \
+		(lock)->use_bh = 0;				 \
+	}							 \
+	(lock)->irql;						 \
+})
+
+#define wrap_spin_unlock(lock) do {					\
+		if ((lock)->use_bh == 1) {			\
 			if (!in_atomic())				\
 				WARNING("!in_atomic()");		\
+			spin_unlock_bh(&(lock)->spinlock);		\
 		} else {						\
-			spin_lock(W_SPINLOCK(lock));			\
-			(lock)->use_bh = 0;				\
+			spin_unlock(&(lock)->spinlock);			\
 		}							\
 	} while (0)
 
-#define wrap_spin_unlock(lock) do {				\
-		if ((lock)->use_bh) {				\
-			if (!in_atomic())			\
-				WARNING("!in_atomic()");	\
-			spin_unlock_bh(W_SPINLOCK(lock));	\
-		} else {					\
-			spin_unlock(W_SPINLOCK(lock));		\
-		}						\
+#define wrap_spin_unlock_irql(lock, newirql) do {			\
+		wrap_spin_unlock(lock);					\
+		if ((lock)->irql != newirql)				\
+			ERROR("irql %d != %d", (lock)->irql, newirql);	\
 	} while (0)
+
+#define wrap_spin_lock_irqsave(lock, flags) \
+	spin_lock_irqsave(&(lock)->spinlock, flags)
+
+#define wrap_spin_unlock_irqrestore(lock, flags) \
+	spin_unlock_irqrestore(&(lock)->spinlock, flags)
+
+void allocate_kspin_lock(KSPIN_LOCK *lock);
+void free_kspin_lock(KSPIN_LOCK lock);
+void check_kspin_lock(KSPIN_LOCK lock);
+struct wrap_spinlock *kspin_wrap_lock(KSPIN_LOCK kspin_lock);
 
 static inline void wrapper_set_timer_dpc(struct wrapper_timer *wrapper_timer,
                                          struct kdpc *kdpc)

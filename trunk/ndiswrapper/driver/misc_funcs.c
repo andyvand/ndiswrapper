@@ -18,22 +18,140 @@
 #include <asm/io.h>
 #include <linux/ctype.h>
 #include <linux/net.h>
+#include <linux/bitmap.h>
 
 #include "ndis.h"
 
 static struct list_head wrap_allocs;
 static struct wrap_spinlock wrap_allocs_lock;
+struct wrap_spinlock *wrap_spinlock_array[SPINLOCK_ROWS];
+/* bitmap representing used/free spinlock */
+static spinlock_bitmap_t wrap_spinlock_bitmap[SPINLOCK_ROWS];
+spinlock_t wrap_spinlock_spinlock; /* spinlock for spinlocks :-) */
 
 int misc_funcs_init(void)
 {
+	int i;
+	struct wrap_spinlock *lock;
+
+	spin_lock_init(&wrap_spinlock_spinlock);
 	INIT_LIST_HEAD(&wrap_allocs);
 	wrap_spin_lock_init(&wrap_allocs_lock);
+	for (i = 0; i < SPINLOCK_ROWS; i++) {
+		wrap_spinlock_bitmap[i] = 0;
+		wrap_spinlock_array[i] = NULL;
+	}
+	wrap_spinlock_array[0] =
+		kmalloc(SPINLOCK_COLUMNS * sizeof(struct wrap_spinlock),
+			GFP_KERNEL);
+	if (!wrap_spinlock_array[0]) {
+		ERROR("couldn't allocate memory");
+		return -ENOMEM;
+	}
+	memset(wrap_spinlock_array[0], 0, 
+	       SPINLOCK_COLUMNS * sizeof(struct wrap_spinlock));
+	DBGTRACE2("wrap_spinlock_array[0]: %p", wrap_spinlock_array[0]);
+	lock = wrap_spinlock_array[0];
+	for (i = 0; i < SPINLOCK_COLUMNS; i++) {
+		DBGTRACE2("lock: %p", &lock[i]);
+		lock[i].index = i;
+	}
 	return 0;
 }
 
 void misc_funcs_exit(void)
 {
+	int i;
+	for (i = 0; i < SPINLOCK_ROWS; i++)
+		if (wrap_spinlock_array[i])
+			kfree(wrap_spinlock_array[i]);
 	return;
+}
+
+void allocate_kspin_lock(KSPIN_LOCK *kspin_lock)
+{
+	unsigned int r, c, size;
+	struct wrap_spinlock *ret;
+
+	for (r = 0; r < SPINLOCK_ROWS; r++)
+		if (wrap_spinlock_bitmap[r] != ~0UL)
+			break;
+	DBGTRACE2("spinlock row %d", r);
+	if (r == SPINLOCK_ROWS) {
+		ERROR("not enough spinlocks available - "
+		      "increase SPINLOCK_ROWS");
+		*kspin_lock = 0x12345678;
+		return;
+	}
+	if (wrap_spinlock_array[r] == NULL) {
+		int i;
+		struct wrap_spinlock *lock;
+		wrap_spinlock_array[r] =
+			kmalloc(SPINLOCK_COLUMNS *
+				sizeof(struct wrap_spinlock), GFP_ATOMIC);
+		if (!wrap_spinlock_array[r]) {
+			ERROR("couldn't allocate memory");
+			*kspin_lock = 0x12345678;
+			return;
+		}
+		memset(wrap_spinlock_array[r], 0,
+		       SPINLOCK_COLUMNS * sizeof(struct wrap_spinlock));
+		lock = wrap_spinlock_array[r];
+		for (i = 0; i < SPINLOCK_COLUMNS; i++)
+			lock[i].index = i;
+	}
+	size = sizeof(wrap_spinlock_bitmap[r]) * 8;
+	spin_lock(&wrap_spinlock_spinlock);
+	/* we reserve [0][0] lock to check if a buggy driver uses
+	   unallocated spinlock */
+	if (r == 0)
+		c = find_next_zero_bit(&wrap_spinlock_bitmap[r], size, 1);
+	else
+		c = find_first_zero_bit(&wrap_spinlock_bitmap[r], size);
+	DBGTRACE2("spinlock column: %d", c);
+	if (c == size) {
+		ERROR("bug in ndiswrapper: spinlock row %d IS full (%d, %lx)",
+		      r, c, wrap_spinlock_bitmap[r]);
+		ret = wrap_spinlock_array[0];
+		r = c = 0;
+	} else {
+		if (test_and_set_bit(c, &wrap_spinlock_bitmap[r]))
+			ERROR("bug: lock at [%d][%d] is already in use",
+			      r,  c );
+		ret = wrap_spinlock_array[r];
+		ret = &ret[c];
+	}
+	ret->index = r * SPINLOCK_COLUMNS + c;
+	wrap_spin_lock_init(ret);
+	*kspin_lock = ret->index;
+	spin_unlock(&wrap_spinlock_spinlock);
+	DBGTRACE2("allocated spinlock at %d (row: %d, column: %d)",
+		  ret->index, r, c);
+	return;
+}
+
+void free_kspin_lock(KSPIN_LOCK kspin_lock)
+{
+	unsigned int r, c;
+
+	r = kspin_lock / SPINLOCK_COLUMNS;
+	c = kspin_lock % SPINLOCK_COLUMNS;
+	clear_bit(c, &wrap_spinlock_bitmap[r]);
+	DBGTRACE2("freed spinlock at %d (row: %d, column: %d)", kspin_lock, r, c);
+}
+
+struct wrap_spinlock *kspin_wrap_lock(KSPIN_LOCK kspin_lock)
+{
+	unsigned int r, c;
+
+	r = kspin_lock / SPINLOCK_COLUMNS;
+	c = kspin_lock % SPINLOCK_COLUMNS;
+#ifdef DEBUG_SPINLOCK
+	if (!test_bit(c, &wrap_spinlock_bitmap[r]))
+		ERROR("spinlock %d at [%d][%d] is not allocated but being used",
+		      kspin_lock, r, c);
+#endif
+	return &wrap_spinlock_array[r][c];
 }
 
 void *wrap_kmalloc(size_t size, int flags)
