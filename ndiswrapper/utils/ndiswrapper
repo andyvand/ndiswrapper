@@ -343,18 +343,34 @@ sub installStatus
 	my $cards = shift; 
 	my $driver = shift;	
 
+	my $sys = 0;
+	my $conf = 0;
+	my $inf = 0;
+
 	if(!$cards)
 	{
 		return;
 	}
 
 	open(LS2, "ls -1 $confdir/$driver|");
-	my $ret = "hardware NOT present";
 
 	while(my $device = <LS2>)
 	{
 		chomp($device);
 		my $d = $device;
+
+		if ($d =~ /\.sys$/)
+		  {
+		    $sys = 1;
+		  }
+		if ($d =~ /\.inf$/)
+		  {
+		    $inf = 1;
+		  }
+		if ($d =~ /\.conf$/)
+		  {
+		    $conf = 1;
+		  }
 		$d =~ s/.conf//;
 		if($d =~ /(.{4}):(.{4}):(.{4}):(.{4})/)
 		{
@@ -365,8 +381,7 @@ sub installStatus
 				   $$cards[$i]->{subvendor} == $3 and
 				   $$cards[$i]->{subdevice} == $4)
 				{
-					close(LS2);	
-					return "hardware present";
+					$conf = 3;
 				}
 			}
 			
@@ -381,18 +396,38 @@ sub installStatus
 					my $mode = (lstat("$confdir/$driver/$device"))[2];
 					if(S_ISLNK($mode))
 					{
-						$ret = "hardware present,fuzzy";
+						$conf = 2;
 					}
 					else
 					{
-						close(LS2);	
-						return "hardware present";
+						$conf = 3;
 					}
 				}
 			}
 		}
 	}
 	close(LS2);	
+
+	my $ret;
+	if ($sys eq 0 || $inf eq 0 || $conf eq 0)
+	  {
+	    $ret = "incomplete installation!";
+	  }
+	else
+	  {
+	    if ($conf eq 1)
+	      {
+		$ret = $ret . "driver present ";
+	      }
+	    if ($conf eq 2)
+	      {
+		$ret = $ret . "hardware present,fuzzy ";
+	      }
+	    if ($conf eq 3)
+	      {
+		$ret = $ret . "hardware present ";
+	      }
+	  }
 	return $ret;
 }
 
