@@ -349,6 +349,12 @@ NOREGPARM void *WRAP_EXPORT(_wrap_memmove)
 	return memmove(to, from, count);
 }
 
+NOREGPARM void *WRAP_EXPORT(_wrap_memchr)
+	(const void *s, int c, SIZE_T n)
+{
+	return memchr(s, c, n);
+}
+
 NOREGPARM void WRAP_EXPORT(_wrap_srand)
 	(UINT seed)
 {
