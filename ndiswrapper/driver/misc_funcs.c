@@ -116,12 +116,13 @@ void wrapper_timer_handler(unsigned long data)
 	}
 
 	/* don't add the timer if aperiodic; see wrapper_cancel_timer */
+	spin_lock(&timer->lock);
 	if (timer->repeat) {
 		timer->timer.expires = jiffies + timer->repeat;
 		add_timer(&timer->timer);
 	} else
 		timer->active = 0;
-
+	spin_unlock(&timer->lock);
 	TRACEEXIT5(return);
 }
 
@@ -148,6 +149,7 @@ void wrapper_init_timer(struct ktimer *ktimer, void *handle)
 	wrapper_timer->wrapper_timer_magic = WRAPPER_TIMER_MAGIC;
 #endif
 	ktimer->wrapper_timer = wrapper_timer;
+	spin_lock_init(&wrapper_timer->lock);
 	if (handle) {
 		spin_lock_bh(&ndis_handle->timers_lock);
 		list_add(&wrapper_timer->list, &ndis_handle->timers);
@@ -177,14 +179,18 @@ int wrapper_set_timer(struct wrapper_timer *timer,
 	}
 #endif
 
-	timer->repeat = repeat;
 	if (kdpc)
 		timer->kdpc = kdpc;
 
+	/* timer handler also uses timer->repeat and timer->active, so
+	 * protect in case of SMP */
+	spin_lock_bh(&timer->lock);
+	timer->repeat = repeat;
 	if (timer->active) {
 		DBGTRACE4("modifying timer %p to %lu, %lu",
 			  timer, expires, repeat);
 		mod_timer(&timer->timer, expires);
+		spin_unlock_bh(&timer->lock);
 		TRACEEXIT5(return 1);
 	} else {
 		DBGTRACE4("setting timer %p to %lu, %lu",
@@ -192,6 +198,7 @@ int wrapper_set_timer(struct wrapper_timer *timer,
 		timer->timer.expires = expires;
 		timer->active = 1;
 		add_timer(&timer->timer);
+		spin_unlock_bh(&timer->lock);
 		TRACEEXIT5(return 0);
 	}
 }
@@ -208,15 +215,24 @@ void wrapper_cancel_timer(struct wrapper_timer *timer, char *canceled)
 	DBGTRACE4("canceling timer %p", timer);
 	BUG_ON(timer->wrapper_timer_magic != WRAPPER_TIMER_MAGIC);
 #endif
+	/* timer handler also uses timer->repeat, so protect it in
+	 * case of SMP */
+
+	/* Oh, and del_timer_sync is not required ('canceled' argument
+	 * tells the driver if the timer was deleted or not) here; nor
+	 * is del_timer_sync correct, as this function may be called
+	 * at DISPATCH_LEVEL */
+	spin_lock_bh(&timer->lock);
 	if (timer->repeat) {
 		/* first mark as aperiodic, so timer function doesn't call
-		 * add_timer after del_timer_sync returned */
+		 * add_timer after del_timer returned */
 		timer->repeat = 0;
-		del_timer_sync(&timer->timer);
+		del_timer(&timer->timer);
 		/* periodic timers always return TRUE */
 		*canceled = TRUE;
 	} else
-		*canceled = del_timer_sync(&timer->timer);
+		*canceled = del_timer(&timer->timer);
+	spin_unlock_bh(&timer->lock);
 	TRACEEXIT5(return);
 }
 
