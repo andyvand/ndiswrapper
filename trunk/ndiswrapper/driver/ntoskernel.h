@@ -94,6 +94,7 @@ typedef int8_t		CHAR;
 typedef uint8_t		UCHAR;
 typedef uint8_t		BOOLEAN;
 typedef uint8_t		BYTE;
+typedef uint8_t		*LPBYTE;
 typedef int16_t		SHORT;
 typedef uint16_t	USHORT;
 typedef uint16_t	WORD;
@@ -105,8 +106,10 @@ typedef uint32_t	UINT;
 typedef uint64_t	ULONGLONG;
 typedef int64_t		LARGE_INTEGER;
 
+typedef ULONG_PTR	SIZE_T;
 typedef LONG KPRIORITY;
 typedef INT NT_STATUS;
+typedef LARGE_INTEGER	PHYSICAL_ADDRESS;
 
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,7)
 #include <linux/kthread.h>
@@ -404,7 +407,7 @@ struct wrap_spinlock
 	KIRQL use_bh;
 };
 
-typedef char KPROCESSOR_MODE;
+typedef CHAR KPROCESSOR_MODE;
 
 struct list_entry
 {
@@ -468,6 +471,16 @@ enum pool_type
 	NonPagedPoolCacheAligned,
 	PagedPoolCacheAligned,
 	NonPagedPoolCacheAlignedMustS
+};
+
+enum memory_caching_type {
+	MM_NON_CACHED = FALSE,
+	MM_CACHED = TRUE,
+	MM_WRITE_COMBINED = 2,
+	MM_HARDWARE_COHERENT_CACHED,
+	MM_NON_CACHED_UNORDERED,
+	MM_USWC_CACHED,
+	MM_MAXIMUM_CACHE_TYPE
 };
 
 struct mdl
@@ -660,6 +673,11 @@ struct kmutex
 	BOOLEAN apc_disable;
 };
 
+enum wait_type {
+	WAIT_ALL,
+	WAIT_ANY
+};
+
 struct wait_block
 {
 	struct list_entry list_entry;
@@ -724,7 +742,7 @@ typedef enum ntos_wait_reason KWAIT_REASON;
 #define MAXIMUM_PRIORITY	32
 
 typedef STDCALL void *LOOKASIDE_ALLOC_FUNC(enum pool_type pool_type,
-					   size_t size, unsigned long tag);
+					   SIZE_T size, ULONG tag);
 typedef STDCALL void LOOKASIDE_FREE_FUNC(void *);
 
 struct packed npaged_lookaside_list {
@@ -747,7 +765,7 @@ struct packed npaged_lookaside_list {
 	KSPIN_LOCK obsolete;
 };
 
-enum device_prop
+enum device_registry_property
 {
 	DEVPROP_DEVICE_DESCRIPTION,
 	DEVPROP_HARDWARE_ID,
@@ -769,6 +787,17 @@ enum device_prop
 	DEVPROP_UINUMBER,
 	DEVPROP_INSTALL_STATE,
 	DEVPROP_REMOVAL_POLICY,
+};
+
+enum trace_information_class {
+	TRACE_ID_CLASS,
+	TRACE_HANDLE_CLASS,
+	TRACE_ENABLE_FLAGS_CLASS,
+	TRACE_ENABLE_LEVEL_CLASS,
+	GLOBAL_LOGGER_HANDLE_CLASS,
+	EVENT_LOGGER_HANDLE_CLASS,
+	ALL_LOGGER_HANDLES_CLASS,
+	TRACE_HANDLE_BY_NAME_CLASS
 };
 
 extern struct wrap_spinlock atomic_lock;
@@ -802,7 +831,7 @@ _FASTCALL KIRQL KfAcquireSpinLock(FASTCALL_DECL_1(KSPIN_LOCK *lock));
 _FASTCALL void
 KfReleaseSpinLock(FASTCALL_DECL_2(KSPIN_LOCK *lock, KIRQL oldirql));
 _FASTCALL void
-IofCompleteRequest(FASTCALL_DECL_2(struct irp *irp, char prio_boost));
+IofCompleteRequest(FASTCALL_DECL_2(struct irp *irp, CHAR prio_boost));
 _FASTCALL void
 KefReleaseSpinLockFromDpcLevel(FASTCALL_DECL_1(KSPIN_LOCK *lock));
 
@@ -866,10 +895,14 @@ static inline void init_dpc(struct kdpc *kdpc, void *func, void *ctx)
 	kdpc->ctx  = ctx;
 }
 
-static inline int SPAN_PAGES(unsigned long ptr, unsigned int len)
+static inline ULONG SPAN_PAGES(ULONG_PTR ptr, ULONG length)
 {
-	unsigned int p = ptr & (PAGE_SIZE - 1);
-	return (p + len + (PAGE_SIZE - 1)) >> PAGE_SHIFT;
+	ULONG_PTR start, end, n;
+
+	start = (ptr & PAGE_MASK);
+	end = (ptr + length + PAGE_SIZE - 1) & PAGE_MASK;
+	n = (end - start) / PAGE_SIZE;
+	return (ULONG)n;
 }
 
 /* DEBUG macros */

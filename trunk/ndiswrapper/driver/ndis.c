@@ -387,8 +387,8 @@ STDCALL static void WRAP_EXPORT(NdisGetSystemUpTime)
 STDCALL ULONG WRAP_EXPORT(NDIS_BUFFER_TO_SPAN_PAGES)
 	(struct ndis_buffer *buffer)
 {
-	unsigned long size;
-	UINT i;
+	ULONG_PTR start;
+	ULONG n;
 
 	TRACEENTER3("%s", "");
 
@@ -397,10 +397,11 @@ STDCALL ULONG WRAP_EXPORT(NDIS_BUFFER_TO_SPAN_PAGES)
 
 	if (buffer->len == 0)
 		return 1;
-	size = (unsigned long)((char *)buffer->data) + buffer->offset;
-	i = (UINT)SPAN_PAGES(PAGE_ALIGN(size), buffer->len);
-	DBGTRACE3("pages = %u", i);
-	TRACEEXIT3(return i);
+
+	start = (ULONG_PTR)(((char *)buffer->data) + buffer->offset);
+	n = SPAN_PAGES(start, buffer->len);
+	DBGTRACE3("pages = %u", n);
+	TRACEEXIT3(return n);
 }
 
 STDCALL static void WRAP_EXPORT(NdisGetBufferPhysicalArraySize)

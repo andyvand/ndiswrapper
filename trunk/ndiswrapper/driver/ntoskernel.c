@@ -26,19 +26,19 @@ extern struct wrap_spinlock atomic_lock;
 WRAP_EXPORT_MAP("KeTickCount", &jiffies);
 
 STDCALL static void WRAP_EXPORT(WRITE_REGISTER_ULONG)
-	(void *reg, unsigned int val)
+	(void *reg, UINT val)
 {
 	writel(val, reg);
 }
 
 STDCALL static void WRAP_EXPORT(WRITE_REGISTER_USHORT)
-	(void *reg, unsigned short val)
+	(void *reg, USHORT val)
 {
 	writew(val, reg);
 }
 
 STDCALL static void WRAP_EXPORT(WRITE_REGISTER_UCHAR)
-	(void *reg, unsigned char val)
+	(void *reg, UCHAR val)
 {
 	writeb(val, reg);
 }
@@ -60,7 +60,7 @@ STDCALL static void WRAP_EXPORT(KeInitializeDpc)
 }
 
 STDCALL static int WRAP_EXPORT(KeSetTimerEx)
-	(struct ktimer *ktimer, __s64 due_time, __u32 period,
+	(struct ktimer *ktimer, LARGE_INTEGER due_time, LONG period,
 	 struct kdpc *kdpc)
 {
 	unsigned long expires;
@@ -79,7 +79,7 @@ STDCALL static int WRAP_EXPORT(KeSetTimerEx)
 }
 
 STDCALL static int WRAP_EXPORT(KeSetTimer)
-	(struct ktimer *ktimer, __s64 due_time, struct kdpc *kdpc)
+	(struct ktimer *ktimer, LARGE_INTEGER due_time, struct kdpc *kdpc)
 {
 	TRACEENTER4("%p, %ld, %p", ktimer, (long)due_time, kdpc);
 	return KeSetTimerEx(ktimer, due_time, 0, kdpc);
@@ -224,7 +224,7 @@ _FASTCALL static struct list_entry *WRAP_EXPORT(ExfInterlockedRemoveHeadList)
 
 
 STDCALL static void * WRAP_EXPORT(ExAllocatePoolWithTag)
-	(enum pool_type pool_type, size_t size, unsigned long tag)
+	(enum pool_type pool_type, SIZE_T size, ULONG tag)
 {
 	void *ret;
 
@@ -253,8 +253,7 @@ STDCALL static void WRAP_EXPORT(ExFreePool)
 STDCALL static void WRAP_EXPORT(ExInitializeNPagedLookasideList)
 	(struct npaged_lookaside_list *lookaside,
 	 LOOKASIDE_ALLOC_FUNC *alloc_func, LOOKASIDE_FREE_FUNC *free_func,
-	 unsigned long flags, unsigned long size,
-	 unsigned long tag, unsigned short depth)
+	 ULONG flags, SIZE_T size, ULONG tag, USHORT depth)
 {
 	TRACEENTER3("lookaside: %p, size: %lu, flags: %lu,"
 		    " head: %p, size of lookaside: %u\n",
@@ -297,7 +296,7 @@ STDCALL static void WRAP_EXPORT(ExDeleteNPagedLookasideList)
 }
 
 _FASTCALL static void WRAP_EXPORT(ExInterlockedAddLargeStatistic)
-	(FASTCALL_DECL_2(u64 *plint, u32 n))
+	(FASTCALL_DECL_2(LARGE_INTEGER *plint, ULONG n))
 {
 	TRACEENTER3("Stat %p = %llu, n = %u", plint, *plint, n);
 	wrap_spin_lock(&atomic_lock, PASSIVE_LEVEL);
@@ -306,7 +305,8 @@ _FASTCALL static void WRAP_EXPORT(ExInterlockedAddLargeStatistic)
 }
 
 STDCALL static void * WRAP_EXPORT(MmMapIoSpace)
-	(__s64 phys_addr, unsigned long size, int cache)
+	(PHYSICAL_ADDRESS phys_addr, SIZE_T size,
+	 enum memory_caching_type cache)
 {
 	void *virt;
 	if (cache)
@@ -318,7 +318,7 @@ STDCALL static void * WRAP_EXPORT(MmMapIoSpace)
 }
 
 STDCALL static void WRAP_EXPORT(MmUnmapIoSpace)
-	(void *addr, unsigned long size)
+	(void *addr, SIZE_T size)
 {
 	TRACEENTER3("%p, %lu", addr, size);
 	iounmap(addr);
@@ -326,7 +326,7 @@ STDCALL static void WRAP_EXPORT(MmUnmapIoSpace)
 }
 
 STDCALL static int WRAP_EXPORT(IoIsWdmVersionAvailable)
-	(unsigned char major, unsigned char minor)
+	(UCHAR major, UCHAR minor)
 {
 	TRACEENTER3("%d, %d", major, minor);
 	if (major == 1 &&
@@ -481,9 +481,10 @@ STDCALL NT_STATUS WRAP_EXPORT(KeWaitForSingleObject)
  * yet
  */
 STDCALL unsigned int WRAP_EXPORT(KeWaitForMultipleObjects)
-	(unsigned long count, void *object[], unsigned long wait_type,
-	 unsigned int wait_reason, unsigned int waitmode,
-	 unsigned short alertable, s64 *timeout, struct wait_block *wait_block)
+	(ULONG count, void *object[], enum wait_type wait_type,
+	 KWAIT_REASON wait_reason, KPROCESSOR_MODE waitmode,
+	 BOOLEAN alertable, LARGE_INTEGER *timeout,
+	 struct wait_block *wait_block)
 {
 	struct kevent *kevent = NULL;
 	struct kmutex *kmutex;
@@ -604,7 +605,7 @@ STDCALL unsigned int WRAP_EXPORT(KeWaitForMultipleObjects)
 }
 
 STDCALL static void WRAP_EXPORT(IoReuseIrp)
-	(struct irp *irp, int status)
+	(struct irp *irp, NT_STATUS status)
 {
 	TRACEENTER3("irp = %p, status = %d", irp, status);
 	if (irp)
@@ -619,7 +620,7 @@ STDCALL static void WRAP_EXPORT(IoBuildSynchronousFsdRequest)
 }
 
 /* this function can't be STDCALL as it takes variable number of args */
-NOREGPARM unsigned long WRAP_EXPORT(DbgPrint)
+NOREGPARM ULONG WRAP_EXPORT(DbgPrint)
 	(char *format, ...)
 {
 	int res = 0;
@@ -645,7 +646,7 @@ STDCALL static void WRAP_EXPORT(DbgBreakPoint)
 }
 
 STDCALL static struct irp * WRAP_EXPORT(IoAllocateIrp)
-	(char stack_size, unsigned char charge_quota)
+	(char stack_size, BOOLEAN charge_quota)
 {
 	struct irp *irp;
 	int size;
@@ -672,7 +673,7 @@ STDCALL static struct irp * WRAP_EXPORT(IoAllocateIrp)
 }
 
 STDCALL static void WRAP_EXPORT(IoInitializeIrp)
-	(struct irp *irp, unsigned short size, char stack_size)
+	(struct irp *irp, USHORT size, CHAR stack_size)
 {
 	TRACEENTER3("irp = %p, size = %d, stack_size = %d",
 		    irp, size, stack_size);
@@ -692,9 +693,9 @@ STDCALL static void WRAP_EXPORT(IoInitializeIrp)
 }
 
 STDCALL static struct irp * WRAP_EXPORT(IoBuildDeviceIoControlRequest)
-	(unsigned long ioctl, struct device_object *dev_obj,
-	 void *input_buf, unsigned long input_buf_len, void *output_buf,
-	 unsigned long output_buf_len, unsigned char internal_ioctl,
+	(ULONG ioctl, struct device_object *dev_obj,
+	 void *input_buf, ULONG input_buf_len, void *output_buf,
+	 ULONG output_buf_len, BOOLEAN internal_ioctl,
 	 struct kevent *event, struct io_status_block *io_status)
 {
 	struct irp *irp;
@@ -738,7 +739,7 @@ STDCALL static struct irp * WRAP_EXPORT(IoBuildDeviceIoControlRequest)
 }
 
 _FASTCALL void WRAP_EXPORT(IofCompleteRequest)
-	(FASTCALL_DECL_2(struct irp *irp, char prio_boost))
+	(FASTCALL_DECL_2(struct irp *irp, CHAR prio_boost))
 {
 	struct io_stack_location *stack = irp->current_stack_location-1;
 
@@ -775,7 +776,7 @@ _FASTCALL void WRAP_EXPORT(IofCompleteRequest)
 	TRACEEXIT3(return);
 }
 
-STDCALL unsigned char WRAP_EXPORT(IoCancelIrp)
+STDCALL BOOLEAN WRAP_EXPORT(IoCancelIrp)
 	(struct irp *irp)
 {
 	struct io_stack_location *stack = irp->current_stack_location-1;
@@ -810,7 +811,7 @@ STDCALL static void WRAP_EXPORT(IoFreeIrp)
 	TRACEEXIT3(return);
 }
 
-_FASTCALL static unsigned long WRAP_EXPORT(IofCallDriver)
+_FASTCALL static NT_STATUS WRAP_EXPORT(IofCallDriver)
 	(FASTCALL_DECL_2(struct device_object *dev_obj, struct irp *irp))
 {
 	struct io_stack_location *stack = irp->current_stack_location-1;
@@ -873,7 +874,7 @@ _FASTCALL static unsigned long WRAP_EXPORT(IofCallDriver)
 	TRACEEXIT3(return ret);
 }
 
-STDCALL unsigned long WRAP_EXPORT(PoCallDriver)
+STDCALL NT_STATUS WRAP_EXPORT(PoCallDriver)
 	(struct device_object *dev_obj, struct irp *irp)
 {
 	TRACEENTER5("irp = %p", irp);
@@ -939,8 +940,8 @@ STDCALL static unsigned long WRAP_EXPORT(PsCreateSystemThread)
 	TRACEEXIT2(return STATUS_SUCCESS);
 }
 
-STDCALL static unsigned long WRAP_EXPORT(PsTerminateSystemThread)
-	(unsigned long status)
+STDCALL static NT_STATUS WRAP_EXPORT(PsTerminateSystemThread)
+	(NT_STATUS status)
 {
 	TRACEENTER2("status = %ld", status);
 	complete_and_exit(NULL, status);
@@ -956,10 +957,10 @@ STDCALL static void * WRAP_EXPORT(KeGetCurrentThread)
 	return thread;
 }
 
-STDCALL static long WRAP_EXPORT(KeSetPriorityThread)
-	(void *thread, long priority)
+STDCALL static KPRIORITY WRAP_EXPORT(KeSetPriorityThread)
+	(void *thread, KPRIORITY priority)
 {
-	long old_prio;
+	KPRIORITY old_prio;
 
 	TRACEENTER2("thread = %p, priority = %ld", thread, priority);
 
@@ -973,8 +974,9 @@ STDCALL static long WRAP_EXPORT(KeSetPriorityThread)
 	return old_prio;
 }
 
-STDCALL static int WRAP_EXPORT(KeDelayExecutionThread)
-	(KPROCESSOR_MODE wait_mode, BOOLEAN alertable, u64 *interval)
+STDCALL static NT_STATUS WRAP_EXPORT(KeDelayExecutionThread)
+	(KPROCESSOR_MODE wait_mode, BOOLEAN alertable,
+	 LARGE_INTEGER *interval)
 {
 	int res;
 	int timeout;
@@ -1001,7 +1003,7 @@ STDCALL static int WRAP_EXPORT(KeDelayExecutionThread)
 		TRACEEXIT2(return STATUS_SUCCESS);
 }
 
-STDCALL static long WRAP_EXPORT(KeQueryPriorityThread)
+STDCALL static KPRIORITY WRAP_EXPORT(KeQueryPriorityThread)
 	(void *thread)
 {
 	long prio;
@@ -1015,13 +1017,13 @@ STDCALL static long WRAP_EXPORT(KeQueryPriorityThread)
 	TRACEEXIT5(return prio);
 }
 
-STDCALL static u64 WRAP_EXPORT(KeQueryInterruptTime)
+STDCALL static ULONGLONG WRAP_EXPORT(KeQueryInterruptTime)
 	(void)
 {
 	TRACEEXIT2(return 10000);
 }
 
-STDCALL static unsigned long WRAP_EXPORT(KeQueryTimeIncrement)
+STDCALL static ULONG WRAP_EXPORT(KeQueryTimeIncrement)
 	(void)
 {
 	TRACEEXIT5(return loops_per_jiffy);
@@ -1034,10 +1036,10 @@ STDCALL static void WRAP_EXPORT(PoStartNextPowerIrp)
 	TRACEEXIT5(return);
 }
 
-_FASTCALL static long WRAP_EXPORT(InterlockedDecrement)
-	(FASTCALL_DECL_1(long *val))
+_FASTCALL static LONG WRAP_EXPORT(InterlockedDecrement)
+	(FASTCALL_DECL_1(LONG volatile *val))
 {
-	long x;
+	LONG x;
 
 	TRACEENTER4("%s", "");
 	wrap_spin_lock(&atomic_lock, PASSIVE_LEVEL);
@@ -1047,10 +1049,10 @@ _FASTCALL static long WRAP_EXPORT(InterlockedDecrement)
 	TRACEEXIT4(return x);
 }
 
-_FASTCALL static long WRAP_EXPORT(InterlockedIncrement)
-	(FASTCALL_DECL_1(long *val))
+_FASTCALL static LONG WRAP_EXPORT(InterlockedIncrement)
+	(FASTCALL_DECL_1(LONG volatile *val))
 {
-	long x;
+	LONG x;
 
 	TRACEENTER4("%s", "");
 	wrap_spin_lock(&atomic_lock, PASSIVE_LEVEL);
@@ -1060,10 +1062,10 @@ _FASTCALL static long WRAP_EXPORT(InterlockedIncrement)
 	TRACEEXIT4(return x);
 }
 
-_FASTCALL static long WRAP_EXPORT(InterlockedExchange)
-	(FASTCALL_DECL_2(long *target, long val))
+_FASTCALL static LONG WRAP_EXPORT(InterlockedExchange)
+	(FASTCALL_DECL_2(LONG volatile *target, LONG val))
 {
-	long x;
+	LONG x;
 
 	TRACEENTER4("%s", "");
 	wrap_spin_lock(&atomic_lock, PASSIVE_LEVEL);
@@ -1073,10 +1075,10 @@ _FASTCALL static long WRAP_EXPORT(InterlockedExchange)
 	TRACEEXIT4(return x);
 }
 
-_FASTCALL static long WRAP_EXPORT(InterlockedCompareExchange)
-	(FASTCALL_DECL_3(long volatile *dest, long xchg, long comperand))
+_FASTCALL static LONG WRAP_EXPORT(InterlockedCompareExchange)
+	(FASTCALL_DECL_3(LONG volatile *dest, LONG xchg, LONG comperand))
 {
-	long x;
+	LONG x;
 
 	TRACEENTER4("%s", "");
 	wrap_spin_lock(&atomic_lock, PASSIVE_LEVEL);
@@ -1087,9 +1089,10 @@ _FASTCALL static long WRAP_EXPORT(InterlockedCompareExchange)
 	TRACEEXIT4(return x);
 }
 
-STDCALL unsigned long WRAP_EXPORT(IoGetDeviceProperty)
-	(struct device_object *dev_obj, int dev_property,
-	 unsigned long buffer_len, void *buffer, unsigned long *result_len)
+STDCALL NT_STATUS WRAP_EXPORT(IoGetDeviceProperty)
+	(struct device_object *dev_obj,
+	 enum device_registry_property dev_property,
+	 ULONG buffer_len, void *buffer, ULONG *result_len)
 {
 	struct ustring ansi, unicode;
 	struct ndis_handle *handle;
@@ -1167,12 +1170,15 @@ STDCALL unsigned long WRAP_EXPORT(IoGetDeviceProperty)
 	}
 }
 
-STDCALL static unsigned long WRAP_EXPORT(MmSizeOfMdl)
-	(void *base, size_t length)
+STDCALL static ULONG WRAP_EXPORT(MmSizeOfMdl)
+	(void *base, ULONG length)
 {
-	unsigned long pages;
-	pages = SPAN_PAGES((unsigned int)base, length);
-	return (sizeof(struct mdl) + pages * sizeof(unsigned long));
+	ULONG pages;
+	ULONG_PTR start;
+
+	start = (ULONG_PTR)base;
+	pages = SPAN_PAGES(start, length);
+	return (sizeof(struct mdl) + pages * sizeof(ULONG));
 }
 
 STDCALL static void WRAP_EXPORT(MmBuildMdlForNonPagedPool)
@@ -1196,7 +1202,7 @@ STDCALL static void WRAP_EXPORT(KeInitializeMutex)
 	return;
 }
 
-STDCALL static long WRAP_EXPORT(KeReleaseMutex)
+STDCALL static LONG WRAP_EXPORT(KeReleaseMutex)
 	(struct kmutex *mutex, BOOLEAN wait)
 {
 	wrap_spin_lock(&dispatch_event_lock, PASSIVE_LEVEL);
@@ -1216,17 +1222,17 @@ STDCALL static void WRAP_EXPORT(MmUnmapLockedPages)
 	return;
 }
 
-NOREGPARM static unsigned int WRAP_EXPORT(WmiTraceMessage)
-	(void *tracehandle, unsigned long message_flags,
-	 void *message_guid, unsigned short message_no, ...)
+NOREGPARM static NT_STATUS WRAP_EXPORT(WmiTraceMessage)
+	(void *tracehandle, ULONG message_flags,
+	 void *message_guid, USHORT message_no, ...)
 {
 	TRACEENTER2("%s", "");
 	TRACEEXIT2(return STATUS_SUCCESS);
 }
 
-STDCALL static unsigned int WRAP_EXPORT(WmiQueryTraceInformation)
-	(unsigned int trace_info_class, void *trace_info,
-	 unsigned long *req_length, void *buf)
+STDCALL static NT_STATUS WRAP_EXPORT(WmiQueryTraceInformation)
+	(enum trace_information_class trace_info_class, void *trace_info,
+	 ULONG *req_length, void *buf)
 {
 	TRACEENTER2("%s", "");
 	TRACEEXIT2(return STATUS_SUCCESS);
@@ -1240,8 +1246,8 @@ STDCALL static unsigned int WRAP_EXPORT(IoWMIRegistrationControl)
 }
 
 STDCALL static void WRAP_EXPORT(KeBugCheckEx)
-	(unsigned long code, unsigned long *param1, unsigned long *param2,
-	 unsigned long *param3, unsigned long *param4)
+	(ULONG code, ULONG_PTR param1, ULONG_PTR param2,
+	 ULONG_PTR param3, ULONG_PTR param4)
 {
 	UNIMPL();
 	return;

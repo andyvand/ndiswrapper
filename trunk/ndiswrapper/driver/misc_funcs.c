@@ -246,7 +246,7 @@ NOREGPARM int WRAP_EXPORT(_wrap_vsprintf)
 }
 
 NOREGPARM int WRAP_EXPORT(_wrap_snprintf)
-	(char *buf, size_t count, const char *format, ...)
+	(char *buf, SIZE_T count, const char *format, ...)
 {
 	va_list args;
 	int res;
@@ -258,7 +258,7 @@ NOREGPARM int WRAP_EXPORT(_wrap_snprintf)
 }
 
 NOREGPARM int WRAP_EXPORT(_wrap__snprintf)
-	(char *buf, size_t count, const char *format, ...)
+	(char *buf, SIZE_T count, const char *format, ...)
 {
 	va_list args;
 	int res;
@@ -270,15 +270,13 @@ NOREGPARM int WRAP_EXPORT(_wrap__snprintf)
 }
 
 NOREGPARM int WRAP_EXPORT(_wrap_vsnprintf)
-	(char *str, size_t size, const char *format,
-			  va_list ap)
+	(char *str, SIZE_T size, const char *format, va_list ap)
 {
 	return vsnprintf(str, size, format, ap);
 }
 
 NOREGPARM int WRAP_EXPORT(_wrap__vsnprintf)
-	(char *str, size_t size, const char *format,
-			    va_list ap)
+	(char *str, SIZE_T size, const char *format, va_list ap)
 {
 	return vsnprintf(str, size, format, ap);
 }
@@ -296,7 +294,7 @@ NOREGPARM size_t WRAP_EXPORT(_wrap_strlen)
 }
 
 NOREGPARM int WRAP_EXPORT(_wrap_strncmp)
-	(const char *s1, const char *s2, size_t n)
+	(const char *s1, const char *s2, SIZE_T n)
 {
 	return strncmp(s1, s2, n);
 }
@@ -329,7 +327,7 @@ NOREGPARM int WRAP_EXPORT(_wrap_toupper)
 }
 
 NOREGPARM void *WRAP_EXPORT(_wrap_memcpy)
-	(void * to, const void * from, size_t n)
+	(void * to, const void * from, SIZE_T n)
 {
 	return memcpy(to, from, n);
 }
@@ -341,19 +339,19 @@ NOREGPARM void *WRAP_EXPORT(_wrap_strcpy)
 }
 
 NOREGPARM void *WRAP_EXPORT(_wrap_memset)
-	(void * s, char c,size_t count)
+	(void * s, char c, SIZE_T count)
 {
 	return memset(s, c, count);
 }
 
 NOREGPARM void *WRAP_EXPORT(_wrap_memmove)
-	(void *to, void *from, size_t count)
+	(void *to, void *from, SIZE_T count)
 {
 	return memmove(to, from, count);
 }
 
 NOREGPARM void WRAP_EXPORT(_wrap_srand)
-	(unsigned int seed)
+	(UINT seed)
 {
 	net_srandom(seed);
 }
@@ -425,8 +423,8 @@ __attribute__ ((regparm(3))) __u64 WRAP_EXPORT(_aullshr)
 	return (a >> b);
 }
 
-STDCALL size_t WRAP_EXPORT(RtlCompareMemory)
-	(const void *a, const void *b, size_t len)
+STDCALL SIZE_T WRAP_EXPORT(RtlCompareMemory)
+	(const void *a, const void *b, SIZE_T len)
 {
 	size_t i;
 	char *x, *y;
@@ -452,7 +450,7 @@ STDCALL size_t WRAP_EXPORT(RtlCompareMemory)
 
 STDCALL long WRAP_EXPORT(RtlCompareString)
 	(const struct ustring *s1, const struct ustring *s2,
-	 int case_insensitive)
+	 BOOLEAN case_insensitive)
 {
 	unsigned int len;
 	long ret = 0;
@@ -474,9 +472,9 @@ STDCALL long WRAP_EXPORT(RtlCompareString)
 	return ret;
 }
 
-STDCALL long WRAP_EXPORT(RtlCompareUnicodeString)
+STDCALL LONG WRAP_EXPORT(RtlCompareUnicodeString)
 	(const struct ustring *s1, const struct ustring *s2,
-	 int case_insensitive)
+	 BOOLEAN case_insensitive)
 {
 	unsigned int len;
 	long ret = 0;
@@ -498,9 +496,9 @@ STDCALL long WRAP_EXPORT(RtlCompareUnicodeString)
 	return ret;
 }
 
-STDCALL int WRAP_EXPORT(RtlEqualString)
+STDCALL BOOLEAN WRAP_EXPORT(RtlEqualString)
 	(const struct ustring *s1, const struct ustring *s2,
-	 int case_insensitive)
+	 BOOLEAN case_insensitive)
 {
 	TRACEENTER1("%s", "");
 	if (s1->len != s2->len)
@@ -508,9 +506,9 @@ STDCALL int WRAP_EXPORT(RtlEqualString)
 	return !RtlCompareString(s1, s2, case_insensitive);
 }
 
-STDCALL int WRAP_EXPORT(RtlEqualUnicodeString)
+STDCALL BOOLEAN WRAP_EXPORT(RtlEqualUnicodeString)
 	(const struct ustring *s1, const struct ustring *s2,
-	 int case_insensitive)
+	 BOOLEAN case_insensitive)
 {
 	if (s1->len != s2->len)
 		return 0;
@@ -595,8 +593,8 @@ STDCALL NT_STATUS WRAP_EXPORT(RtlUnicodeStringToAnsiString)
 	TRACEEXIT2(return NDIS_STATUS_SUCCESS);
 }
 
-STDCALL int WRAP_EXPORT(RtlUnicodeStringToInteger)
-	(struct ustring *ustring, unsigned long base, unsigned long *value)
+STDCALL NT_STATUS WRAP_EXPORT(RtlUnicodeStringToInteger)
+	(struct ustring *ustring, ULONG base, ULONG *value)
 {
 	int negsign;
 	__u16 *str;
@@ -660,8 +658,8 @@ STDCALL int WRAP_EXPORT(RtlUnicodeStringToInteger)
 	return STATUS_SUCCESS;
 }
 
-STDCALL int WRAP_EXPORT(RtlIntegerToUnicodeString)
-	(unsigned long value, unsigned long base, struct ustring *ustring)
+STDCALL NT_STATUS WRAP_EXPORT(RtlIntegerToUnicodeString)
+	(ULONG value, ULONG base, struct ustring *ustring)
 {
 	char string[sizeof(unsigned long) * 8 + 1];
 	struct ustring ansi;
@@ -693,7 +691,7 @@ STDCALL int WRAP_EXPORT(RtlIntegerToUnicodeString)
 	return RtlAnsiStringToUnicodeString(ustring, &ansi, 0);
 }
 
-STDCALL void  WRAP_EXPORT(RtlInitUnicodeString)
+STDCALL void WRAP_EXPORT(RtlInitUnicodeString)
 	(struct ustring *dest, __u16 *src)
 {
 	struct ustring *uc;
@@ -715,7 +713,7 @@ STDCALL void  WRAP_EXPORT(RtlInitUnicodeString)
 	TRACEEXIT1(return);
 }
 
-STDCALL void  WRAP_EXPORT(RtlInitAnsiString)
+STDCALL void WRAP_EXPORT(RtlInitAnsiString)
 	(struct ustring *dst, CHAR *src)
 {
 	TRACEENTER2("%s", "");
@@ -754,8 +752,8 @@ STDCALL void WRAP_EXPORT(RtlFreeAnsiString)(struct ustring *string)
 }
 
 static void WRAP_EXPORT(RtlUnwind)(void){UNIMPL();}
-STDCALL static unsigned int WRAP_EXPORT(RtlQueryRegistryValues)
-	(unsigned long relative, char* path, void* tbl,
+STDCALL static NT_STATUS WRAP_EXPORT(RtlQueryRegistryValues)
+	(ULONG  relative, char* path, void* tbl,
 	 void* context, void* env)
 {
 	TRACEENTER5("%s", "");
@@ -819,13 +817,13 @@ void packet_recycler(void *param)
 	TRACEEXIT3(return);
 }
 
-u64 ticks_1601(void)
+ULONGLONG ticks_1601(void)
 {
 	struct timeval now;
-	u64 ticks;
+	ULONGLONG ticks;
 
 	do_gettimeofday(&now);
-	ticks = (u64) now.tv_sec * TICKSPERSEC;
+	ticks = (ULONGLONG) now.tv_sec * TICKSPERSEC;
 	ticks += now.tv_usec * 10 + TICKS_1601_TO_1970;
 	return ticks;
 }

@@ -159,7 +159,7 @@ static struct section_header *get_section(struct nt_header *nt_hdr,
 static int check_nt_hdr(struct nt_header *nt_hdr)
 {
 	const char pe_sign[4] = {'P', 'E', 0, 0};
-	long char_must;
+	LONG char_must;
 
 	/* Validate the pe signature */
 	if (memcmp(pe_sign, nt_hdr->magic, sizeof(pe_sign)) != 0)
