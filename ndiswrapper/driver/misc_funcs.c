@@ -567,6 +567,7 @@ STDCALL void
 	else
 		lookaside->free_func = lookaside_def_free_func;
 
+	KeInitializeSpinLock(&lookaside->obsolete);
 	DBGTRACE("%s: Exit\n", __FUNCTION__);
 	return ;
 }
