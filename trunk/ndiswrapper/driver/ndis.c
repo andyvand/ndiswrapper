@@ -34,7 +34,7 @@ static struct list_head handle_ctx_list;
 
 static struct work_struct ndis_work;
 static struct list_head ndis_work_list;
-static struct wrap_spinlock ndis_work_list_lock;
+static spinlock_t ndis_work_list_lock;
 
 static void ndis_worker(void *data);
 static void free_handle_ctx(struct ndis_handle *handle);
@@ -46,7 +46,7 @@ int ndis_init(void)
 	INIT_WORK(&ndis_work, &ndis_worker, NULL);
 	INIT_LIST_HEAD(&ndis_work_list);
 	INIT_LIST_HEAD(&handle_ctx_list);
-	wrap_spin_lock_init(&ndis_work_list_lock);
+	spin_lock_init(&ndis_work_list_lock);
 	return 0;
 }
 
@@ -243,9 +243,9 @@ STDCALL void WRAP_EXPORT(NdisFreeMemory)
 		free_mem->length = length;
 		free_mem->flags = flags;
 
-		wrap_spin_lock(&ndis_work_list_lock, PASSIVE_LEVEL);
+		spin_lock(&ndis_work_list_lock);
 		list_add_tail(&ndis_work_entry->list, &ndis_work_list);
-		wrap_spin_unlock(&ndis_work_list_lock);
+		spin_unlock(&ndis_work_list_lock);
 
 		schedule_work(&ndis_work);
 	}
@@ -1027,9 +1027,9 @@ STDCALL NDIS_STATUS WRAP_EXPORT(NdisMAllocateSharedMemoryAsync)
 	alloc_mem->cached = cached;
 	alloc_mem->ctx = ctx;
 
-	wrap_spin_lock(&ndis_work_list_lock, DISPATCH_LEVEL);
+	spin_lock_bh(&ndis_work_list_lock);
 	list_add_tail(&ndis_work_entry->list, &ndis_work_list);
-	wrap_spin_unlock(&ndis_work_list_lock);
+	spin_unlock_bh(&ndis_work_list_lock);
 
 	schedule_work(&ndis_work);
 	TRACEEXIT3(return NDIS_STATUS_PENDING);
@@ -1676,9 +1676,9 @@ NdisMIndicateReceivePacket(struct ndis_handle *handle,
 		ndis_work_entry->handle = handle;
 		ndis_work_entry->entry.return_packet = packet;
 
-		wrap_spin_lock(&ndis_work_list_lock, DISPATCH_LEVEL);
+		spin_lock_bh(&ndis_work_list_lock);
 		list_add_tail(&ndis_work_entry->list, &ndis_work_list);
-		wrap_spin_unlock(&ndis_work_list_lock);
+		spin_unlock_bh(&ndis_work_list_lock);
 
 	}
 	schedule_work(&ndis_work);
@@ -2144,7 +2144,7 @@ static void ndis_worker(void *data)
 	TRACEENTER3("%s", "");
 
 	while (1) {
-		wrap_spin_lock(&ndis_work_list_lock, PASSIVE_LEVEL);
+		spin_lock(&ndis_work_list_lock);
 		if (list_empty(&ndis_work_list))
 			ndis_work_entry = NULL;
 		else {
@@ -2153,7 +2153,7 @@ static void ndis_worker(void *data)
 					   struct ndis_work_entry, list);
 			list_del(&ndis_work_entry->list);
 		}
-		wrap_spin_unlock(&ndis_work_list_lock);
+		spin_unlock(&ndis_work_list_lock);
 
 		if (!ndis_work_entry) {
 			DBGTRACE3("%s", "No more work");
@@ -2269,9 +2269,9 @@ STDCALL void WRAP_EXPORT(IoQueueWorkItem)
 	io_work_item->ctx = ctx;
 	ndis_work_entry->entry.io_work_item = io_work_item;
 
-	wrap_spin_lock(&ndis_work_list_lock, PASSIVE_LEVEL);
+	spin_lock(&ndis_work_list_lock);
 	list_add_tail(&ndis_work_entry->list, &ndis_work_list);
-	wrap_spin_unlock(&ndis_work_list_lock);
+	spin_unlock(&ndis_work_list_lock);
 
 	schedule_work(&ndis_work);
 	TRACEEXIT3(return);
@@ -2291,9 +2291,9 @@ STDCALL NDIS_STATUS WRAP_EXPORT(NdisScheduleWorkItem)
 	ndis_work_entry->type = NDIS_SCHED_WORK_ITEM;
 	ndis_work_entry->entry.sched_work_item = ndis_sched_work_item;
 
-	wrap_spin_lock(&ndis_work_list_lock, PASSIVE_LEVEL);
+	spin_lock(&ndis_work_list_lock);
 	list_add_tail(&ndis_work_entry->list, &ndis_work_list);
-	wrap_spin_unlock(&ndis_work_list_lock);
+	spin_unlock(&ndis_work_list_lock);
 
 	schedule_work(&ndis_work);
 	TRACEEXIT3(return NDIS_STATUS_SUCCESS);
