@@ -838,6 +838,9 @@ STDCALL void NdisAllocateBufferPool(unsigned int *status,
 
 STDCALL void NdisFreeBufferPool(void *poolhandle)
 {
+	/* Make sure all packets are recycled */
+	flush_scheduled_work();
+
 	DBGTRACE("%s: %08x\n", __FUNCTION__, (int)poolhandle);
 }
 

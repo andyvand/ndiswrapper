@@ -943,6 +943,9 @@ static void __devexit ndis_remove_one(struct pci_dev *pdev)
 	if (!netif_queue_stopped(handle->net_dev))
 		netif_stop_queue(handle->net_dev);
 
+	/* Make sure all queued packets have been pushed out */
+	flush_scheduled_work();
+
 #ifndef DEBUG_CRASH_ON_INIT
 	set_int(handle, NDIS_OID_DISASSOCIATE, 0);
 	if(handle->net_dev)
