@@ -1,7 +1,11 @@
-This package was debianized by Erik Rigtorp <erkki@linux.nu> on
-Mon, 23 Feb 2004 17:48:38 +0100.
+This package was debianized by Giridhar Pemmasani <ndiswrapper-general@lists.sourceforge.net> on
+Fri, 25 Jun 2004 13:22:37 -0400.
 
-It was downloaded from http://ndiswrapper.sourceforge.net/
+It was downloaded from http://ndiswrapper.sourceforge.net
+
+Upstream Author(s): See http://ndiswrapper.sourceforge.net
+
+Copyright:
 
 Licensed under the terms of GNU GPL. See /usr/share/common-licenses/GPL for
 details.
