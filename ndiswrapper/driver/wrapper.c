@@ -62,8 +62,8 @@ extern int image_offset;
 
 
 /*
- * Perform a sync query and deal with the possibility of an async query.
- *
+ * Perform a sync query and deal with the possibility of an async operation.
+ * This function must be called from process context as it will sleep.
  */
 static int doquery(struct ndis_handle *handle, unsigned int oid, char *buf, int bufsize, unsigned int *written , unsigned int *needed)
 {
@@ -104,6 +104,10 @@ STDCALL void NdisMQueryInformationComplete(struct ndis_handle *handle, unsigned 
 }
 
 
+/*
+ * Perform a sync setinfo and deal with the possibility of an async operation.
+ * This function must be called from process context as it will sleep.
+ */
 static int dosetinfo(struct ndis_handle *handle, unsigned int oid, char *buf, int bufsize, unsigned int *written , unsigned int *needed)
 {
 	int res;
@@ -133,7 +137,7 @@ out:
 
 /*
  *
- * Called via function pointer if setinformation returns NDIS_STATUS_PENDING
+ * Called via function pointer if setinfo returns NDIS_STATUS_PENDING
  */
 STDCALL void NdisMSetInformationComplete(struct ndis_handle *handle, unsigned int status)
 {
