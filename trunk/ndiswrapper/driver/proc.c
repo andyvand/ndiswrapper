@@ -31,21 +31,21 @@ static int procfs_read_stats(char *page, char **start, off_t off,
 	char *p = page;
 	struct ndis_handle *handle = (struct ndis_handle *) data;
 	struct ndis_wireless_stats stats;
-	unsigned int res;
-	long rssi;
+	NDIS_STATUS res;
+	ndis_rssi rssi;
 
 	if (off != 0) {
 		*eof = 1;
 		return 0;
 	}
 
-	res = miniport_query_info(handle, OID_802_11_RSSI, (char *)&rssi,
+	res = miniport_query_info(handle, OID_802_11_RSSI, &rssi,
 				  sizeof(rssi));
 	if (!res)
-		p += sprintf(p, "signal_level=%ld dBm\n", rssi);
+		p += sprintf(p, "signal_level=%d dBm\n", (s32)rssi);
 
-	res = miniport_query_info(handle, OID_802_11_STATISTICS, (char *)&stats,
-				  sizeof(stats));
+	res = miniport_query_info(handle, OID_802_11_STATISTICS,
+				  &stats, sizeof(stats));
 	if (!res) {
 
 		p += sprintf(p, "tx_frames=%Lu\n", stats.tx_frag);
@@ -78,8 +78,8 @@ static int procfs_read_encr(char *page, char **start, off_t off,
 {
 	char *p = page;
 	struct ndis_handle *handle = (struct ndis_handle *) data;
-	int i, encr_status, auth_mode, op_mode;
-	unsigned int res;
+	int i, encr_status, auth_mode, infra_mode;
+	NDIS_STATUS res;
 	struct ndis_essid essid;
 	mac_address ap_address;
 
@@ -88,8 +88,8 @@ static int procfs_read_encr(char *page, char **start, off_t off,
 		return 0;
 	}
 
-	res = miniport_query_info(handle, OID_802_11_BSSID, (char *)&ap_address,
-				  sizeof(ap_address));
+	res = miniport_query_info(handle, OID_802_11_BSSID,
+				  &ap_address, sizeof(ap_address));
 	if (res)
 		memset(ap_address, 0, ETH_ALEN);
 	p += sprintf(p, "ap_address=%2.2X", ap_address[0]);
@@ -97,7 +97,7 @@ static int procfs_read_encr(char *page, char **start, off_t off,
 		p += sprintf(p, ":%2.2X", ap_address[i]);
 	p += sprintf(p, "\n");
 
-	res = miniport_query_info(handle, OID_802_11_SSID, (char *)&essid,
+	res = miniport_query_info(handle, OID_802_11_SSID, &essid,
 				  sizeof(essid));
 	if (!res) {
 		essid.essid[essid.length] = '\0';
@@ -128,9 +128,9 @@ static int procfs_read_encr(char *page, char **start, off_t off,
 	}
 
 	res = miniport_query_int(handle, OID_802_11_INFRASTRUCTURE_MODE,
-				 &op_mode);
-	p += sprintf(p, "mode=%s\n", (op_mode == Ndis802_11IBSS) ?
-		     "adhoc" : (op_mode == Ndis802_11Infrastructure) ?
+				 &infra_mode);
+	p += sprintf(p, "mode=%s\n", (infra_mode == Ndis802_11IBSS) ?
+		     "adhoc" : (infra_mode == Ndis802_11Infrastructure) ?
 		     "managed" : "auto");
 	if (p - page > count) {
 		WARNING("wrote %lu bytes (limit is %u)",
@@ -147,9 +147,10 @@ static int procfs_read_hw(char *page, char **start, off_t off,
 	char *p = page;
 	struct ndis_handle *handle = (struct ndis_handle *)data;
 	struct ndis_configuration config;
-	unsigned int res, power_mode;
+	unsigned int power_mode;
+	NDIS_STATUS res;
 	ndis_tx_power_level tx_power;
-	unsigned long bit_rate;
+	ULONG bit_rate;
 	ndis_rts_threshold rts_threshold;
 	ndis_fragmentation_threshold frag_threshold;
 	ndis_antenna antenna;
@@ -160,7 +161,7 @@ static int procfs_read_hw(char *page, char **start, off_t off,
 	}
 
 	res = miniport_query_info(handle, OID_802_11_CONFIGURATION,
-				  (char *)&config, sizeof(config));
+				  &config, sizeof(config));
 	if (!res) {
 		p += sprintf(p, "beacon_period=%u msec\n",
 			     config.beacon_period);
@@ -175,24 +176,22 @@ static int procfs_read_hw(char *page, char **start, off_t off,
 	}
 
 	res = miniport_query_info(handle, OID_802_11_TX_POWER_LEVEL,
-				  (char *)&tx_power, sizeof(tx_power));
+				  &tx_power, sizeof(tx_power));
 	if (!res)
 		p += sprintf(p, "tx_power=%u mW\n", tx_power);
 
 	res = miniport_query_info(handle, OID_GEN_LINK_SPEED,
-				  (char *)&bit_rate, sizeof(bit_rate));
+				  &bit_rate, sizeof(bit_rate));
 	if (!res)
-		p += sprintf(p, "bit_rate=%lu kBps\n", bit_rate / 10);
+		p += sprintf(p, "bit_rate=%u kBps\n", (u32)bit_rate / 10);
 
 	res = miniport_query_info(handle, OID_802_11_RTS_THRESHOLD,
-				  (char *)&rts_threshold,
-				  sizeof(rts_threshold));
+				  &rts_threshold, sizeof(rts_threshold));
 	if (!res)
 		p += sprintf(p, "rts_threshold=%u bytes\n", rts_threshold);
 
 	res = miniport_query_info(handle, OID_802_11_FRAGMENTATION_THRESHOLD,
-				  (char *)&frag_threshold,
-				  sizeof(frag_threshold));
+				  &frag_threshold, sizeof(frag_threshold));
 	if (!res)
 		p += sprintf(p, "frag_threshold=%u bytes\n", frag_threshold);
 
@@ -205,17 +204,17 @@ static int procfs_read_hw(char *page, char **start, off_t off,
 			     "max_savings" : "min_savings");
 
 	res = miniport_query_info(handle, OID_802_11_NUMBER_OF_ANTENNAS,
-				  (char *)&antenna, sizeof(antenna));
+				  &antenna, sizeof(antenna));
 	if (!res)
 		p += sprintf(p, "num_antennas=%u\n", antenna);
 
 	res = miniport_query_info(handle, OID_802_11_TX_ANTENNA_SELECTED,
-				  (char *)&antenna, sizeof(antenna));
+				  &antenna, sizeof(antenna));
 	if (!res)
 		p += sprintf(p, "tx_antenna=%u\n", antenna);
 
 	res = miniport_query_info(handle, OID_802_11_RX_ANTENNA_SELECTED,
-				  (char *)&antenna, sizeof(antenna));
+				  &antenna, sizeof(antenna));
 	if (!res)
 		p += sprintf(p, "rx_antenna=%u\n", antenna);
 
@@ -299,7 +298,7 @@ static int procfs_write_settings(struct file *file, const char *buf,
 	} else if (!strcmp(setting, "power_profile")) {
 		int i;
 		struct miniport_char *miniport;
-		unsigned long profile_inf;
+		ULONG profile_inf;
 
 		if (!p)
 			return -EINVAL;

@@ -226,7 +226,7 @@ NDIS_STATUS miniport_query_int(struct ndis_handle *handle, ndis_oid oid,
 {
 	NDIS_STATUS res;
 
-	res = miniport_query_info(handle, oid, (char *)data, sizeof(ULONG));
+	res = miniport_query_info(handle, oid, data, sizeof(ULONG));
 	if (!res)
 		return 0;
 	*((char *)data) = 0;
@@ -237,7 +237,7 @@ NDIS_STATUS miniport_query_int(struct ndis_handle *handle, ndis_oid oid,
 NDIS_STATUS miniport_set_int(struct ndis_handle *handle, ndis_oid oid,
 			     ULONG data)
 {
-	return miniport_set_info(handle, oid, (char *)&data, sizeof(data));
+	return miniport_set_info(handle, oid, &data, sizeof(data));
 }
 
 #ifdef HAVE_ETHTOOL
@@ -972,7 +972,6 @@ static void set_packet_filter(struct ndis_handle *handle)
 		   (dev->flags & IFF_ALLMULTI) ||
 		   (handle->multicast_list == 0)) {
 		/* Too many to filter perfectly -- accept all multicasts. */
-
 		DBGTRACE1("Multicast list too long. Accepting all");
 		packet_filter |= NDIS_PACKET_TYPE_ALL_MULTICAST;
 	} else if (dev->mc_count > 0) {
@@ -981,7 +980,7 @@ static void set_packet_filter(struct ndis_handle *handle)
 	}
 
 	res = miniport_set_info(handle, OID_GEN_CURRENT_PACKET_FILTER,
-				(char *)&packet_filter, sizeof(packet_filter));
+				&packet_filter, sizeof(packet_filter));
 	if (res && res != NDIS_STATUS_NOT_SUPPORTED)
 		ERROR("Unable to set packet filter (%08X)", res);
 	TRACEEXIT2(return);
@@ -996,13 +995,13 @@ static void update_wireless_stats(struct ndis_handle *handle)
 
 	if (handle->reset_status)
 		return;
-	res = miniport_query_info(handle, OID_802_11_RSSI, (char *)&rssi,
+	res = miniport_query_info(handle, OID_802_11_RSSI, &rssi,
 				  sizeof(rssi));
 	iw_stats->qual.level = rssi;
 
 	memset(&ndis_stats, 0, sizeof(ndis_stats));
 	res = miniport_query_info(handle, OID_802_11_STATISTICS,
-				  (char *)&ndis_stats, sizeof(ndis_stats));
+				  &ndis_stats, sizeof(ndis_stats));
 	if (res == NDIS_STATUS_NOT_SUPPORTED)
 		iw_stats->qual.qual = ((rssi & 0x7F) * 100) / 154;
 	else {
@@ -1165,7 +1164,7 @@ static void check_capa(struct ndis_handle *handle)
 	ndis_key.length = 32;
 	ndis_key.index = 0xC0000001;
 	ndis_key.struct_size = sizeof(ndis_key);
-	res = miniport_set_info(handle, OID_802_11_ADD_KEY, (char *)&ndis_key,
+	res = miniport_set_info(handle, OID_802_11_ADD_KEY, &ndis_key,
 				ndis_key.struct_size);
 
 	DBGTRACE2("add key returns %08X, size = %ld\n",
@@ -1173,8 +1172,7 @@ static void check_capa(struct ndis_handle *handle)
 	if (res != NDIS_STATUS_INVALID_DATA)
 		TRACEEXIT1(return);
 	res = miniport_query_info(handle, OID_802_11_ASSOCIATION_INFORMATION,
-				  (char *)&ndis_assoc_info,
-				  sizeof(ndis_assoc_info));
+				  &ndis_assoc_info, sizeof(ndis_assoc_info));
 	DBGTRACE2("assoc info returns %d", res);
 	if (res == NDIS_STATUS_NOT_SUPPORTED)
 		TRACEEXIT1(return);
