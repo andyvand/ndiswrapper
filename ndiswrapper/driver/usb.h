@@ -37,7 +37,7 @@
 
 union pipe_handle {
 	void *handle;
-	struct packed {
+	struct {
 		unsigned char endpointAddr;
 		unsigned char pipeType;
 		unsigned char interval;
@@ -45,7 +45,7 @@ union pipe_handle {
 	} encoded;
 };
 
-struct packed usbd_pipe_information {
+struct usbd_pipe_information {
 	unsigned short maxPacketSize;
 	unsigned char endpointAddr;
 	unsigned char interval;
@@ -55,7 +55,7 @@ struct packed usbd_pipe_information {
 	unsigned long fill;
 };
 
-struct packed usbd_interface_information {
+struct usbd_interface_information {
 	unsigned short length;
 	unsigned char intfNum;
 	unsigned char altSet;
@@ -68,12 +68,12 @@ struct packed usbd_interface_information {
 	struct usbd_pipe_information pipes[1];
 };
 
-struct packed usbd_interface_list_entry {
+struct usbd_interface_list_entry {
 	struct usb_interface_descriptor *intfDesc;
 	struct usbd_interface_information *intf;
 };
 
-struct packed nt_urb_header {
+struct nt_urb_header {
 	unsigned short length;
 	unsigned short function;
 	long status;
@@ -81,14 +81,14 @@ struct packed nt_urb_header {
 	unsigned long fill2;
 };
 
-struct packed select_configuration {
+struct select_configuration {
 	struct nt_urb_header header;
 	struct usb_config_descriptor *config;
 	void *configHandle;
 	struct usbd_interface_information intf;
 };
 
-struct packed bulk_or_intr_transfer {
+struct bulk_or_intr_transfer {
 	struct nt_urb_header header;
 	union pipe_handle pipeHandle;
 	unsigned long transferFlags;
@@ -99,7 +99,7 @@ struct packed bulk_or_intr_transfer {
 	void *fill3[8];
 };
 
-struct packed control_descriptor_request {
+struct control_descriptor_request {
 	struct nt_urb_header header;
 	void *fill1;
 	unsigned long fill2;
@@ -114,12 +114,12 @@ struct packed control_descriptor_request {
 	unsigned short langid;
 };
 
-struct packed pipe_request {
+struct pipe_request {
 	struct nt_urb_header header;
 	union pipe_handle pipeHandle;
 };
 
-struct packed vendor_or_class_request {
+struct vendor_or_class_request {
 	struct nt_urb_header header;
 	void *fill1;
 	unsigned long transferFlags;
