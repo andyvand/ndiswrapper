@@ -941,7 +941,7 @@ static void hangcheck_reinit(struct ndis_handle *handle)
 
 }
 
-static void hangcheck_add(struct ndis_handle *handle)
+void hangcheck_add(struct ndis_handle *handle)
 {
 	if(!handle->driver->miniport_char.hangcheck)
 		return;
@@ -951,7 +951,7 @@ static void hangcheck_add(struct ndis_handle *handle)
 	hangcheck_reinit(handle);
 }
 
-static void hangcheck_del(struct ndis_handle *handle)
+void hangcheck_del(struct ndis_handle *handle)
 {
 	if(!handle->driver->miniport_char.hangcheck)
 		return;
@@ -1172,7 +1172,7 @@ void ndis_sendpacket_done(struct ndis_handle *handle, struct ndis_packet *packet
 	kfree(packet);
 }
 
-static int ndiswrapper_pm_callback(struct pm_dev *pm_dev, pm_request_t rqst,
+int ndiswrapper_pm_callback(struct pm_dev *pm_dev, pm_request_t rqst,
 				   void *data)
 {
 	struct net_device *dev;
