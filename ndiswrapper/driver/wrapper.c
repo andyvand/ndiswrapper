@@ -566,17 +566,13 @@ static int send_packet(struct ndis_handle *handle, struct ndis_packet *packet)
 	int res;
 
 	DBGTRACE("%s: packet = %p\n", __FUNCTION__, packet);
-	if (!packet)
-		return 1;
 
 	if(handle->driver->miniport_char.send_packets)
 	{
 		struct ndis_packet *packets[1];
 		packets[0] = packet;
 //		DBGTRACE("Calling send_packets at %08X rva(%08X)\n", (int)handle->driver->miniport_char.send_packets, (int)handle->driver->miniport_char.send_packets - image_offset);
-		spin_lock(&handle->send_packet_lock);
 		handle->driver->miniport_char.send_packets(handle->adapter_ctx, &packets[0], 1);
-		spin_unlock(&handle->send_packet_lock);
 		
 
 		if(handle->serialized)
@@ -593,29 +589,16 @@ static int send_packet(struct ndis_handle *handle, struct ndis_packet *packet)
 	else if(handle->driver->miniport_char.send)
 	{
 //		DBGTRACE("Calling send at %08X rva(%08X)\n", (int)handle->driver->miniport_char.send, (int)handle->driver->miniport_char.send_packets - image_offset);
-		spin_lock(&handle->send_packet_lock);
 		res = handle->driver->miniport_char.send(handle->adapter_ctx, packet, 0);
-		spin_unlock(&handle->send_packet_lock);
 	}
 	else
 	{
 		DBGTRACE("%s: No send handler\n", __FUNCTION__);
-		PCI_DMA_UNMAP_SINGLE(handle->pci_dev, packet->dataphys,
-				     packet->len, PCI_DMA_TODEVICE);
-		kfree(packet);
-		return 1;
+		res = NDIS_STATUS_FAILURE;
 	}
 
-	if(res)
-		DBGTRACE("send_packets returning %08X\n", res);
-		
+	DBGTRACE("send_packets returning %08X\n", res);
 
-	/* If the driver returns...
-	 * NDIS_STATUS_SUCCESS - we still own the packet and driver will not call NdisMSendComplete.
-	 * NDIS_STATUS_PENDING - the driver owns the packet and will return it using NdisMSendComplete.
-	 * NDIS_STATUS_RESOURCES - and driver is serialized: Requeue it!
-	 * any other status - we still own it.
-	 */
 	return res;
 }
 
@@ -641,7 +624,23 @@ static void xmit_bh(void *param)
 		spin_unlock_bh(&handle->xmit_ring_lock);
 
 		packet = init_packet(handle, buffer);
+		if (!packet)
+		{
+			printk(KERN_ERR "%s: couldn't get a packet\n",
+			       __FUNCTION__);
+			return;
+		}
+
 		res = send_packet(handle, packet);
+		/* If the driver returns...
+		 * NDIS_STATUS_SUCCESS - we own the packet and
+		 *    driver will not call NdisMSendComplete.
+		 * NDIS_STATUS_PENDING - the driver owns the packet 
+		 *    and will return it using NdisMSendComplete.
+		 * NDIS_STATUS_RESOURCES - (driver is serialized)
+		 *    Requeue it when resources are available.
+		 * NDIS_STATUS_FAILURE - drop the packet?
+		 */
 		switch(res)
 		{
 		case NDIS_STATUS_SUCCESS:
@@ -650,11 +649,12 @@ static void xmit_bh(void *param)
 		case NDIS_STATUS_PENDING:
 			break;
 		case NDIS_STATUS_RESOURCES:
-			/* should be serialized driver only? */
+			/* should be serialized driver */
+			if (!handle->serialized)
+				printk(KERN_ERR "%s: deserialized driver returning NDIS_STATUS_RESOURCES!\n", __FUNCTION__);
 			spin_lock_bh(&handle->xmit_ring_lock);
 			handle->send_status = res;
 			spin_unlock_bh(&handle->xmit_ring_lock);
-			netif_stop_queue(handle->net_dev);
 			/* this buffer will be tried again later */
 			free_packet(handle, packet);
 			return;
@@ -1029,7 +1029,6 @@ static int ndis_init_one(struct pci_dev *pdev,
 		goto out_setup;
 	}
 	handle->pm_state = NDIS_PM_STATE_D0;
-	spin_lock_init(&handle->send_packet_lock);
 	hangcheck_add(handle);
 	statcollector_add(handle);
 	ndiswrapper_procfs_add_iface(handle);
