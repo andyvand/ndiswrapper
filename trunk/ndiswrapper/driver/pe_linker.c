@@ -36,6 +36,9 @@ static struct exports exports[40];
 static int num_exports;
 
 #define RVA2VA(image, rva, type) (type)(ULONG_PTR)((void *)image + rva)
+#define CHECK_SZ(a,b) { if (sizeof(a) != b) {				\
+			ERROR("%s is bad, got %zd, expected %d",	\
+			      #a , sizeof(a), (b)); return -EINVAL; } }
 
 #ifdef TEST_LOADER
 #define WRAP_EXPORT_FUNC char *
@@ -94,8 +97,8 @@ static void *get_dll_init(char *name)
 	return NULL;
 }
 
-
-static const char image_directory_name[15][15] = {
+#if DEBUG >= 3
+static const char *image_directory_name[] = {
 	"EXPORT",
 	"IMPORT",
 	"RESOURCE",
@@ -111,6 +114,8 @@ static const char image_directory_name[15][15] = {
 	"IAT",
 	"DELAY_IMPORT",
 	"COM_DESCRIPTOR" };
+#endif
+
 /*
  * Find and validate the coff header
  *
@@ -119,6 +124,7 @@ static int check_nt_hdr(IMAGE_NT_HEADERS *nt_hdr)
 {
 	int i;
 	WORD attr;
+	PIMAGE_OPTIONAL_HEADER opt_hdr;
 
 	/* Validate the "PE\0\0" signature */
 	if (nt_hdr->Signature != IMAGE_NT_SIGNATURE) {
@@ -126,9 +132,10 @@ static int check_nt_hdr(IMAGE_NT_HEADERS *nt_hdr)
 		return -EINVAL;
 	}
 
+	opt_hdr = &nt_hdr->OptionalHeader;
 	/* Make sure Image is PE32 or PE32+ */
-	if(nt_hdr->OptionalHeader.Magic != IMAGE_NT_OPTIONAL_HDR_MAGIC) {
-		ERROR("bad magic: %04X", nt_hdr->OptionalHeader.Magic);
+	if(opt_hdr->Magic != IMAGE_NT_OPTIONAL_HDR_MAGIC) {
+		ERROR("bad magic: %04X", opt_hdr->Magic);
 		return -EINVAL;
 	}
 
@@ -163,22 +170,21 @@ static int check_nt_hdr(IMAGE_NT_HEADERS *nt_hdr)
 	if(nt_hdr->FileHeader.NumberOfSections == 0)
 		return -EINVAL;
 
-	if(nt_hdr->OptionalHeader.SectionAlignment <
-	   nt_hdr->OptionalHeader.FileAlignment) {
+	if(opt_hdr->SectionAlignment <
+	   opt_hdr->FileAlignment) {
 		ERROR("Alignment mismatch: secion: 0x%x, file: 0x%x",
-		      nt_hdr->OptionalHeader.SectionAlignment,
-		      nt_hdr->OptionalHeader.FileAlignment);
+		      opt_hdr->SectionAlignment, opt_hdr->FileAlignment);
 		return -EINVAL;
 	}
 
 	DBGTRACE1("Number of DataDictionary entries %d",
-		  nt_hdr->OptionalHeader.NumberOfRvaAndSizes);
-	for(i=0; i< nt_hdr->OptionalHeader.NumberOfRvaAndSizes; i++) {
+		  opt_hdr->NumberOfRvaAndSizes);
+	for(i=0; i< opt_hdr->NumberOfRvaAndSizes; i++) {
 		DBGTRACE3("DataDirectory %s RVA:%X Size:%d",
 			  (i<=IMAGE_DIRECTORY_ENTRY_COM_DESCRIPTOR)?
 			  image_directory_name[i] : "Unknown",
-			  nt_hdr->OptionalHeader.DataDirectory[i].VirtualAddress,
-			  nt_hdr->OptionalHeader.DataDirectory[i].Size);
+			  opt_hdr->DataDirectory[i].VirtualAddress,
+			  opt_hdr->DataDirectory[i].Size);
 	}
 
 	if((nt_hdr->FileHeader.Characteristics & IMAGE_FILE_DLL))
@@ -399,8 +405,6 @@ static int fix_pe_image(struct pe_image *pe)
 		return 0;
 	}
 
-	DBGTRACE1("image must be re-written in memory");
-
 	image_size = pe->opt_hdr->SizeOfImage;
 #ifdef CONFIG_64BIT
 	image = __vmalloc(image_size, GFP_KERNEL | __GFP_HIGHMEM,
@@ -446,9 +450,8 @@ static int fix_pe_image(struct pe_image *pe)
 	pe->size = image_size;
 
 	/* Update our internal pointers */
-	pe->nt_hdr =
-		(IMAGE_NT_HEADERS *)(pe->image +
-				     ((IMAGE_DOS_HEADER *)pe->image)->e_lfanew);
+	pe->nt_hdr = (IMAGE_NT_HEADERS *)
+		(pe->image + ((IMAGE_DOS_HEADER *)pe->image)->e_lfanew);
 	pe->opt_hdr = &pe->nt_hdr->OptionalHeader;
 
 	DBGTRACE3("set nt headers: nt_hdr=%p, opt_hdr=%p, image=%p",
@@ -464,10 +467,6 @@ int load_pe_images(struct pe_image *pe_image, int n)
 
 #ifdef DEBUG
 	/* Sanity checkings */
-#define CHECK_SZ(a,b) { if (sizeof(a) != b) {			 \
-			ERROR("%s is bad, got %zd, expected %d",	\
-			      #a , sizeof(a), (b)); return -EINVAL; } }
-
 	CHECK_SZ(IMAGE_SECTION_HEADER, IMAGE_SIZEOF_SECTION_HEADER);
 	CHECK_SZ(IMAGE_FILE_HEADER, IMAGE_SIZEOF_FILE_HEADER);
 	CHECK_SZ(IMAGE_OPTIONAL_HEADER, IMAGE_SIZEOF_NT_OPTIONAL_HEADER);
@@ -477,7 +476,6 @@ int load_pe_images(struct pe_image *pe_image, int n)
 	CHECK_SZ(IMAGE_EXPORT_DIRECTORY, 40);
 	CHECK_SZ(IMAGE_BASE_RELOCATION, 8);
 	CHECK_SZ(IMAGE_IMPORT_DESCRIPTOR, 20);
-#undef CHECK_SZ
 #endif
 
 	for (i = 0; i < n; i++) {
@@ -526,8 +524,7 @@ int load_pe_images(struct pe_image *pe_image, int n)
 
 		pe->entry =
 			RVA2VA(pe->image,
-			       pe->nt_hdr->OptionalHeader.AddressOfEntryPoint,
-			       void *);
+			       pe->opt_hdr->AddressOfEntryPoint, void *);
 		DBGTRACE1("entry is at %p, rva at %08X", pe_image[i].entry, 
 			  pe->opt_hdr->AddressOfEntryPoint);
 	} for (i = 0; i < n; i++) {
