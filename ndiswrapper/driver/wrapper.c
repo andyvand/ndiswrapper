@@ -37,6 +37,7 @@
 #include "wrapper.h"
 #include "loader.h"
 #include "ndis.h"
+#include "ntoskernel.h"
 
 #ifndef DRV_VERSION
 #error You must run make from the toplevel directory
@@ -2234,6 +2235,8 @@ static void unload_driver(struct ndis_driver *driver)
 		delete_device(device);
 	}
 	kfree(driver);
+
+	wrapper_kfree_all();
 }
 
 /*
