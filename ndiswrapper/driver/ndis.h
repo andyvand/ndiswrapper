@@ -506,11 +506,10 @@ struct ssid_item
 	unsigned char ies[1];
 };
 
-#define MAX_SCAN_ITEMS 20
-struct list_scan
+struct bssid_list
 {
 	unsigned long num_items;
-	struct ssid_item items[MAX_SCAN_ITEMS];
+	struct ssid_item items[1];
 };
 
 #define NDIS_ENCODE_ENABLED 0
