@@ -1080,6 +1080,7 @@ STDCALL void WRAP_EXPORT(NdisAllocateBuffer)
 	 struct ndis_buffer_pool *pool, void *virt, UINT length)
 {
 	int i;
+	ndis_buffer *free;
 
 	TRACEENTER4("pool: %p", pool);
 	if (!pool) {
@@ -1091,20 +1092,17 @@ STDCALL void WRAP_EXPORT(NdisAllocateBuffer)
 	 * same virtual address many times, so we must first check if
 	 * it is already allocated; we use mappedsystemva to store
 	 * given virtual address */
-	for (i = 0; i < pool->num_buffers; i++) {
+	for (i = 0, free = NULL; i < pool->num_buffers; i++) {
 		*buffer = &pool->buffers[i];
 		if ((*buffer)->mappedsystemva == virt)
 			break;
+		if ((*buffer)->mappedsystemva == NULL)
+			free = *buffer;
 	}
-	if (i == pool->num_buffers) {
-		/* it is a new one; look for a free buffer */
-		for (i = 0; i < pool->num_buffers; i++) {
-			*buffer = &pool->buffers[i];
-			if ((*buffer)->mappedsystemva == NULL)
-				break;
-		}
-	}
-	if (i < pool->num_buffers) {
+	if (i == pool->num_buffers)
+		*buffer = free;
+
+	if (*buffer) {
 		MmInitializeMdl(*buffer, virt, length);
 		/* NdisFreeBuffer doesn't pass pool, so we use process
 		 * for pool */
