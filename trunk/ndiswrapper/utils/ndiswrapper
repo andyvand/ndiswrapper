@@ -19,6 +19,7 @@ use Fcntl ':mode';
 
 my @sections;
 my %strings;
+my %version;
 my $driver_name;
 my $confdir = "/etc/ndiswrapper";
 my $instdir;
@@ -109,9 +110,9 @@ sub install
 	
 	loadinf($inf);
 	initStrings(); 
-	parseManu();
+	parseVersion();
 	`cp -u $inf $confdir/$driver_name/$driver_name.inf`;	
-	processFuzz();
+	processPCIFuzz();
 }
 
 
@@ -374,9 +375,9 @@ sub installStatus
 
 
 #
-# Create symlink for general device if not existing
+# Create symlink for PCI general device if not existing
 #
-sub processFuzz
+sub processPCIFuzz
 {
 	my @devs = keys(%fuzzlist);
 	for(my $i = 0; $i < @devs; $i++)
@@ -392,7 +393,7 @@ sub processFuzz
 #
 # Collect a list of supported PCI-Id's so we can add fuzzy entries if needed.
 #
-sub addFuzzEntry
+sub addPCIFuzzEntry
 {
 	my $vendor = shift;
 	my $device = shift;
@@ -412,6 +413,32 @@ sub addFuzzEntry
 	}
 }
 
+
+sub parseVersion
+{
+  my $s = getSection("version");
+  if(!$s)
+    {
+      return;
+    }
+  my @lines = split("\n", $s->{data});
+
+  for(my $i = 0; $i < @lines; $i++)
+    {
+      (my $key, my $val) = getKeyVal($lines[$i]);
+      if($key eq "Provider")
+	{
+	  $val =~ s/"(.+)"/$1/; 
+	  $version{$key} = $val;
+	}
+      if($key eq "DriverVer")
+	{
+	  $val =~ s/"(.+)"/$1/; 
+	  $version{$key} = $val;
+	}
+    }
+  parseManu();
+}
 
 #
 # Parse the [Manufacturer] section.
@@ -434,6 +461,11 @@ sub parseManu
 	{
 		my $line = remComment($lines[$i]);
 		(my $key, my $val) = getKeyVal($line, "=");
+
+		if ($key eq $version{"Provider"})
+		  {
+		    $version{"Provider"} = trim($val);
+		  }
 
 		if($val)
 		{
@@ -477,7 +509,7 @@ sub parseManu
 }
 
 #
-# Parse e vendor section. This section contains the PCI-ids. Each poiting to a section with config info.
+# Parse a vendor section. This section contains the device-ids. Each poiting to a section with config info.
 #	
 sub parseVendor
 {
@@ -502,10 +534,10 @@ sub parseVendor
 			(my $section, my $id) = split(",", $val);
 			$section = trim($section);
 			$id = trim($id);
-			(my $vendor, my $device, my $subvendor, my $subdevice) = parsePCI($id);		
+			(my $bustype, my $vendor, my $device, my $subvendor, my $subdevice) = parseID($id);
 			if($vendor)
 			{
-				parseDevice($flavour, $section, $vendor, $device, $subvendor, $subdevice);
+				parseDevice($flavour, $section, $bustype, $vendor, $device, $subvendor, $subdevice);
 			}
 		}
 	}
@@ -519,6 +551,7 @@ sub parseDevice
 {
 	my $flavour = shift;
 	my $device_sect = shift;
+	my $bustype = shift;
 	my $device = shift;
 	my $vendor = shift;
 	my $subvendor = shift;
@@ -571,7 +604,11 @@ sub parseDevice
 
 	$filename .= ".conf";	
 	
-	addFuzzEntry($device, $vendor, $subvendor, $subdevice);
+	if($bustype == 5)
+	{
+		addPCIFuzzEntry($device, $vendor, $subvendor, $subdevice);
+	}
+
 	if(!open(CONF, ">$confdir/$driver_name/$filename"))
 	{
 		print "Unable to create file $filename";
@@ -580,9 +617,11 @@ sub parseDevice
 
 	printf CONF "NdisVersion|0x50001\n";
 	printf CONF "Environment|1\n";
-	printf CONF "BusType|5\n\n";
+ 	printf CONF "BusType|$bustype\n";
+	my $ver=$version{"DriverVer"};
+	my $provider=$version{"Provider"};
+	printf CONF "ndis_version|$provider,$ver\n\n";
 
-	
 	my @addregs = split(",", $addreg);
 	for(my $i = 0; $i < @addregs; $i++)
 	{
@@ -787,7 +826,7 @@ sub addReg
 			}
 
 			
-			if($gotParam)
+			if($gotParam and $param ne "BusType")
 			{
 				my $s = "$param|$val";
 				if($param_fixlist{"$s"})
@@ -817,23 +856,27 @@ sub substStr
 
 
 #
-# Parse a PCI-id line.
+# Parse a device-id line.
 #
-sub parsePCI
+sub parseID
 {
 	my $s = uc(shift);
 	if($s =~ /PCI\\VEN_(\w+)&DEV_(\w+)&SUBSYS_(\w{4})(\S{4})/)
 	{
-		return ($1, $2, $4, $3);
+		return (5, $1, $2, $4, $3);
 	}
 	elsif($s =~ /PCI\\VEN_(\w+)&DEV_(\w+)/)
 	{
-		return ($1, $2);
+		return (5, $1, $2);
+	}
+	elsif($s =~ /USB\\VID_(\w+)&PID_(\w+)/)
+	{
+		return (0, $1, $2);
 	}
 }
 
 #
-# remove whitespace at front and end.
+# remove whitsepace at front and end.
 #
 sub trim
 {
