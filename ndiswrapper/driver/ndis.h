@@ -331,6 +331,38 @@ struct packed wep_req
 	unsigned char keymaterial[NDIS_ENCODING_TOKEN_MAX];
 };
 
+enum auth_mode
+{
+	NDIS_ENCODE_OPEN,
+	NDIS_ENCODE_RESTRICTED,
+	NDIS_ENCODE_OPEN_RESTRICTED,
+};
+
+enum wep_status
+{
+	NDIS_ENCODE_ENABLED,
+	NDIS_ENCODE_DISABLED,
+	NDIS_ENCODE_NOKEY
+};
+
+enum op_mode
+{
+	NDIS_MODE_ADHOC,
+	NDIS_MODE_INFRA,
+	NDIS_MODE_AUTO
+};
+
+#define MAX_WEP_KEYS 4
+struct wep_info
+{
+	struct wep_key
+	{
+		unsigned int length;
+		unsigned char key[NDIS_ENCODING_TOKEN_MAX];
+	} keys[MAX_WEP_KEYS];
+	int active;
+};
+
 struct packed ndis_configuration
 {
 	__u32 length;
@@ -427,14 +459,13 @@ struct packed ndis_handle
 	unsigned long scan_timestamp;
 
 	u32 link_status;
-	struct wep_req wep;
+	struct wep_info wep_info;
 	char nick[IW_ESSID_MAX_SIZE+1];
 	spinlock_t send_packet_lock;
 
 	u32 pci_state[16];
 	unsigned int pm_state;
 
-	int wireless_mode;
 	struct iw_essid essid;
 
 	struct list_head recycle_packets;
@@ -511,18 +542,6 @@ struct bssid_list
 	unsigned long num_items;
 	struct ssid_item items[1];
 };
-
-#define NDIS_ENCODE_ENABLED 0
-#define NDIS_ENCODE_DISABLED 1
-#define NDIS_ENCODE_NOKEY 2
-
-#define NDIS_ENCODE_OPEN 0
-#define NDIS_ENCODE_RESTRICTED 1
-#define NDIS_ENCODE_OPEN_RESTRICTED 2
-
-#define NDIS_MODE_ADHOC 0
-#define NDIS_MODE_INFRA 1
-#define NDIS_MODE_AUTO 2
 
 #define NDIS_PRIV_ACCEPT_ALL 0
 #define NDIS_PRIV_WEP 1
