@@ -1075,7 +1075,7 @@ STDCALL NT_STATUS WRAP_EXPORT(KeDelayExecutionThread)
 STDCALL KPRIORITY WRAP_EXPORT(KeQueryPriorityThread)
 	(void *thread)
 {
-	long prio;
+	KPRIORITY prio;
 
 	TRACEENTER5("thread = %p", thread);
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,0)

@@ -465,12 +465,13 @@ static inline void init_dpc(struct kdpc *kdpc, void *func, void *ctx)
 
 static inline ULONG SPAN_PAGES(ULONG_PTR ptr, ULONG length)
 {
-	ULONG_PTR start, end, n;
+	ULONG_PTR start, end;
+	ULONG n;
 
 	start = (ptr & PAGE_MASK);
 	end = (ptr + length + PAGE_SIZE - 1) & PAGE_MASK;
 	n = (end - start) / PAGE_SIZE;
-	return (ULONG)n;
+	return n;
 }
 
 /* DEBUG macros */
