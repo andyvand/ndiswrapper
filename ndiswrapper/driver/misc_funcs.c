@@ -540,6 +540,12 @@ NOREGPARM char *WRAP_EXPORT(_win_strstr)
 	return strstr(s1, s2);
 }
 
+NOREGPARM char *WRAP_EXPORT(_win_strchr)
+	(const char *s, int c)
+{
+	return strchr(s, c);
+}
+
 NOREGPARM void *WRAP_EXPORT(_win_memset)
 	(void *s, char c, SIZE_T count)
 {
