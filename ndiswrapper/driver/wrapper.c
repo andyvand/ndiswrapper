@@ -843,6 +843,9 @@ static int ndis_get_scan(struct net_device *dev, struct iw_request_info *info,
 	if (!handle->scan_timestamp)
 		return -EOPNOTSUPP;
 
+	if (time_before(handle->scan_timestamp + 10 * HZ, jiffies))
+		return -EOPNOTSUPP;
+
 	if (time_before(jiffies, handle->scan_timestamp + 3 * HZ))
 		return -EAGAIN;
 	
