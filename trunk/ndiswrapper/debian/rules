@@ -157,6 +157,7 @@ source: build-source-prep common-prolog build-source common-epilog
 	dh_builddeb --destdir=$(MODDIR)
 
 clean: clean-module clean-utils clean-source
+	-rm -f debian/changelog debian/control debian/dirs
 
 binary:
 	$(MAKE) -f debian/rules binary-utils
@@ -164,4 +165,5 @@ binary:
 
 .PHONY: binary binary-module binary-utils build-utils build-utils-prep \
 	common-epilog common-prolog clean-utils clean-module check-perms \
-	clean build-module build-module-prep
+	clean build-module build-module-prep source build-source-prep \
+	build-source clean-source
