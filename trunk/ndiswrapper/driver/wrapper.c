@@ -247,7 +247,7 @@ static int ndis_get_name(struct net_device *dev, struct iw_request_info *info,
 		strncpy(wrqu->name, "IEEE 802.11", sizeof(wrqu->name)-1);
 	else
 		if (network_type >= 0 && 
-			network_type <= (sizeof(types)/sizeof(types[0])))
+			network_type < (sizeof(types)/sizeof(types[0])))
 			strncpy(wrqu->name, types[network_type], sizeof(wrqu->name)-1);
 		else
 			strncpy(wrqu->name, "IEEE 802.11", sizeof(wrqu->name)-1);
@@ -452,6 +452,105 @@ static int ndis_get_wep(struct net_device *dev, struct iw_request_info *info,
 	return 0;
 }
 	
+static int ndis_set_scan(struct net_device *dev, struct iw_request_info *info,
+			   union iwreq_data *wrqu, char *extra)
+{
+	struct ndis_handle *handle = dev->priv;
+	int scan, res, written, needed;
+	struct list_scan list_scan;
+
+	scan = 0;
+	res = handle->driver->miniport_char.setinfo(handle->adapter_ctx, NDIS_OID_BSSID_LIST_SCAN, (char*)&list_scan, sizeof(list_scan), &written, &needed);
+	if (res)
+		return -1;
+	return 0;
+}
+
+char *ndis_translate_scan(struct net_device *dev, char *event, char *end_buf,
+		struct ssid_item item)
+{
+	struct iw_event iwe;
+	char *current_val;
+	int i;
+
+	/* add mac address */
+	iwe.cmd = SIOCGIWAP;
+	iwe.u.ap_addr.sa_family = ARPHRD_ETHER;
+	memcpy(iwe.u.ap_addr.sa_data, item.mac, ETH_ALEN);
+	event = iwe_stream_add_event(event, end_buf, &iwe, IW_EV_ADDR_LEN);
+
+	/* add essid */
+	iwe.u.data.length = item.ssid.length;
+	if (iwe.u.data.length > IW_ESSID_MAX_SIZE)
+		iwe.u.data.length = IW_ESSID_MAX_SIZE;
+	iwe.cmd = SIOCGIWESSID;
+	iwe.u.data.flags = 1;
+	event = iwe_stream_add_point(event, end_buf, &iwe, item.ssid.ssid);
+
+	/* add mode */
+	iwe.cmd = SIOCGIWMODE;
+	if (item.net_type == NDIS_MODE_ADHOC)
+		iwe.u.mode = IW_MODE_ADHOC ;
+	else if (item.net_type == NDIS_MODE_INFRA)
+		iwe.u.mode = IW_MODE_INFRA;
+	else // if (item.net_type == NDIS_MODE_AUTO)
+		iwe.u.mode = IW_MODE_AUTO;
+	event = iwe_stream_add_event(event, end_buf, &iwe, IW_EV_UINT_LEN);
+
+	/* add freq */
+	iwe.cmd = IWEVQUAL;
+	iwe.u.qual.level = item.rssi;
+	iwe.u.qual.noise = 0;
+	iwe.u.qual.qual = 0;
+	event = iwe_stream_add_event(event, end_buf, &iwe, IW_EV_QUAL_LEN);
+
+	/* add key info */
+	iwe.cmd = SIOCGIWENCODE;
+	if (item.privacy == NDIS_PRIV_ACCEPT_ALL)
+		iwe.u.data.flags = IW_ENCODE_DISABLED;
+	else
+		iwe.u.data.flags = IW_ENCODE_ENABLED | IW_ENCODE_NOKEY;
+	iwe.u.data.length = 0;
+	event = iwe_stream_add_point(event, end_buf, &iwe, item.ssid.ssid);
+
+	/* add rate */
+	current_val = event + IW_EV_LCP_LEN;
+	iwe.cmd = SIOCGIWRATE;
+	iwe.u.bitrate.fixed = iwe.u.bitrate.disabled = 0;
+	for (i = 0 ; i < 8 ; i++) {
+		if (item.rates[i] == 0)
+			break;
+		iwe.u.bitrate.value = ((item.rates[i] & 0x7f) * 500000);
+		current_val = iwe_stream_add_value(event, current_val, end_buf, &iwe, IW_EV_PARAM_LEN);
+	}
+	if ((current_val - event) > IW_EV_LCP_LEN)
+		event = current_val;
+	return event;
+}
+
+static int ndis_get_scan(struct net_device *dev, struct iw_request_info *info,
+			   union iwreq_data *wrqu, char *extra)
+{
+	struct ndis_handle *handle = dev->priv;
+	int i, status, res, written, needed;
+	struct list_scan list_scan;
+	char *event = extra;
+
+	status = 0;
+	res = doquery(handle, NDIS_OID_BSSID_LIST, (char*)&list_scan, sizeof(list_scan), &written, &needed);
+
+	if (res)
+		return -1;
+
+	for (i = 0 ; i < list_scan.num_items && i < MAX_LIST_SCAN ; i++)
+		event = ndis_translate_scan(dev, event,
+				extra + sizeof(list_scan.items[i]),
+				list_scan.items[i]);
+	wrqu->data.length = event - extra;
+	wrqu->data.flags = 0;
+	return 0;
+}
+
 static const iw_handler	ndis_handler[] = {
 	//[SIOCGIWSENS    - SIOCIWFIRST] = ndis_get_sens,
 	[SIOCGIWNAME	- SIOCIWFIRST] = ndis_get_name,
@@ -468,6 +567,8 @@ static const iw_handler	ndis_handler[] = {
 	[SIOCGIWAP	- SIOCIWFIRST] = ndis_get_ap_address,
 	[SIOCSIWENCODE	- SIOCIWFIRST] = ndis_set_wep,
 	[SIOCGIWENCODE	- SIOCIWFIRST] = ndis_get_wep,
+	[SIOCSIWSCAN	- SIOCIWFIRST] = ndis_set_scan,
+	[SIOCGIWSCAN	- SIOCIWFIRST] = ndis_get_scan,
 };
 
 static const struct iw_handler_def ndis_handler_def = {
