@@ -424,6 +424,11 @@ STDCALL void NdisAllocateSpinLock(spinlock_t **lock)
 
 STDCALL void NdisFreeSpinLock(spinlock_t **lock)
 {
+	if(!lock)
+	{
+		DBGTRACE("%s: NULL\n", __FUNCTION__);
+		return;       
+	}
 	if(*lock)
 		kfree(*lock);
 	*lock = NULL;
@@ -894,11 +899,23 @@ STDCALL void NdisMSleep(unsigned long us_to_sleep)
 	} 
 }
 
-STDCALL void NdisGetCurrentSystemTime(unsigned long *time)
+STDCALL void NdisGetCurrentSystemTime(u64 *time)
 {
-	/* This is totally bogus, but at least to increases... */
-	time[0] = jiffies;	
-	time[1] = 0;	
+#define TICKSPERSEC             10000000
+#define SECSPERDAY              86400
+ 
+/* 1601 to 1970 is 369 years plus 89 leap days */
+#define SECS_1601_TO_1970       ((369 * 365 + 89) * (u64)SECSPERDAY)
+#define TICKS_1601_TO_1970      (SECS_1601_TO_1970 * TICKSPERSEC)
+
+	struct timeval now;
+	u64 t;
+ 
+	do_gettimeofday(&now);
+	t = (u64) now.tv_sec * TICKSPERSEC;
+	t += now.tv_usec * 10 + TICKS_1601_TO_1970;
+	DBGTRACE("%s: %llu\n", __FUNCTION__, t);
+	*time = t;
 }
 
 
@@ -911,6 +928,19 @@ STDCALL unsigned int NdisMRegisterIoPortRange(void **virt, struct ndis_handle *h
 }
 
 
+/*
+ * Arguments:
+ * ndis_handle MiniportAdapterHandle: Handle input to MiniportInitialize
+ * int Dma64BitAddress: Boolean if NIC can handle 64 bit addresses
+ * unsigned long MaximumPhysicalMapping: Number of bytes the NIC can transfer on a single DMA operation
+ */
+STDCALL int NdisMInitializeScatterGatherDma(struct ndis_handle MiniportAdapterHandle,
+                                            int Dma64BitAddress,
+                                            unsigned long MaximumPhysicalMapping)
+{
+       DBGTRACE("NdisMInitializeScatterGatherDma: 64bit=%d, maxlen=%ld\n",Dma64BitAddress, MaximumPhysicalMapping);
+       return NDIS_STATUS_SUCCESS;
+ }
 
 /* Unimplemented...*/
 STDCALL void NdisInitAnsiString(void *src, void *dst) {UNIMPL();}
@@ -931,7 +961,6 @@ STDCALL void NdisDprAcquireSpinLock(void){UNIMPL();}
 STDCALL void NdisDprReleaseSpinLock(void){UNIMPL();}
 STDCALL void NdisInterlockedIncrement(void){UNIMPL();}
 STDCALL void NdisSetEvent(void){UNIMPL();}
-STDCALL void NdisMInitializeScatterGatherDma(void){UNIMPL();}
 STDCALL void NdisSystemProcessorCount(void){UNIMPL();}
 STDCALL void NdisMGetDmaAlignment(void){UNIMPL();}
 STDCALL void NdisUnicodeStringToAnsiString(void){UNIMPL();}

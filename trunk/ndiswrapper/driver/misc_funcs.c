@@ -89,7 +89,7 @@ STDCALL void WRITE_REGISTER_USHORT(unsigned int reg, unsigned short val)
 STDCALL void WRITE_REGISTER_UCHAR(unsigned int reg, unsigned char val)
 {
 	//DBGTRACE("%s: %08lx=%02x\n", __FUNCTION__, reg, val);
-	writew(val, reg);
+	writeb(val, reg);
 }
 
 STDCALL void KeInitializeEvent(void *event, unsigned int type, unsigned char state)

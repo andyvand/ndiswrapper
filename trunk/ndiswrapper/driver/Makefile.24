@@ -4,6 +4,14 @@ CFLAGS  = -DLINUX -D__KERNEL__ -DMODULE -I$(KERNELDIR)/include \
   -Wall -Wstrict-prototypes -fomit-frame-pointer    \
   -fno-strict-aliasing -pipe -mpreferred-stack-boundary=2 -O2
 
+wrapper.o:	wrapper.c loader.h ndis.h loader.h
+
+loader.o:	loader.c
+
+winsyms.o:	winsyms.c
+
+misc_funcs.o:	misc_funcs.c ndis.h
+  
 MODULE=ndiswrapper
 OBJS = wrapper.o loader.o winsyms.o ndis.o misc_funcs.o
 
