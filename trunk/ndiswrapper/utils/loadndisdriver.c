@@ -519,22 +519,16 @@ int main(int argc, char *argv[0])
 		goto out;
 	}
 
+	res = 0;
 	if (strcmp(argv[3], "-a") == 0)
 	{
 		if (loadall(device))
-			res = -7;
+			info("%s", "couldn't load one or more drivers");
+		else
+			dbg("%s", "all drivers loaded successfully");
 	}
 	else
-	{
-		if (load(device, argv[3]))
-			res = -8;
-	}
-
-	if (res)
-		info("couldn't load one or more drivers (%d)", res);
-	else
-		dbg("%s", "all drivers loaded successfully");
-
+		load(device, argv[3]);
 out:
 	if (device != -1)
 		close(device);
