@@ -10,69 +10,61 @@ Prerequisites
 * The driver has known problems with SMP and will not work reliably with
   it. This includes hyperthreading support, because it implies SMP.
 
+  
+Upgrading
+=========
+
+If you are upgrading from version 0.4 or earlier make sure you delete any
+old version of loadndisdriver and any configuration in modules.conf and
+modprobe.conf since the new commands are not compatible with this release.
+  
 Installation
 ============
-There are two ways of installing ndsiwrapper. You can either use install.sh
-script (step 1) or (if install.sh fails for some reason) install manually
-following steps 2 and above.
 
-1. Use install.sh script
-------------------------
-* Execute install.sh script in the ndiswrapper directory. This should create
-  the driver and configure modules. However, this is not tested extensively,
-  so this may not work for you.
-  * If it works for you, ignore the steps below.
-  * If it doesn't work for you, follow the steps below (and post a
-    message to the mailing list describing why install.sh script failed).
-
-2. Compile the driver
----------------------
-Go to the driver directory and run:
-
-   > make install
-
-3. Compile the loader:
+1. Compile and install
 ----------------------
-Go to the utils directory and run (irrepsecitve of what kernel you are
-running):
+As root run
 
-> make
+> make install
 
-This should produce a loadndisdriver executable. Copy loadndisdriver to
-/usr/sbin.
+This should compile both the kernel module and the userspace utilities.
 
-4. Get the windows driver
--------------------------
-Download the Windows XP drivers for your card and locate the .sys and
-.inf files. Use parseinf to create config file from these.
+2. Install your windows driver
+------------------------------
+Download the Windows XP drivers, unpack it and locate the .inf for your card.
+Run ndiswrapper -i to install the driver
 
-> parseinf <inffile> <sysfile>
+> ndiswrapper -i </path/to/inffile.inf>
 
-This creates /etc/ndiswrapper/config file.
-   
-5. Load the kernel module
--------------------------
+This copies all necessary files to /etc/ndiswrapper and creates the config
+files for your card.
 
-Load the module:
+After installing you can run
 
-   > modprobe ndiswrapper
+> ndiswrapper -l
 
-This will configure wlan0 interface. If a different interface name is
-desired, you can pass the if_name option (e.g., if_name="eth1") to the module.
+to see the status of your installed drivers. If you have installed the correct
+driver you should see something like this: 
 
-6. Load the windows driver
---------------------------
-From the ndiswrapper directory, run:
+Installed ndis drivers:
+bcmwl5  present
 
-> /usr/sbin/loadndisdriver
+Where "present" means that you have a PCI-device present that can be used with the
+driver bcmwl5.
 
-If you get no error the driver should now be loaded and active. You
-can verify this by checking system log (produced by 'dmesg'). If the
-driver is loaded successfully, you should see a message:
+3. Load module
+--------------
+To load the module type
+
+> modprobe ndiswrapper.
+
+If you get no error the driver should now be loaded and active. You can verify
+this by checking system log (produced by 'dmesg'). If the driver is loaded
+successfully, you should see a message:
 
 wlan0: ndiswrapper ethernet device xx:xx:xx:xx:xx:xx
 
-7. Configure interface
+4. Configure interface
 ----------------------
 Use iwconfig to configure wireless network interface. First, locate
 the wireless interface:
@@ -109,30 +101,10 @@ tools to bring up the network; e.g.,
 
 > ifconfig wlan0 up
 
-8. Auto loading of module
--------------------------
-When you have a working setup you may want to automate the driver-loading
+5. Automate
+-----------
+Once everything works fine you can write the correct modeprobe settings to
+load ndiswrapper automatically by running
 
-a) Create alias for the interface:
-
-   alias wlan0 ndiswrapper
-
-b) 
-    For kernel 2.6:
-
-   * Add this line to /etc/modprobe.conf:
-
-        install ndiswrapper /sbin/modprobe --ignore-instasll ndiswrapper;/usr/sbin/loadndisdriver
-
-     Fedora Core 1 (and probably Redhat 9) with kernel 2.6.0 seem to
-     have a slight bug which cause ifup to not recoginize the install
-     line in modprobe.conf. See 
-     http://bugzilla.redhat.com/bugzilla/show_bug.cgi?id=110415
-     for more info and a patch.
-
-   For kernel 2.4:
-
-   * Add this line to /etc/modules.conf:
-
-     post-install ndiswrapper /usr/sbin/loadndisdriver
+> ndiswrapper -m
 

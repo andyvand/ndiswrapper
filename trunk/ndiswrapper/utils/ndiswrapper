@@ -29,6 +29,10 @@ elsif($ARGV[0] eq "-l" and @ARGV == 1)
 {
 	$res = list();
 }
+elsif($ARGV[0] eq "-m" and @ARGV == 1)
+{
+	$res = modconf();
+}
 else
 {
 	usage();
@@ -44,7 +48,8 @@ sub usage
 	      "Manage ndis drivers for ndiswrapper.\n".
 	      "-i inffile   Install driver described by inffile\n".
 	      "-e driver    Remove driver\n".
-	      "-l           List installed drivers\n";
+	      "-l           List installed drivers\n".
+	      "-m           Write configuration for modprobe\n";
 }
 
 
@@ -86,6 +91,8 @@ sub install
 	processFuzz();
 }
 
+
+
 sub isInstalled
 {
 	my $installed;
@@ -120,6 +127,8 @@ sub remove
 sub list
 {
 	my $s;
+
+	my $cards = getPresentCards();
 	open(LS, "ls -1 $confdir|");
 	while(my $f = <LS>)
 	{
@@ -127,7 +136,7 @@ sub list
 		my $mode = (stat("$confdir/$f"))[2];
 		if(S_ISDIR($mode))
 		{
-			$s .= "$f\n";
+			$s .= "$f\t".isinstalled($cards, $f)."\n";
 		}
 	}
 	if($s)
@@ -140,6 +149,194 @@ sub list
 	}
 	close(LS);	
 }
+
+sub modconf
+{
+	my $alias = 0;
+	my $err = 0;
+
+	my @modprobe = ("/sbin/modprobe", "/usr/sbin/modprobe", "modprobe");
+	my $ok = 0;
+	for(my $i = 0; $i < @modprobe; $i++)
+	{
+		if(open(MODPROBE, "$modprobe[$i] -c|"))
+		{
+			$ok = 1;
+			$i = @modprobe;
+		}
+	}
+	if(!$ok)
+	{
+		return -1;
+	}
+
+	while(my $line = <MODPROBE>)
+	{
+		if($line =~ /^alias\s.+\sndiswrapper/)
+		{
+			print "modprobe config already contains alias directive\n\n";
+			$alias = 1;
+		}
+		elsif($line =~ /^install\s.*ndiswrapper/)
+		{
+			print "You should not need an install directive in you modprobe config file.\n";
+			modconf_err($line);
+			$err = 1;
+		}
+		elsif($line =~ /^post-install\s+ndiswrapper/)
+		{
+			print "You should not need a post-install directive in you modprobe config file.\n";
+			modconf_err($line);
+			$err = 1;
+		}
+	}
+	close(MODPROBE);
+
+	if($alias)
+	{
+		return;
+	}
+	
+	my $debian = stat("/etc/debian_version");	
+
+
+	my $v =  `uname -r`;	
+
+
+	$v =~ /(\d+)\.(\d+)\.(\d+)/;
+	my $major = $1;
+	my $minor = $2;
+	my $rev = $3;	
+	my $modconf;
+	if($minor > 4)
+	{
+		if($debian)
+		{
+			$modconf = "/etc/modprobe.d/ndiswrapper" 
+		}
+		else
+		{
+			$modconf = "/etc/modprobe.conf" 
+		}
+	}
+	else
+	{
+		if($debian)
+		{
+			$modconf = "/etc/modutils/ndiswrapper";
+		}
+		else
+		{
+			$modconf = "/etc/modules.conf";
+		}
+	}
+	
+
+	print "Adding \"alias wlan0 ndiswrapper\" to $modconf\n";
+	system("echo \"alias wlan0 ndiswrapper\" >>$modconf");
+	
+    	if($debian)
+	{
+		system("/sbin/update-modules");
+	}
+}
+
+sub modconf_err
+{
+	my $line = shift;
+	print "Please remove the line saying:\n\n";
+	print "$line\n";
+	print "unless you are 100% sure of what you are doing.\n";			
+}
+
+		
+
+
+sub getPresentCards
+{
+#01:00.0 Class 0300: 1002:4c66 (rev 01)
+#        Subsystem: 1043:1732
+	my @cards;
+	
+	my @lspci = ("/sbin/lspci", "/usr/sbin/lspci", "lspci");
+	for(my $i = 0; $i < @lspci; $i++)
+	{
+		if(open(LSPCI, "$lspci[$i] -vn|"))
+		{
+			my $card;
+			while(my $line = <LSPCI>)
+			{
+				if($line =~ /.+Class.+:\s*(.{4}):(.{4}).*/)
+				{
+					my %c;
+					$card = \%c;
+					$card->{vendor} = $1;
+					$card->{device} = $2;
+				}
+				if($line =~ /.+Subsystem:\s*(.{4}):(.{4}).*/)
+				{
+					$card->{subvendor} = $1;
+					$card->{subdevice} = $2;
+
+					push(@cards, $card);
+				}
+					
+			}
+			return \@cards;
+		}
+	}
+}
+
+
+sub isinstalled
+{
+	my $cards = shift; 
+	my $driver = shift;	
+
+	open(LS2, "ls -1 $confdir/$driver|");
+	while(my $device = <LS2>)
+	{
+		chomp($device);
+		my $d = $device;
+		$d =~ s/.conf//;
+		if($d =~ /(.{4}):(.{4}):(.{4}):(.{4})/)
+		{
+			for(my $i = 0; $$cards[$i]; $i++)
+			{
+				if($$cards[$i]->{vendor} == $1 and
+				   $$cards[$i]->{device} == $2 and
+				   $$cards[$i]->{subvendor} == $3 and
+				   $$cards[$i]->{subdevice} == $4)
+				{
+					close(LS2);	
+					return "present";
+				}
+			}
+			
+		}
+		elsif($d =~ /(.{4}):(.{4})/)
+		{
+			for(my $i = 0; $$cards[$i]; $i++)
+			{
+				if($$cards[$i]->{vendor} == $1 and
+				   $$cards[$i]->{device} == $2)
+				{
+					my $mode = (lstat("$confdir/$driver/$device"))[2];
+					if(S_ISLNK($mode))
+					{
+						close(LS2);	
+						return "present,fuzzy";
+					}
+					close(LS2);	
+					return "present";
+				}
+			}
+		}
+	}
+	close(LS2);	
+	return "";
+}
+
 
 
 #
@@ -347,9 +544,9 @@ sub parseDevice
 		return -1;
 	}
 
-	printf CONF "NdisVersion=0x00000002|0x50001\n";
-	printf CONF "Environment=0x00000002|1\n";
-	printf CONF "BusType=0x00000002|5\n\n";
+	printf CONF "NdisVersion|0x50001\n";
+	printf CONF "Environment|1\n";
+	printf CONF "BusType|5\n\n";
 
 	
 	my @addregs = split(",", $addreg);
@@ -488,7 +685,7 @@ sub addReg
 					}
 					if($found == 2)
 					{
-						print CONF "$param|$type|$val\n";
+						print CONF "$param|$val\n";
 						$param = "";
 					}
 				}
@@ -496,7 +693,7 @@ sub addReg
 			else
 			{
 				#print "type 2: $reg_name '$p1', '$p2', '$p3', '$p4':'$line'\n";		
-				print CONF "$p2|$p3|$p4\n";
+				print CONF "$p2|$p4\n";
 			}
 		}
 	}
