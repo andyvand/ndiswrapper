@@ -568,7 +568,7 @@ STDCALL void NdisAdjustBufferLength(struct ndis_buffer *buf, unsigned int len)
 }
 STDCALL void NdisQueryBuffer(struct ndis_buffer *buf, void **adr, unsigned int *len)
 {
-	printk("%s %08x %08x %d\n", __FUNCTION__, (int)buf, (int)buf->data, buf->len);
+	//printk("%s %08x %08x %d\n", __FUNCTION__, (int)buf, (int)buf->data, buf->len);
 	*adr = buf->data;
 	*len = buf->len;
 }
