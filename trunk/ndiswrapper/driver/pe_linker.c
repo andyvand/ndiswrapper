@@ -230,13 +230,14 @@ static int import(void *image, struct coffpe_import_dirent *dirent, char *dll)
 		adr = get_export(symname);
 		if (adr != NULL)
 			DBGTRACE1("found symbol: %s:%s, rva = %08X",
-				  dll, symname, (ULONT_PTR)address_tbl[i]);
+				  dll, symname, (ULONG_PTR)address_tbl[i]);
 		if (adr == NULL) {
 			ERROR("Unknown symbol: %s:%s", dll, symname);
 			ret = -1;
 		}
 		DBGTRACE1("Importing rva %08X: %s : %s",
-			  (UINT)(&address_tbl[i] - image), dll, symname); 
+			  ((UINT)&address_tbl[i] - (UINT)image),
+			  dll, symname); 
 		address_tbl[i] = (ULONG_PTR)adr;
 	}
 	return ret;

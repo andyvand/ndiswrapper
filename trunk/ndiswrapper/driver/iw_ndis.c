@@ -1346,7 +1346,7 @@ static int wpa_set_key(struct net_device *dev, struct iw_request_info *info,
 		res = miniport_set_info(handle, NDIS_OID_ADD_KEY,
 					(char *)&ndis_key, sizeof(ndis_key));
 		if (res == NDIS_STATUS_INVALID_DATA) {
-			DBGTRACE2("adding key failed (%08X), %lu",
+			DBGTRACE2("adding key failed (%08X), %u",
 				  res, ndis_key.struct_size);
 			TRACEEXIT2(return -1);
 		}
