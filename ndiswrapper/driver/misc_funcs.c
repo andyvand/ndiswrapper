@@ -28,6 +28,7 @@ struct wrap_spinlock wrap_allocs_lock;
 void *wrap_kmalloc(size_t size, int flags)
 {
 	struct wrap_alloc *alloc;
+	TRACEENTER4("size = %d, flags = %d", size, flags);
 	if ((flags & GFP_ATOMIC) || irqs_disabled())
 		alloc = kmalloc(sizeof(*alloc), GFP_ATOMIC);
 	else
@@ -43,13 +44,15 @@ void *wrap_kmalloc(size_t size, int flags)
 	wrap_spin_lock(&wrap_allocs_lock);
 	list_add(&alloc->list, &wrap_allocs);
 	wrap_spin_unlock(&wrap_allocs_lock);
-	return alloc->ptr;
+	DBGTRACE4("%p, %p", alloc, alloc->ptr);
+	TRACEEXIT4(return alloc->ptr);
 }
 
 void wrap_kfree(void *ptr)
 {
 	struct list_head *cur, *tmp;
 
+	TRACEENTER4("%p", ptr);
 	wrap_spin_lock(&wrap_allocs_lock);
 	list_for_each_safe(cur, tmp, &wrap_allocs)
 	{
@@ -64,13 +67,14 @@ void wrap_kfree(void *ptr)
 	}
 
 	wrap_spin_unlock(&wrap_allocs_lock);
-	return;
+	TRACEEXIT4(return);
 }
 
 void wrap_kfree_all(void)
 {
 	struct list_head *cur, *tmp;
 
+	TRACEENTER4("%s", "");
 	wrap_spin_lock(&wrap_allocs_lock);
 	list_for_each_safe(cur, tmp, &wrap_allocs)
 	{
@@ -83,7 +87,7 @@ void wrap_kfree_all(void)
 	}
 
 	wrap_spin_unlock(&wrap_allocs_lock);
-	return;
+	TRACEEXIT4(return);
 }
 
 void wrapper_timer_handler(unsigned long data)
@@ -92,6 +96,7 @@ void wrapper_timer_handler(unsigned long data)
 	struct kdpc *kdpc;
 	STDCALL void (*func)(void *res1, void *data, void *res3, void *res4);
 
+	TRACEENTER5("%s", "");
 	if (!timer)
 	{
 		ERROR("%s", "invalid timer");
@@ -116,12 +121,15 @@ void wrapper_timer_handler(unsigned long data)
 
 	if (func)
 		func(kdpc, kdpc->ctx, kdpc->arg1, kdpc->arg2);
+	TRACEEXIT5(return);
 }
 
 void wrapper_init_timer(struct ktimer *ktimer, void *handle)
 {
 	struct wrapper_timer *wrapper_timer;
 	struct ndis_handle *ndis_handle = (struct ndis_handle *)handle;
+
+	TRACEENTER5("%s", "");
 	wrapper_timer = wrap_kmalloc(sizeof(struct wrapper_timer), GFP_ATOMIC);
 	if(!wrapper_timer)
 	{
@@ -144,11 +152,13 @@ void wrapper_init_timer(struct ktimer *ktimer, void *handle)
 		list_add(&wrapper_timer->list, &ndis_handle->timers);
 	DBGTRACE4("added timer %p, wrapper_timer->list %p\n",
 		  wrapper_timer, &wrapper_timer->list);
+	TRACEEXIT5(return);
 }
 
 int wrapper_set_timer(struct wrapper_timer *timer,
                       unsigned long expires, unsigned long repeat)
 {
+	TRACEENTER5("%s", "");
 	if (!timer)
 	{
 		ERROR("%s", "invalid timer");
@@ -170,7 +180,7 @@ int wrapper_set_timer(struct wrapper_timer *timer,
 		DBGTRACE4("modifying timer %p to %lu, %lu",
 			  timer, expires, repeat);
 		mod_timer(&timer->timer, expires);
-		return 1;
+		TRACEEXIT5(return 1);
 	}
 	else
 	{
@@ -179,7 +189,7 @@ int wrapper_set_timer(struct wrapper_timer *timer,
 		timer->timer.expires = expires;
 		add_timer(&timer->timer);
 		timer->active = 1;
-		return 0;
+		TRACEEXIT5(return 0);
 	}
 }
 
@@ -205,7 +215,7 @@ void wrapper_cancel_timer(struct wrapper_timer *timer, char *canceled)
 	timer->repeat = 0;
 	*canceled = del_timer_sync(&(timer->timer));
 	timer->active = 0;
-	return;
+	TRACEEXIT5(return);
 }
 
 NOREGPARM int wrap_sprintf(char *buf, const char *format, ...)
