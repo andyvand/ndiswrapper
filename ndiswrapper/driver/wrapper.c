@@ -59,6 +59,7 @@
 static char *if_name = "wlan%d";
 int proc_uid, proc_gid;
 static int hangcheck_interval;
+static int hangcheck;
 
 MODULE_PARM(if_name, "s");
 MODULE_PARM_DESC(if_name, "Network interface name or template (default: wlan%d)");
@@ -67,10 +68,13 @@ MODULE_PARM_DESC(proc_uid, "The uid of the files created in /proc (default: 0)."
 MODULE_PARM(proc_gid, "i");
 MODULE_PARM_DESC(proc_gid, "The gid of the files created in /proc (default: 0).");
 MODULE_PARM(hangcheck_interval, "i");
-/* negative value - no hangcheck, 0 - default value provided by NDIS driver,
+/* 0 - default value provided by NDIS driver,
  * positive value - force hangcheck interval to that many seconds
  */
 MODULE_PARM_DESC(hangcheck_interval, "The interval, in seconds, for checking if driver is hung. (default: 0)");
+
+MODULE_PARM(hangcheck, "i");
+MODULE_PARM_DESC(hangcheck, "Boolean for checking if driver is hung: 0 to disable hangcheck and 1 to enable hangcheck. (default: 0)");
 
 /* List of loaded drivers */
 LIST_HEAD(ndis_driverlist);
@@ -100,18 +104,19 @@ int doreset(struct ndis_handle *handle)
 	if (down_interruptible(&handle->ndis_comm_mutex))
 		TRACEEXIT3(return NDIS_STATUS_FAILURE);
 
-	handle->reset_status = 0;
+	/* reset_status is used for two purposes: to check if windows
+	 * driver needs us to reset filters etc (as per NDIS) and to
+	 * check if another reset is in progress */
+	handle->reset_status = NDIS_STATUS_PENDING;
+	handle->ndis_comm_res = NDIS_STATUS_PENDING;
 	res = miniport->reset(&handle->reset_status, handle->adapter_ctx);
 
-	if (res == NDIS_STATUS_PENDING)
-	{
-		/* wait for NdisMResetComplete */
-		if (down_interruptible(&handle->ndis_comm_done))
-			res = NDIS_STATUS_FAILURE;
-		else
-			res = handle->ndis_comm_res;
-	}
+	/* instead of waiting asynchrounously for NdisMResetComplete,
+	 * we wait for a while; waiting asynchronously seems to lock
+	 * up the keyboard, especially for Centrino 2200 */
 	mdelay(20);
+	if (res)
+		res = handle->ndis_comm_res;
 	up(&handle->ndis_comm_mutex);
 	DBGTRACE3("reset: res = %08X, reset status = %08X",
 		  res, handle->reset_status);
@@ -126,9 +131,9 @@ int doreset(struct ndis_handle *handle)
 		handle->query_complete = &NdisMQueryInformationComplete;
 		handle->set_complete = &NdisMSetInformationComplete;
 		handle->reset_complete = &NdisMResetComplete;
-		handle->reset_status = 0;
 		ndis_set_rx_mode(handle->net_dev);
 	}
+	handle->reset_status = 0;
 
 	TRACEEXIT3(return res);
 }
@@ -353,7 +358,7 @@ static void hangcheck_bh(void *data)
 	TRACEEXIT3(return);
 }
 
-static void hangcheck(unsigned long data)
+static void hangcheck_proc(unsigned long data)
 {
 	struct ndis_handle *handle = (struct ndis_handle *)data;
 	schedule_work(&handle->hangcheck_work);
@@ -363,7 +368,7 @@ static void hangcheck(unsigned long data)
 static void hangcheck_reinit(struct ndis_handle *handle)
 {
 	handle->hangcheck_timer.data = (unsigned long) handle;
-	handle->hangcheck_timer.function = &hangcheck;
+	handle->hangcheck_timer.function = &hangcheck_proc;
 	handle->hangcheck_timer.expires = jiffies + handle->hangcheck_interval;
 	add_timer(&handle->hangcheck_timer);
 
@@ -372,7 +377,7 @@ static void hangcheck_reinit(struct ndis_handle *handle)
 void hangcheck_add(struct ndis_handle *handle)
 {
 	if(!handle->driver->miniport_char.hangcheck ||
-	   handle->hangcheck_interval <= 0)
+	   handle->hangcheck == 0 || handle->hangcheck_interval <= 0)
 		return;
 
 	INIT_WORK(&handle->hangcheck_work, &hangcheck_bh, handle);
@@ -383,7 +388,7 @@ void hangcheck_add(struct ndis_handle *handle)
 void hangcheck_del(struct ndis_handle *handle)
 {
 	if(!handle->driver->miniport_char.hangcheck ||
-	   handle->hangcheck_interval <= 0)
+	   handle->hangcheck == 0 || handle->hangcheck_interval <= 0)
 		return;
 
 	del_timer_sync(&handle->hangcheck_timer);
@@ -1260,6 +1265,7 @@ static struct net_device *ndis_init_netdev(struct ndis_handle **phandle,
 	handle->nick[0] = 0;
 
 	handle->hangcheck_interval = hangcheck_interval;
+	handle->hangcheck = hangcheck;
 	handle->scan_timestamp = 0;
 
 	memset(&handle->essid, 0, sizeof(handle->essid));
@@ -2083,7 +2089,19 @@ static int __init wrapper_init(void)
 	char *env[] = {0};
 	int err;
 
-	printk(KERN_INFO "%s version %s loaded\n", DRV_NAME, DRV_VERSION);
+	printk(KERN_INFO "%s version %s loaded (preempt=%s,smp=%s)\n",
+	       DRV_NAME, DRV_VERSION,
+#if defined CONFIG_PREEMPT
+	       "yes",
+#else
+	       "no",
+#endif
+#ifdef CONFIG_SMP
+	       "yes"
+#else
+	       "no"
+#endif
+		);
         if ( (err = misc_register(&wrapper_misc)) < 0 ) {
                 ERROR("misc_register failed (%d)", err);
 		return err;
