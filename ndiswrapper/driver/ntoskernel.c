@@ -131,6 +131,12 @@ STDCALL void WRAP_EXPORT(KeReleaseSpinLock)
 	KfReleaseSpinLock(FASTCALL_ARGS_2(lock, oldirql));
 }
 
+STDCALL KIRQL WRAP_EXPORT(KeAcquireSpinLockRaiseToDpc)
+        (KSPIN_LOCK *lock)
+{
+        return KfAcquireSpinLock(FASTCALL_ARGS_1(lock));
+}
+
 STDCALL void WRAP_EXPORT(KeReleaseSpinLockFromDpcLevel)
 	(KSPIN_LOCK *lock)
 {
