@@ -31,7 +31,9 @@
 #include <syslog.h>
 #include <stdlib.h>
 
-#include "../driver/wrapper.h"
+#include <linux/ioctl.h>
+
+#include "../driver/loader.h"
 
 #define PROG_NAME "loadndisdriver"
 
