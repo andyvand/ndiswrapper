@@ -308,6 +308,10 @@ struct packed ndis_handle
 	int query_wait_res;
 	int query_wait_done;
 
+	spinlock_t setinfo_lock;
+	int setinfo_wait_res;
+	int setinfo_wait_done;
+
 	int use_scatter_gather;
 };
 
