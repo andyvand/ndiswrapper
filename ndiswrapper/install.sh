@@ -83,23 +83,34 @@ if grep -q ' SMP ' /proc/version; then
     error "SMP is not supported yet; disable SMP in your kernel."
 fi
 
-# locate PCI id
+# install module
 
-NCARDS=$(lspci -n | grep 'Class 0280:' | wc -l)
-
-if [ ${NCARDS} -gt 1 ]; then
-    error "You seem to have more than one 802.11 card; report output of lspci"
-elif [ ${NCARDS} -eq 0 ]; then
-    error "Can't find any 802.11 cards; report output of lspci"
+echo "Executing make install to build the module and loadndisdriver."
+make install
+if [ $? -ne 0 ]; then
+    error "Problems building the module and/or loadndisdriver."
 fi
 
-#PCIID=$(lspci -n | grep `lspci | awk '/Network controller:/ {print $1}'` | awk  '{print $4}')
-PCIID=$(lspci -n | grep 'Class 0280:' | awk  '{print $4}')
+# install loadndisdriver
 
-VENDOR_ID=$(echo ${PCIID} | awk -F : '{print $1}')
-DEVICE_ID=$(echo ${PCIID} | awk -F : '{print $2}')
+while :; do
+    get_resp "Which directory should the loadndisdriver be installed in?" \
+	"${LOADER_DIR}"
+    LOADER_DIR=${RESP}
 
-# install windows drivers
+    if [ -d ${LOADER_DIR} ]; then
+	if install -m 0755 utils/loadndisdriver ${LOADER_DIR}; then
+	    LOADER=${LOADER_DIR}/loadndisdriver
+	    break
+	else
+	    echo "Problem copying the loadndisdriver to ${LOADER_DIR}; try again."
+	fi
+    else
+	echo "Directory ${LOADER_DIR} does not exist; try again."
+    fi
+done
+
+# create config file
 while :; do
     get_resp "Give the full path to .inf file of windows driver?"
     INF=${RESP}
@@ -134,39 +145,12 @@ while :; do
     fi
 done
 
-if [ "$(dirname $INF)" != "${WIN_DRIVERS}" ]; then
-    mkdir -p ${WIN_DRIVERS}
-    install -m 0644 $INF $SYS ${WIN_DRIVERS}
-    INF=${WIN_DRIVERS}/$(basename $INF)
-    SYS=${WIN_DRIVERS}/$(basename $SYS)
-fi
-
-# install module
-
-echo "Executing make install to build the module and loadndisdriver."
-make install
+utils/parseinf $INF $SYS
 if [ $? -ne 0 ]; then
-    error "Problems building the module and/or loadndisdriver."
+    echo "Problem creating config file from inf and sys files; " \
+	    "installation aborted"
+    exit 1
 fi
-
-# install loadndisdriver and add module aliases
-
-while :; do
-    get_resp "Which directory should the loadndisdriver be installed in?" \
-	"${LOADER_DIR}"
-    LOADER_DIR=${RESP}
-
-    if [ -d ${LOADER_DIR} ]; then
-	if install -m 0755 utils/loadndisdriver ${LOADER_DIR}; then
-	    LOADER=${LOADER_DIR}/loadndisdriver
-	    break
-	else
-	    echo "Problem copying the loadndisdriver to ${LOADER_DIR}; try again."
-	fi
-    else
-	echo "Directory ${LOADER_DIR} does not exist; try again."
-    fi
-done
 
 # configure modules
 
@@ -209,7 +193,7 @@ else
 	else
 	    echo -n "post-install ndiswrapper "
 	fi
-	echo "${LOADER} ${VENDOR_ID} ${DEVICE_ID} ${SYS} ${INF}"
+	echo "${LOADER}"
     fi >> ${MOD_CONF}
     
     if [ -f /etc/debian_version ]; then
