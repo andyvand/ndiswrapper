@@ -23,6 +23,7 @@ clean:
 	make -C driver clean
 	make -C utils clean
 	rm -f *~ ndiswrapper.spec
+	rm -fr ${distdir} ${distdir}.tar.gz *.deb patch-stamp
 
 dist:
 	@rm -rf ${distdir}
@@ -53,3 +54,11 @@ rpm: dist ndiswrapper.spec.in
 	fi
 	rpmbuild -ba ndiswrapper.spec
 
+deb: dist
+	@if [ -d debian ]; then \
+		cd $(distdir); cp -a ../debian .; \
+		echo -e "ndiswrapper (${DRV_VERSION}) unstable; urgency=low\n\n  * see ChangeLog for details\n\n -- NdisWrapper Team <ndiswrapper-general@lists.sourceforge.net>  `date '+%a, %d %b %Y %H:%M:%S %z'`" > debian/changelog; \
+		fakeroot make -f debian/rules binary; \
+	else \
+		 echo "Huh?"; \
+	fi
