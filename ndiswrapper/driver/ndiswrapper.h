@@ -91,6 +91,8 @@ typedef task_queue workqueue;
 #define in_atomic() 0
 #endif // CONFIG_PREEMPT
 
+#define __GFP_NOWARN 0
+
 #endif // LINUX_VERSION_CODE
 
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,4,23)
