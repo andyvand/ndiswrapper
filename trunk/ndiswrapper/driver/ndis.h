@@ -463,7 +463,6 @@ struct packed ndis_handle
 	u32 link_status;
 	struct wep_info wep_info;
 	char nick[IW_ESSID_MAX_SIZE+1];
-	spinlock_t send_packet_lock;
 
 	u32 pci_state[16];
 	unsigned int pm_state;
