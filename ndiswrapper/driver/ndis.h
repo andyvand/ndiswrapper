@@ -112,6 +112,8 @@ struct packed ndis_packet
 	unsigned int mediaspecific_size;
 	void *mediaspecific;
 	unsigned int status;
+
+	char fill[4*12];
 };
 
 
