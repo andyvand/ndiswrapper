@@ -34,7 +34,7 @@
 extern void read_inf(FILE *input);
 
 /* need to keep the driver as a global so the parser calls can use it */
-static int device = -1;
+static int device = -1, dumpinf = 0;
 
 static int get_filesize(int fd)
 {
@@ -59,6 +59,8 @@ void found_setting(char *name, char *value)
 		printf("Driver version: %s\n", value);
 	else if (strcmp(name, "NetworkAddress") == 0)
 		return;
+	else if (dumpinf)
+		printf("Setting found: %s = %s\n", name, value);
 	else
 	{
 		struct put_setting setting;
@@ -85,14 +87,26 @@ void found_setting(char *name, char *value)
 
 unsigned int found_heading(char *name)
 {
-	if (strcmp(name, manufacturer) == 0)
+	int x, start = 0;
+	for(x = 0; manufacturer[x] != '\0'; x++)
+		if (manufacturer[x] == ',')
+		{
+			//	printf("%s == %s\n", name, manufacturer + start);
+
+			if (strncmp(name, manufacturer + start, x - start) == 0)
+				return FOUND_DEVICES;
+			start = x + 1;
+		}
+	//	printf("%s == %s\n", name, manufacturer + start);
+	if (strcmp(name, manufacturer + start) == 0)
 		return FOUND_DEVICES;
 	return IGNORE_SECTION;
 }
 
 void found_pci_id(unsigned short vendor, unsigned short device)
 {
-	//	printf("PCI ID: %4.4X:%4.4X\n", vendor, device);
+	if (dumpinf)
+		printf("PCI ID: %4.4X:%4.4X\n", vendor, device);
 }
 
 /*
@@ -107,9 +121,9 @@ static int loadsettings(char *inf_name)
 		perror("Unable to load inf-file");
 		return 1;
 	}
-	printf("Openned the inf file.\n");
 
 	/* call the lex generated parser */
+	printf("Parsing the inf file.\n");
 	read_inf(inf);
 
 	fclose(inf);
@@ -239,36 +253,67 @@ static int get_misc_minor()
 static int hexatoi(char *s)
 {
 	int i;
-	sscanf(s, "%x", &i);
+	if (sscanf(s, "%x", &i) != 1)
+		return -1;
 	return i;
 }
 
 int main(int argc, char* argv[])
 {
-	int misc_minor;
+	int x, vendorid = -1, deviceid = -1, retval = 1;
+	char *driver = NULL, *information = NULL;
 
-	if(argc < 5)
+	for(x = 1; x < argc; x++)
+		if (strcmp(argv[x], "-d") == 0 ||
+			strcmp(argv[x], "--dump-info") == 0)
+			dumpinf = 1;
+		else if (strcasecmp(argv[x] + strlen(argv[x]) - 4, ".sys") == 0)
+			driver = argv[x];
+		else if (strcasecmp(argv[x] + strlen(argv[x]) - 4, ".inf") == 0)
+			information = argv[x];
+		else
+		{
+			int temp = hexatoi(argv[x]);
+			if (temp != -1)
+			{
+				if (vendorid == -1)
+					vendorid = temp;
+				else if (deviceid == -1)
+					deviceid = temp;
+				else
+				{
+					fprintf(stderr, "Vendor and device ids already specified.  Useless number: %s", argv[x]);
+					vendorid = -1;
+					break;
+				}
+			}
+		}
+
+	if (dumpinf &&
+		information != NULL)
+		loadsettings(information);
+	else if (vendorid == -1 ||
+			 deviceid == -1 ||
+			 driver == NULL ||
+			 information == NULL)
+		fprintf(stderr, "Usage: %s [OPTIONS] pci_vendor pci_device windowsdriver.sys windowsdruver.inf \n", argv[0]);
+	else
 	{
-		fprintf(stderr, "Usage: %s pci_vendor pci_device windowsdriver.sys windowsdruver.inf \n", argv[0]);
-		return 1;
+		int misc_minor = get_misc_minor();
+		if(misc_minor == -1)
+			fprintf(stderr, "Cannot find minor for kernel module. Module loaded?\n");
+		else
+		{
+			device = open_misc_device(misc_minor);
+			if(device == -1)
+				perror("Unable to open kernel driver");
+			else
+			{
+				load(vendorid, deviceid, driver, information, device);
+				close(device);
+				retval = 0;
+			}
+		}
 	}
-
-	misc_minor = get_misc_minor();
-	if(misc_minor == -1)
-	{
-		fprintf(stderr, "Cannot find minor for kernel module. Module loaded?\n");
-		return 1;
-	}
-	
-	device = open_misc_device(misc_minor);
-	if(device == -1)
-	{
-		perror("Unable to open kernel driver");
-		return 1;
-	}
-
-	load(hexatoi(argv[1]), hexatoi(argv[2]), argv[3], argv[4], device);
-
-	close(device);
-	return 0;
+	return retval;
 }
