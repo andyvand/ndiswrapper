@@ -292,13 +292,12 @@ _FASTCALL LONG WRAP_EXPORT(InterlockedDecrement)
 	(FASTCALL_DECL_1(LONG volatile *val))
 {
 	LONG x;
-	KIRQL irql;
 
 	TRACEENTER4("%s", "");
-	irql = kspin_lock(&ntoskernel_lock, PASSIVE_LEVEL);
+	kspin_lock(&ntoskernel_lock);
 	(*val)--;
 	x = *val;
-	kspin_unlock(&ntoskernel_lock, irql);
+	kspin_unlock(&ntoskernel_lock);
 	TRACEEXIT4(return x);
 }
 
@@ -306,13 +305,12 @@ _FASTCALL LONG WRAP_EXPORT(InterlockedIncrement)
 	(FASTCALL_DECL_1(LONG volatile *val))
 {
 	LONG x;
-	KIRQL irql;
 
 	TRACEENTER4("%s", "");
-	irql = kspin_lock(&ntoskernel_lock, PASSIVE_LEVEL);
+	kspin_lock(&ntoskernel_lock);
 	(*val)++;
 	x = *val;
-	kspin_unlock(&ntoskernel_lock, irql);
+	kspin_unlock(&ntoskernel_lock);
 	TRACEEXIT4(return x);
 }
 
@@ -320,13 +318,12 @@ _FASTCALL LONG WRAP_EXPORT(InterlockedExchange)
 	(FASTCALL_DECL_2(LONG volatile *target, LONG val))
 {
 	LONG x;
-	KIRQL irql;
 
 	TRACEENTER4("%s", "");
-	irql = kspin_lock(&ntoskernel_lock, PASSIVE_LEVEL);
+	kspin_lock(&ntoskernel_lock);
 	x = *target;
 	*target = val;
-	kspin_unlock(&ntoskernel_lock, irql);
+	kspin_unlock(&ntoskernel_lock);
 	TRACEEXIT4(return x);
 }
 
@@ -334,14 +331,13 @@ _FASTCALL LONG WRAP_EXPORT(InterlockedCompareExchange)
 	(FASTCALL_DECL_3(LONG volatile *dest, LONG xchg, LONG comperand))
 {
 	LONG x;
-	KIRQL irql;
 
 	TRACEENTER4("%s", "");
-	irql = kspin_lock(&ntoskernel_lock, PASSIVE_LEVEL);
+	kspin_lock(&ntoskernel_lock);
 	x = *dest;
 	if (*dest == comperand)
 		*dest = xchg;
-	kspin_unlock(&ntoskernel_lock, irql);
+	kspin_unlock(&ntoskernel_lock);
 	TRACEEXIT4(return x);
 }
 
@@ -461,35 +457,32 @@ STDCALL int WRAP_EXPORT(IoIsWdmVersionAvailable)
 STDCALL void WRAP_EXPORT(KeInitializeEvent)
 	(struct kevent *kevent, enum event_type type, BOOLEAN state)
 {
-	KIRQL irql;
-
 	TRACEENTER3("event = %p, type = %d, state = %d",
 		    kevent, type, state);
-	irql = kspin_lock(&dispatch_event_lock, PASSIVE_LEVEL);
+	kspin_lock(&dispatch_event_lock);
 	kevent->header.type = type;
 	kevent->header.signal_state = state;
-	kspin_unlock(&dispatch_event_lock, irql);
+	kspin_unlock(&dispatch_event_lock);
 }
 
 STDCALL LONG WRAP_EXPORT(KeSetEvent)
 	(struct kevent *kevent, KPRIORITY incr, BOOLEAN wait)
 {
 	LONG old_state = kevent->header.signal_state;
-	KIRQL irql;
 
 	TRACEENTER3("event = %p, type = %d, wait = %d",
 		    kevent, kevent->header.type, wait);
 	if (wait == TRUE)
 		WARNING("wait = %d, not yet implemented", wait);
 
-	irql = kspin_lock(&dispatch_event_lock, PASSIVE_LEVEL);
+	kspin_lock(&dispatch_event_lock);
 	kevent->header.signal_state = TRUE;
 	if (kevent->header.type == SynchronizationEvent)
 		wake_up_nr(&dispatch_event_wq, 1);
 	else
 		wake_up_all(&dispatch_event_wq);
 	DBGTRACE3("woken up %p", kevent);
-	kspin_unlock(&dispatch_event_lock, irql);
+	kspin_unlock(&dispatch_event_lock);
 	TRACEEXIT3(return old_state);
 }
 
@@ -521,7 +514,6 @@ STDCALL NTSTATUS WRAP_EXPORT(KeWaitForSingleObject)
 	struct dispatch_header *header = &kevent->header;
 	int res;
 	long wait_jiffies;
-	KIRQL irql;
 
 	/* Note: for now, object can only point to an event */
 	TRACEENTER2("event = %p, reason = %u, waitmode = %u, alertable = %u,"
@@ -530,14 +522,14 @@ STDCALL NTSTATUS WRAP_EXPORT(KeWaitForSingleObject)
 
 	DBGTRACE2("object type = %d, size = %d", header->type, header->size);
 
-	irql = kspin_lock(&dispatch_event_lock, PASSIVE_LEVEL);
+	kspin_lock(&dispatch_event_lock);
 	if (header->signal_state == TRUE) {
 		if (header->type == SynchronizationEvent)
 			header->signal_state = FALSE;
-		kspin_unlock(&dispatch_event_lock, irql);
+		kspin_unlock(&dispatch_event_lock);
  		TRACEEXIT3(return STATUS_SUCCESS);
 	}
-	kspin_unlock(&dispatch_event_lock, irql);
+	kspin_unlock(&dispatch_event_lock);
 
 	if (timeout) {
 		DBGTRACE2("timeout = %Ld", *timeout);
@@ -693,16 +685,14 @@ STDCALL void WRAP_EXPORT(KeInitializeMutex)
 STDCALL LONG WRAP_EXPORT(KeReleaseMutex)
 	(struct kmutex *mutex, BOOLEAN wait)
 {
-	KIRQL irql;
-
-	irql = kspin_lock(&dispatch_event_lock, PASSIVE_LEVEL);
+	kspin_lock(&dispatch_event_lock);
 	mutex->u.count--;
 	if (mutex->u.count == 0) {
 		mutex->owner_thread = NULL;
-		kspin_unlock(&dispatch_event_lock, irql);
+		kspin_unlock(&dispatch_event_lock);
 		KeSetEvent((struct kevent *)&mutex->dispatch_header, 0, 0);
 	} else
-		kspin_unlock(&dispatch_event_lock, irql);
+		kspin_unlock(&dispatch_event_lock);
 	return mutex->u.count;
 }
 
@@ -888,22 +878,21 @@ STDCALL BOOLEAN WRAP_EXPORT(IoCancelIrp)
 {
 	struct io_stack_location *stack = IRP_CUR_STACK_LOC(irp) - 1;
 	void (*cancel_routine)(struct device_object *, struct irp *) STDCALL;
-	KIRQL irql;
 
 	USBTRACEENTER("irp = %p", irp);
 
-	irql = kspin_lock(&irp_cancel_lock, PASSIVE_LEVEL);
+	kspin_lock(&irp_cancel_lock);
 	cancel_routine = xchg(&irp->cancel_routine, NULL);
 
 	if (cancel_routine) {
-		irp->cancel_irql = irql;
+		irp->cancel_irql = current_irql();
 		irp->pending_returned = 1;
 		irp->cancel = 1;
 		cancel_routine(stack->dev_obj, irp);
-		kspin_unlock(&irp_cancel_lock, irql);
+		kspin_unlock(&irp_cancel_lock);
 		USBTRACEEXIT(return 1);
 	} else {
-		kspin_unlock(&irp_cancel_lock, irql);
+		kspin_unlock(&irp_cancel_lock);
 		USBTRACEEXIT(return 0);
 	}
 }

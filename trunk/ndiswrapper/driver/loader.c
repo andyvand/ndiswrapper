@@ -52,12 +52,11 @@ static struct ndis_driver *ndiswrapper_load_driver(struct ndis_device *device)
 {
 	int err, found;
 	struct ndis_driver *ndis_driver;
-	KIRQL irql;
 
 	TRACEENTER1("device: %04X:%04X:%04X:%04X", device->vendor,
 		    device->device, device->subvendor, device->subdevice);
 	found = 0;
-	irql = kspin_lock(&loader_lock, PASSIVE_LEVEL);
+	kspin_lock(&loader_lock);
 	list_for_each_entry(ndis_driver, &ndis_drivers, list) {
 		if (strcmp(ndis_driver->name, device->driver_name) == 0) {
 			DBGTRACE1("driver %s already loaded",
@@ -66,7 +65,7 @@ static struct ndis_driver *ndiswrapper_load_driver(struct ndis_device *device)
 			break;
 		}
 	}
-	kspin_unlock(&loader_lock, irql);
+	kspin_unlock(&loader_lock);
 
 	if (found)
 		TRACEEXIT1(return ndis_driver);
@@ -100,7 +99,7 @@ static struct ndis_driver *ndiswrapper_load_driver(struct ndis_device *device)
 		schedule_timeout(HZ);
 #endif
 		found = 0;
-		irql = kspin_lock(&loader_lock, PASSIVE_LEVEL);
+		kspin_lock(&loader_lock);
 		list_for_each_entry(ndis_driver, &ndis_drivers, list) {
 			if (strcmp(ndis_driver->name,
 				   device->driver_name) == 0) {
@@ -108,7 +107,7 @@ static struct ndis_driver *ndiswrapper_load_driver(struct ndis_device *device)
 				break;
 			}
 		}
-		kspin_unlock(&loader_lock, irql);
+		kspin_unlock(&loader_lock);
 
 		if (!found) {
 			ERROR("couldn't load driver '%s'",
@@ -527,12 +526,11 @@ static int load_settings(struct ndis_driver *ndis_driver,
 {
 	int i, found, nr_settings;
 	struct ndis_device *ndis_device;
-	KIRQL irql;
 
 	TRACEENTER1("");
 
 	found = 0;
-	irql = kspin_lock(&loader_lock, PASSIVE_LEVEL);
+	kspin_lock(&loader_lock);
 	for (i = 0; i < num_ndis_devices; i++) {
 		if (strcmp(ndis_devices[i].conf_file_name,
 			   load_driver->conf_file_name) == 0) {
@@ -540,7 +538,7 @@ static int load_settings(struct ndis_driver *ndis_driver,
 			break;
 		}
 	}
-	kspin_unlock(&loader_lock, irql);
+	kspin_unlock(&loader_lock);
 
 	if (!found) {
 		ERROR("conf file %s not found",
@@ -571,9 +569,9 @@ static int load_settings(struct ndis_driver *ndis_driver,
 		if (strcmp(setting->name, "ndis_version") == 0)
 			memcpy(ndis_driver->version, setting->value,
 			       sizeof(ndis_driver->version));
-		irql = kspin_lock(&loader_lock, PASSIVE_LEVEL);
+		kspin_lock(&loader_lock);
 		list_add(&setting->list, &ndis_device->settings);
-		kspin_unlock(&loader_lock, irql);
+		kspin_unlock(&loader_lock);
 		nr_settings++;
 	}
 	/* it is not a fatal error if some settings couldn't be loaded */
@@ -672,19 +670,18 @@ static int start_driver(struct ndis_driver *driver)
 static int add_driver(struct ndis_driver *driver)
 {
 	struct ndis_driver *tmp;
-	KIRQL irql;
 
 	TRACEENTER1("");
-	irql = kspin_lock(&loader_lock, PASSIVE_LEVEL);
+	kspin_lock(&loader_lock);
 	list_for_each_entry(tmp, &ndis_drivers, list) {
 		if (strcmp(tmp->name, driver->name) == 0) {
-			kspin_unlock(&loader_lock, irql);
+			kspin_unlock(&loader_lock);
 			ERROR("cannot add duplicate driver");
 			TRACEEXIT1(return -EBUSY);
 		}
 	}
 	list_add(&driver->list, &ndis_drivers);
-	kspin_unlock(&loader_lock, irql);
+	kspin_unlock(&loader_lock);
 
 	TRACEEXIT1(return 0);
 }
@@ -984,7 +981,6 @@ int loader_init(void)
 void loader_exit(void)
 {
 	int i;
-	KIRQL irql;
 
 	TRACEENTER1("");
 	misc_deregister(&wrapper_misc);
@@ -1001,7 +997,7 @@ void loader_exit(void)
 		kfree(ndiswrapper_pci_devices);
 		ndiswrapper_pci_devices = NULL;
 	}
-	irql = kspin_lock(&loader_lock, PASSIVE_LEVEL);
+	kspin_lock(&loader_lock);
 	if (ndis_devices) {
 		for (i = 0; i < num_ndis_devices; i++)
 			unload_ndis_device(&ndis_devices[i]);
@@ -1018,6 +1014,6 @@ void loader_exit(void)
 		list_del(&driver->list);
 		unload_ndis_driver(driver);
 	}
-	kspin_unlock(&loader_lock, irql);
+	kspin_unlock(&loader_lock);
 	TRACEEXIT1(return);
 }

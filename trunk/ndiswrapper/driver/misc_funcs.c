@@ -44,16 +44,16 @@ void misc_funcs_exit_handle(struct ndis_handle *handle)
 	while (1) {
 		struct wrapper_timer *timer;
 
-		irql = kspin_lock(&handle->timers_lock, DISPATCH_LEVEL);
+		irql = kspin_lock_irql(&handle->timers_lock, DISPATCH_LEVEL);
 		if (list_empty(&handle->timers)) {
-			kspin_unlock(&handle->timers_lock, irql);
+			kspin_unlock_irql(&handle->timers_lock, irql);
 			break;
 		}
 
 		timer = list_entry(handle->timers.next,
 				   struct wrapper_timer, list);
 		list_del(&timer->list);
-		kspin_unlock(&handle->timers_lock, irql);
+		kspin_unlock_irql(&handle->timers_lock, irql);
 
 		DBGTRACE1("fixing up timer %p, timer->list %p",
 			  timer, &timer->list);
@@ -65,10 +65,8 @@ void misc_funcs_exit_handle(struct ndis_handle *handle)
 /* called when module is being removed */
 void misc_funcs_exit(void)
 {
-	KIRQL irql;
-
 	/* free all pointers on the allocated list */
-	irql = kspin_lock(&wrap_allocs_lock, PASSIVE_LEVEL);
+	kspin_lock(&wrap_allocs_lock);
 	while (!list_empty(&wrap_allocs)) {
 		struct wrap_alloc *alloc;
 
@@ -77,7 +75,7 @@ void misc_funcs_exit(void)
 		kfree(alloc->ptr);
 		kfree(alloc);
 	}
-	kspin_unlock(&wrap_allocs_lock, irql);
+	kspin_unlock(&wrap_allocs_lock);
 
 	TRACEEXIT4(return);
 }
@@ -91,7 +89,6 @@ void misc_funcs_exit(void)
 void *wrap_kmalloc(size_t size, int flags)
 {
 	struct wrap_alloc *alloc;
-	KIRQL irql;
 
 	TRACEENTER4("size = %lu, flags = %d", (unsigned long)size, flags);
 
@@ -106,9 +103,9 @@ void *wrap_kmalloc(size_t size, int flags)
 		kfree(alloc);
 		return NULL;
 	}
-	irql = kspin_lock(&wrap_allocs_lock, PASSIVE_LEVEL);
+	kspin_lock(&wrap_allocs_lock);
 	list_add(&alloc->list, &wrap_allocs);
-	kspin_unlock(&wrap_allocs_lock, irql);
+	kspin_unlock(&wrap_allocs_lock);
 	DBGTRACE4("%p, %p", alloc, alloc->ptr);
 	TRACEEXIT4(return alloc->ptr);
 }
@@ -117,10 +114,9 @@ void *wrap_kmalloc(size_t size, int flags)
 void wrap_kfree(void *ptr)
 {
 	struct list_head *cur, *tmp;
-	KIRQL irql;
 
 	TRACEENTER4("%p", ptr);
-	irql = kspin_lock(&wrap_allocs_lock, PASSIVE_LEVEL);
+	kspin_lock(&wrap_allocs_lock);
 	list_for_each_safe(cur, tmp, &wrap_allocs) {
 		struct wrap_alloc *alloc;
 
@@ -132,7 +128,7 @@ void wrap_kfree(void *ptr)
 			break;
 		}
 	}
-	kspin_unlock(&wrap_allocs_lock, irql);
+	kspin_unlock(&wrap_allocs_lock);
 	TRACEEXIT4(return);
 }
 
@@ -154,14 +150,14 @@ void wrapper_timer_handler(unsigned long data)
 
 	/* don't add the timer if aperiodic; see wrapper_cancel_timer
 	 * protect access to kdpc, repeat, and active via spinlock */
-	irql = kspin_lock(&timer->lock, DISPATCH_LEVEL);
+	irql = kspin_lock_irql(&timer->lock, DISPATCH_LEVEL);
 	kdpc = timer->kdpc;
 	if (timer->repeat) {
 		timer->timer.expires = jiffies + timer->repeat;
 		add_timer(&timer->timer);
 	} else
 		timer->active = 0;
-	kspin_unlock(&timer->lock, irql);
+	kspin_unlock_irql(&timer->lock, irql);
 
 	miniport_timer = kdpc->func;
 
@@ -181,7 +177,6 @@ void wrapper_init_timer(struct ktimer *ktimer, void *handle)
 {
 	struct wrapper_timer *wrapper_timer;
 	struct ndis_handle *ndis_handle = (struct ndis_handle *)handle;
-	KIRQL irql;
 
 	TRACEENTER5("%s", "");
 	wrapper_timer = wrap_kmalloc(sizeof(struct wrapper_timer), GFP_ATOMIC);
@@ -203,9 +198,9 @@ void wrapper_init_timer(struct ktimer *ktimer, void *handle)
 	ktimer->wrapper_timer = wrapper_timer;
 	kspin_lock_init(&wrapper_timer->lock);
 	if (handle) {
-		irql = kspin_lock(&ndis_handle->timers_lock, PASSIVE_LEVEL);
+		kspin_lock(&ndis_handle->timers_lock);
 		list_add(&wrapper_timer->list, &ndis_handle->timers);
-		kspin_unlock(&ndis_handle->timers_lock, irql);
+		kspin_unlock(&ndis_handle->timers_lock);
 	}
 
 	DBGTRACE4("added timer %p, wrapper_timer->list %p\n",
@@ -234,7 +229,7 @@ int wrapper_set_timer(struct wrapper_timer *timer, unsigned long expires,
 
 	/* timer handler also uses timer->repeat, active, and kdpc, so
 	 * protect in case of SMP */
-	irql = kspin_lock(&timer->lock, DISPATCH_LEVEL);
+	irql = kspin_lock_irql(&timer->lock, DISPATCH_LEVEL);
 	if (kdpc)
 		timer->kdpc = kdpc;
 	timer->repeat = repeat;
@@ -242,7 +237,7 @@ int wrapper_set_timer(struct wrapper_timer *timer, unsigned long expires,
 		DBGTRACE4("modifying timer %p to %lu, %lu",
 			  timer, expires, repeat);
 		mod_timer(&timer->timer, expires);
-		kspin_unlock(&timer->lock, irql);
+		kspin_unlock_irql(&timer->lock, irql);
 		TRACEEXIT5(return TRUE);
 	} else {
 		DBGTRACE4("setting timer %p to %lu, %lu",
@@ -250,7 +245,7 @@ int wrapper_set_timer(struct wrapper_timer *timer, unsigned long expires,
 		timer->timer.expires = expires;
 		timer->active = 1;
 		add_timer(&timer->timer);
-		kspin_unlock(&timer->lock, irql);
+		kspin_unlock_irql(&timer->lock, irql);
 		TRACEEXIT5(return FALSE);
 	}
 }
@@ -276,7 +271,7 @@ void wrapper_cancel_timer(struct wrapper_timer *timer, char *canceled)
 	 * tells the driver if the timer was deleted or not) here; nor
 	 * is del_timer_sync correct, as this function may be called
 	 * at DISPATCH_LEVEL */
-	irql = kspin_lock(&timer->lock, DISPATCH_LEVEL);
+	irql = kspin_lock_irql(&timer->lock, DISPATCH_LEVEL);
 	if (timer->repeat) {
 		/* first mark as aperiodic, so timer function doesn't call
 		 * add_timer after del_timer returned */
@@ -286,7 +281,7 @@ void wrapper_cancel_timer(struct wrapper_timer *timer, char *canceled)
 		*canceled = TRUE;
 	} else
 		*canceled = del_timer(&timer->timer);
-	kspin_unlock(&timer->lock, irql);
+	kspin_unlock_irql(&timer->lock, irql);
 	TRACEEXIT5(return);
 }
 
