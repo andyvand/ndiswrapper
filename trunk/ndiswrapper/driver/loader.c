@@ -48,6 +48,8 @@ WRAP_FUNC *get_wrap_func(char *name)
 	for (i = 0 ; usb_wrap_funcs[i].name != NULL; i++)
 		if (strcmp(usb_wrap_funcs[i].name, name) == 0)
 			return usb_wrap_funcs[i].func;
+#else
+#warning Note: USB support not available on kernels before 2.6
 #endif /* support on 2.4 not implemented */
 
 	return NULL;
