@@ -61,7 +61,10 @@ MODULE_PARM_DESC(proc_uid, "The uid of the files created in /proc (default: 0)."
 MODULE_PARM(proc_gid, "i");
 MODULE_PARM_DESC(proc_gid, "The gid of the files created in /proc (default: 0).");
 MODULE_PARM(hangcheck_interval, "i");
-MODULE_PARM_DESC(hangcheck_interval, "The interval, in seconds, for checking if driver is hung.");
+/* negative value - no hangcheck, 0 - default value provided by NDIS driver,
+ * positive value - force hangcheck interval to that many seconds
+ */
+MODULE_PARM_DESC(hangcheck_interval, "The interval, in seconds, for checking if driver is hung. (default: 0)");
 
 /* List of loaded drivers */
 LIST_HEAD(ndis_driverlist);
@@ -81,12 +84,9 @@ int doreset(struct ndis_handle *handle)
 
 	if (down_interruptible(&handle->ndis_comm_mutex))
 		return NDIS_STATUS_FAILURE;
+
 	handle->ndis_comm_done = 0;
-
-	spin_lock_bh(&handle->ndis_comm_lock);
 	res = handle->driver->miniport_char.reset(&addressing_reset, handle->adapter_ctx);
-	spin_unlock_bh(&handle->ndis_comm_lock);
-
 	if(!res)
 		goto out;
 
@@ -121,11 +121,7 @@ int doquery(struct ndis_handle *handle, unsigned int oid, char *buf, int bufsize
 		return NDIS_STATUS_FAILURE;
 
 	handle->ndis_comm_done = 0;
-
-	spin_lock_bh(&handle->ndis_comm_lock);
 	res = handle->driver->miniport_char.query(handle->adapter_ctx, oid, buf, bufsize, written, needed);
-	spin_unlock_bh(&handle->ndis_comm_lock);
-
 	if(!res)
 		goto out;
 
@@ -160,11 +156,7 @@ int dosetinfo(struct ndis_handle *handle, unsigned int oid, char *buf, int bufsi
 		return NDIS_STATUS_FAILURE;
 
 	handle->ndis_comm_done = 0;
-
-	spin_lock_bh(&handle->ndis_comm_lock);
 	res = handle->driver->miniport_char.setinfo(handle->adapter_ctx, oid, buf, bufsize, written, needed);
-	spin_unlock_bh(&handle->ndis_comm_lock);
-
 	if(!res)
 		goto out;
 
@@ -600,7 +592,6 @@ static int send_packet(struct ndis_handle *handle, struct ndis_packet *packet)
 
 	DBGTRACE("%s: packet = %p\n", __FUNCTION__, packet);
 
-	spin_lock_bh(&handle->ndis_comm_lock);
 	if(handle->driver->miniport_char.send_packets)
 	{
 		struct ndis_packet *packets[1];
@@ -630,7 +621,6 @@ static int send_packet(struct ndis_handle *handle, struct ndis_packet *packet)
 		DBGTRACE("%s: No send handler\n", __FUNCTION__);
 		res = NDIS_STATUS_FAILURE;
 	}
-	spin_unlock_bh(&handle->ndis_comm_lock);
 
 	DBGTRACE("send_packets returning %08X\n", res);
 
@@ -644,7 +634,10 @@ static void xmit_bh(void *param)
 	struct ndis_buffer *buffer;
 	int res;
 
-	DBGTRACE("%s: Enter: send status is %08X\n", __FUNCTION__, handle->send_status);
+	DBGTRACE("%s: Enter: send status is %08X\n",
+		 __FUNCTION__, handle->send_status);
+	if (down_interruptible(&handle->ndis_comm_mutex))
+		return;
 	while (handle->send_status == 0)
 	{
 		spin_lock_bh(&handle->xmit_ring_lock);
@@ -667,7 +660,7 @@ static void xmit_bh(void *param)
 			{
 				printk(KERN_ERR "%s: couldn't get a packet\n",
 				       __FUNCTION__);
-				return;
+				break;
 			}
 		}
 
@@ -695,6 +688,7 @@ static void xmit_bh(void *param)
 				printk(KERN_ERR "%s: deserialized driver returning NDIS_STATUS_RESOURCES!\n", __FUNCTION__);
 			handle->send_status = res;
 			/* this packet will be tried again later */
+			up(&handle->ndis_comm_mutex);
 			return;
 
 			/* free buffer, drop the packet */
@@ -708,9 +702,10 @@ static void xmit_bh(void *param)
 			break;
 		}
 
-		spin_lock_bh(&handle->xmit_ring_lock);
 		/* mark the packet as done */
 		handle->packet = NULL;
+
+		spin_lock_bh(&handle->xmit_ring_lock);
 		handle->xmit_ring_start =
 			(handle->xmit_ring_start + 1) % XMIT_RING_SIZE;
 		handle->xmit_ring_pending--;
@@ -719,6 +714,8 @@ static void xmit_bh(void *param)
 		spin_unlock_bh(&handle->xmit_ring_lock);
 	}
 	DBGTRACE("%s: Exit\n", __FUNCTION__);
+	up(&handle->ndis_comm_mutex);
+	return;
 }
 
 /*

@@ -1223,7 +1223,7 @@ irqreturn_t ndis_irq_th(int irq, void *data, struct pt_regs *pt_regs)
 
 	/* We need a lock here in order to implement NdisMSynchronizeWithInterrupt,
 	  however the ISR is really fast anyway so it should not hurt performance */
-	spin_lock_irq(ndis_irq->spinlock);
+	spin_lock(ndis_irq->spinlock);
 	if (handle->ndis_irq->req_isr)
 		handle->driver->miniport_char.isr(&recognized, &handle_interrupt, handle->adapter_ctx);
 	else //if (handle->driver->miniport_char.disable_interrupts)
@@ -1232,7 +1232,7 @@ irqreturn_t ndis_irq_th(int irq, void *data, struct pt_regs *pt_regs)
 		/* it is not shared interrupt, so handler must be called */
 		recognized = handle_interrupt = 1;
 	}
-	spin_unlock_irq(ndis_irq->spinlock);
+	spin_unlock(ndis_irq->spinlock);
 
 	if(recognized && handle_interrupt)
 		schedule_work(&handle->irq_bh);
@@ -1310,15 +1310,14 @@ STDCALL unsigned char NdisMSynchronizeWithInterrupt(struct ndis_irq *ndis_irq,
 	unsigned char ret;
 	DBGTRACE("%s: %08x %08x %08x %08x\n", __FUNCTION__, (int) ndis_irq, (int) ndis_irq, (int) func, (int) ctx);
 	unsigned char (*sync_func)(void *ctx) STDCALL;
-	unsigned long flags;
 
 	if (func == NULL || ctx == NULL)
 		return 0;
 
 	sync_func = func;
-	spin_lock_irqsave(ndis_irq->spinlock, flags);
+	spin_lock(ndis_irq->spinlock);
 	ret = sync_func(ctx);
-	spin_unlock_irqrestore(ndis_irq->spinlock, flags);
+	spin_unlock(ndis_irq->spinlock);
 
 	DBGTRACE("%s: Past func (%u)\n", __FUNCTION__, ret);
 	return ret;
@@ -1690,13 +1689,12 @@ spinlock_t worklist_lock = SPIN_LOCK_UNLOCKED;
 
 static void worker(void *context)
 {
-	unsigned long flags;
 	struct ndis_workentry *workentry;
 	struct ndis_work *ndis_work;
 	DBGTRACE("%s\n", __FUNCTION__);
 	while(1)
 	{
-		spin_lock_irqsave(&worklist_lock, flags);
+		spin_lock_bh(&worklist_lock);
 		if(!list_empty(&worklist))
 		{
 			workentry = (struct ndis_workentry*) worklist.next;
@@ -1704,7 +1702,7 @@ static void worker(void *context)
 		}
 		else
 			workentry = 0;
-		spin_unlock_irqrestore(&worklist_lock, flags);
+		spin_unlock_bh(&worklist_lock);
 		if(!workentry)
 		{
 			DBGTRACE("%s No more work\n", __FUNCTION__);
@@ -1731,19 +1729,18 @@ void init_ndis_work(void)
 
 STDCALL void NdisScheduleWorkItem(struct ndis_work *ndis_work)
 {
-	unsigned long flags;
 	struct ndis_workentry *workentry;
 	DBGTRACE("%s\n", __FUNCTION__);
-	workentry = kmalloc(sizeof(*workentry), GFP_ATOMIC);
+	workentry = kmalloc(sizeof(*workentry), GFP_KERNEL);
 	if(!workentry)
 	{
 		BUG();
 	}
 	workentry->work = ndis_work;
 	
-	spin_lock_irqsave(&worklist_lock, flags);
+	spin_lock_bh(&worklist_lock);
 	list_add_tail(&workentry->list, &worklist);
-	spin_unlock_irqrestore(&worklist_lock, flags);
+	spin_unlock_bh(&worklist_lock);
 	
 	schedule_work(&work);
 }
