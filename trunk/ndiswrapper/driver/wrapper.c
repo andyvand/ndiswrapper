@@ -899,8 +899,10 @@ static void wrapper_worker_proc(void *param)
 	}
 
 	if (test_and_clear_bit(WRAPPER_LINK_STATUS, &handle->wrapper_work)
-	    && (handle->auth_mode == AUTHMODE_WPA ||
-		handle->auth_mode == AUTHMODE_WPAPSK))
+	    && handle->encr_alg == WPA_ALG_TKIP)
+
+//	    (handle->auth_mode == AUTHMODE_WPA ||
+//		handle->auth_mode == AUTHMODE_WPAPSK))
 	{
 		unsigned char *assoc_info;
 		struct ndis_assoc_info *ndis_assoc_info;
@@ -1009,10 +1011,10 @@ static void check_wpa(struct ndis_handle *handle)
 
 	TRACEENTER1("%s", "");
 	handle->wpa_capa = 0;
-	if (set_auth_mode(handle, AUTHMODE_WPAPSK))
+	if (set_auth_mode(handle, AUTHMODE_WPA))
 		TRACEEXIT1(return);
 	res = query_int(handle, NDIS_OID_AUTH_MODE, &i);
-	if (res || i != AUTHMODE_WPAPSK)
+	if (res || i != AUTHMODE_WPA)
 		TRACEEXIT1(return);
 	
 	DBGTRACE("%s", "checking for encr");
@@ -1021,10 +1023,10 @@ static void check_wpa(struct ndis_handle *handle)
 	for (;;) // while (mode)
 	{
 		DBGTRACE("checking wep mode %d", mode);
-		if (!set_wep_mode(handle, mode))
-			if (!query_int(handle, NDIS_OID_WEP_STATUS, &i))
-				if (i == mode)
-					break;
+		if (!set_wep_mode(handle, mode) &&
+		    !query_int(handle, NDIS_OID_WEP_STATUS, &i) &&
+		    i == mode)
+			break;
 
 		if (mode == WEP_ENCR3_ENABLED)
 			mode = WEP_ENCR2_ENABLED;
@@ -1102,7 +1104,7 @@ static int setup_dev(struct net_device *dev)
 	memset(&wrqu, 0, sizeof(wrqu));
 
 	set_bit(SET_OP_MODE, &handle->wrapper_work);
-	set_bit(SET_ESSID, &handle->wrapper_work);
+//	set_bit(SET_ESSID, &handle->wrapper_work);
 	schedule_work(&handle->wrapper_worker);
 
 	res = query_int(handle, OID_802_3_MAXIMUM_LIST_SIZE, &i);
@@ -1213,6 +1215,7 @@ static int ndis_init_one(struct pci_dev *pdev, const struct pci_device_id *ent)
 
 	handle->wep_mode = WEP_NOKEY;
 	handle->auth_mode = AUTHMODE_OPEN;
+	handle->encr_alg = WPA_ALG_NONE;
 
 	wrap_spin_lock_init(&handle->recycle_packets_lock);
 	INIT_LIST_HEAD(&handle->recycle_packets);

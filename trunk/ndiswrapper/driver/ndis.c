@@ -1459,8 +1459,8 @@ STDCALL void NdisMIndicateStatus(struct ndis_handle *handle,
 	{
 		handle->link_status = 0;
 #ifdef WPA
-		set_bit(WRAPPER_LINK_STATUS, &handle->wrapper_work);
-		schedule_work(&handle->wrapper_worker);
+//		set_bit(WRAPPER_LINK_STATUS, &handle->wrapper_work);
+//		schedule_work(&handle->wrapper_worker);
 #endif
 	}
 #ifdef WPA
