@@ -884,19 +884,18 @@ static int ndis_set_scan(struct net_device *dev, struct iw_request_info *info,
 	struct ndis_handle *handle = dev->priv;
 	unsigned int res = 0;
 
-	if (time_before(handle->scan_timestamp + 10 * HZ, jiffies))
+	res = set_int(handle, NDIS_OID_BSSID_LIST_SCAN, 0);
+	if (res)
 	{
-		res = set_int(handle, NDIS_OID_BSSID_LIST_SCAN, 0);
-		if (res)
-		{
-			printk(KERN_INFO "%s: scanning failed (%08X)\n", dev->name, res);
-			handle->scan_timestamp = 0;
-			return -EOPNOTSUPP;
-		}
-		else
-			handle->scan_timestamp = jiffies;
+		printk(KERN_INFO "%s: scanning failed (%08X)\n", dev->name, res);
+		handle->scan_timestamp = 0;
+		return -EOPNOTSUPP;
 	}
-	return 0;
+	else
+	{
+		handle->scan_timestamp = jiffies;
+		return 0;
+	}
 }
 
 static int ndis_get_scan(struct net_device *dev, struct iw_request_info *info,
@@ -909,13 +908,6 @@ static int ndis_get_scan(struct net_device *dev, struct iw_request_info *info,
 	char *cur_item ;
 
 	if (!handle->scan_timestamp)
-		return -EOPNOTSUPP;
-
-	/* There could be some delay between when set_scan is called and
-	 * when get_scan is called, so check for timeout of 11 seconds
-	 * instead of 10 seconds
-	 */
-	if (time_before(handle->scan_timestamp + 11 * HZ, jiffies))
 		return -EOPNOTSUPP;
 
 	if (time_before(jiffies, handle->scan_timestamp + 3 * HZ))
