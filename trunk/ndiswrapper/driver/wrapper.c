@@ -331,17 +331,18 @@ static int ndis_get_tx_power(struct net_device *dev, struct iw_request_info *inf
 			   union iwreq_data *wrqu, char *extra)
 {
 	struct ndis_handle *handle = dev->priv; 
-	int ndis_power;
+	unsigned long ndis_power;
+	unsigned int written, needed, res;
 
-	int res = query_int(handle, NDIS_OID_MODE, &ndis_power);
+	res = doquery(handle, NDIS_OID_TX_POWER_LEVEL, (char*)&ndis_power,
+		      sizeof(ndis_power), &written, &needed);
 	if(res)
 		return -1;
 
-	/* TODO: convert mW to dBm but, without floating point we
-	   could at best do a table, so for now just
-	   return the mW * 1000 as an obviously bogus value.
-	*/
-	wrqu->power.value = ndis_power * 1000;
+	wrqu->txpower.flags = IW_TXPOW_MWATT;
+	wrqu->txpower.disabled = 0;
+	wrqu->txpower.fixed = 0;
+	wrqu->txpower.value = ndis_power;
 	return 0;
 }
 
