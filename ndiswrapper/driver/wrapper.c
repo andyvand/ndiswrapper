@@ -316,21 +316,19 @@ static void hangcheck_proc(unsigned long data)
 		}
 	}
 
-	irql = kspin_lock(&handle->timers_lock, PASSIVE_LEVEL);
+	kspin_lock(&handle->timers_lock);
 	if (handle->hangcheck_active) {
 		handle->hangcheck_timer.expires =
 			jiffies + handle->hangcheck_interval;
 		add_timer(&handle->hangcheck_timer);
 	}
-	kspin_unlock(&handle->timers_lock, irql);
+	kspin_unlock(&handle->timers_lock);
 
 	TRACEEXIT3(return);
 }
 
 void hangcheck_add(struct ndis_handle *handle)
 {
-	KIRQL irql;
-
 	if (!handle->driver->miniport_char.hangcheck ||
 	    handle->hangcheck_interval <= 0) {
 		handle->hangcheck_active = 0;
@@ -341,25 +339,23 @@ void hangcheck_add(struct ndis_handle *handle)
 	handle->hangcheck_timer.data = (unsigned long)handle;
 	handle->hangcheck_timer.function = &hangcheck_proc;
 
-	irql = kspin_lock(&handle->timers_lock, PASSIVE_LEVEL);
+	kspin_lock(&handle->timers_lock);
 	add_timer(&handle->hangcheck_timer);
 	handle->hangcheck_active = 1;
-	kspin_unlock(&handle->timers_lock, irql);
+	kspin_unlock(&handle->timers_lock);
 	return;
 }
 
 void hangcheck_del(struct ndis_handle *handle)
 {
-	KIRQL irql;
-
 	if (!handle->driver->miniport_char.hangcheck ||
 	    handle->hangcheck_interval <= 0)
 		return;
 
-	irql = kspin_lock(&handle->timers_lock, PASSIVE_LEVEL);
+	kspin_lock(&handle->timers_lock);
 	handle->hangcheck_active = 0;
 	del_timer(&handle->hangcheck_timer);
-	kspin_unlock(&handle->timers_lock, irql);
+	kspin_unlock(&handle->timers_lock);
 }
 
 static void stats_proc(unsigned long data)
@@ -383,11 +379,9 @@ static void stats_timer_add(struct ndis_handle *handle)
 
 static void stats_timer_del(struct ndis_handle *handle)
 {
-	KIRQL irql;
-
-	irql = kspin_lock(&handle->timers_lock, PASSIVE_LEVEL);
+	kspin_lock(&handle->timers_lock);
 	del_timer_sync(&handle->stats_timer);
-	kspin_unlock(&handle->timers_lock, irql);
+	kspin_unlock(&handle->timers_lock);
 }
 
 static int ndis_open(struct net_device *dev)
@@ -604,9 +598,9 @@ static void xmit_worker(void *param)
 	/* some drivers e.g., new RT2500 driver, crash if any packets
 	 * are sent when the card is not associated */
 	while (handle->send_ok) {
-		irql = kspin_lock(&handle->xmit_lock, DISPATCH_LEVEL);
+		irql = kspin_lock_irql(&handle->xmit_lock, DISPATCH_LEVEL);
 		if (handle->xmit_ring_pending == 0) {
-			kspin_unlock(&handle->xmit_lock, irql);
+			kspin_unlock_irql(&handle->xmit_lock, irql);
 			break;
 		}
 		n = send_packets(handle, handle->xmit_ring_start,
@@ -616,7 +610,7 @@ static void xmit_worker(void *param)
 		handle->xmit_ring_pending -= n;
 		if (n > 0 && netif_queue_stopped(handle->net_dev))
 			netif_wake_queue(handle->net_dev);
-		kspin_unlock(&handle->xmit_lock, irql);
+		kspin_unlock_irql(&handle->xmit_lock, irql);
 	}
 
 	TRACEEXIT3(return);
@@ -627,14 +621,12 @@ static void xmit_worker(void *param)
  */
 void sendpacket_done(struct ndis_handle *handle, struct ndis_packet *packet)
 {
-	KIRQL irql;
-
 	TRACEENTER3("%s", "");
-	irql = kspin_lock(&handle->send_packet_done_lock, PASSIVE_LEVEL);
+	kspin_lock(&handle->send_packet_done_lock);
 	handle->stats.tx_bytes += packet->private.len;
 	handle->stats.tx_packets++;
 	free_send_packet(handle, packet);
-	kspin_unlock(&handle->send_packet_done_lock, irql);
+	kspin_unlock(&handle->send_packet_done_lock);
 	TRACEEXIT3(return);
 }
 
@@ -672,7 +664,7 @@ static int start_xmit(struct sk_buff *skb, struct net_device *dev)
 	skb_copy_and_csum_dev(skb, data);
 	dev_kfree_skb(skb);
 
-	irql = kspin_lock(&handle->xmit_lock, DISPATCH_LEVEL);
+	irql = kspin_lock_irql(&handle->xmit_lock, DISPATCH_LEVEL);
 	xmit_ring_next_slot =
 		(handle->xmit_ring_start +
 		 handle->xmit_ring_pending) % XMIT_RING_SIZE;
@@ -680,7 +672,7 @@ static int start_xmit(struct sk_buff *skb, struct net_device *dev)
 	handle->xmit_ring_pending++;
 	if (handle->xmit_ring_pending == XMIT_RING_SIZE)
 		netif_stop_queue(handle->net_dev);
-	kspin_unlock(&handle->xmit_lock, irql);
+	kspin_unlock_irql(&handle->xmit_lock, irql);
 
 	schedule_work(&handle->xmit_work);
 
@@ -796,7 +788,7 @@ void ndiswrapper_remove_one_dev(struct ndis_handle *handle)
 
 	/* flush_scheduled_work here causes crash with 2.4 kernels */
 	/* instead, throw away pending packets */
-	irql = kspin_lock(&handle->xmit_lock, DISPATCH_LEVEL);
+	irql = kspin_lock_irql(&handle->xmit_lock, DISPATCH_LEVEL);
 	while (handle->xmit_ring_pending) {
 		struct ndis_packet *packet;
 
@@ -806,7 +798,7 @@ void ndiswrapper_remove_one_dev(struct ndis_handle *handle)
 			(handle->xmit_ring_start + 1) % XMIT_RING_SIZE;
 		handle->xmit_ring_pending--;
 	}
-	kspin_unlock(&handle->xmit_lock, irql);
+	kspin_unlock_irql(&handle->xmit_lock, irql);
 
 	miniport_set_int(handle, OID_802_11_DISASSOCIATE, 0);
 

@@ -479,14 +479,14 @@ static inline void lower_irql(KIRQL oldirql)
 
 #ifdef __HAVE_ARCH_CMPXCHG
 
-#define _raw_kspin_lock(lock)						\
+#define kspin_lock(lock)						\
 	while (cmpxchg(lock, KSPIN_LOCK_UNLOCKED, KSPIN_LOCK_LOCKED) != \
 	       KSPIN_LOCK_UNLOCKED)
 
 #else
 
 extern spinlock_t spinlock_kspin_lock;
-#define _raw_kspin_lock(lock)				\
+#define kspin_lock(lock)				\
 do {							\
 	while (1) {					\
 		spin_lock(&spinlock_kspin_lock);	\
@@ -500,16 +500,17 @@ do {							\
 		
 #endif // __HAVE_ARCH_CMPXCHG
 
-#define _raw_kspin_unlock(lock) xchg(lock, KSPIN_LOCK_UNLOCKED)
+#define kspin_unlock(lock) xchg(lock, KSPIN_LOCK_UNLOCKED)
 
 #else
 
-#define _raw_kspin_lock(lock) *(lock) = KSPIN_LOCK_LOCKED
-#define _raw_kspin_unlock(lock) *(lock) = KSPIN_LOCK_UNLOCKED
+#define kspin_lock(lock) *(lock) = KSPIN_LOCK_LOCKED
+#define kspin_unlock(lock) *(lock) = KSPIN_LOCK_UNLOCKED
 
 #endif // CONFIG_SMP
 
-#define kspin_lock(lock, newirql)					\
+/* raise IRQL to given (higher) IRQL if necessary after locking */
+#define kspin_lock_irql(lock, newirql)					\
 ({									\
 	KIRQL _cur_irql_ = current_irql();				\
 	KSPIN_LOCK _val_ = *(lock);					\
@@ -519,17 +520,18 @@ do {							\
 		local_bh_disable();					\
 		preempt_disable();					\
 	}								\
-	_raw_kspin_lock(lock);						\
+	kspin_lock(lock);						\
 	_cur_irql_;							\
 })
 
-#define kspin_unlock(lock, oldirql)					\
+/* lower IRQL to given (lower) IRQL if necessary after unlocking */
+#define kspin_unlock_irql(lock, oldirql)				\
 do {									\
 	KIRQL _cur_irql_ = current_irql();				\
 	KSPIN_LOCK _val_ = *(lock);					\
 	if (_val_ > KSPIN_LOCK_LOCKED)					\
 		ERROR("illegal spinlock: %p(%lu)", lock, _val_);	\
-	_raw_kspin_unlock(lock);					\
+	kspin_unlock(lock);						\
 	if (oldirql < DISPATCH_LEVEL && _cur_irql_ == DISPATCH_LEVEL) {	\
 		preempt_enable();					\
 		local_bh_enable();					\
@@ -543,7 +545,7 @@ do {									\
 		ERROR("illegal spinlock: %p(%lu)", lock, _val_);	\
 	local_irq_save(flags);						\
 	preempt_disable();						\
-	_raw_kspin_lock(lock);						\
+	kspin_lock(lock);						\
 } while (0)
 
 #define kspin_unlock_irqrestore(lock, flags)				\
@@ -551,7 +553,7 @@ do {									\
 	KSPIN_LOCK _val_ = *(lock);					\
 	if (_val_ > KSPIN_LOCK_LOCKED)					\
 		ERROR("illegal spinlock: %p(%lu)", lock, _val_);	\
-	_raw_kspin_unlock(lock);					\
+	kspin_unlock(lock);						\
 	local_irq_restore(flags);					\
 	preempt_enable();						\
 } while (0)
