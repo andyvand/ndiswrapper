@@ -32,6 +32,9 @@
 static int freq_chan[] = { 2412, 2417, 2422, 2427, 2432, 2437, 2442,
 			   2447, 2452, 2457, 2462, 2467, 2472, 2484 };
 
+static const char *network_names[] = {"IEEE 802.11FH", "IEEE 802.11b",
+				      "IEEE 802.11a", "IEEE 802.11g", "Auto"};
+
 int set_essid(struct ndis_handle *handle, const char *ssid, int ssid_len)
 {
 	NDIS_STATUS res;
@@ -188,21 +191,19 @@ static int iw_get_infra_mode(struct net_device *dev,
 	TRACEEXIT1(return 0);
 }
 
-static const char *net_type_to_name(int net_type)
+static const char *network_type_to_name(int net_type)
 {
-	static const char *net_names[] = {"IEEE 802.11FH", "IEEE 802.11b",
-	              "IEEE 802.11a", "IEEE 802.11g"};
-	static const char *unknown = "Unknown";
-
 	if (net_type >= 0 &&
-	    net_type < (sizeof(net_names)/sizeof(net_names[0])))
-		return net_names[net_type];
+	    net_type < (sizeof(network_names)/sizeof(network_names[0])))
+		return network_names[net_type];
 	else
-		return unknown;
+		return network_names[sizeof(network_names) / 
+				     sizeof(network_names[0]) - 1];
 }
 
-static int iw_get_name(struct net_device *dev, struct iw_request_info *info,
-		       union iwreq_data *wrqu, char *extra)
+static int iw_get_network_type(struct net_device *dev,
+			       struct iw_request_info *info,
+			       union iwreq_data *wrqu, char *extra)
 {
 	struct ndis_handle *handle = dev->priv;
 	unsigned int network_type;
@@ -213,7 +214,7 @@ static int iw_get_name(struct net_device *dev, struct iw_request_info *info,
 	if (res == NDIS_STATUS_INVALID_DATA)
 		network_type = -1;
 
-	strncpy(wrqu->name, net_type_to_name(network_type),
+	strncpy(wrqu->name, network_type_to_name(network_type),
 	        sizeof(wrqu->name) - 1);
 	wrqu->name[sizeof(wrqu->name)-1] = 0;
 	return 0;
@@ -789,7 +790,7 @@ static char *ndis_translate_scan(struct net_device *dev, char *event,
 	/* add protocol name */
 	memset(&iwe, 0, sizeof(iwe));
 	iwe.cmd = SIOCGIWNAME;
-	strncpy(iwe.u.name, net_type_to_name(item->net_type), IFNAMSIZ);
+	strncpy(iwe.u.name, network_type_to_name(item->net_type), IFNAMSIZ);
 	event = iwe_stream_add_event(event, end_buf, &iwe, IW_EV_CHAR_LEN);
 
 	/* add mode */
@@ -1180,7 +1181,7 @@ static int iw_get_range(struct net_device *dev, struct iw_request_info *info,
 }
 
 static const iw_handler	ndis_handler[] = {
-	[SIOCGIWNAME	- SIOCIWFIRST] = iw_get_name,
+	[SIOCGIWNAME	- SIOCIWFIRST] = iw_get_network_type,
 	[SIOCSIWESSID	- SIOCIWFIRST] = iw_set_essid,
 	[SIOCGIWESSID	- SIOCIWFIRST] = iw_get_essid,
 	[SIOCSIWMODE	- SIOCIWFIRST] = iw_set_infra_mode,
@@ -1594,6 +1595,35 @@ static int wpa_set_auth_alg(struct net_device *dev,
 	TRACEEXIT2(return 0);
 }
 
+static int priv_network_type(struct net_device *dev,
+			     struct iw_request_info *info,
+			     union iwreq_data *wrqu, char *extra)
+{
+	struct ndis_handle *handle = dev->priv;
+	enum network_type network_type;
+	NDIS_STATUS res;
+	char num;
+	
+	num = wrqu->param.value;
+	if (num == 'f')
+		network_type = Ndis802_11FH;
+	else if (num == 'b')
+		network_type = Ndis802_11DS;
+	else if (num == 'a')
+		network_type = Ndis802_11OFDM5;
+	else if (num == 'g')
+		network_type = Ndis802_11OFDM24;
+	else
+		network_type = Ndis802_11Automode;
+
+	res = miniport_set_int(handle, OID_802_11_NETWORK_TYPE_IN_USE,
+			       network_type);
+	if (res == NDIS_STATUS_INVALID_DATA)
+		TRACEEXIT2(return -EINVAL);
+
+	TRACEEXIT2(return 0);
+}
+
 static const struct iw_priv_args priv_args[] = {
 	{WPA_SET_WPA, IW_PRIV_TYPE_INT | IW_PRIV_SIZE_FIXED | 1, 0, "setwpa"},
 	{WPA_SET_KEY, IW_PRIV_TYPE_INT | IW_PRIV_SIZE_FIXED | 1, 0, "setkey"},
@@ -1613,6 +1643,8 @@ static const struct iw_priv_args priv_args[] = {
 	{PRIV_RESET, 0, 0, "ndis_reset"},
 	{PRIV_POWER_PROFILE, IW_PRIV_TYPE_INT | IW_PRIV_SIZE_FIXED | 1, 0,
 	 "power_profile"},
+	{PRIV_NETWORK_TYPE, IW_PRIV_TYPE_CHAR | IW_PRIV_SIZE_FIXED | 1, 0,
+	 "network_type"},
 };
 
 static const iw_handler priv_handler[] = {
@@ -1627,6 +1659,7 @@ static const iw_handler priv_handler[] = {
 
 	[PRIV_RESET 		- SIOCIWFIRSTPRIV] = priv_reset,
 	[PRIV_POWER_PROFILE 	- SIOCIWFIRSTPRIV] = priv_power_profile,
+	[PRIV_NETWORK_TYPE 	- SIOCIWFIRSTPRIV] = priv_network_type,
 };
 
 const struct iw_handler_def ndis_handler_def = {

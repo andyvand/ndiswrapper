@@ -110,6 +110,18 @@ enum ndis_priv_filter {
 	Ndis802_11PrivFilter8021xWEP
 };
 
+enum network_type {
+	Ndis802_11FH,
+	Ndis802_11DS,
+	Ndis802_11OFDM5,
+	Ndis802_11OFDM24,
+	/* MSDN site uses Ndis802_11Automode, which is not mentioned
+	 * in DDK, so add one and assign it to
+	 * Ndis802_11NetworkTypeMax */
+	Ndis802_11Automode,
+	Ndis802_11NetworkTypeMax = Ndis802_11Automode
+};
+
 enum ndis_power {
 	NDIS_POWER_OFF = 0,
 	NDIS_POWER_MAX,
@@ -157,6 +169,7 @@ enum capa_list {
 
 #define PRIV_RESET	 		SIOCIWFIRSTPRIV+16
 #define PRIV_POWER_PROFILE	 	SIOCIWFIRSTPRIV+17
+#define PRIV_NETWORK_TYPE	 	SIOCIWFIRSTPRIV+18
 
 /* these have to match what is in wpa_supplicant */
 typedef enum { WPA_ALG_NONE, WPA_ALG_WEP, WPA_ALG_TKIP, WPA_ALG_CCMP } wpa_alg;
