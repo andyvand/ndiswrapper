@@ -118,9 +118,9 @@ static int ndis_proc_read_wep(char *page, char **start, off_t off,
 	res = query_int(handle, NDIS_OID_MODE, &op_mode);
 	p += sprintf(p, "mode=%s\n",
 		     (op_mode == NDIS_MODE_BSS) ?
-		     "managed" : 
+		     "adhoc" : 
 		     (op_mode == NDIS_MODE_INFRA) ?
-		     "adhoc" : "auto");
+		     "managed" : "auto");
 	if (p - page > count)
 	{
 		printk(KERN_ERR "%s: %s wrote %u bytes (limit is %u)\n",
