@@ -245,7 +245,7 @@ static int ndis_set_mode(struct net_device *dev, struct iw_request_info *info,
 	switch(wrqu->mode)
 	{
 	case IW_MODE_ADHOC:
-		ndis_mode = NDIS_MODE_BSS;
+		ndis_mode = NDIS_MODE_ADHOC;
 		break;	
 	case IW_MODE_INFRA:
 		ndis_mode = NDIS_MODE_INFRA;

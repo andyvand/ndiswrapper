@@ -28,7 +28,7 @@
 #include <linux/version.h>
 
 #define DRV_NAME "ndiswrapper"
-#define DRV_VERSION "0.3+CVS(01-Jan)"
+#define DRV_VERSION "0.4"
 
 
 /* Workqueue / task queue backwards compatibility stuff */
@@ -430,7 +430,7 @@ struct ndis_event
 struct packed ssid_item
 {
 	unsigned long length;
-	__u8 mac[6];
+	__u8 mac[ETH_ALEN];
 	unsigned char reserved[2];
 	struct essid_req ssid;
 	unsigned long privacy;
@@ -458,12 +458,9 @@ struct packed list_scan
 #define NDIS_ENCODE_RESTRICTED 1
 #define NDIS_ENCODE_OPEN_RESTRICTED 2
 
-#define NDIS_MODE_BSS 0
-#define NDIS_MODE_INFRA 1
-#define NDIS_MODE_AUTO 2
-
 #define NDIS_MODE_ADHOC 0
 #define NDIS_MODE_INFRA 1
+#define NDIS_MODE_AUTO 2
 
 #define NDIS_PRIV_ACCEPT_ALL 0
 #define NDIS_PRIV_WEP 1
@@ -578,16 +575,6 @@ int query_int(struct ndis_handle *handle, int oid, int *data);
 #define NDIS_STATUS_RESET_IN_PROGRESS	0xC001000D
 #define NDIS_STATUS_CLOSING_INDICATING	0xC001000E
 #define NDIS_STATUS_BAD_VERSION		0xC0010004
-#define NDIS_STATUS_BAD_CHARACTERISTICS	0xC0010005
-#define NDIS_STATUS_ADAPTER_NOT_FOUND	0xC0010006
-#define NDIS_STATUS_OPEN_FAILED		0xC0010007
-#define NDIS_STATUS_DEVICE_FAILED	0xC0010008
-#define NDIS_STATUS_MULTICAST_FULL	0xC0010009
-#define NDIS_STATUS_MULTICAST_EXISTS	0xC001000A
-#define NDIS_STATUS_MULTICAST_NOT_FOUND	0xC001000B
-#define NDIS_STATUS_REQUEST_ABORTED	0xC001000C
-#define NDIS_STATUS_RESET_IN_PROGRESS	0xC001000D
-#define NDIS_STATUS_CLOSING_INDICATING	0xC001000E
 #define NDIS_STATUS_NOT_SUPPORTED	0xC00000BB
 #define NDIS_STATUS_INVALID_PACKET	0xC001000F
 #define NDIS_STATUS_OPEN_LIST_FULL	0xC0010010
