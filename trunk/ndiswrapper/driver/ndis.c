@@ -136,7 +136,7 @@ STDCALL int NdisMRegisterMiniport(struct ndis_driver *ndis_driver,
 
 	if(char_len < sizeof(struct miniport_char))
 	{
-		return NDIS_STATUS_BAD_CHAR;
+		return NDIS_STATUS_BAD_CHARACTERISTICS;
 	}
 
 	DBGTRACE("%s Version %d.%d\n", __FUNCTION__, miniport_char->majorVersion, miniport_char->minorVersion);
