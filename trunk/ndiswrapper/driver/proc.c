@@ -69,12 +69,12 @@ static int procfs_read_stats(char *page, char **start, off_t off,
 	return (p - page);
 }
 
-static int procfs_read_wep(char *page, char **start, off_t off,
-			   int count, int *eof, void *data)
+static int procfs_read_encr(char *page, char **start, off_t off,
+			    int count, int *eof, void *data)
 {
 	char *p = page;
 	struct ndis_handle *handle = (struct ndis_handle *) data;
-	int i, wep_status, auth_mode, op_mode;
+	int i, encr_status, auth_mode, op_mode;
 	unsigned int res, written, needed;
 	struct ndis_essid essid;
 	mac_address ap_address;
@@ -101,26 +101,26 @@ static int procfs_read_wep(char *page, char **start, off_t off,
 		p += sprintf(p, "essid=%s\n", essid.essid);
 	}
 
-	res = query_int(handle, NDIS_OID_WEP_STATUS, &wep_status);
+	res = query_int(handle, NDIS_OID_ENCR_STATUS, &encr_status);
 	res |= query_int(handle, NDIS_OID_AUTH_MODE, &auth_mode);
 
 	if (!res)
 	{
-		int active = handle->wep_info.active;
-		p += sprintf(p, "tx_key=%u\n", handle->wep_info.active);
+		int active = handle->encr_info.active;
+		p += sprintf(p, "tx_key=%u\n", handle->encr_info.active);
 		p += sprintf(p, "key=");
-		if (handle->wep_info.keys[active].length > 0)
+		if (handle->encr_info.keys[active].length > 0)
 			for (i = 0; i < NDIS_ENCODING_TOKEN_MAX &&
-				     i < handle->wep_info.keys[active].length;
+				     i < handle->encr_info.keys[active].length;
 			     i++)
 				p += sprintf(p, "%2.2X",
-					     handle->wep_info.keys[active].key[i]);
+					     handle->encr_info.keys[active].key[i]);
 		else
 			p += sprintf(p, "off");
 		p += sprintf(p, "\n");
 
 		p += sprintf(p, "status=%sabled\n",
-			     (wep_status == WEP_ENABLED) ? "en" : "dis");
+			     (encr_status == ENCR1_ENABLED) ? "en" : "dis");
 		p += sprintf(p, "auth_mode=%s\n",
 			     (auth_mode == AUTHMODE_RESTRICTED) ?
 			     "restricted" : "open");
@@ -289,11 +289,11 @@ int ndiswrapper_procfs_add_iface(struct ndis_handle *handle)
 		procfs_entry->read_proc = procfs_read_stats;
 	}
 
-	procfs_entry = create_proc_entry("wep", S_IFREG | S_IRUSR | S_IRGRP,
+	procfs_entry = create_proc_entry("encr", S_IFREG | S_IRUSR | S_IRGRP,
 					 proc_iface);
 	if (procfs_entry == NULL)
 	{
-		ERROR("%s", "Couldn't create proc entry for 'wep'");
+		ERROR("%s", "Couldn't create proc entry for 'encr'");
 		return -ENOMEM;
 	}
 	else
@@ -301,11 +301,10 @@ int ndiswrapper_procfs_add_iface(struct ndis_handle *handle)
 		procfs_entry->uid = proc_uid;
 		procfs_entry->gid = proc_gid;
 		procfs_entry->data = handle;
-		procfs_entry->read_proc = procfs_read_wep;
+		procfs_entry->read_proc = procfs_read_encr;
 	}
 
 	return 0;
-
 }
 
 void ndiswrapper_procfs_remove_iface(struct ndis_handle *handle)
@@ -317,7 +316,7 @@ void ndiswrapper_procfs_remove_iface(struct ndis_handle *handle)
 		return;
 	remove_proc_entry("hw", procfs_iface);
 	remove_proc_entry("stats", procfs_iface);
-	remove_proc_entry("wep", procfs_iface);
+	remove_proc_entry("encr", procfs_iface);
 	if (ndiswrapper_procfs_entry != NULL)
 		remove_proc_entry(dev->name, ndiswrapper_procfs_entry);
 	handle->procfs_iface = NULL;

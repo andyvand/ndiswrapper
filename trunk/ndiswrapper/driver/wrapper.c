@@ -1003,36 +1003,36 @@ static void check_capa(struct ndis_handle *handle)
 		TRACEEXIT1(return);
 
 	/* check for highest encryption */
-	for (mode = WEP_ENCR3_ENABLED; mode != WEP_DISABLED; )
+	for (mode = ENCR3_ENABLED; mode != ENCR_DISABLED; )
 	{
-		DBGTRACE("checking wep mode %d", mode);
-		if (set_wep_mode(handle, mode) ||
-		    query_int(handle, NDIS_OID_WEP_STATUS, &i))
-			i = WEP_DISABLED;
+		DBGTRACE("checking encryption mode %d", mode);
+		if (set_encr_mode(handle, mode) ||
+		    query_int(handle, NDIS_OID_ENCR_STATUS, &i))
+			i = ENCR_DISABLED;
 
-		if (mode == WEP_ENCR3_ENABLED)
+		if (mode == ENCR3_ENABLED)
 		{
-			if (i == mode || i == WEP_ENCR3_ABSENT)
+			if (i == mode || i == ENCR3_ABSENT)
 				break;
 			else
-				mode = WEP_ENCR2_ENABLED;
+				mode = ENCR2_ENABLED;
 		}
-		else if (mode == WEP_ENCR2_ENABLED)
+		else if (mode == ENCR2_ENABLED)
 		{
-			if (i == mode || i == WEP_ENCR2_ABSENT)
+			if (i == mode || i == ENCR2_ABSENT)
 				break;
 			else
-				mode = WEP_ENCR1_ENABLED;
+				mode = ENCR1_ENABLED;
 		}
 		else
-			mode = WEP_DISABLED;
+			mode = ENCR_DISABLED;
 	}
-	DBGTRACE("highest wep mode supported = %d", mode);
+	DBGTRACE("highest encryption mode supported = %d", mode);
 	set_bit(mode, &handle->capa);
-	set_wep_mode(handle, mode);
+	set_encr_mode(handle, mode);
 
-	if (handle->wep_mode == WEP_DISABLED ||
-	    handle->wep_mode == WEP_ENCR1_ENABLED)
+	if (handle->encr_mode == ENCR_DISABLED ||
+	    handle->encr_mode == ENCR1_ENABLED)
 	{
 		DBGTRACE("%s", "wpa is not supported");
 		TRACEEXIT1(return);
@@ -1139,9 +1139,9 @@ static int setup_dev(struct net_device *dev)
 	       dev->name, DRV_NAME, MAC2STR(mac), handle->driver->name);
 
 	check_capa(handle);
-	/* check_capa changes auth_mode and wep_mode, so set them again */
+	/* check_capa changes auth_mode and encr_mode, so set them again */
 	set_auth_mode(handle, AUTHMODE_OPEN);
-	set_wep_mode(handle, WEP_DISABLED);
+	set_encr_mode(handle, ENCR_DISABLED);
 
 	/* some cards (e.g., RaLink) need a scan before they can associate */
 	set_int(handle, NDIS_OID_BSSID_LIST_SCAN, 0);
@@ -1210,7 +1210,7 @@ static int ndis_init_one(struct pci_dev *pdev, const struct pci_device_id *ent)
 	handle->xmit_ring_start = 0;
 	handle->xmit_ring_pending = 0;
 
-	handle->wep_mode = WEP_NOKEY;
+	handle->encr_mode = ENCR_DISABLED;
 	handle->auth_mode = AUTHMODE_OPEN;
 	handle->capa = 0;
 
@@ -1247,7 +1247,7 @@ static int ndis_init_one(struct pci_dev *pdev, const struct pci_device_id *ent)
 	handle->scan_timestamp = 0;
 
 	memset(&handle->essid, 0, sizeof(handle->essid));
-	memset(&handle->wep_info, 0, sizeof(handle->wep_info));
+	memset(&handle->encr_info, 0, sizeof(handle->encr_info));
 
 	handle->op_mode = IW_MODE_INFRA;
 

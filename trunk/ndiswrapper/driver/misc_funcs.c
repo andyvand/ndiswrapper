@@ -276,6 +276,11 @@ NOREGPARM int wrap_tolower(int c)
 	return tolower(c);
 }
 
+NOREGPARM int wrap_toupper(int c)
+{
+	return toupper(c);
+}
+
 NOREGPARM void *wrap_memcpy(void * to, const void * from, size_t n)
 {
 	return memcpy(to, from, n);
@@ -658,6 +663,7 @@ struct wrap_func misc_wrap_funcs[] =
 	{"strncmp",   (WRAP_FUNC *)wrap_strncmp},
 	{"strncpy",   (WRAP_FUNC *)wrap_strncpy},
 	{"tolower",   (WRAP_FUNC *)wrap_tolower},
+	{"toupper",   (WRAP_FUNC *)wrap_toupper},
 	{"vsnprintf",   (WRAP_FUNC *)wrap_vsnprintf},
 	{"vsprintf",   (WRAP_FUNC *)wrap_vsprintf},
 	{"_snprintf",   (WRAP_FUNC *)wrap_snprintf},
