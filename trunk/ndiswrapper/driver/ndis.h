@@ -60,7 +60,7 @@
 #define NDIS_STATUS_BAD_CHAR    0xc0010005
 int getSp(void);
 
-#define DEBUG 0
+#define DEBUG 1
 
 #if DEBUG > 0
 #define DBGTRACE(s, args...) printk(s, args)

@@ -816,7 +816,6 @@ STDCALL void NdisMDeregisterInterrupt(struct ndis_irq **ndis_irq_ptr)
 }
 
 
-
 /*
  * Run func synchorinized with the isr.
  *
@@ -1028,7 +1027,7 @@ void NdisResetEvent(void *event){UNIMPL();}
 LIST_HEAD(worklist);
 spinlock_t worklist_lock = SPIN_LOCK_UNLOCKED;
 
-void worker(void *context)
+static void worker(void *context)
 {
 	unsigned long flags;
 	struct ndis_workentry *workentry;
@@ -1057,7 +1056,13 @@ void worker(void *context)
 	
 	
 }
-DECLARE_WORK(work, worker, NULL);
+
+struct work_struct work;
+
+void init_ndis_work(void)
+{
+	INIT_WORK(&work, &worker, NULL); 
+}
 
 STDCALL void NdisScheduleWorkItem(struct ndis_work *ndis_work)
 {
