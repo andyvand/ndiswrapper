@@ -265,8 +265,6 @@ struct ndis_driver
 	void *image;
 	unsigned int (*entry)(void *obj, char *p2) STDCALL;
 	struct miniport_char miniport_char;
-	int key_len ;
-	unsigned char key_val[IW_ENCODING_TOKEN_MAX] ;
 };
 
 
@@ -324,6 +322,10 @@ struct packed ndis_handle
 
 	struct timer_list apscan_timer;
 	struct work_struct apscan_work;
+
+	int key_len ;
+	unsigned char key_val[IW_ENCODING_TOKEN_MAX] ;
+
 };
 
 struct ndis_timer

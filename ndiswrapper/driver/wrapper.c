@@ -447,10 +447,10 @@ static int ndis_set_wep(struct net_device *dev, struct iw_request_info *info,
 		req.keyindex |= (1 << 31);
 		req.keylength = wrqu->data.length;
 		
-		handle->driver->key_len = req.keylength;
-		memcpy(handle->driver->key_val, wrqu->data.pointer,
+		handle->key_len = req.keylength;
+		memcpy(handle->key_val, wrqu->data.pointer,
 				req.keylength);
-		memcpy(req.keymaterial, handle->driver->key_val, req.keylength);
+		memcpy(req.keymaterial, handle->key_val, req.keylength);
 		
 		res = dosetinfo(handle, NDIS_OID_ADD_WEP, (char*)&req, sizeof(req), &written, &needed);
 
@@ -503,8 +503,8 @@ static int ndis_get_wep(struct net_device *dev, struct iw_request_info *info,
 	if (status & NDIS_ENCODE_OPEN_RESTRICTED)
 		wrqu->data.flags |= (IW_ENCODE_OPEN | IW_ENCODE_RESTRICTED);
 
-	wrqu->data.length = handle->driver->key_len;
-	memcpy(extra, handle->driver->key_val, handle->driver->key_len);
+	wrqu->data.length = handle->key_len;
+	memcpy(extra, handle->key_val, handle->key_len);
 
 	return 0;
 }
@@ -1172,7 +1172,7 @@ static int __devinit ndis_init_one(struct pci_dev *pdev,
 		res = -EINVAL;
 		goto out_start;
 	}
-	handle->driver->key_len = 0;
+	handle->key_len = 0;
 	apscan_init(handle);
 	hangcheck_add(handle);
 	return 0;
