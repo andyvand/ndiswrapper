@@ -64,10 +64,10 @@ void ndis_exit_handle(struct ndis_handle *handle)
 	if (handle->ndis_irq) {
 		unsigned long flags;
 
-		spin_lock_irqsave(K_SPINLOCK(handle->ndis_irq->lock), flags);
+		spin_lock_irqsave(K_SPINLOCK(&(handle->ndis_irq->lock)), flags);
 		if (miniport->disable_interrupts)
 			miniport->disable_interrupts(handle->adapter_ctx);
-		spin_unlock_irqrestore(K_SPINLOCK(handle->ndis_irq->lock),
+		spin_unlock_irqrestore(K_SPINLOCK(&(handle->ndis_irq->lock)),
 				       flags);
 		NdisMDeregisterInterrupt(handle->ndis_irq);
 	}
@@ -1363,7 +1363,7 @@ irqreturn_t ndis_irq_th(int irq, void *data, struct pt_regs *pt_regs)
 	miniport = &handle->driver->miniport_char;
 	/* this spinlock should be shared with NdisMSynchronizeWithInterrupt
 	 */
-	spin_lock_irqsave(K_SPINLOCK(ndis_irq->lock), flags);
+	spin_lock_irqsave(K_SPINLOCK(&(ndis_irq->lock)), flags);
 	if (ndis_irq->req_isr)
 		miniport->isr(&recognized, &handled, handle->adapter_ctx);
 	else { //if (miniport->disable_interrupts)
@@ -1371,7 +1371,7 @@ irqreturn_t ndis_irq_th(int irq, void *data, struct pt_regs *pt_regs)
 		/* it is not shared interrupt, so handler must be called */
 		recognized = handled = 1;
 	}
-	spin_unlock_irqrestore(K_SPINLOCK(ndis_irq->lock), flags);
+	spin_unlock_irqrestore(K_SPINLOCK(&(ndis_irq->lock)), flags);
 
 	if (recognized && handled)
 		schedule_work(&handle->irq_work);
@@ -1406,7 +1406,7 @@ STDCALL static NDIS_STATUS WRAP_EXPORT(NdisMRegisterInterrupt)
 #else
 	check_spin_lock_size(ndis_irq->lock);
 #endif
-	spin_lock_init(K_SPINLOCK(ndis_irq->lock));
+	spin_lock_init(K_SPINLOCK(&(ndis_irq->lock)));
 	handle->ndis_irq = ndis_irq;
 
 	INIT_WORK(&handle->irq_work, &ndis_irq_bh, ndis_irq);
@@ -1467,9 +1467,9 @@ STDCALL static BOOLEAN WRAP_EXPORT(NdisMSynchronizeWithInterrupt)
 		TRACEEXIT5(return 0);
 
 	sync_func = func;
-	spin_lock_irqsave(K_SPINLOCK(ndis_irq->lock), flags);
+	spin_lock_irqsave(K_SPINLOCK(&(ndis_irq->lock)), flags);
 	ret = sync_func(ctx);
-	spin_unlock_irqrestore(K_SPINLOCK(ndis_irq->lock), flags);
+	spin_unlock_irqrestore(K_SPINLOCK(&(ndis_irq->lock)), flags);
 
 	DBGTRACE5("sync_func returns %u", ret);
 	TRACEEXIT5(return ret);

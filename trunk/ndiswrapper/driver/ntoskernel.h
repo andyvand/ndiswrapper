@@ -400,14 +400,17 @@ typedef struct wrap_spinlock *KSPIN_LOCK;
 
 #else
 
-typedef spinlock_t KSPIN_LOCK;
+typedef union {
+	spinlock_t spinlock;
+	ULONG_PTR ntoslock;
+} KSPIN_LOCK;
 struct wrap_spinlock {
-	KSPIN_LOCK spinlock;
+	KSPIN_LOCK klock;
 	KIRQL use_bh;
 };
 
-#define WRAP_SPINLOCK(lock) &((lock)->spinlock)
-#define K_SPINLOCK(lock) &(lock)
+#define WRAP_SPINLOCK(lock) &((lock)->klock.spinlock)
+#define K_SPINLOCK(lock) &(lock)->spinlock
 #endif
 
 typedef CHAR KPROCESSOR_MODE;
@@ -853,7 +856,7 @@ void dump_bytes(const char *where, const u8 *ip);
 static inline void wrap_spin_lock_init(struct wrap_spinlock *lock)
 {
 #ifndef CONFIG_DEBUG_SPINLOCK
-	check_spin_lock_size(lock);
+	check_spin_lock_size(lock->klock);
 #endif
 	spin_lock_init(WRAP_SPINLOCK(lock));
 	lock->use_bh = 0;
