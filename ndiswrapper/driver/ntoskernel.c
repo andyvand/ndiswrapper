@@ -639,6 +639,9 @@ PsCreateSystemThread(void **phandle, unsigned long access, void *obj_attr,
                      void (*start_routine)(void *) STDCALL, void *context)
 {
 	struct trampoline_context *ctx;
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,0)
+	int pid;
+#endif
 
 	TRACEENTER2("phandle = %p, access = %lu, obj_attr = %p, process = %p, "
 	            "client_id = %p, start_routine = %p, context = %p",
@@ -651,12 +654,24 @@ PsCreateSystemThread(void **phandle, unsigned long access, void *obj_attr,
 	ctx->start_routine = start_routine;
 	ctx->context       = context;
 
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,0)
+	pid = kernel_thread(kthread_trampoline, ctx,
+		CLONE_FS|CLONE_FILES|CLONE_SIGHAND);
+	DBGTRACE2("pid = %d", pid);
+	if (pid < 0) {
+		kfree(ctx);
+		TRACEEXIT2(return STATUS_FAILURE);
+	}
+	*phandle = find_task_by_pid(pid);
+	DBGTRACE2("*phandle = %p", *phandle);
+#else
 	*phandle = kthread_run(kthread_trampoline, ctx, "ndiswrapper");
 	DBGTRACE2("*phandle = %p", *phandle);
 	if (IS_ERR(*phandle)) {
 		kfree(ctx);
 		TRACEEXIT2(return STATUS_FAILURE);
 	}
+#endif
 
 	TRACEEXIT2(return STATUS_SUCCESS);
 }
@@ -675,8 +690,13 @@ STDCALL static long KeSetPriorityThread(void *thread, long priority)
 
 	TRACEENTER2("thread = %p, priority = %ld", thread, priority);
 
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,0)
+	/* FIXME: is there a way to set kernel thread prio on 2.4? */
+	old_prio = 1;
+#else
 	old_prio = 32 - (task_nice((task_t *)thread) + 20);
 	set_user_nice((task_t *)thread, (32 - priority) - 20);
+#endif
 
 	return old_prio;
 }
