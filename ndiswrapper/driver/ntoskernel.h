@@ -460,6 +460,10 @@ static inline void lower_irql(KIRQL oldirql)
 	}
 }
 
+/* Windows spinlocks are of type ULONG_PTR which is not big enough to
+ * store Linux spinlocks; so we implement Windows spinlocks using
+ * ULONG_PTR space with our own functions/macros */
+
 /* the reason for value of unlocked spinlock to be 0, instead of 1
  * (which is what linux spinlocks use), is that some drivers don't
  * first call to initialize spinlock; in those case, the value of the
@@ -482,7 +486,6 @@ static inline void lower_irql(KIRQL oldirql)
 #else
 
 extern spinlock_t spinlock_kspin_lock;
-
 #define _raw_kspin_lock(lock)				\
 do {							\
 	while (1) {					\
@@ -593,8 +596,9 @@ extern int debug;
 #undef DBGTRACE
 #define DBGTRACE(level, fmt, ...) do {					\
 		if (level <= debug)					\
-			printk(KERN_INFO "ndiswrapper (%s:%d): " fmt "\n", \
-			       __FUNCTION__, __LINE__ , ## __VA_ARGS__); \
+			printk(KERN_INFO "%s (%s:%d): " fmt "\n",	\
+			       DRIVER_NAME, __FILE__,			\
+			       __LINE__ , ## __VA_ARGS__);		\
 	} while (0)
 #undef DBG_BLOCK
 #define DBG_BLOCK()
@@ -632,12 +636,12 @@ extern int debug;
 #define TRACEENTER4(fmt, ...) DBGTRACE4("Enter " fmt , ## __VA_ARGS__)
 #define TRACEENTER5(fmt, ...) DBGTRACE5("Enter " fmt , ## __VA_ARGS__)
 
-#define TRACEEXIT(stmt) do { DBGTRACE("%s", "Exit"); stmt; } while(0)
-#define TRACEEXIT1(stmt) do { DBGTRACE1("%s", "Exit"); stmt; } while(0)
-#define TRACEEXIT2(stmt) do { DBGTRACE2("%s", "Exit"); stmt; } while(0)
-#define TRACEEXIT3(stmt) do { DBGTRACE3("%s", "Exit"); stmt; } while(0)
-#define TRACEEXIT4(stmt) do { DBGTRACE4("%s", "Exit"); stmt; } while(0)
-#define TRACEEXIT5(stmt) do { DBGTRACE5("%s", "Exit"); stmt; } while(0)
+#define TRACEEXIT(stmt) do { DBGTRACE("Exit"); stmt; } while(0)
+#define TRACEEXIT1(stmt) do { DBGTRACE1("Exit"); stmt; } while(0)
+#define TRACEEXIT2(stmt) do { DBGTRACE2("Exit"); stmt; } while(0)
+#define TRACEEXIT3(stmt) do { DBGTRACE3("Exit"); stmt; } while(0)
+#define TRACEEXIT4(stmt) do { DBGTRACE4("Exit"); stmt; } while(0)
+#define TRACEEXIT5(stmt) do { DBGTRACE5("Exit"); stmt; } while(0)
 
 #ifdef USB_DEBUG
 #define USBTRACE(fmt, ...) DBGTRACE1(fmt, ## __VA_ARGS__)
@@ -652,7 +656,7 @@ extern int debug;
 #if defined DEBUG
 #define ASSERT(expr) do {						\
 		if (!(expr)) {						\
-			ERROR("Assertion failed! %s\n", (#expr));	\
+			ERROR("Assertion failed! %s", (#expr));		\
 		}							\
 	} while (0)
 #else

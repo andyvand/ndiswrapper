@@ -1009,9 +1009,8 @@ STDCALL void WRAP_EXPORT(NdisMAllocateSharedMemory)
 		      "%scached memory\n", size, cached ? "" : "un-");
 	}
 
-	*(char**)virt = v;
+	*virt = v;
 	*phys = p;
-
 	DBGTRACE3("allocated shared memory: %p", v);
 }
 
@@ -1202,7 +1201,7 @@ STDCALL void WRAP_EXPORT(NdisQueryBufferSafe)
 STDCALL void *WRAP_EXPORT(NdisBufferVirtualAddress)
 	(ndis_buffer *buffer)
 {
-	TRACEENTER3("%s", "");
+	TRACEENTER3("%p", buffer);
 	return MmGetMdlVirtualAddress(buffer);
 }
 
@@ -1238,7 +1237,7 @@ STDCALL void WRAP_EXPORT(NdisAllocatePacketPoolEx)
 	(NDIS_STATUS *status, struct ndis_packet_pool **pool_handle,
 	 UINT num_descr, UINT overflowsize, UINT rsvlen)
 {
-	TRACEENTER3("%s", "");
+	TRACEENTER3("");
 	NdisAllocatePacketPool(status, pool_handle, num_descr, rsvlen);
 	TRACEEXIT3(return);
 }
@@ -1259,8 +1258,12 @@ struct ndis_packet *allocate_ndis_packet(void)
 {
 	struct ndis_packet *packet;
 	packet = kmem_cache_alloc(packet_cache, GFP_ATOMIC);
-	if (packet)
+	if (packet) {
 		memset(packet, 0, sizeof(*packet));
+		packet->private.oob_offset =
+			offsetof(struct ndis_packet, oob_tx);
+		packet->private.packet_flags = fPACKET_ALLOCATED_BY_NDIS;
+	}
 	return packet;
 }
 
@@ -1293,10 +1296,7 @@ STDCALL void WRAP_EXPORT(NdisAllocatePacket)
 
 	if (descr) {
 		pool->num_allocated_descr++;
-		descr->private.oob_offset =
-			offsetof(struct ndis_packet, oob_tx);
 		descr->private.pool = pool;
-		descr->private.packet_flags = 0xc0;
 		*status = NDIS_STATUS_SUCCESS;
 	} else
 		*status = NDIS_STATUS_RESOURCES;
@@ -1896,10 +1896,7 @@ EthRxIndicateHandler(void *adapter_ctx, void *rx_ctx, char *header1,
 			handle->stats.rx_dropped++;
 			TRACEEXIT3(return);
 		}
-		packet->private.oob_offset =
-			offsetof(struct ndis_packet, oob_tx);
 		packet->private.pool = NULL;
-		packet->private.packet_flags = 0xc0;
 
 		miniport = &handle->driver->miniport_char;
 		irql = raise_irql(DISPATCH_LEVEL);

@@ -51,6 +51,7 @@ static char *if_name = "wlan%d";
 int proc_uid, proc_gid;
 static int hangcheck_interval;
 int debug;
+/* used to implement Windows spinlocks */
 spinlock_t spinlock_kspin_lock;
 
 NW_MODULE_PARM_STRING(if_name, 0400);
@@ -465,9 +466,7 @@ static struct ndis_packet *allocate_send_packet(struct ndis_handle *handle,
 	packet = allocate_ndis_packet();
 	if (!packet)
 		return NULL;
-	memset(packet, 0, sizeof(*packet));
 
-	packet->private.oob_offset = offsetof(struct ndis_packet, oob_tx);
 	packet->private.nr_pages = NDIS_BUFFER_TO_SPAN_PAGES(buffer);
 	packet->private.len = MmGetMdlByteCount(buffer);
 	packet->private.count = 1;

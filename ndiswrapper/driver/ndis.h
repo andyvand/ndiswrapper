@@ -67,6 +67,10 @@ struct ndis_buffer_pool {
 	KSPIN_LOCK lock;
 };
 
+#define fPACKET_WRAPPER_RESERVED		0x3F
+#define fPACKET_CONTAINS_MEDIA_SPECIFIC_INFO	0x40
+#define fPACKET_ALLOCATED_BY_NDIS		0x80
+
 enum ndis_per_packet_info {
 	TcpIpChecksumPacketInfo,
 	IpSecPacketInfo,
