@@ -1988,7 +1988,7 @@ NdisMGetDmaAlignment(struct ndis_handle *handle)
 {
 	TRACEENTER3("%s", "");
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
-        return dma_get_cache_alignment();
+	return dma_get_cache_alignment();
 #else
 	return L1_CACHE_BYTES;
 #endif

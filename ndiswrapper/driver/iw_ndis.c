@@ -556,7 +556,7 @@ static int iw_get_encr(struct net_device *dev, struct iw_request_info *info,
 	else	
 		index--;
 
-	if (index < 0 || index >= MAX_ENCR_KEYS))
+	if (index < 0 || index >= MAX_ENCR_KEYS)
 	{
 		WARNING("encryption index out of range (%u)", index);
 		TRACEEXIT1(return -EINVAL);

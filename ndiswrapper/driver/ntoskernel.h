@@ -309,5 +309,7 @@ static inline void init_dpc(struct kdpc *kdpc, void *func, void *ctx)
 
 STDCALL KIRQL KeGetCurrentIrql(void);
 STDCALL void KeInitializeSpinLock(KSPIN_LOCK *lock);
+_FASTCALL KIRQL KfAcquireSpinLock(int dummy1, int dummy2, KSPIN_LOCK *lock);
+_FASTCALL void KfReleaseSpinLock(int dummy, KIRQL oldirql, KSPIN_LOCK *lock);
 
 #endif // _NTOSKERNEL_H_
