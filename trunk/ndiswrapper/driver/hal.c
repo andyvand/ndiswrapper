@@ -181,7 +181,7 @@ _FASTCALL void WRAP_EXPORT(KefReleaseSpinLockFromDpcLevel)
 	if (KeGetCurrentIrql() != DISPATCH_LEVEL)
 		ERROR("irql != DISPATCH_LEVEL");
 #endif
-	kspin_lock(lock, DISPATCH_LEVEL);
+	kspin_unlock(lock);
 
 	TRACEEXIT4(return);
 }
