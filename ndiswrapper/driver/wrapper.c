@@ -1143,7 +1143,7 @@ static void wrapper_worker_proc(void *param)
 			      assoc_size, &written, &needed);
 		if (res || !written)
 		{
-			ERROR("query assoc_info failed (%08X)", res);
+			DBGTRACE("query assoc_info failed (%08X)", res);
 			kfree(assoc_info);
 			return;
 		}
