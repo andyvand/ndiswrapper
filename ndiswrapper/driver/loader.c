@@ -423,7 +423,7 @@ static int load_sys_files(struct ndis_driver *driver,
 					    GFP_KERNEL | __GFP_HIGHMEM,
 					    PAGE_KERNEL_EXEC);
 #else
-#error x86_64 should have either PAGE_KERNEL_EXECUTTABLE or PAGE_KERNEL_EXEC
+#error x86_64 should have either PAGE_KERNEL_EXECUTABLE or PAGE_KERNEL_EXEC
 #endif
 #else
 		pe_image->image = vmalloc(load_driver->sys_files[i].size);

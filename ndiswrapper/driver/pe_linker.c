@@ -200,7 +200,7 @@ static int check_nt_hdr(IMAGE_NT_HEADERS *nt_hdr)
 static int import(void *image, IMAGE_IMPORT_DESCRIPTOR *dirent, char *dll)
 {
 	ULONG_PTR *lookup_tbl, *address_tbl;
-	char *symname = 0;
+	char *symname = NULL;
 	int i;
 	int ret = 0;
 	void *adr;
@@ -274,9 +274,9 @@ static int read_exports(struct pe_image *pe)
 			  pe->image + *export_addr_table);
 
 		pe_exports[num_pe_exports].dll = pe->name;
-		pe_exports[num_pe_exports].name = (pe->image + *name_table);
+		pe_exports[num_pe_exports].name = pe->image + *name_table;
 		pe_exports[num_pe_exports].addr =
-			(pe->image + *export_addr_table);
+			pe->image + *export_addr_table;
 
 		num_pe_exports++;
 		name_table++;
@@ -321,10 +321,8 @@ static int fixup_reloc(void *image, IMAGE_NT_HEADERS *nt_hdr)
 	base = opt_hdr->ImageBase;
 	base_reloc_data_dir = 
 		&opt_hdr->DataDirectory[IMAGE_DIRECTORY_ENTRY_BASERELOC];
-	if (base_reloc_data_dir->Size == 0) {
-		ERROR("%s", "No relocation found");
-		return -EINVAL;
-	}
+	if (base_reloc_data_dir->Size == 0)
+		return 0;
 
 	fixup_block = RVA2VA(image, base_reloc_data_dir->VirtualAddress,
 			     IMAGE_BASE_RELOCATION *);
@@ -333,7 +331,7 @@ static int fixup_reloc(void *image, IMAGE_NT_HEADERS *nt_hdr)
 	DBGTRACE3("fixup_block info: %x %d", 
 		  fixup_block->VirtualAddress, fixup_block->SizeOfBlock);
 
-	do {
+	while (fixup_block->SizeOfBlock) {
 		int i;
 		WORD fixup, offset;
 
@@ -386,7 +384,7 @@ static int fixup_reloc(void *image, IMAGE_NT_HEADERS *nt_hdr)
 
 		fixup_block = (IMAGE_BASE_RELOCATION *)
 			((void *)fixup_block + fixup_block->SizeOfBlock);
-	} while (fixup_block->SizeOfBlock);
+	};
 	DBGTRACE1("done relocating all");	
 
 	return 0;
@@ -418,7 +416,7 @@ static int fix_pe_image(struct pe_image *pe)
 	image = __vmalloc(image_size, GFP_KERNEL | __GFP_HIGHMEM,
 			  PAGE_KERNEL_EXEC);
 #else
-#error x86_64 should have either PAGE_KERNEL_EXECUTTABLE or PAGE_KERNEL_EXEC
+#error x86_64 should have either PAGE_KERNEL_EXECUTABLE or PAGE_KERNEL_EXEC
 #endif
 #else
 	image = vmalloc(image_size);
@@ -473,7 +471,7 @@ static int fix_pe_image(struct pe_image *pe)
 
 int load_pe_images(struct pe_image *pe_image, int n)
 {
-	int i = 0;
+	int i;
 	struct pe_image *pe;
 
 #ifdef DEBUG
@@ -504,8 +502,8 @@ int load_pe_images(struct pe_image *pe_image, int n)
 		pe->opt_hdr = &pe->nt_hdr->OptionalHeader;
 
 		pe->type = check_nt_hdr(pe->nt_hdr);
-		if (pe_image[i].type <= 0) {
-			DBGTRACE1("pe_image[i].type <=0");
+		if (pe->type <= 0) {
+			DBGTRACE1("type <= 0");
 			return -EINVAL;
 		}
 
@@ -536,9 +534,11 @@ int load_pe_images(struct pe_image *pe_image, int n)
 		pe->entry =
 			RVA2VA(pe->image,
 			       pe->opt_hdr->AddressOfEntryPoint, void *);
-		DBGTRACE1("entry is at %p, rva at %08X", pe_image[i].entry, 
+		DBGTRACE1("entry is at %p, rva at %08X", pe->entry, 
 			  pe->opt_hdr->AddressOfEntryPoint);
-	} for (i = 0; i < n; i++) {
+	}
+
+	for (i = 0; i < n; i++) {
 	        pe = &pe_image[i];
 
 		if (pe->type == IMAGE_FILE_DLL) {
@@ -549,16 +549,14 @@ int load_pe_images(struct pe_image *pe_image, int n)
 
 			memset(&ustring, 0, sizeof(ustring));
 			ustring.buf = (wchar_t *)buf;
-			dll_entry = (void *)get_dll_init(pe_image[i].name);
+			dll_entry = (void *)get_dll_init(pe->name);
 
 			DBGTRACE1("calling dll_init at %p", dll_entry);
 			if (!dll_entry || dll_entry(&ustring))
 				ERROR("DLL initialize failed for %s",
-				      pe_image[i].name);
+				      pe->name);
 		}
-		else if (pe->type == IMAGE_FILE_EXECUTABLE_IMAGE)
-			;
-		else
+		else if (pe->type != IMAGE_FILE_EXECUTABLE_IMAGE)
 			ERROR("illegal image type: %d", pe->type);
 	}
 	return 0;
