@@ -226,7 +226,8 @@ void wrapper_init_timer(struct ktimer *ktimer, void *handle, struct kdpc *kdpc)
 	kspin_lock_init(&wrapper_timer->lock);
 	if (ndis_handle) {
 		kspin_lock(&ndis_handle->timer_lock);
-		InsertHeadList(&ndis_handle->wrapper_timer_list, &wrapper_timer->list);
+		InsertHeadList(&ndis_handle->wrapper_timer_list,
+			       &wrapper_timer->list);
 		kspin_unlock(&ndis_handle->timer_lock);
 	} else {
 		kspin_unlock(&ntoskernel_lock);
@@ -288,7 +289,6 @@ int wrapper_set_timer(struct wrapper_timer *wrapper_timer, unsigned long expires
 void wrapper_cancel_timer(struct wrapper_timer *wrapper_timer, char *canceled)
 {
 	KIRQL irql;
-	struct ktimer *ktimer = wrapper_timer->ktimer;
 
 	TRACEENTER4("timer = %p, canceled = %p", wrapper_timer, canceled);
 	if (!wrapper_timer) {
@@ -319,10 +319,12 @@ void wrapper_cancel_timer(struct wrapper_timer *wrapper_timer, char *canceled)
 			*canceled = TRUE;
 		} else
 			*canceled = del_timer(&wrapper_timer->timer);
+		wrapper_timer->active = 0;
 	} else
 		*canceled = FALSE;
 	kspin_unlock_irql(&wrapper_timer->lock, irql);
-	KeClearEvent((struct kevent *)ktimer);
+	if (*canceled == TRUE)
+		KeClearEvent((struct kevent *)wrapper_timer->ktimer);
 	TRACEEXIT5(return);
 }
 
