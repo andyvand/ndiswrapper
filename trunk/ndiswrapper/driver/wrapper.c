@@ -2002,7 +2002,7 @@ static struct ndis_driver *load_driver(struct driver_files *driver_files)
 	{
 		ERROR("unable to allocate memory for driver '%s'",
 			driver_files->name);
-		goto out_nodriver;
+		TRACEEXIT1(return 0);
 	}
 	memset(driver, 0, sizeof(struct ndis_driver));
 	driver->bustype = -1;
@@ -2063,7 +2063,6 @@ out_image_fail:
 		if (driver->pe_images[i].image)
 			vfree(driver->pe_images[i].image);
 	kfree(driver);
-out_nodriver:
 	TRACEEXIT1(return 0);
 }
 
@@ -2204,35 +2203,35 @@ static int add_setting(struct ndis_device *device,
 {
 	struct ndis_setting *setting;
 
-	if (!(setting = kmalloc(sizeof(*setting), GFP_KERNEL)))
+	if (put_setting->val_str_len > MAX_NDIS_SETTING_VAL_LENGTH)
+		return -EINVAL;
+
+	setting = kmalloc(sizeof(*setting), GFP_KERNEL);
+	if (!setting)
 		return -ENOMEM;
 
 	memset(setting, 0, sizeof(*setting));
 
-	if (!(setting->name = kmalloc(put_setting->name_len+1, GFP_KERNEL)))
-		goto setting_fail;
-
-	if (put_setting->val_str_len > MAX_NDIS_SETTING_VAL_LENGTH)
-		goto name_fail;
-
-	if(copy_from_user(setting->name, put_setting->name,
-			  put_setting->name_len))
-		goto name_fail;
+	setting->name = kmalloc(put_setting->name_len+1, GFP_KERNEL);
+	if (!setting->name) {
+		kfree(setting);
+		return -EINVAL;
+	}
 
 	setting->name[put_setting->name_len] = 0;
-
-	if(copy_from_user(setting->val_str, put_setting->value,
-			  put_setting->val_str_len))
-		goto name_fail;
+	if (copy_from_user(setting->name, put_setting->name,
+			   put_setting->name_len) ||
+	    copy_from_user(setting->val_str, put_setting->value,
+			   put_setting->val_str_len)) {
+		kfree(setting);
+		kfree(setting->name);
+		return -EINVAL;
+	}
 
 	setting->val_str[put_setting->val_str_len] = 0;
 	setting->value.type = NDIS_SETTING_NONE;
 
-	if (strcmp(setting->name, "ndis_version") == 0)
-	{
-		if (put_setting->val_str_len > NDIS_VERSION_STRING_MAX)
-			put_setting->val_str_len = NDIS_VERSION_STRING_MAX;
-
+	if (strcmp(setting->name, "ndis_version") == 0) {
 		memcpy(device->driver->version, setting->val_str,
 		       put_setting->val_str_len);
 		device->driver->version[put_setting->val_str_len] = 0;
@@ -2242,12 +2241,7 @@ static int add_setting(struct ndis_device *device,
 	else
 		list_add(&setting->list, &device->settings);
 	return 0;
-
-name_fail:
-	kfree(setting->name);
-setting_fail:
-	kfree(setting);
-	return -EINVAL;
+	
 }
 
 /* Delete a device and all info about it. */
@@ -2493,10 +2487,10 @@ static int __init wrapper_init(void)
 	       "no"
 #endif
 		);
-        if ( (err = misc_register(&wrapper_misc)) < 0 ) {
-                ERROR("misc_register failed (%d)", err);
+	if ( (err = misc_register(&wrapper_misc)) < 0 ) {
+		ERROR("misc_register failed (%d)", err);
 		return err;
-        }
+	}
 
 	init_ndis();
 	INIT_LIST_HEAD(&wrap_allocs);

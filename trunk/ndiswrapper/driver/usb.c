@@ -624,9 +624,8 @@ unsigned long usb_reset_port(struct usb_device *dev)
 	TRACEEXIT3(return STATUS_SUCCESS);
 }
 
-STDCALL union nt_urb *
-USBD_CreateConfigurationRequest(struct usb_config_descriptor *config,
-                                unsigned short *urb_size)
+STDCALL union nt_urb * WRAP_EXPORT(USBD_CreateConfigurationRequest)
+	(struct usb_config_descriptor *config, unsigned short *urb_size)
 {
 	union nt_urb *urb;
 	struct usb_interface_descriptor *intf_desc;
@@ -679,9 +678,9 @@ USBD_CreateConfigurationRequest(struct usb_config_descriptor *config,
 	TRACEEXIT2(return urb);
 }
 
-STDCALL union nt_urb *
-USBD_CreateConfigurationRequestEx(struct usb_config_descriptor *config,
-                                  struct usbd_interface_list_entry *intfList)
+STDCALL union nt_urb * WRAP_EXPORT(USBD_CreateConfigurationRequestEx)
+	(struct usb_config_descriptor *config,
+	 struct usbd_interface_list_entry *intfList)
 {
 	union nt_urb *urb;
 	int urb_size;
@@ -729,12 +728,13 @@ USBD_CreateConfigurationRequestEx(struct usb_config_descriptor *config,
 
 	TRACEEXIT2(return urb);
 }
+WRAP_EXPORT_MAP("_USBD_CreateConfigurationRequestEx@8",	USBD_CreateConfigurationRequestEx);
 
 STDCALL struct usb_interface_descriptor *
-USBD_ParseConfigurationDescriptorEx(struct usb_config_descriptor *config,
-                                    void *startPos, long intfNum, long altSet,
-                                    long intfClass, long intfSubClass,
-                                    long intfProto)
+	WRAP_EXPORT(USBD_ParseConfigurationDescriptorEx)
+	(struct usb_config_descriptor *config,
+	 void *startPos, long intfNum, long altSet,
+	 long intfClass, long intfSubClass, long intfProto)
 {
 	int size = config->wTotalLength;
 	char *pos = startPos;
@@ -771,25 +771,17 @@ USBD_ParseConfigurationDescriptorEx(struct usb_config_descriptor *config,
 
 	TRACEEXIT2(return NULL);
 }
+WRAP_EXPORT_MAP("_USBD_ParseConfigurationDescriptorEx@28", USBD_ParseConfigurationDescriptorEx);
 
 STDCALL struct usb_interface_descriptor *
-USBD_ParseConfigurationDescriptor(struct usb_config_descriptor *config,
-                                    long intfNum, long altSet)
+	WRAP_EXPORT(USBD_ParseConfigurationDescriptor)
+	(struct usb_config_descriptor *config,
+	 long intfNum, long altSet)
 {
 	return USBD_ParseConfigurationDescriptorEx(config, config,
 						   intfNum, altSet,
 						   -1, -1, -1);
 }
 
-struct wrap_func usb_wrap_funcs[] =
-{
-	WRAP_FUNC_ENTRY(USBD_CreateConfigurationRequest),
-	WRAP_FUNC_ENTRY(USBD_CreateConfigurationRequestEx),
-	WRAP_FUNC_ENTRY(USBD_ParseConfigurationDescriptorEx),
-	WRAP_FUNC_ENTRY(USBD_ParseConfigurationDescriptor),
-	{"_USBD_CreateConfigurationRequestEx@8",
-	 (WRAP_FUNC)USBD_CreateConfigurationRequestEx},
-	{"_USBD_ParseConfigurationDescriptorEx@28",
-	 (WRAP_FUNC)USBD_ParseConfigurationDescriptorEx},
-	{NULL, NULL}
-};
+#include "usb_exports.h"
+
