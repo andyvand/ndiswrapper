@@ -831,12 +831,12 @@ STDCALL void NdisCancelTimer(struct ndis_timer **timer, char *cancelled)
 	NdisMCancelTimer(timer, cancelled);
 }
 
-STDCALL void NdisInitializeTimer(struct ndis_timer *timer,
+STDCALL void NdisInitializeTimer(struct ndis_timer **timer,
 								 void *func, void *ctx)
 {
 	DBGTRACE("%s(entry): %p, %p, %p\n",
 			 __FUNCTION__, timer, func, ctx);
-//	NdisMInitializeTimer(timer_handle, NULL, func, ctx);
+	NdisMInitializeTimer(timer_handle, NULL, func, ctx);
 	DBGTRACE("%s(exit): %p, %p, %p\n",
 			 __FUNCTION__, timer, func, ctx);
 }
