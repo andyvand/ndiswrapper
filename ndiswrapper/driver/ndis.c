@@ -772,8 +772,6 @@ void ndis_timer_handler_bh(void *data)
 {
 	struct ndis_timer *timer = (struct ndis_timer*) data;
 	STDCALL void (*func)(void *res1, void *data, void *res3, void *res4) = timer->func;
-	func(0, timer->ctx, 0, 0);
-
 	if(timer->repeat)
 	{
 		timer->timer.expires = jiffies + timer->repeat;
@@ -781,6 +779,8 @@ void ndis_timer_handler_bh(void *data)
 	}
 	else
 		timer->active = 0;
+
+	func(0, timer->ctx, 0, 0);
 }
 
 
