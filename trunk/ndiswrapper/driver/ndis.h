@@ -554,7 +554,7 @@ struct packed ndis_handle
 
 	struct iw_essid essid;
 
-	int wpa_capa;
+	unsigned long capa;
 	int encr_alg;
 	enum auth_mode auth_mode;
 	enum wep_mode wep_mode;
@@ -918,5 +918,10 @@ struct wpa_key
 #define WPA_SET_KEY 		SIOCIWFIRSTPRIV+2
 #define WPA_DISASSOCIATE 	SIOCIWFIRSTPRIV+3
 #define WPA_SET_PRIV_FILTER 	SIOCIWFIRSTPRIV+4
+
+enum capa_list
+{
+	CAPA_WPA,
+};
 
 #endif /* NDIS_H */

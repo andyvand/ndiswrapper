@@ -1140,9 +1140,9 @@ static int ndis_set_wpa(struct net_device *dev, struct iw_request_info *info,
 	unsigned int res;
 	
 	TRACEENTER("%s", "");
-	DBGTRACE("flags = %d, encr_alg = %d, handle->capa = %d, "
+	DBGTRACE("flags = %d, encr_alg = %d, handle->capa = %ld, "
 		 "handle->encr_alg = %d", wrqu->data.flags, handle->encr_alg,
-	       handle->wpa_capa, handle->encr_alg);
+	       handle->capa, handle->encr_alg);
 	
 	if (!wrqu->data.flags)
 	{
@@ -1157,7 +1157,7 @@ static int ndis_set_wpa(struct net_device *dev, struct iw_request_info *info,
 		TRACEEXIT(return 0);
 	}
 
-	if (!handle->wpa_capa)
+	if (!test_bit(CAPA_WPA, &handle->capa))
 		TRACEEXIT(return -EINVAL);
 
 	DBGTRACE1("authmode = %d, wepmode = %d", handle->auth_mode,
