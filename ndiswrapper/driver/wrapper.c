@@ -75,11 +75,13 @@ int doreset(struct ndis_handle *handle)
 	int res;
 	int addressing_reset;
 	DBGTRACE("%s: Enter\n", __FUNCTION__);
-	down_interruptible(&handle->ndis_comm_mutex);
-//	spin_lock_bh(&handle->ndis_comm_lock);
 
+	down_interruptible(&handle->ndis_comm_mutex);
 	handle->ndis_comm_done = 0;
+
+	spin_lock_bh(&handle->ndis_comm_lock);
 	res = handle->driver->miniport_char.reset(&addressing_reset, handle->adapter_ctx);
+	spin_unlock_bh(&handle->ndis_comm_lock);
 
 	if(!res)
 		goto out;
@@ -93,7 +95,6 @@ int doreset(struct ndis_handle *handle)
 	res = handle->ndis_comm_res;
 
 out:
-//	spin_unlock(&handle->ndis_comm_lock);
 	up(&handle->ndis_comm_mutex);
 	DBGTRACE("%s: Exit\n", __FUNCTION__);
 	return res;
@@ -109,12 +110,14 @@ int doquery(struct ndis_handle *handle, unsigned int oid, char *buf, int bufsize
 	int res;
 
 	DBGTRACE("%s: Enter\n", __FUNCTION__);
-	down_interruptible(&handle->ndis_comm_mutex);
-//	spin_lock(&handle->ndis_comm_lock);
-
-	handle->ndis_comm_done = 0;
 //	DBGTRACE("Calling query at %08x rva(%08x)\n", (int)handle->driver->miniport_char.query, (int)handle->driver->miniport_char.query - image_offset);
+
+	down_interruptible(&handle->ndis_comm_mutex);
+	handle->ndis_comm_done = 0;
+
+	spin_lock_bh(&handle->ndis_comm_lock);
 	res = handle->driver->miniport_char.query(handle->adapter_ctx, oid, buf, bufsize, written, needed);
+	spin_unlock_bh(&handle->ndis_comm_lock);
 
 	if(!res)
 		goto out;
@@ -128,7 +131,6 @@ int doquery(struct ndis_handle *handle, unsigned int oid, char *buf, int bufsize
 	res = handle->ndis_comm_res;
 
 out:
-//	spin_unlock(&handle->ndis_comm_lock);
 	up(&handle->ndis_comm_mutex);
 	DBGTRACE("%s: Exit\n", __FUNCTION__);
 	return res;
@@ -144,12 +146,14 @@ int dosetinfo(struct ndis_handle *handle, unsigned int oid, char *buf, int bufsi
 	int res;
 
 	DBGTRACE("%s: Enter\n", __FUNCTION__);
-	down_interruptible(&handle->ndis_comm_mutex);
-//	spin_lock(&handle->ndis_comm_lock);
-	
-	handle->ndis_comm_done = 0;
 //	DBGTRACE("Calling setinfo at %08x rva(%08x)\n", (int)handle->driver->miniport_char.setinfo, (int)handle->driver->miniport_char.setinfo - image_offset);
+
+	down_interruptible(&handle->ndis_comm_mutex);
+	handle->ndis_comm_done = 0;
+
+	spin_lock_bh(&handle->ndis_comm_lock);
 	res = handle->driver->miniport_char.setinfo(handle->adapter_ctx, oid, buf, bufsize, written, needed);
+	spin_unlock_bh(&handle->ndis_comm_lock);
 
 	if(!res)
 		goto out;
@@ -163,7 +167,6 @@ int dosetinfo(struct ndis_handle *handle, unsigned int oid, char *buf, int bufsi
 	res = handle->ndis_comm_res;
 
 out:
-//	spin_unlock(&handle->ndis_comm_lock);
 	up(&handle->ndis_comm_mutex);
 	DBGTRACE("%s: Enter\n", __FUNCTION__);
 	return res;
@@ -338,6 +341,7 @@ static void statcollector_bh(void *data)
 	struct ndis_wireless_stats ndis_stats;
 	long rssi;
 
+	return;
 	res = doquery(handle, NDIS_OID_RSSI, (char *)&rssi, sizeof(rssi),
 		      &written, &needed);
 	if (!res)
@@ -1039,20 +1043,23 @@ static int ndis_init_one(struct pci_dev *pdev,
 
 	if(call_init(handle))
 	{
-		printk(KERN_ERR "ndiswrapper: Driver init returned error\n");
+		printk(KERN_ERR "%s: Windows driver couldn't initialize "
+		       "the device\n", DRV_NAME);
 		res = -EINVAL;
 		goto out_start;
 	}
 
+	/* do we need to power up the card explicitly? */
+	set_int(handle, NDIS_OID_PNP_SET_POWER, NDIS_PM_STATE_D0);
+	handle->pm_state = NDIS_PM_STATE_D0;
 	doreset(handle);
 	
 	if(setup_dev(handle->net_dev))
 	{
-		printk(KERN_ERR "ndiswrapper: Unable to set up driver\n");
+		printk(KERN_ERR "%s: Couldn't setup interface\n", DRV_NAME);
 		res = -EINVAL;
 		goto out_setup;
 	}
-	handle->pm_state = NDIS_PM_STATE_D0;
 	hangcheck_add(handle);
 	statcollector_add(handle);
 	ndiswrapper_procfs_add_iface(handle);
