@@ -3,7 +3,7 @@
 
 Prerequisites
 -------------
-* You need a recent kernel (at least 2.6.0 or 2.4.23) with source. 
+* You need a recent kernel (at least 2.6.0 or 2.4.20) with source. 
 * Make sure there is a link to the source from the modules directory:
   '/lib/modules/<VERSION>/build' should be a link to the kernel
   source, where <VERSION> is the version of the kernel you are running.
