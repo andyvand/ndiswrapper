@@ -1038,6 +1038,9 @@ enum capa_list
 	CAPA_WPA,
 };
 
+#define PRIV_RESET	 		SIOCIWFIRSTPRIV+16
+#define PRIV_POWER_PROFILE	 	SIOCIWFIRSTPRIV+17
+
 /* these have to match what is in wpa_supplicant */
 typedef enum { WPA_ALG_NONE, WPA_ALG_WEP, WPA_ALG_TKIP, WPA_ALG_CCMP } wpa_alg;
 typedef enum { CIPHER_NONE, CIPHER_WEP40, CIPHER_TKIP, CIPHER_CCMP,
@@ -1073,7 +1076,6 @@ struct wpa_assoc_info
 	wpa_key_mgmt key_mgmt_suite;
 };
 
-#define PRIV_RESET	 		SIOCIWFIRSTPRIV+0
 #define WPA_SET_WPA 			SIOCIWFIRSTPRIV+1
 #define WPA_SET_KEY 			SIOCIWFIRSTPRIV+2
 #define WPA_ASSOCIATE		 	SIOCIWFIRSTPRIV+3
@@ -1082,6 +1084,5 @@ struct wpa_assoc_info
 #define WPA_SET_COUNTERMEASURES 	SIOCIWFIRSTPRIV+6
 #define WPA_DEAUTHENTICATE	 	SIOCIWFIRSTPRIV+7
 #define WPA_SET_AUTH_ALG	 	SIOCIWFIRSTPRIV+8
-#define PRIV_POWER_PROFILE	 	SIOCIWFIRSTPRIV+20
 
 #endif /* NDIS_H */
