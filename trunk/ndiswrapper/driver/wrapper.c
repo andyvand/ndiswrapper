@@ -466,23 +466,8 @@ static int ndis_get_wep(struct net_device *dev, struct iw_request_info *info,
 	return 0;
 }
 	
-static int ndis_set_scan(struct net_device *dev, struct iw_request_info *info,
-			   union iwreq_data *wrqu, char *extra)
-{
-	struct ndis_handle *handle = dev->priv;
-	int scan, res, written, needed;
-	struct list_scan list_scan;
-
-	scan = 0;
-	res = handle->driver->miniport_char.setinfo(handle->adapter_ctx, NDIS_OID_BSSID_LIST_SCAN, (char*)&list_scan, sizeof(list_scan), &written, &needed);
-	if (res)
-		return -1;
-	handle->driver->scan_time = jiffies;
-	return 0;
-}
-
 char *ndis_translate_scan(struct net_device *dev, char *event, char *end_buf,
-		struct ssid_item item)
+			  struct ssid_item *item)
 {
 	struct iw_event iwe;
 	char *current_val;
@@ -493,41 +478,47 @@ char *ndis_translate_scan(struct net_device *dev, char *event, char *end_buf,
 	iwe.cmd = SIOCGIWAP;
 	iwe.u.ap_addr.sa_family = ARPHRD_ETHER;
 	iwe.len = IW_EV_ADDR_LEN;
-	memcpy(iwe.u.ap_addr.sa_data, item.mac, ETH_ALEN);
+	memcpy(iwe.u.ap_addr.sa_data, item->mac, ETH_ALEN);
 	event = iwe_stream_add_event(event, end_buf, &iwe, IW_EV_ADDR_LEN);
 
 	/* add essid */
 	memset(&iwe, 0, sizeof(iwe));
 	iwe.cmd = SIOCGIWESSID;
-	iwe.u.data.length = item.ssid.length;
+	iwe.u.data.length = item->ssid.length;
 	if (iwe.u.data.length > IW_ESSID_MAX_SIZE)
 		iwe.u.data.length = IW_ESSID_MAX_SIZE;
 	iwe.u.data.flags = 1;
 	iwe.len = IW_EV_POINT_LEN + iwe.u.data.length;
-	event = iwe_stream_add_point(event, end_buf, &iwe, item.ssid.ssid);
+	event = iwe_stream_add_point(event, end_buf, &iwe, item->ssid.ssid);
+
+	/* add protocol name */
+	memset(&iwe, 0, sizeof(iwe));
+	iwe.cmd = SIOCGIWNAME;
+	strncpy(iwe.u.name, net_type_to_name(item->net_type), IFNAMSIZ);
+	event = iwe_stream_add_event(event, end_buf, &iwe, IW_EV_CHAR_LEN);
 
 	/* add mode */
 	memset(&iwe, 0, sizeof(iwe));
 	iwe.cmd = SIOCGIWMODE;
-	if (item.net_type == NDIS_MODE_ADHOC)
-		iwe.u.mode = IW_MODE_ADHOC ;
-	else if (item.net_type == NDIS_MODE_INFRA)
+	if (item->mode == NDIS_MODE_ADHOC)
+		iwe.u.mode = IW_MODE_ADHOC;
+	else if (item->mode == NDIS_MODE_INFRA)
 		iwe.u.mode = IW_MODE_INFRA;
-	else // if (item.net_type == NDIS_MODE_AUTO)
+	else // if (item->mode == NDIS_MODE_AUTO)
 		iwe.u.mode = IW_MODE_AUTO;
 	event = iwe_stream_add_event(event, end_buf, &iwe, IW_EV_UINT_LEN);
-
+	
 	/* add freq */
 	memset(&iwe, 0, sizeof(iwe));
 	iwe.cmd = SIOCGIWFREQ;
-	iwe.u.freq.m = item.config.ds_config;
-	if (item.config.ds_config > 1000000)
+	iwe.u.freq.m = item->config.ds_config;
+	if (item->config.ds_config > 1000000)
 	{
-		iwe.u.freq.m = item.config.ds_config / 10;
+		iwe.u.freq.m = item->config.ds_config / 10;
 		iwe.u.freq.e = 1;
 	}
 	else
-		iwe.u.freq.m = item.config.ds_config;
+		iwe.u.freq.m = item->config.ds_config;
 	/* convert from kHz to Hz */
 	iwe.u.freq.e += 3;
 	iwe.len = IW_EV_FREQ_LEN;
@@ -536,7 +527,7 @@ char *ndis_translate_scan(struct net_device *dev, char *event, char *end_buf,
 	/* add qual */
 	memset(&iwe, 0, sizeof(iwe));
 	iwe.cmd = IWEVQUAL;
-	iwe.u.qual.level = item.rssi;
+	iwe.u.qual.level = item->rssi;
 	iwe.u.qual.noise = 0;
 	iwe.u.qual.qual = 0;
 	iwe.len = IW_EV_QUAL_LEN;
@@ -545,28 +536,47 @@ char *ndis_translate_scan(struct net_device *dev, char *event, char *end_buf,
 	/* add key info */
 	memset(&iwe, 0, sizeof(iwe));
 	iwe.cmd = SIOCGIWENCODE;
-	if (item.privacy == NDIS_PRIV_ACCEPT_ALL)
+	if (item->privacy == NDIS_PRIV_ACCEPT_ALL)
 		iwe.u.data.flags = IW_ENCODE_DISABLED;
 	else
 		iwe.u.data.flags = IW_ENCODE_ENABLED | IW_ENCODE_NOKEY;
 	iwe.u.data.length = 0;
 	iwe.len = IW_EV_POINT_LEN;
-	event = iwe_stream_add_point(event, end_buf, &iwe, item.ssid.ssid);
+	event = iwe_stream_add_point(event, end_buf, &iwe, item->ssid.ssid);
 
 	/* add rate */
 	memset(&iwe, 0, sizeof(iwe));
 	current_val = event + IW_EV_LCP_LEN;
 	iwe.cmd = SIOCGIWRATE;
-	for (i = 0 ; i < NDIS_MAX_RATES ; i++) {
-		if (item.rates[i] == 0)
+	for (i = 0 ; i < NDIS_MAX_RATES ; i++)
+	{
+		if (item->rates[i] == 0)
 			break;
-		iwe.u.bitrate.value = ((item.rates[i] & 0x7f) * 500000);
+		iwe.u.bitrate.value = ((item->rates[i] & 0x7f) * 500000);
 		current_val = iwe_stream_add_value(event, current_val, end_buf, &iwe, IW_EV_PARAM_LEN);
 	}
 
 	if ((current_val - event) > IW_EV_LCP_LEN)
 		event = current_val;
 	return event;
+}
+
+static int ndis_list_scan(struct ndis_handle *handle)
+{
+	int res;
+
+	res = set_int(handle, NDIS_OID_BSSID_LIST_SCAN, 0);
+	if (res)
+		printk(KERN_ERR "BSSID list scan failed with %d\n", res);
+	
+	return 0;
+}
+
+static int ndis_set_scan(struct net_device *dev, struct iw_request_info *info,
+			   union iwreq_data *wrqu, char *extra)
+{
+	/* all work is now done by timer func ndis_list_scan */
+	return 0;
 }
 
 static int ndis_get_scan(struct net_device *dev, struct iw_request_info *info,
@@ -576,24 +586,40 @@ static int ndis_get_scan(struct net_device *dev, struct iw_request_info *info,
 	int i, res, written, needed;
 	struct list_scan list_scan;
 	char *event = extra;
+	char *cur_item ;
 
-	if (handle->driver->scan_time &&
-			time_before(jiffies, handle->driver->scan_time+3*HZ))
-		return -EAGAIN;
-
-	handle->driver->scan_time = 0;
+	written = needed = 0;
 	res = doquery(handle, NDIS_OID_BSSID_LIST, (char*)&list_scan, sizeof(list_scan), &written, &needed);
-
+	if (needed > 0)
+		printk(KERN_ERR "Not enough space for all APs available\n");
 	if (res)
 		return -1;
 
-	for (i = 0 ; i < list_scan.num_items && i < MAX_LIST_SCAN ; i++)
+	for (i = 0, cur_item = (char *)&(list_scan.items[0]) ;
+	     i < list_scan.num_items && i < MAX_SCAN_LIST_ITEMS ; i++)
+	{
+		char *prev_item = cur_item ;
 		event = ndis_translate_scan(dev, event,
-				extra + IW_SCAN_MAX_DATA,
-				list_scan.items[i]);
+					    extra + IW_SCAN_MAX_DATA,
+					    (struct ssid_item *)cur_item);
+		cur_item += ((struct ssid_item *)prev_item)->length;
+	}
 	wrqu->data.length = event - extra;
 	wrqu->data.flags = 0;
 	return 0;
+}
+
+void add_scan_timer(unsigned long handle)
+{
+	struct timer_list *timer_list =
+		&(((struct ndis_handle *)handle)->driver->timer_list);
+
+	ndis_list_scan((struct ndis_handle *)handle);
+
+	timer_list->data = (unsigned long) handle;
+	timer_list->function = &add_scan_timer;
+	timer_list->expires = jiffies + 1000;
+	add_timer(timer_list);
 }
 
 static int ndis_set_power_mode(struct net_device *dev,
@@ -947,9 +973,6 @@ static int setup_dev(struct net_device *dev)
 	dev->mem_start = handle->mem_start;		
 	dev->mem_end = handle->mem_end;		
 
-	handle->driver->key_len = 0;
-	handle->driver->scan_time = 0;
-
 	return register_netdev(dev);
 }
 
@@ -1020,6 +1043,10 @@ static int __devinit ndis_init_one(struct pci_dev *pdev,
 		res = -EINVAL;
 		goto out_start;
 	}
+	handle->driver->key_len = 0;
+	init_timer(&(handle->driver->timer_list));
+	add_scan_timer((unsigned long)handle);
+
 	return 0;
 
 out_start:
@@ -1038,6 +1065,7 @@ static void __devexit ndis_remove_one(struct pci_dev *pdev)
 
 	DBGTRACE("%s\n", __FUNCTION__);
 
+	del_timer(&(handle->driver->timer_list));
 #ifndef DEBUG_CRASH_ON_INIT
 	unregister_netdev(handle->net_dev);
 	call_halt(handle);

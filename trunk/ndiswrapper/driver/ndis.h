@@ -261,7 +261,7 @@ struct ndis_driver
 	struct miniport_char miniport_char;
 	int key_len ;
 	unsigned char key_val[IW_ENCODING_TOKEN_MAX] ;
-	unsigned long scan_time;
+	struct timer_list timer_list;
 };
 
 
@@ -395,11 +395,11 @@ struct packed ssid_item
 	unsigned char ies[1];
 };
 
-#define MAX_LIST_SCAN 5
+#define MAX_SCAN_LIST_ITEMS 10
 struct packed list_scan
 {
 	unsigned long num_items;
-	struct ssid_item items[MAX_LIST_SCAN];
+	struct ssid_item items[MAX_SCAN_LIST_ITEMS];
 };
 
 #define NDIS_ENCODE_ENABLED 0
