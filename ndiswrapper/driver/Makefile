@@ -5,14 +5,12 @@ DISTFILES=Makefile coffpe.h ndiswrapper.h loader.c loader.h  ndis.c ndis.h \
 				   wrapper.c wrapper.h  proc.c misc_funcs.c \
 				   divdi3.c longlong.h usb.c usb.h
 
-ifndef KVER
-KVER := $(shell uname -r)
-endif
+KVERS ?= $(shell uname -r)
+KSRC  ?= /lib/modules/$(KVERS)/build
 
-KVERS := $(shell echo $(KVER) |  sed -e 's/\([^\.]*\)\.\([^\.]*\)\..*/\1\2/')
-KSRC  := /lib/modules/$(KVER)/build
+KPSUB := $(shell echo $(KVERS) |  sed -e 's/\([^\.]*\)\.\([^\.]*\)\..*/\1\2/')
 
-INST_DIR := /lib/modules/$(KVER)/misc
+INST_DIR := /lib/modules/$(KVERS)/misc
 
 SRC_DIR=$(shell pwd)
 
@@ -73,7 +71,7 @@ CFLAGS += -DNDISWRAPPER_VERSION=\"${NDISWRAPPER_VERSION}\" \
 		  -DEXTRA_VERSION=\"${EXTRA_VERSION}\"
 endif
 
-ifeq ($(KVERS),24)
+ifeq ($(KPSUB),24)
 MODULE := ndiswrapper.o
 CFLAGS  += -DLINUX -D__KERNEL__ -DMODULE -I$(KSRC)/include \
 		  -Wall -Wstrict-prototypes -fomit-frame-pointer    \
