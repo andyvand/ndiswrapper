@@ -25,7 +25,6 @@
 
 #include "ndis.h"
 
-extern int image_offset;
 extern struct list_head ndis_driverlist;
 
 struct list_head handle_ctx_list;
@@ -1987,7 +1986,11 @@ STDCALL static unsigned int
 NdisMGetDmaAlignment(struct ndis_handle *handle)
 {
 	TRACEENTER3("%s", "");
-	return dma_get_cache_alignment();
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
+        return dma_get_cache_alignment();
+#else
+	return L1_CACHE_BYTES;
+#endif
 }
 
 STDCALL static void
@@ -2104,10 +2107,8 @@ static void ndis_worker(void *data)
 			sched_work_item =
 				ndis_work_entry->entry.sched_work_item;
 
-			DBGTRACE3("Calling work at %08x (rva %08x) with "
-				  "parameter %08x",
+			DBGTRACE3("Calling work at %08x with parameter %08x",
 				  (int)sched_work_item->func,
-				  (int)sched_work_item->func - image_offset,
 				  (int)sched_work_item->ctx);
 			sched_work_item->func(sched_work_item,
 					      sched_work_item->ctx);
