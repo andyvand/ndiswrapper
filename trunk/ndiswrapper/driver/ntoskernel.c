@@ -1160,7 +1160,14 @@ STDCALL struct mdl *WRAP_EXPORT(IoAllocateMdl)
 STDCALL void WRAP_EXPORT(IoFreeMdl)
 	(struct mdl *mdl)
 {
-	if (mdl)
+	/* 64-bit driver for Broadcom allocates Mdl with
+	 * NdisAllocateBuffer and frees with IoFreeMdl. Since we need
+	 * to treat buffers allocated with Ndis calls differently, we
+	 * must call NdisFreeBuffer if it is allocated with Ndis
+	 * function. We set 'process' field in Ndis functions. */
+	if (mdl->process)
+		NdisFreeBuffer(mdl);
+	else if (mdl)
 		kfree(mdl);
 	TRACEEXIT3(return);
 }

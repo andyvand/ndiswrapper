@@ -216,6 +216,7 @@ struct mdl {
 #define MmGetMdlVirtualAddress(mdl) ((void *)((char *)(mdl)->startva +	\
 					      (mdl)->byteoffset))
 #define MmGetMdlByteOffset(mdl) ((mdl)->byteoffset)
+#define MmGetSystemAddressForMdl(mdl) ((mdl)->mappedsystemva)
 #define MmInitializeMdl(mdl, baseva, length) {				\
 		(mdl)->next = NULL;					\
 		(mdl)->size = MmSizeOfMdl(baseva, length);		\

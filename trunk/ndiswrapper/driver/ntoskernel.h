@@ -372,6 +372,8 @@ struct wrapper_timer {
 	spinlock_t lock;
 };
 
+typedef struct mdl ndis_buffer;
+
 STDCALL void *ExAllocatePoolWithTag(enum pool_type pool_type, SIZE_T size,
 				    ULONG tag);
 STDCALL void ExFreePool(void *p);
@@ -385,6 +387,7 @@ STDCALL NTSTATUS KeWaitForSingleObject(void *object, KWAIT_REASON reason,
 					BOOLEAN alertable,
 					LARGE_INTEGER *timeout);
 ULONGLONG ticks_1601(void);
+STDCALL void NdisFreeBuffer(ndis_buffer *buffer);
 
 STDCALL KIRQL KeGetCurrentIrql(void);
 STDCALL void KeInitializeSpinLock(KSPIN_LOCK *lock);
