@@ -822,20 +822,26 @@ u64 ticks_1601(void)
 	return ticks;
 }
 
-int get_esp(void)
+void *get_sp(void)
 {
-	volatile int i;
+	volatile unsigned long i;
+
+#ifdef CONFIG_64BIT
+	asm("movq %rsp,(%rsp,1)");
+#else
 	asm("movl %esp,(%esp,1)");
-	return i;
+#endif
+
+	return (void *)i;
 }
 
 void inline my_dumpstack(void)
 {
-	int *sp = (int*) get_esp();
+	void *sp = get_sp();
 	int i;
 	for(i = 0; i < 20; i++)
 	{
-		printk("%08x\n", sp[i]);
+		printk("%p\n", (void *)((long *)sp)[i]);
 	}
 }
 

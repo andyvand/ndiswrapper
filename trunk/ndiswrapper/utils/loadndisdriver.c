@@ -65,14 +65,14 @@ static int debug;
 			       PROG_NAME, __FUNCTION__, __LINE__, ## args);	\
 	} while (0)
 
-static int get_filesize(int fd)
+static size_t get_filesize(int fd)
 {
 	struct stat statbuf;
 	if(!fstat(fd, &statbuf))
 	{
 		return statbuf.st_size;
 	}
-	return -1;
+	return 0;
 }
 
 /*
@@ -90,7 +90,8 @@ static int dotaint(void)
 
 static int read_file(int device, char *filename, struct put_file *put_file)
 {
-	int fd, size;
+	int fd;
+	size_t size;
 	void * image = NULL;
 
 	char *file_basename = basename(filename);
@@ -101,13 +102,13 @@ static int read_file(int device, char *filename, struct put_file *put_file)
 		error("unable to open file: %s", strerror(errno));
 		return -EINVAL;
 	}
-	if ((size = get_filesize(fd)) <= 0) {
+	if ((size = get_filesize(fd)) == 0) {
 		error("incorrect driver file '%s'", filename);
 		close(fd);
 		return -EINVAL;
 	}
 	image = mmap(0, size, PROT_READ, MAP_PRIVATE, fd, 0);
-	if ((int)image == -1)
+	if (image == (void *)-1)
 	{
 		error("unable to mmap driver: %s", strerror(errno));
 		close(fd);
@@ -335,7 +336,7 @@ static int load(int device, char *confdir)
 
 	driver_files.count = i;
 	strncpy(driver_files.name, confdir, DRIVERNAME_MAX);
-	dbg("number of files = %d, size = %d", i, driver_files.file[i].size);
+	dbg("number of files = %d", i);
 	if ((err = ioctl(device, NDIS_PUTDRIVER, &driver_files)))
 	{
 		error("unable to load system files: %s", strerror(errno));
@@ -454,7 +455,7 @@ static int get_misc_minor()
 	{
 		if(strstr(line, "ndiswrapper"))
 		{
-			int i = strtol(line, 0, 10);
+			long i = strtol(line, 0, 10);
 			if(i != LONG_MAX && i != LONG_MIN)
 			{
 				minor = i;
