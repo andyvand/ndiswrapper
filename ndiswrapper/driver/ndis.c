@@ -857,27 +857,35 @@ STDCALL unsigned long NDIS_BUFFER_TO_SPAN_PAGES(void *buffer)
 
 
 /* Unimplemented...*/
-STDCALL void NdisInitAnsiString(void *src, void *dst) { printk(KERN_ERR "%s --UNIMPLEMENTED--\n", __FUNCTION__ );}
-STDCALL void NdisOpenConfigurationKeyByName(unsigned int *status, void *handle, void *key, void *subkeyhandle){ printk(KERN_ERR "%s --UNIMPLEMENTED--\n", __FUNCTION__ );}
-STDCALL void NdisWriteConfiguration(unsigned int *status, void *handle, void *keyword, void *val){ printk(KERN_ERR "%s --UNIMPLEMENTED--\n", __FUNCTION__ );}
-STDCALL unsigned int NdisAnsiStringToUnicodeString(void *dst, void *src){printk(KERN_ERR "%s --UNIMPLEMENTED--\n", __FUNCTION__ );return 0;}
-STDCALL void NdisQueryBufferOffset(void *buffer, unsigned int offset, unsigned int length){printk(KERN_ERR "%s --UNIMPLEMENTED--\n", __FUNCTION__ ); }
-STDCALL void NdisMGetDeviceProperty(void *handle, void **p1, void **p2, void **p3, void**p4, void**p5){printk(KERN_ERR "%s --UNIMPLEMENTED--\n", __FUNCTION__ );}
-STDCALL unsigned long NdisWritePcmciaAttributeMemory(void *handle, unsigned int offset, void *buffer, unsigned int length){printk(KERN_ERR "%s --UNIMPLEMENTED--\n", __FUNCTION__ );return 0;}
-STDCALL unsigned long NdisReadPcmciaAttributeMemory(void *handle, unsigned int offset, void *buffer, unsigned int length){printk(KERN_ERR "%s --UNIMPLEMENTED--\n", __FUNCTION__ );return 0;}
+STDCALL void NdisInitAnsiString(void *src, void *dst) {UNIMPL();}
+STDCALL void NdisOpenConfigurationKeyByName(unsigned int *status, void *handle, void *key, void *subkeyhandle){UNIMPL();}
+STDCALL void NdisWriteConfiguration(unsigned int *status, void *handle, void *keyword, void *val){UNIMPL();}
+STDCALL unsigned int NdisAnsiStringToUnicodeString(void *dst, void *src){UNIMPL();return 0;}
+STDCALL void NdisQueryBufferOffset(void *buffer, unsigned int offset, unsigned int length){UNIMPL(); }
+STDCALL void NdisMGetDeviceProperty(void *handle, void **p1, void **p2, void **p3, void**p4, void**p5){UNIMPL();}
+STDCALL unsigned long NdisWritePcmciaAttributeMemory(void *handle, unsigned int offset, void *buffer, unsigned int length){UNIMPL();return 0;}
+STDCALL unsigned long NdisReadPcmciaAttributeMemory(void *handle, unsigned int offset, void *buffer, unsigned int length){UNIMPL();return 0;}
 
-void NdisMRegisterIoPortRange(void){ printk(KERN_ERR "%s --UNIMPLEMENTED--\n", __FUNCTION__ );}
-void NdisInterlockedDecrement(void){ printk(KERN_ERR "%s --UNIMPLEMENTED--\n", __FUNCTION__ );}
-void NdisGetCurrentSystemTime(void){ printk(KERN_ERR "%s --UNIMPLEMENTED--\n", __FUNCTION__ );}
-void NdisMDeregisterIoPortRange(void){ printk(KERN_ERR "%s --UNIMPLEMENTED--\n", __FUNCTION__ );}
-void NdisWaitEvent(void){ printk(KERN_ERR "%s --UNIMPLEMENTED--\n", __FUNCTION__ );}
-void NdisDprAcquireSpinLock(void){ printk(KERN_ERR "%s --UNIMPLEMENTED--\n", __FUNCTION__ );}
-void NdisDprReleaseSpinLock(void){ printk(KERN_ERR "%s --UNIMPLEMENTED--\n", __FUNCTION__ );}
-void NdisInterlockedIncrement(void){ printk(KERN_ERR "%s --UNIMPLEMENTED--\n", __FUNCTION__ );}
-void NdisSetEvent(void){ printk(KERN_ERR "%s --UNIMPLEMENTED--\n", __FUNCTION__ );}
-void NdisMInitializeScatterGatherDma(void){ printk(KERN_ERR "%s --UNIMPLEMENTED--\n", __FUNCTION__ );}
-void NdisSystemProcessorCount(void){ printk(KERN_ERR "%s --UNIMPLEMENTED--\n", __FUNCTION__ );}
-void NdisInitializeEvent(void){ printk(KERN_ERR "%s --UNIMPLEMENTED--\n", __FUNCTION__ );}
-void NdisMGetDmaAlignment(void){ printk(KERN_ERR "%s --UNIMPLEMENTED--\n", __FUNCTION__ );}
-void NdisUnicodeStringToAnsiString(void){ printk(KERN_ERR "%s --UNIMPLEMENTED--\n", __FUNCTION__ );}
+void NdisMRegisterIoPortRange(void){UNIMPL();}
+void NdisInterlockedDecrement(void){UNIMPL();}
+void NdisGetCurrentSystemTime(void){UNIMPL();}
+void NdisMDeregisterIoPortRange(void){UNIMPL();}
+void NdisWaitEvent(void){UNIMPL();}
+void NdisDprAcquireSpinLock(void){UNIMPL();}
+void NdisDprReleaseSpinLock(void){UNIMPL();}
+void NdisInterlockedIncrement(void){UNIMPL();}
+void NdisSetEvent(void){UNIMPL();}
+void NdisMInitializeScatterGatherDma(void){UNIMPL();}
+void NdisSystemProcessorCount(void){UNIMPL();}
+void NdisInitializeEvent(void){UNIMPL();}
+void NdisMGetDmaAlignment(void){UNIMPL();}
+void NdisUnicodeStringToAnsiString(void){UNIMPL();}
+
+void NdisResetEvent(void){UNIMPL();}
+void NdisInitializeString(void){UNIMPL();}
+void NdisMSleep(void){UNIMPL();}
+void NdisUnchainBufferAtBack(void){UNIMPL();}
+void NdisQueryBufferSafe(void){UNIMPL();}
+void NdisGetFirstBufferFromPacketSafe(void){UNIMPL();}
+void NdisUnchainBufferAtFront(void){UNIMPL();}
 

@@ -88,6 +88,14 @@ void NdisInitializeEvent(void);
 void NdisMGetDmaAlignment(void);
 void NdisUnicodeStringToAnsiString(void);
 
+void NdisResetEvent(void);
+void NdisInitializeString(void);
+void NdisMSleep(void);
+void NdisUnchainBufferAtBack(void);
+void NdisQueryBufferSafe(void);
+void NdisGetFirstBufferFromPacketSafe(void);
+void NdisUnchainBufferAtFront(void);
+
 /* Cipe */
 void DbgPrint(void);
 
@@ -95,6 +103,8 @@ void DbgPrint(void);
 void KfAcquireSpinLock(void);
 void KfReleaseSpinLock(void);
 void KeStallExecutionProcessor(void);
+void WRITE_PORT_ULONG(void);
+void READ_PORT_ULONG(void);
 
 /* ntoskern */
 void InterlockedExchange(void);
@@ -123,6 +133,9 @@ void IofCallDriver(void);
 void KeWaitForSingleObject(void);
 void my_sprintf(void);
 void _allmul(void);
+void my_strlen(void);
+void my_memcpy(void);
+void my_memset(void);
 
 struct winsym
 {
@@ -205,10 +218,22 @@ func("NdisInitializeEvent"                  , NdisInitializeEvent),
 func("NdisMGetDmaAlignment"                 , NdisMGetDmaAlignment),
 func("NdisUnicodeStringToAnsiString"        , NdisUnicodeStringToAnsiString),
 
+
+func("NdisResetEvent"                       , NdisResetEvent),
+func("NdisInitializeString"                 , NdisInitializeString),
+func("NdisMSleep"                           , NdisMSleep),
+func("NdisUnchainBufferAtBack"              , NdisUnchainBufferAtBack),
+func("NdisQueryBufferSafe"                  , NdisQueryBufferSafe),
+func("NdisGetFirstBufferFromPacketSafe"     , NdisGetFirstBufferFromPacketSafe),
+func("NdisUnchainBufferAtFront"             , NdisUnchainBufferAtFront),
+
+
 /* HAL */
 func("KfAcquireSpinLock"                    , KfAcquireSpinLock),
 func("KfReleaseSpinLock"                    , KfReleaseSpinLock),
 func("KeStallExecutionProcessor"            , KeStallExecutionProcessor),
+func("WRITE_PORT_ULONG"                     , WRITE_PORT_ULONG),
+func("READ_PORT_ULONG"                      , READ_PORT_ULONG),
 
 /* ntoskernel */
 func("InterlockedExchange"                  , InterlockedExchange),
@@ -236,15 +261,16 @@ func("IoBuildSynchronousFsdRequest"         , IoBuildSynchronousFsdRequest),
 func("IofCallDriver"                        , IofCallDriver),
 func("KeWaitForSingleObject"                , KeWaitForSingleObject),
 func("sprintf"                              , my_sprintf),
-func("_allmul"                             , _allmul),
-
+func("_allmul"                              , _allmul),
+func("strlen"                               , my_strlen),
+func("memcpy"                               , my_memcpy),
+func("memset"                               , my_memset),
 
 /* CIPE */
-func("DbgPrint"          , DbgPrint),
+func("DbgPrint"                             , DbgPrint),
 
 {0, 0}
 };
-
 
 void *get_winsym(char *name)
 {
@@ -261,3 +287,4 @@ void *get_winsym(char *name)
 	}
 	return 0;
 }
+
