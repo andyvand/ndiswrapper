@@ -438,6 +438,10 @@ struct packed ndis_handle
 	struct work_struct hangcheck_work;
 	int reset_status;
 
+	struct timer_list statcollector_timer;
+	struct work_struct statcollector_work;
+
+	
 	unsigned long scan_timestamp;
 
 	u32 link_status;
