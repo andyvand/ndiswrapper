@@ -13,6 +13,11 @@ Versoin 1.1 2005-XX-XX
 * NdisAcquire(Dpr)SpinLock obtains the lock at DISPATCH_LEVEL instead
   of PASSIVE_LEVEL. This fixes PREEMPT and SMP issues with some drivers.
 * Issue with Prism54 driver sometimes crashing kernel when scanning fixed.
+* Added private ioctl to set the network type to a specific type. Use
+  "iwpriv wlan0 network_type <char>" to set the network type to what <char>
+  represents, where <char> is one of a, b, g or any other characther.
+  For example, to set to 802.11b, use "iwpriv wlan0 network_type b",
+  and to set to auto, "iwpriv wlan0 network_type x".
 
 Version 1.0 2005-01-29
 ======================
