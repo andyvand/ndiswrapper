@@ -37,9 +37,6 @@
 #include "loader.h"
 #include "ndis.h"
 
-#define DRV_NAME "ndiswrapper"
-#define DRV_VERSION "0.3+CVS"
-
 /* Define this if you are developing and ndis_init_one crashes.
    When using the old PCI-API a reboot is not needed when this
    function crashes. A simple rmmod -f will do the trick and
@@ -208,7 +205,7 @@ static int ndis_set_essid(struct net_device *dev,
 	res = dosetinfo(handle, NDIS_OID_ESSID, (char*)&req, sizeof(req), &written, &needed);
 	if(res)
 	{
-		printk(KERN_INFO "%s: setting essid failed (%08xx)\n", dev->name, res); 
+		printk(KERN_INFO "%s: setting essid failed (%08x)\n", dev->name, res); 
 		return -EINVAL;
 	}
 	
@@ -1622,7 +1619,14 @@ static int setup_dev(struct net_device *dev)
 	res = dev_alloc_name(dev, dev_template);
 	rtnl_unlock();
 	if (res >= 0)
+	{
+		printk(KERN_INFO "%s: %s ethernet device "
+		       "%02x:%02x:%02x:%02x:%02x:%02x\n",
+		       dev->name, DRV_NAME,
+		       mac[0], mac[1], mac[2],
+		       mac[3], mac[4], mac[5]);
 		return register_netdev(dev);
+	}
 	else
 		return -1;
 }

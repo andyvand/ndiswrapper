@@ -27,6 +27,9 @@
 
 #include <linux/version.h>
 
+#define DRV_NAME "ndiswrapper"
+#define DRV_VERSION "0.3+CVS(01-Jan)"
+
 
 /* Workqueue / task queue backwards compatibility stuff */
 #if LINUX_VERSION_CODE > KERNEL_VERSION(2,5,41)

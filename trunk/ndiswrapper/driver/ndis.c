@@ -202,8 +202,8 @@ void NdisWriteErrorLogEntry(struct ndis_handle *handle,
 			    unsigned int length,
 			    unsigned int p1)
 {
-	printk(KERN_ERR "%s (%s): status error: %08X, length: %d (%08x)\n",
-	       handle->net_dev->name, __FUNCTION__, error, length, p1);
+	printk(KERN_ERR "%s: error log: %08X, length: %d (%08x)\n",
+	       DRV_NAME, error, length, p1);
 }
 
 
@@ -1402,7 +1402,7 @@ NdisMStartBufferPhysicalMapping(struct ndis_handle *handle,
 
 	if (phy_map_reg > handle->map_count)
 	{
-		DBGTRACE("%s (%s): map_register too big (%u > %u)\n",
+		DBGTRACE("%s (%s): map_register too big (%lu > %u)\n",
 			 handle->net_dev->name, __FUNCTION__,
 			 phy_map_reg, handle->map_count);
 		*array_size = 0;
@@ -1411,7 +1411,7 @@ NdisMStartBufferPhysicalMapping(struct ndis_handle *handle,
 	
 	if (handle->map_dma_addr[phy_map_reg] != 0)
 	{
-		DBGTRACE("%s (%s): map register already used (%u)\n",
+		DBGTRACE("%s (%s): map register already used (%lu)\n",
 			 handle->net_dev->name, __FUNCTION__, phy_map_reg);
 		*array_size = 0;
 		return;
@@ -1437,13 +1437,13 @@ NdisMCompleteBufferPhysicalMapping(struct ndis_handle *handle,
 				   struct ndis_buffer *buf,
 				   unsigned long phy_map_reg)
 {
-	DBGTRACE("%s (%s): %x %u (%u)\n",
+	DBGTRACE("%s (%s): %x %lu (%u)\n",
 		 handle->net_dev->name, __FUNCTION__,
 		 handle, phy_map_reg, handle->map_count);
 
 	if (phy_map_reg > handle->map_count)
 	{
-		DBGTRACE("%s (%s): map_register too big (%u > %u)\n",
+		DBGTRACE("%s (%s): map_register too big (%lu > %u)\n",
 			 handle->net_dev->name, __FUNCTION__,
 			 phy_map_reg, handle->map_count);
 		return;
@@ -1451,7 +1451,7 @@ NdisMCompleteBufferPhysicalMapping(struct ndis_handle *handle,
 
 	if (handle->map_dma_addr[phy_map_reg] == 0)
 	{
-		DBGTRACE("%s (%s): map register not used (%u)\n",
+		DBGTRACE("%s (%s): map register not used (%lu)\n",
 			 handle->net_dev->name, __FUNCTION__, phy_map_reg);
 		return;
 	}
