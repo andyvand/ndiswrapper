@@ -750,6 +750,7 @@ STDCALL void WRAP_EXPORT(RtlFreeUnicodeString)(struct ustring *string)
 
 	kfree(string->buf);
 	string->buflen = string->len = 0;
+	string->buf = NULL;
 	return;
 }
 
@@ -760,6 +761,7 @@ STDCALL void WRAP_EXPORT(RtlFreeAnsiString)(struct ustring *string)
 
 	kfree(string->buf);
 	string->buflen = string->len = 0;
+	string->buf = NULL;
 	return;
 }
 
