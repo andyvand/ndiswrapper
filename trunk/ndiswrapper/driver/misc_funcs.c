@@ -216,7 +216,7 @@ void my_srand(unsigned int seed)
 	net_srandom(seed);
 }
 
-int atoi(const char *ptr)
+int my_atoi(const char *ptr)
 {
 	int i = simple_strtol(ptr, NULL, 10);
 	return i;
