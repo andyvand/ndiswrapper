@@ -781,20 +781,23 @@ static int ndis_get_scan(struct net_device *dev, struct iw_request_info *info,
 	if (time_before(jiffies, handle->scan_timestamp + 3 * HZ))
 		return -EAGAIN;
 	
-	/* Try to find out how long the scan list will be */
-	written = needed = 0;
-	res = doquery(handle, NDIS_OID_BSSID_LIST, NULL, 0,
-		      &written, &list_len);
-	if (res != NDIS_STATUS_INVALID_LENGTH)
-	{
-		/* Wasn't able to get list lenght. Go with 16 entries */
-		list_len = sizeof(struct bssid_list) + sizeof(struct ssid_item) * 15;
-	}
-
+	/* Try with space for 15 scan items */
+	list_len = sizeof(unsigned long) + sizeof(struct ssid_item) * 15;
 	bssid_list = kmalloc(list_len, GFP_KERNEL);
-	
-	res = doquery(handle, NDIS_OID_BSSID_LIST, (char*)bssid_list,
+
+	written = needed = 0;
+	res = doquery(handle, NDIS_OID_BSSID_LIST, (char *)bssid_list,
 		      list_len, &written, &needed);
+	if (res == NDIS_STATUS_INVALID_LENGTH)
+	{
+		/* 15 items not enough; allocate required space */
+		kfree(bssid_list);
+		list_len = needed;
+		bssid_list = kmalloc(list_len, GFP_KERNEL);
+	
+		res = doquery(handle, NDIS_OID_BSSID_LIST, (char*)bssid_list,
+			      list_len, &written, &needed);
+	}
 	if (res)
 	{
 		printk(KERN_INFO "%s: getting BSSID list failed (%08X)\n",
