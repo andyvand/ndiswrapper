@@ -546,7 +546,7 @@ static int send_packets(struct ndis_handle *handle, unsigned int start,
 		if (test_bit(ATTR_SERIALIZED, &handle->attributes)) {
 			for (sent = 0; sent < n && handle->send_ok; sent++) {
 				packet = handle->xmit_array[sent];
-				switch(packet->status) {
+				switch(packet->oob_data.status) {
 				case NDIS_STATUS_SUCCESS:
 					sendpacket_done(handle, packet);
 					break;

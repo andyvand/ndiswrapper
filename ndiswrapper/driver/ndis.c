@@ -1254,7 +1254,7 @@ struct ndis_packet *allocate_ndis_packet(void)
 	if (packet) {
 		memset(packet, 0, sizeof(*packet));
 		packet->private.oob_offset =
-			offsetof(struct ndis_packet, oob_tx);
+			offsetof(struct ndis_packet, oob_data);
 		packet->private.packet_flags = fPACKET_ALLOCATED_BY_NDIS;
 	}
 	return packet;
@@ -1362,7 +1362,7 @@ STDCALL void WRAP_EXPORT(NdisSend)
 			 packets, 1);
 		lower_irql(irql);
 		if (test_bit(ATTR_SERIALIZED, &handle->attributes)) {
-			*status = packet->status;
+			*status = packet->oob_data.status;
 			switch (*status) {
 			case NDIS_STATUS_SUCCESS:
 				sendpacket_done(handle, packet);
@@ -1773,7 +1773,7 @@ NdisMIndicateReceivePacket(struct ndis_handle *handle,
 		/* serialized drivers check the status upon return
 		 * from this function */
 		if (test_bit(ATTR_SERIALIZED, &handle->attributes)) {
-			packet->status = NDIS_STATUS_SUCCESS;
+			packet->oob_data.status = NDIS_STATUS_SUCCESS;
 			continue;
 		}
 
@@ -1781,22 +1781,22 @@ NdisMIndicateReceivePacket(struct ndis_handle *handle,
 		 * NDIS_STATUS_RESOURCES, then it reclaims the packet
 		 * upon return from this function: it doesn't matter
 		 * what value we set in the status */
-		if (packet->status == NDIS_STATUS_RESOURCES) {
-			packet->status = NDIS_STATUS_SUCCESS;
+		if (packet->oob_data.status == NDIS_STATUS_RESOURCES) {
+			packet->oob_data.status = NDIS_STATUS_SUCCESS;
 			DBGTRACE3("low on resources");
 			continue;
 		}
 
-		if (packet->status != NDIS_STATUS_SUCCESS)
+		if (packet->oob_data.status != NDIS_STATUS_SUCCESS)
 			WARNING("invalid packet status %08X",
-				packet->status);
+				packet->oob_data.status);
 		/* deserialized driver doesn't check the status upon
 		 * return from this function; we need to call
 		 * MiniportReturnPacket later for this packet. Calling
 		 * MiniportReturnPacket from here is not correct - the
 		 * driver doesn't expect it (at least Centrino driver
 		 * crashes) */
-		packet->status = NDIS_STATUS_PENDING;
+		packet->oob_data.status = NDIS_STATUS_PENDING;
 		ndis_work_entry = kmalloc(sizeof(*ndis_work_entry),
 					  GFP_ATOMIC);
 		if (!ndis_work_entry) {
