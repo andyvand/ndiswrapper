@@ -601,6 +601,7 @@ sub copyfiles
 		if($line)
 		{
 			$line =~ s/,+.*//;
+			$line = trim($line);
 			my $nocopy = 0;
 			for(my $j = 0; $j < @copy_blacklist; $j++)
 			{
