@@ -990,7 +990,7 @@ static int iw_get_scan(struct net_device *dev, struct iw_request_info *info,
 
 	res = miniport_query_info_needed(handle, OID_802_11_BSSID_LIST,
 					 bssid_list, list_len, &needed);
-	if (res == NDIS_STATUS_INVALID_LENGTH) {
+	if (needed > 0 || res == NDIS_STATUS_INVALID_LENGTH) {
 		/* now try with required space */
 		kfree(bssid_list);
 		list_len = needed;
