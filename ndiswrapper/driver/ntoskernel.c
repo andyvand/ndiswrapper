@@ -12,7 +12,7 @@
  *  GNU General Public License for more details.
  *
  */
-#include "ndis.h"
+
 #include "ntoskernel.h"
 
 NOREGPARM int my_sprintf(char *str, const char *format, int p1, int p2, int p3, int p4, int p5, int p6)
