@@ -1425,7 +1425,8 @@ static int wpa_associate(struct net_device *dev,
 		  wpa_assoc_info.pairwise_suite, wpa_assoc_info.group_suite);
 	if (wpa_assoc_info.key_mgmt_suite != KEY_MGMT_PSK &&
 	    wpa_assoc_info.key_mgmt_suite != KEY_MGMT_802_1X &&
-	    wpa_assoc_info.key_mgmt_suite != KEY_MGMT_NONE)
+	    wpa_assoc_info.key_mgmt_suite != KEY_MGMT_802_1X_NO_WPA &&
+	    wpa_assoc_info.key_mgmt_suite != KEY_MGMT_WPA_NONE)
 		TRACEEXIT2(return -1);
 
 	if (wpa_assoc_info.wpa_ie == NULL || wpa_assoc_info.wpa_ie_len == 0) {
