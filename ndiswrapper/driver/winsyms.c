@@ -82,6 +82,7 @@ void NdisWaitEvent(void);
 void NdisDprAcquireSpinLock(void);
 void NdisDprReleaseSpinLock(void);
 void NdisInterlockedIncrement(void);
+void NdisInterlockedInsertHeadList(void);
 void NdisSetEvent(void);
 void NdisMInitializeScatterGatherDma(void);
 void NdisSystemProcessorCount(void);
@@ -281,6 +282,7 @@ func("NdisWaitEvent"                        , NdisWaitEvent),
 func("NdisDprAcquireSpinLock"               , NdisDprAcquireSpinLock),
 func("NdisDprReleaseSpinLock"               , NdisDprReleaseSpinLock),
 func("NdisInterlockedIncrement"             , NdisInterlockedIncrement),
+func("NdisInterlockedInsertHeadList"        ,NdisInterlockedInsertHeadList),
 func("NdisSetEvent"                         , NdisSetEvent),
 func("NdisMInitializeScatterGatherDma"      , NdisMInitializeScatterGatherDma),
 func("NdisSystemProcessorCount"             , NdisSystemProcessorCount),
