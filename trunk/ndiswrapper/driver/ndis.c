@@ -1788,19 +1788,6 @@ STDCALL void NdisMResetComplete(struct ndis_handle *handle, int status,
 
 	handle->ndis_comm_res = status;
 	handle->reset_status = status;
-	if (reset_status)
-	{
-		handle->indicate_receive_packet = &NdisMIndicateReceivePacket;
-		handle->send_complete = &NdisMSendComplete;
-		handle->send_resource_avail = &NdisMSendResourcesAvailable;
-		handle->indicate_status = &NdisMIndicateStatus;
-		handle->indicate_status_complete = &NdisMIndicateStatusComplete;
-		handle->query_complete = &NdisMQueryInformationComplete;
-		handle->set_complete = &NdisMSetInformationComplete;
-		handle->reset_complete = &NdisMResetComplete;
-		ndis_set_rx_mode(handle->net_dev);
-		handle->reset_status = 0;
-	}
 //	handle->ndis_comm_done = 1;
 //	wake_up_interruptible(&handle->ndis_comm_wqhead);
 	up(&handle->ndis_comm_done);

@@ -75,14 +75,10 @@ STDCALL int KeCancelTimer(struct ktimer *ktimer)
 
 STDCALL KIRQL KeGetCurrentIrql(void)
 {
-	KIRQL irql;
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
-	irql = (preempt_count() >= SOFTIRQ_OFFSET) ?
-		DISPATCH_LEVEL : PASSIVE_LEVEL;
-#else
-	irql = (local_bh_count > 0) ? DISPATCH_LEVEL: PASSIVE_LEVEL;
-#endif
-	return irql;
+	if (in_atomic() || irqs_disabled())
+		return DISPATCH_LEVEL;
+	else
+		return PASSIVE_LEVEL;
 }
 
 STDCALL void KeInitializeSpinLock(KSPIN_LOCK *lock)
