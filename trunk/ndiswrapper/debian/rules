@@ -104,7 +104,7 @@ binary-modules: build-modules-prep common-prolog build-modules common-epilog
 
 clean-modules: build-modules-prep
 	echo "$(NDISSRC)"
-	-$(MAKE) -C $(DRIVERSRC) clean
+	-$(MAKE) -C $(DRIVERSRC) distclean
 	-rm -f debian/ndiswrapper-modules-$(KVERS).install debian/postinst
 	dh_clean
 
