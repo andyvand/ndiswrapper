@@ -607,7 +607,7 @@ static void xmit_bh(void *param)
 {
 	struct ndis_handle *handle = (struct ndis_handle*) param;
 	struct ndis_buffer *buffer;
-	struct ndis_packet *packet;
+	static struct ndis_packet *packet = NULL;
 	int res;
 
 	DBGTRACE("%s: Enter: send status is %08X\n", __FUNCTION__, handle->send_status);
@@ -626,12 +626,19 @@ static void xmit_bh(void *param)
 		buffer = handle->xmit_ring[handle->xmit_ring_start];
 		spin_unlock_bh(&handle->xmit_ring_lock);
 
-		packet = init_packet(handle, buffer);
+		/* if we are resending a packet due to NDIS_STATUS_RESOURCES
+		   then just pick up the packet already created
+		*/
 		if (!packet)
 		{
-			printk(KERN_ERR "%s: couldn't get a packet\n",
-			       __FUNCTION__);
-			return;
+			/* otherwise, get a new packet */
+			packet = init_packet(handle, buffer);
+			if (!packet)
+			{
+				printk(KERN_ERR "%s: couldn't get a packet\n",
+				       __FUNCTION__);
+				return;
+			}
 		}
 
 		res = send_packet(handle, packet);
@@ -659,13 +666,12 @@ static void xmit_bh(void *param)
 			handle->send_status = res;
 			spin_unlock_bh(&handle->xmit_ring_lock);
 			/* this buffer will be tried again later */
-			free_packet(handle, packet);
+			//free_packet(handle, packet);
 			return;
 
 			/* free buffer, drop the packet */
 		case NDIS_STATUS_FAILURE:
-			doreset(handle);
-			free_packet(handle, packet);
+			free_buffer(handle, packet);
 			break;
 		default:
 			printk(KERN_ERR "%s: Incorrect status code %08X\n",
@@ -679,6 +685,8 @@ static void xmit_bh(void *param)
 		spin_unlock(&handle->send_status_lock);
 
 		spin_lock_bh(&handle->xmit_ring_lock);
+		/* mark the packet as done */
+		packet = NULL;
 		handle->xmit_ring_start =
 			(handle->xmit_ring_start + 1) % XMIT_RING_SIZE;
 		handle->xmit_ring_pending--;
