@@ -157,7 +157,7 @@ unsigned long usb_bulk_or_intr_trans(struct usb_device *dev,
 		nt_urb->bulkIntrTrans.transferBufLen,
 		nt_urb->bulkIntrTrans.transferBuf);
 
-	/* XXX we should better check what GFP_ is required XXX */
+	/* FIXME: we should better check what GFP_ is required */
 	urb = WRAP_ALLOC_URB(0, GFP_ATOMIC);
 	if (!urb)
 		return -ENOMEM;
@@ -227,7 +227,7 @@ unsigned long usb_bulk_or_intr_trans(struct usb_device *dev,
 	}
 
 	DBGTRACE3("submitting urb %p on pipe %p", urb, pipe_handle.handle);
-	/* XXX we should better check what GFP_ is required XXX */
+	/* FIXME: we should better check what GFP_ is required */
 	ret = WRAP_SUBMIT_URB(urb, GFP_ATOMIC);
 	if (ret != 0) {
 		ERROR("usb_submit_urb() = %d", ret);
@@ -466,7 +466,7 @@ USBD_CreateConfigurationRequestEx(struct usb_config_descriptor *config,
 	urb_size = sizeof(union nt_urb) +
 		sizeof(struct usbd_pipe_information) *
 		(intf_desc->bNumEndpoints - 1);
-	/* XXX we should better check what GFP_ is required XXX */
+	/* FIXME: we should better check what GFP_ is required */
 	urb = kmalloc(urb_size, GFP_ATOMIC);
 
 	if (urb) {
