@@ -205,7 +205,9 @@ static int ndiswrapper_add_one_pci_dev(struct pci_dev *pdev,
 	}
 	*/
 
-	miniport_reset(handle);
+	/* IPW2200 devices turn off radio if reset is called */
+	if (pdev->vendor != 0x8086)
+		miniport_reset(handle);
 
 	/* Wait a little to let card power up otherwise ifup might fail after
 	   boot */
