@@ -586,13 +586,14 @@ static void free_packet(struct ndis_handle *handle, struct ndis_packet *packet)
 
 /*
  * MiniportSend and MiniportSendPackets
+ * this function is called from bh disabled context, so no need to raise
+ * irql to DISPATCH_LEVEL during MiniportSend(Packets)
  */
 static int send_packets(struct ndis_handle *handle, unsigned int start,
 			unsigned int pending)
 {
 	int res;
 	struct miniport_char *miniport = &handle->driver->miniport_char;
-	KIRQL irql;
 	unsigned int sent, n;
 
 	TRACEENTER3("handle = %p", handle);
@@ -611,10 +612,8 @@ static int send_packets(struct ndis_handle *handle, unsigned int start,
 			int j = (start + i) % XMIT_RING_SIZE;
 			handle->xmit_array[i] = handle->xmit_ring[j];
 		}
-		irql = raise_irql(DISPATCH_LEVEL);
 		miniport->send_packets(handle->adapter_ctx,
 				       handle->xmit_array, n);
-		lower_irql(irql);
 		if (test_bit(ATTR_SERIALIZED, &handle->attributes)) {
 			for (sent = 0; sent < n && !handle->send_status;
 			     sent++) {
@@ -640,9 +639,7 @@ static int send_packets(struct ndis_handle *handle, unsigned int start,
 			sent = n;
 	} else {
 		struct ndis_packet *packet = handle->xmit_ring[start];
-		irql = raise_irql(DISPATCH_LEVEL);
 		res = miniport->send(handle->adapter_ctx, packet, 0);
-		lower_irql(irql);
 
 		sent = 1;
 		switch (res) {
@@ -663,18 +660,21 @@ static int send_packets(struct ndis_handle *handle, unsigned int start,
 	TRACEEXIT3(return sent);
 }
 
-static void xmit_bh(void *param)
+static void xmit_worker(void *param)
 {
 	struct ndis_handle *handle = (struct ndis_handle *)param;
 	int n;
 
 	TRACEENTER3("send status is %08X", handle->send_status);
 
-	while (handle->send_status == 0 && handle->xmit_ring_pending > 0) {
+	while (handle->send_status == 0) {
+		wrap_spin_lock(&handle->xmit_ring_lock);
+		if (handle->xmit_ring_pending == 0) {
+			wrap_spin_unlock(&handle->xmit_ring_lock);
+			break;
+		}
 		n = send_packets(handle, handle->xmit_ring_start,
 				 handle->xmit_ring_pending);
-
-		wrap_spin_lock(&handle->xmit_ring_lock);
 		handle->xmit_ring_start =
 			(handle->xmit_ring_start + n) % XMIT_RING_SIZE;
 		handle->xmit_ring_pending -= n;
@@ -1017,7 +1017,7 @@ void ndis_remove_one(struct ndis_handle *handle)
 	wrap_spin_unlock(&handle->xmit_ring_lock);
 
 	/* Make sure all queued packets have been pushed out from
-	 * xmit_bh before we call halt */
+	 * xmit_worker before we call halt */
 //	flush_scheduled_work();
 
 	netif_carrier_off(handle->net_dev);
@@ -1492,7 +1492,7 @@ struct net_device *ndis_init_netdev(struct ndis_handle **phandle,
 
 	handle->send_status = 0;
 
-	INIT_WORK(&handle->xmit_work, xmit_bh, handle);
+	INIT_WORK(&handle->xmit_work, xmit_worker, handle);
 	wrap_spin_lock_init(&handle->xmit_ring_lock);
 	handle->xmit_ring_start = 0;
 	handle->xmit_ring_pending = 0;
