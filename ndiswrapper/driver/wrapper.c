@@ -59,6 +59,7 @@
 static char *if_name = "wlan%d";
 int proc_uid, proc_gid;
 static int hangcheck_interval;
+static int resubmit_config;
 
 MODULE_PARM(if_name, "s");
 MODULE_PARM_DESC(if_name, "Network interface name or template (default: wlan%d)");
@@ -72,6 +73,8 @@ MODULE_PARM(hangcheck_interval, "i");
  * negative value - disable hangcheck
  */
 MODULE_PARM_DESC(hangcheck_interval, "The interval, in seconds, for checking if driver is hung. (default: 0)");
+MODULE_PARM(resubmit_config, "i");
+MODULE_PARM_DESC(resubmit_config, "Set to 1 for resubmitting device config after disassociation (default: 0)");
 
 /* List of loaded drivers */
 LIST_HEAD(ndis_driverlist);
@@ -1112,6 +1115,24 @@ int ndis_resume_usb(struct usb_interface *intf)
 }
 #endif
 
+static void resubmit_device_config(struct ndis_handle *handle)
+{
+	unsigned int i, written, needed;
+
+	for (i = 0; i < MAX_ENCR_KEYS; i++)
+		if (handle->encr_info.keys[i].length != 0) {
+			dosetinfo(handle, NDIS_OID_ADD_WEP,
+			    (char *)&handle->encr_info.keys[i],
+			    sizeof(struct encr_key),
+			    &written, &needed);
+			set_encr_mode(handle, ENCR1_ENABLED);
+		}
+
+	set_auth_mode(handle, handle->auth_mode);
+	set_essid(handle, handle->essid.essid,
+	          handle->essid.length);
+}
+
 /* worker procedure to take care of setting/checking various states */
 static void wrapper_worker_proc(void *param)
 {
@@ -1136,22 +1157,11 @@ static void wrapper_worker_proc(void *param)
 
 		if (handle->link_status == 0)
 		{
-
-			for (i = 0; i < MAX_ENCR_KEYS; i++)
-				handle->encr_info.keys[i].length = 0;
-#if 0
-				if (handle->encr_info.keys[i].length != 0) {
-					dosetinfo(handle, NDIS_OID_ADD_WEP,
-					    (char *)&handle->encr_info.keys[i],
-					    sizeof(struct encr_key),
-					    &written, &needed);
-					set_encr_mode(handle, ENCR1_ENABLED);
-				}
-
-			set_auth_mode(handle, handle->auth_mode);
-			set_essid(handle, handle->essid.essid,
-			          handle->essid.length);
-#endif
+			if (resubmit_config)
+				resubmit_device_config(handle);
+			else
+				for (i = 0; i < MAX_ENCR_KEYS; i++)
+					handle->encr_info.keys[i].length = 0;
 			return;
 		}
 
