@@ -537,18 +537,22 @@ static int iw_get_encr(struct net_device *dev, struct iw_request_info *info,
 		TRACEEXIT1(return -EOPNOTSUPP);
 	}
 
-	if (status == ENCR1_ENABLED)
-	{
-		wrqu->data.flags |= IW_ENCODE_ENABLED | (index+1);
-		wrqu->data.length = encr_info->keys[index].length;
-		memcpy(extra, encr_info->keys[index].key,
-		       encr_info->keys[index].length);
-	}
-	else if (status == ENCR_DISABLED)
+	if (status == ENCR_DISABLED || status == ENCR1_NO_SUPPORT)
 		wrqu->data.flags |= IW_ENCODE_DISABLED;
-	else if (status == ENCR1_NOKEY)
-		wrqu->data.flags |= IW_ENCODE_NOKEY;
+	else
+	{
+		if (status == ENCR1_NOKEY || status == ENCR2_ABSENT ||
+		    status == ENCR3_ABSENT)
+			wrqu->data.flags |= IW_ENCODE_NOKEY;
 
+		else
+		{
+			wrqu->data.flags |= IW_ENCODE_ENABLED | (index+1);
+			wrqu->data.length = encr_info->keys[index].length;
+			memcpy(extra, encr_info->keys[index].key,
+			       encr_info->keys[index].length);
+		}
+	}
 	res = query_int(handle, NDIS_OID_AUTH_MODE, &status);
 	if (res == NDIS_STATUS_NOT_SUPPORTED)
 	{
@@ -1318,7 +1322,7 @@ static int wpa_set_key(struct net_device *dev, struct iw_request_info *info,
 	}
 	else
 		memcpy(&ndis_key.bssid, wpa_key->addr, ETH_ALEN);
-	DBGTRACE("bssid " MACSTR, MAC2STR(wpa_key->addr));
+	DBGTRACE("bssid " MACSTR, MAC2STR(ndis_key.bssid));
 
 	if (wpa_key->alg == WPA_ALG_TKIP && wpa_key->key_len == 32)
 	{
