@@ -356,8 +356,9 @@ struct ndis_key
 	unsigned long key_index;
 	unsigned long key_len;
 	mac_address bssid;
+	unsigned char pad[6];
 	unsigned long long key_rsc;
-	unsigned char key[36];
+	unsigned char key[32];
 };
 
 struct ndis_remove_key
