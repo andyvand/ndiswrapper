@@ -37,7 +37,7 @@ OBJS   := wrapper.o loader.o winsyms.o ndis.o misc_funcs.o
 MODULE := ndiswrapper
 
 ifeq ($(KVERS),24)
-CFLAGS  += -DLINUX -D__KERNEL__ -DMODULE -DFULLTRACE -I$(KSRC)/include \
+CFLAGS  += -DLINUX -D__KERNEL__ -DMODULE -I$(KSRC)/include \
   -Wall -Wstrict-prototypes -fomit-frame-pointer    \
   -fno-strict-aliasing -pipe -mpreferred-stack-boundary=2 -O2
 
