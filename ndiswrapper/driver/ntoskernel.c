@@ -131,6 +131,13 @@ KeAcquireSpinLock(KSPIN_LOCK *lock, KIRQL *oldirql)
 		return;
 	}
 
+	*oldirql = KeGetCurrentIrql();
+	if (*oldirql > DISPATCH_LEVEL)
+	{
+		ERROR("invalid IRQL: %d", *oldirql);
+		return;
+	}
+
 	if (!*lock)
 	{
 		printk(KERN_WARNING "Buggy Windows driver trying to use "
@@ -144,6 +151,10 @@ KeAcquireSpinLock(KSPIN_LOCK *lock, KIRQL *oldirql)
 			BUG();
 		}
 	}
+	/* is this supposed to protect from user contexts or from soft irqs,
+	 * i.e., should we preempt_disable or local_bh_disable? */
+	if (*oldirql == PASSIVE_LEVEL)
+		local_bh_disable();
 	wrap_spin_lock((struct wrap_spinlock *)*lock);
 	TRACEEXIT4(return);
 }
@@ -151,7 +162,10 @@ KeAcquireSpinLock(KSPIN_LOCK *lock, KIRQL *oldirql)
 STDCALL static void
 KeReleaseSpinLock(KSPIN_LOCK *lock, KIRQL newirql)
 {
-	TRACEENTER4("lock = %p, *lock = %p", lock, (void *)*lock);
+	KIRQL irql;
+
+	TRACEENTER4("lock = %p, *lock = %p, irql = %d",
+		    lock, (void *)*lock, newirql);
 
 	if (!lock || !*lock)
 	{
@@ -159,7 +173,12 @@ KeReleaseSpinLock(KSPIN_LOCK *lock, KIRQL newirql)
 		return;
 	}
 
+	if ((irql = KeGetCurrentIrql()) != DISPATCH_LEVEL)
+		WARNING("invalid irql: %d", irql);
+
 	wrap_spin_unlock((struct wrap_spinlock *)*lock);
+	if (newirql == PASSIVE_LEVEL)
+		local_bh_enable();
 }
 
 _FASTCALL static struct slist_entry *
