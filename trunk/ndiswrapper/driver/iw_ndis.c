@@ -1332,7 +1332,6 @@ static int wpa_set_key(struct net_device *dev, struct iw_request_info *info,
 			memcpy(&ndis_remove_key.bssid, addr, ETH_ALEN);
 		else
 			memset(&ndis_remove_key.bssid, 0xff, ETH_ALEN);
-#if 0
 		/* TI drivers sometimes crash when REMOVE_KEY is called */
 		if (!(handle->device->vendor == 0x104c &&
 		      handle->device->device == 0x9066))
@@ -1347,7 +1346,6 @@ static int wpa_set_key(struct net_device *dev, struct iw_request_info *info,
 				TRACEEXIT(return -EINVAL);
 			}
 		}
-#endif
 		if (wpa_key.key_index >= 0 &&
 		    wpa_key.key_index < MAX_ENCR_KEYS)
 		{

@@ -13,14 +13,39 @@
  *
  */
 
+#ifdef TEST_LOADER
+
+#include <stdio.h>
+#include <stdint.h>
+#include <string.h>
+#include <linux/types.h>
+#include <asm/errno.h>
+
+#include "loader.h"
+#include "pe_loader.h"
+
+#else
+
 #include <linux/types.h>
 #include <asm/errno.h>
 
 #include "pe_loader.h"
 #include "ndiswrapper.h"
 
+#endif
+
+static struct exports exports[40];
+static int num_exports;
+
 #define RVA2VA(image, rva, type) (type)rva_to_va(image, rva)
 
+#ifdef TEST_LOADER
+#define WRAP_FUNC void
+WRAP_FUNC *get_wrap_func(char *name)
+{
+	return name;
+}
+#else
 extern struct wrap_func ntos_wrap_funcs[], ndis_wrap_funcs[],
 	misc_wrap_funcs[], hal_wrap_funcs[], usb_wrap_funcs[];
 
@@ -50,6 +75,21 @@ WRAP_FUNC *get_wrap_func(char *name)
 			return usb_wrap_funcs[i].func;
 #endif
 
+	for (i = 0; i < num_exports; i++)
+		if (strcmp(exports[i].name, name) == 0)
+			return (void *)exports[i].addr;
+
+	return NULL;
+}
+#endif // TEST_LOADER
+
+void *get_dll_init(char *name)
+{
+	int i;
+	for (i = 0; i < num_exports; i++)
+		if ((strcmp(exports[i].dll, name) == 0) &&
+		    (strcmp(exports[i].name, "DllInitialize") == 0))
+			return (void *)exports[i].addr;
 	return NULL;
 }
 
@@ -156,7 +196,12 @@ static int check_nt_hdr(struct nt_header *nt_hdr)
 		      nt_hdr->opt_hdr.opt_nt_hdr.file_alignment);
 		return -EINVAL;
 	}
-	return 0;
+
+	if((nt_hdr->file_hdr.characteristics & COFF_CHAR_DLL))
+		return COFF_CHAR_DLL;
+	if((nt_hdr->file_hdr.characteristics & COFF_CHAR_IMAGE))
+		return COFF_CHAR_IMAGE;
+	return -EINVAL;
 }
 
 static int import(void *image, struct coffpe_import_dirent *dirent, char *dll)
@@ -165,7 +210,7 @@ static int import(void *image, struct coffpe_import_dirent *dirent, char *dll)
 	char *symname = 0;
 	int i;
 	int ret = 0;
-	WRAP_FUNC *adr;
+	void *adr;
 
 	lookup_tbl  = RVA2VA(image, dirent->import_lookup_tbl, cu32 *);
 	address_tbl = RVA2VA(image, dirent->import_address_table, cu32 *);
@@ -182,8 +227,9 @@ static int import(void *image, struct coffpe_import_dirent *dirent, char *dll)
 					 char*);
 		}
 
-		DBGTRACE("found function: %s", symname);
 		adr = get_wrap_func(symname);
+		if (adr != NULL)
+			DBGTRACE1("found symbol: %s:%s", dll, symname);
 		if (adr == NULL) {
 			ERROR("Unknown symbol: %s:%s", dll, symname);
 			ret = -1;
@@ -193,6 +239,48 @@ static int import(void *image, struct coffpe_import_dirent *dirent, char *dll)
 		address_tbl[i] = (cu32)adr;
 	}
 	return ret;
+}
+
+static int read_exports(void *image, struct nt_header *nt_hdr, char *dll)
+{
+	struct section_header *export_section;
+	struct export_dir_table *export_dir_table;
+	cu32 *export_addr_table;
+	int i;
+	unsigned int *name_table;
+
+	export_section = get_section(nt_hdr, ".edata");
+	if (export_section)
+		DBGTRACE1("%s", "found exports section");
+	else
+		return 0;
+
+	export_dir_table = (struct export_dir_table *)
+		(image + export_section->rawdata_addr);
+	name_table = (unsigned int *)(image + export_dir_table->name_addr_rva);
+	export_addr_table = (cu32 *)
+		(image + export_dir_table->export_table_rva);
+
+	for (i = 0; i < export_dir_table->num_name_addr; i++)
+	{
+		if (nt_hdr->opt_hdr.export_tbl.rva <= *export_addr_table ||
+		    *export_addr_table >= (nt_hdr->opt_hdr.export_tbl.rva +
+					   nt_hdr->opt_hdr.export_tbl.size))
+			DBGTRACE1("%s", "forwarder rva");
+
+		DBGTRACE1("export symbol: %s, at %08X",
+		     (char *)(image + *name_table),
+		     (unsigned int)(image + *export_addr_table));
+		     
+		exports[num_exports].dll = dll;
+		exports[num_exports].name = (char *)(image + *name_table);
+		exports[num_exports].addr = (cu32)(image + *export_addr_table);
+
+		num_exports++;
+		name_table++;
+		export_addr_table++;
+	}
+	return 0;
 }
 
 static int fixup_imports(void *image, struct nt_header *nt_hdr)
@@ -249,11 +337,10 @@ static int fixup_reloc(void *image, struct nt_header *nt_hdr)
 			case COFF_FIXUP_HIGHLOW:
 				addr = RVA2VA(image, (*loc - base), uint32_t);
 				*loc = addr;
-//				DBGTRACE2("fixing up %08X with %08X", loc, *loc);
 				break;
 			default:
 				ERROR("unknown fixup: %08X", fixup);
-				return -ENOTSUPP;
+				return -EOPNOTSUPP;
 				break;
 			}
 		}
@@ -266,30 +353,91 @@ static int fixup_reloc(void *image, struct nt_header *nt_hdr)
 
 /* This one can be used to calc RVA's from virtual addressed so it's
  * nice to have as a global */
-int image_offset;
+int image_offset = 0;
 
-int load_pe_image(void **entry, void *image, int size)
+int load_pe_images(struct pe_image *pe_image, int n)
 {
 	struct nt_header *nt_hdr;
 	unsigned int nt_hdr_offset;
+	int i = 0;
+	void *image;
+	int size;
+	struct optional_header *opt_hdr;
 
-	/* The PE header is found at the RVA specified at offset 3c. */
-	if (size < 0x3c + 4)
-		return -EINVAL;
-	nt_hdr_offset =  *(unsigned int *)(image+0x3c);
-//	DBGTRACE("PE Header at offset %08x", (int) header_offset);
+	for (i = 0; i < n; i++)
+	{
+		image = pe_image[i].image;
+		size = pe_image[i].size;
 
-	nt_hdr = (struct nt_header *)((char *)image + nt_hdr_offset);
-	if (check_nt_hdr(nt_hdr))
-		return -EINVAL;
+		/* The PE header is found at the RVA specified at offset 3c. */
+		if (size < 0x3c + 4)
+			return -EINVAL;
+		nt_hdr_offset =  *(unsigned int *)(image+0x3c);
+		nt_hdr = (struct nt_header *)((char *)image + nt_hdr_offset);
+		pe_image[i].type = check_nt_hdr(nt_hdr);
+		if (pe_image[i].type <= 0)
+			return -EINVAL;
 
-	if (fixup_reloc(image, nt_hdr))
-		return -EINVAL;
-	if (fixup_imports(image, nt_hdr))
-		return -EINVAL;
-	flush_icache_range(image, size);
+		if (read_exports(image, nt_hdr, pe_image[i].name))
+			return -EINVAL;
+	}
 
-	image_offset = (int)image - nt_hdr->opt_hdr.opt_nt_hdr.image_base;
-	*entry = RVA2VA(image, nt_hdr->opt_hdr.opt_std_hdr.entry_rva, void*);
+	for (i = 0; i < n; i++)
+	{
+		image = pe_image[i].image;
+		size = pe_image[i].size;
+
+		nt_hdr_offset =  *(unsigned int *)(image+0x3c);
+		nt_hdr = (struct nt_header *)((char *)image + nt_hdr_offset);
+		opt_hdr = &nt_hdr->opt_hdr;
+
+		if (fixup_reloc(image, nt_hdr))
+			return -EINVAL;
+		if (fixup_imports(image, nt_hdr))
+			return -EINVAL;
+		flush_icache_range(image, pe_image[i].size);
+
+		pe_image[i].entry = RVA2VA(image,
+					   opt_hdr->opt_std_hdr.entry_rva,
+					   void *);
+		DBGTRACE1("entry is at %p, rva at %08X", pe_image[i].entry, 
+		     (unsigned int)opt_hdr->opt_std_hdr.entry_rva);
+	}
+	for (i = 0; i < n; i++)
+	{
+		image = pe_image[i].image;
+		size = pe_image[i].size;
+
+		nt_hdr_offset =  *(unsigned int *)(image+0x3c);
+		nt_hdr = (struct nt_header *)((char *)image + nt_hdr_offset);
+		opt_hdr = &nt_hdr->opt_hdr;
+
+		if (pe_image[i].type == COFF_CHAR_DLL)
+		{
+			struct ustring ustring;
+			char *buf = "0\0t0m0p00";
+			int (*dll_entry)(struct ustring *ustring) STDCALL;
+
+			memset(&ustring, 0, sizeof(ustring));
+			ustring.buf = buf;
+			dll_entry = (void *)get_dll_init(pe_image[i].name);
+
+			DBGTRACE1("calling dll_init at %p", dll_entry);
+			if (!dll_entry || dll_entry(&ustring))
+				ERROR("DLL initialize failed for %s",
+				      pe_image[i].name);
+		}
+		else if (pe_image[i].type == COFF_CHAR_IMAGE)
+		{
+			if (image_offset)
+				ERROR("driver already loaded; ignoring '%s'",
+				      pe_image[i].name);
+			else
+				image_offset = (int)image - 
+					opt_hdr->opt_nt_hdr.image_base;
+		}
+		else
+			ERROR("illegal image type: %d", pe_image[i].type);
+	}
 	return 0;
 }
