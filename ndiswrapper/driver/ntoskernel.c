@@ -235,7 +235,7 @@ ExInterlockedAddLargeStatistic(int dummy, u32 n, u64 *plint)
 	*plint += n;
 }
 
-STDCALL void *MmMapIoSpace(unsigned int phys_addr,
+STDCALL void *MmMapIoSpace(__s64 phys_addr,
 			   unsigned long size, int cache)
 {
 	void *virt;
@@ -286,6 +286,18 @@ STDCALL void IofCallDriver(void)
 {
 	UNIMPL();
 }
+
+NOREGPARM void DbgPrint(char *format, ...)
+{
+#ifdef DEBUG
+	va_list args;
+	va_start(args, format);
+	printf(format, args);
+	va_end(args);
+#endif
+
+}
+
 void DbgBreakPoint(void)
 {
 	UNIMPL();
@@ -308,6 +320,7 @@ struct wrap_func ntos_wrap_funcs[] =
 	WRAP_FUNC_ENTRY(WRITE_REGISTER_ULONG),
 	WRAP_FUNC_ENTRY(WRITE_REGISTER_USHORT),
 	WRAP_FUNC_ENTRY(DbgBreakPoint),
+	WRAP_FUNC_ENTRY(DbgPrint),
 	WRAP_FUNC_ENTRY(ExAllocatePoolWithTag),
 	WRAP_FUNC_ENTRY(ExDeleteNPagedLookasideList),
 	WRAP_FUNC_ENTRY(ExFreePool),
