@@ -30,12 +30,13 @@
 #include <linux/if_arp.h>
 #include <net/iw_handler.h>
 #include <linux/rtnetlink.h>
-
+#include <asm/scatterlist.h>
 #include <asm/uaccess.h>
 
 #include "wrapper.h"
 #include "iw_ndis.h"
 #include "loader.h"
+
 
 #ifdef CONFIG_X86_64
 #include "wrapper_exports.h"
@@ -50,17 +51,21 @@ int proc_uid, proc_gid;
 static int hangcheck_interval;
 
 NW_MODULE_PARM_STRING(if_name, 0400);
-MODULE_PARM_DESC(if_name, "Network interface name or template (default: wlan%d)");
+MODULE_PARM_DESC(if_name, "Network interface name or template "
+		 "(default: wlan%d)");
 NW_MODULE_PARM_INT(proc_uid, 0600);
-MODULE_PARM_DESC(proc_uid, "The uid of the files created in /proc (default: 0).");
+MODULE_PARM_DESC(proc_uid, "The uid of the files created in /proc "
+		 "(default: 0).");
 NW_MODULE_PARM_INT(proc_gid, 0600);
-MODULE_PARM_DESC(proc_gid, "The gid of the files created in /proc (default: 0).");
+MODULE_PARM_DESC(proc_gid, "The gid of the files created in /proc "
+		 "(default: 0).");
 NW_MODULE_PARM_INT(hangcheck_interval, 0600);
 /* 0 - default value provided by NDIS driver,
  * positive value - force hangcheck interval to that many seconds
  * negative value - disable hangcheck
  */
-MODULE_PARM_DESC(hangcheck_interval, "The interval, in seconds, for checking if driver is hung. (default: 0)");
+MODULE_PARM_DESC(hangcheck_interval, "The interval, in seconds, for checking"
+		 " if driver is hung. (default: 0)");
 
 extern struct list_head wrap_allocs;
 extern struct wrap_spinlock wrap_allocs_lock;
@@ -395,7 +400,6 @@ static int ndis_close(struct net_device *dev)
 		netif_stop_queue(dev);
 		netif_device_detach(dev);
 	}
-
 	return 0;
 }
 
@@ -459,23 +463,7 @@ static struct ndis_packet *alloc_packet(struct ndis_handle *handle,
 
 	memset(packet, 0, sizeof(*packet));
 
-	if (handle->use_scatter_gather) {
-		/* FIXME: do USB drivers call this? */
-		packet->dataphys =
-			PCI_DMA_MAP_SINGLE(handle->dev.pci,
-					   MmGetMdlVirtualAddress(buffer),
-					   MmGetMdlByteCount(buffer),
-					   PCI_DMA_TODEVICE);
-		packet->sg_list.len = 1;
-		packet->sg_element.address = packet->dataphys;
-		packet->sg_element.len = MmGetMdlByteCount(buffer),
-		packet->sg_list.elements = &packet->sg_element;
-		packet->extension.info[ScatterGatherListPacketInfo] =
-			&packet->sg_list;
-	}
-
 	packet->private.oob_offset = offsetof(struct ndis_packet, oob_tx);
-
 	packet->private.nr_pages = NDIS_BUFFER_TO_SPAN_PAGES(buffer);
 	packet->private.len = buffer->bytecount;
 	packet->private.count = 1;
@@ -489,21 +477,115 @@ static struct ndis_packet *alloc_packet(struct ndis_handle *handle,
 
 static void free_packet(struct ndis_handle *handle, struct ndis_packet *packet)
 {
+	ndis_buffer *b, *tail;
+
+	TRACEENTER3("packet: %p", packet);
 	if (!packet) {
 		ERROR("illegal packet from %p", handle);
 		return;
 	}
 
-	kfree(packet->private.buffer_head->startva);
-	kfree(packet->private.buffer_head);
-
-	if (packet->dataphys) {
+	if (packet->sg_list) {
+		DBGTRACE3("unmapping sg_list");
 		/* FIXME: do USB drivers call this? */
-		PCI_DMA_UNMAP_SINGLE(handle->dev.pci, packet->dataphys,
-				     packet->private.len, PCI_DMA_TODEVICE);
+		UNMAP_SG(handle->dev.pci, packet->sg_list,
+			     packet->sg_ents, PCI_DMA_TODEVICE);
+		DBGTRACE3("freeing sg_list %p, dummy: %p",
+			  packet->sg_list, packet->dummy);
+		kfree(packet->sg_list);
+		DBGTRACE3("freeing ndis_sg_elements");
+		kfree(packet->ndis_sg_elements);
 	}
 
+	b = packet->private.buffer_head;
+	tail = packet->private.buffer_tail;
+	while (b != tail) {
+		ndis_buffer *t = b;
+		DBGTRACE3("freeing buffer %p", b);
+		b = b->next;
+		if (t->startva)
+			kfree(t->startva);
+		else
+			ERROR("wrong buffer: %p", t);
+		kfree(t);
+	}
+	if (b) {
+		DBGTRACE3("freeing buffer %p", b);
+		kfree(b->startva);
+		kfree(b);
+	}
+	DBGTRACE3("freeing packet %p", packet);
 	kfree(packet);
+	TRACEEXIT3(return);
+}
+
+/* build scatter/gather list from the buffers of packet array; this
+ * function should be called with spinlock held at DISPATCH_LEVEL */
+static int send_packets_sg(struct ndis_handle *handle, int n)
+{
+	struct scatterlist *sg_list;
+	struct ndis_sg_element *ndis_sg_elements;
+	unsigned int sg_ents;
+	ndis_buffer *buffer;
+	struct ndis_packet *packet;
+	int i;
+	struct miniport_char *miniport = &handle->driver->miniport_char;
+
+	sg_list = kmalloc(n * sizeof(*sg_list), GFP_ATOMIC);
+	if (!sg_list) {
+		ERROR("couldn't allocate memory");
+		return 0;
+	}
+	for (i = 0; i < n; i++) {
+		packet = handle->xmit_array[i];
+		buffer = packet->private.buffer_head;
+		sg_init_one(&sg_list[i], MmGetMdlVirtualAddress(buffer),
+			    MmGetMdlByteCount(buffer));
+	}
+	sg_ents = MAP_SG(handle->dev.pci, sg_list, n, PCI_DMA_TODEVICE);
+	DBGTRACE3("got %d sg_ents from %d packets", sg_ents, n);
+	if (sg_ents == 0) {
+		ERROR("dma map failed");
+		kfree(sg_list);
+		TRACEEXIT3(return 0);
+	}
+	ndis_sg_elements = kmalloc(sg_ents * sizeof(*ndis_sg_elements),
+				   GFP_ATOMIC);
+	if (!ndis_sg_elements) {
+		ERROR("couldn't allocate memory");
+		UNMAP_SG(handle->dev.pci, sg_list, n, PCI_DMA_TODEVICE);
+		TRACEEXIT3(return 0);
+	}
+	for (i = 0; i < sg_ents; i++) {
+		ndis_sg_elements[i].address = sg_dma_address(&sg_list[i]);
+		ndis_sg_elements[i].length = sg_dma_len(&sg_list[i]);
+		DBGTRACE3("address: %08x", (u32)ndis_sg_elements[i].address);
+	}
+	handle->xmit_array[0]->private.buffer_tail =
+		handle->xmit_array[n-1]->private.buffer_head;
+	/* we merge all packets into first packet by creating chain of
+	 * buffers of these packets */
+	for (i = n - 1; i > 0; i--) {
+		handle->xmit_array[i-1]->private.buffer_head->next =
+			handle->xmit_array[i]->private.buffer_head;
+		DBGTRACE3("freeing packet %p", handle->xmit_array[i]);
+		kfree(handle->xmit_array[i]);
+	}
+	packet = handle->xmit_array[0];
+	packet->ndis_sg_list.nent = sg_ents;
+	packet->ndis_sg_list.elements = ndis_sg_elements;
+	packet->extension.info[ScatterGatherListPacketInfo] =
+		&packet->ndis_sg_list;
+	packet->ndis_sg_elements = ndis_sg_elements;
+	packet->sg_list = sg_list;
+	packet->sg_ents = n;
+	DBGTRACE3("initialized sg_list %p in packet %p", sg_list, packet);
+	packet->dummy = sg_list;
+	DBGTRACE3("sending %d packets", n);
+	LIN2WIN3(miniport->send_packets, handle->adapter_ctx,
+		 handle->xmit_array, 1);
+	DBGTRACE3("sg_list: %p, dummy: %p", packet->sg_list, packet->dummy);
+	TRACEEXIT3(return n);
 }
 
 /*
@@ -521,25 +603,28 @@ static int send_packets(struct ndis_handle *handle, unsigned int start,
 
 	TRACEENTER3("start: %d, pending: %d", start, pending);
 
+	if (pending > handle->max_send_packets)
+		n = handle->max_send_packets;
+	else
+		n = pending;
+	DBG_BLOCK() {
+		if (n > 1)
+			DBGTRACE3("sending %d packets", n);
+	}
+
 	if (miniport->send_packets) {
 		unsigned int i;
-		if (pending > handle->max_send_packets)
-			n = handle->max_send_packets;
-		else
-			n = pending;
-
-		DBG_BLOCK() {
-			if (n > 1)
-				DBGTRACE3("sending %d packets", n);
-		}
-
 		/* copy packets from xmit_ring to linear xmit_array array */
 		for (i = 0; i < n; i++) {
 			int j = (start + i) % XMIT_RING_SIZE;
 			handle->xmit_array[i] = handle->xmit_ring[j];
 		}
-		LIN2WIN3(miniport->send_packets, handle->adapter_ctx,
-			 handle->xmit_array, n);
+		if (handle->use_scatter_gather)
+			n = send_packets_sg(handle, n);
+		else
+			LIN2WIN3(miniport->send_packets, handle->adapter_ctx,
+				 handle->xmit_array, n);
+		DBGTRACE3("sent");
 		if (test_bit(ATTR_SERIALIZED, &handle->attributes)) {
 			for (sent = 0; sent < n && handle->send_ok;
 			     sent++) {

@@ -1719,6 +1719,7 @@ NdisMSendComplete(struct ndis_handle *handle,
 	/* In case a serialized driver has requested a pause by returning
 	 * NDIS_STATUS_RESOURCES we need to give the send-code a kick again.
 	 */
+	DBGTRACE2("packet: %p, sg_list: %p", packet, packet->sg_list);
 	handle->send_ok = 1;
 	schedule_work(&handle->xmit_work);
 	TRACEEXIT3(return);
@@ -2307,16 +2308,21 @@ STDCALL NDIS_STATUS WRAP_EXPORT(NdisScheduleWorkItem)
 STDCALL void WRAP_EXPORT(NdisUnchainBufferAtBack)
 	(struct ndis_packet *packet, ndis_buffer **buffer)
 {
-	ndis_buffer *b = packet->private.buffer_head;
-	ndis_buffer *btail = packet->private.buffer_tail;
+	ndis_buffer *b, *btail;
 
-	TRACEENTER3("%p", b);
+	TRACEENTER3("%p", packet);
+	if (packet == NULL || buffer == NULL)
+		return;
+	DBGTRACE2("packet: %p, sg_list: %p", packet, packet->sg_list);
+	b = packet->private.buffer_head;
 	if (!b) {
-		/* No buffer in packet */
+		/* no buffer in packet */
 		*buffer = NULL;
 		TRACEEXIT3(return);
 	}
-
+	btail = packet->private.buffer_tail;
+	*buffer = btail;
+	packet->private.valid_counts = FALSE;
 	if (b == btail) {
 		/* one buffer in packet */
 		packet->private.buffer_head = NULL;
@@ -2325,36 +2331,33 @@ STDCALL void WRAP_EXPORT(NdisUnchainBufferAtBack)
 		while (b->next != btail)
 			b = b->next;
 		packet->private.buffer_tail = b;
+		b->next = NULL;
 	}
-	b->next = NULL;
-	packet->private.valid_counts = 0;
-	*buffer = btail;
 	TRACEEXIT3(return);
 }
 
 STDCALL void WRAP_EXPORT(NdisUnchainBufferAtFront)
 	(struct ndis_packet *packet, ndis_buffer **buffer)
 {
-	ndis_buffer *b = packet->private.buffer_head;
-
-	TRACEENTER3("%p", b);
-	if (!b) {
-		/* No buffer in packet */
+	TRACEENTER3("%p", packet);
+	if (buffer == NULL)
+		return;
+	if (packet == NULL) {
+		/* no buffer in packet */
 		*buffer = NULL;
 		TRACEEXIT3(return);
 	}
 
-	if (b == packet->private.buffer_tail) {
-		/* Only buffer in packet */
+	DBGTRACE2("packet: %p, sg_list: %p", packet, packet->sg_list);
+	packet->private.valid_counts = FALSE;
+	*buffer = packet->private.buffer_head;
+	if (packet->private.buffer_head == packet->private.buffer_tail) {
+		/* one buffer in packet */
 		packet->private.buffer_head = NULL;
 		packet->private.buffer_tail = NULL;
 	} else
-		packet->private.buffer_head = b->next;
+		packet->private.buffer_head = (*buffer)->next;
 
-	b->next = NULL;
-	packet->private.valid_counts = 0;
-
-	*buffer = b;
 	TRACEEXIT3(return);
 }
 
@@ -2366,6 +2369,7 @@ STDCALL void WRAP_EXPORT(NdisGetFirstBufferFromPacketSafe)
 	ndis_buffer *b = packet->private.buffer_head;
 
 	TRACEENTER3("%p", b);
+	DBGTRACE2("packet: %p, sg_list: %p", packet, packet->sg_list);
 	*first_buffer = b;
 	if (b) {
 		*first_buffer_va = MmGetMdlBaseVa(b);
