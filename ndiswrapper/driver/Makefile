@@ -8,6 +8,7 @@ DISTFILES=Makefile \
  loader.c loader.h \
  ndis.c ndis.h \
  ntoskernel.c ntoskernel.h \
+ hal.c \
  iw_ndis.c iw_ndis.h \
  winsyms.c winsyms.h \
  wrapper.c wrapper.h \
@@ -46,6 +47,8 @@ winsyms.o:	winsyms.c winsyms.h ndis.h
 misc_funcs.o:	misc_funcs.c ndis.h
 
 ntoskernel.o: ntoskernel.c ntoskernel.h
+
+hal.o:		hal.c ndis.h
 
 ndis.o:	ndis.c ndis.h
 

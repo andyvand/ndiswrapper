@@ -404,8 +404,10 @@ struct packed ndis_handle
 	int query_set_wait_res;
 	int query_set_wait_done;
 
+	int serialized;
 	int use_scatter_gather;
 	int map_count;
+	int multicast_list_size;
 	dma_addr_t *map_dma_addr;
 
 	int hangcheck_interval;
@@ -442,6 +444,8 @@ struct packed ndis_handle
 	struct list_head timers;
 
 	struct proc_dir_entry *procfs_iface;
+
+	struct work_struct set_rx_mode_work;
 };
 
 struct ndis_timer
@@ -562,6 +566,9 @@ void packet_recycler(void *param);
 #define NDIS_OID_STAT_RX_OK         0x00020102
 #define NDIS_OID_STAT_TX_ERROR      0x00020103
 #define NDIS_OID_STAT_RX_ERROR      0x00020104
+
+#define OID_802_3_MULTICAST_LIST    0x01010103
+#define OID_802_3_MAXIMUM_LIST_SIZE 0x01010104
 
 #define NDIS_OID_ESSID              0x0D010102
 #define NDIS_OID_BSSID              0x0D010101

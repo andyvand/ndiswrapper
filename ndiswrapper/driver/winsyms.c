@@ -218,7 +218,7 @@ struct winsym
 #define func(x, y) {x, &y}
 
 static struct winsym syms[] = {
-
+	
 /* Ndis */
 func("NdisWritePciSlotInformation"          , NdisWritePciSlotInformation),
 func("NdisFreeMemory"                       , NdisFreeMemory),
@@ -410,9 +410,6 @@ func("KeSetTimerEx"                         , KeSetTimerEx),
 func("KeCancelTimer"                        , KeCancelTimer),
 func("DbgBreakPoint"                        , DbgBreakPoint),
 func("rand"                                 , rand),
-
-/* CIPE */
-func("DbgPrint"                             , DbgPrint),
 
 {0, 0}
 };
