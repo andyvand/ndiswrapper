@@ -164,19 +164,6 @@ STDCALL void READ_PORT_BUFFER_USHORT (unsigned int port, unsigned short *buf,
 		buf[i] = inw(port);
 }
 
-int my_strcasecmp(char *s1, char *s2)
-{
-	int ret = 0;
-	int len = min(strlen(s1), strlen(s2));
-
-	while (!ret && len--)
-		ret = toupper(*s1++) - toupper(*s2++);
-
-	if (!ret)
-		ret = strlen(s1) - strlen(s2);
-	return ret;
-}
-
 STDCALL __s64 _alldiv(__s64 a, __s64 b)
 {
 	return (a / b);

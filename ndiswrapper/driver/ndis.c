@@ -205,9 +205,11 @@ STDCALL void NdisOpenFile(unsigned int *status,
 		struct ndis_driver *driver = (struct ndis_driver *) curr;
 		list_for_each_safe(curr2, tmp2, &driver->files)
 		{
+			int n;
 			file = (struct ndis_file*) curr2;
 			DBGTRACE("Considering %s.\n", file->name); 
-			if(my_strcasecmp(file->name, ansiname) == 0)
+			n = min(strlen(file->name), strlen(ansiname));
+			if(strnicmp(file->name, ansiname, n) == 0)
 			{
 				*filehandle = file;
 				*filelength = file->size;
