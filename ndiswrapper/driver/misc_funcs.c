@@ -174,3 +174,14 @@ void RtlUnwind(void){UNIMPL();}
 void IofCompleteRequest(void){UNIMPL();}
 void IoReleaseCancelSpinLock(void){UNIMPL();}
 void _allmul(long p1, long p2, long p3, long p4){UNIMPL();}
+
+void _alldiv(void){UNIMPL();}
+void RtlCompareMemory(void){UNIMPL();}
+void _aullrem(void){UNIMPL();}
+void _aulldiv(void){UNIMPL();}
+void _allshr(void){UNIMPL();}
+void _allrem(void){UNIMPL();}
+void ExDeleteNPagedLookasideList(void){UNIMPL();}
+void ExInitializeNPagedLookasideList(void){UNIMPL();}
+void ExInterlockedPopEntrySList(void){UNIMPL();}
+void ExInterlockedPushEntrySList(void){UNIMPL();}
