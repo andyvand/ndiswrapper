@@ -188,6 +188,7 @@ void usb_transfer_complete_tasklet(unsigned long dummy)
 	}
 }
 
+/* this is called holding irp_cancel_lock */
 STDCALL void usb_cancel_transfer(struct device_object *dev_obj,
 				 struct irp *irp)
 {
@@ -200,9 +201,7 @@ STDCALL void usb_cancel_transfer(struct device_object *dev_obj,
 	/* while this function can run at DISPATCH_LEVEL,
 	 * usb_unlink/kill_urb will only work successfully in
 	 * schedulable context */
-	spin_lock(&irp_cancel_lock);
 	list_add_tail(&irp->cancel_list, &canceled_irps);
-	spin_unlock(&irp_cancel_lock);
 
 	schedule_work(&cancel_usb_irp_work);
 }

@@ -1037,11 +1037,10 @@ void *get_sp(void)
 	ULONG_PTR i;
 
 #ifdef CONFIG_X86_64
-	asm("movq %%rsp, %0\n" : "=g"(i));
+	__asm__ __volatile__("movq %%rsp, %0\n" : "=g"(i));
 #else
-	asm("movl %%esp, %0\n" : "=g"(i));
+	__asm__ __volatile__("movl %%esp, %0\n" : "=g"(i));
 #endif
-
 	return (void *)i;
 }
 

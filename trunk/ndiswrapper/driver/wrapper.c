@@ -49,6 +49,7 @@
 static char *if_name = "wlan%d";
 int proc_uid, proc_gid;
 static int hangcheck_interval;
+int debug;
 
 NW_MODULE_PARM_STRING(if_name, 0400);
 MODULE_PARM_DESC(if_name, "Network interface name or template "
@@ -64,6 +65,9 @@ NW_MODULE_PARM_INT(hangcheck_interval, 0600);
  * positive value - force hangcheck interval to that many seconds
  * negative value - disable hangcheck
  */
+NW_MODULE_PARM_INT(debug, 0600);
+MODULE_PARM_DESC(debug, "debug level");
+
 MODULE_PARM_DESC(hangcheck_interval, "The interval, in seconds, for checking"
 		 " if driver is hung. (default: 0)");
 
@@ -1156,7 +1160,7 @@ static void wrapper_worker_proc(void *param)
 	if (test_and_clear_bit(SET_INFRA_MODE, &handle->wrapper_work))
 		set_infra_mode(handle, handle->infrastructure_mode);
 
-	if (test_and_clear_bit(WRAPPER_LINK_STATUS, &handle->wrapper_work))
+	if (test_and_clear_bit(LINK_STATUS_CHANGED, &handle->wrapper_work))
 		link_status_handler(handle);
 
 	if (test_and_clear_bit(SET_ESSID, &handle->wrapper_work))
@@ -1597,6 +1601,11 @@ static int __init wrapper_init(void)
 	char *env[] = {NULL};
 	int err;
 
+#if defined(DEBUG) && DEBUG > 0
+	debug = DEBUG;
+#else
+	debug = 0;
+#endif
 	printk(KERN_INFO "%s version %s%s loaded (preempt=%s,smp=%s)\n",
 	       DRIVER_NAME, NDISWRAPPER_VERSION, EXTRA_VERSION,
 #if defined CONFIG_PREEMPT

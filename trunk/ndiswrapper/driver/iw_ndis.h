@@ -133,11 +133,6 @@ enum ndis_power_profile {
 	NdisPowerProfileAcOnLine
 };
 
-struct ndis_status_indication
-{
-	enum ndis_status_type status_type;
-};
-
 struct ndis_auth_req {
 	ULONG length;
 	mac_address bssid;

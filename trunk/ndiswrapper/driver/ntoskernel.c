@@ -146,7 +146,7 @@ STDCALL void WRAP_EXPORT(KeReleaseSpinLockFromDpcLevel)
 }
 
 _FASTCALL struct slist_entry *WRAP_EXPORT(ExInterlockedPushEntrySList)
-	(FASTCALL_DECL_3(union slist_head *head,struct slist_entry *entry, 
+	(FASTCALL_DECL_3(union slist_head *head, struct slist_entry *entry, 
 			 KSPIN_LOCK *lock))
 {
 	struct slist_entry *oldhead;
@@ -878,8 +878,8 @@ STDCALL BOOLEAN WRAP_EXPORT(IoCancelIrp)
 		irp->cancel_irql = irql;
 		irp->pending_returned = 1;
 		irp->cancel = 1;
-		spin_unlock(&irp_cancel_lock);
 		cancel_routine(stack->dev_obj, irp);
+		spin_unlock(&irp_cancel_lock);
 		USBTRACEEXIT(return 1);
 	} else {
 		spin_unlock(&irp_cancel_lock);
@@ -1161,8 +1161,17 @@ STDCALL struct mdl *WRAP_EXPORT(IoAllocateMdl)
 STDCALL void WRAP_EXPORT(IoFreeMdl)
 	(struct mdl *mdl)
 {
-	if (mdl)
-		kfree(mdl);
+	/* A driver may allocate Mdl with NdisAllocateBuffer and free
+	 * with IoFreeMdl (e.g., 64-bit Broadcom). Since we need to
+	 * treat buffers allocated with Ndis calls differently, we
+	 * must call NdisFreeBuffer if it is allocated with Ndis
+	 * function. We set 'process' field in Ndis functions. */
+	if (mdl) {
+		if (mdl->process)
+			NdisFreeBuffer(mdl);
+		else
+			kfree(mdl);
+	}
 	TRACEEXIT3(return);
 }
 

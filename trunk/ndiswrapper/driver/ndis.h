@@ -68,7 +68,12 @@ struct ndis_phy_addr_unit {
 	UINT length;
 };
 
-typedef struct mdl ndis_buffer;
+struct ndis_buffer_pool {
+	int max_descr;
+	int num_allocated_descr;
+	ndis_buffer *free_descr;
+	struct wrap_spinlock lock;
+};
 
 enum ndis_per_packet_info {
 	TcpIpChecksumPacketInfo,
@@ -137,6 +142,7 @@ struct ndis_packet {
 	struct ndis_packet_extension extension;
 
 	/* ndiswrapper specific info */
+	struct ndis_packet *next;
 	struct scatterlist *sg_list;
 	unsigned int sg_ents;
 	/* ndiswrapper-specific info */
@@ -150,7 +156,14 @@ struct ndis_packet {
 
 	unsigned char header[ETH_HLEN];
 	unsigned char *look_ahead;
-	unsigned int look_ahead_size;
+	UINT look_ahead_size;
+};
+
+struct ndis_packet_pool {
+	int max_descr;
+	int num_allocated_descr;
+	struct ndis_packet *free_descr;
+	struct wrap_spinlock lock;
 };
 
 enum ndis_device_pnp_event {
@@ -528,11 +541,30 @@ struct ndis_wireless_stats {
 
 enum ndis_status_type {
 	Ndis802_11StatusType_Authentication,
-	Ndis802_11StatusTypeMax
+	Ndis802_11StatusType_PMKID_CandidateList,
+	Ndis802_11StatusType_MediaStreamMode,
+	Ndis802_11StatusType_RadioState,
+};
+
+struct ndis_status_indication
+{
+	enum ndis_status_type status_type;
+};
+
+enum ndis_radio_status {
+	Ndis802_11RadioStatusOn,
+	Ndis802_11RadioStatusHardwareOff,
+	Ndis802_11RadioStatusSoftwareOff,
+};
+
+struct ndis_radio_status_indication
+{
+	enum ndis_status_type status_type;
+	enum ndis_radio_status radio_state;
 };
 
 enum wrapper_work {
-	WRAPPER_LINK_STATUS,
+	LINK_STATUS_CHANGED,
 	SET_INFRA_MODE,
 	SET_ESSID,
 	SET_PACKET_FILTER,
