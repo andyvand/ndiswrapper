@@ -607,15 +607,12 @@ static void xmit_bh(void *param)
 {
 	struct ndis_handle *handle = (struct ndis_handle*) param;
 	struct ndis_buffer *buffer;
-	static struct ndis_packet *packet = NULL;
 	int res;
 
 	DBGTRACE("%s: Enter: send status is %08X\n", __FUNCTION__, handle->send_status);
 	while (1)
 	{
-		spin_lock(&handle->send_status_lock);
 		res = handle->send_status;
-		spin_unlock(&handle->send_status_lock);
 
 		spin_lock_bh(&handle->xmit_ring_lock);
 		if (res || !handle->xmit_ring_pending)
@@ -629,11 +626,11 @@ static void xmit_bh(void *param)
 		/* if we are resending a packet due to NDIS_STATUS_RESOURCES
 		   then just pick up the packet already created
 		*/
-		if (!packet)
+		if (!handle->packet)
 		{
 			/* otherwise, get a new packet */
-			packet = init_packet(handle, buffer);
-			if (!packet)
+			handle->packet = init_packet(handle, buffer);
+			if (!handle->packet)
 			{
 				printk(KERN_ERR "%s: couldn't get a packet\n",
 				       __FUNCTION__);
@@ -641,7 +638,7 @@ static void xmit_bh(void *param)
 			}
 		}
 
-		res = send_packet(handle, packet);
+		res = send_packet(handle, handle->packet);
 		/* If the driver returns...
 		 * NDIS_STATUS_SUCCESS - we own the packet and
 		 *    driver will not call NdisMSendComplete.
@@ -654,10 +651,8 @@ static void xmit_bh(void *param)
 		switch(res)
 		{
 		case NDIS_STATUS_SUCCESS:
-			sendpacket_done(handle, packet);
-			spin_lock(&handle->send_status_lock);
+			sendpacket_done(handle, handle->packet);
 			handle->send_status = 0;
-			spin_unlock(&handle->send_status_lock);
 			break;
 		case NDIS_STATUS_PENDING:
 			break;
@@ -665,27 +660,24 @@ static void xmit_bh(void *param)
 			/* should be serialized driver */
 			if (!handle->serialized)
 				printk(KERN_ERR "%s: deserialized driver returning NDIS_STATUS_RESOURCES!\n", __FUNCTION__);
-			spin_lock_bh(&handle->xmit_ring_lock);
 			handle->send_status = res;
-			spin_unlock_bh(&handle->xmit_ring_lock);
-			/* this buffer will be tried again later */
-			//free_packet(handle, packet);
+			/* this packet will be tried again later */
 			return;
 
 			/* free buffer, drop the packet */
 		case NDIS_STATUS_FAILURE:
-			free_buffer(handle, packet);
+			free_buffer(handle, handle->packet);
 			break;
 		default:
 			printk(KERN_ERR "%s: Incorrect status code %08X\n",
 			       __FUNCTION__, res);
-			free_buffer(handle, packet);
+			free_buffer(handle, handle->packet);
 			break;
 		}
 
 		spin_lock_bh(&handle->xmit_ring_lock);
 		/* mark the packet as done */
-		packet = NULL;
+		handle->packet = NULL;
 		handle->xmit_ring_start =
 			(handle->xmit_ring_start + 1) % XMIT_RING_SIZE;
 		handle->xmit_ring_pending--;
@@ -970,8 +962,8 @@ static int ndis_init_one(struct pci_dev *pdev,
 	init_MUTEX(&handle->reset_mutex);
 	init_waitqueue_head(&handle->reset_wqhead);
 
-	spin_lock_init(&handle->send_status_lock);
 	handle->send_status = 0;
+	handle->packet = NULL;
 
 	INIT_WORK(&handle->xmit_work, xmit_bh, handle); 	
 	spin_lock_init(&handle->xmit_ring_lock);
