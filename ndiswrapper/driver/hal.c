@@ -90,13 +90,6 @@ _FASTCALL KIRQL WRAP_EXPORT(KfRaiseIrql)
 	TRACEENTER4("irql = %d", newirql);
 
 	irql = KeGetCurrentIrql();
-#if DEBUG_IRQL
-	if (newirql < irql) {
-		ERROR("invalid irql %d", irql);
-		TRACEEXIT4(return PASSIVE_LEVEL);
-	}
-#endif
-
 	if (irql < DISPATCH_LEVEL) {
 		local_bh_disable();
 		preempt_disable();
@@ -127,79 +120,47 @@ _FASTCALL void WRAP_EXPORT(KfLowerIrql)
 _FASTCALL KIRQL WRAP_EXPORT(KfAcquireSpinLock)
 	(FASTCALL_DECL_1(KSPIN_LOCK *lock))
 {
+	KIRQL oldirql;
 	TRACEENTER4("lock = %p", lock);
 
-	if (!lock) {
-		ERROR("%s", "invalid lock");
-		TRACEEXIT4(return PASSIVE_LEVEL);
-	}
+	oldirql = raise_irql(DISPATCH_LEVEL);
+	spin_lock(&lock->spinlock);
 
-	if (!*lock) {
-		printk(KERN_WARNING "Buggy Windows driver trying to use "
-		       "uninitialized lock. Trying to recover...");
-		KeInitializeSpinLock(lock);
-		if (*lock)
-			printk(KERN_WARNING "ok\n");
-		else {
-			printk(KERN_WARNING "failed\n");
-			BUG();
-		}
-	} else if ((*lock)->magic != WRAPPER_SPIN_LOCK_MAGIC)
-		ERROR("uninitialized spinlock %p", *lock);
+	TRACEEXIT4(return oldirql);
+}
 
-	wrap_spin_lock(*lock);
-	
-	TRACEEXIT4(return (*lock)->irql);
+_FASTCALL void WRAP_EXPORT(KfReleaseSpinLock)
+	(FASTCALL_DECL_2(KSPIN_LOCK *lock, KIRQL newirql))
+{
+	TRACEENTER4("lock = %p, irql = %d", lock, newirql);
+
+	spin_unlock(&lock->spinlock);
+	lower_irql(newirql);
+
+	TRACEEXIT4(return);
 }
 
 _FASTCALL static void WRAP_EXPORT(KefAcquireSpinLockAtDpcLevel)
 	(FASTCALL_DECL_1(KSPIN_LOCK *lock))
 {
+	KIRQL irql;
 	TRACEENTER4("lock = %p", lock);
 
-	if (KeGetCurrentIrql() != DISPATCH_LEVEL)
-		ERROR("%s", "irql != DISPATCH_LEVEL");
-
-	KfAcquireSpinLock(FASTCALL_ARGS_1(lock));
+	irql = KeGetCurrentIrql();
+	if (irql != DISPATCH_LEVEL)
+		ERROR("irql %d != DISPATCH_LEVEL", irql);
+	spin_lock(&lock->spinlock);
+	TRACEEXIT4(return);
 }
 
 _FASTCALL void WRAP_EXPORT(KefReleaseSpinLockFromDpcLevel)
 	(FASTCALL_DECL_1(KSPIN_LOCK *lock))
 {
-	struct wrap_spinlock *wrap_lock;
 	TRACEENTER4("lock = %p", lock);
 	if (KeGetCurrentIrql() != DISPATCH_LEVEL)
 		ERROR("%s", "irql != DISPATCH_LEVEL");
 
-	if (!lock || !*lock) {
-		ERROR("invalid spin lock %p", lock);
-		TRACEEXIT4(return);
-	}
-	
-	wrap_lock = *lock;
-	wrap_spin_unlock(wrap_lock);
-
-	TRACEEXIT4(return);
-}
-
-
-_FASTCALL void WRAP_EXPORT(KfReleaseSpinLock)
-	(FASTCALL_DECL_2(KSPIN_LOCK *lock, KIRQL oldirql))
-{
-	struct wrap_spinlock *wrap_lock;
-
-	TRACEENTER4("lock = %p, irql = %d", lock, oldirql);
-
-	if (!lock || !*lock) {
-		ERROR("invalid spin lock %p", lock);
-		TRACEEXIT4(return);
-	}
-	
-	wrap_lock = *lock;
-	if (oldirql != wrap_lock->irql)
-		ERROR("invlid irql %d", oldirql);
-
-	wrap_spin_unlock(wrap_lock);
+	spin_unlock(&lock->spinlock);
 
 	TRACEEXIT4(return);
 }

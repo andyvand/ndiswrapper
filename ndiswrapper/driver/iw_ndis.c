@@ -1375,10 +1375,10 @@ static int wpa_disassociate(struct net_device *dev,
 		buf[i] = 'a' + (buf[i] % ('z' - 'a'));
 	set_essid(handle, buf, sizeof(buf));
 	get_ap_address(handle, ap_addr);
-	if (!memcmp(ap_addr, "\x00\x00\x00\x00\x00\x00", ETH_ALEN))
+	if (memcmp(ap_addr, "\x00\x00\x00\x00\x00\x00", ETH_ALEN))
+		TRACEEXIT(return -1);
+	else
 		TRACEEXIT(return 0);
-	DBGTRACE1("bssid " MACSTR, MAC2STR(ap_addr));
-	TRACEEXIT(return -1);
 }
 
 static int wpa_associate(struct net_device *dev,
