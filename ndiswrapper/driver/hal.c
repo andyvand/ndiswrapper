@@ -13,7 +13,16 @@
  *
  */
 
-#include "ndis.h"
+#include <linux/version.h>
+#include <linux/module.h>
+#include <linux/netdevice.h>
+#include <linux/etherdevice.h>
+#include <linux/wireless.h>
+#include <linux/delay.h>
+#include <linux/usb.h>
+
+#include "ndiswrapper.h"
+#include "ntoskernel.h"
 
 STDCALL static void WRAP_EXPORT(WRITE_PORT_ULONG)
 	(unsigned int port, unsigned int value)

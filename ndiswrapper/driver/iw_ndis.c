@@ -12,15 +12,23 @@
  *  GNU General Public License for more details.
  *
  */
+
+#include <linux/version.h>
 #include <linux/wireless.h>
 #include <linux/netdevice.h>
 #include <linux/etherdevice.h>
 #include <linux/ethtool.h>
 #include <linux/if_arp.h>
+#include <linux/usb.h>
+#include <linux/random.h>
+
 #include <net/iw_handler.h>
 #include <linux/rtnetlink.h>
 #include <asm/uaccess.h>
 
+#include "ntoskernel.h"
+#include "ndiswrapper.h"
+#include "wrapper.h"
 #include "iw_ndis.h"
 
 static int freq_chan[] = { 2412, 2417, 2422, 2427, 2432, 2437, 2442,
@@ -36,8 +44,7 @@ int set_essid(struct ndis_handle *handle, const char *ssid, int ssid_len)
 	
 	if (ssid_len == 0)
 		req.length = 0;
-	else
-	{
+	else {
 		if (ssid_len > (IW_ESSID_MAX_SIZE + 1))
 			return -EINVAL;
 
@@ -108,8 +115,7 @@ int set_mode(struct ndis_handle *handle, enum op_mode mode)
 	TRACEENTER1("%s", "");
 
 	res = miniport_set_int(handle, NDIS_OID_MODE, mode);
-	if (res == NDIS_STATUS_INVALID_DATA)
-	{
+	if (res == NDIS_STATUS_INVALID_DATA) {
 		WARNING("setting operating mode failed (%08X)", res); 
 		TRACEEXIT1(return -EINVAL);
 	}
@@ -127,8 +133,7 @@ static int iw_set_mode(struct net_device *dev, struct iw_request_info *info,
 	enum op_mode ndis_mode;
 
 	TRACEENTER1("%s", "");
-	switch (wrqu->mode)
-	{
+	switch (wrqu->mode) {
 	case IW_MODE_ADHOC:
 		ndis_mode = NDIS_MODE_ADHOC;
 		break;	
@@ -158,14 +163,12 @@ static int iw_get_mode(struct net_device *dev, struct iw_request_info *info,
 
 	TRACEENTER1("%s", "");
 	res = miniport_query_int(handle, NDIS_OID_MODE, &ndis_mode);
-	if (res)
-	{
+	if (res) {
 		WARNING("getting operating mode failed (%08X)", res);
 		TRACEEXIT1(return -EOPNOTSUPP);
 	}
 
-	switch(ndis_mode)
-	{
+	switch(ndis_mode) {
 	case NDIS_MODE_ADHOC:
 		iw_mode = IW_MODE_ADHOC;
 		break;
@@ -223,8 +226,7 @@ static int iw_get_freq(struct net_device *dev, struct iw_request_info *info,
 	memset(&req, 0, sizeof(req));
 	res = miniport_query_info(handle, NDIS_OID_CONFIGURATION, (char*)&req,
 				  sizeof(req), &written, &needed);
-	if (res == NDIS_STATUS_INVALID_DATA)
-	{
+	if (res == NDIS_STATUS_INVALID_DATA) {
 		WARNING("getting configuration failed (%08X)", res);
 		TRACEEXIT(return -EOPNOTSUPP);
 	}
@@ -235,8 +237,7 @@ static int iw_get_freq(struct net_device *dev, struct iw_request_info *info,
 	   definition for an explanation of this if
 	   NOTE: 1000000 is due to the kHz
 	*/
-	if (req.ds_config > 1000000)
-	{
+	if (req.ds_config > 1000000) {
 		wrqu->freq.m = req.ds_config / 10;
 		wrqu->freq.e = 1;
 	}
@@ -259,22 +260,18 @@ static int iw_set_freq(struct net_device *dev, struct iw_request_info *info,
 	memset(&req, 0, sizeof(req));
 	res = miniport_query_info(handle, NDIS_OID_CONFIGURATION, (char*)&req,
 				  sizeof(req), &written, &needed);
-	if (res == NDIS_STATUS_INVALID_DATA)
-	{
+	if (res == NDIS_STATUS_INVALID_DATA) {
 		WARNING("getting configuration failed (%08X)", res);
 		TRACEEXIT(return -EOPNOTSUPP);
 	}
 
-	if (wrqu->freq.m < 1000 && wrqu->freq.e == 0)
-	{
+	if (wrqu->freq.m < 1000 && wrqu->freq.e == 0) {
 		if (wrqu->freq.m >= 1 &&
 		    wrqu->freq.m <= (sizeof(freq_chan)/sizeof(freq_chan[0])))
 			req.ds_config = freq_chan[wrqu->freq.m - 1] * 1000;
 		else
 			return -EINVAL;
-	}
-	else
-	{
+	} else {
 		int i;
 		for (req.ds_config = wrqu->freq.m, i = wrqu->freq.e ;
 		     i > 0 ; i--)
@@ -284,8 +281,7 @@ static int iw_set_freq(struct net_device *dev, struct iw_request_info *info,
 	}
 	res = miniport_set_info(handle, NDIS_OID_CONFIGURATION, (char*)&req,
 				sizeof(req), &written, &needed);
-	if (res == NDIS_STATUS_INVALID_DATA)
-	{
+	if (res == NDIS_STATUS_INVALID_DATA) {
 		WARNING("setting configuration failed (%08X)", res);
 		return -EINVAL;
 	}
@@ -322,8 +318,7 @@ static int iw_set_tx_power(struct net_device *dev,
 	unsigned long ndis_power;
 	unsigned int written, needed, res;
 
-	if (wrqu->txpower.disabled)
-	{
+	if (wrqu->txpower.disabled) {
 		ndis_power = 0;
 		res = miniport_set_info(handle, NDIS_OID_TX_POWER_LEVEL,
 					(char *)&ndis_power,
@@ -334,19 +329,15 @@ static int iw_set_tx_power(struct net_device *dev,
 		if (res)
 			return -EINVAL;
 		return 0;
-	}
-	else 
-	{
+	} else {
 		if (wrqu->txpower.flags == IW_TXPOW_MWATT)
 			ndis_power = wrqu->txpower.value;
-		else // wrqu->txpower.flags == IW_TXPOW_DBM
-		{
+		else { // wrqu->txpower.flags == IW_TXPOW_DBM
 			if (wrqu->txpower.value > 20)
 				ndis_power = 128;
 			else if (wrqu->txpower.value < -43)
 				ndis_power = 127;
-			else
-			{
+			else {
 				signed char tmp;
 				tmp = wrqu->txpower.value;
 				tmp = -12 - tmp;
@@ -479,15 +470,15 @@ static int iw_get_ap_address(struct net_device *dev,
 			     struct iw_request_info *info,
 			     union iwreq_data *wrqu, char *extra)
 {
-    struct ndis_handle *handle = dev->priv;
-    mac_address ap_addr;
+	struct ndis_handle *handle = dev->priv;
+	mac_address ap_addr;
 
-    TRACEENTER1("%s", "");
-    get_ap_address(handle, ap_addr);
+	TRACEENTER1("%s", "");
+	get_ap_address(handle, ap_addr);
 
-    memcpy(wrqu->ap_addr.sa_data, ap_addr, ETH_ALEN);
-    wrqu->ap_addr.sa_family = ARPHRD_ETHER;
-    TRACEEXIT1(return 0);
+	memcpy(wrqu->ap_addr.sa_data, ap_addr, ETH_ALEN);
+	wrqu->ap_addr.sa_family = ARPHRD_ETHER;
+	TRACEEXIT1(return 0);
 }
 
 static int iw_set_ap_address(struct net_device *dev,
@@ -503,8 +494,7 @@ static int iw_set_ap_address(struct net_device *dev,
 	res = miniport_set_info(handle, NDIS_OID_BSSID, (char*)&(ap_addr[0]),
 				ETH_ALEN, &written, &needed);
 
-	if (res)
-	{
+	if (res) {
 		WARNING("setting AP mac address failed (%08X)", res);
 		TRACEEXIT1(return -EINVAL);
 	}
@@ -531,8 +521,7 @@ int set_encr_mode(struct ndis_handle *handle, int encr_mode)
 	res = miniport_set_int(handle, NDIS_OID_ENCR_STATUS, encr_mode);
 	if (res == NDIS_STATUS_INVALID_DATA)
 		TRACEEXIT2(return -EINVAL);
-	else
-	{
+	else {
 		handle->encr_mode = encr_mode;
 		TRACEEXIT2(return 0);
 	}
@@ -556,16 +545,13 @@ static int iw_get_encr(struct net_device *dev, struct iw_request_info *info,
 	else
 		index = encr_info->active;
 
-	if (index < 0 || index >= MAX_ENCR_KEYS)
-	{
+	if (index < 0 || index >= MAX_ENCR_KEYS) {
 		WARNING("encryption index out of range (%u)", index);
 		TRACEEXIT1(return -EINVAL);
 	}
 
-	if (index != encr_info->active)
-	{
-		if (encr_info->keys[index].length > 0)
-		{
+	if (index != encr_info->active) {
+		if (encr_info->keys[index].length > 0) {
 			wrqu->data.flags |= IW_ENCODE_ENABLED;
 			wrqu->data.length = encr_info->keys[index].length;
 			memcpy(extra, encr_info->keys[index].key,
@@ -579,21 +565,18 @@ static int iw_get_encr(struct net_device *dev, struct iw_request_info *info,
 	
 	/* active key */
 	res = miniport_query_int(handle, NDIS_OID_ENCR_STATUS, &status);
-	if (res == NDIS_STATUS_NOT_SUPPORTED)
-	{
+	if (res == NDIS_STATUS_NOT_SUPPORTED) {
 		WARNING("getting encryption status failed (%08X)", res);
 		TRACEEXIT1(return -EOPNOTSUPP);
 	}
 
 	if (status == ENCR_DISABLED || status == ENCR1_NO_SUPPORT)
 		wrqu->data.flags |= IW_ENCODE_DISABLED;
-	else
-	{
+	else {
 		if (status == ENCR1_NOKEY || status == ENCR2_ABSENT ||
 		    status == ENCR3_ABSENT)
 			wrqu->data.flags |= IW_ENCODE_NOKEY;
-		else
-		{
+		else {
 			wrqu->data.flags |= IW_ENCODE_ENABLED;
 			wrqu->encoding.flags |= index+1;
 			wrqu->data.length = encr_info->keys[index].length;
@@ -602,8 +585,7 @@ static int iw_get_encr(struct net_device *dev, struct iw_request_info *info,
 		}
 	}
 	res = miniport_query_int(handle, NDIS_OID_AUTH_MODE, &status);
-	if (res == NDIS_STATUS_NOT_SUPPORTED)
-	{
+	if (res == NDIS_STATUS_NOT_SUPPORTED) {
 		WARNING("getting authentication mode failed (%08X)", res);
 		TRACEEXIT1(return -EOPNOTSUPP);
 	}
@@ -766,7 +748,7 @@ static int iw_get_nick(struct net_device *dev, struct iw_request_info *info,
 }
 
 static char *ndis_translate_scan(struct net_device *dev, char *event,
-				 char *end_buf, struct ssid_item *item)
+				 char *end_buf, struct ndis_ssid_item *item)
 {
 	struct iw_event iwe;
 	char *current_val;
@@ -848,7 +830,7 @@ static char *ndis_translate_scan(struct net_device *dev, char *event,
 	memset(&iwe, 0, sizeof(iwe));
 	current_val = event + IW_EV_LCP_LEN;
 	iwe.cmd = SIOCGIWRATE;
-	if (item->length > sizeof(struct ssid_item))
+	if (item->length > sizeof(struct ndis_ssid_item))
 		nrates = NDIS_MAX_RATES_EX;
 	else
 		nrates = NDIS_MAX_RATES;
@@ -878,9 +860,9 @@ static char *ndis_translate_scan(struct net_device *dev, char *event,
 	iwe.u.data.length = strlen(buf);
 	event = iwe_stream_add_point(event, end_buf, &iwe, buf);
 
-	if (item->length > sizeof(struct ssid_item)) {
+	if (item->length > sizeof(*item)) {
 		unsigned char *iep = (unsigned char *)item->ies +
-			sizeof(struct fixed_ies);
+			sizeof(struct ndis_fixed_ies);
 		unsigned char *end = iep + item->ie_length;
 
 		while (iep + 1 < end && iep + 2 + iep[1] <= end) {
@@ -936,14 +918,11 @@ static int iw_set_scan(struct net_device *dev, struct iw_request_info *info,
 	TRACEENTER1("%s", "");
 	res = miniport_set_int(handle, NDIS_OID_BSSID_LIST_SCAN, 0);
 	if (res == NDIS_STATUS_NOT_SUPPORTED ||
-	    res == NDIS_STATUS_INVALID_DATA)
-	{
+	    res == NDIS_STATUS_INVALID_DATA) {
 		WARNING("scanning failed (%08X)", res);
 		handle->scan_timestamp = 0;
 		TRACEEXIT1(return -EOPNOTSUPP);
-	}
-	else
-	{
+	} else {
 		handle->scan_timestamp = jiffies;
 		TRACEEXIT1(return 0);
 	}
@@ -954,9 +933,9 @@ static int iw_get_scan(struct net_device *dev, struct iw_request_info *info,
 {
  	struct ndis_handle *handle = dev->priv;
 	unsigned int i, res, written, needed, list_len;
-	struct bssid_list *bssid_list;
+	struct ndis_bssid_list *bssid_list;
 	char *event = extra;
-	struct ssid_item *cur_item ;
+	struct ndis_ssid_item *cur_item ;
 
 	TRACEENTER1("%s", "");
 	if (!handle->scan_timestamp)
@@ -966,15 +945,14 @@ static int iw_get_scan(struct net_device *dev, struct iw_request_info *info,
 		return -EAGAIN;
 	
 	/* Try with space for 15 scan items */
-	list_len = sizeof(unsigned long) + sizeof(struct ssid_item) * 15;
+	list_len = sizeof(unsigned long) + sizeof(struct ndis_ssid_item) * 15;
 	bssid_list = kmalloc(list_len, GFP_KERNEL);
 
 	written = needed = 0;
 	res = miniport_query_info(handle, NDIS_OID_BSSID_LIST,
 				  (char *)bssid_list, list_len,
 				  &written, &needed);
-	if (res == NDIS_STATUS_INVALID_LENGTH)
-	{
+	if (res == NDIS_STATUS_INVALID_LENGTH) {
 		/* 15 items not enough; allocate required space */
 		kfree(bssid_list);
 		list_len = needed;
@@ -984,20 +962,19 @@ static int iw_get_scan(struct net_device *dev, struct iw_request_info *info,
 					  (char*)bssid_list, list_len,
 					  &written, &needed);
 	}
-	if (res == NDIS_STATUS_INVALID_DATA)
-	{
+
+	if (res == NDIS_STATUS_INVALID_DATA) {
 		WARNING("getting BSSID list failed (%08X)", res);
 		kfree(bssid_list);
 		TRACEEXIT1(return -EOPNOTSUPP);
 	}
 
 	for (i = 0, cur_item = &bssid_list->items[0] ;
-	     i < bssid_list->num_items ; i++)
-	{
+	     i < bssid_list->num_items ; i++) {
 		event = ndis_translate_scan(dev, event,
 					    extra + IW_SCAN_MAX_DATA,
 					    cur_item);
-		cur_item = (struct ssid_item *)((char *)cur_item +
+		cur_item = (struct ndis_ssid_item *)((char *)cur_item +
 						cur_item->length);
 	}
 	wrqu->data.length = event - extra;
@@ -1022,8 +999,7 @@ static int iw_set_power_mode(struct net_device *dev,
 		power_mode = NDIS_POWER_MAX;
 
 	res = miniport_set_int(handle, NDIS_OID_POWER_MODE, power_mode);
-	if (res == NDIS_STATUS_INVALID_DATA)
-	{
+	if (res == NDIS_STATUS_INVALID_DATA) {
 		WARNING("setting power mode failed (%08X)", res);
 		return -EINVAL;
 	}
@@ -1044,8 +1020,7 @@ static int iw_get_power_mode(struct net_device *dev,
 
 	if (power_mode == NDIS_POWER_OFF)
 		wrqu->power.disabled = 1;
-	else
-	{
+	else {
 		if (wrqu->power.flags != 0)
 			return 0;
 		wrqu->power.flags |= IW_POWER_ALL_R;
@@ -1184,8 +1159,7 @@ static int iw_get_range(struct net_device *dev, struct iw_request_info *info,
 	range->num_channels = (sizeof(freq_chan)/sizeof(freq_chan[0]));
 
 	for(i = 0; i < (sizeof(freq_chan)/sizeof(freq_chan[0])) &&
-		    i < IW_MAX_FREQUENCIES; i++)
-	{
+		    i < IW_MAX_FREQUENCIES; i++) {
 		range->freq[i].i = i + 1;
 		range->freq[i].m = freq_chan[i] * 100000;
 		range->freq[i].e = 1;
@@ -1238,8 +1212,7 @@ static int priv_reset(struct net_device *dev, struct iw_request_info *info,
 {
 	int res;
 	res = miniport_reset(dev->priv);
-	if (res)
-	{
+	if (res) {
 		WARNING("reset returns %08X", res);
 		return -EOPNOTSUPP;
 	}
@@ -1416,25 +1389,18 @@ static int wpa_disassociate(struct net_device *dev,
 	struct ndis_handle *handle = (struct ndis_handle *)dev->priv;
 	mac_address ap_addr;
 	unsigned char buf[NDIS_ESSID_MAX_SIZE];
-	int i, n;
+	int i;
 	
 	TRACEENTER("%s", "");
-	n = 0;
-	do {
-		get_random_bytes(buf, sizeof(buf));
-		for (i = 0; i < sizeof(buf); i++)
-			buf[i] = 'a' + (buf[i] % ('z' - 'a'));
-		set_essid(handle, buf, sizeof(buf));
-		get_ap_address(handle, ap_addr);
-		if (!memcmp(ap_addr, "\x00\x00\x00\x00\x00\x00", ETH_ALEN))
-			break;
-		DBGTRACE1("bssid " MACSTR, MAC2STR(ap_addr));
-	} while (n++ < 4);
-
-	if (n < 4)
+	get_random_bytes(buf, sizeof(buf));
+	for (i = 0; i < sizeof(buf); i++)
+		buf[i] = 'a' + (buf[i] % ('z' - 'a'));
+	set_essid(handle, buf, sizeof(buf));
+	get_ap_address(handle, ap_addr);
+	if (!memcmp(ap_addr, "\x00\x00\x00\x00\x00\x00", ETH_ALEN))
 		TRACEEXIT(return 0);
-	else
-		TRACEEXIT(return -1);
+	DBGTRACE1("bssid " MACSTR, MAC2STR(ap_addr));
+	TRACEEXIT(return -1);
 }
 
 static int wpa_associate(struct net_device *dev,

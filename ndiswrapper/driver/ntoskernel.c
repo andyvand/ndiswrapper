@@ -13,8 +13,6 @@
  *
  */
 
-#include "ndiswrapper.h"
-#include "wrapper.h"
 #include "ndis.h"
 #include "usb.h"
 #include <linux/time.h>
@@ -174,13 +172,10 @@ _FASTCALL static struct slist_entry * WRAP_EXPORT(ExInterlockedPopEntrySList)
 //	__asm__ __volatile__ ("" : "=c" (head));
 	KeAcquireSpinLock(lock, &irql);
 	first = NULL;
-	if (head)
-	{
+	if (head) {
 		first = head->list.next;
 		if (first)
-		{
 			head->list.next = first->next;
-		}
 	}
 	KeReleaseSpinLock(lock, irql);
 	DBGTRACE3("returning %p", first);
@@ -309,8 +304,7 @@ STDCALL static void WRAP_EXPORT(ExDeleteNPagedLookasideList)
 
 	TRACEENTER3("ookaside = %p", lookaside);
 	entry = lookaside->head.list.next;
-	while (entry)
-	{
+	while (entry) {
 		p = entry;
 		entry = entry->next;
 		lookaside->free_func(p);

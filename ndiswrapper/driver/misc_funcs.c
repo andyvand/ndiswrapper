@@ -20,7 +20,7 @@
 #include <linux/net.h>
 
 #include "ndis.h"
-#include "wrapper.h"
+#include "iw_ndis.h"
 
 struct list_head wrap_allocs;
 struct wrap_spinlock wrap_allocs_lock;
@@ -36,8 +36,7 @@ void *wrap_kmalloc(size_t size, int flags)
 	if (!alloc)
 		return NULL;
 	alloc->ptr = kmalloc(size, flags);
-	if (!alloc->ptr)
-	{
+	if (!alloc->ptr) {
 		kfree(alloc);
 		return NULL;
 	}
@@ -54,11 +53,9 @@ void wrap_kfree(void *ptr)
 
 	TRACEENTER4("%p", ptr);
 	wrap_spin_lock(&wrap_allocs_lock);
-	list_for_each_safe(cur, tmp, &wrap_allocs)
-	{
+	list_for_each_safe(cur, tmp, &wrap_allocs) {
 		struct wrap_alloc *alloc = (struct wrap_alloc *)cur;
-		if (alloc->ptr == ptr)
-		{
+		if (alloc->ptr == ptr) {
 			list_del(&alloc->list);
 			kfree(alloc->ptr);
 			kfree(alloc);
@@ -76,8 +73,7 @@ void wrap_kfree_all(void)
 
 	TRACEENTER4("%s", "");
 	wrap_spin_lock(&wrap_allocs_lock);
-	list_for_each_safe(cur, tmp, &wrap_allocs)
-	{
+	list_for_each_safe(cur, tmp, &wrap_allocs) {
 		struct wrap_alloc *alloc = (struct wrap_alloc *)cur;
 
 		list_del(&alloc->list);
@@ -314,8 +310,7 @@ NOREGPARM int WRAP_EXPORT(_wrap_strcmp)
 
 int stricmp(const char *s1, const char *s2)
 {
-	while (*s1 && *s2 && tolower(*s1) == tolower(*s2))
-	{
+	while (*s1 && *s2 && tolower(*s1) == tolower(*s2)) {
 		s1++;
 		s2++;
 	}
@@ -527,8 +522,7 @@ STDCALL void WRAP_EXPORT(RtlCopyUnicodeString)
 	(struct ustring *dst, const struct ustring *src)
 {
 	TRACEENTER1("%s", "");
-	if (src)
-	{
+	if (src) {
 		unsigned int len = min(src->len, dst->buflen);
 		memcpy(dst->buf, src->buf, len);
 		dst->len = len;
@@ -548,8 +542,7 @@ STDCALL int WRAP_EXPORT(RtlAnsiStringToUnicodeString)
 	__u8 *s;
 
 	TRACEENTER2("dup: %d src: %s", dup, src->buf);
-	if(dup)
-	{
+	if (dup) {
 		char *buf = kmalloc((src->buflen+1) * sizeof(__u16),
 				    GFP_KERNEL);
 		if(!buf)
@@ -564,9 +557,8 @@ STDCALL int WRAP_EXPORT(RtlAnsiStringToUnicodeString)
 	d = (__u16 *)dst->buf;
 	s = (__u8 *)src->buf;
 	for(i = 0; i < src->len; i++)
-	{
 		d[i] = (__u16)s[i];
-	}
+
 	d[i] = 0;
 
 	DBGTRACE2("len = %d", dst->len);
@@ -582,16 +574,14 @@ STDCALL int WRAP_EXPORT(RtlUnicodeStringToAnsiString)
 
 	TRACEENTER2("dup: %d src->len: %d src->buflen: %d, src->buf: %s, dst: %p",
 		    dup, src->len, src->buflen, src->buf, dst);
-	if(dup)
-	{
+	if (dup) {
 		char *buf = kmalloc((src->buflen+1) / sizeof(__u16),
 				    GFP_KERNEL);
 		if(!buf)
 			return NDIS_STATUS_FAILURE;
 		dst->buf = buf;
 		dst->buflen = (src->buflen+1) / sizeof(__u16);
-	}
-	else if (dst->buflen < (src->len+1) / sizeof(__u16))
+	} else if (dst->buflen < (src->len+1) / sizeof(__u16))
 		return NDIS_STATUS_FAILURE;
 
 	dst->len = src->len / sizeof(__u16);
@@ -683,8 +673,7 @@ STDCALL int WRAP_EXPORT(RtlIntegerToUnicodeString)
 		base = 10;
 	if (!(base == 2 || base == 8 || base == 10 || base == 16))
 		return NDIS_STATUS_INVALID_PARAMETER;
-	for (i = 0; value && i < sizeof(string); i++)
-	{
+	for (i = 0; value && i < sizeof(string); i++) {
 		int r;
 		r = value % base;
 		value /= base;
@@ -797,20 +786,16 @@ void packet_recycler(void *param)
 	KIRQL irql;
 
 	TRACEENTER3("%s", "Packet recycler running");
-	while (1)
-	{
+	while (1) {
 		struct ndis_packet * packet = NULL;
 		struct miniport_char *miniport;
 		miniport = &handle->driver->miniport_char;
 
 		wrap_spin_lock(&handle->recycle_packets_lock);
-		if (list_empty(&handle->recycle_packets))
-		{
+		if (list_empty(&handle->recycle_packets)) {
 			wrap_spin_unlock(&handle->recycle_packets_lock);
 			break;
-		}
-		else
-		{
+		} else {
 			packet = (struct ndis_packet*)
 				handle->recycle_packets.next;
 
@@ -864,9 +849,7 @@ void inline my_dumpstack(void)
 	void *sp = get_sp();
 	int i;
 	for(i = 0; i < 20; i++)
-	{
 		printk("%p\n", (void *)((long *)sp)[i]);
-	}
 }
 
 /* the string should be of the form XX:XX:XX:XX:XX:XX, along with colons */

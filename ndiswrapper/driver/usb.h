@@ -13,6 +13,9 @@
  *
  */
 
+#ifndef USB_H
+#define USB_H
+
 #define IOCTL_INTERNAL_USB_SUBMIT_URB	0x00220003
 #define IOCTL_INTERNAL_USB_RESET_PORT	0x00220007
 
@@ -142,3 +145,5 @@ union nt_urb {
 unsigned long usb_submit_nt_urb(struct usb_device *dev, union nt_urb *nt_urb,
                                 struct irp *irp);
 unsigned long usb_reset_port(struct usb_device *dev);
+
+#endif /* USB_H */

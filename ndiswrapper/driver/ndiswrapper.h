@@ -16,7 +16,47 @@
 #ifndef NDISWRAPPER_H
 #define NDISWRAPPER_H
 
-#include "ntoskernel.h"
+#include <linux/types.h>
+#include <linux/timer.h>
+
+#include <linux/netdevice.h>
+#include <linux/wireless.h>
+#include <linux/pci.h>
+#include <linux/wait.h>
+#include <linux/pm.h>
+#include <linux/delay.h>
+#include <linux/mm.h>
+#include <linux/random.h>
+#include <linux/ctype.h>
+#include <linux/usb.h>
+#include <asm/mman.h>
+#include <asm/atomic.h>
+
+#include <linux/version.h>
+
+#define MAX_DRIVER_NAME_LEN 32
+#define MAX_NDIS_VERSION_STRING_LEN 64
+#define MAX_NDIS_SETTING_NAME_LEN 128
+#define MAX_NDIS_SETTING_VALUE_LEN 256
+
+#define MAX_PE_IMAGES 4
+#define MAX_NDIS_DEVICES 20
+#define MAX_NDIS_BIN_FILES 5
+#define MAX_NDIS_SETTINGS 256
+
+#define SSID_MAX_WPA_IE_LEN 40
+#define NDIS_ESSID_MAX_SIZE 32
+#define NDIS_ENCODING_TOKEN_MAX 32
+#define MAX_ENCR_KEYS 4
+#define XMIT_RING_SIZE 16
+#define NDIS_MAX_RATES 8
+#define NDIS_MAX_RATES_EX 16
+#define WLAN_EID_RSN 48
+#define WLAN_EID_GENERIC 221
+#define MAX_WPA_IE_LEN 64
+
+#define NDIS_PCI_BUS 5
+#define NDIS_USB_BUS 0
 
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,7)
 #include <linux/kthread.h>
@@ -254,6 +294,18 @@ struct wrap_alloc
 	struct list_head list;
 	void *ptr;
 };
+
+typedef unsigned char mac_address[ETH_ALEN];
+
+struct pe_image
+{
+	char name[MAX_DRIVER_NAME_LEN];
+	void *entry;
+	void *image;
+	int size;
+	int type;
+};
+
 
 void *wrap_kmalloc(size_t size, int flags);
 void wrap_kfree(void *ptr);
