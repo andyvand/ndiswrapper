@@ -571,7 +571,7 @@ void packet_recycler(void *param)
 	{
 		struct ndis_packet * packet;
 
-		spin_lock(&handle->recycle_packets_lock);
+		spin_lock_bh(&handle->recycle_packets_lock);
 		packet = 0;
 		if(!list_empty(&handle->recycle_packets))
 		{
@@ -582,7 +582,7 @@ void packet_recycler(void *param)
 			packet = (struct ndis_packet*) ((char*)packet - ((char*) &packet->recycle_list - (char*) &packet->nr_pages));
 		}
 
-		spin_unlock(&handle->recycle_packets_lock);
+		spin_unlock_bh(&handle->recycle_packets_lock);
 		
 		if(!packet)
 			break;

@@ -25,9 +25,8 @@
 static int freq_chan[] = { 2412, 2417, 2422, 2427, 2432, 2437, 2442,
 			   2447, 2452, 2457, 2462, 2467, 2472, 2484 };
 
-static int ndis_set_essid(struct net_device *dev,
-			    struct iw_request_info *info,
-			    union iwreq_data *wrqu, char *extra)
+int ndis_set_essid(struct net_device *dev, struct iw_request_info *info,
+		   union iwreq_data *wrqu, char *extra)
 {
 	struct ndis_handle *handle = dev->priv; 
 	unsigned int res, written, needed;
@@ -39,20 +38,22 @@ static int ndis_set_essid(struct net_device *dev,
 		req.len = 0;
 	else
 	{
-		if(wrqu->essid.length > (IW_ESSID_MAX_SIZE + 1))
+		if (wrqu->essid.length > (IW_ESSID_MAX_SIZE + 1))
 			return -EINVAL;
 
-		memcpy(&req.essid, extra, wrqu->essid.length-1);
-		req.len = wrqu->essid.length-1;
+		req.len = wrqu->essid.length - 1;
+		memcpy(&req.essid, extra, req.len);
 	}
 	
 	handle->essid.flags = wrqu->essid.flags;
-	handle->essid.length = wrqu->essid.length;
-	memcpy(handle->essid.name, extra, wrqu->essid.length+1);
-	res = dosetinfo(handle, NDIS_OID_ESSID, (char*)&req, sizeof(req), &written, &needed);
+	handle->essid.length = req.len;
+	memcpy(handle->essid.name, req.essid, req.len);
+	res = dosetinfo(handle, NDIS_OID_ESSID, (char*)&req, sizeof(req),
+			&written, &needed);
 	if(res)
 	{
-		printk(KERN_INFO "%s: setting essid failed (%08X)\n", dev->name, res); 
+		printk(KERN_INFO "%s: setting essid failed (%08X)\n",
+		       dev->name, res); 
 		return -EINVAL;
 	}
 
@@ -67,7 +68,8 @@ static int ndis_get_essid(struct net_device *dev,
 	unsigned int res, written, needed;
 	struct essid_req req;
 
-	res = doquery(handle, NDIS_OID_ESSID, (char*)&req, sizeof(req), &written, &needed);
+	res = doquery(handle, NDIS_OID_ESSID, (char*)&req, sizeof(req),
+		      &written, &needed);
 	if(res)
 	{
 		printk(KERN_INFO "%s: getting essid failed (%08X)\n",
@@ -607,10 +609,10 @@ static int ndis_set_wep(struct net_device *dev, struct iw_request_info *info,
 		if (handle->essid.length > 0)
 		{
 			memset(&essid_wrqu, 0, sizeof(essid_wrqu));
-			essid_wrqu.essid.length = handle->essid.length;
+			essid_wrqu.essid.length = handle->essid.length + 1;
 			essid_wrqu.essid.flags = handle->essid.flags;
-			ndis_set_essid(dev, NULL, &essid_wrqu,
-				       handle->essid.name);
+			essid_wrqu.essid.pointer = handle->essid.name;
+			ndis_set_essid(dev, NULL, &essid_wrqu, handle->essid.name);
 		}
 
 	}

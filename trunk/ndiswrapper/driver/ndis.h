@@ -450,10 +450,12 @@ struct packed ndis_handle
 
 	spinlock_t send_packet_lock;
 
-	struct semaphore query_set_mutex;
-	wait_queue_head_t query_set_wqhead;
-	int query_set_wait_res;
-	int query_set_wait_done;
+	spinlock_t ndis_comm_lock;
+
+	struct semaphore ndis_comm_mutex;
+	wait_queue_head_t ndis_comm_wqhead;
+	int ndis_comm_res;
+	int ndis_comm_done;
 
 	int serialized;
 	int use_scatter_gather;
@@ -467,11 +469,6 @@ struct packed ndis_handle
 	struct work_struct hangcheck_work;
 	int reset_status;
 
-	wait_queue_head_t reset_wqhead;
-	struct semaphore reset_mutex;
-	int reset_wait_res;
-	int reset_wait_done;
-	
 	struct timer_list statcollector_timer;
 	struct work_struct statcollector_work;
 
