@@ -410,6 +410,22 @@ static int ndis_get_ap_address(struct net_device *dev, struct iw_request_info *i
         return 0;
 }
 
+static int ndis_set_ap_address(struct net_device *dev, struct iw_request_info *info,
+			   union iwreq_data *wrqu, char *extra)
+{
+	struct ndis_handle *handle = dev->priv; 
+	unsigned int res, written, needed;
+	__u8 mac_address[6];
+
+        memcpy(mac_address, wrqu->ap_addr.sa_data, 6);
+	res = dosetinfo(handle, NDIS_OID_BSSID, (char*)&(mac_address[0]), sizeof(mac_address), &written, &needed);
+
+	if(res)
+		return -1;
+
+        return 0;
+}
+
 static int ndis_set_wep(struct net_device *dev, struct iw_request_info *info,
 			   union iwreq_data *wrqu, char *extra)
 {
@@ -717,6 +733,7 @@ static const iw_handler	ndis_handler[] = {
 	[SIOCGIWFRAG	- SIOCIWFIRST] = ndis_get_frag_threshold,
 	//[SIOCSIWRETRY	- SIOCIWFIRST] = ndis_get_rety_limit,
 	[SIOCGIWAP	- SIOCIWFIRST] = ndis_get_ap_address,
+	[SIOCSIWAP	- SIOCIWFIRST] = ndis_set_ap_address,
 	[SIOCSIWENCODE	- SIOCIWFIRST] = ndis_set_wep,
 	[SIOCGIWENCODE	- SIOCIWFIRST] = ndis_get_wep,
 	[SIOCSIWSCAN	- SIOCIWFIRST] = ndis_set_scan,
