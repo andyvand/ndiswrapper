@@ -37,6 +37,14 @@ typedef ULONG ndis_oid;
 
 typedef uint64_t NDIS_PHY_ADDRESS;
 
+enum dma_type {
+	MAP_DMA,
+	SG_DMA_DISABLED,
+	SG_DMA_ENABLED
+};
+
+#define SG_DMA_TYPE SG_DMA_DISABLED
+
 struct ndis_sg_element {
 	PHYSICAL_ADDRESS address;
 	ULONG length;
@@ -131,7 +139,7 @@ struct ndis_packet {
 	 * MiniportSendPackets) and overwrites what is below, so put a
 	 * barrier */
 	void *dummy;
-	dma_addr_t dataphys;
+	struct ndis_sg_element ndis_sg_element;
 	unsigned char header[ETH_HLEN];
 	unsigned char *look_ahead;
 	unsigned int look_ahead_size;
@@ -830,7 +838,7 @@ struct ndis_handle {
 	int ndis_comm_done;
 
 	int serialized;
-	int sg_dma;
+	enum dma_type dma_type;
 	int map_count;
 	int multicast_list_size;
 	char *multicast_list;

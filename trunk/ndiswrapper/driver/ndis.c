@@ -40,6 +40,8 @@ static void ndis_worker(void *data);
 static void wrap_free_timers(struct ndis_handle *handle);
 static void free_handle_ctx(struct ndis_handle *handle);
 
+struct ndis_handle *ghandle;
+
 /* ndis_init is called once when module is loaded */
 int ndis_init(void)
 {
@@ -134,6 +136,7 @@ STDCALL void WRAP_EXPORT(NdisInitializeWrapper)
 	TRACEENTER1("handle=%p, SS1=%p, SS2=%p", ndis_handle,
 		    SystemSpecific1, SystemSpecific2);
 	*ndis_handle = (struct ndis_handle *)SystemSpecific1;
+	ghandle = *ndis_handle;
 	TRACEEXIT1(return);
 }
 
@@ -242,7 +245,7 @@ STDCALL void WRAP_EXPORT(NdisFreeMemory)
 	struct ndis_work_entry *ndis_work_entry;
 	struct ndis_free_mem_work_item *free_mem;
 
-	TRACEENTER3("length = %u, flags = %08X", length, flags);
+	TRACEENTER3("addr = %p, length = %u, flags = %08X", addr, length, flags);
 
 	if (!addr)
 		TRACEEXIT3(return);
@@ -304,6 +307,7 @@ STDCALL void WRAP_EXPORT(NdisOpenConfiguration)
 			confhandle, handle->net_dev->name);
 	*confhandle = handle;
 	*status = NDIS_STATUS_SUCCESS;
+	ghandle = handle;
 	TRACEEXIT2(return);
 }
 
@@ -551,17 +555,23 @@ STDCALL void WRAP_EXPORT(NdisReadConfiguration)
 	struct device_setting *setting;
 	struct ansi_string ansi;
 	char *keyname;
+	int ret;
 
-	TRACEENTER2("%s", "");
-	if (RtlUnicodeStringToAnsiString(&ansi, key, 1)) {
+	TRACEENTER2("handle: %p", handle);
+	ret = RtlUnicodeStringToAnsiString(&ansi, key, 1);
+	DBGTRACE3("rtl func returns: %d", ret);
+	if (ret) {
 		*dest = NULL;
 		*status = NDIS_STATUS_FAILURE;
 		RtlFreeAnsiString(&ansi);
 		TRACEEXIT2(return);
 	}
+	DBGTRACE3("handle: %p, string: %s", handle, ansi.buf);
 	keyname = ansi.buf;
+	DBGTRACE3("handle: %p, string: %s", handle, keyname);
 
-	list_for_each_entry(setting, &handle->device->settings, list) {
+	list_for_each_entry(setting, &ghandle->device->settings, list) {
+		DBGTRACE3("handle: %p, ghandle: %p, setting: %p", handle, ghandle, setting);
 		if (stricmp(keyname, setting->name) == 0) {
 			DBGTRACE2("setting found %s=%s",
 				 keyname, setting->value);
@@ -600,8 +610,9 @@ STDCALL void WRAP_EXPORT(NdisWriteConfiguration)
 	}
 	keyname = ansi.buf;
 	DBGTRACE2("key = %s", keyname);
+	DBGTRACE2("handle: %p, ghandle: %p", handle, ghandle);
 
-	list_for_each_entry(setting, &handle->device->settings, list) {
+	list_for_each_entry(setting, &ghandle->device->settings, list) {
 		if (strcmp(keyname, setting->name) == 0) {
 			*status = ndis_decode_setting(setting, param);
 			DBGTRACE2("setting changed %s=%s",
@@ -621,7 +632,7 @@ STDCALL void WRAP_EXPORT(NdisWriteConfiguration)
 	setting->name[ansi.len] = 0;
 	*status = ndis_decode_setting(setting, param);
 	if (*status == NDIS_STATUS_SUCCESS)
-		list_add(&setting->list, &handle->device->settings);
+		list_add(&setting->list, &ghandle->device->settings);
 	else {
 		kfree(setting->name);
 		kfree(setting);
@@ -2080,9 +2091,13 @@ STDCALL NDIS_STATUS WRAP_EXPORT(NdisMInitializeScatterGatherDma)
 	if (dma_size != NDIS_DMA_64BITS)
 		ERROR("DMA size is not 64-bits");
 #endif
-	handle->sg_dma = 1;
-	printk(KERN_INFO "%s: driver %s uses scatter/gather DMA\n",
-	       DRIVER_NAME, handle->driver->name);
+	handle->dma_type = SG_DMA_TYPE;
+	if (handle->dma_type == SG_DMA_ENABLED)
+		printk(KERN_INFO "%s: driver %s uses scatter/gather DMA\n",
+		       DRIVER_NAME, handle->driver->name);
+	else
+		printk(KERN_INFO "%s: scatter/gather DMA disabled for "
+		       "driver %s\n", DRIVER_NAME, handle->driver->name);
 	return NDIS_STATUS_SUCCESS;
 }
 
@@ -2487,7 +2502,7 @@ STDCALL void WRAP_EXPORT(NdisMStartBufferPhysicalMapping)
 {
 	TRACEENTER3("phy_map_reg: %u", phy_map_reg);
 
-	if (handle->sg_dma) {
+	if (handle->dma_type) {
 		ERROR("can't use physical mapping and scatter/gather");
 		*array_size = 0;
 		return;
@@ -2531,7 +2546,7 @@ STDCALL void WRAP_EXPORT(NdisMCompleteBufferPhysicalMapping)
 {
 	TRACEENTER3("%p %u (%u)", handle, phy_map_reg, handle->map_count);
 
-	if (handle->sg_dma) {
+	if (handle->dma_type) {
 		ERROR("can't use physical mapping and scatter/gather");
 		return;
 	}
