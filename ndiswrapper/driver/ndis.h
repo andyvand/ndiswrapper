@@ -452,6 +452,11 @@ struct packed list_scan
 #define NDIS_POWER_MAX 1
 #define NDIS_POWER_MIN 2
 
+#define NDIS_PM_STATE_D0 1
+#define NDIS_PM_STATE_D1 2
+#define NDIS_PM_STATE_D2 3
+#define NDIS_PM_STATE_D3 4
+
 void ndis_sendpacket_done(struct ndis_handle *handle, struct ndis_packet *packet);
 
 
@@ -494,6 +499,8 @@ void NdisMSetInformationComplete(struct ndis_handle *handle, unsigned int status
 
 #define NDIS_OID_PNP_SET_POWER      0xFD010101
 #define NDIS_OID_PNP_QUERY_POWER    0xFD010102
+
+#define NDIS_STATUS_NOT_SUPPORTED 0xC00000BB
 
 #define UNIMPL() printk(KERN_ERR "%s --UNIMPLEMENTED--\n", __FUNCTION__ )
 
