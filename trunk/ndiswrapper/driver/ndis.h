@@ -19,34 +19,30 @@
 #include "ntoskernel.h"
 
 typedef UINT NDIS_STATUS;
+typedef UCHAR NDIS_DMA_SIZE;
 
-struct packed ndis_scatterentry
-{
-	UINT physlo;
-	UINT physhi;
-	UINT len;
-	UINT reserved;
-};
-
-struct packed ndis_scatterlist
-{
-	UINT len;
-	UINT reserved;
-	struct ndis_scatterentry entry;
-};
-
-struct packed ndis_phy_address
-{
-#ifdef CONFIG_X86_64
+typedef union packed ndis_phy_address {
 	ULONGLONG quad;
-#else
-	ULONG quad_low;
-	LONG quad_high;
-#endif
+	struct packed {
+		ULONG low;
+		ULONG high;
+	} s;
+} NDIS_PHY_ADDRESS;
+
+struct packed ndis_sg_element {
+	NDIS_PHY_ADDRESS address;
+	UINT len;
+	UINT reserved;
+};
+
+struct packed ndis_sg_list {
+	UINT len;
+	UINT reserved;
+	struct ndis_sg_element *elements;
 };
 
 struct ndis_phy_addr_unit {
-	struct ndis_phy_address phy_addr;
+	NDIS_PHY_ADDRESS phy_addr;
 	UINT length;
 };
 
@@ -56,6 +52,17 @@ struct ndis_buffer
 	UINT len;
 	UINT offset;
 	UCHAR *data;
+};
+
+enum mm_page_priority {
+	LOW_PAGE_PRIORITY,
+	NORMAL_PAGE_PRIORITY = 16,
+	HIGH_PAGE_PRIORITY = 32
+};
+
+enum kinterrupt_mode {
+	INTERRUT_MODE_LEVELSENSITIVE,
+	INTERRUPT_MODE_LATCHED
 };
 
 enum ndis_per_packet_info {
@@ -75,28 +82,24 @@ struct ndis_packet_extension {
 	void *info[NDIS_MAX_PACKET_INFO];
 };
 
-struct packed ndis_packet
-{
+struct ndis_packet_private {
 	UINT nr_pages;
-
-	/* 4: Packet length */
 	UINT len;
-
 	struct ndis_buffer *buffer_head;
 	struct ndis_buffer *buffer_tail;
 	void *pool;
-
-	/* 14 Number of buffers */
 	UINT count;
-
-	UINT flags;
-
-	/* 1 If buffer count is valid? */
-	BYTE valid_counts;
-	BYTE packet_flags;
+	ULONG flags;
+	BOOLEAN valid_counts;
+	UCHAR packet_flags;
 	USHORT oob_offset;
+};
 
-	/* For use by miniport */
+struct packed ndis_packet
+{
+	struct ndis_packet_private private;
+
+	/* for use by miniport */
 	union {
 		/* for connectionless mininports */
 		struct {
@@ -112,8 +115,8 @@ struct packed ndis_packet
 			BYTE mac_reserved[4 * sizeof(void *)];
 		} mac_reserved;
 	} u;
-
-	USHORT *reserved[2];
+	ULONG_PTR reserved[2];
+	UCHAR protocol_reserved[1];
 
 	/* OOB data */
 	union {
@@ -127,10 +130,11 @@ struct packed ndis_packet
 	NDIS_STATUS status;
 
 	struct ndis_packet_extension extension;
-	struct ndis_scatterlist *scatter_gather_ext;
 
 	/* ndiswrapper-specific info */
-	struct ndis_scatterlist scatterlist;
+	struct ndis_sg_list sg_list;
+	/* since we haven't implemented sg, we use one dummy entry */
+	struct ndis_sg_element sg_element;
 	dma_addr_t dataphys;
 	struct list_head recycle_list;
 	unsigned char header[ETH_HLEN];
@@ -147,6 +151,13 @@ enum ndis_pnp_event
 	NDIS_PNP_STOPPED,
 	NDIS_PNP_PROFILE_CHANGED,
 	NDIS_PNP_MAXIMUM,
+};
+
+enum work_queue_type {
+	CRITICAL_WORK_QUEUE,
+	DELAYED_WORK_QUEUE,
+	HYPER_CRITICAL_WORK_QUEUE,
+	MAXIMUM_WORK_QUEUE
 };
 
 enum ndis_request_type {
@@ -244,7 +255,7 @@ struct miniport_char
 			     INT nr_of_packets) STDCALL;
 
 	void (*alloc_complete)(void *handle, void *virt,
-			       struct ndis_phy_address *phys,
+			       NDIS_PHY_ADDRESS *phys,
 			       ULONG size, void *ctx) STDCALL;
 
 	/* NDIS 5.0 extensions */
@@ -871,9 +882,10 @@ STDCALL BOOLEAN NdisWaitEvent(struct ndis_event *event, UINT timeout);
 STDCALL void NdisSetEvent(struct ndis_event *event);
 STDCALL void NdisMDeregisterInterrupt(struct ndis_irq *ndis_irq);
 STDCALL void EthRxIndicateHandler(void *adapter_ctx, void *rx_ctx,
-				  CHAR *header1, CHAR *header,
-				  UINT header_size, CHAR *look_aheader,
-				  UINT look_aheader_size, UINT packet_size);
+				  char *header1,
+				  char *header, UINT header_size,
+				  void *look_ahead,
+				  UINT look_ahead_size, UINT packet_size);
 STDCALL void EthRxComplete(struct ndis_handle *handle);
 STDCALL void NdisMTransferDataComplete(struct ndis_handle *handle,
 				       struct ndis_packet *packet,

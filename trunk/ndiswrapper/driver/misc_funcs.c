@@ -716,7 +716,7 @@ STDCALL void  WRAP_EXPORT(RtlInitUnicodeString)
 }
 
 STDCALL void  WRAP_EXPORT(RtlInitAnsiString)
-	(struct ustring *dst, char *src)
+	(struct ustring *dst, CHAR *src)
 {
 	TRACEENTER2("%s", "");
 	if (dst == NULL)
@@ -803,7 +803,7 @@ void packet_recycler(void *param)
 			packet = (struct ndis_packet*)
 				((char*)packet -
 				 ((char*) &packet->recycle_list -
-				  (char*) &packet->nr_pages));
+				  (char*) &packet->private.nr_pages));
 		}
 
 		wrap_spin_unlock(&handle->recycle_packets_lock);

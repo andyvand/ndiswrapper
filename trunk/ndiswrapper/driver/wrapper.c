@@ -478,22 +478,27 @@ static struct ndis_packet *alloc_packet(struct ndis_handle *handle,
 			PCI_DMA_MAP_SINGLE(handle->dev.pci,
 					   buffer->data, buffer->len,
 					   PCI_DMA_TODEVICE);
-		packet->scatterlist.len = 1;
-		packet->scatterlist.entry.physlo = packet->dataphys;
-		packet->scatterlist.entry.physhi = 0;
-		packet->scatterlist.entry.len = buffer->len;
-		packet->scatter_gather_ext = &packet->scatterlist;
+		packet->sg_list.len = 1;
+		packet->sg_element.address.quad = 0;
+#ifdef CONFIG_X86_64
+		packet->sg_element.address.quad = packet->dataphys;
+#else
+		packet->sg_element.address.s.low = packet->dataphys;
+#endif
+		packet->sg_element.len = buffer->len;
+		packet->sg_list.elements = &packet->sg_element;
+		packet->extension.info[NDIS_SCLIST_INFO] = &packet->sg_list;
 	}
 
-	packet->oob_offset = offsetof(struct ndis_packet, oob_tx.time_to_tx);
+	packet->private.oob_offset = offsetof(struct ndis_packet, oob_tx);
 
-	packet->nr_pages = NDIS_BUFFER_TO_SPAN_PAGES(buffer);
-	packet->len = buffer->len;
-	packet->count = 1;
-	packet->valid_counts = 1;
+	packet->private.nr_pages = NDIS_BUFFER_TO_SPAN_PAGES(buffer);
+	packet->private.len = buffer->len;
+	packet->private.count = 1;
+	packet->private.valid_counts = 1;
 
-	packet->buffer_head = buffer;
-	packet->buffer_tail = buffer;
+	packet->private.buffer_head = buffer;
+	packet->private.buffer_tail = buffer;
 
 //	DBGTRACE4("Buffer: %08X, data %08X, len %d\n", (int)buffer,
 //		  (int)buffer->data, (int)buffer->len);
@@ -502,13 +507,13 @@ static struct ndis_packet *alloc_packet(struct ndis_handle *handle,
 
 static void free_packet(struct ndis_handle *handle, struct ndis_packet *packet)
 {
-	kfree(packet->buffer_head->data);
-	kfree(packet->buffer_head);
+	kfree(packet->private.buffer_head->data);
+	kfree(packet->private.buffer_head);
 
 	if (packet->dataphys) {
 		/* FIXME: do USB drivers call this? */
 		PCI_DMA_UNMAP_SINGLE(handle->dev.pci, packet->dataphys,
-				     packet->len, PCI_DMA_TODEVICE);
+				     packet->private.len, PCI_DMA_TODEVICE);
 	}
 
 	kfree(packet);
@@ -626,7 +631,7 @@ void sendpacket_done(struct ndis_handle *handle, struct ndis_packet *packet)
 {
 	TRACEENTER3("%s", "");
 	wrap_spin_lock(&handle->send_packet_done_lock, PASSIVE_LEVEL);
-	handle->stats.tx_bytes += packet->len;
+	handle->stats.tx_bytes += packet->private.len;
 	handle->stats.tx_packets++;
 	free_packet(handle, packet);
 	wrap_spin_unlock(&handle->send_packet_done_lock);
