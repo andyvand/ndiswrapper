@@ -1297,14 +1297,18 @@ static int wpa_set_key(struct net_device *dev, struct iw_request_info *info,
 			       ETH_ALEN);
 		else
 			memset(&ndis_remove_key.bssid, 0xff, ETH_ALEN);
-		res = dosetinfo(handle, NDIS_OID_REMOVE_KEY,
-				(char *)&ndis_remove_key,
-				sizeof(ndis_remove_key), &written, &needed);
-		if (res == NDIS_STATUS_INVALID_DATA)
+		/* TI drivers don't like deleting already deleted keys */
+		if (handle->encr_info.keys[wpa_key.key_index].length > 0)
 		{
-			DBGTRACE("removing key failed with %08X, %d, %d",
-			       res, needed, sizeof(ndis_remove_key));
-			TRACEEXIT(return -EINVAL);
+			res = dosetinfo(handle, NDIS_OID_REMOVE_KEY,
+					(char *)&ndis_remove_key,
+					sizeof(ndis_remove_key), &written, &needed);
+			if (res == NDIS_STATUS_INVALID_DATA)
+			{
+				DBGTRACE("removing key failed with %08X, %d, %d",
+					   res, needed, sizeof(ndis_remove_key));
+				TRACEEXIT(return -EINVAL);
+			}
 		}
 		if (wpa_key.key_index >= 0 &&
 		    wpa_key.key_index < MAX_ENCR_KEYS)
@@ -1448,6 +1452,7 @@ static int wpa_associate(struct net_device *dev,
 	struct ndis_handle *handle = (struct ndis_handle *)dev->priv;
 	struct wpa_assoc_info wpa_assoc_info;
 	char ssid[NDIS_ESSID_MAX_SIZE];
+	int auth_mode, encr_mode;
 	
 	TRACEENTER("%s", "");
 	copy_from_user(&wpa_assoc_info, wrqu->data.pointer,
@@ -1466,19 +1471,20 @@ static int wpa_associate(struct net_device *dev,
 	switch (wpa_assoc_info.group_suite)
 	{
 	case CIPHER_CCMP:
-		if (!test_bit(CAPA_AES, &handle->capa) ||
-		    set_encr_mode(handle, ENCR3_ENABLED))
+		if (!test_bit(CAPA_AES, &handle->capa))
 			TRACEEXIT(return -EINVAL);
+	    encr_mode = ENCR3_ENABLED;
 		break;
 	case CIPHER_TKIP:
-		if (!test_bit(CAPA_WPA, &handle->capa) ||
-		    set_encr_mode(handle, ENCR2_ENABLED))
+		if (!test_bit(CAPA_WPA, &handle->capa))
 			TRACEEXIT(return -EINVAL);
+	    encr_mode =  ENCR2_ENABLED;
 		break;
 	case CIPHER_WEP104:
 	case CIPHER_WEP40:
 		if (test_bit(CAPA_ENCR_NONE, &handle->capa))
 			TRACEEXIT(return -EINVAL);
+		encr_mode = ENCR1_ENABLED;
 		break;
 	default:
 		TRACEEXIT(return -EINVAL);
@@ -1487,17 +1493,24 @@ static int wpa_associate(struct net_device *dev,
 	switch (wpa_assoc_info.key_mgmt_suite)
 	{
 	case KEY_MGMT_PSK:
-		if (set_auth_mode(handle, AUTHMODE_WPAPSK))
+		if (!test_bit(CAPA_WPA, &handle->capa))
 			TRACEEXIT(return -EINVAL);
+		auth_mode = AUTHMODE_WPAPSK;
 		break;
 	case KEY_MGMT_NONE:
 		if (wpa_assoc_info.group_suite != CIPHER_WEP104 &&
 		    wpa_assoc_info.group_suite != CIPHER_WEP40)
 			TRACEEXIT(return -EINVAL);
+		auth_mode = handle->auth_mode;
 		break;
 	default:
 		TRACEEXIT(return -EINVAL);
 	}
+
+	if (set_auth_mode(handle, auth_mode))
+		TRACEEXIT(return -EINVAL);
+	if (set_encr_mode(handle, encr_mode))
+		TRACEEXIT(return -EINVAL);
 
 	if (set_essid(handle, ssid, wpa_assoc_info.ssid_len))
 		TRACEEXIT(return -EINVAL);
