@@ -1794,7 +1794,8 @@ NdisMQueryInformationComplete(struct ndis_handle *handle, unsigned int status)
 	TRACEENTER3("%08X", status);
 
 	handle->ndis_comm_res = status;
-	up(&handle->ndis_comm_done);
+	handle->ndis_comm_done = 1;
+	wake_up(&handle->ndis_comm_wq);
 	TRACEEXIT3(return);
 }
 
@@ -1806,7 +1807,8 @@ NdisMSetInformationComplete(struct ndis_handle *handle,
 	TRACEENTER3("status = %08X", status);
 
 	handle->ndis_comm_res = status;
-	up(&handle->ndis_comm_done);
+	handle->ndis_comm_done = 1;
+	wake_up(&handle->ndis_comm_wq);
 	TRACEEXIT3(return);
 }
 
@@ -2015,9 +2017,12 @@ STDCALL void
 NdisMResetComplete(struct ndis_handle *handle, int status, int reset_status)
 {
 	TRACEENTER3("status: %08X, reset status: %u", status, reset_status);
+	INFO("status: %08X, reset status: %u", status, reset_status);
 
 	handle->ndis_comm_res = status;
 	handle->reset_status = status;
+	handle->ndis_comm_done = 1;
+	wake_up(&handle->ndis_comm_wq);
 	TRACEEXIT3(return);
 }
 

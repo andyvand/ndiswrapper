@@ -657,9 +657,9 @@ struct packed ndis_handle
 	struct wrap_spinlock send_packet_done_lock;
 
 	struct semaphore ndis_comm_mutex;
-	wait_queue_head_t ndis_comm_wqhead;
+	wait_queue_head_t ndis_comm_wq;
 	int ndis_comm_res;
-	struct semaphore ndis_comm_done;
+	int ndis_comm_done;
 
 	int serialized;
 	int use_scatter_gather;

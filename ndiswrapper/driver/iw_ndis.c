@@ -399,10 +399,7 @@ static int iw_get_rts_threshold(struct net_device *dev,
 
 	int res = query_int(handle, NDIS_OID_RTS_THRESH, &ndis_rts_threshold);
 	if (res == NDIS_STATUS_NOT_SUPPORTED)
-	{
-		WARNING("getting RTS threshold failed (%08X)", res);
 		return -EOPNOTSUPP;
-	}
 
 	wrqu->rts.value = ndis_rts_threshold;
 	return 0;
@@ -415,12 +412,10 @@ static int iw_get_frag_threshold(struct net_device *dev,
 	struct ndis_handle *handle = dev->priv; 
 	int ndis_frag_threshold;
 
-	int res = query_int(handle, NDIS_OID_FRAG_THRESH, &ndis_frag_threshold);
+	int res = query_int(handle, NDIS_OID_FRAG_THRESH,
+			    &ndis_frag_threshold);
 	if (res == NDIS_STATUS_NOT_SUPPORTED)
-	{
-		WARNING("getting fragmentation threshold failed (%08X)", res);
 		return -EOPNOTSUPP;
-	}
 
 	wrqu->frag.value = ndis_frag_threshold;
 	return 0;
@@ -972,10 +967,8 @@ static int iw_get_power_mode(struct net_device *dev,
 
 	res = query_int(handle, NDIS_OID_POWER_MODE, &power_mode);
 	if (res == NDIS_STATUS_NOT_SUPPORTED)
-	{
-		WARNING("getting power mode failed (%08X)", res);
 		return -EOPNOTSUPP;
-	}
+
 	if (power_mode == NDIS_POWER_OFF)
 		wrqu->power.disabled = 1;
 	else
@@ -1166,7 +1159,7 @@ static int priv_reset(struct net_device *dev, struct iw_request_info *info,
 	if (res)
 	{
 		WARNING("reset returns %08X", res);
-		return -EINVAL;
+		return -EOPNOTSUPP;
 	}
 	return 0;
 }
