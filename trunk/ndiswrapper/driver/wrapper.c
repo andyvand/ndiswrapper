@@ -655,6 +655,9 @@ static void xmit_bh(void *param)
 		{
 		case NDIS_STATUS_SUCCESS:
 			sendpacket_done(handle, packet);
+			spin_lock(&handle->send_status_lock);
+			handle->send_status = 0;
+			spin_unlock(&handle->send_status_lock);
 			break;
 		case NDIS_STATUS_PENDING:
 			break;
@@ -679,10 +682,6 @@ static void xmit_bh(void *param)
 			free_buffer(handle, packet);
 			break;
 		}
-
-		spin_lock(&handle->send_status_lock);
-		handle->send_status = 0;
-		spin_unlock(&handle->send_status_lock);
 
 		spin_lock_bh(&handle->xmit_ring_lock);
 		/* mark the packet as done */
