@@ -1264,7 +1264,7 @@ static int add_driver(struct ndis_driver *driver)
 	struct ndis_driver *tmp;
 	int dup = 0;
 
-	spin_lock_bh(&driverlist_lock);
+	spin_lock(&driverlist_lock);
 	list_for_each_entry(tmp, &ndis_driverlist, list)
 	{
 		if(strcmp(tmp->name, driver->name) == 0)
@@ -1275,7 +1275,7 @@ static int add_driver(struct ndis_driver *driver)
 	}
 	if(!dup)
 		list_add(&driver->list, &ndis_driverlist);
-	spin_unlock_bh(&driverlist_lock);
+	spin_unlock(&driverlist_lock);
 	if(dup)
 	{
 		printk(KERN_ERR "Cannot add duplicate driver\n");
@@ -1455,10 +1455,10 @@ static void unload_driver(struct ndis_driver *driver)
 			ndis_remove_one(pdev);
 	}
 #endif
-	spin_lock_bh(&driverlist_lock);
+	spin_lock(&driverlist_lock);
 	if(driver->list.next)
 		list_del(&driver->list);
-	spin_unlock_bh(&driverlist_lock);
+	spin_unlock(&driverlist_lock);
 
 	if(driver->image)
 		vfree(driver->image);
