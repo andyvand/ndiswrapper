@@ -88,6 +88,7 @@ clean:
 	rm -f $(MODULE) $(OBJS)
 
 else
+CFLAGS += -I/usr/include
 MODULE := ndiswrapper.ko
 obj-m := ndiswrapper.o 
 ndiswrapper-objs := $(OBJS)
