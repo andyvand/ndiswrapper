@@ -881,7 +881,7 @@ STDCALL void NdisMFreeSharedMemory(struct ndis_handle *handle,
 				   unsigned int physlow,
 				   unsigned int physhigh)
 {
-	DBGTRACE("%s: entry\n", __FUNCTION__);
+//	DBGTRACE("%s: entry\n", __FUNCTION__);
 	pci_free_consistent(handle->pci_dev, size, virt, physlow);
 }
 
@@ -1188,6 +1188,7 @@ void ndis_irq_bh(void *data)
 
 	// we don't need a lock here; presumably the ndis functions already
 	// obtained a lock
+	//FIXME: Ne need a spinlock to implement SynchronizeWithIRQ
 	if (handle->ndis_irq_enabled)
 		handle->driver->miniport_char.handle_interrupt(handle->adapter_ctx);
 }

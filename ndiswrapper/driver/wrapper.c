@@ -16,6 +16,7 @@
 #include <linux/module.h>
 #include <linux/kernel.h>
 #include <linux/vmalloc.h>
+#include <linux/kmod.h>
 
 #include <linux/types.h>
 #include <linux/fs.h>
@@ -1206,14 +1207,6 @@ static unsigned int call_entry(struct ndis_driver *driver)
 				"ReturnPacketHandler",
 				"SendPacketsHandler",
 				"AllocateCompleteHandler",
-/*
-				"CoCreateVcHandler",
-				"CoDeleteVcHandler",	
-				"CoActivateVcHandler",
-				"CoDeactivateVcHandler",
-				"CoSendPacketsHandler",
-				"CoRequestHandler"
-*/
 		};
 		
 		for(i = 0; i < 16; i++)
@@ -1910,7 +1903,7 @@ static int start_driver(struct ndis_driver *driver)
 /*
  * Load the driver from userspace.
  */
-static struct ndis_driver *load_driver(struct put_driver *put_driver)
+static struct ndis_driver *load_driver(struct put_file *put_driver)
 {
 	void *entry;
 	struct ndis_driver *driver;
@@ -1927,6 +1920,7 @@ static struct ndis_driver *load_driver(struct put_driver *put_driver)
 	memset(driver, 0, sizeof(struct ndis_driver));
 	
 	INIT_LIST_HEAD(&driver->devices);
+	INIT_LIST_HEAD(&driver->files);
 
 	namelen = sizeof(put_driver->name);
 	if(sizeof(driver->name) < namelen)
@@ -1946,7 +1940,7 @@ static struct ndis_driver *load_driver(struct put_driver *put_driver)
 	if(copy_from_user(driver->image, put_driver->data, put_driver->size))
 	{
 		printk(KERN_ERR "Failed to copy from user\n");
-		goto out_vmalloc;
+		goto out_baddriver;
 	}
 
 	if(prepare_coffpe_image(&entry, driver->image, put_driver->size))
@@ -1996,6 +1990,59 @@ static int add_driver(struct ndis_driver *driver)
 	printk(KERN_INFO "ndiswrapper adding %s\n", driver->name);  
 	return 0;
 }
+
+/*
+ * Load a file from userspace and put on list of files.
+ */
+static int add_file(struct ndis_driver *driver, struct put_file *put_file)
+{
+	struct ndis_file *file;
+	int namelen;
+
+	DBGTRACE("Putting file size %d\n", put_file->size);
+
+	file = kmalloc(sizeof(struct ndis_file), GFP_KERNEL);
+	if(!file)
+	{
+		printk(KERN_ERR "Unable to alloc file struct\n");
+		goto err;
+	}
+	memset(file, 0, sizeof(struct ndis_file));
+	
+	namelen = sizeof(put_file->name);
+	if(sizeof(file->name) < namelen)
+		namelen = sizeof(file->name);
+
+	strncpy(file->name, put_file->name, namelen-1);
+	file->name[namelen-1] = 0;
+
+	file->data = vmalloc(put_file->size);
+	if(!file->data)
+	{
+		printk(KERN_ERR "Unable to allocate mem for file\n");
+		goto err;
+	}
+
+	if(copy_from_user(file->data, put_file->data, put_file->size))
+	{
+		printk(KERN_ERR "Failed to copy from user\n");
+		goto err;
+	}
+
+	list_add(&file->list, &driver->files);
+
+	return 0;
+err:
+	if(file)
+	{
+		if(file->data)
+			vfree(file->data);
+		kfree(file);
+	}
+	return -ENOMEM;
+}
+
+
 
 /*
  * Add a new device to a driver.
@@ -2056,7 +2103,7 @@ static int add_setting(struct ndis_device *device, struct put_setting *put_setti
 
 	setting->name[put_setting->name_len] = 0;
 
-	if(copy_from_user(setting->val_str, put_setting->val_str,
+	if(copy_from_user(setting->val_str, put_setting->value,
 			  put_setting->val_str_len))
 		goto val_str_fail;
 
@@ -2123,6 +2170,14 @@ static void unload_driver(struct ndis_driver *driver)
 	if(driver->pci_idtable)
 		kfree(driver->pci_idtable);
 
+	list_for_each_safe(curr, tmp2, &driver->files)
+	{
+		struct ndis_file *file = (struct ndis_file*) curr;
+		DBGTRACE("%s Deleting file %s\n", __FUNCTION__, file->name);
+		vfree(file->data);
+		kfree(file);
+	}
+
 	list_for_each_safe(curr, tmp2, &driver->devices)
 	{
 		struct ndis_device *device = (struct ndis_device*) curr;
@@ -2151,7 +2206,7 @@ static int misc_release(struct inode *inode, struct file *file)
 
 static int misc_ioctl(struct inode *inode, struct file *file, unsigned int cmd, unsigned long arg)
 {
-	struct put_driver put_driver;
+	struct put_file put_file;
 	struct put_device put_device;
 	int res = -1;
 	struct ndis_device *device = NULL;
@@ -2162,12 +2217,12 @@ static int misc_ioctl(struct inode *inode, struct file *file, unsigned int cmd, 
 
 	switch(cmd) {
 	case NDIS_PUTDRIVER:
-		if(copy_from_user(&put_driver, (void*)arg,
-				  sizeof(struct put_driver)))
+		if(copy_from_user(&put_file, (void*)arg,
+				  sizeof(struct put_file)))
 			return -EINVAL;
 		else
 		{
-			driver = load_driver(&put_driver);
+			driver = load_driver(&put_file);
 			if(!driver)
 				return -EINVAL;
 			file->private_data = driver;
@@ -2175,7 +2230,17 @@ static int misc_ioctl(struct inode *inode, struct file *file, unsigned int cmd, 
 			return add_driver(driver);
 		}
 		break;
-
+	case NDIS_PUTFILE:
+		if (!driver)
+			return -EINVAL;
+		if(copy_from_user(&put_file, (void*)arg,
+				  sizeof(struct put_file)))
+			return -EINVAL;
+		else
+		{
+			return add_file(driver, &put_file);
+		}
+		break;
 
 	case NDIS_PUTDEVICE:
 		if (!driver)
@@ -2250,10 +2315,14 @@ static int __init wrapper_init(void)
         }
 
 	init_ndis_work();
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
 	call_usermodehelper("/sbin/loadndisdriver", argv, env, 1);
+#else
+	call_usermodehelper("/sbin/loadndisdriver", argv, env);
+#endif
 
 	/* Wait a little to let card power up otherwise ifup might fail on boot */
-	schedule_timeout(HZ);
+	schedule_timeout(1*HZ);
 	return 0;
 }
 

@@ -30,7 +30,7 @@
 #include <linux/version.h>
 
 #define DRV_NAME "ndiswrapper"
-#define DRV_VERSION "0.4+CVS"
+#define DRV_VERSION VERSION
 
 
 /* Workqueue / task queue backwards compatibility stuff */
@@ -275,6 +275,13 @@ struct ndis_filehandle
 };
 
 
+struct ndis_file
+{
+	struct list_head list;
+	char name[32];
+	void *data;
+};
+
 
 /*
  * There is one of these per driver. One per loaded driver exists.
@@ -286,6 +293,7 @@ struct ndis_driver
 	char name[32];
 
 	struct list_head devices;
+	struct list_head files;
 	struct pci_driver pci_driver;
 	struct pci_device_id *pci_idtable;
 
@@ -316,8 +324,6 @@ struct ndis_device
 	int pci_subdevice;
 	int fuzzy;
 };
-
-
 
 
 typedef __u64 LARGE_INTEGER;

@@ -1,3 +1,10 @@
+DEBUG=1
+
+DISTFILES=Makefile coffpe.h loader.c loader.h misc_funcs.c \
+ ndis.c ndis.h ntoskernel.h proc.c rt8180.c \
+ winsyms.c winsyms.h wrapper.c wrapper.h
+
+
 KSRC  := /lib/modules/$(shell uname -r)/build
 
 KVERS := $(shell uname -r |  sed -e 's/\([^\.]*\)\.\([^\.]*\)\..*/\1\2/')
@@ -59,7 +66,7 @@ prereq_check:
 
 
 OBJS   := wrapper.o loader.o winsyms.o ndis.o misc_funcs.o proc.o
-CFLAGS += $(shell [ -f $(KSRC)/include/linux/modversions.h ] && echo -DEXPORT_SYMTAB -DMODVERSIONS -include $(KSRC)/include/linux/modversions.h)
+CFLAGS += $(shell [ -f $(KSRC)/include/linux/modversions.h ] && echo -DEXPORT_SYMTAB -DMODVERSIONS -include $(KSRC)/include/linux/modversions.h) -DVERSION=\"${VERSION}\"
 
 
 ifeq ($(KVERS),24)
@@ -98,3 +105,9 @@ install: default
 	mkdir -p $(INST_DIR)
 	install -m 0644 $(MODULE) $(INST_DIR)
 	/sbin/depmod -a
+
+dist:
+	@for file in $(DISTFILES); do \
+	  cp  $$file $(distdir)/$$file; \
+	done
+

@@ -15,12 +15,11 @@
 #ifndef WRAPPER_H
 #define WRAPPER_H
 
-
 #include <linux/ioctl.h>
 
 #define DRIVERNAME_MAX 32
 
-struct put_driver {
+struct put_file {
 	char name[DRIVERNAME_MAX];
 	size_t size;
 	void *data;
@@ -43,13 +42,14 @@ struct put_setting
 	size_t name_len;
 	size_t val_str_len;
 	char *name;
-	char *val_str;
+	char *value;
 };
 
-#define NDIS_PUTDRIVER     _IOWR('N', 0, struct put_driver*)
+#define NDIS_PUTDRIVER     _IOWR('N', 0, struct put_file*)
 #define NDIS_PUTSETTING    _IOWR('N', 1, struct put_setting*)
 #define NDIS_STARTDRIVER   _IOWR('N', 2, int)
-#define NDIS_DELDRIVER     _IOWR('N', 4, struct del_driver *)
+#define NDIS_DELDRIVER     _IOWR('N', 4, struct del_driver*)
 #define NDIS_PUTDEVICE     _IOWR('N', 5, struct put_device*)
-#define NDIS_PUTDEVICEDONE _IOWR('N', 6, void)
+#define NDIS_PUTFILE       _IOWR('N', 6, struct put_file*)
 #endif /* WRAPPER_H */
+
