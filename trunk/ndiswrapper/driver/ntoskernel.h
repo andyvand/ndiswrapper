@@ -130,7 +130,7 @@ struct packed device_object
 
 struct io_status_block {
 	long status;
-	unsigned long *status_info;
+	unsigned long status_info;
 };
 
 #define IRP_MJ_DEVICE_CONTROL           0x0E

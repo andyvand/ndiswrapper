@@ -25,16 +25,21 @@ void usb_transfer_complete(struct urb *urb, struct pt_regs *regs)
 
 	TRACEENTER3("urb = %p, status = %d", urb, urb->status);
 	irp->pending_returned = 1;
+
 	if (urb->status)
 		irp->io_status.status = STATUS_FAILURE;
 	else
 		irp->io_status.status = STATUS_SUCCESS;
-	if (irp->user_status)
+	irp->io_status.status_info = urb->actual_length;
+
+	if (irp->user_status) {
 		irp->user_status->status = irp->io_status.status;
+		irp->user_status->status_info = urb->actual_length;
+	}
+
 	nt_urb->bulkIntrTrans.transferBufLen = urb->actual_length;
 
-#if defined DEBUG
-/* && DEBUG >= 3*/
+#ifdef DUMPURBS
 	if ((urb->pipe & USB_DIR_IN)) {
 		int i;
 
@@ -43,7 +48,7 @@ void usb_transfer_complete(struct urb *urb, struct pt_regs *regs)
 			printk("%02X ", *(((unsigned char *)urb->transfer_buffer)+i));
 		printk("\n");
 	}
-#endif
+#endif /* DUMPURBS */
 
 	if (stack->completion_handler) {
 		if (((urb->status == 0) &&
@@ -91,6 +96,7 @@ unsigned long usb_bulk_or_intr_trans(struct usb_device *dev,
 	union pipe_handle pipe_handle;
 	struct urb *urb;
 	unsigned int pipe;
+	int ret;
 
 
 	ASSERT(!nt_urb->bulkIntrTrans.transferBufMdl);
@@ -137,8 +143,7 @@ unsigned long usb_bulk_or_intr_trans(struct usb_device *dev,
 	     USBD_TRANSFER_DIRECTION_IN)
 		urb->transfer_flags |= URB_SHORT_NOT_OK;
 
-#if defined DEBUG
-/* && DEBUG >= 3*/
+#ifdef DUMPURBS
 	if (!(urb->pipe & USB_DIR_IN)) {
 		int i;
 
@@ -147,13 +152,22 @@ unsigned long usb_bulk_or_intr_trans(struct usb_device *dev,
 			printk("%02X ", *(((unsigned char *)urb->transfer_buffer)+i));
 		printk("\n");
 	}
-#endif
+#endif /* DUMPURBS */
 
 	/* non-DMA-capable buffers have to be mirrored */
 	irp->driver_context[2] = NULL;
 	if (!virt_addr_valid(nt_urb->bulkIntrTrans.transferBuf)) {
+		/* should only happen with outgoing messages */
+		ASSERT(!(urb->pipe & USB_DIR_IN));
+
 		irp->driver_context[2] = kmalloc(
 			nt_urb->bulkIntrTrans.transferBufLen, GFP_ATOMIC);
+		if (!irp->driver_context[2]) {
+			ERROR("kmalloc failed!");
+			usb_free_urb(urb);
+			return -ENOMEM;
+		}
+
 		memcpy(irp->driver_context[2],
 			nt_urb->bulkIntrTrans.transferBuf,
 			nt_urb->bulkIntrTrans.transferBufLen);
@@ -163,7 +177,14 @@ unsigned long usb_bulk_or_intr_trans(struct usb_device *dev,
 
 	DBGTRACE3("submitting urb %p on pipe %p", urb, pipe_handle.handle);
 	/* XXX we should better check what GFP_ is required XXX */
-	return usb_submit_urb(urb, GFP_ATOMIC);
+	ret = usb_submit_urb(urb, GFP_ATOMIC);
+	if (ret != 0) {
+		DBGTRACE3("usb_submit_urb() = %d", ret);
+		usb_free_urb(urb);
+		if (irp->driver_context[2])
+			kfree(irp->driver_context[2]);
+	}
+	return ret;
 }
 
 unsigned long usb_reset_pipe(struct usb_device *dev,
@@ -264,7 +285,8 @@ unsigned long usb_submit_nt_urb(struct usb_device *dev, union nt_urb *nt_urb,
 				pipe_info->pipeHandle.encoded.endpointAddr =
 					endp->desc.bEndpointAddress;
 				pipe_info->pipeHandle.encoded.pipeType =
-					endp->desc.bmAttributes;
+					endp->desc.bmAttributes &
+					USB_ENDPOINT_XFERTYPE_MASK;
 				pipe_info->pipeHandle.encoded.interval =
 					endp->desc.bInterval;
 				pipe_info->pipeHandle.encoded.fill = 0;
