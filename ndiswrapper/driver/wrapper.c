@@ -987,7 +987,7 @@ int ndis_resume_pci(struct pci_dev *pdev)
 	return 0;
 }
 
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0) && defined(CONFIG_USB)
 int ndis_suspend_usb(struct usb_interface *intf, u32 state)
 {
 	struct net_device *dev;
@@ -1570,6 +1570,7 @@ out_nodev:
  * This function should not be marked __devinit because ndiswrapper
  * adds id's dynamically.
  */
+#ifdef CONFIG_USB
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
 static int ndis_init_one_usb(struct usb_interface *intf,
                              const struct usb_device_id *usb_id)
@@ -1658,6 +1659,7 @@ out_nodev:
 	TRACEEXIT1(return NULL);
 #endif
 }
+#endif /* CONFIG_USB */
 
 static void ndis_remove_one(struct ndis_handle *handle)
 {
@@ -1745,6 +1747,7 @@ static void __devexit ndis_remove_one_pci(struct pci_dev *pdev)
 /*
  * Remove one USB device.
  */
+#ifdef CONFIG_USB
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
 static void __devexit ndis_remove_one_usb(struct usb_interface *intf)
 {
@@ -1765,6 +1768,7 @@ static void __devexit ndis_remove_one_usb(struct usb_device *udev, void *ptr)
 	ndis_remove_one(handle);
 }
 #endif
+#endif /* CONFIG_USB */
 
 /* Register one ndis driver with pci subsystem. */
 static int start_driver(struct ndis_driver *driver)
@@ -1825,10 +1829,14 @@ static int start_driver(struct ndis_driver *driver)
 #endif
 	}
 	else { /* USB */
-		driver->idtable.usb = kmalloc(sizeof(struct usb_device_id)*(driver->nr_devices+1), GFP_KERNEL);
+#ifdef CONFIG_USB
+		driver->idtable.usb =
+			kmalloc(sizeof(struct usb_device_id) * 
+			        (driver->nr_devices+1), GFP_KERNEL);
 		if(!driver->idtable.usb)
 			return -ENOMEM;
-		memset(driver->idtable.usb, 0, sizeof(struct usb_device_id)*(driver->nr_devices+1));
+		memset(driver->idtable.usb, 0,
+		       sizeof(struct usb_device_id)*(driver->nr_devices+1));
 
 		device = (struct ndis_device*) driver->devices.next;
 		for(i = 0; i < driver->nr_devices; i++)
@@ -1859,6 +1867,10 @@ static int start_driver(struct ndis_driver *driver)
 		res = usb_register(&driver->driver.usb);
 		if(!res)
 			driver->dev_registered = 1;
+#else  /* !CONFIG_USB */
+		printk(KERN_ERR "Driver requires an unsupported bus type\n");
+		return -EINVAL;
+#endif /* CONFIG_USB */
 	}
 
 	return res;
@@ -2131,8 +2143,10 @@ static void unload_driver(struct ndis_driver *driver)
 	if (driver->dev_registered) {
 		if (driver->bustype == 5)
 			pci_unregister_driver(&driver->driver.pci);
+#ifdef CONFIG_USB
 		else
 			usb_deregister(&driver->driver.usb);
+#endif
 	}
 #ifdef DEBUG_CRASH_ON_INIT
 	if (driver->bustype == 5) {

@@ -290,7 +290,7 @@ static int procfs_write_settings(struct file *file, const char *buf,
 			return -EINVAL;
 		if (handle->device->bustype == 5)
 			ndis_suspend_pci(handle->dev.pci, i);
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0) && CONFIG_USB
 		else
 			ndis_suspend_usb(handle->intf, i);
 #endif
@@ -298,7 +298,7 @@ static int procfs_write_settings(struct file *file, const char *buf,
 	else if (!strcmp(setting, "resume")) {
 		if (handle->device->bustype == 5)
 			ndis_resume_pci(handle->dev.pci);
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0) && CONFIG_USB
 		else
 			ndis_resume_usb(handle->intf);
 #endif
@@ -312,7 +312,7 @@ static int procfs_write_settings(struct file *file, const char *buf,
 			ndis_suspend_pci(handle->dev.pci, 3);
 			ndis_resume_pci(handle->dev.pci);
 		}
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0) && CONFIG_USB
 		else
 		{
 			ndis_suspend_usb(handle->intf, 3);

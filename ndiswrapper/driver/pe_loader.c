@@ -44,9 +44,11 @@ WRAP_FUNC *get_wrap_func(char *name)
 		if (strcmp(hal_wrap_funcs[i].name, name) == 0)
 			return hal_wrap_funcs[i].func;
 
+#ifdef CONFIG_USB
 	for (i = 0 ; usb_wrap_funcs[i].name != NULL; i++)
 		if (strcmp(usb_wrap_funcs[i].name, name) == 0)
 			return usb_wrap_funcs[i].func;
+#endif
 
 	return NULL;
 }
