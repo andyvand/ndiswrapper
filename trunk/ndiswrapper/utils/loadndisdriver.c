@@ -335,7 +335,7 @@ static int load(int device, char *confdir)
 
 	driver_files.count = i;
 	strncpy(driver_files.name, confdir, DRIVERNAME_MAX);
-	info("number of files = %d, size = %d", i, driver_files.file[i].size);
+	dbg("number of files = %d, size = %d", i, driver_files.file[i].size);
 	if ((err = ioctl(device, NDIS_PUTDRIVER, &driver_files)))
 	{
 		error("unable to load system files: %s", strerror(errno));
