@@ -93,19 +93,23 @@ static int read_file(int device, char *filename, struct put_file *put_file)
 	int fd, size;
 	void * image = NULL;
 
-	char *file_basename = basename(strdup(filename));
+	char *file_basename = basename(filename);
 
 	fd = open(filename, O_RDONLY);
 	if(fd == -1)
 	{
-		perror("Unable to open file");
+		error("unable to open file: %s", strerror(errno));
 		return -EINVAL;
 	}
-	size = get_filesize(fd);
+	if ((size = get_filesize(fd)) <= 0) {
+		error("incorrect driver file '%s'", filename);
+		close(fd);
+		return -EINVAL;
+	}
 	image = mmap(0, size, PROT_READ, MAP_PRIVATE, fd, 0);
-	if((int)image == -1)
+	if ((int)image == -1)
 	{
-		perror("Unable to mmap driver");
+		error("unable to mmap driver: %s", strerror(errno));
 		close(fd);
 		return -EINVAL;
 	}
@@ -113,12 +117,6 @@ static int read_file(int device, char *filename, struct put_file *put_file)
 	strncpy(put_file->name, file_basename, sizeof(put_file->name));
 	put_file->name[sizeof(put_file->name)-1] = 0;
 	put_file->size = size;
-	if (!image)
-	{
-		error("Unable to locate file %s", filename);
-		return -EINVAL;
-	}
-
 	put_file->data = image;
 	return 0;
 }
@@ -215,7 +213,7 @@ static int put_device(int device, char *conf_file_name)
 
 	if(lstat(conf_file_name, &statbuf))
 	{
-		perror("unable to open config file");
+		error("unable to open config file: %s", strerror(errno));
 		return -EINVAL;
 	}
 
@@ -225,7 +223,7 @@ static int put_device(int device, char *conf_file_name)
 
 	if ((config = fopen(conf_file_name, "r")) == NULL)
 	{
-		perror("unable to open config file");
+		error("unable to open config file: %s", strerror(errno));
 		return -EINVAL;
 	}
 
@@ -248,13 +246,13 @@ static int put_device(int device, char *conf_file_name)
 			if (put_device.bustype != 0 &&
 			    put_device.bustype != 5)
 			{
-				perror("invalid bustype");
+				error("invalid bustype: %s", strerror(errno));
 				return -EINVAL;
 			}
 			if (ioctl(device, NDIS_PUTDEVICE, &put_device))
 			{
-				perror("Unable to put device "
-				       "(check dmesg for more info)");
+				error("unable to put device: %s",
+				      strerror(errno));
 				return -EINVAL;
 			}
 			rewind(config);
@@ -337,11 +335,11 @@ static int load(int device, char *confdir)
 
 	driver_files.count = i;
 	strncpy(driver_files.name, confdir, DRIVERNAME_MAX);
-	info("number of files = %d", i);
+	info("number of files = %d, size = %d", i, driver_files.file[i].size);
 	if ((err = ioctl(device, NDIS_PUTDRIVER, &driver_files)))
 	{
-		perror("unable to load system files (check system logs for more info");
-		       return -EINVAL;
+		error("unable to load system files: %s", strerror(errno));
+		return -EINVAL;
 	}
 	rewinddir(dir);
 
@@ -373,7 +371,8 @@ static int load(int device, char *confdir)
 			read_file(device, dirent->d_name, &flash_file);
 			if (ioctl(device, NDIS_PUTFILE, &flash_file))
 			{
-				perror("Unable to put file (check dmesg for more info)");
+				error("unable to put file: %s",
+				      strerror(errno));
 				return -EINVAL;
 			}
 		}
@@ -381,7 +380,7 @@ static int load(int device, char *confdir)
 	closedir(dir);
 	if(ioctl(device, NDIS_STARTDRIVER, 0))
 	{
-		perror("Unable to start driver (check dmesg for more info)");
+		error("unable to start driver: %s", strerror(errno));
 		chdir("..");
 		return -1;
 	}

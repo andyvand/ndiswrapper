@@ -230,7 +230,7 @@ static int import(void *image, struct coffpe_import_dirent *dirent, char *dll)
 		adr = get_wrap_func(symname);
 		if (adr != NULL)
 			DBGTRACE1("found symbol: %s:%s, rva = %08X",
-				  dll, symname, address_tbl[i]);
+				  dll, symname, (unsigned int)address_tbl[i]);
 		if (adr == NULL) {
 			ERROR("Unknown symbol: %s:%s", dll, symname);
 			ret = -1;
