@@ -1250,22 +1250,26 @@ static int wpa_set_key(struct net_device *dev, struct iw_request_info *info,
 	struct ndis_handle *handle = (struct ndis_handle *)dev->priv;
 	struct ndis_add_key ndis_key;
 	struct wpa_key wpa_key;
-	int i, res;
+	int i, res, size;
 	u8 addr[ETH_ALEN];
 	u8 seq[IW_ENCODING_TOKEN_MAX];
 	u8 key[IW_ENCODING_TOKEN_MAX];
 
-	if (copy_from_user(&wpa_key, wrqu->data.pointer, sizeof(wpa_key)))
-		TRACEEXIT1(return -1);
+	if (wrqu->data.length)
+		size = wrqu->data.length;
+	else
+		size = sizeof(wpa_key);
+	if (copy_from_user(&wpa_key, wrqu->data.pointer, size))
+			TRACEEXIT1(return -1);
 	if (wpa_key.addr && copy_from_user(&addr, wpa_key.addr, ETH_ALEN))
 		TRACEEXIT1(return -1);
 
 	if (wpa_key.seq &&
-	    copy_from_user(&seq, wpa_key.seq, IW_ENCODING_TOKEN_MAX))
+	    copy_from_user(&seq, wpa_key.seq, wpa_key.seq_len))
 		TRACEEXIT1(return -1);
 
 	if (wpa_key.key &&
-	    copy_from_user(&key, wpa_key.key, IW_ENCODING_TOKEN_MAX))
+	    copy_from_user(&key, wpa_key.key, wpa_key.key_len))
 		TRACEEXIT1(return -1);
 	
 	TRACEENTER2("alg = %d, key_index = %d",
@@ -1393,12 +1397,22 @@ static int wpa_associate(struct net_device *dev,
 	struct ndis_handle *handle = (struct ndis_handle *)dev->priv;
 	struct wpa_assoc_info wpa_assoc_info;
 	char ssid[NDIS_ESSID_MAX_SIZE], ie;
-	int auth_mode, encr_mode, wpa2 = 0;
+	int auth_mode, encr_mode, wpa2 = 0, size;
 	
 	TRACEENTER2("%s", "");
-	if (copy_from_user(&wpa_assoc_info, wrqu->data.pointer,
-			   sizeof(wpa_assoc_info)) ||
-	    copy_from_user(&ssid, wpa_assoc_info.ssid, NDIS_ESSID_MAX_SIZE))
+
+	memset(&wpa_assoc_info, 0, sizeof(wpa_assoc_info));
+
+	if (wrq->data.length == 0)
+		size = (void *)&wpa_assoc_info.key_mgmt_suite - 
+			(void *)&wpa_assoc_info.bssid;
+	else
+		size = wrqu->data.length;
+
+	if (copy_from_user(&wpa_assoc_info, wrqu->data.pointer, size))
+		TRACEEXIT1(return -1);
+	if (copy_from_user(&ssid, wpa_assoc_info.ssid,
+			   wpa_assoc_info.ssid_len))
 		TRACEEXIT1(return -1);
 
 	if (wpa_assoc_info.wpa_ie_len > 0 &&
@@ -1451,13 +1465,10 @@ static int wpa_associate(struct net_device *dev,
 		if (wpa_assoc_info.group_suite != CIPHER_WEP104 &&
 		    wpa_assoc_info.group_suite != CIPHER_WEP40)
 			TRACEEXIT2(return -1);
-		auth_mode = handle->auth_mode;
-#if 0
 		if (wpa_assoc_info.auth_alg & AUTH_ALG_SHARED_KEY)
 			auth_mode = AUTHMODE_RESTRICTED;
 		else
 			auth_mode = AUTHMODE_OPEN;
-#endif
 		break;
 	default:
 		TRACEEXIT2(return -1);
