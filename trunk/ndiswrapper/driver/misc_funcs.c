@@ -106,14 +106,14 @@ void wrapper_timer_handler(unsigned long data)
 
 	/* don't add the timer if aperiodic; see wrapper_cancel_timer
 	 * protect access to kdpc, repeat, and active via spinlock */
-	spin_lock(&timer->lock);
+	wrap_spin_lock(&timer->lock);
 	kdpc = timer->kdpc;
 	if (timer->repeat) {
 		timer->timer.expires = jiffies + timer->repeat;
 		add_timer(&timer->timer);
 	} else
 		timer->active = 0;
-	spin_unlock(&timer->lock);
+	wrap_spin_unlock(&timer->lock);
 
 	miniport_timer = kdpc->func;
 
@@ -147,7 +147,7 @@ void wrapper_init_timer(struct ktimer *ktimer, void *handle)
 	wrapper_timer->wrapper_timer_magic = WRAPPER_TIMER_MAGIC;
 #endif
 	ktimer->wrapper_timer = wrapper_timer;
-	spin_lock_init(&wrapper_timer->lock);
+	wrap_spin_lock_init(&wrapper_timer->lock);
 	if (handle) {
 		spin_lock_bh(&ndis_handle->timers_lock);
 		list_add(&wrapper_timer->list, &ndis_handle->timers);
@@ -179,7 +179,7 @@ int wrapper_set_timer(struct wrapper_timer *timer,
 
 	/* timer handler also uses timer->repeat, active, and kdpc, so
 	 * protect in case of SMP */
-	spin_lock_bh(&timer->lock);
+	wrap_spin_lock(&timer->lock);
 	if (kdpc)
 		timer->kdpc = kdpc;
 	timer->repeat = repeat;
@@ -187,7 +187,7 @@ int wrapper_set_timer(struct wrapper_timer *timer,
 		DBGTRACE4("modifying timer %p to %lu, %lu",
 			  timer, expires, repeat);
 		mod_timer(&timer->timer, expires);
-		spin_unlock_bh(&timer->lock);
+		wrap_spin_unlock(&timer->lock);
 		TRACEEXIT5(return 1);
 	} else {
 		DBGTRACE4("setting timer %p to %lu, %lu",
@@ -195,7 +195,7 @@ int wrapper_set_timer(struct wrapper_timer *timer,
 		timer->timer.expires = expires;
 		timer->active = 1;
 		add_timer(&timer->timer);
-		spin_unlock_bh(&timer->lock);
+		wrap_spin_unlock(&timer->lock);
 		TRACEEXIT5(return 0);
 	}
 }
@@ -219,7 +219,7 @@ void wrapper_cancel_timer(struct wrapper_timer *timer, char *canceled)
 	 * tells the driver if the timer was deleted or not) here; nor
 	 * is del_timer_sync correct, as this function may be called
 	 * at DISPATCH_LEVEL */
-	spin_lock_bh(&timer->lock);
+	wrap_spin_lock(&timer->lock);
 	if (timer->repeat) {
 		/* first mark as aperiodic, so timer function doesn't call
 		 * add_timer after del_timer returned */
@@ -229,7 +229,7 @@ void wrapper_cancel_timer(struct wrapper_timer *timer, char *canceled)
 		*canceled = TRUE;
 	} else
 		*canceled = del_timer(&timer->timer);
-	spin_unlock_bh(&timer->lock);
+	wrap_spin_unlock(&timer->lock);
 	TRACEEXIT5(return);
 }
 
