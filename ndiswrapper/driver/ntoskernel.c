@@ -128,7 +128,7 @@ STDCALL void WRAP_EXPORT(KeInitializeSpinLock)
 {
 	/* if already mapped, use that; otherwise, allocate and initialize */
 	if (!allocate_kspin_lock(lock))
-		ERROR("couldn't allocate memory");
+		ERROR("couldn't allocate/initialize spinlock");
 }
 
 STDCALL void WRAP_EXPORT(KeAcquireSpinLock)

@@ -132,16 +132,26 @@ static int check_nt_hdr(IMAGE_NT_HEADERS *nt_hdr)
 
 	/* Validate the "PE\0\0" signature */
 	if (nt_hdr->Signature != IMAGE_NT_SIGNATURE) {
-		ERROR("bad signature %08x", nt_hdr->Signature);
+		ERROR("is this driver file? bad signature %08x",
+		      nt_hdr->Signature);
 		return -EINVAL;
 	}
 
 	opt_hdr = &nt_hdr->OptionalHeader;
 	/* Make sure Image is PE32 or PE32+ */
-	if (opt_hdr->Magic != IMAGE_NT_OPTIONAL_HDR_MAGIC) {
-		ERROR("bad magic: %04X", opt_hdr->Magic);
+#ifdef CONFIG_X86_64
+	if (opt_hdr->Magic != IMAGE_NT_OPTIONAL_HDR64_MAGIC) {
+		ERROR("Windows driver is not 64-bit; bad magic: %04X",
+		      opt_hdr->Magic);
 		return -EINVAL;
 	}
+#else
+	if (opt_hdr->Magic != IMAGE_NT_OPTIONAL_HDR32_MAGIC) {
+		ERROR("Windows driver is not 32-bit; bad magic: %04X",
+		      opt_hdr->Magic);
+		return -EINVAL;
+	}
+#endif
 
 	/* Validate the image for the current architecture. */
 	if (nt_hdr->FileHeader.Machine !=
