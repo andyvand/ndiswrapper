@@ -733,7 +733,7 @@ STDCALL void NdisAllocatePacket(unsigned int *status, struct ndis_packet **packe
 	memset(packet, 0, sizeof(struct ndis_packet));
 	packet->oob_offset = (int)(&packet->timesent1) - (int)packet;
 	packet->pool = (void*) 0xa000fff4; 
-	
+	packet->packet_flags = 0xc0;
 	
 #ifdef DEBUG
 	{
@@ -744,6 +744,8 @@ STDCALL void NdisAllocatePacket(unsigned int *status, struct ndis_packet **packe
 		{
 			x[i] = i;
 		}
+		packet->mediaspecific_size = 0x100;
+		packet->mediaspecific = (void*) 0x0001f00;
 	}
 #endif
 
@@ -1020,7 +1022,7 @@ STDCALL void NdisMIndicateReceivePacket(struct ndis_handle *handle, struct ndis_
 	struct sk_buff *skb;
 	int i;
 
-	DBGTRACE("%s\n", __FUNCTION__);
+	DBGTRACE("%s %d\n", __FUNCTION__, nr_packets);
 	for(i = 0; i < nr_packets; i++)
 	{
 		packet = packets[i];
@@ -1038,8 +1040,10 @@ STDCALL void NdisMIndicateReceivePacket(struct ndis_handle *handle, struct ndis_
 			handle->stats.rx_packets++;
 			netif_rx(skb);
 		}
+		DBGTRACE("%s Calling return packet\n", __FUNCTION__);
 		handle->driver->miniport_char.return_packet(handle->adapter_ctx,  packet);
 	}
+	DBGTRACE("%s Done!\n", __FUNCTION__);
 }
 
 /*
@@ -1296,6 +1300,35 @@ STDCALL void NdisUnchainBufferAtBack(struct ndis_packet *packet, struct ndis_buf
 	*buffer = btail;
 }
 
+STDCALL void NdisUnchainBufferAtFront(struct ndis_packet *packet, struct ndis_buffer **buffer)
+{
+	struct ndis_buffer *b = packet->buffer_head;
+
+	DBGTRACE("%s\n", __FUNCTION__);
+
+	if(!b) {
+		/* No buffer in packet */
+		*buffer = 0;
+		return;
+	}
+
+	if(b == packet->buffer_tail) {
+		/* Only buffer in packet */
+		packet->buffer_head = 0;
+		packet->buffer_tail = 0;
+	}
+	else
+	{
+		packet->buffer_head = b->next;
+	}
+	
+	b->next = 0;
+	packet->valid_counts = 0;
+
+	*buffer = b;
+}
+
+
 STDCALL void NdisGetFirstBufferFromPacketSafe(struct ndis_packet *packet,
                                               struct ndis_buffer **buffer,
                                               void **virt,
@@ -1322,7 +1355,6 @@ STDCALL unsigned long NdisReadPcmciaAttributeMemory(void *handle, unsigned int o
 STDCALL void NdisUnicodeStringToAnsiString(void){UNIMPL();}
 
 STDCALL void NdisInitializeString(void){UNIMPL();}
-STDCALL void NdisUnchainBufferAtFront(void){UNIMPL();}
 STDCALL void NdisMSetAttributes(void){UNIMPL();}
 STDCALL void EthFilterDprIndicateReceiveComplete(void){UNIMPL();}
 STDCALL void EthFilterDprIndicateReceive(void){UNIMPL();}
