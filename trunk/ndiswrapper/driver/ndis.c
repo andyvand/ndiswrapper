@@ -420,8 +420,8 @@ STDCALL ULONG WRAP_EXPORT(NDIS_BUFFER_TO_SPAN_PAGES)
 	if (buffer->size == 0)
 		return 1;
 
-	start = (ULONG_PTR)(((char *)buffer->startva) + buffer->byteoffset);
-	n = SPAN_PAGES(start, buffer->bytecount);
+	start = (ULONG_PTR)(MmGetMdlVirtualAddress(buffer));
+	n = SPAN_PAGES(start, MmGetMdlByteCount(buffer));
 	DBGTRACE4("pages = %u", n);
 	TRACEEXIT3(return n);
 }
@@ -1573,12 +1573,11 @@ NdisMIndicateReceivePacket(struct ndis_handle *handle,
 		skb = dev_alloc_skb(buffer->size);
 		if (skb) {
 			skb->dev = handle->net_dev;
-			eth_copy_and_sum(skb,
-					 buffer->startva + buffer->byteoffset,
-					 buffer->bytecount, 0);
-			skb_put(skb, buffer->bytecount);
+			eth_copy_and_sum(skb, MmGetMdlVirtualAddress(buffer),
+					 MmGetMdlByteCount(buffer), 0);
+			skb_put(skb, MmGetMdlByteCount(buffer));
 			skb->protocol = eth_type_trans(skb, handle->net_dev);
-			handle->stats.rx_bytes += buffer->bytecount;
+			handle->stats.rx_bytes += MmGetMdlByteCount(buffer);
 			handle->stats.rx_packets++;
 			netif_rx(skb);
 		} else
@@ -1714,15 +1713,16 @@ EthRxIndicateHandler(void *adapter_ctx, void *rx_ctx, char *header1,
 			       packet_size);
 		lower_irql(irql);
 		if (res == NDIS_STATUS_SUCCESS) {
+			ndis_buffer *buffer;
 			skb = dev_alloc_skb(header_size+look_ahead_size+
 					    bytes_txed);
 			if (skb) {
 				memcpy(skb->data, header, header_size);
 				memcpy(skb->data+header_size, look_ahead,
 				       look_ahead_size);
+				buffer = packet->private.buffer_head;
 				memcpy(skb->data+header_size+look_ahead_size,
-				       packet->private.buffer_head->startva +
-				       packet->private.buffer_head->byteoffset,
+				       MmGetMdlVirtualAddress(buffer),
 				       bytes_txed);
 				skb_size = header_size+look_ahead_size+
 					bytes_txed;
@@ -1996,8 +1996,8 @@ STDCALL void WRAP_EXPORT(NdisQueryBufferOffset)
 	(ndis_buffer *buffer, UINT *offset, UINT *length)
 {
 	TRACEENTER3("%s", "");
-	*offset = buffer->byteoffset;
-	*length = buffer->bytecount;
+	*offset = MmGetMdlByteOffset(buffer);
+	*length = MmGetMdlByteCount(buffer);
 }
 
 STDCALL CHAR WRAP_EXPORT(NdisSystemProcessorCount)
@@ -2244,7 +2244,7 @@ STDCALL void WRAP_EXPORT(NdisUnchainBufferAtBack)
 	}
 
 	if (b == btail) {
-		/* Only buffer in packet */
+		/* one buffer in packet */
 		packet->private.buffer_head = NULL;
 		packet->private.buffer_tail = NULL;
 	} else {
@@ -2286,9 +2286,8 @@ STDCALL void WRAP_EXPORT(NdisUnchainBufferAtFront)
 
 STDCALL void WRAP_EXPORT(NdisGetFirstBufferFromPacketSafe)
 	(struct ndis_packet *packet, ndis_buffer **first_buffer,
-	 void **first_buffer_va,
-	 UINT *first_buffer_length, UINT *total_buffer_length,
-	 enum mm_page_priority priority)
+	 void **first_buffer_va, UINT *first_buffer_length,
+	 UINT *total_buffer_length, enum mm_page_priority priority)
 {
 	ndis_buffer *b = packet->private.buffer_head;
 
@@ -2428,7 +2427,6 @@ STDCALL void WRAP_EXPORT(NdisMGetDeviceProperty)
 		dev->device.usb = handle->dev.usb;
 
 		dev->handle = handle;
-		dev->magic = DEVICE_OBJECT_MAGIC;
 
 		handle->phys_device_obj = dev;
 	}

@@ -237,6 +237,10 @@ struct mdl {
 
 #define MmGetSystemAddressForMdlSafe(mdl,p) ((mdl)->startva)
 #define MmGetMdlByteCount(mdl) ((mdl)->bytecount)
+#define MmGetMdlVirtualAddress(mdl) ((char *)(mdl)->startva + \
+				     (mdl)->byteoffset)
+#define MmGetMdlByteOffset(mdl) ((mdl)->byteoffset)
+
 
 struct device_queue_entry {
 	struct list_entry list_entry;
@@ -263,8 +267,6 @@ struct kdevice_queue {
 
 struct kdpc;
 struct irp;
-
-#define DEVICE_OBJECT_MAGIC 0x67697249
 
 struct device_object {
 	SHORT type;
@@ -300,7 +302,6 @@ struct device_object {
 		struct usb_device *usb;
 	} device;
 	void *handle;
-	unsigned int magic;
 };
 
 struct io_status_block {
@@ -309,7 +310,7 @@ struct io_status_block {
 };
 
 #ifndef CONFIG_X86_64
-#pragma pack(4)
+#pragma pack(push,4)
 #endif
 struct io_stack_location {
 	char major_fn;
@@ -337,7 +338,7 @@ struct io_stack_location {
 	void *handler_arg;
 };
 #ifndef CONFIG_X86_64
-#pragma pack()
+#pragma pack(pop)
 #endif
 
 enum irp_work_type {
