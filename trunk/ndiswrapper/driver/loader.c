@@ -324,7 +324,7 @@ static void *ndiswrapper_add_one_usb_dev(struct usb_device *udev,
 	/* wait here seems crucial; without this delay, at least
 	 * prism54 driver crashes (why?) */
 	set_current_state(TASK_INTERRUPTIBLE);
-	schedule_timeout(2*HZ);
+	schedule_timeout(3*HZ);
 
 	if (setup_dev(handle->net_dev)) {
 		ERROR("couldn't setup network device");
