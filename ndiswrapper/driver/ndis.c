@@ -1124,10 +1124,14 @@ STDCALL void WRAP_EXPORT(NdisAllocateBuffer)
 	irql = kspin_lock_irql(&pool->lock, DISPATCH_LEVEL);
 	if (pool->num_allocated_descr < pool->max_descr) {
 		if (pool->free_descr) {
+			typeof(descr->flags) flags;
 			descr = pool->free_descr;
 			pool->free_descr = descr->next;
+			flags = descr->flags;
 			memset(descr, 0, sizeof(*descr));
 			MmInitializeMdl(descr, virt, length);
+			if (flags & MDL_CACHE_ALLOCATED)
+				descr->flags = MDL_CACHE_ALLOCATED;
 		} else
 			descr = allocate_init_mdl(virt, length);
 	} else
@@ -1174,7 +1178,7 @@ STDCALL void WRAP_EXPORT(NdisFreeBufferPool)
 	ndis_buffer *cur, *prev;
 	KIRQL irql;
 
-	TRACEENTER3("pool: %p", pool);
+	DBGTRACE3("pool: %p", pool);
 	irql = kspin_lock_irql(&pool->lock, DISPATCH_LEVEL);
 	cur = pool->free_descr;
 	while (cur) {
@@ -1185,6 +1189,7 @@ STDCALL void WRAP_EXPORT(NdisFreeBufferPool)
 	}
 	kspin_unlock_irql(&pool->lock, irql);
 	kfree(pool);
+	pool = NULL;
 	TRACEEXIT3(return);
 }
 
@@ -1478,7 +1483,7 @@ STDCALL void WRAP_EXPORT(NdisSetTimer)
 	unsigned long expires = ms * HZ / 1000;
 
 	TRACEENTER4("%p, %u", timer_handle, ms);
-	wrapper_set_timer(&timer_handle->ktimer, expires, 0, NULL);
+	wrapper_set_timer(timer_handle->ktimer.wrapper_timer, expires, 0, NULL);
 	TRACEEXIT4(return);
 }
 
@@ -1489,7 +1494,7 @@ STDCALL void WRAP_EXPORT(NdisMSetPeriodicTimer)
 	unsigned long repeat = ms * HZ / 1000;
 
 	TRACEENTER4("%p, %u", timer_handle, ms);
-	wrapper_set_timer(&timer_handle->ktimer, expires, repeat, NULL);
+	wrapper_set_timer(timer_handle->ktimer.wrapper_timer, expires, repeat, NULL);
 	TRACEEXIT4(return);
 }
 
@@ -1497,7 +1502,7 @@ STDCALL void WRAP_EXPORT(NdisMCancelTimer)
 	(struct ndis_miniport_timer *timer_handle, BOOLEAN *canceled)
 {
 	TRACEENTER4("%s", "");
-	wrapper_cancel_timer(&timer_handle->ktimer, canceled);
+	wrapper_cancel_timer(timer_handle->ktimer.wrapper_timer, canceled);
 	TRACEEXIT4(return);
 }
 
@@ -1505,7 +1510,7 @@ STDCALL void WRAP_EXPORT(NdisCancelTimer)
 	(struct ndis_timer *timer_handle, BOOLEAN *canceled)
 {
 	TRACEENTER4("%s", "");
-	wrapper_cancel_timer(&timer_handle->ktimer, canceled);
+	wrapper_cancel_timer(timer_handle->ktimer.wrapper_timer, canceled);
 	TRACEEXIT4(return);
 }
 

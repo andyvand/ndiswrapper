@@ -1463,7 +1463,7 @@ struct net_device *ndis_init_netdev(struct ndis_handle **phandle,
 
 	handle->reset_status = 0;
 
-	InitializeListHead(&handle->ktimers);
+	InitializeListHead(&handle->wrapper_timer_list);
 	kspin_lock_init(&handle->timer_lock);
 
 	handle->rx_packet = WRAP_FUNC_PTR(NdisMIndicateReceivePacket);

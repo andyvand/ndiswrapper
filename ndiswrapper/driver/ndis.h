@@ -844,7 +844,7 @@ struct ndis_handle {
 	mac_address mac;
 
 	/* list of initialized timers */
-	struct nt_list_entry ktimers;
+	struct nt_list_entry wrapper_timer_list;
 	KSPIN_LOCK timer_lock;
 
 	struct proc_dir_entry *procfs_iface;

@@ -76,8 +76,10 @@ void ntoskernel_exit(void)
 					kfree(p);
 			}
 		}
+		INIT_LIST_HEAD(&wrap_mdl_list);
 		kspin_unlock(&ntoskernel_lock);
 		kmem_cache_destroy(mdl_cache);
+		mdl_cache = NULL;
 	}
 	return;
 }
@@ -256,7 +258,7 @@ STDCALL BOOLEAN WRAP_EXPORT(KeSetTimerEx)
 	else
 		expires = HZ * due_time / TICKSPERSEC - jiffies;
 	repeat = HZ * period / TICKSPERSEC;
-	return wrapper_set_timer(ktimer, expires, repeat, kdpc);
+	return wrapper_set_timer(ktimer->wrapper_timer, expires, repeat, kdpc);
 }
 
 STDCALL BOOLEAN WRAP_EXPORT(KeSetTimer)
@@ -272,7 +274,7 @@ STDCALL BOOLEAN WRAP_EXPORT(KeCancelTimer)
 	char canceled;
 
 	TRACEENTER4("%p", ktimer);
-	wrapper_cancel_timer(ktimer, &canceled);
+	wrapper_cancel_timer(ktimer->wrapper_timer, &canceled);
 	return canceled;
 }
 
@@ -1300,6 +1302,7 @@ struct mdl *allocate_init_mdl(void *virt, ULONG length)
 		wrap_mdl = kmem_cache_alloc(mdl_cache, GFP_ATOMIC);
 		if (!wrap_mdl)
 			return NULL;
+		DBGTRACE3("allocated mdl cache: %p", wrap_mdl);
 		kspin_lock(&ntoskernel_lock);
 		list_add(&wrap_mdl->list, &wrap_mdl_list);
 		kspin_unlock(&ntoskernel_lock);
@@ -1315,6 +1318,7 @@ struct mdl *allocate_init_mdl(void *virt, ULONG length)
 				GFP_ATOMIC);
 		if (!wrap_mdl)
 			return NULL;
+		DBGTRACE3("allocated mdl: %p", wrap_mdl);
 		mdl = (struct mdl *)wrap_mdl->mdl;
 		kspin_lock(&ntoskernel_lock);
 		list_add(&wrap_mdl->list, &wrap_mdl_list);
@@ -1344,10 +1348,13 @@ void free_mdl(struct mdl *mdl)
 			list_del(&wrap_mdl->list);
 			kspin_unlock(&ntoskernel_lock);
 
-			if (mdl->flags & MDL_CACHE_ALLOCATED)
+			if (mdl->flags & MDL_CACHE_ALLOCATED) {
+				DBGTRACE3("freeing mdl cache: %p (%hu)", wrap_mdl, mdl->flags);
 				kmem_cache_free(mdl_cache, wrap_mdl);
-			else
-				kfree(mdl);
+			} else {
+				DBGTRACE3("freeing mdl: %p (%hu)", wrap_mdl, mdl->flags);
+				kfree(wrap_mdl);
+			}
 		}
 	}
 }
