@@ -1,14 +1,14 @@
-loaddriver_OBJS = loaddriver.o inf-parser.o
+loadndisdriver_OBJS = loadndisdriver.o inf-parser.o
 
 CFLAGS = -g -Wall
 LEX = flex
 
-loaddriver: $(loaddriver_OBJS) ../driver/wrapper.h
-	gcc -o loaddriver $(loaddriver_OBJS)
+loadndisdriver: $(loadndisdriver_OBJS) ../driver/wrapper.h
+	gcc -o loadndisdriver $(loadndisdriver_OBJS)
 
-all: loaddriver
+all: loadndisdriver
 
 clean:
 	rm -f *~
 	rm -f *.o
-	rm -f loaddriver
+	rm -f loadndisdriver
