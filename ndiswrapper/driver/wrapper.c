@@ -737,8 +737,9 @@ static int ndis_get_scan(struct net_device *dev, struct iw_request_info *info,
 	struct list_scan list_scan;
 	char *event = extra;
 	char *cur_item ;
-	struct iw_statistics *stats = &handle->wireless_stats;
+	struct iw_statistics *iw_stats = &handle->wireless_stats;
 	long rssi;
+	struct ndis_wireless_stats ndis_stats;
 
 	written = needed = 0;
 	res = doquery(handle, NDIS_OID_BSSID_LIST, (char*)&list_scan, sizeof(list_scan), &written, &needed);
@@ -763,8 +764,26 @@ static int ndis_get_scan(struct net_device *dev, struct iw_request_info *info,
 		    &written, &needed))
 		printk(KERN_INFO "%s: get rssi failed\n", dev->name);
 	else
-		stats->qual.level = rssi;
+		iw_stats->qual.level = rssi;
 		
+	memset(&ndis_stats, 0, sizeof(ndis_stats));
+	res = doquery(handle, NDIS_OID_STATISTICS, (char *)&ndis_stats,
+		      sizeof(ndis_stats), &written, &needed);
+	if (res)
+	{
+		printk(KERN_ERR "%s: get statitics failed with %x\n",
+		       dev->name, res);
+		return -1;
+	}
+
+	iw_stats->discard.retries = (__u32)ndis_stats.retry + (__u32)ndis_stats.multi_retry;
+iw_stats->discard.misc = (__u32)(ndis_stats.rtss_fail + (__u32)ndis_stats.ack_fail + (__u32)ndis_stats.frame_dup);
+
+	if (ndis_stats.trans_frag)
+		iw_stats->qual.qual = 100 - 100 * ((__u32)ndis_stats.retry + 2 * (__u32)ndis_stats.multi_retry + 3 * (__u32)ndis_stats.failed) /(6 * (__u32)ndis_stats.trans_frag);
+	else
+		iw_stats->qual.qual = 100;
+
 	return 0;
 }
 
