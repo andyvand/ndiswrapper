@@ -577,29 +577,37 @@ static inline ULONG SPAN_PAGES(ULONG_PTR ptr, SIZE_T length)
 #define DBG_BLOCK()
 #endif
 
+extern int debug;
+
+#define DBGTRACE_IF(level, fmt, ...) \
+{ \
+	if (level <= debug) \
+		DBGTRACE(fmt, ## __VA_ARGS__); \
+}
+
 #if defined DEBUG && DEBUG >= 1
 #undef DBGTRACE1
-#define DBGTRACE1(fmt, ...) DBGTRACE(fmt , ## __VA_ARGS__)
+#define DBGTRACE1(fmt, ...) DBGTRACE_IF(1, fmt , ## __VA_ARGS__)
 #endif
 
 #if defined DEBUG && DEBUG >= 2
 #undef DBGTRACE2
-#define DBGTRACE2(fmt, ...) DBGTRACE(fmt , ## __VA_ARGS__)
+#define DBGTRACE2(fmt, ...) DBGTRACE_IF(2, fmt , ## __VA_ARGS__)
 #endif
 
 #if defined DEBUG && DEBUG >= 3
 #undef DBGTRACE3
-#define DBGTRACE3(fmt, ...) DBGTRACE(fmt , ## __VA_ARGS__)
+#define DBGTRACE3(fmt, ...) DBGTRACE_IF(3, fmt , ## __VA_ARGS__)
 #endif
 
 #if defined DEBUG && DEBUG >= 4
 #undef DBGTRACE4
-#define DBGTRACE4(fmt, ...) DBGTRACE(fmt , ## __VA_ARGS__)
+#define DBGTRACE4(fmt, ...) DBGTRACE_IF(4, fmt , ## __VA_ARGS__)
 #endif
 
 #if defined DEBUG && DEBUG >= 5
 #undef DBGTRACE5
-#define DBGTRACE5(fmt, ...) DBGTRACE(fmt , ## __VA_ARGS__)
+#define DBGTRACE5(fmt, ...) DBGTRACE_IF(5, fmt , ## __VA_ARGS__)
 #endif
 
 #define TRACEENTER(fmt, ...) DBGTRACE("Enter " fmt , ## __VA_ARGS__)
