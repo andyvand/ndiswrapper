@@ -1,0 +1,190 @@
+* Quickstart guide *
+====================
+
+1. Compile the driver
+---------------------
+* You need a recent 2.6.0 or 2.4 kernel with source. 
+* Make sure there is a link to the source from the modules directory:
+  '/lib/modules/<VERSION>/build' should be a link to the kernel
+  source, where <VERSION> is the version of the kernel you are running.
+* The driver has known problems with SMP and will not work reliably with
+  it.
+
+Go to the driver directory and run:
+
+   > make
+
+2. Compile the loader:
+----------------------
+You need flex tool. 
+Go to the utils directory and run (irrepsecitve of what kernel you are
+running):
+
+> make
+
+This should produce a loaddriver executable.
+
+3. Get the windows driver
+-------------------------
+Download the Windows XP drivers for your card and locate the .sys and
+.inf file. Copy these files some place.
+   
+4. Find out the PCI vendor and device of you WLAN card.
+-------------------------------------------------------
+
+You can do this step in two ways. 
+
+a) Run
+
+   > lspci -n | grep `lspci | awk '/802.11/ {print $1}'` | awk  '{print $4}
+
+   This should produce output such as '14e4:4301'. If it does, then the
+   vendor ID is 14e4 and device ID is 4301. 
+
+b) If step a) fails, or if you want to do it manually, run
+
+   > lspci
+   ...
+   00:0a.2 FLASH memory: ENE Technology Inc: Unknown device 0510
+   00:0c.0 Network controller: Broadcom Corporation BCM4301 802.11b (rev 02)
+   00:0d.0 Ethernet controller: 3Com Corporation 3c940 1000Base? (rev 12)
+   ...
+
+   In this example, 00:0c.0 is the PCI ID of the wireless card. This
+   varies from system to system. An easy way to look for the card is to
+   grep for 802.11:
+
+   > lspci | grep 802.11
+   00:0c.0 Network controller: Broadcom Corporation BCM4301 802.11b (rev 02)
+
+   Now look for vendor id and driver id for the same card:
+
+   > lspci -n
+   ...
+   00:0a.2 Class 0501: 1524:0510
+   00:0c.0 Class 0280: 14e4:4301 (rev 02)
+   00:0d.0 Class 0200: 10b7:1700 (rev 12)
+   ...
+
+   Here, the second line begins with the PCI ID noted above: 00:0c.0
+
+   So the vendor ID is 14e4 and the device ID is 4301 in this case.
+
+5. Load the kernel module
+-------------------------
+
+From the ndiswrapper directory,
+
+a) If you are running 2.6 kernel, run:
+
+   > insmod driver/ndiswrapper.ko
+
+b) If you are running 2.4 kernel, run:
+
+   > insmod driver/ndiswrapper.o
+
+6. Load the windows driver
+--------------------------
+From the ndiswrapper directory, run:
+
+> utils/loaddriver <vendor> <device> <sysfile> <inffile>
+
+where <vendor> is the vendor ID and <device> is the device ID noted in
+step 4, <sysfile> is the full path to the .sys file and <inffile> is the
+full path to .inf file of the windows driver copied in step 3.
+
+If you get no error the driver should now be loaded and active.
+
+7. Configure interface
+----------------------
+Use iwconfig to configure wireless network interface. First, locate
+the wireless interface:
+
+> iwconfig
+
+This will print the wireless interface (eth0 or eth1 or eth2 ...). In
+the examples below ethX is used; replace ethX with the interface
+reported by iwconfig above.
+
+Set the operating mode of the interface according to your setup. In
+most cases, it is Managed: 
+
+> iwconfig ethX mode Managed
+
+If you use encryption (WEP), set the key:
+
+> iwconfig ethX key XXXXXXXX
+
+(You can use 6 hex digits for 40-bit encryption or 10  hex digits for
+128-bit encryption).
+
+Set the SSID:
+
+> iwconfig ethX essid ESSID
+
+Replace ESSID with the SSID used by your AP (access point or router).
+
+Now, setup the network parameters for the interface ethX. This varies
+from distribution to distribution. Refer to your distribution's
+documents on how to do this. Once this is done, you can use network
+tools to bring up the network; e.g.,
+
+> ifup ethX
+
+or
+
+> ifconfig ethX up
+
+8. Automate
+-----------
+When you have a wokring setup you may want to automate the driver-loading
+
+a) You need to copy the ndiswrapper module (produced in step 1) to
+   your kernel's modules directory. For this, create the misc
+   directory in the appropriate place:
+
+   > mkdir /lib/modules/$(uname -r)/misc
+
+   Copy ndiswrapper.o file if you are running 2.4 kernel, or
+   ndiswrapper.ko file if you are running 2.6 kernel to the misc
+   directory created above:
+
+   > cp driver/ndiswrapper.*o /lib/modules/$(uname -r) misc
+
+   Update module information:
+
+   > depmod -a
+
+   Copy the loaddriver executable to some place, e.g., /usr/local/bin:
+
+   > cp utils/loaddriver /usr/local/bin
+
+   Copy the .inf file and .sys file to some place, e.g.,
+   /usr/local/share/ndiswrapper
+
+   > cp bcmwl5.sys bcmwl5.inf /usr/local/share/ndiswrapper
+
+b) Create alias for the interface:
+
+   alias ethX ndiswrapper
+
+c) For kernel 2.6:
+
+   * First write a script that does insmod and loaddriver.
+
+   * Add this line to /etc/modprobe.conf:
+
+        install ethX <path to your script>
+
+     Fedora Core 1 (and probably Redhat 9) with kernel 2.6.0 seem to
+     have a slight bug which cause ifup to not recoginize the install
+     line in modprobe.conf. See 
+     http://bugzilla.redhat.com/bugzilla/show_bug.cgi?id=110415
+     for more info and a patch.
+
+   For kernel 2.4:
+
+   * Add these line to /etc/modules.conf:
+
+     post-install ethX /usr/local/bin/loaddriver <vendor> <device>  /usr/local/share/ndiswrapper/*.sys /usr/local/share/ndiswrapper/*.inf 
+

@@ -1,0 +1,24 @@
+Version 0.3 2003-12-16
+======================
+
+* Centrino now works with some drivers.
+* Unified makefile in driver directory for easier compiling.
+* SMP fixes (not 100% complete yet).
+* Support for Atheros AR5004 drivers.
+* Taint kernel when loading windows driver.
+
+Version 0.2 2003-12-04
+======================
+
+* New inf file parser.
+* Access point scanning.
+* WEP support.
+* Byte statistics for ifconfig.
+* Kernel 2.4 support.
+* Support for more Broadcom cards (No centrino yet).
+* Tons of bugfixes should improve stability a lot. 
+
+Version 0.1 2003-11-17
+======================
+
+* Initial release.
