@@ -601,7 +601,7 @@ static int ndis_list_scan(struct ndis_handle *handle)
 	if (res)
 		printk(KERN_ERR "BSSID list scan failed with %d\n", res);
 	
-	return 0;
+	return res;
 }
 
 static int ndis_set_scan(struct net_device *dev, struct iw_request_info *info,
@@ -646,7 +646,10 @@ void add_scan_timer(unsigned long handle)
 	struct timer_list *timer_list =
 		&(((struct ndis_handle *)handle)->driver->timer_list);
 
-	ndis_list_scan((struct ndis_handle *)handle);
+	if(ndis_list_scan((struct ndis_handle *)handle))
+	{
+		return;
+	}
 
 	timer_list->data = (unsigned long) handle;
 	timer_list->function = &add_scan_timer;
