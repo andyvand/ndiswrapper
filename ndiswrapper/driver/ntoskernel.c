@@ -446,6 +446,26 @@ IoAllocateIrp(char stack_size, unsigned char charge_quota)
 	TRACEEXIT3(return irp);
 }
 
+STDCALL static void
+IoInitializeIrp(struct irp *irp, unsigned short size, unsigned char stack_size)
+{
+	TRACEENTER3("irp = %p, size = %d, stack_size = %d",
+		    irp, size, stack_size);
+
+	if (irp) {
+		DBGTRACE3("initializing irp %p", irp);
+		memset(irp, 0, size);
+
+		irp->size       = size;
+		irp->stack_size = stack_size;
+		irp->stack_pos  = stack_size;
+		irp->current_stack_location =
+			((struct io_stack_location *)(irp+1)) + stack_size;
+	}
+
+	TRACEEXIT3(return);
+}
+
 STDCALL static struct irp *
 IoBuildDeviceIoControlRequest(unsigned long ioctl,
                               struct device_object *dev_obj,
@@ -798,6 +818,7 @@ struct wrap_func ntos_wrap_funcs[] =
 	WRAP_FUNC_ENTRY(IoFreeIrp),
 	WRAP_FUNC_ENTRY(IoCancelIrp),
 	WRAP_FUNC_ENTRY(IoAllocateIrp),
+	WRAP_FUNC_ENTRY(IoInitializeIrp),
 	WRAP_FUNC_ENTRY(KeAcquireSpinLock),
 	WRAP_FUNC_ENTRY(KeCancelTimer),
 	WRAP_FUNC_ENTRY(KeClearEvent),
