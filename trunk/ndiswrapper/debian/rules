@@ -1,0 +1,231 @@
+#!/usr/bin/make -f
+# -*- makefile -*-
+# Sample debian/rules that uses debhelper.
+# GNU copyright 1997 to 1999 by Joey Hess.
+#
+# Modified to make a template file for a multi-binary package with separated
+# build-arch and build-indep targets  by Bill Allombert 2001
+
+# Uncomment this to turn on verbose mode.
+#export DH_VERBOSE=1
+
+# This has to be exported to make some magic below work.
+export DH_OPTIONS
+
+
+
+CFLAGS = -Wall -g
+
+ifneq (,$(findstring noopt,$(DEB_BUILD_OPTIONS)))
+	CFLAGS += -O0
+else
+	CFLAGS += -O2
+endif
+ifeq (,$(findstring nostrip,$(DEB_BUILD_OPTIONS)))
+	INSTALL_PROGRAM += -s
+endif
+
+### KERNEL SETUP
+### Setup the stuff needed for making kernel module packages
+### taken from /usr/share/kernel-package/sample.module.rules
+
+# Name of package
+package		= ndiswrapper
+# KSRC is the location of the kernel source. This is the default value,
+# when make-kpkg is used it will supply to real value
+KSRC		:= /usr/src/linux
+# KDREV is the package-revision, as given to make-kpkg by the user.
+# Just put a simply default value in here which we use when we test
+# the packagebuilding without make-kpkg
+ifeq ($(strip $(KDREV)),)
+KDREV		= "1"
+endif
+
+## Now to determine the kernel version, normally supplied by make-kpkg
+ifeq ($(strip $(KVERS)),)
+# Now we need to get the kernel-version somehow (we are not running
+# under make-kpkg?)
+ifeq ($(strip $(KSRC)),)
+$(error Error. I do not know how to determine the kernel version)
+else
+kversion :=$(shell egrep '^VERSION +=' $(KSRC)/Makefile 2>/dev/null | \
+                 sed -e 's/[^0-9]*\([0-9]*\)/\1/')
+kplevel  :=$(shell egrep '^PATCHLEVEL +=' $(KSRC)/Makefile 2>/dev/null | \
+                    sed -e 's/[^0-9]*\([0-9]*\)/\1/')
+ksublevel:=$(shell egrep '^SUBLEVEL +=' $(KSRC)/Makefile 2>/dev/null | \
+                  sed -e 's/[^0-9]*\([0-9]*\)/\1/')
+EXTRA_VERSION:=$(shell egrep '^EXTRAVERSION +=' $(KSRC)/Makefile 2>/dev/null | \
+                 sed -e 's/EXTRAVERSION[\t ]*=[\t ]*\(.*\)/\1/')
+kextra:=$(strip $(EXTRA_VERSION))
+HAVE_NEW_MODLIB:=$(shell egrep '\(INSTALL_MOD_PATH\)' \
+                            $(KSRC)/Makefile 2>/dev/null )
+
+# If you want to have more than one kernel configuration per kernel
+# version, set FLAVOUR in the top level kernel Makefile *before*
+# invoking make-kpkg -- it will be appended to UTS_RELEASE in
+# version.h (separated by a hyphen). This affects everything -- the
+# names and versions of the image, source, headers, and doc packages,
+# and where the modules are searched for in /lib/modules.
+
+ifdef FLAVOUR
+# uhm - should check if we really have a Makefile capable of Flavours?
+endif
+
+FLAVOUR:=$(shell grep ^FLAVOUR $(KSRC)/Makefile 2>/dev/null | \
+                  perl -ple 's/FLAVOUR[\s:=]+//g')
+
+ifneq ($(strip $(FLAVOUR)),)
+INT_FLAV := -$(FLAVOUR)
+FLAV_ARG := FLAVOUR=$(FLAVOUR)
+else
+INT_FLAV :=
+FLAV_ARG :=
+endif
+
+## This is the replacement for FLAVOUR
+ifneq ($(strip $(APPEND_TO_VERSION)),)
+iatv := $(strip $(APPEND_TO_VERSION))
+EXTRAV_ARG := EXTRAVERSION=${EXTRA_VERSION}${iatv}
+else
+iatv :=
+EXTRAV_ARG :=
+endif
+
+KVERS = $(kversion).$(kplevel).$(ksublevel)$(kextra)$(iatv)$(INT_FLAV)
+
+endif
+endif
+
+non_epoch_version=$(shell echo $(KVERS) | perl -pe 's/^\d+://')
+epoch=$(shell echo $(KVERS) | perl -ne 'm/^(\d+:)/ && print $$1')
+
+# We also need the package version
+pversion	= $(shell sed -ne '1s/.*\((.*)\).*/\1/' debian/changelog)
+pversion	= $(shell sed -ne '1s/.*(\(.*\)).*/\1/p' debian/changelog)
+
+# MODDIR is the place where the final .deb package should be made. This is the
+# default value, when make-kpkg is used it will supply to real value
+#MODDIR		= /lib/modules/$(KVERS)/misc
+MODDIR		= ..
+
+pmodules = $(package)-modules-$(non_epoch_version)
+
+# Prepares the package for distribution.  Intended for the kernel
+# maintainer.
+kdist: kdist_clean kdist_config kdist_image
+
+# The kdist_configure target is called by make-kpkg modules_config. It
+# should configure the module so it is ready for compilation (mostly
+# useful for calling configure)
+kdist_config:
+	@echo Nothing to configure
+
+# the kdist_image target is called by make-kpkg modules_image. It is
+# responsible for compiling the module and creating the package. It
+# should also clean up after making the module. Please note we use a
+# seperate binary-modules target to make testing the package building
+# easier
+kdist_image:
+	$(MAKE) $(MFLAGS) -f debian/rules binary-modules
+	$(MAKE) $(MFLAGS) -f debian/rules clean
+
+# the kdist_clean target is called by make-kpkg modules_clean. It is
+# responsible for cleaning up any changes that have been made by the
+# other kdist_commands (except for the .deb files created).
+kdist_clean:
+	$(MAKE) $(MFLAGS) -f debian/rules clean
+
+### end  KERNEL SETUP
+
+build-modules-prep:
+	sed -e 's/$${kpkg\:Kernel\-Version}/$(non_epoch_version)/' \
+	debian/control.modules > debian/control
+
+	if [ $(kplevel) == 4 ];then \
+		module=ndiswrapper.o; \
+	else \
+		module=ndiswrapper.ko; \
+	fi; \
+	echo "driver/$$module /lib/modules/$(non_epoch_version)/misc" \
+		> debian/ndiswrapper-modules-$(non_epoch_version).install
+	echo "lib/modules/$(non_epoch_version)/misc" > debian/dirs
+
+
+build-modules:
+	export DH_OPTIONS='-p$(pmodules)'
+
+	# Is this needed for setting up a Depends?
+	#echo "kpkg:Package-Version=$(epoch)$(pversion)+$(non_epoch_version)" \
+	#	 >> debian/$(package).substvars
+	echo "kpkg:Kernel-Version=$(non_epoch_version)" > \
+		debian/$(pmodules).substvars
+	# Build the module
+	dh_installdirs lib/modules/$(non_epoch_version)/misc
+	$(MAKE) -C driver
+
+clean: check-perms clean-modules clean-utils
+
+check-perms:
+	dh_testdir
+	dh_testroot
+
+clean-modules: build-modules-prep
+	# Add here commands to clean up after the build process.
+	-$(MAKE) -C driver clean
+	-rm -f debian/ndiswrapper-modules-$(non_epoch_version).install
+	dh_clean
+
+clean-utils: build-utils-prep
+	-$(MAKE) -C utils clean
+	dh_clean
+
+common-prolog:
+	dh_testdir
+	dh_testroot
+#	dh_installchangelogs ChangeLog
+	dh_installdocs
+	dh_installexamples
+#	dh_installmenu
+	dh_installdebconf	
+#	dh_installlogrotate	
+#	dh_installemacsen
+#	dh_installpam
+#	dh_installmime
+#	dh_installinit
+#	dh_installcron
+#	dh_installinfo
+
+common-epilog:
+	dh_install
+	dh_link
+	dh_strip
+	dh_compress 
+	dh_fixperms
+#	dh_perl
+#	dh_python
+	dh_makeshlibs
+	dh_installdeb
+	dh_shlibdeps
+	dh_gencontrol
+	dh_md5sums
+
+build-utils-prep:
+	cp debian/control.utils debian/control
+	cp debian/dirs.utils debian/dirs
+
+build-utils:
+	export DH_OPTIONS='-i'
+	dh_installman debian/ndiswrapper.8
+	$(MAKE) -C utils all
+
+binary-utils: build-utils-prep common-prolog build-utils common-epilog
+	dh_builddeb --destdir=$(MODDIR)
+
+binary-modules: build-modules-prep common-prolog build-modules common-epilog
+	dh_builddeb --destdir=$(MODDIR)
+
+binary:
+	$(MAKE) -f debian/rules binary-utils
+	$(MAKE) -f debian/rules binary-modules
+
+.PHONY: binary binary-modules binary-utils build-utils build-utils-prep common-epilog common-prolog clean-utils clean-modules check-perms clean build-modules build-modules-prep
