@@ -455,7 +455,6 @@ struct ndis_handle;
  *
  */
 struct ndis_device {
-	struct list_head list;
 	struct list_head settings;
 	int bustype;
 	int vendor;
