@@ -454,8 +454,6 @@ static inline void wrap_spin_lock_init(struct wrap_spinlock *lock)
 			spin_lock_bh(&(lock)->spinlock);	 \
 			(lock)->use_bh = 1;			 \
 		}						 \
-		if (!in_atomic())				 \
-			WARNING("!in_atomic()");		 \
 	} else {						 \
 		spin_lock(&(lock)->spinlock);			 \
 		(lock)->use_bh = 0;				 \
@@ -464,13 +462,10 @@ static inline void wrap_spin_lock_init(struct wrap_spinlock *lock)
 })
 
 #define wrap_spin_unlock(lock) do {					\
-		if ((lock)->use_bh == 1) {				\
-			if (!in_atomic())				\
-				WARNING("!in_atomic()");		\
+		if ((lock)->use_bh == 1)				\
 			spin_unlock_bh(&(lock)->spinlock);		\
-		} else {						\
+		else							\
 			spin_unlock(&(lock)->spinlock);			\
-		}							\
 	} while (0)
 
 #define wrap_spin_unlock_irql(lock, newirql) do {			\
