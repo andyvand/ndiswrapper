@@ -24,13 +24,13 @@ iw_ndis..o:	iw_ndis.c iw_ndis.h
 
 pe_loader.o: pe_loader.c pe_loader.h
 
-misc_funcs.o: misc_funcs.c ndis.h
+misc_funcs.o: misc_funcs.c ndis.h misc_funcs_exports.h
 
-hal.o: hal.c ndis.h
+hal.o: hal.c ndis.h hal_exports.h
 
-ntoskernel.o: ntoskernel.c ntoskernel.h
+ntoskernel.o: ntoskernel.c ntoskernel.h ntoskernel_exports.h
 
-ndis.o: ndis.c ndis.h
+ndis.o: ndis.c ndis.h ndis_exports.h
 
 proc.o: proc.c ndis.h
 
@@ -42,7 +42,7 @@ ndis.h : ntoskernel.h
 
 ntoskernel.h : ndiswrapper.h
 
-usb.o: usb.c usb.h ndis.h
+usb.o: usb.c usb.h ndis.h usb_exports.h
 
 # generate exports symbol table from C files
 %_exports.h: %.c
@@ -152,7 +152,7 @@ default:
 
 endif
 
-install: default
+install: prereq_check gen_exports default
 	mkdir -p $(INST_DIR)
 	install -m 0644 $(MODULE) $(INST_DIR)
 	/sbin/depmod -a
