@@ -1482,6 +1482,7 @@ static void module_cleanup(void)
 	loader_exit();
 	ndiswrapper_procfs_remove();
 	ndis_exit();
+	ntoskrnl_exit();
 	misc_funcs_exit();
 }
 
