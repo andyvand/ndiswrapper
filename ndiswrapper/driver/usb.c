@@ -538,5 +538,9 @@ struct wrap_func usb_wrap_funcs[] =
 {
 	WRAP_FUNC_ENTRY(USBD_CreateConfigurationRequestEx),
 	WRAP_FUNC_ENTRY(USBD_ParseConfigurationDescriptorEx),
+	{"_USBD_CreateConfigurationRequestEx@8",
+	 (WRAP_FUNC *)USBD_CreateConfigurationRequestEx},
+	{"_USBD_ParseConfigurationDescriptorEx@28",
+	 (WRAP_FUNC *)USBD_ParseConfigurationDescriptorEx},
 	{NULL, NULL}
 };
