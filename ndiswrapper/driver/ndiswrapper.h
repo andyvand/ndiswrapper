@@ -204,6 +204,14 @@ do {									\
 #define free_netdev kfree
 #endif
 
+#if LINUX_VERSION_CODE > KERNEL_VERSION(2,6,9)
+#define NW_MODULE_PARM_INT(name, perm) module_param(name, int, perm)
+#define NW_MODULE_PARM_STRING(name, perm) module_param(name, charp, perm)
+#else
+#define NW_MODULE_PARM_INT(name, perm) MODULE_PARAM(name, "i")
+#define NW_MODULE_PARM_STRING(name, perm) MODULE_PARAM(name, "s")
+#endif
+
 #define KMALLOC_THRESHOLD 131072
 
 /* TICK is 100ns */
