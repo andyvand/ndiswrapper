@@ -336,11 +336,11 @@ struct ndis_spin_lock
 };
 
 struct ndis_binary_data {
-	__u16 len;
+	unsigned short len;
 	void *buf;
 };
 
-enum ndis_setting_type {
+enum ndis_config_param_type {
 	NDIS_SETTING_INT,
 	NDIS_SETTING_HEXINT,
 	NDIS_SETTING_STRING,
@@ -349,14 +349,14 @@ enum ndis_setting_type {
 	NDIS_SETTING_NONE,
 };
 
-struct ndis_setting_val
+struct ndis_config_param
 {
-	enum ndis_setting_type type;
+	enum ndis_config_param_type type;
 	union
 	{
 		unsigned long intval;
 		struct ustring ustring;
-//		struct ndis_binary_data binary_data;
+		struct ndis_binary_data binary_data;
 	} data;
 };
 
@@ -365,8 +365,8 @@ struct ndis_setting
 {
 	struct list_head list;
 	char *name;
-	char val_str[MAX_NDIS_SETTING_VAL_LENGTH];
-	struct ndis_setting_val value;
+	char value[MAX_NDIS_SETTING_VAL_LENGTH];
+	struct ndis_config_param config_param;
 };
 
 
@@ -929,6 +929,10 @@ STDCALL void NdisMTransferDataComplete(struct ndis_handle *handle,
 				       struct ndis_packet *packet,
 				       unsigned int status,
 				       unsigned int bytes_txed);
+STDCALL void NdisWriteConfiguration(unsigned int *status,
+				    struct ndis_handle *handle,
+				    struct ustring *key,
+				    struct ndis_config_param *val);
 
 STDCALL int RtlUnicodeStringToAnsiString(struct ustring *dst,
 					 struct ustring *src,
@@ -969,10 +973,13 @@ int ndis_suspend_usb(struct usb_interface *intf, u32 state);
 int ndis_resume_usb(struct usb_interface *intf);
 int set_auth_mode(struct ndis_handle *handle, int mode);
 int set_encr_mode(struct ndis_handle *handle, int mode);
+int ndis_set_mac_addr(struct net_device *dev, void *p);
+int ndis_reinit(struct ndis_handle *handle);
 
 void packet_recycler(void *param);
 int stricmp(const char *s1, const char *s2);
 int string_to_mac(unsigned char *mac, unsigned char *string, int string_len);
+int mac_to_string(unsigned char *string, unsigned char *mac, int string_len);
 
 extern struct wrap_spinlock atomic_lock;
 extern struct wrap_spinlock cancel_lock;
@@ -1022,6 +1029,7 @@ extern struct wrap_spinlock cancel_lock;
 #define OID_GEN_PHYSICAL_MEDIUM     0x00010202
 #define OID_GEN_MEDIA_SUPPORTED                 0x00010103
 #define OID_GEN_MEDIA_IN_USE                    0x00010104
+#define OID_802_3_CURRENT_ADDRESS		0x01010102
 
 #define NDIS_OID_PNP_SET_POWER      0xFD010101
 #define NDIS_OID_PNP_QUERY_POWER    0xFD010102

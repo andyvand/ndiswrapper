@@ -249,7 +249,7 @@ static int procfs_read_settings(char *page, char **start, off_t off,
 
 	list_for_each_entry(ndis_setting, &handle->device->settings, list)
 		p += sprintf(p, "%s=%s\n",
-			     ndis_setting->name, ndis_setting->val_str);
+			     ndis_setting->name, ndis_setting->value);
 
 	return (p - page);
 }
@@ -312,22 +312,8 @@ static int procfs_write_settings(struct file *file, const char *buf,
 	}
 	else if (!strcmp(setting, "reinit"))
 	{
-		int i = test_bit(ATTR_HALT_ON_SUSPEND, &handle->attributes);
-		set_bit(ATTR_HALT_ON_SUSPEND, &handle->attributes);
-		if (handle->device->bustype == 5)
-		{
-			ndis_suspend_pci(handle->dev.pci, 3);
-			ndis_resume_pci(handle->dev.pci);
-		}
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0) && defined(CONFIG_USB)
-		else
-		{
-			ndis_suspend_usb(handle->intf, 3);
-			ndis_resume_usb(handle->intf);
-		}
-#endif
-		if (!i)
-			clear_bit(ATTR_HALT_ON_SUSPEND, &handle->attributes);
+		if (ndis_reinit(handle))
+			return -EINVAL;
 	}
 	else if (!strcmp(setting, "power_profile"))
 	{
@@ -400,9 +386,12 @@ static int procfs_write_settings(struct file *file, const char *buf,
 			{
 				if (strlen(p) > MAX_NDIS_SETTING_VAL_LENGTH)
 					TRACEEXIT1(return -EINVAL);
-				memset(ndis_setting->val_str, 0,
+				memset(ndis_setting->value, 0,
 					   MAX_NDIS_SETTING_VAL_LENGTH);
-				memcpy(ndis_setting->val_str, p, strlen(p));
+				memcpy(ndis_setting->value, p, strlen(p));
+				if (ndis_setting->config_param.data.ustring.buf)
+					RtlFreeUnicodeString(&ndis_setting->config_param.data.ustring);
+				ndis_setting->config_param.type = NDIS_SETTING_NONE;
 				res = 0;
 			}
 		}

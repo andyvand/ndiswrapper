@@ -295,9 +295,17 @@ STDCALL static void WRAP_EXPORT(NdisOpenConfigurationKeyByIndex)
 }
 
 STDCALL static void WRAP_EXPORT(NdisCloseConfiguration)
-	(void *confhandle)
+	(struct ndis_handle *handle)
 {
-	TRACEENTER2("confhandle: %p", confhandle);
+	struct list_head *curr, *tmp2;
+
+	TRACEENTER2("handle: %p", handle);
+	list_for_each_safe(curr, tmp2, &handle->device->settings)
+	{
+		struct ndis_setting *setting = (struct ndis_setting*) curr;
+		setting->config_param.type = NDIS_SETTING_NONE;
+	}
+	return;
 }
 
 STDCALL static void WRAP_EXPORT(NdisOpenFile)
@@ -439,74 +447,80 @@ static int ndis_encode_setting(struct ndis_setting *setting,
 	struct ustring ansi;
 
 	TRACEENTER2("type = %d", ndis_setting_type);
-	if (setting->value.type == ndis_setting_type)
+	if (setting->config_param.type == ndis_setting_type)
 		return NDIS_STATUS_SUCCESS;
-
-	if (setting->value.type == NDIS_SETTING_STRING)
-		kfree(setting->value.data.ustring.buf);
 
 	switch(ndis_setting_type)
 	{
 	case NDIS_SETTING_INT:
-		setting->value.data.intval =
-			simple_strtol(setting->val_str, NULL, 0);
-		DBGTRACE("value = %lu", setting->value.data.intval);
+		setting->config_param.data.intval =
+			simple_strtol(setting->value, NULL, 0);
+		DBGTRACE("value = %lu", setting->config_param.data.intval);
 		break;
 	case NDIS_SETTING_HEXINT:
-		setting->value.data.intval =
-			simple_strtol(setting->val_str, NULL, 16);
-		DBGTRACE2("value = %lu", setting->value.data.intval);
+		setting->config_param.data.intval =
+			simple_strtol(setting->value, NULL, 16);
+		DBGTRACE2("value = %lu", setting->config_param.data.intval);
 		break;
 	case NDIS_SETTING_STRING:
-		ansi.buflen = ansi.len = strlen(setting->val_str);
-		ansi.buf = setting->val_str;
-		if (RtlAnsiStringToUnicodeString(&setting->value.data.ustring,
+		ansi.buflen = ansi.len = strlen(setting->value);
+		ansi.buf = setting->value;
+		DBGTRACE2("setting value = %s", ansi.buf);
+		if (setting->config_param.data.ustring.buf)
+			RtlFreeUnicodeString(&setting->config_param.data.ustring);
+		if (RtlAnsiStringToUnicodeString(&setting->config_param.data.ustring,
 						 &ansi, 1))
 			TRACEEXIT1(return NDIS_STATUS_FAILURE);
 		break;
 	default:
 		return NDIS_STATUS_FAILURE;
 	}
-	setting->value.type = ndis_setting_type;
+	setting->config_param.type = ndis_setting_type;
 	return NDIS_STATUS_SUCCESS;
 }
 
 static int ndis_decode_setting(struct ndis_setting *setting,
-			       struct ndis_setting_val *val)
+			       struct ndis_config_param *val)
 {
 	struct ustring ansi;
+
+	if (setting->config_param.type == NDIS_SETTING_STRING &&
+	    setting->config_param.data.ustring.buf)
+		RtlFreeUnicodeString(&setting->config_param.data.ustring);
 
 	switch(val->type)
 	{
 	case NDIS_SETTING_INT:
-		snprintf(setting->val_str, sizeof(long), "%lu",
+		snprintf(setting->value, sizeof(long), "%lu",
 			 (unsigned long)val->data.intval);
-		setting->val_str[sizeof(long)] = 0;
+		setting->value[sizeof(long)] = 0;
 		break;
 	case NDIS_SETTING_HEXINT:
-		snprintf(setting->val_str, sizeof(long), "%lx",
+		snprintf(setting->value, sizeof(long), "%lx",
 			 (unsigned long)val->data.intval);
-		setting->val_str[sizeof(long)] = 0;
+		setting->value[sizeof(long)] = 0;
 		break;
 	case NDIS_SETTING_STRING:
-		ansi.buf = setting->val_str;
+		ansi.buf = setting->value;
 		ansi.buflen = MAX_STR_LEN;
 		if (RtlUnicodeStringToAnsiString(&ansi, &val->data.ustring, 0)
-		    || ansi.len >= MAX_STR_LEN)
-		{
+		    || ansi.len >= MAX_STR_LEN) {
 			TRACEEXIT1(return NDIS_STATUS_FAILURE);
 		}
+		memcpy(setting->value, ansi.buf, ansi.len);
+		DBGTRACE2("value = %s", setting->value);
+		setting->value[ansi.len] = 0;
 		break;
 	default:
 		DBGTRACE2("unknown setting type: %d", val->type);
 		return NDIS_STATUS_FAILURE;
 	}
-	setting->value.type = NDIS_SETTING_NONE;
+	setting->config_param.type = NDIS_SETTING_NONE;
 	return NDIS_STATUS_SUCCESS;
 }
 
 STDCALL static void WRAP_EXPORT(NdisReadConfiguration)
-	(unsigned int *status, struct ndis_setting_val **dest,
+	(unsigned int *status, struct ndis_config_param **dest,
 	 struct ndis_handle *handle, struct ustring *key, unsigned int type)
 {
 	struct ndis_setting *setting;
@@ -514,16 +528,7 @@ STDCALL static void WRAP_EXPORT(NdisReadConfiguration)
 	char *keyname;
 
 	TRACEENTER2("%s", "");
-	ansi.buf = kmalloc(MAX_STR_LEN, GFP_KERNEL);
-	if (!ansi.buf)
-	{
-		*status = NDIS_STATUS_RESOURCES;
-		return;
-	}
-	ansi.buf[MAX_STR_LEN-1] = 0;
-	ansi.buflen = MAX_STR_LEN;
-	if (RtlUnicodeStringToAnsiString(&ansi, key, 0))
-	{
+	if (RtlUnicodeStringToAnsiString(&ansi, key, 1)) {
 		*dest = NULL;
 		*status = NDIS_STATUS_FAILURE;
 		kfree(ansi.buf);
@@ -536,14 +541,14 @@ STDCALL static void WRAP_EXPORT(NdisReadConfiguration)
 		if(stricmp(keyname, setting->name) == 0)
 		{
 			DBGTRACE2("setting found %s=%s",
-				 keyname, setting->val_str);
+				 keyname, setting->value);
 
 			*status = ndis_encode_setting(setting, type);
 			if (*status == NDIS_STATUS_SUCCESS)
-				*dest = &setting->value;
+				*dest = &setting->config_param;
 			else
 				*dest = NULL;
-			kfree(ansi.buf);
+			RtlFreeAnsiString(&ansi);
 			DBGTRACE2("status = %d", *status);
 			TRACEEXIT2(return);
 		}
@@ -553,45 +558,35 @@ STDCALL static void WRAP_EXPORT(NdisReadConfiguration)
 
 	*dest = NULL;
 	*status = NDIS_STATUS_FAILURE;
-	kfree(ansi.buf);
+	RtlFreeAnsiString(&ansi);
 	TRACEEXIT2(return);
 }
 
-STDCALL static void WRAP_EXPORT(NdisWriteConfiguration)
+STDCALL void WRAP_EXPORT(NdisWriteConfiguration)
 	(unsigned int *status, struct ndis_handle *handle,
-	 struct ustring *key, struct ndis_setting_val *val)
+	 struct ustring *key, struct ndis_config_param *param)
 {
 	struct ustring ansi;
 	struct ndis_setting *setting;
 	char *keyname;
 
 	TRACEENTER2("%s", "");
-	ansi.buf = kmalloc(MAX_STR_LEN, GFP_KERNEL);
-	if (!ansi.buf)
-	{
-		*status = NDIS_STATUS_RESOURCES;
-		return;
-	}
-	ansi.buf[MAX_STR_LEN-1] = 0;
-	ansi.buflen = MAX_STR_LEN;
-	if (RtlUnicodeStringToAnsiString(&ansi, key, 0))
+	if (RtlUnicodeStringToAnsiString(&ansi, key, 1))
 	{
 		*status = NDIS_STATUS_FAILURE;
-		kfree(ansi.buf);
 		TRACEEXIT2(return);
 	}
 	keyname = ansi.buf;
+	DBGTRACE2("key = %s", keyname);
 
 	list_for_each_entry(setting, &handle->device->settings, list)
 	{
 		if(strcmp(keyname, setting->name) == 0)
 		{
-			if (setting->value.type == NDIS_SETTING_STRING)
-				kfree(setting->value.data.ustring.buf);
-			*status = ndis_decode_setting(setting, val);
+			*status = ndis_decode_setting(setting, param);
 			DBGTRACE2("setting changed %s=%s",
-				 keyname, setting->val_str);
-			kfree(ansi.buf);
+				 keyname, setting->value);
+			RtlFreeAnsiString(&ansi);
 			TRACEEXIT2(return);
 		}
 	}
@@ -599,7 +594,7 @@ STDCALL static void WRAP_EXPORT(NdisWriteConfiguration)
 	if ((setting = kmalloc(sizeof(*setting), GFP_KERNEL)) == NULL)
 	{
 		*status = NDIS_STATUS_RESOURCES;
-		kfree(ansi.buf);
+		RtlFreeAnsiString(&ansi);
 		TRACEEXIT2(return);
 	}
 	memset(setting, 0, sizeof(*setting));
@@ -607,12 +602,12 @@ STDCALL static void WRAP_EXPORT(NdisWriteConfiguration)
 	{
 		kfree(setting);
 		*status = NDIS_STATUS_RESOURCES;
-		kfree(ansi.buf);
+		RtlFreeAnsiString(&ansi);
 		TRACEEXIT2(return);
 	}
 	memcpy(setting->name, keyname, ansi.len);
 	setting->name[ansi.len] = 0;
-	*status = ndis_decode_setting(setting, val);
+	*status = ndis_decode_setting(setting, param);
 	if (*status == NDIS_STATUS_SUCCESS)
 		list_add(&setting->list, &handle->device->settings);
 	else
@@ -620,7 +615,7 @@ STDCALL static void WRAP_EXPORT(NdisWriteConfiguration)
 		kfree(setting->name);
 		kfree(setting);
 	}
-	kfree(ansi.buf);
+	RtlFreeAnsiString(&ansi);
 	TRACEEXIT2(return);
 }
 
@@ -1328,10 +1323,11 @@ STDCALL static void WRAP_EXPORT(NdisReadNetworkAddress)
 	(unsigned int *status, void **addr, unsigned int *len,
 	 struct ndis_handle *handle)
 {
-	struct ndis_setting_val *setting;
+	struct ndis_config_param *setting;
 	struct ustring key, ansi;
 	int ret;
 
+	TRACEENTER1("%s", "");
 	ansi.buf = "mac_address";
 	ansi.buflen = strlen(ansi.buf);
 	ansi.len = ansi.buflen;
