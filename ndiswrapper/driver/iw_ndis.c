@@ -223,10 +223,14 @@ static int iw_get_freq(struct net_device *dev, struct iw_request_info *info,
 	unsigned int res, written, needed;
 	struct ndis_configuration req;
 
+	memset(&req, 0, sizeof(req));
 	res = doquery(handle, NDIS_OID_CONFIGURATION, (char*)&req,
 		      sizeof(req), &written, &needed);
-	if (res)
+	if (res == NDIS_STATUS_INVALID_DATA)
+	{
 		WARNING("getting configuration failed (%08X)", res);
+		TRACEEXIT(return -EOPNOTSUPP);
+	}
 
 	memset(&(wrqu->freq), 0, sizeof(struct iw_freq));
 
@@ -255,10 +259,14 @@ static int iw_set_freq(struct net_device *dev, struct iw_request_info *info,
 	unsigned int res, written, needed;
 	struct ndis_configuration req;
 
-	res = doquery(handle, NDIS_OID_CONFIGURATION, (char *)&req,
-				  sizeof(req), &written, &needed);
-	if (res)
+	memset(&req, 0, sizeof(req));
+	res = doquery(handle, NDIS_OID_CONFIGURATION, (char*)&req,
+		      sizeof(req), &written, &needed);
+	if (res == NDIS_STATUS_INVALID_DATA)
+	{
 		WARNING("getting configuration failed (%08X)", res);
+		TRACEEXIT(return -EOPNOTSUPP);
+	}
 
 	if (wrqu->freq.m < 1000 && wrqu->freq.e == 0)
 	{
@@ -573,6 +581,8 @@ static int iw_get_encr(struct net_device *dev, struct iw_request_info *info,
 		wrqu->data.flags |= IW_ENCODE_OPEN;
 	else if (status == AUTHMODE_RESTRICTED)
 		wrqu->data.flags |= IW_ENCODE_RESTRICTED;
+	else if (status == AUTHMODE_AUTO)
+		wrqu->data.flags |= IW_ENCODE_RESTRICTED;
 	
 	TRACEEXIT1(return 0);
 }
@@ -625,6 +635,17 @@ static int iw_set_encr(struct net_device *dev, struct iw_request_info *info,
 		TRACEEXIT1(return 0);
 	}
 
+	/* global encryption state (for all keys) */
+	if (wrqu->data.flags & IW_ENCODE_OPEN)
+		res = set_auth_mode(handle, AUTHMODE_OPEN);
+	else // if (wrqu->data.flags & IW_ENCODE_RESTRICTED)
+		res = set_auth_mode(handle, AUTHMODE_RESTRICTED);
+	if (res)
+	{
+		WARNING("setting authentication mode failed (%08X)", res);
+		TRACEEXIT1(return -EINVAL);
+	}
+
 	if (wrqu->data.length > 0)
 	{
 		ndis_key.struct_size = sizeof(ndis_key);
@@ -661,16 +682,6 @@ static int iw_set_encr(struct net_device *dev, struct iw_request_info *info,
 		memcpy(&encr_info->keys[index].key, extra, ndis_key.length);
 	}
 
-	/* global encryption state (for all keys) */
-	if (wrqu->data.flags & IW_ENCODE_OPEN)
-		res = set_auth_mode(handle, AUTHMODE_OPEN);
-	else // if (wrqu->data.flags & IW_ENCODE_RESTRICTED)
-		res = set_auth_mode(handle, AUTHMODE_RESTRICTED);
-	if (res)
-	{
-		WARNING("setting authentication mode failed (%08X)", res);
-		TRACEEXIT1(return -EINVAL);
-	}
 
 	TRACEEXIT1(return 0);
 }
@@ -1061,7 +1072,6 @@ static int iw_get_range(struct net_device *dev, struct iw_request_info *info,
 		range->txpower[0] = tx_power;
 	}
 
-
 	range->we_version_compiled = WIRELESS_EXT;
 	range->we_version_source = 0;
 
@@ -1106,7 +1116,6 @@ static int iw_get_range(struct net_device *dev, struct iw_request_info *info,
 		range->freq[i].e = 1;
 	}
 	range->num_frequency = i;
-
 
 	range->min_rts = 0;
 	range->max_rts = 2347;
