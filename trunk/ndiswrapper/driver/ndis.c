@@ -899,8 +899,9 @@ STDCALL void WRAP_EXPORT(NdisFreeSpinLock)
 {
 	TRACEENTER4("lock %p", lock);
 	lock->klock = 0;
-	if (map_kspin_lock(&lock->klock))
-		ERROR("kspin_lock %p is not allocated", &lock->klock);
+	if (unmap_kspin_lock(&lock->klock))
+		ERROR("buggy Windows driver freeing unallocated "
+		      "kspin_lock %p", &lock->klock);
 
 	TRACEEXIT4(return);
 }
