@@ -2403,11 +2403,14 @@ STDCALL void WRAP_EXPORT(NdisMGetDeviceProperty)
 		next_dev, alloc_res, trans_res);
 
 	if (!handle->phys_device_obj) {
-		dev = kmalloc(sizeof(*dev), GFP_KERNEL);
+		/* some drivers don't allocate this pointer, nor is it
+		 * NULL so use wrap_kmalloc so it gets freed
+		 * automatically, if indeed we allocate it here */
+		dev = wrap_kmalloc(sizeof(*dev), GFP_KERNEL);
 		if (!dev) {
 			ERROR("%s", "unable to allocate "
 				"DEVICE_OBJECT structure!");
-			BUG();
+			TRACEEXIT2(return);
 		}
 	
 		for (i = 0; i < (sizeof(*dev)/sizeof(void *)); i++)

@@ -250,9 +250,9 @@ static void __devexit ndiswrapper_remove_one_pci_dev(struct pci_dev *pdev)
 	if (!handle)
 		TRACEEXIT1(return);
 
+	atomic_dec(&handle->driver->users);
 	ndiswrapper_remove_one_dev(handle);
 
-	atomic_dec(&handle->driver->users);
 	pci_release_regions(pdev);
 	pci_disable_device(pdev);
 	pci_set_drvdata(pdev, NULL);
@@ -371,8 +371,8 @@ ndiswrapper_remove_one_usb_dev(struct usb_interface *intf)
 	usb_set_intfdata(intf, NULL);
 	if (!handle)
 		TRACEEXIT1(return);
-	ndiswrapper_remove_one_dev(handle);
 	atomic_dec(&handle->driver->users);
+	ndiswrapper_remove_one_dev(handle);
 }
 #else
 static void
@@ -385,8 +385,8 @@ ndiswrapper_remove_one_usb_dev(struct usb_device *udev, void *ptr)
 	usb_set_intfdata(intf, NULL);
 	if (!handle)
 		TRACEEXIT1(return);
-	ndiswrapper_remove_one_dev(handle);
 	atomic_dec(&handle->driver->users);
+	ndiswrapper_remove_one_dev(handle);
 }
 #endif
 #endif /* CONFIG_USB */
