@@ -683,6 +683,13 @@ _FASTCALL static unsigned long WRAP_EXPORT(IofCallDriver)
 	TRACEEXIT3(return ret);
 }
 
+STDCALL unsigned long WRAP_EXPORT(PoCallDriver)
+	(struct device_object *dev_obj, struct irp *irp)
+{
+	TRACEENTER5("irp = %p", irp);
+	TRACEEXIT5(return IofCallDriver(0, irp, dev_obj));
+}
+
 struct trampoline_context {
 	void (*start_routine)(void *) STDCALL;
 	void *context;
@@ -746,6 +753,14 @@ STDCALL static unsigned long WRAP_EXPORT(PsCreateSystemThread)
 	TRACEEXIT2(return STATUS_SUCCESS);
 }
 
+STDCALL static unsigned long WRAP_EXPORT(PsTerminateSystemThread)
+	(unsigned long status)
+{
+	TRACEENTER2("status = %ld", status);
+	complete_and_exit(NULL, status);
+	return 0;
+}
+
 STDCALL static void * WRAP_EXPORT(KeGetCurrentThread)
 	(void)
 {
@@ -801,18 +816,30 @@ STDCALL static int WRAP_EXPORT(KeDelayExecutionThread)
 		TRACEEXIT2(return STATUS_SUCCESS);
 }
 
-STDCALL u64 WRAP_EXPORT(KeQueryInterruptTime)
+STDCALL static long WRAP_EXPORT(KeQueryPriorityThread)
+	(void *thread)
+{
+	TRACEENTER5("thread = %p", thread);
+	TRACEEXIT5(return 32 - (task_nice((task_t *)thread) + 20));
+}
+
+STDCALL static u64 WRAP_EXPORT(KeQueryInterruptTime)
 	(void)
 {
 	TRACEEXIT2(return 10000);
 }
 
-STDCALL static unsigned long WRAP_EXPORT(PsTerminateSystemThread)
-	(unsigned long status)
+STDCALL static unsigned long WRAP_EXPORT(KeQueryTimeIncrement)
+	(void)
 {
-	TRACEENTER2("status = %ld", status);
-	complete_and_exit(NULL, status);
-	return 0;
+	TRACEEXIT5(return loops_per_jiffy);
+}
+
+STDCALL static void WRAP_EXPORT(PoStartNextPowerIrp)
+	(struct irp *irp)
+{
+	TRACEENTER5("irp = %p", irp);
+	TRACEEXIT5(return);
 }
 
 _FASTCALL static long WRAP_EXPORT(InterlockedDecrement)
