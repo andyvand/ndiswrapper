@@ -18,6 +18,7 @@
 #include "ndis.h"
 #include "usb.h"
 
+unsigned long long KeTickCount;
 STDCALL static void
 WRITE_REGISTER_ULONG(unsigned int reg, unsigned int val)
 {
@@ -70,6 +71,13 @@ KeSetTimerEx(struct ktimer *ktimer, __s64 due_time, __u32 period,
 	if (kdpc)
 		wrapper_set_timer_dpc(ktimer->wrapper_timer, kdpc);
 	return wrapper_set_timer(ktimer->wrapper_timer, expires, repeat);
+}
+
+STDCALL static int
+KeSetTimer(struct ktimer *ktimer, __s64 due_time, struct kdpc *kdpc)
+{
+	TRACEENTER4("%p, %ld, %u, %p", ktimer, (long)due_time, kdpc);
+	return KeSetTimerEx(ktimer, due_time, 0, kdpc);
 }
 
 STDCALL static int
@@ -801,6 +809,7 @@ struct wrap_func ntos_wrap_funcs[] =
 	WRAP_FUNC_ENTRY(KeReleaseSpinLock),
 	WRAP_FUNC_ENTRY(KeSetEvent),
 	WRAP_FUNC_ENTRY(KeSetTimerEx),
+	WRAP_FUNC_ENTRY(KeSetTimer),
 	WRAP_FUNC_ENTRY(KeWaitForSingleObject),
 	WRAP_FUNC_ENTRY(MmMapIoSpace),
 	WRAP_FUNC_ENTRY(MmMapLockedPages),
@@ -822,6 +831,8 @@ struct wrap_func ntos_wrap_funcs[] =
 	WRAP_FUNC_ENTRY(InterlockedIncrement),
 	WRAP_FUNC_ENTRY(KeResetEvent),
 	WRAP_FUNC_ENTRY(IoGetDeviceProperty),
+
+	{"KeTickCount", (WRAP_FUNC *)&KeTickCount},
 
 	{NULL, NULL}
 };
