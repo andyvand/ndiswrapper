@@ -1049,10 +1049,21 @@ STDCALL void NdisInitializeEvent(struct ndis_event *event)
                                                                                                                                                                                                                                     
 STDCALL int NdisWaitEvent(struct ndis_event *event, int timeout)
 {
+	int res;
+
 	DBGTRACE("%s %08x %08x\n", __FUNCTION__, (int)event, timeout);
-	wait_event(event_wq, event->state == 1);
-	DBGTRACE("%s %08x Woke up\n", __FUNCTION__, (int)event);
-	return 1;
+	if(!timeout)
+	{
+		wait_event(event_wq, event->state == 1);
+		return 1;
+	}
+	do
+	{
+		res = wait_event_interruptible_timeout(event_wq, event->state == 1, (timeout * HZ)/1000);
+	} while(!res);
+		
+	DBGTRACE("%s %08x Woke up (%d)\n", __FUNCTION__, (int)event, event->state);
+	return event->state;
 }
 
 STDCALL void NdisSetEvent(struct ndis_event *event)
