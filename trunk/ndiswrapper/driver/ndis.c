@@ -1089,7 +1089,7 @@ STDCALL void WRAP_EXPORT(NdisQueryBuffer)
 {
 	TRACEENTER3("%s", "");
 	if (adr)
-		*adr = MmGetSystemAddressForMdlSafe(buf, HighPagePriority);
+		*adr = MmGetSystemAddressForMdlSafe(buf, NormalPagePriority);
 	if (len)
 		*len = MmGetMdlByteCount(buf);
 }
@@ -1109,7 +1109,7 @@ STDCALL void *WRAP_EXPORT(NdisBufferVirtualAddress)
 	(ndis_buffer *buf)
 {
 	TRACEENTER3("%s", "");
-	return MmGetSystemAddressForMdlSafe(buf, HighPagePriority);
+	return MmGetSystemAddressForMdlSafe(buf, NormalPagePriority);
 }
 
 STDCALL ULONG WRAP_EXPORT(NdisBufferLength)
@@ -2284,7 +2284,7 @@ STDCALL void WRAP_EXPORT(NdisGetFirstBufferFromPacketSafe)
 	*first_buffer = b;
 	if (b) {
 		*first_buffer_va =
-			MmGetSystemAddressForMdlSafe(b, HighPagePriority);
+			MmGetSystemAddressForMdlSafe(b, NormalPagePriority);
 		*first_buffer_length = *total_buffer_length =
 			MmGetMdlByteCount(b);
 		for (b = b->next; b != NULL; b = b->next)
@@ -2294,6 +2294,73 @@ STDCALL void WRAP_EXPORT(NdisGetFirstBufferFromPacketSafe)
 		*first_buffer_length = 0;
 		*total_buffer_length = 0;
 	}
+}
+
+STDCALL void WRAP_EXPORT(NdisCopyFromPacketToPacketSafe)
+	(struct ndis_packet *dst, UINT dst_offset, UINT num_to_copy,
+	 struct ndis_packet *src, UINT src_offset, UINT *num_copied,
+	 enum mm_page_priority priority)
+{
+	UINT dst_left, src_left, left, done;
+	ndis_buffer *dst_buf;
+	ndis_buffer *src_buf;
+
+	TRACEENTER4("");
+	if (!dst || !src) {
+		*num_copied = 0;
+		TRACEEXIT4(return);
+	}
+
+	dst_buf = dst->private.buffer_head;
+	src_buf = src->private.buffer_head;
+
+	if (!dst_buf || !src_buf) {
+		*num_copied = 0;
+		TRACEEXIT4(return);
+	}
+	dst_left = MmGetMdlByteCount(dst_buf) - dst_offset;
+	src_left = MmGetMdlByteCount(src_buf) - src_offset;
+
+	left = min(src_left, dst_left);
+	left = min(left, num_to_copy);
+	memcpy(MmGetMdlVirtualAddress(dst_buf) + dst_offset,
+	       MmGetMdlVirtualAddress(src_buf) + src_offset, left);
+
+	done = num_to_copy - left;
+	while (done > 0) {
+		if (left == dst_left) {
+			dst_buf = dst_buf->next;
+			if (!dst_buf)
+				break;
+			dst_left = MmGetMdlByteCount(dst_buf);
+		} else
+			dst_left -= left;
+		if (left == src_left) {
+			src_buf = src_buf->next;
+			if (!src_buf)
+				break;
+			src_left = MmGetMdlByteCount(src_buf);
+		} else
+			src_left -= left;
+
+		left = min(src_left, dst_left);
+		left = min(left, done);
+		memcpy(MmGetMdlVirtualAddress(dst_buf),
+		       MmGetMdlVirtualAddress(src_buf), left);
+		done -= left;
+	}
+	*num_copied = num_to_copy - done;
+	TRACEEXIT4(return);
+}
+
+STDCALL void WRAP_EXPORT(NdisCopyFromPacketToPacket)
+	(struct ndis_packet *dst, UINT dst_offset, UINT num_to_copy,
+	 struct ndis_packet *src, UINT src_offset, UINT *num_copied)
+{
+	NdisCopyFromPacketToPacketSafe(dst, dst_offset, num_to_copy,
+				       src, src_offset, num_copied,
+				       NormalPagePriority);
+	return;
 }
 
 STDCALL void WRAP_EXPORT(NdisMStartBufferPhysicalMapping)
@@ -2464,6 +2531,7 @@ STDCALL void WRAP_EXPORT(NdisMRegisterUnloadHandler)
 		driver->driver_unload = unload;
 	return;
 }
+
 
 STDCALL ULONG WRAP_EXPORT(NdisReadPcmciaAttributeMemory)
 	(struct ndis_handle *handle, ULONG offset, void *buffer, ULONG length)
