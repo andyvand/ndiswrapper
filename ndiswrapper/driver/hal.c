@@ -87,8 +87,10 @@ _FASTCALL KIRQL WRAP_EXPORT(KfRaiseIrql)
 		TRACEEXIT4(return PASSIVE_LEVEL);
 	}
 
-	if (irql < DISPATCH_LEVEL)
+	if (irql < DISPATCH_LEVEL) {
 		local_bh_disable();
+		preempt_disable();
+	}
 
 	TRACEEXIT4(return irql);
 }
@@ -98,8 +100,10 @@ _FASTCALL void WRAP_EXPORT(KfLowerIrql)
 {
 	TRACEENTER4("irql = %d", oldirql);
 
-	if (oldirql < DISPATCH_LEVEL)
+	if (oldirql < DISPATCH_LEVEL) {
+		preempt_enable();
 		local_bh_enable();
+	}
 
 	TRACEEXIT4(return);
 }
