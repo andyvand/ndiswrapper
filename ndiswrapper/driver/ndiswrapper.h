@@ -214,16 +214,18 @@ do {									\
     printk(KERN_ERR "%s --UNIMPLEMENTED--\n", __FUNCTION__ );	\
   } while (0)
 
-typedef void (*WRAP_FUNC)(void);
+typedef void (*WRAP_EXPORT_FUNC)(void);
 
-struct wrap_func
+struct wrap_export
 {
-	char *name;
-	WRAP_FUNC func;
+	const char *name;
+	WRAP_EXPORT_FUNC func;
 };
 
-#define STRFY(s) #s
-#define WRAP_FUNC_ENTRY(f) {STRFY(f), (WRAP_FUNC)f}
+#define WRAP_EXPORT_SYMBOL(f) {#f, (WRAP_EXPORT_FUNC)f}
+/* map name s to function f - if f is different from s */
+#define WRAP_EXPORT_MAP(s,f)
+#define WRAP_EXPORT(x) x
 
 struct wrap_alloc
 {

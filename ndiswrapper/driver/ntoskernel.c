@@ -19,30 +19,29 @@
 #include "usb.h"
 #include <linux/time.h>
 
-unsigned long long KeTickCount;
 DECLARE_WAIT_QUEUE_HEAD(dispatch_event_wq);
 struct wrap_spinlock dispatch_event_lock;
 
-STDCALL static void
-WRITE_REGISTER_ULONG(void *reg, unsigned int val)
+STDCALL static void WRAP_EXPORT(WRITE_REGISTER_ULONG)
+	(void *reg, unsigned int val)
 {
 	writel(val, reg);
 }
 
-STDCALL static void
-WRITE_REGISTER_USHORT(void *reg, unsigned short val)
+STDCALL static void WRAP_EXPORT(WRITE_REGISTER_USHORT)
+	(void *reg, unsigned short val)
 {
 	writew(val, reg);
 }
 
-STDCALL static void
-WRITE_REGISTER_UCHAR(void *reg, unsigned char val)
+STDCALL static void WRAP_EXPORT(WRITE_REGISTER_UCHAR)
+	(void *reg, unsigned char val)
 {
 	writeb(val, reg);
 }
 
-STDCALL static void
-KeInitializeTimer(struct ktimer *ktimer)
+STDCALL static void WRAP_EXPORT(KeInitializeTimer)
+	(struct ktimer *ktimer)
 {
 	TRACEENTER4("%p", ktimer);
 
@@ -50,16 +49,16 @@ KeInitializeTimer(struct ktimer *ktimer)
 	ktimer->dispatch_header.signal_state = 0;
 }
 
-STDCALL static void
-KeInitializeDpc(struct kdpc *kdpc, void *func, void *ctx)
+STDCALL static void WRAP_EXPORT(KeInitializeDpc)
+	(struct kdpc *kdpc, void *func, void *ctx)
 {
 	TRACEENTER4("%p, %p, %p", kdpc, func, ctx);
 	init_dpc(kdpc, func, ctx);
 }
 
-STDCALL static int
-KeSetTimerEx(struct ktimer *ktimer, __s64 due_time, __u32 period,
-	     struct kdpc *kdpc)
+STDCALL static int WRAP_EXPORT(KeSetTimerEx)
+	(struct ktimer *ktimer, __s64 due_time, __u32 period,
+	 struct kdpc *kdpc)
 {
 	unsigned long expires;
 	unsigned long repeat;
@@ -76,15 +75,15 @@ KeSetTimerEx(struct ktimer *ktimer, __s64 due_time, __u32 period,
 	return wrapper_set_timer(ktimer->wrapper_timer, expires, repeat, kdpc);
 }
 
-STDCALL static int
-KeSetTimer(struct ktimer *ktimer, __s64 due_time, struct kdpc *kdpc)
+STDCALL static int WRAP_EXPORT(KeSetTimer)
+	(struct ktimer *ktimer, __s64 due_time, struct kdpc *kdpc)
 {
 	TRACEENTER4("%p, %ld, %p", ktimer, (long)due_time, kdpc);
 	return KeSetTimerEx(ktimer, due_time, 0, kdpc);
 }
 
-STDCALL static int
-KeCancelTimer(struct ktimer *ktimer)
+STDCALL static int WRAP_EXPORT(KeCancelTimer)
+	(struct ktimer *ktimer)
 {
 	char canceled;
 
@@ -93,8 +92,8 @@ KeCancelTimer(struct ktimer *ktimer)
 	return canceled;
 }
 
-STDCALL KIRQL
-KeGetCurrentIrql(void)
+STDCALL KIRQL WRAP_EXPORT(KeGetCurrentIrql)
+	(void)
 {
 	if (in_atomic() || irqs_disabled())
 		return DISPATCH_LEVEL;
@@ -102,8 +101,8 @@ KeGetCurrentIrql(void)
 		return PASSIVE_LEVEL;
 }
 
-STDCALL void
-KeInitializeSpinLock(KSPIN_LOCK *lock)
+STDCALL void WRAP_EXPORT(KeInitializeSpinLock)
+	(KSPIN_LOCK *lock)
 {
 	struct wrap_spinlock *wrap_lock;
 
@@ -124,21 +123,21 @@ KeInitializeSpinLock(KSPIN_LOCK *lock)
 	}
 }
 
-STDCALL void
-KeAcquireSpinLock(KSPIN_LOCK *lock, KIRQL *irql)
+STDCALL void WRAP_EXPORT(KeAcquireSpinLock)
+	(KSPIN_LOCK *lock, KIRQL *irql)
 {
 	*irql = KfAcquireSpinLock(0, 0, lock);
 }
 
-STDCALL void
-KeReleaseSpinLock(KSPIN_LOCK *lock, KIRQL oldirql)
+STDCALL void WRAP_EXPORT(KeReleaseSpinLock)
+	(KSPIN_LOCK *lock, KIRQL oldirql)
 {
 	KfReleaseSpinLock(0, oldirql, lock);
 }
 
-_FASTCALL static struct slist_entry *
-ExInterlockedPushEntrySList(int dummy, struct slist_entry *entry,
-			    union slist_head *head, KSPIN_LOCK *lock)
+_FASTCALL static struct slist_entry *WRAP_EXPORT(ExInterlockedPushEntrySList)
+	(int dummy, struct slist_entry *entry, union slist_head *head,
+	 KSPIN_LOCK *lock)
 {
 	struct slist_entry *oldhead;
 	KIRQL irql;
@@ -156,8 +155,8 @@ ExInterlockedPushEntrySList(int dummy, struct slist_entry *entry,
 	return(oldhead);
 }
 
-_FASTCALL static struct slist_entry *
-ExInterlockedPopEntrySList(int dummy, KSPIN_LOCK *lock, union slist_head *head)
+_FASTCALL static struct slist_entry * WRAP_EXPORT(ExInterlockedPopEntrySList)
+	(int dummy, KSPIN_LOCK *lock, union slist_head *head)
 {
 	struct slist_entry *first;
 	KIRQL irql;
@@ -179,8 +178,8 @@ ExInterlockedPopEntrySList(int dummy, KSPIN_LOCK *lock, union slist_head *head)
 	return first;
 }
 
-STDCALL static void *
-ExAllocatePoolWithTag(enum pool_type pool_type, size_t size, unsigned long tag)
+STDCALL static void * WRAP_EXPORT(ExAllocatePoolWithTag)
+	(enum pool_type pool_type, size_t size, unsigned long tag)
 {
 	TRACEENTER1("pool_type: %d, size: %d, tag: %lu", pool_type, size, tag);
 
@@ -189,20 +188,19 @@ ExAllocatePoolWithTag(enum pool_type pool_type, size_t size, unsigned long tag)
 	return kmalloc(size, GFP_ATOMIC);
 }
 
-STDCALL static void
-ExFreePool(void *p)
+STDCALL static void WRAP_EXPORT(ExFreePool)
+	(void *p)
 {
 	TRACEENTER2("%p", p);
 	kfree(p);
 	TRACEEXIT2(return);
 }
 
-STDCALL static void
-ExInitializeNPagedLookasideList(struct npaged_lookaside_list *lookaside,
-				 LOOKASIDE_ALLOC_FUNC *alloc_func,
-				 LOOKASIDE_FREE_FUNC *free_func,
-				 unsigned long flags, unsigned long size,
-				 unsigned long tag, unsigned short depth)
+STDCALL static void WRAP_EXPORT(ExInitializeNPagedLookasideList)
+	(struct npaged_lookaside_list *lookaside,
+	 LOOKASIDE_ALLOC_FUNC *alloc_func, LOOKASIDE_FREE_FUNC *free_func,
+	 unsigned long flags, unsigned long size,
+	 unsigned long tag, unsigned short depth)
 {
 	TRACEENTER3("lookaside: %p, size: %lu, flags: %lu,"
 		    " head: %p, size of lookaside: %u\n",
@@ -229,8 +227,8 @@ ExInitializeNPagedLookasideList(struct npaged_lookaside_list *lookaside,
 	TRACEEXIT3(return);
 }
 
-STDCALL static void
-ExDeleteNPagedLookasideList(struct npaged_lookaside_list *lookaside)
+STDCALL static void WRAP_EXPORT(ExDeleteNPagedLookasideList)
+	(struct npaged_lookaside_list *lookaside)
 {
 	struct slist_entry *entry, *p;
 
@@ -245,9 +243,8 @@ ExDeleteNPagedLookasideList(struct npaged_lookaside_list *lookaside)
 	TRACEEXIT4(return);
 }
 
-
-_FASTCALL static void
-ExInterlockedAddLargeStatistic(int dummy, u32 n, u64 *plint)
+_FASTCALL static void WRAP_EXPORT(ExInterlockedAddLargeStatistic)
+	(int dummy, u32 n, u64 *plint)
 {
 	unsigned long flags;
 	static spinlock_t lock = SPIN_LOCK_UNLOCKED;
@@ -261,8 +258,8 @@ ExInterlockedAddLargeStatistic(int dummy, u32 n, u64 *plint)
 	spin_unlock_irqrestore(&lock, flags);
 }
 
-STDCALL static void *
-MmMapIoSpace(__s64 phys_addr, unsigned long size, int cache)
+STDCALL static void * WRAP_EXPORT(MmMapIoSpace)
+	(__s64 phys_addr, unsigned long size, int cache)
 {
 	void *virt;
 	if (cache)
@@ -273,16 +270,16 @@ MmMapIoSpace(__s64 phys_addr, unsigned long size, int cache)
 	return virt;
 }
 
-STDCALL static void
-MmUnmapIoSpace(void *addr, unsigned long size)
+STDCALL static void WRAP_EXPORT(MmUnmapIoSpace)
+	(void *addr, unsigned long size)
 {
 	TRACEENTER3("%p, %lu", addr, size);
 	iounmap(addr);
 	return;
 }
 
-STDCALL static int
-IoIsWdmVersionAvailable(unsigned char major, unsigned char minor)
+STDCALL static int WRAP_EXPORT(IoIsWdmVersionAvailable)
+	(unsigned char major, unsigned char minor)
 {
 	TRACEENTER3("%d, %d", major, minor);
 	if (major == 1 &&
@@ -293,8 +290,8 @@ IoIsWdmVersionAvailable(unsigned char major, unsigned char minor)
 	return 0;
 }
 
-STDCALL void
-KeInitializeEvent(struct kevent *kevent, int type, int state)
+STDCALL void WRAP_EXPORT(KeInitializeEvent)
+	(struct kevent *kevent, int type, int state)
 {
 	TRACEENTER3("event = %p, type = %d, state = %d",
 		    kevent, type, state);
@@ -304,8 +301,8 @@ KeInitializeEvent(struct kevent *kevent, int type, int state)
 	wrap_spin_unlock(&dispatch_event_lock);
 }
 
-STDCALL long
-KeSetEvent(struct kevent *kevent, int incr, int wait)
+STDCALL long WRAP_EXPORT(KeSetEvent)
+	(struct kevent *kevent, int incr, int wait)
 {
 	long old_state = kevent->header.signal_state;
 
@@ -337,8 +334,8 @@ KeSetEvent(struct kevent *kevent, int incr, int wait)
 	TRACEEXIT3(return old_state);
 }
 
-STDCALL static void
-KeClearEvent(struct kevent *kevent)
+STDCALL static void WRAP_EXPORT(KeClearEvent)
+	(struct kevent *kevent)
 {
 	TRACEENTER3("event = %p", kevent);
 	wrap_spin_lock(&dispatch_event_lock);
@@ -346,8 +343,8 @@ KeClearEvent(struct kevent *kevent)
 	wrap_spin_unlock(&dispatch_event_lock);
 }
 
-STDCALL long
-KeResetEvent(struct kevent *kevent)
+STDCALL long WRAP_EXPORT(KeResetEvent)
+	(struct kevent *kevent)
 {
 	long old_state;
 
@@ -361,10 +358,9 @@ KeResetEvent(struct kevent *kevent)
 	TRACEEXIT3(return old_state);
 }
 
-STDCALL unsigned int
-KeWaitForSingleObject(void *object, unsigned int reason,
-		      unsigned int waitmode, unsigned short alertable,
-		      s64 *timeout)
+STDCALL unsigned int WRAP_EXPORT(KeWaitForSingleObject)
+	(void *object, unsigned int reason, unsigned int waitmode,
+	 unsigned short alertable, s64 *timeout)
 {
 	struct kevent *kevent = (struct kevent *)object;
 	struct dispatch_header *header = &kevent->header;
@@ -428,15 +424,15 @@ KeWaitForSingleObject(void *object, unsigned int reason,
 
 }
 
-STDCALL static void
-IoBuildSynchronousFsdRequest(void)
+STDCALL static void WRAP_EXPORT(IoBuildSynchronousFsdRequest)
+	(void)
 {
 	UNIMPL();
 }
 
 /* this function can't be STDCALL as it takes variable number of args */
-NOREGPARM unsigned long
-DbgPrint(char *format, ...)
+NOREGPARM unsigned long WRAP_EXPORT(DbgPrint)
+	(char *format, ...)
 {
 	int res = 0;
 
@@ -454,13 +450,14 @@ DbgPrint(char *format, ...)
 
 }
 
-STDCALL static void DbgBreakPoint(void)
+STDCALL static void WRAP_EXPORT(DbgBreakPoint)
+	(void)
 {
 	UNIMPL();
 }
 
-STDCALL static struct irp *
-IoAllocateIrp(char stack_size, unsigned char charge_quota)
+STDCALL static struct irp * WRAP_EXPORT(IoAllocateIrp)
+	(char stack_size, unsigned char charge_quota)
 {
 	struct irp *irp;
 	int size;
@@ -486,8 +483,8 @@ IoAllocateIrp(char stack_size, unsigned char charge_quota)
 	TRACEEXIT3(return irp);
 }
 
-STDCALL static void
-IoInitializeIrp(struct irp *irp, unsigned short size, char stack_size)
+STDCALL static void WRAP_EXPORT(IoInitializeIrp)
+	(struct irp *irp, unsigned short size, char stack_size)
 {
 	TRACEENTER3("irp = %p, size = %d, stack_size = %d",
 		    irp, size, stack_size);
@@ -506,14 +503,11 @@ IoInitializeIrp(struct irp *irp, unsigned short size, char stack_size)
 	TRACEEXIT3(return);
 }
 
-STDCALL static struct irp *
-IoBuildDeviceIoControlRequest(unsigned long ioctl,
-                              struct device_object *dev_obj,
-                              void *input_buf, unsigned long input_buf_len,
-                              void *output_buf, unsigned long output_buf_len,
-                              unsigned char internal_ioctl,
-                              struct kevent *event,
-                              struct io_status_block *io_status)
+STDCALL static struct irp * WRAP_EXPORT(IoBuildDeviceIoControlRequest)
+	(unsigned long ioctl, struct device_object *dev_obj,
+	 void *input_buf, unsigned long input_buf_len, void *output_buf,
+	 unsigned long output_buf_len, unsigned char internal_ioctl,
+	 struct kevent *event, struct io_status_block *io_status)
 {
 	struct irp *irp;
 	struct io_stack_location *stack;
@@ -555,8 +549,8 @@ IoBuildDeviceIoControlRequest(unsigned long ioctl,
 	TRACEEXIT3(return irp);
 }
 
-_FASTCALL void
-IofCompleteRequest(int dummy, char prio_boost, struct irp *irp)
+_FASTCALL void WRAP_EXPORT(IofCompleteRequest)
+	(int dummy, char prio_boost, struct irp *irp)
 {
 	struct io_stack_location *stack = irp->current_stack_location-1;
 
@@ -593,8 +587,8 @@ IofCompleteRequest(int dummy, char prio_boost, struct irp *irp)
 	TRACEEXIT3(return);
 }
 
-STDCALL unsigned char
-IoCancelIrp(struct irp *irp)
+STDCALL unsigned char WRAP_EXPORT(IoCancelIrp)
+	(struct irp *irp)
 {
 	struct io_stack_location *stack = irp->current_stack_location-1;
 	void (*cancel_routine)(struct device_object *, struct irp *) STDCALL;
@@ -617,7 +611,8 @@ IoCancelIrp(struct irp *irp)
 	TRACEEXIT2(return 1);
 }
 
-STDCALL static void IoFreeIrp(struct irp *irp)
+STDCALL static void WRAP_EXPORT(IoFreeIrp)
+	(struct irp *irp)
 {
 	TRACEENTER3("irp = %p", irp);
 
@@ -626,8 +621,8 @@ STDCALL static void IoFreeIrp(struct irp *irp)
 	TRACEEXIT3(return);
 }
 
-_FASTCALL static unsigned long IofCallDriver(int dummy, struct irp *irp,
-                                             struct device_object *dev_obj)
+_FASTCALL static unsigned long WRAP_EXPORT(IofCallDriver)
+	(int dummy, struct irp *irp, struct device_object *dev_obj)
 {
 	struct io_stack_location *stack = irp->current_stack_location-1;
 	unsigned long ret = STATUS_NOT_SUPPORTED;
@@ -706,10 +701,9 @@ int kthread_trampoline(void *data)
 	return 0;
 }
 
-STDCALL static unsigned long
-PsCreateSystemThread(void **phandle, unsigned long access, void *obj_attr,
-                     void *process, void *client_id,
-                     void (*start_routine)(void *) STDCALL, void *context)
+STDCALL static unsigned long WRAP_EXPORT(PsCreateSystemThread)
+	(void **phandle, unsigned long access, void *obj_attr, void *process,
+	 void *client_id, void (*start_routine)(void *) STDCALL, void *context)
 {
 	struct trampoline_context *ctx;
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,7)
@@ -753,7 +747,8 @@ PsCreateSystemThread(void **phandle, unsigned long access, void *obj_attr,
 	TRACEEXIT2(return STATUS_SUCCESS);
 }
 
-STDCALL static void *KeGetCurrentThread(void)
+STDCALL static void * WRAP_EXPORT(KeGetCurrentThread)
+	(void)
 {
 	void *thread = get_current();
 
@@ -761,7 +756,8 @@ STDCALL static void *KeGetCurrentThread(void)
 	return thread;
 }
 
-STDCALL static long KeSetPriorityThread(void *thread, long priority)
+STDCALL static long WRAP_EXPORT(KeSetPriorityThread)
+	(void *thread, long priority)
 {
 	long old_prio;
 
@@ -778,9 +774,8 @@ STDCALL static long KeSetPriorityThread(void *thread, long priority)
 	return old_prio;
 }
 
-STDCALL static int
-KeDelayExecutionThread(KPROCESSOR_MODE wait_mode, BOOLEAN alertable,
-		       u64 *interval)
+STDCALL static int WRAP_EXPORT(KeDelayExecutionThread)
+	(KPROCESSOR_MODE wait_mode, BOOLEAN alertable, u64 *interval)
 {
 	int res;
 	int timeout;
@@ -807,21 +802,22 @@ KeDelayExecutionThread(KPROCESSOR_MODE wait_mode, BOOLEAN alertable,
 		TRACEEXIT2(return STATUS_SUCCESS);
 }
 
-STDCALL u64
-KeQueryInterruptTime(void)
+STDCALL u64 WRAP_EXPORT(KeQueryInterruptTime)
+	(void)
 {
 	TRACEEXIT2(return 10000);
 }
 
-STDCALL static unsigned long PsTerminateSystemThread(unsigned long status)
+STDCALL static unsigned long WRAP_EXPORT(PsTerminateSystemThread)
+	(unsigned long status)
 {
 	TRACEENTER2("status = %ld", status);
 	complete_and_exit(NULL, status);
 	return 0;
 }
 
-_FASTCALL static long
-InterlockedDecrement(int dummy1, int dummy2, long *val)
+_FASTCALL static long WRAP_EXPORT(InterlockedDecrement)
+	(int dummy1, int dummy2, long *val)
 {
 	long x;
 
@@ -833,8 +829,8 @@ InterlockedDecrement(int dummy1, int dummy2, long *val)
 	TRACEEXIT4(return x);
 }
 
-_FASTCALL static long
-InterlockedIncrement(int dummy1, int dummy2, long *val)
+_FASTCALL static long WRAP_EXPORT(InterlockedIncrement)
+	(int dummy1, int dummy2, long *val)
 {
 	long x;
 
@@ -846,7 +842,8 @@ InterlockedIncrement(int dummy1, int dummy2, long *val)
 	TRACEEXIT4(return x);
 }
 
-_FASTCALL static long InterlockedExchange(int dummy, long val, long *target)
+_FASTCALL static long WRAP_EXPORT(InterlockedExchange)
+	(int dummy, long val, long *target)
 {
 	long x;
 
@@ -858,9 +855,8 @@ _FASTCALL static long InterlockedExchange(int dummy, long val, long *target)
 	TRACEEXIT4(return x);
 }
 
-_FASTCALL static long
-InterlockedCompareExchange(int dummy, long xchg, long volatile *dest,
-			   long comperand)
+_FASTCALL static long WRAP_EXPORT(InterlockedCompareExchange)
+	(int dummy, long xchg, long volatile *dest, long comperand)
 {
 	long x;
 
@@ -873,10 +869,9 @@ InterlockedCompareExchange(int dummy, long xchg, long volatile *dest,
 	TRACEEXIT4(return x);
 }
 
-STDCALL unsigned long 
-IoGetDeviceProperty(struct device_object *dev_obj, int dev_property,
-                    unsigned long buffer_len, void *buffer,
-                    unsigned long *result_len)
+STDCALL unsigned long WRAP_EXPORT(IoGetDeviceProperty)
+	(struct device_object *dev_obj, int dev_property,
+	 unsigned long buffer_len, void *buffer, unsigned long *result_len)
 {
 	struct ustring ansi, unicode;
 	struct ndis_handle *handle;
@@ -954,125 +949,50 @@ IoGetDeviceProperty(struct device_object *dev_obj, int dev_property,
 	}
 }
 
-NOREGPARM static unsigned int
-WmiTraceMessage(void *tracehandle, unsigned long message_flags,
-		void *message_guid, unsigned short message_no, ...)
+NOREGPARM static unsigned int WRAP_EXPORT(WmiTraceMessage)
+	(void *tracehandle, unsigned long message_flags,
+	 void *message_guid, unsigned short message_no, ...)
 {
 	TRACEENTER2("%s", "");
 	TRACEEXIT2(return STATUS_SUCCESS);
 }
 
-STDCALL static unsigned int
-WmiQueryTraceInformation(unsigned int trace_info_class, void *trace_info,
-			 unsigned long *req_length, void *buf)
+STDCALL static unsigned int WRAP_EXPORT(WmiQueryTraceInformation)
+	(unsigned int trace_info_class, void *trace_info,
+	 unsigned long *req_length, void *buf)
 {
 	TRACEENTER2("%s", "");
 	TRACEEXIT2(return STATUS_SUCCESS);
 }
 
-STDCALL static unsigned int
-IoWMIRegistrationControl(struct device_object *dev_obj, unsigned long action)
+STDCALL static unsigned int WRAP_EXPORT(IoWMIRegistrationControl)
+	(struct device_object *dev_obj, unsigned long action)
 {
 	TRACEENTER2("%s", "");
 	TRACEEXIT2(return STATUS_SUCCESS);
 }
 
-STDCALL void
-KeBugCheckEx(unsigned long code, unsigned long *param1,
-	     unsigned long *param2, unsigned long *param3,
-	     unsigned long *param4)
+STDCALL static void WRAP_EXPORT(KeBugCheckEx)
+	(unsigned long code, unsigned long *param1,
+	 unsigned long *param2, unsigned long *param3, unsigned long *param4)
 {
 	UNIMPL();
 	return;
 }
 
-STDCALL static void IoReleaseCancelSpinLock(void){UNIMPL();}
-STDCALL static void IoDeleteDevice(void){UNIMPL();}
-STDCALL static void IoCreateSymbolicLink(void){UNIMPL();}
-STDCALL static void MmMapLockedPages(void){UNIMPL();}
-STDCALL static void IoCreateDevice(void){UNIMPL();}
-STDCALL static void IoDeleteSymbolicLink(void){UNIMPL();}
-STDCALL static void MmMapLockedPagesSpecifyCache(void){UNIMPL();}
-STDCALL static void MmProbeAndLockPages(void){UNIMPL();}
-STDCALL static void MmUnlockPages(void){UNIMPL();}
-STDCALL static void IoAllocateMdl(void){UNIMPL();}
-STDCALL static void IoFreeMdl(void){UNIMPL();}
-STDCALL static void ObfReferenceObject(void){UNIMPL();}
-STDCALL static void ObReferenceObjectByHandle(void){UNIMPL();}
-STDCALL static void _except_handler3(void){UNIMPL();}
+STDCALL static void WRAP_EXPORT(IoReleaseCancelSpinLock)(void){UNIMPL();}
+STDCALL static void WRAP_EXPORT(IoDeleteDevice)(void){UNIMPL();}
+STDCALL static void WRAP_EXPORT(IoCreateSymbolicLink)(void){UNIMPL();}
+STDCALL static void WRAP_EXPORT(MmMapLockedPages)(void){UNIMPL();}
+STDCALL static void WRAP_EXPORT(IoCreateDevice)(void){UNIMPL();}
+STDCALL static void WRAP_EXPORT(IoDeleteSymbolicLink)(void){UNIMPL();}
+STDCALL static void WRAP_EXPORT(MmMapLockedPagesSpecifyCache)(void){UNIMPL();}
+STDCALL static void WRAP_EXPORT(MmProbeAndLockPages)(void){UNIMPL();}
+STDCALL static void WRAP_EXPORT(MmUnlockPages)(void){UNIMPL();}
+STDCALL static void WRAP_EXPORT(IoAllocateMdl)(void){UNIMPL();}
+STDCALL static void WRAP_EXPORT(IoFreeMdl)(void){UNIMPL();}
+STDCALL static void WRAP_EXPORT(ObfReferenceObject)(void){UNIMPL();}
+STDCALL static void WRAP_EXPORT(ObReferenceObjectByHandle)(void){UNIMPL();}
+STDCALL static void WRAP_EXPORT(_except_handler3)(void){UNIMPL();}
 
-struct wrap_func ntos_wrap_funcs[] =
-{
-	WRAP_FUNC_ENTRY(DbgBreakPoint),
-	WRAP_FUNC_ENTRY(DbgPrint),
-	WRAP_FUNC_ENTRY(ExAllocatePoolWithTag),
-	WRAP_FUNC_ENTRY(ExDeleteNPagedLookasideList),
-	WRAP_FUNC_ENTRY(ExFreePool),
-	WRAP_FUNC_ENTRY(ExInitializeNPagedLookasideList),
-	WRAP_FUNC_ENTRY(ExInterlockedAddLargeStatistic),
-	WRAP_FUNC_ENTRY(ExInterlockedPopEntrySList),
-	WRAP_FUNC_ENTRY(ExInterlockedPushEntrySList),
-	WRAP_FUNC_ENTRY(InterlockedExchange),
-	WRAP_FUNC_ENTRY(InterlockedCompareExchange),
-	WRAP_FUNC_ENTRY(IoAllocateMdl),
-	WRAP_FUNC_ENTRY(IoBuildSynchronousFsdRequest),
-	WRAP_FUNC_ENTRY(IoCreateDevice),
-	WRAP_FUNC_ENTRY(IoCreateSymbolicLink),
-	WRAP_FUNC_ENTRY(IoDeleteDevice),
-	WRAP_FUNC_ENTRY(IoDeleteSymbolicLink),
-	WRAP_FUNC_ENTRY(IoFreeMdl),
-	WRAP_FUNC_ENTRY(IoIsWdmVersionAvailable),
-	WRAP_FUNC_ENTRY(IoReleaseCancelSpinLock),
-	WRAP_FUNC_ENTRY(IofCallDriver),
-	WRAP_FUNC_ENTRY(IofCompleteRequest),
-	WRAP_FUNC_ENTRY(IoBuildDeviceIoControlRequest),
-	WRAP_FUNC_ENTRY(IoFreeIrp),
-	WRAP_FUNC_ENTRY(IoCancelIrp),
-	WRAP_FUNC_ENTRY(IoAllocateIrp),
-	WRAP_FUNC_ENTRY(IoInitializeIrp),
-	WRAP_FUNC_ENTRY(KeAcquireSpinLock),
-	WRAP_FUNC_ENTRY(KeCancelTimer),
-	WRAP_FUNC_ENTRY(KeClearEvent),
-	WRAP_FUNC_ENTRY(KeGetCurrentIrql),
-	WRAP_FUNC_ENTRY(KeInitializeDpc),
-	WRAP_FUNC_ENTRY(KeInitializeEvent),
-	WRAP_FUNC_ENTRY(KeInitializeSpinLock),
-	WRAP_FUNC_ENTRY(KeInitializeTimer),
-	WRAP_FUNC_ENTRY(KeReleaseSpinLock),
-	WRAP_FUNC_ENTRY(KeSetEvent),
-	WRAP_FUNC_ENTRY(KeSetTimerEx),
-	WRAP_FUNC_ENTRY(KeSetTimer),
-	WRAP_FUNC_ENTRY(KeWaitForSingleObject),
-	WRAP_FUNC_ENTRY(MmMapIoSpace),
-	WRAP_FUNC_ENTRY(MmMapLockedPages),
-	WRAP_FUNC_ENTRY(MmMapLockedPagesSpecifyCache),
-	WRAP_FUNC_ENTRY(MmProbeAndLockPages),
-	WRAP_FUNC_ENTRY(MmUnlockPages),
-	WRAP_FUNC_ENTRY(MmUnmapIoSpace),
-	WRAP_FUNC_ENTRY(ObReferenceObjectByHandle),
-	WRAP_FUNC_ENTRY(ObfReferenceObject),
-	WRAP_FUNC_ENTRY(WRITE_REGISTER_UCHAR),
-	WRAP_FUNC_ENTRY(WRITE_REGISTER_ULONG),
-	WRAP_FUNC_ENTRY(WRITE_REGISTER_USHORT),
-	WRAP_FUNC_ENTRY(_except_handler3),
-	WRAP_FUNC_ENTRY(PsCreateSystemThread),
-	WRAP_FUNC_ENTRY(KeGetCurrentThread),
-	WRAP_FUNC_ENTRY(KeSetPriorityThread),
-	WRAP_FUNC_ENTRY(PsTerminateSystemThread),
-	WRAP_FUNC_ENTRY(InterlockedDecrement),
-	WRAP_FUNC_ENTRY(InterlockedIncrement),
-	WRAP_FUNC_ENTRY(KeResetEvent),
-	WRAP_FUNC_ENTRY(IoGetDeviceProperty),
-
-	WRAP_FUNC_ENTRY(WmiTraceMessage),
-	WRAP_FUNC_ENTRY(WmiQueryTraceInformation),
-	WRAP_FUNC_ENTRY(IoWMIRegistrationControl),
-	WRAP_FUNC_ENTRY(KeBugCheckEx),
-
-	WRAP_FUNC_ENTRY(KeDelayExecutionThread),
-	WRAP_FUNC_ENTRY(KeQueryInterruptTime),
-
-	{"KeTickCount", (WRAP_FUNC)&KeTickCount},
-
-	{NULL, NULL}
-};
+#include "ntoskernel_exports.h"

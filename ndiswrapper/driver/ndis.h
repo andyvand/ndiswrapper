@@ -289,10 +289,10 @@ struct ndis_free_mem
 
 enum ndis_work_entry_type
 {
-	_NDIS_SCHED_WORK,
-	_NDIS_ALLOC_MEM,
-	_NDIS_FREE_MEM,
-	_IO_WORK_ITEM,
+	NDIS_SCHED_WORK,
+	NDIS_ALLOC_MEM,
+	NDIS_FREE_MEM,
+	NDIS_IO_WORK_ITEM,
 };
 
 struct ndis_work_entry
@@ -507,16 +507,16 @@ enum encr_mode
 
 struct fixed_ies
 {
-    unsigned char time_stamp[8];
-    unsigned short beacon_interval;
-    unsigned short capa;
+	unsigned char time_stamp[8];
+	unsigned short beacon_interval;
+	unsigned short capa;
 };
 
 struct variable_ies
 {
-    unsigned char elem_id;
-    unsigned char length;
-    unsigned char data[1];
+	unsigned char elem_id;
+	unsigned char length;
+	unsigned char data[1];
 };
 
 struct ndis_assoc_info
@@ -620,16 +620,16 @@ enum ndis_medium {
 
 enum ndis_phys_medium
 {
-    NDIS_PHYSICAL_MEDIUM_UNSPECIFIED,
-    NDIS_PHYSICAL_MEDIUM_WIRELESSLAN,
-    NDIS_PHYSICAL_MEDIUM_CABLEMODEM,
-    NDIS_PHYSICAL_MEDIUM_PHONELINE,
-    NDIS_PHYSICAL_MEDIUM_POWERLINE,
-    NDIS_PHYSICAL_MEDIUM_DSL,
-    NDIS_PHYSICAL_MEDIUM_FIBRECHANNEL,
-    NDIS_PHYSICAL_MEDIUM_1394,
-    NDIS_PHYSICAL_MEDIUM_WIRELESSWAN,
-    NDIS_PHYSICAL_MEDIUM_MAX,
+	NDIS_PHYSICAL_MEDIUM_UNSPECIFIED,
+	NDIS_PHYSICAL_MEDIUM_WIRELESSLAN,
+	NDIS_PHYSICAL_MEDIUM_CABLEMODEM,
+	NDIS_PHYSICAL_MEDIUM_PHONELINE,
+	NDIS_PHYSICAL_MEDIUM_POWERLINE,
+	NDIS_PHYSICAL_MEDIUM_DSL,
+	NDIS_PHYSICAL_MEDIUM_FIBRECHANNEL,
+	NDIS_PHYSICAL_MEDIUM_1394,
+	NDIS_PHYSICAL_MEDIUM_WIRELESSWAN,
+	NDIS_PHYSICAL_MEDIUM_MAX,
 };
 
 /*
@@ -933,7 +933,7 @@ STDCALL int RtlUnicodeStringToAnsiString(struct ustring *dst,
 STDCALL int RtlAnsiStringToUnicodeString(struct ustring *dst,
 					 struct ustring *src,
 					 unsigned int dup);
-int getSp(void);
+int get_esp(void);
 void init_ndis(void);
 
 int ndiswrapper_procfs_init(void);

@@ -220,7 +220,8 @@ void wrapper_cancel_timer(struct wrapper_timer *timer, char *canceled)
 	TRACEEXIT5(return);
 }
 
-NOREGPARM int wrap_sprintf(char *buf, const char *format, ...)
+NOREGPARM int WRAP_EXPORT(_wrap_sprintf)
+	(char *buf, const char *format, ...)
 {
 	va_list args;
 	int res;
@@ -230,12 +231,14 @@ NOREGPARM int wrap_sprintf(char *buf, const char *format, ...)
 	return res;
 }
 
-NOREGPARM int wrap_vsprintf (char *str, const char *format, va_list ap)
+NOREGPARM int WRAP_EXPORT(_wrap_vsprintf)
+	(char *str, const char *format, va_list ap)
 {
 	return vsprintf(str, format, ap);
 }
 
-NOREGPARM int wrap_snprintf(char *buf, size_t count, const char *format, ...)
+NOREGPARM int WRAP_EXPORT(_wrap_snprintf)
+	(char *buf, size_t count, const char *format, ...)
 {
 	va_list args;
 	int res;
@@ -246,29 +249,52 @@ NOREGPARM int wrap_snprintf(char *buf, size_t count, const char *format, ...)
 	return res;
 }
 
-NOREGPARM int wrap_vsnprintf (char *str, size_t size,
-			      const char *format, va_list ap)
+NOREGPARM int WRAP_EXPORT(_wrap__snprintf)
+	(char *buf, size_t count, const char *format, ...)
+{
+	va_list args;
+	int res;
+
+	va_start(args, format);
+	res = vsnprintf(buf, count, format, args);
+	va_end(args);
+	return res;
+}
+
+NOREGPARM int WRAP_EXPORT(_wrap_vsnprintf)
+	(char *str, size_t size, const char *format,
+			  va_list ap)
 {
 	return vsnprintf(str, size, format, ap);
 }
 
+NOREGPARM int WRAP_EXPORT(_wrap__vsnprintf)
+	(char *str, size_t size, const char *format,
+			    va_list ap)
+{
+	return vsnprintf(str, size, format, ap);
+}
 
-NOREGPARM char *wrap_strncpy(char *dst, char *src, int n)
+NOREGPARM char * WRAP_EXPORT(_wrap_strncpy)
+	(char *dst, char *src, int n)
 {
 	return strncpy(dst, src, n);
 }
 
-NOREGPARM size_t wrap_strlen(const char *s)
+NOREGPARM size_t WRAP_EXPORT(_wrap_strlen)
+	(const char *s)
 {
        return strlen(s);
 }
 
-NOREGPARM int wrap_strncmp(const char *s1, const char *s2, size_t n)
+NOREGPARM int WRAP_EXPORT(_wrap_strncmp)
+	(const char *s1, const char *s2, size_t n)
 {
 	return strncmp(s1, s2, n);
 }
 
-NOREGPARM int wrap_strcmp(const char *s1, const char *s2)
+NOREGPARM int WRAP_EXPORT(_wrap_strcmp)
+	(const char *s1, const char *s2)
 {
 	return strcmp(s1, s2);
 }
@@ -283,100 +309,117 @@ int stricmp(const char *s1, const char *s2)
 	return (int)*s1 - (int)*s2;
 }
 
-NOREGPARM int wrap_tolower(int c)
+NOREGPARM int WRAP_EXPORT(_wrap_tolower)
+	(int c)
 {
 	return tolower(c);
 }
 
-NOREGPARM int wrap_toupper(int c)
+NOREGPARM int WRAP_EXPORT(_wrap_toupper)
+	(int c)
 {
 	return toupper(c);
 }
 
-NOREGPARM void *wrap_memcpy(void * to, const void * from, size_t n)
+NOREGPARM void *WRAP_EXPORT(_wrap_memcpy)
+	(void * to, const void * from, size_t n)
 {
 	return memcpy(to, from, n);
 }
 
-NOREGPARM void *wrap_strcpy(void * to, const void * from)
+NOREGPARM void *WRAP_EXPORT(_wrap_strcpy)
+	(void * to, const void * from)
 {
 	return strcpy(to, from);
 }
 
-NOREGPARM void *wrap_memset(void * s, char c,size_t count)
+NOREGPARM void *WRAP_EXPORT(_wrap_memset)
+	(void * s, char c,size_t count)
 {
 	return memset(s, c, count);
 }
 
-NOREGPARM void *wrap_memmove(void *to, void *from, size_t count)
+NOREGPARM void *WRAP_EXPORT(_wrap_memmove)
+	(void *to, void *from, size_t count)
 {
 	return memmove(to, from, count);
 }
 
-NOREGPARM void wrap_srand(unsigned int seed)
+NOREGPARM void WRAP_EXPORT(_wrap_srand)
+	(unsigned int seed)
 {
 	net_srandom(seed);
 }
 
-NOREGPARM int wrap_atoi(const char *ptr)
+NOREGPARM int WRAP_EXPORT(_wrap_atoi)
+	(const char *ptr)
 {
 	int i = simple_strtol(ptr, NULL, 10);
 	return i;
 }
 
-
-STDCALL __s64 _alldiv(__s64 a, __s64 b)
+STDCALL __s64 WRAP_EXPORT(_alldiv)
+	(__s64 a, __s64 b)
 {
 	return (a / b);
 }
 
-STDCALL __u64 _aulldiv(__u64 a, __u64 b)
+STDCALL __u64 WRAP_EXPORT(_aulldiv)
+	(__u64 a, __u64 b)
 {
 	return (a / b);
 }
 
-STDCALL __s64 _allmul(__s64 a, __s64 b)
+STDCALL __s64 WRAP_EXPORT(_allmul)
+	(__s64 a, __s64 b)
 {
 	return (a * b);
 }
 
-STDCALL __u64 _aullmul(__u64 a, __u64 b)
+STDCALL __u64 WRAP_EXPORT(_aullmul)
+	(__u64 a, __u64 b)
 {
 	return (a * b);
 }
 
-STDCALL __s64 _allrem(__s64 a, __s64 b)
+STDCALL __s64 WRAP_EXPORT(_allrem)
+	(__s64 a, __s64 b)
 {
 	return (a % b);
 }
 
-STDCALL __u64 _aullrem(__u64 a, __u64 b)
+STDCALL __u64 WRAP_EXPORT(_aullrem)
+	(__u64 a, __u64 b)
 {
 	return (a % b);
 }
 
-__attribute__ ((regparm(3))) __s64 _allshl(__s64 a, __u8 b)
+__attribute__ ((regparm(3))) __s64 WRAP_EXPORT(_allshl)
+	(__s64 a, __u8 b)
 {
 	return (a << b);
 }
 
-__attribute__ ((regparm(3))) __u64 _aullshl(__u64 a, __u8 b)
+__attribute__ ((regparm(3))) __u64 WRAP_EXPORT(_aullshl)
+	(__u64 a, __u8 b)
 {
 	return (a << b);
 }
 
-__attribute__ ((regparm(3))) __s64 _allshr(__s64 a, __u8 b)
+__attribute__ ((regparm(3))) __s64 WRAP_EXPORT(_allshr)
+	(__s64 a, __u8 b)
 {
 	return (a >> b);
 }
 
-__attribute__ ((regparm(3))) __u64 _aullshr(__u64 a, __u8 b)
+__attribute__ ((regparm(3))) __u64 WRAP_EXPORT(_aullshr)
+	(__u64 a, __u8 b)
 {
 	return (a >> b);
 }
 
-STDCALL size_t
-RtlCompareMemory(const void *a, const void *b, size_t len)
+STDCALL size_t WRAP_EXPORT(RtlCompareMemory)
+	(const void *a, const void *b, size_t len)
 {
 	size_t i;
 	char *x, *y;
@@ -400,9 +443,9 @@ RtlCompareMemory(const void *a, const void *b, size_t len)
 	return i;
 }
 
-STDCALL long
-RtlCompareString(const struct ustring *s1, const struct ustring *s2,
-		 int case_insensitive)
+STDCALL long WRAP_EXPORT(RtlCompareString)
+	(const struct ustring *s1, const struct ustring *s2,
+	 int case_insensitive)
 {
 	unsigned int len;
 	long ret = 0;
@@ -424,9 +467,9 @@ RtlCompareString(const struct ustring *s1, const struct ustring *s2,
 	return ret;
 }
 
-STDCALL long
-RtlCompareUnicodeString(const struct ustring *s1, const struct ustring *s2,
-			int case_insensitive)
+STDCALL long WRAP_EXPORT(RtlCompareUnicodeString)
+	(const struct ustring *s1, const struct ustring *s2,
+	 int case_insensitive)
 {
 	unsigned int len;
 	long ret = 0;
@@ -448,9 +491,9 @@ RtlCompareUnicodeString(const struct ustring *s1, const struct ustring *s2,
 	return ret;
 }
 
-STDCALL int
-RtlEqualString(const struct ustring *s1, const struct ustring *s2,
-	       int case_insensitive)
+STDCALL int WRAP_EXPORT(RtlEqualString)
+	(const struct ustring *s1, const struct ustring *s2,
+	 int case_insensitive)
 {
 	TRACEENTER1("%s", "");
 	if (s1->len != s2->len)
@@ -458,17 +501,17 @@ RtlEqualString(const struct ustring *s1, const struct ustring *s2,
 	return !RtlCompareString(s1, s2, case_insensitive);
 }
 
-STDCALL int
-RtlEqualUnicodeString(const struct ustring *s1, const struct ustring *s2,
-		      int case_insensitive)
+STDCALL int WRAP_EXPORT(RtlEqualUnicodeString)
+	(const struct ustring *s1, const struct ustring *s2,
+	 int case_insensitive)
 {
 	if (s1->len != s2->len)
 		return 0;
 	return !RtlCompareUnicodeString(s1, s2, case_insensitive);
 }
 
-STDCALL void
-RtlCopyUnicodeString(struct ustring *dst, const struct ustring *src)
+STDCALL void WRAP_EXPORT(RtlCopyUnicodeString)
+	(struct ustring *dst, const struct ustring *src)
 {
 	TRACEENTER1("%s", "");
 	if (src)
@@ -484,9 +527,8 @@ RtlCopyUnicodeString(struct ustring *dst, const struct ustring *src)
 	TRACEEXIT1(return);
 }
 
-STDCALL int
-RtlAnsiStringToUnicodeString(struct ustring *dst, struct ustring *src,
-			     unsigned int dup)
+STDCALL int WRAP_EXPORT(RtlAnsiStringToUnicodeString)
+	(struct ustring *dst, struct ustring *src, unsigned int dup)
 {
 	int i;
 	__u16 *d;
@@ -517,9 +559,8 @@ RtlAnsiStringToUnicodeString(struct ustring *dst, struct ustring *src,
 	TRACEEXIT2(return NDIS_STATUS_SUCCESS);
 }
 
-STDCALL int
-RtlUnicodeStringToAnsiString(struct ustring *dst, struct ustring *src,
-			     unsigned int dup)
+STDCALL int WRAP_EXPORT(RtlUnicodeStringToAnsiString)
+	(struct ustring *dst, struct ustring *src, unsigned int dup)
 {
 	int i;
 	__u16 *s;
@@ -549,9 +590,8 @@ RtlUnicodeStringToAnsiString(struct ustring *dst, struct ustring *src,
 	TRACEEXIT2(return NDIS_STATUS_SUCCESS);
 }
 
-STDCALL int
-RtlIntegerToUnicodeString(unsigned long value, unsigned long base,
-			  struct ustring *ustring)
+STDCALL int WRAP_EXPORT(RtlIntegerToUnicodeString)
+	(unsigned long value, unsigned long base, struct ustring *ustring)
 {
 	char string[sizeof(unsigned long) * 8 + 1];
 	struct ustring ansi;
@@ -584,8 +624,8 @@ RtlIntegerToUnicodeString(unsigned long value, unsigned long base,
 	return RtlAnsiStringToUnicodeString(ustring, &ansi, 0);
 }
 
-STDCALL void 
-RtlInitUnicodeString(struct ustring *dest, __u16 *src)
+STDCALL void  WRAP_EXPORT(RtlInitUnicodeString)
+	(struct ustring *dest, __u16 *src)
 {
 	struct ustring *uc;
 
@@ -606,10 +646,11 @@ RtlInitUnicodeString(struct ustring *dest, __u16 *src)
 	TRACEEXIT1(return);
 }
 
-void RtlFreeUnicodeString(void){UNIMPL();}
-void RtlUnwind(void){UNIMPL();}
+static void WRAP_EXPORT(RtlFreeUnicodeString)(void){UNIMPL();}
+static void WRAP_EXPORT(RtlUnwind)(void){UNIMPL();}
 
-STDCALL int rand(void)
+STDCALL int WRAP_EXPORT(rand)
+	(void)
 {
 	char buf[6];
 	int i, r;
@@ -621,7 +662,7 @@ STDCALL int rand(void)
 }
 
 /*
- * This is the packet_recycler that gets scheduled from NdisMIndicateReceivePacket
+ * This function gets scheduled from NdisMIndicateReceivePacket
  */
 void packet_recycler(void *param)
 {
@@ -678,7 +719,7 @@ u64 ticks_1601(void)
 	return ticks;
 }
 
-int getSp(void)
+int get_esp(void)
 {
 	volatile int i;
 	asm("movl %esp,(%esp,1)");
@@ -687,7 +728,7 @@ int getSp(void)
 
 void inline my_dumpstack(void)
 {
-	int *sp = (int*) getSp();
+	int *sp = (int*) get_esp();
 	int i;
 	for(i = 0; i < 20; i++)
 	{
@@ -695,52 +736,4 @@ void inline my_dumpstack(void)
 	}
 }
 
-struct wrap_func misc_wrap_funcs[] =
-{
-	WRAP_FUNC_ENTRY(RtlAnsiStringToUnicodeString),
-	WRAP_FUNC_ENTRY(RtlCompareMemory),
-	WRAP_FUNC_ENTRY(RtlCompareString),
-	WRAP_FUNC_ENTRY(RtlCompareUnicodeString),
-	WRAP_FUNC_ENTRY(RtlCopyUnicodeString),
-	WRAP_FUNC_ENTRY(RtlEqualString),
-	WRAP_FUNC_ENTRY(RtlEqualUnicodeString),
-	WRAP_FUNC_ENTRY(RtlFreeUnicodeString),
-	WRAP_FUNC_ENTRY(RtlIntegerToUnicodeString),
-	WRAP_FUNC_ENTRY(RtlUnicodeStringToAnsiString),
-	WRAP_FUNC_ENTRY(RtlUnwind),
-
-	WRAP_FUNC_ENTRY(_alldiv),
-	WRAP_FUNC_ENTRY(_allmul),
-	WRAP_FUNC_ENTRY(_allrem),
-	WRAP_FUNC_ENTRY(_aulldiv),
-	WRAP_FUNC_ENTRY(_aullmul),
-	WRAP_FUNC_ENTRY(_aullrem),
-	WRAP_FUNC_ENTRY(_allshl),
-	WRAP_FUNC_ENTRY(_aullshl),
-	WRAP_FUNC_ENTRY(_allshr),
-	WRAP_FUNC_ENTRY(_aullshr),
-
-	WRAP_FUNC_ENTRY(RtlInitUnicodeString),
-
-	{"atoi",   (WRAP_FUNC)wrap_atoi},
-	{"memcpy",   (WRAP_FUNC)wrap_memcpy},
-	{"memmove",   (WRAP_FUNC)wrap_memmove},
-	{"memset",   (WRAP_FUNC)wrap_memset},
-	{"rand",   (WRAP_FUNC)rand},
-	{"snprintf",   (WRAP_FUNC)wrap_snprintf},
-	{"sprintf",   (WRAP_FUNC)wrap_sprintf},
-	{"srand",   (WRAP_FUNC)wrap_srand},
-	{"strcmp",   (WRAP_FUNC)wrap_strcmp},
-	{"strcpy",   (WRAP_FUNC)wrap_strcpy},
-	{"strlen",   (WRAP_FUNC)wrap_strlen},
-	{"strncmp",   (WRAP_FUNC)wrap_strncmp},
-	{"strncpy",   (WRAP_FUNC)wrap_strncpy},
-	{"tolower",   (WRAP_FUNC)wrap_tolower},
-	{"toupper",   (WRAP_FUNC)wrap_toupper},
-	{"vsnprintf",   (WRAP_FUNC)wrap_vsnprintf},
-	{"vsprintf",   (WRAP_FUNC)wrap_vsprintf},
-	{"_snprintf",   (WRAP_FUNC)wrap_snprintf},
-	{"_vsnprintf",   (WRAP_FUNC)wrap_vsnprintf},
-
-	{NULL, NULL}
-};
+#include "misc_funcs_exports.h"

@@ -40,39 +40,39 @@ static int num_exports;
 #define RVA2VA(image, rva, type) (type)rva_to_va(image, rva)
 
 #ifdef TEST_LOADER
-#define WRAP_FUNC void
-WRAP_FUNC get_wrap_func(char *name)
+#define WRAP_EXPORT_FUNC void
+WRAP_EXPORT_FUNC get_export(char *name)
 {
 	return name;
 }
 #else
-extern struct wrap_func ntos_wrap_funcs[], ndis_wrap_funcs[],
-	misc_wrap_funcs[], hal_wrap_funcs[], usb_wrap_funcs[];
+extern struct wrap_export ntoskernel_exports[], ndis_exports[],
+	misc_funcs_exports[], hal_exports[], usb_exports[];
 
-WRAP_FUNC get_wrap_func(char *name)
+WRAP_EXPORT_FUNC get_export(char *name)
 {
 	int i;
 
-	for (i = 0 ; ntos_wrap_funcs[i].name != NULL; i++)
-		if (strcmp(ntos_wrap_funcs[i].name, name) == 0)
-			return ntos_wrap_funcs[i].func;
+	for (i = 0 ; ntoskernel_exports[i].name != NULL; i++)
+		if (strcmp(ntoskernel_exports[i].name, name) == 0)
+			return ntoskernel_exports[i].func;
 
-	for (i = 0 ; ndis_wrap_funcs[i].name != NULL; i++)
-		if (strcmp(ndis_wrap_funcs[i].name, name) == 0)
-			return ndis_wrap_funcs[i].func;
+	for (i = 0 ; ndis_exports[i].name != NULL; i++)
+		if (strcmp(ndis_exports[i].name, name) == 0)
+			return ndis_exports[i].func;
 
-	for (i = 0 ; misc_wrap_funcs[i].name != NULL; i++)
-		if (strcmp(misc_wrap_funcs[i].name, name) == 0)
-			return misc_wrap_funcs[i].func;
+	for (i = 0 ; misc_funcs_exports[i].name != NULL; i++)
+		if (strcmp(misc_funcs_exports[i].name, name) == 0)
+			return misc_funcs_exports[i].func;
 
-	for (i = 0 ; hal_wrap_funcs[i].name != NULL; i++)
-		if (strcmp(hal_wrap_funcs[i].name, name) == 0)
-			return hal_wrap_funcs[i].func;
+	for (i = 0 ; hal_exports[i].name != NULL; i++)
+		if (strcmp(hal_exports[i].name, name) == 0)
+			return hal_exports[i].func;
 
 #ifdef CONFIG_USB
-	for (i = 0 ; usb_wrap_funcs[i].name != NULL; i++)
-		if (strcmp(usb_wrap_funcs[i].name, name) == 0)
-			return usb_wrap_funcs[i].func;
+	for (i = 0 ; usb_exports[i].name != NULL; i++)
+		if (strcmp(usb_exports[i].name, name) == 0)
+			return usb_exports[i].func;
 #endif
 
 	for (i = 0; i < num_exports; i++)
@@ -227,7 +227,7 @@ static int import(void *image, struct coffpe_import_dirent *dirent, char *dll)
 					 char*);
 		}
 
-		adr = get_wrap_func(symname);
+		adr = get_export(symname);
 		if (adr != NULL)
 			DBGTRACE1("found symbol: %s:%s, rva = %08X",
 				  dll, symname, (unsigned int)address_tbl[i]);

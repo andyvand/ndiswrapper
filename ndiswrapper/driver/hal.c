@@ -14,71 +14,68 @@
  */
 
 #include "ndis.h"
-#include "ntoskernel.h"
 
-STDCALL static void
-WRITE_PORT_ULONG(unsigned int port, unsigned int value)
+STDCALL static void WRAP_EXPORT(WRITE_PORT_ULONG)
+	(unsigned int port, unsigned int value)
 {
 	outl(value, port);
 }
 
-STDCALL static unsigned int
-READ_PORT_ULONG(unsigned int port)
+STDCALL static unsigned int WRAP_EXPORT(READ_PORT_ULONG)
+	(unsigned int port)
 {
 	return inl(port);
 }
 
-STDCALL static void
-WRITE_PORT_USHORT(unsigned int port, unsigned short value)
+STDCALL static void WRAP_EXPORT(WRITE_PORT_USHORT)
+	(unsigned int port, unsigned short value)
 {
 	outw(value, port);
 }
 
-STDCALL static unsigned short
-READ_PORT_USHORT(unsigned int port)
+STDCALL static unsigned short WRAP_EXPORT(READ_PORT_USHORT)
+	(unsigned int port)
 {
 	return inw(port);
 }
 
-STDCALL static void
-WRITE_PORT_UCHAR(unsigned int port, unsigned char value)
+STDCALL static void WRAP_EXPORT(WRITE_PORT_UCHAR)
+	(unsigned int port, unsigned char value)
 {
 	outb(value, port);
 }
 
-STDCALL static unsigned short
-READ_PORT_UCHAR(unsigned int port)
+STDCALL static unsigned short WRAP_EXPORT(READ_PORT_UCHAR)
+	(unsigned int port)
 {
 	return inb(port);
 }
 
-STDCALL static void
-WRITE_PORT_BUFFER_USHORT (unsigned int port, unsigned short *buf,
-			  unsigned long count)
+STDCALL static void WRAP_EXPORT(WRITE_PORT_BUFFER_USHORT)
+	(unsigned int port, unsigned short *buf, unsigned long count)
 {
 	unsigned long i;
 	for (i = 0 ; i < count ; i++)
 		outw(buf[i], port);
 }
 
-STDCALL static void
-READ_PORT_BUFFER_USHORT (unsigned int port, unsigned short *buf,
-			 unsigned long count)
+STDCALL static void WRAP_EXPORT(READ_PORT_BUFFER_USHORT)
+	(unsigned int port, unsigned short *buf, unsigned long count)
 {
 	unsigned long i;
 	for (i = 0 ; i < count; i++)
 		buf[i] = inw(port);
 }
 
-STDCALL static void
-KeStallExecutionProcessor(unsigned long usecs)
+STDCALL static void WRAP_EXPORT(KeStallExecutionProcessor)
+	(unsigned long usecs)
 {
 	//DBGTRACE("%s %d\n", __FUNCTION__ , usecs);
 	udelay(usecs);
 }
 
-_FASTCALL KIRQL
-KfRaiseIrql(int dummy1, int dummy2, KIRQL newirql)
+_FASTCALL KIRQL WRAP_EXPORT(KfRaiseIrql)
+	(int dummy1, int dummy2, KIRQL newirql)
 {
 	KIRQL irql;
 
@@ -96,8 +93,8 @@ KfRaiseIrql(int dummy1, int dummy2, KIRQL newirql)
 	TRACEEXIT4(return irql);
 }
 	
-_FASTCALL void
-KfLowerIrql(int dummy1, int dummy2, KIRQL oldirql)
+_FASTCALL void WRAP_EXPORT(KfLowerIrql)
+	(int dummy1, int dummy2, KIRQL oldirql)
 {
 	TRACEENTER4("irql = %d", oldirql);
 
@@ -107,8 +104,8 @@ KfLowerIrql(int dummy1, int dummy2, KIRQL oldirql)
 	TRACEEXIT4(return);
 }
 
-_FASTCALL KIRQL
-KfAcquireSpinLock(int dummy1, int dummy2, KSPIN_LOCK *lock)
+_FASTCALL KIRQL WRAP_EXPORT(KfAcquireSpinLock)
+	(int dummy1, int dummy2, KSPIN_LOCK *lock)
 {
 	TRACEENTER4("lock = %p", lock);
 
@@ -135,8 +132,8 @@ KfAcquireSpinLock(int dummy1, int dummy2, KSPIN_LOCK *lock)
 	TRACEEXIT4(return (*lock)->irql);
 }
 
-_FASTCALL void
-KfReleaseSpinLock(int dummy, KIRQL oldirql, KSPIN_LOCK *lock)
+_FASTCALL void WRAP_EXPORT(KfReleaseSpinLock)
+	(int dummy, KIRQL oldirql, KSPIN_LOCK *lock)
 {
 	struct wrap_spinlock *wrap_lock;
 
@@ -156,21 +153,4 @@ KfReleaseSpinLock(int dummy, KIRQL oldirql, KSPIN_LOCK *lock)
 	TRACEEXIT4(return);
 }
 
-struct wrap_func hal_wrap_funcs[] =
-{
-	WRAP_FUNC_ENTRY(WRITE_PORT_BUFFER_USHORT),
-	WRAP_FUNC_ENTRY(WRITE_PORT_UCHAR),
-	WRAP_FUNC_ENTRY(WRITE_PORT_ULONG),
-	WRAP_FUNC_ENTRY(WRITE_PORT_USHORT),
-	WRAP_FUNC_ENTRY(READ_PORT_BUFFER_USHORT),
-	WRAP_FUNC_ENTRY(READ_PORT_UCHAR),
-	WRAP_FUNC_ENTRY(READ_PORT_ULONG),
-	WRAP_FUNC_ENTRY(READ_PORT_USHORT),
-	WRAP_FUNC_ENTRY(KeStallExecutionProcessor),
-	WRAP_FUNC_ENTRY(KfAcquireSpinLock),
-	WRAP_FUNC_ENTRY(KfReleaseSpinLock),
-	WRAP_FUNC_ENTRY(KfRaiseIrql),
-	WRAP_FUNC_ENTRY(KfLowerIrql),
-	{NULL, NULL}
-};
-
+#include "hal_exports.h"
