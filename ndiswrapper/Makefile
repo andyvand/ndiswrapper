@@ -55,7 +55,7 @@ rpm: dist ndiswrapper.spec.in
 	fi
 	rpmbuild -ba ndiswrapper.spec
 
-deb: dist
+deb:
 	@if [ -d debian ]; then \
 		echo -e "ndiswrapper (${DRV_VERSION}) unstable; urgency=low\n\n  * see ChangeLog for details\n\n -- NdisWrapper Team <ndiswrapper-general@lists.sourceforge.net>  `date '+%a, %d %b %Y %H:%M:%S %z'`" > debian/changelog; \
 		fakeroot make -f debian/rules binary; \
