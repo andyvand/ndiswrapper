@@ -1002,8 +1002,13 @@ STDCALL void NdisQueryBufferOffset(struct ndis_buffer *buffer, unsigned int *off
 	*length = buffer->len;
 }
 
- 
-/* Copied from ReactOS */
+STDCALL int NdisSystemProcessorCount(void)
+{
+	return NR_CPUS;
+}
+
+
+ /* Copied from ReactOS */
 STDCALL void NdisInitializeEvent(PNDIS_EVENT Event)
 /*
  * FUNCTION: Initializes an event to be used for synchronization
@@ -1017,6 +1022,7 @@ STDCALL void NdisInitializeEvent(PNDIS_EVENT Event)
 int NdisWaitEvent(void *event, int timeout){UNIMPL(); return 0;}
 void NdisSetEvent(void *event){UNIMPL();}
 void NdisResetEvent(void *event){UNIMPL();}
+STDCALL void NdisScheduleWorkItem(void *workitem){UNIMPL();}
                                                                                                                                                                                                                                     
  
 /* Unimplemented...*/
@@ -1027,11 +1033,6 @@ STDCALL unsigned int NdisAnsiStringToUnicodeString(void *dst, void *src){UNIMPL(
 STDCALL void NdisMGetDeviceProperty(void *handle, void **p1, void **p2, void **p3, void**p4, void**p5){UNIMPL();}
 STDCALL unsigned long NdisWritePcmciaAttributeMemory(void *handle, unsigned int offset, void *buffer, unsigned int length){UNIMPL();return 0;}
 STDCALL unsigned long NdisReadPcmciaAttributeMemory(void *handle, unsigned int offset, void *buffer, unsigned int length){UNIMPL();return 0;}
-STDCALL void NdisScheduleWorkItem(void *workitem){UNIMPL();}
-
-
-
-STDCALL void NdisSystemProcessorCount(void){UNIMPL();}
 STDCALL void NdisUnicodeStringToAnsiString(void){UNIMPL();}
 
 STDCALL void NdisInitializeString(void){UNIMPL();}
