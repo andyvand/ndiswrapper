@@ -33,8 +33,11 @@ STDCALL void KeStallExecutionProcessor(unsigned int usecs)
 	udelay(usecs);
 }
 
-void KfAcquireSpinLock(void){DBGTRACE("%s --UNIMPLEMENTED--\n", __FUNCTION__ );}
-void KfReleaseSpinLock(void){DBGTRACE("%s --UNIMPLEMENTED--\n", __FUNCTION__ );}
+void KfAcquireSpinLock(void){UNIMPL();}
+void KfReleaseSpinLock(void){UNIMPL();}
+
+void WRITE_PORT_ULONG(void){UNIMPL();}
+void READ_PORT_ULONG(void){UNIMPL();}
 
 
 /** Functions from ntoskrnl **/
@@ -57,6 +60,9 @@ char * my_strncpy(char *dst, char *src, int n)
 	return strncpy(dst, src, n);
 }
 
+void my_strlen(void){UNIMPL();}
+void my_memcpy(void){UNIMPL();}
+void my_memset(void){UNIMPL();}
 
 STDCALL void WRITE_REGISTER_ULONG(unsigned int reg, unsigned int val)
 {
@@ -78,19 +84,19 @@ STDCALL void WRITE_REGISTER_UCHAR(unsigned int reg, unsigned char val)
 
 STDCALL void KeInitializeEvent(void *event, unsigned int type, unsigned char state)
 {
-	DBGTRACE("%s --UNIMPLEMENTED--\n", __FUNCTION__ );
+	UNIMPL();
 }
 STDCALL void IoBuildSynchronousFsdRequest(void)
 {
-	DBGTRACE("%s --UNIMPLEMENTED--\n", __FUNCTION__ );
+	UNIMPL();
 }
 STDCALL void IofCallDriver(void)
 {
-	DBGTRACE("%s --UNIMPLEMENTED--\n", __FUNCTION__ );
+	UNIMPL();
 }
 STDCALL unsigned int KeWaitForSingleObject(void **object, unsigned int reason, unsigned int waitmode, unsigned short alertable, void *timeout)
 {
-	DBGTRACE("%s --UNIMPLEMENTED--\n", __FUNCTION__ );
+	UNIMPL();
 	return 0;
 }
 
@@ -106,29 +112,29 @@ int RtlEqualUnicodeString(char *str1, char *str2, int hororcase)
 
 STDCALL void RtlAnsiStringToUnicodeString(char *dst, char *src, unsigned int unknown)
 {
-	DBGTRACE("%s --UNIMPLEMENTED--\n", __FUNCTION__ );
+	UNIMPL();
 }
 
 STDCALL void KeInitializeSpinLock(void *spinlock)
 {
-	DBGTRACE("%s --UNIMPLEMENTED--\n", __FUNCTION__ );
+	UNIMPL();
 }
 
 STDCALL void *ExAllocatePoolWithTag(unsigned int type, unsigned int size, unsigned int tag)
 {
-	DBGTRACE("%s --UNIMPLEMENTED--\n", __FUNCTION__ );
+	UNIMPL();
 	return (void*)0x000afff8;
 }
-void IoDeleteSymbolicLink(void){DBGTRACE("%s --UNIMPLEMENTED--\n", __FUNCTION__ );}
-void InterlockedExchange(void){DBGTRACE("%s --UNIMPLEMENTED--\n", __FUNCTION__ );}
-void MmMapLockedPages(void){DBGTRACE("%s --UNIMPLEMENTED--\n", __FUNCTION__ );}
-void RtlUnicodeStringToAnsiString(void){DBGTRACE("%s --UNIMPLEMENTED--\n", __FUNCTION__ );}
-void IoCreateDevice(void){DBGTRACE("%s --UNIMPLEMENTED--\n", __FUNCTION__ );}
-void RtlFreeUnicodeString(void){DBGTRACE("%s --UNIMPLEMENTED--\n", __FUNCTION__ );}
-void IoDeleteDevice(void){DBGTRACE("%s --UNIMPLEMENTED--\n", __FUNCTION__ );}
-void IoCreateSymbolicLink(void){DBGTRACE("%s --UNIMPLEMENTED--\n", __FUNCTION__ );}
-void ExFreePool(void){DBGTRACE("%s --UNIMPLEMENTED--\n", __FUNCTION__ );}
-void RtlUnwind(void){DBGTRACE("%s --UNIMPLEMENTED--\n", __FUNCTION__ );}
-void IofCompleteRequest(void){DBGTRACE("%s --UNIMPLEMENTED--\n", __FUNCTION__ );}
-void IoReleaseCancelSpinLock(void){DBGTRACE("%s --UNIMPLEMENTED--\n", __FUNCTION__ );}
-void _allmul(long p1, long p2, long p3, long p4){DBGTRACE("%s --UNIMPLEMENTED--\n", __FUNCTION__ );}
+void IoDeleteSymbolicLink(void){UNIMPL();}
+void InterlockedExchange(void){UNIMPL();}
+void MmMapLockedPages(void){UNIMPL();}
+void RtlUnicodeStringToAnsiString(void){UNIMPL();}
+void IoCreateDevice(void){UNIMPL();}
+void RtlFreeUnicodeString(void){UNIMPL();}
+void IoDeleteDevice(void){UNIMPL();}
+void IoCreateSymbolicLink(void){UNIMPL();}
+void ExFreePool(void){UNIMPL();}
+void RtlUnwind(void){UNIMPL();}
+void IofCompleteRequest(void){UNIMPL();}
+void IoReleaseCancelSpinLock(void){UNIMPL();}
+void _allmul(long p1, long p2, long p3, long p4){UNIMPL();}

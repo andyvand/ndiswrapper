@@ -283,4 +283,7 @@ STDCALL void NdisIndicateStatusComplete(struct ndis_handle *handle);
 #define NDIS_OID_ESSID              0x0D010102
 #define NDIS_OID_MODE               0x0D010108
 #define NDIS_OID_RSSI               0x0D010206
+
+#define UNIMPL() printk(KERN_ERR "%s --UNIMPLEMENTED--\n", __FUNCTION__ )
+
 #endif /* NDIS_H */
