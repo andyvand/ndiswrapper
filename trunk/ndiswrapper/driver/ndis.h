@@ -611,9 +611,6 @@ STDCALL int RtlAnsiStringToUnicodeString(struct ustring *dst, struct ustring *sr
 int getSp(void);
 void init_ndis_work(void);
 
-void *wrapper_kmalloc(size_t size, int flags);
-void wrapper_kfree_all(void);
-
 int ndiswrapper_procfs_init(void);
 int ndiswrapper_procfs_add_iface(struct ndis_handle *handle);
 void ndiswrapper_procfs_remove_iface(struct ndis_handle *handle);

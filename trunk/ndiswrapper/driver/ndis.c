@@ -106,7 +106,7 @@ STDCALL int NdisMRegisterMiniport(struct ndis_driver *ndis_driver,
 
 	if(char_len < min_length)
 	{
-		printk(KERN_WARNING "%s: Characteristics length to small for driver %s\n", DRV_NAME, ndis_driver->name); 
+		printk(KERN_WARNING "%s: Characteristics length to small %d for driver %s\n", DRV_NAME, char_len, ndis_driver->name); 
 		return NDIS_STATUS_BAD_CHARACTERISTICS;
 	}
 
