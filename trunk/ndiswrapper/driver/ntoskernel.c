@@ -127,6 +127,12 @@ STDCALL void WRAP_EXPORT(KeAcquireSpinLockAtDpcLevel)
 	KfAcquireSpinLock(FASTCALL_ARGS_1(lock));
 }
 
+STDCALL void WRAP_EXPORT(KeLowerIrql)
+	(KIRQL irql)
+{
+	KfLowerIrql(FASTCALL_ARGS_1(irql));
+}
+
 STDCALL KIRQL WRAP_EXPORT(KeAcquireSpinLockRaiseToDpc)
         (KSPIN_LOCK *lock)
 {
