@@ -1309,22 +1309,50 @@ static int priv_network_type(struct net_device *dev,
 
 /* WPA support */
 
+static int wpa_init(struct net_device *dev, struct iw_request_info *info,
+		    union iwreq_data *wrqu, char *extra)
+{
+	struct ndis_handle *handle = (struct ndis_handle *)dev->priv;
+
+	TRACEENTER2("");
+
+	if (test_bit(Ndis802_11Encryption2Enabled, &handle->capa) ||
+	    test_bit(Ndis802_11Encryption3Enabled, &handle->capa)) {
+		if (set_infra_mode(handle, Ndis802_11Infrastructure))
+			WARNING("couldn't enable infrastructure/managed mode");
+		TRACEEXIT2(return 0);
+	} else {
+		WARNING("driver is not WPA capable");
+		TRACEEXIT2(return -1);
+	}
+}
+
+static int wpa_deinit(struct net_device *dev, struct iw_request_info *info,
+		      union iwreq_data *wrqu, char *extra)
+{
+	TRACEENTER2("");
+	TRACEEXIT2(return 0);
+}
+
 static int wpa_set_wpa(struct net_device *dev, struct iw_request_info *info,
 		       union iwreq_data *wrqu, char *extra)
 {
 	struct ndis_handle *handle = (struct ndis_handle *)dev->priv;
 	
-	TRACEENTER2("%s", "");
+	TRACEENTER2("");
 	DBGTRACE1("flags = %d,  handle->capa = %ld",
 		  wrqu->data.flags, handle->capa);
-	
-	if (test_bit(Ndis802_11Encryption2Enabled, &handle->capa) ||
-	    test_bit(Ndis802_11Encryption3Enabled, &handle->capa))
+
+	if (wrqu->data.flags) {
+		if (test_bit(Ndis802_11Encryption2Enabled, &handle->capa) ||
+		    test_bit(Ndis802_11Encryption3Enabled, &handle->capa))
+			TRACEEXIT2(return 0);
+		else {
+			WARNING("driver is not WPA capable");
+			TRACEEXIT2(return -1);
+		}
+	} else
 		TRACEEXIT2(return 0);
-	else {
-		WARNING("%s", "driver is not WPA capable");
-		TRACEEXIT2(return -1);
-	}
 }
 
 static int wpa_set_key(struct net_device *dev, struct iw_request_info *info,
@@ -1688,6 +1716,8 @@ static const iw_handler priv_handler[] = {
 	[WPA_SET_COUNTERMEASURES- SIOCIWFIRSTPRIV] = wpa_set_countermeasures,
 	[WPA_DEAUTHENTICATE 	- SIOCIWFIRSTPRIV] = wpa_deauthenticate,
 	[WPA_SET_AUTH_ALG 	- SIOCIWFIRSTPRIV] = wpa_set_auth_alg,
+	[WPA_INIT 		- SIOCIWFIRSTPRIV] = wpa_init,
+	[WPA_DEINIT 		- SIOCIWFIRSTPRIV] = wpa_deinit,
 
 	[PRIV_RESET 		- SIOCIWFIRSTPRIV] = priv_reset,
 	[PRIV_POWER_PROFILE 	- SIOCIWFIRSTPRIV] = priv_power_profile,
