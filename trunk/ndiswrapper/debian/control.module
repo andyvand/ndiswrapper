@@ -5,10 +5,11 @@ Maintainer: Giridhar Pemmasani <ndiswrapper-general@lists.sourceforge.net>
 Build-Depends: debhelper (>> 4.0.0)
 Standards-Version: 3.6.0
 
-Package: ndiswrapper-modules-${kpkg:Kernel-Version}
+Package: ndiswrapper-modules
 Architecture: i386
 Provides: ndiswrapper-modules
 Suggests: kernel-package
+Depends: ndiswrapper-utils-#NDISVERS#
 Description: Linux kernel module for NdisWrapper
  Some wireless LAN vendors refuse to release hardware specifications or
  drivers for their products for operating systems other than Microsoft
