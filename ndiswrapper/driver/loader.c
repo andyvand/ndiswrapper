@@ -39,7 +39,6 @@
 #include "pe_linker.h"
 #include "wrapper.h"
 
-/* List of loaded drivers */
 static spinlock_t loader_lock;
 static struct ndis_device *ndis_devices;
 static unsigned int num_ndis_devices;
@@ -840,7 +839,7 @@ static int register_devices(struct load_devices *load_devices)
 		ndiswrapper_pci_driver.suspend = ndiswrapper_suspend_pci;
 		ndiswrapper_pci_driver.resume = ndiswrapper_resume_pci;
 		res = pci_register_driver(&ndiswrapper_pci_driver);
-		if (res) {
+		if (res < 0) {
 			ERROR("couldn't register ndiswrapper pci driver");
 			goto err_ndis_device;
 		}
@@ -856,7 +855,7 @@ static int register_devices(struct load_devices *load_devices)
 		ndiswrapper_usb_driver.disconnect =
 			ndiswrapper_remove_one_usb_dev;
 		res = usb_register(&ndiswrapper_usb_driver);
-		if (res) {
+		if (res < 0) {
 			ERROR("couldn't register ndiswrapper usb driver");
 			goto err_ndis_device;
 		}
