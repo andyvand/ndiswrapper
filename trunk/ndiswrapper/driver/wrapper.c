@@ -548,7 +548,16 @@ static int ndis_set_wep(struct net_device *dev, struct iw_request_info *info,
 	}
 	else
 	{
-		res = set_int(handle, NDIS_OID_WEP_STATUS, NDIS_ENCODE_ENABLED);
+		if (wrqu->data.flags & IW_ENCODE_RESTRICTED)
+			auth_mode = NDIS_ENCODE_RESTRICTED;
+		else if (wrqu->data.flags & IW_ENCODE_OPEN)
+			auth_mode = NDIS_ENCODE_OPEN;
+		else
+		{
+			printk(KERN_WARNING "%s: no security mode specified; using 'restricted' security mode, which may not work in all cases\n", dev->name);
+			auth_mode = NDIS_ENCODE_RESTRICTED;
+		}
+		res = set_int(handle, NDIS_OID_AUTH_MODE, auth_mode);
 		if (res)
 			return -1;
 
@@ -566,20 +575,12 @@ static int ndis_set_wep(struct net_device *dev, struct iw_request_info *info,
 				return -1;
 			memcpy(&handle->wep, &req, sizeof(req));
 		}
-		
-		if (wrqu->data.flags & IW_ENCODE_RESTRICTED)
-			auth_mode = NDIS_ENCODE_RESTRICTED;
-		else if (wrqu->data.flags & IW_ENCODE_OPEN)
-			auth_mode = NDIS_ENCODE_OPEN;
-		else
-		{
-			printk(KERN_WARNING "%s: no security mode specified; using 'restricted' security mode, which may not work in all cases\n", dev->name);
-			auth_mode = NDIS_ENCODE_RESTRICTED;
-		}
-		res = set_int(handle, NDIS_OID_AUTH_MODE, auth_mode);
 
+		res = set_int(handle, NDIS_OID_WEP_STATUS, NDIS_ENCODE_ENABLED);
 		if (res)
 			return -1;
+
+		
 	}
 	return 0;
 }
