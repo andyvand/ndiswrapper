@@ -1136,7 +1136,7 @@ static int setup_dev(struct net_device *dev)
 static int ndis_init_one(struct pci_dev *pdev,
 			 const struct pci_device_id *ent)
 {
-	int res;
+	int res = 0;
 	struct ndis_device *device = (struct ndis_device *) ent->driver_data;
 	struct ndis_driver *driver = device->driver;
 	struct ndis_handle *handle;
@@ -1185,7 +1185,14 @@ static int ndis_init_one(struct pci_dev *pdev,
 	spin_lock_init(&handle->recycle_packets_lock);
 	INIT_LIST_HEAD(&handle->recycle_packets);
 
-	handle->ndis_wq = create_workqueue("ndis_wq");
+//	handle->ndis_wq = create_workqueue("ndis_wq");
+	new_workqueue(handle->ndis_wq, "ndis_wq");
+	if (handle->ndis_wq == NULL)
+	{
+		ERROR("%s", "couldn't create workqueue");
+		goto out_enable;
+	}
+
 	INIT_WORK(&handle->recycle_packets_work, packet_recycler, handle);
 
 	INIT_WORK(&handle->set_rx_mode_work, ndis_set_rx_mode_proc, dev);
@@ -1201,14 +1208,14 @@ static int ndis_init_one(struct pci_dev *pdev,
 	handle->indicate_receive_packet = &NdisMIndicateReceivePacket;
 	handle->send_complete = &NdisMSendComplete;
 	handle->send_resource_avail = &NdisMSendResourcesAvailable;
-	handle->indicate_status = &NdisMIndicateStatus;	
+	handle->indicate_status = &NdisMIndicateStatus;
 	handle->indicate_status_complete = &NdisMIndicateStatusComplete;
-	handle->query_complete = &NdisMQueryInformationComplete;	
+	handle->query_complete = &NdisMQueryInformationComplete;
 	handle->set_complete = &NdisMSetInformationComplete;
 	handle->reset_complete = &NdisMResetComplete;
 	
 	handle->map_count = 0;
-	handle->map_dma_addr = NULL; 
+	handle->map_dma_addr = NULL;
 
 	handle->nick[0] = 0;
 

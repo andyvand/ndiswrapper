@@ -45,6 +45,8 @@
 /* pci functions in 2.6 kernels have problems allocating dma buffers,
  * but seem to work fine with dma functions
  */
+typedef struct workqueue_struct *workqueue;
+#define new_workqueue(queue, name) (queue) = create_workqueue(name)
 #include <asm/dma-mapping.h>
 #define PCI_DMA_ALLOC_COHERENT(pci_dev,size,dma_handle) \
 	dma_alloc_coherent(&pci_dev->dev,size,dma_handle,GFP_KERNEL|__GFP_DMA)
@@ -68,7 +70,12 @@
 #define INIT_WORK INIT_TQUEUE
 #define schedule_work schedule_task
 #define flush_scheduled_work flush_scheduled_tasks
-
+typedef task_queue workqueue;
+#define new_workqueue(queue, name) DECLARE_TASK_QUEUE(queue)
+#define queue_work(queue, work) do { \
+		queue_task(&queue, work); \
+		run_task_queue(&queue); \
+	} while (0)
 #include <linux/smp_lock.h>
 #ifdef CONFIG_PREEMPT
 #define in_atomic() ((preempt_get_count() & ~PREEMPT_ACTIVE) != kernel_locked())
@@ -92,7 +99,6 @@
 #ifndef free_netdev
 #define free_netdev kfree
 #endif
-
 
 #define KMALLOC_THRESHOLD 131072
 
@@ -179,5 +185,8 @@ void wrap_kfree_all(void);
 #define TRACEEXIT2(stmt) do { DBGTRACE2("%s", "Exit"); stmt; } while(0)
 #define TRACEEXIT3(stmt) do { DBGTRACE3("%s", "Exit"); stmt; } while(0)
 #define TRACEEXIT4(stmt) do { DBGTRACE4("%s", "Exit"); stmt; } while(0)
+
+#define MAC2STR(a) (a)[0], (a)[1], (a)[2], (a)[3], (a)[4], (a)[5]
+#define MACSTR "%02x:%02x:%02x:%02x:%02x:%02x"
 
 #endif // NDISWRAPPER_H

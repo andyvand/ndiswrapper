@@ -1354,18 +1354,52 @@ STDCALL unsigned char NdisMSynchronizeWithInterrupt(struct ndis_irq *ndis_irq,
  * It's called using a macro that referenced the opaque miniport-handler
  *
  */
-STDCALL void NdisMIndicateStatus(struct ndis_handle *handle, 
+STDCALL void NdisMIndicateStatus(struct ndis_handle *handle,
 				 unsigned int status, void *buf,
 				 unsigned int len)
 {
 	TRACEENTER3("%08x", status);
-	if(status == NDIS_STATUS_MEDIA_CONNECT)
+	if (status == NDIS_STATUS_MEDIA_CONNECT)
+	{
 		handle->link_status = 1;
-	if(status == NDIS_STATUS_MEDIA_DISCONNECT)
+		set_bit(WRAPPER_LINK_STATUS, &handle->wrapper_work);
+		schedule_work(&handle->wrapper_worker);
+	}
+	if (status == NDIS_STATUS_MEDIA_DISCONNECT)
+	{
 		handle->link_status = 0;
+		set_bit(WRAPPER_LINK_STATUS, &handle->wrapper_work);
+		schedule_work(&handle->wrapper_worker);
+	}
 #ifdef WPA
-	set_bit(WRAPPER_LINK_STATUS, &handle->wrapper_work);
-	schedule_work(&handle->wrapper_worker);
+	if (status == NDIS_STATUS_MEDIA_SPECIFIC_INDICATION && buf)
+	{
+		struct status_indication *status =
+			(struct status_indication *)buf;
+		DBGTRACE("%s", "media status");
+		if (status->status_type == NDIS_STATUS_AUTHENTICATION)
+		{
+			struct auth_req *auth_req;
+			buf = (char *)buf + sizeof(struct status_indication);
+			len -= sizeof(struct status_indication);
+			while (len > 0)
+			{
+				auth_req = (struct auth_req *)buf;
+				DBGTRACE(MACSTR, MAC2STR(auth_req->bssid));
+				if (auth_req->flags & 0x01)
+					DBGTRACE("%s", "request_requth");
+				if (auth_req->flags & 0x02)
+					DBGTRACE("%s", "request_keyupdate");
+				if (auth_req->flags & 0x06)
+					DBGTRACE("%s", "request_pairwise_error");
+				if (auth_req->flags & 0x0E)
+					DBGTRACE("%s", "request_group_error");
+				len -= auth_req->length;
+				buf = (char *)buf + auth_req->length;
+			}
+		}
+	}
+
 #endif
 	TRACEEXIT3(return);
 }
@@ -1458,9 +1492,8 @@ STDCALL void NdisMIndicateReceivePacket(struct ndis_handle *handle,
 			list_add(&packet->recycle_list,
 				 &handle->recycle_packets);
 			spin_unlock_bh(&handle->recycle_packets_lock);
-			if (!queue_work(handle->ndis_wq,
-					&handle->recycle_packets_work))
-				ERROR("%s", "queue_work failed");
+			queue_work(handle->ndis_wq,
+				   &handle->recycle_packets_work);
 		}
 	}
 	TRACEEXIT3(return);

@@ -557,7 +557,7 @@ struct packed ndis_handle
 	struct work_struct recycle_packets_work;
 
 	/* generic work queue */
-	struct workqueue_struct *ndis_wq;
+	workqueue ndis_wq;
 
 	/* List of initialized timers */
 	struct list_head timers;
@@ -654,6 +654,24 @@ enum ndis_pm_state
 	NDIS_PM_STATE_D1 = 2,
 	NDIS_PM_STATE_D2 = 3,
 	NDIS_PM_STATE_D3 = 4,
+};
+
+enum status_type
+{
+	NDIS_STATUS_AUTHENTICATION,
+	NDIS_STATUS_MAX,
+};
+
+struct status_indication
+{
+	enum status_type status_type;
+};
+
+struct auth_req
+{
+	unsigned long length;
+	mac_address bssid;
+	unsigned long flags;
 };
 
 #define MAX_WPA_IE_LEN 64
