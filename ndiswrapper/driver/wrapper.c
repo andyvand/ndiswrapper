@@ -246,6 +246,7 @@ static int ndis_get_essid(struct net_device *dev,
 static int ndis_set_mode(struct net_device *dev, struct iw_request_info *info,
 			   union iwreq_data *wrqu, char *extra)
 {
+	struct ndis_handle *handle = dev->priv;
 	int ndis_mode;
 	int res;
 
@@ -264,13 +265,14 @@ static int ndis_set_mode(struct net_device *dev, struct iw_request_info *info,
 		return -EOPNOTSUPP;
 	}
 	
-	res = set_int(dev->priv, NDIS_OID_MODE, ndis_mode);
+	res = set_int(handle, NDIS_OID_MODE, ndis_mode);
 	if(res)
 	{
 		printk(KERN_INFO "%s: setting operating mode failed (%08X)\n",
 		       dev->name, res); 
 		return -1;
 	}
+	handle->wireless_mode = ndis_mode;
 	return 0;
 }
 
@@ -287,6 +289,9 @@ static int ndis_get_mode(struct net_device *dev, struct iw_request_info *info,
 		       dev->name, res);
 		return -EOPNOTSUPP;
 	}
+
+	if (handle->wireless_mode != ndis_mode)
+		printk(KERN_ERR "%s: wireless mode set earlier (%d) is not same as wireless mode now (%d)\n", dev->name, handle->wireless_mode, ndis_mode);
 
 	switch(ndis_mode)
 	{
@@ -1250,13 +1255,13 @@ static void statcollector_bh(void *data)
 	struct ndis_wireless_stats ndis_stats;
 	long rssi;
 
-	if (in_atomic())
-		return;
-
-	res = doquery(handle, NDIS_OID_RSSI, (char *)&rssi, sizeof(rssi),
-				  &written, &needed);
-	if (!res)
-		iw_stats->qual.level = rssi;
+	if (handle->wireless_mode != NDIS_MODE_ADHOC)
+	{
+		res = doquery(handle, NDIS_OID_RSSI, (char *)&rssi, sizeof(rssi),
+					  &written, &needed);
+		if (!res)
+			iw_stats->qual.level = rssi;
+	}
 
 	memset(&ndis_stats, 0, sizeof(ndis_stats));
 	res = doquery(handle, NDIS_OID_STATISTICS, (char *)&ndis_stats,
