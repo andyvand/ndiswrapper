@@ -369,6 +369,11 @@ STDCALL void NdisMSetAttributesEx(struct ndis_handle *handle,
 	{
 		pci_set_master(handle->pci_dev);
 	}
+
+	if(!(attributes & 0x20))
+	{
+		printk(KERN_ERR "NDIS: Not a deserialized miniport!\n");
+	}
 	
 	handle->adapter_ctx = adapter_ctx;
 }
