@@ -56,12 +56,7 @@ struct ndis_phy_addr_unit {
 	UINT length;
 };
 
-struct ndis_buffer {
-	struct ndis_buffer *next;
-	UINT len;
-	UINT offset;
-	UCHAR *data;
-};
+typedef struct mdl ndis_buffer;
 
 enum ndis_per_packet_info {
 	TcpIpChecksumPacketInfo,
@@ -83,8 +78,8 @@ struct ndis_packet_extension {
 struct ndis_packet_private {
 	UINT nr_pages;
 	UINT len;
-	struct ndis_buffer *buffer_head;
-	struct ndis_buffer *buffer_tail;
+	ndis_buffer *buffer_head;
+	ndis_buffer *buffer_tail;
 	void *pool;
 	UINT count;
 	ULONG flags;
@@ -101,16 +96,16 @@ struct ndis_packet {
 	union {
 		/* for connectionless mininports */
 		struct {
-			BYTE miniport_reserved[2 * sizeof(void *)];
-			BYTE wrapper_reserved[2 * sizeof(void *)];
+			UCHAR miniport_reserved[2 * sizeof(void *)];
+			UCHAR wrapper_reserved[2 * sizeof(void *)];
 		} cl_reserved;
 		/* for deserialized miniports */
 		struct {
-			BYTE miniport_reserved_ex[3 * sizeof(void *)];
-			BYTE wrapper_reserved_ex[sizeof(void *)];
+			UCHAR miniport_reserved_ex[3 * sizeof(void *)];
+			UCHAR wrapper_reserved_ex[sizeof(void *)];
 		} deserailized_reserved;
 		struct {
-			BYTE mac_reserved[4 * sizeof(void *)];
+			UCHAR mac_reserved[4 * sizeof(void *)];
 		} mac_reserved;
 	} u;
 	ULONG_PTR reserved[2];
@@ -538,15 +533,8 @@ struct encr_info {
 };
 
 struct ndis_essid {
-	unsigned int length;
-	char essid[NDIS_ESSID_MAX_SIZE];
-};
-
-struct ndis_encr_key {
-	unsigned long struct_size;
-	unsigned long index;
-	unsigned long length;
-	unsigned char key[NDIS_ENCODING_TOKEN_MAX];
+	ULONG length;
+	UCHAR essid[NDIS_ESSID_MAX_SIZE];
 };
 
 enum network_infrastructure {
@@ -897,7 +885,7 @@ STDCALL void NdisMSetInformationComplete(struct ndis_handle *handle,
 					 NDIS_STATUS status);
 STDCALL void NdisMResetComplete(struct ndis_handle *handle, NDIS_STATUS status,
 				BOOLEAN address_reset);
-STDCALL ULONG NDIS_BUFFER_TO_SPAN_PAGES(struct ndis_buffer *buffer);
+STDCALL ULONG NDIS_BUFFER_TO_SPAN_PAGES(ndis_buffer *buffer);
 STDCALL BOOLEAN NdisWaitEvent(struct ndis_event *event, UINT timeout);
 STDCALL void NdisSetEvent(struct ndis_event *event);
 STDCALL void NdisMDeregisterInterrupt(struct ndis_irq *ndis_irq);

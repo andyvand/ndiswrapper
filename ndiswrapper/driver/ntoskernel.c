@@ -1277,6 +1277,14 @@ STDCALL void *WRAP_EXPORT(MmMapLockedPagesSpecifyCache)
 	return (void *)(((char *)mdl->startva) + mdl->byteoffset);
 }
 
+STDCALL void WRAP_EXPORT(MmUnmapLockedPages)
+	(void *base, struct mdl *mdl)
+{
+	return;
+}
+
+STDCALL void WRAP_EXPORT(IoAllocateMdl)(void){UNIMPL();}
+
 STDCALL void WRAP_EXPORT(KeInitializeMutex)
 	(struct kmutex *mutex, BOOLEAN wait)
 {
@@ -1305,11 +1313,6 @@ STDCALL LONG WRAP_EXPORT(KeReleaseMutex)
 	return mutex->u.count;
 }
 
-STDCALL void WRAP_EXPORT(MmUnmapLockedPages)
-	(void *base, struct mdl *mdl)
-{
-	return;
-}
 
 NOREGPARM NT_STATUS WRAP_EXPORT(WmiTraceMessage)
 	(void *tracehandle, ULONG message_flags,
@@ -1353,6 +1356,5 @@ STDCALL void WRAP_EXPORT(MmUnlockPages)(void){UNIMPL();}
 STDCALL void WRAP_EXPORT(ObfReferenceObject)(void){UNIMPL();}
 STDCALL void WRAP_EXPORT(ObReferenceObjectByHandle)(void){UNIMPL();}
 STDCALL void WRAP_EXPORT(_except_handler3)(void){UNIMPL();}
-STDCALL void WRAP_EXPORT(IoAllocateMdl)(void){UNIMPL();}
 
 #include "ntoskernel_exports.h"

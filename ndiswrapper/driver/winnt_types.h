@@ -226,14 +226,17 @@ enum memory_caching_type {
 
 struct mdl {
 	struct mdl* next;
-	SHORT size;
-	SHORT mdlflags;
+	CSHORT size;
+	CSHORT mdlflags;
 	void *process;
 	void *mappedsystemva;
 	void *startva;
 	ULONG bytecount;
 	ULONG byteoffset;
 };
+
+#define MmGetSystemAddressForMdlSafe(mdl,p) ((mdl)->startva)
+#define MmGetMdlByteCount(mdl) ((mdl)->bytecount)
 
 struct device_queue_entry {
 	struct list_entry list_entry;
