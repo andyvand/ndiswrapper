@@ -740,7 +740,7 @@ STDCALL void WRAP_EXPORT(RtlCopyUnicodeString)
 	TRACEEXIT1(return);
 }
 
-STDCALL NT_STATUS WRAP_EXPORT(RtlAnsiStringToUnicodeString)
+STDCALL NTSTATUS WRAP_EXPORT(RtlAnsiStringToUnicodeString)
 	(struct unicode_string *dst, struct ansi_string *src, BOOLEAN dup)
 {
 	int i;
@@ -771,7 +771,7 @@ STDCALL NT_STATUS WRAP_EXPORT(RtlAnsiStringToUnicodeString)
 	TRACEEXIT2(return NDIS_STATUS_SUCCESS);
 }
 
-STDCALL NT_STATUS WRAP_EXPORT(RtlUnicodeStringToAnsiString)
+STDCALL NTSTATUS WRAP_EXPORT(RtlUnicodeStringToAnsiString)
 	(struct ansi_string *dst, struct unicode_string *src, BOOLEAN dup)
 {
 	int i;
@@ -803,7 +803,7 @@ STDCALL NT_STATUS WRAP_EXPORT(RtlUnicodeStringToAnsiString)
 	TRACEEXIT2(return NDIS_STATUS_SUCCESS);
 }
 
-STDCALL NT_STATUS WRAP_EXPORT(RtlUnicodeStringToInteger)
+STDCALL NTSTATUS WRAP_EXPORT(RtlUnicodeStringToInteger)
 	(struct unicode_string *ustring, ULONG base, ULONG *value)
 {
 	int negsign;
@@ -868,7 +868,7 @@ STDCALL NT_STATUS WRAP_EXPORT(RtlUnicodeStringToInteger)
 	return STATUS_SUCCESS;
 }
 
-STDCALL NT_STATUS WRAP_EXPORT(RtlIntegerToUnicodeString)
+STDCALL NTSTATUS WRAP_EXPORT(RtlIntegerToUnicodeString)
 	(ULONG value, ULONG base, struct unicode_string *ustring)
 {
 	char string[sizeof(wchar_t) * 8 + 1];
@@ -971,7 +971,7 @@ STDCALL void WRAP_EXPORT(RtlFreeAnsiString)
 	return;
 }
 
-STDCALL NT_STATUS WRAP_EXPORT(RtlQueryRegistryValues)
+STDCALL NTSTATUS WRAP_EXPORT(RtlQueryRegistryValues)
 	(ULONG relative, const wchar_t *path, void *tbl, void *context,
 	 void *env)
 {
@@ -980,7 +980,7 @@ STDCALL NT_STATUS WRAP_EXPORT(RtlQueryRegistryValues)
 	TRACEEXIT5(return STATUS_SUCCESS);
 }
 
-STDCALL NT_STATUS WRAP_EXPORT(RtlWriteRegistryValue)
+STDCALL NTSTATUS WRAP_EXPORT(RtlWriteRegistryValue)
 	(ULONG relative, const wchar_t *path, const wchar_t *name, ULONG type,
 	 void *data, ULONG length)
 {
@@ -1027,11 +1027,10 @@ void *get_sp(void)
 
 void dump_stack(void)
 {
-	void *sp = get_sp();
+	ULONG_PTR *sp = get_sp();
 	int i;
 	for (i = 0; i < 20; i++)
-		printk(KERN_DEBUG "sp[%d] = %p\n",
-		       i, (void *)((ULONG_PTR *)sp)[i]);
+		printk(KERN_DEBUG "sp[%d] = %p\n", i, (void *)sp[i]);
 }
 
 void dump_bytes(const char *where, const u8 *ip)

@@ -912,16 +912,6 @@ STDCALL void NdisWriteConfiguration(NDIS_STATUS *status,
 				    struct unicode_string *key,
 				    struct ndis_config_param *val);
 
-STDCALL NT_STATUS RtlUnicodeStringToAnsiString(struct ansi_string *dst,
-					       struct unicode_string *src,
-					       BOOLEAN dup);
-STDCALL NT_STATUS RtlAnsiStringToUnicodeString(struct unicode_string *dst,
-					       struct ansi_string *src,
-					       BOOLEAN dup);
-STDCALL void RtlInitAnsiString(struct ansi_string *dst, CHAR *src);
-STDCALL void RtlInitString(struct ansi_string *dst, CHAR *src);
-STDCALL void RtlFreeUnicodeString(struct unicode_string *string);
-STDCALL void RtlFreeAnsiString(struct ansi_string *string);
 
 void *get_sp(void);
 int ndis_init(void);

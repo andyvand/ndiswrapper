@@ -104,8 +104,7 @@ typedef long long LARGE_INTEGER;
 typedef LONG NTSTATUS;
 
 typedef LONG KPRIORITY;
-typedef INT NT_STATUS;
-typedef LARGE_INTEGER	PHYSICAL_ADDRESS;
+typedef LARGE_INTEGER PHYSICAL_ADDRESS;
 typedef UCHAR KIRQL;
 typedef CHAR KPROCESSOR_MODE;
 
@@ -284,7 +283,7 @@ struct device_object {
 };
 
 struct io_status_block {
-	NT_STATUS status;
+	NTSTATUS status;
 	ULONG status_info;
 };
 
