@@ -1258,7 +1258,7 @@ int ndiswrapper_pm_callback(struct pm_dev *pm_dev, pm_request_t rqst,
 {
 	struct net_device *dev;
 	struct ndis_handle *handle;
-	int res, pm_state;
+	int res;
 	spinlock_t lock;
 
 	DBGTRACE("%s called with %p, %d, %p\n",
@@ -1271,29 +1271,48 @@ int ndiswrapper_pm_callback(struct pm_dev *pm_dev, pm_request_t rqst,
 	switch(rqst)
 	{
 	case PM_SUSPEND:
+		if (handle->pm_state != NDIS_PM_STATE_D0)
+			break;
+		res = query_int(handle, NDIS_OID_PNP_QUERY_POWER, &handle->pm_state);
+		DBGTRACE("%s: query power to state %d returns %d\n",
+		       dev->name, handle->pm_state, res);
+		if (res)
+			break;
 		apscan_del(handle);
-		DBGTRACE("%s: detaching device\n", dev->name);
-		netif_device_detach(dev);
+
+		/* do we need this? */
 		DBGTRACE("%s: stopping queue\n", dev->name);
 		netif_stop_queue(dev);
-		DBGTRACE("%s: disassociating\n", dev->name);
-		pm_state = NDIS_PM_STATE_D3;
-		res = query_int(handle, NDIS_OID_PNP_QUERY_POWER, &pm_state);
-		DBGTRACE("%s: query power to state %d returns %d\n",
-		       dev->name, pm_state, res);
-		res = set_int(handle, NDIS_OID_PNP_SET_POWER, pm_state);
+
+		DBGTRACE("%s: detaching device\n", dev->name);
+		netif_device_detach(dev);
+
+		if (*((int *)data) == 1)
+			handle->pm_state = NDIS_PM_STATE_D1;
+		else if (*((int *)data) == 2)
+			handle->pm_state = NDIS_PM_STATE_D2;
+		else
+			handle->pm_state = NDIS_PM_STATE_D3;
+		res = set_int(handle, NDIS_OID_PNP_SET_POWER, handle->pm_state);
 		DBGTRACE("%s: setting power to state %d returns %d\n",
-		       dev->name, pm_state, res);
+		       dev->name, handle->pm_state, res);
 		break;
 	case PM_RESUME:
-		pm_state = NDIS_PM_STATE_D0;
-		res = set_int(handle, NDIS_OID_PNP_SET_POWER, pm_state);
+		if (handle->pm_state == NDIS_PM_STATE_D0)
+			break;
+
+		handle->pm_state = NDIS_PM_STATE_D0;
+		res = set_int(handle, NDIS_OID_PNP_SET_POWER, handle->pm_state);
 		DBGTRACE("%s: setting power to state %d returns %d\n",
-		       dev->name, pm_state, res);
-		DBGTRACE("%s: starting queue\n", dev->name);
-		netif_start_queue(dev);
+		       dev->name, handle->pm_state, res);
+
 		DBGTRACE("%s: attaching device\n", dev->name);
 		netif_device_attach(dev);
+
+		/* do we need this? */
+		DBGTRACE("%s: starting queue\n", dev->name);
+		netif_wake_queue(dev);
+
 		add_scan_timer((unsigned long)handle);
 		break;
 	default:
@@ -1444,6 +1463,7 @@ static int __devinit ndis_init_one(struct pci_dev *pdev,
 		goto out_start;
 	}
 	handle->key_len = 0;
+	handle->pm_state = NDIS_PM_STATE_D0;
 	apscan_init(handle);
 	//hangcheck_add(handle);
 
