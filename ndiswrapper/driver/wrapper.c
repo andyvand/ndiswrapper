@@ -616,7 +616,6 @@ static int ndis_set_wep(struct net_device *dev, struct iw_request_info *info,
 			       dev->name, res);
 			return -EINVAL;
 		}
-		return 0;
 	}
 	else
 	{
@@ -629,7 +628,8 @@ static int ndis_set_wep(struct net_device *dev, struct iw_request_info *info,
 		res = set_int(handle, NDIS_OID_AUTH_MODE, auth_mode);
 		if (res)
 		{
-			printk(KERN_INFO "%s: setting authentication mode failed (%08X)\n", dev->name, res);
+			printk(KERN_INFO "%s: setting authentication mode failed (%08X)\n",
+				   dev->name, res);
 			return -EINVAL;
 		}
 
@@ -647,7 +647,8 @@ static int ndis_set_wep(struct net_device *dev, struct iw_request_info *info,
 
 			if (res)
 			{
-				printk(KERN_INFO "%s: setting wep key failed (%08X)\n", dev->name, res);
+				printk(KERN_INFO "%s: setting wep key failed (%08X)\n",
+					   dev->name, res);
 				return -EINVAL;
 			}
 			memcpy(&handle->wep, &req, sizeof(req));
@@ -656,16 +657,18 @@ static int ndis_set_wep(struct net_device *dev, struct iw_request_info *info,
 		res = set_int(handle, NDIS_OID_WEP_STATUS, NDIS_ENCODE_ENABLED);
 		if (res)
 		{
-			printk(KERN_INFO "%s: setting wep status failed (%08X)\n", dev->name, res);
+			printk(KERN_INFO "%s: setting wep status failed (%08X)\n",
+				   dev->name, res);
 			return -EINVAL;
 		}
 
-		/* ndis drivers want essid to be set after setting wep */
-		memset(&essid_wrqu, 0, sizeof(essid_wrqu));
-		essid_wrqu.essid.length = handle->essid.length;
-		essid_wrqu.essid.flags = handle->essid.flags;
-		ndis_set_essid(dev, NULL, &essid_wrqu, handle->essid.name);
 	}
+
+	/* ndis drivers want essid to be set after setting wep */
+	memset(&essid_wrqu, 0, sizeof(essid_wrqu));
+	essid_wrqu.essid.length = handle->essid.length;
+	essid_wrqu.essid.flags = handle->essid.flags;
+	ndis_set_essid(dev, NULL, &essid_wrqu, handle->essid.name);
 	return 0;
 }
 
