@@ -372,6 +372,8 @@ struct wrapper_timer {
 	struct wrap_spinlock lock;
 };
 
+typedef struct mdl ndis_buffer;
+
 STDCALL void *ExAllocatePoolWithTag(enum pool_type pool_type, SIZE_T size,
 				    ULONG tag);
 STDCALL void ExFreePool(void *p);
@@ -387,6 +389,7 @@ STDCALL NTSTATUS KeWaitForSingleObject(void *object, KWAIT_REASON reason,
 STDCALL struct mdl *IoAllocateMdl(void *virt, ULONG length, BOOLEAN second_buf,
 				  BOOLEAN charge_quota, struct irp *irp);
 STDCALL void IoFreeMdl(struct mdl *mdl);
+STDCALL void NdisFreeBuffer(ndis_buffer *buffer);
 ULONGLONG ticks_1601(void);
 
 STDCALL KIRQL KeGetCurrentIrql(void);
@@ -578,45 +581,42 @@ static inline ULONG SPAN_PAGES(ULONG_PTR ptr, SIZE_T length)
 /* for a block of code */
 #define DBG_BLOCK() while (0)
 
+extern int debug;
+
 #if defined DEBUG
 #undef DBGTRACE
-#define DBGTRACE(fmt, ...) printk(KERN_INFO "ndiswrapper (%s:%d): " fmt "\n", \
-				  __FUNCTION__, __LINE__ , ## __VA_ARGS__)
+#define DBGTRACE(level, fmt, ...) do {					\
+		if (level <= debug)					\
+			printk(KERN_INFO "ndiswrapper (%s:%d): " fmt "\n", \
+			       __FUNCTION__, __LINE__ , ## __VA_ARGS__); \
+	} while (0)
 #undef DBG_BLOCK
 #define DBG_BLOCK()
 #endif
 
-extern int debug;
-
-#define DBGTRACE_IF(level, fmt, ...) \
-{ \
-	if (level <= debug) \
-		DBGTRACE(fmt, ## __VA_ARGS__); \
-}
-
 #if defined DEBUG && DEBUG >= 1
 #undef DBGTRACE1
-#define DBGTRACE1(fmt, ...) DBGTRACE_IF(1, fmt , ## __VA_ARGS__)
+#define DBGTRACE1(fmt, ...) DBGTRACE(1, fmt , ## __VA_ARGS__)
 #endif
 
 #if defined DEBUG && DEBUG >= 2
 #undef DBGTRACE2
-#define DBGTRACE2(fmt, ...) DBGTRACE_IF(2, fmt , ## __VA_ARGS__)
+#define DBGTRACE2(fmt, ...) DBGTRACE(2, fmt , ## __VA_ARGS__)
 #endif
 
 #if defined DEBUG && DEBUG >= 3
 #undef DBGTRACE3
-#define DBGTRACE3(fmt, ...) DBGTRACE_IF(3, fmt , ## __VA_ARGS__)
+#define DBGTRACE3(fmt, ...) DBGTRACE(3, fmt , ## __VA_ARGS__)
 #endif
 
 #if defined DEBUG && DEBUG >= 4
 #undef DBGTRACE4
-#define DBGTRACE4(fmt, ...) DBGTRACE_IF(4, fmt , ## __VA_ARGS__)
+#define DBGTRACE4(fmt, ...) DBGTRACE(4, fmt , ## __VA_ARGS__)
 #endif
 
 #if defined DEBUG && DEBUG >= 5
 #undef DBGTRACE5
-#define DBGTRACE5(fmt, ...) DBGTRACE_IF(5, fmt , ## __VA_ARGS__)
+#define DBGTRACE5(fmt, ...) DBGTRACE(5, fmt , ## __VA_ARGS__)
 #endif
 
 #define TRACEENTER(fmt, ...) DBGTRACE("Enter " fmt , ## __VA_ARGS__)

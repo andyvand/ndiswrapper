@@ -465,12 +465,6 @@ void ndiswrapper_procfs_remove_iface(struct ndis_handle *handle)
 	handle->procfs_iface = NULL;
 }
 
-#if defined DEBUG
-int debug = DEBUG;
-
-NW_MODULE_PARM_INT(debug, 0600);
-MODULE_PARM_DESC(debug, "Debug level");
-
 static int procfs_read_debug(char *page, char **start, off_t off,
 			     int count, int *eof, void *data)
 {
@@ -500,42 +494,40 @@ static int procfs_write_debug(struct file *file, const char *buf,
 		return -EFAULT;
 
 	i = simple_strtol(debug_level, NULL, 10);
+#if defined(DEBUG) && DEBUG > 0
 	if (i < 0 || i > DEBUG)
 		return -EINVAL;
-
+#else
+	return -EINVAL;
+#endif
 	debug = i;
 
 	return count;
 }
-#endif
 
 int ndiswrapper_procfs_init(void)
 {
+	struct proc_dir_entry *procfs_entry;
+
 	ndiswrapper_procfs_entry = proc_mkdir(DRIVER_NAME, proc_net);
 	if (ndiswrapper_procfs_entry == NULL) {
-		ERROR("%s", "Couldn't create procfs directory");
+		ERROR("couldn't create procfs directory");
 		return -ENOMEM;
 	}
 	ndiswrapper_procfs_entry->uid = proc_uid;
 	ndiswrapper_procfs_entry->gid = proc_gid;
 
-#if defined DEBUG
-	{
-		struct proc_dir_entry *procfs_entry;
-
-		procfs_entry = create_proc_entry("debug", S_IFREG | S_IRUSR | S_IRGRP,
-						 ndiswrapper_procfs_entry);
-		if (procfs_entry == NULL) {
-			ERROR("%s", "Couldn't create proc entry for 'debug'");
-			return -ENOMEM;
-		} else {
-			procfs_entry->uid = proc_uid;
-			procfs_entry->gid = proc_gid;
-			procfs_entry->read_proc  = procfs_read_debug;
-			procfs_entry->write_proc = procfs_write_debug;
-		}
+	procfs_entry = create_proc_entry("debug", S_IFREG | S_IRUSR | S_IRGRP,
+					 ndiswrapper_procfs_entry);
+	if (procfs_entry == NULL) {
+		ERROR("couldn't create proc entry for 'debug'");
+		return -ENOMEM;
+	} else {
+		procfs_entry->uid = proc_uid;
+		procfs_entry->gid = proc_gid;
+		procfs_entry->read_proc  = procfs_read_debug;
+		procfs_entry->write_proc = procfs_write_debug;
 	}
-#endif
 
 	return 0;
 }
@@ -544,8 +536,6 @@ void ndiswrapper_procfs_remove(void)
 {
 	if (ndiswrapper_procfs_entry == NULL)
 		return;
-#if defined DEBUG
 	remove_proc_entry("debug", ndiswrapper_procfs_entry);
-#endif
 	remove_proc_entry(DRIVER_NAME, proc_net);
 }
