@@ -136,11 +136,15 @@ sub isInstalled
 {
 	my $installed;
 	my $name = shift;
+	my $mode = (stat("$confdir"))[2];
+	if (!S_ISDIR($mode)) {
+	  return 0;
+	}
 	open(LS, "ls -1 $confdir|");
 	while(my $f = <LS>)
 	{
 		chomp($f);
-		my $mode = (stat("$confdir/$f"))[2];
+		$mode = (stat("$confdir/$f"))[2];
 		if(S_ISDIR($mode) and $name eq $f)
 		{
 			$installed = 1;
@@ -252,6 +256,11 @@ sub list
 		print "WARNING: Cannot locate lspci and lsusb. Unable to see if hardware is present.\n";
 	}
 
+	my $mode = (stat("$confdir"))[2];
+	if (!S_ISDIR($mode)) {
+	  print "No drivers installed\n$s";
+	  return;
+	}
 	open(LS, "ls -1 $confdir|");
 	while(my $f = <LS>)
 	{
