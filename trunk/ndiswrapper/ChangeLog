@@ -6,6 +6,11 @@ Version 0.5 2004-xx-yy
 * Better support for multiple driver and cards.
 * Compiles on some more kernels.
 * Suspend/resume follow new power management driver model and work with S3/S4.
+* Powerup the card during initializtion so ndiswrapper works if the card is in
+  powered down state.
+* Background AP scanning is removed, so it doesn't affect IP traffic anymore.
+* All NDIS calls are serialized into one queue, so random oops/lockups don't
+  occur due to sleeping inside spinlocks.
 
 Version 0.4 2004-01-05
 ======================
