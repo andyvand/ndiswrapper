@@ -1341,6 +1341,7 @@ static int setup_dev(struct net_device *dev)
 	unsigned int res;
 	int i;
 	char dev_template[IFNAMSIZ];
+	union iwreq_data wrqu;
 
 	DBGTRACE("%s: Querying for mac\n", __FUNCTION__);
 	res = doquery(handle, 0x01010102, &mac[0], sizeof(mac), &written, &needed);
@@ -1349,6 +1350,23 @@ static int setup_dev(struct net_device *dev)
 	if(res)
 	{
 		printk(KERN_ERR "Unable to get MAC-addr from driver\n");
+		return -1;
+	}
+
+	memset(&wrqu, 0, sizeof(wrqu));
+
+	wrqu.essid.flags = 0;
+	wrqu.essid.length = 1;
+	if (ndis_set_essid(dev, NULL, &wrqu, NULL))
+	{
+		printk(KERN_ERR "%s: Unable to set empty essid\n", dev->name);
+		return -1;
+	}
+
+	wrqu.mode = IW_MODE_INFRA;
+	if (ndis_set_mode(dev, NULL, &wrqu, NULL))
+	{
+		printk(KERN_ERR "%s: Unable to set adhoc mode\n", dev->name);
 		return -1;
 	}
 
