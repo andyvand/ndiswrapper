@@ -831,7 +831,10 @@ void ndiswrapper_remove_one_dev(struct ndis_handle *handle)
 		free_netdev(handle->net_dev);
 
 	DBGTRACE("");
-	if (handle->phys_device_obj)
+	/* make sure phys_device_obj is allocated by ndiswrapper */
+	if (handle->phys_device_obj &&
+	    handle->phys_device_obj->handle == handle &&
+	    handle->phys_device_obj->magic == DEVICE_OBJECT_MAGIC)
 		kfree(handle->phys_device_obj);
 	DBGTRACE("");
 }

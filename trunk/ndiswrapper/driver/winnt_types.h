@@ -264,6 +264,8 @@ struct kdevice_queue {
 struct kdpc;
 struct irp;
 
+#define DEVICE_OBJECT_MAGIC 0x67697249
+
 struct device_object {
 	SHORT type;
 	USHORT size;
@@ -298,6 +300,7 @@ struct device_object {
 		struct usb_device *usb;
 	} device;
 	void *handle;
+	unsigned int magic;
 };
 
 struct io_status_block {

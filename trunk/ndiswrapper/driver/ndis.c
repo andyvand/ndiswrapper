@@ -2403,8 +2403,7 @@ STDCALL void WRAP_EXPORT(NdisMGetDeviceProperty)
 		next_dev, alloc_res, trans_res);
 
 	if (!handle->phys_device_obj) {
-		dev = kmalloc(
-			sizeof(struct device_object), GFP_KERNEL);
+		dev = kmalloc(sizeof(*dev), GFP_KERNEL);
 		if (!dev) {
 			ERROR("%s", "unable to allocate "
 				"DEVICE_OBJECT structure!");
@@ -2425,8 +2424,10 @@ STDCALL void WRAP_EXPORT(NdisMGetDeviceProperty)
 		/* assumes that the handle refers to an USB device */
 		dev->device.usb = handle->dev.usb;
 
+		dev->handle = handle;
+		dev->magic = DEVICE_OBJECT_MAGIC;
+
 		handle->phys_device_obj = dev;
-		dev->handle = (void *)handle;
 	}
 
 	if (phy_dev) {
