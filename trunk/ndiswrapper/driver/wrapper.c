@@ -42,7 +42,7 @@
 #error You must run make from the toplevel directory
 #endif
 
-#ifdef CONFIG_4K_STACKS
+#ifdef CONFIG_4KSTACKS
 #warning Most windows drivers do not work with 4K stacks. \
 	Disable 4K stack option (CONFIG_4K_STACKS) in the kernel; otherwise \
 	most likely the kernel crashes.
