@@ -5,12 +5,7 @@
 
 static struct proc_dir_entry *ndiswrapper_proc_entry, *ndis_proc_entry,
 	*ndis_proc_entry_stats, *ndis_proc_entry_wep, *ndis_proc_entry_hw;
-static int proc_uid, proc_gid;
-
-MODULE_PARM(proc_uid, "i");
-MODULE_PARM_DESC(proc_uid, "The uid of the files created in /proc (default: 0).");
-MODULE_PARM(proc_gid, "i");
-MODULE_PARM_DESC(proc_gid, "The gid of the files created in /proc. (default: 0).");
+extern int proc_uid, proc_gid;
 
 static int ndis_proc_read_stats(char *page, char **start, off_t off,
 				       int count, int *eof, void *data)
@@ -91,7 +86,8 @@ static int ndis_proc_read_wep(char *page, char **start, off_t off,
 		      sizeof(essid), &written, &needed);
 	if (!res)
 	{
-		p += snprintf(p, essid.len, "essid=%s\n", essid.essid);
+		essid.essid[essid.len] = '\0';
+		p += sprintf(p, "essid=%s\n", essid.essid);
 	}
 
 	res = query_int(handle, NDIS_OID_WEP_STATUS, &wep_status);
@@ -230,7 +226,7 @@ int ndis_init_proc(struct ndis_handle *handle)
 	ndis_proc_entry->gid = proc_gid;
 
 	ndis_proc_entry_stats = create_proc_entry("stats",
-						  S_IFREG | S_IRUSR,
+						  S_IFREG | S_IRUSR | S_IRGRP,
 						  ndis_proc_entry);
 	if (ndis_proc_entry_stats == NULL)
 		printk(KERN_INFO "%s: Couldn't create proc entry for 'stats'\n", dev->name);
@@ -243,7 +239,7 @@ int ndis_init_proc(struct ndis_handle *handle)
 	}
 
 	ndis_proc_entry_wep = create_proc_entry("wep",
-						S_IFREG | S_IRUSR,
+						S_IFREG | S_IRUSR | S_IRGRP,
 						ndis_proc_entry);
 	if (ndis_proc_entry_wep == NULL)
 		printk(KERN_INFO "%s: Couldn't create proc entry for 'wep'\n",
@@ -254,11 +250,10 @@ int ndis_init_proc(struct ndis_handle *handle)
 		ndis_proc_entry_wep->gid = proc_gid;
 		ndis_proc_entry_wep->data = handle;
 		ndis_proc_entry_wep->read_proc = ndis_proc_read_wep;
-//		ndis_proc_entry_wep->write_proc = ndis_proc_write_wep;
 	}
 	
 	ndis_proc_entry_hw = create_proc_entry("hw",
-					       S_IFREG | (S_IRUSR | S_IWUSR),
+					       S_IFREG | S_IRUSR | S_IRGRP,
 					       ndis_proc_entry);
 	if (ndis_proc_entry_hw == NULL)
 		printk(KERN_INFO "%s: Couldn't create proc entry for 'wep'\n",
@@ -269,8 +264,8 @@ int ndis_init_proc(struct ndis_handle *handle)
 		ndis_proc_entry_hw->gid = proc_gid;
 		ndis_proc_entry_hw->data = handle;
 		ndis_proc_entry_hw->read_proc = ndis_proc_read_hw;
-//		ndis_proc_entry_hw->write_proc = ndis_proc_write_hw;
 	}
+
 	return 0;
 }
 

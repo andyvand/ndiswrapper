@@ -49,9 +49,14 @@
 /*#define DEBUG_CRASH_ON_INIT*/
 
 static char *basename = "eth";
+int proc_uid, proc_gid;
+
 MODULE_PARM(basename, "s");
 MODULE_PARM_DESC(basename, "Basename for network device name (default: eth)");
-
+MODULE_PARM(proc_uid, "i");
+MODULE_PARM_DESC(proc_uid, "The uid of the files created in /proc (default: 0).");
+MODULE_PARM(proc_gid, "i");
+MODULE_PARM_DESC(proc_gid, "The gid of the files created in /proc. (default: 0).");
 
 /* List of loaded drivers */
 static LIST_HEAD(driverlist);
@@ -108,7 +113,7 @@ STDCALL void NdisMQueryInformationComplete(struct ndis_handle *handle, unsigned 
  * Perform a sync setinfo and deal with the possibility of an async operation.
  * This function must be called from process context as it will sleep.
  */
-static int dosetinfo(struct ndis_handle *handle, unsigned int oid, char *buf, int bufsize, unsigned int *written , unsigned int *needed)
+int dosetinfo(struct ndis_handle *handle, unsigned int oid, char *buf, int bufsize, unsigned int *written , unsigned int *needed)
 {
 	int res;
 
@@ -167,7 +172,7 @@ int query_int(struct ndis_handle *handle, int oid, int *data)
  * Set an int
  *
  */
-static int set_int(struct ndis_handle *handle, int oid, int data)
+int set_int(struct ndis_handle *handle, int oid, int data)
 {
 	unsigned int written, needed;
 
@@ -1460,6 +1465,10 @@ static int setup_dev(struct net_device *dev)
 		return -1;
 }
 
+extern void ndis_timer_handler_bh(void *data);
+extern STDCALL void NdisSetTimer(struct ndis_timer **timer_handle, unsigned int ms);
+extern STDCALL void NdisMSetPeriodicTimer(struct ndis_timer **timer_handle,
+					  unsigned int ms);
 
 /*
  * Called by PCI-subsystem for each PCI-card found.
