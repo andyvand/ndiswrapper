@@ -1,0 +1,3 @@
+utils/loadndisdriver sbin
+utils/ndiswrapper usr/sbin
+utils/wlan_radio_averatec_5110hx usr/sbin

@@ -1,0 +1,2 @@
+utils/loadndisdriver sbin
+utils/ndiswrapper usr/sbin

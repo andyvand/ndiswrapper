@@ -1,0 +1,19 @@
+Source: ndiswrapper
+Section: misc
+Priority: optional
+Maintainer: Giridhar Pemmasani <ndiswrapper-general@lists.sourceforge.net>
+Build-Depends: debhelper (>> 4.0.0)
+Standards-Version: 3.6.0
+
+Package: ndiswrapper-modules-${kpkg:Kernel-Version}
+Architecture: i386
+Provides: ndiswrapper-modules
+Suggests: kernel-package
+Description: Linux kernel module for NdisWrapper
+ Some wireless LAN vendors refuse to release hardware specifications or
+ drivers for their products for operating systems other than Microsoft
+ Windows. NdisWrapper makes it possible to use such hardware with Linux by
+ means of a loadable kernel module that "wraps around" NDIS (Windows network
+ driver API) drivers.
+ .
+ This package provides kernel module that loads Windows drivers.
