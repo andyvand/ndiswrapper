@@ -921,7 +921,6 @@ STDCALL void EthRxIndicateHandler(void *adapter_ctx, void *rx_ctx,
 				  u32 header_size, char *look_aheader,
 				  u32 look_aheader_size, u32 packet_size);
 STDCALL void EthRxComplete(struct ndis_handle *handle);
-void free_handle_ctx(struct ndis_handle *handle);
 STDCALL void NdisMTransferDataComplete(struct ndis_handle *handle,
 				       struct ndis_packet *packet,
 				       unsigned int status,
@@ -934,7 +933,8 @@ STDCALL int RtlAnsiStringToUnicodeString(struct ustring *dst,
 					 struct ustring *src,
 					 unsigned int dup);
 int get_esp(void);
-void init_ndis(void);
+void ndis_init(void);
+void ndis_cleanup_handle(struct ndis_handle *handle);
 
 int ndiswrapper_procfs_init(void);
 int ndiswrapper_procfs_add_iface(struct ndis_handle *handle);
@@ -960,11 +960,12 @@ int ndis_resume_usb(struct usb_interface *intf);
 int set_auth_mode(struct ndis_handle *handle, int mode);
 int set_encr_mode(struct ndis_handle *handle, int mode);
 
-
 void packet_recycler(void *param);
-
 int stricmp(const char *s1, const char *s2);
 
+void usb_irp_worker(void *dummy);
+void usb_init(void);
+void usb_cleanup_handle(struct ndis_handle *handle);
 
 extern struct wrap_spinlock atomic_lock;
 extern struct wrap_spinlock cancel_lock;
