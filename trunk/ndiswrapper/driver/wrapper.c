@@ -38,6 +38,10 @@
 #include "iw_ndis.h"
 #include "loader.h"
 
+#ifdef CONFIG_X86_64
+#include "wrapper_exports.h"
+#endif
+
 #ifndef NDISWRAPPER_VERSION
 #error You must run make from the toplevel directory
 #endif
@@ -109,14 +113,18 @@ int miniport_reset(struct ndis_handle *handle)
 		  res, handle->reset_status);
 
 	if (res == NDIS_STATUS_SUCCESS && handle->reset_status) {
-		handle->rx_packet = &NdisMIndicateReceivePacket;
-		handle->send_complete = &NdisMSendComplete;
-		handle->send_resource_avail = &NdisMSendResourcesAvailable;
-		handle->status = &NdisMIndicateStatus;
-		handle->status_complete = &NdisMIndicateStatusComplete;
-		handle->query_complete = &NdisMQueryInformationComplete;
-		handle->set_complete = &NdisMSetInformationComplete;
-		handle->reset_complete = &NdisMResetComplete;
+		handle->rx_packet = X86_64_STUB(NdisMIndicateReceivePacket);
+		handle->send_complete = X86_64_STUB(NdisMSendComplete);
+		handle->send_resource_avail =
+			X86_64_STUB(NdisMSendResourcesAvailable);
+		handle->status = X86_64_STUB(NdisMIndicateStatus);
+		handle->status_complete =
+			X86_64_STUB(NdisMIndicateStatusComplete);
+		handle->query_complete =
+			X86_64_STUB(NdisMQueryInformationComplete);
+		handle->set_complete =
+			X86_64_STUB(NdisMSetInformationComplete);
+		handle->reset_complete = X86_64_STUB(NdisMResetComplete);
 		ndis_set_rx_mode(handle->net_dev);
 	}
 	handle->reset_status = 0;
@@ -1403,17 +1411,17 @@ struct net_device *ndis_init_netdev(struct ndis_handle **phandle,
 	INIT_LIST_HEAD(&handle->timers);
 	wrap_spin_lock_init(&handle->timers_lock);
 
-	handle->rx_packet = &NdisMIndicateReceivePacket;
-	handle->send_complete = &NdisMSendComplete;
-	handle->send_resource_avail = &NdisMSendResourcesAvailable;
-	handle->status = &NdisMIndicateStatus;
-	handle->status_complete = &NdisMIndicateStatusComplete;
-	handle->query_complete = &NdisMQueryInformationComplete;
-	handle->set_complete = &NdisMSetInformationComplete;
-	handle->reset_complete = &NdisMResetComplete;
-	handle->eth_rx_indicate = &EthRxIndicateHandler;
-	handle->eth_rx_complete = &EthRxComplete;
-	handle->td_complete = &NdisMTransferDataComplete;
+	handle->rx_packet = X86_64_STUB(NdisMIndicateReceivePacket);
+	handle->send_complete = X86_64_STUB(NdisMSendComplete);
+	handle->send_resource_avail = X86_64_STUB(NdisMSendResourcesAvailable);
+	handle->status = X86_64_STUB(NdisMIndicateStatus);
+	handle->status_complete = X86_64_STUB(NdisMIndicateStatusComplete);
+	handle->query_complete = X86_64_STUB(NdisMQueryInformationComplete);
+	handle->set_complete = X86_64_STUB(NdisMSetInformationComplete);
+	handle->reset_complete = X86_64_STUB(NdisMResetComplete);
+	handle->eth_rx_indicate = X86_64_STUB(EthRxIndicateHandler);
+	handle->eth_rx_complete = X86_64_STUB(EthRxComplete);
+	handle->td_complete = X86_64_STUB(NdisMTransferDataComplete);
 	handle->driver->miniport_char.adapter_shutdown = NULL;
 
 	handle->map_count = 0;
