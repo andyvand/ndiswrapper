@@ -1101,7 +1101,6 @@ STDCALL void WRAP_EXPORT(NdisAllocateBuffer)
 		TRACEEXIT4(return);
 	}
 	irql = kspin_lock(&pool->lock, DISPATCH_LEVEL);
-	descr = NULL;
 	if (pool->num_allocated_descr < pool->max_descr) {
 		if (pool->free_descr) {
 			descr = pool->free_descr;
@@ -1109,9 +1108,9 @@ STDCALL void WRAP_EXPORT(NdisAllocateBuffer)
 			memset(descr, 0, sizeof(*descr));
 			MmInitializeMdl(descr, virt, length);
 		} else
-			descr = IoAllocateMdl(virt, length, FALSE, FALSE,
-					      NULL);
-	}
+			descr = allocate_init_mdl(virt, length);
+	} else
+		descr = NULL;
 
 	if (descr) {
 		/* NdisFreeBuffer doesn't pass pool, so we store pool
@@ -1162,7 +1161,7 @@ STDCALL void WRAP_EXPORT(NdisFreeBufferPool)
 		prev = cur;
 		cur = cur->next;
 		prev->process = NULL;
-		IoFreeMdl(prev);
+		free_mdl(prev);
 	}
 	kspin_unlock(&pool->lock, irql);
 	kfree(pool);
@@ -1285,14 +1284,14 @@ STDCALL void WRAP_EXPORT(NdisAllocatePacket)
 		TRACEEXIT3(return);
 	}
 	irql = kspin_lock(&pool->lock, DISPATCH_LEVEL);
-	descr = NULL;
 	if (pool->num_allocated_descr < pool->max_descr) {
 		if (pool->free_descr) {
 			descr = pool->free_descr;
 			pool->free_descr = descr->next;
 		} else
 			descr = allocate_ndis_packet();
-	}
+	} else
+		descr = NULL;
 
 	if (descr) {
 		pool->num_allocated_descr++;
