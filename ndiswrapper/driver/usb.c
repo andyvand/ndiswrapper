@@ -597,7 +597,7 @@ unsigned long usb_submit_nt_urb(struct usb_device *dev, union nt_urb *nt_urb,
 		USBTRACE("desctype = %d, descindex = %d, "
 			  "transferBuf = %p, transferBufLen = %ld",
 			  nt_urb->ctrlDescReq.desctype,
-			  nt_urb->ctrlDescReq.descindex,
+			  nt_urb->ctrlDescReq.index,
 			  nt_urb->ctrlDescReq.transferBuf,
 			  nt_urb->ctrlDescReq.transferBufLen);
 

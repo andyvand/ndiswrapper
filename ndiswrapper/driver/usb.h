@@ -160,7 +160,7 @@ struct control_descriptor_request {
 	struct urb_hcd_area hca;
 	USHORT reserved1;
 	UCHAR index;
-	USHORT desctype;
+	UCHAR desctype;
 	USHORT langid;
 	USHORT reserved2;
 };
