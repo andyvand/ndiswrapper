@@ -563,6 +563,7 @@ void packet_recycler(void *param)
 		if(!packet)
 			break;
 
+		packet->status = NDIS_STATUS_SUCCESS;
 		handle->driver->miniport_char.return_packet(handle->adapter_ctx,  packet);
 	}
 }
