@@ -702,6 +702,20 @@ int query_int(struct ndis_handle *handle, int oid, int *data);
 #define EVENT_NDIS_CABLE_DISCONNECTED_ERROR	0x800013A9
 #define EVENT_NDIS_RESET_FAILURE_CORRECTION	0x800013AA
 
+/* packet filter bits used by NDIS_OID_PACKET_FILTER */
+#define NDIS_PACKET_TYPE_DIRECTED               0x00000001
+#define NDIS_PACKET_TYPE_MULTICAST              0x00000002
+#define NDIS_PACKET_TYPE_ALL_MULTICAST          0x00000004
+#define NDIS_PACKET_TYPE_BROADCAST              0x00000008
+#define NDIS_PACKET_TYPE_SOURCE_ROUTING         0x00000010
+#define NDIS_PACKET_TYPE_PROMISCUOUS            0x00000020
+#define NDIS_PACKET_TYPE_SMT                    0x00000040
+#define NDIS_PACKET_TYPE_ALL_LOCAL              0x00000080
+#define NDIS_PACKET_TYPE_GROUP                  0x00001000
+#define NDIS_PACKET_TYPE_ALL_FUNCTIONAL         0x00002000
+#define NDIS_PACKET_TYPE_FUNCTIONAL             0x00004000
+#define NDIS_PACKET_TYPE_MAC_FRAME              0x00008000
+
 #define UNIMPL() do { \
     printk(KERN_ERR "%s --UNIMPLEMENTED--\n", __FUNCTION__ );	\
   } while (0)

@@ -1610,6 +1610,7 @@ static int setup_dev(struct net_device *dev)
 	int i;
 	union iwreq_data wrqu;
 	struct ndis_configuration ndis_config;
+	unsigned long packet_filter;
 
 	if (strlen(if_name) > (IFNAMSIZ-1))
 	{
@@ -1662,6 +1663,14 @@ static int setup_dev(struct net_device *dev)
 					sizeof(ndis_config), &written, &needed);
 	if (res)
 		printk(KERN_ERR "%s: Unable to set the configuration (%08X)\n",
+			   DRV_NAME, res);
+
+	packet_filter = (NDIS_PACKET_TYPE_DIRECTED| NDIS_PACKET_TYPE_MULTICAST|
+					 NDIS_PACKET_TYPE_BROADCAST);
+	res = dosetinfo(handle, NDIS_OID_PACKET_FILTER, (char *)&packet_filter,
+					sizeof(filter), &written, &needed);
+	if (res)
+		printk(KERN_ERR "%s: Unable to set packet filter (%08X)\n",
 			   DRV_NAME, res);
 
 	dev->open = ndis_open;
