@@ -7,9 +7,6 @@ Prerequisites
 * Make sure there is a link to the source from the modules directory:
   '/lib/modules/<VERSION>/build' should be a link to the kernel
   source, where <VERSION> is the version of the kernel you are running.
-* The driver has known problems with SMP and will not work reliably with
-  it. This includes hyperthreading support, because it implies SMP.
-
   
 Upgrading
 =========
