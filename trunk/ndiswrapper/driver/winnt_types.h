@@ -399,17 +399,17 @@ struct irp {
 		void *sys_buf;
 	} associated_irp;
 
-	void *fill1[2];
+	struct list_entry thread_list_entry;
 
 	struct io_status_block io_status;
-	CHAR requestor_mode;
-	UCHAR pending_returned;
+	KPROCESSOR_MODE requestor_mode;
+	BOOLEAN pending_returned;
 	CHAR stack_size;
 	CHAR stack_pos;
-	UCHAR cancel;
-	UCHAR cancel_irql;
+	BOOLEAN cancel;
+	KIRQL cancel_irql;
 
-	CHAR apc_env;
+	CCHAR apc_env;
 	UCHAR alloc_flags;
 
 	struct io_status_block *user_status;
