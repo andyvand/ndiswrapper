@@ -113,18 +113,18 @@ int miniport_reset(struct ndis_handle *handle)
 		  res, handle->reset_status);
 
 	if (res == NDIS_STATUS_SUCCESS && handle->reset_status) {
-		handle->rx_packet = X86_64_STUB(NdisMIndicateReceivePacket);
-		handle->send_complete = X86_64_STUB(NdisMSendComplete);
+		handle->rx_packet = &X86_64_STUB(NdisMIndicateReceivePacket);
+		handle->send_complete = &X86_64_STUB(NdisMSendComplete);
 		handle->send_resource_avail =
-			X86_64_STUB(NdisMSendResourcesAvailable);
-		handle->status = X86_64_STUB(NdisMIndicateStatus);
+			&X86_64_STUB(NdisMSendResourcesAvailable);
+		handle->status = &X86_64_STUB(NdisMIndicateStatus);
 		handle->status_complete =
-			X86_64_STUB(NdisMIndicateStatusComplete);
+			&X86_64_STUB(NdisMIndicateStatusComplete);
 		handle->query_complete =
-			X86_64_STUB(NdisMQueryInformationComplete);
+			&X86_64_STUB(NdisMQueryInformationComplete);
 		handle->set_complete =
-			X86_64_STUB(NdisMSetInformationComplete);
-		handle->reset_complete = X86_64_STUB(NdisMResetComplete);
+			&X86_64_STUB(NdisMSetInformationComplete);
+		handle->reset_complete = &X86_64_STUB(NdisMResetComplete);
 		ndis_set_rx_mode(handle->net_dev);
 	}
 	handle->reset_status = 0;
@@ -948,7 +948,7 @@ static void link_status_handler(struct ndis_handle *handle)
 static void set_packet_filter(struct ndis_handle *handle)
 {
 	struct net_device *dev = (struct net_device *)handle->net_dev;
-	unsigned long packet_filter;
+	ULONG packet_filter;
 	unsigned int res;
 
 	packet_filter = (NDIS_PACKET_TYPE_DIRECTED |
@@ -1375,6 +1375,7 @@ struct net_device *ndis_init_netdev(struct ndis_handle **phandle,
 	SET_MODULE_OWNER(dev);
 
 	handle = dev->priv;
+	DBGTRACE1("handle= %p", handle);
 
 	/* Poison the fileds as they may contain function pointers
 	 * which my be called by the driver */
@@ -1411,17 +1412,17 @@ struct net_device *ndis_init_netdev(struct ndis_handle **phandle,
 	INIT_LIST_HEAD(&handle->timers);
 	wrap_spin_lock_init(&handle->timers_lock);
 
-	handle->rx_packet = X86_64_STUB(NdisMIndicateReceivePacket);
-	handle->send_complete = X86_64_STUB(NdisMSendComplete);
-	handle->send_resource_avail = X86_64_STUB(NdisMSendResourcesAvailable);
-	handle->status = X86_64_STUB(NdisMIndicateStatus);
-	handle->status_complete = X86_64_STUB(NdisMIndicateStatusComplete);
-	handle->query_complete = X86_64_STUB(NdisMQueryInformationComplete);
-	handle->set_complete = X86_64_STUB(NdisMSetInformationComplete);
-	handle->reset_complete = X86_64_STUB(NdisMResetComplete);
-	handle->eth_rx_indicate = X86_64_STUB(EthRxIndicateHandler);
-	handle->eth_rx_complete = X86_64_STUB(EthRxComplete);
-	handle->td_complete = X86_64_STUB(NdisMTransferDataComplete);
+	handle->rx_packet = &X86_64_STUB(NdisMIndicateReceivePacket);
+	handle->send_complete = &X86_64_STUB(NdisMSendComplete);
+	handle->send_resource_avail = &X86_64_STUB(NdisMSendResourcesAvailable);
+	handle->status = &X86_64_STUB(NdisMIndicateStatus);
+	handle->status_complete = &X86_64_STUB(NdisMIndicateStatusComplete);
+	handle->query_complete = &X86_64_STUB(NdisMQueryInformationComplete);
+	handle->set_complete = &X86_64_STUB(NdisMSetInformationComplete);
+	handle->reset_complete = &X86_64_STUB(NdisMResetComplete);
+	handle->eth_rx_indicate = &X86_64_STUB(EthRxIndicateHandler);
+	handle->eth_rx_complete = &X86_64_STUB(EthRxComplete);
+	handle->td_complete = &X86_64_STUB(NdisMTransferDataComplete);
 	handle->driver->miniport_char.adapter_shutdown = NULL;
 
 	handle->map_count = 0;
