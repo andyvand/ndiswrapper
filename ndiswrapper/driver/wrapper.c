@@ -397,12 +397,10 @@ static int ndis_set_tx_power(struct net_device *dev, struct iw_request_info *inf
 
 	if (wrqu->txpower.disabled)
 	{
-		/* Linux spec says radio should be turned off, but the
-		   equivalent in NDIS is DISASSOCIATE, but that also
-		   disconnects from current AP.
-		   Then how do we reassociate? 
-		*/
-		ndis_power = 0;
+		res = set_int(handle, NDIS_OID_DISASSOCIATE, 0);
+		if (res)
+			return -1;
+		return 0;
 	}
 	else 
 	{
