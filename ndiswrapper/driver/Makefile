@@ -1,7 +1,7 @@
 #Comment out this line to disable debugging
-#CFLAGS += -DDEBUG
+CFLAGS += -DDEBUG
 
-CFLAGS += -DTEST_PM
+#CFLAGS += -DTEST_PM
 
 KSRC  := /lib/modules/$(shell uname -r)/build
 
