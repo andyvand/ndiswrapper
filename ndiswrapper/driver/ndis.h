@@ -647,6 +647,9 @@ struct packed ndis_handle
 		struct usb_device *usb;
 		void *ptr;
 	} dev;
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
+	struct usb_interface *intf;
+#endif
 	struct net_device *net_dev;
 	void *adapter_ctx;
 	void *shutdown_ctx;
@@ -896,8 +899,10 @@ int doreset(struct ndis_handle *handle);
 void ndis_set_rx_mode(struct net_device *dev);
 void hangcheck_add(struct ndis_handle *handle);
 void hangcheck_del(struct ndis_handle *handle);
-int ndis_suspend(struct pci_dev *pdev, u32 state);
-int ndis_resume(struct pci_dev *pdev);
+int ndis_suspend_pci(struct pci_dev *pdev, u32 state);
+int ndis_resume_pci(struct pci_dev *pdev);
+int ndis_suspend_usb(struct usb_interface *intf, u32 state);
+int ndis_resume_usb(struct usb_interface *intf);
 
 
 void packet_recycler(void *param);

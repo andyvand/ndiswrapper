@@ -859,7 +859,7 @@ static int start_xmit(struct sk_buff *skb, struct net_device *dev)
 	return 0;
 }
 
-int ndis_suspend(struct pci_dev *pdev, u32 state)
+int ndis_suspend_pci(struct pci_dev *pdev, u32 state)
 {
 	struct net_device *dev;
 	struct ndis_handle *handle;
@@ -904,7 +904,7 @@ int ndis_suspend(struct pci_dev *pdev, u32 state)
 	return 0;
 }
 
-int ndis_resume(struct pci_dev *pdev)
+int ndis_resume_pci(struct pci_dev *pdev)
 {
 	struct net_device *dev;
 	struct ndis_handle *handle;
@@ -958,6 +958,99 @@ int ndis_resume(struct pci_dev *pdev)
 	DBGTRACE2("%s: device resumed", dev->name);
 	return 0;
 }
+
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
+int ndis_suspend_usb(struct usb_interface *intf, u32 state)
+{
+	struct net_device *dev;
+	struct ndis_handle *handle =
+		(struct ndis_handle *)usb_get_intfdata(intf);
+	int res, i, pm_state;
+
+	if (!handle)
+		return -1;
+	dev = handle->net_dev;
+
+	if (test_bit(HW_SUSPENDED, &handle->hw_status))
+		return 0;
+
+	DBGTRACE2("%s: detaching device", dev->name);
+	netif_device_detach(dev);
+	hangcheck_del(handle);
+	statcollector_del(handle);
+
+	/* some drivers don't support D2, so force them state = 3 and D3 */
+	pm_state = NDIS_PM_STATE_D3;
+	/* use copy; query_power changes this value */
+	i = pm_state;
+	res = query_int(handle, NDIS_OID_PNP_QUERY_POWER, &i);
+	DBGTRACE2("%s: query power to state %d returns %08X",
+		  dev->name, pm_state, res);
+	if (res)
+		WARNING("No pnp capabilities for pm (%08X)", res);
+
+	res = set_int(handle, NDIS_OID_PNP_SET_POWER, pm_state);
+	DBGTRACE2("%s: setting power to state %d returns %08X",
+		  dev->name, pm_state, res);
+	if (res)
+		WARNING("No pnp capabilities for pm (%08X)", res);
+	set_bit(HW_SUSPENDED, &handle->hw_status);
+
+	DBGTRACE2("%s: device suspended", dev->name);
+	return 0;
+}
+
+int ndis_resume_usb(struct usb_interface *intf)
+{
+	struct net_device *dev;
+	struct ndis_handle *handle =
+		(struct ndis_handle *)usb_get_intfdata(intf);
+	struct miniport_char *miniport;
+	int res;
+//	unsigned long profile_inf = NDIS_POWER_PROFILE_AC;
+
+	if (!handle)
+		return -1;
+	dev = handle->net_dev;
+
+	if (!test_bit(HW_SUSPENDED, &handle->hw_status))
+		return 0;
+
+	res = set_int(handle, NDIS_OID_PNP_SET_POWER, NDIS_PM_STATE_D0);
+	DBGTRACE2("%s: setting power to state %d returns %d",
+	     dev->name, NDIS_PM_STATE_D0, res);
+	if (res)
+		WARNING("No pnp capabilities for pm (%08X)", res);
+
+	miniport = &handle->driver->miniport_char;
+	/*
+	if (miniport->pnp_event_notify)
+	{
+		INFO("%s", "calling pnp_event_notify");
+		miniport->pnp_event_notify(handle, NDIS_PNP_PROFILE_CHANGED,
+					 &profile_inf, sizeof(profile_inf));
+	}
+	*/
+
+	if (miniport->hangcheck && miniport->hangcheck(handle->adapter_ctx))
+	{
+		DBGTRACE2("%s", "resetting device");
+		doreset(handle);
+	}
+	set_int(handle, NDIS_OID_BSSID_LIST_SCAN, 0);
+
+	set_bit(SET_ESSID, &handle->wrapper_work);
+	schedule_work(&handle->wrapper_worker);
+
+	netif_device_attach(dev);
+
+	hangcheck_add(handle);
+	statcollector_add(handle);
+	clear_bit(HW_SUSPENDED, &handle->hw_status);
+	DBGTRACE2("%s: device resumed", dev->name);
+	return 0;
+}
+#endif
 
 /* worker procedure to take care of setting/checking various states */
 static void wrapper_worker_proc(void *param)
@@ -1456,6 +1549,7 @@ static void *ndis_init_one_usb(struct usb_device *udev, unsigned int ifnum,
 
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
 	handle->dev.usb = interface_to_usbdev(intf);
+	handle->intf    = intf;
 	usb_set_intfdata(intf, handle);
 #else
 	handle->dev.usb = udev;
@@ -1644,8 +1738,8 @@ static int start_driver(struct ndis_driver *driver)
 		driver->driver.pci.id_table = driver->idtable.pci;
 		driver->driver.pci.probe = ndis_init_one_pci;
 		driver->driver.pci.remove = __devexit_p(ndis_remove_one_pci);
-		driver->driver.pci.suspend = ndis_suspend;
-		driver->driver.pci.resume = ndis_resume;
+		driver->driver.pci.suspend = ndis_suspend_pci;
+		driver->driver.pci.resume = ndis_resume_pci;
 #ifndef DEBUG_CRASH_ON_INIT
 		res = pci_module_init(&driver->driver.pci);
 		if(!res)
@@ -1678,9 +1772,12 @@ static int start_driver(struct ndis_driver *driver)
 		driver->driver.usb.probe = ndis_init_one_usb;
 		driver->driver.usb.disconnect =
 			__devexit_p(ndis_remove_one_usb);
-		/* FIXME: implement the required handlers
-		driver->driver.usb.suspend = ndis_suspend;
-		driver->driver.usb.resume = ndis_resume;*/
+#if 0
+/* Currently, suspend/resume is experimental for USB and therefore disabled.
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)*/
+		driver->driver.usb.suspend = ndis_suspend_usb;
+		driver->driver.usb.resume = ndis_resume_usb;
+#endif
 		res = usb_register(&driver->driver.usb);
 		if(!res)
 			driver->dev_registered = 1;
