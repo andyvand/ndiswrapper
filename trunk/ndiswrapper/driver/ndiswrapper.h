@@ -138,7 +138,7 @@ void wrap_kfree_all(void);
 
 #if defined DEBUG
 #undef DBGTRACE
-#define DBGTRACE(fmt, ...) printk("%s(%d) " fmt "\n", \
+#define DBGTRACE(fmt, ...) printk(KERN_INFO "%s:%d " fmt "\n", \
 				  __FUNCTION__, __LINE__, ## __VA_ARGS__)
 #endif
 
@@ -162,11 +162,13 @@ void wrap_kfree_all(void);
 #define DBGTRACE4(fmt, ...) DBGTRACE(fmt, ## __VA_ARGS__)
 #endif
 
+#define TRACEENTER(fmt, ...) DBGTRACE("Enter " fmt, ## __VA_ARGS__)
 #define TRACEENTER1(fmt, ...) DBGTRACE1("Enter " fmt, ## __VA_ARGS__)
 #define TRACEENTER2(fmt, ...) DBGTRACE2("Enter " fmt, ## __VA_ARGS__)
 #define TRACEENTER3(fmt, ...) DBGTRACE3("Enter " fmt, ## __VA_ARGS__)
 #define TRACEENTER4(fmt, ...) DBGTRACE4("Enter " fmt, ## __VA_ARGS__)
 
+#define TRACEEXIT(stmt) do { DBGTRACE("Exit"); stmt; } while(0)
 #define TRACEEXIT1(stmt) do { DBGTRACE1("Exit"); stmt; } while(0)
 #define TRACEEXIT2(stmt) do { DBGTRACE2("Exit"); stmt; } while(0)
 #define TRACEEXIT3(stmt) do { DBGTRACE3("Exit"); stmt; } while(0)

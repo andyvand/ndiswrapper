@@ -139,7 +139,7 @@ STDCALL unsigned int NdisAllocateMemory(void **dest,
 	}
 	else if (flags & NDIS_MEMORY_CONTIGUOUS)
 	{
-		printk(KERN_ERR "%s: Allocating %u bytes of physically "
+		printk(KERN_WARNING "%s: Allocating %u bytes of physically "
 		       "contiguous memory may fail\n",
 		       __FUNCTION__, length);
 		*dest = (void *)kmalloc(length, GFP_KERNEL);
@@ -282,8 +282,7 @@ STDCALL void NdisOpenFile(unsigned int *status,
 	TRACEEXIT2(return);
 }
 			   
-STDCALL void NdisMapFile(unsigned int *status,
-			 void **mappedbuffer,
+STDCALL void NdisMapFile(unsigned int *status, void **mappedbuffer,
 			 struct ndis_file *filehandle)
 {
 	TRACEENTER2("Handle: %08x", (int) filehandle);
@@ -315,7 +314,7 @@ STDCALL void NdisGetSystemUpTime(unsigned int *systemuptime)
 {
 	TRACEENTER4();
 	*systemuptime = 10 * jiffies / HZ;
-	TRACEEXIT3(return);
+	TRACEEXIT4(return);
 }
 
 static inline int SPAN_PAGES(unsigned int ptr, unsigned int len)
@@ -832,18 +831,17 @@ STDCALL void NdisFreeSpinLock(struct ndis_spin_lock *lock)
 
 STDCALL void NdisAcquireSpinLock(struct ndis_spin_lock *lock)
 {
-	TRACEENTER3();
+	TRACEENTER4();
 	KeAcquireSpinLock(&lock->spinlock, &lock->kirql);
-	TRACEEXIT3(return);
+	TRACEEXIT4(return);
 }
 
 STDCALL void NdisReleaseSpinLock(struct ndis_spin_lock *lock)
 {
-	TRACEENTER3();
+	TRACEENTER4();
 	KeReleaseSpinLock(&lock->spinlock, lock->kirql);
-	TRACEEXIT3(return);
+	TRACEEXIT4(return);
 }
-
 
 STDCALL void NdisDprAcquireSpinLock(struct ndis_spin_lock *lock)
 {
@@ -937,7 +935,7 @@ STDCALL void NdisAllocateBufferPool(unsigned int *status,
                                     unsigned int *poolhandle,
 				    unsigned int size)
 {
-	TRACEENTER3();
+	TRACEENTER4();
 	*poolhandle = 0x0000fff8;
 	*status = NDIS_STATUS_SUCCESS;
 }
@@ -946,11 +944,11 @@ STDCALL void NdisAllocateBufferPool(unsigned int *status,
 
 STDCALL void NdisFreeBufferPool(void *poolhandle)
 {
-	TRACEENTER3();
+	TRACEENTER4();
 	/* Make sure all packets are recycled */
 	flush_scheduled_work();
 
-	TRACEEXIT3(return);
+	TRACEEXIT4(return);
 }
 
 
@@ -961,12 +959,12 @@ STDCALL void NdisAllocateBuffer(unsigned int *status,
 				unsigned int len)
 {
 	struct ndis_buffer *my_buffer = kmalloc(sizeof(struct ndis_buffer), GFP_ATOMIC);
-	TRACEENTER3();
+	TRACEENTER4();
 	if(!my_buffer)
 	{
 		printk(KERN_ERR "%s failed\n", __FUNCTION__);
 		*status = NDIS_STATUS_FAILURE;
-		TRACEEXIT3(return);
+		TRACEEXIT4(return);
 	}
 
 	memset(my_buffer, 0, sizeof(struct ndis_buffer));
@@ -977,25 +975,25 @@ STDCALL void NdisAllocateBuffer(unsigned int *status,
 
 	*buffer = my_buffer;
 	
-	DBGTRACE3("allocated buffer: %p", buffer);
+	DBGTRACE4("allocated buffer: %p", buffer);
 	*status = NDIS_STATUS_SUCCESS;
-	TRACEEXIT3(return);
+	TRACEEXIT4(return);
 }
 
 STDCALL void NdisFreeBuffer(void *buffer)
 {
-	TRACEENTER3();
+	TRACEENTER4();
 	if(buffer)
 	{
 		memset(buffer, 0, sizeof(struct ndis_buffer));
 		kfree(buffer);
 	}
-	TRACEEXIT3(return);
+	TRACEEXIT4(return);
 }
 
 STDCALL void NdisAdjustBufferLength(struct ndis_buffer *buf, unsigned int len)
 {
-	TRACEENTER3();
+	TRACEENTER4();
 	buf->len = len;
 }
 
@@ -1491,6 +1489,7 @@ STDCALL void NdisMSendResourcesAvailable(struct ndis_handle *handle)
 //	schedule_timeout(HZ/2);
 	mdelay(5);
 	handle->send_status = 0;
+//	wake_up_interruptible(&handle->ndis_send_wqhead);
 	schedule_work(&handle->xmit_work);
 	TRACEEXIT3(return);
 }
@@ -1576,24 +1575,24 @@ STDCALL long NdisInterlockedDecrement(long *val)
 {
 	long x;
 
-	TRACEENTER3();
+	TRACEENTER4();
 	spin_lock_bh(&atomic_lock);
 	(*val)--;
 	x = *val;
 	spin_unlock_bh(&atomic_lock);
-	TRACEEXIT3(return x);
+	TRACEEXIT4(return x);
 }
 
 STDCALL long NdisInterlockedIncrement(long *val)
 {
 	long x;
 
-	TRACEENTER3();
+	TRACEENTER4();
 	spin_lock_bh(&atomic_lock);
 	(*val)++;
 	x = *val;
 	spin_unlock_bh(&atomic_lock);
-	TRACEEXIT3(return x);
+	TRACEEXIT4(return x);
 }
 
 STDCALL struct list_entry *
@@ -1776,7 +1775,7 @@ static void worker(void *context)
 	TRACEEXIT3(return);
 }
 
-struct work_struct work;
+static struct work_struct work;
 
 void init_ndis_work(void)
 {
@@ -1788,7 +1787,8 @@ STDCALL void NdisScheduleWorkItem(struct ndis_work *ndis_work)
 	struct ndis_workentry *workentry;
 
 	TRACEENTER3();
-	workentry = kmalloc(sizeof(*workentry), GFP_KERNEL);
+	/* this function is called from irq_bh by realtek driver */
+	workentry = kmalloc(sizeof(*workentry), GFP_ATOMIC);
 	if(!workentry)
 	{
 		BUG();
