@@ -94,8 +94,8 @@ default:
 		EXTRA_VERSION=$(EXTRA_VERSION) modules
 
 clean:
-	rm -f $(MODULE) ndiswrapper.o $(OBJS) .ndiswrapper.ko.cmd \
-	   ndiswrapper.mod.[oc] .*.o.cmd *~
+	rm -rf $(MODULE) ndiswrapper.o $(OBJS) .ndiswrapper.ko.cmd \
+	   ndiswrapper.mod.[oc] .*.o.cmd *~ .tmp_versions
 
 endif
 
