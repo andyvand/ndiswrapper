@@ -333,6 +333,42 @@ static int ndis_get_freq(struct net_device *dev, struct iw_request_info *info,
 	return 0;
 }
 
+static int ndis_set_freq(struct net_device *dev, struct iw_request_info *info,
+			 union iwreq_data *wrqu, char *extra)
+{
+	struct ndis_handle *handle = dev->priv;
+	unsigned int res, written, needed;
+	struct ndis_configuration req;
+	int freq_chan[] = { 2412, 2417, 2422, 2427, 2432, 2437, 2442,
+			    2447, 2452, 2457, 2462, 2467, 2472, 2484 };
+
+	memset(&req, 0, sizeof(req));
+	
+	if (wrqu->freq.m < 1000 && wrqu->freq.e == 0)
+	{
+		if (wrqu->freq.m >= 0 &&
+		    wrqu->freq.m < (sizeof(freq_chan)/sizeof(freq_chan[0])))
+			req.ds_config = freq_chan[wrqu->freq.m] * 1000;
+		else
+			return -1;
+	}
+	else
+	{
+		double f;
+		int i;
+		for (f = wrqu->freq.m, i = wrqu->freq.e ; i > 0 ; i--)
+			f *= 10;
+		f /= 1000;
+		req.ds_config = f;
+		
+	}
+	res = dosetinfo(handle, NDIS_OID_CONFIGURATION, (char*)&req,
+			sizeof(req), &written, &needed);
+	if(res)
+		return -1;
+	return 0;
+}
+
 static int ndis_get_tx_power(struct net_device *dev, struct iw_request_info *info,
 			   union iwreq_data *wrqu, char *extra)
 {
@@ -809,6 +845,7 @@ static const iw_handler	ndis_handler[] = {
 	[SIOCSIWMODE	- SIOCIWFIRST] = ndis_set_mode,
 	[SIOCGIWMODE	- SIOCIWFIRST] = ndis_get_mode,
 	[SIOCGIWFREQ	- SIOCIWFIRST] = ndis_get_freq,
+	[SIOCSIWFREQ	- SIOCIWFIRST] = ndis_set_freq,
 	[SIOCGIWTXPOW	- SIOCIWFIRST] = ndis_get_tx_power,
 	[SIOCSIWTXPOW	- SIOCIWFIRST] = ndis_set_tx_power,
 	[SIOCGIWRATE	- SIOCIWFIRST] = ndis_get_bitrate,
