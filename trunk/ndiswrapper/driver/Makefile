@@ -189,7 +189,7 @@ default:
 endif
 
 stack_check:
-	  @ if [ $(KPSUB) -eq 26 ]; then \
+	  @ if [ "x$(CONFIG_X86_64)" = "x" -a $(KPSUB) -eq 26 ]; then \
 		   if grep -q CONFIG_4KSTACKS $(KSRC)/.config; then \
 			  if grep -q "CONFIG_4KSTACKS=y" $(KSRC)/.config; then \
 				echo; echo; \
