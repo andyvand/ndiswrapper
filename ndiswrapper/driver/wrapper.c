@@ -427,18 +427,20 @@ static int ndis_set_wep(struct net_device *dev, struct iw_request_info *info,
 	struct ndis_handle *handle = dev->priv;
 	unsigned int res, written, needed, auth_mode;
 	struct wep_req req;
+	int keyindex;
 
-	if (wrqu->data.flags & IW_ENCODE_NOKEY)
+	if ((wrqu->data.flags & IW_ENCODE_NOKEY) || 
+	    (wrqu->data.flags & IW_ENCODE_DISABLED))
 	{
-		res = set_int(handle, NDIS_OID_WEP_STATUS, NDIS_ENCODE_NOKEY);
+		keyindex = wrqu->data.flags & IW_ENCODE_INDEX;
+		keyindex |= (1 << 31);
+		res = set_int(handle, NDIS_OID_WEP_STATUS,
+			       NDIS_ENCODE_DISABLED);
+		res |= set_int(handle, NDIS_OID_REMOVE_WEP, keyindex);
+		res |= set_int(handle, NDIS_OID_AUTH_MODE, NDIS_ENCODE_OPEN);
 		if (res)
 			return -1;
-		else
-			return 0;
-	}
-	if (wrqu->data.flags & IW_ENCODE_DISABLED)
-	{
-		res = set_int(handle, NDIS_OID_WEP_STATUS, NDIS_ENCODE_DISABLED);
+		return 0;
 	}
 	else
 	{
@@ -448,8 +450,7 @@ static int ndis_set_wep(struct net_device *dev, struct iw_request_info *info,
 		req.keylength = wrqu->data.length;
 		
 		handle->key_len = req.keylength;
-		memcpy(handle->key_val, wrqu->data.pointer,
-				req.keylength);
+		memcpy(handle->key_val, wrqu->data.pointer, req.keylength);
 		memcpy(req.keymaterial, handle->key_val, req.keylength);
 		
 		res = dosetinfo(handle, NDIS_OID_ADD_WEP, (char*)&req, sizeof(req), &written, &needed);
@@ -485,26 +486,35 @@ static int ndis_get_wep(struct net_device *dev, struct iw_request_info *info,
 	res = query_int(handle, NDIS_OID_WEP_STATUS, &status);
 	if (res)
 		return -1;
+
+	wrqu->data.length = 0;
+	extra[0] = 0;
 	
-	if (status & NDIS_ENCODE_ENABLED)
+	if (status == NDIS_ENCODE_ENABLED)
+	{
 		wrqu->data.flags |= IW_ENCODE_ENABLED;
-	else if (status & NDIS_ENCODE_DISABLED)
+		wrqu->data.length = handle->key_len;
+		memcpy(extra, handle->key_val, handle->key_len);
+	}
+	else if (status == NDIS_ENCODE_DISABLED)
+	{
 		wrqu->data.flags |= IW_ENCODE_DISABLED;
-	else if (status & NDIS_ENCODE_NOKEY)
+		wrqu->data.length = handle->key_len;
+		memcpy(extra, handle->key_val, handle->key_len);
+	}
+	else if (status == NDIS_ENCODE_NOKEY)
 		wrqu->data.flags |= IW_ENCODE_NOKEY;
 
 	res = query_int(handle, NDIS_OID_AUTH_MODE, &status);
 	if (res)
 		return -1;
-	if (status & NDIS_ENCODE_OPEN)
+	if (status == NDIS_ENCODE_OPEN)
 		wrqu->data.flags |= IW_ENCODE_OPEN;
-	if (status & NDIS_ENCODE_RESTRICTED)
+	if (status == NDIS_ENCODE_RESTRICTED)
 		wrqu->data.flags |= IW_ENCODE_RESTRICTED;
-	if (status & NDIS_ENCODE_OPEN_RESTRICTED)
+	if (status == NDIS_ENCODE_OPEN_RESTRICTED)
 		wrqu->data.flags |= (IW_ENCODE_OPEN | IW_ENCODE_RESTRICTED);
 
-	wrqu->data.length = handle->key_len;
-	memcpy(extra, handle->key_val, handle->key_len);
 
 	return 0;
 }
