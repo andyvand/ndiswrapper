@@ -75,8 +75,8 @@ int doreset(struct ndis_handle *handle)
 	int res;
 	int addressing_reset;
 	DBGTRACE("%s: Enter\n", __FUNCTION__);
-//	down_interruptible(&handle->ndis_comm_mutex);
-	spin_lock_bh(&handle->ndis_comm_lock);
+	down_interruptible(&handle->ndis_comm_mutex);
+//	spin_lock_bh(&handle->ndis_comm_lock);
 
 	handle->ndis_comm_done = 0;
 	res = handle->driver->miniport_char.reset(&addressing_reset, handle->adapter_ctx);
@@ -93,8 +93,8 @@ int doreset(struct ndis_handle *handle)
 	res = handle->ndis_comm_res;
 
 out:
-	spin_unlock_bh(&handle->ndis_comm_lock);
-//	up(&handle->ndis_comm_mutex);
+//	spin_unlock(&handle->ndis_comm_lock);
+	up(&handle->ndis_comm_mutex);
 	DBGTRACE("%s: Exit\n", __FUNCTION__);
 	return res;
 	
@@ -109,8 +109,8 @@ int doquery(struct ndis_handle *handle, unsigned int oid, char *buf, int bufsize
 	int res;
 
 	DBGTRACE("%s: Enter\n", __FUNCTION__);
-//	down_interruptible(&handle->ndis_comm_mutex);
-	spin_lock_bh(&handle->ndis_comm_lock);
+	down_interruptible(&handle->ndis_comm_mutex);
+//	spin_lock(&handle->ndis_comm_lock);
 
 	handle->ndis_comm_done = 0;
 //	DBGTRACE("Calling query at %08x rva(%08x)\n", (int)handle->driver->miniport_char.query, (int)handle->driver->miniport_char.query - image_offset);
@@ -128,8 +128,8 @@ int doquery(struct ndis_handle *handle, unsigned int oid, char *buf, int bufsize
 	res = handle->ndis_comm_res;
 
 out:
-	spin_unlock_bh(&handle->ndis_comm_lock);
-//	up(&handle->ndis_comm_mutex);
+//	spin_unlock(&handle->ndis_comm_lock);
+	up(&handle->ndis_comm_mutex);
 	DBGTRACE("%s: Exit\n", __FUNCTION__);
 	return res;
 	
@@ -144,8 +144,8 @@ int dosetinfo(struct ndis_handle *handle, unsigned int oid, char *buf, int bufsi
 	int res;
 
 	DBGTRACE("%s: Enter\n", __FUNCTION__);
-//	down_interruptible(&handle->ndis_comm_mutex);
-	spin_lock_bh(&handle->ndis_comm_lock);
+	down_interruptible(&handle->ndis_comm_mutex);
+//	spin_lock(&handle->ndis_comm_lock);
 	
 	handle->ndis_comm_done = 0;
 //	DBGTRACE("Calling setinfo at %08x rva(%08x)\n", (int)handle->driver->miniport_char.setinfo, (int)handle->driver->miniport_char.setinfo - image_offset);
@@ -163,8 +163,8 @@ int dosetinfo(struct ndis_handle *handle, unsigned int oid, char *buf, int bufsi
 	res = handle->ndis_comm_res;
 
 out:
-	spin_unlock_bh(&handle->ndis_comm_lock);
-//	up(&handle->ndis_comm_mutex);
+//	spin_unlock(&handle->ndis_comm_lock);
+	up(&handle->ndis_comm_mutex);
 	DBGTRACE("%s: Enter\n", __FUNCTION__);
 	return res;
 
