@@ -597,7 +597,7 @@ extern int debug;
 #define DBGTRACE(level, fmt, ...) do {					\
 		if (level <= debug)					\
 			printk(KERN_INFO "%s (%s:%d): " fmt "\n",	\
-			       DRIVER_NAME, __FILE__,			\
+			       DRIVER_NAME, __FUNCTION__,		\
 			       __LINE__ , ## __VA_ARGS__);		\
 	} while (0)
 #undef DBG_BLOCK
