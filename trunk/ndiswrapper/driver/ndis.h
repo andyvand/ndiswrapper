@@ -46,8 +46,7 @@ struct ndis_phy_addr_unit {
 	UINT length;
 };
 
-struct ndis_buffer
-{
+struct ndis_buffer {
 	struct ndis_buffer *next;
 	UINT len;
 	UINT offset;
@@ -95,8 +94,8 @@ struct ndis_packet_private {
 	USHORT oob_offset;
 };
 
-struct packed ndis_packet
-{
+struct packed ndis_packet {
+
 	struct ndis_packet_private private;
 
 	/* for use by miniport */
@@ -142,8 +141,7 @@ struct packed ndis_packet
 	unsigned int look_ahead_size;
 };
 
-enum ndis_pnp_event
-{
+enum ndis_pnp_event {
 	NDIS_PNP_QUERY_REMOVED,
 	NDIS_PNP_REMOVED,
 	NDIS_PNP_SURPRISE_REMOVED,
@@ -200,8 +198,7 @@ typedef void (*ndis_isr_handler)(unsigned int *taken, unsigned int *callme,
 				 void *ctx) STDCALL;
 typedef void (*ndis_interrupt_handler)(void *ctx) STDCALL;
 
-struct miniport_char
-{
+struct miniport_char {
 	/* NDIS 3.0 */
 	UCHAR majorVersion;
 	UCHAR minorVersion;
@@ -280,62 +277,53 @@ struct miniport_char
 };
 
 /* this should be same as wrap_spinlock */
-struct ndis_spinlock
-{
+struct ndis_spinlock {
 	KSPIN_LOCK lock;
 	KIRQL use_bh;
 };
 
-struct handle_ctx_entry
-{
+struct handle_ctx_entry {
 	struct list_head list;
 	void *handle;
 	void *ctx;
 };
 
-struct ndis_sched_work_item
-{
+struct ndis_sched_work_item {
 	void *ctx;
 	void (*func)(struct ndis_sched_work_item *, void *) STDCALL;
 	UCHAR reserved[8 * sizeof(void *)];
 };
 
-struct ndis_io_work_item
-{
+struct ndis_io_work_item {
 	void *ctx;
 	void *device_object;
 	void (*func)(void *device_object, void *ctx) STDCALL;
 };
 
-struct ndis_alloc_mem
-{
+struct ndis_alloc_mem {
 	struct ndis_handle *handle;
 	unsigned long size;
 	char cached;
 	void *ctx;
 };
 
-struct ndis_free_mem
-{
+struct ndis_free_mem {
 	void *addr;
 	unsigned int length;
 	unsigned int flags;
 };
 
-enum ndis_work_entry_type
-{
+enum ndis_work_entry_type {
 	NDIS_SCHED_WORK,
 	NDIS_ALLOC_MEM,
 	NDIS_FREE_MEM,
 	NDIS_IO_WORK_ITEM,
 };
 
-struct ndis_work_entry
-{
+struct ndis_work_entry {
 	struct list_head list;
 	enum ndis_work_entry_type type;
-	union
-	{
+	union {
 		struct ndis_sched_work_item *sched_work_item;
 		struct ndis_alloc_mem alloc_mem;
 		struct ndis_free_mem free_mem;
@@ -343,8 +331,7 @@ struct ndis_work_entry
 	} entry;
 };
 
-struct ndis_irq
-{
+struct ndis_irq {
 	/* void *intr_obj is used for irq */
 	union {
 		void *intr_obj;
@@ -380,27 +367,23 @@ enum ndis_config_param_type {
 	NDIS_CONFIG_PARAM_NONE,
 };
 
-struct ndis_config_param
-{
+struct ndis_config_param {
 	enum ndis_config_param_type type;
-	union
-	{
+	union {
 		unsigned long intval;
 		struct ustring ustring;
 		struct ndis_binary_data binary_data;
 	} data;
 };
 
-struct device_setting
-{
+struct device_setting {
 	struct list_head list;
 	char name[MAX_NDIS_SETTING_NAME_LEN];
 	char value[MAX_NDIS_SETTING_VALUE_LEN];
 	struct ndis_config_param config_param;
 };
 
-struct ndis_bin_file
-{
+struct ndis_bin_file {
 	char name[MAX_NDIS_SETTING_NAME_LEN];
 	int size;
 	void *data;
@@ -410,8 +393,7 @@ struct ndis_bin_file
  * There is one of these per driver. One per loaded driver exists.
  *
  */
-struct ndis_driver
-{
+struct ndis_driver {
 	struct list_head list;
 	char name[MAX_NDIS_SETTING_NAME_LEN];
 	char version[MAX_NDIS_SETTING_VALUE_LEN];
@@ -447,8 +429,7 @@ struct ndis_driver
  * There is one of these per handeled device-id
  *
  */
-struct ndis_device
-{
+struct ndis_device {
 	struct list_head settings;
 	int bustype;
 	int vendor;
@@ -476,8 +457,7 @@ struct ndis_wireless_stats {
 	LARGE_INTEGER fcs_err;
 };
 
-enum wrapper_work
-{
+enum wrapper_work {
 	WRAPPER_LINK_STATUS,
 	SET_OP_MODE,
 	SET_ESSID,
@@ -488,15 +468,13 @@ enum wrapper_work
 	SHUTDOWN
 };
 
-enum ndis_attributes
-{
+enum ndis_attributes {
 	ATTR_SERIALIZED,
 	ATTR_SURPRISE_REMOVE,
 	ATTR_HALT_ON_SUSPEND,
 };
 
-enum hw_status
-{
+enum hw_status {
 	HW_NORMAL,
 	HW_SUSPENDED,
 	HW_HALTED,
@@ -521,8 +499,7 @@ enum ndis_medium {
 	NDIS_MEDIUM_MAX
 };
 
-enum ndis_phys_medium
-{
+enum ndis_phys_medium {
 	NDIS_PHYSICAL_MEDIUM_UNSPECIFIED,
 	NDIS_PHYSICAL_MEDIUM_WIRELESSLAN,
 	NDIS_PHYSICAL_MEDIUM_CABLEMODEM,
@@ -535,32 +512,27 @@ enum ndis_phys_medium
 	NDIS_PHYSICAL_MEDIUM_MAX,
 };
 
-struct encr_info
-{
-	struct encr_key
-	{
+struct encr_info {
+	struct encr_key {
 		unsigned int length;
 		unsigned char key[NDIS_ENCODING_TOKEN_MAX];
 	} keys[MAX_ENCR_KEYS];
 	int active;
 };
 
-struct packed ndis_essid
-{
+struct packed ndis_essid {
 	unsigned int length;
 	char essid[NDIS_ESSID_MAX_SIZE];
 };
 
-struct packed ndis_encr_key
-{
+struct packed ndis_encr_key {
 	unsigned long struct_size;
 	unsigned long index;
 	unsigned long length;
 	unsigned char key[NDIS_ENCODING_TOKEN_MAX];
 };
 
-enum auth_mode
-{
+enum auth_mode {
 	AUTHMODE_OPEN,
 	AUTHMODE_RESTRICTED,
 	AUTHMODE_AUTO,
@@ -571,8 +543,7 @@ enum auth_mode
 	AUTHMODE_WPA2PSK,
 };
 
-enum encr_mode
-{
+enum encr_mode {
 	ENCR1_ENABLED,
 	ENCR_DISABLED,
 	ENCR1_NOKEY,
@@ -583,21 +554,18 @@ enum encr_mode
 	ENCR3_ABSENT,
 };
 
-enum op_mode
-{
+enum op_mode {
 	NDIS_MODE_ADHOC,
 	NDIS_MODE_INFRA,
 	NDIS_MODE_AUTO
 };
 
-struct ndis_timer
-{
+struct ndis_timer {
 	struct ktimer ktimer;
 	struct kdpc kdpc;
 };
 
-struct ndis_miniport_timer
-{
+struct ndis_miniport_timer {
 	struct ktimer ktimer;
 	struct kdpc kdpc;
 	void *timer_func;
@@ -606,27 +574,57 @@ struct ndis_miniport_timer
 	struct ndis_miniport_timer *next;
 };
 
-struct packed ndis_resource_entry
-{
-	__u8 type;
-	__u8 share;
-	__u16 flags;
-	__u32 param1;
-	__u32 param2;
-	__u32 param3;
+struct packed ndis_resource_entry {
+	UCHAR type;
+	UCHAR share;
+	USHORT flags;
+	union {
+		struct {
+			PHYSICAL_ADDRESS start;
+			ULONG length;
+		} generic;
+		struct {
+			PHYSICAL_ADDRESS start;
+			ULONG length;
+		} port;
+		struct {
+			ULONG level;
+			ULONG vector;
+			KAFFINITY affinity;
+		} interrupt;
+		struct {
+			PHYSICAL_ADDRESS start;
+			ULONG length;
+		} memory;
+		struct {
+			ULONG channel;
+			ULONG port;
+			ULONG reserved1;
+		} dma;
+		struct {
+			ULONG data[3];
+		} device_private;
+		struct {
+			ULONG start;
+			ULONG length;
+			ULONG reserved;
+		} bus_number;
+		struct {
+			ULONG data_size;
+			ULONG reserved1;
+			ULONG reserved2;
+		} device_specific_data;
+	} u;
 };
 
-struct packed ndis_resource_list
-{
-	__u16 version;
-	__u16 revision;
-	__u32 length;
+struct packed ndis_resource_list {
+	USHORT version;
+	USHORT revision;
+	ULONG length;
 	struct ndis_resource_entry list[0];
 };
 
-
-struct ndis_event
-{
+struct ndis_event {
 	struct kevent kevent;
 };
 
@@ -669,11 +667,11 @@ struct ndis_filterdbs {
 /*
  * This is the per device struct. One per PCI-device exists.
  *
- *  This struct contains function pointers that the drivers references directly via macros,
- * so it's important that they are at the correct position hence the paddings.
+ * This struct contains function pointers that the drivers references
+ * directly via macros, so it's important that they are at the correct
+ * position hence the paddings.
  */
-struct packed ndis_handle
-{
+struct packed ndis_handle {
 	void *signature;
 	struct ndis_handle *next;
 	struct ndis_driver *driver;
@@ -822,7 +820,7 @@ struct packed ndis_handle
 
 	unsigned long scan_timestamp;
 
-	u32 link_status;
+	unsigned char link_status;
 	struct encr_info encr_info;
 	char nick[IW_ESSID_MAX_SIZE+1];
 
@@ -853,8 +851,7 @@ struct packed ndis_handle
 	unsigned long attributes;
 };
 
-enum ndis_pm_state
-{
+enum ndis_pm_state {
 	NDIS_PM_STATE_D0 = 1,
 	NDIS_PM_STATE_D1 = 2,
 	NDIS_PM_STATE_D2 = 3,

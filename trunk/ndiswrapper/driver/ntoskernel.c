@@ -836,7 +836,7 @@ _FASTCALL static NT_STATUS WRAP_EXPORT(IofCallDriver)
 #endif
 
 			default:
-				ERROR("ioctl %08lX NOT IMPLEMENTED!\n",
+				ERROR("ioctl %08X NOT IMPLEMENTED!",
 					stack->params.ioctl.code);
 		}
 	} else

@@ -110,6 +110,7 @@ typedef ULONG_PTR	SIZE_T;
 typedef LONG KPRIORITY;
 typedef INT NT_STATUS;
 typedef LARGE_INTEGER	PHYSICAL_ADDRESS;
+typedef ULONG_PTR	KAFFINITY;
 
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,7)
 #include <linux/kthread.h>
@@ -327,14 +328,13 @@ do {									\
 #define SECS_1601_TO_1970       ((369 * 365 + 89) * (u64)SECSPERDAY)
 #define TICKS_1601_TO_1970      (SECS_1601_TO_1970 * TICKSPERSEC)
 
-#define UNIMPL() do { \
-    printk(KERN_ERR "%s --UNIMPLEMENTED--\n", __FUNCTION__ );	\
-  } while (0)
+#define UNIMPL() do {							\
+		printk(KERN_ERR "%s --UNIMPLEMENTED--\n", __FUNCTION__ ); \
+	} while (0)
 
 typedef void (*WRAP_EXPORT_FUNC)(void);
 
-struct wrap_export
-{
+struct wrap_export {
 	const char *name;
 	WRAP_EXPORT_FUNC func;
 };
@@ -344,16 +344,14 @@ struct wrap_export
 #define WRAP_EXPORT_MAP(s,f)
 #define WRAP_EXPORT(x) x
 
-struct wrap_alloc
-{
+struct wrap_alloc {
 	struct list_head list;
 	void *ptr;
 };
 
 typedef unsigned char mac_address[ETH_ALEN];
 
-struct pe_image
-{
+struct pe_image {
 	char name[MAX_DRIVER_NAME_LEN];
 	void *entry;
 	void *image;
@@ -361,27 +359,19 @@ struct pe_image
 	int type;
 };
 
-
-void *wrap_kmalloc(size_t size, int flags);
-void wrap_kfree(void *ptr);
-void wrap_kfree_all(void);
-
-struct ustring
-{
-	unsigned short len;
-	unsigned short buflen;
+struct ustring {
+	USHORT len;
+	USHORT buflen;
 	char *buf;
 };
 
-struct slist_entry
-{
+struct slist_entry {
 	struct slist_entry  *next;
 };
 
 union slist_head {
 	ULONGLONG align;
-	struct packed
-	{
+	struct packed {
 		struct slist_entry  *next;
 		USHORT depth;
 		USHORT sequence;
@@ -401,22 +391,19 @@ typedef union {
 	ULONG_PTR ntoslock;
 } KSPIN_LOCK;
 
-struct wrap_spinlock
-{
+struct wrap_spinlock {
 	KSPIN_LOCK lock;
 	KIRQL use_bh;
 };
 
 typedef CHAR KPROCESSOR_MODE;
 
-struct list_entry
-{
+struct list_entry {
 	struct list_entry *fwd_link;
 	struct list_entry *bwd_link;
 };
 
-struct packed dispatch_header
-{
+struct packed dispatch_header {
 	UCHAR type;
 	UCHAR absolute;
 	UCHAR size;
@@ -425,8 +412,7 @@ struct packed dispatch_header
 	struct list_head wait_list_head;
 };
 
-struct kevent
-{
+struct kevent {
 	struct dispatch_header header;
 };
 
@@ -434,8 +420,7 @@ struct ktimer;
 struct kdpc;
 
 #define WRAPPER_TIMER_MAGIC 47697249
-struct wrapper_timer
-{
+struct wrapper_timer {
 	struct list_head list;
 	struct timer_list timer;
 #ifdef DEBUG_TIMER
@@ -448,8 +433,7 @@ struct wrapper_timer
 	struct wrap_spinlock lock;
 };
 
-struct packed kdpc
-{
+struct packed kdpc {
 	SHORT type;
 	UCHAR number;
 	UCHAR importance;
@@ -462,8 +446,7 @@ struct packed kdpc
 	KSPIN_LOCK lock;
 };
 
-enum pool_type
-{
+enum pool_type {
 	NonPagedPool,
 	PagedPool,
 	NonPagedPoolMustSucceed,
@@ -483,8 +466,7 @@ enum memory_caching_type {
 	MM_MAXIMUM_CACHE_TYPE
 };
 
-struct mdl
-{
+struct mdl {
 	struct mdl* next;
 	SHORT size;
 	SHORT mdlflags;
@@ -521,8 +503,7 @@ struct kdevice_queue {
 	BOOLEAN busy;
 };
 
-struct packed device_object
-{
+struct packed device_object {
 	SHORT type;
 	USHORT size;
 	LONG ref_count;
@@ -573,9 +554,9 @@ struct packed io_stack_location {
 	char control;
 	union {
 		struct {
-			unsigned long output_buf_len;
-			unsigned long input_buf_len; /*align to pointer size*/
-			unsigned long code; /*align to pointer size*/
+			ULONG output_buf_len;
+			ULONG input_buf_len; /*align to pointer size*/
+			ULONG code; /*align to pointer size*/
 			void *type3_input_buf;
 		} ioctl;
 		struct {
@@ -587,8 +568,8 @@ struct packed io_stack_location {
 	} params;
 	struct device_object *dev_obj;
 	void *fill;
-	unsigned long (*completion_handler)(struct device_object *,
-	                                    struct irp *, void *) STDCALL;
+	ULONG (*completion_handler)(struct device_object *,
+				    struct irp *, void *) STDCALL;
 	void *handler_arg;
 };
 
@@ -599,10 +580,10 @@ enum irp_work_type {
 };
 
 struct packed irp {
-	short type;
-	unsigned short size;
+	SHORT type;
+	USHORT size;
 	void *mdl;
-	unsigned long flags;
+	ULONG flags;
 	union {
 		struct irp *master_irp;
 		void *sys_buf;
@@ -611,14 +592,14 @@ struct packed irp {
 	void *fill1[2];
 
 	struct io_status_block io_status;
-	char requestor_mode;
-	unsigned char pending_returned;
-	char stack_size;
-	char stack_pos;
-	unsigned char cancel;
-	unsigned char cancel_irql;
+	CHAR requestor_mode;
+	UCHAR pending_returned;
+	CHAR stack_size;
+	CHAR stack_pos;
+	UCHAR cancel;
+	UCHAR cancel_irql;
 
-	char fill2[2];
+	CHAR fill2[2];
 
 	struct io_status_block *user_status;
 	struct kevent *user_event;
@@ -642,16 +623,14 @@ struct packed irp {
 	struct list_head cancel_list_entry;
 };
 
-enum nt_obj_type
-{
+enum nt_obj_type {
 	NT_OBJ_EVENT,
 	NT_OBJ_MUTEX,
 	NT_OBJ_THREAD,
 	NT_OBJ_TIMER,
 };
 
-struct ktimer
-{
+struct ktimer {
 	struct dispatch_header dispatch_header;
 	ULONGLONG due_time;
 	struct list_entry timer_list;
@@ -661,8 +640,7 @@ struct ktimer
 	LONG period;
 };
 
-struct kmutex
-{
+struct kmutex {
 	struct dispatch_header dispatch_header;
 	union {
 		struct list_entry list_entry;
@@ -678,8 +656,7 @@ enum wait_type {
 	WAIT_ANY
 };
 
-struct wait_block
-{
+struct wait_block {
 	struct list_entry list_entry;
 	void *thread;
 	struct dispatch_header *object;
@@ -765,8 +742,7 @@ struct packed npaged_lookaside_list {
 	KSPIN_LOCK obsolete;
 };
 
-enum device_registry_property
-{
+enum device_registry_property {
 	DEVPROP_DEVICE_DESCRIPTION,
 	DEVPROP_HARDWARE_ID,
 	DEVPROP_COMPATIBLE_IDS,
@@ -805,6 +781,10 @@ extern struct wrap_spinlock cancel_lock;
 
 #define WRAPPER_SPIN_LOCK_MAGIC 137
 
+void *wrap_kmalloc(size_t size, int flags);
+void wrap_kfree(void *ptr);
+void wrap_kfree_all(void);
+
 void wrapper_init_timer(struct ktimer *ktimer, void *handle);
 int wrapper_set_timer(struct wrapper_timer *wrapper_timer,
                       unsigned long expires, unsigned long repeat,
@@ -818,7 +798,7 @@ STDCALL NT_STATUS KeWaitForSingleObject(void *object, KWAIT_REASON reason,
 					KPROCESSOR_MODE waitmode,
 					BOOLEAN alertable,
 					LARGE_INTEGER *timeout);
-u64 ticks_1601(void);
+ULONGLONG ticks_1601(void);
 
 STDCALL KIRQL KeGetCurrentIrql(void);
 STDCALL void KeInitializeSpinLock(KSPIN_LOCK *lock);
@@ -965,8 +945,8 @@ static inline ULONG SPAN_PAGES(ULONG_PTR ptr, ULONG length)
 #define TRACEEXIT5(stmt) do { DBGTRACE5("%s", "Exit"); stmt; } while(0)
 
 #if defined DEBUG
-#define ASSERT(expr)				\
-	if (!(expr)) {				  \
+#define ASSERT(expr)						\
+	if (!(expr)) {						\
 		ERROR("Assertion failed! %s\n", (#expr));	\
 	}
 #else
