@@ -133,6 +133,9 @@ do {									\
 		__wait_event_interruptible_timeout(wq, condition, __ret); \
 	__ret;								\
 })
+
+#define preempt_enable()
+#define preempt_disable()
 #endif // LINUX_VERSION_CODE <= KERNEL_VERSION(2,6,0)
 
 /* Interrupt backwards compatibility stuff */
