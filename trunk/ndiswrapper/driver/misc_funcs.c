@@ -836,7 +836,7 @@ STDCALL void NdisInitializeTimer(struct ndis_timer **timer,
 {
 	DBGTRACE("%s(entry): %p, %p, %p\n",
 			 __FUNCTION__, timer, func, ctx);
-	NdisMInitializeTimer(timer_handle, NULL, func, ctx);
+	NdisMInitializeTimer(timer, NULL, func, ctx);
 	DBGTRACE("%s(exit): %p, %p, %p\n",
 			 __FUNCTION__, timer, func, ctx);
 }
