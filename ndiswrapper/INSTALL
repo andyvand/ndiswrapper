@@ -33,7 +33,6 @@ Go to the driver directory and run:
 
 3. Compile the loader:
 ----------------------
-You need flex tool. 
 Go to the utils directory and run (irrepsecitve of what kernel you are
 running):
 
@@ -45,50 +44,13 @@ This should produce a loadndisdriver executable. Copy loadndisdriver to
 4. Get the windows driver
 -------------------------
 Download the Windows XP drivers for your card and locate the .sys and
-.inf files. Copy these files to /lib/windrivers directory.
+.inf files. Use parseinf to create config file from these.
+
+> parseinf <inffile> <sysfile>
+
+This creates /etc/ndiswrapper/config file.
    
-5. Find out the PCI vendor and device of you WLAN card.
--------------------------------------------------------
-
-You can do this step in two ways. 
-
-a) Run
-
-   > lspci -n | grep 'Class 0280:' | awk  '{print $4}'
-
-   This should produce output such as '14e4:4301'. If it does, then the
-   vendor ID is 14e4 and device ID is 4301. 
-
-b) If step a) fails, or if you want to do it manually, run
-
-   > lspci
-   ...
-   00:0a.2 FLASH memory: ENE Technology Inc: Unknown device 0510
-   00:0c.0 Network controller: Broadcom Corporation BCM4301 802.11b (rev 02)
-   00:0d.0 Ethernet controller: 3Com Corporation 3c940 1000Base? (rev 12)
-   ...
-
-   In this example, 00:0c.0 is the PCI ID of the wireless card. This
-   varies from system to system. An easy way to look for the card is to
-   grep for 802.11:
-
-   > lspci 
-   00:0c.0 Network controller: Broadcom Corporation BCM4301 802.11b (rev 02)
-
-   Now look for vendor id and driver id for the same card:
-
-   > lspci -n
-   ...
-   00:0a.2 Class 0501: 1524:0510
-   00:0c.0 Class 0280: 14e4:4301 (rev 02)
-   00:0d.0 Class 0200: 10b7:1700 (rev 12)
-   ...
-
-   Here, the second line begins with the PCI ID noted above: 00:0c.0
-
-   So the vendor ID is 14e4 and the device ID is 4301 in this case.
-
-6. Load the kernel module
+5. Load the kernel module
 -------------------------
 
 Load the module:
@@ -98,15 +60,11 @@ Load the module:
 This will configure wlan0 interface. If a different interface name is
 desired, you can pass the if_name option (e.g., if_name="eth1") to the module.
 
-7. Load the windows driver
+6. Load the windows driver
 --------------------------
 From the ndiswrapper directory, run:
 
-> /usr/sbin/loadndisdriver <vendor> <device> <sysfile> <inffile>
-
-where <vendor> is the vendor ID and <device> is the device ID noted in
-step 5, <sysfile> is the full path to the .sys file and <inffile> is the
-full path to .inf file of the windows driver copied in step 4.
+> /usr/sbin/loadndisdriver
 
 If you get no error the driver should now be loaded and active. You
 can verify this by checking system log (produced by 'dmesg'). If the
@@ -114,7 +72,7 @@ driver is loaded successfully, you should see a message:
 
 wlan0: ndiswrapper ethernet device xx:xx:xx:xx:xx:xx
 
-8. Configure interface
+7. Configure interface
 ----------------------
 Use iwconfig to configure wireless network interface. First, locate
 the wireless interface:
@@ -151,7 +109,7 @@ tools to bring up the network; e.g.,
 
 > ifconfig wlan0 up
 
-9. Auto loading of module
+8. Auto loading of module
 -------------------------
 When you have a working setup you may want to automate the driver-loading
 
@@ -164,7 +122,7 @@ b)
 
    * Add this line to /etc/modprobe.conf:
 
-        install ndiswrapper /sbin/modprobe --ignore-instasll ndiswrapper;/usr/sbin/loadndisdriver <vendor> <device> /lib/windrivers/<sysfile> /lib/windrivers/<inffile>
+        install ndiswrapper /sbin/modprobe --ignore-instasll ndiswrapper;/usr/sbin/loadndisdriver
 
      Fedora Core 1 (and probably Redhat 9) with kernel 2.6.0 seem to
      have a slight bug which cause ifup to not recoginize the install
@@ -176,5 +134,5 @@ b)
 
    * Add this line to /etc/modules.conf:
 
-     post-install ndiswrapper /usr/sbin/loadndisdriver <vendor> <device>  /lib/windrivers/<sysfile> /lib/windrivers/<inffile>
+     post-install ndiswrapper /usr/sbin/loadndisdriver
 
