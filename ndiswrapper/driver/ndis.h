@@ -1,3 +1,17 @@
+/*
+ *  Copyright (C) 2003 Pontus Fuchs
+ *
+ *  This program is free software; you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation; either version 2 of the License, or
+ *  (at your option) any later version.
+ *
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
+ *
+ */
 #ifndef NDIS_H
 #define NDIS_H
 
@@ -14,6 +28,14 @@
 #define NDIS_STATUS_BAD_CHAR    0xc0010005
 
 int getSp(void);
+
+#define debug 1
+
+#if debug > 0
+#define DBGTRACE(s, args...) printk(s, args)
+#else
+#define DBGTRACE(s, ...)
+#endif
 
 struct packed miniport_char
 {
