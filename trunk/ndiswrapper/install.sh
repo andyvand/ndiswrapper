@@ -160,7 +160,7 @@ while :; do
 	    LOADER=${LOADER_DIR}/loadndisdriver
 	    break
 	else
-	    echo "Problem copying the loaddriver to ${LOADER_DIR}; try again."
+	    echo "Problem copying the loadndisdriver to ${LOADER_DIR}; try again."
 	fi
     else
 	echo "Directory ${LOADER_DIR} does not exist; try again."
@@ -176,13 +176,15 @@ if modprobe -c | grep -q ndiswrapper; then
     warn "It seems modprobe is already configured for ndiswrapper; assuming it is correct. Otherwise, delete the current configuration and try again."
 else 
 
+    get_resp "Where should module directives be placed?" "${MOD_CONF}"
+    MOD_CONF=${RESP} 
     if :; then
 	echo "alias ${IFACE_NAME} ndiswrapper"
 	
-	if [ ${KVERSMINOR} -eq 4 ]; then
-	    echo -n "post-install ndiswrapper "
-	else
+	if [ ${KVERSMINOR} -gt 4 ]; then
 	    echo -n "install ndiswrapper /sbin/modprobe --ignore-install ndiswrapper; "
+	else
+	    echo -n "post-install ndiswrapper "
 	fi
 	echo "${LOADER} ${VENDOR_ID} ${DEVICE_ID} ${SYS} ${INF}"
     fi >> ${MOD_CONF}
