@@ -1,7 +1,7 @@
 loaddriver_OBJS = loaddriver.o
 
 CFLAGS = -g -Wall
-loaddriver: $(loaddriver_OBJS)
+loaddriver: $(loaddriver_OBJS) ../driver/wrapper.h
 	gcc -o loaddriver $(loaddriver_OBJS)
 
 all: loaddriver

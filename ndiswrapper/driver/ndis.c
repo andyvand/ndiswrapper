@@ -77,11 +77,11 @@ STDCALL void NdisTerminateWrapper(struct ndis_handle *ndis_handle,
  *
  * Called from driver entry
  */
-STDCALL int NdisMRegisterMiniport(struct ndis_handle *ndis_handle,
+STDCALL int NdisMRegisterMiniport(struct ndis_driver *ndis_driver,
 	                          struct miniport_char *miniport_char,
 	                          unsigned int char_len)
 {
-	DBGTRACE("%s Handle: %08x\n", __FUNCTION__, (int)ndis_handle);
+	DBGTRACE("%s driver: %08x\n", __FUNCTION__, (int)ndis_driver);
 
 	if(miniport_char->majorVersion < 4)
 	{
@@ -95,7 +95,7 @@ STDCALL int NdisMRegisterMiniport(struct ndis_handle *ndis_handle,
 
 	printk(KERN_INFO "Version %d.%d\n", miniport_char->majorVersion, miniport_char->minorVersion);
 	DBGTRACE("Len: %08x:%08x\n", char_len, sizeof(struct miniport_char));
-	memcpy(&ndis_handle->miniport_char, miniport_char, sizeof(struct miniport_char));
+	memcpy(&ndis_driver->miniport_char, miniport_char, sizeof(struct miniport_char));
 
 	return NDIS_STATUS_SUCCESS;
 }
@@ -155,7 +155,7 @@ STDCALL void NdisOpenConfiguration(unsigned int *status,
 				   struct ndis_handle *handle)
 {
 	DBGTRACE("%s: Handle: %08x\n", __FUNCTION__, (int) handle);
-	*confhandle = (void*) 0xaaaa0001;
+	*confhandle = (void*) handle;
 	*status = NDIS_STATUS_SUCCESS;
 }
 
@@ -165,96 +165,41 @@ STDCALL void NdisCloseConfiguration(void *confhandle)
 }
 
 
-struct conf_parameter
-{
-	unsigned int type;
-	unsigned int data;
-};
-
 struct internal_parameters
 {
 	char *name;
-	struct conf_parameter value;
+	struct ndis_setting_val val;
 };
 
 struct internal_parameters internal_parameters[] = { 
 	{
 		.name = "NdisVersion",
-		.value = {0, 0x00050000}
+		.val = {0, 0x00050000}
 	},
 
 	{
 		.name = "Environment",
-		.value = {0, 1}
+		.val = {0, 1}
 	},
 
 	{
 		.name = "BusType",
-		.value = {0, 5}
-	},
-
-
-	{
-		.name = "RadioState",
-		.value = {0, 0}
-	},
-
-	{
-		.name = "Channel",
-		.value = {0, 11}
-	},
-
-	{
-		.name = "Locale",
-		.value = {0, 0}
+		.val = {0, 5}
 	},
 	{
-		.name = "PowerSaveMode",
-		.value = {0, 0}
-	},
-	{
-		.name = "Rate",
-		.value = {0, 0}
-	},
-	{
-		.name = "PLCPHeader",
-		.value = {0, 0}
-	},
-/*
-	{
-		.name = "antdiv",
-		.value = {0, 0}
-	},
-*/
-	{
-		.name = "frag",
-		.value = {0, 2346}
-	},
-	{
-		.name = "rts",
-		.value = {0, 2346}
-	},
-	{
-		.name = "PwrOut",
-		.value = {0, 100}
-	},
-/*
-	{
-		.name = "ForcePIO",
-		.value = {0, 1}
-	},
-*/	{
 		.name = 0,
-		.value= {0,0}
+		.val= {0,0}
 	}
 };
 
 
 STDCALL void NdisReadConfiguration(unsigned int *status,
-                                   struct conf_parameter **dest,
-				   void *confhandle, struct ustring *key,
+                                   struct ndis_setting_val **dest,
+				   struct ndis_handle *handle, struct ustring *key,
 				   unsigned int type)
 {
+	struct ndis_setting *setting;
+
 	char keyname[1024];
 	int i;
 	unicodeToStr(keyname, key, sizeof(keyname));
@@ -267,15 +212,29 @@ STDCALL void NdisReadConfiguration(unsigned int *status,
 		{
 			DBGTRACE("%s: Builting found value for %s\n", __FUNCTION__, keyname);
 			
-			*dest = &internal_parameters[i].value;
+			*dest = &internal_parameters[i].val;
 			*status = NDIS_STATUS_SUCCESS;
 			return;
 		}
 	}
+
+	/* Search parameters from inf-file */
+	list_for_each_entry(setting, &handle->driver->settings, list)
+	{
+		if(strcmp(keyname, setting->name) == 0)
+		{
+			DBGTRACE("%s: From inf found value for %s: %d\n", __FUNCTION__, keyname, setting->val.data);
+
+			*dest =& setting->val;
+			*status = NDIS_STATUS_SUCCESS;
+			return;
+		}
+	}
+
 	
 	DBGTRACE(KERN_INFO "%s: Key not found type:%d. key:%s\n", __FUNCTION__, type, keyname);
 
-	*dest = (struct conf_parameter*)0;
+	*dest = (struct ndis_setting_val*)0;
 	*status = NDIS_STATUS_FAILIURE;
 }
 
@@ -597,6 +556,7 @@ STDCALL void NdisAllocatePacket(unsigned int *status, struct ndis_packet **packe
 	*packet_out = packet;
 	*status = NDIS_STATUS_SUCCESS;	
 }
+
 STDCALL void NdisFreePacket(void *packet)
 {
 	if(packet)
@@ -640,8 +600,9 @@ STDCALL void NdisMInitializeTimer(struct ndis_timer **timer_handle,
 				  void *func,
 				  void *ctx)
 {
+	struct ndis_timer *timer;
 	DBGTRACE("%s: %08x %08x, %08x, %08x\n", __FUNCTION__ , (int)timer_handle, (int)handle, (int)func, (int)ctx);
-	struct ndis_timer *timer = kmalloc(sizeof(struct ndis_timer), GFP_KERNEL);
+	timer = kmalloc(sizeof(struct ndis_timer), GFP_KERNEL);
 	if(!timer)
 		timer_handle = NULL;
 
@@ -725,7 +686,7 @@ STDCALL void NdisMDeregisterAdapterShutdownHandler(struct ndis_handle *handle)
 void ndis_irq_bh(void *data)
 {
 	struct ndis_handle *handle = (struct ndis_handle *) data;
-	handle->miniport_char.handle_interrupt(handle->adapter_ctx);
+	handle->driver->miniport_char.handle_interrupt(handle->adapter_ctx);
 }
 
 /*
@@ -741,7 +702,7 @@ irqreturn_t ndis_irq_th(int irq, void *data, struct pt_regs *pt_regs)
 	struct ndis_handle *handle = irqhandle->handle; 
 
 	spin_lock(&irqhandle->spinlock);
-	handle->miniport_char.isr(&handeled, &more_work, handle->adapter_ctx);
+	handle->driver->miniport_char.isr(&handeled, &more_work, handle->adapter_ctx);
 	spin_unlock(&irqhandle->spinlock);
 
 	if(more_work)
@@ -833,7 +794,7 @@ STDCALL char NdisMSynchronizeWithInterrupt(struct ndis_irq *interrupt,
  */
 STDCALL void NdisIndicateStatus(struct ndis_handle *handle, unsigned int status, void *buf, unsigned int len)
 {
-	DBGTRACE("%s%08x\n", __FUNCTION__, status);
+	DBGTRACE("%s %08x\n", __FUNCTION__, status);
 }
 
 /*
@@ -872,7 +833,7 @@ STDCALL void NdisMIndicateReceivePacket(struct ndis_handle *handle, struct ndis_
 			skb->protocol = eth_type_trans (skb, handle->net_dev);
 			netif_rx(skb);
 		}
-		handle->miniport_char.return_packet(handle->adapter_ctx,  packet);
+		handle->driver->miniport_char.return_packet(handle->adapter_ctx,  packet);
 	}
 }
 
@@ -894,7 +855,6 @@ STDCALL unsigned long NDIS_BUFFER_TO_SPAN_PAGES(void *buffer)
 }
 
 
-
 /* Unimplemented...*/
 STDCALL void NdisInitAnsiString(void *src, void *dst) { printk(KERN_ERR "%s --UNIMPLEMENTED--\n", __FUNCTION__ );}
 STDCALL void NdisOpenConfigurationKeyByName(unsigned int *status, void *handle, void *key, void *subkeyhandle){ printk(KERN_ERR "%s --UNIMPLEMENTED--\n", __FUNCTION__ );}
@@ -903,7 +863,7 @@ STDCALL unsigned int NdisAnsiStringToUnicodeString(void *dst, void *src){printk(
 STDCALL void NdisQueryBufferOffset(void *buffer, unsigned int offset, unsigned int length){printk(KERN_ERR "%s --UNIMPLEMENTED--\n", __FUNCTION__ ); }
 STDCALL void NdisMGetDeviceProperty(void *handle, void **p1, void **p2, void **p3, void**p4, void**p5){printk(KERN_ERR "%s --UNIMPLEMENTED--\n", __FUNCTION__ );}
 STDCALL unsigned long NdisWritePcmciaAttributeMemory(void *handle, unsigned int offset, void *buffer, unsigned int length){printk(KERN_ERR "%s --UNIMPLEMENTED--\n", __FUNCTION__ );return 0;}
-STDCALL  unsigned long NdisReadPcmciaAttributeMemory(void *handle, unsigned int offset, void *buffer, unsigned int length){printk(KERN_ERR "%s --UNIMPLEMENTED--\n", __FUNCTION__ );return 0;}
+STDCALL unsigned long NdisReadPcmciaAttributeMemory(void *handle, unsigned int offset, void *buffer, unsigned int length){printk(KERN_ERR "%s --UNIMPLEMENTED--\n", __FUNCTION__ );return 0;}
 
 void NdisMRegisterIoPortRange(void){ printk(KERN_ERR "%s --UNIMPLEMENTED--\n", __FUNCTION__ );}
 void NdisInterlockedDecrement(void){ printk(KERN_ERR "%s --UNIMPLEMENTED--\n", __FUNCTION__ );}
@@ -917,4 +877,6 @@ void NdisSetEvent(void){ printk(KERN_ERR "%s --UNIMPLEMENTED--\n", __FUNCTION__ 
 void NdisMInitializeScatterGatherDma(void){ printk(KERN_ERR "%s --UNIMPLEMENTED--\n", __FUNCTION__ );}
 void NdisSystemProcessorCount(void){ printk(KERN_ERR "%s --UNIMPLEMENTED--\n", __FUNCTION__ );}
 void NdisInitializeEvent(void){ printk(KERN_ERR "%s --UNIMPLEMENTED--\n", __FUNCTION__ );}
+void NdisMGetDmaAlignment(void){ printk(KERN_ERR "%s --UNIMPLEMENTED--\n", __FUNCTION__ );}
+void NdisUnicodeStringToAnsiString(void){ printk(KERN_ERR "%s --UNIMPLEMENTED--\n", __FUNCTION__ );}
 

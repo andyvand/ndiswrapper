@@ -20,6 +20,7 @@
 #include <linux/workqueue.h>
 #include <linux/netdevice.h>
 #include <linux/wireless.h>
+#include <linux/pci.h>
 
 #define STDCALL __attribute__((__stdcall__))
 #define packed __attribute__((packed))
@@ -94,9 +95,46 @@ struct ndis_irq
 
 };
 
+struct ndis_setting_val
+{
+	unsigned int type;
+	unsigned int data;
+};
+
+struct ndis_setting
+{
+	struct list_head list;
+	char *name;
+	struct ndis_setting_val val;
+};
+
+
 /*
-  This struct contains function pointers that the drivers references directly via macros,
-  so it's important that they are at the correct position hence the paddings.
+ * There is one of these per driver. One per loaded driver exists.
+ *
+ */
+struct ndis_driver
+{
+	struct list_head list;
+	char name[32];
+
+	struct pci_driver pci_driver;
+	struct pci_device_id pci_id[2];
+	
+	unsigned int pci_registered; 
+	struct list_head settings;
+
+	void *image;
+	STDCALL unsigned int (*entry)(void *obj, char *p2);
+	struct miniport_char miniport_char;
+};
+
+
+/*
+ * This is the per device struct. One per PCI-device exists.
+ *
+ *  This struct contains function pointers that the drivers references directly via macros,
+ * so it's important that they are at the correct position hence the paddings.
  */
 struct packed ndis_handle
 {
@@ -107,9 +145,7 @@ struct packed ndis_handle
 	void *indicate_status;
 	void *indicate_status_complete;
 	char fill3[200];
-	void *image;
-	STDCALL unsigned int (*entry)(void *obj, char *p2);
-	struct miniport_char miniport_char;
+
 	struct pci_dev *pci_dev;
 	struct net_device *net_dev;
 	void *adapter_ctx;
@@ -121,7 +157,10 @@ struct packed ndis_handle
 
 	struct net_device_stats stats;
 	struct iw_statistics wireless_stats;
+	struct ndis_driver *driver;
 };
+
+
 
 struct ndis_buffer
 {
@@ -215,6 +254,12 @@ struct packed essid_req
 	unsigned int len;
 	char essid[32];
 };
+
+
+STDCALL void NdisMIndicateReceivePacket(struct ndis_handle *handle, struct ndis_packet **packets, unsigned int nr_packets);
+STDCALL void NdisMSendComplete(struct ndis_handle *handle, struct ndis_packet *packet, unsigned int status);
+STDCALL void NdisIndicateStatus(struct ndis_handle *handle, unsigned int status, void *buf, unsigned int len);
+STDCALL void NdisIndicateStatusComplete(struct ndis_handle *handle);
 
 
 #define NDIS_OID_STAT_TX_OK         0x00020101

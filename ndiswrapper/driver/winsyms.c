@@ -85,7 +85,8 @@ void NdisSetEvent(void);
 void NdisMInitializeScatterGatherDma(void);
 void NdisSystemProcessorCount(void);
 void NdisInitializeEvent(void);
-
+void NdisMGetDmaAlignment(void);
+void NdisUnicodeStringToAnsiString(void);
 
 /* Cipe */
 void DbgPrint(void);
@@ -99,6 +100,7 @@ void KeStallExecutionProcessor(void);
 void InterlockedExchange(void);
 void MmMapLockedPages(void);
 void RtlAnsiStringToUnicodeString(void);
+void RtlEqualUnicodeString(void);
 void IoDeleteSymbolicLink(void);
 void KeInitializeSpinLock(void);
 void ExAllocatePoolWithTag(void);
@@ -127,8 +129,8 @@ struct winsym
 	char *name;
 	void *adr;
 };
-
 #define func(x, y) {x, &y}
+
 static struct winsym syms[] = {
 
 /* Ndis */
@@ -186,6 +188,23 @@ func("NdisMSetAttributesEx"                 , NdisMSetAttributesEx),
 func("NdisTerminateWrapper"                 , NdisTerminateWrapper),
 func("NdisMRegisterMiniport"                , NdisMRegisterMiniport),
 
+
+func("NdisMRegisterIoPortRange"             , NdisMRegisterIoPortRange),
+func("NdisInterlockedDecrement"             , NdisInterlockedDecrement),
+func("NdisGetCurrentSystemTime"             , NdisGetCurrentSystemTime),
+func("NdisMDeregisterIoPortRange"           , NdisMDeregisterIoPortRange),
+func("NdisWaitEvent"                        , NdisWaitEvent),
+func("NdisDprAcquireSpinLock"               , NdisDprAcquireSpinLock),
+func("NdisDprReleaseSpinLock"               , NdisDprReleaseSpinLock),
+func("NdisInterlockedIncrement"             , NdisInterlockedIncrement),
+func("NdisSetEvent"                         , NdisSetEvent),
+func("NdisMInitializeScatterGatherDma"      , NdisMInitializeScatterGatherDma),
+func("NdisSystemProcessorCount"             , NdisSystemProcessorCount),
+func("NdisInitializeEvent"                  , NdisInitializeEvent),
+
+func("NdisMGetDmaAlignment"                 , NdisMGetDmaAlignment),
+func("NdisUnicodeStringToAnsiString"        , NdisUnicodeStringToAnsiString),
+
 /* HAL */
 func("KfAcquireSpinLock"                    , KfAcquireSpinLock),
 func("KfReleaseSpinLock"                    , KfReleaseSpinLock),
@@ -195,6 +214,7 @@ func("KeStallExecutionProcessor"            , KeStallExecutionProcessor),
 func("InterlockedExchange"                  , InterlockedExchange),
 func("MmMapLockedPages"                     , MmMapLockedPages),
 func("RtlAnsiStringToUnicodeString"         , RtlAnsiStringToUnicodeString),
+func("RtlEqualUnicodeString"                , RtlEqualUnicodeString),
 func("IoDeleteSymbolicLink"                 , IoDeleteSymbolicLink),
 func("KeInitializeSpinLock"                 , KeInitializeSpinLock),
 func("ExAllocatePoolWithTag"                , ExAllocatePoolWithTag),
@@ -209,12 +229,14 @@ func("IofCompleteRequest"                   , IofCompleteRequest),
 func("IoReleaseCancelSpinLock"              , IoReleaseCancelSpinLock),
 func("WRITE_REGISTER_ULONG"                 , WRITE_REGISTER_ULONG),
 func("WRITE_REGISTER_USHORT"                , WRITE_REGISTER_USHORT),
+func("WRITE_REGISTER_UCHAR"                 , WRITE_REGISTER_UCHAR),
 func("strncpy"                              , my_strncpy),
 func("KeInitializeEvent"                    , KeInitializeEvent),
 func("IoBuildSynchronousFsdRequest"         , IoBuildSynchronousFsdRequest),
 func("IofCallDriver"                        , IofCallDriver),
 func("KeWaitForSingleObject"                , KeWaitForSingleObject),
 func("sprintf"                              , my_sprintf),
+
 
 /* CIPE */
 func("DbgPrint"          , DbgPrint),
