@@ -21,6 +21,7 @@
 #include <linux/rtnetlink.h>
 #include <asm/uaccess.h>
 
+#define DEBUG 3
 #include "iw_ndis.h"
 
 static int freq_chan[] = { 2412, 2417, 2422, 2427, 2432, 2437, 2442,
@@ -870,7 +871,7 @@ static char *ndis_translate_scan(struct net_device *dev, char *event,
 		unsigned char *iep = (unsigned char *)(fixed_ies + 1);
 		int iel = item->ie_length - sizeof(*fixed_ies);
 		
-		DBGTRACE2("%s: adding atim\n", __FUNCTION__);
+		DBGTRACE2("%s: adding atim", __FUNCTION__);
 		memset(&iwe, 0, sizeof(iwe));
 		iwe.cmd = IWEVCUSTOM;
 		sprintf(buf, "atim=%u", item->config.atim_window);
@@ -892,7 +893,7 @@ static char *ndis_translate_scan(struct net_device *dev, char *event,
 				for (i = 0; i < iel; i++)
 					p += sprintf(p, "%02x", iep[i]);
 				
-				DBGTRACE2("adding wpa_ie :%d\n", strlen(buf));
+				DBGTRACE2("adding wpa_ie :%d", strlen(buf));
 				memset(&iwe, 0, sizeof(iwe));
 				iwe.cmd = IWEVCUSTOM;
 				iwe.u.data.length = strlen(buf);
@@ -1467,13 +1468,17 @@ static int wpa_disassociate(struct net_device *dev,
 	struct ndis_handle *handle = (struct ndis_handle *)dev->priv;
 	mac_address ap_addr;
 	char buf[NDIS_ESSID_MAX_SIZE];
+	int i;
 	
 	TRACEENTER("%s", "");
-	get_ap_address(handle, ap_addr);
-	DBGTRACE("bssid " MACSTR, MAC2STR(ap_addr));
-	get_random_bytes(buf, sizeof(buf));
-	set_essid(handle, buf, sizeof(buf));
-	get_ap_address(handle, ap_addr);
+	do {
+		get_random_bytes(buf, sizeof(buf));
+		for (i = 0; i < sizeof(buf); i++)
+			buf[i] = 'a' + (buf[i] % ('z' - 'a'));
+		set_essid(handle, buf, sizeof(buf));
+		get_ap_address(handle, ap_addr);
+		DBGTRACE("bssid " MACSTR, MAC2STR(ap_addr));
+	} while (memcmp(ap_addr, "\x00\x00\x00\x00\x00\x00", ETH_ALEN));
 	DBGTRACE("bssid " MACSTR, MAC2STR(ap_addr));
 	TRACEEXIT(return 0);
 }
@@ -1616,14 +1621,16 @@ static int wpa_deauthenticate(struct net_device *dev,
 	char buf[NDIS_ESSID_MAX_SIZE];
 	
 	TRACEENTER("%s", "");
-	get_ap_address(handle, ap_addr);
-	DBGTRACE("bssid " MACSTR, MAC2STR(ap_addr));
 	for (i = 0; i < MAX_ENCR_KEYS; i++)
 		handle->encr_info.keys[i].length = 0;
-	get_random_bytes(buf, sizeof(buf));
-	set_essid(handle, buf, sizeof(buf));
-	get_ap_address(handle, ap_addr);
-	DBGTRACE("bssid " MACSTR, MAC2STR(ap_addr));
+	do {
+		get_random_bytes(buf, sizeof(buf));
+		for (i = 0; i < sizeof(buf); i++)
+			buf[i] = 'a' + (buf[i] % ('z' - 'a'));
+		set_essid(handle, buf, sizeof(buf));
+		get_ap_address(handle, ap_addr);
+		DBGTRACE("bssid " MACSTR, MAC2STR(ap_addr));
+	} while (memcmp(ap_addr, "\x00\x00\x00\x00\x00\x00", ETH_ALEN));
 	TRACEEXIT(return 0);
 }
 
