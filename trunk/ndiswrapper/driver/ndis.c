@@ -75,6 +75,8 @@ void ndis_exit_handle(struct ndis_handle *handle)
 	}
 	wrap_free_timers(handle);
 	free_handle_ctx(handle);
+	if (handle->pci_resources)
+		vfree(handle->pci_resources);
 }
 
 /* ndis_exit is called once when module is removed */
@@ -784,7 +786,6 @@ STDCALL void WRAP_EXPORT(NdisMQueryAdapterResources)
 		    resource_list, *size, pci_dev->irq);
 
 	resource_list->version = 1;
-	resource_list->revision = 0;
 
 	/* Put all memory and port resources */
 	i = 0;
@@ -833,6 +834,26 @@ STDCALL void WRAP_EXPORT(NdisMQueryAdapterResources)
 			  resource_list->list[i].flags);
 	}
 	TRACEEXIT2(return);
+}
+
+STDCALL NDIS_STATUS WRAP_EXPORT(NdisMPciAssignResources)
+	(struct ndis_handle *handle, ULONG slot_number,
+	 struct ndis_resource_list **resources)
+{
+	UINT size;
+	NDIS_STATUS status;
+
+	size = sizeof(struct ndis_resource_list) +
+		sizeof(struct ndis_resource_entry) * 20;
+	handle->pci_resources = vmalloc(size);
+	if (!handle->resources) {
+		ERROR("couldn't allocate memory");
+		TRACEEXIT2(return NDIS_STATUS_SUCCESS);
+	}
+	NdisMQueryAdapterResources(&status, handle, handle->pci_resources,
+				   &size);
+	*resources = handle->pci_resources;
+	TRACEEXIT2(return NDIS_STATUS_SUCCESS);
 }
 
 STDCALL NDIS_STATUS WRAP_EXPORT(NdisMMapIoSpace)
@@ -2554,7 +2575,6 @@ STDCALL ULONG WRAP_EXPORT(NdisWritePcmciaAttributeMemory)
 
  /* Unimplemented...*/
 STDCALL void WRAP_EXPORT(NdisMSetAttributes)(void){UNIMPL();}
-STDCALL void WRAP_EXPORT(NdisMPciAssignResources)(void){UNIMPL();}
 STDCALL void WRAP_EXPORT(EthFilterDprIndicateReceiveComplete)
 	(void){UNIMPL();}
 STDCALL void WRAP_EXPORT(EthFilterDprIndicateReceive)(void){UNIMPL();}

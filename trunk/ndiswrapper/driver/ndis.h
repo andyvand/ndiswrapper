@@ -867,6 +867,7 @@ struct ndis_handle {
 
 	unsigned long attributes;
 	struct wrap_spinlock lock;
+	struct ndis_resource_list *pci_resources;
 };
 
 STDCALL void NdisMIndicateReceivePacket(struct ndis_handle *handle,
