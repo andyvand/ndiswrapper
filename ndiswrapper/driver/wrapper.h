@@ -19,6 +19,7 @@
 
 #define DRIVERNAME_MAX 32
 #define NDIS_VERSION_STRING_MAX 64
+#define MAX_PE_IMAGES 4
 
 struct put_file {
 	char name[DRIVERNAME_MAX];
@@ -47,7 +48,14 @@ struct put_setting
 	char *value;
 };
 
-#define NDIS_PUTDRIVER     _IOWR('N', 0, struct put_file*)
+struct driver_files
+{
+	unsigned int count;
+	char name[DRIVERNAME_MAX];
+	struct put_file file[MAX_PE_IMAGES];
+};
+
+#define NDIS_PUTDRIVER     _IOWR('N', 0, struct driver_files *)
 #define NDIS_PUTSETTING    _IOWR('N', 1, struct put_setting*)
 #define NDIS_STARTDRIVER   _IOWR('N', 2, int)
 #define NDIS_DELDRIVER     _IOWR('N', 4, struct del_driver*)

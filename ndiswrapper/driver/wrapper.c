@@ -118,7 +118,7 @@ int doreset(struct ndis_handle *handle)
 		 * for a while before sleeping, hoping reset will be done in
 		 * 1 ms */
 		mdelay(1);
-		/* wait for NdisMResetComplete upto 30 s */
+		/* wait for NdisMResetComplete upto 30*HZ */
 		if (!wait_event_interruptible_timeout(handle->ndis_comm_wq,
 			   (handle->ndis_comm_done == 1), 30*HZ))
 			handle->ndis_comm_res = NDIS_STATUS_FAILURE;
@@ -310,48 +310,65 @@ static void free_timers(struct ndis_handle *handle)
 
 static unsigned int call_entry(struct ndis_driver *driver)
 {
-	int res;
-	char regpath[] = {'a', 0, 'b', 0, 0, 0};
-
-	TRACEENTER1("Calling NDIS driver entry at %08X rva(%08X)",
-		    (int)driver->entry, (int)driver->entry - image_offset);
-	res = driver->entry((void*)driver, regpath);
-	DBGTRACE1("Past entry: Version: %d.%dn",
-		  driver->miniport_char.majorVersion,
-		  driver->miniport_char.minorVersion);
-
-	/* Dump addresses of driver suppoled callbacks */
+	int i, ret, res;
+	struct ustring reg_string;
+	char *reg_path = "\0\0t0m0p0";
+	
+	reg_string.buf = reg_path;
+	reg_string.buflen = reg_string.len = strlen(reg_path);
+	for (ret = res = 0, i = 0; i < driver->num_pe_images; i++)
+		/* dlls are already started by loader */
+		if (driver->pe_images[i].type == COFF_CHAR_IMAGE) {
+			unsigned int (*entry)(void *obj,
+					      struct ustring *p2) STDCALL;
+			entry = driver->pe_images[i].entry;
+			TRACEENTER1("Calling NDIS driver entry at %08X "
+				    "rva(%08X)",
+				    (int)entry,
+				    (int)entry -
+				    (int)driver->pe_images[i].image);
+			DBGTRACE("entry: %p, %p", entry, *entry);
+			res = entry((void*)driver, &reg_string);
+			ret |= res;
+			DBGTRACE1("entry returns %08X", res);
+			DBGTRACE1("Past entry: Version: %d.%dn",
+				  driver->miniport_char.majorVersion,
+				  driver->miniport_char.minorVersion);
+			/* Dump addresses of driver suppoled callbacks */
 #if defined DEBUG && DEBUG >= 1
-	if(res == 0) {
-		int i;
-		int *adr = (int*) &driver->miniport_char.hangcheck;
-		char *name[] = {
-				"CheckForHangTimer",
-				"DisableInterruptHandler",
-				"EnableInterruptHandler",
-				"halt",
-				"HandleInterruptHandler",
-				"init",
-				"ISRHandler",
-				"query",
-				"ReconfigureHandler",
-				"ResetHandler",
-				"SendHandler",
-				"SetInformationHandler",
-				"TransferDataHandler",
-				"ReturnPacketHandler",
-				"SendPacketsHandler",
-				"AllocateCompleteHandler",
-		};
+			if(res == 0) {
+				int j;
+				int *adr;
+				char *name[] = {
+					"CheckForHangTimer",
+					"DisableInterruptHandler",
+					"EnableInterruptHandler",
+					"halt",
+					"HandleInterruptHandler",
+					"init",
+					"ISRHandler",
+					"query",
+					"ReconfigureHandler",
+					"ResetHandler",
+					"SendHandler",
+					"SetInformationHandler",
+					"TransferDataHandler",
+					"ReturnPacketHandler",
+					"SendPacketsHandler",
+					"AllocateCompleteHandler",
+				};
 
-		for(i = 0; i < 16; i++)
-		{
-			DBGTRACE1("%08X (rva %08X):%s", adr[i],
-				  adr[i]?adr[i] - image_offset:0, name[i]);
-		}
-	}
+				adr = (int*) &driver->miniport_char.hangcheck;
+
+				for(j = 0; j < 16; j++)
+					DBGTRACE1("%08X (rva %08X):%s", adr[j],
+						  adr[j] ? adr[j] - 
+						  (int)driver->pe_images[i].image : 0,
+						  name[j]);
+			}
 #endif
-	return res;
+		}
+	return ret;
 }
 
 static void hangcheck_reinit(struct ndis_handle *handle);
@@ -1119,8 +1136,7 @@ static void wrapper_worker_proc(void *param)
 			return;
 		}
 
-		if (handle->auth_mode != AUTHMODE_WPA &&
-		    handle->auth_mode != AUTHMODE_WPAPSK)
+		if (!test_bit(CAPA_WPA, &handle->capa))
 			return;
 
 		assoc_info = kmalloc(assoc_size, GFP_KERNEL);
@@ -1877,15 +1893,12 @@ static int start_driver(struct ndis_driver *driver)
 }
 
 /* Load the driver from userspace. */
-static struct ndis_driver *load_driver(struct put_file *put_driver)
+static struct ndis_driver *load_driver(struct driver_files *driver_files)
 {
-	void *entry;
 	struct ndis_driver *driver;
-	int namelen;
+	int i;
 
-	TRACEENTER1("loading driver %s, size %d",
-		    put_driver->name, put_driver->size);
-
+	TRACEENTER1("%p", driver_files);
 	driver = kmalloc(sizeof(struct ndis_driver), GFP_KERNEL);
 	if(!driver)
 	{
@@ -1898,39 +1911,52 @@ static struct ndis_driver *load_driver(struct put_file *put_driver)
 	INIT_LIST_HEAD(&driver->devices);
 	INIT_LIST_HEAD(&driver->files);
 
-	namelen = sizeof(put_driver->name);
-	if(sizeof(driver->name) < namelen)
-		namelen = sizeof(driver->name);
+	driver->num_pe_images = driver_files->count;
+	DBGTRACE1("num_pe_images = %d", driver->num_pe_images);
+	if (driver->num_pe_images > MAX_PE_IMAGES)
+		driver->num_pe_images = MAX_PE_IMAGES;
+	DBGTRACE1("driver: %s", driver_files->name);
+	strncpy(driver->name, driver_files->name,
+				DRIVERNAME_MAX);
+	DBGTRACE1("driver: %s", driver->name);
+	for (i = 0; i < driver->num_pe_images; i++) {
+		driver->pe_images[i].name = kmalloc(DRIVERNAME_MAX, GFP_KERNEL);
+		if (!driver->pe_images[i].name) {
+			ERROR("%s", "couldn't allocate memory");
+			goto out_image_fail;
+		}
+		memcpy(driver->pe_images[i].name, driver_files->file[i].name, 
+			DRIVERNAME_MAX);
+		driver->pe_images[i].name[DRIVERNAME_MAX-1] = 0;
 
-	strncpy(driver->name, put_driver->name, namelen-1);
-	driver->name[namelen-1] = 0;
+		driver->pe_images[i].image = 
+			vmalloc(driver_files->file[i].size);
+		DBGTRACE1("image is at %08X", (int)driver->pe_images[i].image);
+		if(!driver->pe_images[i].image) {
+			ERROR("%s", "unable to allocate memory");
+			goto out_image_fail;
+		}
 
-	driver->image = vmalloc(put_driver->size);
-	DBGTRACE1("image is at %08X", (int)driver->image);
-	if(!driver->image)
-	{
-		ERROR("%s", "unable to allocate memory");
-		goto out_vmalloc;
+		if (copy_from_user(driver->pe_images[i].image,
+				   driver_files->file[i].data,
+				   driver_files->file[i].size)) {
+			ERROR("%s", "failed to copy from user");
+			goto out_image_fail;
+		}
+		driver->pe_images[i].size = driver_files->file[i].size;
 	}
 
-	if(copy_from_user(driver->image, put_driver->data, put_driver->size))
-	{
-		ERROR("%s", "failed to copy from user");
-		goto out_baddriver;
-	}
-
-	if (load_pe_image(&entry, driver->image, put_driver->size))
-	{
+	if (load_pe_images(driver->pe_images, driver->num_pe_images)) {
 		ERROR("%s", "unable to prepare driver");
-		goto out_baddriver;
+		goto out_image_fail;
 	}
-	driver->entry = entry;
 
 	TRACEEXIT1(return driver);
 
-out_baddriver:
-	vfree(driver->image);
-out_vmalloc:
+out_image_fail:
+	for (i = 0; i < driver->num_pe_images; i++)
+		if (driver->pe_images[i].image)
+			vfree(driver->pe_images[i].image);
 	kfree(driver);
 out_nodriver:
 	TRACEEXIT1(return 0);
@@ -2139,6 +2165,7 @@ static void delete_device(struct ndis_device *device)
 static void unload_driver(struct ndis_driver *driver)
 {
 	struct list_head *curr, *tmp2;
+	int i;
 
 	if (driver->dev_registered) {
 		if (driver->bustype == 5)
@@ -2162,8 +2189,9 @@ static void unload_driver(struct ndis_driver *driver)
 		list_del(&driver->list);
 	wrap_spin_unlock(&driverlist_lock);
 
-	if(driver->image)
-		vfree(driver->image);
+	for (i = 0; i < driver->num_pe_images; i++)
+		if(driver->pe_images[i].image)
+			vfree(driver->pe_images[i].image);
 
 	/* note: applies to all types of drivers */
 	if (driver->idtable.pci)
@@ -2208,18 +2236,21 @@ static int misc_ioctl(struct inode *inode, struct file *file,
 	int res = -1;
 	struct ndis_device *device = NULL;
 	struct ndis_driver *driver = (struct ndis_driver*) file->private_data;
+	struct driver_files driver_files;
 
+	TRACEENTER1("%u", cmd);
 	if(driver)
 		device = driver->current_device;
 
 	switch(cmd) {
 	case NDIS_PUTDRIVER:
-		if(copy_from_user(&put_file, (void*)arg,
-				  sizeof(struct put_file)))
+		DBGTRACE1("%s", "putting driver");
+		if (copy_from_user(&driver_files, (void*)arg,
+				   sizeof(struct driver_files)))
 			return -EINVAL;
 		else
 		{
-			driver = load_driver(&put_file);
+			driver = load_driver(&driver_files);
 			if(!driver)
 				return -EINVAL;
 			file->private_data = driver;
@@ -2231,6 +2262,7 @@ static int misc_ioctl(struct inode *inode, struct file *file,
 	case NDIS_PUTFILE:
 		if (!driver)
 			return -EINVAL;
+		DBGTRACE1("%s", "putting file");
 		if(copy_from_user(&put_file, (void*)arg,
 				  sizeof(struct put_file)))
 			return -EINVAL;
@@ -2244,6 +2276,7 @@ static int misc_ioctl(struct inode *inode, struct file *file,
 		if (!driver)
 			return -EINVAL;
 
+		DBGTRACE1("%s", "putting device");
 		if(copy_from_user(&put_device, (void*)arg,
 				  sizeof(struct put_device)))
 			return -EINVAL;
@@ -2262,6 +2295,7 @@ static int misc_ioctl(struct inode *inode, struct file *file,
 			return -EINVAL;
 		else
 		{
+			DBGTRACE1("%s", "starting driver");
 			res = start_driver(driver);
 #ifdef DEBUG_CRASH_ON_INIT
 			if (driver->bustype == 5) {
@@ -2365,6 +2399,7 @@ static int __init wrapper_init(void)
 	wrap_spin_lock_init(&wrap_allocs_lock);
 	wrap_spin_lock_init(&driverlist_lock);
 	ndiswrapper_procfs_init();
+	DBGTRACE1("%s", "calling loadndisdriver");
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
 	err = call_usermodehelper("/sbin/loadndisdriver", argv, env, 1);
 #else
@@ -2373,10 +2408,10 @@ static int __init wrapper_init(void)
 
 	if (err)
 	{
-		ERROR("loadndiswrapper failed (%d);"
-		      "check utils version mismatch", err);
+		ERROR("loadndiswrapper failed (%d); check system log "
+		      "for messages from 'loadndisdriver'", err);
 		module_cleanup();
-		return -ENOEXEC;
+		return -EPERM;
 	}
 	return 0;
 }

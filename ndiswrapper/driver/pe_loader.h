@@ -24,7 +24,7 @@
 #define COFF_CHAR_RELOCS_STRIPPED 0x0001
 #define COFF_CHAR_IMAGE 0x0002
 #define COFF_CHAR_32BIT 0x0100
-#define COFF_CHAR_ISDLL 0x2000
+#define COFF_CHAR_DLL 0x2000
 
 #define COFF_MAGIC_PE32 0x10b
 
@@ -39,7 +39,6 @@ typedef signed long cs32;
 typedef unsigned long cu32;
 typedef signed char cs8;
 typedef unsigned char cu8;
-
 
 /* COFF File Header */
 struct coff_file_header
@@ -153,7 +152,6 @@ struct coffpe_exports
 	cu32 ordinals_rva;
 };
 
-
 struct coffpe_import_dirent
 {
 	cu32 import_lookup_tbl;
@@ -163,7 +161,6 @@ struct coffpe_import_dirent
 	cu32 import_address_table;
 };
 
-
 /* Reloc sections */
 struct coffpe_relocs
 {
@@ -172,8 +169,48 @@ struct coffpe_relocs
 	cu16 fixup[1];
 };
 
+struct export_dir_table
+{
+	cu32 flags;
+	cu32 timestamp;
+	cu16 version_major;
+	cu16 version_minir;
+	cu32 name_rva;
+	cu32 ordinal_base;
+	cu32 num_addr_table_entries;
+	cu32 num_name_addr;
+	cu32 export_table_rva;
+	cu32 name_addr_rva;
+	cu32 ordinal_table_rva;
+};
+
+struct exports
+{
+	char *dll;
+	char *name;
+	cu32 addr;
+};
+
+struct pe_image
+{
+	char *name;
+	void *entry;
+	void *image;
+	int size;
+	int type;
+};
+
+struct ustring
+{
+	__u16 len;
+	__u16 buflen;
+	char *buf;
+};
+
 #pragma pack()
 
+#define STDCALL __attribute__((__stdcall__, regparm(0)))
+int load_pe_images(struct pe_image[], int n);
 int load_pe_image(void **entry, void *image, int size);
 
 #endif /* PE_LOADER_H */

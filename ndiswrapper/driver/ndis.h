@@ -17,6 +17,9 @@
 
 #include "ntoskernel.h"
 #include "wrapper.h"
+#include "pe_loader.h"
+
+typedef unsigned char mac_address[ETH_ALEN];
 
 struct packed ndis_scatterentry
 {
@@ -131,6 +134,34 @@ enum ndis_pnp_event
 	NDIS_PNP_MAXIMUM,
 };
 
+enum ndis_request_type
+{
+	NDIS_QUERY_INFO,
+	NDIS_SET_INFO,
+	NDIS_QUERY_STATS,
+};
+
+struct ndis_request {
+	mac_address mac;
+	enum ndis_request_type request_type;
+	union data {
+		struct query_info {
+			unsigned int oid;
+			void *buf;
+			unsigned int buf_len;
+			unsigned int written;
+			unsigned int needed;
+		} query_info;
+		struct set_info {
+			unsigned int oid;
+			void *buf;
+			unsigned int buf_len;
+			unsigned int written;
+			unsigned int needed;
+		} set_info;
+	} data;
+};
+
 struct miniport_char
 {
 	/* NDIS 3.0 */
@@ -197,12 +228,16 @@ struct miniport_char
 			       unsigned long size, void *ctx) STDCALL;
 
 	/* NDIS 5.0 extensions */
-	void *co_create_vc;
-	void *co_delete_vc;
-	void *co_activate_vc;
-	void *co_deactivate_vc;
-	void *co_send_packets;
-	void *co_request;
+	unsigned int (*co_create_vc)(void *ctx, void *vc_handle,
+				      void *vc_ctx) STDCALL;
+	unsigned int (*co_delete_vc)(void *vc_ctx) STDCALL;
+	unsigned int (*co_activate_vc)(void *vc_ctx,
+				       void *call_params) STDCALL;
+	unsigned int (*co_deactivate_vc)(void *vc_ctx) STDCALL;
+	unsigned int (*co_send_packets)(void *vc_ctx, void **packets,
+					unsigned int nr_of_packets) STDCALL;
+	unsigned int (*co_request)(void *ctx, void *vc_ctx,
+					unsigned int *req) STDCALL;
 
 	/* NDIS 5.1 extensions */
 	void *cancel_send_packets;
@@ -300,13 +335,6 @@ struct ndis_spin_lock
 	KIRQL kirql;
 };
 
-struct packed ustring
-{
-	__u16 len;
-	__u16 buflen;
-	char *buf;
-};
-
 struct ndis_binary_data {
 	__u16 len;
 	void *buf;
@@ -380,8 +408,8 @@ struct ndis_driver
 
 	unsigned int dev_registered;
 
-	void *image;
-	unsigned int (*entry)(void *obj, char *p2) STDCALL;
+	unsigned int num_pe_images;
+	struct pe_image pe_images[MAX_PE_IMAGES];
 	struct miniport_char miniport_char;
 	struct ndis_device *current_device;
 };
@@ -436,8 +464,6 @@ struct packed ndis_encr_key
 	unsigned long length;
 	unsigned char key[NDIS_ENCODING_TOKEN_MAX];
 };
-
-typedef unsigned char mac_address[ETH_ALEN];
 
 struct ndis_wpa_key
 {

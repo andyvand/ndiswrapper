@@ -221,6 +221,18 @@ NdisOpenConfigurationKeyByName(unsigned int *status,
 }
 
 STDCALL static void
+NdisOpenConfigurationKeyByIndex(unsigned int *status,
+				struct ndis_handle *handle,
+				unsigned long index, struct ustring *key,
+				struct ndis_handle **subkeyhandle)
+{
+	TRACEENTER2("%s", "");
+	*subkeyhandle = handle;
+	*status = NDIS_STATUS_SUCCESS;
+	TRACEEXIT2(return);
+}
+
+STDCALL static void
 NdisCloseConfiguration(void *confhandle)
 {
 	TRACEENTER2("confhandle: %08x", (int) confhandle);
@@ -365,6 +377,7 @@ static int ndis_encode_setting(struct ndis_setting *setting,
 {
 	struct ustring ansi;
 
+	TRACEENTER2("type = %d", ndis_setting_type);
 	if (setting->value.type == ndis_setting_type)
 		return NDIS_STATUS_SUCCESS;
 
@@ -376,17 +389,19 @@ static int ndis_encode_setting(struct ndis_setting *setting,
 	case NDIS_SETTING_INT:
 		setting->value.data.intval =
 			simple_strtol(setting->val_str, NULL, 0);
+		DBGTRACE("value = %lu", setting->value.data.intval);
 		break;
 	case NDIS_SETTING_HEXINT:
 		setting->value.data.intval =
 			simple_strtol(setting->val_str, NULL, 16);
+		DBGTRACE2("value = %lu", setting->value.data.intval);
 		break;
 	case NDIS_SETTING_STRING:
 		ansi.buflen = ansi.len = strlen(setting->val_str);
 		ansi.buf = setting->val_str;
 		if (RtlAnsiStringToUnicodeString(&setting->value.data.ustring,
 						 &ansi, 1))
-			return NDIS_STATUS_FAILURE;
+			TRACEEXIT1(return NDIS_STATUS_FAILURE);
 		break;
 	default:
 		return NDIS_STATUS_FAILURE;
@@ -418,7 +433,7 @@ static int ndis_decode_setting(struct ndis_setting *setting,
 		if (RtlUnicodeStringToAnsiString(&ansi, &val->data.ustring, 0)
 		    || ansi.len >= MAX_STR_LEN)
 		{
-			return NDIS_STATUS_FAILURE;
+			TRACEEXIT1(return NDIS_STATUS_FAILURE);
 		}
 		break;
 	default:
@@ -467,11 +482,9 @@ NdisReadConfiguration(unsigned int *status, struct ndis_setting_val **dest,
 			if (*status == NDIS_STATUS_SUCCESS)
 				*dest = &setting->value;
 			else
-			{
 				*dest = NULL;
-				DBGTRACE2("status = %d", *status);
-			}
 			kfree(ansi.buf);
+			DBGTRACE2("status = %d", *status);
 			TRACEEXIT2(return);
 		}
 	}
@@ -1590,6 +1603,16 @@ NdisMIndicateReceivePacket(struct ndis_handle *handle,
 	TRACEEXIT3(return);
 }
 
+STDCALL void
+NdisMCoIndicateReceivePacket(struct ndis_handle *handle,
+			   struct ndis_packet **packets,
+			   unsigned int nr_packets)
+{
+	TRACEENTER3("handle = %p", handle);
+	NdisMCoIndicateReceivePacket(handle, packets, nr_packets);
+	TRACEEXIT3(return);
+}
+
 /* called via function pointer */
 STDCALL void
 NdisMSendComplete(struct ndis_handle *handle,
@@ -1602,6 +1625,15 @@ NdisMSendComplete(struct ndis_handle *handle,
 	 */
 	handle->send_status = 0;
 	schedule_work(&handle->xmit_work);
+	TRACEEXIT3(return);
+}
+
+STDCALL void
+NdisMCoSendComplete(unsigned int status, struct ndis_handle *handle,
+		    struct ndis_packet *packet)
+{
+	TRACEENTER3("%08x", status);
+	NdisMSendComplete(handle, packet, status);
 	TRACEEXIT3(return);
 }
 
@@ -1781,6 +1813,18 @@ EthRxComplete(struct ndis_handle *handle)
 /* Called via function pointer if query returns NDIS_STATUS_PENDING */
 STDCALL void
 NdisMQueryInformationComplete(struct ndis_handle *handle, unsigned int status)
+{
+	TRACEENTER3("%08X", status);
+
+	handle->ndis_comm_res = status;
+	handle->ndis_comm_done = 1;
+	wake_up(&handle->ndis_comm_wq);
+	TRACEEXIT3(return);
+}
+
+STDCALL void
+NdisMCoRequestComplete(unsigned int status, struct ndis_handle *handle,
+		       struct ndis_request *ndis_request)
 {
 	TRACEENTER3("%08X", status);
 
@@ -2342,11 +2386,13 @@ NdisMCompleteBufferPhysicalMapping(struct ndis_handle *handle,
 
 STDCALL static int
 NdisMRegisterDevice(struct ndis_handle *handle, struct ustring *dev_name,
-		    struct ustring *sym_name, void **funcs, void *dev_object,
+		    struct ustring *sym_name, void **funcs,
+		    struct device_object **dev_object,
 		    struct ndis_handle **dev_handle)
 {
 	TRACEENTER1("%p, %p", *dev_handle, handle);
 	*dev_handle = handle;
+	*dev_object = handle->device_obj;
 	return NDIS_STATUS_SUCCESS;
 }
 
@@ -2393,6 +2439,7 @@ NdisMGetDeviceProperty(struct ndis_handle *handle, void **phy_dev,
 		dev->device.usb = handle->dev.usb;
 
 		handle->phys_device_obj = dev;
+		dev->handle = (void *)handle;
 	}
 
 	if (phy_dev) {
@@ -2401,8 +2448,8 @@ NdisMGetDeviceProperty(struct ndis_handle *handle, void **phy_dev,
 	}
 
 	if (func_dev) {
-		ERROR("%s", "request for func_dev not yet supported!");
-		*func_dev = (void *)0x00000B00;
+		*func_dev = handle->phys_device_obj;
+		DBGTRACE2("*func_dev = %p", *func_dev);
 	}
 
 	if (next_dev) {
@@ -2456,6 +2503,20 @@ STDCALL static void NdisMRemoveMiniport(void) { UNIMPL(); }
 //STDCALL static void RndisMSendComplete(void) { UNIMPL(); }
 //STDCALL static void RndisMInitializeWrapper(void) { UNIMPL(); }
 STDCALL static void RndisMIndicateReceive(void) { UNIMPL(); }
+
+STDCALL static void NdisMCoActivateVcComplete(void){UNIMPL();}
+STDCALL static void NdisMRegisterUnloadHandler(struct ndis_handle *handle,
+					       void *unload)
+{
+	UNIMPL();
+	return;
+}
+
+STDCALL static void NdisMCoDeactivateVcComplete(void)
+{
+	UNIMPL();
+	return;
+}
 
 struct wrap_func ndis_wrap_funcs[] =
 {
@@ -2573,10 +2634,13 @@ struct wrap_func ndis_wrap_funcs[] =
 	WRAP_FUNC_ENTRY(NdisWritePcmciaAttributeMemory),
 	WRAP_FUNC_ENTRY(MmBuildMdlForNonPagedPool),
 
-	{"RndisMSendComplete",
-	 (WRAP_FUNC *)NdisMSendComplete},
-	{"RndisMInitializeWrapper",
-	 (WRAP_FUNC *)NdisInitializeWrapper},
 	WRAP_FUNC_ENTRY(RndisMIndicateReceive),
+	WRAP_FUNC_ENTRY(NdisMCoActivateVcComplete),
+	WRAP_FUNC_ENTRY(NdisOpenConfigurationKeyByIndex),
+	WRAP_FUNC_ENTRY(NdisMRegisterUnloadHandler),
+	WRAP_FUNC_ENTRY(NdisMCoRequestComplete),
+	WRAP_FUNC_ENTRY(NdisMCoSendComplete),
+	WRAP_FUNC_ENTRY(NdisMCoIndicateReceivePacket),
+	WRAP_FUNC_ENTRY(NdisMCoDeactivateVcComplete),
 	{NULL, NULL}
 };

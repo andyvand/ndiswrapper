@@ -373,7 +373,8 @@ __attribute__ ((regparm(3))) __u64 _aullshr(__u64 a, __u8 b)
 	return (a >> b);
 }
 
-STDCALL size_t RtlCompareMemory(const void *a, const void *b, size_t len)
+STDCALL size_t
+RtlCompareMemory(const void *a, const void *b, size_t len)
 {
 	size_t i;
 	char *x, *y;
@@ -397,8 +398,9 @@ STDCALL size_t RtlCompareMemory(const void *a, const void *b, size_t len)
 	return i;
 }
 
-STDCALL long RtlCompareString(const struct ustring *s1,
-			      const struct ustring *s2, int case_insensitive)
+STDCALL long
+RtlCompareString(const struct ustring *s1, const struct ustring *s2,
+		 int case_insensitive)
 {
 	unsigned int len;
 	long ret = 0;
@@ -420,10 +422,9 @@ STDCALL long RtlCompareString(const struct ustring *s1,
 	return ret;
 }
 
-
-STDCALL long RtlCompareUnicodeString(const struct ustring *s1,
-				     const struct ustring *s2,
-				     int case_insensitive)
+STDCALL long
+RtlCompareUnicodeString(const struct ustring *s1, const struct ustring *s2,
+			int case_insensitive)
 {
 	unsigned int len;
 	long ret = 0;
@@ -445,8 +446,9 @@ STDCALL long RtlCompareUnicodeString(const struct ustring *s1,
 	return ret;
 }
 
-STDCALL int RtlEqualString(const struct ustring *s1,
-			   const struct ustring *s2, int case_insensitive)
+STDCALL int
+RtlEqualString(const struct ustring *s1, const struct ustring *s2,
+	       int case_insensitive)
 {
 	TRACEENTER1("%s", "");
 	if (s1->len != s2->len)
@@ -454,17 +456,17 @@ STDCALL int RtlEqualString(const struct ustring *s1,
 	return !RtlCompareString(s1, s2, case_insensitive);
 }
 
-STDCALL int RtlEqualUnicodeString(const struct ustring *s1,
-				  const struct ustring *s2,
-				  int case_insensitive)
+STDCALL int
+RtlEqualUnicodeString(const struct ustring *s1, const struct ustring *s2,
+		      int case_insensitive)
 {
 	if (s1->len != s2->len)
 		return 0;
 	return !RtlCompareUnicodeString(s1, s2, case_insensitive);
 }
 
-STDCALL void RtlCopyUnicodeString(struct ustring *dst,
-				  const struct ustring *src)
+STDCALL void
+RtlCopyUnicodeString(struct ustring *dst, const struct ustring *src)
 {
 	TRACEENTER1("%s", "");
 	if (src)
@@ -480,7 +482,9 @@ STDCALL void RtlCopyUnicodeString(struct ustring *dst,
 	TRACEEXIT1(return);
 }
 
-STDCALL int RtlAnsiStringToUnicodeString(struct ustring *dst, struct ustring *src, unsigned int dup)
+STDCALL int
+RtlAnsiStringToUnicodeString(struct ustring *dst, struct ustring *src,
+			     unsigned int dup)
 {
 	int i;
 	__u16 *d;
@@ -489,14 +493,15 @@ STDCALL int RtlAnsiStringToUnicodeString(struct ustring *dst, struct ustring *sr
 	TRACEENTER2("dup: %d src: %s", dup, src->buf);
 	if(dup)
 	{
-		char *buf = kmalloc((src->buflen+1) * sizeof(__u16), GFP_KERNEL);
+		char *buf = kmalloc((src->buflen+1) * sizeof(__u16),
+				    GFP_KERNEL);
 		if(!buf)
-			return NDIS_STATUS_FAILURE;
+			TRACEEXIT1(return NDIS_STATUS_FAILURE);
 		dst->buf = buf;
 		dst->buflen = (src->buflen+1) * sizeof(__u16);
 	}
 	else if (dst->buflen < (src->len+1) * sizeof(__u16))
-		return NDIS_STATUS_FAILURE;
+		TRACEEXIT1(return NDIS_STATUS_FAILURE);
 
 	dst->len = src->len * sizeof(__u16);
 	d = (__u16 *)dst->buf;
@@ -510,7 +515,9 @@ STDCALL int RtlAnsiStringToUnicodeString(struct ustring *dst, struct ustring *sr
 	TRACEEXIT2(return NDIS_STATUS_SUCCESS);
 }
 
-STDCALL int RtlUnicodeStringToAnsiString(struct ustring *dst, struct ustring *src, unsigned int dup)
+STDCALL int
+RtlUnicodeStringToAnsiString(struct ustring *dst, struct ustring *src,
+			     unsigned int dup)
 {
 	int i;
 	__u16 *s;
@@ -540,8 +547,9 @@ STDCALL int RtlUnicodeStringToAnsiString(struct ustring *dst, struct ustring *sr
 	TRACEEXIT2(return NDIS_STATUS_SUCCESS);
 }
 
-STDCALL int RtlIntegerToUnicodeString(unsigned long value, unsigned long base,
-				      struct ustring *ustring)
+STDCALL int
+RtlIntegerToUnicodeString(unsigned long value, unsigned long base,
+			  struct ustring *ustring)
 {
 	char string[sizeof(unsigned long) * 8 + 1];
 	struct ustring ansi;
@@ -574,14 +582,15 @@ STDCALL int RtlIntegerToUnicodeString(unsigned long value, unsigned long base,
 	return RtlAnsiStringToUnicodeString(ustring, &ansi, 0);
 }
 
-STDCALL void
+STDCALL void 
 RtlInitUnicodeString(struct ustring *dest, __u16 *src)
 {
 	struct ustring *uc;
 
+	TRACEENTER1("%s", "");
 	uc = dest;
 	if (uc == NULL)
-		return;
+		TRACEEXIT1(return);
 	if (src == NULL) {
 		dest->len = dest->buflen = 0;
 		dest->buf = NULL;
@@ -592,7 +601,7 @@ RtlInitUnicodeString(struct ustring *dest, __u16 *src)
 		dest->buf = (char *)src;
 		dest->len = dest->buflen = i * 2;
 	}
-	return;
+	TRACEEXIT1(return);
 }
 
 void RtlFreeUnicodeString(void){UNIMPL();}
@@ -677,7 +686,6 @@ struct wrap_func misc_wrap_funcs[] =
 	WRAP_FUNC_ENTRY(RtlIntegerToUnicodeString),
 	WRAP_FUNC_ENTRY(RtlUnicodeStringToAnsiString),
 	WRAP_FUNC_ENTRY(RtlUnwind),
-	WRAP_FUNC_ENTRY(RtlInitUnicodeString),
 
 	WRAP_FUNC_ENTRY(_alldiv),
 	WRAP_FUNC_ENTRY(_allmul),
@@ -689,6 +697,8 @@ struct wrap_func misc_wrap_funcs[] =
 	WRAP_FUNC_ENTRY(_aullshl),
 	WRAP_FUNC_ENTRY(_allshr),
 	WRAP_FUNC_ENTRY(_aullshr),
+
+	WRAP_FUNC_ENTRY(RtlInitUnicodeString),
 
 	{"atoi",   (WRAP_FUNC *)wrap_atoi},
 	{"memcpy",   (WRAP_FUNC *)wrap_memcpy},

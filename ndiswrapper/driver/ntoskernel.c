@@ -20,19 +20,19 @@
 
 unsigned long long KeTickCount;
 STDCALL static void
-WRITE_REGISTER_ULONG(unsigned int reg, unsigned int val)
+WRITE_REGISTER_ULONG(void *reg, unsigned int val)
 {
 	writel(val, reg);
 }
 
 STDCALL static void
-WRITE_REGISTER_USHORT(unsigned int reg, unsigned short val)
+WRITE_REGISTER_USHORT(void *reg, unsigned short val)
 {
 	writew(val, reg);
 }
 
 STDCALL static void
-WRITE_REGISTER_UCHAR(unsigned int reg, unsigned char val)
+WRITE_REGISTER_UCHAR(void *reg, unsigned char val)
 {
 	writeb(val, reg);
 }
@@ -771,11 +771,89 @@ IoGetDeviceProperty(struct device_object *dev_obj, int dev_property,
                     unsigned long buffer_len, void *buffer,
                     unsigned long *result_len)
 {
+	struct ustring ansi, unicode;
+	struct ndis_handle *handle;
+	char buf[32];
+
+	snprintf(buf, sizeof(buf), "%s", "usb8023k.sys");
+	handle = (struct ndis_handle *)dev_obj->handle;
+
 	TRACEENTER1("dev_obj = %p, dev_property = %d, buffer_len = %lu, "
 		"buffer = %p, result_len = %p", dev_obj, dev_property,
 		buffer_len, buffer, result_len);
 
-return STATUS_FAILURE;
+	switch (dev_property) {
+	case DEVPROP_DEVICE_DESCRIPTION:
+		if (buffer_len > 0 && buffer) {
+			*result_len = 4;
+			memset(buffer, 0xFF, *result_len);
+			TRACEEXIT1(return STATUS_SUCCESS);
+		} else {
+			*result_len = 4;
+			TRACEEXIT1(return STATUS_SUCCESS);
+		}
+		break;
+		
+	case DEVPROP_FRIENDLYNAME:
+		if (buffer_len > 0 && buffer) {
+			ansi.len = snprintf(buf, sizeof(buf), "%d",
+					    handle->dev.usb->devnum);
+			ansi.buf = buf;
+			ansi.len = strlen(ansi.buf);
+			if (ansi.len <= 0) {
+				*result_len = 0;
+				TRACEEXIT1(return STATUS_BUFFER_TOO_SMALL);
+			}
+			ansi.buflen = ansi.len;
+			unicode.buf = buffer;
+			unicode.buflen = buffer_len;
+			DBGTRACE1("unicode.buflen = %d, ansi.len = %d",
+					unicode.buflen, ansi.len);
+			if (RtlAnsiStringToUnicodeString(&unicode, &ansi, 0)) {
+				*result_len = 0;
+				TRACEEXIT1(return STATUS_BUFFER_TOO_SMALL);
+			} else {
+				*result_len = unicode.len;
+				TRACEEXIT1(return STATUS_SUCCESS);
+			}
+		} else {
+			*result_len = 2 * (strlen(buf) + 1);
+			TRACEEXIT1(return STATUS_BUFFER_TOO_SMALL);
+		}
+		break;
+
+	case DEVPROP_DRIVER_KEYNAME:
+//		ansi.buf = handle->driver->name;
+		ansi.buf = buf;
+		ansi.len = strlen(ansi.buf);
+		ansi.buflen = ansi.len;
+		if (buffer_len > 0 && buffer) {
+			unicode.buf = buffer;
+			unicode.buflen = buffer_len;
+			if (RtlAnsiStringToUnicodeString(&unicode, &ansi, 0)) {
+				*result_len = 0;
+				TRACEEXIT1(return STATUS_BUFFER_TOO_SMALL);
+			} else {
+				*result_len = unicode.len;
+				TRACEEXIT1(return STATUS_SUCCESS);
+			}
+		} else {
+				*result_len = 2 * (strlen(buf) + 1);
+				TRACEEXIT1(return STATUS_SUCCESS);
+		}
+		break;
+	default:
+		TRACEEXIT1(return STATUS_INVALID_PARAMETER_2);
+	}
+}
+
+STDCALL void
+KeBugCheckEx(unsigned long code, unsigned long *param1,
+	     unsigned long *param2, unsigned long *param3,
+	     unsigned long *param4)
+{
+	UNIMPL();
+	return;
 }
 
 STDCALL static void IoReleaseCancelSpinLock(void){UNIMPL();}
@@ -792,18 +870,6 @@ STDCALL static void IoFreeMdl(void){UNIMPL();}
 STDCALL static void ObfReferenceObject(void){UNIMPL();}
 STDCALL static void ObReferenceObjectByHandle(void){UNIMPL();}
 STDCALL static void _except_handler3(void){UNIMPL();}
-NOREGPARM static unsigned int WmiTraceMessage(void)
-{
-	return 0;
-}
-STDCALL static unsigned int WmiQueryTraceInformation(void)
-{
-	return 0;
-}
-STDCALL static unsigned int IoWMIRegistrationControl(void)
-{
-	return 0;
-}
 
 struct wrap_func ntos_wrap_funcs[] =
 {
@@ -867,9 +933,7 @@ struct wrap_func ntos_wrap_funcs[] =
 	WRAP_FUNC_ENTRY(KeResetEvent),
 	WRAP_FUNC_ENTRY(IoGetDeviceProperty),
 
-	WRAP_FUNC_ENTRY(WmiTraceMessage),
-	WRAP_FUNC_ENTRY(WmiQueryTraceInformation),
-	WRAP_FUNC_ENTRY(IoWMIRegistrationControl),
+	WRAP_FUNC_ENTRY(KeBugCheckEx),
 
 	{"KeTickCount", (WRAP_FUNC *)&KeTickCount},
 
