@@ -1201,7 +1201,7 @@ static int key_str_to_hex(const char *str, unsigned char *key, int str_len)
 		memcpy(key, str+2, key_len);
 	}
 	else
-		for (i = key_len = 0; i < str_len-1; i += 2)
+		for (i = key_len = 0; i < str_len-1; i += 2, key_len++)
 		{
 			int c1, c2;
 
@@ -1212,7 +1212,7 @@ static int key_str_to_hex(const char *str, unsigned char *key, int str_len)
 			c2 = char_to_hex(tolower(str[i+1]));
 			if (c1 < 0 || c2 < 0)
 				TRACEEXIT(return -1);
-			key[key_len++] = c1 << 4 | c2;
+			key[key_len] = c1 << 4 | c2;
 		}
 	DBGTRACE("key length = %d", key_len);
 	if (key_len == 5 || key_len == 13)
@@ -1443,13 +1443,20 @@ static int wpa_deauthenticate(struct net_device *dev,
 
 int set_priv_filter(struct ndis_handle *handle, int flags)
 {
-	int res;
+	int i, res;
 
 	TRACEENTER("filter: %d", flags);
+	/* first check if this oid is supported;
+	 * not all drivers seem to support it.
+	 */
+	if (query_int(handle, NDIS_OID_PRIVACY_FILTER, &i))
+		TRACEEXIT(return 0);
+		
 	res = set_int(handle, NDIS_OID_PRIVACY_FILTER, flags);
 	if (res)
 	{
-		WARNING("setting privacy filter failed (%08X)", res);
+		WARNING("setting privacy filter from %d to %d failed"
+			" (%08X)", i, flags, res);
 		TRACEEXIT(return -EINVAL);
 	}
 	TRACEEXIT(return 0);
@@ -1510,15 +1517,15 @@ static const struct iw_priv_args priv_args[] = {
 };
 
 static const iw_handler priv_handler[] = {
-	[PRIV_RESET - SIOCIWFIRSTPRIV] = iw_reset,
-	[WPA_SET_WPA - SIOCIWFIRSTPRIV] = wpa_set_wpa,
-	[WPA_SET_KEY - SIOCIWFIRSTPRIV] = wpa_set_key,
-	[WPA_ASSOCIATE - SIOCIWFIRSTPRIV] = wpa_associate,
-	[WPA_DISASSOCIATE - SIOCIWFIRSTPRIV] = wpa_disassociate,
-	[WPA_DROP_UNENCRYPTED - SIOCIWFIRSTPRIV] = wpa_set_priv_filter,
-	[WPA_SET_COUNTERMEASURES - SIOCIWFIRSTPRIV] = wpa_set_countermeasures,
-	[WPA_DEAUTHENTICATE - SIOCIWFIRSTPRIV] = wpa_deauthenticate,
-	[WPA_SET_AUTH_ALG - SIOCIWFIRSTPRIV] = wpa_set_auth_alg,
+	[PRIV_RESET 		- SIOCIWFIRSTPRIV] = iw_reset,
+	[WPA_SET_WPA 		- SIOCIWFIRSTPRIV] = wpa_set_wpa,
+	[WPA_SET_KEY 		- SIOCIWFIRSTPRIV] = wpa_set_key,
+	[WPA_ASSOCIATE 		- SIOCIWFIRSTPRIV] = wpa_associate,
+	[WPA_DISASSOCIATE 	- SIOCIWFIRSTPRIV] = wpa_disassociate,
+	[WPA_DROP_UNENCRYPTED 	- SIOCIWFIRSTPRIV] = wpa_set_priv_filter,
+	[WPA_SET_COUNTERMEASURES- SIOCIWFIRSTPRIV] = wpa_set_countermeasures,
+	[WPA_DEAUTHENTICATE 	- SIOCIWFIRSTPRIV] = wpa_deauthenticate,
+	[WPA_SET_AUTH_ALG 	- SIOCIWFIRSTPRIV] = wpa_set_auth_alg,
 };
 
 const struct iw_handler_def ndis_handler_def = {
