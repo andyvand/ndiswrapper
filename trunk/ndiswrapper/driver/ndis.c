@@ -591,7 +591,7 @@ STDCALL void NdisFreePacketPool(void *poolhandle)
 
 STDCALL void NdisAllocatePacket(unsigned int *status, struct ndis_packet **packet_out, void *poolhandle)
 {
-	printk("%s\n", __FUNCTION__);
+	//printk("%s\n", __FUNCTION__);
 	struct ndis_packet *packet = (struct ndis_packet*) kmalloc(sizeof(struct ndis_packet), GFP_KERNEL);
 	if(!packet)
 	{
@@ -603,14 +603,12 @@ STDCALL void NdisAllocatePacket(unsigned int *status, struct ndis_packet **packe
 	memset(packet, 0, sizeof(struct ndis_packet));
 	packet->oob_offset = (int)(&packet->timesent1) - (int)packet;
 
-	printk("oob_offset: %08x\n", packet->oob_offset);
-	
 	*packet_out = packet;
 	*status = NDIS_STATUS_SUCCESS;	
 }
 STDCALL void NdisFreePacket(void *packet)
 {
-	printk("%s\n", __FUNCTION__);
+//	printk("%s\n", __FUNCTION__);
 	if(packet)
 	{
 		memset(packet, 0, sizeof(struct ndis_packet));
@@ -880,8 +878,8 @@ STDCALL void NdisMIndicateReceivePacket(struct ndis_handle *handle, struct ndis_
 	{
 		packet = packets[i];
 		buffer = packet->buffer_head;
-		printk("header_size %x, status %08x\n", packet->header_size, packet->status);
-		printk("%s %08x, %d, %d\n", __FUNCTION__, (int)buffer->data, buffer->len, buffer->offset);
+//		printk("header_size %x, status %08x\n", packet->header_size, packet->status);
+//		printk("%s %08x, %d, %d\n", __FUNCTION__, (int)buffer->data, buffer->len, buffer->offset);
 
 		skb = dev_alloc_skb (buffer->len);
 		if(skb)
@@ -904,7 +902,7 @@ STDCALL void NdisMIndicateReceivePacket(struct ndis_handle *handle, struct ndis_
  */
 STDCALL void NdisMSendComplete(struct ndis_handle *handle, struct ndis_packet *packet, unsigned int status)
 {
-	printk("%s status %08x\n", __FUNCTION__, status);
+	//printk("%s status %08x\n", __FUNCTION__, status);
 	kfree(packet->buffer_head);
 	kfree(packet);
 }
