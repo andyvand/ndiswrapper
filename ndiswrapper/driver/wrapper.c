@@ -2469,6 +2469,7 @@ static int __init wrapper_init(void)
 	}
 
 	ndis_init();
+	usb_init();
 	INIT_LIST_HEAD(&wrap_allocs);
 	INIT_LIST_HEAD(&handle_ctx_list);
 	wrap_spin_lock_init(&wrap_allocs_lock);
