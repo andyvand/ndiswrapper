@@ -674,7 +674,7 @@ PsCreateSystemThread(void **phandle, unsigned long access, void *obj_attr,
 	ctx->start_routine = start_routine;
 	ctx->context       = context;
 
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,0)
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,4)
 	pid = kernel_thread(kthread_trampoline, ctx,
 		CLONE_FS|CLONE_FILES|CLONE_SIGHAND);
 	DBGTRACE2("pid = %d", pid);
