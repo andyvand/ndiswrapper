@@ -1626,7 +1626,7 @@ static int ndis_init_one_pci(struct pci_dev *pdev,
 	}
 	*/
 
-//	miniport_reset(handle);
+	miniport_reset(handle);
 
 	/* Wait a little to let card power up otherwise ifup might fail after
 	   boot */
