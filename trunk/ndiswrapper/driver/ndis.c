@@ -312,7 +312,6 @@ STDCALL unsigned int NdisReadPciSlotInformation(struct ndis_handle *handle,
 						char *buf,
 						unsigned int len)
 {
-	DBGTRACE("%s handle: %08x .slot: %d, offset %d, buf: %08x, len: %d\n", __FUNCTION__, (int)handle, slot, offset, (int)buf, len);
 	int i;
 	for(i = 0; i < len; i++)
 	{
@@ -332,7 +331,6 @@ STDCALL unsigned int NdisWritePciSlotInformation(struct ndis_handle *handle,
 						 char *buf,
 						 unsigned int len)
 {
-	DBGTRACE("%s handle: %08x .slot: %d, offset %d, buf: %08x, len: %d\n", __FUNCTION__, (int)handle, slot, offset, (int)buf, len);
 	int i;
 	for(i = 0; i < len; i++)
 	{
@@ -438,25 +436,28 @@ STDCALL void NdisMUnmapIoSpace(struct ndis_handle *handle,
 }
 
 
-STDCALL void NdisAllocateSpinLock(void **ndis_lock)
+STDCALL void NdisAllocateSpinLock(spinlock_t **lock)
 {
-	*ndis_lock = (void*) 0x000a0001;
-	DBGTRACE("%s %08x\n", __FUNCTION__, (int)ndis_lock);
+	*lock = kmalloc(sizeof(spinlock_t), GFP_KERNEL);
+	if(*lock)
+		**lock = SPIN_LOCK_UNLOCKED;
 }
 
-STDCALL void NdisFreeSpinLock(void *ndis_lock)
+STDCALL void NdisFreeSpinLock(spinlock_t **lock)
 {
-	DBGTRACE("%s %08x\n", __FUNCTION__ , (int)(ndis_lock));
+	if(*lock)
+		kfree(*lock);
+	*lock = NULL;
 }
 
-STDCALL void NdisAcquireSpinLock(void *ndis_lock)
+STDCALL void NdisAcquireSpinLock(spinlock_t **lock)
 {
-	//DBGTRACE("%s %08x\n", __FUNCTION__ , (int)(ndis_lock));
+	spin_lock(*lock);	
 }
 
-STDCALL void NdisReleaseSpinLock(void *ndis_lock)
+STDCALL void NdisReleaseSpinLock(spinlock_t **lock)
 {
-	//DBGTRACE("%s %08x\n", __FUNCTION__ , (int)(ndis_lock));
+	spin_unlock(*lock);	
 }
 
 
@@ -820,6 +821,7 @@ STDCALL char NdisMSynchronizeWithInterrupt(struct ndis_irq *interrupt,
 	spin_lock_irqsave(&interrupt->spinlock, flags);
 	ret = func(ctx);
 	spin_unlock_irqrestore(&interrupt->spinlock, flags);
+	DBGTRACE("%s: Past func\n", __FUNCTION__);
 	return ret;
 }
 
