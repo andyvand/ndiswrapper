@@ -88,10 +88,9 @@ static int dotaint(void)
 	return 0;
 }
 
-static int put_file(int device, char *filename, int ioctl_nr)
+static int read_file(int device, char *filename, struct put_file *put_file)
 {
 	int fd, size;
-	struct put_file put_file;
 	void * image = NULL;
 
 	char *file_basename = basename(strdup(filename));
@@ -103,8 +102,7 @@ static int put_file(int device, char *filename, int ioctl_nr)
 		return -EINVAL;
 	}
 	size = get_filesize(fd);
-	image = mmap(0, size, PROT_READ, MAP_PRIVATE,
-		     fd, 0);
+	image = mmap(0, size, PROT_READ, MAP_PRIVATE, fd, 0);
 	if((int)image == -1)
 	{
 		perror("Unable to mmap driver");
@@ -112,21 +110,16 @@ static int put_file(int device, char *filename, int ioctl_nr)
 		return -EINVAL;
 	}
 
-	strncpy(put_file.name, file_basename, sizeof(put_file.name));
-	put_file.name[sizeof(put_file.name)-1] = 0;
-	put_file.size = size;
+	strncpy(put_file->name, file_basename, sizeof(put_file->name));
+	put_file->name[sizeof(put_file->name)-1] = 0;
+	put_file->size = size;
 	if (!image)
 	{
 		error("Unable to locate file %s", filename);
 		return -EINVAL;
 	}
 
-	put_file.data = image;
-	if (ioctl(device, ioctl_nr, &put_file))
-	{
-		perror("Unable to put file (check dmesg for more info)");
-		return -EINVAL;
-	}
+	put_file->data = image;
 	return 0;
 }
 
@@ -305,9 +298,10 @@ static int put_device(int device, char *conf_file_name)
  */
 static int load(int device, char *confdir)
 {
-	int err;
+	int i, err;
 	struct dirent *dirent;
 	DIR *dir;
+	struct driver_files driver_files;
 
 	if(chdir(confdir))
 	{
@@ -323,21 +317,31 @@ static int load(int device, char *confdir)
 		return -1;
 	}
 
-	/* Locate the .sys first */
-	while((dirent = readdir(dir)))
+	/* Locate all the .sys first */
+	for (i = 0; (dirent = readdir(dir)) && i < MAX_PE_IMAGES; )
 	{
 		int len;
+
 		len = strlen(dirent->d_name);
 		if(len > 4 && strcmp(&dirent->d_name[len-4], ".sys") == 0)
 		{
-			if((err = put_file(device, dirent->d_name,
-					   NDIS_PUTDRIVER)) != 0)
+			if ((err = read_file(device, dirent->d_name,
+					     &driver_files.file[i])) != 0)
 			{
 				chdir("..");
 				return err;
 			}
-			break;
+			i++;
 		}
+	}
+
+	driver_files.count = i;
+	strncpy(driver_files.name, confdir, DRIVERNAME_MAX);
+	info("number of files = %d", i);
+	if ((err = ioctl(device, NDIS_PUTDRIVER, &driver_files)))
+	{
+		perror("unable to load system files (check system logs for more info");
+		       return -EINVAL;
 	}
 	rewinddir(dir);
 
@@ -352,6 +356,8 @@ static int load(int device, char *confdir)
 		}
 		else
 		{
+			struct put_file flash_file;
+
 			if(strcmp(dirent->d_name, ".") == 0)
 				continue;
 			if(strcmp(dirent->d_name, "..") == 0)
@@ -364,7 +370,12 @@ static int load(int device, char *confdir)
 				continue;
 			if(len > 4 && !strcmp(&dirent->d_name[len-4], ".exe"))
 				continue;
-			put_file(device, dirent->d_name, NDIS_PUTFILE);
+			read_file(device, dirent->d_name, &flash_file);
+			if (ioctl(device, NDIS_PUTFILE, &flash_file))
+			{
+				perror("Unable to put file (check dmesg for more info)");
+				return -EINVAL;
+			}
 		}
 	}
 	closedir(dir);
@@ -414,16 +425,17 @@ static int loadall(int device)
  */
 static int open_misc_device(int minor)
 {
-	char tmp[] = {"/tmp/ndiswrapperXXXXXX"};
-	int fd = mkstemp(tmp);
-	unlink(tmp);
-	close(fd);
-	if(mknod(tmp, S_IFCHR | 0600, 10 << 8 | minor) == -1)
+	char *path = "/dev/ndiswrapper";
+	int fd;
+
+	unlink(path);
+	if (mknod(path, S_IFCHR | 0600, 10 << 8 | minor) == -1)
 		return -1;
 
-	fd = open(tmp, O_RDONLY);
-	unlink(tmp);
-	if(fd == -1)
+	fd = open(path, O_RDONLY);
+	unlink(path);
+
+	if (fd == -1)
 		return -1;
 	return fd;
 }
@@ -470,7 +482,7 @@ int main(int argc, char *argv[0])
 	if (argc < 3)
 	{
 		error("Usage: %s <debug> <version> [-a] [driver]", argv[0]);
-		res = -1;
+		res = 1;
 		goto out;
 	}
 
@@ -479,7 +491,7 @@ int main(int argc, char *argv[0])
 	if (i < 0)
 	{
 		error("invalid debug value %d", i);
-		res = -2;
+		res = 2;
 		goto out;
 	}
 	else
@@ -488,24 +500,23 @@ int main(int argc, char *argv[0])
 	if (chdir(confdir))
 	{
 		error("%s does not exist", confdir);
-		res = -3;
+		res = 3;
 		goto out;
 	}
 
 	misc_minor = get_misc_minor();
 	if (misc_minor == -1)
 	{
-		error("%s: cannot find minor for kernel module."
-		       "Module loaded?", argv[0]);
-		res = -4;
+		error("%s", "cannot find minor for kernel module.");
+		res = 4;
 		goto out;
 	}
 
 	device = open_misc_device(misc_minor);
 	if (device == -1)
 	{
-		error("Unable to open kernel driver (%d)", errno);
-		res = -5;
+		error("unable to open misc device in /tmp (%d)", errno);
+		res = 5;
 		goto out;
 	}
 
@@ -515,7 +526,7 @@ int main(int argc, char *argv[0])
 	{
 		error("version %s doesn't match driver version %s",
 				NDISWRAPPER_VERSION, argv[2]);
-		res = -6;
+		res = 6;
 		goto out;
 	}
 
