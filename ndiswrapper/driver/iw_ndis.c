@@ -81,7 +81,7 @@ static int ndis_get_essid(struct net_device *dev,
 	memcpy(extra, &req.essid, req.len);	
 	extra[req.len] = 0;
 	wrqu->essid.flags  = 1;
-	wrqu->essid.length = req.len + 1;
+	wrqu->essid.length = req.len;
 	TRACEEXIT1(return 0);
 }
 
@@ -512,7 +512,7 @@ static int ndis_get_encr(struct net_device *dev, struct iw_request_info *info,
 	TRACEEXIT1(return 0);
 }
 	
-static int set_auth_mode(struct ndis_handle *handle, int auth_mode)
+int set_auth_mode(struct ndis_handle *handle, int auth_mode)
 {
 	unsigned int res;
 	res = set_int(handle, NDIS_OID_AUTH_MODE, auth_mode);
@@ -525,7 +525,7 @@ static int set_auth_mode(struct ndis_handle *handle, int auth_mode)
 	}
 }
 
-static int set_wep_mode(struct ndis_handle *handle, int wep_mode)
+int set_wep_mode(struct ndis_handle *handle, int wep_mode)
 {
 	unsigned int res;
 	res = set_int(handle, NDIS_OID_WEP_STATUS, wep_mode);
@@ -1164,12 +1164,10 @@ static int ndis_set_wpa(struct net_device *dev, struct iw_request_info *info,
 	res = set_auth_mode(handle, AUTHMODE_WPAPSK);
 	if (res)
 		TRACEEXIT(return -EINVAL);
-	handle->auth_mode = AUTHMODE_WPAPSK;
 
 	res = set_wep_mode(handle, WEP_ENCR2_ENABLED);
 	if (res)
 		TRACEEXIT(return -EINVAL);
-	handle->wep_mode = WEP_ENCR2_ENABLED;
 	
 	DBGTRACE("%s", "wpa enabled");
 	TRACEEXIT(return 0);
@@ -1308,9 +1306,9 @@ static int ndis_set_disassociate(struct net_device *dev,
 	TRACEEXIT(return 0);
 }
 
-static int ndis_set_priv_filter(struct net_device *dev,
-				struct iw_request_info *info,
-				union iwreq_data *wrqu, char *extra)
+int ndis_set_priv_filter(struct net_device *dev,
+			 struct iw_request_info *info,
+			 union iwreq_data *wrqu, char *extra)
 {
 	struct ndis_handle *handle = (struct ndis_handle *)dev->priv;
 	int res;
@@ -1331,7 +1329,7 @@ static int ndis_set_generic_element(struct net_device *dev,
 	int i;
 	union iwreq_data iwrq;
 
-	MESSAGE(KERN_INFO, "generic_element (%d): ", wrqu->data.length);
+	printk(KERN_INFO "generic_element (%d): ", wrqu->data.length);
 	for (i = 0 ; i < wrqu->data.length; i ++)
 		printk(KERN_INFO "%02X ", ((char *)wrqu->data.pointer)[i]);
 	printk(KERN_INFO "\n");
@@ -1343,12 +1341,16 @@ static int ndis_set_generic_element(struct net_device *dev,
 
 static const struct iw_priv_args priv_args[] = {
 	{PRIV_RESET, 0, 0, "ndis_reset"},
-	{WPA_SET_WPA, 0, IW_PRIV_TYPE_ADDR | 16, "setwpa"},
-	{WPA_SET_KEY, 0, IW_PRIV_TYPE_ADDR | 16, "setkey"},
-	{WPA_ASSOCIATE, 0, IW_PRIV_TYPE_ADDR | 16, "associate"},
-	{WPA_DISASSOCIATE, 0, IW_PRIV_TYPE_ADDR | 16, "disassociate"},
-	{WPA_SET_PRIV_FILTER, 0, IW_PRIV_TYPE_ADDR | 16, "privfilter"},
-	{WPA_SET_GENERIC_ELEMENT, 0, IW_PRIV_TYPE_ADDR | 16, "genelem"},
+	{WPA_SET_WPA, IW_PRIV_TYPE_INT | IW_PRIV_SIZE_FIXED | 1, 0, "setwpa"},
+	{WPA_SET_KEY, IW_PRIV_TYPE_ADDR | IW_PRIV_SIZE_FIXED | 1, 0, "setkey"},
+	{WPA_ASSOCIATE, IW_PRIV_TYPE_ADDR | IW_PRIV_SIZE_FIXED | 1, 0,
+	 "associate"},
+	{WPA_DISASSOCIATE, IW_PRIV_TYPE_INT | IW_PRIV_SIZE_FIXED | 1, 0,
+	 "disassociate"},
+	{WPA_SET_PRIV_FILTER, IW_PRIV_TYPE_INT | IW_PRIV_SIZE_FIXED | 1, 0,
+	 "privfilter"},
+	{WPA_SET_GENERIC_ELEMENT, IW_PRIV_TYPE_ADDR | IW_PRIV_SIZE_FIXED | 1,
+	 0, "genelem"},
 };
 
 static const iw_handler priv_handler[] = {

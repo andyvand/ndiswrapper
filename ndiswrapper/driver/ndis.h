@@ -148,7 +148,9 @@ struct miniport_char
 	/* Send packets */
 	unsigned int (*send_packets)(void *ctx, struct ndis_packet **packets, int nr_of_packets) STDCALL;
 	
-	void *alloc_complete;
+	void (*alloc_complete)(void *handle, void *virt,
+			       struct ndis_phy_address *phys,
+			       unsigned long size, void *ctx);
 
 	/* NDIS 5.0 extensions */
 	void *co_create_vc;
@@ -163,6 +165,15 @@ struct miniport_char
 	void *pnp_event_notify;
 	void (*adapter_shutdown)(void *ctx) STDCALL;
 
+};
+
+struct ndis_alloc_entry
+{
+	struct list_head list;
+	struct ndis_handle *handle;
+	unsigned long size;
+	unsigned char cached;
+	void *ctx;
 };
 
 struct ndis_work
@@ -684,6 +695,7 @@ STDCALL unsigned long NDIS_BUFFER_TO_SPAN_PAGES(struct ndis_buffer *buffer);
 STDCALL int RtlUnicodeStringToAnsiString(struct ustring *dst, struct ustring *src, unsigned int dup) STDCALL;
 STDCALL int RtlAnsiStringToUnicodeString(struct ustring *dst, struct ustring *src, unsigned int dup) STDCALL;
 int getSp(void);
+void init_alloc_work(void);
 void init_ndis_work(void);
 
 int ndiswrapper_procfs_init(void);
