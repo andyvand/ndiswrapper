@@ -16,61 +16,70 @@
 #include "ndis.h"
 #include "ntoskernel.h"
 
-STDCALL void WRITE_PORT_ULONG(unsigned int port, unsigned int value)
+STDCALL static void
+WRITE_PORT_ULONG(unsigned int port, unsigned int value)
 {
 	outl(value, port);
 }
 
-STDCALL unsigned int READ_PORT_ULONG(unsigned int port)
+STDCALL static unsigned int
+READ_PORT_ULONG(unsigned int port)
 {
 	return inl(port);
 }
 
-STDCALL void WRITE_PORT_USHORT(unsigned int port, unsigned short value)
+STDCALL static void
+WRITE_PORT_USHORT(unsigned int port, unsigned short value)
 {
 	outw(value, port);
 }
 
-STDCALL unsigned short READ_PORT_USHORT(unsigned int port)
+STDCALL static unsigned short
+READ_PORT_USHORT(unsigned int port)
 {
 	return inw(port);
 }
 
-STDCALL void WRITE_PORT_UCHAR(unsigned int port, unsigned char value)
+STDCALL static void
+WRITE_PORT_UCHAR(unsigned int port, unsigned char value)
 {
 	outb(value, port);
 }
 
-STDCALL unsigned short READ_PORT_UCHAR(unsigned int port)
+STDCALL static unsigned short
+READ_PORT_UCHAR(unsigned int port)
 {
 	return inb(port);
 }
 
-
-STDCALL void WRITE_PORT_BUFFER_USHORT (unsigned int port, unsigned short *buf,
-				       unsigned long count)
+STDCALL static void
+WRITE_PORT_BUFFER_USHORT (unsigned int port, unsigned short *buf,
+			  unsigned long count)
 {
 	unsigned long i;
 	for (i = 0 ; i < count ; i++)
 		outw(buf[i], port);
 }
 
-STDCALL void READ_PORT_BUFFER_USHORT (unsigned int port, unsigned short *buf,
-				      unsigned long count)
+STDCALL static void
+READ_PORT_BUFFER_USHORT (unsigned int port, unsigned short *buf,
+			 unsigned long count)
 {
 	unsigned long i;
 	for (i = 0 ; i < count; i++)
 		buf[i] = inw(port);
 }
 
-STDCALL void KeStallExecutionProcessor(unsigned long usecs)
+STDCALL static void
+KeStallExecutionProcessor(unsigned long usecs)
 {
 	//DBGTRACE("%s %d\n", __FUNCTION__ , usecs);
 	udelay(usecs);
 }
 
 
-STDCALL KIRQL KfAcquireSpinLock(KSPIN_LOCK *lock)
+STDCALL static KIRQL
+KfAcquireSpinLock(KSPIN_LOCK *lock)
 {
 	KIRQL irql;
 

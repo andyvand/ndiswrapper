@@ -108,7 +108,7 @@ int doreset(struct ndis_handle *handle)
 	up(&handle->ndis_comm_mutex);
 	DBGTRACE3("reset: res = %08X, reset status = %08X",
 		  res, handle->reset_status);
-#if 1
+
 	if (res == NDIS_STATUS_SUCCESS && handle->reset_status)
 	{
 		handle->rx_packet = &NdisMIndicateReceivePacket;
@@ -122,7 +122,7 @@ int doreset(struct ndis_handle *handle)
 		handle->reset_status = 0;
 		ndis_set_rx_mode(handle->net_dev);
 	}
-#endif
+
 	TRACEEXIT3(return res);
 }
 
@@ -145,7 +145,7 @@ int doquery(struct ndis_handle *handle, unsigned int oid, char *buf,
 	res = miniport->query(handle->adapter_ctx, oid, buf, bufsize,
 			      written, needed);
 	if (res == NDIS_STATUS_PENDING)
-	{		
+	{
 		/* wait for NdisMQueryInformationComplete */
 		if (down_interruptible(&handle->ndis_comm_done))
 			res = NDIS_STATUS_FAILURE;
@@ -186,11 +186,7 @@ int dosetinfo(struct ndis_handle *handle, unsigned int oid, char *buf,
 	TRACEEXIT3(return res);
 }
 
-
-/*
- * Make a query that has an int as the result.
- *
- */
+/* Make a query that has an int as the result. */
 int query_int(struct ndis_handle *handle, int oid, int *data)
 {
 	unsigned int res, written, needed;
@@ -203,10 +199,7 @@ int query_int(struct ndis_handle *handle, int oid, int *data)
 	return res;
 }
 
-/*
- * Set an int
- *
- */
+/* Set an int */
 int set_int(struct ndis_handle *handle, int oid, int data)
 {
 	unsigned int written, needed;
@@ -281,7 +274,7 @@ static void free_timers(struct ndis_handle *handle)
 		{
 			WARNING("%s", "Fixing an active timer left "
 				" by buggy windows driver");
-			wrapper_cancel_timer(timer, &x); 
+			wrapper_cancel_timer(timer, &x);
 		}
 		wrap_kfree(timer);
 	}
@@ -322,11 +315,11 @@ static unsigned int call_entry(struct ndis_driver *driver)
 				"SendPacketsHandler",
 				"AllocateCompleteHandler",
 		};
-		
+
 		for(i = 0; i < 16; i++)
 		{
 			DBGTRACE1("%08X (rva %08X):%s", adr[i],
-				  adr[i]?adr[i] - image_offset:0, name[i]); 
+				  adr[i]?adr[i] - image_offset:0, name[i]);
 		}
 	}
 #endif
@@ -351,14 +344,12 @@ static void hangcheck_bh(void *data)
 	TRACEEXIT3(return);
 }
 
-
 static void hangcheck(unsigned long data)
 {
 	struct ndis_handle *handle = (struct ndis_handle *)data;
 	schedule_work(&handle->hangcheck_work);
 	hangcheck_reinit(handle);
 }
-
 
 static void hangcheck_reinit(struct ndis_handle *handle)
 {
@@ -415,7 +406,7 @@ static void statcollector_bh(void *data)
 			(__u32)ndis_stats.rtss_fail +
 			(__u32)ndis_stats.ack_fail +
 			(__u32)ndis_stats.frame_dup;
-		
+
 		if (ndis_stats.tx_frag)
 			iw_stats->qual.qual = 100 - 100 *
 				((__u32)ndis_stats.retry +
@@ -468,7 +459,6 @@ static int ndis_close(struct net_device *dev)
 	return 0;
 }
 
-
 /*
  * doquery (or query_int) may not be called from this function as
  * it might sleep which is not allowed from the context this function
@@ -495,7 +485,7 @@ static void set_multicast_list(struct net_device *dev,
 	int i;
 	char *list = handle->multicast_list;
 	int size = 0, res;
-	
+
 	for (i = 0, mclist = dev->mc_list; mclist && i < dev->mc_count;
 	     i++, mclist = mclist->next)
 	{
@@ -510,7 +500,6 @@ static void set_multicast_list(struct net_device *dev,
 	if (res)
 		ERROR("Unable to set multicast list (%08X)", res);
 }
-
 
 /*
  * Like ndis_set_rx_mode but this one will sleep.
@@ -545,13 +534,12 @@ static void ndis_set_rx_mode_proc(void *param)
 		packet_filter |= NDIS_PACKET_TYPE_MULTICAST;
 		set_multicast_list(dev, handle);
 	}
-	
+
 	res = dosetinfo(handle, NDIS_OID_PACKET_FILTER, (char *)&packet_filter,
 	                sizeof(packet_filter), &written, &needed);
 	if (res)
 		ERROR("Unable to set packet filter (%08X)", res);
 }
-
 
 /*
  * This function is called fom BH context...no sleep!
@@ -575,9 +563,9 @@ static struct ndis_packet *init_packet(struct ndis_handle *handle,
 	{
 		return NULL;
 	}
-	
+
 	memset(packet, 0, sizeof(*packet));
-	
+
 
 /* Enable this if you want to poison the packet-info during debugging.
  * This is not enabled when debug is defined because one card I have
@@ -594,7 +582,7 @@ static struct ndis_packet *init_packet(struct ndis_handle *handle,
 		}
 	}
 #endif
-	
+
 	if(handle->use_scatter_gather)
 	{
 		packet->dataphys =
@@ -603,9 +591,9 @@ static struct ndis_packet *init_packet(struct ndis_handle *handle,
 					   PCI_DMA_TODEVICE);
 		packet->scatterlist.len = 1;
 		packet->scatterlist.entry.physlo = packet->dataphys;
-		packet->scatterlist.entry.physhi = 0;		
+		packet->scatterlist.entry.physhi = 0;
 		packet->scatterlist.entry.len = buffer->len;
-		packet->scatter_gather_ext = &packet->scatterlist; 
+		packet->scatter_gather_ext = &packet->scatterlist;
 	}
 
 	packet->oob_offset = (int)(&packet->timesent1) - (int)packet;
@@ -619,7 +607,7 @@ static struct ndis_packet *init_packet(struct ndis_handle *handle,
 	packet->buffer_tail = buffer;
 
 //	DBGTRACE4("Buffer: %08X, data %08X, len %d\n", (int)buffer,
-//		  (int)buffer->data, (int)buffer->len); 	
+//		  (int)buffer->data, (int)buffer->len);
 	return packet;
 }
 
@@ -633,7 +621,7 @@ static void free_packet(struct ndis_handle *handle, struct ndis_packet *packet)
 		PCI_DMA_UNMAP_SINGLE(handle->pci_dev, packet->dataphys,
 				     packet->len, PCI_DMA_TODEVICE);
 	}
-	
+
 	kfree(packet);
 }
 
@@ -646,7 +634,6 @@ static void free_buffer(struct ndis_handle *handle, struct ndis_packet *packet)
 	kfree(packet->buffer_head);
 	free_packet(handle, packet);
 }
-
 
 static int send_packet(struct ndis_handle *handle, struct ndis_packet *packet)
 {
@@ -726,7 +713,7 @@ static void xmit_bh(void *param)
 		/* If the driver returns...
 		 * NDIS_STATUS_SUCCESS - we own the packet and
 		 *    driver will not call NdisMSendComplete.
-		 * NDIS_STATUS_PENDING - the driver owns the packet 
+		 * NDIS_STATUS_PENDING - the driver owns the packet
 		 *    and will return it using NdisMSendComplete.
 		 * NDIS_STATUS_RESOURCES - (driver is serialized)
 		 *    Requeue it when resources are available.
@@ -743,7 +730,8 @@ static void xmit_bh(void *param)
 		case NDIS_STATUS_RESOURCES:
 			/* should be serialized driver */
 			if (!handle->serialized)
-				ERROR("%s", "deserialized driver returning NDIS_STATUS_RESOURCES!");
+				ERROR("%s", "deserialized driver returning "
+				      "NDIS_STATUS_RESOURCES!");
 			handle->send_status = res;
 			wrap_spin_unlock(&handle->send_packet_lock);
 			/* this packet will be tried again */
@@ -791,16 +779,17 @@ void sendpacket_done(struct ndis_handle *handle, struct ndis_packet *packet)
 }
 
 /*
- * This function is called in BH disabled context and ndis drivers must have their
- * send-functions called from sleepeable context so we just queue the packets up here
- * and schedule a workqueue to run later.
+ * This function is called in BH disabled context and ndis drivers
+ * must have their send-functions called from sleepeable context so we
+ * just queue the packets up here and schedule a workqueue to run
+ * later.
  */
 static int start_xmit(struct sk_buff *skb, struct net_device *dev)
 {
 	struct ndis_handle *handle = dev->priv;
 	struct ndis_buffer *buffer;
 	unsigned int xmit_ring_next_slot;
-	
+
 	char *data = kmalloc(skb->len, GFP_ATOMIC);
 	if(!data)
 	{
@@ -856,12 +845,9 @@ static int ndis_suspend(struct pci_dev *pdev, u32 state)
 	if (res)
 		WARNING("No pnp capabilities for pm (%08X)\n", res);
 
-	/* do we need this? */
-//		netif_stop_queue(dev);
-
 	DBGTRACE2("%s: detaching device", dev->name);
 	netif_device_detach(dev);
-	
+
 	if (state == 1)
 		handle->pm_state = NDIS_PM_STATE_D1;
 	else if (state == 2)
@@ -894,7 +880,7 @@ static int ndis_resume(struct pci_dev *pdev)
 
 	if (handle->pm_state == NDIS_PM_STATE_D0)
 		return 0;
-	
+
 	handle->pm_state = NDIS_PM_STATE_D0;
 	pci_set_power_state(pdev, 0);
 	pci_restore_state(pdev, handle->pci_state);
@@ -903,22 +889,21 @@ static int ndis_resume(struct pci_dev *pdev)
 			 dev->name, handle->pm_state, res);
 	if (res)
 		WARNING("No pnp capabilities for pm (%08X)", res);
-	
+
 	DBGTRACE2("%s: attaching device\n", dev->name);
 	netif_device_attach(dev);
-	
-	/* do we need this? */
-//		netif_wake_queue(dev);
+
 	set_bit(SET_ESSID, &handle->wrapper_work);
 	schedule_work(&handle->wrapper_worker);
 	DBGTRACE2("%s: device resumed!", dev->name);
 	return 0;
 }
 
+/* worker procedure to take care of setting/checking various states */
 static void wrapper_worker_proc(void *param)
 {
 	struct ndis_handle *handle = (struct ndis_handle *)param;
-	
+
 	DBGTRACE("%lu\n", handle->wrapper_work);
 
 	if (test_and_clear_bit(SET_OP_MODE, &handle->wrapper_work))
@@ -977,9 +962,9 @@ static void wrapper_worker_proc(void *param)
 		for (i = 0; i < ie_size && i < ndis_assoc_info->req_ie_length;
 		     i++)
 			p += sprintf(p, "%02x", *(offset + i));
-			
+
 		p += sprintf(p, " RespIEs=");
-		offset = ((char *)ndis_assoc_info) + 
+		offset = ((char *)ndis_assoc_info) +
 			ndis_assoc_info->offset_resp_ies;
 		for (i = 0; i < ie_size && i < ndis_assoc_info->resp_ie_length;
 		     i++)
@@ -1119,14 +1104,14 @@ static int setup_dev(struct net_device *dev)
 	}
 
 	if(handle->multicast_list_size)
-		handle->multicast_list = 
+		handle->multicast_list =
 			kmalloc(handle->multicast_list_size * 6, GFP_KERNEL);
 
 	if (set_priv_filter(handle, NDIS_PRIV_ACCEPT_ALL))
 		WARNING("%s", "Unable to set privacy filter");
 
 	ndis_set_rx_mode_proc(dev);
-	
+
 	dev->open = ndis_open;
 	dev->hard_start_xmit = start_xmit;
 	dev->stop = ndis_close;
@@ -1137,12 +1122,12 @@ static int setup_dev(struct net_device *dev)
 	dev->set_multicast_list = ndis_set_rx_mode;
 #ifdef HAVE_ETHTOOL
 	dev->ethtool_ops = &ndis_ethtool_ops;
-#endif	
+#endif
 	memcpy(&dev->dev_addr, mac, ETH_ALEN);
 	dev->irq = handle->ndis_irq->irq;
-	dev->mem_start = handle->mem_start;		
-	dev->mem_end = handle->mem_end;		
-	
+	dev->mem_start = handle->mem_start;
+	dev->mem_end = handle->mem_end;
+
 	res = register_netdev(dev);
 	if (res)
 	{
@@ -1157,13 +1142,17 @@ static int setup_dev(struct net_device *dev)
 	/* check_capa changes auth_mode and wep_mode, so set them again */
 	set_auth_mode(handle, AUTHMODE_OPEN);
 	set_wep_mode(handle, WEP_DISABLED);
+
+	/* some cards (e.g., RaLink) need a scan before they can associate */
+	set_int(handle, NDIS_OID_BSSID_LIST_SCAN, 0);
+
 	return 0;
 }
 
 /*
  * Called by PCI-subsystem for each PCI-card found.
  *
- * This function should not be marked __devinit because ndiswrapper 
+ * This function should not be marked __devinit because ndiswrapper
  * adds PCI_id's dynamically.
  */
 static int ndis_init_one(struct pci_dev *pdev, const struct pci_device_id *ent)
@@ -1180,9 +1169,9 @@ static int ndis_init_one(struct pci_dev *pdev, const struct pci_device_id *ent)
 	{
 		printk(KERN_WARNING "This driver (%s) is not for your hardware. " \
 		       "It's likely to work anyway but have it in " \
-		       "mind if you have problem.\n", device->driver->name); 
+		       "mind if you have problem.\n", device->driver->name);
 	}
-	
+
 	dev = alloc_etherdev(sizeof(*handle));
 	if(!dev)
 	{
@@ -1216,7 +1205,7 @@ static int ndis_init_one(struct pci_dev *pdev, const struct pci_device_id *ent)
 	wrap_spin_lock_init(&handle->send_packet_lock);
 	wrap_spin_lock_init(&handle->send_packet_done_lock);
 
-	INIT_WORK(&handle->xmit_work, xmit_bh, handle); 	
+	INIT_WORK(&handle->xmit_work, xmit_bh, handle);
 	wrap_spin_lock_init(&handle->xmit_ring_lock);
 	handle->xmit_ring_start = 0;
 	handle->xmit_ring_pending = 0;
@@ -1246,7 +1235,7 @@ static int ndis_init_one(struct pci_dev *pdev, const struct pci_device_id *ent)
 	handle->reset_complete = &NdisMResetComplete;
 	handle->eth_rx_indicate = &EthRxIndicateHandler;
 	handle->eth_rx_complete = &EthRxComplete;
-	
+
 	handle->map_count = 0;
 	handle->map_dma_addr = NULL;
 
@@ -1261,7 +1250,7 @@ static int ndis_init_one(struct pci_dev *pdev, const struct pci_device_id *ent)
 	memset(&handle->wep_info, 0, sizeof(handle->wep_info));
 
 	handle->op_mode = IW_MODE_INFRA;
-	
+
 	INIT_WORK(&handle->wrapper_worker, wrapper_worker_proc, handle);
 
 	res = pci_enable_device(pdev);
@@ -1286,7 +1275,7 @@ static int ndis_init_one(struct pci_dev *pdev, const struct pci_device_id *ent)
 	/* do we need to power up the card explicitly? */
 	handle->pm_state = NDIS_PM_STATE_D0;
 	set_int(handle, NDIS_OID_PNP_SET_POWER, handle->pm_state);
-	
+
 	/* SMC 2802W V2 cards need reset (any others need it too?) */
 	if (ent->vendor == 0x1260)
 		doreset(handle);
@@ -1319,9 +1308,7 @@ out_nodev:
 	TRACEEXIT1(return res);
 }
 
-/*
- * Remove one PCI-card (adaptor).
- */
+/* Remove one PCI-card (adapter). */
 static void __devexit ndis_remove_one(struct pci_dev *pdev)
 {
 	struct ndis_handle *handle = (struct ndis_handle *) pci_get_drvdata(pdev);
@@ -1330,7 +1317,8 @@ static void __devexit ndis_remove_one(struct pci_dev *pdev)
 	statcollector_del(handle);
 	hangcheck_del(handle);
 
-	/* Make sure all queued packets have been pushed out from xmit_bh before we call halt */
+	/* Make sure all queued packets have been pushed out from
+	 * xmit_bh before we call halt */
 	flush_scheduled_work();
 	netif_carrier_off(handle->net_dev);
 
@@ -1339,6 +1327,7 @@ static void __devexit ndis_remove_one(struct pci_dev *pdev)
 	call_halt(handle);
 
 	free_timers(handle);
+	free_handle_ctx(handle);
 
 	if (handle->net_dev)
 		unregister_netdev(handle->net_dev);
@@ -1353,16 +1342,13 @@ static void __devexit ndis_remove_one(struct pci_dev *pdev)
 	pci_set_drvdata(pdev, NULL);
 }
 
-
-/*
- * Register one ndis driver with pci subsystem.
- */
+/* Register one ndis driver with pci subsystem. */
 static int start_driver(struct ndis_driver *driver)
 {
 	int res = 0;
 	int i;
 	struct ndis_device *device;
-	
+
 	if(call_entry(driver))
 	{
 		ERROR("%s", "Driver entry returns error");
@@ -1374,8 +1360,9 @@ static int start_driver(struct ndis_driver *driver)
 	driver->pci_idtable = kmalloc(sizeof(struct pci_device_id)*(driver->nr_devices+1), GFP_KERNEL);
 	if(!driver->pci_idtable)
 		return -ENOMEM;
-	memset(driver->pci_idtable, 0, sizeof(struct pci_device_id)*(driver->nr_devices+1));
-	
+	memset(driver->pci_idtable, 0,
+	       sizeof(struct pci_device_id)*(driver->nr_devices+1));
+
 	device = (struct ndis_device*) driver->devices.next;
 	for(i = 0; i < driver->nr_devices; i++)
 	{
@@ -1387,7 +1374,9 @@ static int start_driver(struct ndis_driver *driver)
 		driver->pci_idtable[i].class_mask = 0;
 		driver->pci_idtable[i].driver_data = (unsigned long) device;
 
-		DBGTRACE1("Adding %04x:%04x:%04x:%04x to pci idtable", device->pci_vendor, device->pci_device, device->pci_subvendor, device->pci_subdevice);
+		DBGTRACE1("Adding %04x:%04x:%04x:%04x to pci idtable",
+			  device->pci_vendor, device->pci_device,
+			  device->pci_subvendor, device->pci_subdevice);
 
 		device = (struct ndis_device*) device->list.next;
 	}
@@ -1396,7 +1385,7 @@ static int start_driver(struct ndis_driver *driver)
 	driver->pci_driver.name = driver->name;
 	driver->pci_driver.id_table = driver->pci_idtable;
 	driver->pci_driver.probe = ndis_init_one;
-	driver->pci_driver.remove = __devexit_p(ndis_remove_one);	
+	driver->pci_driver.remove = __devexit_p(ndis_remove_one);
 	driver->pci_driver.suspend = ndis_suspend;
 	driver->pci_driver.resume = ndis_resume;
 #ifndef DEBUG_CRASH_ON_INIT
@@ -1407,10 +1396,7 @@ static int start_driver(struct ndis_driver *driver)
 	return res;
 }
 
-
-/*
- * Load the driver from userspace.
- */
+/* Load the driver from userspace. */
 static struct ndis_driver *load_driver(struct put_file *put_driver)
 {
 	void *entry;
@@ -1426,7 +1412,7 @@ static struct ndis_driver *load_driver(struct put_file *put_driver)
 		goto out_nodriver;
 	}
 	memset(driver, 0, sizeof(struct ndis_driver));
-	
+
 	INIT_LIST_HEAD(&driver->devices);
 	INIT_LIST_HEAD(&driver->files);
 
@@ -1494,14 +1480,12 @@ static int add_driver(struct ndis_driver *driver)
 		ERROR("%s", "Cannot add duplicate driver");
 		return -EBUSY;
 	}
-	
-	printk(KERN_INFO "%s: driver %s added\n", DRV_NAME, driver->name);  
+
+	printk(KERN_INFO "%s: driver %s added\n", DRV_NAME, driver->name);
 	return 0;
 }
 
-/*
- * Load a file from userspace and put on list of files.
- */
+/* Load a file from userspace and put on list of files. */
 static int add_file(struct ndis_driver *driver, struct put_file *put_file)
 {
 	struct ndis_file *file;
@@ -1516,7 +1500,7 @@ static int add_file(struct ndis_driver *driver, struct put_file *put_file)
 		goto err;
 	}
 	memset(file, 0, sizeof(struct ndis_file));
-	
+
 	namelen = sizeof(put_file->name);
 	if(sizeof(file->name) < namelen)
 		namelen = sizeof(file->name);
@@ -1524,7 +1508,7 @@ static int add_file(struct ndis_driver *driver, struct put_file *put_file)
 	strncpy(file->name, put_file->name, namelen-1);
 	file->name[namelen-1] = 0;
 	file->size = put_file->size;
-	
+
 	file->data = vmalloc(put_file->size);
 	if(!file->data)
 	{
@@ -1551,11 +1535,7 @@ err:
 	TRACEEXIT1(return -ENOMEM);
 }
 
-
-
-/*
- * Add a new device to a driver.
- */
+/* Add a new device to a driver. */
 static struct ndis_device *add_device(struct ndis_driver *driver,
 				      struct put_device *put_device)
 {
@@ -1572,8 +1552,10 @@ static struct ndis_device *add_device(struct ndis_driver *driver,
 	device->pci_subdevice = put_device->pci_subdevice;
 	device->fuzzy = put_device->fuzzy;
 
-	DBGTRACE1("%04x:%04x:%04x:%04x %d", device->pci_vendor, device->pci_device, device->pci_subvendor, device->pci_subdevice, device->fuzzy);
-	
+	DBGTRACE1("%04x:%04x:%04x:%04x %d", device->pci_vendor,
+		  device->pci_device, device->pci_subvendor,
+		  device->pci_subdevice, device->fuzzy);
+
 	if(put_device->pci_subvendor == -1)
 	{
 		device->pci_subvendor = PCI_ANY_ID;
@@ -1584,15 +1566,13 @@ static struct ndis_device *add_device(struct ndis_driver *driver,
 	{
 		list_add(&device->list, &driver->devices);
 	}
-	
+
 	return device;
 }
 
-
-/*
- * Add setting to the list of settings for the device.
- */
-static int add_setting(struct ndis_device *device, struct put_setting *put_setting)
+/* Add setting to the list of settings for the device. */
+static int add_setting(struct ndis_device *device,
+		       struct put_setting *put_setting)
 {
 	struct ndis_setting *setting;
 
@@ -1604,7 +1584,8 @@ static int add_setting(struct ndis_device *device, struct put_setting *put_setti
 	if (!(setting->name = kmalloc(put_setting->name_len+1, GFP_KERNEL)))
 		goto setting_fail;
 
-	if (!(setting->val_str = kmalloc(put_setting->val_str_len+1, GFP_KERNEL)))
+	if (!(setting->val_str = kmalloc(put_setting->val_str_len+1,
+					 GFP_KERNEL)))
 		goto name_fail;
 
 	if(copy_from_user(setting->name, put_setting->name,
@@ -1632,10 +1613,7 @@ setting_fail:
 	return -EINVAL;
 }
 
-
-/*
- * Delete a device and all info about it.
- */
+/* Delete a device and all info about it. */
 static void delete_device(struct ndis_device *device)
 {
 	struct list_head *curr, *tmp2;
@@ -1652,10 +1630,7 @@ static void delete_device(struct ndis_device *device)
 	TRACEEXIT1(return);
 }
 
-
-/*
- * Delete a driver. This implies deleting all cards for the handle too.
- */
+/* Delete a driver. This implies deleting all cards for the handle too. */
 static void unload_driver(struct ndis_driver *driver)
 {
 	struct list_head *curr, *tmp2;
@@ -1703,7 +1678,6 @@ static void unload_driver(struct ndis_driver *driver)
  * Called when userspace closes the filehandle for the misc device.
  * Check and remove any half-loaded drivers.
  */
-
 static int misc_release(struct inode *inode, struct file *file)
 {
 	if(!file->private_data)
@@ -1712,9 +1686,8 @@ static int misc_release(struct inode *inode, struct file *file)
 	TRACEENTER1("%s", "Removing partially loaded driver");
 	unload_driver((struct ndis_driver *)file->private_data);
 	file->private_data = 0;
-	TRACEEXIT1(return 0);	
+	TRACEEXIT1(return 0);
 }
-
 
 static int misc_ioctl(struct inode *inode, struct file *file,
 		      unsigned int cmd, unsigned long arg)
@@ -1739,7 +1712,7 @@ static int misc_ioctl(struct inode *inode, struct file *file,
 			if(!driver)
 				return -EINVAL;
 			file->private_data = driver;
-			
+
 			return add_driver(driver);
 		}
 		break;
@@ -1787,7 +1760,7 @@ static int misc_ioctl(struct inode *inode, struct file *file,
 			}
 #endif
 			file->private_data = NULL;
-			
+
 			if (res)
 				unload_driver(driver);
 			return res;
@@ -1809,7 +1782,7 @@ static int misc_ioctl(struct inode *inode, struct file *file,
 		ERROR("Unknown ioctl %08X\n", cmd);
 		return -EINVAL;
 		break;
-	}	
+	}
 
 	return 0;
 }
@@ -1824,7 +1797,6 @@ static struct miscdevice wrapper_misc = {
 	.name   = DRV_NAME,
 	.fops   = &wrapper_fops
 };
-
 
 static int __init wrapper_init(void)
 {
@@ -1867,7 +1839,7 @@ static void __exit wrapper_exit(void)
 		struct ndis_driver *driver = (struct ndis_driver*) ndis_driverlist.next;
 		unload_driver(driver);
 	}
-	
+
 	ndiswrapper_procfs_remove();
 	misc_deregister(&wrapper_misc);
 	wrap_kfree_all();

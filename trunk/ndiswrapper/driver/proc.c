@@ -43,7 +43,7 @@ static int procfs_read_stats(char *page, char **start, off_t off,
 		      sizeof(stats), &written, &needed);
 	if (!res)
 	{
-		
+
 		p += sprintf(p, "tx_frames=%Lu\n", stats.tx_frag);
 		p += sprintf(p, "tx_multicast_frames=%Lu\n",
 			     stats.tx_multi_frag);
@@ -118,7 +118,7 @@ static int procfs_read_wep(char *page, char **start, off_t off,
 		else
 			p += sprintf(p, "off");
 		p += sprintf(p, "\n");
-		
+
 		p += sprintf(p, "status=%sabled\n",
 			     (wep_status == WEP_ENABLED) ? "en" : "dis");
 		p += sprintf(p, "auth_mode=%s\n",

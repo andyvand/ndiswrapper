@@ -101,7 +101,8 @@ struct ktimer
 
 #define NOTIFICATION_TIMER 1
 
-typedef STDCALL void *LOOKASIDE_ALLOC_FUNC(POOL_TYPE, unsigned long, unsigned long);
+typedef STDCALL void *LOOKASIDE_ALLOC_FUNC(POOL_TYPE, unsigned long,
+					   unsigned long);
 typedef STDCALL void LOOKASIDE_FREE_FUNC(void *);
 
 struct packed npaged_lookaside_list {
@@ -130,10 +131,7 @@ int wrapper_set_timer(struct wrapper_timer *wrapper_timer,
                       unsigned long expires, unsigned long repeat);
 void wrapper_cancel_timer(struct wrapper_timer *wrapper_timer, char *canceled);
 
-extern STDCALL void KeInitializeSpinLock(KSPIN_LOCK *lock);
-extern STDCALL void KeAcquireSpinLock(KSPIN_LOCK *lock, KIRQL *oldirql);
-extern STDCALL void KeReleaseSpinLock(KSPIN_LOCK *lock, KIRQL newirql);
-extern STDCALL KIRQL KeGetCurrentIrql(void);
+STDCALL KIRQL KeGetCurrentIrql(void);
 
 static inline void wrapper_set_timer_dpc(struct wrapper_timer *wrapper_timer,
                                          struct kdpc *kdpc)

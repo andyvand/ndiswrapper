@@ -49,7 +49,7 @@ void *wrap_kmalloc(size_t size, int flags)
 void wrap_kfree(void *ptr)
 {
 	struct list_head *cur, *tmp;
-	
+
 	wrap_spin_lock(&wrap_allocs_lock);
 	list_for_each_safe(cur, tmp, &wrap_allocs)
 	{
@@ -79,9 +79,9 @@ void wrap_kfree_all(void)
 		list_del(&alloc->list);
 		kfree(alloc->ptr);
 		kfree(alloc);
-		
+
 	}
-	
+
 	wrap_spin_unlock(&wrap_allocs_lock);
 	return;
 }
@@ -113,7 +113,7 @@ void wrapper_timer_handler(unsigned long data)
 	}
 	else
 		timer->active = 0;
-	
+
 	if (func)
 		func(kdpc, kdpc->ctx, kdpc->arg1, kdpc->arg2);
 }
@@ -151,10 +151,10 @@ int wrapper_set_timer(struct wrapper_timer *timer,
 {
 	if (!timer)
 	{
-		ERROR("%s", "invalid timer");		
+		ERROR("%s", "invalid timer");
 		return 0;
 	}
-	
+
 #ifdef DEBUG_TIMER
 	if (timer->wrapper_timer_magic != WRAPPER_TIMER_MAGIC)
 	{
@@ -164,7 +164,7 @@ int wrapper_set_timer(struct wrapper_timer *timer,
 	}
 #endif
 	timer->repeat = repeat;
-	
+
 	if (timer->active)
 	{
 		DBGTRACE4("modifying timer %p to %lu, %lu",
@@ -201,7 +201,7 @@ void wrapper_cancel_timer(struct wrapper_timer *timer, char *canceled)
 	DBGTRACE4("canceling timer %p", timer);
 	BUG_ON(timer->wrapper_timer_magic != WRAPPER_TIMER_MAGIC);
 #endif
-	
+
 	timer->repeat = 0;
 	*canceled = del_timer_sync(&(timer->timer));
 	timer->active = 0;
@@ -227,7 +227,7 @@ NOREGPARM int wrap_snprintf(char *buf, size_t count, const char *format, ...)
 {
 	va_list args;
 	int res;
-	
+
 	va_start(args, format);
 	res = vsnprintf(buf, count, format, args);
 	va_end(args);
@@ -295,7 +295,7 @@ NOREGPARM void *wrap_memmove(void *to, void *from, size_t count)
 {
 	return memmove(to, from, count);
 }
- 
+
 NOREGPARM void wrap_srand(unsigned int seed)
 {
 	net_srandom(seed);
@@ -362,7 +362,7 @@ STDCALL size_t RtlCompareMemory(const void *a, const void *b, size_t len)
 {
 	size_t i, same;
 	char *x, *y;
-	
+
 	TRACEENTER1("%s", "");
 
 	x = (char *)a;
@@ -379,12 +379,12 @@ STDCALL long RtlCompareString(const struct ustring *s1,
 	unsigned int len;
 	long ret = 0;
 	const char *p1, *p2;
-	
+
 	TRACEENTER1("%s", "");
 	len = min(s1->len, s2->len);
 	p1 = s1->buf;
 	p2 = s2->buf;
-	
+
 	if (case_insensitive)
 		while (!ret && len--)
 			ret = toupper(*p1++) - toupper(*p2++);
@@ -404,12 +404,12 @@ STDCALL long RtlCompareUnicodeString(const struct ustring *s1,
 	unsigned int len;
 	long ret = 0;
 	const __u16 *p1, *p2;
-	
+
 	TRACEENTER1("%s", "");
 	len = min(s1->len, s2->len);
 	p1 = (__u16 *)s1->buf;
 	p2 = (__u16 *)s2->buf;
-	
+
 	if (case_insensitive)
 		while (!ret && len--)
 			ret = toupper((__u8)*p1++) - toupper((__u8)*p2++);
@@ -482,7 +482,7 @@ STDCALL int RtlAnsiStringToUnicodeString(struct ustring *dst, struct ustring *sr
 		d[i] = (__u16)s[i];
 	}
 	d[i] = 0;
-	
+
 	TRACEEXIT2(return NDIS_STATUS_SUCCESS);
 }
 
@@ -557,7 +557,7 @@ STDCALL int rand(void)
 {
 	char buf[6];
 	int i, r;
-	
+
 	get_random_bytes(buf, sizeof(buf));
 	for (r = i = 0; i < sizeof(buf) ; i++)
 		r += buf[i];
@@ -592,7 +592,7 @@ void packet_recycler(void *param)
 		}
 
 		wrap_spin_unlock(&handle->recycle_packets_lock);
-		
+
 		if (packet == NULL)
 			break;
 

@@ -16,42 +16,48 @@
 #include "ntoskernel.h"
 #include "wrapper.h"
 
-STDCALL void WRITE_REGISTER_ULONG(unsigned int reg, unsigned int val)
+STDCALL static void
+WRITE_REGISTER_ULONG(unsigned int reg, unsigned int val)
 {
 	writel(val, reg);
 }
 
-STDCALL void WRITE_REGISTER_USHORT(unsigned int reg, unsigned short val)
+STDCALL static void
+WRITE_REGISTER_USHORT(unsigned int reg, unsigned short val)
 {
 	writew(val, reg);
 }
 
-STDCALL void WRITE_REGISTER_UCHAR(unsigned int reg, unsigned char val)
+STDCALL static void
+WRITE_REGISTER_UCHAR(unsigned int reg, unsigned char val)
 {
 	writeb(val, reg);
 }
 
-STDCALL void KeInitializeTimer(struct ktimer *ktimer)
+STDCALL static void
+KeInitializeTimer(struct ktimer *ktimer)
 {
 	TRACEENTER4("%p", ktimer);
 	wrapper_init_timer(ktimer, NULL);
 	ktimer->dispatch_header.signal_state = 0;
 }
 
-STDCALL void KeInitializeDpc(struct kdpc *kdpc, void *func, void *ctx)
+STDCALL static void
+KeInitializeDpc(struct kdpc *kdpc, void *func, void *ctx)
 {
 	TRACEENTER4("%p, %p, %p", kdpc, func, ctx);
 	init_dpc(kdpc, func, ctx);
 }
 
-STDCALL int KeSetTimerEx(struct ktimer *ktimer, __s64 due_time,
-			 __u32 period, struct kdpc *kdpc)
+STDCALL static int
+KeSetTimerEx(struct ktimer *ktimer, __s64 due_time, __u32 period,
+	     struct kdpc *kdpc)
 {
 	unsigned long expires;
 	unsigned long repeat;
-	
+
 	TRACEENTER4("%p, %ld, %u, %p", ktimer, (long)due_time, period, kdpc);
-	
+
 	if (ktimer == NULL)
 		return 0;
 	if (due_time < 0)
@@ -64,7 +70,8 @@ STDCALL int KeSetTimerEx(struct ktimer *ktimer, __s64 due_time,
 	return wrapper_set_timer(ktimer->wrapper_timer, expires, repeat);
 }
 
-STDCALL int KeCancelTimer(struct ktimer *ktimer)
+STDCALL static int
+KeCancelTimer(struct ktimer *ktimer)
 {
 	char canceled;
 
@@ -73,7 +80,8 @@ STDCALL int KeCancelTimer(struct ktimer *ktimer)
 	return canceled;
 }
 
-STDCALL KIRQL KeGetCurrentIrql(void)
+STDCALL KIRQL
+KeGetCurrentIrql(void)
 {
 	if (in_atomic() || irqs_disabled())
 		return DISPATCH_LEVEL;
@@ -81,7 +89,8 @@ STDCALL KIRQL KeGetCurrentIrql(void)
 		return PASSIVE_LEVEL;
 }
 
-STDCALL void KeInitializeSpinLock(KSPIN_LOCK *lock)
+STDCALL static void
+KeInitializeSpinLock(KSPIN_LOCK *lock)
 {
 	struct wrap_spinlock *spin_lock;
 
@@ -102,7 +111,8 @@ STDCALL void KeInitializeSpinLock(KSPIN_LOCK *lock)
 	}
 }
 
-STDCALL void KeAcquireSpinLock(KSPIN_LOCK *lock, KIRQL *oldirql)
+STDCALL static void
+KeAcquireSpinLock(KSPIN_LOCK *lock, KIRQL *oldirql)
 {
 	TRACEENTER4("lock = %p, *lock = %p", lock, (void *)*lock);
 
@@ -129,7 +139,8 @@ STDCALL void KeAcquireSpinLock(KSPIN_LOCK *lock, KIRQL *oldirql)
 	TRACEEXIT4(return);
 }
 
-STDCALL void KeReleaseSpinLock(KSPIN_LOCK *lock, KIRQL newirql)
+STDCALL static void
+KeReleaseSpinLock(KSPIN_LOCK *lock, KIRQL newirql)
 {
 	TRACEENTER4("lock = %p, *lock = %p", lock, (void *)*lock);
 
@@ -142,7 +153,7 @@ STDCALL void KeReleaseSpinLock(KSPIN_LOCK *lock, KIRQL newirql)
 	wrap_spin_unlock((struct wrap_spinlock *)*lock);
 }
 
-_FASTCALL struct slist_entry *
+_FASTCALL static struct slist_entry *
 ExInterlockedPushEntrySList(int dummy, struct slist_entry *entry,
 			    union slist_head *head, KSPIN_LOCK *lock)
 {
@@ -162,12 +173,12 @@ ExInterlockedPushEntrySList(int dummy, struct slist_entry *entry,
 	return(oldhead);
 }
 
-_FASTCALL struct slist_entry *
+_FASTCALL static struct slist_entry *
 ExInterlockedPopEntrySList(int dummy, KSPIN_LOCK *lock, union slist_head *head)
 {
 	struct slist_entry *first;
 	KIRQL irql;
-	
+
 	TRACEENTER3("head = %p", head);
 //	__asm__ __volatile__ ("" : "=c" (head));
 	KeAcquireSpinLock(lock, &irql);
@@ -185,18 +196,20 @@ ExInterlockedPopEntrySList(int dummy, KSPIN_LOCK *lock, union slist_head *head)
 	return first;
 }
 
-STDCALL void *lookaside_def_alloc_func(POOL_TYPE pool_type,
-				       unsigned long size, unsigned long tag)
+STDCALL static void *
+lookaside_def_alloc_func(POOL_TYPE pool_type, unsigned long size,
+			 unsigned long tag)
 {
 	return kmalloc(size, GFP_ATOMIC);
 }
 
-STDCALL void lookaside_def_free_func(void *buffer)
+STDCALL static void
+lookaside_def_free_func(void *buffer)
 {
 	kfree(buffer);
 }
 
-STDCALL void
+STDCALL static void
 ExInitializeNPagedLookasideList(struct npaged_lookaside_list *lookaside,
 				 LOOKASIDE_ALLOC_FUNC *alloc_func,
 				 LOOKASIDE_FREE_FUNC *free_func,
@@ -227,12 +240,12 @@ ExInitializeNPagedLookasideList(struct npaged_lookaside_list *lookaside,
 	KeInitializeSpinLock(&lookaside->obsolete);
 	TRACEEXIT3(return);
 }
- 
-STDCALL void
+
+STDCALL static void
 ExDeleteNPagedLookasideList(struct npaged_lookaside_list *lookaside)
 {
 	struct slist_entry *entry, *p;
-	
+
 	TRACEENTER3("ookaside = %p", lookaside);
 	entry = lookaside->head.list.next;
 	while (entry)
@@ -245,7 +258,7 @@ ExDeleteNPagedLookasideList(struct npaged_lookaside_list *lookaside)
 }
 
 
-_FASTCALL void
+_FASTCALL static void
 ExInterlockedAddLargeStatistic(int dummy, u32 n, u64 *plint)
 {
 	unsigned long flags;
@@ -260,8 +273,8 @@ ExInterlockedAddLargeStatistic(int dummy, u32 n, u64 *plint)
 	spin_unlock_irqrestore(&lock, flags);
 }
 
-STDCALL void *MmMapIoSpace(__s64 phys_addr,
-			   unsigned long size, int cache)
+STDCALL static void *
+MmMapIoSpace(__s64 phys_addr, unsigned long size, int cache)
 {
 	void *virt;
 	if (cache)
@@ -272,14 +285,16 @@ STDCALL void *MmMapIoSpace(__s64 phys_addr,
 	return virt;
 }
 
-STDCALL void MmUnmapIoSpace(void *addr, unsigned long size)
+STDCALL static void
+MmUnmapIoSpace(void *addr, unsigned long size)
 {
 	TRACEENTER3("%p, %lu", addr, size);
 	iounmap(addr);
 	return;
 }
 
-STDCALL int IoIsWdmVersionAvailable(unsigned char major, unsigned char minor)
+STDCALL static int
+IoIsWdmVersionAvailable(unsigned char major, unsigned char minor)
 {
 	TRACEENTER3("%d, %d", major, minor);
 	if (major == 1 &&
@@ -290,28 +305,37 @@ STDCALL int IoIsWdmVersionAvailable(unsigned char major, unsigned char minor)
 	return 0;
 }
 
-STDCALL unsigned int KeWaitForSingleObject(void **object, unsigned int reason, unsigned int waitmode, unsigned short alertable, void *timeout)
+STDCALL static unsigned int
+KeWaitForSingleObject(void **object, unsigned int reason,
+		      unsigned int waitmode, unsigned short alertable,
+		      void *timeout)
 {
 	UNIMPL();
 	return 0;
 }
 
-STDCALL void *ExAllocatePoolWithTag(unsigned int type, unsigned int size, unsigned int tag)
+STDCALL static void *
+ExAllocatePoolWithTag(unsigned int type, unsigned int size, unsigned int tag)
 {
 	UNIMPL();
 	return (void*)0x000afff8;
 }
 
-STDCALL void IoBuildSynchronousFsdRequest(void)
-{
-	UNIMPL();
-}
-STDCALL void IofCallDriver(void)
+STDCALL static void
+IoBuildSynchronousFsdRequest(void)
 {
 	UNIMPL();
 }
 
-NOREGPARM unsigned long DbgPrint(char *format, ...)
+STDCALL static void
+IofCallDriver(void)
+{
+	UNIMPL();
+}
+
+/* this function can't be STDCALL as it takes variable number of args */
+NOREGPARM unsigned long
+DbgPrint(char *format, ...)
 {
 	int res = 0;
 
@@ -329,31 +353,31 @@ NOREGPARM unsigned long DbgPrint(char *format, ...)
 
 }
 
-void DbgBreakPoint(void)
+STDCALL static void DbgBreakPoint(void)
 {
 	UNIMPL();
 }
 
-void IofCompleteRequest(void){UNIMPL();}
-void IoReleaseCancelSpinLock(void){UNIMPL();}
-void KeInitializeEvent(void *event){UNIMPL();}
-void IoDeleteDevice(void){UNIMPL();}
-void IoCreateSymbolicLink(void){UNIMPL();}
-void ExFreePool(void){UNIMPL();}
-void MmMapLockedPages(void){UNIMPL();}
-void IoCreateDevice(void){UNIMPL();}
-void IoDeleteSymbolicLink(void){UNIMPL();}
-void InterlockedExchange(void){UNIMPL();}
-void KeSetEvent(void){UNIMPL();}
-void KeClearEvent(void){UNIMPL();}
-void MmMapLockedPagesSpecifyCache(void){UNIMPL();}
-void MmProbeAndLockPages(void){UNIMPL();}
-void MmUnlockPages(void){UNIMPL();}
-void IoAllocateMdl(void){UNIMPL();}
-void IoFreeMdl(void){UNIMPL();}
-void ObfReferenceObject(void){UNIMPL();}
-void ObReferenceObjectByHandle(void){UNIMPL();}
-void _except_handler3(void){UNIMPL();}
+STDCALL static void IofCompleteRequest(void){UNIMPL();}
+STDCALL static void IoReleaseCancelSpinLock(void){UNIMPL();}
+STDCALL static void KeInitializeEvent(void *event){UNIMPL();}
+STDCALL static void IoDeleteDevice(void){UNIMPL();}
+STDCALL static void IoCreateSymbolicLink(void){UNIMPL();}
+STDCALL static void ExFreePool(void){UNIMPL();}
+STDCALL static void MmMapLockedPages(void){UNIMPL();}
+STDCALL static void IoCreateDevice(void){UNIMPL();}
+STDCALL static void IoDeleteSymbolicLink(void){UNIMPL();}
+STDCALL static void InterlockedExchange(void){UNIMPL();}
+STDCALL static void KeSetEvent(void){UNIMPL();}
+STDCALL static void KeClearEvent(void){UNIMPL();}
+STDCALL static void MmMapLockedPagesSpecifyCache(void){UNIMPL();}
+STDCALL static void MmProbeAndLockPages(void){UNIMPL();}
+STDCALL static void MmUnlockPages(void){UNIMPL();}
+STDCALL static void IoAllocateMdl(void){UNIMPL();}
+STDCALL static void IoFreeMdl(void){UNIMPL();}
+STDCALL static void ObfReferenceObject(void){UNIMPL();}
+STDCALL static void ObReferenceObjectByHandle(void){UNIMPL();}
+STDCALL static void _except_handler3(void){UNIMPL();}
 
 struct wrap_func ntos_wrap_funcs[] =
 {
