@@ -626,17 +626,17 @@ void ktimer_handler(unsigned long data)
 
 	if (!ktimer->active)
 		return;
-	func(ktimer->kdpc, ktimer->kdpc->ctx,
-	     ktimer->kdpc->arg1, ktimer->kdpc->arg2);
 
 	if (ktimer->repeat)
 	{
-		ktimer->expires = ktimer->timer.expires =
-			jiffies + ktimer->repeat;
+		ktimer->expires = ktimer->timer.expires = jiffies + ktimer->repeat;
 		add_timer(&ktimer->timer);
 	}
 	else
 		ktimer->active = 0;
+
+	func(ktimer->kdpc, ktimer->kdpc->ctx,
+	     ktimer->kdpc->arg1, ktimer->kdpc->arg2);
 }
 
 STDCALL void KeInitializeTimer(struct ktimer *ktimer)
@@ -659,13 +659,15 @@ STDCALL void KeInitializeDpc(struct kdpc *kdpc, void *func, void *ctx)
 	kdpc->ctx = ctx;
 }
 
-STDCALL int KeSetTimerEx(struct ktimer *ktimer, long expires,
-			 long repeat, struct kdpc *kdpc)
+STDCALL int KeSetTimerEx(struct ktimer *ktimer, __s64 expires,
+			 __u32 repeat, struct kdpc *kdpc)
 {
 	DBGTRACE("%s: %p, %ld, %ld, %p\n",
 		 __FUNCTION__, ktimer, expires, repeat,
 		kdpc);
 
+	if (ktimer == NULL)
+		return 0;
 	if (expires < 0)
 		ktimer->expires = jiffies + (-expires * HZ) / 10000;
 	else
