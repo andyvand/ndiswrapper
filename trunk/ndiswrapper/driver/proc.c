@@ -286,10 +286,10 @@ static int procfs_write_settings(struct file *file, const char __user *buf,
 		i = simple_strtol(p, NULL, 10);
 		if (i <= 0 || i > 3)
 			return -EINVAL;
-		ndis_suspend(handle->pci_dev, i);
+		ndis_suspend(handle->dev.pci, i);
 	}
 	else if (!strcmp(setting, "resume"))
-		ndis_resume(handle->pci_dev);
+		ndis_resume(handle->dev.pci);
 	else if (!strcmp(setting, "power_profile"))
 	{
 		int i;

@@ -15,6 +15,8 @@
 
 #include "ntoskernel.h"
 #include "wrapper.h"
+#include "ndis.h"
+#include "usb.h"
 
 STDCALL static void
 WRITE_REGISTER_ULONG(unsigned int reg, unsigned int val)
@@ -327,12 +329,6 @@ IoBuildSynchronousFsdRequest(void)
 	UNIMPL();
 }
 
-STDCALL static void
-IofCallDriver(void)
-{
-	UNIMPL();
-}
-
 /* this function can't be STDCALL as it takes variable number of args */
 NOREGPARM unsigned long
 DbgPrint(char *format, ...)
@@ -358,7 +354,197 @@ STDCALL static void DbgBreakPoint(void)
 	UNIMPL();
 }
 
-STDCALL static void IofCompleteRequest(void){UNIMPL();}
+STDCALL struct irp *IoAllocateIrp(char stack_size, unsigned char charge_quota)
+{
+	struct irp *irp;
+	int size;
+
+	TRACEENTER3("stack_size = %d, charge_quota = %d",
+		stack_size, charge_quota);
+
+	size = sizeof(struct irp) +
+		stack_size * sizeof(struct io_stack_location);
+	/* XXX we should better check what GFP_ is required XXX */
+	irp = kmalloc(size, GFP_ATOMIC);
+	if (irp) {
+		DBGTRACE3("allocated irp %p", irp);
+		memset(irp, 0, size);
+
+		irp->size       = size;
+		irp->stack_size = stack_size;
+		irp->stack_pos  = stack_size;
+		irp->current_stack_location =
+			((struct io_stack_location *)(irp+1)) + stack_size;
+	}
+
+	TRACEEXIT3(return irp);
+}
+
+STDCALL struct irp *
+IoBuildDeviceIoControlRequest(unsigned long ioctl,
+                              struct device_object *dev_obj,
+                              void *input_buf, unsigned long input_buf_len,
+                              void *output_buf, unsigned long output_buf_len,
+                              unsigned char internal_ioctl,
+                              struct kevent *event,
+                              struct io_status_block *io_status)
+{
+	struct irp *irp;
+	struct io_stack_location *stack;
+
+	TRACEENTER3("ioctl = %lx, dev_obj = %p, input_buf = %p, "
+		"input_buf_len = %lu, output_buf = %p, output_buf_len = %lu, "
+		"internal_ioctl = %d, event = %p, io_status = %p",
+		ioctl, dev_obj, input_buf, input_buf_len, output_buf,
+		output_buf_len, internal_ioctl, event, io_status);
+
+	irp = kmalloc(sizeof(struct irp) + sizeof(struct io_stack_location),
+		GFP_KERNEL); /* we are running at IRQL = PASSIVE_LEVEL */
+	if (irp) {
+		DBGTRACE3("allocated irp %p", irp);
+		memset(irp, 0, sizeof(struct irp) +
+		       sizeof(struct io_stack_location));
+
+		irp->size                   = sizeof(struct irp) +
+			sizeof(struct io_stack_location);
+		irp->stack_size             = 1;
+		irp->stack_pos              = 1;
+		irp->user_status            = io_status;
+		irp->user_event             = event;
+		irp->user_buf               = output_buf;
+
+		stack = (struct io_stack_location *)(irp+1);
+		irp->current_stack_location = stack+1;
+
+		stack->params.ioctl.code            = ioctl;
+		stack->params.ioctl.input_buf_len   = input_buf_len;
+		stack->params.ioctl.output_buf_len  = output_buf_len;
+		stack->params.ioctl.type3_input_buf = input_buf;
+		stack->dev_obj                      = dev_obj;
+
+		stack->major_fn = (internal_ioctl)?
+			IRP_MJ_INTERNAL_DEVICE_CONTROL: IRP_MJ_DEVICE_CONTROL;
+	}
+
+	TRACEEXIT3(return irp);
+}
+
+_FASTCALL void IofCompleteRequest(int dummy, char prio_boost, struct irp *irp)
+{
+	UNIMPL();
+}
+
+STDCALL void IoCancelIrp(struct irp *irp)
+{
+	struct io_stack_location *stack = irp->current_stack_location-1;
+	int free_irp = 1;
+
+
+	TRACEENTER3("irp = %p", irp);
+
+	irp->pending_returned = 1;
+	irp->cancel = 1;
+	if (irp->cancel_routine)
+		irp->cancel_routine(stack->dev_obj, irp);
+
+	if ((stack->completion_handler) &&
+	    (stack->control & CALL_ON_CANCEL)) {
+		DBGTRACE3("calling %p", stack->completion_handler);
+		local_bh_disable();
+		preempt_disable();
+		if (stack->completion_handler(stack->dev_obj, irp,
+		                              stack->handler_arg) ==
+		    STATUS_MORE_PROCESSING_REQUIRED)
+			free_irp = 0;
+		preempt_enable();
+		local_bh_enable();
+	}
+
+	/* To-Do: what about IRP_DEALLOCATE_BUFFER...? */
+	if (free_irp) {
+		DBGTRACE("freeing irp %p", irp);
+		kfree(irp);
+	}
+
+	TRACEEXIT3(return);
+}
+
+STDCALL void IoFreeIrp(struct irp *irp)
+{
+	TRACEENTER3("irp = %p", irp);
+
+	kfree(irp);
+
+	TRACEEXIT3(return);
+}
+
+_FASTCALL unsigned long IofCallDriver(int dummy, struct irp *irp,
+                                      struct device_object *dev_obj)
+{
+	struct io_stack_location *stack = irp->current_stack_location-1;
+	unsigned long ret = STATUS_NOT_SUPPORTED;
+	int free_irp = 1;
+
+
+	TRACEENTER3("dev_obj = %p, irp = %p, major_fn = %x, ioctl = %lx",
+		dev_obj, irp, stack->major_fn, stack->params.ioctl.code);
+
+	if (stack->major_fn == IRP_MJ_INTERNAL_DEVICE_CONTROL) {
+		switch (stack->params.ioctl.code) {
+			case IOCTL_INTERNAL_USB_SUBMIT_URB:
+				ret = usb_submit_nt_urb(dev_obj->device.usb,
+					stack->params.generic.arg1, irp);
+				break;
+			default:
+				ERROR("ioctl %08lX NOT IMPLEMENTED!\n",
+					stack->params.ioctl.code);
+		}
+	} else
+		ERROR("major_fn %08X NOT IMPLEMENTED!\n", stack->major_fn);
+
+	irp->io_status.status = ret;
+	if (irp->user_status)
+		irp->user_status->status = ret;
+
+	if (ret == STATUS_PENDING) {
+		stack->control |= IS_PENDING;
+		free_irp = 0;
+	}
+	/*
+	 * Not sure what to do: if the IRP can be completed sychronously,
+	 * do we also have to call the completion handler and set the user
+	 * event? For now, we do not so...
+	 */
+#if 0
+	} else {
+		if (stack->completion_handler) {
+			if (((ret == 0) &&
+			     (stack->control & CALL_ON_SUCCESS)) ||
+			    ((ret != 0) &&
+			     (stack->control & CALL_ON_ERROR))) {
+				DBGTRACE3("calling %p",
+					stack->completion_handler);
+				stack->completion_handler(stack->dev_obj, irp,
+					stack->handler_arg);
+			}
+		}
+
+		if (irp->user_event) {
+			DBGTRACE3("setting event %p", irp->user_event);
+			NdisSetEvent((struct ndis_event *)irp->user_event);
+		}
+	}
+#endif
+
+	/* To-Do: what about IRP_DEALLOCATE_BUFFER...? */
+	if (free_irp) {
+		DBGTRACE("freeing irp %p", irp);
+		kfree(irp);
+	}
+
+	TRACEEXIT3(return ret);
+}
+
 STDCALL static void IoReleaseCancelSpinLock(void){UNIMPL();}
 STDCALL static void KeInitializeEvent(void *event){UNIMPL();}
 STDCALL static void IoDeleteDevice(void){UNIMPL();}
@@ -402,6 +588,10 @@ struct wrap_func ntos_wrap_funcs[] =
 	WRAP_FUNC_ENTRY(IoReleaseCancelSpinLock),
 	WRAP_FUNC_ENTRY(IofCallDriver),
 	WRAP_FUNC_ENTRY(IofCompleteRequest),
+	WRAP_FUNC_ENTRY(IoBuildDeviceIoControlRequest),
+	WRAP_FUNC_ENTRY(IoFreeIrp),
+	WRAP_FUNC_ENTRY(IoCancelIrp),
+	WRAP_FUNC_ENTRY(IoAllocateIrp),
 	WRAP_FUNC_ENTRY(KeAcquireSpinLock),
 	WRAP_FUNC_ENTRY(KeCancelTimer),
 	WRAP_FUNC_ENTRY(KeClearEvent),

@@ -15,7 +15,8 @@ DISTFILES=Makefile \
  iw_ndis.c iw_ndis.h \
  wrapper.c wrapper.h \
  proc.c misc_funcs.c \
- divdi3.c longlong.h
+ divdi3.c longlong.h \
+ usb.c
 
 
 ifndef KVER
@@ -61,7 +62,9 @@ ndis.h : ntoskernel.h
 
 ntoskernel.h : ndiswrapper.h
 
-OBJS   := wrapper.o iw_ndis.o loader.o ntoskernel.o ndis.o misc_funcs.o proc.o divdi3.o hal.o
+usb.o : usb.c ndis.h
+
+OBJS   := wrapper.o iw_ndis.o loader.o ntoskernel.o ndis.o misc_funcs.o proc.o divdi3.o hal.o usb.o
 
 ifdef DEBUG
 CFLAGS += -DDEBUG=$(DEBUG) -g -DDEBUG_TIMER

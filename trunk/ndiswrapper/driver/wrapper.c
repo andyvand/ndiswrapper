@@ -259,7 +259,8 @@ static void call_halt(struct ndis_handle *handle)
 			miniport->disable_interrupts(handle->adapter_ctx);
 		NdisMDeregisterInterrupt(handle->ndis_irq);
 	}
-	pci_set_power_state(handle->pci_dev, 3);
+	if (handle->device->bustype == 5)
+		pci_set_power_state(handle->dev.pci, 3);
 	TRACEEXIT1(return);
 }
 
@@ -593,8 +594,9 @@ static struct ndis_packet *init_packet(struct ndis_handle *handle,
 
 	if(handle->use_scatter_gather)
 	{
+// XXXXXXXXXXXXXXX   FIX-ME!   XXXXXXXXXXXXXXXXXXXXX
 		packet->dataphys =
-			PCI_DMA_MAP_SINGLE(handle->pci_dev,
+			PCI_DMA_MAP_SINGLE(handle->dev.pci,
 					   buffer->data, buffer->len,
 					   PCI_DMA_TODEVICE);
 		packet->scatterlist.len = 1;
@@ -626,7 +628,8 @@ static void free_packet(struct ndis_handle *handle, struct ndis_packet *packet)
 {
 	if(packet->dataphys)
 	{
-		PCI_DMA_UNMAP_SINGLE(handle->pci_dev, packet->dataphys,
+// XXXXXXXXXXXXXXX   FIX-ME!   XXXXXXXXXXXXXXXXXXXXX
+		PCI_DMA_UNMAP_SINGLE(handle->dev.pci, packet->dataphys,
 				     packet->len, PCI_DMA_TODEVICE);
 	}
 
@@ -1153,7 +1156,8 @@ static int setup_dev(struct net_device *dev)
 	dev->ethtool_ops = &ndis_ethtool_ops;
 #endif
 	memcpy(&dev->dev_addr, mac, ETH_ALEN);
-	dev->irq = handle->ndis_irq->irq;
+	if (handle->ndis_irq)
+		dev->irq = handle->ndis_irq->irq;
 	dev->mem_start = handle->mem_start;
 	dev->mem_end = handle->mem_end;
 
@@ -1178,53 +1182,34 @@ static int setup_dev(struct net_device *dev)
 	return 0;
 }
 
-/*
- * Called by PCI-subsystem for each PCI-card found.
- *
- * This function should not be marked __devinit because ndiswrapper
- * adds PCI_id's dynamically.
- */
-static int ndis_init_one(struct pci_dev *pdev, const struct pci_device_id *ent)
+static struct net_device *ndis_init_netdev(struct ndis_handle **phandle,
+                                           struct ndis_device *device,
+                                           struct ndis_driver *driver)
 {
-	int i, *ip, res = 0;
-	struct ndis_device *device = (struct ndis_device *) ent->driver_data;
-	struct ndis_driver *driver = device->driver;
-	struct ndis_handle *handle;
+	int i, *ip;
 	struct net_device *dev;
-	struct miniport_char *miniport;
-//	unsigned long profile_inf = NDIS_POWER_PROFILE_AC;
-
-	TRACEENTER1("%04x:%04x:%04x:%04x", ent->vendor, ent->device,
-		    ent->subvendor, ent->subdevice);
-	if(device->fuzzy)
-	{
-		printk(KERN_WARNING "This driver (%s) is not for your hardware. " \
-		       "It's likely to work anyway but have it in " \
-		       "mind if you have problem.\n", device->driver->name);
-	}
+	struct ndis_handle *handle;
 
 	dev = alloc_etherdev(sizeof(*handle));
-	if(!dev)
-	{
+	if(!dev) {
 		ERROR("%s", "Unable to alloc etherdev");
-		res = -ENOMEM;
-		goto out_nodev;
+		return NULL;
 	}
 
 	SET_MODULE_OWNER(dev);
 //	SET_NETDEV_DEV(dev, &pdev->dev);
-	handle = dev->priv;
 
+	handle = dev->priv;
 	/* Poision the fileds as they may contain function pointers
 	 * which my be called by the driver */
 	for (i = 0, ip = (int *)handle->fill1;
-	     (void *)&ip[i] < (void *)&handle->pci_dev; i++)
+	     (void *)&ip[i] < (void *)&handle->dev.pci; i++)
 		ip[i] = 0x1000+i;
 
 	handle->driver = driver;
 	handle->device = device;
 	handle->net_dev = dev;
-	pci_set_drvdata(pdev, handle);
+	handle->ndis_irq = NULL;
 
 	init_MUTEX(&handle->ndis_comm_mutex);
 	init_MUTEX_LOCKED(&handle->ndis_comm_done);
@@ -1274,8 +1259,6 @@ static int ndis_init_one(struct pci_dev *pdev, const struct pci_device_id *ent)
 
 	handle->nick[0] = 0;
 
-	handle->pci_dev = pdev;
-
 	handle->hangcheck_interval = hangcheck_interval;
 	handle->scan_timestamp = 0;
 
@@ -1285,6 +1268,48 @@ static int ndis_init_one(struct pci_dev *pdev, const struct pci_device_id *ent)
 	handle->op_mode = IW_MODE_INFRA;
 
 	INIT_WORK(&handle->wrapper_worker, wrapper_worker_proc, handle);
+
+	handle->phy_dev = NULL;
+    
+	*phandle = handle;
+	return dev;
+}
+
+/*
+ * Called by PCI-subsystem for each PCI-card found.
+ *
+ * This function should not be marked __devinit because ndiswrapper 
+ * adds PCI_id's dynamically.
+ */
+static int ndis_init_one_pci(struct pci_dev *pdev,
+                             const struct pci_device_id *ent)
+{
+	int res = 0;
+	struct ndis_device *device = (struct ndis_device *) ent->driver_data;
+	struct ndis_driver *driver = device->driver;
+	struct ndis_handle *handle;
+	struct net_device *dev;
+	struct miniport_char *miniport;
+
+	TRACEENTER1("%04x:%04x:%04x:%04x", ent->vendor, ent->device,
+		    ent->subvendor, ent->subdevice);
+	if(device->fuzzy)
+	{
+		printk(KERN_WARNING "This driver (%s) is not for your hardware. " \
+		       "It's likely to work anyway but have it in " \
+		       "mind if you have problem.\n", device->driver->name); 
+	}
+	
+	dev = ndis_init_netdev(&handle, device, driver);
+	if(!dev)
+	{
+		printk(KERN_ERR "Unable to alloc etherdev\n");
+		res = -ENOMEM;
+		goto out_nodev;
+	}
+
+	handle->dev.pci = pdev;
+	pci_set_drvdata(pdev, handle);
 
 	res = pci_enable_device(pdev);
 	if(res)
@@ -1357,13 +1382,76 @@ out_nodev:
 	TRACEEXIT1(return res);
 }
 
-/* Remove one PCI-card (adapter). */
-static void __devexit ndis_remove_one(struct pci_dev *pdev)
+/*
+ * Called by USB-subsystem for each USB device found.
+ *
+ * This function should not be marked __devinit because ndiswrapper
+ * adds id's dynamically.
+ */
+static int ndis_init_one_usb(struct usb_interface *intf,
+                             const struct usb_device_id *usb_id)
 {
-	struct ndis_handle *handle = pci_get_drvdata(pdev);
+	int res;
+	struct ndis_device *device =
+		(struct ndis_device *)usb_id->driver_info;
+	struct ndis_driver *driver = device->driver;
+	struct ndis_handle *handle;
+	struct net_device *dev;
+	struct miniport_char *miniport;
+
+	TRACEENTER1("%04x:%04x\n", usb_id->idVendor, usb_id->idProduct);
+
+	dev = ndis_init_netdev(&handle, device, driver);
+	if(!dev) {
+		printk(KERN_ERR "Unable to alloc etherdev\n");
+		res = -ENOMEM;
+		goto out_nodev;
+	}
+
+	handle->dev.usb = interface_to_usbdev(intf);
+	usb_set_intfdata(intf, handle);
+
+	TRACEENTER1("%s", "Calling ndis init routine");
+	if(call_init(handle)) {
+		ERROR("%s", "Windows driver couldn't initialize the device");
+		res = -EINVAL;
+		goto out_start;
+	}
+
+	handle->hw_status = 0;
+	handle->wrapper_work = 0;
+
+	/* do we need to power up the card explicitly? */
+	set_int(handle, NDIS_OID_PNP_SET_POWER, NDIS_PM_STATE_D0);
+	miniport = &handle->driver->miniport_char;
+	
+	/* Wait a little to let card power up otherwise ifup might fail after
+	   boot */
+	set_current_state(TASK_INTERRUPTIBLE);
+	schedule_timeout(HZ);
+
+	if(setup_dev(handle->net_dev)) {
+		ERROR("%s", "Couldn't setup interface");
+		res = -EINVAL;
+		goto out_setup;
+	}
+	hangcheck_add(handle);
+	statcollector_add(handle);
+	ndiswrapper_procfs_add_iface(handle);
+	TRACEEXIT1(return 0);
+
+out_setup:
+	call_halt(handle);
+out_start:
+	free_netdev(dev);
+out_nodev:
+	TRACEEXIT1(return res);
+}
+
+static void __devexit ndis_remove_one(struct ndis_handle *handle)
+{
 	struct miniport_char *miniport = &handle->driver->miniport_char;
 
-	TRACEENTER1("%s", "");
 	ndiswrapper_procfs_remove_iface(handle);
 	statcollector_del(handle);
 	hangcheck_del(handle);
@@ -1402,9 +1490,36 @@ static void __devexit ndis_remove_one(struct pci_dev *pdev)
 	if (handle->net_dev)
 		free_netdev(handle->net_dev);
 #endif
+}
+
+/*
+ * Remove one PCI-card.
+ */
+static void __devexit ndis_remove_one_pci(struct pci_dev *pdev)
+{
+	struct ndis_handle *handle =
+		(struct ndis_handle *)pci_get_drvdata(pdev);
+
+	DBGTRACE("\n%s\n", __FUNCTION__);
+
+	ndis_remove_one(handle);
+
 	pci_release_regions(pdev);
 	pci_disable_device(pdev);
 	pci_set_drvdata(pdev, NULL);
+}
+
+/*
+ * Remove one USB device.
+ */
+static void __devexit ndis_remove_one_usb(struct usb_interface *intf)
+{
+	struct ndis_handle *handle =
+		(struct ndis_handle *)usb_get_intfdata(intf);
+
+	DBGTRACE("\n%s\n", __FUNCTION__);
+
+	ndis_remove_one(handle);
 }
 
 /* Register one ndis driver with pci subsystem. */
@@ -1422,42 +1537,80 @@ static int start_driver(struct ndis_driver *driver)
 
 	DBGTRACE1("Nr devices: %d", driver->nr_devices);
 
-	driver->pci_idtable = kmalloc(sizeof(struct pci_device_id)*(driver->nr_devices+1), GFP_KERNEL);
-	if(!driver->pci_idtable)
-		return -ENOMEM;
-	memset(driver->pci_idtable, 0,
-	       sizeof(struct pci_device_id)*(driver->nr_devices+1));
+	if (driver->bustype == 5) { /* PCI */
+		driver->idtable.pci = kmalloc(
+			sizeof(struct pci_device_id)*(driver->nr_devices+1),
+			GFP_KERNEL);
+		if(!driver->idtable.pci)
+			return -ENOMEM;
+		memset(driver->idtable.pci, 0,
+			sizeof(struct pci_device_id)*(driver->nr_devices+1));
 
-	device = (struct ndis_device*) driver->devices.next;
-	for(i = 0; i < driver->nr_devices; i++)
-	{
-		driver->pci_idtable[i].vendor = device->pci_vendor;
-		driver->pci_idtable[i].device = device->pci_device;
-		driver->pci_idtable[i].subvendor = device->pci_subvendor;
-		driver->pci_idtable[i].subdevice = device->pci_subdevice;
-		driver->pci_idtable[i].class = 0;
-		driver->pci_idtable[i].class_mask = 0;
-		driver->pci_idtable[i].driver_data = (unsigned long) device;
+		device = (struct ndis_device*) driver->devices.next;
+		for(i = 0; i < driver->nr_devices; i++) {
+			driver->idtable.pci[i].vendor = device->vendor;
+			driver->idtable.pci[i].device = device->device;
+			driver->idtable.pci[i].subvendor =
+				device->pci_subvendor;
+			driver->idtable.pci[i].subdevice =
+				device->pci_subdevice;
+			driver->idtable.pci[i].class = 0;
+			driver->idtable.pci[i].class_mask = 0;
+			driver->idtable.pci[i].driver_data =
+				(unsigned long) device;
 
-		DBGTRACE1("Adding %04x:%04x:%04x:%04x to pci idtable",
-			  device->pci_vendor, device->pci_device,
-			  device->pci_subvendor, device->pci_subdevice);
+			DBGTRACE1("Adding %04x:%04x:%04x:%04x to pci idtable",
+			          device->vendor, device->device,
+			          device->pci_subvendor,
+			          device->pci_subdevice);
 
-		device = (struct ndis_device*) device->list.next;
-	}
+			device = (struct ndis_device*) device->list.next;
+		}
 
-	memset(&driver->pci_driver, 0, sizeof(driver->pci_driver));
-	driver->pci_driver.name = driver->name;
-	driver->pci_driver.id_table = driver->pci_idtable;
-	driver->pci_driver.probe = ndis_init_one;
-	driver->pci_driver.remove = __devexit_p(ndis_remove_one);
-	driver->pci_driver.suspend = ndis_suspend;
-	driver->pci_driver.resume = ndis_resume;
+		memset(&driver->driver.pci, 0, sizeof(driver->driver.pci));
+		driver->driver.pci.name = driver->name;
+		driver->driver.pci.id_table = driver->idtable.pci;
+		driver->driver.pci.probe = ndis_init_one_pci;
+		driver->driver.pci.remove = __devexit_p(ndis_remove_one_pci);
+		driver->driver.pci.suspend = ndis_suspend;
+		driver->driver.pci.resume = ndis_resume;
 #ifndef DEBUG_CRASH_ON_INIT
-	res = pci_module_init(&driver->pci_driver);
-	if(!res)
-		driver->pci_registered = 1;
+		res = pci_module_init(&driver->driver.pci);
+		if(!res)
+			driver->dev_registered = 1;
 #endif
+	} else { /* USB */
+		driver->idtable.usb = kmalloc(sizeof(struct usb_device_id)*(driver->nr_devices+1), GFP_KERNEL);
+		if(!driver->idtable.usb)
+			return -ENOMEM;
+		memset(driver->idtable.usb, 0, sizeof(struct usb_device_id)*(driver->nr_devices+1));
+
+		device = (struct ndis_device*) driver->devices.next;
+		for(i = 0; i < driver->nr_devices; i++)
+		{
+			driver->idtable.usb[i].match_flags = USB_DEVICE_ID_MATCH_DEVICE;
+			driver->idtable.usb[i].idVendor = device->vendor;
+			driver->idtable.usb[i].idProduct = device->device;
+			driver->idtable.usb[i].driver_info = (unsigned long) device;
+
+			DBGTRACE1("Adding %04x:%04x to usb idtable\n",
+			          device->vendor, device->device);
+
+			device = (struct ndis_device*) device->list.next;
+		}
+
+		memset(&driver->driver.usb, 0, sizeof(driver->driver.usb));
+		driver->driver.usb.name = driver->name;
+		driver->driver.usb.id_table = driver->idtable.usb;
+		driver->driver.usb.probe = ndis_init_one_usb;
+		driver->driver.usb.disconnect =
+			__devexit_p(ndis_remove_one_usb);
+//		driver->driver.usb.suspend = ndis_suspend;
+//		driver->driver.usb.resume = ndis_resume;
+		res = usb_register(&driver->driver.usb);
+		if(!res)
+			driver->dev_registered = 1;
+	}
 	return res;
 }
 
@@ -1477,6 +1630,7 @@ static struct ndis_driver *load_driver(struct put_file *put_driver)
 		goto out_nodriver;
 	}
 	memset(driver, 0, sizeof(struct ndis_driver));
+	driver->bustype = -1;
 
 	INIT_LIST_HEAD(&driver->devices);
 	INIT_LIST_HEAD(&driver->files);
@@ -1604,32 +1758,49 @@ static struct ndis_device *add_device(struct ndis_driver *driver,
 				      struct put_device *put_device)
 {
 	struct ndis_device *device;
+
+	if ((driver->bustype >= 0) &&
+	    (driver->bustype != put_device->bustype)) {
+		printk(KERN_ERR "Each driver can only support a single "
+		       "bustype\n");
+		return NULL;
+	}
+
 	if (!(device = kmalloc(sizeof(*device), GFP_KERNEL)))
 		return NULL;
 
 	memset(device, 0, sizeof(*device));
 	INIT_LIST_HEAD(&device->settings);
 
-	device->pci_vendor = put_device->pci_vendor;
-	device->pci_device = put_device->pci_device;
+	device->bustype = put_device->bustype;
+	device->vendor = put_device->vendor;
+	device->device = put_device->device;
 	device->pci_subvendor = put_device->pci_subvendor;
 	device->pci_subdevice = put_device->pci_subdevice;
 	device->fuzzy = put_device->fuzzy;
 
-	DBGTRACE1("%04x:%04x:%04x:%04x %d", device->pci_vendor,
-		  device->pci_device, device->pci_subvendor,
-		  device->pci_subdevice, device->fuzzy);
+	if (device->bustype == 5)               /* 5: PCI */
+	{
+		DBGTRACE1("PCI:%04x:%04x:%04x:%04x %d", device->vendor,
+		          device->device, device->pci_subvendor,
+		          device->pci_subdevice, device->fuzzy);
 
-	if(put_device->pci_subvendor == -1)
-	{
-		device->pci_subvendor = PCI_ANY_ID;
-		device->pci_subdevice = PCI_ANY_ID;
-		list_add_tail(&device->list, &driver->devices);
-	}
-	else
-	{
+		if (put_device->pci_subvendor == -1) {
+			device->pci_subvendor = PCI_ANY_ID;
+			device->pci_subdevice = PCI_ANY_ID;
+			list_add_tail(&device->list, &driver->devices);
+		} else {
+			list_add(&device->list, &driver->devices);
+		}
+	} else if (device->bustype == 0) {      /* 0: USB */
+		DBGTRACE1("USB:%04x:%04x\n", device->vendor, device->device);
 		list_add(&device->list, &driver->devices);
+	} else {
+		kfree(device);
+		return NULL;
 	}
+
+	driver->bustype = device->bustype;
 
 	return device;
 }
@@ -1712,15 +1883,19 @@ static void unload_driver(struct ndis_driver *driver)
 {
 	struct list_head *curr, *tmp2;
 
-	if(driver->pci_registered)
-		pci_unregister_driver(&driver->pci_driver);
+	if (driver->dev_registered) {
+		if (driver->bustype == 5)
+			pci_unregister_driver(&driver->driver.pci);
+		else
+			usb_deregister(&driver->driver.usb);
+	}
 #ifdef DEBUG_CRASH_ON_INIT
-	{
+	if (driver->bustype == 5) {
 		struct pci_dev *pdev = 0;
-		pdev = pci_find_device(driver->pci_idtable[0].vendor,
-				       driver->pci_idtable[0].device, pdev);
+		pdev = pci_find_device(driver->idtable.pci[0].vendor,
+				       driver->idtable.pci[0].device, pdev);
 		if(pdev)
-			ndis_remove_one(pdev);
+			ndis_remove_one_pci(pdev);
 	}
 #endif
 	wrap_spin_lock(&driverlist_lock);
@@ -1731,8 +1906,9 @@ static void unload_driver(struct ndis_driver *driver)
 	if(driver->image)
 		vfree(driver->image);
 
-	if(driver->pci_idtable)
-		kfree(driver->pci_idtable);
+	/* note: applies to all types of drivers */
+	if (driver->idtable.pci)
+		kfree(driver->idtable.pci);
 
 	list_for_each_safe(curr, tmp2, &driver->files)
 	{
@@ -1830,11 +2006,14 @@ static int misc_ioctl(struct inode *inode, struct file *file,
 		{
 			res = start_driver(driver);
 #ifdef DEBUG_CRASH_ON_INIT
-			{
+			if (driver->bustype == 5) {
 				struct pci_dev *pdev = 0;
-				pdev = pci_find_device(driver->pci_idtable[0].vendor, driver->pci_idtable[0].device, pdev);
+				pdev = pci_find_device(
+					driver->idtable.pci[0].vendor,
+					driver->idtable.pci[0].device, pdev);
 				if (pdev)
-					ndis_init_one(pdev, &driver->pci_idtable[0]);
+					ndis_init_one_pci(pdev,
+						&driver->idtable.pci[0]);
 			}
 #endif
 			file->private_data = NULL;

@@ -136,15 +136,15 @@ static int confname_to_put_device(const char *name_orig,
 
 	if(strlen(s) == 9)
 	{
-		sscanf(s, "%04x:%04x", &put_device->pci_vendor,
-		       &put_device->pci_device);
+		sscanf(s, "%04x:%04x", &put_device->vendor,
+		       &put_device->device);
 		put_device->pci_subdevice = -1;
 		put_device->pci_subvendor = -1;
 	}
 	else if(strlen(s) == 19)
 	{
-		sscanf(s, "%04x:%04x:%04x:%04x", &put_device->pci_vendor,
-		       &put_device->pci_device, &put_device->pci_subvendor,
+		sscanf(s, "%04x:%04x:%04x:%04x", &put_device->vendor,
+		       &put_device->device, &put_device->pci_subvendor,
 		       &put_device->pci_subdevice);
 	}
 
