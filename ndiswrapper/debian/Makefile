@@ -1,4 +1,4 @@
-DISTFILES=control.module control.utils copyright dirs.utils dirs.module docs \
+DISTFILES=Makefile control.modules control.utils copyright dirs.utils docs \
 	README.Debian rules
 
 dist:
