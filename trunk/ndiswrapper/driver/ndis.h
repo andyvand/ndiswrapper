@@ -973,6 +973,7 @@ int set_auth_mode(struct ndis_handle *handle, int mode);
 int set_encr_mode(struct ndis_handle *handle, int mode);
 int ndis_set_mac_addr(struct net_device *dev, void *p);
 int ndis_reinit(struct ndis_handle *handle);
+int add_wep_key(struct ndis_handle *handle, char *key, int key_len, int index);
 
 void packet_recycler(void *param);
 int stricmp(const char *s1, const char *s2);
