@@ -302,7 +302,27 @@ static int procfs_write_settings(struct file *file, const char *buf,
 		else
 			ndis_resume_usb(handle->intf);
 #endif
-	} else if (!strcmp(setting, "power_profile"))
+	}
+	else if (!strcmp(setting, "reinit"))
+	{
+		int i = test_bit(ATTR_HALT_ON_SUSPEND, &handle->attributes);
+		set_bit(ATTR_HALT_ON_SUSPEND, &handle->attributes);
+		if (handle->device->bustype == 5)
+		{
+			ndis_suspend_pci(handle->dev.pci, 3);
+			ndis_resume_pci(handle->dev.pci);
+		}
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
+		else
+		{
+			ndis_suspend_usb(handle->intf, 3);
+			ndis_resume_usb(handle->intf);
+		}
+#endif
+		if (!i)
+			clear_bit(ATTR_HALT_ON_SUSPEND, &handle->attributes);
+	}
+	else if (!strcmp(setting, "power_profile"))
 	{
 		int i;
 		struct miniport_char *miniport;

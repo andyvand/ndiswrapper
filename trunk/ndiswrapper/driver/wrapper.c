@@ -243,7 +243,7 @@ static struct ethtool_ops ndis_ethtool_ops = {
 };
 #endif
 
-static int call_init(struct ndis_handle *handle)
+int call_init(struct ndis_handle *handle)
 {
 	__u32 res, res2;
 	__u32 selected_medium;
@@ -263,7 +263,7 @@ static int call_init(struct ndis_handle *handle)
 	return res != 0;
 }
 
-static void call_halt(struct ndis_handle *handle)
+void call_halt(struct ndis_handle *handle)
 {
 	struct miniport_char *miniport = &handle->driver->miniport_char;
 	TRACEENTER1("Calling NDIS driver halt at %p rva(%08X)",
@@ -682,7 +682,7 @@ static int send_packet(struct ndis_handle *handle, struct ndis_packet *packet)
 		packets[0] = packet;
 		miniport->send_packets(handle->adapter_ctx, &packets[0], 1);
 
-		if(handle->serialized)
+		if (test_bit(ATTR_SERIALIZED, &handle->attributes))
 		{
 			/* Serialized miniports sets packet->status */
 			res = packet->status;
@@ -767,7 +767,7 @@ static void xmit_bh(void *param)
 			break;
 		case NDIS_STATUS_RESOURCES:
 			/* should be serialized driver */
-			if (!handle->serialized)
+			if (!test_bit(ATTR_SERIALIZED, &handle->attributes))
 				ERROR("%s", "deserialized driver returning "
 				      "NDIS_STATUS_RESOURCES!");
 			handle->send_status = res;
@@ -884,25 +884,37 @@ int ndis_suspend_pci(struct pci_dev *pdev, u32 state)
 	hangcheck_del(handle);
 	statcollector_del(handle);
 
-	/* some drivers don't support D2, so force them state = 3 and D3 */
-	pm_state = NDIS_PM_STATE_D3;
-	/* use copy; query_power changes this value */
-	i = pm_state;
-	res = query_int(handle, NDIS_OID_PNP_QUERY_POWER, &i);
-	DBGTRACE2("%s: query power to state %d returns %08X",
-		  dev->name, pm_state, res);
-	if (res)
-		WARNING("No pnp capabilities for pm (%08X)", res);
-
-	res = set_int(handle, NDIS_OID_PNP_SET_POWER, pm_state);
-	DBGTRACE2("suspending returns %08X", res);
+	if (test_bit(ATTR_HALT_ON_SUSPEND, &handle->attributes))
+	{
+		DBGTRACE2("%s", "driver requests halt_on_suspend");
+		call_halt(handle);
+		set_bit(HW_HALTED, &handle->hw_status);
+	}
+	else
+	{
+		/* some drivers don't support D2, so force them to and D3 */
+		pm_state = NDIS_PM_STATE_D3;
+		/* use copy; query_power changes this value */
+		i = pm_state;
+		res = query_int(handle, NDIS_OID_PNP_QUERY_POWER, &i);
+		DBGTRACE2("%s: query power to state %d returns %08X",
+			  dev->name, pm_state, res);
+		if (res)
+		{
+			WARNING("No pnp capabilities for pm (%08X)", res);
+			call_halt(handle);
+			set_bit(HW_HALTED, &handle->hw_status);
+		}
+		else
+		{
+			res = set_int(handle, NDIS_OID_PNP_SET_POWER,
+				      pm_state);
+			DBGTRACE2("suspending returns %08X", res);
+			set_bit(HW_SUSPENDED, &handle->hw_status);
+		}
+	}
 	pci_save_state(pdev, handle->pci_state);
 	pci_set_power_state(pdev, state);
-	DBGTRACE2("%s: setting power to state %d returns %08X",
-		  dev->name, pm_state, res);
-	if (res)
-		WARNING("No pnp capabilities for pm (%08X)", res);
-	set_bit(HW_SUSPENDED, &handle->hw_status);
 
 	DBGTRACE2("%s: device suspended", dev->name);
 	return 0;
@@ -923,34 +935,43 @@ int ndis_resume_pci(struct pci_dev *pdev)
 		return -1;
 	dev = handle->net_dev;
 
-	if (!test_bit(HW_SUSPENDED, &handle->hw_status))
+	if (!(test_bit(HW_SUSPENDED, &handle->hw_status) ||
+	      test_bit(HW_HALTED, &handle->hw_status)))
 		return 0;
 
 	pci_set_power_state(pdev, 0);
 	pci_restore_state(pdev, handle->pci_state);
-	res = set_int(handle, NDIS_OID_PNP_SET_POWER, NDIS_PM_STATE_D0);
-	DBGTRACE2("%s: setting power to state %d returns %d",
-	     dev->name, NDIS_PM_STATE_D0, res);
-	if (res)
-		WARNING("No pnp capabilities for pm (%08X)", res);
-
-	miniport = &handle->driver->miniport_char;
-	/*
-	if (miniport->pnp_event_notify)
+	if (test_bit(HW_HALTED, &handle->hw_status))
+		res = call_init(handle);
+	else
 	{
-		INFO("%s", "calling pnp_event_notify");
-		miniport->pnp_event_notify(handle, NDIS_PNP_PROFILE_CHANGED,
-					 &profile_inf, sizeof(profile_inf));
-	}
-	*/
+		res = set_int(handle, NDIS_OID_PNP_SET_POWER,
+			      NDIS_PM_STATE_D0);
+		DBGTRACE2("%s: setting power to state %d returns %d",
+			 dev->name, NDIS_PM_STATE_D0, res);
+		if (res)
+			WARNING("No pnp capabilities for pm (%08X)", res);
 
-	if (miniport->hangcheck && miniport->hangcheck(handle->adapter_ctx))
-	{
-		DBGTRACE2("%s", "resetting device");
-		doreset(handle);
+		miniport = &handle->driver->miniport_char;
+		/*
+		if (miniport->pnp_event_notify)
+		{
+			INFO("%s", "calling pnp_event_notify");
+			miniport->pnp_event_notify(handle,
+			NDIS_PNP_PROFILE_CHANGED,
+			&profile_inf, sizeof(profile_inf));
+		}
+		*/
+
+		if (miniport->hangcheck &&
+		    miniport->hangcheck(handle->adapter_ctx))
+		{
+			DBGTRACE2("%s", "resetting device");
+			doreset(handle);
+		}
 	}
 	set_int(handle, NDIS_OID_BSSID_LIST_SCAN, 0);
-
+	/* TODO: set encryption too? */
 	set_bit(SET_ESSID, &handle->wrapper_work);
 	schedule_work(&handle->wrapper_worker);
 
@@ -1388,6 +1409,7 @@ static struct net_device *ndis_init_netdev(struct ndis_handle **phandle,
 	handle->encr_mode = ENCR_DISABLED;
 	handle->auth_mode = AUTHMODE_OPEN;
 	handle->capa = 0;
+	handle->attributes = 0;
 
 	wrap_spin_lock_init(&handle->recycle_packets_lock);
 	INIT_LIST_HEAD(&handle->recycle_packets);
@@ -1647,9 +1669,11 @@ static void ndis_remove_one(struct ndis_handle *handle)
 	if (!netif_queue_stopped(handle->net_dev))
 	{
 		netif_stop_queue(handle->net_dev);
-		DBGTRACE1("%d, %p", handle->surprise_remove,
+		DBGTRACE1("%d, %p",
+			  test_bit(ATTR_SURPRISE_REMOVE, &handle->attributes),
 			  miniport->pnp_event_notify);
-		if (handle->surprise_remove && miniport->pnp_event_notify)
+		if (test_bit(ATTR_SURPRISE_REMOVE, &handle->attributes) &&
+		    miniport->pnp_event_notify)
 		{
 			miniport->pnp_event_notify(handle->adapter_ctx,
 						   NDIS_PNP_SURPRISE_REMOVED,

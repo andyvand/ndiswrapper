@@ -665,13 +665,14 @@ NdisMSetAttributesEx(struct ndis_handle *handle, void* adapter_ctx,
 		pci_set_master(handle->dev.pci);
 	}
 
-	if (attributes & NDIS_ATTRIBUTE_DESERIALIZE)
-		handle->serialized = 0;
-	else
-		handle->serialized = 1;
+	if (!(attributes & NDIS_ATTRIBUTE_DESERIALIZE))
+		set_bit(ATTR_SERIALIZED, &handle->attributes);
 
 	if (attributes & NDIS_ATTRIBUTE_SURPRISE_REMOVE_OK)
-		handle->surprise_remove = 1;
+		set_bit(ATTR_SURPRISE_REMOVE, &handle->attributes);
+
+	if (!(attributes & NDIS_ATTRIBUTE_NO_HALT_ON_SUSPEND))
+		set_bit(ATTR_HALT_ON_SUSPEND, &handle->attributes);
 
 	/* less than 3 seconds seem to be problematic */
 	if (hangcheck_interval >= 0)
@@ -965,6 +966,7 @@ NdisMFreeMapRegisters(struct ndis_handle *handle)
 
 	if (handle->map_dma_addr != NULL)
 		kfree(handle->map_dma_addr);
+	handle->map_count = 0;
 	TRACEEXIT2(return);
 }
 
