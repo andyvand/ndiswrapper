@@ -122,8 +122,8 @@ STDCALL static void WRAP_EXPORT(NdisInitializeWrapper)
 	(struct ndis_handle **ndis_handle, void *SystemSpecific1,
 	 void *SystemSpecific2, void *SystemSpecific3)
 {
-	TRACEENTER1("handle=%08x, SS1=%08x, SS2=%08x", (int)ndis_handle,
-		    (int)SystemSpecific1, (int)SystemSpecific2);
+	TRACEENTER1("handle=%p, SS1=%p, SS2=%p", ndis_handle,
+		    SystemSpecific1, SystemSpecific2);
 	*ndis_handle = (struct ndis_handle*) SystemSpecific1;
 	TRACEEXIT1(return);
 }
@@ -297,7 +297,7 @@ STDCALL static void WRAP_EXPORT(NdisOpenConfigurationKeyByIndex)
 STDCALL static void WRAP_EXPORT(NdisCloseConfiguration)
 	(void *confhandle)
 {
-	TRACEENTER2("confhandle: %08x", (int) confhandle);
+	TRACEENTER2("confhandle: %p", confhandle);
 }
 
 STDCALL static void WRAP_EXPORT(NdisOpenFile)
@@ -364,7 +364,7 @@ STDCALL static void WRAP_EXPORT(NdisMapFile)
 	(unsigned int *status, void **mappedbuffer,
 	 struct ndis_file *filehandle)
 {
-	TRACEENTER2("Handle: %08x", (int) filehandle);
+	TRACEENTER2("Handle: %p", filehandle);
 
 	if (!filehandle)
 	{
@@ -380,14 +380,14 @@ STDCALL static void WRAP_EXPORT(NdisMapFile)
 STDCALL static void WRAP_EXPORT(NdisUnmapFile)
 	(struct ndis_file *filehandle)
 {
-	TRACEENTER2("Handle: %08x", (int) filehandle);
+	TRACEENTER2("Handle: %p", filehandle);
 	TRACEEXIT2(return);
 }
 
 STDCALL static void WRAP_EXPORT(NdisCloseFile)
 	(struct ndis_file *filehandle)
 {
-	TRACEENTER2("Handle: %08x", (int) filehandle);
+	TRACEENTER2("Handle: %p", filehandle);
 	TRACEEXIT2(return);
 }
 
@@ -428,7 +428,7 @@ STDCALL unsigned long WRAP_EXPORT(NDIS_BUFFER_TO_SPAN_PAGES)
 STDCALL static void WRAP_EXPORT(NdisGetBufferPhysicalArraySize)
 	(struct ndis_buffer *buffer, unsigned int *arraysize)
 {
-	TRACEENTER3("Buffer: %08x", (int) buffer);
+	TRACEENTER3("Buffer: %p", buffer);
 	*arraysize = NDIS_BUFFER_TO_SPAN_PAGES(buffer);
 	TRACEEXIT3(return);
 }
@@ -709,7 +709,7 @@ STDCALL static void WRAP_EXPORT(NdisMSetAttributesEx)
 {
 	struct handle_ctx_entry *handle_ctx;
 
-	TRACEENTER2("%08x, %08x %d %08x, %d", (int)handle, (int)adapter_ctx,
+	TRACEENTER2("%p, %p %d %08x, %d", handle, adapter_ctx,
 		    hangcheck_interval, attributes, adaptortype);
 	/* FIXME: is it possible to have duplicate ctx's? */
 	handle_ctx = kmalloc(sizeof(*handle_ctx), GFP_KERNEL);
@@ -803,8 +803,8 @@ STDCALL static void WRAP_EXPORT(NdisMQueryAdapterResources)
 	/* FIXME: do USB drivers call this? */
 	struct pci_dev *pci_dev = handle->dev.pci;
 	struct ndis_resource_entry *entry;
-	TRACEENTER2("handle: %08x. buf: %08x, len: %d. IRQ:%d", (int)handle,
-		    (int)resource_list, *size, pci_dev->irq);
+	TRACEENTER2("handle: %p. buf: %p, len: %d. IRQ:%d", handle,
+		    resource_list, *size, pci_dev->irq);
 
 	resource_list->version = 1;
 	resource_list->revision = 0;
@@ -869,7 +869,7 @@ STDCALL static unsigned int WRAP_EXPORT(NdisMMapIoSpace)
 	(void **virt, struct ndis_handle *handle,
 	 unsigned int physlo, unsigned int physhi, unsigned int len)
 {
-	TRACEENTER2("%08x, %d", (int)physlo, len);
+	TRACEENTER2("%08x, %d", physlo, len);
 	*virt = ioremap(physlo, len);
 	if(*virt == NULL) {
 		ERROR("%s", "ioremap failed");
@@ -878,14 +878,14 @@ STDCALL static unsigned int WRAP_EXPORT(NdisMMapIoSpace)
 
 	handle->mem_start = physlo;
 	handle->mem_end = physlo + len -1;
-	DBGTRACE2("ioremap successful %08x", (int)*virt);
+	DBGTRACE2("ioremap successful %p", *virt);
 	TRACEEXIT2(return NDIS_STATUS_SUCCESS);
 }
 
 STDCALL static void WRAP_EXPORT(NdisMUnmapIoSpace)
 	(struct ndis_handle *handle, void *virtaddr, unsigned int len)
 {
-	TRACEENTER2("%08x, %d", (int)virtaddr, len);
+	TRACEENTER2("%p, %d", virtaddr, len);
 	iounmap(virtaddr);
 }
 
@@ -1005,7 +1005,7 @@ STDCALL static  unsigned int WRAP_EXPORT(NdisMAllocateMapRegisters)
 STDCALL static void WRAP_EXPORT(NdisMFreeMapRegisters)
 	(struct ndis_handle *handle)
 {
-	TRACEENTER2("handle: %08x", (int)handle);
+	TRACEENTER2("handle: %p", handle);
 
 	if (handle->map_dma_addr != NULL)
 		kfree(handle->map_dma_addr);
@@ -1153,7 +1153,7 @@ STDCALL static void WRAP_EXPORT(NdisQueryBufferSafe)
 	(struct ndis_buffer *buf, void **adr,
 	 unsigned int *len, unsigned int priority)
 {
-	TRACEENTER3("%08x, %08x, %08x", (int)buf, (int)adr, (int)len);
+	TRACEENTER3("%p, %p, %p", buf, adr, len);
 	if(adr)
 		*adr = buf->data;
 	if(len)
@@ -1202,7 +1202,7 @@ STDCALL static unsigned int WRAP_EXPORT(NdisPacketPoolUsage)
 STDCALL static void WRAP_EXPORT(NdisFreePacketPool)
 	(void *poolhandle)
 {
-	TRACEENTER3("handle: %08x", (int)poolhandle);
+	TRACEENTER3("handle: %p", poolhandle);
 }
 
 STDCALL static void WRAP_EXPORT(NdisAllocatePacket)
@@ -1221,7 +1221,7 @@ STDCALL static void WRAP_EXPORT(NdisAllocatePacket)
 		TRACEEXIT3(return);
 	}
 	memset(packet, 0, sizeof(struct ndis_packet));
-	packet->oob_offset = (int)(&packet->timesent1) - (int)packet;
+	packet->oob_offset = offsetof(struct ndis_packet, timesent1);
 	packet->pool = (void*) 0xa000fff4;
 	packet->packet_flags = 0xc0;
 
@@ -1336,7 +1336,7 @@ STDCALL static void WRAP_EXPORT(NdisReadNetworkAddress)
 STDCALL static void WRAP_EXPORT(NdisMRegisterAdapterShutdownHandler)
 	(struct ndis_handle *handle, void *ctx, void *func)
 {
-	TRACEENTER1("sp:%08x", get_esp());
+	TRACEENTER1("sp:%p", get_sp());
 	handle->driver->miniport_char.adapter_shutdown = func;
 	handle->shutdown_ctx = ctx;
 }
@@ -1344,7 +1344,7 @@ STDCALL static void WRAP_EXPORT(NdisMRegisterAdapterShutdownHandler)
 STDCALL static void WRAP_EXPORT(NdisMDeregisterAdapterShutdownHandler)
 	(struct ndis_handle *handle)
 {
-	TRACEENTER1("sp:%08x", get_esp());
+	TRACEENTER1("sp:%p", get_sp());
 	handle->driver->miniport_char.adapter_shutdown = NULL;
 	handle->shutdown_ctx = NULL;
 }
@@ -1409,9 +1409,9 @@ STDCALL static unsigned int WRAP_EXPORT(NdisMRegisterInterrupt)
 	 unsigned int vector, unsigned int level, unsigned char req_isr,
 	 unsigned char shared, unsigned int mode)
 {
-	TRACEENTER1("%08x, vector:%d, level:%d, req_isr:%d, shared:%d, "
-		    "mode:%d sp:%08x",(int)ndis_irq, vector, level, req_isr,
-		    shared, mode, (int)get_esp());
+	TRACEENTER1("%p, vector:%d, level:%d, req_isr:%d, shared:%d, "
+		    "mode:%d sp:%p", ndis_irq, vector, level, req_isr,
+		    shared, mode, get_sp());
 
 	ndis_irq->spinlock = kmalloc(sizeof(spinlock_t), GFP_KERNEL);
 	if (ndis_irq->spinlock == NULL)
@@ -2115,9 +2115,9 @@ static void ndis_worker(void *data)
 			sched_work_item =
 				ndis_work_entry->entry.sched_work_item;
 
-			DBGTRACE3("Calling work at %08x with parameter %08x",
-				  (int)sched_work_item->func,
-				  (int)sched_work_item->ctx);
+			DBGTRACE3("Calling work at %p with parameter %p",
+				  sched_work_item->func,
+				  sched_work_item->ctx);
 			sched_work_item->func(sched_work_item,
 					      sched_work_item->ctx);
 			break;
@@ -2126,10 +2126,10 @@ static void ndis_worker(void *data)
 			io_work_item =
 				ndis_work_entry->entry.io_work_item;
 
-			DBGTRACE3("Calling work at %08x with "
-				  "parameter %08x",
-				  (int)io_work_item->func,
-				  (int)io_work_item->ctx);
+			DBGTRACE3("Calling work at %p with "
+				  "parameter %p",
+				  io_work_item->func,
+				  io_work_item->ctx);
 			io_work_item->func(io_work_item->device_object,
 					   io_work_item->ctx);
 			break;

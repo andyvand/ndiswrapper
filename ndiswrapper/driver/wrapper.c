@@ -621,7 +621,7 @@ static struct ndis_packet *init_packet(struct ndis_handle *handle,
 #if 0
 	{
 		int i = 0;
-		/* Poision extra packet info */
+		/* Poison extra packet info */
 		int *x = (int*) &packet->ext1;
 		for(i = 0; i <= 12; i++)
 		{
@@ -644,7 +644,7 @@ static struct ndis_packet *init_packet(struct ndis_handle *handle,
 		packet->scatter_gather_ext = &packet->scatterlist;
 	}
 
-	packet->oob_offset = (int)(&packet->timesent1) - (int)packet;
+	packet->oob_offset = offsetof(struct ndis_packet, timesent1);
 
 	packet->nr_pages = NDIS_BUFFER_TO_SPAN_PAGES(buffer);
 	packet->len = buffer->len;
@@ -1328,7 +1328,7 @@ static void check_capa(struct ndis_handle *handle)
 	res = miniport_set_info(handle, NDIS_OID_ADD_KEY, (char *)&ndis_key,
 				ndis_key.struct_size, &written, &needed);
 
-	DBGTRACE("add key returns %08X, needed = %d, size = %d\n",
+	DBGTRACE("add key returns %08X, needed = %d, size = %ld\n",
 		 res, needed, sizeof(ndis_key));
 	if (res != NDIS_STATUS_INVALID_DATA)
 		TRACEEXIT1(return);

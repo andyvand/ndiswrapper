@@ -1379,8 +1379,15 @@ static int wpa_set_key(struct net_device *dev, struct iw_request_info *info,
 		encr_req.encoding.pointer = &usrkey[0];
 		if (iw_set_encr(dev, info, &encr_req, usrkey))
 			TRACEEXIT(return -EINVAL);
-		else
+		else {
+			if (wpa_key.set_tx) {
+				encr_req.encoding.pointer = NULL;
+				encr_req.encoding.length = 0;
+				if (iw_set_encr(dev, info, &encr_req, usrkey))
+					TRACEEXIT(return -EINVAL);
+			}
 			TRACEEXIT(return 0);
+		}
 	}
 
 	/* alg is either WPA_ALG_TKIP or WPA_ALG_CCMP */
