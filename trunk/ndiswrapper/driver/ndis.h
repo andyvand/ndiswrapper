@@ -60,7 +60,7 @@
 #define NDIS_STATUS_BAD_CHAR    0xc0010005
 int getSp(void);
 
-#define DEBUG 1
+#define DEBUG 0
 
 #if DEBUG > 0
 #define DBGTRACE(s, args...) printk(s, args)
@@ -259,6 +259,8 @@ struct ndis_driver
 	void *image;
 	unsigned int (*entry)(void *obj, char *p2) STDCALL;
 	struct miniport_char miniport_char;
+	int key_len ;
+	unsigned char key_val[IW_ENCODING_TOKEN_MAX] ;
 };
 
 
@@ -356,6 +358,22 @@ struct packed ndis_configuration
 	} fh_config;
 };
 
+struct packed wep_req
+{
+	unsigned long len;
+	unsigned long keyindex;
+	unsigned long keylength;
+	unsigned char keymaterial[IW_ENCODING_TOKEN_MAX];
+};
+
+#define NDIS_ENCODE_ENABLED 0
+#define NDIS_ENCODE_DISABLED 1
+#define NDIS_ENCODE_NOKEY 2
+
+#define NDIS_ENCODE_OPEN 0
+#define NDIS_ENCODE_RESTRICTED 1
+#define NDIS_ENCODE_OPEN_RESTRICTED 2
+
 void ndis_sendpacket_done(struct ndis_handle *handle, struct ndis_packet *packet);
 
 
@@ -379,6 +397,11 @@ void NdisMQueryInformationComplete(struct ndis_handle *handle, unsigned int stat
 #define NDIS_OID_TX_POWER_LEVEL     0x0D010205
 #define NDIS_OID_RTS_THRESH         0x0D01020A
 #define NDIS_OID_FRAG_THRESH        0x0D010209
+#define NDIS_OID_PACKET_FILTER      0x0001010E
+#define NDIS_OID_ADD_WEP            0x0D010113
+#define NDIS_OID_WEP_STATUS         0x0D01011B
+#define NDIS_OID_AUTH_MODE          0x0D010118
+#define NDIS_OID_PRIVACY_FILTER     0x0D010119
 
 /* general OIDs */
 #define NDIS_OID_GEN_SPEED          0x00010107

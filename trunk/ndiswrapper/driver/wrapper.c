@@ -351,6 +351,94 @@ static int ndis_get_ap_address(struct net_device *dev, struct iw_request_info *i
         return 0;
 }
 
+static int ndis_set_wep(struct net_device *dev, struct iw_request_info *info,
+			   union iwreq_data *wrqu, char *extra)
+{
+	struct ndis_handle *handle = dev->priv;
+	unsigned int res, written, needed, auth_mode;
+	struct wep_req req;
+
+	if (wrqu->data.flags & IW_ENCODE_NOKEY)
+	{
+		res = set_int(handle, NDIS_OID_WEP_STATUS, NDIS_ENCODE_NOKEY);
+		if (res)
+			return -1;
+		else
+			return 0;
+	}
+	if (wrqu->data.flags & IW_ENCODE_DISABLED)
+	{
+		res = set_int(handle, NDIS_OID_WEP_STATUS, NDIS_ENCODE_DISABLED);
+	}
+	else
+	{
+		req.len = sizeof(struct wep_req);
+		req.keyindex = wrqu->data.flags & IW_ENCODE_INDEX;
+		req.keyindex |= (1 << 31);
+		req.keylength = wrqu->data.length;
+		
+		handle->driver->key_len = req.keylength;
+		memcpy(handle->driver->key_val, wrqu->data.pointer,
+				req.keylength);
+		memcpy(req.keymaterial, handle->driver->key_val, req.keylength);
+		
+		res = handle->driver->miniport_char.setinfo(handle->adapter_ctx, NDIS_OID_ADD_WEP, (char*)&req, sizeof(req), &written, &needed);
+
+		if (res)
+			return -1;
+		
+		res = set_int(handle, NDIS_OID_WEP_STATUS, NDIS_ENCODE_ENABLED);
+		if (res)
+			return -1;
+
+		if (wrqu->data.flags & IW_ENCODE_OPEN)
+			auth_mode = NDIS_ENCODE_OPEN;
+		else
+			auth_mode = NDIS_ENCODE_RESTRICTED;
+		/* Ndis has another flag Ndis802_11AuthModeAutoSwitch
+		 * However, there is no equivalent IW_ENCODE flag for it
+		 */
+		res = set_int(handle, NDIS_OID_AUTH_MODE, auth_mode);
+
+		if (res)
+			return -1;
+	}
+	return 0;
+}
+
+static int ndis_get_wep(struct net_device *dev, struct iw_request_info *info,
+			   union iwreq_data *wrqu, char *extra)
+{
+	struct ndis_handle *handle = dev->priv;
+	int status, res;
+
+	res = query_int(handle, NDIS_OID_WEP_STATUS, &status);
+	if (res)
+		return -1;
+	
+	if (status & NDIS_ENCODE_ENABLED)
+		wrqu->data.flags |= IW_ENCODE_ENABLED;
+	else if (status & NDIS_ENCODE_DISABLED)
+		wrqu->data.flags |= IW_ENCODE_DISABLED;
+	else if (status & NDIS_ENCODE_NOKEY)
+		wrqu->data.flags |= IW_ENCODE_NOKEY;
+
+	res = query_int(handle, NDIS_OID_AUTH_MODE, &status);
+	if (res)
+		return -1;
+	if (status & NDIS_ENCODE_OPEN)
+		wrqu->data.flags |= IW_ENCODE_OPEN;
+	if (status & NDIS_ENCODE_RESTRICTED)
+		wrqu->data.flags |= IW_ENCODE_RESTRICTED;
+	if (status & NDIS_ENCODE_OPEN_RESTRICTED)
+		wrqu->data.flags |= (IW_ENCODE_OPEN | IW_ENCODE_RESTRICTED);
+
+	wrqu->data.length = handle->driver->key_len;
+	memcpy(extra, handle->driver->key_val, handle->driver->key_len);
+
+	return 0;
+}
+	
 static const iw_handler	ndis_handler[] = {
 	//[SIOCGIWSENS    - SIOCIWFIRST] = ndis_get_sens,
 	[SIOCGIWNAME	- SIOCIWFIRST] = ndis_get_name,
@@ -365,6 +453,8 @@ static const iw_handler	ndis_handler[] = {
 	[SIOCGIWFRAG	- SIOCIWFIRST] = ndis_get_frag_threshold,
 	//[SIOCSIWRETRY	- SIOCIWFIRST] = ndis_get_rety_limit,
 	[SIOCGIWAP	- SIOCIWFIRST] = ndis_get_ap_address,
+	[SIOCSIWENCODE	- SIOCIWFIRST] = ndis_set_wep,
+	[SIOCGIWENCODE	- SIOCIWFIRST] = ndis_get_wep,
 };
 
 static const struct iw_handler_def ndis_handler_def = {
@@ -649,6 +739,8 @@ static int setup_dev(struct net_device *dev)
 	dev->irq = handle->irq;
 	dev->mem_start = handle->mem_start;		
 	dev->mem_end = handle->mem_end;		
+
+	handle->driver->key_len = 0;
 
 	return register_netdev(dev);
 }
