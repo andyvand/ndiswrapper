@@ -825,6 +825,7 @@ STDCALL BOOLEAN WRAP_EXPORT(IoCancelIrp)
 		irp->cancel_irql = irql;
 		irp->pending_returned = 1;
 		irp->cancel = 1;
+		wrap_spin_unlock(&cancel_lock);
 		cancel_routine(stack->dev_obj, irp);
 		TRACEEXIT2(return 1);
 	} else {
