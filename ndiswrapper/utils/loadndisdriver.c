@@ -173,7 +173,7 @@ static int read_conf_file(char *conf_file_name, struct load_driver *driver)
 		i = sscanf(conf_file_name, "%04X:%04X:%04X:%04X.%d.conf",
 			   &vendor, &device, &subvendor, &subdevice,
 			   &dev_bustype);
-		if (i != 3) {
+		if (i != 5) {
 			error("unable to parse conf file name %s (%d)",
 			      conf_file_name, i);
 			return -EINVAL;
