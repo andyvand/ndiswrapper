@@ -858,10 +858,10 @@ static void wrapper_worker_proc(void *param)
 	printk("%s: Entry (%lu)\n", __FUNCTION__, handle->wrapper_work);
 	if (test_and_clear_bit(WRAPPER_LINK_STATUS, &handle->wrapper_work))
 	{
-		char *assoc_info;
+		unsigned char *assoc_info;
 		struct ndis_assoc_info *ndis_assoc_info;
-		char wpa_assoc_info[512];
-		char *p, *offset;
+		unsigned char wpa_assoc_info[512];
+		unsigned char *p, *offset;
 		int i;
 		union iwreq_data wrqu;
 
@@ -922,7 +922,8 @@ static void wrapper_worker_proc(void *param)
 			ndis_assoc_info->offset_req_ies;
 		for (i = 0 ; i < 256 && i < ndis_assoc_info->req_ie_length ;
 		     i++)
-			p += sprintf(p, "%02x", *(offset + i));
+			if (i < 13 || i > 20)
+				p += sprintf(p, "%02x", *(offset + i));
 			
 		p += sprintf(p, " RespIEs=");
 		offset = ((char *)ndis_assoc_info) + 
@@ -940,6 +941,10 @@ static void wrapper_worker_proc(void *param)
 		wireless_send_event(handle->net_dev, IWEVCUSTOM, &wrqu,
 				    wpa_assoc_info);
 		kfree(assoc_info);
+
+		ndis_get_ap_address(handle->net_dev, NULL, &wrqu, NULL);
+		wrqu.ap_addr.sa_family = ARPHRD_ETHER;
+		wireless_send_event(handle->net_dev, SIOCGIWAP, &wrqu, NULL);
 	}
 }
 

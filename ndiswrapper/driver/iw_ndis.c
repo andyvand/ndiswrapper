@@ -73,6 +73,7 @@ static int ndis_get_essid(struct net_device *dev,
 	unsigned int res, written, needed;
 	struct essid_req req;
 
+	TRACEENTER1();
 	res = doquery(handle, NDIS_OID_ESSID, (char*)&req, sizeof(req),
 		      &written, &needed);
 	if(res)
@@ -86,7 +87,7 @@ static int ndis_get_essid(struct net_device *dev,
 	extra[req.len] = 0;
 	wrqu->essid.flags  = 1;
 	wrqu->essid.length = req.len + 1;
-	return 0;
+	TRACEEXIT1(return 0);
 }
 
 
@@ -398,19 +399,24 @@ static int ndis_get_frag_threshold(struct net_device *dev, struct iw_request_inf
 	return 0;
 }
 
-static int ndis_get_ap_address(struct net_device *dev, struct iw_request_info *info,
-			   union iwreq_data *wrqu, char *extra)
+int ndis_get_ap_address(struct net_device *dev, struct iw_request_info *info,
+			union iwreq_data *wrqu, char *extra)
 {
 	struct ndis_handle *handle = dev->priv; 
 	unsigned int res, written, needed;
 	__u8 mac_address[ETH_ALEN];
 
-	res = doquery(handle, NDIS_OID_BSSID, (char*)&mac_address, ETH_ALEN, &written, &needed);
+	memset(mac_address, 0, ETH_ALEN);
+	res = doquery(handle, NDIS_OID_BSSID, (char*)&mac_address, ETH_ALEN,
+		      &written, &needed);
 	if(res)
-		memset(mac_address, 255, ETH_ALEN);
+		memset(mac_address, 0, ETH_ALEN);
 
         memcpy(wrqu->ap_addr.sa_data, mac_address, ETH_ALEN);
         wrqu->ap_addr.sa_family = ARPHRD_ETHER;
+	DBGTRACE("%02X:%02X:%02X:%02X:%02X:%02X", mac_address[0],
+		 mac_address[1], mac_address[2], mac_address[3],
+		 mac_address[4], mac_address[5]);
         return 0;
 }
 
@@ -657,6 +663,7 @@ char *ndis_translate_scan(struct net_device *dev, char *event, char *end_buf,
 	struct iw_event iwe;
 	char *current_val;
 	int i;
+	char buf[MAX_WPA_IE_LEN * 2 + 30];
 
 	/* add mac address */
 	memset(&iwe, 0, sizeof(iwe));
@@ -743,6 +750,59 @@ char *ndis_translate_scan(struct net_device *dev, char *event, char *end_buf,
 
 	if ((current_val - event) > IW_EV_LCP_LEN)
 		event = current_val;
+
+	memset(&iwe, 0, sizeof(iwe));
+	iwe.cmd = IWEVCUSTOM;
+	sprintf(buf, "bcn_int=%d", item->config.beacon_period);
+	iwe.u.data.length = strlen(buf);
+	event = iwe_stream_add_point(event, end_buf, &iwe, buf);
+	
+	if (item->ie_length >= (sizeof(struct fixed_ies) + 2))
+	{
+		struct fixed_ies *fixed_ies = (struct fixed_ies *)item->ies;
+		unsigned char *iep = (unsigned char *)(fixed_ies + 1);
+		int iel = item->ie_length - sizeof(*fixed_ies);
+		
+		DBGTRACE("%s: adding atim\n", __FUNCTION__);
+		memset(&iwe, 0, sizeof(iwe));
+		iwe.cmd = IWEVCUSTOM;
+		sprintf(buf, "atim=%u", item->config.atim_window);
+		iwe.u.data.length = strlen(buf);
+		event = iwe_stream_add_point(event, end_buf, &iwe, buf);
+		
+		while(iel > 0) {
+			if(iep[0] == WLAN_EID_GENERIC && iep[1] >= 4 &&
+			   iep[2] == 0x00 && iep[3] == 0x50 &&
+			   iep[4] == 0xf2 && iep[5] == 1)
+			{
+				char *p = buf;
+				
+				i = iep[1] + 2;
+				if(i < iel)
+					iel = i;
+				
+				p += sprintf(p, "wpa_ie=");
+				for (i = 0; i < iel; i++)
+					p += sprintf(p, "%02x", iep[i]);
+				
+				DBGTRACE("adding wpa_ie :%d\n", strlen(buf));
+				memset(&iwe, 0, sizeof(iwe));
+				iwe.cmd = IWEVCUSTOM;
+				iwe.u.data.length = strlen(buf);
+				event = iwe_stream_add_point(event, end_buf,
+							     &iwe, buf);
+				break;
+			}
+
+			iel -= iep[1];
+			iel -= 2;
+			iep += iep[1];
+			iep += 2;
+		}
+	}
+
+	DBGTRACE("event = %p, current_val = %p", event, current_val);
+
 	return event;
 }
 
@@ -1058,19 +1118,14 @@ static const iw_handler	ndis_handler[] = {
 };
 
 /* WPA support */
-int ndis_get_bssid(struct net_device *dev, struct iw_request_info *info,
-		   union iwreq_data *wrqu, char *extra)
-{
-	printk(KERN_INFO "%s called, mode = %d\n", __FUNCTION__, wrqu->mode);
-	return 0;
-}
 
-int ndis_set_wpa(struct net_device *dev, struct iw_request_info *info,
-		 union iwreq_data *wrqu, char *extra)
+static int ndis_set_wpa(struct net_device *dev, struct iw_request_info *info,
+			union iwreq_data *wrqu, char *extra)
 {
 	struct ndis_handle *handle = (struct ndis_handle *)dev->priv;
 	unsigned int res;
 	
+	TRACEENTER1();
 	DBGTRACE("flags = %d, encr_alg = %d, handle->capa = %d, "
 		 "handle->encr_alg = %d", wrqu->data.flags, handle->encr_alg,
 	       handle->wpa_capa, handle->encr_alg);
@@ -1118,18 +1173,18 @@ int ndis_set_wpa(struct net_device *dev, struct iw_request_info *info,
 		return -1;
 	
 	DBGTRACE("%s", "wpa enabled");
-	return 0;
+	TRACEEXIT1(return 0);
 }
 
-int ndis_set_key(struct net_device *dev, struct iw_request_info *info,
-		 union iwreq_data *wrqu, char *extra)
+static int ndis_set_key(struct net_device *dev, struct iw_request_info *info,
+			union iwreq_data *wrqu, char *extra)
 {
 	struct ndis_handle *handle = (struct ndis_handle *)dev->priv;
 	struct ndis_key ndis_key;
 	struct wpa_key *wpa_key = (struct wpa_key *)wrqu->data.pointer;
 	int i, res, written, needed;
 	
-	printk(KERN_INFO "%s called, alg = %d\n", __FUNCTION__, wpa_key->alg);
+	TRACEENTER1("alg = %d", wpa_key->alg);
 	
 	if (wpa_key->alg == WPA_ALG_NONE)
 	{
@@ -1185,11 +1240,15 @@ int ndis_set_key(struct net_device *dev, struct iw_request_info *info,
 	{
 		printk(KERN_ERR "%s: incorrect key length (%d)\n",
 		       dev->name, wpa_key->key_len);
-		return -EINVAL;
+		TRACEEXIT1(return -EINVAL);
 	}
 	
+	DBGTRACE("adding key %d, %d", wpa_key->key_index, wpa_key->key_len);
 	ndis_key.key_index = wpa_key->key_index;
-	ndis_key.key_index |= (1 << 31);
+	if (wpa_key->set_tx)
+		ndis_key.key_index |= (1 << 31);
+	else
+		ndis_key.key_index |= (1 << 30);
 	ndis_key.key_len = wpa_key->key_len;
 	memcpy(&ndis_key.key, wpa_key->key, wpa_key->key_len);
 	
@@ -1206,19 +1265,18 @@ int ndis_set_key(struct net_device *dev, struct iw_request_info *info,
 	{
 		printk(KERN_ERR "%s: adding key failed (%08X)\n",
 		       dev->name, res);
-		return -EINVAL;
+		TRACEEXIT1(return -EINVAL);
 	}
 	
 	/* FIXME: check for TKIP -> encr mode */
 	handle->encr_alg = wpa_key->alg;
-	printk(KERN_INFO "%s: encr_alg = %d\n",
-	       __FUNCTION__, handle->encr_alg);
-	return 0;
+	DBGTRACE("encr_alg = %d", handle->encr_alg);
+	TRACEEXIT1(return 0);
 }
 
-int ndis_set_associate(struct net_device *dev,
-		   struct iw_request_info *info,
-		   union iwreq_data *wrqu, char *extra)
+static int ndis_set_associate(struct net_device *dev,
+			      struct iw_request_info *info,
+			      union iwreq_data *wrqu, char *extra)
 {
 	printk(KERN_INFO "%s: Entry\n", __FUNCTION__);
 	/* FIXME: for now we simply set the essid */
@@ -1226,9 +1284,9 @@ int ndis_set_associate(struct net_device *dev,
 	return ndis_set_essid(dev, info, wrqu, extra);
 }
 
-int ndis_set_disassociate(struct net_device *dev,
-		      struct iw_request_info *info,
-		      union iwreq_data *wrqu, char *extra)
+static int ndis_set_disassociate(struct net_device *dev,
+				 struct iw_request_info *info,
+				 union iwreq_data *wrqu, char *extra)
 {
 	struct ndis_handle *handle = (struct ndis_handle *)dev->priv;
 	
@@ -1239,8 +1297,8 @@ int ndis_set_disassociate(struct net_device *dev,
 }
 
 int ndis_set_priv_filter(struct net_device *dev,
-			 struct iw_request_info *info,
-			 union iwreq_data *wrqu, char *extra)
+				struct iw_request_info *info,
+				union iwreq_data *wrqu, char *extra)
 {
 	struct ndis_handle *handle = (struct ndis_handle *)dev->priv;
 	int res;
@@ -1253,9 +1311,9 @@ int ndis_set_priv_filter(struct net_device *dev,
 	return 0;
 }
 
-int ndis_set_generic_element(struct net_device *dev,
-			     struct iw_request_info *info,
-			     union iwreq_data *wrqu, char *extra)
+static int ndis_set_generic_element(struct net_device *dev,
+				    struct iw_request_info *info,
+				    union iwreq_data *wrqu, char *extra)
 {
 	int i;
 	printk(KERN_INFO "%s: Entry\n", __FUNCTION__);
@@ -1267,8 +1325,8 @@ int ndis_set_generic_element(struct net_device *dev,
 	return 0;
 }
 
-int ndis_dummy(struct net_device *dev, struct iw_request_info *info,
-	       union iwreq_data *wrqu, char *extra)
+static int ndis_dummy(struct net_device *dev, struct iw_request_info *info,
+		      union iwreq_data *wrqu, char *extra)
 {
 	printk(KERN_INFO "%s: called with mode = %d\n",
 	       __FUNCTION__, wrqu->mode);

@@ -379,6 +379,20 @@ enum wep_mode
 	WEP_ENCR3_ABSENT
 };
 
+struct fixed_ies
+{
+    unsigned char time_stamp[8];
+    unsigned short beacon_interval;
+    unsigned short capa;
+};
+
+struct variable_ies
+{
+    unsigned char elem_id;
+    unsigned char length;
+    unsigned char data[1];
+};
+
 struct ndis_assoc_info
 {
 	unsigned long length;
@@ -607,14 +621,19 @@ struct ssid_item
 	unsigned char ies[1];
 };
 
+#define WLAN_EID_GENERIC 221
+
 struct bssid_list
 {
 	unsigned long num_items;
 	struct ssid_item items[1];
 };
 
-#define NDIS_PRIV_ACCEPT_ALL 0
-#define NDIS_PRIV_WEP 1
+enum priv_filter
+{
+	NDIS_PRIV_ACCEPT_ALL,
+	NDIS_PRIV_WEP,
+};
 
 #define NDIS_POWER_OFF 0
 #define NDIS_POWER_MAX 1
@@ -625,6 +644,7 @@ struct bssid_list
 #define NDIS_PM_STATE_D2 3
 #define NDIS_PM_STATE_D3 4
 
+#define MAX_WPA_IE_LEN 64
 
 void sendpacket_done(struct ndis_handle *handle, struct ndis_packet *packet);
 STDCALL void NdisMIndicateReceivePacket(struct ndis_handle *handle, struct ndis_packet **packets, unsigned int nr_packets) STDCALL;

@@ -28,5 +28,7 @@ int ndis_set_essid(struct net_device *dev, struct iw_request_info *info,
 int ndis_set_priv_filter(struct net_device *dev,
 			 struct iw_request_info *info,
 			 union iwreq_data *wrqu, char *extra);
+int ndis_get_ap_address(struct net_device *dev, struct iw_request_info *info,
+			union iwreq_data *wrqu, char *extra);
 
 #endif // IW_NDIS_H
