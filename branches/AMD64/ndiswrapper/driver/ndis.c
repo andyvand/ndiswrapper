@@ -149,9 +149,9 @@ STDCALL static NDIS_STATUS WRAP_EXPORT(NdisMRegisterMiniport)
 	int min_length = ((char *) &miniport_char->co_create_vc) -
 		((char *) miniport_char);
 
-	TRACEENTER1("driver: %p, miniport_char: %p", ndis_driver, miniport_char);
+	TRACEENTER1("driver: %p, miniport_char: %p",
+		    ndis_driver, miniport_char);
 
-	TRACEEXIT1(return NDIS_STATUS_RESOURCES);
 	if (miniport_char->majorVersion < 4) {
 		ERROR("Driver %s using ndis version %d which is too old.",
 		      ndis_driver->name, miniport_char->majorVersion);
