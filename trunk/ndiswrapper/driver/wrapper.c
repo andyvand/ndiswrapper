@@ -679,7 +679,7 @@ static void xmit_bh(void *param)
 			netif_wake_queue(handle->net_dev);
 		spin_unlock_bh(&handle->xmit_ring_lock);
 	}
-	DBGTRACE("%s: Exit, send status = %d\n", __FUNCTION__, res);
+	DBGTRACE("%s: Exit, send status = %08X\n", __FUNCTION__, res);
 }
 
 /*
@@ -735,7 +735,6 @@ void sendpacket_done(struct ndis_handle *handle, struct ndis_packet *packet)
 	DBGTRACE("%s: Enter\n", __FUNCTION__);
 	handle->stats.tx_bytes += packet->len;
 	handle->stats.tx_packets++;
-	handle->send_status = NDIS_STATUS_SUCCESS;
 
 	free_buffer(handle, packet);
 }

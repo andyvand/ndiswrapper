@@ -583,8 +583,11 @@ int doquery(struct ndis_handle *handle, unsigned int oid, char *buf, int bufsize
 int dosetinfo(struct ndis_handle *handle, unsigned int oid, char *buf, int bufsize, unsigned int *written , unsigned int *needed);
 int set_int(struct ndis_handle *handle, int oid, int data);
 int query_int(struct ndis_handle *handle, int oid, int *data);
+int doreset(struct ndis_handle *handle);
 
 void packet_recycler(void *param);
+
+int stricmp(const char *s1, const char *s2);
 
 #define NDIS_OID_STAT_TX_OK         0x00020101
 #define NDIS_OID_STAT_RX_OK         0x00020102
