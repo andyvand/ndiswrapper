@@ -135,7 +135,6 @@ struct packed ndis_packet {
 	/* since we haven't implemented sg, we use one dummy entry */
 	struct ndis_sg_element sg_element;
 	dma_addr_t dataphys;
-	struct list_head recycle_list;
 	unsigned char header[ETH_HLEN];
 	unsigned char *look_ahead;
 	unsigned int look_ahead_size;
@@ -432,6 +431,23 @@ struct ndis_bin_file {
  *
  */
 struct ndis_driver {
+	CSHORT type;
+	CSHORT size;
+	void *dev_object;
+	ULONG flags;
+	void *driver_start;
+	ULONG driver_size;
+	void *driver_section;
+	void *driver_extension;
+	struct ustring *driver_name;
+	void *hardware_database;
+	void *fast_io_dispatch;
+	void *driver_init;
+	void *driver_start_io;
+	void *driver_unload;
+	void *major_func[IRP_MJ_MAXIMUM_FUNCTION + 1];
+
+	/* rest is ndiswrapper specific info */
 	struct list_head list;
 	char name[MAX_NDIS_SETTING_NAME_LEN];
 	char version[MAX_NDIS_SETTING_VALUE_LEN];
@@ -442,7 +458,7 @@ struct ndis_driver {
 	struct pe_image pe_images[MAX_PE_IMAGES];
 
 	int num_bin_files;
-	struct ndis_bin_file **bin_files;
+	struct ndis_bin_file *bin_files;
 
 	atomic_t users;
 	struct miniport_char miniport_char;
@@ -842,7 +858,6 @@ struct packed ndis_handle {
 	unsigned long wrapper_work;
 
 	unsigned long attributes;
-	struct list_head handle_list;
 };
 
 enum ndis_pm_state {

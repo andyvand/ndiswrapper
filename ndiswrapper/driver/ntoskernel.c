@@ -137,12 +137,6 @@ STDCALL void WRAP_EXPORT(KeReleaseSpinLockFromDpcLevel)
 	KefReleaseSpinLockFromDpcLevel(FASTCALL_ARGS_1(lock));
 }
 
-STDCALL KIRQL WRAP_EXPORT(KeAcquireSpinLockRaiseToDpc)
-       (KSPIN_LOCK *lock)
-{
-        return KfAcquireSpinLock(FASTCALL_ARGS_1(lock));
-}
-
 _FASTCALL static struct slist_entry *WRAP_EXPORT(ExInterlockedPushEntrySList)
 	(FASTCALL_DECL_3(union slist_head *head,struct slist_entry *entry, 
 			 KSPIN_LOCK *lock))

@@ -53,7 +53,9 @@ void wrap_kfree(void *ptr)
 	TRACEENTER4("%p", ptr);
 	wrap_spin_lock(&wrap_allocs_lock, PASSIVE_LEVEL);
 	list_for_each_safe(cur, tmp, &wrap_allocs) {
-		struct wrap_alloc *alloc = (struct wrap_alloc *)cur;
+		struct wrap_alloc *alloc;
+
+		alloc = list_entry(cur, struct wrap_alloc, list);
 		if (alloc->ptr == ptr) {
 			list_del(&alloc->list);
 			kfree(alloc->ptr);
@@ -73,8 +75,9 @@ void wrap_kfree_all(void)
 	TRACEENTER4("%s", "");
 	wrap_spin_lock(&wrap_allocs_lock, PASSIVE_LEVEL);
 	list_for_each_safe(cur, tmp, &wrap_allocs) {
-		struct wrap_alloc *alloc = (struct wrap_alloc *)cur;
+		struct wrap_alloc *alloc;
 
+		alloc = list_entry(cur, struct wrap_alloc, list);
 		list_del(&alloc->list);
 		kfree(alloc->ptr);
 		kfree(alloc);
@@ -754,22 +757,6 @@ STDCALL void WRAP_EXPORT(RtlFreeAnsiString)(struct ustring *string)
 	string->buflen = string->len = 0;
 	string->buf = NULL;
 	return;
-}
-
-STDCALL void WRAP_EXPORT(RtlInitString)
-	(struct ustring *dst, CHAR *src)
-{
-       TRACEENTER2("%s", "");
-       if (dst == NULL)
-               TRACEEXIT2(return);
-       if (src == NULL) {
-               dst->len = dst->buflen = 0;
-               dst->buf = NULL;
-               TRACEEXIT2(return);
-       }
-       dst->len = dst->buflen = strlen(src);
-       dst->buf = src;
-       TRACEEXIT2(return);
 }
 
 static void WRAP_EXPORT(RtlUnwind)(void){UNIMPL();}

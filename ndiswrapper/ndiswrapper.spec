@@ -47,14 +47,12 @@ make all KVERS=%{kernel} KSRC=%{ksrc}
 %install
 
 %define inst_dir $RPM_BUILD_ROOT%{_inst_dir}
-%define sbinrootdir $RPM_BUILD_ROOT%{_sbinrootdir}
-
-# This defines makeinstall macro for distributions that don't have it.
-# I believe that SuSE doesn't use it.
-%{!?makeinstall: %define makeinstall make DESTDIR=$RPM_BUILD_ROOT install }
+%define sbindir $RPM_BUILD_ROOT%{_sbinrootdir}
+%define usrsbindir $RPM_BUILD_ROOT%{_sbindir}
+%define mandir $RPM_BUILD_ROOT%{_mandir}
 
 rm -rf $RPM_BUILD_ROOT
-%makeinstall INST_DIR=%{inst_dir} KVERS=%{kernel} KSRC=%{ksrc} sbinrootdir=%{sbinrootdir}
+make install DESTDIR=$RPM_BUILD_ROOT INST_DIR=%{inst_dir} KVERS=%{kernel} KSRC=%{ksrc} sbindir=%{sbindir} usrsbindir=%{usrsbindir} mandir=%{mandir}
 
 %clean
 rm -rf $RPM_BUILD_ROOT
@@ -80,6 +78,9 @@ if [ "`uname -r`" = "%{kernel}" ] ; then
 fi
 
 %changelog
+* Mon Jan 10 2005 David Kaplan <dmk@localhost.localdomain> - 
+- Got rid of makeinstall macro as it asks for problems and use naming convention of make files.
+
 * Tue Jan  4 2005 David Kaplan <dmk@localhost.localdomain> - 
 - Updated spec file so that it is closer to kernel module standard spec
 - Made ndiswrapper_version a configurable macro

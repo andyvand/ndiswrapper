@@ -55,6 +55,8 @@ static struct ndis_driver *ndiswrapper_load_driver(struct ndis_device *device)
 	int err, found;
 	struct ndis_driver *ndis_driver;
 
+	TRACEENTER1("device: %04X:%04X:%04X:%04X", device->vendor,
+		    device->device, device->subvendor, device->subdevice);
 	found = 0;
 	spin_lock(&loader_lock);
 	list_for_each_entry(ndis_driver, &ndis_drivers, list) {
@@ -128,7 +130,7 @@ static struct ndis_driver *ndiswrapper_load_driver(struct ndis_device *device)
 static int ndiswrapper_add_one_pci_dev(struct pci_dev *pdev,
 				       const struct pci_device_id *ent)
 {
-	int res, found;
+	int res;
 	struct ndis_device *device;
 	struct ndis_driver *driver;
 	struct ndis_handle *handle;
@@ -137,11 +139,9 @@ static int ndiswrapper_add_one_pci_dev(struct pci_dev *pdev,
 
 	TRACEENTER1("ent: %p", ent);
 
-	DBGTRACE1("called for %04x:%04x:%04x:%04x",
-		  pdev->vendor, pdev->device,
+	DBGTRACE1("called for %04x:%04x:%04x:%04x", pdev->vendor, pdev->device,
 		  pdev->subsystem_vendor, pdev->subsystem_device);
 
- 	found = 0;
 	device = &ndis_devices[ent->driver_data];
 
 	driver = ndiswrapper_load_driver(device);
@@ -457,7 +457,7 @@ static int load_sys_files(struct ndis_driver *driver,
 static int load_bin_files(struct ndis_driver *driver,
 			  struct load_driver *load_driver)
 {
-	struct ndis_bin_file **bin_files;
+	struct ndis_bin_file *bin_files;
 	int i;
 
 	TRACEENTER1("loading bin files for driver %s", load_driver->name);
@@ -467,20 +467,13 @@ static int load_bin_files(struct ndis_driver *driver,
 		ERROR("couldn't allocate memory");
 		TRACEEXIT1(return -ENOMEM);
 	}
-	memset(bin_files, 0, sizeof(*bin_files));
+	memset(bin_files, 0, load_driver->nr_bin_files * sizeof(*bin_files));
 
 	driver->num_bin_files = 0;
 	for (i = 0; i < load_driver->nr_bin_files; i++) {
-		struct ndis_bin_file *bin_file;
+		struct ndis_bin_file *bin_file = &bin_files[i];
 		struct load_driver_file *load_bin_file =
 			&load_driver->bin_files[i];
-
-		bin_file = kmalloc(sizeof(*bin_file), GFP_KERNEL);
-		if (!bin_file) {
-			ERROR("couldn't allocate memory");
-			break;
-		}
-		memset(bin_file, 0, sizeof(*bin_file));
 
 		memcpy(bin_file->name, load_bin_file->name,
 		       MAX_DRIVER_NAME_LEN);
@@ -488,26 +481,20 @@ static int load_bin_files(struct ndis_driver *driver,
 		bin_file->data = vmalloc(load_bin_file->size);
 		if (!bin_file->data) {
 			ERROR("cound't allocate memory");
-			kfree(bin_file);
 			break;
 		}
 		if (copy_from_user(bin_file->data, load_bin_file->data,
 				   load_bin_file->size)) {
 			ERROR("couldn't load file %s", load_bin_file->name);
-			kfree(bin_file->data);
-			kfree(bin_file);
-			continue;
+			break;
 		}
 
 		DBGTRACE2("loaded bin file %s", bin_file->name);
-		bin_files[driver->num_bin_files] = bin_file;
 		driver->num_bin_files++;
 	}
 	if (driver->num_bin_files < load_driver->nr_bin_files) {
-		for (i = 0; i < driver->num_bin_files; i++) {
-			vfree(bin_files[i]->data);
-			kfree(bin_files[i]);
-		}
+		for (i = 0; i < driver->num_bin_files; i++)
+			vfree(bin_files[i].data);
 		kfree(bin_files);
 		driver->num_bin_files = 0;
 		TRACEEXIT1(return -EINVAL);
@@ -583,15 +570,15 @@ static int load_settings(struct ndis_driver *ndis_driver,
 /* this function is called while holding load_lock spinlock */
 static void unload_ndis_device(struct ndis_device *device)
 {
-	TRACEENTER1("unloading device %s, bustype %d",
-		    device->driver_name, device->bustype);
+	TRACEENTER1("unloading device %04X:%04X:%04X:%04X, driver %s",
+		    device->vendor, device->device, device->subvendor,
+		    device->subdevice, device->driver_name);
 
 	while (!list_empty(&device->settings)) {
 		struct device_setting *setting =
 			(struct device_setting *)device->settings.next;
 		struct ndis_config_param *param =
 			&setting->config_param;
-		DBGTRACE1("freeing setting %s", setting->name);
 		if (param->type == NDIS_CONFIG_PARAM_STRING)
 			RtlFreeUnicodeString(&param->data.ustring);
 		list_del(&setting->list);
@@ -610,10 +597,8 @@ static void unload_ndis_driver(struct ndis_driver *driver)
 			vfree(driver->pe_images[i].image);
 
 	DBGTRACE1("freeing %d bin files", driver->num_bin_files);
-	for (i = 0; i < driver->num_bin_files; i++) {
-		vfree(driver->bin_files[i]->data);
-		kfree(driver->bin_files[i]);
-	}
+	for (i = 0; i < driver->num_bin_files; i++)
+		vfree(driver->bin_files[i].data);
 	if (driver->bin_files)
 		kfree(driver->bin_files);
 
@@ -642,7 +627,6 @@ static int start_driver(struct ndis_driver *driver)
 			res = entry((void *)driver, &reg_string);
 			ret |= res;
 			DBGTRACE1("entry returns %08X", res);
-			DBGTRACE1("miniport_char: %p", &driver->miniport_char);
 			DBGTRACE1("driver version: %d.%d",
 				  driver->miniport_char.majorVersion,
 				  driver->miniport_char.minorVersion);
@@ -837,7 +821,7 @@ static int register_devices(struct load_devices *load_devices)
 		ndiswrapper_pci_driver.id_table = ndiswrapper_pci_devices;
 		ndiswrapper_pci_driver.probe = ndiswrapper_add_one_pci_dev;
 		ndiswrapper_pci_driver.remove =
-				__devexit_p(ndiswrapper_remove_one_pci_dev);
+			__devexit_p(ndiswrapper_remove_one_pci_dev);
 		ndiswrapper_pci_driver.suspend = ndiswrapper_suspend_pci;
 		ndiswrapper_pci_driver.resume = ndiswrapper_resume_pci;
 		res = pci_register_driver(&ndiswrapper_pci_driver);
@@ -882,9 +866,8 @@ static int wrapper_ioctl(struct inode *inode, struct file *file,
 	struct load_devices devices;
 	int res;
 
-	TRACEENTER1("cmd: %u (%lu, %lu)",
-		    cmd, (unsigned long)NDIS_REGISTER_DEVICES,
-		    (unsigned long)NDIS_LOAD_DRIVER);
+	TRACEENTER1("cmd: %u (%u, %u)",
+		    cmd, NDIS_REGISTER_DEVICES, NDIS_LOAD_DRIVER);
 
 	res = 0;
 	switch (cmd) {
@@ -953,7 +936,7 @@ int loader_init(void)
 
 void loader_exit(void)
 {
-	struct ndis_driver *driver;
+	struct list_head *cur, *tmp;
 	int i;
 
 	TRACEENTER1("");
@@ -975,8 +958,10 @@ void loader_exit(void)
 		vfree(ndis_devices);
 	}
 
-	while (!list_empty(&ndis_drivers)) {
-		driver = (struct ndis_driver *)ndis_drivers.next;
+	list_for_each_safe(cur, tmp, &ndis_drivers) {
+		struct ndis_driver *driver;
+
+		driver = list_entry(cur, struct ndis_driver, list);
 		list_del(&driver->list);
 		unload_ndis_driver(driver);
 	}

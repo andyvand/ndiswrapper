@@ -539,6 +539,7 @@ struct io_status_block {
 
 #define IRP_MJ_DEVICE_CONTROL           0x0E
 #define IRP_MJ_INTERNAL_DEVICE_CONTROL  0x0F
+#define IRP_MJ_MAXIMUM_FUNCTION		0x1b
 
 struct packed io_stack_location {
 	char major_fn;
