@@ -79,6 +79,8 @@
 #define USBD_TRANSFER_DIRECTION_IN	0x00000001
 #define USBD_SHORT_TRANSFER_OK		0x00000002
 
+typedef LONG USBD_STATUS;
+
 union pipe_handle {
 	void *handle;
 	struct {
@@ -89,26 +91,30 @@ union pipe_handle {
 	} encoded;
 };
 
+struct urb_hcd_area {
+	void *reserved8[8];
+};
+
 struct usbd_pipe_information {
-	unsigned short maxPacketSize;
-	unsigned char endpointAddr;
-	unsigned char interval;
+	USHORT maxPacketSize;
+	UCHAR endpointAddr;
+	UCHAR interval;
 	enum {ptControl, ptIsochronous, ptBulk, ptIntr} pipeType;
 	union pipe_handle pipeHandle;
-	unsigned long maxTransferSize;
-	unsigned long fill;
+	ULONG maxTransferSize;
+	ULONG pipeFlags;
 };
 
 struct usbd_interface_information {
-	unsigned short length;
-	unsigned char intfNum;
-	unsigned char altSet;
-	unsigned char class;
-	unsigned char subClass;
-	unsigned char proto;
-	unsigned char fill;
+	USHORT length;
+	UCHAR intfNum;
+	UCHAR altSet;
+	UCHAR class;
+	UCHAR subClass;
+	UCHAR proto;
+	UCHAR fill;
 	void *intfHandle;
-	unsigned long pipeNum;
+	ULONG pipeNum;
 	struct usbd_pipe_information pipes[1];
 };
 
@@ -118,11 +124,11 @@ struct usbd_interface_list_entry {
 };
 
 struct nt_urb_header {
-	unsigned short length;
-	unsigned short function;
-	long status;
-	void *fill1;
-	unsigned long fill2;
+	USHORT length;
+	USHORT function;
+	USBD_STATUS status;
+	void *usbdDevHandle;
+	ULONG usbdFlags;
 };
 
 struct select_configuration {
@@ -135,27 +141,28 @@ struct select_configuration {
 struct bulk_or_intr_transfer {
 	struct nt_urb_header header;
 	union pipe_handle pipeHandle;
-	unsigned long transferFlags;
-	unsigned long transferBufLen;
+	ULONG transferFlags;
+	ULONG transferBufLen;
 	void *transferBuf;
-	void *transferBufMdl;
+	struct mdl *transferBufMdl;
 	union nt_urb *urbLink;
-	void *fill3[8];
+	struct urb_hcd_area hca;
 };
 
 struct control_descriptor_request {
 	struct nt_urb_header header;
-	void *fill1;
-	unsigned long fill2;
-	unsigned long transferBufLen;
+	void *reserved;
+	ULONG reserved0;
+	ULONG transferBufLen;
 	void *transferBuf;
-	void *transferBufMdl;
+	struct MDL *transferBufMdl;
 	union nt_urb *urbLink;
-	void *fill3[8];
-	unsigned short fill4;
-	unsigned char descindex;
-	unsigned char desctype;
-	unsigned short langid;
+	struct urb_hcd_area hca;
+	USHORT reserved1;
+	UCHAR index;
+	USHORT desctype;
+	USHORT langid;
+	USHORT reserved2;
 };
 
 struct pipe_request {
@@ -165,18 +172,39 @@ struct pipe_request {
 
 struct vendor_or_class_request {
 	struct nt_urb_header header;
-	void *fill1;
-	unsigned long transferFlags;
-	unsigned long transferBufLen;
+	void *reserved;
+	ULONG transferFlags;
+	ULONG transferBufLen;
 	void *transferBuf;
-	void *transferBufMdl;
+	struct mdl *transferBufMdl;
 	union nt_urb *urbLink;
-	void *fill2[8];
-	unsigned char reservedBits;
-	unsigned char request;
-	unsigned short value;
-	unsigned short index;
-	unsigned short fill3;
+	struct urb_hcd_area hca;
+	UCHAR reservedBits;
+	UCHAR request;
+	UCHAR value;
+	UCHAR index;
+	USHORT reserved1;
+};
+
+struct usbd_iso_packet_desc {
+	ULONG offset;
+	ULONG length;
+	USBD_STATUS status;
+};
+
+struct isochronous_transfer {
+	struct nt_urb_header header;
+	union pipe_handle pipeHandle;
+	ULONG transferFlags;
+	ULONG transferBufLen;
+	void *transferBuf;
+	struct mdl *transferMDL;
+	union nt_urb *urbLink;
+	struct urb_hcd_area hca;
+	ULONG startFrame;
+	ULONG numPackets;
+	ULONG errorCount;
+	struct usbd_iso_packet_desc isoPacket[1];
 };
 
 union nt_urb {
@@ -185,6 +213,7 @@ union nt_urb {
 	struct bulk_or_intr_transfer bulkIntrTrans;
 	struct control_descriptor_request ctrlDescReq;
 	struct vendor_or_class_request venClsReq;
+	struct isochronous_transfer isochTrans;
 	struct pipe_request pipeReq;
 };
 
