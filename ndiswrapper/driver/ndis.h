@@ -187,9 +187,22 @@ struct packed miniport_char
 
 	/* Send packets */
 	void (*send_packets)(void *ctx, struct ndis_packet **packets, int nr_of_packets) STDCALL;
-
-	
 };
+
+struct ndis_work
+{
+	void (*func)(struct ndis_work *work, void *ctx) STDCALL;
+	void *ctx;
+	struct list_head list;
+};
+
+
+struct ndis_workentry
+{
+	struct list_head list;
+	struct ndis_work *work;
+};
+
 
 
 struct ndis_irq

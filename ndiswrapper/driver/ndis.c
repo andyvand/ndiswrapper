@@ -1022,7 +1022,61 @@ STDCALL void NdisInitializeEvent(PNDIS_EVENT Event)
 int NdisWaitEvent(void *event, int timeout){UNIMPL(); return 0;}
 void NdisSetEvent(void *event){UNIMPL();}
 void NdisResetEvent(void *event){UNIMPL();}
-STDCALL void NdisScheduleWorkItem(void *workitem){UNIMPL();}
+
+
+
+LIST_HEAD(worklist);
+spinlock_t worklist_lock = SPIN_LOCK_UNLOCKED;
+
+void worker(void *context)
+{
+	unsigned long flags;
+	struct ndis_workentry *workentry;
+	struct ndis_work *ndis_work;
+	DBGTRACE("%s\n", __FUNCTION__);
+	while(1)
+	{
+		spin_lock_irqsave(&worklist_lock, flags);
+		if(!list_empty)
+		{
+			workentry = (struct ndis_workentry*) worklist.next;
+			list_del(&workentry->list);
+		}
+		else
+			workentry = 0;
+		spin_unlock_irqrestore(&worklist_lock, flags);
+		if(!workentry)
+			break;
+
+		ndis_work = workentry->work;
+		kfree(workentry);
+
+		DBGTRACE("%s Calling work at %08x (rva %08x)with parameter %08x\n", __FUNCTION__, (int)ndis_work->func, (int)ndis_work->func - image_offset, (int)ndis_work->ctx);
+		ndis_work->func(ndis_work, ndis_work->ctx);
+	}
+	
+	
+}
+DECLARE_WORK(work, worker, NULL);
+
+STDCALL void NdisScheduleWorkItem(struct ndis_work *ndis_work)
+{
+	unsigned long flags;
+	struct ndis_workentry *workentry;
+	DBGTRACE("%s\n", __FUNCTION__);
+	workentry = kmalloc(sizeof(*workentry), GFP_ATOMIC);
+	if(!workentry)
+	{
+		BUG();
+	}
+	workentry->work = ndis_work;
+	
+	spin_lock_irqsave(&worklist_lock, flags);
+	list_add_tail(&workentry->list, &worklist);
+	spin_unlock_irqrestore(&worklist_lock, flags);
+	
+	schedule_work(&work);
+}
                                                                                                                                                                                                                                     
  
 /* Unimplemented...*/
