@@ -51,13 +51,13 @@ usb.o: usb.c usb.h ndis.h usb_exports.h
 			 it is automatically generated from $< */" ;\
 		echo "struct wrap_export $(basename $<)_exports[] = {";\
 		sed -n \
-			-e 's/.*WRAP_EXPORT(\(_wrap_\)\([^)]\+\)).*/\
-				\t{"\2", (WRAP_EXPORT_FUNC)\1\2},/p' \
-			-e 's/.*WRAP_EXPORT(\([^)]\+\)).*/\
-				\tWRAP_EXPORT_SYMBOL(\1),/p' \
-			-e 's/.*WRAP_EXPORT_MAP(\("[^"]\+"\)[ ,\n\t]\+\([^)]\+\)).*/\
-				\t{\1, (WRAP_EXPORT_FUNC)\2},/p' $< | sort; \
-		echo -e "\t{NULL, NULL}\n};"; \
+			-e 's/.*WRAP_EXPORT(\(_wrap_\)\([^)]\+\)).*/     \
+				   {"\2", (WRAP_EXPORT_FUNC)\1\2},/p' \
+			-e 's/.*WRAP_EXPORT(\([^)]\+\)).*/   \
+				   WRAP_EXPORT_SYMBOL(\1),/p' \
+			-e 's/.*WRAP_EXPORT_MAP(\("[^"]\+"\)[ ,\n]\+\([^)]\+\)).*/   \
+				   {\1, (WRAP_EXPORT_FUNC)\2},/p' $< | sort; \
+		echo -e "    {NULL, NULL}\n};"; \
 	fi > $@
 
 gen_exports: ndis_exports.h hal_exports.h ntoskernel_exports.h \
