@@ -160,12 +160,16 @@ static int ndiswrapper_add_one_pci_dev(struct pci_dev *pdev,
 	device->handle = handle;
 
 	res = pci_enable_device(pdev);
-	if (res)
+	if (res) {
+		ERROR("couldn't enable PCI device: %08x", res);
 		goto out_enable;
+	}
 
 	res = pci_request_regions(pdev, driver->name);
-	if (res)
+	if (res) {
+		ERROR("couldn't request PCI regions: %08x", res);
 		goto out_regions;
+	}
 
 	pci_set_power_state(pdev, 0);
 #if LINUX_VERSION_CODE <= KERNEL_VERSION(2,6,9)
