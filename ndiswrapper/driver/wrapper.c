@@ -1192,7 +1192,8 @@ static int ndis_set_mac_addr(struct net_device *dev, void *p)
 	struct ndis_handle *handle = dev->priv;
 	struct sockaddr *addr = p;
 	struct ndis_config_param param;
-	struct ustring key, ansi;
+	struct unicode_string key;
+	struct ansi_string ansi;
 	unsigned int i, ret;
 	unsigned char mac_string[3 * ETH_ALEN];
 	mac_address mac;
