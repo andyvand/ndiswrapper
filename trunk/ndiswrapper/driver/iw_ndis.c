@@ -1605,9 +1605,6 @@ static int wpa_set_auth_alg(struct net_device *dev,
 
 	DBGTRACE2("%d", mode);
 
-	/* wpa_supplicant assumes OPEN mode, but it won't work if RESTRCITED
-	 * mode is used, so we try with AUTO mode always hoping the driver
-	 * chooses what is appropriate */
 	if (set_auth_mode(handle, mode))
 		TRACEEXIT(return -1);
 	TRACEEXIT(return 0);
