@@ -5,6 +5,8 @@ Version 0.8 2004-
   Atheros 5212).
 * Many bug fixes (scanning, dma aka shared memory allocation, timers, irqs,
   spinlocks, memory allocation, serialized drivers).
+* Added hangcheck_interval module option to either disable it (some realtek
+  drivers seem to have problems with it) or force it to any given value.
 
 Version 0.7 2004-04-23
 ======================
