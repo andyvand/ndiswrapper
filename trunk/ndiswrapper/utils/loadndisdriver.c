@@ -293,7 +293,7 @@ static int load_driver(int ioctl_device, char *driver_name,
 		     strcmp(&dirent->d_name[len-4], ".inf") == 0)
 			continue;
 		if (len > 5 &&
-		     strcmp(&dirent->d_name[len-4], ".conf") == 0)
+		     strcmp(&dirent->d_name[len-5], ".conf") == 0)
 			continue;
 
 		if (len > 4 && strcmp(&dirent->d_name[len-4], ".sys") == 0) {
