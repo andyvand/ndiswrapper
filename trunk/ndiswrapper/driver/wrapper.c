@@ -1546,8 +1546,9 @@ static int ndis_init_one_pci(struct pci_dev *pdev,
 	}
 	*/
 
-	/* SMC 2802W V2 cards need reset (any others need it too?) */
-	if (ent->vendor == 0x1260)
+	/* Prism cards need reset, but Centrino cards don't like it; so for now
+	 * don't reset Centrino cards */
+	if (ent->vendor != 0x8086)
 		doreset(handle);
 
 	/* Wait a little to let card power up otherwise ifup might fail after
