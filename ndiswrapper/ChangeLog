@@ -13,7 +13,7 @@ Version 0.5 2004-03-dd
   essid later.
 * Essid is set twice with a delay in between so that it gets set properly
   the first time after the machine is booted.
-  
+* A new util for controlling the radio for Averatec 5110HX laptop added.
 
 Version 0.4 2004-01-05
 ======================
