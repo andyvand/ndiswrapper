@@ -89,6 +89,7 @@ static void wrap_free_timers(struct ndis_handle *handle)
 	 */
 	while (1) {
 		struct wrapper_timer *timer;
+
 		wrap_spin_lock(&handle->timers_lock, DISPATCH_LEVEL);
 		if (list_empty(&handle->timers)) {
 			wrap_spin_unlock(&handle->timers_lock);
