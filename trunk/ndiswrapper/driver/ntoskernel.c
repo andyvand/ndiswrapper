@@ -19,7 +19,6 @@
 #include <linux/time.h>
 
 static wait_queue_head_t dispatch_event_wq;
-static unsigned char global_signal_state = 0;
 static spinlock_t dispatch_event_lock;
 spinlock_t irp_cancel_lock;
 KSPIN_LOCK ntoskrnl_lock;
@@ -293,6 +292,69 @@ _FASTCALL USHORT WRAP_EXPORT(ExQueryDepthSList)
 	return head->list.depth;
 }
 
+_FASTCALL LONG WRAP_EXPORT(InterlockedDecrement)
+	(FASTCALL_DECL_1(LONG volatile *val))
+{
+	LONG x;
+
+	TRACEENTER4("%s", "");
+	kspin_lock(&ntoskrnl_lock, PASSIVE_LEVEL);
+	(*val)--;
+	x = *val;
+	kspin_unlock(&ntoskrnl_lock);
+	TRACEEXIT4(return x);
+}
+
+_FASTCALL LONG WRAP_EXPORT(InterlockedIncrement)
+	(FASTCALL_DECL_1(LONG volatile *val))
+{
+	LONG x;
+
+	TRACEENTER4("%s", "");
+	kspin_lock(&ntoskrnl_lock, PASSIVE_LEVEL);
+	(*val)++;
+	x = *val;
+	kspin_unlock(&ntoskrnl_lock);
+	TRACEEXIT4(return x);
+}
+
+_FASTCALL LONG WRAP_EXPORT(InterlockedExchange)
+	(FASTCALL_DECL_2(LONG volatile *target, LONG val))
+{
+	LONG x;
+
+	TRACEENTER4("%s", "");
+	kspin_lock(&ntoskrnl_lock, PASSIVE_LEVEL);
+	x = *target;
+	*target = val;
+	kspin_unlock(&ntoskrnl_lock);
+	TRACEEXIT4(return x);
+}
+
+_FASTCALL LONG WRAP_EXPORT(InterlockedCompareExchange)
+	(FASTCALL_DECL_3(LONG volatile *dest, LONG xchg, LONG comperand))
+{
+	LONG x;
+
+	TRACEENTER4("%s", "");
+	kspin_lock(&ntoskrnl_lock, PASSIVE_LEVEL);
+	x = *dest;
+	if (*dest == comperand)
+		*dest = xchg;
+	kspin_unlock(&ntoskrnl_lock);
+	TRACEEXIT4(return x);
+}
+
+_FASTCALL void WRAP_EXPORT(ExInterlockedAddLargeStatistic)
+	(FASTCALL_DECL_2(LARGE_INTEGER *plint, ULONG n))
+{
+	unsigned long flags;
+	TRACEENTER3("Stat %p = %llu, n = %u", plint, *plint, n);
+	kspin_lock_irqsave(&ntoskrnl_lock, flags);
+	*plint += n;
+	kspin_unlock_irqrestore(&ntoskrnl_lock, flags);
+}
+
 STDCALL void *WRAP_EXPORT(ExAllocatePoolWithTag)
 	(enum pool_type pool_type, SIZE_T size, ULONG tag)
 {
@@ -363,16 +425,6 @@ STDCALL void WRAP_EXPORT(ExDeleteNPagedLookasideList)
 	TRACEEXIT4(return);
 }
 
-_FASTCALL void WRAP_EXPORT(ExInterlockedAddLargeStatistic)
-	(FASTCALL_DECL_2(LARGE_INTEGER *plint, ULONG n))
-{
-	unsigned long flags;
-	TRACEENTER3("Stat %p = %llu, n = %u", plint, *plint, n);
-	kspin_lock_irqsave(&ntoskrnl_lock, flags);
-	*plint += n;
-	kspin_unlock_irqrestore(&ntoskrnl_lock, flags);
-}
-
 STDCALL void *WRAP_EXPORT(MmMapIoSpace)
 	(PHYSICAL_ADDRESS phys_addr, SIZE_T size,
 	 enum memory_caching_type cache)
@@ -414,7 +466,6 @@ STDCALL void WRAP_EXPORT(KeInitializeEvent)
 	spin_lock(&dispatch_event_lock);
 	kevent->header.type = type;
 	kevent->header.signal_state = state;
-	kevent->header.inserted = 0;
 	spin_unlock(&dispatch_event_lock);
 }
 
@@ -430,13 +481,12 @@ STDCALL LONG WRAP_EXPORT(KeSetEvent)
 
 	spin_lock(&dispatch_event_lock);
 	kevent->header.signal_state = TRUE;
-	kevent->header.absolute = TRUE;
-	global_signal_state = TRUE;
-	if (kevent->header.type == SynchronizationEvent)
+	if (kevent->header.type == SynchronizationEvent) {
 		wake_up_nr(&dispatch_event_wq, 1);
+		kevent->header.signal_state = FALSE;
+	}
 	else
 		wake_up_all(&dispatch_event_wq);
-//	global_signal_state = FALSE;
 	DBGTRACE3("woken up %p", kevent);
 	spin_unlock(&dispatch_event_lock);
 	TRACEEXIT3(return old_state);
@@ -447,8 +497,6 @@ STDCALL void WRAP_EXPORT(KeClearEvent)
 {
 	TRACEENTER3("event = %p", kevent);
 	kevent->header.signal_state = FALSE;
-	kevent->header.absolute = FALSE;
-	global_signal_state = FALSE;
 }
 
 STDCALL LONG WRAP_EXPORT(KeResetEvent)
@@ -460,9 +508,6 @@ STDCALL LONG WRAP_EXPORT(KeResetEvent)
 
 	old_state = kevent->header.signal_state;
 	kevent->header.signal_state = FALSE;
-	kevent->header.absolute = FALSE;
-	/* FIXME: should we reset global signal state? */
-	global_signal_state = FALSE;
 
 	TRACEEXIT3(return old_state);
 }
@@ -483,20 +528,8 @@ STDCALL NTSTATUS WRAP_EXPORT(KeWaitForSingleObject)
 
 	DBGTRACE2("object type = %d, size = %d", header->type, header->size);
 
-	if (header->size == NT_OBJ_MUTEX) {
-		struct kmutex *kmutex = (struct kmutex *)object;
-		if (kmutex->owner_thread == NULL ||
-		    kmutex->owner_thread == get_current()) {
-			header->signal_state = FALSE;
-			kmutex->u.count++;
-			kmutex->owner_thread = get_current();
-			TRACEEXIT1(return STATUS_SUCCESS);
-		}
-	} else if (header->signal_state == TRUE) {
-		if (header->type == SynchronizationEvent)
-			header->signal_state = FALSE;
+	if (header->signal_state == TRUE)
  		TRACEEXIT3(return STATUS_SUCCESS);
-	}
 
 	if (timeout) {
 		DBGTRACE2("timeout = %Ld", *timeout);
@@ -509,15 +542,14 @@ STDCALL NTSTATUS WRAP_EXPORT(KeWaitForSingleObject)
 			 * are broken or explanation for this is
 			 * wrong */
 			if (d > 0)
-				wait_jiffies = HZ * d / 10000000;
+				wait_jiffies = HZ * d / TICKSPERSEC;
 			else
 				wait_jiffies = 0;
 		} else
-			wait_jiffies = HZ * (-(*timeout)) / 10000000;
+			wait_jiffies = HZ * (-(*timeout)) / TICKSPERSEC;
 	} else
 		wait_jiffies = 0;
 
-	header->inserted++;
 	if (wait_jiffies == 0) {
 		if (alertable)
 			res = wait_event_interruptible(
@@ -539,11 +571,6 @@ STDCALL NTSTATUS WRAP_EXPORT(KeWaitForSingleObject)
 				(header->signal_state == TRUE), wait_jiffies);
 	}
 
-	header->inserted--;
-	/* check if it is last event in case of notification event */
-	if (header->inserted == 0)
-		header->signal_state = FALSE;
-
 	DBGTRACE3("%p, type = %d woke up (%d), res = %d",
 		  kevent, header->type, header->signal_state, res);
 	if (res < 0)
@@ -553,180 +580,237 @@ STDCALL NTSTATUS WRAP_EXPORT(KeWaitForSingleObject)
 		TRACEEXIT2(return STATUS_TIMEOUT);
 
 	/* res > 0 */
-	if (header->size == NT_OBJ_MUTEX) {
-		struct kmutex *kmutex = (struct kmutex *)object;
-		if (kmutex->owner_thread == NULL) {
-			kmutex->owner_thread = get_current();
-			kmutex->u.count++;
-		}
-	}
-	if (header->type == SynchronizationEvent)
-		header->signal_state = FALSE;
 
 	TRACEEXIT2(return STATUS_SUCCESS);
 }
 
-/* implementation of this function is more for decorative purpose!
- * not tested at all. notification events are not handled properly as
- * yet
- */
 STDCALL NTSTATUS WRAP_EXPORT(KeWaitForMultipleObjects)
 	(ULONG count, void *object[], enum wait_type wait_type,
 	 KWAIT_REASON wait_reason, KPROCESSOR_MODE waitmode,
 	 BOOLEAN alertable, LARGE_INTEGER *timeout,
 	 struct wait_block *wait_block)
 {
-	struct kevent *kevent = NULL;
-	struct kmutex *kmutex;
-	unsigned long wait_ms;
-	long wait_jiffies;
-	int i, sat_index = 0, wait_count;
-	int res = 0;
-
-	/* FIXME: Do all objects have same dispatch header? If so,
-	 * signal_state of any object can be used to wait and wakeup;
-	 * otherwise, we need a global signal state; then we check
-	 * which objects have been signaled */
-
-	/* Note: for now, object can only point to an event */
-	TRACEENTER2("reason = %u, waitmode = %u, alertable = %u,"
-		" timeout = %p", wait_reason, waitmode, alertable,
-		timeout);
-
-	if (count > MAX_WAIT_OBJECTS ||
-	    (count > THREAD_WAIT_OBJECTS && wait_block == NULL))
-		TRACEEXIT3(return STATUS_INVALID_PARAMETER);
-
-	for (i = 0, wait_count = 0; i < count; i++) {
-		kevent = (struct kevent *)object[i];
-		if (kevent->header.type == NT_OBJ_MUTEX) {
-			kmutex = (struct kmutex *)kevent;
-			if (kmutex->owner_thread == NULL ||
-			    kmutex->owner_thread == get_current()) {
-				kmutex->dispatch_header.signal_state = FALSE;
-				kmutex->u.count++;
-				kmutex->owner_thread = get_current();
-				if (wait_type == WaitAny)
-					return STATUS_WAIT_0 + i;
-			}
-		} else if (kevent->header.signal_state == TRUE) {
-			if (kevent->header.type == SynchronizationEvent)
-				kevent->header.signal_state = FALSE;
-			if (wait_type == WaitAny)
-				return STATUS_WAIT_0 + i;
-		}
-		if (kevent->header.signal_state == FALSE)
-			wait_count++;
-	}
-					
-	if (timeout) {
-		DBGTRACE2("timeout = %Ld", *timeout);
-		if (*timeout == 0)
-			TRACEEXIT2(return STATUS_TIMEOUT);
-		else if (*timeout > 0)
-			wait_ms = ((*timeout) - ticks_1601()) / 10000;
-		else
-			wait_ms = (-(*timeout)) / 10000;
-	} else
-		wait_ms = 0;
-
-	DBGTRACE2("wait ms = %lu", wait_ms);
-	wait_jiffies = (wait_ms * HZ) / 1000;
-
-	global_signal_state = FALSE;
-	while (wait_count > 0) {
-		if (wait_jiffies == 0) {
-			if (alertable)
-				res = wait_event_interruptible(
-					dispatch_event_wq,
-					(global_signal_state == TRUE));
-			else {
-				wait_event(dispatch_event_wq,
-					   (global_signal_state == TRUE));
-				res = 1;
-			}
-		} else {
-			if (alertable)
-				res = wait_event_interruptible_timeout(
-					dispatch_event_wq,
-					(global_signal_state == TRUE),
-					wait_jiffies);
-			else
-				res = wait_event_timeout(
-					dispatch_event_wq,
-					(global_signal_state == TRUE),
-					wait_jiffies);
-		}
-		spin_lock(&dispatch_event_lock);
-		if (res > 0) {
-			for (i = 0; i < count; i++) {
-				kevent = (struct kevent *)object[i];
-				if (kevent->header.absolute == TRUE) {
-					kevent->header.absolute = FALSE;
-					sat_index = i;
-					wait_count--;
-				}
-
-				kmutex = (struct kmutex *)object[i];
-				if (kmutex->owner_thread == NULL) {
-					kmutex->owner_thread = get_current();
-					kmutex->u.count++;
-				}
-			}
-		}
-		spin_unlock(&dispatch_event_lock);
-		if (res > 0)
-			wait_jiffies = res;
-		if (wait_type == WaitAny)
-			break;
-	}
-
-	if (res < 0)
-		TRACEEXIT2(return STATUS_ALERTED);
-
-	if (res == 0)
-		TRACEEXIT2(return STATUS_TIMEOUT);
-
-	/* res > 0 */
-	if (wait_type == WaitAny && wait_count > 0)
-		return STATUS_WAIT_0 + sat_index;
-
-	TRACEEXIT2(return STATUS_SUCCESS);
-}
-
-STDCALL void WRAP_EXPORT(IoReuseIrp)
-	(struct irp *irp, NTSTATUS status)
-{
-	USBTRACEENTER("irp = %p, status = %d", irp, status);
-	if (irp)
-		irp->io_status.status = status;
-	USBTRACEEXIT(return);
-}
-
-STDCALL void WRAP_EXPORT(IoBuildSynchronousFsdRequest)
-	(void)
-{
 	UNIMPL();
-}
-
-/* this function can't be STDCALL as it takes variable number of args */
-NOREGPARM ULONG WRAP_EXPORT(DbgPrint)
-	(char *format, ...)
-{
-#ifdef DEBUG
-	va_list args;
-	static char buf[1024];
-
-	va_start(args, format);
-	vsnprintf(buf, sizeof(buf), format, args);
-	printk("DbgPrint: ");
-	printk(buf);
-	va_end(args);
-#endif
 	return STATUS_SUCCESS;
 }
 
-STDCALL void WRAP_EXPORT(DbgBreakPoint)
+STDCALL NTSTATUS WRAP_EXPORT(KeDelayExecutionThread)
+	(KPROCESSOR_MODE wait_mode, BOOLEAN alertable,
+	 LARGE_INTEGER *interval)
+{
+	int res;
+	long timeout;
+	long t = *interval;
+
+	TRACEENTER3("thread: %p", get_current());
+	if (wait_mode != 0)
+		ERROR("illegal wait_mode %d", wait_mode);
+
+	if (t < 0)
+		timeout = HZ * (-t) / TICKSPERSEC;
+	else
+		timeout = HZ * t / TICKSPERSEC - jiffies;
+
+	if (timeout <= 0)
+		TRACEEXIT3(return STATUS_SUCCESS);
+
+	if (alertable)
+		set_current_state(TASK_INTERRUPTIBLE);
+	else
+		set_current_state(TASK_UNINTERRUPTIBLE);
+
+	res = schedule_timeout(timeout);
+
+	if (res > 0)
+		TRACEEXIT3(return STATUS_ALERTED);
+	else
+		TRACEEXIT3(return STATUS_SUCCESS);
+}
+
+STDCALL KPRIORITY WRAP_EXPORT(KeQueryPriorityThread)
+	(void *thread)
+{
+	KPRIORITY prio;
+
+	TRACEENTER5("thread = %p", thread);
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,0)
+	prio = 1;
+#else
+	if (rt_task((task_t *)thread))
+		prio = LOW_REALTIME_PRIORITY;
+	else
+		prio = MAXIMUM_PRIORITY;
+#endif
+	TRACEEXIT5(return prio);
+}
+
+STDCALL ULONGLONG WRAP_EXPORT(KeQueryInterruptTime)
+	(void)
+{
+	TRACEEXIT4(return jiffies);
+}
+
+STDCALL ULONG WRAP_EXPORT(KeQueryTimeIncrement)
+	(void)
+{
+	TRACEEXIT5(return TICKSPERSEC/HZ);
+}
+
+STDCALL LARGE_INTEGER WRAP_EXPORT(KeQueryPerformanceCounter)
+	(LARGE_INTEGER *counter)
+{
+	unsigned long res;
+
+	res = jiffies;
+	if (counter)
+		*counter = res;
+	return res;
+}
+
+STDCALL void WRAP_EXPORT(KeInitializeMutex)
+	(struct kmutex *mutex, BOOLEAN wait)
+{
+	INIT_LIST_HEAD(&mutex->dispatch_header.wait_list_head);
+	mutex->abandoned = FALSE;
+	mutex->apc_disable = 1;
+	mutex->dispatch_header.signal_state = TRUE;
+	mutex->dispatch_header.type = SynchronizationEvent;
+	mutex->dispatch_header.size = NT_OBJ_MUTEX;
+	mutex->u.count = 0;
+	mutex->owner_thread = NULL;
+	return;
+}
+
+STDCALL LONG WRAP_EXPORT(KeReleaseMutex)
+	(struct kmutex *mutex, BOOLEAN wait)
+{
+	spin_lock(&dispatch_event_lock);
+	mutex->u.count--;
+	if (mutex->u.count == 0) {
+		mutex->owner_thread = NULL;
+		spin_unlock(&dispatch_event_lock);
+		KeSetEvent((struct kevent *)&mutex->dispatch_header, 0, 0);
+	} else
+		spin_unlock(&dispatch_event_lock);
+	return mutex->u.count;
+}
+
+STDCALL void * WRAP_EXPORT(KeGetCurrentThread)
+	(void)
+{
+	void *thread = get_current();
+
+	TRACEENTER2("current thread = %p", thread);
+	return thread;
+}
+
+STDCALL KPRIORITY WRAP_EXPORT(KeSetPriorityThread)
+	(void *thread, KPRIORITY priority)
+{
+	KPRIORITY old_prio;
+
+	TRACEENTER2("thread = %p, priority = %u", thread, priority);
+
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,0)
+	/* FIXME: is there a way to set kernel thread prio on 2.4? */
+	old_prio = LOW_PRIORITY;
+#else
+	if (rt_task((task_t *)thread))
+		old_prio = LOW_REALTIME_PRIORITY;
+	else
+		old_prio = MAXIMUM_PRIORITY;
+	if (priority == LOW_REALTIME_PRIORITY)
+		set_user_nice((task_t *)thread, -20);
+	else
+		set_user_nice((task_t *)thread, 10);
+#endif
+	return old_prio;
+}
+
+STDCALL NTSTATUS WRAP_EXPORT(IoGetDeviceProperty)
+	(struct device_object *dev_obj,
+	 enum device_registry_property dev_property,
+	 ULONG buffer_len, void *buffer, ULONG *result_len)
+{
+	struct ansi_string ansi;
+	struct unicode_string unicode;
+	struct ndis_handle *handle;
+	char buf[32];
+
+	handle = (struct ndis_handle *)dev_obj->handle;
+
+	TRACEENTER1("dev_obj = %p, dev_property = %d, buffer_len = %u, "
+		"buffer = %p, result_len = %p", dev_obj, dev_property,
+		buffer_len, buffer, result_len);
+
+	switch (dev_property) {
+	case DevicePropertyDeviceDescription:
+		if (buffer_len > 0 && buffer) {
+			*result_len = 4;
+			memset(buffer, 0xFF, *result_len);
+			TRACEEXIT1(return STATUS_SUCCESS);
+		} else {
+			*result_len = 4;
+			TRACEEXIT1(return STATUS_SUCCESS);
+		}
+		break;
+
+	case DevicePropertyFriendlyName:
+		if (buffer_len > 0 && buffer) {
+			ansi.len = snprintf(buf, sizeof(buf), "%d",
+					    handle->dev.usb->devnum);
+			ansi.buf = buf;
+			ansi.len = strlen(ansi.buf);
+			if (ansi.len <= 0) {
+				*result_len = 0;
+				TRACEEXIT1(return STATUS_BUFFER_TOO_SMALL);
+			}
+			ansi.buflen = ansi.len;
+			unicode.buf = buffer;
+			unicode.buflen = buffer_len;
+			DBGTRACE1("unicode.buflen = %d, ansi.len = %d",
+					unicode.buflen, ansi.len);
+			if (RtlAnsiStringToUnicodeString(&unicode, &ansi, 0)) {
+				*result_len = 0;
+				TRACEEXIT1(return STATUS_BUFFER_TOO_SMALL);
+			} else {
+				*result_len = unicode.len;
+				TRACEEXIT1(return STATUS_SUCCESS);
+			}
+		} else {
+			ansi.len = snprintf(buf, sizeof(buf), "%d",
+					    handle->dev.usb->devnum);
+			*result_len = 2 * (ansi.len + 1);
+			TRACEEXIT1(return STATUS_BUFFER_TOO_SMALL);
+		}
+		break;
+
+	case DevicePropertyDriverKeyName:
+//		ansi.buf = handle->driver->name;
+		ansi.buf = buf;
+		ansi.len = strlen(ansi.buf);
+		ansi.buflen = ansi.len;
+		if (buffer_len > 0 && buffer) {
+			unicode.buf = buffer;
+			unicode.buflen = buffer_len;
+			if (RtlAnsiStringToUnicodeString(&unicode, &ansi, 0)) {
+				*result_len = 0;
+				TRACEEXIT1(return STATUS_BUFFER_TOO_SMALL);
+			} else {
+				*result_len = unicode.len;
+				TRACEEXIT1(return STATUS_SUCCESS);
+			}
+		} else {
+				*result_len = 2 * (strlen(buf) + 1);
+				TRACEEXIT1(return STATUS_SUCCESS);
+		}
+		break;
+	default:
+		TRACEEXIT1(return STATUS_INVALID_PARAMETER_2);
+	}
+}
+
+STDCALL void WRAP_EXPORT(IoBuildSynchronousFsdRequest)
 	(void)
 {
 	UNIMPL();
@@ -775,6 +859,51 @@ STDCALL void WRAP_EXPORT(IoInitializeIrp)
 		IRP_CUR_STACK_LOC(irp) =
 			((struct io_stack_location *)(irp+1)) + stack_size;
 	}
+
+	USBTRACEEXIT(return);
+}
+
+STDCALL void WRAP_EXPORT(IoReuseIrp)
+	(struct irp *irp, NTSTATUS status)
+{
+	USBTRACEENTER("irp = %p, status = %d", irp, status);
+	if (irp)
+		irp->io_status.status = status;
+	USBTRACEEXIT(return);
+}
+
+STDCALL BOOLEAN WRAP_EXPORT(IoCancelIrp)
+	(struct irp *irp)
+{
+	struct io_stack_location *stack = IRP_CUR_STACK_LOC(irp) - 1;
+	void (*cancel_routine)(struct device_object *, struct irp *) STDCALL;
+	KIRQL irql;
+
+	USBTRACEENTER("irp = %p", irp);
+
+	irql = KeGetCurrentIrql();
+	spin_lock(&irp_cancel_lock);
+	cancel_routine = xchg(&irp->cancel_routine, NULL);
+
+	if (cancel_routine) {
+		irp->cancel_irql = irql;
+		irp->pending_returned = 1;
+		irp->cancel = 1;
+		spin_unlock(&irp_cancel_lock);
+		cancel_routine(stack->dev_obj, irp);
+		USBTRACEEXIT(return 1);
+	} else {
+		spin_unlock(&irp_cancel_lock);
+		USBTRACEEXIT(return 0);
+	}
+}
+
+STDCALL void WRAP_EXPORT(IoFreeIrp)
+	(struct irp *irp)
+{
+	USBTRACEENTER("irp = %p", irp);
+
+	kfree(irp);
 
 	USBTRACEEXIT(return);
 }
@@ -856,42 +985,6 @@ _FASTCALL void WRAP_EXPORT(IofCompleteRequest)
 	/* To-Do: what about IRP_DEALLOCATE_BUFFER...? */
 	USBTRACE("freeing irp %p", irp);
 	kfree(irp);
-	USBTRACEEXIT(return);
-}
-
-STDCALL BOOLEAN WRAP_EXPORT(IoCancelIrp)
-	(struct irp *irp)
-{
-	struct io_stack_location *stack = IRP_CUR_STACK_LOC(irp) - 1;
-	void (*cancel_routine)(struct device_object *, struct irp *) STDCALL;
-	KIRQL irql;
-
-	USBTRACEENTER("irp = %p", irp);
-
-	irql = KeGetCurrentIrql();
-	spin_lock(&irp_cancel_lock);
-	cancel_routine = xchg(&irp->cancel_routine, NULL);
-
-	if (cancel_routine) {
-		irp->cancel_irql = irql;
-		irp->pending_returned = 1;
-		irp->cancel = 1;
-		spin_unlock(&irp_cancel_lock);
-		cancel_routine(stack->dev_obj, irp);
-		USBTRACEEXIT(return 1);
-	} else {
-		spin_unlock(&irp_cancel_lock);
-		USBTRACEEXIT(return 0);
-	}
-}
-
-STDCALL void WRAP_EXPORT(IoFreeIrp)
-	(struct irp *irp)
-{
-	USBTRACEENTER("irp = %p", irp);
-
-	kfree(irp);
-
 	USBTRACEEXIT(return);
 }
 
@@ -1036,241 +1129,11 @@ STDCALL NTSTATUS WRAP_EXPORT(PsTerminateSystemThread)
 	return 0;
 }
 
-STDCALL void * WRAP_EXPORT(KeGetCurrentThread)
-	(void)
-{
-	void *thread = get_current();
-
-	TRACEENTER2("current thread = %p", thread);
-	return thread;
-}
-
-STDCALL KPRIORITY WRAP_EXPORT(KeSetPriorityThread)
-	(void *thread, KPRIORITY priority)
-{
-	KPRIORITY old_prio;
-
-	TRACEENTER2("thread = %p, priority = %u", thread, priority);
-
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,0)
-	/* FIXME: is there a way to set kernel thread prio on 2.4? */
-	old_prio = LOW_PRIORITY;
-#else
-	if (rt_task((task_t *)thread))
-		old_prio = LOW_REALTIME_PRIORITY;
-	else
-		old_prio = MAXIMUM_PRIORITY;
-	if (priority == LOW_REALTIME_PRIORITY)
-		set_user_nice((task_t *)thread, -20);
-	else
-		set_user_nice((task_t *)thread, 10);
-#endif
-	return old_prio;
-}
-
-STDCALL NTSTATUS WRAP_EXPORT(KeDelayExecutionThread)
-	(KPROCESSOR_MODE wait_mode, BOOLEAN alertable,
-	 LARGE_INTEGER *interval)
-{
-	int res;
-	long timeout;
-	long t = *interval;
-
-	TRACEENTER3("thread: %p", get_current());
-	if (wait_mode != 0)
-		ERROR("illegal wait_mode %d", wait_mode);
-
-	if (t < 0)
-		timeout = HZ * (-t) / 10000000;
-	else
-		timeout = HZ * t / 10000000 - jiffies;
-
-	if (timeout <= 0)
-		TRACEEXIT3(return STATUS_SUCCESS);
-
-	if (alertable)
-		set_current_state(TASK_INTERRUPTIBLE);
-	else
-		set_current_state(TASK_UNINTERRUPTIBLE);
-
-	res = schedule_timeout(timeout);
-
-	if (res > 0)
-		TRACEEXIT3(return STATUS_ALERTED);
-	else
-		TRACEEXIT3(return STATUS_SUCCESS);
-}
-
-STDCALL KPRIORITY WRAP_EXPORT(KeQueryPriorityThread)
-	(void *thread)
-{
-	KPRIORITY prio;
-
-	TRACEENTER5("thread = %p", thread);
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,0)
-	prio = 1;
-#else
-	if (rt_task((task_t *)thread))
-		prio = LOW_REALTIME_PRIORITY;
-	else
-		prio = MAXIMUM_PRIORITY;
-#endif
-	TRACEEXIT5(return prio);
-}
-
-STDCALL ULONGLONG WRAP_EXPORT(KeQueryInterruptTime)
-	(void)
-{
-	TRACEEXIT4(return jiffies);
-}
-
-STDCALL ULONG WRAP_EXPORT(KeQueryTimeIncrement)
-	(void)
-{
-	TRACEEXIT5(return 10000000/HZ);
-}
-
 STDCALL void WRAP_EXPORT(PoStartNextPowerIrp)
 	(struct irp *irp)
 {
 	TRACEENTER5("irp = %p", irp);
 	TRACEEXIT5(return);
-}
-
-_FASTCALL LONG WRAP_EXPORT(InterlockedDecrement)
-	(FASTCALL_DECL_1(LONG volatile *val))
-{
-	LONG x;
-
-	TRACEENTER4("%s", "");
-	kspin_lock(&ntoskrnl_lock, PASSIVE_LEVEL);
-	(*val)--;
-	x = *val;
-	kspin_unlock(&ntoskrnl_lock);
-	TRACEEXIT4(return x);
-}
-
-_FASTCALL LONG WRAP_EXPORT(InterlockedIncrement)
-	(FASTCALL_DECL_1(LONG volatile *val))
-{
-	LONG x;
-
-	TRACEENTER4("%s", "");
-	kspin_lock(&ntoskrnl_lock, PASSIVE_LEVEL);
-	(*val)++;
-	x = *val;
-	kspin_unlock(&ntoskrnl_lock);
-	TRACEEXIT4(return x);
-}
-
-_FASTCALL LONG WRAP_EXPORT(InterlockedExchange)
-	(FASTCALL_DECL_2(LONG volatile *target, LONG val))
-{
-	LONG x;
-
-	TRACEENTER4("%s", "");
-	kspin_lock(&ntoskrnl_lock, PASSIVE_LEVEL);
-	x = *target;
-	*target = val;
-	kspin_unlock(&ntoskrnl_lock);
-	TRACEEXIT4(return x);
-}
-
-_FASTCALL LONG WRAP_EXPORT(InterlockedCompareExchange)
-	(FASTCALL_DECL_3(LONG volatile *dest, LONG xchg, LONG comperand))
-{
-	LONG x;
-
-	TRACEENTER4("%s", "");
-	kspin_lock(&ntoskrnl_lock, PASSIVE_LEVEL);
-	x = *dest;
-	if (*dest == comperand)
-		*dest = xchg;
-	kspin_unlock(&ntoskrnl_lock);
-	TRACEEXIT4(return x);
-}
-
-STDCALL NTSTATUS WRAP_EXPORT(IoGetDeviceProperty)
-	(struct device_object *dev_obj,
-	 enum device_registry_property dev_property,
-	 ULONG buffer_len, void *buffer, ULONG *result_len)
-{
-	struct ansi_string ansi;
-	struct unicode_string unicode;
-	struct ndis_handle *handle;
-	char buf[32];
-
-	handle = (struct ndis_handle *)dev_obj->handle;
-
-	TRACEENTER1("dev_obj = %p, dev_property = %d, buffer_len = %u, "
-		"buffer = %p, result_len = %p", dev_obj, dev_property,
-		buffer_len, buffer, result_len);
-
-	switch (dev_property) {
-	case DevicePropertyDeviceDescription:
-		if (buffer_len > 0 && buffer) {
-			*result_len = 4;
-			memset(buffer, 0xFF, *result_len);
-			TRACEEXIT1(return STATUS_SUCCESS);
-		} else {
-			*result_len = 4;
-			TRACEEXIT1(return STATUS_SUCCESS);
-		}
-		break;
-
-	case DevicePropertyFriendlyName:
-		if (buffer_len > 0 && buffer) {
-			ansi.len = snprintf(buf, sizeof(buf), "%d",
-					    handle->dev.usb->devnum);
-			ansi.buf = buf;
-			ansi.len = strlen(ansi.buf);
-			if (ansi.len <= 0) {
-				*result_len = 0;
-				TRACEEXIT1(return STATUS_BUFFER_TOO_SMALL);
-			}
-			ansi.buflen = ansi.len;
-			unicode.buf = buffer;
-			unicode.buflen = buffer_len;
-			DBGTRACE1("unicode.buflen = %d, ansi.len = %d",
-					unicode.buflen, ansi.len);
-			if (RtlAnsiStringToUnicodeString(&unicode, &ansi, 0)) {
-				*result_len = 0;
-				TRACEEXIT1(return STATUS_BUFFER_TOO_SMALL);
-			} else {
-				*result_len = unicode.len;
-				TRACEEXIT1(return STATUS_SUCCESS);
-			}
-		} else {
-			ansi.len = snprintf(buf, sizeof(buf), "%d",
-					    handle->dev.usb->devnum);
-			*result_len = 2 * (ansi.len + 1);
-			TRACEEXIT1(return STATUS_BUFFER_TOO_SMALL);
-		}
-		break;
-
-	case DevicePropertyDriverKeyName:
-//		ansi.buf = handle->driver->name;
-		ansi.buf = buf;
-		ansi.len = strlen(ansi.buf);
-		ansi.buflen = ansi.len;
-		if (buffer_len > 0 && buffer) {
-			unicode.buf = buffer;
-			unicode.buflen = buffer_len;
-			if (RtlAnsiStringToUnicodeString(&unicode, &ansi, 0)) {
-				*result_len = 0;
-				TRACEEXIT1(return STATUS_BUFFER_TOO_SMALL);
-			} else {
-				*result_len = unicode.len;
-				TRACEEXIT1(return STATUS_SUCCESS);
-			}
-		} else {
-				*result_len = 2 * (strlen(buf) + 1);
-				TRACEEXIT1(return STATUS_SUCCESS);
-		}
-		break;
-	default:
-		TRACEEXIT1(return STATUS_INVALID_PARAMETER_2);
-	}
 }
 
 STDCALL ULONG WRAP_EXPORT(MmSizeOfMdl)
@@ -1345,34 +1208,6 @@ STDCALL void WRAP_EXPORT(MmUnmapLockedPages)
 	return;
 }
 
-STDCALL void WRAP_EXPORT(KeInitializeMutex)
-	(struct kmutex *mutex, BOOLEAN wait)
-{
-	INIT_LIST_HEAD(&mutex->dispatch_header.wait_list_head);
-	mutex->abandoned = FALSE;
-	mutex->apc_disable = 1;
-	mutex->dispatch_header.signal_state = TRUE;
-	mutex->dispatch_header.type = SynchronizationEvent;
-	mutex->dispatch_header.size = NT_OBJ_MUTEX;
-	mutex->u.count = 0;
-	mutex->owner_thread = NULL;
-	return;
-}
-
-STDCALL LONG WRAP_EXPORT(KeReleaseMutex)
-	(struct kmutex *mutex, BOOLEAN wait)
-{
-	spin_lock(&dispatch_event_lock);
-	mutex->u.count--;
-	if (mutex->u.count == 0) {
-		mutex->owner_thread = NULL;
-		spin_unlock(&dispatch_event_lock);
-		KeSetEvent((struct kevent *)&mutex->dispatch_header, 0, 0);
-	} else
-		spin_unlock(&dispatch_event_lock);
-	return mutex->u.count;
-}
-
 _FASTCALL void WRAP_EXPORT(ObfDereferenceObject)
 	(FASTCALL_DECL_1(void *object))
 {
@@ -1413,17 +1248,6 @@ STDCALL NTSTATUS WRAP_EXPORT(ZwClose)
 	TRACEEXIT3(return STATUS_SUCCESS);
 }
 
-STDCALL LARGE_INTEGER WRAP_EXPORT(KeQueryPerformanceCounter)
-	(LARGE_INTEGER *counter)
-{
-	unsigned long res;
-
-	res = jiffies;
-	if (counter)
-		*counter = res;
-	return res;
-}
-
 NOREGPARM NTSTATUS WRAP_EXPORT(WmiTraceMessage)
 	(void *tracehandle, ULONG message_flags,
 	 void *message_guid, USHORT message_no, ...)
@@ -1453,6 +1277,29 @@ STDCALL void WRAP_EXPORT(KeBugCheckEx)
 {
 	UNIMPL();
 	return;
+}
+
+/* this function can't be STDCALL as it takes variable number of args */
+NOREGPARM ULONG WRAP_EXPORT(DbgPrint)
+	(char *format, ...)
+{
+#ifdef DEBUG
+	va_list args;
+	static char buf[1024];
+
+	va_start(args, format);
+	vsnprintf(buf, sizeof(buf), format, args);
+	printk("DbgPrint: ");
+	printk(buf);
+	va_end(args);
+#endif
+	return STATUS_SUCCESS;
+}
+
+STDCALL void WRAP_EXPORT(DbgBreakPoint)
+	(void)
+{
+	UNIMPL();
 }
 
 STDCALL void WRAP_EXPORT(IoReleaseCancelSpinLock)(void){UNIMPL();}
