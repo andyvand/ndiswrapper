@@ -833,7 +833,7 @@ static int ndis_suspend(struct pci_dev *pdev, u32 state)
 {
 	struct net_device *dev;
 	struct ndis_handle *handle;
-	int res;
+	int res, pm_state;
 
 	if (!pdev)
 		return -1;
@@ -845,21 +845,24 @@ static int ndis_suspend(struct pci_dev *pdev, u32 state)
 	if (handle->pm_state != NDIS_PM_STATE_D0)
 		return 0;
 
-	res = query_int(handle, NDIS_OID_PNP_QUERY_POWER, &handle->pm_state);
+	DBGTRACE2("%s: detaching device", dev->name);
+	netif_device_detach(dev);
+
+	if (state == 1)
+		pm_state = NDIS_PM_STATE_D1;
+	else if (state == 2)
+		pm_state = NDIS_PM_STATE_D2;
+	else
+		pm_state = NDIS_PM_STATE_D3;
+
+	handle->pm_state = pm_state;
+
+	res = query_int(handle, NDIS_OID_PNP_QUERY_POWER, &pm_state);
 	DBGTRACE2("%s: query power to state %d returns %d",
 			 dev->name, handle->pm_state, res);
 	if (res)
 		WARNING("No pnp capabilities for pm (%08X)\n", res);
 
-	DBGTRACE2("%s: detaching device", dev->name);
-	netif_device_detach(dev);
-
-	if (state == 1)
-		handle->pm_state = NDIS_PM_STATE_D1;
-	else if (state == 2)
-		handle->pm_state = NDIS_PM_STATE_D2;
-	else
-		handle->pm_state = NDIS_PM_STATE_D3;
 	res = set_int(handle, NDIS_OID_PNP_SET_POWER, handle->pm_state);
 	pci_save_state(pdev, handle->pci_state);
 	pci_set_power_state(pdev, state);
@@ -911,11 +914,12 @@ static int ndis_resume(struct pci_dev *pdev)
 	doreset(handle);
 	set_int(handle, NDIS_OID_BSSID_LIST_SCAN, 0);
 
+	set_bit(SET_ESSID, &handle->wrapper_work);
+	schedule_work(&handle->wrapper_worker);
+
 	DBGTRACE2("%s: attaching device\n", dev->name);
 	netif_device_attach(dev);
 
-	set_bit(SET_ESSID, &handle->wrapper_work);
-	schedule_work(&handle->wrapper_worker);
 	DBGTRACE2("%s: device resumed!", dev->name);
 	return 0;
 }
