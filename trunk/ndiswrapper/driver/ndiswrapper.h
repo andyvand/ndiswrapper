@@ -212,6 +212,10 @@ do {									\
 #define NW_MODULE_PARM_STRING(name, perm) MODULE_PARM(name, "s")
 #endif
 
+#if LINUX_VERSION_CODE > KERNEL_VERSION(2,6,9)
+#define task_nice(task) ((task)->static_prio - MAX_RT_PRIO - 20)
+#endif
+
 #define KMALLOC_THRESHOLD 131072
 
 /* TICK is 100ns */

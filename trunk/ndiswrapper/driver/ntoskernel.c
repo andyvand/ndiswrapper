@@ -783,7 +783,7 @@ STDCALL static long WRAP_EXPORT(KeSetPriorityThread)
 	/* FIXME: is there a way to set kernel thread prio on 2.4? */
 	old_prio = 1;
 #else
-	old_prio = 32 - (task_nice((task_t *)thread) + 20);
+	old_prio = 32 - task_nice((task_t *)thread) + 20;
 	set_user_nice((task_t *)thread, (32 - priority) - 20);
 #endif
 
@@ -827,7 +827,7 @@ STDCALL static long WRAP_EXPORT(KeQueryPriorityThread)
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,0)
 	prio = 1;
 #else
-	prio = 32 - (task_nice((task_t *)thread) + 20);
+	prio = 32 - task_nice((task_t *)thread) + 20;
 #endif
 	TRACEEXIT5(return prio);
 }
