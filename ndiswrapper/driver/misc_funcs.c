@@ -821,7 +821,8 @@ void dump_bytes(const char *where, const u8 *ip)
 	memset(code, 0, sizeof(code));
 	for (i = j = 0; i < 16; i++, j += 3) {
 		if (j+3 > sizeof(code))
-			ERROR("not enough space: %d > %d", j+3, sizeof(code));
+			ERROR("not enough space: %u > %u",
+			      j+3, (unsigned int)sizeof(code));
 		else
 			sprintf(&code[j], "%02x ", ip[i]);
 	}

@@ -24,43 +24,43 @@
 #include "ntoskernel.h"
 
 STDCALL static void WRAP_EXPORT(WRITE_PORT_ULONG)
-	(ULONG *port, ULONG value)
+	(ULONG_PTR port, ULONG value)
 {
-	outl(value, (unsigned int)port);
+	outl(value, port);
 }
 
 STDCALL static ULONG WRAP_EXPORT(READ_PORT_ULONG)
-	(ULONG *port)
+	(ULONG_PTR port)
 {
 	return inl((unsigned int)port);
 }
 
 STDCALL static void WRAP_EXPORT(WRITE_PORT_USHORT)
-	(USHORT *port, USHORT value)
+	(ULONG_PTR port, USHORT value)
 {
 	outw(value, (unsigned int)port);
 }
 
 STDCALL static USHORT WRAP_EXPORT(READ_PORT_USHORT)
-	(USHORT *port)
+	(ULONG_PTR port)
 {
 	return inw((unsigned int)port);
 }
 
 STDCALL static void WRAP_EXPORT(WRITE_PORT_UCHAR)
-	(UCHAR *port, UCHAR value)
+	(ULONG_PTR port, UCHAR value)
 {
 	outb(value, (unsigned int)port);
 }
 
 STDCALL static UCHAR WRAP_EXPORT(READ_PORT_UCHAR)
-	(UCHAR *port)
+	(ULONG_PTR port)
 {
 	return inb((unsigned int)port);
 }
 
 STDCALL static void WRAP_EXPORT(WRITE_PORT_BUFFER_USHORT)
-	(USHORT *port, USHORT *buf, ULONG count)
+	(ULONG_PTR port, USHORT *buf, ULONG count)
 {
 	ULONG i;
 	for (i = 0 ; i < count ; i++)
@@ -68,7 +68,7 @@ STDCALL static void WRAP_EXPORT(WRITE_PORT_BUFFER_USHORT)
 }
 
 STDCALL static void WRAP_EXPORT(READ_PORT_BUFFER_USHORT)
-	(USHORT *port, USHORT *buf, ULONG count)
+	(ULONG_PTR port, USHORT *buf, ULONG count)
 {
 	ULONG i;
 	for (i = 0 ; i < count; i++)

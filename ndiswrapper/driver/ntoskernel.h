@@ -40,7 +40,7 @@
 #ifdef CONFIG_X86_64
 typedef uint64_t ULONG_PTR;
 #define STDCALL
-#define _FASTCALL __attribute__((regparm (4)))
+#define _FASTCALL
 #define FASTCALL_DECL_1(decl1) decl1
 #define FASTCALL_DECL_2(decl1,decl2) decl1, decl2
 #define FASTCALL_DECL_3(decl1,decl2,decl3) decl1, decl2, decl3
@@ -830,9 +830,9 @@ static inline void wrap_spin_lock_init(struct wrap_spinlock *lock)
 {
 	if (sizeof(lock->lock) > sizeof(lock->lock.ntoslock)) {
 		ERROR("spinlock used is not compatible"
-		      " with KSPIN_LOCK: %d, %d",
-		      sizeof(lock->lock),
-		      sizeof(lock->lock.ntoslock));
+		      " with KSPIN_LOCK: %u, %u",
+		      (unsigned int)sizeof(lock->lock),
+		      (unsigned int)sizeof(lock->lock.ntoslock));
 	}
 	spin_lock_init(&(lock->lock.spinlock));
 	lock->use_bh = 0;

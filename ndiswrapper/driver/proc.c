@@ -65,7 +65,8 @@ static int procfs_read_stats(char *page, char **start, off_t off,
 	}
 
 	if (p - page > count) {
-		ERROR("wrote %u bytes (limit is %u)\n", p - page, count);
+		ERROR("wrote %lu bytes (limit is %u)\n",
+		      (unsigned long)(p - page), count);
 		*eof = 1;
 	}
 
@@ -129,7 +130,8 @@ static int procfs_read_encr(char *page, char **start, off_t off,
 		     "adhoc" : (op_mode == NDIS_MODE_INFRA) ?
 		     "managed" : "auto");
 	if (p - page > count) {
-		WARNING("wrote %u bytes (limit is %u)", p - page, count);
+		WARNING("wrote %lu bytes (limit is %u)",
+			(unsigned long)(p - page), count);
 		*eof = 1;
 	}
 
@@ -215,7 +217,8 @@ static int procfs_read_hw(char *page, char **start, off_t off,
 			     antenna);
 
 	if (p - page > count) {
-		WARNING("wrote %u bytes (limit is %u)", p - page, count);
+		WARNING("wrote %lu bytes (limit is %u)",
+			(unsigned long)(p - page), count);
 		*eof = 1;
 	}
 

@@ -1390,9 +1390,9 @@ STDCALL static NDIS_STATUS WRAP_EXPORT(NdisMRegisterInterrupt)
 	ndis_irq->shared = shared;
 	if (sizeof(ndis_irq->lock) > sizeof(ndis_irq->lock.ntoslock)) {
 		ERROR("spinlock used by ndis_irq is not compatible"
-		      " with KSPIN_LOCK: %d, %d",
-		      sizeof(ndis_irq->lock),
-		      sizeof(ndis_irq->lock.ntoslock));
+		      " with KSPIN_LOCK: %u, %u",
+		      (unsigned int)sizeof(ndis_irq->lock),
+		      (unsigned int)sizeof(ndis_irq->lock.ntoslock));
 		TRACEEXIT1(return NDIS_STATUS_RESOURCES);
 	}
 	spin_lock_init(&ndis_irq->lock.spinlock);
@@ -1845,8 +1845,10 @@ STDCALL void WRAP_EXPORT(NdisGetCurrentSystemTime)
 STDCALL static NDIS_STATUS WRAP_EXPORT(NdisMRegisterIoPortRange)
 	(void **virt, struct ndis_handle *handle, UINT start, UINT len)
 {
-	TRACEENTER3("%08x %08x", start, len);
-	*virt = (void *)start;
+	ULONG_PTR p;
+	TRACEENTER3("%p %u", start, len);
+	p = start;
+	*virt = (void *)p;
 	return NDIS_STATUS_SUCCESS;
 }
 
