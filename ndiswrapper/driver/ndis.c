@@ -908,6 +908,7 @@ STDCALL void NdisMIndicateReceivePacket(struct ndis_handle *handle, struct ndis_
 			netif_rx(skb);
 		}
 		handle->driver->miniport_char.return_packet(handle->adapter_ctx,  packet);
+		handle->stats.rx_bytes += packet->len;
 	}
 }
 
@@ -918,6 +919,7 @@ STDCALL void NdisMIndicateReceivePacket(struct ndis_handle *handle, struct ndis_
  */
 STDCALL void NdisMSendComplete(struct ndis_handle *handle, struct ndis_packet *packet, unsigned int status)
 {
+	handle->stats.tx_bytes += packet->len;
 	ndis_sendpacket_done(handle, packet);
 }
 
