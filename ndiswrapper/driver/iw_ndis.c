@@ -387,7 +387,7 @@ static int iw_set_bitrate(struct net_device *dev, struct iw_request_info *info,
 {
 	struct ndis_handle *handle = dev->priv; 
 	int i, res, written, needed;
-	char rates[NDIS_MAX_RATES];
+	char rates[NDIS_MAX_RATES_EX];
 
 	if (wrqu->bitrate.fixed == 0)
 		TRACEEXIT1(return 0);
@@ -400,14 +400,15 @@ static int iw_set_bitrate(struct net_device *dev, struct iw_request_info *info,
 	if (res == NDIS_STATUS_INVALID_DATA)
 		TRACEEXIT1(return -EINVAL);
 		
-	for (i = 0 ; i < NDIS_MAX_RATES && rates[i] ; i++)
-		if ((!(rates[i] & 0x80)) &&
-		    ((rates[i] & 0x7f) * 500000 > wrqu->bitrate.value))
-		{
+	for (i = 0 ; i < NDIS_MAX_RATES_EX ; i++) {
+		if (rates[i] & 0x80)
+			continue;
+		if ((rates[i] & 0x7f) * 500000 > wrqu->bitrate.value) {
 			DBGTRACE1("setting rate %d to 0",
 				  (rates[i] & 0x7f) * 500000);
 			rates[i] = 0;
 		}
+	}
 
 	res = miniport_query_info(handle, NDIS_OID_DESIRED_RATES,
 				  (char *)&rates, sizeof(rates),
@@ -769,8 +770,8 @@ static char *ndis_translate_scan(struct net_device *dev, char *event,
 {
 	struct iw_event iwe;
 	char *current_val;
-	int i;
-	char buf[MAX_WPA_IE_LEN * 2 + 30];
+	int i, nrates;
+	unsigned char buf[MAX_WPA_IE_LEN * 2 + 30];
 
 	TRACEENTER1("%s", "");
 	/* add mac address */
@@ -812,8 +813,7 @@ static char *ndis_translate_scan(struct net_device *dev, char *event,
 	memset(&iwe, 0, sizeof(iwe));
 	iwe.cmd = SIOCGIWFREQ;
 	iwe.u.freq.m = item->config.ds_config;
-	if (item->config.ds_config > 1000000)
-	{
+	if (item->config.ds_config > 1000000) {
 		iwe.u.freq.m = item->config.ds_config / 10;
 		iwe.u.freq.e = 1;
 	}
@@ -848,13 +848,18 @@ static char *ndis_translate_scan(struct net_device *dev, char *event,
 	memset(&iwe, 0, sizeof(iwe));
 	current_val = event + IW_EV_LCP_LEN;
 	iwe.cmd = SIOCGIWRATE;
-	for (i = 0 ; i < NDIS_MAX_RATES ; i++)
-	{
-		if (item->rates[i] == 0)
-			break;
-		iwe.u.bitrate.value = ((item->rates[i] & 0x7f) * 500000);
-		current_val = iwe_stream_add_value(event, current_val, end_buf,
-						   &iwe, IW_EV_PARAM_LEN);
+	if (item->length > sizeof(struct ssid_item))
+		nrates = NDIS_MAX_RATES_EX;
+	else
+		nrates = NDIS_MAX_RATES;
+	for (i = 0 ; i < nrates ; i++) {
+		if (item->rates[i] & 0x7f) {
+			iwe.u.bitrate.value = ((item->rates[i] & 0x7f) *
+					       500000);
+			current_val = iwe_stream_add_value(event, current_val,
+							   end_buf, &iwe,
+							   IW_EV_PARAM_LEN);
+		}
 	}
 
 	if ((current_val - event) > IW_EV_LCP_LEN)
@@ -866,34 +871,32 @@ static char *ndis_translate_scan(struct net_device *dev, char *event,
 	iwe.u.data.length = strlen(buf);
 	event = iwe_stream_add_point(event, end_buf, &iwe, buf);
 	
-	if (item->length > ((char *)&item->rates[NDIS_MAX_RATES] -
-			    (char *)&item->length) &&
-	    item->ie_length >= (sizeof(struct fixed_ies) + 2))
-	{
-		struct fixed_ies *fixed_ies = (struct fixed_ies *)item->ies;
-		unsigned char *iep = (unsigned char *)(fixed_ies + 1);
-		int iel = item->ie_length - sizeof(*fixed_ies);
-		
-		DBGTRACE2("%s: adding atim", __FUNCTION__);
-		memset(&iwe, 0, sizeof(iwe));
-		iwe.cmd = IWEVCUSTOM;
-		sprintf(buf, "atim=%u", item->config.atim_window);
-		iwe.u.data.length = strlen(buf);
-		event = iwe_stream_add_point(event, end_buf, &iwe, buf);
-		
-		while(iel > 0) {
-			if(iep[0] == WLAN_EID_GENERIC && iep[1] >= 4 &&
-			   iep[2] == 0x00 && iep[3] == 0x50 &&
-			   iep[4] == 0xf2 && iep[5] == 1)
-			{
-				char *p = buf;
-				
-				i = iep[1] + 2;
-				if(i < iel)
-					iel = i;
-				
+	DBGTRACE2("%s: adding atim", __FUNCTION__);
+	memset(&iwe, 0, sizeof(iwe));
+	iwe.cmd = IWEVCUSTOM;
+	sprintf(buf, "atim=%u", item->config.atim_window);
+	iwe.u.data.length = strlen(buf);
+	event = iwe_stream_add_point(event, end_buf, &iwe, buf);
+
+	if (item->length > sizeof(struct ssid_item)) {
+		unsigned char *iep = (unsigned char *)item->ies +
+			sizeof(struct fixed_ies);
+		unsigned char *end = iep + item->ie_length;
+
+		while (iep + 1 < end && iep + 2 + iep[1] <= end) {
+			unsigned char ielen = 2 + iep[1];
+
+			if (ielen > SSID_MAX_WPA_IE_LEN) {
+				iep += ielen;
+				continue;
+			}
+
+			if (iep[0] == WLAN_EID_GENERIC && iep[1] >= 4 &&
+			    memcmp(iep + 2, "\x00\x50\xf2\x01", 4) == 0) {
+				unsigned char *p = buf;
+
 				p += sprintf(p, "wpa_ie=");
-				for (i = 0; i < iel; i++)
+				for (i = 0; i < ielen; i++)
 					p += sprintf(p, "%02x", iep[i]);
 				
 				DBGTRACE2("adding wpa_ie :%d", strlen(buf));
@@ -902,17 +905,9 @@ static char *ndis_translate_scan(struct net_device *dev, char *event,
 				iwe.u.data.length = strlen(buf);
 				event = iwe_stream_add_point(event, end_buf,
 							     &iwe, buf);
-			}
-			else if (iep[0] == WLAN_EID_RSN)
-			{
-				char *p = buf;
-
-				i = iep[1] + 2;
-				if(i < iel)
-					iel = i;
-		
-				p += sprintf(p, "rsn_ie=");
-				for (i = 0; i < iel; i++)
+			} else if (iep[0] == WLAN_EID_RSN) {
+				unsigned char *p = buf;
+				for (i = 0; i < ielen; i++)
 					p += sprintf(p, "%02x", iep[i]);
 
 				DBGTRACE2("adding rsn_ie :%d\n", strlen(buf));
@@ -921,13 +916,9 @@ static char *ndis_translate_scan(struct net_device *dev, char *event,
 				iwe.u.data.length = strlen(buf);
 				event = iwe_stream_add_point(event, end_buf,
 							     &iwe, buf);
-				break;
 			}
 
-			iel -= iep[1];
-			iel -= 2;
-			iep += iep[1];
-			iep += 2;
+			iep += ielen;
 		}
 	}
 
@@ -1132,8 +1123,8 @@ static int iw_get_range(struct net_device *dev, struct iw_request_info *info,
 	struct iw_range *range = (struct iw_range *)extra;
 	struct iw_point *data = &wrqu->data;
 	struct ndis_handle *handle = (struct ndis_handle *)dev->priv;
-	unsigned int i, written, needed;
-	unsigned char rates[NDIS_MAX_RATES];
+	unsigned int i, res, written, needed;
+	unsigned char rates[NDIS_MAX_RATES_EX];
 	unsigned long tx_power;
 
 	data->length = sizeof(struct iw_range);
@@ -1142,10 +1133,12 @@ static int iw_get_range(struct net_device *dev, struct iw_request_info *info,
 	range->txpower_capa = IW_TXPOW_MWATT;
 	range->num_txpower = 0;
 
-	if (!miniport_query_info(handle, NDIS_OID_TX_POWER_LEVEL,
+	res = miniport_query_info(handle, NDIS_OID_TX_POWER_LEVEL,
 				 (char*)&tx_power, sizeof(tx_power),
-				 &written, &needed))
-	{
+				 &written, &needed);
+	if (res)
+		WARNING("getting tx power failed: %08X", res);
+	else {
 		range->num_txpower = 1;
 		range->txpower[0] = tx_power;
 	}
@@ -1171,14 +1164,17 @@ static int iw_get_range(struct net_device *dev, struct iw_request_info *info,
 	range->encoding_size[1] = 13;
 
 	range->num_bitrates = 0;
-	if (!miniport_query_info(handle, NDIS_OID_SUPPORTED_RATES,
-				 (char *)&rates, sizeof(rates),
-				 &written, &needed))
-	{
-		for (i = 0 ; i < NDIS_MAX_RATES && rates[i] ; i++)
-			if (range->num_bitrates < IW_MAX_BITRATES &&
-			    rates[i] & 0x80)
-			{
+	res = miniport_query_info(handle, NDIS_OID_SUPPORTED_RATES,
+				  (char *)&rates, sizeof(rates),
+				  &written, &needed);
+	if (res)
+		WARNING("getting bit rates failed: %08X", res);
+	else {
+		for (i = 0 ; i < NDIS_MAX_RATES_EX &&
+			     range->num_bitrates < IW_MAX_BITRATES ; i++)
+			if (rates[i] & 0x80)
+				continue;
+			else if (rates[i] & 0x7f) {
 				range->bitrate[range->num_bitrates] =
 					(rates[i] & 0x7f) * 500000;
 				range->num_bitrates++;
