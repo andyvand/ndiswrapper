@@ -46,6 +46,20 @@ static int get_filesize(int fd)
 	return -1;
 }
 
+/*
+ * Taint the kernel
+ */
+static int dotaint(void)
+{
+	FILE *f = fopen("/proc/sys/kernel/tainted", "w");
+	if(!f)
+		return -1;
+	fputs("1\n", f);
+	fclose(f);
+	return 0;
+}
+
+
 static char provider[80] = {0};
 static char manufacturer[80] = {0};
 
@@ -166,6 +180,7 @@ static int load(int pci_vendor, int pci_device, char *driver_name, char *inf_nam
 	strncpy(put_driver.name, driver_basename, sizeof(put_driver.name));
 	put_driver.name[sizeof(put_driver.name)-1] = 0;
 
+	dotaint();
 	printf("Calling putdriver ioctl\n");
 	if(ioctl(device, NDIS_PUTDRIVER, &put_driver))
 	{
@@ -198,7 +213,6 @@ static int load(int pci_vendor, int pci_device, char *driver_name, char *inf_nam
 	return 0;
 }
 
-	
 /*
  * Open a misc device without having a /dev/ entry
  */
