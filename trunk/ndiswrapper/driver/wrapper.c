@@ -280,7 +280,7 @@ void miniport_halt(struct ndis_handle *handle)
 
 	miniport->halt(handle->adapter_ctx);
 
-	ndis_cleanup_handle(handle);
+	ndis_exit_handle(handle);
 
 	if (handle->device->bustype == NDIS_PCI_BUS)
 		pci_set_power_state(handle->dev.pci, 3);
@@ -1403,12 +1403,7 @@ struct net_device *ndis_init_netdev(struct ndis_handle **phandle,
 	handle->capa = 0;
 	handle->attributes = 0;
 
-	wrap_spin_lock_init(&handle->recycle_packets_lock);
-	INIT_LIST_HEAD(&handle->recycle_packets);
-
 	handle->reset_status = 0;
-
-	INIT_WORK(&handle->recycle_packets_work, packet_recycler, handle);
 
 	INIT_LIST_HEAD(&handle->timers);
 	wrap_spin_lock_init(&handle->timers_lock);
@@ -1452,7 +1447,7 @@ static void module_cleanup(void)
 {
 	loader_exit();
 	ndiswrapper_procfs_remove();
-	wrap_kfree_all();
+	ndis_exit();
 }
 
 static int __init wrapper_init(void)
@@ -1479,8 +1474,8 @@ static int __init wrapper_init(void)
 #endif
 		);
 
-	ndis_init();
 	loader_init();
+	ndis_init();
 	INIT_LIST_HEAD(&wrap_allocs);
 	wrap_spin_lock_init(&wrap_allocs_lock);
 	wrap_spin_lock_init(&dispatch_event_lock);

@@ -40,8 +40,8 @@
 #include "wrapper.h"
 
 /* List of loaded drivers */
-LIST_HEAD(ndis_driverlist);
-static struct wrap_spinlock driverlist_lock;
+LIST_HEAD(ndis_driver_list);
+static struct wrap_spinlock driver_list_lock;
 
 /*
  * Called by PCI-subsystem for each PCI-card found.
@@ -50,7 +50,7 @@ static struct wrap_spinlock driverlist_lock;
  * adds PCI_id's dynamically.
  */
 static int ndis_init_one_pci(struct pci_dev *pdev,
-		      const struct pci_device_id *ent)
+			     const struct pci_device_id *ent)
 {
 	int res = 0;
 	struct ndis_device *device = (struct ndis_device *) ent->driver_data;
@@ -536,10 +536,10 @@ static void unload_ndis_driver(struct ndis_driver *driver)
 #endif
 	}
 
-	wrap_spin_lock(&driverlist_lock, PASSIVE_LEVEL);
+	wrap_spin_lock(&driver_list_lock, PASSIVE_LEVEL);
 	if (driver->list.next)
 		list_del(&driver->list);
-	wrap_spin_unlock(&driverlist_lock);
+	wrap_spin_unlock(&driver_list_lock);
 
 	/* idtable for both pci and usb devices */
 	if (driver->idtable.pci)
@@ -726,8 +726,8 @@ static int add_driver(struct ndis_driver *driver)
 	int dup = 0;
 
 	TRACEENTER1("");
-	wrap_spin_lock(&driverlist_lock, PASSIVE_LEVEL);
-	list_for_each_entry(tmp, &ndis_driverlist, list) {
+	wrap_spin_lock(&driver_list_lock, PASSIVE_LEVEL);
+	list_for_each_entry(tmp, &ndis_driver_list, list) {
 		if (strcmp(tmp->name, driver->name) == 0) {
 			dup = 1;
 			break;
@@ -735,8 +735,8 @@ static int add_driver(struct ndis_driver *driver)
 	}
 
 	if (!dup)
-		list_add(&driver->list, &ndis_driverlist);
-	wrap_spin_unlock(&driverlist_lock);
+		list_add(&driver->list, &ndis_driver_list);
+	wrap_spin_unlock(&driver_list_lock);
 
 	if (dup) {
 		ERROR("cannot add duplicate driver");
@@ -832,7 +832,7 @@ int loader_init(void)
 {
 	int err;
 
-	wrap_spin_lock_init(&driverlist_lock);
+	wrap_spin_lock_init(&driver_list_lock);
 	if ((err = misc_register(&wrapper_misc)) < 0 ) {
 		ERROR("couldn't register module (%d)", err);
 		TRACEEXIT1(return err);
@@ -845,8 +845,9 @@ void loader_exit(void)
 	struct ndis_driver *driver;
 
 	misc_deregister(&wrapper_misc);
-	while (!list_empty(&ndis_driverlist)) {
-		driver = (struct ndis_driver*) ndis_driverlist.next;
+
+	while (!list_empty(&ndis_driver_list)) {
+		driver = (struct ndis_driver *) ndis_driver_list.next;
 		unload_ndis_driver(driver);
 	}
 }

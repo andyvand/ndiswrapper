@@ -78,7 +78,6 @@ void wrap_kfree_all(void)
 		list_del(&alloc->list);
 		kfree(alloc->ptr);
 		kfree(alloc);
-
 	}
 
 	wrap_spin_unlock(&wrap_allocs_lock);
@@ -752,9 +751,10 @@ STDCALL void WRAP_EXPORT(RtlFreeAnsiString)(struct ustring *string)
 }
 
 static void WRAP_EXPORT(RtlUnwind)(void){UNIMPL();}
+
 STDCALL static NT_STATUS WRAP_EXPORT(RtlQueryRegistryValues)
-	(ULONG  relative, char* path, void* tbl,
-	 void* context, void* env)
+	(ULONG  relative, char *path, void *tbl,
+	 void *context, void *env)
 {
 	TRACEENTER5("%s", "");
 	UNIMPL();
@@ -772,53 +772,6 @@ STDCALL int WRAP_EXPORT(rand)
 	for (r = i = 0; i < sizeof(buf) ; i++)
 		r += buf[i];
 	return r;
-}
-
-/*
- * This function gets scheduled from NdisMIndicateReceivePacket
- */
-void packet_recycler(void *param)
-{
-	struct ndis_handle *handle = (struct ndis_handle*) param;
-	KIRQL irql;
-
-	TRACEENTER3("%s", "packet recycler running");
-	while (1) {
-		struct ndis_packet * packet = NULL;
-		struct miniport_char *miniport;
-		miniport = &handle->driver->miniport_char;
-
-		wrap_spin_lock(&handle->recycle_packets_lock, DISPATCH_LEVEL);
-		if (list_empty(&handle->recycle_packets)) {
-			wrap_spin_unlock(&handle->recycle_packets_lock);
-			break;
-		} else {
-			packet = (struct ndis_packet*)
-				handle->recycle_packets.next;
-
-			list_del(handle->recycle_packets.next);
-			DBGTRACE3("returning packet at %p!", packet);
-			/* at this point, packet is actually
-			 * packet->recycle_list; we need to return
-			 * packet, so subtract the space from nr_pages
-			 * (first field) till recycle_list */
-			packet = (struct ndis_packet*)
-				((char *)packet -
-				 ((char *)&packet->recycle_list -
-				  (char *)&packet->private.nr_pages));
-		}
-
-		wrap_spin_unlock(&handle->recycle_packets_lock);
-
-		if (packet == NULL)
-			break;
-
-		packet->status = NDIS_STATUS_SUCCESS;
-		irql = raise_irql(DISPATCH_LEVEL);
-		miniport->return_packet(handle->adapter_ctx, packet);
-		lower_irql(irql);
-	}
-	TRACEEXIT3(return);
 }
 
 ULONGLONG ticks_1601(void)
