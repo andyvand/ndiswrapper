@@ -53,7 +53,7 @@ MODULE_PARM_DESC(if_name, "Network interface name (default: wlan0)");
 MODULE_PARM(proc_uid, "i");
 MODULE_PARM_DESC(proc_uid, "The uid of the files created in /proc (default: 0).");
 MODULE_PARM(proc_gid, "i");
-MODULE_PARM_DESC(proc_gid, "The gid of the files created in /proc. (default: 0).");
+MODULE_PARM_DESC(proc_gid, "The gid of the files created in /proc (default: 0).");
 
 /* List of loaded drivers */
 static LIST_HEAD(driverlist);
@@ -250,6 +250,9 @@ static int ndis_set_mode(struct net_device *dev, struct iw_request_info *info,
 	case IW_MODE_INFRA:
 		ndis_mode = NDIS_MODE_INFRA;
 		break;	
+	case IW_MODE_AUTO:
+		ndis_mode = NDIS_MODE_AUTO;
+		break;	
 	default:
 		return -EOPNOTSUPP;
 	}
@@ -280,11 +283,14 @@ static int ndis_get_mode(struct net_device *dev, struct iw_request_info *info,
 
 	switch(ndis_mode)
 	{
-	case 0:
+	case NDIS_MODE_ADHOC:
 		mode = IW_MODE_ADHOC;
 		break;
-	case 1:
+	case NDIS_MODE_INFRA:
 		mode = IW_MODE_INFRA;
+		break;
+	case NDIS_MODE_AUTO:
+		mode = IW_MODE_AUTO;
 		break;
 	default:
 		printk(KERN_INFO "%s: invalid operating mode (%u)\n",
@@ -1558,13 +1564,25 @@ static int setup_dev(struct net_device *dev)
 	int i;
 	union iwreq_data wrqu;
 
+	if (strlen(if_name) > (IFNAMSIZ-2))
+	{
+		printk(KERN_ERR "%s: interface name '%s' is too long\n",
+		       DRV_NAME, if_name);
+		return -1;
+	}
+	strncpy(dev->name, if_name, IFNAMSIZ-2);
+	dev->name[IFNAMSIZ-1] = '\0';
+
 	DBGTRACE("%s: Querying for mac\n", __FUNCTION__);
-	res = doquery(handle, 0x01010102, &mac[0], sizeof(mac), &written, &needed);
-	DBGTRACE("mac:%02x:%02x:%02x:%02x:%02x:%02x\n", mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
+	res = doquery(handle, 0x01010102, &mac[0], sizeof(mac),
+		      &written, &needed);
+	DBGTRACE("mac:%02x:%02x:%02x:%02x:%02x:%02x\n",
+		 mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
 
 	if(res)
 	{
-		printk(KERN_ERR "Unable to get MAC-addr from driver\n");
+		printk(KERN_ERR "%s: unable to get mac address from driver\n",
+			DRV_NAME);
 		return -1;
 	}
 
@@ -1574,14 +1592,14 @@ static int setup_dev(struct net_device *dev)
 	wrqu.essid.length = 1;
 	if (ndis_set_essid(dev, NULL, &wrqu, NULL))
 	{
-		printk(KERN_ERR "%s: Unable to set empty essid\n", dev->name);
+		printk(KERN_ERR "%s: Unable to set empty essid\n", DRV_NAME);
 		return -1;
 	}
 
 	wrqu.mode = IW_MODE_INFRA;
 	if (ndis_set_mode(dev, NULL, &wrqu, NULL))
 	{
-		printk(KERN_ERR "%s: Unable to set managed mode\n", dev->name);
+		printk(KERN_ERR "%s: Unable to set managed mode\n", DRV_NAME);
 		return -1;
 	}
 
@@ -1601,26 +1619,12 @@ static int setup_dev(struct net_device *dev)
 	dev->irq = handle->irq;
 	dev->mem_start = handle->mem_start;		
 	dev->mem_end = handle->mem_end;		
-
-	if (strlen(if_name) > (IFNAMSIZ-2))
-	{
-		printk(KERN_ERR "%s: interface name '%s' is too long\n",
-		       DRV_NAME, if_name);
-		return -1;
-	}
-	strncpy(dev->name, if_name, IFNAMSIZ-2);
-	dev->name[IFNAMSIZ-1] = '\0';
-	if (res >= 0)
-	{
-		printk(KERN_INFO "%s: %s ethernet device "
-		       "%02x:%02x:%02x:%02x:%02x:%02x\n",
-		       dev->name, DRV_NAME,
-		       mac[0], mac[1], mac[2],
-		       mac[3], mac[4], mac[5]);
-		return register_netdev(dev);
-	}
-	else
-		return -1;
+	
+	printk(KERN_INFO "%s: %s ethernet device "
+	       "%02x:%02x:%02x:%02x:%02x:%02x\n",
+	       dev->name, DRV_NAME,
+	       mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
+	return register_netdev(dev);
 }
 
 extern void ndis_timer_handler_bh(void *data);
