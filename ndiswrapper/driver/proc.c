@@ -230,6 +230,7 @@ static int procfs_read_settings(char *page, char **start, off_t off,
 {
 	char *p = page;
 	struct ndis_handle *handle = (struct ndis_handle *)data;
+	struct ndis_setting *ndis_setting;
 
 	if (off != 0) {
 		*eof = 1;
@@ -238,6 +239,10 @@ static int procfs_read_settings(char *page, char **start, off_t off,
 
 	p += sprintf(p, "hangcheck_interval=%d\n",
 		     (int)(handle->hangcheck_interval / HZ));
+
+	list_for_each_entry(ndis_setting, &handle->device->settings, list)
+		p += sprintf(p, "%s=%s\n",
+			     ndis_setting->name, ndis_setting->val_str);
 
 	return (p - page);
 }
@@ -335,7 +340,8 @@ static int procfs_write_settings(struct file *file, const char *buf,
 		if (i <= 0 || i > 5)
 			return -EINVAL;
 
-		set_auth_mode(handle, i);
+		if (set_auth_mode(handle, i))
+			return -EINVAL;
 	}
 	else if (!strcmp(setting, "encr_mode"))
 	{
@@ -348,26 +354,37 @@ static int procfs_write_settings(struct file *file, const char *buf,
 		if (i <= 0 || i > 7)
 			return -EINVAL;
 
-		set_encr_mode(handle, i);
+		if (set_encr_mode(handle, i))
+			return -EINVAL;
 	}
 	else
-		return -EINVAL;
+	{
+		int res = -1;
+		struct ndis_setting *ndis_setting;
+
+		if (!p)
+			TRACEEXIT1(return -EINVAL);
+		p++;
+		DBGTRACE("name='%s', value='%s'\n", setting, p);
+		list_for_each_entry(ndis_setting,
+					&handle->device->settings, list)
+		{
+			if (!stricmp(ndis_setting->name, setting))
+			{
+				if (strlen(p) > MAX_NDIS_SETTING_VAL_LENGTH)
+					TRACEEXIT1(return -EINVAL);
+				memset(ndis_setting->val_str, 0,
+					   MAX_NDIS_SETTING_VAL_LENGTH);
+				memcpy(ndis_setting->val_str, p, strlen(p));
+				res = 0;
+			}
+		}
+		if (res)
+			return -EINVAL;
+	}
 
 	return count;
 
-}
-
-int ndiswrapper_procfs_init(void)
-{
-	ndiswrapper_procfs_entry = proc_mkdir(DRV_NAME, proc_net);
-	if (ndiswrapper_procfs_entry == NULL)
-	{
-		ERROR("%s", "Couldn't create procfs directory");
-		return -ENOMEM;
-	}
-	ndiswrapper_procfs_entry->uid = proc_uid;
-	ndiswrapper_procfs_entry->gid = proc_gid;
-	return 0;
 }
 
 int ndiswrapper_procfs_add_iface(struct ndis_handle *handle)
@@ -441,7 +458,7 @@ int ndiswrapper_procfs_add_iface(struct ndis_handle *handle)
 					 S_IWUSR | S_IWGRP, proc_iface);
 	if (procfs_entry == NULL)
 	{
-		ERROR("%s", "Couldn't create proc entry for 'encr'");
+		ERROR("%s", "Couldn't create proc entry for 'settings'");
 		return -ENOMEM;
 	}
 	else
@@ -469,6 +486,20 @@ void ndiswrapper_procfs_remove_iface(struct ndis_handle *handle)
 	if (ndiswrapper_procfs_entry != NULL)
 		remove_proc_entry(dev->name, ndiswrapper_procfs_entry);
 	handle->procfs_iface = NULL;
+}
+
+int ndiswrapper_procfs_init(void)
+{
+	ndiswrapper_procfs_entry = proc_mkdir(DRV_NAME, proc_net);
+	if (ndiswrapper_procfs_entry == NULL)
+	{
+		ERROR("%s", "Couldn't create procfs directory");
+		return -ENOMEM;
+	}
+	ndiswrapper_procfs_entry->uid = proc_uid;
+	ndiswrapper_procfs_entry->gid = proc_gid;
+
+	return 0;
 }
 
 void ndiswrapper_procfs_remove(void)

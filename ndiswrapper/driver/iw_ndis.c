@@ -383,6 +383,42 @@ static int iw_get_bitrate(struct net_device *dev, struct iw_request_info *info,
 	return 0;
 }
 
+static int iw_set_bitrate(struct net_device *dev, struct iw_request_info *info,
+			  union iwreq_data *wrqu, char *extra)
+{
+	struct ndis_handle *handle = dev->priv; 
+	int i, res, written, needed;
+	char rates[NDIS_MAX_RATES];
+
+	if (wrqu->bitrate.fixed == 0)
+		TRACEEXIT1(return 0);
+
+	res = doquery(handle, NDIS_OID_SUPPORTED_RATES, (char *)&rates,
+		      sizeof(rates), &written, &needed);
+	if (res == NDIS_STATUS_NOT_SUPPORTED)
+		TRACEEXIT1(return -EOPNOTSUPP);
+	if (res == NDIS_STATUS_INVALID_DATA)
+		TRACEEXIT1(return -EINVAL);
+		
+	for (i = 0 ; i < NDIS_MAX_RATES && rates[i] ; i++)
+		if ((!(rates[i] & 0x80)) &&
+		    ((rates[i] & 0x7f) * 500000 > wrqu->bitrate.value))
+		{
+			DBGTRACE1("setting rate %d to 0",
+				  (rates[i] & 0x7f) * 500000);
+			rates[i] = 0;
+		}
+
+	res = doquery(handle, NDIS_OID_DESIRED_RATES, (char *)&rates,
+		      sizeof(rates), &written, &needed);
+	if (res == NDIS_STATUS_NOT_SUPPORTED)
+		TRACEEXIT1(return -EOPNOTSUPP);
+	if (res == NDIS_STATUS_INVALID_DATA)
+		TRACEEXIT1(return -EINVAL);
+
+	return 0;
+}
+
 static int iw_set_dummy(struct net_device *dev, struct iw_request_info *info,
 			union iwreq_data *wrqu, char *extra)
 {
@@ -1141,7 +1177,7 @@ static const iw_handler	ndis_handler[] = {
 	[SIOCGIWTXPOW	- SIOCIWFIRST] = iw_get_tx_power,
 	[SIOCSIWTXPOW	- SIOCIWFIRST] = iw_set_tx_power,
 	[SIOCGIWRATE	- SIOCIWFIRST] = iw_get_bitrate,
-	[SIOCSIWRATE	- SIOCIWFIRST] = iw_set_dummy,
+	[SIOCSIWRATE	- SIOCIWFIRST] = iw_set_bitrate,
 	[SIOCGIWRTS	- SIOCIWFIRST] = iw_get_rts_threshold,
 	[SIOCGIWFRAG	- SIOCIWFIRST] = iw_get_frag_threshold,
 	[SIOCGIWAP	- SIOCIWFIRST] = iw_get_ap_address,

@@ -962,7 +962,7 @@ int ndis_suspend_usb(struct usb_interface *intf, u32 state)
 	struct net_device *dev;
 	struct ndis_handle *handle =
 		(struct ndis_handle *)usb_get_intfdata(intf);
-	int res, i, pm_state;
+	int i, pm_state;
 
 	if (!handle)
 		return -1;
@@ -1007,7 +1007,6 @@ int ndis_resume_usb(struct usb_interface *intf)
 	struct ndis_handle *handle =
 		(struct ndis_handle *)usb_get_intfdata(intf);
 	struct miniport_char *miniport;
-	int res;
 //	unsigned long profile_inf = NDIS_POWER_PROFILE_AC;
 
 	if (!handle)
@@ -1626,7 +1625,7 @@ out_nodev:
 #endif
 }
 
-static void __devexit ndis_remove_one(struct ndis_handle *handle)
+static void ndis_remove_one(struct ndis_handle *handle)
 {
 	struct miniport_char *miniport = &handle->driver->miniport_char;
 
@@ -2033,19 +2032,18 @@ static int add_setting(struct ndis_device *device,
 	if (!(setting->name = kmalloc(put_setting->name_len+1, GFP_KERNEL)))
 		goto setting_fail;
 
-	if (!(setting->val_str = kmalloc(put_setting->val_str_len+1,
-					 GFP_KERNEL)))
+	if (put_setting->val_str_len > MAX_NDIS_SETTING_VAL_LENGTH)
 		goto name_fail;
 
 	if(copy_from_user(setting->name, put_setting->name,
 			  put_setting->name_len))
-		goto val_str_fail;
+		goto name_fail;
 
 	setting->name[put_setting->name_len] = 0;
 
 	if(copy_from_user(setting->val_str, put_setting->value,
 			  put_setting->val_str_len))
-		goto val_str_fail;
+		goto name_fail;
 
 	setting->val_str[put_setting->val_str_len] = 0;
 	setting->value.type = NDIS_SETTING_NONE;
@@ -2058,7 +2056,6 @@ static int add_setting(struct ndis_device *device,
 		memcpy(device->driver->version, setting->val_str,
 		       put_setting->val_str_len);
 		device->driver->version[put_setting->val_str_len] = 0;
-		kfree(setting->val_str);
 		kfree(setting->name);
 		kfree(setting);
 	}
@@ -2066,8 +2063,6 @@ static int add_setting(struct ndis_device *device,
 		list_add(&setting->list, &device->settings);
 	return 0;
 
-val_str_fail:
-	kfree(setting->val_str);
 name_fail:
 	kfree(setting->name);
 setting_fail:
@@ -2085,7 +2080,6 @@ static void delete_device(struct ndis_device *device)
 	{
 		struct ndis_setting *setting = (struct ndis_setting*) curr;
 		kfree(setting->name);
-		kfree(setting->val_str);
 		kfree(setting);
 	}
 	kfree(device);
@@ -2138,7 +2132,6 @@ static void unload_driver(struct ndis_driver *driver)
 		delete_device(device);
 	}
 	kfree(driver);
-
 }
 
 /*
