@@ -948,19 +948,15 @@ static void link_status_handler(struct ndis_handle *handle)
 	const int assoc_size = sizeof(*ndis_assoc_info) + IW_CUSTOM_MAX;
 	struct encr_info *encr_info = &handle->encr_info;
 
-	TRACEENTER2("");
-
-	DBGTRACE2("link status: %d", handle->link_status);
+	TRACEENTER2("link status: %d", handle->link_status);
 	if (handle->link_status == 0) {
 		if (handle->encr_mode == Ndis802_11Encryption1Enabled ||
 		    handle->infrastructure_mode == Ndis802_11IBSS) {
 			for (i = 0; i < MAX_ENCR_KEYS; i++) {
 				if (encr_info->keys[i].length == 0)
 					continue;
-				if (add_wep_key(handle, encr_info->keys[i].key,
-						encr_info->keys[i].length, i))
-					WARNING("setting wep key %d failed",
-						i);
+				add_wep_key(handle, encr_info->keys[i].key,
+					    encr_info->keys[i].length, i);
 			}
 
 			set_bit(SET_ESSID, &handle->wrapper_work);
@@ -1072,7 +1068,7 @@ static void set_packet_filter(struct ndis_handle *handle)
 	} else if ((dev->mc_count > handle->multicast_list_size) ||
 		   (dev->flags & IFF_ALLMULTI) ||
 		   (handle->multicast_list == 0)) {
-		/* Too many to filter perfectly -- accept all multicasts. */
+		/* too many to filter perfectly -- accept all multicasts. */
 		DBGTRACE1("multicast list too long; accepting all");
 		packet_filter |= NDIS_PACKET_TYPE_ALL_MULTICAST;
 	} else if (dev->mc_count > 0) {
@@ -1083,7 +1079,7 @@ static void set_packet_filter(struct ndis_handle *handle)
 	res = miniport_set_info(handle, OID_GEN_CURRENT_PACKET_FILTER,
 				&packet_filter, sizeof(packet_filter));
 	if (res && res != NDIS_STATUS_NOT_SUPPORTED)
-		ERROR("Unable to set packet filter (%08X)", res);
+		ERROR("unable to set packet filter (%08X)", res);
 	TRACEEXIT2(return);
 }
 
