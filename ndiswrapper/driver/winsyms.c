@@ -167,7 +167,6 @@ void IofCallDriver(void);
 void KeWaitForSingleObject(void);
 void my_sprintf(void);
 void my_vsprintf(void);
-void _allmul(void);
 void my_strlen(void);
 void my_strncmp(void);
 void my_tolower(void);
@@ -359,7 +358,6 @@ func("IofCallDriver"                        , IofCallDriver),
 func("KeWaitForSingleObject"                , KeWaitForSingleObject),
 func("sprintf"                              , my_sprintf),
 func("vsprintf"                             , my_vsprintf),
-func("_allmul"                              , _allmul),
 func("strlen"                               , my_strlen),
 func("strncmp"                              , my_strncmp),
 func("tolower"                              , my_tolower),
