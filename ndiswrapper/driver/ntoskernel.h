@@ -212,6 +212,12 @@ struct packed io_stack_location {
 	void *handler_arg;
 };
 
+enum irp_work_type {
+	IRP_WORK_NONE,
+	IRP_WORK_COMPLETE,
+	IRP_WORK_CANCEL,
+};
+
 struct packed irp {
 	short type;
 	unsigned short size;
@@ -252,7 +258,7 @@ struct packed irp {
 	void *fill5[3];
 
 	/* ndiswrapper extension */
-	struct list_head cancel_list_entry;
+	enum irp_work_type irp_work_type;
 };
 
 enum nt_obj_type
@@ -369,22 +375,18 @@ _FASTCALL void IofCompleteRequest(int dummy, char prio_boost, struct irp *irp);
 
 #define WRAPPER_SPIN_LOCK_MAGIC 137
 
-static inline void wrap_spin_lock_init(struct wrap_spinlock *lock)
-{
-	spin_lock_init(&lock->spinlock);
-	lock->magic = WRAPPER_SPIN_LOCK_MAGIC;
-}
-static inline void wrap_spin_lock(struct wrap_spinlock *lock)
-{
-	lock->irql = KfRaiseIrql(0, 0, DISPATCH_LEVEL);
-	spin_lock(&lock->spinlock);
-}
-
-static inline void wrap_spin_unlock(struct wrap_spinlock *lock)
-{
-	spin_unlock(&lock->spinlock);
-	KfLowerIrql(0, 0, lock->irql);
-}
+#define wrap_spin_lock_init(lock) do {				\
+		spin_lock_init(&((lock)->spinlock));		\
+		(lock)->magic = WRAPPER_SPIN_LOCK_MAGIC;	\
+	} while (0)
+#define wrap_spin_lock(lock)  do {					\
+		(lock)->irql = KfRaiseIrql(0, 0, DISPATCH_LEVEL);	\
+		spin_lock(&((lock)->spinlock));				\
+	} while (0)
+#define wrap_spin_unlock(lock) do {			\
+		spin_unlock(&((lock)->spinlock));	\
+		KfLowerIrql(0, 0, (lock)->irql);	\
+	} while (0)
 
 static inline void wrapper_set_timer_dpc(struct wrapper_timer *wrapper_timer,
                                          struct kdpc *kdpc)

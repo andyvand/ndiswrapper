@@ -288,30 +288,6 @@ int miniport_init(struct ndis_handle *handle)
 	return 0;
 }
 
-static void wrap_free_timers(struct ndis_handle *handle)
-{
-	char canceled;
-	/* Cancel any timers left by bugyy windows driver
-	 * Also free the memory for timers
-	 */
-	spin_lock_bh(&handle->timers_lock);
-	while (!list_empty(&handle->timers))
-	{
-		struct wrapper_timer *timer =
-			(struct wrapper_timer*) handle->timers.next;
-		DBGTRACE1("fixing up timer %p, timer->list %p",
-			  timer, &timer->list);
-		list_del(&timer->list);
-		spin_unlock_bh(&handle->timers_lock);
-
-		wrapper_cancel_timer(timer, &canceled);
-		wrap_kfree(timer);
-
-		spin_lock_bh(&handle->timers_lock);
-	}
-	spin_unlock_bh(&handle->timers_lock);
-}
-
 /*
  * MiniportHalt
  */
@@ -323,19 +299,8 @@ void miniport_halt(struct ndis_handle *handle)
 	miniport_set_int(handle, NDIS_OID_PNP_SET_POWER, NDIS_PM_STATE_D3);
 
 	miniport->halt(handle->adapter_ctx);
-	/* TI driver doesn't call NdisMDeregisterInterrupt during halt! */
-	if (handle->ndis_irq)
-	{
-		unsigned long flags;
 
-		spin_lock_irqsave(handle->ndis_irq->spinlock, flags);
-		if (miniport->disable_interrupts)
-			miniport->disable_interrupts(handle->adapter_ctx);
-		spin_unlock_irqrestore(handle->ndis_irq->spinlock, flags);
-		NdisMDeregisterInterrupt(handle->ndis_irq);
-	}
-	wrap_free_timers(handle);
-	free_handle_ctx(handle);
+	ndis_cleanup_handle(handle);
 
 	if (handle->device->bustype == 5)
 		pci_set_power_state(handle->dev.pci, 3);
@@ -413,17 +378,20 @@ static void hangcheck_bh(void *data)
 	KIRQL irql;
 
 	TRACEENTER3("%s", "");
-	irql = raise_irql(DISPATCH_LEVEL);
-	if (handle->reset_status == 0 &&
-	    handle->driver->miniport_char.hangcheck(handle->adapter_ctx))
-	{
-		int res;
-		INFO("Hangcheck returned true. Resetting %s!",
-		     handle->net_dev->name);
-		res = miniport_reset(handle);
-		DBGTRACE3("reset returns %08X, %d", res, handle->reset_status);
+	if (handle->reset_status == 0) {
+		int need_reset = 0;
+		irql = raise_irql(DISPATCH_LEVEL);
+	    if (handle->driver->miniport_char.hangcheck(handle->adapter_ctx))
+			need_reset = 1;
+		lower_irql(irql);
+		if (need_reset) {
+			int res;
+			INFO("Hangcheck returned true. Resetting %s!",
+				 handle->net_dev->name);
+			res = miniport_reset(handle);
+			DBGTRACE3("reset returns %08X, %d", res, handle->reset_status);
+		}
 	}
-	lower_irql(irql);
 	TRACEEXIT3(return);
 }
 
@@ -1205,8 +1173,8 @@ static void wrapper_worker_proc(void *param)
 			 IW_CUSTOM_MAX;
 
 		if (handle->link_status == 0) {
-			for (i = 0; i < MAX_ENCR_KEYS; i++)
-				handle->encr_info.keys[i].length = 0;
+//			for (i = 0; i < MAX_ENCR_KEYS; i++)
+//				handle->encr_info.keys[i].length = 0;
 			return;
 		}
 
@@ -1749,10 +1717,12 @@ static void *ndis_init_one_usb(struct usb_device *udev, unsigned int ifnum,
 	}
 	*/
 
-	/* WUSB54G requires it, maybe other USB drivers as well... */
+	miniport_reset(handle);
+	/* wait here seems crucial; without this delay, at least 
+	 * prism54 driver crashes (why?) */
 	set_current_state(TASK_INTERRUPTIBLE);
-	schedule_timeout(3*HZ);
-
+	schedule_timeout(2*HZ);
+	
 	if(setup_dev(handle->net_dev)) {
 		ERROR("%s", "Couldn't setup interface");
 		res = -EINVAL;
@@ -1817,6 +1787,7 @@ static void ndis_remove_one(struct ndis_handle *handle)
 		handle->xmit_ring_pending--;
 	}
 	wrap_spin_unlock(&handle->xmit_ring_lock);
+	usb_irp_worker(NULL);
 		
 	/* Make sure all queued packets have been pushed out from
 	 * xmit_bh before we call halt */
@@ -2498,7 +2469,8 @@ static int __init wrapper_init(void)
 		return err;
 	}
 
-	init_ndis();
+	ndis_init();
+	usb_init();
 	INIT_LIST_HEAD(&wrap_allocs);
 	INIT_LIST_HEAD(&handle_ctx_list);
 	wrap_spin_lock_init(&wrap_allocs_lock);

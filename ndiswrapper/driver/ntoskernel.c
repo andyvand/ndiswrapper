@@ -601,14 +601,13 @@ STDCALL unsigned char WRAP_EXPORT(IoCancelIrp)
 	irp->cancel = 1;
 	cancel_routine = xchg(&irp->cancel_routine, NULL);
 
-	if (!cancel_routine) {
+	if (cancel_routine) {
+		cancel_routine(stack->dev_obj, irp);
+		TRACEEXIT2(return 1);
+	} else {
 		wrap_spin_unlock(&cancel_lock);
 		TRACEEXIT2(return 0);
 	}
-
-	cancel_routine(stack->dev_obj, irp);
-
-	TRACEEXIT2(return 1);
 }
 
 STDCALL static void WRAP_EXPORT(IoFreeIrp)

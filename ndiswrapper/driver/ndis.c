@@ -36,8 +36,11 @@ static struct list_head ndis_work_list;
 static struct wrap_spinlock ndis_work_list_lock;
 
 static void ndis_worker(void *data);
+static void wrap_free_timers(struct ndis_handle *handle);
+static void free_handle_ctx(struct ndis_handle *handle);
 
-void init_ndis(void)
+/* ndis_init is called once when the module is loaded */
+void ndis_init(void)
 {
 	INIT_WORK(&ndis_work, &ndis_worker, NULL);
 	INIT_LIST_HEAD(&ndis_work_list);
@@ -45,6 +48,72 @@ void init_ndis(void)
 
 	wrap_spin_lock_init(&atomic_lock);
 	wrap_spin_lock_init(&cancel_lock);
+	return;
+}
+
+/* ndis_cleanup_handle is called for each handle */
+void ndis_cleanup_handle(struct ndis_handle *handle)
+{
+	struct miniport_char *miniport = &handle->driver->miniport_char;
+
+	/* TI driver doesn't call NdisMDeregisterInterrupt during halt! */
+	if (handle->ndis_irq)
+	{
+		unsigned long flags;
+
+		spin_lock_irqsave(handle->ndis_irq->spinlock, flags);
+		if (miniport->disable_interrupts)
+			miniport->disable_interrupts(handle->adapter_ctx);
+		spin_unlock_irqrestore(handle->ndis_irq->spinlock, flags);
+		NdisMDeregisterInterrupt(handle->ndis_irq);
+	}
+	wrap_free_timers(handle);
+	free_handle_ctx(handle);
+}
+
+static void wrap_free_timers(struct ndis_handle *handle)
+{
+	char canceled;
+	/* Cancel any timers left by bugyy windows driver
+	 * Also free the memory for timers
+	 */
+	while (1)
+	{
+		struct wrapper_timer *timer;
+		spin_lock_bh(&handle->timers_lock);
+		if (list_empty(&handle->timers)) {
+			spin_unlock_bh(&handle->timers_lock);
+			break;
+		}
+
+		timer = (struct wrapper_timer*) handle->timers.next;
+		list_del(&timer->list);
+		spin_unlock_bh(&handle->timers_lock);
+
+		DBGTRACE1("fixing up timer %p, timer->list %p",
+			  timer, &timer->list);
+		wrapper_cancel_timer(timer, &canceled);
+		wrap_kfree(timer);
+	}
+}
+
+/* remove all 'handle X ctx' pairs for the given handle */
+static void free_handle_ctx(struct ndis_handle *handle)
+{
+	struct list_head *curr, *tmp;
+
+	wrap_spin_lock(&atomic_lock);
+	list_for_each_safe(curr, tmp, &handle_ctx_list)
+	{
+		struct handle_ctx_entry *handle_ctx =
+			(struct handle_ctx_entry *)curr;
+		if (handle_ctx->handle == handle)
+		{
+			list_del(&handle_ctx->list);
+			kfree(handle_ctx);
+		}
+	}
+	wrap_spin_unlock(&atomic_lock);
 	return;
 }
 
@@ -708,26 +777,6 @@ static struct ndis_handle *ctx_to_handle(void *ctx)
 	wrap_spin_unlock(&atomic_lock);
 
 	return NULL;
-}
-
-/* remove all 'handle X ctx' pairs for the given handle */
-void free_handle_ctx(struct ndis_handle *handle)
-{
-	struct list_head *curr, *tmp;
-
-	wrap_spin_lock(&atomic_lock);
-	list_for_each_safe(curr, tmp, &handle_ctx_list)
-	{
-		struct handle_ctx_entry *handle_ctx =
-			(struct handle_ctx_entry *)curr;
-		if (handle_ctx->handle == handle)
-		{
-			list_del(&handle_ctx->list);
-			kfree(handle_ctx);
-		}
-	}
-	wrap_spin_unlock(&atomic_lock);
-	return;
 }
 
 STDCALL static unsigned int WRAP_EXPORT(NdisReadPciSlotInformation)
