@@ -34,7 +34,7 @@ void *wrap_kmalloc(size_t size, int flags)
 	if (!alloc)
 		return NULL;
 	alloc->ptr = kmalloc(size, flags);
-	if (!alloc)
+	if (!alloc->ptr)
 	{
 		kfree(alloc);
 		return NULL;
