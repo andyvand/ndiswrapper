@@ -289,7 +289,7 @@ STDCALL void NdisCloseFile(struct ndis_file *filehandle)
 
 STDCALL void NdisGetSystemUpTime(unsigned int *systemuptime)
 {
-	DBGTRACE("%s:\n", __FUNCTION__);
+//	DBGTRACE("%s:\n", __FUNCTION__);
 	*systemuptime = 10 * jiffies / HZ;
 }
 

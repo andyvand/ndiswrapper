@@ -449,14 +449,19 @@ static int ndis_get_wep(struct net_device *dev, struct iw_request_info *info,
 		return -EINVAL;
 	}
 
-	if (index && index != wep_info->active)
+	if (index == 0)
+		index = wep_info->active;
+	else	
+		index--;
+
+	if (index != wep_info->active)
 	{
-		if (wep_info->keys[index-1].length > 0)
+		if (wep_info->keys[index].length > 0)
 		{
 			wrqu->data.flags |= IW_ENCODE_ENABLED;
-			wrqu->data.length = wep_info->keys[index-1].length;
-			memcpy(extra, wep_info->keys[index-1].key,
-			       wep_info->keys[index-1].length);
+			wrqu->data.length = wep_info->keys[index].length;
+			memcpy(extra, wep_info->keys[index].key,
+			       wep_info->keys[index].length);
 		}
 		else
 			wrqu->data.flags |= IW_ENCODE_DISABLED;
@@ -464,10 +469,7 @@ static int ndis_get_wep(struct net_device *dev, struct iw_request_info *info,
 		return 0;
 	}
 	
-	/* default key */
-
-	if (!index)
-		index = wep_info->active;
+	/* active key */
 	res = query_int(handle, NDIS_OID_WEP_STATUS, &status);
 	if (res)
 	{
@@ -475,19 +477,19 @@ static int ndis_get_wep(struct net_device *dev, struct iw_request_info *info,
 		       dev->name, res);
 		return -EOPNOTSUPP;
 	}
-	
+
 	if (status == NDIS_ENCODE_ENABLED)
 	{
-		wrqu->data.flags |= IW_ENCODE_ENABLED | index;
-		wrqu->data.length = wep_info->keys[index-1].length;
-		memcpy(extra, wep_info->keys[index-1].key,
-		       wep_info->keys[index-1].length);
+		wrqu->data.flags |= IW_ENCODE_ENABLED | (index+1);
+		wrqu->data.length = wep_info->keys[index].length;
+		memcpy(extra, wep_info->keys[index].key,
+		       wep_info->keys[index].length);
 	}
 	else if (status == NDIS_ENCODE_DISABLED)
 		wrqu->data.flags |= IW_ENCODE_DISABLED;
 	else if (status == NDIS_ENCODE_NOKEY)
 		wrqu->data.flags |= IW_ENCODE_NOKEY;
-	
+
 	res = query_int(handle, NDIS_OID_AUTH_MODE, &status);
 	if (res)
 	{
@@ -495,7 +497,7 @@ static int ndis_get_wep(struct net_device *dev, struct iw_request_info *info,
 		       dev->name, res);
 		return -EOPNOTSUPP;
 	}
-	
+
 	if (status == NDIS_ENCODE_OPEN)
 		wrqu->data.flags |= IW_ENCODE_OPEN;
 	else if (status == NDIS_ENCODE_RESTRICTED)
@@ -512,81 +514,106 @@ static int ndis_set_wep(struct net_device *dev, struct iw_request_info *info,
 	union iwreq_data essid_wrqu;
 	struct wep_info *wep_info = &handle->wep_info;
 	struct wep_req wep_req;
-		
+	
 	index = (wrqu->data.flags & IW_ENCODE_INDEX);
 	DBGTRACE("%s: index = %u\n", __FUNCTION__, index);
-	if (index && (index <= 0 || index > MAX_WEP_KEYS))
+	if (index > MAX_WEP_KEYS)
 	{
 		printk(KERN_INFO "%s: wep index out of range (%u)\n",
 		       dev->name, index);
 		return -EINVAL;
 	}
 
-	if (index && index != wep_info->active)
+	if (index <= 0)
+		index = wep_info->active;
+	else	
+		index--;
+
+	/* store the key if given */
+	if(wrqu->data.length > 0)
 	{
-		if (wrqu->data.flags & IW_ENCODE_DISABLED)
+		wep_info->keys[index].length = wrqu->data.length;
+		memcpy(&wep_info->keys[index].key, extra,
+		       wrqu->data.length);		
+	}
+
+	/* remove key if disabled */
+	if (wrqu->data.flags & IW_ENCODE_DISABLED)
+	{
+		unsigned long keyindex = index;
+		res = dosetinfo(handle, NDIS_OID_REMOVE_WEP,
+				(char *)&keyindex, sizeof(keyindex),
+				&written, &needed);
+		if (res)
 		{
-			unsigned long keyindex = index;
-			res = dosetinfo(handle, NDIS_OID_REMOVE_WEP,
-					(char *)&keyindex, sizeof(keyindex),
-					&written, &needed);
+			printk(KERN_INFO "%s: removing wep key %d failed (%08X)\n",
+			       dev->name, index, res);
+			return -EINVAL;
+		}
+		wep_info->keys[index].length = 0;
+		
+		/* if it is active key, disable wep */
+		if (index == wep_info->active)
+		{
+			res = set_int(handle, NDIS_OID_WEP_STATUS,
+				      NDIS_ENCODE_DISABLED);
 			if (res)
 			{
-				printk(KERN_INFO "%s: removing wep key %d failed (%08X)\n",
-				       dev->name, index, res);
-				return -EINVAL;
+				printk(KERN_INFO "%s: changing wep status failed (%08X)\n",
+				       dev->name, res);
+				return -1;
 			}
-			wep_info->keys[index-1].length = 0;
-			return 0;
 		}
-		if (wrqu->data.flags & IW_ENCODE_NOKEY)
+		return 0;
+	}
+
+	if (wep_info->keys[index].length > 0)
+	{
+		wep_req.len = sizeof(wep_req);
+
+		if (index == wep_info->active || (wrqu->data.length == 0))
 		{
 			DBGTRACE("%s: setting key %d as tx key\n",
 				 __FUNCTION__, index);
-			wep_req.len = sizeof(wep_req);
-			wep_req.keyindex = (index-1) | (1 << 31);
-			wep_req.keylength = wep_info->keys[index-1].length;
-			memcpy(&wep_req.keymaterial,
-			       wep_info->keys[index-1].key,
-			       wep_info->keys[index-1].length);
+			wep_req.keyindex = (index) | (1 << 31);
+			wep_info->active = index;
 		}
 		else
 		{
-			DBGTRACE("setting key %d as rx key\n",
+			DBGTRACE("%s: setting key %d as rx key\n",
 				 __FUNCTION__, index);
-			wep_req.len = sizeof(wep_req);
-			wep_req.keyindex = index-1;
-			wep_req.keylength = wrqu->data.length;
-			memcpy(&wep_req.keymaterial,
-			       extra, wrqu->data.length);
+			wep_req.keyindex = (index);
 		}
-		res = dosetinfo(handle, NDIS_OID_ADD_WEP,
-				(char *)&wep_req, sizeof(wep_req),
-				&written, &needed);
+		wep_req.keylength = wep_info->keys[index].length;
+		memcpy(&wep_req.keymaterial, wep_info->keys[index].key,
+		       wep_info->keys[index].length);
+
+		res = set_int(handle, NDIS_OID_WEP_STATUS,
+			      NDIS_ENCODE_ENABLED);
+		if (res)
+		{
+			printk(KERN_INFO "%s: changing wep status failed (%08X)\n",
+			       dev->name, res);
+			return -1;
+		}
+
+		res = dosetinfo(handle, NDIS_OID_ADD_WEP, (char *)&wep_req,
+				sizeof(wep_req), &written, &needed);
 		if (res)
 		{
 			printk(KERN_INFO "%s: adding wep key %d failed (%08X)\n",
 			       dev->name, index, res);
 			return -EINVAL;
 		}
-		if (wrqu->data.flags & IW_ENCODE_NOKEY)
-			wep_info->active = index;
-		else
-		{
-			wep_info->keys[index-1].length = wrqu->data.length;
-			memcpy(&wep_info->keys[index-1].key, extra,
-			       wrqu->data.length);
-		}
-		return 0;
+
+		/* ndis drivers want essid to be set after setting wep */
+		memset(&essid_wrqu, 0, sizeof(essid_wrqu));
+		essid_wrqu.essid.length = handle->essid.length;
+		essid_wrqu.essid.flags = handle->essid.flags;
+		ndis_set_essid(dev, NULL, &essid_wrqu, handle->essid.name);
 	}
 
-	/* default key */
-
-	DBGTRACE("%s: setting default key\n", __FUNCTION__);
-	if (!index)
-		index = wep_info->active;
-	
-	res = 0;
+	/* global wep state (for all keys) */
 	if (wrqu->data.flags & IW_ENCODE_OPEN)
 		res = set_int(handle, NDIS_OID_AUTH_MODE, NDIS_ENCODE_OPEN);
 	else // if (wrqu->data.flags & IW_ENCODE_RESTRICTED)
@@ -599,52 +626,9 @@ static int ndis_set_wep(struct net_device *dev, struct iw_request_info *info,
 		return -1;
 	}
 
-	if (wrqu->data.flags & IW_ENCODE_DISABLED)
-	{
-		res = set_int(handle, NDIS_OID_WEP_STATUS,
-			      NDIS_ENCODE_DISABLED);
-		if (res)
-		{
-			printk(KERN_INFO "%s: changing wep status failed (%08X)\n",
-			       dev->name, res);
-			return -1;
-		}
-		return 0;
-	}
-	
-	res = set_int(handle, NDIS_OID_WEP_STATUS, NDIS_ENCODE_ENABLED);
-	if (!(wrqu->data.flags & IW_ENCODE_NOKEY))
-	{
-		wep_info->keys[index-1].length = wrqu->data.length;
-		memcpy(&wep_info->keys[index-1].key, extra, wrqu->data.length);
-	}
-
-	wep_req.len = sizeof(wep_req);
-	wep_req.keyindex = (index-1) | 1 << 31;
-	wep_req.keylength = wep_info->keys[index-1].length;
-	memcpy(&wep_req.keymaterial, wep_info->keys[index-1].key,
-			wep_req.keylength);
-	DBGTRACE("%s: setting key %d as tx key\n", __FUNCTION__, index);
-	res = dosetinfo(handle, NDIS_OID_ADD_WEP,
-			(char*)&wep_req, sizeof(wep_req),
-			&written, &needed);
-	if (res)
-	{
-		printk(KERN_INFO "%s: setting wep key failed (%08X)\n",
-		       dev->name, res);
-		return -EINVAL;
-	}
-
-	wep_info->active = index;
-
-	/* ndis drivers want essid to be set after setting wep */
-	memset(&essid_wrqu, 0, sizeof(essid_wrqu));
-	essid_wrqu.essid.length = handle->essid.length;
-	essid_wrqu.essid.flags = handle->essid.flags;
-	ndis_set_essid(dev, NULL, &essid_wrqu, handle->essid.name);
 	return 0;
 }
-
+	
 static int ndis_set_nick(struct net_device *dev, struct iw_request_info *info,
 			   union iwreq_data *wrqu, char *extra)
 {
