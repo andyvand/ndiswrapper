@@ -211,6 +211,23 @@ struct miniport_char
 	/* Send packets */
 	unsigned int (*send_packets)(void *ctx, struct ndis_packet **packets, int nr_of_packets) STDCALL;
 	
+    void *alloc_complete;
+
+	/* NDIS 5.0 extensions */
+	void *co_create_vc;
+	void *co_delete_vc;
+	void *co_activate_vc;
+	void *co_deactivate_vc;
+	void *co_send_packets;
+	void *co_request;
+
+	/* NDIS 5.1 extensions */
+	void *cancel_send_packets;
+	void *pnp_event_notify;
+	void (*adapter_shutdown)(void *ctx) STDCALL;
+
+	/* These are specific to ndiswrapper, not part of NDIS */
+	void *shutdown_ctx;
 };
 
 struct ndis_work
