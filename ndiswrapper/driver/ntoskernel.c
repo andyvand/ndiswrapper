@@ -1244,6 +1244,25 @@ STDCALL NT_STATUS WRAP_EXPORT(IoGetDeviceProperty)
 	}
 }
 
+STDCALL void WRAP_EXPORT(IoFreeMdl)
+	(struct mdl *mdl)
+{
+	struct mdl *head;
+
+	if (mdl == NULL || mdl->process == NULL)
+		return;
+	head = mdl->process;
+	if (head->mdlflags != 0x1)
+		return;
+	mdl->next = head->next;
+	head->next = mdl;
+	head->bytecount--;
+
+	if (head->byteoffset && head->bytecount == 0)
+		kfree(head);
+	return;
+}
+
 STDCALL ULONG WRAP_EXPORT(MmSizeOfMdl)
 	(void *base, ULONG length)
 {
@@ -1336,10 +1355,9 @@ STDCALL void WRAP_EXPORT(IoDeleteSymbolicLink)(void){UNIMPL();}
 STDCALL void WRAP_EXPORT(MmMapLockedPagesSpecifyCache)(void){UNIMPL();}
 STDCALL void WRAP_EXPORT(MmProbeAndLockPages)(void){UNIMPL();}
 STDCALL void WRAP_EXPORT(MmUnlockPages)(void){UNIMPL();}
-STDCALL void WRAP_EXPORT(IoAllocateMdl)(void){UNIMPL();}
-STDCALL void WRAP_EXPORT(IoFreeMdl)(void){UNIMPL();}
 STDCALL void WRAP_EXPORT(ObfReferenceObject)(void){UNIMPL();}
 STDCALL void WRAP_EXPORT(ObReferenceObjectByHandle)(void){UNIMPL();}
 STDCALL void WRAP_EXPORT(_except_handler3)(void){UNIMPL();}
+STDCALL void WRAP_EXPORT(IoAllocateMdl)(void){UNIMPL();}
 
 #include "ntoskernel_exports.h"
