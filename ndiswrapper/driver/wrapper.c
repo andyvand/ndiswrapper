@@ -1265,7 +1265,7 @@ int ndiswrapper_pm_callback(struct pm_dev *pm_dev, pm_request_t rqst,
 	struct net_device *dev;
 	struct ndis_handle *handle;
 	int res;
-	spinlock_t lock;
+	spinlock_t lock = SPIN_LOCK_UNLOCKED;
 
 	DBGTRACE("%s called with %p, %d, %p\n",
 		 __FUNCTION__, pm_dev, rqst, data);
@@ -1527,7 +1527,9 @@ static void __devexit ndis_remove_one(struct pci_dev *pdev)
 		pm_unregister(handle->pm);
 
 #ifndef DEBUG_CRASH_ON_INIT
+	netif_stop_queue(handle->net_dev);
 	unregister_netdev(handle->net_dev);
+	set_int(handle, NDIS_OID_DISASSOCIATE, 0);
 	call_halt(handle);
 
 	if(handle->net_dev)
