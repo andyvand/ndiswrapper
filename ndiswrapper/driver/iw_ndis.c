@@ -405,7 +405,7 @@ int ndis_get_ap_address(struct net_device *dev, struct iw_request_info *info,
 	memset(mac_address, 0, ETH_ALEN);
 	res = doquery(handle, NDIS_OID_BSSID, (char*)&mac_address, ETH_ALEN,
 		      &written, &needed);
-	if(res)
+	if (res)
 		memset(mac_address, 0, ETH_ALEN);
 
         memcpy(wrqu->ap_addr.sa_data, mac_address, ETH_ALEN);
@@ -1232,20 +1232,36 @@ static int ndis_set_key(struct net_device *dev, struct iw_request_info *info,
 
 	ndis_key.length = sizeof(ndis_key);
 	ndis_key.key_index = wpa_key->key_index;
-	ndis_key.key_index |= (1 << 31);
-
-//	if (wpa_key->key_index == 0)
-//		ndis_key.key_index |= (1 << 30);
-
 	ndis_key.key_len = wpa_key->key_len;
 	memcpy(&ndis_key.key, wpa_key->key, wpa_key->key_len);
-	
-	memcpy(&ndis_key.bssid, wpa_key->addr, ETH_ALEN);
 	
 	ndis_key.key_rsc = 1;
 	for (i = 0, ndis_key.key_rsc = 0 ; i < wpa_key->seq_len ; i++)
 		ndis_key.key_rsc |= (wpa_key->seq[i] << (i * 8));
 	
+	ndis_key.key_index |= (1 << 31);
+
+	if (wpa_key->key_index == 0)
+	{
+		union iwreq_data wrqu;
+
+		ndis_key.key_index |= (1 << 30);
+
+		DBGTRACE("bssid " MACSTR, MAC2STR(wpa_key->addr));
+		if (!memcmp(wpa_key->addr,
+			    "\xFF\xFF\xFF\xFF\xFF\xFF", ETH_ALEN))
+		{
+			ndis_get_ap_address(dev, NULL, &wrqu, NULL);
+			memcpy(&ndis_key.bssid, &wrqu.ap_addr.sa_data,
+			       ETH_ALEN);
+		}
+		else
+			memcpy(&ndis_key.bssid, wpa_key->addr, ETH_ALEN);
+		
+		wrqu.data.flags = 1;
+		ndis_set_wpa(dev, NULL, &wrqu, NULL);
+	}
+
 	res = dosetinfo(handle, NDIS_OID_ADD_KEY, (char *)&ndis_key,
 			ndis_key.length, &written, &needed);
 	if (res)
@@ -1258,20 +1274,6 @@ static int ndis_set_key(struct net_device *dev, struct iw_request_info *info,
 	/* FIXME: check for TKIP -> encr mode */
 	handle->encr_alg = wpa_key->alg;
 	DBGTRACE("encr_alg = %d", handle->encr_alg);
-	if (wpa_key->key_index == 3)
-	{
-		char buf[128];
-		union iwreq_data wrqu;
-		char bssid[6];
-
-#define MAC2STR(a) (a)[0], (a)[1], (a)[2], (a)[3], (a)[4], (a)[5]
-#define MACSTR "%02x:%02x:%02x:%02x:%02x:%02x"
-
-		sprintf(buf, "MLME-MICHAELMICFAILURE.indication(keyid=? broadcast addr=" MACSTR ")", MAC2STR(bssid));
-//		sprintf(buf, "MLME-MICHAELMICFAILURE.indication(keyid=? unicast addr=" MACSTR ")", MAC2STR(BSSID));
-		wrqu.data.length = strlen(buf);
-		wireless_send_event(handle->net_dev, IWEVCUSTOM, &wrqu, buf);
-	}
 	TRACEEXIT(return 0);
 }
 
@@ -1281,7 +1283,6 @@ static int ndis_set_associate(struct net_device *dev,
 {
 	TRACEENTER("%s", "");
 	/* FIXME: for now we simply set the essid */
-	wrqu->essid.flags = 1;
 	TRACEEXIT(return ndis_set_essid(dev, info, wrqu, extra));
 }
 
