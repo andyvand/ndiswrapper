@@ -58,7 +58,7 @@
 #endif
 
 
-#define STDCALL __attribute__((__stdcall__))
+#define STDCALL __attribute__((__stdcall__, regparm(0)))
 #define packed __attribute__((packed))
 
 int getSp(void);
