@@ -1702,12 +1702,19 @@ static int __devinit ndis_init_one(struct pci_dev *pdev,
                                    const struct pci_device_id *ent)
 {
 	int res;
-	struct ndis_driver *driver = (struct ndis_driver *) ent->driver_data;
+	struct ndis_device *device = (struct ndis_device *) ent->driver_data;
+	struct ndis_driver *driver = device->driver;
 	struct ndis_handle *handle;
 	struct net_device *dev;
 
-	DBGTRACE("%s\n", __FUNCTION__);
-
+	DBGTRACE("%s %04x:%04x:%04x:%04x\n", __FUNCTION__, ent->vendor, ent->device, ent->subvendor, ent->subdevice);
+	if(device->fuzzy)
+	{
+		printk(KERN_WARNING "This driver (%s) is not for your hardware. " \
+		       "It's likely to work anyway but have it in " \
+		       "mind if you have problem.\n", device->driver->name); 
+	}
+	
 	dev = alloc_etherdev(sizeof(*handle));
 	if(!dev)
 	{
@@ -1721,6 +1728,7 @@ static int __devinit ndis_init_one(struct pci_dev *pdev,
 	handle = dev->priv;
 
 	handle->driver = driver;
+	handle->device = device;
 	handle->net_dev = dev;
 	pci_set_drvdata(pdev, handle);
 
@@ -1829,11 +1837,13 @@ static void __devexit ndis_remove_one(struct pci_dev *pdev)
 
 
 static int misc_ioctl(struct inode *inode, struct file *file, unsigned int cmd, unsigned long arg);
+static int misc_release(struct inode *inode, struct file *file);
 
 
 static struct file_operations wrapper_fops = {
 	.owner          = THIS_MODULE,
 	.ioctl		= misc_ioctl,
+	.release	= misc_release
 };
 
 static struct miscdevice wrapper_misc = {
@@ -1848,27 +1858,52 @@ static struct miscdevice wrapper_misc = {
 static int start_driver(struct ndis_driver *driver)
 {
 	int res = 0;
-
+	int i;
+	struct ndis_device *device;
+	
 	if(call_entry(driver))
 	{
 		printk(KERN_ERR "ndiswrapper: Driver entry return error\n");
 		return -EINVAL;
 	}
 
+	printk("Nr drivers: %d\n", driver->nr_devices);
+
+	driver->pci_idtable = kmalloc(sizeof(struct pci_device_id)*(driver->nr_devices+1), GFP_KERNEL);
+	if(!driver->pci_idtable)
+		return -ENOMEM;
+	memset(driver->pci_idtable, 0, sizeof(struct pci_device_id)*(driver->nr_devices+1));
+	
+	device = (struct ndis_device*) driver->devices.next;
+	for(i = 0; i < driver->nr_devices; i++)
+	{
+		driver->pci_idtable[i].vendor = device->pci_vendor;
+		driver->pci_idtable[i].device = device->pci_device;
+		driver->pci_idtable[i].subvendor = device->pci_subvendor;
+		driver->pci_idtable[i].subdevice = device->pci_subdevice;
+		driver->pci_idtable[i].class = 0;
+		driver->pci_idtable[i].class_mask = 0;
+		driver->pci_idtable[i].driver_data = (unsigned long) device;
+
+		DBGTRACE("%s Adding %04x:%04x:%04x:%04x to pci idtable\n", __FUNCTION__, device->pci_vendor, device->pci_device, device->pci_subvendor, device->pci_subdevice);
+
+		device = (struct ndis_device*) device->list.next;
+	}
+
 	memset(&driver->pci_driver, 0, sizeof(driver->pci_driver));
 	driver->pci_driver.name = driver->name;
-	driver->pci_driver.id_table = driver->pci_id;
+	driver->pci_driver.id_table = driver->pci_idtable;
 	driver->pci_driver.probe = ndis_init_one;
 	driver->pci_driver.remove = __devexit_p(ndis_remove_one);	
 	driver->pci_driver.suspend = ndis_suspend;
 	driver->pci_driver.resume = ndis_resume;
-	
 #ifndef DEBUG_CRASH_ON_INIT
 	res = pci_module_init(&driver->pci_driver);
 	if(!res)
 		driver->pci_registered = 1;
 #endif
 	return res;
+	
 }
 
 
@@ -1879,7 +1914,6 @@ static struct ndis_driver *load_driver(struct put_driver *put_driver)
 {
 	void *entry;
 	struct ndis_driver *driver;
-	struct pci_dev *pdev = 0;
 	int namelen;
 
 	DBGTRACE("Putting driver size %d\n", put_driver->size);
@@ -1892,7 +1926,7 @@ static struct ndis_driver *load_driver(struct put_driver *put_driver)
 	}
 	memset(driver, 0, sizeof(struct ndis_driver));
 	
-	INIT_LIST_HEAD(&driver->settings);
+	INIT_LIST_HEAD(&driver->devices);
 
 	namelen = sizeof(put_driver->name);
 	if(sizeof(driver->name) < namelen)
@@ -1915,30 +1949,11 @@ static struct ndis_driver *load_driver(struct put_driver *put_driver)
 		goto out_vmalloc;
 	}
 
-
 	if(prepare_coffpe_image(&entry, driver->image, put_driver->size))
 	{
 		printk(KERN_ERR "Unable to prepare driver\n");		
 		goto out_baddriver;
 	}
-
-	/* Make sure PCI device is present */
-	pdev = pci_find_device(put_driver->pci_vendor, put_driver->pci_device, pdev);
-	if(!pdev)
-	{
-		printk(KERN_ERR "PCI device %04x:%04x not present\n", put_driver->pci_vendor, put_driver->pci_device);
-		goto out_baddriver;
-	}
-	
-	memset(&driver->pci_id, 0, sizeof(driver->pci_id));
-	driver->pci_id[0].vendor = put_driver->pci_vendor;
-	driver->pci_id[0].device = put_driver->pci_device;
-	driver->pci_id[0].subvendor = PCI_ANY_ID;
-	driver->pci_id[0].subdevice = PCI_ANY_ID;
-	driver->pci_id[0].class = 0;
-	driver->pci_id[0].class_mask = 0;
-	driver->pci_id[0].driver_data = (int)driver;
-	
 	driver->entry = entry;
 
 	return driver;
@@ -1963,19 +1978,11 @@ static int add_driver(struct ndis_driver *driver)
 
 	list_for_each_entry(tmp, &driverlist, list)
 	{
-		if(tmp->pci_id[0].vendor == driver->pci_id[0].vendor &&
-		   tmp->pci_id[0].device == driver->pci_id[0].device)
-	   	{
-			dup = 1;
-			break;
-		}
-
 		if(strcmp(tmp->name, driver->name) == 0)
 		{
 			dup = 1;
 			break;
 		}
-		
 	}
 	if(!dup)
 		list_add(&driver->list, &driverlist);
@@ -1986,14 +1993,48 @@ static int add_driver(struct ndis_driver *driver)
 		return -EBUSY;
 	}
 	
-
 	return 0;
 }
 
 /*
- * Add setting to the list of settings for the driver.
+ * Add a new device to a driver.
  */
-static int add_setting(struct ndis_driver *driver, struct put_setting *put_setting)
+static struct ndis_device *add_device(struct ndis_driver *driver, struct put_device *put_device)
+{
+	struct ndis_device *device;
+	if (!(device = kmalloc(sizeof(*device), GFP_KERNEL)))
+		return NULL;
+
+	memset(device, 0, sizeof(*device));
+	INIT_LIST_HEAD(&device->settings);
+
+	device->pci_vendor = put_device->pci_vendor;
+	device->pci_device = put_device->pci_device;
+	device->pci_subvendor = put_device->pci_subvendor;
+	device->pci_subdevice = put_device->pci_subdevice;
+	device->fuzzy = put_device->fuzzy;
+
+	DBGTRACE("%s %04x:%04x:%04x:%04x %d\n", __FUNCTION__, device->pci_vendor, device->pci_device, device->pci_subvendor, device->pci_subdevice, device->fuzzy);
+	
+	if(put_device->pci_subvendor == -1)
+	{
+		device->pci_subvendor = PCI_ANY_ID;
+		device->pci_subdevice = PCI_ANY_ID;
+		list_add_tail(&device->list, &driver->devices);
+	}
+	else
+	{
+		list_add(&device->list, &driver->devices);
+	}
+	
+	return device;
+}
+
+
+/*
+ * Add setting to the list of settings for the device.
+ */
+static int add_setting(struct ndis_device *device, struct put_setting *put_setting)
 {
 	struct ndis_setting *setting;
 
@@ -2021,7 +2062,7 @@ static int add_setting(struct ndis_driver *driver, struct put_setting *put_setti
 	setting->val_str[put_setting->val_str_len] = 0;
 	setting->value.type = NDIS_SETTING_NONE;
 
-	list_add(&setting->list, &driver->settings);
+	list_add(&setting->list, &device->settings);
 	return 0;
 
 val_str_fail:
@@ -2033,6 +2074,26 @@ setting_fail:
 	return -EINVAL;
 }
 
+
+/*
+ * Delete a device and all info about it.
+ */
+static void delete_device(struct ndis_device *device)
+{
+	struct list_head *curr, *tmp2;
+	DBGTRACE("%s\n", __FUNCTION__);
+
+	list_for_each_safe(curr, tmp2, &device->settings)
+	{
+		struct ndis_setting *setting = (struct ndis_setting*) curr;
+		kfree(setting->name);
+		kfree(setting->val_str);
+		kfree(setting);
+	}
+	kfree(device);
+}
+
+
 /*
  * Delete a driver. This implies deleting all cards for the handle too.
  */
@@ -2040,7 +2101,6 @@ static void unload_driver(struct ndis_driver *driver)
 {
 	struct list_head *curr, *tmp2;
 
-	DBGTRACE("%s\n", __FUNCTION__);
 	if(driver->pci_registered)
 		pci_unregister_driver(&driver->pci_driver);
 #ifdef DEBUG_CRASH_ON_INIT
@@ -2052,27 +2112,52 @@ static void unload_driver(struct ndis_driver *driver)
 	}
 #endif
 	spin_lock(&driverlist_lock);
-	list_del(&driver->list);
+	if(driver->list.next)
+		list_del(&driver->list);
 	spin_unlock(&driverlist_lock);
 
 	if(driver->image)
 		vfree(driver->image);
 
-	list_for_each_safe(curr, tmp2, &driver->settings)
+	if(driver->pci_idtable)
+		kfree(driver->pci_idtable);
+
+	list_for_each_safe(curr, tmp2, &driver->devices)
 	{
-		struct ndis_setting *setting = (struct ndis_setting*) curr;
-		kfree(setting->name);
-		kfree(setting->val_str);
-		kfree(setting);
+		struct ndis_device *device = (struct ndis_device*) curr;
+		delete_device(device);
 	}
 	kfree(driver);
 }
 
+/*
+ * Called when userspace closes the filehandle for the misc device.
+ * Check and remove and half-loaded drivers.
+ */
+
+static int misc_release(struct inode *inode, struct file *file)
+{
+	if(!file->private_data)
+		return 0;
+
+	DBGTRACE("%s Removing partially loaded driver\n", __FUNCTION__);
+	unload_driver((struct ndis_driver *)file->private_data);
+	file->private_data = 0;
+	DBGTRACE("%s Remove done\n", __FUNCTION__);
+	return 0;	
+}
+
+
 static int misc_ioctl(struct inode *inode, struct file *file, unsigned int cmd, unsigned long arg)
 {
 	struct put_driver put_driver;
+	struct put_device put_device;
 	int res = -1;
-	static struct ndis_driver *driver = NULL;
+	struct ndis_device *device = NULL;
+	struct ndis_driver *driver = (struct ndis_driver*) file->private_data;
+
+	if(driver)
+		device = driver->current_device;
 
 	switch(cmd) {
 	case NDIS_PUTDRIVER:
@@ -2090,6 +2175,23 @@ static int misc_ioctl(struct inode *inode, struct file *file, unsigned int cmd, 
 		}
 		break;
 
+
+	case NDIS_PUTDEVICE:
+		if (!driver)
+			return -EINVAL;
+
+		if(copy_from_user(&put_device, (void*)arg,
+				  sizeof(struct put_device)))
+			return -EINVAL;
+		else
+		{
+			device = add_device(driver, &put_device);
+			driver->current_device = device;
+			driver->nr_devices++;
+			device->driver = driver;
+		}
+		break;
+		
 	case NDIS_STARTDRIVER:
 		if (!driver)
 			return -EINVAL;
@@ -2112,7 +2214,7 @@ static int misc_ioctl(struct inode *inode, struct file *file, unsigned int cmd, 
 		}
 		break;
 	case NDIS_PUTSETTING:
-		if (!driver)
+		if (!device)
 			return -EINVAL;
 		else
 		{
@@ -2120,19 +2222,9 @@ static int misc_ioctl(struct inode *inode, struct file *file, unsigned int cmd, 
 			if (copy_from_user(&put_setting, (void*)arg,
 					  sizeof(struct put_setting)))
 				return -EINVAL;
-			return add_setting(driver, &put_setting);
+			return add_setting(device, &put_setting);
 		}
 		break;
-	case NDIS_CANCELLOAD:
-		if (!driver)
-			return -EINVAL;
-		else
-		{
-			unload_driver(driver);
-			file->private_data = NULL;
-			return 0;
-		}
-		break;	
 	default:
 		printk(KERN_ERR "Unknown ioctl %08X\n", cmd);
 		return -EINVAL;
