@@ -101,6 +101,19 @@ struct ndis_packet_private {
 	USHORT oob_offset;
 };
 
+/* OOB data */
+struct ndis_packet_oob_data {
+	union {
+		ULONGLONG time_to_tx;
+		ULONGLONG time_txed;
+	} oob_tx;
+	ULONGLONG time_rxed;
+	UINT header_size;
+	UINT mediaspecific_size;
+	void *mediaspecific;
+	NDIS_STATUS status;
+};
+
 struct ndis_packet {
 
 	struct ndis_packet_private private;
@@ -124,17 +137,7 @@ struct ndis_packet {
 	ULONG_PTR reserved[2];
 	UCHAR protocol_reserved[1];
 
-	/* OOB data */
-	union {
-		ULONGLONG time_to_tx;
-		ULONGLONG time_txed;
-	} oob_tx;
-	ULONGLONG time_rxed;
-	UINT header_size;
-	UINT mediaspecific_size;
-	void *mediaspecific;
-	NDIS_STATUS status;
-
+	struct ndis_packet_oob_data oob_data;
 	struct ndis_packet_extension extension;
 
 	/* ndiswrapper specific info */
