@@ -88,6 +88,7 @@ sub install
 	loadinf($inf);
 	initStrings(); 
 	parseManu();
+	`cp -u $inf $confdir/$driver_name/$driver_name.inf`;	
 	processFuzz();
 }
 
@@ -248,8 +249,6 @@ sub modconf_err
 	print "$line\n";
 	print "unless you are 100% sure of what you are doing.\n";			
 }
-
-		
 
 
 sub getPresentCards
@@ -589,12 +588,18 @@ sub copyfiles
 		{
 			$line =~ s/,+.*//;
 			my $realname = findfile($line);
+
 			if($realname)
 			{
 				my $newname = lc($realname);
 				`cp -u $instdir/$realname $confdir/$driver_name/$newname`;	
 				`chmod 644 $confdir/$driver_name/$newname`;	
 			}
+			else
+			{
+				print STDERR "Warning: Cannot locate $line\n";
+			}
+			
 		}
 	}
 }
@@ -655,10 +660,10 @@ sub addReg
 		{
 			$line =~ /([^,]*),([^,]*),([^,]*),([^,]*),(.*)/; 
 			my $hkr = trim($1);
-			my $p1 = substStr(trim($2));
-			my $p2 = substStr(trim($3));
-			my $p3 = stripslashes(substStr(trim($4)));
-			my $p4 = stripslashes(substStr(trim($5)));
+			my $p1 = stripquotes(substStr(trim($2)));
+			my $p2 = stripquotes(substStr(trim($3)));
+			my $p3 = stripquotes(substStr(trim($4)));
+			my $p4 = stripquotes(substStr(trim($5)));
 
 			if($p1)
 			{
@@ -738,7 +743,7 @@ sub trim
 }
 
 
-sub stripslashes
+sub stripquotes
 {
 	my $s = shift;
 	$s =~ s/"(.*)"/\1/;
