@@ -975,10 +975,12 @@ static void wrapper_worker_proc(void *param)
 		unsigned char *wpa_assoc_info, *assoc_info, *p, *offset;
 		union iwreq_data wrqu;
 		unsigned int i, res, written, needed;
-		const int ie_size = 256;
-		const int assoc_size = sizeof(*ndis_assoc_info) + 2 * 256;
+		const int ie_size = IW_CUSTOM_MAX / 4 - 20;
+		const int assoc_size = sizeof(*ndis_assoc_info) +
+			IW_CUSTOM_MAX;
 
-		if (!test_bit(CAPA_WPA, &handle->capa))
+		if (handle->auth_mode != AUTHMODE_WPA &&
+		    handle->auth_mode != AUTHMODE_WPAPSK)
 			return;
 
 		assoc_info = kmalloc(assoc_size, GFP_KERNEL);
@@ -987,7 +989,7 @@ static void wrapper_worker_proc(void *param)
 			ERROR("%s", "couldn't allocate memory");
 			return;
 		}
-		wpa_assoc_info = kmalloc(ie_size, GFP_KERNEL);
+		wpa_assoc_info = kmalloc(IW_CUSTOM_MAX, GFP_KERNEL);
 		if (!wpa_assoc_info)
 		{
 			ERROR("%s", "couldn't allocate memory");
@@ -1007,7 +1009,7 @@ static void wrapper_worker_proc(void *param)
 
 		res = doquery(handle, NDIS_OID_ASSOC_INFO, assoc_info,
 			      assoc_size, &written, &needed);
-		if (res)
+		if (res || !written)
 		{
 			ERROR("query assoc_info failed (%08X)", res);
 			kfree(assoc_info);
@@ -1034,11 +1036,20 @@ static void wrapper_worker_proc(void *param)
 
 		memset(&wrqu, 0, sizeof(wrqu));
 		wrqu.data.length = p - wpa_assoc_info;
-		DBGTRACE("adding %d bytes", wrqu.data.length);
+		if (wrqu.data.length > IW_CUSTOM_MAX)
+		{
+			WARNING("wrong association information element? (%d)",
+				wrqu.data.length);
+			kfree(assoc_info);
+			kfree(wpa_assoc_info);
+			return;
+		}
+
+		kfree(wpa_assoc_info);
+		kfree(assoc_info);
+
 		wireless_send_event(handle->net_dev, IWEVCUSTOM, &wrqu,
 				    wpa_assoc_info);
-		kfree(assoc_info);
-		kfree(wpa_assoc_info);
 
 		get_ap_address(handle, (char *)&wrqu.ap_addr.sa_data);
 		wrqu.ap_addr.sa_family = ARPHRD_ETHER;
