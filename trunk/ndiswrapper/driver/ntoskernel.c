@@ -740,11 +740,7 @@ STDCALL static unsigned long WRAP_EXPORT(PsCreateSystemThread)
 	*phandle = find_task_by_pid(pid);
 	DBGTRACE2("*phandle = %p", *phandle);
 #else
-	*phandle = kthread_run(kthread_trampoline, ctx,
-#ifdef CONFIG_SOFTWARE_SUSPEND2
-			       0,
-#endif
-			       "ndiswrapper");
+	*phandle = KTHREAD_RUN(kthread_trampoline, ctx, "ndiswrapper");
 	DBGTRACE2("*phandle = %p", *phandle);
 	if (IS_ERR(*phandle)) {
 		kfree(ctx);
