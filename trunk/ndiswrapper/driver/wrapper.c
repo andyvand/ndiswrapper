@@ -1420,12 +1420,11 @@ static int setup_dev(struct net_device *dev)
 	check_capa(handle);
 
 	DBGTRACE("capbilities = %ld", handle->capa);
-	printk(KERN_INFO "%s: encryption modes supported: %s%s%s%s\n",
+	printk(KERN_INFO "%s: encryption modes supported: %s%s%s\n",
 	       dev->name,
 	       test_bit(CAPA_WEP, &handle->capa) ? "WEP" : "none",
-	       test_bit(CAPA_WPA, &handle->capa) ? ", WPA with " : "",
-	       test_bit(CAPA_TKIP, &handle->capa) ? "TKIP" : "",
-	       test_bit(CAPA_AES, &handle->capa) ? ", AES/CCMP" : "");
+	       test_bit(CAPA_TKIP, &handle->capa) ? ", WPA with TKIP" : "",
+	       test_bit(CAPA_AES, &handle->capa) ? ", WPA with AES/CCMP" : "");
 
 	/* check_capa changes auth_mode and encr_mode, so set them again */
 	set_mode(handle, NDIS_MODE_INFRA);
