@@ -28,7 +28,7 @@
 #define CACHE_MDL_PAGES 2
 #define CACHE_MDL_SIZE (sizeof(struct mdl) + (sizeof(ULONG) * CACHE_MDL_PAGES))
 
-KSPIN_LOCK kevent_lock;
+static KSPIN_LOCK kevent_lock;
 KSPIN_LOCK irp_cancel_lock;
 KSPIN_LOCK ntoskernel_lock;
 static kmem_cache_t *mdl_cache;
@@ -463,11 +463,12 @@ STDCALL LONG WRAP_EXPORT(KeSetEvent)
 		struct wait_block *wb;
 
 		wb = container_of(ent, struct wait_block, list_entry);
-		DBGTRACE3("waking up %p", wb->thread);
+		DBGTRACE3("waking up process %p p(%p,%p)", wb->thread, wb,
+			  kevent);
 		if (wb->thread)
 			wake_up_process((task_t *)wb->thread);
 		else
-			ERROR("illegal wait block %p", wb);
+			ERROR("illegal wait block %p(%p)", wb, kevent);
 		if (kevent->dh.type == SynchronizationEvent)
 			break;
 	}
@@ -511,8 +512,9 @@ STDCALL NTSTATUS WRAP_EXPORT(KeWaitForMultipleObjects)
 	struct kmutex *kmutex;
 	struct dispatch_header *dh;
 
-	TRACEENTER2("reason = %u, waitmode = %u, alertable = %u,"
-		" timeout = %p", wait_reason, wait_mode, alertable, timeout);
+	TRACEENTER2("count = %d, reason = %u, waitmode = %u, alertable = %u,"
+		    " timeout = %p", count, wait_reason, wait_mode,
+		    alertable, timeout);
 
 	if (count > MAX_WAIT_OBJECTS)
 		TRACEEXIT2(return STATUS_INVALID_PARAMETER);
@@ -530,7 +532,7 @@ STDCALL NTSTATUS WRAP_EXPORT(KeWaitForMultipleObjects)
 		if (dh->size == sizeof(*kmutex)) {
 			kmutex = (struct kmutex *)object[i];
 			/* if noone else owns the mutex or if we
-			 * already own it, treat as signaled */
+			 * already own it, mark as signaled */
 			if (kmutex->owner_thread == NULL ||
 			    kmutex->owner_thread == get_current()) {
 				kmutex->dh.signal_state = TRUE;
@@ -538,15 +540,12 @@ STDCALL NTSTATUS WRAP_EXPORT(KeWaitForMultipleObjects)
 				kmutex->owner_thread = get_current();
 			}
 		}
-		if (dh->signal_state == TRUE) {
-			/* if aleady in signaled state and WaitAny,
-			 * return */
-			if (wait_type == WaitAny) {
-				if (dh->type == SynchronizationEvent)
-					dh->signal_state = FALSE;
-				kspin_unlock(&kevent_lock);
-				TRACEEXIT3(return STATUS_WAIT_0 + i);
-			}
+		/* if aleady in signaled state and WaitAny, return */
+		if (dh->signal_state == TRUE && wait_type == WaitAny) {
+			if (dh->type == SynchronizationEvent)
+				dh->signal_state = FALSE;
+			kspin_unlock(&kevent_lock);
+			TRACEEXIT3(return STATUS_WAIT_0 + i);
 		}
 	}
 	/* get list of objects to wait */
@@ -575,7 +574,7 @@ STDCALL NTSTATUS WRAP_EXPORT(KeWaitForMultipleObjects)
 			TRACEEXIT2(return STATUS_TIMEOUT);
 		else if (*timeout > 0) {
 			long d = (*timeout) - ticks_1601();
-			/* many drivers call this function with much
+			/* some drivers call this function with much
 			 * smaller numbers that suggest either drivers
 			 * are broken or explanation for this is
 			 * wrong */
@@ -587,7 +586,7 @@ STDCALL NTSTATUS WRAP_EXPORT(KeWaitForMultipleObjects)
 			wait_jiffies = HZ * (-(*timeout)) / TICKSPERSEC;
 	}
 
-	DBGTRACE3("%p is going to sleep", get_current());
+	DBGTRACE3("%p is going to sleep for %ld", get_current(), wait_jiffies);
 	while (wait_count) {
 		if (signal_pending(current))
 			res = -ERESTARTSYS;
@@ -615,13 +614,13 @@ STDCALL NTSTATUS WRAP_EXPORT(KeWaitForMultipleObjects)
 				}
 			}
 			if (dh->signal_state == TRUE) {
-				wait_index = i;
-				if (dh->type == SynchronizationEvent)
-					dh->signal_state = FALSE;
-				RemoveEntryList(&wb[i].list_entry);
 				/* mark that this wb is not on the list */
 				wb[i].thread = NULL;
+				RemoveEntryList(&wb[i].list_entry);
+				if (dh->type == SynchronizationEvent)
+					dh->signal_state = FALSE;
 				wait_count--;
+				wait_index = i;
 			}
 		}
 		kspin_unlock(&kevent_lock);
@@ -656,7 +655,8 @@ STDCALL NTSTATUS WRAP_EXPORT(KeWaitForSingleObject)
 	(struct kevent *object, KWAIT_REASON wait_reason,
 	 KPROCESSOR_MODE wait_mode, BOOLEAN alertable, LARGE_INTEGER *timeout)
 {
-	return KeWaitForMultipleObjects(1, &object, WaitAny, wait_reason,
+	struct kevent *obj = object;
+	return KeWaitForMultipleObjects(1, &obj, WaitAny, wait_reason,
 					wait_mode, alertable, timeout, NULL);
 }
 
