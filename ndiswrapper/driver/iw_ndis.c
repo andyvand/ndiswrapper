@@ -67,12 +67,6 @@ static int iw_set_essid(struct net_device *dev, struct iw_request_info *info,
 	if (wrqu->essid.flags)
 		wrqu->essid.length--;
 
-	/* when 'iwconfig iface essid off' is called, we actually set
-	 * an impossible essid, which will disassociate without having
-	 * to call NDIS_OID_DISASSOCIATE, which also turns off the radio
-	 * some cards don't come back when a new essid is given
-	 */
-
 	if (wrqu->essid.length > IW_ESSID_MAX_SIZE)
 		TRACEEXIT1(return -EINVAL);
 
@@ -1472,14 +1466,13 @@ static int wpa_disassociate(struct net_device *dev,
 {
 	struct ndis_handle *handle = (struct ndis_handle *)dev->priv;
 	mac_address ap_addr;
+	char buf[NDIS_ESSID_MAX_SIZE];
 	
 	TRACEENTER("%s", "");
 	get_ap_address(handle, ap_addr);
 	DBGTRACE("bssid " MACSTR, MAC2STR(ap_addr));
-	miniport_set_int(handle, NDIS_OID_DISASSOCIATE, 0);
-	set_current_state(TASK_INTERRUPTIBLE);
-	schedule_timeout(HZ/2);
-	set_essid(handle, "", 0);
+	get_random_bytes(buf, sizeof(buf));
+	set_essid(handle, buf, sizeof(buf));
 	get_ap_address(handle, ap_addr);
 	DBGTRACE("bssid " MACSTR, MAC2STR(ap_addr));
 	TRACEEXIT(return 0);
@@ -1620,16 +1613,15 @@ static int wpa_deauthenticate(struct net_device *dev,
 	struct ndis_handle *handle = (struct ndis_handle *)dev->priv;
 	mac_address ap_addr;
 	int i;
+	char buf[NDIS_ESSID_MAX_SIZE];
 	
 	TRACEENTER("%s", "");
 	get_ap_address(handle, ap_addr);
 	DBGTRACE("bssid " MACSTR, MAC2STR(ap_addr));
 	for (i = 0; i < MAX_ENCR_KEYS; i++)
 		handle->encr_info.keys[i].length = 0;
-	miniport_set_int(handle, NDIS_OID_DISASSOCIATE, 0);
-	set_current_state(TASK_INTERRUPTIBLE);
-	schedule_timeout(HZ/2);
-	set_essid(handle, "", 0);
+	get_random_bytes(buf, sizeof(buf));
+	set_essid(handle, buf, sizeof(buf));
 	get_ap_address(handle, ap_addr);
 	DBGTRACE("bssid " MACSTR, MAC2STR(ap_addr));
 	TRACEEXIT(return 0);
