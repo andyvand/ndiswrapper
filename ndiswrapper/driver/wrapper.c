@@ -63,7 +63,7 @@ static int doquery(struct ndis_handle *handle, unsigned int oid, char *buf, int 
 {
 	int res;
 
-	spin_lock(&handle->query_lock);
+	down(&handle->query_mutex);
 
 	handle->query_wait_done = 0;
 	DBGTRACE("Calling query at %08x rva(%08x)\n", (int)handle->driver->miniport_char.query, (int)handle->driver->miniport_char.query - image_offset);
@@ -75,15 +75,12 @@ static int doquery(struct ndis_handle *handle, unsigned int oid, char *buf, int 
 	if(res != NDIS_STATUS_PENDING)
 		goto out;
 		
-	/* This is a very bad way to wait but we cannot sleap here as when ifconfig gathers statistics we
-	 * get a query from a context where is_atomic() = 1
-	 */
-	while(handle->query_wait_done == 0);
+	wait_event(handle->query_wqhead, (handle->query_wait_done == 1));
 	 
 	res = handle->query_wait_res;
 
 out:
-	spin_unlock(&handle->query_lock);
+	up(&handle->query_mutex);
 	return res;
 	
 }
@@ -104,8 +101,8 @@ static int dosetinfo(struct ndis_handle *handle, unsigned int oid, char *buf, in
 {
 	int res;
 
-	spin_lock(&handle->setinfo_lock);
-
+	down(&handle->setinfo_mutex);
+	
 	handle->query_wait_done = 0;
 	DBGTRACE("Calling query at %08x rva(%08x)\n", (int)handle->driver->miniport_char.query, (int)handle->driver->miniport_char.query - image_offset);
 	res = handle->driver->miniport_char.setinfo(handle->adapter_ctx, oid, buf, bufsize, written, needed);
@@ -116,15 +113,12 @@ static int dosetinfo(struct ndis_handle *handle, unsigned int oid, char *buf, in
 	if(res != NDIS_STATUS_PENDING)
 		goto out;
 		
-	/* This is a very bad way to wait but we cannot sleap here as when ifconfig gathers statistics we
-	 * get a query from a context where is_atomic() = 1
-	 */
-	while(handle->setinfo_wait_done == 0);
-	 
+	wait_event(handle->setinfo_wqhead, (handle->setinfo_wait_done == 1));
+		
 	res = handle->setinfo_wait_res;
 
 out:
-	spin_unlock(&handle->setinfo_lock);
+	up(&handle->setinfo_mutex);
 	return res;
 
 }
@@ -139,6 +133,7 @@ STDCALL void NdisMSetInformationComplete(struct ndis_handle *handle, unsigned in
 	DBGTRACE("%s: %08x\n", __FUNCTION__, status);
 	handle->setinfo_wait_res = status;
 	handle->setinfo_wait_done = 1;
+	wake_up(&handle->setinfo_wqhead);
 }
 
 
@@ -657,20 +652,39 @@ static int ndis_get_scan(struct net_device *dev, struct iw_request_info *info,
 	return 0;
 }
 
-void add_scan_timer(unsigned long handle)
+void scan_bh(void *param)
 {
-	struct timer_list *timer_list =
-		&(((struct ndis_handle *)handle)->driver->timer_list);
+	struct ndis_handle *handle = (struct ndis_handle *) param;
+	DBGTRACE("%s\n", __FUNCTION__);
 
-	if(ndis_list_scan((struct ndis_handle *)handle))
-	{
-		return;
-	}
+	ndis_list_scan(handle);
+}
+
+
+
+void add_scan_timer(unsigned long param)
+{
+	struct ndis_handle *handle = (struct ndis_handle *)param;
+	struct timer_list *timer_list = &handle->apscan_timer;
+
+	schedule_work(&handle->apscan_work);
 
 	timer_list->data = (unsigned long) handle;
 	timer_list->function = &add_scan_timer;
 	timer_list->expires = jiffies + 10 * HZ;
 	add_timer(timer_list);
+}
+
+void apscan_init(struct ndis_handle *handle)
+{
+	INIT_WORK(&handle->apscan_work, scan_bh, handle); 	
+	init_timer(&handle->apscan_timer);
+	add_scan_timer((unsigned long)handle);
+}
+
+void apscan_del(struct ndis_handle *handle)
+{
+	del_timer_sync(&handle->apscan_timer);
 }
 
 static int ndis_set_power_mode(struct net_device *dev,
@@ -894,18 +908,7 @@ static int ndis_close(struct net_device *dev)
 static struct net_device_stats *ndis_get_stats(struct net_device *dev)
 {
 	struct ndis_handle *handle = dev->priv;
-	struct net_device_stats *stats = &handle->stats;
-	unsigned int x;
-
-	if(!query_int(handle, NDIS_OID_STAT_TX_OK, &x))
-		stats->tx_packets = x; 
-	if(!query_int(handle, NDIS_OID_STAT_RX_OK, &x))
-		stats->rx_packets = x; 	
-	if(!query_int(handle, NDIS_OID_STAT_TX_ERROR, &x))
-		stats->tx_errors = x; 	
-	if(!query_int(handle, NDIS_OID_STAT_RX_ERROR, &x))
-		stats->rx_errors = x; 	
-	return stats;
+	return &handle->stats;
 }
 
 
@@ -1054,11 +1057,6 @@ void ndis_sendpacket_done(struct ndis_handle *handle, struct ndis_packet *packet
 	kfree(packet);
 }
 
-
-
-
-
-
 static int setup_dev(struct net_device *dev)
 {
 	struct ndis_handle *handle = dev->priv;
@@ -1127,9 +1125,12 @@ static int __devinit ndis_init_one(struct pci_dev *pdev,
 
 	handle->driver = driver;
 	handle->net_dev = dev;
-	spin_lock_init(&handle->query_lock);
-	spin_lock_init(&handle->setinfo_lock);
 	pci_set_drvdata(pdev, handle);
+
+	init_MUTEX(&handle->query_mutex);
+	init_waitqueue_head(&handle->query_wqhead);
+	init_MUTEX(&handle->setinfo_mutex);
+	init_waitqueue_head(&handle->setinfo_wqhead);
 
 	/* Poision this because it may contain function pointers */
 	memset(&handle->fill1, 0x12, sizeof(handle->fill1));
@@ -1172,8 +1173,7 @@ static int __devinit ndis_init_one(struct pci_dev *pdev,
 		goto out_start;
 	}
 	handle->driver->key_len = 0;
-	init_timer(&(handle->driver->timer_list));
-	add_scan_timer((unsigned long)handle);
+	apscan_init(handle);
 	hangcheck_add(handle);
 	return 0;
 
@@ -1194,7 +1194,7 @@ static void __devexit ndis_remove_one(struct pci_dev *pdev)
 	DBGTRACE("%s\n", __FUNCTION__);
 
 	hangcheck_del(handle);
-	del_timer(&(handle->driver->timer_list));
+	apscan_del(handle);
 #ifndef DEBUG_CRASH_ON_INIT
 	unregister_netdev(handle->net_dev);
 	call_halt(handle);

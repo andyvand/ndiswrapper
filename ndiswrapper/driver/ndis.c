@@ -1030,6 +1030,7 @@ STDCALL void NdisMIndicateReceivePacket(struct ndis_handle *handle, struct ndis_
 			skb_put(skb, buffer->len);
 			skb->protocol = eth_type_trans (skb, handle->net_dev);
 			handle->stats.rx_bytes += buffer->len;
+			handle->stats.rx_packets++;
 			netif_rx(skb);
 		}
 		handle->driver->miniport_char.return_packet(handle->adapter_ctx,  packet);
@@ -1044,6 +1045,7 @@ STDCALL void NdisMIndicateReceivePacket(struct ndis_handle *handle, struct ndis_
 STDCALL void NdisMSendComplete(struct ndis_handle *handle, struct ndis_packet *packet, unsigned int status)
 {
 	handle->stats.tx_bytes += packet->len;
+	handle->stats.tx_packets++;
 	ndis_sendpacket_done(handle, packet);
 }
 
