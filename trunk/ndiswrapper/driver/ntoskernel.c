@@ -445,7 +445,7 @@ STDCALL void WRAP_EXPORT(ExInitializeNPagedLookasideList)
 STDCALL void WRAP_EXPORT(ExDeleteNPagedLookasideList)
 	(struct npaged_lookaside_list *lookaside)
 {
-	struct nt_slist_entry *entry, *p;
+	struct nt_slist_entry *entry;
 
 	TRACEENTER3("lookaside = %p", lookaside);
 	entry = lookaside->head.list.next;
@@ -780,7 +780,7 @@ STDCALL LONG WRAP_EXPORT(KeReleaseMutex)
 	if (kmutex->u.count == 0) {
 		kmutex->owner_thread = NULL;
 		kspin_unlock(&kevent_lock);
-		KeSetEvent((struct kevent *)&kmutex, 0, FALSE);
+		KeSetEvent((struct kevent *)kmutex, 0, FALSE);
 	} else
 		kspin_unlock(&kevent_lock);
 	return ret;
