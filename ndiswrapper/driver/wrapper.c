@@ -1617,10 +1617,7 @@ static int ndis_init_one_pci(struct pci_dev *pdev,
 	}
 	*/
 
-	/* Prism cards need reset, but Centrino cards don't like it; so for now
-	 * don't reset Centrino cards */
-	if (ent->vendor != 0x8086)
-		miniport_reset(handle);
+	miniport_reset(handle);
 
 	/* Wait a little to let card power up otherwise ifup might fail after
 	   boot */
