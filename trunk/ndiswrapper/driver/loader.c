@@ -802,11 +802,12 @@ static int load_ndis_driver(struct load_driver *load_driver)
 	} else {
 		printk(KERN_INFO "%s: driver %s (%s) added\n",
 		       DRV_NAME, ndis_driver->name, ndis_driver->version);
-#if LINUX_VERSION_CODE > KERNEL_VERSION(2,6,9)
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,10)
 		add_taint(TAINT_PROPRIETARY_MODULE);
-#else
-		tainted |= TAINT_PROPRIETARY_MODULE;
+		/* older kernels don't seem to have a way to set
+		 * tainted information */
 #endif
+
 		TRACEEXIT1(return 0);
 	}
 }
