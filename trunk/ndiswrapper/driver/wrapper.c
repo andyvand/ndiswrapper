@@ -35,24 +35,15 @@
 #include "loader.h"
 #include "ndis.h"
 
-static int pci_vendor = 0x14e4;
-static int pci_device = 0x4301;
+#define DRV_NAME "ndiswrapper"
 
-static struct net_device *thedev;
+/* List of loaded drivers */
+static LIST_HEAD(driverlist);
 
-static int misc_ioctl(struct inode *inode, struct file *file, unsigned int cmd, unsigned long arg);
+/* Protects driver list */
+static spinlock_t driverlist_lock = SPIN_LOCK_UNLOCKED;
 
 extern int image_offset;
-
-static struct file_operations wrapper_fops = {
-	.owner          = THIS_MODULE,
-	.ioctl		= misc_ioctl,
-};
-
-static struct miscdevice wrapper_misc = {
-	.name   = "ndiswrapper",
-	.fops   = &wrapper_fops
-};
 
 /*
  * Make a query that has an int as the result.
@@ -62,7 +53,7 @@ static int query_int(struct ndis_handle *handle, int oid, int *data)
 {
 	unsigned int res, written, needed;
 
-	res = handle->miniport_char.query(handle->adapter_ctx, oid, (char*)data, 4, &written, &needed);
+	res = handle->driver->miniport_char.query(handle->adapter_ctx, oid, (char*)data, 4, &written, &needed);
 	if(!res)
 		return 0;
 	*data = 0;
@@ -77,7 +68,7 @@ static int set_int(struct ndis_handle *handle, int oid, int data)
 {
 	unsigned int res, written, needed;
 
-	res = handle->miniport_char.setinfo(handle->adapter_ctx, oid, (char*)&data, sizeof(int), &written, &needed);
+	res = handle->driver->miniport_char.setinfo(handle->adapter_ctx, oid, (char*)&data, sizeof(int), &written, &needed);
 	if(!res)
 		return 0;
 	return -1;
@@ -104,7 +95,7 @@ static int ndis_set_essid(struct net_device *dev,
 	memset(&req.essid, 0, sizeof(req.essid));
 	memcpy(&req.essid, extra, wrqu->essid.length-1);
 
-	res = handle->miniport_char.setinfo(handle->adapter_ctx, NDIS_OID_ESSID, (char*)&req, sizeof(req), &written, &needed);
+	res = handle->driver->miniport_char.setinfo(handle->adapter_ctx, NDIS_OID_ESSID, (char*)&req, sizeof(req), &written, &needed);
 	if(res)
 		return -1;
 	return 0;
@@ -120,7 +111,7 @@ static int ndis_get_essid(struct net_device *dev,
 	unsigned int res, written, needed;
 	struct essid_req req;
 
-	res = handle->miniport_char.query(handle->adapter_ctx, NDIS_OID_ESSID, (char*)&req, sizeof(req), &written, &needed);
+	res = handle->driver->miniport_char.query(handle->adapter_ctx, NDIS_OID_ESSID, (char*)&req, sizeof(req), &written, &needed);
 	if(res)
 		return -1;
 
@@ -210,31 +201,31 @@ static int call_init(struct ndis_handle *handle)
 	__u32 res, res2;
 	__u32 selected_medium;
 	__u32 mediumtypes[] = {0,1,2,3,4,5,6,7,8,9,10,11,12};
-	DBGTRACE("Calling init at %08x rva(%08x)\n", (int)handle->miniport_char.init, (int)handle->miniport_char.init - image_offset);
-	res = handle->miniport_char.init(&res2, &selected_medium, mediumtypes, 13, handle, handle);
+	DBGTRACE("Calling init at %08x rva(%08x)\n", (int)handle->driver->miniport_char.init, (int)handle->driver->miniport_char.init - image_offset);
+	res = handle->driver->miniport_char.init(&res2, &selected_medium, mediumtypes, 13, handle, handle);
 	DBGTRACE("past init res: %08x\n\n", res);
 	return res != 0;
 }
 
 static void call_halt(struct ndis_handle *handle)
 {
-	DBGTRACE("Calling halt at %08x rva(%08x)\n", (int)handle->miniport_char.halt, (int)handle->miniport_char.halt - image_offset);
-	handle->miniport_char.halt(handle->adapter_ctx);
+	DBGTRACE("Calling halt at %08x rva(%08x)\n", (int)handle->driver->miniport_char.halt, (int)handle->driver->miniport_char.halt - image_offset);
+	handle->driver->miniport_char.halt(handle->adapter_ctx);
 }
 
-static unsigned int call_entry(struct ndis_handle *handle)
+static unsigned int call_entry(struct ndis_driver *driver)
 {
 	int res;
 	char regpath[] = {'a', 0, 'b', 0, 0, 0};
-	DBGTRACE("Calling entry at %08x rva(%08x)\n", (int)handle->entry, (int)handle->entry - image_offset);
-	res = handle->entry((void*)handle, regpath);
-	DBGTRACE("Past entry: Version: %d.%d\n\n\n", handle->miniport_char.majorVersion, handle->miniport_char.minorVersion);
+	DBGTRACE("Calling entry at %08x rva(%08x)\n", (int)driver->entry, (int)driver->entry - image_offset);
+	res = driver->entry((void*)driver, regpath);
+	DBGTRACE("Past entry: Version: %d.%d\n\n\n", driver->miniport_char.majorVersion, driver->miniport_char.minorVersion);
 
 	/* Dump addresses of driver suppoled callbacks */
 #ifdef DEBUG
 	{
 		int i;
-		int *adr = (int*) &handle->miniport_char.CheckForHangTimer;
+		int *adr = (int*) &driver->miniport_char.CheckForHangTimer;
 		char *name[] = {
 				"CheckForHangTimer",
 				"DisableInterruptHandler",
@@ -272,21 +263,21 @@ static unsigned int call_entry(struct ndis_handle *handle)
 }
 
 
-static int ndis_open (struct net_device *dev)
+static int ndis_open(struct net_device *dev)
 {
 	DBGTRACE("%s\n", __FUNCTION__);
 	return 0;
 }
 
 
-static int ndis_close (struct net_device *dev)
+static int ndis_close(struct net_device *dev)
 {
 	DBGTRACE("%s\n", __FUNCTION__);
 	return 0;
 }
 
 
-static struct net_device_stats *ndis_get_stats (struct net_device *dev)
+static struct net_device_stats *ndis_get_stats(struct net_device *dev)
 {
 	struct ndis_handle *handle = dev->priv;
 	struct net_device_stats *stats = &handle->stats;
@@ -317,7 +308,7 @@ static struct iw_statistics *ndis_get_wireless_stats(struct net_device *dev)
 }
 
 
-static int ndis_ioctl (struct net_device *dev, struct ifreq *rq, int cmd)
+static int ndis_ioctl(struct net_device *dev, struct ifreq *rq, int cmd)
 {
 	int rc = -ENODEV;
 	return rc;
@@ -329,9 +320,11 @@ static int ndis_ioctl (struct net_device *dev, struct ifreq *rq, int cmd)
  *
  *
  */
- static int ndis_start_xmit (struct sk_buff *skb, struct net_device *dev)
+static int ndis_start_xmit(struct sk_buff *skb, struct net_device *dev)
 {
 	struct ndis_handle *handle = dev->priv;
+	struct ndis_buffer *buffer;
+	struct ndis_packet *packet;
 
 	char *data = kmalloc(skb->len, GFP_KERNEL);
 	if(!data)
@@ -339,14 +332,14 @@ static int ndis_ioctl (struct net_device *dev, struct ifreq *rq, int cmd)
 		return 0;
 	}
 
-	struct ndis_buffer *buffer = kmalloc(sizeof(struct ndis_buffer), GFP_KERNEL);
+	buffer = kmalloc(sizeof(struct ndis_buffer), GFP_KERNEL);
 	if(!buffer)
 	{
 		kfree(data);
 		return 0;
 	}
 
-	struct ndis_packet *packet = kmalloc(sizeof(struct ndis_packet), GFP_KERNEL);
+	packet = kmalloc(sizeof(struct ndis_packet), GFP_KERNEL);
 	if(!packet)
 	{
 		kfree(data);
@@ -374,7 +367,7 @@ static int ndis_ioctl (struct net_device *dev, struct ifreq *rq, int cmd)
 	skb_copy_and_csum_dev(skb, data);
 	dev_kfree_skb(skb);
 //	DBGTRACE("Calling send_packets at %08x rva(%08x). sp:%08x\n", (int)handle->miniport_char.send_packets, (int)handle->miniport_char.send_packets - image_offset, getSp());
-	handle->miniport_char.send_packets(handle->adapter_ctx, &packet, 1);
+	handle->driver->miniport_char.send_packets(handle->adapter_ctx, &packet, 1);
 
 	return 0;
 }
@@ -390,8 +383,8 @@ static int setup_dev(struct net_device *dev)
 	int i;
 	unsigned char mac[6];
 
-	DBGTRACE("Calling query to find mac at %08x rva(%08x)\n", (int)handle->miniport_char.query, (int)handle->miniport_char.query - image_offset);
-	res = handle->miniport_char.query(handle->adapter_ctx, 0x01010102, &mac[0], 1024, &written, &needed);
+	DBGTRACE("Calling query to find mac at %08x rva(%08x)\n", (int)handle->driver->miniport_char.query, (int)handle->driver->miniport_char.query - image_offset);
+	res = handle->driver->miniport_char.query(handle->adapter_ctx, 0x01010102, &mac[0], 1024, &written, &needed);
 	DBGTRACE("past query res %08x\n\n", res);
 	DBGTRACE("mac:%02x:%02x:%02x:%02x:%02x:%02x\n", mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
 	if(res)
@@ -420,124 +413,382 @@ static int setup_dev(struct net_device *dev)
 }
 
 
-static int load_ndis_driver(int size, char *src)
+/*
+ * Called by PCI-subsystem for each PCI-card found.
+ */
+static int __devinit ndis_init_one(struct pci_dev *pdev,
+                                   const struct pci_device_id *ent)
 {
-	void *entry;
+	int res;
+	struct ndis_driver *driver = (struct ndis_driver *) ent->driver_data;
 	struct ndis_handle *handle;
 	struct net_device *dev;
-	
-	DBGTRACE("Putting driver size %d\n", size);
+
+	DBGTRACE("%s\n", __FUNCTION__);
+
 	dev = alloc_etherdev(sizeof *handle);
 	if(!dev)
 	{
 		printk(KERN_ERR "Unable to alloc etherdev\n");
-		goto out_nomem;
+		res = -ENOMEM;
+		goto out_nodev;
 	}
 	handle = dev->priv;
+
+	handle->driver = driver;
 	handle->net_dev = dev;
-
-	handle->image = vmalloc(size);
-	if(!handle->image)
-	{
-		printk(KERN_ERR "Unable to allocate mem for driver\n");
-		goto out_vmalloc;
-	}
-	copy_from_user(handle->image, src, size);
-
-	handle->pci_dev = pci_find_device(pci_vendor, pci_device, handle->pci_dev);
-	if(!handle->pci_dev)
-	{
-		printk(KERN_ERR "PCI device %04x:%04x not found\n", pci_vendor, pci_device);
-		goto out_baddriver;
-	}
-
-	if(pci_enable_device(handle->pci_dev))
-	{
-		printk(KERN_ERR "PCI enable failed\n");
-	}
-
-	if(prepare_coffpe_image(&entry, handle->image, size))
-	{
-		printk(KERN_ERR "Unable to prepare driver\n");		
-		goto out_baddriver;
-	}
-
-
-	DBGTRACE("size: %08x\n", sizeof(handle->fill1));
+	pci_set_drvdata(pdev, handle);
 
 	/* Poision this because it may contain function pointers */
 	memset(&handle->fill1, 0x11, sizeof(handle->fill1));
 	memset(&handle->fill2, 0x11, sizeof(handle->fill2));
 	memset(&handle->fill3, 0x11, sizeof(handle->fill3));
 
-	extern void (*NdisMIndicateReceivePacket)(void*);
-	extern void (*NdisMSendComplete)(void*);
-	extern void (*NdisIndicateStatus)(void*);	
-	extern void (*NdisIndicateStatusComplete)(void*);	
-	
 	handle->indicate_receive_packet = &NdisMIndicateReceivePacket;
 	handle->send_complete = &NdisMSendComplete;
 	handle->indicate_status = &NdisIndicateStatus;	
 	handle->indicate_status_complete = &NdisIndicateStatusComplete;	
-	
-	handle->entry = entry;
 
+	handle->pci_dev = pdev;
 	
-	DBGTRACE("Image is at %08x\n", (int)handle->image);
-	DBGTRACE("Handle is at: %08x.\n", (int)handle);
+	res = pci_enable_device(pdev);
+	if(res)
+		goto out_enable;
 
-	if(call_entry(handle))
+	res = pci_request_regions(pdev, driver->name);
+	if(res)
+		goto out_regions;
+
+	if(call_init(handle))
 	{
-		printk(KERN_ERR "Driver entry return error\n");
-		goto out_baddriver;
-
+		printk(KERN_ERR "ndiswrapper: Driver init return error\n");
+		res = -EINVAL;
+		goto out_start;
 	}
-
-	call_init(handle);
-	//test_query(handle);
-	if(setup_dev(dev))
-	{
-		printk(KERN_ERR "Unable to set up driver\n");
-		goto out_baddriver;
-	}
-	thedev = dev;
 	
+	if(setup_dev(handle->net_dev))
+	{
+		printk(KERN_ERR "ndiswrapper: Unable to set up driver\n");
+		res = -EINVAL;
+		goto out_start;
+	}
 	return 0;
 
-out_baddriver:
-	vfree(handle->image);
+out_start:
+	pci_release_regions(pdev);
+out_regions:
+	pci_disable_device(pdev);
+out_enable:
 	free_netdev(dev);
-	return -EINVAL;	
+out_nodev:
+	return res;
+}
 
-out_vmalloc:
-	vfree(handle->image);
-	free_netdev(dev);
-	return -ENOMEM;	
-	
-out_nomem:
-	return -ENOMEM;
+static void __devexit ndis_remove_one(struct pci_dev *pdev)
+{
+	struct ndis_handle *handle = (struct ndis_handle *) pci_get_drvdata(pdev);
+
+	DBGTRACE("%s\n", __FUNCTION__);
+
+	unregister_netdev(handle->net_dev);
+	call_halt(handle);
+
+	if(handle->net_dev)
+		free_netdev(handle->net_dev);
+
+	pci_release_regions(pdev);
+	pci_disable_device(pdev);
 }
 
 
+static int misc_ioctl(struct inode *inode, struct file *file, unsigned int cmd, unsigned long arg);
+
+
+static struct file_operations wrapper_fops = {
+	.owner          = THIS_MODULE,
+	.ioctl		= misc_ioctl,
+};
+
+static struct miscdevice wrapper_misc = {
+	.name   = DRV_NAME,
+	.fops   = &wrapper_fops
+};
+
+
+/*
+ * Register driver with pci subsystem.
+ */
+static int start_driver(struct ndis_driver *driver)
+{
+	int res;
+
+	if(call_entry(driver))
+	{
+		printk(KERN_ERR "ndiswrapper: Driver entry return error\n");
+		return -EINVAL;
+	}
+
+
+	driver->pci_driver.name = driver->name;
+	driver->pci_driver.id_table = driver->pci_id;
+	driver->pci_driver.probe = ndis_init_one;
+	driver->pci_driver.remove = ndis_remove_one;	
+	
+	res = pci_module_init(&driver->pci_driver);
+	if(!res)
+		driver->pci_registered = 1;
+	return res;
+}
+
+
+/*
+ * Load the driver from userspace.
+ */
+static struct ndis_driver *load_driver(struct put_driver *put_driver)
+{
+	void *entry;
+	struct ndis_driver *driver;
+	struct pci_dev *pdev = 0;
+	int namelen;
+
+	DBGTRACE("Putting driver size %d\n", put_driver->size);
+
+	driver = kmalloc(sizeof(struct ndis_driver), GFP_KERNEL);
+	if(!driver)
+	{
+		printk(KERN_ERR "Unable to alloc driver struct\n");
+		goto out_nodriver;
+	}
+	memset(driver, 0, sizeof(struct ndis_driver));
+	
+	INIT_LIST_HEAD(&driver->settings);
+
+	namelen = sizeof(put_driver->name);
+	if(sizeof(driver->name) < namelen)
+		namelen = sizeof(driver->name);
+
+	strncpy(driver->name, put_driver->name, namelen-1);
+	driver->name[namelen-1] = 0;
+
+	driver->image = vmalloc(put_driver->size);
+	if(!driver->image)
+	{
+		printk(KERN_ERR "Unable to allocate mem for driver\n");
+		goto out_vmalloc;
+	}
+
+	if(copy_from_user(driver->image, put_driver->data, put_driver->size))
+	{
+		printk(KERN_ERR "Failed to copy from user\n");
+		goto out_vmalloc;
+	}
+
+
+	if(prepare_coffpe_image(&entry, driver->image, put_driver->size))
+	{
+		printk(KERN_ERR "Unable to prepare driver\n");		
+		goto out_baddriver;
+	}
+
+	/* Make sure PCI device is present */
+	pdev = pci_find_device(put_driver->pci_vendor, put_driver->pci_device, pdev);
+	if(!pdev)
+	{
+		printk(KERN_ERR "PCI device %04x:%04x not present\n", put_driver->pci_vendor, put_driver->pci_device);
+		goto out_baddriver;
+	}
+	
+	driver->pci_id[0].vendor = put_driver->pci_vendor;
+	driver->pci_id[0].device = put_driver->pci_device;
+	driver->pci_id[0].subvendor = PCI_ANY_ID;
+	driver->pci_id[0].subdevice = PCI_ANY_ID;
+	driver->pci_id[0].class = 0;
+	driver->pci_id[0].class_mask = 0;
+	driver->pci_id[0].driver_data = (int)driver;
+	
+	driver->entry = entry;
+	DBGTRACE("Image is at %08x\n", (int)driver->image);
+
+	return driver;
+
+out_baddriver:
+	vfree(driver->image);
+out_vmalloc:
+	kfree(driver);
+out_nodriver:
+	return 0;
+}
+
+/*
+ * Add driver to list of loaded driver but make sure this driver is
+ * not loaded before.
+ */
+static int add_driver(struct ndis_driver *driver)
+{
+	struct ndis_driver *tmp;
+	int dup = 0;
+	spin_lock(&driverlist_lock);
+
+	list_for_each_entry(tmp, &driverlist, list)
+	{
+		if(tmp->pci_id[0].vendor == driver->pci_id[0].vendor &&
+		   tmp->pci_id[0].device == driver->pci_id[0].device)
+	   	{
+			dup = 1;
+			break;
+		}
+
+		if(strcmp(tmp->name, driver->name) == 0)
+		{
+			dup = 1;
+			break;
+		}
+		
+	}
+	if(!dup)
+		list_add(&driver->list, &driverlist);
+	spin_unlock(&driverlist_lock);
+	if(dup)
+	{
+		printk(KERN_ERR "Cannot add duplicate driver\n");
+		return -EBUSY;
+	}
+	
+
+	return 0;
+}
+
+
+
+/*
+ * Add setting to the list of settings for the driver.
+ */
+static int add_setting(struct ndis_driver *driver, struct put_setting *put_setting)
+{
+	struct ndis_setting *setting;
+
+	char *name;
+	unsigned int val;
+	
+	if(put_setting->payload_len != sizeof(val))
+	{
+		return -EINVAL;
+	}
+	if(copy_from_user(&val, put_setting->payload, sizeof(val)))
+		return -EINVAL;
+
+	name = kmalloc(put_setting->name_len+1, GFP_KERNEL);
+	if(!name)
+		return -ENOMEM;
+
+
+	setting = kmalloc(sizeof(*setting), GFP_KERNEL);
+	if(!setting)
+	{
+		kfree(name);
+		return -ENOMEM;
+	}
+	memset(setting, 0, sizeof(*setting));
+	
+	if(copy_from_user(name, put_setting->name, put_setting->name_len))
+	{
+		kfree(name);
+		kfree(setting);
+		return -EINVAL;
+	}
+	name[put_setting->name_len] = 0;
+
+	setting->val.type = 0;
+	setting->name = name;
+	setting->val.type = 0;
+	setting->val.data = val;	
+	
+	list_add(&setting->list, &driver->settings);
+	return 0;
+}
+
+/*
+ * Delete a driver. This implies deleting all cards for the handle too.
+ */
+static void unload_driver(struct ndis_driver *driver)
+{
+	struct list_head *curr, *tmp2;
+
+	DBGTRACE("%s\n", __FUNCTION__);
+	if(driver->pci_registered)
+		pci_unregister_driver(&driver->pci_driver);
+
+	spin_lock(&driverlist_lock);
+	list_del(&driver->list);
+	spin_unlock(&driverlist_lock);
+
+	if(driver->image)
+		vfree(driver->image);
+
+	list_for_each_safe(curr, tmp2, &driver->settings)
+	{
+		struct ndis_setting *setting = (struct ndis_setting*) curr;
+		kfree(setting->name);
+		kfree(setting);
+	}
+	kfree(driver);
+}
+
 static int misc_ioctl(struct inode *inode, struct file *file, unsigned int cmd, unsigned long arg)
 {
-	size_t size;
+	struct put_setting put_setting;
+	struct put_driver put_driver;
+	struct ndis_driver *driver;
 
 	switch(cmd) {
-	case WDIOC_PUTDRIVER:
-		size = *(size_t*)arg;
-		return load_ndis_driver(size, (char*) (arg+4));
+	case NDIS_PUTDRIVER:
+		if(copy_from_user(&put_driver, (void*)arg, sizeof(struct put_driver)))
+			return -EINVAL;
+
+		driver = load_driver(&put_driver);
+		if(!driver)
+			return -EINVAL;
+		file->private_data = driver;
+
+		return add_driver(driver);
 		break;
-	case WDIOC_TEST:
-		if(thedev)
+
+	case NDIS_STARTDRIVER:
+		if(file->private_data)
 		{
-			switch(arg)
+			struct ndis_driver *driver= file->private_data;
+			int res = start_driver(driver);
+
+			file->private_data = NULL;
+
+			if(res)
 			{
-			default:
-				printk(KERN_ERR "Unknown test %ld\n", arg);
-				break;				
+				unload_driver(driver);
+				return res;
 			}
 		}
+		break;
+	case NDIS_PUTSETTING:
+		if(file->private_data)
+		{
+			int res;
+			struct ndis_driver *driver = file->private_data;
+			if(copy_from_user(&put_setting, (void*)arg, sizeof(struct put_setting)))
+				return -EINVAL;
+			res = add_setting(driver, &put_setting);
+			if(res)
+				return res;
+		}
+	
+		break;
+	case NDIS_CANCELLOAD:
+		if(file->private_data)
+		{
+			struct ndis_driver *driver = file->private_data;
+			unload_driver(driver);
+		}
+		
+		break;	
 	default:
 		printk(KERN_ERR "Unknown ioctl %08x\n", cmd);
 		return -EINVAL;
@@ -559,19 +810,12 @@ static int __init wrapper_init(void)
 
 static void __exit wrapper_exit(void)
 {
-	struct ndis_handle *handle;
-	if(thedev)
+	while(!list_empty(&driverlist))
 	{
-		handle = thedev->priv;
-		unregister_netdev(thedev);
-		call_halt(handle);
-
-		if(handle->image)
-		{
-			vfree(handle->image);
-		}
-		free_netdev(thedev);
+		struct ndis_driver *driver = (struct ndis_driver*) driverlist.next;
+		unload_driver(driver);
 	}
+	
 	misc_deregister(&wrapper_misc);
 }
 

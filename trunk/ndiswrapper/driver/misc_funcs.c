@@ -94,6 +94,12 @@ STDCALL unsigned int KeWaitForSingleObject(void **object, unsigned int reason, u
 	return 0;
 }
 
+int RtlEqualUnicodeString(char *str1, char *str2, int hororcase)
+{
+	DBGTRACE("%s --UNIMPLEMENTED--: %08x %08x\n", __FUNCTION__, (int)str1, (int)str2);
+
+	return 0;	
+}
 
 
 
@@ -125,4 +131,5 @@ void ExFreePool(void){DBGTRACE("%s --UNIMPLEMENTED--\n", __FUNCTION__ );}
 void RtlUnwind(void){DBGTRACE("%s --UNIMPLEMENTED--\n", __FUNCTION__ );}
 void IofCompleteRequest(void){DBGTRACE("%s --UNIMPLEMENTED--\n", __FUNCTION__ );}
 void IoReleaseCancelSpinLock(void){DBGTRACE("%s --UNIMPLEMENTED--\n", __FUNCTION__ );}
+
 
