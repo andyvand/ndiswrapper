@@ -1225,12 +1225,15 @@ STDCALL void WRAP_EXPORT(NdisSend)
 	 struct ndis_packet *packet)
 {
 	struct miniport_char *miniport = &handle->driver->miniport_char;
-	struct ndis_packet *packets[1];
 
 	if (miniport->send_packets) {
+		struct ndis_packet *packets[1];
+
 		packets[0] = packet;
+		wrap_spin_lock(&handle->lock, DISPATCH_LEVEL);
 		LIN2WIN3(miniport->send_packets, handle->adapter_ctx,
 			 packets, 1);
+		wrap_spin_unlock(&handle->lock);
 		if (test_bit(ATTR_SERIALIZED, &handle->attributes)) {
 			*status = packet->status;
 			switch (*status) {
@@ -1250,8 +1253,10 @@ STDCALL void WRAP_EXPORT(NdisSend)
 			*status = NDIS_STATUS_PENDING;
 		}
 	} else {
+		wrap_spin_lock(&handle->lock, DISPATCH_LEVEL);
 		*status = LIN2WIN3(miniport->send, handle->adapter_ctx,
 				   packet, 0);
+		wrap_spin_unlock(&handle->lock);
 		switch (*status) {
 		case NDIS_STATUS_SUCCESS:
 			sendpacket_done(handle, packet);
