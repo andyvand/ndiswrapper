@@ -71,7 +71,7 @@
 
 #include <linux/smp_lock.h>
 #ifdef CONFIG_PREEMPT
-#define in_atomic() ((preempt_count() & ~PREEMPT_ACTIVE) != kernel_locked())
+#define in_atomic() ((preempt_get_count() & ~PREEMPT_ACTIVE) != kernel_locked())
 #else
 #define in_atomic() 1
 #endif // CONFIG_PREEMPT
