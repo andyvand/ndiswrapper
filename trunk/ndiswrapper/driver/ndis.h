@@ -455,6 +455,8 @@ struct packed ndis_handle
 
 	u32 pci_state[16];
 	unsigned int pm_state;
+
+	int wireless_mode;
 };
 
 struct ndis_timer
