@@ -480,9 +480,9 @@ static inline void lower_irql(KIRQL oldirql)
 
 extern spinlock_t spinlock_kspin_lock;
 
-#define _raw_kspin_lock(lock)			\
-do {						\
-	while (1) {				\
+#define _raw_kspin_lock(lock)				\
+do {							\
+	while (1) {					\
 		spin_lock(&spinlock_kspin_lock);	\
 		if (*(lock) == KSPIN_LOCK_UNLOCKED)	\
 			break;				\
@@ -543,7 +543,7 @@ do {									\
 #define kspin_unlock_irqrestore(lock, flags)				\
 do {									\
 	ULONG_PTR _val_ = *(lock);					\
-	if (_val_ > KSPIN_LOCK_UNLOCKED)				\
+	if (_val_ > KSPIN_LOCK_LOCKED)					\
 		ERROR("illegal spinlock: %p(%lu)", lock, _val_);	\
 	_raw_kspin_unlock(lock);					\
 	local_irq_restore(flags);					\
