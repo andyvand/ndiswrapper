@@ -1737,8 +1737,11 @@ extern void packet_recycler(void *param);
 
 /*
  * Called by PCI-subsystem for each PCI-card found.
+ *
+ * This function should not be marked __devinit because ndiswrapper 
+ * adds PCI_id's dynamically.
  */
-static int __devinit ndis_init_one(struct pci_dev *pdev,
+static int ndis_init_one(struct pci_dev *pdev,
                                    const struct pci_device_id *ent)
 {
 	int res;
