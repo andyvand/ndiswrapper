@@ -1,6 +1,5 @@
-ndiswrapper (0.8-1) unstable; urgency=low
+ndiswrapper (0.9pre3) unstable; urgency=low
 
-  * Initial Release.
+  * see ChangeLog for details
 
- -- Giridhar Pemmasani <ndiswrapper-general@lists.sourceforge.net>  Fri, 25 Jun 2004 16:45:24 -0400
-
+ -- NdisWrapper Team <ndiswrapper-general@lists.sourceforge.net>  Tue, 03 Aug 2004 17:30:53 -0400

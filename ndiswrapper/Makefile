@@ -11,7 +11,7 @@ DIST_SUBDIRS=utils driver debian
 all: 
 	make -C driver
 	make -C utils
-
+	install -m 644 ndiswrapper.8 /usr/man/man8
 	
 .PHONY: install
 install:

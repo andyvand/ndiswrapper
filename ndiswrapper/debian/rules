@@ -33,7 +33,7 @@ endif
 package		= ndiswrapper
 # KSRC is the location of the kernel source. This is the default value,
 # when make-kpkg is used it will supply to real value
-KSRC		:= /usr/src/linux
+KSRC		?= /usr/src/linux
 # KDREV is the package-revision, as given to make-kpkg by the user.
 # Just put a simply default value in here which we use when we test
 # the packagebuilding without make-kpkg
@@ -215,7 +215,7 @@ build-utils-prep:
 
 build-utils:
 	export DH_OPTIONS='-i'
-	dh_installman debian/ndiswrapper.8
+	dh_installman ndiswrapper.8
 	$(MAKE) -C utils all
 
 binary-utils: build-utils-prep common-prolog build-utils common-epilog
