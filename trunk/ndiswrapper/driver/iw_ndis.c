@@ -1329,20 +1329,23 @@ static int wpa_set_key(struct net_device *dev, struct iw_request_info *info,
 		ndis_remove_key.struct_size = sizeof(ndis_remove_key);
 		ndis_remove_key.index = wpa_key.key_index;
 		if (wpa_key.addr)
-			memcpy(&ndis_remove_key.bssid, addr,
-			       ETH_ALEN);
+			memcpy(&ndis_remove_key.bssid, addr, ETH_ALEN);
 		else
 			memset(&ndis_remove_key.bssid, 0xff, ETH_ALEN);
-		/* TI drivers sometimes crash when REMOVE_KEY is called */
 #if 0
-		res = dosetinfo(handle, NDIS_OID_REMOVE_KEY,
-				(char *)&ndis_remove_key,
-				sizeof(ndis_remove_key), &written, &needed);
-		if (res == NDIS_STATUS_INVALID_DATA)
+		/* TI drivers sometimes crash when REMOVE_KEY is called */
+		if (!(handle->device->vendor == 0x104c &&
+		      handle->device->device == 0x9066))
 		{
-			DBGTRACE("removing key failed with %08X, %d, %d",
-			       res, needed, sizeof(ndis_remove_key));
-			TRACEEXIT(return -EINVAL);
+			res = dosetinfo(handle, NDIS_OID_REMOVE_KEY,
+					(char *)&ndis_remove_key,
+					sizeof(ndis_remove_key), &written,
+					&needed);
+			if (res == NDIS_STATUS_INVALID_DATA)
+			{
+				DBGTRACE("removing key failed with %08X", res);
+				TRACEEXIT(return -EINVAL);
+			}
 		}
 #endif
 		if (wpa_key.key_index >= 0 &&
@@ -1669,7 +1672,7 @@ static int wpa_set_auth_alg(struct net_device *dev,
 	/* wpa_supplicant assumes OPEN mode, but it won't work if RESTRCITED
 	 * mode is used, so we try with AUTO mode always hoping the driver
 	 * chooses what is appropriate */
-	if (set_auth_mode(handle, AUTHMODE_AUTO))
+	if (set_auth_mode(handle, mode))
 		TRACEEXIT(return -EINVAL);
 	TRACEEXIT(return 0);
 }

@@ -252,6 +252,11 @@ static int call_init(struct ndis_handle *handle)
 
 	TRACEENTER1("Calling NDIS driver init routine at %p rva(%08X)",
 		    miniport->init, (int)miniport->init - image_offset);
+	if (miniport->init == NULL)
+	{
+		ERROR("%s", "initialization function is not setup correctly");
+		return -EINVAL;
+	}
 	res = miniport->init(&res2, &selected_medium, mediumtypes, 13, handle,
 			     handle);
 	DBGTRACE1("init returns %08X", res);
@@ -1071,11 +1076,11 @@ static void wrapper_worker_proc(void *param)
 	if (test_and_clear_bit(WRAPPER_LINK_STATUS, &handle->wrapper_work))
 	{
 		struct ndis_assoc_info *ndis_assoc_info;
-		unsigned char *wpa_assoc_info, *assoc_info, *p, *offset;
+		unsigned char *wpa_assoc_info, *assoc_info, *p, *ies;
 		union iwreq_data wrqu;
 		unsigned int i, res, written, needed;
-		const int ie_size = 256;
-		const int assoc_size = sizeof(*ndis_assoc_info) + 2 * 256;
+		const int assoc_size = sizeof(*ndis_assoc_info) +
+			 IW_CUSTOM_MAX;
 
 		if (handle->link_status == 0)
 		{
@@ -1100,23 +1105,15 @@ static void wrapper_worker_proc(void *param)
 			ERROR("%s", "couldn't allocate memory");
 			return;
 		}
-		wpa_assoc_info = kmalloc(ie_size, GFP_KERNEL);
-		if (!wpa_assoc_info)
-		{
-			ERROR("%s", "couldn't allocate memory");
-			kfree(assoc_info);
-			return;
-		}
-
 		memset(assoc_info, 0, assoc_size);
 
 		ndis_assoc_info = (struct ndis_assoc_info *)assoc_info;
 		ndis_assoc_info->length = sizeof(*ndis_assoc_info);
 		ndis_assoc_info->offset_req_ies = sizeof(*ndis_assoc_info);
-		ndis_assoc_info->req_ie_length = ie_size;
+		ndis_assoc_info->req_ie_length = IW_CUSTOM_MAX / 2;
 		ndis_assoc_info->offset_resp_ies = sizeof(*ndis_assoc_info) +
 			ndis_assoc_info->req_ie_length;
-		ndis_assoc_info->resp_ie_length = ie_size;
+		ndis_assoc_info->resp_ie_length = IW_CUSTOM_MAX / 2;
 
 		res = doquery(handle, NDIS_OID_ASSOC_INFO, assoc_info,
 			      assoc_size, &written, &needed);
@@ -1124,38 +1121,47 @@ static void wrapper_worker_proc(void *param)
 		{
 			ERROR("query assoc_info failed (%08X)", res);
 			kfree(assoc_info);
-			kfree(wpa_assoc_info);
 			return;
 		}
 
+		/* we put 2 bytes into wpa_assoc_info for every byte in
+		 * ies; we also need 28 extra bytes for the format strings */
+		if (((ndis_assoc_info->req_ie_length +
+		      ndis_assoc_info->resp_ie_length) * 2 + 28) >
+		    IW_CUSTOM_MAX)
+		{
+			WARNING("information element is too long! (%lu),"
+				"association information dropped",
+				(ndis_assoc_info->req_ie_length +
+				 ndis_assoc_info->resp_ie_length));
+			kfree(assoc_info);
+			return;
+		}
+
+		wpa_assoc_info = kmalloc(IW_CUSTOM_MAX, GFP_KERNEL);
+		if (!wpa_assoc_info)
+		{
+			ERROR("%s", "couldn't allocate memory");
+			kfree(assoc_info);
+			return;
+		}
 		p = wpa_assoc_info;
 		p += sprintf(p, "ASSOCINFO(ReqIEs=");
-		offset = ((char *)ndis_assoc_info) +
+		ies = ((char *)ndis_assoc_info) +
 			ndis_assoc_info->offset_req_ies;
-		for (i = 0; i < ie_size && i < ndis_assoc_info->req_ie_length;
-		     i++)
-			p += sprintf(p, "%02x", *(offset + i));
+		for (i = 0; i < ndis_assoc_info->req_ie_length; i++)
+			p += sprintf(p, "%02x", ies[i]);
 
 		p += sprintf(p, " RespIEs=");
-		offset = ((char *)ndis_assoc_info) +
+		ies = ((char *)ndis_assoc_info) +
 			ndis_assoc_info->offset_resp_ies;
-		for (i = 0; i < ie_size && i < ndis_assoc_info->resp_ie_length;
-		     i++)
-			p += sprintf(p, "%02x", *(offset + i));
+		for (i = 0; i < ndis_assoc_info->resp_ie_length; i++)
+			p += sprintf(p, "%02x", ies[i]);
 
 		p += sprintf(p, ")");
 
 		memset(&wrqu, 0, sizeof(wrqu));
 		wrqu.data.length = p - wpa_assoc_info;
-		if (wrqu.data.length > IW_CUSTOM_MAX)
-		{
-			WARNING("wrong association information element? (%d)",
-				wrqu.data.length);
-			kfree(assoc_info);
-			kfree(wpa_assoc_info);
-			return;
-		}
-
 		DBGTRACE("adding %d bytes", wrqu.data.length);
 		wireless_send_event(handle->net_dev, IWEVCUSTOM, &wrqu,
 				    wpa_assoc_info);
