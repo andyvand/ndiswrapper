@@ -44,6 +44,9 @@
 #define MACSTR "%02x:%02x:%02x:%02x:%02x:%02x"
 #define MACINTADR(a) (int*)&((a)[0]), (int*)&((a)[1]), (int*)&((a)[2]), (int*)&((a)[3]), (int*)&((a)[4]), (int*)&((a)[5])
 
+#define caller_return_address(ip)  asm("push 4(%%ebp)\npop %0\n" : "=g"(ip))
+
+/* NDIS OIDs */
 #define NDIS_OID_STAT_TX_OK         0x00020101
 #define NDIS_OID_STAT_RX_OK         0x00020102
 #define NDIS_OID_STAT_TX_ERROR      0x00020103

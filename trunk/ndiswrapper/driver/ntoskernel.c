@@ -422,7 +422,23 @@ STDCALL NT_STATUS WRAP_EXPORT(KeWaitForSingleObject)
 
 	DBGTRACE2("object type = %d, size = %d", header->type, header->size);
 
-	if (header->signal_state == TRUE) {
+	DBG_BLOCK() {
+		u8 *ip;
+
+		caller_return_address(ip);
+		dump_bytes(__FUNCTION__, ip);
+	}
+
+	if (header->size == NT_OBJ_MUTEX) {
+		struct kmutex *kmutex = (struct kmutex *)object;
+		if (kmutex->owner_thread == NULL ||
+		    kmutex->owner_thread == get_current()) {
+			header->signal_state = FALSE;
+			kmutex->u.count++;
+			kmutex->owner_thread = get_current();
+			TRACEEXIT1(return STATUS_SUCCESS);
+		}
+	} else if (header->signal_state == TRUE) {
 		if (header->type == SYNCHRONIZATION_EVENT)
 			header->signal_state = FALSE;
  		TRACEEXIT3(return STATUS_SUCCESS);
@@ -480,6 +496,16 @@ STDCALL NT_STATUS WRAP_EXPORT(KeWaitForSingleObject)
 		TRACEEXIT2(return STATUS_TIMEOUT);
 
 	/* res > 0 */
+	if (header->size == NT_OBJ_MUTEX) {
+		struct kmutex *kmutex = (struct kmutex *)object;
+		if (kmutex->owner_thread == NULL) {
+			kmutex->owner_thread = get_current();
+			kmutex->u.count++;
+		}
+	}
+	if (header->type == SYNCHRONIZATION_EVENT)
+		header->signal_state = FALSE;
+
 	TRACEEXIT2(return STATUS_SUCCESS);
 }
 
