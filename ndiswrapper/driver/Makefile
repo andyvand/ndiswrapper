@@ -106,7 +106,7 @@ x86_64_stubs.h: hal.c misc_funcs.c ndis.c ntoskernel.c usb.c
 			echo "# generated from $$file"; \
 			sed -n \
 				-e 's/.*WRAP_EXPORT(\([^)]\+\)).*/   \
-					  x86_64_stub \1/p'   \
+					  win_to_lin_stub \1/p'   \
 					   $$file | sort; \
 		done; \
 	fi > $@
