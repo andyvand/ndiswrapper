@@ -121,7 +121,7 @@ void wrapper_init_timer(struct ktimer *ktimer, void *handle)
 {
 	struct wrapper_timer *wrapper_timer;
 	struct ndis_handle *ndis_handle = (struct ndis_handle *)handle;
-	wrapper_timer = wrap_kmalloc(sizeof(struct wrapper_timer), GFP_KERNEL);
+	wrapper_timer = wrap_kmalloc(sizeof(struct wrapper_timer), GFP_ATOMIC);
 	if(!wrapper_timer)
 	{
 		printk("%s: Cannot malloc mem for timer\n", DRV_NAME);
