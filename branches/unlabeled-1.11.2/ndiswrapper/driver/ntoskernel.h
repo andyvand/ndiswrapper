@@ -16,6 +16,8 @@
 
 #include "ndiswrapper.h"
 
+#define MAX_STR_LEN 512
+
 #define DISPATCH_LEVEL 2
 
 struct slist_entry

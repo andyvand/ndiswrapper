@@ -120,10 +120,10 @@ static int procfs_read_wep(char *page, char **start, off_t off,
 		p += sprintf(p, "\n");
 		
 		p += sprintf(p, "status=%sabled\n",
-			     (wep_status == NDIS_ENCODE_ENABLED) ?
+			     (wep_status == WEP_ENABLED) ?
 			     "en" : "dis");
 		p += sprintf(p, "auth_mode=%s\n",
-			     (auth_mode == NDIS_ENCODE_RESTRICTED) ?
+			     (auth_mode == AUTHMODE_RESTRICTED) ?
 			     "restricted" : "open");
 	}
 
