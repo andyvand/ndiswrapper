@@ -53,7 +53,7 @@ void misc_funcs_exit_handle(struct ndis_handle *handle)
 		ktimer = container_of(ent, struct ktimer, list);
 		DBGTRACE1("freeing timer %p", ktimer);
 		wrapper_cancel_timer(ktimer, &canceled);
-		wrap_kfree(ktimer);
+		wrap_kfree(ktimer->wrapper_timer);
 	}
 }
 

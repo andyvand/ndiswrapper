@@ -27,11 +27,16 @@
  * otherwise, we allocate from the pool */
 #define CACHE_MDL_PAGES 2
 #define CACHE_MDL_SIZE (sizeof(struct mdl) + (sizeof(ULONG) * CACHE_MDL_PAGES))
+struct wrap_mdl {
+	struct list_head list;
+	char mdl[CACHE_MDL_SIZE];
+};
 
 static KSPIN_LOCK kevent_lock;
 KSPIN_LOCK irp_cancel_lock;
 KSPIN_LOCK ntoskernel_lock;
 static kmem_cache_t *mdl_cache;
+static struct list_head wrap_mdl_list;
 static struct nt_list_entry obj_mgr_obj_list;
 
 WRAP_EXPORT_MAP("KeTickCount", &jiffies);
@@ -42,8 +47,9 @@ int ntoskernel_init(void)
 	kspin_lock_init(&irp_cancel_lock);
 	kspin_lock_init(&ntoskernel_lock);
 	InitializeListHead(&obj_mgr_obj_list);
-	mdl_cache = kmem_cache_create("ndis_mdl", CACHE_MDL_SIZE, 0, 0,
-				      NULL, NULL);
+	INIT_LIST_HEAD(&wrap_mdl_list);
+	mdl_cache = kmem_cache_create("ndis_mdl", sizeof(struct wrap_mdl),
+				      0, 0, NULL, NULL);
 	if (!mdl_cache) {
 		ERROR("couldn't allocate MDL cache");
 		return -ENOMEM;
@@ -53,9 +59,26 @@ int ntoskernel_init(void)
 
 void ntoskernel_exit(void)
 {
-	if (mdl_cache && kmem_cache_destroy(mdl_cache))
-		ERROR("A Windows driver didn't free all MDLs;"
-		      "memory is leaking");
+	if (mdl_cache) {
+		kspin_lock(&ntoskernel_lock);
+		if (!list_empty(&wrap_mdl_list)) {
+			struct list_head *cur, *tmp;
+			ERROR("Windows driver didn't free all MDLs; "
+			      "freeing them now");
+			list_for_each_safe(cur, tmp, &wrap_mdl_list) {
+				struct wrap_mdl *p;
+				struct mdl *mdl;
+				p = list_entry(cur, struct wrap_mdl, list);
+				mdl = (struct mdl *)p->mdl;
+				if (mdl->flags & MDL_CACHE_ALLOCATED)
+					kmem_cache_free(mdl_cache, p);
+				else
+					kfree(p);
+			}
+		}
+		kspin_unlock(&ntoskernel_lock);
+		kmem_cache_destroy(mdl_cache);
+	}
 	return;
 }
 
@@ -450,7 +473,7 @@ STDCALL LONG WRAP_EXPORT(KeSetEvent)
 	(struct kevent *kevent, KPRIORITY incr, BOOLEAN wait)
 {
 	struct nt_list_entry *ent;
-	LONG old_state = kevent->dh.signal_state;
+	LONG old_state;
 
 	TRACEENTER3("event = %p, type = %d, wait = %d",
 		    kevent, kevent->dh.type, wait);
@@ -458,12 +481,13 @@ STDCALL LONG WRAP_EXPORT(KeSetEvent)
 		WARNING("wait = %d, not yet implemented", wait);
 
 	kspin_lock(&kevent_lock);
+	old_state = kevent->dh.signal_state;
 	kevent->dh.signal_state = TRUE;
 	while ((ent = RemoveHeadList(&kevent->dh.wait_list))) {
 		struct wait_block *wb;
 
 		wb = container_of(ent, struct wait_block, list_entry);
-		DBGTRACE3("waking up process %p p(%p,%p)", wb->thread, wb,
+		DBGTRACE3("waking up process %p (%p,%p)", wb->thread, wb,
 			  kevent);
 		if (wb->thread)
 			wake_up_process((task_t *)wb->thread);
@@ -552,12 +576,12 @@ STDCALL NTSTATUS WRAP_EXPORT(KeWaitForMultipleObjects)
 	for (i = 0, wait_count = 0; i < count; i++) {
 		dh = &object[i]->dh;
 		if (dh->signal_state == FALSE) {
-			InsertTailList(&dh->wait_list, &wb[i].list_entry);
 			wb[i].thread = get_current();
 			wb[i].object = object[i];
+			InsertTailList(&dh->wait_list, &wb[i].list_entry);
+			wait_count++;
 			DBGTRACE3("%p (%p) waiting on event %p", &wb[i],
 				  wb[i].thread, wb[i].object);
-			wait_count++;
 		} else {
 			/* mark that this wb is not on the list */
 			wb[i].thread = NULL;
@@ -1268,22 +1292,33 @@ STDCALL ULONG WRAP_EXPORT(MmSizeOfMdl)
 
 struct mdl *allocate_init_mdl(void *virt, ULONG length)
 {
-	struct mdl *mdl;
+	struct wrap_mdl *wrap_mdl;
+	struct mdl *mdl = NULL;
 	int mdl_size = MmSizeOfMdl(virt, length);
 
 	if (mdl_size <= CACHE_MDL_SIZE) {
-		mdl = kmem_cache_alloc(mdl_cache, GFP_ATOMIC);
-		if (!mdl)
+		wrap_mdl = kmem_cache_alloc(mdl_cache, GFP_ATOMIC);
+		if (!wrap_mdl)
 			return NULL;
+		kspin_lock(&ntoskernel_lock);
+		list_add(&wrap_mdl->list, &wrap_mdl_list);
+		kspin_unlock(&ntoskernel_lock);
+		mdl = (struct mdl *)wrap_mdl->mdl;
 		memset(mdl, 0, CACHE_MDL_SIZE);
 		MmInitializeMdl(mdl, virt, length);
 		/* mark the MDL as allocated from cache pool so when
 		 * it is freed, we free it back to the pool */
 		mdl->flags = MDL_CACHE_ALLOCATED;
 	} else {
-		mdl = kmalloc(mdl_size, GFP_ATOMIC);
-		if (!mdl)
+		wrap_mdl =
+			kmalloc(sizeof(*wrap_mdl) + mdl_size - CACHE_MDL_SIZE,
+				GFP_ATOMIC);
+		if (!wrap_mdl)
 			return NULL;
+		mdl = (struct mdl *)wrap_mdl->mdl;
+		kspin_lock(&ntoskernel_lock);
+		list_add(&wrap_mdl->list, &wrap_mdl_list);
+		kspin_unlock(&ntoskernel_lock);
 		memset(mdl, 0, mdl_size);
 		MmInitializeMdl(mdl, virt, length);
 	}
@@ -1298,12 +1333,22 @@ void free_mdl(struct mdl *mdl)
 	 * must call NdisFreeBuffer if it is allocated with Ndis
 	 * function. We set 'process' field in Ndis functions. */
 	if (mdl) {
+		
 		if (mdl->process)
 			NdisFreeBuffer(mdl);
-		else if (mdl->flags & MDL_CACHE_ALLOCATED)
-			kmem_cache_free(mdl_cache, mdl);
-		else
-			kfree(mdl);
+		else {
+			struct wrap_mdl *wrap_mdl;
+			wrap_mdl = (struct wrap_mdl *)
+				((char *)mdl - offsetof(struct wrap_mdl, mdl));
+			kspin_lock(&ntoskernel_lock);
+			list_del(&wrap_mdl->list);
+			kspin_unlock(&ntoskernel_lock);
+
+			if (mdl->flags & MDL_CACHE_ALLOCATED)
+				kmem_cache_free(mdl_cache, wrap_mdl);
+			else
+				kfree(mdl);
+		}
 	}
 }
 

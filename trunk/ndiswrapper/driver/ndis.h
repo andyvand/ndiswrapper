@@ -152,6 +152,11 @@ struct ndis_packet {
 	UINT look_ahead_size;
 };
 
+struct wrap_ndis_packet {
+	struct list_head list;
+	struct ndis_packet ndis_packet;
+};
+
 struct ndis_packet_pool {
 	int max_descr;
 	int num_allocated_descr;
