@@ -1,4 +1,5 @@
-DISTFILES= compat \
+DISTFILES= Makefile \
+  compat \
   README.Debian \
   changelog \
   control.modules \
