@@ -267,7 +267,6 @@ struct ndis_driver
 	struct miniport_char miniport_char;
 	int key_len ;
 	unsigned char key_val[IW_ENCODING_TOKEN_MAX] ;
-	struct timer_list timer_list;
 };
 
 
@@ -306,11 +305,13 @@ struct packed ndis_handle
 	struct iw_statistics wireless_stats;
 	struct ndis_driver *driver;
 	
-	spinlock_t query_lock;
+	struct semaphore query_mutex;
+	wait_queue_head_t query_wqhead;
 	int query_wait_res;
 	int query_wait_done;
 
-	spinlock_t setinfo_lock;
+	struct semaphore setinfo_mutex;
+	wait_queue_head_t setinfo_wqhead;
 	int setinfo_wait_res;
 	int setinfo_wait_done;
 
@@ -320,6 +321,9 @@ struct packed ndis_handle
 	struct timer_list hangcheck_timer;
 	struct work_struct hangcheck_work;
 	int reset_status;
+
+	struct timer_list apscan_timer;
+	struct work_struct apscan_work;
 };
 
 struct ndis_timer
