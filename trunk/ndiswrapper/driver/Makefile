@@ -3,7 +3,6 @@ ifndef DRV_VERSION
 #DRV_VERSION="$(shell cat ../version)@$(shell date +'%d-%b-%y')"
 DRV_VERSION="$(shell cat ../version)"
 endif
-DEBUG=3
 
 DISTFILES=Makefile \
  coffpe.h \
@@ -65,9 +64,7 @@ ndis.h : ntoskernel.h
 
 ntoskernel.h : ndiswrapper.h
 
-usb.o : usb.c ndis.h
-
-OBJS   := wrapper.o iw_ndis.o loader.o ntoskernel.o ndis.o misc_funcs.o proc.o divdi3.o hal.o usb.o
+OBJS   := wrapper.o iw_ndis.o loader.o ntoskernel.o ndis.o misc_funcs.o proc.o divdi3.o hal.o
 
 ifdef DEBUG
 CFLAGS += -DDEBUG=$(DEBUG) -g -DDEBUG_TIMER
@@ -106,6 +103,10 @@ clean:
 	rm -f $(MODULE) $(OBJS)
 
 else
+
+OBJS += usb.o
+usb.o : usb.c ndis.h
+
 MODULE := ndiswrapper.ko
 obj-m := ndiswrapper.o 
 ndiswrapper-objs := $(OBJS)
