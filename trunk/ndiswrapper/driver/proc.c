@@ -14,6 +14,7 @@
  */
 #include <linux/proc_fs.h>
 #include <linux/module.h>
+#include <asm/uaccess.h>
 
 #include "ndis.h"
 
