@@ -578,11 +578,6 @@ static int ndis_set_wep(struct net_device *dev, struct iw_request_info *info,
 		keyindex |= (1 << 31);
 		res = set_int(handle, NDIS_OID_WEP_STATUS,
 			       NDIS_ENCODE_DISABLED);
-		res |= set_int(handle, NDIS_OID_REMOVE_WEP, keyindex);
-		res |= set_int(handle, NDIS_OID_AUTH_MODE, NDIS_ENCODE_OPEN);
-		handle->wep.keylength = 0;
-		handle->wep.keyindex = 0;
-		memset(&handle->wep.keymaterial, 0, sizeof(handle->wep.keymaterial));
 		if (res)
 		{
 			printk(KERN_INFO "%s: disabling wep failed (%08x)\n",
@@ -681,7 +676,6 @@ static int ndis_get_wep(struct net_device *dev, struct iw_request_info *info,
 		wrqu->data.flags |= IW_ENCODE_RESTRICTED;
 	else if (status == NDIS_ENCODE_OPEN_RESTRICTED)
 		wrqu->data.flags |= (IW_ENCODE_OPEN | IW_ENCODE_RESTRICTED);
-
 
 	return 0;
 }
