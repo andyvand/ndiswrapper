@@ -1873,6 +1873,8 @@ static int ndis_init_one(struct pci_dev *pdev,
 		res = -EINVAL;
 		goto out_start;
 	}
+
+	doreset(handle);
 	
 	if(setup_dev(handle->net_dev))
 	{
