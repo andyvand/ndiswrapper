@@ -120,7 +120,7 @@ static int procfs_read_encr(char *page, char **start, off_t off,
 		p += sprintf(p, "\n");
 
 		p += sprintf(p, "status=%sabled\n",
-			     (encr_status == ENCR1_ENABLED) ? "en" : "dis");
+			     (encr_status == ENCR_DISABLED) ? "dis" : "en");
 		p += sprintf(p, "auth_mode=%s\n",
 			     (auth_mode == AUTHMODE_RESTRICTED) ?
 			     "restricted" : "open");
