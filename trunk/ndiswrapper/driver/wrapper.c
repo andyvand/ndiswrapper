@@ -452,7 +452,7 @@ static void ndis_set_rx_mode(struct net_device *dev)
 }
 
 static struct ndis_packet *alloc_packet(struct ndis_handle *handle,
-				       struct ndis_buffer *buffer)
+					ndis_buffer *buffer)
 {
 	struct ndis_packet *packet;
 
@@ -465,11 +465,11 @@ static struct ndis_packet *alloc_packet(struct ndis_handle *handle,
 	if (handle->use_scatter_gather) {
 		/* FIXME: do USB drivers call this? */
 		packet->dataphys =
-			PCI_DMA_MAP_SINGLE(handle->dev.pci, buffer->data,
-					   buffer->len, PCI_DMA_TODEVICE);
+			PCI_DMA_MAP_SINGLE(handle->dev.pci, buffer->startva,
+					   buffer->size, PCI_DMA_TODEVICE);
 		packet->sg_list.len = 1;
 		packet->sg_element.address.quad = packet->dataphys;
-		packet->sg_element.len = buffer->len;
+		packet->sg_element.len = buffer->size;
 		packet->sg_list.elements = &packet->sg_element;
 		packet->extension.info[ScatterGatherListPacketInfo] =
 			&packet->sg_list;
@@ -478,7 +478,7 @@ static struct ndis_packet *alloc_packet(struct ndis_handle *handle,
 	packet->private.oob_offset = offsetof(struct ndis_packet, oob_tx);
 
 	packet->private.nr_pages = NDIS_BUFFER_TO_SPAN_PAGES(buffer);
-	packet->private.len = buffer->len;
+	packet->private.len = buffer->bytecount;
 	packet->private.count = 1;
 	packet->private.valid_counts = 1;
 
@@ -495,7 +495,7 @@ static void free_packet(struct ndis_handle *handle, struct ndis_packet *packet)
 		return;
 	}
 
-	kfree(packet->private.buffer_head->data);
+	kfree(packet->private.buffer_head->startva);
 	kfree(packet->private.buffer_head);
 
 	if (packet->dataphys) {
@@ -637,7 +637,7 @@ void sendpacket_done(struct ndis_handle *handle, struct ndis_packet *packet)
 static int start_xmit(struct sk_buff *skb, struct net_device *dev)
 {
 	struct ndis_handle *handle = dev->priv;
-	struct ndis_buffer *buffer;
+	ndis_buffer *buffer;
 	struct ndis_packet *packet;
 	unsigned int xmit_ring_next_slot;
 
@@ -645,16 +645,19 @@ static int start_xmit(struct sk_buff *skb, struct net_device *dev)
 	if (!data)
 		return 1;
 
-	buffer = kmalloc(sizeof(struct ndis_buffer), GFP_ATOMIC);
+	buffer = kmalloc(sizeof(ndis_buffer), GFP_ATOMIC);
 	if (!buffer) {
 		kfree(data);
 		return 1;
 	}
+	memset(buffer, 0, sizeof(*buffer));
 
 	skb_copy_and_csum_dev(skb, data);
-	buffer->data = data;
+	buffer->startva = data;
 	buffer->next = NULL;
-	buffer->len = skb->len;
+	buffer->bytecount = skb->len;
+	buffer->byteoffset = 0;
+	buffer->size = skb->len;
 	packet = alloc_packet(handle, buffer);
 	if (!packet) {
 		kfree(buffer);

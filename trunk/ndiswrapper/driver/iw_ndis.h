@@ -17,6 +17,13 @@
 
 #include "ndis.h"
 
+struct ndis_encr_key {
+	ULONG struct_size;
+	ULONG index;
+	ULONG length;
+	UCHAR key[NDIS_ENCODING_TOKEN_MAX];
+};
+
 struct ndis_add_key {
 	ULONG struct_size;
 	ndis_key_index index;

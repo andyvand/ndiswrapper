@@ -407,7 +407,7 @@ STDCALL void WRAP_EXPORT(NdisGetSystemUpTime)
 
 /* called as macro */
 STDCALL ULONG WRAP_EXPORT(NDIS_BUFFER_TO_SPAN_PAGES)
-	(struct ndis_buffer *buffer)
+	(ndis_buffer *buffer)
 {
 	ULONG_PTR start;
 	ULONG n;
@@ -417,17 +417,17 @@ STDCALL ULONG WRAP_EXPORT(NDIS_BUFFER_TO_SPAN_PAGES)
 	if (buffer == NULL)
 		return 0;
 
-	if (buffer->len == 0)
+	if (buffer->size == 0)
 		return 1;
 
-	start = (ULONG_PTR)(((char *)buffer->data) + buffer->offset);
-	n = SPAN_PAGES(start, buffer->len);
+	start = (ULONG_PTR)(((char *)buffer->startva) + buffer->byteoffset);
+	n = SPAN_PAGES(start, buffer->bytecount);
 	DBGTRACE4("pages = %u", n);
 	TRACEEXIT3(return n);
 }
 
 STDCALL void WRAP_EXPORT(NdisGetBufferPhysicalArraySize)
-	(struct ndis_buffer *buffer, UINT *arraysize)
+	(ndis_buffer *buffer, UINT *arraysize)
 {
 	TRACEENTER3("Buffer: %p", buffer);
 	*arraysize = NDIS_BUFFER_TO_SPAN_PAGES(buffer);
@@ -1053,33 +1053,34 @@ STDCALL void WRAP_EXPORT(NdisFreeBufferPool)
 }
 
 STDCALL void WRAP_EXPORT(NdisAllocateBuffer)
-	(NDIS_STATUS *status, struct ndis_buffer **buffer,
+	(NDIS_STATUS *status, ndis_buffer **buffer,
 	 void *poolhandle, void *virt, UINT len)
 {
-	struct ndis_buffer *ndis_buffer = kmalloc(sizeof(struct ndis_buffer),
-						  GFP_ATOMIC);
+	ndis_buffer *buf = kmalloc(sizeof(ndis_buffer), GFP_ATOMIC);
 	TRACEENTER4("%s", "");
-	if (!ndis_buffer) {
+	if (!buf) {
 		ERROR("%s", "Couldn't allocate memory");
 		*status = NDIS_STATUS_FAILURE;
 		TRACEEXIT4(return);
 	}
 
-	memset(ndis_buffer, 0, sizeof(struct ndis_buffer));
+	memset(buf, 0, sizeof(ndis_buffer));
 
-	ndis_buffer->data = virt;
-	ndis_buffer->next = NULL;
-	ndis_buffer->len = len;
+	buf->startva = virt;
+	buf->byteoffset = 0;
+	buf->size = len;
+	buf->bytecount = len;
+	buf->next = NULL;
 
-	*buffer = ndis_buffer;
+	*buffer = buf;
 
-	DBGTRACE4("allocated buffer: %p", buffer);
+	DBGTRACE4("allocated buffer: %p", buf);
 	*status = NDIS_STATUS_SUCCESS;
 	TRACEEXIT4(return);
 }
 
 STDCALL void WRAP_EXPORT(NdisFreeBuffer)
-	(struct ndis_buffer *buffer)
+	(ndis_buffer *buffer)
 {
 	TRACEENTER4("%p", buffer);
 
@@ -1089,50 +1090,49 @@ STDCALL void WRAP_EXPORT(NdisFreeBuffer)
 }
 
 STDCALL void WRAP_EXPORT(NdisAdjustBufferLength)
-	(struct ndis_buffer *buf, UINT len)
+	(ndis_buffer *buf, UINT len)
 {
 	TRACEENTER4("%s", "");
-	buf->len = len;
+	buf->size = len;
 }
 
 STDCALL void WRAP_EXPORT(NdisQueryBuffer)
-	(struct ndis_buffer *buf, void **adr, UINT *len)
+	(ndis_buffer *buf, void **adr, UINT *len)
 {
 	TRACEENTER3("%s", "");
 	if (adr)
-		*adr = buf->data;
+		*adr = MmGetSystemAddressForMdlSafe(buf, HighPagePriority);
 	if (len)
-		*len = buf->len;
+		*len = MmGetMdlByteCount(buf);
 }
 
 STDCALL void WRAP_EXPORT(NdisQueryBufferSafe)
-	(struct ndis_buffer *buf, void **adr,
+	(ndis_buffer *buf, void **adr,
 	 UINT *len, enum mm_page_priority priority)
 {
 	TRACEENTER3("%p, %p, %p", buf, adr, len);
 	if (adr)
-		*adr = buf->data;
+		*adr = MmGetSystemAddressForMdlSafe(buf, priority);
 	if (len)
-		*len = buf->len;
+		*len = MmGetMdlByteCount(buf);
 }
 
 STDCALL void *WRAP_EXPORT(NdisBufferVirtualAddress)
-	(struct ndis_buffer *buf)
+	(ndis_buffer *buf)
 {
 	TRACEENTER3("%s", "");
-	return buf->data;
+	return MmGetSystemAddressForMdlSafe(buf, HighPagePriority);
 }
 
 STDCALL ULONG WRAP_EXPORT(NdisBufferLength)
-	(struct ndis_buffer *buf)
+	(ndis_buffer *buf)
 {
 	TRACEENTER3("%s", "");
-	return buf->len;
+	return MmGetMdlByteCount(buf);
 }
 
 STDCALL void WRAP_EXPORT(NdisAllocatePacketPool)
-	(NDIS_STATUS *status, void *poolhandle,
-	 UINT size, UINT rsvlen)
+	(NDIS_STATUS *status, void *poolhandle, UINT size, UINT rsvlen)
 {
 	TRACEENTER3("size=%d", size);
 	poolhandle = (void *)0xa000fff4;
@@ -1554,7 +1554,7 @@ STDCALL void
 NdisMIndicateReceivePacket(struct ndis_handle *handle,
 			   struct ndis_packet **packets, UINT nr_packets)
 {
-	struct ndis_buffer *buffer;
+	ndis_buffer *buffer;
 	struct ndis_packet *packet;
 	struct sk_buff *skb;
 	int i;
@@ -1570,13 +1570,15 @@ NdisMIndicateReceivePacket(struct ndis_handle *handle,
 
 		buffer = packet->private.buffer_head;
 
-		skb = dev_alloc_skb(buffer->len);
+		skb = dev_alloc_skb(buffer->size);
 		if (skb) {
 			skb->dev = handle->net_dev;
-			eth_copy_and_sum(skb, buffer->data, buffer->len, 0);
-			skb_put(skb, buffer->len);
+			eth_copy_and_sum(skb,
+					 buffer->startva + buffer->byteoffset,
+					 buffer->bytecount, 0);
+			skb_put(skb, buffer->bytecount);
 			skb->protocol = eth_type_trans(skb, handle->net_dev);
-			handle->stats.rx_bytes += buffer->len;
+			handle->stats.rx_bytes += buffer->bytecount;
 			handle->stats.rx_packets++;
 			netif_rx(skb);
 		} else
@@ -1719,7 +1721,8 @@ EthRxIndicateHandler(void *adapter_ctx, void *rx_ctx, char *header1,
 				memcpy(skb->data+header_size, look_ahead,
 				       look_ahead_size);
 				memcpy(skb->data+header_size+look_ahead_size,
-				       packet->private.buffer_head->data,
+				       packet->private.buffer_head->startva +
+				       packet->private.buffer_head->byteoffset,
 				       bytes_txed);
 				skb_size = header_size+look_ahead_size+
 					bytes_txed;
@@ -1804,7 +1807,8 @@ NdisMTransferDataComplete(struct ndis_handle *handle,
 	memcpy(skb->data+sizeof(packet->header), packet->look_ahead,
 	       packet->look_ahead_size);
 	memcpy(skb->data+sizeof(packet->header)+packet->look_ahead_size,
-	       packet->private.buffer_head->data, bytes_txed);
+	       packet->private.buffer_head->startva +
+	       packet->private.buffer_head->byteoffset, bytes_txed);
 	kfree(packet->look_ahead);
 	NdisFreePacket(packet);
 	skb_put(skb, skb_size);
@@ -1989,11 +1993,11 @@ STDCALL ULONG WRAP_EXPORT(NdisMGetDmaAlignment)
 }
 
 STDCALL void WRAP_EXPORT(NdisQueryBufferOffset)
-	(struct ndis_buffer *buffer, UINT *offset, UINT *length)
+	(ndis_buffer *buffer, UINT *offset, UINT *length)
 {
 	TRACEENTER3("%s", "");
-	*offset = 0;
-	*length = buffer->len;
+	*offset = buffer->byteoffset;
+	*length = buffer->bytecount;
 }
 
 STDCALL CHAR WRAP_EXPORT(NdisSystemProcessorCount)
@@ -2227,10 +2231,10 @@ STDCALL NDIS_STATUS WRAP_EXPORT(NdisScheduleWorkItem)
 }
 
 STDCALL void WRAP_EXPORT(NdisUnchainBufferAtBack)
-	(struct ndis_packet *packet, struct ndis_buffer **buffer)
+	(struct ndis_packet *packet, ndis_buffer **buffer)
 {
-	struct ndis_buffer *b = packet->private.buffer_head;
-	struct ndis_buffer *btail = packet->private.buffer_tail;
+	ndis_buffer *b = packet->private.buffer_head;
+	ndis_buffer *btail = packet->private.buffer_tail;
 
 	TRACEENTER3("%p", b);
 	if (!b) {
@@ -2255,9 +2259,9 @@ STDCALL void WRAP_EXPORT(NdisUnchainBufferAtBack)
 }
 
 STDCALL void WRAP_EXPORT(NdisUnchainBufferAtFront)
-	(struct ndis_packet *packet, struct ndis_buffer **buffer)
+	(struct ndis_packet *packet, ndis_buffer **buffer)
 {
-	struct ndis_buffer *b = packet->private.buffer_head;
+	ndis_buffer *b = packet->private.buffer_head;
 
 	TRACEENTER3("%p", b);
 	if (!b) {
@@ -2281,21 +2285,31 @@ STDCALL void WRAP_EXPORT(NdisUnchainBufferAtFront)
 }
 
 STDCALL void WRAP_EXPORT(NdisGetFirstBufferFromPacketSafe)
-	(struct ndis_packet *packet, struct ndis_buffer **buffer, void **virt,
-	 UINT *len, UINT *totlen, enum mm_page_priority priority)
+	(struct ndis_packet *packet, ndis_buffer **first_buffer,
+	 void **first_buffer_va,
+	 UINT *first_buffer_length, UINT *total_buffer_length,
+	 enum mm_page_priority priority)
 {
-	struct ndis_buffer *b = packet->private.buffer_head;
+	ndis_buffer *b = packet->private.buffer_head;
 
 	TRACEENTER3("%p", b);
-
-	*buffer = b;
-	*virt = b->data;
-	*len = b->len;
-	*totlen = packet->private.len;
+	*first_buffer = b;
+	if (b) {
+		*first_buffer_va =
+			MmGetSystemAddressForMdlSafe(b, HighPagePriority);
+		*first_buffer_length = *total_buffer_length =
+			MmGetMdlByteCount(b);
+		for (b = b->next; b != NULL; b = b->next)
+			*total_buffer_length += MmGetMdlByteCount(b);
+	} else {
+		*first_buffer_va = NULL;
+		*first_buffer_length = 0;
+		*total_buffer_length = 0;
+	}
 }
 
 STDCALL void WRAP_EXPORT(NdisMStartBufferPhysicalMapping)
-	(struct ndis_handle *handle, struct ndis_buffer *buf,
+	(struct ndis_handle *handle, ndis_buffer *buf,
 	 ULONG phy_map_reg, BOOLEAN write_to_dev,
 	 struct ndis_phy_addr_unit *phy_addr_array, UINT *array_size)
 {
@@ -2322,10 +2336,10 @@ STDCALL void WRAP_EXPORT(NdisMStartBufferPhysicalMapping)
 
 	// map buffer
 	/* FIXME: do USB drivers call this? */
-	dma_addr = PCI_DMA_MAP_SINGLE(handle->dev.pci, buf->data, buf->len,
-				      PCI_DMA_TODEVICE);
+	dma_addr = PCI_DMA_MAP_SINGLE(handle->dev.pci, buf->startva,
+				      buf->size, PCI_DMA_TODEVICE);
 	phy_addr_array[0].phy_addr.quad = dma_addr;
-	phy_addr_array[0].length= buf->len;
+	phy_addr_array[0].length= buf->size;
 
 	*array_size = 1;
 
@@ -2334,7 +2348,7 @@ STDCALL void WRAP_EXPORT(NdisMStartBufferPhysicalMapping)
 }
 
 STDCALL void WRAP_EXPORT(NdisMCompleteBufferPhysicalMapping)
-	(struct ndis_handle *handle, struct ndis_buffer *buf,
+	(struct ndis_handle *handle, ndis_buffer *buf,
 	 ULONG phy_map_reg)
 {
 	TRACEENTER3("%p %u (%u)", handle, phy_map_reg, handle->map_count);
@@ -2354,7 +2368,7 @@ STDCALL void WRAP_EXPORT(NdisMCompleteBufferPhysicalMapping)
 	/* FIXME: do USB drivers call this? */
 	PCI_DMA_UNMAP_SINGLE(handle->dev.pci,
 			     handle->map_dma_addr[phy_map_reg],
-			     buf->len, PCI_DMA_TODEVICE);
+			     buf->size, PCI_DMA_TODEVICE);
 
 	// clear mapping index
 	handle->map_dma_addr[phy_map_reg] = 0;
