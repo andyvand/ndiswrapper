@@ -19,6 +19,18 @@
 #include "wrapper.h"
 #include "pe_loader.h"
 
+#define SSID_MAX_WPA_IE_LEN 40
+#define MAX_NDIS_SETTING_VAL_LENGTH 64
+#define NDIS_ESSID_MAX_SIZE 32
+#define NDIS_ENCODING_TOKEN_MAX 32
+#define MAX_ENCR_KEYS 4
+#define XMIT_RING_SIZE 16
+#define NDIS_MAX_RATES 8
+#define NDIS_MAX_RATES_EX 16
+#define WLAN_EID_RSN 48
+#define WLAN_EID_GENERIC 221
+#define MAX_WPA_IE_LEN 64
+
 typedef unsigned char mac_address[ETH_ALEN];
 
 struct packed ndis_scatterentry
@@ -348,7 +360,6 @@ struct ndis_config_param
 	} data;
 };
 
-#define MAX_NDIS_SETTING_VAL_LENGTH 64
 struct ndis_setting
 {
 	struct list_head list;
@@ -437,14 +448,12 @@ struct ndis_wireless_stats {
 	LARGE_INTEGER fcs_err;
 };
 
-#define NDIS_ESSID_MAX_SIZE 32
 struct packed ndis_essid
 {
 	unsigned int length;
 	char essid[NDIS_ESSID_MAX_SIZE];
 };
 
-#define NDIS_ENCODING_TOKEN_MAX 32
 struct packed ndis_encr_key
 {
 	unsigned long struct_size;
@@ -561,7 +570,6 @@ enum hw_status
 	HW_UNAVAILABLE,
 };
 
-#define MAX_ENCR_KEYS 4
 struct encr_info
 {
 	struct encr_key
@@ -586,8 +594,6 @@ struct packed ndis_configuration
 		__u32 dwell_time;
 	} fh_config;
 };
-
-#define XMIT_RING_SIZE 16
 
 enum ndis_medium {
 	NDIS_MEDIUM_802_3,
@@ -811,11 +817,10 @@ struct ndis_event
 	struct kevent kevent;
 };
 
-#define NDIS_MAX_RATES 16
 struct ssid_item
 {
 	unsigned long length;
-	__u8 mac[ETH_ALEN];
+	mac_address mac;
 	unsigned char reserved[2];
 	struct ndis_essid ssid;
 	unsigned long privacy;
@@ -823,14 +828,10 @@ struct ssid_item
 	unsigned int net_type;
 	struct ndis_configuration config;
 	unsigned int mode;
-	unsigned char rates[NDIS_MAX_RATES];
+	unsigned char rates[NDIS_MAX_RATES_EX];
 	unsigned long ie_length;
 	unsigned char ies[1];
 };
-
-#define WLAN_EID_RSN 48
-#define WLAN_EID_GENERIC 221
-#define MAX_WPA_IE_LEN 64
 
 struct bssid_list
 {
