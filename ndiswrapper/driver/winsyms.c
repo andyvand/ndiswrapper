@@ -116,6 +116,12 @@ void NdisBufferVirtualAddress(void);
 void NdisBufferLength(void);
 void NdisAllocatePacketPoolEx(void);
 
+void IoIsWdmVersionAvailable(void);
+void NdisMRegisterDevice(void);
+void NdisMDeregisterDevice(void);
+void NdisCancelTimer(void);
+void NdisInitializeTimer(void);
+
 /* Cipe */
 void DbgPrint(void);
 
@@ -159,6 +165,7 @@ void IoBuildSynchronousFsdRequest(void);
 void IofCallDriver(void);
 void KeWaitForSingleObject(void);
 void my_sprintf(void);
+void my_vsprintf(void);
 void _allmul(void);
 void my_strlen(void);
 void my_strncmp(void);
@@ -173,11 +180,20 @@ void RtlCompareMemory(void);
 void _aullrem(void);
 void _aulldiv(void);
 void _allshr(void);
+void _allshl(void);
 void _allrem(void);
 void ExDeleteNPagedLookasideList(void);
 void ExInitializeNPagedLookasideList(void);
 void ExInterlockedPopEntrySList(void);
 void ExInterlockedPushEntrySList(void);
+void MmMapIoSpace(void);
+void MmUnmapIoSpace(void);
+void KeInitializeTimer(void);
+void KeInitializeDpc(void);
+void KeSetTimerEx(void);
+void KeCancelTimer(void);
+void DbgBreakPoint(void);
+void rand(void);
 
 struct winsym
 {
@@ -288,6 +304,13 @@ func("NdisBufferVirtualAddress"             , NdisBufferVirtualAddress),
 func("NdisBufferLength"                     , NdisBufferLength),
 func("NdisAllocatePacketPoolEx"             , NdisAllocatePacketPoolEx),
 
+func("IoIsWdmVersionAvailable"             , IoIsWdmVersionAvailable),
+func("NdisMRegisterDevice"                 , NdisMRegisterDevice),
+func("NdisMDeregisterDevice"               , NdisMDeregisterDevice),
+func("NdisCancelTimer"                     , NdisCancelTimer),
+func("NdisInitializeTimer"                 , NdisInitializeTimer),
+
+
 
 /* HAL */
 func("KfAcquireSpinLock"                    , KfAcquireSpinLock),
@@ -330,6 +353,7 @@ func("IoBuildSynchronousFsdRequest"         , IoBuildSynchronousFsdRequest),
 func("IofCallDriver"                        , IofCallDriver),
 func("KeWaitForSingleObject"                , KeWaitForSingleObject),
 func("sprintf"                              , my_sprintf),
+func("vsprintf"                             , my_vsprintf),
 func("_allmul"                              , _allmul),
 func("strlen"                               , my_strlen),
 func("strncmp"                              , my_strncmp),
@@ -344,11 +368,20 @@ func("RtlCompareMemory"                     , RtlCompareMemory),
 func("_aullrem"                             , _aullrem),
 func("_aulldiv"                             , _aulldiv),
 func("_allshr"                              , _allshr),
+func("_allshl"                               , _allshl),
 func("_allrem"                              , _allrem),
 func("ExDeleteNPagedLookasideList"          , ExDeleteNPagedLookasideList),
 func("ExInitializeNPagedLookasideList"      , ExInitializeNPagedLookasideList),
 func("ExInterlockedPopEntrySList"           , ExInterlockedPopEntrySList),
 func("ExInterlockedPushEntrySList"          , ExInterlockedPushEntrySList),
+func("MmMapIoSpace"                         , MmMapIoSpace),
+func("MmUnmapIoSpace"                       , MmUnmapIoSpace),
+func("KeInitializeTimer"                    , KeInitializeTimer),
+func("KeInitializeDpc"                      , KeInitializeDpc),
+func("KeSetTimerEx"                         , KeSetTimerEx),
+func("KeCancelTimer"                        , KeCancelTimer),
+func("DbgBreakPoint"                        , DbgBreakPoint),
+func("rand"                                 , rand),
 
 /* CIPE */
 func("DbgPrint"                             , DbgPrint),

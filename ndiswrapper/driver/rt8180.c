@@ -1,56 +1,7 @@
 #ifdef DBG_REALTEK
 #include "ndis.h"
 
-struct slist_entry
-{
-	struct slist_entry  *next;
-};
-
-union slist_head {
-	unsigned long long align;
-	struct
-	{
-		struct slist_entry  *next;
-		unsigned short depth;
-		unsigned short sequence;
-	} list;
-};
-
-typedef unsigned long KSPIN_LOCK, *PKSPIN_LOCK;
-typedef unsigned char KIRQL;
-
-struct list_entry
-{
-	struct list_entry *fwd_link;
-	struct list_entry *bwd_link;
-};
-
-typedef unsigned long POOL_TYPE;
-
-typedef STDCALL void *LOOKASIDE_ALLOC_FUNC(POOL_TYPE, unsigned long, unsigned long);
-typedef STDCALL void LOOKASIDE_FREE_FUNC(void *);
-
-#define _FASTCALL __attribute__((__stdcall__)) __attribute__((regparm (3)))
-
-struct packed npaged_lookaside_list {
-	union slist_head head;
-	unsigned short depth;
-	unsigned short maxdepth;
-	unsigned long totalallocs;
-	unsigned long allocmisses;
-	unsigned long totalfrees;
-	unsigned long freemisses;
-	POOL_TYPE type;
-	unsigned long tag;
-	unsigned long size;
-	LOOKASIDE_ALLOC_FUNC *alloc_func;
-	LOOKASIDE_FREE_FUNC *free_func;
-	struct list_entry listent;
-	unsigned long lasttotallocs;
-	unsigned long lastallocmisses;
-	unsigned long pad[2];
-	KSPIN_LOCK obsolete;
-};
+#include "ntoskernel.h"
 
 int ndis_irql = 1;
 
@@ -91,9 +42,8 @@ STDCALL void KfAcquireSpinLock(PKSPIN_LOCK ndis_kspin_lock, KIRQL *oldirql)
 }
 
 _FASTCALL struct slist_entry *
-ExInterlockedPushEntrySList(int dummy,
-			    struct slist_entry *entry,
-			    union slist_head *head,
+ExInterlockedPushEntrySList(int dummy, 
+			    struct slist_entry *entry,union slist_head *head,
 			    PKSPIN_LOCK lock)
 {
 
@@ -102,8 +52,7 @@ ExInterlockedPushEntrySList(int dummy,
 	printk(KERN_INFO "%s Entry: head = %p, entry = %p\n",
 			__FUNCTION__, head, entry);
 
-//	__asm__("movl %%edx, %%edx" : "=d" (entry));
-//	__asm__("movl %%ecx, %%ecx" : "=c" (head));
+//	__asm__ __volatile__ ("" : "=c" (head), "=d" (entry));
 
 	oldhead = head->list.next;
 	entry->next = head->list.next;
@@ -115,19 +64,16 @@ ExInterlockedPushEntrySList(int dummy,
 }
 
 _FASTCALL
-struct slist_entry *ExInterlockedPopEntrySList(int dummy,
-					       PKSPIN_LOCK ndis_kspin_lock,
-					       union slist_head *head)
+struct slist_entry *ExInterlockedPopEntrySList(int dummy, 
+					       PKSPIN_LOCK ndis_kspin_lock,union slist_head *head)
 {
 	struct slist_entry *first;
-	KIRQL oldlvl;
-//	spinlock_t lock;
+//	KIRQL oldlvl;
 	
 	printk(KERN_INFO "%s: head = %p\n",
 	       __FUNCTION__, head);
-//	spin_lock(&lock);
-//	__asm__("movl %%ecx, %%ecx" : "=c" (head));
-	KeAcquireSpinLock(ndis_kspin_lock, &oldlvl);
+//	__asm__ __volatile__ ("" : "=c" (head));
+//	KeAcquireSpinLock(ndis_kspin_lock, &oldlvl);
 	first = NULL;
 	if (head)
 	{
@@ -135,12 +81,9 @@ struct slist_entry *ExInterlockedPopEntrySList(int dummy,
 		if (first)
 		{
 			head->list.next = first->next;
-			head->list.depth--;
-			head->list.sequence++;
 		}
 	}
-	KeReleaseSpinLock(ndis_kspin_lock, &oldlvl);
-//	spin_unlock(&lock);
+//	KeReleaseSpinLock(ndis_kspin_lock, &oldlvl);
 	DBGTRACE("%s: Exit, returning %p\n", __FUNCTION__, first);
 	return first;
 }
@@ -186,10 +129,12 @@ STDCALL void ExInitializeNPagedLookasideList(struct npaged_lookaside_list *looka
 		 lookaside->head.list.next, sizeof(struct npaged_lookaside_list));
 	if (lookaside)
 	{
+		/*
 		lookaside->totalallocs = 0;
 		lookaside->allocmisses = 0;
 		lookaside->totalfrees = 0;
 		lookaside->freemisses = 0;
+		*/
 		lookaside->size = size;
 		lookaside->tag = tag;
 		if (alloc_func)
@@ -201,17 +146,19 @@ STDCALL void ExInitializeNPagedLookasideList(struct npaged_lookaside_list *looka
 		else
 			lookaside->free_func = lookaside_def_free_func;
 		
+		/*
 		lookaside->head.align = 0;
 		lookaside->depth = 0;
 		lookaside->maxdepth = 0;
 		lookaside->obsolete = 0;
+		*/
 		KeInitializeSpinLock(&lookaside->obsolete);
 		if (size > PAGE_SIZE)
 			align = PAGE_SIZE;
 		else
 			align = 8;
 		g_kmem_cache =
-			kmem_cache_create("ndiswrapper", size, align, 
+			kmem_cache_create("ndiswrapper", size, 0,
 					  SLAB_HWCACHE_ALIGN, 0, 0);
 		g_lookaside = lookaside;
 	}
@@ -249,31 +196,31 @@ STDCALL void ExDeleteNPagedLookasideList(struct npaged_lookaside_list *lookaside
 	
 STDCALL __u64 _aulldiv(__u64 a, __u64 b)
 {
-	return a / b;
+	return (a / b);
 }
 STDCALL __u64 _aullrem(__u64 a, __u64 b)
 {
-	return a % b;
+	return (a % b);
 }
-STDCALL __u64 _allmul(__u64 a, __u64 b)
+STDCALL __s64 _allmul(__s64 a, __s64 b)
 {
-	return a * b;
+	return (a * b);
 }
-STDCALL __s64 _allrem(__s64 a, __u64 b)
+STDCALL __s64 _allrem(__s64 a, __s64 b)
 {
-	return a % b;
+	return (a % b);
 }
-STDCALL __s64 _alldiv(__s64 a, __u64 b)
+STDCALL __s64 _alldiv(__s64 a, __s64 b)
 {
-	return a / b;
+	return (a / b);
 }
-STDCALL __u64 _allshl(__u64 a, int b)
+__attribute__ ((regparm(3))) __u64 _allshl(__u64 a, __u8 b)
 {
-	return a << b;
+	return (a << b);
 }
-STDCALL __u64 _allshr(__u64 a, int b)
+__attribute__ ((regparm(3))) __u64 _allshr(__u64 a, __u8 b)
 {
-	return a >> b;
+	return (a >> b);
 }
 
 #endif // DBG_REALTEK

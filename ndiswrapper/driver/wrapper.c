@@ -77,7 +77,7 @@ int doquery(struct ndis_handle *handle, unsigned int oid, char *buf, int bufsize
 	down(&handle->query_mutex);
 
 	handle->query_wait_done = 0;
-	DBGTRACE("Calling query at %08x rva(%08x)\n", (int)handle->driver->miniport_char.query, (int)handle->driver->miniport_char.query - image_offset);
+//	DBGTRACE("Calling query at %08x rva(%08x)\n", (int)handle->driver->miniport_char.query, (int)handle->driver->miniport_char.query - image_offset);
 	res = handle->driver->miniport_char.query(handle->adapter_ctx, oid, buf, bufsize, written, needed);
 
 	if(!res)
@@ -102,7 +102,8 @@ out:
  */
 STDCALL void NdisMQueryInformationComplete(struct ndis_handle *handle, unsigned int status)
 {
-	DBGTRACE("%s: %08x\n", __FUNCTION__, status);
+	DBGTRACE("%s: %08X\n", __FUNCTION__, status);
+
 	handle->query_wait_res = status;
 	handle->query_wait_done = 1;
 	wake_up(&handle->query_wqhead);
@@ -120,7 +121,7 @@ int dosetinfo(struct ndis_handle *handle, unsigned int oid, char *buf, int bufsi
 	down(&handle->setinfo_mutex);
 	
 	handle->setinfo_wait_done = 0;
-	DBGTRACE("Calling setinfo at %08x rva(%08x)\n", (int)handle->driver->miniport_char.setinfo, (int)handle->driver->miniport_char.setinfo - image_offset);
+//	DBGTRACE("Calling setinfo at %08x rva(%08x)\n", (int)handle->driver->miniport_char.setinfo, (int)handle->driver->miniport_char.setinfo - image_offset);
 	res = handle->driver->miniport_char.setinfo(handle->adapter_ctx, oid, buf, bufsize, written, needed);
 
 	if(!res)
@@ -146,7 +147,8 @@ out:
  */
 STDCALL void NdisMSetInformationComplete(struct ndis_handle *handle, unsigned int status)
 {
-	DBGTRACE("%s: %08x\n", __FUNCTION__, status);
+	DBGTRACE("%s: %08X\n", __FUNCTION__, status);
+
 	handle->setinfo_wait_res = status;
 	handle->setinfo_wait_done = 1;
 	wake_up(&handle->setinfo_wqhead);
@@ -161,7 +163,7 @@ int query_int(struct ndis_handle *handle, int oid, int *data)
 {
 	unsigned int res, written, needed;
 
-	res = doquery(handle, oid, (char*)data, 4, &written, &needed);
+	res = doquery(handle, oid, (char*)data, sizeof(int), &written, &needed);
 	if(!res)
 		return 0;
 	*data = 0;
@@ -205,7 +207,7 @@ static int ndis_set_essid(struct net_device *dev,
 	res = dosetinfo(handle, NDIS_OID_ESSID, (char*)&req, sizeof(req), &written, &needed);
 	if(res)
 	{
-		printk(KERN_INFO "%s: setting essid failed (%08x)\n", dev->name, res); 
+		printk(KERN_INFO "%s: setting essid failed (%08X)\n", dev->name, res); 
 		return -EINVAL;
 	}
 	
@@ -223,7 +225,7 @@ static int ndis_get_essid(struct net_device *dev,
 	res = doquery(handle, NDIS_OID_ESSID, (char*)&req, sizeof(req), &written, &needed);
 	if(res)
 	{
-		printk(KERN_INFO "%s: getting essid failed (%08x)\n",
+		printk(KERN_INFO "%s: getting essid failed (%08X)\n",
 		       dev->name, res);
 		return -EOPNOTSUPP;
 	}
@@ -260,7 +262,7 @@ static int ndis_set_mode(struct net_device *dev, struct iw_request_info *info,
 	res = set_int(dev->priv, NDIS_OID_MODE, ndis_mode);
 	if(res)
 	{
-		printk(KERN_INFO "%s: setting operating mode failed (%08x)\n",
+		printk(KERN_INFO "%s: setting operating mode failed (%08X)\n",
 		       dev->name, res); 
 		return -1;
 	}
@@ -276,7 +278,7 @@ static int ndis_get_mode(struct net_device *dev, struct iw_request_info *info,
 	int res = query_int(handle, NDIS_OID_MODE, &ndis_mode);
 	if(res)
 	{
-		printk(KERN_INFO "%s: getting operating mode failed (%08x)\n",
+		printk(KERN_INFO "%s: getting operating mode failed (%08X)\n",
 		       dev->name, res);
 		return -EOPNOTSUPP;
 	}
@@ -341,7 +343,7 @@ static int ndis_get_freq(struct net_device *dev, struct iw_request_info *info,
 	res = doquery(handle, NDIS_OID_CONFIGURATION, (char*)&req, sizeof(req), &written, &needed);
 	if(res)
 	{
-		printk(KERN_INFO "%s: getting configuration failed (%08x)\n",
+		printk(KERN_INFO "%s: getting configuration failed (%08X)\n",
 		       dev->name, res);
 		return -EOPNOTSUPP;
 	}
@@ -381,7 +383,6 @@ static int ndis_set_freq(struct net_device *dev, struct iw_request_info *info,
 			   dev->name, res);
 		return -EINVAL;
 	}
-	
 	if (wrqu->freq.m < 1000 && wrqu->freq.e == 0)
 	{
 		if (wrqu->freq.m >= 1 &&
@@ -403,7 +404,7 @@ static int ndis_set_freq(struct net_device *dev, struct iw_request_info *info,
 			sizeof(req), &written, &needed);
 	if(res)
 	{
-		printk(KERN_INFO "%s: setting configuration failed (%08x)\n",
+		printk(KERN_INFO "%s: setting configuration failed (%08X)\n",
 		       dev->name, res);
 		return -EINVAL;
 	}
@@ -468,7 +469,7 @@ static int ndis_set_tx_power(struct net_device *dev, struct iw_request_info *inf
 		      sizeof(ndis_power), &written, &needed);
 	if(res)
 	{
-		printk(KERN_INFO "%s: setting tx_power failed (%08x)\n",
+		printk(KERN_INFO "%s: setting tx_power failed (%08X)\n",
 		       dev->name, res);
 		return -EINVAL;
 	}
@@ -484,16 +485,14 @@ static int ndis_get_bitrate(struct net_device *dev, struct iw_request_info *info
 	struct ndis_handle *handle = dev->priv; 
 	int ndis_rate;
 
-	/* not sure if this is the corrent OID or if it gives only the max rate */
 	int res = query_int(handle, NDIS_OID_GEN_SPEED, &ndis_rate);
 	if(res)
 	{
-		printk(KERN_INFO "%s: getting bitrate failed (%08x)\n",
+		printk(KERN_INFO "%s: getting bitrate failed (%08X)\n",
 		       dev->name, res);
 		return -EOPNOTSUPP;
 	}
 
-	/* *of course* windows specifies the rate in multiples of 100 */
 	wrqu->bitrate.value = ndis_rate * 100;
 	return 0;
 }
@@ -507,7 +506,7 @@ static int ndis_get_rts_threshold(struct net_device *dev, struct iw_request_info
 	int res = query_int(handle, NDIS_OID_RTS_THRESH, &ndis_rts_threshold);
 	if(res)
 	{
-		printk(KERN_INFO "%s: getting RTS threshold failed (%08x)\n",
+		printk(KERN_INFO "%s: getting RTS threshold failed (%08X)\n",
 		       dev->name, res);
 		return -EOPNOTSUPP;
 	}
@@ -525,7 +524,7 @@ static int ndis_get_frag_threshold(struct net_device *dev, struct iw_request_inf
 	int res = query_int(handle, NDIS_OID_FRAG_THRESH, &ndis_frag_threshold);
 	if(res)
 	{
-		printk(KERN_INFO "%s: getting fragmentation threshold failed (%08x)\n",
+		printk(KERN_INFO "%s: getting fragmentation threshold failed (%08X)\n",
 		       dev->name, res);
 		return -EOPNOTSUPP;
 	}
@@ -541,7 +540,7 @@ static int ndis_get_ap_address(struct net_device *dev, struct iw_request_info *i
 	unsigned int res, written, needed;
 	__u8 mac_address[ETH_ALEN];
 
-	res = doquery(handle, NDIS_OID_BSSID, (char*)&mac_address, sizeof(mac_address), &written, &needed);
+	res = doquery(handle, NDIS_OID_BSSID, (char*)&mac_address, ETH_ALEN, &written, &needed);
 	if(res)
 		memset(mac_address, 255, ETH_ALEN);
 
@@ -558,11 +557,11 @@ static int ndis_set_ap_address(struct net_device *dev, struct iw_request_info *i
 	__u8 mac_address[ETH_ALEN];
 
         memcpy(mac_address, wrqu->ap_addr.sa_data, ETH_ALEN);
-	res = dosetinfo(handle, NDIS_OID_BSSID, (char*)&(mac_address[0]), sizeof(mac_address), &written, &needed);
+	res = dosetinfo(handle, NDIS_OID_BSSID, (char*)&(mac_address[0]), ETH_ALEN, &written, &needed);
 
 	if(res)
 	{
-		printk(KERN_INFO "%s: setting AP mac address failed (%08x)\n",
+		printk(KERN_INFO "%s: setting AP mac address failed (%08X)\n",
 		       dev->name, res);
 		return -EINVAL;
 	}
@@ -587,7 +586,7 @@ static int ndis_set_wep(struct net_device *dev, struct iw_request_info *info,
 			       NDIS_ENCODE_DISABLED);
 		if (res)
 		{
-			printk(KERN_INFO "%s: disabling wep failed (%08x)\n",
+			printk(KERN_INFO "%s: disabling wep failed (%08X)\n",
 			       dev->name, res);
 			return -EINVAL;
 		}
@@ -602,12 +601,14 @@ static int ndis_set_wep(struct net_device *dev, struct iw_request_info *info,
 			req.keyindex = wrqu->data.flags & IW_ENCODE_INDEX;
 			req.keyindex |= (1 << 31);
 			req.keylength = wrqu->data.length;
-			memcpy(req.keymaterial, wrqu->data.pointer, req.keylength);
-			res = dosetinfo(handle, NDIS_OID_ADD_WEP, (char*)&req, sizeof(req), &written, &needed);
+			memcpy(req.keymaterial, wrqu->data.pointer,
+			       req.keylength);
+			res = dosetinfo(handle, NDIS_OID_ADD_WEP, (char*)&req,
+					sizeof(req), &written, &needed);
 
 			if (res)
 			{
-				printk(KERN_INFO "%s: setting wep key failed (%08x)\n", dev->name, res);
+				printk(KERN_INFO "%s: setting wep key failed (%08X)\n", dev->name, res);
 				return -EINVAL;
 			}
 			memcpy(&handle->wep, &req, sizeof(req));
@@ -622,19 +623,41 @@ static int ndis_set_wep(struct net_device *dev, struct iw_request_info *info,
 		res = set_int(handle, NDIS_OID_AUTH_MODE, auth_mode);
 		if (res)
 		{
-			printk(KERN_INFO "%s: setting authentication mode failed (%08x)\n", dev->name, res);
+			printk(KERN_INFO "%s: setting authentication mode failed (%08X)\n", dev->name, res);
 			return -EINVAL;
 		}
 
 		res = set_int(handle, NDIS_OID_WEP_STATUS, NDIS_ENCODE_ENABLED);
 		if (res)
 		{
-			printk(KERN_INFO "%s: setting wep status failed (%08x)\n", dev->name, res);
+			printk(KERN_INFO "%s: setting wep status failed (%08X)\n", dev->name, res);
 			return -EINVAL;
 		}
 
 		
 	}
+	return 0;
+}
+
+static int ndis_set_nick(struct net_device *dev, struct iw_request_info *info,
+			   union iwreq_data *wrqu, char *extra)
+{
+	struct ndis_handle *handle = dev->priv;
+	
+	if (wrqu->data.length > IW_ESSID_MAX_SIZE)
+		return -EINVAL;
+	memcpy(handle->nick, extra, IW_ESSID_MAX_SIZE+1);
+	handle->nick[IW_ESSID_MAX_SIZE] = 0;
+	return 0;
+}
+
+static int ndis_get_nick(struct net_device *dev, struct iw_request_info *info,
+			   union iwreq_data *wrqu, char *extra)
+{
+	struct ndis_handle *handle = dev->priv;
+	
+	memcpy(extra, handle->nick, IW_ESSID_MAX_SIZE+1);
+	wrqu->data.length = strlen(handle->nick);
 	return 0;
 }
 
@@ -644,15 +667,15 @@ static int ndis_get_wep(struct net_device *dev, struct iw_request_info *info,
 	struct ndis_handle *handle = dev->priv;
 	int status, res;
 
+	wrqu->data.length = 0;
+	extra[0] = 0;
 	res = query_int(handle, NDIS_OID_WEP_STATUS, &status);
 	if (res)
 	{
-		printk(KERN_INFO "%s: getting wep status failed (%08x)\n",
+		printk(KERN_INFO "%s: getting wep status failed (%08X)\n",
 		       dev->name, res);
 		return -EOPNOTSUPP;
 	}
-	wrqu->data.length = 0;
-	extra[0] = 0;
 	
 	if (status == NDIS_ENCODE_ENABLED)
 	{
@@ -672,7 +695,7 @@ static int ndis_get_wep(struct net_device *dev, struct iw_request_info *info,
 	res = query_int(handle, NDIS_OID_AUTH_MODE, &status);
 	if (res)
 	{
-		printk(KERN_INFO "%s: getting authentication mode failed (%08x)\n",
+		printk(KERN_INFO "%s: getting authentication mode failed (%08X)\n",
 		       dev->name, res);
 		return -EOPNOTSUPP;
 	}
@@ -683,6 +706,7 @@ static int ndis_get_wep(struct net_device *dev, struct iw_request_info *info,
 		wrqu->data.flags |= IW_ENCODE_RESTRICTED;
 	else if (status == NDIS_ENCODE_OPEN_RESTRICTED)
 		wrqu->data.flags |= (IW_ENCODE_OPEN | IW_ENCODE_RESTRICTED);
+
 
 	return 0;
 }
@@ -787,18 +811,11 @@ static int ndis_list_scan(struct ndis_handle *handle)
 	unsigned int res, written, needed;
 	struct iw_statistics *iw_stats = &handle->wireless_stats;
 	struct ndis_wireless_stats ndis_stats;
-	struct net_device *dev = handle->net_dev;
 	long rssi;
 
-	res = set_int(handle, NDIS_OID_BSSID_LIST_SCAN, 0);
-	if (res)
-		printk(KERN_INFO "%s: BSSID list scan failed (%08x)\n",
-		       dev->name, res);
-	
-	if (doquery(handle, NDIS_OID_RSSI, (char *)&rssi, sizeof(rssi),
-		    &written, &needed))
-		printk(KERN_INFO "%s: get rssi failed\n", dev->name);
-	else
+	res = doquery(handle, NDIS_OID_RSSI, (char *)&rssi, sizeof(rssi),
+				  &written, &needed);
+	if (!res)
 		iw_stats->qual.level = rssi;
 		
 	memset(&ndis_stats, 0, sizeof(ndis_stats));
@@ -806,14 +823,23 @@ static int ndis_list_scan(struct ndis_handle *handle)
 		      sizeof(ndis_stats), &written, &needed);
 	if (!res)
 	{
-		iw_stats->discard.retries = (__u32)ndis_stats.retry + (__u32)ndis_stats.multi_retry;
-		iw_stats->discard.misc = (__u32)ndis_stats.fcs_err + (__u32)ndis_stats.rtss_fail + (__u32)ndis_stats.ack_fail + (__u32)ndis_stats.frame_dup;
+		iw_stats->discard.retries = (__u32)ndis_stats.retry +
+			(__u32)ndis_stats.multi_retry;
+		iw_stats->discard.misc = (__u32)ndis_stats.fcs_err +
+			(__u32)ndis_stats.rtss_fail + (__u32)ndis_stats.ack_fail +
+			(__u32)ndis_stats.frame_dup;
 		
 		if (ndis_stats.tx_frag)
-			iw_stats->qual.qual = 100 - 100 * ((__u32)ndis_stats.retry + 2 * (__u32)ndis_stats.multi_retry + 3 * (__u32)ndis_stats.failed) /(6 * (__u32)ndis_stats.tx_frag);
+			iw_stats->qual.qual = 100 - 100 *
+				((__u32)ndis_stats.retry + 2 * (__u32)ndis_stats.multi_retry +
+				 3 * (__u32)ndis_stats.failed) /
+				(6 * (__u32)ndis_stats.tx_frag);
 		else
 			iw_stats->qual.qual = 100;
 	}
+
+	res = set_int(handle, NDIS_OID_BSSID_LIST_SCAN, 0);
+	
 	return res;
 }
 
@@ -838,7 +864,7 @@ static int ndis_get_scan(struct net_device *dev, struct iw_request_info *info,
 	res = doquery(handle, NDIS_OID_BSSID_LIST, (char*)&list_scan, sizeof(list_scan), &written, &needed);
 	if (res)
 	{
-		printk(KERN_INFO "%s: getting BSSID list failed (%08x)\n",
+		printk(KERN_INFO "%s: getting BSSID list failed (%08X)\n",
 		       dev->name, res);
 		return -EOPNOTSUPP;
 	}
@@ -908,7 +934,7 @@ static int ndis_set_power_mode(struct net_device *dev,
 	res = set_int(handle, NDIS_OID_POWER_MODE, power_mode);
 	if (res)
 	{
-		printk(KERN_INFO "%s: setting power mode failed (%08x)\n",
+		printk(KERN_INFO "%s: setting power mode failed (%08X)\n",
 		       dev->name, res);
 		return -EINVAL;
 	}
@@ -926,7 +952,7 @@ static int ndis_get_power_mode(struct net_device *dev,
 	res = query_int(handle, NDIS_OID_POWER_MODE, &power_mode);
 	if (res)
 	{
-		printk(KERN_INFO "%s: getting power mode failed (%08x)\n",
+		printk(KERN_INFO "%s: getting power mode failed (%08X)\n",
 		       dev->name, res);
 		return -EOPNOTSUPP;
 	}
@@ -1108,6 +1134,8 @@ static const iw_handler	ndis_handler[] = {
 	[SIOCGIWSTATS	- SIOCIWFIRST] = ndis_get_ndis_stats,
 	[SIOCGIWSENS	- SIOCIWFIRST] = ndis_get_sensitivity,
 	[SIOCSIWSENS	- SIOCIWFIRST] = ndis_set_sensitivity,
+	[SIOCGIWNICKN	- SIOCIWFIRST] = ndis_get_nick,
+	[SIOCSIWNICKN	- SIOCIWFIRST] = ndis_set_nick,
 };
 
 static const struct iw_handler_def ndis_handler_def = {
@@ -1136,15 +1164,15 @@ static int call_init(struct ndis_handle *handle)
 	__u32 res, res2;
 	__u32 selected_medium;
 	__u32 mediumtypes[] = {0,1,2,3,4,5,6,7,8,9,10,11,12};
-	DBGTRACE("Calling init at %08x rva(%08x)\n", (int)handle->driver->miniport_char.init, (int)handle->driver->miniport_char.init - image_offset);
+	DBGTRACE("Calling init at %08X rva(%08X)\n", (int)handle->driver->miniport_char.init, (int)handle->driver->miniport_char.init - image_offset);
 	res = handle->driver->miniport_char.init(&res2, &selected_medium, mediumtypes, 13, handle, handle);
-	DBGTRACE("past init res: %08x\n\n", res);
+	DBGTRACE("past init res: %08X\n\n", res);
 	return res != 0;
 }
 
 static void call_halt(struct ndis_handle *handle)
 {
-	DBGTRACE("Calling halt at %08x rva(%08x)\n", (int)handle->driver->miniport_char.halt, (int)handle->driver->miniport_char.halt - image_offset);
+	DBGTRACE("Calling halt at %08X rva(%08X)\n", (int)handle->driver->miniport_char.halt, (int)handle->driver->miniport_char.halt - image_offset);
 	handle->driver->miniport_char.halt(handle->adapter_ctx);
 }
 
@@ -1152,7 +1180,7 @@ static unsigned int call_entry(struct ndis_driver *driver)
 {
 	int res;
 	char regpath[] = {'a', 0, 'b', 0, 0, 0};
-	DBGTRACE("Calling entry at %08x rva(%08x)\n", (int)driver->entry, (int)driver->entry - image_offset);
+	DBGTRACE("Calling entry at %08X rva(%08X)\n", (int)driver->entry, (int)driver->entry - image_offset);
 	res = driver->entry((void*)driver, regpath);
 	DBGTRACE("Past entry: Version: %d.%d\n\n\n", driver->miniport_char.majorVersion, driver->miniport_char.minorVersion);
 
@@ -1190,7 +1218,7 @@ static unsigned int call_entry(struct ndis_driver *driver)
 		
 		for(i = 0; i < 16; i++)
 		{
-			DBGTRACE("%08x (rva %08x):%s\n", adr[i], adr[i]?adr[i] - image_offset:0, name[i]); 
+			DBGTRACE("%08X (rva %08X):%s\n", adr[i], adr[i]?adr[i] - image_offset:0, name[i]); 
 		}
 	}
 #endif
@@ -1204,7 +1232,7 @@ static void hangcheck_reinit(struct ndis_handle *handle);
 
 STDCALL void NdisMResetComplete(struct ndis_handle *handle, int status, int reset_status) 
 {
-	DBGTRACE("%s: %08x, %d\n", __FUNCTION__, status, reset_status);
+	DBGTRACE("%s: %08X, %d\n", __FUNCTION__, status, reset_status);
 }
 
 
@@ -1219,7 +1247,7 @@ static void hangcheck_bh(void *data)
 		handle->reset_status = 0;
 		printk("ndiswrapper: Hangcheck returned true. Resetting!\n");
 		res = handle->driver->miniport_char.reset(&handle->reset_status, handle->adapter_ctx);
-		DBGTRACE("%s : %08x, %d\n", __FUNCTION__, res, handle->reset_status);
+		DBGTRACE("%s : %08X, %d\n", __FUNCTION__, res, handle->reset_status);
 	}
 }
 
@@ -1308,7 +1336,6 @@ static void send_one(struct ndis_handle *handle, struct ndis_buffer *buffer)
 	}
 	
 	memset(packet, 0, sizeof(*packet));
-
 	
 #ifdef DEBUG
 	{
@@ -1321,7 +1348,6 @@ static void send_one(struct ndis_handle *handle, struct ndis_buffer *buffer)
 		}
 	}
 #endif
-
 	
 	if(handle->use_scatter_gather)
 	{
@@ -1344,22 +1370,26 @@ static void send_one(struct ndis_handle *handle, struct ndis_buffer *buffer)
 	packet->buffer_head = buffer;
 	packet->buffer_tail = buffer;
 
-	//DBGTRACE("Buffer: %08x, data %08x, len %d\n", (int)buffer, (int)buffer->data, (int)buffer->len); 	
+	//DBGTRACE("Buffer: %08X, data %08X, len %d\n", (int)buffer, (int)buffer->data, (int)buffer->len); 	
 
 
 	if(handle->driver->miniport_char.send_packets)
 	{
 		struct ndis_packet *packets[1];
 		packets[0] = packet;
-//		DBGTRACE("Calling send_packets at %08x rva(%08x)\n", (int)handle->driver->miniport_char.send_packets, (int)handle->driver->miniport_char.send_packets - image_offset);
+//		DBGTRACE("Calling send_packets at %08X rva(%08X)\n", (int)handle->driver->miniport_char.send_packets, (int)handle->driver->miniport_char.send_packets - image_offset);
+		spin_lock(&handle->send_packet_lock);
 		handle->driver->miniport_char.send_packets(handle->adapter_ctx, &packets[0], 1);
+		spin_unlock(&handle->send_packet_lock);
 		
 		res = packet->status;
 	}
 	else if(handle->driver->miniport_char.send)
 	{
-//		DBGTRACE("Calling send at %08x rva(%08x)\n", (int)handle->driver->miniport_char.send, (int)handle->driver->miniport_char.send_packets - image_offset);
+//		DBGTRACE("Calling send at %08X rva(%08X)\n", (int)handle->driver->miniport_char.send, (int)handle->driver->miniport_char.send_packets - image_offset);
+		spin_lock(&handle->send_packet_lock);
 		res = handle->driver->miniport_char.send(handle->adapter_ctx, packet, 0);
+		spin_unlock(&handle->send_packet_lock);
 	}
 	else
 	{
@@ -1367,7 +1397,7 @@ static void send_one(struct ndis_handle *handle, struct ndis_buffer *buffer)
 		return;
 	}
 	if(res)
-		DBGTRACE("send_packets returning %08x\n", res);
+		DBGTRACE("send_packets returning %08X\n", res);
 	if (!(handle->serialized_driver))
 		return;
 		
@@ -1379,6 +1409,8 @@ static void send_one(struct ndis_handle *handle, struct ndis_buffer *buffer)
 		ndis_sendpacket_done(handle, packet);
 		return;
 	}
+
+	return;
 }
 
 
@@ -1386,21 +1418,20 @@ static void xmit_bh(void *param)
 {
 	struct ndis_handle *handle = (struct ndis_handle*) param;
 	struct ndis_buffer *buffer;
-	unsigned long flags;
 
 	while(1)
 	{
-		spin_lock_irqsave(&handle->xmit_ring_lock, flags);
+		spin_lock_bh(&handle->xmit_ring_lock);
 		if (!handle->xmit_ring_pending)
 		{
-			spin_unlock_irqrestore(&handle->xmit_ring_lock, flags);
+			spin_unlock_bh(&handle->xmit_ring_lock);
 			break;
 		}
 		if (handle->xmit_ring_pending < 0)
 		{
 			printk(KERN_ERR "%s: xmit_ring_pending is %d\n",
 			       DRV_NAME, handle->xmit_ring_pending);
-			spin_unlock_irqrestore(&handle->xmit_ring_lock, flags);
+			spin_unlock_bh(&handle->xmit_ring_lock);
 			return;
 		}
 		buffer = handle->xmit_ring[handle->xmit_ring_start];
@@ -1409,7 +1440,7 @@ static void xmit_bh(void *param)
 		handle->xmit_ring_pending--;
 		if (netif_queue_stopped(handle->net_dev))
 			netif_wake_queue(handle->net_dev);
-		spin_unlock_irqrestore(&handle->xmit_ring_lock, flags);
+		spin_unlock_bh(&handle->xmit_ring_lock);
 
 		send_one(handle, buffer);
 	}
@@ -1425,7 +1456,6 @@ static int ndis_start_xmit(struct sk_buff *skb, struct net_device *dev)
 	struct ndis_handle *handle = dev->priv;
 	struct ndis_buffer *buffer;
 	unsigned int xmit_ring_next_slot;
-	unsigned long flags;
 	
 	char *data = kmalloc(skb->len, GFP_ATOMIC);
 	if(!data)
@@ -1446,12 +1476,12 @@ static int ndis_start_xmit(struct sk_buff *skb, struct net_device *dev)
 	buffer->len = skb->len;
 	dev_kfree_skb(skb);
 
-	spin_lock_irqsave(&handle->xmit_ring_lock, flags);
+	spin_lock_bh(&handle->xmit_ring_lock);
 	if (handle->xmit_ring_pending >= XMIT_RING_SIZE)
 	{
 		printk(KERN_ERR "%s: xmit_ring overflow (%d)\n",
 		       dev->name, handle->xmit_ring_pending);
-		spin_unlock_irqrestore(&handle->xmit_ring_lock, flags);
+		spin_unlock_bh(&handle->xmit_ring_lock);
 		return 1;
 	}
 	xmit_ring_next_slot =
@@ -1460,7 +1490,7 @@ static int ndis_start_xmit(struct sk_buff *skb, struct net_device *dev)
 	handle->xmit_ring_pending++;
 	if (handle->xmit_ring_pending == XMIT_RING_SIZE)
 		netif_stop_queue(handle->net_dev);
-	spin_unlock_irqrestore(&handle->xmit_ring_lock, flags);
+	spin_unlock_bh(&handle->xmit_ring_lock);
 
 	schedule_work(&handle->xmit_work);
 
@@ -1483,74 +1513,85 @@ void ndis_sendpacket_done(struct ndis_handle *handle, struct ndis_packet *packet
 	kfree(packet);
 }
 
-static int ndiswrapper_pm_callback(struct pm_dev *pm_dev, pm_request_t rqst,
-				   void *data)
+static int ndis_suspend(struct pci_dev *pdev, u32 state)
 {
 	struct net_device *dev;
 	struct ndis_handle *handle;
 	int res;
-	spinlock_t lock = SPIN_LOCK_UNLOCKED;
 
-	DBGTRACE("%s called with %p, %d, %p\n",
-		 __FUNCTION__, pm_dev, rqst, data);
-	if (!pm_dev || !pm_dev->data)
+	DBGTRACE("%s called with %p, %d\n",
+			 __FUNCTION__, pdev, state);
+	if (!pdev)
 		return -1;
-	dev = (struct net_device *)pm_dev->data;
-	handle = dev->priv;
-	spin_lock(&lock);
-	switch(rqst)
-	{
-	case PM_SUSPEND:
-		if (handle->pm_state != NDIS_PM_STATE_D0)
-			break;
-		res = query_int(handle, NDIS_OID_PNP_QUERY_POWER, &handle->pm_state);
-		DBGTRACE("%s: query power to state %d returns %d\n",
-		       dev->name, handle->pm_state, res);
-		if (res)
-			break;
-		apscan_del(handle);
+	handle = pci_get_drvdata(pdev);
+	if (!handle)
+		return -1;
+	dev = handle->net_dev;
 
-		/* do we need this? */
+	if (handle->pm_state != NDIS_PM_STATE_D0)
+		return 0;
+
+	res = query_int(handle, NDIS_OID_PNP_QUERY_POWER, &handle->pm_state);
+	DBGTRACE("%s: query power to state %d returns %d\n",
+			 dev->name, handle->pm_state, res);
+	if (res)
+		printk(KERN_INFO "%s: device doesn't support pnp capabilities for power management? (%08X)\n", dev->name, res);
+	apscan_del(handle);
+
+	/* do we need this? */
 //		DBGTRACE("%s: stopping queue\n", dev->name);
 //		netif_stop_queue(dev);
 
-		DBGTRACE("%s: detaching device\n", dev->name);
-		netif_device_detach(dev);
+	DBGTRACE("%s: detaching device\n", dev->name);
+	netif_device_detach(dev);
+	
+	if (state == 1)
+		handle->pm_state = NDIS_PM_STATE_D1;
+	else if (state == 2)
+		handle->pm_state = NDIS_PM_STATE_D2;
+	else
+		handle->pm_state = NDIS_PM_STATE_D3;
+	res = set_int(handle, NDIS_OID_PNP_SET_POWER, handle->pm_state);
+	DBGTRACE("%s: setting power to state %d returns %d\n",
+			 dev->name, handle->pm_state, res);
+	if (res)
+		printk(KERN_INFO "%s: device doesn't support pnp capabilities for power management? (%08X)\n", dev->name, res);
+	return 0;
+}
 
-		if ((int)data == 1)
-			handle->pm_state = NDIS_PM_STATE_D1;
-		else if ((int)data == 2)
-			handle->pm_state = NDIS_PM_STATE_D2;
-		else
-			handle->pm_state = NDIS_PM_STATE_D3;
-		res = set_int(handle, NDIS_OID_PNP_SET_POWER, handle->pm_state);
-		DBGTRACE("%s: setting power to state %d returns %d\n",
-		       dev->name, handle->pm_state, res);
-		break;
-	case PM_RESUME:
-		if (handle->pm_state == NDIS_PM_STATE_D0)
-			break;
+static int ndis_resume(struct pci_dev *pdev)
+{
+	struct net_device *dev;
+	struct ndis_handle *handle;
+	int res;
 
-		handle->pm_state = NDIS_PM_STATE_D0;
-		res = set_int(handle, NDIS_OID_PNP_SET_POWER, handle->pm_state);
-		DBGTRACE("%s: setting power to state %d returns %d\n",
-		       dev->name, handle->pm_state, res);
+	DBGTRACE("%s called with %p\n",
+		 __FUNCTION__, pdev);
+	if (!pdev)
+		return -1;
+	handle = pci_get_drvdata(pdev);
+	if (!handle)
+		return -1;
+	dev = handle->net_dev;
 
-		DBGTRACE("%s: attaching device\n", dev->name);
-		netif_device_attach(dev);
-
-		/* do we need this? */
+	if (handle->pm_state == NDIS_PM_STATE_D0)
+		return 0;
+	
+	handle->pm_state = NDIS_PM_STATE_D0;
+	res = set_int(handle, NDIS_OID_PNP_SET_POWER, handle->pm_state);
+	DBGTRACE("%s: setting power to state %d returns %d\n",
+			 dev->name, handle->pm_state, res);
+	if (res)
+		printk(KERN_INFO "%s: device doesn't support pnp capabilities for power management? (%08X)\n", dev->name, res);
+	
+	DBGTRACE("%s: attaching device\n", dev->name);
+	netif_device_attach(dev);
+	
+	/* do we need this? */
 //		DBGTRACE("%s: starting queue\n", dev->name);
 //		netif_wake_queue(dev);
-
-		add_scan_timer((unsigned long)handle);
-		break;
-	default:
-		printk(KERN_ERR "%s: rqst didn't match %d or %d\n",
-		       dev->name, PM_SUSPEND, PM_RESUME);
-		break;
-	}
-	spin_unlock(&lock);
+	
+	add_scan_timer((unsigned long)handle);
 	return 0;
 }
 
@@ -1565,6 +1606,7 @@ static int setup_dev(struct net_device *dev)
 	unsigned int res;
 	int i;
 	union iwreq_data wrqu;
+	struct ndis_configuration ndis_config;
 
 	if (strlen(if_name) > (IFNAMSIZ-1))
 	{
@@ -1604,6 +1646,20 @@ static int setup_dev(struct net_device *dev)
 		printk(KERN_ERR "%s: Unable to set managed mode\n", DRV_NAME);
 		return -1;
 	}
+
+	res = doquery(handle, NDIS_OID_CONFIGURATION, (char *)&ndis_config,
+				  sizeof(ndis_config), &written, &needed);
+	if (res)
+		printk(KERN_ERR "%s: Unable to get the configuration (%08x)\n",
+			   DRV_NAME, res);
+	ndis_config.fh_config.hop_pattern = 0;
+	ndis_config.fh_config.hop_set = 0;
+	ndis_config.fh_config.dwell_time = 0;
+	res = dosetinfo(handle, NDIS_OID_CONFIGURATION, (char *)&ndis_config,
+					sizeof(ndis_config), &written, &needed);
+	if (res)
+		printk(KERN_ERR "%s: Unable to set the configuration (%08X)\n",
+			   DRV_NAME, res);
 
 	dev->open = ndis_open;
 	dev->hard_start_xmit = ndis_start_xmit;
@@ -1699,6 +1755,8 @@ static int __devinit ndis_init_one(struct pci_dev *pdev,
 
 	handle->ndis_irq_enabled = 0;
 
+	handle->nick[0] = 0;
+
 	handle->pci_dev = pdev;
 
 	handle->hangcheck_interval = 2 * HZ;
@@ -1725,19 +1783,9 @@ static int __devinit ndis_init_one(struct pci_dev *pdev,
 		goto out_start;
 	}
 	handle->pm_state = NDIS_PM_STATE_D0;
+	handle->send_packet_lock = SPIN_LOCK_UNLOCKED;
 	apscan_init(handle);
 	//hangcheck_add(handle);
-
-#ifdef TEST_PM
-	handle->pm = pm_register(PM_PCI_DEV, 0, ndiswrapper_pm_callback);
-#else
-	handle->pm = NULL;
-#endif
-	if (handle->pm == NULL)
-		printk(KERN_WARNING "%s: power management not possible\n",
-		       dev->name);
-	else
-		handle->pm->data = dev;
 
 	ndis_init_proc(handle);
 	return 0;
@@ -1760,8 +1808,7 @@ static void __devexit ndis_remove_one(struct pci_dev *pdev)
 
 	//hangcheck_del(handle);
 	apscan_del(handle);
-	if (handle->pm)
-		pm_unregister(handle->pm);
+
 	ndis_remove_proc(handle);
 	if (!netif_queue_stopped(handle->net_dev))
 		netif_stop_queue(handle->net_dev);
@@ -1808,11 +1855,13 @@ static int start_driver(struct ndis_driver *driver)
 		return -EINVAL;
 	}
 
-
+	memset(&driver->pci_driver, 0, sizeof(driver->pci_driver));
 	driver->pci_driver.name = driver->name;
 	driver->pci_driver.id_table = driver->pci_id;
 	driver->pci_driver.probe = ndis_init_one;
 	driver->pci_driver.remove = __devexit_p(ndis_remove_one);	
+	driver->pci_driver.suspend = ndis_suspend;
+	driver->pci_driver.resume = ndis_resume;
 	
 #ifndef DEBUG_CRASH_ON_INIT
 	res = pci_module_init(&driver->pci_driver);
@@ -1853,7 +1902,7 @@ static struct ndis_driver *load_driver(struct put_driver *put_driver)
 	driver->name[namelen-1] = 0;
 
 	driver->image = vmalloc(put_driver->size);
-	DBGTRACE("Image is at %08x\n", (int)driver->image);
+	DBGTRACE("Image is at %08X\n", (int)driver->image);
 	if(!driver->image)
 	{
 		printk(KERN_ERR "Unable to allocate mem for driver\n");
@@ -1881,6 +1930,7 @@ static struct ndis_driver *load_driver(struct put_driver *put_driver)
 		goto out_baddriver;
 	}
 	
+	memset(&driver->pci_id, 0, sizeof(driver->pci_id));
 	driver->pci_id[0].vendor = put_driver->pci_vendor;
 	driver->pci_id[0].device = put_driver->pci_device;
 	driver->pci_id[0].subvendor = PCI_ANY_ID;
@@ -1940,8 +1990,6 @@ static int add_driver(struct ndis_driver *driver)
 	return 0;
 }
 
-
-
 /*
  * Add setting to the list of settings for the driver.
  */
@@ -1949,44 +1997,40 @@ static int add_setting(struct ndis_driver *driver, struct put_setting *put_setti
 {
 	struct ndis_setting *setting;
 
-	char *name;
-	unsigned int val;
-	
-	if(put_setting->payload_len != sizeof(val))
-	{
-		return -EINVAL;
-	}
-	if(copy_from_user(&val, put_setting->payload, sizeof(val)))
-		return -EINVAL;
-
-	name = kmalloc(put_setting->name_len+1, GFP_KERNEL);
-	if(!name)
+	if (!(setting = kmalloc(sizeof(*setting), GFP_KERNEL)))
 		return -ENOMEM;
 
-
-	setting = kmalloc(sizeof(*setting), GFP_KERNEL);
-	if(!setting)
-	{
-		kfree(name);
-		return -ENOMEM;
-	}
 	memset(setting, 0, sizeof(*setting));
-	
-	if(copy_from_user(name, put_setting->name, put_setting->name_len))
-	{
-		kfree(name);
-		kfree(setting);
-		return -EINVAL;
-	}
-	name[put_setting->name_len] = 0;
 
-	setting->val.type = 0;
-	setting->name = name;
-	setting->val.type = 0;
-	setting->val.data.intval = val;	
-	
+	if (!(setting->name = kmalloc(put_setting->name_len+1, GFP_KERNEL)))
+		goto setting_fail;
+
+	if (!(setting->val_str = kmalloc(put_setting->val_str_len+1, GFP_KERNEL)))
+		goto name_fail;
+
+	if(copy_from_user(setting->name, put_setting->name,
+			  put_setting->name_len))
+		goto val_str_fail;
+
+	setting->name[put_setting->name_len] = 0;
+
+	if(copy_from_user(setting->val_str, put_setting->val_str,
+			  put_setting->val_str_len))
+		goto val_str_fail;
+
+	setting->val_str[put_setting->val_str_len] = 0;
+	setting->value.type = NDIS_SETTING_NONE;
+
 	list_add(&setting->list, &driver->settings);
 	return 0;
+
+val_str_fail:
+	kfree(setting->val_str);
+name_fail:
+	kfree(setting->name);
+setting_fail:
+	kfree(setting);
+	return -EINVAL;
 }
 
 /*
@@ -2018,6 +2062,7 @@ static void unload_driver(struct ndis_driver *driver)
 	{
 		struct ndis_setting *setting = (struct ndis_setting*) curr;
 		kfree(setting->name);
+		kfree(setting->val_str);
 		kfree(setting);
 	}
 	kfree(driver);
@@ -2025,68 +2070,71 @@ static void unload_driver(struct ndis_driver *driver)
 
 static int misc_ioctl(struct inode *inode, struct file *file, unsigned int cmd, unsigned long arg)
 {
-	struct put_setting put_setting;
 	struct put_driver put_driver;
-	struct ndis_driver *driver;
+	int res = -1;
+	static struct ndis_driver *driver = NULL;
 
 	switch(cmd) {
 	case NDIS_PUTDRIVER:
-		if(copy_from_user(&put_driver, (void*)arg, sizeof(struct put_driver)))
+		if(copy_from_user(&put_driver, (void*)arg,
+				  sizeof(struct put_driver)))
 			return -EINVAL;
-
-		driver = load_driver(&put_driver);
-		if(!driver)
-			return -EINVAL;
-		file->private_data = driver;
-
-		return add_driver(driver);
+		else
+		{
+			driver = load_driver(&put_driver);
+			if(!driver)
+				return -EINVAL;
+			file->private_data = driver;
+			
+			return add_driver(driver);
+		}
 		break;
 
 	case NDIS_STARTDRIVER:
-		if(file->private_data)
+		if (!driver)
+			return -EINVAL;
+		else
 		{
-			struct ndis_driver *driver= file->private_data;
-			int res = start_driver(driver);
+			res = start_driver(driver);
 #ifdef DEBUG_CRASH_ON_INIT
 			{
 				struct pci_dev *pdev = 0;
 				pdev = pci_find_device(driver->pci_id[0].vendor, driver->pci_id[0].device, pdev);
-				if(pdev)
+				if (pdev)
 					ndis_init_one(pdev, &driver->pci_id[0]);
 			}
 #endif
 			file->private_data = NULL;
-
-			if(res)
-			{
+			
+			if (res)
 				unload_driver(driver);
-				return res;
-			}
+			return res;
 		}
 		break;
 	case NDIS_PUTSETTING:
-		if(file->private_data)
+		if (!driver)
+			return -EINVAL;
+		else
 		{
-			int res;
-			struct ndis_driver *driver = file->private_data;
-			if(copy_from_user(&put_setting, (void*)arg, sizeof(struct put_setting)))
+			struct put_setting put_setting;
+			if (copy_from_user(&put_setting, (void*)arg,
+					  sizeof(struct put_setting)))
 				return -EINVAL;
-			res = add_setting(driver, &put_setting);
-			if(res)
-				return res;
+			return add_setting(driver, &put_setting);
 		}
-	
 		break;
 	case NDIS_CANCELLOAD:
-		if(file->private_data)
+		if (!driver)
+			return -EINVAL;
+		else
 		{
-			struct ndis_driver *driver = file->private_data;
 			unload_driver(driver);
+			file->private_data = NULL;
+			return 0;
 		}
-		
 		break;	
 	default:
-		printk(KERN_ERR "Unknown ioctl %08x\n", cmd);
+		printk(KERN_ERR "Unknown ioctl %08X\n", cmd);
 		return -EINVAL;
 		break;
 	}	

@@ -24,6 +24,8 @@
 #include <linux/wait.h>
 #include <linux/pm.h>
 #include <linux/delay.h>
+#include <linux/mm.h>
+#include <asm/mman.h>
 
 #include <linux/version.h>
 
@@ -155,12 +157,11 @@ struct packed ndis_packet
 };
 
 
-struct packed miniport_char
+struct miniport_char
 {
 	unsigned char majorVersion;
 	unsigned char minorVersion;
-	__u16 reserved1;
-	__u32 reserved2;
+	unsigned int reserved;
 
 	int (*hangcheck)(void *ctx) STDCALL;
 	void * DisableInterruptHandler;
@@ -233,13 +234,28 @@ struct packed ustring
 	char *buf;
 };
 
+struct ndis_binary_data {
+	__u16 len;
+	void *buf;
+};
+
+enum ndis_setting_type {
+	NDIS_SETTING_INT,
+	NDIS_SETTING_HEXINT,
+	NDIS_SETTING_STRING,
+	NDIS_SETTING_MULTISTRING,
+	NDIS_SETTING_BINARY,
+	NDIS_SETTING_NONE,
+};
+
 struct ndis_setting_val
 {
-	unsigned int type;
+	enum ndis_setting_type type;
 	union
 	{
-		unsigned int intval;
+		unsigned long intval;
 		struct ustring ustring;
+//		struct ndis_binary_data binary_data;
 	} data;
 };
 
@@ -247,9 +263,16 @@ struct ndis_setting
 {
 	struct list_head list;
 	char *name;
-	struct ndis_setting_val val;
+	char *val_str;
+	struct ndis_setting_val value;
 };
 
+struct ndis_filehandle
+{
+	struct file *file;
+	void *map;
+	size_t size;
+};
 
 /*
  * There is one of these per driver. One per loaded driver exists.
@@ -386,11 +409,13 @@ struct packed ndis_handle
 	struct timer_list apscan_timer;
 	struct work_struct apscan_work;
 
-	struct pm_dev *pm;
 	unsigned int pm_state;
 
 	u32 link_status;
 	struct wep_req wep;
+	char nick[IW_ESSID_MAX_SIZE+1];
+	spinlock_t send_packet_lock;
+
 };
 
 struct ndis_timer
@@ -443,7 +468,7 @@ struct packed ssid_item
 	unsigned char ies[1];
 };
 
-#define MAX_SCAN_LIST_ITEMS 10
+#define MAX_SCAN_LIST_ITEMS 20
 struct packed list_scan
 {
 	unsigned long num_items;
@@ -485,6 +510,8 @@ void NdisIndicateStatus(struct ndis_handle *handle, unsigned int status, void *b
 void NdisIndicateStatusComplete(struct ndis_handle *handle) STDCALL;
 void NdisMQueryInformationComplete(struct ndis_handle *handle, unsigned int status) STDCALL;
 void NdisMSetInformationComplete(struct ndis_handle *handle, unsigned int status) STDCALL;
+int RtlUnicodeStringToAnsiString(struct ustring *dst, struct ustring *src, unsigned int dup) STDCALL;
+int RtlAnsiStringToUnicodeString(struct ustring *dst, struct ustring *src, unsigned int dup) STDCALL;
 
 int ndis_init_proc(struct ndis_handle *handle);
 void ndis_remove_proc(struct ndis_handle *handle);
@@ -561,6 +588,7 @@ int query_int(struct ndis_handle *handle, int oid, int *data);
 #define NDIS_STATUS_HARD_ERRORS		0x80010004
 #define NDIS_STATUS_BUFFER_OVERFLOW	0x80000005
 #define NDIS_STATUS_FAILURE		0xC0000001
+#define NDIS_STATUS_INVALID_PARAMETER 0xC000000D
 #define NDIS_STATUS_RESOURCES		0xC000009A
 #define NDIS_STATUS_CLOSING		0xC0010002
 #define NDIS_STATUS_BAD_VERSION		0xC0010004
@@ -645,6 +673,9 @@ int query_int(struct ndis_handle *handle, int oid, int *data);
 #define EVENT_NDIS_CABLE_DISCONNECTED_ERROR	0x800013A9
 #define EVENT_NDIS_RESET_FAILURE_CORRECTION	0x800013AA
 
-#define UNIMPL() printk(KERN_ERR "%s --UNIMPLEMENTED--\n", __FUNCTION__ );
+#define UNIMPL() do { \
+    printk(KERN_ERR "%s --UNIMPLEMENTED--\n", __FUNCTION__ );	\
+  } while (0)
+
 
 #endif /* NDIS_H */

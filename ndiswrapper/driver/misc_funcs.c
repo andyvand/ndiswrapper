@@ -17,10 +17,10 @@
 #include <linux/delay.h>
 #include <asm/io.h>
 #include <linux/ctype.h>
+#include <linux/random.h>
 
 #include "ndis.h"
-#include "casemap.h"
-
+#include "ntoskernel.h"
 
 /** Functions from CIPE **/
 void DbgPrint(char *str, int x, int y, int z)
@@ -100,6 +100,11 @@ int my_sprintf(char *str, const char *format, int p1, int p2, int p3, int p4, in
 	return res;
 }
 
+int my_vsprintf (char *str, const char *format, va_list ap)
+{
+	return vsprintf(str, format, ap);
+}
+
 char *my_strncpy(char *dst, char *src, int n)
 {
 	return strncpy(dst, src, n);
@@ -149,85 +154,75 @@ STDCALL void WRITE_REGISTER_UCHAR(unsigned int reg, unsigned char val)
 }
 
 STDCALL long RtlCompareString(const struct ustring *s1,
-			      const struct ustring *s2, int CaseInsensitive)
+							  const struct ustring *s2, int case_insensitive)
 {
 	unsigned int len;
 	long ret = 0;
 	const char *p1, *p2;
 	
+	DBGTRACE("%s: entry\n", __FUNCTION__);
 	len = min(s1->len, s2->len);
 	p1 = s1->buf;
 	p2 = s2->buf;
 	
-	if (CaseInsensitive)
-	{
+	if (case_insensitive)
 		while (!ret && len--)
 			ret = toupper(*p1++) - toupper(*p2++);
-	}
 	else
-	{
 		while (!ret && len--)
 			ret = *p1++ - *p2++;
-	}
 	if (!ret)
 		ret = s1->len - s2->len;
 	return ret;
 }
 
-static inline __u16 toupperW(__u16 ch)
-{
-    extern const __u16 wine_casemap_upper[];
-    return ch + wine_casemap_upper[wine_casemap_upper[ch >> 8] + (ch & 0xff)];
-}
-
 
 STDCALL long RtlCompareUnicodeString(const struct ustring *s1,
 				     const struct ustring *s2,
-				     int CaseInsensitive )
+				     int case_insensitive)
 {
 	unsigned int len;
 	long ret = 0;
-	const char *p1, *p2;
+	const __u16 *p1, *p2;
 	
-	len = min(s1->len, s2->len) / sizeof(__u16);
-	p1 = s1->buf;
-	p2 = s2->buf;
+	DBGTRACE("%s: entry\n", __FUNCTION__);
+	len = min(s1->len, s2->len);
+	p1 = (__u16 *)s1->buf;
+	p2 = (__u16 *)s2->buf;
 	
-	if (CaseInsensitive)
-	{
+	if (case_insensitive)
 		while (!ret && len--)
-			ret = toupperW(*p1++) - toupperW(*p2++);
-	}
+			ret = toupper((__u8)*p1++) - toupper((__u8)*p2++);
 	else
-	{
 		while (!ret && len--)
 			ret = *p1++ - *p2++;
-	}
 	if (!ret)
 		ret = s1->len - s2->len;
 	return ret;
 }
 
 STDCALL int RtlEqualString(const struct ustring *s1,
-			   const struct ustring *s2, int CaseInsensitive )
+			   const struct ustring *s2, int case_insensitive)
 {
+	DBGTRACE("%s: entry\n", __FUNCTION__);
 	if (s1->len != s2->len)
 		return 0;
-	return !RtlCompareString(s1, s2, CaseInsensitive);
+	return !RtlCompareString(s1, s2, case_insensitive);
 }
 
 STDCALL int RtlEqualUnicodeString(const struct ustring *s1,
 				  const struct ustring *s2,
-				  int CaseInsensitive )
+				  int case_insensitive)
 {
 	if (s1->len != s2->len)
 		return 0;
-	return !RtlCompareUnicodeString(s1, s2, CaseInsensitive);
+	return !RtlCompareUnicodeString(s1, s2, case_insensitive);
 }
 
 STDCALL void RtlCopyUnicodeString(struct ustring *dst,
 				  const struct ustring *src)
 {
+	DBGTRACE("%s: entry\n", __FUNCTION__);
 	if (src)
 	{
 		unsigned int len = min(src->len, dst->buflen);
@@ -235,63 +230,103 @@ STDCALL void RtlCopyUnicodeString(struct ustring *dst,
 		dst->len = len;
 		/* append terminating '\0' if enough space */
 		if (len < dst->buflen)
-			dst->buf[len / sizeof(__u16)] = 0;
+			dst->buf[len] = 0;
 	}
 	else dst->len = 0;
 }
 
 STDCALL int RtlAnsiStringToUnicodeString(struct ustring *dst, struct ustring *src, unsigned int dup)
 {
-	int i, *d;
+	int i;
+	__u16 *d;
+	__u8 *s;
 
 	DBGTRACE("%s: dup: %d src: %s\n", __FUNCTION__, dup, src->buf);
 	if(dup)
 	{
-		char *buf = kmalloc((src->buflen+1) * 2, GFP_KERNEL);
+		char *buf = kmalloc((src->buflen+1) * sizeof(__u16), GFP_KERNEL);
 		if(!buf)
 			return NDIS_STATUS_FAILURE;
 		dst->buf = buf;
-		dst->buflen = (src->buflen+1) * 2;
+		dst->buflen = (src->buflen+1) * sizeof(__u16);
 	}
+	else if (dst->buflen < (src->len+1) * sizeof(__u16))
+		return NDIS_STATUS_FAILURE;
 
-	d = (int*) dst->buf;
+	dst->len = src->len * sizeof(__u16);
+	d = (__u16 *)dst->buf;
+	s = (__u8 *)src->buf;
 	for(i = 0; i < src->len; i++)
 	{
-		d[i] = src->buf[i];
+		d[i] = (__u16)s[i];
 	}
 	d[i] = 0;
-	
-	dst->len = i*2;
 	
 	return NDIS_STATUS_SUCCESS;
 }
 
 STDCALL int RtlUnicodeStringToAnsiString(struct ustring *dst, struct ustring *src, unsigned int dup)
 {
-	int i, *s;
+	int i;
+	__u16 *s;
+	__u8 *d;
 
-	DBGTRACE("%s dup: %d src->len: %d dst: %p", __FUNCTION__, dup, src->len, dst);
+	DBGTRACE("%s dup: %d src->len: %d src->buflen: %d, dst: %p", __FUNCTION__, dup, src->len, src->buflen, dst);
 	if(dup)
 	{
-		char *buf = kmalloc(src->buflen, GFP_KERNEL);
+		char *buf = kmalloc((src->buflen+1) / sizeof(__u16), GFP_KERNEL);
 		if(!buf)
 			return NDIS_STATUS_FAILURE;
 		dst->buf = buf;
-		dst->len = 0;
-		dst->buflen = src->buflen;
+		dst->buflen = (src->buflen+1) / sizeof(__u16);
 	}
+	else if (dst->buflen < (src->len+1) / sizeof(__u16))
+		return NDIS_STATUS_FAILURE;
 
-	s = (int*) src->buf;
-	for(i = 0; i < src->len; i++)
-	{
-		dst->buf[i] = s[i];
-	}
-	dst->len = i;
-	dst->buf[i] = 0;
-	DBGTRACE(" buf: %s\n", dst->buf);
+	dst->len = src->len / sizeof(__u16);
+	s = (__u16 *)src->buf;
+	d = (__u8 *)dst->buf;
+	for(i = 0; i < dst->len; i++)
+		d[i] = (__u8)s[i];
+	d[i] = 0;
+
+//	DBGTRACE(" buf: %s\n", dst->buf);
 	return NDIS_STATUS_SUCCESS;
 }
 
+STDCALL int RtlIntegerToUnicodeString(unsigned long value, unsigned long base,
+									  struct ustring *ustring)
+{
+	char string[sizeof(unsigned long) * 8 + 1];
+	struct ustring ansi;
+	int i;
+
+	DBGTRACE("%s: entry\n", __FUNCTION__);
+	if (base == 0)
+		base = 10;
+	if (!(base == 2 || base == 8 || base == 10 || base == 16))
+		return NDIS_STATUS_INVALID_PARAMETER;
+	for (i = 0; value && i < sizeof(string); i++)
+	{
+		int r;
+		r = value % base;
+		value /= base;
+		if (r < 10)
+			string[i] = r + '0';
+		else
+			string[i] = r + 'a' - 10;
+	}
+
+	if (i < sizeof(string))
+		string[i] = 0;
+	else
+		return NDIS_STATUS_BUFFER_TOO_SHORT;
+
+	ansi.buf = string;
+	ansi.len = strlen(string);
+	ansi.buflen = sizeof(string);
+	return RtlAnsiStringToUnicodeString(ustring, &ansi, 0);
+}
 
 STDCALL void IoBuildSynchronousFsdRequest(void)
 {
@@ -313,6 +348,139 @@ STDCALL void *ExAllocatePoolWithTag(unsigned int type, unsigned int size, unsign
 	return (void*)0x000afff8;
 }
 
+void DbgBreakPoint(void)
+{
+	UNIMPL();
+}
+
+#ifdef DBG_ATHEROS
+STDCALL void *MmMapIoSpace(unsigned int phys_addr,
+						   unsigned long size, int cache)
+{
+	void *virt;
+	if (cache)
+		virt = ioremap(phys_addr, size);
+	else
+		virt = ioremap_nocache(phys_addr, size);
+	DBGTRACE("%s: %x, %lu, %d: %p\n",
+		 __FUNCTION__, phys_addr, size, cache, virt);
+	return virt;
+}
+
+STDCALL void MmUnmapIoSpace(void *addr, unsigned long size)
+{
+	DBGTRACE("%s: %p, %lu\n", __FUNCTION__, addr, size);
+	iounmap(addr);
+	return;
+}
+
+void ktimer_handler(unsigned long data)
+{
+	struct ktimer *ktimer = (struct ktimer*) data;
+	STDCALL void (*func)(void *kdpc, void *ctx, void *arg1, void *arg2) =
+		ktimer->kdpc->func;
+
+	if (!ktimer->active)
+		return;
+	func(ktimer->kdpc, ktimer->kdpc->ctx,
+	     ktimer->kdpc->arg1, ktimer->kdpc->arg2);
+
+	if (ktimer->repeat)
+	{
+		ktimer->expires = ktimer->timer.expires =
+			jiffies + ktimer->repeat;
+		add_timer(&ktimer->timer);
+	}
+	else
+		ktimer->active = 0;
+}
+
+STDCALL void KeInitializeTimer(struct ktimer *ktimer)
+{
+	DBGTRACE("%s: %p\n", __FUNCTION__, ktimer);
+	init_timer(&ktimer->timer);
+	ktimer->timer.data = (unsigned long)ktimer;
+	ktimer->timer.function = ktimer_handler;
+	ktimer->timer.expires = 0;
+	ktimer->active = 0;
+	ktimer->expires = 0;
+	memset(&ktimer->kdpc, 0, sizeof(ktimer->kdpc));
+	ktimer->repeat = 0;
+}
+
+STDCALL void KeInitializeDpc(struct kdpc *kdpc, void *func, void *ctx)
+{
+	DBGTRACE("%s: %p, %p, %p\n", __FUNCTION__, kdpc, func, ctx);
+	kdpc->func = func;
+	kdpc->ctx = ctx;
+}
+
+STDCALL int KeSetTimerEx(struct ktimer *ktimer, long expires,
+			 long repeat, struct kdpc *kdpc)
+{
+	DBGTRACE("%s: %p, %ld, %ld, %p\n",
+		 __FUNCTION__, ktimer, expires, repeat,
+		kdpc);
+
+	if (expires < 0)
+		ktimer->expires = jiffies + (-expires * HZ) / 10000;
+	else
+	{
+		ktimer->expires = (expires * HZ) / 10000;
+		if (repeat)
+			DBGTRACE("%s: absolute time with repeat? (%ld, %ld)\n",
+				 __FUNCTION__, expires, repeat);
+	}
+	ktimer->repeat = (repeat * HZ) / 1000;
+	ktimer->kdpc = kdpc;
+	if (ktimer->active)
+	{
+		mod_timer(&ktimer->timer, ktimer->expires);
+		return 1;
+	}
+	else
+	{
+		ktimer->timer.expires = ktimer->expires;
+		add_timer(&ktimer->timer);
+		ktimer->active = 1;
+		return 0;
+	}
+}
+
+STDCALL int KeCancelTimer(struct ktimer *ktimer)
+{
+	int active = ktimer->active;
+
+	ktimer->active = 0;
+	ktimer->repeat = 0;
+	if (active)
+	{
+		del_timer_sync(&ktimer->timer);
+		return 1;
+	}
+	return 0;
+}
+
+STDCALL int rand(void)
+{
+	char buf[6];
+	int i, r;
+
+	get_random_bytes(buf, sizeof(buf));
+	for (r = i = 0; i < sizeof(buf) ; i++)
+		r += buf[i];
+	return r;
+}
+#else // DBG_ATHEROS
+void MmMapIoSpace(void){UNIMPL();}
+void MmUnmapIoSpace(void){UNIMPL();}
+void KeInitializeTimer(void){UNIMPL();}
+void KeInitializeDpc(void){UNIMPL();}
+void KeSetTimerEx(void){UNIMPL();}
+void KeCancelTimer(void){UNIMPL();}
+void rand(void) { UNIMPL(); }
+#endif // DBG_ATHEROS
+
 void IoDeleteSymbolicLink(void){UNIMPL();}
 void InterlockedExchange(void){UNIMPL();}
 void MmMapLockedPages(void){UNIMPL();}
@@ -333,6 +501,7 @@ void _allmul(long p1, long p2, long p3, long p4){UNIMPL();}
 void _aullrem(void){UNIMPL();}
 void _aulldiv(void){UNIMPL();}
 void _allshr(void){UNIMPL();}
+void _allshl(void){UNIMPL();}
 void _allrem(void){UNIMPL();}
 void _alldiv(void){UNIMPL();}
 void ExDeleteNPagedLookasideList(void){UNIMPL();}
@@ -347,3 +516,57 @@ STDCALL void KeInitializeSpinLock(void *spinlock)
 void KfAcquireSpinLock(void){UNIMPL();}
 
 #endif // DBG_REALTEK
+
+#ifdef DBG_TI
+extern void NdisMCancelTimer(struct ndis_timer **, char *);
+extern void NdisMInitializeTimer(struct ndis_timer **, void *, void *, void *);
+
+STDCALL int IoIsWdmVersionAvailable(unsigned char major, unsigned char minor)
+{
+	DBGTRACE("%s: %d, %d\n", __FUNCTION__, major, minor);
+	if (major == 1 &&
+	    (minor == 0x30 || // Windows 2003
+	     minor == 0x20 || // Windows XP
+	     minor == 0x10)) // Windows 2000
+		return 1;
+	return 0;
+}
+
+STDCALL int NdisMRegisterDevice(struct ndis_handle *handle,
+				struct ustring *dev_name,
+				struct ustring *sym_name,
+				void **funcs, void *dev_object,
+				struct ndis_handle **dev_handle)
+{
+	DBGTRACE("%s: %p, %p\n", __FUNCTION__, *dev_handle, handle);
+	*dev_handle = handle;
+	return NDIS_STATUS_SUCCESS;
+}
+
+STDCALL int NdisMDeregisterDevice(struct ndis_handle *handle)
+{
+	return NDIS_STATUS_SUCCESS;
+}
+
+STDCALL void NdisCancelTimer(struct ndis_timer **timer, char *cancelled)
+{
+	NdisMCancelTimer(timer, cancelled);
+}
+
+STDCALL void NdisInitializeTimer(struct ndis_timer **timer_handle,
+								 void *func, void *ctx)
+{
+	DBGTRACE("%s(entry): %p, %p, %p, %p\n",
+			 __FUNCTION__, timer_handle, *timer_handle, func, ctx);
+	NdisMInitializeTimer(timer_handle, NULL, func, ctx);
+	DBGTRACE("%s(exit): %p, %p, %p, %p\n",
+			 __FUNCTION__, timer_handle, *timer_handle, func, ctx);
+}
+
+#else // DBG_TI
+void IoIsWdmVersionAvailable(void) { UNIMPL(); }
+void NdisMRegisterDevice(void) { UNIMPL(); }
+void NdisMDeregisterDevice(void) { UNIMPL(); }
+void NdisCancelTimer(void) { UNIMPL(); }
+void NdisInitializeTimer(void) { UNIMPL(); }
+#endif // DBG_TI
