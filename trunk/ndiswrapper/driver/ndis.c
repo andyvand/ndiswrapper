@@ -1095,12 +1095,10 @@ NdisAllocateBuffer(unsigned int *status, void **buffer, void *poolhandle,
 STDCALL static void
 NdisFreeBuffer(void *buffer)
 {
-	TRACEENTER4("%s", "");
-	if(buffer)
-	{
-		memset(buffer, 0, sizeof(struct ndis_buffer));
+	TRACEENTER4("%p", buffer);
+
+	if (buffer)
 		kfree(buffer);
-	}
 	TRACEEXIT4(return);
 }
 
@@ -1333,9 +1331,13 @@ void ndis_irq_bh(void *data)
 
 	if (ndis_irq->enabled)
 	{
+		KIRQL irql;
+
+		irql = raise_irql(DISPATCH_LEVEL);
 		miniport->handle_interrupt(handle->adapter_ctx);
 		if (miniport->enable_interrupts)
 			miniport->enable_interrupts(handle->adapter_ctx);
+		lower_irql(irql);
 	}
 }
 
@@ -1428,6 +1430,7 @@ NdisMDeregisterInterrupt(struct ndis_irq *ndis_irq)
 		 * don't have equivalent function
 		 */
 		flush_scheduled_work();
+		msleep(10);
 		free_irq(ndis_irq->irq, ndis_irq);
 		kfree(ndis_irq->spinlock);
 		ndis_irq->spinlock = NULL;
@@ -1660,6 +1663,7 @@ EthRxIndicateHandler(void *adapter_ctx, void *rx_ctx, char *header1,
 	struct sk_buff *skb = NULL;
 	struct ndis_handle *handle = ctx_to_handle(rx_ctx);
 	unsigned int skb_size = 0;
+	KIRQL irql;
 
 	TRACEENTER3("adapter_ctx = %p, rx_ctx = %p, buf = %p, size = %d, "
 		    "buf = %p, size = %d, packet = %d",
@@ -1684,8 +1688,10 @@ EthRxIndicateHandler(void *adapter_ctx, void *rx_ctx, char *header1,
 		}
 
 		miniport = &handle->driver->miniport_char;
+		irql = raise_irql(DISPATCH_LEVEL);
 		res = miniport->tx_data(packet, &bytes_txed, adapter_ctx,
 					rx_ctx, look_ahead_size, packet_size);
+		lower_irql(irql);
 		if (res == NDIS_STATUS_SUCCESS)
 		{
 			skb = dev_alloc_skb(header_size+look_ahead_size+
@@ -2061,6 +2067,7 @@ static void ndis_worker(void *data)
 	struct miniport_char *miniport;
 	void *virt;
 	struct ndis_phy_address phys;
+	KIRQL irql;
 
 	TRACEENTER3("%s", "");
 	while (1)
@@ -2118,9 +2125,11 @@ static void ndis_worker(void *data)
 			NdisMAllocateSharedMemory(handle, alloc_mem->size,
 						  alloc_mem->cached,
 						  &virt, &phys);
+			irql = raise_irql(DISPATCH_LEVEL);
 			miniport->alloc_complete(handle, virt, &phys,
 						 alloc_mem->size,
 						 alloc_mem->ctx);
+			lower_irql(irql);
 			break;
 
 		case _NDIS_FREE_MEM:

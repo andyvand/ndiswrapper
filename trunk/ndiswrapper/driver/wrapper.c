@@ -59,7 +59,7 @@
 static char *if_name = "wlan%d";
 int proc_uid, proc_gid;
 static int hangcheck_interval;
-static int resubmit_config;
+//static int resubmit_config;
 
 MODULE_PARM(if_name, "s");
 MODULE_PARM_DESC(if_name, "Network interface name or template (default: wlan%d)");
@@ -73,8 +73,8 @@ MODULE_PARM(hangcheck_interval, "i");
  * negative value - disable hangcheck
  */
 MODULE_PARM_DESC(hangcheck_interval, "The interval, in seconds, for checking if driver is hung. (default: 0)");
-MODULE_PARM(resubmit_config, "i");
-MODULE_PARM_DESC(resubmit_config, "Set to 1 for resubmitting device config after disassociation (default: 0)");
+//MODULE_PARM(resubmit_config, "i");
+//MODULE_PARM_DESC(resubmit_config, "Set to 1 for resubmitting device config after disassociation (default: 0)");
 
 /* List of loaded drivers */
 LIST_HEAD(ndis_driverlist);
@@ -90,9 +90,13 @@ extern struct list_head handle_ctx_list;
 
 void ndis_set_rx_mode(struct net_device *dev);
 
-int doreset(struct ndis_handle *handle)
+/*
+ * MiniportReset
+ */
+int miniport_reset(struct ndis_handle *handle)
 {
-	int res = 0;
+	unsigned int res = 0;
+	KIRQL irql;
 	struct miniport_char *miniport = &handle->driver->miniport_char;
 
 	TRACEENTER2("%s", "");
@@ -109,7 +113,9 @@ int doreset(struct ndis_handle *handle)
 	handle->reset_status = NDIS_STATUS_PENDING;
 	handle->ndis_comm_res = NDIS_STATUS_PENDING;
 	handle->ndis_comm_done = 0;
+	irql = raise_irql(DISPATCH_LEVEL);
 	res = miniport->reset(&handle->reset_status, handle->adapter_ctx);
+	lower_irql(irql);
 
 	DBGTRACE2("res = %08X, reset_status = %08X",
 		  res, handle->reset_status);
@@ -151,13 +157,16 @@ int doreset(struct ndis_handle *handle)
 }
 
 /*
+ * MiniportQueryInformation
  * Perform a sync query and deal with the possibility of an async operation.
  * This function must be called from process context as it will sleep.
  */
-int doquery(struct ndis_handle *handle, unsigned int oid, char *buf,
-	    int bufsize, unsigned int *written , unsigned int *needed)
+int miniport_query_info(struct ndis_handle *handle, unsigned int oid,
+			char *buf, int bufsize, unsigned int *written,
+			unsigned int *needed)
 {
-	int res;
+	unsigned int res;
+	KIRQL irql;
 	struct miniport_char *miniport = &handle->driver->miniport_char;
 
 	TRACEENTER3("query is at %p", miniport->query);
@@ -166,8 +175,12 @@ int doquery(struct ndis_handle *handle, unsigned int oid, char *buf,
 		TRACEEXIT3(return NDIS_STATUS_FAILURE);
 
 	handle->ndis_comm_done = 0;
+	irql = raise_irql(DISPATCH_LEVEL);
 	res = miniport->query(handle->adapter_ctx, oid, buf, bufsize,
 			      written, needed);
+	lower_irql(irql);
+
+	DBGTRACE3("res = %08x", res);
 	if (res == NDIS_STATUS_PENDING)
 	{
 		/* wait for NdisMQueryInformationComplete upto HZ */
@@ -182,13 +195,15 @@ int doquery(struct ndis_handle *handle, unsigned int oid, char *buf,
 }
 
 /*
+ * MiniportSetInformation
  * Perform a sync setinfo and deal with the possibility of an async operation.
  * This function must be called from process context as it will sleep.
  */
-int dosetinfo(struct ndis_handle *handle, unsigned int oid, char *buf,
-	      int bufsize, unsigned int *written , unsigned int *needed)
+int miniport_set_info(struct ndis_handle *handle, unsigned int oid, char *buf,
+		      int bufsize, unsigned int *written, unsigned int *needed)
 {
-	int res;
+	unsigned int res;
+	KIRQL irql;
 	struct miniport_char *miniport = &handle->driver->miniport_char;
 
 	TRACEENTER3("setinfo is at %p", miniport->setinfo);
@@ -197,8 +212,12 @@ int dosetinfo(struct ndis_handle *handle, unsigned int oid, char *buf,
 		TRACEEXIT3(return NDIS_STATUS_FAILURE);
 
 	handle->ndis_comm_done = 0;
+	irql = raise_irql(DISPATCH_LEVEL);
 	res = miniport->setinfo(handle->adapter_ctx, oid, buf, bufsize,
 			       written, needed);
+	DBGTRACE3("res = %08x", res);
+	lower_irql(irql);
+
 	if (res == NDIS_STATUS_PENDING)
 	{
 		/* wait for NdisMSetInformationComplete upto HZ */
@@ -213,12 +232,12 @@ int dosetinfo(struct ndis_handle *handle, unsigned int oid, char *buf,
 }
 
 /* Make a query that has an int as the result. */
-int query_int(struct ndis_handle *handle, int oid, int *data)
+int miniport_query_int(struct ndis_handle *handle, int oid, int *data)
 {
 	unsigned int res, written, needed;
 
-	res = doquery(handle, oid, (char*)data, sizeof(int),
-		      &written, &needed);
+	res = miniport_query_info(handle, oid, (char*)data, sizeof(int),
+				  &written, &needed);
 	if (!res)
 		return 0;
 	*data = 0;
@@ -226,12 +245,12 @@ int query_int(struct ndis_handle *handle, int oid, int *data)
 }
 
 /* Set an int */
-int set_int(struct ndis_handle *handle, int oid, int data)
+int miniport_set_int(struct ndis_handle *handle, int oid, int data)
 {
 	unsigned int written, needed;
 
-	return dosetinfo(handle, oid, (char*)&data, sizeof(int),
-			 &written, &needed);
+	return miniport_set_info(handle, oid, (char*)&data, sizeof(int),
+				 &written, &needed);
 }
 
 #ifdef HAVE_ETHTOOL
@@ -246,7 +265,10 @@ static struct ethtool_ops ndis_ethtool_ops = {
 };
 #endif
 
-int call_init(struct ndis_handle *handle)
+/*
+ * MiniportInitialize
+ */
+int miniport_init(struct ndis_handle *handle)
 {
 	__u32 res, res2;
 	__u32 selected_medium;
@@ -266,28 +288,9 @@ int call_init(struct ndis_handle *handle)
 	return 0;
 }
 
-void call_halt(struct ndis_handle *handle)
+static void wrap_free_timers(struct ndis_handle *handle)
 {
-	struct miniport_char *miniport = &handle->driver->miniport_char;
-	TRACEENTER1("driver halt is at %p", miniport->halt);
-
-	set_int(handle, NDIS_OID_PNP_SET_POWER, NDIS_PM_STATE_D3);
-
-	miniport->halt(handle->adapter_ctx);
-	/* TI driver doesn't call NdisMDeregisterInterrupt during halt! */
-	if (handle->ndis_irq)
-	{
-		if (miniport->disable_interrupts)
-			miniport->disable_interrupts(handle->adapter_ctx);
-		NdisMDeregisterInterrupt(handle->ndis_irq);
-	}
-	if (handle->device->bustype == 5)
-		pci_set_power_state(handle->dev.pci, 3);
-	TRACEEXIT1(return);
-}
-
-static void free_timers(struct ndis_handle *handle)
-{
+	char canceled;
 	/* Cancel any timers left by bugyy windows driver
 	 * Also free the memory for timers
 	 */
@@ -301,13 +304,42 @@ static void free_timers(struct ndis_handle *handle)
 		list_del(&timer->list);
 		spin_unlock_bh(&handle->timers_lock);
 
-		timer->repeat = 0;
-		del_timer_sync(&timer->timer);
+		wrapper_cancel_timer(timer, &canceled);
 		wrap_kfree(timer);
 
 		spin_lock_bh(&handle->timers_lock);
 	}
 	spin_unlock_bh(&handle->timers_lock);
+}
+
+/*
+ * MiniportHalt
+ */
+void miniport_halt(struct ndis_handle *handle)
+{
+	struct miniport_char *miniport = &handle->driver->miniport_char;
+	TRACEENTER1("driver halt is at %p", miniport->halt);
+
+	miniport_set_int(handle, NDIS_OID_PNP_SET_POWER, NDIS_PM_STATE_D3);
+
+	miniport->halt(handle->adapter_ctx);
+	/* TI driver doesn't call NdisMDeregisterInterrupt during halt! */
+	if (handle->ndis_irq)
+	{
+		unsigned long flags;
+
+		spin_lock_irqsave(handle->ndis_irq->spinlock, flags);
+		if (miniport->disable_interrupts)
+			miniport->disable_interrupts(handle->adapter_ctx);
+		NdisMDeregisterInterrupt(handle->ndis_irq);
+		spin_unlock_irqrestore(handle->ndis_irq->spinlock, flags);
+	}
+	wrap_free_timers(handle);
+	free_handle_ctx(handle);
+
+	if (handle->device->bustype == 5)
+		pci_set_power_state(handle->dev.pci, 3);
+	TRACEEXIT1(return);
 }
 
 static unsigned int call_entry(struct ndis_driver *driver)
@@ -378,17 +410,20 @@ static void hangcheck_reinit(struct ndis_handle *handle);
 static void hangcheck_bh(void *data)
 {
 	struct ndis_handle *handle = (struct ndis_handle *)data;
+	KIRQL irql;
 
 	TRACEENTER3("%s", "");
+	irql = raise_irql(DISPATCH_LEVEL);
 	if (handle->reset_status == 0 &&
 	    handle->driver->miniport_char.hangcheck(handle->adapter_ctx))
 	{
 		int res;
 		INFO("Hangcheck returned true. Resetting %s!",
 		     handle->net_dev->name);
-		res = doreset(handle);
+		res = miniport_reset(handle);
 		DBGTRACE3("reset returns %08X, %d", res, handle->reset_status);
 	}
+	lower_irql(irql);
 	TRACEEXIT3(return);
 }
 
@@ -439,13 +474,14 @@ static void statcollector_bh(void *data)
 	struct ndis_wireless_stats ndis_stats;
 	long rssi;
 
-	res = doquery(handle, NDIS_OID_RSSI, (char *)&rssi, sizeof(rssi),
-		      &written, &needed);
+	res = miniport_query_info(handle, NDIS_OID_RSSI, (char *)&rssi,
+				  sizeof(rssi), &written, &needed);
 	iw_stats->qual.level = rssi;
 
 	memset(&ndis_stats, 0, sizeof(ndis_stats));
-	res = doquery(handle, NDIS_OID_STATISTICS, (char *)&ndis_stats,
-		      sizeof(ndis_stats), &written, &needed);
+	res = miniport_query_info(handle, NDIS_OID_STATISTICS,
+				  (char *)&ndis_stats,
+				  sizeof(ndis_stats), &written, &needed);
 	if (res == NDIS_STATUS_NOT_SUPPORTED)
 		iw_stats->qual.qual = ((rssi & 0x7F) * 100) / 154;
 	else {
@@ -510,8 +546,8 @@ static int ndis_close(struct net_device *dev)
 }
 
 /*
- * doquery (or query_int) may not be called from this function as
- * it might sleep which is not allowed from the context this function
+ * query functions may not be called from this function as
+ * they might sleep which is not allowed from the context this function
  * is running in.
  */
 static struct net_device_stats *ndis_get_stats(struct net_device *dev)
@@ -545,8 +581,8 @@ static void set_multicast_list(struct net_device *dev,
 	}
 	DBGTRACE1("%d entries. size=%d", dev->mc_count, size);
 
-	res = dosetinfo(handle, OID_802_3_MULTICAST_LIST, list,
-	                size, &written, &needed);
+	res = miniport_set_info(handle, OID_802_3_MULTICAST_LIST, list,
+				size, &written, &needed);
 	if (res)
 		ERROR("Unable to set multicast list (%08X)", res);
 }
@@ -587,8 +623,9 @@ static void ndis_set_rx_mode_proc(void *param)
 		set_multicast_list(dev, handle);
 	}
 
-	res = dosetinfo(handle, NDIS_OID_PACKET_FILTER, (char *)&packet_filter,
-	                sizeof(packet_filter), &written, &needed);
+	res = miniport_set_info(handle, NDIS_OID_PACKET_FILTER,
+				(char *)&packet_filter,
+				sizeof(packet_filter), &written, &needed);
 	if (res)
 		ERROR("Unable to set packet filter (%08X)", res);
 }
@@ -689,9 +726,13 @@ static void free_buffer(struct ndis_handle *handle, struct ndis_packet *packet)
 	free_packet(handle, packet);
 }
 
+/*
+ * MiniportSend and MiniportSendPackets
+ */
 static int send_packet(struct ndis_handle *handle, struct ndis_packet *packet)
 {
 	int res;
+	KIRQL irql = DISPATCH_LEVEL;
 	struct miniport_char *miniport = &handle->driver->miniport_char;
 
 	TRACEENTER3("packet = %p", packet);
@@ -699,23 +740,29 @@ static int send_packet(struct ndis_handle *handle, struct ndis_packet *packet)
 	if (miniport->send_packets)
 	{
 		struct ndis_packet *packets[1];
-		packets[0] = packet;
-		miniport->send_packets(handle->adapter_ctx, &packets[0], 1);
 
+		packets[0] = packet;
 		if (test_bit(ATTR_SERIALIZED, &handle->attributes))
-		{
-			/* Serialized miniports sets packet->status */
+			irql = raise_irql(DISPATCH_LEVEL);
+		miniport->send_packets(handle->adapter_ctx, &packets[0], 1);
+		if (test_bit(ATTR_SERIALIZED, &handle->attributes)) {
+			lower_irql(irql);
+			/* serialized miniports set packet->status */
 			res = packet->status;
 		}
 		else
 		{
-			/* Deserialized miniports always call NdisMSendComplete */
+			/* deserialized miniports call NdisMSendComplete */
 			res = NDIS_STATUS_PENDING;
 		}
 	}
 	else if (miniport->send)
 	{
+		if (test_bit(ATTR_SERIALIZED, &handle->attributes))
+			irql = raise_irql(DISPATCH_LEVEL);
 		res = miniport->send(handle->adapter_ctx, packet, 0);
+		if (test_bit(ATTR_SERIALIZED, &handle->attributes))
+			lower_irql(irql);
 	}
 	else
 	{
@@ -908,7 +955,7 @@ int ndis_suspend_pci(struct pci_dev *pdev, u32 state)
 	if (test_bit(ATTR_HALT_ON_SUSPEND, &handle->attributes))
 	{
 		DBGTRACE2("%s", "driver requests halt_on_suspend");
-		call_halt(handle);
+		miniport_halt(handle);
 		set_bit(HW_HALTED, &handle->hw_status);
 	}
 	else
@@ -917,20 +964,20 @@ int ndis_suspend_pci(struct pci_dev *pdev, u32 state)
 		pm_state = NDIS_PM_STATE_D3;
 		/* use copy; query_power changes this value */
 		i = pm_state;
-		res = query_int(handle, NDIS_OID_PNP_QUERY_POWER, &i);
+		res = miniport_query_int(handle, NDIS_OID_PNP_QUERY_POWER, &i);
 		DBGTRACE2("%s: query power to state %d returns %08X",
 			  dev->name, pm_state, res);
 		if (res)
 		{
 			WARNING("No pnp capabilities for pm (%08X); halting",
 				res);
-			call_halt(handle);
+			miniport_halt(handle);
 			set_bit(HW_HALTED, &handle->hw_status);
 		}
 		else
 		{
-			res = set_int(handle, NDIS_OID_PNP_SET_POWER,
-				      pm_state);
+			res = miniport_set_int(handle, NDIS_OID_PNP_SET_POWER,
+					       pm_state);
 			DBGTRACE2("suspending returns %08X", res);
 			set_bit(HW_SUSPENDED, &handle->hw_status);
 		}
@@ -972,11 +1019,11 @@ int ndis_resume_pci(struct pci_dev *pdev)
 	pci_restore_state(pdev, handle->pci_state);
 #endif
 	if (test_bit(HW_HALTED, &handle->hw_status))
-		res = call_init(handle);
+		res = miniport_init(handle);
 	else
 	{
-		res = set_int(handle, NDIS_OID_PNP_SET_POWER,
-			      NDIS_PM_STATE_D0);
+		res = miniport_set_int(handle, NDIS_OID_PNP_SET_POWER,
+				       NDIS_PM_STATE_D0);
 		DBGTRACE2("%s: setting power to state %d returns %d",
 			 dev->name, NDIS_PM_STATE_D0, res);
 		if (res)
@@ -997,10 +1044,10 @@ int ndis_resume_pci(struct pci_dev *pdev)
 		    miniport->hangcheck(handle->adapter_ctx))
 		{
 			DBGTRACE2("%s", "resetting device");
-			doreset(handle);
+			miniport_reset(handle);
 		}
 	}
-	set_int(handle, NDIS_OID_BSSID_LIST_SCAN, 0);
+	miniport_set_int(handle, NDIS_OID_BSSID_LIST_SCAN, 0);
 	/* TODO: set encryption too? */
 	set_bit(SET_ESSID, &handle->wrapper_work);
 	schedule_work(&handle->wrapper_worker);
@@ -1040,7 +1087,7 @@ int ndis_suspend_usb(struct usb_interface *intf, u32 state)
 	/* use copy; query_power changes this value */
 	i = pm_state;
 	/*
-	res = query_int(handle, NDIS_OID_PNP_QUERY_POWER, &i);
+	res = miniport_query_int(handle, NDIS_OID_PNP_QUERY_POWER, &i);
 	DBGTRACE2("%s: query power to state %d returns %08X",
 		  dev->name, pm_state, res);
 	if (res)
@@ -1097,10 +1144,10 @@ int ndis_resume_usb(struct usb_interface *intf)
 	if (miniport->hangcheck && miniport->hangcheck(handle->adapter_ctx))
 	{
 		DBGTRACE2("%s", "resetting device");
-		doreset(handle);
+		miniport_reset(handle);
 	}
 	*/
-	set_int(handle, NDIS_OID_BSSID_LIST_SCAN, 0);
+	miniport_set_int(handle, NDIS_OID_BSSID_LIST_SCAN, 0);
 
 	set_bit(SET_ESSID, &handle->wrapper_work);
 	schedule_work(&handle->wrapper_worker);
@@ -1115,16 +1162,17 @@ int ndis_resume_usb(struct usb_interface *intf)
 }
 #endif
 
+#if 0
 static void resubmit_device_config(struct ndis_handle *handle)
 {
 	unsigned int i, written, needed;
 
 	for (i = 0; i < MAX_ENCR_KEYS; i++)
 		if (handle->encr_info.keys[i].length != 0) {
-			dosetinfo(handle, NDIS_OID_ADD_WEP,
-			    (char *)&handle->encr_info.keys[i],
-			    sizeof(struct encr_key),
-			    &written, &needed);
+			miniport_set_info(handle, NDIS_OID_ADD_WEP,
+					  (char *)&handle->encr_info.keys[i],
+					  sizeof(struct encr_key),
+					  &written, &needed);
 			set_encr_mode(handle, ENCR1_ENABLED);
 		}
 
@@ -1132,6 +1180,7 @@ static void resubmit_device_config(struct ndis_handle *handle)
 	set_essid(handle, handle->essid.essid,
 	          handle->essid.length);
 }
+#endif
 
 /* worker procedure to take care of setting/checking various states */
 static void wrapper_worker_proc(void *param)
@@ -1155,13 +1204,9 @@ static void wrapper_worker_proc(void *param)
 		const int assoc_size = sizeof(*ndis_assoc_info) +
 			 IW_CUSTOM_MAX;
 
-		if (handle->link_status == 0)
-		{
-			if (resubmit_config)
-				resubmit_device_config(handle);
-			else
-				for (i = 0; i < MAX_ENCR_KEYS; i++)
-					handle->encr_info.keys[i].length = 0;
+		if (handle->link_status == 0) {
+			for (i = 0; i < MAX_ENCR_KEYS; i++)
+				handle->encr_info.keys[i].length = 0;
 			return;
 		}
 
@@ -1184,8 +1229,9 @@ static void wrapper_worker_proc(void *param)
 			ndis_assoc_info->req_ie_length;
 		ndis_assoc_info->resp_ie_length = IW_CUSTOM_MAX / 2;
 
-		res = doquery(handle, NDIS_OID_ASSOC_INFO, assoc_info,
-			      assoc_size, &written, &needed);
+		res = miniport_query_info(handle, NDIS_OID_ASSOC_INFO,
+					  assoc_info,
+					  assoc_size, &written, &needed);
 		if (res || !written)
 		{
 			DBGTRACE("query assoc_info failed (%08X)", res);
@@ -1257,15 +1303,17 @@ static void check_capa(struct ndis_handle *handle)
 
 	/* check if WEP is supported */
 	if (set_encr_mode(handle, ENCR1_ENABLED) ||
-	    query_int(handle, NDIS_OID_ENCR_STATUS, &i))
+	    miniport_query_int(handle, NDIS_OID_ENCR_STATUS, &i))
 		;
 	else
 		set_bit(CAPA_WEP, &handle->capa);
 
 	/* check if WPA is supported */
 	set_encr_mode(handle, ENCR_DISABLED);
+	DBGTRACE2("%s", "");
 	if (set_auth_mode(handle, AUTHMODE_WPA) ||
-	    query_int(handle, NDIS_OID_AUTH_MODE, &i) || i != AUTHMODE_WPA)
+	    miniport_query_int(handle, NDIS_OID_AUTH_MODE, &i) ||
+	    i != AUTHMODE_WPA)
 		TRACEEXIT1(return);
 
 	/* check for highest encryption */
@@ -1273,7 +1321,7 @@ static void check_capa(struct ndis_handle *handle)
 	{
 		DBGTRACE("checking encryption mode %d", mode);
 		if (set_encr_mode(handle, mode) ||
-		    query_int(handle, NDIS_OID_ENCR_STATUS, &i))
+		    miniport_query_int(handle, NDIS_OID_ENCR_STATUS, &i))
 			i = ENCR_DISABLED;
 
 		if (mode == ENCR3_ENABLED)
@@ -1306,15 +1354,16 @@ static void check_capa(struct ndis_handle *handle)
 	ndis_key.length = 32;
 	ndis_key.index = 0xC0000001;
 	ndis_key.struct_size = sizeof(ndis_key);
-	res = dosetinfo(handle, NDIS_OID_ADD_KEY, (char *)&ndis_key,
-			ndis_key.struct_size, &written, &needed);
+	res = miniport_set_info(handle, NDIS_OID_ADD_KEY, (char *)&ndis_key,
+				ndis_key.struct_size, &written, &needed);
 
 	DBGTRACE("add key returns %08X, needed = %d, size = %d\n",
 		 res, needed, sizeof(ndis_key));
 	if (res != NDIS_STATUS_INVALID_DATA)
 		TRACEEXIT1(return);
-	res = doquery(handle, NDIS_OID_ASSOC_INFO, (char *)&ndis_assoc_info,
-		      sizeof(ndis_assoc_info), &written, &needed);
+	res = miniport_query_info(handle, NDIS_OID_ASSOC_INFO,
+				  (char *)&ndis_assoc_info,
+				  sizeof(ndis_assoc_info), &written, &needed);
 	DBGTRACE("assoc info returns %d", res);
 	if (res == NDIS_STATUS_NOT_SUPPORTED)
 		TRACEEXIT1(return);
@@ -1343,8 +1392,8 @@ static int setup_dev(struct net_device *dev)
 	dev->name[IFNAMSIZ-1] = '\0';
 
 	DBGTRACE1("%s: Querying for mac", DRV_NAME);
-	res = doquery(handle, 0x01010102, &mac[0], sizeof(mac),
-		      &written, &needed);
+	res = miniport_query_info(handle, 0x01010102, &mac[0], sizeof(mac),
+				  &written, &needed);
 	DBGTRACE1("mac:" MACSTR, MAC2STR(mac));
 
 	if(res)
@@ -1358,7 +1407,7 @@ static int setup_dev(struct net_device *dev)
 	set_mode(handle, NDIS_MODE_INFRA);
 	set_essid(handle, handle->essid.essid, handle->essid.length);
 
-	res = query_int(handle, OID_802_3_MAXIMUM_LIST_SIZE, &i);
+	res = miniport_query_int(handle, OID_802_3_MAXIMUM_LIST_SIZE, &i);
 	if(res == NDIS_STATUS_SUCCESS)
 	{
 		DBGTRACE1("Multicast list size is %d", i);
@@ -1417,7 +1466,7 @@ static int setup_dev(struct net_device *dev)
 	set_encr_mode(handle, ENCR_DISABLED);
 
 	/* some cards (e.g., RaLink) need a scan before they can associate */
-	set_int(handle, NDIS_OID_BSSID_LIST_SCAN, 0);
+	miniport_set_int(handle, NDIS_OID_BSSID_LIST_SCAN, 0);
 
 	return 0;
 }
@@ -1567,7 +1616,7 @@ static int ndis_init_one_pci(struct pci_dev *pdev,
 #endif
 
 	DBGTRACE1("%s", "Calling ndis init routine");
-	if((res = call_init(handle)))
+	if((res = miniport_init(handle)))
 	{
 		ERROR("Windows driver couldn't initialize the device (%08X)",
 			res);
@@ -1579,7 +1628,7 @@ static int ndis_init_one_pci(struct pci_dev *pdev,
 	handle->wrapper_work = 0;
 
 	/* do we need to power up the card explicitly? */
-	set_int(handle, NDIS_OID_PNP_SET_POWER, NDIS_PM_STATE_D0);
+	miniport_set_int(handle, NDIS_OID_PNP_SET_POWER, NDIS_PM_STATE_D0);
 	miniport = &handle->driver->miniport_char;
 	/* According NDIS, pnp_event_notify should be called whenever power
 	 * is set to D0
@@ -1598,7 +1647,7 @@ static int ndis_init_one_pci(struct pci_dev *pdev,
 	/* Prism cards need reset, but Centrino cards don't like it; so for now
 	 * don't reset Centrino cards */
 	if (ent->vendor != 0x8086)
-		doreset(handle);
+		miniport_reset(handle);
 
 	/* Wait a little to let card power up otherwise ifup might fail after
 	   boot */
@@ -1617,7 +1666,7 @@ static int ndis_init_one_pci(struct pci_dev *pdev,
 	TRACEEXIT1(return 0);
 
 out_setup:
-	call_halt(handle);
+	miniport_halt(handle);
 out_start:
 	pci_release_regions(pdev);
 out_regions:
@@ -1670,7 +1719,7 @@ static void *ndis_init_one_usb(struct usb_device *udev, unsigned int ifnum,
 #endif
 
 	TRACEENTER1("%s", "Calling ndis init routine");
-	if((res = call_init(handle)))
+	if((res = miniport_init(handle)))
 	{
 		ERROR("Windows driver couldn't initialize the device (%08X)",
 			res);
@@ -1682,7 +1731,7 @@ static void *ndis_init_one_usb(struct usb_device *udev, unsigned int ifnum,
 	handle->wrapper_work = 0;
 
 	/* do we need to power up the card explicitly? */
-	set_int(handle, NDIS_OID_PNP_SET_POWER, NDIS_PM_STATE_D0);
+	miniport_set_int(handle, NDIS_OID_PNP_SET_POWER, NDIS_PM_STATE_D0);
 	miniport = &handle->driver->miniport_char;
 	/*
 	if (miniport->pnp_event_notify)
@@ -1714,7 +1763,7 @@ static void *ndis_init_one_usb(struct usb_device *udev, unsigned int ifnum,
 #endif
 
 out_setup:
-	call_halt(handle);
+	miniport_halt(handle);
 out_start:
 	free_netdev(dev);
 out_nodev:
@@ -1749,10 +1798,6 @@ static void ndis_remove_one(struct ndis_handle *handle)
 		}
 	}
 
-	/* Make sure all queued packets have been pushed out from
-	 * xmit_bh before we call halt */
-//	flush_scheduled_work();
-	
 	wrap_spin_lock(&handle->xmit_ring_lock);
 	while (handle->xmit_ring_pending)
 	{
@@ -1767,22 +1812,23 @@ static void ndis_remove_one(struct ndis_handle *handle)
 	}
 	wrap_spin_unlock(&handle->xmit_ring_lock);
 		
+	/* Make sure all queued packets have been pushed out from
+	 * xmit_bh before we call halt */
+//	flush_scheduled_work();
+	
 	netif_carrier_off(handle->net_dev);
 
-	set_current_state(TASK_INTERRUPTIBLE);
-	schedule_timeout(HZ/2);
 	if (handle->phys_device_obj)
 		kfree(handle->phys_device_obj);
 
 	set_bit(SHUTDOWN, &handle->wrapper_work);
 
 #ifndef DEBUG_CRASH_ON_INIT
-	set_int(handle, NDIS_OID_DISASSOCIATE, 0);
-	call_halt(handle);
+	miniport_set_int(handle, NDIS_OID_DISASSOCIATE, 0);
+	miniport_halt(handle);
 
-	free_timers(handle);
-	free_handle_ctx(handle);
-
+	set_current_state(TASK_INTERRUPTIBLE);
+	schedule_timeout(HZ);
 	printk(KERN_INFO "%s: device %s removed\n", DRV_NAME,
 	       handle->net_dev->name);
 	if (handle->net_dev)

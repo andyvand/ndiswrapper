@@ -41,7 +41,7 @@ static int num_exports;
 
 #ifdef TEST_LOADER
 #define WRAP_FUNC void
-WRAP_FUNC *get_wrap_func(char *name)
+WRAP_FUNC get_wrap_func(char *name)
 {
 	return name;
 }
@@ -49,7 +49,7 @@ WRAP_FUNC *get_wrap_func(char *name)
 extern struct wrap_func ntos_wrap_funcs[], ndis_wrap_funcs[],
 	misc_wrap_funcs[], hal_wrap_funcs[], usb_wrap_funcs[];
 
-WRAP_FUNC *get_wrap_func(char *name)
+WRAP_FUNC get_wrap_func(char *name)
 {
 	int i;
 

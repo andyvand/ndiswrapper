@@ -45,6 +45,7 @@ STDCALL static void
 KeInitializeTimer(struct ktimer *ktimer)
 {
 	TRACEENTER4("%p", ktimer);
+
 	wrapper_init_timer(ktimer, NULL);
 	ktimer->dispatch_header.signal_state = 0;
 }
@@ -1055,7 +1056,7 @@ struct wrap_func ntos_wrap_funcs[] =
 	WRAP_FUNC_ENTRY(KeDelayExecutionThread),
 	WRAP_FUNC_ENTRY(KeQueryInterruptTime),
 
-	{"KeTickCount", (WRAP_FUNC *)&KeTickCount},
+	{"KeTickCount", (WRAP_FUNC)&KeTickCount},
 
 	{NULL, NULL}
 };

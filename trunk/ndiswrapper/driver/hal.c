@@ -101,11 +101,6 @@ KfLowerIrql(int dummy1, int dummy2, KIRQL oldirql)
 {
 	TRACEENTER4("irql = %d", oldirql);
 
-	if (KeGetCurrentIrql() != DISPATCH_LEVEL) {
-		ERROR("invalid irql %d", oldirql);
-		TRACEEXIT4(return);
-	}
-
 	if (oldirql < DISPATCH_LEVEL)
 		local_bh_enable();
 
