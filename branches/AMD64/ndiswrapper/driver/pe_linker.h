@@ -18,30 +18,6 @@
 
 #include "ntoskernel.h"
 
-#if 0
-typedef int8_t		CHAR;
-typedef uint8_t		UCHAR;
-typedef uint8_t		BOOLEAN;
-typedef uint8_t		BYTE;
-typedef uint8_t		*LPBYTE;
-typedef int16_t		SHORT;
-typedef uint16_t	USHORT;
-typedef uint16_t	WORD;
-typedef uint32_t	DWORD;
-typedef int32_t		LONG;
-typedef int32_t		INT;
-typedef uint32_t	ULONG;
-typedef uint32_t	UINT;
-typedef uint64_t	ULONGLONG;
-typedef int64_t		LARGE_INTEGER;
-
-typedef ULONG_PTR	SIZE_T;
-typedef LONG KPRIORITY;
-typedef INT NT_STATUS;
-typedef LARGE_INTEGER	PHYSICAL_ADDRESS;
-typedef ULONG_PTR	KAFFINITY;
-#endif
-
 #pragma pack(1)
 
 #define COFF_MACHINE_I386	0x014c

@@ -575,10 +575,12 @@ static void unload_ndis_device(struct ndis_device *device)
 		    device->subdevice, device->driver_name);
 
 	while (!list_empty(&device->settings)) {
-		struct device_setting *setting =
-			(struct device_setting *)device->settings.next;
-		struct ndis_config_param *param =
-			&setting->config_param;
+		struct device_setting *setting;
+		struct ndis_config_param *param;
+
+		setting = list_entry(device->settings.next,
+				     struct device_setting, list);
+		param = &setting->config_param;
 		if (param->type == NDIS_CONFIG_PARAM_STRING)
 			RtlFreeUnicodeString(&param->data.ustring);
 		list_del(&setting->list);
@@ -611,7 +613,7 @@ static int start_driver(struct ndis_driver *driver)
 {
 	int i, ret, res;
 	struct unicode_string reg_string;
-	char *reg_path = "\0\0t0m0p0";
+	char *reg_path = "0/0t0m0p0";
 
 	TRACEENTER1("");
 
@@ -938,7 +940,6 @@ int loader_init(void)
 
 void loader_exit(void)
 {
-	struct list_head *cur, *tmp;
 	int i;
 
 	TRACEENTER1("");
@@ -960,10 +961,11 @@ void loader_exit(void)
 		vfree(ndis_devices);
 	}
 
-	list_for_each_safe(cur, tmp, &ndis_drivers) {
+	while (!list_empty(&ndis_drivers)) {
 		struct ndis_driver *driver;
 
-		driver = list_entry(cur, struct ndis_driver, list);
+		driver = list_entry(ndis_drivers.next,
+				    struct ndis_driver, list);
 		list_del(&driver->list);
 		unload_ndis_driver(driver);
 	}

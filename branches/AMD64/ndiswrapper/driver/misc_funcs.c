@@ -71,14 +71,12 @@ void wrap_kfree(void *ptr)
 
 void wrap_kfree_all(void)
 {
-	struct list_head *cur, *tmp;
-
 	TRACEENTER4("%s", "");
 	wrap_spin_lock(&wrap_allocs_lock, PASSIVE_LEVEL);
-	list_for_each_safe(cur, tmp, &wrap_allocs) {
+	while (!list_empty(&wrap_allocs)) {
 		struct wrap_alloc *alloc;
 
-		alloc = list_entry(cur, struct wrap_alloc, list);
+		alloc = list_entry(wrap_allocs.next, struct wrap_alloc, list);
 		list_del(&alloc->list);
 		kfree(alloc->ptr);
 		kfree(alloc);
@@ -284,7 +282,7 @@ NOREGPARM int WRAP_EXPORT(_wrap__vsnprintf)
 	return vsnprintf(str, size, format, ap);
 }
 
-NOREGPARM char * WRAP_EXPORT(_wrap_strncpy)
+NOREGPARM char *WRAP_EXPORT(_wrap_strncpy)
 	(char *dst, char *src, int n)
 {
 	return strncpy(dst, src, n);
@@ -544,22 +542,22 @@ STDCALL NT_STATUS WRAP_EXPORT(RtlAnsiStringToUnicodeString)
 	(struct unicode_string *dst, struct ansi_string *src, BOOLEAN dup)
 {
 	int i;
-	wchar_t * d;
-	char * s;
+	wchar_t *d;
+	char *s;
 
 	TRACEENTER2("dup: %d src: %s", dup, src->buf);
 	if (dup) {
-		wchar_t * buf = kmalloc((src->buflen+1) * sizeof(wchar_t),
-					GFP_KERNEL);
+		wchar_t *buf = kmalloc((src->buflen+1) * sizeof(wchar_t),
+				       GFP_KERNEL);
 		if (!buf)
 			TRACEEXIT1(return NDIS_STATUS_FAILURE);
 		dst->buf = buf;
-		dst->buflen = (src->buflen+1) * sizeof(__u16);
+		dst->buflen = (src->buflen+1) * sizeof(wchar_t);
 	}
-	else if (dst->buflen < (src->len+1) * sizeof(__u16))
+	else if (dst->buflen < (src->len+1) * sizeof(wchar_t))
 		TRACEEXIT1(return NDIS_STATUS_FAILURE);
 
-	dst->len = src->len * sizeof(__u16);
+	dst->len = src->len * sizeof(wchar_t);
 	d = dst->buf;
 	s = src->buf;
 	for(i = 0; i < src->len; i++)
@@ -582,20 +580,20 @@ STDCALL NT_STATUS WRAP_EXPORT(RtlUnicodeStringToAnsiString)
 		    "dst: %p", dup, src->len, src->buflen, src->buf, dst);
 
 	if (dup) {
-		char *buf = kmalloc((src->buflen+1) / sizeof(__u16),
+		char *buf = kmalloc((src->buflen+1) / sizeof(wchar_t),
 				    GFP_KERNEL);
 		if (!buf)
 			return NDIS_STATUS_FAILURE;
 		dst->buf = buf;
-		dst->buflen = (src->buflen+1) / sizeof(__u16);
-	} else if (dst->buflen < (src->len+1) / sizeof(__u16))
+		dst->buflen = (src->buflen+1) / sizeof(wchar_t);
+	} else if (dst->buflen < (src->len+1) / sizeof(wchar_t))
 		return NDIS_STATUS_FAILURE;
 
-	dst->len = src->len / sizeof(__u16);
+	dst->len = src->len / sizeof(wchar_t);
 	s = src->buf;
 	d = dst->buf;
 	for(i = 0; i < dst->len; i++)
-		d[i] = (__u8)s[i];
+		d[i] = s[i];
 	d[i] = 0;
 
 	DBGTRACE2("len = %d", dst->len);
@@ -671,7 +669,7 @@ STDCALL NT_STATUS WRAP_EXPORT(RtlUnicodeStringToInteger)
 STDCALL NT_STATUS WRAP_EXPORT(RtlIntegerToUnicodeString)
 	(ULONG value, ULONG base, struct unicode_string *ustring)
 {
-	char string[sizeof(__u32) * 8 + 1];
+	char string[sizeof(wchar_t) * 8 + 1];
 	struct ansi_string ansi;
 	int i;
 
@@ -809,7 +807,7 @@ void *get_sp(void)
 	return (void *)i;
 }
 
-void inline dump_stack(void)
+void dump_stack(void)
 {
 	void *sp = get_sp();
 	int i;

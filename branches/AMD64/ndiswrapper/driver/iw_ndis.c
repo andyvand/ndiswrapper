@@ -1394,13 +1394,17 @@ static int wpa_associate(struct net_device *dev,
 	
 	TRACEENTER2("%s", "");
 
-	memset(&wpa_assoc_info, 0, sizeof(wpa_assoc_info));
-
 	if (wrqu->data.length == 0)
 		size = (void *)&wpa_assoc_info.key_mgmt_suite - 
 			(void *)&wpa_assoc_info.bssid;
-	else
-		size = wrqu->data.length;
+	else {
+		if (wrqu->data.length > sizeof(wpa_assoc_info))
+			size = sizeof(wpa_assoc_info);
+		else
+			size = wrqu->data.length;
+	}
+
+	memset(&wpa_assoc_info, 0, sizeof(wpa_assoc_info));
 
 	if (copy_from_user(&wpa_assoc_info, wrqu->data.pointer, size))
 		TRACEEXIT1(return -1);
