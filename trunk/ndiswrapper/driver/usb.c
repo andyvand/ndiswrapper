@@ -25,14 +25,14 @@ DECLARE_TASKLET(completed_irps_tasklet, usb_transfer_complete_tasklet, 0);
 
 
 LIST_HEAD(canceled_irps);
-static struct ndis_spinlock canceled_irps_lock;
+static struct wrap_spinlock canceled_irps_lock;
 
 void usb_cancel_worker(void *dummy);
 DECLARE_WORK(cancel_usb_irp_work, usb_cancel_worker, 0);
 
 void usb_init(void)
 {
-	ndis_spin_lock_init(&canceled_irps_lock);
+	wrap_spin_lock_init(&canceled_irps_lock);
 	return;
 }
 
@@ -58,10 +58,10 @@ void usb_transfer_complete(struct urb *urb)
 		TRACEEXIT2(return);
 
 	/* canceled but not yet unlinked? */
-	ndis_spin_lock(&cancel_lock);
+	wrap_spin_lock(&cancel_lock, PASSIVE_LEVEL);
 	irp->cancel_routine = NULL;
 	cancel = irp->cancel;
-	ndis_spin_unlock(&cancel_lock);
+	wrap_spin_unlock(&cancel_lock);
 
 	if (cancel)
 		TRACEEXIT2(return);
@@ -150,17 +150,18 @@ STDCALL void usb_cancel_transfer(struct device_object *dev_obj,
                                  struct irp *irp)
 {
 	struct urb *urb;
-	ndis_spin_unlock(&cancel_lock);
+	wrap_spin_unlock(&cancel_lock);
 
 	TRACEENTER2("irp = %p", irp);
 	urb = irp->driver_context[3];
 	DBGTRACE3("adding urb %p to cancel", urb);
 
-	/* while this function can run at DISPATCH_LEVEL, usb_unlink/kill_urb will
-	 * only work successfully in schedulable context */
-	ndis_spin_lock(&canceled_irps_lock);
+	/* while this function can run at DISPATCH_LEVEL,
+	 * usb_unlink/kill_urb will only work successfully in
+	 * schedulable context */
+	wrap_spin_lock(&canceled_irps_lock, PASSIVE_LEVEL);
 	list_add_tail(&irp->cancel_list_entry, &canceled_irps);
-	ndis_spin_unlock(&canceled_irps_lock);
+	wrap_spin_unlock(&canceled_irps_lock);
 
 	schedule_work(&cancel_usb_irp_work);
 }
@@ -174,16 +175,16 @@ void usb_cancel_worker(void *dummy)
 	TRACEENTER2("%s", "");
 
 	while (1) {
-		ndis_spin_lock(&canceled_irps_lock);
+		wrap_spin_lock(&canceled_irps_lock, PASSIVE_LEVEL);
 
 		if (list_empty(&canceled_irps)) {
-			ndis_spin_unlock(&canceled_irps_lock);
+			wrap_spin_unlock(&canceled_irps_lock);
 			TRACEEXIT2(return);
 		}
 		irp = list_entry(canceled_irps.next, struct irp, cancel_list_entry);
 		list_del(&irp->cancel_list_entry);
 
-		ndis_spin_unlock(&canceled_irps_lock);
+		wrap_spin_unlock(&canceled_irps_lock);
 
 		urb = irp->driver_context[3];
 

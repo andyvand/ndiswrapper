@@ -41,7 +41,7 @@
 
 /* List of loaded drivers */
 LIST_HEAD(ndis_driverlist);
-static struct ndis_spinlock driverlist_lock;
+static struct wrap_spinlock driverlist_lock;
 
 /*
  * Called by PCI-subsystem for each PCI-card found.
@@ -532,10 +532,10 @@ static void unload_ndis_driver(struct ndis_driver *driver)
 #endif
 	}
 
-	ndis_spin_lock(&driverlist_lock);
+	wrap_spin_lock(&driverlist_lock, PASSIVE_LEVEL);
 	if (driver->list.next)
 		list_del(&driver->list);
-	ndis_spin_unlock(&driverlist_lock);
+	wrap_spin_unlock(&driverlist_lock);
 
 	/* idtable for both pci and usb devices */
 	if (driver->idtable.pci)
@@ -760,7 +760,7 @@ static int add_driver(struct ndis_driver *driver)
 	int dup = 0;
 
 	TRACEENTER1("");
-	ndis_spin_lock(&driverlist_lock);
+	wrap_spin_lock(&driverlist_lock, PASSIVE_LEVEL);
 	list_for_each_entry(tmp, &ndis_driverlist, list) {
 		if (strcmp(tmp->name, driver->name) == 0) {
 			dup = 1;
@@ -770,7 +770,7 @@ static int add_driver(struct ndis_driver *driver)
 
 	if (!dup)
 		list_add(&driver->list, &ndis_driverlist);
-	ndis_spin_unlock(&driverlist_lock);
+	wrap_spin_unlock(&driverlist_lock);
 
 	if (dup) {
 		ERROR("cannot add duplicate driver");
@@ -867,7 +867,7 @@ int loader_init(void)
 {
 	int err;
 
-	ndis_spin_lock_init(&driverlist_lock);
+	wrap_spin_lock_init(&driverlist_lock);
 	if ((err = misc_register(&wrapper_misc)) < 0 ) {
 		ERROR("couldn't register module (%d)", err);
 		TRACEEXIT1(return err);
