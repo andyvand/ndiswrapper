@@ -467,6 +467,7 @@ struct packed ndis_configuration
 };
 
 #define XMIT_RING_SIZE 16
+
 /*
  * This is the per device struct. One per PCI-device exists.
  *
@@ -625,6 +626,7 @@ struct ssid_item
 };
 
 #define WLAN_EID_GENERIC 221
+#define MAX_WPA_IE_LEN 64
 
 struct bssid_list
 {
@@ -671,8 +673,6 @@ struct auth_req
 	unsigned long flags;
 };
 
-#define MAX_WPA_IE_LEN 64
-
 void sendpacket_done(struct ndis_handle *handle, struct ndis_packet *packet);
 STDCALL void NdisMIndicateReceivePacket(struct ndis_handle *handle, struct ndis_packet **packets, unsigned int nr_packets) STDCALL;
 STDCALL void NdisMSendComplete(struct ndis_handle *handle, struct ndis_packet *packet, unsigned int status) STDCALL;
@@ -683,7 +683,7 @@ STDCALL void NdisMQueryInformationComplete(struct ndis_handle *handle, unsigned 
 STDCALL void NdisMSetInformationComplete(struct ndis_handle *handle, unsigned int status) STDCALL;
 STDCALL void NdisMResetComplete(struct ndis_handle *handle, int status, int reset_status);
 STDCALL unsigned long NDIS_BUFFER_TO_SPAN_PAGES(struct ndis_buffer *buffer);
-
+STDCALL void NdisMDeregisterInterrupt(struct ndis_irq *ndis_irq);
 
 STDCALL int RtlUnicodeStringToAnsiString(struct ustring *dst, struct ustring *src, unsigned int dup) STDCALL;
 STDCALL int RtlAnsiStringToUnicodeString(struct ustring *dst, struct ustring *src, unsigned int dup) STDCALL;

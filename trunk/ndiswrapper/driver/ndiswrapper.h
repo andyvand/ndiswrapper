@@ -150,6 +150,7 @@ void wrap_kfree_all(void);
 #define DBGTRACE2(fmt, ...) (void)0
 #define DBGTRACE3(fmt, ...) (void)0
 #define DBGTRACE4(fmt, ...) (void)0
+#define DBGTRACE5(fmt, ...) (void)0
 
 #define MSG(level, fmt, ...) printk(level "ndiswrapper (%s:%d): " fmt "\n", \
 				    __FUNCTION__, __LINE__, ## __VA_ARGS__)
@@ -183,17 +184,24 @@ void wrap_kfree_all(void);
 #define DBGTRACE4(fmt, ...) DBGTRACE(fmt, ## __VA_ARGS__)
 #endif
 
+#if defined DEBUG && DEBUG >= 5
+#undef DBGTRACE5
+#define DBGTRACE5(fmt, ...) DBGTRACE(fmt, ## __VA_ARGS__)
+#endif
+
 #define TRACEENTER(fmt, ...) DBGTRACE("Enter " fmt , ## __VA_ARGS__)
 #define TRACEENTER1(fmt, ...) DBGTRACE1("Enter " fmt , ## __VA_ARGS__)
 #define TRACEENTER2(fmt, ...) DBGTRACE2("Enter " fmt , ## __VA_ARGS__)
 #define TRACEENTER3(fmt, ...) DBGTRACE3("Enter " fmt , ## __VA_ARGS__)
 #define TRACEENTER4(fmt, ...) DBGTRACE4("Enter " fmt , ## __VA_ARGS__)
+#define TRACEENTER5(fmt, ...) DBGTRACE5("Enter " fmt , ## __VA_ARGS__)
 
 #define TRACEEXIT(stmt) do { DBGTRACE("%s", "Exit"); stmt; } while(0)
 #define TRACEEXIT1(stmt) do { DBGTRACE1("%s", "Exit"); stmt; } while(0)
 #define TRACEEXIT2(stmt) do { DBGTRACE2("%s", "Exit"); stmt; } while(0)
 #define TRACEEXIT3(stmt) do { DBGTRACE3("%s", "Exit"); stmt; } while(0)
 #define TRACEEXIT4(stmt) do { DBGTRACE4("%s", "Exit"); stmt; } while(0)
+#define TRACEEXIT5(stmt) do { DBGTRACE5("%s", "Exit"); stmt; } while(0)
 
 #define MAC2STR(a) (a)[0], (a)[1], (a)[2], (a)[3], (a)[4], (a)[5]
 #define MACSTR "%02x:%02x:%02x:%02x:%02x:%02x"
@@ -210,16 +218,16 @@ struct packed wrap_spinlock
 
 static inline void wrap_spin_lock_init(struct wrap_spinlock *lock)
 {
-	TRACEENTER4("lock: %p", lock);
+	TRACEENTER5("lock: %p", lock);
 	spin_lock_init(&lock->spinlock);
 	lock->magic = NDIS_SPIN_LOCK_MAGIC;
 	atomic_set(&lock->in_use, 0);
-	TRACEEXIT4(return);
+	TRACEEXIT5(return);
 }
 
 static inline void wrap_spin_lock(struct wrap_spinlock *lock)
 {
-	TRACEENTER4("lock: %p", lock);
+	TRACEENTER5("lock: %p", lock);
 	if (lock->magic != NDIS_SPIN_LOCK_MAGIC)
 		WARNING("lock %p is not initlialized (%d)", lock, lock->magic);
 	if (atomic_read(&lock->in_use) == 1)
@@ -236,12 +244,12 @@ static inline void wrap_spin_lock(struct wrap_spinlock *lock)
 		lock->in_bh = 1;
 	}
 	atomic_set(&lock->in_use, 1);
-	TRACEEXIT4(return);
+	TRACEEXIT5(return);
 }
 
 static inline void wrap_spin_unlock(struct wrap_spinlock *lock)
 {
-	TRACEENTER4("lock: %p", lock);
+	TRACEENTER5("lock: %p", lock);
 	if (lock->magic != NDIS_SPIN_LOCK_MAGIC)
 		WARNING("lock %p is not initlialized (%d)", lock, lock->magic);
 	if (atomic_read(&lock->in_use) == 0)
@@ -252,7 +260,7 @@ static inline void wrap_spin_unlock(struct wrap_spinlock *lock)
 		spin_unlock_bh(&lock->spinlock);
 	else
 		spin_unlock(&lock->spinlock);
-	TRACEEXIT4(return);
+	TRACEEXIT5(return);
 }
 
 #endif // NDISWRAPPER_H
