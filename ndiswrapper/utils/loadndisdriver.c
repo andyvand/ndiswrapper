@@ -239,20 +239,6 @@ unload:
 }
 
 /*
- * Make sure the ndiswrapper module is loaded.
- */
-static void loadmod(void)
-{
-	if(!system("/sbin/modprobe ndiswrapper 2>/dev/null"))
-		return;
-	if(!system("/usr/sbin/modprobe ndiswrapper 2>/dev/null"))
-		return;
-	if(!system("modprobe ndiswrapper 2>/dev/null"))
-		return;
-}
-
-
-/*
  * Open a windows driver and pass it to the kernel module.
  */
 static int load(int device, char *confdir)
@@ -421,7 +407,6 @@ int main(int argc, char *argv[0])
 		return res;
 	}
 	
-	loadmod();
 	misc_minor = get_misc_minor();
 	if(misc_minor == -1)
 	{
