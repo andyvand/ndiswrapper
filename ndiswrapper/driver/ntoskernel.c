@@ -352,7 +352,7 @@ STDCALL void WRAP_EXPORT(KeInitializeEvent)
 STDCALL LONG WRAP_EXPORT(KeSetEvent)
 	(struct kevent *kevent, KPRIORITY incr, BOOLEAN wait)
 {
-	long old_state = kevent->header.signal_state;
+	LONG old_state = kevent->header.signal_state;
 
 	TRACEENTER3("event = %p, type = %d, wait = %d",
 		    kevent, kevent->header.type, wait);
@@ -385,7 +385,7 @@ STDCALL static void WRAP_EXPORT(KeClearEvent)
 STDCALL LONG WRAP_EXPORT(KeResetEvent)
 	(struct kevent *kevent)
 {
-	long old_state;
+	LONG old_state;
 
 	TRACEENTER3("event = %p", kevent);
 
@@ -815,7 +815,7 @@ _FASTCALL static NT_STATUS WRAP_EXPORT(IofCallDriver)
 	(FASTCALL_DECL_2(struct device_object *dev_obj, struct irp *irp))
 {
 	struct io_stack_location *stack = irp->current_stack_location-1;
-	unsigned long ret = STATUS_NOT_SUPPORTED;
+	NT_STATUS ret = STATUS_NOT_SUPPORTED;
 	unsigned long result;
 
 

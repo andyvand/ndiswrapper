@@ -381,20 +381,12 @@ static int load_bin_files(struct ndis_driver *driver,
 		memcpy(bin_file->name, load_bin_file->name,
 		       MAX_DRIVER_NAME_LEN);
 		bin_file->size = load_bin_file->size;
-
-#ifdef CONFIG_X86_64BIT
-		bin_file->data = vmalloc(load_bin_file->size,
-					 GFP_KERNEL | __GFP_HIGHMEM |
-					 PAGE_KERNEL_EXECUTABLE);
-#else
 		bin_file->data = vmalloc(load_bin_file->size);
-#endif
 		if (!bin_file->data) {
 			ERROR("cound't allocate memory");
 			kfree(bin_file);
 			break;
 		}
-
 		if (copy_from_user(bin_file->data, load_bin_file->data,
 				   load_bin_file->size)) {
 			ERROR("couldn't load file %s", load_bin_file->name);
@@ -596,54 +588,16 @@ static unsigned int call_entry(struct ndis_driver *driver)
 	for (ret = res = 0, i = 0; i < driver->num_pe_images; i++)
 		/* dlls are already started by loader */
 		if (driver->pe_images[i].type == COFF_CHAR_IMAGE) {
-			unsigned int (*entry)(void *obj,
-					      struct ustring *p2) STDCALL;
+			UINT (*entry)(void *obj, struct ustring *p2) STDCALL;
+
 			entry = driver->pe_images[i].entry;
-			TRACEENTER1("Calling NDIS driver entry at %08X "
-				    "rva(%08X)",
-				    (int)entry,
-				    (int)entry -
-				    (int)driver->pe_images[i].image);
 			DBGTRACE1("entry: %p, %p", entry, *entry);
 			res = entry((void*)driver, &reg_string);
 			ret |= res;
 			DBGTRACE1("entry returns %08X", res);
-			DBGTRACE1("Past entry: Version: %d.%dn",
+			DBGTRACE1("driver version: %d.%dn",
 				  driver->miniport_char.majorVersion,
 				  driver->miniport_char.minorVersion);
-			/* Dump addresses of driver suppoled callbacks */
-#if defined DEBUG && DEBUG >= 1
-			if (res == 0) {
-				int j;
-				int *adr;
-				char *name[] = {
-					"CheckForHangTimer",
-					"DisableInterruptHandler",
-					"EnableInterruptHandler",
-					"halt",
-					"HandleInterruptHandler",
-					"init",
-					"ISRHandler",
-					"query",
-					"ReconfigureHandler",
-					"ResetHandler",
-					"SendHandler",
-					"SetInformationHandler",
-					"TransferDataHandler",
-					"ReturnPacketHandler",
-					"SendPacketsHandler",
-					"AllocateCompleteHandler",
-				};
-
-				adr = (int*) &driver->miniport_char.hangcheck;
-
-				for (j = 0; j < 16; j++)
-					DBGTRACE1("%08X (rva %08X):%s", adr[j],
-						  adr[j] ? adr[j] -
-						  (int)driver->pe_images[i].image : 0,
-						  name[j]);
-			}
-#endif
 		}
 	return ret;
 }
@@ -689,7 +643,7 @@ static int start_driver(struct ndis_driver *driver)
 			driver->idtable.pci[i].driver_data =
 				(unsigned long) device;
 
-			DBGTRACE1("Adding %04x:%04x:%04x:%04x to pci idtable",
+			DBGTRACE1("adding %04x:%04x:%04x:%04x to pci idtable",
 			          device->vendor, device->device,
 			          device->pci_subvendor,
 			          device->pci_subdevice);
@@ -730,7 +684,7 @@ static int start_driver(struct ndis_driver *driver)
 			driver->idtable.usb[i].driver_info =
 				(unsigned long) device;
 
-			DBGTRACE1("Adding %04x:%04x to usb idtable\n",
+			DBGTRACE1("adding %04x:%04x to usb idtable\n",
 			          device->vendor, device->device);
 		}
 
@@ -819,7 +773,6 @@ static int load_ndis_driver(struct load_driver *load_driver)
 		/* older kernels don't seem to have a way to set
 		 * tainted information */
 #endif
-
 		TRACEEXIT1(return 0);
 	}
 }

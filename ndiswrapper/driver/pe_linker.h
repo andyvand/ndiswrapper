@@ -38,69 +38,62 @@
 #define COFF_FIXUP_LOW16 2
 #define COFF_FIXUP_HIGHLOW 3
 
-typedef signed short cs16;
-typedef unsigned short cu16;
-typedef signed long cs32;
-typedef unsigned long cu32;
-typedef signed char cs8;
-typedef unsigned char cu8;
-
 /* COFF File Header */
 struct coff_file_header
 {
-	cu16 machine;
-	cu16 num_sections;
-	cu32 timedatestamp;
-	cu32 symtab_ptr;
-	cu32 symtab_entries;
-	cu16 optionalhdr_size;
-	cu16 characteristics;
+	USHORT machine;
+	USHORT num_sections;
+	ULONG timedatestamp;
+	ULONG symtab_ptr;
+	ULONG symtab_entries;
+	USHORT optionalhdr_size;
+	USHORT characteristics;
 
 };
 
 /* The "header data directory" contains these */
 struct mscoff_datadir_entry
 {
-	cu32 rva;
-	cu32 size;
+	ULONG rva;
+	ULONG size;
 };
 
 struct optional_std_header
 {
-	cu16 magic;
-	cu8  linkver_major;
-	cu8  linkver_minor;
-	cu32 text_size;
-	cu32 data_size;
-	cu32 bss_size;
-	cu32 entry_rva;
-	cu32 code_base_rva;
-	cu32 data_base_rva;
+	USHORT magic;
+	UCHAR  linkver_major;
+	UCHAR  linkver_minor;
+	ULONG text_size;
+	ULONG data_size;
+	ULONG bss_size;
+	ULONG entry_rva;
+	ULONG code_base_rva;
+	ULONG data_base_rva;
 };
 
 struct optional_nt_header
 {
-	cu32 image_base;
-	cu32 section_alignment;
-	cu32 file_alignment;
-	cu16 osver_major;
-	cu16 osver_minor;
-	cu16 imagever_major;
-	cu16 imagever_minor;
-	cu16 subsysver_major;
-	cu16 subsysver_minor;
-	cu32 reserved;
-	cu32 imagesize;
-	cu32 headers_size;
-	cu32 checksum;
-	cu16 subsys;
-	cu16 dll_char;
-	cu32 stackreserve_size;
-	cu32 stackcommit_size;
-	cu32 heapreserve_size;
-	cu32 heapcommit_size;
-	cu32 loaderflags;
-	cu32 datadir_size;
+	ULONG image_base;
+	ULONG section_alignment;
+	ULONG file_alignment;
+	USHORT osver_major;
+	USHORT osver_minor;
+	USHORT imagever_major;
+	USHORT imagever_minor;
+	USHORT subsysver_major;
+	USHORT subsysver_minor;
+	ULONG reserved;
+	ULONG imagesize;
+	ULONG headers_size;
+	ULONG checksum;
+	USHORT subsys;
+	USHORT dll_char;
+	ULONG stackreserve_size;
+	ULONG stackcommit_size;
+	ULONG heapreserve_size;
+	ULONG heapcommit_size;
+	ULONG loaderflags;
+	ULONG datadir_size;
 };
 
 /* optional header required for images */
@@ -129,71 +122,71 @@ struct nt_header
 /* section header (right after ht_header) */
 struct section_header
 {
-	cu8  name[8];
-	cu32 virt_size;
-	cu32 virt_addr;
-	cu32 rawdata_size;
-	cu32 rawdata_addr;
-	cu32 relocs_addr;
- 	cu32 linenum_addr;
-	cu16 relocs_num;
-	cu16 linenums_num;
-	cu32 characteristics;
+	UCHAR  name[8];
+	ULONG virt_size;
+	ULONG virt_addr;
+	ULONG rawdata_size;
+	ULONG rawdata_addr;
+	ULONG relocs_addr;
+ 	ULONG linenum_addr;
+	USHORT relocs_num;
+	USHORT linenums_num;
+	ULONG characteristics;
 };
 
 /* Used by exports section */
 struct coffpe_exports
 {
-	cu32 export_flags;
-	cu32 timedatestamp;
-	cu16 version_major;
-	cu16 version_minor;
-	cu32 name_rva;      //Name of dll
-	cu32 ordinal_base;
-	cu32 addresses_size;
-	cu32 names_size;
-	cu32 addresses_rva;   // Location of symbols
-	cu32 names_rva;     // Location of symbol names
-	cu32 ordinals_rva;
+	ULONG export_flags;
+	ULONG timedatestamp;
+	USHORT version_major;
+	USHORT version_minor;
+	ULONG name_rva;      //Name of dll
+	ULONG ordinal_base;
+	ULONG addresses_size;
+	ULONG names_size;
+	ULONG addresses_rva;   // Location of symbols
+	ULONG names_rva;     // Location of symbol names
+	ULONG ordinals_rva;
 };
 
 struct coffpe_import_dirent
 {
-	cu32 import_lookup_tbl;
-	cu32 timedatestamp;
-	cu32 forwarder_chain;
-	cu32 name_rva;
-	cu32 import_address_table;
+	ULONG import_lookup_tbl;
+	ULONG timedatestamp;
+	ULONG forwarder_chain;
+	ULONG name_rva;
+	ULONG import_address_table;
 };
 
 /* Reloc sections */
 struct coffpe_relocs
 {
-	cu32 page_rva;
-	cu32 block_size;
-	cu16 fixup[1];
+	ULONG page_rva;
+	ULONG block_size;
+	USHORT fixup[1];
 };
 
 struct export_dir_table
 {
-	cu32 flags;
-	cu32 timestamp;
-	cu16 version_major;
-	cu16 version_minir;
-	cu32 name_rva;
-	cu32 ordinal_base;
-	cu32 num_addr_table_entries;
-	cu32 num_name_addr;
-	cu32 export_table_rva;
-	cu32 name_addr_rva;
-	cu32 ordinal_table_rva;
+	ULONG flags;
+	ULONG timestamp;
+	USHORT version_major;
+	USHORT version_minir;
+	ULONG name_rva;
+	ULONG ordinal_base;
+	ULONG num_addr_table_entries;
+	ULONG num_name_addr;
+	ULONG export_table_rva;
+	ULONG name_addr_rva;
+	ULONG ordinal_table_rva;
 };
 
 struct exports
 {
 	char *dll;
 	char *name;
-	cu32 addr;
+	ULONG_PTR addr;
 };
 
 #pragma pack()

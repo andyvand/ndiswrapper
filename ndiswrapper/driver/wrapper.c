@@ -250,9 +250,9 @@ static struct ethtool_ops ndis_ethtool_ops = {
  */
 int miniport_init(struct ndis_handle *handle)
 {
-	__u32 res, res2;
-	__u32 selected_medium;
-	__u32 mediumtypes[] = {0,1,2,3,4,5,6,7,8,9,10,11,12};
+	NDIS_STATUS status;
+	UINT medium_index, res;
+	UINT medium_array[] = {NDIS_MEDIUM_802_3};
 	struct miniport_char *miniport = &handle->driver->miniport_char;
 
 	TRACEENTER1("driver init routine is at %p", miniport->init);
@@ -260,8 +260,9 @@ int miniport_init(struct ndis_handle *handle)
 		ERROR("%s", "initialization function is not setup correctly");
 		return -EINVAL;
 	}
-	res = miniport->init(&res2, &selected_medium, mediumtypes, 13, handle,
-			     handle);
+	res = miniport->init(&status, &medium_index, medium_array,
+			     sizeof(medium_array) / sizeof(medium_array[0]),
+			     handle, handle);
 	if (res)
 		return res;
 	return 0;
@@ -458,20 +459,6 @@ static struct ndis_packet *alloc_packet(struct ndis_handle *handle,
 
 	memset(packet, 0, sizeof(*packet));
 
-/* Enable this if you want to poison the packet-info during debugging.
- * This is not enabled when debug is defined because one card I have
- * silently faild if this was on.
- */
-#if 0
-	{
-		int i = 0;
-		/* Poison extra packet info */
-		int *x = (int*) &packet->ext1;
-		for (i = 0; i <= 12; i++)
-			x[i] = i;
-	}
-#endif
-
 	if (handle->use_scatter_gather) {
 		/* FIXME: do USB drivers call this? */
 		packet->dataphys =
@@ -479,12 +466,7 @@ static struct ndis_packet *alloc_packet(struct ndis_handle *handle,
 					   buffer->data, buffer->len,
 					   PCI_DMA_TODEVICE);
 		packet->sg_list.len = 1;
-		packet->sg_element.address.s.high = 0;
-#ifdef CONFIG_X86_64
 		packet->sg_element.address.quad = packet->dataphys;
-#else
-		packet->sg_element.address.s.low = packet->dataphys;
-#endif
 		packet->sg_element.len = buffer->len;
 		packet->sg_list.elements = &packet->sg_element;
 		packet->extension.info[NDIS_SCLIST_INFO] = &packet->sg_list;
@@ -500,8 +482,6 @@ static struct ndis_packet *alloc_packet(struct ndis_handle *handle,
 	packet->private.buffer_head = buffer;
 	packet->private.buffer_tail = buffer;
 
-//	DBGTRACE4("Buffer: %08X, data %08X, len %d\n", (int)buffer,
-//		  (int)buffer->data, (int)buffer->len);
 	return packet;
 }
 
@@ -545,8 +525,11 @@ static int send_packets(struct ndis_handle *handle, unsigned int start,
 			n = handle->max_send_packets;
 		else
 			n = pending;
-		if (n > 1)
-			DBGTRACE3("sending %d packets", n);
+
+		DBG_BLOCK() {
+			if (n > 1)
+				DBGTRACE3("sending %d packets", n);
+		}
 
 		/* copy packets from xmit_ring to linear xmit_array array */
 		for (i = 0; i < n; i++) {
@@ -987,7 +970,7 @@ static void set_packet_filter(struct ndis_handle *handle)
 
 	res = miniport_set_info(handle, NDIS_OID_PACKET_FILTER,
 				(char *)&packet_filter, sizeof(packet_filter));
-	if (res)
+	if (res && res != NDIS_STATUS_NOT_SUPPORTED)
 		ERROR("Unable to set packet filter (%08X)", res);
 	TRACEEXIT2(return);
 }

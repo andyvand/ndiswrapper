@@ -127,7 +127,7 @@ void wrapper_init_timer(struct ktimer *ktimer, void *handle)
 	TRACEENTER5("%s", "");
 	wrapper_timer = wrap_kmalloc(sizeof(struct wrapper_timer), GFP_ATOMIC);
 	if (!wrapper_timer) {
-		ERROR("%s", "Cannot malloc mem for timer");
+		ERROR("couldn't allocate memory for timer");
 		return;
 	}
 
@@ -327,19 +327,19 @@ NOREGPARM int WRAP_EXPORT(_wrap_toupper)
 }
 
 NOREGPARM void *WRAP_EXPORT(_wrap_memcpy)
-	(void * to, const void * from, SIZE_T n)
+	(void *to, const void *from, SIZE_T n)
 {
 	return memcpy(to, from, n);
 }
 
 NOREGPARM void *WRAP_EXPORT(_wrap_strcpy)
-	(void * to, const void * from)
+	(void *to, const void *from)
 {
 	return strcpy(to, from);
 }
 
 NOREGPARM void *WRAP_EXPORT(_wrap_memset)
-	(void * s, char c, SIZE_T count)
+	(void *s, char c, SIZE_T count)
 {
 	return memset(s, c, count);
 }
@@ -782,7 +782,7 @@ void packet_recycler(void *param)
 	struct ndis_handle *handle = (struct ndis_handle*) param;
 	KIRQL irql;
 
-	TRACEENTER3("%s", "Packet recycler running");
+	TRACEENTER3("%s", "packet recycler running");
 	while (1) {
 		struct ndis_packet * packet = NULL;
 		struct miniport_char *miniport;
@@ -797,11 +797,15 @@ void packet_recycler(void *param)
 				handle->recycle_packets.next;
 
 			list_del(handle->recycle_packets.next);
-			DBGTRACE3("Picking packet at %p!", packet);
+			DBGTRACE3("returning packet at %p!", packet);
+			/* at this point, packet is actually
+			 * packet->recycle_list; we need to return
+			 * packet, so subtract the space from nr_pages
+			 * (first field) till recycle_list */
 			packet = (struct ndis_packet*)
-				((char*)packet -
-				 ((char*) &packet->recycle_list -
-				  (char*) &packet->private.nr_pages));
+				((char *)packet -
+				 ((char *)&packet->recycle_list -
+				  (char *)&packet->private.nr_pages));
 		}
 
 		wrap_spin_unlock(&handle->recycle_packets_lock);

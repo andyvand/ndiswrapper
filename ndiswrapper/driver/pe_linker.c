@@ -98,16 +98,15 @@ static void *get_dll_init(char *name)
  * Bill Paul's PE loader for ndisulator (Project Evil).
  */
 
-static size_t rva_to_va(void *image, uint32_t rva)
+static ULONG_PTR rva_to_va(void *image, uint32_t rva)
 {
 	struct optional_header *opt_hdr;
 	struct section_header *sect_hdr;
 	struct nt_header *nt_hdr;
 	int i, sections;
-	unsigned int nt_hdr_offset;
-	size_t ret;
+	ULONG_PTR nt_hdr_offset, ret;
 
-	nt_hdr_offset =  *(unsigned int *)(image+0x3c);
+	nt_hdr_offset =  *(ULONG_PTR *)(image+0x3c);
 	nt_hdr = (struct nt_header *)((char *)image + nt_hdr_offset);
 
 	sections = nt_hdr->file_hdr.num_sections;
@@ -129,8 +128,8 @@ static size_t rva_to_va(void *image, uint32_t rva)
 	if (i > sections)
 		return 0;
 
-	ret = ((size_t)(image + rva - sect_hdr->virt_addr +
-			sect_hdr->rawdata_addr));
+	ret = ((ULONG_PTR)(image + rva - sect_hdr->virt_addr +
+			   sect_hdr->rawdata_addr));
 	return ret;
 }
 
@@ -141,7 +140,7 @@ static struct section_header *get_section(struct nt_header *nt_hdr,
 	struct section_header *sect_hdr;
 
 	sections = nt_hdr->file_hdr.num_sections;
-	sect_hdr = (struct section_header *)((size_t)nt_hdr +
+	sect_hdr = (struct section_header *)((char *)nt_hdr +
 					     sizeof(struct nt_header));
 	for (i = 0; i < sections; i++)
 		if (!strcmp(sect_hdr->name, name))
@@ -192,7 +191,7 @@ static int check_nt_hdr(struct nt_header *nt_hdr)
 
 	if (nt_hdr->opt_hdr.opt_nt_hdr.section_alignment <
 	   nt_hdr->opt_hdr.opt_nt_hdr.file_alignment) {
-		ERROR("Alignment mismatch: secion: 0x%lx, file: 0x%lx",
+		ERROR("Alignment mismatch: secion: 0x%x, file: 0x%x",
 		      nt_hdr->opt_hdr.opt_nt_hdr.section_alignment,
 		      nt_hdr->opt_hdr.opt_nt_hdr.file_alignment);
 		return -EINVAL;
@@ -207,14 +206,14 @@ static int check_nt_hdr(struct nt_header *nt_hdr)
 
 static int import(void *image, struct coffpe_import_dirent *dirent, char *dll)
 {
-	cu32 *lookup_tbl, *address_tbl;
+	ULONG_PTR *lookup_tbl, *address_tbl;
 	char *symname = 0;
 	int i;
 	int ret = 0;
 	void *adr;
 
-	lookup_tbl  = RVA2VA(image, dirent->import_lookup_tbl, cu32 *);
-	address_tbl = RVA2VA(image, dirent->import_address_table, cu32 *);
+	lookup_tbl  = RVA2VA(image, dirent->import_lookup_tbl, ULONG_PTR *);
+	address_tbl = RVA2VA(image, dirent->import_address_table, ULONG_PTR *);
 
 	for (i = 0; lookup_tbl[i]; i++) {
 		if (lookup_tbl[i] & 0x80000000) {
@@ -225,20 +224,20 @@ static int import(void *image, struct coffpe_import_dirent *dirent, char *dll)
 		else {
 			symname = RVA2VA(image,
 					 ((lookup_tbl[i] & 0x7fffffff) + 2),
-					 char*);
+					 char *);
 		}
 
 		adr = get_export(symname);
 		if (adr != NULL)
 			DBGTRACE1("found symbol: %s:%s, rva = %08X",
-				  dll, symname, (unsigned int)address_tbl[i]);
+				  dll, symname, (ULONT_PTR)address_tbl[i]);
 		if (adr == NULL) {
 			ERROR("Unknown symbol: %s:%s", dll, symname);
 			ret = -1;
 		}
-		DBGTRACE1("Importing rva %08x: %s : %s",
-			  (int)(&address_tbl[i]) - (int)image, dll, symname); 
-		address_tbl[i] = (cu32)adr;
+		DBGTRACE1("Importing rva %08X: %s : %s",
+			  (UINT)(&address_tbl[i] - image), dll, symname); 
+		address_tbl[i] = (ULONG_PTR)adr;
 	}
 	return ret;
 }
@@ -247,9 +246,9 @@ static int read_exports(void *image, struct nt_header *nt_hdr, char *dll)
 {
 	struct section_header *export_section;
 	struct export_dir_table *export_dir_table;
-	cu32 *export_addr_table;
+	uint32_t *export_addr_table;
 	int i;
-	unsigned int *name_table;
+	uint32_t *name_table;
 
 	export_section = get_section(nt_hdr, ".edata");
 	if (export_section)
@@ -260,7 +259,7 @@ static int read_exports(void *image, struct nt_header *nt_hdr, char *dll)
 	export_dir_table = (struct export_dir_table *)
 		(image + export_section->rawdata_addr);
 	name_table = (unsigned int *)(image + export_dir_table->name_addr_rva);
-	export_addr_table = (cu32 *)
+	export_addr_table = (uint32_t *)
 		(image + export_dir_table->export_table_rva);
 
 	for (i = 0; i < export_dir_table->num_name_addr; i++) {
@@ -271,11 +270,12 @@ static int read_exports(void *image, struct nt_header *nt_hdr, char *dll)
 
 		DBGTRACE1("export symbol: %s, at %08X",
 		     (char *)(image + *name_table),
-		     (unsigned int)(image + *export_addr_table));
+		     (uint32_t)(image + *export_addr_table));
 		     
 		exports[num_exports].dll = dll;
 		exports[num_exports].name = (char *)(image + *name_table);
-		exports[num_exports].addr = (cu32)(image + *export_addr_table);
+		exports[num_exports].addr = (ULONG_PTR)(image +
+							*export_addr_table);
 
 		num_exports++;
 		name_table++;
@@ -306,8 +306,8 @@ static int fixup_imports(void *image, struct nt_header *nt_hdr)
 static int fixup_reloc(void *image, struct nt_header *nt_hdr)
 {
 	struct section_header *sect_hdr;
-	int base = nt_hdr->opt_hdr.opt_nt_hdr.image_base;
-	int size;
+	ULONG_PTR base = nt_hdr->opt_hdr.opt_nt_hdr.image_base;
+	ULONG_PTR size;
 	struct coffpe_relocs *fixup_block;
 
 	sect_hdr = get_section(nt_hdr, ".reloc");
@@ -343,7 +343,7 @@ static int fixup_reloc(void *image, struct nt_header *nt_hdr)
 			}
 		}
 		fixup_block = (struct coffpe_relocs *)
-			((size_t)fixup_block + fixup_block->block_size);
+			((ULONG_PTR)fixup_block + fixup_block->block_size);
 	} while (fixup_block->block_size);
 
 	return 0;
@@ -352,7 +352,7 @@ static int fixup_reloc(void *image, struct nt_header *nt_hdr)
 int load_pe_images(struct pe_image *pe_image, int n)
 {
 	struct nt_header *nt_hdr;
-	unsigned int nt_hdr_offset;
+	UINT nt_hdr_offset;
 	int i = 0;
 	void *image;
 	int size;
@@ -379,7 +379,7 @@ int load_pe_images(struct pe_image *pe_image, int n)
 		image = pe_image[i].image;
 		size = pe_image[i].size;
 
-		nt_hdr_offset =  *(unsigned int *)(image+0x3c);
+		nt_hdr_offset =  *(UINT *)(image+0x3c);
 		nt_hdr = (struct nt_header *)((char *)image + nt_hdr_offset);
 		opt_hdr = &nt_hdr->opt_hdr;
 
@@ -398,7 +398,7 @@ int load_pe_images(struct pe_image *pe_image, int n)
 		image = pe_image[i].image;
 		size = pe_image[i].size;
 
-		nt_hdr_offset =  *(unsigned int *)(image+0x3c);
+		nt_hdr_offset =  *(UINT *)(image+0x3c);
 		nt_hdr = (struct nt_header *)((char *)image + nt_hdr_offset);
 		opt_hdr = &nt_hdr->opt_hdr;
 
