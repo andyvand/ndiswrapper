@@ -16,23 +16,23 @@
 #include "ndis.h"
 #include "usb.h"
 
-
-LIST_HEAD(completed_irps);
-static spinlock_t completed_irps_lock = SPIN_LOCK_UNLOCKED;
-
+static struct list_head completed_irps;
+static spinlock_t completed_irps_lock;
 void usb_transfer_complete_tasklet(unsigned long dummy);
 DECLARE_TASKLET(completed_irps_tasklet, usb_transfer_complete_tasklet, 0);
 
-
-LIST_HEAD(canceled_irps);
+static struct list_head canceled_irps;
 static struct wrap_spinlock canceled_irps_lock;
-
 void usb_cancel_worker(void *dummy);
-DECLARE_WORK(cancel_usb_irp_work, usb_cancel_worker, 0);
+static struct work_struct cancel_usb_irp_work;
 
 void usb_init(void)
 {
+	spin_lock_init(&completed_irps_lock);
 	wrap_spin_lock_init(&canceled_irps_lock);
+	INIT_LIST_HEAD(&canceled_irps);
+	INIT_LIST_HEAD(&completed_irps);
+	INIT_WORK(&cancel_usb_irp_work, usb_cancel_worker, NULL);
 	return;
 }
 
@@ -148,7 +148,6 @@ STDCALL void usb_cancel_transfer(struct device_object *dev_obj,
                                  struct irp *irp)
 {
 	struct urb *urb;
-	wrap_spin_unlock(&cancel_lock);
 
 	TRACEENTER2("irp = %p", irp);
 	urb = irp->driver_context[3];

@@ -909,6 +909,8 @@ int ndis_init(void);
 void ndis_exit_handle(struct ndis_handle *handle);
 void ndis_exit(void);
 
+void usb_init(void);
+
 int ndiswrapper_procfs_init(void);
 int ndiswrapper_procfs_add_iface(struct ndis_handle *handle);
 void ndiswrapper_procfs_remove_iface(struct ndis_handle *handle);

@@ -1477,6 +1477,7 @@ static int __init wrapper_init(void)
 		module_cleanup();
 		TRACEEXIT1(return -EPERM);
 	}		
+	usb_init();
 	INIT_LIST_HEAD(&wrap_allocs);
 	wrap_spin_lock_init(&wrap_allocs_lock);
 	wrap_spin_lock_init(&dispatch_event_lock);
