@@ -99,6 +99,7 @@ STDCALL void NdisMQueryInformationComplete(struct ndis_handle *handle, unsigned 
 	DBGTRACE("%s: %08x\n", __FUNCTION__, status);
 	handle->query_wait_res = status;
 	handle->query_wait_done = 1;
+	wake_up(&handle->query_wqhead);
 }
 
 
@@ -108,8 +109,8 @@ static int dosetinfo(struct ndis_handle *handle, unsigned int oid, char *buf, in
 
 	down(&handle->setinfo_mutex);
 	
-	handle->query_wait_done = 0;
-	DBGTRACE("Calling query at %08x rva(%08x)\n", (int)handle->driver->miniport_char.query, (int)handle->driver->miniport_char.query - image_offset);
+	handle->setinfo_wait_done = 0;
+	DBGTRACE("Calling setinfo at %08x rva(%08x)\n", (int)handle->driver->miniport_char.setinfo, (int)handle->driver->miniport_char.setinfo - image_offset);
 	res = handle->driver->miniport_char.setinfo(handle->adapter_ctx, oid, buf, bufsize, written, needed);
 
 	if(!res)
