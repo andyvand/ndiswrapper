@@ -296,7 +296,7 @@ int main(int argc, char* argv[])
 			 deviceid == -1 ||
 			 driver == NULL ||
 			 information == NULL)
-		fprintf(stderr, "Usage: %s [OPTIONS] pci_vendor pci_device windowsdriver.sys windowsdruver.inf \n", argv[0]);
+		fprintf(stderr, "Usage: %s [OPTIONS] pci_vendor pci_device windowsdriver.sys windowsdriver.inf \n", argv[0]);
 	else
 	{
 		int misc_minor = get_misc_minor();
