@@ -51,11 +51,13 @@
 #define PASSIVE_LEVEL 0
 #define DISPATCH_LEVEL 2
 
+#define STATUS_WAIT_0			0
 #define STATUS_SUCCESS                  0
 #define STATUS_ALERTED                  0x00000101
 #define STATUS_TIMEOUT                  0x00000102
 #define STATUS_PENDING                  0x00000103
 #define STATUS_FAILURE                  0xC0000001
+#define STATUS_INVALID_PARAMETER        0xC000000D
 #define STATUS_MORE_PROCESSING_REQUIRED 0xC0000016
 #define STATUS_BUFFER_TOO_SMALL         0xC0000023
 #define STATUS_RESOURCES                0xC000009A
@@ -142,7 +144,7 @@ struct packed dispatch_header
 	unsigned char size;
 	unsigned char inserted;
 	long signal_state;
-	struct list_entry wait_list_head;
+	struct list_head wait_list_head;
 };
 
 struct ktimer;
@@ -187,6 +189,19 @@ enum pool_type
 	PagedPoolCacheAligned,
 	NonPagedPoolCacheAlignedMustS
 };
+
+struct mdl
+{
+	struct mdl* next;
+	short size;
+	short mdlflags;
+	void *process;
+	void *mappedsystemva;
+	void *startva;
+	unsigned long bytecount;
+	unsigned long byteoffset;
+};
+
 
 struct irp;
 
@@ -324,12 +339,28 @@ struct kmutex
 {
 	struct dispatch_header dispatch_header;
 	/* struct list_entry list_entry */
-	unsigned int count;
+	long count;
 	unsigned int dummy;
 	void *owner_thread;
 	BOOLEAN abandoned;
 	unsigned char apc_disable;
 };
+
+struct wait_block
+{
+	struct list_entry list_entry;
+	void *thread;
+	struct dispatch_header *object;
+	struct wait_block *next;
+	unsigned short wait_key;
+	unsigned short wait_type;
+};
+
+#define WAIT_ALL 0
+#define WAIT_ANY 1
+
+#define THREAD_WAIT_OBJECTS 3
+#define MAX_WAIT_OBJECTS 64
 
 #define NOTIFICATION_TIMER 1
 
@@ -412,6 +443,8 @@ STDCALL void KeReleaseSpinLock(KSPIN_LOCK *lock, KIRQL oldirql);
 _FASTCALL KIRQL KfRaiseIrql(int dummy1, int dummy2, KIRQL newirql);
 _FASTCALL void KfLowerIrql(int dummy1, int dummy2, KIRQL oldirql);
 _FASTCALL void IofCompleteRequest(int dummy, char prio_boost, struct irp *irp);
+_FASTCALL void KefReleaseSpinLockFromDpcLevel(int dummy1, int dummy2,
+					      KSPIN_LOCK *lock);
 
 #define WRAPPER_SPIN_LOCK_MAGIC 137
 
@@ -438,6 +471,12 @@ static inline void init_dpc(struct kdpc *kdpc, void *func, void *ctx)
 {
 	kdpc->func = func;
 	kdpc->ctx  = ctx;
+}
+
+static inline int SPAN_PAGES(unsigned int ptr, unsigned int len)
+{
+	unsigned int p = ptr & (PAGE_SIZE - 1);
+	return (p + len + (PAGE_SIZE - 1)) >> PAGE_SHIFT;
 }
 
 #define raise_irql(irql) KfRaiseIrql(0, 0, irql)
