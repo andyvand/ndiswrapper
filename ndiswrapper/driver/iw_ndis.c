@@ -1403,7 +1403,7 @@ static int wpa_associate(struct net_device *dev,
 
 	memset(&wpa_assoc_info, 0, sizeof(wpa_assoc_info));
 
-	if (wrq->data.length == 0)
+	if (wrqu->data.length == 0)
 		size = (void *)&wpa_assoc_info.key_mgmt_suite - 
 			(void *)&wpa_assoc_info.bssid;
 	else
