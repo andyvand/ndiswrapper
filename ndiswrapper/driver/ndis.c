@@ -1274,8 +1274,6 @@ STDCALL void NdisUnchainBufferAtBack(struct ndis_packet *packet, struct ndis_buf
 	struct ndis_buffer *b = packet->buffer_head;
 	struct ndis_buffer *btail = packet->buffer_tail;
 
-	DBGTRACE("%s\n", __FUNCTION__);
-
 	if(!b) {
 		/* No buffer in packet */
 		*buffer = 0;
