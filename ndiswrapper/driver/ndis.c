@@ -1057,7 +1057,10 @@ STDCALL void NdisMInitializeTimer(struct ndis_miniport_timer *timer_handle,
 				  void *func,
 				  void *ctx)
 {
-	wrapper_init_timer(&timer_handle->kdpc, handle, func, ctx);
+	wrapper_init_timer(&timer_handle->ktimer, handle);
+	init_dpc(&timer_handle->kdpc, func, ctx);
+	wrapper_set_timer_dpc(timer_handle->ktimer.wrapper_timer,
+	                      &timer_handle->kdpc);
 }
 
 STDCALL void NdisInitializeTimer(struct ndis_timer *timer_handle,
@@ -1065,7 +1068,10 @@ STDCALL void NdisInitializeTimer(struct ndis_timer *timer_handle,
 {
 	DBGTRACE("%s(entry): %p, %p, %p\n",
 			 __FUNCTION__, timer_handle, func, ctx);
-	wrapper_init_timer(&timer_handle->kdpc, NULL, func, ctx);
+	wrapper_init_timer(&timer_handle->ktimer, NULL);
+	init_dpc(&timer_handle->kdpc, func, ctx);
+	wrapper_set_timer_dpc(timer_handle->ktimer.wrapper_timer,
+	                      &timer_handle->kdpc);
 	DBGTRACE("%s(exit): %p, %p, %p\n",
 			 __FUNCTION__, timer_handle, func, ctx);
 }
@@ -1075,10 +1081,9 @@ STDCALL void NdisInitializeTimer(struct ndis_timer *timer_handle,
  */
 STDCALL void NdisSetTimer(struct ndis_timer *timer_handle, unsigned int ms)
 {
-	struct kdpc *kdpc = &timer_handle->kdpc;
 	unsigned long expires = jiffies + (ms * HZ) / 1000;
 
-	wrapper_set_timer(kdpc, expires, 0);
+	wrapper_set_timer(timer_handle->ktimer.wrapper_timer, expires, 0);
 	return;
 }
 
@@ -1088,11 +1093,10 @@ STDCALL void NdisSetTimer(struct ndis_timer *timer_handle, unsigned int ms)
 STDCALL void NdisMSetPeriodicTimer(struct ndis_miniport_timer *timer_handle,
                                    unsigned int ms)
 {
-	struct kdpc *kdpc = &timer_handle->kdpc;
 	unsigned long expires = jiffies + (ms * HZ) / 1000;
 	unsigned long repeat = ms * HZ / 1000;
 
-	wrapper_set_timer(kdpc, expires, repeat);
+	wrapper_set_timer(timer_handle->ktimer.wrapper_timer, expires, repeat);
 	return;
 }
 
@@ -1103,13 +1107,13 @@ STDCALL void NdisMCancelTimer(struct ndis_miniport_timer *timer_handle,
 							  char *canceled)
 {
 	DBGTRACE("%s\n", __FUNCTION__);
-	wrapper_cancel_timer(&timer_handle->kdpc, canceled);
+	wrapper_cancel_timer(timer_handle->ktimer.wrapper_timer, canceled);
 	return;
 }
 
 STDCALL void NdisCancelTimer(struct ndis_timer *timer_handle, char *canceled)
 {
-	wrapper_cancel_timer(&timer_handle->kdpc, canceled);
+	wrapper_cancel_timer(timer_handle->ktimer.wrapper_timer, canceled);
 }
 
 /*

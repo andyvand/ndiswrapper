@@ -451,7 +451,7 @@ struct packed ndis_handle
 
 struct ndis_timer
 {
-	struct ktimer timer;
+	struct ktimer ktimer;
 	struct kdpc kdpc;
 };
 

@@ -1026,9 +1026,9 @@ static void fixup_timers(struct ndis_handle *handle)
 			printk(KERN_WARNING "%s Buggy windows driver %s left "
 			       "an active timer. Trying to fix\n",
 			       DRV_NAME, handle->driver->name);
-			       wrapper_cancel_timer(timer->kdpc, &x); 
+			       wrapper_cancel_timer(timer, &x); 
 		}
-		kfree(timer);
+		wrap_kfree(timer);
 	}
 }
 

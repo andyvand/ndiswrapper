@@ -77,14 +77,17 @@ void wrap_kfree_all(void)
 
 void wrapper_timer_handler(unsigned long data)
 {
-	struct kdpc *kdpc = (struct kdpc *)data;
-	struct wrapper_timer *timer = kdpc->wrapper_timer;
-	STDCALL void (*func)(void *res1, void *data, void *res3, void *res4) = 
-		kdpc->func;
+	struct wrapper_timer *timer = (struct wrapper_timer *)data;
+	struct kdpc *kdpc = timer->kdpc;
+	STDCALL void (*func)(void *res1, void *data, void *res3, void *res4);
+
 #ifdef DEBUG_TIMER
 	BUG_ON(timer->wrapper_timer_magic != WRAPPER_TIMER_MAGIC);
+	BUG_ON(kdpc == NULL);
 #endif
 	
+	func = kdpc->func;
+
 	if (!timer->active)
 		return;
 	if (timer->repeat)
@@ -99,40 +102,37 @@ void wrapper_timer_handler(unsigned long data)
 		func(kdpc, kdpc->ctx, kdpc->arg1, kdpc->arg2);
 }
 
-void wrapper_init_timer(struct kdpc *kdpc, void *handle, void *func, void *ctx)
+void wrapper_init_timer(struct ktimer *ktimer, void *handle)
 {
-	struct wrapper_timer *timer;
+	struct wrapper_timer *wrapper_timer;
 	struct ndis_handle *ndis_handle = (struct ndis_handle *)handle;
-	timer = kmalloc(sizeof(struct wrapper_timer), GFP_KERNEL);
-	if(!timer)
+	wrapper_timer = wrap_kmalloc(sizeof(struct wrapper_timer), GFP_KERNEL);
+	if(!wrapper_timer)
 	{
 		printk("%s: Cannot malloc mem for timer\n", DRV_NAME);
 		return;
 	}
-	
-	memset(timer, 27, sizeof(*timer));
-	init_timer(&timer->timer);
-	timer->timer.data = (unsigned long) kdpc;
-	timer->timer.function = &wrapper_timer_handler;
-	timer->active = 0;
-	timer->repeat = 0;
-	timer->kdpc = kdpc;
-	kdpc->func = func;
-	kdpc->ctx = ctx;
-	kdpc->wrapper_timer = timer;
+
+	memset(wrapper_timer, 27, sizeof(*wrapper_timer));
+	init_timer(&wrapper_timer->timer);
+	wrapper_timer->timer.data = (unsigned long)wrapper_timer;
+	wrapper_timer->timer.function = &wrapper_timer_handler;
+	wrapper_timer->active = 0;
+	wrapper_timer->repeat = 0;
+	wrapper_timer->kdpc = NULL;
+	ktimer->wrapper_timer = wrapper_timer;
 	if (handle)
-		list_add(&timer->list, &ndis_handle->timers);
+		list_add(&wrapper_timer->list, &ndis_handle->timers);
 #ifdef DEBUG_TIMER
-	printk(KERN_INFO "%s: added timer %p, timer->list %p\n",
-	       __FUNCTION__, timer, &timer->list);
+	printk(KERN_INFO "%s: added timer %p, wrapper_timer->list %p\n",
+	       __FUNCTION__, wrapper_timer, &wrapper_timer->list);
 #endif
-	DBGTRACE("Allocated timer at %08x\n", (int)timer);
+	DBGTRACE("Allocated timer at %08x\n", (int)wrapper_timer);
 }
 
-int wrapper_set_timer(struct kdpc *kdpc, unsigned long expires,
-		      unsigned long repeat)
+int wrapper_set_timer(struct wrapper_timer *timer,
+                      unsigned long expires, unsigned long repeat)
 {
-	struct wrapper_timer *timer = kdpc->wrapper_timer;
 	if (!timer)
 	{
 		printk("%s: Driver calling NdisSetTimer on an uninitilized timer\n", DRV_NAME);		
@@ -164,9 +164,8 @@ int wrapper_set_timer(struct kdpc *kdpc, unsigned long expires,
 	}
 }
 
-void wrapper_cancel_timer(struct kdpc *kdpc, char *canceled)
+void wrapper_cancel_timer(struct wrapper_timer *timer, char *canceled)
 {
-	struct wrapper_timer *timer = kdpc->wrapper_timer;
 	DBGTRACE("%s\n", __FUNCTION__);
 	if(!timer)
 	{

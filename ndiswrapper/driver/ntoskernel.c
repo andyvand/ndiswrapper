@@ -34,16 +34,14 @@ STDCALL void WRITE_REGISTER_UCHAR(unsigned int reg, unsigned char val)
 STDCALL void KeInitializeTimer(struct ktimer *ktimer)
 {
 	DBGTRACE("%s: %p\n", __FUNCTION__, ktimer);
-	wrapper_init_timer(ktimer->kdpc, NULL, ktimer->kdpc->func,
-			   ktimer->kdpc->ctx);
+	wrapper_init_timer(ktimer, NULL);
 	ktimer->dispatch_header.signal_state = 0;
 }
 
 STDCALL void KeInitializeDpc(struct kdpc *kdpc, void *func, void *ctx)
 {
 	DBGTRACE("%s: %p, %p, %p\n", __FUNCTION__, kdpc, func, ctx);
-	kdpc->func = func;
-	kdpc->ctx = ctx;
+	init_dpc(kdpc, func, ctx);
 }
 
 STDCALL int KeSetTimerEx(struct ktimer *ktimer, __s64 due_time,
@@ -69,16 +67,16 @@ STDCALL int KeSetTimerEx(struct ktimer *ktimer, __s64 due_time,
 			       __FUNCTION__, (long)due_time, period);
 	}
 	repeat = (period * HZ) / 1000;
-	if (kdpc && ktimer->kdpc != kdpc)
-		ktimer->kdpc = kdpc;
-	return wrapper_set_timer(ktimer->kdpc, expires, repeat);
+	if (kdpc)
+		wrapper_set_timer_dpc(ktimer->wrapper_timer, kdpc);
+	return wrapper_set_timer(ktimer->wrapper_timer, expires, repeat);
 }
 
 STDCALL int KeCancelTimer(struct ktimer *ktimer)
 {
 	char canceled;
-	
-	wrapper_cancel_timer(ktimer->kdpc, &canceled);
+
+	wrapper_cancel_timer(ktimer->wrapper_timer, &canceled);
 	return canceled;
 }
 
@@ -293,9 +291,11 @@ NOREGPARM unsigned long DbgPrint(char *format, ...)
 
 #ifdef DEBUG
 	va_list args;
+	static char buf[1024];
 
 	va_start(args, format);
-	res = printk(format, args);
+	res = vsnprintf(buf, sizeof(buf), format, args);
+	printk(buf);
 	va_end(args);
 #endif
 	return res;
