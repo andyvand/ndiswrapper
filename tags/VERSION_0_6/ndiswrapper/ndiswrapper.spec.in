@@ -1,0 +1,65 @@
+Summary: ndiswrapper allows you to use windows XP drivers for that WLAN card without proper Linux drivers.
+Name: ndiswrapper
+Version: DRV_VERSION
+Release: 1
+License: GPL
+Group: System Environment/Base
+URL: http://ndiswrapper.sourceforge.net
+Source: %{name}-%{version}.tar.gz
+
+%description
+Some wireless LAN vendors refuse to release hardware specifications or
+drivers for their products for operating systems other than Microsoft
+Windows. The ndiswrapper project makes it possible to use such
+hardware with Linux by means of a loadable kernel module that "wraps
+around" NDIS (Windows network driver API) drivers.  This rpm contains
+just the userspace tools. You will also need the kernel module rpm.
+
+%package kernel-%(uname -r)
+Summary: Ndiswrapper kernel module
+Group: System Environment/Base
+Requires: kernel = %(uname -r), ndiswrapper = DRV_VERSION
+
+%description kernel-%(uname -r)
+Kernel module for ndiswrapper.
+
+
+%prep
+%setup -q
+
+
+%build
+make all
+
+
+%install
+make install
+
+
+%clean
+rm -rf $RPM_BUILD_ROOT
+
+
+%files
+%undefine __check_files
+%defattr(0755,root,root)
+/sbin/loadndisdriver
+/usr/sbin/ndiswrapper
+/usr/sbin/wlan_radio_averatec_5110hx
+%doc README AUTHORS ChangeLog INSTALL
+
+%files kernel-%(uname -r)
+/lib/modules/%(uname -r)/misc/ndiswrapper.*
+
+%post kernel-%(uname -r)
+/sbin/depmod -a
+
+
+%postun kernel-%(uname -r)
+/sbin/depmod -a
+
+
+%changelog
+* Tue Feb  3 2004  <abennett@olin.edu> - 
+- Initial build.
+

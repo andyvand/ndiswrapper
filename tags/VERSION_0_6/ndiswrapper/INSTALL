@@ -1,0 +1,110 @@
+* Quickstart guide *
+====================
+
+Prerequisites
+-------------
+* You need a recent kernel (at least 2.6.0 or 2.4.23) with source. 
+* Make sure there is a link to the source from the modules directory:
+  '/lib/modules/<VERSION>/build' should be a link to the kernel
+  source, where <VERSION> is the version of the kernel you are running.
+* Some vendors ship ndiswrapper in their distributions. Either use
+  it or make sure you remove it before installing ndiswrapper by
+  yourself.
+  
+Upgrading
+=========
+
+If you are upgrading from version 0.4 or earlier make sure you delete any
+old version of loadndisdriver and any configuration in modules.conf and
+modprobe.conf since the new commands are not compatible with this release.
+  
+Installation
+============
+
+1. Compile and install
+----------------------
+As root run
+
+> make install
+
+This should compile both the kernel module and the userspace utilities.
+
+2. Install your windows driver
+------------------------------
+Download the Windows XP drivers, unpack it and locate the .inf for your card.
+Run ndiswrapper -i to install the driver
+
+> ndiswrapper -i </path/to/inffile.inf>
+
+This copies all necessary files to /etc/ndiswrapper and creates the config
+files for your card.
+
+After installing you can run
+
+> ndiswrapper -l
+
+to see the status of your installed drivers. If you have installed the correct
+driver you should see something like this: 
+
+Installed ndis drivers:
+bcmwl5  present
+
+Where "present" means that you have a PCI-device present that can be used with the
+driver bcmwl5.
+
+3. Load module
+--------------
+To load the module type
+
+> modprobe ndiswrapper.
+
+If you get no error the driver should now be loaded and active. You can verify
+this by checking system log (produced by 'dmesg'). If the driver is loaded
+successfully, you should see a message:
+
+wlan0: ndiswrapper ethernet device xx:xx:xx:xx:xx:xx
+
+4. Configure interface
+----------------------
+Use iwconfig to configure wireless network interface. First, locate
+the wireless interface:
+
+> iwconfig
+
+This will print the wireless interface (e.g., wlan0). In
+the examples below wlan0 is used; replace wlan0 with the interface
+reported by iwconfig above.
+
+Set the operating mode of the interface according to your setup. In
+most cases, it is Managed: 
+
+> iwconfig wlan0 mode Managed
+
+If you use encryption (WEP), set the key:
+
+> iwconfig wlan0 key restricted XXXXXXXX
+
+You can use 6 hex digits for 40-bit encryption or 10  hex digits for
+128-bit encryption. You may need to use 'open' security mode instead
+of 'restricted' depending on the setup of your AP (access point).
+
+Set the network name:
+
+> iwconfig wlan0 essid ESSID
+
+Replace ESSID with the network name used by your AP.
+
+Now, setup the network parameters for the interface wlan0. This varies
+from distribution to distribution. Refer to your distribution's
+documents on how to do this. Once this is done, you can use network
+tools to bring up the network; e.g.,
+
+> ifconfig wlan0 up
+
+5. Automate
+-----------
+Once everything works fine you can write the correct modeprobe settings to
+load ndiswrapper automatically by running
+
+> ndiswrapper -m
+
