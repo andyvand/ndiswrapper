@@ -1,4 +1,6 @@
-DRV_VERSION=$(cat ../version)
+ifndef DRV_VERSION
+DRV_VERSION=$(shell cat ../version)
+endif
 #DEBUG=1
 
 DISTFILES=Makefile coffpe.h loader.c loader.h misc_funcs.c \
@@ -94,7 +96,7 @@ obj-m := ndiswrapper.o
 ndiswrapper-objs := $(OBJS)
 
 default:
-	$(MAKE) -C $(KSRC) SUBDIRS=$(SRC_DIR) modules
+	$(MAKE) -C $(KSRC) SUBDIRS=$(SRC_DIR) DRV_VERSION=$(DRV_VERSION) modules
 
 clean:
 	rm -f $(MODULE) ndiswrapper.o $(OBJS) .ndiswrapper.ko.cmd ndiswrapper.mod.[oc] .*.o.cmd *~
