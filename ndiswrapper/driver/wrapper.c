@@ -114,7 +114,7 @@ int doquery(struct ndis_handle *handle, unsigned int oid, char *buf, int bufsize
 {
 	int res;
 
-	DBGTRACE("%s: Enter\n", __FUNCTION__);
+//	DBGTRACE("%s: Enter\n", __FUNCTION__);
 //	DBGTRACE("Calling query at %08x rva(%08x)\n", (int)handle->driver->miniport_char.query, (int)handle->driver->miniport_char.query - image_offset);
 
 	if (down_interruptible(&handle->ndis_comm_mutex))
@@ -136,7 +136,7 @@ int doquery(struct ndis_handle *handle, unsigned int oid, char *buf, int bufsize
 
 out:
 	up(&handle->ndis_comm_mutex);
-	DBGTRACE("%s: Exit\n", __FUNCTION__);
+//	DBGTRACE("%s: Exit\n", __FUNCTION__);
 	return res;
 	
 }
@@ -149,7 +149,7 @@ int dosetinfo(struct ndis_handle *handle, unsigned int oid, char *buf, int bufsi
 {
 	int res;
 
-	DBGTRACE("%s: Enter\n", __FUNCTION__);
+//	DBGTRACE("%s: Enter\n", __FUNCTION__);
 //	DBGTRACE("Calling setinfo at %08x rva(%08x)\n", (int)handle->driver->miniport_char.setinfo, (int)handle->driver->miniport_char.setinfo - image_offset);
 
 	if (down_interruptible(&handle->ndis_comm_mutex))
@@ -171,7 +171,7 @@ int dosetinfo(struct ndis_handle *handle, unsigned int oid, char *buf, int bufsi
 
 out:
 	up(&handle->ndis_comm_mutex);
-	DBGTRACE("%s: Enter\n", __FUNCTION__);
+//	DBGTRACE("%s: Enter\n", __FUNCTION__);
 	return res;
 
 }
@@ -185,12 +185,12 @@ int query_int(struct ndis_handle *handle, int oid, int *data)
 {
 	unsigned int res, written, needed;
 
-	DBGTRACE("%s: Enter\n", __FUNCTION__);
+//	DBGTRACE("%s: Enter\n", __FUNCTION__);
 	res = doquery(handle, oid, (char*)data, sizeof(int), &written, &needed);
 	if(!res)
 		return 0;
 	*data = 0;
-	DBGTRACE("%s: Enter\n", __FUNCTION__);
+//	DBGTRACE("%s: Enter\n", __FUNCTION__);
 	return res;
 }
 
@@ -1020,9 +1020,9 @@ static int ndis_init_one(struct pci_dev *pdev,
 	handle->indicate_receive_packet = &NdisMIndicateReceivePacket;
 	handle->send_complete = &NdisMSendComplete;
 	handle->send_resource_avail = &NdisMSendResourcesAvailable;
-	handle->indicate_status = &NdisIndicateStatus;	
-	handle->indicate_status_complete = &NdisIndicateStatusComplete;	
-	handle->query_complete = &NdisMQueryInformationComplete;	
+	handle->indicate_status = &NdisIndicateStatus;
+	handle->indicate_status_complete = &NdisIndicateStatusComplete;
+	handle->query_complete = &NdisMQueryInformationComplete;
 	handle->set_complete = &NdisMSetInformationComplete;
 	handle->reset_complete = &NdisMResetComplete;
 	
@@ -1061,7 +1061,7 @@ static int ndis_init_one(struct pci_dev *pdev,
 	/* do we need to power up the card explicitly? */
 	set_int(handle, NDIS_OID_PNP_SET_POWER, NDIS_PM_STATE_D0);
 	handle->pm_state = NDIS_PM_STATE_D0;
-	doreset(handle);
+//	doreset(handle);
 	
 	if(setup_dev(handle->net_dev))
 	{
