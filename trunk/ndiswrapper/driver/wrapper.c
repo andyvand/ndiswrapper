@@ -84,6 +84,8 @@ static int set_int(struct ndis_handle *handle, int oid, int data)
 }
 
 
+
+
 static int ndis_set_essid(struct net_device *dev,
 			    struct iw_request_info *info,
 			    union iwreq_data *wrqu, char *extra)
@@ -194,6 +196,7 @@ static int ndis_get_name(struct net_device *dev, struct iw_request_info *info,
 
 
 static const iw_handler	ndis_handler[] = {
+	//[SIOCGIWSENS    - SIOCIWFIRST] = ndis_get_sens,
 	[SIOCGIWNAME	- SIOCIWFIRST] = ndis_get_name,
 	[SIOCSIWESSID	- SIOCIWFIRST] = ndis_set_essid,
 	[SIOCGIWESSID	- SIOCIWFIRST] = ndis_get_essid,
@@ -207,14 +210,15 @@ static const struct iw_handler_def ndis_handler_def = {
 };
 
 
-static void call_init(struct ndis_handle *handle)
+static int call_init(struct ndis_handle *handle)
 {
-	__u32 res;
+	__u32 res, res2;
 	__u32 selected_medium;
 	__u32 mediumtypes[] = {0,1,2,3,4,5,6,7,8,9,10,11,12};
-	DBGTRACE("Calling init at %08x rva(%08x). sp:%08x\n", (int)handle->miniport_char.init, (int)handle->miniport_char.init - image_offset, getSp());
-	handle->miniport_char.init(&res, &selected_medium, mediumtypes, 13, handle, handle);
-	DBGTRACE("past init sp:%08x %08x\n\n\n", getSp(), res);
+	DBGTRACE("Calling init at %08x rva(%08x)\n", (int)handle->miniport_char.init, (int)handle->miniport_char.init - image_offset);
+	res = handle->miniport_char.init(&res2, &selected_medium, mediumtypes, 13, handle, handle);
+	DBGTRACE("past init res: %08x\n\n", res);
+	return res != 0;
 }
 
 static void call_halt(struct ndis_handle *handle)
@@ -232,6 +236,7 @@ static unsigned int call_entry(struct ndis_handle *handle)
 	DBGTRACE("Past entry: Version: %d.%d\n\n\n", handle->miniport_char.majorVersion, handle->miniport_char.minorVersion);
 
 	/* Dump addresses of driver suppoled callbacks */
+#ifdef DEBUG
 	{
 		int i;
 		int *adr = (int*) &handle->miniport_char.CheckForHangTimer;
@@ -261,13 +266,13 @@ static unsigned int call_entry(struct ndis_handle *handle)
 				"CoRequestHandler"
 */
 		};
-
 		
 		for(i = 0; i < 16; i++)
 		{
 			DBGTRACE("%08x (rva %08x):%s\n", adr[i], adr[i]?adr[i] - image_offset:0, name[i]); 
 		}
 	}
+#endif
 	return res;
 }
 
@@ -313,7 +318,6 @@ static struct iw_statistics *ndis_get_wireless_stats(struct net_device *dev)
 static int ndis_ioctl (struct net_device *dev, struct ifreq *rq, int cmd)
 {
 	int rc = -ENODEV;
-
 	DBGTRACE("%s\n", __FUNCTION__);
 	return rc;
 }
@@ -385,9 +389,9 @@ static int setup_dev(struct net_device *dev)
 	int i;
 	unsigned char mac[6];
 
-	DBGTRACE("Calling query at %08x rva(%08x). sp:%08x\n", (int)handle->miniport_char.query, (int)handle->miniport_char.query - image_offset, getSp());
+	DBGTRACE("Calling query to find mac at %08x rva(%08x)\n", (int)handle->miniport_char.query, (int)handle->miniport_char.query - image_offset);
 	res = handle->miniport_char.query(handle->adapter_ctx, 0x01010102, &mac[0], 1024, &written, &needed);
-	DBGTRACE("past query sp:%08x %08x\n\n\n", getSp(), res);
+	DBGTRACE("past query res %08x\n\n", res);
 	DBGTRACE("mac:%02x:%02x:%02x:%02x:%02x:%02x\n", mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
 	if(res)
 	{

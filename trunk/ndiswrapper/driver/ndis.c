@@ -357,14 +357,10 @@ STDCALL void NdisMQueryAdapterResources(unsigned int *status,
 	int len = 0;
 	struct pci_dev *pci_dev = handle->pci_dev;
 	struct ndis_resource_entry *entry;
-	DBGTRACE("%s handle: %08x. buf: %08x, len: %d\n", __FUNCTION__, (int)handle, (int)resource_list, *size);
-
+	DBGTRACE("%s handle: %08x. buf: %08x, len: %d. IRQ:%d\n", __FUNCTION__, (int)handle, (int)resource_list, *size, pci_dev->irq);
 
 	resource_list->version = 1;
 	resource_list->revision = 0;
-
-	DBGTRACE("irq: %d\n", pci_dev->irq);
-	
 
 	/* Put all memory and port resources */
 	i = 0;

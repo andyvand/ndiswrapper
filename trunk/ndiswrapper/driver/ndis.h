@@ -29,9 +29,9 @@
 
 int getSp(void);
 
-#define debug 1
+#define DEBUG 1
 
-#if debug > 0
+#if DEBUG > 0
 #define DBGTRACE(s, args...) printk(s, args)
 #else
 #define DBGTRACE(s, ...)
@@ -55,7 +55,7 @@ struct packed miniport_char
 	STDCALL void (*handle_interrupt)(void *ctx);
 
 	/* Start miniport driver */
-	STDCALL void (*init)(unsigned int *OpenErrorStatus, unsigned int *SelectedmediumIndex, unsigned int *MediumArray, unsigned int MediumArraySize, void *ndis_handle, void *conf_handle);
+	STDCALL unsigned int (*init)(unsigned int *OpenErrorStatus, unsigned int *SelectedmediumIndex, unsigned int *MediumArray, unsigned int MediumArraySize, void *ndis_handle, void *conf_handle);
 
 	/* Interrupt TH */
 	STDCALL void (*isr)(unsigned int *taken, unsigned int *callme, void *ctx);
