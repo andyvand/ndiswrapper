@@ -82,18 +82,14 @@ STDCALL BOOLEAN WRAP_EXPORT(KeSetTimerEx)
 {
 	unsigned long expires;
 	unsigned long repeat;
-	unsigned int ms;
 
 	TRACEENTER4("%p, %ld, %u, %p", ktimer, (long)due_time, period, kdpc);
 
-	if (ktimer == NULL)
-		return 0;
 	if (due_time < 0)
-		ms = jiffies + HZ * (-due_time) / 10000;
+		expires = jiffies + HZ * (-due_time) / TICKSPERSEC;
 	else
-		ms = HZ * due_time / 10000;
-	repeat = HZ * (period / 1000);
-	expires = HZ * ms / 1000;
+		expires = HZ * due_time / TICKSPERSEC;
+	repeat = HZ * period / TICKSPERSEC;
 	return wrapper_set_timer(ktimer->wrapper_timer, expires, repeat, kdpc);
 }
 
