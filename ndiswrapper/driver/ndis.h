@@ -212,6 +212,7 @@ struct ndis_linux_spin_lock
 };
 
 
+#define NDIS_SPIN_LOCK_MAGIC_CHAR 213
 struct ndis_spin_lock
 {
 	struct ndis_linux_spin_lock *linux_lock;

@@ -777,11 +777,14 @@ STDCALL void NdisMUnmapIoSpace(struct ndis_handle *handle,
 STDCALL void NdisAllocateSpinLock(struct ndis_spin_lock *lock)
 {
 //	DBGTRACE("%s: entry\n", __FUNCTION__);
-	lock->linux_lock = kmalloc(sizeof(struct ndis_linux_spin_lock), GFP_KERNEL);
+	lock->linux_lock = kmalloc(sizeof(struct ndis_linux_spin_lock),
+				   GFP_KERNEL);
 	if(lock->linux_lock)
 	{
-		memset(lock->linux_lock, 0, sizeof(struct ndis_linux_spin_lock));
+		memset(lock->linux_lock, 0, 
+		       sizeof(struct ndis_linux_spin_lock));
 		spin_lock_init(&lock->linux_lock->lock);
+		lock->kirql = NDIS_SPIN_LOCK_MAGIC_CHAR;
 	}
 	
 	else
@@ -806,15 +809,18 @@ STDCALL void NdisFreeSpinLock(struct ndis_spin_lock *lock)
 
 STDCALL void NdisAcquireSpinLock(struct ndis_spin_lock *lock)
 {
-	if(lock->linux_lock == 0)
+	if(lock->kirql != NDIS_SPIN_LOCK_MAGIC_CHAR || lock->linux_lock == 0)
 	{
 		printk(KERN_INFO "%s: Buggy ndis driver trying to use unintilized spinlock. Trying to recover...", DRV_NAME);
-		lock->linux_lock = kmalloc(sizeof(struct ndis_linux_spin_lock), GFP_ATOMIC);
+		lock->linux_lock = kmalloc(sizeof(struct ndis_linux_spin_lock),
+					   GFP_KERNEL);
 		if(lock->linux_lock)
 		{
 			printk("ok.\n");
-			memset(lock->linux_lock, 0, sizeof(struct ndis_linux_spin_lock));
+			memset(lock->linux_lock, 0,
+			       sizeof(struct ndis_linux_spin_lock));
 			spin_lock_init(&lock->linux_lock->lock);
+			lock->kirql = NDIS_SPIN_LOCK_MAGIC_CHAR;
 		}
 		else
 		{
