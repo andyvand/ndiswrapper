@@ -358,7 +358,7 @@ KeResetEvent(struct kevent *event)
 STDCALL static unsigned int
 KeWaitForSingleObject(void *object, unsigned int reason,
 		      unsigned int waitmode, unsigned short alertable,
-		      u64 *timeout)
+		      s64 *timeout)
 {
 	unsigned int ndis_timeout = 0;
 
@@ -368,7 +368,7 @@ KeWaitForSingleObject(void *object, unsigned int reason,
 		timeout);
 
 	if (timeout) {
-		DBGTRACE3("timeout = %ld", *timeout);
+		DBGTRACE3("timeout = %Ld", *timeout);
 		if (*timeout > 0) {
 			ndis_timeout = (*timeout) / 10000;
 		} else if (*timeout == 0) {
@@ -376,11 +376,14 @@ KeWaitForSingleObject(void *object, unsigned int reason,
 				TRACEEXIT3(return STATUS_SUCCESS);
 			else
 				TRACEEXIT3(return STATUS_TIMEOUT);
-		} else
-			ndis_timeout = jiffies_to_msecs(jiffies + msecs_to_jiffies((-(*timeout)) / 10000));
+		} else {
+			unsigned int msecs = (-(*timeout)) / 10000;
+			ndis_timeout = 1000 / HZ * (jiffies +
+						    (HZ / 1000 * msecs));
+		}
 	}
 
-	DBGTRACE3("ndis_timeout = %ld", ndis_timeout);
+	DBGTRACE3("ndis_timeout = %u", ndis_timeout);
 	if (!NdisWaitEvent(object, ndis_timeout))
 		TRACEEXIT3(return STATUS_TIMEOUT);
 
