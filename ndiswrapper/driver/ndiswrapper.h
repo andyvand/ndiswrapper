@@ -272,42 +272,42 @@ void wrap_kfree_all(void);
 #define DBG_BLOCK() while (0)
 
 #define MSG(level, fmt, ...) printk(level "ndiswrapper (%s:%d): " fmt "\n", \
-				    __FUNCTION__, __LINE__, ## __VA_ARGS__)
+				    __FUNCTION__, __LINE__ , ## __VA_ARGS__)
 #define WARNING(fmt, ...) MSG(KERN_WARNING, fmt, ## __VA_ARGS__)
-#define ERROR(fmt, ...) MSG(KERN_ERR, fmt, ## __VA_ARGS__)
-#define INFO(fmt, ...) MSG(KERN_INFO, fmt, ## __VA_ARGS__)
+#define ERROR(fmt, ...) MSG(KERN_ERR, fmt , ## __VA_ARGS__)
+#define INFO(fmt, ...) MSG(KERN_INFO, fmt , ## __VA_ARGS__)
 
 #if defined DEBUG
 #undef DBGTRACE
 #define DBGTRACE(fmt, ...) printk(KERN_INFO "ndiswrapper (%s:%d): " fmt "\n", \
-				  __FUNCTION__, __LINE__, ## __VA_ARGS__)
+				  __FUNCTION__, __LINE__ , ## __VA_ARGS__)
 #undef DBG_BLOCK
 #define DBG_BLOCK()
 #endif
 
 #if defined DEBUG && DEBUG >= 1
 #undef DBGTRACE1
-#define DBGTRACE1(fmt, ...) DBGTRACE(fmt, ## __VA_ARGS__)
+#define DBGTRACE1(fmt, ...) DBGTRACE(fmt , ## __VA_ARGS__)
 #endif
 
 #if defined DEBUG && DEBUG >= 2
 #undef DBGTRACE2
-#define DBGTRACE2(fmt, ...) DBGTRACE(fmt, ## __VA_ARGS__)
+#define DBGTRACE2(fmt, ...) DBGTRACE(fmt , ## __VA_ARGS__)
 #endif
 
 #if defined DEBUG && DEBUG >= 3
 #undef DBGTRACE3
-#define DBGTRACE3(fmt, ...) DBGTRACE(fmt, ## __VA_ARGS__)
+#define DBGTRACE3(fmt, ...) DBGTRACE(fmt , ## __VA_ARGS__)
 #endif
 
 #if defined DEBUG && DEBUG >= 4
 #undef DBGTRACE4
-#define DBGTRACE4(fmt, ...) DBGTRACE(fmt, ## __VA_ARGS__)
+#define DBGTRACE4(fmt, ...) DBGTRACE(fmt , ## __VA_ARGS__)
 #endif
 
 #if defined DEBUG && DEBUG >= 5
 #undef DBGTRACE5
-#define DBGTRACE5(fmt, ...) DBGTRACE(fmt, ## __VA_ARGS__)
+#define DBGTRACE5(fmt, ...) DBGTRACE(fmt , ## __VA_ARGS__)
 #endif
 
 #define TRACEENTER(fmt, ...) DBGTRACE("Enter " fmt , ## __VA_ARGS__)

@@ -1512,10 +1512,18 @@ static int wpa_associate(struct net_device *dev,
 		    wpa_assoc_info.group_suite != CIPHER_WEP40)
 			TRACEEXIT(return -1);
 		auth_mode = handle->auth_mode;
+#if 0
+		if (wpa_assoc_info.auth_alg & AUTH_ALG_SHARED_KEY)
+			auth_mode = AUTHMODE_RESTRICTED;
+		else
+			auth_mode = AUTHMODE_OPEN;
+#endif
 		break;
 	default:
 		TRACEEXIT(return -1);
 	}
+
+	set_mode(handle, NDIS_MODE_INFRA);
 
 	if (set_auth_mode(handle, auth_mode))
 		TRACEEXIT(return -1);
@@ -1600,10 +1608,10 @@ static int wpa_set_auth_alg(struct net_device *dev,
 	struct ndis_handle *handle = (struct ndis_handle *)dev->priv;
 	int mode;
 	
-	if (wrqu->param.value == AUTH_ALG_OPEN_SYSTEM)
-		mode = AUTHMODE_OPEN;
-	else if (wrqu->param.value == AUTH_ALG_SHARED_KEY)
+	if (wrqu->param.value & AUTH_ALG_SHARED_KEY)
 		mode = AUTHMODE_RESTRICTED;
+	else if (wrqu->param.value & AUTH_ALG_OPEN_SYSTEM)
+		mode = AUTHMODE_OPEN;
 	else
 		TRACEEXIT(return -1);
 
