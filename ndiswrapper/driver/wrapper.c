@@ -254,6 +254,30 @@ static void call_halt(struct ndis_handle *handle)
 	TRACEEXIT1(return);
 }
 
+static void free_timers(struct ndis_handle *handle)
+{
+	char x;
+
+	/* Cancel any timers left by bugyy windows driver
+	 * Also free the memory for timers
+	 */
+	while (!list_empty(&handle->timers))
+	{
+		struct wrapper_timer *timer =
+			(struct wrapper_timer*) handle->timers.next;
+		DBGTRACE1("fixing up timer %p, timer->list %p",
+			  timer, &timer->list);
+		list_del(&timer->list);
+		if (timer->active)
+		{
+			WARNING("%s", "Fixing an active timer left "
+				" by buggy windows driver");
+			wrapper_cancel_timer(timer, &x); 
+		}
+		wrap_kfree(timer);
+	}
+}
+
 static unsigned int call_entry(struct ndis_driver *driver)
 {
 	int res;
@@ -310,7 +334,8 @@ static void hangcheck_bh(void *data)
 	if(handle->driver->miniport_char.hangcheck(handle->adapter_ctx))
 	{
 		int res;
-		INFO("%s", "Hangcheck returned true. Resetting!");
+		INFO("Hangcheck returned true. Resetting %s!",
+		     handle->net_dev->name);
 		res = doreset(handle);
 		DBGTRACE3("reset returns %08X, %d", res, handle->reset_status);
 	}
@@ -1031,8 +1056,7 @@ static void check_capa(struct ndis_handle *handle)
 		 res, needed, sizeof(ndis_key));
 	if (res != NDIS_STATUS_INVALID_DATA)
 		TRACEEXIT1(return);
-	res = doquery(handle, NDIS_OID_ASSOC_INFO,
-		      (char *)&ndis_assoc_info,
+	res = doquery(handle, NDIS_OID_ASSOC_INFO, (char *)&ndis_assoc_info,
 		      sizeof(ndis_assoc_info), &written, &needed);
 	DBGTRACE("assoc info returns %d", res);
 	if (res == NDIS_STATUS_NOT_SUPPORTED)
@@ -1042,10 +1066,10 @@ static void check_capa(struct ndis_handle *handle)
 	DBGTRACE1("%s", "wpa is supported");
 	DBGTRACE("capbilities = %ld\n", handle->capa);
 	if (test_bit(CAPA_AES, &handle->capa))
-		INFO("%s supports WPA with CCMP/AES and TKIP ciphers",
-			handle->net_dev->name);
+		printk(KERN_INFO "%s supports WPA with CCMP/AES and "
+		       "TKIP ciphers", handle->net_dev->name);
 	else
-		INFO("%s", "driver supports WPA with TKIP cipher only");
+		printk(KERN_INFO "%s", "driver supports WPA with TKIP cipher");
 	TRACEEXIT1(return);
 }
 
@@ -1191,7 +1215,6 @@ static int ndis_init_one(struct pci_dev *pdev, const struct pci_device_id *ent)
 
 	handle->wep_mode = WEP_NOKEY;
 	handle->auth_mode = AUTHMODE_OPEN;
-	handle->encr_alg = WPA_ALG_NONE;
 	handle->capa = 0;
 
 	wrap_spin_lock_init(&handle->recycle_packets_lock);
@@ -1317,6 +1340,7 @@ static void __devexit ndis_remove_one(struct pci_dev *pdev)
 		unregister_netdev(handle->net_dev);
 	call_halt(handle);
 
+	free_timers(handle);
 	if(handle->multicast_list)
 		kfree(handle->multicast_list);
 	if(handle->net_dev)

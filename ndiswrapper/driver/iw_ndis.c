@@ -285,7 +285,8 @@ static int iw_get_tx_power(struct net_device *dev,
 
 	res = doquery(handle, NDIS_OID_TX_POWER_LEVEL, (char*)&ndis_power,
 		      sizeof(ndis_power), &written, &needed);
-	if (res == NDIS_STATUS_NOT_SUPPORTED)
+	/* Centrino driver returns NDIS_STATUS_INVALID_OID (why?) */
+	if (res == NDIS_STATUS_NOT_SUPPORTED || res == NDIS_STATUS_INVALID_OID)
 		return -EOPNOTSUPP;
 
 	wrqu->txpower.flags = IW_TXPOW_MWATT;
@@ -1159,9 +1160,8 @@ static int wpa_set_wpa(struct net_device *dev, struct iw_request_info *info,
 	struct ndis_handle *handle = (struct ndis_handle *)dev->priv;
 	
 	TRACEENTER("%s", "");
-	DBGTRACE("flags = %d, encr_alg = %d, handle->capa = %ld, "
-		 "handle->encr_alg = %d", wrqu->data.flags, handle->encr_alg,
-	       handle->capa, handle->encr_alg);
+	DBGTRACE("flags = %d,  handle->capa = %ld",
+		 wrqu->data.flags, handle->capa);
 	
 	if (test_bit(CAPA_WPA, &handle->capa))
 		TRACEEXIT(return 0);
@@ -1338,9 +1338,6 @@ static int wpa_set_key(struct net_device *dev, struct iw_request_info *info,
 		TRACEEXIT(return -EINVAL);
 	}
 	
-	/* FIXME: check for TKIP -> encr mode */
-	handle->encr_alg = wpa_key->alg;
-	DBGTRACE("encr_alg = %d", handle->encr_alg);
 	TRACEEXIT(return 0);
 }
 
