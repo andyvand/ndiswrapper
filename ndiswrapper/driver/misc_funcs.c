@@ -216,6 +216,12 @@ void my_srand(unsigned int seed)
 	net_srandom(seed);
 }
 
+int atoi(const char *ptr)
+{
+	int i = simple_strtol(ptr, NULL, 10);
+	return i;
+}
+
 STDCALL void WRITE_REGISTER_ULONG(unsigned int reg, unsigned int val)
 {
 	//DBGTRACE("%s: %08lx=%08lx\n", __FUNCTION__, reg, val);
