@@ -613,7 +613,7 @@ static int start_driver(struct ndis_driver *driver)
 {
 	int i, ret, res;
 	struct unicode_string reg_string;
-	char *reg_path = "\0\0t0m0p0";
+	char *reg_path = "0/0t0m0p0";
 
 	TRACEENTER1("");
 

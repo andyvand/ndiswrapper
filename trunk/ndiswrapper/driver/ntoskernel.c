@@ -934,8 +934,8 @@ int kthread_trampoline(void *data)
 	return 0;
 }
 
-STDCALL static unsigned long WRAP_EXPORT(PsCreateSystemThread)
-	(void **phandle, unsigned long access, void *obj_attr, void *process,
+STDCALL static NT_STATUS WRAP_EXPORT(PsCreateSystemThread)
+	(void **phandle, ULONG access, void *obj_attr, void *process,
 	 void *client_id, void (*start_routine)(void *) STDCALL, void *context)
 {
 	struct trampoline_context *ctx;
@@ -943,7 +943,7 @@ STDCALL static unsigned long WRAP_EXPORT(PsCreateSystemThread)
 	int pid;
 #endif
 
-	TRACEENTER2("phandle = %p, access = %lu, obj_attr = %p, process = %p, "
+	TRACEENTER2("phandle = %p, access = %u, obj_attr = %p, process = %p, "
 	            "client_id = %p, start_routine = %p, context = %p",
 	            phandle, access, obj_attr, process, client_id,
 	            start_routine, context);

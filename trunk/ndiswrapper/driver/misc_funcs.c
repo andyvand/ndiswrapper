@@ -27,7 +27,8 @@ struct wrap_spinlock wrap_allocs_lock;
 void *wrap_kmalloc(size_t size, int flags)
 {
 	struct wrap_alloc *alloc;
-	TRACEENTER4("size = %ld, flags = %d", size, flags);
+	TRACEENTER4("size = %lu, flags = %d", (unsigned long)size, flags);
+
 	if ((flags & GFP_ATOMIC) || irqs_disabled())
 		alloc = kmalloc(sizeof(*alloc), GFP_ATOMIC);
 	else
