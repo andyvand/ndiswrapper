@@ -1035,10 +1035,20 @@ STDCALL void NdisMInitializeTimer(struct ndis_timer **timer_handle,
 	timer->active = 0;
 	*timer_handle = timer;
 	timer->timer_handle = timer_handle;
-	list_add(&timer->list, &handle->timers);
+	if (handle)
+		list_add(&timer->list, &handle->timers);
 	DBGTRACE("Allocated timer at %08x\n", (int)timer);
 }
 
+STDCALL void NdisInitializeTimer(struct ndis_timer **timer,
+								 void *func, void *ctx)
+{
+	DBGTRACE("%s(entry): %p, %p, %p\n",
+			 __FUNCTION__, timer, func, ctx);
+	NdisMInitializeTimer(timer, NULL, func, ctx);
+	DBGTRACE("%s(exit): %p, %p, %p\n",
+			 __FUNCTION__, timer, func, ctx);
+}
 
 /*
  * Start a one shot timer.
@@ -1115,6 +1125,10 @@ STDCALL void NdisMCancelTimer(struct ndis_timer **timer_handle, char *canceled)
 	return;
 }
 
+STDCALL void NdisCancelTimer(struct ndis_timer **timer, char *cancelled)
+{
+	NdisMCancelTimer(timer, cancelled);
+}
 
 /*
  * The driver asks ndis what mac it should use. If this
@@ -1784,21 +1798,6 @@ STDCALL int NdisMRegisterDevice(struct ndis_handle *handle,
 STDCALL int NdisMDeregisterDevice(struct ndis_handle *handle)
 {
 	return NDIS_STATUS_SUCCESS;
-}
-
-STDCALL void NdisCancelTimer(struct ndis_timer **timer, char *cancelled)
-{
-	NdisMCancelTimer(timer, cancelled);
-}
-
-STDCALL void NdisInitializeTimer(struct ndis_timer **timer,
-								 void *func, void *ctx)
-{
-	DBGTRACE("%s(entry): %p, %p, %p\n",
-			 __FUNCTION__, timer, func, ctx);
-	NdisMInitializeTimer(timer, NULL, func, ctx);
-	DBGTRACE("%s(exit): %p, %p, %p\n",
-			 __FUNCTION__, timer, func, ctx);
 }
 
 STDCALL void NdisMGetDeviceProperty(struct ndis_handle handle,
