@@ -1,6 +1,6 @@
-VERSION=0.4+CVS
+DRV_VERSION=0.4+CVS
 
-distdir=ndiswrapper-${VERSION}
+distdir=ndiswrapper-${DRV_VERSION}
 distarchive=${distdir}.tar.gz
 
 DISTFILES=AUTHORS ChangeLog INSTALL Makefile README ndiswrapper.spec.in
@@ -9,14 +9,14 @@ DIST_SUBDIRS=utils driver
 .PHONY: all
 
 all: 
-	make -C driver VERSION=${VERSION} 
-	make -C utils VERSION=${VERSION}
+	make -C driver DRV_VERSION=${DRV_VERSION} 
+	make -C utils DRV_VERSION=${DRV_VERSION}
 
 	
 .PHONY: install
 install:
-	make -C driver VERSION=${VERSION} install
-	make -C utils VERSION=${VERSION} install
+	make -C driver DRV_VERSION=${DRV_VERSION} install
+	make -C utils DRV_VERSION=${DRV_VERSION} install
 
 .PHONY: clean
 clean:
@@ -45,7 +45,7 @@ dist:
 	tar cfz ${distarchive} ${distdir}
 	
 rpm: dist ndiswrapper.spec.in
-	cat ndiswrapper.spec.in | sed s/VERSION/${VERSION}/ >ndiswrapper.spec
+	cat ndiswrapper.spec.in | sed s/DRV_VERSION/${DRV_VERSION}/ >ndiswrapper.spec
 	cp ${distarchive} /usr/src/redhat/SOURCES
 	rpmbuild -ba ndiswrapper.spec
 

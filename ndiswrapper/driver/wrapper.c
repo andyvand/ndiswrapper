@@ -38,6 +38,10 @@
 #include "loader.h"
 #include "ndis.h"
 
+#ifndef DRV_VERSION
+#error You must run make from the toplevel directory
+#endif
+
 /* Define this if you are developing and ndis_init_one crashes.
    When using the old PCI-API a reboot is not needed when this
    function crashes. A simple rmmod -f will do the trick and
