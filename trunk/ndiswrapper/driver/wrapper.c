@@ -368,13 +368,12 @@ static void statcollector_bh(void *data)
 
 	res = doquery(handle, NDIS_OID_RSSI, (char *)&rssi, sizeof(rssi),
 		      &written, &needed);
-	if (!res)
-		iw_stats->qual.level = rssi;
+	iw_stats->qual.level = rssi;
 
 	memset(&ndis_stats, 0, sizeof(ndis_stats));
 	res = doquery(handle, NDIS_OID_STATISTICS, (char *)&ndis_stats,
 		      sizeof(ndis_stats), &written, &needed);
-	if (!res)
+	if (res != NDIS_STATUS_NOT_SUPPORTED)
 	{
 		iw_stats->discard.retries = (__u32)ndis_stats.retry +
 			(__u32)ndis_stats.multi_retry;
@@ -923,7 +922,7 @@ static void wrapper_worker_proc(void *param)
 		res = doquery(handle, NDIS_OID_ASSOC_INFO,
 			      assoc_info, sizeof(ndis_assoc_info) + 512,
 			      &written, &needed);
-		if (res)
+		if (res == NDIS_STATUS_NOT_SUPPORTED)
 		{
 			ERROR("query assoc_info failed (%08X)", res);
 			kfree(assoc_info);
@@ -1036,7 +1035,7 @@ static void check_capa(struct ndis_handle *handle)
 		      (char *)&ndis_assoc_info,
 		      sizeof(ndis_assoc_info), &written, &needed);
 	DBGTRACE("assoc info returns %d", res);
-	if (res)
+	if (res == NDIS_STATUS_NOT_SUPPORTED)
 		TRACEEXIT1(return);
 	set_bit(CAPA_WPA, &handle->capa);
 

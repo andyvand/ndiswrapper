@@ -1351,6 +1351,8 @@ irqreturn_t ndis_irq_th(int irq, void *data, struct pt_regs *pt_regs)
 	struct ndis_irq *ndis_irq = (struct ndis_irq *) data;
 	struct ndis_handle *handle = ndis_irq->handle; 
 
+	if (ndis_irq->enabled == 0)
+		return IRQ_NONE;
 	/* We need a lock here in order to implement NdisMSynchronizeWithInterrupt,
 	  however the ISR is really fast anyway so it should not hurt performance */
 	spin_lock(ndis_irq->spinlock);
