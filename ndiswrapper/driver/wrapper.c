@@ -1293,9 +1293,9 @@ int ndiswrapper_pm_callback(struct pm_dev *pm_dev, pm_request_t rqst,
 		DBGTRACE("%s: detaching device\n", dev->name);
 		netif_device_detach(dev);
 
-		if (*((int *)data) == 1)
+		if ((int)data == 1)
 			handle->pm_state = NDIS_PM_STATE_D1;
-		else if (*((int *)data) == 2)
+		else if ((int)data == 2)
 			handle->pm_state = NDIS_PM_STATE_D2;
 		else
 			handle->pm_state = NDIS_PM_STATE_D3;
@@ -1484,6 +1484,7 @@ static int __devinit ndis_init_one(struct pci_dev *pdev,
 	else
 		handle->pm->data = dev;
 
+	netif_start_queue(dev);
 	return 0;
 
 out_start:

@@ -328,6 +328,7 @@ struct packed ndis_handle
 	int key_len ;
 	unsigned char key_val[IW_ENCODING_TOKEN_MAX] ;
 	struct pm_dev *pm;
+	unsigned int pm_state;
 
 	u32 link_status;
 };
