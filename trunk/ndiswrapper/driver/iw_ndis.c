@@ -713,9 +713,9 @@ static int iw_set_encr(struct net_device *dev, struct iw_request_info *info,
 			TRACEEXIT1(return -EINVAL);
 		}
 
-		/* set pairwise key */
+		/* set group key as transmit key */
 		ndis_key.length = encr_info->keys[index].length;
-		ndis_key.index = 0 | (1 << 31) | (1 << 30);
+		ndis_key.index = 0 | (1 << 31);
 		memcpy(ndis_key.key, encr_info->keys[index].key,
 		       ndis_key.length);
 		res = miniport_set_info(handle, NDIS_OID_ADD_WEP,
