@@ -470,8 +470,7 @@ STDCALL void KeInitializeSpinLock(KSPIN_LOCK *lock)
 
 STDCALL void KeAcquireSpinLock(KSPIN_LOCK *lock, KIRQL *irql)
 {
-	printk(KERN_INFO "%s: lock = %p, *lock = %p\n",
-		   __FUNCTION__, lock, (void *)*lock);
+	DBGTRACE("%s: lock = %p, *lock = %p\n", __FUNCTION__, lock, (void *)*lock);
 	if (lock && *lock)
 		spin_lock((spinlock_t *)(*lock));
 	else
@@ -481,8 +480,7 @@ STDCALL void KeAcquireSpinLock(KSPIN_LOCK *lock, KIRQL *irql)
 
 STDCALL void KeReleaseSpinLock(KSPIN_LOCK *lock, KIRQL *oldirql)
 {
-	printk(KERN_INFO "%s: lock = %p, *lock = %p\n",
-		   __FUNCTION__, lock, (void *)*lock);
+	DBGTRACE("%s: lock = %p, *lock = %p\n", __FUNCTION__, lock, (void *)*lock);
 	if (lock && *lock)
 		spin_unlock((spinlock_t *)(*lock));
 	else
