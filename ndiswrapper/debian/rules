@@ -1,0 +1,89 @@
+#!/usr/bin/make -f
+# Copyright (C) 2004 Erik Rigtorp
+# Standard BSD-licence applies
+
+# Uncomment this to turn on verbose mode. 
+#export DH_VERBOSE=1
+export DH_OPTIONS
+
+# module-assistant stuff
+PACKAGE = ndiswrapper-modules
+MA_DIR ?= /usr/share/modass
+-include $(MA_DIR)/include/generic.make
+-include $(MA_DIR)/include/common-rules.make
+
+# dpatch stuff
+include /usr/share/dpatch/dpatch.make
+
+kdist_clean: prep-deb-files
+	dh_clean
+	$(MAKE) clean
+
+kdist_config: prep-deb-files
+
+binary-modules: kdist_config
+	dh_testdir
+	dh_testroot
+	dh_clean -k
+	dh_installdirs lib/modules/$(KVERS)/misc
+        
+	# build and install the module
+	$(MAKE) KPKG_EXTRAV_ARG=$(KPKG_EXTRAV_ARG) KSRC=$(KSRC) \
+	KVER=$(KVERS) \
+	INST_DIR=debian/tmp/lib/modules/$(KVERS)/misc/ install
+        
+	dh_installdocs 
+	dh_installchangelogs
+	dh_compress
+	dh_fixperms
+	dh_installdeb
+	dh_gencontrol -- -v$(VERSION)
+	dh_md5sums
+	dh_builddeb --destdir=$(DEB_DESTDIR)
+
+
+build: patch 
+	dh_testdir
+	# build the utils
+	$(MAKE) -C utils
+
+clean: unpatch
+	dh_testdir
+	dh_testroot
+	-$(MAKE) clean
+	dh_clean
+
+binary: build
+	dh_testdir
+	dh_testroot
+	dh_clean -k
+	
+	dh_installdirs	
+	dh_install
+	
+	chown -R root.root debian/ndiswrapper-source/usr/src/modules
+	
+	# entar the module source
+	tar -zcf debian/ndiswrapper-source/usr/src/ndiswrapper-source.tar.gz \
+	-C debian/ndiswrapper-source/usr/src \
+	modules/ndiswrapper/
+	rm -rf debian/ndiswrapper-source/usr/src/modules/
+
+	ln -s ../packages/default.sh \
+	debian/ndiswrapper/usr/share/modass/overrides/ndiswrapper-source
+
+	dh_installdocs
+	dh_installman
+	dh_installchangelogs ChangeLog 
+
+	dh_strip 
+	dh_compress 
+	dh_fixperms 
+	dh_installdeb
+	dh_perl
+	dh_shlibdeps
+	dh_gencontrol 
+	dh_md5sums
+	dh_builddeb
+
+.PHONY: build clean binary binary-modules kdist_config kdist_clean
