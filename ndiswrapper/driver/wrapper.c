@@ -75,9 +75,10 @@ int doreset(struct ndis_handle *handle)
 	int res;
 	int addressing_reset;
 	DBGTRACE("%s: Enter\n", __FUNCTION__);
-	down(&handle->reset_mutex);
+//	down_interruptible(&handle->ndis_comm_mutex);
+	spin_lock_bh(&handle->ndis_comm_lock);
 
-	handle->reset_wait_done = 0;
+	handle->ndis_comm_done = 0;
 	res = handle->driver->miniport_char.reset(&addressing_reset, handle->adapter_ctx);
 
 	if(!res)
@@ -86,12 +87,14 @@ int doreset(struct ndis_handle *handle)
 	if(res != NDIS_STATUS_PENDING)
 		goto out;
 		
-	wait_event(handle->reset_wqhead, (handle->reset_wait_done == 1));
+	wait_event_interruptible(handle->ndis_comm_wqhead,
+				 (handle->ndis_comm_done == 1));
 	 
-	res = handle->reset_wait_res;
+	res = handle->ndis_comm_res;
 
 out:
-	up(&handle->reset_mutex);
+	spin_unlock_bh(&handle->ndis_comm_lock);
+//	up(&handle->ndis_comm_mutex);
 	DBGTRACE("%s: Exit\n", __FUNCTION__);
 	return res;
 	
@@ -106,9 +109,10 @@ int doquery(struct ndis_handle *handle, unsigned int oid, char *buf, int bufsize
 	int res;
 
 	DBGTRACE("%s: Enter\n", __FUNCTION__);
-	down(&handle->query_set_mutex);
+//	down_interruptible(&handle->ndis_comm_mutex);
+	spin_lock_bh(&handle->ndis_comm_lock);
 
-	handle->query_set_wait_done = 0;
+	handle->ndis_comm_done = 0;
 //	DBGTRACE("Calling query at %08x rva(%08x)\n", (int)handle->driver->miniport_char.query, (int)handle->driver->miniport_char.query - image_offset);
 	res = handle->driver->miniport_char.query(handle->adapter_ctx, oid, buf, bufsize, written, needed);
 
@@ -118,12 +122,14 @@ int doquery(struct ndis_handle *handle, unsigned int oid, char *buf, int bufsize
 	if(res != NDIS_STATUS_PENDING)
 		goto out;
 		
-	wait_event(handle->query_set_wqhead, (handle->query_set_wait_done == 1));
+	wait_event_interruptible(handle->ndis_comm_wqhead,
+				 (handle->ndis_comm_done == 1));
 	 
-	res = handle->query_set_wait_res;
+	res = handle->ndis_comm_res;
 
 out:
-	up(&handle->query_set_mutex);
+	spin_unlock_bh(&handle->ndis_comm_lock);
+//	up(&handle->ndis_comm_mutex);
 	DBGTRACE("%s: Exit\n", __FUNCTION__);
 	return res;
 	
@@ -138,9 +144,10 @@ int dosetinfo(struct ndis_handle *handle, unsigned int oid, char *buf, int bufsi
 	int res;
 
 	DBGTRACE("%s: Enter\n", __FUNCTION__);
-	down(&handle->query_set_mutex);
+//	down_interruptible(&handle->ndis_comm_mutex);
+	spin_lock_bh(&handle->ndis_comm_lock);
 	
-	handle->query_set_wait_done = 0;
+	handle->ndis_comm_done = 0;
 //	DBGTRACE("Calling setinfo at %08x rva(%08x)\n", (int)handle->driver->miniport_char.setinfo, (int)handle->driver->miniport_char.setinfo - image_offset);
 	res = handle->driver->miniport_char.setinfo(handle->adapter_ctx, oid, buf, bufsize, written, needed);
 
@@ -150,12 +157,14 @@ int dosetinfo(struct ndis_handle *handle, unsigned int oid, char *buf, int bufsi
 	if(res != NDIS_STATUS_PENDING)
 		goto out;
 		
-	wait_event(handle->query_set_wqhead, (handle->query_set_wait_done == 1));
+	wait_event_interruptible(handle->ndis_comm_wqhead,
+				 (handle->ndis_comm_done == 1));
 		
-	res = handle->query_set_wait_res;
+	res = handle->ndis_comm_res;
 
 out:
-	up(&handle->query_set_mutex);
+	spin_unlock_bh(&handle->ndis_comm_lock);
+//	up(&handle->ndis_comm_mutex);
 	DBGTRACE("%s: Enter\n", __FUNCTION__);
 	return res;
 
@@ -575,7 +584,7 @@ static int send_packet(struct ndis_handle *handle, struct ndis_packet *packet)
 
 	DBGTRACE("%s: packet = %p\n", __FUNCTION__, packet);
 
-	spin_lock(&handle->send_packet_lock);
+	spin_lock_bh(&handle->ndis_comm_lock);
 	if(handle->driver->miniport_char.send_packets)
 	{
 		struct ndis_packet *packets[1];
@@ -605,7 +614,7 @@ static int send_packet(struct ndis_handle *handle, struct ndis_packet *packet)
 		DBGTRACE("%s: No send handler\n", __FUNCTION__);
 		res = NDIS_STATUS_FAILURE;
 	}
-	spin_unlock(&handle->send_packet_lock);
+	spin_unlock_bh(&handle->ndis_comm_lock);
 
 	DBGTRACE("send_packets returning %08X\n", res);
 
@@ -620,12 +629,10 @@ static void xmit_bh(void *param)
 	int res;
 
 	DBGTRACE("%s: Enter: send status is %08X\n", __FUNCTION__, handle->send_status);
-	while (1)
+	while (handle->send_status == 0)
 	{
-		res = handle->send_status;
-
 		spin_lock_bh(&handle->xmit_ring_lock);
-		if (res || !handle->xmit_ring_pending)
+		if (!handle->xmit_ring_pending)
 		{
 			spin_unlock_bh(&handle->xmit_ring_lock);
 			break;
@@ -695,7 +702,7 @@ static void xmit_bh(void *param)
 			netif_wake_queue(handle->net_dev);
 		spin_unlock_bh(&handle->xmit_ring_lock);
 	}
-	DBGTRACE("%s: Exit, send status = %08X\n", __FUNCTION__, res);
+	DBGTRACE("%s: Exit\n", __FUNCTION__);
 }
 
 /*
@@ -878,10 +885,13 @@ static int setup_dev(struct net_device *dev)
 	memset(&wrqu, 0, sizeof(wrqu));
 
 	wrqu.mode = IW_MODE_INFRA;
-
 	if (ndis_set_mode(dev, NULL, &wrqu, NULL))
 		printk(KERN_ERR "%s: Unable to set managed mode\n", DRV_NAME);
 
+	wrqu.essid.flags = 0;
+	wrqu.essid.length = 1;
+	if (ndis_set_essid(dev, NULL, &wrqu, NULL))
+		printk(KERN_ERR "%s: Unable to set empty essid\n", DRV_NAME);
 
 	res = query_int(handle, OID_802_3_MAXIMUM_LIST_SIZE, &i);
 	if(res == NDIS_STATUS_SUCCESS)
@@ -966,11 +976,9 @@ static int ndis_init_one(struct pci_dev *pdev,
 	handle->net_dev = dev;
 	pci_set_drvdata(pdev, handle);
 
-	init_MUTEX(&handle->query_set_mutex);
-	init_waitqueue_head(&handle->query_set_wqhead);
-
-	init_MUTEX(&handle->reset_mutex);
-	init_waitqueue_head(&handle->reset_wqhead);
+	init_MUTEX(&handle->ndis_comm_mutex);
+	spin_lock_init(&handle->ndis_comm_lock);
+	init_waitqueue_head(&handle->ndis_comm_wqhead);
 
 	handle->send_status = 0;
 	handle->packet = NULL;
@@ -1125,7 +1133,6 @@ static void __devexit ndis_remove_one(struct pci_dev *pdev)
 		free_netdev(handle->net_dev);
 #endif
 
-
 	pci_release_regions(pdev);
 	pci_disable_device(pdev);
 	pci_set_drvdata(pdev, NULL);
@@ -1256,8 +1263,8 @@ static int add_driver(struct ndis_driver *driver)
 {
 	struct ndis_driver *tmp;
 	int dup = 0;
-	spin_lock(&driverlist_lock);
 
+	spin_lock_bh(&driverlist_lock);
 	list_for_each_entry(tmp, &ndis_driverlist, list)
 	{
 		if(strcmp(tmp->name, driver->name) == 0)
@@ -1268,7 +1275,7 @@ static int add_driver(struct ndis_driver *driver)
 	}
 	if(!dup)
 		list_add(&driver->list, &ndis_driverlist);
-	spin_unlock(&driverlist_lock);
+	spin_unlock_bh(&driverlist_lock);
 	if(dup)
 	{
 		printk(KERN_ERR "Cannot add duplicate driver\n");
@@ -1448,10 +1455,10 @@ static void unload_driver(struct ndis_driver *driver)
 			ndis_remove_one(pdev);
 	}
 #endif
-	spin_lock(&driverlist_lock);
+	spin_lock_bh(&driverlist_lock);
 	if(driver->list.next)
 		list_del(&driver->list);
-	spin_unlock(&driverlist_lock);
+	spin_unlock_bh(&driverlist_lock);
 
 	if(driver->image)
 		vfree(driver->image);
@@ -1541,13 +1548,14 @@ static int misc_ioctl(struct inode *inode, struct file *file, unsigned int cmd, 
 			return -EINVAL;
 		else
 		{
-			device = add_device(driver, &put_device);
+			if (!(device = add_device(driver, &put_device)))
+				return -EINVAL;
 			driver->current_device = device;
 			driver->nr_devices++;
 			device->driver = driver;
 		}
 		break;
-		
+
 	case NDIS_STARTDRIVER:
 		if (!driver)
 			return -EINVAL;
@@ -1608,9 +1616,9 @@ static int __init wrapper_init(void)
 	char *env[] = {0};	
 	int err;
 
-	printk(KERN_INFO "ndiswrapper version %s loaded\n", DRV_VERSION);
+	printk(KERN_INFO "%s version %s loaded\n", DRV_NAME, DRV_VERSION);
         if ( (err = misc_register(&wrapper_misc)) < 0 ) {
-                printk(KERN_ERR "misc_register failed\n");
+                printk(KERN_ERR "%s: misc_register failed\n", DRV_NAME);
 		return err;
         }
 
@@ -1620,11 +1628,14 @@ static int __init wrapper_init(void)
 
 	init_ndis_work();
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
-	call_usermodehelper("/sbin/loadndisdriver", argv, env, 1);
+	err = call_usermodehelper("/sbin/loadndisdriver", argv, env, 1);
 #else
-	call_usermodehelper("/sbin/loadndisdriver", argv, env);
+	err = call_usermodehelper("/sbin/loadndisdriver", argv, env);
 #endif
 
+	if (err)
+		printk(KERN_INFO "%s: loadndiswrapper failed (%d)\n",
+		       DRV_NAME, err);
 	/* Wait a little to let card power up otherwise ifup might fail on boot */
 	set_current_state(TASK_INTERRUPTIBLE);
 	schedule_timeout(2*HZ);

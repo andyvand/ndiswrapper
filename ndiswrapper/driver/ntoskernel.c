@@ -289,6 +289,7 @@ NOREGPARM unsigned long DbgPrint(char *format, ...)
 
 	va_start(args, format);
 	res = vsnprintf(buf, sizeof(buf), format, args);
+	printk("DbgPrint: ");
 	printk(buf);
 	va_end(args);
 #endif
@@ -298,7 +299,7 @@ NOREGPARM unsigned long DbgPrint(char *format, ...)
 
 void DbgBreakPoint(void)
 {
-	UNIMPL();
+	printk("Warning: Your Windows driver called DbgBreakPoint()! We should raise a blue screen now... ;o)\n");
 }
 
 void IofCompleteRequest(void){UNIMPL();}

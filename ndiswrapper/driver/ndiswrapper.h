@@ -54,7 +54,7 @@
 	dma_map_single(&pci_dev->dev,addr,size,direction)
 #define PCI_DMA_UNMAP_SINGLE(pci_dev,dma_handle,size,direction) \
 	dma_unmap_single(&pci_dev->dev,dma_handle,size,direction)
-#else
+#else // linux version <= 2.5.41
 #define PCI_DMA_ALLOC_COHERENT(dev,size,dma_handle) \
 	pci_alloc_consistent(dev,size,dma_handle)
 #define PCI_DMA_FREE_COHERENT(dev,size,cpu_addr,dma_handle) \
@@ -68,7 +68,12 @@
 #define INIT_WORK INIT_TQUEUE
 #define schedule_work schedule_task
 #define flush_scheduled_work flush_scheduled_tasks
-#endif
+#ifdef CONFIG_PREEMPT
+#define in_atomic() ((preempt_count() & ~PREEMPT_ACTIVE) != kernel_locked())
+#else
+#define in_atomic() 1
+#endif // CONFIG_PREEMPT
+#endif // LINUX_VERSION_CODE
 
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,4,23)
 #define HAVE_ETHTOOL 1
