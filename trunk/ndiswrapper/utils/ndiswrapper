@@ -21,12 +21,12 @@ my @sections;
 my %strings;
 my %version;
 my $driver_name;
-my $confdir = "/etc/ndiswrapper";
+my $confdir = "/tmp/ndiswrapper";
 my $instdir;
 my %fuzzlist;
 
-#Backlist of files not to install.
-my @copy_blacklist = ("prismusb.sys");
+#Blacklist of files not to install.
+my @copy_blacklist;
 
 #Fixup list for parameters. 
 my %param_fixlist = ("EnableRadio|0" => "EnableRadio|1",
