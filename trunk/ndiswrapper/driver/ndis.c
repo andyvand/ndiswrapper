@@ -1409,6 +1409,33 @@ STDCALL unsigned long NDIS_BUFFER_TO_SPAN_PAGES(void *buffer)
 }
 
 /*
+ *
+ * Called via function pointer if query returns NDIS_STATUS_PENDING
+ */
+STDCALL void NdisMQueryInformationComplete(struct ndis_handle *handle, unsigned int status)
+{
+	DBGTRACE("%s: %08X\n", __FUNCTION__, status);
+
+	handle->query_set_wait_res = status;
+	handle->query_set_wait_done = 1;
+	wake_up(&handle->query_set_wqhead);
+}
+
+/*
+ *
+ * Called via function pointer if setinfo returns NDIS_STATUS_PENDING
+ */
+STDCALL void NdisMSetInformationComplete(struct ndis_handle *handle, unsigned int status)
+{
+	DBGTRACE("%s: %08X\n", __FUNCTION__, status);
+
+	handle->query_set_wait_res = status;
+	handle->query_set_wait_done = 1;
+	wake_up(&handle->query_set_wqhead);
+}
+
+
+/*
  * Sleeps for the given number of microseconds
  */
 STDCALL void NdisMSleep(unsigned long us_to_sleep)
@@ -1567,8 +1594,16 @@ STDCALL void NdisResetEvent(struct ndis_event *event)
 	event->state = 0;
 }
 
+STDCALL void NdisMResetComplete(struct ndis_handle *handle, int status, int reset_status) 
+{
+	DBGTRACE("%s: %08X\n", __FUNCTION__, status);
 
-
+	handle->reset_wait_res = status;
+	handle->reset_wait_done = 1;
+	handle->reset_status = reset_status;
+	wake_up(&handle->reset_wqhead);
+}
+		  
 LIST_HEAD(worklist);
 spinlock_t worklist_lock = SPIN_LOCK_UNLOCKED;
 
