@@ -9,6 +9,7 @@ my $driver_name;
 my $confdir = "/etc/ndiswrapper";
 my $instdir;
 my %fuzzlist;
+my @copy_blacklist = ("prismusb.sys");
 
 if(@ARGV < 1)
 {
@@ -584,16 +585,40 @@ sub copyfiles
 	for(my $i = 0; $i < @lines; $i++)
 	{
 		my $line = trim(remComment($lines[$i]));
+
 		if($line)
 		{
 			$line =~ s/,+.*//;
-			my $realname = findfile($line);
+			my $nocopy = 0;
+			for(my $j = 0; $j < @copy_blacklist; $j++)
+			{
+				if($copy_blacklist[$j] eq lc($line))
+				{
+					$nocopy = 1;
+				}
+			}
+
+			my $dir = finddir($line);
+			if($dir)
+			{
+				$dir = findfile("", $dir);
+			}
+
+			my $realname = findfile($dir, $line);
 
 			if($realname)
 			{
 				my $newname = lc($realname);
-				`cp -u $instdir/$realname $confdir/$driver_name/$newname`;	
-				`chmod 644 $confdir/$driver_name/$newname`;	
+				if($dir)
+				{
+					$realname = "$dir/$realname";
+				}
+				if(!$nocopy)
+				{
+					`cp -u $instdir/$realname $confdir/$driver_name/$newname`;	
+					`chmod 644 $confdir/$driver_name/$newname`;	
+				}
+				
 			}
 			else
 			{
@@ -604,14 +629,38 @@ sub copyfiles
 	}
 }
 
+sub finddir
+{
+	my $filename = shift;
+	my $sourcedisksfiles = getSection("sourcedisksfiles");
+	if(!$sourcedisksfiles)
+	{
+		return "";
+	}
+	my @lines = split("\n", $sourcedisksfiles->{data});
+	for(my $i = 0; $i < @lines; $i++)
+	{
+		my $line = trim(remComment($lines[$i]));
+		$line =~ /(.+)=.+,+(.*)/;
+		my $file = trim($1);
+		my $dir = trim($2);
+		if($file and $dir and lc($filename) eq lc($file))
+		{
+			return $dir;
+		}
+	}
+	return "";
+}
+
 #
 # Find a file in a case-insensitive way.
 #
 sub findfile
 {
+	my $dir = shift;
 	my $file = shift;
 
-	if(!opendir(DIR, $instdir))
+	if(!opendir(DIR, "$instdir/$dir"))
 	{
 		print "Unable to open $instdir\n";
 		return "";

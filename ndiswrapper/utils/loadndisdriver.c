@@ -310,6 +310,10 @@ static int load(int device, char *confdir)
 				continue;
 			if(len > 4 && strcmp(&dirent->d_name[len-4], ".inf") == 0)
 				continue;
+			if(len > 4 && strcmp(&dirent->d_name[len-4], ".dll") == 0)
+				continue;
+			if(len > 4 && strcmp(&dirent->d_name[len-4], ".exe") == 0)
+				continue;
 			put_file(device, dirent->d_name, NDIS_PUTFILE);
 		}
 	}
