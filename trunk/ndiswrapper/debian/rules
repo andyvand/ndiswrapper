@@ -137,10 +137,13 @@ build-source:
 	dh_installdirs usr/src/modules/ndiswrapper
 	mkdir -p modules/ndiswrapper/debian
 	mkdir -p modules/ndiswrapper/driver
+	mkdir -p modules/ndiswrapper/utils
 	$(MAKE) -C $(DRIVERSRC) distdir=../modules/ndiswrapper/driver dist
-	cp version ChangeLog modules/ndiswrapper
+	$(MAKE) -C $(UTILSSRC) distdir=../modules/ndiswrapper/utils dist
+	cp version ChangeLog ndiswrapper.8 modules/ndiswrapper
 	cp -a debian/rules debian/changelog.template \
 		debian/control.module debian/changelog \
+		debian/control.utils debian/dirs.utils \
 			modules/ndiswrapper/debian
 	tar zcvf ndiswrapper-source.tar.gz modules
 	-rm -rf modules
