@@ -1354,7 +1354,7 @@ int setup_dev(struct net_device *dev)
 
 struct net_device *ndis_init_netdev(struct ndis_handle **phandle,
 				    struct ndis_device *device,
-				    struct ndis_driver *driver, void *netdev)
+				    struct ndis_driver *driver)
 {
 	int i, *ip;
 	struct net_device *dev;
@@ -1367,8 +1367,6 @@ struct net_device *ndis_init_netdev(struct ndis_handle **phandle,
 	}
 
 	SET_MODULE_OWNER(dev);
-	if (netdev)
-		SET_NETDEV_DEV(dev, netdev);
 
 	handle = dev->priv;
 

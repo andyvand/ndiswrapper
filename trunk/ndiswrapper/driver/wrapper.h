@@ -46,7 +46,6 @@ int setup_dev(struct net_device *dev);
 
 struct net_device *ndis_init_netdev(struct ndis_handle **phandle,
 				    struct ndis_device *device,
-				    struct ndis_driver *driver,
-				    void *netdev);
+				    struct ndis_driver *driver);
 
 #endif /* WRAPPER_H */

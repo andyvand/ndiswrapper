@@ -62,16 +62,16 @@ static int ndis_init_one_pci(struct pci_dev *pdev,
 	TRACEENTER1("%04x:%04x:%04x:%04x", ent->vendor, ent->device,
 		    ent->subvendor, ent->subdevice);
 
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
-	dev = ndis_init_netdev(&handle, device, driver, &pdev->dev);
-#else
-	dev = ndis_init_netdev(&handle, device, driver, NULL);
-#endif
+	dev = ndis_init_netdev(&handle, device, driver);
 	if (!dev) {
 		printk(KERN_ERR "Unable to alloc etherdev\n");
 		res = -ENOMEM;
 		goto out_nodev;
 	}
+
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
+	SET_NETDEV_DEV(dev, &pdev->dev);
+#endif
 
 	handle->dev.pci = pdev;
 	pci_set_drvdata(pdev, handle);
@@ -168,11 +168,7 @@ static void *ndis_init_one_usb(struct usb_device *udev, unsigned int ifnum,
 
 	TRACEENTER1("%04x:%04x\n", usb_id->idVendor, usb_id->idProduct);
 
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
-	dev = ndis_init_netdev(&handle, device, driver, &intf->dev);
-#else
-	dev = ndis_init_netdev(&handle, device, driver, NULL);
-#endif
+	dev = ndis_init_netdev(&handle, device, driver);
 	if (!dev) {
 		ERROR("%s", "Unable to alloc etherdev\n");
 		res = -ENOMEM;
@@ -180,6 +176,8 @@ static void *ndis_init_one_usb(struct usb_device *udev, unsigned int ifnum,
 	}
 
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
+	SET_NETDEV_DEV(dev, &intf->dev);
+
 	handle->dev.usb = interface_to_usbdev(intf);
 	handle->intf    = intf;
 	usb_set_intfdata(intf, handle);
