@@ -1104,17 +1104,16 @@ STDCALL void WRAP_EXPORT(NdisAllocateBuffer)
 
 	if (*buffer) {
 		MmInitializeMdl(*buffer, virt, length);
-		/* NdisFreeBuffer doesn't pass pool, so we use process
-		 * for pool */
+		/* NdisFreeBuffer doesn't pass pool, so we use
+		 * process for pool */
 		(*buffer)->process = pool;
 		(*buffer)->mappedsystemva = virt;
 		DBGTRACE4("allocated buffer %p for %p", *buffer, virt);
 		*status = NDIS_STATUS_SUCCESS;
-		spin_unlock(&pool->lock);
-		TRACEEXIT4(return);
-	}
+	} else
+		*status = NDIS_STATUS_FAILURE;
+
 	spin_unlock(&pool->lock);
-	*status = NDIS_STATUS_FAILURE;
 	TRACEEXIT4(return);
 }
 
