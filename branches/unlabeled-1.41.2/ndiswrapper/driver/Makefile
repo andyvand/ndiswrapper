@@ -62,7 +62,7 @@ ntoskernel.h : ndiswrapper.h
 
 OBJS   := wrapper.o iw_ndis.o loader.o ntoskernel.o ndis.o misc_funcs.o proc.o divdi3.o hal.o
 
-CFLAGS += -I$(SRC_DIR)/utils/wpa_supplicant
+CFLAGS += -I$(SUBDIRS)/../utils/wpa_supplicant
 
 ifdef DEBUG
 CFLAGS += -DDEBUG=$(DEBUG) -g -DDEBUG_TIMER
