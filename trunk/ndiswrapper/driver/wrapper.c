@@ -53,7 +53,6 @@
 static char *if_name = "wlan%d";
 int proc_uid, proc_gid;
 static int hangcheck_interval;
-//static int resubmit_config;
 
 NW_MODULE_PARM_STRING(if_name, 0400);
 MODULE_PARM_DESC(if_name, "Network interface name or template (default: wlan%d)");
@@ -67,8 +66,6 @@ NW_MODULE_PARM_INT(hangcheck_interval, 0600);
  * negative value - disable hangcheck
  */
 MODULE_PARM_DESC(hangcheck_interval, "The interval, in seconds, for checking if driver is hung. (default: 0)");
-//MODULE_PARM(resubmit_config, "i");
-//MODULE_PARM_DESC(resubmit_config, "Set to 1 for resubmitting device config after disassociation (default: 0)");
 
 /* List of loaded drivers */
 LIST_HEAD(ndis_driverlist);
