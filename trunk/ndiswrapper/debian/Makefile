@@ -13,8 +13,7 @@ DISTFILES= compat \
   postinst.modules \
   control \
   dirs \
-  rules \
-  Makefile
+  rules
 
 all:
 	@echo "Run 'make deb' from top-level directory"
