@@ -1,0 +1,13 @@
+KERNELDIR = /lib/modules/$(shell uname -r)/build
+
+CFLAGS  = -DLINUX -D__KERNEL__ -DMODULE -I$(KERNELDIR)/include \
+  -Wall -Wstrict-prototypes -fomit-frame-pointer    \
+  -fno-strict-aliasing -pipe -mpreferred-stack-boundary=2 -O2
+
+MODULE=ndiswrapper
+OBJS = wrapper.o loader.o winsyms.o ndis.o misc_funcs.o
+
+$(MODULE).o: $(OBJS)
+	$(LD) -r -o $(MODULE).o $(OBJS)
+
+all: $(MODULE).o
