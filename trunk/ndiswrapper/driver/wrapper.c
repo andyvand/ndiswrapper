@@ -458,14 +458,14 @@ static void statcollector_reinit(struct ndis_handle *handle)
 	add_timer(&handle->statcollector_timer);
 }
 
-void statcollector_add(struct ndis_handle *handle)
+static void statcollector_add(struct ndis_handle *handle)
 {
 	INIT_WORK(&handle->statcollector_work, &statcollector_bh, handle);
 	init_timer(&handle->statcollector_timer);
 	statcollector_reinit(handle);
 }
 
-void statcollector_del(struct ndis_handle *handle)
+static void statcollector_del(struct ndis_handle *handle)
 {
 	del_timer_sync(&handle->statcollector_timer);
 }
@@ -1074,9 +1074,8 @@ static void wrapper_worker_proc(void *param)
 		unsigned char *wpa_assoc_info, *assoc_info, *p, *offset;
 		union iwreq_data wrqu;
 		unsigned int i, res, written, needed;
-		const int ie_size = IW_CUSTOM_MAX / 4 - 20;
-		const int assoc_size = sizeof(*ndis_assoc_info) +
-			IW_CUSTOM_MAX;
+		const int ie_size = 256;
+		const int assoc_size = sizeof(*ndis_assoc_info) + 2 * 256;
 
 		if (handle->link_status == 0)
 		{
@@ -1090,6 +1089,7 @@ static void wrapper_worker_proc(void *param)
 			}
 			return;
 		}
+
 		if (handle->auth_mode != AUTHMODE_WPA &&
 		    handle->auth_mode != AUTHMODE_WPAPSK)
 			return;
@@ -1100,7 +1100,7 @@ static void wrapper_worker_proc(void *param)
 			ERROR("%s", "couldn't allocate memory");
 			return;
 		}
-		wpa_assoc_info = kmalloc(IW_CUSTOM_MAX, GFP_KERNEL);
+		wpa_assoc_info = kmalloc(ie_size, GFP_KERNEL);
 		if (!wpa_assoc_info)
 		{
 			ERROR("%s", "couldn't allocate memory");
@@ -1156,6 +1156,7 @@ static void wrapper_worker_proc(void *param)
 			return;
 		}
 
+		DBGTRACE("adding %d bytes", wrqu.data.length);
 		wireless_send_event(handle->net_dev, IWEVCUSTOM, &wrqu,
 				    wpa_assoc_info);
 
