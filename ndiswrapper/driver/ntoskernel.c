@@ -159,9 +159,8 @@ STDCALL void KeReleaseSpinLock(KSPIN_LOCK *lock, KIRQL newirql)
 }
 
 _FASTCALL struct slist_entry *
-ExInterlockedPushEntrySList(int dummy, 
-			    struct slist_entry *entry,union slist_head *head,
-			    KSPIN_LOCK *lock)
+ExInterlockedPushEntrySList(int dummy, struct slist_entry *entry,
+			    union slist_head *head, KSPIN_LOCK *lock)
 {
 	struct slist_entry *oldhead;
 	KIRQL irql;
@@ -180,7 +179,7 @@ ExInterlockedPushEntrySList(int dummy,
 }
 
 _FASTCALL struct slist_entry *
-ExInterlockedPopEntrySList(int dummy, KSPIN_LOCK *lock,union slist_head *head)
+ExInterlockedPopEntrySList(int dummy, KSPIN_LOCK *lock, union slist_head *head)
 {
 	struct slist_entry *first;
 	KIRQL irql;
@@ -265,8 +264,16 @@ ExDeleteNPagedLookasideList(struct npaged_lookaside_list *lookaside)
 _FASTCALL void
 ExInterlockedAddLargeStatistic(int dummy, u32 n, u64 *plint)
 {
+	unsigned long flags;
+	static spinlock_t lock = SPIN_LOCK_UNLOCKED;
+	/* we should have one lock per driver, but since it is used only
+	 * here, no harm in having a global lock, for simplicity sake
+	 */
+
 	TRACEENTER3("Stat %p = %llu, n = %u", plint, *plint, n);
+	spin_lock_irqsave(&lock, flags);
 	*plint += n;
+	spin_unlock_irqrestore(&lock, flags);
 }
 
 STDCALL void *MmMapIoSpace(__s64 phys_addr,

@@ -21,7 +21,7 @@ static struct proc_dir_entry *ndiswrapper_procfs_entry;
 extern int proc_uid, proc_gid;
 
 static int procfs_read_stats(char *page, char **start, off_t off,
-						   int count, int *eof, void *data)
+			     int count, int *eof, void *data)
 {
 	char *p = page;
 	struct ndis_handle *handle = (struct ndis_handle *) data;
@@ -71,7 +71,7 @@ static int procfs_read_stats(char *page, char **start, off_t off,
 }
 
 static int procfs_read_wep(char *page, char **start, off_t off,
-						 int count, int *eof, void *data)
+			   int count, int *eof, void *data)
 {
 	char *p = page;
 	struct ndis_handle *handle = (struct ndis_handle *) data;
@@ -144,7 +144,7 @@ static int procfs_read_wep(char *page, char **start, off_t off,
 }
 
 static int procfs_read_hw(char *page, char **start, off_t off,
-						int count, int *eof, void *data)
+			  int count, int *eof, void *data)
 {
 	char *p = page;
 	struct ndis_handle *handle = (struct ndis_handle *)data;
@@ -203,22 +203,22 @@ static int procfs_read_hw(char *page, char **start, off_t off,
 			     "max_savings" : "min_savings");
 
 	res = doquery(handle, NDIS_OID_NUM_ANTENNA, (char *)&antenna,
-				  sizeof(antenna), &written, &needed);
+		      sizeof(antenna), &written, &needed);
 	if (!res)
 		p += sprintf(p, "num_antennas=%lu\n",
-					 antenna);
+			     antenna);
 
 	res = doquery(handle, NDIS_OID_TX_ANTENNA, (char *)&antenna,
-				  sizeof(antenna), &written, &needed);
+		      sizeof(antenna), &written, &needed);
 	if (!res)
 		p += sprintf(p, "tx_antenna=%lu\n",
-					 antenna);
+			     antenna);
 
 	res = doquery(handle, NDIS_OID_RX_ANTENNA, (char *)&antenna,
-				  sizeof(antenna), &written, &needed);
+		      sizeof(antenna), &written, &needed);
 	if (!res)
 		p += sprintf(p, "rx_antenna=%lu\n",
-					 antenna);
+			     antenna);
 
 	if (p - page > count)
 	{
@@ -267,11 +267,11 @@ int ndiswrapper_procfs_add_iface(struct ndis_handle *handle)
 	proc_iface->gid = proc_gid;
 
 	procfs_entry = create_proc_entry("hw", S_IFREG | S_IRUSR | S_IRGRP,
-								   proc_iface);
+					 proc_iface);
 	if (procfs_entry == NULL)
 	{
 		printk(KERN_ERR "%s: Couldn't create proc entry for 'hw'\n",
-			   dev->name);
+		       dev->name);
 		return -ENOMEM;
 	}
 	else
@@ -282,12 +282,12 @@ int ndiswrapper_procfs_add_iface(struct ndis_handle *handle)
 		procfs_entry->read_proc = procfs_read_hw;
 	}
 
-	procfs_entry = create_proc_entry("stats",	S_IFREG | S_IRUSR | S_IRGRP,
-								   proc_iface);
+	procfs_entry = create_proc_entry("stats", S_IFREG | S_IRUSR | S_IRGRP,
+					 proc_iface);
 	if (procfs_entry == NULL)
 	{
 		printk(KERN_ERR "%s: Couldn't create proc entry for 'stats'\n",
-			   dev->name);
+		       dev->name);
 		return -ENOMEM;
 	}
 	else
@@ -299,11 +299,11 @@ int ndiswrapper_procfs_add_iface(struct ndis_handle *handle)
 	}
 
 	procfs_entry = create_proc_entry("wep", S_IFREG | S_IRUSR | S_IRGRP,
-								   proc_iface);
+					 proc_iface);
 	if (procfs_entry == NULL)
 	{
 		printk(KERN_ERR "%s: Couldn't create proc entry for 'wep'\n",
-			   dev->name);
+		       dev->name);
 		return -ENOMEM;
 	}
 	else

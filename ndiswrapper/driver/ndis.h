@@ -205,6 +205,8 @@ struct ndis_irq
 	unsigned char req_isr;
 };
 
+#define SPIN_LOCK_MAGIC_CHAR 137
+
 struct ndis_spin_lock
 {
 	KSPIN_LOCK spinlock;
@@ -508,10 +510,9 @@ struct packed ndis_handle
 	
 	spinlock_t send_status_lock;
 	int send_status;
-	struct ndis_packet *packet;
+	struct ndis_packet *send_packet;
 
 	spinlock_t send_packet_lock;
-
 	spinlock_t ndis_comm_lock;
 
 	struct semaphore ndis_comm_mutex;
@@ -637,14 +638,20 @@ enum priv_filter
 	NDIS_PRIV_WEP,
 };
 
-#define NDIS_POWER_OFF 0
-#define NDIS_POWER_MAX 1
-#define NDIS_POWER_MIN 2
+enum ndis_power
+{
+	NDIS_POWER_OFF = 0,
+	NDIS_POWER_MAX,
+	NDIS_POWER_MIN,
+};
 
-#define NDIS_PM_STATE_D0 1
-#define NDIS_PM_STATE_D1 2
-#define NDIS_PM_STATE_D2 3
-#define NDIS_PM_STATE_D3 4
+enum ndis_pm_state
+{
+	NDIS_PM_STATE_D0 = 1,
+	NDIS_PM_STATE_D1 = 2,
+	NDIS_PM_STATE_D2 = 3,
+	NDIS_PM_STATE_D3 = 4,
+};
 
 #define MAX_WPA_IE_LEN 64
 

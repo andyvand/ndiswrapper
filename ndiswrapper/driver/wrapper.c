@@ -84,7 +84,7 @@ int doreset(struct ndis_handle *handle)
 	TRACEENTER3();
 
 	if (down_interruptible(&handle->ndis_comm_mutex))
-		return NDIS_STATUS_FAILURE;
+		TRACEEXIT3(return NDIS_STATUS_FAILURE);
 
 	handle->ndis_comm_done = 0;
 	res = handle->driver->miniport_char.reset(&addressing_reset, handle->adapter_ctx);
@@ -117,7 +117,7 @@ int doquery(struct ndis_handle *handle, unsigned int oid, char *buf, int bufsize
 	TRACEENTER3("Calling query at %08x rva(%08x)", (int)handle->driver->miniport_char.query, (int)handle->driver->miniport_char.query - image_offset);
 
 	if (down_interruptible(&handle->ndis_comm_mutex))
-		return NDIS_STATUS_FAILURE;
+		TRACEEXIT3(return NDIS_STATUS_FAILURE);
 
 	handle->ndis_comm_done = 0;
 	res = handle->driver->miniport_char.query(handle->adapter_ctx, oid, buf, bufsize, written, needed);
@@ -150,7 +150,7 @@ int dosetinfo(struct ndis_handle *handle, unsigned int oid, char *buf, int bufsi
 	TRACEENTER3("Calling setinfo at %08x rva(%08x)", (int)handle->driver->miniport_char.setinfo, (int)handle->driver->miniport_char.setinfo - image_offset);
 
 	if (down_interruptible(&handle->ndis_comm_mutex))
-		return NDIS_STATUS_FAILURE;
+		TRACEEXIT3(return NDIS_STATUS_FAILURE);
 
 	handle->ndis_comm_done = 0;
 	res = handle->driver->miniport_char.setinfo(handle->adapter_ctx, oid, buf, bufsize, written, needed);
@@ -181,12 +181,11 @@ int query_int(struct ndis_handle *handle, int oid, int *data)
 {
 	unsigned int res, written, needed;
 
-	TRACEENTER3();
 	res = doquery(handle, oid, (char*)data, sizeof(int), &written, &needed);
 	if(!res)
 		return 0;
 	*data = 0;
-	TRACEEXIT3(return res);
+	return res;
 }
 
 /*
@@ -284,15 +283,16 @@ static void hangcheck_bh(void *data)
 {
 	struct ndis_handle *handle = (struct ndis_handle *)data;
 
-	TRACEENTER1();
+	TRACEENTER3();
 	if(handle->driver->miniport_char.hangcheck(handle->adapter_ctx))
 	{
 		int res;
 		handle->reset_status = 0;
 		printk(KERN_INFO "ndiswrapper: Hangcheck returned true. Resetting!\n");
 		res = doreset(handle);
-		DBGTRACE1("reset returns %08X, %d", res, handle->reset_status);
+		DBGTRACE3("reset returns %08X, %d", res, handle->reset_status);
 	}
+	TRACEEXIT3(return);
 }
 
 
@@ -507,7 +507,9 @@ static void ndis_set_rx_mode(struct net_device *dev)
 	schedule_work(&handle->set_rx_mode_work);
 }
 
-
+/*
+ * This function should be called while holding send_packet_lock
+ */
 static struct ndis_packet *init_packet(struct ndis_handle *handle,
 				       struct ndis_buffer *buffer)
 {
@@ -565,6 +567,9 @@ static struct ndis_packet *init_packet(struct ndis_handle *handle,
 	return packet;
 }
 
+/*
+ * This function should be called while holding send_packet_lock
+ */
 static void free_packet(struct ndis_handle *handle, struct ndis_packet *packet)
 {
 	if(packet->dataphys)
@@ -576,6 +581,9 @@ static void free_packet(struct ndis_handle *handle, struct ndis_packet *packet)
 	kfree(packet);
 }
 
+/*
+ * This function should be called while holding send_packet_lock
+ */
 static void free_buffer(struct ndis_handle *handle, struct ndis_packet *packet)
 {
 	kfree(packet->buffer_head->data);
@@ -594,8 +602,8 @@ static int send_packet(struct ndis_handle *handle, struct ndis_packet *packet)
 	{
 		struct ndis_packet *packets[1];
 		packets[0] = packet;
-//		DBGTRACE3("Calling send_packets at %08X rva(%08X)", (int)handle->driver->miniport_char.send_packets, (int)handle->driver->miniport_char.send_packets - image_offset);
-		handle->driver->miniport_char.send_packets(handle->adapter_ctx, &packets[0], 1);
+		handle->driver->miniport_char.send_packets(handle->adapter_ctx,
+							   &packets[0], 1);
 		
 
 		if(handle->serialized)
@@ -611,8 +619,8 @@ static int send_packet(struct ndis_handle *handle, struct ndis_packet *packet)
 	}
 	else if(handle->driver->miniport_char.send)
 	{
-//		DBGTRACE3("Calling send at %08X rva(%08X)", (int)handle->driver->miniport_char.send, (int)handle->driver->miniport_char.send_packets - image_offset);
-		res = handle->driver->miniport_char.send(handle->adapter_ctx, packet, 0);
+		res = handle->driver->miniport_char.send(handle->adapter_ctx,
+							 packet, 0);
 	}
 	else
 	{
@@ -624,7 +632,6 @@ static int send_packet(struct ndis_handle *handle, struct ndis_packet *packet)
 
 	TRACEEXIT3(return res);
 }
-
 
 static void xmit_bh(void *param)
 {
@@ -647,13 +654,13 @@ static void xmit_bh(void *param)
 		spin_unlock_bh(&handle->xmit_ring_lock);
 
 		/* if we are resending a packet due to NDIS_STATUS_RESOURCES
-		   then just pick up the packet already created
-		*/
-		if (!handle->packet)
+		 * then just pick up the packet already created
+		 */
+		if (!handle->send_packet)
 		{
 			/* otherwise, get a new packet */
-			handle->packet = init_packet(handle, buffer);
-			if (!handle->packet)
+			handle->send_packet = init_packet(handle, buffer);
+			if (!handle->send_packet)
 			{
 				printk(KERN_ERR "%s: couldn't get a packet\n",
 				       __FUNCTION__);
@@ -661,7 +668,7 @@ static void xmit_bh(void *param)
 			}
 		}
 
-		res = send_packet(handle, handle->packet);
+		res = send_packet(handle, handle->send_packet);
 		/* If the driver returns...
 		 * NDIS_STATUS_SUCCESS - we own the packet and
 		 *    driver will not call NdisMSendComplete.
@@ -671,10 +678,10 @@ static void xmit_bh(void *param)
 		 *    Requeue it when resources are available.
 		 * NDIS_STATUS_FAILURE - drop the packet?
 		 */
-		switch(res)
+		switch (res)
 		{
 		case NDIS_STATUS_SUCCESS:
-			sendpacket_done(handle, handle->packet);
+			sendpacket_done(handle, handle->send_packet);
 			handle->send_status = 0;
 			break;
 		case NDIS_STATUS_PENDING:
@@ -684,33 +691,48 @@ static void xmit_bh(void *param)
 			if (!handle->serialized)
 				printk(KERN_ERR "%s: deserialized driver returning NDIS_STATUS_RESOURCES!\n", __FUNCTION__);
 			handle->send_status = res;
-			/* this packet will be tried again later */
 			up(&handle->ndis_comm_mutex);
+			/* this packet will be tried again */
 			return;
 
 			/* free buffer, drop the packet */
 		case NDIS_STATUS_FAILURE:
-			free_buffer(handle, handle->packet);
+			free_buffer(handle, handle->send_packet);
 			break;
 		default:
-			printk(KERN_ERR "%s: Incorrect status code %08X\n",
+			printk(KERN_ERR "%s: Unknown status code %08X\n",
 			       __FUNCTION__, res);
-			free_buffer(handle, handle->packet);
+			free_buffer(handle, handle->send_packet);
 			break;
 		}
 
-		/* mark the packet as done */
-		handle->packet = NULL;
+		handle->send_packet = NULL;
 
 		spin_lock_bh(&handle->xmit_ring_lock);
 		handle->xmit_ring_start =
 			(handle->xmit_ring_start + 1) % XMIT_RING_SIZE;
 		handle->xmit_ring_pending--;
+		spin_unlock_bh(&handle->xmit_ring_lock);
 		if (netif_queue_stopped(handle->net_dev))
 			netif_wake_queue(handle->net_dev);
-		spin_unlock_bh(&handle->xmit_ring_lock);
 	}
 	up(&handle->ndis_comm_mutex);
+	TRACEEXIT3(return);
+}
+
+/*
+ * Free and unmap a packet created in xmit
+ * This function should be called while holding send_packet_lock
+ */
+void sendpacket_done(struct ndis_handle *handle, struct ndis_packet *packet)
+{
+	TRACEENTER3();
+	spin_lock_bh(&handle->send_packet_lock);
+	handle->stats.tx_bytes += packet->len;
+	handle->stats.tx_packets++;
+
+	free_buffer(handle, packet);
+	spin_unlock_bh(&handle->send_packet_lock);
 	TRACEEXIT3(return);
 }
 
@@ -749,29 +771,15 @@ static int start_xmit(struct sk_buff *skb, struct net_device *dev)
 		(handle->xmit_ring_start + handle->xmit_ring_pending) % XMIT_RING_SIZE;
 	handle->xmit_ring[xmit_ring_next_slot] = buffer;
 	handle->xmit_ring_pending++;
+	spin_unlock_bh(&handle->xmit_ring_lock);
 	if (handle->xmit_ring_pending == XMIT_RING_SIZE)
 		netif_stop_queue(handle->net_dev);
-	spin_unlock_bh(&handle->xmit_ring_lock);
 
 	schedule_work(&handle->xmit_work);
 
 	return 0;
 }
 
-
-/*
- * Free and unmap a packet created in xmit
- */
-void sendpacket_done(struct ndis_handle *handle, struct ndis_packet *packet)
-{
-	TRACEENTER3();
-	spin_lock_bh(&handle->send_packet_lock);
-	handle->stats.tx_bytes += packet->len;
-	handle->stats.tx_packets++;
-
-	free_buffer(handle, packet);
-	spin_unlock_bh(&handle->send_packet_lock);
-}
 
 static int ndis_suspend(struct pci_dev *pdev, u32 state)
 {
@@ -1097,7 +1105,6 @@ static int setup_dev(struct net_device *dev)
 
 	check_wpa(handle);
 #endif
-
 	ndis_set_rx_mode_proc(dev);
 	
 	dev->open = ndis_open;
@@ -1138,7 +1145,7 @@ static int setup_dev(struct net_device *dev)
  * adds PCI_id's dynamically.
  */
 static int ndis_init_one(struct pci_dev *pdev,
-                                   const struct pci_device_id *ent)
+			 const struct pci_device_id *ent)
 {
 	int res;
 	struct ndis_device *device = (struct ndis_device *) ent->driver_data;
@@ -1177,7 +1184,7 @@ static int ndis_init_one(struct pci_dev *pdev,
 	init_waitqueue_head(&handle->ndis_comm_wqhead);
 
 	handle->send_status = 0;
-	handle->packet = NULL;
+	handle->send_packet = NULL;
 
 	spin_lock_init(&handle->send_packet_lock);
 
@@ -1246,9 +1253,14 @@ static int ndis_init_one(struct pci_dev *pdev,
 	}
 
 	/* do we need to power up the card explicitly? */
-	set_int(handle, NDIS_OID_PNP_SET_POWER, NDIS_PM_STATE_D0);
 	handle->pm_state = NDIS_PM_STATE_D0;
+	set_int(handle, NDIS_OID_PNP_SET_POWER, handle->pm_state);
 	
+	/* Wait a little to let card power up otherwise ifup might fail after
+	   boot */
+	set_current_state(TASK_INTERRUPTIBLE);
+	schedule_timeout(HZ);
+
 	if(setup_dev(handle->net_dev))
 	{
 		printk(KERN_ERR "%s: Couldn't setup interface\n", DRV_NAME);
@@ -1258,7 +1270,7 @@ static int ndis_init_one(struct pci_dev *pdev,
 	hangcheck_add(handle);
 	statcollector_add(handle);
 	ndiswrapper_procfs_add_iface(handle);
-	return 0;
+	TRACEEXIT1(return 0);
 
 out_setup:
 	call_halt(handle);
@@ -1269,7 +1281,7 @@ out_regions:
 out_enable:
 	free_netdev(dev);
 out_nodev:
-	return res;
+	TRACEEXIT1(return res);
 }
 
 /*
@@ -1392,7 +1404,6 @@ static int start_driver(struct ndis_driver *driver)
 		driver->pci_registered = 1;
 #endif
 	return res;
-	
 }
 
 
@@ -1405,7 +1416,7 @@ static struct ndis_driver *load_driver(struct put_file *put_driver)
 	struct ndis_driver *driver;
 	int namelen;
 
-	DBGTRACE1("Putting driver size %d", put_driver->size);
+	TRACEENTER1("Putting driver size %d", put_driver->size);
 
 	driver = kmalloc(sizeof(struct ndis_driver), GFP_KERNEL);
 	if(!driver)
@@ -1429,31 +1440,32 @@ static struct ndis_driver *load_driver(struct put_file *put_driver)
 	DBGTRACE1("Image is at %08X", (int)driver->image);
 	if(!driver->image)
 	{
-		printk(KERN_ERR "Unable to allocate mem for driver\n");
+		printk(KERN_ERR "%s: Unable to allocate mem for driver\n",
+			DRV_NAME);
 		goto out_vmalloc;
 	}
 
 	if(copy_from_user(driver->image, put_driver->data, put_driver->size))
 	{
-		printk(KERN_ERR "Failed to copy from user\n");
+		printk(KERN_ERR "%s: Failed to copy from user\n", DRV_NAME);
 		goto out_baddriver;
 	}
 
 	if(prepare_coffpe_image(&entry, driver->image, put_driver->size))
 	{
-		printk(KERN_ERR "Unable to prepare driver\n");		
+		printk(KERN_ERR "%s: Unable to prepare driver\n", DRV_NAME);		
 		goto out_baddriver;
 	}
 	driver->entry = entry;
 
-	return driver;
+	TRACEEXIT1(return driver);
 
 out_baddriver:
 	vfree(driver->image);
 out_vmalloc:
 	kfree(driver);
 out_nodriver:
-	return 0;
+	TRACEEXIT1(return 0);
 }
 
 /*
@@ -1479,11 +1491,11 @@ static int add_driver(struct ndis_driver *driver)
 	spin_unlock(&driverlist_lock);
 	if(dup)
 	{
-		printk(KERN_ERR "Cannot add duplicate driver\n");
+		printk(KERN_ERR "%s: Cannot add duplicate driver\n", DRV_NAME);
 		return -EBUSY;
 	}
 	
-	printk(KERN_INFO "ndiswrapper adding %s\n", driver->name);  
+	printk(KERN_INFO "%s: driver %s added\n", DRV_NAME, driver->name);  
 	return 0;
 }
 
@@ -1495,12 +1507,12 @@ static int add_file(struct ndis_driver *driver, struct put_file *put_file)
 	struct ndis_file *file;
 	int namelen;
 
-	DBGTRACE1("Putting file size %d", put_file->size);
+	TRACEENTER1("Putting file size %d", put_file->size);
 
 	file = kmalloc(sizeof(struct ndis_file), GFP_KERNEL);
 	if(!file)
 	{
-		printk(KERN_ERR "Unable to alloc file struct\n");
+		printk(KERN_ERR "%s: Unable to alloc file struct\n", DRV_NAME);
 		goto err;
 	}
 	memset(file, 0, sizeof(struct ndis_file));
@@ -1516,19 +1528,20 @@ static int add_file(struct ndis_driver *driver, struct put_file *put_file)
 	file->data = vmalloc(put_file->size);
 	if(!file->data)
 	{
-		printk(KERN_ERR "Unable to allocate mem for file\n");
+		printk(KERN_ERR "%s: Unable to allocate mem for file\n",
+			DRV_NAME);
 		goto err;
 	}
 
 	if(copy_from_user(file->data, put_file->data, put_file->size))
 	{
-		printk(KERN_ERR "Failed to copy from user\n");
+		printk(KERN_ERR "%s: Failed to copy from user\n", DRV_NAME);
 		goto err;
 	}
 
 	list_add(&file->list, &driver->files);
 
-	return 0;
+	TRACEEXIT1(return 0);
 err:
 	if(file)
 	{
@@ -1536,7 +1549,7 @@ err:
 			vfree(file->data);
 		kfree(file);
 	}
-	return -ENOMEM;
+	TRACEEXIT1(return -ENOMEM);
 }
 
 
@@ -1814,7 +1827,7 @@ static struct miscdevice wrapper_misc = {
 static int __init wrapper_init(void)
 {
 	char *argv[] = {"loadndisdriver", "-a", 0};
-	char *env[] = {0};	
+	char *env[] = {0};
 	int err;
 
 	printk(KERN_INFO "%s version %s loaded\n", DRV_NAME, DRV_VERSION);
@@ -1823,11 +1836,8 @@ static int __init wrapper_init(void)
 		return err;
         }
 
-	ndiswrapper_procfs_init();
-
-	INIT_LIST_HEAD(&wrap_allocs);
-
 	init_ndis_work();
+	INIT_LIST_HEAD(&wrap_allocs);
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
 	err = call_usermodehelper("/sbin/loadndisdriver", argv, env, 1);
 #else
@@ -1835,12 +1845,18 @@ static int __init wrapper_init(void)
 #endif
 
 	if (err)
+	{
 		printk(KERN_INFO "%s: loadndiswrapper failed (%d)\n",
 		       DRV_NAME, err);
-	/* Wait a little to let card power up otherwise ifup might fail on boot */
-	set_current_state(TASK_INTERRUPTIBLE);
-	schedule_timeout(2*HZ);
-	return 0;
+		misc_deregister(&wrapper_misc);
+	}
+	else
+	{
+		ndiswrapper_procfs_init();
+		
+		
+	}
+	return err;
 }
 
 static void __exit wrapper_exit(void)
