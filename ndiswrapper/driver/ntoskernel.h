@@ -529,11 +529,11 @@ do {									\
 	KSPIN_LOCK _val_ = *(lock);					\
 	if (_val_ > KSPIN_LOCK_LOCKED)					\
 		ERROR("illegal spinlock: %p(%lu)", lock, _val_);	\
+	_raw_kspin_unlock(lock);					\
 	if (oldirql < DISPATCH_LEVEL && _cur_irql_ == DISPATCH_LEVEL) {	\
 		preempt_enable();					\
 		local_bh_enable();					\
 	}								\
-	_raw_kspin_unlock(lock);					\
 } while (0)
 
 #define kspin_lock_irqsave(lock, flags)					\
