@@ -72,10 +72,11 @@ typedef struct workqueue_struct *workqueue;
 #define flush_scheduled_work flush_scheduled_tasks
 typedef task_queue workqueue;
 #include <linux/smp_lock.h>
+#define irqs_disabled() 0
 #ifdef CONFIG_PREEMPT
 #define in_atomic() ((preempt_get_count() & ~PREEMPT_ACTIVE) != kernel_locked())
 #else
-#define in_atomic() 1
+#define in_atomic() 0
 #endif // CONFIG_PREEMPT
 #endif // LINUX_VERSION_CODE
 
