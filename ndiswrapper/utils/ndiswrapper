@@ -292,7 +292,7 @@ sub getPresentCards
 			my $card;
 			while(my $line = <LSPCI>)
 			{
-				if($line =~ /.+Class.+:\s*(.{4}):(.{4}).*/)
+				if($line =~ /^[0-9]+.*:\s(.{4}):(.{4}).*/)
 				{
 					my %c;
 					$card = \%c;
