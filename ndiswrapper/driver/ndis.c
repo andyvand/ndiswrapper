@@ -1407,31 +1407,25 @@ STDCALL void NdisMIndicateReceivePacket(struct ndis_handle *handle, struct ndis_
  */
 STDCALL void NdisMSendComplete(struct ndis_handle *handle, struct ndis_packet *packet, unsigned int status)
 {
-	int pending;
 
 	DBGTRACE("%s %08x\n", __FUNCTION__, status);
 	sendpacket_done(handle, packet);
 	/* In case a serialized driver has requested a pause by returning NDIS_STATUS_RESOURCES we
 	 * need to give the send-code a kick again.
 	 */
-	spin_lock_bh(&handle->xmit_ring_lock);
+	spin_lock(&handle->send_status_lock);
 	handle->send_status = 0;
-	pending = handle->xmit_ring_pending;
-	spin_unlock_bh(&handle->xmit_ring_lock);
-	if (pending)
-		schedule_work(&handle->xmit_work);
+	spin_unlock(&handle->send_status_lock);
+	schedule_work(&handle->xmit_work);
 }
 
 STDCALL void NdisMSendResourcesAvailable(struct ndis_handle *handle)
 {
-	int pending;
 	DBGTRACE("%s: Enter\n", __FUNCTION__);
-	spin_lock_bh(&handle->xmit_ring_lock);
+	spin_lock(&handle->send_status_lock);
 	handle->send_status = 0;
-	pending = handle->xmit_ring_pending;
-	spin_unlock_bh(&handle->xmit_ring_lock);
-	if (pending)
-		schedule_work(&handle->xmit_work);
+	spin_unlock(&handle->send_status_lock);
+	schedule_work(&handle->xmit_work);
 }
 
 /*

@@ -613,9 +613,12 @@ static void xmit_bh(void *param)
 	DBGTRACE("%s: Enter: send status is %08X\n", __FUNCTION__, handle->send_status);
 	while (1)
 	{
-		spin_lock_bh(&handle->xmit_ring_lock);
+		spin_lock(&handle->send_status_lock);
 		res = handle->send_status;
-		if (handle->send_status || !handle->xmit_ring_pending)
+		spin_unlock(&handle->send_status_lock);
+
+		spin_lock_bh(&handle->xmit_ring_lock);
+		if (res || !handle->xmit_ring_pending)
 		{
 			spin_unlock_bh(&handle->xmit_ring_lock);
 			break;
@@ -661,7 +664,8 @@ static void xmit_bh(void *param)
 
 			/* free buffer, drop the packet */
 		case NDIS_STATUS_FAILURE:
-			free_buffer(handle, packet);
+			doreset(handle);
+			free_packet(handle, packet);
 			break;
 		default:
 			printk(KERN_ERR "%s: Incorrect status code %08X\n",
@@ -670,8 +674,11 @@ static void xmit_bh(void *param)
 			break;
 		}
 
-		spin_lock_bh(&handle->xmit_ring_lock);
+		spin_lock(&handle->send_status_lock);
 		handle->send_status = 0;
+		spin_unlock(&handle->send_status_lock);
+
+		spin_lock_bh(&handle->xmit_ring_lock);
 		handle->xmit_ring_start =
 			(handle->xmit_ring_start + 1) % XMIT_RING_SIZE;
 		handle->xmit_ring_pending--;
@@ -956,6 +963,7 @@ static int ndis_init_one(struct pci_dev *pdev,
 	init_MUTEX(&handle->reset_mutex);
 	init_waitqueue_head(&handle->reset_wqhead);
 
+	spin_lock_init(&handle->send_status_lock);
 	handle->send_status = 0;
 
 	INIT_WORK(&handle->xmit_work, xmit_bh, handle); 	
