@@ -366,7 +366,7 @@ STDCALL void NdisMSetAttributesEx(struct ndis_handle *handle,
 
 	if(!(attributes & 0x20))
 	{
-		printk(KERN_ERR "NDIS: Not a deserialized miniport!\n");
+		handle->serialized_driver = 1;
 	}
 
 	if(hangcheck_interval)
@@ -572,12 +572,34 @@ STDCALL unsigned int NdisMAllocateMapRegisters(struct ndis_handle *handle,
 					       unsigned int size)
 {
 	DBGTRACE("%s: %d %d %d %d\n", __FUNCTION__, dmachan, dmasize, basemap, size);
+
+//	if (basemap > 64)
+//		return NDIS_STATUS_RESOURCES;
+
+	if (handle->map_count > 0)
+	{
+		DBGTRACE("%s (%s): map registers already allocated: %u\n",
+			 handle->net_dev->name, __FUNCTION__,
+			 handle->map_count);
+		return NDIS_STATUS_RESOURCES;
+	}
+	
+	handle->map_count = basemap;
+	handle->map_dma_addr = kmalloc(basemap * sizeof(dma_addr_t),
+				       GFP_ATOMIC);
+	if (!handle->map_dma_addr)
+		return NDIS_STATUS_RESOURCES;
+	memset(handle->map_dma_addr, 0, basemap * sizeof(dma_addr_t));
+	
 	return NDIS_STATUS_SUCCESS;
 }
 
-STDCALL void NdisMFreeMapRegisters(void *handle)
+STDCALL void NdisMFreeMapRegisters(struct ndis_handle *handle)
 {
 	DBGTRACE("%s: %08x\n", __FUNCTION__, (int)handle);
+	
+	if (handle->map_dma_addr != NULL)
+		kfree(handle->map_dma_addr);
 }
 
 
@@ -1351,6 +1373,86 @@ STDCALL void NdisGetFirstBufferFromPacketSafe(struct ndis_packet *packet,
 	*totlen = packet->len;
 }
  
+STDCALL void
+NdisMStartBufferPhysicalMapping(struct ndis_handle *handle,
+				struct ndis_buffer *buf,
+				unsigned long phy_map_reg,
+				unsigned int write_to_dev,
+				struct ndis_phy_addr_unit *phy_addr_array,
+				unsigned int  *array_size)
+{
+	if (!write_to_dev)
+	{
+		DBGTRACE("%s (%s): dma from device not supported (%d)\n",
+			 handle->net_dev->name, __FUNCTION__, write_to_dev);
+		*array_size = 0;
+		return;
+	}
+
+	if (phy_map_reg > handle->map_count)
+	{
+		DBGTRACE("%s (%s): map_register too big (%u > %u)\n",
+			 handle->net_dev->name, __FUNCTION__,
+			 phy_map_reg, handle->map_count);
+		*array_size = 0;
+		return;
+	}
+	
+	if (handle->map_dma_addr[phy_map_reg] != 0)
+	{
+		DBGTRACE("%s (%s): map register already used (%u)\n",
+			 handle->net_dev->name, __FUNCTION__, phy_map_reg);
+		*array_size = 0;
+		return;
+	}
+
+	// map buffer
+	phy_addr_array[0].phy_addr.low =
+		pci_map_single(handle->pci_dev, buf->data, buf->len,
+			       PCI_DMA_TODEVICE);
+	phy_addr_array[0].phy_addr.high = 0;
+	phy_addr_array[0].length= buf->len;
+	
+	*array_size = 1;
+	
+	// save mapping index
+	handle->map_dma_addr[phy_map_reg] =
+		(dma_addr_t)phy_addr_array[0].phy_addr.low;
+}
+
+
+STDCALL void
+NdisMCompleteBufferPhysicalMapping(struct ndis_handle *handle,
+				   struct ndis_buffer *buf,
+				   unsigned long phy_map_reg)
+{
+	DBGTRACE("%s (%s): %x %u (%u)\n",
+		 handle->net_dev->name, __FUNCTION__,
+		 handle, phy_map_reg, handle->map_count);
+
+	if (phy_map_reg > handle->map_count)
+	{
+		DBGTRACE("%s (%s): map_register too big (%u > %u)\n",
+			 handle->net_dev->name, __FUNCTION__,
+			 phy_map_reg, handle->map_count);
+		return;
+	}
+
+	if (handle->map_dma_addr[phy_map_reg] == 0)
+	{
+		DBGTRACE("%s (%s): map register not used (%u)\n",
+			 handle->net_dev->name, __FUNCTION__, phy_map_reg);
+		return;
+	}
+	
+	// unmap buffer
+	pci_unmap_single(handle->pci_dev, handle->map_dma_addr[phy_map_reg],
+			 buf->len, PCI_DMA_TODEVICE);
+
+	// clear mapping index
+	handle->map_dma_addr[phy_map_reg] = 0;
+}
+
  /* Unimplemented...*/
 STDCALL void NdisInitAnsiString(void *src, void *dst) {UNIMPL();}
 STDCALL void NdisOpenConfigurationKeyByName(unsigned int *status, void *handle, void *key, void *subkeyhandle){UNIMPL();}
@@ -1365,7 +1467,5 @@ STDCALL void NdisInitializeString(void){UNIMPL();}
 STDCALL void NdisMSetAttributes(void){UNIMPL();}
 STDCALL void EthFilterDprIndicateReceiveComplete(void){UNIMPL();}
 STDCALL void EthFilterDprIndicateReceive(void){UNIMPL();}
-STDCALL void NdisMStartBufferPhysicalMapping(void){UNIMPL();}
-STDCALL void NdisMCompleteBufferPhysicalMapping(void){UNIMPL();}
 STDCALL void NdisMPciAssignResources(void){UNIMPL();}
 

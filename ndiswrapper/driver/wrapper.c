@@ -438,6 +438,7 @@ static int ndis_set_tx_power(struct net_device *dev, struct iw_request_info *inf
 			       dev->name, res);
 			return -EINVAL;
 		}
+		netif_carrier_off(handle->net_dev);
 		return 0;
 	}
 	else 
@@ -468,6 +469,8 @@ static int ndis_set_tx_power(struct net_device *dev, struct iw_request_info *inf
 		       dev->name, res);
 		return -EINVAL;
 	}
+	if (!netif_carrier_ok(handle->net_dev))
+		netif_carrier_on(handle->net_dev);
 
 	return 0;
 }
@@ -808,10 +811,7 @@ static int ndis_list_scan(struct ndis_handle *handle)
 	memset(&ndis_stats, 0, sizeof(ndis_stats));
 	res = doquery(handle, NDIS_OID_STATISTICS, (char *)&ndis_stats,
 		      sizeof(ndis_stats), &written, &needed);
-	if (res)
-		printk(KERN_WARNING "%s: get statistics failed (%08x)\n",
-		       dev->name, res);
-	else
+	if (!res)
 	{
 		iw_stats->discard.retries = (__u32)ndis_stats.retry + (__u32)ndis_stats.multi_retry;
 		iw_stats->discard.misc = (__u32)ndis_stats.fcs_err + (__u32)ndis_stats.rtss_fail + (__u32)ndis_stats.ack_fail + (__u32)ndis_stats.frame_dup;
@@ -820,7 +820,6 @@ static int ndis_list_scan(struct ndis_handle *handle)
 			iw_stats->qual.qual = 100 - 100 * ((__u32)ndis_stats.retry + 2 * (__u32)ndis_stats.multi_retry + 3 * (__u32)ndis_stats.failed) /(6 * (__u32)ndis_stats.tx_frag);
 		else
 			iw_stats->qual.qual = 100;
-		DBGTRACE("%s: quality = %d\n", dev->name, iw_stats->qual.qual);
 	}
 	return res;
 }
@@ -953,6 +952,43 @@ static int ndis_get_power_mode(struct net_device *dev,
 	return 0;
 }
 
+static int ndis_get_sensitivity(struct net_device *dev,
+				struct iw_request_info *info,
+				union iwreq_data *wrqu,	char *extra)
+{
+	struct ndis_handle *handle = dev->priv;
+	unsigned int res, written, needed;
+	unsigned long rssi_trigger;
+
+	res = doquery(handle, NDIS_OID_RSSI_TRIGGER, (char *)&rssi_trigger,
+		      sizeof(rssi_trigger), &written, &needed);
+	if (res)
+		return -EOPNOTSUPP;
+	wrqu->param.value = rssi_trigger;
+	wrqu->param.disabled = (rssi_trigger == 0);
+	wrqu->param.fixed = 1;
+	return 0;
+}
+
+static int ndis_set_sensitivity(struct net_device *dev,
+				struct iw_request_info *info,
+				union iwreq_data *wrqu,	char *extra)
+{
+	struct ndis_handle *handle = dev->priv;
+	unsigned int res, written, needed;
+	unsigned long rssi_trigger;
+
+	if (wrqu->param.disabled)
+		rssi_trigger = 0;
+	else
+		rssi_trigger = wrqu->param.value;
+	res = dosetinfo(handle, NDIS_OID_RSSI_TRIGGER, (char *)&rssi_trigger,
+			sizeof(rssi_trigger), &written, &needed);
+	if (res)
+		return -EINVAL;
+	return 0;
+}
+
 static struct iw_statistics *ndis_get_wireless_stats(struct net_device *dev)
 {
 	struct ndis_handle *handle = dev->priv;
@@ -1035,6 +1071,8 @@ static const iw_handler	ndis_handler[] = {
 	[SIOCSIWPOWER	- SIOCIWFIRST] = ndis_set_power_mode,
 	[SIOCGIWRANGE	- SIOCIWFIRST] = ndis_get_range,
 	[SIOCGIWSTATS	- SIOCIWFIRST] = ndis_get_ndis_stats,
+	[SIOCGIWSENS	- SIOCIWFIRST] = ndis_get_sensitivity,
+	[SIOCSIWSENS	- SIOCIWFIRST] = ndis_set_sensitivity,
 };
 
 static const struct iw_handler_def ndis_handler_def = {
@@ -1279,10 +1317,26 @@ static void send_one(struct ndis_handle *handle, struct ndis_buffer *buffer)
 		struct ndis_packet *packets[1];
 		packets[0] = packet;
 //		DBGTRACE("Calling send_packets at %08x rva(%08x)\n", (int)handle->driver->miniport_char.send_packets, (int)handle->driver->miniport_char.send_packets - image_offset);
-		res = handle->driver->miniport_char.send_packets(handle->adapter_ctx, &packets[0], 1);
-		if(res)
-			DBGTRACE("send_packets returning %08x\n", res);
+		handle->driver->miniport_char.send_packets(handle->adapter_ctx, &packets[0], 1);
 		
+		if (!(handle->serialized_driver))
+			return;
+		
+		res = packet->status;
+		if (res == NDIS_STATUS_SUCCESS)
+		{
+//			ndis_sendpacket_done(handle, packet);
+		} else if (res == NDIS_STATUS_PENDING)
+			return;
+		else if (res == NDIS_STATUS_RESOURCES)
+		{
+			DBGTRACE("send packets failed, should queue for send_complete, but for now - just drop: %i \n", res);
+			ndis_sendpacket_done(handle, packet);
+		} else if (res == NDIS_STATUS_FAILURE)
+		{
+			DBGTRACE("send_packets failed: %i \n",res);
+			ndis_sendpacket_done(handle, packet);
+		}
 	}
 	else if(handle->driver->miniport_char.send)
 	{
@@ -1616,6 +1670,10 @@ static int __devinit ndis_init_one(struct pci_dev *pdev,
 	handle->set_complete = &NdisMSetInformationComplete;
 	handle->reset_complete = &NdisMResetComplete;
 	
+	handle->serialized_driver = 0;
+	handle->map_count = 0;
+	handle->map_dma_addr = NULL; 
+
 	handle->pci_dev = pdev;
 
 	handle->hangcheck_interval = 2 * HZ;
