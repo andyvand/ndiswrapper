@@ -1352,6 +1352,7 @@ STDCALL void WRAP_EXPORT(KeBugCheckEx)
 STDCALL void WRAP_EXPORT(IoReleaseCancelSpinLock)(void){UNIMPL();}
 STDCALL void WRAP_EXPORT(IoDeleteDevice)(void){UNIMPL();}
 STDCALL void WRAP_EXPORT(IoCreateSymbolicLink)(void){UNIMPL();}
+STDCALL void WRAP_EXPORT(IoCreateUnprotectedSymbolicLink)(void){UNIMPL();}
 STDCALL void WRAP_EXPORT(MmMapLockedPages)(void){UNIMPL();}
 STDCALL void WRAP_EXPORT(IoCreateDevice)(void){UNIMPL();}
 STDCALL void WRAP_EXPORT(IoDeleteSymbolicLink)(void){UNIMPL();}
