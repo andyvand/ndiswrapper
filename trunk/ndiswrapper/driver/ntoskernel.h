@@ -420,6 +420,7 @@ unsigned long lin_to_win6(void *func, unsigned long, unsigned long,
 #define ERROR(fmt, ...) MSG(KERN_ERR, fmt , ## __VA_ARGS__)
 #define INFO(fmt, ...) MSG(KERN_INFO, fmt , ## __VA_ARGS__)
 
+#if defined(CONFIG_SMP) || defined(CONFIG_DEBUG_SPINLOCK)
 #define wrap_spin_lock_init(lock) do {			\
 		spin_lock_init(&(lock)->spinlock);	\
 		(lock)->use_bh = 0;			\
@@ -464,6 +465,45 @@ unsigned long lin_to_win6(void *func, unsigned long, unsigned long,
 
 struct wrap_spinlock *map_kspin_lock(KSPIN_LOCK *kspin_lock);
 int unmap_kspin_lock(KSPIN_LOCK *kspin_lock);
+
+#else // CONFIG_SMP || CONFIG_DEBUG_SPINLOCK
+
+#define wrap_spin_lock_init(lock) *(lock) = 255
+#define wrap_spin_lock(lock, newirql)				 \
+({								 \
+	*(lock) = KeGetCurrentIrql();				 \
+	if (newirql == DISPATCH_LEVEL) {			 \
+		if (*(lock) == PASSIVE_LEVEL) {			 \
+			preempt_disable();			 \
+			local_bh_disable();			 \
+		}						 \
+	}							 \
+	*(lock);						 \
+})
+#define wrap_spin_unlock(lock) do {				\
+		if (*(lock) == PASSIVE_LEVEL) {			\
+			KIRQL irql = KeGetCurrentIrql();	\
+			if (irql == DISPATCH_LEVEL) {		\
+				local_bh_enable();		\
+				preempt_enable();		\
+			}					\
+		}						\
+		*(lock) = 255;					\
+	} while (0)
+#define wrap_spin_unlock_irql(lock, newirql) do {			\
+		if (*(lock) != newirql)					\
+			ERROR("irql %d != %d", *(lock), newirql);	\
+		else							\
+			wrap_spin_unlock(lock);				\
+	} while (0)
+#define wrap_spin_lock_irqsave(lock, flags)		\
+	spin_lock_irqsave((spinlock_t *)(lock), flags)
+#define wrap_spin_unlock_irqrestore(lock, flags)		\
+	spin_unlock_irqrestore((spinlock_t *)(lock), flags)
+
+#define map_kspin_lock(lock) (lock)
+#define unmap_kspin_lock(lock) 0
+#endif // CONFIG_SMP || CONFIG_DEBUG_SPINLOCK
 
 static inline void wrapper_set_timer_dpc(struct wrapper_timer *wrapper_timer,
                                          struct kdpc *kdpc)

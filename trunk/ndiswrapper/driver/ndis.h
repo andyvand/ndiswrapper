@@ -826,7 +826,7 @@ struct ndis_handle {
 	unsigned int max_send_packets;
 
 	unsigned char send_ok;
-	struct wrap_spinlock send_packet_done_lock;
+	spinlock_t send_packet_done_lock;
 
 	struct semaphore ndis_comm_mutex;
 	wait_queue_head_t ndis_comm_wq;
@@ -867,7 +867,7 @@ struct ndis_handle {
 
 	/* List of initialized timers */
 	struct list_head timers;
-	struct wrap_spinlock timers_lock;
+	spinlock_t timers_lock;
 
 	struct proc_dir_entry *procfs_iface;
 
@@ -875,7 +875,7 @@ struct ndis_handle {
 	unsigned long wrapper_work;
 
 	unsigned long attributes;
-	struct wrap_spinlock lock;
+	spinlock_t lock;
 	struct ndis_resource_list *pci_resources;
 
 };
