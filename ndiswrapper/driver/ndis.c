@@ -898,6 +898,7 @@ STDCALL void NdisMIndicateReceivePacket(struct ndis_handle *handle, struct ndis_
 	struct sk_buff *skb;
 	int i;
 
+	DBGTRACE("%s\n", __FUNCTION__);
 	for(i = 0; i < nr_packets; i++)
 	{
 		packet = packets[i];
