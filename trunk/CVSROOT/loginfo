@@ -24,4 +24,4 @@
 #DEFAULT (echo ""; id; echo %s; date; cat) >> $CVSROOT/CVSROOT/commitlog
 # or
 #DEFAULT (echo ""; id; echo %{sVv}; date; cat) >> $CVSROOT/CVSROOT/commitlog
-ndiswrapper (echo "path:"; echo %p; echo "file:"; echo %s) >> /home/groups/n/nd/ndiswrapper/commitlog; install -d /home/groups/n/nd/ndiswrapper/%p; install %{s} /home/groups/n/nd/ndiswrapper/%p
+# ndiswrapper (echo "path:"; echo %p; echo "file:"; echo %s) >> /home/groups/n/nd/ndiswrapper/commitlog; install -d /home/groups/n/nd/ndiswrapper/%p; install %{s} /home/groups/n/nd/ndiswrapper/%p
