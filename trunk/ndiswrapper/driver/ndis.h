@@ -28,10 +28,7 @@
 #include <asm/mman.h>
 
 #include <linux/version.h>
-
 #define DRV_NAME "ndiswrapper"
-#define DRV_VERSION VERSION
-
 
 /* Workqueue / task queue backwards compatibility stuff */
 #if LINUX_VERSION_CODE > KERNEL_VERSION(2,5,41)

@@ -66,7 +66,11 @@ prereq_check:
 
 
 OBJS   := wrapper.o loader.o winsyms.o ndis.o misc_funcs.o proc.o
-CFLAGS += $(shell [ -f $(KSRC)/include/linux/modversions.h ] && echo -DEXPORT_SYMTAB -DMODVERSIONS -include $(KSRC)/include/linux/modversions.h) -DVERSION=\"${VERSION}\"
+CFLAGS += $(shell [ -f $(KSRC)/include/linux/modversions.h ] && echo -DEXPORT_SYMTAB -DMODVERSIONS -include $(KSRC)/include/linux/modversions.h)
+
+ifdef DRV_VERSION
+CFLAGS += -DDRV_VERSION=\"${DRV_VERSION}\"
+endif
 
 
 ifeq ($(KVERS),24)
