@@ -8,6 +8,7 @@
 	.globl lin_to_win6
 	
 _win_to_lin:
+	push	%r11
 	push	%r10		# non volatile
 	push	%rsi		# non volatile
 	push	%rdi		# non volatile
@@ -15,10 +16,11 @@ _win_to_lin:
 	mov	%rdx, %rsi	# arg2
 	mov	%r8, %rdx	# arg3
 	mov	%r9, %rcx	# arg4
-	mov	72(%rsp), %r8	# arg5 is at 9th position (offset 72)
-				# due to 4 more push'es
-	mov	80(%rsp), %r9	# arg6
-	mov	$0x0, %rax	# number of SSE regs for variadic funcs
+	mov	0x48(%rsp), %r8	# arg5 is at 9th position (offset 0x48)
+				# due to 4 more push'es %r11 to %rdi
+	mov	0x50(%rsp), %r9	# arg6
+	mov	%rax, %r11
+	xor	%al, %al	# number of SSE regs for variadic funcs
 	call	*%r11
 	pop	%rdi
 	pop	%rsi
@@ -37,13 +39,13 @@ lin_to_win1:
 	mov	%rsi, %rcx	# Lin-arg2 => Win-arg1
 	jmp	*%rdi		# call Lin-arg1
 
-	# 28 / 0  - ret
+	# 0x28 / 0  - ret
 	#
-	# 20 - arg5   - 8
-	# 18 - arg4   -10
-	# 10 - arg3   -18
-	# 8  - arg2   -20
-	# 0  - arg1   -28
+	# 0x20 - arg5   - 8
+	# 0x18 - arg4   -10
+	# 0x10 - arg3   -18
+	# 0x8  - arg2   -20
+	# 0x0  - arg1   -28
 lin_to_win5:
 	sub	$0x28, %rsp
 	mov	%r9, 0x20(%rsp)
@@ -55,15 +57,15 @@ lin_to_win5:
 	add	$0x28, %rsp
 	ret
 
-	# 38 / 8  - lin-arg7
-	# 30 / 0  - ret
+	# 0x38 / 8  - lin-arg7
+	# 0x30 / 0  - ret
 	#
-	# 28 - arg6   - 8
-	# 20 - arg5   -10
-	# 18 - arg4   -18
-	# 10 - arg3   -20
-	# 8  - arg2   -28
-	# 0  - arg1   -30
+	# 0x28 - arg6   - 8
+	# 0x20 - arg5   -10
+	# 0x18 - arg4   -18
+	# 0x10 - arg3   -20
+	# 0x8  - arg2   -28
+	# 0x0  - arg1   -30
 lin_to_win6:
 	sub	$0x30, %rsp
 	mov	0x38(%rsp), %rax
@@ -81,8 +83,7 @@ lin_to_win6:
 	.macro	win_to_lin_stub name
 	.globl x86_64_\name
 x86_64_\name:
-	push	%r11
-	lea	\name(%rip),%r11
+	lea	\name(%rip),%rax
 	jmp	*win_to_lin(%rip)
 	.endm
 
