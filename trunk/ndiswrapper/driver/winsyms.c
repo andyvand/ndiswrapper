@@ -307,12 +307,12 @@ func("NdisBufferVirtualAddress"             , NdisBufferVirtualAddress),
 func("NdisBufferLength"                     , NdisBufferLength),
 func("NdisAllocatePacketPoolEx"             , NdisAllocatePacketPoolEx),
 
-func("IoIsWdmVersionAvailable"             , IoIsWdmVersionAvailable),
-func("NdisMRegisterDevice"                 , NdisMRegisterDevice),
-func("NdisMDeregisterDevice"               , NdisMDeregisterDevice),
-func("NdisCancelTimer"                     , NdisCancelTimer),
-func("NdisInitializeTimer"                 , NdisInitializeTimer),
-func("NdisMRemoveMiniport"                 , NdisMRemoveMiniport),
+func("IoIsWdmVersionAvailable"              , IoIsWdmVersionAvailable),
+func("NdisMRegisterDevice"                  , NdisMRegisterDevice),
+func("NdisMDeregisterDevice"                , NdisMDeregisterDevice),
+func("NdisCancelTimer"                      , NdisCancelTimer),
+func("NdisInitializeTimer"                  , NdisInitializeTimer),
+func("NdisMRemoveMiniport"                  , NdisMRemoveMiniport),
 
 
 
