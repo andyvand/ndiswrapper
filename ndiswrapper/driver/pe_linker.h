@@ -13,12 +13,10 @@
  *
  */
 
-#ifndef PE_LOADER_H
-#define PE_LOADER_H
+#ifndef PE_LINKER_H
+#define PE_LINKER_H
 
 #pragma pack(1)
-
-#include "wrapper.h"
 
 #define COFF_MACHINE_I386 0x14c
 #define COFF_MACHINE_ARM  0x1c0
@@ -193,18 +191,8 @@ struct exports
 	cu32 addr;
 };
 
-struct pe_image
-{
-	char name[MAX_DRIVER_NAME_LEN];
-	void *entry;
-	void *image;
-	int size;
-	int type;
-};
-
 #pragma pack()
 
 int load_pe_images(struct pe_image[], int n);
-int load_pe_image(void **entry, void *image, int size);
 
-#endif /* PE_LOADER_H */
+#endif /* PE_LINKER_H */

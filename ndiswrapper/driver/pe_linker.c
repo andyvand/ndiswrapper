@@ -21,16 +21,16 @@
 #include <linux/types.h>
 #include <asm/errno.h>
 
-#include "loader.h"
-#include "pe_loader.h"
+#include "pe_linker.h"
 
 #else
 
 #include <linux/types.h>
 #include <asm/errno.h>
 
-#include "pe_loader.h"
 #include "ndiswrapper.h"
+#include "ntoskernel.h"
+#include "pe_linker.h"
 
 #endif
 
@@ -41,7 +41,7 @@ static int num_exports;
 
 #ifdef TEST_LOADER
 #define WRAP_EXPORT_FUNC void
-WRAP_EXPORT_FUNC get_export(char *name)
+static WRAP_EXPORT_FUNC get_export(char *name)
 {
 	return name;
 }
@@ -49,7 +49,7 @@ WRAP_EXPORT_FUNC get_export(char *name)
 extern struct wrap_export ntoskernel_exports[], ndis_exports[],
 	misc_funcs_exports[], hal_exports[], usb_exports[];
 
-WRAP_EXPORT_FUNC get_export(char *name)
+static WRAP_EXPORT_FUNC get_export(char *name)
 {
 	int i;
 
@@ -83,7 +83,7 @@ WRAP_EXPORT_FUNC get_export(char *name)
 }
 #endif // TEST_LOADER
 
-void *get_dll_init(char *name)
+static void *get_dll_init(char *name)
 {
 	int i;
 	for (i = 0; i < num_exports; i++)
@@ -114,8 +114,7 @@ static size_t rva_to_va(void *image, uint32_t rva)
 	sect_hdr = (struct section_header *)((void *)nt_hdr +
 					     sizeof(struct nt_header));
 
-	for (i = 0; i < sections; i++, sect_hdr++)
-	{
+	for (i = 0; i < sections; i++, sect_hdr++) {
 		int fixedlen = sect_hdr->virt_size;
 		fixedlen += ((opt_hdr->opt_nt_hdr.section_alignment - 1) -
 			     sect_hdr->virt_size) &
@@ -162,44 +161,42 @@ static int check_nt_hdr(struct nt_header *nt_hdr)
 	long char_must;
 
 	/* Validate the pe signature */
-	if(memcmp(pe_sign, nt_hdr->magic, sizeof(pe_sign)) != 0)
+	if (memcmp(pe_sign, nt_hdr->magic, sizeof(pe_sign)) != 0)
 		return -EINVAL;
 
 	/* Make sure Image is PE32 */
-	if(nt_hdr->opt_hdr.opt_std_hdr.magic != COFF_MAGIC_PE32)
+	if (nt_hdr->opt_hdr.opt_std_hdr.magic != COFF_MAGIC_PE32)
 		return -EINVAL;
 	
-	if(nt_hdr->file_hdr.machine != COFF_MACHINE_I386)
-	{
+	if (nt_hdr->file_hdr.machine != COFF_MACHINE_I386) {
 		ERROR("%s", "Driver is not for i386");
 		return -EINVAL;
 	}
 
 	/* Make sure this is a relocatable 32 bit dll */
 	char_must = COFF_CHAR_IMAGE | COFF_CHAR_32BIT;
-	if((nt_hdr->file_hdr.characteristics & char_must) != char_must)
+	if ((nt_hdr->file_hdr.characteristics & char_must) != char_must)
 		return -EINVAL;
 
 	/* Must be a relocatable dll */
-	if((nt_hdr->file_hdr.characteristics & COFF_CHAR_RELOCS_STRIPPED))
+	if ((nt_hdr->file_hdr.characteristics & COFF_CHAR_RELOCS_STRIPPED))
 		return -EINVAL;
 
 	/* Make sure we have at least one section */
-	if(nt_hdr->file_hdr.num_sections == 0)
+	if (nt_hdr->file_hdr.num_sections == 0)
 		return -EINVAL;
 
-	if(nt_hdr->opt_hdr.opt_nt_hdr.section_alignment <
-	   nt_hdr->opt_hdr.opt_nt_hdr.file_alignment)
-	{
+	if (nt_hdr->opt_hdr.opt_nt_hdr.section_alignment <
+	   nt_hdr->opt_hdr.opt_nt_hdr.file_alignment) {
 		ERROR("Alignment mismatch: secion: 0x%lx, file: 0x%lx",
 		      nt_hdr->opt_hdr.opt_nt_hdr.section_alignment,
 		      nt_hdr->opt_hdr.opt_nt_hdr.file_alignment);
 		return -EINVAL;
 	}
 
-	if((nt_hdr->file_hdr.characteristics & COFF_CHAR_DLL))
+	if ((nt_hdr->file_hdr.characteristics & COFF_CHAR_DLL))
 		return COFF_CHAR_DLL;
-	if((nt_hdr->file_hdr.characteristics & COFF_CHAR_IMAGE))
+	if ((nt_hdr->file_hdr.characteristics & COFF_CHAR_IMAGE))
 		return COFF_CHAR_IMAGE;
 	return -EINVAL;
 }
@@ -262,8 +259,7 @@ static int read_exports(void *image, struct nt_header *nt_hdr, char *dll)
 	export_addr_table = (cu32 *)
 		(image + export_dir_table->export_table_rva);
 
-	for (i = 0; i < export_dir_table->num_name_addr; i++)
-	{
+	for (i = 0; i < export_dir_table->num_name_addr; i++) {
 		if (nt_hdr->opt_hdr.export_tbl.rva <= *export_addr_table ||
 		    *export_addr_table >= (nt_hdr->opt_hdr.export_tbl.rva +
 					   nt_hdr->opt_hdr.export_tbl.size))
@@ -315,15 +311,13 @@ static int fixup_reloc(void *image, struct nt_header *nt_hdr)
 		return -EINVAL;
 	fixup_block = (struct coffpe_relocs *)(image + sect_hdr->rawdata_addr);
 
-	do
-	{
+	do {
 		int i;
 		uint16_t fixup, offset;
 
 		size = (fixup_block->block_size - (2 * sizeof(uint32_t))) /
 			sizeof(uint16_t);
-		for (i = 0; i < size; i++)
-		{
+		for (i = 0; i < size; i++) {
 			uint32_t *loc;
 			uint32_t addr;
 			fixup = fixup_block->fixup[i];
@@ -331,8 +325,7 @@ static int fixup_reloc(void *image, struct nt_header *nt_hdr)
 			loc = RVA2VA(image, fixup_block->page_rva + offset,
 				   uint32_t *);
 
-			switch ((fixup >> 12) & 0x0f)
-			{
+			switch ((fixup >> 12) & 0x0f) {
 			case COFF_FIXUP_ABSOLUTE:
 				break;
 			case COFF_FIXUP_HIGHLOW:
@@ -361,8 +354,7 @@ int load_pe_images(struct pe_image *pe_image, int n)
 	int size;
 	struct optional_header *opt_hdr;
 
-	for (i = 0; i < n; i++)
-	{
+	for (i = 0; i < n; i++) {
 		image = pe_image[i].image;
 		size = pe_image[i].size;
 
@@ -379,8 +371,7 @@ int load_pe_images(struct pe_image *pe_image, int n)
 			return -EINVAL;
 	}
 
-	for (i = 0; i < n; i++)
-	{
+	for (i = 0; i < n; i++) {
 		image = pe_image[i].image;
 		size = pe_image[i].size;
 
@@ -399,9 +390,7 @@ int load_pe_images(struct pe_image *pe_image, int n)
 					   void *);
 		DBGTRACE1("entry is at %p, rva at %08X", pe_image[i].entry, 
 		     (unsigned int)opt_hdr->opt_std_hdr.entry_rva);
-	}
-	for (i = 0; i < n; i++)
-	{
+	} for (i = 0; i < n; i++) {
 		image = pe_image[i].image;
 		size = pe_image[i].size;
 
@@ -409,8 +398,7 @@ int load_pe_images(struct pe_image *pe_image, int n)
 		nt_hdr = (struct nt_header *)((char *)image + nt_hdr_offset);
 		opt_hdr = &nt_hdr->opt_hdr;
 
-		if (pe_image[i].type == COFF_CHAR_DLL)
-		{
+		if (pe_image[i].type == COFF_CHAR_DLL) {
 			struct ustring ustring;
 			char *buf = "0\0t0m0p00";
 			int (*dll_entry)(struct ustring *ustring) STDCALL;

@@ -46,6 +46,7 @@ void ndis_init(void)
 {
 	INIT_WORK(&ndis_work, &ndis_worker, NULL);
 	INIT_LIST_HEAD(&ndis_work_list);
+	INIT_LIST_HEAD(&handle_ctx_list);
 	wrap_spin_lock_init(&ndis_work_list_lock);
 
 	wrap_spin_lock_init(&atomic_lock);
