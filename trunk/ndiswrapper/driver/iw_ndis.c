@@ -1588,7 +1588,6 @@ static int wpa_set_auth_alg(struct net_device *dev,
 }
 
 static const struct iw_priv_args priv_args[] = {
-	{PRIV_RESET, 0, 0, "ndis_reset"},
 	{WPA_SET_WPA, IW_PRIV_TYPE_INT | IW_PRIV_SIZE_FIXED | 1, 0, "setwpa"},
 	{WPA_SET_KEY, IW_PRIV_TYPE_INT | IW_PRIV_SIZE_FIXED | 1, 0, "setkey"},
 	{WPA_ASSOCIATE, IW_PRIV_TYPE_INT | IW_PRIV_SIZE_FIXED | 1, 0,
@@ -1603,12 +1602,13 @@ static const struct iw_priv_args priv_args[] = {
 	 "deauthenticate"},
 	{WPA_SET_AUTH_ALG, IW_PRIV_TYPE_INT | IW_PRIV_SIZE_FIXED | 1, 0,
 	 "auth_alg"},
+
+	{PRIV_RESET, 0, 0, "ndis_reset"},
 	{PRIV_POWER_PROFILE, IW_PRIV_TYPE_INT | IW_PRIV_SIZE_FIXED | 1, 0,
 	 "power_profile"},
 };
 
 static const iw_handler priv_handler[] = {
-	[PRIV_RESET 		- SIOCIWFIRSTPRIV] = priv_reset,
 	[WPA_SET_WPA 		- SIOCIWFIRSTPRIV] = wpa_set_wpa,
 	[WPA_SET_KEY 		- SIOCIWFIRSTPRIV] = wpa_set_key,
 	[WPA_ASSOCIATE 		- SIOCIWFIRSTPRIV] = wpa_associate,
@@ -1617,6 +1617,8 @@ static const iw_handler priv_handler[] = {
 	[WPA_SET_COUNTERMEASURES- SIOCIWFIRSTPRIV] = wpa_set_countermeasures,
 	[WPA_DEAUTHENTICATE 	- SIOCIWFIRSTPRIV] = wpa_deauthenticate,
 	[WPA_SET_AUTH_ALG 	- SIOCIWFIRSTPRIV] = wpa_set_auth_alg,
+
+	[PRIV_RESET 		- SIOCIWFIRSTPRIV] = priv_reset,
 	[PRIV_POWER_PROFILE 	- SIOCIWFIRSTPRIV] = priv_power_profile,
 };
 
