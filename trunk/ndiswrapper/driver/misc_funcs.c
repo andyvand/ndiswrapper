@@ -365,17 +365,26 @@ __attribute__ ((regparm(3))) __u64 _aullshr(__u64 a, __u8 b)
 
 STDCALL size_t RtlCompareMemory(const void *a, const void *b, size_t len)
 {
-	size_t i, same;
+	size_t i;
 	char *x, *y;
 
 	TRACEENTER1("%s", "");
 
 	x = (char *)a;
 	y = (char *)b;
-	for(i = same = 0; i < len; i++)
-		if (x[i] == y[i])
-			same++;
-	return same;
+	/* MSDN says this should return number of bytes that compare as
+	 * equal. This can be interpretted as either all bytes that are
+	 * equal in 'len' bytes or that only until the bytes compare as
+	 * not equal. Initially we had it the former way, but Realtek driver
+	 * doesn't like it that way - it takes many attempts to associate
+	 * with WPA. ReactOS returns the number of bytes that are equal
+	 * upto when they compare as not equal.
+	 * According to lords at #reactos, that is the way it should be
+	 * and that msdn is wrong about it!
+	 */
+	for (i = 0; i < len && x[i] == y[i]; i++)
+		;
+	return i;
 }
 
 STDCALL long RtlCompareString(const struct ustring *s1,
