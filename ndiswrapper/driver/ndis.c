@@ -194,8 +194,12 @@ STDCALL NDIS_STATUS WRAP_EXPORT(NdisAllocateMemory)
 		WARNING("Allocating %u bytes of physically "
 		       "contiguous memory may fail", length);
 		*dest = kmalloc(length, GFP_KERNEL);
-	} else
+	} else {
+		if (current_irql() == DIPATCH_LEVEL)
+			ERROR("Windows driver allocating too big a block"
+			      " at DISPATCH_LEVEL: %d", length);
 		*dest = vmalloc(length);
+	}
 
 	if (*dest)
 		TRACEEXIT3(return NDIS_STATUS_SUCCESS);
