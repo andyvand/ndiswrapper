@@ -68,6 +68,8 @@ MODULE_PARM_DESC(hangcheck_interval, "The interval, in seconds, for checking"
 		 " if driver is hung. (default: 0)");
 
 static void ndis_set_rx_mode(struct net_device *dev);
+static void set_multicast_list(struct net_device *dev,
+			       struct ndis_handle *handle);
 
 /*
  * MiniportReset
@@ -77,6 +79,8 @@ NDIS_STATUS miniport_reset(struct ndis_handle *handle)
 	KIRQL irql;
 	NDIS_STATUS res = 0;
 	struct miniport_char *miniport;
+	UINT cur_lookahead;
+	UINT max_lookahead;
 
 	TRACEENTER2("handle: %p", handle);
 
@@ -92,6 +96,8 @@ NDIS_STATUS miniport_reset(struct ndis_handle *handle)
 	handle->reset_status = NDIS_STATUS_PENDING;
 	handle->ndis_comm_res = NDIS_STATUS_PENDING;
 	handle->ndis_comm_done = 0;
+	cur_lookahead = handle->cur_lookahead;
+	max_lookahead = handle->max_lookahead;
 	irql = raise_irql(DISPATCH_LEVEL);
 	res = LIN2WIN2(miniport->reset, &handle->reset_status,
 		       handle->adapter_ctx);
@@ -100,11 +106,12 @@ NDIS_STATUS miniport_reset(struct ndis_handle *handle)
 	DBGTRACE2("res = %08X, reset_status = %08X",
 		  res, handle->reset_status);
 	if (res == NDIS_STATUS_PENDING) {
-		if (!wait_event_interruptible_timeout(
+		if (wait_event_interruptible_timeout(
 			    handle->ndis_comm_wq,
 			    (handle->ndis_comm_done == 1), 1*HZ))
-			handle->ndis_comm_res = NDIS_STATUS_FAILURE;
-		res = handle->ndis_comm_res;
+			res = handle->ndis_comm_res;
+		else
+			res = NDIS_STATUS_FAILURE;
 		DBGTRACE2("res = %08X, reset_status = %08X",
 			  res, handle->reset_status);
 	}
@@ -113,19 +120,11 @@ NDIS_STATUS miniport_reset(struct ndis_handle *handle)
 		  res, handle->reset_status);
 
 	if (res == NDIS_STATUS_SUCCESS && handle->reset_status) {
-		handle->rx_packet =
-			WRAP_FUNC_PTR(NdisMIndicateReceivePacket);
-		handle->send_complete = WRAP_FUNC_PTR(NdisMSendComplete);
-		handle->send_resource_avail =
-			WRAP_FUNC_PTR(NdisMSendResourcesAvailable);
-		handle->status = WRAP_FUNC_PTR(NdisMIndicateStatus);
-		handle->status_complete =
-			WRAP_FUNC_PTR(NdisMIndicateStatusComplete);
-		handle->query_complete =
-			WRAP_FUNC_PTR(NdisMQueryInformationComplete);
-		handle->set_complete =
-			WRAP_FUNC_PTR(NdisMSetInformationComplete);
-		handle->reset_complete = WRAP_FUNC_PTR(NdisMResetComplete);
+		/* NDIS says we should set lookahead size (?)
+		 * functional address (?) or multicast filter */
+		handle->cur_lookahead = cur_lookahead;
+		handle->max_lookahead = max_lookahead;
+		set_multicast_list(handle->net_dev, handle);
 		ndis_set_rx_mode(handle->net_dev);
 	}
 	handle->reset_status = 0;
@@ -159,13 +158,13 @@ NDIS_STATUS miniport_query_info_needed(struct ndis_handle *handle,
 
 	DBGTRACE3("res = %08x", res);
 	if (res == NDIS_STATUS_PENDING) {
-
 		/* wait for NdisMQueryInformationComplete upto HZ */
-		if (!wait_event_interruptible_timeout(
+		if (wait_event_interruptible_timeout(
 			    handle->ndis_comm_wq,
 			    (handle->ndis_comm_done == 1), 1*HZ))
-			handle->ndis_comm_res = NDIS_STATUS_FAILURE;
-		res = handle->ndis_comm_res;
+			res = handle->ndis_comm_res;
+		else
+			res = NDIS_STATUS_FAILURE;
 	}
 	up(&handle->ndis_comm_mutex);
 	TRACEEXIT3(return res);
@@ -207,11 +206,12 @@ NDIS_STATUS miniport_set_info(struct ndis_handle *handle, ndis_oid oid,
 
 	if (res == NDIS_STATUS_PENDING) {
 		/* wait for NdisMSetInformationComplete upto HZ */
-		if (!wait_event_interruptible_timeout(
+		if (wait_event_interruptible_timeout(
 			    handle->ndis_comm_wq,
 			    (handle->ndis_comm_done == 1), 1*HZ))
-			handle->ndis_comm_res = NDIS_STATUS_FAILURE;
-		res = handle->ndis_comm_res;
+			res = handle->ndis_comm_res;
+		else
+			res = NDIS_STATUS_FAILURE;
 	}
 	up(&handle->ndis_comm_mutex);
 	if (needed)

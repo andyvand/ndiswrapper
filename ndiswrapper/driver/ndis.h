@@ -702,6 +702,9 @@ enum ndis_interface_type {
  * directly via macros, so it's important that they are at the correct
  * position hence the paddings.
  */
+/* This is called NDIS_MINIPORT_BLOCK in NDIS; however, when using it
+ * in Ndis functions, it is passed as void *handle. To avoid
+ * unnecessary typecasting, we declare it as ndis_handle */
 struct ndis_handle {
 	void *signature;
 	struct ndis_handle *next;
