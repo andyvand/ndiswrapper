@@ -914,7 +914,8 @@ static char *ndis_translate_scan(struct net_device *dev, char *event,
 				for (i = 0; i < ielen; i++)
 					p += sprintf(p, "%02x", iep[i]);
 				
-				DBGTRACE2("adding wpa_ie :%u", strlen(buf));
+				DBGTRACE2("adding wpa_ie :%lu",
+					  (unsigned long)strlen(buf));
 
 				memset(&iwe, 0, sizeof(iwe));
 				iwe.cmd = IWEVCUSTOM;
@@ -926,7 +927,8 @@ static char *ndis_translate_scan(struct net_device *dev, char *event,
 				for (i = 0; i < ielen; i++)
 					p += sprintf(p, "%02x", iep[i]);
 
-				DBGTRACE2("adding rsn_ie :%u\n", strlen(buf));
+				DBGTRACE2("adding rsn_ie :%lu",
+					  (unsigned long)strlen(buf));
 				memset(&iwe, 0, sizeof(iwe));
 				iwe.cmd = IWEVCUSTOM;
 				iwe.u.data.length = strlen(buf);

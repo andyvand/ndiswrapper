@@ -385,9 +385,9 @@ STDCALL void WRAP_EXPORT(ExInitializeNPagedLookasideList)
 	 ULONG flags, SIZE_T size, ULONG tag, USHORT depth)
 {
 	TRACEENTER3("lookaside: %p, size: %lu, flags: %u,"
-		    " head: %p, size of lookaside: %u\n",
+		    " head: %p, size of lookaside: %lu",
 		    lookaside, size, flags, lookaside->head.list.next,
-		    sizeof(struct npaged_lookaside_list));
+		    (unsigned long)sizeof(struct npaged_lookaside_list));
 
 	memset(lookaside, 0, sizeof(*lookaside));
 
