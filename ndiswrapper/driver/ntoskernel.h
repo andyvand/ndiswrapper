@@ -320,10 +320,6 @@ do {									\
 #define task_nice(task) ((task)->static_prio - MAX_RT_PRIO - 20)
 #endif
 
-#ifndef TAINT_PROPRIETARY_MODULE
-#define TAINT_PROPRIETARY_MODULE 1
-#endif
-
 #define KMALLOC_THRESHOLD 131072
 
 /* TICK is 100ns */
