@@ -115,15 +115,17 @@ NdisAllocateMemory(void **dest, unsigned int length, unsigned int flags,
 	if (length <= KMALLOC_THRESHOLD)
 	{
 		if (irqs_disabled() || in_atomic())
-			*dest = (void *)kmalloc(length, GFP_ATOMIC);
+			*dest = (void *)kmalloc(length,
+						GFP_ATOMIC | __GFP_NOWARN);
 		else
-			*dest = (void *)kmalloc(length, GFP_KERNEL);
+			*dest = (void *)kmalloc(length,
+						GFP_KERNEL | __GFP_NOWARN);
 	}
 	else if (flags & NDIS_MEMORY_CONTIGUOUS)
 	{
 		WARNING("Allocating %u bytes of physically "
 		       "contiguous memory may fail", length);
-		*dest = (void *)kmalloc(length, GFP_KERNEL);
+		*dest = (void *)kmalloc(length, GFP_KERNEL | __GFP_NOWARN);
 	}
 	else
 		*dest = vmalloc(length);
