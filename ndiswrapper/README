@@ -12,14 +12,9 @@ around" NDIS (Windows network driver API) drivers.
 Status
 ======
 
-The following chipsets are known to work:
-   * Broadcom (4301, 94306)
-   * Intel Centrino (2100)
-   * Admtek (8211)
-   * Atheros (AR5004)
-   * SMC2802 V2
-   * 3Com 3CRSHPW796
-   * TI AC111
+Many chipsets work; see
+http://ndiswrapper.sourceforge.net/supported_chipsets.html
+for details.
 
 Installation
 ============
@@ -46,11 +41,11 @@ public forum available at project home page:
 http://ndiswrapper.sourceforge.net. Both these have search facility.
 Follow the instructions below when sending a bug report:
 
-   * Enable DEBUG option the Makefile in driver directory and
-     recompile all sources. Report dmesg output. Without this step,
-     proper feedback may not be possible.  Include details about your
-     card, chipset (reported by lspci), distribution, kernel version
-     in the post.
+   * Recompile with 'make DEBUG=<level>', where <level> is from 1 to 5;
+   	 higher values for <level> produce more output.
+	 Report dmesg output. Without this step, proper feedback may not be
+	 possible.  Include details about your card, chipset (reported by lspci),
+	 distribution, kernel version in the post.
 
    * Check if latest CVS works.
 

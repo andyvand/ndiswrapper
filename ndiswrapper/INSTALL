@@ -108,3 +108,7 @@ load ndiswrapper automatically by running
 
 > ndiswrapper -m
 
+6. WPA support
+--------------
+See ndiswrapper wiki (http://ndiswrapper.sourceforge.net/wiki) on how to
+use WPA with ndiswrapper.
