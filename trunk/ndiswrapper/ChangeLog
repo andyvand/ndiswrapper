@@ -1,3 +1,10 @@
+Version 0.8 2004-
+======================
+* Support for 802.1x (multiple wep keys).
+* Support for more chipsets/cards (DWL-G630, Marvell W8100, Atheros 5211,
+  Atheros 5212).
+* Bug fixes (scanning, dma aka shared memory allocation).
+
 Version 0.7 2004-04-23
 ======================
 * Power down while unloading the module, so it saves trees!
