@@ -126,14 +126,14 @@ KeAcquireSpinLock(KSPIN_LOCK *lock, KIRQL *oldirql)
 
 	if (!*lock)
 	{
-		WARNING("%s", "Buggy Windows driver trying to use "
-		     "uninitialized lock. Trying to recover...");
+		printk(KERN_WARNING "Buggy Windows driver trying to use "
+		       "uninitialized lock. Trying to recover...");
 		KeInitializeSpinLock(lock);
 		if (*lock)
-			WARNING("%s", "ok\n");
+			printk(KERN_WARNING "ok\n");
 		else
 		{
-			WARNING("%s", "failed\n");
+			printk(KERN_WARNING "failed\n");
 			BUG();
 		}
 	}
