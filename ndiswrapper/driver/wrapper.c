@@ -2374,6 +2374,7 @@ static int __init wrapper_init(void)
 #endif
 
 	/* Wait a little to let card power up otherwise ifup might fail on boot */
+	set_current_state(TASK_INTERRUPTIBLE);
 	schedule_timeout(1*HZ);
 	return 0;
 }
