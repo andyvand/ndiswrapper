@@ -24,11 +24,15 @@
 
 static struct list_head wrap_allocs;
 static KSPIN_LOCK wrap_allocs_lock;
+static struct nt_list_entry wrapper_timer_list;
+
+extern KSPIN_LOCK ntoskernel_lock;
 
 int misc_funcs_init(void)
 {
 	INIT_LIST_HEAD(&wrap_allocs);
 	kspin_lock_init(&wrap_allocs_lock);
+	InitializeListHead(&wrapper_timer_list);
 	return 0;
 }
 
@@ -36,30 +40,43 @@ int misc_funcs_init(void)
 void misc_funcs_exit_handle(struct ndis_handle *handle)
 {
 	char canceled;
-	KIRQL irql;
 
 	/* cancel any timers left by bugyy windows driver
 	 * Also free the memory for timers
 	 */
 	while (1) {
 		struct nt_list_entry *ent;
-		struct ktimer *ktimer;
+		struct wrapper_timer *wrapper_timer;
 
-		irql = kspin_lock_irql(&handle->timer_lock, DISPATCH_LEVEL);
-		ent = RemoveHeadList(&handle->ktimers);
-		kspin_unlock_irql(&handle->timer_lock, irql);
+		kspin_lock(&handle->timer_lock);
+		ent = RemoveHeadList(&handle->wrapper_timer_list);
+		kspin_unlock(&handle->timer_lock);
 		if (!ent)
 			break;
-		ktimer = container_of(ent, struct ktimer, list);
-		DBGTRACE1("freeing timer %p", ktimer);
-		wrapper_cancel_timer(ktimer, &canceled);
-		wrap_kfree(ktimer->wrapper_timer);
+		wrapper_timer = container_of(ent, struct wrapper_timer, list);
+		wrapper_cancel_timer(wrapper_timer, &canceled);
+		wrap_kfree(wrapper_timer);
 	}
 }
 
 /* called when module is being removed */
 void misc_funcs_exit(void)
 {
+	/* free kernel (Ke) timers */
+	while (1) {
+		struct nt_list_entry *ent;
+		struct wrapper_timer *wrapper_timer;
+		char canceled;
+
+		kspin_lock(&ntoskernel_lock);
+		ent = RemoveTailList(&wrapper_timer_list);
+		kspin_unlock(&ntoskernel_lock);
+		if (!ent)
+			break;
+		wrapper_timer = container_of(ent, struct wrapper_timer, list);
+		wrapper_cancel_timer(wrapper_timer, &canceled);
+		wrap_kfree(wrapper_timer);
+	}
 	/* free all pointers on the allocated list */
 	kspin_lock(&wrap_allocs_lock);
 	while (!list_empty(&wrap_allocs)) {
@@ -204,12 +221,17 @@ void wrapper_init_timer(struct ktimer *ktimer, void *handle, struct kdpc *kdpc)
 	wrapper_timer->wrapper_timer_magic = WRAPPER_TIMER_MAGIC;
 #endif
 	wrapper_timer->kdpc = kdpc;
+	wrapper_timer->ktimer = ktimer;
 	ktimer->wrapper_timer = wrapper_timer;
 	kspin_lock_init(&wrapper_timer->lock);
 	if (ndis_handle) {
 		kspin_lock(&ndis_handle->timer_lock);
-		InsertTailList(&ndis_handle->ktimers, &ktimer->list);
+		InsertHeadList(&ndis_handle->wrapper_timer_list, &wrapper_timer->list);
 		kspin_unlock(&ndis_handle->timer_lock);
+	} else {
+		kspin_unlock(&ntoskernel_lock);
+		InsertHeadList(&wrapper_timer_list, &wrapper_timer->list);
+		kspin_unlock(&ntoskernel_lock);
 	}
 
 	DBGTRACE4("added timer %p, wrapper_timer->list %p\n",
@@ -219,11 +241,11 @@ void wrapper_init_timer(struct ktimer *ktimer, void *handle, struct kdpc *kdpc)
 
 /* 'expires' is relative to jiffies, so when setting timer, add
  * jiffies to it */
-int wrapper_set_timer(struct ktimer *ktimer, unsigned long expires,
+int wrapper_set_timer(struct wrapper_timer *wrapper_timer, unsigned long expires,
 		      unsigned long repeat, struct kdpc *kdpc)
 {
 	KIRQL irql;
-	struct wrapper_timer *wrapper_timer = ktimer->wrapper_timer;
+	struct ktimer *ktimer = wrapper_timer->ktimer;
 
 	TRACEENTER5("%p", wrapper_timer);
 	if (!wrapper_timer) {
@@ -263,10 +285,10 @@ int wrapper_set_timer(struct ktimer *ktimer, unsigned long expires,
 	}
 }
 
-void wrapper_cancel_timer(struct ktimer *ktimer, char *canceled)
+void wrapper_cancel_timer(struct wrapper_timer *wrapper_timer, char *canceled)
 {
 	KIRQL irql;
-	struct wrapper_timer *wrapper_timer = ktimer->wrapper_timer;
+	struct ktimer *ktimer = wrapper_timer->ktimer;
 
 	TRACEENTER4("timer = %p, canceled = %p", wrapper_timer, canceled);
 	if (!wrapper_timer) {

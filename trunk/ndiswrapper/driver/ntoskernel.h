@@ -357,6 +357,7 @@ struct wrapper_timer {
 	struct kdpc *kdpc;
 	struct nt_list_entry list;
 	struct timer_list timer;
+	struct ktimer *ktimer;
 #ifdef DEBUG_TIMER
 	unsigned long wrapper_timer_magic;
 #endif
@@ -446,9 +447,9 @@ void *wrap_kmalloc(size_t size, int flags);
 void wrap_kfree(void *ptr);
 void wrapper_init_timer(struct ktimer *ktimer, void *handle,
 			struct kdpc *kdpc);
-int wrapper_set_timer(struct ktimer *ktimer, unsigned long expires,
+int wrapper_set_timer(struct wrapper_timer *wrapper_timer, unsigned long expires,
 		      unsigned long repeat, struct kdpc *kdpc);
-void wrapper_cancel_timer(struct ktimer *ktimer, char *canceled);
+void wrapper_cancel_timer(struct wrapper_timer *wrapper_timer, char *canceled);
 
 unsigned long lin_to_win1(void *func, unsigned long);
 unsigned long lin_to_win2(void *func, unsigned long, unsigned long);
