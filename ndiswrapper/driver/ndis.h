@@ -545,6 +545,8 @@ enum wrapper_work
 	WRAPPER_LINK_STATUS,
 	SET_OP_MODE,
 	SET_ESSID,
+	/* do not work when this is set */
+	SHUTDOWN
 };
 
 enum ndis_attributes
@@ -768,6 +770,7 @@ struct packed ndis_handle
 
 	/* List of initialized timers */
 	struct list_head timers;
+	spinlock_t timers_lock;
 
 	struct proc_dir_entry *procfs_iface;
 

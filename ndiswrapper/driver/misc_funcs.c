@@ -147,8 +147,11 @@ void wrapper_init_timer(struct ktimer *ktimer, void *handle)
 	wrapper_timer->wrapper_timer_magic = WRAPPER_TIMER_MAGIC;
 #endif
 	ktimer->wrapper_timer = wrapper_timer;
-	if (handle)
+	if (handle) {
+		spin_lock_bh(&ndis_handle->timers_lock);
 		list_add(&wrapper_timer->list, &ndis_handle->timers);
+		spin_unlock_bh(&ndis_handle->timers_lock);
+	}
 	spin_lock_init(&wrapper_timer->lock);
 	DBGTRACE4("added timer %p, wrapper_timer->list %p\n",
 		  wrapper_timer, &wrapper_timer->list);
