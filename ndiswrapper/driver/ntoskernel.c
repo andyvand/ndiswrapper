@@ -56,17 +56,10 @@ STDCALL int KeSetTimerEx(struct ktimer *ktimer, __s64 due_time,
 	if (ktimer == NULL)
 		return 0;
 	if (due_time < 0)
-		expires = jiffies + (-due_time * HZ) / 10000;
-	else if (due_time == 0)
-		expires = jiffies + 2;
+		expires = jiffies + HZ * (-due_time / 10000000);
 	else
-	{
-		expires = (due_time * HZ) / 10000;
-		if (period)
-			printk(KERN_ERR "%s: absolute time with repeat? (%ld, %u)\n",
-			       __FUNCTION__, (long)due_time, period);
-	}
-	repeat = (period * HZ) / 1000;
+		expires = HZ * (due_time / 10000000);
+	repeat = HZ * (period / 1000);
 	if (kdpc)
 		wrapper_set_timer_dpc(ktimer->wrapper_timer, kdpc);
 	return wrapper_set_timer(ktimer->wrapper_timer, expires, repeat);
@@ -76,6 +69,7 @@ STDCALL int KeCancelTimer(struct ktimer *ktimer)
 {
 	char canceled;
 
+	DBGTRACE("%s(entry): %p\n", __FUNCTION__, ktimer);
 	wrapper_cancel_timer(ktimer->wrapper_timer, &canceled);
 	return canceled;
 }
