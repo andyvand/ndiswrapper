@@ -430,6 +430,23 @@ struct packed list_scan
 	struct ssid_item items[MAX_SCAN_LIST_ITEMS];
 };
 
+typedef __u64 LARGE_INTEGER;
+struct ndis_wireless_stats {
+	LARGE_INTEGER length;
+	LARGE_INTEGER trans_frag;
+	LARGE_INTEGER multi_trans_frag;
+	LARGE_INTEGER failed;
+	LARGE_INTEGER retry;
+	LARGE_INTEGER multi_retry;
+	LARGE_INTEGER rtss_succ;
+	LARGE_INTEGER rtss_fail;
+	LARGE_INTEGER ack_fail;
+	LARGE_INTEGER frame_dup;
+	LARGE_INTEGER rx_frag;
+	LARGE_INTEGER multi_rx_frag;
+	LARGE_INTEGER fcs_err;
+};
+
 #define NDIS_ENCODE_ENABLED 0
 #define NDIS_ENCODE_DISABLED 1
 #define NDIS_ENCODE_NOKEY 2
@@ -496,6 +513,9 @@ void NdisMSetInformationComplete(struct ndis_handle *handle, unsigned int status
 #define NDIS_OID_BSSID_LIST         0x0D010217
 #define NDIS_OID_POWER_MODE         0x0D010216
 #define NDIS_OID_DISASSOCIATE       0x0D010115
+#define NDIS_OID_STATISTICS         0x0D020212
+#define NDIS_OID_SUPPORTED_RATES    0x0D01020E
+#define NDIS_OID_DESIRED_RATES      0x0D010210
 
 
 /* general OIDs */
