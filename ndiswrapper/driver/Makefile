@@ -68,8 +68,9 @@ endif
 
 prereq_check:
 	@ if [ ! -f $(KSRC)/include/linux/version.h ]; then \
-		echo "You don't seem to have sources for your kernel; \
-		       install them in /usr/src, link $(KSRC) to it and try again."; \
+		echo "Can't find kernel sources in $(KSRC);"; \
+		echo "  give the path to kernel sources with KSRC=<path>\
+		       argument to make";\
 		exit 1;\
 	  fi
 
@@ -91,7 +92,7 @@ CFLAGS  += -DLINUX -D__KERNEL__ -DMODULE -I$(KSRC)/include \
 default: $(OBJS)
 	$(LD) -r -o $(MODULE) $(OBJS)
 clean:
-	rm -f $(MODULE) $(OBJS)
+	rm -f $(MODULE) $(OBJS) usb.o
 
 else
 
@@ -105,7 +106,7 @@ default:
 		EXTRA_VERSION=$(EXTRA_VERSION) modules
 
 clean:
-	rm -rf $(MODULE) ndiswrapper.o $(OBJS) .ndiswrapper.ko.cmd \
+	rm -rf $(MODULE) ndiswrapper.o $(OBJS) usb.o .ndiswrapper.ko.cmd \
 	   ndiswrapper.mod.[oc] .*.o.cmd *~ .tmp_versions
 
 endif
