@@ -138,15 +138,14 @@ void wrap_kfree_all(void);
 #define DBGTRACE4(fmt, ...) (void)0
 
 #define MESSAGE(level, fmt, ...) printk(level "ndiswrapper (%s:%d): " fmt "\n", \
-				 __FUNCTION__, __LINE__, ## __VA_ARGS__)
+					__FUNCTION__, __LINE__, ## __VA_ARGS__)
 #define WARNING(fmt, ...) MESSAGE(KERN_WARNING, fmt, ## __VA_ARGS__)
 #define ERROR(fmt, ...) MESSAGE(KERN_ERR, fmt, ## __VA_ARGS__)
 #define INFO(fmt, ...) MESSAGE(KERN_INFO, fmt, ## __VA_ARGS__)
 
 #if defined DEBUG
 #undef DBGTRACE
-#define DBGTRACE(fmt, ...) printk(KERN_INFO "%s:%d " fmt "\n", \
-				  __FUNCTION__, __LINE__, ## __VA_ARGS__)
+#define DBGTRACE(fmt, ...) MESSAGE(KERN_DEBUG, fmt, ## __VA_ARGS__)
 #endif
 
 #if defined DEBUG && DEBUG >= 1
@@ -196,13 +195,16 @@ struct packed wrap_spinlock
 
 static inline void wrap_spin_lock_init(struct wrap_spinlock *lock)
 {
+	TRACEENTER4("lock: %p", lock);
 	spin_lock_init(&lock->spinlock);
 	lock->magic = NDIS_SPIN_LOCK_MAGIC;
 	atomic_set(&lock->in_use, 0);
+	TRACEEXIT4(return);
 }
 
 static inline void wrap_spin_lock(struct wrap_spinlock *lock)
 {
+	TRACEENTER4("lock: %p", lock);
 	if (lock->magic != NDIS_SPIN_LOCK_MAGIC)
 		WARNING("lock %p is not initlialized (%d)", lock, lock->magic);
 	if (atomic_read(&lock->in_use) == 1)
@@ -219,10 +221,12 @@ static inline void wrap_spin_lock(struct wrap_spinlock *lock)
 		lock->in_bh = 1;
 	}
 	atomic_set(&lock->in_use, 1);
+	TRACEEXIT4(return);
 }
 
 static inline void wrap_spin_unlock(struct wrap_spinlock *lock)
 {
+	TRACEENTER4("lock: %p", lock);
 	if (lock->magic != NDIS_SPIN_LOCK_MAGIC)
 		WARNING("lock %p is not initlialized (%d)", lock, lock->magic);
 	if (atomic_read(&lock->in_use) == 0)
@@ -233,6 +237,7 @@ static inline void wrap_spin_unlock(struct wrap_spinlock *lock)
 		spin_unlock_bh(&lock->spinlock);
 	else
 		spin_unlock(&lock->spinlock);
+	TRACEEXIT4(return);
 }
 
 #endif // NDISWRAPPER_H
