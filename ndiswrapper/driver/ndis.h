@@ -351,6 +351,7 @@ struct ndis_config_param
 
 struct device_setting
 {
+	struct list_head list;
 	char name[MAX_NDIS_SETTING_NAME_LEN];
 	char value[MAX_NDIS_SETTING_VALUE_LEN];
 	struct ndis_config_param config_param;
@@ -406,15 +407,13 @@ struct ndis_driver
  */
 struct ndis_device
 {
+	struct list_head settings;
 	int bustype;
 	int vendor;
 	int device;
 	int pci_subvendor;
 	int pci_subdevice;
 	int fuzzy;
-
-	int nr_settings;
-	struct device_setting **settings;
 
 	struct ndis_driver *driver;
 };

@@ -232,7 +232,7 @@ static int procfs_read_settings(char *page, char **start, off_t off,
 {
 	char *p = page;
 	struct ndis_handle *handle = (struct ndis_handle *)data;
-	int i;
+	struct device_setting *setting;
 
 	if (off != 0) {
 		*eof = 1;
@@ -242,9 +242,9 @@ static int procfs_read_settings(char *page, char **start, off_t off,
 	p += sprintf(p, "hangcheck_interval=%d\n",
 		     (int)(handle->hangcheck_interval / HZ));
 
-	for (i = 0; i < handle->device->nr_settings; i++)
-		p += sprintf(p, "%s=%s\n", handle->device->settings[i]->name,
-			     handle->device->settings[i]->value);
+	list_for_each_entry(setting, &handle->device->settings, list) {
+		p += sprintf(p, "%s=%s\n", setting->name, setting->value);
+	}
 
 	return (p - page);
 }
@@ -354,23 +354,23 @@ static int procfs_write_settings(struct file *file, const char *buf,
 			return -EINVAL;
 	} else {
 		int i, res = -1;
+		struct device_setting *dev_setting;
 
 		if (!p)
 			TRACEEXIT1(return -EINVAL);
 		p++;
 		DBGTRACE("name='%s', value='%s'\n", setting, p);
-		for (i = 0; i < handle->device->nr_settings; i++) {
-			struct device_setting *ndis_setting;
+		list_for_each_entry(dev_setting, &handle->device->settings,
+				    list) {
 			struct ndis_config_param *param;
 
-			ndis_setting = handle->device->settings[i];
-			param = &ndis_setting->config_param;
-			if (!stricmp(ndis_setting->name, setting)) {
+			param = &dev_setting->config_param;
+			if (!stricmp(dev_setting->name, setting)) {
 				if (strlen(p) > MAX_NDIS_SETTING_VALUE_LEN)
 					TRACEEXIT1(return -EINVAL);
-				memset(ndis_setting->value, 0,
-					   MAX_NDIS_SETTING_VALUE_LEN);
-				memcpy(ndis_setting->value, p, strlen(p));
+				memset(dev_setting->value, 0,
+				       MAX_NDIS_SETTING_VALUE_LEN);
+				memcpy(dev_setting->value, p, strlen(p));
 				if (param->type == NDIS_CONFIG_PARAM_STRING)
 					RtlFreeUnicodeString(&param->data.ustring);
 				param->type = NDIS_CONFIG_PARAM_NONE;
