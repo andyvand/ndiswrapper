@@ -130,6 +130,7 @@ struct ndis_packet {
 
 	struct ndis_packet_extension extension;
 
+	/* ndiswrapper specific info */
 	struct scatterlist *sg_list;
 	unsigned int sg_ents;
 	/* ndiswrapper-specific info */

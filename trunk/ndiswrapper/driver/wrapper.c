@@ -114,18 +114,18 @@ NDIS_STATUS miniport_reset(struct ndis_handle *handle)
 
 	if (res == NDIS_STATUS_SUCCESS && handle->reset_status) {
 		handle->rx_packet =
-			&WRAP_FUNC_PTR(NdisMIndicateReceivePacket);
-		handle->send_complete = &WRAP_FUNC_PTR(NdisMSendComplete);
+			WRAP_FUNC_PTR(NdisMIndicateReceivePacket);
+		handle->send_complete = WRAP_FUNC_PTR(NdisMSendComplete);
 		handle->send_resource_avail =
-			&WRAP_FUNC_PTR(NdisMSendResourcesAvailable);
-		handle->status = &WRAP_FUNC_PTR(NdisMIndicateStatus);
+			WRAP_FUNC_PTR(NdisMSendResourcesAvailable);
+		handle->status = WRAP_FUNC_PTR(NdisMIndicateStatus);
 		handle->status_complete =
-			&WRAP_FUNC_PTR(NdisMIndicateStatusComplete);
+			WRAP_FUNC_PTR(NdisMIndicateStatusComplete);
 		handle->query_complete =
-			&WRAP_FUNC_PTR(NdisMQueryInformationComplete);
+			WRAP_FUNC_PTR(NdisMQueryInformationComplete);
 		handle->set_complete =
-			&WRAP_FUNC_PTR(NdisMSetInformationComplete);
-		handle->reset_complete = &WRAP_FUNC_PTR(NdisMResetComplete);
+			WRAP_FUNC_PTR(NdisMSetInformationComplete);
+		handle->reset_complete = WRAP_FUNC_PTR(NdisMResetComplete);
 		ndis_set_rx_mode(handle->net_dev);
 	}
 	handle->reset_status = 0;
@@ -1534,18 +1534,18 @@ struct net_device *ndis_init_netdev(struct ndis_handle **phandle,
 	INIT_LIST_HEAD(&handle->timers);
 	wrap_spin_lock_init(&handle->timers_lock);
 
-	handle->rx_packet = &WRAP_FUNC_PTR(NdisMIndicateReceivePacket);
-	handle->send_complete = &WRAP_FUNC_PTR(NdisMSendComplete);
+	handle->rx_packet = WRAP_FUNC_PTR(NdisMIndicateReceivePacket);
+	handle->send_complete = WRAP_FUNC_PTR(NdisMSendComplete);
 	handle->send_resource_avail =
-		&WRAP_FUNC_PTR(NdisMSendResourcesAvailable);
-	handle->status = &WRAP_FUNC_PTR(NdisMIndicateStatus);
-	handle->status_complete = &WRAP_FUNC_PTR(NdisMIndicateStatusComplete);
-	handle->query_complete = &WRAP_FUNC_PTR(NdisMQueryInformationComplete);
-	handle->set_complete = &WRAP_FUNC_PTR(NdisMSetInformationComplete);
-	handle->reset_complete = &WRAP_FUNC_PTR(NdisMResetComplete);
-	handle->eth_rx_indicate = &WRAP_FUNC_PTR(EthRxIndicateHandler);
-	handle->eth_rx_complete = &WRAP_FUNC_PTR(EthRxComplete);
-	handle->td_complete = &WRAP_FUNC_PTR(NdisMTransferDataComplete);
+		WRAP_FUNC_PTR(NdisMSendResourcesAvailable);
+	handle->status = WRAP_FUNC_PTR(NdisMIndicateStatus);
+	handle->status_complete = WRAP_FUNC_PTR(NdisMIndicateStatusComplete);
+	handle->query_complete = WRAP_FUNC_PTR(NdisMQueryInformationComplete);
+	handle->set_complete = WRAP_FUNC_PTR(NdisMSetInformationComplete);
+	handle->reset_complete = WRAP_FUNC_PTR(NdisMResetComplete);
+	handle->eth_rx_indicate = WRAP_FUNC_PTR(EthRxIndicateHandler);
+	handle->eth_rx_complete = WRAP_FUNC_PTR(EthRxComplete);
+	handle->td_complete = WRAP_FUNC_PTR(NdisMTransferDataComplete);
 	handle->driver->miniport_char.adapter_shutdown = NULL;
 
 	handle->map_count = 0;
