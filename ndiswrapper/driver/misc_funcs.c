@@ -104,25 +104,23 @@ void wrapper_timer_handler(unsigned long data)
 	BUG_ON(timer->kdpc == NULL);
 #endif
 
-	kdpc = timer->kdpc;
-	miniport_timer = kdpc->func;
-
-	if (miniport_timer) {
-		KIRQL irql;
-
-		irql = raise_irql(DISPATCH_LEVEL);
-		miniport_timer(kdpc, kdpc->ctx, kdpc->arg1, kdpc->arg2);
-		lower_irql(irql);
-	}
-
-	/* don't add the timer if aperiodic; see wrapper_cancel_timer */
+	/* don't add the timer if aperiodic; see wrapper_cancel_timer
+	 * protect access to kdpc, repeat, and active via spinlock */
 	spin_lock(&timer->lock);
+	kdpc = timer->kdpc;
 	if (timer->repeat) {
 		timer->timer.expires = jiffies + timer->repeat;
 		add_timer(&timer->timer);
 	} else
 		timer->active = 0;
 	spin_unlock(&timer->lock);
+
+	miniport_timer = kdpc->func;
+
+	/* call the handler after restarting in case it cancels itself */
+	if (miniport_timer)
+		miniport_timer(kdpc, kdpc->ctx, kdpc->arg1, kdpc->arg2);
+
 	TRACEEXIT5(return);
 }
 
@@ -179,12 +177,11 @@ int wrapper_set_timer(struct wrapper_timer *timer,
 	}
 #endif
 
-	if (kdpc)
-		timer->kdpc = kdpc;
-
-	/* timer handler also uses timer->repeat and timer->active, so
+	/* timer handler also uses timer->repeat, active, and kdpc, so
 	 * protect in case of SMP */
 	spin_lock_bh(&timer->lock);
+	if (kdpc)
+		timer->kdpc = kdpc;
 	timer->repeat = repeat;
 	if (timer->active) {
 		DBGTRACE4("modifying timer %p to %lu, %lu",
