@@ -58,6 +58,7 @@
 #define NDIS_STATUS_SUCCESS     0x00000000
 #define NDIS_STATUS_FAILURE     0xc0000001
 #define NDIS_STATUS_PENDING     0x00000103
+#define NDIS_STATUS_RESOURCES	0xc000009a
 
 #define NDIS_STATUS_FILE_NOT_FOUND    0xC001001B
 #define NDIS_STATUS_ALREADY_MAPPED    0xC001001D
@@ -87,6 +88,17 @@ struct packed ndis_scatterlist
 	unsigned int len;
 	unsigned int reserved;
 	struct ndis_scatterentry entry;
+};
+
+struct packed ndis_phy_address
+{
+	__u32 low;
+	__u32 high;
+};
+
+struct ndis_phy_addr_unit {
+    struct ndis_phy_address phy_addr;
+    unsigned int length;
 };
 
 struct ndis_buffer
@@ -369,6 +381,9 @@ struct packed ndis_handle
 	int setinfo_wait_done;
 
 	int use_scatter_gather;
+	int serialized_driver;
+	int map_count;
+	dma_addr_t *map_dma_addr;
 
 	int hangcheck_interval;
 	struct timer_list hangcheck_timer;
@@ -411,12 +426,6 @@ struct packed ndis_resource_list
 	__u16 revision;
 	__u32 length;
 	struct ndis_resource_entry list[0];
-};
-
-struct packed ndis_phy_address
-{
-	__u32 low;
-	__u32 high;
 };
 
 
@@ -506,6 +515,7 @@ int query_int(struct ndis_handle *handle, int oid, int *data);
 #define NDIS_OID_BSSID              0x0D010101
 #define NDIS_OID_MODE               0x0D010108
 #define NDIS_OID_RSSI               0x0D010206
+#define NDIS_OID_RSSI_TRIGGER       0x0D010207
 #define NDIS_OID_CONFIGURATION      0x0D010211
 #define NDIS_OID_TX_POWER_LEVEL     0x0D010205
 #define NDIS_OID_RTS_THRESH         0x0D01020A
@@ -533,7 +543,7 @@ int query_int(struct ndis_handle *handle, int oid, int *data);
 #define NDIS_OID_PNP_QUERY_POWER    0xFD010102
 #define NDIS_OID_CURRENT_MAC_ADDRESS 0x01010102
 
-#define NDIS_STATUS_NOT_SUPPORTED 0xC00000BB
+#define NDIS_STATUS_NOT_SUPPORTED   0xC00000BB
 #define NDIS_STATUS_INVALID_LENGTH  0xC0010014
 
 #define UNIMPL() printk(KERN_ERR "%s --UNIMPLEMENTED--\n", __FUNCTION__ );
