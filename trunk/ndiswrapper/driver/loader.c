@@ -701,7 +701,7 @@ static int load_ndis_driver(struct load_driver *load_driver)
 /* register all devices (for all drivers) installed */
 static int register_devices(struct load_devices *load_devices)
 {
-	int i, res, num_pci, num_usb;
+	int i, n, res, num_pci, num_usb;
 	struct load_device *devices;
 
 	num_ndis_devices = load_devices->count;
@@ -761,9 +761,9 @@ static int register_devices(struct load_devices *load_devices)
 
 	memset(ndis_devices, 0, num_ndis_devices * sizeof(*ndis_devices));
 	num_usb = num_pci = 0;
-	for (i = 0; i < num_ndis_devices; i++) {
+	for (i = n = 0; i < num_ndis_devices; i++) {
 		struct load_device *device = &devices[i];
-		struct ndis_device *ndis_device = &ndis_devices[i];
+		struct ndis_device *ndis_device = &ndis_devices[n];
 
 		INIT_LIST_HEAD(&ndis_device->settings);
 		memcpy(&ndis_device->driver_name, device->driver_name,
@@ -797,20 +797,20 @@ static int register_devices(struct load_devices *load_devices)
 					device->subdevice;
 			ndiswrapper_pci_devices[num_pci].class = 0;
 			ndiswrapper_pci_devices[num_pci].class_mask = 0;
-			ndiswrapper_pci_devices[num_pci].driver_data = i;
+			ndiswrapper_pci_devices[num_pci].driver_data = n++;
 			num_pci++;
 			DBGTRACE1("pci device %d added", num_pci);
 			DBGTRACE1("adding %04x:%04x:%04x:%04x to pci idtable",
 				  device->vendor, device->device,
 				  device->subvendor, device->subdevice);
-		} else {
+		} else if (device->bustype == NDIS_USB_BUS) {
 			ndiswrapper_usb_devices[num_usb].idVendor =
 				device->vendor;
 			ndiswrapper_usb_devices[num_usb].idProduct =
 				device->device;
 			ndiswrapper_usb_devices[num_usb].match_flags =
 				USB_DEVICE_ID_MATCH_DEVICE;
-			ndiswrapper_usb_devices[num_usb].driver_info = i;
+			ndiswrapper_usb_devices[num_usb].driver_info = n++;
 			num_usb++;
 			DBGTRACE1("usb device %d added", num_usb);
 			DBGTRACE1("adding %04x:%04x to usb idtable",
