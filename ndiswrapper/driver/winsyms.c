@@ -170,10 +170,12 @@ void my_sprintf(void);
 void my_vsprintf(void);
 void my_strlen(void);
 void my_strncmp(void);
+void my_strcmp(void);
 void my_tolower(void);
 void my_memcpy(void);
 void my_memset(void);
 void my_memmove(void);
+void my_srand(void);
 
 void RtlCopyUnicodeString(void);
 
@@ -185,7 +187,9 @@ void _aullmul(void);
 void _allrem(void);
 void _aullrem(void);
 void _allshr(void);
+void _aullshr(void);
 void _allshl(void);
+void _aullshl(void);
 
 void ExDeleteNPagedLookasideList(void);
 void ExInitializeNPagedLookasideList(void);
@@ -361,10 +365,12 @@ func("sprintf"                              , my_sprintf),
 func("vsprintf"                             , my_vsprintf),
 func("strlen"                               , my_strlen),
 func("strncmp"                              , my_strncmp),
+func("strcmp"                               , my_strcmp),
 func("tolower"                              , my_tolower),
 func("memcpy"                               , my_memcpy),
 func("memset"                               , my_memset),
 func("memmove"                              , my_memmove),
+func("srand"                                , my_srand),
 
 func("RtlCopyUnicodeString"		    , RtlCopyUnicodeString),
 func("RtlCompareMemory"                     , RtlCompareMemory),
@@ -376,7 +382,9 @@ func("_aullmul"                             , _aullmul),
 func("_allrem"                              , _allrem),
 func("_aullrem"                             , _aullrem),
 func("_allshl"                              , _allshl),
+func("_aullshl"                             , _aullshl),
 func("_allshr"                              , _allshr),
+func("_aullshr"                             , _aullshr),
 
 func("ExDeleteNPagedLookasideList"          , ExDeleteNPagedLookasideList),
 func("ExInitializeNPagedLookasideList"      , ExInitializeNPagedLookasideList),

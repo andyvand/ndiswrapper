@@ -14,6 +14,8 @@
 #ifndef _NTOSKERNEL_H_
 #define _NTOSKERNEL_H_
 
+#define DISPATCH_LEVEL 2
+
 struct slist_entry
 {
 	struct slist_entry  *next;
