@@ -603,6 +603,71 @@ STDCALL int WRAP_EXPORT(RtlUnicodeStringToAnsiString)
 	TRACEEXIT2(return NDIS_STATUS_SUCCESS);
 }
 
+STDCALL int WRAP_EXPORT(RtlUnicodeStringToInteger)
+	(struct ustring *ustring, unsigned long base, unsigned long *value)
+{
+	int negsign;
+	__u16 *str;
+
+	*value = 0;
+	if (ustring->buflen <= 0)
+		return STATUS_INVALID_PARAMETER;
+
+	str = (__u16 *)ustring->buf;
+
+	negsign = 0;
+	switch (((char)*str)) {
+	case '-':
+		negsign = 1;
+		/* fall through */
+	case '+':
+		str++;
+		break;
+	}
+		       
+	if (base == 0 &&
+	    (void *)str < (void *)&ustring->buf[ustring->buflen]) {
+		switch(tolower((char)*str)) {
+		case 'x':
+			base = 16;
+			str++;
+			break;
+		case 'o':
+			base = 8;
+			str++;
+			break;
+		case 'b':
+			base = 2;
+			str++;
+			break;
+		default:
+			base = 10;
+			break;
+		}
+	}
+	if (!(base == 2 || base == 8 || base == 10 || base == 16))
+		return STATUS_INVALID_PARAMETER;
+
+	for (; (void *)str < (void *)&ustring->buf[ustring->buflen]; str++) {
+		int r;
+		char c = tolower((char)*str);
+
+		if (c >= '0' && c <= '9')
+			r = c - '0';
+		else if (c >= 'a' && c <= 'f')
+			r = c - 'a' + 10;
+		else
+			break;
+		if (r >= base)
+			break;
+		*value = *value * base + r;
+	}
+	if (negsign)
+		*value *= -1;
+
+	return STATUS_SUCCESS;
+}
+
 STDCALL int WRAP_EXPORT(RtlIntegerToUnicodeString)
 	(unsigned long value, unsigned long base, struct ustring *ustring)
 {
@@ -657,6 +722,22 @@ STDCALL void  WRAP_EXPORT(RtlInitUnicodeString)
 		dest->len = dest->buflen = i * 2;
 	}
 	TRACEEXIT1(return);
+}
+
+STDCALL void  WRAP_EXPORT(RtlInitAnsiString)
+	(struct ustring *dst, char *src)
+{
+	TRACEENTER2("%s", "");
+	if (dst == NULL)
+		TRACEEXIT2(return);
+	if (src == NULL) {
+		dst->len = dst->buflen = 0;
+		dst->buf = NULL;
+		TRACEEXIT2(return);
+	}
+	dst->len = dst->buflen = strlen(src);
+	dst->buf = src;
+	TRACEEXIT2(return);
 }
 
 static void WRAP_EXPORT(RtlFreeUnicodeString)(void){UNIMPL();}
