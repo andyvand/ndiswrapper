@@ -193,6 +193,8 @@ static int read_conf_file(char *conf_file_name, struct load_device *device)
 	nr_settings = 0;
 
 	while (fgets(setting_line, SETTING_LEN-1, config)) {
+		struct load_device_setting *setting;
+
 		setting_line[SETTING_LEN-1] = 0;
 		ret = parse_setting_line(setting_line, setting_name,
 					 setting_value);
@@ -207,19 +209,17 @@ static int read_conf_file(char *conf_file_name, struct load_device *device)
 				error("invalid bustype: %d", device->bustype);
 				goto err;
 			}
-		} else {
-			struct load_device_setting *setting;
-			setting = &device->settings[nr_settings];
-			strncpy(setting->name, setting_name,
-				MAX_NDIS_SETTING_NAME_LEN);
-			strncpy(setting->value, setting_value,
-				MAX_NDIS_SETTING_VALUE_LEN);
+		} 
+		setting = &device->settings[nr_settings];
+		strncpy(setting->name, setting_name,
+			MAX_NDIS_SETTING_NAME_LEN);
+		strncpy(setting->value, setting_value,
+			MAX_NDIS_SETTING_VALUE_LEN);
 
-			nr_settings++;
-			if (nr_settings >= MAX_NDIS_SETTINGS) {
-				error("too many settings");
-				goto err;
-			}
+		nr_settings++;
+		if (nr_settings >= MAX_NDIS_SETTINGS) {
+			error("too many settings");
+			goto err;
 		}
 	}
 
