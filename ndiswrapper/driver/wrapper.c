@@ -45,11 +45,11 @@
 
 /*#define DEBUG_CRASH_ON_INIT*/
 
-static char *if_name = "wlan0";
+static char *if_name = "wlan%d";
 int proc_uid, proc_gid;
 
 MODULE_PARM(if_name, "s");
-MODULE_PARM_DESC(if_name, "Network interface name (default: wlan0)");
+MODULE_PARM_DESC(if_name, "Network interface name or template (default: wlan%d)");
 MODULE_PARM(proc_uid, "i");
 MODULE_PARM_DESC(proc_uid, "The uid of the files created in /proc (default: 0).");
 MODULE_PARM(proc_gid, "i");
@@ -1565,13 +1565,13 @@ static int setup_dev(struct net_device *dev)
 	int i;
 	union iwreq_data wrqu;
 
-	if (strlen(if_name) > (IFNAMSIZ-2))
+	if (strlen(if_name) > (IFNAMSIZ-1))
 	{
 		printk(KERN_ERR "%s: interface name '%s' is too long\n",
 		       DRV_NAME, if_name);
 		return -1;
 	}
-	strncpy(dev->name, if_name, IFNAMSIZ-2);
+	strncpy(dev->name, if_name, IFNAMSIZ-1);
 	dev->name[IFNAMSIZ-1] = '\0';
 
 	DBGTRACE("%s: Querying for mac\n", __FUNCTION__);
@@ -1621,11 +1621,16 @@ static int setup_dev(struct net_device *dev)
 	dev->mem_start = handle->mem_start;		
 	dev->mem_end = handle->mem_end;		
 	
-	printk(KERN_INFO "%s: %s ethernet device "
-	       "%02x:%02x:%02x:%02x:%02x:%02x\n",
-	       dev->name, DRV_NAME,
-	       mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
-	return register_netdev(dev);
+	res = register_netdev(dev);
+	if (res)
+		printk(KERN_ERR "%s: cannot register net device %s\n",
+		       DRV_NAME, dev->name);
+	else
+		printk(KERN_INFO "%s: %s ethernet device "
+		       "%02x:%02x:%02x:%02x:%02x:%02x\n",
+		       dev->name, DRV_NAME,
+		       mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
+	return res;
 }
 
 extern void ndis_timer_handler_bh(void *data);
