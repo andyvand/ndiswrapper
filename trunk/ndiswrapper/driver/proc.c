@@ -241,8 +241,8 @@ static int procfs_read_settings(char *page, char **start, off_t off,
 		return 0;
 	}
 
-	p += sprintf(p, "hangcheck_interval=%ld\n",
-		     handle->hangcheck_interval / HZ);
+	p += sprintf(p, "hangcheck_interval=%d\n",
+		     (int)(handle->hangcheck_interval / HZ));
 
 	return (p - page);
 }
