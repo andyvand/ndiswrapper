@@ -62,7 +62,7 @@ if [ -r /proc/config.gz ]; then
 	log_cmd 'gzip -d < /proc/config.gz'
 else 
 	if [ -r /lib/modules/$KVERS/build/.config ]; then
-		log_cmd 'cat /lib/modules/$KVERS/build/.config'
+		log_cmd "cat /lib/modules/$KVERS/build/.config"
 	else
 		log "kernel config missing"
 	fi
