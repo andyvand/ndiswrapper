@@ -56,7 +56,7 @@ static int query_int(struct ndis_handle *handle, int oid, int *data)
 	if(!res)
 		return 0;
 	*data = 0;
-	return -1;
+	return res;
 }
 
 /*
@@ -65,12 +65,9 @@ static int query_int(struct ndis_handle *handle, int oid, int *data)
  */
 static int set_int(struct ndis_handle *handle, int oid, int data)
 {
-	unsigned int res, written, needed;
+	unsigned int written, needed;
 
-	res = handle->driver->miniport_char.setinfo(handle->adapter_ctx, oid, (char*)&data, sizeof(int), &written, &needed);
-	if(!res)
-		return 0;
-	return -1;
+	return handle->driver->miniport_char.setinfo(handle->adapter_ctx, oid, (char*)&data, sizeof(int), &written, &needed);
 }
 
 
@@ -94,7 +91,11 @@ static int ndis_set_essid(struct net_device *dev,
 	req.len = wrqu->essid.length-1;
 	res = handle->driver->miniport_char.setinfo(handle->adapter_ctx, NDIS_OID_ESSID, (char*)&req, sizeof(req), &written, &needed);
 	if(res)
+	{
+		DBGTRACE("set_essid returned failure: %08x\n", res); 
 		return -1;
+	}
+	
 	return 0;
 }
 
@@ -123,7 +124,7 @@ static int ndis_set_mode(struct net_device *dev, struct iw_request_info *info,
 			   union iwreq_data *wrqu, char *extra)
 {
 	int ndis_mode;
-
+	int res;
 	switch(wrqu->mode)
 	{
 	case IW_MODE_ADHOC:
@@ -137,7 +138,13 @@ static int ndis_set_mode(struct net_device *dev, struct iw_request_info *info,
 		return -1;
 	}
 	
-	set_int(dev->priv, NDIS_OID_MODE, ndis_mode);
+	res = set_int(dev->priv, NDIS_OID_MODE, ndis_mode);
+	if(res)
+	{
+		DBGTRACE("set_mode returned failure: %08x\n", res); 
+		return -1;
+	}
+	
 	return 0;
 }
 
@@ -822,3 +829,4 @@ module_init(wrapper_init);
 module_exit(wrapper_exit);
 
 MODULE_LICENSE("GPL");
+

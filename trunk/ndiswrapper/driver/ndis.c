@@ -109,7 +109,7 @@ STDCALL unsigned int NdisAllocateMemory(void **dest,
 					unsigned int flags,
 					unsigned int highest_addr)
 {
-	*dest = (void*) kmalloc(length, GFP_KERNEL);
+	*dest = (void*) kmalloc(length, GFP_ATOMIC);
 	if(*dest)
 		return NDIS_STATUS_SUCCESS;
 	return NDIS_STATUS_FAILIURE;
