@@ -105,7 +105,9 @@ void EthFilterDprIndicateReceive(void);
 void NdisMStartBufferPhysicalMapping(void);
 void NdisMCompleteBufferPhysicalMapping(void);
 
-
+void NdisBufferVirtualAddress(void);
+void NdisBufferLength(void);
+void NdisAllocatePacketPoolEx(void);
 
 /* Cipe */
 void DbgPrint(void);
@@ -152,6 +154,17 @@ void _allmul(void);
 void my_strlen(void);
 void my_memcpy(void);
 void my_memset(void);
+
+void _alldiv(void);
+void RtlCompareMemory(void);
+void _aullrem(void);
+void _aulldiv(void);
+void _allshr(void);
+void _allrem(void);
+void ExDeleteNPagedLookasideList(void);
+void ExInitializeNPagedLookasideList(void);
+void ExInterlockedPopEntrySList(void);
+void ExInterlockedPushEntrySList(void);
 
 struct winsym
 {
@@ -251,6 +264,9 @@ func("NdisMSendComplete"                    , NdisMSendComplete),
 func("NdisMStartBufferPhysicalMapping"      , NdisMStartBufferPhysicalMapping),
 func("NdisMCompleteBufferPhysicalMapping"   , NdisMCompleteBufferPhysicalMapping),
 
+func("NdisBufferVirtualAddress"             , NdisBufferVirtualAddress),
+func("NdisBufferLength"                     , NdisBufferLength),
+func("NdisAllocatePacketPoolEx"             , NdisAllocatePacketPoolEx),
 
 
 /* HAL */
@@ -296,6 +312,17 @@ func("_allmul"                              , _allmul),
 func("strlen"                               , my_strlen),
 func("memcpy"                               , my_memcpy),
 func("memset"                               , my_memset),
+
+func("_alldiv"                              , _alldiv),
+func("RtlCompareMemory"                     , RtlCompareMemory),
+func("_aullrem"                             , _aullrem),
+func("_aulldiv"                             , _aulldiv),
+func("_allshr"                              , _allshr),
+func("_allrem"                              , _allrem),
+func("ExDeleteNPagedLookasideList"          , ExDeleteNPagedLookasideList),
+func("ExInitializeNPagedLookasideList"      , ExInitializeNPagedLookasideList),
+func("ExInterlockedPopEntrySList"           , ExInterlockedPopEntrySList),
+func("ExInterlockedPushEntrySList"          , ExInterlockedPushEntrySList),
 
 /* CIPE */
 func("DbgPrint"                             , DbgPrint),

@@ -1130,3 +1130,7 @@ STDCALL void NdisMStartBufferPhysicalMapping(void){UNIMPL();}
 STDCALL void NdisMCompleteBufferPhysicalMapping(void){UNIMPL();}
 STDCALL void NdisMPciAssignResources(void){UNIMPL();}
 
+STDCALL void NdisBufferVirtualAddress(void){UNIMPL();}
+STDCALL void NdisBufferLength(void){UNIMPL();}
+STDCALL void NdisAllocatePacketPoolEx(void){UNIMPL();}
+
