@@ -59,15 +59,17 @@ STDCALL int NdisMRegisterMiniport(struct ndis_driver *ndis_driver,
 	                          struct miniport_char *miniport_char,
 	                          unsigned int char_len)
 {
-	DBGTRACE("%s driver: %08x\n", __FUNCTION__, (int)ndis_driver);
+	int min_length = ((char*) &miniport_char->co_create_vc) - ((char*) miniport_char);
 
+	DBGTRACE("%s driver: %p:\n", __FUNCTION__, ndis_driver);
+	
 	if(miniport_char->majorVersion < 4)
 	{
 		printk(KERN_WARNING "%s: Driver %s i using ndis version %d which is too old.\n", DRV_NAME, ndis_driver->name, miniport_char->majorVersion); 
 		return NDIS_STATUS_BAD_VERSION;
 	}
 
-	if(char_len < sizeof(struct miniport_char))
+	if(char_len < min_length)
 	{
 		printk(KERN_WARNING "%s: Characteristics length to small for driver %s\n", DRV_NAME, ndis_driver->name); 
 		return NDIS_STATUS_BAD_CHARACTERISTICS;

@@ -211,7 +211,7 @@ struct miniport_char
 	/* Send packets */
 	unsigned int (*send_packets)(void *ctx, struct ndis_packet **packets, int nr_of_packets) STDCALL;
 	
-    void *alloc_complete;
+	void *alloc_complete;
 
 	/* NDIS 5.0 extensions */
 	void *co_create_vc;
