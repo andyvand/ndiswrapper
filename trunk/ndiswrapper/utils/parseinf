@@ -7,7 +7,8 @@
 # Enable debug option in BEGIN section to print (lot of) debug output
 
 if [ $# -lt 2 ]; then
-    echo "usage: $0 <driver inf file> <driver sys file>"
+    echo "usage: $0 <driver inf file> <driver sys file> [<pci_id>] ..."
+    echo "<pci_id> should be of the form <vendor_id:device_id>"
     exit 1
 fi
 
@@ -15,10 +16,13 @@ CONFIG_DIR="/etc/ndiswrapper"
 COPY_FILES=1 # should inf, sys files should be copied to CONFIG_DIR?
 INF=""
 SYS=""
+PCI_IDS=""
 
 while [ $# -gt 0 ]; do
     if [ "$1" = "-n" ]; then
 	COPY_FILES=0
+    elif echo "$1" | grep -q ':'; then
+	PCI_IDS="$1,${PCI_IDS}"
     else
 	FILE=$(basename $1)
 	if [ $(basename $FILE .inf) != $FILE -o \
@@ -34,19 +38,21 @@ while [ $# -gt 0 ]; do
     shift
 done
 	
-if [ -z $INF -o ! -r $INF ]; then
+if [ -z "$INF" -o ! -r "$INF" ]; then
     echo "$0: can't read the driver inf file"
     exit 1
 fi
 
-if [ -z $SYS -o ! -r $SYS ]; then
+if [ -z "$SYS" -o ! -r "$SYS" ]; then
     echo "$0: can't read the driver sys file"
     exit 1
 fi
 
-PCI_IDS=$(lspci -n | egrep 'Class 02(8|0)0:' | awk  '{printf "%s,", $4}')
+if [ -z "$PCI_IDS" ]; then
+    PCI_IDS=$(lspci -n | egrep 'Class 02(8|0)0:' | gawk  '{printf "%s,", $4}')
+fi
 
-NUM_CARDS=$(awk 'BEGIN {printf "%d\n", split("'$PCI_IDS'", x, ",")}')
+NUM_CARDS=$(gawk 'BEGIN {printf "%d\n", split("'$PCI_IDS'", x, ",")}')
 if [ $NUM_CARDS -lt 2 ]; then
     echo "No network cards found"
     exit 1
@@ -84,7 +90,7 @@ sed 's/;.*//g
     s/
 //g
     /^$/d' $INF | 
-    awk '
+    gawk '
 	function dbg(fmt, msg)
 	{
 	    if (debug != 0)
