@@ -1,5 +1,6 @@
 Version 0.6 2004-03-17
 ======================
+* Support for kernels with CONFIG_REGPARM.
 * SMP problem with Centrino driver fixed.
 * essid problems with WEP enabled on Centrino fixed.
 * Compiles on 2.4 kernels with old ethtool.
