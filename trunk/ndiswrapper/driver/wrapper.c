@@ -1080,11 +1080,13 @@ static void wrapper_worker_proc(void *param)
 
 		if (handle->link_status == 0)
 		{
+			int len;
 			for (i = 0; i < MAX_ENCR_KEYS; i++)
 			{
+				len = sizeof(handle->encr_info.keys[i].length);
 				handle->encr_info.keys[i].length = 0;
 				memset(&handle->encr_info.keys[i].key[i], 0,
-						sizeof(handle->encr_info.keys[i].length));
+				       len);
 			}
 			return;
 		}
@@ -1837,12 +1839,13 @@ static struct ndis_driver *load_driver(struct put_file *put_driver)
 	struct ndis_driver *driver;
 	int namelen;
 
-	TRACEENTER1("Putting driver size %d", put_driver->size);
+	TRACEENTER1("loading driver %s, size %d",
+		    put_driver->name, put_driver->size);
 
 	driver = kmalloc(sizeof(struct ndis_driver), GFP_KERNEL);
 	if(!driver)
 	{
-		ERROR("%s", "Unable to allocate memory");
+		ERROR("%s", "unable to allocate memory");
 		goto out_nodriver;
 	}
 	memset(driver, 0, sizeof(struct ndis_driver));
@@ -1859,22 +1862,22 @@ static struct ndis_driver *load_driver(struct put_file *put_driver)
 	driver->name[namelen-1] = 0;
 
 	driver->image = vmalloc(put_driver->size);
-	DBGTRACE1("Image is at %08X", (int)driver->image);
+	DBGTRACE1("image is at %08X", (int)driver->image);
 	if(!driver->image)
 	{
-		ERROR("%s", "Unable to allocate memory");
+		ERROR("%s", "unable to allocate memory");
 		goto out_vmalloc;
 	}
 
 	if(copy_from_user(driver->image, put_driver->data, put_driver->size))
 	{
-		ERROR("%s", "Failed to copy from user");
+		ERROR("%s", "failed to copy from user");
 		goto out_baddriver;
 	}
 
 	if(prepare_coffpe_image(&entry, driver->image, put_driver->size))
 	{
-		ERROR("%s", "Unable to prepare driver");
+		ERROR("%s", "unable to prepare driver");
 		goto out_baddriver;
 	}
 	driver->entry = entry;
