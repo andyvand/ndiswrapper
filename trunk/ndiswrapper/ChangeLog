@@ -3,8 +3,16 @@ Version 0.10 2004-08-xx
 * Centrino 2200: works in ad-hoc mode, keyboard doesn't lock even
   when there is no power to the card, suspend/resume works, restricted
   mode encryption works
-* Should work with SMP
+* SMP should work again
 * USB cards are supported (only Linksys WUSB54G tested with 2.6.7 kernel)
+* From now on, utils should be installed along with the module - newer version
+  of module doesn't work with older version of utils
+* hangcheck_interval option is no longer required; this option may be dropped
+  in future versions
+* suspend/resume work with procfs interface: e.g., to suspend
+    echo suspend=3 > /proc/net/ndiswrapper/wlan0/settings
+  and to resume
+    echo resume > /proc/net/ndiswrapper/wlan0/settings
 
 Version 0.9 2004-08-05
 ======================
