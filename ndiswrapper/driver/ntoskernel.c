@@ -126,14 +126,14 @@ KeAcquireSpinLock(KSPIN_LOCK *lock, KIRQL *oldirql)
 
 	if (!*lock)
 	{
-		printk(KERN_WARNING "Buggy Windows driver trying to use "
-		       "uninitialized lock. Trying to recover...");
+		WARNING("%s", "Buggy Windows driver trying to use "
+		     "uninitialized lock. Trying to recover...");
 		KeInitializeSpinLock(lock);
 		if (*lock)
-			printk(KERN_WARNING "ok\n");
+			WARNING("%s", "ok\n");
 		else
 		{
-			printk(KERN_WARNING "failed\n");
+			WARNING("%s", "failed\n");
 			BUG();
 		}
 	}
@@ -364,7 +364,7 @@ STDCALL struct irp *IoAllocateIrp(char stack_size, unsigned char charge_quota)
 
 	size = sizeof(struct irp) +
 		stack_size * sizeof(struct io_stack_location);
-	/* XXX we should better check what GFP_ is required XXX */
+	/* FIXME: we should better check what GFP_ is required */
 	irp = kmalloc(size, GFP_ATOMIC);
 	if (irp) {
 		DBGTRACE3("allocated irp %p", irp);

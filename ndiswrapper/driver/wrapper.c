@@ -613,7 +613,7 @@ static struct ndis_packet *init_packet(struct ndis_handle *handle,
 
 	if(handle->use_scatter_gather)
 	{
-// XXXXXXXXXXXXXXX   FIX-ME!   XXXXXXXXXXXXXXXXXXXXX
+		/* FIXME: do USB drivers call this? */
 		packet->dataphys =
 			PCI_DMA_MAP_SINGLE(handle->dev.pci,
 					   buffer->data, buffer->len,
@@ -647,7 +647,7 @@ static void free_packet(struct ndis_handle *handle, struct ndis_packet *packet)
 {
 	if(packet->dataphys)
 	{
-// XXXXXXXXXXXXXXX   FIX-ME!   XXXXXXXXXXXXXXXXXXXXX
+		/* FIXME: do USB drivers call this? */
 		PCI_DMA_UNMAP_SINGLE(handle->dev.pci, packet->dataphys,
 				     packet->len, PCI_DMA_TODEVICE);
 	}
@@ -1094,8 +1094,8 @@ static void check_capa(struct ndis_handle *handle)
 	if (handle->encr_mode == ENCR_DISABLED ||
 	    handle->encr_mode == ENCR1_ENABLED)
 	{
-		printk(KERN_INFO "ndiswrapper device %s doesn't support WPA ",
-		       handle->net_dev->name);
+		INFO("ndiswrapper device %s doesn't support WPA ",
+		     handle->net_dev->name);
 		TRACEEXIT1(return);
 	}
 
@@ -1118,11 +1118,11 @@ static void check_capa(struct ndis_handle *handle)
 
 	DBGTRACE("capbilities = %ld\n", handle->capa);
 	if (test_bit(CAPA_AES, &handle->capa))
-		printk(KERN_INFO "ndiswrapper device %s supports WPA with "
-		       "AES/CCMP and TKIP ciphers\n", handle->net_dev->name);
+		INFO("ndiswrapper device %s supports WPA with "
+		     "AES/CCMP and TKIP ciphers\n", handle->net_dev->name);
 	else
-		printk(KERN_INFO "ndiswrapper device %s supports WPA with "
-		       "TKIP cipher\n", handle->net_dev->name);
+		INFO("ndiswrapper device %s supports WPA with TKIP cipher\n",
+		     handle->net_dev->name);
 	TRACEEXIT1(return);
 }
 
@@ -1197,8 +1197,8 @@ static int setup_dev(struct net_device *dev)
 		return res;
 	}
 
-	printk(KERN_INFO "%s: %s ethernet device " MACSTR " using driver %s\n",
-	       dev->name, DRV_NAME, MAC2STR(mac), handle->driver->name);
+	INFO("%s: %s ethernet device " MACSTR " using driver %s\n",
+	     dev->name, DRV_NAME, MAC2STR(mac), handle->driver->name);
 
 	check_capa(handle);
 	/* check_capa changes auth_mode and encr_mode, so set them again */
@@ -1300,7 +1300,7 @@ static struct net_device *ndis_init_netdev(struct ndis_handle **phandle,
 	INIT_WORK(&handle->wrapper_worker, wrapper_worker_proc, handle);
 
 	handle->phy_dev = NULL;
-    
+
 	*phandle = handle;
 	return dev;
 }
@@ -1308,7 +1308,7 @@ static struct net_device *ndis_init_netdev(struct ndis_handle **phandle,
 /*
  * Called by PCI-subsystem for each PCI-card found.
  *
- * This function should not be marked __devinit because ndiswrapper 
+ * This function should not be marked __devinit because ndiswrapper
  * adds PCI_id's dynamically.
  */
 static int ndis_init_one_pci(struct pci_dev *pdev,
@@ -1325,15 +1325,15 @@ static int ndis_init_one_pci(struct pci_dev *pdev,
 		    ent->subvendor, ent->subdevice);
 	if(device->fuzzy)
 	{
-		printk(KERN_WARNING "This driver (%s) is not for your hardware. " \
-		       "It's likely to work anyway but have it in " \
-		       "mind if you have problem.\n", device->driver->name); 
+		WARNING("This driver (%s) is not for your hardware. " \
+		        "It's likely to work anyway but have it in " \
+		        "mind if you have problem.\n", device->driver->name);
 	}
-	
+
 	dev = ndis_init_netdev(&handle, device, driver);
 	if(!dev)
 	{
-		printk(KERN_ERR "Unable to alloc etherdev\n");
+		ERROR("%s", "Unable to alloc etherdev\n");
 		res = -ENOMEM;
 		goto out_nodev;
 	}
@@ -1421,6 +1421,10 @@ out_nodev:
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
 static int ndis_init_one_usb(struct usb_interface *intf,
                              const struct usb_device_id *usb_id)
+#else
+static void *ndis_init_one_usb(struct usb_device *udev, unsigned int ifnum,
+                               const struct usb_device_id *usb_id)
+#endif
 {
 	int res;
 	struct ndis_device *device =
@@ -1434,77 +1438,22 @@ static int ndis_init_one_usb(struct usb_interface *intf,
 
 	dev = ndis_init_netdev(&handle, device, driver);
 	if(!dev) {
-		printk(KERN_ERR "Unable to alloc etherdev\n");
+		ERROR("%s", "Unable to alloc etherdev\n");
 		res = -ENOMEM;
 		goto out_nodev;
 	}
 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
 	handle->dev.usb = interface_to_usbdev(intf);
 	usb_set_intfdata(intf, handle);
-
-	TRACEENTER1("%s", "Calling ndis init routine");
-	if(call_init(handle)) {
-		ERROR("%s", "Windows driver couldn't initialize the device");
-		res = -EINVAL;
-		goto out_start;
-	}
-
-	handle->hw_status = 0;
-	handle->wrapper_work = 0;
-
-	/* do we need to power up the card explicitly? */
-	set_int(handle, NDIS_OID_PNP_SET_POWER, NDIS_PM_STATE_D0);
-	miniport = &handle->driver->miniport_char;
-
-	/* WUSB54G requires it, maybe other USB drivers as well... */
-	doreset(handle);
-
-	/* Wait a little to let card power up otherwise ifup might fail after
-	   boot */
-	set_current_state(TASK_INTERRUPTIBLE);
-	schedule_timeout(HZ);
-
-	if(setup_dev(handle->net_dev)) {
-		ERROR("%s", "Couldn't setup interface");
-		res = -EINVAL;
-		goto out_setup;
-	}
-	hangcheck_add(handle);
-	statcollector_add(handle);
-	ndiswrapper_procfs_add_iface(handle);
-	TRACEEXIT1(return 0);
-
-out_setup:
-	call_halt(handle);
-out_start:
-	free_netdev(dev);
-out_nodev:
-	TRACEEXIT1(return res);
-}
 #else
-static void *ndis_init_one_usb(struct usb_device *udev, unsigned int ifnum,
-                               const struct usb_device_id *usb_id)
-{
-	struct ndis_device *device =
-		(struct ndis_device *)usb_id->driver_info;
-	struct ndis_driver *driver = device->driver;
-	struct ndis_handle *handle;
-	struct net_device *dev;
-	struct miniport_char *miniport;
-
-	TRACEENTER1("%04x:%04x\n", usb_id->idVendor, usb_id->idProduct);
-
-	dev = ndis_init_netdev(&handle, device, driver);
-	if(!dev) {
-		printk(KERN_ERR "Unable to alloc etherdev\n");
-		goto out_nodev;
-	}
-
 	handle->dev.usb = udev;
+#endif
 
 	TRACEENTER1("%s", "Calling ndis init routine");
 	if(call_init(handle)) {
 		ERROR("%s", "Windows driver couldn't initialize the device");
+		res = -EINVAL;
 		goto out_start;
 	}
 
@@ -1525,21 +1474,29 @@ static void *ndis_init_one_usb(struct usb_device *udev, unsigned int ifnum,
 
 	if(setup_dev(handle->net_dev)) {
 		ERROR("%s", "Couldn't setup interface");
+		res = -EINVAL;
 		goto out_setup;
 	}
 	hangcheck_add(handle);
 	statcollector_add(handle);
 	ndiswrapper_procfs_add_iface(handle);
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
+	TRACEEXIT1(return 0);
+#else
 	TRACEEXIT1(return handle);
+#endif
 
 out_setup:
 	call_halt(handle);
 out_start:
 	free_netdev(dev);
 out_nodev:
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
+	TRACEEXIT1(return res);
+#else
 	TRACEEXIT1(return NULL);
-}
 #endif
+}
 
 static void __devexit ndis_remove_one(struct ndis_handle *handle)
 {
@@ -1710,8 +1667,9 @@ static int start_driver(struct ndis_driver *driver)
 		driver->driver.usb.probe = ndis_init_one_usb;
 		driver->driver.usb.disconnect =
 			__devexit_p(ndis_remove_one_usb);
-//		driver->driver.usb.suspend = ndis_suspend;
-//		driver->driver.usb.resume = ndis_resume;
+		/* FIXME: implement the required handlers
+		driver->driver.usb.suspend = ndis_suspend;
+		driver->driver.usb.resume = ndis_resume;*/
 		res = usb_register(&driver->driver.usb);
 		if(!res)
 			driver->dev_registered = 1;
@@ -1867,8 +1825,7 @@ static struct ndis_device *add_device(struct ndis_driver *driver,
 
 	if ((driver->bustype >= 0) &&
 	    (driver->bustype != put_device->bustype)) {
-		printk(KERN_ERR "Each driver can only support a single "
-		       "bustype\n");
+		ERROR("%s", "Each driver can only support a single bustype\n");
 		return NULL;
 	}
 
@@ -2127,8 +2084,8 @@ static int misc_ioctl(struct inode *inode, struct file *file,
 			if (res)
 				unload_driver(driver);
 			else
-				printk(KERN_INFO "%s: driver %s (%s) added\n",
-				       DRV_NAME, driver->name, driver->version);
+				INFO("%s: driver %s (%s) added\n",
+				     DRV_NAME, driver->name, driver->version);
 			return res;
 		}
 		break;
@@ -2189,8 +2146,8 @@ static int __init wrapper_init(void)
 	char *env[] = {0};
 	int err;
 
-	printk(KERN_INFO "%s version %s%s loaded (preempt=%s,smp=%s)\n",
-	       DRV_NAME, NDISWRAPPER_VERSION, EXTRA_VERSION,
+	INFO("%s version %s%s loaded (preempt=%s,smp=%s)\n",
+	     DRV_NAME, NDISWRAPPER_VERSION, EXTRA_VERSION,
 #if defined CONFIG_PREEMPT
 	       "yes",
 #else

@@ -761,7 +761,7 @@ NdisMQueryAdapterResources(unsigned int *status, struct ndis_handle *handle,
 {
 	int i;
 	int len = 0;
-// XXXXXXXXXXXXXXX   FIX-ME!   XXXXXXXXXXXXXXXXXXXXX
+	/* FIXME: do USB drivers call this? */
 	struct pci_dev *pci_dev = handle->dev.pci;
 	struct ndis_resource_entry *entry;
 	TRACEENTER2("handle: %08x. buf: %08x, len: %d. IRQ:%d", (int)handle,
@@ -984,9 +984,8 @@ NdisMAllocateSharedMemory(struct ndis_handle *handle, unsigned long size,
 
 	TRACEENTER3("%s", "");
 //	if (handle->map_dma_addr == NULL)
-//		printk(KERN_ERR "%s: DMA map address is not set!\n",
-//		       __FUNCTION__);
-// XXXXXXXXXXXXXXX   FIX-ME!?   XXXXXXXXXXXXXXXXXXXXX
+//		ERROR("%s: DMA map address is not set!\n", __FUNCTION__);
+	/* FIXME: do USB drivers call this? */
 	v = PCI_DMA_ALLOC_COHERENT(handle->dev.pci, size, &p);
 	if(!v)
 	{
@@ -1036,7 +1035,7 @@ NdisMFreeSharedMemory(struct ndis_handle *handle, unsigned int size,
 		      unsigned int physlow, unsigned int physhigh)
 {
 	TRACEENTER3("%s", "");
-// XXXXXXXXXXXXXXX   FIX-ME!?   XXXXXXXXXXXXXXXXXXXXX
+	/* FIXME: do USB drivers call this? */
 	PCI_DMA_FREE_COHERENT(handle->dev.pci, size, virt, physlow);
 	TRACEEXIT3(return);
 }
@@ -1396,7 +1395,7 @@ NdisMRegisterInterrupt(struct ndis_irq *ndis_irq, struct ndis_handle *handle,
 		TRACEEXIT1(return NDIS_STATUS_RESOURCES);
 	}
 	ndis_irq->enabled = 1;
-	printk(KERN_INFO "%s: using irq %d\n", DRV_NAME, vector);
+	INFO("%s: using irq %d\n", DRV_NAME, vector);
 	TRACEEXIT1(return NDIS_STATUS_SUCCESS);
 }
 
@@ -2226,7 +2225,7 @@ NdisMStartBufferPhysicalMapping(struct ndis_handle *handle,
 	}
 
 	// map buffer
-// XXXXXXXXXXXXXXX   FIX-ME!   XXXXXXXXXXXXXXXXXXXXX
+	/* FIXME: do USB drivers call this? */
 	phy_addr_array[0].phy_addr.low =
 		PCI_DMA_MAP_SINGLE(handle->dev.pci, buf->data, buf->len,
 				   PCI_DMA_TODEVICE);
@@ -2261,7 +2260,7 @@ NdisMCompleteBufferPhysicalMapping(struct ndis_handle *handle,
 	}
 
 	// unmap buffer
-// XXXXXXXXXXXXXXX   FIX-ME!   XXXXXXXXXXXXXXXXXXXXX
+	/* FIXME: do USB drivers call this? */
 	PCI_DMA_UNMAP_SINGLE(handle->dev.pci,
 			     handle->map_dma_addr[phy_map_reg],
 			     buf->len, PCI_DMA_TODEVICE);
