@@ -1527,6 +1527,7 @@ static int wpa_associate(struct net_device *dev,
 		 wpa_assoc_info.key_mgmt_suite,
 		 wpa_assoc_info.pairwise_suite, wpa_assoc_info.group_suite);
 	if (wpa_assoc_info.key_mgmt_suite != KEY_MGMT_PSK &&
+	    wpa_assoc_info.key_mgmt_suite != KEY_MGMT_802_1X &&
 	    wpa_assoc_info.key_mgmt_suite != KEY_MGMT_NONE)
 		TRACEEXIT(return -EINVAL);
 
@@ -1558,6 +1559,11 @@ static int wpa_associate(struct net_device *dev,
 		if (!test_bit(CAPA_WPA, &handle->capa))
 			TRACEEXIT(return -EINVAL);
 		auth_mode = AUTHMODE_WPAPSK;
+		break;
+	case KEY_MGMT_802_1X:
+		if (!test_bit(CAPA_WPA, &handle->capa))
+			TRACEEXIT(return -EINVAL);
+		auth_mode = AUTHMODE_WPA;
 		break;
 	case KEY_MGMT_NONE:
 		if (wpa_assoc_info.group_suite != CIPHER_WEP104 &&
