@@ -302,25 +302,28 @@ void miniport_halt(struct ndis_handle *handle)
 static void hangcheck_proc(unsigned long data)
 {
 	struct ndis_handle *handle = (struct ndis_handle *)data;
+	KIRQL irql;
 
 	TRACEENTER3("%s", "");
 	
 	set_bit(HANGCHECK, &handle->wrapper_work);
 	schedule_work(&handle->wrapper_worker);
 
-	kspin_lock(&handle->timer_lock);
+	irql = kspin_lock_irql(&handle->timer_lock, DISPATCH_LEVEL);
 	if (handle->hangcheck_active) {
 		handle->hangcheck_timer.expires =
 			jiffies + handle->hangcheck_interval;
 		add_timer(&handle->hangcheck_timer);
 	}
-	kspin_unlock(&handle->timer_lock);
+	kspin_unlock_irql(&handle->timer_lock, irql);
 
 	TRACEEXIT3(return);
 }
 
 void hangcheck_add(struct ndis_handle *handle)
 {
+	KIRQL irql;
+
 	if (!handle->driver->miniport.hangcheck ||
 	    handle->hangcheck_interval <= 0) {
 		handle->hangcheck_active = 0;
@@ -331,23 +334,25 @@ void hangcheck_add(struct ndis_handle *handle)
 	handle->hangcheck_timer.data = (unsigned long)handle;
 	handle->hangcheck_timer.function = &hangcheck_proc;
 
-	kspin_lock(&handle->timer_lock);
+	irql = kspin_lock_irql(&handle->timer_lock, DISPATCH_LEVEL);
 	add_timer(&handle->hangcheck_timer);
 	handle->hangcheck_active = 1;
-	kspin_unlock(&handle->timer_lock);
+	kspin_unlock_irql(&handle->timer_lock, irql);
 	return;
 }
 
 void hangcheck_del(struct ndis_handle *handle)
 {
+	KIRQL irql;
+
 	if (!handle->driver->miniport.hangcheck ||
 	    handle->hangcheck_interval <= 0)
 		return;
 
-	kspin_lock(&handle->timer_lock);
+	irql = kspin_lock_irql(&handle->timer_lock, DISPATCH_LEVEL);
 	handle->hangcheck_active = 0;
 	del_timer(&handle->hangcheck_timer);
-	kspin_unlock(&handle->timer_lock);
+	kspin_unlock_irql(&handle->timer_lock, irql);
 }
 
 static void stats_proc(unsigned long data)
@@ -371,9 +376,11 @@ static void stats_timer_add(struct ndis_handle *handle)
 
 static void stats_timer_del(struct ndis_handle *handle)
 {
-	kspin_lock(&handle->timer_lock);
+	KIRQL irql;
+
+	irql = kspin_lock_irql(&handle->timer_lock, DISPATCH_LEVEL);
 	del_timer_sync(&handle->stats_timer);
-	kspin_unlock(&handle->timer_lock);
+	kspin_unlock_irql(&handle->timer_lock, irql);
 }
 
 static int ndis_open(struct net_device *dev)
@@ -613,12 +620,14 @@ static void xmit_worker(void *param)
  */
 void sendpacket_done(struct ndis_handle *handle, struct ndis_packet *packet)
 {
+	KIRQL irql;
+
 	TRACEENTER3("%s", "");
-	kspin_lock(&handle->send_packet_done_lock);
+	irql = kspin_lock_irql(&handle->send_packet_done_lock, DISPATCH_LEVEL);
 	handle->stats.tx_bytes += packet->private.len;
 	handle->stats.tx_packets++;
 	free_send_packet(handle, packet);
-	kspin_unlock(&handle->send_packet_done_lock);
+	kspin_unlock_irql(&handle->send_packet_done_lock, irql);
 	TRACEEXIT3(return);
 }
 

@@ -116,7 +116,7 @@ typedef CHAR KPROCESSOR_MODE;
 typedef unsigned long ULONG_PTR;
 
 typedef ULONG_PTR SIZE_T;
-typedef ULONG_PTR	KAFFINITY;
+typedef ULONG_PTR KAFFINITY;
 typedef ULONG ACCESS_MASK;
 
 struct ansi_string {
@@ -171,7 +171,14 @@ struct kdpc {
 enum pool_type {
 	NonPagedPool, PagedPool, NonPagedPoolMustSucceed, DontUseThisType,
 	NonPagedPoolCacheAligned, PagedPoolCacheAligned,
-	NonPagedPoolCacheAlignedMustS
+	NonPagedPoolCacheAlignedMustS, MaxPoolType,
+	NonPagedPoolSession = 32,
+	PagedPoolSession = NonPagedPoolSession + 1,
+	NonPagedPoolMustSucceedSession = PagedPoolSession + 1,
+	DontUseThisTypeSession = NonPagedPoolMustSucceedSession + 1,
+	NonPagedPoolCacheAlignedSession = DontUseThisTypeSession + 1,
+	PagedPoolCacheAlignedSession = NonPagedPoolCacheAlignedSession + 1,
+	NonPagedPoolCacheAlignedMustSSession = PagedPoolCacheAlignedSession + 1
 };
 
 enum memory_caching_type_orig {
@@ -611,9 +618,15 @@ struct npaged_lookaside_list {
 	USHORT depth;
 	USHORT maxdepth;
 	ULONG totalallocs;
-	ULONG allocmisses;
+	union {
+		ULONG allocmisses;
+		ULONG allochits;
+	} u1;
 	ULONG totalfrees;
-	ULONG freemisses;
+	union {
+		ULONG freemisses;
+		ULONG freehits;
+	} u2;
 	enum pool_type pool_type;
 	ULONG tag;
 	ULONG size;
@@ -621,7 +634,10 @@ struct npaged_lookaside_list {
 	LOOKASIDE_FREE_FUNC *free_func;
 	struct nt_list list;
 	ULONG lasttotallocs;
-	ULONG lastallocmisses;
+	union {
+		ULONG lastallocmisses;
+		ULONG lastallochits;
+	} u3;
 	ULONG pad[2];
 	KSPIN_LOCK obsolete;
 };
