@@ -108,9 +108,20 @@ struct packed ndis_packet
 	unsigned int look_ahead_size;
 };
 
+enum ndis_pnp_event
+{
+	NDIS_PNP_QUERY_REMOVED,
+	NDIS_PNP_REMOVED,
+	NDIS_PNP_SURPRISE_REMOVED,
+	NDIS_PNP_QUERY_STOPPED,
+	NDIS_PNP_STOPPED,
+	NDIS_PNP_PROFILE_CHANGED,
+	NDIS_PNP_MAXIMUM,
+};
 
 struct miniport_char
 {
+	/* NDIS 3.0 */
 	unsigned char majorVersion;
 	unsigned char minorVersion;
 	unsigned int reserved;
@@ -161,6 +172,7 @@ struct miniport_char
 				unsigned int offset,
 				unsigned int bytes_to_tx) STDCALL;
 
+	/* NDIS 4.0 extensions */
 	/* upper layer is done with RX packet */
 	void (*return_packet)(void *ctx, void *packet) STDCALL;
 
@@ -182,9 +194,13 @@ struct miniport_char
 
 	/* NDIS 5.1 extensions */
 	void *cancel_send_packets;
-	void (*pnp_event_notify)(void *handle, int event, void *inf_buf,
+	void (*pnp_event_notify)(void *ctx, enum ndis_pnp_event, void *inf_buf,
 				 unsigned long inf_buf_len) STDCALL;
 	void (*adapter_shutdown)(void *ctx) STDCALL;
+	void *reserved1;
+	void *reserved2;
+	void *reserved3;
+	void *reserved4;
 
 };
 
@@ -665,6 +681,8 @@ struct packed ndis_handle
 
 	struct work_struct wrapper_worker;
 	unsigned long wrapper_work;
+
+	unsigned short surprise_remove;
 };
 
 struct ndis_timer
@@ -758,12 +776,6 @@ enum ndis_power_profile
 {
 	NDIS_POWER_PROFILE_BATTERY,
 	NDIS_POWER_PROFILE_AC,
-};
-
-enum ndis_pnp_event
-{
-	NDIS_PNP_REMOVED,
-	NDIS_PNP_PROFILE_CHANGE,
 };
 
 enum status_type
@@ -1026,6 +1038,19 @@ int stricmp(const char *s1, const char *s2);
 /* memory allocation flags */
 #define NDIS_MEMORY_CONTIGUOUS			0x00000001
 #define NDIS_MEMORY_NONCACHED			0x00000002
+
+/* Atrribute flags to NdisMSetAtrributesEx */
+#define NDIS_ATTRIBUTE_IGNORE_PACKET_TIMEOUT    0x00000001
+#define NDIS_ATTRIBUTE_IGNORE_REQUEST_TIMEOUT   0x00000002
+#define NDIS_ATTRIBUTE_IGNORE_TOKEN_RING_ERRORS 0x00000004
+#define NDIS_ATTRIBUTE_BUS_MASTER               0x00000008
+#define NDIS_ATTRIBUTE_INTERMEDIATE_DRIVER      0x00000010
+#define NDIS_ATTRIBUTE_DESERIALIZE              0x00000020
+#define NDIS_ATTRIBUTE_NO_HALT_ON_SUSPEND       0x00000040
+#define NDIS_ATTRIBUTE_SURPRISE_REMOVE_OK       0x00000080
+#define NDIS_ATTRIBUTE_NOT_CO_NDIS              0x00000100
+#define NDIS_ATTRIBUTE_USES_SAFE_BUFFER_APIS    0x00000200
+
 
 /* WPA support */
 

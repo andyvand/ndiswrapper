@@ -611,7 +611,7 @@ void packet_recycler(void *param)
 			break;
 
 		packet->status = NDIS_STATUS_SUCCESS;
-		handle->driver->miniport_char.return_packet(handle->adapter_ctx,  packet);
+		handle->driver->miniport_char.return_packet(handle->adapter_ctx, packet);
 	}
 	TRACEEXIT3(return);
 }

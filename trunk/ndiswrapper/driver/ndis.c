@@ -643,15 +643,18 @@ NdisMSetAttributesEx(struct ndis_handle *handle, void* adapter_ctx,
 		wrap_spin_unlock(&atomic_lock);
 	}
 
-	if(attributes & 8)
+	if (attributes & NDIS_ATTRIBUTE_BUS_MASTER)
 	{
 		pci_set_master(handle->pci_dev);
 	}
 
-	if(!(attributes & 0x20))
-	{
+	if (attributes & NDIS_ATTRIBUTE_DESERIALIZE)
+		handle->serialized = 0;
+	else
 		handle->serialized = 1;
-	}
+
+	if (attributes & NDIS_ATTRIBUTE_SURPRISE_REMOVE_OK)
+		handle->surprise_remove = 1;
 
 	if (handle->hangcheck_interval == 0)
 	{
