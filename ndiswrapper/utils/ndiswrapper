@@ -156,7 +156,7 @@ sub list
 
 	if(!$cards)
 	{
-		print "WARNING: Cannot locate lspci. Unable to see if hardware is present.\n";
+		print "WARNING: Cannot locate lspci and lsusb. Unable to see if hardware is present.\n";
 	}
 
 	open(LS, "ls -1 $confdir|");
@@ -308,9 +308,33 @@ sub getPresentCards
 				}
 					
 			}
-			return \@cards;
+			$i = @lspci;
 		}
 	}
+
+	my @lsusb = ("/sbin/lsusb", "/usr/sbin/lsusb", "lsusb");
+	for(my $i = 0; $i < @lsusb; $i++)
+	{
+		if(open(LSUSB, "$lsusb[$i] |"))
+		{
+			my $card;
+			while(my $line = <LSUSB>)
+			{
+				if($line =~ /.*: ID\s(.{4}):(.{4}).*/)
+				{
+					my %c;
+					$card = \%c;
+					$card->{vendor} = $1;
+					$card->{device} = $2;
+
+					push(@cards, $card);
+				}
+			}
+			$i = @lsusb;
+		}
+	}
+
+	return \@cards;
 }
 
 
