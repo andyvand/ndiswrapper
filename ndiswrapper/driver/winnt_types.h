@@ -16,8 +16,6 @@
 #ifndef WINNT_TYPES_H
 #define WINNT_TYPES_H
 
-#define MAX_STR_LEN 512
-
 #define TRUE 1
 #define FALSE 0
 
@@ -304,6 +302,9 @@ struct io_status_block {
 	ULONG status_info;
 };
 
+#ifndef CONFIG_X86_64
+#pragma pack(4)
+#endif
 struct io_stack_location {
 	char major_fn;
 	char minor_fn;
@@ -329,6 +330,9 @@ struct io_stack_location {
 				    struct irp *, void *) STDCALL;
 	void *handler_arg;
 };
+#ifndef CONFIG_X86_64
+#pragma pack()
+#endif
 
 enum irp_work_type {
 	IRP_WORK_NONE,
