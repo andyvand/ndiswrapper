@@ -23,6 +23,7 @@
 #include "wrapper.h"
 
 struct list_head wrap_allocs;
+static spinlock_t wrap_allocs_lock = SPIN_LOCK_UNLOCKED;
 
 void *wrap_kmalloc(size_t size, int flags)
 {
@@ -39,27 +40,27 @@ void *wrap_kmalloc(size_t size, int flags)
 		kfree(alloc);
 		return NULL;
 	}
+	spin_lock(&wrap_allocs_lock);
 	list_add(&alloc->list, &wrap_allocs);
+	spin_unlock(&wrap_allocs_lock);
 	return alloc->ptr;
 }
 
 void wrap_kfree(void *ptr)
 {
 	struct wrap_alloc *alloc;
-	alloc = (struct wrap_alloc *)wrap_allocs.next;
-	while (alloc)
+	
+	spin_lock(&wrap_allocs_lock);
+	list_for_each_entry(alloc, &wrap_allocs, list)
 		if (alloc->ptr == ptr)
 		{
 			list_del(&alloc->list);
 			kfree(alloc->ptr);
 			kfree(alloc);
-			return;
+			break;
 		}
-		else
-			alloc = (struct wrap_alloc *)alloc->list.next;
 
-	printk(KERN_ERR "%s: ptr %p is not found in allocated pointers\n",
-	       __FUNCTION__, ptr);
+	spin_unlock(&wrap_allocs_lock);
 	return;
 }
 
@@ -67,14 +68,15 @@ void wrap_kfree_all(void)
 {
 	struct wrap_alloc *alloc;
 
-	while (!list_empty(&wrap_allocs))
+	spin_lock(&wrap_allocs_lock);
+	list_for_each_entry(alloc, &wrap_allocs, list)
 	{
-		alloc = (struct wrap_alloc *)wrap_allocs.next;
 		list_del(&alloc->list);
 		kfree(alloc->ptr);
 		kfree(alloc);
 		
 	}
+	spin_unlock(&wrap_allocs_lock);
 	return;
 }
 
