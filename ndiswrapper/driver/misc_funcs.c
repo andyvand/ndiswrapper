@@ -251,6 +251,16 @@ NOREGPARM int wrap_strcmp(const char *s1, const char *s2)
 	return strcmp(s1, s2);
 }
 
+int stricmp(const char *s1, const char *s2)
+{
+	while (*s1 && *s2 && tolower(*s1) == tolower(*s2))
+	{
+		s1++;
+		s2++;
+	}
+	return (int)*s1 - (int)*s2;
+}
+
 NOREGPARM int wrap_tolower(int c)
 {
 	return tolower(c);

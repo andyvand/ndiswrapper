@@ -419,7 +419,7 @@ STDCALL void NdisReadConfiguration(unsigned int *status,
 
 	list_for_each_entry(setting, &handle->device->settings, list)
 	{
-		if(strcmp(keyname, setting->name) == 0)
+		if(stricmp(keyname, setting->name) == 0)
 		{
 			DBGTRACE("%s:setting found %s=%s\n",
 				 __FUNCTION__, keyname, setting->val_str);

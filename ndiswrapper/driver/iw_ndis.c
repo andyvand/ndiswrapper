@@ -55,7 +55,7 @@ static int ndis_set_essid(struct net_device *dev,
 		printk(KERN_INFO "%s: setting essid failed (%08X)\n", dev->name, res); 
 		return -EINVAL;
 	}
-	
+
 	return 0;
 }
 
@@ -352,7 +352,7 @@ static int ndis_set_dummy(struct net_device *dev,
 	 * function like this surpresses errors the user will get when
 	 * running ifup.
 	  */
-	 return 0;
+	return 0;
 }
 
 static int ndis_get_rts_threshold(struct net_device *dev, struct iw_request_info *info,
@@ -1013,6 +1013,19 @@ static int ndis_get_range(struct net_device *dev, struct iw_request_info *info,
 	return 0;
 }
 
+static int ndis_reset(struct net_device *dev, struct iw_request_info *info,
+		      union iwreq_data *wrqu, char *extra)
+{
+	int res;
+	res = doreset(dev->priv);
+	if (res)
+	{
+		printk(KERN_ERR "%s: reset returns %08X\n", __FUNCTION__, res);
+		return -EINVAL;
+	}
+	return 0;
+}
+
 static const iw_handler	ndis_handler[] = {
 	//[SIOCGIWSENS    - SIOCIWFIRST] = ndis_get_sens,
 	[SIOCGIWNAME	- SIOCIWFIRST] = ndis_get_name,
@@ -1046,9 +1059,22 @@ static const iw_handler	ndis_handler[] = {
 	[SIOCSIWCOMMIT	- SIOCIWFIRST] = ndis_set_dummy,
 };
 
+static const struct iw_priv_args priv_args[] = {
+    {PRIV_RESET, 0, 0, "ndis_reset"},
+};
+
+static const iw_handler priv_handler[] = {
+    [PRIV_RESET - SIOCIWFIRSTPRIV] = ndis_reset,
+};
+
 const struct iw_handler_def ndis_handler_def = {
-	.num_standard	= sizeof(ndis_handler) / sizeof(iw_handler),
+	.num_standard	= sizeof(ndis_handler) / sizeof(ndis_handler[0]),
+	.num_private	= sizeof(priv_handler) / sizeof(priv_handler[0]),
+	.num_private_args = sizeof(priv_args) / sizeof(priv_args[0]),
+
 	.standard	= (iw_handler *)ndis_handler,
+	.private	= (iw_handler *)priv_handler,
+	.private_args	= (struct iw_priv_args *)priv_args,
 };
 
 
