@@ -491,7 +491,7 @@ _FASTCALL unsigned long IofCallDriver(int dummy, struct irp *irp,
 
 	if (stack->major_fn == IRP_MJ_INTERNAL_DEVICE_CONTROL) {
 		switch (stack->params.ioctl.code) {
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(3,6,0)
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
 			case IOCTL_INTERNAL_USB_SUBMIT_URB:
 				ret = usb_submit_nt_urb(dev_obj->device.usb,
 					stack->params.generic.arg1, irp);

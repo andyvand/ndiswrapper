@@ -17,7 +17,7 @@
 #include "usb.h"
 
 
-#if LINUX_VERSION_CODE <= KERNEL_VERSION(3,6,0)
+#if LINUX_VERSION_CODE <= KERNEL_VERSION(2,6,0)
 #warning Note: USB support not available on kernels before 2.6
 #else
 
