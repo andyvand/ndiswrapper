@@ -16,6 +16,21 @@
 #include "ntoskernel.h"
 #include "wrapper.h"
 
+STDCALL void WRITE_REGISTER_ULONG(unsigned int reg, unsigned int val)
+{
+	writel(val, reg);
+}
+
+STDCALL void WRITE_REGISTER_USHORT(unsigned int reg, unsigned short val)
+{
+	writew(val, reg);
+}
+
+STDCALL void WRITE_REGISTER_UCHAR(unsigned int reg, unsigned char val)
+{
+	writeb(val, reg);
+}
+
 STDCALL void KeInitializeTimer(struct ktimer *ktimer)
 {
 	DBGTRACE("%s: %p\n", __FUNCTION__, ktimer);
@@ -67,11 +82,6 @@ STDCALL int KeCancelTimer(struct ktimer *ktimer)
 	return canceled;
 }
 
-STDCALL int KeGetCurrentIrql(void)
-{
-	return DISPATCH_LEVEL;
-}
-
 STDCALL void KeInitializeSpinLock(KSPIN_LOCK *lock)
 {
 	spinlock_t *spin_lock;
@@ -111,11 +121,6 @@ STDCALL void KeReleaseSpinLock(KSPIN_LOCK *lock, KIRQL *oldirql)
 	else
 		printk(KERN_ERR "%s: lock %p is not initialized?\n",
 			   __FUNCTION__, lock);
-}
-
-STDCALL void KfAcquireSpinLock(KSPIN_LOCK *lock, KIRQL *oldirql)
-{
-	KeAcquireSpinLock(lock, oldirql);
 }
 
 _FASTCALL struct slist_entry *
@@ -261,19 +266,6 @@ STDCALL int IoIsWdmVersionAvailable(unsigned char major, unsigned char minor)
 	return 0;
 }
 
-/** Functions from CIPE **/
-NOREGPARM void DbgPrint(char *str, int x, int y, int z)
-{
-	DBGTRACE(str, x, y, z);
-}
-
-/** Functions from HAL **/
-STDCALL void KeStallExecutionProcessor(unsigned int usecs)
-{
-	//DBGTRACE("%s %d\n", __FUNCTION__ , usecs);
-	udelay(usecs);
-}
-
 STDCALL unsigned int KeWaitForSingleObject(void **object, unsigned int reason, unsigned int waitmode, unsigned short alertable, void *timeout)
 {
 	UNIMPL();
@@ -301,7 +293,6 @@ void DbgBreakPoint(void)
 
 void IofCompleteRequest(void){UNIMPL();}
 void IoReleaseCancelSpinLock(void){UNIMPL();}
-void KfReleaseSpinLock(void){UNIMPL();}
 void KeInitializeEvent(void *event){UNIMPL();}
 void IoDeleteDevice(void){UNIMPL();}
 void IoCreateSymbolicLink(void){UNIMPL();}
@@ -313,8 +304,10 @@ void InterlockedExchange(void){UNIMPL();}
 
 struct wrap_func ntos_wrap_funcs[] =
 {
+	WRAP_FUNC_ENTRY(WRITE_REGISTER_UCHAR),
+	WRAP_FUNC_ENTRY(WRITE_REGISTER_ULONG),
+	WRAP_FUNC_ENTRY(WRITE_REGISTER_USHORT),
 	WRAP_FUNC_ENTRY(DbgBreakPoint),
-	WRAP_FUNC_ENTRY(DbgPrint),
 	WRAP_FUNC_ENTRY(ExAllocatePoolWithTag),
 	WRAP_FUNC_ENTRY(ExDeleteNPagedLookasideList),
 	WRAP_FUNC_ENTRY(ExFreePool),
@@ -334,17 +327,13 @@ struct wrap_func ntos_wrap_funcs[] =
 	WRAP_FUNC_ENTRY(IofCompleteRequest),
 	WRAP_FUNC_ENTRY(KeAcquireSpinLock),
 	WRAP_FUNC_ENTRY(KeCancelTimer),
-	WRAP_FUNC_ENTRY(KeGetCurrentIrql),
 	WRAP_FUNC_ENTRY(KeInitializeDpc),
 	WRAP_FUNC_ENTRY(KeInitializeEvent),
 	WRAP_FUNC_ENTRY(KeInitializeSpinLock),
 	WRAP_FUNC_ENTRY(KeInitializeTimer),
 	WRAP_FUNC_ENTRY(KeReleaseSpinLock),
 	WRAP_FUNC_ENTRY(KeSetTimerEx),
-	WRAP_FUNC_ENTRY(KeStallExecutionProcessor),
 	WRAP_FUNC_ENTRY(KeWaitForSingleObject),
-	WRAP_FUNC_ENTRY(KfAcquireSpinLock),
-	WRAP_FUNC_ENTRY(KfReleaseSpinLock),
 	WRAP_FUNC_ENTRY(MmMapIoSpace),
 	WRAP_FUNC_ENTRY(MmMapLockedPages),
 	WRAP_FUNC_ENTRY(MmUnmapIoSpace),
