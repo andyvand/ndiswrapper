@@ -241,7 +241,6 @@ _FASTCALL struct nt_slist *WRAP_EXPORT(InterlockedPopEntrySList)
 	(FASTCALL_DECL_1(union nt_slist_head *head))
 {
 	return ExpInterlockedPopEntrySList(head);
-
 }
 
 _FASTCALL USHORT WRAP_EXPORT(ExQueryDepthSList)
@@ -526,9 +525,8 @@ STDCALL void WRAP_EXPORT(ExFreePool)
 	TRACEEXIT2(return);
 }
 
-/* for now, just do with this hack */
-void x86_64_ExAllocatePoolWithTag(void);
-void x86_64_ExFreePool(void);
+WRAP_FUNC_PTR_DECL(ExAllocatePoolWithTag);
+WRAP_FUNC_PTR_DECL(ExFreePool);
 
 STDCALL void WRAP_EXPORT(ExInitializeNPagedLookasideList)
 	(struct npaged_lookaside_list *lookaside,
@@ -572,14 +570,7 @@ STDCALL void WRAP_EXPORT(ExDeleteNPagedLookasideList)
 	struct nt_slist *entry;
 
 	TRACEENTER3("lookaside = %p", lookaside);
-	while ((entry = ExInterlockedPopEntrySList(
-			FASTCALL_ARGS_2(&lookaside->head,
-#ifndef X86_64
-					&lookaside->obsolete
-#else
-					&ntoskernel_lock
-#endif
-				))))
+	while ((entry = ExpInterlockedPopEntrySList(&lookaside->head)))
 		(lookaside->free_func)(entry);
 
 	TRACEEXIT4(return);
