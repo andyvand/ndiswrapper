@@ -923,6 +923,5 @@ void ndiswrapper_procfs_remove(void);
 
 void packet_recycler(void *param);
 int stricmp(const char *s1, const char *s2);
-int string_to_mac(unsigned char *mac, unsigned char *string, int string_len);
 
 #endif /* NDIS_H */
