@@ -106,6 +106,8 @@ void KfReleaseSpinLock(void);
 void KeStallExecutionProcessor(void);
 void WRITE_PORT_ULONG(void);
 void READ_PORT_ULONG(void);
+void WRITE_PORT_USHORT(void);
+void READ_PORT_USHORT(void);
 
 /* ntoskern */
 void InterlockedExchange(void);
@@ -235,6 +237,8 @@ func("KfReleaseSpinLock"                    , KfReleaseSpinLock),
 func("KeStallExecutionProcessor"            , KeStallExecutionProcessor),
 func("WRITE_PORT_ULONG"                     , WRITE_PORT_ULONG),
 func("READ_PORT_ULONG"                      , READ_PORT_ULONG),
+func("WRITE_PORT_USHORT"                    , WRITE_PORT_USHORT),
+func("READ_PORT_USHORT"                     , READ_PORT_USHORT),
 
 /* ntoskernel */
 func("InterlockedExchange"                  , InterlockedExchange),
