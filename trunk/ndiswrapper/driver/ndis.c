@@ -448,7 +448,7 @@ STDCALL void NdisReadConfiguration(unsigned int *status,
 	string[sizeof(string)-1] = 0;
 	keyname = ansi.buf;
 
-	list_for_each_entry(setting, &handle->driver->settings, list)
+	list_for_each_entry(setting, &handle->device->settings, list)
 	{
 		if(strcmp(keyname, setting->name) == 0)
 		{
@@ -494,7 +494,7 @@ STDCALL void NdisWriteConfiguration(unsigned int *status,
 	string[sizeof(string)-1] = 0;
 	keyname = ansi.buf;
 
-	list_for_each_entry(setting, &handle->driver->settings, list)
+	list_for_each_entry(setting, &handle->device->settings, list)
 	{
 		if(strcmp(keyname, setting->name) == 0)
 		{
@@ -524,7 +524,7 @@ STDCALL void NdisWriteConfiguration(unsigned int *status,
 	setting->name[ansi.len] = 0;
 	*status = ndis_decode_setting(setting, val);
 	if (*status == NDIS_STATUS_SUCCESS)
-		list_add(&setting->list, &handle->driver->settings);
+		list_add(&setting->list, &handle->device->settings);
 	else
 	{
 		kfree(setting->name);
@@ -861,7 +861,7 @@ STDCALL void NdisMAllocateSharedMemory(struct ndis_handle *handle,
 {
 	dma_addr_t p;
 
-	DBGTRACE("%s: entry\n", __FUNCTION__);
+//	DBGTRACE("%s: entry\n", __FUNCTION__);
 	void *v = pci_alloc_consistent(handle->pci_dev, size, &p);  
 	if(!v)
 	{
@@ -871,7 +871,7 @@ STDCALL void NdisMAllocateSharedMemory(struct ndis_handle *handle,
 	*(char**)virt = v;
 	phys->low = (unsigned int)p;
 	phys->high = 0;
-	DBGTRACE("%s: allocated shared memory: %p\n", __FUNCTION__, v);
+//	DBGTRACE("%s: allocated shared memory: %p\n", __FUNCTION__, v);
 }
 
 STDCALL void NdisMFreeSharedMemory(struct ndis_handle *handle,

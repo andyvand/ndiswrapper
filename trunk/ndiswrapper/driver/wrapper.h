@@ -22,14 +22,20 @@
 
 struct put_driver {
 	char name[DRIVERNAME_MAX];
-	int pci_vendor;
-	int pci_device;
 	size_t size;
 	void *data;
 };
 
 struct del_driver {
 	char name[DRIVERNAME_MAX];
+};
+
+struct put_device {
+	int pci_vendor;
+	int pci_device;
+	int pci_subvendor;
+	int pci_subdevice;
+	int fuzzy;
 };
 
 struct put_setting
@@ -43,6 +49,7 @@ struct put_setting
 #define NDIS_PUTDRIVER     _IOWR('N', 0, struct put_driver*)
 #define NDIS_PUTSETTING    _IOWR('N', 1, struct put_setting*)
 #define NDIS_STARTDRIVER   _IOWR('N', 2, int)
-#define NDIS_CANCELLOAD    _IOWR('N', 3, int)
 #define NDIS_DELDRIVER     _IOWR('N', 4, struct del_driver *)
+#define NDIS_PUTDEVICE     _IOWR('N', 5, struct put_device*)
+#define NDIS_PUTDEVICEDONE _IOWR('N', 6, void)
 #endif /* WRAPPER_H */

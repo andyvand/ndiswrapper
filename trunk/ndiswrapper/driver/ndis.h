@@ -274,6 +274,8 @@ struct ndis_filehandle
 	size_t size;
 };
 
+
+
 /*
  * There is one of these per driver. One per loaded driver exists.
  *
@@ -283,16 +285,40 @@ struct ndis_driver
 	struct list_head list;
 	char name[32];
 
+	struct list_head devices;
 	struct pci_driver pci_driver;
-	struct pci_device_id pci_id[2];
-	
+	struct pci_device_id *pci_idtable;
+
+	int nr_devices;
+	int started;
+
 	unsigned int pci_registered; 
-	struct list_head settings;
 
 	void *image;
 	unsigned int (*entry)(void *obj, char *p2) STDCALL;
 	struct miniport_char miniport_char;
+	struct ndis_device *current_device;
 };
+
+/*
+ * There is one of these per handeled pci-id
+ *
+ */
+struct ndis_device
+{
+	struct list_head list;
+	struct list_head settings;
+	struct ndis_driver *driver;
+
+	int pci_vendor;
+	int pci_device;
+	int pci_subvendor;
+	int pci_subdevice;
+	int fuzzy;
+};
+
+
+
 
 typedef __u64 LARGE_INTEGER;
 struct ndis_wireless_stats {
@@ -379,7 +405,8 @@ struct packed ndis_handle
 	struct iw_statistics wireless_stats;
 	struct ndis_wireless_stats ndis_stats;
 	struct ndis_driver *driver;
-	
+	struct ndis_device *device;
+
 	struct work_struct xmit_work;
 	spinlock_t xmit_ring_lock;
 	struct ndis_buffer *xmit_ring[XMIT_RING_SIZE];
