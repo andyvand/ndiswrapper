@@ -35,6 +35,12 @@ newblock()
     log "------------------------------------\n"
 }
 
+if [ $# -eq 1 -a "$1" = "-full" ]; then
+    FULL=1
+else
+    FULL=0
+fi
+
 # utils
 log "utils:"
 log_cmd 'ls -l /sbin/loadndisdriver'
@@ -55,40 +61,10 @@ newblock
 log "gcc --version:"
 log_cmd 'gcc --version'
 
-# try to get kernelconfig
-newblock
-log "kernel configuration:"
-if [ -r /proc/config.gz ]; then
-	log_cmd 'gzip -d < /proc/config.gz'
-else 
-	if [ -r /lib/modules/$KVERS/build/.config ]; then
-		log_cmd "cat /lib/modules/$KVERS/build/.config"
-	else
-		log "kernel config missing"
-	fi
-fi
-
 # installed drivers
 newblock
 log "installed drivers:"
 log_cmd 'ls -lR /etc/ndiswrapper'
-
-# module information
-newblock
-log "module information:"
-log_cmd 'modprobe -c | grep ndis'
-log "module is at:"
-log_cmd "find /lib/modules/$KVERS/ -name ndiswrapper\* | xargs ls -l"
-log ""
-
-# pci devices
-newblock
-log "PCI devices:"
-log_cmd "lspci -n"
-log ""
-log "USB devices:"
-log_cmd "lsusb"
-log ""
 
 while(true); do
     echo "Is it okay to shutdown 'wlan0' interface and reload the module?"
@@ -104,14 +80,23 @@ while(true); do
     case $res in
 	y|Y)
 	    log "Reloading ndiswrapper..."
-	    log_cmd 'ifconfig wlan0 down;  rmmod ndiswrapper;
-			modprobe ndiswrapper; dmesg|tail -n 100'
+	    if [ $FULL -eq 1 ]; then
+		log_cmd 'ifconfig wlan0 down;  rmmod ndiswrapper;
+			modprobe ndiswrapper; dmesg |tail -n 100'
+	    else
+		log_cmd 'ifconfig wlan0 down;  rmmod ndiswrapper;
+			modprobe ndiswrapper; dmesg | tail -n 10'
+	    fi
 	    break
 	    ;;
 	n|N)
 	    log "Not reloading ndiswrapper..."
 	    log ""
-	    log_cmd 'dmesg|tail -n 100'
+	    if [ $FULL -eq 1 ]; then
+		log_cmd 'dmesg | tail -n 100'
+	    else
+		log_cmd 'dmesg | tail -n 10'
+	    fi
 	    break
 	    ;;
 	*)
@@ -119,6 +104,38 @@ while(true); do
 	    ;;
     esac
 done
+
+if [ $FULL -eq 1 ]; then
+    # module information
+    newblock
+    log "module information:"
+    log_cmd 'modprobe -c | grep ndis'
+    log "module is at:"
+    log_cmd "find /lib/modules/$KVERS/ -name ndiswrapper\* | xargs ls -l"
+    log ""
+
+    # pci devices
+    newblock
+    log "PCI devices:"
+    log_cmd "lspci -n"
+    log ""
+    log "USB devices:"
+    log_cmd "lsusb"
+    log ""
+
+    # try to get kernelconfig
+    newblock
+    log "kernel configuration:"
+    if [ -r /proc/config.gz ]; then
+	    log_cmd 'gzip -d < /proc/config.gz'
+    else 
+	    if [ -r /lib/modules/$KVERS/build/.config ]; then
+		    log_cmd "cat /lib/modules/$KVERS/build/.config"
+	    else
+		    log "kernel config missing"
+	    fi
+    fi
+fi
 
 gzip -c $LOGFILE > /tmp/ndiswrapper-buginfo.gz
 
