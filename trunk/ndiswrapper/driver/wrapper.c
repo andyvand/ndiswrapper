@@ -924,11 +924,13 @@ void ndiswrapper_remove_one_dev(struct ndis_handle *handle)
 	DBGTRACE1("%d, %p",
 		  test_bit(ATTR_SURPRISE_REMOVE, &handle->attributes),
 		  miniport->pnp_event_notify);
+#if 0
 	if (test_bit(ATTR_SURPRISE_REMOVE, &handle->attributes) &&
 	    miniport->pnp_event_notify) {
 		LIN2WIN4(miniport->pnp_event_notify, handle->adapter_ctx,
 			 NdisDevicePnPEventSurpriseRemoved, NULL, 0);
 	}
+#endif
 	DBGTRACE1("halting device %s", handle->driver->name);
 	miniport_halt(handle);
 	DBGTRACE1("halt successful");
