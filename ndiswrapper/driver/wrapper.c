@@ -65,6 +65,9 @@ static LIST_HEAD(driverlist);
 static spinlock_t driverlist_lock = SPIN_LOCK_UNLOCKED;
 
 extern int image_offset;
+int freq_chan[] = { 2412, 2417, 2422, 2427, 2432, 2437, 2442,
+		    2447, 2452, 2457, 2462, 2467, 2472, 2484 };
+
 
 /*
  * Perform a sync query and deal with the possibility of an async operation.
@@ -366,16 +369,14 @@ static int ndis_set_freq(struct net_device *dev, struct iw_request_info *info,
 	struct ndis_handle *handle = dev->priv;
 	unsigned int res, written, needed;
 	struct ndis_configuration req;
-	int freq_chan[] = { 2412, 2417, 2422, 2427, 2432, 2437, 2442,
-			    2447, 2452, 2457, 2462, 2467, 2472, 2484 };
 
 	memset(&req, 0, sizeof(req));
 	
 	if (wrqu->freq.m < 1000 && wrqu->freq.e == 0)
 	{
-		if (wrqu->freq.m >= 0 &&
-		    wrqu->freq.m < (sizeof(freq_chan)/sizeof(freq_chan[0])))
-			req.ds_config = freq_chan[wrqu->freq.m] * 1000;
+		if (wrqu->freq.m >= 1 &&
+		    wrqu->freq.m <= (sizeof(freq_chan)/sizeof(freq_chan[0])))
+			req.ds_config = freq_chan[wrqu->freq.m - 1] * 1000;
 		else
 			return -1;
 	}
@@ -409,11 +410,7 @@ static int ndis_get_tx_power(struct net_device *dev, struct iw_request_info *inf
 	res = doquery(handle, NDIS_OID_TX_POWER_LEVEL, (char*)&ndis_power,
 		      sizeof(ndis_power), &written, &needed);
 	if(res)
-	{
-		printk(KERN_INFO "%s: getting tx_power failed (%08x)\n",
-		       dev->name, res);
 		return -EOPNOTSUPP;
-	}
 
 	wrqu->txpower.flags = IW_TXPOW_MWATT;
 	wrqu->txpower.disabled = 0;
@@ -433,11 +430,7 @@ static int ndis_set_tx_power(struct net_device *dev, struct iw_request_info *inf
 	{
 		res = set_int(handle, NDIS_OID_DISASSOCIATE, 0);
 		if (res)
-		{
-			printk(KERN_INFO "%s: setting tx_power failed (%08x)\n",
-			       dev->name, res);
 			return -EINVAL;
-		}
 		netif_carrier_off(handle->net_dev);
 		return 0;
 	}
@@ -536,17 +529,13 @@ static int ndis_get_ap_address(struct net_device *dev, struct iw_request_info *i
 {
 	struct ndis_handle *handle = dev->priv; 
 	unsigned int res, written, needed;
-	__u8 mac_address[6];
+	__u8 mac_address[ETH_ALEN];
 
 	res = doquery(handle, NDIS_OID_BSSID, (char*)&mac_address, sizeof(mac_address), &written, &needed);
 	if(res)
-	{
-		printk(KERN_INFO "%s: getting AP mac address failed (%08x)\n",
-		       dev->name, res);
-		return -EOPNOTSUPP;
-	}
+		memset(mac_address, 255, ETH_ALEN);
 
-        memcpy(wrqu->ap_addr.sa_data, mac_address, 6);
+        memcpy(wrqu->ap_addr.sa_data, mac_address, ETH_ALEN);
         wrqu->ap_addr.sa_family = ARPHRD_ETHER;
         return 0;
 }
@@ -556,9 +545,9 @@ static int ndis_set_ap_address(struct net_device *dev, struct iw_request_info *i
 {
 	struct ndis_handle *handle = dev->priv; 
 	unsigned int res, written, needed;
-	__u8 mac_address[6];
+	__u8 mac_address[ETH_ALEN];
 
-        memcpy(mac_address, wrqu->ap_addr.sa_data, 6);
+        memcpy(mac_address, wrqu->ap_addr.sa_data, ETH_ALEN);
 	res = dosetinfo(handle, NDIS_OID_BSSID, (char*)&(mac_address[0]), sizeof(mac_address), &written, &needed);
 
 	if(res)
@@ -1011,12 +1000,24 @@ static int ndis_get_range(struct net_device *dev, struct iw_request_info *info,
 {
 	struct iw_range *range = (struct iw_range *)extra;
 	struct iw_point *data = &wrqu->data;
+	struct ndis_handle *handle = (struct ndis_handle *)dev->priv;
+	unsigned int i, written, needed;
+	unsigned char rates[NDIS_MAX_RATES];
+	unsigned long tx_power;
 
 	data->length = sizeof(struct iw_range);
 	memset(range, 0, sizeof(struct iw_range));
 	
 	range->txpower_capa = IW_TXPOW_MWATT;
-	range->num_txpower = 1;
+	range->num_txpower = 0;
+
+	if (!doquery(handle, NDIS_OID_TX_POWER_LEVEL, (char*)&tx_power,
+		     sizeof(tx_power), &written, &needed))
+	{
+		range->num_txpower = 1;
+		range->txpower[0] = tx_power;
+	}
+
 
 	range->we_version_compiled = WIRELESS_EXT;
 	range->we_version_source = 0;
@@ -1037,6 +1038,32 @@ static int ndis_get_range(struct net_device *dev, struct iw_request_info *info,
 	range->num_encoding_sizes = 2;
 	range->encoding_size[0] = 5;
 	range->encoding_size[1] = 13;
+
+	range->num_bitrates = 0;
+	if (!doquery(handle, NDIS_OID_SUPPORTED_RATES, (char *)&rates,
+		    sizeof(rates), &written, &needed))
+	{
+		for (i = 0 ; i < NDIS_MAX_RATES && rates[i] ; i++)
+			if (range->num_bitrates < IW_MAX_BITRATES &&
+			    rates[i] & 0x80)
+			{
+				range->bitrate[range->num_bitrates] =
+					(rates[i] & 0x7f) * 500000;
+				range->num_bitrates++;
+			}
+	}
+
+	range->num_channels = (sizeof(freq_chan)/sizeof(freq_chan[0]));
+
+	for(i = 0; i < (sizeof(freq_chan)/sizeof(freq_chan[0])) &&
+		    i < IW_MAX_FREQUENCIES; i++)
+	{
+		range->freq[i].i = i + 1;
+		range->freq[i].m = freq_chan[i] * 100000;
+		range->freq[i].e = 1;
+	}
+	range->num_frequency = i;
+
 
 	range->min_rts = 0;
 	range->max_rts = 2347;
@@ -1537,7 +1564,7 @@ static int setup_dev(struct net_device *dev)
 {
 	struct ndis_handle *handle = dev->priv;
 
-	unsigned char mac[6];
+	unsigned char mac[ETH_ALEN];
 	unsigned int written;
 	unsigned int needed;
 
@@ -1582,7 +1609,7 @@ static int setup_dev(struct net_device *dev)
 	dev->wireless_handlers	= (struct iw_handler_def *)&ndis_handler_def;
 	dev->ethtool_ops = &ndis_ethtool_ops;
 	
-	for(i = 0; i < 6; i++)
+	for(i = 0; i < ETH_ALEN; i++)
 	{
 		dev->dev_addr[i] = mac[i];
 	}
