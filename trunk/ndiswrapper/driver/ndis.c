@@ -1182,6 +1182,7 @@ STDCALL void WRAP_EXPORT(NdisAllocatePacket)
 
 	TRACEENTER3("%s", "");
 	packet = kmalloc(sizeof(struct ndis_packet), GFP_ATOMIC);
+
 	if (!packet) {
 		ERROR("%s", "Couldn't allocate memory");
 		*packet_out = NULL;
@@ -1207,9 +1208,63 @@ STDCALL void WRAP_EXPORT(NdisAllocatePacket)
 	}
 #endif
 
-
 	*packet_out = packet;
 	*status = NDIS_STATUS_SUCCESS;
+	TRACEEXIT3(return);
+}
+
+STDCALL void WRAP_EXPORT(NdisDprAllocatePacket)
+	(NDIS_STATUS *status, struct ndis_packet **packet_out,
+	 void *poolhandle)
+{
+	NdisAllocatePacket(status, packet_out, poolhandle);
+}
+
+STDCALL void WRAP_EXPORT(NdisSend)
+	(NDIS_STATUS *status, struct ndis_handle *handle,
+	 struct ndis_packet *packet)
+{
+	struct miniport_char *miniport = &handle->driver->miniport_char;
+	struct ndis_packet *packets[1];
+
+	if (miniport->send_packets) {
+		packets[0] = packet;
+		LIN2WIN3(miniport->send_packets, handle->adapter_ctx,
+			 packets, 1);
+		if (test_bit(ATTR_SERIALIZED, &handle->attributes)) {
+			*status = packet->status;
+			switch (*status) {
+			case NDIS_STATUS_SUCCESS:
+				sendpacket_done(handle, packet);
+				break;
+			case NDIS_STATUS_PENDING:
+				break;
+			case NDIS_STATUS_RESOURCES:
+				handle->send_ok = 0;
+				break;
+			case NDIS_STATUS_FAILURE:
+			default:
+				break;
+			}
+		} else {
+			*status = NDIS_STATUS_PENDING;
+		}
+	} else {
+		*status = LIN2WIN3(miniport->send, handle->adapter_ctx,
+				   packet, 0);
+		switch (*status) {
+		case NDIS_STATUS_SUCCESS:
+			sendpacket_done(handle, packet);
+			break;
+		case NDIS_STATUS_PENDING:
+			break;
+		case NDIS_STATUS_RESOURCES:
+			handle->send_ok = 0;
+			break;
+		case NDIS_STATUS_FAILURE:
+			break;
+		}
+	}
 	TRACEEXIT3(return);
 }
 
