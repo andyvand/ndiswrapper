@@ -28,6 +28,26 @@
 
 #define RADR(base, rva, type) (type) ((char*)base + rva)
 
+
+#if LINUX_VERSION_CODE <= KERNEL_VERSION(2,4,20)
+#undef __flush_tlb_global
+#define __flush_tlb_global()						\
+	do {								\
+		unsigned int tmpreg;					\
+									\
+		__asm__ __volatile__(					\
+			"movl %%cr4, %0;  # get cr4          \n"	\
+			"andl %0, %1;     # and out          \n"	\
+			"movl %1, %%cr4;  # turn off PGE     \n"	\
+			"movl %%cr3, %1;  # flush TLB        \n"	\
+			"movl %1, %%cr3;                     \n"	\
+			"movl %0, %%cr4;  # turn PGE back on \n"	\
+			: "=&r" (tmpreg)				\
+			: "r" (~X86_CR4_PGE)				\
+			: "memory");					\
+	} while (0)
+#endif
+
 /*
  * Find and validate the coff header
  *
