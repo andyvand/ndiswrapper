@@ -588,14 +588,14 @@ STDCALL NTSTATUS WRAP_EXPORT(KeWaitForMultipleObjects)
 	}
 
 	DBGTRACE3("%p is going to sleep", get_current());
-	if (alertable)
-		set_current_state(TASK_INTERRUPTIBLE);
-	else
-		set_current_state(TASK_UNINTERRUPTIBLE);
 	while (wait_count) {
 		if (signal_pending(current))
 			res = -ERESTARTSYS;
 		else {
+			if (alertable)
+				set_current_state(TASK_INTERRUPTIBLE);
+			else
+				set_current_state(TASK_UNINTERRUPTIBLE);
 			if (wait_jiffies > 0)
 				res = schedule_timeout(wait_jiffies);
 			else {
