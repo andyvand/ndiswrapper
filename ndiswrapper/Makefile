@@ -3,7 +3,7 @@
 distdir=ndiswrapper-${NDISWRAPPER_VERSION}
 distarchive=${distdir}.tar.gz
 
-DISTFILES=AUTHORS ChangeLog INSTALL Makefile README ndiswrapper.spec.in version ndiswrapper.8
+DISTFILES=AUTHORS ChangeLog INSTALL Makefile README ndiswrapper.spec version ndiswrapper.8
 DIST_SUBDIRS=utils driver debian
 
 DESTDIR = 
