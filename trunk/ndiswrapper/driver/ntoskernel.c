@@ -1049,7 +1049,7 @@ STDCALL NT_STATUS WRAP_EXPORT(KeDelayExecutionThread)
 	long timeout;
 	long t = *interval;
 
-	TRACEENTER2("thread: %p", get_current());
+	TRACEENTER3("thread: %p", get_current());
 	if (wait_mode != 0)
 		ERROR("illegal wait_mode %d", wait_mode);
 
@@ -1067,9 +1067,9 @@ STDCALL NT_STATUS WRAP_EXPORT(KeDelayExecutionThread)
 	res = schedule_timeout(timeout);
 
 	if (res > 0)
-		TRACEEXIT2(return STATUS_ALERTED);
+		TRACEEXIT3(return STATUS_ALERTED);
 	else
-		TRACEEXIT2(return STATUS_SUCCESS);
+		TRACEEXIT3(return STATUS_SUCCESS);
 }
 
 STDCALL KPRIORITY WRAP_EXPORT(KeQueryPriorityThread)
@@ -1092,13 +1092,13 @@ STDCALL KPRIORITY WRAP_EXPORT(KeQueryPriorityThread)
 STDCALL ULONGLONG WRAP_EXPORT(KeQueryInterruptTime)
 	(void)
 {
-	TRACEEXIT2(return 10000);
+	TRACEEXIT4(return jiffies);
 }
 
 STDCALL ULONG WRAP_EXPORT(KeQueryTimeIncrement)
 	(void)
 {
-	TRACEEXIT5(return loops_per_jiffy);
+	TRACEEXIT5(return 10000000/HZ);
 }
 
 STDCALL void WRAP_EXPORT(PoStartNextPowerIrp)
