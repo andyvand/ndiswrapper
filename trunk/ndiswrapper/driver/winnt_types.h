@@ -639,7 +639,9 @@ struct npaged_lookaside_list {
 		ULONG lastallochits;
 	} u3;
 	ULONG pad[2];
+#ifndef X86_64
 	KSPIN_LOCK obsolete;
+#endif
 };
 
 enum device_registry_property {

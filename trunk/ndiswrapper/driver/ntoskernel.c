@@ -544,8 +544,10 @@ STDCALL void WRAP_EXPORT(ExInitializeNPagedLookasideList)
 	else
 		lookaside->free_func = ExFreePool;
 
+#ifndef X86_64
 	DBGTRACE3("lock: %p", &lookaside->obsolete);
 	KeInitializeSpinLock(&lookaside->obsolete);
+#endif
 	TRACEEXIT3(return);
 }
 
@@ -557,8 +559,14 @@ STDCALL void WRAP_EXPORT(ExDeleteNPagedLookasideList)
 	TRACEENTER3("lookaside = %p", lookaside);
 	while ((entry = ExInterlockedPopEntrySList(
 			FASTCALL_ARGS_2(&lookaside->head,
-					&lookaside->obsolete))))
-		(*lookaside->free_func)(entry);
+#ifndef X86_64
+					&lookaside->obsolete
+#else
+					&ntoskernel_lock
+#endif
+				))))
+		(lookaside->free_func)(entry);
+
 	TRACEEXIT4(return);
 }
 
