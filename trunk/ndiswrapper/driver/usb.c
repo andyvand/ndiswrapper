@@ -30,6 +30,15 @@ static spinlock_t canceled_irps_lock = SPIN_LOCK_UNLOCKED;
 void usb_cancel_worker(void *dummy);
 DECLARE_WORK(cancel_usb_irp_work, usb_cancel_worker, 0);
 
+void usb_init(void)
+{
+	return;
+}
+
+void usb_cleanup_handle(struct ndis_handle *handle)
+{
+	return;
+}
 
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
 void usb_transfer_complete(struct urb *urb, struct pt_regs *regs)
