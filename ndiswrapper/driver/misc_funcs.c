@@ -131,5 +131,4 @@ void ExFreePool(void){DBGTRACE("%s --UNIMPLEMENTED--\n", __FUNCTION__ );}
 void RtlUnwind(void){DBGTRACE("%s --UNIMPLEMENTED--\n", __FUNCTION__ );}
 void IofCompleteRequest(void){DBGTRACE("%s --UNIMPLEMENTED--\n", __FUNCTION__ );}
 void IoReleaseCancelSpinLock(void){DBGTRACE("%s --UNIMPLEMENTED--\n", __FUNCTION__ );}
-
-
+void _allmul(long p1, long p2, long p3, long p4){DBGTRACE("%s --UNIMPLEMENTED--\n", __FUNCTION__ );}
