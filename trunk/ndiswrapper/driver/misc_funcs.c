@@ -40,18 +40,20 @@ void *wrap_kmalloc(size_t size, int flags)
 		kfree(alloc);
 		return NULL;
 	}
-	spin_lock(&wrap_allocs_lock);
+	spin_lock_bh(&wrap_allocs_lock);
 	list_add(&alloc->list, &wrap_allocs);
-	spin_unlock(&wrap_allocs_lock);
+	spin_unlock_bh(&wrap_allocs_lock);
 	return alloc->ptr;
 }
 
 void wrap_kfree(void *ptr)
 {
-	struct wrap_alloc *alloc;
+	struct list_head *cur, *tmp;
 	
-	spin_lock(&wrap_allocs_lock);
-	list_for_each_entry(alloc, &wrap_allocs, list)
+	spin_lock_bh(&wrap_allocs_lock);
+	list_for_each_safe(cur, tmp, &wrap_allocs)
+	{
+		struct wrap_alloc *alloc = (struct wrap_alloc *)cur;
 		if (alloc->ptr == ptr)
 		{
 			list_del(&alloc->list);
@@ -59,24 +61,27 @@ void wrap_kfree(void *ptr)
 			kfree(alloc);
 			break;
 		}
+	}
 
-	spin_unlock(&wrap_allocs_lock);
+	spin_unlock_bh(&wrap_allocs_lock);
 	return;
 }
 
 void wrap_kfree_all(void)
 {
-	struct wrap_alloc *alloc;
+	struct list_head *cur, *tmp;
 
-	spin_lock(&wrap_allocs_lock);
-	list_for_each_entry(alloc, &wrap_allocs, list)
+	spin_lock_bh(&wrap_allocs_lock);
+	list_for_each_safe(cur, tmp, &wrap_allocs)
 	{
+		struct wrap_alloc *alloc = (struct wrap_alloc *)cur;
+
 		list_del(&alloc->list);
 		kfree(alloc->ptr);
 		kfree(alloc);
 		
 	}
-	spin_unlock(&wrap_allocs_lock);
+	spin_unlock_bh(&wrap_allocs_lock);
 	return;
 }
 
