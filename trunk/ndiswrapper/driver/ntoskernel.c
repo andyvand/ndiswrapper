@@ -655,7 +655,8 @@ static void wakeup_event(struct kevent *kevent)
 	KIRQL irql;
 
 	irql = kspin_lock_irql(&kevent_lock, DISPATCH_LEVEL);
-	while ((ent = RemoveHeadList(&kevent->dh.wait_list))) {
+	while ((ent = RemoveHeadList(&kevent->dh.wait_list)) &&
+		kevent->dh.signal_state > 0) {
 		struct wait_block *wb;
 
 		wb = container_of(ent, struct wait_block, list_entry);
@@ -754,6 +755,9 @@ STDCALL void WRAP_EXPORT(KeInitializeSemaphore)
 	(struct ksemaphore *ksemaphore, LONG count, LONG limit)
 {
 	memset(ksemaphore, 0, sizeof(*ksemaphore));
+	/* if limit > 1, we need to satisfy as many waits (until count
+	 * becomes 0); so we set it as notification event, and keep
+	 * decrementing count everytime a wait is satisified */
 	ksemaphore->dh.type = NotificationEvent;
 	ksemaphore->dh.size = sizeof(*ksemaphore);
 	ksemaphore->dh.signal_state = count;
@@ -805,6 +809,8 @@ STDCALL NTSTATUS WRAP_EXPORT(KeWaitForMultipleObjects)
 	else
 		wb = wait_block_array;
 
+	/* first get the list of objects the thread need to wait on
+	 * and add put it on the wait list for each such object */
 	kspin_lock(&kevent_lock);
 	for (i = 0, wait_count = 0; i < count; i++) {
 		dh = &object[i]->dh;
@@ -894,31 +900,30 @@ STDCALL NTSTATUS WRAP_EXPORT(KeWaitForMultipleObjects)
 				wait_index = i;
 			}
 		}
+		if (res <= 0 || wait_type == WaitAny) {
+			/* we are done; remove from wait list */
+			for (i = 0; i < count; i++)
+				if (wb[i].thread)
+					RemoveTailList(&wb[i].list_entry);
+			kspin_unlock(&kevent_lock);
+			DBGTRACE3("%p woke up, res = %d", get_current(), res);
+			if (res < 0)
+				TRACEEXIT2(return STATUS_ALERTED);
+			if (res == 0)
+				TRACEEXIT2(return STATUS_TIMEOUT);
+			if (wait_type == WaitAny) {
+				if (wait_count)
+					TRACEEXIT2(return STATUS_WAIT_0 +
+						   wait_index);
+				else
+					TRACEEXIT2(return STATUS_SUCCESS);
+			}
+		}
 		kspin_unlock(&kevent_lock);
-		if (res <= 0 || wait_type == WaitAny)
-			break;
 		wait_jiffies = res;
 	}
 
 	DBGTRACE3("%p woke up, res = %d", get_current(), res);
-	kspin_lock(&kevent_lock);
-	if (wait_count) {
-		for (i = 0; i < count; i++)
-			if (wb[i].thread)
-				RemoveTailList(&wb[i].list_entry);
-	}
-	kspin_unlock(&kevent_lock);
-	if (res <= 0) {
-		if (res < 0)
-			TRACEEXIT2(return STATUS_ALERTED);
-		else
-			TRACEEXIT2(return STATUS_TIMEOUT);
-	}
-
-	/* res > 0; woken up by KeSetEvent and already removed from
-	 * wait list */
-	if (wait_type == WaitAny && wait_count)
-		TRACEEXIT2(return STATUS_WAIT_0 + wait_index);
 	TRACEEXIT2(return STATUS_SUCCESS);
 }
 
@@ -1040,6 +1045,26 @@ STDCALL KPRIORITY WRAP_EXPORT(KeSetPriorityThread)
 		set_user_nice((task_t *)thread, 10);
 #endif
 	return old_prio;
+}
+
+STDCALL BOOLEAN WRAP_EXPORT(KeRemoveEntryDeviceQueue)
+	(struct kdevice_queue *dev_queue, struct kdevice_queue_entry *entry)
+{
+	struct nt_list_entry *cur;
+	KIRQL irql;
+
+	irql = kspin_lock_irql(&dev_queue->lock, DISPATCH_LEVEL);
+	nt_list_for_each(cur, &dev_queue->list) {
+		struct kdevice_queue_entry *e;
+		e = container_of(cur, struct kdevice_queue_entry, list);
+		if (e == entry) {
+			RemoveEntryList(cur);
+			kspin_unlock_irql(&dev_queue->lock, irql);
+			return TRUE;
+		}
+	}
+	kspin_unlock_irql(&dev_queue->lock, irql);
+	return FALSE;
 }
 
 STDCALL NTSTATUS WRAP_EXPORT(IoGetDeviceProperty)
@@ -1402,10 +1427,14 @@ static irqreturn_t io_irq_th(int irq, void *data, struct pt_regs *pt_regs)
 		spinlock = &interrupt->lock;
 	if (interrupt->synch_irql >= DISPATCH_LEVEL)
 		irql = kspin_lock_irql(spinlock, DISPATCH_LEVEL);
+	else
+		kspin_lock(spinlock);
 	ret = interrupt->service_routine(interrupt,
 					 interrupt->service_context);
 	if (interrupt->synch_irql >= DISPATCH_LEVEL)
 		kspin_unlock_irql(spinlock, irql);
+	else
+		kspin_unlock(spinlock);
 
 	if (ret == TRUE)
 		return IRQ_HANDLED;
@@ -1436,8 +1465,7 @@ STDCALL NTSTATUS WRAP_EXPORT(IoConnectInterrupt)
 	interrupt->interrupt_mode = interrupt_mode;
 	if (request_irq(vector, io_irq_th, shareable ? SA_SHIRQ : 0,
 			"io_irq", interrupt)) {
-		printk(KERN_WARNING "%s(%s): request for irq %d failed\n",
-		       DRIVER_NAME, __FUNCTION__, vector);
+		WARNING("request for irq %d failed", vector);
 		TRACEEXIT1(return STATUS_INSUFFICIENT_RESOURCES);
 	}
 	TRACEEXIT1(return STATUS_SUCCESS);
@@ -1455,11 +1483,15 @@ STDCALL BOOLEAN WRAP_EXPORT(KeSynchronizeExecution)
 		spinlock = interrupt->actual_lock;
 	else
 		spinlock = &interrupt->lock;
-	if (interrupt->irql >= DISPATCH_LEVEL)
+	if (interrupt->synch_irql >= DISPATCH_LEVEL)
 		irql = kspin_lock_irql(spinlock, interrupt->synch_irql);
+	else
+		kspin_lock(spinlock);
 	ret = synch_routine(synch_context);
-	if (interrupt->irql >= DISPATCH_LEVEL)
+	if (interrupt->synch_irql >= DISPATCH_LEVEL)
 		kspin_unlock_irql(spinlock, irql);
+	else
+		kspin_unlock(spinlock);
 	return ret;
 }
 
