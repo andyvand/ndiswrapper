@@ -333,7 +333,7 @@ struct wrap_spinlock {
 	spinlock_t spinlock;
 	KIRQL irql;
 	unsigned char use_bh;
-	KSPIN_LOCK kspin_lock;
+	void *kspin_lock;
 };
 
 struct wrap_alloc {
