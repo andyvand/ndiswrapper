@@ -262,8 +262,8 @@ static void hangcheck_reinit(struct ndis_handle *handle);
 static void hangcheck_bh(void *data)
 {
 	struct ndis_handle *handle = (struct ndis_handle *)data;
-	DBGTRACE("%s: Hangcheck timer\n", __FUNCTION__);
 
+	DBGTRACE("%s: Hangcheck timer\n", __FUNCTION__);
 	if(handle->driver->miniport_char.hangcheck(handle->adapter_ctx))
 	{
 		int res;
@@ -485,17 +485,15 @@ static void ndis_set_rx_mode(struct net_device *dev)
 }
 
 
-static int send_one(struct ndis_handle *handle, struct ndis_buffer *buffer)
+static struct ndis_packet *init_packet(struct ndis_handle *handle,
+				       struct ndis_buffer *buffer)
 {
 	struct ndis_packet *packet;
-	int res;
 
 	packet = kmalloc(sizeof(struct ndis_packet), GFP_ATOMIC);
 	if(!packet)
 	{
-		kfree(buffer->data);
-		kfree(buffer);
-		return 1;
+		return NULL;
 	}
 	
 	memset(packet, 0, sizeof(*packet));
@@ -532,7 +530,7 @@ static int send_one(struct ndis_handle *handle, struct ndis_buffer *buffer)
 
 	packet->oob_offset = (int)(&packet->timesent1) - (int)packet;
 
-	packet->nr_pages = 1;
+	packet->nr_pages = NDIS_BUFFER_TO_SPAN_PAGES(buffer);
 	packet->len = buffer->len;
 	packet->count = 1;
 	packet->valid_counts = 1;
@@ -541,6 +539,35 @@ static int send_one(struct ndis_handle *handle, struct ndis_buffer *buffer)
 	packet->buffer_tail = buffer;
 
 	//DBGTRACE("Buffer: %08X, data %08X, len %d\n", (int)buffer, (int)buffer->data, (int)buffer->len); 	
+	return packet;
+}
+
+static void free_packet(struct ndis_handle *handle, struct ndis_packet *packet)
+{
+	if(packet->dataphys)
+	{
+		PCI_DMA_UNMAP_SINGLE(handle->pci_dev, packet->dataphys,
+				     packet->len, PCI_DMA_TODEVICE);
+	}
+	
+	kfree(packet);
+}
+
+static void free_buffer(struct ndis_handle *handle, struct ndis_packet *packet)
+{
+	kfree(packet->buffer_head->data);
+	kfree(packet->buffer_head);
+	free_packet(handle, packet);
+}
+
+
+static int send_packet(struct ndis_handle *handle, struct ndis_packet *packet)
+{
+	int res;
+
+	DBGTRACE("%s: packet = %p\n", __FUNCTION__, packet);
+	if (!packet)
+		return 1;
 
 	if(handle->driver->miniport_char.send_packets)
 	{
@@ -573,8 +600,12 @@ static int send_one(struct ndis_handle *handle, struct ndis_buffer *buffer)
 	else
 	{
 		DBGTRACE("%s: No send handler\n", __FUNCTION__);
+		PCI_DMA_UNMAP_SINGLE(handle->pci_dev, packet->dataphys,
+				     packet->len, PCI_DMA_TODEVICE);
+		kfree(packet);
 		return 1;
 	}
+
 	if(res)
 		DBGTRACE("send_packets returning %08X\n", res);
 		
@@ -585,17 +616,7 @@ static int send_one(struct ndis_handle *handle, struct ndis_buffer *buffer)
 	 * NDIS_STATUS_RESOURCES - and driver is serialized: Requeue it!
 	 * any other status - we still own it.
 	 */
-	if(res == NDIS_STATUS_RESOURCES && handle->serialized)
-	{
-		return 1;
-	}
-
-	if(res == NDIS_STATUS_PENDING)
-	{
-		return 0;
-	}
-	ndis_sendpacket_done(handle, packet);
-	return 0;
+	return res;
 }
 
 
@@ -603,33 +624,54 @@ static void xmit_bh(void *param)
 {
 	struct ndis_handle *handle = (struct ndis_handle*) param;
 	struct ndis_buffer *buffer;
+	struct ndis_packet *packet;
+	int res;
 
-	while(1)
+	DBGTRACE("%s: Enter: send status is %08X\n", __FUNCTION__, handle->send_status);
+	while (1)
 	{
 		spin_lock_bh(&handle->xmit_ring_lock);
-		if (!handle->xmit_ring_pending)
+		res = handle->send_status;
+		if (handle->send_status || !handle->xmit_ring_pending)
 		{
 			spin_unlock_bh(&handle->xmit_ring_lock);
 			break;
 		}
-		if (handle->xmit_ring_pending < 0)
-		{
-			printk(KERN_ERR "%s: xmit_ring_pending is %d\n",
-			       DRV_NAME, handle->xmit_ring_pending);
-			spin_unlock_bh(&handle->xmit_ring_lock);
-			return;
-		}
 		buffer = handle->xmit_ring[handle->xmit_ring_start];
 		spin_unlock_bh(&handle->xmit_ring_lock);
 
-		if(send_one(handle, buffer))
+		packet = init_packet(handle, buffer);
+		res = send_packet(handle, packet);
+		switch(res)
 		{
-			/* Serialized driver is out of resources. */
+		case NDIS_STATUS_SUCCESS:
+			sendpacket_done(handle, packet);
+			break;
+		case NDIS_STATUS_PENDING:
+			break;
+		case NDIS_STATUS_RESOURCES:
+			/* should be serialized driver only? */
+			spin_lock_bh(&handle->xmit_ring_lock);
+			handle->send_status = res;
+			spin_unlock_bh(&handle->xmit_ring_lock);
 			netif_stop_queue(handle->net_dev);
+			/* this buffer will be tried again later */
+			free_packet(handle, packet);
 			return;
+
+			/* free buffer, drop the packet */
+		case NDIS_STATUS_FAILURE:
+			free_buffer(handle, packet);
+			break;
+		default:
+			printk(KERN_ERR "%s: Incorrect status code %08X\n",
+			       __FUNCTION__, res);
+			free_buffer(handle, packet);
+			break;
 		}
-		
+
 		spin_lock_bh(&handle->xmit_ring_lock);
+		handle->send_status = 0;
 		handle->xmit_ring_start =
 			(handle->xmit_ring_start + 1) % XMIT_RING_SIZE;
 		handle->xmit_ring_pending--;
@@ -637,6 +679,7 @@ static void xmit_bh(void *param)
 			netif_wake_queue(handle->net_dev);
 		spin_unlock_bh(&handle->xmit_ring_lock);
 	}
+	DBGTRACE("%s: Exit, send status = %d\n", __FUNCTION__, res);
 }
 
 /*
@@ -644,7 +687,7 @@ static void xmit_bh(void *param)
  * send-functions called from sleepeable context so we just queue the packets up here
  * and schedule a workqueue to run later.
  */
-static int ndis_start_xmit(struct sk_buff *skb, struct net_device *dev)
+static int start_xmit(struct sk_buff *skb, struct net_device *dev)
 {
 	struct ndis_handle *handle = dev->priv;
 	struct ndis_buffer *buffer;
@@ -670,13 +713,6 @@ static int ndis_start_xmit(struct sk_buff *skb, struct net_device *dev)
 	dev_kfree_skb(skb);
 
 	spin_lock_bh(&handle->xmit_ring_lock);
-	if (handle->xmit_ring_pending >= XMIT_RING_SIZE)
-	{
-		printk(KERN_ERR "%s: xmit_ring overflow (%d)\n",
-		       dev->name, handle->xmit_ring_pending);
-		spin_unlock_bh(&handle->xmit_ring_lock);
-		return 1;
-	}
 	xmit_ring_next_slot =
 		(handle->xmit_ring_start + handle->xmit_ring_pending) % XMIT_RING_SIZE;
 	handle->xmit_ring[xmit_ring_next_slot] = buffer;
@@ -694,25 +730,14 @@ static int ndis_start_xmit(struct sk_buff *skb, struct net_device *dev)
 /*
  * Free and unmap a packet created in xmit
  */
-void ndis_sendpacket_done(struct ndis_handle *handle, struct ndis_packet *packet)
+void sendpacket_done(struct ndis_handle *handle, struct ndis_packet *packet)
 {
+	DBGTRACE("%s: Enter\n", __FUNCTION__);
 	handle->stats.tx_bytes += packet->len;
 	handle->stats.tx_packets++;
-	if(packet->dataphys)
-	{
-		PCI_DMA_UNMAP_SINGLE(handle->pci_dev, packet->dataphys,
-				     packet->len, PCI_DMA_TODEVICE);
-	}
-	
-	kfree(packet->buffer_head->data);
-	kfree(packet->buffer_head);
-	kfree(packet);
+	handle->send_status = NDIS_STATUS_SUCCESS;
 
-	/* In case a serialized driver has requested a pause by returning NDIS_STATUS_RESOURCES we
-	 * need to give the send-code a kick again.
-	 */
-	if(handle->xmit_ring_pending)
-		schedule_work(&handle->xmit_work);
+	free_packet(handle, packet);
 }
 
 static int ndis_suspend(struct pci_dev *pdev, u32 state)
@@ -856,7 +881,7 @@ static int setup_dev(struct net_device *dev)
 	ndis_set_rx_mode_proc(dev);
 	
 	dev->open = ndis_open;
-	dev->hard_start_xmit = ndis_start_xmit;
+	dev->hard_start_xmit = start_xmit;
 	dev->stop = ndis_close;
 	dev->get_stats = ndis_get_stats;
 	dev->do_ioctl = ndis_ioctl;
@@ -932,6 +957,8 @@ static int ndis_init_one(struct pci_dev *pdev,
 	init_MUTEX(&handle->reset_mutex);
 	init_waitqueue_head(&handle->reset_wqhead);
 
+	handle->send_status = 0;
+
 	INIT_WORK(&handle->xmit_work, xmit_bh, handle); 	
 	spin_lock_init(&handle->xmit_ring_lock);
 	handle->xmit_ring_start = 0;
@@ -947,13 +974,13 @@ static int ndis_init_one(struct pci_dev *pdev,
 
 	/* Poision this because it may contain function pointers */
 	memset(&handle->fill1, 0x12, sizeof(handle->fill1));
-	memset(&handle->fill2, 0x13, sizeof(handle->fill2));
 	memset(&handle->fill3, 0x14, sizeof(handle->fill3));
 	memset(&handle->fill4, 0x15, sizeof(handle->fill4));
 	memset(&handle->fill5, 0x16, sizeof(handle->fill5));
 
 	handle->indicate_receive_packet = &NdisMIndicateReceivePacket;
 	handle->send_complete = &NdisMSendComplete;
+	handle->send_resource_avail = &NdisMSendResourcesAvailable;
 	handle->indicate_status = &NdisIndicateStatus;	
 	handle->indicate_status_complete = &NdisIndicateStatusComplete;	
 	handle->query_complete = &NdisMQueryInformationComplete;	
