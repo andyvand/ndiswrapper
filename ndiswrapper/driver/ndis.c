@@ -89,7 +89,7 @@ static void wrap_free_timers(struct ndis_handle *handle)
 	 */
 	while (1) {
 		struct wrapper_timer *timer;
-		wrap_spin_lock(&handle->timers_lock, PASSIVE_LEVEL);
+		wrap_spin_lock(&handle->timers_lock, DISPATCH_LEVEL);
 		if (list_empty(&handle->timers)) {
 			wrap_spin_unlock(&handle->timers_lock);
 			break;
@@ -398,7 +398,7 @@ STDCALL ULONG WRAP_EXPORT(NDIS_BUFFER_TO_SPAN_PAGES)
 	ULONG_PTR start;
 	ULONG n;
 
-	TRACEENTER3("%s", "");
+	TRACEENTER4("%s", "");
 
 	if (buffer == NULL)
 		return 0;
@@ -408,7 +408,7 @@ STDCALL ULONG WRAP_EXPORT(NDIS_BUFFER_TO_SPAN_PAGES)
 
 	start = (ULONG_PTR)(((char *)buffer->data) + buffer->offset);
 	n = SPAN_PAGES(start, buffer->len);
-	DBGTRACE3("pages = %u", n);
+	DBGTRACE4("pages = %u", n);
 	TRACEEXIT3(return n);
 }
 
@@ -1270,24 +1270,23 @@ STDCALL static void WRAP_EXPORT(NdisReadNetworkAddress)
 	RtlFreeUnicodeString(&key);
 
 	if (*status == NDIS_STATUS_SUCCESS) {
+		int int_mac[ETH_ALEN];
 		ret = RtlUnicodeStringToAnsiString(&ansi,
 						   &setting->data.ustring, 1);
 		if (ret != NDIS_STATUS_SUCCESS)
 			TRACEEXIT1(return);
 
-		memset(handle->mac, 0, sizeof(handle->mac));
-		/* for some reason, using sscanf to get mac addr here
-		 * crashes TI driver */
-		ret = string_to_mac(handle->mac, ansi.buf, ansi.buflen);
+		ret = sscanf(ansi.buf, MACSTR, MACINTADR(int_mac));
 		RtlFreeAnsiString(&ansi);
-		if (ret == 0) {
+		if (ret == ETH_ALEN) {
+			int i;
+			for (i = 0; i < ETH_ALEN; i++)
+				handle->mac[i] = int_mac[i];
+			INFO("new mac: " MACSTR, MAC2STR(handle->mac));
 			*len = ETH_ALEN;
 			*addr = handle->mac;
 			*status = NDIS_STATUS_SUCCESS;
 		}
-	} else {
-		*len = 0;
-		*status = NDIS_STATUS_FAILURE;
 	}
 
 	TRACEEXIT1(return);
