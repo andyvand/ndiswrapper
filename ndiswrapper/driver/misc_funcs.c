@@ -463,14 +463,14 @@ STDCALL void KeAcquireSpinLock(KSPIN_LOCK *lock, KIRQL *irql)
 {
 	printk(KERN_INFO "%s: lock = %p, *lock = %p\n",
 		   __FUNCTION__, lock, (void *)*lock);
-	spin_lock_irq((spinlock_t *)(*lock));
+	spin_lock((spinlock_t *)(*lock));
 }
 
 STDCALL void KeReleaseSpinLock(KSPIN_LOCK *lock, KIRQL *oldirql)
 {
 	printk(KERN_INFO "%s: lock = %p, *lock = %p\n",
 		   __FUNCTION__, lock, (void *)*lock);
-	spin_unlock_irq((spinlock_t *)(*lock));
+	spin_unlock((spinlock_t *)(*lock));
 }
 
 STDCALL void KfAcquireSpinLock(KSPIN_LOCK *lock, KIRQL *oldirql)
