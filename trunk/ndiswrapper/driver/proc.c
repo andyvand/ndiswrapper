@@ -107,14 +107,14 @@ static int procfs_read_wep(char *page, char **start, off_t off,
 
 	if (!res)
 	{
-		p += sprintf(p, "key_index=%u\n",
-			     (__u32)handle->wep.keyindex & 0x7fff);
+		int active = handle->wep_info.active;
+		p += sprintf(p, "key_index=%u\n", handle->wep_info.active);
 		p += sprintf(p, "key=");
-		if (handle->wep.keylength > 0)
+		if (handle->wep_info.keys[active].length > 0)
 			for (i = 0 ; i < NDIS_ENCODING_TOKEN_MAX &&
-				     i < handle->wep.keylength; i++)
+				     i < handle->wep_info.keys[active].length; i++)
 				p += sprintf(p, "%2.2X",
-					     handle->wep.keymaterial[i]);
+					     handle->wep_info.keys[active].key[i]);
 		else
 			p += sprintf(p, "off");
 		p += sprintf(p, "\n");

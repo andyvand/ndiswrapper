@@ -321,13 +321,10 @@ static void statcollector_bh(void *data)
 	struct ndis_wireless_stats ndis_stats;
 	long rssi;
 
-	if (handle->wireless_mode != NDIS_MODE_ADHOC)
-	{
-		res = doquery(handle, NDIS_OID_RSSI, (char *)&rssi, sizeof(rssi),
-					  &written, &needed);
-		if (!res)
-			iw_stats->qual.level = rssi;
-	}
+	res = doquery(handle, NDIS_OID_RSSI, (char *)&rssi, sizeof(rssi),
+		      &written, &needed);
+	if (!res)
+		iw_stats->qual.level = rssi;
 
 	memset(&ndis_stats, 0, sizeof(ndis_stats));
 	res = doquery(handle, NDIS_OID_STATISTICS, (char *)&ndis_stats,
@@ -964,6 +961,7 @@ static int ndis_init_one(struct pci_dev *pdev,
 	handle->scan_timestamp = 0;
 
 	memset(&handle->essid, 0, sizeof(handle->essid));
+	memset(&handle->wep_info, 0, sizeof(handle->wep_info));
 	
 	res = pci_enable_device(pdev);
 	if(res)
