@@ -16,6 +16,7 @@
 #include <linux/module.h>
 #include <linux/delay.h>
 #include <asm/io.h>
+#include <linux/ctype.h>
 
 #include "ndis.h"
 #include "casemap.h"
