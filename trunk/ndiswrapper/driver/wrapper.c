@@ -1579,7 +1579,7 @@ static int ndis_resume(struct pci_dev *pdev)
 	
 	handle->pm_state = NDIS_PM_STATE_D0;
 	pci_set_power_state(pdev, 0);
-	pci_restore_state(pdev, NULL);
+	pci_restore_state(pdev, handle->pci_state);
 	res = set_int(handle, NDIS_OID_PNP_SET_POWER, handle->pm_state);
 	DBGTRACE("%s: setting power to state %d returns %d\n",
 			 dev->name, handle->pm_state, res);
