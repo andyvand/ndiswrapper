@@ -25,9 +25,16 @@
 #include <sys/stat.h>
 #include <unistd.h>
 #include <fcntl.h>
+#include <limits.h>
 
 #include "../driver/wrapper.h"
+#include "loaddriver.h"
 
+/* prototype for function found in inf-parser */
+extern void read_inf(FILE *input);
+
+/* need to keep the driver as a global so the parser calls can use it */
+static int device = -1;
 
 static int get_filesize(int fd)
 {
@@ -38,127 +45,73 @@ static int get_filesize(int fd)
 	}
 	return -1;
 }
-	
 
-/*
- * Trim s and remove whitespace at front and back.
- * Also remove quotation-marks if present
- */
-static char* trim(char *s)
+static char provider[80] = {0};
+static char manufacturer[80] = {0};
+
+void found_setting(char *name, char *value)
 {
-	int len = strlen(s);
-	char *whitespace = " \t\r\n";
-
-	/* trim from back */
-	while(len)
+	if (strcmp(name, "Provider") == 0)
+		strncpy(provider, value, 80);
+	else if (strcmp(name, provider) == 0)
+		strncpy(manufacturer, value, 80);
+	else if (strcmp(name, "DriverVer") == 0)
+		printf("Driver version: %s\n", value);
+	else if (strcmp(name, "NetworkAddress") == 0)
+		return;
+	else
 	{
-		if(!strchr(whitespace, s[len]))
-			break;
-		s[len] = 0;
-		len--;
-	}
+		struct put_setting setting;
+		struct setting_payload payload;
+	
+		if (strcmp(name, "Locale") == 0)
+			value = "0";
 
-	/* trim from start */
-	while(len)
-	{
-		if(!strchr(whitespace, *s))
-			break;
-		s++;
-		len--;
-	}
+		payload.data = atoi(value);
+		setting.type = 0;
+		setting.name_len = strlen(name);
+		setting.name = name;
+		setting.payload = &payload;
+		setting.payload_len = sizeof(payload);
 
-	/* Remove quotation */
-	if(*s == '"' && s[len] == '"')
-	{
-		s[len] = 0;
-		s++;
+		printf("Adding setting: %s\t= %s\n", name, value);
+		if(ioctl(device, NDIS_PUTSETTING, &setting))
+		{
+			perror("Unable to put setting (check dmesg for more info)");
+			exit(1);
+		}
 	}
-	return s;
 }
 
-	
-/*
- * Split a string at c and put int dst
- *
- */
-static int split(char *s, char c, char **dst, int dstlen)
+unsigned int found_heading(char *name)
 {
-	int i = 0;
-	char *pos;
-	char *curr = s;
-	while(i < dstlen)
-	{
-		pos = index(curr, c);
-		dst[i] = trim(curr);
-		i++;
-		if(!pos)
-			break;
-		*pos = 0;
-		curr = pos+1;
-	}
-	return i;
+	if (strcmp(name, manufacturer) == 0)
+		return FOUND_DEVICES;
+	return IGNORE_SECTION;
 }
 
+void found_pci_id(unsigned short vendor, unsigned short device)
+{
+	//	printf("PCI ID: %4.4X:%4.4X\n", vendor, device);
+}
 
 /*
  * Read an inf-file and extract things needed. This is very primitive right now
  * so don't be suprised if some files are misinterpreted right now...
  */
-static int loadsettings(int driver, char *inf_name)
+static int loadsettings(char *inf_name)
 {
-	struct put_setting setting;
-	struct setting_payload payload;
-	
-	char line[1024];
-	char *cols[5];
-	int nr_cols;
-	
 	FILE *inf = fopen(inf_name, "r");
 	if(!inf)
 	{
 		perror("Unable to load inf-file");
 		return 1;
 	}
+	printf("Openned the inf file.\n");
 
-	while(fgets(line, sizeof(line), inf))
-	{
-		nr_cols = split(line, ',', cols, 5);
-		if(nr_cols == 5 &&
-		   strcasecmp(cols[2], "default") == 0)
-		{
-			
-			char *key = cols[1];
-			char *value = cols[4];
+	/* call the lex generated parser */
+	read_inf(inf);
 
-			nr_cols = split(key, '\\', cols, 3);
-			if(nr_cols != 3)
-				continue;
-			key = cols[2];
-			if(strcasecmp(key, "networkaddress") == 0)
-				continue;
-			
-			// Hack...
-			if(strcasecmp(key, "locale") == 0)
-				value = "0";
-				
-			payload.data = atoi(value);
-
-			setting.type = 0;
-			setting.name_len = strlen(key);
-			setting.name = key;
-
-			setting.payload = &payload;
-			setting.payload_len = sizeof(payload);
-			
-			printf("Adding setting: %s\t= %s\n", key, value);
-			if(ioctl(driver, NDIS_PUTSETTING, &setting))
-			{
-				perror("Unable to put setting (check dmesg for more info)");
-				return 1;
-			}
-		}
-	}
-	
 	fclose(inf);
 	return 0;
 }
@@ -170,11 +123,11 @@ static int loadsettings(int driver, char *inf_name)
 static int load(int pci_vendor, int pci_device, char *driver_name, char *inf_name, int device)
 {
 	struct put_driver put_driver;
-	int driver = open(driver_name, O_RDONLY);
+	int driver, size;
 	char *driver_basename;
-	int size;
 	void * image;
 
+	driver = open(driver_name, O_RDONLY);
 	if(driver == -1)
 	{
 		perror("Unable to open driver");
@@ -198,7 +151,7 @@ static int load(int pci_vendor, int pci_device, char *driver_name, char *inf_nam
 	driver_basename = basename(driver_name);
 	strncpy(put_driver.name, driver_basename, sizeof(put_driver.name));
 	put_driver.name[sizeof(put_driver.name)-1] = 0;
-	
+
 	printf("Calling putdriver ioctl\n");
 	if(ioctl(device, NDIS_PUTDRIVER, &put_driver))
 	{
@@ -207,7 +160,7 @@ static int load(int pci_vendor, int pci_device, char *driver_name, char *inf_nam
 
 	}
 
-	if(!loadsettings(device, inf_name))
+	if(!loadsettings(inf_name))
 	{
 		printf("Calling startdriver ioctl\n");
 
@@ -225,7 +178,6 @@ static int load(int pci_vendor, int pci_device, char *driver_name, char *inf_nam
 			return 1;
 		}
 	}
-	
 
 	close(driver);
 
@@ -260,6 +212,7 @@ static int get_misc_minor()
 	char line[200];
 	FILE *misc = fopen("/proc/misc", "r");
 	int minor = -1;
+
 	if(!misc)
 		return -1;
 	while(fgets(line, sizeof(line), misc))
@@ -267,7 +220,7 @@ static int get_misc_minor()
 		if(strstr(line, "ndiswrapper"))
 		{
 			int i = strtol(line, 0, 10);
-			if(!errno)
+			if(i != LONG_MAX && i != LONG_MIN)
 			{
 				minor = i;
 				break;
@@ -290,13 +243,9 @@ static int hexatoi(char *s)
 	return i;
 }
 
-
-	
 int main(int argc, char* argv[])
 {
-	int device;
 	int misc_minor;
-
 
 	if(argc < 5)
 	{
@@ -305,7 +254,6 @@ int main(int argc, char* argv[])
 	}
 
 	misc_minor = get_misc_minor();
-
 	if(misc_minor == -1)
 	{
 		fprintf(stderr, "Cannot find minor for kernel module. Module loaded?\n");
@@ -318,10 +266,9 @@ int main(int argc, char* argv[])
 		perror("Unable to open kernel driver");
 		return 1;
 	}
-	
+
 	load(hexatoi(argv[1]), hexatoi(argv[2]), argv[3], argv[4], device);
 
 	close(device);
 	return 0;
 }
-

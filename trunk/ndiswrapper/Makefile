@@ -1,0 +1,10 @@
+.PHONY: all
+all:
+	make -C driver
+	make -C utils
+
+.PHONY: clean
+clean:
+	make -C driver clean
+	make -C utils clean
+	rm -f *~
