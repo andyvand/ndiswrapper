@@ -1064,19 +1064,13 @@ static int iw_set_sensitivity(struct net_device *dev,
 	return 0;
 }
 
-struct iw_statistics *get_wireless_stats(struct net_device *dev)
-{
-	struct ndis_handle *handle = dev->priv;
-	return &handle->wireless_stats;
-}
-
-
 static int iw_get_ndis_stats(struct net_device *dev,
 			     struct iw_request_info *info,
 			     union iwreq_data *wrqu, char *extra)
 
 {
-	struct iw_statistics *stats = get_wireless_stats(dev);
+	struct ndis_handle *handle = dev->priv;
+	struct iw_statistics *stats = &handle->wireless_stats;
 	memcpy(&wrqu->qual, &stats->qual, sizeof(stats->qual));
 	return 0;
 }

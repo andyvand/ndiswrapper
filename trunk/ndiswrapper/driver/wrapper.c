@@ -171,9 +171,6 @@ int miniport_query_info_needed(struct ndis_handle *handle, unsigned int oid,
 		res = handle->ndis_comm_res;
 	}
 	up(&handle->ndis_comm_mutex);
-	if (*needed)
-		WARNING("%s failed: bufsize: %d, needed: %d",
-			__FUNCTION__, bufsize, *needed);
 	TRACEEXIT3(return res);
 }
 
@@ -362,35 +359,29 @@ void hangcheck_del(struct ndis_handle *handle)
 	wrap_spin_unlock(&handle->timers_lock);
 }
 
-static void statcollector_reinit(struct ndis_handle *handle);
-
-static void statcollector_timer(unsigned long data)
+static void stats_proc(unsigned long data)
 {
 	struct ndis_handle *handle = (struct ndis_handle *)data;
-	if (handle->reset_status == 0) {
-		set_bit(COLLECT_STATS, &handle->wrapper_work);
-		schedule_work(&handle->wrapper_worker);
-	}
-	statcollector_reinit(handle);
+
+	set_bit(COLLECT_STATS, &handle->wrapper_work);
+	schedule_work(&handle->wrapper_worker);
+	handle->stats_timer.expires = jiffies + 2 * HZ;
 }
 
-static void statcollector_reinit(struct ndis_handle *handle)
+static void stats_timer_add(struct ndis_handle *handle)
 {
-	handle->statcollector_timer.data = (unsigned long) handle;
-	handle->statcollector_timer.function = &statcollector_timer;
-	handle->statcollector_timer.expires = jiffies + 2 * HZ;
-	add_timer(&handle->statcollector_timer);
+	init_timer(&handle->stats_timer);
+	handle->stats_timer.data = (unsigned long) handle;
+	handle->stats_timer.function = &stats_proc;
+	handle->stats_timer.expires = jiffies + 2 * HZ;
+	add_timer(&handle->stats_timer);
 }
 
-static void statcollector_add(struct ndis_handle *handle)
+static void stats_timer_del(struct ndis_handle *handle)
 {
-	init_timer(&handle->statcollector_timer);
-	statcollector_reinit(handle);
-}
-
-static void statcollector_del(struct ndis_handle *handle)
-{
-	del_timer_sync(&handle->statcollector_timer);
+	wrap_spin_lock(&handle->timers_lock);
+	del_timer_sync(&handle->stats_timer);
+	wrap_spin_unlock(&handle->timers_lock);
 }
 
 static int ndis_open(struct net_device *dev)
@@ -712,7 +703,7 @@ int ndis_suspend_pci(struct pci_dev *pdev, u32 state)
 	DBGTRACE2("%s: detaching device", dev->name);
 	netif_device_detach(dev);
 	hangcheck_del(handle);
-	statcollector_del(handle);
+	stats_timer_del(handle);
 
 	if (test_bit(ATTR_HALT_ON_SUSPEND, &handle->attributes)) {
 		DBGTRACE2("%s", "driver requests halt_on_suspend");
@@ -783,7 +774,7 @@ void ndis_remove_one(struct ndis_handle *handle)
 	struct miniport_char *miniport = &handle->driver->miniport_char;
 
 	ndiswrapper_procfs_remove_iface(handle);
-	statcollector_del(handle);
+	stats_timer_del(handle);
 	hangcheck_del(handle);
 
 	if (!netif_queue_stopped(handle->net_dev)) {
@@ -997,6 +988,8 @@ static void update_wireless_stats(struct ndis_handle *handle)
 	long rssi;
 	unsigned int res;
 
+	if (handle->reset_status)
+		return;
 	res = miniport_query_info(handle, NDIS_OID_RSSI, (char *)&rssi,
 				  sizeof(rssi));
 	iw_stats->qual.level = rssi;
@@ -1024,6 +1017,12 @@ static void update_wireless_stats(struct ndis_handle *handle)
 			iw_stats->qual.qual = 100;
 	}
 	TRACEEXIT2(return);
+}
+
+static struct iw_statistics *get_wireless_stats(struct net_device *dev)
+{
+	struct ndis_handle *handle = dev->priv;
+	return &handle->wireless_stats;
 }
 
 /* worker procedure to take care of setting/checking various states */
@@ -1089,7 +1088,7 @@ static void wrapper_worker_proc(void *param)
 
 			netif_device_attach(net_dev);
 
-			statcollector_add(handle);
+			stats_timer_add(handle);
 			DBGTRACE2("%s: device resumed", net_dev->name);
 		}
 	}
@@ -1349,7 +1348,7 @@ int setup_dev(struct net_device *dev)
 	miniport_set_int(handle, NDIS_OID_BSSID_LIST_SCAN, 0);
 
 	hangcheck_add(handle);
-	statcollector_add(handle);
+	stats_timer_add(handle);
 	ndiswrapper_procfs_add_iface(handle);
 
 	return 0;

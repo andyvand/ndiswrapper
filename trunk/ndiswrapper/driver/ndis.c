@@ -104,8 +104,7 @@ static void free_handle_ctx(struct ndis_handle *handle)
 	struct list_head *curr, *tmp;
 
 	wrap_spin_lock(&atomic_lock);
-	list_for_each_safe(curr, tmp, &handle_ctx_list)
-	{
+	list_for_each_safe(curr, tmp, &handle_ctx_list) {
 		struct handle_ctx_entry *handle_ctx =
 			(struct handle_ctx_entry *)curr;
 		if (handle_ctx->handle == handle) {
@@ -1750,8 +1749,7 @@ NdisMTransferDataComplete(struct ndis_handle *handle,
 	skb_size = sizeof(packet->header)+packet->look_ahead_size+bytes_txed;
 
 	skb = dev_alloc_skb(skb_size);
-	if (!skb)
-	{
+	if (!skb) {
 		kfree(packet->look_ahead);
 		NdisFreePacket(packet);
 		handle->stats.rx_dropped++;
@@ -2262,8 +2260,7 @@ STDCALL static void WRAP_EXPORT(NdisMStartBufferPhysicalMapping)
 		return;
 	}
 
-	if (handle->map_dma_addr[phy_map_reg] != 0)
-	{
+	if (handle->map_dma_addr[phy_map_reg] != 0) {
 		ERROR("map register already used (%lu)", phy_map_reg);
 		*array_size = 0;
 		return;

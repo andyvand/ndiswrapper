@@ -659,7 +659,7 @@ struct packed ndis_handle
 	struct timer_list hangcheck_timer;
 	int reset_status;
 
-	struct timer_list statcollector_timer;
+	struct timer_list stats_timer;
 
 	unsigned long scan_timestamp;
 

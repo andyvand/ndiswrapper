@@ -149,7 +149,6 @@ extern const struct iw_handler_def ndis_handler_def;
 
 int set_essid(struct ndis_handle *handle, const char *ssid, int ssid_len);
 int set_mode(struct ndis_handle *handle, enum op_mode mode);
-struct iw_statistics *get_wireless_stats(struct net_device *dev);
 int get_ap_address(struct ndis_handle *handle, mac_address mac);
 int set_auth_mode(struct ndis_handle *handle, int auth_mode);
 int set_encr_mode(struct ndis_handle *handle, int encr_mode);

@@ -39,9 +39,21 @@
 #ifdef CONFIG_X86_64
 #define STDCALL
 #define _FASTCALL __attribute__((regparm (4)))
+#define FASTCALL_DECL_1(decl1) decl1
+#define FASTCALL_DECL_2(decl1,decl2) decl1, decl2
+#define FASTCALL_DECL_3(decl1,decl2,decl3) decl1, decl2, decl3
+#define FASTCALL_ARGS_1(arg1) arg1
+#define FASTCALL_ARGS_2(arg1,arg2) arg1, arg2
+#define FASTCALL_ARGS_3(arg1,arg2,arg3) arg1, arg2, arg3
 #else 
 #define STDCALL __attribute__((__stdcall__, regparm(0)))
 #define _FASTCALL __attribute__((__stdcall__)) __attribute__((regparm (3)))
+#define FASTCALL_DECL_1(decl1) int _dummy1_, int _dummy2_, decl1
+#define FASTCALL_DECL_2(decl1,decl2) int _dummy1_, decl2, decl1
+#define FASTCALL_DECL_3(decl1,decl2,decl3) int _dummy1_, decl2, decl1, decl3
+#define FASTCALL_ARGS_1(arg1) 0, 0, arg1
+#define FASTCALL_ARGS_2(arg1,arg2) 0, arg2, arg1
+#define FASTCALL_ARGS_3(arg1,arg2,arg3) 0, arg2, arg1, arg3
 #endif
 
 #define NOREGPARM __attribute__((regparm(0)))
@@ -682,8 +694,8 @@ extern struct wrap_spinlock cancel_lock;
 
 #define WRAPPER_SPIN_LOCK_MAGIC 137
 
-#define raise_irql(irql) KfRaiseIrql(0, 0, irql)
-#define lower_irql(irql) KfLowerIrql(0, 0, irql)
+#define raise_irql(irql) KfRaiseIrql(FASTCALL_ARGS_1(irql))
+#define lower_irql(irql) KfLowerIrql(FASTCALL_ARGS_1(irql))
 
 #define wrap_spin_lock_init(lock) do {				\
 		spin_lock_init(&((lock)->spinlock));		\
@@ -732,15 +744,23 @@ u64 ticks_1601(void);
 
 STDCALL KIRQL KeGetCurrentIrql(void);
 STDCALL void KeInitializeSpinLock(KSPIN_LOCK *lock);
-_FASTCALL KIRQL KfAcquireSpinLock(int dummy1, int dummy2, KSPIN_LOCK *lock);
-_FASTCALL void KfReleaseSpinLock(int dummy, KIRQL oldirql, KSPIN_LOCK *lock);
 STDCALL void KeAcquireSpinLock(KSPIN_LOCK *lock, KIRQL *irql);
 STDCALL void KeReleaseSpinLock(KSPIN_LOCK *lock, KIRQL oldirql);
-_FASTCALL KIRQL KfRaiseIrql(int dummy1, int dummy2, KIRQL newirql);
-_FASTCALL void KfLowerIrql(int dummy1, int dummy2, KIRQL oldirql);
-_FASTCALL void IofCompleteRequest(int dummy, char prio_boost, struct irp *irp);
-_FASTCALL void KefReleaseSpinLockFromDpcLevel(int dummy1, int dummy2,
-					      KSPIN_LOCK *lock);
+
+_FASTCALL KIRQL KfAcquireSpinLock(FASTCALL_DECL_1(KSPIN_LOCK *lock));
+
+_FASTCALL void
+KfReleaseSpinLock(FASTCALL_DECL_2(KSPIN_LOCK *lock, KIRQL oldirql));
+
+_FASTCALL KIRQL KfRaiseIrql(FASTCALL_DECL_1(KIRQL newirql));
+
+_FASTCALL void KfLowerIrql(FASTCALL_DECL_1(KIRQL oldirql));
+
+_FASTCALL void
+IofCompleteRequest(FASTCALL_DECL_2(struct irp *irp, char prio_boost));
+
+_FASTCALL void
+KefReleaseSpinLockFromDpcLevel(FASTCALL_DECL_1(KSPIN_LOCK *lock));
 
 /* DEBUG macros */
 
