@@ -1526,8 +1526,9 @@ STDCALL void
 NdisMIndicateStatus(struct ndis_handle *handle, unsigned int status, void *buf,
 		    unsigned int len)
 {
-	TRACEENTER1("%08x", status);
+	TRACEENTER2("%08x", status);
 
+	DBGTRACE2("%08x", status);
 	if (status == NDIS_STATUS_MEDIA_DISCONNECT)
 	{
 		handle->link_status = 0;
@@ -1546,7 +1547,7 @@ NdisMIndicateStatus(struct ndis_handle *handle, unsigned int status, void *buf,
 	{
 		struct status_indication *status =
 			(struct status_indication *)buf;
-		DBGTRACE("%s", "media status");
+		DBGTRACE2("%s", "media status");
 		if (status->status_type == NDIS_STATUS_AUTHENTICATION)
 		{
 			struct auth_req *auth_req;
@@ -1557,13 +1558,13 @@ NdisMIndicateStatus(struct ndis_handle *handle, unsigned int status, void *buf,
 				auth_req = (struct auth_req *)buf;
 				DBGTRACE(MACSTR, MAC2STR(auth_req->bssid));
 				if (auth_req->flags & 0x01)
-					DBGTRACE("%s", "reqauth");
+					DBGTRACE2("%s", "reqauth");
 				if (auth_req->flags & 0x02)
-					DBGTRACE("%s", "keyupdate");
+					DBGTRACE2("%s", "keyupdate");
 				if (auth_req->flags & 0x06)
-					DBGTRACE("%s", "pairwise_error");
+					DBGTRACE2("%s", "pairwise_error");
 				if (auth_req->flags & 0x0E)
-					DBGTRACE("%s", "group_error");
+					DBGTRACE2("%s", "group_error");
 				len -= auth_req->length;
 				buf = (char *)buf + auth_req->length;
 			}
