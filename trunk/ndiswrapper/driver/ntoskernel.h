@@ -388,15 +388,30 @@ typedef unsigned char KIRQL;
 /* spinlock_t is 32-bits, provided CONFIG_DEBUG_SPINLOCK is disabled;
  * so for x86 32-bits, we can safely typedef KSPIN_LOCK to
  * spinlock_t */
+
+#ifdef CONFIG_DEBUG_SPINLOCK
+struct wrap_spinlock {
+	spinlock_t spinlock;
+	KIRQL use_bh;
+};
+typedef struct wrap_spinlock *KSPIN_LOCK;
+#define WRAP_SPINLOCK(lock) &((lock)->spinlock)
+#define K_SPINLOCK(lock) &((*lock)->spinlock)
+
+#else
+
 typedef union {
 	spinlock_t spinlock;
 	ULONG_PTR ntoslock;
 } KSPIN_LOCK;
-
 struct wrap_spinlock {
 	KSPIN_LOCK lock;
 	KIRQL use_bh;
 };
+
+#define WRAP_SPINLOCK(lock) &((lock)->lock.spinlock)
+#define K_SPINLOCK(lock) &(lock)->spinlock
+#endif
 
 typedef CHAR KPROCESSOR_MODE;
 
@@ -828,50 +843,51 @@ void dump_bytes(const char *where, const u8 *ip);
 #define ERROR(fmt, ...) MSG(KERN_ERR, fmt , ## __VA_ARGS__)
 #define INFO(fmt, ...) MSG(KERN_INFO, fmt , ## __VA_ARGS__)
 
+#define check_spin_lock_size(lock) do {				\
+		if (sizeof(lock) > sizeof(ULONG_PTR)) {		\
+			ERROR("spinlock used is not compatible with "	\
+			      "KSPIN_LOCK; is CONFIG_DEBUG_SPINLOCK "	\
+			      "disabled? %u, %u",			\
+			      (unsigned int)sizeof(lock),		\
+			      (unsigned int)sizeof(ULONG_PTR));		\
+		}							\
+	} while (0)
+
 static inline void wrap_spin_lock_init(struct wrap_spinlock *lock)
 {
-	if (sizeof(lock->lock) > sizeof(lock->lock.ntoslock)) {
-		ERROR("spinlock used is not compatible with KSPIN_LOCK; "
-		      "is CONFIG_DEBUG_SPINLOCK disabled? %u, %u",
-		      (unsigned int)sizeof(lock->lock),
-		      (unsigned int)sizeof(lock->lock.ntoslock));
-	}
-	spin_lock_init(&(lock->lock.spinlock));
+#ifndef CONFIG_DEBUG_SPINLOCK
+	check_spin_lock_size(lock->lock);
+#endif
+	spin_lock_init(WRAP_SPINLOCK(lock));
 	lock->use_bh = 0;
 }
 
-static inline void wrap_spin_lock(struct wrap_spinlock *lock, int irql)
-{
-	if (irql == DISPATCH_LEVEL) {
-		if (KeGetCurrentIrql() == DISPATCH_LEVEL) {
-			spin_lock(&(lock->lock.spinlock));
-			lock->use_bh = 0;
-		} else {
-			spin_lock_bh(&(lock->lock.spinlock));
-			lock->use_bh = 1;
-		}
-#ifdef DEBUG_IRQL
-		if (!in_atomic())
-			WARNING("!in_atomic()");
-#endif
-	} else {
-			spin_lock(&(lock->lock.spinlock));
-			lock->use_bh = 0;
-	}
-}
+#define wrap_spin_lock(lock, irql) do {		\
+		if (irql == DISPATCH_LEVEL) {			\
+			if (KeGetCurrentIrql() == DISPATCH_LEVEL) {	\
+				spin_lock(WRAP_SPINLOCK(lock));		\
+				(lock)->use_bh = 0;			\
+			} else {					\
+				spin_lock_bh(WRAP_SPINLOCK(lock));	\
+				(lock)->use_bh = 1;			\
+			}						\
+			if (!in_atomic())				\
+				WARNING("!in_atomic()");		\
+		} else {						\
+			spin_lock(WRAP_SPINLOCK(lock));			\
+			(lock)->use_bh = 0;				\
+		}							\
+	} while (0)
 
-static inline void wrap_spin_unlock(struct wrap_spinlock *lock)
-{
-	if (lock->use_bh) {
-#ifdef DEBUG_IRQL
-		if (!in_atomic())
-			WARNING("!in_atomic()");
-#endif
-		spin_unlock_bh(&(lock->lock.spinlock));
-	} else {
-		spin_unlock(&(lock->lock.spinlock));
-	}
-}
+#define wrap_spin_unlock(lock) do {				\
+		if ((lock)->use_bh) {				\
+			if (!in_atomic())			\
+				WARNING("!in_atomic()");	\
+			spin_unlock_bh(WRAP_SPINLOCK(lock));	\
+		} else {					\
+			spin_unlock(WRAP_SPINLOCK(lock));	\
+		}						\
+	} while (0)
 
 static inline void wrapper_set_timer_dpc(struct wrapper_timer *wrapper_timer,
                                          struct kdpc *kdpc)
