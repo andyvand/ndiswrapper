@@ -1681,14 +1681,6 @@ static int setup_dev(struct net_device *dev)
 
 	memset(&wrqu, 0, sizeof(wrqu));
 
-	wrqu.essid.flags = 0;
-	wrqu.essid.length = 1;
-	if (ndis_set_essid(dev, NULL, &wrqu, NULL))
-	{
-		printk(KERN_ERR "%s: Unable to set empty essid\n", DRV_NAME);
-		return -1;
-	}
-
 	wrqu.mode = IW_MODE_INFRA;
 	if (ndis_set_mode(dev, NULL, &wrqu, NULL))
 	{
@@ -2376,7 +2368,7 @@ static int __init wrapper_init(void)
 
 	/* Wait a little to let card power up otherwise ifup might fail on boot */
 	set_current_state(TASK_INTERRUPTIBLE);
-	schedule_timeout(1*HZ);
+	schedule_timeout(2*HZ);
 	return 0;
 }
 
