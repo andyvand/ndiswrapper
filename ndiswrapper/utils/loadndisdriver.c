@@ -28,7 +28,7 @@
 #include <limits.h>
 
 #include "../driver/wrapper.h"
-#include "loaddriver.h"
+#include "loadndisdriver.h"
 
 /* prototype for function found in inf-parser */
 extern void read_inf(FILE *input);
