@@ -186,6 +186,10 @@ install: prereq_check gen_exports default stack_check
 	mkdir -p $(INST_DIR)
 	install -m 0644 $(MODULE) $(INST_DIR)
 	-/sbin/depmod -a
+	@echo
+	@echo "Windows driver configuration file format has changed since" \
+		  "1.0-rc2. You must re-install Windows drivers if they were" \
+		   "installed before."
 
 dist:
 	@for file in $(DISTFILES); do \
