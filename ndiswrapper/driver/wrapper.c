@@ -288,7 +288,7 @@ static void hangcheck_bh(void *data)
 	{
 		int res;
 		handle->reset_status = 0;
-		printk(KERN_INFO "ndiswrapper: Hangcheck returned true. Resetting!\n");
+		INFO("%s", "Hangcheck returned true. Resetting!");
 		res = doreset(handle);
 		DBGTRACE3("reset returns %08X, %d", res, handle->reset_status);
 	}
@@ -451,8 +451,7 @@ static void set_multicast_list(struct net_device *dev, struct ndis_handle *handl
 	res = dosetinfo(handle, OID_802_3_MULTICAST_LIST, list,
 	                size, &written, &needed);
 	if (res)
-		printk(KERN_ERR "%s: Unable to set multicast list (%08X)\n",
-		       DRV_NAME, res);
+		ERROR("Unable to set multicast list (%08X)", res);
 }
 
 
@@ -493,8 +492,7 @@ static void ndis_set_rx_mode_proc(void *param)
 	res = dosetinfo(handle, NDIS_OID_PACKET_FILTER, (char *)&packet_filter,
 	                sizeof(packet_filter), &written, &needed);
 	if (res)
-		printk(KERN_ERR "%s: Unable to set packet filter (%08X)\n",
-		       DRV_NAME, res);
+		ERROR("Unable to set packet filter (%08X)", res);
 }
 
 
@@ -662,8 +660,7 @@ static void xmit_bh(void *param)
 			handle->send_packet = init_packet(handle, buffer);
 			if (!handle->send_packet)
 			{
-				printk(KERN_ERR "%s: couldn't get a packet\n",
-				       __FUNCTION__);
+				ERROR("%s", "couldn't get a packet");
 				break;
 			}
 		}
@@ -689,7 +686,7 @@ static void xmit_bh(void *param)
 		case NDIS_STATUS_RESOURCES:
 			/* should be serialized driver */
 			if (!handle->serialized)
-				printk(KERN_ERR "%s: deserialized driver returning NDIS_STATUS_RESOURCES!\n", __FUNCTION__);
+				ERROR("%s", "deserialized driver returning NDIS_STATUS_RESOURCES!");
 			handle->send_status = res;
 			up(&handle->ndis_comm_mutex);
 			/* this packet will be tried again */
@@ -700,8 +697,7 @@ static void xmit_bh(void *param)
 			free_buffer(handle, handle->send_packet);
 			break;
 		default:
-			printk(KERN_ERR "%s: Unknown status code %08X\n",
-			       __FUNCTION__, res);
+			ERROR("Unknown status code %08X", res);
 			free_buffer(handle, handle->send_packet);
 			break;
 		}
@@ -801,7 +797,7 @@ static int ndis_suspend(struct pci_dev *pdev, u32 state)
 	DBGTRACE2("%s: query power to state %d returns %d",
 			 dev->name, handle->pm_state, res);
 	if (res)
-		printk(KERN_INFO "%s: device doesn't support pnp capabilities for power management? (%08X)\n", dev->name, res);
+		WARNING("No pnp capabilities for pm (%08X)\n", res);
 
 	/* do we need this? */
 //		netif_stop_queue(dev);
@@ -821,7 +817,7 @@ static int ndis_suspend(struct pci_dev *pdev, u32 state)
 	DBGTRACE2("%s: setting power to state %d returns %d",
 			 dev->name, handle->pm_state, res);
 	if (res)
-		printk(KERN_INFO "%s: device doesn't support pnp capabilities for power management? (%08X)\n", dev->name, res);
+		WARNING("No pnp capabilities for pm (%08X)", res);
 	DBGTRACE2("%s: device suspended!\n", dev->name);
 	return 0;
 }
@@ -849,7 +845,7 @@ static int ndis_resume(struct pci_dev *pdev)
 	DBGTRACE2("%s: setting power to state %d returns %d",
 			 dev->name, handle->pm_state, res);
 	if (res)
-		printk(KERN_INFO "%s: device doesn't support pnp capabilities for power management? (%08X)\n", dev->name, res);
+		WARNING("No pnp capabilities for pm (%08X)", res);
 	
 	DBGTRACE2("%s: attaching device\n", dev->name);
 	netif_device_attach(dev);
@@ -907,8 +903,7 @@ static void wrapper_worker_proc(void *param)
 			      &written, &needed);
 		if (res)
 		{
-			printk(KERN_ERR "%s: query assoc_info failed (%08X)\n",
-			       __FUNCTION__, res);
+			ERROR("query assoc_info failed (%08X)", res);
 			kfree(assoc_info);
 			return;
 		}
@@ -1010,9 +1005,7 @@ static void check_wpa(struct ndis_handle *handle)
 			mode = WEP_ENCR1_ENABLED;
 		else
 		{
-			printk(KERN_ERR
-			       "%s: wrong wep mode in %s (%d)\n",
-			       handle->net_dev->name, __FUNCTION__, mode);
+			ERROR("wrong wep mode %d", mode);
 			mode = WEP_DISABLED;
 		}
 	}
@@ -1061,8 +1054,7 @@ static int setup_dev(struct net_device *dev)
 
 	if (strlen(if_name) > (IFNAMSIZ-1))
 	{
-		printk(KERN_ERR "%s: interface name '%s' is too long\n",
-		       DRV_NAME, if_name);
+		ERROR("interface name '%s' is too long", if_name);
 		return -1;
 	}
 	strncpy(dev->name, if_name, IFNAMSIZ-1);
@@ -1076,8 +1068,7 @@ static int setup_dev(struct net_device *dev)
 
 	if(res)
 	{
-		printk(KERN_ERR "%s: unable to get mac address from driver\n",
-			DRV_NAME);
+		ERROR("%s", "unable to get mac address from driver");
 		return -1;
 	}
 
@@ -1100,8 +1091,7 @@ static int setup_dev(struct net_device *dev)
 #ifdef DEBUG_WPA
 	wrqu.param.value = NDIS_PRIV_ACCEPT_ALL;
 	if (ndis_set_priv_filter(dev, NULL, &wrqu, NULL))
-		printk(KERN_ERR "%s: Unable to set privacy filter\n",
-		       DRV_NAME);
+		WARNING("%s", "Unable to set privacy filter");
 
 	check_wpa(handle);
 #endif
@@ -1128,8 +1118,7 @@ static int setup_dev(struct net_device *dev)
 	
 	res = register_netdev(dev);
 	if (res)
-		printk(KERN_ERR "%s: cannot register net device %s\n",
-		       DRV_NAME, dev->name);
+		ERROR("cannot register net device %s", dev->name);
 	else
 		printk(KERN_INFO "%s: %s ethernet device "
 		       "%02x:%02x:%02x:%02x:%02x:%02x using driver %s\n",
@@ -1165,7 +1154,7 @@ static int ndis_init_one(struct pci_dev *pdev,
 	dev = alloc_etherdev(sizeof(*handle));
 	if(!dev)
 	{
-		printk(KERN_ERR "Unable to alloc etherdev\n");
+		ERROR("%s", "Unable to alloc etherdev");
 		res = -ENOMEM;
 		goto out_nodev;
 	}
@@ -1246,8 +1235,7 @@ static int ndis_init_one(struct pci_dev *pdev,
 
 	if(call_init(handle))
 	{
-		printk(KERN_ERR "%s: Windows driver couldn't initialize "
-		       "the device\n", DRV_NAME);
+		ERROR("%s", "Windows driver couldn't initialize the device");
 		res = -EINVAL;
 		goto out_start;
 	}
@@ -1263,7 +1251,7 @@ static int ndis_init_one(struct pci_dev *pdev,
 
 	if(setup_dev(handle->net_dev))
 	{
-		printk(KERN_ERR "%s: Couldn't setup interface\n", DRV_NAME);
+		ERROR("%s", "Couldn't setup interface");
 		res = -EINVAL;
 		goto out_setup;
 	}
@@ -1294,17 +1282,14 @@ static void fixup_timers(struct ndis_handle *handle)
 	while(!list_empty(&handle->timers))
 	{
 		struct wrapper_timer *timer = (struct wrapper_timer*) handle->timers.next;
-#ifdef DEBUG_TIMER
-		printk(KERN_INFO "%s: fixing up timer %p, timer->list %p\n",
-		       __FUNCTION__, timer, &timer->list);
-#endif
+		DBGTRACE4("fixing up timer %p, timer->list %p",
+			  timer, &timer->list);
 		list_del(&timer->list);
 		if(timer->active)
 		{
-			printk(KERN_WARNING "%s Buggy windows driver %s left "
-			       "an active timer. Trying to fix\n",
-			       DRV_NAME, handle->driver->name);
-			       wrapper_cancel_timer(timer, &x); 
+			WARNING("%s", "Fixing an active timer left "
+				" by buggy windows driver");
+			wrapper_cancel_timer(timer, &x); 
 		}
 		wrap_kfree(timer);
 	}
@@ -1364,7 +1349,7 @@ static int start_driver(struct ndis_driver *driver)
 	
 	if(call_entry(driver))
 	{
-		printk(KERN_ERR "ndiswrapper: Driver entry return error\n");
+		ERROR("%s", "Driver entry returns error");
 		return -EINVAL;
 	}
 
@@ -1421,7 +1406,7 @@ static struct ndis_driver *load_driver(struct put_file *put_driver)
 	driver = kmalloc(sizeof(struct ndis_driver), GFP_KERNEL);
 	if(!driver)
 	{
-		printk(KERN_ERR "Unable to alloc driver struct\n");
+		ERROR("%s", "Unable to allocate memory");
 		goto out_nodriver;
 	}
 	memset(driver, 0, sizeof(struct ndis_driver));
@@ -1440,20 +1425,19 @@ static struct ndis_driver *load_driver(struct put_file *put_driver)
 	DBGTRACE1("Image is at %08X", (int)driver->image);
 	if(!driver->image)
 	{
-		printk(KERN_ERR "%s: Unable to allocate mem for driver\n",
-			DRV_NAME);
+		ERROR("%s", "Unable to allocate memory");
 		goto out_vmalloc;
 	}
 
 	if(copy_from_user(driver->image, put_driver->data, put_driver->size))
 	{
-		printk(KERN_ERR "%s: Failed to copy from user\n", DRV_NAME);
+		ERROR("%s", "Failed to copy from user");
 		goto out_baddriver;
 	}
 
 	if(prepare_coffpe_image(&entry, driver->image, put_driver->size))
 	{
-		printk(KERN_ERR "%s: Unable to prepare driver\n", DRV_NAME);		
+		ERROR("%s", "Unable to prepare driver");
 		goto out_baddriver;
 	}
 	driver->entry = entry;
@@ -1491,7 +1475,7 @@ static int add_driver(struct ndis_driver *driver)
 	spin_unlock(&driverlist_lock);
 	if(dup)
 	{
-		printk(KERN_ERR "%s: Cannot add duplicate driver\n", DRV_NAME);
+		ERROR("%s", "Cannot add duplicate driver");
 		return -EBUSY;
 	}
 	
@@ -1512,7 +1496,7 @@ static int add_file(struct ndis_driver *driver, struct put_file *put_file)
 	file = kmalloc(sizeof(struct ndis_file), GFP_KERNEL);
 	if(!file)
 	{
-		printk(KERN_ERR "%s: Unable to alloc file struct\n", DRV_NAME);
+		ERROR("%s", "Unable to allocate memory");
 		goto err;
 	}
 	memset(file, 0, sizeof(struct ndis_file));
@@ -1528,14 +1512,13 @@ static int add_file(struct ndis_driver *driver, struct put_file *put_file)
 	file->data = vmalloc(put_file->size);
 	if(!file->data)
 	{
-		printk(KERN_ERR "%s: Unable to allocate mem for file\n",
-			DRV_NAME);
+		ERROR("%s", "Unable to allocate memory");
 		goto err;
 	}
 
 	if(copy_from_user(file->data, put_file->data, put_file->size))
 	{
-		printk(KERN_ERR "%s: Failed to copy from user\n", DRV_NAME);
+		ERROR("%s", "Failed to copy from user");
 		goto err;
 	}
 
@@ -1557,7 +1540,8 @@ err:
 /*
  * Add a new device to a driver.
  */
-static struct ndis_device *add_device(struct ndis_driver *driver, struct put_device *put_device)
+static struct ndis_device *add_device(struct ndis_driver *driver,
+				      struct put_device *put_device)
 {
 	struct ndis_device *device;
 	if (!(device = kmalloc(sizeof(*device), GFP_KERNEL)))
@@ -1665,7 +1649,8 @@ static void unload_driver(struct ndis_driver *driver)
 #ifdef DEBUG_CRASH_ON_INIT
 	{
 		struct pci_dev *pdev = 0;
-		pdev = pci_find_device(driver->pci_idtable[0].vendor, driver->pci_idtable[0].device, pdev);
+		pdev = pci_find_device(driver->pci_idtable[0].vendor,
+				       driver->pci_idtable[0].device, pdev);
 		if(pdev)
 			ndis_remove_one(pdev);
 	}
@@ -1715,7 +1700,8 @@ static int misc_release(struct inode *inode, struct file *file)
 }
 
 
-static int misc_ioctl(struct inode *inode, struct file *file, unsigned int cmd, unsigned long arg)
+static int misc_ioctl(struct inode *inode, struct file *file,
+		      unsigned int cmd, unsigned long arg)
 {
 	struct put_file put_file;
 	struct put_device put_device;
@@ -1804,7 +1790,7 @@ static int misc_ioctl(struct inode *inode, struct file *file, unsigned int cmd, 
 		}
 		break;
 	default:
-		printk(KERN_ERR "Unknown ioctl %08X\n", cmd);
+		ERROR("Unknown ioctl %08X\n", cmd);
 		return -EINVAL;
 		break;
 	}	
@@ -1832,7 +1818,7 @@ static int __init wrapper_init(void)
 
 	printk(KERN_INFO "%s version %s loaded\n", DRV_NAME, DRV_VERSION);
         if ( (err = misc_register(&wrapper_misc)) < 0 ) {
-                printk(KERN_ERR "%s: misc_register failed\n", DRV_NAME);
+                ERROR("misc_register failed (%d)", err);
 		return err;
         }
 
@@ -1846,8 +1832,7 @@ static int __init wrapper_init(void)
 
 	if (err)
 	{
-		printk(KERN_INFO "%s: loadndiswrapper failed (%d)\n",
-		       DRV_NAME, err);
+		ERROR("loadndiswrapper failed (%d)", err);
 		misc_deregister(&wrapper_misc);
 	}
 	else

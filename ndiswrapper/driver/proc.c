@@ -62,8 +62,7 @@ static int procfs_read_stats(char *page, char **start, off_t off,
 
 	if (p - page > count)
 	{
-		printk(KERN_ERR "%s: %s wrote %u bytes (limit is %u)\n",
-		       handle->net_dev->name, __FUNCTION__, p - page, count);
+		ERROR("wrote %u bytes (limit is %u)\n", p - page, count);
 		*eof = 1;
 	}
 
@@ -135,8 +134,7 @@ static int procfs_read_wep(char *page, char **start, off_t off,
 		     "managed" : "auto");
 	if (p - page > count)
 	{
-		printk(KERN_ERR "%s: %s wrote %u bytes (limit is %u)\n",
-		       handle->net_dev->name, __FUNCTION__, p - page, count);
+		WARNING("wrote %u bytes (limit is %u)", p - page, count);
 		*eof = 1;
 	}
 
@@ -222,8 +220,7 @@ static int procfs_read_hw(char *page, char **start, off_t off,
 
 	if (p - page > count)
 	{
-		printk(KERN_ERR "%s: %s wrote %u bytes (limit is %u)\n",
-		       handle->net_dev->name, __FUNCTION__, p - page, count);
+		WARNING("wrote %u bytes (limit is %u)", p - page, count);
 		*eof = 1;
 	}
 
@@ -235,8 +232,7 @@ int ndiswrapper_procfs_init(void)
 	ndiswrapper_procfs_entry = proc_mkdir(DRV_NAME, proc_net);
 	if (ndiswrapper_procfs_entry == NULL)
 	{
-		printk(KERN_ERR "%s: Couldn't create procfs directory\n",
-		       DRV_NAME);
+		ERROR("%s", "Couldn't create procfs directory");
 		return -ENOMEM;
 	}
 	ndiswrapper_procfs_entry->uid = proc_uid;
@@ -259,8 +255,7 @@ int ndiswrapper_procfs_add_iface(struct ndis_handle *handle)
 
 	if (proc_iface == NULL)
 	{
-		printk(KERN_ERR "%s: Couldn't create proc directory %s\n",
-		       DRV_NAME, dev->name);
+		ERROR("%s", "Couldn't create proc directory");
 		return -ENOMEM;
 	}
 	proc_iface->uid = proc_uid;
@@ -270,8 +265,7 @@ int ndiswrapper_procfs_add_iface(struct ndis_handle *handle)
 					 proc_iface);
 	if (procfs_entry == NULL)
 	{
-		printk(KERN_ERR "%s: Couldn't create proc entry for 'hw'\n",
-		       dev->name);
+		ERROR("%s", "Couldn't create proc entry for 'hw'");
 		return -ENOMEM;
 	}
 	else
@@ -286,8 +280,7 @@ int ndiswrapper_procfs_add_iface(struct ndis_handle *handle)
 					 proc_iface);
 	if (procfs_entry == NULL)
 	{
-		printk(KERN_ERR "%s: Couldn't create proc entry for 'stats'\n",
-		       dev->name);
+		ERROR("%s", "Couldn't create proc entry for 'stats'");
 		return -ENOMEM;
 	}
 	else
@@ -302,8 +295,7 @@ int ndiswrapper_procfs_add_iface(struct ndis_handle *handle)
 					 proc_iface);
 	if (procfs_entry == NULL)
 	{
-		printk(KERN_ERR "%s: Couldn't create proc entry for 'wep'\n",
-		       dev->name);
+		ERROR("%s", "Couldn't create proc entry for 'wep'");
 		return -ENOMEM;
 	}
 	else

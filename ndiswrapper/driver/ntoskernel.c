@@ -93,14 +93,12 @@ STDCALL void KeInitializeSpinLock(KSPIN_LOCK *lock)
 
 	if (!lock)
 	{
-		printk(KERN_ERR "%s: lock %p is not valid pointer!\n",
-			   __FUNCTION__, lock);
+		ERROR("%s", "invalid lock");
 		return;
 	}
 	spin_lock = wrap_kmalloc(sizeof(spinlock_t), GFP_KERNEL);
 	if (!spin_lock)
-		printk(KERN_ERR "%s: couldn't allocate space for spinlock\n",
-			   __FUNCTION__);
+		ERROR("%s", "Couldn't allocate space for spinlock");
 	else
 	{
 		DBGTRACE4("allocated spinlock %p", spin_lock);
@@ -115,14 +113,14 @@ STDCALL void KeAcquireSpinLock(KSPIN_LOCK *lock, KIRQL *oldirql)
 
 	if (!lock)
 	{
-		printk(KERN_ERR "%s: lock %p is not a valid pointer!\n",
-		       __FUNCTION__, lock);
+		ERROR("%s", "invalid lock");
 		return;
 	}
 
 	if (!*lock)
 	{
-		printk(KERN_WARNING "%s: Buggy NDIS driver trying to use uninitialized lock. Trying to recover...", DRV_NAME);
+		printk(KERN_WARNING "Buggy Windows driver trying to use "
+		       "uninitialized lock. Trying to recover...");
 		KeInitializeSpinLock(lock);
 		if (*lock)
 			printk(KERN_WARNING "ok\n");
@@ -147,8 +145,7 @@ STDCALL void KeReleaseSpinLock(KSPIN_LOCK *lock, KIRQL newirql)
 
 	if (!lock || !*lock)
 	{
-		printk(KERN_ERR "%s: lock %p is not a valid spinlock!\n",
-		       __FUNCTION__, lock);
+		ERROR("invalid spin lock %p", lock);
 		return;
 	}
 

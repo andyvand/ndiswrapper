@@ -84,8 +84,7 @@ STDCALL KIRQL KfAcquireSpinLock(KSPIN_LOCK *lock)
 			spin_lock_bh((spinlock_t *)(*lock));
 	}
 	else
-		printk(KERN_ERR "%s: lock %p is not initialized!\n",
-		       __FUNCTION__, lock);
+		ERROR("lock %p is not initialized!", lock);
 	return irql;
 }
 

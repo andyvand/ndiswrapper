@@ -75,7 +75,7 @@ static struct mscoff_hdr *check_coff_hdr(void *image, int size, int offset)
 	
 	if(hdr->stdhdr.machine != COFF_MACHINE_I386)
 	{
-		printk(KERN_ERR "Not i386\n");
+		ERROR("%s", "Driver is not for i386");
 		return 0;
 	}
 
@@ -94,7 +94,8 @@ static struct mscoff_hdr *check_coff_hdr(void *image, int size, int offset)
 
 	if(hdr->section_alignment != hdr->file_alignment)
 	{
-		printk(KERN_ERR "%s: Alignment mismatch: secion: 0x%lx, file: 0x%lx\n", DRV_NAME, hdr->section_alignment, hdr->file_alignment);
+		ERROR("Alignment mismatch: secion: 0x%lx, file: 0x%lx",
+		      hdr->section_alignment, hdr->file_alignment);
 		return 0;
 	}
 
@@ -115,7 +116,8 @@ static int import(void *image, struct coffpe_import_dirent *dirent, char *dll)
 
 	for(i = 0; lookup_tbl[i]; i++) {
 		if(lookup_tbl[i] & 0x80000000) {
-			printk(KERN_ERR "ordinal import not supported: %d\n", (int) lookup_tbl[i]);
+			ERROR("ordinal import not supported: %d",
+			      (int) lookup_tbl[i]);
 			return -1;
 		}
 		else {
@@ -125,10 +127,11 @@ static int import(void *image, struct coffpe_import_dirent *dirent, char *dll)
 		adr = get_wrap_func(symname);
 		if(adr == 0)
 		{
-			printk(KERN_ERR "Unknown symbol: %s:%s\n", dll, symname);
+			ERROR("Unknown symbol: %s:%s", dll, symname);
 			ret = -1;
 		}
-		DBGTRACE1("Importing rva %08x: %s : %s", (int)(&address_tbl[i]) - (int)image, dll, symname); 
+		DBGTRACE1("Importing rva %08x: %s : %s",
+			  (int)(&address_tbl[i]) - (int)image, dll, symname); 
 		address_tbl[i] = (cu32)adr;
 	}
 	return ret;
@@ -172,8 +175,8 @@ static void reloc_block(void *image, cu32 blockbase, cu16 *fixups, int size, int
 		case COFF_FIXUP_ABSOLUTE:
 			break;
 		default:
-			printk(KERN_ERR "Unsupported fixup type 0x%x at offset %04x\n",
-			       type, offset); 
+			ERROR("Unsupported fixup type 0x%x at offset %04x",
+			      type, offset); 
 			break;
 		}
 	}
@@ -211,7 +214,7 @@ int prepare_coffpe_image(void **entry, void *image, int size)
 	if(size < 0x3c + 4)
 		return -1;
 	header_offset =  *(long*)(image+0x3c);
-//	printk("PE Header at offset %08x\n", (int) header_offset);
+//	DBGTRACE("PE Header at offset %08x", (int) header_offset);
 
 	hdr = check_coff_hdr(image, size, header_offset);
 	if(hdr == 0)

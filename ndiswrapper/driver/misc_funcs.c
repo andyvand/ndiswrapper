@@ -93,7 +93,7 @@ void wrapper_timer_handler(unsigned long data)
 
 	if (!timer)
 	{
-		printk(KERN_ERR "%s: timer is NULL\n", __FUNCTION__);
+		ERROR("%s", "invalid timer");
 		return;
 	}
 	kdpc = timer->kdpc;
@@ -124,7 +124,7 @@ void wrapper_init_timer(struct ktimer *ktimer, void *handle)
 	wrapper_timer = wrap_kmalloc(sizeof(struct wrapper_timer), GFP_ATOMIC);
 	if(!wrapper_timer)
 	{
-		printk(KERN_ERR "%s: Cannot malloc mem for timer\n", DRV_NAME);
+		ERROR("%s", "Cannot malloc mem for timer");
 		return;
 	}
 
@@ -150,15 +150,15 @@ int wrapper_set_timer(struct wrapper_timer *timer,
 {
 	if (!timer)
 	{
-		printk(KERN_ERR "%s: Driver calling NdisSetTimer on an uninitilized timer\n", DRV_NAME);		
+		ERROR("%s", "invalid timer");		
 		return 0;
 	}
 	
 #ifdef DEBUG_TIMER
 	if (timer->wrapper_timer_magic != WRAPPER_TIMER_MAGIC)
 	{
-		printk(KERN_WARNING "%s: timer %p is not initialized (%lu)\n",
-		       __FUNCTION__, timer, timer->wrapper_timer_magic);
+		WARNING("timer %p is not initialized (%lu)",
+			timer, timer->wrapper_timer_magic);
 		timer->wrapper_timer_magic = WRAPPER_TIMER_MAGIC;
 	}
 #endif
@@ -187,7 +187,7 @@ void wrapper_cancel_timer(struct wrapper_timer *timer, char *canceled)
 	TRACEENTER4("timer = %p, canceled = %p", timer, canceled);
 	if(!timer)
 	{
-		printk(KERN_ERR "%s: Driver calling NdisCancelTimer on an uninitilized timer\n", DRV_NAME);		
+		ERROR("%s", "invalid timer");
 		return;
 	}
 
