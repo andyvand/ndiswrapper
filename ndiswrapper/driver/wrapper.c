@@ -184,16 +184,22 @@ static int ndis_set_essid(struct net_device *dev,
 	unsigned int res, written, needed;
 	struct essid_req req;
 
-	if(wrqu->essid.length > 33)
-	{
-		printk(KERN_ERR "%s: ESSID too long\n", __FUNCTION__);
-		return -1;
-	}
-
 	memset(&req.essid, 0, sizeof(req.essid));
-	memcpy(&req.essid, extra, wrqu->essid.length-1);
+
+	if (wrqu->essid.flags == 0)
+		req.len = 0;
+	else
+	{
+		if(wrqu->essid.length > (IW_ESSID_MAX_SIZE + 1))
+		{
+			printk(KERN_ERR "%s: ESSID too long\n", __FUNCTION__);
+			return -1;
+		}
+
+		memcpy(&req.essid, extra, wrqu->essid.length-1);
+		req.len = wrqu->essid.length-1;
+	}
 	
-	req.len = wrqu->essid.length-1;
 	res = dosetinfo(handle, NDIS_OID_ESSID, (char*)&req, sizeof(req), &written, &needed);
 	if(res)
 	{
