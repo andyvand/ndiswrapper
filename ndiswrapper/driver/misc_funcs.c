@@ -26,14 +26,15 @@
 #define SPINLOCK_HASH_BITS 6
 #define SPINLOCK_MAP_SIZE (1 << SPINLOCK_HASH_BITS)
 
-static struct list_head wrap_allocs;
-static struct wrap_spinlock wrap_allocs_lock;
-static spinlock_t spinlock_map_lock;
 struct spinlock_hash {
 	struct hlist_node hlist;
 	void *kspin_lock;
 	struct wrap_spinlock wrap_spinlock;
 };
+
+static struct list_head wrap_allocs;
+static struct wrap_spinlock wrap_allocs_lock;
+static spinlock_t spinlock_map_lock;
 static struct hlist_head spinlock_map[SPINLOCK_MAP_SIZE];
 
 int misc_funcs_init(void)
@@ -52,7 +53,7 @@ int misc_funcs_init(void)
 void misc_funcs_exit_handle(struct ndis_handle *handle)
 {
 	char canceled;
-	/* Cancel any timers left by bugyy windows driver
+	/* cancel any timers left by bugyy windows driver
 	 * Also free the memory for timers
 	 */
 	while (1) {
@@ -115,13 +116,19 @@ void misc_funcs_exit(void)
 	TRACEEXIT4(return);
 }
 
-/* return wrap_spinlock mapped to ksin_lock */
-struct wrap_spinlock *kspin_wrap_lock(KSPIN_LOCK *kspin_lock)
+/* if given kspin_lock is already mapped, return the mapped
+ * wrap_spinlock; otherwise, allocate wrap_spinlock and map kspin_lock
+ * to it
+*/
+struct wrap_spinlock *map_kspin_lock(KSPIN_LOCK *kspin_lock)
 {
 	struct hlist_head *head;
 	struct hlist_node *node;
+	struct spinlock_hash *p;
+	int i;
 
-	head = &spinlock_map[hash_ptr(kspin_lock, SPINLOCK_HASH_BITS)];
+	i = hash_ptr(kspin_lock, SPINLOCK_HASH_BITS);
+	head = &spinlock_map[i];
 	hlist_for_each(node, head) {
 		struct spinlock_hash *p;
 
@@ -129,29 +136,9 @@ struct wrap_spinlock *kspin_wrap_lock(KSPIN_LOCK *kspin_lock)
 		if (p->kspin_lock == kspin_lock)
 			return &p->wrap_spinlock;
 	}
-	DBGTRACE3("kspin_lock %p is not mapped", kspin_lock);
-	return NULL;
-}
 
-/* if given kspin_lock is already mapped, return the mapped
- * wrap_spinlock; otherwise, allocate wrap_spinlock and map kspin_lock
- * to it
-*/
-struct wrap_spinlock *allocate_kspin_lock(KSPIN_LOCK *kspin_lock)
-{
-	struct hlist_head *head;
-	struct spinlock_hash *p;
-	struct wrap_spinlock *ret;
-	int i;
-
-	TRACEENTER3("%p", kspin_lock);
-	ret = kspin_wrap_lock(kspin_lock);
-	if (ret)
-		TRACEEXIT3(return ret);
-
+	DBGTRACE3("allocating kspin_lock %p", kspin_lock);
 	spin_lock(&spinlock_map_lock);
-	i = hash_ptr(kspin_lock, SPINLOCK_HASH_BITS);
-	head = &spinlock_map[i];
 	p = kmalloc(sizeof(*p), GFP_ATOMIC);
 	if (!p) {
 		ERROR("couldn't allocate memory");
@@ -167,7 +154,7 @@ struct wrap_spinlock *allocate_kspin_lock(KSPIN_LOCK *kspin_lock)
 }
 
 /* unmap wrap_spinlock mapped by kspin_lock */
-int free_kspin_lock(KSPIN_LOCK *kspin_lock)
+int unmap_kspin_lock(KSPIN_LOCK *kspin_lock)
 {
 	struct hlist_head *head;
 	struct hlist_node *node;
@@ -241,7 +228,6 @@ void wrap_kfree(void *ptr)
 			break;
 		}
 	}
-
 	wrap_spin_unlock(&wrap_allocs_lock);
 	TRACEEXIT4(return);
 }
