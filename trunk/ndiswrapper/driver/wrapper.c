@@ -1627,6 +1627,9 @@ static void *ndis_init_one_usb(struct usb_device *udev, unsigned int ifnum,
 	}
 	*/
 
+	/* WUSB54G requires it, maybe other USB drivers as well... */
+	doreset(handle);
+
 	if(setup_dev(handle->net_dev)) {
 		ERROR("%s", "Couldn't setup interface");
 		res = -EINVAL;
@@ -1637,9 +1640,6 @@ static void *ndis_init_one_usb(struct usb_device *udev, unsigned int ifnum,
 	ndiswrapper_procfs_add_iface(handle);
 	set_current_state(TASK_INTERRUPTIBLE);
 	schedule_timeout(HZ);
-
-	/* WUSB54G requires it, maybe other USB drivers as well... */
-	doreset(handle);
 
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
 	TRACEEXIT1(return 0);
