@@ -59,8 +59,6 @@ struct list_entry
 	struct list_entry *bwd_link;
 };
 
-typedef unsigned long POOL_TYPE;
-
 struct packed dispatch_header
 {
 	unsigned char type;
@@ -100,6 +98,17 @@ struct packed kdpc
 	void *arg1;
 	void *arg2;
 	unsigned long *lock;
+};
+
+enum pool_type
+{
+	NonPagedPool,
+	PagedPool,
+	NonPagedPoolMustSucceed,
+	DontUseThisType,
+	NonPagedPoolCacheAligned,
+	PagedPoolCacheAligned,
+	NonPagedPoolCacheAlignedMustS
 };
 
 struct irp;
@@ -225,8 +234,8 @@ struct kevent
 #define NOTIFICATION_EVENT	0
 #define SYNCHRONIZATION_EVENT	1
 
-typedef STDCALL void *LOOKASIDE_ALLOC_FUNC(POOL_TYPE, unsigned long,
-					   unsigned long);
+typedef STDCALL void *LOOKASIDE_ALLOC_FUNC(enum pool_type pool_type,
+					   size_t size, unsigned long tag);
 typedef STDCALL void LOOKASIDE_FREE_FUNC(void *);
 
 struct packed npaged_lookaside_list {
@@ -237,7 +246,7 @@ struct packed npaged_lookaside_list {
 	unsigned long allocmisses;
 	unsigned long totalfrees;
 	unsigned long freemisses;
-	POOL_TYPE type;
+	enum pool_type pool_type;
 	unsigned long tag;
 	unsigned long size;
 	LOOKASIDE_ALLOC_FUNC *alloc_func;

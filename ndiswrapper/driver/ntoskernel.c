@@ -199,16 +199,21 @@ ExInterlockedPopEntrySList(int dummy, KSPIN_LOCK *lock, union slist_head *head)
 }
 
 STDCALL static void *
-lookaside_def_alloc_func(POOL_TYPE pool_type, unsigned long size,
-			 unsigned long tag)
+ExAllocatePoolWithTag(enum pool_type pool_type, size_t size, unsigned long tag)
 {
+	TRACEENTER1("pool_type: %d, size: %d, tag: %lu", pool_type, size, tag);
+
+	/* FIXME: should this function allocate using kmem_cache/mem_pool
+	   instead? */
 	return kmalloc(size, GFP_ATOMIC);
 }
 
 STDCALL static void
-lookaside_def_free_func(void *buffer)
+ExFreePool(void *p)
 {
-	kfree(buffer);
+	TRACEENTER2("%p", p);
+	kfree(p);
+	TRACEEXIT2(return);
 }
 
 STDCALL static void
@@ -233,11 +238,11 @@ ExInitializeNPagedLookasideList(struct npaged_lookaside_list *lookaside,
 	if (alloc_func)
 		lookaside->alloc_func = alloc_func;
 	else
-		lookaside->alloc_func = lookaside_def_alloc_func;
+		lookaside->alloc_func = ExAllocatePoolWithTag;
 	if (free_func)
 		lookaside->free_func = free_func;
 	else
-		lookaside->free_func = lookaside_def_free_func;
+		lookaside->free_func = ExFreePool;
 
 	KeInitializeSpinLock(&lookaside->obsolete);
 	TRACEEXIT3(return);
@@ -373,21 +378,6 @@ KeWaitForSingleObject(void *object, unsigned int reason,
 	if (((struct kevent *)object)->header.type == SYNCHRONIZATION_EVENT)
 		((struct kevent *)object)->header.signal_state = 0;
 	TRACEEXIT3(return STATUS_SUCCESS);
-}
-
-STDCALL static void *
-ExAllocatePoolWithTag(unsigned int type, unsigned int size, unsigned int tag)
-{
-	UNIMPL();
-	return (void*)0x000afff8;
-}
-
-STDCALL static void
-ExFreePool(void *p)
-{
-	DBGTRACE("p = %p (WARNING: function not fully implemented)", p);
-	/* WARNING: this only applies to some buggy ATMEL USB WLAN driver */
-	kfree(p);
 }
 
 STDCALL static void
