@@ -428,6 +428,16 @@ NOREGPARM INT WRAP_EXPORT(_win_wcscmp)
 	return *s1 - *s2;
 }
 
+NOREGPARM INT WRAP_EXPORT(_win_wcsicmp)
+	(const wchar_t *s1, const wchar_t *s2)
+{
+	while (*s1 && *s2 && tolower((char)*s1) == tolower((char)*s2)) {
+		s1++;
+		s2++;
+	}
+	return *s1 - *s2;
+}
+
 NOREGPARM SIZE_T WRAP_EXPORT(_win_wcslen)
 	(const wchar_t *s)
 {

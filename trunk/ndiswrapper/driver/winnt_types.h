@@ -695,6 +695,33 @@ struct time_fields {
 	CSHORT weekday;
 };
 
+struct object_attributes {
+	ULONG length;
+	void *root_dir;
+	struct unicode_string *name;
+	ULONG attributes;
+	void *security_descr;
+	void *security_qos;
+};
+
+typedef void (*PCALLBACK_FUNCTION)(void *context, void *arg1, void *arg2);
+
+struct callback_object;
+struct callback_func {
+	PCALLBACK_FUNCTION func;
+	void *context;
+	struct nt_list_entry list;
+	struct callback_object *object;
+};
+
+struct callback_object {
+	KSPIN_LOCK lock;
+	struct nt_list_entry list;
+	struct nt_list_entry callback_funcs;
+	BOOLEAN allow_multiple_callbacks;
+	struct object_attributes *attributes;
+};
+
 /* some of the functions below are slightly different from DDK's
  * implementation; e.g., Insert functions return appropriate
  * pointer */

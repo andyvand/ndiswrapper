@@ -40,7 +40,7 @@ static struct list_head ndis_work_list;
 static KSPIN_LOCK ndis_work_list_lock;
 
 static KSPIN_LOCK wrap_ndis_packet_lock;
-static struct list_head wrap_ndis_packet_list;
+static struct nt_list_entry wrap_ndis_packet_list;
 
 static void ndis_worker(void *data);
 static void free_handle_ctx(struct ndis_handle *handle);
@@ -60,7 +60,7 @@ int ndis_init(void)
 	INIT_LIST_HEAD(&handle_ctx_list);
 	kspin_lock_init(&ndis_work_list_lock);
 	kspin_lock_init(&wrap_ndis_packet_lock);
-	INIT_LIST_HEAD(&wrap_ndis_packet_list);
+	InitializeListHead(&wrap_ndis_packet_list);
 	packet_cache = kmem_cache_create("ndis_packet",
 					 sizeof(struct wrap_ndis_packet),
 					 0, 0, NULL, NULL);
@@ -76,19 +76,19 @@ void ndis_exit(void)
 {
 	if (packet_cache) {
 		kspin_lock(&wrap_ndis_packet_lock);
-		if (!list_empty(&wrap_ndis_packet_list)) {
-			struct list_head *cur, *tmp;
+		if (!IsListEmpty(&wrap_ndis_packet_list)) {
+			struct nt_list_entry *cur;
 			ERROR("Windows driver didn't free all packets; "
 			      "freeing them now");
-			list_for_each_safe(cur, tmp, &wrap_ndis_packet_list) {
+			while ((cur =
+				RemoveHeadList(&wrap_ndis_packet_list))) {
 				struct wrap_ndis_packet *p;
-				p = list_entry(cur,
-					       struct wrap_ndis_packet, list);
+				p = container_of(cur, struct wrap_ndis_packet,
+						 list);
 				DBGTRACE3("feeing packet %p", &p->ndis_packet);
 				kmem_cache_free(packet_cache, p);
 			}
 		}
-		INIT_LIST_HEAD(&wrap_ndis_packet_list);
 		kspin_unlock(&wrap_ndis_packet_lock);
 		kmem_cache_destroy(packet_cache);
 		packet_cache = NULL;
@@ -1292,7 +1292,8 @@ struct ndis_packet *allocate_ndis_packet(void)
 	wrap_ndis_packet = kmem_cache_alloc(packet_cache, GFP_ATOMIC);
 	if (wrap_ndis_packet) {
 		kspin_lock(&wrap_ndis_packet_lock);
-		list_add(&wrap_ndis_packet->list, &wrap_ndis_packet_list);
+		InsertHeadList(&wrap_ndis_packet_list,
+			       &wrap_ndis_packet->list);
 		kspin_unlock(&wrap_ndis_packet_lock);
 		ndis_packet = &wrap_ndis_packet->ndis_packet;
 		memset(ndis_packet, 0, sizeof(*ndis_packet));
@@ -1311,7 +1312,7 @@ void free_ndis_packet(struct ndis_packet *packet)
 		((char *)packet -
 		 offsetof(struct wrap_ndis_packet, ndis_packet));
 	kspin_lock(&wrap_ndis_packet_lock);
-	list_del(&wrap_ndis_packet->list);
+	RemoveEntryList(&wrap_ndis_packet->list);
 	kspin_unlock(&wrap_ndis_packet_lock);
 	kmem_cache_free(packet_cache, wrap_ndis_packet);
 }
