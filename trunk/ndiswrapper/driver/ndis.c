@@ -902,11 +902,11 @@ STDCALL void NdisGetCurrentSystemTime(unsigned long *time)
 }
 
 
-STDCALL unsigned int NdisMRegisterIoPortRange(void **virt, struct ndis_handle *handle, unsigned int startlo, unsigned int starthi, unsigned int len)
+STDCALL unsigned int NdisMRegisterIoPortRange(void **virt, struct ndis_handle *handle, unsigned int start, unsigned int len)
 {
-	DBGTRACE("%s %08x %08x\n", __FUNCTION__, startlo, len);
+	DBGTRACE("%s %08x %08x\n", __FUNCTION__, start, len);
 	/* TODO: Register ioport with linux */
-	*virt = (void*) startlo;
+	*virt = (void*) start;
 	return NDIS_STATUS_SUCCESS;
 }
 
