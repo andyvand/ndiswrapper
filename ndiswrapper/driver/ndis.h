@@ -261,6 +261,7 @@ struct ndis_driver
 	struct miniport_char miniport_char;
 	int key_len ;
 	unsigned char key_val[IW_ENCODING_TOKEN_MAX] ;
+	unsigned long scan_time;
 };
 
 
@@ -376,21 +377,7 @@ struct packed ndis_ssid {
 	unsigned char ssid[IW_ESSID_MAX_SIZE];
 };
 
-struct packed ndis_config_fh {
-	unsigned long length;
-	unsigned long hop_pattern;
-	unsigned long hop_set;
-	unsigned long dwell_time;
-};
-
-struct packed ndis_config {
-	unsigned long length;
-	unsigned long beacon_period;
-	unsigned long atim_window;
-	unsigned long ds_config;
-	struct ndis_config_fh fh_config;
-};
-
+#define NDIS_MAX_RATES 16
 struct packed ssid_item
 {
 	unsigned long length;
@@ -400,9 +387,9 @@ struct packed ssid_item
 	unsigned long privacy;
 	long rssi;
 	unsigned int net_type;
-	struct ndis_config config;
+	struct ndis_configuration config;
 	unsigned int mode;
-	unsigned char rates[8];
+	unsigned char rates[NDIS_MAX_RATES];
 	unsigned long ie_length;
 	unsigned char ies[1];
 };
