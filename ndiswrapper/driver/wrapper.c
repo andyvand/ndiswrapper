@@ -435,19 +435,19 @@ static void ndis_set_rx_mode_proc(void *param)
 
 	if (dev->flags & IFF_PROMISC) {
 		DBGTRACE("%s: Going into promiscuous mode\n", __FUNCTION__);
-		packet_filter &= NDIS_PACKET_TYPE_PROMISCUOUS;
+		packet_filter |= NDIS_PACKET_TYPE_PROMISCUOUS;
 	}
 	else if ((dev->mc_count > handle->multicast_list_size) ||
 	         (dev->flags & IFF_ALLMULTI))
 	{
 		/* Too many to filter perfectly -- accept all multicasts. */
 		DBGTRACE("%s: Multicast list to long. Accepting all\n", __FUNCTION__);
-		packet_filter &= NDIS_PACKET_TYPE_ALL_MULTICAST;
+		packet_filter |= NDIS_PACKET_TYPE_ALL_MULTICAST;
 	}
 	else
 	{
-		packet_filter &= NDIS_PACKET_TYPE_ALL_MULTICAST;
-//		packet_filter &= NDIS_PACKET_TYPE_MULTICAST;
+		packet_filter |= NDIS_PACKET_TYPE_ALL_MULTICAST;
+//		packet_filter |= NDIS_PACKET_TYPE_MULTICAST;
 		set_multicast_list(dev, handle);
 	}
 	
