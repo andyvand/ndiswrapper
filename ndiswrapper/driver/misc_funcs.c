@@ -24,7 +24,7 @@
 #include "ndis.h"
 
 #define SPINLOCK_HASH_BITS 6
-#define SPINLOCK_TABLE_SIZE (1 << SPINLOCK_HASH_BITS)
+#define SPINLOCK_MAP_SIZE (1 << SPINLOCK_HASH_BITS)
 
 static struct list_head wrap_allocs;
 static struct wrap_spinlock wrap_allocs_lock;
@@ -34,7 +34,7 @@ struct spinlock_hash {
 	void *kspin_lock;
 	struct wrap_spinlock wrap_spinlock;
 };
-static struct hlist_head spinlock_table[SPINLOCK_TABLE_SIZE];
+static struct hlist_head spinlock_map[SPINLOCK_MAP_SIZE];
 
 int misc_funcs_init(void)
 {
@@ -43,9 +43,8 @@ int misc_funcs_init(void)
 	spin_lock_init(&spinlock_map_lock);
 	INIT_LIST_HEAD(&wrap_allocs);
 	wrap_spin_lock_init(&wrap_allocs_lock);
-	for (i = 0; i < SPINLOCK_TABLE_SIZE; i++) {
-		INIT_HLIST_HEAD(&spinlock_table[i]);
-	}
+	for (i = 0; i < SPINLOCK_MAP_SIZE; i++)
+		INIT_HLIST_HEAD(&spinlock_map[i]);
 	return 0;
 }
 
@@ -54,9 +53,10 @@ void misc_funcs_exit(void)
 	int i;
 	struct hlist_head *head;
 	struct hlist_node *node, *next;
+
 	spin_lock(&spinlock_map_lock);
-	for (i = 0; i < SPINLOCK_TABLE_SIZE; i++) {
-		head = &spinlock_table[i];
+	for (i = 0; i < SPINLOCK_MAP_SIZE; i++) {
+		head = &spinlock_map[i];
 		hlist_for_each_safe(node, next, head) {
 			struct spinlock_hash *p;
 
@@ -77,7 +77,7 @@ struct wrap_spinlock *kspin_wrap_lock(void *kspin_lock)
 	struct hlist_head *head;
 	struct hlist_node *node;
 
-	head = &spinlock_table[hash_ptr(kspin_lock, SPINLOCK_HASH_BITS)];
+	head = &spinlock_map[hash_ptr(kspin_lock, SPINLOCK_HASH_BITS)];
 	hlist_for_each(node, head) {
 		struct spinlock_hash *p;
 
@@ -106,7 +106,7 @@ struct wrap_spinlock *allocate_kspin_lock(void *kspin_lock)
 
 	spin_lock(&spinlock_map_lock);
 	i = hash_ptr(kspin_lock, SPINLOCK_HASH_BITS);
-	head = &spinlock_table[i];
+	head = &spinlock_map[i];
 	p = kmalloc(sizeof(*p), GFP_ATOMIC);
 	if (!p) {
 		ERROR("couldn't allocate memory");
@@ -130,9 +130,10 @@ int free_kspin_lock(void *kspin_lock)
 
 	spin_lock(&spinlock_map_lock);
 	i = hash_ptr(kspin_lock, SPINLOCK_HASH_BITS);
-	head = &spinlock_table[i];
+	head = &spinlock_map[i];
 	hlist_for_each(node, head) {
 		struct spinlock_hash *p;
+
 		p = hlist_entry(node, struct spinlock_hash, hlist);
 		if (p->kspin_lock == kspin_lock) {
 			hlist_del(&p->hlist);
