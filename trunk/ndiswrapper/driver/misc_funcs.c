@@ -20,6 +20,372 @@
 #include <linux/net.h>
 
 #include "ndis.h"
+#include "wrapper.h"
+
+struct list_head wrap_allocs;
+
+void *wrap_kmalloc(size_t size, int flags)
+{
+	struct wrap_alloc *alloc;
+	alloc = kmalloc(sizeof(*alloc), GFP_ATOMIC);
+	if (!alloc)
+		return NULL;
+	alloc->ptr = kmalloc(size, flags);
+	if (!alloc)
+	{
+		kfree(alloc);
+		return NULL;
+	}
+	list_add(&alloc->list, &wrap_allocs);
+	return alloc->ptr;
+}
+
+void wrap_kfree(void *ptr)
+{
+	struct wrap_alloc *alloc;
+	alloc = (struct wrap_alloc *)wrap_allocs.next;
+	while (alloc)
+		if (alloc->ptr == ptr)
+		{
+			list_del(&alloc->list);
+			kfree(alloc->ptr);
+			kfree(alloc);
+			return;
+		}
+		else
+			alloc = (struct wrap_alloc *)alloc->list.next;
+
+	printk(KERN_ERR "%s: ptr %p is not found in allocated pointers\n",
+	       __FUNCTION__, ptr);
+	return;
+}
+
+void wrap_kfree_all(void)
+{
+	struct wrap_alloc *alloc;
+
+	while (!list_empty(&wrap_allocs))
+	{
+		alloc = (struct wrap_alloc *)wrap_allocs.next;
+		list_del(&alloc->list);
+		kfree(alloc->ptr);
+		kfree(alloc);
+		
+	}
+	return;
+}
+
+void wrapper_timer_handler(unsigned long data)
+{
+	struct kdpc *kdpc = (struct kdpc *)data;
+	struct wrapper_timer *timer = kdpc->wrapper_timer;
+	STDCALL void (*func)(void *res1, void *data, void *res3, void *res4) = 
+		kdpc->func;
+#ifdef DEBUG_TIMER
+	BUG_ON(timer->wrapper_timer_magic != WRAPPER_TIMER_MAGIC);
+#endif
+	
+	if (!timer->active)
+		return;
+	if (timer->repeat)
+	{
+		timer->timer.expires = jiffies + timer->repeat;
+		add_timer(&timer->timer);
+	}
+	else
+		timer->active = 0;
+	
+	if (func)
+		func(kdpc, kdpc->ctx, kdpc->arg1, kdpc->arg2);
+}
+
+void wrapper_init_timer(struct kdpc *kdpc, void *handle, void *func, void *ctx)
+{
+	struct wrapper_timer *timer;
+	struct ndis_handle *ndis_handle = (struct ndis_handle *)handle;
+	timer = kmalloc(sizeof(struct wrapper_timer), GFP_KERNEL);
+	if(!timer)
+	{
+		printk("%s: Cannot malloc mem for timer\n", DRV_NAME);
+		return;
+	}
+	
+	memset(timer, 27, sizeof(*timer));
+	init_timer(&timer->timer);
+	timer->timer.data = (unsigned long) kdpc;
+	timer->timer.function = &wrapper_timer_handler;
+	timer->active = 0;
+	timer->repeat = 0;
+	timer->kdpc = kdpc;
+	kdpc->func = func;
+	kdpc->ctx = ctx;
+	kdpc->wrapper_timer = timer;
+	if (handle)
+		list_add(&timer->list, &ndis_handle->timers);
+#ifdef DEBUG_TIMER
+	printk(KERN_INFO "%s: added timer %p, timer->list %p\n",
+	       __FUNCTION__, timer, &timer->list);
+#endif
+	DBGTRACE("Allocated timer at %08x\n", (int)timer);
+}
+
+int wrapper_set_timer(struct kdpc *kdpc, unsigned long expires,
+		      unsigned long repeat)
+{
+	struct wrapper_timer *timer = kdpc->wrapper_timer;
+	if (!timer)
+	{
+		printk("%s: Driver calling NdisSetTimer on an uninitilized timer\n", DRV_NAME);		
+		return 0;
+	}
+	
+#ifdef DEBUG_TIMER
+	timer->wrapper_timer_magic = WRAPPER_TIMER_MAGIC;
+#endif
+	timer->repeat = repeat;
+	
+	if (timer->active)
+	{
+#ifdef DEBUG_TIMER
+	printk("Modifying timer %p to %lu, %lu\n", timer, expires, repeat);
+#endif
+		mod_timer(&timer->timer, expires);
+		return 1;
+	}
+	else
+	{
+#ifdef DEBUG_TIMER
+//	printk("Setting timer %p to %lu, %lu\n", timer, expires, repeat);
+#endif
+		timer->timer.expires = expires;
+		add_timer(&timer->timer);
+		timer->active = 1;
+		return 0;
+	}
+}
+
+void wrapper_cancel_timer(struct kdpc *kdpc, char *canceled)
+{
+	struct wrapper_timer *timer = kdpc->wrapper_timer;
+	DBGTRACE("%s\n", __FUNCTION__);
+	if(!timer)
+	{
+		printk("%s: Driver calling NdisCancelTimer on an uninitilized timer\n", DRV_NAME);		
+		return;
+	}
+
+#ifdef DEBUG_TIMER
+	printk("Canceling timer %p\n", timer);
+	BUG_ON(timer->wrapper_timer_magic != WRAPPER_TIMER_MAGIC);
+	timer->wrapper_timer_magic = 0;
+#endif
+	
+	timer->repeat = 0;
+	*canceled = del_timer_sync(&(timer->timer));
+	timer->active = 0;
+	return;
+}
+
+NOREGPARM int wrap_sprintf(char *buf, const char *format, ...)
+{
+	va_list args;
+	int res;
+	va_start(args, format);
+	res = vsprintf(buf, format, args);
+	va_end(args);
+	return res;
+}
+
+NOREGPARM int wrap_vsprintf (char *str, const char *format, va_list ap)
+{
+	return vsprintf(str, format, ap);
+}
+
+NOREGPARM int wrap_snprintf(char *buf, size_t count, const char *format, ...)
+{
+	va_list args;
+	int res;
+	
+	va_start(args, format);
+	res = vsnprintf(buf, count, format, args);
+	va_end(args);
+	return res;
+}
+
+NOREGPARM int wrap_vsnprintf (char *str, size_t size,
+			      const char *format, va_list ap)
+{
+	return vsnprintf(str, size, format, ap);
+}
+
+
+NOREGPARM char *wrap_strncpy(char *dst, char *src, int n)
+{
+	return strncpy(dst, src, n);
+}
+
+NOREGPARM size_t wrap_strlen(const char *s)
+{
+       return strlen(s);
+}
+
+NOREGPARM int wrap_strncmp(const char *s1, const char *s2, size_t n)
+{
+	return strncmp(s1, s2, n);
+}
+
+NOREGPARM int wrap_strcmp(const char *s1, const char *s2)
+{
+	return strcmp(s1, s2);
+}
+
+NOREGPARM int wrap_tolower(int c)
+{
+	return tolower(c);
+}
+
+NOREGPARM void *wrap_memcpy(void * to, const void * from, size_t n)
+{
+	return memcpy(to, from, n);
+}
+
+NOREGPARM void *wrap_strcpy(void * to, const void * from)
+{
+	return strcpy(to, from);
+}
+
+NOREGPARM void *wrap_memset(void * s, char c,size_t count)
+{
+	return memset(s, c, count);
+}
+
+NOREGPARM void *wrap_memmove(void *to, void *from, size_t count)
+{
+	return memmove(to, from, count);
+}
+ 
+NOREGPARM void wrap_srand(unsigned int seed)
+{
+	net_srandom(seed);
+}
+
+NOREGPARM int wrap_atoi(const char *ptr)
+{
+	int i = simple_strtol(ptr, NULL, 10);
+	return i;
+}
+
+STDCALL void WRITE_REGISTER_ULONG(unsigned int reg, unsigned int val)
+{
+	writel(val, reg);
+}
+
+STDCALL void WRITE_REGISTER_USHORT(unsigned int reg, unsigned short val)
+{
+	writew(val, reg);
+}
+
+STDCALL void WRITE_REGISTER_UCHAR(unsigned int reg, unsigned char val)
+{
+	writeb(val, reg);
+}
+
+STDCALL void WRITE_PORT_ULONG(unsigned int port, unsigned int value)
+{
+	outl(value, port);
+}
+
+STDCALL unsigned int READ_PORT_ULONG(unsigned int port)
+{
+	return inl(port);
+}
+
+STDCALL void WRITE_PORT_USHORT(unsigned int port, unsigned short value)
+{
+	outw(value, port);
+}
+
+STDCALL unsigned short READ_PORT_USHORT(unsigned int port)
+{
+	return inw(port);
+}
+
+STDCALL void WRITE_PORT_UCHAR(unsigned int port, unsigned char value)
+{
+	outb(value, port);
+}
+
+STDCALL unsigned short READ_PORT_UCHAR(unsigned int port)
+{
+	return inb(port);
+}
+
+
+STDCALL void WRITE_PORT_BUFFER_USHORT (unsigned int port, unsigned short *buf,
+				       unsigned long count)
+{
+	unsigned long i;
+	for (i = 0 ; i < count ; i++)
+		outw(buf[i], port);
+}
+
+STDCALL void READ_PORT_BUFFER_USHORT (unsigned int port, unsigned short *buf,
+				      unsigned long count)
+{
+	unsigned long i;
+	for (i = 0 ; i < count; i++)
+		buf[i] = inw(port);
+}
+
+STDCALL __s64 _alldiv(__s64 a, __s64 b)
+{
+	return (a / b);
+}
+
+STDCALL __u64 _aulldiv(__u64 a, __u64 b)
+{
+	return (a / b);
+}
+
+STDCALL __s64 _allmul(__s64 a, __s64 b)
+{
+	return (a * b);
+}
+
+STDCALL __u64 _aullmul(__u64 a, __u64 b)
+{
+	return (a * b);
+}
+
+STDCALL __s64 _allrem(__s64 a, __s64 b)
+{
+	return (a % b);
+}
+
+STDCALL __u64 _aullrem(__u64 a, __u64 b)
+{
+	return (a % b);
+}
+
+__attribute__ ((regparm(3))) __s64 _allshl(__s64 a, __u8 b)
+{
+	return (a << b);
+}
+
+__attribute__ ((regparm(3))) __u64 _aullshl(__u64 a, __u8 b)
+{
+	return (a << b);
+}
+
+__attribute__ ((regparm(3))) __s64 _allshr(__s64 a, __u8 b)
+{
+	return (a >> b);
+}
+
+__attribute__ ((regparm(3))) __u64 _aullshr(__u64 a, __u8 b)
+{
+	return (a >> b);
+}
 
 STDCALL size_t RtlCompareMemory(const void *a, const void *b, size_t len)
 {
@@ -37,7 +403,7 @@ STDCALL size_t RtlCompareMemory(const void *a, const void *b, size_t len)
 }
 
 STDCALL long RtlCompareString(const struct ustring *s1,
-							  const struct ustring *s2, int case_insensitive)
+			      const struct ustring *s2, int case_insensitive)
 {
 	unsigned int len;
 	long ret = 0;
@@ -178,7 +544,7 @@ STDCALL int RtlUnicodeStringToAnsiString(struct ustring *dst, struct ustring *sr
 }
 
 STDCALL int RtlIntegerToUnicodeString(unsigned long value, unsigned long base,
-									  struct ustring *ustring)
+				      struct ustring *ustring)
 {
 	char string[sizeof(unsigned long) * 8 + 1];
 	struct ustring ansi;
@@ -214,6 +580,17 @@ STDCALL int RtlIntegerToUnicodeString(unsigned long value, unsigned long base,
 void RtlFreeUnicodeString(void){UNIMPL();}
 void RtlUnwind(void){UNIMPL();}
 
+STDCALL int rand(void)
+{
+	char buf[6];
+	int i, r;
+	
+	get_random_bytes(buf, sizeof(buf));
+	for (r = i = 0; i < sizeof(buf) ; i++)
+		r += buf[i];
+	return r;
+}
+
 /*
  * This is the packet_recycler that gets scheduled from NdisMIndicateReceivePacket
  */
@@ -246,6 +623,13 @@ void packet_recycler(void *param)
 	}
 }
 
+int getSp(void)
+{
+	volatile int i;
+	asm("movl %esp,(%esp,1)");
+	return i;
+}
+
 void inline my_dumpstack(void)
 {
 	int *sp = (int*) getSp();
@@ -256,10 +640,58 @@ void inline my_dumpstack(void)
 	}
 }
 
-int getSp(void)
+struct wrap_func misc_wrap_funcs[] =
 {
-	volatile int i;
-	asm("movl %esp,(%esp,1)");
-	return i;
-}
+	WRAP_FUNC_ENTRY(READ_PORT_BUFFER_USHORT),
+	WRAP_FUNC_ENTRY(READ_PORT_UCHAR),
+	WRAP_FUNC_ENTRY(READ_PORT_ULONG),
+	WRAP_FUNC_ENTRY(READ_PORT_USHORT),
+	WRAP_FUNC_ENTRY(RtlAnsiStringToUnicodeString),
+	WRAP_FUNC_ENTRY(RtlCompareMemory),
+	WRAP_FUNC_ENTRY(RtlCompareString),
+	WRAP_FUNC_ENTRY(RtlCompareUnicodeString),
+	WRAP_FUNC_ENTRY(RtlCopyUnicodeString),
+	WRAP_FUNC_ENTRY(RtlEqualString),
+	WRAP_FUNC_ENTRY(RtlEqualUnicodeString),
+	WRAP_FUNC_ENTRY(RtlFreeUnicodeString),
+	WRAP_FUNC_ENTRY(RtlIntegerToUnicodeString),
+	WRAP_FUNC_ENTRY(RtlUnicodeStringToAnsiString),
+	WRAP_FUNC_ENTRY(RtlUnwind),
+	WRAP_FUNC_ENTRY(WRITE_PORT_BUFFER_USHORT),
+	WRAP_FUNC_ENTRY(WRITE_PORT_UCHAR),
+	WRAP_FUNC_ENTRY(WRITE_PORT_ULONG),
+	WRAP_FUNC_ENTRY(WRITE_PORT_USHORT),
+	WRAP_FUNC_ENTRY(WRITE_REGISTER_UCHAR),
+	WRAP_FUNC_ENTRY(WRITE_REGISTER_ULONG),
+	WRAP_FUNC_ENTRY(WRITE_REGISTER_USHORT),
 
+	WRAP_FUNC_ENTRY(_alldiv),
+	WRAP_FUNC_ENTRY(_allmul),
+	WRAP_FUNC_ENTRY(_allrem),
+	WRAP_FUNC_ENTRY(_aulldiv),
+	WRAP_FUNC_ENTRY(_aullmul),
+	WRAP_FUNC_ENTRY(_aullrem),
+	WRAP_FUNC_ENTRY(_allshl),
+	WRAP_FUNC_ENTRY(_aullshl),
+	WRAP_FUNC_ENTRY(_allshr),
+	WRAP_FUNC_ENTRY(_aullshr),
+
+	{"atoi",   (WRAP_FUNC *)wrap_atoi},
+	{"memcpy",   (WRAP_FUNC *)wrap_memcpy},
+	{"memmove",   (WRAP_FUNC *)wrap_memmove},
+	{"memset",   (WRAP_FUNC *)wrap_memset},
+	{"rand",   (WRAP_FUNC *)rand},
+	{"snprintf",   (WRAP_FUNC *)wrap_snprintf},
+	{"sprintf",   (WRAP_FUNC *)wrap_sprintf},
+	{"srand",   (WRAP_FUNC *)wrap_srand},
+	{"strcmp",   (WRAP_FUNC *)wrap_strcmp},
+	{"strcpy",   (WRAP_FUNC *)wrap_strcpy},
+	{"strlen",   (WRAP_FUNC *)wrap_strlen},
+	{"strncmp",   (WRAP_FUNC *)wrap_strncmp},
+	{"strncpy",   (WRAP_FUNC *)wrap_strncpy},
+	{"tolower",   (WRAP_FUNC *)wrap_tolower},
+	{"vsnprintf",   (WRAP_FUNC *)wrap_vsnprintf},
+	{"vsprintf",   (WRAP_FUNC *)wrap_vsprintf},
+
+	{NULL, NULL}
+};

@@ -68,6 +68,8 @@ static spinlock_t driverlist_lock = SPIN_LOCK_UNLOCKED;
 
 extern int image_offset;
 
+extern struct list_head wrap_allocs;
+
 int doreset(struct ndis_handle *handle)
 {
 	int res;
@@ -993,6 +995,10 @@ static void fixup_timers(struct ndis_handle *handle)
 	while(!list_empty(&handle->timers))
 	{
 		struct wrapper_timer *timer = (struct wrapper_timer*) handle->timers.next;
+#ifdef DEBUG_TIMER
+		printk(KERN_INFO "%s: fixing up timer %p, timer->list %p\n",
+		       __FUNCTION__, timer, &timer->list);
+#endif
 		list_del(&timer->list);
 		if(timer->active)
 		{
@@ -1526,6 +1532,9 @@ static int __init wrapper_init(void)
         }
 
 	ndiswrapper_procfs_init();
+
+	INIT_LIST_HEAD(&wrap_allocs);
+
 	init_ndis_work();
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
 	call_usermodehelper("/sbin/loadndisdriver", argv, env, 1);
@@ -1549,6 +1558,7 @@ static void __exit wrapper_exit(void)
 	
 	ndiswrapper_procfs_remove();
 	misc_deregister(&wrapper_misc);
+	wrap_kfree_all();
 }
 
 module_init(wrapper_init);

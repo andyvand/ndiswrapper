@@ -14,261 +14,7 @@
  */
 
 #include "ntoskernel.h"
-#include "ndis.h"
-
-STDCALL void WRITE_REGISTER_ULONG(unsigned int reg, unsigned int val)
-{
-	writel(val, reg);
-}
-
-STDCALL void WRITE_REGISTER_USHORT(unsigned int reg, unsigned short val)
-{
-	writew(val, reg);
-}
-
-STDCALL void WRITE_REGISTER_UCHAR(unsigned int reg, unsigned char val)
-{
-	writeb(val, reg);
-}
-
-NOREGPARM int my_sprintf(char *str, const char *format, int p1, int p2, int p3, int p4, int p5, int p6)
-{
-	int res;
-	res = sprintf(str, format, p1, p2, p3, p4, p5, p6);
-	return res;
-}
-
-NOREGPARM int my_vsprintf (char *str, const char *format, va_list ap)
-{
-	return vsprintf(str, format, ap);
-}
-
-NOREGPARM int my_snprintf(char *buf, size_t count, const char *format, ...)
-{
-	va_list args;
-	int res;
-	
-	va_start(args, format);
-	res = snprintf(buf, count, format, args);
-	va_end(args);
-	return res;
-}
-
-NOREGPARM int my_vsnprintf (char *str, size_t size,
-							const char *format, va_list ap)
-{
-	return vsnprintf(str, size, format, ap);
-}
-
-
-NOREGPARM char *my_strncpy(char *dst, char *src, int n)
-{
-	return strncpy(dst, src, n);
-}
-
-NOREGPARM size_t my_strlen(const char *s)
-{
-       return strlen(s);
-}
-
-NOREGPARM int my_strncmp(const char *s1, const char *s2, size_t n)
-{
-	return strncmp(s1, s2, n);
-}
-
-NOREGPARM int my_strcmp(const char *s1, const char *s2)
-{
-	return strcmp(s1, s2);
-}
-
-NOREGPARM int my_tolower(int c)
-{
-	return tolower(c);
-}
-
-NOREGPARM void *my_memcpy(void * to, const void * from, size_t n)
-{
-	return memcpy(to, from, n);
-}
-
-NOREGPARM void *my_strcpy(void * to, const void * from)
-{
-	return strcpy(to, from);
-}
-
-NOREGPARM void *my_memset(void * s, char c,size_t count)
-{
-	return memset(s, c, count);
-}
-
-NOREGPARM void *my_memmove(void *to, void *from, size_t count)
-{
-	return memmove(to, from, count);
-}
- 
-NOREGPARM void my_srand(unsigned int seed)
-{
-	net_srandom(seed);
-}
-
-NOREGPARM int my_atoi(const char *ptr)
-{
-	int i = simple_strtol(ptr, NULL, 10);
-	return i;
-}
-
-
-STDCALL __s64 _alldiv(__s64 a, __s64 b)
-{
-	return (a / b);
-}
-
-STDCALL __u64 _aulldiv(__u64 a, __u64 b)
-{
-	return (a / b);
-}
-
-STDCALL __s64 _allmul(__s64 a, __s64 b)
-{
-	return (a * b);
-}
-
-STDCALL __u64 _aullmul(__u64 a, __u64 b)
-{
-	return (a * b);
-}
-
-STDCALL __s64 _allrem(__s64 a, __s64 b)
-{
-	return (a % b);
-}
-
-STDCALL __u64 _aullrem(__u64 a, __u64 b)
-{
-	return (a % b);
-}
-
-__attribute__ ((regparm(3))) __s64 _allshl(__s64 a, __u8 b)
-{
-	return (a << b);
-}
-
-__attribute__ ((regparm(3))) __u64 _aullshl(__u64 a, __u8 b)
-{
-	return (a << b);
-}
-
-__attribute__ ((regparm(3))) __s64 _allshr(__s64 a, __u8 b)
-{
-	return (a >> b);
-}
-
-__attribute__ ((regparm(3))) __u64 _aullshr(__u64 a, __u8 b)
-{
-	return (a >> b);
-}
-
-void wrapper_timer_handler(unsigned long data)
-{
-	struct kdpc *kdpc = (struct kdpc *)data;
-	struct wrapper_timer *timer = kdpc->wrapper_timer;
-	STDCALL void (*func)(void *res1, void *data, void *res3, void *res4) = 
-		kdpc->func;
-#ifdef DEBUG_TIMER
-	BUG_ON(timer->wrapper_timer_magic != WRAPPER_TIMER_MAGIC);
-#endif
-	
-	if (!timer->active)
-		return;
-	if (timer->repeat)
-	{
-		timer->timer.expires = jiffies + timer->repeat;
-		add_timer(&timer->timer);
-	}
-	else
-		timer->active = 0;
-	
-	if (func)
-		func(kdpc, kdpc->ctx, kdpc->arg1, kdpc->arg2);
-}
-
-void wrapper_init_timer(struct kdpc *kdpc, void *handle, void *func, void *ctx)
-{
-	struct wrapper_timer *timer;
-	struct ndis_handle *ndis_handle = (struct ndis_handle *)handle;
-	timer = kmalloc(sizeof(struct wrapper_timer), GFP_KERNEL);
-	if(!timer)
-	{
-		printk("%s: Cannot malloc mem for timer\n", DRV_NAME);
-		return;
-	}
-	
-	memset(timer, 27, sizeof(*timer));
-	init_timer(&timer->timer);
-	timer->timer.data = (unsigned long) kdpc;
-	timer->timer.function = &wrapper_timer_handler;
-	timer->active = 0;
-	timer->repeat = 0;
-	timer->kdpc = kdpc;
-#ifdef DEBUG_TIMER
-	timer->wrapper_timer_magic = WRAPPER_TIMER_MAGIC;
-#endif
-	kdpc->func = func;
-	kdpc->ctx = ctx;
-	kdpc->wrapper_timer = timer;
-	if (handle)
-		list_add(&timer->list, &ndis_handle->timers);
-	DBGTRACE("Allocated timer at %08x\n", (int)timer);
-}
-
-int wrapper_set_timer(struct kdpc *kdpc, __u64 expires, unsigned long repeat)
-{
-	struct wrapper_timer *timer = kdpc->wrapper_timer;
-	if (!timer)
-	{
-		printk("%s: Driver calling NdisSetTimer on an uninitilized timer\n", DRV_NAME);		
-		return 0;
-	}
-	
-	DBGTRACE("Setting timer %p to %Lu, %lu\n", timer, expires, repeat);
-#ifdef DEBUG_TIMER
-	BUG_ON(timer->wrapper_timer_magic != WRAPPER_TIMER_MAGIC);
-#endif
-	timer->repeat = repeat;
-	
-	if (timer->active)
-	{
-		mod_timer(&timer->timer, expires);
-		return 1;
-	}
-	else
-	{
-		timer->timer.expires = expires;
-		add_timer(&timer->timer);
-		timer->active = 1;
-		return 0;
-	}
-}
-
-void wrapper_cancel_timer(struct kdpc *kdpc, char *canceled)
-{
-	struct wrapper_timer *timer = kdpc->wrapper_timer;
-	DBGTRACE("%s\n", __FUNCTION__);
-	if(!timer)
-	{
-		printk("%s: Driver calling NdisCancelTimer on an uninitilized timer\n", DRV_NAME);		
-		return;
-	}
-	DBGTRACE("Canceling timer %p\n", timer);
-#ifdef DEBUG_TIMER
-	BUG_ON(timer->wrapper_timer_magic != WRAPPER_TIMER_MAGIC);
-#endif
-	
-	timer->repeat = 0;
-	*canceled = del_timer_sync(&(timer->timer));
-	timer->active = 0;
-	return;
-}
+#include "wrapper.h"
 
 STDCALL void KeInitializeTimer(struct ktimer *ktimer)
 {
@@ -321,17 +67,10 @@ STDCALL int KeCancelTimer(struct ktimer *ktimer)
 	return canceled;
 }
 
-STDCALL int rand(void)
+STDCALL int KeGetCurrentIrql(void)
 {
-	char buf[6];
-	int i, r;
-	
-	get_random_bytes(buf, sizeof(buf));
-	for (r = i = 0; i < sizeof(buf) ; i++)
-		r += buf[i];
-	return r;
+	return DISPATCH_LEVEL;
 }
-
 
 STDCALL void KeInitializeSpinLock(KSPIN_LOCK *lock)
 {
@@ -342,7 +81,7 @@ STDCALL void KeInitializeSpinLock(KSPIN_LOCK *lock)
 	if (!lock)
 		printk(KERN_ERR "%s: lock %p is not valid pointer?\n",
 			   __FUNCTION__, lock);
-	spin_lock = kmalloc(sizeof(spinlock_t), GFP_KERNEL);
+	spin_lock = wrap_kmalloc(sizeof(spinlock_t), GFP_KERNEL);
 	if (!spin_lock)
 		printk(KERN_ERR "%s: couldn't allocate space for spinlock\n",
 			   __FUNCTION__);
@@ -374,6 +113,10 @@ STDCALL void KeReleaseSpinLock(KSPIN_LOCK *lock, KIRQL *oldirql)
 			   __FUNCTION__, lock);
 }
 
+STDCALL void KfAcquireSpinLock(KSPIN_LOCK *lock, KIRQL *oldirql)
+{
+	KeAcquireSpinLock(lock, oldirql);
+}
 
 _FASTCALL struct slist_entry *
 ExInterlockedPushEntrySList(int dummy, 
@@ -432,10 +175,10 @@ STDCALL void lookaside_def_free_func(void *buffer)
 
 STDCALL void
  ExInitializeNPagedLookasideList(struct npaged_lookaside_list *lookaside,
-								 LOOKASIDE_ALLOC_FUNC *alloc_func,
-								 LOOKASIDE_FREE_FUNC *free_func,
-								 unsigned long flags, unsigned long size,
-								 unsigned long tag, unsigned short depth)
+				 LOOKASIDE_ALLOC_FUNC *alloc_func,
+				 LOOKASIDE_FREE_FUNC *free_func,
+				 unsigned long flags, unsigned long size,
+				 unsigned long tag, unsigned short depth)
 {
 	DBGTRACE("%s: Entry, lookaside: %p, size: %lu, flags: %lu,"
 		 " head: %p, size of lookaside: %u\n",
@@ -488,7 +231,7 @@ ExInterlockedAddLargeStatistic(int dummy, u32 n, u64 *plint)
 }
 
 STDCALL void *MmMapIoSpace(unsigned int phys_addr,
-						   unsigned long size, int cache)
+			   unsigned long size, int cache)
 {
 	void *virt;
 	if (cache)
@@ -518,6 +261,19 @@ STDCALL int IoIsWdmVersionAvailable(unsigned char major, unsigned char minor)
 	return 0;
 }
 
+/** Functions from CIPE **/
+NOREGPARM void DbgPrint(char *str, int x, int y, int z)
+{
+	DBGTRACE(str, x, y, z);
+}
+
+/** Functions from HAL **/
+STDCALL void KeStallExecutionProcessor(unsigned int usecs)
+{
+	//DBGTRACE("%s %d\n", __FUNCTION__ , usecs);
+	udelay(usecs);
+}
+
 STDCALL unsigned int KeWaitForSingleObject(void **object, unsigned int reason, unsigned int waitmode, unsigned short alertable, void *timeout)
 {
 	UNIMPL();
@@ -545,6 +301,7 @@ void DbgBreakPoint(void)
 
 void IofCompleteRequest(void){UNIMPL();}
 void IoReleaseCancelSpinLock(void){UNIMPL();}
+void KfReleaseSpinLock(void){UNIMPL();}
 void KeInitializeEvent(void *event){UNIMPL();}
 void IoDeleteDevice(void){UNIMPL();}
 void IoCreateSymbolicLink(void){UNIMPL();}
@@ -554,3 +311,43 @@ void IoCreateDevice(void){UNIMPL();}
 void IoDeleteSymbolicLink(void){UNIMPL();}
 void InterlockedExchange(void){UNIMPL();}
 
+struct wrap_func ntos_wrap_funcs[] =
+{
+	WRAP_FUNC_ENTRY(DbgBreakPoint),
+	WRAP_FUNC_ENTRY(DbgPrint),
+	WRAP_FUNC_ENTRY(ExAllocatePoolWithTag),
+	WRAP_FUNC_ENTRY(ExDeleteNPagedLookasideList),
+	WRAP_FUNC_ENTRY(ExFreePool),
+	WRAP_FUNC_ENTRY(ExInitializeNPagedLookasideList),
+	WRAP_FUNC_ENTRY(ExInterlockedAddLargeStatistic),
+	WRAP_FUNC_ENTRY(ExInterlockedPopEntrySList),
+	WRAP_FUNC_ENTRY(ExInterlockedPushEntrySList),
+	WRAP_FUNC_ENTRY(InterlockedExchange),
+	WRAP_FUNC_ENTRY(IoBuildSynchronousFsdRequest),
+	WRAP_FUNC_ENTRY(IoCreateDevice),
+	WRAP_FUNC_ENTRY(IoCreateSymbolicLink),
+	WRAP_FUNC_ENTRY(IoDeleteDevice),
+	WRAP_FUNC_ENTRY(IoDeleteSymbolicLink),
+	WRAP_FUNC_ENTRY(IoIsWdmVersionAvailable),
+	WRAP_FUNC_ENTRY(IoReleaseCancelSpinLock),
+	WRAP_FUNC_ENTRY(IofCallDriver),
+	WRAP_FUNC_ENTRY(IofCompleteRequest),
+	WRAP_FUNC_ENTRY(KeAcquireSpinLock),
+	WRAP_FUNC_ENTRY(KeCancelTimer),
+	WRAP_FUNC_ENTRY(KeGetCurrentIrql),
+	WRAP_FUNC_ENTRY(KeInitializeDpc),
+	WRAP_FUNC_ENTRY(KeInitializeEvent),
+	WRAP_FUNC_ENTRY(KeInitializeSpinLock),
+	WRAP_FUNC_ENTRY(KeInitializeTimer),
+	WRAP_FUNC_ENTRY(KeReleaseSpinLock),
+	WRAP_FUNC_ENTRY(KeSetTimerEx),
+	WRAP_FUNC_ENTRY(KeStallExecutionProcessor),
+	WRAP_FUNC_ENTRY(KeWaitForSingleObject),
+	WRAP_FUNC_ENTRY(KfAcquireSpinLock),
+	WRAP_FUNC_ENTRY(KfReleaseSpinLock),
+	WRAP_FUNC_ENTRY(MmMapIoSpace),
+	WRAP_FUNC_ENTRY(MmMapLockedPages),
+	WRAP_FUNC_ENTRY(MmUnmapIoSpace),
+
+	{NULL, NULL}
+};

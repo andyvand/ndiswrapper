@@ -16,6 +16,7 @@
 #define WRAPPER_H
 
 #include <linux/ioctl.h>
+#include <linux/list.h>
 
 #define DRIVERNAME_MAX 32
 
@@ -44,6 +45,16 @@ struct put_setting
 	char *name;
 	char *value;
 };
+
+struct wrap_alloc
+{
+	struct list_head list;
+	void *ptr;
+};
+
+void *wrap_kmalloc(size_t size, int flags);
+void wrap_kfree(void *ptr);
+void wrap_kfree_all(void);
 
 #define NDIS_PUTDRIVER     _IOWR('N', 0, struct put_file*)
 #define NDIS_PUTSETTING    _IOWR('N', 1, struct put_setting*)

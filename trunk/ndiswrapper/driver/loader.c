@@ -17,10 +17,31 @@
 #include <asm/pgalloc.h>
 
 #include "coffpe.h"
-#include "winsyms.h"
 #include "ndis.h"
 
 #define RADR(base, rva, type) (type) ((char*)base + rva)
+
+extern struct wrap_func ntos_wrap_funcs[], ndis_wrap_funcs[],
+	misc_wrap_funcs[];
+
+WRAP_FUNC *get_wrap_func(char *name)
+{
+	int i;
+
+	for (i = 0 ; ntos_wrap_funcs[i].name != NULL; i++)
+		if (strcmp(ntos_wrap_funcs[i].name, name) == 0)
+			return ntos_wrap_funcs[i].func;
+
+	for (i = 0 ; ndis_wrap_funcs[i].name != NULL; i++)
+		if (strcmp(ndis_wrap_funcs[i].name, name) == 0)
+			return ndis_wrap_funcs[i].func;
+
+	for (i = 0 ; misc_wrap_funcs[i].name != NULL; i++)
+		if (strcmp(misc_wrap_funcs[i].name, name) == 0)
+			return misc_wrap_funcs[i].func;
+
+	return NULL;
+}
 
 /*
  * Find and validate the coff header
@@ -76,7 +97,7 @@ static int import(void *image, struct coffpe_import_dirent *dirent, char *dll)
 	cu32 *lookup_tbl, *address_tbl;
 	char *symname = 0;
 	int i;
-	void * adr;
+	WRAP_FUNC *adr;
 	int ret = 0;
 
 	lookup_tbl  = RADR(image, dirent->import_lookup_tbl,    cu32*);
@@ -91,7 +112,7 @@ static int import(void *image, struct coffpe_import_dirent *dirent, char *dll)
 			symname = RADR(image, ((lookup_tbl[i] & 0x7fffffff) + 2), char*);
 		}
 
-		adr = get_winsym(symname);
+		adr = get_wrap_func(symname);
 		if(adr == 0)
 		{
 			printk(KERN_ERR "Unknown symbol: %s:%s\n", dll, symname);
