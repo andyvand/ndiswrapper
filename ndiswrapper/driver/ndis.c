@@ -1339,7 +1339,7 @@ irqreturn_t ndis_irq_th(int irq, void *data, struct pt_regs *pt_regs)
 	miniport = &handle->driver->miniport_char;
 	/* this spinlock should be shared with NdisMSynchronizeWithInterrupt
 	 */
-	spin_lock_bh(ndis_irq->spinlock);
+	spin_lock(ndis_irq->spinlock);
 	if (ndis_irq->req_isr)
 		miniport->isr(&recognized, &handled, handle->adapter_ctx);
 	else //if (miniport->disable_interrupts)
@@ -1348,7 +1348,7 @@ irqreturn_t ndis_irq_th(int irq, void *data, struct pt_regs *pt_regs)
 		/* it is not shared interrupt, so handler must be called */
 		recognized = handled = 1;
 	}
-	spin_unlock_bh(ndis_irq->spinlock);
+	spin_unlock(ndis_irq->spinlock);
 
 	if (recognized && handled)
 		schedule_work(&handle->irq_bh);
