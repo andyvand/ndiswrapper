@@ -856,14 +856,15 @@ STDCALL void NdisMAllocateSharedMemory(struct ndis_handle *handle,
 	dma_addr_t p;
 
 //	DBGTRACE("%s: entry\n", __FUNCTION__);
-	if (handle->map_dma_addr == NULL)
-		printk(KERN_ERR "%s: DMA map address is not set!\n",
-		       __FUNCTION__);
+//	if (handle->map_dma_addr == NULL)
+//		printk(KERN_ERR "%s: DMA map address is not set!\n",
+//		       __FUNCTION__);
 	void *v = PCI_DMA_ALLOC_COHERENT(handle->pci_dev, size, &p);
 	if(!v)
 	{
 		printk(KERN_ERR "Failed to allocate DMA coherent memory. "
-		       "Windows driver requested %d bytes of %scached memory\n", size, cached ? "" : "un-");
+		       "Windows driver requested %d bytes of %scached memory\n",
+		       size, cached ? "" : "un-");
 	}
 
 	*(char**)virt = v;

@@ -962,6 +962,7 @@ static int ndis_init_one(struct pci_dev *pdev,
 
 	memset(&handle->essid, 0, sizeof(handle->essid));
 	memset(&handle->wep_info, 0, sizeof(handle->wep_info));
+	handle->wep_info.active = 1;
 	
 	res = pci_enable_device(pdev);
 	if(res)
