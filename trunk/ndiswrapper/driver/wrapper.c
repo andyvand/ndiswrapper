@@ -1009,12 +1009,11 @@ static void check_wpa(struct ndis_handle *handle)
 
 	TRACEENTER1("%s", "");
 	handle->wpa_capa = 0;
-	res = set_int(handle, NDIS_OID_AUTH_MODE, AUTHMODE_WPAPSK);
-	if (res)
-		return;
+	if (set_auth_mode(handle, AUTHMODE_WPAPSK))
+		TRACEEXIT1(return);
 	res = query_int(handle, NDIS_OID_AUTH_MODE, &i);
 	if (res || i != AUTHMODE_WPAPSK)
-		return;
+		TRACEEXIT1(return);
 	
 	DBGTRACE("%s", "checking for encr");
 	/* check for highest encryption */
@@ -1022,13 +1021,10 @@ static void check_wpa(struct ndis_handle *handle)
 	while (mode)
 	{
 		DBGTRACE("checking wep mode %d", mode);
-		res = set_int(handle, NDIS_OID_WEP_STATUS, mode);
-		DBGTRACE("wep_set ret = %08X", res);
-		if (!res)
-			res = query_int(handle, NDIS_OID_WEP_STATUS, &i);
-		DBGTRACE("got wep mode %d (%08X)", i, res);
-		if (!res && i == mode)
-			break;
+		if (!set_wep_mode(handle, mode))
+			if (!query_int(handle, NDIS_OID_WEP_STATUS, &i))
+				if (i == mode)
+					break;
 
 		if (mode == WEP_ENCR3_ENABLED)
 			mode = WEP_ENCR2_ENABLED;
@@ -1041,7 +1037,7 @@ static void check_wpa(struct ndis_handle *handle)
 		}
 	}
 	DBGTRACE("wep_mode = %d", mode);
-	handle->wep_mode = WEP_ENCR2_ENABLED;
+	set_wep_mode(handle, mode);
 			
 //	if (handle->wep_mode == WEP_ENCR3_ENABLED ||
 //	    handle->wep_mode == WEP_ENCR2_ENABLED)
@@ -1056,19 +1052,19 @@ static void check_wpa(struct ndis_handle *handle)
 		DBGTRACE("add key returns %08X, needed = %d, size = %d\n",
 			 res, needed, sizeof(ndis_key));
 		if (res != NDIS_STATUS_INVALID_DATA)
-			return;
+			TRACEEXIT1(return);
 		res = doquery(handle, NDIS_OID_ASSOC_INFO,
 			      (char *)&ndis_assoc_info,
 			      sizeof(ndis_assoc_info), &written, &needed);
 		DBGTRACE("assoc info returns %d", res);
 		if (res)
-			return;
+			TRACEEXIT1(return);
 		handle->wpa_capa = 1;
 	}
 
 	DBGTRACE("%s: wpa is enabled? = %d\n",
 		 handle->net_dev->name, handle->wpa_capa);
-	return;
+	TRACEEXIT1(return);
 }
 
 static int setup_dev(struct net_device *dev)
@@ -1120,6 +1116,7 @@ static int setup_dev(struct net_device *dev)
 			kmalloc(handle->multicast_list_size * 6, GFP_KERNEL);
 
 #ifdef WPA
+	DBGTRACE1("%s", "checking if WPA is supported");
 	wrqu.param.value = NDIS_PRIV_ACCEPT_ALL;
 	if (ndis_set_priv_filter(dev, NULL, &wrqu, NULL))
 		WARNING("%s", "Unable to set privacy filter");
@@ -1213,6 +1210,9 @@ static int ndis_init_one(struct pci_dev *pdev, const struct pci_device_id *ent)
 	handle->xmit_ring_start = 0;
 	handle->xmit_ring_pending = 0;
 
+	handle->wep_mode = WEP_NOKEY;
+	handle->auth_mode = AUTHMODE_OPEN;
+
 	wrap_spin_lock_init(&handle->recycle_packets_lock);
 	INIT_LIST_HEAD(&handle->recycle_packets);
 
@@ -1267,7 +1267,7 @@ static int ndis_init_one(struct pci_dev *pdev, const struct pci_device_id *ent)
 	pci_set_power_state(pdev, 0);
 	pci_restore_state(pdev, NULL);
 
-	TRACEENTER1("%s", "Calling ndis init routine");
+	DBGTRACE1("%s", "Calling ndis init routine");
 	if(call_init(handle))
 	{
 		ERROR("%s", "Windows driver couldn't initialize the device");
@@ -1279,9 +1279,8 @@ static int ndis_init_one(struct pci_dev *pdev, const struct pci_device_id *ent)
 	handle->pm_state = NDIS_PM_STATE_D0;
 	set_int(handle, NDIS_OID_PNP_SET_POWER, handle->pm_state);
 	
-	/* Centrino cards don't like to be reset */
-	/* Is it only 2200? 2100 likes it or not? */
-	if (ent->vendor != 0x8086)
+	/* SMC 2802W V2 cards need reset (any others need it too?) */
+	if (ent->vendor == 0x1260)
 		doreset(handle);
 
 	/* Wait a little to let card power up otherwise ifup might fail after
@@ -1362,9 +1361,6 @@ static void __devexit ndis_remove_one(struct pci_dev *pdev)
 	call_halt(handle);
 
 	fixup_timers(handle);
-
-	/* Make sure any scheduled work is flushed before freeing the handle */
-	flush_scheduled_work();
 
 	if(handle->multicast_list)
 		kfree(handle->multicast_list);
@@ -1863,6 +1859,7 @@ static int __init wrapper_init(void)
         }
 
 	init_ndis_work();
+	init_alloc_work();
 	INIT_LIST_HEAD(&wrap_allocs);
 	wrap_spin_lock_init(&wrap_allocs_lock);
 	wrap_spin_lock_init(&driverlist_lock);

@@ -924,7 +924,7 @@ STDCALL void NdisMFreeMapRegisters(struct ndis_handle *handle)
 
 
 STDCALL void NdisMAllocateSharedMemory(struct ndis_handle *handle,
-                                       unsigned int size, char cached,
+                                       unsigned long size, char cached,
 				       void **virt,
 				       struct ndis_phy_address *phys)
 {
@@ -939,7 +939,7 @@ STDCALL void NdisMAllocateSharedMemory(struct ndis_handle *handle,
 	if(!v)
 	{
 		ERROR("Failed to allocate DMA coherent memory. "
-		      "Windows driver requested %d bytes of %scached memory\n",
+		      "Windows driver requested %ld bytes of %scached memory\n",
 		       size, cached ? "" : "un-");
 	}
 
@@ -947,6 +947,81 @@ STDCALL void NdisMAllocateSharedMemory(struct ndis_handle *handle,
 	phys->low = (unsigned int)p;
 	phys->high = 0;
 	DBGTRACE3("allocated shared memory: %p", v);
+}
+
+static struct list_head alloc_list;
+static spinlock_t alloc_list_lock = SPIN_LOCK_UNLOCKED;
+static struct work_struct alloc_work;
+
+static void alloc_worker(void *data)
+{
+	struct ndis_alloc_entry *alloc_entry;
+	void *virt;
+	struct ndis_phy_address phys;
+	struct ndis_handle *handle;
+
+	TRACEENTER3("%s", "");
+	while (1)
+	{
+		spin_lock(&alloc_list_lock);
+		if (list_empty(&alloc_list))
+			alloc_entry = NULL;
+		else
+		{
+			alloc_entry = (struct ndis_alloc_entry*) alloc_list.next;
+			list_del(&alloc_entry->list);
+		}
+		spin_unlock(&alloc_list_lock);
+
+		if (!alloc_entry)
+		{
+			DBGTRACE3("%s", "No more allocs");
+			break;
+		}
+		
+		DBGTRACE3("Allocating %scached memory of length %d",
+			  alloc_entry->cached ? "" : "un-",
+			  (int)alloc_entry->length);
+		handle = (struct ndis_handle *)alloc_entry->handle;
+		NdisMAllocateSharedMemory(handle, alloc_entry->size,
+					  alloc_entry->cached, &virt, &phys);
+		if (*((char *)virt))
+			handle->driver->miniport_char.alloc_complete(handle, virt,
+					       &phys, alloc_entry->size,
+					       alloc_entry->ctx);
+		kfree(alloc_entry);
+	}
+	TRACEEXIT3(return);
+}
+
+void init_alloc_work(void)
+{
+	INIT_WORK(&alloc_work, alloc_worker, NULL);
+	INIT_LIST_HEAD(&alloc_list);
+}
+
+STDCALL static int NdisMAllocateSharedMemoryAsync(struct ndis_handle *handle,
+						  unsigned long size,
+						  char cached, void *ctx)
+{
+	struct ndis_alloc_entry *alloc_entry;
+
+	TRACEENTER3("%s", "");
+	alloc_entry = kmalloc(sizeof(*alloc_entry), GFP_ATOMIC);
+	if (!alloc_entry)
+		return NDIS_STATUS_FAILURE;
+
+	alloc_entry->handle = handle;
+	alloc_entry->size = size;
+	alloc_entry->cached = cached;
+	alloc_entry->ctx = ctx;
+	
+	spin_lock(&alloc_list_lock);
+	list_add_tail(&alloc_entry->list, &alloc_list);
+	spin_unlock(&alloc_list_lock);
+	
+	schedule_work(&alloc_work);
+	TRACEEXIT3(return NDIS_STATUS_PENDING);
 }
 
 STDCALL void NdisMFreeSharedMemory(struct ndis_handle *handle,
@@ -1326,6 +1401,7 @@ STDCALL void NdisMDeregisterInterrupt(struct ndis_irq *ndis_irq)
 
 	if(ndis_irq)
 	{
+		flush_scheduled_work();
 		ndis_irq->enabled = 0;
 		free_irq(ndis_irq->irq, ndis_irq);
 		kfree(ndis_irq->spinlock);
@@ -2107,6 +2183,7 @@ struct wrap_func ndis_wrap_funcs[] =
 	WRAP_FUNC_ENTRY(NdisInterlockedRemoveHeadList),
 	WRAP_FUNC_ENTRY(NdisMAllocateMapRegisters),
 	WRAP_FUNC_ENTRY(NdisMAllocateSharedMemory),
+	WRAP_FUNC_ENTRY(NdisMAllocateSharedMemoryAsync),
 	WRAP_FUNC_ENTRY(NdisMCancelTimer),
 	WRAP_FUNC_ENTRY(NdisMCompleteBufferPhysicalMapping),
 	WRAP_FUNC_ENTRY(NdisMDeregisterAdapterShutdownHandler),

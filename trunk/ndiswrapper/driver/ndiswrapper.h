@@ -137,15 +137,16 @@ void wrap_kfree_all(void);
 #define DBGTRACE3(fmt, ...) (void)0
 #define DBGTRACE4(fmt, ...) (void)0
 
-#define MESSAGE(level, fmt, ...) printk(level "ndiswrapper (%s:%d): " fmt "\n", \
-					__FUNCTION__, __LINE__, ## __VA_ARGS__)
-#define WARNING(fmt, ...) MESSAGE(KERN_WARNING, fmt, ## __VA_ARGS__)
-#define ERROR(fmt, ...) MESSAGE(KERN_ERR, fmt, ## __VA_ARGS__)
-#define INFO(fmt, ...) MESSAGE(KERN_INFO, fmt, ## __VA_ARGS__)
+#define MSG(level, fmt, ...) printk(level "ndiswrapper (%s:%d): " fmt "\n", \
+				    __FUNCTION__, __LINE__, ## __VA_ARGS__)
+#define WARNING(fmt, ...) MSG(KERN_WARNING, fmt, ## __VA_ARGS__)
+#define ERROR(fmt, ...) MSG(KERN_ERR, fmt, ## __VA_ARGS__)
+#define INFO(fmt, ...) MSG(KERN_INFO, fmt, ## __VA_ARGS__)
 
 #if defined DEBUG
 #undef DBGTRACE
-#define DBGTRACE(fmt, ...) MESSAGE(KERN_DEBUG, fmt, ## __VA_ARGS__)
+#define DBGTRACE(fmt, ...)  printk(KERN_INFO "ndiswrapper (%s:%d): " fmt "\n", \
+				   __FUNCTION__, __LINE__, ## __VA_ARGS__)
 #endif
 
 #if defined DEBUG && DEBUG >= 1
