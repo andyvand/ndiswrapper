@@ -516,7 +516,8 @@ static int load_bin_files(struct ndis_driver *driver,
 	}
 }
 
-static int load_settings(struct load_driver *load_driver)
+static int load_settings(struct ndis_driver *ndis_driver,
+			 struct load_driver *load_driver)
 {
 	int i, found, nr_settings;
 	struct ndis_device *ndis_device;
@@ -562,6 +563,9 @@ static int load_settings(struct load_driver *load_driver)
 		DBGTRACE2("copied setting %s", load_setting->name);
 		setting->config_param.type = NDIS_CONFIG_PARAM_NONE;
 
+		if (strcmp(setting->name, "ndis_version") == 0)
+			memcpy(ndis_driver->version, setting->value,
+			       sizeof(ndis_driver->version));
 		spin_lock(&loader_lock);
 		list_add(&setting->list, &ndis_device->settings);
 		spin_unlock(&loader_lock);
@@ -577,10 +581,9 @@ static int load_settings(struct load_driver *load_driver)
 /* this function is called while holding load_lock spinlock */
 static void unload_ndis_device(struct ndis_device *device)
 {
-	TRACEENTER1("unloading device %s", device->driver_name);
-	TRACEENTER1("device bustype = %d", device->bustype);
+	TRACEENTER1("unloading device %s, bustype",
+		    device->driver_name, device->bustype);
 
-	DBGTRACE1("unloading settnigs: %p", &device->settings);
 	while (!list_empty(&device->settings)) {
 		struct device_setting *setting =
 			(struct device_setting *)device->settings.next;
@@ -688,7 +691,7 @@ static int load_ndis_driver(struct load_driver *load_driver)
 
 	if (load_sys_files(ndis_driver, load_driver) ||
 	    load_bin_files(ndis_driver, load_driver) ||
-	    load_settings(load_driver) ||
+	    load_settings(ndis_driver, load_driver) ||
 	    start_driver(ndis_driver) ||
 	    add_driver(ndis_driver)) {
 		unload_ndis_driver(ndis_driver);
@@ -827,7 +830,6 @@ static int register_devices(struct load_devices *load_devices)
 
 	}
 	vfree(devices);
-	DBGTRACE1("");
 	if (ndiswrapper_pci_devices) {
 		memset(&ndiswrapper_pci_driver, 0,
 			       sizeof(ndiswrapper_pci_driver));
@@ -838,9 +840,7 @@ static int register_devices(struct load_devices *load_devices)
 				__devexit(ndiswrapper_remove_one_pci_dev);
 		ndiswrapper_pci_driver.suspend = ndiswrapper_suspend_pci;
 		ndiswrapper_pci_driver.resume = ndiswrapper_resume_pci;
-		DBGTRACE1("");
 		res = pci_register_driver(&ndiswrapper_pci_driver);
-		DBGTRACE1("");
 		if (res) {
 			ERROR("couldn't register ndiswrapper pci driver");
 			goto err_ndis_device;
@@ -855,16 +855,13 @@ static int register_devices(struct load_devices *load_devices)
 		ndiswrapper_usb_driver.probe = ndiswrapper_add_one_usb_dev;
 		ndiswrapper_usb_driver.disconnect =
 			__devexit(ndiswrapper_remove_one_usb_dev);
-		DBGTRACE1("");
 		res = usb_register(&ndiswrapper_usb_driver);
-		DBGTRACE1("");
 		if (res) {
 			ERROR("couldn't register ndiswrapper usb driver");
 			goto err_ndis_device;
 		}
 	}
 
-	DBGTRACE1("");
 	TRACEEXIT1(return 0);
 
 err_ndis_device:
