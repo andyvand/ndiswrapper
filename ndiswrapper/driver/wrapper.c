@@ -1255,16 +1255,14 @@ static void check_capa(struct ndis_handle *handle)
 			mode = ENCR_DISABLED;
 	}
 	DBGTRACE("highest encryption mode supported = %d", mode);
-	set_bit(mode, &handle->capa);
 	set_encr_mode(handle, mode);
 
-	if (handle->encr_mode == ENCR_DISABLED ||
-	    handle->encr_mode == ENCR1_ENABLED)
-	{
-		printk(KERN_INFO "ndiswrapper device %s doesn't support WPA",
-		       handle->net_dev->name);
+	if (mode == ENCR_DISABLED)
 		TRACEEXIT1(return);
-	}
+
+	set_bit(CAPA_WEP, &handle->capa);
+	if (mode == ENCR1_ENABLED)
+		TRACEEXIT1(return);
 
 	ndis_key.length = 32;
 	ndis_key.index = 0xC0000001;
@@ -1703,7 +1701,6 @@ static void ndis_remove_one(struct ndis_handle *handle)
 			miniport->pnp_event_notify(handle->adapter_ctx,
 						   NDIS_PNP_SURPRISE_REMOVED,
 						   NULL, 0);
-			DBGTRACE1("%s", "");
 		}
 	}
 
@@ -1739,6 +1736,8 @@ static void ndis_remove_one(struct ndis_handle *handle)
 	free_timers(handle);
 	free_handle_ctx(handle);
 
+	printk(KERN_INFO "%s: device %s removed\n", DRV_NAME,
+	       handle->net_dev->name);
 	if (handle->net_dev)
 		unregister_netdev(handle->net_dev);
 
@@ -1908,7 +1907,8 @@ static struct ndis_driver *load_driver(struct driver_files *driver_files)
 	driver = kmalloc(sizeof(struct ndis_driver), GFP_KERNEL);
 	if(!driver)
 	{
-		ERROR("%s", "unable to allocate memory");
+		ERROR("unable to allocate memory for driver '%s'",
+			put_driver->name);
 		goto out_nodriver;
 	}
 	memset(driver, 0, sizeof(struct ndis_driver));
