@@ -473,6 +473,7 @@ void NdisMSetInformationComplete(struct ndis_handle *handle, unsigned int status
 #define NDIS_OID_FRAG_THRESH        0x0D010209
 #define NDIS_OID_PACKET_FILTER      0x0001010E
 #define NDIS_OID_ADD_WEP            0x0D010113
+#define NDIS_OID_REMOVE_WEP         0x0D010114
 #define NDIS_OID_WEP_STATUS         0x0D01011B
 #define NDIS_OID_AUTH_MODE          0x0D010118
 #define NDIS_OID_PRIVACY_FILTER     0x0D010119
