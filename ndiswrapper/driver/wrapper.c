@@ -331,8 +331,8 @@ void miniport_halt(struct ndis_handle *handle)
 		spin_lock_irqsave(handle->ndis_irq->spinlock, flags);
 		if (miniport->disable_interrupts)
 			miniport->disable_interrupts(handle->adapter_ctx);
-		NdisMDeregisterInterrupt(handle->ndis_irq);
 		spin_unlock_irqrestore(handle->ndis_irq->spinlock, flags);
+		NdisMDeregisterInterrupt(handle->ndis_irq);
 	}
 	wrap_free_timers(handle);
 	free_handle_ctx(handle);
