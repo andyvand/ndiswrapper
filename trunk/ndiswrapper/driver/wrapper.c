@@ -999,7 +999,6 @@ static void send_one(struct ndis_handle *handle, struct ndis_buffer *buffer)
 {
 	struct ndis_packet *packet;
 
-	DBGTRACE("%s\n", __FUNCTION__);
 	packet = kmalloc(sizeof(struct ndis_packet), GFP_ATOMIC);
 	if(!packet)
 	{
@@ -1055,7 +1054,7 @@ static void send_one(struct ndis_handle *handle, struct ndis_buffer *buffer)
 		packets[0] = packet;
 //		DBGTRACE("Calling send_packets at %08x rva(%08x)\n", (int)handle->driver->miniport_char.send_packets, (int)handle->driver->miniport_char.send_packets - image_offset);
 		res = handle->driver->miniport_char.send_packets(handle->adapter_ctx, &packets[0], 1);
-		if(!res)
+		if(res)
 			DBGTRACE("send_packets returning %08x\n", res);
 		
 	}
@@ -1070,7 +1069,7 @@ static void send_one(struct ndis_handle *handle, struct ndis_buffer *buffer)
 			return;
 		}
 		ndis_sendpacket_done(handle, packet);
-		if(!res)
+		if(res)
 			DBGTRACE("send_packets returning %08x\n", res);
 
 		return;
@@ -1088,7 +1087,6 @@ static void xmit_bh(void *param)
 	struct ndis_buffer *buffer;
 	unsigned long flags;
 
-	DBGTRACE("%s\n", __FUNCTION__);
 	while(1)
 	{
 		spin_lock_irqsave(&handle->xmit_queue_lock, flags);
@@ -1119,8 +1117,6 @@ static int ndis_start_xmit(struct sk_buff *skb, struct net_device *dev)
 	char *data = kmalloc(skb->len, GFP_ATOMIC);
 	if(!data)
 		return 0;
-
-	DBGTRACE("%s\n", __FUNCTION__);
 
 	buffer = kmalloc(sizeof(struct ndis_buffer), GFP_ATOMIC);
 	if(!buffer)
