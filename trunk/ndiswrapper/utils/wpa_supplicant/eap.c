@@ -42,8 +42,14 @@ extern const struct eap_method eap_method_ttls;
 #ifdef EAP_GTC
 extern const struct eap_method eap_method_gtc;
 #endif
+#ifdef EAP_OTP
+extern const struct eap_method eap_method_otp;
+#endif
 #ifdef EAP_SIM
 extern const struct eap_method eap_method_sim;
+#endif
+#ifdef EAP_LEAP
+extern const struct eap_method eap_method_leap;
 #endif
 
 static const struct eap_method *eap_methods[] =
@@ -66,8 +72,14 @@ static const struct eap_method *eap_methods[] =
 #ifdef EAP_GTC
 	&eap_method_gtc,
 #endif
+#ifdef EAP_OTP
+	&eap_method_otp,
+#endif
 #ifdef EAP_SIM
 	&eap_method_sim,
+#endif
+#ifdef EAP_LEAP
+	&eap_method_leap,
 #endif
 };
 #define NUM_EAP_METHODS (sizeof(eap_methods) / sizeof(eap_methods[0]))
@@ -218,9 +230,9 @@ SM_STATE(EAP, METHOD)
 SM_STATE(EAP, SEND_RESPONSE)
 {
 	SM_ENTRY(EAP, SEND_RESPONSE);
-	sm->lastId = sm->reqId;
 	free(sm->lastRespData);
 	if (sm->eapRespData) {
+		sm->lastId = sm->reqId;
 		sm->lastRespData = malloc(sm->eapRespDataLen);
 		if (sm->lastRespData) {
 			memcpy(sm->lastRespData, sm->eapRespData,
@@ -365,6 +377,10 @@ SM_STEP(EAP)
 			  sm->methodState != METHOD_CONT &&
 			  sm->decision == DECISION_FAIL))
 			SM_ENTER(EAP, FAILURE);
+		else if (sm->selectedMethod == EAP_TYPE_LEAP &&
+			 sm->leap_done && sm->decision != DECISION_FAIL &&
+			 sm->methodState == METHOD_DONE)
+			SM_ENTER(EAP, SUCCESS);
 		break;
 	case EAP_RECEIVED:
 		if (sm->rxSuccess &&
@@ -396,6 +412,9 @@ SM_STEP(EAP)
 		else if (sm->rxReq && sm->reqId != sm->lastId &&
 			 sm->reqMethod == sm->selectedMethod &&
 			 sm->methodState != METHOD_DONE)
+			SM_ENTER(EAP, METHOD);
+		else if (sm->selectedMethod == EAP_TYPE_LEAP &&
+			 (sm->rxSuccess || sm->rxResp))
 			SM_ENTER(EAP, METHOD);
 		else
 			SM_ENTER(EAP, DISCARD);
@@ -613,6 +632,15 @@ static void eap_sm_parseEapReq(struct eap_sm *sm, u8 *req, size_t len)
 			   "id=%d", sm->reqMethod, sm->reqId);
 		break;
 	case EAP_CODE_RESPONSE:
+		if (sm->selectedMethod == EAP_TYPE_LEAP) {
+			sm->rxResp = TRUE;
+			if (plen > sizeof(*hdr))
+				sm->reqMethod = *((u8 *) (hdr + 1));
+			wpa_printf(MSG_DEBUG, "EAP: Received EAP-Response for "
+				   "LEAP method=%d id=%d",
+				   sm->reqMethod, sm->reqId);
+			break;
+		}
 		wpa_printf(MSG_DEBUG, "EAP: Ignored EAP-Response");
 		break;
 	case EAP_CODE_SUCCESS:
@@ -838,51 +866,109 @@ int eap_sm_get_status(struct eap_sm *sm, char *buf, size_t buflen)
 }
 
 
-typedef enum { TYPE_IDENTITY, TYPE_PASSWORD } eap_ctrl_req_type;
+typedef enum { TYPE_IDENTITY, TYPE_PASSWORD, TYPE_OTP } eap_ctrl_req_type;
 
 static void eap_sm_request(struct eap_sm *sm, struct wpa_ssid *config,
-			   eap_ctrl_req_type type)
+			   eap_ctrl_req_type type, char *msg, size_t msglen)
 {
-	char buf[80];
+	char *buf;
+	size_t buflen;
 	int len;
 	char *field;
-	char *txt;
+	char *txt, *tmp;
 
 	if (config == NULL || sm == NULL || sm->eapol == NULL ||
-	    sm->eapol->msg_ctx == NULL)
+	    sm->eapol->ctx->msg_ctx == NULL)
 		return;
 
 	switch (type) {
 	case TYPE_IDENTITY:
 		field = "IDENTITY";
 		txt = "Identity";
+		config->pending_req_identity++;
 		break;
 	case TYPE_PASSWORD:
 		field = "PASSWORD";
 		txt = "Password";
+		config->pending_req_password++;
+		break;
+	case TYPE_OTP:
+		field = "OTP";
+		if (msg) {
+			tmp = malloc(msglen + 3);
+			if (tmp == NULL)
+				return;
+			tmp[0] = '[';
+			memcpy(tmp + 1, msg, msglen);
+			tmp[msglen + 1] = ']';
+			tmp[msglen + 2] = '\0';
+			txt = tmp;
+			free(config->pending_req_otp);
+			config->pending_req_otp = tmp;
+			config->pending_req_otp_len = msglen + 3;
+		} else {
+			if (config->pending_req_otp == NULL)
+				return;
+			txt = config->pending_req_otp;
+		}
 		break;
 	default:
 		return;
 	}
 
-	len = snprintf(buf, sizeof(buf), "CTRL-REQ-%s-%d:%s needed for SSID ",
+	buflen = 100 + strlen(txt) + config->ssid_len;
+	buf = malloc(buflen);
+	if (buf == NULL)
+		return;
+	len = snprintf(buf, buflen, "CTRL-REQ-%s-%d:%s needed for SSID ",
 		       field, config->id, txt);
-	if (config->ssid && sizeof(buf) > len + config->ssid_len) {
+	if (config->ssid && buflen > len + config->ssid_len) {
 		memcpy(buf + len, config->ssid, config->ssid_len);
 		len += config->ssid_len;
 		buf[len] = '\0';
 	}
-	wpa_msg(sm->eapol->msg_ctx, MSG_INFO, buf);
+	wpa_msg(sm->eapol->ctx->msg_ctx, MSG_INFO, buf);
+	free(buf);
 }
 
 
 void eap_sm_request_identity(struct eap_sm *sm, struct wpa_ssid *config)
 {
-	eap_sm_request(sm, config, TYPE_IDENTITY);
+	eap_sm_request(sm, config, TYPE_IDENTITY, NULL, 0);
 }
 
 
 void eap_sm_request_password(struct eap_sm *sm, struct wpa_ssid *config)
 {
-	eap_sm_request(sm, config, TYPE_PASSWORD);
+	eap_sm_request(sm, config, TYPE_PASSWORD, NULL, 0);
+}
+
+
+void eap_sm_request_otp(struct eap_sm *sm, struct wpa_ssid *config,
+			char *msg, size_t msg_len)
+{
+	eap_sm_request(sm, config, TYPE_OTP, msg, msg_len);
+}
+
+
+void eap_sm_notify_ctrl_attached(struct eap_sm *sm)
+{
+	struct wpa_ssid *config;
+
+	if (sm == NULL || sm->eapol == NULL)
+		return;
+	config = sm->eapol->config;
+	if (config == NULL)
+		return;
+
+	/* Re-send any pending requests for user data since a new control
+	 * interface was added. This handles cases where the EAP authentication
+	 * starts immediately after system startup when the user interface is
+	 * not yet running. */
+	if (config->pending_req_identity)
+		eap_sm_request_identity(sm, config);
+	if (config->pending_req_password)
+		eap_sm_request_password(sm, config);
+	if (config->pending_req_otp)
+		eap_sm_request_otp(sm, config, NULL, 0);
 }

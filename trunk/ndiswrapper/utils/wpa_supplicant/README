@@ -5,7 +5,10 @@ Copyright (c) 2003-2004, Jouni Malinen <jkmaline@cc.hut.fi>
 All Rights Reserved.
 
 This program is dual-licensed under both the GPL version 2 and BSD
-licensed. Either license may be used at your option.
+licensed. Either license may be used at your option. Please note that
+some of the driver interface implementations (driver_*.c) may be
+licensed under a different license.
+
 
 
 License
@@ -60,6 +63,7 @@ THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 
+
 Features
 --------
 
@@ -69,12 +73,14 @@ Supported WPA/IEEE 802.11i features:
   Following authentication methods are supported with an integrate IEEE 802.1X
   Supplicant:
   * EAP-TLS
-  * EAP-PEAP/MSCHAPv2
-  * EAP-PEAP/TLS
-  * EAP-PEAP/GTC
-  * EAP-PEAP/MD5-Challenge
+  * EAP-PEAP/MSCHAPv2 (both PEAPv0 and PEAPv1)
+  * EAP-PEAP/TLS (both PEAPv0 and PEAPv1)
+  * EAP-PEAP/GTC (both PEAPv0 and PEAPv1)
+  * EAP-PEAP/OTP (both PEAPv0 and PEAPv1)
+  * EAP-PEAP/MD5-Challenge (both PEAPv0 and PEAPv1)
   * EAP-TTLS/EAP-MD5-Challenge
   * EAP-TTLS/EAP-GTC
+  * EAP-TTLS/EAP-OTP
   * EAP-TTLS/EAP-MSCHAPv2
   * EAP-TTLS/EAP-TLS
   * EAP-TTLS/MSCHAPv2
@@ -82,14 +88,22 @@ Supported WPA/IEEE 802.11i features:
   * EAP-TTLS/PAP
   * EAP-TTLS/CHAP
   * EAP-SIM
+  * LEAP (note: only with WEP keys, i.e., not for WPA; in addition, LEAP
+	requires special support from the driver for IEEE 802.11
+	authentication)
   (following methods are support, but since they do not generate keying
    material, they cannot be used with WPA or IEEE 802.1X WEP keying)
   * EAP-MD5-Challenge 
   * EAP-MSCHAPv2
   * EAP-GTC
-  Other EAP types may be used with an external program, Xsupplicant.
+  * EAP-OTP
+  Alternatively, an external program, e.g., Xsupplicant, can be used for EAP
+  authentication.
 - key management for CCMP, TKIP, WEP104, WEP40
 - RSN/WPA2 (IEEE 802.11i)
+  * pre-authentication
+  * PMKSA caching
+
 
 
 Requirements
@@ -121,10 +135,20 @@ Current hardware/software requirements:
 	driver root directory (CFLAGS += -I../madwifi/wpa line in
 	Makefile).
 
+	ATMEL AT76C5XXx driver for USB and PCMCIA cards
+	(http://atmelwlandriver.sourceforge.net/).
+
+	In theory, any driver that supports Linux wireless extensions can be
+	used with IEEE 802.1X (i.e., not WPA) when using ap_scan=0 option in
+	configuration file.
+
 wpa_supplicant was designed to be portable for different drivers and
 operating systems. Hopefully, support for more wlan cards will be
 added in the future. See developer.txt for more information about the
-design of wpa_supplicant and porting to other drivers.
+design of wpa_supplicant and porting to other drivers. One main goal
+is to add full WPA/WPA2 support to Linux wireless extensions to allow
+new drivers to be supported without having to implement new
+driver-specific interface code in wpa_supplicant.
 
 Optional libraries for layer2 packet processing:
 - libpcap (tested with 0.7.2, most relatively recent versions assumed to work,
@@ -140,17 +164,18 @@ USE_DNET_PCAP and link with these libraries).
 
 
 Optional libraries for EAP-TLS, EAP-PEAP, and EAP-TTLS:
-- openssl (tested with 0.9.7c, assumed to work with most relatively recent
-	versions; this is likely to be available with most distributions,
-	http://www.openssl.org/)
+- openssl (tested with 0.9.7c and 0.9.7d, assumed to work with most
+  relatively recent versions; this is likely to be available with most
+  distributions, http://www.openssl.org/)
 
-This library is only needed when EAP-TLS, EAP-PEAP, or EAP-TTLS support is
-enabled. WPA-PSK mode does not require this or EAPOL/EAP
-implementation. Create a configuration file (.config) to enable IEEE
-802.1X/EAPOL and EAP methods. Note that EAP-MD5 cannot be used alone with
-WPA, so it should only be enabled if testing the EAPOL/EAP state
-machines. However, EAP-MD5 is used within EAP-TTLS tunnel. In addition,
-EAP-MSCHAPv2 is currently only used within EAP-PEAP.
+This library is only needed when EAP-TLS, EAP-PEAP, or EAP-TTLS
+support is enabled. WPA-PSK mode does not require this or EAPOL/EAP
+implementation. A configuration file, .config, for compilation is
+needed to enable IEEE 802.1X/EAPOL and EAP methods. Note that EAP-MD5,
+EAP-GTC, EAP-OTP, and EAP-MSCHAPV2 cannot be used alone with WPA, so
+they should only be enabled if testing the EAPOL/EAP state
+machines. However, there can be used as inner authentication
+algorithms with EAP-PEAP and EAP-TTLS.
 
 Following options can be set in the configuration file (.config in
 wpa_supplicant directory). This example includes IEEE 802.1X/EAPOL and
@@ -163,11 +188,13 @@ CONFIG_EAP_TLS=y
 CONFIG_EAP_PEAP=y
 CONFIG_EAP_TTLS=y
 CONFIG_EAP_GTC=y
+CONFIG_EAP_OTP=y
 CONFIG_EAP_SIM=y
+CONFIG_EAP_LEAP=y
 
 Following option can be used to include GSM SIM/USIM interface for GSM
-authentication algorithm (for EAP-SIM). This requires pcsc-lite for
-the smart card access.
+authentication algorithm (for EAP-SIM). This requires pcsc-lite
+(http://www.linuxnet.com/) for smart card access.
 
 CONFIG_PCSC=y
 
@@ -181,6 +208,8 @@ CONFIG_DRIVER_HOSTAP=y
 CONFIG_DRIVER_PRISM54=y
 CONFIG_DRIVER_HERMES=y
 CONFIG_DRIVER_MADWIFI=y
+CONFIG_DRIVER_ATMEL=y
+CONFIG_DRIVER_WEXT=y
 
 Following example includes all features and driver interfaces that are
 included in the wpa_supplicant package:
@@ -189,6 +218,8 @@ CONFIG_DRIVER_HOSTAP=y
 CONFIG_DRIVER_PRISM54=y
 CONFIG_DRIVER_HERMES=y
 CONFIG_DRIVER_MADWIFI=y
+CONFIG_DRIVER_ATMEL=y
+CONFIG_DRIVER_WEXT=y
 CONFIG_WIRELESS_EXTENSION=y
 CONFIG_IEEE8021X_EAPOL=y
 CONFIG_EAP_MD5=y
@@ -197,8 +228,14 @@ CONFIG_EAP_TLS=y
 CONFIG_EAP_PEAP=y
 CONFIG_EAP_TTLS=y
 CONFIG_EAP_GTC=y
+CONFIG_EAP_OTP=y
 CONFIG_EAP_SIM=y
+CONFIG_EAP_LEAP=y
 CONFIG_PCSC=y
+
+EAP-PEAP and EAP-TTLS will automatically included configured EAP
+methods (MD5, OTP, GTC, MSCHAPV2) for inner authentication selection.
+
 
 
 WPA
@@ -207,9 +244,11 @@ WPA
 The original security mechanism of IEEE 802.11 standard was not
 designed to be strong and has proved to be insufficient for most
 networks that require some kind of security. Task group I (Security)
-of IEEE 802.11 working group (http://www.ieee802.org/11/) has been
-working to address the flaws of the base standard and is nearing
-completion in the end of 2003 or early 2004.
+of IEEE 802.11 working group (http://www.ieee802.org/11/) has worked
+to address the flaws of the base standard and has in practice
+completed its work in May 2004. The IEEE 802.11i amendment to the IEEE
+802.11 standard was approved in June 2004 and this amendment is likely
+to be published in July 2004.
 
 Wi-Fi Alliance (http://www.wi-fi.org/) used a draft version of the
 IEEE 802.11i work (draft 3.0) to define a subset of the security
@@ -252,36 +291,40 @@ management mechanism (only the method for generating master session
 key changes).
 
 
+
 IEEE 802.11i / WPA2
 -------------------
 
-The design for parts of IEEE 802.11i that were not included in WPA are
-nearing their completion in the end of 2003 and the amendment for the
-IEEE 802.11 is expected to be released during 2004. Wi-Fi Alliance is
-planning on generating a new version of WPA called WPA2 based on the
-final IEEE 802.11i results. This included, e.g., support for more
+The design for parts of IEEE 802.11i that were not included in WPA has
+finished (May 2004) and this amendment to IEEE 802.11 was approved in
+June 2004. Wi-Fi Alliance is using the final IEEE 802.11i as a new
+version of WPA called WPA2. This includes, e.g., support for more
 robust encryption algorithm (CCMP: AES in Counter mode with CBC-MAC)
-to replace TKIP, optimizations for handoff (pre-authentication, key
-caching), and IBSS security.
+to replace TKIP and optimizations for handoff (reduced number of
+messages in initial key handshake, pre-authentication, key caching).
 
 Some wireless LAN vendors are already providing support for CCMP in
 their WPA products. There is no "official" interoperability
 certification for CCMP and/or mixed modes using both TKIP and CCMP, so
 some interoperability issues can be expected even though many
 combinations seem to be working with equipment from different vendors.
+Certification for WPA2 is likely to start during the second half of
+2004.
+
 
 
 wpa_supplicant
 --------------
 
 wpa_supplicant is an implementation of the WPA Supplicant component,
-i.e., the part that runs in the client stations. It implements key
-negotiation with a WPA Authenticator and it controls the roaming and
-IEEE 802.11 authentication/association of the wlan driver.
+i.e., the part that runs in the client stations. It implements WPA key
+negotiation with a WPA Authenticator and EAP authentication with
+Authentication Server. In addition, it controls the roaming and IEEE
+802.11 authentication/association of the wlan driver.
 
 wpa_supplicant is designed to be a "daemon" program that runs in the
 background and acts as the backend component controlling the wireless
-connection. Support for separate frontend programs is included and an
+connection. wpa_supplicant supports separate frontend programs and an
 example text-based frontend, wpa_cli, is included with wpa_supplicant.
 
 Following steps are used when associating with an AP using WPA:
@@ -299,6 +342,18 @@ Following steps are used when associating with an AP using WPA:
   with the Authenticator (AP)
 - wpa_supplicant configures encryption keys for unicast and broadcast
 - normal data packets can be transmitted and received
+
+
+
+Building and installation
+-------------------------
+
+TODO:
+- .config
+- make
+- cp wpa_cli wpa_supplicant /usr/local/bin
+- make /etc/wpa_supplicant
+- example startup command (first with debug, then to background)
 
 
 
@@ -325,6 +380,9 @@ drivers:
   prism54 = Prism54.org driver (Intersil Prism GT/Duette/Indigo)
 	not yet fully implemented
   hermes = Agere Systems Inc. driver (Hermes-I/Hermes-II)
+  madwifi = MADWIFI 802.11 support (Atheros, etc.)
+  atmel = ATMEL AT76C5XXx (USB, PCMCIA)
+  wext = Linux wireless extensions (generic)
 
 In most common cases, wpa_supplicant is started with
 
@@ -332,6 +390,7 @@ wpa_supplicant -Bw -c/etc/wpa_supplicant.conf -iwlan0
 
 This makes the process fork into background and wait for the wlan0
 interface if it is not available at startup time.
+
 
 
 Configuration file
@@ -343,7 +402,168 @@ example configuration file, wpa_supplicant.conf, for detailed
 information about the configuration format and supported fields.
 
 Changes to configuration file can be reloaded be sending SIGHUP signal
-to wpa_supplicant ('killall -HUP wpa_supplicant').
+to wpa_supplicant ('killall -HUP wpa_supplicant'). Similarily,
+reloading can be triggered with 'wpa_cli reconfigure' command.
+
+Configuration file can include one or more network blocks, e.g., one
+for each used SSID. wpa_supplicant will automatically select the best
+betwork based on the order of network blocks in the configuration
+file, network security level (WPA/WPA2 is prefered), and signal
+strength.
+
+Example configuration files for some common configurations:
+
+1) WPA-Personal (PSK) as home network and WPA-Enterprise with EAP-TLS as work
+   network
+
+# allow frontend (e.g., wpa_cli) to be used by all users in 'wheel' group
+ctrl_interface=/var/run/wpa_supplicant
+ctrl_interface_group=wheel
+#
+# home network; allow all valid ciphers
+network={
+	ssid="home"
+	scan_ssid=1
+	key_mgmt=WPA-PSK
+	psk="very secret passphrase"
+}
+#
+# work network; use EAP-TLS with WPA; allow only CCMP and TKIP ciphers
+network={
+	ssid="work"
+	scan_ssid=1
+	key_mgmt=WPA-EAP
+	pairwise=CCMP TKIP
+	group=CCMP TKIP
+	eap=TLS
+	identity="user@example.com"
+	ca_cert="/etc/cert/ca.pem"
+	client_cert="/etc/cert/user.pem"
+	private_key="/etc/cert/user.prv"
+	private_key_passwd="password"
+}
+
+
+2) WPA-RADIUS/EAP-PEAP/MSCHAPv2 with RADIUS servers that use old peaplabel
+   (e.g., Funk Odyssey and SBR, Meetinghouse Aegis, Interlink RAD-Series)
+
+ctrl_interface=/var/run/wpa_supplicant
+ctrl_interface_group=wheel
+network={
+	ssid="example"
+	scan_ssid=1
+	key_mgmt=WPA-EAP
+	eap=PEAP
+	identity="user@example.com"
+	password="foobar"
+	ca_cert="/etc/cert/ca.pem"
+	phase1="peaplabel=0"
+	phase2="auth=MSCHAPV2"
+}
+
+
+3) EAP-TTLS/EAP-MD5-Challenge configuration with anonymous identity for the
+   unencrypted use. Real identity is sent only within an encrypted TLS tunnel.
+
+ctrl_interface=/var/run/wpa_supplicant
+ctrl_interface_group=wheel
+network={
+	ssid="example"
+	scan_ssid=1
+	key_mgmt=WPA-EAP
+	eap=TTLS
+	identity="user@example.com"
+	anonymous_identity="anonymous@example.com"
+	password="foobar"
+	ca_cert="/etc/cert/ca.pem"
+	phase2="auth=MD5"
+}
+
+
+4) IEEE 802.1X (i.e., no WPA) with dynamic WEP keys (require both unicast and
+   broadcast); use EAP-TLS for authentication
+
+ctrl_interface=/var/run/wpa_supplicant
+ctrl_interface_group=wheel
+network={
+	ssid="1x-test"
+	scan_ssid=1
+	key_mgmt=IEEE8021X
+	eap=TLS
+	identity="user@example.com"
+	ca_cert="/etc/cert/ca.pem"
+	client_cert="/etc/cert/user.pem"
+	private_key="/etc/cert/user.prv"
+	private_key_passwd="password"
+	eapol_flags=3
+}
+
+
+5) Catch all example that allows more or less all configuration modes. The
+   configuration options are used based on what security policy is used in the
+   selected SSID. This is mostly for testing and is not recommended for normal
+   use.
+
+ctrl_interface=/var/run/wpa_supplicant
+ctrl_interface_group=wheel
+network={
+	ssid="example"
+	scan_ssid=1
+	key_mgmt=WPA-EAP WPA-PSK IEEE8021X NONE
+	pairwise=CCMP TKIP
+	group=CCMP TKIP WEP104 WEP40
+	psk="very secret passphrase"
+	eap=TTLS PEAP TLS
+	identity="user@example.com"
+	password="foobar"
+	ca_cert="/etc/cert/ca.pem"
+	client_cert="/etc/cert/user.pem"
+	private_key="/etc/cert/user.prv"
+	private_key_passwd="password"
+	phase1="peaplabel=0"
+	ca_cert2="/etc/cert/ca2.pem"
+	client_cert2="/etc/cer/user.pem"
+	private_key2="/etc/cer/user.prv"
+	private_key2_passwd="password"
+}
+
+
+
+Certificates
+------------
+
+TODO: add notes on how to get certificates (e.g., how to enroll from MS certsrv
+      and convert with openssl to suitable format)
+
+
+
+wpa_cli
+-------
+
+TODO:
+- non-root (group conf)
+- interactive mode
+- command line mode
+
+commands:
+  status = get current WPA/EAPOL/EAP status
+  mib = get MIB variables (dot1x, dot11)
+  help = show this usage help
+  interface [ifname] = show interfaces/select interface
+  level <debug level> = change debug level
+  license = show full wpa_cli license
+  logoff = IEEE 802.1X EAPOL state machine logoff
+  logon = IEEE 802.1X EAPOL state machine logon
+  set = set variables (shows list of variables when run without arguments)
+  pmksa = show PMKSA cache
+  reassociate = force reassociation
+  reconfigure = force wpa_supplicant to re-read its configuration file
+  preauthenticate <BSSID> = force preauthentication
+  identity <network id> <identity> = configure identity for an SSID
+  password <network id> <password> = configure password for an SSID
+  otp <network id> <password> = configure one-time-password for an SSID
+  quit = exit wpa_cli
+
 
 
 Integrating with pcmcia-cs/cardmgr scripts
@@ -387,15 +607,13 @@ started--and will then negotiate keys with the AP.
 
 
 
-Integration with Xsupplicant
-----------------------------
+Optional integration with Xsupplicant
+-------------------------------------
 
 wpa_supplicant has an integrated IEEE 802.1X Supplicant that supports
-some EAP methods (EAP-TLS at the moment). In addition, wpa_supplicant
-has an experimental interface for integrating it with Xsupplicant
-(http://www.open1x.org/) for the WPA with EAP authentication. This can
-be used when the internal Supplicant in wpa_supplicant does not yet
-support the needed EAP method.
+most commonly used EAP methods. In addition, wpa_supplicant has an
+experimental interface for integrating it with Xsupplicant
+(http://www.open1x.org/) for the WPA with EAP authentication.
 
 Xsupplicant needs to be modified to send master session key to
 wpa_supplicant after successful EAP authentication. The included patch

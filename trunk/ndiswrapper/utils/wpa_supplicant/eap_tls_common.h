@@ -10,6 +10,7 @@ struct eap_ssl_data {
 	size_t tls_out_pos;
 	size_t tls_out_limit;
 	size_t tls_in_left;
+	size_t tls_in_total;
 
 	int phase2;
 };

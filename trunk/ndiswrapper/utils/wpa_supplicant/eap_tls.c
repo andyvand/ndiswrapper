@@ -37,7 +37,9 @@ static void * eap_tls_init(struct eap_sm *sm)
 {
 	struct eap_tls_data *data;
 	struct wpa_ssid *config = sm->eapol->config;
-	if (config == NULL || config->client_cert == NULL) {
+	if (config == NULL ||
+	    (sm->init_phase2 ? config->client_cert2 : config->client_cert)
+	    == NULL) {
 		wpa_printf(MSG_INFO, "EAP-TLS: Client certificate not "
 			   "configured");
 		return NULL;

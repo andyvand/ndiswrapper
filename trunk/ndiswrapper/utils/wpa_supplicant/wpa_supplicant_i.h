@@ -1,6 +1,17 @@
 #ifndef WPA_SUPPLICANT_I_H
 #define WPA_SUPPLICANT_I_H
 
+#ifdef EAPOL_TEST
+#include <netinet/in.h>
+
+struct hostapd_radius_server {
+	struct in_addr addr;
+	int port;
+	u8 *shared_secret;
+	size_t shared_secret_len;
+};
+#endif /* EAPOL_TEST */
+
 #define PMKID_LEN 16
 struct rsn_pmksa_cache {
 	struct rsn_pmksa_cache *next;
@@ -39,11 +50,11 @@ struct wpa_supplicant {
 	int ext_pmk_received; /* 1 = PMK was received from Xsupplicant */
 
 	u8 pmk[PMK_LEN];
-	u8 counter[WPA_NONCE_LEN];
 	u8 snonce[WPA_NONCE_LEN];
 	u8 anonce[WPA_NONCE_LEN]; /* ANonce from the last 1/4 msg */
 	struct wpa_ptk ptk, tptk;
 	int ptk_set, tptk_set;
+	int renew_snonce;
 	char *confname;
 	struct wpa_config *conf;
 	u8 request_counter[WPA_REPLAY_COUNTER_LEN];
@@ -54,7 +65,6 @@ struct wpa_supplicant {
 	u8 bssid[ETH_ALEN];
 	int reassociate; /* reassociation requested */
 	struct wpa_ssid *current_ssid;
-	int current_supports_preauth;
 	u8 *ap_wpa_ie;
 	size_t ap_wpa_ie_len;
 	u8 *assoc_wpa_ie;
@@ -77,6 +87,8 @@ struct wpa_supplicant {
 #define BROADCAST_SSID_SCAN ((struct wpa_ssid *) 1)
 
 	struct wpa_driver_ops *driver;
+	int interface_removed; /* whether the network interface has been
+				* removed */
 	struct eapol_sm *eapol;
 
 	int ctrl_sock; /* UNIX domain socket for control interface or -1 if
@@ -106,6 +118,32 @@ struct wpa_supplicant {
 	u8 *imsi;
 	size_t imsi_len;
 	struct scard_data *scard;
+
+
+#ifdef EAPOL_TEST
+	u8 radius_identifier;
+	struct radius_msg *last_recv_radius;
+	struct in_addr own_ip_addr;
+	struct radius_client_data *radius;
+
+	/* RADIUS Authentication and Accounting servers in priority order */
+	struct hostapd_radius_server *auth_servers, *auth_server;
+	int num_auth_servers;
+	struct hostapd_radius_server *acct_servers, *acct_server;
+	int num_acct_servers;
+
+	int radius_retry_primary_interval;
+	int radius_acct_interim_interval;
+
+	u8 *last_eap_radius; /* last received EAP Response from Authentication
+			      * Server */
+	size_t last_eap_radius_len;
+
+	u8 authenticator_pmk[PMK_LEN];
+	size_t authenticator_pmk_len;
+	int radius_access_accept_received;
+	int auth_timed_out;
+#endif /* EAPOL_TEST */
 };
 
 
@@ -123,6 +161,8 @@ void wpa_supplicant_req_auth_timeout(struct wpa_supplicant *wpa_s,
 				     int sec, int usec);
 
 void wpa_supplicant_cancel_auth_timeout(struct wpa_supplicant *wpa_s);
+
+int wpa_supplicant_reload_configuration(struct wpa_supplicant *wpa_s);
 
 
 /* wpa.c */
@@ -145,7 +185,7 @@ int wpa_gen_wpa_ie(struct wpa_supplicant *wpa_s, u8 *wpa_ie);
 void wpa_supplicant_rx_eapol(void *ctx, unsigned char *src_addr,
 			     unsigned char *buf, size_t len);
 
-int wpa_supplicant_init_counter(struct wpa_supplicant *wpa_s);
+struct wpa_ssid * wpa_supplicant_get_ssid(struct wpa_supplicant *wpa_s);
 
 void pmksa_cache_free(struct wpa_supplicant *wpa_s);
 struct rsn_pmksa_cache * pmksa_cache_get(struct wpa_supplicant *wpa_s,
@@ -176,5 +216,21 @@ static inline void rsn_preauth_scan_results(struct wpa_supplicant *wpa_s,
 {
 }
 #endif /* IEEE8021X_EAPOL */
+
+void wpa_supplicant_notify_eapol_done(void *ctx);
+
+/**
+ * wpa_eapol_send - send IEEE 802.1X EAPOL packet to the Authenticator
+ * @ctx: pointer to wpa_supplicant data
+ * @type: IEEE 802.1X packet type (IEEE802_1X_TYPE_*)
+ * @buf: EAPOL payload (after IEEE 802.1X header)
+ * @len: EAPOL payload length
+ *
+ * This function adds Ethernet and IEEE 802.1X header and sends the EAPOL frame
+ * to the current Authenticator or in case of pre-authentication, to the peer
+ * of the authentication.
+ */
+int wpa_eapol_send(void *ctx, int type, u8 *buf, size_t len);
+int wpa_eapol_send_preauth(void *ctx, int type, u8 *buf, size_t len);
 
 #endif /* WPA_SUPPLICANT_I_H */

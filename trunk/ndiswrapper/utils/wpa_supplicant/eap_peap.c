@@ -52,7 +52,7 @@ static void eap_peap_deinit(struct eap_sm *sm, void *priv);
 struct eap_peap_data {
 	struct eap_ssl_data ssl;
 
-	int peap_version, force_peap_version;
+	int peap_version, force_peap_version, force_old_label;
 
 	const struct eap_method *phase2_method;
 	void *phase2_priv;
@@ -83,6 +83,12 @@ static void * eap_peap_init(struct eap_sm *sm)
 			wpa_printf(MSG_DEBUG, "EAP-PEAP: Forced PEAP version "
 				   "%d", data->force_peap_version);
 		}
+
+		if (strstr(config->phase1, "peaplabel=0")) {
+			data->force_old_label = 1;
+			wpa_printf(MSG_DEBUG, "EAP-PEAP: Force old label for "
+				   "key derivation");
+		}
 	}
 	data->phase2_type = EAP_TYPE_MSCHAPV2;
 	if (config && config->phase2) {
@@ -92,6 +98,9 @@ static void * eap_peap_init(struct eap_sm *sm)
 		} else if (strstr(config->phase2, "auth=GTC")) {
 			selected = "GTC";
 			data->phase2_type = EAP_TYPE_GTC;
+		} else if (strstr(config->phase2, "auth=OTP")) {
+			selected = "OTP";
+			data->phase2_type = EAP_TYPE_OTP;
 		} else if (strstr(config->phase2, "auth=MD5")) {
 			selected = "MD5";
 			data->phase2_type = EAP_TYPE_MD5;
@@ -371,6 +380,7 @@ static int eap_peap_phase2_request(struct eap_sm *sm,
 		break;
 	case EAP_TYPE_MSCHAPV2:
 	case EAP_TYPE_GTC:
+	case EAP_TYPE_OTP:
 	case EAP_TYPE_MD5:
 	case EAP_TYPE_TLS:
 		wpa_printf(MSG_DEBUG, "EAP-PEAP: Phase 2 EAP packet");
@@ -435,13 +445,25 @@ static int eap_peap_decrypt(struct eap_sm *sm,
 
 	wpa_printf(MSG_DEBUG, "EAP-PEAP: received %d bytes encrypted data for "
 		   "Phase 2", in_len);
+
+	BIO_write(data->ssl.ssl_in, in_data, in_len);
+
+	if (data->ssl.tls_in_left > in_len) {
+		data->ssl.tls_in_left -= in_len;
+		wpa_printf(MSG_DEBUG, "EAP-PEAP: Need %d bytes more"
+			   " input data", data->ssl.tls_in_left);
+		return 1;
+	} else
+		data->ssl.tls_in_left = 0;
+
+	BIO_reset(data->ssl.ssl_out);
+
 	buf_len = in_len;
+	if (data->ssl.tls_in_total > buf_len)
+		buf_len = data->ssl.tls_in_total;
 	in_decrypted = malloc(buf_len);
 	if (in_decrypted == NULL)
 		return 0;
-
-	BIO_write(data->ssl.ssl_in, in_data, in_len);
-	BIO_reset(data->ssl.ssl_out);
 
 	len_decrypted = SSL_read(data->ssl.ssl, in_decrypted, buf_len);
 	if (len_decrypted < 0) {
@@ -497,6 +519,24 @@ static int eap_peap_decrypt(struct eap_sm *sm,
 			   "Phase 2 EAP frame (len=%d hdr->length=%d)",
 			   len_decrypted, len);
 		return 0;
+	}
+	if (len < len_decrypted) {
+		wpa_printf(MSG_INFO, "EAP-PEAP: Odd.. Phase 2 EAP header has "
+			   "shorter length than full decrypted data (%d < %d)",
+			   len, len_decrypted);
+		if (len == 4 && len_decrypted == 5 &&
+		    in_decrypted[4] == EAP_TYPE_IDENTITY) {
+			/* Radiator 3.9 seems to set Phase 2 EAP header to use
+			 * incorrect length for the EAP-Request Identity
+			 * packet, so fix the inner header to interoperate..
+			 * This was fixed in 2004-06-23 patch for Radiator and
+			 * this workaround can be removed at some point. */
+			wpa_printf(MSG_INFO, "EAP-PEAP: workaround -> replace "
+				   "Phase 2 EAP header len (%d) with real "
+				   "decrypted len (%d)", len, len_decrypted);
+			len = len_decrypted;
+			hdr->length = htons(len);
+		}
 	}
 	wpa_printf(MSG_DEBUG, "EAP-PEAP: received Phase 2: code=%d "
 		   "identifier=%d length=%d", hdr->code, hdr->identifier, len);
@@ -628,8 +668,10 @@ static u8 * eap_peap_process(struct eap_sm *sm, void *priv,
 			pos[3];
 		wpa_printf(MSG_DEBUG, "EAP-PEAP: TLS Message Length: %d",
 			   tls_msg_len);
-		if (data->ssl.tls_in_left == 0)
+		if (data->ssl.tls_in_left == 0) {
+			data->ssl.tls_in_total = tls_msg_len;
 			data->ssl.tls_in_left = tls_msg_len;
+		}
 		pos += 4;
 		left -= 4;
 	}
@@ -672,18 +714,26 @@ static u8 * eap_peap_process(struct eap_sm *sm, void *priv,
 					     &resp, respDataLen);
 
 		if (SSL_is_init_finished(data->ssl.ssl)) {
+			char *label;
 			wpa_printf(MSG_DEBUG,
 				   "EAP-PEAP: TLS done, proceed to Phase 2");
 			sm->methodState = METHOD_CONT;
 			free(sm->eapKeyData);
-			/* FIX: draft-josefsson-ppext-eap-tls-eap-05.txt
-			 * specifies that PEAPv1 would use
-			 * "client PEAP encryption" as the label, but did not
-			 * seem to match with Odyssey server, so use
-			 * "client EAP encryption" for the time being. */
+			/* draft-josefsson-ppext-eap-tls-eap-05.txt
+			 * specifies that PEAPv1 would use "client PEAP
+			 * encryption" as the label, but at least Funk Odyssey
+			 * 2.01.00.653 seem to be using "client EAP
+			 * encryption", instead. Select this based on PEAP
+			 * version and allow override with phase1 parameter
+			 * peaplabel=0. */
+			if (data->peap_version == 0 || data->force_old_label)
+				label = "client EAP encryption";
+			else
+				label = "client PEAP encryption";
+			wpa_printf(MSG_DEBUG, "EAP-PEAP: using label '%s' in "
+				   "key derivation", label);
 			sm->eapKeyData =
-				eap_tls_derive_key(data->ssl.ssl,
-						   "client EAP encryption");
+				eap_tls_derive_key(data->ssl.ssl, label);
 			if (sm->eapKeyData) {
 				sm->eapKeyDataLen = EAP_TLS_KEY_LEN;
 				wpa_hexdump(MSG_DEBUG, "EAP-PEAP: Derived key",

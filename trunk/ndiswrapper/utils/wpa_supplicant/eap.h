@@ -99,6 +99,10 @@ struct eap_sm {
 	struct eapol_sm *eapol;
 	void *eap_method_priv;
 	int init_phase2;
+
+	Boolean rxResp /* LEAP only */;
+	Boolean leap_done;
+
 #ifdef EAP_TLS_FUNCS
 	SSL_CTX *ssl_ctx;
 #endif /* EAP_TLS_FUNCS */
@@ -115,5 +119,8 @@ u8 *eap_sm_buildIdentity(struct eap_sm *sm, int id, size_t *len,
 const struct eap_method * eap_sm_get_eap_methods(int method);
 void eap_sm_request_identity(struct eap_sm *sm, struct wpa_ssid *config);
 void eap_sm_request_password(struct eap_sm *sm, struct wpa_ssid *config);
+void eap_sm_request_otp(struct eap_sm *sm, struct wpa_ssid *config,
+			char *msg, size_t msg_len);
+void eap_sm_notify_ctrl_attached(struct eap_sm *sm);
 
 #endif /* EAP_H */

@@ -126,12 +126,12 @@ static void eap_sim_gsm_auth(struct eap_sm *sm, struct eap_sim_data *data)
 {
 	wpa_printf(MSG_DEBUG, "EAP-SIM: GSM authentication algorithm");
 #ifdef PCSC_FUNCS
-	if (scard_gsm_auth(sm->eapol->scard_ctx, data->rand1, data->sres1,
-			   data->kc1) ||
-	    scard_gsm_auth(sm->eapol->scard_ctx, data->rand2, data->sres2,
-			   data->kc2) ||
-	    scard_gsm_auth(sm->eapol->scard_ctx, data->rand3, data->sres3,
-			   data->kc3)) {
+	if (scard_gsm_auth(sm->eapol->ctx->scard_ctx, data->rand1,
+			   data->sres1, data->kc1) ||
+	    scard_gsm_auth(sm->eapol->ctx->scard_ctx, data->rand2,
+			   data->sres2, data->kc2) ||
+	    scard_gsm_auth(sm->eapol->ctx->scard_ctx, data->rand3,
+			   data->sres3, data->kc3)) {
 		wpa_printf(MSG_DEBUG, "EAP-SIM: GSM SIM authentication could "
 			   "not be completed");
 		/* TODO: what to do here? */

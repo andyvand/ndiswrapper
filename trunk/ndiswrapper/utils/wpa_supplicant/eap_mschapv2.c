@@ -320,7 +320,7 @@ static int eap_mschapv2_failure_txt(struct eap_sm *sm,
 		pos += 2;
 		msg = pos;
 	}
-	wpa_msg(sm->eapol->msg_ctx, MSG_WARNING,
+	wpa_msg(sm->eapol->ctx->msg_ctx, MSG_WARNING,
 		"EAP-MSCHAPV2: failure message: '%s' (retry %sallowed, error "
 		"%d)",
 		msg, retry == 1 ? "" : "not ", data->prev_error);

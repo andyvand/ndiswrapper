@@ -6,6 +6,10 @@ typedef enum { CIPHER_NONE, CIPHER_WEP40, CIPHER_TKIP, CIPHER_CCMP,
 	       CIPHER_WEP104 } wpa_cipher;
 typedef enum { KEY_MGMT_802_1X, KEY_MGMT_PSK, KEY_MGMT_NONE } wpa_key_mgmt;
 
+#define AUTH_ALG_OPEN_SYSTEM	0x01
+#define AUTH_ALG_SHARED_KEY	0x02
+#define AUTH_ALG_LEAP		0x04
+
 #define SSID_MAX_WPA_IE_LEN 40
 struct wpa_scan_result {
 	u8 bssid[ETH_ALEN];
@@ -262,6 +266,25 @@ struct wpa_driver_ops {
 	 * Return: nothing
 	 */
 	void (*cleanup)(const char *ifname);
+
+	/**
+	 * set_auth_alg - set IEEE 802.11 authentication algorithm
+	 * @ifname: interface name, e.g., wlan0
+	 * @auth_alg: bit field of AUTH_ALG_*
+	 *
+	 * If the driver supports more than one authentication algorithm at the
+	 * same time, it should configure all supported algorithms. If not, one
+	 * algorithm needs to be selected arbitrarily. Open System
+	 * authentication should be ok for most cases and it is recommended to
+	 * be used if other options are not supported. Static WEP configuration
+	 * may also use Shared Key authentication and LEAP requires its own
+	 * algorithm number. For LEAP, user can make sure that only one
+	 * algorithm is used at a time by configuring LEAP as the only
+	 * supported EAP method.
+	 *
+	 * Return: 0 on success, -1 on failure
+	 */
+	int (*set_auth_alg)(const char *ifname, int auth_alg);
 };
 
 #endif /* DRIVER_H */

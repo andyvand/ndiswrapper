@@ -19,6 +19,8 @@
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <sys/un.h>
+#include <sys/stat.h>
+#include <errno.h>
 
 #include "common.h"
 #include "eloop.h"
@@ -257,14 +259,23 @@ static int wpa_supplicant_ctrl_iface_ctrl_rsp(struct wpa_supplicant *wpa_s,
 		free(ssid->identity);
 		ssid->identity = strdup(pos);
 		ssid->identity_len = strlen(pos);
+		ssid->pending_req_identity = 0;
 		if (ssid == wpa_s->current_ssid)
 			wpa_s->reassociate = 1;
 	} else if (strcmp(rsp, "PASSWORD") == 0) {
 		free(ssid->password);
 		ssid->password = strdup(pos);
 		ssid->password_len = strlen(pos);
+		ssid->pending_req_password = 0;
 		if (ssid == wpa_s->current_ssid)
 			wpa_s->reassociate = 1;
+	} else if (strcmp(rsp, "OTP") == 0) {
+		free(ssid->otp);
+		ssid->otp = strdup(pos);
+		ssid->otp_len = strlen(pos);
+		free(ssid->pending_req_otp);
+		ssid->pending_req_otp = NULL;
+		ssid->pending_req_otp_len = 0;
 	} else {
 		wpa_printf(MSG_DEBUG, "CTRL_IFACE: Unknown field '%s'", rsp);
 		return -1;
@@ -285,6 +296,7 @@ void wpa_supplicant_ctrl_iface_receive(int sock, void *eloop_ctx,
 	char *reply, *pos, *end;
 	const int reply_size = 2048;
 	int reply_len;
+	int new_attached = 0, ctrl_rsp = 0;
 
 	res = recvfrom(sock, buf, sizeof(buf) - 1, 0,
 		       (struct sockaddr *) &from, &fromlen);
@@ -305,7 +317,10 @@ void wpa_supplicant_ctrl_iface_receive(int sock, void *eloop_ctx,
 	memcpy(reply, "OK\n", 3);
 	reply_len = 3;
 
-	if (strcmp(buf, "MIB") == 0) {
+	if (strcmp(buf, "PING") == 0) {
+		memcpy(reply, "PONG\n", 5);
+		reply_len = 5;
+	} else if (strcmp(buf, "MIB") == 0) {
 		reply_len = wpa_get_mib(wpa_s, reply, reply_size);
 		if (reply_len >= 0) {
 			res = eapol_sm_get_mib(wpa_s->eapol, reply + reply_len,
@@ -373,6 +388,8 @@ void wpa_supplicant_ctrl_iface_receive(int sock, void *eloop_ctx,
 	} else if (strcmp(buf, "ATTACH") == 0) {
 		if (wpa_supplicant_ctrl_iface_attach(wpa_s, &from, fromlen))
 			reply_len = -1;
+		else
+			new_attached = 1;
 	} else if (strcmp(buf, "DETACH") == 0) {
 		if (wpa_supplicant_ctrl_iface_detach(wpa_s, &from, fromlen))
 			reply_len = -1;
@@ -382,6 +399,11 @@ void wpa_supplicant_ctrl_iface_receive(int sock, void *eloop_ctx,
 			reply_len = -1;
 	} else if (strncmp(buf, "CTRL-RSP-", 9) == 0) {
 		if (wpa_supplicant_ctrl_iface_ctrl_rsp(wpa_s, buf + 9))
+			reply_len = -1;
+		else
+			ctrl_rsp = 1;
+	} else if (strcmp(buf, "RECONFIGURE") == 0) {
+		if (wpa_supplicant_reload_configuration(wpa_s))
 			reply_len = -1;
 	} else {
 		memcpy(reply, "UNKNOWN COMMAND\n", 16);
@@ -394,43 +416,106 @@ void wpa_supplicant_ctrl_iface_receive(int sock, void *eloop_ctx,
 	}
 	sendto(sock, reply, reply_len, 0, (struct sockaddr *) &from, fromlen);
 	free(reply);
+
+	if (new_attached)
+		eapol_sm_notify_ctrl_attached(wpa_s->eapol);
+	if (ctrl_rsp)
+		eapol_sm_notify_ctrl_response(wpa_s->eapol);
+}
+
+
+static char * wpa_supplicant_ctrl_iface_path(struct wpa_supplicant *wpa_s)
+{
+	char *buf;
+	size_t len;
+
+	if (wpa_s->conf->ctrl_interface == NULL)
+		return NULL;
+
+	len = strlen(wpa_s->conf->ctrl_interface) + strlen(wpa_s->ifname) + 2;
+	buf = malloc(len);
+	if (buf == NULL)
+		return NULL;
+
+	snprintf(buf, len, "%s/%s",
+		 wpa_s->conf->ctrl_interface, wpa_s->ifname);
+	return buf;
 }
 
 
 int wpa_supplicant_ctrl_iface_init(struct wpa_supplicant *wpa_s)
 {
 	struct sockaddr_un addr;
-	int s;
+	int s = -1;
+	char *fname = NULL;
 
 	wpa_s->ctrl_sock = -1;
 
 	if (wpa_s->conf->ctrl_interface == NULL)
 		return 0;
 
-	if (strlen(wpa_s->conf->ctrl_interface) >= sizeof(addr.sun_path))
+	if (mkdir(wpa_s->conf->ctrl_interface, S_IRWXU | S_IRWXG) < 0) {
+		if (errno == EEXIST) {
+			wpa_printf(MSG_DEBUG, "Using existing control "
+				   "interface directory.");
+		} else {
+			perror("mkdir[ctrl_interface]");
+			goto fail;
+		}
+	}
+
+	if (chown(wpa_s->conf->ctrl_interface, 0,
+		  wpa_s->conf->ctrl_interface_gid) < 0) {
+		perror("chown[ctrl_interface]");
 		return -1;
+	}
+
+	if (strlen(wpa_s->conf->ctrl_interface) + 1 + strlen(wpa_s->ifname) >=
+	    sizeof(addr.sun_path))
+		goto fail;
 
 	s = socket(PF_UNIX, SOCK_DGRAM, 0);
 	if (s < 0) {
 		perror("socket(PF_UNIX)");
-		return -1;
+		goto fail;
 	}
 
 	memset(&addr, 0, sizeof(addr));
 	addr.sun_family = AF_UNIX;
-	strncpy(addr.sun_path, wpa_s->conf->ctrl_interface,
-		sizeof(addr.sun_path));
+	fname = wpa_supplicant_ctrl_iface_path(wpa_s);
+	if (fname == NULL)
+		goto fail;
+	strncpy(addr.sun_path, fname, sizeof(addr.sun_path));
 	if (bind(s, (struct sockaddr *) &addr, sizeof(addr)) < 0) {
 		perror("bind(PF_UNIX)");
-		close(s);
-		return -1;
+		goto fail;
 	}
+
+	if (chown(fname, 0, wpa_s->conf->ctrl_interface_gid) < 0) {
+		perror("chown[ctrl_interface/ifname]");
+		goto fail;
+	}
+
+	if (chmod(fname, S_IRWXU | S_IRWXG) < 0) {
+		perror("chmod[ctrl_interface/ifname]");
+		goto fail;
+	}
+	free(fname);
 
 	wpa_s->ctrl_sock = s;
 	eloop_register_read_sock(s, wpa_supplicant_ctrl_iface_receive, wpa_s,
 				 NULL);
 
 	return 0;
+
+fail:
+	if (s >= 0)
+		close(s);
+	if (fname) {
+		unlink(fname);
+		free(fname);
+	}
+	return -1;
 }
 
 
@@ -439,10 +524,24 @@ void wpa_supplicant_ctrl_iface_deinit(struct wpa_supplicant *wpa_s)
 	struct wpa_ctrl_dst *dst, *prev;
 
 	if (wpa_s->ctrl_sock > -1) {
+		char *fname;
 		eloop_unregister_read_sock(wpa_s->ctrl_sock);
 		close(wpa_s->ctrl_sock);
 		wpa_s->ctrl_sock = -1;
-		unlink(wpa_s->conf->ctrl_interface);
+		fname = wpa_supplicant_ctrl_iface_path(wpa_s);
+		if (fname)
+			unlink(fname);
+		free(fname);
+
+		if (rmdir(wpa_s->conf->ctrl_interface) < 0) {
+			if (errno == ENOTEMPTY) {
+				wpa_printf(MSG_DEBUG, "Control interface "
+					   "directory not empty - leaving it "
+					   "behind");
+			} else {
+				perror("rmdir[ctrl_interface]");
+			}
+		}
 	}
 
 	dst = wpa_s->ctrl_dst;

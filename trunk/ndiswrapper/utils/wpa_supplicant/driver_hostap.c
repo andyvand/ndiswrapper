@@ -330,6 +330,7 @@ static int wpa_driver_hostap_associate(const char *ifname, const char *bssid,
 				       wpa_key_mgmt key_mgmt_suite)
 {
 	int ret = 0;
+	int allow_unencrypted_eapol;
 
 	wpa_printf(MSG_DEBUG, "%s", __FUNCTION__);
 
@@ -341,6 +342,23 @@ static int wpa_driver_hostap_associate(const char *ifname, const char *bssid,
 		ret = -1;
 	if (wpa_driver_wext_set_bssid(ifname, bssid) < 0)
 		ret = -1;
+
+	/* Allow unencrypted EAPOL messages even if pairwise keys are set when
+	 * not using WPA. IEEE 802.1X specifies that these frames are not
+	 * encrypted, but WPA encrypts them when pairwise keys are in use. */
+	if (key_mgmt_suite == KEY_MGMT_802_1X ||
+	    key_mgmt_suite == KEY_MGMT_PSK)
+		allow_unencrypted_eapol = 0;
+	else
+		allow_unencrypted_eapol = 1;
+	
+	if (prism2param(ifname, PRISM2_PARAM_IEEE_802_1X,
+			allow_unencrypted_eapol) < 0) {
+		wpa_printf(MSG_DEBUG, "hostap: Failed to configure "
+			   "ieee_802_1x param");
+		/* Ignore this error.. driver_hostap.c can also be used with
+		 * other drivers that do not support this prism2_param. */
+	}
 
 	return ret;
 }
@@ -377,6 +395,23 @@ static int wpa_driver_hostap_scan(const char *ifname, void *ctx, u8 *ssid,
 }
 
 
+static int wpa_driver_hostap_set_auth_alg(const char *ifname, int auth_alg)
+{
+	int algs = 0;
+
+	if (auth_alg & AUTH_ALG_OPEN_SYSTEM)
+		algs |= 1;
+	if (auth_alg & AUTH_ALG_SHARED_KEY)
+		algs |= 2;
+	if (auth_alg & AUTH_ALG_LEAP)
+		algs |= 4;
+	if (algs == 0)
+		algs = 1; /* at least one algorithm should be set */
+
+	return prism2param(ifname, PRISM2_PARAM_AP_AUTH_ALGS, algs);
+}
+
+
 struct wpa_driver_ops wpa_driver_hostap_ops = {
 	.get_bssid = wpa_driver_wext_get_bssid,
 	.get_ssid = wpa_driver_wext_get_ssid,
@@ -391,4 +426,5 @@ struct wpa_driver_ops wpa_driver_hostap_ops = {
 	.deauthenticate = wpa_driver_hostap_deauthenticate,
 	.disassociate = wpa_driver_hostap_disassociate,
 	.associate = wpa_driver_hostap_associate,
+	.set_auth_alg = wpa_driver_hostap_set_auth_alg,
 };

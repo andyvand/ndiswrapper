@@ -56,13 +56,33 @@ struct wpa_ssid {
 	char *phase2;
 	char *pcsc;
 	char *pin;
+
+#define EAPOL_FLAG_REQUIRE_KEY_UNICAST BIT(0)
+#define EAPOL_FLAG_REQUIRE_KEY_BROADCAST BIT(1)
+	int eapol_flags; /* bit field of IEEE 802.1X/EAPOL options */
+
+#define NUM_WEP_KEYS 4
+#define MAX_WEP_KEY_LEN 16
+	u8 wep_key[NUM_WEP_KEYS][MAX_WEP_KEY_LEN];
+	size_t wep_key_len[NUM_WEP_KEYS];
+	int wep_tx_keyidx;
+
+	/* Per SSID variables that are not read from the configuration file */
+	u8 *otp;
+	size_t otp_len;
+	int pending_req_identity, pending_req_password;
+	u8 *pending_req_otp;
+	size_t pending_req_otp_len;
+	int leap, non_leap;
 };
 
 
 struct wpa_config {
 	struct wpa_ssid *ssid;
 	int eapol_version;
-	char *ctrl_interface; /* patch for UNIX domain socket */
+	int ap_scan;
+	char *ctrl_interface; /* directory for UNIX domain sockets */
+	gid_t ctrl_interface_gid;
 };
 
 

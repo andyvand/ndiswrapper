@@ -13,4 +13,8 @@ void generate_authenticator_response(u8 *password, size_t password_len,
 void nt_challenge_response(u8 *challenge, u8 *password, size_t password_len,
 			   u8 *response);
 
+void challenge_response(u8 *challenge, u8 *password_hash, u8 *response);
+void nt_password_hash(u8 *password, size_t password_len, u8 *password_hash);
+void hash_nt_password_hash(u8 *password_hash, u8 *password_hash_hash);
+
 #endif /* MS_FUNCS_H */

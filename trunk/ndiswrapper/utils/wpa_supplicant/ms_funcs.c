@@ -40,8 +40,7 @@ static void challenge_hash(u8 *peer_challenge, u8 *auth_challenge,
 }
 
 
-static void nt_password_hash(u8 *password, size_t password_len,
-			     u8 *password_hash)
+void nt_password_hash(u8 *password, size_t password_len, u8 *password_hash)
 {
 	u8 *buf;
 	int i;
@@ -62,7 +61,7 @@ static void nt_password_hash(u8 *password, size_t password_len,
 }
 
 
-static void hash_nt_password_hash(u8 *password_hash, u8 *password_hash_hash)
+void hash_nt_password_hash(u8 *password_hash, u8 *password_hash_hash)
 {
 	MD4_CTX ctx;
 	MD4_Init(&ctx);
@@ -97,8 +96,7 @@ static void des_encrypt(u8 *clear, u8 *key, u8 *cypher)
 }
 
 
-static void challenge_response(u8 *challenge, u8 *password_hash,
-			       u8 *response)
+void challenge_response(u8 *challenge, u8 *password_hash, u8 *response)
 {
 	u8 zpwd[7];
 	des_encrypt(challenge, password_hash, response);
