@@ -1596,8 +1596,8 @@ static int __init wrapper_init(void)
 #endif
 		);
 
-	if (loader_init() || ntoskrnl_init() || misc_funcs_init() ||
-	    ndis_init()) {
+	if (misc_funcs_init() || ntoskrnl_init() || ndis_init() ||
+	    loader_init()) {
 		module_cleanup();
 		ERROR("couldn't initialize %s", DRIVER_NAME);
 		TRACEEXIT1(return -EPERM);

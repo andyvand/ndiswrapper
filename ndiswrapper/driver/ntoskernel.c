@@ -21,13 +21,19 @@
 DECLARE_WAIT_QUEUE_HEAD(dispatch_event_wq);
 static unsigned char global_signal_state = 0;
 static struct wrap_spinlock dispatch_event_lock;
-struct wrap_spinlock ntoskrnl_lock;
+KSPIN_LOCK ntoskrnl_lock;
 struct wrap_spinlock irp_cancel_lock;
 
 int ntoskrnl_init(void)
 {
+	struct wrap_spinlock *lock;
+
 	wrap_spin_lock_init(&dispatch_event_lock);
-	wrap_spin_lock_init(&ntoskrnl_lock);
+	allocate_kspin_lock(&ntoskrnl_lock);
+	if (ntoskrnl_lock == 0)
+		return -ENOMEM;
+	lock = kspin_wrap_lock(ntoskrnl_lock);
+	wrap_spin_lock_init(kspin_wrap_lock(ntoskrnl_lock));
 	wrap_spin_lock_init(&irp_cancel_lock);
 	return 0;
 }
@@ -123,16 +129,9 @@ STDCALL KIRQL WRAP_EXPORT(KeGetCurrentIrql)
 STDCALL void WRAP_EXPORT(KeInitializeSpinLock)
 	(KSPIN_LOCK *lock)
 {
-#ifdef CONFIG_DEBUG_SPINLOCK
-	*lock = wrap_kmalloc(sizeof(struct wrap_spinlock), GFP_ATOMIC);
-	if (!*lock) {
-		ERROR("coudln't allocate memory");
-		TRACEEXIT3(return);
-	}
-#else
-	check_spin_lock_size(*lock);
-#endif
-	spin_lock_init(K_SPINLOCK(lock));
+	allocate_kspin_lock(lock);
+	if (*lock == 0)
+		ERROR("couldn't allocate spinlock");
 }
 
 STDCALL void WRAP_EXPORT(KeAcquireSpinLock)
@@ -195,7 +194,7 @@ _FASTCALL struct slist_entry *WRAP_EXPORT(InterlockedPushEntrySList)
 	(FASTCALL_DECL_2(union slist_head *head, struct slist_entry *entry))
 {
 	return ExInterlockedPushEntrySList(FASTCALL_ARGS_3(head, entry,
-					   W_KSPINLOCK(&ntoskrnl_lock)));
+							   &ntoskrnl_lock));
 }
 
 _FASTCALL struct slist_entry * WRAP_EXPORT(ExInterlockedPopEntrySList)
@@ -230,7 +229,7 @@ _FASTCALL struct slist_entry * WRAP_EXPORT(InterlockedPopEntrySList)
 	(FASTCALL_DECL_1(union slist_head *head))
 {
 	return ExInterlockedPopEntrySList(FASTCALL_ARGS_2(head,
-					   W_KSPINLOCK(&ntoskrnl_lock)));
+							  &ntoskrnl_lock));
 
 }
 
@@ -375,9 +374,9 @@ _FASTCALL void WRAP_EXPORT(ExInterlockedAddLargeStatistic)
 {
 	unsigned long flags;
 	TRACEENTER3("Stat %p = %llu, n = %u", plint, *plint, n);
-	spin_lock_irqsave(W_SPINLOCK(&ntoskrnl_lock), flags);
+	wrap_spin_lock_irqsave(kspin_wrap_lock(ntoskrnl_lock), flags);
 	*plint += n;
-	spin_unlock_irqrestore(W_SPINLOCK(&ntoskrnl_lock), flags);
+	wrap_spin_unlock_irqrestore(kspin_wrap_lock(ntoskrnl_lock), flags);
 }
 
 STDCALL void *WRAP_EXPORT(MmMapIoSpace)
@@ -1147,10 +1146,10 @@ _FASTCALL LONG WRAP_EXPORT(InterlockedDecrement)
 	LONG x;
 
 	TRACEENTER4("%s", "");
-	wrap_spin_lock(&ntoskrnl_lock, PASSIVE_LEVEL);
+	wrap_spin_lock(kspin_wrap_lock(ntoskrnl_lock), PASSIVE_LEVEL);
 	(*val)--;
 	x = *val;
-	wrap_spin_unlock(&ntoskrnl_lock);
+	wrap_spin_unlock(kspin_wrap_lock(ntoskrnl_lock));
 	TRACEEXIT4(return x);
 }
 
@@ -1160,10 +1159,10 @@ _FASTCALL LONG WRAP_EXPORT(InterlockedIncrement)
 	LONG x;
 
 	TRACEENTER4("%s", "");
-	wrap_spin_lock(&ntoskrnl_lock, PASSIVE_LEVEL);
+	wrap_spin_lock(kspin_wrap_lock(ntoskrnl_lock), PASSIVE_LEVEL);
 	(*val)++;
 	x = *val;
-	wrap_spin_unlock(&ntoskrnl_lock);
+	wrap_spin_unlock(kspin_wrap_lock(ntoskrnl_lock));
 	TRACEEXIT4(return x);
 }
 
@@ -1173,10 +1172,10 @@ _FASTCALL LONG WRAP_EXPORT(InterlockedExchange)
 	LONG x;
 
 	TRACEENTER4("%s", "");
-	wrap_spin_lock(&ntoskrnl_lock, PASSIVE_LEVEL);
+	wrap_spin_lock(kspin_wrap_lock(ntoskrnl_lock), PASSIVE_LEVEL);
 	x = *target;
 	*target = val;
-	wrap_spin_unlock(&ntoskrnl_lock);
+	wrap_spin_unlock(kspin_wrap_lock(ntoskrnl_lock));
 	TRACEEXIT4(return x);
 }
 
@@ -1186,11 +1185,11 @@ _FASTCALL LONG WRAP_EXPORT(InterlockedCompareExchange)
 	LONG x;
 
 	TRACEENTER4("%s", "");
-	wrap_spin_lock(&ntoskrnl_lock, PASSIVE_LEVEL);
+	wrap_spin_lock(kspin_wrap_lock(ntoskrnl_lock), PASSIVE_LEVEL);
 	x = *dest;
 	if (*dest == comperand)
 		*dest = xchg;
-	wrap_spin_unlock(&ntoskrnl_lock);
+	wrap_spin_unlock(kspin_wrap_lock(ntoskrnl_lock));
 	TRACEEXIT4(return x);
 }
 

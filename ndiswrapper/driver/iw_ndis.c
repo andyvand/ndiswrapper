@@ -712,9 +712,11 @@ static int iw_set_encr(struct net_device *dev, struct iw_request_info *info,
 		TRACEEXIT1(return -EINVAL);
 	}
 
+	DBGTRACE2("key length: %d", wrqu->data.length);
+
 	if (wrqu->data.length > 0) {
 		key_len = wrqu->data.length;
-		key = extra;
+		key = wrqu->data.pointer;
 	} else { // must be set as tx key
 		if (encr_info->keys[index].length == 0) {
 			WARNING("key %d is not set", index+1);
