@@ -817,13 +817,14 @@ STDCALL void NdisAcquireSpinLock(struct ndis_spin_lock *lock)
 	{
 		printk(KERN_INFO "%s: Buggy ndis driver trying to use unintilized spinlock. Trying to recover...", DRV_NAME);
 		NdisAllocateSpinLock(lock);
-		if (lock->kirql == NDIS_SPIN_LOCK_MAGIC_CHAR)
-			printk("ok.\n");
-		else
+		if (lock->kirql != NDIS_SPIN_LOCK_MAGIC_CHAR ||
+			lock->linux_lock == NULL)
 		{
 			printk("failed.\n");
 			BUG();
 		}
+		else
+			printk("ok.\n");
 	}
 		
 	spin_lock_bh(&lock->linux_lock->lock);
@@ -1204,17 +1205,7 @@ void ndis_irq_bh(void *data)
 	struct ndis_handle *handle = ndis_irq->handle;
 
 	if (ndis_irq->enabled)
-	{
 		handle->driver->miniport_char.handle_interrupt(handle->adapter_ctx);
-		
-		if (!handle->ndis_irq->shared)
-		{
-			if (handle->driver->miniport_char.enable_interrupts)
-				handle->driver->miniport_char.enable_interrupts(handle->adapter_ctx);
-			else
-				printk(KERN_ERR "%s: irq not shared and no function to enable interrupts\n", __FUNCTION__);
-		}
-	}
 }
 
 /*
@@ -1303,6 +1294,7 @@ STDCALL void NdisMDeregisterInterrupt(struct ndis_irq *ndis_irq)
 		ndis_irq->enabled = 0;
 		free_irq(ndis_irq->irq, ndis_irq);
 		kfree(ndis_irq->spinlock);
+		ndis_irq->spinlock = 0;
 	}
 }
 
