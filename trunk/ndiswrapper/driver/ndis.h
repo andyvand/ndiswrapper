@@ -766,6 +766,7 @@ struct packed ndis_handle
 	enum encr_mode encr_mode;
 	enum op_mode op_mode;
 
+	mac_address mac;
 	struct list_head recycle_packets;
 	struct wrap_spinlock recycle_packets_lock;
 	struct work_struct recycle_packets_work;
@@ -936,6 +937,8 @@ STDCALL int RtlAnsiStringToUnicodeString(struct ustring *dst,
 					 struct ustring *src,
 					 unsigned int dup);
 STDCALL void RtlInitAnsiString(struct ustring *dst, char *src);
+STDCALL void RtlFreeUnicodeString(struct ustring *string);
+STDCALL void RtlFreeAnsiString(struct ustring *string);
 
 void *get_sp(void);
 void ndis_init(void);
@@ -969,6 +972,7 @@ int set_encr_mode(struct ndis_handle *handle, int mode);
 
 void packet_recycler(void *param);
 int stricmp(const char *s1, const char *s2);
+int string_to_mac(char *mac, char *string, int string_len);
 
 extern struct wrap_spinlock atomic_lock;
 extern struct wrap_spinlock cancel_lock;
