@@ -1164,9 +1164,6 @@ void ndis_irq_bh(void *data)
 	struct ndis_irq *irqhandle = (struct ndis_irq *) data;
 	struct ndis_handle *handle = irqhandle->handle;
 
-	// we don't need a lock here; presumably the ndis functions already
-	// obtained a lock
-	//FIXME: Ne need a spinlock to implement SynchronizeWithIRQ
 	if (handle->ndis_irq_enabled)
 		handle->driver->miniport_char.handle_interrupt(handle->adapter_ctx);
 }
@@ -1183,7 +1180,8 @@ irqreturn_t ndis_irq_th(int irq, void *data, struct pt_regs *pt_regs)
 	struct ndis_irq *irqhandle = (struct ndis_irq *) data;
 	struct ndis_handle *handle = irqhandle->handle; 
 
-	// ndis document says we don't need spinlock here
+	/* We need a lock here in order to implement NdisMSynchronizeWithInterrupt,
+	  however the ISR is really fast anyway so it should not hurt performance */
 	spin_lock(&irqhandle->spinlock);
 	handle->driver->miniport_char.isr(&recognized, &handle_interrupt, handle->adapter_ctx);
 	spin_unlock(&irqhandle->spinlock);
