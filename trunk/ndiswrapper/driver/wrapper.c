@@ -1184,7 +1184,7 @@ static int __devinit ndis_init_one(struct pci_dev *pdev,
 	}
 	handle->key_len = 0;
 	apscan_init(handle);
-	hangcheck_add(handle);
+	//hangcheck_add(handle);
 	return 0;
 
 out_start:
@@ -1203,7 +1203,7 @@ static void __devexit ndis_remove_one(struct pci_dev *pdev)
 
 	DBGTRACE("%s\n", __FUNCTION__);
 
-	hangcheck_del(handle);
+	//hangcheck_del(handle);
 	apscan_del(handle);
 #ifndef DEBUG_CRASH_ON_INIT
 	unregister_netdev(handle->net_dev);

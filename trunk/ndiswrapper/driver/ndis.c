@@ -667,15 +667,20 @@ STDCALL void NdisAdjustBufferLength(struct ndis_buffer *buf, unsigned int len)
 }
 STDCALL void NdisQueryBuffer(struct ndis_buffer *buf, void **adr, unsigned int *len)
 {
-	*adr = buf->data;
-	*len = buf->len;
+	if(adr)
+		*adr = buf->data;
+	if(len)
+		*len = buf->len;
 }
 
-STDCALL void NdisQueryBufferSafe(struct ndis_buffer *buf, void **addr, unsigned int *len,
+STDCALL void NdisQueryBufferSafe(struct ndis_buffer *buf, void **adr, unsigned int *len,
                                  unsigned int priority)
 {
-	*addr = buf->data;
-	*len = buf->len;
+	DBGTRACE("%s %08x, %08x, %08x\n", __FUNCTION__, (int)buf, (int)adr, (int)len);
+	if(adr)
+		*adr = buf->data;
+	if(len)
+		*len = buf->len;
 }                                
 
 STDCALL void *NdisBufferVirtualAddress(struct ndis_buffer *buf)
@@ -1194,7 +1199,7 @@ STDCALL void NdisSetEvent(struct ndis_event *event)
 
 STDCALL void NdisResetEvent(struct ndis_event *event)
 {
-	DBGTRACE("%s %08x\n", __FUNCTION__, (int)event);
+	//DBGTRACE("%s %08x\n", __FUNCTION__, (int)event);
 	event->state = 0;
 }
 
@@ -1291,6 +1296,20 @@ STDCALL void NdisUnchainBufferAtBack(struct ndis_packet *packet, struct ndis_buf
 	*buffer = btail;
 }
 
+STDCALL void NdisGetFirstBufferFromPacketSafe(struct ndis_packet *packet,
+                                              struct ndis_buffer **buffer,
+                                              void **virt,
+                                              unsigned int *len,
+                                              unsigned int *totlen,
+                                              unsigned int priority)
+{
+	struct ndis_buffer *b = packet->buffer_head;
+
+	*buffer = b;
+	*virt = b->data;
+	*len = b->len;
+	*totlen = packet->len;
+}
  
  /* Unimplemented...*/
 STDCALL void NdisInitAnsiString(void *src, void *dst) {UNIMPL();}
@@ -1303,7 +1322,6 @@ STDCALL unsigned long NdisReadPcmciaAttributeMemory(void *handle, unsigned int o
 STDCALL void NdisUnicodeStringToAnsiString(void){UNIMPL();}
 
 STDCALL void NdisInitializeString(void){UNIMPL();}
-STDCALL void NdisGetFirstBufferFromPacketSafe(void){UNIMPL();}
 STDCALL void NdisUnchainBufferAtFront(void){UNIMPL();}
 STDCALL void NdisMSetAttributes(void){UNIMPL();}
 STDCALL void EthFilterDprIndicateReceiveComplete(void){UNIMPL();}
