@@ -34,33 +34,10 @@
 #include <linux/version.h>
 
 #include "ndiswrapper.h"
+#include "winnt_types.h"
+#include "winnt_pe.h"
 
 #define DEBUG_IRQL 1
-
-#ifdef CONFIG_X86_64
-typedef uint64_t ULONG_PTR;
-#define STDCALL
-#define _FASTCALL
-#define FASTCALL_DECL_1(decl1) decl1
-#define FASTCALL_DECL_2(decl1,decl2) decl1, decl2
-#define FASTCALL_DECL_3(decl1,decl2,decl3) decl1, decl2, decl3
-#define FASTCALL_ARGS_1(arg1) arg1
-#define FASTCALL_ARGS_2(arg1,arg2) arg1, arg2
-#define FASTCALL_ARGS_3(arg1,arg2,arg3) arg1, arg2, arg3
-#else 
-typedef uint32_t ULONG_PTR;
-#define STDCALL __attribute__((__stdcall__, regparm(0)))
-#define _FASTCALL __attribute__((__stdcall__)) __attribute__((regparm (3)))
-#define FASTCALL_DECL_1(decl1) int _dummy1_, int _dummy2_, decl1
-#define FASTCALL_DECL_2(decl1,decl2) int _dummy1_, decl2, decl1
-#define FASTCALL_DECL_3(decl1,decl2,decl3) int _dummy1_, decl2, decl1, decl3
-#define FASTCALL_ARGS_1(arg1) 0, 0, arg1
-#define FASTCALL_ARGS_2(arg1,arg2) 0, arg2, arg1
-#define FASTCALL_ARGS_3(arg1,arg2,arg3) 0, arg2, arg1, arg3
-#endif
-
-#define NOREGPARM __attribute__((regparm(0)))
-#define packed __attribute__((packed))
 
 #define MAX_STR_LEN 512
 
@@ -90,6 +67,7 @@ typedef uint32_t ULONG_PTR;
 #define CALL_ON_SUCCESS                 0x40
 #define CALL_ON_ERROR                   0x80
 
+#if 0
 typedef int8_t		CHAR;
 typedef uint8_t		UCHAR;
 typedef uint8_t		BOOLEAN;
@@ -100,13 +78,10 @@ typedef uint16_t	USHORT;
 typedef uint16_t	WORD;
 typedef uint32_t	DWORD;
 typedef int32_t		LONG;
-typedef int32_t		INT;
 typedef uint32_t	ULONG;
-typedef uint32_t	UINT;
 typedef uint64_t	ULONGLONG;
-typedef int64_t		LARGE_INTEGER;
+#endif
 
-typedef ULONG_PTR	SIZE_T;
 typedef LONG KPRIORITY;
 typedef INT NT_STATUS;
 typedef LARGE_INTEGER	PHYSICAL_ADDRESS;
@@ -357,6 +332,9 @@ struct pe_image {
 	void *image;
 	int size;
 	int type;
+
+	IMAGE_NT_HEADERS *nt_hdr;
+	IMAGE_OPTIONAL_HEADER *opt_hdr;
 };
 
 struct ustring {
