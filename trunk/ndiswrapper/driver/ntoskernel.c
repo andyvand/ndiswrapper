@@ -108,10 +108,9 @@ STDCALL void WRAP_EXPORT(KeInitializeSpinLock)
 	(KSPIN_LOCK *lock)
 {
 	if (sizeof(lock) > sizeof(lock->ntoslock)) {
-		ERROR("spinlock used is not compatible"
-		      " with KSPIN_LOCK: %d, %d",
-		      sizeof(lock),
-		      sizeof(lock->ntoslock));
+		ERROR("spinlock used is not compatible with "
+		      "KSPIN_LOCK: %u, %u", (unsigned int)sizeof(lock),
+		      (unsigned int)sizeof(lock->ntoslock));
 	}
 	spin_lock_init(&lock->spinlock);
 }
