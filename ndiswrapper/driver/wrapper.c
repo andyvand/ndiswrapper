@@ -77,6 +77,8 @@ extern int image_offset;
 extern struct list_head wrap_allocs;
 extern struct wrap_spinlock wrap_allocs_lock;
 
+extern struct list_head handle_ctx_list;
+
 void ndis_set_rx_mode(struct net_device *dev);
 
 int doreset(struct ndis_handle *handle)
@@ -109,11 +111,11 @@ int doreset(struct ndis_handle *handle)
 #if 1
 	if (res == NDIS_STATUS_SUCCESS && handle->reset_status)
 	{
-		handle->indicate_receive_packet = &NdisMIndicateReceivePacket;
+		handle->rx_packet = &NdisMIndicateReceivePacket;
 		handle->send_complete = &NdisMSendComplete;
 		handle->send_resource_avail = &NdisMSendResourcesAvailable;
-		handle->indicate_status = &NdisMIndicateStatus;
-		handle->indicate_status_complete = &NdisMIndicateStatusComplete;
+		handle->status = &NdisMIndicateStatus;
+		handle->status_complete = &NdisMIndicateStatusComplete;
 		handle->query_complete = &NdisMQueryInformationComplete;
 		handle->set_complete = &NdisMSetInformationComplete;
 		handle->reset_complete = &NdisMResetComplete;
@@ -1166,7 +1168,7 @@ static int setup_dev(struct net_device *dev)
  */
 static int ndis_init_one(struct pci_dev *pdev, const struct pci_device_id *ent)
 {
-	int i, res = 0;
+	int i, *ip, res = 0;
 	struct ndis_device *device = (struct ndis_device *) ent->driver_data;
 	struct ndis_driver *driver = device->driver;
 	struct ndis_handle *handle;
@@ -1193,6 +1195,12 @@ static int ndis_init_one(struct pci_dev *pdev, const struct pci_device_id *ent)
 //	SET_NETDEV_DEV(dev, &pdev->dev);
 	handle = dev->priv;
 
+	/* Poision the fileds as they may contain function pointers
+	 * which my be called by the driver */
+	for (i = 0, ip = (int *)handle->fill1;
+	     (void *)&ip[i] < (void *)&handle->pci_dev; i++)
+		ip[i] = 0x1000+i;
+
 	handle->driver = driver;
 	handle->device = device;
 	handle->net_dev = dev;
@@ -1207,7 +1215,6 @@ static int ndis_init_one(struct pci_dev *pdev, const struct pci_device_id *ent)
 
 	wrap_spin_lock_init(&handle->send_packet_lock);
 	wrap_spin_lock_init(&handle->send_packet_done_lock);
-
 
 	INIT_WORK(&handle->xmit_work, xmit_bh, handle); 	
 	wrap_spin_lock_init(&handle->xmit_ring_lock);
@@ -1229,27 +1236,16 @@ static int ndis_init_one(struct pci_dev *pdev, const struct pci_device_id *ent)
 
 	INIT_LIST_HEAD(&handle->timers);
 
-	/* Poision this because it may contain function pointers */
-	for (i = 0; i < sizeof(handle->fill1); i += sizeof(int))
-		*(int *)((char *)handle->fill1+i) = 0x1000+i;
-
-	for (i = 0; i < sizeof(handle->fill3); i += sizeof(int))
-		*(int *)((char *)handle->fill3+i) = 0x3000+i;
-
-	for (i = 0; i < sizeof(handle->fill4); i += sizeof(int))
-		*(int *)((char *)handle->fill4+i) = 0x4000+i;
-
-	for (i = 0; i < sizeof(handle->fill5); i += sizeof(int))
-		*(int *)((char *)handle->fill5+i) = 0x5000+i;
-
-	handle->indicate_receive_packet = &NdisMIndicateReceivePacket;
+	handle->rx_packet = &NdisMIndicateReceivePacket;
 	handle->send_complete = &NdisMSendComplete;
 	handle->send_resource_avail = &NdisMSendResourcesAvailable;
-	handle->indicate_status = &NdisMIndicateStatus;
-	handle->indicate_status_complete = &NdisMIndicateStatusComplete;
+	handle->status = &NdisMIndicateStatus;
+	handle->status_complete = &NdisMIndicateStatusComplete;
 	handle->query_complete = &NdisMQueryInformationComplete;
 	handle->set_complete = &NdisMSetInformationComplete;
 	handle->reset_complete = &NdisMResetComplete;
+	handle->eth_rx_indicate = &EthRxIndicateHandler;
+	handle->eth_rx_complete = &EthRxComplete;
 	
 	handle->map_count = 0;
 	handle->map_dma_addr = NULL;
@@ -1845,6 +1841,7 @@ static int __init wrapper_init(void)
 	init_ndis_work();
 	init_alloc_work();
 	INIT_LIST_HEAD(&wrap_allocs);
+	INIT_LIST_HEAD(&handle_ctx_list);
 	wrap_spin_lock_init(&wrap_allocs_lock);
 	wrap_spin_lock_init(&driverlist_lock);
 	ndiswrapper_procfs_init();

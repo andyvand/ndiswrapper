@@ -140,7 +140,10 @@ struct miniport_char
 	/* Set parameters */
 	unsigned int (*setinfo)(void *ctx, unsigned int oid, char *buffer, unsigned int buflen, unsigned int *written, unsigned int *needed) STDCALL;
 
-	void * TransferDataHandler;
+	/* this is called TransferData, but it actually receives data */
+	unsigned int (*tx_data)(struct ndis_packet *packet, u32 *bytes_txed,
+				void *adapter_ctx, void *rx_ctx, u32 offset,
+				u32 bytex_to_tx);
 
 	/* upper layer is done with RX packet */	
 	void (*return_packet)(void *ctx, void *packet) STDCALL;
@@ -165,6 +168,13 @@ struct miniport_char
 	void *pnp_event_notify;
 	void (*adapter_shutdown)(void *ctx) STDCALL;
 
+};
+
+struct handle_ctx_entry
+{
+	struct list_head list;
+	void *handle;
+	void *ctx;
 };
 
 struct ndis_alloc_entry
@@ -468,6 +478,39 @@ struct packed ndis_configuration
 
 #define XMIT_RING_SIZE 16
 
+enum ndis_medium {
+	NDIS_MEDIUM_802_3,
+	NDIS_MEDIUM_802_5,
+	NDIS_MEDIUM_FDDI,
+	NDIS_MEDIUM_WAN,
+	NDIS_MEDIUM_LOCALTALK,
+	NDIS_MEDIUM_DIX,
+	NDIS_MEDIUM_ARCNETRAW,
+	NDIS_MEDIUM_ARCNET878_2,
+	NDIS_MEDIUM_ATM,
+	NDIS_MEDIUM_WIRELESSWAN,
+	NDIS_MEDIUM_IRDA,
+	NDIS_MEDIUM_BPC,
+	NDIS_MEDIUM_COWAN,
+	NDIS_MEDIUM_1394,
+	NDIS_MEDIUM_MAX
+};
+
+
+enum ndis_phys_medium
+{
+    NDIS_PHYSICAL_MEDIUM_UNSPECIFIED,
+    NDIS_PHYSICAL_MEDIUM_WIRELESSLAN,
+    NDIS_PHYSICAL_MEDIUM_CABLEMODEM,
+    NDIS_PHYSICAL_MEDIUM_PHONELINE,
+    NDIS_PHYSICAL_MEDIUM_POWERLINE,
+    NDIS_PHYSICAL_MEDIUM_DSL,
+    NDIS_PHYSICAL_MEDIUM_FIBRECHANNEL,
+    NDIS_PHYSICAL_MEDIUM_1394,
+    NDIS_PHYSICAL_MEDIUM_WIRELESSWAN,
+    NDIS_PHYSICAL_MEDIUM_MAX,
+};
+
 /*
  * This is the per device struct. One per PCI-device exists.
  *
@@ -477,17 +520,58 @@ struct packed ndis_configuration
 struct packed ndis_handle
 {
 	char fill1[232];
-	void *indicate_receive_packet;
+	void *rx_packet;
 	void *send_complete;
 	void *send_resource_avail;
 	void *reset_complete;
-	char fill3[132];
-	void *indicate_status;
-	void *indicate_status_complete;
-	char fill4[4];
+//	char fill2[132];
+
+	unsigned long media_type;
+	unsigned int bus_number;
+	unsigned int bus_type;
+	unsigned int adapter_type;
+	void *device_obj;
+	void *phys_device_obj;
+	void *next_device_obj;
+	void *mapreg;
+	void *call_mgraflist;
+	void *miniport_thread;
+	void *setinfobuf;
+	unsigned short setinfo_buf_len;
+	unsigned short max_send_pkts;
+	unsigned int fake_status;
+	void *lock_handler;
+	struct ustring *adapter_instance_name;
+	void *timer_queue;
+	u32 mac_options;
+	void *pending_req;
+	u32 max_long_addrs;
+	u32 max_short_addrs;
+	u32 cur_lookahead;
+	u32 max_lookahead;
+	void *interrupt;
+	void *disable_intr;
+	void *enable_intr;
+	void *send_pkts;
+	void *deferred_send;
+	void *eth_rx_indicate;
+	void *txrx_indicate;
+	void *fddi_rx_indicate;
+	void *eth_rx_complete;
+	void *txrx_complete;
+	void *fddi_rx_complete;
+
+	void *status;
+	void *status_complete;
+	void *td_complete;
+
 	void *query_complete;
 	void *set_complete;
-	char fill5[200];
+	void *wan_tx_complete;
+	void *wan_rx;
+	void *wan_rx_complete;
+
+	char fill3[200];
 
 	struct pci_dev *pci_dev;
 	struct net_device *net_dev;
@@ -684,6 +768,12 @@ STDCALL void NdisMSetInformationComplete(struct ndis_handle *handle, unsigned in
 STDCALL void NdisMResetComplete(struct ndis_handle *handle, int status, int reset_status);
 STDCALL unsigned long NDIS_BUFFER_TO_SPAN_PAGES(struct ndis_buffer *buffer);
 STDCALL void NdisMDeregisterInterrupt(struct ndis_irq *ndis_irq);
+STDCALL void EthRxIndicateHandler(void *adapter_ctx, void *rx_ctx,
+				  char *header1, char *header,
+				  u32 header_size, char *look_aheader,
+				  u32 look_aheader_size, u32 packet_size);
+STDCALL void EthRxComplete(struct ndis_handle *handle);
+
 
 STDCALL int RtlUnicodeStringToAnsiString(struct ustring *dst, struct ustring *src, unsigned int dup) STDCALL;
 STDCALL int RtlAnsiStringToUnicodeString(struct ustring *dst, struct ustring *src, unsigned int dup) STDCALL;
@@ -749,6 +839,9 @@ int stricmp(const char *s1, const char *s2);
 
 /* general OIDs */
 #define NDIS_OID_GEN_SPEED          0x00010107
+#define OID_GEN_PHYSICAL_MEDIUM     0x00010202
+#define OID_GEN_MEDIA_SUPPORTED                 0x00010103
+#define OID_GEN_MEDIA_IN_USE                    0x00010104
 
 #define NDIS_OID_PNP_SET_POWER      0xFD010101
 #define NDIS_OID_PNP_QUERY_POWER    0xFD010102
