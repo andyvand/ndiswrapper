@@ -1274,22 +1274,55 @@ STDCALL NTSTATUS WRAP_EXPORT(IoGetDeviceProperty)
 	}
 }
 
+STDCALL ULONG WRAP_EXPORT(MmSizeOfMdl)
+	(void *base, ULONG length)
+{
+	return (sizeof(struct mdl) +
+		SPAN_PAGES((ULONG_PTR)base, length) * sizeof(ULONG));
+}
+
+STDCALL void WRAP_EXPORT(MmInitializeMdl)
+	(struct mdl *mdl, void *baseva, SIZE_T length)
+{
+	mdl->next = NULL;
+	mdl->size = MmSizeOfMdl(baseva, length);
+	mdl->flags = 0;
+	mdl->startva = (void *)PAGE_ALIGN((ULONG_PTR)baseva);
+	mdl->byteoffset = (ULONG)offset_in_page(baseva);
+	mdl->bytecount = length;
+}
+
+STDCALL struct mdl *WRAP_EXPORT(IoAllocateMdl)
+	(void *virt, ULONG length, BOOLEAN second_buf, BOOLEAN charge_quota,
+	 struct irp *irp)
+{
+	struct mdl *mdl;
+
+	mdl = kmalloc(MmSizeOfMdl(virt, length), GFP_ATOMIC);
+	if (!mdl)
+		return NULL;
+
+	MmInitializeMdl(mdl, virt, length);
+	if (irp) {
+		if (second_buf == TRUE) {
+			struct mdl *last;
+
+			last = irp->mdl;
+			while (last->next)
+				last = last->next;
+			last->next = mdl;
+		} else
+			irp->mdl = mdl;
+	}
+	return mdl;
+}
+
 STDCALL void WRAP_EXPORT(IoFreeMdl)
 	(struct mdl *mdl)
 {
-	TRACEENTER3("%p", mdl);
+	if (mdl)
+		kfree(mdl);
 	TRACEEXIT3(return);
-}
-
-STDCALL ULONG WRAP_EXPORT(MmSizeOfMdl)
-	(void *base, SIZE_T length)
-{
-	ULONG pages;
-	ULONG_PTR start;
-
-	start = (ULONG_PTR)base;
-	pages = SPAN_PAGES(start, length);
-	return (sizeof(struct mdl) + pages * sizeof(ULONG));
 }
 
 STDCALL void WRAP_EXPORT(MmBuildMdlForNonPagedPool)
@@ -1312,8 +1345,6 @@ STDCALL void WRAP_EXPORT(MmUnmapLockedPages)
 {
 	return;
 }
-
-STDCALL void WRAP_EXPORT(IoAllocateMdl)(void){UNIMPL();}
 
 STDCALL void WRAP_EXPORT(KeInitializeMutex)
 	(struct kmutex *mutex, BOOLEAN wait)

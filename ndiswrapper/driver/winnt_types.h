@@ -209,7 +209,7 @@ enum memory_caching_type {
 struct mdl {
 	struct mdl* next;
 	CSHORT size;
-	CSHORT mdlflags;
+	CSHORT flags;
 	void *process;
 	void *mappedsystemva;
 	void *startva;
