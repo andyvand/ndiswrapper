@@ -34,7 +34,7 @@ static struct list_head handle_ctx_list;
 
 static struct work_struct ndis_work;
 static struct list_head ndis_work_list;
-static struct wrap_spinlock ndis_work_list_lock;
+static KSPIN_LOCK ndis_work_list_lock;
 
 static void ndis_worker(void *data);
 static void free_handle_ctx(struct ndis_handle *handle);
@@ -46,7 +46,7 @@ int ndis_init(void)
 	INIT_WORK(&ndis_work, &ndis_worker, NULL);
 	INIT_LIST_HEAD(&ndis_work_list);
 	INIT_LIST_HEAD(&handle_ctx_list);
-	wrap_spin_lock_init(&ndis_work_list_lock);
+	kspin_lock_init(&ndis_work_list_lock);
 	return 0;
 }
 
@@ -70,8 +70,9 @@ void ndis_exit_handle(struct ndis_handle *handle)
 static void free_handle_ctx(struct ndis_handle *handle)
 {
 	struct list_head *cur, *tmp;
+	KIRQL irql;
 
-	kspin_lock(&ntoskrnl_lock, PASSIVE_LEVEL);
+	irql = kspin_lock(&ntoskrnl_lock, PASSIVE_LEVEL);
 	list_for_each_safe(cur, tmp, &handle_ctx_list) {
 		struct handle_ctx_entry *handle_ctx =
 			list_entry(cur, struct handle_ctx_entry, list);
@@ -80,7 +81,7 @@ static void free_handle_ctx(struct ndis_handle *handle)
 			kfree(handle_ctx);
 		}
 	}
-	kspin_unlock(&ntoskrnl_lock);
+	kspin_unlock(&ntoskrnl_lock, irql);
 	return;
 }
 
@@ -169,7 +170,7 @@ STDCALL NDIS_STATUS WRAP_EXPORT(NdisAllocateMemory)
 {
 	TRACEENTER3("length = %u, flags = %08X", length, flags);
 	if (length <= KMALLOC_THRESHOLD) {
-		if (KeGetCurrentIrql() == PASSIVE_LEVEL)
+		if (current_irql() < DISPATCH_LEVEL)
 			*dest = kmalloc(length, GFP_KERNEL);
 		else
 			*dest = kmalloc(length, GFP_ATOMIC);
@@ -197,6 +198,7 @@ STDCALL void WRAP_EXPORT(NdisFreeMemory)
 {
 	struct ndis_work_entry *ndis_work_entry;
 	struct ndis_free_mem_work_item *free_mem;
+	KIRQL irql;
 
 	TRACEENTER3("addr = %p, flags = %08X", addr, flags);
 
@@ -228,9 +230,9 @@ STDCALL void WRAP_EXPORT(NdisFreeMemory)
 		free_mem->length = length;
 		free_mem->flags = flags;
 
-		wrap_spin_lock(&ndis_work_list_lock, DISPATCH_LEVEL);
+		irql = kspin_lock(&ndis_work_list_lock, DISPATCH_LEVEL);
 		list_add_tail(&ndis_work_entry->list, &ndis_work_list);
-		wrap_spin_unlock(&ndis_work_list_lock);
+		kspin_unlock(&ndis_work_list_lock, irql);
 
 		schedule_work(&ndis_work);
 	}
@@ -681,6 +683,7 @@ STDCALL void WRAP_EXPORT(NdisMSetAttributesEx)
 	 UINT hangcheck_interval, UINT attributes, ULONG adaptortype)
 {
 	struct handle_ctx_entry *handle_ctx;
+	KIRQL irql;
 
 	TRACEENTER2("%p, %p %d %08x, %d", handle, adapter_ctx,
 		    hangcheck_interval, attributes, adaptortype);
@@ -692,9 +695,9 @@ STDCALL void WRAP_EXPORT(NdisMSetAttributesEx)
 		/* ntoskrnl_lock is not meant for use here, but since this
 		 * function is called during initialization only,
 		 * no harm abusing it */
-		kspin_lock(&ntoskrnl_lock, PASSIVE_LEVEL);
+		irql = kspin_lock(&ntoskrnl_lock, PASSIVE_LEVEL);
 		list_add(&handle_ctx->list, &handle_ctx_list);
-		kspin_unlock(&ntoskrnl_lock);
+		kspin_unlock(&ntoskrnl_lock, irql);
 	}
 
 	if (attributes & NDIS_ATTRIBUTE_BUS_MASTER)
@@ -726,15 +729,16 @@ STDCALL void WRAP_EXPORT(NdisMSetAttributesEx)
 static struct ndis_handle *ctx_to_handle(void *ctx)
 {
 	struct handle_ctx_entry *handle_ctx;
+	KIRQL irql;
 
-	kspin_lock(&ntoskrnl_lock, PASSIVE_LEVEL);
+	irql = kspin_lock(&ntoskrnl_lock, PASSIVE_LEVEL);
 	list_for_each_entry(handle_ctx, &handle_ctx_list, list) {
 		if (handle_ctx->ctx == ctx) {
-			kspin_unlock(&ntoskrnl_lock);
+			kspin_unlock(&ntoskrnl_lock, irql);
 			return handle_ctx->handle;
 		}
 	}
-	kspin_unlock(&ntoskrnl_lock);
+	kspin_unlock(&ntoskrnl_lock, irql);
 
 	return NULL;
 }
@@ -883,11 +887,6 @@ STDCALL void WRAP_EXPORT(NdisFreeSpinLock)
 	(struct ndis_spinlock *lock)
 {
 	TRACEENTER4("lock %p", lock);
-	lock->klock = 0;
-	if (unmap_kspin_lock(&lock->klock))
-		ERROR("buggy Windows driver freeing unallocated "
-		      "kspin_lock %p", &lock->klock);
-
 	TRACEEXIT4(return);
 }
 
@@ -900,7 +899,7 @@ STDCALL void WRAP_EXPORT(NdisAcquireSpinLock)
 	 * KeInitializeSpinLock doesn't really allocate a spinlock if
 	 * it is already allocated */
 	NdisAllocateSpinLock(lock);
-	kspin_lock(&lock->klock, DISPATCH_LEVEL);
+	lock->irql = kspin_lock(&lock->klock, DISPATCH_LEVEL);
 	TRACEEXIT5(return);
 }
 
@@ -908,7 +907,7 @@ STDCALL void WRAP_EXPORT(NdisReleaseSpinLock)
 	(struct ndis_spinlock *lock)
 {
 	TRACEENTER5("lock %p", lock);
-	kspin_unlock(&lock->klock);
+	kspin_unlock(&lock->klock, lock->irql);
 	TRACEEXIT5(return);
 }
 
@@ -916,7 +915,7 @@ STDCALL void WRAP_EXPORT(NdisDprAcquireSpinLock)
 	(struct ndis_spinlock *lock)
 {
 	TRACEENTER5("lock %p", lock);
-	kspin_lock(&lock->klock, DISPATCH_LEVEL);
+	lock->irql = kspin_lock(&lock->klock, DISPATCH_LEVEL);
 	TRACEEXIT5(return);
 }
 
@@ -924,7 +923,7 @@ STDCALL void WRAP_EXPORT(NdisDprReleaseSpinLock)
 	(struct ndis_spinlock *lock)
 {
 	TRACEENTER5("lock %p", lock);
-	kspin_unlock(&lock->klock);
+	kspin_unlock(&lock->klock, lock->irql);
 	TRACEEXIT5(return);
 }
 
@@ -1004,6 +1003,7 @@ STDCALL NDIS_STATUS WRAP_EXPORT(NdisMAllocateSharedMemoryAsync)
 {
 	struct ndis_work_entry *ndis_work_entry;
 	struct ndis_alloc_mem_work_item *alloc_mem;
+	KIRQL irql;
 
 	TRACEENTER3("%s", "");
 	ndis_work_entry = kmalloc(sizeof(*ndis_work_entry), GFP_ATOMIC);
@@ -1018,9 +1018,9 @@ STDCALL NDIS_STATUS WRAP_EXPORT(NdisMAllocateSharedMemoryAsync)
 	alloc_mem->cached = cached;
 	alloc_mem->ctx = ctx;
 
-	wrap_spin_lock(&ndis_work_list_lock, DISPATCH_LEVEL);
+	irql = kspin_lock(&ndis_work_list_lock, DISPATCH_LEVEL);
 	list_add_tail(&ndis_work_entry->list, &ndis_work_list);
-	wrap_spin_unlock(&ndis_work_list_lock);
+	kspin_unlock(&ndis_work_list_lock, irql);
 
 	schedule_work(&ndis_work);
 	TRACEEXIT3(return NDIS_STATUS_PENDING);
@@ -1048,7 +1048,7 @@ STDCALL void WRAP_EXPORT(NdisAllocateBufferPool)
 		*status = NDIS_STATUS_RESOURCES;
 		TRACEEXIT3(return);
 	}
-	wrap_spin_lock_init(&pool->lock);
+	kspin_lock_init(&pool->lock);
 	pool->max_descr = num_descr;
 	pool->num_allocated_descr = 0;
 	pool->free_descr = NULL;
@@ -1062,6 +1062,7 @@ STDCALL void WRAP_EXPORT(NdisAllocateBuffer)
 	 struct ndis_buffer_pool *pool, void *virt, UINT length)
 {
 	ndis_buffer *descr;
+	KIRQL irql;
 
 	TRACEENTER3("pool: %p, allocated: %d",
 		    pool, pool->num_allocated_descr);
@@ -1069,7 +1070,7 @@ STDCALL void WRAP_EXPORT(NdisAllocateBuffer)
 		*status = NDIS_STATUS_FAILURE;
 		TRACEEXIT4(return);
 	}
-	wrap_spin_lock(&pool->lock, DISPATCH_LEVEL);
+	irql = kspin_lock(&pool->lock, DISPATCH_LEVEL);
 	descr = NULL;
 	if (pool->num_allocated_descr < pool->max_descr) {
 		if (pool->free_descr) {
@@ -1093,7 +1094,7 @@ STDCALL void WRAP_EXPORT(NdisAllocateBuffer)
 		*status = NDIS_STATUS_FAILURE;
 
 	*buffer = descr;
-	wrap_spin_unlock(&pool->lock);
+	kspin_unlock(&pool->lock, irql);
 	TRACEEXIT3(return);
 }
 
@@ -1101,6 +1102,7 @@ STDCALL void WRAP_EXPORT(NdisFreeBuffer)
 	(ndis_buffer *descr)
 {
 	struct ndis_buffer_pool *pool;
+	KIRQL irql;
 
 	TRACEENTER3("buffer: %p", descr);
 	pool = descr->process;
@@ -1108,12 +1110,12 @@ STDCALL void WRAP_EXPORT(NdisFreeBuffer)
 		ERROR("pool for descriptor %p is invalid", descr);
 		TRACEEXIT3(return);
 	}
-	wrap_spin_lock(&pool->lock, DISPATCH_LEVEL);
+	irql = kspin_lock(&pool->lock, DISPATCH_LEVEL);
 	memset(descr, 0, sizeof(*descr));
 	descr->next = pool->free_descr;
 	pool->free_descr = descr;
 	pool->num_allocated_descr--;
-	wrap_spin_unlock(&pool->lock);
+	kspin_unlock(&pool->lock, irql);
 	TRACEEXIT3(return);
 }
 
@@ -1121,9 +1123,10 @@ STDCALL void WRAP_EXPORT(NdisFreeBufferPool)
 	(struct ndis_buffer_pool *pool)
 {
 	ndis_buffer *cur, *prev;
+	KIRQL irql;
 
 	TRACEENTER3("pool: %p", pool);
-	wrap_spin_lock(&pool->lock, DISPATCH_LEVEL);
+	irql = kspin_lock(&pool->lock, DISPATCH_LEVEL);
 	cur = pool->free_descr;
 	while (cur) {
 		prev = cur;
@@ -1131,7 +1134,7 @@ STDCALL void WRAP_EXPORT(NdisFreeBufferPool)
 		prev->process = NULL;
 		IoFreeMdl(prev);
 	}
-	wrap_spin_unlock(&pool->lock);
+	kspin_unlock(&pool->lock, irql);
 	kfree(pool);
 	TRACEEXIT3(return);
 }
@@ -1191,7 +1194,7 @@ STDCALL void WRAP_EXPORT(NdisAllocatePacketPool)
 		*status = NDIS_STATUS_RESOURCES;
 		TRACEEXIT3(return);
 	}
-	wrap_spin_lock_init(&pool->lock);
+	kspin_lock_init(&pool->lock);
 	pool->max_descr = num_descr;
 	pool->num_allocated_descr = 0;
 	pool->free_descr = NULL;
@@ -1213,9 +1216,11 @@ STDCALL UINT WRAP_EXPORT(NdisPacketPoolUsage)
 	(struct ndis_packet_pool *pool)
 {
 	UINT i;
-	wrap_spin_lock(&pool->lock, DISPATCH_LEVEL);
+	KIRQL irql;
+
+	irql = kspin_lock(&pool->lock, DISPATCH_LEVEL);
 	i = pool->num_allocated_descr;
-	wrap_spin_unlock(&pool->lock);
+	kspin_unlock(&pool->lock, irql);
 	return i;
 }
 
@@ -1224,13 +1229,14 @@ STDCALL void WRAP_EXPORT(NdisAllocatePacket)
 	 struct ndis_packet_pool *pool)
 {
 	struct ndis_packet *descr;
+	KIRQL irql;
 
 	TRACEENTER3("pool: %p", pool);
 	if (!pool) {
 		*status = NDIS_STATUS_RESOURCES;
 		TRACEEXIT3(return);
 	}
-	wrap_spin_lock(&pool->lock, DISPATCH_LEVEL);
+	irql = kspin_lock(&pool->lock, DISPATCH_LEVEL);
 	descr = NULL;
 	if (pool->num_allocated_descr < pool->max_descr) {
 		if (pool->free_descr) {
@@ -1251,7 +1257,7 @@ STDCALL void WRAP_EXPORT(NdisAllocatePacket)
 	} else
 		*status = NDIS_STATUS_RESOURCES;
 	*packet = descr;
-	wrap_spin_unlock(&pool->lock);
+	kspin_unlock(&pool->lock, irql);
 	TRACEEXIT3(return);
 }
 
@@ -1266,6 +1272,7 @@ STDCALL void WRAP_EXPORT(NdisFreePacket)
 	(struct ndis_packet *descr)
 {
 	struct ndis_packet_pool *pool;
+	KIRQL irql;
 
 	TRACEENTER3("packet: %p", descr);
 	pool = descr->private.pool;
@@ -1273,11 +1280,11 @@ STDCALL void WRAP_EXPORT(NdisFreePacket)
 		ERROR("pool for descriptor %p is invalid", descr);
 		TRACEEXIT3(return);
 	}
-	wrap_spin_lock(&pool->lock, DISPATCH_LEVEL);
+	irql = kspin_lock(&pool->lock, DISPATCH_LEVEL);
 	descr->next = pool->free_descr;
 	pool->free_descr = descr;
 	pool->num_allocated_descr--;
-	wrap_spin_unlock(&pool->lock);
+	kspin_unlock(&pool->lock, irql);
 	TRACEEXIT3(return);
 }
 
@@ -1285,16 +1292,17 @@ STDCALL void WRAP_EXPORT(NdisFreePacketPool)
 	(struct ndis_packet_pool *pool)
 {
 	struct ndis_packet *cur, *prev;
+	KIRQL irql;
 
 	TRACEENTER3("pool: %p", pool);
-	wrap_spin_lock(&pool->lock, DISPATCH_LEVEL);
+	irql = kspin_lock(&pool->lock, DISPATCH_LEVEL);
 	cur = pool->free_descr;
 	while (cur) {
 		prev = cur;
 		cur = cur->next;
 		kfree(prev);
 	}
-	wrap_spin_unlock(&pool->lock);
+	kspin_unlock(&pool->lock, irql);
 	kfree(pool);
 	TRACEEXIT3(return);
 }
@@ -1549,8 +1557,7 @@ STDCALL NDIS_STATUS WRAP_EXPORT(NdisMRegisterInterrupt)
 	if (shared && !req_isr)
 		WARNING("%s", "shared but dynamic interrupt!");
 	ndis_irq->shared = shared;
-	if (!kspin_lock_init(&ndis_irq->lock))
-		TRACEEXIT1(return NDIS_STATUS_RESOURCES);
+	kspin_lock_init(&ndis_irq->lock);
 
 	INIT_WORK(&handle->irq_work, &ndis_irq_bh, ndis_irq);
 	if (request_irq(vector, ndis_irq_th, shared? SA_SHIRQ : 0,
@@ -1591,8 +1598,6 @@ STDCALL void WRAP_EXPORT(NdisMDeregisterInterrupt)
 	schedule_timeout(HZ/10);
 #endif
 	free_irq(ndis_irq->irq.irq, ndis_irq);
-	if (unmap_kspin_lock(&ndis_irq->lock))
-		ERROR("IRQ spinlock %p is already freed?", &ndis_irq->lock);
 	ndis_irq->handle = NULL;
 	handle->ndis_irq = NULL;
 	TRACEEXIT1(return);
@@ -1700,6 +1705,7 @@ NdisMIndicateReceivePacket(struct ndis_handle *handle,
 	struct sk_buff *skb;
 	int i;
 	struct ndis_work_entry *ndis_work_entry;
+	KIRQL irql;
 
 	TRACEENTER3("%s", "");
 	for (i = 0; i < nr_packets; i++) {
@@ -1761,9 +1767,9 @@ NdisMIndicateReceivePacket(struct ndis_handle *handle,
 		ndis_work_entry->handle = handle;
 		ndis_work_entry->entry.return_packet = packet;
 
-		wrap_spin_lock(&ndis_work_list_lock, DISPATCH_LEVEL);
+		irql = kspin_lock(&ndis_work_list_lock, DISPATCH_LEVEL);
 		list_add_tail(&ndis_work_entry->list, &ndis_work_list);
-		wrap_spin_unlock(&ndis_work_list_lock);
+		kspin_unlock(&ndis_work_list_lock, irql);
 	}
 	schedule_work(&ndis_work);
 	TRACEEXIT3(return);
@@ -2037,12 +2043,13 @@ STDCALL LONG WRAP_EXPORT(NdisInterlockedDecrement)
 	(LONG *val)
 {
 	LONG x;
+	KIRQL irql;
 
 	TRACEENTER4("%s", "");
-	kspin_lock(&ntoskrnl_lock, PASSIVE_LEVEL);
+	irql = kspin_lock(&ntoskrnl_lock, PASSIVE_LEVEL);
 	(*val)--;
 	x = *val;
-	kspin_unlock(&ntoskrnl_lock);
+	kspin_unlock(&ntoskrnl_lock, irql);
 	TRACEEXIT4(return x);
 }
 
@@ -2050,12 +2057,13 @@ STDCALL LONG WRAP_EXPORT(NdisInterlockedIncrement)
 	(LONG *val)
 {
 	LONG x;
+	KIRQL irql;
 
 	TRACEENTER4("%s", "");
-	kspin_lock(&ntoskrnl_lock, PASSIVE_LEVEL);
+	irql = kspin_lock(&ntoskrnl_lock, PASSIVE_LEVEL);
 	(*val)++;
 	x = *val;
-	kspin_unlock(&ntoskrnl_lock);
+	kspin_unlock(&ntoskrnl_lock, irql);
 	TRACEEXIT4(return x);
 }
 
@@ -2227,7 +2235,7 @@ static void ndis_worker(void *data)
 	TRACEENTER3("%s", "");
 
 	while (1) {
-		wrap_spin_lock(&ndis_work_list_lock, DISPATCH_LEVEL);
+		irql = kspin_lock(&ndis_work_list_lock, DISPATCH_LEVEL);
 		if (list_empty(&ndis_work_list))
 			ndis_work_entry = NULL;
 		else {
@@ -2236,7 +2244,7 @@ static void ndis_worker(void *data)
 					   struct ndis_work_entry, list);
 			list_del(&ndis_work_entry->list);
 		}
-		wrap_spin_unlock(&ndis_work_list_lock);
+		kspin_unlock(&ndis_work_list_lock, irql);
 
 		if (!ndis_work_entry) {
 			DBGTRACE3("%s", "No more work");
@@ -2336,6 +2344,7 @@ STDCALL void WRAP_EXPORT(IoQueueWorkItem)
 	 enum work_queue_type queue_type, void *ctx)
 {
 	struct ndis_work_entry *ndis_work_entry;
+	KIRQL irql;
 
 	TRACEENTER3("%s", "");
 	if (io_work_item == NULL) {
@@ -2352,9 +2361,9 @@ STDCALL void WRAP_EXPORT(IoQueueWorkItem)
 	io_work_item->ctx = ctx;
 	ndis_work_entry->entry.io_work_item = io_work_item;
 
-	wrap_spin_lock(&ndis_work_list_lock, DISPATCH_LEVEL);
+	irql = kspin_lock(&ndis_work_list_lock, DISPATCH_LEVEL);
 	list_add_tail(&ndis_work_entry->list, &ndis_work_list);
-	wrap_spin_unlock(&ndis_work_list_lock);
+	kspin_unlock(&ndis_work_list_lock, irql);
 
 	schedule_work(&ndis_work);
 	TRACEEXIT3(return);
@@ -2364,6 +2373,7 @@ STDCALL NDIS_STATUS WRAP_EXPORT(NdisScheduleWorkItem)
 	(struct ndis_sched_work_item *ndis_sched_work_item)
 {
 	struct ndis_work_entry *ndis_work_entry;
+	KIRQL irql;
 
 	TRACEENTER3("%s", "");
 	/* this function is called from irq_bh by realtek driver */
@@ -2374,9 +2384,9 @@ STDCALL NDIS_STATUS WRAP_EXPORT(NdisScheduleWorkItem)
 	ndis_work_entry->type = NDIS_SCHED_WORK_ITEM;
 	ndis_work_entry->entry.sched_work_item = ndis_sched_work_item;
 
-	wrap_spin_lock(&ndis_work_list_lock, DISPATCH_LEVEL);
+	irql = kspin_lock(&ndis_work_list_lock, DISPATCH_LEVEL);
 	list_add_tail(&ndis_work_entry->list, &ndis_work_list);
-	wrap_spin_unlock(&ndis_work_list_lock);
+	kspin_unlock(&ndis_work_list_lock, irql);
 
 	schedule_work(&ndis_work);
 	TRACEEXIT3(return NDIS_STATUS_SUCCESS);

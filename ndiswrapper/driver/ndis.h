@@ -72,7 +72,7 @@ struct ndis_buffer_pool {
 	int max_descr;
 	int num_allocated_descr;
 	ndis_buffer *free_descr;
-	struct wrap_spinlock lock;
+	KSPIN_LOCK lock;
 };
 
 enum ndis_per_packet_info {
@@ -163,7 +163,7 @@ struct ndis_packet_pool {
 	int max_descr;
 	int num_allocated_descr;
 	struct ndis_packet *free_descr;
-	struct wrap_spinlock lock;
+	KSPIN_LOCK lock;
 };
 
 enum ndis_device_pnp_event {
@@ -336,7 +336,7 @@ struct miniport_char {
 
 struct ndis_spinlock {
 	KSPIN_LOCK klock;
-	KIRQL use_bh;
+	KIRQL irql;
 };
 
 union ndis_rw_lock_refcount {
@@ -882,7 +882,7 @@ struct ndis_handle {
 	unsigned int xmit_ring_start;
 	unsigned int xmit_ring_pending;
 	unsigned int max_send_packets;
-	struct wrap_spinlock xmit_lock;
+	KSPIN_LOCK xmit_lock;
 
 	unsigned char send_ok;
 	spinlock_t send_packet_done_lock;

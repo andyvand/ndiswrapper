@@ -107,13 +107,7 @@ _FASTCALL KIRQL WRAP_EXPORT(KfRaiseIrql)
 	KIRQL irql;
 
 	TRACEENTER4("irql = %d", newirql);
-
-	irql = KeGetCurrentIrql();
-	if (irql < DISPATCH_LEVEL) {
-		local_bh_disable();
-		preempt_disable();
-	}
-
+	irql = raise_irql(newirql);
 	TRACEEXIT4(return irql);
 }
 	
@@ -121,20 +115,7 @@ _FASTCALL void WRAP_EXPORT(KfLowerIrql)
 	(FASTCALL_DECL_1(KIRQL oldirql))
 {
 	TRACEENTER4("irql = %d", oldirql);
-
-	if (oldirql < DISPATCH_LEVEL) {
-#if DEBUG_IRQL
-		KIRQL irql;
-		irql = KeGetCurrentIrql();
-		if (irql != DISPATCH_LEVEL) {
-			WARNING("IRQL %d != DISPATCH_LEVEL", irql);
-			return;
-		}
-#endif
-		preempt_enable();
-		local_bh_enable();
-	}
-
+	lower_irql(oldirql);
 	TRACEEXIT4(return);
 }
 
@@ -152,7 +133,7 @@ _FASTCALL void WRAP_EXPORT(KfReleaseSpinLock)
 	(FASTCALL_DECL_2(KSPIN_LOCK *lock, KIRQL newirql))
 {
 	TRACEENTER4("lock = %p, irql = %d", lock, newirql);
-	kspin_unlock_irql(lock, newirql);
+	kspin_unlock(lock, newirql);
 
 	TRACEEXIT4(return);
 }
@@ -165,7 +146,7 @@ _FASTCALL void WRAP_EXPORT(KefAcquireSpinLockAtDpcLevel)
 	TRACEENTER4("lock = %p", lock);
 
 #if DEBUG_IRQL
-	irql = KeGetCurrentIrql();
+	irql = current_irql();
 	if (irql != DISPATCH_LEVEL)
 		ERROR("irql %d != DISPATCH_LEVEL", irql);
 #endif
@@ -178,10 +159,10 @@ _FASTCALL void WRAP_EXPORT(KefReleaseSpinLockFromDpcLevel)
 {
 	TRACEENTER4("lock = %p", lock);
 #ifdef DEBUG_IRQL
-	if (KeGetCurrentIrql() != DISPATCH_LEVEL)
+	if (current_irql() != DISPATCH_LEVEL)
 		ERROR("irql != DISPATCH_LEVEL");
 #endif
-	kspin_unlock(lock);
+	kspin_unlock(lock, DISPATCH_LEVEL);
 
 	TRACEEXIT4(return);
 }

@@ -25,156 +25,10 @@
 static struct list_head wrap_allocs;
 static spinlock_t wrap_allocs_lock;
 
-#if defined(CONFIG_SMP) || defined (CONFIG_DEBUG_SPINLOCK)
-
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
-#include <linux/hash.h>
-#else
-#define hash_ptr(ptr, bits) (((unsigned long)(ptr)) >> (BITS_PER_LONG - bits))
-#define hlist_head list_head
-#define hlist_node list_head
-#define hlist_add_head(node, head) list_add(node, head)
-#define hlist_del(node) list_del(node)
-#define INIT_HLIST_HEAD(head) INIT_LIST_HEAD(head)
-#define hlist_for_each_safe(node, next, head) \
-	list_for_each_safe(node, next, head)
-#define hlist_for_each(node, head) list_for_each(node, head)
-#define hlist_entry(node, type, member) list_entry(node, type, member)
-#endif
-
-#define SPINLOCK_HASH_BITS 6
-#define SPINLOCK_MAP_SIZE (1 << SPINLOCK_HASH_BITS)
-static struct wrap_spinlock spinlock_map_lock;
-
-struct spinlock_hash {
-	struct hlist_node hlist;
-	void *kspin_lock;
-	struct wrap_spinlock wrap_spinlock;
-};
-
-static struct hlist_head spinlock_map[SPINLOCK_MAP_SIZE];
-
-int spinlock_map_init(void)
-{
-	int i;
-
-	wrap_spin_lock_init(&spinlock_map_lock);
-	for (i = 0; i < SPINLOCK_MAP_SIZE; i++)
-		INIT_HLIST_HEAD(&spinlock_map[i]);
-	return 0;
-}
-
-void spinlock_map_destroy(void)
-{
-	int i;
-	struct hlist_head *head;
-	struct hlist_node *node, *next;
-
-	TRACEENTER4("");
-	/* remove wrap_spinlocks in spinlock map */
-	wrap_spin_lock(&spinlock_map_lock, DISPATCH_LEVEL);
-	for (i = 0; i < SPINLOCK_MAP_SIZE; i++) {
-		head = &spinlock_map[i];
-		hlist_for_each_safe(node, next, head) {
-			struct spinlock_hash *p;
-
-			p = hlist_entry(node, struct spinlock_hash, hlist);
-			hlist_del(&p->hlist);
-			DBGTRACE3("removing kspin_lock %p (%p) at %d",
-				  p->kspin_lock, p, i);
-			kfree(p);
-		}
-	}
-	wrap_spin_unlock(&spinlock_map_lock);
-}
-
-/* if given kspin_lock is already mapped, return the mapped
- * wrap_spinlock; otherwise, allocate wrap_spinlock and map kspin_lock
- * to it
-*/
-struct wrap_spinlock *map_kspin_lock(KSPIN_LOCK *kspin_lock)
-{
-	struct hlist_head *head;
-	struct hlist_node *node;
-	struct spinlock_hash *p;
-	int i;
-
-	i = hash_ptr(kspin_lock, SPINLOCK_HASH_BITS);
-	head = &spinlock_map[i];
-	hlist_for_each(node, head) {
-		struct spinlock_hash *p;
-
-		p = hlist_entry(node, struct spinlock_hash, hlist);
-		if (p->kspin_lock == kspin_lock)
-			return &p->wrap_spinlock;
-	}
-
-	DBGTRACE3("allocating kspin_lock %p", kspin_lock);
-	wrap_spin_lock(&spinlock_map_lock, DISPATCH_LEVEL);
-	p = kmalloc(sizeof(*p), GFP_ATOMIC);
-	if (!p) {
-		ERROR("couldn't allocate memory");
-		wrap_spin_unlock(&spinlock_map_lock);
-		return NULL;
-	}
-	p->kspin_lock = kspin_lock;
-	hlist_add_head(&p->hlist, head);
-	wrap_spin_lock_init(&p->wrap_spinlock);
-	wrap_spin_unlock(&spinlock_map_lock);
-	DBGTRACE3("kspin_lock %p mapped to %p at %d", kspin_lock, p, i);
-	return &p->wrap_spinlock;
-}
-
-/* unmap wrap_spinlock mapped by kspin_lock */
-int unmap_kspin_lock(KSPIN_LOCK *kspin_lock)
-{
-	struct hlist_head *head;
-	struct hlist_node *node;
-	int i;
-
-	wrap_spin_lock(&spinlock_map_lock, DISPATCH_LEVEL);
-	i = hash_ptr(kspin_lock, SPINLOCK_HASH_BITS);
-	head = &spinlock_map[i];
-	hlist_for_each(node, head) {
-		struct spinlock_hash *p;
-
-		p = hlist_entry(node, struct spinlock_hash, hlist);
-		if (p->kspin_lock == kspin_lock) {
-			hlist_del(&p->hlist);
-			DBGTRACE3("kspin_lock %p mapped to %p at %d removed",
-				  p->kspin_lock, &p->wrap_spinlock, i);
-			kfree(p);
-			wrap_spin_unlock(&spinlock_map_lock);
-			return 0;
-		}
-	}
-	wrap_spin_unlock(&spinlock_map_lock);
-	DBGTRACE3("kspin_lock %p is not found", kspin_lock);
-	return -EEXIST;
-}
-
-#else // CONFIG_SMP || CONFIG_DEBUG_SPINLOCK
-
-int spinlock_map_init(void)
-{
-	return 0;
-}
-
-void spinlock_map_destroy(void)
-{
-	return;
-}
-
-#endif // CONFIG_SMP || CONFIG_DEBUG_SPINLOCK
-
 int misc_funcs_init(void)
 {
 	INIT_LIST_HEAD(&wrap_allocs);
 	spin_lock_init(&wrap_allocs_lock);
-	if (spinlock_map_init()) {
-		ERROR("couldn't initialize spinlock map");
-		return -EINVAL;
-	}
 	return 0;
 }
 
@@ -209,8 +63,6 @@ void misc_funcs_exit_handle(struct ndis_handle *handle)
 /* called when module is being removed */
 void misc_funcs_exit(void)
 {
-	spinlock_map_destroy();
-
 	/* free all pointers on the allocated list */
 	spin_lock(&wrap_allocs_lock);
 	while (!list_empty(&wrap_allocs)) {
@@ -284,6 +136,8 @@ void wrapper_timer_handler(unsigned long data)
 	STDCALL void (*miniport_timer)(void *specific1, void *ctx,
 				       void *specific2, void *specific3);
 
+	KIRQL irql;
+
 	TRACEENTER5("%p", timer);
 #ifdef DEBUG_TIMER
 	BUG_ON(timer == NULL);
@@ -293,14 +147,14 @@ void wrapper_timer_handler(unsigned long data)
 
 	/* don't add the timer if aperiodic; see wrapper_cancel_timer
 	 * protect access to kdpc, repeat, and active via spinlock */
-	wrap_spin_lock(&timer->lock, DISPATCH_LEVEL);
+	irql = kspin_lock(&timer->lock, DISPATCH_LEVEL);
 	kdpc = timer->kdpc;
 	if (timer->repeat) {
 		timer->timer.expires = jiffies + timer->repeat;
 		add_timer(&timer->timer);
 	} else
 		timer->active = 0;
-	wrap_spin_unlock(&timer->lock);
+	kspin_unlock(&timer->lock, irql);
 
 	miniport_timer = kdpc->func;
 
@@ -339,7 +193,7 @@ void wrapper_init_timer(struct ktimer *ktimer, void *handle)
 	wrapper_timer->wrapper_timer_magic = WRAPPER_TIMER_MAGIC;
 #endif
 	ktimer->wrapper_timer = wrapper_timer;
-	wrap_spin_lock_init(&wrapper_timer->lock);
+	kspin_lock_init(&wrapper_timer->lock);
 	if (handle) {
 		spin_lock_bh(&ndis_handle->timers_lock);
 		list_add(&wrapper_timer->list, &ndis_handle->timers);
@@ -354,6 +208,8 @@ void wrapper_init_timer(struct ktimer *ktimer, void *handle)
 int wrapper_set_timer(struct wrapper_timer *timer, unsigned long expires,
 		      unsigned long repeat, struct kdpc *kdpc)
 {
+	KIRQL irql;
+
 	TRACEENTER5("%p", timer);
 	if (!timer) {
 		ERROR("invalid timer");
@@ -370,7 +226,7 @@ int wrapper_set_timer(struct wrapper_timer *timer, unsigned long expires,
 
 	/* timer handler also uses timer->repeat, active, and kdpc, so
 	 * protect in case of SMP */
-	wrap_spin_lock(&timer->lock, DISPATCH_LEVEL);
+	irql = kspin_lock(&timer->lock, DISPATCH_LEVEL);
 	if (kdpc)
 		timer->kdpc = kdpc;
 	timer->repeat = repeat;
@@ -378,7 +234,7 @@ int wrapper_set_timer(struct wrapper_timer *timer, unsigned long expires,
 		DBGTRACE4("modifying timer %p to %lu, %lu",
 			  timer, expires, repeat);
 		mod_timer(&timer->timer, expires);
-		wrap_spin_unlock(&timer->lock);
+		kspin_unlock(&timer->lock, irql);
 		TRACEEXIT5(return TRUE);
 	} else {
 		DBGTRACE4("setting timer %p to %lu, %lu",
@@ -386,13 +242,15 @@ int wrapper_set_timer(struct wrapper_timer *timer, unsigned long expires,
 		timer->timer.expires = expires;
 		timer->active = 1;
 		add_timer(&timer->timer);
-		wrap_spin_unlock(&timer->lock);
+		kspin_unlock(&timer->lock, irql);
 		TRACEEXIT5(return FALSE);
 	}
 }
 
 void wrapper_cancel_timer(struct wrapper_timer *timer, char *canceled)
 {
+	KIRQL irql;
+
 	TRACEENTER4("timer = %p, canceled = %p", timer, canceled);
 	if (!timer) {
 		ERROR("%s", "invalid timer");
@@ -410,7 +268,7 @@ void wrapper_cancel_timer(struct wrapper_timer *timer, char *canceled)
 	 * tells the driver if the timer was deleted or not) here; nor
 	 * is del_timer_sync correct, as this function may be called
 	 * at DISPATCH_LEVEL */
-	wrap_spin_lock(&timer->lock, DISPATCH_LEVEL);
+	irql = kspin_lock(&timer->lock, DISPATCH_LEVEL);
 	if (timer->repeat) {
 		/* first mark as aperiodic, so timer function doesn't call
 		 * add_timer after del_timer returned */
@@ -420,7 +278,7 @@ void wrapper_cancel_timer(struct wrapper_timer *timer, char *canceled)
 		*canceled = TRUE;
 	} else
 		*canceled = del_timer(&timer->timer);
-	wrap_spin_unlock(&timer->lock);
+	kspin_unlock(&timer->lock, irql);
 	TRACEEXIT5(return);
 }
 

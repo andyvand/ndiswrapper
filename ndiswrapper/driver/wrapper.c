@@ -705,15 +705,16 @@ static void xmit_worker(void *param)
 {
 	struct ndis_handle *handle = (struct ndis_handle *)param;
 	int n;
+	KIRQL irql;
 
 	TRACEENTER3("send_ok %d", handle->send_ok);
 
 	/* some drivers e.g., new RT2500 driver, crash if any packets
 	 * are sent when the card is not associated */
 	while (handle->send_ok) {
-		wrap_spin_lock(&handle->xmit_lock, DISPATCH_LEVEL);
+		irql = kspin_lock(&handle->xmit_lock, DISPATCH_LEVEL);
 		if (handle->xmit_ring_pending == 0) {
-			wrap_spin_unlock(&handle->xmit_lock);
+			kspin_unlock(&handle->xmit_lock, irql);
 			break;
 		}
 		n = send_packets(handle, handle->xmit_ring_start,
@@ -723,7 +724,7 @@ static void xmit_worker(void *param)
 		handle->xmit_ring_pending -= n;
 		if (n > 0 && netif_queue_stopped(handle->net_dev))
 			netif_wake_queue(handle->net_dev);
-		wrap_spin_unlock(&handle->xmit_lock);
+		kspin_unlock(&handle->xmit_lock, irql);
 	}
 
 	TRACEEXIT3(return);
@@ -755,8 +756,10 @@ static int start_xmit(struct sk_buff *skb, struct net_device *dev)
 	ndis_buffer *buffer;
 	struct ndis_packet *packet;
 	unsigned int xmit_ring_next_slot;
+	char *data;
+	KIRQL irql;
 
-	char *data = kmalloc(skb->len, GFP_ATOMIC);
+	data = kmalloc(skb->len, GFP_ATOMIC);
 	if (!data)
 		return 1;
 
@@ -780,7 +783,7 @@ static int start_xmit(struct sk_buff *skb, struct net_device *dev)
 	}
 	dev_kfree_skb(skb);
 
-	wrap_spin_lock(&handle->xmit_lock, DISPATCH_LEVEL);
+	irql = kspin_lock(&handle->xmit_lock, DISPATCH_LEVEL);
 	xmit_ring_next_slot =
 		(handle->xmit_ring_start +
 		 handle->xmit_ring_pending) % XMIT_RING_SIZE;
@@ -788,7 +791,7 @@ static int start_xmit(struct sk_buff *skb, struct net_device *dev)
 	handle->xmit_ring_pending++;
 	if (handle->xmit_ring_pending == XMIT_RING_SIZE)
 		netif_stop_queue(handle->net_dev);
-	wrap_spin_unlock(&handle->xmit_lock);
+	kspin_unlock(&handle->xmit_lock, irql);
 
 	schedule_work(&handle->xmit_work);
 
@@ -813,7 +816,7 @@ int ndiswrapper_suspend_pci(struct pci_dev *pdev, u32 state)
 	    test_bit(HW_HALTED, &handle->hw_status))
 		return -1;
 
-	DBGTRACE2("irql: %d", KeGetCurrentIrql());
+	DBGTRACE2("irql: %d", current_irql());
 	DBGTRACE2("%s: detaching device", dev->name);
 	if (netif_running(dev)) {
 		netif_stop_queue(dev);
@@ -881,7 +884,7 @@ int ndiswrapper_resume_pci(struct pci_dev *pdev)
 #else
 	pci_restore_state(pdev, handle->pci_state);
 #endif
-	DBGTRACE2("irql: %d", KeGetCurrentIrql());
+	DBGTRACE2("irql: %d", current_irql());
 	set_bit(SUSPEND_RESUME, &handle->wrapper_work);
 	schedule_work(&handle->wrapper_worker);
 	return 0;
@@ -889,6 +892,8 @@ int ndiswrapper_resume_pci(struct pci_dev *pdev)
 
 void ndiswrapper_remove_one_dev(struct ndis_handle *handle)
 {
+	KIRQL irql;
+
 	TRACEENTER1("%s", handle->net_dev->name);
 
 	set_bit(SHUTDOWN, &handle->wrapper_work);
@@ -902,7 +907,7 @@ void ndiswrapper_remove_one_dev(struct ndis_handle *handle)
 
 	/* flush_scheduled_work here causes crash with 2.4 kernels */
 	/* instead, throw away pending packets */
-	wrap_spin_lock(&handle->xmit_lock, DISPATCH_LEVEL);
+	irql = kspin_lock(&handle->xmit_lock, DISPATCH_LEVEL);
 	while (handle->xmit_ring_pending) {
 		struct ndis_packet *packet;
 
@@ -912,7 +917,7 @@ void ndiswrapper_remove_one_dev(struct ndis_handle *handle)
 			(handle->xmit_ring_start + 1) % XMIT_RING_SIZE;
 		handle->xmit_ring_pending--;
 	}
-	wrap_spin_unlock(&handle->xmit_lock);
+	kspin_unlock(&handle->xmit_lock, irql);
 
 	miniport_set_int(handle, OID_802_11_DISASSOCIATE, 0);
 
@@ -1520,7 +1525,7 @@ struct net_device *ndis_init_netdev(struct ndis_handle **phandle,
 	handle->net_dev = dev;
 	handle->ndis_irq = NULL;
 
-	wrap_spin_lock_init(&handle->xmit_lock);
+	kspin_lock_init(&handle->xmit_lock);
 	init_MUTEX(&handle->ndis_comm_mutex);
 	init_waitqueue_head(&handle->ndis_comm_wq);
 	handle->ndis_comm_done = 0;
