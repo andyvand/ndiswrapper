@@ -62,7 +62,11 @@ ntoskernel.h : ndiswrapper.h
 OBJS   := wrapper.o iw_ndis.o loader.o winsyms.o ntoskernel.o ndis.o misc_funcs.o proc.o divdi3.o
 
 ifdef DEBUG
-CFLAGS += -DDEBUG -g
+CFLAGS += -DDEBUG -g -DDEBUG_TIMER
+endif
+
+ifdef DEBUG_TIMER
+CFLAGS += -DDEBUG_TIMER
 endif
 
 prereq_check:

@@ -912,14 +912,14 @@ static void fixup_timers(struct ndis_handle *handle)
 	char x;
 	while(!list_empty(&handle->timers))
 	{
-		struct ndis_timer *timer = (struct ndis_timer*) handle->timers.next;
+		struct wrapper_timer *timer = (struct wrapper_timer*) handle->timers.next;
 		list_del(&timer->list);
 		if(timer->active)
 		{
 			printk(KERN_WARNING "%s Buggy windows driver %s left "
 			       "an active timer. Trying to fix\n",
 			       DRV_NAME, handle->driver->name);
-			       NdisMCancelTimer(timer->timer_handle, &x); 
+			       wrapper_cancel_timer(timer->kdpc, &x); 
 		}
 		kfree(timer);
 	}

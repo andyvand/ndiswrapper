@@ -44,12 +44,41 @@ struct list_entry
 
 typedef unsigned long POOL_TYPE;
 
-struct packed kdpc
+struct dispatch_header
+{
+	unsigned char type;
+	unsigned char absolute;
+	unsigned char size;
+	unsigned char inserted;
+	long signal_state;
+	struct list_entry wait_list_head;
+};
+
+struct kdpc;
+
+#define WRAPPER_TIMER_MAGIC 47697249
+struct wrapper_timer
+{
+	struct list_head list;
+	struct timer_list timer;
+	long repeat;
+	int active;
+	struct kdpc *kdpc;
+#ifdef DEBUG_TIMER
+	unsigned long wrapper_timer_magic;
+#endif
+};
+
+struct kdpc
 {
 	short type;
 	unsigned char number;
 	unsigned char importance;
-	struct list_entry dpc_list_entry;
+	/* the space for list_entry is used for wrapper timer */
+	/* struct list_entry dpc_list_entry; */
+	struct wrapper_timer *wrapper_timer;
+	void *dummy;
+
 	void *func;
 	void *ctx;
 	void *arg1;
@@ -59,11 +88,11 @@ struct packed kdpc
 
 struct ktimer
 {
-	struct timer_list timer;
-	unsigned long expires;
-	int active;
+	struct dispatch_header dispatch_header;
+	u64 due_time;
+	struct list_entry timer_list;
 	struct kdpc *kdpc;
-	long repeat;
+	long period;
 };
 
 #define NOTIFICATION_TIMER 1
@@ -90,5 +119,11 @@ struct packed npaged_lookaside_list {
 	unsigned long pad[2];
 	KSPIN_LOCK obsolete;
 };
+
+void wrapper_timer_handler(unsigned long data);
+void wrapper_init_timer(struct kdpc *kdpc, void *handle,
+			void *func, void *ctx);
+int wrapper_set_timer(struct kdpc *kdpc, __u64 expires, unsigned long repeat);
+void wrapper_cancel_timer(struct kdpc *kdpc, char *canceled);
 
 #endif // _NTOSKERNEL_H_

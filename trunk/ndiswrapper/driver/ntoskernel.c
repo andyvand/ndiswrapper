@@ -14,6 +14,7 @@
  */
 
 #include "ntoskernel.h"
+#include "ndis.h"
 
 NOREGPARM int my_sprintf(char *str, const char *format, int p1, int p2, int p3, int p4, int p5, int p6)
 {
@@ -214,41 +215,114 @@ __attribute__ ((regparm(3))) __u64 _aullshr(__u64 a, __u8 b)
 	return (a >> b);
 }
 
-
-void ktimer_handler(unsigned long data)
+void wrapper_timer_handler(unsigned long data)
 {
-	struct ktimer *ktimer = (struct ktimer*) data;
-	STDCALL void (*func)(void *kdpc, void *ctx, void *arg1, void *arg2) =
-		ktimer->kdpc->func;
-
-	if (!ktimer->active)
+	struct kdpc *kdpc = (struct kdpc *)data;
+	struct wrapper_timer *timer = kdpc->wrapper_timer;
+	STDCALL void (*func)(void *res1, void *data, void *res3, void *res4) = 
+		kdpc->func;
+#ifdef DEBUG_TIMER
+	BUG_ON(timer->wrapper_timer_magic != WRAPPER_TIMER_MAGIC);
+#endif
+	
+	if (!timer->active)
 		return;
-
-	if (ktimer->repeat)
+	if (timer->repeat)
 	{
-		ktimer->expires = ktimer->timer.expires = jiffies + ktimer->repeat;
-		add_timer(&ktimer->timer);
+		timer->timer.expires = jiffies + timer->repeat;
+		add_timer(&timer->timer);
 	}
 	else
-		ktimer->active = 0;
+		timer->active = 0;
+	
+	if (func)
+		func(kdpc, kdpc->ctx, kdpc->arg1, kdpc->arg2);
+}
 
-	if (ktimer->kdpc)
-		func(ktimer->kdpc, ktimer->kdpc->ctx,
-			 ktimer->kdpc->arg1, ktimer->kdpc->arg2);
+void wrapper_init_timer(struct kdpc *kdpc, void *handle, void *func, void *ctx)
+{
+	struct wrapper_timer *timer;
+	struct ndis_handle *ndis_handle = (struct ndis_handle *)handle;
+	timer = kmalloc(sizeof(struct wrapper_timer), GFP_KERNEL);
+	if(!timer)
+	{
+		printk("%s: Cannot malloc mem for timer\n", DRV_NAME);
+		return;
+	}
+	
+	memset(timer, 27, sizeof(*timer));
+	init_timer(&timer->timer);
+	timer->timer.data = (unsigned long) kdpc;
+	timer->timer.function = &wrapper_timer_handler;
+	timer->active = 0;
+	timer->repeat = 0;
+	timer->kdpc = kdpc;
+#ifdef DEBUG_TIMER
+	timer->wrapper_timer_magic = WRAPPER_TIMER_MAGIC;
+#endif
+	kdpc->func = func;
+	kdpc->ctx = ctx;
+	kdpc->wrapper_timer = timer;
+	if (handle)
+		list_add(&timer->list, &ndis_handle->timers);
+	DBGTRACE("Allocated timer at %08x\n", (int)timer);
+}
+
+int wrapper_set_timer(struct kdpc *kdpc, __u64 expires, unsigned long repeat)
+{
+	struct wrapper_timer *timer = kdpc->wrapper_timer;
+	if (!timer)
+	{
+		printk("%s: Driver calling NdisSetTimer on an uninitilized timer\n", DRV_NAME);		
+		return 0;
+	}
+	
+	DBGTRACE("Setting timer %p to %Lu, %lu\n", timer, expires, repeat);
+#ifdef DEBUG_TIMER
+	BUG_ON(timer->wrapper_timer_magic != WRAPPER_TIMER_MAGIC);
+#endif
+	timer->repeat = repeat;
+	
+	if (timer->active)
+	{
+		mod_timer(&timer->timer, expires);
+		return 1;
+	}
+	else
+	{
+		timer->timer.expires = expires;
+		add_timer(&timer->timer);
+		timer->active = 1;
+		return 0;
+	}
+}
+
+void wrapper_cancel_timer(struct kdpc *kdpc, char *canceled)
+{
+	struct wrapper_timer *timer = kdpc->wrapper_timer;
+	DBGTRACE("%s\n", __FUNCTION__);
+	if(!timer)
+	{
+		printk("%s: Driver calling NdisCancelTimer on an uninitilized timer\n", DRV_NAME);		
+		return;
+	}
+	DBGTRACE("Canceling timer %p\n", timer);
+#ifdef DEBUG_TIMER
+	BUG_ON(timer->wrapper_timer_magic != WRAPPER_TIMER_MAGIC);
+#endif
+	
+	timer->repeat = 0;
+	*canceled = del_timer_sync(&(timer->timer));
+	timer->active = 0;
 	return;
 }
 
 STDCALL void KeInitializeTimer(struct ktimer *ktimer)
 {
 	DBGTRACE("%s: %p\n", __FUNCTION__, ktimer);
-	init_timer(&ktimer->timer);
-	ktimer->timer.data = (unsigned long)ktimer;
-	ktimer->timer.function = ktimer_handler;
-	ktimer->timer.expires = 0;
-	ktimer->active = 0;
-	ktimer->expires = 0;
-	memset(&ktimer->kdpc, 0, sizeof(ktimer->kdpc));
-	ktimer->repeat = 0;
+	wrapper_init_timer(ktimer->kdpc, NULL, ktimer->kdpc->func,
+			   ktimer->kdpc->ctx);
+	ktimer->dispatch_header.signal_state = 0;
 }
 
 STDCALL void KeInitializeDpc(struct kdpc *kdpc, void *func, void *ctx)
@@ -258,62 +332,47 @@ STDCALL void KeInitializeDpc(struct kdpc *kdpc, void *func, void *ctx)
 	kdpc->ctx = ctx;
 }
 
-STDCALL int KeSetTimerEx(struct ktimer *ktimer, __s64 expires,
-			 __u32 repeat, struct kdpc *kdpc)
+STDCALL int KeSetTimerEx(struct ktimer *ktimer, __s64 due_time,
+			 __u32 period, struct kdpc *kdpc)
 {
+	unsigned long expires;
+	unsigned long repeat;
+	
 	DBGTRACE("%s: %p, %ld, %u, %p\n",
-		 __FUNCTION__, ktimer, (long)expires, repeat, kdpc);
-
+		 __FUNCTION__, ktimer, (long)due_time, period, kdpc);
+	
 	if (ktimer == NULL)
 		return 0;
-	if (expires < 0)
-		ktimer->expires = jiffies + (-expires * HZ) / 10000;
+	if (due_time < 0)
+		expires = jiffies + (-due_time * HZ) / 10000;
+	else if (due_time == 0)
+		expires = jiffies + 2;
 	else
 	{
-		ktimer->expires = (expires * HZ) / 10000;
-		if (repeat)
+		expires = (due_time * HZ) / 10000;
+		if (period)
 			printk(KERN_ERR "%s: absolute time with repeat? (%ld, %u)\n",
-				   __FUNCTION__, (long)expires, repeat);
+			       __FUNCTION__, (long)due_time, period);
 	}
-	ktimer->repeat = (repeat * HZ) / 1000;
-	ktimer->kdpc = kdpc;
-	if (ktimer->active)
-	{
-		mod_timer(&ktimer->timer, ktimer->expires);
-		return 1;
-	}
-	else
-	{
-		DBGTRACE("%s: adding timer at %ld, %ld\n",
-				 __FUNCTION__, ktimer->timer.expires, ktimer->repeat);
-		ktimer->timer.expires = ktimer->expires;
-		add_timer(&ktimer->timer);
-		ktimer->active = 1;
-		return 0;
-	}
+	repeat = (period * HZ) / 1000;
+	if (kdpc && ktimer->kdpc != kdpc)
+		ktimer->kdpc = kdpc;
+	return wrapper_set_timer(ktimer->kdpc, expires, repeat);
 }
 
 STDCALL int KeCancelTimer(struct ktimer *ktimer)
 {
-	int active = ktimer->active;
-
-	ktimer->active = 0;
-	ktimer->repeat = 0;
-	if (active)
-	{
-		DBGTRACE("%s: deleting timer at %ld, %ld\n",
-				 __FUNCTION__, ktimer->timer.expires, ktimer->repeat);
-		del_timer_sync(&ktimer->timer);
-		return 1;
-	}
-	return 0;
+	char canceled;
+	
+	wrapper_cancel_timer(ktimer->kdpc, &canceled);
+	return canceled;
 }
 
 STDCALL int rand(void)
 {
 	char buf[6];
 	int i, r;
-
+	
 	get_random_bytes(buf, sizeof(buf));
 	for (r = i = 0; i < sizeof(buf) ; i++)
 		r += buf[i];
