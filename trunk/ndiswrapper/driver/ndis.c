@@ -810,8 +810,7 @@ STDCALL unsigned int NdisMAllocateMapRegisters(struct ndis_handle *handle,
 	}
 	
 	handle->map_count = basemap;
-	handle->map_dma_addr = kmalloc(basemap * sizeof(dma_addr_t),
-				       GFP_ATOMIC);
+	handle->map_dma_addr = kmalloc(basemap * sizeof(dma_addr_t), GFP_KERNEL);
 	if (!handle->map_dma_addr)
 		return NDIS_STATUS_RESOURCES;
 	memset(handle->map_dma_addr, 0, basemap * sizeof(dma_addr_t));
