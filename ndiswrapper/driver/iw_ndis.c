@@ -526,14 +526,43 @@ static int ndis_set_wep(struct net_device *dev, struct iw_request_info *info,
 
 	if (index && index != wep_info->active)
 	{
-		if (wrqu->data.length > 0)
+		if (wrqu->data.flags & IW_ENCODE_DISABLED)
 		{
+			unsigned long keyindex = index;
+			res = dosetinfo(handle, NDIS_OID_REMOVE_WEP,
+					(char *)&keyindex, sizeof(keyindex),
+					&written, &needed);
+			if (res)
+			{
+				printk(KERN_INFO "%s: removing wep key %d failed (%08X)\n",
+				       dev->name, index, res);
+				return -EINVAL;
+			}
+			wep_info->keys[index-1].length = 0;
+			return 0;
+		}
+		if (wrqu->data.flags & IW_ENCODE_NOKEY)
+			wep_req.keyindex = index | (1 << 31);
+		else
+		{
+			wep_req.keyindex = index;
 			wep_info->keys[index-1].length = wrqu->data.length;
 			memcpy(&wep_info->keys[index-1].key, extra,
 			       wrqu->data.length);
 		}
-		else
-			wep_info->keys[index-1].length = 0;
+		wep_req.len = sizeof(wep_req);
+		wep_req.keylength = wep_info->keys[index-1].length;
+		memcpy(&wep_req.keymaterial, wep_info->keys[index-1].key,
+		       wep_info->keys[index-1].length);
+		res = dosetinfo(handle, NDIS_OID_ADD_WEP,
+				(char *)&wep_req, sizeof(wep_req),
+				&written, &needed);
+		if (res)
+		{
+			printk(KERN_INFO "%s: adding wep key %d failed (%08X)\n",
+			       dev->name, index, res);
+			return -EINVAL;
+		}
 		return 0;
 	}
 
@@ -573,7 +602,7 @@ static int ndis_set_wep(struct net_device *dev, struct iw_request_info *info,
 	}
 
 	wep_req.len = sizeof(wep_req);
-	wep_req.keyindex = (1 << 31);
+	wep_req.keyindex = index | (1 << 31);
 	wep_req.keylength = wep_info->keys[index-1].length;
 	memcpy(&wep_req.keymaterial, wep_info->keys[index-1].key,
 			wep_req.keylength);
