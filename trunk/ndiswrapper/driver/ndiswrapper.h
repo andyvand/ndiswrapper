@@ -54,7 +54,7 @@
 typedef struct workqueue_struct *workqueue;
 #include <asm/dma-mapping.h>
 #define PCI_DMA_ALLOC_COHERENT(pci_dev,size,dma_handle) \
-	dma_alloc_coherent(&pci_dev->dev,size,dma_handle,GFP_KERNEL|__GFP_DMA)
+	dma_alloc_coherent(&pci_dev->dev,size,dma_handle,GFP_KERNEL)
 #define PCI_DMA_FREE_COHERENT(pci_dev,size,cpu_addr,dma_handle) \
 	dma_free_coherent(&pci_dev->dev,size,cpu_addr,dma_handle)
 #define PCI_DMA_MAP_SINGLE(pci_dev,addr,size,direction) \
