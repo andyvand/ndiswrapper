@@ -1016,11 +1016,10 @@ STDCALL void NdisInitializeEvent(PNDIS_EVENT Event)
 	KeInitializeEvent(&Event->Event, NotificationEvent, FALSE);
 }
                                                                                                                                                                                                                                     
-void NdisWaitEvent(void){UNIMPL();}
-void NdisSetEvent(void){UNIMPL();}
-void NdisResetEvent(void){UNIMPL();}
+int NdisWaitEvent(void *event, int timeout){UNIMPL(); return 0;}
+void NdisSetEvent(void *event){UNIMPL();}
+void NdisResetEvent(void *event){UNIMPL();}
                                                                                                                                                                                                                                     
-
  
 /* Unimplemented...*/
 STDCALL void NdisInitAnsiString(void *src, void *dst) {UNIMPL();}
