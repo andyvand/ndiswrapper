@@ -22,6 +22,7 @@
 #include <linux/netdevice.h>
 #include <linux/wireless.h>
 #include <linux/pci.h>
+#include <linux/wait.h>
 
 #include <linux/version.h>
 
@@ -52,10 +53,11 @@
 #define packed __attribute__((packed))
 
 #define NDIS_STATUS_SUCCESS     0x00000000
-#define NDIS_STATUS_FAILIURE    0xc0000001
+#define NDIS_STATUS_FAILURE     0xc0000001
+#define NDIS_STATUS_PENDING     0x00000103
+
 #define NDIS_STATUS_BAD_VERSION 0xc0010004
 #define NDIS_STATUS_BAD_CHAR    0xc0010005
-
 int getSp(void);
 
 #define DEBUG 1
@@ -97,7 +99,9 @@ struct packed miniport_char
 
 	void * ReconfigureHandler;
 	void * ResetHandler;		//s
-	void * SendHandler;
+
+	/* Send one packet */
+	void (*send)(void *ctx, void *packets, unsigned int flags) STDCALL;
 
 	/* Set parameters */
 	unsigned int (*setinfo)(void *ctx, unsigned int oid, char *buffer, unsigned int buflen, unsigned int *written, unsigned int *needed) STDCALL;
@@ -185,7 +189,9 @@ struct packed ndis_handle
 	char fill2[140];
 	void *indicate_status;
 	void *indicate_status_complete;
-	char fill3[200];
+	char fill3[4];
+	void *query_complete;
+	char fill4[200];
 
 	struct pci_dev *pci_dev;
 	struct net_device *net_dev;
@@ -200,6 +206,10 @@ struct packed ndis_handle
 	struct net_device_stats stats;
 	struct iw_statistics wireless_stats;
 	struct ndis_driver *driver;
+	
+	wait_queue_head_t query_wait;
+	int query_wait_res;
+	int query_wait_done;
 };
 
 
@@ -310,7 +320,7 @@ void NdisMIndicateReceivePacket(struct ndis_handle *handle, struct ndis_packet *
 void NdisMSendComplete(struct ndis_handle *handle, struct ndis_packet *packet, unsigned int status) STDCALL;
 void NdisIndicateStatus(struct ndis_handle *handle, unsigned int status, void *buf, unsigned int len) STDCALL;
 void NdisIndicateStatusComplete(struct ndis_handle *handle) STDCALL;
-
+void NdisMQueryInformationComplete(struct ndis_handle *handle, unsigned int status) STDCALL;
 
 #define NDIS_OID_STAT_TX_OK         0x00020101
 #define NDIS_OID_STAT_RX_OK         0x00020102

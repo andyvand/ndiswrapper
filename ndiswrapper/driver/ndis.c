@@ -100,6 +100,8 @@ STDCALL int NdisMRegisterMiniport(struct ndis_driver *ndis_driver,
 	return NDIS_STATUS_SUCCESS;
 }
 
+
+#define VMALLOC_THRESHOLD 65536
 /*
  * Allocate mem.
  *
@@ -109,10 +111,15 @@ STDCALL unsigned int NdisAllocateMemory(void **dest,
 					unsigned int flags,
 					unsigned int highest_addr)
 {
-	*dest = (void*) kmalloc(length, GFP_ATOMIC);
+	if(length < VMALLOC_THRESHOLD)
+		*dest = (void*) kmalloc(length, GFP_ATOMIC);
+	else
+		*dest = vmalloc(length);
+
 	if(*dest)
 		return NDIS_STATUS_SUCCESS;
-	return NDIS_STATUS_FAILIURE;
+	DBGTRACE("%s: Allocatemem failed size=%d\n", __FUNCTION__, length);
+	return NDIS_STATUS_FAILURE;
 }
 
 /*
@@ -132,7 +139,10 @@ STDCALL unsigned int NdisAllocateMemoryWithTag(void **dest,
  */
 STDCALL void NdisFreeMemory(void *adr, unsigned int length, unsigned int flags)
 {
-	kfree(adr);
+	if(length < VMALLOC_THRESHOLD)
+		kfree(adr);
+	else
+		vfree(adr);
 }
 
 
@@ -147,7 +157,6 @@ void NdisWriteErrorLogEntry(struct ndis_handle *handle,
 			    unsigned int p1)
 {
 	printk(KERN_ERR "%s: error: %08x, %d %08x\n", __FUNCTION__, (int)error, (int) length, (int)p1);
-	dump_stack();
 }
 
 
@@ -240,7 +249,7 @@ STDCALL void NdisReadConfiguration(unsigned int *status,
 	DBGTRACE(KERN_INFO "%s: Key not found type:%d. key:%s\n", __FUNCTION__, type, keyname);
 
 	*dest = (struct ndis_setting_val*)0;
-	*status = NDIS_STATUS_FAILIURE;
+	*status = NDIS_STATUS_FAILURE;
 }
 
 
@@ -391,7 +400,7 @@ STDCALL unsigned int NdisMMapIoSpace(void **virt,
 	*virt = ioremap(physlo, len);
 	if(*virt == NULL) {
 		printk(KERN_ERR "IORemap failed\n");
-		return NDIS_STATUS_FAILIURE;
+		return NDIS_STATUS_FAILURE;
 	}
 	
 	handle->mem_start = physlo;
@@ -440,6 +449,18 @@ STDCALL void NdisReleaseSpinLock(spinlock_t **lock)
 {
 	spin_unlock(*lock);	
 }
+
+
+STDCALL void NdisDprAcquireSpinLock(spinlock_t **lock)
+{
+	spin_lock(*lock);	
+}
+
+STDCALL void NdisDprReleaseSpinLock(spinlock_t **lock)
+{
+	spin_unlock(*lock);	
+}
+
 
 
 STDCALL unsigned int NdisMAllocateMapRegisters(struct ndis_handle *handle,
@@ -513,7 +534,7 @@ STDCALL void NdisAllocateBuffer(unsigned int *status,
 	if(!my_buffer)
 	{
 		printk(KERN_ERR "%s failed\n", __FUNCTION__);
-		*status = NDIS_STATUS_FAILIURE;
+		*status = NDIS_STATUS_FAILURE;
 		return;
 	}
 	
@@ -576,7 +597,7 @@ STDCALL void NdisAllocatePacket(unsigned int *status, struct ndis_packet **packe
 	{
 		printk(KERN_ERR "%s failed\n", __FUNCTION__);
 		*packet_out = NULL;
-		*status = NDIS_STATUS_FAILIURE;
+		*status = NDIS_STATUS_FAILURE;
 		return;
 	}
 	memset(packet, 0, sizeof(struct ndis_packet));
@@ -691,7 +712,7 @@ STDCALL void NdisReadNetworkAddress(unsigned int *status,
 				    void *conf_handle)
 {
 	*len = 0;
-	*status = NDIS_STATUS_FAILIURE;
+	*status = NDIS_STATUS_FAILURE;
 }
 
 
@@ -739,6 +760,7 @@ irqreturn_t ndis_irq_th(int irq, void *data, struct pt_regs *pt_regs)
 	
 	if(handeled)
 		return IRQ_HANDLED;
+
 	return IRQ_NONE;
 }
 
@@ -761,7 +783,7 @@ STDCALL unsigned int NdisMRegisterInterrupt(struct ndis_irq **ndis_irq_ptr,
 	*ndis_irq_ptr = (struct ndis_irq*) kmalloc(sizeof(struct ndis_irq), GFP_KERNEL);
 	
 	if(!*ndis_irq_ptr)
-		return NDIS_STATUS_FAILIURE;
+		return NDIS_STATUS_FAILURE;
 
 	ndis_irq = *ndis_irq_ptr;
 	handle->irq = vector;
@@ -772,7 +794,7 @@ STDCALL unsigned int NdisMRegisterInterrupt(struct ndis_irq **ndis_irq_ptr,
 	if(request_irq(vector, ndis_irq_th, SA_SHIRQ, "ndiswrapper", ndis_irq))
 	{
 		kfree(ndis_irq);
-		return NDIS_STATUS_FAILIURE;
+		return NDIS_STATUS_FAILURE;
 	}
 	INIT_WORK(&handle->irq_bh, &ndis_irq_bh, handle);
 	return NDIS_STATUS_SUCCESS;
@@ -929,6 +951,32 @@ STDCALL void NdisMDeregisterIoPortRange(struct ndis_handle *handle, unsigned int
 	DBGTRACE("%s %08x %08x\n", __FUNCTION__, start, len);
 }
 
+spinlock_t atomic_lock = SPIN_LOCK_UNLOCKED;
+
+STDCALL long NdisInterlockedDecrement(long *val)
+{
+	unsigned long flags;
+	long x;
+	spin_lock_irqsave(&atomic_lock, flags);
+	*val--;
+	x = *val;
+	spin_unlock_irqrestore(&atomic_lock, flags);
+	restore_flags(flags);
+	return x;
+}
+
+STDCALL long NdisInterlockedIncrement(long *val)
+{
+	unsigned long flags;
+	long x;
+	spin_lock_irqsave(&atomic_lock, flags);
+	*val++;
+	x = *val;
+	spin_unlock_irqrestore(&atomic_lock, flags);
+	restore_flags(flags);
+	return x;
+}
+
 
 /*
  * Arguments:
@@ -943,6 +991,13 @@ STDCALL int NdisMInitializeScatterGatherDma(struct ndis_handle *handle,
        DBGTRACE("NdisMInitializeScatterGatherDma: 64bit=%d, maxtransfer=%ld\n", is64bit, maxtransfer);
        return NDIS_STATUS_SUCCESS;
  }
+
+STDCALL void NdisQueryBufferOffset(struct ndis_buffer *buffer, unsigned int *offset, unsigned int *length)
+{
+	DBGTRACE("%s: %08x %08x %08x %08x %d\n", __FUNCTION__, (int)buffer, (int)buffer->data, (int)offset, (int)length, buffer->len);
+	*offset = 0;
+	*length = buffer->len;
+}
 
  
 /* Copied from ReactOS */
@@ -967,17 +1022,13 @@ STDCALL void NdisInitAnsiString(void *src, void *dst) {UNIMPL();}
 STDCALL void NdisOpenConfigurationKeyByName(unsigned int *status, void *handle, void *key, void *subkeyhandle){UNIMPL();}
 STDCALL void NdisWriteConfiguration(unsigned int *status, void *handle, void *keyword, void *val){UNIMPL();}
 STDCALL unsigned int NdisAnsiStringToUnicodeString(void *dst, void *src){UNIMPL();return 0;}
-STDCALL void NdisQueryBufferOffset(void *buffer, unsigned int offset, unsigned int length){UNIMPL(); }
 STDCALL void NdisMGetDeviceProperty(void *handle, void **p1, void **p2, void **p3, void**p4, void**p5){UNIMPL();}
 STDCALL unsigned long NdisWritePcmciaAttributeMemory(void *handle, unsigned int offset, void *buffer, unsigned int length){UNIMPL();return 0;}
 STDCALL unsigned long NdisReadPcmciaAttributeMemory(void *handle, unsigned int offset, void *buffer, unsigned int length){UNIMPL();return 0;}
 STDCALL void NdisScheduleWorkItem(void *workitem){UNIMPL();}
 
 
-STDCALL void NdisInterlockedDecrement(void){UNIMPL();}
-STDCALL void NdisDprAcquireSpinLock(void){UNIMPL();}
-STDCALL void NdisDprReleaseSpinLock(void){UNIMPL();}
-STDCALL void NdisInterlockedIncrement(void){UNIMPL();}
+
 STDCALL void NdisSystemProcessorCount(void){UNIMPL();}
 STDCALL void NdisMGetDmaAlignment(void){UNIMPL();}
 STDCALL void NdisUnicodeStringToAnsiString(void){UNIMPL();}

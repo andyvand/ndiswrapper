@@ -43,7 +43,8 @@
    function crashes. A simple rmmod -f will do the trick and
    you can try again.
 */
-/*#define DBG_OLD_PCI*/
+
+/*#define DEBUG_CRASH_ON_INIT*/
 
 
 /* List of loaded drivers */
@@ -493,26 +494,83 @@ static int ndis_start_xmit(struct sk_buff *skb, struct net_device *dev)
 	skb_copy_and_csum_dev(skb, data);
 	dev_kfree_skb(skb);
 //	DBGTRACE("Calling send_packets at %08x rva(%08x). sp:%08x\n", (int)handle->miniport_char.send_packets, (int)handle->miniport_char.send_packets - image_offset, getSp());
-	handle->driver->miniport_char.send_packets(handle->adapter_ctx, &packet, 1);
+
+	if(handle->driver->miniport_char.send_packets)
+	{
+		handle->driver->miniport_char.send_packets(handle->adapter_ctx, &packet, 1);
+	}
+	else if(handle->driver->miniport_char.send)
+	{
+		handle->driver->miniport_char.send(handle->adapter_ctx, &packet, 0);
+	}
+	else
+	{
+		DBGTRACE("%s: No send handler\n", __FUNCTION__);
+	}
+	
 
 	return 0;
 }
+
+
+/*
+ * Perform a query and deal with the async nature of query.
+ *
+ * TODO: This function must be protected bu a semaphone or something because
+ * it's not reentrent.
+ */
+static int doquery(struct ndis_handle *handle, unsigned int oid, char *buf, int bufsize, unsigned int *written , unsigned int *needed)
+{
+	int res, sleepres;
+	DBGTRACE("Calling query at %08x rva(%08x)\n", (int)handle->driver->miniport_char.query, (int)handle->driver->miniport_char.query - image_offset);
+
+	handle->query_wait_done = 0;
+	res = handle->driver->miniport_char.query(handle->adapter_ctx, oid, buf, bufsize, written, needed);
+
+	if(!res)
+		return 0;
+
+	if(res != NDIS_STATUS_PENDING)
+		return res;
+	
+	do
+	{
+		sleepres = wait_event_interruptible(handle->query_wait, (handle->query_wait_done =! 0));
+	} while(sleepres);
+	return handle->query_wait_res;
+}
+
+
+/*
+ *
+ *
+ * Called via function pointer if query returns NDIS_STATUS_PENDING
+ */
+STDCALL void NdisMQueryInformationComplete(struct ndis_handle *handle, unsigned int status)
+{
+	DBGTRACE("%s: %08x\n", __FUNCTION__, status);
+	handle->query_wait_res = status;
+	handle->query_wait_done = 1;
+	wake_up(&handle->query_wait);
+}
+
 
 
 static int setup_dev(struct net_device *dev)
 {
 	struct ndis_handle *handle = dev->priv;
 
-	unsigned int res;
+	unsigned char mac[6];
 	unsigned int written;
 	unsigned int needed;
-	int i;
-	unsigned char mac[6];
 
-	DBGTRACE("Calling query to find mac at %08x rva(%08x)\n", (int)handle->driver->miniport_char.query, (int)handle->driver->miniport_char.query - image_offset);
-	res = handle->driver->miniport_char.query(handle->adapter_ctx, 0x01010102, &mac[0], sizeof(mac), &written, &needed);
-	DBGTRACE("past query res %08x\n\n", res);
+	unsigned int res;
+	int i;
+
+	DBGTRACE("%s: Querying for mac\n", __FUNCTION__);
+	res = doquery(handle, 0x01010102, &mac[0], sizeof(mac), &written, &needed);
 	DBGTRACE("mac:%02x:%02x:%02x:%02x:%02x:%02x\n", mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
+
 	if(res)
 	{
 		printk(KERN_ERR "Unable to get MAC-addr from driver\n");
@@ -568,15 +626,19 @@ static int __devinit ndis_init_one(struct pci_dev *pdev,
 	handle->net_dev = dev;
 	pci_set_drvdata(pdev, handle);
 
+	init_waitqueue_head(&handle->query_wait);
+	
 	/* Poision this because it may contain function pointers */
 	memset(&handle->fill1, 0x12, sizeof(handle->fill1));
 	memset(&handle->fill2, 0x13, sizeof(handle->fill2));
 	memset(&handle->fill3, 0x14, sizeof(handle->fill3));
+	memset(&handle->fill4, 0x15, sizeof(handle->fill3));
 
 	handle->indicate_receive_packet = &NdisMIndicateReceivePacket;
 	handle->send_complete = &NdisMSendComplete;
 	handle->indicate_status = &NdisIndicateStatus;	
 	handle->indicate_status_complete = &NdisIndicateStatusComplete;	
+	handle->query_complete = &NdisMQueryInformationComplete;	
 
 	handle->pci_dev = pdev;
 	
@@ -619,11 +681,13 @@ static void __devexit ndis_remove_one(struct pci_dev *pdev)
 
 	DBGTRACE("%s\n", __FUNCTION__);
 
+#ifndef DEBUG_CRASH_ON_INIT
 	unregister_netdev(handle->net_dev);
 	call_halt(handle);
 
 	if(handle->net_dev)
 		free_netdev(handle->net_dev);
+#endif
 	pci_release_regions(pdev);
 	pci_disable_device(pdev);
 }
@@ -662,7 +726,7 @@ static int start_driver(struct ndis_driver *driver)
 	driver->pci_driver.probe = ndis_init_one;
 	driver->pci_driver.remove = ndis_remove_one;	
 	
-#ifndef DBG_OLD_PCI
+#ifndef DEBUG_CRASH_ON_INIT
 	res = pci_module_init(&driver->pci_driver);
 	if(!res)
 		driver->pci_registered = 1;
@@ -701,6 +765,7 @@ static struct ndis_driver *load_driver(struct put_driver *put_driver)
 	driver->name[namelen-1] = 0;
 
 	driver->image = vmalloc(put_driver->size);
+	DBGTRACE("Image is at %08x\n", (int)driver->image);
 	if(!driver->image)
 	{
 		printk(KERN_ERR "Unable to allocate mem for driver\n");
@@ -737,7 +802,6 @@ static struct ndis_driver *load_driver(struct put_driver *put_driver)
 	driver->pci_id[0].driver_data = (int)driver;
 	
 	driver->entry = entry;
-	DBGTRACE("Image is at %08x\n", (int)driver->image);
 
 	return driver;
 
@@ -847,7 +911,7 @@ static void unload_driver(struct ndis_driver *driver)
 	DBGTRACE("%s\n", __FUNCTION__);
 	if(driver->pci_registered)
 		pci_unregister_driver(&driver->pci_driver);
-#ifdef DBG_OLD_PCI
+#ifdef DEBUG_CRASH_ON_INIT
 	{
 		struct pci_dev *pdev = 0;
 		pdev = pci_find_device(driver->pci_id[0].vendor, driver->pci_id[0].device, pdev);
@@ -895,7 +959,7 @@ static int misc_ioctl(struct inode *inode, struct file *file, unsigned int cmd, 
 		{
 			struct ndis_driver *driver= file->private_data;
 			int res = start_driver(driver);
-#ifdef DBG_OLD_PCI
+#ifdef DEBUG_CRASH_ON_INIT
 			{
 				struct pci_dev *pdev = 0;
 				pdev = pci_find_device(driver->pci_id[0].vendor, driver->pci_id[0].device, pdev);
