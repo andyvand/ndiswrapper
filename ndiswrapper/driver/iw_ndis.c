@@ -47,8 +47,8 @@ int set_essid(struct ndis_handle *handle, const char *ssid, int ssid_len)
 		DBGTRACE("ssid = '%s'", req.essid);
 	}
 	
-	res = dosetinfo(handle, NDIS_OID_ESSID, (char*)&req, sizeof(req),
-			&written, &needed);
+	res = miniport_set_info(handle, NDIS_OID_ESSID, (char*)&req,
+				sizeof(req), &written, &needed);
 	if (res)
 		WARNING("setting essid failed (%08X)", res); 
 
@@ -92,8 +92,8 @@ static int iw_get_essid(struct net_device *dev, struct iw_request_info *info,
 
 	TRACEENTER1("%s", "");
 	memset(&req, 0, sizeof(req));
-	res = doquery(handle, NDIS_OID_ESSID, (char*)&req, sizeof(req),
-		      &written, &needed);
+	res = miniport_query_info(handle, NDIS_OID_ESSID, (char*)&req,
+				  sizeof(req), &written, &needed);
 	if (res)
 		WARNING("getting essid failed (%08X)", res);
 
@@ -109,17 +109,19 @@ static int iw_get_essid(struct net_device *dev, struct iw_request_info *info,
 
 int set_mode(struct ndis_handle *handle, enum op_mode mode)
 {
-	int res;
+	unsigned int res, i;
 
 	TRACEENTER1("%s", "");
 
-	res = set_int(handle, NDIS_OID_MODE, mode);
+	res = miniport_set_int(handle, NDIS_OID_MODE, mode);
 	if (res == NDIS_STATUS_INVALID_DATA)
 	{
 		WARNING("setting operating mode failed (%08X)", res); 
 		TRACEEXIT1(return -EINVAL);
 	}
 
+	for (i = 0; i < MAX_ENCR_KEYS; i++)
+		handle->encr_info.keys[i].length = 0;
 	handle->op_mode = mode;
 	TRACEEXIT1(return 0);
 }
@@ -161,7 +163,7 @@ static int iw_get_mode(struct net_device *dev, struct iw_request_info *info,
 	int res;
 
 	TRACEENTER1("%s", "");
-	res = query_int(handle, NDIS_OID_MODE, &ndis_mode);
+	res = miniport_query_int(handle, NDIS_OID_MODE, &ndis_mode);
 	if (res)
 	{
 		WARNING("getting operating mode failed (%08X)", res);
@@ -206,7 +208,8 @@ static int iw_get_name(struct net_device *dev, struct iw_request_info *info,
 	struct ndis_handle *handle = dev->priv;
 	unsigned int network_type, res;
 	
-	res = query_int(handle, NDIS_OID_NETWORK_TYPE_IN_USE, &network_type);
+	res = miniport_query_int(handle, NDIS_OID_NETWORK_TYPE_IN_USE,
+				 &network_type);
 	if (res == NDIS_STATUS_INVALID_DATA)
 		network_type = -1;
 
@@ -224,8 +227,8 @@ static int iw_get_freq(struct net_device *dev, struct iw_request_info *info,
 	struct ndis_configuration req;
 
 	memset(&req, 0, sizeof(req));
-	res = doquery(handle, NDIS_OID_CONFIGURATION, (char*)&req,
-		      sizeof(req), &written, &needed);
+	res = miniport_query_info(handle, NDIS_OID_CONFIGURATION, (char*)&req,
+				  sizeof(req), &written, &needed);
 	if (res == NDIS_STATUS_INVALID_DATA)
 	{
 		WARNING("getting configuration failed (%08X)", res);
@@ -260,8 +263,8 @@ static int iw_set_freq(struct net_device *dev, struct iw_request_info *info,
 	struct ndis_configuration req;
 
 	memset(&req, 0, sizeof(req));
-	res = doquery(handle, NDIS_OID_CONFIGURATION, (char*)&req,
-		      sizeof(req), &written, &needed);
+	res = miniport_query_info(handle, NDIS_OID_CONFIGURATION, (char*)&req,
+				  sizeof(req), &written, &needed);
 	if (res == NDIS_STATUS_INVALID_DATA)
 	{
 		WARNING("getting configuration failed (%08X)", res);
@@ -285,8 +288,8 @@ static int iw_set_freq(struct net_device *dev, struct iw_request_info *info,
 		req.ds_config /= 1000;
 		
 	}
-	res = dosetinfo(handle, NDIS_OID_CONFIGURATION, (char*)&req,
-			sizeof(req), &written, &needed);
+	res = miniport_set_info(handle, NDIS_OID_CONFIGURATION, (char*)&req,
+				sizeof(req), &written, &needed);
 	if (res == NDIS_STATUS_INVALID_DATA)
 	{
 		WARNING("setting configuration failed (%08X)", res);
@@ -303,8 +306,9 @@ static int iw_get_tx_power(struct net_device *dev,
 	unsigned long ndis_power;
 	unsigned int written, needed, res;
 
-	res = doquery(handle, NDIS_OID_TX_POWER_LEVEL, (char*)&ndis_power,
-		      sizeof(ndis_power), &written, &needed);
+	res = miniport_query_info(handle, NDIS_OID_TX_POWER_LEVEL,
+				  (char*)&ndis_power,
+				  sizeof(ndis_power), &written, &needed);
 	/* Centrino driver returns NDIS_STATUS_INVALID_OID (why?) */
 	if (res == NDIS_STATUS_NOT_SUPPORTED || res == NDIS_STATUS_INVALID_OID)
 		return -EOPNOTSUPP;
@@ -327,12 +331,12 @@ static int iw_set_tx_power(struct net_device *dev,
 	if (wrqu->txpower.disabled)
 	{
 		ndis_power = 0;
-		res = dosetinfo(handle, NDIS_OID_TX_POWER_LEVEL,
-				(char *)&ndis_power,
-				sizeof(ndis_power), &written, &needed);
+		res = miniport_set_info(handle, NDIS_OID_TX_POWER_LEVEL,
+					(char *)&ndis_power,
+					sizeof(ndis_power), &written, &needed);
 		if (res == NDIS_STATUS_INVALID_DATA)
 			return -EINVAL;
-		res = set_int(handle, NDIS_OID_DISASSOCIATE, 0);
+		res = miniport_set_int(handle, NDIS_OID_DISASSOCIATE, 0);
 		if (res)
 			return -EINVAL;
 		return 0;
@@ -357,8 +361,9 @@ static int iw_set_tx_power(struct net_device *dev,
 			}
 		}
 	}
-	res = dosetinfo(handle, NDIS_OID_TX_POWER_LEVEL, (char*)&ndis_power,
-		      sizeof(ndis_power), &written, &needed);
+	res = miniport_set_info(handle, NDIS_OID_TX_POWER_LEVEL,
+				(char*)&ndis_power, sizeof(ndis_power),
+				&written, &needed);
 	if (res)
 		WARNING("setting tx_power failed (%08X)", res);
 	if (res == NDIS_STATUS_NOT_SUPPORTED)
@@ -375,7 +380,7 @@ static int iw_get_bitrate(struct net_device *dev, struct iw_request_info *info,
 	struct ndis_handle *handle = dev->priv; 
 	int ndis_rate;
 
-	int res = query_int(handle, NDIS_OID_GEN_SPEED, &ndis_rate);
+	int res = miniport_query_int(handle, NDIS_OID_GEN_SPEED, &ndis_rate);
 	if (res)
 		WARNING("getting bitrate failed (%08X)", res);
 
@@ -393,8 +398,9 @@ static int iw_set_bitrate(struct net_device *dev, struct iw_request_info *info,
 	if (wrqu->bitrate.fixed == 0)
 		TRACEEXIT1(return 0);
 
-	res = doquery(handle, NDIS_OID_SUPPORTED_RATES, (char *)&rates,
-		      sizeof(rates), &written, &needed);
+	res = miniport_query_info(handle, NDIS_OID_SUPPORTED_RATES,
+				  (char *)&rates, sizeof(rates),
+				  &written, &needed);
 	if (res == NDIS_STATUS_NOT_SUPPORTED)
 		TRACEEXIT1(return -EOPNOTSUPP);
 	if (res == NDIS_STATUS_INVALID_DATA)
@@ -409,8 +415,9 @@ static int iw_set_bitrate(struct net_device *dev, struct iw_request_info *info,
 			rates[i] = 0;
 		}
 
-	res = doquery(handle, NDIS_OID_DESIRED_RATES, (char *)&rates,
-		      sizeof(rates), &written, &needed);
+	res = miniport_query_info(handle, NDIS_OID_DESIRED_RATES,
+				  (char *)&rates, sizeof(rates),
+				  &written, &needed);
 	if (res == NDIS_STATUS_NOT_SUPPORTED)
 		TRACEEXIT1(return -EOPNOTSUPP);
 	if (res == NDIS_STATUS_INVALID_DATA)
@@ -433,7 +440,8 @@ static int iw_get_rts_threshold(struct net_device *dev,
 	struct ndis_handle *handle = dev->priv;
 	int ndis_rts_threshold;
 
-	int res = query_int(handle, NDIS_OID_RTS_THRESH, &ndis_rts_threshold);
+	int res = miniport_query_int(handle, NDIS_OID_RTS_THRESH,
+				     &ndis_rts_threshold);
 	if (res == NDIS_STATUS_NOT_SUPPORTED)
 		return -EOPNOTSUPP;
 
@@ -448,8 +456,8 @@ static int iw_get_frag_threshold(struct net_device *dev,
 	struct ndis_handle *handle = dev->priv; 
 	int ndis_frag_threshold;
 
-	int res = query_int(handle, NDIS_OID_FRAG_THRESH,
-			    &ndis_frag_threshold);
+	int res = miniport_query_int(handle, NDIS_OID_FRAG_THRESH,
+				     &ndis_frag_threshold);
 	if (res == NDIS_STATUS_NOT_SUPPORTED)
 		return -EOPNOTSUPP;
 
@@ -463,8 +471,8 @@ int get_ap_address(struct ndis_handle *handle, mac_address ap_addr)
 
 	TRACEENTER1("%s", "");
 
-	res = doquery(handle, NDIS_OID_BSSID, ap_addr, ETH_ALEN,
-		      &written, &needed);
+	res = miniport_query_info(handle, NDIS_OID_BSSID, ap_addr, ETH_ALEN,
+				  &written, &needed);
 	if (res == NDIS_STATUS_ADAPTER_NOT_READY)
 		memset(ap_addr, 0, ETH_ALEN);
 
@@ -497,8 +505,8 @@ static int iw_set_ap_address(struct net_device *dev,
 
         memcpy(ap_addr, wrqu->ap_addr.sa_data, ETH_ALEN);
 	DBGTRACE1(MACSTR, MAC2STR(ap_addr));
-	res = dosetinfo(handle, NDIS_OID_BSSID, (char*)&(ap_addr[0]),
-			ETH_ALEN, &written, &needed);
+	res = miniport_set_info(handle, NDIS_OID_BSSID, (char*)&(ap_addr[0]),
+				ETH_ALEN, &written, &needed);
 
 	if (res)
 	{
@@ -512,7 +520,7 @@ static int iw_set_ap_address(struct net_device *dev,
 int set_auth_mode(struct ndis_handle *handle, int auth_mode)
 {
 	unsigned int res;
-	res = set_int(handle, NDIS_OID_AUTH_MODE, auth_mode);
+	res = miniport_set_int(handle, NDIS_OID_AUTH_MODE, auth_mode);
 	if (res == NDIS_STATUS_INVALID_DATA)
 	{
 		WARNING("setting auth mode failed (%08X)", res);
@@ -528,7 +536,7 @@ int set_auth_mode(struct ndis_handle *handle, int auth_mode)
 int set_encr_mode(struct ndis_handle *handle, int encr_mode)
 {
 	unsigned int res;
-	res = set_int(handle, NDIS_OID_ENCR_STATUS, encr_mode);
+	res = miniport_set_int(handle, NDIS_OID_ENCR_STATUS, encr_mode);
 	if (res == NDIS_STATUS_INVALID_DATA)
 		TRACEEXIT2(return -EINVAL);
 	else
@@ -578,7 +586,7 @@ static int iw_get_encr(struct net_device *dev, struct iw_request_info *info,
 	}
 	
 	/* active key */
-	res = query_int(handle, NDIS_OID_ENCR_STATUS, &status);
+	res = miniport_query_int(handle, NDIS_OID_ENCR_STATUS, &status);
 	if (res == NDIS_STATUS_NOT_SUPPORTED)
 	{
 		WARNING("getting encryption status failed (%08X)", res);
@@ -600,7 +608,7 @@ static int iw_get_encr(struct net_device *dev, struct iw_request_info *info,
 			       encr_info->keys[index].length);
 		}
 	}
-	res = query_int(handle, NDIS_OID_AUTH_MODE, &status);
+	res = miniport_query_int(handle, NDIS_OID_AUTH_MODE, &status);
 	if (res == NDIS_STATUS_NOT_SUPPORTED)
 	{
 		WARNING("getting authentication mode failed (%08X)", res);
@@ -644,9 +652,9 @@ static int iw_set_encr(struct net_device *dev, struct iw_request_info *info,
 	if (wrqu->data.flags & IW_ENCODE_DISABLED)
 	{
 		unsigned long keyindex = index;
-		res = dosetinfo(handle, NDIS_OID_REMOVE_WEP,
-				(char *)&keyindex, sizeof(keyindex),
-				&written, &needed);
+		res = miniport_set_info(handle, NDIS_OID_REMOVE_WEP,
+					(char *)&keyindex, sizeof(keyindex),
+					&written, &needed);
 		if (res == NDIS_STATUS_INVALID_DATA)
 		{
 			WARNING("removing encryption key %d failed (%08X)",
@@ -705,8 +713,8 @@ static int iw_set_encr(struct net_device *dev, struct iw_request_info *info,
 		memcpy(&ndis_key.key, extra, ndis_key.length);
 	}
 
-	res = dosetinfo(handle, NDIS_OID_ADD_WEP, (char *)&ndis_key,
-			sizeof(ndis_key), &written, &needed);
+	res = miniport_set_info(handle, NDIS_OID_ADD_WEP, (char *)&ndis_key,
+				sizeof(ndis_key), &written, &needed);
 	if (res == NDIS_STATUS_INVALID_DATA)
 	{
 		WARNING("adding encryption key %d failed (%08X)",
@@ -913,7 +921,7 @@ static int iw_set_scan(struct net_device *dev, struct iw_request_info *info,
 	unsigned int res = 0;
 
 	TRACEENTER1("%s", "");
-	res = set_int(handle, NDIS_OID_BSSID_LIST_SCAN, 0);
+	res = miniport_set_int(handle, NDIS_OID_BSSID_LIST_SCAN, 0);
 	if (res == NDIS_STATUS_NOT_SUPPORTED ||
 	    res == NDIS_STATUS_INVALID_DATA)
 	{
@@ -949,8 +957,9 @@ static int iw_get_scan(struct net_device *dev, struct iw_request_info *info,
 	bssid_list = kmalloc(list_len, GFP_KERNEL);
 
 	written = needed = 0;
-	res = doquery(handle, NDIS_OID_BSSID_LIST, (char *)bssid_list,
-		      list_len, &written, &needed);
+	res = miniport_query_info(handle, NDIS_OID_BSSID_LIST,
+				  (char *)bssid_list, list_len,
+				  &written, &needed);
 	if (res == NDIS_STATUS_INVALID_LENGTH)
 	{
 		/* 15 items not enough; allocate required space */
@@ -958,8 +967,9 @@ static int iw_get_scan(struct net_device *dev, struct iw_request_info *info,
 		list_len = needed;
 		bssid_list = kmalloc(list_len, GFP_KERNEL);
 	
-		res = doquery(handle, NDIS_OID_BSSID_LIST, (char*)bssid_list,
-			      list_len, &written, &needed);
+		res = miniport_query_info(handle, NDIS_OID_BSSID_LIST,
+					  (char*)bssid_list, list_len,
+					  &written, &needed);
 	}
 	if (res == NDIS_STATUS_INVALID_DATA)
 	{
@@ -998,7 +1008,7 @@ static int iw_set_power_mode(struct net_device *dev,
 	else // if (wrqu->power.flags & IW_POWER_MAX)
 		power_mode = NDIS_POWER_MAX;
 
-	res = set_int(handle, NDIS_OID_POWER_MODE, power_mode);
+	res = miniport_set_int(handle, NDIS_OID_POWER_MODE, power_mode);
 	if (res == NDIS_STATUS_INVALID_DATA)
 	{
 		WARNING("setting power mode failed (%08X)", res);
@@ -1015,7 +1025,7 @@ static int iw_get_power_mode(struct net_device *dev,
 	struct ndis_handle *handle = dev->priv;
 	int res, power_mode;
 
-	res = query_int(handle, NDIS_OID_POWER_MODE, &power_mode);
+	res = miniport_query_int(handle, NDIS_OID_POWER_MODE, &power_mode);
 	if (res == NDIS_STATUS_NOT_SUPPORTED)
 		return -EOPNOTSUPP;
 
@@ -1046,8 +1056,9 @@ static int iw_get_sensitivity(struct net_device *dev,
 	unsigned int res, written, needed;
 	unsigned long rssi_trigger;
 
-	res = doquery(handle, NDIS_OID_RSSI_TRIGGER, (char *)&rssi_trigger,
-		      sizeof(rssi_trigger), &written, &needed);
+	res = miniport_query_info(handle, NDIS_OID_RSSI_TRIGGER,
+				  (char *)&rssi_trigger, sizeof(rssi_trigger),
+				  &written, &needed);
 	if (res)
 		return -EOPNOTSUPP;
 	wrqu->param.value = rssi_trigger;
@@ -1068,8 +1079,9 @@ static int iw_set_sensitivity(struct net_device *dev,
 		rssi_trigger = 0;
 	else
 		rssi_trigger = wrqu->param.value;
-	res = dosetinfo(handle, NDIS_OID_RSSI_TRIGGER, (char *)&rssi_trigger,
-			sizeof(rssi_trigger), &written, &needed);
+	res = miniport_set_info(handle, NDIS_OID_RSSI_TRIGGER,
+				(char *)&rssi_trigger, sizeof(rssi_trigger),
+				&written, &needed);
 	if (res)
 		return -EINVAL;
 	return 0;
@@ -1108,8 +1120,9 @@ static int iw_get_range(struct net_device *dev, struct iw_request_info *info,
 	range->txpower_capa = IW_TXPOW_MWATT;
 	range->num_txpower = 0;
 
-	if (!doquery(handle, NDIS_OID_TX_POWER_LEVEL, (char*)&tx_power,
-		     sizeof(tx_power), &written, &needed))
+	if (!miniport_query_info(handle, NDIS_OID_TX_POWER_LEVEL,
+				 (char*)&tx_power, sizeof(tx_power),
+				 &written, &needed))
 	{
 		range->num_txpower = 1;
 		range->txpower[0] = tx_power;
@@ -1136,8 +1149,9 @@ static int iw_get_range(struct net_device *dev, struct iw_request_info *info,
 	range->encoding_size[1] = 13;
 
 	range->num_bitrates = 0;
-	if (!doquery(handle, NDIS_OID_SUPPORTED_RATES, (char *)&rates,
-		    sizeof(rates), &written, &needed))
+	if (!miniport_query_info(handle, NDIS_OID_SUPPORTED_RATES,
+				 (char *)&rates, sizeof(rates),
+				 &written, &needed))
 	{
 		for (i = 0 ; i < NDIS_MAX_RATES && rates[i] ; i++)
 			if (range->num_bitrates < IW_MAX_BITRATES &&
@@ -1205,7 +1219,7 @@ static int priv_reset(struct net_device *dev, struct iw_request_info *info,
 		      union iwreq_data *wrqu, char *extra)
 {
 	int res;
-	res = doreset(dev->priv);
+	res = miniport_reset(dev->priv);
 	if (res)
 	{
 		WARNING("reset returns %08X", res);
@@ -1306,22 +1320,26 @@ static int remove_key(struct ndis_handle *handle, int key_index,
 	struct ndis_remove_key ndis_remove_key;
 	int res, written, needed;
 
+	TRACEENTER1("%p, %d", handle, key_index);
 	ndis_remove_key.struct_size = sizeof(ndis_remove_key);
 	ndis_remove_key.index = key_index;
+	if (key_index == 0)
+		ndis_remove_key.index = (1 << 30);
 	memcpy(&ndis_remove_key.bssid, bssid, ETH_ALEN);
 
-	/* TI drivers crash if REMOVE_KEY is called for a key not set */
-	if (handle->device->vendor != 0x104c &&
-	    handle->encr_info.keys[key_index].length > 0) {
-		res = dosetinfo(handle, NDIS_OID_REMOVE_KEY,
-				(char *)&ndis_remove_key,
-				sizeof(ndis_remove_key), &written, &needed);
+	if (key_index < 0 || key_index >= MAX_ENCR_KEYS)
+		TRACEEXIT1(return -EINVAL);
+
+	/* TI drivers crash if REMOVE_KEY is called */
+	if (handle->device->vendor != 0x104c) {
+		res = miniport_set_info(handle, NDIS_OID_REMOVE_KEY,
+					(char *)&ndis_remove_key,
+					sizeof(ndis_remove_key),
+					&written, &needed);
 		if (res == NDIS_STATUS_INVALID_DATA) {
 			DBGTRACE("removing key failed with %08X", res);
 			TRACEEXIT(return -EINVAL);
 		}
-	}
-	if (key_index >= 0 && key_index < MAX_ENCR_KEYS) {
 		handle->encr_info.keys[key_index].length = 0;
 		if (key_index == handle->encr_info.active)
 			set_encr_mode(handle, ENCR_DISABLED);
@@ -1452,8 +1470,8 @@ static int wpa_set_key(struct net_device *dev, struct iw_request_info *info,
 		memcpy(ndis_key.key + 24, tmp, 8);
 	}
 
-	res = dosetinfo(handle, NDIS_OID_ADD_KEY, (char *)&ndis_key,
-			ndis_key.struct_size, &written, &needed);
+	res = miniport_set_info(handle, NDIS_OID_ADD_KEY, (char *)&ndis_key,
+				ndis_key.struct_size, &written, &needed);
 	if (res == NDIS_STATUS_INVALID_DATA)
 	{
 		DBGTRACE("adding key failed (%08X), %d, %d, %lu",
@@ -1478,16 +1496,10 @@ static int wpa_disassociate(struct net_device *dev,
 	TRACEENTER("%s", "");
 	get_ap_address(handle, ap_addr);
 	DBGTRACE("bssid " MACSTR, MAC2STR(ap_addr));
-	/* FIXME: clear keys, essid etc. */
-	/* calling NDIS_OID_DISASSOCIATE here turns off the radio and further
-	 * communication is not possible */
-//	if (doreset(handle))
-//		TRACEEXIT(return -EOPNOTSUPP);
-
-	/* we set an impossible essid to disassociate - see note in
-	 * iw_set_essid; setting an empty essid doesn't disassociate */
-	copy_from_user(&ap_addr, wrqu->ap_addr.sa_data, sizeof(ap_addr));
-	set_essid(handle, " ", 1);
+	miniport_set_int(handle, NDIS_OID_DISASSOCIATE, 0);
+	set_current_state(TASK_INTERRUPTIBLE);
+	schedule_timeout(HZ/2);
+	set_essid(handle, "", 0);
 	get_ap_address(handle, ap_addr);
 	DBGTRACE("bssid " MACSTR, MAC2STR(ap_addr));
 	TRACEEXIT(return 0);
@@ -1565,10 +1577,10 @@ static int wpa_associate(struct net_device *dev,
 		if (set_encr_mode(handle, encr_mode))
 			TRACEEXIT(return -EINVAL);
 
-		query_int(handle, NDIS_OID_AUTH_MODE, &mode);
+		miniport_query_int(handle, NDIS_OID_AUTH_MODE, &mode);
 		if (mode != auth_mode)
 			done = 0;
-		query_int(handle, NDIS_OID_ENCR_STATUS, &mode);
+		miniport_query_int(handle, NDIS_OID_ENCR_STATUS, &mode);
 		if (mode != encr_mode)
 			done = 0;
 
@@ -1615,20 +1627,17 @@ static int wpa_deauthenticate(struct net_device *dev,
 {
 	struct ndis_handle *handle = (struct ndis_handle *)dev->priv;
 	mac_address ap_addr;
+	int i;
 	
 	TRACEENTER("%s", "");
 	get_ap_address(handle, ap_addr);
 	DBGTRACE("bssid " MACSTR, MAC2STR(ap_addr));
-	/* FIXME: clear keys, essid etc. */
-	/* calling NDIS_OID_DISASSOCIATE here turns off the radio and further
-	 * communication is not possible, so do a reset */
-//	if (doreset(handle))
-//		TRACEEXIT(return -EOPNOTSUPP);
-
-	/* we set an impossible essid to disassociate - see note in
-	 * iw_set_essid; setting an empty essid doesn't disassociate */
-	copy_from_user(&ap_addr, wrqu->ap_addr.sa_data, sizeof(ap_addr));
-	set_essid(handle, " ", 1);
+	for (i = 0; i < MAX_ENCR_KEYS; i++)
+		handle->encr_info.keys[i].length = 0;
+	miniport_set_int(handle, NDIS_OID_DISASSOCIATE, 0);
+	set_current_state(TASK_INTERRUPTIBLE);
+	schedule_timeout(HZ/2);
+	set_essid(handle, "", 0);
 	get_ap_address(handle, ap_addr);
 	DBGTRACE("bssid " MACSTR, MAC2STR(ap_addr));
 	TRACEEXIT(return 0);
@@ -1639,7 +1648,7 @@ int set_privacy_filter(struct ndis_handle *handle, int flags)
 	int res;
 
 	TRACEENTER("filter: %d", flags);
-	res = set_int(handle, NDIS_OID_PRIVACY_FILTER, flags);
+	res = miniport_set_int(handle, NDIS_OID_PRIVACY_FILTER, flags);
 	if (res == NDIS_STATUS_INVALID_DATA)
 	{
 		WARNING("setting privacy filter to %d failed (%08X)",
@@ -1679,6 +1688,8 @@ static int wpa_set_auth_alg(struct net_device *dev,
 		mode = AUTHMODE_RESTRICTED;
 	else
 		TRACEEXIT(return -EINVAL);
+
+	DBGTRACE2("%d", mode);
 
 	/* wpa_supplicant assumes OPEN mode, but it won't work if RESTRCITED
 	 * mode is used, so we try with AUTO mode always hoping the driver

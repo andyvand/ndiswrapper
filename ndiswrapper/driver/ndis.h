@@ -941,13 +941,15 @@ int ndiswrapper_procfs_add_iface(struct ndis_handle *handle);
 void ndiswrapper_procfs_remove_iface(struct ndis_handle *handle);
 void ndiswrapper_procfs_remove(void);
 
-int doquery(struct ndis_handle *handle, unsigned int oid, char *buf,
-	    int bufsize, unsigned int *written , unsigned int *needed);
-int dosetinfo(struct ndis_handle *handle, unsigned int oid, char *buf,
-	      int bufsize, unsigned int *written , unsigned int *needed);
-int set_int(struct ndis_handle *handle, int oid, int data);
-int query_int(struct ndis_handle *handle, int oid, int *data);
-int doreset(struct ndis_handle *handle);
+int miniport_query_info(struct ndis_handle *handle, unsigned int oid,
+			char *buf, int bufsize,
+			unsigned int *written, unsigned int *needed);
+int miniport_set_info(struct ndis_handle *handle, unsigned int oid,
+		      char *buf, int bufsize,
+		      unsigned int *written, unsigned int *needed);
+int miniport_set_int(struct ndis_handle *handle, int oid, int data);
+int miniport_query_int(struct ndis_handle *handle, int oid, int *data);
+int miniport_reset(struct ndis_handle *handle);
 void ndis_set_rx_mode(struct net_device *dev);
 void hangcheck_add(struct ndis_handle *handle);
 void hangcheck_del(struct ndis_handle *handle);

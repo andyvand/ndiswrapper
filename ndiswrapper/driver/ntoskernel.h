@@ -122,7 +122,6 @@ struct wrapper_timer
 	int active;
 	struct ktimer *ktimer;
 	struct kdpc *kdpc;
-	spinlock_t lock;
 };
 
 struct packed kdpc
@@ -398,5 +397,8 @@ static inline void init_dpc(struct kdpc *kdpc, void *func, void *ctx)
 	kdpc->func = func;
 	kdpc->ctx  = ctx;
 }
+
+#define raise_irql(irql) KfRaiseIrql(0, 0, irql)
+#define lower_irql(irql) KfLowerIrql(0, 0, irql)
 
 #endif // _NTOSKERNEL_H_

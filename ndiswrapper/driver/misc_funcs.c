@@ -94,32 +94,40 @@ void wrapper_timer_handler(unsigned long data)
 {
 	struct wrapper_timer *timer = (struct wrapper_timer *)data;
 	struct kdpc *kdpc;
-	STDCALL void (*func)(void *res1, void *data, void *res3, void *res4);
+	STDCALL void (*miniport_timer)(void *specific1, void *ctx,
+				       void *specific2, void *specific3);
 
-	TRACEENTER5("%s", "");
+	TRACEENTER5("%p", timer);
 #ifdef DEBUG_TIMER
 	BUG_ON(timer == NULL);
 	BUG_ON(timer->wrapper_timer_magic != WRAPPER_TIMER_MAGIC);
 	BUG_ON(timer->kdpc == NULL);
 #endif
 
-	spin_lock(&timer->lock);
+	if (!timer->active)
+		TRACEEXIT5(return);
 
 	kdpc = timer->kdpc;
-	func = kdpc->func;
+	miniport_timer = kdpc->func;
 
-	if (timer->repeat)
-	{
-		timer->timer.expires = jiffies + timer->repeat;
-		add_timer(&timer->timer);
+	if (miniport_timer) {
+		KIRQL irql;
+
+		irql = raise_irql(DISPATCH_LEVEL);
+		miniport_timer(kdpc, kdpc->ctx, kdpc->arg1, kdpc->arg2);
+		lower_irql(irql);
 	}
-	else
-		timer->active = 0;
 
-	spin_unlock(&timer->lock);
+	/* don't add the timer if inactive; see wrapper_cancel_timer */
+	if (timer->active) {
+		if (timer->repeat) {
+			timer->timer.expires = jiffies + timer->repeat;
+			add_timer(&timer->timer);
+		}
+		else
+			timer->active = 0;
+	}
 
-	if (func)
-		func(kdpc, kdpc->ctx, kdpc->arg1, kdpc->arg2);
 	TRACEEXIT5(return);
 }
 
@@ -130,8 +138,7 @@ void wrapper_init_timer(struct ktimer *ktimer, void *handle)
 
 	TRACEENTER5("%s", "");
 	wrapper_timer = wrap_kmalloc(sizeof(struct wrapper_timer), GFP_ATOMIC);
-	if(!wrapper_timer)
-	{
+	if (!wrapper_timer) {
 		ERROR("%s", "Cannot malloc mem for timer");
 		return;
 	}
@@ -152,7 +159,7 @@ void wrapper_init_timer(struct ktimer *ktimer, void *handle)
 		list_add(&wrapper_timer->list, &ndis_handle->timers);
 		spin_unlock_bh(&ndis_handle->timers_lock);
 	}
-	spin_lock_init(&wrapper_timer->lock);
+
 	DBGTRACE4("added timer %p, wrapper_timer->list %p\n",
 		  wrapper_timer, &wrapper_timer->list);
 	TRACEEXIT5(return);
@@ -160,45 +167,37 @@ void wrapper_init_timer(struct ktimer *ktimer, void *handle)
 
 int wrapper_set_timer(struct wrapper_timer *timer,
                       unsigned long expires, unsigned long repeat,
-                      struct kdpc *kdpc)
+		      struct kdpc *kdpc)
 {
-	TRACEENTER5("%s", "");
-	if (!timer)
-	{
+	TRACEENTER5("%p", timer);
+	if (!timer) {
 		ERROR("%s", "invalid timer");
 		return 0;
 	}
 
 #ifdef DEBUG_TIMER
-	if (timer->wrapper_timer_magic != WRAPPER_TIMER_MAGIC)
-	{
+	if (timer->wrapper_timer_magic != WRAPPER_TIMER_MAGIC) {
 		WARNING("timer %p is not initialized (%lu)",
 			timer, timer->wrapper_timer_magic);
 		timer->wrapper_timer_magic = WRAPPER_TIMER_MAGIC;
 	}
 #endif
 
-	spin_lock_bh(&timer->lock);
 	timer->repeat = repeat;
 	if (kdpc)
 		timer->kdpc = kdpc;
 
-	if (timer->active)
-	{
+	if (timer->active) {
 		DBGTRACE4("modifying timer %p to %lu, %lu",
 			  timer, expires, repeat);
 		mod_timer(&timer->timer, expires);
-		spin_unlock_bh(&timer->lock);
 		TRACEEXIT5(return 1);
-	}
-	else
-	{
+	} else {
 		DBGTRACE4("setting timer %p to %lu, %lu",
 			  timer, expires, repeat);
 		timer->timer.expires = expires;
-		add_timer(&timer->timer);
 		timer->active = 1;
-		spin_unlock_bh(&timer->lock);
+		add_timer(&timer->timer);
 		TRACEEXIT5(return 0);
 	}
 }
@@ -206,86 +205,21 @@ int wrapper_set_timer(struct wrapper_timer *timer,
 void wrapper_cancel_timer(struct wrapper_timer *timer, char *canceled)
 {
 	TRACEENTER4("timer = %p, canceled = %p", timer, canceled);
-	if(!timer)
-	{
+	if (!timer) {
 		ERROR("%s", "invalid timer");
 		return;
 	}
 
-	spin_lock_bh(&timer->lock);
-	if (!timer->active)
-	{
-		*canceled = 0;
-		spin_unlock_bh(&timer->lock);
-		TRACEEXIT5(return);
-	}
 #ifdef DEBUG_TIMER
 	DBGTRACE4("canceling timer %p", timer);
 	BUG_ON(timer->wrapper_timer_magic != WRAPPER_TIMER_MAGIC);
 #endif
-
-	timer->repeat = 0;
-	*canceled = del_timer(&timer->timer);
-	spin_unlock_bh(&timer->lock);
+	/* mark as inactive, so timer function doesn't call add_timer
+	 * after del_timer_sync returned */
+	timer->active = 0;
+	*canceled = del_timer_sync(&timer->timer);
 	TRACEEXIT5(return);
 }
-
-#if 0
-void
-wrapper_init_event(struct dispatch_header *header, int type, int state)
-{
-	TRACEENTER3("header = %p, type = %d, state = %d",
-		    header, type, state);
-	wrap_spin_lock(&dispatch_event_lock);
-	header->type = type;
-	header->signal_state = state;
-	wrap_spin_unlock(&dispatch_event_lock);
-	return;
-}
-
-void
-wrapper_set_event(struct dispatch_header *header)
-{
-	TRACEENTER3("%p", header);
-	header->signal_state = 1;
-	/* FIXME: check if it is synchronization event or not; for
-	 * synchronization events, only one process must be woken up.
-	 * Or is it guaranteed that for synchronization events, the
-	 * header is unique? In that case, we can ignore this check.
-	 */
-	wake_up(&dispatch_event_wq);
-	DBGTRACE3("woken up %p", header);
-	if (header->type == SYNCHRONIZATION_EVENT)
-		header->signal_state = 0;
-}
-
-void
-wrapper_reset_event(struct dispatch_header *header)
-{
-	header->signal_state = 0;
-}
-
-unsigned int
-wrapper_wait_event(struct dispatch_header *header, int ms)
-{
-	TRACEENTER3("%p, ms = %u", header, ms);
-
-	if (header->signal_state)
-		TRACEEXIT3(return header->signal_state);
-
-	if (ms == 0)
-		wait_event_interruptible(dispatch_event_wq,
-					 (header->signal_state == 1));
-	else
-		wait_event_interruptible_timeout(dispatch_event_wq,
-						 (header->signal_state == 1),
-						 (ms * HZ)/1000);
-	DBGTRACE3("%p, type = %d woke up (%ld)",
-		  header, header->type, header->signal_state);
-
-	TRACEEXIT3(return header->signal_state);
-}
-#endif
 
 NOREGPARM int wrap_sprintf(char *buf, const char *format, ...)
 {
@@ -693,6 +627,7 @@ STDCALL int rand(void)
 void packet_recycler(void *param)
 {
 	struct ndis_handle *handle = (struct ndis_handle*) param;
+	KIRQL irql;
 
 	TRACEENTER3("%s", "Packet recycler running");
 	while (1)
@@ -726,7 +661,9 @@ void packet_recycler(void *param)
 			break;
 
 		packet->status = NDIS_STATUS_SUCCESS;
+		irql = raise_irql(DISPATCH_LEVEL);
 		miniport->return_packet(handle->adapter_ctx, packet);
+		lower_irql(irql);
 	}
 	TRACEEXIT3(return);
 }
@@ -786,25 +723,25 @@ struct wrap_func misc_wrap_funcs[] =
 
 	WRAP_FUNC_ENTRY(RtlInitUnicodeString),
 
-	{"atoi",   (WRAP_FUNC *)wrap_atoi},
-	{"memcpy",   (WRAP_FUNC *)wrap_memcpy},
-	{"memmove",   (WRAP_FUNC *)wrap_memmove},
-	{"memset",   (WRAP_FUNC *)wrap_memset},
-	{"rand",   (WRAP_FUNC *)rand},
-	{"snprintf",   (WRAP_FUNC *)wrap_snprintf},
-	{"sprintf",   (WRAP_FUNC *)wrap_sprintf},
-	{"srand",   (WRAP_FUNC *)wrap_srand},
-	{"strcmp",   (WRAP_FUNC *)wrap_strcmp},
-	{"strcpy",   (WRAP_FUNC *)wrap_strcpy},
-	{"strlen",   (WRAP_FUNC *)wrap_strlen},
-	{"strncmp",   (WRAP_FUNC *)wrap_strncmp},
-	{"strncpy",   (WRAP_FUNC *)wrap_strncpy},
-	{"tolower",   (WRAP_FUNC *)wrap_tolower},
-	{"toupper",   (WRAP_FUNC *)wrap_toupper},
-	{"vsnprintf",   (WRAP_FUNC *)wrap_vsnprintf},
-	{"vsprintf",   (WRAP_FUNC *)wrap_vsprintf},
-	{"_snprintf",   (WRAP_FUNC *)wrap_snprintf},
-	{"_vsnprintf",   (WRAP_FUNC *)wrap_vsnprintf},
+	{"atoi",   (WRAP_FUNC)wrap_atoi},
+	{"memcpy",   (WRAP_FUNC)wrap_memcpy},
+	{"memmove",   (WRAP_FUNC)wrap_memmove},
+	{"memset",   (WRAP_FUNC)wrap_memset},
+	{"rand",   (WRAP_FUNC)rand},
+	{"snprintf",   (WRAP_FUNC)wrap_snprintf},
+	{"sprintf",   (WRAP_FUNC)wrap_sprintf},
+	{"srand",   (WRAP_FUNC)wrap_srand},
+	{"strcmp",   (WRAP_FUNC)wrap_strcmp},
+	{"strcpy",   (WRAP_FUNC)wrap_strcpy},
+	{"strlen",   (WRAP_FUNC)wrap_strlen},
+	{"strncmp",   (WRAP_FUNC)wrap_strncmp},
+	{"strncpy",   (WRAP_FUNC)wrap_strncpy},
+	{"tolower",   (WRAP_FUNC)wrap_tolower},
+	{"toupper",   (WRAP_FUNC)wrap_toupper},
+	{"vsnprintf",   (WRAP_FUNC)wrap_vsnprintf},
+	{"vsprintf",   (WRAP_FUNC)wrap_vsprintf},
+	{"_snprintf",   (WRAP_FUNC)wrap_snprintf},
+	{"_vsnprintf",   (WRAP_FUNC)wrap_vsnprintf},
 
 	{NULL, NULL}
 };
