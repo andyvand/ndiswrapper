@@ -821,8 +821,15 @@ STDCALL static int WRAP_EXPORT(KeDelayExecutionThread)
 STDCALL static long WRAP_EXPORT(KeQueryPriorityThread)
 	(void *thread)
 {
+	long prio;
+
 	TRACEENTER5("thread = %p", thread);
-	TRACEEXIT5(return 32 - (task_nice((task_t *)thread) + 20));
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,0)
+	prio = 1;
+#else
+	prio = 32 - (task_nice((task_t *)thread) + 20);
+#endif
+	TRACEEXIT5(return prio);
 }
 
 STDCALL static u64 WRAP_EXPORT(KeQueryInterruptTime)
