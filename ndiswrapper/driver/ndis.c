@@ -32,13 +32,30 @@ struct list_head handle_ctx_list;
 static struct list_head alloc_list;
 static struct wrap_spinlock alloc_list_lock;
 static struct work_struct alloc_work;
-static spinlock_t atomic_lock = SPIN_LOCK_UNLOCKED;
+static struct wrap_spinlock atomic_lock;
 
 DECLARE_WAIT_QUEUE_HEAD(event_wq);
 
 static struct work_struct work;
 static struct list_head worklist;
 static struct wrap_spinlock worklist_lock;
+
+static void alloc_worker(void *data);
+static void worker(void *context);
+
+void init_ndis(void)
+{
+	INIT_WORK(&work, &worker, NULL);
+	INIT_LIST_HEAD(&worklist);
+	wrap_spin_lock_init(&worklist_lock);
+
+	INIT_WORK(&alloc_work, alloc_worker, NULL);
+	INIT_LIST_HEAD(&alloc_list);
+	wrap_spin_lock_init(&alloc_list_lock);
+
+	wrap_spin_lock_init(&atomic_lock);
+	return;
+}
 
 /* Called from the driver entry. */
 STDCALL static void
@@ -617,7 +634,11 @@ NdisMSetAttributesEx(struct ndis_handle *handle, void* adapter_ctx,
 	{
 		handle_ctx->handle = handle;
 		handle_ctx->ctx = adapter_ctx;
+		/* atomic_lock is not meant for use here, but since the
+		 * functions that use it are fast, no harm abusing it */
+		wrap_spin_lock(&atomic_lock);
 		list_add(&handle_ctx->list, &handle_ctx_list);
+		wrap_spin_unlock(&atomic_lock);
 	}
 
 	if(attributes & 8)
@@ -646,11 +667,18 @@ NdisMSetAttributesEx(struct ndis_handle *handle, void* adapter_ctx,
 static struct ndis_handle *ctx_to_handle(void *ctx)
 {
 	struct handle_ctx_entry *handle_ctx;
+
+	wrap_spin_lock(&atomic_lock);
 	list_for_each_entry(handle_ctx, &handle_ctx_list, list)
 	{
 		if (handle_ctx->ctx == ctx)
+		{
+			wrap_spin_unlock(&atomic_lock);
 			return handle_ctx->handle;
+		}
 	}
+	wrap_spin_unlock(&atomic_lock);
+
 	return NULL;
 }
 
@@ -658,6 +686,8 @@ static struct ndis_handle *ctx_to_handle(void *ctx)
 void free_handle_ctx(struct ndis_handle *handle)
 {
 	struct list_head *curr, *tmp;
+
+	wrap_spin_lock(&atomic_lock);
 	list_for_each_safe(curr, tmp, &handle_ctx_list)
 	{
 		struct handle_ctx_entry *handle_ctx =
@@ -668,6 +698,7 @@ void free_handle_ctx(struct ndis_handle *handle)
 			kfree(handle_ctx);
 		}
 	}
+	wrap_spin_unlock(&atomic_lock);
 	return;
 }
 
@@ -980,13 +1011,6 @@ static void alloc_worker(void *data)
 		kfree(alloc_entry);
 	}
 	TRACEEXIT3(return);
-}
-
-void init_alloc_work(void)
-{
-	INIT_WORK(&alloc_work, alloc_worker, NULL);
-	INIT_LIST_HEAD(&alloc_list);
-	wrap_spin_lock_init(&alloc_list_lock);
 }
 
 STDCALL static int
@@ -1828,10 +1852,10 @@ NdisInterlockedDecrement(long *val)
 	long x;
 
 	TRACEENTER4("%s", "");
-	spin_lock_bh(&atomic_lock);
+	wrap_spin_lock(&atomic_lock);
 	(*val)--;
 	x = *val;
-	spin_unlock_bh(&atomic_lock);
+	wrap_spin_unlock(&atomic_lock);
 	TRACEEXIT4(return x);
 }
 
@@ -1841,10 +1865,10 @@ NdisInterlockedIncrement(long *val)
 	long x;
 
 	TRACEENTER4("%s", "");
-	spin_lock_bh(&atomic_lock);
+	wrap_spin_lock(&atomic_lock);
 	(*val)++;
 	x = *val;
-	spin_unlock_bh(&atomic_lock);
+	wrap_spin_unlock(&atomic_lock);
 	TRACEEXIT4(return x);
 }
 
@@ -2027,13 +2051,6 @@ static void worker(void *context)
 		kfree(workentry);
 	}
 	TRACEEXIT3(return);
-}
-
-void init_ndis_work(void)
-{
-	INIT_WORK(&work, &worker, NULL);
-	INIT_LIST_HEAD(&worklist);
-	wrap_spin_lock_init(&worklist_lock);
 }
 
 STDCALL static int

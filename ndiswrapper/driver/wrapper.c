@@ -1817,8 +1817,7 @@ static int __init wrapper_init(void)
 		return err;
         }
 
-	init_ndis_work();
-	init_alloc_work();
+	init_ndis();
 	INIT_LIST_HEAD(&wrap_allocs);
 	INIT_LIST_HEAD(&handle_ctx_list);
 	wrap_spin_lock_init(&wrap_allocs_lock);

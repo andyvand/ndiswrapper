@@ -809,8 +809,7 @@ STDCALL int RtlAnsiStringToUnicodeString(struct ustring *dst,
 					 struct ustring *src,
 					 unsigned int dup);
 int getSp(void);
-void init_alloc_work(void);
-void init_ndis_work(void);
+void init_ndis(void);
 
 int ndiswrapper_procfs_init(void);
 int ndiswrapper_procfs_add_iface(struct ndis_handle *handle);
