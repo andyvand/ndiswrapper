@@ -1,6 +1,7 @@
 ifndef DRV_VERSION
 #DRV_VERSION="$(shell cat ../version)@$(shell date +'%d-%b-%y+%R')"
-DRV_VERSION="$(shell cat ../version)@$(shell date +'%d-%b-%y')"
+#DRV_VERSION="$(shell cat ../version)@$(shell date +'%d-%b-%y')"
+DRV_VERSION="$(shell cat ../version)"
 endif
 #DEBUG=1
 

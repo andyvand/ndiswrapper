@@ -1,6 +1,10 @@
 Version 0.9 2004-07-
 ======================
 * Wi-Fi Protected Access (WPA) is supported
+* Debian packages can be built with 'make deb'; RPMs can be built with
+  'make rpm'
+* Support for RT2400/RT2500 chipset
+* ndiswrapper script can be used to install INF files in UTF
 * Many bug fixes
 
 Version 0.8 2004-06-10
