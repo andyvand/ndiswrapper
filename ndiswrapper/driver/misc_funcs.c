@@ -71,6 +71,32 @@ STDCALL unsigned short READ_PORT_UCHAR(unsigned int port)
 }
 
 
+STDCALL void WRITE_PORT_BUFFER_USHORT (unsigned int port, unsigned short *buf,
+				       unsigned long count)
+{
+	/*
+	__asm__ __volatile__ ("cld ; rep ; outsw"
+			      : "=S" (buf), "=c" (count) 
+			      : "d" (port),"0" (buf),"1" (count));
+	*/
+	unsigned long i;
+	for (i = 0 ; i < count ; i++)
+		outw(buf[i], port);
+}
+
+STDCALL void READ_PORT_BUFFER_USHORT (unsigned int port, unsigned short *buf,
+				      unsigned long count)
+{
+	/*
+	__asm__ __volatile__ ("cld ; rep ; insw"
+			      : "=D" (buf), "=c" (count) 
+			      : "d" (port),"0" (buf),"1" (count));
+	*/
+	unsigned long i;
+	for (i = 0 ; i < count; i++)
+		buf[i] = inw(port);
+}
+
 /** Functions from ntoskrnl **/
 int my_sprintf(char *str, const char *format, int p1, int p2, int p3, int p4, int p5, int p6)
 {

@@ -130,6 +130,8 @@ void WRITE_PORT_USHORT(void);
 void READ_PORT_USHORT(void);
 void WRITE_PORT_UCHAR(void);
 void READ_PORT_UCHAR(void);
+void WRITE_PORT_BUFFER_USHORT(void);
+void READ_PORT_BUFFER_USHORT(void);
 
 /* ntoskern */
 void InterlockedExchange(void);
@@ -299,6 +301,8 @@ func("WRITE_PORT_USHORT"                    , WRITE_PORT_USHORT),
 func("READ_PORT_USHORT"                     , READ_PORT_USHORT),
 func("WRITE_PORT_UCHAR"                     , WRITE_PORT_UCHAR),
 func("READ_PORT_UCHAR"                      , READ_PORT_UCHAR),
+func("WRITE_PORT_BUFFER_USHORT"             , WRITE_PORT_BUFFER_USHORT),
+func("READ_PORT_BUFFER_USHORT"              , READ_PORT_BUFFER_USHORT),
 
 /* ntoskernel */
 func("InterlockedExchange"                  , InterlockedExchange),
