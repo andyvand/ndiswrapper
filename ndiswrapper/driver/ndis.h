@@ -15,12 +15,24 @@
 #ifndef NDIS_H
 #define NDIS_H
 
+
 #include <linux/types.h>
 #include <linux/timer.h>
-#include <linux/workqueue.h>
+
 #include <linux/netdevice.h>
 #include <linux/wireless.h>
 #include <linux/pci.h>
+
+#include <linux/version.h>
+/* Workqueue / task queue backwards compatibility stuff */
+#if LINUX_VERSION_CODE > KERNEL_VERSION(2,5,41)
+#include <linux/workqueue.h>
+#else
+#include <linux/tqueue.h>
+#define work_struct tq_struct
+#define INIT_WORK INIT_TQUEUE
+#define schedule_work schedule_task
+#endif
 
 #define STDCALL __attribute__((__stdcall__))
 #define packed __attribute__((packed))
@@ -149,6 +161,7 @@ struct packed ndis_handle
 	struct pci_dev *pci_dev;
 	struct net_device *net_dev;
 	void *adapter_ctx;
+
 	struct work_struct irq_bh;
 
 	int irq;

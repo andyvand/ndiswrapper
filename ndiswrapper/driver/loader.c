@@ -12,12 +12,19 @@
  *  GNU General Public License for more details.
  *
  */
-#include <linux/module.h>
-#include <asm/tlbflush.h>
+
 
 #include "coffpe.h"
 #include "winsyms.h"
 #include "ndis.h"
+
+#include <linux/module.h>
+#include <linux/mm.h>
+#include <asm/pgalloc.h>
+#ifdef USE_WORKQUEUE
+#include <asm/tlbflush.h>
+#endif
+
 
 #define RADR(base, rva, type) (type) ((char*)base + rva)
 
@@ -189,9 +196,7 @@ int prepare_coffpe_image(void **entry, void *image, int size)
 		return -1;
 		
 
-#ifdef __KERNEL__
 	flush_tlb_all();
-#endif
 	do_reloc(image, hdr->basereloc_tbl.rva, hdr->basereloc_tbl.size, (int)image - hdr->image_base);
 
 	image_offset = (int)image - hdr->image_base;

@@ -818,12 +818,13 @@ STDCALL void NdisMIndicateReceivePacket(struct ndis_handle *handle, struct ndis_
 	struct ndis_packet *packet;
 	struct sk_buff *skb;
 	int i;
+
 	for(i = 0; i < nr_packets; i++)
 	{
 		packet = packets[i];
 		buffer = packet->buffer_head;
 
-		skb = dev_alloc_skb (buffer->len);
+		skb = dev_alloc_skb(buffer->len);
 		if(skb)
 		{
 			skb->dev = handle->net_dev;

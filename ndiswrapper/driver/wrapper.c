@@ -22,7 +22,6 @@
 #include <linux/errno.h>
 #include <linux/miscdevice.h>
 #include <linux/pci.h>
-#include <linux/workqueue.h>
 
 #include <linux/netdevice.h>
 #include <linux/etherdevice.h>
@@ -75,8 +74,6 @@ static int set_int(struct ndis_handle *handle, int oid, int data)
 }
 
 
-
-
 static int ndis_set_essid(struct net_device *dev,
 			    struct iw_request_info *info,
 			    union iwreq_data *wrqu, char *extra)
@@ -84,24 +81,23 @@ static int ndis_set_essid(struct net_device *dev,
 	struct ndis_handle *handle = dev->priv; 
 	unsigned int res, written, needed;
 	struct essid_req req;
-		
+
 	if(wrqu->essid.length > 33)
 	{
 		printk(KERN_ERR "%s: ESSID too long\n", __FUNCTION__);
 		return -1;
 	}
 
-	
 	memset(&req.essid, 0, sizeof(req.essid));
 	memcpy(&req.essid, extra, wrqu->essid.length-1);
-
+	
+	req.len = wrqu->essid.length-1;
 	res = handle->driver->miniport_char.setinfo(handle->adapter_ctx, NDIS_OID_ESSID, (char*)&req, sizeof(req), &written, &needed);
 	if(res)
 		return -1;
 	return 0;
-
-
 }
+
 
 static int ndis_get_essid(struct net_device *dev,
 			    struct iw_request_info *info,
@@ -176,7 +172,8 @@ static int ndis_get_mode(struct net_device *dev, struct iw_request_info *info,
 static int ndis_get_name(struct net_device *dev, struct iw_request_info *info,
 			   union iwreq_data *wrqu, char *extra)
 {
-	strlcpy(wrqu->name, "IEEE 802.11-DS", sizeof(wrqu->name));
+	strncpy(wrqu->name, "IEEE 802.11-DS", sizeof(wrqu->name)-1);
+	wrqu->name[sizeof(wrqu->name)-1] = 0;
 	return 0;
 }
 
@@ -314,7 +311,6 @@ static int ndis_ioctl(struct net_device *dev, struct ifreq *rq, int cmd)
 	return rc;
 }
 
-
 /*
  * This can probably be done a lot more effective (no copy of data needed).
  *
@@ -384,7 +380,7 @@ static int setup_dev(struct net_device *dev)
 	unsigned char mac[6];
 
 	DBGTRACE("Calling query to find mac at %08x rva(%08x)\n", (int)handle->driver->miniport_char.query, (int)handle->driver->miniport_char.query - image_offset);
-	res = handle->driver->miniport_char.query(handle->adapter_ctx, 0x01010102, &mac[0], 1024, &written, &needed);
+	res = handle->driver->miniport_char.query(handle->adapter_ctx, 0x01010102, &mac[0], sizeof(mac), &written, &needed);
 	DBGTRACE("past query res %08x\n\n", res);
 	DBGTRACE("mac:%02x:%02x:%02x:%02x:%02x:%02x\n", mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
 	if(res)
@@ -426,13 +422,16 @@ static int __devinit ndis_init_one(struct pci_dev *pdev,
 
 	DBGTRACE("%s\n", __FUNCTION__);
 
-	dev = alloc_etherdev(sizeof *handle);
+	dev = alloc_etherdev(sizeof(*handle));
 	if(!dev)
 	{
 		printk(KERN_ERR "Unable to alloc etherdev\n");
 		res = -ENOMEM;
 		goto out_nodev;
 	}
+
+	SET_MODULE_OWNER(dev);
+//	SET_NETDEV_DEV(dev, &pdev->dev);
 	handle = dev->priv;
 
 	handle->driver = driver;
@@ -461,7 +460,7 @@ static int __devinit ndis_init_one(struct pci_dev *pdev,
 
 	if(call_init(handle))
 	{
-		printk(KERN_ERR "ndiswrapper: Driver init return error\n");
+		printk(KERN_ERR "ndiswrapper: Driver init returned error\n");
 		res = -EINVAL;
 		goto out_start;
 	}
