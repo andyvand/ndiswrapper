@@ -160,7 +160,7 @@ struct wrapper_timer
 	int active;
 	struct ktimer *ktimer;
 	struct kdpc *kdpc;
-	spinlock_t lock;
+	struct wrap_spinlock lock;
 };
 
 struct packed kdpc
