@@ -34,7 +34,7 @@
 #include <asm/uaccess.h>
 
 #include "wrapper.h"
-#include "loader.h"
+#include "pe_loader.h"
 #include "ndis.h"
 #include "iw_ndis.h"
 
@@ -1875,7 +1875,7 @@ static struct ndis_driver *load_driver(struct put_file *put_driver)
 		goto out_baddriver;
 	}
 
-	if(prepare_coffpe_image(&entry, driver->image, put_driver->size))
+	if (load_pe_image(&entry, driver->image, put_driver->size))
 	{
 		ERROR("%s", "unable to prepare driver");
 		goto out_baddriver;
