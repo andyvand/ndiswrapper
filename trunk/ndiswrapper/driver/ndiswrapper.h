@@ -97,4 +97,14 @@ struct wrap_func
 #define STRFY(S) #S
 #define WRAP_FUNC_ENTRY(Func) {STRFY(Func), (WRAP_FUNC *)Func}
 
+struct wrap_alloc
+{
+	struct list_head list;
+	void *ptr;
+};
+
+void *wrap_kmalloc(size_t size, int flags);
+void wrap_kfree(void *ptr);
+void wrap_kfree_all(void);
+
 #endif // NDISWRAPPER_H
