@@ -322,7 +322,7 @@ struct wrap_export {
 #define WRAP_EXPORT_SYMBOL(f) {#f, (WRAP_EXPORT_FUNC)x86_64_ ## f}
 #define WRAP_EXPORT_WIN_FUNC(f) {#f, (WRAP_EXPORT_FUNC)x86_64__win_ ## f}
 #define WRAP_FUNC_PTR(f) &x86_64_ ## f
-#define WRAP_FUNC_PTR_DECL(f) void x86_64_ ## f(void)
+#define WRAP_FUNC_PTR_DECL(f) void x86_64_ ## f(void);
 #else
 #define WRAP_EXPORT_SYMBOL(f) {#f, (WRAP_EXPORT_FUNC)f}
 #define WRAP_EXPORT_WIN_FUNC(f) {#f, (WRAP_EXPORT_FUNC)_win_ ## f}
@@ -497,7 +497,7 @@ static inline KIRQL current_irql(void)
 static inline KIRQL raise_irql(KIRQL newirql)
 {
 	KIRQL irql = current_irql();
-	if (irql < DISPATCH_LEVEL && newirql == DISPATCH_LEVEL) {
+	if (irql < DISPATCH_LEVEL && newirql >= DISPATCH_LEVEL) {
 		local_bh_disable();
 		preempt_disable();
 	}
@@ -507,7 +507,7 @@ static inline KIRQL raise_irql(KIRQL newirql)
 static inline void lower_irql(KIRQL oldirql)
 {
 	KIRQL irql = current_irql();
-	if (oldirql < DISPATCH_LEVEL && irql == DISPATCH_LEVEL) {
+	if (oldirql < DISPATCH_LEVEL && irql >= DISPATCH_LEVEL) {
 		preempt_enable();
 		local_bh_enable();
 	}
@@ -562,7 +562,7 @@ do {							\
 
 #endif // CONFIG_SMP
 
-/* raise IRQL to given (higher) IRQL if necessary after locking */
+/* raise IRQL to given (higher) IRQL if necessary before locking */
 #define kspin_lock_irql(lock, newirql)					\
 ({									\
 	KIRQL _cur_irql_ = current_irql();				\

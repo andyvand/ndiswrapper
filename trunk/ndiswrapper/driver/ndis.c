@@ -2276,12 +2276,12 @@ STDCALL void WRAP_EXPORT(NdisInitializeEvent)
 STDCALL BOOLEAN WRAP_EXPORT(NdisWaitEvent)
 	(struct ndis_event *ndis_event, UINT ms)
 {
-	LARGE_INTEGER ticks;
 	NTSTATUS res;
 
 	TRACEENTER3("%p %u", ndis_event, ms);
-	ticks = ms * 10000;
-	res = KeWaitForSingleObject(&ndis_event->kevent, 0, 0, 0, &ticks);
+	ticks = ms * TICKSPERMSEC;
+	res = KeWaitForSingleObject(&ndis_event->kevent, 0, 0, 0,
+				    ms == 0 ? NULL : ticks);
 	if (res == STATUS_SUCCESS)
 		TRACEEXIT3(return TRUE);
 	else
