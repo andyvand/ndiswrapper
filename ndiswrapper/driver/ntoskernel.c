@@ -596,12 +596,12 @@ STDCALL unsigned char WRAP_EXPORT(IoCancelIrp)
 	TRACEENTER2("irp = %p", irp);
 
 	wrap_spin_lock(&cancel_lock);
-	irp->cancel_irql = cancel_lock.irql;
-	irp->pending_returned = 1;
-	irp->cancel = 1;
 	cancel_routine = xchg(&irp->cancel_routine, NULL);
 
 	if (cancel_routine) {
+		irp->cancel_irql = cancel_lock.irql;
+		irp->pending_returned = 1;
+		irp->cancel = 1;
 		cancel_routine(stack->dev_obj, irp);
 		TRACEEXIT2(return 1);
 	} else {

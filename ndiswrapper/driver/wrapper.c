@@ -1721,7 +1721,7 @@ static void *ndis_init_one_usb(struct usb_device *udev, unsigned int ifnum,
 	/* wait here seems crucial; without this delay, at least 
 	 * prism54 driver crashes (why?) */
 	set_current_state(TASK_INTERRUPTIBLE);
-	schedule_timeout(2*HZ);
+	schedule_timeout(3*HZ);
 	
 	if(setup_dev(handle->net_dev)) {
 		ERROR("%s", "Couldn't setup interface");
@@ -1787,7 +1787,6 @@ static void ndis_remove_one(struct ndis_handle *handle)
 		handle->xmit_ring_pending--;
 	}
 	wrap_spin_unlock(&handle->xmit_ring_lock);
-	usb_irp_worker(NULL);
 		
 	/* Make sure all queued packets have been pushed out from
 	 * xmit_bh before we call halt */
@@ -2470,7 +2469,6 @@ static int __init wrapper_init(void)
 	}
 
 	ndis_init();
-	usb_init();
 	INIT_LIST_HEAD(&wrap_allocs);
 	INIT_LIST_HEAD(&handle_ctx_list);
 	wrap_spin_lock_init(&wrap_allocs_lock);
