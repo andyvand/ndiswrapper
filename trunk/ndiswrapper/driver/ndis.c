@@ -20,6 +20,8 @@
 #include <linux/netdevice.h>
 #include <linux/etherdevice.h>
 #include <linux/types.h>
+#include <linux/string.h>
+#include <linux/ctype.h>
 
 #include "ndis.h"
 
@@ -60,6 +62,7 @@ do {									\
 
 extern int image_offset;
 
+extern struct list_head ndis_driverlist;
 
 int getSp(void)
 {
@@ -214,124 +217,99 @@ STDCALL void NdisCloseConfiguration(void *confhandle)
 	DBGTRACE("%s: confhandle: %08x\n", __FUNCTION__, (int) confhandle);
 }
 
-STDCALL void NdisOpenFile(unsigned int *status,
-						  struct ndis_filehandle **filehandle,
-						  unsigned int *filelength,
-						  struct ustring *filename,
-						  unsigned long highest_address)
+static int my_strcasecmp(char *s1, char *s2)
 {
-	char string[512];
-	struct ustring ansi;
-	char file_name[512];
-	struct ndis_filehandle *fh;
+	int ret = 0;
+	int len = min(strlen(s1), strlen(s2));
 
+	while (!ret && len--)
+		ret = toupper(*s1++) - toupper(*s2++);
+
+	if (!ret)
+		ret = strlen(s1) - strlen(s2);
+	return ret;
+}
+
+
+STDCALL void NdisOpenFile(unsigned int *status,
+			  struct ndis_file **filehandle,
+			  unsigned int *filelength,
+			  struct ustring *filename,
+			  unsigned long highest_address)
+{
+	char ansiname[512];
+	struct ustring ansi;
+	struct list_head *curr, *tmp;
+	struct ndis_file *file;
+	
 	DBGTRACE("%s: entry, status = %p, filelength = %p, *filelength = %d, high = %ld, filehandle = %p, *filehandle = %p\n", __FUNCTION__, status, filelength, *filelength, highest_address, filehandle, *filehandle);
 
-	ansi.buf = string;
-	ansi.buflen = sizeof(string);
+	ansi.buf = ansiname;
+	ansi.buflen = sizeof(ansiname);
+
+
 	if (RtlUnicodeStringToAnsiString(&ansi, filename, 0))
 	{
 		*status = NDIS_STATUS_RESOURCES;
 		return;
 	}
-	string[sizeof(string)-1] = 0;
+	ansiname[sizeof(ansiname)-1] = 0;
 	DBGTRACE("%s: Filename: %s, Highest Address: %08x\n",
-			 __FUNCTION__, string, (int) highest_address);
+			 __FUNCTION__, ansiname, (int) highest_address);
 	
-	fh = kmalloc(sizeof(struct ndis_filehandle), GFP_KERNEL);
-	if (!fh)
+	/* Loop through all driver and then all files to find the requested file */
+	
+	list_for_each_safe(curr, tmp, &ndis_driverlist)
 	{
-		*status = NDIS_STATUS_RESOURCES;
-		return;
+		struct list_head *curr2, *tmp2;
+
+		struct ndis_driver *driver = (struct ndis_driver *) curr;
+		list_for_each_safe(curr2, tmp2, &driver->files)
+		{
+			file = (struct ndis_file*) curr2;
+			DBGTRACE("Considering %s.\n", file->name); 
+			if(my_strcasecmp(file->name, ansiname) == 0)
+			{
+				*filehandle = file;
+				*filelength = file->size;
+				*status = NDIS_STATUS_SUCCESS;
+				return;
+			}
+		}
 	}
 
-	snprintf(file_name, sizeof(file_name)-1, "/etc/ndiswrapper/%s", string);
-	file_name[sizeof(file_name)-1] = 0;
-	DBGTRACE("%s: opening file: %s\n", __FUNCTION__, file_name);
-
-	fh->file = filp_open(file_name, O_RDONLY, 0400);
-	if (IS_ERR(fh->file))
-	{
-		kfree(fh);
-		*status = NDIS_STATUS_FILE_NOT_FOUND;
-		return;
-	}
-	fh->size = fh->file->f_dentry->d_inode->i_size;
-	fh->map = NULL;
-
-	*filehandle = fh;
-	*filelength = fh->size;
-	*status = NDIS_STATUS_SUCCESS;
-	DBGTRACE("%s: exit\n", __FUNCTION__);
-	return;
+	*status = NDIS_STATUS_FILE_NOT_FOUND;
 }
 			   
 STDCALL void NdisMapFile(unsigned int *status,
-						 void **mappedbuffer,
-						 struct ndis_filehandle *filehandle)
+			 void **mappedbuffer,
+			 struct ndis_file *filehandle)
 {
-	void *map;
+
 	DBGTRACE("%s: Handle: %08x\n", __FUNCTION__, (int) filehandle);
 
-	if (!filehandle || filehandle->map)
+	if (!filehandle)
 	{
 		*status = NDIS_STATUS_ALREADY_MAPPED;
 		DBGTRACE("%s (exit)\n", __FUNCTION__);
 		return;
 	}
 
-	down_write(&current->mm->mmap_sem);
-	map = (void *)do_mmap(filehandle->file, 0, filehandle->size,
-						  PROT_READ, MAP_PRIVATE, 0);
-	up_write(&current->mm->mmap_sem);
-	if (IS_ERR(map))
-	{
-		*status = NDIS_STATUS_ALREADY_MAPPED;
-		DBGTRACE("%s (exit)\n", __FUNCTION__);
-		return;
-	}
-	filehandle->map = map;
 	*status = NDIS_STATUS_SUCCESS;
-	*mappedbuffer = map;
+	*mappedbuffer = filehandle->data;
 	DBGTRACE("%s (exit)\n", __FUNCTION__);
 	return;
 }
 
-STDCALL void NdisUnmapFile(struct ndis_filehandle *filehandle)
+STDCALL void NdisUnmapFile(struct ndis_file *filehandle)
 {
 	DBGTRACE("%s: Handle: %08x\n", __FUNCTION__, (int) filehandle);
-
-	if (filehandle->map)
-	{
-		int err;
-		down_write(&current->mm->mmap_sem);
-		err = do_munmap(current->mm, (unsigned long)filehandle->map,
-						filehandle->size);
-		up_write(&current->mm->mmap_sem);
-		if (err)
-			printk(KERN_ERR "%s: file couldn't be unmapped (%d)\n",
-				   DRV_NAME, err);
-		filehandle->map = NULL;
-	}
-	DBGTRACE("%s (exit)\n", __FUNCTION__);
 	return;
 }
 
-STDCALL void NdisCloseFile(struct ndis_filehandle *filehandle)
+STDCALL void NdisCloseFile(struct ndis_file *filehandle)
 {
 	DBGTRACE("%s: Handle: %08x\n", __FUNCTION__, (int) filehandle);
-	if (filehandle->map)
-	{
-		printk(KERN_ERR "%s: map %p is not unmapped\n",
-			   __FUNCTION__, filehandle->map);
-		down_write(&current->mm->mmap_sem);
-		do_munmap(current->mm, (unsigned long)filehandle->map,
-				  filehandle->size);
-		up_write(&current->mm->mmap_sem);
-	}
-	filp_close(filehandle->file, NULL);
-	kfree(filehandle);
-	DBGTRACE("%s (exit)\n", __FUNCTION__);
 	return;
 }
 
