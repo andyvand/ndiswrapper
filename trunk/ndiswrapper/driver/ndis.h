@@ -304,6 +304,10 @@ struct packed ndis_handle
 	struct iw_statistics wireless_stats;
 	struct ndis_driver *driver;
 	
+	struct work_struct xmit_work;
+	spinlock_t xmit_queue_lock;
+	struct ndis_buffer *xmit_queue;
+	
 	struct semaphore query_mutex;
 	wait_queue_head_t query_wqhead;
 	int query_wait_res;
@@ -327,7 +331,6 @@ struct packed ndis_handle
 	int key_len ;
 	unsigned char key_val[IW_ENCODING_TOKEN_MAX] ;
 	struct pm_dev *pm;
-
 };
 
 struct ndis_timer

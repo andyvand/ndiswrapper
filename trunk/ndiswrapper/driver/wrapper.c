@@ -719,8 +719,6 @@ static int ndis_get_scan(struct net_device *dev, struct iw_request_info *info,
 void scan_bh(void *param)
 {
 	struct ndis_handle *handle = (struct ndis_handle *) param;
-	DBGTRACE("%s\n", __FUNCTION__);
-
 	ndis_list_scan(handle);
 }
 
@@ -996,40 +994,23 @@ static int ndis_ioctl(struct net_device *dev, struct ifreq *rq, int cmd)
 	return rc;
 }
 
-/*
- * This can probably be done a lot more effective (no copy of data needed).
- *
- *
- */
-static int ndis_start_xmit(struct sk_buff *skb, struct net_device *dev)
+
+static void send_one(struct ndis_handle *handle, struct ndis_buffer *buffer)
 {
-	struct ndis_handle *handle = dev->priv;
-	struct ndis_buffer *buffer;
 	struct ndis_packet *packet;
-	
-	char *data = kmalloc(skb->len, GFP_ATOMIC);
-	if(!data)
-	{
-		return 0;
-	}
 
-	buffer = kmalloc(sizeof(struct ndis_buffer), GFP_ATOMIC);
-	if(!buffer)
-	{
-		kfree(data);
-		return 0;
-	}
-
+	DBGTRACE("%s\n", __FUNCTION__);
 	packet = kmalloc(sizeof(struct ndis_packet), GFP_ATOMIC);
 	if(!packet)
 	{
-		kfree(data);
+		kfree(buffer->data);
 		kfree(buffer);
-		return 0;
+		return;
 	}
 	
 	memset(packet, 0, sizeof(*packet));
 
+	
 #ifdef DEBUG
 	{
 		int i = 0;
@@ -1045,19 +1026,16 @@ static int ndis_start_xmit(struct sk_buff *skb, struct net_device *dev)
 	
 	if(handle->use_scatter_gather)
 	{
-		packet->dataphys = pci_map_single(handle->pci_dev, data, skb->len, PCI_DMA_TODEVICE);
+		packet->dataphys = pci_map_single(handle->pci_dev, buffer->data, buffer->len, PCI_DMA_TODEVICE);
 		packet->scatterlist.len = 1;
 		packet->scatterlist.entry.physlo = packet->dataphys;		
 		packet->scatterlist.entry.physhi = 0;		
-		packet->scatterlist.entry.len = skb->len;
+		packet->scatterlist.entry.len = buffer->len;
 		packet->scatter_gather_ext = &packet->scatterlist; 
 	}
 
 	packet->oob_offset = (int)(&packet->timesent1) - (int)packet;
 
-	buffer->data = data;
-	buffer->next = 0;
-	buffer->len = skb->len;
 
 	packet->nr_pages = 1;
 	packet->len = buffer->len;
@@ -1069,8 +1047,6 @@ static int ndis_start_xmit(struct sk_buff *skb, struct net_device *dev)
 
 	//DBGTRACE("Buffer: %08x, data %08x, len %d\n", (int)buffer, (int)buffer->data, (int)buffer->len); 	
 
-	skb_copy_and_csum_dev(skb, data);
-	dev_kfree_skb(skb);
 
 	if(handle->driver->miniport_char.send_packets)
 	{
@@ -1091,20 +1067,92 @@ static int ndis_start_xmit(struct sk_buff *skb, struct net_device *dev)
 
 		if(res == NDIS_STATUS_PENDING)
 		{
-			return 0;
+			return;
 		}
 		ndis_sendpacket_done(handle, packet);
 		if(!res)
 			DBGTRACE("send_packets returning %08x\n", res);
 
-		return 0;
+		return;
 	}
 	else
 	{
 		DBGTRACE("%s: No send handler\n", __FUNCTION__);
 	}
+}
 
+
+static void xmit_bh(void *param)
+{
+	struct ndis_handle *handle = (struct ndis_handle*) param;
+	struct ndis_buffer *buffer;
+	unsigned long flags;
+
+	DBGTRACE("%s\n", __FUNCTION__);
+	while(1)
+	{
+		spin_lock_irqsave(&handle->xmit_queue_lock, flags);
+		buffer = handle->xmit_queue;
+		if(buffer && buffer->next)
+			handle->xmit_queue = buffer->next;
+		else
+			handle->xmit_queue = 0;
+		spin_unlock_irqrestore(&handle->xmit_queue_lock, flags);
+
+		if(!buffer)
+			break;
+		send_one(handle, buffer);
+	}
+}
+
+/*
+ * This can probably be done a lot more effective (no copy of data needed).
+ *
+ *
+ */
+static int ndis_start_xmit(struct sk_buff *skb, struct net_device *dev)
+{
+	struct ndis_handle *handle = dev->priv;
+	struct ndis_buffer *buffer, *tmp;
+	unsigned long flags;
+	
+	char *data = kmalloc(skb->len, GFP_ATOMIC);
+	if(!data)
+		return 0;
+
+	DBGTRACE("%s\n", __FUNCTION__);
+
+	buffer = kmalloc(sizeof(struct ndis_buffer), GFP_ATOMIC);
+	if(!buffer)
+	{
+		kfree(data);
+		return 0;
+	}
+
+	skb_copy_and_csum_dev(skb, data);
+
+	buffer->data = data;
+	buffer->next = 0;
+	buffer->len = skb->len;
+
+	/* Insert buffer into queue */
+	spin_lock_irqsave(&handle->xmit_queue_lock, flags);
+	if(!handle->xmit_queue) {
+		handle->xmit_queue = buffer;
+	}
+	else {
+		tmp = handle->xmit_queue;
+		while(tmp->next)
+			tmp = tmp->next;
+		tmp->next = buffer;
+	}
+	spin_unlock_irqrestore(&handle->xmit_queue_lock, flags);
+
+	dev_kfree_skb(skb);
+	schedule_work(&handle->xmit_work);
+	
 	return 0;
+	
 }
 
 /*
@@ -1264,6 +1312,9 @@ static int __devinit ndis_init_one(struct pci_dev *pdev,
 	init_waitqueue_head(&handle->query_wqhead);
 	init_MUTEX(&handle->setinfo_mutex);
 	init_waitqueue_head(&handle->setinfo_wqhead);
+
+	INIT_WORK(&handle->xmit_work, xmit_bh, handle); 	
+	handle->xmit_queue_lock = SPIN_LOCK_UNLOCKED;
 
 	/* Poision this because it may contain function pointers */
 	memset(&handle->fill1, 0x12, sizeof(handle->fill1));
