@@ -46,7 +46,7 @@
 /* Define this if you are developing and ndis_init_one crashes.
    When using the old PCI-API a reboot is not needed when this
    function crashes. A simple rmmod -f will do the trick and
-   you can try again. (Currently broken)
+   you can try again.
 */
 
 /*#define DEBUG_CRASH_ON_INIT*/
@@ -2216,7 +2216,7 @@ static void unload_driver(struct ndis_driver *driver)
 #ifdef DEBUG_CRASH_ON_INIT
 	{
 		struct pci_dev *pdev = 0;
-		pdev = pci_find_device(driver->pci_id[0].vendor, driver->pci_id[0].device, pdev);
+		pdev = pci_find_device(driver->pci_idtable[0].vendor, driver->pci_idtable[0].device, pdev);
 		if(pdev)
 			ndis_remove_one(pdev);
 	}
@@ -2331,9 +2331,9 @@ static int misc_ioctl(struct inode *inode, struct file *file, unsigned int cmd, 
 #ifdef DEBUG_CRASH_ON_INIT
 			{
 				struct pci_dev *pdev = 0;
-				pdev = pci_find_device(driver->pci_id[0].vendor, driver->pci_id[0].device, pdev);
+				pdev = pci_find_device(driver->pci_idtable[0].vendor, driver->pci_idtable[0].device, pdev);
 				if (pdev)
-					ndis_init_one(pdev, &driver->pci_id[0]);
+					ndis_init_one(pdev, &driver->pci_idtable[0]);
 			}
 #endif
 			file->private_data = NULL;

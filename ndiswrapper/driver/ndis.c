@@ -168,6 +168,7 @@ STDCALL unsigned int NdisAllocateMemoryWithTag(void **dest,
  */
 STDCALL void NdisFreeMemory(void *adr, unsigned int length, unsigned int flags)
 {
+//	DBGTRACE("%s: %p %d %d\n", __FUNCTION__, adr, length, flags);
 	if(length < VMALLOC_THRESHOLD)
 		kfree(adr);
 	else
