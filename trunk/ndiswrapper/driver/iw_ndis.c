@@ -1477,15 +1477,17 @@ static int wpa_disassociate(struct net_device *dev,
 	int i;
 	
 	TRACEENTER("%s", "");
-	do {
+	get_ap_address(handle, ap_addr);
+	DBGTRACE1("bssid " MACSTR, MAC2STR(ap_addr));
+	while (memcmp(ap_addr, "\x00\x00\x00\x00\x00\x00", ETH_ALEN)) {
 		get_random_bytes(buf, sizeof(buf));
 		for (i = 0; i < sizeof(buf); i++)
 			buf[i] = 'a' + (buf[i] % ('z' - 'a'));
 		set_essid(handle, buf, sizeof(buf));
 		get_ap_address(handle, ap_addr);
-		DBGTRACE("bssid " MACSTR, MAC2STR(ap_addr));
-	} while (memcmp(ap_addr, "\x00\x00\x00\x00\x00\x00", ETH_ALEN));
-	DBGTRACE("bssid " MACSTR, MAC2STR(ap_addr));
+		DBGTRACE1("bssid " MACSTR, MAC2STR(ap_addr));
+	}
+	DBGTRACE1("bssid " MACSTR, MAC2STR(ap_addr));
 	TRACEEXIT(return 0);
 }
 
@@ -1629,14 +1631,18 @@ static int wpa_deauthenticate(struct net_device *dev,
 	TRACEENTER("%s", "");
 	for (i = 0; i < MAX_ENCR_KEYS; i++)
 		handle->encr_info.keys[i].length = 0;
-	do {
+//	set_essid(handle, "", 0);
+	get_ap_address(handle, ap_addr);
+	DBGTRACE1("bssid " MACSTR, MAC2STR(ap_addr));
+	while (memcmp(ap_addr, "\x00\x00\x00\x00\x00\x00", ETH_ALEN)) {
 		get_random_bytes(buf, sizeof(buf));
 		for (i = 0; i < sizeof(buf); i++)
 			buf[i] = 'a' + (buf[i] % ('z' - 'a'));
 		set_essid(handle, buf, sizeof(buf));
 		get_ap_address(handle, ap_addr);
-		DBGTRACE("bssid " MACSTR, MAC2STR(ap_addr));
-	} while (memcmp(ap_addr, "\x00\x00\x00\x00\x00\x00", ETH_ALEN));
+		DBGTRACE1("bssid " MACSTR, MAC2STR(ap_addr));
+	}
+	DBGTRACE1("bssid " MACSTR, MAC2STR(ap_addr));
 	TRACEEXIT(return 0);
 }
 
