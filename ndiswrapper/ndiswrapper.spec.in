@@ -45,7 +45,6 @@ rm -rf $RPM_BUILD_ROOT
 %defattr(0755,root,root)
 /sbin/loadndisdriver
 /usr/sbin/ndiswrapper
-/usr/sbin/wlan_radio_averatec_5110hx
 %doc README AUTHORS ChangeLog INSTALL
 
 %files kernel-%(uname -r)
