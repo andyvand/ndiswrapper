@@ -68,8 +68,6 @@ struct ndis_phy_addr_unit {
 	UINT length;
 };
 
-typedef struct mdl ndis_buffer;
-
 struct ndis_buffer_pool {
 	int num_buffers;
 	spinlock_t lock;
