@@ -949,7 +949,8 @@ int set_scan(struct ndis_handle *handle)
 
 	TRACEENTER1("%s", "");
 	/* let the card do background scanning for 6 seconds, as per NDIS */
-	if (time_before(jiffies, handle->scan_timestamp + 6 * HZ))
+	if (handle->scan_timestamp > 0 &&
+	    time_before(jiffies, handle->scan_timestamp + 6 * HZ))
 		TRACEEXIT(return 0);
 	res = miniport_set_int(handle, OID_802_11_BSSID_LIST_SCAN, 0);
 	handle->scan_timestamp = jiffies;
@@ -984,14 +985,14 @@ static int iw_get_scan(struct net_device *dev, struct iw_request_info *info,
 	if (time_before(jiffies, handle->scan_timestamp + 3 * HZ))
 		return -EAGAIN;
 	
-	/* Try with space for 15 scan items */
-	list_len = sizeof(unsigned long) + sizeof(struct ndis_ssid_item) * 15;
+	/* try with space for a few scan items */
+	list_len = sizeof(ULONG) + sizeof(struct ndis_ssid_item) * 8;
 	bssid_list = kmalloc(list_len, GFP_KERNEL);
 
 	res = miniport_query_info_needed(handle, OID_802_11_BSSID_LIST,
 					 bssid_list, list_len, &needed);
 	if (res == NDIS_STATUS_INVALID_LENGTH) {
-		/* 15 items not enough; allocate required space */
+		/* now try with required space */
 		kfree(bssid_list);
 		list_len = needed;
 		bssid_list = kmalloc(list_len, GFP_KERNEL);
