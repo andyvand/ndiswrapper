@@ -70,14 +70,19 @@ void wrapper_kfree(void *ptr)
 			wrapper_alloc_head = wrapper_alloc_head->next;
 	}
 	kfree(ptr);
+	kfree(cur);
 }
 
 void wrapper_kfree_all(void)
 {
-	struct wrapper_alloc *entry;
+	struct wrapper_alloc *next, *cur;
 
-	for (entry = wrapper_alloc_head; entry; entry = entry->next)
-		kfree(entry->ptr);
+	for (cur = wrapper_alloc_head; cur; cur = next)
+	{
+		kfree(cur->ptr);
+		next = cur->next;
+		kfree(cur);
+	}
 
 	wrapper_alloc_head = NULL;
 }
