@@ -359,7 +359,7 @@ struct wrapper_timer {
 	 * having kdpc as first field of wrapper_timer will work as
 	 * expected */
 	struct kdpc *kdpc;
-	struct nt_list_entry list;
+	struct nt_list list;
 	struct timer_list timer;
 	struct ktimer *ktimer;
 #ifdef DEBUG_TIMER
@@ -371,7 +371,7 @@ struct wrapper_timer {
 };
 
 struct qdpc {
-	struct nt_list_entry list;
+	struct nt_list list;
 	struct kdpc *kdpc;
 	void *arg1;
 	void *arg2;
@@ -404,14 +404,14 @@ STDCALL void IoFreeMdl(struct mdl *mdl);
 STDCALL void NdisFreeBuffer(ndis_buffer *buffer);
 _FASTCALL LONG InterlockedDecrement(FASTCALL_DECL_1(LONG volatile *val));
 _FASTCALL LONG InterlockedIncrement(FASTCALL_DECL_1(LONG volatile *val));
-STDCALL struct nt_list_entry *
-ExInterlockedInsertHeadList(struct nt_list_entry *head,
-			    struct nt_list_entry *entry, KSPIN_LOCK *lock);
-STDCALL struct nt_list_entry *
-ExInterlockedInsertTailList(struct nt_list_entry *head,
-			    struct nt_list_entry *entry, KSPIN_LOCK *lock);
-STDCALL struct nt_list_entry *
-ExInterlockedRemoveHeadList(struct nt_list_entry *head, KSPIN_LOCK *lock);
+STDCALL struct nt_list *
+ExInterlockedInsertHeadList(struct nt_list *head,
+			    struct nt_list *entry, KSPIN_LOCK *lock);
+STDCALL struct nt_list *
+ExInterlockedInsertTailList(struct nt_list *head,
+			    struct nt_list *entry, KSPIN_LOCK *lock);
+STDCALL struct nt_list *
+ExInterlockedRemoveHeadList(struct nt_list *head, KSPIN_LOCK *lock);
 STDCALL NTSTATUS IoCreateDevice(struct driver_object *driver,
 				ULONG dev_ext_length,
 				struct unicode_string *dev_name,

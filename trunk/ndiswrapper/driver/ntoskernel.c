@@ -28,7 +28,7 @@
 #define CACHE_MDL_PAGES 2
 #define CACHE_MDL_SIZE (sizeof(struct mdl) + (sizeof(ULONG) * CACHE_MDL_PAGES))
 struct wrap_mdl {
-	struct nt_list_entry list;
+	struct nt_list list;
 	char mdl[CACHE_MDL_SIZE];
 };
 
@@ -36,14 +36,14 @@ static KSPIN_LOCK kevent_lock;
 KSPIN_LOCK irp_cancel_lock;
 KSPIN_LOCK ntoskernel_lock;
 static kmem_cache_t *mdl_cache;
-static struct nt_list_entry wrap_mdl_list;
-static struct nt_list_entry obj_mgr_obj_list;
+static struct nt_list wrap_mdl_list;
+static struct nt_list obj_mgr_obj_list;
 
 static struct work_struct qdpc_work;
-static struct nt_list_entry qdpc_list;
+static struct nt_list qdpc_list;
 static void dpc_worker(void *data);
 
-static struct nt_list_entry callback_objects;
+static struct nt_list callback_objects;
 
 WRAP_EXPORT_MAP("KeTickCount", &jiffies);
 
@@ -68,7 +68,7 @@ int ntoskernel_init(void)
 
 void ntoskernel_exit(void)
 {
-	struct nt_list_entry *cur;
+	struct nt_list *cur;
 	if (mdl_cache) {
 		kspin_lock(&ntoskernel_lock);
 		if (!IsListEmpty(&wrap_mdl_list)) {
@@ -92,7 +92,7 @@ void ntoskernel_exit(void)
 	kspin_lock(&ntoskernel_lock);
 	while ((cur = RemoveHeadList(&callback_objects))) {
 		struct callback_object *object;
-		struct nt_list_entry *ent;
+		struct nt_list *ent;
 		object = container_of(cur, struct callback_object, list);
 		while ((ent = RemoveHeadList(&object->callback_funcs))) {
 			struct callback_func *f;
@@ -105,11 +105,11 @@ void ntoskernel_exit(void)
 	return;
 }
 
-STDCALL struct nt_list_entry *WRAP_EXPORT(ExInterlockedInsertHeadList)
-	(struct nt_list_entry *head, struct nt_list_entry *entry,
+STDCALL struct nt_list *WRAP_EXPORT(ExInterlockedInsertHeadList)
+	(struct nt_list *head, struct nt_list *entry,
 	 KSPIN_LOCK *lock)
 {
-	struct nt_list_entry *first;
+	struct nt_list *first;
 	KIRQL irql;
 	TRACEENTER4("head = %p, entry = %p", head, entry);
 	KeAcquireSpinLock(lock, &irql);
@@ -119,11 +119,11 @@ STDCALL struct nt_list_entry *WRAP_EXPORT(ExInterlockedInsertHeadList)
 	return first;
 }
 
-STDCALL struct nt_list_entry *WRAP_EXPORT(ExInterlockedInsertTailList)
-	(struct nt_list_entry *head, struct nt_list_entry *entry,
+STDCALL struct nt_list *WRAP_EXPORT(ExInterlockedInsertTailList)
+	(struct nt_list *head, struct nt_list *entry,
 	 KSPIN_LOCK *lock)
 {
-	struct nt_list_entry *last;
+	struct nt_list *last;
 	KIRQL irql;
 	TRACEENTER4("head = %p, entry = %p", head, entry);
 	KeAcquireSpinLock(lock, &irql);
@@ -133,10 +133,10 @@ STDCALL struct nt_list_entry *WRAP_EXPORT(ExInterlockedInsertTailList)
 	return last;
 }
 
-STDCALL struct nt_list_entry *WRAP_EXPORT(ExInterlockedRemoveHeadList)
-	(struct nt_list_entry *head, KSPIN_LOCK *lock)
+STDCALL struct nt_list *WRAP_EXPORT(ExInterlockedRemoveHeadList)
+	(struct nt_list *head, KSPIN_LOCK *lock)
 {
-	struct nt_list_entry *ret;
+	struct nt_list *ret;
 	KIRQL irql;
 	TRACEENTER4("head = %p", head);
 	KeAcquireSpinLock(lock, &irql);
@@ -146,10 +146,10 @@ STDCALL struct nt_list_entry *WRAP_EXPORT(ExInterlockedRemoveHeadList)
 	return ret;
 }
 
-STDCALL struct nt_list_entry *WRAP_EXPORT(ExInterlockedRemoveTailList)
-	(struct nt_list_entry *head, KSPIN_LOCK *lock)
+STDCALL struct nt_list *WRAP_EXPORT(ExInterlockedRemoveTailList)
+	(struct nt_list *head, KSPIN_LOCK *lock)
 {
-	struct nt_list_entry *ret;
+	struct nt_list *ret;
 	KIRQL irql;
 	TRACEENTER4("head = %p", head);
 	KeAcquireSpinLock(lock, &irql);
@@ -159,11 +159,11 @@ STDCALL struct nt_list_entry *WRAP_EXPORT(ExInterlockedRemoveTailList)
 	return ret;
 }
 
-_FASTCALL struct nt_slist_entry *WRAP_EXPORT(ExInterlockedPushEntrySList)
+_FASTCALL struct nt_slist *WRAP_EXPORT(ExInterlockedPushEntrySList)
 	(FASTCALL_DECL_3(union nt_slist_head *head,
-			 struct nt_slist_entry *entry, KSPIN_LOCK *lock))
+			 struct nt_slist *entry, KSPIN_LOCK *lock))
 {
-	struct nt_slist_entry *ret;
+	struct nt_slist *ret;
 	KIRQL irql;
 
 	TRACEENTER4("head = %p, entry = %p", head, entry);
@@ -175,10 +175,10 @@ _FASTCALL struct nt_slist_entry *WRAP_EXPORT(ExInterlockedPushEntrySList)
 	return ret;
 }
 
-_FASTCALL struct nt_slist_entry *WRAP_EXPORT(ExInterlockedPopEntrySList)
+_FASTCALL struct nt_slist *WRAP_EXPORT(ExInterlockedPopEntrySList)
 	(FASTCALL_DECL_2(union nt_slist_head *head, KSPIN_LOCK *lock))
 {
-	struct nt_slist_entry *ret;
+	struct nt_slist *ret;
 	KIRQL irql;
 
 	TRACEENTER4("head = %p", head);
@@ -189,28 +189,28 @@ _FASTCALL struct nt_slist_entry *WRAP_EXPORT(ExInterlockedPopEntrySList)
 	return ret;
 }
 
-_FASTCALL struct nt_slist_entry *WRAP_EXPORT(ExpInterlockedPushEntrySList)
+_FASTCALL struct nt_slist *WRAP_EXPORT(ExpInterlockedPushEntrySList)
 	(FASTCALL_DECL_3(union nt_slist_head *head,
-			 struct nt_slist_entry *entry, KSPIN_LOCK *lock))
+			 struct nt_slist *entry, KSPIN_LOCK *lock))
 {
 	return ExInterlockedPushEntrySList(FASTCALL_ARGS_3(head, entry, lock));
 }
 
-_FASTCALL struct nt_slist_entry *WRAP_EXPORT(InterlockedPushEntrySList)
+_FASTCALL struct nt_slist *WRAP_EXPORT(InterlockedPushEntrySList)
 	(FASTCALL_DECL_2(union nt_slist_head *head,
-			 struct nt_slist_entry *entry))
+			 struct nt_slist *entry))
 {
 	return ExInterlockedPushEntrySList(FASTCALL_ARGS_3(head, entry,
 							   &ntoskernel_lock));
 }
 
-_FASTCALL struct nt_slist_entry * WRAP_EXPORT(ExpInterlockedPopEntrySList)
+_FASTCALL struct nt_slist *WRAP_EXPORT(ExpInterlockedPopEntrySList)
 	(FASTCALL_DECL_2(union nt_slist_head *head, KSPIN_LOCK *lock))
 {
 	return ExInterlockedPopEntrySList(FASTCALL_ARGS_2(head, lock));
 }
 
-_FASTCALL struct nt_slist_entry * WRAP_EXPORT(InterlockedPopEntrySList)
+_FASTCALL struct nt_slist *WRAP_EXPORT(InterlockedPopEntrySList)
 	(FASTCALL_DECL_1(union nt_slist_head *head))
 {
 	return ExInterlockedPopEntrySList(FASTCALL_ARGS_2(head,
@@ -218,16 +218,16 @@ _FASTCALL struct nt_slist_entry * WRAP_EXPORT(InterlockedPopEntrySList)
 
 }
 
-_FASTCALL struct nt_list_entry *WRAP_EXPORT(ExfInterlockedInsertTailList)
-	(FASTCALL_DECL_3(struct nt_list_entry *head,
-			 struct nt_list_entry *entry, KSPIN_LOCK *lock))
+_FASTCALL struct nt_list *WRAP_EXPORT(ExfInterlockedInsertTailList)
+	(FASTCALL_DECL_3(struct nt_list *head,
+			 struct nt_list *entry, KSPIN_LOCK *lock))
 {
 	TRACEENTER4("head = %p", head);
 	return ExInterlockedInsertTailList(head, entry, lock);
 }
 
-_FASTCALL struct nt_list_entry *WRAP_EXPORT(ExfInterlockedRemoveHeadList)
-	(FASTCALL_DECL_2(struct nt_list_entry *head, KSPIN_LOCK *lock))
+_FASTCALL struct nt_list *WRAP_EXPORT(ExfInterlockedRemoveHeadList)
+	(FASTCALL_DECL_2(struct nt_list *head, KSPIN_LOCK *lock))
 {
 	return ExInterlockedRemoveHeadList(head, lock);
 }
@@ -267,7 +267,7 @@ STDCALL void WRAP_EXPORT(KeInitializeDpc)
 
 static void dpc_worker(void *data)
 {
-	struct nt_list_entry *entry;
+	struct nt_list *entry;
 	struct qdpc *qdpc;
 	struct kdpc *kdpc;
 	KIRQL irql;
@@ -291,7 +291,7 @@ static void dpc_worker(void *data)
 
 STDCALL BOOLEAN KeInsertQueueDpc(struct kdpc *kdpc, void *arg1, void *arg2)
 {
-	struct nt_list_entry *cur;
+	struct nt_list *cur;
 	struct qdpc *qdpc;
 
 	qdpc = kmalloc(sizeof(*qdpc), GFP_ATOMIC);
@@ -319,7 +319,7 @@ STDCALL BOOLEAN KeInsertQueueDpc(struct kdpc *kdpc, void *arg1, void *arg2)
 STDCALL BOOLEAN KeRemoveQueueDpc(struct kdpc *kdpc)
 {
 	KIRQL irql;
-	struct nt_list_entry *cur;
+	struct nt_list *cur;
 
 	irql = kspin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL);
 	nt_list_for_each(cur, &qdpc_list) {
@@ -538,7 +538,7 @@ STDCALL void WRAP_EXPORT(ExInitializeNPagedLookasideList)
 STDCALL void WRAP_EXPORT(ExDeleteNPagedLookasideList)
 	(struct npaged_lookaside_list *lookaside)
 {
-	struct nt_slist_entry *entry, *p;
+	struct nt_slist *entry, *p;
 
 	TRACEENTER3("lookaside = %p", lookaside);
 	entry = lookaside->head.list.next;
@@ -555,7 +555,7 @@ STDCALL NTSTATUS WRAP_EXPORT(ExCreateCallback)
 	 BOOLEAN create, BOOLEAN allow_multiple_callbacks)
 {
 	struct callback_object *obj;
-	struct nt_list_entry *cur;
+	struct nt_list *cur;
 
 	TRACEENTER2("");
 	kspin_lock(&ntoskernel_lock);
@@ -625,7 +625,7 @@ STDCALL void WRAP_EXPORT(ExUnregisterCallback)
 STDCALL void WRAP_EXPORT(ExNotifyCallback)
 	(struct callback_object *object, void *arg1, void *arg2)
 {
-	struct nt_list_entry *cur;
+	struct nt_list *cur;
 	struct callback_func *callback;
 
 	kspin_lock(&object->lock);
@@ -652,7 +652,7 @@ STDCALL void WRAP_EXPORT(KeInitializeEvent)
 
 static void wakeup_event(struct kevent *kevent)
 {
-	struct nt_list_entry *ent;
+	struct nt_list *ent;
 
 	kspin_lock(&kevent_lock);
 	while ((ent = RemoveHeadList(&kevent->dh.wait_list)) &&
@@ -1072,7 +1072,7 @@ STDCALL KPRIORITY WRAP_EXPORT(KeSetPriorityThread)
 STDCALL BOOLEAN WRAP_EXPORT(KeRemoveEntryDeviceQueue)
 	(struct kdevice_queue *dev_queue, struct kdevice_queue_entry *entry)
 {
-	struct nt_list_entry *cur;
+	struct nt_list *cur;
 	KIRQL irql;
 
 	irql = kspin_lock_irql(&dev_queue->lock, DISPATCH_LEVEL);
@@ -1592,7 +1592,7 @@ STDCALL NTSTATUS WRAP_EXPORT(PsCreateSystemThread)
 STDCALL NTSTATUS WRAP_EXPORT(PsTerminateSystemThread)
 	(NTSTATUS status)
 {
-	struct nt_list_entry *ent;
+	struct nt_list *ent;
 	struct obj_mgr_obj *object;
 	struct kevent *event;
 
@@ -1829,7 +1829,7 @@ STDCALL NTSTATUS WRAP_EXPORT(ObReferenceObjectByHandle)
 	 KPROCESSOR_MODE access_mode, void **object, void *handle_info)
 {
 	struct obj_mgr_obj *obj_mgr_obj;
-	struct nt_list_entry *ent;
+	struct nt_list *ent;
 
 	obj_mgr_obj = NULL;
 	kspin_lock(&ntoskernel_lock);
@@ -1871,7 +1871,7 @@ _FASTCALL LONG WRAP_EXPORT(ObfReferenceObject)
 	(FASTCALL_DECL_1(void *object))
 {
 	struct obj_mgr_obj *obj_mgr_obj;
-	struct nt_list_entry *ent;
+	struct nt_list *ent;
 	LONG ret;
 
 	ret = 0;
@@ -1891,7 +1891,7 @@ _FASTCALL void WRAP_EXPORT(ObfDereferenceObject)
 	(FASTCALL_DECL_1(void *object))
 {
 	struct obj_mgr_obj *obj_mgr_obj;
-	struct nt_list_entry *ent;
+	struct nt_list *ent;
 
 	kspin_lock(&ntoskernel_lock);
 	nt_list_for_each(ent, &obj_mgr_obj_list) {
@@ -1986,7 +1986,7 @@ STDCALL NTSTATUS WRAP_EXPORT(IoAllocateDriverObjectExtension)
 STDCALL void *WRAP_EXPORT(IoGetDriverObjectExtension)
 	(struct driver_object *drv_obj, void *client_id)
 {
-	struct nt_list_entry *head, *ent;
+	struct nt_list *head, *ent;
 	void *ret;
 
 	TRACEENTER2("drv_obj: %p, client_id: %p", drv_obj, client_id);
@@ -2008,7 +2008,7 @@ STDCALL void *WRAP_EXPORT(IoGetDriverObjectExtension)
 
 void free_custom_ext(struct driver_extension *drv_ext)
 {
-	struct nt_list_entry *head, *ent;
+	struct nt_list *head, *ent;
 
 	head = &drv_ext->custom_ext;
 	kspin_lock(&ntoskernel_lock);

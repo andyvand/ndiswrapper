@@ -153,7 +153,7 @@ struct ndis_packet {
 };
 
 struct wrap_ndis_packet {
-	struct nt_list_entry list;
+	struct nt_list list;
 	struct ndis_packet ndis_packet;
 };
 
@@ -697,7 +697,7 @@ struct ndis_handle {
 	struct ndis_miniport_interrupt *interrupt;
 	ULONG flags;
 	ULONG pnp_flags;
-	struct nt_list_entry packet_list;
+	struct nt_list packet_list;
 	struct ndis_packet *first_pending_tx_packet;
 	struct ndis_packet *return_packet_queue;
 	ULONG request_buffer;
@@ -844,7 +844,7 @@ struct ndis_handle {
 	mac_address mac;
 
 	/* list of initialized timers */
-	struct nt_list_entry wrapper_timer_list;
+	struct nt_list wrapper_timer_list;
 	KSPIN_LOCK timer_lock;
 
 	struct proc_dir_entry *procfs_iface;

@@ -131,22 +131,22 @@ struct unicode_string {
 	wchar_t *buf;
 };
 
-struct nt_slist_entry {
-	struct nt_slist_entry *next;
+struct nt_slist {
+	struct nt_slist *next;
 };
 
 union nt_slist_head {
 	ULONGLONG align;
 	struct {
-		struct nt_slist_entry *next;
+		struct nt_slist *next;
 		USHORT depth;
 		USHORT sequence;
 	} list;
 };
 
-struct nt_list_entry {
-	struct nt_list_entry *next;
-	struct nt_list_entry *prev;
+struct nt_list {
+	struct nt_list *next;
+	struct nt_list *prev;
 };
 
 typedef ULONG_PTR KSPIN_LOCK;
@@ -159,7 +159,7 @@ struct kdpc {
 	SHORT type;
 	UCHAR number;
 	UCHAR importance;
-	struct nt_list_entry dpc_list_entry;
+	struct nt_list dpc_list_entry;
 
 	DPC func;
 	void *ctx;
@@ -233,7 +233,7 @@ struct mdl {
 	}
 
 struct kdevice_queue_entry {
-	struct nt_list_entry list;
+	struct nt_list list;
 	ULONG sort_key;
 	BOOLEAN inserted;
 };
@@ -241,7 +241,7 @@ struct kdevice_queue_entry {
 struct kdevice_queue {
 	USHORT type;
 	USHORT size;
-	struct nt_list_entry list;
+	struct nt_list list;
 	KSPIN_LOCK lock;
 	BOOLEAN busy;
 };
@@ -262,7 +262,7 @@ struct dispatch_header {
 	UCHAR size;
 	UCHAR inserted;
 	LONG signal_state;
-	struct nt_list_entry wait_list;
+	struct nt_list wait_list;
 };
 
 /* objects that use dispatch_header have it as the first field, so
@@ -276,7 +276,7 @@ struct wrapper_timer;
 struct ktimer {
 	struct dispatch_header dh;
 	ULONGLONG due_time;
-	struct nt_list_entry list;
+	struct nt_list list;
 	/* Instead of using Dpc's, we implement timers with Linux
 	 * timers for simplicity; however, Linux timers need 'struct
 	 * timer_list' field, which won't fit in ktimer. Instead of
@@ -290,7 +290,7 @@ struct ktimer {
 
 struct kmutex {
 	struct dispatch_header dh;
-	struct nt_list_entry list;
+	struct nt_list list;
 	void *owner_thread;
 	BOOLEAN abandoned;
 	BOOLEAN apc_disable;
@@ -303,7 +303,7 @@ struct ksemaphore {
 
 struct obj_mgr_obj {
 	struct dispatch_header dh;
-	struct nt_list_entry list;
+	struct nt_list list;
 	void *handle;
 	LONG ref_count;
 };
@@ -327,7 +327,7 @@ struct device_object {
 	void *dev_ext;
 	CCHAR stack_size;
 	union {
-		struct nt_list_entry queue_list;
+		struct nt_list queue_list;
 		struct wait_context_block wcb;
 	} queue;
 	ULONG align_req;
@@ -386,11 +386,11 @@ struct driver_extension {
 	void *add_device_func;
 	ULONG count;
 	struct unicode_string service_key_name;
-	struct nt_list_entry custom_ext;
+	struct nt_list custom_ext;
 };
 
 struct custom_ext {
-	struct nt_list_entry list;
+	struct nt_list list;
 	void *client_id;
 };
 
@@ -450,7 +450,7 @@ struct kapc {
 	CSHORT size;
 	ULONG spare0;
 	struct kthread *thread;
-	struct nt_list_entry list;
+	struct nt_list list;
 	void *kernele_routine;
 	void *rundown_routine;
 	void *normal_routine;
@@ -476,7 +476,7 @@ struct irp {
 		void *sys_buf;
 	} associated_irp;
 
-	struct nt_list_entry threads;
+	struct nt_list threads;
 
 	struct io_status_block io_status;
 	KPROCESSOR_MODE requestor_mode;
@@ -514,7 +514,7 @@ struct irp {
 			void *thread;
 			char *aux_buf;
 			struct {
-				struct nt_list_entry list;
+				struct nt_list list;
 				union {
 					struct io_stack_location *
 					current_stack_location;
@@ -550,7 +550,7 @@ struct common_body_header {
 
 struct object_header {
 	struct unicode_string name;
-	struct nt_list_entry list;
+	struct nt_list list;
 	LONG ref_count;
 	LONG handle_count;
 	BOOLEAN close_in_process;
@@ -573,7 +573,7 @@ enum wait_type {
 };
 
 struct wait_block {
-	struct nt_list_entry list_entry;
+	struct nt_list list_entry;
 	void *thread;
 	void *object;
 	struct wait_block *next;
@@ -619,7 +619,7 @@ struct npaged_lookaside_list {
 	ULONG size;
 	LOOKASIDE_ALLOC_FUNC *alloc_func;
 	LOOKASIDE_FREE_FUNC *free_func;
-	struct nt_list_entry list;
+	struct nt_list list;
 	ULONG lasttotallocs;
 	ULONG lastallocmisses;
 	ULONG pad[2];
@@ -661,7 +661,7 @@ struct kinterrupt {
 	CHAR processor_number;
 	PKSERVICE_ROUTINE service_routine;
 	void *service_context;
-	struct nt_list_entry list;
+	struct nt_list list;
 	KIRQL irql;
 	KIRQL synch_irql;
 	enum kinterrupt_mode interrupt_mode;
@@ -693,14 +693,14 @@ struct callback_object;
 struct callback_func {
 	PCALLBACK_FUNCTION func;
 	void *context;
-	struct nt_list_entry list;
+	struct nt_list list;
 	struct callback_object *object;
 };
 
 struct callback_object {
 	KSPIN_LOCK lock;
-	struct nt_list_entry list;
-	struct nt_list_entry callback_funcs;
+	struct nt_list list;
+	struct nt_list callback_funcs;
 	BOOLEAN allow_multiple_callbacks;
 	struct object_attributes *attributes;
 };
@@ -709,12 +709,17 @@ struct callback_object {
  * implementation; e.g., Insert functions return appropriate
  * pointer */
 
-static inline void InitializeListHead(struct nt_list_entry *head)
+/* instead of using Linux's lists, we implement list manipulation
+ * functions because nt_list is used by drivers and we don't want to
+ * worry about Linux's list being different from nt_list (right now
+ * they are same, but in future they could be different) */
+
+static inline void InitializeListHead(struct nt_list *head)
 {
 	head->next = head->prev = head;
 }
 
-static inline BOOLEAN IsListEmpty(struct nt_list_entry *head)
+static inline BOOLEAN IsListEmpty(struct nt_list *head)
 {
 	if (head->next == head)
 		return TRUE;
@@ -722,9 +727,9 @@ static inline BOOLEAN IsListEmpty(struct nt_list_entry *head)
 		return FALSE;
 }
 
-static inline void RemoveEntryList(struct nt_list_entry *entry)
+static inline void RemoveEntryList(struct nt_list *entry)
 {
-	struct nt_list_entry *prev, *next;
+	struct nt_list *prev, *next;
 
 	next = entry->next;
 	prev = entry->prev;
@@ -732,9 +737,9 @@ static inline void RemoveEntryList(struct nt_list_entry *entry)
 	next->prev = prev;
 }
 
-static inline struct nt_list_entry *RemoveHeadList(struct nt_list_entry *head)
+static inline struct nt_list *RemoveHeadList(struct nt_list *head)
 {
-	struct nt_list_entry *next, *entry;
+	struct nt_list *next, *entry;
 
 	if (IsListEmpty(head))
 		return NULL;
@@ -747,9 +752,9 @@ static inline struct nt_list_entry *RemoveHeadList(struct nt_list_entry *head)
 	}
 }
 
-static inline struct nt_list_entry *RemoveTailList(struct nt_list_entry *head)
+static inline struct nt_list *RemoveTailList(struct nt_list *head)
 {
-	struct nt_list_entry *prev, *entry;
+	struct nt_list *prev, *entry;
 
 	if (IsListEmpty(head))
 		return NULL;
@@ -762,10 +767,10 @@ static inline struct nt_list_entry *RemoveTailList(struct nt_list_entry *head)
 	}
 }
 
-static inline struct nt_list_entry *InsertHeadList(struct nt_list_entry *head,
-						   struct nt_list_entry *entry)
+static inline struct nt_list *InsertHeadList(struct nt_list *head,
+					     struct nt_list *entry)
 {
-	struct nt_list_entry *next, *first;
+	struct nt_list *next, *first;
 
 	if (IsListEmpty(head))
 		first = NULL;
@@ -780,10 +785,10 @@ static inline struct nt_list_entry *InsertHeadList(struct nt_list_entry *head,
 	return first;
 }
 
-static inline struct nt_list_entry *InsertTailList(struct nt_list_entry *head,
-						   struct nt_list_entry *entry)
+static inline struct nt_list *InsertTailList(struct nt_list *head,
+					     struct nt_list *entry)
 {
-	struct nt_list_entry *prev, *last;
+	struct nt_list *prev, *last;
 
 	if (IsListEmpty(head))
 		last = NULL;
@@ -802,10 +807,10 @@ static inline struct nt_list_entry *InsertTailList(struct nt_list_entry *head,
 	for (pos = (head)->next; prefetch(pos->next), pos != (head);	\
 	     pos = pos->next)
 
-static inline struct nt_slist_entry *
-PushEntryList(union nt_slist_head *head, struct nt_slist_entry *entry)
+static inline struct nt_slist *
+PushEntryList(union nt_slist_head *head, struct nt_slist *entry)
 {
-	struct nt_slist_entry *oldhead;
+	struct nt_slist *oldhead;
 
 	oldhead = head->list.next;
 	entry->next = head->list.next;
@@ -815,9 +820,9 @@ PushEntryList(union nt_slist_head *head, struct nt_slist_entry *entry)
 	return oldhead;
 }
 
-static inline struct nt_slist_entry *PopEntryList(union nt_slist_head *head)
+static inline struct nt_slist *PopEntryList(union nt_slist_head *head)
 {
-	struct nt_slist_entry *first;
+	struct nt_slist *first;
 
 	first = head->list.next;
 	if (first) {
