@@ -406,10 +406,10 @@ typedef union {
 	ULONG_PTR ntoslock;
 } KSPIN_LOCK;
 
-struct ndis_spinlock
+struct wrap_spinlock
 {
 	KSPIN_LOCK lock;
-	KIRQL irql;
+	KIRQL use_bh;
 };
 
 typedef char KPROCESSOR_MODE;
@@ -445,7 +445,7 @@ struct wrapper_timer
 	int active;
 	struct ktimer *ktimer;
 	struct kdpc *kdpc;
-	struct ndis_spinlock lock;
+	struct wrap_spinlock lock;
 };
 
 struct packed kdpc
@@ -655,6 +655,11 @@ struct kevent
 #define NOTIFICATION_EVENT	0
 #define SYNCHRONIZATION_EVENT	1
 
+#define LOW_PRIORITY 		1
+#define LOW_REALTIME_PRIORITY	16
+#define HIGH_PRIORITY		32
+#define MAXIMUM_PRIORITY	32
+
 typedef STDCALL void *LOOKASIDE_ALLOC_FUNC(enum pool_type pool_type,
 					   size_t size, unsigned long tag);
 typedef STDCALL void LOOKASIDE_FREE_FUNC(void *);
@@ -703,8 +708,8 @@ enum device_prop
 	DEVPROP_REMOVAL_POLICY,
 };
 
-extern struct ndis_spinlock atomic_lock;
-extern struct ndis_spinlock cancel_lock;
+extern struct wrap_spinlock atomic_lock;
+extern struct wrap_spinlock cancel_lock;
 
 #define WRAPPER_SPIN_LOCK_MAGIC 137
 
@@ -740,22 +745,49 @@ KefReleaseSpinLockFromDpcLevel(FASTCALL_DECL_1(KSPIN_LOCK *lock));
 #define raise_irql(irql) KfRaiseIrql(FASTCALL_ARGS_1(irql))
 #define lower_irql(irql) KfLowerIrql(FASTCALL_ARGS_1(irql))
 
-static inline void ndis_spin_lock_init(struct ndis_spinlock *lock)
+#define MSG(level, fmt, ...) printk(level "ndiswrapper (%s:%d): " fmt "\n", \
+				    __FUNCTION__, __LINE__ , ## __VA_ARGS__)
+#define WARNING(fmt, ...) MSG(KERN_WARNING, fmt, ## __VA_ARGS__)
+#define ERROR(fmt, ...) MSG(KERN_ERR, fmt , ## __VA_ARGS__)
+#define INFO(fmt, ...) MSG(KERN_INFO, fmt , ## __VA_ARGS__)
+
+static inline void wrap_spin_lock_init(struct wrap_spinlock *lock)
 {
 	spin_lock_init(&(lock->lock.spinlock));
-	lock->irql = PASSIVE_LEVEL;
+	lock->use_bh = 0;
 }
 
-static inline void ndis_spin_lock(struct ndis_spinlock *lock)
+static inline void wrap_spin_lock(struct wrap_spinlock *lock, int irql)
 {
-	lock->irql = raise_irql(DISPATCH_LEVEL);
-	spin_lock(&(lock->lock.spinlock));
+	if (irql == DISPATCH_LEVEL) {
+		if (KeGetCurrentIrql() == DISPATCH_LEVEL) {
+			spin_lock(&(lock->lock.spinlock));
+			lock->use_bh = 0;
+		} else {
+			spin_lock_bh(&(lock->lock.spinlock));
+			lock->use_bh = 1;
+#ifdef DEBUG_IRQL
+			if (!in_atomic())
+				WARNING("!in_atomic()");
+#endif
+		}
+	} else {
+			spin_lock(&(lock->lock.spinlock));
+			lock->use_bh = 0;
+	}
 }
 
-static inline void ndis_spin_unlock(struct ndis_spinlock *lock)
+static inline void wrap_spin_unlock(struct wrap_spinlock *lock)
 {
-	spin_unlock(&(lock->lock.spinlock));
-	lower_irql(lock->irql);
+	if (lock->use_bh) {
+#ifdef DEBUG_IRQL
+	if (!in_atomic())
+		WARNING("!in_atomic()");
+#endif
+		spin_unlock_bh(&(lock->lock.spinlock));
+	} else {
+		spin_unlock(&(lock->lock.spinlock));
+	}
 }
 
 static inline void wrapper_set_timer_dpc(struct wrapper_timer *wrapper_timer,
@@ -787,12 +819,6 @@ static inline int SPAN_PAGES(unsigned int ptr, unsigned int len)
 
 /* for a block of code */
 #define DBG_BLOCK() while (0)
-
-#define MSG(level, fmt, ...) printk(level "ndiswrapper (%s:%d): " fmt "\n", \
-				    __FUNCTION__, __LINE__ , ## __VA_ARGS__)
-#define WARNING(fmt, ...) MSG(KERN_WARNING, fmt, ## __VA_ARGS__)
-#define ERROR(fmt, ...) MSG(KERN_ERR, fmt , ## __VA_ARGS__)
-#define INFO(fmt, ...) MSG(KERN_INFO, fmt , ## __VA_ARGS__)
 
 #if defined DEBUG
 #undef DBGTRACE

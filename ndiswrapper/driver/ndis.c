@@ -30,12 +30,12 @@
 extern struct list_head ndis_driverlist;
 
 struct list_head handle_ctx_list;
-struct ndis_spinlock atomic_lock;
-struct ndis_spinlock cancel_lock;
+struct wrap_spinlock atomic_lock;
+struct wrap_spinlock cancel_lock;
 
 static struct work_struct ndis_work;
 static struct list_head ndis_work_list;
-static struct ndis_spinlock ndis_work_list_lock;
+static struct wrap_spinlock ndis_work_list_lock;
 
 static void ndis_worker(void *data);
 static void wrap_free_timers(struct ndis_handle *handle);
@@ -47,10 +47,10 @@ void ndis_init(void)
 	INIT_WORK(&ndis_work, &ndis_worker, NULL);
 	INIT_LIST_HEAD(&ndis_work_list);
 	INIT_LIST_HEAD(&handle_ctx_list);
-	ndis_spin_lock_init(&ndis_work_list_lock);
+	wrap_spin_lock_init(&ndis_work_list_lock);
 
-	ndis_spin_lock_init(&atomic_lock);
-	ndis_spin_lock_init(&cancel_lock);
+	wrap_spin_lock_init(&atomic_lock);
+	wrap_spin_lock_init(&cancel_lock);
 	return;
 }
 
@@ -81,15 +81,15 @@ static void wrap_free_timers(struct ndis_handle *handle)
 	 */
 	while (1) {
 		struct wrapper_timer *timer;
-		ndis_spin_lock(&handle->timers_lock);
+		wrap_spin_lock(&handle->timers_lock, PASSIVE_LEVEL);
 		if (list_empty(&handle->timers)) {
-			ndis_spin_unlock(&handle->timers_lock);
+			wrap_spin_unlock(&handle->timers_lock);
 			break;
 		}
 
 		timer = (struct wrapper_timer*) handle->timers.next;
 		list_del(&timer->list);
-		ndis_spin_unlock(&handle->timers_lock);
+		wrap_spin_unlock(&handle->timers_lock);
 
 		DBGTRACE1("fixing up timer %p, timer->list %p",
 			  timer, &timer->list);
@@ -103,7 +103,7 @@ static void free_handle_ctx(struct ndis_handle *handle)
 {
 	struct list_head *curr, *tmp;
 
-	ndis_spin_lock(&atomic_lock);
+	wrap_spin_lock(&atomic_lock, PASSIVE_LEVEL);
 	list_for_each_safe(curr, tmp, &handle_ctx_list) {
 		struct handle_ctx_entry *handle_ctx =
 			(struct handle_ctx_entry *)curr;
@@ -112,7 +112,7 @@ static void free_handle_ctx(struct ndis_handle *handle)
 			kfree(handle_ctx);
 		}
 	}
-	ndis_spin_unlock(&atomic_lock);
+	wrap_spin_unlock(&atomic_lock);
 	return;
 }
 
@@ -232,9 +232,9 @@ STDCALL static void WRAP_EXPORT(NdisFreeMemory)
 		free_mem->length = length;
 		free_mem->flags = flags;
 
-		ndis_spin_lock(&ndis_work_list_lock);
+		wrap_spin_lock(&ndis_work_list_lock, PASSIVE_LEVEL);
 		list_add_tail(&ndis_work_entry->list, &ndis_work_list);
-		ndis_spin_unlock(&ndis_work_list_lock);
+		wrap_spin_unlock(&ndis_work_list_lock);
 
 		schedule_work(&ndis_work);
 	}
@@ -669,9 +669,9 @@ STDCALL static void WRAP_EXPORT(NdisMSetAttributesEx)
 		/* atomic_lock is not meant for use here, but since this
 		 * function is called during initialization only,
 		 * no harm abusing it */
-		ndis_spin_lock(&atomic_lock);
+		wrap_spin_lock(&atomic_lock, PASSIVE_LEVEL);
 		list_add(&handle_ctx->list, &handle_ctx_list);
-		ndis_spin_unlock(&atomic_lock);
+		wrap_spin_unlock(&atomic_lock);
 	}
 
 	if (attributes & NDIS_ATTRIBUTE_BUS_MASTER)
@@ -702,14 +702,14 @@ static struct ndis_handle *ctx_to_handle(void *ctx)
 {
 	struct handle_ctx_entry *handle_ctx;
 
-	ndis_spin_lock(&atomic_lock);
+	wrap_spin_lock(&atomic_lock, PASSIVE_LEVEL);
 	list_for_each_entry(handle_ctx, &handle_ctx_list, list) {
 		if (handle_ctx->ctx == ctx) {
-			ndis_spin_unlock(&atomic_lock);
+			wrap_spin_unlock(&atomic_lock);
 			return handle_ctx->handle;
 		}
 	}
-	ndis_spin_unlock(&atomic_lock);
+	wrap_spin_unlock(&atomic_lock);
 
 	return NULL;
 }
@@ -830,7 +830,7 @@ STDCALL static void WRAP_EXPORT(NdisAllocateSpinLock)
 {
 	TRACEENTER4("lock %p", lock);
 
-	ndis_spin_lock_init(lock);
+	wrap_spin_lock_init((struct wrap_spinlock *)lock);
 
 	TRACEEXIT4(return);
 }
@@ -839,7 +839,7 @@ STDCALL static void WRAP_EXPORT(NdisFreeSpinLock)
 	(struct ndis_spinlock *lock)
 {
 	TRACEENTER4("lock %p", lock);
-	lock->irql = PASSIVE_LEVEL;
+	lock->use_bh = PASSIVE_LEVEL;
 
 	TRACEEXIT4(return);
 }
@@ -854,7 +854,7 @@ STDCALL static void WRAP_EXPORT(NdisAcquireSpinLock)
 	 * it */
 	if (lock->lock.ntoslock == 0)
 		NdisAllocateSpinLock(lock);
-	ndis_spin_lock(lock);
+	wrap_spin_lock((struct wrap_spinlock *)lock, PASSIVE_LEVEL);
 	TRACEEXIT5(return);
 }
 
@@ -862,7 +862,7 @@ STDCALL static void WRAP_EXPORT(NdisReleaseSpinLock)
 	(struct ndis_spinlock *lock)
 {
 	TRACEENTER5("lock %p", lock);
-	ndis_spin_unlock(lock);
+	wrap_spin_unlock((struct wrap_spinlock *)lock);
 	TRACEEXIT5(return);
 }
 
@@ -870,7 +870,9 @@ STDCALL static void WRAP_EXPORT(NdisDprAcquireSpinLock)
 	(struct ndis_spinlock *lock)
 {
 	TRACEENTER5("lock %p", lock);
-	NdisAcquireSpinLock(lock);
+	/* we use PASSIVE_LEVEL here because this function is not
+	 * supposed to change IRQL */
+	wrap_spin_lock((struct wrap_spinlock *)lock, PASSIVE_LEVEL);
 	TRACEEXIT5(return);
 }
 
@@ -878,7 +880,7 @@ STDCALL static void WRAP_EXPORT(NdisDprReleaseSpinLock)
 	(struct ndis_spinlock *lock)
 {
 	TRACEENTER5("lock %p", lock);
-	NdisReleaseSpinLock(lock);
+	wrap_spin_unlock((struct wrap_spinlock *)lock);
 	TRACEEXIT5(return);
 }
 
@@ -965,9 +967,9 @@ STDCALL static int WRAP_EXPORT(NdisMAllocateSharedMemoryAsync)
 	alloc_mem->cached = cached;
 	alloc_mem->ctx = ctx;
 
-	ndis_spin_lock(&ndis_work_list_lock);
+	wrap_spin_lock(&ndis_work_list_lock, DISPATCH_LEVEL);
 	list_add_tail(&ndis_work_entry->list, &ndis_work_list);
-	ndis_spin_unlock(&ndis_work_list_lock);
+	wrap_spin_unlock(&ndis_work_list_lock);
 
 	schedule_work(&ndis_work);
 	TRACEEXIT3(return NDIS_STATUS_PENDING);
@@ -1437,12 +1439,14 @@ NdisMIndicateStatus(struct ndis_handle *handle, unsigned int status, void *buf,
 	DBGTRACE2("%08x", status);
 	if (status == NDIS_STATUS_MEDIA_DISCONNECT) {
 		handle->link_status = 0;
+		handle->send_ok = 0;
 		set_bit(WRAPPER_LINK_STATUS, &handle->wrapper_work);
 		schedule_work(&handle->wrapper_worker);
 	}
 
 	if (status == NDIS_STATUS_MEDIA_CONNECT) {
 		handle->link_status = 1;
+		handle->send_ok = 1;
 		set_bit(WRAPPER_LINK_STATUS, &handle->wrapper_work);
 		schedule_work(&handle->wrapper_worker);
 	}
@@ -1550,10 +1554,11 @@ NdisMIndicateReceivePacket(struct ndis_handle *handle,
 			 * the packet and will call return_packet later
 			 */
 			packet->status = NDIS_STATUS_PENDING;
-			ndis_spin_lock(&handle->recycle_packets_lock);
+			wrap_spin_lock(&handle->recycle_packets_lock,
+				       DISPATCH_LEVEL);
 			list_add(&packet->recycle_list,
 				 &handle->recycle_packets);
-			ndis_spin_unlock(&handle->recycle_packets_lock);
+			wrap_spin_unlock(&handle->recycle_packets_lock);
 			schedule_work(&handle->recycle_packets_work);
 		}
 	}
@@ -1579,7 +1584,7 @@ NdisMSendComplete(struct ndis_handle *handle,
 	/* In case a serialized driver has requested a pause by returning
 	 * NDIS_STATUS_RESOURCES we need to give the send-code a kick again.
 	 */
-	handle->send_status = 0;
+	handle->send_ok = 1;
 	schedule_work(&handle->xmit_work);
 	TRACEEXIT3(return);
 }
@@ -1601,7 +1606,7 @@ NdisMSendResourcesAvailable(struct ndis_handle *handle)
 	/* sending packets immediately seem to result in NDIS_STATUS_FAILURE,
 	   so wait for a while before sending the packet again */
 	mdelay(5);
-	handle->send_status = 0;
+	handle->send_ok = 1;
 	schedule_work(&handle->xmit_work);
 	TRACEEXIT3(return);
 }
@@ -1829,10 +1834,10 @@ STDCALL static long WRAP_EXPORT(NdisInterlockedDecrement)
 	long x;
 
 	TRACEENTER4("%s", "");
-	ndis_spin_lock(&atomic_lock);
+	wrap_spin_lock(&atomic_lock, PASSIVE_LEVEL);
 	(*val)--;
 	x = *val;
-	ndis_spin_unlock(&atomic_lock);
+	wrap_spin_unlock(&atomic_lock);
 	TRACEEXIT4(return x);
 }
 
@@ -1842,10 +1847,10 @@ STDCALL static long WRAP_EXPORT(NdisInterlockedIncrement)
 	long x;
 
 	TRACEENTER4("%s", "");
-	ndis_spin_lock(&atomic_lock);
+	wrap_spin_lock(&atomic_lock, PASSIVE_LEVEL);
 	(*val)++;
 	x = *val;
-	ndis_spin_unlock(&atomic_lock);
+	wrap_spin_unlock(&atomic_lock);
 	TRACEEXIT4(return x);
 }
 
@@ -2001,7 +2006,7 @@ static void ndis_worker(void *data)
 
 	TRACEENTER3("%s", "");
 	while (1) {
-		ndis_spin_lock(&ndis_work_list_lock);
+		wrap_spin_lock(&ndis_work_list_lock, DISPATCH_LEVEL);
 		if (list_empty(&ndis_work_list))
 			ndis_work_entry = NULL;
 		else {
@@ -2009,7 +2014,7 @@ static void ndis_worker(void *data)
 				(struct ndis_work_entry*)ndis_work_list.next;
 			list_del(&ndis_work_entry->list);
 		}
-		ndis_spin_unlock(&ndis_work_list_lock);
+		wrap_spin_unlock(&ndis_work_list_lock);
 
 		if (!ndis_work_entry) {
 			DBGTRACE3("%s", "No more work");
@@ -2117,9 +2122,9 @@ STDCALL static void WRAP_EXPORT(IoQueueWorkItem)
 	io_work_item->ctx = ctx;
 	ndis_work_entry->entry.io_work_item = io_work_item;
 
-	ndis_spin_lock(&ndis_work_list_lock);
+	wrap_spin_lock(&ndis_work_list_lock, DISPATCH_LEVEL);
 	list_add_tail(&ndis_work_entry->list, &ndis_work_list);
-	ndis_spin_unlock(&ndis_work_list_lock);
+	wrap_spin_unlock(&ndis_work_list_lock);
 
 	schedule_work(&ndis_work);
 	TRACEEXIT3(return);
@@ -2139,9 +2144,9 @@ STDCALL static int WRAP_EXPORT(NdisScheduleWorkItem)
 	ndis_work_entry->type = NDIS_SCHED_WORK;
 	ndis_work_entry->entry.sched_work_item = ndis_sched_work_item;
 
-	ndis_spin_lock(&ndis_work_list_lock);
+	wrap_spin_lock(&ndis_work_list_lock, DISPATCH_LEVEL);
 	list_add_tail(&ndis_work_entry->list, &ndis_work_list);
-	ndis_spin_unlock(&ndis_work_list_lock);
+	wrap_spin_unlock(&ndis_work_list_lock);
 
 	schedule_work(&ndis_work);
 	TRACEEXIT3(return NDIS_STATUS_SUCCESS);

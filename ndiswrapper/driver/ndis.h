@@ -236,6 +236,13 @@ struct miniport_char
 
 };
 
+/* this should be same as wrap_spinlock */
+struct ndis_spinlock
+{
+	KSPIN_LOCK lock;
+	KIRQL use_bh;
+};
+
 struct handle_ctx_entry
 {
 	struct list_head list;
@@ -626,15 +633,15 @@ struct packed ndis_handle
 	struct ndis_device *device;
 
 	struct work_struct xmit_work;
-	spinlock_t xmit_ring_lock;
+	struct wrap_spinlock xmit_ring_lock;
 	struct ndis_packet *xmit_ring[XMIT_RING_SIZE];
 	struct ndis_packet **xmit_array;
 	unsigned int xmit_ring_start;
 	unsigned int xmit_ring_pending;
 	unsigned int max_send_packets;
 
-	int send_status;
-	spinlock_t send_packet_done_lock;
+	unsigned char send_ok;
+	struct wrap_spinlock send_packet_done_lock;
 
 	struct semaphore ndis_comm_mutex;
 	wait_queue_head_t ndis_comm_wq;
@@ -673,12 +680,12 @@ struct packed ndis_handle
 
 	mac_address mac;
 	struct list_head recycle_packets;
-	struct ndis_spinlock recycle_packets_lock;
+	struct wrap_spinlock recycle_packets_lock;
 	struct work_struct recycle_packets_work;
 
 	/* List of initialized timers */
 	struct list_head timers;
-	struct ndis_spinlock timers_lock;
+	struct wrap_spinlock timers_lock;
 
 	struct proc_dir_entry *procfs_iface;
 

@@ -20,8 +20,8 @@
 
 DECLARE_WAIT_QUEUE_HEAD(dispatch_event_wq);
 static unsigned char global_signal_state = 0;
-struct ndis_spinlock dispatch_event_lock;
-extern struct ndis_spinlock atomic_lock;
+struct wrap_spinlock dispatch_event_lock;
+extern struct wrap_spinlock atomic_lock;
 
 WRAP_EXPORT_MAP("KeTickCount", &jiffies);
 
@@ -300,9 +300,9 @@ _FASTCALL static void WRAP_EXPORT(ExInterlockedAddLargeStatistic)
 	(FASTCALL_DECL_2(u64 *plint, u32 n))
 {
 	TRACEENTER3("Stat %p = %llu, n = %u", plint, *plint, n);
-	ndis_spin_lock(&atomic_lock);
+	wrap_spin_lock(&atomic_lock, PASSIVE_LEVEL);
 	*plint += n;
-	ndis_spin_unlock(&atomic_lock);
+	wrap_spin_unlock(&atomic_lock);
 }
 
 STDCALL static void * WRAP_EXPORT(MmMapIoSpace)
@@ -342,11 +342,11 @@ STDCALL void WRAP_EXPORT(KeInitializeEvent)
 {
 	TRACEENTER3("event = %p, type = %d, state = %d",
 		    kevent, type, state);
-	ndis_spin_lock(&dispatch_event_lock);
+	wrap_spin_lock(&dispatch_event_lock, PASSIVE_LEVEL);
 	kevent->header.type = type;
 	kevent->header.signal_state = state;
 	kevent->header.inserted = 0;
-	ndis_spin_unlock(&dispatch_event_lock);
+	wrap_spin_unlock(&dispatch_event_lock);
 }
 
 STDCALL long WRAP_EXPORT(KeSetEvent)
@@ -359,7 +359,7 @@ STDCALL long WRAP_EXPORT(KeSetEvent)
 	if (wait == TRUE)
 		WARNING("wait = %d, not yet implemented", wait);
 
-	ndis_spin_lock(&dispatch_event_lock);
+	wrap_spin_lock(&dispatch_event_lock, PASSIVE_LEVEL);
 	kevent->header.signal_state = TRUE;
 	kevent->header.absolute = TRUE;
 	global_signal_state = TRUE;
@@ -369,7 +369,7 @@ STDCALL long WRAP_EXPORT(KeSetEvent)
 		wake_up_all(&dispatch_event_wq);
 //	global_signal_state = FALSE;
 	DBGTRACE3("woken up %p", kevent);
-	ndis_spin_unlock(&dispatch_event_lock);
+	wrap_spin_unlock(&dispatch_event_lock);
 	TRACEEXIT3(return old_state);
 }
 
@@ -566,7 +566,7 @@ STDCALL unsigned int WRAP_EXPORT(KeWaitForMultipleObjects)
 					(global_signal_state == TRUE),
 					wait_jiffies);
 		}
-		ndis_spin_lock(&dispatch_event_lock);
+		wrap_spin_lock(&dispatch_event_lock, PASSIVE_LEVEL);
 		if (res > 0) {
 			for (i = 0; i < count; i++) {
 				kevent = (struct kevent *)object[i];
@@ -583,7 +583,7 @@ STDCALL unsigned int WRAP_EXPORT(KeWaitForMultipleObjects)
 				}
 			}
 		}
-		ndis_spin_unlock(&dispatch_event_lock);
+		wrap_spin_unlock(&dispatch_event_lock);
 		if (res > 0)
 			wait_jiffies = res;
 		if (wait_type == WAIT_ANY)
@@ -785,7 +785,7 @@ STDCALL unsigned char WRAP_EXPORT(IoCancelIrp)
 	TRACEENTER2("irp = %p", irp);
 
 	irql = KeGetCurrentIrql();
-	ndis_spin_lock(&cancel_lock);
+	wrap_spin_lock(&cancel_lock, PASSIVE_LEVEL);
 	cancel_routine = xchg(&irp->cancel_routine, NULL);
 
 	if (cancel_routine) {
@@ -795,7 +795,7 @@ STDCALL unsigned char WRAP_EXPORT(IoCancelIrp)
 		cancel_routine(stack->dev_obj, irp);
 		TRACEEXIT2(return 1);
 	} else {
-		ndis_spin_unlock(&cancel_lock);
+		wrap_spin_unlock(&cancel_lock);
 		TRACEEXIT2(return 0);
 	}
 }
@@ -965,12 +965,11 @@ STDCALL static long WRAP_EXPORT(KeSetPriorityThread)
 
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,0)
 	/* FIXME: is there a way to set kernel thread prio on 2.4? */
-	old_prio = 1;
+	old_prio = LOW_PRIORITY;
 #else
 	old_prio = 32 - task_nice((task_t *)thread) + 20;
 	set_user_nice((task_t *)thread, (32 - priority) - 20);
 #endif
-
 	return old_prio;
 }
 
@@ -1041,10 +1040,10 @@ _FASTCALL static long WRAP_EXPORT(InterlockedDecrement)
 	long x;
 
 	TRACEENTER4("%s", "");
-	ndis_spin_lock(&atomic_lock);
+	wrap_spin_lock(&atomic_lock, PASSIVE_LEVEL);
 	(*val)--;
 	x = *val;
-	ndis_spin_unlock(&atomic_lock);
+	wrap_spin_unlock(&atomic_lock);
 	TRACEEXIT4(return x);
 }
 
@@ -1054,10 +1053,10 @@ _FASTCALL static long WRAP_EXPORT(InterlockedIncrement)
 	long x;
 
 	TRACEENTER4("%s", "");
-	ndis_spin_lock(&atomic_lock);
+	wrap_spin_lock(&atomic_lock, PASSIVE_LEVEL);
 	(*val)++;
 	x = *val;
-	ndis_spin_unlock(&atomic_lock);
+	wrap_spin_unlock(&atomic_lock);
 	TRACEEXIT4(return x);
 }
 
@@ -1067,10 +1066,10 @@ _FASTCALL static long WRAP_EXPORT(InterlockedExchange)
 	long x;
 
 	TRACEENTER4("%s", "");
-	ndis_spin_lock(&atomic_lock);
+	wrap_spin_lock(&atomic_lock, PASSIVE_LEVEL);
 	x = *target;
 	*target = val;
-	ndis_spin_unlock(&atomic_lock);
+	wrap_spin_unlock(&atomic_lock);
 	TRACEEXIT4(return x);
 }
 
@@ -1080,11 +1079,11 @@ _FASTCALL static long WRAP_EXPORT(InterlockedCompareExchange)
 	long x;
 
 	TRACEENTER4("%s", "");
-	ndis_spin_lock(&atomic_lock);
+	wrap_spin_lock(&atomic_lock, PASSIVE_LEVEL);
 	x = *dest;
 	if (*dest == comperand)
 		*dest = xchg;
-	ndis_spin_unlock(&atomic_lock);
+	wrap_spin_unlock(&atomic_lock);
 	TRACEEXIT4(return x);
 }
 
@@ -1200,14 +1199,14 @@ STDCALL static void WRAP_EXPORT(KeInitializeMutex)
 STDCALL static long WRAP_EXPORT(KeReleaseMutex)
 	(struct kmutex *mutex, BOOLEAN wait)
 {
-	ndis_spin_lock(&dispatch_event_lock);
+	wrap_spin_lock(&dispatch_event_lock, PASSIVE_LEVEL);
 	mutex->count--;
 	if (mutex->count == 0) {
 		mutex->owner_thread = NULL;
-		ndis_spin_unlock(&dispatch_event_lock);
+		wrap_spin_unlock(&dispatch_event_lock);
 		KeSetEvent((struct kevent *)&mutex->dispatch_header, 0, 0);
 	} else
-		ndis_spin_unlock(&dispatch_event_lock);
+		wrap_spin_unlock(&dispatch_event_lock);
 	return mutex->count;
 }
 
