@@ -19,7 +19,7 @@
 #include <stdio.h>
 #include <string.h>
 
-#include "loaddriver.h"
+#include "loadndisdriver.h"
 
 #define INVALID_PCI_ID 0xFFFF
 
