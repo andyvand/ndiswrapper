@@ -1,4 +1,12 @@
-Version 0.10 2004-08-xx
+Version 0.10 2004-10-xx
+=======================
+* Compilation issues with USB are fixed.
+* WPA issues fixed.
+* Older Prism USB devices (e.g., Dlink DWL-122, Netgear MA111)  supported.
+* Suspend/resume of devices with no power management (e.g., TI) fixed.
+* Lots of bug fixes and improvements
+
+Version 0.10 2004-08-20
 =======================
 * Centrino 2200: works in ad-hoc mode, keyboard doesn't lock even
   when there is no power to the card, suspend/resume works, restricted
