@@ -531,13 +531,6 @@ static void unload_ndis_driver(struct ndis_driver *driver)
 			usb_deregister(&driver->driver.usb);
 #endif
 	}
-	if (driver->bustype == NDIS_PCI_BUS) {
-		struct pci_dev *pdev = 0;
-		pdev = pci_find_device(driver->idtable.pci[0].vendor,
-				       driver->idtable.pci[0].device, pdev);
-		if (pdev)
-			ndis_remove_one_pci(pdev);
-	}
 
 	ndis_spin_lock(&driverlist_lock);
 	if (driver->list.next)
@@ -806,8 +799,14 @@ static int load_ndis_driver(struct load_driver *load_driver)
 	    start_driver(ndis_driver)) {
 		unload_ndis_driver(ndis_driver);
 		TRACEEXIT1(return -EINVAL);
-	} else
+	} else {
+#if LINUX_VERSION_CODE > KERNEL_VERSION(2,6,9)
+		add_taint(TAINT_PROPRIETARY_MODULE);
+#else
+		tainted |= TAINT_PROPRIETARY_MODULE;
+#endif
 		TRACEEXIT1(return 0);
+	}
 }
 
 static int wrapper_ioctl(struct inode *inode, struct file *file,

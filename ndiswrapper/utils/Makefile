@@ -1,6 +1,6 @@
 -include ../version
 
-loadndisdriver_OBJS = loadndisdriver.o
+OBJS = loadndisdriver.o
 
 CFLAGS = -Wall -g -DNDISWRAPPER_VERSION=\"$(NDISWRAPPER_VERSION)\" 
 
@@ -8,8 +8,8 @@ DISTFILES=Makefile ndiswrapper loadndisdriver.c ndiswrapper-buginfo
 
 all: loadndisdriver 
 
-loadndisdriver: $(loadndisdriver_OBJS) ../driver/wrapper.h
-	gcc -o loadndisdriver $(loadndisdriver_OBJS)
+loadndisdriver: $(OBJS) ../driver/wrapper.h
+	gcc -o loadndisdriver $(OBJS)
 	
 clean:
 	rm -f *~ *.o loadndisdriver
