@@ -1,10 +1,7 @@
 #!/usr/bin/make -f
 # -*- makefile -*-
-# Sample debian/rules that uses debhelper.
-# GNU copyright 1997 to 1999 by Joey Hess.
-#
-# Modified to make a template file for a multi-binary package with separated
-# build-arch and build-indep targets  by Bill Allombert 2001
+
+# Created by Giridhar Pemmasani <pgiri@users.sourceforge.net> for ndiswrapper
 
 # Uncomment this to turn on verbose mode.
 #export DH_VERBOSE=1
@@ -36,66 +33,6 @@ kdist_clean: clean-module
 
 ### end  KERNEL SETUP
 
-clean: clean-module clean-utils
-
-clean-module: build-module-prep
-	echo "$(NDISSRC)"
-	-$(MAKE) -C $(DRIVERSRC) clean
-	-rm -f debian/ndiswrapper-module-$(KVERS).install
-	dh_clean
-
-check-perms:
-	dh_testdir
-	dh_testroot
-
-clean-utils: build-utils-prep
-	-$(MAKE) -C $(UTILSSRC) clean
-	dh_clean
-
-build-module-prep:
-	sed -e 's/#KVERS#/$(KVERS)/g' -e 's/#NDISVERS#/$(NDISVERS)/g' -e 's/#DATE#/'"`date --rfc-822`"'/g' -e 's/#MAINT#/$(MAINT) <$(MAINTEMAIL)>/g' debian/changelog.template > debian/changelog
-	sed -e 's/#KVERS#/$(KVERS)/' -e 's/#NDISVERS#/$(NDISVERS)/' \
-		debian/control.module > debian/control
-
-	if [ $(kplevel) == 4 ];then \
-		module=ndiswrapper.o; \
-	else \
-		module=ndiswrapper.ko; \
-	fi; \
-	echo "driver/$$module /lib/modules/$(KVERS)/misc" \
-		> debian/ndiswrapper-module.install
-
-build-module:
-	dh_installdirs lib/modules/$(KVERS)/misc
-	$(MAKE) -C $(DRIVERSRC)
-
-build-utils-prep:
-	sed -e 's/-#KVERS#//g' -e 's/#NDISVERS#/$(NDISVERS)/g' -e 's/#DATE#/'"`date --rfc-822`"'/g' -e 's/#MAINT#/$(MAINT) <$(MAINTEMAIL)>/g' debian/changelog.template > debian/changelog
-	sed -e 's/#NDISVERS#/$(NDISVERS)/' debian/control.utils > debian/control
-	echo "utils/loadndisdriver /sbin" > debian/ndiswrapper-utils.install
-	echo "utils/ndiswrapper /usr/sbin" >> debian/ndiswrapper-utils.install
-	echo "utils/ndiswrapper-buginfo /usr/sbin" >> debian/ndiswrapper-utils.install
-	cp debian/dirs.utils debian/dirs
-
-build-source-prep:
-	sed -e 's/-#KVERS#//g' -e 's/#NDISVERS#/$(NDISVERS)/g' -e 's/#DATE#/'"`date --rfc-822`"'/g' -e 's/#MAINT#/$(MAINT) <$(MAINTEMAIL)>/g' debian/changelog.template > debian/changelog
-	sed -e 's/#NDISVERS#/$(NDISVERS)/g' debian/control.source > debian/control
-	echo "ndiswrapper-source.tar.gz /usr/src" \
-		> debian/ndiswrapper-source.install
-
-build-source:
-	dh_installdirs usr/src/modules/ndiswrapper
-	mkdir -p modules/ndiswrapper/debian
-	mkdir -p modules/ndiswrapper/driver
-	$(MAKE) -C $(DRIVERSRC) distdir=../modules/ndiswrapper/driver dist
-	cp version ChangeLog modules/ndiswrapper
-	cp -a debian/rules debian/changelog.template \
-		debian/control.module debian/changelog \
-			modules/ndiswrapper/debian
-	tar zcvf ndiswrapper-source.tar.gz modules
-
-source: build-source-prep common-prolog build-source common-epilog
-	dh_builddeb --destdir=$(MODDIR)
 
 common-prolog:
 	dh_testdir
@@ -127,6 +64,52 @@ common-epilog:
 	dh_gencontrol
 	dh_md5sums
 
+check-perms:
+	dh_testdir
+	dh_testroot
+
+build-module-prep:
+	sed -e 's/#KVERS#/$(KVERS)/g' -e 's/#NDISVERS#/$(NDISVERS)/g' \
+		-e 's/#DATE#/'"`date --rfc-822`"'/g' \
+		-e 's/#MAINT#/$(MAINT) <$(MAINTEMAIL)>/g' \
+		debian/changelog.template > debian/changelog
+	sed -e 's/#KVERS#/$(KVERS)/' -e 's/#NDISVERS#/$(NDISVERS)/' \
+		debian/control.module > debian/control
+
+	if [ $(kplevel) == 4 ];then \
+		module=ndiswrapper.o; \
+	else \
+		module=ndiswrapper.ko; \
+	fi; \
+	echo "driver/$$module /lib/modules/$(KVERS)/misc" \
+		> debian/ndiswrapper-module.install
+
+build-module:
+	dh_installdirs lib/modules/$(KVERS)/misc
+	$(MAKE) -C $(DRIVERSRC)
+
+binary-module: build-module-prep common-prolog build-module common-epilog
+	dh_builddeb --destdir=$(MODDIR)
+
+clean-module: build-module-prep
+	echo "$(NDISSRC)"
+	-$(MAKE) -C $(DRIVERSRC) clean
+	-rm -f debian/ndiswrapper-module.install
+	dh_clean
+
+build-utils-prep:
+	sed -e 's/-#KVERS#//g' -e 's/#NDISVERS#/$(NDISVERS)/g' \
+		-e 's/#DATE#/'"`date --rfc-822`"'/g' \
+		-e 's/#MAINT#/$(MAINT) <$(MAINTEMAIL)>/g' \
+		debian/changelog.template > debian/changelog
+	sed -e 's/#NDISVERS#/$(NDISVERS)/' debian/control.utils \
+		> debian/control
+	echo "utils/loadndisdriver /sbin" > debian/ndiswrapper-utils.install
+	echo "utils/ndiswrapper /usr/sbin" >> debian/ndiswrapper-utils.install
+	echo "utils/ndiswrapper-buginfo /usr/sbin" >> \
+		debian/ndiswrapper-utils.install
+	cp debian/dirs.utils debian/dirs
+
 build-utils:
 	export DH_OPTIONS='-i'
 	dh_installman ndiswrapper.8
@@ -135,11 +118,47 @@ build-utils:
 binary-utils: build-utils-prep common-prolog build-utils common-epilog
 	dh_builddeb --destdir=$(MODDIR)
 
-binary-module: build-module-prep common-prolog build-module common-epilog
+clean-utils: build-utils-prep
+	-$(MAKE) -C $(UTILSSRC) clean
+	-rm -f debian/ndiswrapper-utils.install
+	dh_clean
+
+build-source-prep:
+	sed -e 's/-#KVERS#//g' -e 's/#NDISVERS#/$(NDISVERS)/g' \
+		-e 's/#DATE#/'"`date --rfc-822`"'/g' \
+		-e 's/#MAINT#/$(MAINT) <$(MAINTEMAIL)>/g' \
+		debian/changelog.template > debian/changelog
+	sed -e 's/#NDISVERS#/$(NDISVERS)/g' debian/control.source \
+		> debian/control
+	echo "ndiswrapper-source.tar.gz /usr/src" \
+		> debian/ndiswrapper-source.install
+
+build-source:
+	dh_installdirs usr/src/modules/ndiswrapper
+	mkdir -p modules/ndiswrapper/debian
+	mkdir -p modules/ndiswrapper/driver
+	$(MAKE) -C $(DRIVERSRC) distdir=../modules/ndiswrapper/driver dist
+	cp version ChangeLog modules/ndiswrapper
+	cp -a debian/rules debian/changelog.template \
+		debian/control.module debian/changelog \
+			modules/ndiswrapper/debian
+	tar zcvf ndiswrapper-source.tar.gz modules
+	-rm -rf modules
+
+clean-source:
+	-rm -rf modules debian/ndiswrapper-source
+	-rm -f debian/ndiswrapper-source.install ndiswrapper-source.tar.gz
+	dh_clean
+
+source: build-source-prep common-prolog build-source common-epilog
 	dh_builddeb --destdir=$(MODDIR)
+
+clean: clean-module clean-utils clean-source
 
 binary:
 	$(MAKE) -f debian/rules binary-utils
 	$(MAKE) -f debian/rules binary-module
 
-.PHONY: binary binary-module binary-utils build-utils build-utils-prep common-epilog common-prolog clean-utils clean-module check-perms clean build-module build-module-prep
+.PHONY: binary binary-module binary-utils build-utils build-utils-prep \
+	common-epilog common-prolog clean-utils clean-module check-perms \
+	clean build-module build-module-prep
