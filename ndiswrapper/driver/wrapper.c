@@ -653,7 +653,7 @@ void add_scan_timer(unsigned long handle)
 
 	timer_list->data = (unsigned long) handle;
 	timer_list->function = &add_scan_timer;
-	timer_list->expires = jiffies + 1000;
+	timer_list->expires = jiffies + 10 * HZ;
 	add_timer(timer_list);
 }
 
