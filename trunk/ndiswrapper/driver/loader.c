@@ -739,9 +739,9 @@ static int register_devices(struct load_devices *load_devices)
 			WARNING("bus type %d is not valid",
 				devices[i].bustype);
 	if (num_pci > 0) {
-		ndiswrapper_pci_devices = kmalloc((num_pci + 1) *
-						  sizeof(struct pci_device_id),
-						  GFP_KERNEL);
+		ndiswrapper_pci_devices =
+			kmalloc((num_pci + 1) * sizeof(struct pci_device_id),
+				GFP_KERNEL);
 		if (!ndiswrapper_pci_devices) {
 			ERROR("couldn't allocate memory");
 			goto err_devices;
@@ -751,9 +751,9 @@ static int register_devices(struct load_devices *load_devices)
 	}
 
 	if (num_usb > 0) {
-		ndiswrapper_usb_devices = kmalloc((num_usb + 1) *
-						  sizeof(struct usb_device_id),
-						  GFP_KERNEL);
+		ndiswrapper_usb_devices =
+			kmalloc((num_usb + 1) * sizeof(struct usb_device_id),
+				GFP_KERNEL);
 		if (!ndiswrapper_usb_devices) {
 			ERROR("couldn't allocate memory");
 			goto err_pci_devices;
@@ -827,7 +827,6 @@ static int register_devices(struct load_devices *load_devices)
 			DBGTRACE1("adding %04x:%04x to usb idtable",
 				  device->vendor, device->device);
 		}
-
 	}
 	vfree(devices);
 	if (ndiswrapper_pci_devices) {
