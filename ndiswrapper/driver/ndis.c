@@ -683,10 +683,13 @@ NdisMSetAttributesEx(struct ndis_handle *handle, void* adapter_ctx,
 		handle->surprise_remove = 1;
 
 	/* less than 3 seconds seem to be problematic */
-	if (hangcheck_interval > 2)
-		handle->hangcheck_interval = 2 * hangcheck_interval * HZ;
-	else
-		handle->hangcheck_interval = 3 * HZ;
+	if (hangcheck_interval >= 0)
+	{
+		if (hangcheck_interval > 2)
+			handle->hangcheck_interval = 2*hangcheck_interval * HZ;
+		else
+			handle->hangcheck_interval = 3 * HZ;
+	}
 
 	handle->adapter_ctx = adapter_ctx;
 	TRACEEXIT2(return);
