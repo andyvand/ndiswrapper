@@ -574,6 +574,27 @@ STDCALL int RtlIntegerToUnicodeString(unsigned long value, unsigned long base,
 	return RtlAnsiStringToUnicodeString(ustring, &ansi, 0);
 }
 
+STDCALL void
+RtlInitUnicodeString(struct ustring *dest, __u16 *src)
+{
+	struct ustring *uc;
+
+	uc = dest;
+	if (uc == NULL)
+		return;
+	if (src == NULL) {
+		dest->len = dest->buflen = 0;
+		dest->buf = NULL;
+	} else {
+		int i = 0;
+		while (src[i])
+			i++;
+		dest->buf = (char *)src;
+		dest->len = dest->buflen = i * 2;
+	}
+	return;
+}
+
 void RtlFreeUnicodeString(void){UNIMPL();}
 void RtlUnwind(void){UNIMPL();}
 
@@ -656,6 +677,7 @@ struct wrap_func misc_wrap_funcs[] =
 	WRAP_FUNC_ENTRY(RtlIntegerToUnicodeString),
 	WRAP_FUNC_ENTRY(RtlUnicodeStringToAnsiString),
 	WRAP_FUNC_ENTRY(RtlUnwind),
+	WRAP_FUNC_ENTRY(RtlInitUnicodeString),
 
 	WRAP_FUNC_ENTRY(_alldiv),
 	WRAP_FUNC_ENTRY(_allmul),

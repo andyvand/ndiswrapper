@@ -792,6 +792,18 @@ STDCALL static void IoFreeMdl(void){UNIMPL();}
 STDCALL static void ObfReferenceObject(void){UNIMPL();}
 STDCALL static void ObReferenceObjectByHandle(void){UNIMPL();}
 STDCALL static void _except_handler3(void){UNIMPL();}
+NOREGPARM static unsigned int WmiTraceMessage(void)
+{
+	return 0;
+}
+STDCALL static unsigned int WmiQueryTraceInformation(void)
+{
+	return 0;
+}
+STDCALL static unsigned int IoWMIRegistrationControl(void)
+{
+	return 0;
+}
 
 struct wrap_func ntos_wrap_funcs[] =
 {
@@ -854,6 +866,10 @@ struct wrap_func ntos_wrap_funcs[] =
 	WRAP_FUNC_ENTRY(InterlockedIncrement),
 	WRAP_FUNC_ENTRY(KeResetEvent),
 	WRAP_FUNC_ENTRY(IoGetDeviceProperty),
+
+	WRAP_FUNC_ENTRY(WmiTraceMessage),
+	WRAP_FUNC_ENTRY(WmiQueryTraceInformation),
+	WRAP_FUNC_ENTRY(IoWMIRegistrationControl),
 
 	{"KeTickCount", (WRAP_FUNC *)&KeTickCount},
 
