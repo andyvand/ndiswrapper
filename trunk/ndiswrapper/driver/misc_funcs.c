@@ -81,14 +81,19 @@ void wrap_kfree_all(void)
 void wrapper_timer_handler(unsigned long data)
 {
 	struct wrapper_timer *timer = (struct wrapper_timer *)data;
-	struct kdpc *kdpc = timer->kdpc;
+	struct kdpc *kdpc;
 	STDCALL void (*func)(void *res1, void *data, void *res3, void *res4);
 
+	if (!timer)
+	{
+		printk(KERN_ERR "%s: timer is NULL\n", __FUNCTION__);
+		return;
+	}
+	kdpc = timer->kdpc;
 #ifdef DEBUG_TIMER
 	BUG_ON(timer->wrapper_timer_magic != WRAPPER_TIMER_MAGIC);
 	BUG_ON(kdpc == NULL);
 #endif
-	
 	func = kdpc->func;
 
 	if (!timer->active)

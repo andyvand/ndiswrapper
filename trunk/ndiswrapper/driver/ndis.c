@@ -603,7 +603,6 @@ STDCALL void NdisMSetAttributesEx(struct ndis_handle *handle,
 	if(!(attributes & 0x20))
 	{
 		handle->serialized = 1;
-		printk(KERN_ERR "%s: Driver %s is serialized. This might not work!\n", DRV_NAME, handle->driver->name);
 	}
 
 	if(hangcheck_interval)
@@ -1408,8 +1407,31 @@ STDCALL void NdisMIndicateReceivePacket(struct ndis_handle *handle, struct ndis_
  */
 STDCALL void NdisMSendComplete(struct ndis_handle *handle, struct ndis_packet *packet, unsigned int status)
 {
+	int pending;
+
 	DBGTRACE("%s %08x\n", __FUNCTION__, status);
-	ndis_sendpacket_done(handle, packet);
+	sendpacket_done(handle, packet);
+	/* In case a serialized driver has requested a pause by returning NDIS_STATUS_RESOURCES we
+	 * need to give the send-code a kick again.
+	 */
+	spin_lock_bh(&handle->xmit_ring_lock);
+	handle->send_status = 0;
+	pending = handle->xmit_ring_pending;
+	spin_unlock_bh(&handle->xmit_ring_lock);
+	if (pending)
+		schedule_work(&handle->xmit_work);
+}
+
+STDCALL void NdisMSendResourcesAvailable(struct ndis_handle *handle)
+{
+	int pending;
+	DBGTRACE("%s: Enter\n", __FUNCTION__);
+	spin_lock_bh(&handle->xmit_ring_lock);
+	handle->send_status = 0;
+	pending = handle->xmit_ring_pending;
+	spin_unlock_bh(&handle->xmit_ring_lock);
+	if (pending)
+		schedule_work(&handle->xmit_work);
 }
 
 /*
@@ -1945,6 +1967,7 @@ struct wrap_func ndis_wrap_funcs[] =
 	WRAP_FUNC_ENTRY(NdisMRemoveMiniport),
 	WRAP_FUNC_ENTRY(NdisMResetComplete),
 	WRAP_FUNC_ENTRY(NdisMSendComplete),
+	WRAP_FUNC_ENTRY(NdisMSendResourcesAvailable),
 	WRAP_FUNC_ENTRY(NdisMSetAttributes),
 	WRAP_FUNC_ENTRY(NdisMSetAttributesEx),
 	WRAP_FUNC_ENTRY(NdisMSetInformationComplete),
