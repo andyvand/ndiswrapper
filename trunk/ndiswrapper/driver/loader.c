@@ -41,7 +41,8 @@
 
 /* List of loaded drivers */
 static spinlock_t loader_lock;
-static struct list_head ndis_devices;
+static struct ndis_device *ndis_devices;
+static unsigned int num_ndis_devices;
 struct list_head ndis_drivers;
 static struct pci_device_id *ndiswrapper_pci_devices;
 static struct usb_device_id *ndiswrapper_usb_devices;
@@ -141,7 +142,7 @@ static int ndiswrapper_add_one_pci_dev(struct pci_dev *pdev,
 		  pdev->subsystem_vendor, pdev->subsystem_device);
 
  	found = 0;
-	device = (struct ndis_device *)ent->driver_data;
+	device = &ndis_devices[ent->driver_data];
 
 	driver = ndiswrapper_load_driver(device);
 	if (!driver) {
@@ -276,7 +277,7 @@ static void *ndiswrapper_add_one_usb_dev(struct usb_device *udev,
 
 	TRACEENTER1("usb_id: %p", usb_id);
 
-	device = (struct ndis_device *)usb_id->driver_info;
+	device = &ndis_devices[usb_id->driver_info];
 	driver = ndiswrapper_load_driver(device);
 	if (!driver) {
 		res = -ENODEV;
@@ -526,11 +527,11 @@ static int load_settings(struct ndis_driver *ndis_driver,
 
 	found = 0;
 	spin_lock(&loader_lock);
-	list_for_each_entry(ndis_device, &ndis_devices, list) {
-		if (ndis_device->vendor == load_driver->vendor &&
-		    ndis_device->device == load_driver->device &&
-		    ndis_device->subvendor == load_driver->subvendor &&
-		    ndis_device->subdevice == load_driver->subdevice) {
+	for (i = 0; i < num_ndis_devices; i++) {
+		if (ndis_devices[i].vendor == load_driver->vendor &&
+		    ndis_devices[i].device == load_driver->device &&
+		    ndis_devices[i].subvendor == load_driver->subvendor &&
+		    ndis_devices[i].subdevice == load_driver->subdevice) {
 			found = 1;
 			break;
 		}
@@ -545,6 +546,7 @@ static int load_settings(struct ndis_driver *ndis_driver,
 	}
 
 	nr_settings = 0;
+	ndis_device = &ndis_devices[i];
 	for (i = 0; i < load_driver->nr_settings; i++) {
 		struct load_device_setting *load_setting =
 			&load_driver->settings[i];
@@ -581,7 +583,7 @@ static int load_settings(struct ndis_driver *ndis_driver,
 /* this function is called while holding load_lock spinlock */
 static void unload_ndis_device(struct ndis_device *device)
 {
-	TRACEENTER1("unloading device %s, bustype",
+	TRACEENTER1("unloading device %s, bustype %d",
 		    device->driver_name, device->bustype);
 
 	while (!list_empty(&device->settings)) {
@@ -595,7 +597,6 @@ static void unload_ndis_device(struct ndis_device *device)
 		list_del(&setting->list);
 		kfree(setting);
 	}
-	kfree(device);
 	TRACEEXIT1(return);
 }
 
@@ -713,16 +714,16 @@ static int register_devices(struct load_devices *load_devices)
 {
 	int i, res, num_pci, num_usb;
 	struct load_device *devices;
-	struct ndis_device *ndis_device;
 
-	devices = vmalloc(load_devices->count * sizeof(struct load_device));
+	num_ndis_devices = load_devices->count;
+	devices = vmalloc(num_ndis_devices * sizeof(struct load_device));
 	if (!devices) {
 		ERROR("couldn't allocate memory");
 		TRACEEXIT1(return -ENOMEM);
 	}
 
 	if (copy_from_user(devices, load_devices->devices,
-			   load_devices->count * sizeof(struct load_device))) {
+			   num_ndis_devices * sizeof(struct load_device))) {
 		ERROR("couldn't copy from user space");
 		goto err_devices;
 	}
@@ -730,7 +731,7 @@ static int register_devices(struct load_devices *load_devices)
 	num_pci = num_usb = 0;
 	ndiswrapper_pci_devices = NULL;
 	ndiswrapper_usb_devices = NULL;
-	for (i = 0; i < load_devices->count; i++)
+	for (i = 0; i < num_ndis_devices; i++)
 		if (devices[i].bustype == NDIS_PCI_BUS)
 			num_pci++;
 		else if (devices[i].bustype == NDIS_USB_BUS)
@@ -762,15 +763,19 @@ static int register_devices(struct load_devices *load_devices)
 		       (num_usb + 1) * sizeof(struct usb_device_id));
 	}
 
+	ndis_devices = NULL;
+	ndis_devices = vmalloc(num_ndis_devices * sizeof(*ndis_devices));
+	if (!ndis_devices) {
+		ERROR("couldn't allocate memory");
+		goto err_pci_devices;
+	}
+
+	memset(ndis_devices, 0, num_ndis_devices * sizeof(*ndis_devices));
 	num_usb = num_pci = 0;
-	for (i = 0; i < load_devices->count; i++) {
+	for (i = 0; i < num_ndis_devices; i++) {
 		struct load_device *device = &devices[i];
-		ndis_device = kmalloc(sizeof(*ndis_device), GFP_KERNEL);
-		if (!ndis_device) {
-			ERROR("couldn't allocate memory");
-			goto err_ndis_device;
-		}
-		memset(ndis_device, 0, sizeof(*ndis_device));
+		struct ndis_device *ndis_device = &ndis_devices[i];
+
 		INIT_LIST_HEAD(&ndis_device->settings);
 		memcpy(&ndis_device->driver_name, device->driver_name,
 		       sizeof(ndis_device->driver_name));
@@ -783,9 +788,6 @@ static int register_devices(struct load_devices *load_devices)
 
 		memcpy(&ndis_device->driver_name, device->driver_name,
 		       sizeof(ndis_device->driver_name));
-		spin_lock(&loader_lock);
-		list_add(&ndis_device->list, &ndis_devices);
-		spin_unlock(&loader_lock);
 
 		if (device->bustype == NDIS_PCI_BUS) {
 			ndiswrapper_pci_devices[num_pci].vendor =
@@ -806,8 +808,7 @@ static int register_devices(struct load_devices *load_devices)
 					device->subdevice;
 			ndiswrapper_pci_devices[num_pci].class = 0;
 			ndiswrapper_pci_devices[num_pci].class_mask = 0;
-			ndiswrapper_pci_devices[num_pci].driver_data =
-				(unsigned long)ndis_device;
+			ndiswrapper_pci_devices[num_pci].driver_data = i;
 			num_pci++;
 			DBGTRACE1("pci device %d added", num_pci);
 			DBGTRACE1("adding %04x:%04x:%04x:%04x to pci idtable",
@@ -820,8 +821,7 @@ static int register_devices(struct load_devices *load_devices)
 				device->device;
 			ndiswrapper_usb_devices[num_usb].match_flags =
 				USB_DEVICE_ID_MATCH_DEVICE;
-			ndiswrapper_usb_devices[num_usb].driver_info =
-				(unsigned long)ndis_device;
+			ndiswrapper_usb_devices[num_usb].driver_info = i;
 			num_usb++;
 			DBGTRACE1("usb device %d added", num_usb);
 			DBGTRACE1("adding %04x:%04x to usb idtable",
@@ -864,14 +864,8 @@ static int register_devices(struct load_devices *load_devices)
 	TRACEEXIT1(return 0);
 
 err_ndis_device:
-	spin_lock(&loader_lock);
-	while (!list_empty(&ndis_devices)) {
-		struct ndis_device *ndis_device =
-			(struct ndis_device *)ndis_devices.next;
-		list_del(&ndis_device->list);
-		kfree(ndis_device);
-	}
-	spin_unlock(&loader_lock);
+	if (ndis_devices)
+		vfree(ndis_devices);
 	kfree(ndiswrapper_usb_devices);
 err_pci_devices:
 	kfree(ndiswrapper_pci_devices);
@@ -947,7 +941,6 @@ int loader_init(void)
 	int err;
 
 	INIT_LIST_HEAD(&ndis_drivers);
-	INIT_LIST_HEAD(&ndis_devices);
 	spin_lock_init(&loader_lock);
 	if ((err = misc_register(&wrapper_misc)) < 0 ) {
 		ERROR("couldn't register module (%d)", err);
@@ -959,7 +952,7 @@ int loader_init(void)
 void loader_exit(void)
 {
 	struct ndis_driver *driver;
-	struct ndis_device *device;
+	int i;
 
 	TRACEENTER1("");
 	misc_deregister(&wrapper_misc);
@@ -973,11 +966,13 @@ void loader_exit(void)
 		kfree(ndiswrapper_pci_devices);
 	}
 	spin_lock(&loader_lock);
-	while (!list_empty(&ndis_devices)) {
-		device = (struct ndis_device *)ndis_devices.next;
-		list_del(&device->list);
-		unload_ndis_device(device);
+	if (ndis_devices) {
+		for (i = 0; i < num_ndis_devices; i++)
+			unload_ndis_device(&ndis_devices[i]);
+
+		vfree(ndis_devices);
 	}
+
 	while (!list_empty(&ndis_drivers)) {
 		driver = (struct ndis_driver *)ndis_drivers.next;
 		list_del(&driver->list);
