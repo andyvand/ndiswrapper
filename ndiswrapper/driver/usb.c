@@ -100,6 +100,14 @@ void usb_transfer_complete_tasklet(unsigned long dummy)
 		}
 #endif /* DUMPURBS */
 
+		if (irp->driver_context[2]) {
+			if (urb->pipe & USB_DIR_IN)
+				memcpy(nt_urb->bulkIntrTrans.transferBuf,
+					irp->driver_context[2],
+					nt_urb->bulkIntrTrans.transferBufLen);
+			kfree(irp->driver_context[2]);
+		}
+
 		if ((stack->completion_handler) &&
 		    ((((urb->status == 0) &&
 		       (stack->control & CALL_ON_SUCCESS)) ||
@@ -208,9 +216,6 @@ unsigned long usb_bulk_or_intr_trans(struct usb_device *dev,
 	/* non-DMA-capable buffers have to be mirrored */
 	irp->driver_context[2] = NULL;
 	if (!virt_addr_valid(nt_urb->bulkIntrTrans.transferBuf)) {
-		/* should only happen with outgoing messages */
-		ASSERT(!(urb->pipe & USB_DIR_IN));
-
 		irp->driver_context[2] = kmalloc(
 			nt_urb->bulkIntrTrans.transferBufLen, GFP_ATOMIC);
 		if (!irp->driver_context[2]) {
@@ -219,9 +224,10 @@ unsigned long usb_bulk_or_intr_trans(struct usb_device *dev,
 			return -ENOMEM;
 		}
 
-		memcpy(irp->driver_context[2],
-			nt_urb->bulkIntrTrans.transferBuf,
-			nt_urb->bulkIntrTrans.transferBufLen);
+		if (!(pipe & USB_DIR_IN))
+			memcpy(irp->driver_context[2],
+				nt_urb->bulkIntrTrans.transferBuf,
+				nt_urb->bulkIntrTrans.transferBufLen);
 		urb->transfer_buffer = irp->driver_context[2];
 		DBGTRACE3("mirroring non-DMA buffer");
 	}
@@ -401,15 +407,19 @@ unsigned long usb_submit_nt_urb(struct usb_device *dev, union nt_urb *nt_urb,
 
 		case FUNC_BULK_OR_INTERRUPT_TRANSFER:
 			ret = usb_bulk_or_intr_trans(dev, nt_urb, irp);
-			if (ret < 0) {
-				ERROR("usb_bulk_or_intr_trans() = %d", ret);
+			if (ret < 0)
 				break;
-			}
 			TRACEEXIT3(return STATUS_PENDING);
 
 		case FUNC_GET_DESCRIPTOR_FROM_DEVICE:
 			ASSERT(!nt_urb->ctrlDescReq.transferBufMdl);
 			ASSERT(!nt_urb->ctrlDescReq.urbLink);
+			DBGTRACE3("desctype = %d, descindex = %d, "
+				"transferBuf = %p, transferBufLen = %ld",
+				nt_urb->ctrlDescReq.desctype,
+				nt_urb->ctrlDescReq.descindex,
+				nt_urb->ctrlDescReq.transferBuf,
+				nt_urb->ctrlDescReq.transferBufLen);
 
 			ret = usb_get_descriptor(dev,
 				nt_urb->ctrlDescReq.desctype,
