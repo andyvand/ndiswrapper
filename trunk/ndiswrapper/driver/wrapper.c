@@ -1427,7 +1427,8 @@ static void send_one(struct ndis_handle *handle, struct ndis_buffer *buffer)
 		handle->driver->miniport_char.send_packets(handle->adapter_ctx, &packets[0], 1);
 		spin_unlock(&handle->send_packet_lock);
 		
-		res = packet->status;
+		/* Deserialized miniports always call NdisMSendComplete */
+		res = NDIS_STATUS_PENDING;
 	}
 	else if(handle->driver->miniport_char.send)
 	{
@@ -1443,19 +1444,18 @@ static void send_one(struct ndis_handle *handle, struct ndis_buffer *buffer)
 	}
 	if(res)
 		DBGTRACE("send_packets returning %08X\n", res);
-	if (!(handle->serialized_driver))
-		return;
 		
-	if (res == NDIS_STATUS_SUCCESS || res == NDIS_STATUS_PENDING)
+
+	if(res == NDIS_STATUS_PENDING)
+	{
+		/* Packet will be returned later by a call to NdisMSendComplete */
 		return;
-	else if (res == NDIS_STATUS_RESOURCES || res == NDIS_STATUS_FAILURE)
+	}
+	else
 	{
 		DBGTRACE("send packets failed, should queue for send_complete, but for now - just drop: %i \n", res);
 		ndis_sendpacket_done(handle, packet);
-		return;
 	}
-
-	return;
 }
 
 
@@ -1682,11 +1682,9 @@ static int setup_dev(struct net_device *dev)
 	memset(&wrqu, 0, sizeof(wrqu));
 
 	wrqu.mode = IW_MODE_INFRA;
+
 	if (ndis_set_mode(dev, NULL, &wrqu, NULL))
-	{
 		printk(KERN_ERR "%s: Unable to set managed mode\n", DRV_NAME);
-		return -1;
-	}
 
 	packet_filter = (NDIS_PACKET_TYPE_DIRECTED| NDIS_PACKET_TYPE_MULTICAST|
 					 NDIS_PACKET_TYPE_BROADCAST);
@@ -1730,6 +1728,7 @@ extern void ndis_timer_handler_bh(void *data);
 extern STDCALL void NdisSetTimer(struct ndis_timer **timer_handle, unsigned int ms);
 extern STDCALL void NdisMSetPeriodicTimer(struct ndis_timer **timer_handle,
 					  unsigned int ms);
+extern void packet_recycler(void *param);
 
 /*
  * Called by PCI-subsystem for each PCI-card found.
@@ -1772,9 +1771,13 @@ static int __devinit ndis_init_one(struct pci_dev *pdev,
 	init_waitqueue_head(&handle->query_set_wqhead);
 
 	INIT_WORK(&handle->xmit_work, xmit_bh, handle); 	
-	handle->xmit_ring_lock = SPIN_LOCK_UNLOCKED;
+	spin_lock_init(&handle->xmit_ring_lock);
 	handle->xmit_ring_start = 0;
 	handle->xmit_ring_pending = 0;
+
+	spin_lock_init(&handle->recycle_packets_lock);
+	INIT_WORK(&handle->packet_recycler, packet_recycler, handle);
+	INIT_LIST_HEAD(&handle->recycle_packets);
 
 	/* Poision this because it may contain function pointers */
 	memset(&handle->fill1, 0x12, sizeof(handle->fill1));
@@ -1791,7 +1794,6 @@ static int __devinit ndis_init_one(struct pci_dev *pdev,
 	handle->set_complete = &NdisMSetInformationComplete;
 	handle->reset_complete = &NdisMResetComplete;
 	
-	handle->serialized_driver = 0;
 	handle->map_count = 0;
 	handle->map_dma_addr = NULL; 
 
@@ -1826,15 +1828,17 @@ static int __devinit ndis_init_one(struct pci_dev *pdev,
 	{
 		printk(KERN_ERR "ndiswrapper: Unable to set up driver\n");
 		res = -EINVAL;
-		goto out_start;
+		goto out_setup;
 	}
 	handle->pm_state = NDIS_PM_STATE_D0;
-	handle->send_packet_lock = SPIN_LOCK_UNLOCKED;
+	spin_lock_init(&handle->send_packet_lock);
 	//hangcheck_add(handle);
 	statcollector_add(handle);
 	ndis_init_proc(handle);
 	return 0;
 
+out_setup:
+	call_halt(handle);
 out_start:
 	pci_release_regions(pdev);
 out_regions:
