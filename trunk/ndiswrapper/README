@@ -3,11 +3,11 @@ ndiswrapper (version 0.4)
 What is it?
 ===========
 
-Some vendors refuses to release specs or even a binary linux-driver
-for their WLAN cards. This project tries to solve this problem by
-making a kernel module that can load Ndis (windows network driver API)
-drivers.
-
+Some wireless LAN vendors refuse to release hardware specifications or
+drivers for their products for operating systems other than Microsoft
+Windows. The ndiswrapper project makes it possible to use such
+hardware with Linux by means of a loadable kernel module that "wraps
+around" NDIS (Windows network driver API) drivers.
 
 Status
 ======
@@ -28,14 +28,14 @@ ndiswrapper.
 Problems
 ========
 
-Note that the project is still evolving. Support for working with
-other wireless tools (e.g., monitoring tools) is very limited at the
-moment.
+Note that the project, despite being very usable already, is still in
+its early development stages. Support for Linux userspace tools, such
+as monitoring tools, is very limited.
 
 Before sending bug reports, please check archives of mailing list and
 public forum available at project home page:
-http://ndiswrapper.sourceforge.net. Follow the instructions below when
-sending a bug report:
+http://ndiswrapper.sourceforge.net. Both these have search facility.
+Follow the instructions below when sending a bug report:
 
    * Enable DEBUG option the Makefile in driver directory and
      recompile all sources. Report dmesg output. Without this step,
@@ -45,9 +45,6 @@ sending a bug report:
 
    * Check if latest CVS works.
 
-   * Check the archives of mailing list and the forum for any solution
-     to similar problems. Both these have search facility.
-
-   * Use alternate windows driver; see the 'Supported Cards' page on
+   * Use an alternate windows driver; see the 'Supported Cards' page on
      the project homepage for a driver that is known to work for your
      chipset.
