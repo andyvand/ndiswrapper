@@ -1,6 +1,6 @@
-DRV_VERSION=$(shell cat version)
+-include version
 
-distdir=ndiswrapper-${DRV_VERSION}
+distdir=ndiswrapper-${NDISWRAPPER_VERSION}
 distarchive=${distdir}.tar.gz
 
 DISTFILES=AUTHORS ChangeLog INSTALL Makefile README ndiswrapper.spec.in version ndiswrapper.8
@@ -51,7 +51,7 @@ dist:
 	tar cfz ${distarchive} ${distdir}
 	
 rpm: dist ndiswrapper.spec.in
-	cat ndiswrapper.spec.in | sed s/DRV_VERSION/${DRV_VERSION}/ >ndiswrapper.spec
+	cat ndiswrapper.spec.in | sed s/NDISWRAPPER_VERSION/${NDISWRAPPER_VERSION}/ >ndiswrapper.spec
 	if test -d /usr/src/redhat/SOURCES ; then \
 	  cp $(distarchive) /usr/src/redhat/SOURCES ;\
 	else \
@@ -61,7 +61,7 @@ rpm: dist ndiswrapper.spec.in
 
 deb:
 	@if [ -d debian ]; then \
-		echo -e "ndiswrapper (${DRV_VERSION}) unstable; urgency=low\n\n  * see ChangeLog for details\n\n -- NdisWrapper Team <ndiswrapper-general@lists.sourceforge.net>  `date '+%a, %d %b %Y %H:%M:%S %z'`" > debian/changelog; \
+		echo -e "ndiswrapper (${NDISWRAPPER_VERSION}) unstable; urgency=low\n\n  * see ChangeLog for details\n\n -- NdisWrapper Team <ndiswrapper-general@lists.sourceforge.net>  `date '+%a, %d %b %Y %H:%M:%S %z'`" > debian/changelog; \
 		fakeroot make -f debian/rules binary; \
 	else \
 		 echo "Huh?"; \

@@ -44,7 +44,7 @@ static const char *confdir = "/etc/ndiswrapper";
 
 static int debug;
 
-#ifndef DRV_VERSION
+#ifndef NDISWRAPPER_VERSION
 #error Compile this file with 'make' in the 'utils' \
 	directory only
 #endif
@@ -501,7 +501,7 @@ int main(int argc, char *argv[0])
 
 	dotaint();
 
-	if (strcmp(argv[2], DRV_VERSION))
+	if (strcmp(argv[2], NDISWRAPPER_VERSION))
 	{
 		res = -EINVAL;
 		goto out;
