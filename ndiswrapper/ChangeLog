@@ -1,6 +1,6 @@
-Versoin 1.1 2005-XX-XX
+Versoin 1.1 2005-03-04
 ======================
-1.1rc4:
+* Free kmem_cache of MDLs; this fixes crashes when removing module.
 * Yet another spinlock (re)implementation. We don't use Linux spinlocks to
   implement Windows spinlocks anymore - ndiswrapper implements new spinlock
   functions that use Windows spinlock variables directly.
@@ -8,18 +8,10 @@ Versoin 1.1 2005-XX-XX
   which are allocated often. This should reduce memory fragmentation.
 * Use MDL functions when initializing ndis_packet while sending packets. This
   fixes crashes with Fedora kernels (and amd64 driver at least).
-
-1.1rc3:
-* Fixes bugs in 1.1rc2 that crashed some drivers.
-
-1.1rc2:
 * Memory leak with 64-bit Broadcom driver fixed
 * Crash when module is removed with Marvell driver fixed
 * In some cases, a Windows driver loads successfully, but ndiswrapper
   concludes otherwise. This is fixed.
-
-1.1rc1:
-======
 * Don't use spinlocks unless CONFIG_SMP or CONFIG_DEBUG_SPINLOCK is
   enabled.
 * Don't reset Centrino cards during initialization as this seems to
