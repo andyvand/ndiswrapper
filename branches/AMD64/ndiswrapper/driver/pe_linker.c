@@ -535,7 +535,7 @@ int load_pe_images(struct pe_image *pe_image, int n)
 
 		if (pe->type == IMAGE_FILE_DLL) {
 			struct unicode_string ustring;
-			char *buf = "0/0/0t0m0p00";
+			char *buf = "0/0t0m0p00";
 			int (*dll_entry)(struct unicode_string *ustring)
 				STDCALL;
 
