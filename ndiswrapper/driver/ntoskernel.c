@@ -1247,20 +1247,8 @@ STDCALL NT_STATUS WRAP_EXPORT(IoGetDeviceProperty)
 STDCALL void WRAP_EXPORT(IoFreeMdl)
 	(struct mdl *mdl)
 {
-	struct mdl *head;
-
-	if (mdl == NULL || mdl->process == NULL)
-		return;
-	head = mdl->process;
-	if (head->mdlflags != 0x1)
-		return;
-	mdl->next = head->next;
-	head->next = mdl;
-	head->bytecount--;
-
-	if (head->byteoffset && head->bytecount == 0)
-		kfree(head);
-	return;
+	TRACEENTER3("%p", mdl);
+	TRACEEXIT3(return);
 }
 
 STDCALL ULONG WRAP_EXPORT(MmSizeOfMdl)
