@@ -906,9 +906,9 @@ typedef enum { CIPHER_NONE, CIPHER_WEP40, CIPHER_TKIP, CIPHER_CCMP,
 	       CIPHER_WEP104 } wpa_cipher;
 typedef enum { KEY_MGMT_802_1X, KEY_MGMT_PSK, KEY_MGMT_NONE } wpa_key_mgmt;
 
-#define AUTH_ALG_OPEN_SYSTEM    0x01
-#define AUTH_ALG_SHARED_KEY 0x02
-#define AUTH_ALG_LEAP       0x04
+#define AUTH_ALG_OPEN_SYSTEM	0x01
+#define AUTH_ALG_SHARED_KEY	0x02
+#define AUTH_ALG_LEAP		0x04
 
 struct wpa_key
 {
