@@ -294,9 +294,8 @@ void wrapper_init_timer(struct ktimer *ktimer, void *handle)
 	TRACEEXIT5(return);
 }
 
-int wrapper_set_timer(struct wrapper_timer *timer,
-                      unsigned long expires, unsigned long repeat,
-		      struct kdpc *kdpc)
+int wrapper_set_timer(struct wrapper_timer *timer, unsigned long expires,
+		      unsigned long repeat, struct kdpc *kdpc)
 {
 	TRACEENTER5("%p", timer);
 	if (!timer) {
