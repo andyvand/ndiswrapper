@@ -402,6 +402,7 @@ void NdisMQueryInformationComplete(struct ndis_handle *handle, unsigned int stat
 #define NDIS_OID_WEP_STATUS         0x0D01011B
 #define NDIS_OID_AUTH_MODE          0x0D010118
 #define NDIS_OID_PRIVACY_FILTER     0x0D010119
+#define NDIS_OID_NETWORK_TYPE_IN_USE 0x0D010204
 
 /* general OIDs */
 #define NDIS_OID_GEN_SPEED          0x00010107
