@@ -946,6 +946,10 @@ sub loadinf
 	$section->{name} = "none";
 	while(my $s = <INF>)
 	{
+		#Convert from unicode
+		$s =~ s/\xff\xfe//;
+		$s =~ s/\0//g;
+
 		$s =~ s/\s*$//;	#Remove trailing whitespace and \r
 		$s .= "\n";
 		if($s =~ /^\[(.+)\]\s*/)
