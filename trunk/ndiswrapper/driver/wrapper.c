@@ -1375,6 +1375,7 @@ static int setup_dev(struct net_device *dev)
 
 	memset(&wrqu, 0, sizeof(wrqu));
 
+	miniport_set_int(handle, NDIS_OID_POWER_MODE, NDIS_POWER_OFF);
 	set_mode(handle, NDIS_MODE_INFRA);
 	set_essid(handle, handle->essid.essid, handle->essid.length);
 
