@@ -26,7 +26,7 @@ install:
 clean:
 	make -C driver clean
 	make -C utils clean
-	rm -f *~ ndiswrapper.spec
+	rm -f *~
 	rm -fr ${distdir} ${distdir}.tar.gz *.deb patch-stamp
 
 distclean: clean
@@ -53,12 +53,14 @@ dist:
 	make -C driver distdir=../${distdir}/driver dist
 	make -C utils distdir=../${distdir}/utils dist
 	make -C debian distdir=../${distdir}/debian dist
+
+	# Update version in dist rpm spec file - don't crash if it fails
+	-sed -i "s/\%define\s\+ndiswrapper_version\s\+[^\}]\+\}/%define ndiswrapper_version $(NDISWRAPPER_VERSION)\}/" $(distdir)/ndiswrapper.spec
+
 	tar cfz ${distarchive} ${distdir}
 	
-rpm: RPM_SOURCE_DIR ?= $(shell rpmbuild -E %{_sourcedir} )
 rpm: dist ndiswrapper.spec
-	cp $(distarchive) $(RPM_SOURCE_DIR)
-	rpmbuild -ba ndiswrapper.spec --define="ndiswrapper_version $(NDISWRAPPER_VERSION)"
+	rpmbuild -ta $(distarchive) --define="ndiswrapper_version $(NDISWRAPPER_VERSION)"
 
 deb:
 	@if [ -d debian ]; then \
