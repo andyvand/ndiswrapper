@@ -2447,7 +2447,6 @@ STDCALL static void WRAP_EXPORT(NdisMSetAttributes)(void){UNIMPL();}
 STDCALL static void WRAP_EXPORT(EthFilterDprIndicateReceiveComplete)
 	(void){UNIMPL();}
 STDCALL static void WRAP_EXPORT(EthFilterDprIndicateReceive)(void){UNIMPL();}
-STDCALL static void WRAP_EXPORT(NdisMPciAssignResources)(void){UNIMPL();}
 STDCALL static void WRAP_EXPORT(NdisMRemoveMiniport)(void) { UNIMPL(); }
 //STDCALL static void RndisMSendComplete(void) { UNIMPL(); }
 //STDCALL static void RndisMInitializeWrapper(void) { UNIMPL(); }
