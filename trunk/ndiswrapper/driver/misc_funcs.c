@@ -35,11 +35,6 @@ STDCALL void KeStallExecutionProcessor(unsigned int usecs)
 	udelay(usecs);
 }
 
-void KfAcquireSpinLock(void){UNIMPL();}
-void KfReleaseSpinLock(void){UNIMPL();}
-void KeGetCurrentIrql(void){UNIMPL();}
-void KeInitializeEvent(void *event){UNIMPL();}
-
 STDCALL void WRITE_PORT_ULONG(unsigned int port, unsigned int value)
 {
 	outl(value, port);
@@ -151,20 +146,6 @@ STDCALL void WRITE_REGISTER_UCHAR(unsigned int reg, unsigned char val)
 {
 	//DBGTRACE("%s: %08lx=%02x\n", __FUNCTION__, reg, val);
 	writeb(val, reg);
-}
-
-STDCALL void IoBuildSynchronousFsdRequest(void)
-{
-	UNIMPL();
-}
-STDCALL void IofCallDriver(void)
-{
-	UNIMPL();
-}
-STDCALL unsigned int KeWaitForSingleObject(void **object, unsigned int reason, unsigned int waitmode, unsigned short alertable, void *timeout)
-{
-	UNIMPL();
-	return 0;
 }
 
 STDCALL long RtlCompareString(const struct ustring *s1,
@@ -312,9 +293,18 @@ STDCALL int RtlUnicodeStringToAnsiString(struct ustring *dst, struct ustring *sr
 }
 
 
-STDCALL void KeInitializeSpinLock(void *spinlock)
+STDCALL void IoBuildSynchronousFsdRequest(void)
 {
 	UNIMPL();
+}
+STDCALL void IofCallDriver(void)
+{
+	UNIMPL();
+}
+STDCALL unsigned int KeWaitForSingleObject(void **object, unsigned int reason, unsigned int waitmode, unsigned short alertable, void *timeout)
+{
+	UNIMPL();
+	return 0;
 }
 
 STDCALL void *ExAllocatePoolWithTag(unsigned int type, unsigned int size, unsigned int tag)
@@ -322,8 +312,6 @@ STDCALL void *ExAllocatePoolWithTag(unsigned int type, unsigned int size, unsign
 	UNIMPL();
 	return (void*)0x000afff8;
 }
-
-
 
 void IoDeleteSymbolicLink(void){UNIMPL();}
 void InterlockedExchange(void){UNIMPL();}
@@ -336,15 +324,26 @@ void ExFreePool(void){UNIMPL();}
 void RtlUnwind(void){UNIMPL();}
 void IofCompleteRequest(void){UNIMPL();}
 void IoReleaseCancelSpinLock(void){UNIMPL();}
-void _allmul(long p1, long p2, long p3, long p4){UNIMPL();}
-
-void _alldiv(void){UNIMPL();}
+void KfReleaseSpinLock(void){UNIMPL();}
+void KeInitializeEvent(void *event){UNIMPL();}
 void RtlCompareMemory(void){UNIMPL();}
+
+#ifndef DBG_REALTEK
+void _allmul(long p1, long p2, long p3, long p4){UNIMPL();}
 void _aullrem(void){UNIMPL();}
 void _aulldiv(void){UNIMPL();}
 void _allshr(void){UNIMPL();}
 void _allrem(void){UNIMPL();}
+void _alldiv(void){UNIMPL();}
 void ExDeleteNPagedLookasideList(void){UNIMPL();}
 void ExInitializeNPagedLookasideList(void){UNIMPL();}
 void ExInterlockedPopEntrySList(void){UNIMPL();}
 void ExInterlockedPushEntrySList(void){UNIMPL();}
+void KeGetCurrentIrql(void){UNIMPL();}
+STDCALL void KeInitializeSpinLock(void *spinlock)
+{
+	UNIMPL();
+}
+void KfAcquireSpinLock(void){UNIMPL();}
+
+#endif // DBG_REALTEK

@@ -33,6 +33,12 @@ ndis.o:	ndis.c ndis.h
 
 proc.o : proc.c ndis.h
 
+ifdef DBG_REALTEK
+CFLAGS += -DBG_REALTEK
+
+rt8180.o : rt8180.c
+endif
+
 prereq_check:
 	@ if [ ! -f $(KSRC)/include/linux/version.h ]; then \
 		echo "You don't seem to have sources for your kernel; \
@@ -57,8 +63,16 @@ CFLAGS  += -DLINUX -D__KERNEL__ -DMODULE -I$(KSRC)/include \
   -Wall -Wstrict-prototypes -fomit-frame-pointer    \
   -fno-strict-aliasing -pipe -mpreferred-stack-boundary=2 -O2
 
+ifdef DBG_REALTEK
+OBJS += rt8180.o
+# realtek based cards need 64-bit arithmetic; for now, just let the
+# compiler provide it.
+default: $(OBJS)
+	 $(CC) -nostartfiles -nodefaultlibs -nostdlib -static -Xlinker -r -o $(MODULE) $(OBJS) -lgcc
+else
 default: $(OBJS)
 	$(LD) -r -o $(MODULE) $(OBJS)
+endif
 clean:
 	rm -f $(MODULE) $(OBJS)
 
