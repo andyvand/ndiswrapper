@@ -28,7 +28,7 @@
 #include <linux/version.h>
 
 #define DRV_NAME "ndiswrapper"
-#define DRV_VERSION "0.4"
+#define DRV_VERSION "0.4+CVS"
 
 
 /* Workqueue / task queue backwards compatibility stuff */
