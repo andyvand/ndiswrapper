@@ -865,7 +865,6 @@ static void link_status_handler(struct ndis_handle *handle)
 			set_bit(SET_ESSID, &handle->wrapper_work);
 			schedule_work(&handle->wrapper_worker);
 			TRACEEXIT2(return);
-
 		}
 		/* FIXME: not clear if NDIS says keys should
 		 * be cleared here */
@@ -964,10 +963,8 @@ static void set_packet_filter(struct ndis_handle *handle)
 			 NDIS_PACKET_TYPE_ALL_MULTICAST);
 
 	if (dev->flags & IFF_PROMISC) {
-		printk(KERN_WARNING "promiscuous mode is not "
-		       "supported by NDIS; only packets sent "
-		       "from/to this host will be seen\n");
-		packet_filter |= NDIS_PACKET_TYPE_ALL_LOCAL;
+		packet_filter |= NDIS_PACKET_TYPE_ALL_LOCAL |
+			NDIS_PACKET_TYPE_PROMISCUOUS;
 	} else if ((dev->mc_count > handle->multicast_list_size) ||
 		   (dev->flags & IFF_ALLMULTI) ||
 		   (handle->multicast_list == 0)) {
@@ -981,6 +978,13 @@ static void set_packet_filter(struct ndis_handle *handle)
 
 	res = miniport_set_info(handle, OID_GEN_CURRENT_PACKET_FILTER,
 				&packet_filter, sizeof(packet_filter));
+	if (res && (packet_filter & NDIS_PACKET_TYPE_PROMISCUOUS)) {
+		/* 802.11 drivers may fail when PROMISCUOUS flag is
+		 * set, so try without */
+		packet_filter &= ~NDIS_PACKET_TYPE_PROMISCUOUS;
+		res = miniport_set_info(handle, OID_GEN_CURRENT_PACKET_FILTER,
+					&packet_filter, sizeof(packet_filter));
+	}
 	if (res && res != NDIS_STATUS_NOT_SUPPORTED)
 		ERROR("unable to set packet filter (%08X)", res);
 	TRACEEXIT2(return);
