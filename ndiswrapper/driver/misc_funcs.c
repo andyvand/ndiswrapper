@@ -59,9 +59,11 @@ void misc_funcs_exit(void)
 		head = &spinlock_table[i];
 		hlist_for_each_safe(node, next, head) {
 			struct spinlock_hash *p;
+
 			p = hlist_entry(node, struct spinlock_hash, hlist);
 			hlist_del(&p->hlist);
-			DBGTRACE3("removing kspin_lock %p (%p) at %d", p->kspin_lock, p, i);
+			DBGTRACE3("removing kspin_lock %p (%p) at %d",
+				  p->kspin_lock, p, i);
 			kfree(p);
 		}
 	}
@@ -69,6 +71,7 @@ void misc_funcs_exit(void)
 	return;
 }
 
+/* return wrap_spinlock mapped to ksin_lock */
 struct wrap_spinlock *kspin_wrap_lock(void *kspin_lock)
 {
 	struct hlist_head *head;
@@ -77,6 +80,7 @@ struct wrap_spinlock *kspin_wrap_lock(void *kspin_lock)
 	head = &spinlock_table[hash_ptr(kspin_lock, SPINLOCK_HASH_BITS)];
 	hlist_for_each(node, head) {
 		struct spinlock_hash *p;
+
 		p = hlist_entry(node, struct spinlock_hash, hlist);
 		if (p->kspin_lock == kspin_lock) {
 			return &p->wrap_spinlock;
@@ -86,16 +90,19 @@ struct wrap_spinlock *kspin_wrap_lock(void *kspin_lock)
 	return NULL;
 }
 
+/* if given kspin_lock is already mapped, return the mapped
+ * wrap_spinlock; otherwise, allocate wrap_spinlock and map kspin_lock
+ * to it
+*/
 struct wrap_spinlock *allocate_kspin_lock(void *kspin_lock)
 {
 	struct hlist_head *head;
 	struct spinlock_hash *p;
+	struct wrap_spinlock *ret;
 	int i;
 
-	if (kspin_wrap_lock(kspin_lock)) {
-//		DBGTRACE3("kspin_lock %p already exists", kspin_lock);
-		return NULL;
-	}
+	if ((ret = kspin_wrap_lock(kspin_lock)))
+		return ret;
 
 	spin_lock(&spinlock_map_lock);
 	i = hash_ptr(kspin_lock, SPINLOCK_HASH_BITS);
@@ -114,6 +121,7 @@ struct wrap_spinlock *allocate_kspin_lock(void *kspin_lock)
 	return &p->wrap_spinlock;
 }
 
+/* unmap wrap_spinlock mapped by kspin_lock */
 int free_kspin_lock(void *kspin_lock)
 {
 	struct hlist_head *head;
@@ -140,6 +148,12 @@ int free_kspin_lock(void *kspin_lock)
 	return -EEXIST;
 }
 
+/* allocate memory with given flags and add it to list of allocated pointers;
+ * if a driver doesn't free this memory for any reason (buggy driver or we
+ * allocate space behind driver's back since we need more space than
+ * corresponding Windows structure provides etc.), this gets freed
+ * automatically during module unloading
+ */
 void *wrap_kmalloc(size_t size, int flags)
 {
 	struct wrap_alloc *alloc;
@@ -163,6 +177,7 @@ void *wrap_kmalloc(size_t size, int flags)
 	TRACEEXIT4(return alloc->ptr);
 }
 
+/* free pointer and remove from list of allocated pointers */
 void wrap_kfree(void *ptr)
 {
 	struct list_head *cur, *tmp;
@@ -185,6 +200,7 @@ void wrap_kfree(void *ptr)
 	TRACEEXIT4(return);
 }
 
+/* free all pointers on the allocated list */
 void wrap_kfree_all(void)
 {
 	TRACEENTER4("%s", "");

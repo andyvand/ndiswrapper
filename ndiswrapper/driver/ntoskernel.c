@@ -126,8 +126,9 @@ STDCALL KIRQL WRAP_EXPORT(KeGetCurrentIrql)
 STDCALL void WRAP_EXPORT(KeInitializeSpinLock)
 	(KSPIN_LOCK *lock)
 {
-	/* allocate (if it is not already allocated) and initialize it */
-	allocate_kspin_lock(lock);
+	/* if already mapped, use that; otherwise, allocate and initialize */
+	if (!allocate_kspin_lock(lock))
+		ERROR("couldn't allocate memory");
 }
 
 STDCALL void WRAP_EXPORT(KeAcquireSpinLock)

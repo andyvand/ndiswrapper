@@ -929,7 +929,8 @@ STDCALL void WRAP_EXPORT(NdisFreeSpinLock)
 {
 	TRACEENTER4("lock %p", lock);
 	lock->klock = 0;
-	free_kspin_lock(&lock->klock);
+	if (free_kspin_lock(&lock->klock))
+		ERROR("kspin_lock %p is not allocated", &lock->klock);
 
 	TRACEEXIT4(return);
 }
@@ -1506,7 +1507,7 @@ STDCALL NDIS_STATUS WRAP_EXPORT(NdisMRegisterInterrupt)
 	if (shared && !req_isr)
 		WARNING("%s", "shared but dynamic interrupt!");
 	ndis_irq->shared = shared;
-	if (allocate_kspin_lock(&ndis_irq->lock) == NULL)
+	if (!allocate_kspin_lock(&ndis_irq->lock))
 		TRACEEXIT1(return NDIS_STATUS_RESOURCES);
 
 	INIT_WORK(&handle->irq_work, &ndis_irq_bh, ndis_irq);
@@ -1544,7 +1545,9 @@ STDCALL void WRAP_EXPORT(NdisMDeregisterInterrupt)
 		schedule_timeout(HZ/10);
 #endif
 		free_irq(ndis_irq->irq.irq, ndis_irq);
-		free_kspin_lock(&ndis_irq->lock);
+		if (free_kspin_lock(&ndis_irq->lock))
+			ERROR("IRQ spinlock %p is already freed?",
+			      &ndis_irq->lock);
 		ndis_irq->handle = NULL;
 		handle->ndis_irq = NULL;
 	}
