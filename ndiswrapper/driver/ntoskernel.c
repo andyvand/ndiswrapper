@@ -228,7 +228,7 @@ STDCALL static void * WRAP_EXPORT(ExAllocatePoolWithTag)
 {
 	void *ret;
 
-	TRACEENTER1("pool_type: %d, size: %d, tag: %lu", pool_type, size, tag);
+	TRACEENTER1("pool_type: %d, size: %d, tag: %u", pool_type, size, tag);
 
 	/* FIXME: should this function allocate using kmem_cache/mem_pool
 	   instead? */
@@ -255,7 +255,7 @@ STDCALL static void WRAP_EXPORT(ExInitializeNPagedLookasideList)
 	 LOOKASIDE_ALLOC_FUNC *alloc_func, LOOKASIDE_FREE_FUNC *free_func,
 	 ULONG flags, SIZE_T size, ULONG tag, USHORT depth)
 {
-	TRACEENTER3("lookaside: %p, size: %lu, flags: %lu,"
+	TRACEENTER3("lookaside: %p, size: %u, flags: %u,"
 		    " head: %p, size of lookaside: %u\n",
 		    lookaside, size, flags, lookaside->head.list.next,
 		    sizeof(struct npaged_lookaside_list));
@@ -313,14 +313,14 @@ STDCALL static void * WRAP_EXPORT(MmMapIoSpace)
 		virt = ioremap(phys_addr, size);
 	else
 		virt = ioremap_nocache(phys_addr, size);
-	DBGTRACE3("%Lx, %lu, %d: %p", phys_addr, size, cache, virt);
+	DBGTRACE3("%Lx, %u, %d: %p", phys_addr, size, cache, virt);
 	return virt;
 }
 
 STDCALL static void WRAP_EXPORT(MmUnmapIoSpace)
 	(void *addr, SIZE_T size)
 {
-	TRACEENTER3("%p, %lu", addr, size);
+	TRACEENTER3("%p, %u", addr, size);
 	iounmap(addr);
 	return;
 }
@@ -480,7 +480,7 @@ STDCALL NT_STATUS WRAP_EXPORT(KeWaitForSingleObject)
  * not tested at all. notification events are not handled properly as
  * yet
  */
-STDCALL unsigned int WRAP_EXPORT(KeWaitForMultipleObjects)
+STDCALL NT_STATUS WRAP_EXPORT(KeWaitForMultipleObjects)
 	(ULONG count, void *object[], enum wait_type wait_type,
 	 KWAIT_REASON wait_reason, KPROCESSOR_MODE waitmode,
 	 BOOLEAN alertable, LARGE_INTEGER *timeout,
@@ -701,11 +701,7 @@ STDCALL static struct irp * WRAP_EXPORT(IoBuildDeviceIoControlRequest)
 	struct irp *irp;
 	struct io_stack_location *stack;
 
-	TRACEENTER3("ioctl = %lx, dev_obj = %p, input_buf = %p, "
-		"input_buf_len = %lu, output_buf = %p, output_buf_len = %lu, "
-		"internal_ioctl = %d, event = %p, io_status = %p",
-		ioctl, dev_obj, input_buf, input_buf_len, output_buf,
-		output_buf_len, internal_ioctl, event, io_status);
+	TRACEENTER3("");
 
 	irp = kmalloc(sizeof(struct irp) + sizeof(struct io_stack_location),
 		GFP_KERNEL); /* we are running at IRQL = PASSIVE_LEVEL */
@@ -819,7 +815,7 @@ _FASTCALL static NT_STATUS WRAP_EXPORT(IofCallDriver)
 	unsigned long result;
 
 
-	TRACEENTER3("dev_obj = %p, irp = %p, major_fn = %x, ioctl = %lx",
+	TRACEENTER3("dev_obj = %p, irp = %p, major_fn = %x, ioctl = %u",
 		dev_obj, irp, stack->major_fn, stack->params.ioctl.code);
 
 	if (stack->major_fn == IRP_MJ_INTERNAL_DEVICE_CONTROL) {
@@ -943,7 +939,7 @@ STDCALL static unsigned long WRAP_EXPORT(PsCreateSystemThread)
 STDCALL static NT_STATUS WRAP_EXPORT(PsTerminateSystemThread)
 	(NT_STATUS status)
 {
-	TRACEENTER2("status = %ld", status);
+	TRACEENTER2("status = %u", status);
 	complete_and_exit(NULL, status);
 	return 0;
 }
@@ -962,7 +958,7 @@ STDCALL static KPRIORITY WRAP_EXPORT(KeSetPriorityThread)
 {
 	KPRIORITY old_prio;
 
-	TRACEENTER2("thread = %p, priority = %ld", thread, priority);
+	TRACEENTER2("thread = %p, priority = %u", thread, priority);
 
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,0)
 	/* FIXME: is there a way to set kernel thread prio on 2.4? */
@@ -1101,7 +1097,7 @@ STDCALL NT_STATUS WRAP_EXPORT(IoGetDeviceProperty)
 	snprintf(buf, sizeof(buf), "%s", "usb8023k.sys");
 	handle = (struct ndis_handle *)dev_obj->handle;
 
-	TRACEENTER1("dev_obj = %p, dev_property = %d, buffer_len = %lu, "
+	TRACEENTER1("dev_obj = %p, dev_property = %d, buffer_len = %u, "
 		"buffer = %p, result_len = %p", dev_obj, dev_property,
 		buffer_len, buffer, result_len);
 

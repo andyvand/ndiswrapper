@@ -204,8 +204,9 @@ static void *ndis_init_one_usb(struct usb_device *udev, unsigned int ifnum,
 	/*
 	if (miniport->pnp_event_notify) {
 		INFO("%s", "calling pnp_event_notify");
-		miniport->pnp_event_notify(handle->adapter_ctx, NDIS_PNP_PROFILE_CHANGED,
-					 &profile_inf, sizeof(profile_inf));
+		miniport->pnp_event_notify(handle->adapter_ctx,
+					   NDIS_PNP_PROFILE_CHANGED,
+					   &profile_inf, sizeof(profile_inf));
 		INFO("%s", "done");
 	}
 	*/
@@ -557,17 +558,16 @@ static void unload_ndis_driver(struct ndis_driver *driver)
 
 	for (i = 0; i < driver->nr_devices; i++) {
 		struct ndis_device *device = driver->devices[i];
-		struct list_head *cur, *tmp;
 
-		list_for_each_safe(cur, tmp, &device->settings) {
+		while (!list_empty(&device->settings)) {
 			struct device_setting *setting =
-				(struct device_setting *)cur;
+				(struct device_setting *)device->settings.next;
 			struct ndis_config_param *param =
 				&setting->config_param;
 
 			if (param->type == NDIS_CONFIG_PARAM_STRING)
 				RtlFreeUnicodeString(&param->data.ustring);
-
+			list_del(&setting->list);
 			kfree(setting);
 		}
 		kfree(device);
@@ -723,25 +723,17 @@ static int start_driver(struct ndis_driver *driver)
 static int add_driver(struct ndis_driver *driver)
 {
 	struct ndis_driver *tmp;
-	int dup = 0;
 
 	TRACEENTER1("");
 	wrap_spin_lock(&driver_list_lock, PASSIVE_LEVEL);
 	list_for_each_entry(tmp, &ndis_driver_list, list) {
 		if (strcmp(tmp->name, driver->name) == 0) {
-			dup = 1;
-			break;
+			wrap_spin_unlock(&driver_list_lock);
+			ERROR("cannot add duplicate driver");
+			TRACEEXIT1(return -EBUSY);
 		}
 	}
-
-	if (!dup)
-		list_add(&driver->list, &ndis_driver_list);
 	wrap_spin_unlock(&driver_list_lock);
-
-	if (dup) {
-		ERROR("cannot add duplicate driver");
-		TRACEEXIT1(return -EBUSY);
-	}
 
 	TRACEEXIT1(return 0);
 }
@@ -845,9 +837,8 @@ void loader_exit(void)
 	struct ndis_driver *driver;
 
 	misc_deregister(&wrapper_misc);
-
 	while (!list_empty(&ndis_driver_list)) {
-		driver = (struct ndis_driver *) ndis_driver_list.next;
+		driver = (struct ndis_driver *)ndis_driver_list.next;
 		unload_ndis_driver(driver);
 	}
 }

@@ -1965,8 +1965,8 @@ STDCALL static void WRAP_EXPORT(NdisInitializeEvent)
 STDCALL BOOLEAN WRAP_EXPORT(NdisWaitEvent)
 	(struct ndis_event *ndis_event, UINT ms)
 {
-	s64 ticks;
-	int res;
+	LARGE_INTEGER ticks;
+	NT_STATUS res;
 
 	TRACEENTER3("%p %u", ndis_event, ms);
 	ticks = ms * 10000;
