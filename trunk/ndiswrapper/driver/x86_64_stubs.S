@@ -55,6 +55,7 @@
 /*
 In a windows function, the stackframe/registers look like this:
 
+# 0x0048 ....
 # 0x0040 arg8
 # 0x0038 arg7
 # 0x0030 arg6
@@ -64,72 +65,71 @@ In a windows function, the stackframe/registers look like this:
 # 0x0010 arg2 %rdx
 # 0x0008 arg1 %rcx
 # 0x0000 ret
-*/
 
+In Linux it should look like:
+
+# 0x0018 ....
+# 0x0010 arg8
+# 0x0008 arg7
+# 0x0000 ret
+ 
+
+*/
 _win_to_lin:
-	push	%rbx	# just save everything to be sure
-	push	%rcx	# clean this up later when everything works.
-	push	%rdx
 	push	%rsi
 	push	%rdi
-	push	%rbp
-	push	%r8
-	push	%r9
 	push	%r10
 	push	%r11
-	push	%r12
-	push	%r13
-	push	%r14
-	push	%r15	# 14
+#define	NR_SAVED_REGS	4
+#define LIN_STK_FRAME   5*8
 
 	mov	%rax, %r11	# function to call
 	mov	%rcx, %rax
 
-	lea     (7+14)*8(%rsp), %rsi
-	sub     $648, %rsp
-	mov     %rsp, %rdi
-	mov     $640/8-8, %rcx
+	# copy windows argument 7 upto 12
+	# on the stack for the Linux function.
+
+	lea     (7+NR_SAVED_REGS)*8(%rsp), %rsi
+				# source (windows arg 7 and up)
+	sub     $LIN_STK_FRAME, %rsp	
+				# reserve space for linux stack frame
+	mov     %rsp, %rdi	# = destination
+	mov     $5, %rcx	# 5 arguments
 	rep     movsq
 	
 	mov	%rax, %rdi	# arg1
 	mov	%rdx, %rsi	# arg2
 	mov	%r8, %rdx	# arg3
 	mov	%r9, %rcx	# arg4
-	mov	(5+14)*8+648(%rsp), %r8
-				# arg5 is at 9th position (offset 72)
-				# due to 4 more push'es
-	mov	(6+14)*8+648(%rsp), %r9	# arg6
+	mov	(5+NR_SAVED_REGS)*8+LIN_STK_FRAME(%rsp), %r8
+				# arg5 
+	mov	(6+NR_SAVED_REGS)*8+LIN_STK_FRAME(%rsp), %r9
+				# arg6
 	xor	%eax, %eax	# number of SSE regs for variadic funcs
 	call	*%r11
 
-	add	$648, %rsp	
+	add	$LIN_STK_FRAME, %rsp	
 
-	pop	%r15
-	pop	%r14
-	pop	%r13
-	pop	%r12
 	pop	%r11
 	pop	%r10
-	pop	%r9
-	pop	%r8
-	pop	%rbp
 	pop	%rdi
 	pop	%rsi
-	pop	%rdx
-	pop	%rcx
-	pop	%rbx
 	ret
 
 
+#
+# The linux to windows functions are called with argument 1
+# being the Windows function to call.
+#
 lin_to_win4:
-	mov	%r8, %r9	# Lin-arg5 => Win-arg4
+	mov	%r8, %r9	# Linux arg5 => Win arg4
 lin_to_win3:
-	mov	%rcx, %r8	# Lin-arg4 => Win-arg3
+	mov	%rcx, %r8	# Linux arg4 => Win arg3
 lin_to_win2:
-				#  Lin-arg3 already in Win-arg2 (%rdx)
+				# Linux arg3 already in Win arg2 (%rdx)
 lin_to_win1:
-	mov	%rsi, %rcx	# Lin-arg2 => Win-arg1
-	jmp	*%rdi		# call Lin-arg1
+	mov	%rsi, %rcx	# Linux arg2 => Win arg1
+	jmp	*%rdi		# call Windows function 
 
 	# 0x28 / 0  - ret
 	#
@@ -141,13 +141,13 @@ lin_to_win1:
 lin_to_win5:
 	# setup a new stack frame for Windows function and put the arguments
 	# where it expects them
-	sub	$0x28, %rsp
-	mov	%r9, 0x20(%rsp)
-	mov	%r8, %r9
-	mov	%rcx, %r8
-				#   arg2 is already in %rdx
-	mov	%rsi, %rcx
-	call	*%rdi
+	sub	$0x28, %rsp	# reserve stack space
+	mov	%r9, 0x20(%rsp)	# Linux arg6 => Win arg5
+	mov	%r8, %r9	# Linux arg5 => Win arg4
+	mov	%rcx, %r8	# Linux arg4 => Win arg3
+				# Linux arg3 already in Win arg2 (%rdx)
+	mov	%rsi, %rcx	# Linux arg2 => Win arg1
+	call	*%rdi		# call Windows function
 	add	$0x28, %rsp
 	ret
 
@@ -163,15 +163,17 @@ lin_to_win5:
 lin_to_win6:
 	# setup a new stack frame for Windows function and put the arguments
 	# where it expects them
-	sub	$0x30, %rsp
+	sub	$0x30, %rsp	# reserve stack space
 	mov	0x38(%rsp), %rax
+				# Linux arg7
 	mov	%rax, 0x28(%rsp)
-	mov	%r9, 0x20(%rsp)
-	mov	%r8, %r9
-	mov	%rcx, %r8
-				#   arg2 is already in %rdx
-	mov	%rsi, %rcx
-	call	*%rdi
+				#            => Win arg6
+	mov	%r9, 0x20(%rsp) # Linux arg6 => Win arg5
+	mov	%r8, %r9	# Linux arg5 => Win arg4
+	mov	%rcx, %r8	# Linux arg4 => Win arg3
+				# Linux arg3 already in Win arg2 (%rdx)
+	mov	%rsi, %rcx	# Linux arg2 => Win arg1
+	call	*%rdi		# call Windows function
 	add	$0x30, %rsp
 	ret
 
