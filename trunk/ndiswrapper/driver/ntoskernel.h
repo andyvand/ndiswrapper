@@ -47,6 +47,8 @@
 #define CONFIG_USB 1
 #endif
 
+#define addr_offset(driver) (__builtin_return_address(0) - (driver)->entry)
+
 /* Workqueue / task queue backwards compatibility stuff */
 #if LINUX_VERSION_CODE > KERNEL_VERSION(2,5,41)
 #include <linux/workqueue.h>
