@@ -452,7 +452,7 @@ static int ndis_start_xmit(struct sk_buff *skb, struct net_device *dev)
 	struct ndis_handle *handle = dev->priv;
 	struct ndis_buffer *buffer;
 	struct ndis_packet *packet;
-
+	
 	char *data = kmalloc(skb->len, GFP_ATOMIC);
 	if(!data)
 	{
@@ -497,17 +497,27 @@ static int ndis_start_xmit(struct sk_buff *skb, struct net_device *dev)
 
 	if(handle->driver->miniport_char.send_packets)
 	{
-		handle->driver->miniport_char.send_packets(handle->adapter_ctx, &packet, 1);
+		struct ndis_packet *packets[1];
+		packets[0] = packet;
+		handle->driver->miniport_char.send_packets(handle->adapter_ctx, &packets[0], 1);
 	}
 	else if(handle->driver->miniport_char.send)
 	{
-		handle->driver->miniport_char.send(handle->adapter_ctx, &packet, 0);
+		int res = handle->driver->miniport_char.send(handle->adapter_ctx, packet, 0);
+
+		if(res == NDIS_STATUS_PENDING)
+		{
+			return 0;
+		}
+		kfree(data);
+		kfree(buffer);
+		kfree(packet);
+		return 0;
 	}
 	else
 	{
 		DBGTRACE("%s: No send handler\n", __FUNCTION__);
 	}
-	
 
 	return 0;
 }
