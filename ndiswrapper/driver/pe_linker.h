@@ -16,6 +16,8 @@
 #ifndef PE_LINKER_H
 #define PE_LINKER_H
 
+#include "ntoskernel.h"
+
 #pragma pack(1)
 
 #define COFF_MACHINE_I386 0x14c

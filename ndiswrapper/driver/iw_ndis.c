@@ -26,10 +26,8 @@
 #include <linux/rtnetlink.h>
 #include <asm/uaccess.h>
 
-#include "ntoskernel.h"
-#include "ndiswrapper.h"
-#include "wrapper.h"
 #include "iw_ndis.h"
+#include "wrapper.h"
 
 static int freq_chan[] = { 2412, 2417, 2422, 2427, 2432, 2437, 2442,
 			   2447, 2452, 2457, 2462, 2467, 2472, 2484 };
@@ -1158,7 +1156,7 @@ static int iw_get_range(struct net_device *dev, struct iw_request_info *info,
 
 	range->num_channels = (sizeof(freq_chan)/sizeof(freq_chan[0]));
 
-	for(i = 0; i < (sizeof(freq_chan)/sizeof(freq_chan[0])) &&
+	for (i = 0; i < (sizeof(freq_chan)/sizeof(freq_chan[0])) &&
 		    i < IW_MAX_FREQUENCIES; i++) {
 		range->freq[i].i = i + 1;
 		range->freq[i].m = freq_chan[i] * 100000;

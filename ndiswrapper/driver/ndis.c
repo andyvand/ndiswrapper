@@ -144,13 +144,13 @@ STDCALL static int WRAP_EXPORT(NdisMRegisterMiniport)
 
 	TRACEENTER1("driver: %p", ndis_driver);
 
-	if(miniport_char->majorVersion < 4) {
+	if (miniport_char->majorVersion < 4) {
 		ERROR("Driver %s using ndis version %d which is too old.",
 		      ndis_driver->name, miniport_char->majorVersion);
 		TRACEEXIT1(return NDIS_STATUS_BAD_VERSION);
 	}
 
-	if(char_len < min_length) {
+	if (char_len < min_length) {
 		ERROR("Characteristics length %d is too small for driver %s",
 		      char_len, ndis_driver->name);
 		TRACEEXIT1(return NDIS_STATUS_BAD_CHARACTERISTICS);
@@ -720,7 +720,7 @@ STDCALL static unsigned int WRAP_EXPORT(NdisReadPciSlotInformation)
 	 unsigned int offset, char *buf, unsigned int len)
 {
 	int i;
-	for(i = 0; i < len; i++)
+	for (i = 0; i < len; i++)
 		pci_read_config_byte(handle->dev.pci, offset+i, &buf[i]);
 
 	return len;
@@ -731,7 +731,7 @@ STDCALL static unsigned int WRAP_EXPORT(NdisWritePciSlotInformation)
 	 unsigned int offset, char *buf, unsigned int len)
 {
 	int i;
-	for(i = 0; i < len; i++)
+	for (i = 0; i < len; i++)
 		pci_write_config_byte(handle->dev.pci, offset+i, buf[i]);
 
 	return len;
@@ -754,13 +754,13 @@ STDCALL static void WRAP_EXPORT(NdisMQueryAdapterResources)
 
 	/* Put all memory and port resources */
 	i = 0;
-	while(pci_resource_start(pci_dev, i)) {
+	while (pci_resource_start(pci_dev, i)) {
 		entry = &resource_list->list[len++];
-		if(pci_resource_flags(pci_dev, i) & IORESOURCE_MEM) {
+		if (pci_resource_flags(pci_dev, i) & IORESOURCE_MEM) {
 			entry->type = 3;
 			entry->flags = 0;
 
-		} else if(pci_resource_flags(pci_dev, i) & IORESOURCE_IO) {
+		} else if (pci_resource_flags(pci_dev, i) & IORESOURCE_IO) {
 			entry->type = 1;
 			entry->flags = 1;
 		}
@@ -791,7 +791,7 @@ STDCALL static void WRAP_EXPORT(NdisMQueryAdapterResources)
 		  resource_list->version, resource_list->revision,
 		  resource_list->length, *size);
 
-	for(i = 0; i < len; i++) {
+	for (i = 0; i < len; i++) {
 		DBGTRACE2("Resource: %d: %08x %08x %08x, %d",
 			  resource_list->list[i].type,
 			  resource_list->list[i].param1,
@@ -808,7 +808,7 @@ STDCALL static unsigned int WRAP_EXPORT(NdisMMapIoSpace)
 {
 	TRACEENTER2("%08x, %d", physlo, len);
 	*virt = ioremap(physlo, len);
-	if(*virt == NULL) {
+	if (*virt == NULL) {
 		ERROR("%s", "ioremap failed");
 		TRACEEXIT2(return NDIS_STATUS_FAILURE);
 	}
@@ -1033,7 +1033,7 @@ STDCALL static void WRAP_EXPORT(NdisAllocateBuffer)
 	struct ndis_buffer *my_buffer = kmalloc(sizeof(struct ndis_buffer),
 						GFP_ATOMIC);
 	TRACEENTER4("%s", "");
-	if(!my_buffer) {
+	if (!my_buffer) {
 		ERROR("%s", "Couldn't allocate memory");
 		*status = NDIS_STATUS_FAILURE;
 		TRACEEXIT4(return);
@@ -1073,9 +1073,9 @@ STDCALL static void WRAP_EXPORT(NdisQueryBuffer)
 	(struct ndis_buffer *buf, void **adr, unsigned int *len)
 {
 	TRACEENTER3("%s", "");
-	if(adr)
+	if (adr)
 		*adr = buf->data;
-	if(len)
+	if (len)
 		*len = buf->len;
 }
 
@@ -1084,9 +1084,9 @@ STDCALL static void WRAP_EXPORT(NdisQueryBufferSafe)
 	 unsigned int *len, unsigned int priority)
 {
 	TRACEENTER3("%p, %p, %p", buf, adr, len);
-	if(adr)
+	if (adr)
 		*adr = buf->data;
-	if(len)
+	if (len)
 		*len = buf->len;
 }
 
@@ -1160,7 +1160,7 @@ STDCALL static void WRAP_EXPORT(NdisAllocatePacket)
 		int i = 0;
 		/* Poision extra packet info */
 		int *x = (int*) &packet->ext1;
-		for(i = 0; i <= 12; i++)
+		for (i = 0; i <= 12; i++)
 			x[i] = i;
 
 		packet->mediaspecific_size = 0x100;
@@ -1570,7 +1570,7 @@ NdisMIndicateReceivePacket(struct ndis_handle *handle,
 			packet->status = NDIS_STATUS_SUCCESS;
 			DBGTRACE3("%s", "Low on resources");
 		} else {
-			if(packet->status != NDIS_STATUS_SUCCESS)
+			if (packet->status != NDIS_STATUS_SUCCESS)
 				WARNING("invalid packet status %08X",
 					packet->status);
 			/* Signal the driver that took ownership of
@@ -2182,20 +2182,19 @@ STDCALL static void WRAP_EXPORT(NdisUnchainBufferAtBack)
 	struct ndis_buffer *btail = packet->buffer_tail;
 
 	TRACEENTER3("%p", b);
-	if(!b) {
+	if (!b) {
 		/* No buffer in packet */
 		*buffer = 0;
 		TRACEEXIT3(return);
 	}
 
-	if(b == btail) {
+	if (b == btail) {
 		/* Only buffer in packet */
 		packet->buffer_head = 0;
 		packet->buffer_tail = 0;
 	} else {
-		while(b->next != btail) {
+		while (b->next != btail)
 			b = b->next;
-		}
 		packet->buffer_tail = b;
 	}
 	b->next = 0;

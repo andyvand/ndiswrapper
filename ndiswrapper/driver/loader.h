@@ -16,15 +16,7 @@
 #ifndef LOADER_H
 #define LOADER_H
 
-#define MAX_DRIVER_NAME_LEN 32
-#define MAX_NDIS_VERSION_STRING_LEN 64
-#define MAX_NDIS_SETTING_NAME_LEN 128
-#define MAX_NDIS_SETTING_VALUE_LEN 256
-
-#define MAX_PE_IMAGES 4
-#define MAX_NDIS_DEVICES 20
-#define MAX_NDIS_BIN_FILES 5
-#define MAX_NDIS_SETTINGS 256
+#include "ndiswrapper.h"
 
 struct load_driver_file {
 	char name[MAX_DRIVER_NAME_LEN];

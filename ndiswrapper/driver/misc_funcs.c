@@ -20,7 +20,6 @@
 #include <linux/net.h>
 
 #include "ndis.h"
-#include "iw_ndis.h"
 
 struct list_head wrap_allocs;
 struct wrap_spinlock wrap_allocs_lock;
@@ -545,7 +544,7 @@ STDCALL int WRAP_EXPORT(RtlAnsiStringToUnicodeString)
 	if (dup) {
 		char *buf = kmalloc((src->buflen+1) * sizeof(__u16),
 				    GFP_KERNEL);
-		if(!buf)
+		if (!buf)
 			TRACEEXIT1(return NDIS_STATUS_FAILURE);
 		dst->buf = buf;
 		dst->buflen = (src->buflen+1) * sizeof(__u16);
@@ -556,7 +555,7 @@ STDCALL int WRAP_EXPORT(RtlAnsiStringToUnicodeString)
 	dst->len = src->len * sizeof(__u16);
 	d = (__u16 *)dst->buf;
 	s = (__u8 *)src->buf;
-	for(i = 0; i < src->len; i++)
+	for (i = 0; i < src->len; i++)
 		d[i] = (__u16)s[i];
 
 	d[i] = 0;
@@ -577,7 +576,7 @@ STDCALL int WRAP_EXPORT(RtlUnicodeStringToAnsiString)
 	if (dup) {
 		char *buf = kmalloc((src->buflen+1) / sizeof(__u16),
 				    GFP_KERNEL);
-		if(!buf)
+		if (!buf)
 			return NDIS_STATUS_FAILURE;
 		dst->buf = buf;
 		dst->buflen = (src->buflen+1) / sizeof(__u16);
@@ -587,7 +586,7 @@ STDCALL int WRAP_EXPORT(RtlUnicodeStringToAnsiString)
 	dst->len = src->len / sizeof(__u16);
 	s = (__u16 *)src->buf;
 	d = (__u8 *)dst->buf;
-	for(i = 0; i < dst->len; i++)
+	for (i = 0; i < dst->len; i++)
 		d[i] = (__u8)s[i];
 	d[i] = 0;
 
@@ -848,7 +847,7 @@ void inline my_dumpstack(void)
 {
 	void *sp = get_sp();
 	int i;
-	for(i = 0; i < 20; i++)
+	for (i = 0; i < 20; i++)
 		printk("%p\n", (void *)((long *)sp)[i]);
 }
 

@@ -33,11 +33,9 @@
 
 #include <asm/uaccess.h>
 
-#include "ndis.h"
 #include "wrapper.h"
 #include "pe_linker.h"
 #include "iw_ndis.h"
-#include "usb.h"
 #include "loader.h"
 
 #ifndef NDISWRAPPER_VERSION
@@ -494,7 +492,7 @@ static void ndis_set_rx_mode_proc(void *param)
 		/* Too many to filter perfectly -- accept all multicasts. */
 		DBGTRACE1("%s", "Multicast list to long. Accepting all\n");
 		packet_filter |= NDIS_PACKET_TYPE_ALL_MULTICAST;
-	} else if(dev->mc_count > 0) {
+	} else if (dev->mc_count > 0) {
 		packet_filter |= NDIS_PACKET_TYPE_MULTICAST;
 		set_multicast_list(dev, handle);
 	}
@@ -535,10 +533,8 @@ static struct ndis_packet *alloc_packet(struct ndis_handle *handle,
 		int i = 0;
 		/* Poison extra packet info */
 		int *x = (int*) &packet->ext1;
-		for(i = 0; i <= 12; i++)
-		{
+		for (i = 0; i <= 12; i++)
 			x[i] = i;
-		}
 	}
 #endif
 
@@ -1399,7 +1395,7 @@ int setup_dev(struct net_device *dev)
 		handle->multicast_list_size = i;
 	}
 
-	if(handle->multicast_list_size)
+	if (handle->multicast_list_size)
 		handle->multicast_list =
 			kmalloc(handle->multicast_list_size * 6, GFP_KERNEL);
 
@@ -1465,7 +1461,7 @@ struct net_device *ndis_init_netdev(struct ndis_handle **phandle,
 	struct ndis_handle *handle;
 
 	dev = alloc_etherdev(sizeof(*handle));
-	if(!dev) {
+	if (!dev) {
 		ERROR("%s", "Unable to alloc etherdev");
 		return NULL;
 	}

@@ -1,9 +1,10 @@
 -include ../version
 
-DISTFILES=Makefile ndiswrapper.h pe_linker.c pe_linker.h  ndis.c ndis.h \
-				   hal.c ntoskernel.c ntoskernel.h  iw_ndis.c iw_ndis.h \
-				   wrapper.c wrapper.h  proc.c misc_funcs.c \
-				   divdi3.c longlong.h usb.c usb.h loader.c loader.h
+DISTFILES=divdi3.c hal.c iw_ndis.c iw_ndis.h loader.c loader.h \
+				   longlong.h Makefile misc_funcs.c ndis.c ndis.h \
+				   ndiswrapper.h ntoskernel.c ntoskernel.h \
+				   pe_linker.c pe_linker.h proc.c usb.c usb.h \
+				   wrapper.c wrapper.h
 
 KVERS ?= $(shell uname -r)
 KSRC  ?= /lib/modules/$(KVERS)/build
@@ -14,12 +15,33 @@ INST_DIR := /lib/modules/$(KVERS)/misc
 
 SRC_DIR=$(shell pwd)
 
-OBJS := wrapper.o iw_ndis.o pe_linker.o ndis.o ntoskernel.o \
-		  misc_funcs.o proc.o hal.o loader.o
-
 ifeq ($(KPSUB),24)
 -include $(KSRC)/.config
 endif
+
+CFLAGS += $(shell [ -f $(KSRC)/include/linux/modversions.h ] && \
+		  echo -DEXPORT_SYMTAB -DMODVERSIONS \
+		  -include $(KSRC)/include/linux/modversions.h)
+
+ifdef DEBUG
+CFLAGS += -DDEBUG=$(DEBUG) -g -DDEBUG_TIMER
+endif
+
+ifdef DEBUG_TIMER
+CFLAGS += -DDEBUG_TIMER
+endif
+
+ifdef NDISWRAPPER_VERSION
+CFLAGS += -DNDISWRAPPER_VERSION=\"${NDISWRAPPER_VERSION}\" \
+		  -DEXTRA_VERSION=\"${EXTRA_VERSION}\"
+endif
+
+.PHONY: prereq_check gen_exports clean dist_clean install stack_check
+
+all : prereq_check gen_exports default stack_check
+
+OBJS := hal.o iw_ndis.o loader.o misc_funcs.o ndis.o ntoskernel.o \
+		pe_linker.o proc.o wrapper.o
 
 ifeq ($(CONFIG_USB),y)
 OBJS += usb.o
@@ -32,50 +54,41 @@ ifneq ($(CONFIG_X86_64),y)
 OBJS += divdi3.o
 endif
 
-ifdef DEBUG
-CFLAGS += -DDEBUG=$(DEBUG) -g -DDEBUG_TIMER
-endif
-
-ifdef DEBUG_TIMER
-CFLAGS += -DDEBUG_TIMER
-endif
-
-CFLAGS += $(shell [ -f $(KSRC)/include/linux/modversions.h ] && \
-		  echo -DEXPORT_SYMTAB -DMODVERSIONS \
-		  -include $(KSRC)/include/linux/modversions.h)
-
-ifdef NDISWRAPPER_VERSION
-CFLAGS += -DNDISWRAPPER_VERSION=\"${NDISWRAPPER_VERSION}\" \
-		  -DEXTRA_VERSION=\"${EXTRA_VERSION}\"
-endif
-
-.PHONY: prereq_check gen_exports clean dist_clean install stack_check
-
-all : prereq_check gen_exports default stack_check
-
-wrapper.o: wrapper.c ntoskernel.h ndis.h
-
-iw_ndis..o:	iw_ndis.c iw_ndis.h ntoskernel.h ndis.h
-
-pe_linker.o: pe_linker.c pe_linker.h ntoskernel.h ndis.h
-
-ndis.o: ndis.c ndis.h ndis_exports.h ntoskernel.h
-
-ntoskernel.o: ntoskernel.c ntoskernel.h ntoskernel_exports.h
-
-misc_funcs.o: misc_funcs.c ndis.h misc_funcs_exports.h ndis.h
-
-proc.o: proc.c
-
-hal.o: hal.c ndis.h hal_exports.h
-
-loader.o: loader.c loader.h
-
 divdi3.o: divdi3.c longlong.h
 
-usb.o: usb.c usb.h usb_exports.h
+hal.o: hal.c ntoskernel.h
 
-ndis.h : ntoskernel.h ndiswrapper.h
+iw_ndis..o:	iw_ndis.c iw_ndis.h wrapper.h
+
+loader.o: loader.c loader.h ndis.h pe_linker.h wrapper.h
+
+misc_funcs.o: misc_funcs.c ndis.h
+
+ndis.o: ndis.c ndis.h iw_ndis.h wrapper.h
+
+ntoskernel.o: ntoskernel.c ndis.h usb.h
+
+pe_linker.o: pe_linker.c pe_linker.h
+
+proc.o: proc.c ndis.h iw_ndis.h wrapper.h
+
+usb.o: usb.c usb.h ndis.h
+
+wrapper.o: wrapper.c wrapper.h pe_linker.h iw_ndis.h ntoskernel.h loader.h
+
+iw_ndis.h: ndis.h
+loader.h: ndiswrapper.h
+ndis.h: ntoskernel.h
+ntoskernel.h: ndiswrapper.h
+pe_linker.h: ntoskernel.h
+usb.h: ntoskernel.h
+wrapper.h: ndis.h
+
+hal_exports.h: hal.c
+misc_funcs_exports.h: misc_funcs.c
+ndis_exports.h: ndis.c
+ntoskerlen_exports.h: ntoskernel.c
+usb_exports.h: usb.c
 
 # generate exports symbol table from C files
 %_exports.h: %.c

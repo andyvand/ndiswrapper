@@ -36,7 +36,6 @@
 
 #include "ndis.h"
 #include "loader.h"
-#include "iw_ndis.h"
 #include "pe_linker.h"
 #include "wrapper.h"
 
@@ -220,7 +219,7 @@ static void *ndis_init_one_usb(struct usb_device *udev, unsigned int ifnum,
 	set_current_state(TASK_INTERRUPTIBLE);
 	schedule_timeout(3*HZ);
 
-	if(setup_dev(handle->net_dev)) {
+	if (setup_dev(handle->net_dev)) {
 		ERROR("%s", "Couldn't setup interface");
 		res = -EINVAL;
 		goto out_setup;
@@ -557,7 +556,7 @@ static void unload_ndis_driver(struct ndis_driver *driver)
 		kfree(driver->idtable.pci);
 
 	for (i = 0; i < driver->num_pe_images; i++)
-		if(driver->pe_images[i].image)
+		if (driver->pe_images[i].image)
 			vfree(driver->pe_images[i].image);
 
 	for (i = 0; i < driver->nr_bin_files; i++) {
@@ -616,7 +615,7 @@ static unsigned int call_entry(struct ndis_driver *driver)
 				  driver->miniport_char.minorVersion);
 			/* Dump addresses of driver suppoled callbacks */
 #if defined DEBUG && DEBUG >= 1
-			if(res == 0) {
+			if (res == 0) {
 				int j;
 				int *adr;
 				char *name[] = {
@@ -640,7 +639,7 @@ static unsigned int call_entry(struct ndis_driver *driver)
 
 				adr = (int*) &driver->miniport_char.hangcheck;
 
-				for(j = 0; j < 16; j++)
+				for (j = 0; j < 16; j++)
 					DBGTRACE1("%08X (rva %08X):%s", adr[j],
 						  adr[j] ? adr[j] -
 						  (int)driver->pe_images[i].image : 0,
@@ -678,7 +677,7 @@ static int start_driver(struct ndis_driver *driver)
 		memset(driver->idtable.pci, 0,
 			sizeof(struct pci_device_id) * (driver->nr_devices+1));
 
-		for(i = 0; i < driver->nr_devices; i++) {
+		for (i = 0; i < driver->nr_devices; i++) {
 			device = driver->devices[i];
 
 			driver->idtable.pci[i].vendor = device->vendor;
@@ -725,7 +724,7 @@ static int start_driver(struct ndis_driver *driver)
 		memset(driver->idtable.usb, 0,
 		       sizeof(struct usb_device_id) * (driver->nr_devices+1));
 
-		for(i = 0; i < driver->nr_devices; i++) {
+		for (i = 0; i < driver->nr_devices; i++) {
 			device = driver->devices[i];
 			driver->idtable.usb[i].match_flags =
 				USB_DEVICE_ID_MATCH_DEVICE;
@@ -778,7 +777,7 @@ static int add_driver(struct ndis_driver *driver)
 	TRACEENTER1("");
 	wrap_spin_lock(&driverlist_lock);
 	list_for_each_entry(tmp, &ndis_driverlist, list) {
-		if(strcmp(tmp->name, driver->name) == 0) {
+		if (strcmp(tmp->name, driver->name) == 0) {
 			dup = 1;
 			break;
 		}
