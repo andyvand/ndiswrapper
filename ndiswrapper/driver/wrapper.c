@@ -60,7 +60,6 @@ static spinlock_t driverlist_lock = SPIN_LOCK_UNLOCKED;
 
 extern int image_offset;
 
-
 /*
  * Perform a sync query and deal with the possibility of an async operation.
  * This function must be called from process context as it will sleep.
@@ -534,6 +533,11 @@ static int ndis_set_wep(struct net_device *dev, struct iw_request_info *info,
 			       NDIS_ENCODE_DISABLED);
 		res |= set_int(handle, NDIS_OID_REMOVE_WEP, keyindex);
 		res |= set_int(handle, NDIS_OID_AUTH_MODE, NDIS_ENCODE_OPEN);
+		handle->wep.keylength = 0;
+		handle->wep.keyindex = 0;
+		memset(&handle->wep.keymaterial, 0, sizeof(handle->wep.keymaterial));
+		handle->wep_status = 0;
+		handle->auth_mode = NDIS_ENCODE_OPEN;
 		if (res)
 			return -1;
 		return 0;
@@ -547,20 +551,18 @@ static int ndis_set_wep(struct net_device *dev, struct iw_request_info *info,
 			req.keyindex = wrqu->data.flags & IW_ENCODE_INDEX;
 			req.keyindex |= (1 << 31);
 			req.keylength = wrqu->data.length;
-			
-			handle->key_len = req.keylength;
-			memcpy(handle->key_val, wrqu->data.pointer, req.keylength);
-			memcpy(req.keymaterial, handle->key_val, req.keylength);
-		
+			memcpy(req.keymaterial, wrqu->data.pointer, req.keylength);
 			res = dosetinfo(handle, NDIS_OID_ADD_WEP, (char*)&req, sizeof(req), &written, &needed);
 
 			if (res)
 				return -1;
+			memcpy(&handle->wep, &req, sizeof(req));
 		}
 		
 		res = set_int(handle, NDIS_OID_WEP_STATUS, NDIS_ENCODE_ENABLED);
 		if (res)
 			return -1;
+		handle->wep_status = NDIS_ENCODE_ENABLED;
 
 		if (wrqu->data.flags & IW_ENCODE_RESTRICTED)
 			auth_mode = NDIS_ENCODE_RESTRICTED;
@@ -575,6 +577,7 @@ static int ndis_set_wep(struct net_device *dev, struct iw_request_info *info,
 
 		if (res)
 			return -1;
+		handle->auth_mode = auth_mode;
 	}
 	return 0;
 }
@@ -595,14 +598,14 @@ static int ndis_get_wep(struct net_device *dev, struct iw_request_info *info,
 	if (status == NDIS_ENCODE_ENABLED)
 	{
 		wrqu->data.flags |= IW_ENCODE_ENABLED;
-		wrqu->data.length = handle->key_len;
-		memcpy(extra, handle->key_val, handle->key_len);
+		wrqu->data.length = handle->wep.keylength;
+		memcpy(extra, handle->wep.keymaterial, handle->wep.keylength);
 	}
 	else if (status == NDIS_ENCODE_DISABLED)
 	{
 		wrqu->data.flags |= IW_ENCODE_DISABLED;
-		wrqu->data.length = handle->key_len;
-		memcpy(extra, handle->key_val, handle->key_len);
+		wrqu->data.length = handle->wep.keylength;
+		memcpy(extra, handle->wep.keymaterial, handle->wep.keylength);
 	}
 	else if (status == NDIS_ENCODE_NOKEY)
 		wrqu->data.flags |= IW_ENCODE_NOKEY;
@@ -639,12 +642,12 @@ char *ndis_translate_scan(struct net_device *dev, char *event, char *end_buf,
 	/* add essid */
 	memset(&iwe, 0, sizeof(iwe));
 	iwe.cmd = SIOCGIWESSID;
-	iwe.u.data.length = item->ssid.length;
+	iwe.u.data.length = item->ssid.len;
 	if (iwe.u.data.length > IW_ESSID_MAX_SIZE)
 		iwe.u.data.length = IW_ESSID_MAX_SIZE;
 	iwe.u.data.flags = 1;
 	iwe.len = IW_EV_POINT_LEN + iwe.u.data.length;
-	event = iwe_stream_add_point(event, end_buf, &iwe, item->ssid.ssid);
+	event = iwe_stream_add_point(event, end_buf, &iwe, item->ssid.essid);
 
 	/* add protocol name */
 	memset(&iwe, 0, sizeof(iwe));
@@ -697,7 +700,7 @@ char *ndis_translate_scan(struct net_device *dev, char *event, char *end_buf,
 		iwe.u.data.flags = IW_ENCODE_ENABLED | IW_ENCODE_NOKEY;
 	iwe.u.data.length = 0;
 	iwe.len = IW_EV_POINT_LEN;
-	event = iwe_stream_add_point(event, end_buf, &iwe, item->ssid.ssid);
+	event = iwe_stream_add_point(event, end_buf, &iwe, item->ssid.essid);
 
 	/* add rate */
 	memset(&iwe, 0, sizeof(iwe));
@@ -744,14 +747,14 @@ static int ndis_list_scan(struct ndis_handle *handle)
 	{
 		iw_stats->discard.retries = (__u32)ndis_stats.retry + (__u32)ndis_stats.multi_retry;
 		iw_stats->discard.misc = (__u32)ndis_stats.fcs_err + (__u32)ndis_stats.rtss_fail + (__u32)ndis_stats.ack_fail + (__u32)ndis_stats.frame_dup;
-//		iw_stats->discard.fragment = (__u32)ndis_stats.rx_frag + (__u32)ndis_stats.multi_rx_frag;
 		
-		if (ndis_stats.trans_frag)
-			iw_stats->qual.qual = 100 - 100 * ((__u32)ndis_stats.retry + 2 * (__u32)ndis_stats.multi_retry + 3 * (__u32)ndis_stats.failed) /(6 * (__u32)ndis_stats.trans_frag);
+		if (ndis_stats.tx_frag)
+			iw_stats->qual.qual = 100 - 100 * ((__u32)ndis_stats.retry + 2 * (__u32)ndis_stats.multi_retry + 3 * (__u32)ndis_stats.failed) /(6 * (__u32)ndis_stats.tx_frag);
 		else
 			iw_stats->qual.qual = 100;
 		DBGTRACE("%s: quality = %d\n", dev->name, iw_stats->qual.qual);
 	}
+	memcpy(&handle->ndis_stats, &ndis_stats, sizeof(struct ndis_wireless_stats));
 	return res;
 }
 
@@ -1539,7 +1542,6 @@ static int __devinit ndis_init_one(struct pci_dev *pdev,
 		res = -EINVAL;
 		goto out_start;
 	}
-	handle->key_len = 0;
 	handle->pm_state = NDIS_PM_STATE_D0;
 	apscan_init(handle);
 	//hangcheck_add(handle);
@@ -1555,6 +1557,7 @@ static int __devinit ndis_init_one(struct pci_dev *pdev,
 	else
 		handle->pm->data = dev;
 
+	ndis_init_proc(handle);
 	return 0;
 
 out_start:
@@ -1588,6 +1591,7 @@ static void __devexit ndis_remove_one(struct pci_dev *pdev)
 #endif
 	pci_release_regions(pdev);
 	pci_disable_device(pdev);
+	ndis_remove_proc(handle);
 }
 
 
