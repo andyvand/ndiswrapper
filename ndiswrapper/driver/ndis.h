@@ -896,6 +896,8 @@ int ndis_suspend_pci(struct pci_dev *pdev, u32 state);
 int ndis_resume_pci(struct pci_dev *pdev);
 int ndis_suspend_usb(struct usb_interface *intf, u32 state);
 int ndis_resume_usb(struct usb_interface *intf);
+int set_auth_mode(struct ndis_handle *handle, int mode);
+int set_encr_mode(struct ndis_handle *handle, int mode);
 
 
 void packet_recycler(void *param);

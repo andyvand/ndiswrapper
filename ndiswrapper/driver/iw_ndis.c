@@ -1463,21 +1463,6 @@ static int wpa_associate(struct net_device *dev,
 	    wpa_assoc_info.key_mgmt_suite != KEY_MGMT_NONE)
 		TRACEEXIT(return -EINVAL);
 
-	switch (wpa_assoc_info.key_mgmt_suite)
-	{
-	case KEY_MGMT_PSK:
-		if (set_auth_mode(handle, AUTHMODE_WPAPSK))
-			TRACEEXIT(return -EINVAL);
-		break;
-	case KEY_MGMT_NONE:
-		if (wpa_assoc_info.group_suite != CIPHER_WEP104 &&
-		    wpa_assoc_info.group_suite != CIPHER_WEP40)
-			TRACEEXIT(return -EINVAL);
-		break;
-	default:
-		TRACEEXIT(return -EINVAL);
-	}
-
 	switch (wpa_assoc_info.group_suite)
 	{
 	case CIPHER_CCMP:
@@ -1493,6 +1478,21 @@ static int wpa_associate(struct net_device *dev,
 	case CIPHER_WEP104:
 	case CIPHER_WEP40:
 		if (test_bit(CAPA_ENCR_NONE, &handle->capa))
+			TRACEEXIT(return -EINVAL);
+		break;
+	default:
+		TRACEEXIT(return -EINVAL);
+	}
+
+	switch (wpa_assoc_info.key_mgmt_suite)
+	{
+	case KEY_MGMT_PSK:
+		if (set_auth_mode(handle, AUTHMODE_WPAPSK))
+			TRACEEXIT(return -EINVAL);
+		break;
+	case KEY_MGMT_NONE:
+		if (wpa_assoc_info.group_suite != CIPHER_WEP104 &&
+		    wpa_assoc_info.group_suite != CIPHER_WEP40)
 			TRACEEXIT(return -EINVAL);
 		break;
 	default:
