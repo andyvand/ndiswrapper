@@ -495,10 +495,10 @@ int unmap_kspin_lock(KSPIN_LOCK *kspin_lock);
 
 #else // CONFIG_SMP || CONFIG_DEBUG_SPINLOCK
 
-#define wrap_spin_lock_init(lock) *(lock) = 255
 #define kspin_lock_init(lock) ({ *(lock) = 255; *(lock); })
+#define wrap_spin_lock_init(lock) (lock)->irql = 255
 
-#define wrap_spin_lock(lock, newirql)				 \
+#define kspin_lock(lock, newirql)				 \
 ({								 \
 	*(lock) = KeGetCurrentIrql();				 \
 	if (newirql == DISPATCH_LEVEL) {			 \
@@ -509,9 +509,9 @@ int unmap_kspin_lock(KSPIN_LOCK *kspin_lock);
 	}							 \
 	*(lock);						 \
 })
-#define kspin_lock(lock, newirql) wrap_spin_lock(lock, newirql)
+#define wrap_spin_lock(lock, newirql) kspin_lock(&(lock)->irql, newirql)
 
-#define wrap_spin_unlock(lock) do {				\
+#define kspin_unlock(lock) do {					\
 		if (*(lock) == PASSIVE_LEVEL) {			\
 			KIRQL irql = KeGetCurrentIrql();	\
 			if (irql == DISPATCH_LEVEL) {		\
@@ -521,23 +521,25 @@ int unmap_kspin_lock(KSPIN_LOCK *kspin_lock);
 		}						\
 		*(lock) = 255;					\
 	} while (0)
-#define kspin_unlock(lock) wrap_spin_unlock(lock)
+#define wrap_spin_unlock(lock) kspin_unlock(&(lock)->irql)
 
-#define wrap_spin_unlock_irql(lock, newirql) do {			\
+#define kspin_unlock_irql(lock, newirql) do {				\
 		if (*(lock) != newirql)					\
 			DBGTRACE3("irql %lu != %d", *(lock), newirql);	\
-		wrap_spin_unlock(lock);					\
+		kspin_unlock(lock);					\
 	} while (0)
-#define kspin_unlock_irql(lock, newirql) wrap_spin_unlock_irql(lock, newirql)
+#define wrap_spin_unlock_irql(lock, newirql)		\
+	kspin_unlock_irql(&(lock->irql), newirql)
 
-#define wrap_spin_lock_irqsave(lock, flags)		\
+#define kspin_lock_irqsave(lock, flags)			\
 	spin_lock_irqsave((spinlock_t *)(lock), flags)
-#define kspin_lock_irqsave(lock, flags) wrap_spin_lock_irqsave(lock, flags)
+#define wrap_spin_lock_irqsave(lock, flags) \
+	spin_lock_irqsave(&(lock)->spinlock, flags)
 
-#define wrap_spin_unlock_irqrestore(lock, flags)		\
+#define kspin_unlock_irqrestore(lock, flags)			\
 	spin_unlock_irqrestore((spinlock_t *)(lock), flags)
-#define kspin_unlock_irqrestore(lock, flags)		\
-	wrap_spin_unlock_irqrestore(lock, flags)
+#define wrap_unlock_irqrestore(lock, flags)		\
+	spin_unlock_irqrestore(&(lock)->spinlock, flags)
 
 #define unmap_kspin_lock(lock) 0
 #endif // CONFIG_SMP || CONFIG_DEBUG_SPINLOCK
