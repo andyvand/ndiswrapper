@@ -371,7 +371,7 @@ struct ndis_irq {
 		unsigned int irq;
 	} irq;
 	/* Taken by ISR, DisableInterrupt and SynchronizeWithInterrupt */
-	KSPIN_LOCK spinlock;
+	KSPIN_LOCK lock;
 	void *id;
 	ndis_isr_handler isr;
 	void *dpc;
@@ -636,7 +636,7 @@ struct ndis_bind_paths {
 };
 
 struct ndis_reference {
-	KSPIN_LOCK spinlock;
+	KSPIN_LOCK lock;
 	USHORT ref_count;
 	BOOLEAN closing;
 };
