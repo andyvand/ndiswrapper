@@ -273,6 +273,16 @@ STDCALL static void WRAP_EXPORT(NdisOpenConfiguration)
 	TRACEEXIT2(return);
 }
 
+STDCALL static void WRAP_EXPORT(NdisOpenProtocolConfiguration)
+	(NDIS_STATUS *status, struct ndis_handle **confhandle,
+	 struct ustring *section)
+{
+	TRACEENTER2("confHandle: %p", confhandle);
+	*confhandle = (struct ndis_handle *)section;
+	*status = NDIS_STATUS_SUCCESS;
+	TRACEEXIT2(return);
+}
+
 STDCALL static void WRAP_EXPORT(NdisOpenConfigurationKeyByName)
 	(NDIS_STATUS *status, struct ndis_handle *handle, struct ustring *key,
 	 struct ndis_handle **subkeyhandle)
