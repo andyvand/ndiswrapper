@@ -379,11 +379,7 @@ struct packed ndis_handle
 	unsigned int pm_state;
 
 	u32 link_status;
-	struct essid_req essid;
 	struct wep_req wep;
-	unsigned int wep_status;
-	unsigned int auth_mode;
-	long rssi;
 };
 
 struct ndis_timer
@@ -494,6 +490,8 @@ void NdisMSetInformationComplete(struct ndis_handle *handle, unsigned int status
 
 int ndis_init_proc(struct ndis_handle *handle);
 void ndis_remove_proc(struct ndis_handle *handle);
+int doquery(struct ndis_handle *handle, unsigned int oid, char *buf, int bufsize, unsigned int *written , unsigned int *needed);
+int query_int(struct ndis_handle *handle, int oid, int *data);
 
 
 #define NDIS_OID_STAT_TX_OK         0x00020101

@@ -65,7 +65,7 @@ extern int image_offset;
  * Perform a sync query and deal with the possibility of an async operation.
  * This function must be called from process context as it will sleep.
  */
-static int doquery(struct ndis_handle *handle, unsigned int oid, char *buf, int bufsize, unsigned int *written , unsigned int *needed)
+int doquery(struct ndis_handle *handle, unsigned int oid, char *buf, int bufsize, unsigned int *written , unsigned int *needed)
 {
 	int res;
 
@@ -152,7 +152,7 @@ STDCALL void NdisMSetInformationComplete(struct ndis_handle *handle, unsigned in
  * Make a query that has an int as the result.
  *
  */
-static int query_int(struct ndis_handle *handle, int oid, int *data)
+int query_int(struct ndis_handle *handle, int oid, int *data)
 {
 	unsigned int res, written, needed;
 
@@ -235,6 +235,7 @@ static int ndis_set_mode(struct net_device *dev, struct iw_request_info *info,
 {
 	int ndis_mode;
 	int res;
+
 	switch(wrqu->mode)
 	{
 	case IW_MODE_ADHOC:
@@ -254,7 +255,6 @@ static int ndis_set_mode(struct net_device *dev, struct iw_request_info *info,
 		DBGTRACE("set_mode returned failure: %08x\n", res); 
 		return -1;
 	}
-	
 	return 0;
 }
 
@@ -537,8 +537,6 @@ static int ndis_set_wep(struct net_device *dev, struct iw_request_info *info,
 		handle->wep.keylength = 0;
 		handle->wep.keyindex = 0;
 		memset(&handle->wep.keymaterial, 0, sizeof(handle->wep.keymaterial));
-		handle->wep_status = 0;
-		handle->auth_mode = NDIS_ENCODE_OPEN;
 		if (res)
 			return -1;
 		return 0;
@@ -563,7 +561,6 @@ static int ndis_set_wep(struct net_device *dev, struct iw_request_info *info,
 		res = set_int(handle, NDIS_OID_WEP_STATUS, NDIS_ENCODE_ENABLED);
 		if (res)
 			return -1;
-		handle->wep_status = NDIS_ENCODE_ENABLED;
 
 		if (wrqu->data.flags & IW_ENCODE_RESTRICTED)
 			auth_mode = NDIS_ENCODE_RESTRICTED;
@@ -578,7 +575,6 @@ static int ndis_set_wep(struct net_device *dev, struct iw_request_info *info,
 
 		if (res)
 			return -1;
-		handle->auth_mode = auth_mode;
 	}
 	return 0;
 }
@@ -736,10 +732,7 @@ static int ndis_list_scan(struct ndis_handle *handle)
 		    &written, &needed))
 		printk(KERN_INFO "%s: get rssi failed\n", dev->name);
 	else
-	{
 		iw_stats->qual.level = rssi;
-		handle->rssi = rssi;
-	}
 		
 	memset(&ndis_stats, 0, sizeof(ndis_stats));
 	res = doquery(handle, NDIS_OID_STATISTICS, (char *)&ndis_stats,
@@ -758,7 +751,6 @@ static int ndis_list_scan(struct ndis_handle *handle)
 			iw_stats->qual.qual = 100;
 		DBGTRACE("%s: quality = %d\n", dev->name, iw_stats->qual.qual);
 	}
-	memcpy(&handle->ndis_stats, &ndis_stats, sizeof(struct ndis_wireless_stats));
 	return res;
 }
 
@@ -1584,6 +1576,7 @@ static void __devexit ndis_remove_one(struct pci_dev *pdev)
 	apscan_del(handle);
 	if (handle->pm)
 		pm_unregister(handle->pm);
+	ndis_remove_proc(handle);
 
 #ifndef DEBUG_CRASH_ON_INIT
 	unregister_netdev(handle->net_dev);
@@ -1595,7 +1588,6 @@ static void __devexit ndis_remove_one(struct pci_dev *pdev)
 #endif
 	pci_release_regions(pdev);
 	pci_disable_device(pdev);
-	ndis_remove_proc(handle);
 }
 
 
