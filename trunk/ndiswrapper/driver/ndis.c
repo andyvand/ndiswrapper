@@ -23,6 +23,8 @@
 #include <linux/types.h>
 #include <linux/string.h>
 #include <linux/ctype.h>
+#include <linux/wireless.h>
+#include <net/iw_handler.h>
 
 #include "ndis.h"
 #include "iw_ndis.h"
@@ -1714,8 +1716,7 @@ STDCALL void
 NdisMIndicateStatus(struct ndis_handle *handle,
 		    NDIS_STATUS status, void *buf, UINT len)
 {
-	TRACEENTER2("%08x", status);
-
+	TRACEENTER2("status=0x%x len=%d", status, len);
 	if (status == NDIS_STATUS_MEDIA_DISCONNECT) {
 		handle->link_status = 0;
 		handle->send_ok = 0;
@@ -1728,14 +1729,16 @@ NdisMIndicateStatus(struct ndis_handle *handle,
 	}
 
 	if (status == NDIS_STATUS_MEDIA_SPECIFIC_INDICATION && buf) {
-		struct ndis_status_indication *status = buf;
+		struct ndis_status_indication *si = buf;
 		struct ndis_auth_req *auth_req;
 		struct ndis_radio_status_indication *radio_status;
 
-		switch (status->status_type) {
+		DEBUGTRACE2("status_type=%d", si->status_type);
+
+		switch (si->status_type) {
 		case Ndis802_11StatusType_Authentication:
-			buf = (char *)buf + sizeof(*status);
-			len -= sizeof(*status);
+			buf = (char *)buf + sizeof(*si);
+			len -= sizeof(*si);
 			while (len > 0) {
 				auth_req = (struct ndis_auth_req *)buf;
 				DBGTRACE1(MACSTR, MAC2STR(auth_req->bssid));
@@ -1747,6 +1750,7 @@ NdisMIndicateStatus(struct ndis_handle *handle,
 					DBGTRACE2("%s", "pairwise_error");
 				if (auth_req->flags & 0x0E)
 					DBGTRACE2("%s", "group_error");
+				/* TODO: report to wpa_supplicant */
 				len -= auth_req->length;
 				buf = (char *)buf + auth_req->length;
 			}
@@ -1754,7 +1758,58 @@ NdisMIndicateStatus(struct ndis_handle *handle,
 		case Ndis802_11StatusType_MediaStreamMode:
 			break;
 		case Ndis802_11StatusType_PMKID_CandidateList:
+		{
+			u8 *end;
+			unsigned long i;
+			struct ndis_pmkid_candidate_list *cand;
+
+			cand = buf + sizeof(struct ndis_status_indication);
+			if (len < sizeof(struct ndis_status_indication) +
+			    sizeof(struct ndis_pmkid_candidate_list) ||
+				cand->version != 1)
+			{
+				WARNING("Unrecognized PMKID_CANDIDATE_LIST"
+					" ignored");
+				TRACEEXIT1(return);
+			}
+
+			end = (u8 *)buf + len;
+			DEBUGTRACE2("PMKID_CANDIDATE_LIST ver %ld "
+				    "num_cand %ld",
+				    cand->version, cand->num_candidates);
+			for (i = 0; i < cand->num_candidates; i++) {
+				struct ndis_pmkid_candidate *c =
+					&cand->candidates[i];
+				if ((u8 *)(c + 1) > end) {
+					DEBUGTRACE2("Truncated "
+						    "PMKID_CANDIDATE_LIST");
+					break;
+				}
+				DEBUGTRACE2("%ld: " MACSTR " 0x%lx",
+					    i, MAC2STR(c->bssid), c->flags);
+#if WIRELESS_EXT > 17
+				{
+					struct iw_pmkid_cand pcand;
+					union iwreq_data wrqu;
+					memset(&pcand, 0, sizeof(pcand));
+					if (c->flags & 0x01)
+						pcand.flags |=
+							IW_PMKID_CAND_PREAUTH;
+					pcand.index = i;
+					memcpy(pcand.bssid.sa_data, c->bssid,
+					       ETH_ALEN);
+
+					memset(&wrqu, 0, sizeof(wrqu));
+					wrqu.data.length = sizeof(pcand);
+					wireless_send_event(handle->net_dev,
+							    IWEVPMKIDCAND,
+							    &wrqu,
+							    (u8 *)&pcand);
+				}
+#endif
+			}
 			break;
+		}
 		case Ndis802_11StatusType_RadioState:
 			radio_status = buf;
 			if (radio_status->radio_state ==
@@ -1776,7 +1831,7 @@ NdisMIndicateStatus(struct ndis_handle *handle,
 /* called via function pointer */
 STDCALL void NdisMIndicateStatusComplete(struct ndis_handle *handle)
 {
-	TRACEENTER3("%s", "");
+	TRACEENTER3("");
 	schedule_work(&handle->wrapper_worker);
 }
 

@@ -826,7 +826,10 @@ void ndiswrapper_remove_one_dev(struct ndis_handle *handle)
 static void link_status_handler(struct ndis_handle *handle)
 {
 	struct ndis_assoc_info *ndis_assoc_info;
-	unsigned char *wpa_assoc_info, *assoc_info, *p, *ies;
+#if WIRELESS_EXT < 18
+	unsigned char *wpa_assoc_info, *ies;
+#endif
+	unsigned char *assoc_info;
 	union iwreq_data wrqu;
 	unsigned int i;
 	NDIS_STATUS res;
@@ -897,6 +900,22 @@ static void link_status_handler(struct ndis_handle *handle)
 		TRACEEXIT2(return);
 	}
 
+	/*
+	 * TODO: backwards compatibility would require that IWEVCUSTOM is send
+	 * even if WIRELESS_EXT > 17. This version does not do this in order to
+	 * allow wpa_supplicant to be tested with WE-18.
+	 */
+#if WIRELESS_EXT > 17
+	memset(&wrqu, 0, sizeof(wrqu));
+	wrqu.data.length = ndis_assoc_info->req_ie_length;
+	wireless_send_event(handle->net_dev, IWEVASSOCREQIE, &wrqu,
+			    ((char *) ndis_assoc_info) +
+			    ndis_assoc_info->offset_req_ies);
+	wrqu.data.length = ndis_assoc_info->resp_ie_length;
+	wireless_send_event(handle->net_dev, IWEVASSOCRESPIE, &wrqu,
+			    ((char *) ndis_assoc_info) +
+			    ndis_assoc_info->offset_resp_ies);
+#else
 	wpa_assoc_info = kmalloc(IW_CUSTOM_MAX, GFP_KERNEL);
 	if (!wpa_assoc_info) {
 		ERROR("%s", "couldn't allocate memory");
@@ -925,6 +944,8 @@ static void link_status_handler(struct ndis_handle *handle)
 			    wpa_assoc_info);
 
 	kfree(wpa_assoc_info);
+#endif
+
 	kfree(assoc_info);
 
 	get_ap_address(handle, (char *)&wrqu.ap_addr.sa_data);

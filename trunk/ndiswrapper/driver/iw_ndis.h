@@ -139,6 +139,17 @@ struct ndis_auth_req {
 	ULONG flags;
 };
 
+struct ndis_bssid_info {
+	mac_address bssid;
+	UCHAR pmkid[16];
+};
+
+struct ndis_pmkid {
+	ULONG length;
+	ULONG bssid_info_count;
+	struct ndis_bssid_info bssid_info[1];
+};
+
 int add_wep_key(struct ndis_handle *handle, char *key, int key_len, int index);
 extern const struct iw_handler_def ndis_handler_def;
 
