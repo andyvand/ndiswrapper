@@ -32,24 +32,14 @@ struct del_driver {
 	char name[DRIVERNAME_MAX];
 };
 
-struct setting_payload
-{
-	unsigned int data;
-};
-
 struct put_setting
 {
-	/* Type of setting */ 
-	int type;	
-
-	int name_len;
+	size_t name_len;
+	size_t val_str_len;
 	char *name;
-
-	int payload_len;
-	struct setting_payload *payload;
+	char *val_str;
 };
 
-                                                                                                                                                                                                                                   
 #define NDIS_PUTDRIVER     _IOWR('N', 0, struct put_driver*)
 #define NDIS_PUTSETTING    _IOWR('N', 1, struct put_setting*)
 #define NDIS_STARTDRIVER   _IOWR('N', 2, int)
