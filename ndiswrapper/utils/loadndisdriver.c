@@ -479,13 +479,14 @@ static int load_all_devices(int ioctl_device)
 	loaded = 0;
 	while((dirent = readdir(dir))) {
 		if (strcmp(dirent->d_name, ".") == 0 ||
-		    strcmp(dirent->d_name, "..") == 0 ||
-		    strcmp(dirent->d_name, "modules.ndiswrapper") == 0)
+		    strcmp(dirent->d_name, "..") == 0)
 			continue;
 
 		if (stat(dirent->d_name, &statbuf) ||
-		    (!S_ISDIR(statbuf.st_mode)) ||
-		    ((driver = opendir(dirent->d_name)) == NULL)) {
+		    (!S_ISDIR(statbuf.st_mode)))
+			continue;
+
+		if ((driver = opendir(dirent->d_name)) == NULL) {
 			error("directory %s is not valid: %s",
 			      dirent->d_name, strerror(errno));
 			continue;
