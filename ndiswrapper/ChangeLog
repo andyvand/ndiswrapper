@@ -1,3 +1,19 @@
+Versoin 1.1 2005-XX-XX
+======================
+1.1rc1:
+======
+* Don't use spinlocks unless CONFIG_SMP or CONFIG_DEBUG_SPINLOCK is
+  enabled.
+* Don't reset Centrino cards during initialization as this seems to
+  turns off radio.
+* 2.4 kernels don't have hashing, so provide wrapper macros for hashing.
+* Set the active/transmit key index as given, instead of assuming 1
+  always. This fixes authentication with Cisco routers. This should
+  also fix WEP issues when active key used on the router is at index > 1.
+* NdisAcquire(Dpr)SpinLock obtains the lock at DISPATCH_LEVEL instead
+  of PASSIVE_LEVEL. This fixes PREEMPT and SMP issues with some drivers.
+* Issue with Prism54 driver sometimes crashing kernel when scanning fixed.
+
 Version 1.0 2005-01-29
 ======================
 * Yet another spinlock reimplementation. Since I don't have SMP, it is taking
