@@ -548,6 +548,10 @@ static int ndis_set_wep(struct net_device *dev, struct iw_request_info *info,
 	}
 	else
 	{
+		res = set_int(handle, NDIS_OID_WEP_STATUS, NDIS_ENCODE_ENABLED);
+		if (res)
+			return -1;
+
 		/* set key only if one is given */
 		if (wrqu->data.length > 0)
 		{
@@ -563,10 +567,6 @@ static int ndis_set_wep(struct net_device *dev, struct iw_request_info *info,
 			memcpy(&handle->wep, &req, sizeof(req));
 		}
 		
-		res = set_int(handle, NDIS_OID_WEP_STATUS, NDIS_ENCODE_ENABLED);
-		if (res)
-			return -1;
-
 		if (wrqu->data.flags & IW_ENCODE_RESTRICTED)
 			auth_mode = NDIS_ENCODE_RESTRICTED;
 		else if (wrqu->data.flags & IW_ENCODE_OPEN)
