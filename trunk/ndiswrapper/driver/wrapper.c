@@ -1908,7 +1908,7 @@ static struct ndis_driver *load_driver(struct driver_files *driver_files)
 	if(!driver)
 	{
 		ERROR("unable to allocate memory for driver '%s'",
-			put_driver->name);
+			driver_files->name);
 		goto out_nodriver;
 	}
 	memset(driver, 0, sizeof(struct ndis_driver));
@@ -1929,7 +1929,8 @@ static struct ndis_driver *load_driver(struct driver_files *driver_files)
 		driver->pe_images[i].name = kmalloc(DRIVERNAME_MAX,
 						    GFP_KERNEL);
 		if (!driver->pe_images[i].name) {
-			ERROR("%s", "couldn't allocate memory");
+			ERROR("couldn't allocate memory for driver '%s'",
+				driver_files->name);
 			goto out_image_fail;
 		}
 		memcpy(driver->pe_images[i].name, driver_files->file[i].name, 
@@ -1942,21 +1943,23 @@ static struct ndis_driver *load_driver(struct driver_files *driver_files)
 			vmalloc(driver_files->file[i].size);
 		DBGTRACE1("image is at %08X", (int)driver->pe_images[i].image);
 		if(!driver->pe_images[i].image) {
-			ERROR("%s", "unable to allocate memory");
+			ERROR("couldn't allocate memory for driver '%s'",
+				driver_files->name);
 			goto out_image_fail;
 		}
 
 		if (copy_from_user(driver->pe_images[i].image,
 				   driver_files->file[i].data,
 				   driver_files->file[i].size)) {
-			ERROR("%s", "failed to copy from user");
+			ERROR("failed to copy from user for driver '%s'",
+				driver_files->name);
 			goto out_image_fail;
 		}
 		driver->pe_images[i].size = driver_files->file[i].size;
 	}
 
 	if (load_pe_images(driver->pe_images, driver->num_pe_images)) {
-		ERROR("%s", "unable to prepare driver");
+		ERROR("unable to prepare driver '%s'", driver_files->name);
 		goto out_image_fail;
 	}
 
