@@ -773,10 +773,14 @@ void ndis_remove_one(struct ndis_handle *handle)
 
 	TRACEENTER1("%s", handle->net_dev->name);
 
-	ndis_close(handle->net_dev);
-	ndiswrapper_procfs_remove_iface(handle);
 	stats_timer_del(handle);
 	hangcheck_del(handle);
+	ndiswrapper_procfs_remove_iface(handle);
+
+	ndis_close(handle->net_dev);
+	netif_carrier_off(handle->net_dev);
+
+	set_bit(SHUTDOWN, &handle->wrapper_work);
 
 	/* flush_scheduled_work here causes crash with 2.4 kernels */
 	/* instead, throw away pending packets */
@@ -801,22 +805,10 @@ void ndis_remove_one(struct ndis_handle *handle)
 					   NDIS_PNP_SURPRISE_REMOVED,
 					   NULL, 0);
 	}
-	netif_carrier_off(handle->net_dev);
 
 	if (handle->phys_device_obj)
 		kfree(handle->phys_device_obj);
 
-	set_bit(SHUTDOWN, &handle->wrapper_work);
-
-	miniport_set_int(handle, NDIS_OID_DISASSOCIATE, 0);
-	DBGTRACE1("halting device %s", handle->driver->name);
-	miniport_halt(handle);
-	DBGTRACE1("halt successful");
-
-	set_current_state(TASK_INTERRUPTIBLE);
-	schedule_timeout(HZ);
-	printk(KERN_INFO "%s: device %s removed\n", DRV_NAME,
-	       handle->net_dev->name);
 	if (handle->net_dev)
 		unregister_netdev(handle->net_dev);
 
@@ -824,6 +816,14 @@ void ndis_remove_one(struct ndis_handle *handle)
 		kfree(handle->multicast_list);
 	if (handle->net_dev)
 		free_netdev(handle->net_dev);
+
+	printk(KERN_INFO "%s: device %s removed\n", DRV_NAME,
+	       handle->net_dev->name);
+
+	miniport_set_int(handle, NDIS_OID_DISASSOCIATE, 0);
+	DBGTRACE1("halting device %s", handle->driver->name);
+	miniport_halt(handle);
+	DBGTRACE1("halt successful");
 }
 
 static void link_status_handler(struct ndis_handle *handle)
