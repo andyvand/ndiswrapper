@@ -555,7 +555,7 @@ static int ndis_set_ap_address(struct net_device *dev, struct iw_request_info *i
 
 	if(res)
 	{
-		printk(KERN_INFO "%s: sgetting AP mac address failed (%08x)\n",
+		printk(KERN_INFO "%s: setting AP mac address failed (%08x)\n",
 		       dev->name, res);
 		return -EINVAL;
 	}
