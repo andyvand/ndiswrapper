@@ -425,7 +425,7 @@ STDCALL void NdisAllocateSpinLock(spinlock_t **lock)
 {
 	*lock = kmalloc(sizeof(spinlock_t), GFP_KERNEL);
 	if(*lock)
-		**lock = SPIN_LOCK_UNLOCKED;
+		spin_lock_init(*lock);
 }
 
 STDCALL void NdisFreeSpinLock(spinlock_t **lock)
@@ -811,9 +811,12 @@ STDCALL unsigned int NdisMRegisterInterrupt(struct ndis_irq **ndis_irq_ptr,
 	ndis_irq = *ndis_irq_ptr;
 	handle->irq = vector;
 
-	ndis_irq->spinlock = SPIN_LOCK_UNLOCKED;
+	spin_lock_init(&ndis_irq->spinlock);
 	ndis_irq->irq = vector;
 	ndis_irq->handle = handle;
+	spin_lock(&ndis_irq->spinlock);
+	spin_unlock(&ndis_irq->spinlock);
+
 	if(request_irq(vector, ndis_irq_th, SA_SHIRQ, "ndiswrapper", ndis_irq))
 	{
 		kfree(ndis_irq);
@@ -845,16 +848,19 @@ STDCALL void NdisMDeregisterInterrupt(struct ndis_irq **ndis_irq_ptr)
  *
  */
 typedef unsigned int (*sync_func_t)(void *ctx);
-STDCALL char NdisMSynchronizeWithInterrupt(struct ndis_irq *interrupt,
+STDCALL char NdisMSynchronizeWithInterrupt(struct ndis_irq **ndis_irq_ptr,
                                            STDCALL sync_func_t func,
 					   void *ctx)
 {
 	unsigned int ret;
 	unsigned long flags;
-	DBGTRACE("%s: %08x %08x %08x\n", __FUNCTION__, (int) interrupt, (int) func, (int) ctx);
-	spin_lock_irqsave(&interrupt->spinlock, flags);
+	struct ndis_irq *ndis_irq = *ndis_irq_ptr;
+	DBGTRACE("%s: %08x %08x %08x %08x\n", __FUNCTION__, (int) ndis_irq, (int) ndis_irq_ptr, (int) func, (int) ctx);
+
+	spin_lock_irqsave(&ndis_irq->spinlock, flags);
 	ret = func(ctx);
-	spin_unlock_irqrestore(&interrupt->spinlock, flags);
+	spin_unlock_irqrestore(&ndis_irq->spinlock, flags);
+
 	DBGTRACE("%s: Past func\n", __FUNCTION__);
 	return ret;
 }
