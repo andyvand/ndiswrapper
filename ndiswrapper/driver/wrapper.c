@@ -931,7 +931,8 @@ int ndis_resume(struct pci_dev *pdev)
 	}
 	*/
 
-	doreset(handle);
+	if (miniport->hangcheck(handle->adapter_ctx))
+		doreset(handle);
 	set_int(handle, NDIS_OID_BSSID_LIST_SCAN, 0);
 
 	set_bit(SET_ESSID, &handle->wrapper_work);
