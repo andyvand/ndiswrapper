@@ -111,13 +111,22 @@ int doreset(struct ndis_handle *handle)
 	handle->ndis_comm_res = NDIS_STATUS_PENDING;
 	res = miniport->reset(&handle->reset_status, handle->adapter_ctx);
 
+	up(&handle->ndis_comm_mutex);
+
 	/* instead of waiting asynchrounously for NdisMResetComplete,
 	 * we wait for a while; waiting asynchronously seems to lock
 	 * up the keyboard, especially for Centrino 2200 */
 	mdelay(20);
-	if (res)
+	if (res) {
 		res = handle->ndis_comm_res;
-	up(&handle->ndis_comm_mutex);
+		if (res == NDIS_STATUS_PENDING) {
+			/* INTERMEDIATE HACK: sleep for 10 s */
+			set_current_state(TASK_INTERRUPTIBLE);
+			schedule_timeout(HZ*10);
+			res = handle->ndis_comm_res;
+		}
+	}
+
 	DBGTRACE3("reset: res = %08X, reset status = %08X",
 		  res, handle->reset_status);
 
@@ -435,7 +444,8 @@ static void statcollector_bh(void *data)
 static void statcollector_timer(unsigned long data)
 {
 	struct ndis_handle *handle = (struct ndis_handle *)data;
-	schedule_work(&handle->statcollector_work);
+	if (handle->reset_status == 0)
+		schedule_work(&handle->statcollector_work);
 	statcollector_reinit(handle);
 }
 
@@ -1430,7 +1440,10 @@ static int ndis_init_one_usb(struct usb_interface *intf,
 	/* do we need to power up the card explicitly? */
 	set_int(handle, NDIS_OID_PNP_SET_POWER, NDIS_PM_STATE_D0);
 	miniport = &handle->driver->miniport_char;
-	
+
+	/* WUSB54G requires it, maybe other USB drivers as well... */
+	doreset(handle);
+
 	/* Wait a little to let card power up otherwise ifup might fail after
 	   boot */
 	set_current_state(TASK_INTERRUPTIBLE);
