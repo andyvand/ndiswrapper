@@ -48,7 +48,7 @@ if($ARGV[0] eq "-i" and @ARGV == 2)
 }
 elsif($ARGV[0] eq "-d" and @ARGV == 3)
 {
-	$res = pciid_driver($ARGV[1], $ARGV[2]);
+	$res = devid_driver($ARGV[1], $ARGV[2]);
 }
 elsif($ARGV[0] eq "-e" and @ARGV == 2)
 {
@@ -80,11 +80,14 @@ sub usage
 	      "\n".
 	      "Manage ndis drivers for ndiswrapper.\n".
 	      "-i inffile        Install driver described by 'inffile'\n".
-	      "-d pciid driver   Use installed 'driver' for 'pciid'\n".
+	      "-d devid driver   Use installed 'driver' for 'devid'\n".
 	      "-e driver         Remove 'driver'\n".
 	      "-l                List installed drivers\n".
 	      "-m                Write configuration for modprobe\n".
-	      "-hotplug          (Re)Generate hotplug information\n";
+		"-hotplug          (Re)Generate hotplug information\n".
+		"\n\nwhere 'devid' is either PCIID or USBID of the form ".
+		"XXXX:XXXX\n";
+	
 }
 
 
@@ -160,26 +163,26 @@ sub remove
 	`rm -rf $confdir/$name`;
 }
 
-sub pciid_driver
+sub devid_driver
 {
-	my $pciid = shift;
+	my $devid = shift;
 	my $driver = shift;
 	my $done = 0;
 
-	$pciid = uc($pciid);
-	if (!($pciid =~ /[0-9A-Z]{4}:[0-9A-Z]{4}/))
+	$devid = uc($devid);
+	if (!($devid =~ /[0-9A-Z]{4}:[0-9A-Z]{4}/))
 	{
-		print "'$pciid' is not a valid PCIID\n";
+		print "'$devid' is not a valid device ID\n";
 		return;
 	}
 	open(LS, "ls -1 $confdir/$driver/ |");
 	while(my $f = <LS>)
 	{
 		chomp($f);
-		if ($f =~ /\.conf$/)
+		if ($f =~ /\.([05]).conf$/)
 		{
-			`ln -s $f $confdir/$driver/$pciid.$bustype.conf`;
-			print "Driver '$driver' is used for PCIID '$pciid'\n";
+			`ln -s $f $confdir/$driver/$devid.$1.conf`;
+			print "Driver '$driver' is used for '$devid'\n";
 			$done = 1;
 			last;
 		}
