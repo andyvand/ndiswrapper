@@ -464,7 +464,7 @@ STDCALL NT_STATUS WRAP_EXPORT(KeWaitForSingleObject)
 	if (header->inserted == 0)
 		header->signal_state = FALSE;
 
-	DBGTRACE3("%p, type = %d woke up (%ld), res = %d",
+	DBGTRACE3("%p, type = %d woke up (%d), res = %d",
 		  kevent, header->type, header->signal_state, res);
 	if (res < 0)
 		TRACEEXIT2(return STATUS_ALERTED);

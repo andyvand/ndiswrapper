@@ -90,10 +90,10 @@ typedef uint32_t ULONG_PTR;
 #define CALL_ON_SUCCESS                 0x40
 #define CALL_ON_ERROR                   0x80
 
-typedef char		CHAR;
+typedef int8_t		CHAR;
+typedef uint8_t		UCHAR;
 typedef uint8_t		BOOLEAN;
 typedef uint8_t		BYTE;
-typedef uint8_t		UCHAR;
 typedef int16_t		SHORT;
 typedef uint16_t	USHORT;
 typedef uint16_t	WORD;
