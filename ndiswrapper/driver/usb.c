@@ -55,11 +55,11 @@ static struct work_struct cancel_usb_irp_work;
 		printk(KERN_DEBUG "length: %x",				\
 		       urb->transfer_buffer_length);			\
 		t = dbg;						\
-		for (i = 0; i < urb->transfer_buffer_length && t < &dbg[38]; \
-		     i++)						\
+		for (i = 0; i < urb->transfer_buffer_length &&		\
+			     t < &dbg[sizeof(dbg) - 2]; i++)		\
 			t += sprintf(t, "%02X ",			\
-				     *(((char *)urb->transfer_buffer)+i)); \
-		dbg[sizeof(dbg)] = 0;					\
+				     *(((UCHAR *)urb->transfer_buffer)+i)); \
+		dbg[sizeof(dbg)-1] = 0;					\
 		printk(KERN_DEBUG "%s\n", dbg);				\
 	} while (0)
 #else
