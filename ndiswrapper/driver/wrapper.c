@@ -1877,12 +1877,11 @@ static void __devexit ndis_remove_one(struct pci_dev *pdev)
 
 #ifndef DEBUG_CRASH_ON_INIT
 	set_int(handle, NDIS_OID_DISASSOCIATE, 0);
+	if(handle->net_dev)
+		unregister_netdev(handle->net_dev);
 	call_halt(handle);
 	if(handle->net_dev)
-	{
-		unregister_netdev(handle->net_dev);
 		free_netdev(handle->net_dev);
-	}
 #endif
 	pci_release_regions(pdev);
 	pci_disable_device(pdev);
