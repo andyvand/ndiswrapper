@@ -25,6 +25,13 @@ Installation
 See the INSTALL document for instruction on how to compile and install
 ndiswrapper.
 
+Upgrading
+=========
+
+Many things have changed between 0.4 and 0.5 so if you are upgrading from
+0.4 or earlier it's best to first remove the old installation and carefully
+read the INSTALL document again!
+
 Problems
 ========
 
