@@ -597,7 +597,7 @@ struct ndis_miniport_timer {
 	struct ndis_miniport_timer *next;
 };
 
-#pragma pack(4)
+#pragma pack(push,4)
 struct ndis_resource_entry {
 	UCHAR type;
 	UCHAR share;
@@ -640,7 +640,7 @@ struct ndis_resource_entry {
 		} device_specific_data;
 	} u;
 };
-#pragma pack()
+#pragma pack(pop)
 
 struct ndis_resource_list {
 	USHORT version;
