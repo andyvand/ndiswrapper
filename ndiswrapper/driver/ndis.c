@@ -1530,6 +1530,7 @@ STDCALL BOOLEAN WRAP_EXPORT(NdisMSynchronizeWithInterrupt)
 {
 	unsigned char ret;
 	unsigned char (*sync_func)(void *ctx) STDCALL;
+	unsigned long flags;
 
 	TRACEENTER5("%p %p %p\n", ndis_irq, func, ctx);
 
@@ -1537,9 +1538,9 @@ STDCALL BOOLEAN WRAP_EXPORT(NdisMSynchronizeWithInterrupt)
 		TRACEEXIT5(return 0);
 
 	sync_func = func;
-	wrap_spin_lock(map_kspin_lock(&ndis_irq->lock), DISPATCH_LEVEL);
+	wrap_spin_lock_irqsave(map_kspin_lock(&ndis_irq->lock), flags);
 	ret = LIN2WIN1(sync_func, ctx);
-	wrap_spin_unlock(map_kspin_lock(&ndis_irq->lock));
+	wrap_spin_unlock_irqrestore(map_kspin_lock(&ndis_irq->lock), flags);
 
 	DBGTRACE5("sync_func returns %u", ret);
 	TRACEEXIT5(return ret);
