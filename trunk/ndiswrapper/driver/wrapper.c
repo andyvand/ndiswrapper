@@ -828,8 +828,9 @@ static void link_status_handler(struct ndis_handle *handle)
 	struct ndis_assoc_info *ndis_assoc_info;
 #if WIRELESS_EXT < 18
 	unsigned char *wpa_assoc_info, *ies;
+	unsigned char *p;
 #endif
-	unsigned char *assoc_info, *p;
+	unsigned char *assoc_info;
 	union iwreq_data wrqu;
 	unsigned int i;
 	NDIS_STATUS res;
