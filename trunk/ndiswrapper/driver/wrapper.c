@@ -590,19 +590,6 @@ static int ndis_set_wep(struct net_device *dev, struct iw_request_info *info,
 	}
 	else
 	{
-		if (wrqu->data.flags & IW_ENCODE_RESTRICTED)
-			auth_mode = NDIS_ENCODE_RESTRICTED;
-		else if (wrqu->data.flags & IW_ENCODE_OPEN)
-			auth_mode = NDIS_ENCODE_OPEN;
-		else
-			auth_mode = NDIS_ENCODE_RESTRICTED;
-		res = set_int(handle, NDIS_OID_AUTH_MODE, auth_mode);
-		if (res)
-		{
-			printk(KERN_INFO "%s: setting authentication mode failed (%08x)\n", dev->name, res);
-			return -EINVAL;
-		}
-
 		/* set key only if one is given */
 		if (wrqu->data.length > 0)
 		{
@@ -619,6 +606,19 @@ static int ndis_set_wep(struct net_device *dev, struct iw_request_info *info,
 				return -EINVAL;
 			}
 			memcpy(&handle->wep, &req, sizeof(req));
+		}
+
+		if (wrqu->data.flags & IW_ENCODE_RESTRICTED)
+			auth_mode = NDIS_ENCODE_RESTRICTED;
+		else if (wrqu->data.flags & IW_ENCODE_OPEN)
+			auth_mode = NDIS_ENCODE_OPEN;
+		else
+			auth_mode = NDIS_ENCODE_RESTRICTED;
+		res = set_int(handle, NDIS_OID_AUTH_MODE, auth_mode);
+		if (res)
+		{
+			printk(KERN_INFO "%s: setting authentication mode failed (%08x)\n", dev->name, res);
+			return -EINVAL;
 		}
 
 		res = set_int(handle, NDIS_OID_WEP_STATUS, NDIS_ENCODE_ENABLED);
@@ -926,7 +926,7 @@ static int ndis_get_power_mode(struct net_device *dev,
 		return -EOPNOTSUPP;
 	}
 	if (power_mode == NDIS_POWER_OFF)
-		wrqu->power.disabled = 0;
+		wrqu->power.disabled = 1;
 	else
 	{
 		wrqu->power.flags |= IW_POWER_ALL_R;
@@ -1289,6 +1289,7 @@ static int ndis_ioctl(struct net_device *dev, struct ifreq *rq, int cmd)
 static void send_one(struct ndis_handle *handle, struct ndis_buffer *buffer)
 {
 	struct ndis_packet *packet;
+	int res;
 
 	packet = kmalloc(sizeof(struct ndis_packet), GFP_ATOMIC);
 	if(!packet)
@@ -1340,50 +1341,35 @@ static void send_one(struct ndis_handle *handle, struct ndis_buffer *buffer)
 
 	if(handle->driver->miniport_char.send_packets)
 	{
-		int res;
 		struct ndis_packet *packets[1];
 		packets[0] = packet;
 //		DBGTRACE("Calling send_packets at %08x rva(%08x)\n", (int)handle->driver->miniport_char.send_packets, (int)handle->driver->miniport_char.send_packets - image_offset);
 		handle->driver->miniport_char.send_packets(handle->adapter_ctx, &packets[0], 1);
 		
-		if (!(handle->serialized_driver))
-			return;
-		
 		res = packet->status;
-		if (res == NDIS_STATUS_SUCCESS)
-		{
-//			ndis_sendpacket_done(handle, packet);
-		} else if (res == NDIS_STATUS_PENDING)
-			return;
-		else if (res == NDIS_STATUS_RESOURCES)
-		{
-			DBGTRACE("send packets failed, should queue for send_complete, but for now - just drop: %i \n", res);
-			ndis_sendpacket_done(handle, packet);
-		} else if (res == NDIS_STATUS_FAILURE)
-		{
-			DBGTRACE("send_packets failed: %i \n",res);
-			ndis_sendpacket_done(handle, packet);
-		}
 	}
 	else if(handle->driver->miniport_char.send)
 	{
-		int res;
 //		DBGTRACE("Calling send at %08x rva(%08x)\n", (int)handle->driver->miniport_char.send, (int)handle->driver->miniport_char.send_packets - image_offset);
 		res = handle->driver->miniport_char.send(handle->adapter_ctx, packet, 0);
-
-		if(res == NDIS_STATUS_PENDING)
-		{
-			return;
-		}
-		ndis_sendpacket_done(handle, packet);
-		if(res)
-			DBGTRACE("send_packets returning %08x\n", res);
-
-		return;
 	}
 	else
 	{
 		DBGTRACE("%s: No send handler\n", __FUNCTION__);
+		return;
+	}
+	if(res)
+		DBGTRACE("send_packets returning %08x\n", res);
+	if (!(handle->serialized_driver))
+		return;
+		
+	if (res == NDIS_STATUS_SUCCESS || res == NDIS_STATUS_PENDING)
+		return;
+	else if (res == NDIS_STATUS_RESOURCES || res == NDIS_STATUS_FAILURE)
+	{
+		DBGTRACE("send packets failed, should queue for send_complete, but for now - just drop: %i \n", res);
+		ndis_sendpacket_done(handle, packet);
+		return;
 	}
 }
 
@@ -1489,7 +1475,7 @@ void ndis_sendpacket_done(struct ndis_handle *handle, struct ndis_packet *packet
 	kfree(packet);
 }
 
-int ndiswrapper_pm_callback(struct pm_dev *pm_dev, pm_request_t rqst,
+static int ndiswrapper_pm_callback(struct pm_dev *pm_dev, pm_request_t rqst,
 				   void *data)
 {
 	struct net_device *dev;
@@ -1767,15 +1753,17 @@ static void __devexit ndis_remove_one(struct pci_dev *pdev)
 	ndis_remove_proc(handle);
 
 #ifndef DEBUG_CRASH_ON_INIT
+	set_int(handle, NDIS_OID_DISASSOCIATE, 0);
+	call_halt(handle);
 	unregister_netdev(handle->net_dev);
 
 	if(handle->net_dev)
 		free_netdev(handle->net_dev);
-	set_int(handle, NDIS_OID_DISASSOCIATE, 0);
-	call_halt(handle);
+
 #endif
-	pci_disable_device(pdev);
 	pci_release_regions(pdev);
+	pci_disable_device(pdev);
+	pci_set_drvdata(pdev, NULL);
 }
 
 
@@ -1810,7 +1798,7 @@ static int start_driver(struct ndis_driver *driver)
 	driver->pci_driver.name = driver->name;
 	driver->pci_driver.id_table = driver->pci_id;
 	driver->pci_driver.probe = ndis_init_one;
-	driver->pci_driver.remove = ndis_remove_one;	
+	driver->pci_driver.remove = __devexit_p(ndis_remove_one);	
 	
 #ifndef DEBUG_CRASH_ON_INIT
 	res = pci_module_init(&driver->pci_driver);
