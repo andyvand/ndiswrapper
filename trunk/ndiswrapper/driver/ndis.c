@@ -24,7 +24,6 @@
 #include <linux/ctype.h>
 
 #include "ndis.h"
-#include "ntoskernel.h"
 
 extern int image_offset;
 

@@ -20,7 +20,6 @@
 #include <linux/net.h>
 
 #include "ndis.h"
-#include "ntoskernel.h"
 
 unsigned long RtlCompareMemory(char *b, char *a, unsigned long len)
 {

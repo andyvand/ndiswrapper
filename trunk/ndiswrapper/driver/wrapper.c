@@ -33,7 +33,6 @@
 
 #include <asm/uaccess.h>
 
-#include "ntoskernel.h"
 #include "wrapper.h"
 #include "loader.h"
 #include "ndis.h"

@@ -14,7 +14,7 @@
 #ifndef _NTOSKERNEL_H_
 #define _NTOSKERNEL_H_
 
-#include "ndis.h"
+#include "ndiswrapper.h"
 
 #define DISPATCH_LEVEL 2
 

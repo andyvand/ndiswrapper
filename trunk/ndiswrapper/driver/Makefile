@@ -35,23 +35,29 @@ SRC_DIR=$(shell pwd)
 
 all : prereq_check default
 
-wrapper.o:	wrapper.c loader.h ndis.h loader.h
+wrapper.o:	wrapper.c loader.h ndis.h
 
-iw_ndis..o:	iw_ndis.c loader.h ndis.h loader.h
+iw_ndis..o:	iw_ndis.c iw_ndis.h
 
-loader.o:	loader.c ndis.h
+loader.o:	loader.c loader.h ndis.h
 
-winsyms.o:	winsyms.c ndis.h
+winsyms.o:	winsyms.c winsyms.h ndis.h
 
 misc_funcs.o:	misc_funcs.c ndis.h
 
-ntoskernel.o: ntoskernel.c ntoskernel.h ndis.h
+ntoskernel.o: ntoskernel.c ntoskernel.h
 
 ndis.o:	ndis.c ndis.h
 
 proc.o : proc.c ndis.h
 
 divdi3.o: divdi3.c longlong.h
+
+iw_ndis.h : ndis.h
+
+ndis.h : ntoskernel.h
+
+ntoskernel.h : ndiswrapper.h
 
 OBJS   := wrapper.o iw_ndis.o loader.o winsyms.o ntoskernel.o ndis.o misc_funcs.o proc.o divdi3.o
 
