@@ -824,7 +824,6 @@ static int ndis_start_xmit(struct sk_buff *skb, struct net_device *dev)
 	struct ndis_handle *handle = dev->priv;
 	struct ndis_buffer *buffer;
 	struct ndis_packet *packet;
-	int i = 0;
 	
 	char *data = kmalloc(skb->len, GFP_ATOMIC);
 	if(!data)
@@ -851,6 +850,7 @@ static int ndis_start_xmit(struct sk_buff *skb, struct net_device *dev)
 
 #ifdef DEBUG
 	{
+		int i = 0;
 		/* Poision extra packet info */
 		int *x = (int*) &packet->ext1;
 		for(i = 0; i <= 12; i++)

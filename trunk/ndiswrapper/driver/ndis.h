@@ -15,7 +15,6 @@
 #ifndef NDIS_H
 #define NDIS_H
 
-
 #include <linux/types.h>
 #include <linux/timer.h>
 
@@ -25,6 +24,10 @@
 #include <linux/wait.h>
 
 #include <linux/version.h>
+
+/* Define this to emable debugging */
+/*#define DEBUG 1*/
+
 
 /* Workqueue / task queue backwards compatibility stuff */
 #if LINUX_VERSION_CODE > KERNEL_VERSION(2,5,41)
@@ -60,7 +63,6 @@
 #define NDIS_STATUS_BAD_CHAR    0xc0010005
 int getSp(void);
 
-#define DEBUG 1
 
 #if DEBUG > 0
 #define DBGTRACE(s, args...) printk(s, args)
