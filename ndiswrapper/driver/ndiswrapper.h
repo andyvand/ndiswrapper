@@ -16,6 +16,8 @@
 #ifndef NDISWRAPPER_H
 #define NDISWRAPPER_H
 
+#define DRIVER_NAME "ndiswrapper"
+
 #define SSID_MAX_WPA_IE_LEN 40
 #define NDIS_ESSID_MAX_SIZE 32
 #define NDIS_ENCODING_TOKEN_MAX 32
@@ -38,7 +40,10 @@
 #define MAX_PE_IMAGES 4
 #define MAX_NDIS_DEVICES 20
 #define MAX_NDIS_BIN_FILES 5
-#define MAX_NDIS_SETTINGS 256
+#define MAX_NDIS_SETTINGS 512
+#define MAX_DEVICES 128
+
+#define DEV_ANY_ID -1
 
 #define MAC2STR(a) (a)[0], (a)[1], (a)[2], (a)[3], (a)[4], (a)[5]
 #define MACSTR "%02x:%02x:%02x:%02x:%02x:%02x"

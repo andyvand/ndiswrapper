@@ -39,12 +39,12 @@ static int procfs_read_stats(char *page, char **start, off_t off,
 		return 0;
 	}
 
-	res = miniport_query_info(handle, NDIS_OID_RSSI, (char*)&rssi,
+	res = miniport_query_info(handle, NDIS_OID_RSSI, (char *)&rssi,
 				  sizeof(rssi));
 	if (!res)
 		p += sprintf(p, "signal_level=%ld dBm\n", rssi);
 
-	res = miniport_query_info(handle, NDIS_OID_STATISTICS, (char*)&stats,
+	res = miniport_query_info(handle, NDIS_OID_STATISTICS, (char *)&stats,
 				  sizeof(stats));
 	if (!res) {
 
@@ -88,7 +88,7 @@ static int procfs_read_encr(char *page, char **start, off_t off,
 		return 0;
 	}
 
-	res = miniport_query_info(handle, NDIS_OID_BSSID, (char*)&ap_address,
+	res = miniport_query_info(handle, NDIS_OID_BSSID, (char *)&ap_address,
 				  sizeof(ap_address));
 	if (res)
 		memset(ap_address, 0, ETH_ALEN);
@@ -97,7 +97,7 @@ static int procfs_read_encr(char *page, char **start, off_t off,
 		p += sprintf(p, ":%2.2X", ap_address[i]);
 	p += sprintf(p, "\n");
 
-	res = miniport_query_info(handle, NDIS_OID_ESSID, (char*)&essid,
+	res = miniport_query_info(handle, NDIS_OID_ESSID, (char *)&essid,
 				  sizeof(essid));
 	if (!res) {
 		essid.essid[essid.length] = '\0';
@@ -154,7 +154,7 @@ static int procfs_read_hw(char *page, char **start, off_t off,
 	}
 
 	res = miniport_query_info(handle, NDIS_OID_CONFIGURATION,
-				  (char*)&config, sizeof(config));
+				  (char *)&config, sizeof(config));
 	if (!res) {
 		p += sprintf(p, "beacon_period=%u msec\n",
 			     config.beacon_period);
@@ -169,23 +169,23 @@ static int procfs_read_hw(char *page, char **start, off_t off,
 	}
 
 	res = miniport_query_info(handle, NDIS_OID_TX_POWER_LEVEL,
-				  (char*)&tx_power, sizeof(tx_power));
+				  (char *)&tx_power, sizeof(tx_power));
 	if (!res)
 		p += sprintf(p, "tx_power=%lu mW\n", tx_power);
 
-	res = miniport_query_info(handle, NDIS_OID_GEN_SPEED, (char*)&bit_rate,
-				  sizeof(bit_rate));
+	res = miniport_query_info(handle, NDIS_OID_GEN_SPEED,
+				  (char *)&bit_rate, sizeof(bit_rate));
 	if (!res)
 		p += sprintf(p, "bit_rate=%lu kBps\n", bit_rate / 10);
 
 	res = miniport_query_info(handle, NDIS_OID_RTS_THRESH,
-				  (char*)&rts_threshold,
+				  (char *)&rts_threshold,
 				  sizeof(rts_threshold));
 	if (!res)
 		p += sprintf(p, "rts_threshold=%lu bytes\n", rts_threshold);
 
 	res = miniport_query_info(handle, NDIS_OID_FRAG_THRESH,
-				  (char*)&frag_threshold,
+				  (char *)&frag_threshold,
 				  sizeof(frag_threshold));
 	if (!res)
 		p += sprintf(p, "frag_threshold=%lu bytes\n", frag_threshold);
@@ -286,10 +286,10 @@ static int procfs_write_settings(struct file *file, const char *buf,
 		if (i <= 0 || i > 3)
 			return -EINVAL;
 		if (handle->device->bustype == NDIS_PCI_BUS)
-			ndis_suspend_pci(handle->dev.pci, i);
+			ndiswrapper_suspend_pci(handle->dev.pci, i);
 	} else if (!strcmp(setting, "resume")) {
 		if (handle->device->bustype == NDIS_PCI_BUS)
-			ndis_resume_pci(handle->dev.pci);
+			ndiswrapper_resume_pci(handle->dev.pci);
 	} else if (!strcmp(setting, "reinit")) {
 		if (ndis_reinit(handle))
 			return -EINVAL;
@@ -465,7 +465,7 @@ void ndiswrapper_procfs_remove_iface(struct ndis_handle *handle)
 
 int ndiswrapper_procfs_init(void)
 {
-	ndiswrapper_procfs_entry = proc_mkdir(DRV_NAME, proc_net);
+	ndiswrapper_procfs_entry = proc_mkdir(DRIVER_NAME, proc_net);
 	if (ndiswrapper_procfs_entry == NULL) {
 		ERROR("%s", "Couldn't create procfs directory");
 		return -ENOMEM;
@@ -480,5 +480,5 @@ void ndiswrapper_procfs_remove(void)
 {
 	if (ndiswrapper_procfs_entry == NULL)
 		return;
-	remove_proc_entry(DRV_NAME, proc_net);
+	remove_proc_entry(DRIVER_NAME, proc_net);
 }

@@ -120,8 +120,6 @@ typedef ULONG_PTR	KAFFINITY;
 #define CONFIG_USB 1
 #endif
 
-#define DRV_NAME "ndiswrapper"
-
 /* Workqueue / task queue backwards compatibility stuff */
 #if LINUX_VERSION_CODE > KERNEL_VERSION(2,5,41)
 #include <linux/workqueue.h>

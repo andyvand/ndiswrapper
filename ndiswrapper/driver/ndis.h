@@ -436,47 +436,36 @@ struct ndis_driver {
 	char name[MAX_NDIS_SETTING_NAME_LEN];
 	char version[MAX_NDIS_SETTING_VALUE_LEN];
 
-	struct list_head files;
-
 	int bustype;
-
-	union {
-		struct pci_driver pci;
-		struct usb_driver usb;
-	} driver;
-	union {
-		struct pci_device_id *pci;
-		struct usb_device_id *usb;
-	} idtable;
-
-	int nr_devices;
-	struct ndis_device **devices;
 
 	unsigned int num_pe_images;
 	struct pe_image pe_images[MAX_PE_IMAGES];
 
-	int nr_bin_files;
+	int num_bin_files;
 	struct ndis_bin_file **bin_files;
 
-	int started;
-	unsigned int dev_registered;
+	atomic_t users;
 	struct miniport_char miniport_char;
 };
+
+struct ndis_handle;
 
 /*
  * There is one of these per handeled device-id
  *
  */
 struct ndis_device {
+	struct list_head list;
 	struct list_head settings;
 	int bustype;
 	int vendor;
 	int device;
-	int pci_subvendor;
-	int pci_subdevice;
-	int fuzzy;
+	int subvendor;
+	int subdevice;
 
 	struct ndis_driver *driver;
+	char driver_name[MAX_DRIVER_NAME_LEN];
+	struct ndis_handle *handle;
 };
 
 struct ndis_wireless_stats {
