@@ -1,5 +1,15 @@
 Version 1.0 2005-XX-XX
 ======================
+* Works with some vendor kernels that use different semantcis (from vanilla
+  kernels) for PCI/USB register functions.
+* Don't free memory allocated for 'devices' twice (which was causing kernel
+  crash) when device registration failed.
+* Don't set infrastructure mode in wpa_associate, which clears the keys.
+  With this, WEP should work again with wpa_supplicant.
+* Fix (small) memory leak - free xmit_array when device is removed.
+* Use spinlock when calling any miniport function. This may fix some SMP
+  issues.
+
 * Preliminary support for AMD64 (tested with Broadcom chipset)
 * Dynamic loader support: A driver is loaded only when necessary, so
   even if many drivers are installed or if a driver installs many
