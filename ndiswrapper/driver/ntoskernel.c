@@ -427,7 +427,7 @@ STDCALL void WRAP_EXPORT(MmUnmapIoSpace)
 STDCALL int WRAP_EXPORT(IoIsWdmVersionAvailable)
 	(UCHAR major, UCHAR minor)
 {
-	TRACEENTER3("%d, %d", major, minor);
+	TRACEENTER3("%d, %x", major, minor);
 	if (major == 1 &&
 	    (minor == 0x30 || // Windows 2003
 	     minor == 0x20 || // Windows XP

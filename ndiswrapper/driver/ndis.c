@@ -58,20 +58,9 @@ void ndis_exit(void)
 /* ndis_exit_handle is called for each handle */
 void ndis_exit_handle(struct ndis_handle *handle)
 {
-	struct miniport_char *miniport = &handle->driver->miniport_char;
-
 	/* TI driver doesn't call NdisMDeregisterInterrupt during halt! */
-	if (handle->ndis_irq) {
-		unsigned long flags;
-		struct ndis_irq *ndis_irq = handle->ndis_irq;
-
-		kspin_lock_irqsave(&ndis_irq->lock, flags);
-		if (miniport->disable_interrupts)
-			LIN2WIN1(miniport->disable_interrupts,
-				 handle->adapter_ctx);
-		kspin_unlock_irqrestore(&ndis_irq->lock, flags);
+	if (handle->ndis_irq)
 		NdisMDeregisterInterrupt(handle->ndis_irq);
-	}
 	free_handle_ctx(handle);
 	if (handle->pci_resources)
 		vfree(handle->pci_resources);
@@ -1502,30 +1491,34 @@ STDCALL NDIS_STATUS WRAP_EXPORT(NdisMRegisterInterrupt)
 STDCALL void WRAP_EXPORT(NdisMDeregisterInterrupt)
 	(struct ndis_irq *ndis_irq)
 {
+	struct ndis_handle *handle;
+
 	TRACEENTER1("%p", ndis_irq);
 
-	if (ndis_irq) {
-		struct ndis_handle *handle = ndis_irq->handle;
-		ndis_irq->enabled = 0;
-		/* flush irq_bh workqueue; calling it before enabled=0
-		 * will crash since some drivers (Centrino at least) don't
-		 * expect irq hander to be called anymore */
-		/* cancel_delayed_work is probably better, but 2.4 kernels
-		 * don't have equivalent function
-		 */
+	if (!ndis_irq)
+		TRACEEXIT1(return);
+	handle = ndis_irq->handle;
+	if (!handle)
+		TRACEEXIT1(return);
+
+	ndis_irq->enabled = 0;
+	/* flush irq_bh workqueue; calling it before enabled=0 will
+	 * crash since some drivers (Centrino at least) don't expect
+	 * irq hander to be called anymore */
+	/* cancel_delayed_work is probably better, but 2.4 kernels
+	 * don't have equivalent function
+	 */
 #if LINUX_KERNEL_VERSION >= KERNEL_VERSION(2,6,0)
-		flush_scheduled_work();
+	flush_scheduled_work();
 #else
-		set_current_state(TASK_INTERRUPTIBLE);
-		schedule_timeout(HZ/10);
+	set_current_state(TASK_INTERRUPTIBLE);
+	schedule_timeout(HZ/10);
 #endif
-		free_irq(ndis_irq->irq.irq, ndis_irq);
-		if (unmap_kspin_lock(&ndis_irq->lock))
-			ERROR("IRQ spinlock %p is already freed?",
-			      &ndis_irq->lock);
-		ndis_irq->handle = NULL;
-		handle->ndis_irq = NULL;
-	}
+	free_irq(ndis_irq->irq.irq, ndis_irq);
+	if (unmap_kspin_lock(&ndis_irq->lock))
+		ERROR("IRQ spinlock %p is already freed?", &ndis_irq->lock);
+	ndis_irq->handle = NULL;
+	handle->ndis_irq = NULL;
 	TRACEEXIT1(return);
 }
 
