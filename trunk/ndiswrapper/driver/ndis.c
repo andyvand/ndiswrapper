@@ -548,6 +548,12 @@ STDCALL void NdisQueryBuffer(struct ndis_buffer *buf, void **adr, unsigned int *
 	*len = buf->len;
 }
 
+STDCALL void NdisQueryBufferSafe(struct ndis_buffer *buf, void **addr, unsigned int *len,
+                                 unsigned int priority)
+{
+	*addr = buf->data;
+	*len = buf->len;
+}                                
 
 STDCALL void NdisAllocatePacketPool(unsigned int *status,
                                     unsigned int *poolhandle,
@@ -879,6 +885,19 @@ STDCALL unsigned long NDIS_BUFFER_TO_SPAN_PAGES(void *buffer)
 	return 1;
 }
 
+/*
+ * Sleeps for the given number of microseconds
+ */
+STDCALL void NdisMSleep(unsigned long us_to_sleep)
+{
+	DBGTRACE("%s called to sleep for %lu us\n", __FUNCTION__, us_to_sleep);
+	if (us_to_sleep > 0)
+	{
+		schedule_timeout((us_to_sleep * HZ)/1000000);
+		DBGTRACE("%s woke up\n", __FUNCTION__);
+	} 
+}
+
 
 /* Unimplemented...*/
 STDCALL void NdisInitAnsiString(void *src, void *dst) {UNIMPL();}
@@ -907,9 +926,7 @@ void NdisUnicodeStringToAnsiString(void){UNIMPL();}
 
 void NdisResetEvent(void){UNIMPL();}
 void NdisInitializeString(void){UNIMPL();}
-void NdisMSleep(void){UNIMPL();}
 void NdisUnchainBufferAtBack(void){UNIMPL();}
-void NdisQueryBufferSafe(void){UNIMPL();}
 void NdisGetFirstBufferFromPacketSafe(void){UNIMPL();}
 void NdisUnchainBufferAtFront(void){UNIMPL();}
 
