@@ -59,7 +59,6 @@
 static char *if_name = "wlan%d";
 int proc_uid, proc_gid;
 static int hangcheck_interval;
-static int hangcheck = 1;
 
 MODULE_PARM(if_name, "s");
 MODULE_PARM_DESC(if_name, "Network interface name or template (default: wlan%d)");
@@ -70,11 +69,9 @@ MODULE_PARM_DESC(proc_gid, "The gid of the files created in /proc (default: 0)."
 MODULE_PARM(hangcheck_interval, "i");
 /* 0 - default value provided by NDIS driver,
  * positive value - force hangcheck interval to that many seconds
+ * negative value - disable hangcheck
  */
 MODULE_PARM_DESC(hangcheck_interval, "The interval, in seconds, for checking if driver is hung. (default: 0)");
-
-MODULE_PARM(hangcheck, "i");
-MODULE_PARM_DESC(hangcheck, "Boolean for checking if driver is hung: 0 to disable hangcheck and 1 to enable hangcheck. (default: 1)");
 
 /* List of loaded drivers */
 LIST_HEAD(ndis_driverlist);
@@ -390,7 +387,7 @@ static void hangcheck_reinit(struct ndis_handle *handle)
 void hangcheck_add(struct ndis_handle *handle)
 {
 	if(!handle->driver->miniport_char.hangcheck ||
-	   handle->hangcheck == 0 || handle->hangcheck_interval <= 0)
+	   handle->hangcheck_interval <= 0)
 		return;
 
 	INIT_WORK(&handle->hangcheck_work, &hangcheck_bh, handle);
@@ -401,7 +398,7 @@ void hangcheck_add(struct ndis_handle *handle)
 void hangcheck_del(struct ndis_handle *handle)
 {
 	if(!handle->driver->miniport_char.hangcheck ||
-	   handle->hangcheck == 0 || handle->hangcheck_interval <= 0)
+	   handle->hangcheck_interval <= 0)
 		return;
 
 	del_timer_sync(&handle->hangcheck_timer);
