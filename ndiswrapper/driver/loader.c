@@ -13,14 +13,13 @@
  *
  */
 
+#include <linux/module.h>
+#include <linux/mm.h>
+#include <asm/pgalloc.h>
 
 #include "coffpe.h"
 #include "winsyms.h"
 #include "ndis.h"
-
-#include <linux/module.h>
-#include <linux/mm.h>
-#include <asm/pgalloc.h>
 
 #define RADR(base, rva, type) (type) ((char*)base + rva)
 
