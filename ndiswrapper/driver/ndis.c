@@ -1308,8 +1308,9 @@ STDCALL unsigned char NdisMSynchronizeWithInterrupt(struct ndis_irq *ndis_irq,
 						    void *func, void *ctx)
 {
 	unsigned char ret;
-	DBGTRACE("%s: %08x %08x %08x %08x\n", __FUNCTION__, (int) ndis_irq, (int) ndis_irq, (int) func, (int) ctx);
 	unsigned char (*sync_func)(void *ctx) STDCALL;
+
+	DBGTRACE("%s: %08x %08x %08x %08x\n", __FUNCTION__, (int) ndis_irq, (int) ndis_irq, (int) func, (int) ctx);
 
 	if (func == NULL || ctx == NULL)
 		return 0;
