@@ -280,67 +280,6 @@ NOREGPARM int wrap_atoi(const char *ptr)
 	return i;
 }
 
-STDCALL void WRITE_REGISTER_ULONG(unsigned int reg, unsigned int val)
-{
-	writel(val, reg);
-}
-
-STDCALL void WRITE_REGISTER_USHORT(unsigned int reg, unsigned short val)
-{
-	writew(val, reg);
-}
-
-STDCALL void WRITE_REGISTER_UCHAR(unsigned int reg, unsigned char val)
-{
-	writeb(val, reg);
-}
-
-STDCALL void WRITE_PORT_ULONG(unsigned int port, unsigned int value)
-{
-	outl(value, port);
-}
-
-STDCALL unsigned int READ_PORT_ULONG(unsigned int port)
-{
-	return inl(port);
-}
-
-STDCALL void WRITE_PORT_USHORT(unsigned int port, unsigned short value)
-{
-	outw(value, port);
-}
-
-STDCALL unsigned short READ_PORT_USHORT(unsigned int port)
-{
-	return inw(port);
-}
-
-STDCALL void WRITE_PORT_UCHAR(unsigned int port, unsigned char value)
-{
-	outb(value, port);
-}
-
-STDCALL unsigned short READ_PORT_UCHAR(unsigned int port)
-{
-	return inb(port);
-}
-
-
-STDCALL void WRITE_PORT_BUFFER_USHORT (unsigned int port, unsigned short *buf,
-				       unsigned long count)
-{
-	unsigned long i;
-	for (i = 0 ; i < count ; i++)
-		outw(buf[i], port);
-}
-
-STDCALL void READ_PORT_BUFFER_USHORT (unsigned int port, unsigned short *buf,
-				      unsigned long count)
-{
-	unsigned long i;
-	for (i = 0 ; i < count; i++)
-		buf[i] = inw(port);
-}
 
 STDCALL __s64 _alldiv(__s64 a, __s64 b)
 {
@@ -647,10 +586,6 @@ void inline my_dumpstack(void)
 
 struct wrap_func misc_wrap_funcs[] =
 {
-	WRAP_FUNC_ENTRY(READ_PORT_BUFFER_USHORT),
-	WRAP_FUNC_ENTRY(READ_PORT_UCHAR),
-	WRAP_FUNC_ENTRY(READ_PORT_ULONG),
-	WRAP_FUNC_ENTRY(READ_PORT_USHORT),
 	WRAP_FUNC_ENTRY(RtlAnsiStringToUnicodeString),
 	WRAP_FUNC_ENTRY(RtlCompareMemory),
 	WRAP_FUNC_ENTRY(RtlCompareString),
@@ -662,13 +597,6 @@ struct wrap_func misc_wrap_funcs[] =
 	WRAP_FUNC_ENTRY(RtlIntegerToUnicodeString),
 	WRAP_FUNC_ENTRY(RtlUnicodeStringToAnsiString),
 	WRAP_FUNC_ENTRY(RtlUnwind),
-	WRAP_FUNC_ENTRY(WRITE_PORT_BUFFER_USHORT),
-	WRAP_FUNC_ENTRY(WRITE_PORT_UCHAR),
-	WRAP_FUNC_ENTRY(WRITE_PORT_ULONG),
-	WRAP_FUNC_ENTRY(WRITE_PORT_USHORT),
-	WRAP_FUNC_ENTRY(WRITE_REGISTER_UCHAR),
-	WRAP_FUNC_ENTRY(WRITE_REGISTER_ULONG),
-	WRAP_FUNC_ENTRY(WRITE_REGISTER_USHORT),
 
 	WRAP_FUNC_ENTRY(_alldiv),
 	WRAP_FUNC_ENTRY(_allmul),

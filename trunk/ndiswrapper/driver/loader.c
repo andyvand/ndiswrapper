@@ -22,7 +22,7 @@
 #define RADR(base, rva, type) (type) ((char*)base + rva)
 
 extern struct wrap_func ntos_wrap_funcs[], ndis_wrap_funcs[],
-	misc_wrap_funcs[];
+	misc_wrap_funcs[], hal_wrap_funcs[];
 
 WRAP_FUNC *get_wrap_func(char *name)
 {
@@ -39,6 +39,10 @@ WRAP_FUNC *get_wrap_func(char *name)
 	for (i = 0 ; misc_wrap_funcs[i].name != NULL; i++)
 		if (strcmp(misc_wrap_funcs[i].name, name) == 0)
 			return misc_wrap_funcs[i].func;
+
+	for (i = 0 ; hal_wrap_funcs[i].name != NULL; i++)
+		if (strcmp(hal_wrap_funcs[i].name, name) == 0)
+			return hal_wrap_funcs[i].func;
 
 	return NULL;
 }

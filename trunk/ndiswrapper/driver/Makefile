@@ -7,6 +7,7 @@ DISTFILES=Makefile \
  coffpe.h \
  loader.c loader.h \
  ndis.c ndis.h \
+ hal.c \
  ntoskernel.c ntoskernel.h \
  iw_ndis.c iw_ndis.h \
  wrapper.c wrapper.h \
@@ -42,6 +43,8 @@ loader.o:	loader.c loader.h ndis.h
 
 misc_funcs.o:	misc_funcs.c ndis.h
 
+hal.o:		hal.c ndis.h
+
 ntoskernel.o: ntoskernel.c ntoskernel.h
 
 ndis.o:	ndis.c ndis.h
@@ -56,7 +59,7 @@ ndis.h : ntoskernel.h
 
 ntoskernel.h : ndiswrapper.h
 
-OBJS   := wrapper.o iw_ndis.o loader.o ntoskernel.o ndis.o misc_funcs.o proc.o divdi3.o 
+OBJS   := wrapper.o iw_ndis.o loader.o ntoskernel.o ndis.o misc_funcs.o proc.o divdi3.o hal.o
 
 ifdef DEBUG
 CFLAGS += -DDEBUG -g -DDEBUG_TIMER
