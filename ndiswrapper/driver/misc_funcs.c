@@ -18,13 +18,26 @@
 #include <asm/io.h>
 #include <linux/ctype.h>
 #include <linux/net.h>
-#include <linux/hash.h>
 #include <linux/list.h>
 
 #include "ndis.h"
 
+static struct list_head wrap_allocs;
+static spinlock_t wrap_allocs_lock;
+static spinlock_t timers_lock;
+
+#if defined(CONFIG_SMP) || defined (CONFIG_DEBUG_SPINLOCK)
+
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
+#include <linux/hash.h>
+#else
+#error kernel version < 2.6.0 with either CONFIG_SMP or CONFIG_DEBUG_SPINLOCK \
+	enabled is not supported
+#endif
+
 #define SPINLOCK_HASH_BITS 6
 #define SPINLOCK_MAP_SIZE (1 << SPINLOCK_HASH_BITS)
+static spinlock_t spinlock_map_lock;
 
 struct spinlock_hash {
 	struct hlist_node hlist;
@@ -33,54 +46,18 @@ struct spinlock_hash {
 };
 
 static struct hlist_head spinlock_map[SPINLOCK_MAP_SIZE];
-static struct list_head wrap_allocs;
-static spinlock_t wrap_allocs_lock;
-static spinlock_t timers_lock;
-static spinlock_t spinlock_map_lock;
 
-int misc_funcs_init(void)
+int spinlock_map_init(void)
 {
 	int i;
 
 	spin_lock_init(&spinlock_map_lock);
-	INIT_LIST_HEAD(&wrap_allocs);
-	spin_lock_init(&wrap_allocs_lock);
-	spin_lock_init(&timers_lock);
 	for (i = 0; i < SPINLOCK_MAP_SIZE; i++)
 		INIT_HLIST_HEAD(&spinlock_map[i]);
 	return 0;
 }
 
-/* called when a handle is being removed */
-void misc_funcs_exit_handle(struct ndis_handle *handle)
-{
-	char canceled;
-	/* cancel any timers left by bugyy windows driver
-	 * Also free the memory for timers
-	 */
-	while (1) {
-		struct wrapper_timer *timer;
-
-		spin_lock_bh(&timers_lock);
-		if (list_empty(&handle->timers)) {
-			spin_unlock_bh(&timers_lock);
-			break;
-		}
-
-		timer = list_entry(handle->timers.next,
-				   struct wrapper_timer, list);
-		list_del(&timer->list);
-		spin_unlock_bh(&timers_lock);
-
-		DBGTRACE1("fixing up timer %p, timer->list %p",
-			  timer, &timer->list);
-		wrapper_cancel_timer(timer, &canceled);
-		wrap_kfree(timer);
-	}
-}
-
-/* called when module is being removed */
-void misc_funcs_exit(void)
+void spinlock_map_destroy(void)
 {
 	int i;
 	struct hlist_head *head;
@@ -102,20 +79,6 @@ void misc_funcs_exit(void)
 		}
 	}
 	spin_unlock(&spinlock_map_lock);
-
-	/* free all pointers on the allocated list */
-	spin_lock(&wrap_allocs_lock);
-	while (!list_empty(&wrap_allocs)) {
-		struct wrap_alloc *alloc;
-
-		alloc = list_entry(wrap_allocs.next, struct wrap_alloc, list);
-		list_del(&alloc->list);
-		kfree(alloc->ptr);
-		kfree(alloc);
-	}
-	spin_unlock(&wrap_allocs_lock);
-
-	TRACEEXIT4(return);
 }
 
 /* if given kspin_lock is already mapped, return the mapped
@@ -181,6 +144,80 @@ int unmap_kspin_lock(KSPIN_LOCK *kspin_lock)
 	spin_unlock(&spinlock_map_lock);
 	DBGTRACE3("kspin_lock %p is not found", kspin_lock);
 	return -EEXIST;
+}
+
+#else // CONFIG_SMP || CONFIG_DEBUG_SPINLOCK
+
+int spinlock_map_init(void)
+{
+	return 0;
+}
+
+void spinlock_map_destroy(void)
+{
+	return;
+}
+
+#endif // CONFIG_SMP || CONFIG_DEBUG_SPINLOCK
+
+int misc_funcs_init(void)
+{
+	INIT_LIST_HEAD(&wrap_allocs);
+	spin_lock_init(&wrap_allocs_lock);
+	spin_lock_init(&timers_lock);
+	if (spinlock_map_init()) {
+		ERROR("couldn't initialize spinlock map");
+		return -EINVAL;
+	}
+	return 0;
+}
+
+/* called when a handle is being removed */
+void misc_funcs_exit_handle(struct ndis_handle *handle)
+{
+	char canceled;
+	/* cancel any timers left by bugyy windows driver
+	 * Also free the memory for timers
+	 */
+	while (1) {
+		struct wrapper_timer *timer;
+
+		spin_lock_bh(&timers_lock);
+		if (list_empty(&handle->timers)) {
+			spin_unlock_bh(&timers_lock);
+			break;
+		}
+
+		timer = list_entry(handle->timers.next,
+				   struct wrapper_timer, list);
+		list_del(&timer->list);
+		spin_unlock_bh(&timers_lock);
+
+		DBGTRACE1("fixing up timer %p, timer->list %p",
+			  timer, &timer->list);
+		wrapper_cancel_timer(timer, &canceled);
+		wrap_kfree(timer);
+	}
+}
+
+/* called when module is being removed */
+void misc_funcs_exit(void)
+{
+	spinlock_map_destroy();
+
+	/* free all pointers on the allocated list */
+	spin_lock(&wrap_allocs_lock);
+	while (!list_empty(&wrap_allocs)) {
+		struct wrap_alloc *alloc;
+
+		alloc = list_entry(wrap_allocs.next, struct wrap_alloc, list);
+		list_del(&alloc->list);
+		kfree(alloc->ptr);
+		kfree(alloc);
+	}
+	spin_unlock(&wrap_allocs_lock);
+
+	TRACEEXIT4(return);
 }
 
 /* allocate memory with given flags and add it to list of allocated pointers;

@@ -318,13 +318,13 @@ static void hangcheck_proc(unsigned long data)
 		}
 	}
 
-	wrap_spin_lock(&handle->timers_lock, PASSIVE_LEVEL);
+	spin_lock(&handle->timers_lock);
 	if (handle->hangcheck_active) {
 		handle->hangcheck_timer.expires =
 			jiffies + handle->hangcheck_interval;
 		add_timer(&handle->hangcheck_timer);
 	}
-	wrap_spin_unlock(&handle->timers_lock);
+	spin_unlock(&handle->timers_lock);
 
 	TRACEEXIT3(return);
 }
@@ -341,10 +341,10 @@ void hangcheck_add(struct ndis_handle *handle)
 	handle->hangcheck_timer.data = (unsigned long) handle;
 	handle->hangcheck_timer.function = &hangcheck_proc;
 
-	wrap_spin_lock(&handle->timers_lock, PASSIVE_LEVEL);
+	spin_lock(&handle->timers_lock);
 	add_timer(&handle->hangcheck_timer);
 	handle->hangcheck_active = 1;
-	wrap_spin_unlock(&handle->timers_lock);
+	spin_unlock(&handle->timers_lock);
 	return;
 }
 
@@ -354,10 +354,10 @@ void hangcheck_del(struct ndis_handle *handle)
 	    handle->hangcheck_interval <= 0)
 		return;
 
-	wrap_spin_lock(&handle->timers_lock, PASSIVE_LEVEL);
+	spin_lock(&handle->timers_lock);
 	handle->hangcheck_active = 0;
 	del_timer(&handle->hangcheck_timer);
-	wrap_spin_unlock(&handle->timers_lock);
+	spin_unlock(&handle->timers_lock);
 }
 
 static void stats_proc(unsigned long data)
@@ -381,9 +381,9 @@ static void stats_timer_add(struct ndis_handle *handle)
 
 static void stats_timer_del(struct ndis_handle *handle)
 {
-	wrap_spin_lock(&handle->timers_lock, PASSIVE_LEVEL);
+	spin_lock(&handle->timers_lock);
 	del_timer_sync(&handle->stats_timer);
-	wrap_spin_unlock(&handle->timers_lock);
+	spin_unlock(&handle->timers_lock);
 }
 
 static int ndis_open(struct net_device *dev)
@@ -715,9 +715,9 @@ static void xmit_worker(void *param)
 	/* some drivers e.g., new RT2500 driver, crash if any packets
 	 * are sent when the card is not associated */
 	while (handle->send_ok) {
-		wrap_spin_lock(&handle->lock, DISPATCH_LEVEL);
+		spin_lock_bh(&handle->lock);
 		if (handle->xmit_ring_pending == 0) {
-			wrap_spin_unlock(&handle->lock);
+			spin_unlock_bh(&handle->lock);
 			break;
 		}
 		n = send_packets(handle, handle->xmit_ring_start,
@@ -727,7 +727,7 @@ static void xmit_worker(void *param)
 		handle->xmit_ring_pending -= n;
 		if (n > 0 && netif_queue_stopped(handle->net_dev))
 			netif_wake_queue(handle->net_dev);
-		wrap_spin_unlock(&handle->lock);
+		spin_unlock_bh(&handle->lock);
 	}
 
 	TRACEEXIT3(return);
@@ -739,11 +739,11 @@ static void xmit_worker(void *param)
 void sendpacket_done(struct ndis_handle *handle, struct ndis_packet *packet)
 {
 	TRACEENTER3("%s", "");
-	wrap_spin_lock(&handle->send_packet_done_lock, PASSIVE_LEVEL);
+	spin_lock(&handle->send_packet_done_lock);
 	handle->stats.tx_bytes += packet->private.len;
 	handle->stats.tx_packets++;
 	free_packet(handle, packet);
-	wrap_spin_unlock(&handle->send_packet_done_lock);
+	spin_unlock(&handle->send_packet_done_lock);
 	TRACEEXIT3(return);
 }
 
@@ -784,7 +784,7 @@ static int start_xmit(struct sk_buff *skb, struct net_device *dev)
 	}
 	dev_kfree_skb(skb);
 
-	wrap_spin_lock(&handle->lock, PASSIVE_LEVEL);
+	spin_lock(&handle->lock);
 	xmit_ring_next_slot =
 		(handle->xmit_ring_start +
 		 handle->xmit_ring_pending) % XMIT_RING_SIZE;
@@ -792,7 +792,7 @@ static int start_xmit(struct sk_buff *skb, struct net_device *dev)
 	handle->xmit_ring_pending++;
 	if (handle->xmit_ring_pending == XMIT_RING_SIZE)
 		netif_stop_queue(handle->net_dev);
-	wrap_spin_unlock(&handle->lock);
+	spin_unlock(&handle->lock);
 
 	schedule_work(&handle->xmit_work);
 
@@ -908,7 +908,7 @@ void ndiswrapper_remove_one_dev(struct ndis_handle *handle)
 
 	/* flush_scheduled_work here causes crash with 2.4 kernels */
 	/* instead, throw away pending packets */
-	wrap_spin_lock(&handle->lock, DISPATCH_LEVEL);
+	spin_lock_bh(&handle->lock);
 	while (handle->xmit_ring_pending) {
 		struct ndis_packet *packet;
 
@@ -918,7 +918,7 @@ void ndiswrapper_remove_one_dev(struct ndis_handle *handle)
 			(handle->xmit_ring_start + 1) % XMIT_RING_SIZE;
 		handle->xmit_ring_pending--;
 	}
-	wrap_spin_unlock(&handle->lock);
+	spin_unlock_bh(&handle->lock);
 
 	miniport_set_int(handle, OID_802_11_DISASSOCIATE, 0);
 
@@ -1510,7 +1510,7 @@ struct net_device *ndis_init_netdev(struct ndis_handle **phandle,
 	handle->net_dev = dev;
 	handle->ndis_irq = NULL;
 
-	wrap_spin_lock_init(&handle->lock);
+	spin_lock_init(&handle->lock);
 	init_MUTEX(&handle->ndis_comm_mutex);
 	init_waitqueue_head(&handle->ndis_comm_wq);
 	handle->ndis_comm_done = 0;
@@ -1522,7 +1522,7 @@ struct net_device *ndis_init_netdev(struct ndis_handle **phandle,
 	handle->xmit_ring_start = 0;
 	handle->xmit_ring_pending = 0;
 
-	wrap_spin_lock_init(&handle->send_packet_done_lock);
+	spin_lock_init(&handle->send_packet_done_lock);
 
 	handle->encr_mode = Ndis802_11EncryptionDisabled;
 	handle->auth_mode = Ndis802_11AuthModeOpen;
@@ -1532,7 +1532,7 @@ struct net_device *ndis_init_netdev(struct ndis_handle **phandle,
 	handle->reset_status = 0;
 
 	INIT_LIST_HEAD(&handle->timers);
-	wrap_spin_lock_init(&handle->timers_lock);
+	spin_lock_init(&handle->timers_lock);
 
 	handle->rx_packet = WRAP_FUNC_PTR(NdisMIndicateReceivePacket);
 	handle->send_complete = WRAP_FUNC_PTR(NdisMSendComplete);

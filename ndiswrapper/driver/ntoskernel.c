@@ -36,7 +36,8 @@ int ntoskrnl_init(void)
 
 void ntoskrnl_exit(void)
 {
-	unmap_kspin_lock(&ntoskrnl_lock);
+	if (unmap_kspin_lock(&ntoskrnl_lock))
+		ERROR("ntoskrnl_lock already unmapped?");
 	return;
 }
 
