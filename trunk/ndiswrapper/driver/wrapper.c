@@ -898,11 +898,7 @@ static void wrapper_worker_proc(void *param)
 		ndis_set_mode(handle->net_dev, NULL, &wrqu, NULL);
 	}
 
-	if (test_and_clear_bit(WRAPPER_LINK_STATUS, &handle->wrapper_work)
-	    && handle->encr_alg == WPA_ALG_TKIP)
-
-//	    (handle->auth_mode == AUTHMODE_WPA ||
-//		handle->auth_mode == AUTHMODE_WPAPSK))
+	if (test_and_clear_bit(WRAPPER_LINK_STATUS, &handle->wrapper_work))
 	{
 		unsigned char *assoc_info;
 		struct ndis_assoc_info *ndis_assoc_info;
@@ -912,7 +908,6 @@ static void wrapper_worker_proc(void *param)
 		union iwreq_data wrqu;
 
 		unsigned int res, written, needed;
-		char *dbg_buf;
 		
 		assoc_info = kmalloc(sizeof(*ndis_assoc_info) + 512,
 				     GFP_KERNEL);
@@ -949,26 +944,13 @@ static void wrapper_worker_proc(void *param)
 		       ndis_assoc_info->resp_ie_length,
 		       ndis_assoc_info->offset_resp_ies);
 
-		dbg_buf = kmalloc(2048, GFP_KERNEL);
-		if (dbg_buf)
-		{
-			int i;
-			char *dp = dbg_buf;
-			for (i = 0; i < written; i++)
-				dp += sprintf(dp,"%02x ", assoc_info[i]);
-			*dp = '\0';
-			DBGTRACE("assoc_info (%d): %s",
-				 dp - dbg_buf, dbg_buf);
-			kfree(dbg_buf);
-		}
 		p = wpa_assoc_info;
 		p += sprintf(p, "ASSOCINFO(ReqIEs=");
 		offset = ((char *)ndis_assoc_info) +
 			ndis_assoc_info->offset_req_ies;
 		for (i = 0 ; i < 256 && i < ndis_assoc_info->req_ie_length ;
 		     i++)
-//			if (i < 13 || i > 20)
-				p += sprintf(p, "%02x", *(offset + i));
+			p += sprintf(p, "%02x", *(offset + i));
 			
 		p += sprintf(p, " RespIEs=");
 		offset = ((char *)ndis_assoc_info) + 
@@ -1042,8 +1024,6 @@ static void check_wpa(struct ndis_handle *handle)
 	DBGTRACE("wep_mode = %d", mode);
 	set_wep_mode(handle, mode);
 			
-//	if (handle->wep_mode == WEP_ENCR3_ENABLED ||
-//	    handle->wep_mode == WEP_ENCR2_ENABLED)
 	if (handle->wep_mode != WEP_DISABLED)
 	{
 		ndis_key.key_len = 32;
@@ -1104,7 +1084,7 @@ static int setup_dev(struct net_device *dev)
 	memset(&wrqu, 0, sizeof(wrqu));
 
 	set_bit(SET_OP_MODE, &handle->wrapper_work);
-//	set_bit(SET_ESSID, &handle->wrapper_work);
+	set_bit(SET_ESSID, &handle->wrapper_work);
 	schedule_work(&handle->wrapper_worker);
 
 	res = query_int(handle, OID_802_3_MAXIMUM_LIST_SIZE, &i);
@@ -1904,4 +1884,3 @@ module_init(wrapper_init);
 module_exit(wrapper_exit);
 
 MODULE_LICENSE("GPL");
-

@@ -32,7 +32,8 @@ int ndis_set_essid(struct net_device *dev, struct iw_request_info *info,
 	unsigned int res, written, needed;
 	struct essid_req req;
 
-	TRACEENTER1("%s", "");
+	TRACEENTER1("flags = %d, length = %d",
+		    wrqu->essid.flags, wrqu->essid.length);
 	memset(&req.essid, 0, sizeof(req.essid));
 	
 	if (wrqu->essid.flags == 0)
@@ -44,6 +45,8 @@ int ndis_set_essid(struct net_device *dev, struct iw_request_info *info,
 
 		req.len = wrqu->essid.length - 1;
 		memcpy(&req.essid, extra, req.len);
+		req.essid[req.len] = 0;
+		DBGTRACE("ssid = '%s'", req.essid);
 	}
 	
 	handle->essid.flags = wrqu->essid.flags;
@@ -420,8 +423,8 @@ static int ndis_set_ap_address(struct net_device *dev,
 	unsigned int res, written, needed;
 	__u8 mac_address[ETH_ALEN];
 
-	TRACEENTER1("%s", "");
         memcpy(mac_address, wrqu->ap_addr.sa_data, ETH_ALEN);
+	DBGTRACE1(MACSTR, MAC2STR(mac_address));
 	res = dosetinfo(handle, NDIS_OID_BSSID, (char*)&(mac_address[0]),
 			ETH_ALEN, &written, &needed);
 
@@ -514,28 +517,26 @@ static int ndis_get_encr(struct net_device *dev, struct iw_request_info *info,
 int set_auth_mode(struct ndis_handle *handle, int auth_mode)
 {
 	unsigned int res;
-	TRACEENTER1("auth_mode = %d", auth_mode);
 	res = set_int(handle, NDIS_OID_AUTH_MODE, auth_mode);
 	if (res)
-		TRACEEXIT1(return -EINVAL);
+		return -EINVAL;
 	else
 	{
 		handle->auth_mode = auth_mode;
-		TRACEEXIT1(return 0);
+		return 0;
 	}
 }
 
 int set_wep_mode(struct ndis_handle *handle, int wep_mode)
 {
 	unsigned int res;
-	TRACEENTER1("wep_mode = %d", wep_mode);
 	res = set_int(handle, NDIS_OID_WEP_STATUS, wep_mode);
 	if (res)
-		TRACEEXIT1(return -EINVAL);
+		return -EINVAL;
 	else
 	{
 		handle->wep_mode = wep_mode;
-		TRACEEXIT1(return 0);
+		return 0;
 	}
 }
 
@@ -628,8 +629,8 @@ static int ndis_set_encr(struct net_device *dev, struct iw_request_info *info,
 		}
 
 		/* ndis drivers want essid to be set after setting wep */
-//		set_bit(SET_ESSID, &handle->wrapper_work);
-//		schedule_work(&handle->wrapper_worker);
+		set_bit(SET_ESSID, &handle->wrapper_work);
+		schedule_work(&handle->wrapper_worker);
 	}
 
 	/* global wep state (for all keys) */
@@ -1182,7 +1183,7 @@ static int ndis_set_key(struct net_device *dev, struct iw_request_info *info,
 	struct wpa_key *wpa_key = (struct wpa_key *)wrqu->data.pointer;
 	int i, res, written, needed;
 	
-	TRACEENTER("alg = %d, key = %d", wpa_key->alg, wpa_key->key_index);
+	TRACEENTER("alg = %d", wpa_key->alg);
 	
 	if (wpa_key->alg == WPA_ALG_NONE || wpa_key->key_len == 0)
 	{
@@ -1212,6 +1213,7 @@ static int ndis_set_key(struct net_device *dev, struct iw_request_info *info,
 	{
 		struct wep_req wep;
 
+		/* FIXME: use ndis_set_encr instead of repeating here */
 		wep.len = sizeof(wep);
 		wep.keyindex = wpa_key->key_index;
 		wep.keyindex |= (1 << 31);
@@ -1258,26 +1260,17 @@ static int ndis_set_key(struct net_device *dev, struct iw_request_info *info,
 		ndis_key.key_index |= (1 << 31);
 	}
 
-	{ /* jkm: need to set bssid also for broadcast keys */
-		union iwreq_data wrqu;
+	DBGTRACE("bssid " MACSTR, MAC2STR(wpa_key->addr));
+	if (!memcmp(wpa_key->addr,
+		    "\xFF\xFF\xFF\xFF\xFF\xFF", ETH_ALEN))
+	{
+		union iwreq_data ap_wrqu;
 
-		DBGTRACE("bssid " MACSTR, MAC2STR(wpa_key->addr));
-		if (!memcmp(wpa_key->addr,
-			    "\xFF\xFF\xFF\xFF\xFF\xFF", ETH_ALEN))
-		{
-			ndis_get_ap_address(dev, NULL, &wrqu, NULL);
-			memcpy(&ndis_key.bssid, &wrqu.ap_addr.sa_data,
-			       ETH_ALEN);
-		}
-		else
-			memcpy(&ndis_key.bssid, wpa_key->addr, ETH_ALEN);
-
-		
-#if 0 /* jkm: why is this here? */
-		wrqu.data.flags = 1;
-		ndis_set_wpa(dev, NULL, &wrqu, NULL);
-#endif
+		ndis_get_ap_address(dev, NULL, &ap_wrqu, NULL);
+		memcpy(&ndis_key.bssid, &ap_wrqu.ap_addr.sa_data, ETH_ALEN);
 	}
+	else
+		memcpy(&ndis_key.bssid, wpa_key->addr, ETH_ALEN);
 
 	if (wpa_key->alg == WPA_ALG_TKIP && wpa_key->key_len == 32) {
 		/* wpa_supplicant gives us the Michael MIC RX/TX keys in
@@ -1298,19 +1291,9 @@ static int ndis_set_key(struct net_device *dev, struct iw_request_info *info,
 	}
 	
 	/* FIXME: check for TKIP -> encr mode */
-	if (wpa_key->key_index == 0)
-		handle->encr_alg = wpa_key->alg;
+	handle->encr_alg = wpa_key->alg;
 	DBGTRACE("encr_alg = %d", handle->encr_alg);
 	TRACEEXIT(return 0);
-}
-
-static int ndis_set_associate(struct net_device *dev,
-			      struct iw_request_info *info,
-			      union iwreq_data *wrqu, char *extra)
-{
-	TRACEENTER("%s", "");
-	/* FIXME: for now we simply set the essid */
-	TRACEEXIT(return ndis_set_essid(dev, info, wrqu, extra));
 }
 
 static int ndis_set_disassociate(struct net_device *dev,
@@ -1341,45 +1324,22 @@ int ndis_set_priv_filter(struct net_device *dev,
 	TRACEEXIT(return 0);
 }
 
-static int ndis_set_generic_element(struct net_device *dev,
-				    struct iw_request_info *info,
-				    union iwreq_data *wrqu, char *extra)
-{
-	int i;
-	union iwreq_data iwrq;
-
-	printk(KERN_INFO "generic_element (%d): ", wrqu->data.length);
-	for (i = 0 ; i < wrqu->data.length; i ++)
-		printk(KERN_INFO "%02X ", ((char *)wrqu->data.pointer)[i]);
-	printk(KERN_INFO "\n");
-
-	iwrq.data.flags = 1;
-	ndis_set_wpa(dev, info, &iwrq, extra);
-	return 0;
-}
-
 static const struct iw_priv_args priv_args[] = {
 	{PRIV_RESET, 0, 0, "ndis_reset"},
 	{WPA_SET_WPA, IW_PRIV_TYPE_INT | IW_PRIV_SIZE_FIXED | 1, 0, "setwpa"},
 	{WPA_SET_KEY, IW_PRIV_TYPE_ADDR | IW_PRIV_SIZE_FIXED | 1, 0, "setkey"},
-	{WPA_ASSOCIATE, IW_PRIV_TYPE_ADDR | IW_PRIV_SIZE_FIXED | 1, 0,
-	 "associate"},
 	{WPA_DISASSOCIATE, IW_PRIV_TYPE_INT | IW_PRIV_SIZE_FIXED | 1, 0,
 	 "disassociate"},
 	{WPA_SET_PRIV_FILTER, IW_PRIV_TYPE_INT | IW_PRIV_SIZE_FIXED | 1, 0,
 	 "privfilter"},
-	{WPA_SET_GENERIC_ELEMENT, IW_PRIV_TYPE_ADDR | IW_PRIV_SIZE_FIXED | 1,
-	 0, "genelem"},
 };
 
 static const iw_handler priv_handler[] = {
 	[PRIV_RESET - SIOCIWFIRSTPRIV] = ndis_reset,
 	[WPA_SET_WPA - SIOCIWFIRSTPRIV] = ndis_set_wpa,
 	[WPA_SET_KEY - SIOCIWFIRSTPRIV] = ndis_set_key,
-	[WPA_ASSOCIATE - SIOCIWFIRSTPRIV] = ndis_set_associate,
 	[WPA_DISASSOCIATE - SIOCIWFIRSTPRIV] = ndis_set_disassociate,
 	[WPA_SET_PRIV_FILTER - SIOCIWFIRSTPRIV] = ndis_set_priv_filter,
-	[WPA_SET_GENERIC_ELEMENT - SIOCIWFIRSTPRIV] = ndis_set_generic_element,
 };
 
 const struct iw_handler_def ndis_handler_def = {
