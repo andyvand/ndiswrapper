@@ -38,13 +38,11 @@ void KfReleaseSpinLock(void){UNIMPL();}
 
 STDCALL void WRITE_PORT_ULONG(unsigned int port, unsigned int value)
 {
-	DBGTRACE("%s %08x=%08x\n", __FUNCTION__, port, value);
 	outl(value, port);
 }
 
 STDCALL unsigned int READ_PORT_ULONG(unsigned int port)
 {
-	DBGTRACE("%s %08x\n", __FUNCTION__, port);
 	return inl(port);
 }
 
