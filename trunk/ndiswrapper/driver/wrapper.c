@@ -1172,6 +1172,7 @@ static int ndiswrapper_pm_callback(struct pm_dev *pm_dev, pm_request_t rqst,
 	struct net_device *dev;
 	struct ndis_handle *handle;
 	int res, pm_state;
+	spinlock_t lock;
 
 	DBGTRACE("%s called with %p, %d, %p\n",
 		 __FUNCTION__, pm_dev, rqst, data);
@@ -1179,6 +1180,7 @@ static int ndiswrapper_pm_callback(struct pm_dev *pm_dev, pm_request_t rqst,
 		return -1;
 	dev = (struct net_device *)pm_dev->data;
 	handle = dev->priv;
+	spin_lock(&lock);
 	switch(rqst)
 	{
 	case PM_SUSPEND:
@@ -1188,7 +1190,7 @@ static int ndiswrapper_pm_callback(struct pm_dev *pm_dev, pm_request_t rqst,
 		DBGTRACE("%s: stopping queue\n", dev->name);
 		netif_stop_queue(dev);
 		DBGTRACE("%s: disassociating\n", dev->name);
-		pm_state = 4;
+		pm_state = NDIS_PM_STATE_D3;
 		res = query_int(handle, NDIS_OID_PNP_QUERY_POWER, &pm_state);
 		DBGTRACE("%s: query power to state %d returns %d\n",
 		       dev->name, pm_state, res);
@@ -1197,7 +1199,7 @@ static int ndiswrapper_pm_callback(struct pm_dev *pm_dev, pm_request_t rqst,
 		       dev->name, pm_state, res);
 		break;
 	case PM_RESUME:
-		pm_state = 1;
+		pm_state = NDIS_PM_STATE_D0;
 		res = set_int(handle, NDIS_OID_PNP_SET_POWER, pm_state);
 		DBGTRACE("%s: setting power to state %d returns %d\n",
 		       dev->name, pm_state, res);
@@ -1212,6 +1214,7 @@ static int ndiswrapper_pm_callback(struct pm_dev *pm_dev, pm_request_t rqst,
 		       dev->name, PM_SUSPEND, PM_RESUME);
 		break;
 	}
+	spin_unlock(&lock);
 	return 0;
 }
 
