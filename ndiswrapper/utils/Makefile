@@ -1,6 +1,8 @@
+DRV_VERSION="$(shell cat ../version)"
+
 loadndisdriver_OBJS = loadndisdriver.o
 
-CFLAGS = -Wall -g
+CFLAGS = -Wall -g -DDRV_VERSION=\"$(DRV_VERSION)\" 
 
 DISTFILES=Makefile ndiswrapper loadndisdriver.c wlan_radio_averatec_5110hx.c
 
