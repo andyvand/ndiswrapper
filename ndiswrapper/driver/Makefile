@@ -3,7 +3,7 @@ ifndef DRV_VERSION
 #DRV_VERSION="$(shell cat ../version)@$(shell date +'%d-%b-%y')"
 DRV_VERSION="$(shell cat ../version)"
 endif
-#DEBUG=1
+DEBUG=3
 
 DISTFILES=Makefile \
  coffpe.h \
