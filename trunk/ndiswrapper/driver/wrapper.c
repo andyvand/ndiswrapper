@@ -283,6 +283,7 @@ static void free_timers(struct ndis_handle *handle)
 	/* Cancel any timers left by bugyy windows driver
 	 * Also free the memory for timers
 	 */
+	spin_lock_bh(&handle->timers_lock);
 	while (!list_empty(&handle->timers))
 	{
 		struct wrapper_timer *timer =
@@ -290,10 +291,15 @@ static void free_timers(struct ndis_handle *handle)
 		DBGTRACE1("fixing up timer %p, timer->list %p",
 			  timer, &timer->list);
 		list_del(&timer->list);
+		spin_unlock_bh(&handle->timers_lock);
+
 		timer->repeat = 0;
 		del_timer_sync(&timer->timer);
 		wrap_kfree(timer);
+
+		spin_lock_bh(&handle->timers_lock);
 	}
+	spin_unlock_bh(&handle->timers_lock);
 }
 
 static unsigned int call_entry(struct ndis_driver *driver)
@@ -1100,6 +1106,9 @@ static void wrapper_worker_proc(void *param)
 
 	DBGTRACE("%lu\n", handle->wrapper_work);
 
+	if (test_bit(SHUTDOWN, &handle->wrapper_work))
+		return;
+
 	if (test_and_clear_bit(SET_OP_MODE, &handle->wrapper_work))
 		set_mode(handle, handle->op_mode);
 
@@ -1446,6 +1455,7 @@ static struct net_device *ndis_init_netdev(struct ndis_handle **phandle,
 	INIT_WORK(&handle->set_rx_mode_work, ndis_set_rx_mode_proc, dev);
 
 	INIT_LIST_HEAD(&handle->timers);
+	spin_lock_init(&handle->timers_lock);
 
 	handle->rx_packet = &NdisMIndicateReceivePacket;
 	handle->send_complete = &NdisMSendComplete;
@@ -1732,6 +1742,8 @@ static void ndis_remove_one(struct ndis_handle *handle)
 	schedule_timeout(HZ/2);
 	if (handle->phys_device_obj)
 		kfree(handle->phys_device_obj);
+
+	set_bit(SHUTDOWN, &handle->wrapper_work);
 
 #ifndef DEBUG_CRASH_ON_INIT
 	set_int(handle, NDIS_OID_DISASSOCIATE, 0);
