@@ -109,7 +109,7 @@ clean-modules: build-modules-prep
 	dh_clean
 
 build-utils-prep:
-	sed -e 's/#KVERS#-//g' \
+	sed -e 's/-#KVERS#//g' \
 		-e 's/#NDISVERS#/$(NDISWRAPPER_VERSION)$(EXTRA_VERSION)/g' \
 		-e 's/#DATE#/'"`date --rfc-822`"'/g' \
 		-e 's/#MAINT#/$(MAINT) <$(MAINTEMAIL)>/g' \
@@ -138,7 +138,7 @@ clean-utils: build-utils-prep
 	dh_clean
 
 build-source-prep:
-	sed -e 's/#KVERS#-//g' \
+	sed -e 's/-#KVERS#//g' \
 		-e 's/#NDISVERS#/$(NDISWRAPPER_VERSION)$(EXTRA_VERSION)/g' \
 		-e 's/#DATE#/'"`date --rfc-822`"'/g' \
 		-e 's/#MAINT#/$(MAINT) <$(MAINTEMAIL)>/g' \
