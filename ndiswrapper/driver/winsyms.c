@@ -169,6 +169,8 @@ void IofCallDriver(void);
 void KeWaitForSingleObject(void);
 void my_sprintf(void);
 void my_vsprintf(void);
+void my_snprintf(void);
+void my_vsnprintf(void);
 void my_strlen(void);
 void my_strncmp(void);
 void my_strcmp(void);
@@ -368,6 +370,8 @@ func("IofCallDriver"                        , IofCallDriver),
 func("KeWaitForSingleObject"                , KeWaitForSingleObject),
 func("sprintf"                              , my_sprintf),
 func("vsprintf"                             , my_vsprintf),
+func("_snprintf"                            , my_snprintf),
+func("_vsnprintf"                           , my_vsnprintf),
 func("strlen"                               , my_strlen),
 func("strncmp"                              , my_strncmp),
 func("strcmp"                               , my_strcmp),
