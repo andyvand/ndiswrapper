@@ -589,7 +589,7 @@ STDCALL void NdisMSetAttributesEx(struct ndis_handle *handle,
 
 	if(!(attributes & 0x20))
 	{
-		handle->serialized_driver = 1;
+		printk(KERN_ERR "%s: Driver is serialized. This will not work!\n", DRV_NAME);
 	}
 
 	if(hangcheck_interval)
@@ -778,6 +778,23 @@ STDCALL void NdisFreeSpinLock(struct ndis_spin_lock *lock)
 
 STDCALL void NdisAcquireSpinLock(struct ndis_spin_lock *lock)
 {
+	if(lock->linux_lock == 0)
+	{
+		printk(KERN_INFO "%s: Buggy ndis driver trying to use unintilized spinlock. Trying to recover...", DRV_NAME);
+		lock->linux_lock = kmalloc(sizeof(struct ndis_linux_spin_lock), GFP_ATOMIC);
+		if(lock->linux_lock)
+		{
+			printk("ok.\n");
+			memset(lock->linux_lock, 0, sizeof(struct ndis_linux_spin_lock));
+			spin_lock_init(&lock->linux_lock->lock);
+		}
+		else
+		{
+			printk("failed.\n");
+			BUG();
+		}
+	}
+		
 	spin_lock_irqsave(&lock->linux_lock->lock, lock->linux_lock->flags);
 }
 
@@ -1308,6 +1325,39 @@ STDCALL void NdisIndicateStatusComplete(struct ndis_handle *handle)
 	DBGTRACE("%s\n", __FUNCTION__);
 }
 
+
+/*
+ * This is the packet_recycler that gets scheduled from NdisMIndicateReceivePacket
+ */
+void packet_recycler(void *param)
+{
+	struct ndis_handle *handle = (struct ndis_handle*) param;
+
+	DBGTRACE("%s Packet recycler running\n", __FUNCTION__);
+	while(1)
+	{
+		struct ndis_packet * packet;
+
+		spin_lock(&handle->recycle_packets_lock);
+		packet = 0;
+		if(!list_empty(&handle->recycle_packets))
+		{
+			packet = (struct ndis_packet*) handle->recycle_packets.next;
+
+			list_del(handle->recycle_packets.next);
+			DBGTRACE("%s Picking packet at %p!\n", __FUNCTION__, packet);
+			packet = (struct ndis_packet*) ((char*)packet - ((char*) &packet->recycle_list - (char*) &packet->nr_pages));
+		}
+
+		spin_unlock(&handle->recycle_packets_lock);
+		
+		if(!packet)
+			break;
+
+		handle->driver->miniport_char.return_packet(handle->adapter_ctx,  packet);
+	}
+}
+
 /*
  *
  *
@@ -1320,9 +1370,16 @@ STDCALL void NdisMIndicateReceivePacket(struct ndis_handle *handle, struct ndis_
 	struct sk_buff *skb;
 	int i;
 
+	DBGTRACE("%s entry\n", __FUNCTION__);
 	for(i = 0; i < nr_packets; i++)
 	{
 		packet = packets[i];
+		if(!packet)
+		{
+			printk(KERN_WARNING "%s Skipping empty packet on receive\n", DRV_NAME); 
+			continue;
+		}
+		
 		buffer = packet->buffer_head;
 
 		skb = dev_alloc_skb(buffer->len);
@@ -1339,7 +1396,44 @@ STDCALL void NdisMIndicateReceivePacket(struct ndis_handle *handle, struct ndis_
 		}
 		else
 			handle->stats.rx_dropped++;
-		handle->driver->miniport_char.return_packet(handle->adapter_ctx,  packet);
+
+		/* The driver normally sets status field to NDIS_STATUS_SUCCESS which means
+		 * a normal packet delivery. We should then change status to NDIS_STATUS_PENDING
+		 * meaning that we now own the package that we'll call the return_packet
+		 * handler later when the packet is processed.
+		 *
+		 * Since we always make a copy of the packet here it would be tempting to
+		 * call the return_packet from here but we cannot to this because
+		 * some some drivers gets confused by this. The centrino driver for example
+		 * calls this function with a spinlock held and when calling return_packet
+		 * it tries to take the same lock again leading to an instant lockup on SMP.
+		 *
+		 * If status is NDIS_STATUS_RESOURCES it means that the driver is running
+		 * out of packets and expects us to copy the packet and then set status
+		 * to NDIS_STATUS_SUCCESS and not call the return_packet handler later.
+		 */
+
+		if(packet->status == NDIS_STATUS_RESOURCES)
+		{
+			/* Signal the driver that we did not take ownership of the packet. */
+			packet->status = NDIS_STATUS_SUCCESS;
+			DBGTRACE("%s Low on resources!\n", __FUNCTION__);
+		}
+		else
+		{
+			if(packet->status != NDIS_STATUS_SUCCESS)
+				printk(KERN_INFO "%s: %s packet->status is invalid\n", DRV_NAME, __FUNCTION__);
+
+			 
+			/* Signal the driver that took ownership of the packet and will
+			 * call return_packet later
+			 */
+			packet->status = NDIS_STATUS_PENDING;
+			spin_lock(&handle->recycle_packets_lock);
+			list_add(&packet->recycle_list, &handle->recycle_packets);
+			spin_unlock(&handle->recycle_packets_lock);
+			schedule_work(&handle->packet_recycler);
+		}
 	}
 }
 

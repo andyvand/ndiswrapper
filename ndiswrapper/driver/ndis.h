@@ -155,6 +155,7 @@ struct packed ndis_packet
 	
 	struct ndis_scatterlist scatterlist;
 	dma_addr_t dataphys;
+	struct list_head recycle_list;
 };
 
 
@@ -433,7 +434,6 @@ struct packed ndis_handle
 	int query_set_wait_done;
 
 	int use_scatter_gather;
-	int serialized_driver;
 	int map_count;
 	dma_addr_t *map_dma_addr;
 
@@ -445,7 +445,6 @@ struct packed ndis_handle
 	struct timer_list statcollector_timer;
 	struct work_struct statcollector_work;
 
-	
 	unsigned long scan_timestamp;
 
 	u32 link_status;
@@ -457,6 +456,10 @@ struct packed ndis_handle
 	unsigned int pm_state;
 
 	int wireless_mode;
+
+	struct list_head recycle_packets;
+	spinlock_t recycle_packets_lock;
+	struct work_struct packet_recycler;
 };
 
 struct ndis_timer
