@@ -1040,7 +1040,8 @@ static void check_capa(struct ndis_handle *handle)
 	if (handle->encr_mode == ENCR_DISABLED ||
 	    handle->encr_mode == ENCR1_ENABLED)
 	{
-		DBGTRACE("%s", "wpa is not supported");
+		printk(KERN_INFO "ndiswrapper device %s doesn't support WPA ",
+		       handle->net_dev->name);
 		TRACEEXIT1(return);
 	}
 
@@ -1063,11 +1064,11 @@ static void check_capa(struct ndis_handle *handle)
 
 	DBGTRACE("capbilities = %ld\n", handle->capa);
 	if (test_bit(CAPA_AES, &handle->capa))
-		printk(KERN_INFO "%s supports WPA with CCMP/AES and "
-		       "TKIP ciphers\n", handle->net_dev->name);
+		printk(KERN_INFO "ndiswrapper device %s supports WPA with "
+		       "CCMP/AES and TKIP ciphers\n", handle->net_dev->name);
 	else
-		printk(KERN_INFO "%s", "driver supports WPA with "
-		       "TKIP cipher\n");
+		printk(KERN_INFO "ndiswrapper device %s supports WPA with "
+		       "TKIP cipher\n", handle->net_dev->name);
 	TRACEEXIT1(return);
 }
 
