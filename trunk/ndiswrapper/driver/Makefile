@@ -108,7 +108,7 @@ x86_64_stubs.h: hal.c misc_funcs.c ndis.c ntoskernel.c usb.c wrapper.c
 			sed -n \
 				-e 's/.*WRAP_EXPORT(\([^)]\+\)).*/   \
 					  win_to_lin_stub \1/p'   \
-				-e 's/.*X86_64_STUB(\([^)]\+\)).*/   \
+				-e 's/.*WRAP_FUNC_PTR(\([^)]\+\)).*/   \
 					  win_to_lin_stub \1/p'   \
 					   $$file | sort -u; \
 		done; \
@@ -128,7 +128,7 @@ endif
 		sed -n \
 			-e 's/.*WRAP_EXPORT(\([^)]\+\)).*/   \
 				   extern void x86_64_\1(void);/p' \
-			-e 's/.*X86_64_STUB(\([^)]\+\)).*/   \
+			-e 's/.*WRAP_FUNC_PTR(\([^)]\+\)).*/   \
 				   extern void x86_64_\1(void);/p' \
 			   $< | sort; \
 		echo "#endif"; \
