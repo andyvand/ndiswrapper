@@ -1,5 +1,14 @@
 Version 1.0 2005-XX-XX
 ======================
+* Preliminary support for AMD64 (tested with Broadcom chipset)
+* Dynamic loader support: A driver is loaded only when necessary, so
+  even if many drivers are installed or if a driver installs many
+  .conf files (e.g., Centrino), only drivers and device configurations
+  necessary are loaded.
+* Set RadioState used by Broadcom drivers to 0, instead of 1. This
+  turns on radio (although name suggets the other way round).
+* Bug fixes
+
 * Workaround for CONFIG_DEBUG_SPINLOCK, but this option is discouraged
 * task_nice is not used anymore, so should compile with kernels where
   this is not exported
