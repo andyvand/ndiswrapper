@@ -865,20 +865,19 @@ void inline my_dumpstack(void)
 }
 
 /* the string should be of the form XX:XX:XX:XX:XX:XX, along with colons */
-int string_to_mac(char *mac, char *string, int string_len)
+int string_to_mac(unsigned char *mac, unsigned char *string, int string_len)
 {
 	int i, j;
 
 	memset(mac, 0, ETH_ALEN);
 
-	for (i = 1, j = 0;
-	     i-1 < (string_len - 1) && j < ETH_ALEN; i++) {
-		if (i % 3 == 0)
-				continue;
-		else  {
-			unsigned char m, a;
+	for (i = 0, j = 0; i < string_len && j < ETH_ALEN; i++) {
+		unsigned char m, a;
 
-			a = string[i-1];
+		a = string[i];
+		if (a == ':')
+			j++;
+		else  {
 			if (a >= '0' &&  a <= '9')
 				m = a - '0';
 			else if (toupper(a) >= 'A' && toupper(a) <= 'F')
@@ -886,11 +885,9 @@ int string_to_mac(char *mac, char *string, int string_len)
 			else
 				break;
 			mac[j] = mac[j] << 4 | m;
-			if (i % 3 == 2)
-				j++;
 		}
 	}
-	if (j == ETH_ALEN)
+	if (j == ETH_ALEN || j == (ETH_ALEN - 1))
 		TRACEEXIT1(return 0);
 	else
 		TRACEEXIT1(return -EINVAL);
