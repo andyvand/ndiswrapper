@@ -587,7 +587,7 @@ STDCALL void
 }
  
 STDCALL void
- ExDeleteNPagedLookasideList(struct npaged_lookaside_list *lookaside)
+ExDeleteNPagedLookasideList(struct npaged_lookaside_list *lookaside)
 {
 	struct slist_entry *entry, *p;
 	
@@ -597,7 +597,7 @@ STDCALL void
 	{
 		p = entry;
 		entry = entry->next;
-		kfree(p);
+		lookaside->free_func(p);
 	}
 	DBGTRACE("%s: Exit\n", __FUNCTION__);
 }
