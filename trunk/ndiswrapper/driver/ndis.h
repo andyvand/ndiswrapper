@@ -1231,6 +1231,7 @@ struct wpa_assoc_info
 	wpa_cipher pairwise_suite;
 	wpa_cipher group_suite;
 	wpa_key_mgmt key_mgmt_suite;
+	int auth_alg;
 };
 
 #define WPA_SET_WPA 			SIOCIWFIRSTPRIV+1

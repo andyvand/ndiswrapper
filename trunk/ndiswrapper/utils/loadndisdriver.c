@@ -51,18 +51,18 @@ static int debug;
 	directory only
 #endif
 
-#define error(fmt, args...) do {					\
+#define error(fmt, ...) do {					\
 		syslog(LOG_KERN | LOG_ERR, "%s: %s(%d): " fmt "\n",	\
-		       PROG_NAME, __FUNCTION__, __LINE__, ## args);	\
+		       PROG_NAME, __FUNCTION__, __LINE__ , ## __VA_ARGS__); \
 	} while (0)
-#define info(fmt, args...) do {						\
+#define info(fmt, ...) do {						\
 		syslog(LOG_KERN | LOG_INFO, "%s: %s(%d): " fmt "\n",	\
-		       PROG_NAME, __FUNCTION__, __LINE__, ## args);	\
+		       PROG_NAME, __FUNCTION__, __LINE__ , ## __VA_ARGS__); \
 	} while (0)
 
-#define dbg(fmt, args...) do { if (debug)				\
-			syslog(LOG_KERN | LOG_DEBUG, "%s: %s(%d): " fmt "\n", \
-			       PROG_NAME, __FUNCTION__, __LINE__, ## args); \
+#define dbg(fmt, ...) do { if (debug)					\
+		syslog(LOG_KERN | LOG_DEBUG, "%s: %s(%d): " fmt "\n", \
+		       PROG_NAME, __FUNCTION__, __LINE__ , ## __VA_ARGS__); \
 	} while (0)
 
 static size_t get_filesize(int fd)
@@ -516,7 +516,7 @@ int main(int argc, char *argv[0])
 		if (load_all_drivers(device) > 0)
 			res = 0;
 		else {
-			error("%s", "no useable drivers found, aborting");
+			error("no useable drivers found, aborting");
 			res = 7;
 			goto out;
 		}

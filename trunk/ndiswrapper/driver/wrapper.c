@@ -1170,10 +1170,13 @@ static void wrapper_worker_proc(void *param)
 		unsigned int i, res, written, needed;
 		const int assoc_size = sizeof(*ndis_assoc_info) +
 			 IW_CUSTOM_MAX;
+		static long last_assoc = 0;
 
 		if (handle->link_status == 0) {
 //			for (i = 0; i < MAX_ENCR_KEYS; i++)
 //				handle->encr_info.keys[i].length = 0;
+			if (last_assoc + 2 * HZ < jiffies)
+				TRACEEXIT2(return);
 
 			memset(&wrqu, 0, sizeof(wrqu));
 			wrqu.ap_addr.sa_family = ARPHRD_ETHER;
@@ -1185,6 +1188,7 @@ static void wrapper_worker_proc(void *param)
 
 		if (!test_bit(CAPA_WPA, &handle->capa))
 			return;
+		return;
 
 		assoc_info = kmalloc(assoc_size, GFP_KERNEL);
 		if (!assoc_info)
@@ -1259,6 +1263,7 @@ static void wrapper_worker_proc(void *param)
 		wrqu.ap_addr.sa_family = ARPHRD_ETHER;
 		wireless_send_event(handle->net_dev, SIOCGIWAP, &wrqu, NULL);
 
+		last_assoc = jiffies;
 		DBGTRACE1("%s", "associate_event");
 	}
 
