@@ -128,6 +128,9 @@ void wrapper_init_timer(struct ktimer *ktimer, void *handle)
 	wrapper_timer->active = 0;
 	wrapper_timer->repeat = 0;
 	wrapper_timer->kdpc = NULL;
+#ifdef DEBUG_TIMER
+	wrapper_timer->wrapper_timer_magic = WRAPPER_TIMER_MAGIC;
+#endif
 	ktimer->wrapper_timer = wrapper_timer;
 	if (handle)
 		list_add(&wrapper_timer->list, &ndis_handle->timers);
@@ -148,7 +151,12 @@ int wrapper_set_timer(struct wrapper_timer *timer,
 	}
 	
 #ifdef DEBUG_TIMER
-	timer->wrapper_timer_magic = WRAPPER_TIMER_MAGIC;
+	if (timer->wrapper_timer_magic != WRAPPER_TIMER_MAGIC)
+	{
+		printk(KERN_INFO "%s: timer %p is not initialized (%lu)\n",
+		       __FUNCTION__, timer, timer->wrapper_timer_magic);
+		timer->wrapper_timer_magic = WRAPPER_TIMER_MAGIC;
+	}
 #endif
 	timer->repeat = repeat;
 	
@@ -189,7 +197,6 @@ void wrapper_cancel_timer(struct wrapper_timer *timer, char *canceled)
 #ifdef DEBUG_TIMER
 	printk("Canceling timer %p\n", timer);
 	BUG_ON(timer->wrapper_timer_magic != WRAPPER_TIMER_MAGIC);
-	timer->wrapper_timer_magic = 0;
 #endif
 	
 	timer->repeat = 0;

@@ -823,12 +823,12 @@ STDCALL void NdisAcquireSpinLock(struct ndis_spin_lock *lock)
 		}
 	}
 		
-	spin_lock_irqsave(&lock->linux_lock->lock, lock->linux_lock->flags);
+	spin_lock(&lock->linux_lock->lock);
 }
 
 STDCALL void NdisReleaseSpinLock(struct ndis_spin_lock *lock)
 {
-	spin_unlock_irqrestore(&lock->linux_lock->lock, lock->linux_lock->flags);
+	spin_unlock(&lock->linux_lock->lock);
 }
 
 
@@ -1121,6 +1121,8 @@ STDCALL void NdisSetTimer(struct ndis_timer *timer_handle, unsigned int ms)
 {
 	unsigned long expires = jiffies + (ms * HZ) / 1000;
 
+	DBGTRACE("%s(entry): %p, %u\n",
+			 __FUNCTION__, timer_handle, ms);
 	wrapper_set_timer(timer_handle->ktimer.wrapper_timer, expires, 0);
 	return;
 }
@@ -1134,6 +1136,8 @@ STDCALL void NdisMSetPeriodicTimer(struct ndis_miniport_timer *timer_handle,
 	unsigned long expires = jiffies + (ms * HZ) / 1000;
 	unsigned long repeat = ms * HZ / 1000;
 
+	DBGTRACE("%s(entry): %p, %u\n",
+			 __FUNCTION__, timer_handle, ms);
 	wrapper_set_timer(timer_handle->ktimer.wrapper_timer, expires, repeat);
 	return;
 }
