@@ -826,6 +826,12 @@ KefReleaseSpinLockFromDpcLevel(FASTCALL_DECL_1(KSPIN_LOCK *lock));
 
 static inline void wrap_spin_lock_init(struct wrap_spinlock *lock)
 {
+	if (sizeof(lock->lock) > sizeof(lock->lock.ntoslock)) {
+		ERROR("spinlock used is not compatible"
+		      " with KSPIN_LOCK: %d, %d",
+		      sizeof(lock->lock),
+		      sizeof(lock->lock.ntoslock));
+	}
 	spin_lock_init(&(lock->lock.spinlock));
 	lock->use_bh = 0;
 }

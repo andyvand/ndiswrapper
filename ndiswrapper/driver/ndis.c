@@ -63,10 +63,11 @@ void ndis_exit_handle(struct ndis_handle *handle)
 	if (handle->ndis_irq) {
 		unsigned long flags;
 
-		spin_lock_irqsave(&handle->ndis_irq->spinlock, flags);
+		spin_lock_irqsave(&handle->ndis_irq->lock.spinlock, flags);
 		if (miniport->disable_interrupts)
 			miniport->disable_interrupts(handle->adapter_ctx);
-		spin_unlock_irqrestore(&handle->ndis_irq->spinlock, flags);
+		spin_unlock_irqrestore(&handle->ndis_irq->lock.spinlock,
+				       flags);
 		NdisMDeregisterInterrupt(handle->ndis_irq);
 	}
 	wrap_free_timers(handle);
@@ -1339,7 +1340,7 @@ irqreturn_t ndis_irq_th(int irq, void *data, struct pt_regs *pt_regs)
 	miniport = &handle->driver->miniport_char;
 	/* this spinlock should be shared with NdisMSynchronizeWithInterrupt
 	 */
-	spin_lock_irqsave(&ndis_irq->spinlock, flags);
+	spin_lock_irqsave(&ndis_irq->lock.spinlock, flags);
 	if (ndis_irq->req_isr)
 		miniport->isr(&recognized, &handled, handle->adapter_ctx);
 	else { //if (miniport->disable_interrupts)
@@ -1347,7 +1348,7 @@ irqreturn_t ndis_irq_th(int irq, void *data, struct pt_regs *pt_regs)
 		/* it is not shared interrupt, so handler must be called */
 		recognized = handled = 1;
 	}
-	spin_unlock_irqrestore(&ndis_irq->spinlock, flags);
+	spin_unlock_irqrestore(&ndis_irq->lock.spinlock, flags);
 
 	if (recognized && handled)
 		schedule_work(&handle->irq_work);
@@ -1373,7 +1374,14 @@ STDCALL static NDIS_STATUS WRAP_EXPORT(NdisMRegisterInterrupt)
 	if (shared && !req_isr)
 		WARNING("%s", "shared but dynamic interrupt!");
 	ndis_irq->shared = shared;
-	spin_lock_init(&ndis_irq->spinlock);
+	if (sizeof(ndis_irq->lock) > sizeof(ndis_irq->lock.ntoslock)) {
+		ERROR("spinlock used by ndis_irq is not compatible"
+		      " with KSPIN_LOCK: %d, %d",
+		      sizeof(ndis_irq->lock),
+		      sizeof(ndis_irq->lock.ntoslock));
+		TRACEEXIT1(return NDIS_STATUS_RESOURCES);
+	}
+	spin_lock_init(&ndis_irq->lock.spinlock);
 	handle->ndis_irq = ndis_irq;
 
 	INIT_WORK(&handle->irq_work, &ndis_irq_bh, ndis_irq);
@@ -1431,9 +1439,9 @@ STDCALL static BOOLEAN WRAP_EXPORT(NdisMSynchronizeWithInterrupt)
 		TRACEEXIT5(return 0);
 
 	sync_func = func;
-	spin_lock_irqsave(&ndis_irq->spinlock, flags);
+	spin_lock_irqsave(&ndis_irq->lock.spinlock, flags);
 	ret = sync_func(ctx);
-	spin_unlock_irqrestore(&ndis_irq->spinlock, flags);
+	spin_unlock_irqrestore(&ndis_irq->lock.spinlock, flags);
 
 	DBGTRACE5("sync_func returns %u", ret);
 	TRACEEXIT5(return ret);
