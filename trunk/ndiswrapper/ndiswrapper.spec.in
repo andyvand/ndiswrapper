@@ -1,4 +1,4 @@
-Summary: ndiswrapper loadable kernel module & userland tools
+Summary: ndiswrapper allows you to use windows XP drivers for that WLAN card without proper Linux drivers.
 Name: ndiswrapper
 Version: DRV_VERSION
 Release: 1
@@ -13,8 +13,7 @@ drivers for their products for operating systems other than Microsoft
 Windows. The ndiswrapper project makes it possible to use such
 hardware with Linux by means of a loadable kernel module that "wraps
 around" NDIS (Windows network driver API) drivers.  This rpm contains
-just the kernel module and loader.  You will also need the
-ndiswrapper-manufacturer-chipset rpm for your specific chipset.
+just the userspace tools. You will also need the kernel module rpm.
 
 %package kernel-%(uname -r)
 Summary: Ndiswrapper kernel module
