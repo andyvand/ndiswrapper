@@ -597,22 +597,16 @@ void ndis_set_rx_mode(struct net_device *dev)
 	schedule_work(&handle->set_rx_mode_work);
 }
 
-/*
- * This function should be called while holding send_packet_lock
- */
-static struct ndis_packet *init_packet(struct ndis_handle *handle,
+static struct ndis_packet *alloc_packet(struct ndis_handle *handle,
 				       struct ndis_buffer *buffer)
 {
 	struct ndis_packet *packet;
 
 	packet = kmalloc(sizeof(struct ndis_packet), GFP_ATOMIC);
-	if(!packet)
-	{
+	if (!packet)
 		return NULL;
-	}
 
 	memset(packet, 0, sizeof(*packet));
-
 
 /* Enable this if you want to poison the packet-info during debugging.
  * This is not enabled when debug is defined because one card I have
@@ -630,8 +624,7 @@ static struct ndis_packet *init_packet(struct ndis_handle *handle,
 	}
 #endif
 
-	if(handle->use_scatter_gather)
-	{
+	if (handle->use_scatter_gather) {
 		/* FIXME: do USB drivers call this? */
 		packet->dataphys =
 			PCI_DMA_MAP_SINGLE(handle->dev.pci,
@@ -659,13 +652,12 @@ static struct ndis_packet *init_packet(struct ndis_handle *handle,
 	return packet;
 }
 
-/*
- * This function should be called while holding send_packet_lock
- */
 static void free_packet(struct ndis_handle *handle, struct ndis_packet *packet)
 {
-	if(packet->dataphys)
-	{
+	kfree(packet->buffer_head->data);
+	kfree(packet->buffer_head);
+
+	if (packet->dataphys) {
 		/* FIXME: do USB drivers call this? */
 		PCI_DMA_UNMAP_SINGLE(handle->dev.pci, packet->dataphys,
 				     packet->len, PCI_DMA_TODEVICE);
@@ -675,55 +667,33 @@ static void free_packet(struct ndis_handle *handle, struct ndis_packet *packet)
 }
 
 /*
- * This function should be called while holding send_packet_lock
- */
-static void free_buffer(struct ndis_handle *handle, struct ndis_packet *packet)
-{
-	kfree(packet->buffer_head->data);
-	kfree(packet->buffer_head);
-	free_packet(handle, packet);
-}
-
-/*
  * MiniportSend and MiniportSendPackets
  */
+
+/* this function is called in BH disabled context, so no need to raise
+ * IRQL for MiniportSend(Packets) functions */
 static int send_packet(struct ndis_handle *handle, struct ndis_packet *packet)
 {
 	int res;
-	KIRQL irql = DISPATCH_LEVEL;
 	struct miniport_char *miniport = &handle->driver->miniport_char;
 
 	TRACEENTER3("packet = %p", packet);
-
-	if (miniport->send_packets)
-	{
+	if (miniport->send_packets) {
 		struct ndis_packet *packets[1];
 
 		packets[0] = packet;
-		if (test_bit(ATTR_SERIALIZED, &handle->attributes))
-			irql = raise_irql(DISPATCH_LEVEL);
-		miniport->send_packets(handle->adapter_ctx, &packets[0], 1);
+		miniport->send_packets(handle->adapter_ctx,
+				       &packets[0], 1);
 		if (test_bit(ATTR_SERIALIZED, &handle->attributes)) {
-			lower_irql(irql);
 			/* serialized miniports set packet->status */
 			res = packet->status;
-		}
-		else
-		{
+		} else {
 			/* deserialized miniports call NdisMSendComplete */
 			res = NDIS_STATUS_PENDING;
 		}
-	}
-	else if (miniport->send)
-	{
-		if (test_bit(ATTR_SERIALIZED, &handle->attributes))
-			irql = raise_irql(DISPATCH_LEVEL);
+	} else if (miniport->send) {
 		res = miniport->send(handle->adapter_ctx, packet, 0);
-		if (test_bit(ATTR_SERIALIZED, &handle->attributes))
-			lower_irql(irql);
-	}
-	else
-	{
+	} else {
 		DBGTRACE3("%s", "No send handler");
 		res = NDIS_STATUS_FAILURE;
 	}
@@ -735,44 +705,22 @@ static int send_packet(struct ndis_handle *handle, struct ndis_packet *packet)
 
 static void xmit_bh(void *param)
 {
-	struct ndis_handle *handle = (struct ndis_handle*) param;
-	struct ndis_buffer *buffer;
+	struct ndis_handle *handle = (struct ndis_handle *)param;
+	struct ndis_packet *packet;
 	int res;
 
 	TRACEENTER3("send status is %08X", handle->send_status);
 
-	if (down_interruptible(&handle->ndis_comm_mutex))
-		TRACEEXIT3(return);
-
-	while (handle->send_status == 0)
-	{
+	while (handle->send_status == 0) {
 		wrap_spin_lock(&handle->xmit_ring_lock);
-		if (!handle->xmit_ring_pending)
-		{
+		if (handle->xmit_ring_pending == 0) {
 			wrap_spin_unlock(&handle->xmit_ring_lock);
 			break;
 		}
-		buffer = handle->xmit_ring[handle->xmit_ring_start];
+		packet = handle->xmit_ring[handle->xmit_ring_start];
+		res = send_packet(handle, packet);
 		wrap_spin_unlock(&handle->xmit_ring_lock);
 
-		wrap_spin_lock(&handle->send_packet_lock);
-		/* if we are resending a packet due to NDIS_STATUS_RESOURCES
-		 * then just pick up the packet already created
-		 */
-		if (!handle->send_packet)
-		{
-			/* otherwise, get a new packet */
-			handle->send_packet = init_packet(handle, buffer);
-			if (!handle->send_packet)
-			{
-				wrap_spin_unlock(&handle->send_packet_lock);
-				ERROR("%s", "couldn't get a packet");
-				up(&handle->ndis_comm_mutex);
-				return;
-			}
-		}
-
-		res = send_packet(handle, handle->send_packet);
 		/* If the driver returns...
 		 * NDIS_STATUS_SUCCESS - we own the packet and
 		 *    driver will not call NdisMSendComplete.
@@ -782,37 +730,28 @@ static void xmit_bh(void *param)
 		 *    Requeue it when resources are available.
 		 * NDIS_STATUS_FAILURE - drop the packet?
 		 */
-		switch (res)
-		{
+		switch (res) {
 		case NDIS_STATUS_SUCCESS:
-			sendpacket_done(handle, handle->send_packet);
+			sendpacket_done(handle, packet);
 			handle->send_status = 0;
 			break;
 		case NDIS_STATUS_PENDING:
 			break;
 		case NDIS_STATUS_RESOURCES:
-			/* should be serialized driver */
-			if (!test_bit(ATTR_SERIALIZED, &handle->attributes))
-				ERROR("%s", "deserialized driver returning "
-				      "NDIS_STATUS_RESOURCES!");
+			/* serialized driver - this packet will be
+			 * tried again */
 			handle->send_status = res;
-			wrap_spin_unlock(&handle->send_packet_lock);
-			/* this packet will be tried again */
-			up(&handle->ndis_comm_mutex);
 			return;
 
-			/* free buffer, drop the packet */
 		case NDIS_STATUS_FAILURE:
-			free_buffer(handle, handle->send_packet);
+			/* free and drop the packet */
+			free_packet(handle, packet);
 			break;
 		default:
 			ERROR("Unknown status code %08X", res);
-			free_buffer(handle, handle->send_packet);
+			free_packet(handle, packet);
 			break;
 		}
-
-		handle->send_packet = NULL;
-		wrap_spin_unlock(&handle->send_packet_lock);
 
 		wrap_spin_lock(&handle->xmit_ring_lock);
 		handle->xmit_ring_start =
@@ -822,7 +761,7 @@ static void xmit_bh(void *param)
 		if (netif_queue_stopped(handle->net_dev))
 			netif_wake_queue(handle->net_dev);
 	}
-	up(&handle->ndis_comm_mutex);
+
 	TRACEEXIT3(return);
 }
 
@@ -833,12 +772,10 @@ static void xmit_bh(void *param)
 void sendpacket_done(struct ndis_handle *handle, struct ndis_packet *packet)
 {
 	TRACEENTER3("%s", "");
-	/* is this lock necessary? */
 	wrap_spin_lock(&handle->send_packet_done_lock);
 	handle->stats.tx_bytes += packet->len;
 	handle->stats.tx_packets++;
-
-	free_buffer(handle, packet);
+	free_packet(handle, packet);
 	wrap_spin_unlock(&handle->send_packet_done_lock);
 	TRACEEXIT3(return);
 }
@@ -853,17 +790,15 @@ static int start_xmit(struct sk_buff *skb, struct net_device *dev)
 {
 	struct ndis_handle *handle = dev->priv;
 	struct ndis_buffer *buffer;
+	struct ndis_packet *packet;
 	unsigned int xmit_ring_next_slot;
 
 	char *data = kmalloc(skb->len, GFP_ATOMIC);
-	if(!data)
-	{
+	if (!data)
 		return 1;
-	}
 
 	buffer = kmalloc(sizeof(struct ndis_buffer), GFP_ATOMIC);
-	if(!buffer)
-	{
+	if (!buffer) {
 		kfree(data);
 		return 1;
 	}
@@ -872,12 +807,19 @@ static int start_xmit(struct sk_buff *skb, struct net_device *dev)
 	buffer->data = data;
 	buffer->next = 0;
 	buffer->len = skb->len;
+	packet = alloc_packet(handle, buffer);
+	if (!packet) {
+		kfree(buffer);
+		kfree(data);
+		return 1;
+	}
 	dev_kfree_skb(skb);
 
 	wrap_spin_lock(&handle->xmit_ring_lock);
 	xmit_ring_next_slot =
-		(handle->xmit_ring_start + handle->xmit_ring_pending) % XMIT_RING_SIZE;
-	handle->xmit_ring[xmit_ring_next_slot] = buffer;
+		(handle->xmit_ring_start +
+		 handle->xmit_ring_pending) % XMIT_RING_SIZE;
+	handle->xmit_ring[xmit_ring_next_slot] = packet;
 	handle->xmit_ring_pending++;
 	wrap_spin_unlock(&handle->xmit_ring_lock);
 	if (handle->xmit_ring_pending == XMIT_RING_SIZE)
@@ -1179,6 +1121,7 @@ static void wrapper_worker_proc(void *param)
 			if (last_assoc + 2 * HZ < jiffies)
 				TRACEEXIT2(return);
 
+			netif_carrier_off(handle->net_dev);
 			memset(&wrqu, 0, sizeof(wrqu));
 			wrqu.ap_addr.sa_family = ARPHRD_ETHER;
 			wireless_send_event(handle->net_dev, SIOCGIWAP, &wrqu,
@@ -1187,6 +1130,8 @@ static void wrapper_worker_proc(void *param)
 			return;
 		}
 
+		if (!netif_carrier_ok(handle->net_dev))
+			netif_carrier_on(handle->net_dev);
 		if (!test_bit(CAPA_WPA, &handle->capa))
 			return;
 
@@ -1552,15 +1497,13 @@ static struct net_device *ndis_init_netdev(struct ndis_handle **phandle,
 	handle->ndis_comm_done = 0;
 
 	handle->send_status = 0;
-	handle->send_packet = NULL;
-
-	wrap_spin_lock_init(&handle->send_packet_lock);
-	wrap_spin_lock_init(&handle->send_packet_done_lock);
 
 	INIT_WORK(&handle->xmit_work, xmit_bh, handle);
 	wrap_spin_lock_init(&handle->xmit_ring_lock);
 	handle->xmit_ring_start = 0;
 	handle->xmit_ring_pending = 0;
+
+	wrap_spin_lock_init(&handle->send_packet_done_lock);
 
 	handle->encr_mode = ENCR_DISABLED;
 	handle->auth_mode = AUTHMODE_OPEN;
@@ -1856,11 +1799,10 @@ static void ndis_remove_one(struct ndis_handle *handle)
 	wrap_spin_lock(&handle->xmit_ring_lock);
 	while (handle->xmit_ring_pending)
 	{
-		struct ndis_buffer *buffer;
+		struct ndis_packet *packet;
 
-		buffer = handle->xmit_ring[handle->xmit_ring_start];
-		kfree(buffer->data);
-		kfree(buffer);
+		packet = handle->xmit_ring[handle->xmit_ring_start];
+		free_packet(handle, packet);
 		handle->xmit_ring_start =
 			(handle->xmit_ring_start + 1) % XMIT_RING_SIZE;
 		handle->xmit_ring_pending--;

@@ -721,13 +721,11 @@ struct packed ndis_handle
 
 	struct work_struct xmit_work;
 	struct wrap_spinlock xmit_ring_lock;
-	struct ndis_buffer *xmit_ring[XMIT_RING_SIZE];
+	struct ndis_packet *xmit_ring[XMIT_RING_SIZE];
 	unsigned int xmit_ring_start;
 	unsigned int xmit_ring_pending;
 
 	int send_status;
-	struct ndis_packet *send_packet;
-	struct wrap_spinlock send_packet_lock;
 	struct wrap_spinlock send_packet_done_lock;
 
 	struct semaphore ndis_comm_mutex;
