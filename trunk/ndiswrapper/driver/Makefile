@@ -1,10 +1,3 @@
-# Unomment the line below to enable debugging
-#CFLAGS += -DDEBUG
-
-# Uncomment the line below to enable power management (to avoid
-# removing and loading module when laptop is suspended/resumed)
-CFLAGS += -DTEST_PM
-
 KSRC  := /lib/modules/$(shell uname -r)/build
 
 KVERS := $(shell uname -r |  sed -e 's/\([^\.]*\)\.\([^\.]*\)\..*/\1\2/')
@@ -34,9 +27,27 @@ ndis.o:	ndis.c ndis.h
 proc.o : proc.c ndis.h
 
 ifdef DBG_REALTEK
+CFLAGS += -DDBG_REALTEK -DDEBUG -g
+
+rt8180.o : rt8180.c
+endif
+
+ifdef DBG_ATHEROS
+CFLAGS += -DDBG_ATHEROS -DDEBUG -g
+endif
+
+ifdef DBG_TI
+CFLAGS += -DDBG_TI -DDEBUG -g
+endif
+
+ifdef DBG_REALTEK
 CFLAGS += -DDBG_REALTEK
 
 rt8180.o : rt8180.c
+endif
+
+ifdef DEBUG
+CFLAGS += -DDEBUG -g
 endif
 
 prereq_check:
