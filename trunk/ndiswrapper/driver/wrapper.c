@@ -118,7 +118,7 @@ int doreset(struct ndis_handle *handle)
 		 * 1 ms */
 		mdelay(1);
 		/* wait for NdisMResetComplete upto 1 s */
-		if (wait_event_interruptible_timeout(
+		if (!wait_event_interruptible_timeout(
 			    handle->ndis_comm_wq,
 			    (handle->ndis_comm_done == 1), 1*HZ))
 			handle->ndis_comm_res = NDIS_STATUS_FAILURE;
@@ -167,14 +167,16 @@ int doquery(struct ndis_handle *handle, unsigned int oid, char *buf,
 			      written, needed);
 	if (res == NDIS_STATUS_PENDING)
 	{
+DBGTRACE("res: %d", res);
 		/* wait for NdisMQueryInformationComplete upto HZ */
-		if (wait_event_interruptible_timeout(
+		if (!wait_event_interruptible_timeout(
 			    handle->ndis_comm_wq,
-			    (handle->ndis_comm_done == 1), HZ))
+			    (handle->ndis_comm_done == 1), 1*HZ))
 			handle->ndis_comm_res = NDIS_STATUS_FAILURE;
 		res = handle->ndis_comm_res;
 	}
 	up(&handle->ndis_comm_mutex);
+DBGTRACE("res: %d", res);
 	TRACEEXIT3(return res);
 }
 
@@ -199,9 +201,9 @@ int dosetinfo(struct ndis_handle *handle, unsigned int oid, char *buf,
 	if (res == NDIS_STATUS_PENDING)
 	{
 		/* wait for NdisMSetInformationComplete upto HZ */
-		if (wait_event_interruptible_timeout(
+		if (!wait_event_interruptible_timeout(
 			    handle->ndis_comm_wq,
-			    (handle->ndis_comm_done == 1), HZ))
+			    (handle->ndis_comm_done == 1), 1*HZ))
 			handle->ndis_comm_res = NDIS_STATUS_FAILURE;
 		res = handle->ndis_comm_res;
 	}
