@@ -82,10 +82,12 @@ _FASTCALL KIRQL WRAP_EXPORT(KfRaiseIrql)
 	TRACEENTER4("irql = %d", newirql);
 
 	irql = KeGetCurrentIrql();
+#if DEBUG_IRQL
 	if (newirql < irql) {
 		ERROR("invalid irql %d", irql);
 		TRACEEXIT4(return PASSIVE_LEVEL);
 	}
+#endif
 
 	if (irql < DISPATCH_LEVEL) {
 		local_bh_disable();
@@ -101,6 +103,12 @@ _FASTCALL void WRAP_EXPORT(KfLowerIrql)
 	TRACEENTER4("irql = %d", oldirql);
 
 	if (oldirql < DISPATCH_LEVEL) {
+#if DEBUG_IRQL
+		KIRQL irql;
+		irql = KeGetCurrentIrql();
+		if (irql != DISPATCH_LEVEL)
+			WARNING("IRQL %d != DISPATCH_LEVEL", irql);
+#endif
 		preempt_enable();
 		local_bh_enable();
 	}

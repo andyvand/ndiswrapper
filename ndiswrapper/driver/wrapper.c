@@ -673,14 +673,17 @@ static int send_packet(struct ndis_handle *handle, struct ndis_packet *packet)
 {
 	int res;
 	struct miniport_char *miniport = &handle->driver->miniport_char;
+	KIRQL irql;
 
 	TRACEENTER3("packet = %p", packet);
 	if (miniport->send_packets) {
 		struct ndis_packet *packets[1];
 
 		packets[0] = packet;
+		irql = raise_irql(DISPATCH_LEVEL);
 		miniport->send_packets(handle->adapter_ctx,
 				       &packets[0], 1);
+		lower_irql(irql);
 		if (test_bit(ATTR_SERIALIZED, &handle->attributes)) {
 			/* serialized miniports set packet->status */
 			res = packet->status;
@@ -689,7 +692,9 @@ static int send_packet(struct ndis_handle *handle, struct ndis_packet *packet)
 			res = NDIS_STATUS_PENDING;
 		}
 	} else if (miniport->send) {
+		irql = raise_irql(DISPATCH_LEVEL);
 		res = miniport->send(handle->adapter_ctx, packet, 0);
+		lower_irql(irql);
 	} else {
 		DBGTRACE3("%s", "No send handler");
 		res = NDIS_STATUS_FAILURE;
@@ -708,15 +713,9 @@ static void xmit_bh(void *param)
 
 	TRACEENTER3("send status is %08X", handle->send_status);
 
-	while (handle->send_status == 0) {
-		wrap_spin_lock(&handle->xmit_ring_lock);
-		if (handle->xmit_ring_pending == 0) {
-			wrap_spin_unlock(&handle->xmit_ring_lock);
-			break;
-		}
+	while (handle->send_status == 0 && handle->xmit_ring_pending > 0) {
 		packet = handle->xmit_ring[handle->xmit_ring_start];
 		res = send_packet(handle, packet);
-		wrap_spin_unlock(&handle->xmit_ring_lock);
 
 		/* If the driver returns...
 		 * NDIS_STATUS_SUCCESS - we own the packet and
@@ -755,6 +754,8 @@ static void xmit_bh(void *param)
 			(handle->xmit_ring_start + 1) % XMIT_RING_SIZE;
 		handle->xmit_ring_pending--;
 		wrap_spin_unlock(&handle->xmit_ring_lock);
+		if (handle->xmit_ring_pending > 2)
+			INFO("xmit_ring_pending: %d", handle->xmit_ring_pending);
 		if (netif_queue_stopped(handle->net_dev))
 			netif_wake_queue(handle->net_dev);
 	}

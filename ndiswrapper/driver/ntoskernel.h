@@ -32,6 +32,8 @@
 
 #include <linux/version.h>
 
+#define DEBUG_IRQL 1
+
 #ifdef CONFIG_X86_64
 #define STDCALL
 #define _FASTCALL __attribute__((regparm (4)))
