@@ -460,6 +460,7 @@ struct ndis_miniport_timer
 	struct kdpc kdpc;
 	void *timer_func;
 	void *timer_ctx;
+	struct ndis_handle *handle;
 	struct ndis_miniport_timer *next;
 };
 
