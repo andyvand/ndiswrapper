@@ -198,7 +198,7 @@ _FASTCALL struct slist_entry * WRAP_EXPORT(ExInterlockedPopEntrySList)
 }
 
 _FASTCALL struct slist_entry * WRAP_EXPORT(ExpInterlockedPopEntrySList)
-	(int dummy, KSPIN_LOCK *lock, union slist_head *head)
+	(FASTCALL_DECL_2(union slist_head *head, KSPIN_LOCK *lock))
 {
 	return ExInterlockedPopEntrySList(FASTCALL_ARGS_2(head, lock));
 }
