@@ -626,11 +626,9 @@ int add_wep_key(struct ndis_handle *handle, char *key, int key_len,
 	ndis_key.struct_size = sizeof(ndis_key);
 	ndis_key.length = key_len;
 	memcpy(&ndis_key.key, key, key_len);
-	/* active/transmit key works only if index is 0 */
+	ndis_key.index = index;
 	if (index == handle->encr_info.active)
-		ndis_key.index = 0 | (1 << 31);
-	else
-		ndis_key.index = index;
+		ndis_key.index |= (1 << 31);
 
 	res = miniport_set_info(handle, OID_802_11_ADD_WEP, &ndis_key,
 				sizeof(ndis_key));
@@ -645,13 +643,10 @@ int add_wep_key(struct ndis_handle *handle, char *key, int key_len,
 	handle->encr_info.keys[index].length = key_len;
 	memcpy(&handle->encr_info.keys[index].key, key, key_len);
 
-	/* active/transmit key is always stored at index 0 */
 	if (index == handle->encr_info.active) {
-		handle->encr_info.keys[0].length = key_len;
-		memcpy(&handle->encr_info.keys[0].key, key, key_len);
 		res = set_encr_mode(handle, Ndis802_11Encryption1Enabled);
 		if (res)
-			WARNING("changing encr status failed (%08X)", res);
+			WARNING("encryption couldn't be enabled (%08X)", res);
 	}
 	TRACEEXIT1(return 0);
 }
