@@ -1397,6 +1397,8 @@ NdisMRegisterInterrupt(struct ndis_irq *ndis_irq, struct ndis_handle *handle,
 	if (request_irq(vector, ndis_irq_th, shared? SA_SHIRQ : 0,
 			"ndiswrapper", ndis_irq))
 	{
+		printk(KERN_WARNING "%s: request for irq %d failed\n",
+		       DRV_NAME, vector);
 		TRACEEXIT1(return NDIS_STATUS_RESOURCES);
 	}
 	ndis_irq->enabled = 1;
