@@ -444,6 +444,7 @@ struct packed ndis_handle
 	char nick[IW_ESSID_MAX_SIZE+1];
 	spinlock_t send_packet_lock;
 
+	u32 pci_state[16];
 };
 
 struct ndis_timer
