@@ -441,7 +441,7 @@ static int ndis_get_wep(struct net_device *dev, struct iw_request_info *info,
 	extra[0] = 0;
 
 	index = (wrqu->data.flags & IW_ENCODE_INDEX);
-	DBGTRACE("%s: index = %lu\n", __FUNCTION__, index);
+	DBGTRACE("%s: index = %u\n", __FUNCTION__, index);
 	if (index && (index <= 0 || index > MAX_WEP_KEYS))
 	{
 		printk(KERN_INFO "%s: wep index out of range (%u)\n",
@@ -451,7 +451,7 @@ static int ndis_get_wep(struct net_device *dev, struct iw_request_info *info,
 
 	if (index && index != wep_info->active)
 	{
-		if (wep_info->keys[index].length > 0)
+		if (wep_info->keys[index-1].length > 0)
 		{
 			wrqu->data.flags |= IW_ENCODE_ENABLED;
 			wrqu->data.length = wep_info->keys[index-1].length;
@@ -500,8 +500,6 @@ static int ndis_get_wep(struct net_device *dev, struct iw_request_info *info,
 		wrqu->data.flags |= IW_ENCODE_OPEN;
 	else if (status == NDIS_ENCODE_RESTRICTED)
 		wrqu->data.flags |= IW_ENCODE_RESTRICTED;
-	else // if (status == NDIS_ENCODE_OPEN_RESTRICTED)
-		wrqu->data.flags |= (IW_ENCODE_OPEN | IW_ENCODE_RESTRICTED);
 	
 	return 0;
 }
@@ -516,7 +514,7 @@ static int ndis_set_wep(struct net_device *dev, struct iw_request_info *info,
 	struct wep_req wep_req;
 		
 	index = (wrqu->data.flags & IW_ENCODE_INDEX);
-	DBGTRACE("%s: index = %lu\n", __FUNCTION__, index);
+	DBGTRACE("%s: index = %u\n", __FUNCTION__, index);
 	if (index && (index <= 0 || index > MAX_WEP_KEYS))
 	{
 		printk(KERN_INFO "%s: wep index out of range (%u)\n",
@@ -542,13 +540,16 @@ static int ndis_set_wep(struct net_device *dev, struct iw_request_info *info,
 			return 0;
 		}
 		if (wrqu->data.flags & IW_ENCODE_NOKEY)
-			wep_req.keyindex = index | (1 << 31);
+		{
+			DBGTRACE("%s: setting key %d as tx key\n",
+				 __FUNCTION__, index);
+			wep_req.keyindex = 1 << 31;
+		}
 		else
 		{
+			DBGTRACE("setting key %d as rx key\n",
+				 __FUNCTION__, index);
 			wep_req.keyindex = index;
-			wep_info->keys[index-1].length = wrqu->data.length;
-			memcpy(&wep_info->keys[index-1].key, extra,
-			       wrqu->data.length);
 		}
 		wep_req.len = sizeof(wep_req);
 		wep_req.keylength = wep_info->keys[index-1].length;
@@ -563,18 +564,25 @@ static int ndis_set_wep(struct net_device *dev, struct iw_request_info *info,
 			       dev->name, index, res);
 			return -EINVAL;
 		}
+		if (!(wrqu->data.flags & IW_ENCODE_NOKEY))
+		{
+			wep_info->keys[index-1].length = wrqu->data.length;
+			memcpy(&wep_info->keys[index-1].key, extra,
+			       wrqu->data.length);
+		}
 		return 0;
 	}
 
 	/* default key */
 
+	DBGTRACE("%s: setting default key\n", __FUNCTION__);
 	if (!index)
 		index = wep_info->active;
 	
 	res = 0;
 	if (wrqu->data.flags & IW_ENCODE_OPEN)
 		res = set_int(handle, NDIS_OID_AUTH_MODE, NDIS_ENCODE_OPEN);
-	else if (wrqu->data.flags & IW_ENCODE_RESTRICTED)
+	else // if (wrqu->data.flags & IW_ENCODE_RESTRICTED)
 		res = set_int(handle, NDIS_OID_AUTH_MODE,
 			      NDIS_ENCODE_RESTRICTED);
 	if (res)
@@ -585,27 +593,31 @@ static int ndis_set_wep(struct net_device *dev, struct iw_request_info *info,
 	}
 
 	if (wrqu->data.flags & IW_ENCODE_DISABLED)
-		res = set_int(handle, NDIS_OID_WEP_STATUS, NDIS_ENCODE_DISABLED);
-	else if (wrqu->data.flags & IW_ENCODE_ENABLED)
-		res = set_int(handle, NDIS_OID_WEP_STATUS, NDIS_ENCODE_ENABLED);
-	if (res)
 	{
-		printk(KERN_INFO "%s: changing wep status failed (%08X)\n",
-		       dev->name, res);
-		return -1;
+		res = set_int(handle, NDIS_OID_WEP_STATUS,
+			      NDIS_ENCODE_DISABLED);
+		if (res)
+		{
+			printk(KERN_INFO "%s: changing wep status failed (%08X)\n",
+			       dev->name, res);
+			return -1;
+		}
+		return 0;
 	}
 	
-	if (wrqu->data.length > 0)
+	res = set_int(handle, NDIS_OID_WEP_STATUS, NDIS_ENCODE_ENABLED);
+	if (!(wrqu->data.flags & IW_ENCODE_NOKEY))
 	{
 		wep_info->keys[index-1].length = wrqu->data.length;
 		memcpy(&wep_info->keys[index-1].key, extra, wrqu->data.length);
 	}
 
 	wep_req.len = sizeof(wep_req);
-	wep_req.keyindex = index | (1 << 31);
+	wep_req.keyindex = 1 << 31;
 	wep_req.keylength = wep_info->keys[index-1].length;
 	memcpy(&wep_req.keymaterial, wep_info->keys[index-1].key,
 			wep_req.keylength);
+	DBGTRACE("%s: setting key %d as tx key\n", __FUNCTION__, index);
 	res = dosetinfo(handle, NDIS_OID_ADD_WEP,
 			(char*)&wep_req, sizeof(wep_req),
 			&written, &needed);
