@@ -35,6 +35,7 @@ struct load_device {
 	int device;
 	int subvendor;
 	int subdevice;
+	char conf_file_name[MAX_DRIVER_NAME_LEN];
 	char driver_name[MAX_DRIVER_NAME_LEN];
 };
 
@@ -45,11 +46,7 @@ struct load_devices {
 
 struct load_driver {
 	char name[MAX_DRIVER_NAME_LEN];
-	int bustype;
-	int vendor;
-	int device;
-	int subvendor;
-	int subdevice;
+	char conf_file_name[MAX_DRIVER_NAME_LEN];
 	unsigned int nr_sys_files;
 	struct load_driver_file sys_files[MAX_PE_IMAGES];
 	unsigned int nr_settings;

@@ -146,8 +146,7 @@ static int parse_setting_line(const char *setting_line, char *setting_name,
 }
 
 /* read .conf file and store info in driver */
-static int read_conf_file(char *conf_file_name, struct load_driver *driver,
-			  int vendor, int device, int subvendor, int subdevice)
+static int read_conf_file(char *conf_file_name, struct load_driver *driver)
 {
 	char setting_line[SETTING_LEN];
 	struct stat statbuf;
@@ -155,46 +154,23 @@ static int read_conf_file(char *conf_file_name, struct load_driver *driver,
 	char setting_name[MAX_NDIS_SETTING_NAME_LEN];
 	char setting_value[MAX_NDIS_SETTING_VALUE_LEN];
 	int ret, nr_settings;
-	char *file_name, *s;
-	int v, d, sv, sd, bustype;
+	int i, vendor, device, subvendor, subdevice, dev_bustype, conf_bustype;
 
 	if (lstat(conf_file_name, &statbuf)) {
 		error("unable to open config file: %s", strerror(errno));
 		return -EINVAL;
 	}
 
-	file_name = strdup(conf_file_name);
-	s = basename(file_name);
-	/* remove ".conf" */
-	s[strlen(s)-5] = 0;
-
-	sv = sd = DEV_ANY_ID;
-	if (strlen(s) == 11) {
-		sscanf(s, "%04x:%04x.%1d", &v, &d, &bustype);
-	} else if (strlen(s) == 21) {
-		sscanf(s, "%04x:%04x:%04x:%04x.%1d",
-		       &v, &d, &sv, &sd, &bustype);
-	} else
-		return -EINVAL;
-
-	free(file_name);
-
-	if (v != vendor || d != device || sv != subvendor || sd != subdevice)
-		return 0;
-
-	if (bustype != NDIS_PCI_BUS &&
-	    bustype != NDIS_USB_BUS) {
-		error("invalid bustype %d", bustype);
+	i = sscanf(conf_file_name, "%04X:%04X:%04X:%04X.%d.conf",
+		   &vendor, &device, &subvendor, &subdevice, &dev_bustype);
+	if (i != 5) {
+		error("unable to parse conf file name %s (%d)",
+		      conf_file_name, i);
 		return -EINVAL;
 	}
 
 	nr_settings = 0;
-	driver->bustype = -1;
 	driver->nr_settings = 0;
-	driver->vendor = v;
-	driver->device = d;
-	driver->subvendor = sv;
-	driver->subdevice = sd;
 
 	if ((config = fopen(conf_file_name, "r")) == NULL) {
 		error("unable to open config file: %s", strerror(errno));
@@ -212,10 +188,10 @@ static int read_conf_file(char *conf_file_name, struct load_driver *driver,
 			return -EINVAL;
 
 		if (strcmp(setting_name, "BusType") == 0) {
-			driver->bustype = strtol(setting_value, NULL, 10);
-			if (driver->bustype != bustype) {
-				error("invalid bustype: %d (%d)",
-				      driver->bustype, bustype);
+			conf_bustype = strtol(setting_value, NULL, 10);
+			if (dev_bustype != conf_bustype) {
+				error("invalid bustype: %d(%d)",
+				      dev_bustype, conf_bustype);
 				return -EINVAL;
 			}
 		}
@@ -230,14 +206,15 @@ static int read_conf_file(char *conf_file_name, struct load_driver *driver,
 			error("too many settings");
 			return -EINVAL;
 		}
+				
 	}
 
 	fclose(config);
 
-	if (driver->bustype == -1) {
+	if (conf_bustype == -1) {
 		error("coudn't find device type in settings");
 		return -EINVAL;
-	}
+	}			
 
 	driver->nr_settings = nr_settings;
 	return 0;
@@ -248,7 +225,7 @@ static int read_conf_file(char *conf_file_name, struct load_driver *driver,
  * returns 0: on success, -1 on error
  */
 static int load_driver(int ioctl_device, DIR *dir, char *driver_name,
-		       int vendor, int device, int subvendor, int subdevice)
+		       char *conf_file_name)
 {
 	int i;
 	struct dirent *dirent;
@@ -293,8 +270,11 @@ static int load_driver(int ioctl_device, DIR *dir, char *driver_name,
 				nr_sys_files++;
 		} else if (len > 5 &&
 			   strcmp(&dirent->d_name[len-5], ".conf") == 0) {
-			read_conf_file(dirent->d_name, driver, vendor,
-				       device, subvendor, subdevice);
+			info("considering %s", dirent->d_name);
+			if (strcmp(dirent->d_name, conf_file_name) == 0) {
+				info("reading %s", conf_file_name);
+				read_conf_file(conf_file_name, driver);
+			}
 		} else if (len > 4 &&
 			   strcmp(&dirent->d_name[len-4], ".bin") == 0) {
 			if (read_file(dirent->d_name,
@@ -325,13 +305,13 @@ static int load_driver(int ioctl_device, DIR *dir, char *driver_name,
 		goto err;
 	}
 	if (driver->nr_settings == 0) {
-		error("couldn't find required .conf file for "
-		      "%04X:%04X:%04X:%04X for driver %s", vendor, device,
-		      subvendor, subdevice, driver_name);
+		error("couldn't find required .conf file %s", conf_file_name);
 		goto err;
 	}
 	driver->nr_sys_files = nr_sys_files;
 	driver->nr_bin_files = nr_bin_files;
+	strncpy(driver->conf_file_name, conf_file_name,
+		sizeof(driver->conf_file_name));
 
 #ifndef DEBUG
 	if (ioctl(ioctl_device, NDIS_LOAD_DRIVER, driver))
@@ -436,6 +416,11 @@ static int add_driver_devices(DIR *dir, char *driver_name,
 			else {
 				strncpy(device->driver_name, driver_name,
 					sizeof(device->driver_name));
+				strncpy(device->conf_file_name, dirent->d_name,
+					sizeof(device->conf_file_name));
+				strncat(device->conf_file_name, ".conf",
+					sizeof(device->conf_file_name) -
+					strlen(device->conf_file_name));
 				dbg("device %04X:%04X:%04X:%04X is added",
 				    device->vendor, device->device,
 				    device->subvendor, device->subdevice);
@@ -625,22 +610,14 @@ int main(int argc, char *argv[0])
 			res = 0;
 	} else {
 		DIR *driver_dir;
-		int vendor, device, subvendor, subdevice;
 
 		/* load specific driver and conf file */
-		if (argc != 8) {
+		if (argc != 5) {
 			error("incorrect usage of %s (%d)", argv[0], argc);
 			res = 11;
 			goto out;
 		}
 
-		vendor = atoi(argv[4]);
-		device = atoi(argv[5]);
-		subvendor = atoi(argv[6]);
-		subdevice = atoi(argv[7]);
-
-		dbg("loading %s for %d:%d:%d:%d", argv[3], vendor, device,
-		    subdevice, subvendor);
 		if (chdir(confdir)) {
 			error("directory %s is not valid: %s",
 			      confdir, strerror(errno));
@@ -660,8 +637,7 @@ int main(int argc, char *argv[0])
 				goto out;
 			}
 			res = load_driver(ioctl_device, driver_dir,
-					  argv[3], vendor, device,
-					  subvendor, subdevice);
+					  argv[3], argv[4]);
 			closedir(driver_dir);
 		}
 	}
