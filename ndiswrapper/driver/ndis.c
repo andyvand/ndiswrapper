@@ -29,7 +29,8 @@ extern int image_offset;
 extern struct list_head ndis_driverlist;
 
 struct list_head handle_ctx_list;
-static struct wrap_spinlock atomic_lock;
+struct wrap_spinlock atomic_lock;
+struct wrap_spinlock cancel_lock;
 
 DECLARE_WAIT_QUEUE_HEAD(event_wq);
 
@@ -46,6 +47,7 @@ void init_ndis(void)
 	wrap_spin_lock_init(&ndis_work_list_lock);
 
 	wrap_spin_lock_init(&atomic_lock);
+	wrap_spin_lock_init(&cancel_lock);
 	return;
 }
 
@@ -1962,28 +1964,30 @@ STDCALL static void
 NdisInitializeEvent(struct ndis_event *event)
 {
 	TRACEENTER3("%08x", (int)event);
-	event->state = 0;
+	event->event.header.type = NOTIFICATION_EVENT;
+	event->event.header.signal_state = 0;
 }
 
-STDCALL static int
-NdisWaitEvent(struct ndis_event *event, int timeout)
+STDCALL int
+NdisWaitEvent(struct ndis_event *event, unsigned int timeout)
 {
 	int res;
 
-	TRACEENTER3("%08x %08x", (int)event, timeout);
-	if (event->state)
+	TRACEENTER3("%p %d", event, timeout);
+	if (event->event.header.signal_state)
 		TRACEEXIT3(return 1);
-	if (!timeout)
-	{
-		wait_event_interruptible(event_wq, event->state == 1);
+	if (!timeout) {
+		wait_event_interruptible(event_wq,
+			event->event.header.signal_state == 1);
 		return 1;
 	}
 
-	res = wait_event_interruptible_timeout(event_wq, event->state == 1,
-					       (timeout * HZ)/1000);
-	DBGTRACE3("%08x Woke up (%d)", (int)event, event->state);
+	res = wait_event_interruptible_timeout(event_wq,
+		event->event.header.signal_state == 1, (timeout * HZ)/1000);
+	DBGTRACE3("%p Woke up (%ld)", event,
+		event->event.header.signal_state);
 
-	if (event->state == 1)
+	if (event->event.header.signal_state == 1)
 		TRACEEXIT3(return 1);
 
 	TRACEEXIT3(return 0);
@@ -1992,15 +1996,16 @@ NdisWaitEvent(struct ndis_event *event, int timeout)
 STDCALL void
 NdisSetEvent(struct ndis_event *event)
 {
-	event->state = 1;
+	TRACEENTER3("%p", event);
+	event->event.header.signal_state = 1;
 	wake_up_interruptible(&event_wq);
 }
 
 STDCALL static void
 NdisResetEvent(struct ndis_event *event)
 {
-	TRACEENTER3("%08x", (int)event);
-	event->state = 0;
+	TRACEENTER3("%p", event);
+	event->event.header.signal_state = 0;
 }
 
 /* called via function pointer */
@@ -2293,39 +2298,43 @@ NdisMGetDeviceProperty(struct ndis_handle *handle, void **phy_dev,
 		       void **func_dev, void **next_dev, void **alloc_res,
 		       void**trans_res)
 {
+	struct device_object *dev;
+	int i;
+
 	TRACEENTER2("phy_dev = %p, func_dev = %p, next_dev = %p, "
-		"alloc_res = %p, trans_res = %p\n", phy_dev, func_dev,
+		"alloc_res = %p, trans_res = %p", phy_dev, func_dev,
 		next_dev, alloc_res, trans_res);
 
-	if (phy_dev) {
-		if (!handle->phy_dev) {
-			handle->phy_dev = kmalloc(
-				sizeof(struct device_object), GFP_KERNEL);
-			if (!handle->phy_dev) {
-				ERROR("%s", "unable to allocate "
-					"DEVICE_OBJECT structure!");
-				BUG();
-			}
-
-			{
-				int i;
-				for (i = 0;
-				     i < (sizeof(*handle->phy_dev)/sizeof(void *));
-				     i++)
-					((int *)handle->phy_dev)[i] = 0x00000A00;
-			}
-			handle->phy_dev->next_dev        = (void *)0x00000900;
-			handle->phy_dev->current_irp     = (void *)0x00000800;
-			/* flags: DO_BUFFERED_IO + DO_BUS_ENUMERATED_DEVICE */
-			handle->phy_dev->flags           = 0x00001004;
-			handle->phy_dev->characteristics = 01;
-			/* dev_type: FILE_DEVICE_UNKNOWN */
-			handle->phy_dev->dev_type        = 0x00000022;
-			handle->phy_dev->stack_size      = 1;
-
-			handle->phy_dev->device.usb = handle->dev.usb;
+	if (!handle->phys_device_obj) {
+		dev = kmalloc(
+			sizeof(struct device_object), GFP_KERNEL);
+		if (!dev) {
+			ERROR("%s", "unable to allocate "
+				"DEVICE_OBJECT structure!");
+			BUG();
 		}
-		*phy_dev = handle->phy_dev;
+	
+		for (i = 0; i < (sizeof(*dev)/sizeof(void *)); i++)
+			((int *)dev)[i] = 0x00000A00;
+
+		dev->next_dev        = (void *)0x00000901;
+		dev->current_irp     = (void *)0x00000801;
+		/* flags: DO_BUFFERED_IO + DO_BUS_ENUMERATED_DEVICE */
+		dev->flags           = 0x00001004;
+		dev->characteristics = 01;
+		/* dev_type: FILE_DEVICE_UNKNOWN */
+		dev->dev_type        = 0x00000022;
+		dev->stack_size      = 1;
+
+		/* assumes that the handle refers to an USB device */
+		dev->device.usb = handle->dev.usb;
+
+		handle->phys_device_obj = dev;
+	}
+
+	if (phy_dev) {
+		*phy_dev = handle->phys_device_obj;
+		DBGTRACE2("*phy_dev = %p", *phy_dev);
 	}
 
 	if (func_dev) {
@@ -2334,8 +2343,9 @@ NdisMGetDeviceProperty(struct ndis_handle *handle, void **phy_dev,
 	}
 
 	if (next_dev) {
-		ERROR("%s", "request for next_dev not yet supported!");
-		*next_dev = (void *)0x00000C00;
+		/* physical and next device seem to be the same */
+		*next_dev = handle->phys_device_obj;
+		DBGTRACE2("*next_dev = %p", *next_dev);
 	}
 
 	if (alloc_res) {

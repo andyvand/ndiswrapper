@@ -22,9 +22,11 @@
 #define DISPATCH_LEVEL 2
 
 #define STATUS_SUCCESS			0
+#define STATUS_TIMEOUT			0x00000102
 #define STATUS_PENDING			0x00000103
 #define STATUS_FAILURE			0xC0000001
 #define STATUS_MORE_PROCESSING_REQUIRED	0xC0000016
+#define STATUS_RESOURCES		0xC000009A
 #define STATUS_NOT_SUPPORTED		0xC00000BB
 
 #define IS_PENDING			0x01
@@ -40,7 +42,7 @@ struct slist_entry
 
 union slist_head {
 	unsigned long long align;
-	struct
+	struct packed
 	{
 		struct slist_entry  *next;
 		unsigned short depth;
@@ -59,7 +61,7 @@ struct list_entry
 
 typedef unsigned long POOL_TYPE;
 
-struct dispatch_header
+struct packed dispatch_header
 {
 	unsigned char type;
 	unsigned char absolute;
@@ -86,7 +88,7 @@ struct wrapper_timer
 	struct kdpc *kdpc;
 };
 
-struct kdpc
+struct packed kdpc
 {
 	short type;
 	unsigned char number;
@@ -215,6 +217,14 @@ struct ktimer
 
 #define NOTIFICATION_TIMER 1
 
+struct kevent
+{
+	struct dispatch_header header;
+};
+
+#define NOTIFICATION_EVENT	0
+#define SYNCHRONIZATION_EVENT	1
+
 typedef STDCALL void *LOOKASIDE_ALLOC_FUNC(POOL_TYPE, unsigned long,
 					   unsigned long);
 typedef STDCALL void LOOKASIDE_FREE_FUNC(void *);
@@ -246,6 +256,7 @@ int wrapper_set_timer(struct wrapper_timer *wrapper_timer,
 void wrapper_cancel_timer(struct wrapper_timer *wrapper_timer, char *canceled);
 
 STDCALL KIRQL KeGetCurrentIrql(void);
+STDCALL void KeInitializeSpinLock(KSPIN_LOCK *lock);
 
 static inline void wrapper_set_timer_dpc(struct wrapper_timer *wrapper_timer,
                                          struct kdpc *kdpc)

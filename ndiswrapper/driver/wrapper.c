@@ -1400,7 +1400,7 @@ static struct net_device *ndis_init_netdev(struct ndis_handle **phandle,
 
 	INIT_WORK(&handle->wrapper_worker, wrapper_worker_proc, handle);
 
-	handle->phy_dev = NULL;
+	handle->phys_device_obj = NULL;
 
 	*phandle = handle;
 	return dev;
@@ -1626,6 +1626,9 @@ static void __devexit ndis_remove_one(struct ndis_handle *handle)
 	 * xmit_bh before we call halt */
 	flush_scheduled_work();
 	netif_carrier_off(handle->net_dev);
+
+	if (handle->phys_device_obj)
+		kfree(handle->phys_device_obj);
 
 #ifndef DEBUG_CRASH_ON_INIT
 	set_int(handle, NDIS_OID_DISASSOCIATE, 0);
