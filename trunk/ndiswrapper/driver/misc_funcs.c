@@ -644,8 +644,10 @@ void ktimer_handler(unsigned long data)
 	else
 		ktimer->active = 0;
 
-	func(ktimer->kdpc, ktimer->kdpc->ctx,
-	     ktimer->kdpc->arg1, ktimer->kdpc->arg2);
+	if (ktimer->kdpc)
+		func(ktimer->kdpc, ktimer->kdpc->ctx,
+			 ktimer->kdpc->arg1, ktimer->kdpc->arg2);
+	return;
 }
 
 STDCALL void KeInitializeTimer(struct ktimer *ktimer)
@@ -683,8 +685,8 @@ STDCALL int KeSetTimerEx(struct ktimer *ktimer, __s64 expires,
 	{
 		ktimer->expires = (expires * HZ) / 10000;
 		if (repeat)
-			DBGTRACE("%s: absolute time with repeat? (%ld, %ld)\n",
-				 __FUNCTION__, expires, repeat);
+			printk(KERN_ERR "%s: absolute time with repeat? (%ld, %u)\n",
+				   __FUNCTION__, (long int)expires, repeat);
 	}
 	ktimer->repeat = (repeat * HZ) / 1000;
 	ktimer->kdpc = kdpc;
@@ -695,6 +697,8 @@ STDCALL int KeSetTimerEx(struct ktimer *ktimer, __s64 expires,
 	}
 	else
 	{
+		DBGTRACE("%s: adding timer at %u, %u\n",
+				 __FUNCTION__, ktimer->timer.expires, ktimer->timer.repeat);
 		ktimer->timer.expires = ktimer->expires;
 		add_timer(&ktimer->timer);
 		ktimer->active = 1;
@@ -710,6 +714,8 @@ STDCALL int KeCancelTimer(struct ktimer *ktimer)
 	ktimer->repeat = 0;
 	if (active)
 	{
+		DBGTRACE("%s: deleting timer at %u, %u\n",
+				 __FUNCTION__, ktimer->timer.expires, ktimer->timer.repeat);
 		del_timer_sync(&ktimer->timer);
 		return 1;
 	}
