@@ -65,7 +65,7 @@ static int ndis_proc_read_wep(char *page, char **start, off_t off,
 	int i, wep_status, auth_mode, op_mode;
 	unsigned int res, written, needed;
 	struct essid_req essid;
-	__u8 ap_address[6];
+	__u8 ap_address[ETH_ALEN];
 
 	if (off != 0) {
 		*eof = 1;
@@ -75,9 +75,9 @@ static int ndis_proc_read_wep(char *page, char **start, off_t off,
 	res = doquery(handle, NDIS_OID_BSSID, (char*)&ap_address,
 		      sizeof(ap_address), &written, &needed);
 	if (res)
-		return 0;
+		memset(ap_address, 255, ETH_ALEN);
 	p += sprintf(p, "ap_address=");
-	for (i = 0 ; i < 5 ; i++)
+	for (i = 0 ; i < ETH_ALEN ; i++)
 		p += sprintf(p, "%02x:", ap_address[i]);
 	p += sprintf(p, "%02x", ap_address[i]);
 	p += sprintf(p, "\n");
@@ -117,7 +117,7 @@ static int ndis_proc_read_wep(char *page, char **start, off_t off,
 
 	res = query_int(handle, NDIS_OID_MODE, &op_mode);
 	p += sprintf(p, "mode=%s\n",
-		     (op_mode == NDIS_MODE_BSS) ?
+		     (op_mode == NDIS_MODE_ADHOC) ?
 		     "adhoc" : 
 		     (op_mode == NDIS_MODE_INFRA) ?
 		     "managed" : "auto");
