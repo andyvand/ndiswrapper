@@ -38,6 +38,10 @@
 #include <linux/kthread.h>
 #endif
 
+#if !defined(CONFIG_USB) && defined(CONFIG_USB_MODULE)
+#define CONFIG_USB 1
+#endif
+
 #define DRV_NAME "ndiswrapper"
 
 #define STDCALL __attribute__((__stdcall__, regparm(0)))
