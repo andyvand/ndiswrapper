@@ -1441,8 +1441,6 @@ static int wpa_disassociate(struct net_device *dev,
 
 	/* we set an impossible essid to disassociate - see note in
 	 * iw_set_essid; setting an empty essid doesn't disassociate */
-	set_auth_mode(handle, AUTHMODE_OPEN);
-	set_encr_mode(handle, ENCR_DISABLED);
 	set_essid(handle, " ", 1);
 	get_ap_address(handle, ap_addr);
 	DBGTRACE("bssid " MACSTR, MAC2STR(ap_addr));
