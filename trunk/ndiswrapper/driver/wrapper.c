@@ -1408,6 +1408,8 @@ int setup_dev(struct net_device *dev)
 
 	memset(&wrqu, 0, sizeof(wrqu));
 
+	miniport_set_int(handle, OID_802_11_NETWORK_TYPE_IN_USE,
+			 Ndis802_11Automode);
 	set_infra_mode(handle, Ndis802_11Infrastructure);
 	set_essid(handle, "", 0);
 
