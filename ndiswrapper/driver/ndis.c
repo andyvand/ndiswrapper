@@ -1248,16 +1248,17 @@ STDCALL void WRAP_EXPORT(NdisSend)
 	(NDIS_STATUS *status, struct ndis_handle *handle,
 	 struct ndis_packet *packet)
 {
+	KIRQL irql;
 	struct miniport_char *miniport = &handle->driver->miniport_char;
 
 	if (miniport->send_packets) {
 		struct ndis_packet *packets[1];
 
 		packets[0] = packet;
-		wrap_spin_lock(&handle->lock, DISPATCH_LEVEL);
+		irql = raise_irql(DISPATCH_LEVEL);
 		LIN2WIN3(miniport->send_packets, handle->adapter_ctx,
 			 packets, 1);
-		wrap_spin_unlock(&handle->lock);
+		lower_irql(irql);
 		if (test_bit(ATTR_SERIALIZED, &handle->attributes)) {
 			*status = packet->status;
 			switch (*status) {
@@ -1277,10 +1278,10 @@ STDCALL void WRAP_EXPORT(NdisSend)
 			*status = NDIS_STATUS_PENDING;
 		}
 	} else {
-		wrap_spin_lock(&handle->lock, DISPATCH_LEVEL);
+		irql = raise_irql(DISPATCH_LEVEL);
 		*status = LIN2WIN3(miniport->send, handle->adapter_ctx,
 				   packet, 0);
-		wrap_spin_unlock(&handle->lock);
+		lower_irql(irql);
 		switch (*status) {
 		case NDIS_STATUS_SUCCESS:
 			sendpacket_done(handle, packet);
@@ -1445,14 +1446,15 @@ static void ndis_irq_bh(void *data)
 	struct ndis_irq *ndis_irq = (struct ndis_irq *)data;
 	struct ndis_handle *handle = ndis_irq->handle;
 	struct miniport_char *miniport = &handle->driver->miniport_char;
+	KIRQL irql;
 
 	if (ndis_irq->enabled) {
-		wrap_spin_lock(&handle->lock, DISPATCH_LEVEL);
+		irql = raise_irql(DISPATCH_LEVEL);
 		LIN2WIN1(miniport->handle_interrupt, handle->adapter_ctx);
 		if (miniport->enable_interrupts)
 			LIN2WIN1(miniport->enable_interrupts,
 				 handle->adapter_ctx);
-		wrap_spin_unlock(&handle->lock);
+		lower_irql(irql);
 	}
 }
 
@@ -1769,6 +1771,7 @@ EthRxIndicateHandler(void *adapter_ctx, void *rx_ctx, char *header1,
 	struct sk_buff *skb = NULL;
 	struct ndis_handle *handle = ctx_to_handle(rx_ctx);
 	unsigned int skb_size = 0;
+	KIRQL irql;
 
 	TRACEENTER3("adapter_ctx = %p, rx_ctx = %p, buf = %p, size = %d, "
 		    "buf = %p, size = %d, packet = %d",
@@ -1791,11 +1794,11 @@ EthRxIndicateHandler(void *adapter_ctx, void *rx_ctx, char *header1,
 		}
 
 		miniport = &handle->driver->miniport_char;
-		wrap_spin_lock(&handle->lock, DISPATCH_LEVEL);
+		irql = raise_irql(DISPATCH_LEVEL);
 		res = LIN2WIN6(miniport->tx_data, packet, &bytes_txed,
 			       adapter_ctx, rx_ctx, look_ahead_size,
 			       packet_size);
-		wrap_spin_unlock(&handle->lock);
+		lower_irql(irql);
 		if (res == NDIS_STATUS_SUCCESS) {
 			ndis_buffer *buffer;
 			skb = dev_alloc_skb(header_size+look_ahead_size+
@@ -2165,6 +2168,7 @@ static void ndis_worker(void *data)
 	struct miniport_char *miniport;
 	void *virt;
 	NDIS_PHY_ADDRESS phys;
+	KIRQL irql;
 
 	TRACEENTER3("%s", "");
 
@@ -2219,10 +2223,10 @@ static void ndis_worker(void *data)
 			NdisMAllocateSharedMemory(handle, alloc_mem->size,
 						  alloc_mem->cached,
 						  &virt, &phys);
-			wrap_spin_lock(&handle->lock, DISPATCH_LEVEL);
+			irql = raise_irql(DISPATCH_LEVEL);
 			LIN2WIN5(miniport->alloc_complete, handle, virt,
 				 &phys, alloc_mem->size, alloc_mem->ctx);
-			wrap_spin_unlock(&handle->lock);
+			lower_irql(irql);
 			break;
 
 		case NDIS_FREE_MEM_WORK_ITEM:
@@ -2237,10 +2241,10 @@ static void ndis_worker(void *data)
 		case NDIS_RETURN_PACKET_WORK_ITEM:
 			packet = ndis_work_entry->entry.return_packet;
 			miniport = &handle->driver->miniport_char;
-			wrap_spin_lock(&handle->lock, DISPATCH_LEVEL);
+			irql = raise_irql(DISPATCH_LEVEL);
 			LIN2WIN2(miniport->return_packet,
 				 handle->adapter_ctx, packet);
-			wrap_spin_unlock(&handle->lock);
+			lower_irql(irql);
 			break;
 
 		default:

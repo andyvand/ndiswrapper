@@ -82,9 +82,8 @@ struct wrap_spinlock *kspin_wrap_lock(void *kspin_lock)
 		struct spinlock_hash *p;
 
 		p = hlist_entry(node, struct spinlock_hash, hlist);
-		if (p->kspin_lock == kspin_lock) {
+		if (p->kspin_lock == kspin_lock)
 			return &p->wrap_spinlock;
-		}
 	}
 	DBGTRACE3("kspin_lock %p is not mapped", kspin_lock);
 	return NULL;
