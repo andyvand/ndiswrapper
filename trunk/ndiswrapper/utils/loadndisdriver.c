@@ -161,12 +161,23 @@ static int read_conf_file(char *conf_file_name, struct load_driver *driver)
 		return -EINVAL;
 	}
 
-	i = sscanf(conf_file_name, "%04X:%04X:%04X:%04X.%d.conf",
-		   &vendor, &device, &subvendor, &subdevice, &dev_bustype);
-	if (i != 5) {
-		error("unable to parse conf file name %s (%d)",
-		      conf_file_name, i);
-		return -EINVAL;
+	if (strlen(conf_file_name) == 16) {
+		i = sscanf(conf_file_name, "%04X:%04X.%d.conf",
+			   &vendor, &device, &dev_bustype);
+		if (i != 3) {
+			error("unable to parse conf file name %s (%d)",
+			      conf_file_name, i);
+			return -EINVAL;
+		}
+	} else {
+		i = sscanf(conf_file_name, "%04X:%04X:%04X:%04X.%d.conf",
+			   &vendor, &device, &subvendor, &subdevice,
+			   &dev_bustype);
+		if (i != 3) {
+			error("unable to parse conf file name %s (%d)",
+			      conf_file_name, i);
+			return -EINVAL;
+		}
 	}
 
 	nr_settings = 0;
@@ -269,12 +280,11 @@ static int load_driver(int ioctl_device, DIR *dir, char *driver_name,
 			} else
 				nr_sys_files++;
 		} else if (len > 5 &&
-			   strcmp(&dirent->d_name[len-5], ".conf") == 0) {
-			info("considering %s", dirent->d_name);
-			if (strcmp(dirent->d_name, conf_file_name) == 0) {
-				info("reading %s", conf_file_name);
-				read_conf_file(conf_file_name, driver);
-			}
+			   strcmp(&dirent->d_name[len-5], ".conf") == 0 &&
+			   strcmp(dirent->d_name, conf_file_name) == 0) {
+			if (read_conf_file(conf_file_name, driver))
+				error("couldn't read conf file %s",
+				      dirent->d_name);
 		} else if (len > 4 &&
 			   strcmp(&dirent->d_name[len-4], ".bin") == 0) {
 			if (read_file(dirent->d_name,
