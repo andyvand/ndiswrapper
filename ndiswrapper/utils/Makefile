@@ -11,3 +11,7 @@ clean:
 	rm -f *~
 	rm -f *.o
 	rm -f loadndisdriver
+
+install: all
+	install -m 755 loadndisdriver /sbin
+	install -m 755 ndiswrapper /usr/sbin
