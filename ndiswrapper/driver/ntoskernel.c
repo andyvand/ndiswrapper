@@ -108,8 +108,7 @@ STDCALL void WRAP_EXPORT(KeInitializeSpinLock)
 {
 	struct wrap_spinlock *wrap_lock;
 
-	if (!lock)
-	{
+	if (!lock) {
 		ERROR("%s", "invalid lock");
 		return;
 	}
@@ -117,8 +116,7 @@ STDCALL void WRAP_EXPORT(KeInitializeSpinLock)
 	wrap_lock = wrap_kmalloc(sizeof(struct wrap_spinlock), GFP_ATOMIC);
 	if (!wrap_lock)
 		ERROR("%s", "Couldn't allocate space for spinlock");
-	else
-	{
+	else {
 		DBGTRACE4("allocated spinlock %p", wrap_lock);
 		wrap_spin_lock_init(wrap_lock);
 		*lock = wrap_lock;
@@ -128,31 +126,29 @@ STDCALL void WRAP_EXPORT(KeInitializeSpinLock)
 STDCALL void WRAP_EXPORT(KeAcquireSpinLock)
 	(KSPIN_LOCK *lock, KIRQL *irql)
 {
-	*irql = KfAcquireSpinLock(0, 0, lock);
+	*irql = KfAcquireSpinLock(FASTCALL_ARGS_1(lock));
 }
 
 STDCALL void WRAP_EXPORT(KeReleaseSpinLock)
 	(KSPIN_LOCK *lock, KIRQL oldirql)
 {
-	KfReleaseSpinLock(0, oldirql, lock);
+	KfReleaseSpinLock(FASTCALL_ARGS_2(lock, oldirql));
 }
 
 STDCALL void WRAP_EXPORT(KeReleaseSpinLockFromDpcLevel)
 	(KSPIN_LOCK *lock)
 {
-	KefReleaseSpinLockFromDpcLevel(0, 0, lock);
+	KefReleaseSpinLockFromDpcLevel(FASTCALL_ARGS_1(lock));
 }
 
 _FASTCALL static struct slist_entry *WRAP_EXPORT(ExInterlockedPushEntrySList)
-	(int dummy, struct slist_entry *entry, union slist_head *head,
-	 KSPIN_LOCK *lock)
+	(FASTCALL_DECL_3(union slist_head *head,struct slist_entry *entry, 
+			 KSPIN_LOCK *lock))
 {
 	struct slist_entry *oldhead;
 	KIRQL irql;
 
 	TRACEENTER3("head = %p, entry = %p", head, entry);
-
-//	__asm__ __volatile__ ("" : "=c" (head), "=d" (entry));
 
 	KeAcquireSpinLock(lock, &irql);
 	oldhead = head->list.next;
@@ -164,13 +160,13 @@ _FASTCALL static struct slist_entry *WRAP_EXPORT(ExInterlockedPushEntrySList)
 }
 
 _FASTCALL static struct slist_entry * WRAP_EXPORT(ExInterlockedPopEntrySList)
-	(int dummy, KSPIN_LOCK *lock, union slist_head *head)
+	(FASTCALL_DECL_2(union slist_head *head, KSPIN_LOCK *lock))
 {
 	struct slist_entry *first;
 	KIRQL irql;
 
 	TRACEENTER3("head = %p", head);
-//	__asm__ __volatile__ ("" : "=c" (head));
+
 	KeAcquireSpinLock(lock, &irql);
 	first = NULL;
 	if (head) {
@@ -184,8 +180,8 @@ _FASTCALL static struct slist_entry * WRAP_EXPORT(ExInterlockedPopEntrySList)
 }
 
 _FASTCALL static struct list_entry *WRAP_EXPORT(ExfInterlockedInsertTailList)
-	(int dummy, struct list_entry *entry, struct list_entry *head,
-	 KSPIN_LOCK *lock)
+	(FASTCALL_DECL_3(struct list_entry *head, struct list_entry *entry, 
+			 KSPIN_LOCK *lock))
 {
 	struct list_entry *oldhead;
 	KIRQL irql;
@@ -208,7 +204,7 @@ _FASTCALL static struct list_entry *WRAP_EXPORT(ExfInterlockedInsertTailList)
 }
 
 _FASTCALL static struct list_entry *WRAP_EXPORT(ExfInterlockedRemoveHeadList)
-	(int dummy, KSPIN_LOCK *lock, struct list_entry *head)
+	(FASTCALL_DECL_2(struct list_entry *head, KSPIN_LOCK *lock))
 {
 	struct list_entry *entry, *tmp;
 	KIRQL irql;
@@ -314,7 +310,7 @@ STDCALL static void WRAP_EXPORT(ExDeleteNPagedLookasideList)
 }
 
 _FASTCALL static void WRAP_EXPORT(ExInterlockedAddLargeStatistic)
-	(int dummy, u32 n, u64 *plint)
+	(FASTCALL_DECL_2(u64 *plint, u32 n))
 {
 	unsigned long flags;
 	static spinlock_t lock = SPIN_LOCK_UNLOCKED;
@@ -499,6 +495,10 @@ STDCALL unsigned int WRAP_EXPORT(KeWaitForSingleObject)
 	TRACEEXIT2(return STATUS_SUCCESS);
 }
 
+/* implementation of this function is more for decorative purpose!
+ * not tested at all. notification events are not handled properly as
+ * yet
+ */
 STDCALL unsigned int WRAP_EXPORT(KeWaitForMultipleObjects)
 	(unsigned long count, void *object[], unsigned long wait_type,
 	 unsigned int wait_reason, unsigned int waitmode,
@@ -757,7 +757,7 @@ STDCALL static struct irp * WRAP_EXPORT(IoBuildDeviceIoControlRequest)
 }
 
 _FASTCALL void WRAP_EXPORT(IofCompleteRequest)
-	(int dummy, char prio_boost, struct irp *irp)
+	(FASTCALL_DECL_2(struct irp *irp, char prio_boost))
 {
 	struct io_stack_location *stack = irp->current_stack_location-1;
 
@@ -828,7 +828,7 @@ STDCALL static void WRAP_EXPORT(IoFreeIrp)
 }
 
 _FASTCALL static unsigned long WRAP_EXPORT(IofCallDriver)
-	(int dummy, struct irp *irp, struct device_object *dev_obj)
+	(FASTCALL_DECL_2(struct device_object *dev_obj, struct irp *irp))
 {
 	struct io_stack_location *stack = irp->current_stack_location-1;
 	unsigned long ret = STATUS_NOT_SUPPORTED;
@@ -894,7 +894,7 @@ STDCALL unsigned long WRAP_EXPORT(PoCallDriver)
 	(struct device_object *dev_obj, struct irp *irp)
 {
 	TRACEENTER5("irp = %p", irp);
-	TRACEEXIT5(return IofCallDriver(0, irp, dev_obj));
+	TRACEEXIT5(return IofCallDriver(FASTCALL_ARGS_2(dev_obj, irp)));
 }
 
 struct trampoline_context {
@@ -1053,7 +1053,7 @@ STDCALL static void WRAP_EXPORT(PoStartNextPowerIrp)
 }
 
 _FASTCALL static long WRAP_EXPORT(InterlockedDecrement)
-	(int dummy1, int dummy2, long *val)
+	(FASTCALL_DECL_1(long *val))
 {
 	long x;
 
@@ -1066,7 +1066,7 @@ _FASTCALL static long WRAP_EXPORT(InterlockedDecrement)
 }
 
 _FASTCALL static long WRAP_EXPORT(InterlockedIncrement)
-	(int dummy1, int dummy2, long *val)
+	(FASTCALL_DECL_1(long *val))
 {
 	long x;
 
@@ -1079,7 +1079,7 @@ _FASTCALL static long WRAP_EXPORT(InterlockedIncrement)
 }
 
 _FASTCALL static long WRAP_EXPORT(InterlockedExchange)
-	(int dummy, long val, long *target)
+	(FASTCALL_DECL_2(long *target, long val))
 {
 	long x;
 
@@ -1092,7 +1092,7 @@ _FASTCALL static long WRAP_EXPORT(InterlockedExchange)
 }
 
 _FASTCALL static long WRAP_EXPORT(InterlockedCompareExchange)
-	(int dummy, long xchg, long volatile *dest, long comperand)
+	(FASTCALL_DECL_3(long volatile *dest, long xchg, long comperand))
 {
 	long x;
 

@@ -139,7 +139,7 @@ void usb_transfer_complete_tasklet(unsigned long dummy)
 			kfree(irp->driver_context[2]);
 		}
 
-		IofCompleteRequest(0, 0, irp);
+		IofCompleteRequest(FASTCALL_ARGS_1(irp));
 
 		DBGTRACE3("freeing urb %p", urb);
 		usb_free_urb(urb);
@@ -205,7 +205,7 @@ void usb_cancel_worker(void *dummy)
 
 		irp->io_status.status      = STATUS_CANCELLED;
 		irp->io_status.status_info = 0;
-		IofCompleteRequest(0, 0, irp);
+		IofCompleteRequest(FASTCALL_ARGS_1(irp));
 	}
 }
 
