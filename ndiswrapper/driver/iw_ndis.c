@@ -543,18 +543,23 @@ static int ndis_set_wep(struct net_device *dev, struct iw_request_info *info,
 		{
 			DBGTRACE("%s: setting key %d as tx key\n",
 				 __FUNCTION__, index);
+			wep_req.len = sizeof(wep_req);
 			wep_req.keyindex = 1 << 31;
+			wep_req.keylength = wep_info->keys[index-1].length;
+			memcpy(&wep_req.keymaterial,
+			       wep_info->keys[index-1].key,
+			       wep_info->keys[index-1].length);
 		}
 		else
 		{
 			DBGTRACE("setting key %d as rx key\n",
 				 __FUNCTION__, index);
+			wep_req.len = sizeof(wep_req);
 			wep_req.keyindex = index;
+			wep_req.keylength = wrqu->data.length;
+			memcpy(&wep_req.keymaterial,
+			       extra, wrqu->data.length);
 		}
-		wep_req.len = sizeof(wep_req);
-		wep_req.keylength = wep_info->keys[index-1].length;
-		memcpy(&wep_req.keymaterial, wep_info->keys[index-1].key,
-		       wep_info->keys[index-1].length);
 		res = dosetinfo(handle, NDIS_OID_ADD_WEP,
 				(char *)&wep_req, sizeof(wep_req),
 				&written, &needed);
@@ -564,7 +569,9 @@ static int ndis_set_wep(struct net_device *dev, struct iw_request_info *info,
 			       dev->name, index, res);
 			return -EINVAL;
 		}
-		if (!(wrqu->data.flags & IW_ENCODE_NOKEY))
+		if (wrqu->data.flags & IW_ENCODE_NOKEY)
+			wep_info->active = index;
+		else
 		{
 			wep_info->keys[index-1].length = wrqu->data.length;
 			memcpy(&wep_info->keys[index-1].key, extra,
