@@ -474,10 +474,15 @@ struct packed ndis_handle
 	struct list_head recycle_packets;
 	spinlock_t recycle_packets_lock;
 	struct work_struct packet_recycler;
+
+	/* List of initialized timers */
+	struct list_head timers;
 };
 
 struct ndis_timer
 {
+	struct list_head list;
+	struct ndis_timer **timer_handle;
 	struct timer_list timer;
 	void *func;
 	void *ctx;

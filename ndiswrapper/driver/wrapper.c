@@ -1827,6 +1827,8 @@ static int ndis_init_one(struct pci_dev *pdev,
 	INIT_WORK(&handle->packet_recycler, packet_recycler, handle);
 	INIT_LIST_HEAD(&handle->recycle_packets);
 
+	INIT_LIST_HEAD(&handle->timers);
+
 	/* Poision this because it may contain function pointers */
 	memset(&handle->fill1, 0x12, sizeof(handle->fill1));
 	memset(&handle->fill2, 0x13, sizeof(handle->fill2));
@@ -1901,6 +1903,35 @@ out_nodev:
 	return res;
 }
 
+extern STDCALL void NdisMCancelTimer(struct ndis_timer **timer_handle, char *canceled);
+
+
+/*
+ * Free the memory that is allocated when a timer is initialized. Also make sure all timers
+ * are inactive.
+ */
+static void fixup_timers(struct ndis_handle *handle)
+{
+	char x;
+	while(!list_empty(&handle->timers))
+	{
+		struct ndis_timer *timer = (struct ndis_timer*) handle->timers.next;
+		list_del(&timer->list);
+		if(timer->active)
+		{
+			printk(KERN_WARNING "%s Buggy windows driver %s left "
+			       "an active timer. Trying to fix\n",
+			       DRV_NAME, handle->driver->name);
+			       NdisMCancelTimer(timer->timer_handle, &x); 
+		}
+		kfree(timer);
+	}
+}
+
+
+/*
+ * Remove one PCI-card (adaptor).
+ */
 static void __devexit ndis_remove_one(struct pci_dev *pdev)
 {
 	struct ndis_handle *handle = (struct ndis_handle *) pci_get_drvdata(pdev);
@@ -1922,6 +1953,9 @@ static void __devexit ndis_remove_one(struct pci_dev *pdev)
 	if(handle->net_dev)
 		free_netdev(handle->net_dev);
 #endif
+
+	fixup_timers(handle);
+
 	pci_release_regions(pdev);
 	pci_disable_device(pdev);
 	pci_set_drvdata(pdev, NULL);
@@ -1945,7 +1979,7 @@ static struct miscdevice wrapper_misc = {
 
 
 /*
- * Register driver with pci subsystem.
+ * Register one ndis driver with pci subsystem.
  */
 static int start_driver(struct ndis_driver *driver)
 {
