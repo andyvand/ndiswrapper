@@ -182,7 +182,8 @@ struct miniport_char
 
 	/* NDIS 5.1 extensions */
 	void *cancel_send_packets;
-	void *pnp_event_notify;
+	void (*pnp_event_notify)(void *handle, int event, void *inf_buf,
+				 unsigned long inf_buf_len) STDCALL;
 	void (*adapter_shutdown)(void *ctx) STDCALL;
 
 };
@@ -753,6 +754,18 @@ enum ndis_pm_state
 	NDIS_PM_STATE_D3 = 4,
 };
 
+enum ndis_power_profile
+{
+	NDIS_POWER_PROFILE_BATTERY,
+	NDIS_POWER_PROFILE_AC,
+};
+
+enum ndis_pnp_event
+{
+	NDIS_PNP_REMOVED,
+	NDIS_PNP_PROFILE_CHANGE,
+};
+
 enum status_type
 {
 	NDIS_STATUS_AUTHENTICATION,
@@ -1069,5 +1082,6 @@ struct wpa_assoc_info
 #define WPA_SET_COUNTERMEASURES 	SIOCIWFIRSTPRIV+6
 #define WPA_DEAUTHENTICATE	 	SIOCIWFIRSTPRIV+7
 #define WPA_SET_AUTH_ALG	 	SIOCIWFIRSTPRIV+8
+#define PRIV_POWER_PROFILE	 	SIOCIWFIRSTPRIV+20
 
 #endif /* NDIS_H */
