@@ -884,7 +884,7 @@ int string_to_mac(unsigned char *mac, unsigned char *string, int string_len)
 			if (a >= '0' &&  a <= '9')
 				m = a - '0';
 			else if (toupper(a) >= 'A' && toupper(a) <= 'F')
-				m = a - 'A' + 10;
+				m = toupper(a) - 'A' + 10;
 			else
 				break;
 			mac[j] = mac[j] << 4 | m;
@@ -894,44 +894,6 @@ int string_to_mac(unsigned char *mac, unsigned char *string, int string_len)
 		DBGTRACE1("mac[%d] = %02x", i, mac[i]);
 
 	if (j == ETH_ALEN || j == (ETH_ALEN - 1))
-		TRACEEXIT1(return 0);
-	else
-		TRACEEXIT1(return -EINVAL);
-}
-
-inline static int hex_to_char(char *s, int c)
-{
-	if (c >= 0 && c <= 9) {
-		*s = '0' + c;
-		return 0;
-	}
-	if (c >= 10 && c <= 15) {
-		*s = 'A' + (c - 10);
-		return 0;
-	}
-	return 1;
-}
-
-int mac_to_string(unsigned char *string, unsigned char *mac, int string_len)
-{
-	int i, j;
-
-	memset(string, 0, string_len);
-
-	for (i = 0, j = 0; i+2 < string_len && j < ETH_ALEN; j++) {
-		if (hex_to_char(&string[i], ((mac[j] & 0xF0) >> 4)))
-			break;
-		i++;
-		if (hex_to_char(&string[i], (mac[j] & 0x0F)))
-			break;
-		i++;
-		if (j+1 < ETH_ALEN)
-			string[i++] = ':';
-	}
-
-	string[i] = 0;
-	DBGTRACE("mac_string: %s", string);
-	if (j == ETH_ALEN)
 		TRACEEXIT1(return 0);
 	else
 		TRACEEXIT1(return -EINVAL);

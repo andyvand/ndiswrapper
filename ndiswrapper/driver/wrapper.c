@@ -1379,19 +1379,26 @@ int ndis_set_mac_addr(struct net_device *dev, void *p)
 	struct sockaddr *addr = p;
 	struct ndis_config_param param;
 	struct ustring key, ansi;
-	unsigned int ret;
+	unsigned int i, ret;
 	unsigned char mac_string[3 * ETH_ALEN];
+	mac_address mac;
 	
 	/* string <-> ansi <-> unicode conversion is driving me nuts */
+
+	for (i = 0; i < sizeof(mac); i++)
+		mac[i] = addr->sa_data[i];
+	memset(mac_string, 0, sizeof(mac_string));
+	ret = snprintf(mac_string, sizeof(mac_string), MACSTR,
+		       MAC2STR(mac));
+	DBGTRACE2("ret = %d, mac_tring = %s", ret, mac_string);
+	if (ret != (sizeof(mac_string) - 1))
+		TRACEEXIT1(return -EINVAL);
+
 	ansi.buf = "mac_address";
 	ansi.buflen = ansi.len = strlen(ansi.buf);
 	if (RtlAnsiStringToUnicodeString(&key, &ansi, 1))
 		TRACEEXIT1(return -EINVAL);
 
-	if (mac_to_string(mac_string, addr->sa_data, sizeof(mac_string))) {
-		RtlFreeUnicodeString(&key);
-		TRACEEXIT1(return -EINVAL);
-	}
 	ansi.buf = mac_string;
 	ansi.buflen = ansi.len = sizeof(mac_string);
 	if (RtlAnsiStringToUnicodeString(&param.data.ustring, &ansi, 1) !=
