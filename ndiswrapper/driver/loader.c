@@ -308,7 +308,13 @@ static int load_sys_files(struct ndis_driver *driver,
 		DBGTRACE1("image size: %d bytes",
 			  load_driver->sys_files[i].size);
 
+#ifdef CONFIG_X86_64BIT
+		pe_image->image = vmalloc(load_driver->sys_files[i].size,
+					  GFP_KERNEL | __GFP_HIGHMEM |
+					  PAGE_KERNEL_EXECUTABLE);
+#else
 		pe_image->image = vmalloc(load_driver->sys_files[i].size);
+#endif
 		if (!pe_image->image) {
 			ERROR("couldn't allocate memory");
 			break;
@@ -376,7 +382,13 @@ static int load_bin_files(struct ndis_driver *driver,
 		       MAX_DRIVER_NAME_LEN);
 		bin_file->size = load_bin_file->size;
 
+#ifdef CONFIG_X86_64BIT
+		bin_file->data = vmalloc(load_bin_file->size,
+					 GFP_KERNEL | __GFP_HIGHMEM |
+					 PAGE_KERNEL_EXECUTABLE);
+#else
 		bin_file->data = vmalloc(load_bin_file->size);
+#endif
 		if (!bin_file->data) {
 			ERROR("cound't allocate memory");
 			kfree(bin_file);
