@@ -69,32 +69,38 @@ MODULE_PARM_DESC(hangcheck_interval, "The interval, in seconds, for checking"
 
 static void ndis_set_rx_mode(struct net_device *dev);
 
+extern struct ndis_handle *ghandle;
+
 /*
  * MiniportReset
  */
 NDIS_STATUS miniport_reset(struct ndis_handle *handle)
 {
 	NDIS_STATUS res = 0;
-	struct miniport_char *miniport = &handle->driver->miniport_char;
+	struct miniport_char *miniport;
 
-	TRACEENTER2("%s", "");
+	TRACEENTER2("handle: %p, ghandle: %p", handle, ghandle);
 
-	if (handle->reset_status)
+	if (ghandle->reset_status)
 		return NDIS_STATUS_PENDING;
 
-	if (down_interruptible(&handle->ndis_comm_mutex))
+	if (down_interruptible(&ghandle->ndis_comm_mutex))
 		TRACEEXIT3(return NDIS_STATUS_FAILURE);
-
+	miniport = &ghandle->driver->miniport_char;
 	/* reset_status is used for two purposes: to check if windows
 	 * driver needs us to reset filters etc (as per NDIS) and to
 	 * check if another reset is in progress */
 	handle->reset_status = NDIS_STATUS_PENDING;
 	handle->ndis_comm_res = NDIS_STATUS_PENDING;
 	handle->ndis_comm_done = 0;
+	DBGTRACE2("getting lock on %p", &handle->lock);
 	wrap_spin_lock(&handle->lock, DISPATCH_LEVEL);
+	DBGTRACE2("got lock");
 	res = LIN2WIN2(miniport->reset, &handle->reset_status,
 		       handle->adapter_ctx);
+	DBGTRACE2("reset done");
 	wrap_spin_unlock(&handle->lock);
+	DBGTRACE2("unlocked");
 
 	DBGTRACE2("res = %08X, reset_status = %08X",
 		  res, handle->reset_status);
@@ -468,6 +474,23 @@ static struct ndis_packet *alloc_packet(struct ndis_handle *handle,
 	packet->private.buffer_head = buffer;
 	packet->private.buffer_tail = buffer;
 
+	packet->sg_list = NULL;
+	packet->sg_ents = 0;
+	packet->ndis_sg_elements = NULL;
+
+	if (handle->dma_type == SG_DMA_DISABLED) {
+		packet->ndis_sg_element.address =
+			PCI_DMA_MAP_SINGLE(handle->dev.pci,
+					   MmGetMdlVirtualAddress(buffer),
+					   MmGetMdlByteCount(buffer),
+					   PCI_DMA_TODEVICE);
+		packet->ndis_sg_element.length = MmGetMdlByteCount(buffer);
+		packet->ndis_sg_list.nent = 1;
+		packet->ndis_sg_list.elements = &packet->ndis_sg_element;
+		packet->extension.info[ScatterGatherListPacketInfo] =
+			&packet->ndis_sg_list;
+		packet->sg_ents = 0;
+	}
 	return packet;
 }
 
@@ -481,16 +504,23 @@ static void free_packet(struct ndis_handle *handle, struct ndis_packet *packet)
 		return;
 	}
 
-	if (packet->sg_list) {
+	if (handle->dma_type == SG_DMA_ENABLED) {
 		DBGTRACE3("unmapping sg_list");
 		/* FIXME: do USB drivers call this? */
 		UNMAP_SG(handle->dev.pci, packet->sg_list,
-			     packet->sg_ents, PCI_DMA_TODEVICE);
+			 packet->sg_ents, PCI_DMA_TODEVICE);
 		DBGTRACE3("freeing sg_list %p, dummy: %p",
 			  packet->sg_list, packet->dummy);
 		kfree(packet->sg_list);
 		DBGTRACE3("freeing ndis_sg_elements");
 		kfree(packet->ndis_sg_elements);
+	} else if (handle->dma_type == SG_DMA_DISABLED) {
+		ndis_buffer *buffer = packet->private.buffer_head;
+
+		PCI_DMA_UNMAP_SINGLE(handle->dev.pci,
+				     packet->ndis_sg_element.address,
+				     MmGetMdlByteCount(buffer),
+				     PCI_DMA_TODEVICE);
 	}
 
 	b = packet->private.buffer_head;
@@ -615,7 +645,7 @@ static int send_packets(struct ndis_handle *handle, unsigned int start,
 			int j = (start + i) % XMIT_RING_SIZE;
 			handle->xmit_array[i] = handle->xmit_ring[j];
 		}
-		if (handle->sg_dma)
+		if (handle->dma_type == SG_DMA_ENABLED)
 			n = send_packets_sg_dma(handle, n);
 		else
 			LIN2WIN3(miniport->send_packets, handle->adapter_ctx,

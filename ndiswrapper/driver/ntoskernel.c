@@ -1021,7 +1021,7 @@ STDCALL NT_STATUS WRAP_EXPORT(PsCreateSystemThread)
 	*phandle = find_task_by_pid(pid);
 	DBGTRACE2("*phandle = %p", *phandle);
 #else
-	*phandle = KTHREAD_RUN(kthread_trampoline, ctx, "ndiswrapper");
+	*phandle = KTHREAD_RUN(kthread_trampoline, ctx, DRIVER_NAME);
 	DBGTRACE2("*phandle = %p", *phandle);
 	if (IS_ERR(*phandle)) {
 		kfree(ctx);
