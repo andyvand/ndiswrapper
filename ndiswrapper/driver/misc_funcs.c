@@ -22,8 +22,6 @@
 #include "ndis.h"
 #include "ntoskernel.h"
 
-static struct wrapper_alloc *wrapper_alloc_head;
-
 #if LINUX_VERSION_CODE <= KERNEL_VERSION(2,6,0)
 #undef __wait_event_interruptible_timeout
 #undef wait_event_interruptible_timeout
@@ -58,69 +56,6 @@ do {									\
 	__ret;								\
 })
 #endif
-
-void *wrapper_kmalloc(size_t size, int flags)
-{
-	struct wrapper_alloc *entry =
-		kmalloc(sizeof(struct wrapper_alloc), GFP_KERNEL);
-	if (!entry)
-	{
-		printk(KERN_ERR "%s: couldn't allocate memory\n", __FUNCTION__);
-		return NULL;
-	}
-	
-	entry->ptr = kmalloc(size, flags);
-	entry->next = wrapper_alloc_head;
-	wrapper_alloc_head = entry;
-	return entry->ptr;
-}
-
-void wrapper_kfree(void *ptr)
-{
-	struct wrapper_alloc *cur, *prev;
-
-	for (cur = wrapper_alloc_head, prev = NULL; cur ;
-		 prev = cur, cur = cur->next)
-	{
-		if (cur->ptr == ptr)
-			break;
-	}
-
-	if (!cur)
-	{
-		printk(KERN_ERR "%s: ptr %p is not allocated by wrapper?\n",
-			   __FUNCTION__, ptr);
-		return;
-	}
-
-	if (prev)
-		prev->next = cur->next;
-	else
-	{
-		if (cur != wrapper_alloc_head)
-			printk(KERN_ERR "%s: cur %p is not = head %p\n",
-				   __FUNCTION__, cur, wrapper_alloc_head);
-		else
-			wrapper_alloc_head = wrapper_alloc_head->next;
-	}
-	kfree(ptr);
-	kfree(cur);
-}
-
-void wrapper_kfree_all(void)
-{
-	struct wrapper_alloc *next, *cur;
-
-	for (cur = wrapper_alloc_head; cur; cur = next)
-	{
-		kfree(cur->ptr);
-		next = cur->next;
-		kfree(cur);
-	}
-
-	wrapper_alloc_head = NULL;
-}
-	
 
 unsigned long RtlCompareMemory(char *b, char *a, unsigned long len)
 {

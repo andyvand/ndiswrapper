@@ -91,10 +91,4 @@ struct packed npaged_lookaside_list {
 	KSPIN_LOCK obsolete;
 };
 
-struct wrapper_alloc
-{
-	void *ptr;
-	struct wrapper_alloc *next;
-};
-
 #endif // _NTOSKERNEL_H_
