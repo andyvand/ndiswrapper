@@ -13,14 +13,6 @@
  *
  */
 
-	.text
-	.globl lin_to_win1
-	.globl lin_to_win2
-	.globl lin_to_win3
-	.globl lin_to_win4
-	.globl lin_to_win5
-	.globl lin_to_win6
-	
 # Windows <---> Linux register usage conversion when calling functions
 # V = Volatile 
 # NV = Non Volatile (needs to be saved)
@@ -75,6 +67,24 @@ In Linux it should look like:
  
 
 */
+	
+#
+# setup for Windows to Linux function call
+#
+
+	.macro	win_to_lin_stub name
+	.globl x86_64_\name
+x86_64_\name:
+	lea	\name(%rip),%rax
+	jmp	*win_to_lin(%rip)
+	.endm
+
+#include "x86_64_stubs.h"
+
+	.data
+win_to_lin:
+	.quad	_win_to_lin
+
 _win_to_lin:
 	push	%rsi
 	push	%rdi
@@ -116,7 +126,17 @@ _win_to_lin:
 	pop	%rsi
 	ret
 
-
+#
+# setup for Linux to Windows function call
+#
+	.text
+	.globl lin_to_win1
+	.globl lin_to_win2
+	.globl lin_to_win3
+	.globl lin_to_win4
+	.globl lin_to_win5
+	.globl lin_to_win6
+	
 #
 # The linux to windows functions are called with argument 1
 # being the Windows function to call.
@@ -177,17 +197,4 @@ lin_to_win6:
 	add	$0x30, %rsp
 	ret
 
-
-	.macro	win_to_lin_stub name
-	.globl x86_64_\name
-x86_64_\name:
-	lea	\name(%rip),%rax
-	jmp	*win_to_lin(%rip)
-	.endm
-
-#include "x86_64_stubs.h"
-
-	.data
-win_to_lin:
-	.quad	_win_to_lin
 
