@@ -653,7 +653,7 @@ static int iw_set_encr(struct net_device *dev, struct iw_request_info *info,
 
 		res = dosetinfo(handle, NDIS_OID_ADD_WEP, (char *)&ndis_key,
 				sizeof(ndis_key), &written, &needed);
-		if (res)
+		if (res == NDIS_STATUS_INVALID_DATA)
 		{
 			WARNING("adding wep key %d failed (%08X)",
 				index, res);
