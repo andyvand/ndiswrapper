@@ -1765,6 +1765,9 @@ static int __devinit ndis_init_one(struct pci_dev *pdev,
 	if(res)
 		goto out_regions;
 
+	pci_set_power_state(pdev, 0);
+	pci_restore_state(pdev, NULL);
+
 	if(call_init(handle))
 	{
 		printk(KERN_ERR "ndiswrapper: Driver init returned error\n");
