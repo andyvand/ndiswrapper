@@ -1,5 +1,7 @@
 -include version
 
+RPM_SOURCE_DIR ?= `rpmbuild -E %{_sourcedir}`
+
 distdir=ndiswrapper-${NDISWRAPPER_VERSION}
 distarchive=${distdir}.tar.gz
 
@@ -52,11 +54,7 @@ dist:
 	
 rpm: dist ndiswrapper.spec.in
 	cat ndiswrapper.spec.in | sed s/NDISWRAPPER_VERSION/${NDISWRAPPER_VERSION}/ >ndiswrapper.spec
-	if test -d /usr/src/redhat/SOURCES ; then \
-	  cp $(distarchive) /usr/src/redhat/SOURCES ;\
-	else \
-	  cp $(distarchive) /usr/src/RPM/SOURCES ; \
-	fi
+	cp $(distarchive) $(RPM_SOURCE_DIR)
 	rpmbuild -ba ndiswrapper.spec
 
 deb:
