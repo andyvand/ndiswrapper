@@ -324,10 +324,12 @@ void ndiswrapper_procfs_remove_iface(struct ndis_handle *handle)
 
 	if (procfs_iface == NULL)
 		return;
+	remove_proc_entry("hw", procfs_iface);
 	remove_proc_entry("stats", procfs_iface);
 	remove_proc_entry("wep", procfs_iface);
-	remove_proc_entry("hw", procfs_iface);
-	remove_proc_entry(dev->name, procfs_iface);
+	if (ndiswrapper_procfs_entry != NULL)
+		remove_proc_entry(dev->name, ndiswrapper_procfs_entry);
+	handle->procfs_iface = NULL;
 }
 
 void ndiswrapper_procfs_remove(void)
