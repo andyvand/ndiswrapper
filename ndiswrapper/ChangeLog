@@ -3,7 +3,8 @@ Version 0.8 2004-
 * Support for 802.1x (multiple wep keys).
 * Support for more chipsets/cards (DWL-G630, Marvell W8100, Atheros 5211,
   Atheros 5212).
-* Bug fixes (scanning, dma aka shared memory allocation).
+* Many bug fixes (scanning, dma aka shared memory allocation, timers, irqs,
+  spinlocks, memory allocation, serialized drivers).
 
 Version 0.7 2004-04-23
 ======================
