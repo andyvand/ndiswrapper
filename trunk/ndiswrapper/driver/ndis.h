@@ -932,6 +932,8 @@ STDCALL int RtlUnicodeStringToAnsiString(struct ustring *dst,
 STDCALL int RtlAnsiStringToUnicodeString(struct ustring *dst,
 					 struct ustring *src,
 					 unsigned int dup);
+STDCALL void RtlInitAnsiString(struct ustring *dst, char *src);
+
 int get_esp(void);
 void ndis_init(void);
 void ndis_cleanup_handle(struct ndis_handle *handle);

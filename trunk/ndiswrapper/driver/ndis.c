@@ -638,18 +638,9 @@ STDCALL static void WRAP_EXPORT(NdisInitializeString)
 }
 
 STDCALL static void WRAP_EXPORT(NdisInitAnsiString)
-	(struct ustring *dest, char *src)
+	(struct ustring *dst, char *src)
 {
-	TRACEENTER2("%s", "");
-	if (dest == NULL)
-		TRACEEXIT2(return);
-	if (src == NULL) {
-		dest->len = dest->buflen = 0;
-		dest->buf = NULL;
-		TRACEEXIT2(return);
-	}
-	dest->len = dest->buflen = strlen(src);
-	dest->buf = src;
+	RtlInitAnsiString(dst, src);
 	TRACEEXIT2(return);
 }
 
