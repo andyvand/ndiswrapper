@@ -35,7 +35,7 @@ proc.o : proc.c ndis.h
 
 divdi3.o: divdi3.c longlong.h
 
-OBJS   := wrapper.o loader.o winsyms.o ndis.o misc_funcs.o proc.o
+OBJS   := wrapper.o loader.o winsyms.o ndis.o misc_funcs.o proc.o divdi3.o
 
 ifdef DBG_ATHEROS
 CFLAGS += -DDBG_ATHEROS
@@ -49,8 +49,6 @@ ifdef DBG_REALTEK
 CFLAGS += -DDBG_REALTEK
 
 rt8180.o : rt8180.c
-OBJS += divdi3.o
-
 endif
 
 ifdef DEBUG
@@ -84,17 +82,8 @@ CFLAGS  += -DLINUX -D__KERNEL__ -DMODULE -I$(KSRC)/include \
   -Wall -Wstrict-prototypes -fomit-frame-pointer    \
   -fno-strict-aliasing -pipe -mpreferred-stack-boundary=2 -O2
 
-ifdef DBG_REALTEK_OLD
-OBJS += rt8180.o
-# realtek based cards need 64-bit arithmetic; for now, just let the
-# compiler provide it.
-default: $(OBJS)
-	 $(CC) -nostartfiles -nodefaultlibs -nostdlib -static -Xlinker -r -o $(MODULE) $(OBJS) -lgcc
-
-else
 default: $(OBJS)
 	$(LD) -r -o $(MODULE) $(OBJS)
-endif
 clean:
 	rm -f $(MODULE) $(OBJS)
 
