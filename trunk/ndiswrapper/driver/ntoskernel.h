@@ -42,21 +42,22 @@
 #define PASSIVE_LEVEL 0
 #define DISPATCH_LEVEL 2
 
-#define STATUS_SUCCESS			0
-#define STATUS_TIMEOUT			0x00000102
-#define STATUS_PENDING			0x00000103
-#define STATUS_FAILURE			0xC0000001
-#define STATUS_MORE_PROCESSING_REQUIRED	0xC0000016
-#define STATUS_BUFFER_TOO_SMALL		0xC0000023
-#define STATUS_RESOURCES		0xC000009A
-#define STATUS_NOT_SUPPORTED		0xC00000BB
-#define STATUS_INVALID_PARAMETER_2	0xC00000F0
-#define STATUS_ALERTED			0x00000101
+#define STATUS_SUCCESS                  0
+#define STATUS_ALERTED                  0x00000101
+#define STATUS_TIMEOUT                  0x00000102
+#define STATUS_PENDING                  0x00000103
+#define STATUS_FAILURE                  0xC0000001
+#define STATUS_MORE_PROCESSING_REQUIRED 0xC0000016
+#define STATUS_BUFFER_TOO_SMALL         0xC0000023
+#define STATUS_RESOURCES                0xC000009A
+#define STATUS_NOT_SUPPORTED            0xC00000BB
+#define STATUS_INVALID_PARAMETER_2      0xC00000F0
+#define STATUS_CANCELLED                0xC0000120
 
-#define IS_PENDING			0x01
-#define CALL_ON_CANCEL			0x20
-#define CALL_ON_SUCCESS			0x40
-#define CALL_ON_ERROR			0x80
+#define IS_PENDING                      0x01
+#define CALL_ON_CANCEL                  0x20
+#define CALL_ON_SUCCESS                 0x40
+#define CALL_ON_ERROR                   0x80
 
 
 struct slist_entry
@@ -247,6 +248,9 @@ struct packed irp {
 	struct io_stack_location *current_stack_location;
 
 	void *fill5[3];
+
+	/* ndiswrapper extension */
+	struct list_head cancel_list_entry;
 };
 
 struct ktimer
@@ -344,6 +348,7 @@ STDCALL void KeAcquireSpinLock(KSPIN_LOCK *lock, KIRQL *irql);
 STDCALL void KeReleaseSpinLock(KSPIN_LOCK *lock, KIRQL oldirql);
 _FASTCALL KIRQL KfRaiseIrql(int dummy1, int dummy2, KIRQL newirql);
 _FASTCALL void KfLowerIrql(int dummy1, int dummy2, KIRQL oldirql);
+_FASTCALL void IofCompleteRequest(int dummy, char prio_boost, struct irp *irp);
 
 #define WRAPPER_SPIN_LOCK_MAGIC 137
 
