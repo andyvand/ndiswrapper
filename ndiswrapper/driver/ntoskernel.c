@@ -131,6 +131,12 @@ STDCALL void WRAP_EXPORT(KeReleaseSpinLock)
 	KfReleaseSpinLock(FASTCALL_ARGS_2(lock, oldirql));
 }
 
+STDCALL void WRAP_EXPORT(KeAcquireSpinLockAtDpcLevel)
+	(KSPIN_LOCK *lock)
+{
+	KfAcquireSpinLock(FASTCALL_ARGS_1(lock));
+}
+
 STDCALL KIRQL WRAP_EXPORT(KeAcquireSpinLockRaiseToDpc)
         (KSPIN_LOCK *lock)
 {
@@ -156,9 +162,17 @@ _FASTCALL struct slist_entry *WRAP_EXPORT(ExInterlockedPushEntrySList)
 	oldhead = head->list.next;
 	entry->next = head->list.next;
 	head->list.next = entry;
+	head->list.depth++;
 	KeReleaseSpinLock(lock, irql);
 	DBGTRACE3("head = %p, oldhead = %p", head, oldhead);
 	return(oldhead);
+}
+
+_FASTCALL struct slist_entry *WRAP_EXPORT(ExpInterlockedPushEntrySList)
+	(FASTCALL_DECL_3(union slist_head *head, struct slist_entry *entry, 
+			 KSPIN_LOCK *lock))
+{
+	return ExInterlockedPushEntrySList(FASTCALL_ARGS_3(head, entry, lock));
 }
 
 _FASTCALL struct slist_entry * WRAP_EXPORT(ExInterlockedPopEntrySList)
@@ -173,12 +187,20 @@ _FASTCALL struct slist_entry * WRAP_EXPORT(ExInterlockedPopEntrySList)
 	first = NULL;
 	if (head) {
 		first = head->list.next;
-		if (first)
+		if (first) {
 			head->list.next = first->next;
+			head->list.depth--;
+		}
 	}
 	KeReleaseSpinLock(lock, irql);
 	DBGTRACE3("returning %p", first);
 	return first;
+}
+
+_FASTCALL struct slist_entry * WRAP_EXPORT(ExpInterlockedPopEntrySList)
+	(int dummy, KSPIN_LOCK *lock, union slist_head *head)
+{
+	return ExInterlockedPopEntrySList(FASTCALL_ARGS_2(head, lock));
 }
 
 _FASTCALL struct list_entry *WRAP_EXPORT(ExfInterlockedInsertTailList)
@@ -237,6 +259,11 @@ _FASTCALL struct list_entry *WRAP_EXPORT(ExfInterlockedRemoveHeadList)
 	TRACEEXIT3(return entry);
 }
 
+_FASTCALL unsigned short WRAP_EXPORT(ExQueryDepthSList)
+	(union slist_head *head)
+{
+	return head->list.depth;
+}
 
 STDCALL void * WRAP_EXPORT(ExAllocatePoolWithTag)
 	(enum pool_type pool_type, SIZE_T size, ULONG tag)
@@ -1292,7 +1319,7 @@ STDCALL NT_STATUS WRAP_EXPORT(WmiQueryTraceInformation)
 }
 
 STDCALL unsigned int WRAP_EXPORT(IoWMIRegistrationControl)
-	(struct device_object *dev_obj, unsigned long action)
+	(struct device_object *dev_obj, ULONG action)
 {
 	TRACEENTER2("%s", "");
 	TRACEEXIT2(return STATUS_SUCCESS);
