@@ -235,7 +235,7 @@ STDCALL void NdisOpenFile(unsigned int *status,
 			  struct ndis_file **filehandle,
 			  unsigned int *filelength,
 			  struct ustring *filename,
-			  unsigned long highest_address)
+			  __u64 highest_address)
 {
 	char ansiname[512];
 	struct ustring ansi;
