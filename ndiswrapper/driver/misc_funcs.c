@@ -27,7 +27,10 @@ struct list_head wrap_allocs;
 void *wrap_kmalloc(size_t size, int flags)
 {
 	struct wrap_alloc *alloc;
-	alloc = kmalloc(sizeof(*alloc), GFP_ATOMIC);
+	if (flags & GFP_KERNEL)
+		alloc = kmalloc(sizeof(*alloc), GFP_KERNEL);
+	else
+		alloc = kmalloc(sizeof(*alloc), GFP_ATOMIC);
 	if (!alloc)
 		return NULL;
 	alloc->ptr = kmalloc(size, flags);

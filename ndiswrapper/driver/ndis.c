@@ -856,11 +856,14 @@ STDCALL void NdisMAllocateSharedMemory(struct ndis_handle *handle,
 	dma_addr_t p;
 
 //	DBGTRACE("%s: entry\n", __FUNCTION__);
-	void *v = pci_alloc_consistent(handle->pci_dev, size, &p);  
+	if (handle->map_dma_addr == NULL)
+		printk(KERN_ERR "%s: DMA map address is not set!\n",
+		       __FUNCTION__);
+	void *v = PCI_DMA_ALLOC_COHERENT(handle->pci_dev, size, &p);
 	if(!v)
 	{
 		printk(KERN_ERR "Failed to allocate DMA coherent memory. "
-		                "Windows driver requested %d bytes memory\n", size);
+		       "Windows driver requested %d bytes of %scached memory\n", size, cached ? "" : "un-");
 	}
 
 	*(char**)virt = v;
@@ -877,7 +880,7 @@ STDCALL void NdisMFreeSharedMemory(struct ndis_handle *handle,
 				   unsigned int physhigh)
 {
 //	DBGTRACE("%s: entry\n", __FUNCTION__);
-	pci_free_consistent(handle->pci_dev, size, virt, physlow);
+	PCI_DMA_FREE_COHERENT(handle->pci_dev, size, virt, physlow);
 }
 
 
@@ -1765,8 +1768,8 @@ NdisMStartBufferPhysicalMapping(struct ndis_handle *handle,
 
 	// map buffer
 	phy_addr_array[0].phy_addr.low =
-		pci_map_single(handle->pci_dev, buf->data, buf->len,
-			       PCI_DMA_TODEVICE);
+		PCI_DMA_MAP_SINGLE(handle->pci_dev, buf->data, buf->len,
+				   PCI_DMA_TODEVICE);
 	phy_addr_array[0].phy_addr.high = 0;
 	phy_addr_array[0].length= buf->len;
 	
@@ -1802,8 +1805,9 @@ NdisMCompleteBufferPhysicalMapping(struct ndis_handle *handle,
 	}
 	
 	// unmap buffer
-	pci_unmap_single(handle->pci_dev, handle->map_dma_addr[phy_map_reg],
-			 buf->len, PCI_DMA_TODEVICE);
+	PCI_DMA_UNMAP_SINGLE(handle->pci_dev,
+			     handle->map_dma_addr[phy_map_reg],
+			     buf->len, PCI_DMA_TODEVICE);
 
 	// clear mapping index
 	handle->map_dma_addr[phy_map_reg] = 0;

@@ -522,9 +522,12 @@ static int send_one(struct ndis_handle *handle, struct ndis_buffer *buffer)
 	
 	if(handle->use_scatter_gather)
 	{
-		packet->dataphys = pci_map_single(handle->pci_dev, buffer->data, buffer->len, PCI_DMA_TODEVICE);
+		packet->dataphys =
+			PCI_DMA_MAP_SINGLE(handle->pci_dev,
+					   buffer->data, buffer->len,
+					   PCI_DMA_TODEVICE);
 		packet->scatterlist.len = 1;
-		packet->scatterlist.entry.physlo = packet->dataphys;		
+		packet->scatterlist.entry.physlo = packet->dataphys;
 		packet->scatterlist.entry.physhi = 0;		
 		packet->scatterlist.entry.len = buffer->len;
 		packet->scatter_gather_ext = &packet->scatterlist; 
@@ -688,7 +691,8 @@ void ndis_sendpacket_done(struct ndis_handle *handle, struct ndis_packet *packet
 {
 	if(packet->dataphys)
 	{
-		pci_unmap_single(handle->pci_dev, packet->dataphys, packet->len, PCI_DMA_TODEVICE);
+		PCI_DMA_UNMAP_SINGLE(handle->pci_dev, packet->dataphys,
+				     packet->len, PCI_DMA_TODEVICE);
 	}
 	
 	kfree(packet->buffer_head->data);
