@@ -22,31 +22,7 @@
 #include <linux/mm.h>
 #include <asm/pgalloc.h>
 
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
-#include <asm/tlbflush.h>
-#endif
-
 #define RADR(base, rva, type) (type) ((char*)base + rva)
-
-
-#if LINUX_VERSION_CODE <= KERNEL_VERSION(2,4,21)
-#undef __flush_tlb_global
-#define __flush_tlb_global()						\
-	do {								\
-		unsigned int tmpreg;					\
-									\
-		__asm__ __volatile__(					\
-			"movl %%cr4, %0;  # get cr4          \n"	\
-			"andl %0, %1;     # and out          \n"	\
-			"movl %1, %%cr4;  # turn off PGE     \n"	\
-			"movl %%cr3, %1;  # flush TLB        \n"	\
-			"movl %1, %%cr3;                     \n"	\
-			"movl %0, %%cr4;  # turn PGE back on \n"	\
-			: "=&r" (tmpreg)				\
-			: "r" (~X86_CR4_PGE)				\
-			: "memory");					\
-	} while (0)
-#endif
 
 /*
  * Find and validate the coff header
@@ -215,9 +191,8 @@ int prepare_coffpe_image(void **entry, void *image, int size)
 	if(load_imports(image, RADR(image, hdr->import_tbl.rva, struct coffpe_import_dirent*)))
 		return -1;
 		
-
-	flush_tlb_all();
 	do_reloc(image, hdr->basereloc_tbl.rva, hdr->basereloc_tbl.size, (int)image - hdr->image_base);
+	flush_icache_range(image, size);
 
 	image_offset = (int)image - hdr->image_base;
 	*entry = RADR(image, hdr->entry_rva, void*);
