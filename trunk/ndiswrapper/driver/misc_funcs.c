@@ -459,7 +459,7 @@ STDCALL void KeInitializeSpinLock(KSPIN_LOCK *lock)
 			   __FUNCTION__);
 	else
 	{
-		DBGTRACE("%s: allocated spinlock %p\n", spin_lock);
+		DBGTRACE("%s: allocated spinlock %p\n", __FUNCTION__, spin_lock);
 		spin_lock_init(spin_lock);
 		*lock = (KSPIN_LOCK)spin_lock;
 	}
@@ -820,10 +820,10 @@ STDCALL void NdisCancelTimer(struct ndis_timer **timer, char *cancelled)
 STDCALL void NdisInitializeTimer(struct ndis_timer *timer,
 								 void *func, void *ctx)
 {
-	DBGTRACE("%s(entry): %p, %p, %p, %p\n",
-			 __FUNCTION__, timer_handle, *timer_handle, func, ctx);
+	DBGTRACE("%s(entry): %p, %p, %p\n",
+			 __FUNCTION__, timer, func, ctx);
 //	NdisMInitializeTimer(timer_handle, NULL, func, ctx);
-	DBGTRACE("%s(exit): %p, %p, %p, %p\n",
-			 __FUNCTION__, timer_handle, *timer_handle, func, ctx);
+	DBGTRACE("%s(exit): %p, %p, %p\n",
+			 __FUNCTION__, timer, func, ctx);
 }
 
