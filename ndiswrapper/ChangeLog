@@ -6,6 +6,7 @@ Version 0.6 2004-03-17
 * Compiles on 2.4 kernels with old ethtool.
 * Support for SMC2802 V2 card.
 * Support for 3Com 3CRSHPW796 card.
+* Support for TI AC111 card.
 
 Version 0.5 2004-03-08
 ======================

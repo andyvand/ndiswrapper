@@ -201,6 +201,11 @@ NOREGPARM void *my_memcpy(void * to, const void * from, size_t n)
 	return memcpy(to, from, n);
 }
 
+NOREGPARM void *my_strcpy(void * to, const void * from)
+{
+	return strcpy(to, from);
+}
+
 NOREGPARM void *my_memset(void * s, char c,size_t count)
 {
 	return memset(s, c, count);
@@ -796,8 +801,8 @@ __attribute__ ((regparm(3))) __u64 _aullshr(__u64 a, __u8 b)
 }
 
 
-extern void NdisMCancelTimer(struct ndis_timer **, char *);
-extern void NdisMInitializeTimer(struct ndis_timer **, void *, void *, void *);
+extern STDCALL void NdisMCancelTimer(struct ndis_timer **, char *);
+extern STDCALL void NdisMInitializeTimer(struct ndis_timer **, void *, void *, void *);
 
 STDCALL int IoIsWdmVersionAvailable(unsigned char major, unsigned char minor)
 {
