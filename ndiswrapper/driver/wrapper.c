@@ -88,7 +88,6 @@ out:
 	
 }
 
-
 /*
  *
  * Called via function pointer if query returns NDIS_STATUS_PENDING
@@ -101,6 +100,36 @@ STDCALL void NdisMQueryInformationComplete(struct ndis_handle *handle, unsigned 
 }
 
 
+static int dosetinfo(struct ndis_handle *handle, unsigned int oid, char *buf, int bufsize, unsigned int *written , unsigned int *needed)
+{
+	int res;
+
+	spin_lock(&handle->setinfo_lock);
+
+	handle->query_wait_done = 0;
+	DBGTRACE("Calling query at %08x rva(%08x)\n", (int)handle->driver->miniport_char.query, (int)handle->driver->miniport_char.query - image_offset);
+	res = handle->driver->miniport_char.setinfo(handle->adapter_ctx, oid, buf, bufsize, written, needed);
+
+	if(!res)
+		goto out;
+
+	if(res != NDIS_STATUS_PENDING)
+		goto out;
+		
+	/* This is a very bad way to wait but we cannot sleap here as when ifconfig gathers statistics we
+	 * get a query from a context where is_atomic() = 1
+	 */
+	while(handle->setinfo_wait_done == 0);
+	 
+	res = handle->setinfo_wait_res;
+
+out:
+	spin_unlock(&handle->setinfo_lock);
+	return res;
+
+}
+
+
 /*
  *
  * Called via function pointer if setinformation returns NDIS_STATUS_PENDING
@@ -108,6 +137,8 @@ STDCALL void NdisMQueryInformationComplete(struct ndis_handle *handle, unsigned 
 STDCALL void NdisMSetInformationComplete(struct ndis_handle *handle, unsigned int status)
 {
 	DBGTRACE("%s: %08x\n", __FUNCTION__, status);
+	handle->setinfo_wait_res = status;
+	handle->setinfo_wait_done = 1;
 }
 
 
@@ -134,8 +165,9 @@ static int set_int(struct ndis_handle *handle, int oid, int data)
 {
 	unsigned int written, needed;
 
-	return handle->driver->miniport_char.setinfo(handle->adapter_ctx, oid, (char*)&data, sizeof(int), &written, &needed);
+	return dosetinfo(handle, oid, (char*)&data, sizeof(int), &written, &needed);
 }
+
 
 
 static int ndis_set_essid(struct net_device *dev,
@@ -156,7 +188,7 @@ static int ndis_set_essid(struct net_device *dev,
 	memcpy(&req.essid, extra, wrqu->essid.length-1);
 	
 	req.len = wrqu->essid.length-1;
-	res = handle->driver->miniport_char.setinfo(handle->adapter_ctx, NDIS_OID_ESSID, (char*)&req, sizeof(req), &written, &needed);
+	res = dosetinfo(handle, NDIS_OID_ESSID, (char*)&req, sizeof(req), &written, &needed);
 	if(res)
 	{
 		DBGTRACE("set_essid returned failure: %08x\n", res); 
@@ -409,7 +441,7 @@ static int ndis_set_wep(struct net_device *dev, struct iw_request_info *info,
 				req.keylength);
 		memcpy(req.keymaterial, handle->driver->key_val, req.keylength);
 		
-		res = handle->driver->miniport_char.setinfo(handle->adapter_ctx, NDIS_OID_ADD_WEP, (char*)&req, sizeof(req), &written, &needed);
+		res = dosetinfo(handle, NDIS_OID_ADD_WEP, (char*)&req, sizeof(req), &written, &needed);
 
 		if (res)
 			return -1;
@@ -1014,6 +1046,7 @@ static int __devinit ndis_init_one(struct pci_dev *pdev,
 	handle->driver = driver;
 	handle->net_dev = dev;
 	spin_lock_init(&handle->query_lock);
+	spin_lock_init(&handle->setinfo_lock);
 	pci_set_drvdata(pdev, handle);
 
 	/* Poision this because it may contain function pointers */
