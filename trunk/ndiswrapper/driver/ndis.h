@@ -166,7 +166,7 @@ struct miniport_char
 	unsigned char minorVersion;
 	unsigned int reserved;
 
-	int (*hangcheck)(void *ctx) STDCALL;
+	char (*hangcheck)(void *ctx) STDCALL;
 	void (*disable_interrupts)(void *ctx) STDCALL;
 	void (*enable_interrupts)(void *ctx) STDCALL;
 
@@ -450,6 +450,11 @@ struct packed ndis_handle
 	struct work_struct hangcheck_work;
 	int reset_status;
 
+	wait_queue_head_t reset_wqhead;
+	struct semaphore reset_mutex;
+	int reset_wait_res;
+	int reset_wait_done;
+	
 	struct timer_list statcollector_timer;
 	struct work_struct statcollector_work;
 

@@ -71,7 +71,43 @@ extern int image_offset;
 int freq_chan[] = { 2412, 2417, 2422, 2427, 2432, 2437, 2442,
 		    2447, 2452, 2457, 2462, 2467, 2472, 2484 };
 
+int doreset(struct ndis_handle *handle)
+{
+	int res;
+	int addressing_reset;
+	down(&handle->reset_mutex);
 
+	handle->reset_wait_done = 0;
+	res = handle->driver->miniport_char.reset(&addressing_reset, handle->adapter_ctx);
+
+	if(!res)
+		goto out;
+
+	if(res != NDIS_STATUS_PENDING)
+		goto out;
+		
+	wait_event(handle->reset_wqhead, (handle->reset_wait_done == 1));
+	 
+	res = handle->reset_wait_res;
+
+out:
+	up(&handle->reset_mutex);
+	return res;
+	
+}
+
+
+STDCALL void NdisMResetComplete(struct ndis_handle *handle, int status, int reset_status) 
+{
+	DBGTRACE("%s: %08X\n", __FUNCTION__, status);
+
+	handle->reset_wait_res = status;
+	handle->reset_wait_done = 1;
+	handle->reset_status = reset_status;
+	wake_up(&handle->reset_wqhead);
+}
+		  
+		    
 /*
  * Perform a sync query and deal with the possibility of an async operation.
  * This function must be called from process context as it will sleep.
@@ -1215,12 +1251,6 @@ static unsigned int call_entry(struct ndis_driver *driver)
 
 static void hangcheck_reinit(struct ndis_handle *handle);
 
-STDCALL void NdisMResetComplete(struct ndis_handle *handle, int status, int reset_status) 
-{
-	DBGTRACE("%s: %08X, %d\n", __FUNCTION__, status, reset_status);
-}
-
-
 static void hangcheck_bh(void *data)
 {
 	struct ndis_handle *handle = (struct ndis_handle *)data;
@@ -1231,7 +1261,7 @@ static void hangcheck_bh(void *data)
 		int res;
 		handle->reset_status = 0;
 		printk(KERN_INFO "ndiswrapper: Hangcheck returned true. Resetting!\n");
-		res = handle->driver->miniport_char.reset(&handle->reset_status, handle->adapter_ctx);
+		res = doreset(handle);
 		DBGTRACE("%s : %08X, %d\n", __FUNCTION__, res, handle->reset_status);
 	}
 }
@@ -1781,6 +1811,9 @@ static int ndis_init_one(struct pci_dev *pdev,
 
 	init_MUTEX(&handle->query_set_mutex);
 	init_waitqueue_head(&handle->query_set_wqhead);
+
+	init_MUTEX(&handle->reset_mutex);
+	init_waitqueue_head(&handle->reset_wqhead);
 
 	INIT_WORK(&handle->xmit_work, xmit_bh, handle); 	
 	spin_lock_init(&handle->xmit_ring_lock);
