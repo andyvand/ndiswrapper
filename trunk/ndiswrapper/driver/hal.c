@@ -77,6 +77,24 @@ STDCALL void WRAP_EXPORT(READ_PORT_BUFFER_USHORT)
 		buf[i] = inw(port);
 }
 
+STDCALL void WRAP_EXPORT(WRITE_REGISTER_ULONG)
+	(void *reg, UINT val)
+{
+	writel(val, reg);
+}
+
+STDCALL void WRAP_EXPORT(WRITE_REGISTER_USHORT)
+	(void *reg, USHORT val)
+{
+	writew(val, reg);
+}
+
+STDCALL void WRAP_EXPORT(WRITE_REGISTER_UCHAR)
+	(void *reg, UCHAR val)
+{
+	writeb(val, reg);
+}
+
 STDCALL void WRAP_EXPORT(KeStallExecutionProcessor)
 	(ULONG usecs)
 {

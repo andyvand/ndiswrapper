@@ -941,6 +941,14 @@ STDCALL void WRAP_EXPORT(NdisDprReleaseSpinLock)
 	TRACEEXIT5(return);
 }
 
+STDCALL void WRAP_EXPORT(NdisInitializeReadWriteLock)
+	(struct ndis_rw_lock *rw_lock)
+{
+	memset(rw_lock, 0, sizeof(*rw_lock));
+	KeInitializeSpinLock(&rw_lock->u.s.klock);
+	return;
+}
+
 STDCALL NDIS_STATUS WRAP_EXPORT(NdisMAllocateMapRegisters)
 	(struct ndis_handle *handle, UINT dmachan,
 	 NDIS_DMA_SIZE dmasize, ULONG basemap, ULONG size)
