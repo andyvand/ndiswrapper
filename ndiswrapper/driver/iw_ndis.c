@@ -368,8 +368,10 @@ static int iw_get_bitrate(struct net_device *dev, struct iw_request_info *info,
 
 	int res = miniport_query_info(handle, OID_GEN_LINK_SPEED,
 				      &ndis_rate, sizeof(ndis_rate));
-	if (res)
+	if (res) {
 		WARNING("getting bitrate failed (%08X)", res);
+		ndis_rate = 0;
+	}
 
 	wrqu->bitrate.value = ndis_rate * 100;
 	return 0;
@@ -388,10 +390,11 @@ static int iw_set_bitrate(struct net_device *dev, struct iw_request_info *info,
 
 	res = miniport_query_info(handle, OID_802_11_SUPPORTED_RATES,
 				  &rates, sizeof(rates));
-	if (res == NDIS_STATUS_NOT_SUPPORTED)
-		TRACEEXIT1(return -EOPNOTSUPP);
-	if (res == NDIS_STATUS_INVALID_DATA)
-		TRACEEXIT1(return -EINVAL);
+	if (res == NDIS_STATUS_NOT_SUPPORTED ||
+	    res == NDIS_STATUS_INVALID_DATA) {
+		WARNING("getting bit rate failed (%08X)", res);
+		TRACEEXIT1(return 0);
+	}
 		
 	for (i = 0 ; i < NDIS_MAX_RATES_EX ; i++) {
 		if (rates[i] & 0x80)
@@ -405,10 +408,11 @@ static int iw_set_bitrate(struct net_device *dev, struct iw_request_info *info,
 
 	res = miniport_query_info(handle, OID_802_11_DESIRED_RATES,
 				  &rates, sizeof(rates));
-	if (res == NDIS_STATUS_NOT_SUPPORTED)
-		TRACEEXIT1(return -EOPNOTSUPP);
-	if (res == NDIS_STATUS_INVALID_DATA)
-		TRACEEXIT1(return -EINVAL);
+	if (res == NDIS_STATUS_NOT_SUPPORTED ||
+	    res == NDIS_STATUS_INVALID_DATA) {
+		WARNING("setting bit rate failed (%08X)", res);
+		TRACEEXIT1(return 0);
+	}
 
 	return 0;
 }
