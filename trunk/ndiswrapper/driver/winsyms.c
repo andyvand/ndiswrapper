@@ -122,7 +122,7 @@ void IoBuildSynchronousFsdRequest(void);
 void IofCallDriver(void);
 void KeWaitForSingleObject(void);
 void my_sprintf(void);
-
+void _allmul(void);
 
 struct winsym
 {
@@ -236,6 +236,7 @@ func("IoBuildSynchronousFsdRequest"         , IoBuildSynchronousFsdRequest),
 func("IofCallDriver"                        , IofCallDriver),
 func("KeWaitForSingleObject"                , KeWaitForSingleObject),
 func("sprintf"                              , my_sprintf),
+func("_allmul"                             , _allmul),
 
 
 /* CIPE */
