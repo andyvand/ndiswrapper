@@ -1156,14 +1156,14 @@ STDCALL void NdisMRegisterAdapterShutdownHandler(struct ndis_handle *handle,
 {
 	DBGTRACE("%s sp:%08x\n", __FUNCTION__ , getSp());
 	handle->driver->miniport_char.adapter_shutdown = func;
-	handle->driver->miniport_char.shutdown_ctx = ctx;
+	handle->shutdown_ctx = ctx;
 }
 
 STDCALL void NdisMDeregisterAdapterShutdownHandler(struct ndis_handle *handle)
 {
 	DBGTRACE("%s sp:%08x\n", __FUNCTION__ , getSp());
 	handle->driver->miniport_char.adapter_shutdown = NULL;
-	handle->driver->miniport_char.shutdown_ctx = NULL;
+	handle->shutdown_ctx = NULL;
 }
 
 /*
