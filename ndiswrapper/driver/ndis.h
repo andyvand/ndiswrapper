@@ -331,4 +331,72 @@ STDCALL void NdisIndicateStatusComplete(struct ndis_handle *handle);
 
 #define UNIMPL() printk(KERN_ERR "%s --UNIMPLEMENTED--\n", __FUNCTION__ )
 
+
+
+
+#define FALSE 0
+#define TRUE 1
+
+#define InternalBaseType              (0xcc)         //What is this???? - took it from reactos
+#define InternalNotificationEvent     (InternalBaseType + 1)
+#define InternalSynchronizationEvent  (InternalBaseType + 2)
+
+#define assert(x)
+
+/*
+ * VOID
+ * InitializeListHead (
+ *		PLIST_ENTRY	ListHead
+ *		);
+ *
+ * FUNCTION: Initializes a double linked list
+ * ARGUMENTS:
+ *         ListHead = Caller supplied storage for the head of the list
+ */
+#define InitializeListHead(ListHead) \
+{ \
+	(ListHead)->Flink = (ListHead); \
+	(ListHead)->Blink = (ListHead); \
+}
+
+typedef enum _EVENT_TYPE
+{
+  NotificationEvent,
+  SynchronizationEvent,
+} EVENT_TYPE;
+
+typedef struct _LIST_ENTRY
+{
+  struct _LIST_ENTRY *Flink;
+  struct _LIST_ENTRY *Blink;
+} LIST_ENTRY, *PLIST_ENTRY;
+
+
+//Definition of KEVENT and DISPATCHER_HEADER- Taken from reactos: include/ddk/ketypes.h
+//struct _DISPATCHER_HEADER;
+
+typedef struct _DISPATCHER_HEADER
+{
+   unsigned char      Type;
+   unsigned char      Absolute;
+   unsigned char      Size;
+   unsigned char      Inserted;
+   long       SignalState;
+   LIST_ENTRY WaitListHead;
+} /*__attribute__*/ DISPATCHER_HEADER, *PDISPATCHER_HEADER;
+
+typedef struct _KEVENT
+{
+   DISPATCHER_HEADER Header;
+} KEVENT, *PKEVENT;
+
+//Definition of PNDIS_EVENT - Taken from reactos: include/net/ndis.h
+typedef struct _NDIS_EVENT {
+    KEVENT  Event;
+} NDIS_EVENT, *PNDIS_EVENT;
+
+
+void STDCALL KeInitializeEvent(PKEVENT Event, EVENT_TYPE Type, int State);
+
+
 #endif /* NDIS_H */

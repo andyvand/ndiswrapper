@@ -95,6 +95,7 @@ void NdisUnchainBufferAtBack(void);
 void NdisQueryBufferSafe(void);
 void NdisGetFirstBufferFromPacketSafe(void);
 void NdisUnchainBufferAtFront(void);
+void NdisScheduleWorkItem(void);
 
 /* Cipe */
 void DbgPrint(void);
@@ -226,7 +227,7 @@ func("NdisUnchainBufferAtBack"              , NdisUnchainBufferAtBack),
 func("NdisQueryBufferSafe"                  , NdisQueryBufferSafe),
 func("NdisGetFirstBufferFromPacketSafe"     , NdisGetFirstBufferFromPacketSafe),
 func("NdisUnchainBufferAtFront"             , NdisUnchainBufferAtFront),
-
+func("NdisScheduleWorkItem"                 , NdisScheduleWorkItem),
 
 /* HAL */
 func("KfAcquireSpinLock"                    , KfAcquireSpinLock),

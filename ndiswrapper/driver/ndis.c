@@ -922,9 +922,13 @@ STDCALL void NdisGetCurrentSystemTime(u64 *time)
 STDCALL unsigned int NdisMRegisterIoPortRange(void **virt, struct ndis_handle *handle, unsigned int start, unsigned int len)
 {
 	DBGTRACE("%s %08x %08x\n", __FUNCTION__, start, len);
-	/* TODO: Register ioport with linux */
 	*virt = (void*) start;
 	return NDIS_STATUS_SUCCESS;
+}
+
+STDCALL void NdisMDeregisterIoPortRange(struct ndis_handle *handle, unsigned int start, unsigned int len, void* virt)
+{
+	DBGTRACE("%s %08x %08x\n", __FUNCTION__, start, len);
 }
 
 
@@ -942,6 +946,24 @@ STDCALL int NdisMInitializeScatterGatherDma(struct ndis_handle MiniportAdapterHa
        return NDIS_STATUS_SUCCESS;
  }
 
+ 
+/* Copied from ReactOS */
+STDCALL void NdisInitializeEvent(PNDIS_EVENT Event)
+/*
+ * FUNCTION: Initializes an event to be used for synchronization
+ * ARGUMENTS:
+ *     Event = Pointer to an NDIS event structure to be initialized
+ */
+{
+	KeInitializeEvent(&Event->Event, NotificationEvent, FALSE);
+}
+                                                                                                                                                                                                                                    
+void NdisWaitEvent(void){UNIMPL();}
+void NdisSetEvent(void){UNIMPL();}
+void NdisResetEvent(void){UNIMPL();}
+                                                                                                                                                                                                                                    
+
+ 
 /* Unimplemented...*/
 STDCALL void NdisInitAnsiString(void *src, void *dst) {UNIMPL();}
 STDCALL void NdisOpenConfigurationKeyByName(unsigned int *status, void *handle, void *key, void *subkeyhandle){UNIMPL();}
@@ -951,21 +973,17 @@ STDCALL void NdisQueryBufferOffset(void *buffer, unsigned int offset, unsigned i
 STDCALL void NdisMGetDeviceProperty(void *handle, void **p1, void **p2, void **p3, void**p4, void**p5){UNIMPL();}
 STDCALL unsigned long NdisWritePcmciaAttributeMemory(void *handle, unsigned int offset, void *buffer, unsigned int length){UNIMPL();return 0;}
 STDCALL unsigned long NdisReadPcmciaAttributeMemory(void *handle, unsigned int offset, void *buffer, unsigned int length){UNIMPL();return 0;}
-STDCALL void NdisInitializeEvent(void *event){UNIMPL();}
+STDCALL void NdisScheduleWorkItem(void *workitem){UNIMPL();}
 
 
 STDCALL void NdisInterlockedDecrement(void){UNIMPL();}
-STDCALL void NdisMDeregisterIoPortRange(void){UNIMPL();}
-STDCALL void NdisWaitEvent(void){UNIMPL();}
 STDCALL void NdisDprAcquireSpinLock(void){UNIMPL();}
 STDCALL void NdisDprReleaseSpinLock(void){UNIMPL();}
 STDCALL void NdisInterlockedIncrement(void){UNIMPL();}
-STDCALL void NdisSetEvent(void){UNIMPL();}
 STDCALL void NdisSystemProcessorCount(void){UNIMPL();}
 STDCALL void NdisMGetDmaAlignment(void){UNIMPL();}
 STDCALL void NdisUnicodeStringToAnsiString(void){UNIMPL();}
 
-STDCALL void NdisResetEvent(void){UNIMPL();}
 STDCALL void NdisInitializeString(void){UNIMPL();}
 STDCALL void NdisUnchainBufferAtBack(void){UNIMPL();}
 STDCALL void NdisGetFirstBufferFromPacketSafe(void){UNIMPL();}
