@@ -2618,6 +2618,7 @@ STDCALL NDIS_STATUS WRAP_EXPORT(NdisMQueryAdapterInstanceName)
 		ansi_string.buf = "PCI Ethernet Adapter";
 	else
 		ansi_string.buf = "USB Ethernet Adapter";
+	ansi_string.buflen = ansi_string.len = strlen(ansi_string.buf);
 	if (RtlAnsiStringToUnicodeString(name, &ansi_string, 1))
 		TRACEEXIT2(return NDIS_STATUS_RESOURCES);
 	else
