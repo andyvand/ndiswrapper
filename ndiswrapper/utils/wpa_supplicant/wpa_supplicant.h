@@ -58,6 +58,21 @@ void wpa_printf(int level, char *fmt, ...)
 __attribute__ ((format (printf, 2, 3)));
 
 /**
+ * wpa_msg - conditional printf for default target and ctrl_iface monitors
+ * @level: priority level (MSG_*) of the message
+ * @fmt: printf format string, followed by optional arguments
+ *
+ * This function is used to print conditional debugging and error messages. The
+ * output may be directed to stdout, stderr, and/or syslog based on
+ * configuration. This function is like wpa_printf(), but it also sends the
+ * same message to all attached ctrl_iface monitors.
+ *
+ * Note: New line '\n' is added to the end of the text when printing to stdout.
+ */
+void wpa_msg(struct wpa_supplicant *wpa_s, int level, char *fmt, ...)
+__attribute__ ((format (printf, 3, 4)));
+
+/**
  * wpa_hexdump - conditional hex dump
  * @level: priority level (MSG_*) of the message
  * @title: title of for the message

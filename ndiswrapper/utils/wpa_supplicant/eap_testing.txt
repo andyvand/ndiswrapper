@@ -1,0 +1,106 @@
+Automatic regression and interoperability testing of wpa_supplicant's
+IEEE 802.1X/EAPOL authentication
+
+Test program:
+- Linked some parts of IEEE 802.1X Authenticator implementation from
+  hostapd (RADIUS client and RADIUS processing, EAP<->RADIUS
+  encapsulation/decapsulation) into wpa_supplicant.
+- Replaced wpa_supplicant.c and wpa.c with test code that trigger
+  IEEE 802.1X authentication automatically without need for wireless
+  client card or AP.
+- For EAP methods that generate keying material, the key derived by the
+  Supplicant is verified to match with the one received by the (now
+  integrated) Authenticator.
+
+The full automated test suite can now be run in couple of seconds, but
+I'm more than willing to add new RADIUS authentication servers to make
+this take a bit more time.. ;-) As an extra bonus, this can also be
+seen as automatic regression/interoperability testing for the RADIUS
+server, too.
+
+In order for me to be able to use a new authentication server, the
+server need to be available from Internet (at least from one static IP
+address) and I will need to get suitable user name/password pairs,
+certificates, and private keys for testing use. Other alternative
+would be to get an evaluation version of the server so that I can
+install it on my own test setup. If you are interested in providing
+either server access or evaluation version, please contact me
+(jkmaline@cc.hut.fi).
+
+
+Automated tests:
+
+FreeRADIUS (CVS snapshot)
+- EAP-MD5-Challenge
+- EAP-GTC
+- EAP-MSCHAPv2
+- EAP-TLS
+- EAP-PEAPv0 / MSCHAPv2
+- EAP-PEAPv0 / GTC
+- EAP-PEAPv0 / MD5-Challenge
+- EAP-TTLS / EAP-MD5-Challenge
+- EAP-TTLS / EAP-GTC
+- EAP-TTLS / EAP-MSCHAPv2
+- EAP-TTLS / CHAP
+- EAP-TTLS / PAP
+- EAP-TTLS / MSCHAP
+- EAP-TTLS / MSCHAPv2
+- EAP-SIM
+* not supported in FreeRADIUS
+  - EAP-PEAP / TLS (Unable to tunnel TLS inside of TLS)
+  - EAP-TTLS / EAP-TLS (Unable to tunnel TLS inside of TLS)
+
+Microsoft Windows Server 2003 / IAS
+- EAP-TLS
+- EAP-PEAPv0 / MSCHAPv2
+- EAP-PEAPv0 / TLS
+- EAP-MD5
+* IAS does not seem to support other EAP methods
+
+Funk Odyssey 2.01.00.653
+- EAP-TLS
+- EAP-PEAPv0 / MSCHAPv2
+- EAP-PEAPv1 / MSCHAPv2
+- EAP-PEAPv0 / GTC
+- EAP-PEAPv1 / GTC
+- EAP-TTLS / CHAP (using FreeRADIUS as inner auth srv)
+- EAP-TTLS / MSCHAP
+- EAP-TTLS / MSCHAPv2
+- EAP-TTLS / PAP
+- EAP-TTLS / EAP-MD5-Challenge (using FreeRADIUS as inner auth srv)
+- EAP-TTLS / EAP-MSCHAPv2 (using FreeRADIUS as inner auth srv)
+- EAP-TTLS / EAP-TLS (using FreeRADIUS as inner auth srv)
+* not supported in Odyssey:
+  - EAP-MD5-Challenge
+  - EAP-GTC
+  - EAP-MSCHAPv2
+  - EAP-PEAP / MD5-Challenge
+  - EAP-PEAP / TLS
+
+Meetinghouse Aegis 1.1.4
+- EAP-MD5-Challenge
+- EAP-GTC
+- EAP-MSCHAPv2
+- EAP-TLS
+- EAP-PEAPv0 / MSCHAPv2
+- EAP-PEAPv0 / TLS
+- EAP-PEAPv0 / GTC
+- EAP-PEAPv0 / MD5-Challenge
+- EAP-TTLS / CHAP
+- EAP-TTLS / MSCHAP
+- EAP-TTLS / MSCHAPv2
+- EAP-TTLS / PAP
+- EAP-TTLS / EAP-MD5-Challenge
+- EAP-TTLS / EAP-GTC
+- EAP-TTLS / EAP-MSCHAPv2
+* did not work
+  - EAP-TTLS / EAP-TLS
+    (Server rejects authentication without any reason in debug log. It
+     looks like the inner TLS negotiation starts properly and the last
+     packet from Supplicant looks like the one sent in the Phase 1. The
+     server generates a valid looking reply in the same way as in Phase
+     1, but then ends up sending Access-Reject. Maybe an issue with TTLS
+     fragmentation in the Aegis server(?) The packet seems to include
+     1328 bytes of EAP-Message and this may go beyond the fragmentation
+     limit with AVP encapsulation and TLS tunneling. Note: EAP-PEAP/TLS
+     did work, so this issue seems to be with something TTLS specific.)
