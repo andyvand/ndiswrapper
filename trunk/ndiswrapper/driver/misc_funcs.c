@@ -362,7 +362,7 @@ STDCALL size_t RtlCompareMemory(const void *a, const void *b, size_t len)
 	size_t i, same;
 	char *x, *y;
 	
-	TRACEENTER1();
+	TRACEENTER1("%s", "");
 
 	x = (char *)a;
 	y = (char *)b;
@@ -379,7 +379,7 @@ STDCALL long RtlCompareString(const struct ustring *s1,
 	long ret = 0;
 	const char *p1, *p2;
 	
-	TRACEENTER1();
+	TRACEENTER1("%s", "");
 	len = min(s1->len, s2->len);
 	p1 = s1->buf;
 	p2 = s2->buf;
@@ -404,7 +404,7 @@ STDCALL long RtlCompareUnicodeString(const struct ustring *s1,
 	long ret = 0;
 	const __u16 *p1, *p2;
 	
-	TRACEENTER1();
+	TRACEENTER1("%s", "");
 	len = min(s1->len, s2->len);
 	p1 = (__u16 *)s1->buf;
 	p2 = (__u16 *)s2->buf;
@@ -423,7 +423,7 @@ STDCALL long RtlCompareUnicodeString(const struct ustring *s1,
 STDCALL int RtlEqualString(const struct ustring *s1,
 			   const struct ustring *s2, int case_insensitive)
 {
-	TRACEENTER1();
+	TRACEENTER1("%s", "");
 	if (s1->len != s2->len)
 		return 0;
 	return !RtlCompareString(s1, s2, case_insensitive);
@@ -441,7 +441,7 @@ STDCALL int RtlEqualUnicodeString(const struct ustring *s1,
 STDCALL void RtlCopyUnicodeString(struct ustring *dst,
 				  const struct ustring *src)
 {
-	TRACEENTER1();
+	TRACEENTER1("%s", "");
 	if (src)
 	{
 		unsigned int len = min(src->len, dst->buflen);
@@ -522,7 +522,7 @@ STDCALL int RtlIntegerToUnicodeString(unsigned long value, unsigned long base,
 	struct ustring ansi;
 	int i;
 
-	TRACEENTER1();
+	TRACEENTER1("%s", "");
 	if (base == 0)
 		base = 10;
 	if (!(base == 2 || base == 8 || base == 10 || base == 16))
