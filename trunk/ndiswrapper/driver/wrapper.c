@@ -117,10 +117,10 @@ int doreset(struct ndis_handle *handle)
 		 * for a while before sleeping, hoping reset will be done in
 		 * 1 ms */
 		mdelay(1);
-		/* wait for NdisMResetComplete upto 30*HZ */
+		/* wait for NdisMResetComplete upto 1 s */
 		if (wait_event_interruptible_timeout(
 			    handle->ndis_comm_wq,
-			    (handle->ndis_comm_done == 1), 30*HZ))
+			    (handle->ndis_comm_done == 1), 1*HZ))
 			handle->ndis_comm_res = NDIS_STATUS_FAILURE;
 		res = handle->ndis_comm_res;
 		DBGTRACE2("res = %08X, reset_status = %08X",
