@@ -159,13 +159,13 @@ struct kdpc {
 	SHORT type;
 	UCHAR number;
 	UCHAR importance;
-	struct nt_list dpc_list_entry;
+	struct nt_list list;
 
 	DPC func;
 	void *ctx;
 	void *arg1;
 	void *arg2;
-	ULONG_PTR *lock;
+	KSPIN_LOCK *lock;
 };
 
 enum pool_type {
@@ -284,9 +284,7 @@ struct ktimer {
 	struct dispatch_header dh;
 	ULONGLONG due_time;
 	struct nt_list list;
-	/* Instead of using Dpc's, we implement timers with Linux
-	 * timers for simplicity; however, Linux timers need 'struct
-	 * timer_list' field, which won't fit in ktimer. Instead of
+	/* We can't fit Linux timer in this structure. Instead of
 	 * padding the ktimer structure, we replace *kdpc field with
 	 * *wrapper_timer and allocate memory for it when ktimer is
 	 * initialized */

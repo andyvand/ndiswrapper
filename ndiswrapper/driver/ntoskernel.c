@@ -32,6 +32,7 @@ struct wrap_mdl {
 	char mdl[CACHE_MDL_SIZE];
 };
 
+/* everything here is for all drivers/devices - not per driver/device */
 static KSPIN_LOCK kevent_lock;
 KSPIN_LOCK irp_cancel_lock;
 KSPIN_LOCK ntoskernel_lock;
@@ -39,9 +40,9 @@ static kmem_cache_t *mdl_cache;
 static struct nt_list wrap_mdl_list;
 static struct nt_list obj_mgr_obj_list;
 
-static struct work_struct qdpc_work;
-static struct nt_list qdpc_list;
-static void dpc_worker(void *data);
+struct work_struct kdpc_work;
+static struct nt_list kdpc_list;
+static void kdpc_worker(void *data);
 
 static struct nt_list callback_objects;
 
@@ -54,9 +55,9 @@ int ntoskernel_init(void)
 	kspin_lock_init(&ntoskernel_lock);
 	InitializeListHead(&obj_mgr_obj_list);
 	InitializeListHead(&wrap_mdl_list);
-	InitializeListHead(&qdpc_list);
+	InitializeListHead(&kdpc_list);
 	InitializeListHead(&callback_objects);
-	INIT_WORK(&qdpc_work, &dpc_worker, NULL);
+	INIT_WORK(&kdpc_work, &kdpc_worker, NULL);
 	mdl_cache = kmem_cache_create("ndis_mdl", sizeof(struct wrap_mdl),
 				      0, 0, NULL, NULL);
 	if (!mdl_cache) {
@@ -282,75 +283,81 @@ STDCALL void WRAP_EXPORT(KeInitializeDpc)
 	kspin_unlock_irql(&ntoskernel_lock, irql);
 }
 
-static void dpc_worker(void *data)
+static void kdpc_worker(void *data)
 {
 	struct nt_list *entry;
-	struct qdpc *qdpc;
 	struct kdpc *kdpc;
 	KIRQL irql;
 	DPC dpc_func;
 
 	while (1) {
 		irql = kspin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL);
-		entry = RemoveHeadList(&qdpc_list);
+		entry = RemoveHeadList(&kdpc_list);
 		kspin_unlock_irql(&ntoskernel_lock, irql);
 		if (!entry)
 			break;
-		qdpc = container_of(entry, struct qdpc, list);
-		kdpc = qdpc->kdpc;
+		kdpc = container_of(entry, struct kdpc, list);
 		dpc_func = kdpc->func;
 		irql = raise_irql(DISPATCH_LEVEL);
-		LIN2WIN4(dpc_func, kdpc, kdpc->ctx, qdpc->arg1, qdpc->arg2);
+		LIN2WIN4(dpc_func, kdpc, kdpc->ctx, kdpc->arg1, kdpc->arg2);
 		lower_irql(irql);
-		kfree(qdpc);
 	}
+}
+
+/* this function should be called with ntoskernel_lock held at
+ * DISPATCH_LEVEL */
+BOOLEAN insert_kdpc_work(struct kdpc *kdpc)
+{
+	struct nt_list *cur;
+
+	nt_list_for_each(cur, &kdpc_list) {
+		struct kdpc *tmp;
+		tmp = container_of(cur, struct kdpc, list);
+		if (tmp == kdpc)
+			return FALSE;
+	}
+	InsertTailList(&kdpc_list, &kdpc->list);
+	schedule_work(&kdpc_work);
+	return TRUE;
+}
+
+/* this function should be called with ntoskernel_lock held at
+ * DISPATCH_LEVEL */
+BOOLEAN remove_kdpc_work(struct kdpc *kdpc)
+{
+	struct nt_list *cur;
+
+	nt_list_for_each(cur, &kdpc_list) {
+		struct kdpc *tmp = container_of(cur, struct kdpc, list);
+		if (tmp == kdpc) {
+			RemoveEntryList(&kdpc->list);
+			return TRUE;
+		}
+	}
+	return FALSE;
 }
 
 STDCALL BOOLEAN KeInsertQueueDpc(struct kdpc *kdpc, void *arg1, void *arg2)
 {
-	struct nt_list *cur;
-	struct qdpc *qdpc;
-	KIRQL irql;
+	BOOLEAN ret;
 
-	qdpc = kmalloc(sizeof(*qdpc), GFP_ATOMIC);
-	if (!qdpc) {
-		ERROR("couldn't allocate memory");
-		return FALSE;
-	}
-	qdpc->kdpc = kdpc;
-	qdpc->arg1 = arg1;
-	qdpc->arg2 = arg2;
-	irql = kspin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL);
-	nt_list_for_each(cur, &qdpc_list) {
-		qdpc = container_of(cur, struct qdpc, list);
-		if (qdpc->kdpc == kdpc) {
-			kspin_unlock(&ntoskernel_lock);
-			return FALSE;
-		}
-	}
-	InsertTailList(&qdpc_list, &qdpc->list);
-	kspin_unlock_irql(&ntoskernel_lock, irql);
-	schedule_work(&qdpc_work);
-	return TRUE;
+	/* this function is called at IRQL >= DISPATCH_LEVEL */
+	kspin_lock(&ntoskernel_lock);
+	kdpc->arg1 = arg1;
+	kdpc->arg2 = arg2;
+	ret = insert_kdpc_work(kdpc);
+	kspin_unlock(&ntoskernel_lock);
+	return ret;
 }
 
 STDCALL BOOLEAN KeRemoveQueueDpc(struct kdpc *kdpc)
 {
+	BOOLEAN ret;
 	KIRQL irql;
-	struct nt_list *cur;
-
 	irql = kspin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL);
-	nt_list_for_each(cur, &qdpc_list) {
-		struct qdpc *qdpc = container_of(cur, struct qdpc, list);
-		if (qdpc->kdpc == kdpc) {
-			RemoveEntryList(&qdpc->list);
-			kspin_unlock_irql(&ntoskernel_lock, irql);
-			kfree(qdpc);
-			return TRUE;
-		}
-	}
+	ret = remove_kdpc_work(kdpc);
 	kspin_unlock_irql(&ntoskernel_lock, irql);
-	return FALSE;
+	return ret;
 }
 
 STDCALL BOOLEAN WRAP_EXPORT(KeSetTimerEx)
@@ -679,8 +686,7 @@ STDCALL void WRAP_EXPORT(ExNotifyCallback)
 STDCALL void WRAP_EXPORT(KeInitializeEvent)
 	(struct kevent *kevent, enum event_type type, BOOLEAN state)
 {
-	TRACEENTER3("event = %p, type = %d, state = %d",
-		    kevent, type, state);
+	TRACEENTER3("event = %p, type = %d, state = %d", kevent, type, state);
 	kevent->dh.type = type;
 	if (state == TRUE)
 		kevent->dh.signal_state = 1;
@@ -1218,8 +1224,8 @@ STDCALL int WRAP_EXPORT(IoIsWdmVersionAvailable)
 	    (minor == 0x30 || // Windows 2003
 	     minor == 0x20 || // Windows XP
 	     minor == 0x10)) // Windows 2000
-		return 1;
-	return 0;
+		TRACEEXIT3(return 1);
+	TRACEEXIT3(return 0);
 }
 
 STDCALL BOOLEAN WRAP_EXPORT(IoIs32bitProcess)

@@ -610,10 +610,8 @@ static void unload_ndis_device(struct ndis_device *device)
 static void unload_ndis_driver(struct ndis_driver *driver)
 {
 	int i;
-	struct driver_object *drv_obj;
 
 	DBGTRACE1("freeing %d images", driver->num_pe_images);
-	drv_obj = driver->drv_obj;
 	for (i = 0; i < driver->num_pe_images; i++)
 		if (driver->pe_images[i].image)
 			vfree(driver->pe_images[i].image);
@@ -624,11 +622,7 @@ static void unload_ndis_driver(struct ndis_driver *driver)
 	if (driver->bin_files)
 		kfree(driver->bin_files);
 
-	RtlFreeUnicodeString(&drv_obj->driver_name);
-	/* this frees driver */
-	free_custom_ext(drv_obj->drv_ext);
-	kfree(drv_obj->drv_ext);
-	kfree(drv_obj);
+	kfree(driver);
 	TRACEEXIT1(return);
 }
 
@@ -636,35 +630,32 @@ static void unload_ndis_driver(struct ndis_driver *driver)
 static int start_driver(struct ndis_driver *driver)
 {
 	int i, ret, res;
-	struct driver_object *drv_obj;
-	UINT (*entry)(struct driver_object *obj,
-		      struct unicode_string *path) STDCALL;
+	struct unicode_string reg_string;
+	char *reg_path = "0/0t0m0p0";
 
 	TRACEENTER1("");
-	drv_obj = driver->drv_obj;
+
+	reg_string.buf = (wchar_t *)reg_path;
+
+	reg_string.buflen = reg_string.len = strlen(reg_path);
 	for (ret = res = 0, i = 0; i < driver->num_pe_images; i++)
 		/* dlls are already started by loader */
 		if (driver->pe_images[i].type == IMAGE_FILE_EXECUTABLE_IMAGE) {
+			UINT (*entry)(void *obj,
+				      struct unicode_string *p2) STDCALL;
+
 			entry = driver->pe_images[i].entry;
-			drv_obj->driver_start = driver->pe_images[i].entry;
-			drv_obj->driver_size = driver->pe_images[i].size;
 			DBGTRACE1("entry: %p, %p", entry, *entry);
-			res = LIN2WIN2(entry, drv_obj, &drv_obj->driver_name);
+			res = LIN2WIN2(entry, (void *)driver, &reg_string);
 			ret |= res;
 			DBGTRACE1("entry returns %08X", res);
 			DBGTRACE1("driver version: %d.%d",
-				  driver->miniport.majorVersion,
-				  driver->miniport.minorVersion);
-			break;
+				  driver->miniport_char.majorVersion,
+				  driver->miniport_char.minorVersion);
 		}
 
 	if (ret) {
 		ERROR("driver initialization failed: %08X", ret);
-		RtlFreeUnicodeString(&drv_obj->driver_name);
-		/* this frees driver */
-		free_custom_ext(drv_obj->drv_ext);
-		kfree(drv_obj->drv_ext);
-		kfree(drv_obj);
 		TRACEEXIT1(return -EINVAL);
 	}
 
@@ -698,45 +689,16 @@ static int add_driver(struct ndis_driver *driver)
 /* load a driver from userspace and initialize it */
 static int load_ndis_driver(struct load_driver *load_driver)
 {
-	struct driver_object *drv_obj;
-	struct ansi_string ansi_reg;
-	struct ndis_driver *ndis_driver = NULL;
+	struct ndis_driver *ndis_driver;
 
-	TRACEENTER1("");
-	ansi_reg.buf = "/tmp";
-	ansi_reg.buflen = ansi_reg.len = strlen(ansi_reg.buf);
-	drv_obj = kmalloc(sizeof(*drv_obj), GFP_KERNEL);
-	if (!drv_obj) {
+	ndis_driver = kmalloc(sizeof(*ndis_driver), GFP_KERNEL);
+	if (!ndis_driver) {
 		ERROR("couldn't allocate memory");
-		TRACEEXIT1(return -ENOMEM);
-	}
-	drv_obj->drv_ext = kmalloc(sizeof(*(drv_obj->drv_ext)), GFP_KERNEL);
-	if (!drv_obj->drv_ext) {
-		ERROR("couldn't allocate memory");
-		kfree(drv_obj);
-		TRACEEXIT1(return -ENOMEM);
-	}
-	InitializeListHead(&drv_obj->drv_ext->custom_ext);
-	DBGTRACE1("");
-	if (IoAllocateDriverObjectExtension(
-		    drv_obj, (void *)CE_NDIS_DRIVER_CLIENT_ID,
-		    sizeof(*ndis_driver),
-		    (void **)&ndis_driver) != STATUS_SUCCESS)
-		TRACEEXIT1(return NDIS_STATUS_RESOURCES);
-	DBGTRACE1("driver: %p", ndis_driver);
-	memset(ndis_driver, 0, sizeof(*ndis_driver));
-	ndis_driver->bustype = -1;
-	ndis_driver->drv_obj = drv_obj;
-	ndis_driver->drv_obj = drv_obj;
-	if (RtlAnsiStringToUnicodeString(&drv_obj->driver_name,
-					 &ansi_reg, 1) != STATUS_SUCCESS) {
-		ERROR("couldn't initialize registry path");
-		free_custom_ext(drv_obj->drv_ext);
-		kfree(drv_obj->drv_ext);
-		kfree(drv_obj);
 		TRACEEXIT1(return -EINVAL);
 	}
-	DBGTRACE1("");
+	memset(ndis_driver, 0, sizeof(*ndis_driver));
+	ndis_driver->bustype = -1;
+
 	if (load_sys_files(ndis_driver, load_driver) ||
 	    load_bin_files(ndis_driver, load_driver) ||
 	    load_settings(ndis_driver, load_driver) ||
