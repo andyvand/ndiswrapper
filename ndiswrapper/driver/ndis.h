@@ -977,8 +977,6 @@ int usb_init(void);
 void usb_exit(void);
 void usb_cleanup(void);
 
-int ntoskrnl_init(void);
-void ntoskrnl_exit(void);
 int load_pe_images(struct pe_image[], int n);
 
 int ndiswrapper_procfs_init(void);

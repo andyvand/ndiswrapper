@@ -350,8 +350,6 @@ extern KSPIN_LOCK cancel_lock;
 
 #define DEBUG_IRQL 1
 
-#define WRAPPER_SPIN_LOCK_MAGIC 137
-
 #define WRAPPER_TIMER_MAGIC 47697249
 struct wrapper_timer {
 	struct list_head list;
@@ -368,6 +366,8 @@ struct wrapper_timer {
 
 typedef struct mdl ndis_buffer;
 
+int ntoskernel_init(void);
+void ntoskernel_exit(void);
 STDCALL void *ExAllocatePoolWithTag(enum pool_type pool_type, SIZE_T size,
 				    ULONG tag);
 STDCALL void ExFreePool(void *p);
