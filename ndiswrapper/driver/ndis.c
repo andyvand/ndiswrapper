@@ -345,7 +345,7 @@ STDCALL static void WRAP_EXPORT(NdisOpenFile)
 
 		for (i = 0; i < driver->num_bin_files; i++) {
 			int n;
-			file = driver->bin_files[i];
+			file = &driver->bin_files[i];
 			DBGTRACE2("considering %s", file->name);
 			n = min(strlen(file->name), strlen(ansi.buf));
 			if (strnicmp(file->name, ansi.buf, n) == 0) {
