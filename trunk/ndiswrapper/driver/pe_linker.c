@@ -28,8 +28,6 @@
 #include <linux/types.h>
 #include <asm/errno.h>
 
-#include "ndiswrapper.h"
-#include "ntoskernel.h"
 #include "pe_linker.h"
 
 #endif
@@ -290,7 +288,7 @@ static int fixup_imports(void *image, struct nt_header *nt_hdr)
 	dirent = RVA2VA(image, nt_hdr->opt_hdr.import_tbl.rva,
 			  struct coffpe_import_dirent *);
 
-	for(i = 0; dirent[i].name_rva; i++) {
+	for (i = 0; dirent[i].name_rva; i++) {
 		name = RVA2VA(image, dirent[i].name_rva, char*);
 
 		//printk("Imports from dll: %s\n", name);

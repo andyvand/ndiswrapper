@@ -16,6 +16,8 @@
 #ifndef USB_H
 #define USB_H
 
+#include "ntoskernel.h"
+
 #define IOCTL_INTERNAL_USB_SUBMIT_URB	0x00220003
 #define IOCTL_INTERNAL_USB_RESET_PORT	0x00220007
 

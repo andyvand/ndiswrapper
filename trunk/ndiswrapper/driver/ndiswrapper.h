@@ -16,26 +16,6 @@
 #ifndef NDISWRAPPER_H
 #define NDISWRAPPER_H
 
-#include <linux/types.h>
-#include <linux/timer.h>
-
-#include <linux/netdevice.h>
-#include <linux/wireless.h>
-#include <linux/pci.h>
-#include <linux/wait.h>
-#include <linux/pm.h>
-#include <linux/delay.h>
-#include <linux/mm.h>
-#include <linux/random.h>
-#include <linux/ctype.h>
-#include <linux/usb.h>
-#include <asm/mman.h>
-#include <asm/atomic.h>
-
-#include <linux/version.h>
-
-#include "loader.h"
-
 #define SSID_MAX_WPA_IE_LEN 40
 #define NDIS_ESSID_MAX_SIZE 32
 #define NDIS_ENCODING_TOKEN_MAX 32
@@ -50,335 +30,245 @@
 #define NDIS_PCI_BUS 5
 #define NDIS_USB_BUS 0
 
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,7)
-#include <linux/kthread.h>
-#endif
+#define MAX_DRIVER_NAME_LEN 32
+#define MAX_NDIS_VERSION_STRING_LEN 64
+#define MAX_NDIS_SETTING_NAME_LEN 128
+#define MAX_NDIS_SETTING_VALUE_LEN 256
 
-#if !defined(CONFIG_USB) && defined(CONFIG_USB_MODULE)
-#define CONFIG_USB 1
-#endif
-
-#define DRV_NAME "ndiswrapper"
-
-/* Workqueue / task queue backwards compatibility stuff */
-#if LINUX_VERSION_CODE > KERNEL_VERSION(2,5,41)
-#include <linux/workqueue.h>
-/* pci functions in 2.6 kernels have problems allocating dma buffers,
- * but seem to work fine with dma functions
- */
-typedef struct workqueue_struct *workqueue;
-#include <asm/dma-mapping.h>
-#define PCI_DMA_ALLOC_COHERENT(pci_dev,size,dma_handle) \
-	dma_alloc_coherent(&pci_dev->dev,size,dma_handle, \
-			   GFP_KERNEL | __GFP_REPEAT)
-#define PCI_DMA_FREE_COHERENT(pci_dev,size,cpu_addr,dma_handle) \
-	dma_free_coherent(&pci_dev->dev,size,cpu_addr,dma_handle)
-#define PCI_DMA_MAP_SINGLE(pci_dev,addr,size,direction) \
-	dma_map_single(&pci_dev->dev,addr,size,direction)
-#define PCI_DMA_UNMAP_SINGLE(pci_dev,dma_handle,size,direction) \
-	dma_unmap_single(&pci_dev->dev,dma_handle,size,direction)
-
-#else // linux version <= 2.5.41
-
-#define PCI_DMA_ALLOC_COHERENT(dev,size,dma_handle) \
-	pci_alloc_consistent(dev,size,dma_handle)
-#define PCI_DMA_FREE_COHERENT(dev,size,cpu_addr,dma_handle) \
-	pci_free_consistent(dev,size,cpu_addr,dma_handle)
-#define PCI_DMA_MAP_SINGLE(dev,addr,size,direction) \
-	pci_map_single(dev,addr,size,direction)
-#define PCI_DMA_UNMAP_SINGLE(dev,dma_handle,size,direction) \
-	pci_unmap_single(dev,dma_handle,size,direction)
-#include <linux/tqueue.h>
-#define work_struct tq_struct
-#define INIT_WORK INIT_TQUEUE
-#define DECLARE_WORK(n, f, d) struct tq_struct n = { \
-	list: LIST_HEAD_INIT(n.list), \
-	sync: 0, \
-	routine: f, \
-	data: d \
-}
-#define schedule_work schedule_task
-#define flush_scheduled_work flush_scheduled_tasks
-typedef task_queue workqueue;
-#include <linux/smp_lock.h>
-
-/* RedHat kernels #define irqs_disabled this way */
-#ifndef irqs_disabled
-#define irqs_disabled()                \
-({                                     \
-       unsigned long flags;            \
-       __save_flags(flags);            \
-       !(flags & (1<<9));              \
-})
-#endif
-
-#ifdef CONFIG_PREEMPT
-#define in_atomic() ((preempt_get_count() & ~PREEMPT_ACTIVE) != kernel_locked())
-#else
-#define in_atomic() (in_interrupt())
-#endif // CONFIG_PREEMPT
-
-#define __GFP_NOWARN 0
-
-#endif // LINUX_VERSION_CODE
-
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,4,23)
-#define HAVE_ETHTOOL 1
-#endif
-
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,0)
-
-#ifndef preempt_enable
-#define preempt_enable()  (void)0
-#endif
-#ifndef preempt_disable
-#define preempt_disable() (void)0
-#endif
-
-#ifndef container_of
-#define container_of(ptr, type, member) ({			\
-	const typeof( ((type *)0)->member ) *__mptr = (ptr);	\
-	(type *)( (char *)__mptr - offsetof(type,member) );})
-#endif
-
-#ifndef virt_addr_valid
-#define virt_addr_valid(addr) VALID_PAGE(virt_to_page(addr))
-#endif
-
-#ifndef SET_NETDEV_DEV
-#define SET_NETDEV_DEV(net,pdev) do { } while (0)
-#endif
-
-#define WRAP_ALLOC_URB(a, b)  usb_alloc_urb(a)
-#define WRAP_SUBMIT_URB(a, b) usb_submit_urb(a)
-
-#else // LINUX_VERSION_CODE < KERNEL_VERSION(2,6,0)
-
-#define WRAP_ALLOC_URB(a, b)  usb_alloc_urb(a, b)
-#define WRAP_SUBMIT_URB(a, b) usb_submit_urb(a, b)
-
-#endif // LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
-
-#ifdef CONFIG_SOFTWARE_SUSPEND2
-#define KTHREAD_RUN(a,b,c) kthread_run(a,b,0,c)
-#else
-#define KTHREAD_RUN(a,b,c) kthread_run(a,b,c)
-#endif
-
-#ifndef __wait_event_interruptible_timeout
-#define __wait_event_interruptible_timeout(wq, condition, ret)		\
-do {									\
-	wait_queue_t __wait;						\
-	init_waitqueue_entry(&__wait, current);				\
-									\
-	add_wait_queue(&wq, &__wait);					\
-	for (;;) {							\
-		set_current_state(TASK_INTERRUPTIBLE);			\
-		if (condition)						\
-			break;						\
-		if (!signal_pending(current)) {				\
-			ret = schedule_timeout(ret);			\
-			if (!ret)					\
-				break;					\
-			continue;					\
-		}							\
-		ret = -ERESTARTSYS;					\
-		break;							\
-	}								\
-	current->state = TASK_RUNNING;					\
-	remove_wait_queue(&wq, &__wait);				\
-} while (0)
-#endif
-
-#ifndef wait_event_interruptible_timeout
-#define wait_event_interruptible_timeout(wq, condition, timeout)	\
-({									\
-	long __ret = timeout;						\
-	if (!(condition))						\
-		__wait_event_interruptible_timeout(wq, condition, __ret); \
-	__ret;								\
-})
-#endif
-
-#ifndef __wait_event_timeout
-#define __wait_event_timeout(wq, condition, ret)			\
-do {									\
-	wait_queue_t __wait;						\
-	init_waitqueue_entry(&__wait, current);				\
-									\
-	add_wait_queue(&wq, &__wait);					\
-	for (;;) {							\
-		set_current_state(TASK_UNINTERRUPTIBLE);		\
-		if (condition)						\
-			break;						\
-		ret = schedule_timeout(ret);				\
-		if (!ret)						\
-			break;						\
-	}								\
-	current->state = TASK_RUNNING;					\
-	remove_wait_queue(&wq, &__wait);				\
-} while (0)
-#endif
-
-#ifndef wait_event_timeout
-#define wait_event_timeout(wq, condition, timeout)			\
-({									\
-	long __ret = timeout;						\
-	if (!(condition))						\
-		__wait_event_timeout(wq, condition, __ret);		\
-	 __ret;								\
-})
-#endif
-
-/* Interrupt backwards compatibility stuff */
-#include <linux/interrupt.h>
-#ifndef IRQ_HANDLED
-#define IRQ_HANDLED
-#define IRQ_NONE
-#define irqreturn_t void
-#endif
-
-#ifndef free_netdev
-#define free_netdev kfree
-#endif
-
-#if LINUX_VERSION_CODE > KERNEL_VERSION(2,6,9)
-#define NW_MODULE_PARM_INT(name, perm) module_param(name, int, perm)
-#define NW_MODULE_PARM_STRING(name, perm) module_param(name, charp, perm)
-#else
-#define NW_MODULE_PARM_INT(name, perm) MODULE_PARM(name, "i")
-#define NW_MODULE_PARM_STRING(name, perm) MODULE_PARM(name, "s")
-#endif
-
-#if LINUX_VERSION_CODE > KERNEL_VERSION(2,6,9)
-#define task_nice(task) ((task)->static_prio - MAX_RT_PRIO - 20)
-#endif
-
-#define KMALLOC_THRESHOLD 131072
-
-/* TICK is 100ns */
-#define TICKSPERSEC             10000000
-#define SECSPERDAY              86400
-
-/* 1601 to 1970 is 369 years plus 89 leap days */
-#define SECS_1601_TO_1970       ((369 * 365 + 89) * (u64)SECSPERDAY)
-#define TICKS_1601_TO_1970      (SECS_1601_TO_1970 * TICKSPERSEC)
-
-#define UNIMPL() do { \
-    printk(KERN_ERR "%s --UNIMPLEMENTED--\n", __FUNCTION__ );	\
-  } while (0)
-
-typedef void (*WRAP_EXPORT_FUNC)(void);
-
-struct wrap_export
-{
-	const char *name;
-	WRAP_EXPORT_FUNC func;
-};
-
-#define WRAP_EXPORT_SYMBOL(f) {#f, (WRAP_EXPORT_FUNC)f}
-/* map name s to function f - if f is different from s */
-#define WRAP_EXPORT_MAP(s,f)
-#define WRAP_EXPORT(x) x
-
-struct wrap_alloc
-{
-	struct list_head list;
-	void *ptr;
-};
-
-typedef unsigned char mac_address[ETH_ALEN];
-
-struct pe_image
-{
-	char name[MAX_DRIVER_NAME_LEN];
-	void *entry;
-	void *image;
-	int size;
-	int type;
-};
-
-
-void *wrap_kmalloc(size_t size, int flags);
-void wrap_kfree(void *ptr);
-void wrap_kfree_all(void);
-
-/* DEBUG macros */
-
-#define DBGTRACE(fmt, ...) (void)0
-#define DBGTRACE1(fmt, ...) (void)0
-#define DBGTRACE2(fmt, ...) (void)0
-#define DBGTRACE3(fmt, ...) (void)0
-#define DBGTRACE4(fmt, ...) (void)0
-#define DBGTRACE5(fmt, ...) (void)0
-
-/* for a block of code */
-#define DBG_BLOCK() while (0)
-
-#define MSG(level, fmt, ...) printk(level "ndiswrapper (%s:%d): " fmt "\n", \
-				    __FUNCTION__, __LINE__ , ## __VA_ARGS__)
-#define WARNING(fmt, ...) MSG(KERN_WARNING, fmt, ## __VA_ARGS__)
-#define ERROR(fmt, ...) MSG(KERN_ERR, fmt , ## __VA_ARGS__)
-#define INFO(fmt, ...) MSG(KERN_INFO, fmt , ## __VA_ARGS__)
-
-#if defined DEBUG
-#undef DBGTRACE
-#define DBGTRACE(fmt, ...) printk(KERN_INFO "ndiswrapper (%s:%d): " fmt "\n", \
-				  __FUNCTION__, __LINE__ , ## __VA_ARGS__)
-#undef DBG_BLOCK
-#define DBG_BLOCK()
-#endif
-
-#if defined DEBUG && DEBUG >= 1
-#undef DBGTRACE1
-#define DBGTRACE1(fmt, ...) DBGTRACE(fmt , ## __VA_ARGS__)
-#endif
-
-#if defined DEBUG && DEBUG >= 2
-#undef DBGTRACE2
-#define DBGTRACE2(fmt, ...) DBGTRACE(fmt , ## __VA_ARGS__)
-#endif
-
-#if defined DEBUG && DEBUG >= 3
-#undef DBGTRACE3
-#define DBGTRACE3(fmt, ...) DBGTRACE(fmt , ## __VA_ARGS__)
-#endif
-
-#if defined DEBUG && DEBUG >= 4
-#undef DBGTRACE4
-#define DBGTRACE4(fmt, ...) DBGTRACE(fmt , ## __VA_ARGS__)
-#endif
-
-#if defined DEBUG && DEBUG >= 5
-#undef DBGTRACE5
-#define DBGTRACE5(fmt, ...) DBGTRACE(fmt , ## __VA_ARGS__)
-#endif
-
-#define TRACEENTER(fmt, ...) DBGTRACE("Enter " fmt , ## __VA_ARGS__)
-#define TRACEENTER1(fmt, ...) DBGTRACE1("Enter " fmt , ## __VA_ARGS__)
-#define TRACEENTER2(fmt, ...) DBGTRACE2("Enter " fmt , ## __VA_ARGS__)
-#define TRACEENTER3(fmt, ...) DBGTRACE3("Enter " fmt , ## __VA_ARGS__)
-#define TRACEENTER4(fmt, ...) DBGTRACE4("Enter " fmt , ## __VA_ARGS__)
-#define TRACEENTER5(fmt, ...) DBGTRACE5("Enter " fmt , ## __VA_ARGS__)
-
-#define TRACEEXIT(stmt) do { DBGTRACE("%s", "Exit"); stmt; } while(0)
-#define TRACEEXIT1(stmt) do { DBGTRACE1("%s", "Exit"); stmt; } while(0)
-#define TRACEEXIT2(stmt) do { DBGTRACE2("%s", "Exit"); stmt; } while(0)
-#define TRACEEXIT3(stmt) do { DBGTRACE3("%s", "Exit"); stmt; } while(0)
-#define TRACEEXIT4(stmt) do { DBGTRACE4("%s", "Exit"); stmt; } while(0)
-#define TRACEEXIT5(stmt) do { DBGTRACE5("%s", "Exit"); stmt; } while(0)
-
-#if defined DEBUG
-#define ASSERT(expr) \
-if(!(expr)) { \
-	ERROR("Assertion failed! %s\n", (#expr)); \
-}
-#else
-#define ASSERT(expr)
-#endif
+#define MAX_PE_IMAGES 4
+#define MAX_NDIS_DEVICES 20
+#define MAX_NDIS_BIN_FILES 5
+#define MAX_NDIS_SETTINGS 256
 
 #define MAC2STR(a) (a)[0], (a)[1], (a)[2], (a)[3], (a)[4], (a)[5]
 #define MACSTR "%02x:%02x:%02x:%02x:%02x:%02x"
+
+#define NDIS_OID_STAT_TX_OK         0x00020101
+#define NDIS_OID_STAT_RX_OK         0x00020102
+#define NDIS_OID_STAT_TX_ERROR      0x00020103
+#define NDIS_OID_STAT_RX_ERROR      0x00020104
+
+#define OID_802_3_MULTICAST_LIST    0x01010103
+#define OID_802_3_MAXIMUM_LIST_SIZE 0x01010104
+
+#define NDIS_OID_ESSID              0x0D010102
+#define NDIS_OID_BSSID              0x0D010101
+#define NDIS_OID_MODE               0x0D010108
+#define NDIS_OID_RSSI               0x0D010206
+#define NDIS_OID_RSSI_TRIGGER       0x0D010207
+#define NDIS_OID_CONFIGURATION      0x0D010211
+#define NDIS_OID_TX_POWER_LEVEL     0x0D010205
+#define NDIS_OID_RTS_THRESH         0x0D01020A
+#define NDIS_OID_FRAG_THRESH        0x0D010209
+#define NDIS_OID_PACKET_FILTER      0x0001010E
+#define NDIS_OID_ADD_WEP            0x0D010113
+#define NDIS_OID_REMOVE_WEP         0x0D010114
+#define NDIS_OID_ENCR_STATUS        0x0D01011B
+#define NDIS_OID_AUTH_MODE          0x0D010118
+#define NDIS_OID_PRIVACY_FILTER     0x0D010119
+#define NDIS_OID_NETWORK_TYPE_IN_USE 0x0D010204
+#define NDIS_OID_BSSID_LIST_SCAN    0x0D01011A
+#define NDIS_OID_BSSID_LIST         0x0D010217
+#define NDIS_OID_POWER_MODE         0x0D010216
+#define NDIS_OID_DISASSOCIATE       0x0D010115
+#define NDIS_OID_STATISTICS         0x0D020212
+#define NDIS_OID_SUPPORTED_RATES    0x0D01020E
+#define NDIS_OID_DESIRED_RATES      0x0D010210
+#define NDIS_OID_ADD_KEY            0x0D01011D
+#define NDIS_OID_REMOVE_KEY         0x0D01011E
+#define NDIS_OID_ASSOC_INFO         0x0D01011F
+#define NDIS_OID_TEST               0x0D010120
+
+#define NDIS_OID_NUM_ANTENNA        0x0D01020B
+#define NDIS_OID_RX_ANTENNA         0x0D01020C
+#define NDIS_OID_TX_ANTENNA         0x0D01020D
+
+/* general OIDs */
+#define NDIS_OID_GEN_SPEED          0x00010107
+#define OID_GEN_PHYSICAL_MEDIUM     0x00010202
+#define OID_GEN_MEDIA_SUPPORTED                 0x00010103
+#define OID_GEN_MEDIA_IN_USE                    0x00010104
+#define OID_802_3_CURRENT_ADDRESS		0x01010102
+
+#define NDIS_OID_PNP_SET_POWER      0xFD010101
+#define NDIS_OID_PNP_QUERY_POWER    0xFD010102
+#define NDIS_OID_CURRENT_MAC_ADDRESS 0x01010102
+
+#define NDIS_STATUS_SUCCESS		0
+#define NDIS_STATUS_PENDING		0x00000103
+#define NDIS_STATUS_NOT_RECOGNIZED	0x00010001
+#define NDIS_STATUS_NOT_COPIED		0x00010002
+#define NDIS_STATUS_NOT_ACCEPTED	0x00010003
+#define NDIS_STATUS_CALL_ACTIVE		0x00010007
+#define NDIS_STATUS_ONLINE		0x40010003
+#define NDIS_STATUS_RESET_START		0x40010004
+#define NDIS_STATUS_RESET_END		0x40010005
+#define NDIS_STATUS_RING_STATUS		0x40010006
+#define NDIS_STATUS_CLOSED		0x40010007
+#define NDIS_STATUS_WAN_LINE_UP		0x40010008
+#define NDIS_STATUS_WAN_LINE_DOWN	0x40010009
+#define NDIS_STATUS_WAN_FRAGMENT	0x4001000A
+#define NDIS_STATUS_MEDIA_CONNECT	0x4001000B
+#define NDIS_STATUS_MEDIA_DISCONNECT	0x4001000C
+#define NDIS_STATUS_HARDWARE_LINE_UP	0x4001000D
+#define NDIS_STATUS_HARDWARE_LINE_DOWN	0x4001000E
+#define NDIS_STATUS_INTERFACE_UP	0x4001000F
+#define NDIS_STATUS_INTERFACE_DOWN	0x40010010
+#define NDIS_STATUS_MEDIA_BUSY		0x40010011
+#define NDIS_STATUS_MEDIA_SPECIFIC_INDICATION	0x40010012
+#define NDIS_STATUS_WW_INDICATION NDIS_STATUS_MEDIA_SPECIFIC_INDICATION
+#define NDIS_STATUS_LINK_SPEED_CHANGE	0x40010013
+#define NDIS_STATUS_WAN_GET_STATS	0x40010014
+#define NDIS_STATUS_WAN_CO_FRAGMENT	0x40010015
+#define NDIS_STATUS_WAN_CO_LINKPARAMS	0x40010016
+#define NDIS_STATUS_NOT_RESETTABLE	0x80010001
+#define NDIS_STATUS_SOFT_ERRORS		0x80010003
+#define NDIS_STATUS_HARD_ERRORS		0x80010004
+#define NDIS_STATUS_BUFFER_OVERFLOW	0x80000005
+#define NDIS_STATUS_FAILURE		0xC0000001
+#define NDIS_STATUS_INVALID_PARAMETER 0xC000000D
+#define NDIS_STATUS_RESOURCES		0xC000009A
+#define NDIS_STATUS_CLOSING		0xC0010002
+#define NDIS_STATUS_BAD_VERSION		0xC0010004
+#define NDIS_STATUS_BAD_CHARACTERISTICS	0xC0010005
+#define NDIS_STATUS_ADAPTER_NOT_FOUND	0xC0010006
+#define NDIS_STATUS_OPEN_FAILED		0xC0010007
+#define NDIS_STATUS_DEVICE_FAILED	0xC0010008
+#define NDIS_STATUS_MULTICAST_FULL	0xC0010009
+#define NDIS_STATUS_MULTICAST_EXISTS	0xC001000A
+#define NDIS_STATUS_MULTICAST_NOT_FOUND	0xC001000B
+#define NDIS_STATUS_REQUEST_ABORTED	0xC001000C
+#define NDIS_STATUS_RESET_IN_PROGRESS	0xC001000D
+#define NDIS_STATUS_CLOSING_INDICATING	0xC001000E
+#define NDIS_STATUS_BAD_VERSION		0xC0010004
+#define NDIS_STATUS_NOT_SUPPORTED	0xC00000BB
+#define NDIS_STATUS_INVALID_PACKET	0xC001000F
+#define NDIS_STATUS_OPEN_LIST_FULL	0xC0010010
+#define NDIS_STATUS_ADAPTER_NOT_READY	0xC0010011
+#define NDIS_STATUS_ADAPTER_NOT_OPEN	0xC0010012
+#define NDIS_STATUS_NOT_INDICATING	0xC0010013
+#define NDIS_STATUS_INVALID_LENGTH	0xC0010014
+#define NDIS_STATUS_INVALID_DATA	0xC0010015
+#define NDIS_STATUS_BUFFER_TOO_SHORT	0xC0010016
+#define NDIS_STATUS_INVALID_OID		0xC0010017
+#define NDIS_STATUS_ADAPTER_REMOVED	0xC0010018
+#define NDIS_STATUS_UNSUPPORTED_MEDIA	0xC0010019
+#define NDIS_STATUS_GROUP_ADDRESS_IN_USE	0xC001001A
+#define NDIS_STATUS_FILE_NOT_FOUND	0xC001001B
+#define NDIS_STATUS_ERROR_READING_FILE	0xC001001C
+#define NDIS_STATUS_ALREADY_MAPPED	0xC001001D
+#define NDIS_STATUS_RESOURCE_CONFLICT	0xC001001E
+#define NDIS_STATUS_NO_CABLE		0xC001001F
+#define NDIS_STATUS_INVALID_SAP		0xC0010020
+#define NDIS_STATUS_SAP_IN_USE		0xC0010021
+#define NDIS_STATUS_INVALID_ADDRESS	0xC0010022
+#define NDIS_STATUS_VC_NOT_ACTIVATED	0xC0010023
+#define NDIS_STATUS_DEST_OUT_OF_ORDER	0xC0010024
+#define NDIS_STATUS_VC_NOT_AVAILABLE	0xC0010025
+#define NDIS_STATUS_CELLRATE_NOT_AVAILABLE	0xC0010026
+#define NDIS_STATUS_INCOMPATABLE_QOS	0xC0010027
+#define NDIS_STATUS_AAL_PARAMS_UNSUPPORTED	0xC0010028
+#define NDIS_STATUS_NO_ROUTE_TO_DESTINATION	0xC0010029
+#define NDIS_STATUS_TOKEN_RING_OPEN_ERROR	0xC0011000
+#define NDIS_STATUS_INVALID_DEVICE_REQUEST	0xC0000010
+#define NDIS_STATUS_NETWORK_UNREACHABLE         0xC000023C
+
+/* Event codes */
+
+#define EVENT_NDIS_RESOURCE_CONFLICT	0xC0001388
+#define EVENT_NDIS_OUT_OF_RESOURCE	0xC0001389
+#define EVENT_NDIS_HARDWARE_FAILURE	0xC000138A
+#define EVENT_NDIS_ADAPTER_NOT_FOUND	0xC000138B
+#define EVENT_NDIS_INTERRUPT_CONNECT	0xC000138C
+#define EVENT_NDIS_DRIVER_FAILURE	0xC000138D
+#define EVENT_NDIS_BAD_VERSION		0xC000138E
+#define EVENT_NDIS_TIMEOUT		0x8000138F
+#define EVENT_NDIS_NETWORK_ADDRESS	0xC0001390
+#define EVENT_NDIS_UNSUPPORTED_CONFIGURATION	0xC0001391
+#define EVENT_NDIS_INVALID_VALUE_FROM_ADAPTER	0xC0001392
+#define EVENT_NDIS_MISSING_CONFIGURATION_PARAMETER	0xC0001393
+#define EVENT_NDIS_BAD_IO_BASE_ADDRESS	0xC0001394
+#define EVENT_NDIS_RECEIVE_SPACE_SMALL	0x40001395
+#define EVENT_NDIS_ADAPTER_DISABLED	0x80001396
+#define EVENT_NDIS_IO_PORT_CONFLICT	0x80001397
+#define EVENT_NDIS_PORT_OR_DMA_CONFLICT	0x80001398
+#define EVENT_NDIS_MEMORY_CONFLICT	0x80001399
+#define EVENT_NDIS_INTERRUPT_CONFLICT	0x8000139A
+#define EVENT_NDIS_DMA_CONFLICT		0x8000139B
+#define EVENT_NDIS_INVALID_DOWNLOAD_FILE_ERROR	0xC000139C
+#define EVENT_NDIS_MAXRECEIVES_ERROR	0x8000139D
+#define EVENT_NDIS_MAXTRANSMITS_ERROR	0x8000139E
+#define EVENT_NDIS_MAXFRAMESIZE_ERROR	0x8000139F
+#define EVENT_NDIS_MAXINTERNALBUFS_ERROR	0x800013A0
+#define EVENT_NDIS_MAXMULTICAST_ERROR	0x800013A1
+#define EVENT_NDIS_PRODUCTID_ERROR	0x800013A2
+#define EVENT_NDIS_LOBE_FAILUE_ERROR	0x800013A3
+#define EVENT_NDIS_SIGNAL_LOSS_ERROR	0x800013A4
+#define EVENT_NDIS_REMOVE_RECEIVED_ERROR	0x800013A5
+#define EVENT_NDIS_TOKEN_RING_CORRECTION	0x400013A6
+#define EVENT_NDIS_ADAPTER_CHECK_ERROR	0xC00013A7
+#define EVENT_NDIS_RESET_FAILURE_ERROR	0x800013A8
+#define EVENT_NDIS_CABLE_DISCONNECTED_ERROR	0x800013A9
+#define EVENT_NDIS_RESET_FAILURE_CORRECTION	0x800013AA
+
+/* packet filter bits used by NDIS_OID_PACKET_FILTER */
+#define NDIS_PACKET_TYPE_DIRECTED               0x00000001
+#define NDIS_PACKET_TYPE_MULTICAST              0x00000002
+#define NDIS_PACKET_TYPE_ALL_MULTICAST          0x00000004
+#define NDIS_PACKET_TYPE_BROADCAST              0x00000008
+#define NDIS_PACKET_TYPE_SOURCE_ROUTING         0x00000010
+#define NDIS_PACKET_TYPE_PROMISCUOUS            0x00000020
+#define NDIS_PACKET_TYPE_SMT                    0x00000040
+#define NDIS_PACKET_TYPE_ALL_LOCAL              0x00000080
+#define NDIS_PACKET_TYPE_GROUP                  0x00001000
+#define NDIS_PACKET_TYPE_ALL_FUNCTIONAL         0x00002000
+#define NDIS_PACKET_TYPE_FUNCTIONAL             0x00004000
+#define NDIS_PACKET_TYPE_MAC_FRAME              0x00008000
+
+/* memory allocation flags */
+#define NDIS_MEMORY_CONTIGUOUS			0x00000001
+#define NDIS_MEMORY_NONCACHED			0x00000002
+
+/* Atrribute flags to NdisMSetAtrributesEx */
+#define NDIS_ATTRIBUTE_IGNORE_PACKET_TIMEOUT    0x00000001
+#define NDIS_ATTRIBUTE_IGNORE_REQUEST_TIMEOUT   0x00000002
+#define NDIS_ATTRIBUTE_IGNORE_TOKEN_RING_ERRORS 0x00000004
+#define NDIS_ATTRIBUTE_BUS_MASTER               0x00000008
+#define NDIS_ATTRIBUTE_INTERMEDIATE_DRIVER      0x00000010
+#define NDIS_ATTRIBUTE_DESERIALIZE              0x00000020
+#define NDIS_ATTRIBUTE_NO_HALT_ON_SUSPEND       0x00000040
+#define NDIS_ATTRIBUTE_SURPRISE_REMOVE_OK       0x00000080
+#define NDIS_ATTRIBUTE_NOT_CO_NDIS              0x00000100
+#define NDIS_ATTRIBUTE_USES_SAFE_BUFFER_APIS    0x00000200
+
+#define OID_GEN_SUPPORTED_LIST			0x00010101
+#define OID_GEN_HARDWARE_STATUS			0x00010102
+#define OID_GEN_MEDIA_SUPPORTED			0x00010103
+#define OID_GEN_MEDIA_IN_USE			0x00010104
+#define OID_GEN_MAXIMUM_LOOKAHEAD		0x00010105
+#define OID_GEN_MAXIMUM_FRAME_SIZE		0x00010106
+#define OID_GEN_LINK_SPEED			0x00010107
+#define OID_GEN_TRANSMIT_BUFFER_SPACE		0x00010108
+#define OID_GEN_RECEIVE_BUFFER_SPACE		0x00010109
+#define OID_GEN_TRANSMIT_BLOCK_SIZE		0x0001010A
+#define OID_GEN_RECEIVE_BLOCK_SIZE		0x0001010B
+#define OID_GEN_VENDOR_ID			0x0001010C
+#define OID_GEN_VENDOR_DESCRIPTION		0x0001010D
+#define OID_GEN_CURRENT_PACKET_FILTER		0x0001010E
+#define OID_GEN_CURRENT_LOOKAHEAD		0x0001010F
+#define OID_GEN_DRIVER_VERSION			0x00010110
+#define OID_GEN_MAXIMUM_TOTAL_SIZE		0x00010111
+#define OID_GEN_PROTOCOL_OPTIONS		0x00010112
+#define OID_GEN_MAC_OPTIONS			0x00010113
+#define OID_GEN_MEDIA_CONNECT_STATUS		0x00010114
+#define OID_GEN_MAXIMUM_SEND_PACKETS		0x00010115
+#define OID_GEN_VENDOR_DRIVER_VERSION		0x00010116
+#define OID_GEN_SUPPORTED_GUIDS			0x00010117
+#define OID_GEN_NETWORK_LAYER_ADDRESSES		0x00010118	/* Set only */
+#define OID_GEN_TRANSPORT_HEADER_OFFSET		0x00010119	/* Set only */
+#define OID_GEN_MACHINE_NAME			0x0001021A
+#define OID_GEN_RNDIS_CONFIG_PARAMETER		0x0001021B	/* Set only */
+#define OID_GEN_VLAN_ID				0x0001021C
 
 
 #endif // NDISWRAPPER_H
