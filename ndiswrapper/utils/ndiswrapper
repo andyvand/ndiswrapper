@@ -30,7 +30,7 @@ my @copy_blacklist;
 
 #Fixup list for parameters. 
 my %param_fixlist = ("EnableRadio|0" => "EnableRadio|1",
-                     "PrivacyMode|0" => "PrivacyMode|1"); 
+                     "PrivacyMode|0" => "PrivacyMode|2"); 
 
 
 if(@ARGV < 1)
@@ -43,6 +43,10 @@ my $res;
 if($ARGV[0] eq "-i" and @ARGV == 2)
 {
 	$res = install($ARGV[1]);
+}
+elsif($ARGV[0] eq "-d" and @ARGV == 3)
+{
+	$res = pciid_driver($ARGV[1], $ARGV[2]);
 }
 elsif($ARGV[0] eq "-e" and @ARGV == 2)
 {
@@ -69,10 +73,11 @@ sub usage
 	print "Usage: ndiswrapper OPTION\n".
 	      "\n".
 	      "Manage ndis drivers for ndiswrapper.\n".
-	      "-i inffile   Install driver described by inffile\n".
-	      "-e driver    Remove driver\n".
-	      "-l           List installed drivers\n".
-	      "-m           Write configuration for modprobe\n";
+	      "-i inffile        Install driver described by 'inffile'\n".
+	      "-d pciid driver   Use installed 'driver' for 'pciid'\n".
+	      "-e driver         Remove 'driver'\n".
+	      "-l                List installed drivers\n".
+	      "-m                Write configuration for modprobe\n";
 }
 
 
@@ -146,6 +151,38 @@ sub remove
 		return;
 	}
 	`rm -rf $confdir/$name`;
+}
+
+sub pciid_driver
+{
+	my $pciid = shift;
+	my $driver = shift;
+	my $done = 0;
+
+	$pciid = uc($pciid);
+	if (!($pciid =~ /[0-9A-Z]{4}:[0-9A-Z]{4}/))
+	{
+		print "'$pciid' is not a valid PCIID\n";
+		return;
+	}
+	open(LS, "ls -1 $confdir/$driver/ |");
+	while(my $f = <LS>)
+	{
+		chomp($f);
+		if ($f =~ /\.conf$/)
+		{
+			`ln -s $f $confdir/$driver/$pciid.conf`;
+			print "Driver '$driver' is used for PCIID '$pciid'\n";
+			$done = 1;
+			last;
+		}
+	}
+	close(LS);	
+	if ($done == 0)
+	{
+		print "Driver '$driver' is not installed properly!\n";
+	}
+	return;
 }
 
 sub list
@@ -403,15 +440,17 @@ sub installStatus
 
 	my $ret;
 	if ($sys eq 0 || $inf eq 0 || $conf eq 0)
-	  {
-	    $ret = "incomplete installation!";
-	  }
+	{
+		$ret = "invalid driver!";
+	}
 	else
-	  {
-	    $ret = $ret . "driver present " if $conf eq 1;
-	    $ret = $ret . "hardware present,fuzzy " if $conf eq 2;
-	    $ret = $ret . "hardware present " if $conf eq 3;
-	  }
+	{
+		$ret = $ret . "driver present " if $conf eq 1;
+		$ret = $ret . "driver present, hardware present " if
+			$conf eq 2;
+		$ret = $ret . "driver present, hardware present " if
+			$conf eq 3;
+	}
 	return $ret;
 }
 
@@ -712,10 +751,15 @@ sub copyfiles
 
 	for(my $i = 0; $i < @lines; $i++)
 	{
-		my $line = trim(remComment($lines[$i]));
+	  my $line = $lines[$i];
+	  $line = trim($line);
 
-		if($line)
+	  last if (!$line);
+	  last if ($line =~ /^\[/);
+
 		{
+			$line =~ s/^;//;
+			$line = trim(remComment($line));
 			$line =~ s/,+.*//;
 			$line = trim($line);
 			my $nocopy = 0;
