@@ -548,7 +548,6 @@ struct packed ndis_handle
 	struct ndis_essid essid;
 
 	unsigned long capa;
-	int encr_alg;
 	enum auth_mode auth_mode;
 	enum wep_mode wep_mode;
 	enum op_mode op_mode;
@@ -894,11 +893,11 @@ int stricmp(const char *s1, const char *s2);
 
 enum capa_list
 {
-	CAPA_WPA,
 	CAPA_WEP = WEP_ENCR1_ENABLED,
 	CAPA_WEP_NONE = WEP_DISABLED,
 	CAPA_TKIP = WEP_ENCR2_ENABLED,
 	CAPA_AES = WEP_ENCR3_ENABLED,
+	CAPA_WPA,
 };
 
 /* these have to match what is in wpa_supplicant */

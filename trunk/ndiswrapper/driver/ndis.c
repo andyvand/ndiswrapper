@@ -83,26 +83,6 @@ STDCALL void NdisInitializeWrapper(struct ndis_handle **ndis_handle,
 STDCALL void NdisTerminateWrapper(struct ndis_handle *handle,
 	                          void *SystemSpecific1)
 {
-	char x;
-
-	/* Cancel any timers left by bugyy windows driver
-	 * Also free the memory for timers
-	 */
-	while (!list_empty(&handle->timers))
-	{
-		struct wrapper_timer *timer =
-			(struct wrapper_timer*) handle->timers.next;
-		DBGTRACE1("fixing up timer %p, timer->list %p",
-			  timer, &timer->list);
-		list_del(&timer->list);
-		if (timer->active)
-		{
-			WARNING("%s", "Fixing an active timer left "
-				" by buggy windows driver");
-			wrapper_cancel_timer(timer, &x); 
-		}
-		wrap_kfree(timer);
-	}
 }
 
 /*
@@ -1067,6 +1047,7 @@ STDCALL void NdisFreeBufferPool(void *poolhandle)
 {
 	TRACEENTER4("%s", "");
 
+	flush_scheduled_work();
 	TRACEEXIT4(return);
 }
 
@@ -1351,8 +1332,6 @@ irqreturn_t ndis_irq_th(int irq, void *data, struct pt_regs *pt_regs)
 	struct ndis_irq *ndis_irq = (struct ndis_irq *) data;
 	struct ndis_handle *handle = ndis_irq->handle; 
 
-	if (ndis_irq->enabled == 0)
-		return IRQ_NONE;
 	/* We need a lock here in order to implement NdisMSynchronizeWithInterrupt,
 	  however the ISR is really fast anyway so it should not hurt performance */
 	spin_lock(ndis_irq->spinlock);
@@ -1424,7 +1403,6 @@ STDCALL void NdisMDeregisterInterrupt(struct ndis_irq *ndis_irq)
 
 	if(ndis_irq)
 	{
-		flush_scheduled_work();
 		ndis_irq->enabled = 0;
 		free_irq(ndis_irq->irq, ndis_irq);
 		kfree(ndis_irq->spinlock);
