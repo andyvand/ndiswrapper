@@ -52,6 +52,7 @@ static char *basename = "eth";
 MODULE_PARM(basename, "s");
 MODULE_PARM_DESC(basename, "Basename for network device name (default: eth)");
 
+
 /* List of loaded drivers */
 static LIST_HEAD(driverlist);
 
@@ -735,7 +736,10 @@ static int ndis_list_scan(struct ndis_handle *handle)
 		    &written, &needed))
 		printk(KERN_INFO "%s: get rssi failed\n", dev->name);
 	else
+	{
 		iw_stats->qual.level = rssi;
+		handle->rssi = rssi;
+	}
 		
 	memset(&ndis_stats, 0, sizeof(ndis_stats));
 	res = doquery(handle, NDIS_OID_STATISTICS, (char *)&ndis_stats,
@@ -915,7 +919,7 @@ static int ndis_get_range(struct net_device *dev, struct iw_request_info *info,
 	range->num_channels = 1;
 	
 	range->max_qual.qual = 100;
-	range->max_qual.level = 254;
+	range->max_qual.level = 154;
 	range->max_qual.noise = 154;
 	range->sensitivity = 3;
 
