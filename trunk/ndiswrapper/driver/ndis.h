@@ -608,7 +608,6 @@ STDCALL void NdisMSetPeriodicTimer(struct ndis_timer **timer_handle,
 
 STDCALL int RtlUnicodeStringToAnsiString(struct ustring *dst, struct ustring *src, unsigned int dup) STDCALL;
 STDCALL int RtlAnsiStringToUnicodeString(struct ustring *dst, struct ustring *src, unsigned int dup) STDCALL;
-int my_strcasecmp(char *s1, char *s2);
 int getSp(void);
 void init_ndis_work(void);
 
