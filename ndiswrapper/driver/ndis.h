@@ -227,6 +227,15 @@ struct ndis_irq
 
 };
 
+ /* kspin_lock is ptr to unsigned long in ndis */
+typedef spinlock_t *ndis_kspin_lock;
+typedef unsigned char ndis_kirql;
+
+struct ndis_spin_lock
+{
+	ndis_kspin_lock spin_lock;
+	ndis_kirql kirql;
+};
 
 struct packed ustring
 {

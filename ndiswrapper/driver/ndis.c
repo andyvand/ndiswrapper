@@ -746,49 +746,52 @@ STDCALL void NdisMUnmapIoSpace(struct ndis_handle *handle,
 }
 
 
-STDCALL void NdisAllocateSpinLock(spinlock_t **lock)
+STDCALL void NdisAllocateSpinLock(struct ndis_spin_lock *lock)
 {
 //	DBGTRACE("%s: entry\n", __FUNCTION__);
-	*lock = kmalloc(sizeof(spinlock_t), GFP_KERNEL);
-	if(*lock)
-		spin_lock_init(*lock);
+	lock->spin_lock = kmalloc(sizeof(spinlock_t), GFP_KERNEL);
+	if(lock->spin_lock)
+		spin_lock_init(lock->spin_lock);
+	else
+		printk(KERN_ERR "%s: couldn't allocate spinlock (%s)\n",
+			   DRV_NAME, __FUNCTION__);
 }
 
-STDCALL void NdisFreeSpinLock(spinlock_t **lock)
+STDCALL void NdisFreeSpinLock(struct ndis_spin_lock *lock)
 {
 	if(!lock)
 	{
 		DBGTRACE("%s: NULL\n", __FUNCTION__);
 		return;       
 	}
-	if(*lock)
-		kfree(*lock);
-	*lock = NULL;
+	if(lock->spin_lock)
+		kfree(lock->spin_lock);
+	lock->spin_lock = NULL;
 }
 
-STDCALL void NdisAcquireSpinLock(spinlock_t **lock)
+STDCALL void NdisAcquireSpinLock(struct ndis_spin_lock *lock)
 {
-//	DBGTRACE("%s: entry\n", __FUNCTION__);
-	spin_lock(*lock);	
+	DBGTRACE("%s: locking %p\n", __FUNCTION__, lock->spin_lock);
+	spin_lock(lock->spin_lock);
 }
 
-STDCALL void NdisReleaseSpinLock(spinlock_t **lock)
+STDCALL void NdisReleaseSpinLock(struct ndis_spin_lock *lock)
 {
-//	DBGTRACE("%s: entry\n", __FUNCTION__);
-	spin_unlock(*lock);	
+	DBGTRACE("%s: unlocking %p\n", __FUNCTION__, lock->spin_lock);
+	spin_unlock(lock->spin_lock);
 }
 
 
-STDCALL void NdisDprAcquireSpinLock(spinlock_t **lock)
+STDCALL void NdisDprAcquireSpinLock(struct ndis_spin_lock *lock)
 {
-	DBGTRACE("%s: entry\n", __FUNCTION__);
-	spin_lock(*lock);	
+	DBGTRACE("%s: locking %p\n", __FUNCTION__, lock->spin_lock);
+	spin_lock(lock->spin_lock);
 }
 
-STDCALL void NdisDprReleaseSpinLock(spinlock_t **lock)
+STDCALL void NdisDprReleaseSpinLock(struct ndis_spin_lock *lock)
 {
-	DBGTRACE("%s: entry\n", __FUNCTION__);
-	spin_unlock(*lock);	
+	DBGTRACE("%s: unlocking %p\n", __FUNCTION__, lock->spin_lock);
+	spin_unlock(lock->spin_lock);
 }
 
 
@@ -1223,9 +1226,8 @@ STDCALL unsigned int NdisMRegisterInterrupt(struct ndis_irq **ndis_irq_ptr,
 	spin_lock_init(&ndis_irq->spinlock);
 	ndis_irq->irq = vector;
 	ndis_irq->handle = handle;
-	spin_lock(&ndis_irq->spinlock);
-	spin_unlock(&ndis_irq->spinlock);
 
+	INIT_WORK(&handle->irq_bh, &ndis_irq_bh, ndis_irq);
 	if(request_irq(vector, ndis_irq_th, shared? SA_SHIRQ : 0,
 				   "ndiswrapper", ndis_irq))
 	{
@@ -1233,7 +1235,6 @@ STDCALL unsigned int NdisMRegisterInterrupt(struct ndis_irq **ndis_irq_ptr,
 		return NDIS_STATUS_FAILURE;
 	}
 	handle->ndis_irq_enabled = 1;
-	INIT_WORK(&handle->irq_bh, &ndis_irq_bh, ndis_irq);
 	return NDIS_STATUS_SUCCESS;
 }
 
