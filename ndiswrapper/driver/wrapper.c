@@ -341,6 +341,7 @@ static int ndis_get_freq(struct net_device *dev, struct iw_request_info *info,
 
 	/* convert from kHz to Hz */
 	wrqu->freq.e += 3;
+
 	return 0;
 }
 
@@ -418,19 +419,17 @@ static int ndis_set_tx_power(struct net_device *dev, struct iw_request_info *inf
 			ndis_power = wrqu->txpower.value;
 		else // wrqu->txpower.flags == IW_TXPOW_DBM
 		{
-			/* but make sure we don't deal with too huge vlaue */
-			if (wrqu->txpower.value > 50)			
-				return -1;
+			if (wrqu->txpower.value > 20)
+				ndis_power = 128;
+			else if (wrqu->txpower.value < -43)
+				ndis_power = 127;
 			else
 			{
-				int ip = wrqu->txpower.value / 10 ;
-				int fp = wrqu->txpower.value % 10 ;
-				int k;
-				ndis_power = 1;
-				for (k = 0 ; k < ip ; k++)
-					ndis_power *= 10;
-				for (k = 0 ; k < fp ; k++)
-					ndis_power *= 1.25892541179;
+				signed char tmp;
+				tmp = wrqu->txpower.value;
+				tmp = -12 - tmp;
+				tmp <<= 2;
+				ndis_power = (unsigned char)tmp;
 			}
 		}
 	}
@@ -789,6 +788,7 @@ iw_stats->discard.misc = (__u32)(ndis_stats.rtss_fail + (__u32)ndis_stats.ack_fa
 		iw_stats->qual.qual = 100 - 100 * ((__u32)ndis_stats.retry + 2 * (__u32)ndis_stats.multi_retry + 3 * (__u32)ndis_stats.failed) /(6 * (__u32)ndis_stats.trans_frag);
 	else
 		iw_stats->qual.qual = 100;
+	DBGTRACE("%s: quality = %d\n", dev->name, iw_stats->qual.qual);
 
 	return 0;
 }
@@ -872,6 +872,63 @@ static int ndis_get_power_mode(struct net_device *dev,
 	return 0;
 }
 
+static struct iw_statistics *ndis_get_wireless_stats(struct net_device *dev)
+{
+	struct ndis_handle *handle = dev->priv;
+
+	return &handle->wireless_stats;
+}
+
+
+static int ndis_get_ndis_stats(struct net_device *dev, struct iw_request_info *info,
+			  union iwreq_data *wrqu, char *extra)
+
+{
+	struct iw_statistics *stats = ndis_get_wireless_stats(dev);
+	memcpy(&wrqu->qual, &stats->qual, sizeof(stats->qual));
+	return 0;
+}
+
+static int ndis_get_range(struct net_device *dev, struct iw_request_info *info,
+			  union iwreq_data *wrqu, char *extra)
+{
+	struct iw_range *range = (struct iw_range *)extra;
+	struct iw_point *data = &wrqu->data;
+
+	data->length = sizeof(struct iw_range);
+	memset(range, 0, sizeof(struct iw_range));
+	
+	range->txpower_capa = IW_TXPOW_MWATT;
+	range->num_txpower = 1;
+
+	range->we_version_compiled = WIRELESS_EXT;
+	range->we_version_source = 0;
+
+	range->retry_capa = IW_RETRY_LIMIT;
+	range->retry_flags = IW_RETRY_LIMIT;
+	range->min_retry = 0;
+	range->max_retry = 255;
+
+	range->num_channels = 1;
+	
+	range->max_qual.qual = 100;
+	range->max_qual.level = 254;
+	range->max_qual.noise = 154;
+	range->sensitivity = 3;
+
+	range->max_encoding_tokens = 4;
+	range->num_encoding_sizes = 2;
+	range->encoding_size[0] = 5;
+	range->encoding_size[1] = 13;
+
+	range->min_rts = 0;
+	range->max_rts = 2347;
+	range->min_frag = 256;
+	range->max_frag = 2346;
+
+	return 0;
+}
+
 static const iw_handler	ndis_handler[] = {
 	//[SIOCGIWSENS    - SIOCIWFIRST] = ndis_get_sens,
 	[SIOCGIWNAME	- SIOCIWFIRST] = ndis_get_name,
@@ -895,6 +952,8 @@ static const iw_handler	ndis_handler[] = {
 	[SIOCGIWSCAN	- SIOCIWFIRST] = ndis_get_scan,
 	[SIOCGIWPOWER	- SIOCIWFIRST] = ndis_get_power_mode,
 	[SIOCSIWPOWER	- SIOCIWFIRST] = ndis_set_power_mode,
+	[SIOCGIWRANGE	- SIOCIWFIRST] = ndis_get_range,
+	[SIOCGIWSTATS	- SIOCIWFIRST] = ndis_get_ndis_stats,
 };
 
 static const struct iw_handler_def ndis_handler_def = {
@@ -1070,14 +1129,6 @@ static struct net_device_stats *ndis_get_stats(struct net_device *dev)
 {
 	struct ndis_handle *handle = dev->priv;
 	return &handle->stats;
-}
-
-
-static struct iw_statistics *ndis_get_wireless_stats(struct net_device *dev)
-{
-	struct ndis_handle *handle = dev->priv;
-
-	return &handle->wireless_stats;
 }
 
 
