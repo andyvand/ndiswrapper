@@ -331,34 +331,36 @@ struct ndis_io_work_item {
 	void (*func)(void *device_object, void *ctx) STDCALL;
 };
 
-struct ndis_alloc_mem {
-	struct ndis_handle *handle;
+struct ndis_alloc_mem_work_item {
 	unsigned long size;
 	char cached;
 	void *ctx;
 };
 
-struct ndis_free_mem {
+struct ndis_free_mem_work_item {
 	void *addr;
 	unsigned int length;
 	unsigned int flags;
 };
 
 enum ndis_work_entry_type {
-	NDIS_SCHED_WORK,
-	NDIS_ALLOC_MEM,
-	NDIS_FREE_MEM,
+	NDIS_SCHED_WORK_ITEM,
+	NDIS_ALLOC_MEM_WORK_ITEM,
+	NDIS_FREE_MEM_WORK_ITEM,
 	NDIS_IO_WORK_ITEM,
+	NDIS_RETURN_PACKET_WORK_ITEM,
 };
 
 struct ndis_work_entry {
 	struct list_head list;
 	enum ndis_work_entry_type type;
+	struct ndis_handle *handle;
 	union {
 		struct ndis_sched_work_item *sched_work_item;
-		struct ndis_alloc_mem alloc_mem;
-		struct ndis_free_mem free_mem;
+		struct ndis_alloc_mem_work_item alloc_mem_work_item;
+		struct ndis_free_mem_work_item free_mem_work_item;
 		struct ndis_io_work_item *io_work_item;
+		struct ndis_packet *return_packet;
 	} entry;
 };
 
@@ -765,6 +767,7 @@ struct packed ndis_handle {
 	/* keep a barrier in cases of over-stepping */
 	char barrier[200];
 
+	int device_type;
 	union {
 		struct pci_dev *pci;
 		struct usb_device *usb;
@@ -835,9 +838,6 @@ struct packed ndis_handle {
 	enum op_mode op_mode;
 
 	mac_address mac;
-	struct list_head recycle_packets;
-	struct wrap_spinlock recycle_packets_lock;
-	struct work_struct recycle_packets_work;
 
 	/* List of initialized timers */
 	struct list_head timers;
@@ -849,6 +849,7 @@ struct packed ndis_handle {
 	unsigned long wrapper_work;
 
 	unsigned long attributes;
+	struct list_head handle_list;
 };
 
 enum ndis_pm_state {
@@ -905,7 +906,8 @@ STDCALL void RtlFreeAnsiString(struct ustring *string);
 
 void *get_sp(void);
 void ndis_init(void);
-void ndis_cleanup_handle(struct ndis_handle *handle);
+void ndis_exit_handle(struct ndis_handle *handle);
+void ndis_exit(void);
 
 int ndiswrapper_procfs_init(void);
 int ndiswrapper_procfs_add_iface(struct ndis_handle *handle);
