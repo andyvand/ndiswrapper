@@ -904,6 +904,25 @@ static char *ndis_translate_scan(struct net_device *dev, char *event,
 				iwe.u.data.length = strlen(buf);
 				event = iwe_stream_add_point(event, end_buf,
 							     &iwe, buf);
+			}
+			else if (iep[0] == WLAN_EID_RSN)
+			{
+				char *p = buf;
+
+				i = iep[1] + 2;
+				if(i < iel)
+					iel = i;
+		
+				p += sprintf(p, "rsn_ie=");
+				for (i = 0; i < iel; i++)
+					p += sprintf(p, "%02x", iep[i]);
+
+				DBGTRACE2("adding rsn_ie :%d\n", strlen(buf));
+				memset(&iwe, 0, sizeof(iwe));
+				iwe.cmd = IWEVCUSTOM;
+				iwe.u.data.length = strlen(buf);
+				event = iwe_stream_add_point(event, end_buf,
+							     &iwe, buf);
 				break;
 			}
 
@@ -1407,6 +1426,9 @@ static int wpa_set_key(struct net_device *dev, struct iw_request_info *info,
 	else
 		ndis_key.index = wpa_key.key_index;
 
+	if (wpa_key.seq_len > 0)
+		ndis_key.index |= 1 << 29;
+
 	if (!memcmp(&addr, "\xff\xff\xff\xff\xff\xff", ETH_ALEN))
 	{
 		mac_address ap_addr;
@@ -1469,13 +1491,19 @@ static int wpa_associate(struct net_device *dev,
 {
 	struct ndis_handle *handle = (struct ndis_handle *)dev->priv;
 	struct wpa_assoc_info wpa_assoc_info;
-	char ssid[NDIS_ESSID_MAX_SIZE];
-	int i, auth_mode, encr_mode;
+	char ssid[NDIS_ESSID_MAX_SIZE], ie;
+	int i, auth_mode, encr_mode, wpa2 = 0;
 	
 	TRACEENTER("%s", "");
 	copy_from_user(&wpa_assoc_info, wrqu->data.pointer,
 		       sizeof(wpa_assoc_info));
 	copy_from_user(&ssid, wpa_assoc_info.ssid, NDIS_ESSID_MAX_SIZE);
+
+	if (wpa_assoc_info.wpa_ie_len > 0 &&
+	    copy_from_user(&ie, wpa_assoc_info.wpa_ie, 1) == 0 &&
+	    ie == WLAN_EID_RSN) {
+		wpa2 = 1;
+	}
 	
 	DBGTRACE("key_mgmt_suite = %d, pairwise_suite = %d, group_suite= %d",
 		 wpa_assoc_info.key_mgmt_suite,
@@ -1512,12 +1540,12 @@ static int wpa_associate(struct net_device *dev,
 	case KEY_MGMT_PSK:
 		if (!test_bit(CAPA_WPA, &handle->capa))
 			TRACEEXIT(return -EINVAL);
-		auth_mode = AUTHMODE_WPAPSK;
+		auth_mode = wpa2 ? AUTHMODE_WPA2PSK : AUTHMODE_WPAPSK;
 		break;
 	case KEY_MGMT_802_1X:
 		if (!test_bit(CAPA_WPA, &handle->capa))
 			TRACEEXIT(return -EINVAL);
-		auth_mode = AUTHMODE_WPA;
+		auth_mode = wpa2 ? AUTHMODE_WPA2 : AUTHMODE_WPA;
 		break;
 	case KEY_MGMT_NONE:
 		if (wpa_assoc_info.group_suite != CIPHER_WEP104 &&
