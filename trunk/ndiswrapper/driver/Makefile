@@ -56,8 +56,8 @@ prereq_check:
 		       install them in /usr/src, link $(KSRC) to it and try again."; \
 		exit 1;\
 	  fi
-	@ if grep -q '^[ ]*CONFIG_SMP' $(KSRC)/.config; then \
-		echo "SMP is enabled in the kernel configuration;\
+	@ if grep -q ' SMP ' /proc/version; then \
+		echo "SMP is enabled in the kernel;\
 			right now ndiswrapper doesn't work with SMP.\
 			Disable SMP to use ndiswrapper.";\
 		exit 1;\
