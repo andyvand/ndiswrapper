@@ -976,36 +976,6 @@ static int ndis_set_sensitivity(struct net_device *dev,
 static struct iw_statistics *ndis_get_wireless_stats(struct net_device *dev)
 {
 	struct ndis_handle *handle = dev->priv;
-	unsigned int res, written, needed;
-	struct iw_statistics *iw_stats = &handle->wireless_stats;
-	struct ndis_wireless_stats ndis_stats;
-	long rssi;
-
-	res = doquery(handle, NDIS_OID_RSSI, (char *)&rssi, sizeof(rssi),
-				  &written, &needed);
-	if (!res)
-		iw_stats->qual.level = rssi;
-
-	memset(&ndis_stats, 0, sizeof(ndis_stats));
-	res = doquery(handle, NDIS_OID_STATISTICS, (char *)&ndis_stats,
-		      sizeof(ndis_stats), &written, &needed);
-	if (!res)
-	{
-		iw_stats->discard.retries = (__u32)ndis_stats.retry +
-			(__u32)ndis_stats.multi_retry;
-		iw_stats->discard.misc = (__u32)ndis_stats.fcs_err +
-			(__u32)ndis_stats.rtss_fail + (__u32)ndis_stats.ack_fail +
-			(__u32)ndis_stats.frame_dup;
-		
-		if (ndis_stats.tx_frag)
-			iw_stats->qual.qual = 100 - 100 *
-				((__u32)ndis_stats.retry + 2 * (__u32)ndis_stats.multi_retry +
-				 3 * (__u32)ndis_stats.failed) /
-				(6 * (__u32)ndis_stats.tx_frag);
-		else
-			iw_stats->qual.qual = 100;
-	}
-
 	return &handle->wireless_stats;
 }
 
@@ -1268,6 +1238,71 @@ void hangcheck_del(struct ndis_handle *handle)
 
 	del_timer_sync(&handle->hangcheck_timer);
 }
+
+
+static void statcollector_reinit(struct ndis_handle *handle);
+
+static void statcollector_bh(void *data)
+{
+	struct ndis_handle *handle = (struct ndis_handle *)data;
+	unsigned int res, written, needed;
+	struct iw_statistics *iw_stats = &handle->wireless_stats;
+	struct ndis_wireless_stats ndis_stats;
+	long rssi;
+
+	res = doquery(handle, NDIS_OID_RSSI, (char *)&rssi, sizeof(rssi),
+				  &written, &needed);
+	if (!res)
+		iw_stats->qual.level = rssi;
+
+	memset(&ndis_stats, 0, sizeof(ndis_stats));
+	res = doquery(handle, NDIS_OID_STATISTICS, (char *)&ndis_stats,
+		      sizeof(ndis_stats), &written, &needed);
+	if (!res)
+	{
+		iw_stats->discard.retries = (__u32)ndis_stats.retry +
+			(__u32)ndis_stats.multi_retry;
+		iw_stats->discard.misc = (__u32)ndis_stats.fcs_err +
+			(__u32)ndis_stats.rtss_fail + (__u32)ndis_stats.ack_fail +
+			(__u32)ndis_stats.frame_dup;
+		
+		if (ndis_stats.tx_frag)
+			iw_stats->qual.qual = 100 - 100 *
+				((__u32)ndis_stats.retry + 2 * (__u32)ndis_stats.multi_retry +
+				 3 * (__u32)ndis_stats.failed) /
+				(6 * (__u32)ndis_stats.tx_frag);
+		else
+			iw_stats->qual.qual = 100;
+	}
+}
+
+static void statcollector_timer(unsigned long data)
+{
+	struct ndis_handle *handle = (struct ndis_handle *)data;
+	schedule_work(&handle->statcollector_work);
+	statcollector_reinit(handle);
+}
+
+static void statcollector_reinit(struct ndis_handle *handle)
+{
+	handle->statcollector_timer.data = (unsigned long) handle;
+	handle->statcollector_timer.function = &statcollector_timer;
+	handle->statcollector_timer.expires = jiffies + 1*HZ;
+	add_timer(&handle->statcollector_timer);
+}
+
+void statcollector_add(struct ndis_handle *handle)
+{
+	INIT_WORK(&handle->statcollector_work, &statcollector_bh, handle);
+	init_timer(&handle->statcollector_timer);
+	statcollector_reinit(handle);
+}
+
+void statcollector_del(struct ndis_handle *handle)
+{
+	del_timer_sync(&handle->statcollector_timer);
+}
+
 
 
 static int ndis_open(struct net_device *dev)
@@ -1791,7 +1826,7 @@ static int __devinit ndis_init_one(struct pci_dev *pdev,
 	handle->pm_state = NDIS_PM_STATE_D0;
 	handle->send_packet_lock = SPIN_LOCK_UNLOCKED;
 	//hangcheck_add(handle);
-
+	statcollector_add(handle);
 	ndis_init_proc(handle);
 	return 0;
 
@@ -1811,6 +1846,7 @@ static void __devexit ndis_remove_one(struct pci_dev *pdev)
 
 	DBGTRACE("%s\n", __FUNCTION__);
 
+	statcollector_del(handle);
 	//hangcheck_del(handle);
 
 	ndis_remove_proc(handle);
