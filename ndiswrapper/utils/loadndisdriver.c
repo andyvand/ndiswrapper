@@ -136,6 +136,7 @@ static int put_pci_device(int device, char *conf_file_name)
 	struct put_device put_device;
 	char setting_line[SETTING_LEN];
 	struct stat statbuf;
+	FILE *config;
 	
 	if(lstat(conf_file_name, &statbuf))
 	{
@@ -147,7 +148,6 @@ static int put_pci_device(int device, char *conf_file_name)
 	if(S_ISLNK(statbuf.st_mode))
 		put_device.fuzzy = 1;
 
-	FILE *config;
 	if ((config = fopen(conf_file_name, "r")) == NULL)
 	{
 		perror("unable to open config file");
@@ -245,6 +245,7 @@ static int load(int device, char *confdir)
 {
 	int err;
 	struct dirent *dirent;
+	DIR *dir;
 	
 	if(chdir(confdir))
 	{
@@ -252,7 +253,7 @@ static int load(int device, char *confdir)
 		return -1;
 	}
 	
-	DIR *dir = opendir(".");
+	dir = opendir(".");
 	if(!dir)
 	{
 		fprintf(stderr, "Unable to open config dir %s\n", confdir);
