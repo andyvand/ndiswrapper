@@ -382,9 +382,9 @@ ndiswrapper_remove_one_usb_dev(struct usb_device *udev, void *ptr)
 
 	TRACEENTER1("");
 
-	usb_set_intfdata(intf, NULL);
-	if (!handle)
+	if (!handle || !handle->dev.usb)
 		TRACEEXIT1(return);
+	handle->dev.usb = NULL;
 	atomic_dec(&handle->driver->users);
 	ndiswrapper_remove_one_dev(handle);
 }

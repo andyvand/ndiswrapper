@@ -387,7 +387,7 @@ struct ndis_irq {
 };
 
 struct ndis_binary_data {
-	unsigned short len;
+	USHORT len;
 	void *buf;
 };
 
@@ -403,7 +403,7 @@ enum ndis_config_param_type {
 struct ndis_config_param {
 	enum ndis_config_param_type type;
 	union {
-		unsigned long intval;
+		ULONG intval;
 		struct unicode_string ustring;
 		struct ndis_binary_data binary_data;
 	} data;
@@ -526,10 +526,10 @@ enum hw_status {
 
 struct encr_info {
 	struct encr_key {
-		unsigned int length;
-		unsigned char key[NDIS_ENCODING_TOKEN_MAX];
+		ULONG length;
+		UCHAR key[NDIS_ENCODING_TOKEN_MAX];
 	} keys[MAX_ENCR_KEYS];
-	int active;
+	unsigned short active;
 };
 
 struct ndis_essid {
