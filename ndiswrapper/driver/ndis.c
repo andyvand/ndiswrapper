@@ -103,7 +103,7 @@ STDCALL unsigned int NdisAllocateMemory(void **dest,
 					unsigned int highest_addr)
 {
 	*dest = (void*) kmalloc(length, GFP_KERNEL);
-	printk("Alloc mem at %08x size=%d\n", *(int*)dest, length);
+	//printk("Alloc mem at %08x size=%d\n", *(int*)dest, length);
 	if(*dest)
 		return NDIS_STATUS_SUCCESS;
 	return NDIS_STATUS_FAILIURE;
@@ -233,9 +233,10 @@ struct internal_parameters internal_parameters[] = {
 		.name = "PwrOut",
 		.value = {0, 100}
 	},
-
-	
-	
+	{
+		.name = "ForcePIO",
+		.value = {0, 1}
+	},
 	{
 		.name = 0,
 		.value= {0,0}
@@ -259,6 +260,7 @@ STDCALL void NdisReadConfiguration(unsigned int *status,
 		if(strcmp(keyname, internal_parameters[i].name) == 0)
 		{
 			printk("%s: Builting found value for %s\n", __FUNCTION__, keyname);
+			
 			*dest = &internal_parameters[i].value;
 			*status = NDIS_STATUS_SUCCESS;
 			return;
@@ -286,6 +288,11 @@ STDCALL void NdisMSetAttributesEx(struct ndis_handle *handle,
 				  unsigned int adaptortype)
 {
 	printk("%s, %08x, %08x %d %08x, %d\n", __FUNCTION__, (int)handle, (int)adapter_ctx, hangchecktime, attributes, adaptortype);
+	if(attributes & 8)
+	{
+		pci_set_master(handle->pci_dev);
+	}
+	
 	handle->adapter_ctx = adapter_ctx;
 }
 
@@ -539,7 +546,6 @@ void ndis_timer_handler_bh(void *data)
 {
 	struct ndis_timer *timer = (struct ndis_timer*) data;
 	STDCALL void (*func)(void *res1, void *data, void *res3, void *res4) = timer->func;
-	//STDCALL ndis_timer_func_t func = timer->func;
 	//printk("Timer func at %08x rva %08x with param %08x\n", (int) func, (int)func - image_offset, (int)timer->ctx);
 	func(0, timer->ctx, 0, 0);
 
@@ -762,20 +768,20 @@ STDCALL void NdisAllocateBuffer(unsigned int *status,
 				void *virt,
 				unsigned int len)
 {
-//	printk("%s, %08x, %08x, %08x, %08x\n", __FUNCTION__, (int)buffer, (int)poolhandle, (int)virt, len);
+	//printk("%s, %08x, %08x, %08x, %08x\n", __FUNCTION__, (int)buffer, (int)poolhandle, (int)virt, len);
 	
 	memset(virt, 0xaa, len);
-	*buffer = (void*)0x000a0004;
+	*buffer = (void*)0x00000040;
 	*status = NDIS_STATUS_SUCCESS;
 }
 
 STDCALL void NdisFreeBuffer(void *buffer)
 {
-//	printk("%s: %08x\n", __FUNCTION__, (int)buffer);
+	//printk("%s: %08x\n", __FUNCTION__, (int)buffer);
 }
 STDCALL void NdisAdjustBufferLength(void **buffer, unsigned int len)
 {
-//	printk("%s: %08x %08x\n", __FUNCTION__, (int)buffer, len);
+	//printk("%s: %08x %08x\n", __FUNCTION__, (int)buffer, len);
 }
 
 
@@ -786,7 +792,7 @@ STDCALL void NdisAdjustBufferLength(void **buffer, unsigned int len)
  */
 STDCALL void NdisIndicateStatus(struct ndis_handle *handle, unsigned int status, void *buf, unsigned int len)
 {
-	printk("%s %08x\n", __FUNCTION__, status);
+	printk("%s===================================>%08x\n", __FUNCTION__, status);
 }
 
 /*
@@ -796,7 +802,7 @@ STDCALL void NdisIndicateStatus(struct ndis_handle *handle, unsigned int status,
  */
 STDCALL void NdisIndicateStatusComplete(struct ndis_handle *handle)
 {
-	printk("%s\n", __FUNCTION__);
+	printk("%s======================================>\n", __FUNCTION__);
 }
 
 

@@ -92,10 +92,154 @@ int set_essid(struct ndis_handle *handle, char *name)
 	memcpy(&req.essid, name, req.len);
 
 
-	res = handle->miniport_char.setinfo(handle->adapter_ctx, 0x0d010102, (char*)&req, 36, &written, &needed);
+	printk("Set essid data: ");
+	for(res = 0; res < 36; res++)
+	{
+		printk("%02x ", ((char*)&req)[res]);
+	}
+	printk("\n");	
+	
+	res = handle->miniport_char.setinfo(handle->adapter_ctx, 0x0D010102, (char*)&req, 36, &written, &needed);
 	printk("set essid status %08x, %d, %d\n", res, written, needed);
 	return res;
 }
+
+int get_essid(struct ndis_handle *handle)
+{
+	unsigned int res, written, needed;
+	char data[36];
+	int i;
+
+	res = handle->miniport_char.query(handle->adapter_ctx, 0x0D010102, data, 36, &written, &needed);
+	printk("get essid status %08x, %d, %d\n", res, written, needed);
+	printk("data: ");
+	for(i = 0; i < written; i++)
+	{
+		printk("%02x ", data[i]);
+	}
+	printk("\n");
+	return res;
+}
+
+
+
+int set_infra(struct ndis_handle *handle, int mode)
+{
+	unsigned int res, written, needed;
+
+
+	res = handle->miniport_char.setinfo(handle->adapter_ctx, 0x0D010108, (char*)&mode, 4, &written, &needed);
+	printk("set_infra status %08x, %d, %d\n", res, written, needed);
+	return res;
+
+}
+
+
+int get_infra(struct ndis_handle *handle)
+{
+	unsigned int res = 0, written = 0, needed = 0;
+	char data[4];
+		
+	res = handle->miniport_char.query(handle->adapter_ctx, 0x0D010108, data, 4, &written, &needed);
+	printk("infra status %08x, %d, %d\n", res, written, needed);
+	if(written == 4)
+	{
+		printk("infra mode: %08x\n", *(int*)data);
+	}
+	
+	return res;
+}
+
+int get_type(struct ndis_handle *handle)
+{
+	unsigned int res = 0, written = 0, needed = 0;
+	char data[4];
+		
+	res = handle->miniport_char.query(handle->adapter_ctx, 0x0D010204, data, 4, &written, &needed);
+	printk("get_type status %08x, %d, %d\n", res, written, needed);
+	if(written == 4)
+	{
+		printk("type: %08x\n", *(int*)data);
+	}
+	
+	return res;
+}
+
+
+int set_type(struct ndis_handle *handle, int mode)
+{
+	unsigned int res, written, needed;
+
+	res = handle->miniport_char.setinfo(handle->adapter_ctx, 0x0D010204, (char*)&mode, 4, &written, &needed);
+	printk("set_type status %08x, %d, %d\n", res, written, needed);
+	return res;
+
+}
+
+
+int set_bssid(struct ndis_handle *handle)
+{
+	char mac[] = {0x00,0x80,0xC8,0x37,0xF5,0xD1};
+
+	unsigned int res, written, needed;
+
+	res = handle->miniport_char.setinfo(handle->adapter_ctx, 0x0D010101, mac, 6, &written, &needed);
+	printk("set_bssid status %08x, %d, %d\n", res, written, needed);
+	return res;
+}
+
+int get_bssid(struct ndis_handle *handle)
+{
+	unsigned int res = 0, written = 0, needed = 0;
+	char data[6];
+	int i;
+
+	res = handle->miniport_char.query(handle->adapter_ctx, 0x0D010101, data, 6, &written, &needed);
+	printk("get_bssid status %08x, %d, %d\n", res, written, needed);
+
+	printk("data: ");
+	for(i = 0; i < written; i++)
+	{
+		printk("%02x ", data[i]);
+	}
+	printk("\n");
+
+	return res;
+}
+
+
+int scan(struct ndis_handle *handle)
+{
+	unsigned int res = 0, written = 0, needed = 0;
+	char data[1];
+		
+	res = handle->miniport_char.setinfo(handle->adapter_ctx, 0x0D01011A, data, 0, &written, &needed);
+	printk("scan status %08x, %d, %d\n", res, written, needed);
+	return res;
+}
+
+int list(struct ndis_handle *handle)
+{
+	unsigned int res = 0, written = 0, needed = 0;
+	char data[1024];
+		
+	res = handle->miniport_char.query(handle->adapter_ctx, 0x0D010217, data, 1024, &written, &needed);
+	printk("list status %08x, %d, %d\n", res, written, needed);
+
+
+	if(written)
+	{
+		int i;
+		printk("Data: ");
+		for(i = 0; i < written; i++)
+		{
+			printk("%02x ", data[i]);
+		}
+		printk("\n");
+	}
+	return res;
+}
+
 
 
 void test_query(struct ndis_handle *handle)
@@ -244,14 +388,12 @@ static int setup_dev(struct net_device *dev)
 	res = handle->miniport_char.query(handle->adapter_ctx, 0x01010102, &mac[0], 1024, &written, &needed);
 	printk("past query sp:%08x %08x\n\n\n", getSp(), res);
 	printk("mac:%02x:%02x:%02x:%02x:%02x:%02x\n", mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
-
 	if(res)
 	{
 		printk("Unable to get MAC-addr from driver\n");
 		return -1;
 	}
-	
-	
+
 	dev->open = ndis_open;
 	dev->hard_start_xmit = ndis_start_xmit;
 	dev->stop = ndis_close;
@@ -304,7 +446,12 @@ static int load_ndis_driver(int size, char *src)
 		printk("PCI device %04x:%04x not found\n", pci_vendor, pci_device);
 		goto out_baddriver;
 	}
-		
+
+	if(pci_enable_device(handle->pci_dev))
+	{
+		printk("PCI enable failed\n");
+	}
+
 	if(prepare_coffpe_image(&entry, handle->image, size))
 	{
 		printk("Unable to prepare driver\n");		
@@ -373,9 +520,44 @@ static int wrapper_ioctl(struct inode *inode, struct file *file, unsigned int cm
 		break;
 	case WDIOC_TEST:
 		if(thedev)
-			set_essid(thedev->priv, "d11b");
-		break;
-		
+		{
+			switch(arg)
+			{
+			case 1:
+				set_essid(thedev->priv, "pf");
+				break;				
+			case 2:
+				get_essid(thedev->priv);
+				break;
+			case 3:
+				set_infra(thedev->priv, 1);
+				break;
+			case 4:
+				get_infra(thedev->priv);
+				break;
+			case 5:
+				scan(thedev->priv);
+				break;
+			case 6:
+				list(thedev->priv);
+				break;
+			case 7:
+				set_type(thedev->priv, 1);
+				break;
+			case 8:
+				get_type(thedev->priv);
+				break;
+			case 9:
+				set_bssid(thedev->priv);
+				break;
+			case 10:
+				get_bssid(thedev->priv);
+				break;
+			default:
+				printk("Unknown test %ld\n", arg);
+				break;				
+			}
+		}
 	default:
 		return -EINVAL;
 		break;
