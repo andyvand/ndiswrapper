@@ -174,12 +174,12 @@ static int ndis_proc_read_hw(char *page, char **start, off_t off,
 	res = doquery(handle, NDIS_OID_RTS_THRESH, (char*)&rts_threshold,
 		      sizeof(rts_threshold), &written, &needed);
 	if (!res)
-		p += sprintf(p, "rts_thresold=%lu bytes\n", rts_threshold);
+		p += sprintf(p, "rts_threshold=%lu bytes\n", rts_threshold);
 
 	res = doquery(handle, NDIS_OID_FRAG_THRESH, (char*)&frag_threshold,
 		      sizeof(frag_threshold), &written, &needed);
 	if (!res)
-		p += sprintf(p, "frag_thresold=%lu bytes\n", frag_threshold);
+		p += sprintf(p, "frag_threshold=%lu bytes\n", frag_threshold);
 
 	res = query_int(handle, NDIS_OID_POWER_MODE, &power_mode);
 	if (!res)
