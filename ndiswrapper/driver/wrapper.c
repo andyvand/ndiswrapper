@@ -92,7 +92,7 @@ static int ndis_set_essid(struct net_device *dev,
 	memset(&req.essid, 0, sizeof(req.essid));
 	memcpy(&req.essid, extra, wrqu->essid.length-1);
 
-	res = handle->miniport_char.setinfo(handle->adapter_ctx, NDIS_IOD_ESSID, (char*)&req, sizeof(req), &written, &needed);
+	res = handle->miniport_char.setinfo(handle->adapter_ctx, NDIS_OID_ESSID, (char*)&req, sizeof(req), &written, &needed);
 	printk("set essid status %08x, %d, %d\n", res, written, needed);
 	if(res)
 		return -1;
@@ -109,7 +109,7 @@ static int ndis_get_essid(struct net_device *dev,
 	unsigned int res, written, needed;
 	struct essid_req req;
 
-	res = handle->miniport_char.query(handle->adapter_ctx, NDIS_IOD_ESSID, (char*)&req, sizeof(req), &written, &needed);
+	res = handle->miniport_char.query(handle->adapter_ctx, NDIS_OID_ESSID, (char*)&req, sizeof(req), &written, &needed);
 	printk("get essid status %08x, %d, %d\n", res, written, needed);
 	if(res)
 		return -1;
@@ -355,7 +355,7 @@ static int ndis_ioctl (struct net_device *dev, struct ifreq *rq, int cmd)
 	packet->buffer_head = buffer;
 	packet->buffer_tail = buffer;
 
-	printk("Buffer: %08x, data %08x, len %d\n", (int)buffer, (int)buffer->data, (int)buffer->len); 	
+	//printk("Buffer: %08x, data %08x, len %d\n", (int)buffer, (int)buffer->data, (int)buffer->len); 	
 
 	skb_copy_and_csum_dev(skb, data);
 	dev_kfree_skb(skb);
