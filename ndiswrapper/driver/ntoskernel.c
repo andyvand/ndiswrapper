@@ -39,6 +39,10 @@ static kmem_cache_t *mdl_cache;
 static struct list_head wrap_mdl_list;
 static struct nt_list_entry obj_mgr_obj_list;
 
+static struct work_struct qdpc_work;
+static struct list_head qdpc_list;
+static void dpc_worker(void *data);
+
 WRAP_EXPORT_MAP("KeTickCount", &jiffies);
 
 int ntoskernel_init(void)
@@ -48,6 +52,8 @@ int ntoskernel_init(void)
 	kspin_lock_init(&ntoskernel_lock);
 	InitializeListHead(&obj_mgr_obj_list);
 	INIT_LIST_HEAD(&wrap_mdl_list);
+	INIT_LIST_HEAD(&qdpc_list);
+	INIT_WORK(&qdpc_work, &dpc_worker, NULL);
 	mdl_cache = kmem_cache_create("ndis_mdl", sizeof(struct wrap_mdl),
 				      0, 0, NULL, NULL);
 	if (!mdl_cache) {
@@ -242,6 +248,81 @@ STDCALL void WRAP_EXPORT(KeInitializeDpc)
 	TRACEENTER4("%p, %p, %p", kdpc, func, ctx);
 	kdpc->func = func;
 	kdpc->ctx  = ctx;
+}
+
+static void dpc_worker(void *data)
+{
+	struct qdpc *qdpc;
+	struct kdpc *kdpc;
+	KIRQL irql;
+	DPC dpc_func;
+
+	while (1) {
+		irql = kspin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL);
+		if (list_empty(&qdpc_list))
+			qdpc = NULL;
+		else {
+			qdpc = list_entry(qdpc_list.next,
+					  struct qdpc, list);
+			list_del(&qdpc->list);
+		}
+		kspin_unlock_irql(&ntoskernel_lock, irql);
+		if (!qdpc)
+			break;
+		kdpc = qdpc->kdpc;
+		dpc_func = kdpc->func;
+		irql = raise_irql(DISPATCH_LEVEL);
+		dpc_func(kdpc, kdpc->ctx, qdpc->arg1, qdpc->arg2);
+		lower_irql(irql);
+		kfree(qdpc);
+	}
+}
+
+STDCALL BOOLEAN KeInsertQueueDpc(struct kdpc *kdpc, void *arg1, void *arg2)
+{
+	struct list_head *cur;
+	struct qdpc *qdpc;
+
+	qdpc = kmalloc(sizeof(*qdpc), GFP_ATOMIC);
+	if (!qdpc) {
+		ERROR("couldn't allocate memory");
+		return FALSE;
+	}
+	qdpc->kdpc = kdpc;
+	qdpc->arg1 = arg1;
+	qdpc->arg2 = arg2;
+	kspin_lock(&ntoskernel_lock);
+	list_for_each(cur, &qdpc_list) {
+		struct qdpc *ent;
+		ent = list_entry(cur, struct qdpc, list);
+		if (ent->kdpc == kdpc) {
+			kspin_unlock(&ntoskernel_lock);
+			return FALSE;
+		}
+	}
+	list_add(&qdpc->list, &qdpc_list);
+	kspin_unlock(&ntoskernel_lock);
+	schedule_work(&qdpc_work);
+	return TRUE;
+}
+
+STDCALL BOOLEAN KeRemoveQueueDpc(struct kdpc *kdpc)
+{
+	KIRQL irql;
+	struct list_head *cur;
+
+	irql = kspin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL);
+	list_for_each(cur, &qdpc_list) {
+		struct qdpc *qdpc = list_entry(cur, struct qdpc, list);
+		if (qdpc->kdpc == kdpc) {
+			list_del(&qdpc->list);
+			kspin_unlock_irql(&ntoskernel_lock, irql);
+			kfree(qdpc);
+			return TRUE;
+		}
+	}
+	kspin_unlock_irql(&ntoskernel_lock, irql);
+	return FALSE;
 }
 
 STDCALL BOOLEAN WRAP_EXPORT(KeSetTimerEx)
@@ -464,27 +545,20 @@ STDCALL void WRAP_EXPORT(KeInitializeEvent)
 {
 	TRACEENTER3("event = %p, type = %d, state = %d",
 		    kevent, type, state);
-	kspin_lock(&kevent_lock);
 	kevent->dh.type = type;
-	kevent->dh.signal_state = state;
+	if (state == TRUE)
+		kevent->dh.signal_state = 1;
+	else
+		kevent->dh.signal_state = 0;
 	InitializeListHead(&kevent->dh.wait_list);
-	kspin_unlock(&kevent_lock);
 }
 
-STDCALL LONG WRAP_EXPORT(KeSetEvent)
-	(struct kevent *kevent, KPRIORITY incr, BOOLEAN wait)
+static void wakeup_event(struct kevent *kevent)
 {
 	struct nt_list_entry *ent;
-	LONG old_state;
+	KIRQL irql;
 
-	TRACEENTER3("event = %p, type = %d, wait = %d",
-		    kevent, kevent->dh.type, wait);
-	if (wait == TRUE)
-		WARNING("wait = %d, not yet implemented", wait);
-
-	kspin_lock(&kevent_lock);
-	old_state = kevent->dh.signal_state;
-	kevent->dh.signal_state = TRUE;
+	irql = kspin_lock_irql(&kevent_lock, DISPATCH_LEVEL);
 	while ((ent = RemoveHeadList(&kevent->dh.wait_list))) {
 		struct wait_block *wb;
 
@@ -498,32 +572,115 @@ STDCALL LONG WRAP_EXPORT(KeSetEvent)
 		if (kevent->dh.type == SynchronizationEvent)
 			break;
 	}
-	kspin_unlock(&kevent_lock);
+	kspin_unlock_irql(&kevent_lock, irql);
+	return;
+}
+
+STDCALL LONG WRAP_EXPORT(KeSetEvent)
+	(struct kevent *kevent, KPRIORITY incr, BOOLEAN wait)
+{
+	LONG old_state;
+	KIRQL irql;
+
+	TRACEENTER3("event = %p, type = %d, wait = %d",
+		    kevent, kevent->dh.type, wait);
+	if (wait == TRUE)
+		WARNING("wait = %d, not yet implemented", wait);
+
+	irql = kspin_lock_irql(&kevent_lock, DISPATCH_LEVEL);
+	old_state = kevent->dh.signal_state;
+	kevent->dh.signal_state = 1;
+	kspin_unlock_irql(&kevent_lock, irql);
+	wakeup_event(kevent);
 	TRACEEXIT3(return old_state);
 }
 
 STDCALL void WRAP_EXPORT(KeClearEvent)
 	(struct kevent *kevent)
 {
+	KIRQL irql;
+
 	TRACEENTER3("event = %p", kevent);
-	kspin_lock(&kevent_lock);
-	kevent->dh.signal_state = FALSE;
-	kspin_unlock(&kevent_lock);
+	irql = kspin_lock_irql(&kevent_lock, DISPATCH_LEVEL);
+	kevent->dh.signal_state = 0;
+	kspin_unlock_irql(&kevent_lock, irql);
 }
 
 STDCALL LONG WRAP_EXPORT(KeResetEvent)
 	(struct kevent *kevent)
 {
 	LONG old_state;
+	KIRQL irql;
 
 	TRACEENTER3("event = %p", kevent);
 
-	kspin_lock(&kevent_lock);
+	irql = kspin_lock_irql(&kevent_lock, DISPATCH_LEVEL);
 	old_state = kevent->dh.signal_state;
-	kevent->dh.signal_state = FALSE;
-	kspin_unlock(&kevent_lock);
+	kevent->dh.signal_state = 0;
+	kspin_unlock_irql(&kevent_lock, irql);
 
 	TRACEEXIT3(return old_state);
+}
+
+STDCALL void WRAP_EXPORT(KeInitializeMutex)
+	(struct kmutex *kmutex, BOOLEAN wait)
+{
+	memset(kmutex, 0, sizeof(*kmutex));
+	kmutex->dh.type = SynchronizationEvent;
+	kmutex->dh.size = sizeof(*kmutex);
+	kmutex->dh.signal_state = 1;
+	InitializeListHead(&kmutex->dh.wait_list);
+	kmutex->abandoned = FALSE;
+	kmutex->apc_disable = 1;
+	kmutex->u.count = 0;
+	kmutex->owner_thread = NULL;
+	return;
+}
+
+STDCALL LONG WRAP_EXPORT(KeReleaseMutex)
+	(struct kmutex *kmutex, BOOLEAN wait)
+{
+	LONG ret;
+	KIRQL irql;
+
+	irql = kspin_lock_irql(&kevent_lock, DISPATCH_LEVEL);
+	ret = --(kmutex->u.count);
+	if (kmutex->u.count == 0) {
+		kmutex->owner_thread = NULL;
+		kmutex->dh.signal_state = 1;
+		kspin_unlock_irql(&kevent_lock, irql);
+		wakeup_event((struct kevent *)kmutex);
+	} else
+		kspin_unlock_irql(&kevent_lock, irql);
+	return ret;
+}
+
+STDCALL void WRAP_EXPORT(KeInitializeSemaphore)
+	(struct ksemaphore *ksemaphore, LONG count, LONG limit)
+{
+	memset(ksemaphore, 0, sizeof(*ksemaphore));
+	ksemaphore->dh.type = NotificationEvent;
+	ksemaphore->dh.size = sizeof(*ksemaphore);
+	ksemaphore->dh.signal_state = count;
+	InitializeListHead(&ksemaphore->dh.wait_list);
+	ksemaphore->limit = limit;
+}
+
+STDCALL LONG WRAP_EXPORT(KeReleaseSemaphore)
+	(struct ksemaphore *ksemaphore, KPRIORITY incr, LONG adjustment,
+	 BOOLEAN wait)
+{
+	LONG ret;
+	KIRQL irql;
+
+	irql = kspin_lock_irql(&kevent_lock, DISPATCH_LEVEL);
+	ret = ksemaphore->dh.signal_state;
+	ksemaphore->dh.signal_state += adjustment;
+	if (ksemaphore->dh.signal_state > ksemaphore->limit)
+		ksemaphore->dh.signal_state = ksemaphore->limit;
+	kspin_unlock_irql(&kevent_lock, irql);
+	wakeup_event((struct kevent *)ksemaphore);
+	return ret;
 }
 
 STDCALL NTSTATUS WRAP_EXPORT(KeWaitForMultipleObjects)
@@ -536,6 +693,7 @@ STDCALL NTSTATUS WRAP_EXPORT(KeWaitForMultipleObjects)
 	long wait_jiffies;
 	struct wait_block *wb, wb_array[THREAD_WAIT_OBJECTS];
 	struct kmutex *kmutex;
+	struct ksemaphore *ksemaphore;
 	struct dispatch_header *dh;
 
 	TRACEENTER2("count = %d, reason = %u, waitmode = %u, alertable = %u,"
@@ -561,15 +719,17 @@ STDCALL NTSTATUS WRAP_EXPORT(KeWaitForMultipleObjects)
 			 * already own it, mark as signaled */
 			if (kmutex->owner_thread == NULL ||
 			    kmutex->owner_thread == get_current()) {
-				kmutex->dh.signal_state = TRUE;
+				kmutex->dh.signal_state = 1;
 				kmutex->u.count++;
 				kmutex->owner_thread = get_current();
 			}
 		}
+
 		/* if aleady in signaled state and WaitAny, return */
-		if (dh->signal_state == TRUE && wait_type == WaitAny) {
-			if (dh->type == SynchronizationEvent)
-				dh->signal_state = FALSE;
+		if (wait_type == WaitAny && dh->signal_state > 0) {
+			if (dh->type == SynchronizationEvent ||
+			    dh->size == sizeof(*ksemaphore))
+				dh->signal_state--;
 			kspin_unlock(&kevent_lock);
 			TRACEEXIT3(return STATUS_WAIT_0 + i);
 		}
@@ -577,18 +737,19 @@ STDCALL NTSTATUS WRAP_EXPORT(KeWaitForMultipleObjects)
 	/* get list of objects to wait */
 	for (i = 0, wait_count = 0; i < count; i++) {
 		dh = &object[i]->dh;
-		if (dh->signal_state == FALSE) {
+		if (dh->signal_state > 0) {
+			/* mark that this wb is not on the list */
+			wb[i].thread = NULL;
+			if (dh->type == SynchronizationEvent ||
+			    dh->size == sizeof(*ksemaphore))
+				dh->signal_state--;
+		} else {
 			wb[i].thread = get_current();
 			wb[i].object = object[i];
 			InsertTailList(&dh->wait_list, &wb[i].list_entry);
 			wait_count++;
 			DBGTRACE3("%p (%p) waiting on event %p", &wb[i],
 				  wb[i].thread, wb[i].object);
-		} else {
-			/* mark that this wb is not on the list */
-			wb[i].thread = NULL;
-			if (dh->type == SynchronizationEvent)
-				dh->signal_state = FALSE;
 		}
 	}
 	kspin_unlock(&kevent_lock);
@@ -634,17 +795,18 @@ STDCALL NTSTATUS WRAP_EXPORT(KeWaitForMultipleObjects)
 			if (dh->size == sizeof(*kmutex)) {
 				kmutex = (struct kmutex *)object[i];
 				if (kmutex->owner_thread == NULL) {
-					kmutex->dh.signal_state = TRUE;
+					kmutex->dh.signal_state = 1;
 					kmutex->u.count++;
 					kmutex->owner_thread = get_current();
 				}
 			}
-			if (dh->signal_state == TRUE) {
+			if (dh->signal_state > 0) {
 				/* mark that this wb is not on the list */
 				wb[i].thread = NULL;
 				RemoveEntryList(&wb[i].list_entry);
-				if (dh->type == SynchronizationEvent)
-					dh->signal_state = FALSE;
+				if (dh->type == SynchronizationEvent ||
+				    dh->size == sizeof(*ksemaphore))
+					dh->signal_state--;
 				wait_count--;
 				wait_index = i;
 			}
@@ -748,6 +910,13 @@ STDCALL ULONG WRAP_EXPORT(KeQueryTimeIncrement)
 	TRACEEXIT5(return TICKSPERSEC / HZ);
 }
 
+STDCALL void WRAP_EXPORT(KeQuerySystemTime)
+	(LARGE_INTEGER *time)
+{
+	*time = ticks_1601();
+	return;
+}
+
 STDCALL LARGE_INTEGER WRAP_EXPORT(KeQueryPerformanceCounter)
 	(LARGE_INTEGER *counter)
 {
@@ -757,35 +926,6 @@ STDCALL LARGE_INTEGER WRAP_EXPORT(KeQueryPerformanceCounter)
 	if (counter)
 		*counter = res;
 	return res;
-}
-
-STDCALL void WRAP_EXPORT(KeInitializeMutex)
-	(struct kmutex *kmutex, BOOLEAN wait)
-{
-	InitializeListHead(&kmutex->dh.wait_list);
-	kmutex->abandoned = FALSE;
-	kmutex->apc_disable = 1;
-	kmutex->dh.signal_state = TRUE;
-	kmutex->dh.type = SynchronizationEvent;
-	kmutex->dh.size = sizeof(*kmutex);
-	kmutex->u.count = 0;
-	kmutex->owner_thread = NULL;
-	return;
-}
-
-STDCALL LONG WRAP_EXPORT(KeReleaseMutex)
-	(struct kmutex *kmutex, BOOLEAN wait)
-{
-	LONG ret;
-	kspin_lock(&kevent_lock);
-	ret = --(kmutex->u.count);
-	if (kmutex->u.count == 0) {
-		kmutex->owner_thread = NULL;
-		kspin_unlock(&kevent_lock);
-		KeSetEvent((struct kevent *)kmutex, 0, FALSE);
-	} else
-		kspin_unlock(&kevent_lock);
-	return ret;
 }
 
 STDCALL void *WRAP_EXPORT(KeGetCurrentThread)
@@ -1167,6 +1307,86 @@ _FASTCALL NTSTATUS WRAP_EXPORT(IofCallDriver)
 	USBTRACEEXIT(return ret);
 }
 
+static irqreturn_t io_irq_th(int irq, void *data, struct pt_regs *pt_regs)
+{
+	struct kinterrupt *interrupt = (struct kinterrupt *)data;
+	KSPIN_LOCK *spinlock;
+	BOOLEAN ret;
+	KIRQL irql = PASSIVE_LEVEL;
+
+	if (interrupt->actual_lock)
+		spinlock = interrupt->actual_lock;
+	else
+		spinlock = &interrupt->lock;
+	if (interrupt->synch_irql >= DISPATCH_LEVEL)
+		irql = kspin_lock_irql(spinlock, DISPATCH_LEVEL);
+	ret = interrupt->service_routine(interrupt,
+					 interrupt->service_context);
+	if (interrupt->synch_irql >= DISPATCH_LEVEL)
+		kspin_unlock_irql(spinlock, irql);
+
+	if (ret == TRUE)
+		return IRQ_HANDLED;
+	else
+		return IRQ_NONE;
+}
+
+STDCALL NTSTATUS WRAP_EXPORT(IoConnectInterrupt)
+	(struct kinterrupt *interrupt, PKSERVICE_ROUTINE service_routine,
+	 void *service_context, KSPIN_LOCK *lock, ULONG vector,
+	 KIRQL irql, KIRQL synch_irql, enum kinterrupt_mode interrupt_mode,
+	 BOOLEAN shareable, KAFFINITY processor_enable_mask,
+	 BOOLEAN floating_save)
+{
+	TRACEENTER1("");
+
+	interrupt->vector = vector;
+	interrupt->processor_enable_mask = processor_enable_mask;
+	kspin_lock_init(&interrupt->lock);
+	interrupt->actual_lock = lock;
+	interrupt->shareable = shareable;
+	interrupt->floating_save = floating_save;
+	interrupt->service_routine = service_routine;
+	interrupt->service_context = service_context;
+	InitializeListHead(&interrupt->list);
+	interrupt->irql = irql;
+	interrupt->synch_irql = synch_irql;
+	interrupt->interrupt_mode = interrupt_mode;
+	if (request_irq(vector, io_irq_th, shareable ? SA_SHIRQ : 0,
+			"io_irq", interrupt)) {
+		printk(KERN_WARNING "%s(%s): request for irq %d failed\n",
+		       DRIVER_NAME, __FUNCTION__, vector);
+		TRACEEXIT1(return STATUS_INSUFFICIENT_RESOURCES);
+	}
+	TRACEEXIT1(return STATUS_SUCCESS);
+}
+
+STDCALL BOOLEAN WRAP_EXPORT(KeSynchronizeExecution)
+	(struct kinterrupt *interrupt, PKSYNCHRONIZE_ROUTINE synch_routine,
+	 void *synch_context)
+{
+	KSPIN_LOCK *spinlock;
+	BOOLEAN ret;
+	KIRQL irql = PASSIVE_LEVEL;
+
+	if (interrupt->actual_lock)
+		spinlock = interrupt->actual_lock;
+	else
+		spinlock = &interrupt->lock;
+	if (interrupt->irql >= DISPATCH_LEVEL)
+		irql = kspin_lock_irql(spinlock, interrupt->synch_irql);
+	ret = synch_routine(synch_context);
+	if (interrupt->irql >= DISPATCH_LEVEL)
+		kspin_unlock_irql(spinlock, irql);
+	return ret;
+}
+
+STDCALL void WRAP_EXPORT(IoDisconnectInterrupt)
+	(struct kinterrupt *interrupt)
+{
+	free_irq(interrupt->vector, interrupt);
+}
+
 STDCALL NTSTATUS WRAP_EXPORT(PoCallDriver)
 	(struct device_object *dev_obj, struct irp *irp)
 {
@@ -1443,6 +1663,18 @@ STDCALL BOOLEAN WRAP_EXPORT(MmIsAddressValid)
 		return TRUE;
 	else
 		return FALSE;
+}
+
+STDCALL void *WRAP_EXPORT(MmLockPagableDataSection)
+	(void *address)
+{
+	return address;
+}
+
+STDCALL void WRAP_EXPORT(MmUnlockPagableImageSection)
+	(void *handle)
+{
+	return;
 }
 
 /* The object manager functions are not implemented the way DDK
