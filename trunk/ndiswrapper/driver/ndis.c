@@ -626,7 +626,13 @@ STDCALL void NdisMSetAttributesEx(struct ndis_handle *handle,
 	if(hangcheck_interval)
 	{
 		if (handle->hangcheck_interval == 0)
-			handle->hangcheck_interval = hangcheck_interval * HZ;
+		{
+			if (hangcheck_interval > 2)
+				handle->hangcheck_interval = 2 * hangcheck_interval * HZ;
+			/* less than 3 seconds seem to be problematic */
+			else 
+				handle->hangcheck_interval = 3 * HZ;
+		}
 	}
 
 	handle->adapter_ctx = adapter_ctx;

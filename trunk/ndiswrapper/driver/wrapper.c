@@ -308,8 +308,6 @@ static void hangcheck(unsigned long data)
 
 static void hangcheck_reinit(struct ndis_handle *handle)
 {
-	if (handle->hangcheck_interval <= 0)
-		return;
 	handle->hangcheck_timer.data = (unsigned long) handle;
 	handle->hangcheck_timer.function = &hangcheck;
 	handle->hangcheck_timer.expires = jiffies + handle->hangcheck_interval;
@@ -319,7 +317,8 @@ static void hangcheck_reinit(struct ndis_handle *handle)
 
 void hangcheck_add(struct ndis_handle *handle)
 {
-	if(!handle->driver->miniport_char.hangcheck)
+	if(!handle->driver->miniport_char.hangcheck ||
+	   handle->hangcheck_interval <= 0)
 		return;
 
 	INIT_WORK(&handle->hangcheck_work, &hangcheck_bh, handle);
@@ -329,7 +328,8 @@ void hangcheck_add(struct ndis_handle *handle)
 
 void hangcheck_del(struct ndis_handle *handle)
 {
-	if(!handle->driver->miniport_char.hangcheck)
+	if(!handle->driver->miniport_char.hangcheck ||
+	   handle->hangcheck_interval <= 0)
 		return;
 
 	del_timer_sync(&handle->hangcheck_timer);
@@ -882,8 +882,6 @@ static int setup_dev(struct net_device *dev)
 	strncpy(dev->name, if_name, IFNAMSIZ-1);
 	dev->name[IFNAMSIZ-1] = '\0';
 
-	handle->hangcheck_interval = HZ * hangcheck_interval;
-
 	DBGTRACE("%s: Querying for mac\n", __FUNCTION__);
 	res = doquery(handle, 0x01010102, &mac[0], sizeof(mac),
 		      &written, &needed);
@@ -1035,14 +1033,12 @@ static int ndis_init_one(struct pci_dev *pdev,
 
 	handle->pci_dev = pdev;
 
-	handle->hangcheck_interval = 3*HZ;
+	handle->hangcheck_interval = hangcheck_interval;
 	handle->scan_timestamp = 0;
 
 	memset(&handle->essid, 0, sizeof(handle->essid));
 	memset(&handle->wep_info, 0, sizeof(handle->wep_info));
 	
-	handle->hangcheck_interval = hangcheck_interval;
-
 	res = pci_enable_device(pdev);
 	if(res)
 		goto out_enable;
