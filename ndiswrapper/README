@@ -3,22 +3,16 @@
 
 1. Compile the driver
 ---------------------
-You need a recent 2.6.0 or 2.4 kernel with source.
-The driver has known problems with SMP and will not work reliably with it.
+* You need a recent 2.6.0 or 2.4 kernel with source. 
+* Make sure there is a link to the source from the modules directory:
+  '/lib/modules/<VERSION>/build' should be a link to the kernel
+  source, where <VERSION> is the version of the kernel you are running.
+* The driver has known problems with SMP and will not work reliably with
+  it.
 
-Go to the driver directory.
-
-a) If you are running 2.6 kernel, run:
+Go to the driver directory and run:
 
    > make
-
-   This will produce ndiswrapper.ko
-
-b) If you are using a 2.4 kernel, run:
-
-   > make -f Makefile.24
-
-   This will produce a ndiswrapper.o
 
 2. Compile the loader:
 ----------------------
