@@ -1,0 +1,50 @@
+Version 0.5 2004-03-dd
+======================
+* Integrated RPM packaging.
+* Better makefiles.
+* New simpler installation.
+* Better support for multiple driver and cards.
+* Compiles on some more kernels.
+* Suspend/resume follow new power management driver model and work with S3/S4.
+* Powerup the card during initializtion so ndiswrapper works if the card is in
+  powered down state.
+* Background AP scanning is removed, so it doesn't affect IP traffic anymore.
+* WEP key and essid can be set in any order, not necessarily key first and
+  essid later.
+* Essid is set twice with a delay in between so that it gets set properly
+  the first time after the machine is booted.
+* A new util for controlling the radio for Averatec 5110HX laptop added.
+
+Version 0.4 2004-01-05
+======================
+* Admtek chipset works, including WEP.
+* Performance issues on Centrino have been fixed.
+* Removing the module doesn't give oops anymore.
+* Power management (suspend/resume) works reliably.
+* procfs interface is added.
+* Removed unnecessary 64 bit and floating point operations.
+
+Version 0.3 2003-12-16
+======================
+
+* Centrino now works with some drivers.
+* Unified makefile in driver directory for easier compiling.
+* SMP fixes (not 100% complete yet).
+* Support for Atheros AR5004 drivers.
+* Taint kernel when loading windows driver.
+
+Version 0.2 2003-12-04
+======================
+
+* New inf file parser.
+* Access point scanning.
+* WEP support.
+* Byte statistics for ifconfig.
+* Kernel 2.4 support.
+* Support for more Broadcom cards (No centrino yet).
+* Tons of bugfixes should improve stability a lot. 
+
+Version 0.1 2003-11-17
+======================
+
+* Initial release.
