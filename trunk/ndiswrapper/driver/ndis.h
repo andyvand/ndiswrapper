@@ -130,16 +130,10 @@ struct ndis_packet {
 
 	struct ndis_packet_extension extension;
 
-	struct scatterlist *sg_list;
-	unsigned int sg_ents;
-	/* ndiswrapper-specific info */
+	/* used when driver requests sg but disabled */
 	struct ndis_sg_list ndis_sg_list;
-	struct ndis_sg_element *ndis_sg_elements;
-	/* RTL8180L overshoots past ndis_eg_elements (during
-	 * MiniportSendPackets) and overwrites what is below, so put a
-	 * barrier */
-	void *dummy;
 	struct ndis_sg_element ndis_sg_element;
+
 	unsigned char header[ETH_HLEN];
 	unsigned char *look_ahead;
 	unsigned int look_ahead_size;
@@ -875,6 +869,17 @@ struct ndis_handle {
 	unsigned long attributes;
 	struct wrap_spinlock lock;
 	struct ndis_resource_list *pci_resources;
+
+	struct scatterlist *sg_list;
+	unsigned int sg_ents;
+	/* ndiswrapper-specific info */
+	struct ndis_sg_list ndis_sg_list;
+	struct ndis_sg_element *ndis_sg_elements;
+	/* RTL8180L overshoots past ndis_eg_elements (during
+	 * MiniportSendPackets) and overwrites what is below, so put a
+	 * barrier */
+	void *dummy;
+	struct ndis_sg_element ndis_sg_element;
 };
 
 STDCALL void NdisMIndicateReceivePacket(struct ndis_handle *handle,
