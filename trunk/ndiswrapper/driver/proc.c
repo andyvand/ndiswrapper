@@ -465,6 +465,50 @@ void ndiswrapper_procfs_remove_iface(struct ndis_handle *handle)
 	handle->procfs_iface = NULL;
 }
 
+#if defined DEBUG
+int debug = DEBUG;
+
+NW_MODULE_PARM_INT(debug, 0600);
+MODULE_PARM_DESC(debug, "Debug level");
+
+static int procfs_read_debug(char *page, char **start, off_t off,
+			     int count, int *eof, void *data)
+{
+	char *p = page;
+
+	if (off != 0) {
+		*eof = 1;
+		return 0;
+	}
+
+	p += sprintf(p, "%d\n", debug);
+
+	return (p - page);
+}
+
+static int procfs_write_debug(struct file *file, const char *buf,
+			      unsigned long count, void *data)
+{
+	char debug_level[MAX_PROC_STR_LEN];
+	int i;
+
+	if (count > MAX_PROC_STR_LEN)
+		return -EINVAL;
+
+	memset(debug_level, 0, sizeof(debug_level));
+	if (copy_from_user(debug_level, buf, count))
+		return -EFAULT;
+
+	i = simple_strtol(debug_level, NULL, 10);
+	if (i < 0 || i > DEBUG)
+		return -EINVAL;
+
+	debug = i;
+
+	return count;
+}
+#endif
+
 int ndiswrapper_procfs_init(void)
 {
 	ndiswrapper_procfs_entry = proc_mkdir(DRIVER_NAME, proc_net);
@@ -475,6 +519,24 @@ int ndiswrapper_procfs_init(void)
 	ndiswrapper_procfs_entry->uid = proc_uid;
 	ndiswrapper_procfs_entry->gid = proc_gid;
 
+#if defined DEBUG
+	{
+		struct proc_dir_entry *procfs_entry;
+
+		procfs_entry = create_proc_entry("debug", S_IFREG | S_IRUSR | S_IRGRP,
+						 ndiswrapper_procfs_entry);
+		if (procfs_entry == NULL) {
+			ERROR("%s", "Couldn't create proc entry for 'debug'");
+			return -ENOMEM;
+		} else {
+			procfs_entry->uid = proc_uid;
+			procfs_entry->gid = proc_gid;
+			procfs_entry->read_proc  = procfs_read_debug;
+			procfs_entry->write_proc = procfs_write_debug;
+		}
+	}
+#endif
+
 	return 0;
 }
 
@@ -482,5 +544,8 @@ void ndiswrapper_procfs_remove(void)
 {
 	if (ndiswrapper_procfs_entry == NULL)
 		return;
+#if defined DEBUG
+	remove_proc_entry("debug", ndiswrapper_procfs_entry);
+#endif
 	remove_proc_entry(DRIVER_NAME, proc_net);
 }
