@@ -56,7 +56,7 @@ usb.o: usb.c usb.h ndis.h usb_exports.h
 			-e 's/.*WRAP_EXPORT(\([^)]\+\)).*/\
 				\tWRAP_EXPORT_SYMBOL(\1),/p' \
 			-e 's/.*WRAP_EXPORT_MAP(\("[^"]\+"\)[ ,\n\t]\+\([^)]\+\)).*/\
-				\t{\1, (WRAP_EXPORT_FUNC)\2},/pm' $< | sort; \
+				\t{\1, (WRAP_EXPORT_FUNC)\2},/p' $< | sort; \
 		echo -e "\t{NULL, NULL}\n};"; \
 	fi > $@
 
