@@ -1,3 +1,13 @@
+Version 0.7 2004-
+=====================
+* Power down while unloading the module, so it saves trees!
+* Fixed a bug with scanning; earlier it would fail sometimes.
+* procfs exposes multiple cards, if present.
+* Fixed problems with unloading of module in some cases.
+* Realtek 8180L is supported.
+* Support for more cards/chips (see "Supporte Chipsets" page for details).
+* Many bug fixes!
+
 Version 0.6 2004-03-17
 ======================
 * Support for kernels with CONFIG_REGPARM.
