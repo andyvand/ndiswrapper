@@ -19,8 +19,9 @@
 #include <linux/time.h>
 
 DECLARE_WAIT_QUEUE_HEAD(dispatch_event_wq);
-struct wrap_spinlock dispatch_event_lock;
-unsigned char global_signal_state = 0;
+static unsigned char global_signal_state = 0;
+struct ndis_spinlock dispatch_event_lock;
+extern struct ndis_spinlock atomic_lock;
 
 WRAP_EXPORT_MAP("KeTickCount", &jiffies);
 
@@ -106,21 +107,7 @@ STDCALL KIRQL WRAP_EXPORT(KeGetCurrentIrql)
 STDCALL void WRAP_EXPORT(KeInitializeSpinLock)
 	(KSPIN_LOCK *lock)
 {
-	struct wrap_spinlock *wrap_lock;
-
-	if (!lock) {
-		ERROR("%s", "invalid lock");
-		return;
-	}
-
-	wrap_lock = wrap_kmalloc(sizeof(struct wrap_spinlock), GFP_ATOMIC);
-	if (!wrap_lock)
-		ERROR("%s", "Couldn't allocate space for spinlock");
-	else {
-		DBGTRACE4("allocated spinlock %p", wrap_lock);
-		wrap_spin_lock_init(wrap_lock);
-		*lock = wrap_lock;
-	}
+	spin_lock_init(&lock->spinlock);
 }
 
 STDCALL void WRAP_EXPORT(KeAcquireSpinLock)
@@ -299,7 +286,7 @@ STDCALL static void WRAP_EXPORT(ExDeleteNPagedLookasideList)
 {
 	struct slist_entry *entry, *p;
 
-	TRACEENTER3("ookaside = %p", lookaside);
+	TRACEENTER3("lookaside = %p", lookaside);
 	entry = lookaside->head.list.next;
 	while (entry) {
 		p = entry;
@@ -312,16 +299,10 @@ STDCALL static void WRAP_EXPORT(ExDeleteNPagedLookasideList)
 _FASTCALL static void WRAP_EXPORT(ExInterlockedAddLargeStatistic)
 	(FASTCALL_DECL_2(u64 *plint, u32 n))
 {
-	unsigned long flags;
-	static spinlock_t lock = SPIN_LOCK_UNLOCKED;
-	/* we should have one lock per driver, but since it is used only
-	 * here, no harm in having a global lock, for simplicity sake
-	 */
-
 	TRACEENTER3("Stat %p = %llu, n = %u", plint, *plint, n);
-	spin_lock_irqsave(&lock, flags);
+	ndis_spin_lock(&atomic_lock);
 	*plint += n;
-	spin_unlock_irqrestore(&lock, flags);
+	ndis_spin_unlock(&atomic_lock);
 }
 
 STDCALL static void * WRAP_EXPORT(MmMapIoSpace)
@@ -361,11 +342,11 @@ STDCALL void WRAP_EXPORT(KeInitializeEvent)
 {
 	TRACEENTER3("event = %p, type = %d, state = %d",
 		    kevent, type, state);
-	wrap_spin_lock(&dispatch_event_lock);
+	ndis_spin_lock(&dispatch_event_lock);
 	kevent->header.type = type;
 	kevent->header.signal_state = state;
 	kevent->header.inserted = 0;
-	wrap_spin_unlock(&dispatch_event_lock);
+	ndis_spin_unlock(&dispatch_event_lock);
 }
 
 STDCALL long WRAP_EXPORT(KeSetEvent)
@@ -378,7 +359,7 @@ STDCALL long WRAP_EXPORT(KeSetEvent)
 	if (wait == TRUE)
 		WARNING("wait = %d, not yet implemented", wait);
 
-	wrap_spin_lock(&dispatch_event_lock);
+	ndis_spin_lock(&dispatch_event_lock);
 	kevent->header.signal_state = TRUE;
 	kevent->header.absolute = TRUE;
 	global_signal_state = TRUE;
@@ -388,7 +369,7 @@ STDCALL long WRAP_EXPORT(KeSetEvent)
 		wake_up_all(&dispatch_event_wq);
 //	global_signal_state = FALSE;
 	DBGTRACE3("woken up %p", kevent);
-	wrap_spin_unlock(&dispatch_event_lock);
+	ndis_spin_unlock(&dispatch_event_lock);
 	TRACEEXIT3(return old_state);
 }
 
@@ -585,7 +566,7 @@ STDCALL unsigned int WRAP_EXPORT(KeWaitForMultipleObjects)
 					(global_signal_state == TRUE),
 					wait_jiffies);
 		}
-		wrap_spin_lock(&dispatch_event_lock);
+		ndis_spin_lock(&dispatch_event_lock);
 		if (res > 0) {
 			for (i = 0; i < count; i++) {
 				kevent = (struct kevent *)object[i];
@@ -602,7 +583,7 @@ STDCALL unsigned int WRAP_EXPORT(KeWaitForMultipleObjects)
 				}
 			}
 		}
-		wrap_spin_unlock(&dispatch_event_lock);
+		ndis_spin_unlock(&dispatch_event_lock);
 		if (res > 0)
 			wait_jiffies = res;
 		if (wait_type == WAIT_ANY)
@@ -799,20 +780,22 @@ STDCALL unsigned char WRAP_EXPORT(IoCancelIrp)
 {
 	struct io_stack_location *stack = irp->current_stack_location-1;
 	void (*cancel_routine)(struct device_object *, struct irp *) STDCALL;
+	KIRQL  irql;
 
 	TRACEENTER2("irp = %p", irp);
 
-	wrap_spin_lock(&cancel_lock);
+	irql = KeGetCurrentIrql();
+	ndis_spin_lock(&cancel_lock);
 	cancel_routine = xchg(&irp->cancel_routine, NULL);
 
 	if (cancel_routine) {
-		irp->cancel_irql = cancel_lock.irql;
+		irp->cancel_irql = irql;
 		irp->pending_returned = 1;
 		irp->cancel = 1;
 		cancel_routine(stack->dev_obj, irp);
 		TRACEEXIT2(return 1);
 	} else {
-		wrap_spin_unlock(&cancel_lock);
+		ndis_spin_unlock(&cancel_lock);
 		TRACEEXIT2(return 0);
 	}
 }
@@ -1058,10 +1041,10 @@ _FASTCALL static long WRAP_EXPORT(InterlockedDecrement)
 	long x;
 
 	TRACEENTER4("%s", "");
-	wrap_spin_lock(&atomic_lock);
+	ndis_spin_lock(&atomic_lock);
 	(*val)--;
 	x = *val;
-	wrap_spin_unlock(&atomic_lock);
+	ndis_spin_unlock(&atomic_lock);
 	TRACEEXIT4(return x);
 }
 
@@ -1071,10 +1054,10 @@ _FASTCALL static long WRAP_EXPORT(InterlockedIncrement)
 	long x;
 
 	TRACEENTER4("%s", "");
-	wrap_spin_lock(&atomic_lock);
+	ndis_spin_lock(&atomic_lock);
 	(*val)++;
 	x = *val;
-	wrap_spin_unlock(&atomic_lock);
+	ndis_spin_unlock(&atomic_lock);
 	TRACEEXIT4(return x);
 }
 
@@ -1084,10 +1067,10 @@ _FASTCALL static long WRAP_EXPORT(InterlockedExchange)
 	long x;
 
 	TRACEENTER4("%s", "");
-	wrap_spin_lock(&atomic_lock);
+	ndis_spin_lock(&atomic_lock);
 	x = *target;
 	*target = val;
-	wrap_spin_unlock(&atomic_lock);
+	ndis_spin_unlock(&atomic_lock);
 	TRACEEXIT4(return x);
 }
 
@@ -1097,11 +1080,11 @@ _FASTCALL static long WRAP_EXPORT(InterlockedCompareExchange)
 	long x;
 
 	TRACEENTER4("%s", "");
-	wrap_spin_lock(&atomic_lock);
+	ndis_spin_lock(&atomic_lock);
 	x = *dest;
 	if (*dest == comperand)
 		*dest = xchg;
-	wrap_spin_unlock(&atomic_lock);
+	ndis_spin_unlock(&atomic_lock);
 	TRACEEXIT4(return x);
 }
 
@@ -1217,14 +1200,14 @@ STDCALL static void WRAP_EXPORT(KeInitializeMutex)
 STDCALL static long WRAP_EXPORT(KeReleaseMutex)
 	(struct kmutex *mutex, BOOLEAN wait)
 {
-	wrap_spin_lock(&dispatch_event_lock);
+	ndis_spin_lock(&dispatch_event_lock);
 	mutex->count--;
 	if (mutex->count == 0) {
 		mutex->owner_thread = NULL;
-		wrap_spin_unlock(&dispatch_event_lock);
+		ndis_spin_unlock(&dispatch_event_lock);
 		KeSetEvent((struct kevent *)&mutex->dispatch_header, 0, 0);
 	} else
-		wrap_spin_unlock(&dispatch_event_lock);
+		ndis_spin_unlock(&dispatch_event_lock);
 	return mutex->count;
 }
 
@@ -1258,8 +1241,8 @@ STDCALL static unsigned int WRAP_EXPORT(IoWMIRegistrationControl)
 }
 
 STDCALL static void WRAP_EXPORT(KeBugCheckEx)
-	(unsigned long code, unsigned long *param1,
-	 unsigned long *param2, unsigned long *param3, unsigned long *param4)
+	(unsigned long code, unsigned long *param1, unsigned long *param2,
+	 unsigned long *param3, unsigned long *param4)
 {
 	UNIMPL();
 	return;

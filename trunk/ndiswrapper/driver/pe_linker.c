@@ -45,7 +45,10 @@ static WRAP_EXPORT_FUNC get_export(char *name)
 }
 #else
 extern struct wrap_export ntoskernel_exports[], ndis_exports[],
-	misc_funcs_exports[], hal_exports[], usb_exports[];
+	misc_funcs_exports[], hal_exports[];
+#ifdef CONFIG_USB
+extern struct wrap_export usb_exports[];
+#endif
 
 static WRAP_EXPORT_FUNC get_export(char *name)
 {

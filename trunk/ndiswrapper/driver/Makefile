@@ -24,7 +24,7 @@ CFLAGS += $(shell [ -f $(KSRC)/include/linux/modversions.h ] && \
 		  -include $(KSRC)/include/linux/modversions.h)
 
 ifdef DEBUG
-CFLAGS += -DDEBUG=$(DEBUG) -g -DDEBUG_TIMER
+CFLAGS += -DDEBUG=$(DEBUG) -g -DDEBUG_TIMER 
 endif
 
 ifdef DEBUG_TIMER
@@ -53,6 +53,13 @@ endif
 ifneq ($(CONFIG_X86_64),y)
 OBJS += divdi3.o
 endif
+
+ifeq ($(CONFIG_DEBUG_SPINLOCK),y)
+$(error CONFIG_DEBUG_SPINLOCK conflicts with ndiswrapper. Do not \
+		   complain about kernel crashes until CONFIG_DEBUG_SPINLOCK \
+		   is disabled in kernel configuration)
+endif
+
 
 divdi3.o: divdi3.c longlong.h
 

@@ -27,6 +27,7 @@
 #include <linux/random.h>
 #include <linux/ctype.h>
 #include <linux/usb.h>
+#include <linux/spinlock.h>
 #include <asm/mman.h>
 #include <asm/atomic.h>
 
@@ -37,6 +38,7 @@
 #define DEBUG_IRQL 1
 
 #ifdef CONFIG_X86_64
+typedef uint64_t ULONG_PTR;
 #define STDCALL
 #define _FASTCALL __attribute__((regparm (4)))
 #define FASTCALL_DECL_1(decl1) decl1
@@ -46,6 +48,7 @@
 #define FASTCALL_ARGS_2(arg1,arg2) arg1, arg2
 #define FASTCALL_ARGS_3(arg1,arg2,arg3) arg1, arg2, arg3
 #else 
+typedef uint32_t ULONG_PTR;
 #define STDCALL __attribute__((__stdcall__, regparm(0)))
 #define _FASTCALL __attribute__((__stdcall__)) __attribute__((regparm (3)))
 #define FASTCALL_DECL_1(decl1) int _dummy1_, int _dummy2_, decl1
@@ -389,15 +392,24 @@ union slist_head {
 };
 
 typedef unsigned char KIRQL;
-struct packed wrap_spinlock
-{
+
+/* KSPIN_LOCK is typedef to ULONG_PTR, where ULONG_PTR is 32-bit
+ * 32-bit platforms, 64-bit on 64 bit platforms; it is NOT pointer to
+ * unsigned long  */
+/* spinlock_t is 32-bits, provided CONFIG_DEBUG_SPINLOCK is disabled;
+ * so for x86 32-bits, we can safely typedef KSPIN_LOCK to
+ * spinlock_t */
+typedef union {
 	spinlock_t spinlock;
-	unsigned short magic;
+	ULONG_PTR ntoslock;
+} KSPIN_LOCK;
+
+struct ndis_spinlock
+{
+	KSPIN_LOCK lock;
 	KIRQL irql;
 };
 
-/* typedef unsigned long *KSPIN_LOCK; */
-typedef struct wrap_spinlock *KSPIN_LOCK;
 typedef char KPROCESSOR_MODE;
 
 struct list_entry
@@ -431,7 +443,7 @@ struct wrapper_timer
 	int active;
 	struct ktimer *ktimer;
 	struct kdpc *kdpc;
-	struct wrap_spinlock lock;
+	struct ndis_spinlock lock;
 };
 
 struct packed kdpc
@@ -445,7 +457,7 @@ struct packed kdpc
 	void *ctx;
 	void *arg1;
 	void *arg2;
-	unsigned long *lock;
+	KSPIN_LOCK lock;
 };
 
 enum pool_type
@@ -689,44 +701,10 @@ enum device_prop
 	DEVPROP_REMOVAL_POLICY,
 };
 
-extern struct wrap_spinlock atomic_lock;
-extern struct wrap_spinlock cancel_lock;
+extern struct ndis_spinlock atomic_lock;
+extern struct ndis_spinlock cancel_lock;
 
 #define WRAPPER_SPIN_LOCK_MAGIC 137
-
-#define raise_irql(irql) KfRaiseIrql(FASTCALL_ARGS_1(irql))
-#define lower_irql(irql) KfLowerIrql(FASTCALL_ARGS_1(irql))
-
-#define wrap_spin_lock_init(lock) do {				\
-		spin_lock_init(&((lock)->spinlock));		\
-		(lock)->magic = WRAPPER_SPIN_LOCK_MAGIC;	\
-	} while (0)
-#define wrap_spin_lock(lock)  do {					\
-		(lock)->irql = raise_irql(DISPATCH_LEVEL);		\
-		spin_lock(&((lock)->spinlock));				\
-	} while (0)
-#define wrap_spin_unlock(lock) do {			\
-		spin_unlock(&((lock)->spinlock));	\
-		lower_irql((lock)->irql);		\
-	} while (0)
-
-static inline void wrapper_set_timer_dpc(struct wrapper_timer *wrapper_timer,
-                                         struct kdpc *kdpc)
-{
-	wrapper_timer->kdpc = kdpc;
-}
-
-static inline void init_dpc(struct kdpc *kdpc, void *func, void *ctx)
-{
-	kdpc->func = func;
-	kdpc->ctx  = ctx;
-}
-
-static inline int SPAN_PAGES(unsigned int ptr, unsigned int len)
-{
-	unsigned int p = ptr & (PAGE_SIZE - 1);
-	return (p + len + (PAGE_SIZE - 1)) >> PAGE_SHIFT;
-}
 
 void wrapper_init_timer(struct ktimer *ktimer, void *handle);
 int wrapper_set_timer(struct wrapper_timer *wrapper_timer,
@@ -747,20 +725,54 @@ STDCALL void KeInitializeSpinLock(KSPIN_LOCK *lock);
 STDCALL void KeAcquireSpinLock(KSPIN_LOCK *lock, KIRQL *irql);
 STDCALL void KeReleaseSpinLock(KSPIN_LOCK *lock, KIRQL oldirql);
 
+_FASTCALL KIRQL KfRaiseIrql(FASTCALL_DECL_1(KIRQL newirql));
+_FASTCALL void KfLowerIrql(FASTCALL_DECL_1(KIRQL oldirql));
 _FASTCALL KIRQL KfAcquireSpinLock(FASTCALL_DECL_1(KSPIN_LOCK *lock));
-
 _FASTCALL void
 KfReleaseSpinLock(FASTCALL_DECL_2(KSPIN_LOCK *lock, KIRQL oldirql));
-
-_FASTCALL KIRQL KfRaiseIrql(FASTCALL_DECL_1(KIRQL newirql));
-
-_FASTCALL void KfLowerIrql(FASTCALL_DECL_1(KIRQL oldirql));
-
 _FASTCALL void
 IofCompleteRequest(FASTCALL_DECL_2(struct irp *irp, char prio_boost));
-
 _FASTCALL void
 KefReleaseSpinLockFromDpcLevel(FASTCALL_DECL_1(KSPIN_LOCK *lock));
+
+#define raise_irql(irql) KfRaiseIrql(FASTCALL_ARGS_1(irql))
+#define lower_irql(irql) KfLowerIrql(FASTCALL_ARGS_1(irql))
+
+static inline void ndis_spin_lock_init(struct ndis_spinlock *lock)
+{
+	spin_lock_init(&(lock->lock.spinlock));
+	lock->irql = PASSIVE_LEVEL;
+}
+
+static inline void ndis_spin_lock(struct ndis_spinlock *lock)
+{
+	lock->irql = raise_irql(DISPATCH_LEVEL);
+	spin_lock(&(lock->lock.spinlock));
+}
+
+static inline void ndis_spin_unlock(struct ndis_spinlock *lock)
+{
+	spin_unlock(&(lock->lock.spinlock));
+	lower_irql(lock->irql);
+}
+
+static inline void wrapper_set_timer_dpc(struct wrapper_timer *wrapper_timer,
+                                         struct kdpc *kdpc)
+{
+	wrapper_timer->kdpc = kdpc;
+}
+
+static inline void init_dpc(struct kdpc *kdpc, void *func, void *ctx)
+{
+	kdpc->func = func;
+	kdpc->ctx  = ctx;
+}
+
+static inline int SPAN_PAGES(unsigned int ptr, unsigned int len)
+{
+	unsigned int p = ptr & (PAGE_SIZE - 1);
+	return (p + len + (PAGE_SIZE - 1)) >> PAGE_SHIFT;
+}
 
 /* DEBUG macros */
 
