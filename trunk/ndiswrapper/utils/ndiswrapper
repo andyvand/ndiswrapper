@@ -308,7 +308,7 @@ sub getPresentCards
 				}
 					
 			}
-			$i = @lspci;
+			last;
 		}
 	}
 
@@ -330,7 +330,7 @@ sub getPresentCards
 					push(@cards, $card);
 				}
 			}
-			$i = @lsusb;
+			last;
 		}
 	}
 
@@ -361,7 +361,7 @@ sub installStatus
 
 		$sys = 1 if $d =~ /\.sys$/;
 		$inf = 1 if $d =~ /\.inf$/;
-		$conf = 1 if $d =~ /\.conf$/;
+		$conf = 1 if $conf eq 0 and $d =~ /\.conf$/;
 		$d =~ s/.conf//;
 		if($d =~ /(.{4}):(.{4}):(.{4}):(.{4})/)
 		{
@@ -373,6 +373,7 @@ sub installStatus
 				   $$cards[$i]->{subdevice} == $4)
 				{
 					$conf = 3;
+					last;
 				}
 			}
 			
@@ -393,6 +394,7 @@ sub installStatus
 					{
 						$conf = 3;
 					}
+					last;
 				}
 			}
 		}
