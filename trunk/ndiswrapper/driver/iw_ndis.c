@@ -410,9 +410,7 @@ int ndis_get_ap_address(struct net_device *dev, struct iw_request_info *info,
 
         memcpy(wrqu->ap_addr.sa_data, mac_address, ETH_ALEN);
         wrqu->ap_addr.sa_family = ARPHRD_ETHER;
-	DBGTRACE1("%02X:%02X:%02X:%02X:%02X:%02X", mac_address[0],
-		 mac_address[1], mac_address[2], mac_address[3],
-		 mac_address[4], mac_address[5]);
+	DBGTRACE1(MACSTR, MAC2STR(mac_address));
         TRACEEXIT1(return 0);
 }
 
@@ -1229,6 +1227,7 @@ static int ndis_set_key(struct net_device *dev, struct iw_request_info *info,
 	}
 	
 	DBGTRACE("adding key %d, %d", wpa_key->key_index, wpa_key->key_len);
+	memset(&ndis_key, 0, sizeof(ndis_key));
 
 	ndis_key.length = sizeof(ndis_key);
 	ndis_key.key_index = wpa_key->key_index;
@@ -1239,13 +1238,13 @@ static int ndis_set_key(struct net_device *dev, struct iw_request_info *info,
 	for (i = 0, ndis_key.key_rsc = 0 ; i < wpa_key->seq_len ; i++)
 		ndis_key.key_rsc |= (wpa_key->seq[i] << (i * 8));
 	
-	ndis_key.key_index |= (1 << 31);
-
 	if (wpa_key->key_index == 0)
 	{
 		union iwreq_data wrqu;
 
+		/* pairwise key */
 		ndis_key.key_index |= (1 << 30);
+		ndis_key.key_index |= (1 << 31);
 
 		DBGTRACE("bssid " MACSTR, MAC2STR(wpa_key->addr));
 		if (!memcmp(wpa_key->addr,

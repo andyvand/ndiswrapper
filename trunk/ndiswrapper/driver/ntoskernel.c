@@ -87,22 +87,21 @@ STDCALL KIRQL KeGetCurrentIrql(void)
 
 STDCALL void KeInitializeSpinLock(KSPIN_LOCK *lock)
 {
-	spinlock_t *spin_lock;
-
-	TRACEENTER4("lock = %p, *lock = %p", lock, *lock);
+	struct wrap_spinlock *spin_lock;
 
 	if (!lock)
 	{
 		ERROR("%s", "invalid lock");
 		return;
 	}
-	spin_lock = wrap_kmalloc(sizeof(spinlock_t), GFP_KERNEL);
+
+	spin_lock = wrap_kmalloc(sizeof(struct wrap_spinlock), GFP_ATOMIC);
 	if (!spin_lock)
 		ERROR("%s", "Couldn't allocate space for spinlock");
 	else
 	{
 		DBGTRACE4("allocated spinlock %p", spin_lock);
-		spin_lock_init(spin_lock);
+		wrap_spin_lock_init(spin_lock);
 		*lock = (KSPIN_LOCK)spin_lock;
 	}
 }
@@ -130,12 +129,7 @@ STDCALL void KeAcquireSpinLock(KSPIN_LOCK *lock, KIRQL *oldirql)
 			BUG();
 		}
 	}
-	*oldirql = KeGetCurrentIrql();
-	if (*oldirql == DISPATCH_LEVEL)
-		spin_lock((spinlock_t *)(*lock));
-	else // *oldirql = PASSIVE_LEVEL
-		spin_lock_bh((spinlock_t *)(*lock));
-
+	wrap_spin_lock((struct wrap_spinlock *)*lock);
 	TRACEEXIT4(return);
 }
 
@@ -149,10 +143,7 @@ STDCALL void KeReleaseSpinLock(KSPIN_LOCK *lock, KIRQL newirql)
 		return;
 	}
 
-	if (newirql < DISPATCH_LEVEL)
-		spin_unlock_bh((spinlock_t *)(*lock));
-	else
-		spin_unlock((spinlock_t *)(*lock));
+	wrap_spin_unlock((struct wrap_spinlock *)*lock);
 }
 
 _FASTCALL struct slist_entry *

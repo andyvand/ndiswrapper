@@ -806,20 +806,18 @@ STDCALL void NdisMUnmapIoSpace(struct ndis_handle *handle, void *virtaddr,
 
 STDCALL void NdisAllocateSpinLock(struct ndis_spin_lock *lock)
 {
-	struct linux_lock *linux_lock;
+	struct wrap_spinlock *wrap_spinlock;
 
 	TRACEENTER4("lock %p", lock);
 
-	linux_lock = wrap_kmalloc(sizeof(linux_lock), GFP_ATOMIC);
-	if (!linux_lock)
+	wrap_spinlock = wrap_kmalloc(sizeof(wrap_spinlock), GFP_ATOMIC);
+	if (!wrap_spinlock)
 		ERROR("%s", "Couldn't allocate space for spinlock");
 	else
 	{
-		DBGTRACE4("allocated spinlock %p", spin_lock);
-		linux_lock->magic = NDIS_SPIN_LOCK_MAGIC;
-		atomic_set(&linux_lock->use, 0);
-		spin_lock_init(&linux_lock->spinlock);
-		lock->linux_lock = linux_lock;
+		DBGTRACE4("allocated spinlock %p", wrap_spinlock);
+		wrap_spin_lock_init(wrap_spinlock);
+		lock->wrap_spinlock = wrap_spinlock;
 	}
 	
 	TRACEEXIT4(return);
@@ -828,20 +826,20 @@ STDCALL void NdisAllocateSpinLock(struct ndis_spin_lock *lock)
 STDCALL void NdisFreeSpinLock(struct ndis_spin_lock *lock)
 {
 	TRACEENTER4("lock %p", lock);
-	if (!lock->linux_lock)
+	if (!lock->wrap_spinlock)
 	{
 		ERROR("incorrect lock %p", lock);
 		return;
 	}
 #ifdef CONFIG_DEBUG_SPINLOCK
-	if (lock->linux_lock->magic != NDIS_SPIN_LOCK_MAGIC)
+	if (lock->wrap_spinlock->magic != NDIS_SPIN_LOCK_MAGIC)
 		ERROR("uninitliazed lock %p (%u)",
-		      lock->linux_lock, lock->linux_lock->magic);
+		      lock->wrap_spinlock, lock->wrap_spinlock->magic);
 	else
 #endif
 	{
-		wrap_kfree(lock->linux_lock);
-		lock->linux_lock = NULL;
+		wrap_kfree(lock->wrap_spinlock);
+		lock->wrap_spinlock = NULL;
 	}
 	TRACEEXIT4(return);
 }
@@ -849,54 +847,27 @@ STDCALL void NdisFreeSpinLock(struct ndis_spin_lock *lock)
 STDCALL void NdisAcquireSpinLock(struct ndis_spin_lock *lock)
 {
 	TRACEENTER4("lock %p", lock);
-	if (!lock->linux_lock)
+	if (!lock->wrap_spinlock)
 	{
 		WARNING("Windows driver trying to use uninitialized lock %p,"
 		     " fixing it.", lock);
 		NdisAllocateSpinLock(lock);
-		if (!lock->linux_lock)
+		if (!lock->wrap_spinlock)
 			return;
 	}
-#ifdef CONFIG_DEBUG_SPINLOCK
-	if (lock->linux_lock->magic != NDIS_SPIN_LOCK_MAGIC)
-	{
-		ERROR("uninitliazed lock %p (%u)",
-		      lock->linux_lock, lock->linux_lock->magic);
-		return;
-	}
-#endif
-	if (atomic_read(&lock->linux_lock->use))
-		DBGTRACE4("lock %p already in use", lock);
-	else
-	{
-		atomic_set(&lock->linux_lock->use, 1);
-		spin_lock(&lock->linux_lock->spinlock);
-	}
+	wrap_spin_lock(lock->wrap_spinlock);
 	TRACEEXIT4(return);
 }
 
 STDCALL void NdisReleaseSpinLock(struct ndis_spin_lock *lock)
 {
 	TRACEENTER4("lock %p", lock);
-	if (!lock->linux_lock)
+	if (!lock->wrap_spinlock)
 	{
 		ERROR("incorrect lock %p", lock);
 		return;
 	}
-#ifdef CONFIG_DEBUG_SPINLOCK
-	if (lock->linux_lock->magic != NDIS_SPIN_LOCK_MAGIC)
-	{
-		ERROR("lock magic %u is not correct", lock->linux_lock->magic);
-		return;
-	}
-#endif
-	if (atomic_read(&lock->linux_lock->use))
-	{
-		spin_unlock(&lock->linux_lock->spinlock);
-		atomic_set(&lock->linux_lock->use, 0);
-	}
-	else
-		DBGTRACE4("lock %p not in use", lock);
+	wrap_spin_unlock(lock->wrap_spinlock);
 	TRACEEXIT4(return);
 }
 
@@ -933,7 +904,8 @@ STDCALL unsigned int NdisMAllocateMapRegisters(struct ndis_handle *handle,
 	}
 	
 	handle->map_count = basemap;
-	handle->map_dma_addr = kmalloc(basemap * sizeof(dma_addr_t), GFP_KERNEL);
+	handle->map_dma_addr = kmalloc(basemap * sizeof(dma_addr_t),
+				       GFP_KERNEL);
 	if (!handle->map_dma_addr)
 		TRACEEXIT2(return NDIS_STATUS_RESOURCES);
 	memset(handle->map_dma_addr, 0, basemap * sizeof(dma_addr_t));
@@ -998,8 +970,6 @@ STDCALL void NdisAllocateBufferPool(unsigned int *status,
 STDCALL void NdisFreeBufferPool(void *poolhandle)
 {
 	TRACEENTER4("%s", "");
-	/* Make sure all packets are recycled */
-	flush_scheduled_work();
 
 	TRACEEXIT4(return);
 }
@@ -1281,14 +1251,12 @@ irqreturn_t ndis_irq_th(int irq, void *data, struct pt_regs *pt_regs)
 {
 	int recognized = 0;
 	int handle_interrupt = 0;
-	unsigned long flags;
 
 	struct ndis_irq *ndis_irq = (struct ndis_irq *) data;
 	struct ndis_handle *handle = ndis_irq->handle; 
 
 	/* We need a lock here in order to implement NdisMSynchronizeWithInterrupt,
 	  however the ISR is really fast anyway so it should not hurt performance */
-//	spin_lock_irqsave(ndis_irq->spinlock, flags);
 	spin_lock(ndis_irq->spinlock);
 	if (handle->ndis_irq->req_isr)
 		handle->driver->miniport_char.isr(&recognized, &handle_interrupt, handle->adapter_ctx);
@@ -1298,7 +1266,6 @@ irqreturn_t ndis_irq_th(int irq, void *data, struct pt_regs *pt_regs)
 		/* it is not shared interrupt, so handler must be called */
 		recognized = handle_interrupt = 1;
 	}
-//	spin_unlock_irqrestore(ndis_irq->spinlock, flags);
 	spin_unlock(ndis_irq->spinlock);
 
 	if (recognized && handle_interrupt)
@@ -1376,7 +1343,6 @@ STDCALL unsigned char NdisMSynchronizeWithInterrupt(struct ndis_irq *ndis_irq,
 {
 	unsigned char ret;
 	unsigned char (*sync_func)(void *ctx) STDCALL;
-	unsigned long flags;
 
 	TRACEENTER4("%08x %08x %08x %08x\n", (int) ndis_irq,
 		    (int) ndis_irq, (int) func, (int) ctx);
@@ -1385,10 +1351,8 @@ STDCALL unsigned char NdisMSynchronizeWithInterrupt(struct ndis_irq *ndis_irq,
 		TRACEEXIT4(return 0);
 
 	sync_func = func;
-//	spin_lock_irqsave(ndis_irq->spinlock, flags);
 	spin_lock(ndis_irq->spinlock);
 	ret = sync_func(ctx);
-//	spin_unlock_irqrestore(ndis_irq->spinlock, flags);
 	spin_unlock(ndis_irq->spinlock);
 
 	DBGTRACE4("sync_func returns %u", ret);
@@ -1408,14 +1372,18 @@ STDCALL void NdisMIndicateStatus(struct ndis_handle *handle,
 	if (status == NDIS_STATUS_MEDIA_CONNECT)
 	{
 		handle->link_status = 1;
+#ifdef WPA
 		set_bit(WRAPPER_LINK_STATUS, &handle->wrapper_work);
-		queue_work(handle->ndis_wq, &handle->wrapper_worker);
+		schedule_work(&handle->wrapper_worker);
+#endif
 	}
 	if (status == NDIS_STATUS_MEDIA_DISCONNECT)
 	{
 		handle->link_status = 0;
+#ifdef WPA
 		set_bit(WRAPPER_LINK_STATUS, &handle->wrapper_work);
-		queue_work(handle->ndis_wq, &handle->wrapper_worker);
+		schedule_work(&handle->wrapper_worker);
+#endif
 	}
 #ifdef WPA
 	if (status == NDIS_STATUS_MEDIA_SPECIFIC_INDICATION && buf)
@@ -1534,12 +1502,11 @@ STDCALL void NdisMIndicateReceivePacket(struct ndis_handle *handle,
 			 * call return_packet later
 			 */
 			packet->status = NDIS_STATUS_PENDING;
-			spin_lock_bh(&handle->recycle_packets_lock);
+			wrap_spin_lock(&handle->recycle_packets_lock);
 			list_add(&packet->recycle_list,
 				 &handle->recycle_packets);
-			spin_unlock_bh(&handle->recycle_packets_lock);
-			queue_work(handle->ndis_wq,
-				   &handle->recycle_packets_work);
+			wrap_spin_unlock(&handle->recycle_packets_lock);
+			schedule_work(&handle->recycle_packets_work);
 		}
 	}
 	TRACEEXIT3(return);
@@ -1559,7 +1526,7 @@ STDCALL void NdisMSendComplete(struct ndis_handle *handle,
 	 * need to give the send-code a kick again.
 	 */
 	handle->send_status = 0;
-	queue_work(handle->ndis_wq, &handle->xmit_work);
+	schedule_work(&handle->xmit_work);
 	TRACEEXIT3(return);
 }
 
@@ -1573,7 +1540,7 @@ STDCALL void NdisMSendResourcesAvailable(struct ndis_handle *handle)
 	mdelay(5);
 	handle->send_status = 0;
 //	wake_up_interruptible(&handle->ndis_send_wqhead);
-	queue_work(handle->ndis_wq, &handle->xmit_work);
+	schedule_work(&handle->xmit_work);
 	TRACEEXIT3(return);
 }
 
@@ -1897,9 +1864,9 @@ STDCALL static int NdisScheduleWorkItem(struct ndis_work *ndis_work)
 	}
 	workentry->work = ndis_work;
 	
-	spin_lock_bh(&worklist_lock);
+	spin_lock(&worklist_lock);
 	list_add_tail(&workentry->list, &worklist);
-	spin_unlock_bh(&worklist_lock);
+	spin_unlock(&worklist_lock);
 	
 	schedule_work(&work);
 	TRACEEXIT3(return NDIS_STATUS_SUCCESS);
