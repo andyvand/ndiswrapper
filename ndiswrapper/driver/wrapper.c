@@ -1167,6 +1167,8 @@ static int misc_ioctl(struct inode *inode, struct file *file, unsigned int cmd, 
 	return 0;
 }
 
+void init_ndis_work(void);
+
 static int __init wrapper_init(void)
 {
 	int err;
@@ -1174,6 +1176,8 @@ static int __init wrapper_init(void)
                 printk(KERN_ERR "misc_register failed\n");
 		return err;
         }
+
+	init_ndis_work();
 	return 0;
 }
 
