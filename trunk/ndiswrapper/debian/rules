@@ -109,7 +109,6 @@ pversion	= $(shell sed -ne '1s/.*(\(.*\)).*/\1/p' debian/changelog)
 MODDIR		= ..
 
 pmodules = $(package)-modules-$(non_epoch_version)
-psource = $(package)-source
 
 # Prepares the package for distribution.  Intended for the kernel
 # maintainer.
@@ -142,7 +141,12 @@ build-modules-prep:
 	sed -e 's/$${kpkg\:Kernel\-Version}/$(non_epoch_version)/' \
 	debian/control.modules > debian/control
 
-	echo "driver/ndiswrapper.ko /lib/modules/$(non_epoch_version)/misc" \
+	if [ $(kplevel) == 4 ];then \
+		module=ndiswrapper.o; \
+	else \
+		module=ndiswrapper.ko; \
+	fi; \
+	echo "driver/$$module /lib/modules/$(non_epoch_version)/misc" \
 		> debian/ndiswrapper-modules-$(non_epoch_version).install
 	echo "lib/modules/$(non_epoch_version)/misc" > debian/dirs
 
@@ -159,10 +163,7 @@ build-modules:
 	dh_installdirs lib/modules/$(non_epoch_version)/misc
 	$(MAKE) -C driver
 
-	# Install the module
-	$(MAKE) -C driver install DESTDIR=$(CURDIR)/debian/$(pmodules)
-
-clean: check-perms clean-modules clean-utils clean-source
+clean: check-perms clean-modules clean-utils
 
 check-perms:
 	dh_testdir
@@ -177,14 +178,6 @@ clean-modules: build-modules-prep
 clean-utils: build-utils-prep
 	-$(MAKE) -C utils clean
 	dh_clean
-
-clean-source: source-prep
-	-rm -f debian/control.modules.in debian/postinst.modules.in
-	dh_clean
-
-build-utils-prep:
-	cp debian/control.utils debian/control
-	cp debian/dirs.utils debian/dirs
 
 common-prolog:
 	dh_testdir
@@ -216,27 +209,23 @@ common-epilog:
 	dh_gencontrol
 	dh_md5sums
 
-build-utils: build-utils-prep common-prolog build-utils-make common-epilog
+build-utils-prep:
+	cp debian/control.utils debian/control
+	cp debian/dirs.utils debian/dirs
+
+build-utils:
+	export DH_OPTIONS='-i'
 	dh_installman debian/ndiswrapper.8
+	$(MAKE) -C utils all
 
-build-utils-make:
-	$(MAKE) -C utils DESTDIR=$(CURDIR)/debian/ndiswrapper-utils
-
-source-prep:
-	cp debian/control.source debian/control
-	cp debian/dirs.source debian/dirs
-	cp debian/postinst.modules debian/postinst.modules.in
-	sed -e 's/$${kpkg\:Kernel\-Version}/_KVERS_/' \
-	debian/control.modules > debian/control.modules.in
-
-$(psource): source-prep common-prolog common-epilog
-	dh_builddeb
-
-binary-utils:
-	$(MAKE) -f debian/rules DH_OPTIONS=-i build-utils
-	dh_builddeb
+binary-utils: build-utils-prep common-prolog build-utils common-epilog
+	dh_builddeb --destdir=$(MODDIR)
 
 binary-modules: build-modules-prep common-prolog build-modules common-epilog
 	dh_builddeb --destdir=$(MODDIR)
 
-.PHONY: modules utils source source-prep build-utils build-utils-make
+binary:
+	$(MAKE) -f debian/rules binary-utils
+	$(MAKE) -f debian/rules binary-modules
+
+.PHONY: binary binary-modules binary-utils build-utils build-utils-prep common-epilog common-prolog clean-utils clean-modules check-perms clean build-modules build-modules-prep
