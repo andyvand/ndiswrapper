@@ -1902,9 +1902,9 @@ void module_cleanup(void)
 static int __init wrapper_init(void)
 {
 #if defined DEBUG && DEBUG >= 1
-	char *argv[] = {"loadndisdriver", 1, DRV_VERSION, "-a", 0};
+	char *argv[] = {"loadndisdriver", "1", DRV_VERSION, "-a", 0};
 #else
-	char *argv[] = {"loadndisdriver", 0, DRV_VERSION, "-a", 0};
+	char *argv[] = {"loadndisdriver", "0", DRV_VERSION, "-a", 0};
 #endif
 	char *env[] = {0};
 	int err;

@@ -49,10 +49,15 @@ static int debug;
 	directory only
 #endif
 
-#define error(args...) do { if (debug)		\
-			syslog(LOG_KERN | LOG_ERR, ## args);} while (0)
-#define info(args...) do { if (debug)		\
-			syslog(LOG_KERN | LOG_INFO, ## args);} while (0)
+#define error(fmt, args...) do { if (debug)	\
+			syslog(LOG_KERN | LOG_ERR, "%s(%d): " fmt "\n", \
+			       __FUNCTION__, __LINE__, ## args);	\
+	} while (0)
+#define info(fmt, args...) do { if (debug)	\
+			syslog(LOG_KERN | LOG_ERR, "%s(%d): " fmt "\n", \
+			       __FUNCTION__, __LINE__, ## args);	\
+	} while (0)
+
 
 static int get_filesize(int fd)
 {
@@ -106,7 +111,7 @@ static int put_file(int device, char *filename, int ioctl_nr)
 	put_file.size = size;
 	if (!image)
 	{
-		error("Unable to locate file.\n");
+		error("Unable to locate file %s", filename);
 		return -EINVAL;
 	}
 
@@ -165,7 +170,7 @@ static int parse_setting_line(const char *setting_line, char *setting_name,
 	if ((val = strchr(s, '|')) == NULL ||
 	     (end = strchr(s, '\n')) == NULL)
 	{
-		error("invalid setting1: %s\n", setting_line);
+		error("invalid setting: %s", setting_line);
 		return -EINVAL;
 	}
 	for (i = 0; s != val && i < NAME_LEN; s++, i++)
@@ -173,7 +178,7 @@ static int parse_setting_line(const char *setting_line, char *setting_name,
 	setting_name[i] = 0;
 	if (*s != '|')
 	{
-		error("invalid setting2: %s\n", setting_line);
+		error("invalid setting: %s", setting_line);
 		return -EINVAL;
 	}
 
@@ -182,7 +187,7 @@ static int parse_setting_line(const char *setting_line, char *setting_name,
 	setting_val[i] = 0;
 	if (*s != '\n')
 	{
-		error("invalid setting3: %s\n", setting_line);
+		error("invalid setting: %s", setting_line);
 		return -EINVAL;
 	}
 //	info("Found setting: name=%s, val=\"%s\"\n",
@@ -191,7 +196,7 @@ static int parse_setting_line(const char *setting_line, char *setting_name,
 	// setting_val can be empty, but not value
 	if (strlen(setting_name) == 0)
 	{
-		error("invalid setting: \"%s\"\n", setting_line);
+		error("invalid setting: \"%s\"", setting_line);
 		return -EINVAL;
 	}
 
@@ -238,7 +243,7 @@ static int put_device(int device, char *conf_file_name)
 		if (ret < 0)
 			return -EINVAL;
 
-		else if (strcmp(setting_name, "BusType") == 0)
+		if (strcmp(setting_name, "BusType") == 0)
 		{
 			put_device.bustype = strtol(setting_val, NULL, 10);
 			if (put_device.bustype != 0 &&
@@ -247,29 +252,41 @@ static int put_device(int device, char *conf_file_name)
 				perror("invalid bustype");
 				return -EINVAL;
 			}
-
 			if (ioctl(device, NDIS_PUTDEVICE, &put_device))
 			{
 				perror("Unable to put device "
 				       "(check dmesg for more info)");
 				return -EINVAL;
 			}
+			rewind(config);
+			break;
 		}
-		else
+	}
+
+	if (put_device.bustype == -1)
+		return -EINVAL;
+
+	while (fgets(setting_line, SETTING_LEN-1, config))
+	{
+		struct put_setting setting;
+
+		setting_line[SETTING_LEN-1] = 0;
+		ret = parse_setting_line(setting_line, setting_name,
+					 setting_val);
+		if (ret == 0)
+			continue;
+		if (ret < 0)
+			return -EINVAL;
+
+		setting.name_len = strlen(setting_name);
+		setting.val_str_len = strlen(setting_val);
+		setting.name = setting_name;
+		setting.value = setting_val;
+
+		if (ioctl(device, NDIS_PUTSETTING, &setting))
 		{
-			struct put_setting setting;
-
-			setting.name_len = strlen(setting_name);
-			setting.val_str_len = strlen(setting_val);
-			setting.name = setting_name;
-			setting.value = setting_val;
-
-			if (ioctl(device, NDIS_PUTSETTING, &setting))
-			{
-				error("Error adding setting: %s\n",
-				       setting_name);
-				return -EINVAL;
-			}
+			error("Error adding setting: %s", setting_name);
+			return -EINVAL;
 		}
 	}
 	fclose(config);
@@ -288,14 +305,14 @@ static int load(int device, char *confdir)
 
 	if(chdir(confdir))
 	{
-		error("Unable to open config dir %s\n", confdir);
+		error("Unable to open config dir %s", confdir);
 		return -1;
 	}
 
 	dir = opendir(".");
 	if(!dir)
 	{
-		error("Unable to open config dir %s\n", confdir);
+		error("Unable to open config dir %s", confdir);
 		chdir("..");
 		return -1;
 	}
@@ -434,56 +451,75 @@ static int get_misc_minor()
 
 int main(int argc, char *argv[0])
 {
-	int device, misc_minor, res;
+	int i, device, misc_minor, res;
+
+	device = -1;
+	debug = 1;
+
+	openlog("loadndisdriver", LOG_PERROR | LOG_CONS, LOG_KERN);
 
 	if (argc < 3)
 	{
-		error("Usage: %s <debug> <version> [-a] [driver]\n", argv[0]);
-		return -EINVAL;
+		error("Usage: %s <debug> <version> [-a] [driver]", argv[0]);
+		res = -EINVAL;
+		goto out;
 	}
 
-	if((res = chdir(confdir)))
+	i = -1;
+	i = atoi(argv[1]);
+	if (i < 0)
 	{
-		error("%s does not exist\n", confdir);
-		return res;
+		error("invalid debug value %d", i);
+		res = -EINVAL;
+		goto out;
+	}
+	else
+		debug = i;
+
+	if ((res = chdir(confdir)))
+	{
+		error("%s does not exist", confdir);
+		goto out;
 	}
 
 	misc_minor = get_misc_minor();
-	if(misc_minor == -1)
+	if (misc_minor == -1)
 	{
 		error("%s: cannot find minor for kernel module."
-		       "Module loaded?\n", argv[0]);
-		return -EINVAL;
+		       "Module loaded?", argv[0]);
+		res = -EINVAL;
+		goto out;
 	}
 
 	device = open_misc_device(misc_minor);
-	if(device == -1)
+	if (device == -1)
 	{
-		perror("Unable to open kernel driver");
-		return -EINVAL;
+		error("Unable to open kernel driver (%d)", errno);
+		res = -EINVAL;
+		goto out;
 	}
 
 	dotaint();
 
-	debug = atoi(argv[1]);
-	if (debug < 0)
-		return -EINVAL;
-
 	if (strcmp(argv[2], DRV_VERSION))
-		return -EINVAL;
+	{
+		res = -EINVAL;
+		goto out;
+	}
 
-	openlog("loadndisdriver", LOG_CONS | LOG_ODELAY, LOG_KERN);
-	if(strcmp(argv[3], "-a") == 0)
+	if (strcmp(argv[3], "-a") == 0)
 		res = loadall(device);
 	else
 		res = load(device, argv[3]);
 
 	if (!res)
 	{
-		info("Drivers loaded successfully\n");
+		info("%s", "Drivers loaded successfully");
 	}
 
+out:
+	if (device != -1)
+		close(device);
 	closelog();
-	close(device);
 	return res;
 }
