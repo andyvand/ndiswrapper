@@ -73,8 +73,6 @@ extern struct list_head wrap_allocs;
 extern struct wrap_spinlock wrap_allocs_lock;
 extern struct wrap_spinlock dispatch_event_lock;
 
-extern struct list_head handle_ctx_list;
-
 static void ndis_set_rx_mode(struct net_device *dev);
 
 /*
@@ -1562,7 +1560,6 @@ static int __init wrapper_init(void)
 	ndis_init();
 	loader_init();
 	INIT_LIST_HEAD(&wrap_allocs);
-	INIT_LIST_HEAD(&handle_ctx_list);
 	wrap_spin_lock_init(&wrap_allocs_lock);
 	wrap_spin_lock_init(&dispatch_event_lock);
 	ndiswrapper_procfs_init();
