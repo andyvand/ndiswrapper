@@ -17,6 +17,8 @@
 #include <asm/uaccess.h>
 
 #include "ndis.h"
+#include "iw_ndis.h"
+#include "wrapper.h"
 
 #define MAX_PROC_STR_LEN 32
 
@@ -44,8 +46,7 @@ static int procfs_read_stats(char *page, char **start, off_t off,
 
 	res = miniport_query_info(handle, NDIS_OID_STATISTICS, (char*)&stats,
 				  sizeof(stats), &written, &needed);
-	if (!res)
-	{
+	if (!res) {
 
 		p += sprintf(p, "tx_frames=%Lu\n", stats.tx_frag);
 		p += sprintf(p, "tx_multicast_frames=%Lu\n",
@@ -63,8 +64,7 @@ static int procfs_read_stats(char *page, char **start, off_t off,
 		p += sprintf(p, "fcs_errors=%Lu\n", stats.fcs_err);
 	}
 
-	if (p - page > count)
-	{
+	if (p - page > count) {
 		ERROR("wrote %u bytes (limit is %u)\n", p - page, count);
 		*eof = 1;
 	}
@@ -98,8 +98,7 @@ static int procfs_read_encr(char *page, char **start, off_t off,
 
 	res = miniport_query_info(handle, NDIS_OID_ESSID, (char*)&essid,
 				  sizeof(essid), &written, &needed);
-	if (!res)
-	{
+	if (!res) {
 		essid.essid[essid.length] = '\0';
 		p += sprintf(p, "essid=%s\n", essid.essid);
 	}
@@ -107,8 +106,7 @@ static int procfs_read_encr(char *page, char **start, off_t off,
 	res = miniport_query_int(handle, NDIS_OID_ENCR_STATUS, &encr_status);
 	res |= miniport_query_int(handle, NDIS_OID_AUTH_MODE, &auth_mode);
 
-	if (!res)
-	{
+	if (!res) {
 		int active = handle->encr_info.active;
 		p += sprintf(p, "tx_key=%u\n", handle->encr_info.active);
 		p += sprintf(p, "key=");
@@ -130,8 +128,7 @@ static int procfs_read_encr(char *page, char **start, off_t off,
 	p += sprintf(p, "mode=%s\n", (op_mode == NDIS_MODE_ADHOC) ?
 		     "adhoc" : (op_mode == NDIS_MODE_INFRA) ?
 		     "managed" : "auto");
-	if (p - page > count)
-	{
+	if (p - page > count) {
 		WARNING("wrote %u bytes (limit is %u)", p - page, count);
 		*eof = 1;
 	}
@@ -157,8 +154,7 @@ static int procfs_read_hw(char *page, char **start, off_t off,
 	res = miniport_query_info(handle, NDIS_OID_CONFIGURATION,
 				  (char*)&config, sizeof(config),
 				  &written, &needed);
-	if (!res)
-	{
+	if (!res) {
 		p += sprintf(p, "beacon_period=%u msec\n",
 			     config.beacon_period);
 		p += sprintf(p, "atim_window=%u msec\n", config.atim_window);
@@ -223,8 +219,7 @@ static int procfs_read_hw(char *page, char **start, off_t off,
 		p += sprintf(p, "rx_antenna=%lu\n",
 			     antenna);
 
-	if (p - page > count)
-	{
+	if (p - page > count) {
 		WARNING("wrote %u bytes (limit is %u)", p - page, count);
 		*eof = 1;
 	}
@@ -273,8 +268,7 @@ static int procfs_write_settings(struct file *file, const char *buf,
 	if ((p = strchr(setting, '=')))
 		*p = 0;
 
-	if (!strcmp(setting, "hangcheck_interval"))
-	{
+	if (!strcmp(setting, "hangcheck_interval")) {
 		int i;
 
 		if (!p)
@@ -284,9 +278,7 @@ static int procfs_write_settings(struct file *file, const char *buf,
 		hangcheck_del(handle);
 		handle->hangcheck_interval = i * HZ;
 		hangcheck_add(handle);
-	}
-	else if (!strcmp(setting, "suspend"))
-	{
+	} else if (!strcmp(setting, "suspend")) {
 		int i;
 
 		if (!p)
@@ -301,22 +293,17 @@ static int procfs_write_settings(struct file *file, const char *buf,
 		else
 			ndis_suspend_usb(handle->intf, i);
 #endif
-	}
-	else if (!strcmp(setting, "resume")) {
+	} else if (!strcmp(setting, "resume")) {
 		if (handle->device->bustype == 5)
 			ndis_resume_pci(handle->dev.pci);
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0) && defined(CONFIG_USB)
 		else
 			ndis_resume_usb(handle->intf);
 #endif
-	}
-	else if (!strcmp(setting, "reinit"))
-	{
+	} else if (!strcmp(setting, "reinit")) {
 		if (ndis_reinit(handle))
 			return -EINVAL;
-	}
-	else if (!strcmp(setting, "power_profile"))
-	{
+	} else if (!strcmp(setting, "power_profile")) {
 		int i;
 		struct miniport_char *miniport;
 		unsigned long profile_inf;
@@ -341,9 +328,7 @@ static int procfs_write_settings(struct file *file, const char *buf,
 		miniport->pnp_event_notify(handle->adapter_ctx,
 					   NDIS_PNP_PROFILE_CHANGED,
 					   &profile_inf, sizeof(profile_inf));
-	}
-	else if (!strcmp(setting, "auth_mode"))
-	{
+	} else if (!strcmp(setting, "auth_mode")) {
 		int i;
 
 		if (!p)
@@ -355,9 +340,7 @@ static int procfs_write_settings(struct file *file, const char *buf,
 
 		if (set_auth_mode(handle, i))
 			return -EINVAL;
-	}
-	else if (!strcmp(setting, "encr_mode"))
-	{
+	} else if (!strcmp(setting, "encr_mode")) {
 		int i;
 
 		if (!p)
@@ -369,9 +352,7 @@ static int procfs_write_settings(struct file *file, const char *buf,
 
 		if (set_encr_mode(handle, i))
 			return -EINVAL;
-	}
-	else
-	{
+	} else {
 		int i, res = -1;
 
 		if (!p)
@@ -379,18 +360,20 @@ static int procfs_write_settings(struct file *file, const char *buf,
 		p++;
 		DBGTRACE("name='%s', value='%s'\n", setting, p);
 		for (i = 0; i < handle->device->nr_settings; i++) {
-			struct ndis_setting *ndis_setting;
-			ndis_setting = handle->device->settings[i];
+			struct device_setting *ndis_setting;
+			struct ndis_config_param *param;
 
+			ndis_setting = handle->device->settings[i];
+			param = &ndis_setting->config_param;
 			if (!stricmp(ndis_setting->name, setting)) {
 				if (strlen(p) > MAX_NDIS_SETTING_VALUE_LEN)
 					TRACEEXIT1(return -EINVAL);
 				memset(ndis_setting->value, 0,
 					   MAX_NDIS_SETTING_VALUE_LEN);
 				memcpy(ndis_setting->value, p, strlen(p));
-				if (ndis_setting->config_param.data.ustring.buf)
-					RtlFreeUnicodeString(&ndis_setting->config_param.data.ustring);
-				ndis_setting->config_param.type = NDIS_SETTING_NONE;
+				if (param->type == NDIS_CONFIG_PARAM_STRING)
+					RtlFreeUnicodeString(&param->data.ustring);
+				param->type = NDIS_CONFIG_PARAM_NONE;
 				res = 0;
 			}
 		}
@@ -415,8 +398,7 @@ int ndiswrapper_procfs_add_iface(struct ndis_handle *handle)
 
 	handle->procfs_iface = proc_iface;
 
-	if (proc_iface == NULL)
-	{
+	if (proc_iface == NULL) {
 		ERROR("%s", "Couldn't create proc directory");
 		return -ENOMEM;
 	}
@@ -425,13 +407,10 @@ int ndiswrapper_procfs_add_iface(struct ndis_handle *handle)
 
 	procfs_entry = create_proc_entry("hw", S_IFREG | S_IRUSR | S_IRGRP,
 					 proc_iface);
-	if (procfs_entry == NULL)
-	{
+	if (procfs_entry == NULL) {
 		ERROR("%s", "Couldn't create proc entry for 'hw'");
 		return -ENOMEM;
-	}
-	else
-	{
+	} else {
 		procfs_entry->uid = proc_uid;
 		procfs_entry->gid = proc_gid;
 		procfs_entry->data = handle;
@@ -440,13 +419,10 @@ int ndiswrapper_procfs_add_iface(struct ndis_handle *handle)
 
 	procfs_entry = create_proc_entry("stats", S_IFREG | S_IRUSR | S_IRGRP,
 					 proc_iface);
-	if (procfs_entry == NULL)
-	{
+	if (procfs_entry == NULL) {
 		ERROR("%s", "Couldn't create proc entry for 'stats'");
 		return -ENOMEM;
-	}
-	else
-	{
+	} else {
 		procfs_entry->uid = proc_uid;
 		procfs_entry->gid = proc_gid;
 		procfs_entry->data = handle;
@@ -455,13 +431,10 @@ int ndiswrapper_procfs_add_iface(struct ndis_handle *handle)
 
 	procfs_entry = create_proc_entry("encr", S_IFREG | S_IRUSR | S_IRGRP,
 					 proc_iface);
-	if (procfs_entry == NULL)
-	{
+	if (procfs_entry == NULL) {
 		ERROR("%s", "Couldn't create proc entry for 'encr'");
 		return -ENOMEM;
-	}
-	else
-	{
+	} else {
 		procfs_entry->uid = proc_uid;
 		procfs_entry->gid = proc_gid;
 		procfs_entry->data = handle;
@@ -471,13 +444,10 @@ int ndiswrapper_procfs_add_iface(struct ndis_handle *handle)
 	procfs_entry = create_proc_entry("settings", S_IFREG |
 					 S_IRUSR | S_IRGRP |
 					 S_IWUSR | S_IWGRP, proc_iface);
-	if (procfs_entry == NULL)
-	{
+	if (procfs_entry == NULL) {
 		ERROR("%s", "Couldn't create proc entry for 'settings'");
 		return -ENOMEM;
-	}
-	else
-	{
+	} else {
 		procfs_entry->uid = proc_uid;
 		procfs_entry->gid = proc_gid;
 		procfs_entry->data = handle;
@@ -506,8 +476,7 @@ void ndiswrapper_procfs_remove_iface(struct ndis_handle *handle)
 int ndiswrapper_procfs_init(void)
 {
 	ndiswrapper_procfs_entry = proc_mkdir(DRV_NAME, proc_net);
-	if (ndiswrapper_procfs_entry == NULL)
-	{
+	if (ndiswrapper_procfs_entry == NULL) {
 		ERROR("%s", "Couldn't create procfs directory");
 		return -ENOMEM;
 	}

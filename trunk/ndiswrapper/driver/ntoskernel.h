@@ -450,17 +450,20 @@ _FASTCALL void KefReleaseSpinLockFromDpcLevel(int dummy1, int dummy2,
 
 #define WRAPPER_SPIN_LOCK_MAGIC 137
 
+#define raise_irql(irql) KfRaiseIrql(0, 0, irql)
+#define lower_irql(irql) KfLowerIrql(0, 0, irql)
+
 #define wrap_spin_lock_init(lock) do {				\
 		spin_lock_init(&((lock)->spinlock));		\
 		(lock)->magic = WRAPPER_SPIN_LOCK_MAGIC;	\
 	} while (0)
 #define wrap_spin_lock(lock)  do {					\
-		(lock)->irql = KfRaiseIrql(0, 0, DISPATCH_LEVEL);	\
+		(lock)->irql = raise_irql(DISPATCH_LEVEL);		\
 		spin_lock(&((lock)->spinlock));				\
 	} while (0)
 #define wrap_spin_unlock(lock) do {			\
 		spin_unlock(&((lock)->spinlock));	\
-		KfLowerIrql(0, 0, (lock)->irql);	\
+		lower_irql((lock)->irql);		\
 	} while (0)
 
 static inline void wrapper_set_timer_dpc(struct wrapper_timer *wrapper_timer,
@@ -480,8 +483,5 @@ static inline int SPAN_PAGES(unsigned int ptr, unsigned int len)
 	unsigned int p = ptr & (PAGE_SIZE - 1);
 	return (p + len + (PAGE_SIZE - 1)) >> PAGE_SHIFT;
 }
-
-#define raise_irql(irql) KfRaiseIrql(0, 0, irql)
-#define lower_irql(irql) KfLowerIrql(0, 0, irql)
 
 #endif // _NTOSKERNEL_H_

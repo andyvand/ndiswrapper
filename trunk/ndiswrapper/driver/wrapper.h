@@ -12,54 +12,41 @@
  *  GNU General Public License for more details.
  *
  */
+
 #ifndef WRAPPER_H
 #define WRAPPER_H
 
-#include <linux/ioctl.h>
+#include "ndis.h"
 
-#define MAX_DRIVER_NAME_LEN 32
-#define MAX_NDIS_VERSION_STRING_LEN 64
-#define MAX_NDIS_SETTING_NAME_LEN 128
-#define MAX_NDIS_SETTING_VALUE_LEN 256
+int miniport_reset(struct ndis_handle *handle);
+int miniport_query_info(struct ndis_handle *handle, unsigned int oid,
+			char *buf, int bufsize, unsigned int *written,
+			unsigned int *needed);
+int miniport_set_info(struct ndis_handle *handle, unsigned int oid,
+		      char *buf, int bufsize,
+		      unsigned int *written, unsigned int *needed);
+int miniport_query_int(struct ndis_handle *handle, int oid, int *data);
+int miniport_set_int(struct ndis_handle *handle, int oid, int data);
+int miniport_init(struct ndis_handle *handle);
+void miniport_halt(struct ndis_handle *handle);
+void hangcheck_add(struct ndis_handle *handle);
+void hangcheck_del(struct ndis_handle *handle);
+void statcollector_add(struct ndis_handle *handle);
+void sendpacket_done(struct ndis_handle *handle, struct ndis_packet *packet);
+int ndis_suspend_pci(struct pci_dev *pdev, u32 state);
+int ndis_resume_pci(struct pci_dev *pdev);
 
-#define MAX_PE_IMAGES 4
-#define MAX_NDIS_DEVICES 20
-#define MAX_NDIS_BIN_FILES 5
-#define MAX_NDIS_SETTINGS 256
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0) && defined(CONFIG_USB)
+int ndis_suspend_usb(struct usb_interface *intf, u32 state);
+int ndis_resume_usb(struct usb_interface *intf);
+#endif
+void ndis_remove_one(struct ndis_handle *handle);
+int ndis_reinit(struct ndis_handle *handle);
+int setup_dev(struct net_device *dev);
 
-struct load_driver_file {
-	char name[MAX_DRIVER_NAME_LEN];
-	size_t size;
-	void *data;
-};
-
-struct load_device_setting {
-	char name[MAX_NDIS_SETTING_NAME_LEN];
-	char value[MAX_NDIS_SETTING_VALUE_LEN];
-};
-		
-struct load_device {
-	int bustype;
-	int vendor;
-	int device;
-	int pci_subvendor;
-	int pci_subdevice;
-	int fuzzy;
-	unsigned int nr_settings;
-	struct load_device_setting settings[MAX_NDIS_SETTINGS];
-};
-
-struct load_driver {
-	char name[MAX_DRIVER_NAME_LEN];
-	unsigned int nr_sys_files;
-	struct load_driver_file sys_files[MAX_PE_IMAGES];
-	unsigned int nr_devices;
-	struct load_device devices[MAX_NDIS_DEVICES];
-	unsigned int nr_bin_files;
-	struct load_driver_file bin_files[MAX_NDIS_BIN_FILES];
-};
-
-#define NDIS_ADD_DRIVER     _IOW('N', 0, struct load_driver *)
+struct net_device *ndis_init_netdev(struct ndis_handle **phandle,
+				    struct ndis_device *device,
+				    struct ndis_driver *driver,
+				    void *netdev);
 
 #endif /* WRAPPER_H */
-
