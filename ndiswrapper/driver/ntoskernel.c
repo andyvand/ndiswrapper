@@ -534,8 +534,8 @@ STDCALL void WRAP_EXPORT(ExFreePool)
 	TRACEEXIT2(return);
 }
 
-WRAP_FUNC_PTR_DECL(ExAllocatePoolWithTag);
-WRAP_FUNC_PTR_DECL(ExFreePool);
+WRAP_FUNC_PTR_DECL(ExAllocatePoolWithTag)
+WRAP_FUNC_PTR_DECL(ExFreePool)
 
 STDCALL void WRAP_EXPORT(ExInitializeNPagedLookasideList)
 	(struct npaged_lookaside_list *lookaside,
@@ -868,6 +868,7 @@ STDCALL NTSTATUS WRAP_EXPORT(KeWaitForMultipleObjects)
 		if (dh->signal_state > 0 ||
 		    (dh->size == sizeof(*kmutex) &&
 		     kmutex->owner_thread == get_current())) {
+			DBGTRACE3("%p is already signaled", object[i]);
 			/* if synchronization event or semaphore,
 			 * decrement count */
 			if (dh->type == SynchronizationEvent ||
@@ -1390,8 +1391,8 @@ _FASTCALL void WRAP_EXPORT(IofCompleteRequest)
 	       (stack->control & CALL_ON_ERROR))))) {
 		USBTRACE("calling %p", stack->completion_handler);
 
-		if (stack->completion_handler(stack->dev_obj, irp,
-		                              stack->handler_arg) ==
+		if (LIN2WIN3(stack->completion_handler, stack->dev_obj, irp,
+			     stack->handler_arg) ==
 		    STATUS_MORE_PROCESSING_REQUIRED)
 			USBTRACEEXIT(return);
 	}
@@ -1520,7 +1521,10 @@ STDCALL NTSTATUS WRAP_EXPORT(IoConnectInterrupt)
 	interrupt->service_context = service_context;
 	InitializeListHead(&interrupt->list);
 	interrupt->irql = irql;
-	interrupt->synch_irql = synch_irql;
+	if (synch_irql > DISPATCH_LEVEL)
+		interrupt->synch_irql = DISPATCH_LEVEL;
+	else
+		interrupt->synch_irql = synch_irql;
 	interrupt->interrupt_mode = interrupt_mode;
 	if (request_irq(vector, io_irq_th, shareable ? SA_SHIRQ : 0,
 			"io_irq", interrupt)) {
@@ -1542,12 +1546,12 @@ STDCALL BOOLEAN WRAP_EXPORT(KeSynchronizeExecution)
 		spinlock = interrupt->actual_lock;
 	else
 		spinlock = &interrupt->lock;
-	if (interrupt->synch_irql >= DISPATCH_LEVEL)
+	if (interrupt->synch_irql == DISPATCH_LEVEL)
 		irql = kspin_lock_irql(spinlock, interrupt->synch_irql);
 	else
 		kspin_lock(spinlock);
 	ret = synch_routine(synch_context);
-	if (interrupt->synch_irql >= DISPATCH_LEVEL)
+	if (interrupt->synch_irql == DISPATCH_LEVEL)
 		kspin_unlock_irql(spinlock, irql);
 	else
 		kspin_unlock(spinlock);
@@ -2076,7 +2080,7 @@ STDCALL void WRAP_EXPORT(KeBugCheckEx)
 STDCALL ULONG WRAP_EXPORT(ExSetTimerResolution)
 	(ULONG time, BOOLEAN set)
 {
-	/* yet another proof that they must be on crack */
+	/* yet another "innovation"! */
 	return time;
 }
 
