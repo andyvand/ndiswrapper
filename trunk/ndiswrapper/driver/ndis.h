@@ -38,14 +38,14 @@ typedef ULONG ndis_oid;
 typedef uint64_t NDIS_PHY_ADDRESS;
 
 struct ndis_sg_element {
-	NDIS_PHY_ADDRESS address;
-	UINT len;
-	UINT reserved;
+	PHYSICAL_ADDRESS address;
+	ULONG length;
+	ULONG_PTR reserved;
 };
 
 struct ndis_sg_list {
-	UINT len;
-	UINT reserved;
+	ULONG nent;
+	ULONG_PTR reserved;
 	struct ndis_sg_element *elements;
 };
 
@@ -122,10 +122,15 @@ struct ndis_packet {
 
 	struct ndis_packet_extension extension;
 
+	struct scatterlist *sg_list;
+	unsigned int sg_ents;
 	/* ndiswrapper-specific info */
-	struct ndis_sg_list sg_list;
-	/* since we haven't implemented sg, we use one dummy entry */
-	struct ndis_sg_element sg_element;
+	struct ndis_sg_list ndis_sg_list;
+	struct ndis_sg_element *ndis_sg_elements;
+	/* RTL8180L overshoots past ndis_eg_elements (during
+	 * MiniportSendPackets) and overwrites what is below, so put a
+	 * barrier */
+	void *dummy;
 	dma_addr_t dataphys;
 	unsigned char header[ETH_HLEN];
 	unsigned char *look_ahead;

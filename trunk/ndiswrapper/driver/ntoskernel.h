@@ -57,6 +57,8 @@
  */
 typedef struct workqueue_struct *workqueue;
 #include <asm/dma-mapping.h>
+#include <linux/scatterlist.h>
+
 #define PCI_DMA_ALLOC_COHERENT(pci_dev,size,dma_handle) \
 	dma_alloc_coherent(&pci_dev->dev,size,dma_handle, \
 			   GFP_KERNEL | __GFP_REPEAT)
@@ -66,6 +68,10 @@ typedef struct workqueue_struct *workqueue;
 	dma_map_single(&pci_dev->dev,addr,size,direction)
 #define PCI_DMA_UNMAP_SINGLE(pci_dev,dma_handle,size,direction) \
 	dma_unmap_single(&pci_dev->dev,dma_handle,size,direction)
+#define MAP_SG(pci_dev, sglist, nents, direction) \
+	dma_map_sg(&pci_dev->dev, sglist, nents, direction)
+#define UNMAP_SG(pci_dev, sglist, nents, direction) \
+	dma_unmap_sg(&pci_dev->dev, sglist, nents, direction)
 
 #else // linux version <= 2.5.41
 
@@ -77,6 +83,15 @@ typedef struct workqueue_struct *workqueue;
 	pci_map_single(dev,addr,size,direction)
 #define PCI_DMA_UNMAP_SINGLE(dev,dma_handle,size,direction) \
 	pci_unmap_single(dev,dma_handle,size,direction)
+#define sg_init_one(sg, addr, len) do {			 \
+		(sg)->page = virt_to_page(addr);		 \
+		(sg)->offset = (unsigned long)addr & ~PAGE_MASK; \
+		(sg)->length = len;				 \
+	} while (0)
+#define MAP_SG(dev, sglist, nents, direction) \
+	pci_map_sg(dev, sglist, nents, direction)
+#define UNMAP_SG(dev, sglist, nents, direction) \
+	pci_unmap_sg(dev, sglist, nents, direction)
 #include <linux/tqueue.h>
 #define work_struct tq_struct
 #define INIT_WORK INIT_TQUEUE
@@ -462,9 +477,12 @@ static inline ULONG SPAN_PAGES(ULONG_PTR ptr, SIZE_T length)
 	ULONG_PTR start, end;
 	ULONG n;
 
-	start = (ptr & PAGE_MASK);
+	start = ptr & (PAGE_SIZE - 1);
 	end = (ptr + length + PAGE_SIZE - 1) & PAGE_MASK;
 	n = (end - start) / PAGE_SIZE;
+
+	n = ((ULONG)(((ptr & (PAGE_SIZE -1)) + (length) + (PAGE_SIZE - 1)) >> PAGE_SHIFT));
+
 	return n;
 }
 
