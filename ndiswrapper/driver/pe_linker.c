@@ -145,7 +145,7 @@ static int check_nt_hdr(IMAGE_NT_HEADERS *nt_hdr)
 
 	/* Validate the image for the current architecture. */
 	if (nt_hdr->FileHeader.Machine !=
-#ifdef CONFIG_64BIT
+#ifdef CONFIG_X86_64
 	    IMAGE_FILE_MACHINE_AMD64
 #else
 	    IMAGE_FILE_MACHINE_I386
@@ -157,12 +157,12 @@ static int check_nt_hdr(IMAGE_NT_HEADERS *nt_hdr)
 	}
 
 	/* Must have attributes */
-#ifdef CONFIG_64BIT
+#ifdef CONFIG_X86_64
 	attr = IMAGE_FILE_EXECUTABLE_IMAGE | IMAGE_FILE_LARGE_ADDRESS_AWARE;
 #else
 	attr = IMAGE_FILE_EXECUTABLE_IMAGE | IMAGE_FILE_32BIT_MACHINE;
 #endif
-	if((nt_hdr->FileHeader.Characteristics & attr) != attr)
+	if ((nt_hdr->FileHeader.Characteristics & attr) != attr)
 		return -EINVAL;
 
 	/* Must be relocatable */
@@ -171,11 +171,10 @@ static int check_nt_hdr(IMAGE_NT_HEADERS *nt_hdr)
 		return -EINVAL;
 
 	/* Make sure we have at least one section */
-	if(nt_hdr->FileHeader.NumberOfSections == 0)
+	if (nt_hdr->FileHeader.NumberOfSections == 0)
 		return -EINVAL;
 
-	if(opt_hdr->SectionAlignment <
-	   opt_hdr->FileAlignment) {
+	if (opt_hdr->SectionAlignment < opt_hdr->FileAlignment) {
 		ERROR("Alignment mismatch: secion: 0x%x, file: 0x%x",
 		      opt_hdr->SectionAlignment, opt_hdr->FileAlignment);
 		return -EINVAL;
@@ -183,7 +182,7 @@ static int check_nt_hdr(IMAGE_NT_HEADERS *nt_hdr)
 
 	DBGTRACE1("Number of DataDictionary entries %d",
 		  opt_hdr->NumberOfRvaAndSizes);
-	for(i=0; i< opt_hdr->NumberOfRvaAndSizes; i++) {
+	for (i = 0; i < opt_hdr->NumberOfRvaAndSizes; i++) {
 		DBGTRACE3("DataDirectory %s RVA:%X Size:%d",
 			  (i<=IMAGE_DIRECTORY_ENTRY_COM_DESCRIPTOR)?
 			  image_directory_name[i] : "Unknown",
@@ -191,9 +190,9 @@ static int check_nt_hdr(IMAGE_NT_HEADERS *nt_hdr)
 			  opt_hdr->DataDirectory[i].Size);
 	}
 
-	if((nt_hdr->FileHeader.Characteristics & IMAGE_FILE_DLL))
+	if ((nt_hdr->FileHeader.Characteristics & IMAGE_FILE_DLL))
 		return IMAGE_FILE_DLL;
-	if((nt_hdr->FileHeader.Characteristics & IMAGE_FILE_EXECUTABLE_IMAGE))
+	if ((nt_hdr->FileHeader.Characteristics & IMAGE_FILE_EXECUTABLE_IMAGE))
 		return IMAGE_FILE_EXECUTABLE_IMAGE;
 	return -EINVAL;
 }
@@ -411,7 +410,7 @@ static int fix_pe_image(struct pe_image *pe)
 	}
 
 	image_size = pe->opt_hdr->SizeOfImage;
-#ifdef CONFIG_64BIT
+#ifdef CONFIG_X86_64
 #ifdef PAGE_KERNEL_EXECUTABLE
 	image = __vmalloc(image_size, GFP_KERNEL | __GFP_HIGHMEM,
 			  PAGE_KERNEL_EXECUTABLE);
