@@ -39,6 +39,12 @@ prereq_check:
 		       install them in /usr/src, link $(KSRC) to it and try again."; \
 		exit 1;\
 	  fi
+	@ if grep -q '^[ ]*CONFIG_SMP' $(KSRC)/.config; then \
+		echo "SMP is enabled in the kernel configuration;\
+			right now ndiswrapper doesn't work with SMP.\
+			Disable SMP to use ndiswrapper.";\
+		exit 1;\
+	fi
 
 
 OBJS   := wrapper.o loader.o winsyms.o ndis.o misc_funcs.o proc.o
