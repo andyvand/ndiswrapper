@@ -167,14 +167,6 @@ struct kevent {
  * so for x86 32-bits, we can safely typedef KSPIN_LOCK to
  * spinlock_t */
 
-
-struct wrap_spinlock {
-	spinlock_t spinlock;
-	KIRQL irql;
-	unsigned char use_bh;
-	unsigned int index;
-};
-
 /* We now use KSPIN_LOCK as an index into an array ow wrap_spinlocks */
 typedef ULONG_PTR KSPIN_LOCK;
 

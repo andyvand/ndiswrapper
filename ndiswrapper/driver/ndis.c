@@ -40,8 +40,6 @@ static void ndis_worker(void *data);
 static void wrap_free_timers(struct ndis_handle *handle);
 static void free_handle_ctx(struct ndis_handle *handle);
 
-struct ndis_handle *ghandle;
-
 /* ndis_init is called once when module is loaded */
 int ndis_init(void)
 {
@@ -63,12 +61,12 @@ void ndis_exit_handle(struct ndis_handle *handle)
 		unsigned long flags;
 		struct ndis_irq *ndis_irq = handle->ndis_irq;
 
-		wrap_spin_lock_irqsave(kspin_wrap_lock(ndis_irq->lock),
+		wrap_spin_lock_irqsave(kspin_wrap_lock(&ndis_irq->lock),
 				       flags);
 		if (miniport->disable_interrupts)
 			LIN2WIN1(miniport->disable_interrupts,
 				 handle->adapter_ctx);
-		wrap_spin_unlock_irqrestore(kspin_wrap_lock(ndis_irq->lock),
+		wrap_spin_unlock_irqrestore(kspin_wrap_lock(&ndis_irq->lock),
 					    flags);
 		NdisMDeregisterInterrupt(handle->ndis_irq);
 	}
@@ -116,7 +114,7 @@ static void free_handle_ctx(struct ndis_handle *handle)
 {
 	struct list_head *cur, *tmp;
 
-	wrap_spin_lock(kspin_wrap_lock(ntoskrnl_lock), PASSIVE_LEVEL);
+	wrap_spin_lock(kspin_wrap_lock(&ntoskrnl_lock), PASSIVE_LEVEL);
 	list_for_each_safe(cur, tmp, &handle_ctx_list) {
 		struct handle_ctx_entry *handle_ctx =
 			list_entry(cur, struct handle_ctx_entry, list);
@@ -125,7 +123,7 @@ static void free_handle_ctx(struct ndis_handle *handle)
 			kfree(handle_ctx);
 		}
 	}
-	wrap_spin_unlock(kspin_wrap_lock(ntoskrnl_lock));
+	wrap_spin_unlock(kspin_wrap_lock(&ntoskrnl_lock));
 	return;
 }
 
@@ -137,7 +135,6 @@ STDCALL void WRAP_EXPORT(NdisInitializeWrapper)
 	TRACEENTER1("handle=%p, SS1=%p, SS2=%p", ndis_handle,
 		    SystemSpecific1, SystemSpecific2);
 	*ndis_handle = (struct ndis_handle *)SystemSpecific1;
-	ghandle = *ndis_handle;
 	TRACEEXIT1(return);
 }
 
@@ -308,7 +305,6 @@ STDCALL void WRAP_EXPORT(NdisOpenConfiguration)
 			confhandle, handle->net_dev->name);
 	*confhandle = handle;
 	*status = NDIS_STATUS_SUCCESS;
-	ghandle = handle;
 	TRACEEXIT2(return);
 }
 
@@ -571,8 +567,7 @@ STDCALL void WRAP_EXPORT(NdisReadConfiguration)
 	keyname = ansi.buf;
 	DBGTRACE3("handle: %p, string: %s", handle, keyname);
 
-	list_for_each_entry(setting, &ghandle->device->settings, list) {
-		DBGTRACE3("handle: %p, ghandle: %p, setting: %p", handle, ghandle, setting);
+	list_for_each_entry(setting, &handle->device->settings, list) {
 		if (stricmp(keyname, setting->name) == 0) {
 			DBGTRACE2("setting found %s=%s",
 				 keyname, setting->value);
@@ -611,9 +606,8 @@ STDCALL void WRAP_EXPORT(NdisWriteConfiguration)
 	}
 	keyname = ansi.buf;
 	DBGTRACE2("key = %s", keyname);
-	DBGTRACE2("handle: %p, ghandle: %p", handle, ghandle);
 
-	list_for_each_entry(setting, &ghandle->device->settings, list) {
+	list_for_each_entry(setting, &handle->device->settings, list) {
 		if (strcmp(keyname, setting->name) == 0) {
 			*status = ndis_decode_setting(setting, param);
 			DBGTRACE2("setting changed %s=%s",
@@ -633,7 +627,7 @@ STDCALL void WRAP_EXPORT(NdisWriteConfiguration)
 	setting->name[ansi.len] = 0;
 	*status = ndis_decode_setting(setting, param);
 	if (*status == NDIS_STATUS_SUCCESS)
-		list_add(&setting->list, &ghandle->device->settings);
+		list_add(&setting->list, &handle->device->settings);
 	else {
 		kfree(setting->name);
 		kfree(setting);
@@ -743,9 +737,9 @@ STDCALL void WRAP_EXPORT(NdisMSetAttributesEx)
 		/* ntoskrnl_lock is not meant for use here, but since this
 		 * function is called during initialization only,
 		 * no harm abusing it */
-		wrap_spin_lock(kspin_wrap_lock(ntoskrnl_lock), PASSIVE_LEVEL);
+		wrap_spin_lock(kspin_wrap_lock(&ntoskrnl_lock), PASSIVE_LEVEL);
 		list_add(&handle_ctx->list, &handle_ctx_list);
-		wrap_spin_unlock(kspin_wrap_lock(ntoskrnl_lock));
+		wrap_spin_unlock(kspin_wrap_lock(&ntoskrnl_lock));
 	}
 
 	if (attributes & NDIS_ATTRIBUTE_BUS_MASTER)
@@ -778,14 +772,14 @@ static struct ndis_handle *ctx_to_handle(void *ctx)
 {
 	struct handle_ctx_entry *handle_ctx;
 
-	wrap_spin_lock(kspin_wrap_lock(ntoskrnl_lock), PASSIVE_LEVEL);
+	wrap_spin_lock(kspin_wrap_lock(&ntoskrnl_lock), PASSIVE_LEVEL);
 	list_for_each_entry(handle_ctx, &handle_ctx_list, list) {
 		if (handle_ctx->ctx == ctx) {
-			wrap_spin_unlock(kspin_wrap_lock(ntoskrnl_lock));
+			wrap_spin_unlock(kspin_wrap_lock(&ntoskrnl_lock));
 			return handle_ctx->handle;
 		}
 	}
-	wrap_spin_unlock(kspin_wrap_lock(ntoskrnl_lock));
+	wrap_spin_unlock(kspin_wrap_lock(&ntoskrnl_lock));
 
 	return NULL;
 }
@@ -935,7 +929,7 @@ STDCALL void WRAP_EXPORT(NdisFreeSpinLock)
 {
 	TRACEENTER4("lock %p", lock);
 	lock->klock = 0;
-	free_kspin_lock(lock->klock);
+	free_kspin_lock(&lock->klock);
 
 	TRACEEXIT4(return);
 }
@@ -945,15 +939,11 @@ STDCALL void WRAP_EXPORT(NdisAcquireSpinLock)
 {
 	TRACEENTER5("lock %p", lock);
 	/* TI ACX 100 driver doesn't call NdisAllocateSpinLock before
-	 * calling NdisAcquireSpinLock and in those cases, lock seems
-	 * to be set to 0, so check if that is the case and initialize
-	 * it */
-	if (!valid_kspin_lock(lock->klock)) {
-		WARNING("Windows driver is using uninitialized spinlock %p",
-			lock);
-		NdisAllocateSpinLock(lock);
-	}
-	wrap_spin_lock(kspin_wrap_lock(lock->klock), PASSIVE_LEVEL);
+	 * calling NdisAcquireSpinLock, so we allocate it. Note that
+	 * KeInitializeSpinLock doesn't really allocate a spinlock if
+	 * it is already allocated */
+	NdisAllocateSpinLock(lock);
+	wrap_spin_lock(kspin_wrap_lock(&lock->klock), PASSIVE_LEVEL);
 	TRACEEXIT5(return);
 }
 
@@ -961,7 +951,7 @@ STDCALL void WRAP_EXPORT(NdisReleaseSpinLock)
 	(struct ndis_spinlock *lock)
 {
 	TRACEENTER5("lock %p", lock);
-	wrap_spin_unlock(kspin_wrap_lock(lock->klock));
+	wrap_spin_unlock(kspin_wrap_lock(&lock->klock));
 	TRACEEXIT5(return);
 }
 
@@ -971,7 +961,7 @@ STDCALL void WRAP_EXPORT(NdisDprAcquireSpinLock)
 	TRACEENTER5("lock %p", lock);
 	/* we use PASSIVE_LEVEL here because this function is not
 	 * supposed to change IRQL */
-	wrap_spin_lock(kspin_wrap_lock(lock->klock), PASSIVE_LEVEL);
+	wrap_spin_lock(kspin_wrap_lock(&lock->klock), PASSIVE_LEVEL);
 	TRACEEXIT5(return);
 }
 
@@ -979,7 +969,7 @@ STDCALL void WRAP_EXPORT(NdisDprReleaseSpinLock)
 	(struct ndis_spinlock *lock)
 {
 	TRACEENTER5("lock %p", lock);
-	wrap_spin_unlock(kspin_wrap_lock(lock->klock));
+	wrap_spin_unlock(kspin_wrap_lock(&lock->klock));
 	TRACEEXIT5(return);
 }
 
@@ -1145,8 +1135,6 @@ STDCALL void WRAP_EXPORT(NdisQueryBuffer)
 	(ndis_buffer *buf, void **adr, UINT *len)
 {
 	TRACEENTER3("buffer: %p", buf);
-	DBGTRACE3("buffer: %x, %d",
-		  buf->startva, buf->bytecount);
 	if (adr)
 		*adr = MmGetMdlBaseVa(buf);
 	if (len)
@@ -1483,7 +1471,7 @@ static irqreturn_t ndis_irq_th(int irq, void *data, struct pt_regs *pt_regs)
 	miniport = &handle->driver->miniport_char;
 	/* this spinlock should be shared with NdisMSynchronizeWithInterrupt
 	 */
-	wrap_spin_lock_irqsave(kspin_wrap_lock(ndis_irq->lock), flags);
+	wrap_spin_lock_irqsave(kspin_wrap_lock(&ndis_irq->lock), flags);
 	if (ndis_irq->req_isr)
 		LIN2WIN3(miniport->isr, &recognized, &handled,
 			 handle->adapter_ctx);
@@ -1492,7 +1480,7 @@ static irqreturn_t ndis_irq_th(int irq, void *data, struct pt_regs *pt_regs)
 		/* it is not shared interrupt, so handler must be called */
 		recognized = handled = 1;
 	}
-	wrap_spin_unlock_irqrestore(kspin_wrap_lock(ndis_irq->lock), flags);
+	wrap_spin_unlock_irqrestore(kspin_wrap_lock(&ndis_irq->lock), flags);
 
 	if (recognized && handled)
 		schedule_work(&handle->irq_work);
@@ -1518,8 +1506,7 @@ STDCALL NDIS_STATUS WRAP_EXPORT(NdisMRegisterInterrupt)
 	if (shared && !req_isr)
 		WARNING("%s", "shared but dynamic interrupt!");
 	ndis_irq->shared = shared;
-	allocate_kspin_lock(&ndis_irq->lock);
-	if (ndis_irq->lock == 0)
+	if (allocate_kspin_lock(&ndis_irq->lock) == NULL)
 		TRACEEXIT1(return NDIS_STATUS_RESOURCES);
 
 	INIT_WORK(&handle->irq_work, &ndis_irq_bh, ndis_irq);
@@ -1557,7 +1544,7 @@ STDCALL void WRAP_EXPORT(NdisMDeregisterInterrupt)
 		schedule_timeout(HZ/10);
 #endif
 		free_irq(ndis_irq->irq.irq, ndis_irq);
-		free_kspin_lock(ndis_irq->lock);
+		free_kspin_lock(&ndis_irq->lock);
 		ndis_irq->handle = NULL;
 		handle->ndis_irq = NULL;
 	}
@@ -1577,9 +1564,9 @@ STDCALL BOOLEAN WRAP_EXPORT(NdisMSynchronizeWithInterrupt)
 		TRACEEXIT5(return 0);
 
 	sync_func = func;
-	wrap_spin_lock_irqsave(kspin_wrap_lock(ndis_irq->lock), flags);
+	wrap_spin_lock_irqsave(kspin_wrap_lock(&ndis_irq->lock), flags);
 	ret = LIN2WIN1(sync_func, ctx);
-	wrap_spin_unlock_irqrestore(kspin_wrap_lock(ndis_irq->lock), flags);
+	wrap_spin_unlock_irqrestore(kspin_wrap_lock(&ndis_irq->lock), flags);
 
 	DBGTRACE5("sync_func returns %u", ret);
 	TRACEEXIT5(return ret);
@@ -1994,10 +1981,10 @@ STDCALL LONG WRAP_EXPORT(NdisInterlockedDecrement)
 	LONG x;
 
 	TRACEENTER4("%s", "");
-	wrap_spin_lock(kspin_wrap_lock(ntoskrnl_lock), PASSIVE_LEVEL);
+	wrap_spin_lock(kspin_wrap_lock(&ntoskrnl_lock), PASSIVE_LEVEL);
 	(*val)--;
 	x = *val;
-	wrap_spin_unlock(kspin_wrap_lock(ntoskrnl_lock));
+	wrap_spin_unlock(kspin_wrap_lock(&ntoskrnl_lock));
 	TRACEEXIT4(return x);
 }
 
@@ -2007,10 +1994,10 @@ STDCALL LONG WRAP_EXPORT(NdisInterlockedIncrement)
 	LONG x;
 
 	TRACEENTER4("%s", "");
-	wrap_spin_lock(kspin_wrap_lock(ntoskrnl_lock), PASSIVE_LEVEL);
+	wrap_spin_lock(kspin_wrap_lock(&ntoskrnl_lock), PASSIVE_LEVEL);
 	(*val)++;
 	x = *val;
-	wrap_spin_unlock(kspin_wrap_lock(ntoskrnl_lock));
+	wrap_spin_unlock(kspin_wrap_lock(&ntoskrnl_lock));
 	TRACEEXIT4(return x);
 }
 
