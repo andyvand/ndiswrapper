@@ -475,18 +475,19 @@ static struct ndis_packet *alloc_packet(struct ndis_handle *handle,
 	packet->private.buffer_head = buffer;
 	packet->private.buffer_tail = buffer;
 
-	if (handle->use_sg_dma)
+	if (handle->use_sg_dma) {
 		packet->ndis_sg_element.address =
 			PCI_DMA_MAP_SINGLE(handle->dev.pci,
 					   MmGetMdlVirtualAddress(buffer),
 					   MmGetMdlByteCount(buffer),
 					   PCI_DMA_TODEVICE);
 
-	packet->ndis_sg_element.length = MmGetMdlByteCount(buffer);
-	packet->ndis_sg_list.nent = 1;
-	packet->ndis_sg_list.elements = &packet->ndis_sg_element;
-	packet->extension.info[ScatterGatherListPacketInfo] =
-		&packet->ndis_sg_list;
+		packet->ndis_sg_element.length = MmGetMdlByteCount(buffer);
+		packet->ndis_sg_list.nent = 1;
+		packet->ndis_sg_list.elements = &packet->ndis_sg_element;
+		packet->extension.info[ScatterGatherListPacketInfo] =
+			&packet->ndis_sg_list;
+	}
 
 	return packet;
 }
