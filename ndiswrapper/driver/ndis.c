@@ -224,10 +224,13 @@ STDCALL void NdisCloseConfiguration(void *confhandle)
 STDCALL void NdisOpenFile(unsigned int *status,
 			  void **filehandle,
 			  unsigned int *filelength,
-			  char *filename,
+			  struct ustring *filename,
 			  unsigned long highest_address)
 {
-	DBGTRACE("%s: Filename: %s @ %p Highest Address: %08x\n", __FUNCTION__, filename, filename, (int) highest_address);
+	char name[1024];
+
+	unicodeToStr(name, filename, 1024);
+	DBGTRACE("%s: Filename: %s @ %p Highest Address: %08x\n", __FUNCTION__, name, filename, (int) highest_address);
 	*status = NDIS_STATUS_FILE_NOT_FOUND;
 }
 			   
@@ -1437,7 +1440,7 @@ NdisMCompleteBufferPhysicalMapping(struct ndis_handle *handle,
 				   struct ndis_buffer *buf,
 				   unsigned long phy_map_reg)
 {
-	DBGTRACE("%s (%s): %x %lu (%u)\n",
+	DBGTRACE("%s (%s): %p %lu (%d)\n",
 		 handle->net_dev->name, __FUNCTION__,
 		 handle, phy_map_reg, handle->map_count);
 
