@@ -74,6 +74,7 @@ int doreset(struct ndis_handle *handle)
 {
 	int res;
 	int addressing_reset;
+	DBGTRACE("%s: Enter\n", __FUNCTION__);
 	down(&handle->reset_mutex);
 
 	handle->reset_wait_done = 0;
@@ -91,6 +92,7 @@ int doreset(struct ndis_handle *handle)
 
 out:
 	up(&handle->reset_mutex);
+	DBGTRACE("%s: Exit\n", __FUNCTION__);
 	return res;
 	
 }
@@ -103,6 +105,7 @@ int doquery(struct ndis_handle *handle, unsigned int oid, char *buf, int bufsize
 {
 	int res;
 
+	DBGTRACE("%s: Enter\n", __FUNCTION__);
 	down(&handle->query_set_mutex);
 
 	handle->query_set_wait_done = 0;
@@ -121,6 +124,7 @@ int doquery(struct ndis_handle *handle, unsigned int oid, char *buf, int bufsize
 
 out:
 	up(&handle->query_set_mutex);
+	DBGTRACE("%s: Exit\n", __FUNCTION__);
 	return res;
 	
 }
@@ -133,6 +137,7 @@ int dosetinfo(struct ndis_handle *handle, unsigned int oid, char *buf, int bufsi
 {
 	int res;
 
+	DBGTRACE("%s: Enter\n", __FUNCTION__);
 	down(&handle->query_set_mutex);
 	
 	handle->query_set_wait_done = 0;
@@ -151,6 +156,7 @@ int dosetinfo(struct ndis_handle *handle, unsigned int oid, char *buf, int bufsi
 
 out:
 	up(&handle->query_set_mutex);
+	DBGTRACE("%s: Enter\n", __FUNCTION__);
 	return res;
 
 }
@@ -164,10 +170,12 @@ int query_int(struct ndis_handle *handle, int oid, int *data)
 {
 	unsigned int res, written, needed;
 
+	DBGTRACE("%s: Enter\n", __FUNCTION__);
 	res = doquery(handle, oid, (char*)data, sizeof(int), &written, &needed);
 	if(!res)
 		return 0;
 	*data = 0;
+	DBGTRACE("%s: Enter\n", __FUNCTION__);
 	return res;
 }
 
