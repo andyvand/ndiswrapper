@@ -430,7 +430,8 @@ static void set_multicast_list(struct net_device *dev,
 	char *list = handle->multicast_list;
 	NDIS_STATUS res;
 
-	for (i = 0, mclist = dev->mc_list; mclist && i < dev->mc_count;
+	for (i = 0, mclist = dev->mc_list;
+	     mclist && i < dev->mc_count && size < handle->multicast_list_size;
 	     i++, mclist = mclist->next) {
 		memcpy(list, mclist->dmi_addr, ETH_ALEN);
 		list += ETH_ALEN;
@@ -438,8 +439,7 @@ static void set_multicast_list(struct net_device *dev,
 	}
 	DBGTRACE1("%d entries. size=%d", dev->mc_count, size);
 
-	res = miniport_set_info(handle, OID_802_3_MULTICAST_LIST, list,
-				size);
+	res = miniport_set_info(handle, OID_802_3_MULTICAST_LIST, list, size);
 	if (res)
 		ERROR("Unable to set multicast list (%08X)", res);
 }
@@ -468,11 +468,13 @@ static struct ndis_packet *alloc_packet(struct ndis_handle *handle,
 	if (handle->use_scatter_gather) {
 		/* FIXME: do USB drivers call this? */
 		packet->dataphys =
-			PCI_DMA_MAP_SINGLE(handle->dev.pci, buffer->startva,
-					   buffer->size, PCI_DMA_TODEVICE);
+			PCI_DMA_MAP_SINGLE(handle->dev.pci,
+					   MmGetMdlVirtualAddress(buffer),
+					   MmGetMdlByteCount(buffer),
+					   PCI_DMA_TODEVICE);
 		packet->sg_list.len = 1;
 		packet->sg_element.address.quad = packet->dataphys;
-		packet->sg_element.len = buffer->size;
+		packet->sg_element.len = MmGetMdlByteCount(buffer),
 		packet->sg_list.elements = &packet->sg_element;
 		packet->extension.info[ScatterGatherListPacketInfo] =
 			&packet->sg_list;
@@ -827,10 +829,10 @@ void ndiswrapper_remove_one_dev(struct ndis_handle *handle)
 	miniport_halt(handle);
 	DBGTRACE1("halt successful");
 
-	DBGTRACE("");
+	if (handle->xmit_array)
+		kfree(handle->xmit_array);
 	if (handle->multicast_list)
 		kfree(handle->multicast_list);
-	DBGTRACE("");
 	if (handle->net_dev)
 		free_netdev(handle->net_dev);
 
@@ -963,7 +965,6 @@ static void set_packet_filter(struct ndis_handle *handle)
 			 NDIS_PACKET_TYPE_ALL_MULTICAST);
 
 	if (dev->flags & IFF_PROMISC) {
-		DBGTRACE1("%s", "Going into promiscuous mode");
 		printk(KERN_WARNING "promiscuous mode is not "
 		       "supported by NDIS; only packets sent "
 		       "from/to this host will be seen\n");
@@ -972,7 +973,7 @@ static void set_packet_filter(struct ndis_handle *handle)
 		   (dev->flags & IFF_ALLMULTI) ||
 		   (handle->multicast_list == 0)) {
 		/* Too many to filter perfectly -- accept all multicasts. */
-		DBGTRACE1("Multicast list too long. Accepting all");
+		DBGTRACE1("multicast list too long; accepting all");
 		packet_filter |= NDIS_PACKET_TYPE_ALL_MULTICAST;
 	} else if (dev->mc_count > 0) {
 		packet_filter |= NDIS_PACKET_TYPE_MULTICAST;
@@ -1357,6 +1358,7 @@ int setup_dev(struct net_device *dev)
 	set_infra_mode(handle, Ndis802_11Infrastructure);
 	set_auth_mode(handle, Ndis802_11AuthModeOpen);
 	set_encr_mode(handle, Ndis802_11EncryptionDisabled);
+	set_essid(handle, "", 0);
 
 	/* some cards (e.g., RaLink) need a scan before they can associate */
 	miniport_set_int(handle, OID_802_11_BSSID_LIST_SCAN, 0);
