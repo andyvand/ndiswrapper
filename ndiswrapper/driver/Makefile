@@ -5,7 +5,8 @@ endif
 
 DISTFILES=Makefile coffpe.h loader.c loader.h misc_funcs.c \
  ndis.c ndis.h ntoskernel.h proc.c rt8180.c \
- winsyms.c winsyms.h wrapper.c wrapper.h
+ winsyms.c winsyms.h wrapper.c wrapper.h \
+ divdi3.c longlong.h
 
 
 KSRC  := /lib/modules/$(shell uname -r)/build
