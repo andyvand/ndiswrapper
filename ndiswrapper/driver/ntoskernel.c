@@ -338,7 +338,7 @@ STDCALL static int WRAP_EXPORT(IoIsWdmVersionAvailable)
 }
 
 STDCALL void WRAP_EXPORT(KeInitializeEvent)
-	(struct kevent *kevent, int type, int state)
+	(struct kevent *kevent, KEVENT_TYPE type, BOOLEAN state)
 {
 	TRACEENTER3("event = %p, type = %d, state = %d",
 		    kevent, type, state);
@@ -349,8 +349,8 @@ STDCALL void WRAP_EXPORT(KeInitializeEvent)
 	wrap_spin_unlock(&dispatch_event_lock);
 }
 
-STDCALL long WRAP_EXPORT(KeSetEvent)
-	(struct kevent *kevent, int incr, int wait)
+STDCALL LONG WRAP_EXPORT(KeSetEvent)
+	(struct kevent *kevent, KPRIORITY incr, BOOLEAN wait)
 {
 	long old_state = kevent->header.signal_state;
 
@@ -382,7 +382,7 @@ STDCALL static void WRAP_EXPORT(KeClearEvent)
 	global_signal_state = FALSE;
 }
 
-STDCALL long WRAP_EXPORT(KeResetEvent)
+STDCALL LONG WRAP_EXPORT(KeResetEvent)
 	(struct kevent *kevent)
 {
 	long old_state;
@@ -398,9 +398,9 @@ STDCALL long WRAP_EXPORT(KeResetEvent)
 	TRACEEXIT3(return old_state);
 }
 
-STDCALL unsigned int WRAP_EXPORT(KeWaitForSingleObject)
-	(void *object, unsigned int reason, unsigned int waitmode,
-	 unsigned short alertable, s64 *timeout)
+STDCALL NT_STATUS WRAP_EXPORT(KeWaitForSingleObject)
+	(void *object, KWAIT_REASON reason, KPROCESSOR_MODE waitmode,
+	 BOOLEAN alertable, LARGE_INTEGER *timeout)
 {
 	struct kevent *kevent = (struct kevent *)object;
 	struct dispatch_header *header = &kevent->header;
@@ -513,7 +513,7 @@ STDCALL unsigned int WRAP_EXPORT(KeWaitForMultipleObjects)
 			if (kmutex->owner_thread == NULL ||
 			    kmutex->owner_thread == get_current()) {
 				kmutex->dispatch_header.signal_state = FALSE;
-				kmutex->count++;
+				kmutex->u.count++;
 				kmutex->owner_thread = get_current();
 				if (wait_type == WAIT_ANY)
 					return STATUS_WAIT_0 + i;
@@ -579,7 +579,7 @@ STDCALL unsigned int WRAP_EXPORT(KeWaitForMultipleObjects)
 				kmutex = (struct kmutex *)object[i];
 				if (kmutex->owner_thread == NULL) {
 					kmutex->owner_thread = get_current();
-					kmutex->count++;
+					kmutex->u.count++;
 				}
 			}
 		}
@@ -1191,7 +1191,7 @@ STDCALL static void WRAP_EXPORT(KeInitializeMutex)
 	mutex->dispatch_header.signal_state = TRUE;
 	mutex->dispatch_header.type = SYNCHRONIZATION_EVENT;
 	mutex->dispatch_header.size = NT_OBJ_MUTEX;
-	mutex->count = 0;
+	mutex->u.count = 0;
 	mutex->owner_thread = NULL;
 	return;
 }
@@ -1200,14 +1200,14 @@ STDCALL static long WRAP_EXPORT(KeReleaseMutex)
 	(struct kmutex *mutex, BOOLEAN wait)
 {
 	wrap_spin_lock(&dispatch_event_lock, PASSIVE_LEVEL);
-	mutex->count--;
-	if (mutex->count == 0) {
+	mutex->u.count--;
+	if (mutex->u.count == 0) {
 		mutex->owner_thread = NULL;
 		wrap_spin_unlock(&dispatch_event_lock);
 		KeSetEvent((struct kevent *)&mutex->dispatch_header, 0, 0);
 	} else
 		wrap_spin_unlock(&dispatch_event_lock);
-	return mutex->count;
+	return mutex->u.count;
 }
 
 STDCALL static void WRAP_EXPORT(MmUnmapLockedPages)

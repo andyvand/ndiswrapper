@@ -18,94 +18,118 @@
 
 #include "ntoskernel.h"
 
-typedef int NDIS_STATUS;
+typedef UINT NDIS_STATUS;
 
 struct packed ndis_scatterentry
 {
-	unsigned int physlo;
-	unsigned int physhi;
-	unsigned int len;
-	unsigned int reserved;
+	UINT physlo;
+	UINT physhi;
+	UINT len;
+	UINT reserved;
 };
 
 struct packed ndis_scatterlist
 {
-	unsigned int len;
-	unsigned int reserved;
+	UINT len;
+	UINT reserved;
 	struct ndis_scatterentry entry;
 };
 
 struct packed ndis_phy_address
 {
 #ifdef CONFIG_X86_64
-	uint64_t quad;
+	ULONGLONG quad;
 #else
-	uint32_t quad_low;
-	int32_t quad_high;
+	ULONG quad_low;
+	LONG quad_high;
 #endif
 };
 
 struct ndis_phy_addr_unit {
-    struct ndis_phy_address phy_addr;
-    unsigned int length;
+	struct ndis_phy_address phy_addr;
+	UINT length;
 };
 
 struct ndis_buffer
 {
 	struct ndis_buffer *next;
-	unsigned int len;
-	unsigned int offset;
-	unsigned char *data;
+	UINT len;
+	UINT offset;
+	UCHAR *data;
+};
+
+enum ndis_per_packet_info {
+	NDIS_TCPIP_CSUM_INFO,
+	NDIS_IPSEC_INFO,
+	NDIS_LARGE_SEND_INFO,
+	NDIS_CLASS_HANDLE_INFO,
+	NDIS_RSVD,
+	NDIS_SCLIST_INFO,
+	NDIS_IEEE8021Q_INFO,
+	NDIS_ORIGINAL_PACKET_INFO,
+        NDIS_PACKET_CANCELID,
+	NDIS_MAX_PACKET_INFO
+};
+
+struct ndis_packet_extension {
+	void *info[NDIS_MAX_PACKET_INFO];
 };
 
 struct packed ndis_packet
 {
-	unsigned int nr_pages;
+	UINT nr_pages;
 
 	/* 4: Packet length */
-	unsigned int len;
+	UINT len;
 
 	struct ndis_buffer *buffer_head;
 	struct ndis_buffer *buffer_tail;
 	void *pool;
 
 	/* 14 Number of buffers */
-	unsigned int count;
+	UINT count;
 
-	unsigned int flags;
+	UINT flags;
 
 	/* 1 If buffer count is valid? */
-	__u8 valid_counts;
-	__u8 packet_flags;
-	__u16 oob_offset;
+	BYTE valid_counts;
+	BYTE packet_flags;
+	USHORT oob_offset;
 
 	/* For use by miniport */
-	unsigned char private_1 [6*sizeof(void*)];
-	unsigned char private_2[4];
+	union {
+		/* for connectionless mininports */
+		struct {
+			BYTE miniport_reserved[2 * sizeof(void *)];
+			BYTE wrapper_reserved[2 * sizeof(void *)];
+		} cl_reserved;
+		/* for deserialized miniports */
+		struct {
+			BYTE miniport_reserved_ex[3 * sizeof(void *)];
+			BYTE wrapper_reserved_ex[sizeof(void *)];
+		} deserailized_reserved;
+		struct {
+			BYTE mac_reserved[4 * sizeof(void *)];
+		} mac_reserved;
+	} u;
+
+	USHORT *reserved[2];
 
 	/* OOB data */
-	__u32 timesent1;
-	__u32 timesent2;
-	__u32 timerec1;
-	__u32 timerec2;
-	unsigned int header_size;
-	unsigned int mediaspecific_size;
+	union {
+		ULONGLONG time_to_tx;
+		ULONGLONG time_txed;
+	} oob_tx;
+	ULONGLONG time_rxed;
+	UINT header_size;
+	UINT mediaspecific_size;
 	void *mediaspecific;
-	unsigned int status;
+	NDIS_STATUS status;
 
-	void *ext1;
-	void *ext2;
-	void *ext3;
-	void *ext4;
-	void *ext5;
+	struct ndis_packet_extension extension;
 	struct ndis_scatterlist *scatter_gather_ext;
-	void *ext7;
-	void *ext8;
-	void *ext9;
-	void *ext10;
-	void *ext11;
-	void *ext12;
 
+	/* ndiswrapper-specific info */
 	struct ndis_scatterlist scatterlist;
 	dma_addr_t dataphys;
 	struct list_head recycle_list;
@@ -145,18 +169,18 @@ struct ndis_request {
 	enum ndis_request_type request_type;
 	union data {
 		struct query_info {
-			unsigned int oid;
+			UINT oid;
 			void *buf;
-			unsigned int buf_len;
-			unsigned int written;
-			unsigned int needed;
+			UINT buf_len;
+			UINT written;
+			UINT needed;
 		} query_info;
 		struct set_info {
-			unsigned int oid;
+			UINT oid;
 			void *buf;
-			unsigned int buf_len;
-			unsigned int written;
-			unsigned int needed;
+			UINT buf_len;
+			UINT written;
+			UINT needed;
 		} set_info;
 	} data;
 };
@@ -168,11 +192,12 @@ typedef void (*ndis_interrupt_handler)(void *ctx) STDCALL;
 struct miniport_char
 {
 	/* NDIS 3.0 */
-	unsigned char majorVersion;
-	unsigned char minorVersion;
-	unsigned int reserved;
+	UCHAR majorVersion;
+	UCHAR minorVersion;
+	USHORT filler;
+	UINT reserved;
 
-	char (*hangcheck)(void *ctx) STDCALL;
+	BOOLEAN (*hangcheck)(void *ctx) STDCALL;
 	void (*disable_interrupts)(void *ctx) STDCALL;
 	void (*enable_interrupts)(void *ctx) STDCALL;
 
@@ -183,68 +208,58 @@ struct miniport_char
 	ndis_interrupt_handler handle_interrupt;
 
 	/* Start miniport driver */
-	unsigned int (*init)(unsigned int *OpenErrorStatus,
-			     unsigned int *SelectedmediumIndex,
-			     unsigned int *MediumArray,
-			     unsigned int MediumArraySize, void *ndis_handle,
-			     void *conf_handle) STDCALL;
+	UINT (*init)(UINT *OpenErrorStatus, UINT *SelectedmediumIndex,
+		     UINT *MediumArray, UINT MediumArraySize,
+		     void *ndis_handle, void *conf_handle) STDCALL;
 
 	/* Interrupt TH */
 	ndis_isr_handler isr;
 
 	/* Query parameters */
-	unsigned int (*query)(void *ctx, unsigned int oid,
-			      char *buffer, unsigned int buflen,
-			      unsigned int *written,
-			      unsigned int *needed) STDCALL;
+	UINT (*query)(void *ctx, UINT oid, char *buffer,
+		      UINT buflen, UINT *written, UINT *needed) STDCALL;
 
 	void * ReconfigureHandler;
-	int (*reset)(int *needs_set, void *ctx) STDCALL;
+	INT (*reset)(INT *needs_set, void *ctx) STDCALL;
 
 	/* Send one packet */
-	unsigned int (*send)(void *ctx, struct ndis_packet *packet,
-			     unsigned int flags) STDCALL;
+	UINT (*send)(void *ctx, struct ndis_packet *packet,
+		     UINT flags) STDCALL;
 
 	/* Set parameters */
-	unsigned int (*setinfo)(void *ctx, unsigned int oid, char *buffer,
-				unsigned int buflen, unsigned int *written,
-				unsigned int *needed) STDCALL;
+	UINT (*setinfo)(void *ctx, UINT oid, char *buffer, UINT buflen,
+			UINT *written, UINT *needed) STDCALL;
 
 	/* transfer data from received packet */
-	unsigned int (*tx_data)(struct ndis_packet *ndis_packet,
-				unsigned int *bytes_txed,
+	UINT (*tx_data)(struct ndis_packet *ndis_packet, UINT *bytes_txed,
 				void *adapter_ctx, void *rx_ctx,
-				unsigned int offset,
-				unsigned int bytes_to_tx) STDCALL;
+				UINT offset, UINT bytes_to_tx) STDCALL;
 
 	/* NDIS 4.0 extensions */
 	/* upper layer is done with RX packet */
 	void (*return_packet)(void *ctx, void *packet) STDCALL;
 
 	/* Send packets */
-	unsigned int (*send_packets)(void *ctx, struct ndis_packet **packets,
-				     int nr_of_packets) STDCALL;
+	UINT (*send_packets)(void *ctx, struct ndis_packet **packets,
+			     INT nr_of_packets) STDCALL;
 
 	void (*alloc_complete)(void *handle, void *virt,
 			       struct ndis_phy_address *phys,
-			       unsigned long size, void *ctx) STDCALL;
+			       ULONG size, void *ctx) STDCALL;
 
 	/* NDIS 5.0 extensions */
-	unsigned int (*co_create_vc)(void *ctx, void *vc_handle,
-				      void *vc_ctx) STDCALL;
-	unsigned int (*co_delete_vc)(void *vc_ctx) STDCALL;
-	unsigned int (*co_activate_vc)(void *vc_ctx,
-				       void *call_params) STDCALL;
-	unsigned int (*co_deactivate_vc)(void *vc_ctx) STDCALL;
-	unsigned int (*co_send_packets)(void *vc_ctx, void **packets,
-					unsigned int nr_of_packets) STDCALL;
-	unsigned int (*co_request)(void *ctx, void *vc_ctx,
-					unsigned int *req) STDCALL;
+	UINT (*co_create_vc)(void *ctx, void *vc_handle, void *vc_ctx) STDCALL;
+	UINT (*co_delete_vc)(void *vc_ctx) STDCALL;
+	UINT (*co_activate_vc)(void *vc_ctx, void *call_params) STDCALL;
+	UINT (*co_deactivate_vc)(void *vc_ctx) STDCALL;
+	UINT (*co_send_packets)(void *vc_ctx, void **packets,
+				UINT nr_of_packets) STDCALL;
+	UINT (*co_request)(void *ctx, void *vc_ctx, UINT *req) STDCALL;
 
 	/* NDIS 5.1 extensions */
 	void *cancel_send_packets;
 	void (*pnp_event_notify)(void *ctx, enum ndis_pnp_event, void *inf_buf,
-				 unsigned long inf_buf_len) STDCALL;
+				 ULONG inf_buf_len) STDCALL;
 	void (*adapter_shutdown)(void *ctx) STDCALL;
 	void *reserved1;
 	void *reserved2;
@@ -271,7 +286,7 @@ struct ndis_sched_work_item
 {
 	void *ctx;
 	void (*func)(struct ndis_sched_work_item *, void *) STDCALL;
-	unsigned char reserved[8 * sizeof(void *)];
+	UCHAR reserved[8 * sizeof(void *)];
 };
 
 struct ndis_io_work_item
@@ -320,22 +335,24 @@ struct ndis_work_entry
 struct ndis_irq
 {
 	/* void *intr_obj is used for irq */
-	int irq;
-	/* KSPIN_LOCK lock (pointer to unsigned long) is used for spinlock */
+	union {
+		void *intr_obj;
+		unsigned int irq;
+	} irq;
 	/* Taken by ISR, DisableInterrupt and SynchronizeWithInterrupt */
-	spinlock_t *spinlock;
+	KSPIN_LOCK spinlock;
 	void *id;
 	ndis_isr_handler isr;
 	void *dpc;
 
 	struct kdpc intr_dpc;
 	struct ndis_handle *handle;
-	unsigned char dpc_count;
+	UCHAR dpc_count;
 	/* unsigned char filler1 is used for enabled */
-	unsigned char enabled;
+	UCHAR enabled;
 	struct kevent completed_event;
-	unsigned char shared;
-	unsigned char req_isr;
+	UCHAR shared;
+	UCHAR req_isr;
 };
 
 struct ndis_binary_data {
@@ -432,7 +449,6 @@ struct ndis_device
 	struct ndis_driver *driver;
 };
 
-typedef __u64 LARGE_INTEGER;
 struct ndis_wireless_stats {
 	LARGE_INTEGER length;
 	LARGE_INTEGER tx_frag;
@@ -604,13 +620,13 @@ struct ndis_event
 };
 
 struct ndis_bind_paths {
-	unsigned int number;
+	UINT number;
 	struct ustring paths[1];
 };
 
 struct ndis_reference {
 	KSPIN_LOCK spinlock;
-	unsigned short ref_count;
+	USHORT ref_count;
 	BOOLEAN closing;
 };
 
@@ -663,24 +679,24 @@ struct packed ndis_handle
 	KSPIN_LOCK lock;
 	enum ndis_request_type *mediarequest;
 	struct ndis_miniport_interrupt *interrupt;
-	unsigned long flags;
-	unsigned long pnp_flags;
+	ULONG flags;
+	ULONG pnp_flags;
 	struct list_entry packet_list;
 	struct ndis_packet *first_pending_tx_packet;
 	struct ndis_packet *return_packet_queue;
-	unsigned long request_buffer;
+	ULONG request_buffer;
 	void *set_mcast_buffer;
 	struct ndis_handle *primary_miniport;
 	void *wrapper_ctx;
 	void *bus_data_ctx;
-	unsigned long pnp_capa;
+	ULONG pnp_capa;
 	void *resources;
 	struct ndis_timer wakeup_dpc_timer;
 	struct ustring basename;
 	struct ustring symlink_name;
-	unsigned long ndis_hangcheck_interval;
-	unsigned short hanghcheck_ticks;
-	unsigned short hangcheck_tick;
+	ULONG ndis_hangcheck_interval;
+	USHORT hanghcheck_ticks;
+	USHORT hangcheck_tick;
 	NDIS_STATUS ndis_reset_status;
 	void *resetopen;
 	struct ndis_filterdbs filterdbs;
@@ -689,10 +705,10 @@ struct packed ndis_handle
 	void *send_resource_avail;
 	void *reset_complete;
 
-	unsigned long media_type;
-	unsigned int bus_number;
-	unsigned int bus_type;
-	unsigned int adapter_type;
+	ULONG media_type;
+	UINT bus_number;
+	UINT bus_type;
+	UINT adapter_type;
 	struct device_object *device_obj;
 	struct device_object *phys_device_obj;
 	struct device_object *next_device_obj;
@@ -700,18 +716,18 @@ struct packed ndis_handle
 	void *call_mgraflist;
 	void *miniport_thread;
 	void *setinfobuf;
-	unsigned short setinfo_buf_len;
-	unsigned short max_send_pkts;
-	unsigned int fake_status;
+	USHORT setinfo_buf_len;
+	USHORT max_send_pkts;
+	UINT fake_status;
 	void *lock_handler;
 	struct ustring *adapter_instance_name;
 	void *timer_queue;
-	u32 mac_options;
+	UINT mac_options;
 	void *pending_req;
-	u32 max_long_addrs;
-	u32 max_short_addrs;
-	u32 cur_lookahead;
-	u32 max_lookahead;
+	UINT max_long_addrs;
+	UINT max_short_addrs;
+	UINT cur_lookahead;
+	UINT max_lookahead;
 
 	ndis_interrupt_handler irq_bh;
 	void *disable_intr;
@@ -836,46 +852,45 @@ enum ndis_pm_state
 
 STDCALL void NdisMIndicateReceivePacket(struct ndis_handle *handle,
 					struct ndis_packet **packets,
-					unsigned int nr_packets);
+					UINT nr_packets);
 STDCALL void NdisMSendComplete(struct ndis_handle *handle,
 			       struct ndis_packet *packet,
-			       unsigned int status);
+			       NDIS_STATUS status);
 STDCALL void NdisMSendResourcesAvailable(struct ndis_handle *handle);
 STDCALL void NdisMIndicateStatus(struct ndis_handle *handle,
-				 unsigned int status, void *buf,
-				 unsigned int len);
+				 NDIS_STATUS status, void *buf, UINT len);
 STDCALL void NdisMIndicateStatusComplete(struct ndis_handle *handle);
 STDCALL void NdisMQueryInformationComplete(struct ndis_handle *handle,
-					   unsigned int status);
+					   NDIS_STATUS status);
 STDCALL void NdisMSetInformationComplete(struct ndis_handle *handle,
-					 unsigned int status);
-STDCALL void NdisMResetComplete(struct ndis_handle *handle, int status,
-				int reset_status);
-STDCALL unsigned long NDIS_BUFFER_TO_SPAN_PAGES(struct ndis_buffer *buffer);
-STDCALL int NdisWaitEvent(struct ndis_event *event, unsigned int timeout);
+					 NDIS_STATUS status);
+STDCALL void NdisMResetComplete(struct ndis_handle *handle, NDIS_STATUS status,
+				BOOLEAN address_reset);
+STDCALL ULONG NDIS_BUFFER_TO_SPAN_PAGES(struct ndis_buffer *buffer);
+STDCALL BOOLEAN NdisWaitEvent(struct ndis_event *event, UINT timeout);
 STDCALL void NdisSetEvent(struct ndis_event *event);
 STDCALL void NdisMDeregisterInterrupt(struct ndis_irq *ndis_irq);
 STDCALL void EthRxIndicateHandler(void *adapter_ctx, void *rx_ctx,
-				  char *header1, char *header,
-				  u32 header_size, char *look_aheader,
-				  u32 look_aheader_size, u32 packet_size);
+				  CHAR *header1, CHAR *header,
+				  UINT header_size, CHAR *look_aheader,
+				  UINT look_aheader_size, UINT packet_size);
 STDCALL void EthRxComplete(struct ndis_handle *handle);
 STDCALL void NdisMTransferDataComplete(struct ndis_handle *handle,
 				       struct ndis_packet *packet,
-				       unsigned int status,
-				       unsigned int bytes_txed);
-STDCALL void NdisWriteConfiguration(unsigned int *status,
+				       NDIS_STATUS status,
+				       UINT bytes_txed);
+STDCALL void NdisWriteConfiguration(NDIS_STATUS *status,
 				    struct ndis_handle *handle,
 				    struct ustring *key,
 				    struct ndis_config_param *val);
 
-STDCALL int RtlUnicodeStringToAnsiString(struct ustring *dst,
-					 struct ustring *src,
-					 unsigned int dup);
-STDCALL int RtlAnsiStringToUnicodeString(struct ustring *dst,
-					 struct ustring *src,
-					 unsigned int dup);
-STDCALL void RtlInitAnsiString(struct ustring *dst, char *src);
+STDCALL NT_STATUS RtlUnicodeStringToAnsiString(struct ustring *dst,
+					       struct ustring *src,
+					       BOOLEAN dup);
+STDCALL NT_STATUS RtlAnsiStringToUnicodeString(struct ustring *dst,
+					       struct ustring *src,
+					       BOOLEAN dup);
+STDCALL void RtlInitAnsiString(struct ustring *dst, CHAR *src);
 STDCALL void RtlFreeUnicodeString(struct ustring *string);
 STDCALL void RtlFreeAnsiString(struct ustring *string);
 
