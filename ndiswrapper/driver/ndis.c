@@ -1690,7 +1690,7 @@ NdisMIndicateReceivePacket(struct ndis_handle *handle,
 			DBGTRACE3("low on resources");
 			continue;
 		}
-		
+
 		if (packet->status != NDIS_STATUS_SUCCESS)
 			WARNING("invalid packet status %08X",
 				packet->status);
@@ -1714,7 +1714,6 @@ NdisMIndicateReceivePacket(struct ndis_handle *handle,
 		spin_lock_bh(&ndis_work_list_lock);
 		list_add_tail(&ndis_work_entry->list, &ndis_work_list);
 		spin_unlock_bh(&ndis_work_list_lock);
-
 	}
 	schedule_work(&ndis_work);
 	TRACEEXIT3(return);

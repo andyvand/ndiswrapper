@@ -1,5 +1,11 @@
 Versoin 1.1 2005-XX-XX
 ======================
+1.1rc2:
+* Memory leak with 64-bit Broadcom driver fixed
+* Crash when module is removed with Marvell driver fixed
+* In some cases, a Windows driver loads successfully, but ndiswrapper
+  concludes otherwise. This is fixed.
+
 1.1rc1:
 ======
 * Don't use spinlocks unless CONFIG_SMP or CONFIG_DEBUG_SPINLOCK is
