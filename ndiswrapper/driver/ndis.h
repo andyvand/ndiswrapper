@@ -17,34 +17,45 @@ int getSp(void);
 
 struct packed miniport_char
 {
-	__u8 majorVersion;
-	__u8 minorVersion;
+	unsigned char majorVersion;
+	unsigned char minorVersion;
 	__u16 reserved1;
 	__u32 reserved2;
+
 	void * CheckForHangTimer;
 	void * DisableInterruptHandler;
 	void * EnableInterruptHandler;
+
+	/* Stop miniport */
 	STDCALL void (*halt)(void *ctx);
+
+	/* Interrupt BH */
 	STDCALL void (*handle_interrupt)(void *ctx);
+
+	/* Start miniport driver */
 	STDCALL void (*init)(unsigned int *OpenErrorStatus, unsigned int *SelectedmediumIndex, unsigned int *MediumArray, unsigned int MediumArraySize, void *ndis_handle, void *conf_handle);
+
+	/* Interrupt TH */
 	STDCALL void (*isr)(unsigned int *taken, unsigned int *callme, void *ctx);
+
+	/* Query parameters */
 	STDCALL unsigned int (*query)(void *ctx, unsigned int oid, char *buffer, unsigned int buflen, unsigned int *written, unsigned int *needed);
+
 	void * ReconfigureHandler;
 	void * ResetHandler;		//s
 	void * SendHandler;
+
+	/* Set parameters */
 	STDCALL unsigned int (*setinfo)(void *ctx, unsigned int oid, char *buffer, unsigned int buflen, unsigned int *written, unsigned int *needed);
+
 	void * TransferDataHandler;
-	void * ReturnPacketHandler;	//s
-	void * SendPacketsHandler;	//s
-/*
-	void * AllocateCompleteHandler;
-	void * CoCreateVcHandler;
-	void * CoDeleteVcHandler;	
-	void * CoActivateVcHandler;
-	void * CoDeactivateVcHandler;
-	void * CoSendPacketsHandler;
-	void * CoRequestHandler;
-*/	
+
+	/* upper layer is done with RX packet */	
+	STDCALL void (*return_packet)(void *ctx, void *packet);
+
+	/* Send packets */
+	STDCALL void (*send_packets)(void *ctx, void *packets, int nr_of_packets);
+
 	
 };
 
@@ -87,6 +98,50 @@ struct packed ndis_handle
 	struct net_device_stats stats;
 };
 
+struct ndis_buffer
+{
+	struct ndis_buffer *next;
+	unsigned int len;
+	unsigned int offset;
+	unsigned char *data;
+};
+
+
+struct packed ndis_packet
+{
+	unsigned int nr_pages;
+
+	/* 4: Packet length */
+	unsigned int len;
+
+	void *buffer_head;
+	void *buffer_tail;
+	void *pool;
+
+	/* 20 Number of buffers */
+	unsigned int count;
+
+	unsigned int flags;
+
+	/* 1 If buffer count is valid? */
+	__u8 valid_counts;
+	__u8 packet_flags;
+	__u16 oob_offset;
+
+	/* For use by miniport */
+	unsigned char private_1 [6*sizeof(void*)];
+	unsigned char private_2[4]; 
+
+	/* OOB data */
+	__u32 timesent1;
+	__u32 timesent2;
+	__u32 timerec1;
+	__u32 timerec2;
+	unsigned int header_size;
+	unsigned int mediaspecific_size;
+	void *mediaspecific;
+	unsigned int status;
+};
 
 
 struct packed ustring
