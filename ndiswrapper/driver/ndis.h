@@ -19,6 +19,8 @@
 #include <linux/timer.h>
 #include <linux/workqueue.h>
 #include <linux/netdevice.h>
+#include <linux/wireless.h>
+
 #define STDCALL __attribute__((__stdcall__))
 #define packed __attribute__((packed))
 
@@ -118,6 +120,7 @@ struct packed ndis_handle
 	unsigned long mem_end;
 
 	struct net_device_stats stats;
+	struct iw_statistics wireless_stats;
 };
 
 struct ndis_buffer
@@ -221,4 +224,5 @@ struct packed essid_req
 
 #define NDIS_OID_ESSID              0x0D010102
 #define NDIS_OID_MODE               0x0D010108
+#define NDIS_OID_RSSI               0x0D010206
 #endif /* NDIS_H */
