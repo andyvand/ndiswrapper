@@ -57,7 +57,7 @@ MODULE_PARM(proc_gid, "i");
 MODULE_PARM_DESC(proc_gid, "The gid of the files created in /proc (default: 0).");
 
 /* List of loaded drivers */
-static LIST_HEAD(driverlist);
+LIST_HEAD(ndis_driverlist);
 
 /* Protects driver list */
 static spinlock_t driverlist_lock = SPIN_LOCK_UNLOCKED;
@@ -1154,7 +1154,7 @@ static u32 ndis_get_link(struct net_device *dev)
 }
 
 
-#ifdef HAVE_ETHOOL
+#ifdef HAVE_ETHTOOL
 static struct ethtool_ops ndis_ethtool_ops = {
 	.get_link		= ndis_get_link,
 };
@@ -1661,7 +1661,7 @@ static int setup_dev(struct net_device *dev)
 	dev->do_ioctl = ndis_ioctl;
 	dev->get_wireless_stats = ndis_get_wireless_stats;
 	dev->wireless_handlers	= (struct iw_handler_def *)&ndis_handler_def;
-#ifdef HAVE_ETHOOL
+#ifdef HAVE_ETHTOOL
 	dev->ethtool_ops = &ndis_ethtool_ops;
 #endif	
 	for(i = 0; i < ETH_ALEN; i++)
@@ -1971,7 +1971,7 @@ static int add_driver(struct ndis_driver *driver)
 	int dup = 0;
 	spin_lock(&driverlist_lock);
 
-	list_for_each_entry(tmp, &driverlist, list)
+	list_for_each_entry(tmp, &ndis_driverlist, list)
 	{
 		if(strcmp(tmp->name, driver->name) == 0)
 		{
@@ -1980,7 +1980,7 @@ static int add_driver(struct ndis_driver *driver)
 		}
 	}
 	if(!dup)
-		list_add(&driver->list, &driverlist);
+		list_add(&driver->list, &ndis_driverlist);
 	spin_unlock(&driverlist_lock);
 	if(dup)
 	{
@@ -2016,7 +2016,8 @@ static int add_file(struct ndis_driver *driver, struct put_file *put_file)
 
 	strncpy(file->name, put_file->name, namelen-1);
 	file->name[namelen-1] = 0;
-
+	file->size = put_file->size;
+	
 	file->data = vmalloc(put_file->size);
 	if(!file->data)
 	{
@@ -2329,9 +2330,9 @@ static int __init wrapper_init(void)
 
 static void __exit wrapper_exit(void)
 {
-	while(!list_empty(&driverlist))
+	while(!list_empty(&ndis_driverlist))
 	{
-		struct ndis_driver *driver = (struct ndis_driver*) driverlist.next;
+		struct ndis_driver *driver = (struct ndis_driver*) ndis_driverlist.next;
 		unload_driver(driver);
 	}
 	

@@ -44,9 +44,9 @@
 #define flush_scheduled_work flush_scheduled_tasks
 #endif
 
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,4,23)
-#define HAVE_ETHTOOL
-#endif
+//#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,4,23)
+#define HAVE_ETHTOOL 1
+//#endif
 
 /* Interrupt backwards compatibility stuff */
 #include <linux/interrupt.h>
@@ -271,18 +271,12 @@ struct ndis_setting
 	struct ndis_setting_val value;
 };
 
-struct ndis_filehandle
-{
-	struct file *file;
-	void *map;
-	size_t size;
-};
-
 
 struct ndis_file
 {
 	struct list_head list;
 	char name[32];
+	int size;
 	void *data;
 };
 
