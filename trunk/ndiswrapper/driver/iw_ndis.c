@@ -1288,16 +1288,19 @@ static int wpa_set_key(struct net_device *dev, struct iw_request_info *info,
 	}
 
 	if (wpa_key.key_len > sizeof(ndis_key.key)) {
-		DBGTRACE2("incorrect key length (%lu)", (unsigned long)wpa_key.key_len);
+		DBGTRACE2("incorrect key length (%lu)",
+			  (unsigned long)wpa_key.key_len);
 		TRACEEXIT2(return -1);
 	}
 	
 	if (wpa_key.seq_len > IW_ENCODING_TOKEN_MAX) {
-		DBGTRACE2("incorrect seq? length = (%lu)", (unsigned long)wpa_key.seq_len);
+		DBGTRACE2("incorrect seq? length = (%lu)",
+			  (unsigned long)wpa_key.seq_len);
 		TRACEEXIT2(return -1);
 	}
 
-	DBGTRACE2("setting key %d, %lu", wpa_key.key_index, (unsigned long)wpa_key.key_len);
+	DBGTRACE2("setting key %d, %lu", wpa_key.key_index,
+		  (unsigned long)wpa_key.key_len);
 	memset(&ndis_key, 0, sizeof(ndis_key));
 
 	ndis_key.struct_size = sizeof(ndis_key);

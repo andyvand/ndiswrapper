@@ -909,6 +909,7 @@ STDCALL NT_STATUS RtlAnsiStringToUnicodeString(struct unicode_string *dst,
 					       struct ansi_string *src,
 					       BOOLEAN dup);
 STDCALL void RtlInitAnsiString(struct ansi_string *dst, CHAR *src);
+STDCALL void RtlInitString(struct ansi_string *dst, CHAR *src);
 STDCALL void RtlFreeUnicodeString(struct unicode_string *string);
 STDCALL void RtlFreeAnsiString(struct ansi_string *string);
 

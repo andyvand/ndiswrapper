@@ -126,7 +126,7 @@ endif
 		echo "#ifdef CONFIG_X86_64"; \
 		sed -n \
 			-e 's/.*WRAP_EXPORT(\([^)]\+\)).*/   \
-				   extern void _\1(void);/p' \
+				   extern void x86_64_\1(void);/p' \
 			   $< | sort; \
 		echo "#endif"; \
 		echo "struct wrap_export $(basename $<)_exports[] = {";\
@@ -212,10 +212,6 @@ install: prereq_check x86_64_stubs gen_exports default stack_check
 	mkdir -p $(INST_DIR)
 	install -m 0644 $(MODULE) $(INST_DIR)
 	-/sbin/depmod -a
-	@echo
-	@echo "Windows driver configuration file format has changed since" \
-		  "1.0-rc2. You must re-install Windows drivers if they were" \
-		   "installed before."
 
 dist:
 	@for file in $(DISTFILES); do \

@@ -737,6 +737,14 @@ STDCALL void WRAP_EXPORT(RtlInitAnsiString)
 	TRACEEXIT2(return);
 }
 
+STDCALL void WRAP_EXPORT(RtlInitString)
+	(struct ansi_string *dst, CHAR *src)
+{
+	TRACEENTER2("%s", "");
+	RtlInitAnsiString(dst, src);
+	TRACEEXIT2(return);
+}
+
 STDCALL void WRAP_EXPORT(RtlFreeUnicodeString)(struct unicode_string *string)
 {
 	if (string == NULL || string->buf == NULL)

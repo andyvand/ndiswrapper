@@ -618,6 +618,13 @@ STDCALL void WRAP_EXPORT(NdisInitAnsiString)
 	TRACEEXIT2(return);
 }
 
+STDCALL void WRAP_EXPORT(NdisInitString)
+	(struct ansi_string *dst, CHAR *src)
+{
+	RtlInitString(dst, src);
+	TRACEEXIT2(return);
+}
+
 STDCALL void WRAP_EXPORT(NdisInitUnicodeString)
 	(struct unicode_string *dest, const wchar_t *src)
 {

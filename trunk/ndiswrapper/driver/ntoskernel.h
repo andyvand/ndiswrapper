@@ -296,7 +296,7 @@ struct wrap_export {
 };
 
 #ifdef CONFIG_X86_64
-#define WRAP_EXPORT_SYMBOL(f) {#f, (WRAP_EXPORT_FUNC)_ ## f}
+#define WRAP_EXPORT_SYMBOL(f) {#f, (WRAP_EXPORT_FUNC)x86_64_ ## f}
 #else
 #define WRAP_EXPORT_SYMBOL(f) {#f, (WRAP_EXPORT_FUNC)f}
 #endif
@@ -366,6 +366,7 @@ STDCALL KIRQL KeGetCurrentIrql(void);
 STDCALL void KeInitializeSpinLock(KSPIN_LOCK *lock);
 STDCALL void KeAcquireSpinLock(KSPIN_LOCK *lock, KIRQL *irql);
 STDCALL void KeReleaseSpinLock(KSPIN_LOCK *lock, KIRQL oldirql);
+STDCALL KIRQL KeAcquireSpinLockRaiseToDpc(KSPIN_LOCK *lock);
 
 _FASTCALL KIRQL KfRaiseIrql(FASTCALL_DECL_1(KIRQL newirql));
 _FASTCALL void KfLowerIrql(FASTCALL_DECL_1(KIRQL oldirql));

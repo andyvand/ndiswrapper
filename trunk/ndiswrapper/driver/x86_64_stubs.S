@@ -78,8 +78,8 @@ lin_to_win6:
 
 
 	.macro	win_to_lin_stub name
-	.globl _\name
-_\name:
+	.globl x86_64_\name
+x86_64_\name:
 	lea	\name(%rip),%rax
 	jmp	*win_to_lin(%rip)
 	.endm
