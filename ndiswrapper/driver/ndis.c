@@ -1283,6 +1283,10 @@ STDCALL void WRAP_EXPORT(NdisAllocatePacket)
 			descr = pool->free_descr;
 			pool->free_descr = descr->next;
 			memset(descr, 0, sizeof(*descr));
+			descr->private.oob_offset =
+				offsetof(struct ndis_packet, oob_data);
+			descr->private.packet_flags =
+				fPACKET_ALLOCATED_BY_NDIS;
 		} else
 			descr = allocate_ndis_packet();
 	} else
@@ -1290,7 +1294,7 @@ STDCALL void WRAP_EXPORT(NdisAllocatePacket)
 
 	if (descr) {
 		pool->num_allocated_descr++;
-		descr->pool = pool;
+		descr->private.pool = pool;
 		*status = NDIS_STATUS_SUCCESS;
 	} else
 		*status = NDIS_STATUS_RESOURCES;
@@ -1313,8 +1317,8 @@ STDCALL void WRAP_EXPORT(NdisFreePacket)
 	struct ndis_packet_pool *pool;
 	KIRQL irql;
 
-	TRACEENTER3("packet: %p, pool: %p", descr, descr->pool);
-	pool = descr->pool;
+	TRACEENTER3("packet: %p, pool: %p", descr, descr->private.pool);
+	pool = descr->private.pool;
 	if (!pool) {
 		ERROR("pool for descriptor %p is invalid", descr);
 		TRACEEXIT3(return);
@@ -1754,7 +1758,6 @@ NdisMIndicateReceivePacket(struct ndis_handle *handle,
 			continue;
 		}
 
-		DBGTRACE3("packet: %p, pool: %p", packet, packet->pool);
 		buffer = packet->private.buffer_head;
 
 		skb = dev_alloc_skb(MmGetMdlByteCount(buffer));
@@ -1891,7 +1894,7 @@ EthRxIndicateHandler(void *adapter_ctx, void *rx_ctx, char *header1,
 			handle->stats.rx_dropped++;
 			TRACEEXIT3(return);
 		}
-		packet->pool = NULL;
+		packet->private.pool = NULL;
 
 		miniport = &handle->driver->miniport_char;
 		irql = raise_irql(DISPATCH_LEVEL);
