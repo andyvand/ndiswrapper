@@ -37,7 +37,7 @@
 
 #include "winnt_types.h"
 #include "ndiswrapper.h"
-#include "winnt_pe.h"
+#include "pe_linker.h"
 
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,7)
 #include <linux/kthread.h>
