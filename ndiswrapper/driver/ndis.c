@@ -293,17 +293,17 @@ STDCALL void NdisGetSystemUpTime(unsigned int *systemuptime)
 	*systemuptime = 10 * jiffies / HZ;
 }
 
-STDCALL void NdisGetBufferPhysicalArraySize(void **buffer,
+STDCALL void NdisGetBufferPhysicalArraySize(struct ndis_buffer *buffer,
 					    unsigned int *arraysize)
 {
 	int i = 0;
-	unsigned long *mdl = *buffer;
+	struct ndis_buffer *mdl = buffer;
 	DBGTRACE("%s: Buffer: %08x\n", __FUNCTION__, (int) buffer);
-	while (mdl) {
+	for (i = 1, mdl = buffer; mdl ; mdl = mdl->next)
 		i++;
-		mdl = (void*) *mdl;
-	}
+	DBGTRACE("%s: arraysize = %d\n", __FUNCTION__, i);
 	*arraysize = i;
+	DBGTRACE("%s: exit\n", __FUNCTION__);
 }
 
 static int ndis_encode_setting(struct ndis_setting *setting,
