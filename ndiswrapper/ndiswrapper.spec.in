@@ -6,9 +6,6 @@ License: GPL
 Group: System Environment/Base
 URL: http://ndiswrapper.sourceforge.net
 Source: %{name}-%{version}.tar.gz
-#BuildRoot: %{_tmppath}/%{name}-%{version}-%{release}-buildroot
-Requires: kernel >= %(uname -r | sed s/-.*//)
-#%define ModuleInstPath %BuildRoot/lib/modules/%(uname -r)/misc
 
 %description
 Some wireless LAN vendors refuse to release hardware specifications or
@@ -18,6 +15,13 @@ hardware with Linux by means of a loadable kernel module that "wraps
 around" NDIS (Windows network driver API) drivers.  This rpm contains
 just the kernel module and loader.  You will also need the
 ndiswrapper-manufacturer-chipset rpm for your specific chipset.
+
+%package kernel
+Summary: Ndiswrapper kernel module
+Group: System Environment/Base
+Requires: kernel >= %(uname -r | sed s/-.*//), ndiswrapper = DRV_VERSION
+
+%description kernel
 
 
 %prep
@@ -39,17 +43,18 @@ rm -rf $RPM_BUILD_ROOT
 %files
 %undefine __check_files
 %defattr(0755,root,root)
-/lib/modules/%(uname -r)/misc/ndiswrapper.*
 /sbin/loadndisdriver
 /usr/sbin/ndiswrapper
 %doc README AUTHORS ChangeLog INSTALL
 
+%files kernel
+/lib/modules/%(uname -r)/misc/ndiswrapper.*
 
-%post
+%post kernel
 /sbin/depmod -a
 
 
-%postun
+%postun kernel
 /sbin/depmod -a
 
 

@@ -46,6 +46,10 @@ dist:
 	
 rpm: dist ndiswrapper.spec.in
 	cat ndiswrapper.spec.in | sed s/DRV_VERSION/${DRV_VERSION}/ >ndiswrapper.spec
-	cp ${distarchive} /usr/src/redhat/SOURCES
+	if test -d /usr/src/redhat/SOURCES ; then \
+	  cp $(distarchive) /usr/src/redhat/SOURCES ;\
+	else \
+	  cp $(distarchive) /usr/src/RPM/SOURCES ; \
+	fi
 	rpmbuild -ba ndiswrapper.spec
 
