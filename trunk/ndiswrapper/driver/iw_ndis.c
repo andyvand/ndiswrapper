@@ -702,10 +702,10 @@ static int ndis_get_scan(struct net_device *dev, struct iw_request_info *info,
 			   union iwreq_data *wrqu, char *extra)
 {
  	struct ndis_handle *handle = dev->priv;
-	int i, res, written, needed;
-	struct list_scan list_scan;
+	unsigned int i, res, written, needed, list_len;
+	struct bssid_list *bssid_list;
 	char *event = extra;
-	char *cur_item ;
+	struct ssid_item *cur_item ;
 
 	if (!handle->scan_timestamp)
 		return -EOPNOTSUPP;
@@ -714,27 +714,40 @@ static int ndis_get_scan(struct net_device *dev, struct iw_request_info *info,
 		return -EAGAIN;
 	
 	written = needed = 0;
-	memset(&list_scan, 0, sizeof(list_scan));
-	res = doquery(handle, NDIS_OID_BSSID_LIST, (char*)&list_scan, sizeof(list_scan), &written, &needed);
-	if (res)
+	res = doquery(handle, NDIS_OID_BSSID_LIST, NULL, 0,
+		      &written, &list_len);
+	if (res != NDIS_STATUS_INVALID_LENGTH)
 	{
 		printk(KERN_INFO "%s: getting BSSID list failed (%08X)\n",
 		       dev->name, res);
 		return -EOPNOTSUPP;
 	}
 
-	for (i = 0, cur_item = (char *)&(list_scan.items[0]) ;
-	     i < list_scan.num_items && i < MAX_SCAN_ITEMS ; i++)
+	bssid_list = kmalloc(list_len, GFP_KERNEL);
+	
+	res = doquery(handle, NDIS_OID_BSSID_LIST, (char*)bssid_list,
+		      list_len, &written, &needed);
+	if (res)
 	{
-		char *prev_item = cur_item ;
+		printk(KERN_INFO "%s: getting BSSID list failed (%08X)\n",
+		       dev->name, res);
+		kfree(bssid_list);
+		return -EOPNOTSUPP;
+	}
+
+	for (i = 0, cur_item = &bssid_list->items[0] ;
+	     i < bssid_list->num_items ; i++)
+	{
 		event = ndis_translate_scan(dev, event,
 					    extra + IW_SCAN_MAX_DATA,
-					    (struct ssid_item *)cur_item);
-		cur_item += ((struct ssid_item *)prev_item)->length;
+					    cur_item);
+		cur_item = (struct ssid_item *)((char *)cur_item +
+						cur_item->length);
 	}
 	wrqu->data.length = event - extra;
 	wrqu->data.flags = 0;
 
+	kfree(bssid_list);
 	return 0;
 }
 
