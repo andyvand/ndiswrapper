@@ -21,7 +21,7 @@
 
 Go to the driver directory and run:
 
-   > make
+   > make install
 
 2. Compile the loader:
 ----------------------
@@ -31,12 +31,13 @@ running):
 
 > make
 
-This should produce a loadndisdriver executable.
+This should produce a loadndisdriver executable. Copy loadndisdriver to
+/usr/sbin.
 
 3. Get the windows driver
 -------------------------
 Download the Windows XP drivers for your card and locate the .sys and
-.inf file. Copy these files some place.
+.inf file. Copy these files to /lib/windrivers directory.
    
 4. Find out the PCI vendor and device of you WLAN card.
 -------------------------------------------------------
@@ -82,21 +83,15 @@ b) If step a) fails, or if you want to do it manually, run
 5. Load the kernel module
 -------------------------
 
-From the ndiswrapper directory,
+Load the module:
 
-a) If you are running 2.6 kernel, run:
-
-   > insmod driver/ndiswrapper.ko
-
-b) If you are running 2.4 kernel, run:
-
-   > insmod driver/ndiswrapper.o
+   > insmod ndiswrapper
 
 6. Load the windows driver
 --------------------------
 From the ndiswrapper directory, run:
 
-> utils/loadndisdriver <vendor> <device> <sysfile> <inffile>
+> /usr/sbin/loadndisdriver <vendor> <device> <sysfile> <inffile>
 
 where <vendor> is the vendor ID and <device> is the device ID noted in
 step 4, <sysfile> is the full path to the .sys file and <inffile> is the
@@ -148,42 +143,16 @@ or
 -----------
 When you have a wokring setup you may want to automate the driver-loading
 
-a) You need to copy the ndiswrapper module (produced in step 1) to
-   your kernel's modules directory. For this, create the misc
-   directory in the appropriate place:
-
-   > mkdir /lib/modules/$(uname -r)/misc
-
-   Copy ndiswrapper.o file if you are running 2.4 kernel, or
-   ndiswrapper.ko file if you are running 2.6 kernel to the misc
-   directory created above:
-
-   > cp driver/ndiswrapper.*o /lib/modules/$(uname -r) misc
-
-   Update module information:
-
-   > depmod -a
-
-   Copy the loadndisdriver executable to some place, e.g., /usr/local/bin:
-
-   > cp utils/loadndisdriver /usr/local/bin
-
-   Copy the .inf file and .sys file to some place, e.g.,
-   /usr/local/share/ndiswrapper
-
-   > cp bcmwl5.sys bcmwl5.inf /usr/local/share/ndiswrapper
-
-b) Create alias for the interface:
+a) Create alias for the interface:
 
    alias ethX ndiswrapper
 
-c) For kernel 2.6:
-
-   * First write a script that does insmod and loadndisdriver.
+b) 
+    For kernel 2.6:
 
    * Add this line to /etc/modprobe.conf:
 
-        install ethX <path to your script>
+        install ndiswrapper /sbin/modprobe --ignore-instasll ndiswrapper;/usr/sbin/loadndisdriver <vendor> <device> /lib/windrivers/<sysfile> /lib/windrivers/<inffile>
 
      Fedora Core 1 (and probably Redhat 9) with kernel 2.6.0 seem to
      have a slight bug which cause ifup to not recoginize the install
@@ -193,7 +162,7 @@ c) For kernel 2.6:
 
    For kernel 2.4:
 
-   * Add these line to /etc/modules.conf:
+   * Add this line to /etc/modules.conf:
 
-     post-install ethX /usr/local/bin/loadndisdriver <vendor> <device>  /usr/local/share/ndiswrapper/*.sys /usr/local/share/ndiswrapper/*.inf 
+     post-install ndiswrapper /usr/sbin/loadndisdriver <vendor> <device>  /lib/windrivers/<sysfile> /lib/windrivers/<inffile>
 
