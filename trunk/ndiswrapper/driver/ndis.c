@@ -229,7 +229,8 @@ STDCALL void NdisOpenFile(unsigned int *status,
 {
 	char name[1024];
 
-	unicodeToStr(name, filename, 1024);
+	if (unicodeToStr(name, filename, 1024))
+		name[0] = 0;
 	DBGTRACE("%s: Filename: %s @ %p Highest Address: %08x\n", __FUNCTION__, name, filename, (int) highest_address);
 	*status = NDIS_STATUS_FILE_NOT_FOUND;
 }
