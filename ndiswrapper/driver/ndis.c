@@ -24,6 +24,7 @@
 #include <linux/ctype.h>
 
 #include "ndis.h"
+#include "ntoskernel.h"
 
 #if LINUX_VERSION_CODE <= KERNEL_VERSION(2,6,0)
 #undef __wait_event_interruptible_timeout
@@ -1119,6 +1120,7 @@ STDCALL void NdisSetTimer(struct ndis_timer **timer_handle, unsigned int ms)
 		add_timer(&ndis_timer->timer);
 	}
 	ndis_timer->active = 1;
+	return;
 }
 
 /*
@@ -1141,6 +1143,7 @@ STDCALL void NdisMSetPeriodicTimer(struct ndis_timer **timer_handle,
 		add_timer(&ndis_timer->timer);
 	}
 	ndis_timer->active = 1;
+	return;
 }
 
 /*
@@ -1150,8 +1153,12 @@ STDCALL void NdisMCancelTimer(struct ndis_timer **timer_handle, char *canceled)
 {
 	DBGTRACE("%s\n", __FUNCTION__);
 	(*timer_handle)->repeat = 0;
-	*canceled = del_timer_sync(&(*timer_handle)->timer);
+	if ((*timer_handle)->active)
+		*canceled = del_timer_sync(&(*timer_handle)->timer);
+	else
+		*canceled = 0;
 	(*timer_handle)->active = 0;
+	return;
 }
 
 
@@ -1518,7 +1525,7 @@ STDCALL long NdisInterlockedDecrement(long *val)
 {
 	unsigned long flags;
 	long x;
-	DBGTRACE("%s: entry\n", __FUNCTION__);
+//	DBGTRACE("%s: entry\n", __FUNCTION__);
 	spin_lock_irqsave(&atomic_lock, flags);
 	*val--;
 	x = *val;
@@ -1530,7 +1537,7 @@ STDCALL long NdisInterlockedIncrement(long *val)
 {
 	unsigned long flags;
 	long x;
-	DBGTRACE("%s: entry\n", __FUNCTION__);
+//	DBGTRACE("%s: entry\n", __FUNCTION__);
 	spin_lock_irqsave(&atomic_lock, flags);
 	*val++;
 	x = *val;
@@ -1538,6 +1545,25 @@ STDCALL long NdisInterlockedIncrement(long *val)
 	return x;
 }
 
+STDCALL struct list_entry *
+NdisInterlockedInsertHeadList(struct list_entry *head,
+							  struct list_entry *entry,
+							  struct ndis_spin_lock *lock)
+{
+	struct list_entry *flink;
+
+	NdisAcquireSpinLock(lock);
+
+	flink = head->fwd_link;
+	entry->fwd_link = flink;
+	entry->bwd_link = head;
+	flink->bwd_link = entry;
+	head->fwd_link = entry;
+
+	NdisReleaseSpinLock(lock);
+	return flink;
+
+}
 
 /*
  * Arguments:
