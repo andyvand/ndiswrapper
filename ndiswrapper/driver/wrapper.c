@@ -45,11 +45,11 @@
 
 /*#define DEBUG_CRASH_ON_INIT*/
 
-static char *basename = "eth";
+static char *if_name = "wlan0";
 int proc_uid, proc_gid;
 
-MODULE_PARM(basename, "s");
-MODULE_PARM_DESC(basename, "Basename for network device name (default: eth)");
+MODULE_PARM(if_name, "s");
+MODULE_PARM_DESC(if_name, "Network interface name (default: wlan0)");
 MODULE_PARM(proc_uid, "i");
 MODULE_PARM_DESC(proc_uid, "The uid of the files created in /proc (default: 0).");
 MODULE_PARM(proc_gid, "i");
@@ -1556,7 +1556,6 @@ static int setup_dev(struct net_device *dev)
 
 	unsigned int res;
 	int i;
-	char dev_template[IFNAMSIZ];
 	union iwreq_data wrqu;
 
 	DBGTRACE("%s: Querying for mac\n", __FUNCTION__);
@@ -1582,7 +1581,7 @@ static int setup_dev(struct net_device *dev)
 	wrqu.mode = IW_MODE_INFRA;
 	if (ndis_set_mode(dev, NULL, &wrqu, NULL))
 	{
-		printk(KERN_ERR "%s: Unable to set adhoc mode\n", dev->name);
+		printk(KERN_ERR "%s: Unable to set managed mode\n", dev->name);
 		return -1;
 	}
 
@@ -1603,21 +1602,14 @@ static int setup_dev(struct net_device *dev)
 	dev->mem_start = handle->mem_start;		
 	dev->mem_end = handle->mem_end;		
 
-	if (strlen(basename) > (IFNAMSIZ-3))
+	if (strlen(if_name) > (IFNAMSIZ-2))
 	{
-		printk(KERN_ERR "%s: basename '%s' is too long\n",
-		       dev->name, basename);
+		printk(KERN_ERR "%s: interface name '%s' is too long\n",
+		       DRV_NAME, if_name);
 		return -1;
 	}
-	if ((!strncpy(dev_template, basename, (IFNAMSIZ - 3))) ||
-	    (!strncat(dev_template, "%d", 2)))
-	{
-		printk(KERN_ERR "%s: Problem creating dev_template from basename '%s'\n", dev->name, basename);
-		return -1;
-	}
-	rtnl_lock();
-	res = dev_alloc_name(dev, dev_template);
-	rtnl_unlock();
+	strncpy(dev->name, if_name, IFNAMSIZ-2);
+	dev->name[IFNAMSIZ-1] = '\0';
 	if (res >= 0)
 	{
 		printk(KERN_INFO "%s: %s ethernet device "
