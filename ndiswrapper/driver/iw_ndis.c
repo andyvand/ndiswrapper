@@ -61,6 +61,64 @@ int set_essid(struct ndis_handle *handle, const char *ssid, int ssid_len)
 	TRACEEXIT1(return 0);
 }
 
+static int set_assoc_params(struct ndis_handle *handle)
+{
+	int auth_mode, encr_mode, priv_mode;
+
+	priv_mode = Ndis802_11PrivFilterAcceptAll;
+
+	DBGTRACE2("wpa_version=0x%x auth_alg=0x%x key_mgmt=0x%x "
+		  "cipher_pairwise=0x%x cipher_group=0x%x",
+		  handle->iw_auth_wpa_version, handle->iw_auth_80211_auth_alg,
+		  handle->iw_auth_key_mgmt, handle->iw_auth_cipher_pairwise,
+		  handle->iw_auth_cipher_group);
+	if (handle->iw_auth_wpa_version & IW_AUTH_WPA_VERSION_WPA2) {
+		priv_mode = Ndis802_11PrivFilter8021xWEP;
+		if (handle->iw_auth_key_mgmt & IW_AUTH_KEY_MGMT_802_1X)
+			auth_mode = Ndis802_11AuthModeWPA2;
+		else
+			auth_mode = Ndis802_11AuthModeWPA2PSK;
+	} else if (handle->iw_auth_wpa_version & IW_AUTH_WPA_VERSION_WPA) {
+		priv_mode = Ndis802_11PrivFilter8021xWEP;
+		if (handle->iw_auth_key_mgmt & IW_AUTH_KEY_MGMT_802_1X)
+			auth_mode = Ndis802_11AuthModeWPA;
+		else if (handle->iw_auth_key_mgmt & IW_AUTH_KEY_MGMT_PSK)
+			auth_mode = Ndis802_11AuthModeWPAPSK;
+		else
+			auth_mode = Ndis802_11AuthModeWPANone;
+	} else if (handle->iw_auth_80211_auth_alg & IW_AUTH_ALG_SHARED_KEY) {
+		if (handle->iw_auth_80211_auth_alg &
+		    IW_AUTH_ALG_OPEN_SYSTEM)
+			auth_mode = Ndis802_11AuthModeAutoSwitch;
+		else
+			auth_mode = Ndis802_11AuthModeShared;
+	} else
+		auth_mode = Ndis802_11AuthModeOpen;
+
+	if (handle->iw_auth_cipher_pairwise & IW_AUTH_CIPHER_CCMP)
+		encr_mode = Ndis802_11Encryption3Enabled;
+	else if (handle->iw_auth_cipher_pairwise & IW_AUTH_CIPHER_TKIP)
+		encr_mode = Ndis802_11Encryption2Enabled;
+	else if (handle->iw_auth_cipher_pairwise &
+		 (IW_AUTH_CIPHER_WEP40 | IW_AUTH_CIPHER_WEP104))
+		encr_mode = Ndis802_11Encryption1Enabled;
+	else if (handle->iw_auth_cipher_group & IW_AUTH_CIPHER_CCMP)
+		encr_mode = Ndis802_11Encryption3Enabled;
+	else if (handle->iw_auth_cipher_group & IW_AUTH_CIPHER_TKIP)
+		encr_mode = Ndis802_11Encryption2Enabled;
+	else
+		encr_mode = Ndis802_11EncryptionDisabled;
+
+	DBGTRACE2("priv_mode=%d auth_mode=%d encr_mode=%d",
+		  priv_mode, auth_mode, encr_mode);
+
+	set_privacy_filter(handle, priv_mode);
+	set_auth_mode(handle, auth_mode);
+	set_encr_mode(handle, encr_mode);
+
+	return 0;
+}
+
 static int iw_set_essid(struct net_device *dev, struct iw_request_info *info,
 			union iwreq_data *wrqu, char *extra)
 {
@@ -78,6 +136,12 @@ static int iw_set_essid(struct net_device *dev, struct iw_request_info *info,
 
 	if (wrqu->essid.length > IW_ESSID_MAX_SIZE)
 		TRACEEXIT1(return -EINVAL);
+
+	if (handle->iw_auth_set) {
+		int ret = set_assoc_params(handle);
+		if (ret < 0)
+			TRACEEXIT1(return ret);
+	}
 
 	memcpy(ssid, extra, wrqu->essid.length);
 	if (set_essid(handle, ssid, wrqu->essid.length))
@@ -896,6 +960,18 @@ static char *ndis_translate_scan(struct net_device *dev, char *event,
 	if (item->length > sizeof(*item)) {
 		unsigned char *iep = (unsigned char *)item->ies +
 			sizeof(struct ndis_fixed_ies);
+	/*
+	 * TODO: backwards compatibility would require that IWEVCUSTOM
+	 * is send even if WIRELESS_EXT > 17. This version does not do
+	 * this in order to allow wpa_supplicant to be tested with
+	 * WE-18.
+	 */
+#if WIRELESS_EXT > 17
+		memset(&iwe, 0, sizeof(iwe));
+		iwe.cmd = IWEVGENIE;
+		iwe.u.data.length = item->ie_length;
+		event = iwe_stream_add_point(event, end_buf, &iwe, iep);
+#else
 		unsigned char *end = iep + item->ie_length;
 
 		while (iep + 1 < end && iep + 2 + iep[1] <= end) {
@@ -938,6 +1014,7 @@ static char *ndis_translate_scan(struct net_device *dev, char *event,
 
 			iep += ielen;
 		}
+#endif
 	}
 
 	DBGTRACE2("event = %p, current_val = %p", event, current_val);
@@ -1152,7 +1229,7 @@ static int iw_get_range(struct net_device *dev, struct iw_request_info *info,
 	}
 
 	range->we_version_compiled = WIRELESS_EXT;
-	range->we_version_source = 0;
+	range->we_version_source = 18;
 
 	range->retry_capa = IW_RETRY_LIMIT;
 	range->retry_flags = IW_RETRY_LIMIT;
@@ -1203,8 +1280,285 @@ static int iw_get_range(struct net_device *dev, struct iw_request_info *info,
 	range->min_frag = 256;
 	range->max_frag = 2346;
 
+#if WIRELESS_EXT > 16
+	/* Event capability (kernel + driver) */
+	range->event_capa[0] = (IW_EVENT_CAPA_K_0 |
+				IW_EVENT_CAPA_MASK(SIOCGIWTHRSPY) |
+				IW_EVENT_CAPA_MASK(SIOCGIWAP) |
+				IW_EVENT_CAPA_MASK(SIOCGIWSCAN));
+	range->event_capa[1] = IW_EVENT_CAPA_K_1;
+	range->event_capa[4] = (IW_EVENT_CAPA_MASK(IWEVTXDROP) |
+				IW_EVENT_CAPA_MASK(IWEVCUSTOM) |
+				IW_EVENT_CAPA_MASK(IWEVREGISTERED) |
+				IW_EVENT_CAPA_MASK(IWEVEXPIRED));
+#endif /* WIRELESS_EXT > 16 */
+
+#if WIRELESS_EXT > 17
+	/* TODO: should determine WPA/WPA2 support in check_capa(). */
+	range->enc_capa = IW_ENC_CAPA_WPA | IW_ENC_CAPA_WPA2;
+	if (test_bit(Ndis802_11Encryption2Enabled, &handle->capa))
+		range->enc_capa |= IW_ENC_CAPA_CIPHER_TKIP;
+	if (test_bit(Ndis802_11Encryption3Enabled, &handle->capa))
+		range->enc_capa |= IW_ENC_CAPA_CIPHER_CCMP;
+#endif /* WIRELESS_EXT > 17 */
+
 	return 0;
 }
+
+#if WIRELESS_EXT > 17
+static int wpa_disassociate(struct net_device *dev,
+			    struct iw_request_info *info,
+			    union iwreq_data *wrqu, char *extra);
+
+static int iw_set_mlme(struct net_device *dev, struct iw_request_info *info,
+		       union iwreq_data *wrqu, char *extra)
+{
+	struct iw_mlme *mlme = (struct iw_mlme *)extra;
+
+	switch (mlme->cmd) {
+	case IW_MLME_DEAUTH:
+	case IW_MLME_DISASSOC:
+		DBGTRACE2("cmd=%d reason_code=%d",
+			  mlme->cmd, mlme->reason_code);
+		return wpa_disassociate(dev, info, wrqu, extra);
+	default:
+		return -EOPNOTSUPP;
+	}
+
+	return 0;
+}
+
+static int iw_set_genie(struct net_device *dev,
+			struct iw_request_info *info,
+			union iwreq_data *wrqu, char *extra)
+{
+	/*
+	 * NDIS drivers do not allow IEs to be configured; this is
+	 * done by the driver based on other configuration. Return 0
+	 * to avoid causing issues with user space programs that
+	 * expect this function to succeed.
+	 */
+	return 0;
+}
+
+static int iw_set_auth(struct net_device *dev,
+		       struct iw_request_info *info,
+		       union iwreq_data *wrqu, char *extra)
+{
+	struct ndis_handle *handle = dev->priv;
+	DBGTRACE2("index=%d value=%d", wrqu->param.flags & IW_AUTH_INDEX,
+		  wrqu->param.value);
+	handle->iw_auth_set = 1;
+	switch (wrqu->param.flags & IW_AUTH_INDEX) {
+	case IW_AUTH_WPA_VERSION:
+		handle->iw_auth_wpa_version = wrqu->param.value;
+		break;
+	case IW_AUTH_CIPHER_PAIRWISE:
+		handle->iw_auth_cipher_pairwise = wrqu->param.value;
+		break;
+	case IW_AUTH_CIPHER_GROUP:
+		handle->iw_auth_cipher_group = wrqu->param.value;
+		break;
+	case IW_AUTH_KEY_MGMT:
+		handle->iw_auth_key_mgmt = wrqu->param.value;
+		break;
+	case IW_AUTH_80211_AUTH_ALG:
+		handle->iw_auth_80211_auth_alg = wrqu->param.value;
+		break;
+	case IW_AUTH_TKIP_COUNTERMEASURES:
+	case IW_AUTH_DROP_UNENCRYPTED:
+	case IW_AUTH_WPA_ENABLED:
+	case IW_AUTH_RX_UNENCRYPTED_EAPOL:
+	case IW_AUTH_PRIVACY_INVOKED:
+		/* TODO */
+		break;
+	default:
+		return -EOPNOTSUPP;
+	}
+	return 0;
+}
+
+static int iw_get_auth(struct net_device *dev,
+		       struct iw_request_info *info,
+		       union iwreq_data *wrqu, char *extra)
+{
+	struct ndis_handle *handle = dev->priv;
+
+	TRACEENTER2("index=%d", wrqu->param.flags & IW_AUTH_INDEX);
+	switch (wrqu->param.flags & IW_AUTH_INDEX) {
+	case IW_AUTH_WPA_VERSION:
+		wrqu->param.value = handle->iw_auth_wpa_version;
+		break;
+	case IW_AUTH_CIPHER_PAIRWISE:
+		wrqu->param.value = handle->iw_auth_cipher_pairwise;
+		break;
+	case IW_AUTH_CIPHER_GROUP:
+		wrqu->param.value = handle->iw_auth_cipher_group;
+		break;
+	case IW_AUTH_KEY_MGMT:
+		wrqu->param.value = handle->iw_auth_key_mgmt;
+		break;
+	case IW_AUTH_80211_AUTH_ALG:
+		wrqu->param.value = handle->iw_auth_80211_auth_alg;
+		break;
+	default:
+		return -EOPNOTSUPP;
+	}
+	return 0;
+}
+
+static int iw_set_encodeext(struct net_device *dev,
+			    struct iw_request_info *info,
+			    union iwreq_data *wrqu, char *extra)
+{
+	struct iw_encode_ext *ext = (struct iw_encode_ext *) extra;
+	struct ndis_handle *handle = dev->priv;
+	struct ndis_add_key ndis_key;
+	int i, keyidx;
+	NDIS_STATUS res;
+	u8 *addr;
+
+	TRACEENTER2("");
+	keyidx = wrqu->encoding.flags & IW_ENCODE_INDEX;
+	if (keyidx > 0)
+		keyidx--;
+	else
+		keyidx = handle->encr_info.tx_key_index;
+
+	if (keyidx < 0 || keyidx >= MAX_ENCR_KEYS)
+		return -EINVAL;
+
+	if (ext->alg == IW_ENCODE_ALG_WEP) {
+		if (test_bit(Ndis802_11EncryptionDisabled, &handle->capa))
+			TRACEEXIT2(return -1);
+
+		if (ext->ext_flags & IW_ENCODE_EXT_SET_TX_KEY)
+			handle->encr_info.tx_key_index = keyidx;
+
+		if (add_wep_key(handle, ext->key, ext->key_len, keyidx))
+			TRACEEXIT2(return -1);
+		else
+			TRACEEXIT2(return 0);
+	}
+
+	if (ext->key_len > sizeof(ndis_key.key)) {
+		DBGTRACE2("incorrect key length (%u)", ext->key_len);
+		TRACEEXIT2(return -1);
+	}
+	
+	memset(&ndis_key, 0, sizeof(ndis_key));
+
+	ndis_key.struct_size = sizeof(ndis_key);
+	ndis_key.length = ext->key_len;
+	ndis_key.index = keyidx;
+
+	if (ext->ext_flags & IW_ENCODE_EXT_RX_SEQ_VALID) {
+		for (i = 0, ndis_key.rsc = 0 ; i < 6 ; i++)
+			ndis_key.rsc |= (ext->rx_seq[i] << (i * 8));
+
+		ndis_key.index |= 1 << 29;
+	}
+
+	addr = ext->addr.sa_data;
+	DBGTRACE2("infra_mode = %d, addr = " MACSTR,
+		  handle->infrastructure_mode, MAC2STR(addr));
+
+	if (memcmp(addr, "\xff\xff\xff\xff\xff\xff", ETH_ALEN) == 0) {
+		/* group key */
+		if (handle->infrastructure_mode == Ndis802_11IBSS)
+			memset(ndis_key.bssid, 0xff, ETH_ALEN);
+		else
+			get_ap_address(handle, ndis_key.bssid);
+	} else {
+		/* pairwise key */
+		ndis_key.index |= (1 << 30);
+		memcpy(&ndis_key.bssid, addr, ETH_ALEN);
+	}
+		
+	DBGTRACE2("bssid " MACSTR, MAC2STR(ndis_key.bssid));
+
+	if (ext->ext_flags & IW_ENCODE_EXT_SET_TX_KEY)
+		ndis_key.index |= (1 << 31);
+
+	if (ext->alg == IW_ENCODE_ALG_TKIP && ext->key_len == 32) {
+		/* wpa_supplicant gives us the Michael MIC RX/TX keys in
+		 * different order than NDIS spec, so swap the order here. */
+		memcpy(ndis_key.key, ext->key, 16);
+		memcpy(ndis_key.key + 16, ext->key + 24, 8);
+		memcpy(ndis_key.key + 24, ext->key + 16, 8);
+	} else
+		memcpy(ndis_key.key, ext->key, ext->key_len);
+
+	if ((wrqu->encoding.flags & IW_ENCODE_DISABLED) ||
+	    ext->alg == IW_ENCODE_ALG_NONE || ext->key_len == 0) {
+		/* TI driver crashes kernel if OID_802_11_REMOVE_KEY is
+		 * called; other drivers seem to not require it, so
+		 * for now, don't remove the key from driver */
+		handle->encr_info.keys[keyidx].length = 0;
+		memset(&handle->encr_info.keys[keyidx].key, 0, ext->key_len);
+		DBGTRACE2("key %d removed", keyidx);
+	} else {
+		res = miniport_set_info(handle, OID_802_11_ADD_KEY,
+					&ndis_key, sizeof(ndis_key));
+		if (res == NDIS_STATUS_INVALID_DATA) {
+			DBGTRACE2("adding key failed (%08X), %u",
+				  res, ndis_key.struct_size);
+			TRACEEXIT2(return -1);
+		}
+		handle->encr_info.keys[keyidx].length = ext->key_len;
+		memcpy(&handle->encr_info.keys[keyidx].key,
+		       &ndis_key.key, ext->key_len);
+		if (ext->ext_flags & IW_ENCODE_EXT_SET_TX_KEY)
+			handle->encr_info.tx_key_index = keyidx;
+		DBGTRACE2("key %d added", keyidx);
+	}
+
+	TRACEEXIT2(return 0);
+}
+
+static int iw_get_encodeext(struct net_device *dev,
+			    struct iw_request_info *info,
+			    union iwreq_data *wrqu, char *extra)
+{
+	/* struct iw_encode_ext *ext = (struct iw_encode_ext *) extra; */
+	/* TODO */
+	TRACEENTER2("");
+	return 0;
+}
+
+static int iw_set_pmksa(struct net_device *dev,
+			struct iw_request_info *info,
+			union iwreq_data *wrqu, char *extra)
+{
+	struct iw_pmksa *pmksa = (struct iw_pmksa *) extra;
+	struct ndis_pmkid pmkid;
+	NDIS_STATUS res;
+	struct ndis_handle *handle = dev->priv;
+
+	/* TODO: must keep local list of PMKIDs since NDIS drivers
+	 * expect that all PMKID entries are included whenever a new
+	 * one is added. */
+
+	TRACEENTER2("");
+	memset(&pmkid, 0, sizeof(pmkid));
+	if (pmksa->cmd == IW_PMKSA_ADD) {
+		pmkid.bssid_info_count = 1;
+		memcpy(pmkid.bssid_info[0].bssid, pmksa->bssid.sa_data,
+		       ETH_ALEN);
+		memcpy(pmkid.bssid_info[0].pmkid, pmksa->pmkid, IW_PMKID_LEN);
+	}
+	pmkid.length = 8 + pmkid.bssid_info_count *
+		sizeof(struct ndis_bssid_info);
+
+	res = miniport_set_info(handle, OID_802_11_PMKID, &pmkid,
+				sizeof(pmkid));
+	DEBUGTRACE2("OID_802_11_PMKID -> %d", res);
+	if (res)
+		return -EINVAL;
+
+	return 0;
+}
+#endif /* WIRELESS_EXT > 17 */
 
 static const iw_handler	ndis_handler[] = {
 	[SIOCGIWNAME	- SIOCIWFIRST] = iw_get_network_type,
@@ -1235,6 +1589,15 @@ static const iw_handler	ndis_handler[] = {
 	[SIOCGIWNICKN	- SIOCIWFIRST] = iw_get_nick,
 	[SIOCSIWNICKN	- SIOCIWFIRST] = iw_set_nick,
 	[SIOCSIWCOMMIT	- SIOCIWFIRST] = iw_set_dummy,
+#if WIRELESS_EXT > 17
+	[SIOCSIWMLME	- SIOCIWFIRST] = iw_set_mlme,
+	[SIOCSIWGENIE	- SIOCIWFIRST] = iw_set_genie,
+	[SIOCSIWAUTH	- SIOCIWFIRST] = iw_set_auth,
+	[SIOCGIWAUTH	- SIOCIWFIRST] = iw_get_auth,
+	[SIOCSIWENCODEEXT - SIOCIWFIRST] = iw_set_encodeext,
+	[SIOCGIWENCODEEXT - SIOCIWFIRST] = iw_get_encodeext,
+	[SIOCSIWPMKSA	- SIOCIWFIRST] = iw_set_pmksa,
+#endif /* WIRELESS_EXT > 17 */
 };
 
 /* private ioctl's */

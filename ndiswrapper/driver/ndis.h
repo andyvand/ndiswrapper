@@ -481,7 +481,7 @@ struct ndis_wireless_stats {
 
 enum ndis_status_type {
 	Ndis802_11StatusType_Authentication,
-	Ndis802_11StatusType_PMKID_CandidateList,
+	Ndis802_11StatusType_PMKID_CandidateList = 2,
 	Ndis802_11StatusType_MediaStreamMode,
 	Ndis802_11StatusType_RadioState,
 };
@@ -855,6 +855,25 @@ struct ndis_handle {
 	unsigned long attributes;
 	struct ndis_resource_list *pci_resources;
 
+	int iw_auth_set;
+	int iw_auth_wpa_version;
+	int iw_auth_cipher_pairwise;
+	int iw_auth_cipher_group;
+	int iw_auth_key_mgmt;
+	int iw_auth_80211_auth_alg;
+};
+
+struct ndis_pmkid_candidate
+{
+	mac_address bssid;
+	unsigned long flags;
+};
+
+struct ndis_pmkid_candidate_list
+{
+	unsigned long version;
+	unsigned long num_candidates;
+	struct ndis_pmkid_candidate candidates[1];
 };
 
 struct ndis_packet *allocate_ndis_packet(void);
