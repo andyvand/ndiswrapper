@@ -3,8 +3,8 @@
 DISTFILES=divdi3.c hal.c iw_ndis.c iw_ndis.h loader.c loader.h \
 		longlong.h Makefile misc_funcs.c ndis.c ndis.h \
 		ndiswrapper.h ntoskernel.c ntoskernel.h \
-		pe_linker.c pe_linker.h proc.c usb.c usb.h \
-		winnt_pe.h winnt_types.h wrapper.c wrapper.h x86_64_stubs.S
+		pe_linker.c proc.c usb.c usb.h winnt_pe.h winnt_types.h \
+		wrapper.c wrapper.h x86_64_stubs.S
 
 KVERS ?= $(shell uname -r)
 KSRC  ?= /lib/modules/$(KVERS)/build
@@ -63,7 +63,7 @@ hal.o: hal.c ntoskernel.h
 
 iw_ndis..o:	iw_ndis.c iw_ndis.h wrapper.h
 
-loader.o: loader.c loader.h ndis.h pe_linker.h wrapper.h
+loader.o: loader.c loader.h ndis.h wrapper.h
 
 misc_funcs.o: misc_funcs.c ndis.h
 
@@ -71,19 +71,18 @@ ndis.o: ndis.c ndis.h iw_ndis.h wrapper.h
 
 ntoskernel.o: ntoskernel.c ndis.h usb.h
 
-pe_linker.o: pe_linker.c pe_linker.h
+pe_linker.o: pe_linker.c
 
 proc.o: proc.c ndis.h iw_ndis.h wrapper.h
 
 usb.o: usb.c usb.h ndis.h
 
-wrapper.o: wrapper.c wrapper.h pe_linker.h iw_ndis.h ntoskernel.h loader.h
+wrapper.o: wrapper.c wrapper.h iw_ndis.h ntoskernel.h loader.h
 
 iw_ndis.h: ndis.h
 loader.h: ndiswrapper.h
 ndis.h: ntoskernel.h
 ntoskernel.h: ndiswrapper.h winnt_types.h winnt_pe.h
-pe_linker.h: ntoskernel.h
 usb.h: ntoskernel.h
 wrapper.h: ndis.h
 
