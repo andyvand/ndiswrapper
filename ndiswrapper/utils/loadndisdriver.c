@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2003 Pontus Fuchs
+ *  Copyright (C) 2003-2004 Pontus Fuchs, Giridhar Pemmasani
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -136,7 +136,7 @@ static int parse_setting_line(const char *setting_line, char *setting_name,
 	}
 	dbg("Found setting: name=%s, val=\"%s\"", setting_name, setting_val);
 
-	// setting_val can be empty, but not value
+	// setting_val can be empty, but not name
 	if (strlen(setting_name) == 0) {
 		error("invalid setting: \"%s\"", setting_line);
 		return -EINVAL;
@@ -205,7 +205,8 @@ static int read_conf_file(char *conf_file_name, struct load_device *device)
 
 		if (strcmp(setting_name, "BusType") == 0) {
 			device->bustype = strtol(setting_value, NULL, 10);
-			if (device->bustype != 0 && device->bustype != 5) {
+			if (device->bustype != NDIS_PCI_BUS &&
+			    device->bustype != NDIS_USB_BUS) {
 				error("invalid bustype: %d", device->bustype);
 				goto err;
 			}
@@ -459,7 +460,7 @@ int main(int argc, char *argv[0])
 
 	openlog(PROG_NAME, LOG_PERROR | LOG_CONS, LOG_KERN | LOG_DEBUG);
 
-	dbg("version %s started", NDISWRAPPER_VERSION);
+	info("version %s started", NDISWRAPPER_VERSION);
 
 	if (argc != 4) {
 		error("Usage: %s <debug> <version> [-a] [driver]", argv[0]);

@@ -531,7 +531,6 @@ static void unload_ndis_driver(struct ndis_driver *driver)
 			usb_deregister(&driver->driver.usb);
 #endif
 	}
-#ifdef DEBUG_CRASH_ON_INIT
 	if (driver->bustype == NDIS_PCI_BUS) {
 		struct pci_dev *pdev = 0;
 		pdev = pci_find_device(driver->idtable.pci[0].vendor,
@@ -539,7 +538,7 @@ static void unload_ndis_driver(struct ndis_driver *driver)
 		if (pdev)
 			ndis_remove_one_pci(pdev);
 	}
-#endif
+
 	ndis_spin_lock(&driverlist_lock);
 	if (driver->list.next)
 		list_del(&driver->list);
@@ -698,7 +697,7 @@ static int start_driver(struct ndis_driver *driver)
 		driver->driver.pci.remove = __devexit_p(ndis_remove_one_pci);
 		driver->driver.pci.suspend = ndis_suspend_pci;
 		driver->driver.pci.resume = ndis_resume_pci;
-#ifndef DEBUG_CRASH_ON_INIT
+
 		res = pci_module_init(&driver->driver.pci);
 		if (res) {
 			ERROR("couldn't register driver %s", driver->name);
@@ -707,7 +706,6 @@ static int start_driver(struct ndis_driver *driver)
 			driver->dev_registered = 1;
 			TRACEEXIT1(return 0);
 		}
-#endif
 	} else if (driver->bustype == NDIS_USB_BUS) {
 #ifdef CONFIG_USB
 		driver->idtable.usb =
@@ -879,10 +877,9 @@ void loader_exit(void)
 {
 	struct ndis_driver *driver;
 
+	misc_deregister(&wrapper_misc);
 	while (!list_empty(&ndis_driverlist)) {
 		driver = (struct ndis_driver*) ndis_driverlist.next;
 		unload_ndis_driver(driver);
 	}
-
-	misc_deregister(&wrapper_misc);
 }
