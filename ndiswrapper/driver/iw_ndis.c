@@ -1177,11 +1177,6 @@ static int priv_power_profile(struct net_device *dev,
 	unsigned long profile_inf;
 
 	miniport = &handle->driver->miniport_char;
-	/* According NDIS, pnp_event_notify should be called whenever power
-	 * is set to D0
-	 * Only NDIS 5.1 drivers are required to supply this function; some
-	 * drivers don't seem to support it (at least Orinoco)
-	 */
 	if (!miniport->pnp_event_notify)
 		TRACEEXIT(return -EOPNOTSUPP);
 
@@ -1191,7 +1186,8 @@ static int priv_power_profile(struct net_device *dev,
 	else
 		profile_inf = NDIS_POWER_PROFILE_BATTERY;
 	
-	miniport->pnp_event_notify(handle, NDIS_PNP_PROFILE_CHANGE,
+	miniport->pnp_event_notify(handle->adapter_ctx,
+				   NDIS_PNP_PROFILE_CHANGED,
 				   &profile_inf, sizeof(profile_inf));
 	TRACEEXIT(return 0);
 }

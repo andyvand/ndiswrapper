@@ -339,7 +339,7 @@ static void hangcheck_bh(void *data)
 	struct ndis_handle *handle = (struct ndis_handle *)data;
 
 	TRACEENTER3("%s", "");
-	if(handle->driver->miniport_char.hangcheck(handle->adapter_ctx))
+	if (handle->driver->miniport_char.hangcheck(handle->adapter_ctx))
 	{
 		int res;
 		INFO("Hangcheck returned true. Resetting %s!",
@@ -903,7 +903,7 @@ static int ndis_resume(struct pci_dev *pdev)
 	if (miniport->pnp_event_notify)
 	{
 		INFO("%s", "calling pnp_event_notify");
-		miniport->pnp_event_notify(handle, NDIS_PNP_PROFILE_CHANGE,
+		miniport->pnp_event_notify(handle, NDIS_PNP_PROFILE_CHANGED,
 					 &profile_inf, sizeof(profile_inf));
 	}
 	*/
@@ -1310,7 +1310,7 @@ static int ndis_init_one(struct pci_dev *pdev, const struct pci_device_id *ent)
 	if (miniport->pnp_event_notify)
 	{
 		INFO("%s", "calling pnp_event_notify");
-		miniport->pnp_event_notify(handle, NDIS_PNP_PROFILE_CHANGE,
+		miniport->pnp_event_notify(handle, NDIS_PNP_PROFILE_CHANGED,
 					 &profile_inf, sizeof(profile_inf));
 	}
 	*/
@@ -1350,11 +1350,27 @@ out_nodev:
 /* Remove one PCI-card (adapter). */
 static void __devexit ndis_remove_one(struct pci_dev *pdev)
 {
-	struct ndis_handle *handle = (struct ndis_handle *) pci_get_drvdata(pdev);
+	struct ndis_handle *handle = pci_get_drvdata(pdev);
+	struct miniport_char *miniport = &handle->driver->miniport_char;
 
+	TRACEENTER1("%s", "");
 	ndiswrapper_procfs_remove_iface(handle);
 	statcollector_del(handle);
 	hangcheck_del(handle);
+
+	if (!netif_queue_stopped(handle->net_dev))
+	{
+		netif_stop_queue(handle->net_dev);
+		DBGTRACE1("%d, %p", handle->surprise_remove,
+			  miniport->pnp_event_notify);
+		if (handle->surprise_remove && miniport->pnp_event_notify)
+		{
+			miniport->pnp_event_notify(handle->adapter_ctx,
+						   NDIS_PNP_SURPRISE_REMOVED,
+						   NULL, 0);
+			DBGTRACE1("%s", "");
+		}
+	}
 
 	/* Make sure all queued packets have been pushed out from
 	 * xmit_bh before we call halt */
