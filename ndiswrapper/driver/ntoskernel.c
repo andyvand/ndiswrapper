@@ -483,7 +483,7 @@ _FASTCALL unsigned long IofCallDriver(int dummy, struct irp *irp,
 {
 	struct io_stack_location *stack = irp->current_stack_location-1;
 	unsigned long ret = STATUS_NOT_SUPPORTED;
-	int free_irp = 1;
+	unsigned long result;
 
 
 	TRACEENTER3("dev_obj = %p, irp = %p, major_fn = %x, ioctl = %lx",
@@ -505,22 +505,21 @@ _FASTCALL unsigned long IofCallDriver(int dummy, struct irp *irp,
 
 	if (ret == STATUS_PENDING) {
 		stack->control |= IS_PENDING;
-		free_irp = 0;
+		TRACEEXIT3(return ret);
 	} else {
 		irp->io_status.status = ret;
 		if (irp->user_status)
 			irp->user_status->status = ret;
 
-		if (stack->completion_handler) {
-			if (((ret == 0) &&
-			     (stack->control & CALL_ON_SUCCESS)) ||
-			    ((ret != 0) &&
-			     (stack->control & CALL_ON_ERROR))) {
-				DBGTRACE3("calling %p",
-					stack->completion_handler);
-				stack->completion_handler(stack->dev_obj, irp,
-					stack->handler_arg);
-			}
+		if ((stack->completion_handler) &&
+		    ((((ret == 0) && (stack->control & CALL_ON_SUCCESS)) ||
+		      ((ret != 0) && (stack->control & CALL_ON_ERROR))))) {
+			DBGTRACE3("calling %p", stack->completion_handler);
+
+			result = stack->completion_handler(stack->dev_obj, irp,
+				stack->handler_arg);
+			if (result == STATUS_MORE_PROCESSING_REQUIRED)
+				TRACEEXIT3(return ret);
 		}
 
 		if (irp->user_event) {
@@ -530,10 +529,8 @@ _FASTCALL unsigned long IofCallDriver(int dummy, struct irp *irp,
 	}
 
 	/* To-Do: what about IRP_DEALLOCATE_BUFFER...? */
-	if (free_irp) {
-		DBGTRACE("freeing irp %p", irp);
-		kfree(irp);
-	}
+	DBGTRACE3("freeing irp %p", irp);
+	kfree(irp);
 
 	TRACEEXIT3(return ret);
 }

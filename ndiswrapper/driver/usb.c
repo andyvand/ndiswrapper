@@ -121,7 +121,7 @@ void usb_transfer_complete_tasklet(unsigned long dummy)
 		}
 
 		/* To-Do: what about IRP_DEALLOCATE_BUFFER...? */
-		DBGTRACE("freeing irp %p", irp);
+		DBGTRACE3("freeing irp %p", irp);
 		kfree(irp);
 
 		usb_free_urb(urb);
