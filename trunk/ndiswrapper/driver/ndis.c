@@ -1349,6 +1349,8 @@ STDCALL static void WRAP_EXPORT(NdisReadNetworkAddress)
 			TRACEEXIT1(return);
 
 		memset(handle->mac, 0, sizeof(handle->mac));
+		/* for some reason, using sscanf to get mac addr here
+		 * crashes TI driver */
 		ret = string_to_mac(handle->mac, ansi.buf, ansi.buflen);
 		RtlFreeAnsiString(&ansi);
 		if (ret == 0) {
