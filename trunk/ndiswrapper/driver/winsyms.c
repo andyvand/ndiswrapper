@@ -54,6 +54,7 @@ void NdisMSetPeriodicTimer(void);
 void NdisMCancelTimer(void);
 void NdisMMapIoSpace(void);
 void NdisMQueryAdapterResources(void);
+void NdisMPciAssignResources(void);
 void NdisQueryBuffer(void);
 void NDIS_BUFFER_TO_SPAN_PAGES(void);
 void NdisQueryBufferOffset(void);
@@ -113,10 +114,13 @@ void DbgPrint(void);
 void KfAcquireSpinLock(void);
 void KfReleaseSpinLock(void);
 void KeStallExecutionProcessor(void);
+void KeGetCurrentIrql(void);
 void WRITE_PORT_ULONG(void);
 void READ_PORT_ULONG(void);
 void WRITE_PORT_USHORT(void);
 void READ_PORT_USHORT(void);
+void WRITE_PORT_UCHAR(void);
+void READ_PORT_UCHAR(void);
 
 /* ntoskern */
 void InterlockedExchange(void);
@@ -196,6 +200,7 @@ func("NdisMSetPeriodicTimer"                , NdisMSetPeriodicTimer),
 func("NdisMCancelTimer"                     , NdisMCancelTimer),
 func("NdisMMapIoSpace"                      , NdisMMapIoSpace),
 func("NdisMQueryAdapterResources"           , NdisMQueryAdapterResources),
+func("NdisMPciAssignResources"              , NdisMPciAssignResources),
 func("NdisQueryBuffer"                      , NdisQueryBuffer),
 func("NDIS_BUFFER_TO_SPAN_PAGES"            , NDIS_BUFFER_TO_SPAN_PAGES),
 func("NdisQueryBufferOffset"                , NdisQueryBufferOffset),
@@ -252,10 +257,14 @@ func("NdisMCompleteBufferPhysicalMapping"   , NdisMCompleteBufferPhysicalMapping
 func("KfAcquireSpinLock"                    , KfAcquireSpinLock),
 func("KfReleaseSpinLock"                    , KfReleaseSpinLock),
 func("KeStallExecutionProcessor"            , KeStallExecutionProcessor),
+func("KeGetCurrentIrql"                     , KeGetCurrentIrql),
+
 func("WRITE_PORT_ULONG"                     , WRITE_PORT_ULONG),
 func("READ_PORT_ULONG"                      , READ_PORT_ULONG),
 func("WRITE_PORT_USHORT"                    , WRITE_PORT_USHORT),
 func("READ_PORT_USHORT"                     , READ_PORT_USHORT),
+func("WRITE_PORT_UCHAR"                     , WRITE_PORT_UCHAR),
+func("READ_PORT_UCHAR"                      , READ_PORT_UCHAR),
 
 /* ntoskernel */
 func("InterlockedExchange"                  , InterlockedExchange),
