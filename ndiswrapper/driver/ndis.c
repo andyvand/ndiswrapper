@@ -89,13 +89,15 @@ static void wrap_free_timers(struct ndis_handle *handle)
 	 */
 	while (1) {
 		struct wrapper_timer *timer;
+
 		wrap_spin_lock(&handle->timers_lock, DISPATCH_LEVEL);
 		if (list_empty(&handle->timers)) {
 			wrap_spin_unlock(&handle->timers_lock);
 			break;
 		}
 
-		timer = (struct wrapper_timer *)handle->timers.next;
+		timer = list_entry(handle->timers.next,
+				   struct wrapper_timer, list);
 		list_del(&timer->list);
 		wrap_spin_unlock(&handle->timers_lock);
 
@@ -274,7 +276,7 @@ STDCALL static void WRAP_EXPORT(NdisOpenConfiguration)
 
 STDCALL static void WRAP_EXPORT(NdisOpenProtocolConfiguration)
 	(NDIS_STATUS *status, struct ndis_handle **confhandle,
-	 struct ustring *section)
+	 struct unicode_string *section)
 {
 	TRACEENTER2("confHandle: %p", confhandle);
 	*confhandle = (struct ndis_handle *)section;
@@ -283,8 +285,8 @@ STDCALL static void WRAP_EXPORT(NdisOpenProtocolConfiguration)
 }
 
 STDCALL static void WRAP_EXPORT(NdisOpenConfigurationKeyByName)
-	(NDIS_STATUS *status, struct ndis_handle *handle, struct ustring *key,
-	 struct ndis_handle **subkeyhandle)
+	(NDIS_STATUS *status, struct ndis_handle *handle,
+	 struct unicode_string *key, struct ndis_handle **subkeyhandle)
 {
 	TRACEENTER2("%s", "");
 	*subkeyhandle = handle;
@@ -294,7 +296,7 @@ STDCALL static void WRAP_EXPORT(NdisOpenConfigurationKeyByName)
 
 STDCALL static void WRAP_EXPORT(NdisOpenConfigurationKeyByIndex)
 	(NDIS_STATUS *status, struct ndis_handle *handle, ULONG index,
-	 struct ustring *key, struct ndis_handle **subkeyhandle)
+	 struct unicode_string *key, struct ndis_handle **subkeyhandle)
 {
 	TRACEENTER2("%s", "");
 	*subkeyhandle = handle;
@@ -311,10 +313,10 @@ STDCALL static void WRAP_EXPORT(NdisCloseConfiguration)
 
 STDCALL static void WRAP_EXPORT(NdisOpenFile)
 	(NDIS_STATUS *status, struct ndis_bin_file **filehandle,
-	 UINT *filelength, struct ustring *filename,
+	 UINT *filelength, struct unicode_string *filename,
 	 NDIS_PHY_ADDRESS highest_address)
 {
-	struct ustring ansi;
+	struct ansi_string ansi;
 	struct list_head *cur, *tmp;
 	struct ndis_bin_file *file;
 
@@ -433,7 +435,7 @@ STDCALL static void WRAP_EXPORT(NdisGetBufferPhysicalArraySize)
 static int ndis_encode_setting(struct device_setting *setting,
 			       int device_setting_type)
 {
-	struct ustring ansi;
+	struct ansi_string ansi;
 	struct ndis_config_param *param;
 
 	TRACEENTER2("type = %d", device_setting_type);
@@ -472,7 +474,7 @@ static int ndis_encode_setting(struct device_setting *setting,
 static int ndis_decode_setting(struct device_setting *setting,
 			       struct ndis_config_param *val)
 {
-	struct ustring ansi;
+	struct ansi_string ansi;
 
 	if (setting->config_param.type == NDIS_CONFIG_PARAM_STRING &&
 	    setting->config_param.data.ustring.buf)
@@ -510,11 +512,11 @@ static int ndis_decode_setting(struct device_setting *setting,
 
 STDCALL static void WRAP_EXPORT(NdisReadConfiguration)
 	(NDIS_STATUS *status, struct ndis_config_param **dest,
-	 struct ndis_handle *handle, struct ustring *key,
+	 struct ndis_handle *handle, struct unicode_string *key,
 	 enum ndis_config_param_type type)
 {
 	struct device_setting *setting;
-	struct ustring ansi;
+	struct ansi_string ansi;
 	char *keyname;
 
 	TRACEENTER2("%s", "");
@@ -552,9 +554,9 @@ STDCALL static void WRAP_EXPORT(NdisReadConfiguration)
 
 STDCALL void WRAP_EXPORT(NdisWriteConfiguration)
 	(NDIS_STATUS *status, struct ndis_handle *handle,
-	 struct ustring *key, struct ndis_config_param *param)
+	 struct unicode_string *key, struct ndis_config_param *param)
 {
-	struct ustring ansi;
+	struct ansi_string ansi;
 	char *keyname;
 	struct device_setting *setting;
 
@@ -596,9 +598,9 @@ STDCALL void WRAP_EXPORT(NdisWriteConfiguration)
 }
 
 STDCALL static void WRAP_EXPORT(NdisInitializeString)
-	(struct ustring *dest, UCHAR *src)
+	(struct unicode_string *dest, UCHAR *src)
 {
-	struct ustring ansi;
+	struct ansi_string ansi;
 
 	TRACEENTER2("%s", "");
 	ansi.len = ansi.buflen = strlen(src);
@@ -609,14 +611,14 @@ STDCALL static void WRAP_EXPORT(NdisInitializeString)
 }
 
 STDCALL static void WRAP_EXPORT(NdisInitAnsiString)
-	(struct ustring *dst, CHAR *src)
+	(struct ansi_string *dst, CHAR *src)
 {
 	RtlInitAnsiString(dst, src);
 	TRACEEXIT2(return);
 }
 
 STDCALL static void WRAP_EXPORT(NdisInitUnicodeString)
-	(struct ustring *dest, SHORT *src)
+	(struct unicode_string *dest, const wchar_t *src)
 {
 	int i;
 
@@ -632,12 +634,12 @@ STDCALL static void WRAP_EXPORT(NdisInitUnicodeString)
 	for (i = 0 ; src[i] ; i++)
 		;
 	dest->len = dest->buflen = i * 2;
-	dest->buf = (u8 *)src;
+	dest->buf = (wchar_t *)src;
 	TRACEEXIT2(return);
 }
 
 STDCALL static NDIS_STATUS WRAP_EXPORT(NdisAnsiStringToUnicodeString)
-	(struct ustring *dst, struct ustring *src)
+	(struct unicode_string *dst, struct ansi_string *src)
 {
 	int dup;
 
@@ -652,7 +654,7 @@ STDCALL static NDIS_STATUS WRAP_EXPORT(NdisAnsiStringToUnicodeString)
 }
 
 STDCALL static NDIS_STATUS WRAP_EXPORT(NdisUnicodeStringToAnsiString)
-	(struct ustring *dst, struct ustring *src)
+	(struct ansi_string *dst, struct unicode_string *src)
 {
 	int dup;
 
@@ -674,7 +676,7 @@ STDCALL static NDIS_STATUS WRAP_EXPORT(NdisUnicodeStringToAnsiString)
  * a global list.
  */
 STDCALL static void WRAP_EXPORT(NdisMSetAttributesEx)
-	(struct ndis_handle *handle, void* adapter_ctx,
+	(struct ndis_handle *handle, void *adapter_ctx,
 	 UINT hangcheck_interval, UINT attributes, ULONG adaptortype)
 {
 	struct handle_ctx_entry *handle_ctx;
@@ -1271,7 +1273,8 @@ STDCALL static void WRAP_EXPORT(NdisReadNetworkAddress)
 	 struct ndis_handle *handle)
 {
 	struct ndis_config_param *setting;
-	struct ustring key, ansi;
+	struct unicode_string key;
+	struct ansi_string ansi;
 	int ret;
 
 	TRACEENTER1("%s", "");
@@ -2062,7 +2065,8 @@ static void ndis_worker(void *data)
 			ndis_work_entry = NULL;
 		else {
 			ndis_work_entry =
-				(struct ndis_work_entry *)ndis_work_list.next;
+				list_entry(ndis_work_list.next,
+					   struct ndis_work_entry, list);
 			list_del(&ndis_work_entry->list);
 		}
 		wrap_spin_unlock(&ndis_work_list_lock);
@@ -2345,8 +2349,8 @@ STDCALL static void WRAP_EXPORT(NdisMCompleteBufferPhysicalMapping)
 }
 
 STDCALL static NDIS_STATUS WRAP_EXPORT(NdisMRegisterDevice)
-	(struct ndis_handle *handle, struct ustring *dev_name,
-	 struct ustring *sym_name, void **funcs,
+	(struct ndis_handle *handle, struct unicode_string *dev_name,
+	 struct unicode_string *sym_name, void **funcs,
 	 struct device_object **dev_object, struct ndis_handle **dev_handle)
 {
 	TRACEENTER1("%p, %p", *dev_handle, handle);

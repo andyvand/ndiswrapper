@@ -106,12 +106,25 @@ typedef uint32_t	ULONG;
 typedef uint32_t	UINT;
 typedef uint64_t	ULONGLONG;
 typedef int64_t		LARGE_INTEGER;
+typedef SHORT		wchar_t;
 
 typedef ULONG_PTR	SIZE_T;
 typedef LONG KPRIORITY;
 typedef INT NT_STATUS;
 typedef LARGE_INTEGER	PHYSICAL_ADDRESS;
 typedef ULONG_PTR	KAFFINITY;
+
+struct ansi_string {
+	USHORT len;
+	USHORT buflen;
+	char *buf;
+};
+
+struct unicode_string {
+	USHORT len;
+	USHORT buflen;
+	wchar_t *buf;
+};
 
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,7)
 #include <linux/kthread.h>
@@ -358,12 +371,6 @@ struct pe_image {
 	void *image;
 	int size;
 	int type;
-};
-
-struct ustring {
-	USHORT len;
-	USHORT buflen;
-	char *buf;
 };
 
 struct slist_entry {
