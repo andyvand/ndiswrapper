@@ -192,14 +192,18 @@ enum pool_type {
 	NonPagedPoolCacheAlignedMustS
 };
 
+enum memory_caching_type_orig {
+	MmFrameBufferCached = 2
+};
+
 enum memory_caching_type {
-	MM_NON_CACHED = FALSE,
-	MM_CACHED = TRUE,
-	MM_WRITE_COMBINED = 2,
-	MM_HARDWARE_COHERENT_CACHED,
-	MM_NON_CACHED_UNORDERED,
-	MM_USWC_CACHED,
-	MM_MAXIMUM_CACHE_TYPE
+	MmNonCached = FALSE,
+	MmCached = TRUE,
+	MmWriteCombined = MmFrameBufferCached,
+	MmHardwareCoherentCached,
+	MmNonCachedUnordered,
+	MmUSWCCached,
+	MmMaximumCacheType
 };
 
 struct mdl {

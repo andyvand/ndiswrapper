@@ -154,7 +154,7 @@ int get_ap_address(struct ndis_handle *handle, mac_address mac);
 int set_auth_mode(struct ndis_handle *handle, int auth_mode);
 int set_encr_mode(struct ndis_handle *handle, int encr_mode);
 int set_privacy_filter(struct ndis_handle *handle, int flags);
-
+int set_scan(struct ndis_handle *handle);
 
 /* WPA support */
 
