@@ -3,9 +3,15 @@ DRV_VERSION=$(shell cat ../version)
 endif
 #DEBUG=1
 
-DISTFILES=Makefile coffpe.h loader.c loader.h misc_funcs.c \
- ndis.c ndis.h ntoskernel.h proc.c \
- winsyms.c winsyms.h wrapper.c wrapper.h \
+DISTFILES=Makefile \
+ coffpe.h \
+ loader.c loader.h \
+ ndis.c ndis.h \
+ ntoskernel.c ntoskernel.h \
+ iw_ndis.c iw_ndis.h \
+ winsyms.c winsyms.h \
+ wrapper.c wrapper.h \
+ proc.c misc_funcs.c \
  divdi3.c longlong.h
 
 
