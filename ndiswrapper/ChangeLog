@@ -1,5 +1,10 @@
-Version 1.0 2005-XX-XX
+Version 1.0 2005-01-29
 ======================
+* Yet another spinlock reimplementation. Since I don't have SMP, it is taking
+  lot of time (and effort) to get it working.
+* With new spinlock implementation, CONFIG_DEBUG_SPINLOCK option can be
+  enabled in the kernel.
+* WavePlus 1200 chipset supported.
 * Works with some vendor kernels that use different semantcis (from vanilla
   kernels) for PCI/USB register functions.
 * Don't free memory allocated for 'devices' twice (which was causing kernel
@@ -9,7 +14,6 @@ Version 1.0 2005-XX-XX
 * Fix (small) memory leak - free xmit_array when device is removed.
 * Use spinlock when calling any miniport function. This may fix some SMP
   issues.
-
 * Preliminary support for AMD64 (tested with Broadcom chipset)
 * Dynamic loader support: A driver is loaded only when necessary, so
   even if many drivers are installed or if a driver installs many
@@ -18,14 +22,12 @@ Version 1.0 2005-XX-XX
 * Set RadioState used by Broadcom drivers to 0, instead of 1. This
   turns on radio (although name suggets the other way round).
 * Bug fixes
-
 * Workaround for CONFIG_DEBUG_SPINLOCK, but this option is discouraged
 * task_nice is not used anymore, so should compile with kernels where
   this is not exported
 * More spinlock correction. Some drivers are reported to work with
   SMP. Not all drivers may work (at least Prism54 USB driver seems to
   be buggy)
-
 * Spinlock rewrite: This time SMP should work. Really.
 * Sends multiple packets (if driver supports it) in each send
   operation for better efficiency
