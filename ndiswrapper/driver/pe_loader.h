@@ -200,16 +200,8 @@ struct pe_image
 	int type;
 };
 
-struct ustring
-{
-	__u16 len;
-	__u16 buflen;
-	char *buf;
-};
-
 #pragma pack()
 
-#define STDCALL __attribute__((__stdcall__, regparm(0)))
 int load_pe_images(struct pe_image[], int n);
 int load_pe_image(void **entry, void *image, int size);
 

@@ -64,7 +64,7 @@ gen_exports: ndis_exports.h hal_exports.h ntoskernel_exports.h \
 			 misc_funcs_exports.h usb_exports.h
 
 OBJS := wrapper.o iw_ndis.o pe_loader.o ndis.o ntoskernel.o \
-		  misc_funcs.o proc.o divdi3.o hal.o
+		  misc_funcs.o proc.o hal.o
 
 ifeq ($(KPSUB),24)
 -include $(KSRC)/.config
@@ -75,6 +75,10 @@ OBJS += usb.o
 endif
 ifeq ($(CONFIG_USB),m)
 OBJS += usb.o
+endif
+
+ifneq ($(CONFIG_X86_64),y)
+OBJS += divdi3.o
 endif
 
 ifdef DEBUG
@@ -113,8 +117,11 @@ ifeq ($(KPSUB),24)
 MODULE := ndiswrapper.o
 CFLAGS  += -DLINUX -D__KERNEL__ -DMODULE -I$(KSRC)/include \
 		  -Wall -Wstrict-prototypes -fomit-frame-pointer    \
-		  -fno-strict-aliasing -pipe -mpreferred-stack-boundary=2 -O2
+		  -fno-strict-aliasing -pipe -O2
 
+ifneq ($(CONFIG_X86_64),y)
+CFLAGS += -mpreferred-stack-boundary=2 
+endif
 default: $(OBJS)
 	$(LD) -r -o $(MODULE) $(OBJS)
 else
