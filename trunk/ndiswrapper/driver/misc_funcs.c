@@ -48,12 +48,43 @@ int misc_funcs_init(void)
 	return 0;
 }
 
+/* called when a handle is being removed */
+void misc_funcs_exit_handle(struct ndis_handle *handle)
+{
+	char canceled;
+	/* Cancel any timers left by bugyy windows driver
+	 * Also free the memory for timers
+	 */
+	while (1) {
+		struct wrapper_timer *timer;
+
+		wrap_spin_lock(&handle->timers_lock, DISPATCH_LEVEL);
+		if (list_empty(&handle->timers)) {
+			wrap_spin_unlock(&handle->timers_lock);
+			break;
+		}
+
+		timer = list_entry(handle->timers.next,
+				   struct wrapper_timer, list);
+		list_del(&timer->list);
+		wrap_spin_unlock(&handle->timers_lock);
+
+		DBGTRACE1("fixing up timer %p, timer->list %p",
+			  timer, &timer->list);
+		wrapper_cancel_timer(timer, &canceled);
+		wrap_kfree(timer);
+	}
+}
+
+/* called when module is being removed */
 void misc_funcs_exit(void)
 {
 	int i;
 	struct hlist_head *head;
 	struct hlist_node *node, *next;
 
+	TRACEENTER4("");
+	/* remove wrap_spinlocks in spinlock map */
 	spin_lock(&spinlock_map_lock);
 	for (i = 0; i < SPINLOCK_MAP_SIZE; i++) {
 		head = &spinlock_map[i];
@@ -68,7 +99,20 @@ void misc_funcs_exit(void)
 		}
 	}
 	spin_unlock(&spinlock_map_lock);
-	return;
+
+	/* free all pointers on the allocated list */
+	wrap_spin_lock(&wrap_allocs_lock, PASSIVE_LEVEL);
+	while (!list_empty(&wrap_allocs)) {
+		struct wrap_alloc *alloc;
+
+		alloc = list_entry(wrap_allocs.next, struct wrap_alloc, list);
+		list_del(&alloc->list);
+		kfree(alloc->ptr);
+		kfree(alloc);
+	}
+	wrap_spin_unlock(&wrap_allocs_lock);
+
+	TRACEEXIT4(return);
 }
 
 /* return wrap_spinlock mapped to ksin_lock */
@@ -196,24 +240,6 @@ void wrap_kfree(void *ptr)
 			kfree(alloc);
 			break;
 		}
-	}
-
-	wrap_spin_unlock(&wrap_allocs_lock);
-	TRACEEXIT4(return);
-}
-
-/* free all pointers on the allocated list */
-void wrap_kfree_all(void)
-{
-	TRACEENTER4("%s", "");
-	wrap_spin_lock(&wrap_allocs_lock, PASSIVE_LEVEL);
-	while (!list_empty(&wrap_allocs)) {
-		struct wrap_alloc *alloc;
-
-		alloc = list_entry(wrap_allocs.next, struct wrap_alloc, list);
-		list_del(&alloc->list);
-		kfree(alloc->ptr);
-		kfree(alloc);
 	}
 
 	wrap_spin_unlock(&wrap_allocs_lock);

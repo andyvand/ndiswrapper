@@ -265,7 +265,7 @@ struct miniport_char {
 	UINT (*query)(void *ctx, UINT oid, char *buffer,
 		      UINT buflen, UINT *written, UINT *needed) STDCALL;
 
-	void * ReconfigureHandler;
+	void *reconfig;
 	INT (*reset)(INT *needs_set, void *ctx) STDCALL;
 
 	/* Send one packet */
@@ -939,6 +939,24 @@ void packet_recycler(void *param);
 int stricmp(const char *s1, const char *s2);
 
 void usb_cleanup(void);
+
+int ntoskrnl_init(void);
+void ntoskrnl_exit(void);
+int load_pe_images(struct pe_image[], int n);
+
+int misc_funcs_init(void);
+void misc_funcs_exit_handle(struct ndis_handle *handle);
+void misc_funcs_exit(void);
+void *wrap_kmalloc(size_t size, int flags);
+void wrap_kfree(void *ptr);
+
+void wrapper_init_timer(struct ktimer *ktimer, void *handle);
+int wrapper_set_timer(struct wrapper_timer *wrapper_timer,
+                      unsigned long expires, unsigned long repeat,
+                      struct kdpc *kdpc);
+void wrapper_cancel_timer(struct wrapper_timer *wrapper_timer, char *canceled);
+
+void dump_bytes(const char *where, const u8 *ip);
 
 /* Required OIDs */
 #define OID_GEN_SUPPORTED_LIST			0x00010101
