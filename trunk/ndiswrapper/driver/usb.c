@@ -243,7 +243,7 @@ unsigned long usb_bulk_or_intr_trans(struct usb_device *dev,
 		irp->driver_context[2] = kmalloc(
 			nt_urb->bulkIntrTrans.transferBufLen, GFP_ATOMIC);
 		if (!irp->driver_context[2]) {
-			ERROR("kmalloc failed!");
+			ERROR("%s", "kmalloc failed!");
 			usb_free_urb(urb);
 			return -ENOMEM;
 		}
@@ -297,13 +297,13 @@ unsigned long usb_vendor_or_class_intf(struct usb_device *dev,
 	/* FIXME: we should better check what GFP_ is required */
 	urb = WRAP_ALLOC_URB(0, GFP_ATOMIC);
 	if (!urb) {
-		ERROR("usb_alloc_urb failed!");
+		ERROR("%s", "usb_alloc_urb failed!");
 		return -ENOMEM;
 	}
 
 	dr = kmalloc(sizeof(struct usb_ctrlrequest), GFP_ATOMIC);
 	if (!dr) {
-		ERROR("kmalloc failed!");
+		ERROR("%s", "kmalloc failed!");
 		usb_free_urb(urb);
 		return -ENOMEM;
 	}
@@ -351,7 +351,7 @@ unsigned long usb_vendor_or_class_intf(struct usb_device *dev,
 		irp->driver_context[2] = kmalloc(
 			nt_urb->venClsReq.transferBufLen, GFP_KERNEL);
 		if (!irp->driver_context[2]) {
-			ERROR("kmalloc failed!");
+			ERROR("%s", "kmalloc failed!");
 			kfree(dr);
 			usb_free_urb(urb);
 			return -ENOMEM;
