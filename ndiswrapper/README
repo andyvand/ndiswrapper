@@ -3,7 +3,7 @@
 
 1. Compile the driver
 ---------------------
-* You need a recent 2.6.0 or 2.4 kernel
+* You need a recent 2.6.0 or 2.4 kernel with source!
 
 Go to the driver directory and run
 
@@ -19,6 +19,8 @@ This should produce a ndiswrapper.(k)o if all goes well.
 
 2. Compile the loader:
 ----------------------
+* You need flex.
+
 Go to the utils directory and run:
 
 > make
