@@ -38,9 +38,10 @@
 #include "eapol_sm.h"
 #include "wpa_supplicant_i.h"
 #include "ctrl_iface.h"
+#include "pcsc_funcs.h"
 
 static const char *wpa_supplicant_version =
-"wpa_supplicant v0.0 - Copyright (c) 2003-2004, Jouni Malinen "
+"wpa_supplicant v0.2.2 - Copyright (c) 2003-2004, Jouni Malinen "
 "<jkmaline@cc.hut.fi>";
 
 static const char *wpa_supplicant_license =
@@ -111,6 +112,31 @@ void wpa_printf(int level, char *fmt, ...)
 		printf("\n");
 	}
 	va_end(ap);
+}
+
+
+void wpa_msg(struct wpa_supplicant *wpa_s, int level, char *fmt, ...)
+{
+	va_list ap;
+	char *buf;
+	const int buflen = 2048;
+	int len;
+
+	buf = malloc(buflen);
+	if (buf == NULL) {
+		printf("Failed to allocate message buffer for:\n");
+		va_start(ap, fmt);
+		vprintf(fmt, ap);
+		printf("\n");
+		va_end(ap);
+		return;
+	}
+	va_start(ap, fmt);
+	len = vsnprintf(buf, buflen, fmt, ap);
+	va_end(ap);
+	wpa_printf(level, "%s", buf);
+	wpa_supplicant_ctrl_iface_send(wpa_s, level, buf, len);
+	free(buf);
 }
 
 
@@ -231,7 +257,7 @@ int wpa_eapol_set_wep_key(struct wpa_supplicant *wpa_s, int unicast,
 
 void wpa_supplicant_notify_eapol_done(struct wpa_supplicant *wpa_s)
 {
-	wpa_printf(MSG_DEBUG, "WPA: EAPOL processing complete");
+	wpa_msg(wpa_s, MSG_DEBUG, "WPA: EAPOL processing complete");
 	eloop_cancel_timeout(wpa_supplicant_scan, wpa_s, NULL);
 	wpa_supplicant_cancel_auth_timeout(wpa_s);
 }
@@ -256,24 +282,35 @@ const char * wpa_ssid_txt(u8 *ssid, size_t ssid_len)
 
 void wpa_supplicant_req_scan(struct wpa_supplicant *wpa_s, int sec, int usec)
 {
+	wpa_msg(wpa_s, MSG_DEBUG, "Setting scan request: %d sec %d usec",
+		sec, usec);
 	eloop_cancel_timeout(wpa_supplicant_scan, wpa_s, NULL);
 	eloop_register_timeout(sec, usec, wpa_supplicant_scan, wpa_s, NULL);
+}
+
+
+void wpa_supplicant_cancel_scan(struct wpa_supplicant *wpa_s)
+{
+	wpa_msg(wpa_s, MSG_DEBUG, "Cancelling scan request");
+	eloop_cancel_timeout(wpa_supplicant_scan, wpa_s, NULL);
 }
 
 
 static void wpa_supplicant_timeout(void *eloop_ctx, void *timeout_ctx)
 {
 	struct wpa_supplicant *wpa_s = eloop_ctx;
-	wpa_printf(MSG_INFO, "Authentication with " MACSTR " timed out.",
-		   MAC2STR(wpa_s->bssid));
+	wpa_msg(wpa_s, MSG_INFO, "Authentication with " MACSTR " timed out.",
+		MAC2STR(wpa_s->bssid));
 	wpa_s->reassociate = 1;
 	wpa_supplicant_req_scan(wpa_s, 0, 0);
 }
 
 
-static void wpa_supplicant_req_auth_timeout(struct wpa_supplicant *wpa_s,
-					    int sec, int usec)
+void wpa_supplicant_req_auth_timeout(struct wpa_supplicant *wpa_s,
+				     int sec, int usec)
 {
+	wpa_msg(wpa_s, MSG_DEBUG, "Setting authentication timeout: %d sec "
+		"%d usec", sec, usec);
 	eloop_cancel_timeout(wpa_supplicant_timeout, wpa_s, NULL);
 	eloop_register_timeout(sec, usec, wpa_supplicant_timeout, wpa_s, NULL);
 }
@@ -281,21 +318,29 @@ static void wpa_supplicant_req_auth_timeout(struct wpa_supplicant *wpa_s,
 
 void wpa_supplicant_cancel_auth_timeout(struct wpa_supplicant *wpa_s)
 {
+	wpa_msg(wpa_s, MSG_DEBUG, "Cancelling authentication timeout");
 	eloop_cancel_timeout(wpa_supplicant_timeout, wpa_s, NULL);
 }
 
 
 static void wpa_supplicant_cleanup(struct wpa_supplicant *wpa_s)
 {
+	scard_deinit(wpa_s->scard);
+	wpa_s->scard = NULL;
+	eapol_sm_register_scard_ctx(wpa_s->eapol, NULL);
 	l2_packet_deinit(wpa_s->l2);
 	wpa_s->l2 = NULL;
 
-	if (wpa_s->dot1x_s > -1)
+	if (wpa_s->dot1x_s > -1) {
 		close(wpa_s->dot1x_s);
+		wpa_s->dot1x_s = -1;
+	}
 
 	wpa_supplicant_ctrl_iface_deinit(wpa_s);
-	wpa_config_free(wpa_s->conf);
-	wpa_s->conf = NULL;
+	if (wpa_s->conf != NULL) {
+		wpa_config_free(wpa_s->conf);
+		wpa_s->conf = NULL;
+	}
 
 	free(wpa_s->assoc_wpa_ie);
 	wpa_s->assoc_wpa_ie = NULL;
@@ -311,6 +356,7 @@ static void wpa_supplicant_cleanup(struct wpa_supplicant *wpa_s)
 
 	rsn_preauth_deinit(wpa_s);
 
+	pmksa_candidate_free(wpa_s);
 	pmksa_cache_free(wpa_s);
 }
 
@@ -344,7 +390,7 @@ static void wpa_supplicant_stop_countermeasures(void *eloop_ctx,
 	if (wpa_s->countermeasures) {
 		wpa_s->countermeasures = 0;
 		wpa_s->driver->set_countermeasures(wpa_s->ifname, 0);
-		wpa_printf(MSG_INFO, "WPA: TKIP countermeasures stopped");
+		wpa_msg(wpa_s, MSG_INFO, "WPA: TKIP countermeasures stopped");
 		wpa_supplicant_req_scan(wpa_s, 0, 0);
 	}
 }
@@ -366,29 +412,30 @@ void wpa_supplicant_event(struct wpa_supplicant *wpa_s, wpa_event_type event,
 		wpa_s->rx_replay_counter_set = 0;
 		if (wpa_s->driver->get_bssid(wpa_s->ifname, bssid) >= 0 &&
 		    memcmp(bssid, wpa_s->bssid, ETH_ALEN) != 0) {
-			wpa_printf(MSG_DEBUG, "Associated to a new BSS: "
-				   "BSSID=" MACSTR, MAC2STR(bssid));
+			wpa_msg(wpa_s, MSG_DEBUG, "Associated to a new BSS: "
+				"BSSID=" MACSTR, MAC2STR(bssid));
 			memcpy(wpa_s->bssid, bssid, ETH_ALEN);
 			wpa_clear_keys(wpa_s, bssid);
 		}
 		eapol_sm_notify_portValid(wpa_s->eapol, FALSE);
 		/* 802.1X::portControl = Auto */
 		eapol_sm_notify_portEnabled(wpa_s->eapol, TRUE);
-		wpa_supplicant_req_auth_timeout(
-			wpa_s, wpa_s->key_mgmt == WPA_KEY_MGMT_IEEE8021X ?
-			70 : 10, 0);
+		wpa_s->eapol_received = 0;
+		/* Timeout for receiving the first EAPOL packet */
+		wpa_supplicant_req_auth_timeout(wpa_s, 10, 0);
 		break;
 	case EVENT_DISASSOC:
+		if (wpa_s->wpa_state >= WPA_ASSOCIATED)
+			wpa_supplicant_req_scan(wpa_s, 0, 100000);
 		wpa_s->wpa_state = WPA_DISCONNECTED;
-		wpa_printf(MSG_DEBUG, "Disconnect event - remove keys");
+		wpa_msg(wpa_s, MSG_DEBUG, "Disconnect event - remove keys");
 		wpa_clear_keys(wpa_s, wpa_s->bssid);
-		wpa_supplicant_req_scan(wpa_s, 3, 0);
 		memset(wpa_s->bssid, 0, ETH_ALEN);
 		eapol_sm_notify_portEnabled(wpa_s->eapol, FALSE);
 		eapol_sm_notify_portValid(wpa_s->eapol, FALSE);
 		break;
 	case EVENT_MICHAEL_MIC_FAILURE:
-		wpa_printf(MSG_WARNING, "Michael MIC failure detected");
+		wpa_msg(wpa_s, MSG_WARNING, "Michael MIC failure detected");
 		pairwise = (data && data->michael_mic_failure.unicast);
 		wpa_supplicant_key_request(wpa_s, 1, pairwise);
 		time(&now);
@@ -396,8 +443,8 @@ void wpa_supplicant_event(struct wpa_supplicant *wpa_s, wpa_event_type event,
 		    now - wpa_s->last_michael_mic_error <= 60) {
 			/* initialize countermeasures */
 			wpa_s->countermeasures = 1;
-			wpa_printf(MSG_WARNING, "TKIP countermeasures "
-				   "started");
+			wpa_msg(wpa_s, MSG_WARNING, "TKIP countermeasures "
+				"started");
 
 			/* Need to wait for completion of request frame. We do
 			 * not get any callback for the message completion, so
@@ -463,7 +510,8 @@ void wpa_supplicant_event(struct wpa_supplicant *wpa_s, wpa_event_type event,
 static void wpa_supplicant_terminate(int sig, void *eloop_ctx,
 				     void *signal_ctx)
 {
-	wpa_printf(MSG_DEBUG, "Signal %d received - terminating", sig);
+	struct wpa_supplicant *wpa_s = eloop_ctx;
+	wpa_msg(wpa_s, MSG_INFO, "Signal %d received - terminating", sig);
 	eloop_terminate();
 }
 
@@ -479,8 +527,8 @@ static void wpa_supplicant_reconfig(int sig, void *eloop_ctx,
 		return;
 	conf = wpa_config_read(wpa_s->confname);
 	if (conf == NULL) {
-		wpa_printf(MSG_ERROR, "Failed to parse the configuration file "
-			   "'%s' - exiting", wpa_s->confname);
+		wpa_msg(wpa_s, MSG_ERROR, "Failed to parse the configuration "
+			"file '%s' - exiting", wpa_s->confname);
 		eloop_terminate();
 		return;
 	}
@@ -501,7 +549,7 @@ static void wpa_supplicant_reconfig(int sig, void *eloop_ctx,
 	if (reconf_ctrl)
 		wpa_supplicant_ctrl_iface_init(wpa_s);
 	wpa_supplicant_req_scan(wpa_s, 0, 0);
-	wpa_printf(MSG_DEBUG, "Reconfiguration completed");
+	wpa_msg(wpa_s, MSG_DEBUG, "Reconfiguration completed");
 }
 
 
@@ -543,8 +591,6 @@ void wpa_supplicant_scan(void *eloop_ctx, void *timeout_ctx)
 				ssid ? ssid->ssid_len : 0)) {
 		wpa_printf(MSG_WARNING, "Failed to initiate AP scan.");
 	}
-
-	eloop_register_timeout(5, 0, wpa_supplicant_scan, wpa_s, NULL);
 }
 
 
@@ -592,20 +638,20 @@ static int wpa_supplicant_set_suites(struct wpa_supplicant *wpa_s,
 	size_t ap_ie_len;
 
 	if (bss->rsn_ie_len && (ssid->proto & WPA_PROTO_RSN)) {
-		wpa_printf(MSG_DEBUG, "RSN: using IEEE 802.11i/D9.0");
+		wpa_msg(wpa_s, MSG_DEBUG, "RSN: using IEEE 802.11i/D9.0");
 		proto = WPA_PROTO_RSN;
 		ap_ie = bss->rsn_ie;
 		ap_ie_len = bss->rsn_ie_len;
 	} else {
-		wpa_printf(MSG_DEBUG, "WPA: using IEEE 802.11i/D3.0");
+		wpa_msg(wpa_s, MSG_DEBUG, "WPA: using IEEE 802.11i/D3.0");
 		proto = WPA_PROTO_WPA;
 		ap_ie = bss->wpa_ie;
 		ap_ie_len = bss->wpa_ie_len;
 	}
 
 	if (wpa_parse_wpa_ie(wpa_s, ap_ie, ap_ie_len, &ie)) {
-		wpa_printf(MSG_WARNING, "WPA: Failed to parse WPA IE for the "
-			   "selected BSS.");
+		wpa_msg(wpa_s, MSG_WARNING, "WPA: Failed to parse WPA IE for "
+			"the selected BSS.");
 		return -1;
 	}
 
@@ -691,9 +737,10 @@ static void wpa_supplicant_associate(struct wpa_supplicant *wpa_s,
 	int wpa_ie_len;
 
 	wpa_s->reassociate = 0;
-	wpa_printf(MSG_INFO, "Trying to associate with " MACSTR " (SSID='%s' "
-		   "freq=%d MHz)", MAC2STR(bss->bssid),
-		   wpa_ssid_txt(ssid->ssid, ssid->ssid_len), bss->freq);
+	wpa_msg(wpa_s, MSG_INFO, "Trying to associate with " MACSTR
+		" (SSID='%s' freq=%d MHz)", MAC2STR(bss->bssid),
+		wpa_ssid_txt(ssid->ssid, ssid->ssid_len), bss->freq);
+	wpa_supplicant_cancel_scan(wpa_s);
 
 	if ((bss->wpa_ie_len || bss->rsn_ie_len) &&
 	    (ssid->key_mgmt & (WPA_KEY_MGMT_IEEE8021X | WPA_KEY_MGMT_PSK))) {
@@ -701,6 +748,7 @@ static void wpa_supplicant_associate(struct wpa_supplicant *wpa_s,
 		if (wpa_s->cur_pmksa) {
 			wpa_hexdump(MSG_DEBUG, "RSN: PMKID",
 				    wpa_s->cur_pmksa->pmkid, PMKID_LEN);
+			eapol_sm_notify_pmkid_attempt(wpa_s->eapol);
 		}
 		if (wpa_supplicant_set_suites(wpa_s, bss, ssid,
 					      wpa_ie, &wpa_ie_len)) {
@@ -734,8 +782,8 @@ static void wpa_supplicant_associate(struct wpa_supplicant *wpa_s,
 				 cipher_suite2driver(wpa_s->group_cipher),
 				 key_mgmt2driver(wpa_s->key_mgmt));
 
-	wpa_supplicant_req_auth_timeout(
-		wpa_s, wpa_s->key_mgmt == WPA_KEY_MGMT_IEEE8021X ? 70 : 10, 0);
+	/* Timeout for IEEE 802.11 authentication and association */
+	wpa_supplicant_req_auth_timeout(wpa_s, 5, 0);
 
 	if (wpa_s->key_mgmt == WPA_KEY_MGMT_PSK) {
 		eapol_sm_notify_eap_success(wpa_s->eapol, FALSE);
@@ -763,6 +811,89 @@ void wpa_supplicant_disassociate(struct wpa_supplicant *wpa_s,
 	eapol_sm_notify_config(wpa_s->eapol, NULL, 0);
 	eapol_sm_notify_portEnabled(wpa_s->eapol, FALSE);
 	eapol_sm_notify_portValid(wpa_s->eapol, FALSE);
+}
+
+
+static void wpa_supplicant_imsi_identity(struct wpa_supplicant *wpa_s,
+					 struct wpa_ssid *ssid)
+{
+	if (ssid->identity == NULL && wpa_s->imsi) {
+		ssid->identity = malloc(1 + wpa_s->imsi_len);
+		if (ssid->identity) {
+			ssid->identity[0] = '1';
+			memcpy(ssid->identity + 1, wpa_s->imsi,
+			       wpa_s->imsi_len);
+			ssid->identity_len = 1 + wpa_s->imsi_len;
+			wpa_hexdump_ascii(MSG_DEBUG, "permanent identity from "
+					  "IMSI", ssid->identity,
+					  ssid->identity_len);
+		}
+	}
+}
+
+
+static void wpa_supplicant_scard_init(struct wpa_supplicant *wpa_s,
+				      struct wpa_ssid *ssid)
+{
+	char buf[100];
+	size_t len;
+
+	if (ssid->pcsc == NULL)
+		return;
+	if (wpa_s->scard != NULL) {
+		wpa_supplicant_imsi_identity(wpa_s, ssid);
+		return;
+	}
+	wpa_printf(MSG_DEBUG, "Selected network is configured to use SIM - "
+		   "initialize PCSC");
+	wpa_s->scard = scard_init(SCARD_TRY_BOTH);
+	if (wpa_s->scard == NULL) {
+		wpa_printf(MSG_WARNING, "Failed to initialize SIM "
+			   "(pcsc-lite)");
+		/* TODO: what to do here? */
+		return;
+	}
+	eapol_sm_register_scard_ctx(wpa_s->eapol, wpa_s->scard);
+
+	len = sizeof(buf);
+	if (scard_select_file(wpa_s->scard, SCARD_FILE_GSM_DF, buf, &len)) {
+		wpa_printf(MSG_DEBUG, "SIM: Failed to read GSM DF");
+		return;
+	}
+	/* Verify whether CHV1 (PIN1) is needed to access the card. */
+	if (len > SCARD_CHV1_OFFSET &&
+	    !(buf[SCARD_CHV1_OFFSET] & SCARD_CHV1_FLAG)) {
+		wpa_printf(MSG_DEBUG, "PIN1 needed for SIM access");
+		if (ssid->pin == NULL) {
+			wpa_msg(wpa_s, MSG_INFO, "No PIN configured for SIM "
+				"access");
+			/* TODO: ask PIN from user through a frontend (e.g.,
+			 * wpa_cli) */
+			return;
+		}
+		if (scard_verify_pin(wpa_s->scard, ssid->pin)) {
+			wpa_msg(wpa_s, MSG_INFO, "PIN verification failed for "
+				"SIM access");
+			/* TODO: what to do? */
+			return;
+		}
+	}
+
+	len = sizeof(buf);
+	if (scard_get_imsi(wpa_s->scard, buf, &len)) {
+		wpa_printf(MSG_WARNING, "Failed to get IMSI from SIM");
+		/* TODO: what to do here? */
+		return;
+	}
+
+	wpa_hexdump_ascii(MSG_DEBUG, "IMSI", buf, len);
+	free(wpa_s->imsi);
+	wpa_s->imsi = malloc(len);
+	if (wpa_s->imsi) {
+		wpa_s->imsi = buf;
+		wpa_s->imsi_len = len;
+		wpa_supplicant_imsi_identity(wpa_s, ssid);
+	}
 }
 
 
@@ -795,31 +926,59 @@ static void wpa_supplicant_scan_results(struct wpa_supplicant *wpa_s)
 			   i, MAC2STR(bss->bssid),
 			   wpa_ssid_txt(bss->ssid, bss->ssid_len),
 			   bss->wpa_ie_len, bss->rsn_ie_len);
-		if (bss->wpa_ie_len == 0 && bss->rsn_ie_len == 0)
+		if (bss->wpa_ie_len == 0 && bss->rsn_ie_len == 0) {
+			wpa_printf(MSG_DEBUG, "   skip - no WPA/RSN IE");
 			continue;
+		}
 
-		ssid = wpa_s->conf->ssid;
-		while (ssid) {
+		for (ssid = wpa_s->conf->ssid; ssid; ssid = ssid->next) {
 			struct wpa_ie_data ie;
-			if (bss->ssid_len == ssid->ssid_len &&
-			    memcmp(bss->ssid, ssid->ssid, bss->ssid_len) == 0
-			    &&
-			    (!ssid->bssid_set ||
-			     memcmp(bss->bssid, ssid->bssid, ETH_ALEN) == 0) &&
-			    (((ssid->proto & WPA_PROTO_RSN) &&
-			      wpa_parse_wpa_ie(wpa_s, bss->rsn_ie,
-					       bss->rsn_ie_len, &ie) == 0) ||
-			     ((ssid->proto & WPA_PROTO_WPA) &&
-			      wpa_parse_wpa_ie(wpa_s, bss->wpa_ie,
-					       bss->wpa_ie_len, &ie) == 0)) &&
-			    (ie.proto & ssid->proto) &&
-			    (ie.pairwise_cipher & ssid->pairwise_cipher) &&
-			    (ie.group_cipher & ssid->group_cipher) &&
-			    (ie.key_mgmt & ssid->key_mgmt)) {
-				selected = bss;
-				break;
+			if (bss->ssid_len != ssid->ssid_len ||
+			    memcmp(bss->ssid, ssid->ssid,
+				   bss->ssid_len) != 0) {
+				wpa_printf(MSG_DEBUG, "   skip - "
+					   "SSID mismatch");
+				continue;
 			}
-			ssid = ssid->next;
+			if (ssid->bssid_set &&
+			    memcmp(bss->bssid, ssid->bssid, ETH_ALEN) != 0) {
+				wpa_printf(MSG_DEBUG, "   skip - "
+					   "BSSID mismatch");
+				continue;
+			}
+			if (!(((ssid->proto & WPA_PROTO_RSN) &&
+			       wpa_parse_wpa_ie(wpa_s, bss->rsn_ie,
+						bss->rsn_ie_len, &ie) == 0) ||
+			      ((ssid->proto & WPA_PROTO_WPA) &&
+			       wpa_parse_wpa_ie(wpa_s, bss->wpa_ie,
+						bss->wpa_ie_len, &ie) == 0))) {
+				wpa_printf(MSG_DEBUG, "   skip - "
+					   "could not parse WPA/RSN IE");
+				continue;
+			}
+			if (!(ie.proto & ssid->proto)) {
+				wpa_printf(MSG_DEBUG, "   skip - "
+					   "proto mismatch");
+				continue;
+			}
+			if (!(ie.pairwise_cipher & ssid->pairwise_cipher)) {
+				wpa_printf(MSG_DEBUG, "   skip - "
+					   "PTK cipher mismatch");
+				continue;
+			}
+			if (!(ie.group_cipher & ssid->group_cipher)) {
+				wpa_printf(MSG_DEBUG, "   skip - "
+					   "GTK cipher mismatch");
+				continue;
+			}
+			if (!(ie.key_mgmt & ssid->key_mgmt)) {
+				wpa_printf(MSG_DEBUG, "   skip - "
+					   "key mgmt mismatch");
+				continue;
+			}
+
+			selected = bss;
+			break;
 		}
 	}
 
@@ -846,15 +1005,18 @@ static void wpa_supplicant_scan_results(struct wpa_supplicant *wpa_s)
 
 	if (selected) {
 		if (wpa_s->reassociate ||
-		    memcmp(selected->bssid, wpa_s->bssid, ETH_ALEN) != 0)
+		    memcmp(selected->bssid, wpa_s->bssid, ETH_ALEN) != 0) {
+			wpa_supplicant_scard_init(wpa_s, ssid);
 			wpa_supplicant_associate(wpa_s, selected, ssid);
-		else {
+		} else {
 			wpa_printf(MSG_DEBUG, "Already associated with the "
 				   "selected AP.");
-			rsn_preauth_scan_results(wpa_s, results, num);
 		}
-	} else
+		rsn_preauth_scan_results(wpa_s, results, num);
+	} else {
 		wpa_printf(MSG_DEBUG, "No suitable AP found.");
+		wpa_supplicant_req_scan(wpa_s, 5, 0);
+	}
 }
 
 
@@ -928,7 +1090,10 @@ extern struct wpa_driver_ops wpa_driver_prism54_ops; /* driver_prism54.c */
 #ifdef CONFIG_DRIVER_HERMES
 extern struct wpa_driver_ops wpa_driver_hermes_ops; /* driver_hermes.c */
 #endif /* CONFIG_DRIVER_HERMES */
-#ifdef CONFIG_NDISWRAPPER
+#ifdef CONFIG_DRIVER_MADWIFI
+extern struct wpa_driver_ops wpa_driver_madwifi_ops; /* driver_madwifi.c */
+#endif /* CONFIG_DRIVER_MADWIFI */
+#ifdef CONFIG_DRIVER_NDISWRAPPER
 extern struct wpa_driver_ops wpa_ndiswrapper_ops; /* driver_ndiswrapper.c */
 #endif /* CONFIG_DRIVER_NDISWRAPPER */
 
@@ -946,7 +1111,9 @@ static int wpa_supplicant_set_driver(struct wpa_supplicant *wpa_s,
 	def_drv = &wpa_driver_prism54_ops;
 #elif CONFIG_DRIVER_HERMES
 	def_drv = &wpa_driver_hermes_ops;
-#elif CONFIG_NDISWRAPPER
+#elif CONFIG_DRIVER_MADWIFI
+	def_drv = &wpa_driver_madwifi_ops;
+#elif CONFIG_DRIVER_NDISWRAPPER
 	def_drv = &wpa_ndiswrapper_ops;
 #else
 #error No driver support included in .config.
@@ -967,6 +1134,10 @@ static int wpa_supplicant_set_driver(struct wpa_supplicant *wpa_s,
 	else if (strcmp(name, "hermes") == 0)
 		wpa_s->driver = &wpa_driver_hermes_ops;
 #endif /* CONFIG_DRIVER_HERMES */
+#ifdef CONFIG_DRIVER_MADWIFI
+	else if (strcmp(name, "madwifi") == 0)
+		wpa_s->driver = &wpa_driver_madwifi_ops;
+#endif /* CONFIG_DRIVER_MADWIFI */
 	else {
 		printf("Unsupported driver '%s'.\n", name);
 		return -1;
@@ -1011,6 +1182,9 @@ static void usage(void)
 #ifdef CONFIG_DRIVER_HERMES
 	       "  hermes = Agere Systems Inc. driver (Hermes-I/Hermes-II)\n"
 #endif  /* CONFIG_DRIVER_HERMES */
+#ifdef CONFIG_DRIVER_MADWIFI
+	       "  madwifi = MADWIFI 802.11 support (Atheros, etc.)\n"
+#endif  /* CONFIG_DRIVER_MADWIFI */
 	       "options:\n"
 	       "  -B = run daemon in the background\n"
 	       "  -d = increase debugging verbosity (-dd even more)\n"
@@ -1041,9 +1215,10 @@ int main(int argc, char *argv[])
 	char *ifname = NULL;
 	int c;
 	const char *confname = NULL, *driver = NULL;
-	int daemonize = 0, wait_for_interface = 0, disable_eapol = 0;
+	int daemonize = 0, wait_for_interface = 0, disable_eapol = 0, exitcode;
 
 	memset(&wpa_s, 0, sizeof(wpa_s));
+	wpa_s.dot1x_s = -1;
 
 	for (;;) {
 		c = getopt(argc, argv, "Bc:D:dehi:Lqvw");
@@ -1138,11 +1313,14 @@ int main(int argc, char *argv[])
 		return -1;
 	}
 
+	exitcode = 0;
+
 	if (wait_for_interface && daemonize) {
 		wpa_printf(MSG_DEBUG, "Daemonize..");
 		if (daemon(0, 0)) {
 			perror("daemon");
-			return -1;
+			exitcode = -1;
+			goto cleanup;
 		}
 	}
 
@@ -1150,8 +1328,10 @@ int main(int argc, char *argv[])
 		wpa_s.eapol = eapol_sm_init(&wpa_s, 0);
 		if (wpa_s.eapol == NULL) {
 			printf("Failed to initialize EAPOL state machines.\n");
-			return -1;
+			exitcode = -1;
+			goto cleanup;
 		}
+		eapol_sm_register_msg_ctx(wpa_s.eapol, &wpa_s);
 	}
 
 	/* RSNA Supplicant Key Management - INITIALIZE */
@@ -1165,7 +1345,8 @@ int main(int argc, char *argv[])
 	if (wpa_s.events_priv == NULL) {
 		fprintf(stderr, "Failed to initialize driver event "
 			"processing\n");
-		return -1;
+		exitcode = -1;
+		goto cleanup;
 	}
 
 	for (;;) {
@@ -1173,22 +1354,28 @@ int main(int argc, char *argv[])
 					  wpa_supplicant_rx_eapol, &wpa_s);
 		if (wpa_s.l2)
 			break;
-		else if (!wait_for_interface)
-			return -1;
+		else if (!wait_for_interface) {
+			exitcode = -1;
+			goto cleanup;
+		}
 		printf("Waiting for interface..\n");
 		sleep(5);
 	}
 	if (l2_packet_get_own_addr(wpa_s.l2, wpa_s.own_addr)) {
 		fprintf(stderr, "Failed to get own L2 address\n");
-		return -1;
+		exitcode = -1;
+		goto cleanup;
 	}
 
-	if (wpa_supplicant_init_counter(&wpa_s))
-		return -1;
+	if (wpa_supplicant_init_counter(&wpa_s)) {
+		exitcode = -1;
+		goto cleanup;
+	}
 
 	if (wpa_s.driver->set_wpa(wpa_s.ifname, 1) < 0) {
 		fprintf(stderr, "Failed to enable WPA in the driver.\n");
-		return -1;
+//		exitcode = -1;
+//		goto cleanup;
 	}
 
 	wpa_clear_keys(&wpa_s, NULL);
@@ -1199,7 +1386,8 @@ int main(int argc, char *argv[])
 
 	wpa_s.driver->set_drop_unencrypted(wpa_s.ifname, 1);
 
-	eloop_register_timeout(0, 100000, wpa_supplicant_scan, &wpa_s, NULL);
+	wpa_s.prev_scan_ssid = BROADCAST_SSID_SCAN;
+	wpa_supplicant_req_scan(&wpa_s, 0, 100000);
 
 	if (disable_eapol)
 		wpa_supplicant_802_1x_init(&wpa_s);
@@ -1208,7 +1396,8 @@ int main(int argc, char *argv[])
 		wpa_printf(MSG_DEBUG, "Daemonize..");
 		if (daemon(0, 0)) {
 			perror("daemon");
-			return -1;
+			exitcode = -1;
+			goto cleanup;
 		}
 	}
 
@@ -1219,6 +1408,8 @@ int main(int argc, char *argv[])
 	eloop_run();
 
 	wpa_supplicant_disassociate(&wpa_s, REASON_DEAUTH_LEAVING);
+
+cleanup:
 	if (wpa_s.driver->set_wpa(wpa_s.ifname, 0) < 0) {
 		fprintf(stderr, "Failed to disable WPA in the driver.\n");
 	}
@@ -1236,5 +1427,5 @@ int main(int argc, char *argv[])
 
 	eloop_destroy();
 
-	return 0;
+	return exitcode;
 }

@@ -1,0 +1,28 @@
+To do:
+- add WPA support to Linux Wireless Extensions
+- add support for other drivers
+- port for *BSD
+- implement GUI for WPA Supplicant/Xsupplicant/iwconfig/iwlist
+  (easy to use configuration and network stats, etc.)
+- change wpa_supplicant.c to use wpa_eapol_send() instead of generating
+  Ethernet and IEEE 802.1X headers in many places (?)
+  (this is a bit complicated, because WPA include IEEE 802.1X header in
+  EAPOL-Key MIC calculation)
+- add support for plaintext connection (i.e., no WPA and no IEEE 802.1X)
+- add support for TLS session resumption / fast reconnect
+- new IEEE 802.11i implementation recommendation:
+  * SNonce should always be made random (i.e., do not use global counter
+  * incremented by one. In addition, SNonce should only be updated
+  * after msg 3/4 has been successfully processed.
+  * Actually, would be better to add a flag that will make msg 1/4
+  * processing update SNonce, so that possible retries of 3/4 will use
+  * the same SNonce..
+- EAP-GTC: add option to always ask for new password (i.e., do not cache
+  previous password)
+- EAP-TLS/TTLS/PEAP: add option for verifying authsrv identity (certificate
+  CN?); could also verify certificate use fields ("server authentication" or
+  all uses); verify CRL after connection has been initialized
+- add support for opportunistic PMKSA caching
+- hostap: try other roaming modes
+- EAP-SIM - GSM/SIM (smart card) interface
+- EAP-MSCHAPv2: add support for password changing
