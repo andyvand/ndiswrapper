@@ -843,7 +843,7 @@ static int ndis_get_scan(struct net_device *dev, struct iw_request_info *info,
 	if (!handle->scan_timestamp)
 		return -EOPNOTSUPP;
 
-	if (time_before(jiffies, handle->scan_timestamp + 4 * HZ))
+	if (time_before(jiffies, handle->scan_timestamp + 3 * HZ))
 		return -EAGAIN;
 	
 	written = needed = 0;
@@ -978,7 +978,7 @@ static struct iw_statistics *ndis_get_wireless_stats(struct net_device *dev)
 				  &written, &needed);
 	if (!res)
 		iw_stats->qual.level = rssi;
-		
+
 	memset(&ndis_stats, 0, sizeof(ndis_stats));
 	res = doquery(handle, NDIS_OID_STATISTICS, (char *)&ndis_stats,
 		      sizeof(ndis_stats), &written, &needed);
