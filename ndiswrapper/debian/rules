@@ -91,7 +91,7 @@ build-modules-prep:
 		module=ndiswrapper.ko; \
 	fi; \
 	echo "driver/$$module /lib/modules/$(KVERS)/misc" \
-		> debian/ndiswrapper-modules.install
+		> debian/ndiswrapper-modules-$(KVERS).install
 
 build-modules:
 	dh_installdirs lib/modules/$(KVERS)/misc
@@ -100,12 +100,12 @@ build-modules:
 binary-modules: build-modules-prep common-prolog build-modules common-epilog
 	dh_builddeb --destdir=$(MODDIR)
 	dh_clean
-	-rm -f debian/postinst debian/ndiswrapper-modules.install
+	-rm -f debian/postinst debian/ndiswrapper-modules-$(KVERS).install
 
 clean-modules: build-modules-prep
 	echo "$(NDISSRC)"
 	-$(MAKE) -C $(DRIVERSRC) clean
-	-rm -f debian/ndiswrapper-modules.install debian/postinst
+	-rm -f debian/ndiswrapper-modules-$(KVERS).install debian/postinst
 	dh_clean
 
 build-utils-prep:

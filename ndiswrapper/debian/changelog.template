@@ -1,4 +1,4 @@
-ndiswrapper (#NDISVERS#-#KVERS#) unstable; urgency=low
+ndiswrapper (#NDISVERS#-1) unstable; urgency=low
 
   * Built for kernel #KVERS#.
 
