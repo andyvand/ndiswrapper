@@ -697,10 +697,10 @@ STDCALL NTSTATUS WRAP_EXPORT(KeWaitForMultipleObjects)
 STDCALL void WRAP_EXPORT(IoReuseIrp)
 	(struct irp *irp, NTSTATUS status)
 {
-	TRACEENTER3("irp = %p, status = %d", irp, status);
+	USBTRACEENTER("irp = %p, status = %d", irp, status);
 	if (irp)
 		irp->io_status.status = status;
-	TRACEEXIT3(return);
+	USBTRACEEXIT(return);
 }
 
 STDCALL void WRAP_EXPORT(IoBuildSynchronousFsdRequest)
@@ -738,15 +738,15 @@ STDCALL struct irp *WRAP_EXPORT(IoAllocateIrp)
 	struct irp *irp;
 	int size;
 
-	TRACEENTER3("stack_size = %d, charge_quota = %d",
-		stack_size, charge_quota);
+	USBTRACEENTER("stack_size = %d, charge_quota = %d",
+		      stack_size, charge_quota);
 
 	size = sizeof(struct irp) +
 		stack_size * sizeof(struct io_stack_location);
 	/* FIXME: we should better check what GFP_ is required */
 	irp = kmalloc(size, GFP_ATOMIC);
 	if (irp) {
-		DBGTRACE3("allocated irp %p", irp);
+		USBTRACE("allocated irp %p", irp);
 		memset(irp, 0, size);
 
 		irp->size = size;
@@ -756,17 +756,17 @@ STDCALL struct irp *WRAP_EXPORT(IoAllocateIrp)
 			((struct io_stack_location *)(irp + 1)) + stack_size;
 	}
 
-	TRACEEXIT3(return irp);
+	USBTRACEEXIT(return irp);
 }
 
 STDCALL void WRAP_EXPORT(IoInitializeIrp)
 	(struct irp *irp, USHORT size, CHAR stack_size)
 {
-	TRACEENTER3("irp = %p, size = %d, stack_size = %d",
-		    irp, size, stack_size);
+	USBTRACEENTER("irp = %p, size = %d, stack_size = %d",
+		      irp, size, stack_size);
 
 	if (irp) {
-		DBGTRACE3("initializing irp %p", irp);
+		USBTRACE("initializing irp %p", irp);
 		memset(irp, 0, size);
 
 		irp->size = size;
@@ -776,7 +776,7 @@ STDCALL void WRAP_EXPORT(IoInitializeIrp)
 			((struct io_stack_location *)(irp+1)) + stack_size;
 	}
 
-	TRACEEXIT3(return);
+	USBTRACEEXIT(return);
 }
 
 STDCALL struct irp *WRAP_EXPORT(IoBuildDeviceIoControlRequest)
@@ -788,12 +788,12 @@ STDCALL struct irp *WRAP_EXPORT(IoBuildDeviceIoControlRequest)
 	struct irp *irp;
 	struct io_stack_location *stack;
 
-	TRACEENTER3("");
+	USBTRACEENTER("");
 
 	irp = kmalloc(sizeof(struct irp) + sizeof(struct io_stack_location),
 		GFP_KERNEL); /* we are running at IRQL = PASSIVE_LEVEL */
 	if (irp) {
-		DBGTRACE3("allocated irp %p", irp);
+		USBTRACE("allocated irp %p", irp);
 		memset(irp, 0, sizeof(struct irp) +
 		       sizeof(struct io_stack_location));
 
@@ -818,7 +818,7 @@ STDCALL struct irp *WRAP_EXPORT(IoBuildDeviceIoControlRequest)
 			IRP_MJ_INTERNAL_DEVICE_CONTROL : IRP_MJ_DEVICE_CONTROL;
 	}
 
-	TRACEEXIT3(return irp);
+	USBTRACEEXIT(return irp);
 }
 
 _FASTCALL void WRAP_EXPORT(IofCompleteRequest)
@@ -826,7 +826,7 @@ _FASTCALL void WRAP_EXPORT(IofCompleteRequest)
 {
 	struct io_stack_location *stack = IRP_CUR_STACK_LOC(irp) - 1;
 
-	TRACEENTER3("irp = %p", irp);
+	USBTRACEENTER("irp = %p", irp);
 
 	if (irp->user_status) {
 		irp->user_status->status = irp->io_status.status;
@@ -840,23 +840,23 @@ _FASTCALL void WRAP_EXPORT(IofCompleteRequest)
 	       (stack->control & CALL_ON_CANCEL)) ||
 	      ((irp->io_status.status != 0) &&
 	       (stack->control & CALL_ON_ERROR))))) {
-		DBGTRACE3("calling %p", stack->completion_handler);
+		USBTRACE("calling %p", stack->completion_handler);
 
 		if (stack->completion_handler(stack->dev_obj, irp,
 		                              stack->handler_arg) ==
 		    STATUS_MORE_PROCESSING_REQUIRED)
-			TRACEEXIT3(return);
+			USBTRACEEXIT(return);
 	}
 
 	if (irp->user_event) {
-		DBGTRACE3("setting event %p", irp->user_event);
+		USBTRACE("setting event %p", irp->user_event);
 		KeSetEvent(irp->user_event, 0, 0);
 	}
 
 	/* To-Do: what about IRP_DEALLOCATE_BUFFER...? */
-	DBGTRACE3("freeing irp %p", irp);
+	USBTRACE("freeing irp %p", irp);
 	kfree(irp);
-	TRACEEXIT3(return);
+	USBTRACEEXIT(return);
 }
 
 STDCALL BOOLEAN WRAP_EXPORT(IoCancelIrp)
@@ -866,7 +866,7 @@ STDCALL BOOLEAN WRAP_EXPORT(IoCancelIrp)
 	void (*cancel_routine)(struct device_object *, struct irp *) STDCALL;
 	KIRQL irql;
 
-	TRACEENTER2("irp = %p", irp);
+	USBTRACEENTER("irp = %p", irp);
 
 	irql = KeGetCurrentIrql();
 	spin_lock(&irp_cancel_lock);
@@ -878,21 +878,21 @@ STDCALL BOOLEAN WRAP_EXPORT(IoCancelIrp)
 		irp->cancel = 1;
 		spin_unlock(&irp_cancel_lock);
 		cancel_routine(stack->dev_obj, irp);
-		TRACEEXIT2(return 1);
+		USBTRACEEXIT(return 1);
 	} else {
 		spin_unlock(&irp_cancel_lock);
-		TRACEEXIT2(return 0);
+		USBTRACEEXIT(return 0);
 	}
 }
 
 STDCALL void WRAP_EXPORT(IoFreeIrp)
 	(struct irp *irp)
 {
-	TRACEENTER3("irp = %p", irp);
+	USBTRACEENTER("irp = %p", irp);
 
 	kfree(irp);
 
-	TRACEEXIT3(return);
+	USBTRACEEXIT(return);
 }
 
 _FASTCALL NTSTATUS WRAP_EXPORT(IofCallDriver)
@@ -903,8 +903,8 @@ _FASTCALL NTSTATUS WRAP_EXPORT(IofCallDriver)
 	unsigned long result;
 
 
-	TRACEENTER3("dev_obj = %p, irp = %p, major_fn = %x, ioctl = %u",
-		dev_obj, irp, stack->major_fn, stack->params.ioctl.code);
+	USBTRACEENTER("dev_obj = %p, irp = %p, major_fn = %x, ioctl = %u",
+		      dev_obj, irp, stack->major_fn, stack->params.ioctl.code);
 
 	if (stack->major_fn == IRP_MJ_INTERNAL_DEVICE_CONTROL) {
 		switch (stack->params.ioctl.code) {
@@ -932,7 +932,7 @@ _FASTCALL NTSTATUS WRAP_EXPORT(IofCallDriver)
 
 	if (ret == STATUS_PENDING) {
 		stack->control |= IS_PENDING;
-		TRACEEXIT3(return ret);
+		USBTRACEEXIT(return ret);
 	} else {
 		irp->io_status.status = ret;
 		if (irp->user_status)
@@ -941,25 +941,25 @@ _FASTCALL NTSTATUS WRAP_EXPORT(IofCallDriver)
 		if ((stack->completion_handler) &&
 		    ((((ret == 0) && (stack->control & CALL_ON_SUCCESS)) ||
 		      ((ret != 0) && (stack->control & CALL_ON_ERROR))))) {
-			DBGTRACE3("calling %p", stack->completion_handler);
+			USBTRACE("calling %p", stack->completion_handler);
 
 			result = stack->completion_handler(stack->dev_obj, irp,
 				stack->handler_arg);
 			if (result == STATUS_MORE_PROCESSING_REQUIRED)
-				TRACEEXIT3(return ret);
+				USBTRACEEXIT(return ret);
 		}
 
 		if (irp->user_event) {
-			DBGTRACE3("setting event %p", irp->user_event);
+			USBTRACE("setting event %p", irp->user_event);
 			KeSetEvent(irp->user_event, 0, 0);
 		}
 	}
 
 	/* To-Do: what about IRP_DEALLOCATE_BUFFER...? */
-	DBGTRACE3("freeing irp %p", irp);
+	USBTRACE("freeing irp %p", irp);
 	kfree(irp);
 
-	TRACEEXIT3(return ret);
+	USBTRACEEXIT(return ret);
 }
 
 STDCALL NTSTATUS WRAP_EXPORT(PoCallDriver)

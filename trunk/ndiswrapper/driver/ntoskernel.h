@@ -471,7 +471,7 @@ int unmap_kspin_lock(KSPIN_LOCK *kspin_lock);
 #define wrap_spin_unlock_irql(lock, newirql) do {			\
 		wrap_spin_unlock(lock);					\
 		if ((lock)->irql != newirql)				\
-			ERROR("irql %d != %d", (lock)->irql, newirql);	\
+			DBGTRACE3("irql %d != %d", (lock)->irql, newirql); \
 	} while (0)
 #define kspin_unlock_irql(lock, newirql)			\
 	wrap_spin_unlock_irql(map_kspin_lock(lock), newirql)
@@ -518,9 +518,8 @@ int unmap_kspin_lock(KSPIN_LOCK *kspin_lock);
 
 #define wrap_spin_unlock_irql(lock, newirql) do {			\
 		if (*(lock) != newirql)					\
-			ERROR("irql %lu != %d", *(lock), newirql);	\
-		else							\
-			wrap_spin_unlock(lock);				\
+			DBGTRACE3("irql %lu != %d", *(lock), newirql);	\
+		wrap_spin_unlock(lock);					\
 	} while (0)
 #define kspin_unlock_irql(lock, newirql) wrap_spin_unlock_irql(lock, newirql)
 
@@ -616,6 +615,16 @@ static inline ULONG SPAN_PAGES(ULONG_PTR ptr, SIZE_T length)
 #define TRACEEXIT3(stmt) do { DBGTRACE3("%s", "Exit"); stmt; } while(0)
 #define TRACEEXIT4(stmt) do { DBGTRACE4("%s", "Exit"); stmt; } while(0)
 #define TRACEEXIT5(stmt) do { DBGTRACE5("%s", "Exit"); stmt; } while(0)
+
+#ifdef USB_DEBUG
+#define USBTRACE(fmt, ...) DBGTRACE1(fmt, ## __VA_ARGS__)
+#define USBTRACEENTER(fmt, ...) TRACEENTER1(fmt, ## __VA_ARGS__)
+#define USBTRACEEXIT(stmt) TRACEEXIT1(stmt)
+#else
+#define USBTRACE(fmt, ...)
+#define USBTRACEENTER(fmt, ...)
+#define USBTRACEEXIT(stmt) stmt
+#endif
 
 #if defined DEBUG
 #define ASSERT(expr) do {						\
