@@ -1,4 +1,4 @@
-#!/bin/sh -x
+#!/bin/sh -e
 
 # Author: Giridhar Pemmasani (giri@lmc.cs.sunysb.edu)
 # Parse inf file of NDIS drivers
