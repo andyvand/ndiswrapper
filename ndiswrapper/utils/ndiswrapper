@@ -357,7 +357,7 @@ sub installStatus
 					my $mode = (lstat("$confdir/$driver/$device"))[2];
 					if(S_ISLNK($mode))
 					{
-						$ret = "hardward present,fuzzy";
+						$ret = "hardware present,fuzzy";
 					}
 					else
 					{
