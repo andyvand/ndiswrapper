@@ -93,6 +93,9 @@ static struct ndis_driver *ndiswrapper_load_driver(struct ndis_device *device)
 			TRACEEXIT1(return NULL);
 		}
 
+		/* wait for the driver to load and initialize */
+		set_current_state(TASK_INTERRUPTIBLE);
+		schedule_timeout(HZ);
 		found = 0;
 		spin_lock(&loader_lock);
 		list_for_each_entry(ndis_driver, &ndis_drivers, list) {
@@ -210,7 +213,7 @@ static int ndiswrapper_add_one_pci_dev(struct pci_dev *pdev,
 	/* Wait a little to let card power up otherwise ifup might fail after
 	   boot */
 	set_current_state(TASK_INTERRUPTIBLE);
-	schedule_timeout(HZ);
+	schedule_timeout(HZ/2);
 
 	if (setup_dev(handle->net_dev)) {
 		ERROR("couldn't setup network device");
