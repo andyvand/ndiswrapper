@@ -625,7 +625,8 @@ STDCALL void NdisMSetAttributesEx(struct ndis_handle *handle,
 
 	if(hangcheck_interval)
 	{
-		handle->hangcheck_interval = hangcheck_interval * HZ;
+		if (handle->hangcheck_interval == 0)
+			handle->hangcheck_interval = hangcheck_interval * HZ;
 	}
 
 	handle->adapter_ctx = adapter_ctx;
