@@ -61,12 +61,12 @@ struct wrapper_timer
 {
 	struct list_head list;
 	struct timer_list timer;
-	long repeat;
-	int active;
-	struct kdpc *kdpc;
 #ifdef DEBUG_TIMER
 	unsigned long wrapper_timer_magic;
 #endif
+	long repeat;
+	int active;
+	struct kdpc *kdpc;
 };
 
 struct kdpc
@@ -123,7 +123,8 @@ struct packed npaged_lookaside_list {
 void wrapper_timer_handler(unsigned long data);
 void wrapper_init_timer(struct kdpc *kdpc, void *handle,
 			void *func, void *ctx);
-int wrapper_set_timer(struct kdpc *kdpc, __u64 expires, unsigned long repeat);
+int wrapper_set_timer(struct kdpc *kdpc,unsigned long expires,
+		      unsigned long repeat);
 void wrapper_cancel_timer(struct kdpc *kdpc, char *canceled);
 
 #endif // _NTOSKERNEL_H_

@@ -265,13 +265,13 @@ STDCALL void NdisMapFile(unsigned int *status,
 	if (!filehandle)
 	{
 		*status = NDIS_STATUS_ALREADY_MAPPED;
-		DBGTRACE("%s: failed\n", __FUNCTION__);
+		DBGTRACE("%s: (exit)\n", __FUNCTION__);
 		return;
 	}
 
 	*status = NDIS_STATUS_SUCCESS;
 	*mappedbuffer = filehandle->data;
-	DBGTRACE("%s: ok!\n", __FUNCTION__);
+	DBGTRACE("%s: (exit)\n", __FUNCTION__);
 	return;
 }
 
@@ -409,9 +409,11 @@ STDCALL void NdisReadConfiguration(unsigned int *status,
 			*status = ndis_encode_setting(setting, type);
 			if (*status == NDIS_STATUS_SUCCESS)
 				*dest = &setting->value;
-			else {
+			else
+			{
 				*dest = NULL;
-				DBGTRACE("%s: status = %d\n", __FUNCTION__, *status);
+				DBGTRACE("%s: status = %d\n",
+					 __FUNCTION__, *status);
 			}
 			 return;
 		}
@@ -545,7 +547,7 @@ STDCALL int NdisUnicodeStringToAnsiString(struct ustring *dst,
  * Called by driver from the init callback.
  *
  * The adapter_ctx should be supplied to most other callbacks so we save
- * it in our handle.
+ * it in out handle.
  *
  */ 
 STDCALL void NdisMSetAttributesEx(struct ndis_handle *handle,
@@ -1833,3 +1835,112 @@ STDCALL void EthFilterDprIndicateReceive(void){UNIMPL();}
 STDCALL void NdisMPciAssignResources(void){UNIMPL();}
 STDCALL void NdisMRemoveMiniport(void) { UNIMPL(); }
 
+struct wrap_func ndis_wrap_funcs[] =
+{
+	WRAP_FUNC_ENTRY(EthFilterDprIndicateReceive),
+	WRAP_FUNC_ENTRY(EthFilterDprIndicateReceiveComplete),
+	WRAP_FUNC_ENTRY(NDIS_BUFFER_TO_SPAN_PAGES),
+	WRAP_FUNC_ENTRY(NdisAcquireSpinLock),
+	WRAP_FUNC_ENTRY(NdisAdjustBufferLength),
+	WRAP_FUNC_ENTRY(NdisAllocateBuffer),
+	WRAP_FUNC_ENTRY(NdisAllocateBufferPool),
+	WRAP_FUNC_ENTRY(NdisAllocateMemory),
+	WRAP_FUNC_ENTRY(NdisAllocateMemoryWithTag),
+	WRAP_FUNC_ENTRY(NdisAllocatePacket),
+	WRAP_FUNC_ENTRY(NdisAllocatePacketPool),
+	WRAP_FUNC_ENTRY(NdisAllocatePacketPoolEx),
+	WRAP_FUNC_ENTRY(NdisAllocateSpinLock),
+	WRAP_FUNC_ENTRY(NdisAnsiStringToUnicodeString),
+	WRAP_FUNC_ENTRY(NdisBufferLength),
+	WRAP_FUNC_ENTRY(NdisBufferVirtualAddress),
+	WRAP_FUNC_ENTRY(NdisCancelTimer),
+	WRAP_FUNC_ENTRY(NdisCloseConfiguration),
+	WRAP_FUNC_ENTRY(NdisCloseFile),
+	WRAP_FUNC_ENTRY(NdisDprAcquireSpinLock),
+	WRAP_FUNC_ENTRY(NdisDprReleaseSpinLock),
+	WRAP_FUNC_ENTRY(NdisFreeBuffer),
+	WRAP_FUNC_ENTRY(NdisFreeBufferPool),
+	WRAP_FUNC_ENTRY(NdisFreeMemory),
+	WRAP_FUNC_ENTRY(NdisFreePacket),
+	WRAP_FUNC_ENTRY(NdisFreePacketPool),
+	WRAP_FUNC_ENTRY(NdisFreeSpinLock),
+	WRAP_FUNC_ENTRY(NdisGetBufferPhysicalArraySize),
+	WRAP_FUNC_ENTRY(NdisGetCurrentSystemTime),
+	WRAP_FUNC_ENTRY(NdisGetFirstBufferFromPacketSafe),
+	WRAP_FUNC_ENTRY(NdisGetSystemUpTime),
+	WRAP_FUNC_ENTRY(NdisIndicateStatus),
+	WRAP_FUNC_ENTRY(NdisIndicateStatusComplete),
+	WRAP_FUNC_ENTRY(NdisInitAnsiString),
+	WRAP_FUNC_ENTRY(NdisInitializeEvent),
+	WRAP_FUNC_ENTRY(NdisInitializeString),
+	WRAP_FUNC_ENTRY(NdisInitializeTimer),
+	WRAP_FUNC_ENTRY(NdisInitializeWrapper),
+	WRAP_FUNC_ENTRY(NdisInterlockedDecrement),
+	WRAP_FUNC_ENTRY(NdisInterlockedIncrement),
+	WRAP_FUNC_ENTRY(NdisInterlockedInsertHeadList),
+	WRAP_FUNC_ENTRY(NdisMAllocateMapRegisters),
+	WRAP_FUNC_ENTRY(NdisMAllocateSharedMemory),
+	WRAP_FUNC_ENTRY(NdisMCancelTimer),
+	WRAP_FUNC_ENTRY(NdisMCompleteBufferPhysicalMapping),
+	WRAP_FUNC_ENTRY(NdisMDeregisterAdapterShutdownHandler),
+	WRAP_FUNC_ENTRY(NdisMDeregisterDevice),
+	WRAP_FUNC_ENTRY(NdisMDeregisterInterrupt),
+	WRAP_FUNC_ENTRY(NdisMDeregisterIoPortRange),
+	WRAP_FUNC_ENTRY(NdisMFreeMapRegisters),
+	WRAP_FUNC_ENTRY(NdisMFreeSharedMemory),
+	WRAP_FUNC_ENTRY(NdisMGetDeviceProperty),
+	WRAP_FUNC_ENTRY(NdisMGetDmaAlignment),
+	WRAP_FUNC_ENTRY(NdisMIndicateReceivePacket),
+	WRAP_FUNC_ENTRY(NdisMInitializeScatterGatherDma),
+	WRAP_FUNC_ENTRY(NdisMInitializeTimer),
+	WRAP_FUNC_ENTRY(NdisMMapIoSpace),
+	WRAP_FUNC_ENTRY(NdisMPciAssignResources),
+	WRAP_FUNC_ENTRY(NdisMQueryAdapterResources),
+	WRAP_FUNC_ENTRY(NdisMQueryInformationComplete),
+	WRAP_FUNC_ENTRY(NdisMRegisterAdapterShutdownHandler),
+	WRAP_FUNC_ENTRY(NdisMRegisterDevice),
+	WRAP_FUNC_ENTRY(NdisMRegisterInterrupt),
+	WRAP_FUNC_ENTRY(NdisMRegisterIoPortRange),
+	WRAP_FUNC_ENTRY(NdisMRegisterMiniport),
+	WRAP_FUNC_ENTRY(NdisMRemoveMiniport),
+	WRAP_FUNC_ENTRY(NdisMResetComplete),
+	WRAP_FUNC_ENTRY(NdisMSendComplete),
+	WRAP_FUNC_ENTRY(NdisMSetAttributes),
+	WRAP_FUNC_ENTRY(NdisMSetAttributesEx),
+	WRAP_FUNC_ENTRY(NdisMSetInformationComplete),
+	WRAP_FUNC_ENTRY(NdisMSetPeriodicTimer),
+	WRAP_FUNC_ENTRY(NdisMSleep),
+	WRAP_FUNC_ENTRY(NdisMStartBufferPhysicalMapping),
+	WRAP_FUNC_ENTRY(NdisMSynchronizeWithInterrupt),
+	WRAP_FUNC_ENTRY(NdisMUnmapIoSpace),
+	WRAP_FUNC_ENTRY(NdisMapFile),
+	WRAP_FUNC_ENTRY(NdisOpenConfiguration),
+	WRAP_FUNC_ENTRY(NdisOpenConfigurationKeyByName),
+	WRAP_FUNC_ENTRY(NdisOpenFile),
+	WRAP_FUNC_ENTRY(NdisPacketPoolUsage),
+	WRAP_FUNC_ENTRY(NdisQueryBuffer),
+	WRAP_FUNC_ENTRY(NdisQueryBufferOffset),
+	WRAP_FUNC_ENTRY(NdisQueryBufferSafe),
+	WRAP_FUNC_ENTRY(NdisReadConfiguration),
+	WRAP_FUNC_ENTRY(NdisReadNetworkAddress),
+	WRAP_FUNC_ENTRY(NdisReadPciSlotInformation),
+	WRAP_FUNC_ENTRY(NdisReadPcmciaAttributeMemory),
+	WRAP_FUNC_ENTRY(NdisReleaseSpinLock),
+	WRAP_FUNC_ENTRY(NdisResetEvent),
+	WRAP_FUNC_ENTRY(NdisScheduleWorkItem),
+	WRAP_FUNC_ENTRY(NdisSetEvent),
+	WRAP_FUNC_ENTRY(NdisSetTimer),
+	WRAP_FUNC_ENTRY(NdisSystemProcessorCount),
+	WRAP_FUNC_ENTRY(NdisTerminateWrapper),
+	WRAP_FUNC_ENTRY(NdisUnchainBufferAtBack),
+	WRAP_FUNC_ENTRY(NdisUnchainBufferAtFront),
+	WRAP_FUNC_ENTRY(NdisUnicodeStringToAnsiString),
+	WRAP_FUNC_ENTRY(NdisUnmapFile),
+	WRAP_FUNC_ENTRY(NdisWaitEvent),
+	WRAP_FUNC_ENTRY(NdisWriteConfiguration),
+	WRAP_FUNC_ENTRY(NdisWriteErrorLogEntry),
+	WRAP_FUNC_ENTRY(NdisWritePciSlotInformation),
+	WRAP_FUNC_ENTRY(NdisWritePcmciaAttributeMemory),
+
+	{NULL, NULL}
+};
