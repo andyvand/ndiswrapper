@@ -139,6 +139,8 @@ lin_to_win1:
 	# 0x8  - arg2   -0x20
 	# 0x0  - arg1   -0x28
 lin_to_win5:
+	# setup a new stack frame for Windows function and put the arguments
+	# where it expects them
 	sub	$0x28, %rsp
 	mov	%r9, 0x20(%rsp)
 	mov	%r8, %r9
@@ -159,6 +161,8 @@ lin_to_win5:
 	# 0x8  - arg2   -0x28
 	# 0x0  - arg1   -0x30
 lin_to_win6:
+	# setup a new stack frame for Windows function and put the arguments
+	# where it expects them
 	sub	$0x30, %rsp
 	mov	0x38(%rsp), %rax
 	mov	%rax, 0x28(%rsp)

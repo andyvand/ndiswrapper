@@ -687,7 +687,8 @@ static int iw_set_encr(struct net_device *dev, struct iw_request_info *info,
 		
 		/* if it is active key, disable encryption */
 		if (index == encr_info->active) {
-			res = set_encr_mode(handle, Ndis802_11EncryptionDisabled);
+			res = set_encr_mode(handle,
+					    Ndis802_11EncryptionDisabled);
 			if (res)
 				WARNING("changing encr status failed (%08X)",
 					res);
