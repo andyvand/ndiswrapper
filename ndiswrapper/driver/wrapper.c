@@ -47,9 +47,9 @@
 
 /*#define DEBUG_CRASH_ON_INIT*/
 
-static char *dev_template = "eth%d";
-MODULE_PARM(dev_template, "s");
-MODULE_PARM_DESC(dev_template, "Prefix for network device name (default: eth%d)");
+static char *basename = "eth";
+MODULE_PARM(basename, "s");
+MODULE_PARM_DESC(basename, "Basename for network device name (default: eth)");
 
 /* List of loaded drivers */
 static LIST_HEAD(driverlist);
@@ -1131,6 +1131,7 @@ static int setup_dev(struct net_device *dev)
 
 	unsigned int res;
 	int i;
+	char dev_template[IFNAMSIZ];
 
 	DBGTRACE("%s: Querying for mac\n", __FUNCTION__);
 	res = doquery(handle, 0x01010102, &mac[0], sizeof(mac), &written, &needed);
@@ -1158,11 +1159,16 @@ static int setup_dev(struct net_device *dev)
 	dev->mem_start = handle->mem_start;		
 	dev->mem_end = handle->mem_end;		
 
-	if (strlen(dev_template) > IFNAMSIZ ||
-	    (strstr(dev_template, "%d") == NULL))
+	if (strlen(basename) > (IFNAMSIZ-3))
 	{
-		printk(KERN_ERR "%s: invalid dev_template '%s'\n",
-		       dev->name, dev_template);
+		printk(KERN_ERR "%s: basename '%s' is too long\n",
+		       dev->name, basename);
+		return -1;
+	}
+	if ((!strncpy(dev_template, basename, (IFNAMSIZ - 3))) ||
+	    (!strncat(dev_template, "%d", 2)))
+	{
+		printk(KERN_ERR "%s: Problem creating dev_template from basename '%s'\n", dev->name, basename);
 		return -1;
 	}
 	rtnl_lock();
