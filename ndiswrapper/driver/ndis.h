@@ -15,7 +15,7 @@
 #ifndef NDIS_H
 #define NDIS_H
 
-#include "ntoskernel.h"
+#include "ndiswrapper.h"
 #include "wrapper.h"
 #include "pe_loader.h"
 

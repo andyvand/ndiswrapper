@@ -14,7 +14,28 @@
 #ifndef _NTOSKERNEL_H_
 #define _NTOSKERNEL_H_
 
-#include "ndiswrapper.h"
+#include <linux/types.h>
+#include <linux/timer.h>
+
+#include <linux/netdevice.h>
+#include <linux/wireless.h>
+#include <linux/pci.h>
+#include <linux/wait.h>
+#include <linux/pm.h>
+#include <linux/delay.h>
+#include <linux/mm.h>
+#include <linux/random.h>
+#include <linux/ctype.h>
+#include <linux/usb.h>
+#include <asm/mman.h>
+#include <asm/atomic.h>
+
+#include <linux/version.h>
+
+#define STDCALL __attribute__((__stdcall__, regparm(0)))
+#define NOREGPARM __attribute__((regparm(0)))
+#define packed __attribute__((packed))
+#define _FASTCALL __attribute__((__stdcall__)) __attribute__((regparm (3)))
 
 #define MAX_STR_LEN 512
 
@@ -53,8 +74,16 @@ union slist_head {
 	} list;
 };
 
-typedef unsigned long *KSPIN_LOCK;
 typedef unsigned char KIRQL;
+struct packed wrap_spinlock
+{
+	spinlock_t spinlock;
+	unsigned short magic;
+	KIRQL irql;
+};
+
+/* typedef unsigned long *KSPIN_LOCK; */
+typedef struct wrap_spinlock *KSPIN_LOCK;
 typedef char KPROCESSOR_MODE;
 typedef unsigned char BOOLEAN;
 
@@ -311,5 +340,27 @@ STDCALL KIRQL KeGetCurrentIrql(void);
 STDCALL void KeInitializeSpinLock(KSPIN_LOCK *lock);
 _FASTCALL KIRQL KfAcquireSpinLock(int dummy1, int dummy2, KSPIN_LOCK *lock);
 _FASTCALL void KfReleaseSpinLock(int dummy, KIRQL oldirql, KSPIN_LOCK *lock);
+STDCALL void KeAcquireSpinLock(KSPIN_LOCK *lock, KIRQL *irql);
+STDCALL void KeReleaseSpinLock(KSPIN_LOCK *lock, KIRQL oldirql);
+_FASTCALL KIRQL KfRaiseIrql(int dummy1, int dummy2, KIRQL newirql);
+_FASTCALL void KfLowerIrql(int dummy1, int dummy2, KIRQL oldirql);
 
+#define WRAPPER_SPIN_LOCK_MAGIC 137
+
+static inline void wrap_spin_lock_init(struct wrap_spinlock *lock)
+{
+	spin_lock_init(&lock->spinlock);
+	lock->magic = WRAPPER_SPIN_LOCK_MAGIC;
+}
+static inline void wrap_spin_lock(struct wrap_spinlock *lock)
+{
+	lock->irql = KfRaiseIrql(0, 0, DISPATCH_LEVEL);
+	spin_lock(&lock->spinlock);
+}
+
+static inline void wrap_spin_unlock(struct wrap_spinlock *lock)
+{
+	spin_unlock(&lock->spinlock);
+	KfLowerIrql(0, 0, lock->irql);
+}
 #endif // _NTOSKERNEL_H_

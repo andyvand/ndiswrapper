@@ -887,7 +887,7 @@ NdisFreeSpinLock(struct ndis_spin_lock *lock)
 		return;
 	}
 #ifdef CONFIG_DEBUG_SPINLOCK
-	if (lock->wrap_spinlock->magic != NDIS_SPIN_LOCK_MAGIC)
+	if (lock->wrap_spinlock->magic != WRAPPER_SPIN_LOCK_MAGIC)
 		ERROR("uninitliazed lock %p (%u)",
 		      lock->wrap_spinlock, lock->wrap_spinlock->magic);
 	else
