@@ -1,3 +1,12 @@
+Version 0.4 2004-01-05
+======================
+* Admtek chipset works, including WEP.
+* Performance issues on Centrino have been fixed.
+* Removing the module doesn't give oops anymore.
+* Power management (suspend/resume) works reliably.
+* procfs interface is added.
+* Removed unnecessary 64 bit and floating point operations.
+
 Version 0.3 2003-12-16
 ======================
 
