@@ -69,9 +69,9 @@ static struct ndis_driver *ndiswrapper_load_driver(struct ndis_device *device)
 	spin_unlock(&loader_lock);
 
 	snprintf(v, sizeof(v), "%d", device->vendor);
-	snprintf(d, sizeof(v), "%d", device->device);
-	snprintf(sv, sizeof(v), "%d", device->subvendor);
-	snprintf(sd, sizeof(v), "%d", device->subdevice);
+	snprintf(d, sizeof(d), "%d", device->device);
+	snprintf(sv, sizeof(sv), "%d", device->subvendor);
+	snprintf(sd, sizeof(sd), "%d", device->subdevice);
 
 	if (found)
 		TRACEEXIT1(return ndis_driver);

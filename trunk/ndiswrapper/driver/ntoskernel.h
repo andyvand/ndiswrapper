@@ -366,7 +366,7 @@ struct wrapper_timer {
 	int active;
 	struct ktimer *ktimer;
 	struct kdpc *kdpc;
-	struct wrap_spinlock lock;
+	spinlock_t lock;
 };
 
 STDCALL void KeInitializeEvent(struct kevent *kevent,
