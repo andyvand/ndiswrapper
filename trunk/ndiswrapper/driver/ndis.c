@@ -88,8 +88,10 @@ void ndis_exit(void)
 				kmem_cache_free(packet_cache, p);
 			}
 		}
+		INIT_LIST_HEAD(&wrap_ndis_packet_list);
 		kspin_unlock(&wrap_ndis_packet_lock);
 		kmem_cache_destroy(packet_cache);
+		packet_cache = NULL;
 	}
 	return;
 }
@@ -103,6 +105,7 @@ void ndis_exit_handle(struct ndis_handle *handle)
 	free_handle_ctx(handle);
 	if (handle->pci_resources)
 		vfree(handle->pci_resources);
+	handle->pci_resources = NULL;
 }
 
 /* remove all 'handle X ctx' pairs for the given handle */
@@ -119,6 +122,7 @@ static void free_handle_ctx(struct ndis_handle *handle)
 			kfree(handle_ctx);
 		}
 	}
+	INIT_LIST_HEAD(&handle_ctx_list);
 	kspin_unlock(&ntoskernel_lock);
 	return;
 }
