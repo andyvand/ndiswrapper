@@ -521,7 +521,7 @@ static void free_packet(struct ndis_handle *handle, struct ndis_packet *packet)
 
 /* build scatter/gather list from the buffers of packet array; this
  * function should be called with spinlock held at DISPATCH_LEVEL */
-static int send_packets_sg(struct ndis_handle *handle, int n)
+static int send_packets_sg_dma(struct ndis_handle *handle, int n)
 {
 	struct scatterlist *sg_list;
 	struct ndis_sg_element *ndis_sg_elements;
@@ -619,8 +619,8 @@ static int send_packets(struct ndis_handle *handle, unsigned int start,
 			int j = (start + i) % XMIT_RING_SIZE;
 			handle->xmit_array[i] = handle->xmit_ring[j];
 		}
-		if (handle->use_scatter_gather)
-			n = send_packets_sg(handle, n);
+		if (handle->sg_dma)
+			n = send_packets_sg_dma(handle, n);
 		else
 			LIN2WIN3(miniport->send_packets, handle->adapter_ctx,
 				 handle->xmit_array, n);

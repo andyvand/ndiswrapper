@@ -830,7 +830,7 @@ struct ndis_handle {
 	int ndis_comm_done;
 
 	int serialized;
-	int use_scatter_gather;
+	int sg_dma;
 	int map_count;
 	int multicast_list_size;
 	char *multicast_list;
