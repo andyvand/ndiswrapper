@@ -443,7 +443,7 @@ static int ndis_encode_setting(struct device_setting *setting,
 	case NDIS_CONFIG_PARAM_INT:
 		setting->config_param.data.intval =
 			simple_strtol(setting->value, NULL, 0);
-		DBGTRACE("value = %lu", setting->config_param.data.intval);
+		DBGTRACE1("value = %lu", setting->config_param.data.intval);
 		break;
 	case NDIS_CONFIG_PARAM_HEXINT:
 		setting->config_param.data.intval =
@@ -1272,7 +1272,7 @@ STDCALL static void WRAP_EXPORT(NdisReadNetworkAddress)
 	*status = NDIS_STATUS_FAILURE;
 	if (RtlAnsiStringToUnicodeString(&key, &ansi, 1) !=
 	    NDIS_STATUS_SUCCESS)
-		TRACEEXIT(return);
+		TRACEEXIT1(return);
 
 	NdisReadConfiguration(status, &setting, handle, &key,
 			      NDIS_CONFIG_PARAM_STRING);
@@ -1491,7 +1491,7 @@ NdisMIndicateStatus(struct ndis_handle *handle,
 			len -= sizeof(*status);
 			while (len > 0) {
 				auth_req = (struct ndis_auth_req *)buf;
-				DBGTRACE(MACSTR, MAC2STR(auth_req->bssid));
+				DBGTRACE1(MACSTR, MAC2STR(auth_req->bssid));
 				if (auth_req->flags & 0x01)
 					DBGTRACE2("%s", "reqauth");
 				if (auth_req->flags & 0x02)

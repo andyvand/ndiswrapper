@@ -55,7 +55,7 @@ OBJS += divdi3.o
 endif
 
 ifeq ($(CONFIG_DEBUG_SPINLOCK),y)
-$(error CONFIG_DEBUG_SPINLOCK conflicts with ndiswrapper. Disable
+$(error CONFIG_DEBUG_SPINLOCK conflicts with ndiswrapper. Disable \
 		CONFIG_DEBUG_SPINLOCK in kernel configuration and recompile.)
 endif
 

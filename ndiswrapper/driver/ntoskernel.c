@@ -1000,8 +1000,14 @@ STDCALL static KPRIORITY WRAP_EXPORT(KeSetPriorityThread)
 	/* FIXME: is there a way to set kernel thread prio on 2.4? */
 	old_prio = LOW_PRIORITY;
 #else
-	old_prio = 32 - task_nice((task_t *)thread) + 20;
-	set_user_nice((task_t *)thread, (32 - priority) - 20);
+	if (rt_task((task_t *)thread))
+		old_prio = LOW_REALTIME_PRIORITY;
+	else
+		old_prio = MAXIMUM_PRIORITY;
+	if (priority == LOW_REALTIME_PRIORITY)
+		set_user_nice((task_t *)thread, MAX_RT_PRIO);
+	else
+		set_user_nice((task_t *)thread, MAX_PRIO);
 #endif
 	return old_prio;
 }

@@ -349,7 +349,7 @@ static int procfs_write_settings(struct file *file, const char *buf,
 		if (!p)
 			TRACEEXIT1(return -EINVAL);
 		p++;
-		DBGTRACE("name='%s', value='%s'\n", setting, p);
+		DBGTRACE1("name='%s', value='%s'\n", setting, p);
 		list_for_each_entry(dev_setting, &handle->device->settings,
 				    list) {
 			struct ndis_config_param *param;
