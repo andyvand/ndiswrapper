@@ -1125,14 +1125,9 @@ static void wrapper_worker_proc(void *param)
 
 		if (handle->link_status == 0)
 		{
-			int len;
 			for (i = 0; i < MAX_ENCR_KEYS; i++)
-			{
-				len = sizeof(handle->encr_info.keys[i].length);
 				handle->encr_info.keys[i].length = 0;
-				memset(&handle->encr_info.keys[i].key[i], 0,
-				       len);
-			}
+
 			return;
 		}
 
@@ -1225,6 +1220,16 @@ static void check_capa(struct ndis_handle *handle)
 	struct ndis_wpa_key ndis_key;
 
 	TRACEENTER1("%s", "");
+
+	/* check if WEP is supported */
+	if (set_encr_mode(handle, ENCR1_ENABLED) ||
+	    query_int(handle, NDIS_OID_ENCR_STATUS, &i))
+		;
+	else
+		set_bit(CAPA_WEP, &handle->capa);
+
+	/* check if WPA is supported */
+	set_encr_mode(handle, ENCR_DISABLED);
 	if (set_auth_mode(handle, AUTHMODE_WPA) ||
 	    query_int(handle, NDIS_OID_AUTH_MODE, &i) || i != AUTHMODE_WPA)
 		TRACEEXIT1(return);

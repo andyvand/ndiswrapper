@@ -991,20 +991,22 @@ NdisMAllocateSharedMemory(struct ndis_handle *handle, unsigned long size,
 	dma_addr_t p;
 	void *v;
 
-	TRACEENTER3("%s", "");
+	TRACEENTER3("map count: %d, size: %lu, cached: %d",
+		    handle->map_count, size, cached);
+
 //	if (handle->map_dma_addr == NULL)
 //		ERROR("%s: DMA map address is not set!\n", __FUNCTION__);
 	/* FIXME: do USB drivers call this? */
 	v = PCI_DMA_ALLOC_COHERENT(handle->dev.pci, size, &p);
-	if(!v)
+	if (!v)
 	{
 		ERROR("Failed to allocate DMA coherent memory. "
-		      "Windows driver requested %ld bytes of %scached memory\n",
-		       size, cached ? "" : "un-");
+		      "Windows driver requested %ld bytes of "
+		      "%scached memory\n", size, cached ? "" : "un-");
 	}
 
 	*(char**)virt = v;
-	phys->low = (unsigned int)p;
+	phys->low = v == NULL ? 0 : (unsigned int)p;
 	phys->high = 0;
 	DBGTRACE3("allocated shared memory: %p", v);
 }
@@ -1985,7 +1987,7 @@ STDCALL static unsigned int
 NdisMGetDmaAlignment(struct ndis_handle *handle)
 {
 	TRACEENTER3("%s", "");
-	return PAGE_SIZE;
+	return dma_get_cache_alignment();
 }
 
 STDCALL static void
@@ -2490,7 +2492,6 @@ NdisWritePcmciaAttributeMemory(struct ndis_handle *handle,
 
 STDCALL void MmBuildMdlForNonPagedPool(struct mdl *mdl)
 {
-	INFO("%s", "");
 	UNIMPL();
 	return;
 }

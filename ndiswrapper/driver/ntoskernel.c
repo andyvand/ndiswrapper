@@ -76,7 +76,7 @@ KeSetTimerEx(struct ktimer *ktimer, __s64 due_time, __u32 period,
 STDCALL static int
 KeSetTimer(struct ktimer *ktimer, __s64 due_time, struct kdpc *kdpc)
 {
-	TRACEENTER4("%p, %ld, %u, %p", ktimer, (long)due_time, kdpc);
+	TRACEENTER4("%p, %ld, %p", ktimer, (long)due_time, kdpc);
 	return KeSetTimerEx(ktimer, due_time, 0, kdpc);
 }
 
@@ -847,6 +847,29 @@ IoGetDeviceProperty(struct device_object *dev_obj, int dev_property,
 	}
 }
 
+NOREGPARM static unsigned int
+WmiTraceMessage(void *tracehandle, unsigned long message_flags,
+		void *message_guid, unsigned short message_no, ...)
+{
+	TRACEENTER2("%s", "");
+	TRACEEXIT2(return STATUS_SUCCESS);
+}
+
+STDCALL static unsigned int
+WmiQueryTraceInformation(unsigned int trace_info_class, void *trace_info,
+			 unsigned long *req_length, void *buf)
+{
+	TRACEENTER2("%s", "");
+	TRACEEXIT2(return STATUS_SUCCESS);
+}
+
+STDCALL static unsigned int
+IoWMIRegistrationControl(struct device_object *dev_obj, unsigned long action)
+{
+	TRACEENTER2("%s", "");
+	TRACEEXIT2(return STATUS_SUCCESS);
+}
+
 STDCALL void
 KeBugCheckEx(unsigned long code, unsigned long *param1,
 	     unsigned long *param2, unsigned long *param3,
@@ -933,6 +956,9 @@ struct wrap_func ntos_wrap_funcs[] =
 	WRAP_FUNC_ENTRY(KeResetEvent),
 	WRAP_FUNC_ENTRY(IoGetDeviceProperty),
 
+	WRAP_FUNC_ENTRY(WmiTraceMessage),
+	WRAP_FUNC_ENTRY(WmiQueryTraceInformation),
+	WRAP_FUNC_ENTRY(IoWMIRegistrationControl),
 	WRAP_FUNC_ENTRY(KeBugCheckEx),
 
 	{"KeTickCount", (WRAP_FUNC *)&KeTickCount},
