@@ -30,6 +30,30 @@
 
 #endif
 
+#if defined(DEBUGLINKER) && DEBUGLINKER > 0
+#define DBGLINKER(fmt, ...) printk(KERN_INFO "%s (%s:%d): " fmt "\n",	\
+				   DRIVER_NAME, __FUNCTION__,		\
+				   __LINE__ , ## __VA_ARGS__);
+static const char *image_directory_name[] = {
+	"EXPORT",
+	"IMPORT",
+	"RESOURCE",
+	"EXCEPTION",
+	"SECURITY",
+	"BASERELOC",
+	"DEBUG",
+	"COPYRIGHT",
+	"GLOBALPTR",
+	"TLS",
+	"LOAD_CONFIG",
+	"BOUND_IMPORT",
+	"IAT",
+	"DELAY_IMPORT",
+	"COM_DESCRIPTOR" };
+#else
+#define DBGLINKER(fmt, ...) do { } while (0)
+#endif
+
 struct pe_exports {
 	char *dll;
 	char *name;
@@ -101,25 +125,6 @@ static void *get_dll_init(char *name)
 	return NULL;
 }
 
-#if DEBUG >= 3
-static const char *image_directory_name[] = {
-	"EXPORT",
-	"IMPORT",
-	"RESOURCE",
-	"EXCEPTION",
-	"SECURITY",
-	"BASERELOC",
-	"DEBUG",
-	"COPYRIGHT",
-	"GLOBALPTR",
-	"TLS",
-	"LOAD_CONFIG",
-	"BOUND_IMPORT",
-	"IAT",
-	"DELAY_IMPORT",
-	"COM_DESCRIPTOR" };
-#endif
-
 /*
  * Find and validate the coff header
  *
@@ -190,10 +195,10 @@ static int check_nt_hdr(IMAGE_NT_HEADERS *nt_hdr)
 		return -EINVAL;
 	}
 
-	DBGTRACE1("number of datadictionary entries %d",
+	DBGLINKER("number of datadictionary entries %d",
 		  opt_hdr->NumberOfRvaAndSizes);
 	for (i = 0; i < opt_hdr->NumberOfRvaAndSizes; i++) {
-		DBGTRACE3("datadirectory %s RVA:%X Size:%d",
+		DBGLINKER("datadirectory %s RVA:%X Size:%d",
 			  (i<=IMAGE_DIRECTORY_ENTRY_COM_DESCRIPTOR)?
 			  image_directory_name[i] : "unknown",
 			  opt_hdr->DataDirectory[i].VirtualAddress,
@@ -232,13 +237,13 @@ static int import(void *image, IMAGE_IMPORT_DESCRIPTOR *dirent, char *dll)
 
 		adr = get_export(symname);
 		if (adr != NULL)
-			DBGTRACE1("found symbol: %s:%s, rva = %Lu",
+			DBGLINKER("found symbol: %s:%s, rva = %Lu",
 				  dll, symname, (uint64_t)address_tbl[i]);
 		if (adr == NULL) {
 			ERROR("unknown symbol: %s:%s", dll, symname);
 			ret = -1;
 		}
-		DBGTRACE1("importing rva: %p, %p: %s : %s",
+		DBGLINKER("importing rva: %p, %p: %s : %s",
 			  (void *)(address_tbl[i]), adr, dll, symname);
 		address_tbl[i] = (ULONG_PTR)adr;
 	}
@@ -259,7 +264,7 @@ static int read_exports(struct pe_image *pe)
 		&opt_hdr->DataDirectory[IMAGE_DIRECTORY_ENTRY_EXPORT];
 
 	if (export_data_dir->Size == 0) {
-		DBGTRACE1("no exports");
+		DBGLINKER("no exports");
 		return 0;
 	}
 
@@ -277,9 +282,9 @@ static int read_exports(struct pe_image *pe)
 		if (export_data_dir->VirtualAddress <= *export_addr_table ||
 		    *export_addr_table >= (export_data_dir->VirtualAddress +
 					   export_data_dir->Size))
-			DBGTRACE1("forwarder rva");
+			DBGLINKER("forwarder rva");
 
-		DBGTRACE1("export symbol: %s, at %p",
+		DBGLINKER("export symbol: %s, at %p",
 			  (char *)(pe->image + *name_table),
 			  pe->image + *export_addr_table);
 
@@ -313,7 +318,7 @@ static int fixup_imports(void *image, IMAGE_NT_HEADERS *nt_hdr)
 	for (i = 0; dirent[i].Name; i++) {
 		name = RVA2VA(image, dirent[i].Name, char*);
 
-		DBGTRACE1("imports from dll: %s\n", name);
+		DBGLINKER("imports from dll: %s", name);
 		ret += import(image, &dirent[i], name);
 	}
 	return ret;
@@ -336,8 +341,8 @@ static int fixup_reloc(void *image, IMAGE_NT_HEADERS *nt_hdr)
 
 	fixup_block = RVA2VA(image, base_reloc_data_dir->VirtualAddress,
 			     IMAGE_BASE_RELOCATION *);
-	DBGTRACE3("fixup_block=%p, image=%p", fixup_block, image);
-	DBGTRACE3("fixup_block info: %x %d", 
+	DBGLINKER("fixup_block=%p, image=%p", fixup_block, image);
+	DBGLINKER("fixup_block info: %x %d", 
 		  fixup_block->VirtualAddress, fixup_block->SizeOfBlock);
 
 	while (fixup_block->SizeOfBlock) {
@@ -346,7 +351,7 @@ static int fixup_reloc(void *image, IMAGE_NT_HEADERS *nt_hdr)
 
 		size = (fixup_block->SizeOfBlock -
 			sizeof(IMAGE_BASE_RELOCATION)) / sizeof(WORD);
-		DBGTRACE3("found %Lu relocations in this block",
+		DBGLINKER("found %Lu relocations in this block",
 			  (uint64_t)size);
 
 		for (i = 0; i < size; i++) {
@@ -363,7 +368,7 @@ static int fixup_reloc(void *image, IMAGE_NT_HEADERS *nt_hdr)
 					       fixup_block->VirtualAddress +
 					       offset, uint32_t *);
 				addr = RVA2VA(image, (*loc - base), uint32_t);
-				DBGTRACE3("relocation: *%p (Val:%X)= %X",
+				DBGLINKER("relocation: *%p (Val:%X)= %X",
 					  loc, *loc, addr);
 				*loc = addr;
 			}
@@ -376,7 +381,7 @@ static int fixup_reloc(void *image, IMAGE_NT_HEADERS *nt_hdr)
 					       fixup_block->VirtualAddress +
 					       offset, uint64_t *);
 				addr = RVA2VA(image, (*loc - base), uint64_t);
-				DBGTRACE3("relocation: *%p (Val:%llX)= %llx",
+				DBGLINKER("relocation: *%p (Val:%llX)= %llx",
 					  loc, *loc, addr);
 				*loc = addr;
 			}
@@ -389,12 +394,12 @@ static int fixup_reloc(void *image, IMAGE_NT_HEADERS *nt_hdr)
 				break;
 			}
 		}
-		DBGTRACE1("finished relocating block");
+		DBGLINKER("finished relocating block");
 
 		fixup_block = (IMAGE_BASE_RELOCATION *)
 			((void *)fixup_block + fixup_block->SizeOfBlock);
 	};
-	DBGTRACE1("done relocating all");	
+	DBGLINKER("done relocating all");	
 
 	return 0;
 }
@@ -441,13 +446,13 @@ static int fix_pe_image(struct pe_image *pe)
 	sections = pe->nt_hdr->FileHeader.NumberOfSections;
 	sect_hdr = IMAGE_FIRST_SECTION(pe->nt_hdr);
 
-	DBGTRACE3("copying headers: %u bytes", sect_hdr->PointerToRawData);
+	DBGLINKER("copying headers: %u bytes", sect_hdr->PointerToRawData);
 
 	memcpy(image, pe->image, sect_hdr->PointerToRawData);
 
 	/* Copy all the sections */
 	for (i = 0; i < sections; i++) {
-		DBGTRACE3("Copy section %s from %x to %x",
+		DBGLINKER("Copy section %s from %x to %x",
 			  sect_hdr->Name, sect_hdr->PointerToRawData,
 			  sect_hdr->VirtualAddress);
 		if (sect_hdr->VirtualAddress+sect_hdr->SizeOfRawData >
@@ -472,7 +477,7 @@ static int fix_pe_image(struct pe_image *pe)
 		(pe->image + ((IMAGE_DOS_HEADER *)pe->image)->e_lfanew);
 	pe->opt_hdr = &pe->nt_hdr->OptionalHeader;
 
-	DBGTRACE3("set nt headers: nt_hdr=%p, opt_hdr=%p, image=%p",
+	DBGLINKER("set nt headers: nt_hdr=%p, opt_hdr=%p, image=%p",
 		  pe->nt_hdr, pe->opt_hdr, pe->image);
 
 	return 0;
