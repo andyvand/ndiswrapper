@@ -1552,7 +1552,10 @@ static int wpa_set_auth_alg(struct net_device *dev,
 	else
 		TRACEEXIT(return -EINVAL);
 
-	if (set_auth_mode(handle, mode))
+	/* wpa_supplicant assumes OPEN mode, but it won't work if RESTRCITED
+	 * mode is used, so we try with AUTO mode always hoping the driver
+	 * chooses what is appropriate */
+	if (set_auth_mode(handle, AUTHMODE_AUTO))
 		TRACEEXIT(return -EINVAL);
 	TRACEEXIT(return 0);
 }
