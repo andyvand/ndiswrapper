@@ -559,10 +559,10 @@ static int iw_get_encr(struct net_device *dev, struct iw_request_info *info,
 
 	index = (wrqu->data.flags & IW_ENCODE_INDEX);
 	DBGTRACE2("index = %u", index);
-	if (index == 0)
-		index = encr_info->active;
-	else	
+	if (index > 0)
 		index--;
+	else
+		index = encr_info->active;
 
 	if (index < 0 || index >= MAX_ENCR_KEYS)
 	{
@@ -637,26 +637,23 @@ static int iw_set_encr(struct net_device *dev, struct iw_request_info *info,
 	index = (wrqu->encoding.flags & IW_ENCODE_INDEX);
 	DBGTRACE2("index = %u", index);
 
-	if (index == 0)
-		index = encr_info->active;
-	else	
+	if (index > 0)
 		index--;
+	else
+		index = encr_info->active;
 
-	if (index < 0 || index >= MAX_ENCR_KEYS)
-	{
+	if (index < 0 || index >= MAX_ENCR_KEYS) {
 		WARNING("encryption index out of range (%u)", index);
 		TRACEEXIT1(return -EINVAL);
 	}
 
 	/* remove key if disabled */
-	if (wrqu->data.flags & IW_ENCODE_DISABLED)
-	{
+	if (wrqu->data.flags & IW_ENCODE_DISABLED) {
 		unsigned long keyindex = index;
 		res = miniport_set_info(handle, NDIS_OID_REMOVE_WEP,
 					(char *)&keyindex, sizeof(keyindex),
 					&written, &needed);
-		if (res == NDIS_STATUS_INVALID_DATA)
-		{
+		if (res == NDIS_STATUS_INVALID_DATA) {
 			WARNING("removing encryption key %d failed (%08X)",
 				index, res);
 			TRACEEXIT1(return -EINVAL);
@@ -664,8 +661,7 @@ static int iw_set_encr(struct net_device *dev, struct iw_request_info *info,
 		encr_info->keys[index].length = 0;
 		
 		/* if it is active key, disable encryption */
-		if (index == encr_info->active)
-		{
+		if (index == encr_info->active) {
 			res = set_encr_mode(handle, ENCR_DISABLED);
 			if (res)
 				WARNING("changing encr status failed (%08X)",
@@ -679,62 +675,65 @@ static int iw_set_encr(struct net_device *dev, struct iw_request_info *info,
 		res = set_auth_mode(handle, AUTHMODE_OPEN);
 	else // if (wrqu->data.flags & IW_ENCODE_RESTRICTED)
 		res = set_auth_mode(handle, AUTHMODE_RESTRICTED);
-	if (res)
-	{
+	if (res) {
 		WARNING("setting authentication mode failed (%08X)", res);
 		TRACEEXIT1(return -EINVAL);
 	}
 
 	ndis_key.struct_size = sizeof(ndis_key);
-	if (wrqu->data.length == 0)
-	{
-		/* should we allow as yet unset tx_key? */
-		if (encr_info->keys[index].length == 0)
-		{
-			WARNING("key %d is not set", index+1);
-			TRACEEXIT1(return -EINVAL);
-		}
-		ndis_key.length = encr_info->keys[index].length;
-		ndis_key.index = index | (1 << 31);
-		memcpy(ndis_key.key, encr_info->keys[index].key,
-		       ndis_key.length);
-	}
-	else //	if (wrqu->data.length > 0)
-	{
-		if (wrqu->data.length > NDIS_ENCODING_TOKEN_MAX)
-		{
+
+	if (wrqu->data.length > 0) {
+		if (wrqu->data.length > NDIS_ENCODING_TOKEN_MAX) {
 			WARNING("invalid key length (%d)", wrqu->data.length);
 			TRACEEXIT(return -EINVAL);
 		}
 		ndis_key.length = wrqu->data.length;
 		ndis_key.index = index;
-		if (index == encr_info->active)
-			ndis_key.index |= 1 << 31;
 		memcpy(&ndis_key.key, extra, ndis_key.length);
-	}
 
-	res = miniport_set_info(handle, NDIS_OID_ADD_WEP, (char *)&ndis_key,
-				sizeof(ndis_key), &written, &needed);
-	if (res == NDIS_STATUS_INVALID_DATA)
-	{
-		WARNING("adding encryption key %d failed (%08X)",
-			index+1, res);
-		TRACEEXIT1(return -EINVAL);
-	}
-
-	res = set_encr_mode(handle, ENCR1_ENABLED);
-	if (res)
-		WARNING("changing encr status failed (%08X)", res);
-
-	/* Atheros driver messes up ndis_key during ADD_WEP, so
-	 * don't rely on that; instead copy it from wrqu and extra */
-	encr_info->keys[index].length = wrqu->data.length;
-	memcpy(&encr_info->keys[index].key, extra, wrqu->data.length);
-	if (wrqu->data.length == 0)
+		res = miniport_set_info(handle, NDIS_OID_ADD_WEP,
+					(char *)&ndis_key,
+					sizeof(ndis_key), &written, &needed);
+		if (res == NDIS_STATUS_INVALID_DATA) {
+			WARNING("adding encryption key %d failed (%08X)",
+				index+1, res);
+			TRACEEXIT1(return -EINVAL);
+		}
+		
+		/* Atheros driver messes up ndis_key during ADD_WEP, so
+		 * don't rely on that; instead use info in wrqu and extra */
+		encr_info->keys[index].length = wrqu->data.length;
+		memcpy(&encr_info->keys[index].key, extra, wrqu->data.length);
+	} else // wrqu->data.length == 0
 		encr_info->active = index;
 
-	/* ndis drivers want essid to be set after setting encr */
-	set_essid(handle, handle->essid.essid, handle->essid.length);
+	if (index == encr_info->active) {
+		if (encr_info->keys[index].length == 0) {
+			WARNING("key %d is not set", index+1);
+			TRACEEXIT1(return -EINVAL);
+		}
+
+		/* set pairwise key */
+		ndis_key.length = encr_info->keys[index].length;
+		ndis_key.index = 0 | (1 << 31) | (1 << 30);
+		memcpy(ndis_key.key, encr_info->keys[index].key,
+		       ndis_key.length);
+		res = miniport_set_info(handle, NDIS_OID_ADD_WEP,
+					(char *)&ndis_key, sizeof(ndis_key),
+					&written, &needed);
+		if (res == NDIS_STATUS_INVALID_DATA) {
+			WARNING("adding encryption key %d failed (%08X)",
+				index+1, res);
+			TRACEEXIT1(return -EINVAL);
+		}
+
+		res = set_encr_mode(handle, ENCR1_ENABLED);
+		if (res)
+			WARNING("changing encr status failed (%08X)", res);
+
+		/* ndis drivers want essid to be set after setting encr */
+		set_essid(handle, handle->essid.essid, handle->essid.length);
+	}
 
 	TRACEEXIT1(return 0);
 }
