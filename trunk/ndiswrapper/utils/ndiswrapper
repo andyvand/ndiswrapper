@@ -646,6 +646,13 @@ sub parseDevice
 	printf CONF "NdisVersion|0x50001\n";
 	printf CONF "Environment|1\n";
  	printf CONF "BusType|$bustype\n";
+	close(CONF);
+
+	if(!open(CONF, "|sort|uniq >>$confdir/$driver_name/$filename"))
+	{
+		print "Unable to create file $filename";
+		return -1;
+	}
 	my $ver=$version{"DriverVer"};
 	my $provider=$version{"Provider"};
 	my $providerstring = stripquotes(substStr(trim($provider)));
