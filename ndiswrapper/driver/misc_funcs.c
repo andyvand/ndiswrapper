@@ -46,6 +46,17 @@ STDCALL unsigned int READ_PORT_ULONG(unsigned int port)
 	return inl(port);
 }
 
+STDCALL void WRITE_PORT_USHORT(unsigned int port, unsigned short value)
+{
+	outw(value, port);
+}
+
+STDCALL unsigned short READ_PORT_USHORT(unsigned int port)
+{
+	return inw(port);
+}
+
+
 /** Functions from ntoskrnl **/
 int my_sprintf(char *str, const char *format, int p1, int p2, int p3, int p4, int p5, int p6)
 {
