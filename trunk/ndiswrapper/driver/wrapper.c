@@ -885,8 +885,6 @@ int ndiswrapper_resume_pci(struct pci_dev *pdev)
 
 void ndiswrapper_remove_one_dev(struct ndis_handle *handle)
 {
-	struct miniport_char *miniport = &handle->driver->miniport_char;
-
 	TRACEENTER1("%s", handle->net_dev->name);
 
 	set_bit(SHUTDOWN, &handle->wrapper_work);
@@ -1350,8 +1348,11 @@ static int ndis_set_mac_addr(struct net_device *dev, void *p)
 	}
 	param.type = NDIS_CONFIG_PARAM_STRING;
 	NdisWriteConfiguration(&res, handle, &key, &param);
-	if (res != NDIS_STATUS_SUCCESS)
+	if (res != NDIS_STATUS_SUCCESS) {
+		RtlFreeUnicodeString(&key);
+		RtlFreeUnicodeString(&param.data.ustring);
 		TRACEEXIT1(return -EINVAL);
+	}
 	ndis_reinit(handle);
 	memcpy(dev->dev_addr, addr->sa_data, dev->addr_len);
 	RtlFreeUnicodeString(&key);
@@ -1376,7 +1377,7 @@ int setup_dev(struct net_device *dev)
 
 	DBGTRACE1("%s: querying for mac", DRIVER_NAME);
 	res = miniport_query_info(handle, OID_802_3_CURRENT_ADDRESS,
-				  &mac[0], sizeof(mac));
+				  mac, sizeof(mac));
 	if (res) {
 		ERROR("%s", "unable to get mac address from driver");
 		return -EINVAL;

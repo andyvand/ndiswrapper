@@ -70,6 +70,12 @@ struct ndis_phy_addr_unit {
 
 typedef struct mdl ndis_buffer;
 
+struct ndis_buffer_pool {
+	int num_buffers;
+	spinlock_t lock;
+	ndis_buffer *buffers;
+};
+
 enum ndis_per_packet_info {
 	TcpIpChecksumPacketInfo,
 	IpSecPacketInfo,

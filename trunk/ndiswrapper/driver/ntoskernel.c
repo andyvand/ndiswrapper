@@ -504,11 +504,14 @@ STDCALL NTSTATUS WRAP_EXPORT(KeWaitForSingleObject)
 
 	DBGTRACE2("object type = %d, size = %d", header->type, header->size);
 
+	spin_lock(&dispatch_event_lock);
 	if (header->signal_state == TRUE) {
 		if (header->type == SynchronizationEvent)
 			header->signal_state = FALSE;
+		spin_unlock(&dispatch_event_lock);
  		TRACEEXIT3(return STATUS_SUCCESS);
 	}
+	spin_unlock(&dispatch_event_lock);
 
 	if (timeout) {
 		DBGTRACE2("timeout = %Ld", *timeout);
@@ -1121,17 +1124,6 @@ STDCALL ULONG WRAP_EXPORT(MmSizeOfMdl)
 {
 	return (sizeof(struct mdl) +
 		SPAN_PAGES((ULONG_PTR)base, length) * sizeof(ULONG));
-}
-
-STDCALL void WRAP_EXPORT(MmInitializeMdl)
-	(struct mdl *mdl, void *baseva, SIZE_T length)
-{
-	mdl->next = NULL;
-	mdl->size = MmSizeOfMdl(baseva, length);
-	mdl->flags = 0;
-	mdl->startva = (void *)PAGE_ALIGN((ULONG_PTR)baseva);
-	mdl->byteoffset = (ULONG)offset_in_page(baseva);
-	mdl->bytecount = length;
 }
 
 STDCALL struct mdl *WRAP_EXPORT(IoAllocateMdl)

@@ -216,7 +216,16 @@ struct mdl {
 #define MmGetMdlVirtualAddress(mdl) ((void *)((char *)(mdl)->startva +	\
 					      (mdl)->byteoffset))
 #define MmGetMdlByteOffset(mdl) ((mdl)->byteoffset)
-
+#define MmInitializeMdl(mdl, baseva, length) {				\
+		(mdl)->next = NULL;					\
+		(mdl)->size = MmSizeOfMdl(baseva, length);		\
+		(mdl)->flags = 0;					\
+		(mdl)->startva = (void *)((ULONG_PTR)baseva &		\
+					  ~(PAGE_SIZE - 1));		\
+		(mdl)->byteoffset = (ULONG)((ULONG_PTR)baseva & \
+					    (PAGE_SIZE - 1));		\
+		(mdl)->bytecount = length;				\
+	}
 
 struct device_queue_entry {
 	struct list_entry list_entry;

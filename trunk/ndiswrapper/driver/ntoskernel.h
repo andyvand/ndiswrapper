@@ -372,6 +372,10 @@ struct wrapper_timer {
 	spinlock_t lock;
 };
 
+STDCALL void *ExAllocatePoolWithTag(enum pool_type pool_type, SIZE_T size,
+				    ULONG tag);
+STDCALL void ExFreePool(void *p);
+STDCALL ULONG MmSizeOfMdl(void *base, ULONG length);
 STDCALL void KeInitializeEvent(struct kevent *kevent,
 			       enum event_type type, BOOLEAN state);
 STDCALL LONG KeSetEvent(struct kevent *kevent, KPRIORITY incr, BOOLEAN wait);
