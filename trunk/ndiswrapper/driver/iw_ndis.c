@@ -557,7 +557,7 @@ static int iw_get_encr(struct net_device *dev, struct iw_request_info *info,
 	wrqu->data.length = 0;
 	extra[0] = 0;
 
-	index = (wrqu->data.flags & IW_ENCODE_INDEX);
+	index = (wrqu->encoding.flags & IW_ENCODE_INDEX);
 	DBGTRACE2("index = %u", index);
 	if (index > 0)
 		index--;
@@ -602,7 +602,8 @@ static int iw_get_encr(struct net_device *dev, struct iw_request_info *info,
 			wrqu->data.flags |= IW_ENCODE_NOKEY;
 		else
 		{
-			wrqu->data.flags |= IW_ENCODE_ENABLED | (index+1);
+			wrqu->data.flags |= IW_ENCODE_ENABLED;
+			wrqu->encoding.flags |= index+1;
 			wrqu->data.length = encr_info->keys[index].length;
 			memcpy(extra, encr_info->keys[index].key,
 			       encr_info->keys[index].length);
@@ -1276,48 +1277,6 @@ static int wpa_set_wpa(struct net_device *dev, struct iw_request_info *info,
 	}
 }
 
-static int char_to_hex(int c)
-{
-	if (c >= '0' && c <= '9')
-		return c - '0';
-	if (c >= 'a' && c <= 'f')
-		return c - 'a' + 10;
-	return -1;
-}
-
-/* convert key in string to hex digits - 2 chars make up one digit */
-static int key_str_to_hex(const char *str, unsigned char *key, int str_len)
-{
-	int i, key_len;
-
-	if (!memcmp(str, "s:", 2))
-	{
-		key_len = str_len-2;
-		if (key_len >= IW_ENCODING_TOKEN_MAX)
-			TRACEEXIT(return -1);
-		memcpy(key, str+2, key_len);
-	}
-	else
-		for (i = key_len = 0; i < str_len-1; i += 2, key_len++)
-		{
-			int c1, c2;
-
-			if (key_len >= IW_ENCODING_TOKEN_MAX)
-				TRACEEXIT(return -1);
-			/* sscanf(str, "%1X", &ch) doesn't seem to work */
-			c1 = char_to_hex(tolower(str[i]));
-			c2 = char_to_hex(tolower(str[i+1]));
-			if (c1 < 0 || c2 < 0)
-				TRACEEXIT(return -1);
-			key[key_len] = c1 << 4 | c2;
-		}
-	DBGTRACE("key length = %d", key_len);
-	if (key_len == 5 || key_len == 13)
-		TRACEEXIT(return key_len);
-	else
-		TRACEEXIT(return -1);
-}
-
 static int remove_key(struct ndis_handle *handle, int key_index,
 		      mac_address bssid)
 {
@@ -1392,25 +1351,20 @@ static int wpa_set_key(struct net_device *dev, struct iw_request_info *info,
 	if (wpa_key.alg == WPA_ALG_WEP)
 	{
 		union iwreq_data encr_req;
-		unsigned char key[IW_ENCODING_TOKEN_MAX];
-		int i;
 
 		if (test_bit(CAPA_ENCR_NONE, &handle->capa))
 			TRACEEXIT(return -EINVAL);
 
 		memset(&encr_req, 0, sizeof(encr_req));
-		encr_req.data.flags = wpa_key.key_index;
+		encr_req.encoding.flags |= wpa_key.key_index + 1;
 		/* auth mode is set with set_auth_alg */
 		if (handle->auth_mode == AUTHMODE_OPEN)
-			encr_req.data.flags |= IW_ENCODE_OPEN;
+			encr_req.encoding.flags |= IW_ENCODE_OPEN;
 		else
-			encr_req.data.flags |= IW_ENCODE_RESTRICTED;
-		i = key_str_to_hex(usrkey, key, wpa_key.key_len);
-		if (i < 0)
-			TRACEEXIT(return -EINVAL);
-		encr_req.data.length = i;
-		encr_req.data.pointer = key;
-		if (iw_set_encr(dev, info, &encr_req, key))
+			encr_req.encoding.flags |= IW_ENCODE_RESTRICTED;
+		encr_req.encoding.length = wpa_key.key_len;
+		encr_req.encoding.pointer = &usrkey[0];
+		if (iw_set_encr(dev, info, &encr_req, usrkey))
 			TRACEEXIT(return -EINVAL);
 		else
 			TRACEEXIT(return 0);
