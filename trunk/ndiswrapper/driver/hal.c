@@ -150,7 +150,7 @@ _FASTCALL void WRAP_EXPORT(KefAcquireSpinLockAtDpcLevel)
 	if (irql != DISPATCH_LEVEL)
 		ERROR("irql %d != DISPATCH_LEVEL", irql);
 #endif
-	kspin_lock(lock, DISPATCH_LEVEL);
+	kspin_lock(lock, PASSIVE_LEVEL);
 	TRACEEXIT4(return);
 }
 
@@ -162,7 +162,7 @@ _FASTCALL void WRAP_EXPORT(KefReleaseSpinLockFromDpcLevel)
 	if (current_irql() != DISPATCH_LEVEL)
 		ERROR("irql != DISPATCH_LEVEL");
 #endif
-	kspin_unlock(lock, DISPATCH_LEVEL);
+	kspin_unlock(lock, PASSIVE_LEVEL);
 
 	TRACEEXIT4(return);
 }
