@@ -223,10 +223,69 @@ STDCALL void RtlCopyUnicodeString(struct ustring *dst,
 	else dst->len = 0;
 }
 
-STDCALL void RtlAnsiStringToUnicodeString(char *dst, char *src, unsigned int dup)
+STDCALL int RtlAnsiStringToUnicodeString(struct ustring *dst, struct ustring *src, unsigned int dup)
 {
-	UNIMPL();
+	int i, *d, using_tmp = 0;
+	char *s;
+
+	DBGTRACE("%s Untested!\n", __FUNCTION__);
+	if(dup)
+	{
+		char *buf = kmalloc((src->buflen+1) * 2, GFP_KERNEL);
+		if(!buf)
+			return NDIS_STATUS_FAILURE;
+		dst->buf = buf;
+		dst->buflen = (src->buflen+1) *2;
+		s = src->buf;
+	}
+	else
+	{
+		s = kmalloc(src->buflen, GFP_KERNEL);
+		if(!s)
+			return NDIS_STATUS_FAILURE;
+		using_tmp = 1;
+		memcpy(s, src->buf, src->buflen);
+	}
+
+	d = (int*) src->buf;
+	for(i = 0; i < src->len; i++)
+	{
+		d[i] = s[i];
+	}
+	d[i] = 0;
+	
+	dst->len = i*2;
+	if(using_tmp)
+		kfree(s);
+	
+	return NDIS_STATUS_SUCCESS;
 }
+
+STDCALL int RtlUnicodeStringToAnsiString(struct ustring *dst, struct ustring *src, unsigned int dup)
+{
+	int i, *s;
+
+	DBGTRACE("%s Untested!\n", __FUNCTION__);
+	if(dup)
+	{
+		char *buf = kmalloc(src->buflen, GFP_KERNEL);
+		if(!buf)
+			return NDIS_STATUS_FAILURE;
+		dst->buf = buf;
+		dst->len = 0;
+		dst->buflen = src->buflen;
+	}
+
+	s = (int*) src->buf;
+	for(i = 0; i < src->len; i++)
+	{
+		dst->buf[i] = s[i];
+	}
+	dst->len = i;
+	dst->buf[i] = 0;
+	return NDIS_STATUS_SUCCESS;
+}
+
 
 STDCALL void KeInitializeSpinLock(void *spinlock)
 {
@@ -244,7 +303,6 @@ STDCALL void *ExAllocatePoolWithTag(unsigned int type, unsigned int size, unsign
 void IoDeleteSymbolicLink(void){UNIMPL();}
 void InterlockedExchange(void){UNIMPL();}
 void MmMapLockedPages(void){UNIMPL();}
-void RtlUnicodeStringToAnsiString(void){UNIMPL();}
 void IoCreateDevice(void){UNIMPL();}
 void RtlFreeUnicodeString(void){UNIMPL();}
 void IoDeleteDevice(void){UNIMPL();}
