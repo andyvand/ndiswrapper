@@ -1054,6 +1054,7 @@ static const iw_handler	ndis_handler[] = {
 	[SIOCSIWSENS	- SIOCIWFIRST] = ndis_set_sensitivity,
 	[SIOCGIWNICKN	- SIOCIWFIRST] = ndis_get_nick,
 	[SIOCSIWNICKN	- SIOCIWFIRST] = ndis_set_nick,
+	[SIOCSIWCOMMIT	- SIOCIWFIRST] = ndis_set_dummy,
 };
 
 const struct iw_handler_def ndis_handler_def = {
