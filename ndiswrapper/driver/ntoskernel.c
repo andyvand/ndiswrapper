@@ -16,12 +16,23 @@
 #include "ntoskernel.h"
 #include "ndis.h"
 #include "usb.h"
-#include <linux/time.h>
+
+/* MDLs describe a range of virtual address with an array of physical
+ * pages right after the header. For different ranges of virtual
+ * addresses, the number of entries of physical pages may be different
+ * (depending on number of entries required). If we want to allocate
+ * MDLs from a pool, the size has to be constant. So we assume that
+ * maximum range used by a driver is CACHE_MDL_PAGES; if a driver
+ * requests an MDL for a bigger region, we allocate it with kmalloc;
+ * otherwise, we allocate from the pool */
+#define CACHE_MDL_PAGES 2
+#define CACHE_MDL_SIZE (sizeof(struct mdl) + (sizeof(ULONG) * CACHE_MDL_PAGES))
 
 static wait_queue_head_t dispatch_event_wq;
 KSPIN_LOCK dispatch_event_lock;
 KSPIN_LOCK irp_cancel_lock;
 KSPIN_LOCK ntoskrnl_lock;
+static kmem_cache_t *mdl_cache;
 
 int ntoskrnl_init(void)
 {
@@ -29,11 +40,19 @@ int ntoskrnl_init(void)
 	kspin_lock_init(&irp_cancel_lock);
 	kspin_lock_init(&ntoskrnl_lock);
 	init_waitqueue_head(&dispatch_event_wq);
+	mdl_cache = kmem_cache_create("ndis_mdl", CACHE_MDL_SIZE, 0, 0,
+				      NULL, NULL);
+	if (!mdl_cache) {
+		ERROR("couldn't allocate MDL cache");
+		return -ENOMEM;
+	}
 	return 0;
 }
 
 void ntoskrnl_exit(void)
 {
+	if (kmem_cache_destroy(mdl_cache))
+		ERROR("Windows driver didn't free MDL(s)");
 	return;
 }
 
@@ -1133,18 +1152,55 @@ STDCALL ULONG WRAP_EXPORT(MmSizeOfMdl)
 		SPAN_PAGES((ULONG_PTR)base, length) * sizeof(ULONG));
 }
 
+struct mdl *allocate_init_mdl(void *virt, ULONG length)
+{
+	struct mdl *mdl;
+	int mdl_size = MmSizeOfMdl(virt, length);
+
+	if (mdl_size <= CACHE_MDL_SIZE) {
+		mdl = kmem_cache_alloc(mdl_cache, GFP_ATOMIC);
+		if (!mdl)
+			return NULL;
+		memset(mdl, 0, CACHE_MDL_SIZE);
+		MmInitializeMdl(mdl, virt, length);
+		/* mark the MDL as allocated from cache pool so when
+		 * it is freed, we free it back to the pool */
+		mdl->flags = MDL_CACHE_ALLOCATED;
+	} else {
+		mdl = kmalloc(mdl_size, GFP_ATOMIC);
+		if (!mdl)
+			return NULL;
+		memset(mdl, 0, mdl_size);
+		MmInitializeMdl(mdl, virt, length);
+	}
+	return mdl;
+}
+
+void free_mdl(struct mdl *mdl)
+{
+	/* A driver may allocate Mdl with NdisAllocateBuffer and free
+	 * with IoFreeMdl (e.g., 64-bit Broadcom). Since we need to
+	 * treat buffers allocated with Ndis calls differently, we
+	 * must call NdisFreeBuffer if it is allocated with Ndis
+	 * function. We set 'process' field in Ndis functions. */
+	if (mdl) {
+		if (mdl->process)
+			NdisFreeBuffer(mdl);
+		else if (mdl->flags & MDL_CACHE_ALLOCATED)
+			kmem_cache_free(mdl_cache, mdl);
+		else
+			kfree(mdl);
+	}
+}
+
 STDCALL struct mdl *WRAP_EXPORT(IoAllocateMdl)
 	(void *virt, ULONG length, BOOLEAN second_buf, BOOLEAN charge_quota,
 	 struct irp *irp)
 {
 	struct mdl *mdl;
-
-	mdl = kmalloc(MmSizeOfMdl(virt, length), GFP_ATOMIC);
+	mdl = allocate_init_mdl(virt, length);
 	if (!mdl)
 		return NULL;
-
-	memset(mdl, 0, sizeof(*mdl));
-	MmInitializeMdl(mdl, virt, length);
 	if (irp) {
 		if (second_buf == TRUE) {
 			struct mdl *last;
@@ -1162,17 +1218,7 @@ STDCALL struct mdl *WRAP_EXPORT(IoAllocateMdl)
 STDCALL void WRAP_EXPORT(IoFreeMdl)
 	(struct mdl *mdl)
 {
-	/* A driver may allocate Mdl with NdisAllocateBuffer and free
-	 * with IoFreeMdl (e.g., 64-bit Broadcom). Since we need to
-	 * treat buffers allocated with Ndis calls differently, we
-	 * must call NdisFreeBuffer if it is allocated with Ndis
-	 * function. We set 'process' field in Ndis functions. */
-	if (mdl) {
-		if (mdl->process)
-			NdisFreeBuffer(mdl);
-		else
-			kfree(mdl);
-	}
+	free_mdl(mdl);
 	TRACEEXIT3(return);
 }
 

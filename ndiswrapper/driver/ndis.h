@@ -930,6 +930,8 @@ struct ndis_handle {
 
 };
 
+struct ndis_packet *allocate_ndis_packet(void);
+void free_ndis_packet(struct ndis_packet *packet);
 STDCALL void NdisMIndicateReceivePacket(struct ndis_handle *handle,
 					struct ndis_packet **packets,
 					UINT nr_packets);

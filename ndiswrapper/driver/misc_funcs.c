@@ -24,11 +24,9 @@
 
 static struct list_head wrap_allocs;
 static KSPIN_LOCK wrap_allocs_lock;
-spinlock_t spinlock_kspin_lock;
 
 int misc_funcs_init(void)
 {
-	spin_lock_init(&spinlock_kspin_lock);
 	INIT_LIST_HEAD(&wrap_allocs);
 	kspin_lock_init(&wrap_allocs_lock);
 	return 0;
