@@ -91,14 +91,18 @@ static int iw_get_essid(struct net_device *dev, struct iw_request_info *info,
 	struct ndis_essid req;
 
 	TRACEENTER1("%s", "");
+	memset(&req, 0, sizeof(req));
 	res = doquery(handle, NDIS_OID_ESSID, (char*)&req, sizeof(req),
 		      &written, &needed);
 	if (res)
 		WARNING("getting essid failed (%08X)", res);
 
-	memcpy(extra, &req.essid, req.length);
+	memcpy(extra, req.essid, req.length);
 	extra[req.length] = 0;
-	wrqu->essid.flags  = 1;
+	if (req.length > 0)
+		wrqu->essid.flags  = 1;
+	else
+		wrqu->essid.flags = 0;
 	wrqu->essid.length = req.length;
 	TRACEEXIT1(return 0);
 }
