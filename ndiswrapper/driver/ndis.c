@@ -1325,11 +1325,46 @@ STDCALL static void WRAP_EXPORT(NdisCancelTimer)
  * function returns failiure it will use it's default mac.
  */
 STDCALL static void WRAP_EXPORT(NdisReadNetworkAddress)
-	(unsigned int *status, char *adr, unsigned int *len, void *conf_handle)
+	(unsigned int *status, void **addr, unsigned int *len,
+	 struct ndis_handle *handle)
 {
-	TRACEENTER1("%s", "");
+	struct ndis_setting_val *setting;
+	struct ustring key, ansi;
+	int ret;
+
+	ansi.buf = "mac_address";
+	ansi.buflen = strlen(ansi.buf);
+	ansi.len = ansi.buflen;
+
 	*len = 0;
 	*status = NDIS_STATUS_FAILURE;
+	if (RtlAnsiStringToUnicodeString(&key, &ansi, 1) !=
+	    NDIS_STATUS_SUCCESS)
+		TRACEEXIT(return);
+
+	NdisReadConfiguration(status, &setting, handle, &key,
+			      NDIS_SETTING_STRING);
+	RtlFreeUnicodeString(&key);
+
+	if (*status == NDIS_STATUS_SUCCESS) {
+		ret = RtlUnicodeStringToAnsiString(&ansi,
+						   &setting->data.ustring, 1);
+		if (ret != NDIS_STATUS_SUCCESS)
+			TRACEEXIT1(return);
+
+		memset(handle->mac, 0, sizeof(handle->mac));
+		ret = string_to_mac(handle->mac, ansi.buf, ansi.buflen);
+		RtlFreeAnsiString(&ansi);
+		if (ret == 0) {
+			*len = ETH_ALEN;
+			*addr = handle->mac;
+			*status = NDIS_STATUS_SUCCESS;
+		}
+	} else {
+		*len = 0;
+		*status = NDIS_STATUS_FAILURE;
+	}
+
 	TRACEEXIT1(return);
 }
 

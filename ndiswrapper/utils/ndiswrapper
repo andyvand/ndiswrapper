@@ -753,9 +753,15 @@ sub parseDevice
 		return -1;
 	}
 
+	my $ver=$version{"DriverVer"};
+	my $provider=$version{"Provider"};
+	my $providerstring = stripquotes(substStr(trim($provider)));
+
 	printf CONF "NdisVersion|0x50001\n";
 	printf CONF "Environment|1\n";
  	printf CONF "BusType|$bustype\n";
+	printf CONF "mac_address|XX:XX:XX:XX:XX:XX\n";
+	printf CONF "ndis_version|$providerstring,$ver\n\n";
 	close(CONF);
 
 	if(!open(CONF, "|sort|uniq >>$confdir/$driver_name/$filename"))
@@ -763,10 +769,6 @@ sub parseDevice
 		print "Unable to create file $filename";
 		return -1;
 	}
-	my $ver=$version{"DriverVer"};
-	my $provider=$version{"Provider"};
-	my $providerstring = stripquotes(substStr(trim($provider)));
-	printf CONF "ndis_version|$providerstring,$ver\n\n";
 
 	my @addregs = split(",", $addreg);
 	for(my $i = 0; $i < @addregs; $i++)

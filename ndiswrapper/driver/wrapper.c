@@ -1332,7 +1332,7 @@ static void check_capa(struct ndis_handle *handle)
 	res = miniport_set_info(handle, NDIS_OID_ADD_KEY, (char *)&ndis_key,
 				ndis_key.struct_size, &written, &needed);
 
-	DBGTRACE("add key returns %08X, needed = %d, size = %ld\n",
+	DBGTRACE("add key returns %08X, needed = %d, size = %d\n",
 		 res, needed, sizeof(ndis_key));
 	if (res != NDIS_STATUS_INVALID_DATA)
 		TRACEEXIT1(return);

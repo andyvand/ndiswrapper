@@ -740,7 +740,26 @@ STDCALL void  WRAP_EXPORT(RtlInitAnsiString)
 	TRACEEXIT2(return);
 }
 
-static void WRAP_EXPORT(RtlFreeUnicodeString)(void){UNIMPL();}
+STDCALL void WRAP_EXPORT(RtlFreeUnicodeString)(struct ustring *string)
+{
+	if (string == NULL || string->buf == NULL)
+		return;
+
+	kfree(string->buf);
+	string->buflen = string->len = 0;
+	return;
+}
+
+STDCALL void WRAP_EXPORT(RtlFreeAnsiString)(struct ustring *string)
+{
+	if (string == NULL || string->buf == NULL)
+		return;
+
+	kfree(string->buf);
+	string->buflen = string->len = 0;
+	return;
+}
+
 static void WRAP_EXPORT(RtlUnwind)(void){UNIMPL();}
 STDCALL static unsigned int WRAP_EXPORT(RtlQueryRegistryValues)
 	(unsigned long relative, char* path, void* tbl,
@@ -843,6 +862,38 @@ void inline my_dumpstack(void)
 	{
 		printk("%p\n", (void *)((long *)sp)[i]);
 	}
+}
+
+/* the string should be of the form XX:XX:XX:XX:XX:XX, along with colons */
+int string_to_mac(char *mac, char *string, int string_len)
+{
+	int i, j;
+
+	memset(mac, 0, ETH_ALEN);
+
+	for (i = 1, j = 0;
+	     i-1 < (string_len - 1) && j < ETH_ALEN; i++) {
+		if (i % 3 == 0)
+				continue;
+		else  {
+			unsigned char m, a;
+
+			a = string[i-1];
+			if (a >= '0' &&  a <= '9')
+				m = a - '0';
+			else if (toupper(a) >= 'A' && toupper(a) <= 'F')
+				m = a - 'A' + 10;
+			else
+				break;
+			mac[j] = mac[j] << 4 | m;
+			if (i % 3 == 2)
+				j++;
+		}
+	}
+	if (j == ETH_ALEN)
+		TRACEEXIT1(return 0);
+	else
+		TRACEEXIT1(return -EINVAL);
 }
 
 #include "misc_funcs_exports.h"
