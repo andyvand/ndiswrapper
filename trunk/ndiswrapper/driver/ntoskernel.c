@@ -19,20 +19,14 @@
 #include <linux/time.h>
 
 static wait_queue_head_t dispatch_event_wq;
-static spinlock_t dispatch_event_lock;
-spinlock_t irp_cancel_lock;
+KSPIN_LOCK dispatch_event_lock;
+KSPIN_LOCK irp_cancel_lock;
 KSPIN_LOCK ntoskrnl_lock;
-#ifndef __HAVE_ARCH_CMPXCHG
-spinlock_t spinlock_kspin_lock;
-#endif
 
 int ntoskrnl_init(void)
 {
-#ifndef __HAVE_ARCH_CMPXCHG
-	spin_lock_init(&spinlock_kspin_lock);
-#endif
-	spin_lock_init(&dispatch_event_lock);
-	spin_lock_init(&irp_cancel_lock);
+	kspin_lock_init(&dispatch_event_lock);
+	kspin_lock_init(&irp_cancel_lock);
 	kspin_lock_init(&ntoskrnl_lock);
 	init_waitqueue_head(&dispatch_event_wq);
 	return 0;
@@ -447,32 +441,35 @@ STDCALL int WRAP_EXPORT(IoIsWdmVersionAvailable)
 STDCALL void WRAP_EXPORT(KeInitializeEvent)
 	(struct kevent *kevent, enum event_type type, BOOLEAN state)
 {
+	KIRQL irql;
+
 	TRACEENTER3("event = %p, type = %d, state = %d",
 		    kevent, type, state);
-	spin_lock(&dispatch_event_lock);
+	irql = kspin_lock(&dispatch_event_lock, PASSIVE_LEVEL);
 	kevent->header.type = type;
 	kevent->header.signal_state = state;
-	spin_unlock(&dispatch_event_lock);
+	kspin_unlock(&dispatch_event_lock, irql);
 }
 
 STDCALL LONG WRAP_EXPORT(KeSetEvent)
 	(struct kevent *kevent, KPRIORITY incr, BOOLEAN wait)
 {
 	LONG old_state = kevent->header.signal_state;
+	KIRQL irql;
 
 	TRACEENTER3("event = %p, type = %d, wait = %d",
 		    kevent, kevent->header.type, wait);
 	if (wait == TRUE)
 		WARNING("wait = %d, not yet implemented", wait);
 
-	spin_lock(&dispatch_event_lock);
+	irql = kspin_lock(&dispatch_event_lock, PASSIVE_LEVEL);
 	kevent->header.signal_state = TRUE;
 	if (kevent->header.type == SynchronizationEvent)
 		wake_up_nr(&dispatch_event_wq, 1);
 	else
 		wake_up_all(&dispatch_event_wq);
 	DBGTRACE3("woken up %p", kevent);
-	spin_unlock(&dispatch_event_lock);
+	kspin_unlock(&dispatch_event_lock, irql);
 	TRACEEXIT3(return old_state);
 }
 
@@ -504,6 +501,7 @@ STDCALL NTSTATUS WRAP_EXPORT(KeWaitForSingleObject)
 	struct dispatch_header *header = &kevent->header;
 	int res;
 	long wait_jiffies;
+	KIRQL irql;
 
 	/* Note: for now, object can only point to an event */
 	TRACEENTER2("event = %p, reason = %u, waitmode = %u, alertable = %u,"
@@ -512,14 +510,14 @@ STDCALL NTSTATUS WRAP_EXPORT(KeWaitForSingleObject)
 
 	DBGTRACE2("object type = %d, size = %d", header->type, header->size);
 
-	spin_lock(&dispatch_event_lock);
+	irql = kspin_lock(&dispatch_event_lock, PASSIVE_LEVEL);
 	if (header->signal_state == TRUE) {
 		if (header->type == SynchronizationEvent)
 			header->signal_state = FALSE;
-		spin_unlock(&dispatch_event_lock);
+		kspin_unlock(&dispatch_event_lock, irql);
  		TRACEEXIT3(return STATUS_SUCCESS);
 	}
-	spin_unlock(&dispatch_event_lock);
+	kspin_unlock(&dispatch_event_lock, irql);
 
 	if (timeout) {
 		DBGTRACE2("timeout = %Ld", *timeout);
@@ -675,14 +673,16 @@ STDCALL void WRAP_EXPORT(KeInitializeMutex)
 STDCALL LONG WRAP_EXPORT(KeReleaseMutex)
 	(struct kmutex *mutex, BOOLEAN wait)
 {
-	spin_lock(&dispatch_event_lock);
+	KIRQL irql;
+
+	irql = kspin_lock(&dispatch_event_lock, PASSIVE_LEVEL);
 	mutex->u.count--;
 	if (mutex->u.count == 0) {
 		mutex->owner_thread = NULL;
-		spin_unlock(&dispatch_event_lock);
+		kspin_unlock(&dispatch_event_lock, irql);
 		KeSetEvent((struct kevent *)&mutex->dispatch_header, 0, 0);
 	} else
-		spin_unlock(&dispatch_event_lock);
+		kspin_unlock(&dispatch_event_lock, irql);
 	return mutex->u.count;
 }
 
@@ -872,8 +872,7 @@ STDCALL BOOLEAN WRAP_EXPORT(IoCancelIrp)
 
 	USBTRACEENTER("irp = %p", irp);
 
-	irql = current_irql();
-	spin_lock(&irp_cancel_lock);
+	irql = kspin_lock(&irp_cancel_lock, PASSIVE_LEVEL);
 	cancel_routine = xchg(&irp->cancel_routine, NULL);
 
 	if (cancel_routine) {
@@ -881,10 +880,10 @@ STDCALL BOOLEAN WRAP_EXPORT(IoCancelIrp)
 		irp->pending_returned = 1;
 		irp->cancel = 1;
 		cancel_routine(stack->dev_obj, irp);
-		spin_unlock(&irp_cancel_lock);
+		kspin_unlock(&irp_cancel_lock, irql);
 		USBTRACEEXIT(return 1);
 	} else {
-		spin_unlock(&irp_cancel_lock);
+		kspin_unlock(&irp_cancel_lock, irql);
 		USBTRACEEXIT(return 0);
 	}
 }

@@ -885,7 +885,7 @@ struct ndis_handle {
 	KSPIN_LOCK xmit_lock;
 
 	unsigned char send_ok;
-	spinlock_t send_packet_done_lock;
+	KSPIN_LOCK send_packet_done_lock;
 
 	struct semaphore ndis_comm_mutex;
 	wait_queue_head_t ndis_comm_wq;
@@ -926,7 +926,7 @@ struct ndis_handle {
 
 	/* List of initialized timers */
 	struct list_head timers;
-	spinlock_t timers_lock;
+	KSPIN_LOCK timers_lock;
 
 	struct proc_dir_entry *procfs_iface;
 
