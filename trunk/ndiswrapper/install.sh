@@ -4,7 +4,7 @@ set -e
 
 # defaults
 LOADER_DIR=/usr/sbin
-IFACE_NAME=ndis0
+IFACE_NAME=wlan0
 MOD_CONF=/etc/modprobe.conf
 WIN_DRIVERS=/lib/windrivers
 
@@ -174,9 +174,8 @@ if modprobe -c | grep -q ndiswrapper; then
     warn "It seems modprobe is already configured for ndiswrapper; assuming it is correct. Otherwise, delete the current configuration and try again."
 else 
     
-    get_resp "What interface should ndiswrapper configure?" "${IFACE_NAME}"
+    get_resp "What interface name should ndiswrapper configure?" "${IFACE_NAME}"
     IFACE_NAME=${RESP}
-    BASENAME=$(echo -n ${IFACE_NAME} | sed -e 's/[0-9\ ]//g')
     
     if [ ${KVERSMINOR} -gt 4 ]; then
 	# 2.6
@@ -203,7 +202,7 @@ else
     if :; then
 	echo "alias ${IFACE_NAME} ndiswrapper"
 	
-	echo "options ndiswrapper basename=${BASENAME}"
+	echo "options ndiswrapper if_name=${IFACE_NAME}"
 	
 	if [ ${KVERSMINOR} -gt 4 ]; then
 	    echo -n "install ndiswrapper /sbin/modprobe --ignore-install ndiswrapper; "
