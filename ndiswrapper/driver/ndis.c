@@ -126,12 +126,26 @@ STDCALL unsigned int NdisAllocateMemory(void **dest,
 					unsigned int flags,
 					unsigned int highest_addr)
 {
-	if(length < VMALLOC_THRESHOLD)
-		*dest = (void*) kmalloc(length, GFP_ATOMIC);
+	DBGTRACE("%s: length = %u, flags = %08X\n", __FUNCTION__,
+		 length, flags);
+	if (length <= KMALLOC_THRESHOLD)
+	{
+		if (in_irq() || in_atomic())
+			*dest = (void *)kmalloc(length, GFP_ATOMIC);
+		else
+			*dest = (void *)kmalloc(length, GFP_KERNEL);
+	}
+	else if (flags & NDIS_MEMORY_CONTIGUOUS)
+	{
+		printk(KERN_ERR "%s: Allocating %u bytes of physically "
+		       "contiguous memory will fail\n",
+		       __FUNCTION__, length);
+		*dest = (void *)kmalloc(length, GFP_KERNEL);
+	}
 	else
 		*dest = vmalloc(length);
 
-	if(*dest)
+	if (*dest)
 		return NDIS_STATUS_SUCCESS;
 	DBGTRACE("%s: Allocatemem failed size=%d\n", __FUNCTION__, length);
 	return NDIS_STATUS_FAILURE;
@@ -154,8 +168,11 @@ STDCALL unsigned int NdisAllocateMemoryWithTag(void **dest,
  */
 STDCALL void NdisFreeMemory(void *adr, unsigned int length, unsigned int flags)
 {
-//	DBGTRACE("%s: %p %d %d\n", __FUNCTION__, adr, length, flags);
-	if(length < VMALLOC_THRESHOLD)
+	DBGTRACE("%s: length = %u, flags = %08X\n", __FUNCTION__,
+		 length, flags);
+	if (length <= KMALLOC_THRESHOLD)
+		kfree(adr);
+	else if (flags & NDIS_MEMORY_CONTIGUOUS)
 		kfree(adr);
 	else
 		vfree(adr);

@@ -783,5 +783,8 @@ int stricmp(const char *s1, const char *s2);
 #define NDIS_PACKET_TYPE_FUNCTIONAL             0x00004000
 #define NDIS_PACKET_TYPE_MAC_FRAME              0x00008000
 
+/* memory allocation flags */
+#define NDIS_MEMORY_CONTIGUOUS			0x00000001
+#define NDIS_MEMORY_NONCACHED			0x00000002
 
 #endif /* NDIS_H */

@@ -93,7 +93,7 @@
 #define DBGTRACE(s, ...)
 #endif
 
-#define VMALLOC_THRESHOLD 65536
+#define KMALLOC_THRESHOLD 131072
 
 #define TICKSPERSEC             10000000
 #define SECSPERDAY              86400
