@@ -1,5 +1,5 @@
 #!/bin/sh
-set -ex
+#set -ex
 
 # Copyright (c) 2004 Torbjörn Svensson <azoff@se.linux.org>.
 #
@@ -67,6 +67,11 @@ else
 		log "kernel config missing"
 	fi
 fi
+
+# installed drivers
+newblock
+log "installed drivers:"
+log_cmd 'ls -lR /etc/ndiswrapper'
 
 # module information
 newblock
