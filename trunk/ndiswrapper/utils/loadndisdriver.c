@@ -40,7 +40,7 @@
 #define SETTING_LEN (MAX_NDIS_SETTING_NAME_LEN+MAX_NDIS_SETTING_VALUE_LEN + 2)
 
 static const char *confdir = "/etc/ndiswrapper";
-static const char *ioctl_file = "/tmp/ndiswrapper";
+static const char *ioctl_file = "/dev/ndiswrapper";
 static int debug;
 
 #ifndef NDISWRAPPER_VERSION
@@ -134,8 +134,7 @@ static int parse_setting_line(const char *setting_line, char *setting_name,
 		error("invalid setting: %s", setting_line);
 		return -EINVAL;
 	}
-//	info("Found setting: name=%s, val=\"%s\"\n",
-//	       setting_name, setting_val);
+	dbg("Found setting: name=%s, val=\"%s\"", setting_name, setting_val);
 
 	// setting_val can be empty, but not value
 	if (strlen(setting_name) == 0) {
@@ -185,9 +184,8 @@ static int read_conf_file(char *conf_file_name, struct load_device *device)
 		sscanf(s, "%04x:%04x:%04x:%04x", &device->vendor,
 		       &device->device, &device->pci_subvendor,
 		       &device->pci_subdevice);
-	} else {
+	} else
 		goto err;
-	}
 
 	free(file_name);
 
@@ -381,16 +379,17 @@ static int load_all_drivers(int ioctl_device)
 		    strcmp(dirent->d_name, "modules.ndiswrapper") == 0)
 			continue;
 
-		if (chdir(dirent->d_name)) {
-			error("directory %s is not valid: %s",
-			      dirent->d_name, strerror(errno));
-			continue;
-		}
 		if (stat(dirent->d_name, &statbuf) ||
 		    (!S_ISDIR(statbuf.st_mode)) ||
 		    ((driver = opendir(dirent->d_name)) == NULL)) {
 			error("directory %s is not valid: %s",
 			      dirent->d_name, strerror(errno));
+			continue;
+		}
+		if (chdir(dirent->d_name)) {
+			error("directory %s is not valid: %s",
+			      dirent->d_name, strerror(errno));
+			closedir(driver);
 			continue;
 		}
 		if (!load_driver(ioctl_device, driver, dirent->d_name))
@@ -474,8 +473,7 @@ int main(int argc, char *argv[0])
 		error("invalid debug value %d", i);
 		res = 2;
 		goto out;
-	}
-	else
+	} else
 		debug = i;
 
 	ioctl_device = get_ioctl_device();
