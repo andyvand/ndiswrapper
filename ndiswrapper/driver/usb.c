@@ -352,7 +352,7 @@ unsigned long usb_bulk_or_intr_trans(struct usb_device *dev,
 	if (!virt_addr_valid(nt_urb->bulkIntrTrans.transferBuf)) {
 		IRP_DRIVER_CONTEXT(irp)[2] =
 			kmalloc(nt_urb->bulkIntrTrans.transferBufLen,
-				GFP_ATOMIC | ~__GFP_HIGHMEM);
+				GFP_ATOMIC | __GFP_HIGHMEM);
 		if (!IRP_DRIVER_CONTEXT(irp)[2]) {
 			ERROR("%s", "kmalloc failed!");
 			usb_free_urb(urb);
@@ -445,7 +445,7 @@ unsigned long usb_vendor_or_class_intf(struct usb_device *dev,
 	    !virt_addr_valid(nt_urb->venClsReq.transferBuf)) {
 		IRP_DRIVER_CONTEXT(irp)[2] =
 			kmalloc(nt_urb->venClsReq.transferBufLen,
-				GFP_KERNEL | ~__GFP_HIGHMEM);
+				GFP_KERNEL | __GFP_HIGHMEM);
 		if (!IRP_DRIVER_CONTEXT(irp)[2]) {
 			ERROR("%s", "kmalloc failed!");
 			kfree(dr);
