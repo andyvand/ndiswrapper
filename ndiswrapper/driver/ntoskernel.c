@@ -107,13 +107,16 @@ STDCALL KIRQL WRAP_EXPORT(KeGetCurrentIrql)
 STDCALL void WRAP_EXPORT(KeInitializeSpinLock)
 	(KSPIN_LOCK *lock)
 {
-	if (sizeof(lock) > sizeof(lock->ntoslock)) {
-		ERROR("spinlock used is not compatible with KSPIN_LOCK; "
-		      "is CONFIG_DEBUG_SPINLOCK disabled? %u, %u",
-		      (unsigned int)sizeof(lock),
-		      (unsigned int)sizeof(lock->ntoslock));
+#ifdef CONFIG_DEBUG_SPINLOCK
+	*lock = wrap_kmalloc(sizeof(struct wrap_spinlock), GFP_ATOMIC);
+	if (!*lock) {
+		ERROR("coudln't allocate memory");
+		TRACEEXIT3(return);
 	}
-	spin_lock_init(&lock->spinlock);
+#else
+	check_spin_lock_size(*lock);
+#endif
+	spin_lock_init(K_SPINLOCK(lock));
 }
 
 STDCALL void WRAP_EXPORT(KeAcquireSpinLock)
@@ -308,9 +311,9 @@ _FASTCALL static void WRAP_EXPORT(ExInterlockedAddLargeStatistic)
 {
 	unsigned long flags;
 	TRACEENTER3("Stat %p = %llu, n = %u", plint, *plint, n);
-	spin_lock_irqsave(&atomic_lock.lock.spinlock, flags);
+	spin_lock_irqsave(WRAP_SPINLOCK(&atomic_lock), flags);
 	*plint += n;
-	spin_unlock_irqrestore(&atomic_lock.lock.spinlock, flags);
+	spin_unlock_irqrestore(WRAP_SPINLOCK(&atomic_lock), flags);
 }
 
 STDCALL static void * WRAP_EXPORT(MmMapIoSpace)

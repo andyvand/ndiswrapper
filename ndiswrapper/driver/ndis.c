@@ -64,10 +64,10 @@ void ndis_exit_handle(struct ndis_handle *handle)
 	if (handle->ndis_irq) {
 		unsigned long flags;
 
-		spin_lock_irqsave(&handle->ndis_irq->lock.spinlock, flags);
+		spin_lock_irqsave(K_SPINLOCK(&(handle->ndis_irq->lock)), flags);
 		if (miniport->disable_interrupts)
 			miniport->disable_interrupts(handle->adapter_ctx);
-		spin_unlock_irqrestore(&handle->ndis_irq->lock.spinlock,
+		spin_unlock_irqrestore(K_SPINLOCK(&(handle->ndis_irq->lock)),
 				       flags);
 		NdisMDeregisterInterrupt(handle->ndis_irq);
 	}
@@ -854,7 +854,14 @@ STDCALL static void WRAP_EXPORT(NdisAllocateSpinLock)
 {
 	TRACEENTER4("lock %p", lock);
 
-	wrap_spin_lock_init((struct wrap_spinlock *)lock);
+#ifdef CONFIG_DEBUG_SPINLOCK
+	lock->lock = wrap_kmalloc(sizeof(struct wrap_spinlock), GFP_ATOMIC);
+	if (!lock->lock) {
+		ERROR("coudln't allocate memory");
+		TRACEEXIT2(return);
+	}
+#endif
+	wrap_spin_lock_init(NDIS_SPINLOCK(lock));
 
 	TRACEEXIT4(return);
 }
@@ -876,9 +883,12 @@ STDCALL static void WRAP_EXPORT(NdisAcquireSpinLock)
 	 * calling NdisAcquireSpinLock and in those cases, lock seems
 	 * to be set to 0, so check if that is the case and initialize
 	 * it */
-	if (lock->lock.ntoslock == 0)
+	if (NDIS_SPINLOCK(lock) == 0) {
+		WARNING("Windows driver is using uninitialized spinlock %p",
+			lock);
 		NdisAllocateSpinLock(lock);
-	wrap_spin_lock((struct wrap_spinlock *)lock, PASSIVE_LEVEL);
+	}
+	wrap_spin_lock(NDIS_SPINLOCK(lock), PASSIVE_LEVEL);
 	TRACEEXIT5(return);
 }
 
@@ -886,7 +896,7 @@ STDCALL static void WRAP_EXPORT(NdisReleaseSpinLock)
 	(struct ndis_spinlock *lock)
 {
 	TRACEENTER5("lock %p", lock);
-	wrap_spin_unlock((struct wrap_spinlock *)lock);
+	wrap_spin_unlock(NDIS_SPINLOCK(lock));
 	TRACEEXIT5(return);
 }
 
@@ -896,7 +906,7 @@ STDCALL static void WRAP_EXPORT(NdisDprAcquireSpinLock)
 	TRACEENTER5("lock %p", lock);
 	/* we use PASSIVE_LEVEL here because this function is not
 	 * supposed to change IRQL */
-	wrap_spin_lock((struct wrap_spinlock *)lock, PASSIVE_LEVEL);
+	wrap_spin_lock(NDIS_SPINLOCK(lock), PASSIVE_LEVEL);
 	TRACEEXIT5(return);
 }
 
@@ -904,7 +914,7 @@ STDCALL static void WRAP_EXPORT(NdisDprReleaseSpinLock)
 	(struct ndis_spinlock *lock)
 {
 	TRACEENTER5("lock %p", lock);
-	wrap_spin_unlock((struct wrap_spinlock *)lock);
+	wrap_spin_unlock(NDIS_SPINLOCK(lock));
 	TRACEEXIT5(return);
 }
 
@@ -1353,7 +1363,7 @@ irqreturn_t ndis_irq_th(int irq, void *data, struct pt_regs *pt_regs)
 	miniport = &handle->driver->miniport_char;
 	/* this spinlock should be shared with NdisMSynchronizeWithInterrupt
 	 */
-	spin_lock_irqsave(&ndis_irq->lock.spinlock, flags);
+	spin_lock_irqsave(K_SPINLOCK(&(ndis_irq->lock)), flags);
 	if (ndis_irq->req_isr)
 		miniport->isr(&recognized, &handled, handle->adapter_ctx);
 	else { //if (miniport->disable_interrupts)
@@ -1361,7 +1371,7 @@ irqreturn_t ndis_irq_th(int irq, void *data, struct pt_regs *pt_regs)
 		/* it is not shared interrupt, so handler must be called */
 		recognized = handled = 1;
 	}
-	spin_unlock_irqrestore(&ndis_irq->lock.spinlock, flags);
+	spin_unlock_irqrestore(K_SPINLOCK(&(ndis_irq->lock)), flags);
 
 	if (recognized && handled)
 		schedule_work(&handle->irq_work);
@@ -1387,14 +1397,16 @@ STDCALL static NDIS_STATUS WRAP_EXPORT(NdisMRegisterInterrupt)
 	if (shared && !req_isr)
 		WARNING("%s", "shared but dynamic interrupt!");
 	ndis_irq->shared = shared;
-	if (sizeof(ndis_irq->lock) > sizeof(ndis_irq->lock.ntoslock)) {
-		ERROR("spinlock used by ndis_irq is not compatible"
-		      " with KSPIN_LOCK: %u, %u",
-		      (unsigned int)sizeof(ndis_irq->lock),
-		      (unsigned int)sizeof(ndis_irq->lock.ntoslock));
+#ifdef CONFIG_DEBUG_SPINLOCK
+	ndis_irq->lock = kmalloc(sizeof(struct wrap_spinlock), GFP_KERNEL);
+	if (!ndis_irq->lock) {
+		ERROR("couldn't allocate memory");
 		TRACEEXIT1(return NDIS_STATUS_RESOURCES);
 	}
-	spin_lock_init(&ndis_irq->lock.spinlock);
+#else
+	check_spin_lock_size(ndis_irq->lock);
+#endif
+	spin_lock_init(K_SPINLOCK(&(ndis_irq->lock)));
 	handle->ndis_irq = ndis_irq;
 
 	INIT_WORK(&handle->irq_work, &ndis_irq_bh, ndis_irq);
@@ -1432,6 +1444,10 @@ STDCALL void WRAP_EXPORT(NdisMDeregisterInterrupt)
 		schedule_timeout(HZ/10);
 #endif
 		free_irq(ndis_irq->irq.irq, ndis_irq);
+#ifdef CONFIG_DEBUG_SPINLOCK
+		kfree(ndis_irq->lock);
+		ndis_irq->lock = NULL;
+#endif
 		ndis_irq->handle = NULL;
 		handle->ndis_irq = NULL;
 	}
@@ -1451,9 +1467,9 @@ STDCALL static BOOLEAN WRAP_EXPORT(NdisMSynchronizeWithInterrupt)
 		TRACEEXIT5(return 0);
 
 	sync_func = func;
-	spin_lock_irqsave(&ndis_irq->lock.spinlock, flags);
+	spin_lock_irqsave(K_SPINLOCK(&(ndis_irq->lock)), flags);
 	ret = sync_func(ctx);
-	spin_unlock_irqrestore(&ndis_irq->lock.spinlock, flags);
+	spin_unlock_irqrestore(K_SPINLOCK(&(ndis_irq->lock)), flags);
 
 	DBGTRACE5("sync_func returns %u", ret);
 	TRACEEXIT5(return ret);

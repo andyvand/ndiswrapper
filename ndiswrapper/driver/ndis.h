@@ -307,7 +307,12 @@ struct miniport_char {
 
 };
 
-/* this should be same as wrap_spinlock */
+#ifdef CONFIG_DEBUG_SPINLOCK
+#define NDIS_SPINLOCK(lock) (lock)->lock
+#else
+#define NDIS_SPINLOCK(lock) (struct wrap_spinlock *)(lock)
+#endif
+
 struct ndis_spinlock {
 	KSPIN_LOCK lock;
 	KIRQL use_bh;
