@@ -20,9 +20,22 @@
 
 DECLARE_WAIT_QUEUE_HEAD(dispatch_event_wq);
 static unsigned char global_signal_state = 0;
-struct wrap_spinlock dispatch_event_lock;
-extern struct wrap_spinlock atomic_lock;
-static KSPIN_LOCK ntoskrnl_lock;
+static struct wrap_spinlock dispatch_event_lock;
+struct wrap_spinlock ntoskrnl_lock;
+struct wrap_spinlock irp_cancel_lock;
+
+int ntoskrnl_init(void)
+{
+	wrap_spin_lock_init(&dispatch_event_lock);
+	wrap_spin_lock_init(&ntoskrnl_lock);
+	wrap_spin_lock_init(&irp_cancel_lock);
+	return 0;
+}
+
+void ntoskrnl_exit(void)
+{
+	return;
+}
 
 WRAP_EXPORT_MAP("KeTickCount", &jiffies);
 
@@ -182,7 +195,7 @@ _FASTCALL struct slist_entry *WRAP_EXPORT(InterlockedPushEntrySList)
 	(FASTCALL_DECL_2(union slist_head *head, struct slist_entry *entry))
 {
 	return ExInterlockedPushEntrySList(FASTCALL_ARGS_3(head, entry,
-							   &ntoskrnl_lock));
+					   W_KSPINLOCK(&ntoskrnl_lock)));
 }
 
 _FASTCALL struct slist_entry * WRAP_EXPORT(ExInterlockedPopEntrySList)
@@ -217,7 +230,8 @@ _FASTCALL struct slist_entry * WRAP_EXPORT(InterlockedPopEntrySList)
 	(FASTCALL_DECL_1(union slist_head *head))
 {
 	return ExInterlockedPopEntrySList(FASTCALL_ARGS_2(head,
-							  &ntoskrnl_lock));
+					   W_KSPINLOCK(&ntoskrnl_lock)));
+
 }
 
 _FASTCALL struct list_entry *WRAP_EXPORT(ExfInterlockedInsertTailList)
@@ -361,9 +375,9 @@ _FASTCALL void WRAP_EXPORT(ExInterlockedAddLargeStatistic)
 {
 	unsigned long flags;
 	TRACEENTER3("Stat %p = %llu, n = %u", plint, *plint, n);
-	spin_lock_irqsave(WRAP_SPINLOCK(&atomic_lock), flags);
+	spin_lock_irqsave(W_SPINLOCK(&ntoskrnl_lock), flags);
 	*plint += n;
-	spin_unlock_irqrestore(WRAP_SPINLOCK(&atomic_lock), flags);
+	spin_unlock_irqrestore(W_SPINLOCK(&ntoskrnl_lock), flags);
 }
 
 STDCALL void *WRAP_EXPORT(MmMapIoSpace)
@@ -863,18 +877,18 @@ STDCALL BOOLEAN WRAP_EXPORT(IoCancelIrp)
 	TRACEENTER2("irp = %p", irp);
 
 	irql = KeGetCurrentIrql();
-	wrap_spin_lock(&cancel_lock, PASSIVE_LEVEL);
+	wrap_spin_lock(&irp_cancel_lock, PASSIVE_LEVEL);
 	cancel_routine = xchg(&irp->cancel_routine, NULL);
 
 	if (cancel_routine) {
 		irp->cancel_irql = irql;
 		irp->pending_returned = 1;
 		irp->cancel = 1;
-		wrap_spin_unlock(&cancel_lock);
+		wrap_spin_unlock(&irp_cancel_lock);
 		cancel_routine(stack->dev_obj, irp);
 		TRACEEXIT2(return 1);
 	} else {
-		wrap_spin_unlock(&cancel_lock);
+		wrap_spin_unlock(&irp_cancel_lock);
 		TRACEEXIT2(return 0);
 	}
 }
@@ -1133,10 +1147,10 @@ _FASTCALL LONG WRAP_EXPORT(InterlockedDecrement)
 	LONG x;
 
 	TRACEENTER4("%s", "");
-	wrap_spin_lock(&atomic_lock, PASSIVE_LEVEL);
+	wrap_spin_lock(&ntoskrnl_lock, PASSIVE_LEVEL);
 	(*val)--;
 	x = *val;
-	wrap_spin_unlock(&atomic_lock);
+	wrap_spin_unlock(&ntoskrnl_lock);
 	TRACEEXIT4(return x);
 }
 
@@ -1146,10 +1160,10 @@ _FASTCALL LONG WRAP_EXPORT(InterlockedIncrement)
 	LONG x;
 
 	TRACEENTER4("%s", "");
-	wrap_spin_lock(&atomic_lock, PASSIVE_LEVEL);
+	wrap_spin_lock(&ntoskrnl_lock, PASSIVE_LEVEL);
 	(*val)++;
 	x = *val;
-	wrap_spin_unlock(&atomic_lock);
+	wrap_spin_unlock(&ntoskrnl_lock);
 	TRACEEXIT4(return x);
 }
 
@@ -1159,10 +1173,10 @@ _FASTCALL LONG WRAP_EXPORT(InterlockedExchange)
 	LONG x;
 
 	TRACEENTER4("%s", "");
-	wrap_spin_lock(&atomic_lock, PASSIVE_LEVEL);
+	wrap_spin_lock(&ntoskrnl_lock, PASSIVE_LEVEL);
 	x = *target;
 	*target = val;
-	wrap_spin_unlock(&atomic_lock);
+	wrap_spin_unlock(&ntoskrnl_lock);
 	TRACEEXIT4(return x);
 }
 
@@ -1172,11 +1186,11 @@ _FASTCALL LONG WRAP_EXPORT(InterlockedCompareExchange)
 	LONG x;
 
 	TRACEENTER4("%s", "");
-	wrap_spin_lock(&atomic_lock, PASSIVE_LEVEL);
+	wrap_spin_lock(&ntoskrnl_lock, PASSIVE_LEVEL);
 	x = *dest;
 	if (*dest == comperand)
 		*dest = xchg;
-	wrap_spin_unlock(&atomic_lock);
+	wrap_spin_unlock(&ntoskrnl_lock);
 	TRACEEXIT4(return x);
 }
 
