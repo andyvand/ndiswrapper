@@ -3,8 +3,8 @@
 
 #include "ndis.h"
 
-static struct proc_dir_entry *ndis_proc_entry, *ndis_proc_entry_stats,
-	*ndis_proc_entry_wep;
+static struct proc_dir_entry *ndiswrapper_proc_entry, *ndis_proc_entry,
+	*ndis_proc_entry_stats, *ndis_proc_entry_wep;
 static int proc_uid, proc_gid, proc_perm = 0440;
 
 MODULE_PARM(proc_uid, "i");
@@ -95,8 +95,19 @@ int ndis_init_proc(struct ndis_handle *handle)
 {
 	struct net_device *dev = handle->net_dev;
 	
-	/* TODO: should we create at /proc, or at /proc/net? */
-	ndis_proc_entry = create_proc_entry(dev->name, S_IFDIR, NULL);
+	ndiswrapper_proc_entry = create_proc_entry("ndiswrapper",
+						   S_IFDIR, proc_net);
+	if (ndiswrapper_proc_entry == NULL)
+	{
+		printk(KERN_INFO "%s: Couldn't create proc directory %s\n",
+		       dev->name, dev->name);
+		return -1;
+	}
+	ndiswrapper_proc_entry->uid = proc_uid;
+	ndiswrapper_proc_entry->gid = proc_gid;
+
+	ndis_proc_entry = create_proc_entry(dev->name,
+					    S_IFDIR, ndiswrapper_proc_entry);
 	if (ndis_proc_entry == NULL)
 	{
 		printk(KERN_INFO "%s: Couldn't create proc directory %s\n",
@@ -140,5 +151,6 @@ void ndis_remove_proc(struct ndis_handle *handle)
 
 	remove_proc_entry("stats", ndis_proc_entry);
 	remove_proc_entry("wep", ndis_proc_entry);
-	remove_proc_entry(dev->name, NULL);
+	remove_proc_entry(dev->name, ndiswrapper_proc_entry);
+	remove_proc_entry("ndiswrapper", proc_net);
 }
