@@ -300,11 +300,11 @@ STDCALL void WRAP_EXPORT(ExInitializeNPagedLookasideList)
 	 LOOKASIDE_ALLOC_FUNC *alloc_func, LOOKASIDE_FREE_FUNC *free_func,
 	 ULONG flags, SIZE_T size, ULONG tag, USHORT depth)
 {
-	TRACEENTER3("lookaside: %p, size: %u, flags: %u,"
-		    " head: %p, size of lookaside: %u\n",
-		    lookaside, (unsigned int)size, flags,
+	TRACEENTER3("lookaside: %p, size: %lu, flags: %u,"
+		    " head: %p, size of lookaside: %lu\n",
+		    lookaside, (unsigned long)size, flags,
 		    lookaside->head.list.next,
-		    (unsigned int)sizeof(struct npaged_lookaside_list));
+		    (unsigned long)sizeof(struct npaged_lookaside_list));
 
 	memset(lookaside, 0, sizeof(*lookaside));
 
@@ -478,16 +478,20 @@ STDCALL NT_STATUS WRAP_EXPORT(KeWaitForSingleObject)
 	}
 
 	if (timeout) {
-		long t;
-
 		DBGTRACE2("timeout = %Ld", *timeout);
-		t = *timeout;
-		if (t == 0)
+		if (*timeout == 0)
 			TRACEEXIT2(return STATUS_TIMEOUT);
-		else if (t > 0)
-			wait_jiffies = msecs_to_jiffies(t / 10000) - jiffies;
-		else
-			wait_jiffies = msecs_to_jiffies((-t) / 10000);
+		else if (*timeout > 0) {
+			long d = (*timeout) - ticks_1601();
+			/* many drivers call this function with much smaller numbers
+			 * that suggest either drivers are broken or explanation for
+			 * this is wrong */
+			if (d > 0)
+				wait_jiffies = msecs_to_jiffies(d / 10000);
+			else
+				wait_jiffies = 0;
+		} else
+			wait_jiffies = msecs_to_jiffies((-(*timeout)) / 10000);
 	} else
 		wait_jiffies = 0;
 
@@ -687,20 +691,17 @@ STDCALL void WRAP_EXPORT(IoBuildSynchronousFsdRequest)
 NOREGPARM ULONG WRAP_EXPORT(DbgPrint)
 	(char *format, ...)
 {
-	int res = 0;
-
 #ifdef DEBUG
 	va_list args;
 	static char buf[1024];
 
 	va_start(args, format);
-	res = vsnprintf(buf, sizeof(buf), format, args);
+	vsnprintf(buf, sizeof(buf), format, args);
 	printk("DbgPrint: ");
 	printk(buf);
 	va_end(args);
 #endif
-	return res;
-
+	return STATUS_SUCCESS;
 }
 
 STDCALL void WRAP_EXPORT(DbgBreakPoint)
@@ -1058,12 +1059,14 @@ STDCALL NT_STATUS WRAP_EXPORT(KeDelayExecutionThread)
 	else
 		timeout = jiffies - msecs_to_jiffies(t / 10000);
 
+	if (timeout <= 0)
+		TRACEEXIT3(return STATUS_SUCCESS);
+
 	if (alertable)
 		set_current_state(TASK_INTERRUPTIBLE);
 	else
 		set_current_state(TASK_UNINTERRUPTIBLE);
 
-	DBGTRACE3("%ld, %ld, %Ld, %d", jiffies, timeout, *interval, alertable);
 	res = schedule_timeout(timeout);
 
 	if (res > 0)

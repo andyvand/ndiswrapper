@@ -36,7 +36,6 @@
 
 #include "ndis.h"
 #include "loader.h"
-#include "pe_linker.h"
 #include "wrapper.h"
 
 static spinlock_t loader_lock;
@@ -411,13 +410,21 @@ static int load_sys_files(struct ndis_driver *driver,
 		pe_image->name[MAX_DRIVER_NAME_LEN-1] = 0;
 		memcpy(pe_image->name, load_driver->sys_files[i].name,
 		       MAX_DRIVER_NAME_LEN);
-		DBGTRACE1("image size: %u bytes",
-			  (u32)load_driver->sys_files[i].size);
+		DBGTRACE1("image size: %lu bytes",
+			  (unsigned long)load_driver->sys_files[i].size);
 
-#ifdef CONFIG_X86_64BIT
-		pe_image->image = vmalloc(load_driver->sys_files[i].size,
-					  GFP_KERNEL | __GFP_HIGHMEM |
-					  PAGE_KERNEL_EXECUTABLE);
+#ifdef CONFIG_X86_64
+#ifdef PAGE_KERNEL_EXECUTABLE
+		pe_image->image = __vmalloc(load_driver->sys_files[i].size,
+					    GFP_KERNEL | __GFP_HIGHMEM,
+					    PAGE_KERNEL_EXECUTABLE);
+#elif defined PAGE_KERNEL_EXEC
+		pe_image->image = __vmalloc(load_driver->sys_files[i].size,
+					    GFP_KERNEL | __GFP_HIGHMEM,
+					    PAGE_KERNEL_EXEC);
+#else
+#error x86_64 should have either PAGE_KERNEL_EXECUTTABLE or PAGE_KERNEL_EXEC
+#endif
 #else
 		pe_image->image = vmalloc(load_driver->sys_files[i].size);
 #endif
@@ -627,7 +634,7 @@ static int start_driver(struct ndis_driver *driver)
 	reg_string.buflen = reg_string.len = strlen(reg_path);
 	for (ret = res = 0, i = 0; i < driver->num_pe_images; i++)
 		/* dlls are already started by loader */
-		if (driver->pe_images[i].type == COFF_CHAR_IMAGE) {
+		if (driver->pe_images[i].type == IMAGE_FILE_EXECUTABLE_IMAGE) {
 			UINT (*entry)(void *obj,
 				      struct unicode_string *p2) STDCALL;
 
@@ -881,8 +888,9 @@ static int wrapper_ioctl(struct inode *inode, struct file *file,
 	struct load_devices devices;
 	int res;
 
-	TRACEENTER1("cmd: %u (%u, %u)", cmd, (u32)NDIS_REGISTER_DEVICES,
-		    (u32)NDIS_LOAD_DRIVER);
+	TRACEENTER1("cmd: %u (%lu, %lu)", cmd,
+		    (unsigned long)NDIS_REGISTER_DEVICES, 
+		    (unsigned long)NDIS_LOAD_DRIVER);
 
 	res = 0;
 	switch (cmd) {

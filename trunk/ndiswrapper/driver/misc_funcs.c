@@ -114,9 +114,13 @@ void wrapper_timer_handler(unsigned long data)
 	miniport_timer = kdpc->func;
 
 	/* call the handler after restarting in case it cancels itself */
-	if (miniport_timer)
+	if (miniport_timer) {
+		KIRQL irql;
+		irql = raise_irql(DISPATCH_LEVEL);
 		LIN2WIN4(miniport_timer, kdpc, kdpc->ctx, kdpc->arg1,
 			 kdpc->arg2);
+		lower_irql(irql);
+	}
 
 	TRACEEXIT5(return);
 }

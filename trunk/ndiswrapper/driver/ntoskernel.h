@@ -345,6 +345,8 @@ struct wrapper_timer {
 	struct wrap_spinlock lock;
 };
 
+int load_pe_images(struct pe_image[], int n);
+
 void *wrap_kmalloc(size_t size, int flags);
 void wrap_kfree(void *ptr);
 void wrap_kfree_all(void);
