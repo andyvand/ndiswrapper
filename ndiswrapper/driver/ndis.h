@@ -490,7 +490,9 @@ enum auth_mode
 	AUTHMODE_AUTO,
 	AUTHMODE_WPA,
 	AUTHMODE_WPAPSK,
-	AUTHMODE_WPANONE
+	AUTHMODE_WPANONE,
+	AUTHMODE_WPA2,
+	AUTHMODE_WPA2PSK,
 };
 
 enum encr_mode
@@ -839,6 +841,7 @@ struct ssid_item
 	unsigned char ies[1];
 };
 
+#define WLAN_EID_RSN 48
 #define WLAN_EID_GENERIC 221
 #define MAX_WPA_IE_LEN 64
 
