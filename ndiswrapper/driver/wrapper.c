@@ -833,6 +833,7 @@ static int ndis_get_scan(struct net_device *dev, struct iw_request_info *info,
 	char *cur_item ;
 
 	written = needed = 0;
+	memset(&list_scan, 0, sizeof(list_scan));
 	res = doquery(handle, NDIS_OID_BSSID_LIST, (char*)&list_scan, sizeof(list_scan), &written, &needed);
 	if (res)
 	{
