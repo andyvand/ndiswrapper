@@ -479,7 +479,7 @@ static int ndis_set_wep(struct net_device *dev, struct iw_request_info *info,
 			req.keyindex = wrqu->data.flags & IW_ENCODE_INDEX;
 			req.keyindex |= (1 << 31);
 			req.keylength = wrqu->data.length;
-			memcpy(req.keymaterial, wrqu->data.pointer,
+			memcpy(req.keymaterial, extra,
 			       req.keylength);
 			res = dosetinfo(handle, NDIS_OID_ADD_WEP, (char*)&req,
 					sizeof(req), &written, &needed);
