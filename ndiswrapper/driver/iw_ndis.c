@@ -651,8 +651,7 @@ static int iw_set_encr(struct net_device *dev, struct iw_request_info *info,
 		}
 
 		/* ndis drivers want essid to be set after setting wep */
-		set_bit(SET_ESSID, &handle->wrapper_work);
-		schedule_work(&handle->wrapper_worker);
+		set_essid(handle, handle->essid.essid, handle->essid.length);
 	}
 
 	/* global wep state (for all keys) */
@@ -698,6 +697,7 @@ static char *ndis_translate_scan(struct net_device *dev, char *event,
 	char *current_val;
 	int i;
 	char buf[MAX_WPA_IE_LEN * 2 + 30];
+	struct ndis_handle *handle = dev->priv;
 
 	TRACEENTER1("%s", "");
 	/* add mac address */
@@ -793,7 +793,8 @@ static char *ndis_translate_scan(struct net_device *dev, char *event,
 	iwe.u.data.length = strlen(buf);
 	event = iwe_stream_add_point(event, end_buf, &iwe, buf);
 	
-	if (item->ie_length >= (sizeof(struct fixed_ies) + 2))
+	if (test_bit(CAPA_WPA, &handle->capa) &&
+	    item->ie_length >= (sizeof(struct fixed_ies) + 2))
 	{
 		struct fixed_ies *fixed_ies = (struct fixed_ies *)item->ies;
 		unsigned char *iep = (unsigned char *)(fixed_ies + 1);

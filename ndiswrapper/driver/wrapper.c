@@ -250,6 +250,13 @@ static void call_halt(struct ndis_handle *handle)
 	set_int(handle, NDIS_OID_PNP_SET_POWER, NDIS_PM_STATE_D3);
 
 	miniport->halt(handle->adapter_ctx);
+	/* TI driver doesn't call NdisMDeregisterInterrupt during halt! */
+	if (handle->ndis_irq)
+	{
+		if (miniport->disable_interrupts)
+			miniport->disable_interrupts(handle->adapter_ctx);
+		NdisMDeregisterInterrupt(handle->ndis_irq);
+	}
 	pci_set_power_state(handle->pci_dev, 3);
 	TRACEEXIT1(return);
 }
@@ -451,7 +458,6 @@ static int ndis_open(struct net_device *dev)
 	netif_start_queue(dev);
 	return 0;
 }
-
 
 static int ndis_close(struct net_device *dev)
 {
@@ -918,65 +924,62 @@ static void wrapper_worker_proc(void *param)
 
 	if (test_and_clear_bit(WRAPPER_LINK_STATUS, &handle->wrapper_work))
 	{
-		unsigned char *assoc_info;
 		struct ndis_assoc_info *ndis_assoc_info;
-		unsigned char wpa_assoc_info[512];
-		unsigned char *p, *offset;
-		int i;
+		unsigned char *wpa_assoc_info, *assoc_info, *p, *offset;
 		union iwreq_data wrqu;
+		unsigned int i, res, written, needed;
+		const int ie_size = 256;
+		const int assoc_size = sizeof(*ndis_assoc_info) + 2 * 256;
 
-		unsigned int res, written, needed;
-		
 		if (!test_bit(CAPA_WPA, &handle->capa))
 			return;
 
-		assoc_info = kmalloc(sizeof(*ndis_assoc_info) + 512,
-				     GFP_KERNEL);
+		assoc_info = kmalloc(assoc_size, GFP_KERNEL);
 		if (!assoc_info)
+		{
+			ERROR("%s", "couldn't allocate memory");
 			return;
-		memset(assoc_info, 0, sizeof(*ndis_assoc_info) + 512);
+		}
+		wpa_assoc_info = kmalloc(ie_size, GFP_KERNEL);
+		if (!wpa_assoc_info)
+		{
+			ERROR("%s", "couldn't allocate memory");
+			kfree(assoc_info);
+			return;
+		}
+
+		memset(assoc_info, 0, assoc_size);
 
 		ndis_assoc_info = (struct ndis_assoc_info *)assoc_info;
 		ndis_assoc_info->length = sizeof(*ndis_assoc_info);
 		ndis_assoc_info->offset_req_ies = sizeof(*ndis_assoc_info);
-		ndis_assoc_info->req_ie_length = 256;
+		ndis_assoc_info->req_ie_length = ie_size;
 		ndis_assoc_info->offset_resp_ies = sizeof(*ndis_assoc_info) +
 			ndis_assoc_info->req_ie_length;
-		ndis_assoc_info->resp_ie_length = 256;
+		ndis_assoc_info->resp_ie_length = ie_size;
 
-		res = doquery(handle, NDIS_OID_ASSOC_INFO,
-			      assoc_info, sizeof(ndis_assoc_info) + 512,
-			      &written, &needed);
-		if (res == NDIS_STATUS_NOT_SUPPORTED)
+		res = doquery(handle, NDIS_OID_ASSOC_INFO, assoc_info,
+			      assoc_size, &written, &needed);
+		if (res)
 		{
 			ERROR("query assoc_info failed (%08X)", res);
 			kfree(assoc_info);
+			kfree(wpa_assoc_info);
 			return;
 		}
-		DBGTRACE("ndis_assoc_info: length = %lu, req_ies = %u, "
-			 "req_ie_length = %lu, offset_req_ies = %lu, "
-			 "resp_ies = %u, resp_ie_length = %lu, "
-			 "offset_resp_ies = %lu",
-		       ndis_assoc_info->length,
-		       ndis_assoc_info->req_ies,
-		       ndis_assoc_info->req_ie_length,
-		       ndis_assoc_info->offset_req_ies,
-		       ndis_assoc_info->resp_ies,
-		       ndis_assoc_info->resp_ie_length,
-		       ndis_assoc_info->offset_resp_ies);
 
 		p = wpa_assoc_info;
 		p += sprintf(p, "ASSOCINFO(ReqIEs=");
 		offset = ((char *)ndis_assoc_info) +
 			ndis_assoc_info->offset_req_ies;
-		for (i = 0 ; i < 256 && i < ndis_assoc_info->req_ie_length ;
+		for (i = 0; i < ie_size && i < ndis_assoc_info->req_ie_length;
 		     i++)
 			p += sprintf(p, "%02x", *(offset + i));
 			
 		p += sprintf(p, " RespIEs=");
 		offset = ((char *)ndis_assoc_info) + 
 			ndis_assoc_info->offset_resp_ies;
-		for (i = 0 ; i < 256 && i < ndis_assoc_info->resp_ie_length ;
+		for (i = 0; i < ie_size && i < ndis_assoc_info->resp_ie_length;
 		     i++)
 			p += sprintf(p, "%02x", *(offset + i));
 
@@ -988,6 +991,7 @@ static void wrapper_worker_proc(void *param)
 		wireless_send_event(handle->net_dev, IWEVCUSTOM, &wrqu,
 				    wpa_assoc_info);
 		kfree(assoc_info);
+		kfree(wpa_assoc_info);
 
 		get_ap_address(handle, (char *)&wrqu.ap_addr.sa_data);
 		wrqu.ap_addr.sa_family = ARPHRD_ETHER;
@@ -998,6 +1002,7 @@ static void wrapper_worker_proc(void *param)
 		set_essid(handle, handle->essid.essid, handle->essid.length);
 }
 
+/* check capabilites - mainly for WPA */
 static void check_capa(struct ndis_handle *handle)
 {
 	int i, mode;
@@ -1063,26 +1068,21 @@ static void check_capa(struct ndis_handle *handle)
 		TRACEEXIT1(return);
 	set_bit(CAPA_WPA, &handle->capa);
 
-	DBGTRACE1("%s", "wpa is supported");
 	DBGTRACE("capbilities = %ld\n", handle->capa);
 	if (test_bit(CAPA_AES, &handle->capa))
 		printk(KERN_INFO "%s supports WPA with CCMP/AES and "
-		       "TKIP ciphers", handle->net_dev->name);
+		       "TKIP ciphers\n", handle->net_dev->name);
 	else
-		printk(KERN_INFO "%s", "driver supports WPA with TKIP cipher");
+		printk(KERN_INFO "%s", "driver supports WPA with "
+		       "TKIP cipher\n");
 	TRACEEXIT1(return);
 }
 
 static int setup_dev(struct net_device *dev)
 {
 	struct ndis_handle *handle = dev->priv;
-
-	unsigned char mac[ETH_ALEN];
-	unsigned int written;
-	unsigned int needed;
-
-	unsigned int res;
-	int i;
+	mac_address mac;
+	unsigned int i, written, needed, res;
 	union iwreq_data wrqu;
 
 	if (strlen(if_name) > (IFNAMSIZ-1))
@@ -1106,9 +1106,8 @@ static int setup_dev(struct net_device *dev)
 
 	memset(&wrqu, 0, sizeof(wrqu));
 
-	set_bit(SET_OP_MODE, &handle->wrapper_work);
-	set_bit(SET_ESSID, &handle->wrapper_work);
-	schedule_work(&handle->wrapper_worker);
+	set_mode(handle, NDIS_MODE_INFRA);
+	set_essid(handle, handle->essid.essid, handle->essid.length);
 
 	res = query_int(handle, OID_802_3_MAXIMUM_LIST_SIZE, &i);
 	if(res == NDIS_STATUS_SUCCESS)
@@ -1124,7 +1123,6 @@ static int setup_dev(struct net_device *dev)
 	if (set_priv_filter(handle, NDIS_PRIV_ACCEPT_ALL))
 		WARNING("%s", "Unable to set privacy filter");
 
-	DBGTRACE1("%s", "checking if WPA is supported");
 	ndis_set_rx_mode_proc(dev);
 	
 	dev->open = ndis_open;
@@ -1138,23 +1136,26 @@ static int setup_dev(struct net_device *dev)
 #ifdef HAVE_ETHTOOL
 	dev->ethtool_ops = &ndis_ethtool_ops;
 #endif	
-	for(i = 0; i < ETH_ALEN; i++)
-	{
-		dev->dev_addr[i] = mac[i];
-	}
+	memcpy(&dev->dev_addr, mac, ETH_ALEN);
 	dev->irq = handle->ndis_irq->irq;
 	dev->mem_start = handle->mem_start;		
 	dev->mem_end = handle->mem_end;		
 	
 	res = register_netdev(dev);
 	if (res)
+	{
 		ERROR("cannot register net device %s", dev->name);
-	else
-		printk(KERN_INFO "%s: %s ethernet device " MACSTR
-		       " using driver %s\n",
-		       dev->name, DRV_NAME, MAC2STR(mac), handle->driver->name);
+		return res;
+	}
+
+	printk(KERN_INFO "%s: %s ethernet device " MACSTR " using driver %s\n",
+	       dev->name, DRV_NAME, MAC2STR(mac), handle->driver->name);
+
 	check_capa(handle);
-	return res;
+	/* check_capa changes auth_mode and wep_mode, so set them again */
+	set_auth_mode(handle, AUTHMODE_OPEN);
+	set_wep_mode(handle, WEP_DISABLED);
+	return 0;
 }
 
 /*
@@ -1165,7 +1166,7 @@ static int setup_dev(struct net_device *dev)
  */
 static int ndis_init_one(struct pci_dev *pdev, const struct pci_device_id *ent)
 {
-	int res = 0;
+	int i, res = 0;
 	struct ndis_device *device = (struct ndis_device *) ent->driver_data;
 	struct ndis_driver *driver = device->driver;
 	struct ndis_handle *handle;
@@ -1229,10 +1230,17 @@ static int ndis_init_one(struct pci_dev *pdev, const struct pci_device_id *ent)
 	INIT_LIST_HEAD(&handle->timers);
 
 	/* Poision this because it may contain function pointers */
-	memset(&handle->fill1, 0x12, sizeof(handle->fill1));
-	memset(&handle->fill3, 0x14, sizeof(handle->fill3));
-	memset(&handle->fill4, 0x15, sizeof(handle->fill4));
-	memset(&handle->fill5, 0x16, sizeof(handle->fill5));
+	for (i = 0; i < sizeof(handle->fill1); i += sizeof(int))
+		*(int *)((char *)handle->fill1+i) = 0x1000+i;
+
+	for (i = 0; i < sizeof(handle->fill3); i += sizeof(int))
+		*(int *)((char *)handle->fill3+i) = 0x3000+i;
+
+	for (i = 0; i < sizeof(handle->fill4); i += sizeof(int))
+		*(int *)((char *)handle->fill4+i) = 0x4000+i;
+
+	for (i = 0; i < sizeof(handle->fill5); i += sizeof(int))
+		*(int *)((char *)handle->fill5+i) = 0x5000+i;
 
 	handle->indicate_receive_packet = &NdisMIndicateReceivePacket;
 	handle->send_complete = &NdisMSendComplete;
@@ -1322,31 +1330,28 @@ static void __devexit ndis_remove_one(struct pci_dev *pdev)
 {
 	struct ndis_handle *handle = (struct ndis_handle *) pci_get_drvdata(pdev);
 
-	TRACEENTER1("%s", "");
-
 	ndiswrapper_procfs_remove_iface(handle);
 	statcollector_del(handle);
 	hangcheck_del(handle);
 
-	if (!netif_queue_stopped(handle->net_dev))
-		netif_stop_queue(handle->net_dev);
-
 	/* Make sure all queued packets have been pushed out from xmit_bh before we call halt */
 	flush_scheduled_work();
+	netif_carrier_off(handle->net_dev);
 
 #ifndef DEBUG_CRASH_ON_INIT
 	set_int(handle, NDIS_OID_DISASSOCIATE, 0);
-	if(handle->net_dev)
-		unregister_netdev(handle->net_dev);
 	call_halt(handle);
 
 	free_timers(handle);
-	if(handle->multicast_list)
+
+	if (handle->net_dev)
+		unregister_netdev(handle->net_dev);
+
+	if (handle->multicast_list)
 		kfree(handle->multicast_list);
-	if(handle->net_dev)
+	if (handle->net_dev)
 		free_netdev(handle->net_dev);
 #endif
-
 	pci_release_regions(pdev);
 	pci_disable_device(pdev);
 	pci_set_drvdata(pdev, NULL);

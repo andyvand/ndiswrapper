@@ -845,7 +845,7 @@ STDCALL void NdisFreeSpinLock(struct ndis_spin_lock *lock)
 
 STDCALL void NdisAcquireSpinLock(struct ndis_spin_lock *lock)
 {
-	TRACEENTER4("lock %p", lock);
+	TRACEENTER5("lock %p", lock);
 	if (!lock->wrap_spinlock)
 	{
 		WARNING("Windows driver trying to use uninitialized lock %p,"
@@ -855,33 +855,33 @@ STDCALL void NdisAcquireSpinLock(struct ndis_spin_lock *lock)
 			return;
 	}
 	wrap_spin_lock(lock->wrap_spinlock);
-	TRACEEXIT4(return);
+	TRACEEXIT5(return);
 }
 
 STDCALL void NdisReleaseSpinLock(struct ndis_spin_lock *lock)
 {
-	TRACEENTER4("lock %p", lock);
+	TRACEENTER5("lock %p", lock);
 	if (!lock->wrap_spinlock)
 	{
 		ERROR("incorrect lock %p", lock);
 		return;
 	}
 	wrap_spin_unlock(lock->wrap_spinlock);
-	TRACEEXIT4(return);
+	TRACEEXIT5(return);
 }
 
 STDCALL void NdisDprAcquireSpinLock(struct ndis_spin_lock *lock)
 {
-	TRACEENTER4("lock %p", lock);
+	TRACEENTER5("lock %p", lock);
 	NdisAcquireSpinLock(lock);
-	TRACEEXIT4(return);
+	TRACEEXIT5(return);
 }
 
 STDCALL void NdisDprReleaseSpinLock(struct ndis_spin_lock *lock)
 {
-	TRACEENTER4("lock %p", lock);
+	TRACEENTER5("lock %p", lock);
 	NdisReleaseSpinLock(lock);
-	TRACEEXIT4(return);
+	TRACEEXIT5(return);
 }
 
 STDCALL unsigned int NdisMAllocateMapRegisters(struct ndis_handle *handle,
@@ -1047,7 +1047,6 @@ STDCALL void NdisFreeBufferPool(void *poolhandle)
 {
 	TRACEENTER4("%s", "");
 
-	flush_scheduled_work();
 	TRACEEXIT4(return);
 }
 
@@ -1311,12 +1310,13 @@ void ndis_irq_bh(void *data)
 {
 	struct ndis_irq *ndis_irq = (struct ndis_irq *) data;
 	struct ndis_handle *handle = ndis_irq->handle;
+	struct miniport_char *miniport = &handle->driver->miniport_char;
 
 	if (ndis_irq->enabled)
 	{
-		handle->driver->miniport_char.handle_interrupt(handle->adapter_ctx);
-		if (handle->driver->miniport_char.enable_interrupts)
-			handle->driver->miniport_char.enable_interrupts(handle->adapter_ctx);
+		miniport->handle_interrupt(handle->adapter_ctx);
+		if (miniport->enable_interrupts)
+			miniport->enable_interrupts(handle->adapter_ctx);
 	}
 }
 
@@ -1327,25 +1327,30 @@ void ndis_irq_bh(void *data)
 irqreturn_t ndis_irq_th(int irq, void *data, struct pt_regs *pt_regs)
 {
 	int recognized = 0;
-	int handle_interrupt = 0;
+	int handled = 0;
 
 	struct ndis_irq *ndis_irq = (struct ndis_irq *) data;
-	struct ndis_handle *handle = ndis_irq->handle; 
-
-	/* We need a lock here in order to implement NdisMSynchronizeWithInterrupt,
-	  however the ISR is really fast anyway so it should not hurt performance */
-	spin_lock(ndis_irq->spinlock);
-	if (handle->ndis_irq->req_isr)
-		handle->driver->miniport_char.isr(&recognized, &handle_interrupt, handle->adapter_ctx);
-	else //if (handle->driver->miniport_char.disable_interrupts)
+	struct ndis_handle *handle;
+	struct miniport_char *miniport;
+ 
+	if (!ndis_irq || !ndis_irq->handle)
+		return IRQ_NONE;
+	handle = ndis_irq->handle;
+	miniport = &handle->driver->miniport_char;
+	/* this spinlock should be shared with NdisMSynchronizeWithInterrupt
+	 */
+	spin_lock_bh(ndis_irq->spinlock);
+	if (ndis_irq->req_isr)
+		miniport->isr(&recognized, &handled, handle->adapter_ctx);
+	else //if (miniport->disable_interrupts)
 	{
-		handle->driver->miniport_char.disable_interrupts(handle->adapter_ctx);
+		miniport->disable_interrupts(handle->adapter_ctx);
 		/* it is not shared interrupt, so handler must be called */
-		recognized = handle_interrupt = 1;
+		recognized = handled = 1;
 	}
-	spin_unlock(ndis_irq->spinlock);
+	spin_unlock_bh(ndis_irq->spinlock);
 
-	if (recognized && handle_interrupt)
+	if (recognized && handled)
 		schedule_work(&handle->irq_bh);
 	
 	if (recognized)
@@ -1398,15 +1403,24 @@ STDCALL unsigned int NdisMRegisterInterrupt(struct ndis_irq *ndis_irq,
  */
 STDCALL void NdisMDeregisterInterrupt(struct ndis_irq *ndis_irq)
 {
-	TRACEENTER1("%08x %d %08x", (int)ndis_irq, ndis_irq->irq,
-		   (int)ndis_irq->handle);
+	TRACEENTER1("%p", ndis_irq);
 
-	if(ndis_irq)
+	if (ndis_irq)
 	{
+		struct ndis_handle *handle = ndis_irq->handle;
 		ndis_irq->enabled = 0;
+		/* flush irq_bh workqueue; calling it before enabled=0
+		 * will crash since some drivers (Centrino at least) don't
+		 * expect irq hander to be called anymore */
+		/* cancel_delayed_work is probably better, but 2.4 kernels
+		 * don't have equivalent function
+		 */
+		flush_scheduled_work();
 		free_irq(ndis_irq->irq, ndis_irq);
 		kfree(ndis_irq->spinlock);
-		ndis_irq->spinlock = 0;
+		ndis_irq->spinlock = NULL;
+		ndis_irq->handle = NULL;
+		handle->ndis_irq = NULL;
 	}
 	TRACEEXIT1(return);
 }
@@ -1421,19 +1435,19 @@ STDCALL unsigned char NdisMSynchronizeWithInterrupt(struct ndis_irq *ndis_irq,
 	unsigned char ret;
 	unsigned char (*sync_func)(void *ctx) STDCALL;
 
-	TRACEENTER4("%08x %08x %08x %08x\n", (int) ndis_irq,
+	TRACEENTER5("%08x %08x %08x %08x\n", (int) ndis_irq,
 		    (int) ndis_irq, (int) func, (int) ctx);
 
 	if (func == NULL || ctx == NULL)
-		TRACEEXIT4(return 0);
+		TRACEEXIT5(return 0);
 
 	sync_func = func;
 	spin_lock_bh(ndis_irq->spinlock);
 	ret = sync_func(ctx);
 	spin_unlock_bh(ndis_irq->spinlock);
 
-	DBGTRACE4("sync_func returns %u", ret);
-	TRACEEXIT4(return ret);
+	DBGTRACE5("sync_func returns %u", ret);
+	TRACEEXIT5(return ret);
 }
 
 /*
@@ -1451,7 +1465,7 @@ STDCALL void NdisMIndicateStatus(struct ndis_handle *handle,
 	{
 		handle->link_status = 1;
 		set_bit(WRAPPER_LINK_STATUS, &handle->wrapper_work);
-		schedule_work(&handle->wrapper_worker);
+//		schedule_work(&handle->wrapper_worker);
 	}
 
 	if (status == NDIS_STATUS_MEDIA_DISCONNECT)
@@ -1605,11 +1619,8 @@ STDCALL void NdisMSendResourcesAvailable(struct ndis_handle *handle)
 	TRACEENTER3("%s", "");
 	/* sending packets immediately seem to result in NDIS_STATUS_FAILURE,
 	   so wait for a while before sending the packet again */
-//	set_current_state(TASK_INTERRUPTIBLE);
-//	schedule_timeout(HZ/2);
 	mdelay(5);
 	handle->send_status = 0;
-//	wake_up_interruptible(&handle->ndis_send_wqhead);
 	schedule_work(&handle->xmit_work);
 	TRACEEXIT3(return);
 }
@@ -1624,9 +1635,7 @@ STDCALL void NdisMQueryInformationComplete(struct ndis_handle *handle,
 	TRACEENTER3("%08X", status);
 
 	handle->ndis_comm_res = status;
-//	handle->ndis_comm_done = 1;
 	up(&handle->ndis_comm_done);
-//	wake_up_interruptible(&handle->ndis_comm_wqhead);
 	TRACEEXIT3(return);
 }
 
@@ -1640,8 +1649,6 @@ STDCALL void NdisMSetInformationComplete(struct ndis_handle *handle,
 	TRACEENTER3("status = %08X", status);
 
 	handle->ndis_comm_res = status;
-//	handle->ndis_comm_done = 1;
-//	wake_up_interruptible(&handle->ndis_comm_wqhead);
 	up(&handle->ndis_comm_done);
 	TRACEEXIT3(return);
 }
@@ -1856,8 +1863,6 @@ STDCALL void NdisMResetComplete(struct ndis_handle *handle, int status,
 
 	handle->ndis_comm_res = status;
 	handle->reset_status = status;
-//	handle->ndis_comm_done = 1;
-//	wake_up_interruptible(&handle->ndis_comm_wqhead);
 	up(&handle->ndis_comm_done);
 	TRACEEXIT3(return);
 }

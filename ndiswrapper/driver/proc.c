@@ -77,7 +77,7 @@ static int procfs_read_wep(char *page, char **start, off_t off,
 	int i, wep_status, auth_mode, op_mode;
 	unsigned int res, written, needed;
 	struct ndis_essid essid;
-	__u8 ap_address[ETH_ALEN];
+	mac_address ap_address;
 
 	if (off != 0) {
 		*eof = 1;
@@ -87,7 +87,7 @@ static int procfs_read_wep(char *page, char **start, off_t off,
 	res = doquery(handle, NDIS_OID_BSSID, (char*)&ap_address,
 		      sizeof(ap_address), &written, &needed);
 	if (res)
-		memset(ap_address, 255, ETH_ALEN);
+		memset(ap_address, 0, ETH_ALEN);
 	p += sprintf(p, "ap_address=%2.2X", ap_address[0]);
 	for (i = 1 ; i < ETH_ALEN ; i++)
 		p += sprintf(p, ":%2.2X", ap_address[i]);
@@ -107,7 +107,7 @@ static int procfs_read_wep(char *page, char **start, off_t off,
 	if (!res)
 	{
 		int active = handle->wep_info.active;
-		p += sprintf(p, "key_index=%u\n", handle->wep_info.active);
+		p += sprintf(p, "tx_key=%u\n", handle->wep_info.active);
 		p += sprintf(p, "key=");
 		if (handle->wep_info.keys[active].length > 0)
 			for (i = 0; i < NDIS_ENCODING_TOKEN_MAX &&
@@ -120,18 +120,15 @@ static int procfs_read_wep(char *page, char **start, off_t off,
 		p += sprintf(p, "\n");
 		
 		p += sprintf(p, "status=%sabled\n",
-			     (wep_status == WEP_ENABLED) ?
-			     "en" : "dis");
+			     (wep_status == WEP_ENABLED) ? "en" : "dis");
 		p += sprintf(p, "auth_mode=%s\n",
 			     (auth_mode == AUTHMODE_RESTRICTED) ?
 			     "restricted" : "open");
 	}
 
 	res = query_int(handle, NDIS_OID_MODE, &op_mode);
-	p += sprintf(p, "mode=%s\n",
-		     (op_mode == NDIS_MODE_ADHOC) ?
-		     "adhoc" : 
-		     (op_mode == NDIS_MODE_INFRA) ?
+	p += sprintf(p, "mode=%s\n", (op_mode == NDIS_MODE_ADHOC) ?
+		     "adhoc" : (op_mode == NDIS_MODE_INFRA) ?
 		     "managed" : "auto");
 	if (p - page > count)
 	{
