@@ -1879,7 +1879,7 @@ static int ndis_init_one(struct pci_dev *pdev,
 	}
 	handle->pm_state = NDIS_PM_STATE_D0;
 	spin_lock_init(&handle->send_packet_lock);
-	//hangcheck_add(handle);
+	hangcheck_add(handle);
 	statcollector_add(handle);
 	ndis_init_proc(handle);
 	return 0;
@@ -1903,7 +1903,7 @@ static void __devexit ndis_remove_one(struct pci_dev *pdev)
 	DBGTRACE("%s\n", __FUNCTION__);
 
 	statcollector_del(handle);
-	//hangcheck_del(handle);
+	hangcheck_del(handle);
 
 	ndis_remove_proc(handle);
 	if (!netif_queue_stopped(handle->net_dev))
