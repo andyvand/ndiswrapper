@@ -97,6 +97,15 @@ void NdisGetFirstBufferFromPacketSafe(void);
 void NdisUnchainBufferAtFront(void);
 void NdisScheduleWorkItem(void);
 
+void NdisMSetAttributes(void);
+void EthFilterDprIndicateReceiveComplete(void);
+void EthFilterDprIndicateReceive(void);
+//void NdisMSendComplete(void);
+void NdisMStartBufferPhysicalMapping(void);
+void NdisMCompleteBufferPhysicalMapping(void);
+
+
+
 /* Cipe */
 void DbgPrint(void);
 
@@ -230,6 +239,14 @@ func("NdisQueryBufferSafe"                  , NdisQueryBufferSafe),
 func("NdisGetFirstBufferFromPacketSafe"     , NdisGetFirstBufferFromPacketSafe),
 func("NdisUnchainBufferAtFront"             , NdisUnchainBufferAtFront),
 func("NdisScheduleWorkItem"                 , NdisScheduleWorkItem),
+func("NdisMSetAttributes"                   , NdisMSetAttributes),
+func("EthFilterDprIndicateReceiveComplete"  , EthFilterDprIndicateReceiveComplete),
+func("EthFilterDprIndicateReceive"          , EthFilterDprIndicateReceive),
+func("NdisMSendComplete"                    , NdisMSendComplete),
+func("NdisMStartBufferPhysicalMapping"      , NdisMStartBufferPhysicalMapping),
+func("NdisMCompleteBufferPhysicalMapping"   , NdisMCompleteBufferPhysicalMapping),
+
+
 
 /* HAL */
 func("KfAcquireSpinLock"                    , KfAcquireSpinLock),
