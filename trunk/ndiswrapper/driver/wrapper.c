@@ -1215,7 +1215,7 @@ static unsigned int call_entry(struct ndis_driver *driver)
 
 	/* Dump addresses of driver suppoled callbacks */
 #ifdef DEBUG
-	{
+	if(res == 0) {
 		int i;
 		int *adr = (int*) &driver->miniport_char.hangcheck;
 		char *name[] = {
