@@ -1296,7 +1296,6 @@ static int wpa_set_key(struct net_device *dev, struct iw_request_info *info,
 	u8 addr[ETH_ALEN];
 	u8 seq[IW_ENCODING_TOKEN_MAX];
 	u8 key[IW_ENCODING_TOKEN_MAX];
-	unsigned int add_remove_oid;
 
 	copy_from_user(&wpa_key, wrqu->data.pointer, sizeof(wpa_key));
 	if (wpa_key.addr)
@@ -1308,14 +1307,14 @@ static int wpa_set_key(struct net_device *dev, struct iw_request_info *info,
 	if (wpa_key.key)
 		copy_from_user(&key, wpa_key.key, IW_ENCODING_TOKEN_MAX);
 	
-	TRACEENTER1("alg = %d, key_index = %d",
+	TRACEENTER2("alg = %d, key_index = %d",
 		    wpa_key.alg, wpa_key.key_index);
 	
 	if (wpa_key.alg == WPA_ALG_WEP) {
 		union iwreq_data encr_req;
 
 		if (test_bit(CAPA_ENCR_NONE, &handle->capa))
-			TRACEEXIT(return -1);
+			TRACEEXIT2(return -1);
 
 		memset(&encr_req, 0, sizeof(encr_req));
 		encr_req.encoding.flags |= wpa_key.key_index + 1;
@@ -1327,33 +1326,33 @@ static int wpa_set_key(struct net_device *dev, struct iw_request_info *info,
 		encr_req.encoding.length = wpa_key.key_len;
 		encr_req.encoding.pointer = &key[0];
 		if (iw_set_encr(dev, info, &encr_req, key))
-			TRACEEXIT(return -1);
+			TRACEEXIT2(return -1);
 		else {
 			if (wpa_key.set_tx) {
 				encr_req.encoding.pointer = NULL;
 				encr_req.encoding.length = 0;
 				if (iw_set_encr(dev, info, &encr_req, key))
-					TRACEEXIT(return -1);
+					TRACEEXIT2(return -1);
 			}
-			TRACEEXIT(return 0);
+			TRACEEXIT2(return 0);
 		}
 	}
 
 	/* alg is either WPA_ALG_TKIP or WPA_ALG_CCMP */
 	if (!test_bit(CAPA_WPA, &handle->capa))
-		TRACEEXIT1(return -1);
+		TRACEEXIT2(return -1);
 
 	if (wpa_key.key_len > sizeof(ndis_key.key)) {
-		DBGTRACE("incorrect key length (%d)", wpa_key.key_len);
-		TRACEEXIT1(return -1);
+		DBGTRACE2("incorrect key length (%d)", wpa_key.key_len);
+		TRACEEXIT2(return -1);
 	}
 	
 	if (wpa_key.seq_len > IW_ENCODING_TOKEN_MAX) {
-		DBGTRACE1("incorrect seq? length = (%d)", wpa_key.seq_len);
-		TRACEEXIT1(return -1);
+		DBGTRACE2("incorrect seq? length = (%d)", wpa_key.seq_len);
+		TRACEEXIT2(return -1);
 	}
 
-	DBGTRACE("adding key %d, %d", wpa_key.key_index, wpa_key.key_len);
+	DBGTRACE2("setting key %d, %d", wpa_key.key_index, wpa_key.key_len);
 	memset(&ndis_key, 0, sizeof(ndis_key));
 
 	ndis_key.struct_size = sizeof(ndis_key);
@@ -1377,7 +1376,7 @@ static int wpa_set_key(struct net_device *dev, struct iw_request_info *info,
 		memcpy(&ndis_key.bssid, addr, ETH_ALEN);
 	}
 		
-	DBGTRACE("bssid " MACSTR, MAC2STR(ndis_key.bssid));
+	DBGTRACE2("bssid " MACSTR, MAC2STR(ndis_key.bssid));
 
 	if (wpa_key.set_tx)
 		ndis_key.index |= (1 << 31);
@@ -1391,32 +1390,31 @@ static int wpa_set_key(struct net_device *dev, struct iw_request_info *info,
 	} else
 		memcpy(ndis_key.key, key, wpa_key.key_len);
 
-	if (wpa_key.alg == WPA_ALG_NONE || wpa_key.key_len == 0)
-		add_remove_oid = NDIS_OID_REMOVE_KEY;
-	else
-		add_remove_oid = NDIS_OID_ADD_KEY;
-
-	res = miniport_set_info(handle, add_remove_oid, (char *)&ndis_key,
-				ndis_key.struct_size, &written, &needed);
-	if (res == NDIS_STATUS_INVALID_DATA) {
-		DBGTRACE("adding key failed (%08X), %d, %d, %lu",
-			 res, written, needed, ndis_key.struct_size);
-		TRACEEXIT(return -1);
-	}
-	if (add_remove_oid == NDIS_OID_REMOVE_KEY) {
+	if (wpa_key.alg == WPA_ALG_NONE || wpa_key.key_len == 0) {
+		/* TI driver crashes kernel if NDIS_OID_REMOVE_KEY is
+		 * called; other drivers seem to not require it, so
+		 * for now, don't remove the key from drvier */
 		handle->encr_info.keys[wpa_key.key_index].length = 0;
 		memset(&handle->encr_info.keys[wpa_key.key_index].key, 0,
 		       wpa_key.key_len);
-		DBGTRACE("key %d removed", wpa_key.key_index);
+		DBGTRACE2("key %d removed", wpa_key.key_index);
 	} else {
+		res = miniport_set_info(handle, NDIS_OID_ADD_KEY,
+					(char *)&ndis_key, sizeof(ndis_key),
+					&written, &needed);
+		if (res == NDIS_STATUS_INVALID_DATA) {
+			DBGTRACE2("adding key failed (%08X), %d, %d, %lu",
+				  res, written, needed, ndis_key.struct_size);
+			TRACEEXIT2(return -1);
+		}
 		handle->encr_info.keys[wpa_key.key_index].length = 
 			wpa_key.key_len;
 		memcpy(&handle->encr_info.keys[wpa_key.key_index].key,
 		       &ndis_key.key, wpa_key.key_len);
-		DBGTRACE("key %d added", wpa_key.key_index);
+		DBGTRACE2("key %d added", wpa_key.key_index);
 	}
 
-	TRACEEXIT(return 0);
+	TRACEEXIT2(return 0);
 }
 
 static int wpa_disassociate(struct net_device *dev,

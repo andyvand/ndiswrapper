@@ -1154,7 +1154,7 @@ static void wrapper_worker_proc(void *param)
 {
 	struct ndis_handle *handle = (struct ndis_handle *)param;
 
-	DBGTRACE("%lu\n", handle->wrapper_work);
+	DBGTRACE2("%lu", handle->wrapper_work);
 
 	if (test_bit(SHUTDOWN, &handle->wrapper_work))
 		return;
@@ -1172,6 +1172,7 @@ static void wrapper_worker_proc(void *param)
 			 IW_CUSTOM_MAX;
 		static long last_assoc = 0;
 
+		DBGTRACE2("link status: %d", handle->link_status);
 		if (handle->link_status == 0) {
 //			for (i = 0; i < MAX_ENCR_KEYS; i++)
 //				handle->encr_info.keys[i].length = 0;
@@ -1182,13 +1183,12 @@ static void wrapper_worker_proc(void *param)
 			wrqu.ap_addr.sa_family = ARPHRD_ETHER;
 			wireless_send_event(handle->net_dev, SIOCGIWAP, &wrqu,
 					    NULL);
-			DBGTRACE1("%s", "disassociate_event");
+			DBGTRACE2("%s", "disassociate_event");
 			return;
 		}
 
 		if (!test_bit(CAPA_WPA, &handle->capa))
 			return;
-		return;
 
 		assoc_info = kmalloc(assoc_size, GFP_KERNEL);
 		if (!assoc_info)
@@ -1211,7 +1211,7 @@ static void wrapper_worker_proc(void *param)
 					  assoc_size, &written, &needed);
 		if (res || !written)
 		{
-			DBGTRACE("query assoc_info failed (%08X)", res);
+			DBGTRACE2("query assoc_info failed (%08X)", res);
 			kfree(assoc_info);
 			return;
 		}
@@ -1252,7 +1252,7 @@ static void wrapper_worker_proc(void *param)
 
 		memset(&wrqu, 0, sizeof(wrqu));
 		wrqu.data.length = p - wpa_assoc_info;
-		DBGTRACE("adding %d bytes", wrqu.data.length);
+		DBGTRACE2("adding %d bytes", wrqu.data.length);
 		wireless_send_event(handle->net_dev, IWEVCUSTOM, &wrqu,
 				    wpa_assoc_info);
 
@@ -1262,9 +1262,8 @@ static void wrapper_worker_proc(void *param)
 		get_ap_address(handle, (char *)&wrqu.ap_addr.sa_data);
 		wrqu.ap_addr.sa_family = ARPHRD_ETHER;
 		wireless_send_event(handle->net_dev, SIOCGIWAP, &wrqu, NULL);
-
 		last_assoc = jiffies;
-		DBGTRACE1("%s", "associate_event");
+		DBGTRACE2("%s", "associate_event");
 	}
 
 	if (test_and_clear_bit(SET_ESSID, &handle->wrapper_work))
