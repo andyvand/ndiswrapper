@@ -1,0 +1,102 @@
+* Quickstart guide *
+====================
+
+1. Compile the driver
+---------------------
+* You need a recent 2.6.0 or 2.4 kernel with source!
+* The driver has known problem with SMP and will not work reliably with it.
+
+Go to the driver directory and run
+
+> make
+
+if you are using a 2.6 kernel or
+
+> make -f Makefile.24
+
+if you use a 2.4 kernel
+
+This should produce a ndiswrapper.(k)o if all goes well.
+
+2. Compile the loader:
+----------------------
+* You need flex.
+
+Go to the utils directory and run:
+
+> make
+
+This should produce a loaddriver executable.
+
+3. Get the windows driver
+-------------------------
+Download the Windows XP drivers for your card and locate the .sys and .inf file.
+Copy these files some place.
+   
+4. Find out the PCI vendor and device of you WLAN card.
+-------------------------------------------------------
+> lspci
+...
+00:0a.2 FLASH memory: ENE Technology Inc: Unknown device 0510
+00:0c.0 Network controller: Broadcom Corporation BCM4301 802.11b (rev 02) <--- This is my card. Now remember the bus and slot number (00:0c.0).
+00:0d.0 Ethernet controller: 3Com Corporation 3c940 1000Base? (rev 12)
+...
+
+> lspci -n
+
+...
+00:0a.2 Class 0501: 1524:0510
+00:0c.0 Class 0280: 14e4:4301 (rev 02)  <--- Numerical id of my card.
+00:0d.0 Class 0200: 10b7:1700 (rev 12)
+...
+
+The vendor is 14e4 and the device is is 4301.
+
+5. Load the kernel module
+-------------------------
+> insmod driver/ndiswrapper.(k)o
+
+6. Load the windows driver
+--------------------------
+Eg:
+>utils/loadriver 14e4 4301 /path/to/bcmwl5.sys /path/to/bcmwl5.inf
+
+If you get no error the driver should now be loaded and active.
+
+7. Configure interface
+----------------------
+Use the normal ifconfig, iwconfig, dhclient etc.
+
+I have noticed that iwconfig is rather picky about the order of the arguments so
+until I have investigated why you should use the following format for your
+iwconfig command:
+
+#iwconfig ethX mode Managed essid someid
+
+If you use vendor tools always make sure that mode is set to Managed.
+Auto will not work!
+
+8. Automate
+-----------
+When you have a wokring setup you may want to automate the driver-loading
+
+For kernel 2.6 do:
+
+* First write a script that does insmod and loaddriver.
+
+* Add this line to /etc/modprobe.conf:
+install ethX <path to your script>
+
+Now you should be able to do modprobe ethX
+
+Fedora Core 1 (and probably Redhat 9) with kernel 2.6.0 seem to have a slight
+bug which cause ifup to not recoginize the install line in modprobe.conf. See 
+http://bugzilla.redhat.com/bugzilla/show_bug.cgi?id=110415 for more info and
+a patch.
+
+For kernel 2.4 do:
+
+* Add these line to /etc/modules.conf:
+alias eth1 ndiswrapper
+post-install ethX /path/to/loaddriver x y  /path/to/driver.sys /path/to/driver.inf 
+

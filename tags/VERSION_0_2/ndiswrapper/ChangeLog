@@ -1,0 +1,15 @@
+Version 0.2 2003-12-04
+======================
+
+* New inf file parser.
+* Access point scanning.
+* WEP support.
+* Byte statistics for ifconfig.
+* Kernel 2.4 support.
+* Support for more Broadcom cards (No centrino yet).
+* Tons of bugfixes should improve stability a lot. 
+
+Version 0.1 2003-11-17
+======================
+
+* Initial release.
