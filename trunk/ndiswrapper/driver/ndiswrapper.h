@@ -34,15 +34,7 @@
 
 #include <linux/version.h>
 
-#define MAX_DRIVER_NAME_LEN 32
-#define MAX_NDIS_VERSION_STRING_LEN 64
-#define MAX_NDIS_SETTING_NAME_LEN 128
-#define MAX_NDIS_SETTING_VALUE_LEN 256
-
-#define MAX_PE_IMAGES 4
-#define MAX_NDIS_DEVICES 20
-#define MAX_NDIS_BIN_FILES 5
-#define MAX_NDIS_SETTINGS 256
+#include "loader.h"
 
 #define SSID_MAX_WPA_IE_LEN 40
 #define NDIS_ESSID_MAX_SIZE 32
