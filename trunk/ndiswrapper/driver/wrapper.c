@@ -213,6 +213,9 @@ static void call_halt(struct ndis_handle *handle)
 		handle->shutdown_ctx)
 		handle->driver->miniport_char.adapter_shutdown(handle->shutdown_ctx);
 
+	set_int(handle, NDIS_OID_PNP_SET_POWER, NDIS_PM_STATE_D3);
+	pci_set_power_state(handle->pci_dev, 3);
+
 	handle->driver->miniport_char.halt(handle->adapter_ctx);
 }
 
