@@ -26,18 +26,12 @@ ndis.o:	ndis.c ndis.h
 
 proc.o : proc.c ndis.h
 
-ifdef DBG_REALTEK
-CFLAGS += -DDBG_REALTEK -DDEBUG -g
-
-rt8180.o : rt8180.c
-endif
-
 ifdef DBG_ATHEROS
-CFLAGS += -DDBG_ATHEROS -DDEBUG -g
+CFLAGS += -DDBG_ATHEROS
 endif
 
 ifdef DBG_TI
-CFLAGS += -DDBG_TI -DDEBUG -g
+CFLAGS += -DDBG_TI
 endif
 
 ifdef DBG_REALTEK
