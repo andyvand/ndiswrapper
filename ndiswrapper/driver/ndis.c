@@ -1518,7 +1518,8 @@ NdisMIndicateStatus(struct ndis_handle *handle,
 		struct ndis_status_indication *status =
 			(struct ndis_status_indication *)buf;
 		DBGTRACE2("%s", "media status");
-		if (status->status_type == NDIS_STATUS_AUTHENTICATION) {
+		if (status->status_type ==
+		    Ndis802_11StatusType_Authentication) {
 			struct ndis_auth_req *auth_req;
 			buf = (char *)buf + sizeof(*status);
 			len -= sizeof(*status);
@@ -2005,7 +2006,7 @@ STDCALL void WRAP_EXPORT(NdisInitializeEvent)
 	(struct ndis_event *ndis_event)
 {
 	TRACEENTER3("%p", ndis_event);
-	KeInitializeEvent(&ndis_event->kevent, NOTIFICATION_EVENT, 0);
+	KeInitializeEvent(&ndis_event->kevent, NotificationEvent, 0);
 }
 
 STDCALL BOOLEAN WRAP_EXPORT(NdisWaitEvent)

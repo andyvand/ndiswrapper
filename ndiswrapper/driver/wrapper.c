@@ -137,11 +137,11 @@ int miniport_reset(struct ndis_handle *handle)
  * Perform a sync query and deal with the possibility of an async operation.
  * This function must be called from process context as it will sleep.
  */
-int miniport_query_info_needed(struct ndis_handle *handle, unsigned int oid,
-			       char *buf, unsigned int bufsize,
-			       unsigned int *needed)
+int miniport_query_info_needed(struct ndis_handle *handle, ndis_oid oid,
+			       void *buf, ULONG bufsize, ULONG *needed)
 {
-	unsigned int res, written;
+	unsigned int res;
+	ULONG written;
 	KIRQL irql;
 	struct miniport_char *miniport = &handle->driver->miniport_char;
 
@@ -169,13 +169,13 @@ int miniport_query_info_needed(struct ndis_handle *handle, unsigned int oid,
 	TRACEEXIT3(return res);
 }
 
-int miniport_query_info(struct ndis_handle *handle, unsigned int oid,
-			char *buf, unsigned int bufsize)
+int miniport_query_info(struct ndis_handle *handle, ndis_oid oid,
+			void *buf, ULONG bufsize)
 {
-	unsigned int res, needed;
+	unsigned int res;
+	ULONG needed;
 
-	res = miniport_query_info_needed(handle, oid, buf, bufsize,
-					 &needed);
+	res = miniport_query_info_needed(handle, oid, buf, bufsize, &needed);
 	return res;
 }
 
@@ -184,10 +184,11 @@ int miniport_query_info(struct ndis_handle *handle, unsigned int oid,
  * Perform a sync setinfo and deal with the possibility of an async operation.
  * This function must be called from process context as it will sleep.
  */
-int miniport_set_info(struct ndis_handle *handle, unsigned int oid, char *buf,
-		      unsigned int bufsize)
+int miniport_set_info(struct ndis_handle *handle, ndis_oid oid, void *buf,
+		      ULONG bufsize)
 {
-	unsigned int res, written, needed;
+	unsigned int res;
+	ULONG written, needed;
 	KIRQL irql;
 	struct miniport_char *miniport = &handle->driver->miniport_char;
 
@@ -219,21 +220,21 @@ int miniport_set_info(struct ndis_handle *handle, unsigned int oid, char *buf,
 }
 
 /* Make a query that has an int as the result. */
-int miniport_query_int(struct ndis_handle *handle, int oid, int *data)
+int miniport_query_int(struct ndis_handle *handle, ndis_oid oid, void *data)
 {
 	unsigned int res;
 
-	res = miniport_query_info(handle, oid, (char *)data, sizeof(int));
+	res = miniport_query_info(handle, oid, (char *)data, sizeof(ULONG));
 	if (!res)
 		return 0;
-	*data = 0;
+	*((char *)data) = 0;
 	return res;
 }
 
 /* Set an int */
-int miniport_set_int(struct ndis_handle *handle, int oid, int data)
+int miniport_set_int(struct ndis_handle *handle, ndis_oid oid, ULONG data)
 {
-	return miniport_set_info(handle, oid, (char *)&data, sizeof(int));
+	return miniport_set_info(handle, oid, (char *)&data, sizeof(data));
 }
 
 #ifdef HAVE_ETHTOOL
@@ -255,7 +256,7 @@ int miniport_init(struct ndis_handle *handle)
 {
 	NDIS_STATUS status;
 	UINT medium_index, res;
-	UINT medium_array[] = {NDIS_MEDIUM_802_3};
+	UINT medium_array[] = {NdisMedium802_3};
 	struct miniport_char *miniport = &handle->driver->miniport_char;
 
 	TRACEENTER1("driver init routine is at %p", miniport->init);
@@ -279,7 +280,7 @@ void miniport_halt(struct ndis_handle *handle)
 	struct miniport_char *miniport = &handle->driver->miniport_char;
 	TRACEENTER1("driver halt is at %p", miniport->halt);
 
-	miniport_set_int(handle, NDIS_OID_PNP_SET_POWER, NDIS_PM_STATE_D3);
+	miniport_set_int(handle, OID_PNP_SET_POWER, NdisDeviceStateD3);
 
 	LIN2WIN1(miniport->halt, handle->adapter_ctx);
 
@@ -470,7 +471,8 @@ static struct ndis_packet *alloc_packet(struct ndis_handle *handle,
 		packet->sg_element.address.quad = packet->dataphys;
 		packet->sg_element.len = buffer->len;
 		packet->sg_list.elements = &packet->sg_element;
-		packet->extension.info[NDIS_SCLIST_INFO] = &packet->sg_list;
+		packet->extension.info[ScatterGatherListPacketInfo] =
+			&packet->sg_list;
 	}
 
 	packet->private.oob_offset = offsetof(struct ndis_packet, oob_tx);
@@ -709,10 +711,10 @@ int ndiswrapper_suspend_pci(struct pci_dev *pdev, u32 state)
 	} else {
 		int i;
 		/* some drivers don't support D2, so force D3 */
-		pm_state = NDIS_PM_STATE_D3;
+		pm_state = NdisDeviceStateD3;
 		/* use copy; query_power changes this value */
 		i = pm_state;
-		res = miniport_query_int(handle, NDIS_OID_PNP_QUERY_POWER, &i);
+		res = miniport_query_int(handle, OID_PNP_QUERY_POWER, &i);
 		DBGTRACE2("%s: query power to state %d returns %08X",
 			  dev->name, pm_state, res);
 		if (res) {
@@ -721,7 +723,7 @@ int ndiswrapper_suspend_pci(struct pci_dev *pdev, u32 state)
 			miniport_halt(handle);
 			set_bit(HW_HALTED, &handle->hw_status);
 		} else {
-			res = miniport_set_int(handle, NDIS_OID_PNP_SET_POWER,
+			res = miniport_set_int(handle, OID_PNP_SET_POWER,
 					       pm_state);
 			DBGTRACE2("suspending returns %08X", res);
 			set_bit(HW_SUSPENDED, &handle->hw_status);
@@ -796,7 +798,7 @@ void ndiswrapper_remove_one_dev(struct ndis_handle *handle)
 	}
 	wrap_spin_unlock(&handle->xmit_ring_lock);
 
-	miniport_set_int(handle, NDIS_OID_DISASSOCIATE, 0);
+	miniport_set_int(handle, OID_802_11_DISASSOCIATE, 0);
 
 	DBGTRACE("");
 	if (handle->net_dev)
@@ -811,7 +813,7 @@ void ndiswrapper_remove_one_dev(struct ndis_handle *handle)
 	if (test_bit(ATTR_SURPRISE_REMOVE, &handle->attributes) &&
 	    miniport->pnp_event_notify) {
 		LIN2WIN4(miniport->pnp_event_notify, handle->adapter_ctx,
-			 NDIS_PNP_SURPRISE_REMOVED, NULL, 0);
+			 NdisDevicePnPEventSurpriseRemoved, NULL, 0);
 	}
 
 	DBGTRACE1("halting device %s", handle->driver->name);
@@ -844,8 +846,8 @@ static void link_status_handler(struct ndis_handle *handle)
 
 	DBGTRACE2("link status: %d", handle->link_status);
 	if (handle->link_status == 0) {
-		if (handle->encr_mode == ENCR1_ENABLED ||
-		    handle->op_mode == NDIS_MODE_ADHOC) {
+		if (handle->encr_mode == Ndis802_11Encryption1Enabled ||
+		    handle->infrastructure_mode == Ndis802_11IBSS) {
 			for (i = 0; i < MAX_ENCR_KEYS; i++) {
 				if (encr_info->keys[i].length == 0)
 					continue;
@@ -889,8 +891,8 @@ static void link_status_handler(struct ndis_handle *handle)
 		ndis_assoc_info->req_ie_length;
 	ndis_assoc_info->resp_ie_length = IW_CUSTOM_MAX / 2;
 
-	res = miniport_query_info(handle, NDIS_OID_ASSOC_INFO, assoc_info,
-				  assoc_size);
+	res = miniport_query_info(handle, OID_802_11_ASSOCIATION_INFORMATION,
+				  assoc_info, assoc_size);
 	if (res) {
 		DBGTRACE2("query assoc_info failed (%08X)", res);
 		kfree(assoc_info);
@@ -973,7 +975,7 @@ static void set_packet_filter(struct ndis_handle *handle)
 		set_multicast_list(dev, handle);
 	}
 
-	res = miniport_set_info(handle, NDIS_OID_PACKET_FILTER,
+	res = miniport_set_info(handle, OID_GEN_CURRENT_PACKET_FILTER,
 				(char *)&packet_filter, sizeof(packet_filter));
 	if (res && res != NDIS_STATUS_NOT_SUPPORTED)
 		ERROR("Unable to set packet filter (%08X)", res);
@@ -984,17 +986,17 @@ static void update_wireless_stats(struct ndis_handle *handle)
 {
 	struct iw_statistics *iw_stats = &handle->wireless_stats;
 	struct ndis_wireless_stats ndis_stats;
-	long rssi;
+	ndis_rssi rssi;
 	unsigned int res;
 
 	if (handle->reset_status)
 		return;
-	res = miniport_query_info(handle, NDIS_OID_RSSI, (char *)&rssi,
+	res = miniport_query_info(handle, OID_802_11_RSSI, (char *)&rssi,
 				  sizeof(rssi));
 	iw_stats->qual.level = rssi;
 
 	memset(&ndis_stats, 0, sizeof(ndis_stats));
-	res = miniport_query_info(handle, NDIS_OID_STATISTICS,
+	res = miniport_query_info(handle, OID_802_11_STATISTICS,
 				  (char *)&ndis_stats, sizeof(ndis_stats));
 	if (res == NDIS_STATUS_NOT_SUPPORTED)
 		iw_stats->qual.qual = ((rssi & 0x7F) * 100) / 154;
@@ -1034,8 +1036,8 @@ static void wrapper_worker_proc(void *param)
 	if (test_bit(SHUTDOWN, &handle->wrapper_work))
 		TRACEEXIT3(return);
 
-	if (test_and_clear_bit(SET_OP_MODE, &handle->wrapper_work))
-		set_mode(handle, handle->op_mode);
+	if (test_and_clear_bit(SET_INFRA_MODE, &handle->wrapper_work))
+		set_infra_mode(handle, handle->infrastructure_mode);
 
 	if (test_and_clear_bit(WRAPPER_LINK_STATUS, &handle->wrapper_work))
 		link_status_handler(handle);
@@ -1059,11 +1061,11 @@ static void wrapper_worker_proc(void *param)
 				ERROR("initialization failed: %08X", res);
 			clear_bit(HW_HALTED, &handle->hw_status);
 		} else {
-			res = miniport_set_int(handle, NDIS_OID_PNP_SET_POWER,
-					       NDIS_PM_STATE_D0);
+			res = miniport_set_int(handle, OID_PNP_SET_POWER,
+					       NdisDeviceStateD0);
 			clear_bit(HW_SUSPENDED, &handle->hw_status);
 			DBGTRACE2("%s: setting power to state %d returns %d",
-				  net_dev->name, NDIS_PM_STATE_D0, res);
+				  net_dev->name, NdisDeviceStateD0, res);
 			if (res)
 				WARNING("No pnp capabilities for pm (%08X)",
 					res);
@@ -1082,7 +1084,8 @@ static void wrapper_worker_proc(void *param)
 		if (!res) {
 			hangcheck_add(handle);
 			stats_timer_add(handle);
-			miniport_set_int(handle, NDIS_OID_BSSID_LIST_SCAN, 0);
+			miniport_set_int(handle, OID_802_11_BSSID_LIST_SCAN,
+					 0);
 			set_bit(SET_ESSID, &handle->wrapper_work);
 			schedule_work(&handle->wrapper_worker);
 
@@ -1108,61 +1111,63 @@ static void check_capa(struct ndis_handle *handle)
 	TRACEENTER1("%s", "");
 
 	/* check if WEP is supported */
-	if (set_encr_mode(handle, ENCR1_ENABLED) ||
-	    miniport_query_int(handle, NDIS_OID_ENCR_STATUS, &i))
+	if (set_encr_mode(handle, Ndis802_11Encryption1Enabled) ||
+	    miniport_query_int(handle, OID_802_11_ENCRYPTION_STATUS, &i))
 		;
 	else
 		set_bit(CAPA_WEP, &handle->capa);
 
 	/* check if WPA is supported */
-	set_encr_mode(handle, ENCR_DISABLED);
+	set_encr_mode(handle, Ndis802_11EncryptionDisabled);
 	DBGTRACE2("%s", "");
-	if (set_auth_mode(handle, AUTHMODE_WPA) ||
-	    miniport_query_int(handle, NDIS_OID_AUTH_MODE, &i) ||
-	    i != AUTHMODE_WPA)
+	if (set_auth_mode(handle, Ndis802_11AuthModeWPA) ||
+	    miniport_query_int(handle, OID_802_11_AUTHENTICATION_MODE, &i) ||
+	    i != Ndis802_11AuthModeWPA)
 		TRACEEXIT1(return);
 
 	/* check for highest encryption */
-	for (mode = ENCR3_ENABLED; mode != ENCR_DISABLED; ) {
+	for (mode = Ndis802_11Encryption3Enabled;
+	     mode != Ndis802_11EncryptionDisabled; ) {
 		DBGTRACE1("checking encryption mode %d", mode);
 		if (set_encr_mode(handle, mode) ||
-		    miniport_query_int(handle, NDIS_OID_ENCR_STATUS, &i))
-			i = ENCR_DISABLED;
+		    miniport_query_int(handle, OID_802_11_ENCRYPTION_STATUS,
+				       &i))
+			i = Ndis802_11EncryptionDisabled;
 
-		if (mode == ENCR3_ENABLED) {
-			if (i == mode || i == ENCR3_ABSENT)
+		if (mode == Ndis802_11Encryption3Enabled) {
+			if (i == mode || i == Ndis802_11Encryption3KeyAbsent)
 				break;
 			else
-				mode = ENCR2_ENABLED;
-		} else if (mode == ENCR2_ENABLED) {
-			if (i == mode || i == ENCR2_ABSENT)
+				mode = Ndis802_11Encryption2Enabled;
+		} else if (mode == Ndis802_11Encryption2Enabled) {
+			if (i == mode || i == Ndis802_11Encryption2KeyAbsent)
 				break;
 			else
-				mode = ENCR1_ENABLED;
+				mode =Ndis802_11Encryption1Enabled;
 		} else
-			mode = ENCR_DISABLED;
+			mode = Ndis802_11EncryptionDisabled;
 	}
 	DBGTRACE1("highest encryption mode supported = %d", mode);
 	set_encr_mode(handle, mode);
 
-	if (mode == ENCR_DISABLED)
+	if (mode == Ndis802_11EncryptionDisabled)
 		TRACEEXIT1(return);
 
 	set_bit(CAPA_WEP, &handle->capa);
-	if (mode == ENCR1_ENABLED)
+	if (mode == Ndis802_11Encryption1Enabled)
 		TRACEEXIT1(return);
 
 	ndis_key.length = 32;
 	ndis_key.index = 0xC0000001;
 	ndis_key.struct_size = sizeof(ndis_key);
-	res = miniport_set_info(handle, NDIS_OID_ADD_KEY, (char *)&ndis_key,
+	res = miniport_set_info(handle, OID_802_11_ADD_KEY, (char *)&ndis_key,
 				ndis_key.struct_size);
 
 	DBGTRACE2("add key returns %08X, size = %ld\n",
 		 res, (unsigned long)sizeof(ndis_key));
 	if (res != NDIS_STATUS_INVALID_DATA)
 		TRACEEXIT1(return);
-	res = miniport_query_info(handle, NDIS_OID_ASSOC_INFO,
+	res = miniport_query_info(handle, OID_802_11_ASSOCIATION_INFORMATION,
 				  (char *)&ndis_assoc_info,
 				  sizeof(ndis_assoc_info));
 	DBGTRACE2("assoc info returns %d", res);
@@ -1170,7 +1175,7 @@ static void check_capa(struct ndis_handle *handle)
 		TRACEEXIT1(return);
 
 	set_bit(CAPA_WPA, &handle->capa);
-	if (mode == ENCR3_ENABLED)
+	if (mode == Ndis802_11Encryption3Enabled)
 		set_bit(CAPA_AES, &handle->capa);
 	set_bit(CAPA_TKIP, &handle->capa);
 
@@ -1287,7 +1292,7 @@ int setup_dev(struct net_device *dev)
 
 	memset(&wrqu, 0, sizeof(wrqu));
 
-	set_mode(handle, NDIS_MODE_INFRA);
+	set_infra_mode(handle, Ndis802_11Infrastructure);
 	set_essid(handle, "", 0);
 
 	res = miniport_query_int(handle, OID_802_3_MAXIMUM_LIST_SIZE, &i);
@@ -1301,7 +1306,7 @@ int setup_dev(struct net_device *dev)
 			kmalloc(handle->multicast_list_size * ETH_ALEN,
 				GFP_KERNEL);
 
-	if (set_privacy_filter(handle, NDIS_PRIV_ACCEPT_ALL))
+	if (set_privacy_filter(handle, Ndis802_11PrivFilterAcceptAll))
 		WARNING("%s", "Unable to set privacy filter");
 
 	ndis_set_rx_mode(dev);
@@ -1344,12 +1349,12 @@ int setup_dev(struct net_device *dev)
 	       test_bit(CAPA_AES, &handle->capa) ? ", WPA with AES/CCMP" : "");
 
 	/* check_capa changes auth_mode and encr_mode, so set them again */
-	set_mode(handle, NDIS_MODE_INFRA);
-	set_auth_mode(handle, AUTHMODE_OPEN);
-	set_encr_mode(handle, ENCR_DISABLED);
+	set_infra_mode(handle, Ndis802_11Infrastructure);
+	set_auth_mode(handle, Ndis802_11AuthModeOpen);
+	set_encr_mode(handle, Ndis802_11EncryptionDisabled);
 
 	/* some cards (e.g., RaLink) need a scan before they can associate */
-	miniport_set_int(handle, NDIS_OID_BSSID_LIST_SCAN, 0);
+	miniport_set_int(handle, OID_802_11_BSSID_LIST_SCAN, 0);
 
 	hangcheck_add(handle);
 	stats_timer_add(handle);
@@ -1402,8 +1407,8 @@ struct net_device *ndis_init_netdev(struct ndis_handle **phandle,
 
 	wrap_spin_lock_init(&handle->send_packet_done_lock);
 
-	handle->encr_mode = ENCR_DISABLED;
-	handle->auth_mode = AUTHMODE_OPEN;
+	handle->encr_mode = Ndis802_11EncryptionDisabled;
+	handle->auth_mode = Ndis802_11AuthModeOpen;
 	handle->capa = 0;
 	handle->attributes = 0;
 
@@ -1414,7 +1419,8 @@ struct net_device *ndis_init_netdev(struct ndis_handle **phandle,
 
 	handle->rx_packet = &X86_64_STUB(NdisMIndicateReceivePacket);
 	handle->send_complete = &X86_64_STUB(NdisMSendComplete);
-	handle->send_resource_avail = &X86_64_STUB(NdisMSendResourcesAvailable);
+	handle->send_resource_avail =
+		&X86_64_STUB(NdisMSendResourcesAvailable);
 	handle->status = &X86_64_STUB(NdisMIndicateStatus);
 	handle->status_complete = &X86_64_STUB(NdisMIndicateStatusComplete);
 	handle->query_complete = &X86_64_STUB(NdisMQueryInformationComplete);
@@ -1437,7 +1443,7 @@ struct net_device *ndis_init_netdev(struct ndis_handle **phandle,
 	memset(&handle->essid, 0, sizeof(handle->essid));
 	memset(&handle->encr_info, 0, sizeof(handle->encr_info));
 
-	handle->op_mode = IW_MODE_INFRA;
+	handle->infrastructure_mode = Ndis802_11Infrastructure;
 
 	INIT_WORK(&handle->wrapper_worker, wrapper_worker_proc, handle);
 

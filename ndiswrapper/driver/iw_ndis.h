@@ -19,17 +19,17 @@
 
 struct ndis_add_key {
 	ULONG struct_size;
-	ULONG index;
+	ndis_key_index index;
 	ULONG length;
 	mac_address bssid;
 	UCHAR pad[6];
-	ULONGLONG rsc;
+	ndis_key_rsc rsc;
 	UCHAR key[NDIS_ENCODING_TOKEN_MAX];
 };
 
 struct ndis_remove_key {
 	ULONG struct_size;
-	ULONG index;
+	ndis_key_index index;
 	mac_address bssid;
 };
 
@@ -88,7 +88,7 @@ struct ndis_ssid_item {
 	UINT net_type;
 	struct ndis_configuration config;
 	UINT mode;
-	UCHAR rates[NDIS_MAX_RATES_EX];
+	ndis_rates rates;
 	ULONG ie_length;
 	UCHAR ies[1];
 };
@@ -99,8 +99,8 @@ struct ndis_bssid_list {
 };
 
 enum ndis_priv_filter {
-	NDIS_PRIV_ACCEPT_ALL,
-	NDIS_PRIV_WEP,
+	Ndis802_11PrivFilterAcceptAll,
+	Ndis802_11PrivFilter8021xWEP
 };
 
 enum ndis_power {
@@ -110,13 +110,8 @@ enum ndis_power {
 };
 
 enum ndis_power_profile {
-	NDIS_POWER_PROFILE_BATTERY,
-	NDIS_POWER_PROFILE_AC,
-};
-
-enum ndis_status_type {
-	NDIS_STATUS_AUTHENTICATION,
-	NDIS_STATUS_MAX,
+	NdisPowerProfileBattery,
+	NdisPowerProfileAcOnLine
 };
 
 struct ndis_status_indication
@@ -134,7 +129,8 @@ int add_wep_key(struct ndis_handle *handle, char *key, int key_len, int index);
 extern const struct iw_handler_def ndis_handler_def;
 
 int set_essid(struct ndis_handle *handle, const char *ssid, int ssid_len);
-int set_mode(struct ndis_handle *handle, enum op_mode mode);
+int set_infra_mode(struct ndis_handle *handle,
+		   enum network_infrastructure mode);
 int get_ap_address(struct ndis_handle *handle, mac_address mac);
 int set_auth_mode(struct ndis_handle *handle, int auth_mode);
 int set_encr_mode(struct ndis_handle *handle, int encr_mode);
@@ -144,11 +140,11 @@ int set_privacy_filter(struct ndis_handle *handle, int flags);
 /* WPA support */
 
 enum capa_list {
-	CAPA_ENCR1 = ENCR1_ENABLED,
-	CAPA_WEP = ENCR1_ENABLED,
-	CAPA_ENCR_NONE = ENCR_DISABLED,
-	CAPA_TKIP = ENCR2_ENABLED,
-	CAPA_AES = ENCR3_ENABLED,
+	CAPA_ENCR1 = Ndis802_11Encryption1Enabled,
+	CAPA_WEP = Ndis802_11Encryption1Enabled,
+	CAPA_ENCR_NONE = Ndis802_11EncryptionDisabled,
+	CAPA_TKIP = Ndis802_11Encryption2Enabled,
+	CAPA_AES = Ndis802_11Encryption3Enabled,
 	CAPA_WPA,
 };
 

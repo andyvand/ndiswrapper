@@ -192,7 +192,7 @@ static int ndiswrapper_add_one_pci_dev(struct pci_dev *pdev,
 	handle->wrapper_work = 0;
 
 	/* do we need to power up the card explicitly? */
-	miniport_set_int(handle, NDIS_OID_PNP_SET_POWER, NDIS_PM_STATE_D0);
+	miniport_set_int(handle, OID_PNP_SET_POWER, NdisDeviceStateD0);
 	miniport = &handle->driver->miniport_char;
 	/* According NDIS, pnp_event_notify should be called whenever power
 	 * is set to D0
@@ -313,7 +313,7 @@ static void *ndiswrapper_add_one_usb_dev(struct usb_device *udev,
 	handle->wrapper_work = 0;
 
 	/* do we need to power up the card explicitly? */
-	miniport_set_int(handle, NDIS_OID_PNP_SET_POWER, NDIS_PM_STATE_D0);
+	miniport_set_int(handle, OID_PNP_SET_POWER, NdisDeviceStateD0);
 	miniport = &handle->driver->miniport_char;
 	/*
 	if (miniport->pnp_event_notify) {

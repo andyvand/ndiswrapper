@@ -386,7 +386,7 @@ STDCALL int WRAP_EXPORT(IoIsWdmVersionAvailable)
 }
 
 STDCALL void WRAP_EXPORT(KeInitializeEvent)
-	(struct kevent *kevent, KEVENT_TYPE type, BOOLEAN state)
+	(struct kevent *kevent, enum event_type type, BOOLEAN state)
 {
 	TRACEENTER3("event = %p, type = %d, state = %d",
 		    kevent, type, state);
@@ -411,7 +411,7 @@ STDCALL LONG WRAP_EXPORT(KeSetEvent)
 	kevent->header.signal_state = TRUE;
 	kevent->header.absolute = TRUE;
 	global_signal_state = TRUE;
-	if (kevent->header.type == SYNCHRONIZATION_EVENT)
+	if (kevent->header.type == SynchronizationEvent)
 		wake_up_nr(&dispatch_event_wq, 1);
 	else
 		wake_up_all(&dispatch_event_wq);
@@ -472,7 +472,7 @@ STDCALL NT_STATUS WRAP_EXPORT(KeWaitForSingleObject)
 			TRACEEXIT1(return STATUS_SUCCESS);
 		}
 	} else if (header->signal_state == TRUE) {
-		if (header->type == SYNCHRONIZATION_EVENT)
+		if (header->type == SynchronizationEvent)
 			header->signal_state = FALSE;
  		TRACEEXIT3(return STATUS_SUCCESS);
 	}
@@ -534,7 +534,7 @@ STDCALL NT_STATUS WRAP_EXPORT(KeWaitForSingleObject)
 			kmutex->u.count++;
 		}
 	}
-	if (header->type == SYNCHRONIZATION_EVENT)
+	if (header->type == SynchronizationEvent)
 		header->signal_state = FALSE;
 
 	TRACEEXIT2(return STATUS_SUCCESS);
@@ -580,13 +580,13 @@ STDCALL NT_STATUS WRAP_EXPORT(KeWaitForMultipleObjects)
 				kmutex->dispatch_header.signal_state = FALSE;
 				kmutex->u.count++;
 				kmutex->owner_thread = get_current();
-				if (wait_type == WAIT_ANY)
+				if (wait_type == WaitAny)
 					return STATUS_WAIT_0 + i;
 			}
 		} else if (kevent->header.signal_state == TRUE) {
-			if (kevent->header.type == SYNCHRONIZATION_EVENT)
+			if (kevent->header.type == SynchronizationEvent)
 				kevent->header.signal_state = FALSE;
-			if (wait_type == WAIT_ANY)
+			if (wait_type == WaitAny)
 				return STATUS_WAIT_0 + i;
 		}
 		if (kevent->header.signal_state == FALSE)
@@ -651,7 +651,7 @@ STDCALL NT_STATUS WRAP_EXPORT(KeWaitForMultipleObjects)
 		wrap_spin_unlock(&dispatch_event_lock);
 		if (res > 0)
 			wait_jiffies = res;
-		if (wait_type == WAIT_ANY)
+		if (wait_type == WaitAny)
 			break;
 	}
 
@@ -662,7 +662,7 @@ STDCALL NT_STATUS WRAP_EXPORT(KeWaitForMultipleObjects)
 		TRACEEXIT2(return STATUS_TIMEOUT);
 
 	/* res > 0 */
-	if (wait_type == WAIT_ANY && wait_count > 0)
+	if (wait_type == WaitAny && wait_count > 0)
 		return STATUS_WAIT_0 + sat_index;
 
 	TRACEEXIT2(return STATUS_SUCCESS);
@@ -1178,7 +1178,7 @@ STDCALL NT_STATUS WRAP_EXPORT(IoGetDeviceProperty)
 		buffer_len, buffer, result_len);
 
 	switch (dev_property) {
-	case DEVPROP_DEVICE_DESCRIPTION:
+	case DevicePropertyDeviceDescription:
 		if (buffer_len > 0 && buffer) {
 			*result_len = 4;
 			memset(buffer, 0xFF, *result_len);
@@ -1189,7 +1189,7 @@ STDCALL NT_STATUS WRAP_EXPORT(IoGetDeviceProperty)
 		}
 		break;
 
-	case DEVPROP_FRIENDLYNAME:
+	case DevicePropertyFriendlyName:
 		if (buffer_len > 0 && buffer) {
 			ansi.len = snprintf(buf, sizeof(buf), "%d",
 					    handle->dev.usb->devnum);
@@ -1219,7 +1219,7 @@ STDCALL NT_STATUS WRAP_EXPORT(IoGetDeviceProperty)
 		}
 		break;
 
-	case DEVPROP_DRIVER_KEYNAME:
+	case DevicePropertyDriverKeyName:
 //		ansi.buf = handle->driver->name;
 		ansi.buf = buf;
 		ansi.len = strlen(ansi.buf);
@@ -1269,6 +1269,14 @@ STDCALL void WRAP_EXPORT(MmBuildMdlForNonPagedPool)
 	return;
 }
 
+STDCALL void *WRAP_EXPORT(MmMapLockedPagesSpecifyCache)
+	(struct mdl *mdl, KPROCESSOR_MODE mode,
+	 enum memory_caching_type cache_type, void *base_address,
+	 ULONG bug_check, enum mm_page_priority priority)
+{
+	return (void *)(((char *)mdl->startva) + mdl->byteoffset);
+}
+
 STDCALL void WRAP_EXPORT(KeInitializeMutex)
 	(struct kmutex *mutex, BOOLEAN wait)
 {
@@ -1276,7 +1284,7 @@ STDCALL void WRAP_EXPORT(KeInitializeMutex)
 	mutex->abandoned = FALSE;
 	mutex->apc_disable = 1;
 	mutex->dispatch_header.signal_state = TRUE;
-	mutex->dispatch_header.type = SYNCHRONIZATION_EVENT;
+	mutex->dispatch_header.type = SynchronizationEvent;
 	mutex->dispatch_header.size = NT_OBJ_MUTEX;
 	mutex->u.count = 0;
 	mutex->owner_thread = NULL;
@@ -1340,7 +1348,6 @@ STDCALL void WRAP_EXPORT(IoCreateSymbolicLink)(void){UNIMPL();}
 STDCALL void WRAP_EXPORT(MmMapLockedPages)(void){UNIMPL();}
 STDCALL void WRAP_EXPORT(IoCreateDevice)(void){UNIMPL();}
 STDCALL void WRAP_EXPORT(IoDeleteSymbolicLink)(void){UNIMPL();}
-STDCALL void WRAP_EXPORT(MmMapLockedPagesSpecifyCache)(void){UNIMPL();}
 STDCALL void WRAP_EXPORT(MmProbeAndLockPages)(void){UNIMPL();}
 STDCALL void WRAP_EXPORT(MmUnlockPages)(void){UNIMPL();}
 STDCALL void WRAP_EXPORT(ObfReferenceObject)(void){UNIMPL();}

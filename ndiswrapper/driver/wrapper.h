@@ -19,15 +19,14 @@
 #include "ndis.h"
 
 int miniport_reset(struct ndis_handle *handle);
-int miniport_query_info(struct ndis_handle *handle, unsigned int oid,
-			char *buf, unsigned int bufsize);
-int miniport_query_info_needed(struct ndis_handle *handle, unsigned int oid,
-			       char *buf, unsigned int bufsize,
-			       unsigned int *needed);
-int miniport_set_info(struct ndis_handle *handle, unsigned int oid,
-		      char *buf, unsigned int bufsize);
-int miniport_query_int(struct ndis_handle *handle, int oid, int *data);
-int miniport_set_int(struct ndis_handle *handle, int oid, int data);
+int miniport_query_info_needed(struct ndis_handle *handle, ndis_oid oid,
+			       void *buf, ULONG bufsize, ULONG *needed);
+int miniport_query_info(struct ndis_handle *handle, ndis_oid oid,
+			void *buf, ULONG bufsize);
+int miniport_set_info(struct ndis_handle *handle, ndis_oid oid, void *buf,
+		      ULONG bufsize);
+int miniport_query_int(struct ndis_handle *handle, ndis_oid oid, void *data);
+int miniport_set_int(struct ndis_handle *handle, ndis_oid oid, ULONG data);
 int miniport_init(struct ndis_handle *handle);
 void miniport_halt(struct ndis_handle *handle);
 void hangcheck_add(struct ndis_handle *handle);

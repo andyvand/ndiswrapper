@@ -39,12 +39,12 @@ static int procfs_read_stats(char *page, char **start, off_t off,
 		return 0;
 	}
 
-	res = miniport_query_info(handle, NDIS_OID_RSSI, (char *)&rssi,
+	res = miniport_query_info(handle, OID_802_11_RSSI, (char *)&rssi,
 				  sizeof(rssi));
 	if (!res)
 		p += sprintf(p, "signal_level=%ld dBm\n", rssi);
 
-	res = miniport_query_info(handle, NDIS_OID_STATISTICS, (char *)&stats,
+	res = miniport_query_info(handle, OID_802_11_STATISTICS, (char *)&stats,
 				  sizeof(stats));
 	if (!res) {
 
@@ -88,7 +88,7 @@ static int procfs_read_encr(char *page, char **start, off_t off,
 		return 0;
 	}
 
-	res = miniport_query_info(handle, NDIS_OID_BSSID, (char *)&ap_address,
+	res = miniport_query_info(handle, OID_802_11_BSSID, (char *)&ap_address,
 				  sizeof(ap_address));
 	if (res)
 		memset(ap_address, 0, ETH_ALEN);
@@ -97,15 +97,17 @@ static int procfs_read_encr(char *page, char **start, off_t off,
 		p += sprintf(p, ":%2.2X", ap_address[i]);
 	p += sprintf(p, "\n");
 
-	res = miniport_query_info(handle, NDIS_OID_ESSID, (char *)&essid,
+	res = miniport_query_info(handle, OID_802_11_SSID, (char *)&essid,
 				  sizeof(essid));
 	if (!res) {
 		essid.essid[essid.length] = '\0';
 		p += sprintf(p, "essid=%s\n", essid.essid);
 	}
 
-	res = miniport_query_int(handle, NDIS_OID_ENCR_STATUS, &encr_status);
-	res |= miniport_query_int(handle, NDIS_OID_AUTH_MODE, &auth_mode);
+	res = miniport_query_int(handle, OID_802_11_ENCRYPTION_STATUS,
+				 &encr_status);
+	res |= miniport_query_int(handle, OID_802_11_AUTHENTICATION_MODE,
+				  &auth_mode);
 
 	if (!res) {
 		int active = handle->encr_info.active;
@@ -125,9 +127,10 @@ static int procfs_read_encr(char *page, char **start, off_t off,
 		p += sprintf(p, "auth_mode=%d\n", auth_mode);
 	}
 
-	res = miniport_query_int(handle, NDIS_OID_MODE, &op_mode);
-	p += sprintf(p, "mode=%s\n", (op_mode == NDIS_MODE_ADHOC) ?
-		     "adhoc" : (op_mode == NDIS_MODE_INFRA) ?
+	res = miniport_query_int(handle, OID_802_11_INFRASTRUCTURE_MODE,
+				 &op_mode);
+	p += sprintf(p, "mode=%s\n", (op_mode == Ndis802_11IBSS) ?
+		     "adhoc" : (op_mode == Ndis802_11Infrastructure) ?
 		     "managed" : "auto");
 	if (p - page > count) {
 		WARNING("wrote %lu bytes (limit is %u)",
@@ -145,15 +148,18 @@ static int procfs_read_hw(char *page, char **start, off_t off,
 	struct ndis_handle *handle = (struct ndis_handle *)data;
 	struct ndis_configuration config;
 	unsigned int res, power_mode;
-	unsigned long tx_power, bit_rate, rts_threshold, frag_threshold;
-	unsigned long antenna;
+	ndis_tx_power_level tx_power;
+	unsigned long bit_rate;
+	ndis_rts_threshold rts_threshold;
+	ndis_fragmentation_threshold frag_threshold;
+	ndis_antenna antenna;
 
 	if (off != 0) {
 		*eof = 1;
 		return 0;
 	}
 
-	res = miniport_query_info(handle, NDIS_OID_CONFIGURATION,
+	res = miniport_query_info(handle, OID_802_11_CONFIGURATION,
 				  (char *)&config, sizeof(config));
 	if (!res) {
 		p += sprintf(p, "beacon_period=%u msec\n",
@@ -168,29 +174,29 @@ static int procfs_read_hw(char *page, char **start, off_t off,
 			     config.fh_config.dwell_time);
 	}
 
-	res = miniport_query_info(handle, NDIS_OID_TX_POWER_LEVEL,
+	res = miniport_query_info(handle, OID_802_11_TX_POWER_LEVEL,
 				  (char *)&tx_power, sizeof(tx_power));
 	if (!res)
-		p += sprintf(p, "tx_power=%lu mW\n", tx_power);
+		p += sprintf(p, "tx_power=%u mW\n", tx_power);
 
-	res = miniport_query_info(handle, NDIS_OID_GEN_SPEED,
+	res = miniport_query_info(handle, OID_GEN_LINK_SPEED,
 				  (char *)&bit_rate, sizeof(bit_rate));
 	if (!res)
 		p += sprintf(p, "bit_rate=%lu kBps\n", bit_rate / 10);
 
-	res = miniport_query_info(handle, NDIS_OID_RTS_THRESH,
+	res = miniport_query_info(handle, OID_802_11_RTS_THRESHOLD,
 				  (char *)&rts_threshold,
 				  sizeof(rts_threshold));
 	if (!res)
-		p += sprintf(p, "rts_threshold=%lu bytes\n", rts_threshold);
+		p += sprintf(p, "rts_threshold=%u bytes\n", rts_threshold);
 
-	res = miniport_query_info(handle, NDIS_OID_FRAG_THRESH,
+	res = miniport_query_info(handle, OID_802_11_FRAGMENTATION_THRESHOLD,
 				  (char *)&frag_threshold,
 				  sizeof(frag_threshold));
 	if (!res)
-		p += sprintf(p, "frag_threshold=%lu bytes\n", frag_threshold);
+		p += sprintf(p, "frag_threshold=%u bytes\n", frag_threshold);
 
-	res = miniport_query_int(handle, NDIS_OID_POWER_MODE, &power_mode);
+	res = miniport_query_int(handle, OID_802_11_POWER_MODE, &power_mode);
 	if (!res)
 		p += sprintf(p, "power_mode=%s\n",
 			     (power_mode == NDIS_POWER_OFF) ?
@@ -198,23 +204,20 @@ static int procfs_read_hw(char *page, char **start, off_t off,
 			     (power_mode == NDIS_POWER_MAX) ?
 			     "max_savings" : "min_savings");
 
-	res = miniport_query_info(handle, NDIS_OID_NUM_ANTENNA,
+	res = miniport_query_info(handle, OID_802_11_NUMBER_OF_ANTENNAS,
 				  (char *)&antenna, sizeof(antenna));
 	if (!res)
-		p += sprintf(p, "num_antennas=%lu\n",
-			     antenna);
+		p += sprintf(p, "num_antennas=%u\n", antenna);
 
-	res = miniport_query_info(handle, NDIS_OID_TX_ANTENNA,
+	res = miniport_query_info(handle, OID_802_11_TX_ANTENNA_SELECTED,
 				  (char *)&antenna, sizeof(antenna));
 	if (!res)
-		p += sprintf(p, "tx_antenna=%lu\n",
-			     antenna);
+		p += sprintf(p, "tx_antenna=%u\n", antenna);
 
-	res = miniport_query_info(handle, NDIS_OID_RX_ANTENNA,
+	res = miniport_query_info(handle, OID_802_11_RX_ANTENNA_SELECTED,
 				  (char *)&antenna, sizeof(antenna));
 	if (!res)
-		p += sprintf(p, "rx_antenna=%lu\n",
-			     antenna);
+		p += sprintf(p, "rx_antenna=%u\n", antenna);
 
 	if (p - page > count) {
 		WARNING("wrote %lu bytes (limit is %u)",
@@ -311,12 +314,12 @@ static int procfs_write_settings(struct file *file, const char *buf,
 
 		/* 1 for AC and 0 for Battery */
 		if (i)
-			profile_inf = NDIS_POWER_PROFILE_AC;
+			profile_inf = NdisPowerProfileAcOnLine;
 		else
-			profile_inf = NDIS_POWER_PROFILE_BATTERY;
+			profile_inf = NdisPowerProfileBattery;
 		
 		miniport->pnp_event_notify(handle->adapter_ctx,
-					   NDIS_PNP_PROFILE_CHANGED,
+					   NdisDevicePnPEventPowerProfileChanged,
 					   &profile_inf, sizeof(profile_inf));
 	} else if (!strcmp(setting, "auth_mode")) {
 		int i;
