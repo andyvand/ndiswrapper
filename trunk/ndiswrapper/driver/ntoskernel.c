@@ -108,8 +108,9 @@ STDCALL void WRAP_EXPORT(KeInitializeSpinLock)
 	(KSPIN_LOCK *lock)
 {
 	if (sizeof(lock) > sizeof(lock->ntoslock)) {
-		ERROR("spinlock used is not compatible with "
-		      "KSPIN_LOCK: %u, %u", (unsigned int)sizeof(lock),
+		ERROR("spinlock used is not compatible with KSPIN_LOCK; "
+		      "is CONFIG_DEBUG_SPINLOCK disabled? %u, %u",
+		      (unsigned int)sizeof(lock),
 		      (unsigned int)sizeof(lock->ntoslock));
 	}
 	spin_lock_init(&lock->spinlock);
@@ -802,7 +803,7 @@ _FASTCALL void WRAP_EXPORT(IofCompleteRequest)
 	}
 
 	/* To-Do: what about IRP_DEALLOCATE_BUFFER...? */
-	DBGTRACE("freeing irp %p", irp);
+	DBGTRACE3("freeing irp %p", irp);
 	kfree(irp);
 	TRACEEXIT3(return);
 }
