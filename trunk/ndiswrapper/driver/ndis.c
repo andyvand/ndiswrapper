@@ -749,9 +749,13 @@ STDCALL void NdisMUnmapIoSpace(struct ndis_handle *handle,
 STDCALL void NdisAllocateSpinLock(struct ndis_spin_lock *lock)
 {
 //	DBGTRACE("%s: entry\n", __FUNCTION__);
-	lock->spin_lock = kmalloc(sizeof(spinlock_t), GFP_KERNEL);
-	if(lock->spin_lock)
-		spin_lock_init(lock->spin_lock);
+	lock->linux_lock = kmalloc(sizeof(struct ndis_linux_spin_lock), GFP_KERNEL);
+	if(lock->linux_lock)
+	{
+		memset(lock->linux_lock, 0, sizeof(struct ndis_linux_spin_lock));
+		spin_lock_init(&lock->linux_lock->lock);
+	}
+	
 	else
 		printk(KERN_ERR "%s: couldn't allocate spinlock (%s)\n",
 			   DRV_NAME, __FUNCTION__);
@@ -765,47 +769,21 @@ STDCALL void NdisFreeSpinLock(struct ndis_spin_lock *lock)
 		DBGTRACE("%s: NULL\n", __FUNCTION__);
 		return;       
 	}
-	if(lock->spin_lock)
-		kfree(lock->spin_lock);
-	lock->spin_lock = NULL;
+	if(lock->linux_lock)
+		kfree(lock->linux_lock);
+	lock->linux_lock = NULL;
 	lock->kirql = 0;
 }
 
-static spinlock_t spin_lock_kirql = SPIN_LOCK_UNLOCKED;
 
 STDCALL void NdisAcquireSpinLock(struct ndis_spin_lock *lock)
 {
-	DBGTRACE("%s: locking %p\n", __FUNCTION__, lock->spin_lock);
-	spin_lock(&spin_lock_kirql);
-	if (lock->kirql)
-	{
-		spin_unlock(&spin_lock_kirql);
-		DBGTRACE("%s: lock %p is already locked\n",
-				 __FUNCTION__, lock->spin_lock);
-	}
-	else
-	{
-		lock->kirql = 1;
-		spin_unlock(&spin_lock_kirql);
-		spin_lock(lock->spin_lock);
-	}
+	spin_lock_irqsave(&lock->linux_lock->lock, lock->linux_lock->flags);
 }
 
 STDCALL void NdisReleaseSpinLock(struct ndis_spin_lock *lock)
 {
-	DBGTRACE("%s: unlocking %p\n", __FUNCTION__, lock->spin_lock);
-	spin_lock(&spin_lock_kirql);
-	if (lock->kirql)
-	{
-		lock->kirql = 0;
-		spin_unlock(&spin_lock_kirql);
-		spin_unlock(lock->spin_lock);
-	}
-	else
-	{
-		spin_unlock(&spin_lock_kirql);
-		DBGTRACE("%s: lock %p is not locked\n", __FUNCTION__, lock->spin_lock);
-	}
+	spin_unlock_irqrestore(&lock->linux_lock->lock, lock->linux_lock->flags);
 }
 
 
