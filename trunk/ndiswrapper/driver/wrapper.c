@@ -1888,7 +1888,7 @@ static int ndis_init_one(struct pci_dev *pdev,
 	spin_lock_init(&handle->send_packet_lock);
 	hangcheck_add(handle);
 	statcollector_add(handle);
-	ndis_init_proc(handle);
+	ndiswrapper_procfs_add_iface(handle);
 	return 0;
 
 out_setup:
@@ -1938,10 +1938,10 @@ static void __devexit ndis_remove_one(struct pci_dev *pdev)
 
 	DBGTRACE("%s\n", __FUNCTION__);
 
+	ndiswrapper_procfs_remove_iface(handle);
 	statcollector_del(handle);
 	hangcheck_del(handle);
 
-	ndis_remove_proc(handle);
 	if (!netif_queue_stopped(handle->net_dev))
 		netif_stop_queue(handle->net_dev);
 
@@ -2451,6 +2451,7 @@ static int __init wrapper_init(void)
 		return err;
         }
 
+	ndiswrapper_procfs_init();
 	init_ndis_work();
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
 	call_usermodehelper("/sbin/loadndisdriver", argv, env, 1);
@@ -2472,6 +2473,7 @@ static void __exit wrapper_exit(void)
 		unload_driver(driver);
 	}
 	
+	ndiswrapper_procfs_remove();
 	misc_deregister(&wrapper_misc);
 }
 

@@ -477,6 +477,8 @@ struct packed ndis_handle
 
 	/* List of initialized timers */
 	struct list_head timers;
+
+	struct proc_dir_entry *procfs_iface;
 };
 
 struct ndis_timer
@@ -576,8 +578,10 @@ void NdisMSetInformationComplete(struct ndis_handle *handle, unsigned int status
 int RtlUnicodeStringToAnsiString(struct ustring *dst, struct ustring *src, unsigned int dup) STDCALL;
 int RtlAnsiStringToUnicodeString(struct ustring *dst, struct ustring *src, unsigned int dup) STDCALL;
 
-int ndis_init_proc(struct ndis_handle *handle);
-void ndis_remove_proc(struct ndis_handle *handle);
+int ndiswrapper_procfs_init(void);
+int ndiswrapper_procfs_add_iface(struct ndis_handle *handle);
+void ndiswrapper_procfs_remove_iface(struct ndis_handle *handle);
+void ndiswrapper_procfs_remove(void);
 int doquery(struct ndis_handle *handle, unsigned int oid, char *buf, int bufsize, unsigned int *written , unsigned int *needed);
 int query_int(struct ndis_handle *handle, int oid, int *data);
 
@@ -610,7 +614,14 @@ int query_int(struct ndis_handle *handle, int oid, int *data);
 #define NDIS_OID_STATISTICS         0x0D020212
 #define NDIS_OID_SUPPORTED_RATES    0x0D01020E
 #define NDIS_OID_DESIRED_RATES      0x0D010210
+#define NDIS_OID_ADD_KEY            0x0D01011D
+#define NDIS_OID_REMOVE_KEY         0x0D01011E
+#define NDIS_OID_ASSOC_INFO         0x0D01011F
+#define NDIS_OID_TEST               0x0D010120
 
+#define NDIS_OID_NUM_ANTENNA        0x0D01020B
+#define NDIS_OID_RX_ANTENNA         0x0D01020C
+#define NDIS_OID_TX_ANTENNA         0x0D01020D
 
 /* general OIDs */
 #define NDIS_OID_GEN_SPEED          0x00010107

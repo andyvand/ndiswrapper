@@ -16,12 +16,11 @@
 
 #include "ndis.h"
 
-static struct proc_dir_entry *ndiswrapper_proc_entry, *ndis_proc_entry,
-	*ndis_proc_entry_stats, *ndis_proc_entry_wep, *ndis_proc_entry_hw;
+static struct proc_dir_entry *ndiswrapper_procfs_entry;
 extern int proc_uid, proc_gid;
 
-static int ndis_proc_read_stats(char *page, char **start, off_t off,
-				       int count, int *eof, void *data)
+static int procfs_read_stats(char *page, char **start, off_t off,
+						   int count, int *eof, void *data)
 {
 	char *p = page;
 	struct ndis_handle *handle = (struct ndis_handle *) data;
@@ -70,8 +69,8 @@ static int ndis_proc_read_stats(char *page, char **start, off_t off,
 	return (p - page);
 }
 
-static int ndis_proc_read_wep(char *page, char **start, off_t off,
-				     int count, int *eof, void *data)
+static int procfs_read_wep(char *page, char **start, off_t off,
+						 int count, int *eof, void *data)
 {
 	char *p = page;
 	struct ndis_handle *handle = (struct ndis_handle *) data;
@@ -143,14 +142,15 @@ static int ndis_proc_read_wep(char *page, char **start, off_t off,
 	return (p - page);
 }
 
-static int ndis_proc_read_hw(char *page, char **start, off_t off,
-				     int count, int *eof, void *data)
+static int procfs_read_hw(char *page, char **start, off_t off,
+						int count, int *eof, void *data)
 {
 	char *p = page;
 	struct ndis_handle *handle = (struct ndis_handle *)data;
 	struct ndis_configuration config;
 	unsigned int res, written, needed, power_mode;
 	unsigned long tx_power, bit_rate, rts_threshold, frag_threshold;
+	unsigned long antenna;
 
 	if (off != 0) {
 		*eof = 1;
@@ -201,6 +201,24 @@ static int ndis_proc_read_hw(char *page, char **start, off_t off,
 			     (power_mode == NDIS_POWER_MAX) ?
 			     "max_savings" : "min_savings");
 
+	res = doquery(handle, NDIS_OID_NUM_ANTENNA, (char *)&antenna,
+				  sizeof(antenna), &written, &needed);
+	if (!res)
+		p += sprintf(p, "num_antennas=%lu\n",
+					 antenna);
+
+	res = doquery(handle, NDIS_OID_TX_ANTENNA, (char *)&antenna,
+				  sizeof(antenna), &written, &needed);
+	if (!res)
+		p += sprintf(p, "tx_antenna=%lu\n",
+					 antenna);
+
+	res = doquery(handle, NDIS_OID_RX_ANTENNA, (char *)&antenna,
+				  sizeof(antenna), &written, &needed);
+	if (!res)
+		p += sprintf(p, "rx_antenna=%lu\n",
+					 antenna);
+
 	if (p - page > count)
 	{
 		printk(KERN_ERR "%s: %s wrote %u bytes (limit is %u)\n",
@@ -211,84 +229,110 @@ static int ndis_proc_read_hw(char *page, char **start, off_t off,
 	return (p - page);
 }
 
-int ndis_init_proc(struct ndis_handle *handle)
+int ndiswrapper_procfs_init(void)
 {
-	struct net_device *dev = handle->net_dev;
-	
-	ndiswrapper_proc_entry = create_proc_entry("ndiswrapper",
-						   S_IFDIR, proc_net);
-	if (ndiswrapper_proc_entry == NULL)
+	ndiswrapper_procfs_entry = proc_mkdir(DRV_NAME, proc_net);
+	if (ndiswrapper_procfs_entry == NULL)
 	{
-		printk(KERN_INFO "%s: Couldn't create proc directory %s\n",
-		       dev->name, dev->name);
-		return -1;
+		printk(KERN_INFO "%s: Couldn't create procfs directory\n",
+		       DRV_NAME);
+		return -ENOMEM;
 	}
-	ndiswrapper_proc_entry->uid = proc_uid;
-	ndiswrapper_proc_entry->gid = proc_gid;
-
-	ndis_proc_entry = create_proc_entry(dev->name,
-					    S_IFDIR, ndiswrapper_proc_entry);
-	if (ndis_proc_entry == NULL)
-	{
-		printk(KERN_INFO "%s: Couldn't create proc directory %s\n",
-		       dev->name, dev->name);
-		return -1;
-	}
-	ndis_proc_entry->uid = proc_uid;
-	ndis_proc_entry->gid = proc_gid;
-
-	ndis_proc_entry_stats = create_proc_entry("stats",
-						  S_IFREG | S_IRUSR | S_IRGRP,
-						  ndis_proc_entry);
-	if (ndis_proc_entry_stats == NULL)
-		printk(KERN_INFO "%s: Couldn't create proc entry for 'stats'\n", dev->name);
-	else
-	{
-		ndis_proc_entry_stats->uid = proc_uid;
-		ndis_proc_entry_stats->gid = proc_gid;
-		ndis_proc_entry_stats->data = handle;
-		ndis_proc_entry_stats->read_proc = ndis_proc_read_stats;
-	}
-
-	ndis_proc_entry_wep = create_proc_entry("wep",
-						S_IFREG | S_IRUSR | S_IRGRP,
-						ndis_proc_entry);
-	if (ndis_proc_entry_wep == NULL)
-		printk(KERN_INFO "%s: Couldn't create proc entry for 'wep'\n",
-		       dev->name);
-	else
-	{
-		ndis_proc_entry_wep->uid = proc_uid;
-		ndis_proc_entry_wep->gid = proc_gid;
-		ndis_proc_entry_wep->data = handle;
-		ndis_proc_entry_wep->read_proc = ndis_proc_read_wep;
-	}
-	
-	ndis_proc_entry_hw = create_proc_entry("hw",
-					       S_IFREG | S_IRUSR | S_IRGRP,
-					       ndis_proc_entry);
-	if (ndis_proc_entry_hw == NULL)
-		printk(KERN_INFO "%s: Couldn't create proc entry for 'wep'\n",
-		       dev->name);
-	else
-	{
-		ndis_proc_entry_hw->uid = proc_uid;
-		ndis_proc_entry_hw->gid = proc_gid;
-		ndis_proc_entry_hw->data = handle;
-		ndis_proc_entry_hw->read_proc = ndis_proc_read_hw;
-	}
-
+	ndiswrapper_procfs_entry->uid = proc_uid;
+	ndiswrapper_procfs_entry->gid = proc_gid;
 	return 0;
 }
 
-
-void ndis_remove_proc(struct ndis_handle *handle)
+int ndiswrapper_procfs_add_iface(struct ndis_handle *handle)
 {
 	struct net_device *dev = handle->net_dev;
+	struct proc_dir_entry *proc_iface, *procfs_entry;
 
-	remove_proc_entry("stats", ndis_proc_entry);
-	remove_proc_entry("wep", ndis_proc_entry);
-	remove_proc_entry("hw", ndis_proc_entry);
-	remove_proc_entry(dev->name, ndiswrapper_proc_entry);
-	remove_proc_entry("ndiswrapper", proc_net);
+	handle->procfs_iface = NULL;
+	if (ndiswrapper_procfs_entry == NULL)
+		return -ENOMEM;
+
+	proc_iface = proc_mkdir(dev->name, ndiswrapper_procfs_entry);
+
+	handle->procfs_iface = proc_iface;
+
+	if (proc_iface == NULL)
+	{
+		printk(KERN_INFO "%s: Couldn't create proc directory %s\n",
+		       DRV_NAME, dev->name);
+		return -ENOMEM;
+	}
+	proc_iface->uid = proc_uid;
+	proc_iface->gid = proc_gid;
+
+	procfs_entry = create_proc_entry("hw", S_IFREG | S_IRUSR | S_IRGRP,
+								   proc_iface);
+	if (procfs_entry == NULL)
+	{
+		printk(KERN_INFO "%s: Couldn't create proc entry for 'hw'\n",
+			   dev->name);
+		return -ENOMEM;
+	}
+	else
+	{
+		procfs_entry->uid = proc_uid;
+		procfs_entry->gid = proc_gid;
+		procfs_entry->data = handle;
+		procfs_entry->read_proc = procfs_read_hw;
+	}
+
+	procfs_entry = create_proc_entry("stats",	S_IFREG | S_IRUSR | S_IRGRP,
+								   proc_iface);
+	if (procfs_entry == NULL)
+	{
+		printk(KERN_INFO "%s: Couldn't create proc entry for 'stats'\n",
+			   dev->name);
+		return -ENOMEM;
+	}
+	else
+	{
+		procfs_entry->uid = proc_uid;
+		procfs_entry->gid = proc_gid;
+		procfs_entry->data = handle;
+		procfs_entry->read_proc = procfs_read_stats;
+	}
+
+	procfs_entry = create_proc_entry("wep", S_IFREG | S_IRUSR | S_IRGRP,
+								   proc_iface);
+	if (procfs_entry == NULL)
+	{
+		printk(KERN_INFO "%s: Couldn't create proc entry for 'wep'\n",
+			   dev->name);
+		return -ENOMEM;
+	}
+	else
+	{
+		procfs_entry->uid = proc_uid;
+		procfs_entry->gid = proc_gid;
+		procfs_entry->data = handle;
+		procfs_entry->read_proc = procfs_read_wep;
+	}
+
+	return 0;
+
+}
+
+void ndiswrapper_procfs_remove_iface(struct ndis_handle *handle)
+{
+	struct net_device *dev = handle->net_dev;
+	struct proc_dir_entry *procfs_iface = handle->procfs_iface;
+
+	if (procfs_iface == NULL)
+		return;
+	remove_proc_entry("stats", procfs_iface);
+	remove_proc_entry("wep", procfs_iface);
+	remove_proc_entry("hw", procfs_iface);
+	remove_proc_entry(dev->name, procfs_iface);
+}
+
+void ndiswrapper_procfs_remove(void)
+{
+	if (ndiswrapper_procfs_entry == NULL)
+		return;
+	remove_proc_entry(DRV_NAME, proc_net);
 }
