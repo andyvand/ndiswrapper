@@ -4,7 +4,7 @@ endif
 #DEBUG=1
 
 DISTFILES=Makefile coffpe.h loader.c loader.h misc_funcs.c \
- ndis.c ndis.h ntoskernel.h proc.c rt8180.c \
+ ndis.c ndis.h ntoskernel.h proc.c \
  winsyms.c winsyms.h wrapper.c wrapper.h \
  divdi3.c longlong.h
 
@@ -40,20 +40,6 @@ proc.o : proc.c ndis.h
 divdi3.o: divdi3.c longlong.h
 
 OBJS   := wrapper.o loader.o winsyms.o ndis.o misc_funcs.o proc.o divdi3.o
-
-ifdef DBG_ATHEROS
-CFLAGS += -DDBG_ATHEROS
-endif
-
-ifdef DBG_TI
-CFLAGS += -DDBG_TI
-endif
-
-ifdef DBG_REALTEK
-CFLAGS += -DDBG_REALTEK
-
-rt8180.o : rt8180.c
-endif
 
 ifdef DEBUG
 CFLAGS += -DDEBUG -g
