@@ -1000,9 +1000,9 @@ static void check_wpa(struct ndis_handle *handle)
 		printk("%s: checking key\n", __FUNCTION__);
 		ndis_key.key_len = 32;
 		ndis_key.key_index = 0xC0000001;
-		ndis_key.length = sizeof(ndis_key) + 4;
+		ndis_key.length = sizeof(ndis_key);
 		res = dosetinfo(handle, NDIS_OID_ADD_KEY, (char *)&ndis_key,
-				sizeof(ndis_key) + 4, &written, &needed);
+				ndis_key.length, &written, &needed);
 
 		printk("%s: add key returns %08X, needed = %d, size = %d\n",
 			 __FUNCTION__, res, needed, sizeof(ndis_key));
