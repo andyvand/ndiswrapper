@@ -25,51 +25,67 @@
 static int freq_chan[] = { 2412, 2417, 2422, 2427, 2432, 2437, 2442,
 			   2447, 2452, 2457, 2462, 2467, 2472, 2484 };
 
-int ndis_set_essid(struct net_device *dev, struct iw_request_info *info,
-		   union iwreq_data *wrqu, char *extra)
+
+int set_essid(struct ndis_handle *handle, const char *ssid, int ssid_len)
 {
-	struct ndis_handle *handle = dev->priv; 
 	unsigned int res, written, needed;
-	struct essid_req req;
+	struct ndis_essid req;
 
 	TRACEENTER1("flags = %d, length = %d",
 		    wrqu->essid.flags, wrqu->essid.length);
-	memset(&req.essid, 0, sizeof(req.essid));
+	memset(&req, 0, sizeof(req));
 	
-	if (wrqu->essid.flags == 0)
-		req.len = 0;
+	if (ssid_len == 0)
+		req.length = 0;
 	else
 	{
-		if (wrqu->essid.length > (IW_ESSID_MAX_SIZE + 1))
+		if (ssid_len > (IW_ESSID_MAX_SIZE + 1))
 			return -EINVAL;
 
-		req.len = wrqu->essid.length - 1;
-		memcpy(&req.essid, extra, req.len);
-		req.essid[req.len] = 0;
+		req.length = ssid_len;
+		memcpy(&req.essid, ssid, req.length);
+		req.essid[req.length] = 0;
 		DBGTRACE("ssid = '%s'", req.essid);
 	}
 	
-	handle->essid.flags = wrqu->essid.flags;
-	handle->essid.length = req.len;
-	memcpy(handle->essid.name, req.essid, req.len);
 	res = dosetinfo(handle, NDIS_OID_ESSID, (char*)&req, sizeof(req),
 			&written, &needed);
-	if(res)
+	if (res)
 	{
 		WARNING("setting essid failed (%08X)", res); 
 		return -EINVAL;
 	}
 
+	memcpy(&handle->essid, &req, sizeof(req));
 	TRACEEXIT1(return 0);
 }
 
-static int ndis_get_essid(struct net_device *dev,
-			  struct iw_request_info *info,
-			  union iwreq_data *wrqu, char *extra)
+static int iw_set_essid(struct net_device *dev, struct iw_request_info *info,
+			union iwreq_data *wrqu, char *extra)
+{
+	struct ndis_handle *handle = dev->priv;
+	char ssid[IW_ESSID_MAX_SIZE];
+
+	/* iwconfig adds 1 to the actual length */
+	if (wrqu->essid.flags)
+		wrqu->essid.length--;
+
+	if (wrqu->essid.length > IW_ESSID_MAX_SIZE)
+		TRACEEXIT1(return -EINVAL);
+
+	memcpy(ssid, extra, wrqu->essid.length);
+	if (set_essid(handle, ssid, wrqu->essid.length))
+		TRACEEXIT1(return -EINVAL);
+
+	TRACEEXIT1(return 0);
+}
+
+static int iw_get_essid(struct net_device *dev, struct iw_request_info *info,
+			union iwreq_data *wrqu, char *extra)
 {
 	struct ndis_handle *handle = dev->priv; 
 	unsigned int res, written, needed;
-	struct essid_req req;
+	struct ndis_essid req;
 
 	TRACEENTER1("%s", "");
 	res = doquery(handle, NDIS_OID_ESSID, (char*)&req, sizeof(req),
@@ -80,22 +96,38 @@ static int ndis_get_essid(struct net_device *dev,
 		return -EOPNOTSUPP;
 	}
 
-	memcpy(extra, &req.essid, req.len);	
-	extra[req.len] = 0;
+	memcpy(extra, &req.essid, req.length);
+	extra[req.length] = 0;
 	wrqu->essid.flags  = 1;
-	wrqu->essid.length = req.len;
+	wrqu->essid.length = req.length;
 	TRACEEXIT1(return 0);
 }
 
-int ndis_set_mode(struct net_device *dev, struct iw_request_info *info,
-		  union iwreq_data *wrqu, char *extra)
+int set_mode(struct ndis_handle *handle, enum op_mode mode)
 {
-	struct ndis_handle *handle = dev->priv;
-	enum op_mode ndis_mode;
 	int res;
 
 	TRACEENTER1("%s", "");
-	switch(wrqu->mode)
+
+	res = set_int(handle, NDIS_OID_MODE, mode);
+	if (res)
+	{
+		WARNING("setting operating mode failed (%08X)", res); 
+		TRACEEXIT1(return -EINVAL);
+	}
+
+	handle->op_mode = mode;
+	TRACEEXIT1(return 0);
+}
+
+static int iw_set_mode(struct net_device *dev, struct iw_request_info *info,
+		       union iwreq_data *wrqu, char *extra)
+{
+	struct ndis_handle *handle = dev->priv;
+	enum op_mode ndis_mode;
+
+	TRACEENTER1("%s", "");
+	switch (wrqu->mode)
 	{
 	case IW_MODE_ADHOC:
 		ndis_mode = NDIS_MODE_ADHOC;
@@ -110,18 +142,14 @@ int ndis_set_mode(struct net_device *dev, struct iw_request_info *info,
 		TRACEEXIT1(return -EINVAL);
 	}
 	
-	res = set_int(handle, NDIS_OID_MODE, ndis_mode);
-	if(res)
-	{
-		WARNING("setting operating mode failed (%08X)", res); 
+	if (set_mode(handle, ndis_mode))
 		TRACEEXIT1(return -EINVAL);
-	}
 
 	TRACEEXIT1(return 0);
 }
 
-static int ndis_get_mode(struct net_device *dev, struct iw_request_info *info,
-			 union iwreq_data *wrqu, char *extra)
+static int iw_get_mode(struct net_device *dev, struct iw_request_info *info,
+		       union iwreq_data *wrqu, char *extra)
 {
 	struct ndis_handle *handle = dev->priv; 
 	int ndis_mode, iw_mode;
@@ -130,7 +158,7 @@ static int ndis_get_mode(struct net_device *dev, struct iw_request_info *info,
 
 	TRACEENTER1("%s", "");
 	res = query_int(handle, NDIS_OID_MODE, &ndis_mode);
-	if(res)
+	if (res)
 	{
 		WARNING("getting operating mode failed (%08X)", res);
 		TRACEEXIT1(return -EOPNOTSUPP);
@@ -168,8 +196,8 @@ static const char *net_type_to_name(int net_type)
 		return unknown;
 }
 
-static int ndis_get_name(struct net_device *dev, struct iw_request_info *info,
-			 union iwreq_data *wrqu, char *extra)
+static int iw_get_name(struct net_device *dev, struct iw_request_info *info,
+		       union iwreq_data *wrqu, char *extra)
 {
 	struct ndis_handle *handle = dev->priv;
 	unsigned int network_type, res;
@@ -184,8 +212,8 @@ static int ndis_get_name(struct net_device *dev, struct iw_request_info *info,
 	return 0;
 }
 
-static int ndis_get_freq(struct net_device *dev, struct iw_request_info *info,
-                         union iwreq_data *wrqu, char *extra)
+static int iw_get_freq(struct net_device *dev, struct iw_request_info *info,
+		       union iwreq_data *wrqu, char *extra)
 {
 	struct ndis_handle *handle = dev->priv;
 	unsigned int res, written, needed;
@@ -219,8 +247,8 @@ static int ndis_get_freq(struct net_device *dev, struct iw_request_info *info,
 	return 0;
 }
 
-static int ndis_set_freq(struct net_device *dev, struct iw_request_info *info,
-			 union iwreq_data *wrqu, char *extra)
+static int iw_set_freq(struct net_device *dev, struct iw_request_info *info,
+		       union iwreq_data *wrqu, char *extra)
 {
 	struct ndis_handle *handle = dev->priv;
 	unsigned int res, written, needed;
@@ -260,9 +288,9 @@ static int ndis_set_freq(struct net_device *dev, struct iw_request_info *info,
 	return 0;
 }
 
-static int ndis_get_tx_power(struct net_device *dev,
-			     struct iw_request_info *info,
-			     union iwreq_data *wrqu, char *extra)
+static int iw_get_tx_power(struct net_device *dev,
+			   struct iw_request_info *info,
+			   union iwreq_data *wrqu, char *extra)
 {
 	struct ndis_handle *handle = dev->priv; 
 	unsigned long ndis_power;
@@ -280,9 +308,9 @@ static int ndis_get_tx_power(struct net_device *dev,
 	return 0;
 }
 
-static int ndis_set_tx_power(struct net_device *dev,
-			     struct iw_request_info *info,
-			     union iwreq_data *wrqu, char *extra)
+static int iw_set_tx_power(struct net_device *dev,
+			   struct iw_request_info *info,
+			   union iwreq_data *wrqu, char *extra)
 {
 	struct ndis_handle *handle = dev->priv; 
 	unsigned long ndis_power;
@@ -330,9 +358,8 @@ static int ndis_set_tx_power(struct net_device *dev,
 	return 0;
 }
 
-static int ndis_get_bitrate(struct net_device *dev,
-			    struct iw_request_info *info,
-			    union iwreq_data *wrqu, char *extra)
+static int iw_get_bitrate(struct net_device *dev, struct iw_request_info *info,
+			  union iwreq_data *wrqu, char *extra)
 {
 	struct ndis_handle *handle = dev->priv; 
 	int ndis_rate;
@@ -348,20 +375,16 @@ static int ndis_get_bitrate(struct net_device *dev,
 	return 0;
 }
 
-static int ndis_set_dummy(struct net_device *dev,
-			  struct iw_request_info *info,
-			  union iwreq_data *wrqu, char *extra)
+static int iw_set_dummy(struct net_device *dev, struct iw_request_info *info,
+			union iwreq_data *wrqu, char *extra)
 {
-	/* Do nothing. Used for set_encode and set_rate. Having a dummy
-	 * function like this surpresses errors the user will get when
-	 * running ifup.
-	  */
+	/* Do nothing. Used for ioctls that are not implemented. */
 	return 0;
 }
 
-static int ndis_get_rts_threshold(struct net_device *dev,
-				  struct iw_request_info *info,
-				  union iwreq_data *wrqu, char *extra)
+static int iw_get_rts_threshold(struct net_device *dev,
+				struct iw_request_info *info,
+				union iwreq_data *wrqu, char *extra)
 {
 	struct ndis_handle *handle = dev->priv;
 	int ndis_rts_threshold;
@@ -377,9 +400,9 @@ static int ndis_get_rts_threshold(struct net_device *dev,
 	return 0;
 }
 
-static int ndis_get_frag_threshold(struct net_device *dev,
-				   struct iw_request_info *info,
-				   union iwreq_data *wrqu, char *extra)
+static int iw_get_frag_threshold(struct net_device *dev,
+				 struct iw_request_info *info,
+				 union iwreq_data *wrqu, char *extra)
 {
 	struct ndis_handle *handle = dev->priv; 
 	int ndis_frag_threshold;
@@ -395,40 +418,50 @@ static int ndis_get_frag_threshold(struct net_device *dev,
 	return 0;
 }
 
-int ndis_get_ap_address(struct net_device *dev, struct iw_request_info *info,
-			union iwreq_data *wrqu, char *extra)
+int get_ap_address(struct ndis_handle *handle, mac_address ap_addr)
 {
-	struct ndis_handle *handle = dev->priv; 
 	unsigned int res, written, needed;
-	__u8 mac_address[ETH_ALEN];
 
 	TRACEENTER1("%s", "");
-	memset(mac_address, 0, ETH_ALEN);
-	res = doquery(handle, NDIS_OID_BSSID, (char*)&mac_address, ETH_ALEN,
+
+	res = doquery(handle, NDIS_OID_BSSID, ap_addr, ETH_ALEN,
 		      &written, &needed);
 	if (res)
-		memset(mac_address, 0, ETH_ALEN);
+		memset(ap_addr, 0, ETH_ALEN);
 
-        memcpy(wrqu->ap_addr.sa_data, mac_address, ETH_ALEN);
-        wrqu->ap_addr.sa_family = ARPHRD_ETHER;
-	DBGTRACE1(MACSTR, MAC2STR(mac_address));
+	DBGTRACE1(MACSTR, MAC2STR(ap_addr));
         TRACEEXIT1(return 0);
 }
 
-static int ndis_set_ap_address(struct net_device *dev,
-			       struct iw_request_info *info,
-			       union iwreq_data *wrqu, char *extra)
+static int iw_get_ap_address(struct net_device *dev,
+			     struct iw_request_info *info,
+			     union iwreq_data *wrqu, char *extra)
+{
+    struct ndis_handle *handle = dev->priv;
+    mac_address ap_addr;
+
+    TRACEENTER1("%s", "");
+    get_ap_address(handle, ap_addr);
+
+    memcpy(wrqu->ap_addr.sa_data, ap_addr, ETH_ALEN);
+    wrqu->ap_addr.sa_family = ARPHRD_ETHER;
+    TRACEEXIT1(return 0);
+}
+
+static int iw_set_ap_address(struct net_device *dev,
+			     struct iw_request_info *info,
+			     union iwreq_data *wrqu, char *extra)
 {
 	struct ndis_handle *handle = dev->priv; 
 	unsigned int res, written, needed;
-	__u8 mac_address[ETH_ALEN];
+	mac_address ap_addr;
 
-        memcpy(mac_address, wrqu->ap_addr.sa_data, ETH_ALEN);
-	DBGTRACE1(MACSTR, MAC2STR(mac_address));
-	res = dosetinfo(handle, NDIS_OID_BSSID, (char*)&(mac_address[0]),
+        memcpy(ap_addr, wrqu->ap_addr.sa_data, ETH_ALEN);
+	DBGTRACE1(MACSTR, MAC2STR(ap_addr));
+	res = dosetinfo(handle, NDIS_OID_BSSID, (char*)&(ap_addr[0]),
 			ETH_ALEN, &written, &needed);
 
-	if(res)
+	if (res)
 	{
 		WARNING("setting AP mac address failed (%08X)", res);
 		TRACEEXIT1(return -EINVAL);
@@ -437,8 +470,40 @@ static int ndis_set_ap_address(struct net_device *dev,
         TRACEEXIT1(return 0);
 }
 
-static int ndis_get_encr(struct net_device *dev, struct iw_request_info *info,
-			 union iwreq_data *wrqu, char *extra)
+int set_auth_mode(struct ndis_handle *handle, int auth_mode)
+{
+	unsigned int res;
+	res = set_int(handle, NDIS_OID_AUTH_MODE, auth_mode);
+	if (res)
+	{
+		WARNING("setting auth mode failed (%08X)", res);
+		return -EINVAL;
+	}
+	else
+	{
+		handle->auth_mode = auth_mode;
+		return 0;
+	}
+}
+
+int set_wep_mode(struct ndis_handle *handle, int wep_mode)
+{
+	unsigned int res;
+	res = set_int(handle, NDIS_OID_WEP_STATUS, wep_mode);
+	if (res)
+	{
+		WARNING("setting wep mode failed (%08X)", res);
+		return -EINVAL;
+	}
+	else
+	{
+		handle->wep_mode = wep_mode;
+		return 0;
+	}
+}
+
+static int iw_get_encr(struct net_device *dev, struct iw_request_info *info,
+		       union iwreq_data *wrqu, char *extra)
 {
 	struct ndis_handle *handle = dev->priv;
 	int status, res, index;
@@ -483,9 +548,6 @@ static int ndis_get_encr(struct net_device *dev, struct iw_request_info *info,
 		WARNING("getting wep status failed (%08X)", res);
 		TRACEEXIT1(return -EOPNOTSUPP);
 	}
-	if (handle->wep_mode != status)
-		WARNING("current wep mode %d is different from %d",
-			status, handle->wep_mode);
 
 	if (status == WEP_ENABLED)
 	{
@@ -514,34 +576,8 @@ static int ndis_get_encr(struct net_device *dev, struct iw_request_info *info,
 	TRACEEXIT1(return 0);
 }
 	
-int set_auth_mode(struct ndis_handle *handle, int auth_mode)
-{
-	unsigned int res;
-	res = set_int(handle, NDIS_OID_AUTH_MODE, auth_mode);
-	if (res)
-		return -EINVAL;
-	else
-	{
-		handle->auth_mode = auth_mode;
-		return 0;
-	}
-}
-
-int set_wep_mode(struct ndis_handle *handle, int wep_mode)
-{
-	unsigned int res;
-	res = set_int(handle, NDIS_OID_WEP_STATUS, wep_mode);
-	if (res)
-		return -EINVAL;
-	else
-	{
-		handle->wep_mode = wep_mode;
-		return 0;
-	}
-}
-
-static int ndis_set_encr(struct net_device *dev, struct iw_request_info *info,
-			 union iwreq_data *wrqu, char *extra)
+static int iw_set_encr(struct net_device *dev, struct iw_request_info *info,
+		       union iwreq_data *wrqu, char *extra)
 {
 	struct ndis_handle *handle = dev->priv;
 	unsigned int res, written, needed, index;
@@ -549,7 +585,7 @@ static int ndis_set_encr(struct net_device *dev, struct iw_request_info *info,
 	struct wep_req wep_req;
 	
 	TRACEENTER1("%s", "");
-	index = (wrqu->data.flags & IW_ENCODE_INDEX);
+	index = (wrqu->encoding.flags & IW_ENCODE_INDEX);
 	DBGTRACE2("index = %u", index);
 	if (index > MAX_WEP_KEYS)
 	{
@@ -615,6 +651,7 @@ static int ndis_set_encr(struct net_device *dev, struct iw_request_info *info,
 		memcpy(&wep_req.key, wep_info->keys[index].key,
 		       wep_info->keys[index].length);
 
+		DBGTRACE("key_length = %ld", wep_req.keylength);
 		res = set_wep_mode(handle, WEP_ENABLED);
 		if (res)
 			WARNING("changing wep status failed (%08X)", res);
@@ -647,8 +684,8 @@ static int ndis_set_encr(struct net_device *dev, struct iw_request_info *info,
 	TRACEEXIT1(return 0);
 }
 	
-static int ndis_set_nick(struct net_device *dev, struct iw_request_info *info,
-			 union iwreq_data *wrqu, char *extra)
+static int iw_set_nick(struct net_device *dev, struct iw_request_info *info,
+		       union iwreq_data *wrqu, char *extra)
 {
 	struct ndis_handle *handle = dev->priv;
 	
@@ -659,8 +696,8 @@ static int ndis_set_nick(struct net_device *dev, struct iw_request_info *info,
 	return 0;
 }
 
-static int ndis_get_nick(struct net_device *dev, struct iw_request_info *info,
-			 union iwreq_data *wrqu, char *extra)
+static int iw_get_nick(struct net_device *dev, struct iw_request_info *info,
+		       union iwreq_data *wrqu, char *extra)
 {
 	struct ndis_handle *handle = dev->priv;
 	
@@ -689,7 +726,7 @@ static char *ndis_translate_scan(struct net_device *dev, char *event,
 	/* add essid */
 	memset(&iwe, 0, sizeof(iwe));
 	iwe.cmd = SIOCGIWESSID;
-	iwe.u.data.length = item->ssid.len;
+	iwe.u.data.length = item->ssid.length;
 	if (iwe.u.data.length > IW_ESSID_MAX_SIZE)
 		iwe.u.data.length = IW_ESSID_MAX_SIZE;
 	iwe.u.data.flags = 1;
@@ -820,8 +857,8 @@ static char *ndis_translate_scan(struct net_device *dev, char *event,
 	TRACEEXIT1(return event);
 }
 
-static int ndis_set_scan(struct net_device *dev, struct iw_request_info *info,
-			 union iwreq_data *wrqu, char *extra)
+static int iw_set_scan(struct net_device *dev, struct iw_request_info *info,
+		       union iwreq_data *wrqu, char *extra)
 {
 	struct ndis_handle *handle = dev->priv;
 	unsigned int res = 0;
@@ -841,8 +878,8 @@ static int ndis_set_scan(struct net_device *dev, struct iw_request_info *info,
 	}
 }
 
-static int ndis_get_scan(struct net_device *dev, struct iw_request_info *info,
-			 union iwreq_data *wrqu, char *extra)
+static int iw_get_scan(struct net_device *dev, struct iw_request_info *info,
+		       union iwreq_data *wrqu, char *extra)
 {
  	struct ndis_handle *handle = dev->priv;
 	unsigned int i, res, written, needed, list_len;
@@ -897,9 +934,9 @@ static int ndis_get_scan(struct net_device *dev, struct iw_request_info *info,
 	TRACEEXIT1(return 0);
 }
 
-static int ndis_set_power_mode(struct net_device *dev,
-			       struct iw_request_info *info,
-			       union iwreq_data *wrqu, char *extra)
+static int iw_set_power_mode(struct net_device *dev,
+			     struct iw_request_info *info,
+			     union iwreq_data *wrqu, char *extra)
 {
 	struct ndis_handle *handle = dev->priv;
 	int res, power_mode;
@@ -921,9 +958,9 @@ static int ndis_set_power_mode(struct net_device *dev,
 	return 0;
 }
 
-static int ndis_get_power_mode(struct net_device *dev,
-			       struct iw_request_info *info,
-			       union iwreq_data *wrqu, char *extra)
+static int iw_get_power_mode(struct net_device *dev,
+			     struct iw_request_info *info,
+			     union iwreq_data *wrqu, char *extra)
 {
 	struct ndis_handle *handle = dev->priv;
 	int res, power_mode;
@@ -953,9 +990,9 @@ static int ndis_get_power_mode(struct net_device *dev,
 	return 0;
 }
 
-static int ndis_get_sensitivity(struct net_device *dev,
-				struct iw_request_info *info,
-				union iwreq_data *wrqu,	char *extra)
+static int iw_get_sensitivity(struct net_device *dev,
+			      struct iw_request_info *info,
+			      union iwreq_data *wrqu, char *extra)
 {
 	struct ndis_handle *handle = dev->priv;
 	unsigned int res, written, needed;
@@ -971,9 +1008,9 @@ static int ndis_get_sensitivity(struct net_device *dev,
 	return 0;
 }
 
-static int ndis_set_sensitivity(struct net_device *dev,
-				struct iw_request_info *info,
-				union iwreq_data *wrqu,	char *extra)
+static int iw_set_sensitivity(struct net_device *dev,
+			      struct iw_request_info *info,
+			      union iwreq_data *wrqu, char *extra)
 {
 	struct ndis_handle *handle = dev->priv;
 	unsigned int res, written, needed;
@@ -990,25 +1027,25 @@ static int ndis_set_sensitivity(struct net_device *dev,
 	return 0;
 }
 
-struct iw_statistics *ndis_get_wireless_stats(struct net_device *dev)
+struct iw_statistics *get_wireless_stats(struct net_device *dev)
 {
 	struct ndis_handle *handle = dev->priv;
 	return &handle->wireless_stats;
 }
 
 
-static int ndis_get_ndis_stats(struct net_device *dev,
-			       struct iw_request_info *info,
-			       union iwreq_data *wrqu, char *extra)
+static int iw_get_ndis_stats(struct net_device *dev,
+			     struct iw_request_info *info,
+			     union iwreq_data *wrqu, char *extra)
 
 {
-	struct iw_statistics *stats = ndis_get_wireless_stats(dev);
+	struct iw_statistics *stats = get_wireless_stats(dev);
 	memcpy(&wrqu->qual, &stats->qual, sizeof(stats->qual));
 	return 0;
 }
 
-static int ndis_get_range(struct net_device *dev, struct iw_request_info *info,
-			  union iwreq_data *wrqu, char *extra)
+static int iw_get_range(struct net_device *dev, struct iw_request_info *info,
+			union iwreq_data *wrqu, char *extra)
 {
 	struct iw_range *range = (struct iw_range *)extra;
 	struct iw_point *data = &wrqu->data;
@@ -1085,8 +1122,8 @@ static int ndis_get_range(struct net_device *dev, struct iw_request_info *info,
 	return 0;
 }
 
-static int ndis_reset(struct net_device *dev, struct iw_request_info *info,
-		      union iwreq_data *wrqu, char *extra)
+static int iw_reset(struct net_device *dev, struct iw_request_info *info,
+		    union iwreq_data *wrqu, char *extra)
 {
 	int res;
 	res = doreset(dev->priv);
@@ -1099,102 +1136,116 @@ static int ndis_reset(struct net_device *dev, struct iw_request_info *info,
 }
 
 static const iw_handler	ndis_handler[] = {
-	//[SIOCGIWSENS    - SIOCIWFIRST] = ndis_get_sens,
-	[SIOCGIWNAME	- SIOCIWFIRST] = ndis_get_name,
-	[SIOCSIWESSID	- SIOCIWFIRST] = ndis_set_essid,
-	[SIOCGIWESSID	- SIOCIWFIRST] = ndis_get_essid,
-	[SIOCSIWMODE	- SIOCIWFIRST] = ndis_set_mode,
-	[SIOCGIWMODE	- SIOCIWFIRST] = ndis_get_mode,
-	[SIOCGIWFREQ	- SIOCIWFIRST] = ndis_get_freq,
-	[SIOCSIWFREQ	- SIOCIWFIRST] = ndis_set_freq,
-	[SIOCGIWTXPOW	- SIOCIWFIRST] = ndis_get_tx_power,
-	[SIOCSIWTXPOW	- SIOCIWFIRST] = ndis_set_tx_power,
-	[SIOCGIWRATE	- SIOCIWFIRST] = ndis_get_bitrate,
-	[SIOCSIWRATE	- SIOCIWFIRST] = ndis_set_dummy,
-	[SIOCGIWRTS	- SIOCIWFIRST] = ndis_get_rts_threshold,
-	[SIOCGIWFRAG	- SIOCIWFIRST] = ndis_get_frag_threshold,
-	//[SIOCSIWRETRY	- SIOCIWFIRST] = ndis_get_rety_limit,
-	[SIOCGIWAP	- SIOCIWFIRST] = ndis_get_ap_address,
-	[SIOCSIWAP	- SIOCIWFIRST] = ndis_set_ap_address,
-	[SIOCSIWENCODE	- SIOCIWFIRST] = ndis_set_encr,
-	[SIOCGIWENCODE	- SIOCIWFIRST] = ndis_get_encr,
-	[SIOCSIWSCAN	- SIOCIWFIRST] = ndis_set_scan,
-	[SIOCGIWSCAN	- SIOCIWFIRST] = ndis_get_scan,
-	[SIOCGIWPOWER	- SIOCIWFIRST] = ndis_get_power_mode,
-	[SIOCSIWPOWER	- SIOCIWFIRST] = ndis_set_power_mode,
-	[SIOCGIWRANGE	- SIOCIWFIRST] = ndis_get_range,
-	[SIOCGIWSTATS	- SIOCIWFIRST] = ndis_get_ndis_stats,
-	[SIOCGIWSENS	- SIOCIWFIRST] = ndis_get_sensitivity,
-	[SIOCSIWSENS	- SIOCIWFIRST] = ndis_set_sensitivity,
-	[SIOCGIWNICKN	- SIOCIWFIRST] = ndis_get_nick,
-	[SIOCSIWNICKN	- SIOCIWFIRST] = ndis_set_nick,
-	[SIOCSIWCOMMIT	- SIOCIWFIRST] = ndis_set_dummy,
+	[SIOCGIWNAME	- SIOCIWFIRST] = iw_get_name,
+	[SIOCSIWESSID	- SIOCIWFIRST] = iw_set_essid,
+	[SIOCGIWESSID	- SIOCIWFIRST] = iw_get_essid,
+	[SIOCSIWMODE	- SIOCIWFIRST] = iw_set_mode,
+	[SIOCGIWMODE	- SIOCIWFIRST] = iw_get_mode,
+	[SIOCGIWFREQ	- SIOCIWFIRST] = iw_get_freq,
+	[SIOCSIWFREQ	- SIOCIWFIRST] = iw_set_freq,
+	[SIOCGIWTXPOW	- SIOCIWFIRST] = iw_get_tx_power,
+	[SIOCSIWTXPOW	- SIOCIWFIRST] = iw_set_tx_power,
+	[SIOCGIWRATE	- SIOCIWFIRST] = iw_get_bitrate,
+	[SIOCSIWRATE	- SIOCIWFIRST] = iw_set_dummy,
+	[SIOCGIWRTS	- SIOCIWFIRST] = iw_get_rts_threshold,
+	[SIOCGIWFRAG	- SIOCIWFIRST] = iw_get_frag_threshold,
+	[SIOCGIWAP	- SIOCIWFIRST] = iw_get_ap_address,
+	[SIOCSIWAP	- SIOCIWFIRST] = iw_set_ap_address,
+	[SIOCSIWENCODE	- SIOCIWFIRST] = iw_set_encr,
+	[SIOCGIWENCODE	- SIOCIWFIRST] = iw_get_encr,
+	[SIOCSIWSCAN	- SIOCIWFIRST] = iw_set_scan,
+	[SIOCGIWSCAN	- SIOCIWFIRST] = iw_get_scan,
+	[SIOCGIWPOWER	- SIOCIWFIRST] = iw_get_power_mode,
+	[SIOCSIWPOWER	- SIOCIWFIRST] = iw_set_power_mode,
+	[SIOCGIWRANGE	- SIOCIWFIRST] = iw_get_range,
+	[SIOCGIWSTATS	- SIOCIWFIRST] = iw_get_ndis_stats,
+	[SIOCGIWSENS	- SIOCIWFIRST] = iw_get_sensitivity,
+	[SIOCSIWSENS	- SIOCIWFIRST] = iw_set_sensitivity,
+	[SIOCGIWNICKN	- SIOCIWFIRST] = iw_get_nick,
+	[SIOCSIWNICKN	- SIOCIWFIRST] = iw_set_nick,
+	[SIOCSIWCOMMIT	- SIOCIWFIRST] = iw_set_dummy,
 };
 
 /* WPA support */
 
-static int ndis_set_wpa(struct net_device *dev, struct iw_request_info *info,
-			union iwreq_data *wrqu, char *extra)
+static int wpa_set_wpa(struct net_device *dev, struct iw_request_info *info,
+		       union iwreq_data *wrqu, char *extra)
 {
 	struct ndis_handle *handle = (struct ndis_handle *)dev->priv;
-	unsigned int res;
 	
 	TRACEENTER("%s", "");
 	DBGTRACE("flags = %d, encr_alg = %d, handle->capa = %ld, "
 		 "handle->encr_alg = %d", wrqu->data.flags, handle->encr_alg,
 	       handle->capa, handle->encr_alg);
 	
-	if (!wrqu->data.flags)
-	{
-
-		/* FIXME : what should the authmode be? */
-		res = set_auth_mode(handle, AUTHMODE_RESTRICTED);
-		if (res)
-			TRACEEXIT(return -EINVAL);
-		res = set_wep_mode(handle, WEP_ENABLED);
-		if (res)
-			TRACEEXIT(return -EINVAL);
+	if (test_bit(CAPA_WPA, &handle->capa))
 		TRACEEXIT(return 0);
-	}
-
-	if (!test_bit(CAPA_WPA, &handle->capa))
+	else
 		TRACEEXIT(return -EINVAL);
-
-	DBGTRACE1("authmode = %d, wepmode = %d", handle->auth_mode,
-		 handle->wep_mode);
-
-	res = set_auth_mode(handle, AUTHMODE_WPAPSK);
-	if (res)
-		TRACEEXIT(return -EINVAL);
-
-	res = set_wep_mode(handle, WEP_ENCR2_ENABLED);
-	if (res)
-		TRACEEXIT(return -EINVAL);
-	
-	DBGTRACE("%s", "wpa enabled");
-	TRACEEXIT(return 0);
 }
 
-static int ndis_set_key(struct net_device *dev, struct iw_request_info *info,
-			union iwreq_data *wrqu, char *extra)
+static int char_to_hex(int c)
+{
+	if (c >= '0' && c <= '9')
+		return c - '0';
+	if (c >= 'a' && c <= 'f')
+		return c - 'a' + 10;
+	return -1;
+}
+
+/* convert key in string to hex digits - 2 chars make up one digit */
+static int key_str_to_hex(const char *str, char *key, int str_len)
+{
+	int i, key_len;
+
+	if (!memcmp(str, "s:", 2))
+	{
+		key_len = str_len-2;
+		if (key_len >= IW_ENCODING_TOKEN_MAX)
+			TRACEEXIT(return -1);
+		memcpy(key, str+2, key_len);
+	}
+	else
+		for (i = key_len = 0; i < str_len-1; i += 2)
+		{
+			int c1, c2;
+
+			if (key_len >= IW_ENCODING_TOKEN_MAX)
+				TRACEEXIT(return -1);
+			/* sscanf(str, "%1X", &ch) doesn't seem to work */
+			c1 = char_to_hex(tolower(str[i]));
+			c2 = char_to_hex(tolower(str[i+1]));
+			if (c1 < 0 || c2 < 0)
+				TRACEEXIT(return -1);
+			key[key_len++] = (c1 << 4 | c2) & 0xFF;
+		}
+	DBGTRACE("key length = %d", key_len);
+	if (key_len == 5 || key_len == 13)
+		TRACEEXIT(return key_len);
+	else
+		TRACEEXIT(return -1);
+}
+
+static int wpa_set_key(struct net_device *dev, struct iw_request_info *info,
+		       union iwreq_data *wrqu, char *extra)
 {
 	struct ndis_handle *handle = (struct ndis_handle *)dev->priv;
 	struct ndis_key ndis_key;
 	struct wpa_key *wpa_key = (struct wpa_key *)wrqu->data.pointer;
 	int i, res, written, needed;
 	
-	TRACEENTER("alg = %d", wpa_key->alg);
+	TRACEENTER1("alg = %d, key_index = %d",
+		    wpa_key->alg, wpa_key->key_index);
 	
 	if (wpa_key->alg == WPA_ALG_NONE || wpa_key->key_len == 0)
 	{
 		struct ndis_remove_key ndis_remove_key;
+
 		ndis_remove_key.length = sizeof(ndis_remove_key);
 		ndis_remove_key.key_index = wpa_key->key_index;
-		/* Isn't this wpa_key->addr user space address?? This may
-		 * work on x86 in most cases, but copy_from_user() should
-		 * really be used.. Same for seq and key. */
 		if (wpa_key->addr)
-			memcpy(&ndis_remove_key.bssid, wpa_key->addr, ETH_ALEN);
+			memcpy(&ndis_remove_key.bssid, wpa_key->addr,
+			       ETH_ALEN);
 		else
 			memset(&ndis_remove_key.bssid, 0xff, ETH_ALEN);
 		res = dosetinfo(handle, NDIS_OID_REMOVE_KEY,
@@ -1209,36 +1260,39 @@ static int ndis_set_key(struct net_device *dev, struct iw_request_info *info,
 		TRACEEXIT(return 0);
 	}
 
-	if (wpa_key->alg == WPA_ALG_WEP)
+	if (wpa_key->alg == WPA_ALG_WEP &&
+	    !test_bit(CAPA_WEP_NONE, &handle->capa))
 	{
-		struct wep_req wep;
+		union iwreq_data wep_req;
+		char key[IW_ENCODING_TOKEN_MAX];
+		int i;
 
-		/* FIXME: use ndis_set_encr instead of repeating here */
-		wep.len = sizeof(wep);
-		wep.keyindex = wpa_key->key_index;
-		wep.keyindex |= (1 << 31);
-		wep.keylength = wpa_key->key_len;
-		memcpy(&wep.key, wpa_key->key, wpa_key->key_len);
-
-		res = set_auth_mode(handle, AUTHMODE_RESTRICTED);
-		if (res)
+		memset(&wep_req, 0, sizeof(wep_req));
+		wep_req.data.flags = wpa_key->key_index;
+		/* auth mode is set with set_auth_alg */
+		if (handle->auth_mode == AUTHMODE_OPEN)
+			wep_req.data.flags |= IW_ENCODE_OPEN;
+		else
+			wep_req.data.flags |= IW_ENCODE_RESTRICTED;
+		i = key_str_to_hex(wpa_key->key, key, wpa_key->key_len);
+		if (i < 0)
 			TRACEEXIT(return -EINVAL);
-		res = dosetinfo(handle, NDIS_OID_ADD_WEP, (char *)&wep,
-				sizeof(wep), &written, &needed);
-		if (res)
+		wep_req.data.length = i;
+		wep_req.data.pointer = key;
+		if (iw_set_encr(dev, info, &wep_req, key))
 			TRACEEXIT(return -EINVAL);
-		res = set_wep_mode(handle, WEP_ENCR1_ENABLED);
-		if (res)
-			TRACEEXIT(return -EINVAL);
-		TRACEEXIT(return 0);
+		else
+			TRACEEXIT(return 0);
 	}
 
 	/* alg is either WPA_ALG_TKIP or WPA_ALG_CCMP */
+	if (!test_bit(CAPA_WPA, &handle->capa))
+		TRACEEXIT1(return -EINVAL);
 
 	if (wpa_key->key_len > sizeof(ndis_key.key))
 	{
 		DBGTRACE("incorrect key length (%d)", wpa_key->key_len);
-		TRACEEXIT(return -EINVAL);
+		TRACEEXIT1(return -EINVAL);
 	}
 	
 	DBGTRACE("adding key %d, %d", wpa_key->key_index, wpa_key->key_len);
@@ -1249,30 +1303,25 @@ static int ndis_set_key(struct net_device *dev, struct iw_request_info *info,
 	ndis_key.key_len = wpa_key->key_len;
 	memcpy(&ndis_key.key, wpa_key->key, wpa_key->key_len);
 	
-	ndis_key.key_rsc = 1;
 	for (i = 0, ndis_key.key_rsc = 0 ; i < wpa_key->seq_len ; i++)
 		ndis_key.key_rsc |= (wpa_key->seq[i] << (i * 8));
 	
-	if (wpa_key->key_index == 0)
-	{
-		/* pairwise key */
-		ndis_key.key_index |= (1 << 30);
-		ndis_key.key_index |= (1 << 31);
-	}
+	if (wpa_key->key_index == 0) /* pairwise key */
+		ndis_key.key_index |= (1 << 31) | (1 << 30);
 
 	DBGTRACE("bssid " MACSTR, MAC2STR(wpa_key->addr));
-	if (!memcmp(wpa_key->addr,
-		    "\xFF\xFF\xFF\xFF\xFF\xFF", ETH_ALEN))
+	if (!memcmp(wpa_key->addr, "\xFF\xFF\xFF\xFF\xFF\xFF", ETH_ALEN))
 	{
-		union iwreq_data ap_wrqu;
+		mac_address ap_addr;
 
-		ndis_get_ap_address(dev, NULL, &ap_wrqu, NULL);
-		memcpy(&ndis_key.bssid, &ap_wrqu.ap_addr.sa_data, ETH_ALEN);
+		get_ap_address(handle, ap_addr);
+		memcpy(&ndis_key.bssid, &ap_addr, ETH_ALEN);
 	}
 	else
 		memcpy(&ndis_key.bssid, wpa_key->addr, ETH_ALEN);
 
-	if (wpa_key->alg == WPA_ALG_TKIP && wpa_key->key_len == 32) {
+	if (wpa_key->alg == WPA_ALG_TKIP && wpa_key->key_len == 32)
+	{
 		/* wpa_supplicant gives us the Michael MIC RX/TX keys in
 		 * different order than NDIS spec, so swap the order here. */
 		u8 tmp[8];
@@ -1296,9 +1345,9 @@ static int ndis_set_key(struct net_device *dev, struct iw_request_info *info,
 	TRACEEXIT(return 0);
 }
 
-static int ndis_set_disassociate(struct net_device *dev,
-				 struct iw_request_info *info,
-				 union iwreq_data *wrqu, char *extra)
+static int wpa_disassociate(struct net_device *dev,
+			    struct iw_request_info *info,
+			    union iwreq_data *wrqu, char *extra)
 {
 	struct ndis_handle *handle = (struct ndis_handle *)dev->priv;
 	
@@ -1308,38 +1357,169 @@ static int ndis_set_disassociate(struct net_device *dev,
 	TRACEEXIT(return 0);
 }
 
-int ndis_set_priv_filter(struct net_device *dev,
-			 struct iw_request_info *info,
-			 union iwreq_data *wrqu, char *extra)
+static int wpa_associate(struct net_device *dev,
+			      struct iw_request_info *info,
+			      union iwreq_data *wrqu, char *extra)
 {
 	struct ndis_handle *handle = (struct ndis_handle *)dev->priv;
+	struct wpa_assoc_info *wpa_assoc_info =
+		(struct wpa_assoc_info *)wrqu->data.pointer;
+	char buf[IW_ESSID_MAX_SIZE];
+	
+	TRACEENTER("%s", "");
+	DBGTRACE("key_mgmt_suite = %d, pairwise_suite = %d, group_suite= %d",
+		 wpa_assoc_info->key_mgmt_suite,
+		 wpa_assoc_info->pairwise_suite, wpa_assoc_info->group_suite);
+	if (wpa_assoc_info->key_mgmt_suite != KEY_MGMT_PSK &&
+	    wpa_assoc_info->key_mgmt_suite != KEY_MGMT_NONE)
+		TRACEEXIT(return -EINVAL);
+
+	switch (wpa_assoc_info->key_mgmt_suite)
+	{
+	case KEY_MGMT_PSK:
+		if (set_auth_mode(handle, AUTHMODE_WPAPSK))
+			TRACEEXIT(return -EINVAL);
+		break;
+	case KEY_MGMT_NONE:
+		if (wpa_assoc_info->group_suite != CIPHER_WEP104 &&
+		    wpa_assoc_info->group_suite != CIPHER_WEP40)
+			TRACEEXIT(return -EINVAL);
+		break;
+	default:
+		TRACEEXIT(return -EINVAL);
+	}
+
+	switch (wpa_assoc_info->group_suite)
+	{
+		int i;
+
+	case CIPHER_CCMP:
+		if (!test_bit(CAPA_AES, &handle->capa) ||
+		    set_wep_mode(handle, WEP_ENCR3_ENABLED) ||
+		    query_int(handle, NDIS_OID_WEP_STATUS, &i) ||
+		    i != WEP_ENCR3_ENABLED)
+			TRACEEXIT(return -EINVAL);
+		break;
+	case CIPHER_TKIP:
+		if (!test_bit(CAPA_TKIP, &handle->capa) ||
+		    set_wep_mode(handle, WEP_ENCR2_ENABLED) ||
+		    query_int(handle, NDIS_OID_WEP_STATUS, &i) ||
+		    i != WEP_ENCR2_ENABLED)
+			TRACEEXIT(return -EINVAL);
+		break;
+	case CIPHER_WEP104:
+	case CIPHER_WEP40:
+		if (test_bit(CAPA_WEP_NONE, &handle->capa))
+			TRACEEXIT(return -EINVAL);
+//		if(set_wep_mode(handle, WEP_ENABLED))
+//			TRACEEXIT(return -EINVAL);
+		break;
+	default:
+		TRACEEXIT(return -EINVAL);
+	}
+
+	memcpy(buf, wpa_assoc_info->ssid, wpa_assoc_info->ssid_len);
+	if (set_essid(handle, buf, wpa_assoc_info->ssid_len))
+		TRACEEXIT(return -EINVAL);
+
+	TRACEEXIT(return 0);
+}
+
+static int wpa_set_countermeasures(struct net_device *dev,
+				   struct iw_request_info *info,
+				   union iwreq_data *wrqu, char *extra)
+{
+	TRACEENTER("%s", "");
+	return 0;
+}
+
+static int wpa_deauthenticate(struct net_device *dev,
+			      struct iw_request_info *info,
+			      union iwreq_data *wrqu, char *extra)
+{
+	TRACEENTER(MACSTR, MAC2STR(wrqu->ap_addr.sa_data));
+	/* TODO: clear keys, ssid etc. */
+	return 0;
+}
+
+int set_priv_filter(struct ndis_handle *handle, int flags)
+{
 	int res;
 
+	TRACEENTER("filter: %d", flags);
+	res = set_int(handle, NDIS_OID_PRIVACY_FILTER, flags);
+	if (res)
+	{
+		WARNING("setting privacy filter failed (%08X)", res);
+		TRACEEXIT(return -EINVAL);
+	}
+	TRACEEXIT(return 0);
+}
+
+static int iw_set_priv_filter(struct net_device *dev,
+			      struct iw_request_info *info,
+			      union iwreq_data *wrqu, char *extra)
+{
+	struct ndis_handle *handle = (struct ndis_handle *)dev->priv;
+	int flags;
+
 	TRACEENTER("filter: %d", wrqu->param.value);
-	if (wrqu->param.value == NDIS_PRIV_WEP)
-		res = set_int(handle, NDIS_OID_PRIVACY_FILTER, NDIS_PRIV_WEP);
+	if (wrqu->param.value)
+		flags = NDIS_PRIV_WEP;
 	else
-		res = set_int(handle, NDIS_OID_PRIVACY_FILTER,
-			      NDIS_PRIV_ACCEPT_ALL);
+		flags = NDIS_PRIV_ACCEPT_ALL;
+	if (set_priv_filter(handle, flags))
+		TRACEEXIT(return -EINVAL);
+	TRACEEXIT(return 0);
+}
+
+static int wpa_set_auth_alg(struct net_device *dev,
+			    struct iw_request_info *info,
+			    union iwreq_data *wrqu, char *extra)
+{
+	struct ndis_handle *handle = (struct ndis_handle *)dev->priv;
+	int mode;
+	
+	if (wrqu->param.value == AUTH_ALG_OPEN_SYSTEM)
+		mode = AUTHMODE_OPEN;
+	else if (wrqu->param.value == AUTH_ALG_SHARED_KEY)
+		mode = AUTHMODE_RESTRICTED;
+	else
+		TRACEEXIT(return -EINVAL);
+
+	if (set_auth_mode(handle, mode))
+		TRACEEXIT(return -EINVAL);
 	TRACEEXIT(return 0);
 }
 
 static const struct iw_priv_args priv_args[] = {
 	{PRIV_RESET, 0, 0, "ndis_reset"},
 	{WPA_SET_WPA, IW_PRIV_TYPE_INT | IW_PRIV_SIZE_FIXED | 1, 0, "setwpa"},
-	{WPA_SET_KEY, IW_PRIV_TYPE_ADDR | IW_PRIV_SIZE_FIXED | 1, 0, "setkey"},
+	{WPA_SET_KEY, IW_PRIV_TYPE_INT | IW_PRIV_SIZE_FIXED | 1, 0, "setkey"},
+	{WPA_ASSOCIATE, IW_PRIV_TYPE_INT | IW_PRIV_SIZE_FIXED | 1, 0,
+	 "associate"},
 	{WPA_DISASSOCIATE, IW_PRIV_TYPE_INT | IW_PRIV_SIZE_FIXED | 1, 0,
 	 "disassociate"},
-	{WPA_SET_PRIV_FILTER, IW_PRIV_TYPE_INT | IW_PRIV_SIZE_FIXED | 1, 0,
-	 "privfilter"},
+	{WPA_DROP_UNENCRYPTED, IW_PRIV_TYPE_INT | IW_PRIV_SIZE_FIXED | 1, 0,
+	 "drop_unencrypted"},
+	{WPA_SET_COUNTERMEASURES, IW_PRIV_TYPE_INT | IW_PRIV_SIZE_FIXED | 1, 0,
+	 "countermeaures"},
+	{WPA_DEAUTHENTICATE, IW_PRIV_TYPE_INT | IW_PRIV_SIZE_FIXED | 1, 0,
+	 "deauthenticate"},
+	{WPA_SET_AUTH_ALG, IW_PRIV_TYPE_INT | IW_PRIV_SIZE_FIXED | 1, 0,
+	 "auth_alg"},
 };
 
 static const iw_handler priv_handler[] = {
-	[PRIV_RESET - SIOCIWFIRSTPRIV] = ndis_reset,
-	[WPA_SET_WPA - SIOCIWFIRSTPRIV] = ndis_set_wpa,
-	[WPA_SET_KEY - SIOCIWFIRSTPRIV] = ndis_set_key,
-	[WPA_DISASSOCIATE - SIOCIWFIRSTPRIV] = ndis_set_disassociate,
-	[WPA_SET_PRIV_FILTER - SIOCIWFIRSTPRIV] = ndis_set_priv_filter,
+	[PRIV_RESET - SIOCIWFIRSTPRIV] = iw_reset,
+	[WPA_SET_WPA - SIOCIWFIRSTPRIV] = wpa_set_wpa,
+	[WPA_SET_KEY - SIOCIWFIRSTPRIV] = wpa_set_key,
+	[WPA_ASSOCIATE - SIOCIWFIRSTPRIV] = wpa_associate,
+	[WPA_DISASSOCIATE - SIOCIWFIRSTPRIV] = wpa_disassociate,
+	[WPA_DROP_UNENCRYPTED - SIOCIWFIRSTPRIV] = iw_set_priv_filter,
+	[WPA_SET_COUNTERMEASURES - SIOCIWFIRSTPRIV] = wpa_set_countermeasures,
+	[WPA_DEAUTHENTICATE - SIOCIWFIRSTPRIV] = wpa_deauthenticate,
+	[WPA_SET_AUTH_ALG - SIOCIWFIRSTPRIV] = wpa_set_auth_alg,
 };
 
 const struct iw_handler_def ndis_handler_def = {
