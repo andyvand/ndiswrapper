@@ -3,7 +3,7 @@
 
 # Uncomment the line below to enable power management (to avoid
 # removing and loading module when laptop is suspended/resumed)
-#CFLAGS += -DTEST_PM
+CFLAGS += -DTEST_PM
 
 KSRC  := /lib/modules/$(shell uname -r)/build
 
@@ -42,6 +42,8 @@ prereq_check:
 
 
 OBJS   := wrapper.o loader.o winsyms.o ndis.o misc_funcs.o proc.o
+CFLAGS += $(shell [ -f $(KSRC)/include/linux/modversions.h ] && echo -DEXPORT_SYMTAB -DMODVERSIONS -include $(KSRC)/include/linux/modversions.h)
+
 
 ifeq ($(KVERS),24)
 MODULE := ndiswrapper.o
