@@ -24,59 +24,59 @@
 #include "ntoskernel.h"
 
 STDCALL static void WRAP_EXPORT(WRITE_PORT_ULONG)
-	(unsigned int port, unsigned int value)
+	(ULONG *port, ULONG value)
 {
-	outl(value, port);
+	outl(value, (unsigned int)port);
 }
 
-STDCALL static unsigned int WRAP_EXPORT(READ_PORT_ULONG)
-	(unsigned int port)
+STDCALL static ULONG WRAP_EXPORT(READ_PORT_ULONG)
+	(ULONG *port)
 {
-	return inl(port);
+	return inl((unsigned int)port);
 }
 
 STDCALL static void WRAP_EXPORT(WRITE_PORT_USHORT)
-	(unsigned int port, unsigned short value)
+	(USHORT *port, USHORT value)
 {
-	outw(value, port);
+	outw(value, (unsigned int)port);
 }
 
-STDCALL static unsigned short WRAP_EXPORT(READ_PORT_USHORT)
-	(unsigned int port)
+STDCALL static USHORT WRAP_EXPORT(READ_PORT_USHORT)
+	(USHORT *port)
 {
-	return inw(port);
+	return inw((unsigned int)port);
 }
 
 STDCALL static void WRAP_EXPORT(WRITE_PORT_UCHAR)
-	(unsigned int port, unsigned char value)
+	(UCHAR *port, UCHAR value)
 {
-	outb(value, port);
+	outb(value, (unsigned int)port);
 }
 
-STDCALL static unsigned short WRAP_EXPORT(READ_PORT_UCHAR)
-	(unsigned int port)
+STDCALL static UCHAR WRAP_EXPORT(READ_PORT_UCHAR)
+	(UCHAR *port)
 {
-	return inb(port);
+	return inb((unsigned int)port);
 }
 
 STDCALL static void WRAP_EXPORT(WRITE_PORT_BUFFER_USHORT)
-	(unsigned int port, unsigned short *buf, unsigned long count)
+	(USHORT *port, USHORT *buf, ULONG count)
 {
-	unsigned long i;
+	ULONG i;
 	for (i = 0 ; i < count ; i++)
-		outw(buf[i], port);
+		outw(buf[i], (unsigned int)port);
 }
 
 STDCALL static void WRAP_EXPORT(READ_PORT_BUFFER_USHORT)
-	(unsigned int port, unsigned short *buf, unsigned long count)
+	(USHORT *port, USHORT *buf, ULONG count)
 {
-	unsigned long i;
+	ULONG i;
 	for (i = 0 ; i < count; i++)
-		buf[i] = inw(port);
+		buf[i] = inw((unsigned int)port);
 }
 
 STDCALL static void WRAP_EXPORT(KeStallExecutionProcessor)
-	(unsigned long usecs)
+	(ULONG usecs)
 {
 	//DBGTRACE("%s %d\n", __FUNCTION__ , usecs);
 	udelay(usecs);

@@ -479,7 +479,7 @@ static struct ndis_packet *alloc_packet(struct ndis_handle *handle,
 					   buffer->data, buffer->len,
 					   PCI_DMA_TODEVICE);
 		packet->sg_list.len = 1;
-		packet->sg_element.address.quad = 0;
+		packet->sg_element.address.s.high = 0;
 #ifdef CONFIG_X86_64
 		packet->sg_element.address.quad = packet->dataphys;
 #else
@@ -507,6 +507,11 @@ static struct ndis_packet *alloc_packet(struct ndis_handle *handle,
 
 static void free_packet(struct ndis_handle *handle, struct ndis_packet *packet)
 {
+	if (!packet) {
+		ERROR("illegal packet from %p", handle);
+		return;
+	}
+
 	kfree(packet->private.buffer_head->data);
 	kfree(packet->private.buffer_head);
 
