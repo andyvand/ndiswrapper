@@ -58,9 +58,27 @@ To load the module type
 
 > modprobe ndiswrapper.
 
-If you get no error the driver should now be loaded and active. You can verify
+If you get no error the driver should now be loaded. You can verify
 this by checking system log (produced by 'dmesg'). If the driver is loaded
 successfully, you should see a message:
+
+ndiswrapper version <version> loaded
+
+If you have windows drivers installed earlier (with ndiswrapper -i <inffile>)
+successfully, ndiswrapper module will load them all. You should then see
+the following messages in system log:
+
+ndiswrapper: driver <driver1> added
+...
+
+for each of the driver1, .... If you don't these messages, it usually means
+that there are no (usable) drivers installed in /etc/ndiswrapper directory.
+Check if /etc/ndiswrapper directory has one sub-directory for each driver
+and in each driver's directory, there are inf, sys and conf files. Otherwise,
+you may need to repeat step 2.
+
+If the system has a card that works with one of the loaded drivers, you
+should see the following message in the system log:
 
 wlan0: ndiswrapper ethernet device xx:xx:xx:xx:xx:xx
 
