@@ -76,7 +76,8 @@ int doreset(struct ndis_handle *handle)
 	int addressing_reset;
 	DBGTRACE("%s: Enter\n", __FUNCTION__);
 
-	down_interruptible(&handle->ndis_comm_mutex);
+	if (down_interruptible(&handle->ndis_comm_mutex))
+		return NDIS_STATUS_FAILURE;
 	handle->ndis_comm_done = 0;
 
 	spin_lock_bh(&handle->ndis_comm_lock);
@@ -89,10 +90,11 @@ int doreset(struct ndis_handle *handle)
 	if(res != NDIS_STATUS_PENDING)
 		goto out;
 		
-	wait_event_interruptible(handle->ndis_comm_wqhead,
-				 (handle->ndis_comm_done == 1));
-	 
-	res = handle->ndis_comm_res;
+	if (wait_event_interruptible(handle->ndis_comm_wqhead,
+				     (handle->ndis_comm_done == 1)))
+		res = NDIS_STATUS_FAILURE;
+	else
+		res = handle->ndis_comm_res;
 
 out:
 	up(&handle->ndis_comm_mutex);
@@ -112,7 +114,9 @@ int doquery(struct ndis_handle *handle, unsigned int oid, char *buf, int bufsize
 	DBGTRACE("%s: Enter\n", __FUNCTION__);
 //	DBGTRACE("Calling query at %08x rva(%08x)\n", (int)handle->driver->miniport_char.query, (int)handle->driver->miniport_char.query - image_offset);
 
-	down_interruptible(&handle->ndis_comm_mutex);
+	if (down_interruptible(&handle->ndis_comm_mutex))
+		return NDIS_STATUS_FAILURE;
+
 	handle->ndis_comm_done = 0;
 
 	spin_lock_bh(&handle->ndis_comm_lock);
@@ -125,10 +129,11 @@ int doquery(struct ndis_handle *handle, unsigned int oid, char *buf, int bufsize
 	if(res != NDIS_STATUS_PENDING)
 		goto out;
 		
-	wait_event_interruptible(handle->ndis_comm_wqhead,
-				 (handle->ndis_comm_done == 1));
-	 
-	res = handle->ndis_comm_res;
+	if (wait_event_interruptible(handle->ndis_comm_wqhead,
+				     (handle->ndis_comm_done == 1)))
+		res = NDIS_STATUS_FAILURE;
+	else
+		res = handle->ndis_comm_res;
 
 out:
 	up(&handle->ndis_comm_mutex);
@@ -148,7 +153,9 @@ int dosetinfo(struct ndis_handle *handle, unsigned int oid, char *buf, int bufsi
 	DBGTRACE("%s: Enter\n", __FUNCTION__);
 //	DBGTRACE("Calling setinfo at %08x rva(%08x)\n", (int)handle->driver->miniport_char.setinfo, (int)handle->driver->miniport_char.setinfo - image_offset);
 
-	down_interruptible(&handle->ndis_comm_mutex);
+	if (down_interruptible(&handle->ndis_comm_mutex))
+		return NDIS_STATUS_FAILURE;
+
 	handle->ndis_comm_done = 0;
 
 	spin_lock_bh(&handle->ndis_comm_lock);
@@ -161,10 +168,11 @@ int dosetinfo(struct ndis_handle *handle, unsigned int oid, char *buf, int bufsi
 	if(res != NDIS_STATUS_PENDING)
 		goto out;
 		
-	wait_event_interruptible(handle->ndis_comm_wqhead,
-				 (handle->ndis_comm_done == 1));
-		
-	res = handle->ndis_comm_res;
+	if (wait_event_interruptible(handle->ndis_comm_wqhead,
+				     (handle->ndis_comm_done == 1)))
+		res = NDIS_STATUS_FAILURE;
+	else
+		res = handle->ndis_comm_res;
 
 out:
 	up(&handle->ndis_comm_mutex);
@@ -341,7 +349,6 @@ static void statcollector_bh(void *data)
 	struct ndis_wireless_stats ndis_stats;
 	long rssi;
 
-	return;
 	res = doquery(handle, NDIS_OID_RSSI, (char *)&rssi, sizeof(rssi),
 		      &written, &needed);
 	if (!res)
