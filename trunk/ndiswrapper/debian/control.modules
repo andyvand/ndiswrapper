@@ -11,10 +11,8 @@ Provides: ndiswrapper-modules
 Suggests: kernel-package
 Depends: ndiswrapper-utils-#NDISVERS#
 Description: Linux kernel module for NdisWrapper
- Some wireless LAN vendors refuse to release hardware specifications or
- drivers for their products for operating systems other than Microsoft
- Windows. NdisWrapper makes it possible to use such hardware with Linux by
- means of a loadable kernel module that "wraps around" NDIS (Windows network
- driver API) drivers.
+ Some wireless network cards don't have native Linux drivers. NdisWrapper
+ allows you to use such cards by loading Windows drivers and emulating
+ NDIS (Windows network driver) API.
  .
  This package provides kernel module that loads Windows drivers.

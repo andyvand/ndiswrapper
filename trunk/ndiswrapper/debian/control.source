@@ -9,11 +9,10 @@ Package: ndiswrapper-source
 Provides: ndiswrapper-source-#NDISVERS#
 Architecture: i386
 Description: User space tools for ndiswrapper
- Some wireless LAN vendors refuse to release hardware specifications or
- drivers for their products for operating systems other than Microsoft
- Windows. NdisWrapper makes it possible to use such hardware with Linux by
- means of a loadable kernel module that "wraps around" NDIS (Windows network
- driver API) drivers.
+ Some wireless network cards don't have native Linux drivers. NdisWrapper
+ allows you to use such cards by loading Windows drivers and emulating
+ NDIS (Windows network driver) API.
  .
- This package provides user space tools for NdisWrapper.
+ This package provides source code for both ndiswrapper kernel module and
+ user space tools needed for ndiswrapper.
 

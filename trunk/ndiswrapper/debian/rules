@@ -75,11 +75,13 @@ check-perms:
 	dh_testroot
 
 build-modules-prep:
-	sed -e 's/#KVERS#/$(KVERS)/g' -e 's/#NDISVERS#/$(NDISWRAPPER_VERSION)/g' \
+	sed -e 's/#KVERS#/$(KVERS)/g' \
+		-e 's/#NDISVERS#/$(NDISWRAPPER_VERSION)$(EXTRA_VERSION)/g' \
 		-e 's/#DATE#/'"`date --rfc-822`"'/g' \
 		-e 's/#MAINT#/$(MAINT) <$(MAINTEMAIL)>/g' \
 		debian/changelog.template > debian/changelog
-	sed -e 's/#KVERS#/$(KVERS)/' -e 's/#NDISVERS#/$(NDISWRAPPER_VERSION)/' \
+	sed -e 's/#KVERS#/$(KVERS)/' \
+		-e 's/#NDISVERS#/$(NDISWRAPPER_VERSION)$(EXTRA_VERSION)/' \
 		debian/control.modules > debian/control
 	sed -e 's/#KVERS#/$(KVERS)/' debian/postinst.modules > debian/postinst
 
@@ -107,11 +109,12 @@ clean-modules: build-modules-prep
 	dh_clean
 
 build-utils-prep:
-	sed -e 's/-#KVERS#//g' -e 's/#NDISVERS#/$(NDISWRAPPER_VERSION)/g' \
+	sed -e 's/-#KVERS#//g' \
+		-e 's/#NDISVERS#/$(NDISWRAPPER_VERSION)$(EXTRA_VERSION)/g' \
 		-e 's/#DATE#/'"`date --rfc-822`"'/g' \
 		-e 's/#MAINT#/$(MAINT) <$(MAINTEMAIL)>/g' \
 		debian/changelog.template > debian/changelog
-	sed -e 's/#NDISVERS#/$(NDISWRAPPER_VERSION)/' \
+	sed -e 's/#NDISVERS#/$(NDISWRAPPER_VERSION)$(EXTRA_VERSION)/' \
 		-e 's/#MAINT#/$(MAINT) <$(MAINTEMAIL)>/g' \
 		debian/control.utils > debian/control
 	echo "utils/loadndisdriver /sbin" > debian/ndiswrapper-utils.install
@@ -135,11 +138,12 @@ clean-utils: build-utils-prep
 	dh_clean
 
 build-source-prep:
-	sed -e 's/-#KVERS#//g' -e 's/#NDISVERS#/$(NDISWRAPPER_VERSION)/g' \
+	sed -e 's/-#KVERS#//g' \
+		-e 's/#NDISVERS#/$(NDISWRAPPER_VERSION)$(EXTRA_VERSION)/g' \
 		-e 's/#DATE#/'"`date --rfc-822`"'/g' \
 		-e 's/#MAINT#/$(MAINT) <$(MAINTEMAIL)>/g' \
 		debian/changelog.template > debian/changelog
-	sed -e 's/#NDISVERS#/$(NDISWRAPPER_VERSION)/' \
+	sed -e 's/#NDISVERS#/$(NDISWRAPPER_VERSION)$(EXTRA_VERSION)/' \
 		-e 's/#MAINT#/$(MAINT) <$(MAINTEMAIL)>/g' \
 		debian/control.source > debian/control
 	echo "ndiswrapper-source.tar.gz /usr/src" \
