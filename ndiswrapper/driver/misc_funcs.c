@@ -23,12 +23,14 @@
 #include "ndis.h"
 
 static struct list_head wrap_allocs;
-static spinlock_t wrap_allocs_lock;
+static KSPIN_LOCK wrap_allocs_lock;
+spinlock_t spinlock_kspin_lock;
 
 int misc_funcs_init(void)
 {
+	spin_lock_init(&spinlock_kspin_lock);
 	INIT_LIST_HEAD(&wrap_allocs);
-	spin_lock_init(&wrap_allocs_lock);
+	kspin_lock_init(&wrap_allocs_lock);
 	return 0;
 }
 
@@ -36,22 +38,24 @@ int misc_funcs_init(void)
 void misc_funcs_exit_handle(struct ndis_handle *handle)
 {
 	char canceled;
+	KIRQL irql;
+
 	/* cancel any timers left by bugyy windows driver
 	 * Also free the memory for timers
 	 */
 	while (1) {
 		struct wrapper_timer *timer;
 
-		spin_lock_bh(&handle->timers_lock);
+		irql = kspin_lock(&handle->timers_lock, DISPATCH_LEVEL);
 		if (list_empty(&handle->timers)) {
-			spin_unlock_bh(&handle->timers_lock);
+			kspin_unlock(&handle->timers_lock, irql);
 			break;
 		}
 
 		timer = list_entry(handle->timers.next,
 				   struct wrapper_timer, list);
 		list_del(&timer->list);
-		spin_unlock_bh(&handle->timers_lock);
+		kspin_unlock(&handle->timers_lock, irql);
 
 		DBGTRACE1("fixing up timer %p, timer->list %p",
 			  timer, &timer->list);
@@ -63,8 +67,10 @@ void misc_funcs_exit_handle(struct ndis_handle *handle)
 /* called when module is being removed */
 void misc_funcs_exit(void)
 {
+	KIRQL irql;
+
 	/* free all pointers on the allocated list */
-	spin_lock(&wrap_allocs_lock);
+	irql = kspin_lock(&wrap_allocs_lock, PASSIVE_LEVEL);
 	while (!list_empty(&wrap_allocs)) {
 		struct wrap_alloc *alloc;
 
@@ -73,7 +79,7 @@ void misc_funcs_exit(void)
 		kfree(alloc->ptr);
 		kfree(alloc);
 	}
-	spin_unlock(&wrap_allocs_lock);
+	kspin_unlock(&wrap_allocs_lock, irql);
 
 	TRACEEXIT4(return);
 }
@@ -87,6 +93,8 @@ void misc_funcs_exit(void)
 void *wrap_kmalloc(size_t size, int flags)
 {
 	struct wrap_alloc *alloc;
+	KIRQL irql;
+
 	TRACEENTER4("size = %u, flags = %d", size, flags);
 
 	if ((flags & GFP_ATOMIC) || irqs_disabled())
@@ -100,9 +108,9 @@ void *wrap_kmalloc(size_t size, int flags)
 		kfree(alloc);
 		return NULL;
 	}
-	spin_lock(&wrap_allocs_lock);
+	irql = kspin_lock(&wrap_allocs_lock, PASSIVE_LEVEL);
 	list_add(&alloc->list, &wrap_allocs);
-	spin_unlock(&wrap_allocs_lock);
+	kspin_unlock(&wrap_allocs_lock, irql);
 	DBGTRACE4("%p, %p", alloc, alloc->ptr);
 	TRACEEXIT4(return alloc->ptr);
 }
@@ -111,9 +119,10 @@ void *wrap_kmalloc(size_t size, int flags)
 void wrap_kfree(void *ptr)
 {
 	struct list_head *cur, *tmp;
+	KIRQL irql;
 
 	TRACEENTER4("%p", ptr);
-	spin_lock(&wrap_allocs_lock);
+	irql = kspin_lock(&wrap_allocs_lock, PASSIVE_LEVEL);
 	list_for_each_safe(cur, tmp, &wrap_allocs) {
 		struct wrap_alloc *alloc;
 
@@ -125,7 +134,7 @@ void wrap_kfree(void *ptr)
 			break;
 		}
 	}
-	spin_unlock(&wrap_allocs_lock);
+	kspin_unlock(&wrap_allocs_lock, irql);
 	TRACEEXIT4(return);
 }
 
@@ -174,6 +183,7 @@ void wrapper_init_timer(struct ktimer *ktimer, void *handle)
 {
 	struct wrapper_timer *wrapper_timer;
 	struct ndis_handle *ndis_handle = (struct ndis_handle *)handle;
+	KIRQL irql;
 
 	TRACEENTER5("%s", "");
 	wrapper_timer = wrap_kmalloc(sizeof(struct wrapper_timer), GFP_ATOMIC);
@@ -195,9 +205,9 @@ void wrapper_init_timer(struct ktimer *ktimer, void *handle)
 	ktimer->wrapper_timer = wrapper_timer;
 	kspin_lock_init(&wrapper_timer->lock);
 	if (handle) {
-		spin_lock_bh(&ndis_handle->timers_lock);
+		irql = kspin_lock(&ndis_handle->timers_lock, PASSIVE_LEVEL);
 		list_add(&wrapper_timer->list, &ndis_handle->timers);
-		spin_unlock_bh(&ndis_handle->timers_lock);
+		kspin_unlock(&ndis_handle->timers_lock, irql);
 	}
 
 	DBGTRACE4("added timer %p, wrapper_timer->list %p\n",

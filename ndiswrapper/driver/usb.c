@@ -35,14 +35,14 @@
 #endif
 
 static struct list_head completed_irps;
-static spinlock_t completed_irps_lock;
+static KIRQL completed_irps_lock;
 void usb_transfer_complete_tasklet(unsigned long dummy);
 DECLARE_TASKLET(completed_irps_tasklet, usb_transfer_complete_tasklet, 0);
 
 static struct list_head canceled_irps;
 void usb_cancel_worker(void *dummy);
 static struct work_struct cancel_usb_irp_work;
-extern spinlock_t irp_cancel_lock;
+extern KSPIN_LOCK irp_cancel_lock;
 
 #ifdef DUMPURBS
 #define DUMP_URB(urb) do {						\
@@ -83,7 +83,7 @@ static inline int wrap_submit_urb(struct urb *urb, int flags)
 
 int usb_init(void)
 {
-	spin_lock_init(&completed_irps_lock);
+	kspin_lock_init(&completed_irps_lock);
 	INIT_LIST_HEAD(&canceled_irps);
 	INIT_LIST_HEAD(&completed_irps);
 	INIT_WORK(&cancel_usb_irp_work, usb_cancel_worker, NULL);
@@ -103,6 +103,7 @@ void usb_transfer_complete(struct urb *urb)
 {
 	struct irp *irp = urb->context;
 	int cancel;
+	KIRQL irql;
 
 	USBTRACEENTER("urb = %p", urb);
 
@@ -111,17 +112,17 @@ void usb_transfer_complete(struct urb *urb)
 		USBTRACEEXIT(return);
 
 	/* canceled but not yet unlinked? */
-	spin_lock(&irp_cancel_lock);
+	irql = kspin_lock(&irp_cancel_lock, PASSIVE_LEVEL);
 	irp->cancel_routine = NULL;
 	cancel = irp->cancel;
-	spin_unlock(&irp_cancel_lock);
+	kspin_unlock(&irp_cancel_lock, irql);
 
 	if (cancel)
 		USBTRACEEXIT(return);
 
-	spin_lock(&completed_irps_lock);
+	irql = kspin_lock(&completed_irps_lock, PASSIVE_LEVEL);
 	list_add_tail(&irp->completed_list, &completed_irps);
-	spin_unlock(&completed_irps_lock);
+	kspin_unlock(&completed_irps_lock, irql);
 
 	tasklet_schedule(&completed_irps_tasklet);
 	USBTRACEEXIT(return);
@@ -136,17 +137,17 @@ void usb_transfer_complete_tasklet(unsigned long dummy)
 	unsigned long flags;
 
 	while (1) {
-		spin_lock_irqsave(&completed_irps_lock, flags);
+		kspin_lock_irqsave(&completed_irps_lock, flags);
 
 		if (list_empty(&completed_irps)) {
-			spin_unlock_irqrestore(&completed_irps_lock, flags);
+			kspin_unlock_irqrestore(&completed_irps_lock, flags);
 			USBTRACEEXIT(return);
 		}
 		irp = list_entry(completed_irps.next, struct irp,
 				 completed_list);
 		list_del(&irp->completed_list);
 
-		spin_unlock_irqrestore(&completed_irps_lock, flags);
+		kspin_unlock_irqrestore(&completed_irps_lock, flags);
 
 		urb = IRP_DRIVER_CONTEXT(irp)[3];
 		stack = IRP_CUR_STACK_LOC(irp) - 1;
@@ -210,20 +211,21 @@ void usb_cancel_worker(void *dummy)
 {
 	struct irp *irp;
 	struct urb *urb;
+	KIRQL irql;
 
 	USBTRACEENTER("%s", "");
 
 	while (1) {
-		spin_lock(&irp_cancel_lock);
+		irql = kspin_lock(&irp_cancel_lock, PASSIVE_LEVEL);
 
 		if (list_empty(&canceled_irps)) {
-			spin_unlock(&irp_cancel_lock);
+			kspin_unlock(&irp_cancel_lock, irql);
 			USBTRACEEXIT(return);
 		}
 		irp = list_entry(canceled_irps.next, struct irp, cancel_list);
 		list_del(&irp->cancel_list);
 
-		spin_unlock(&irp_cancel_lock);
+		kspin_unlock(&irp_cancel_lock, irql);
 
 		urb = IRP_DRIVER_CONTEXT(irp)[3];
 
