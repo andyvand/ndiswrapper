@@ -72,7 +72,7 @@ void misc_funcs_exit(void)
 }
 
 /* return wrap_spinlock mapped to ksin_lock */
-struct wrap_spinlock *kspin_wrap_lock(void *kspin_lock)
+struct wrap_spinlock *kspin_wrap_lock(KSPIN_LOCK *kspin_lock)
 {
 	struct hlist_head *head;
 	struct hlist_node *node;
@@ -93,15 +93,17 @@ struct wrap_spinlock *kspin_wrap_lock(void *kspin_lock)
  * wrap_spinlock; otherwise, allocate wrap_spinlock and map kspin_lock
  * to it
 */
-struct wrap_spinlock *allocate_kspin_lock(void *kspin_lock)
+struct wrap_spinlock *allocate_kspin_lock(KSPIN_LOCK *kspin_lock)
 {
 	struct hlist_head *head;
 	struct spinlock_hash *p;
 	struct wrap_spinlock *ret;
 	int i;
 
-	if ((ret = kspin_wrap_lock(kspin_lock)))
-		return ret;
+	TRACEENTER3("%p", kspin_lock);
+	ret = kspin_wrap_lock(kspin_lock);
+	if (ret)
+		TRACEEXIT3(return ret);
 
 	spin_lock(&spinlock_map_lock);
 	i = hash_ptr(kspin_lock, SPINLOCK_HASH_BITS);
@@ -114,14 +116,14 @@ struct wrap_spinlock *allocate_kspin_lock(void *kspin_lock)
 	}
 	p->kspin_lock = kspin_lock;
 	hlist_add_head(&p->hlist, head);
+	wrap_spin_lock_init(&p->wrap_spinlock);
 	spin_unlock(&spinlock_map_lock);
 	DBGTRACE3("kspin_lock %p mapped to %p at %d", kspin_lock, p, i);
-	wrap_spin_lock_init(&p->wrap_spinlock);
 	return &p->wrap_spinlock;
 }
 
 /* unmap wrap_spinlock mapped by kspin_lock */
-int free_kspin_lock(void *kspin_lock)
+int free_kspin_lock(KSPIN_LOCK *kspin_lock)
 {
 	struct hlist_head *head;
 	struct hlist_node *node;
