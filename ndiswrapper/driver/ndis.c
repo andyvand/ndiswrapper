@@ -226,7 +226,7 @@ STDCALL void NdisOpenFile(unsigned int *status,
 			  char *filename,
 			  unsigned long highest_address)
 {
-	DBGTRACE("%s: Filename: %s Highest Address: %08x\n", __FUNCTION__, filename, (int) highest_address);
+	DBGTRACE("%s: Filename: %s @ %p Highest Address: %08x\n", __FUNCTION__, filename, filename, (int) highest_address);
 	*status = NDIS_STATUS_FILE_NOT_FOUND;
 }
 			   
@@ -316,7 +316,7 @@ STDCALL void NdisReadConfiguration(unsigned int *status,
 	{
 		if(strcmp(keyname, internal_parameters[i].name) == 0)
 		{
-			DBGTRACE("%s: Builting found value for %s\n", __FUNCTION__, keyname);
+			DBGTRACE("%s: Builtin found value for %s\n", __FUNCTION__, keyname);
 			
 			*dest = &internal_parameters[i].val;
 			*status = NDIS_STATUS_SUCCESS;
@@ -338,7 +338,7 @@ STDCALL void NdisReadConfiguration(unsigned int *status,
 	}
 
 	
-	DBGTRACE(KERN_INFO "%s: Key not found type:%d. key:%s\n", __FUNCTION__, type, keyname);
+	DBGTRACE(KERN_INFO "%s: Key not found type:%d key:%s\n", __FUNCTION__, type, keyname);
 
 	*dest = (struct ndis_setting_val*)0;
 	*status = NDIS_STATUS_FAILURE;
