@@ -346,6 +346,53 @@ static int ndis_get_tx_power(struct net_device *dev, struct iw_request_info *inf
 	return 0;
 }
 
+static int ndis_set_tx_power(struct net_device *dev, struct iw_request_info *info,
+			   union iwreq_data *wrqu, char *extra)
+{
+	struct ndis_handle *handle = dev->priv; 
+	unsigned long ndis_power;
+	unsigned int written, needed, res;
+
+	if (wrqu->txpower.disabled)
+	{
+		/* Linux spec says radio should be turned off, but the
+		   equivalent in NDIS is DISASSOCIATE, but that also
+		   disconnects from current AP.
+		   Then how do we reassociate? 
+		*/
+		ndis_power = 0;
+	}
+	else 
+	{
+		if (wrqu->txpower.flags == IW_TXPOW_MWATT)
+			ndis_power = wrqu->txpower.value;
+		else // wrqu->txpower.flags == IW_TXPOW_DBM
+		{
+			/* but make sure we don't deal with too huge vlaue */
+			if (wrqu->txpower.value > 50)			
+				return -1;
+			else
+			{
+				int ip = wrqu->txpower.value / 10 ;
+				int fp = wrqu->txpower.value % 10 ;
+				int k;
+				double res = 1.0;
+				for (k = 0 ; k < ip ; k++)
+					res *= 10;
+				for (k = 0 ; k < fp ; k++)
+					res *= 1.25892541179; // LOG10_MAGIC
+				ndis_power = (unsigned long)res;
+			}
+		}
+	}
+	res = dosetinfo(handle, NDIS_OID_TX_POWER_LEVEL, (char*)&ndis_power,
+		      sizeof(ndis_power), &written, &needed);
+	if(res)
+		return -1;
+
+	return 0;
+}
+
 static int ndis_get_bitrate(struct net_device *dev, struct iw_request_info *info,
 			   union iwreq_data *wrqu, char *extra)
 {
@@ -753,6 +800,7 @@ static const iw_handler	ndis_handler[] = {
 	[SIOCGIWMODE	- SIOCIWFIRST] = ndis_get_mode,
 	[SIOCGIWFREQ	- SIOCIWFIRST] = ndis_get_freq,
 	[SIOCGIWTXPOW	- SIOCIWFIRST] = ndis_get_tx_power,
+	[SIOCSIWTXPOW	- SIOCIWFIRST] = ndis_set_tx_power,
 	[SIOCGIWRATE	- SIOCIWFIRST] = ndis_get_bitrate,
 	[SIOCGIWRTS	- SIOCIWFIRST] = ndis_get_rts_threshold,
 	[SIOCGIWFRAG	- SIOCIWFIRST] = ndis_get_frag_threshold,
