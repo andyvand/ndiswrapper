@@ -349,23 +349,14 @@ int wrapper_set_timer(struct wrapper_timer *wrapper_timer,
                       unsigned long expires, unsigned long repeat,
                       struct kdpc *kdpc);
 void wrapper_cancel_timer(struct wrapper_timer *wrapper_timer, char *canceled);
-void wrapper_init_event(struct dispatch_header *header, int type, int state);
-void wrapper_set_event(struct dispatch_header *header);
-void wrapper_reset_event(struct dispatch_header *header);
-unsigned int wrapper_wait_event(struct dispatch_header *header, int ms);
+STDCALL void KeInitializeEvent(struct kevent *kevent, int type, int state);
+STDCALL long KeSetEvent(struct kevent *kevent, int incr, int wait);
+STDCALL long KeResetEvent(struct kevent *kevent);
+STDCALL unsigned int KeWaitForSingleObject(void *object, unsigned int reason,
+					   unsigned int waitmode,
+					   unsigned short alertable,
+					   s64 *timeout);
 u64 ticks_1601(void);
-
-static inline void wrapper_set_timer_dpc(struct wrapper_timer *wrapper_timer,
-                                         struct kdpc *kdpc)
-{
-	wrapper_timer->kdpc = kdpc;
-}
-
-static inline void init_dpc(struct kdpc *kdpc, void *func, void *ctx)
-{
-	kdpc->func = func;
-	kdpc->ctx  = ctx;
-}
 
 STDCALL KIRQL KeGetCurrentIrql(void);
 STDCALL void KeInitializeSpinLock(KSPIN_LOCK *lock);
@@ -395,4 +386,17 @@ static inline void wrap_spin_unlock(struct wrap_spinlock *lock)
 	spin_unlock(&lock->spinlock);
 	KfLowerIrql(0, 0, lock->irql);
 }
+
+static inline void wrapper_set_timer_dpc(struct wrapper_timer *wrapper_timer,
+                                         struct kdpc *kdpc)
+{
+	wrapper_timer->kdpc = kdpc;
+}
+
+static inline void init_dpc(struct kdpc *kdpc, void *func, void *ctx)
+{
+	kdpc->func = func;
+	kdpc->ctx  = ctx;
+}
+
 #endif // _NTOSKERNEL_H_

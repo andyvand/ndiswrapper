@@ -20,6 +20,9 @@
 #include <linux/time.h>
 
 unsigned long long KeTickCount;
+DECLARE_WAIT_QUEUE_HEAD(dispatch_event_wq);
+struct wrap_spinlock dispatch_event_lock;
+
 STDCALL static void
 WRITE_REGISTER_ULONG(void *reg, unsigned int val)
 {
@@ -289,15 +292,18 @@ IoIsWdmVersionAvailable(unsigned char major, unsigned char minor)
 	return 0;
 }
 
-STDCALL static void
+STDCALL void
 KeInitializeEvent(struct kevent *kevent, int type, int state)
 {
 	TRACEENTER3("event = %p, type = %d, state = %d",
 		    kevent, type, state);
-	wrapper_init_event(&kevent->header, type, state);
+	wrap_spin_lock(&dispatch_event_lock);
+	kevent->header.type = type;
+	kevent->header.signal_state = state;
+	wrap_spin_unlock(&dispatch_event_lock);
 }
 
-STDCALL static long
+STDCALL long
 KeSetEvent(struct kevent *kevent, int incr, int wait)
 {
 	long old_state = kevent->header.signal_state;
@@ -308,8 +314,24 @@ KeSetEvent(struct kevent *kevent, int incr, int wait)
 		WARNING("wait = %d, not yet implemented", wait);
 
 	if (old_state == 0) {
-		wrapper_set_event(&kevent->header);
-		kevent->header.signal_state = 0;
+		wrap_spin_lock(&dispatch_event_lock);
+		kevent->header.signal_state = 1;
+		if (kevent->header.type == SYNCHRONIZATION_EVENT)
+			wake_up_nr(&dispatch_event_wq, 1);
+		else
+			wake_up_all(&dispatch_event_wq);
+		DBGTRACE3("woken up %p", kevent);
+		if (kevent->header.type == SYNCHRONIZATION_EVENT)
+			kevent->header.signal_state = 0;
+		/* NDIS seems to say the event should be cleared after waking
+		 * up, but drivers seem to not work that way! It is not clear
+		 * if NDIS says the event should be cleared here or will
+		 * be cleared later
+		 */
+		/* But if called from NdisSetEvent, the event should be left
+		 * in signaled state */
+		/* kevent->header.signal_state = 0; */
+		wrap_spin_unlock(&dispatch_event_lock);
 	}
 	TRACEEXIT3(return old_state);
 }
@@ -318,20 +340,27 @@ STDCALL static void
 KeClearEvent(struct kevent *kevent)
 {
 	TRACEENTER3("event = %p", kevent);
-	wrapper_reset_event(&kevent->header);
+	wrap_spin_lock(&dispatch_event_lock);
+	kevent->header.signal_state = 0;
+	wrap_spin_unlock(&dispatch_event_lock);
 }
 
-STDCALL static long
+STDCALL long
 KeResetEvent(struct kevent *kevent)
 {
-	long old_state = kevent->header.signal_state;
+	long old_state;
 
 	TRACEENTER3("event = %p", kevent);
-	wrapper_reset_event(&kevent->header);
+
+	wrap_spin_lock(&dispatch_event_lock);
+	old_state = kevent->header.signal_state;
+	kevent->header.signal_state = 0;
+	wrap_spin_unlock(&dispatch_event_lock);
+
 	TRACEEXIT3(return old_state);
 }
 
-STDCALL static unsigned int
+STDCALL unsigned int
 KeWaitForSingleObject(void *object, unsigned int reason,
 		      unsigned int waitmode, unsigned short alertable,
 		      s64 *timeout)
@@ -342,32 +371,59 @@ KeWaitForSingleObject(void *object, unsigned int reason,
 	int res;
 
 	/* Note: for now, object can only point to an event */
-	TRACEENTER2("object = %p, reason = %u, waitmode = %u, alertable = %u,"
-		" timeout = %p", object, reason, waitmode, alertable,
+	TRACEENTER2("event = %p, reason = %u, waitmode = %u, alertable = %u,"
+		" timeout = %p", kevent, reason, waitmode, alertable,
 		timeout);
 
 	DBGTRACE2("object type = %d, size = %d", header->type, header->size);
 
+	if (header->signal_state)
+		TRACEEXIT3(return STATUS_SUCCESS);
+
 	if (timeout) {
 		DBGTRACE2("timeout = %Ld", *timeout);
-		if (*timeout == 0) {
-			if (header->signal_state)
-				TRACEEXIT2(return STATUS_SUCCESS);
-			else
-				TRACEEXIT2(return STATUS_TIMEOUT);
-		} else if (*timeout > 0) {
+		if (*timeout == 0)
+			TRACEEXIT2(return STATUS_TIMEOUT);
+		else if (*timeout > 0)
 			ms = ((*timeout) - ticks_1601()) / 10000;
-		} else
+		else
 			ms = (-(*timeout)) / 10000;
 	} else
 		ms = 0;
 
 	DBGTRACE2("wait ms = %u", ms);
-	res = wrapper_wait_event(header, ms);
-	if (res)
-		TRACEEXIT2(return STATUS_SUCCESS);
-	else
+
+	if (ms == 0) {
+		if (alertable)
+			res = wait_event_interruptible(
+				dispatch_event_wq,
+				(header->signal_state == 1));
+		else {
+			wait_event(dispatch_event_wq,
+				   (header->signal_state == 1));
+			res = 0;
+		}
+	} else {
+		if (alertable)
+			res = wait_event_interruptible_timeout(
+				dispatch_event_wq,
+				(header->signal_state == 1),
+				(ms * HZ)/1000);
+		else
+			res = wait_event_timeout(
+				dispatch_event_wq,
+				(header->signal_state == 1),
+				(ms * HZ)/1000);
+	}
+
+	DBGTRACE3("%p, type = %d woke up (%ld)",
+		  kevent, header->type, header->signal_state);
+	if (res > 0)
 		TRACEEXIT2(return STATUS_TIMEOUT);
+	else if (res < 0)
+		TRACEEXIT2(return STATUS_ALERTED);
+	else
+		TRACEEXIT2(return STATUS_SUCCESS);
 
 }
 
@@ -527,7 +583,7 @@ IofCompleteRequest(int dummy, char prio_boost, struct irp *irp)
 
 	if (irp->user_event) {
 		DBGTRACE3("setting event %p", irp->user_event);
-		wrapper_set_event(&irp->user_event->header);
+		KeSetEvent(irp->user_event, 0, 0);
 	}
 
 	/* To-Do: what about IRP_DEALLOCATE_BUFFER...? */
@@ -621,7 +677,7 @@ _FASTCALL static unsigned long IofCallDriver(int dummy, struct irp *irp,
 
 		if (irp->user_event) {
 			DBGTRACE3("setting event %p", irp->user_event);
-			wrapper_set_event(&irp->user_event->header);
+			KeSetEvent(irp->user_event, 0, 0);
 		}
 	}
 
@@ -721,10 +777,8 @@ STDCALL static long KeSetPriorityThread(void *thread, long priority)
 	return old_prio;
 }
 
-DECLARE_WAIT_QUEUE_HEAD(thread_wq);
-
 STDCALL static int
-KeDelayExecutionThread(KPROCESSOR_MODE wait_mode, BOOLEAN alterable,
+KeDelayExecutionThread(KPROCESSOR_MODE wait_mode, BOOLEAN alertable,
 		       u64 *interval)
 {
 	int res;
@@ -739,8 +793,14 @@ KeDelayExecutionThread(KPROCESSOR_MODE wait_mode, BOOLEAN alterable,
 	else
 		timeout = HZ * (*interval) / 10000;
 
-	res = wait_event_interruptible_timeout(thread_wq, 1, timeout);
-	if (res < 0)
+	if (alertable)
+		set_current_state(TASK_INTERRUPTIBLE);
+	else
+		set_current_state(TASK_UNINTERRUPTIBLE);
+
+	res = schedule_timeout(timeout);
+
+	if (res > 0)
 		TRACEEXIT2(return STATUS_ALERTED);
 	else
 		TRACEEXIT2(return STATUS_SUCCESS);

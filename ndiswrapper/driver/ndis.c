@@ -2005,17 +2005,19 @@ STDCALL static void
 NdisInitializeEvent(struct ndis_event *ndis_event)
 {
 	TRACEENTER3("%p", ndis_event);
-	wrapper_init_event(&ndis_event->kevent.header, NOTIFICATION_EVENT, 0);
+	KeInitializeEvent(&ndis_event->kevent, NOTIFICATION_EVENT, 0);
 }
 
 STDCALL int
 NdisWaitEvent(struct ndis_event *ndis_event, unsigned int ms)
 {
+	s64 ticks;
 	int res;
 
 	TRACEENTER3("%p %u", ndis_event, ms);
-	res = wrapper_wait_event(&ndis_event->kevent.header, ms);
-	if (res)
+	ticks = ms * 10000;
+	res = KeWaitForSingleObject(&ndis_event->kevent, 0, 0, 0, &ticks);
+	if (res == STATUS_SUCCESS)
 		TRACEEXIT3(return TRUE);
 	else
 		TRACEEXIT3(return FALSE);
@@ -2025,14 +2027,14 @@ STDCALL void
 NdisSetEvent(struct ndis_event *ndis_event)
 {
 	TRACEENTER3("%p", ndis_event);
-	wrapper_set_event(&ndis_event->kevent.header);
+	KeSetEvent(&ndis_event->kevent, 0, 0);
 }
 
 STDCALL static void
 NdisResetEvent(struct ndis_event *ndis_event)
 {
 	TRACEENTER3("%p", ndis_event);
-	wrapper_reset_event(&ndis_event->kevent.header);
+	KeResetEvent(&ndis_event->kevent);
 }
 
 /* called via function pointer */

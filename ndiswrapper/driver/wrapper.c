@@ -118,8 +118,9 @@ int doreset(struct ndis_handle *handle)
 		 * 1 ms */
 		mdelay(1);
 		/* wait for NdisMResetComplete upto 30*HZ */
-		if (!wait_event_interruptible_timeout(handle->ndis_comm_wq,
-			   (handle->ndis_comm_done == 1), 30*HZ))
+		if (wait_event_interruptible_timeout(
+			    handle->ndis_comm_wq,
+			    (handle->ndis_comm_done == 1), 30*HZ))
 			handle->ndis_comm_res = NDIS_STATUS_FAILURE;
 		res = handle->ndis_comm_res;
 		DBGTRACE2("res = %08X, reset_status = %08X",
@@ -167,8 +168,9 @@ int doquery(struct ndis_handle *handle, unsigned int oid, char *buf,
 	if (res == NDIS_STATUS_PENDING)
 	{
 		/* wait for NdisMQueryInformationComplete upto HZ */
-		if (!wait_event_interruptible_timeout(handle->ndis_comm_wq,
-			   (handle->ndis_comm_done == 1), HZ))
+		if (wait_event_interruptible_timeout(
+			    handle->ndis_comm_wq,
+			    (handle->ndis_comm_done == 1), HZ))
 			handle->ndis_comm_res = NDIS_STATUS_FAILURE;
 		res = handle->ndis_comm_res;
 	}
@@ -197,8 +199,9 @@ int dosetinfo(struct ndis_handle *handle, unsigned int oid, char *buf,
 	if (res == NDIS_STATUS_PENDING)
 	{
 		/* wait for NdisMSetInformationComplete upto HZ */
-		if (!wait_event_interruptible_timeout(handle->ndis_comm_wq,
-			   (handle->ndis_comm_done == 1), HZ))
+		if (wait_event_interruptible_timeout(
+			    handle->ndis_comm_wq,
+			    (handle->ndis_comm_done == 1), HZ))
 			handle->ndis_comm_res = NDIS_STATUS_FAILURE;
 		res = handle->ndis_comm_res;
 	}
@@ -255,11 +258,8 @@ int call_init(struct ndis_handle *handle)
 	}
 	res = miniport->init(&res2, &selected_medium, mediumtypes, 13, handle,
 			     handle);
-	if (res) {
-		printk(KERN_WARNING "Windows driver failed to initialize the"
-		       " device (%08X)", res);
+	if (res)
 		return res;
-	}
 	return 0;
 }
 
@@ -1136,9 +1136,10 @@ static void wrapper_worker_proc(void *param)
 
 		if (handle->link_status == 0)
 		{
-			set_auth_mode(handle, handle->auth_mode);
 
 			for (i = 0; i < MAX_ENCR_KEYS; i++)
+				handle->encr_info.keys[i].length = 0;
+#if 0
 				if (handle->encr_info.keys[i].length != 0) {
 					dosetinfo(handle, NDIS_OID_ADD_WEP,
 					    (char *)&handle->encr_info.keys[i],
@@ -1147,8 +1148,10 @@ static void wrapper_worker_proc(void *param)
 					set_encr_mode(handle, ENCR1_ENABLED);
 				}
 
+			set_auth_mode(handle, handle->auth_mode);
 			set_essid(handle, handle->essid.essid,
 			          handle->essid.length);
+#endif
 			return;
 		}
 
@@ -1554,9 +1557,10 @@ static int ndis_init_one_pci(struct pci_dev *pdev,
 #endif
 
 	DBGTRACE1("%s", "Calling ndis init routine");
-	if(call_init(handle))
+	if((res = call_init(handle)))
 	{
-		ERROR("%s", "Windows driver couldn't initialize the device");
+		ERROR("Windows driver couldn't initialize the device (%08X)",
+			res);
 		res = -EINVAL;
 		goto out_start;
 	}
@@ -1656,8 +1660,10 @@ static void *ndis_init_one_usb(struct usb_device *udev, unsigned int ifnum,
 #endif
 
 	TRACEENTER1("%s", "Calling ndis init routine");
-	if (call_init(handle)) {
-		ERROR("%s", "Windows driver couldn't initialize the device");
+	if((res = call_init(handle)))
+	{
+		ERROR("Windows driver couldn't initialize the device (%08X)",
+			res);
 		res = -EINVAL;
 		goto out_start;
 	}
