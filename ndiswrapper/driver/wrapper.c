@@ -516,13 +516,13 @@ static int ndis_set_wep(struct net_device *dev, struct iw_request_info *info,
 		if (res)
 			return -1;
 
-		if (wrqu->data.flags & IW_ENCODE_OPEN)
-			auth_mode = NDIS_ENCODE_OPEN;
-		else
+		if (wrqu->data.flags & IW_ENCODE_RESTRICTED)
 		{
 			printk(KERN_WARNING "%s: 'restricted' security mode may not work in all cases; use 'open' mode\n", dev->name);
 			auth_mode = NDIS_ENCODE_RESTRICTED;
 		}
+		else
+			auth_mode = NDIS_ENCODE_OPEN;
 		res = set_int(handle, NDIS_OID_AUTH_MODE, auth_mode);
 
 		if (res)
