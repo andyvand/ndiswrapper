@@ -31,8 +31,6 @@ int set_essid(struct ndis_handle *handle, const char *ssid, int ssid_len)
 	unsigned int res, written, needed;
 	struct ndis_essid req;
 
-	TRACEENTER1("flags = %d, length = %d",
-		    wrqu->essid.flags, wrqu->essid.length);
 	memset(&req, 0, sizeof(req));
 	
 	if (ssid_len == 0)
@@ -575,14 +573,14 @@ static int iw_get_encr(struct net_device *dev, struct iw_request_info *info,
 	
 	TRACEEXIT1(return 0);
 }
-	
+
 static int iw_set_encr(struct net_device *dev, struct iw_request_info *info,
 		       union iwreq_data *wrqu, char *extra)
 {
 	struct ndis_handle *handle = dev->priv;
 	unsigned int res, written, needed, index;
 	struct wep_info *wep_info = &handle->wep_info;
-	struct wep_req wep_req;
+	struct ndis_wep_key ndis_key;
 	
 	TRACEENTER1("%s", "");
 	index = (wrqu->encoding.flags & IW_ENCODE_INDEX);
@@ -634,30 +632,27 @@ static int iw_set_encr(struct net_device *dev, struct iw_request_info *info,
 
 	if (wep_info->keys[index].length > 0)
 	{
-		wep_req.len = sizeof(wep_req);
+		ndis_key.struct_size = sizeof(ndis_key);
+		ndis_key.index = index;
 
 		if (index == wep_info->active || (wrqu->data.length == 0))
 		{
 			DBGTRACE2("setting key %d as tx key", index);
-			wep_req.keyindex = (index) | (1 << 31);
+			ndis_key.index |= 1 << 31;
 			wep_info->active = index;
 		}
-		else
-		{
-			DBGTRACE2("setting key %d as rx key", index);
-			wep_req.keyindex = (index);
-		}
-		wep_req.keylength = wep_info->keys[index].length;
-		memcpy(&wep_req.key, wep_info->keys[index].key,
+
+		ndis_key.length = wep_info->keys[index].length;
+		memcpy(&ndis_key.key, wep_info->keys[index].key,
 		       wep_info->keys[index].length);
 
-		DBGTRACE("key_length = %ld", wep_req.keylength);
+		DBGTRACE("key length = %ld", ndis_key.length);
 		res = set_wep_mode(handle, WEP_ENABLED);
 		if (res)
 			WARNING("changing wep status failed (%08X)", res);
 
-		res = dosetinfo(handle, NDIS_OID_ADD_WEP, (char *)&wep_req,
-				sizeof(wep_req), &written, &needed);
+		res = dosetinfo(handle, NDIS_OID_ADD_WEP, (char *)&ndis_key,
+				sizeof(ndis_key), &written, &needed);
 		if (res)
 		{
 			WARNING("adding wep key %d failed (%08X)",
@@ -1194,7 +1189,7 @@ static int char_to_hex(int c)
 }
 
 /* convert key in string to hex digits - 2 chars make up one digit */
-static int key_str_to_hex(const char *str, char *key, int str_len)
+static int key_str_to_hex(const char *str, unsigned char *key, int str_len)
 {
 	int i, key_len;
 
@@ -1217,7 +1212,7 @@ static int key_str_to_hex(const char *str, char *key, int str_len)
 			c2 = char_to_hex(tolower(str[i+1]));
 			if (c1 < 0 || c2 < 0)
 				TRACEEXIT(return -1);
-			key[key_len++] = (c1 << 4 | c2) & 0xFF;
+			key[key_len++] = c1 << 4 | c2;
 		}
 	DBGTRACE("key length = %d", key_len);
 	if (key_len == 5 || key_len == 13)
@@ -1230,7 +1225,7 @@ static int wpa_set_key(struct net_device *dev, struct iw_request_info *info,
 		       union iwreq_data *wrqu, char *extra)
 {
 	struct ndis_handle *handle = (struct ndis_handle *)dev->priv;
-	struct ndis_key ndis_key;
+	struct ndis_wpa_key ndis_key;
 	struct wpa_key *wpa_key = (struct wpa_key *)wrqu->data.pointer;
 	int i, res, written, needed;
 	
@@ -1241,8 +1236,8 @@ static int wpa_set_key(struct net_device *dev, struct iw_request_info *info,
 	{
 		struct ndis_remove_key ndis_remove_key;
 
-		ndis_remove_key.length = sizeof(ndis_remove_key);
-		ndis_remove_key.key_index = wpa_key->key_index;
+		ndis_remove_key.struct_size = sizeof(ndis_remove_key);
+		ndis_remove_key.index = wpa_key->key_index;
 		if (wpa_key->addr)
 			memcpy(&ndis_remove_key.bssid, wpa_key->addr,
 			       ETH_ALEN);
@@ -1257,15 +1252,25 @@ static int wpa_set_key(struct net_device *dev, struct iw_request_info *info,
 			       res, needed, sizeof(ndis_remove_key));
 			TRACEEXIT(return -EINVAL);
 		}
+		if (wpa_key->key_index >= 0 &&
+		    wpa_key->key_index < MAX_WEP_KEYS)
+		{
+			handle->wep_info.keys[wpa_key->key_index].length = 0;
+			if (wpa_key->key_index == handle->wep_info.active)
+				set_wep_mode(handle, WEP_DISABLED);
+		}
+
 		TRACEEXIT(return 0);
 	}
 
-	if (wpa_key->alg == WPA_ALG_WEP &&
-	    !test_bit(CAPA_WEP_NONE, &handle->capa))
+	if (wpa_key->alg == WPA_ALG_WEP)
 	{
 		union iwreq_data wep_req;
-		char key[IW_ENCODING_TOKEN_MAX];
+		unsigned char key[IW_ENCODING_TOKEN_MAX];
 		int i;
+
+		if (test_bit(CAPA_WEP_NONE, &handle->capa))
+			TRACEEXIT(return -EINVAL);
 
 		memset(&wep_req, 0, sizeof(wep_req));
 		wep_req.data.flags = wpa_key->key_index;
@@ -1298,16 +1303,17 @@ static int wpa_set_key(struct net_device *dev, struct iw_request_info *info,
 	DBGTRACE("adding key %d, %d", wpa_key->key_index, wpa_key->key_len);
 	memset(&ndis_key, 0, sizeof(ndis_key));
 
-	ndis_key.length = sizeof(ndis_key);
-	ndis_key.key_index = wpa_key->key_index;
-	ndis_key.key_len = wpa_key->key_len;
 	memcpy(&ndis_key.key, wpa_key->key, wpa_key->key_len);
+
+	ndis_key.struct_size = sizeof(ndis_key);
+	ndis_key.length = wpa_key->key_len;
+
+	for (i = 0, ndis_key.rsc = 0 ; i < wpa_key->seq_len ; i++)
+		ndis_key.rsc |= (wpa_key->seq[i] << (i * 8));
 	
-	for (i = 0, ndis_key.key_rsc = 0 ; i < wpa_key->seq_len ; i++)
-		ndis_key.key_rsc |= (wpa_key->seq[i] << (i * 8));
-	
+	ndis_key.index = wpa_key->key_index;
 	if (wpa_key->key_index == 0) /* pairwise key */
-		ndis_key.key_index |= (1 << 31) | (1 << 30);
+		ndis_key.index |= (1 << 31) | (1 << 30);
 
 	DBGTRACE("bssid " MACSTR, MAC2STR(wpa_key->addr));
 	if (!memcmp(wpa_key->addr, "\xFF\xFF\xFF\xFF\xFF\xFF", ETH_ALEN))
@@ -1331,11 +1337,11 @@ static int wpa_set_key(struct net_device *dev, struct iw_request_info *info,
 	}
 
 	res = dosetinfo(handle, NDIS_OID_ADD_KEY, (char *)&ndis_key,
-			ndis_key.length, &written, &needed);
+			ndis_key.struct_size, &written, &needed);
 	if (res)
 	{
 		DBGTRACE("adding key failed (%08X), %d, %d, %lu",
-			 res, written, needed, ndis_key.length);
+			 res, written, needed, ndis_key.struct_size);
 		TRACEEXIT(return -EINVAL);
 	}
 	
@@ -1352,6 +1358,7 @@ static int wpa_disassociate(struct net_device *dev,
 	struct ndis_handle *handle = (struct ndis_handle *)dev->priv;
 	
 	TRACEENTER("%s", "");
+	/* FIXME: clear keys, essid etc. */
 	if (set_int(handle, NDIS_OID_DISASSOCIATE, 0))
 		TRACEEXIT(return -EOPNOTSUPP);
 	TRACEEXIT(return 0);
@@ -1391,28 +1398,20 @@ static int wpa_associate(struct net_device *dev,
 
 	switch (wpa_assoc_info->group_suite)
 	{
-		int i;
-
 	case CIPHER_CCMP:
 		if (!test_bit(CAPA_AES, &handle->capa) ||
-		    set_wep_mode(handle, WEP_ENCR3_ENABLED) ||
-		    query_int(handle, NDIS_OID_WEP_STATUS, &i) ||
-		    i != WEP_ENCR3_ENABLED)
+		    set_wep_mode(handle, WEP_ENCR3_ENABLED))
 			TRACEEXIT(return -EINVAL);
 		break;
 	case CIPHER_TKIP:
-		if (!test_bit(CAPA_TKIP, &handle->capa) ||
-		    set_wep_mode(handle, WEP_ENCR2_ENABLED) ||
-		    query_int(handle, NDIS_OID_WEP_STATUS, &i) ||
-		    i != WEP_ENCR2_ENABLED)
+		if (!test_bit(CAPA_WPA, &handle->capa) ||
+		    set_wep_mode(handle, WEP_ENCR2_ENABLED))
 			TRACEEXIT(return -EINVAL);
 		break;
 	case CIPHER_WEP104:
 	case CIPHER_WEP40:
 		if (test_bit(CAPA_WEP_NONE, &handle->capa))
 			TRACEEXIT(return -EINVAL);
-//		if(set_wep_mode(handle, WEP_ENABLED))
-//			TRACEEXIT(return -EINVAL);
 		break;
 	default:
 		TRACEEXIT(return -EINVAL);
@@ -1456,9 +1455,9 @@ int set_priv_filter(struct ndis_handle *handle, int flags)
 	TRACEEXIT(return 0);
 }
 
-static int iw_set_priv_filter(struct net_device *dev,
-			      struct iw_request_info *info,
-			      union iwreq_data *wrqu, char *extra)
+static int wpa_set_priv_filter(struct net_device *dev,
+			       struct iw_request_info *info,
+			       union iwreq_data *wrqu, char *extra)
 {
 	struct ndis_handle *handle = (struct ndis_handle *)dev->priv;
 	int flags;
@@ -1516,7 +1515,7 @@ static const iw_handler priv_handler[] = {
 	[WPA_SET_KEY - SIOCIWFIRSTPRIV] = wpa_set_key,
 	[WPA_ASSOCIATE - SIOCIWFIRSTPRIV] = wpa_associate,
 	[WPA_DISASSOCIATE - SIOCIWFIRSTPRIV] = wpa_disassociate,
-	[WPA_DROP_UNENCRYPTED - SIOCIWFIRSTPRIV] = iw_set_priv_filter,
+	[WPA_DROP_UNENCRYPTED - SIOCIWFIRSTPRIV] = wpa_set_priv_filter,
 	[WPA_SET_COUNTERMEASURES - SIOCIWFIRSTPRIV] = wpa_set_countermeasures,
 	[WPA_DEAUTHENTICATE - SIOCIWFIRSTPRIV] = wpa_deauthenticate,
 	[WPA_SET_AUTH_ALG - SIOCIWFIRSTPRIV] = wpa_set_auth_alg,

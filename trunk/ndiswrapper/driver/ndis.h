@@ -340,31 +340,31 @@ struct packed ndis_essid
 };
 
 #define NDIS_ENCODING_TOKEN_MAX 32
-struct packed wep_req
+struct packed ndis_wep_key
 {
-	unsigned long len;
-	unsigned long keyindex;
-	unsigned long keylength;
+	unsigned long struct_size;
+	unsigned long index;
+	unsigned long length;
 	unsigned char key[NDIS_ENCODING_TOKEN_MAX];
 };
 
 typedef unsigned char mac_address[ETH_ALEN];
 
-struct ndis_key
+struct ndis_wpa_key
 {
+	unsigned long struct_size;
+	unsigned long index;
 	unsigned long length;
-	unsigned long key_index;
-	unsigned long key_len;
 	mac_address bssid;
 	unsigned char pad[6];
-	unsigned long long key_rsc;
-	unsigned char key[32];
+	unsigned long long rsc;
+	unsigned char key[NDIS_ENCODING_TOKEN_MAX];
 };
 
 struct ndis_remove_key
 {
-	unsigned long length;
-	unsigned long key_index;
+	unsigned long struct_size;
+	unsigned long index;
 	mac_address bssid;
 };
 

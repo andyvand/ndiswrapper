@@ -80,10 +80,29 @@ STDCALL void NdisInitializeWrapper(struct ndis_handle **ndis_handle,
 	TRACEEXIT1(return);
 }
 
-STDCALL void NdisTerminateWrapper(struct ndis_handle *ndis_handle,
+STDCALL void NdisTerminateWrapper(struct ndis_handle *handle,
 	                          void *SystemSpecific1)
 {
-	TRACEENTER1("%s", "");
+	char x;
+
+	/* Cancel any timers left by bugyy windows driver
+	 * Also free the memory for timers
+	 */
+	while (!list_empty(&handle->timers))
+	{
+		struct wrapper_timer *timer =
+			(struct wrapper_timer*) handle->timers.next;
+		DBGTRACE1("fixing up timer %p, timer->list %p",
+			  timer, &timer->list);
+		list_del(&timer->list);
+		if (timer->active)
+		{
+			WARNING("%s", "Fixing an active timer left "
+				" by buggy windows driver");
+			wrapper_cancel_timer(timer, &x); 
+		}
+		wrap_kfree(timer);
+	}
 }
 
 /*
@@ -983,7 +1002,7 @@ static void alloc_worker(void *data)
 		
 		DBGTRACE3("Allocating %scached memory of length %ld",
 			  alloc_entry->cached ? "" : "un-",
-			  alloc_entry->length);
+			  alloc_entry->size);
 		handle = (struct ndis_handle *)alloc_entry->handle;
 		miniport = &handle->driver->miniport_char;
 		NdisMAllocateSharedMemory(handle, alloc_entry->size,
