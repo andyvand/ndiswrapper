@@ -932,16 +932,17 @@ static int iw_set_scan(struct net_device *dev, struct iw_request_info *info,
 	unsigned int res = 0;
 
 	TRACEENTER1("%s", "");
+	/* let the card do background scanning for 6 seconds, as per NDIS */
+	if (time_before(jiffies, handle->scan_timestamp + 6 * HZ))
+		TRACEEXIT(return 0);
 	res = miniport_set_int(handle, OID_802_11_BSSID_LIST_SCAN, 0);
+	handle->scan_timestamp = jiffies;
 	if (res == NDIS_STATUS_NOT_SUPPORTED ||
 	    res == NDIS_STATUS_INVALID_DATA) {
 		WARNING("scanning failed (%08X)", res);
-		handle->scan_timestamp = 0;
 		TRACEEXIT1(return -EOPNOTSUPP);
-	} else {
-		handle->scan_timestamp = jiffies;
+	} else
 		TRACEEXIT1(return 0);
-	}
 }
 
 static int iw_get_scan(struct net_device *dev, struct iw_request_info *info,
@@ -958,7 +959,7 @@ static int iw_get_scan(struct net_device *dev, struct iw_request_info *info,
 	if (!handle->scan_timestamp)
 		TRACEEXIT1(return -EOPNOTSUPP);
 
-	if (time_before(jiffies, handle->scan_timestamp + 3 * HZ))
+	if (time_before(jiffies, handle->scan_timestamp + 1 * HZ))
 		return -EAGAIN;
 	
 	/* Try with space for 15 scan items */
