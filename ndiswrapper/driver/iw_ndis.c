@@ -1321,9 +1321,10 @@ static int wpa_set_key(struct net_device *dev, struct iw_request_info *info,
 	for (i = 0, ndis_key.rsc = 0 ; i < wpa_key.seq_len ; i++)
 		ndis_key.rsc |= (wpa_key.seq[i] << (i * 8));
 	
-	ndis_key.index = wpa_key.key_index;
 	if (wpa_key.key_index == 0) /* pairwise key */
-		ndis_key.index |= (1 << 31) | (1 << 30);
+		ndis_key.index = (1 << 31) | (1 << 30);
+	else
+		ndis_key.index = wpa_key.key_index;
 
 	if (!memcmp(wpa_key.addr, "\xff\xff\xff\xff\xff\xff", ETH_ALEN))
 	{
@@ -1366,14 +1367,21 @@ static int wpa_disassociate(struct net_device *dev,
 			    union iwreq_data *wrqu, char *extra)
 {
 	struct ndis_handle *handle = (struct ndis_handle *)dev->priv;
+	mac_address ap_addr;
 	
 	TRACEENTER("%s", "");
+	get_ap_address(handle, ap_addr);
+	DBGTRACE("bssid " MACSTR, MAC2STR(ap_addr));
 	/* FIXME: clear keys, essid etc. */
 	handle->essid.length = 0;
+	handle->essid.essid[0] = 0;
 	/* calling NDIS_OID_DISASSOCIATE here turns off the radio and further
-	 * communication is not possible, so do a reset */
-	if (doreset(handle))
-		TRACEEXIT(return -EOPNOTSUPP);
+	 * communication is not possible */
+	set_essid(handle, handle->essid.essid, handle->essid.length);
+	get_ap_address(handle, ap_addr);
+	DBGTRACE("bssid " MACSTR, MAC2STR(ap_addr));
+//	if (doreset(handle))
+//		TRACEEXIT(return -EOPNOTSUPP);
 	TRACEEXIT(return 0);
 }
 
@@ -1449,16 +1457,22 @@ static int wpa_deauthenticate(struct net_device *dev,
 			      union iwreq_data *wrqu, char *extra)
 {
 	struct ndis_handle *handle = (struct ndis_handle *)dev->priv;
-
-	TRACEENTER(MACSTR, MAC2STR(wrqu->ap_addr.sa_data));
+	mac_address ap_addr;
+	
+	TRACEENTER("%s", "");
+	get_ap_address(handle, ap_addr);
+	DBGTRACE("bssid " MACSTR, MAC2STR(ap_addr));
 	/* FIXME: clear keys, essid etc. */
 	handle->essid.length = 0;
+	handle->essid.essid[0] = 0;
 	/* calling NDIS_OID_DISASSOCIATE here turns off the radio and further
 	 * communication is not possible, so do a reset */
-	if (doreset(handle))
-		TRACEEXIT(return -EOPNOTSUPP);
+	set_essid(handle, handle->essid.essid, handle->essid.length);
+	get_ap_address(handle, ap_addr);
+	DBGTRACE("bssid " MACSTR, MAC2STR(ap_addr));
+//	if (doreset(handle))
+//		TRACEEXIT(return -EOPNOTSUPP);
 	TRACEEXIT(return 0);
-	return 0;
 }
 
 int set_priv_filter(struct ndis_handle *handle, int flags)
