@@ -733,6 +733,7 @@ static int add_driver(struct ndis_driver *driver)
 			TRACEEXIT1(return -EBUSY);
 		}
 	}
+	list_add(&driver->list, &ndis_driver_list);
 	wrap_spin_unlock(&driver_list_lock);
 
 	TRACEEXIT1(return 0);
