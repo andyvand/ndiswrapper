@@ -1464,7 +1464,8 @@ STDCALL void WRAP_EXPORT(NdisMDeregisterInterrupt)
 		 * don't have equivalent function
 		 */
 		flush_scheduled_work();
-		msleep(10);
+		set_current_state(TASK_INTERRUPTIBLE);
+		schedule_timeout(HZ/100);
 		free_irq(ndis_irq->irq, ndis_irq);
 		kfree(ndis_irq->spinlock);
 		ndis_irq->spinlock = NULL;

@@ -963,10 +963,6 @@ int set_encr_mode(struct ndis_handle *handle, int mode);
 void packet_recycler(void *param);
 int stricmp(const char *s1, const char *s2);
 
-void usb_irp_worker(void *dummy);
-void usb_init(void);
-void usb_cleanup_handle(struct ndis_handle *handle);
-
 extern struct wrap_spinlock atomic_lock;
 extern struct wrap_spinlock cancel_lock;
 

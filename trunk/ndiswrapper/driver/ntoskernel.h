@@ -260,6 +260,7 @@ struct packed irp {
 
 	/* ndiswrapper extension */
 	enum irp_work_type irp_work_type;
+	struct list_head cancel_list_entry;
 };
 
 enum nt_obj_type
