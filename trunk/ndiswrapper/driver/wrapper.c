@@ -712,6 +712,9 @@ static void xmit_bh(void *param)
 
 	TRACEENTER3("send status is %08X", handle->send_status);
 
+	if (down_interruptible(&handle->ndis_comm_mutex))
+		TRACEEXIT3(return);
+
 	while (handle->send_status == 0)
 	{
 		wrap_spin_lock(&handle->xmit_ring_lock);
@@ -735,6 +738,7 @@ static void xmit_bh(void *param)
 			{
 				wrap_spin_unlock(&handle->send_packet_lock);
 				ERROR("%s", "couldn't get a packet");
+				up(&handle->ndis_comm_mutex);
 				return;
 			}
 		}
@@ -765,6 +769,7 @@ static void xmit_bh(void *param)
 			handle->send_status = res;
 			wrap_spin_unlock(&handle->send_packet_lock);
 			/* this packet will be tried again */
+			up(&handle->ndis_comm_mutex);
 			return;
 
 			/* free buffer, drop the packet */
@@ -788,6 +793,7 @@ static void xmit_bh(void *param)
 		if (netif_queue_stopped(handle->net_dev))
 			netif_wake_queue(handle->net_dev);
 	}
+	up(&handle->ndis_comm_mutex);
 	TRACEEXIT3(return);
 }
 
