@@ -816,25 +816,6 @@ STDCALL NTSTATUS WRAP_EXPORT(KeWaitForMultipleObjects)
 	else
 		wb = wait_block_array;
 
-	wait_jiffies = 0;
-	if (timeout) {
-		DBGTRACE2("timeout = %Ld", *timeout);
-		if (*timeout == 0)
-			TRACEEXIT2(return STATUS_TIMEOUT);
-		else if (*timeout > 0) {
-			long d = (*timeout) - ticks_1601();
-			/* some drivers call this function with much
-			 * smaller numbers that suggest either drivers
-			 * are broken or explanation for this is
-			 * wrong */
-			if (d > 0)
-				wait_jiffies = HZ * d / TICKSPERSEC;
-			else
-				wait_jiffies = 0;
-		} else
-			wait_jiffies = HZ * (-(*timeout)) / TICKSPERSEC;
-	}
-
 	irql = kspin_lock_irql(&kevent_lock, DISPATCH_LEVEL);
 	/* first get the list of objects the thread need to wait on
 	 * and add put it on the wait list for each such object */
@@ -875,6 +856,27 @@ STDCALL NTSTATUS WRAP_EXPORT(KeWaitForMultipleObjects)
 		kspin_unlock_irql(&kevent_lock, irql);
 		TRACEEXIT3(return STATUS_SUCCESS);
 	}
+
+	if (timeout) {
+		DBGTRACE2("timeout = %Ld", *timeout);
+		if (*timeout == 0) {
+			kspin_unlock_irql(&kevent_lock, irql);
+			TRACEEXIT2(return STATUS_TIMEOUT);
+		} else if (*timeout > 0) {
+			long d = (*timeout) - ticks_1601();
+			/* some drivers call this function with much
+			 * smaller numbers that suggest either drivers
+			 * are broken or explanation for this is
+			 * wrong */
+			if (d > 0)
+				wait_jiffies = HZ * d / TICKSPERSEC;
+			else
+				wait_jiffies = 0;
+		} else
+			wait_jiffies = HZ * (-(*timeout)) / TICKSPERSEC;
+	} else
+		wait_jiffies = 0;
+
 	/* we put the task state in appropriate state before releasing
 	 * the spinlock, so that if the event is set to signaled state
 	 * after putting the thread on the wait list but before we put
@@ -890,17 +892,14 @@ STDCALL NTSTATUS WRAP_EXPORT(KeWaitForMultipleObjects)
 
 	DBGTRACE3("%p is going to sleep for %ld", get_current(), wait_jiffies);
 	while (wait_count) {
-		if (signal_pending(current)) {
-			set_current_state(TASK_RUNNING);
-			res = -ERESTARTSYS;
-		} else {
-			if (wait_jiffies > 0)
-				res = schedule_timeout(wait_jiffies);
-			else {
-				schedule();
-				res = 1;
-			}
+		if (wait_jiffies > 0)
+			res = schedule_timeout(wait_jiffies);
+		else {
+			schedule();
+			res = 1;
 		}
+		if (signal_pending(current))
+			res = -ERESTARTSYS;
 		irql = kspin_lock_irql(&kevent_lock, DISPATCH_LEVEL);
 		DBGTRACE3("%p woke up, res = %d", get_current(), res);
 		for (i = 0; i < count; i++) {
@@ -927,14 +926,14 @@ STDCALL NTSTATUS WRAP_EXPORT(KeWaitForMultipleObjects)
 					RemoveEntryList(&wb[i].list_entry);
 			kspin_unlock_irql(&kevent_lock, irql);
 			DBGTRACE3("%p woke up, res = %d", get_current(), res);
+			if (res > 0 && wait_type == WaitAny)
+				TRACEEXIT2(return STATUS_WAIT_0 + wait_index);
+			if (wait_count == 0) // res > 0
+				TRACEEXIT2(return STATUS_SUCCESS);
 			if (res < 0)
 				TRACEEXIT2(return STATUS_ALERTED);
 			if (res == 0)
 				TRACEEXIT2(return STATUS_TIMEOUT);
-			if (wait_type == WaitAny && wait_count)
-				TRACEEXIT2(return STATUS_WAIT_0 + wait_index);
-			/* wait_count == 0 */
-			TRACEEXIT2(return STATUS_SUCCESS);
 		}
 		wait_jiffies = res;
 		if (alertable)
