@@ -401,7 +401,7 @@ KeWaitForSingleObject(void *object, unsigned int reason,
 		else {
 			wait_event(dispatch_event_wq,
 				   (header->signal_state == 1));
-			res = 0;
+			res = 1;
 		}
 	} else {
 		if (alertable)
@@ -416,14 +416,14 @@ KeWaitForSingleObject(void *object, unsigned int reason,
 				(ms * HZ)/1000);
 	}
 
-	DBGTRACE3("%p, type = %d woke up (%ld)",
-		  kevent, header->type, header->signal_state);
+	DBGTRACE3("%p, type = %d woke up (%ld), res = %d",
+		  kevent, header->type, header->signal_state, res);
 	if (res > 0)
-		TRACEEXIT2(return STATUS_TIMEOUT);
+		TRACEEXIT2(return STATUS_SUCCESS);
 	else if (res < 0)
 		TRACEEXIT2(return STATUS_ALERTED);
 	else
-		TRACEEXIT2(return STATUS_SUCCESS);
+		TRACEEXIT2(return STATUS_TIMEOUT);
 
 }
 
