@@ -24,7 +24,7 @@
 
 static struct list_head wrap_allocs;
 static KSPIN_LOCK wrap_allocs_lock;
-static struct nt_list_entry wrapper_timer_list;
+static struct nt_list wrapper_timer_list;
 
 extern KSPIN_LOCK ntoskernel_lock;
 
@@ -45,7 +45,7 @@ void misc_funcs_exit_handle(struct ndis_handle *handle)
 	 * Also free the memory for timers
 	 */
 	while (1) {
-		struct nt_list_entry *ent;
+		struct nt_list *ent;
 		struct wrapper_timer *wrapper_timer;
 
 		kspin_lock(&handle->timer_lock);
@@ -64,7 +64,7 @@ void misc_funcs_exit(void)
 {
 	/* free kernel (Ke) timers */
 	while (1) {
-		struct nt_list_entry *ent;
+		struct nt_list *ent;
 		struct wrapper_timer *wrapper_timer;
 		BOOLEAN canceled;
 

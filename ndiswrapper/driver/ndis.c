@@ -40,7 +40,7 @@ static struct list_head ndis_work_list;
 static KSPIN_LOCK ndis_work_list_lock;
 
 static KSPIN_LOCK wrap_ndis_packet_lock;
-static struct nt_list_entry wrap_ndis_packet_list;
+static struct nt_list wrap_ndis_packet_list;
 
 static void ndis_worker(void *data);
 static void free_handle_ctx(struct ndis_handle *handle);
@@ -77,7 +77,7 @@ void ndis_exit(void)
 	if (packet_cache) {
 		kspin_lock(&wrap_ndis_packet_lock);
 		if (!IsListEmpty(&wrap_ndis_packet_list)) {
-			struct nt_list_entry *cur;
+			struct nt_list *cur;
 			ERROR("Windows driver didn't free all packets; "
 			      "freeing them now");
 			while ((cur =
@@ -1308,9 +1308,8 @@ struct ndis_packet *allocate_ndis_packet(void)
 void free_ndis_packet(struct ndis_packet *packet)
 {
 	struct wrap_ndis_packet *wrap_ndis_packet;
-	wrap_ndis_packet = (struct wrap_ndis_packet *)
-		((char *)packet -
-		 offsetof(struct wrap_ndis_packet, ndis_packet));
+	wrap_ndis_packet = container_of(packet, struct wrap_ndis_packet,
+					ndis_packet);
 	kspin_lock(&wrap_ndis_packet_lock);
 	RemoveEntryList(&wrap_ndis_packet->list);
 	kspin_unlock(&wrap_ndis_packet_lock);
@@ -2198,22 +2197,22 @@ STDCALL LONG WRAP_EXPORT(NdisInterlockedIncrement)
 	return InterlockedIncrement(FASTCALL_ARGS_1(val));
 }
 
-STDCALL struct nt_list_entry *WRAP_EXPORT(NdisInterlockedInsertHeadList)
-	(struct nt_list_entry *head, struct nt_list_entry *entry,
+STDCALL struct nt_list *WRAP_EXPORT(NdisInterlockedInsertHeadList)
+	(struct nt_list *head, struct nt_list *entry,
 	 struct ndis_spinlock *lock)
 {
 	return ExInterlockedInsertHeadList(head, entry, &lock->klock);
 }
 
-STDCALL struct nt_list_entry *WRAP_EXPORT(NdisInterlockedInsertTailList)
-	(struct nt_list_entry *head, struct nt_list_entry *entry,
+STDCALL struct nt_list *WRAP_EXPORT(NdisInterlockedInsertTailList)
+	(struct nt_list *head, struct nt_list *entry,
 	 struct ndis_spinlock *lock)
 {
 	return ExInterlockedInsertTailList(head, entry, &lock->klock);
 }
 
-STDCALL struct nt_list_entry *WRAP_EXPORT(NdisInterlockedRemoveHeadList)
-	(struct nt_list_entry *head, struct ndis_spinlock *lock)
+STDCALL struct nt_list *WRAP_EXPORT(NdisInterlockedRemoveHeadList)
+	(struct nt_list *head, struct ndis_spinlock *lock)
 {
 	return ExInterlockedRemoveHeadList(head, &lock->klock);
 }
