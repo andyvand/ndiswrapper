@@ -806,9 +806,8 @@ STDCALL struct usb_interface_descriptor *
 	(struct usb_config_descriptor *config,
 	 unsigned char intfNum, unsigned char altSet)
 {
-	return USBD_ParseConfigurationDescriptorEx(config, config,
-						   intfNum, altSet,
-						   -1, -1, -1);
+	return USBD_ParseConfigurationDescriptorEx(config, config, intfNum,
+						   altSet, -1, -1, -1);
 }
 
 #include "usb_exports.h"

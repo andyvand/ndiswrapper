@@ -302,25 +302,11 @@ void miniport_halt(struct ndis_handle *handle)
 static void hangcheck_proc(unsigned long data)
 {
 	struct ndis_handle *handle = (struct ndis_handle *)data;
-	KIRQL irql;
 
 	TRACEENTER3("%s", "");
 	
-	if (handle->reset_status == 0) {
-		NDIS_STATUS res;
-		struct miniport_char *miniport;
-
-		miniport = &handle->driver->miniport;
-		irql = raise_irql(DISPATCH_LEVEL);
-		res = LIN2WIN1(miniport->hangcheck, handle->adapter_ctx);
-		lower_irql(irql);
-		if (res) {
-			WARNING("%s is being reset", handle->net_dev->name);
-			res = miniport_reset(handle);
-			DBGTRACE3("reset returns %08X, %d",
-				  res, handle->reset_status);
-		}
-	}
+	set_bit(HANGCHECK, &handle->wrapper_work);
+	schedule_work(&handle->wrapper_worker);
 
 	kspin_lock(&handle->timer_lock);
 	if (handle->hangcheck_active) {
@@ -1066,6 +1052,24 @@ static void wrapper_worker_proc(void *param)
 
 	if (test_and_clear_bit(COLLECT_STATS, &handle->wrapper_work))
 		update_wireless_stats(handle);
+
+	if (test_and_clear_bit(HANGCHECK, &handle->wrapper_work) &&
+	    handle->reset_status == 0) {
+		NDIS_STATUS res;
+		struct miniport_char *miniport;
+		KIRQL irql;
+
+		miniport = &handle->driver->miniport;
+		irql = raise_irql(DISPATCH_LEVEL);
+		res = LIN2WIN1(miniport->hangcheck, handle->adapter_ctx);
+		lower_irql(irql);
+		if (res) {
+			WARNING("%s is being reset", handle->net_dev->name);
+			res = miniport_reset(handle);
+			DBGTRACE3("reset returns %08X, %d",
+				  res, handle->reset_status);
+		}
+	}
 
 	if (test_and_clear_bit(SUSPEND_RESUME, &handle->wrapper_work)) {
 		NDIS_STATUS res;
