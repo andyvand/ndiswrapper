@@ -1543,7 +1543,7 @@ NdisMIndicateReceivePacket(struct ndis_handle *handle,
 		 * from this function */
 		if (test_bit(ATTR_SERIALIZED, &handle->attributes)) {
 			packet->status = NDIS_STATUS_SUCCESS;
-			TRACEEXIT3(return);
+			continue;
 		}
 
 		/* if a deserialized driver sets
@@ -1553,34 +1553,35 @@ NdisMIndicateReceivePacket(struct ndis_handle *handle,
 		if (packet->status == NDIS_STATUS_RESOURCES) {
 			packet->status = NDIS_STATUS_SUCCESS;
 			DBGTRACE3("low on resources");
-		} else {
-			if (packet->status != NDIS_STATUS_SUCCESS)
-				WARNING("invalid packet status %08X",
-					packet->status);
-			/* deserialized driver doesn't check the
-			 * status upon return from this function; we
-			 * need to call MiniportReturnPacket later for
-			 * this packet. Calling MiniportReturnPacket
-			 * from here is not correct - the driver
-			 * doesn't expect it (at least Centrino driver
-			 * crashes)
-			 */
-			packet->status = NDIS_STATUS_PENDING;
-			ndis_work_entry = kmalloc(sizeof(*ndis_work_entry),
-						  GFP_ATOMIC);
-			if (!ndis_work_entry)
-				BUG();
-			ndis_work_entry->type = NDIS_RETURN_PACKET_WORK_ITEM;
-			ndis_work_entry->handle = handle;
-			ndis_work_entry->entry.return_packet = packet;
-
-			wrap_spin_lock(&ndis_work_list_lock, DISPATCH_LEVEL);
-			list_add_tail(&ndis_work_entry->list, &ndis_work_list);
-			wrap_spin_unlock(&ndis_work_list_lock);
-
-			schedule_work(&ndis_work);
+			continue;
 		}
+		
+		if (packet->status != NDIS_STATUS_SUCCESS)
+			WARNING("invalid packet status %08X",
+				packet->status);
+		/* deserialized driver doesn't check the status upon
+		 * return from this function; we need to call
+		 * MiniportReturnPacket later for this packet. Calling
+		 * MiniportReturnPacket from here is not correct - the
+		 * driver doesn't expect it (at least Centrino driver
+		 * crashes) */
+		packet->status = NDIS_STATUS_PENDING;
+		ndis_work_entry = kmalloc(sizeof(*ndis_work_entry),
+					  GFP_ATOMIC);
+		if (!ndis_work_entry) {
+			ERROR("couldn't allocate memory");
+			continue;
+		}
+		ndis_work_entry->type = NDIS_RETURN_PACKET_WORK_ITEM;
+		ndis_work_entry->handle = handle;
+		ndis_work_entry->entry.return_packet = packet;
+
+		wrap_spin_lock(&ndis_work_list_lock, DISPATCH_LEVEL);
+		list_add_tail(&ndis_work_entry->list, &ndis_work_list);
+		wrap_spin_unlock(&ndis_work_list_lock);
+
 	}
+	schedule_work(&ndis_work);
 	TRACEEXIT3(return);
 }
 
