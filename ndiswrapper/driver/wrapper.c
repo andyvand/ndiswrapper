@@ -456,9 +456,8 @@ static struct ndis_packet *alloc_packet(struct ndis_handle *handle,
 	if (handle->use_scatter_gather) {
 		/* FIXME: do USB drivers call this? */
 		packet->dataphys =
-			PCI_DMA_MAP_SINGLE(handle->dev.pci,
-					   buffer->data, buffer->len,
-					   PCI_DMA_TODEVICE);
+			PCI_DMA_MAP_SINGLE(handle->dev.pci, buffer->data,
+					   buffer->len, PCI_DMA_TODEVICE);
 		packet->sg_list.len = 1;
 		packet->sg_element.address.quad = packet->dataphys;
 		packet->sg_element.len = buffer->len;
