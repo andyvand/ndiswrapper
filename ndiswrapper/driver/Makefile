@@ -1,4 +1,4 @@
-DEBUG=1
+#DEBUG=1
 
 DISTFILES=Makefile coffpe.h loader.c loader.h misc_funcs.c \
  ndis.c ndis.h ntoskernel.h proc.c rt8180.c \
@@ -88,7 +88,6 @@ clean:
 	rm -f $(MODULE) $(OBJS)
 
 else
-CFLAGS += -I/usr/include
 MODULE := ndiswrapper.ko
 obj-m := ndiswrapper.o 
 ndiswrapper-objs := $(OBJS)

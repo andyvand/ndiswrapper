@@ -18,17 +18,9 @@
    Software Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA
    02111-1307 USA.  */
 
-/*
-#include "endian.h"
-#include "stdlib.h"
-#include "wordsize.h"
-*/
+#include <linux/module.h>
 
-#include <endian.h>
-#include <stdlib.h>
-#include <bits/wordsize.h>
-
-#if __WORDSIZE != 32
+#if BITS_PER_LONG != 32
 #error This is for 32-bit targets only
 #endif
 
@@ -47,9 +39,9 @@ typedef unsigned int UDItype	__attribute__ ((mode (DI)));
 
 #include "longlong.h"
 
-#if __BYTE_ORDER == __BIG_ENDIAN
+#if defined(__BIG_ENDIAN)
 struct DWstruct { Wtype high, low;};
-#elif __BYTE_ORDER == __LITTLE_ENDIAN
+#elif defined(__LITTLE_ENDIAN)
 struct DWstruct { Wtype low, high;};
 #else
 #error Unhandled endianity
