@@ -51,15 +51,19 @@ static int debug;
 	directory only
 #endif
 
-#define error(fmt, args...) do { if (debug)	\
+#define error(fmt, args...) do { \
 			syslog(LOG_KERN | LOG_ERR, "%s: %s(%d): " fmt "\n", \
 			       PROG_NAME, __FUNCTION__, __LINE__, ## args);	\
 	} while (0)
-#define info(fmt, args...) do { if (debug)	\
-			syslog(LOG_KERN | LOG_ERR, "%s: %s(%d): " fmt "\n", \
+#define info(fmt, args...) do { \
+			syslog(LOG_KERN | LOG_INFO, "%s: %s(%d): " fmt "\n", \
 			       PROG_NAME, __FUNCTION__, __LINE__, ## args);	\
 	} while (0)
 
+#define dbg(fmt, args...) do { if (debug) \
+			syslog(LOG_KERN | LOG_DEBUG, "%s: %s(%d): " fmt "\n", \
+			       PROG_NAME, __FUNCTION__, __LINE__, ## args);	\
+	} while (0)
 
 static int get_filesize(int fd)
 {
@@ -397,7 +401,8 @@ static int loadall(int device)
 		if(!S_ISDIR(statbuf.st_mode))
 			continue;
 
-		load(device, dirent->d_name);
+		if (load(device, dirent->d_name))
+			info("couldn't load driver '%s'", dirent->d_name);
 	}
 	closedir(dir);
 	return 0;
@@ -460,12 +465,12 @@ int main(int argc, char *argv[0])
 
 	openlog(PROG_NAME, LOG_PERROR | LOG_CONS, LOG_KERN);
 
-	info("version %s started", NDISWRAPPER_VERSION);
+	dbg("version %s started", NDISWRAPPER_VERSION);
 
 	if (argc < 3)
 	{
 		error("Usage: %s <debug> <version> [-a] [driver]", argv[0]);
-		res = -EINVAL;
+		res = -1;
 		goto out;
 	}
 
@@ -474,15 +479,16 @@ int main(int argc, char *argv[0])
 	if (i < 0)
 	{
 		error("invalid debug value %d", i);
-		res = -EINVAL;
+		res = -2;
 		goto out;
 	}
 	else
 		debug = i;
 
-	if ((res = chdir(confdir)))
+	if (chdir(confdir))
 	{
 		error("%s does not exist", confdir);
+		res = -3;
 		goto out;
 	}
 
@@ -491,7 +497,7 @@ int main(int argc, char *argv[0])
 	{
 		error("%s: cannot find minor for kernel module."
 		       "Module loaded?", argv[0]);
-		res = -EINVAL;
+		res = -4;
 		goto out;
 	}
 
@@ -499,7 +505,7 @@ int main(int argc, char *argv[0])
 	if (device == -1)
 	{
 		error("Unable to open kernel driver (%d)", errno);
-		res = -EINVAL;
+		res = -5;
 		goto out;
 	}
 
@@ -509,19 +515,25 @@ int main(int argc, char *argv[0])
 	{
 		error("version %s doesn't match driver version %s",
 				NDISWRAPPER_VERSION, argv[2]);
-		res = -EINVAL;
+		res = -6;
 		goto out;
 	}
 
 	if (strcmp(argv[3], "-a") == 0)
-		res = loadall(device);
-	else
-		res = load(device, argv[3]);
-
-	if (!res)
 	{
-		info("%s", "Drivers loaded successfully");
+		if (loadall(device))
+			res = -7;
 	}
+	else
+	{
+		if (load(device, argv[3]))
+			res = -8;
+	}
+
+	if (res)
+		info("couldn't load one or more drivers (%d)", res);
+	else
+		dbg("%s", "all drivers loaded successfully");
 
 out:
 	if (device != -1)
