@@ -210,6 +210,7 @@ struct miniport_char
 
 	/* Send packets */
 	unsigned int (*send_packets)(void *ctx, struct ndis_packet **packets, int nr_of_packets) STDCALL;
+	
 };
 
 struct ndis_work
@@ -575,17 +576,25 @@ struct list_scan
 
 
 void ndis_sendpacket_done(struct ndis_handle *handle, struct ndis_packet *packet);
-void NdisMIndicateReceivePacket(struct ndis_handle *handle, struct ndis_packet **packets, unsigned int nr_packets) STDCALL;
-void NdisMSendComplete(struct ndis_handle *handle, struct ndis_packet *packet, unsigned int status) STDCALL;
-void NdisIndicateStatus(struct ndis_handle *handle, unsigned int status, void *buf, unsigned int len) STDCALL;
-void NdisIndicateStatusComplete(struct ndis_handle *handle) STDCALL;
-void NdisMQueryInformationComplete(struct ndis_handle *handle, unsigned int status) STDCALL;
-void NdisMSetInformationComplete(struct ndis_handle *handle, unsigned int status) STDCALL;
+STDCALL void NdisMIndicateReceivePacket(struct ndis_handle *handle, struct ndis_packet **packets, unsigned int nr_packets) STDCALL;
+STDCALL void NdisMSendComplete(struct ndis_handle *handle, struct ndis_packet *packet, unsigned int status) STDCALL;
+STDCALL void NdisIndicateStatus(struct ndis_handle *handle, unsigned int status, void *buf, unsigned int len) STDCALL;
+STDCALL void NdisIndicateStatusComplete(struct ndis_handle *handle) STDCALL;
+STDCALL void NdisMQueryInformationComplete(struct ndis_handle *handle, unsigned int status) STDCALL;
+STDCALL void NdisMSetInformationComplete(struct ndis_handle *handle, unsigned int status) STDCALL;
+STDCALL void NdisMResetComplete(struct ndis_handle *handle, int status, int reset_status);
+STDCALL void NdisMCancelTimer(struct ndis_timer **timer_handle, char *canceled);
 
-int RtlUnicodeStringToAnsiString(struct ustring *dst, struct ustring *src, unsigned int dup) STDCALL;
-int RtlAnsiStringToUnicodeString(struct ustring *dst, struct ustring *src, unsigned int dup) STDCALL;
+void ndis_timer_handler_bh(void *data);
+STDCALL void NdisSetTimer(struct ndis_timer **timer_handle, unsigned int ms);
+STDCALL void NdisMSetPeriodicTimer(struct ndis_timer **timer_handle,
+								   unsigned int ms);
+
+STDCALL int RtlUnicodeStringToAnsiString(struct ustring *dst, struct ustring *src, unsigned int dup) STDCALL;
+STDCALL int RtlAnsiStringToUnicodeString(struct ustring *dst, struct ustring *src, unsigned int dup) STDCALL;
 int my_strcasecmp(char *s1, char *s2);
 int getSp(void);
+void init_ndis_work(void);
 
 void *wrapper_kmalloc(size_t size, int flags);
 void wrapper_kfree_all(void);
@@ -596,8 +605,11 @@ void ndiswrapper_procfs_remove_iface(struct ndis_handle *handle);
 void ndiswrapper_procfs_remove(void);
 
 int doquery(struct ndis_handle *handle, unsigned int oid, char *buf, int bufsize, unsigned int *written , unsigned int *needed);
+int dosetinfo(struct ndis_handle *handle, unsigned int oid, char *buf, int bufsize, unsigned int *written , unsigned int *needed);
+int set_int(struct ndis_handle *handle, int oid, int data);
 int query_int(struct ndis_handle *handle, int oid, int *data);
 
+void packet_recycler(void *param);
 
 #define NDIS_OID_STAT_TX_OK         0x00020101
 #define NDIS_OID_STAT_RX_OK         0x00020102

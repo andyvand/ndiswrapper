@@ -31,6 +31,8 @@ all : prereq_check default
 
 wrapper.o:	wrapper.c loader.h ndis.h loader.h
 
+iw_ndis..o:	iw_ndis.c loader.h ndis.h loader.h
+
 loader.o:	loader.c ndis.h
 
 winsyms.o:	winsyms.c ndis.h
@@ -45,7 +47,7 @@ proc.o : proc.c ndis.h
 
 divdi3.o: divdi3.c longlong.h
 
-OBJS   := wrapper.o loader.o winsyms.o ntoskernel.o ndis.o misc_funcs.o proc.o divdi3.o
+OBJS   := wrapper.o iw_ndis.o loader.o winsyms.o ntoskernel.o ndis.o misc_funcs.o proc.o divdi3.o
 
 ifdef DEBUG
 CFLAGS += -DDEBUG -g
