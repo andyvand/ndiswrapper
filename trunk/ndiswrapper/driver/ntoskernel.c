@@ -246,7 +246,7 @@ _FASTCALL struct nt_slist *WRAP_EXPORT(InterlockedPopEntrySList)
 	return ExpInterlockedPopEntrySList(head);
 }
 
-_FASTCALL USHORT WRAP_EXPORT(ExQueryDepthSList)
+STDCALL USHORT WRAP_EXPORT(ExQueryDepthSList)
 	(union nt_slist_head *head)
 {
 	return head->list.depth;
