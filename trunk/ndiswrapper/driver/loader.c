@@ -650,8 +650,8 @@ static int start_driver(struct ndis_driver *driver)
 			ret |= res;
 			DBGTRACE1("entry returns %08X", res);
 			DBGTRACE1("driver version: %d.%d",
-				  driver->miniport_char.majorVersion,
-				  driver->miniport_char.minorVersion);
+				  driver->miniport.majorVersion,
+				  driver->miniport.minorVersion);
 		}
 
 	if (ret) {
