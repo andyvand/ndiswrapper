@@ -314,7 +314,9 @@ do {									\
 #define NW_MODULE_PARM_STRING(name, perm) MODULE_PARM(name, "s")
 #endif
 
-#if LINUX_VERSION_CODE > KERNEL_VERSION(2,6,9)
+/* this ugly hack is to handle RH kernels; I don't know any better,
+ * but this has to be fixed soon */
+#if LINUX_VERSION_CODE > KERNEL_VERSION(2,6,8)
 #define task_nice(task) ((task)->static_prio - MAX_RT_PRIO - 20)
 #endif
 
