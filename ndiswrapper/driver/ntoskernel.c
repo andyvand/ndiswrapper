@@ -487,53 +487,66 @@ IoBuildDeviceIoControlRequest(unsigned long ioctl,
 	TRACEEXIT3(return irp);
 }
 
-_FASTCALL static void 
+_FASTCALL void
 IofCompleteRequest(int dummy, char prio_boost, struct irp *irp)
 {
-	UNIMPL();
+	struct io_stack_location *stack = irp->current_stack_location-1;
+
+	TRACEENTER3("irp = %p", irp);
+
+	if (irp->user_status) {
+		irp->user_status->status = irp->io_status.status;
+		irp->user_status->status_info = irp->io_status.status_info;
+	}
+
+	if ((stack->completion_handler) &&
+	    ((((irp->io_status.status == 0) &&
+	       (stack->control & CALL_ON_SUCCESS)) ||
+	      ((irp->io_status.status == STATUS_CANCELLED) &&
+	       (stack->control & CALL_ON_CANCEL)) ||
+	      ((irp->io_status.status != 0) &&
+	       (stack->control & CALL_ON_ERROR))))) {
+		DBGTRACE3("calling %p", stack->completion_handler);
+
+		if (stack->completion_handler(stack->dev_obj, irp,
+		                              stack->handler_arg) ==
+		    STATUS_MORE_PROCESSING_REQUIRED)
+			TRACEEXIT3(return);
+	}
+
+	if (irp->user_event) {
+		DBGTRACE3("setting event %p", irp->user_event);
+		NdisSetEvent((struct ndis_event *)irp->user_event);
+	}
+
+	/* To-Do: what about IRP_DEALLOCATE_BUFFER...? */
+	DBGTRACE("freeing irp %p", irp);
+	kfree(irp);
+	TRACEEXIT3(return);
 }
 
 STDCALL unsigned char
 IoCancelIrp(struct irp *irp)
 {
 	struct io_stack_location *stack = irp->current_stack_location-1;
-	int free_irp = 1;
 	void (*cancel_routine)(struct device_object *, struct irp *) STDCALL;
 
-	TRACEENTER3("irp = %p", irp);
+	TRACEENTER2("irp = %p", irp);
 
 	wrap_spin_lock(&cancel_lock);
+	irp->cancel_irql = cancel_lock.irql;
 	irp->pending_returned = 1;
 	irp->cancel = 1;
-	cancel_routine = irp->cancel_routine;
-	irp->cancel_routine = NULL;
-	wrap_spin_unlock(&cancel_lock);
+	cancel_routine = xchg(&irp->cancel_routine, NULL);
 
-	if (!cancel_routine)
-		TRACEEXIT3(return 0);
+	if (!cancel_routine) {
+		wrap_spin_unlock(&cancel_lock);
+		TRACEEXIT2(return 0);
+	}
 
 	cancel_routine(stack->dev_obj, irp);
 
-	if ((stack->completion_handler) &&
-	    (stack->control & CALL_ON_CANCEL)) {
-		DBGTRACE3("calling %p", stack->completion_handler);
-		local_bh_disable();
-		preempt_disable();
-		if (stack->completion_handler(stack->dev_obj, irp,
-		                              stack->handler_arg) ==
-		    STATUS_MORE_PROCESSING_REQUIRED)
-			free_irp = 0;
-		preempt_enable();
-		local_bh_enable();
-	}
-
-	/* To-Do: what about IRP_DEALLOCATE_BUFFER...? */
-	if (free_irp) {
-		DBGTRACE("freeing irp %p", irp);
-		kfree(irp);
-	}
-
-	TRACEEXIT3(return 1);
+	TRACEEXIT2(return 1);
 }
 
 STDCALL static void IoFreeIrp(struct irp *irp)
@@ -796,7 +809,7 @@ IoGetDeviceProperty(struct device_object *dev_obj, int dev_property,
 			TRACEEXIT1(return STATUS_SUCCESS);
 		}
 		break;
-		
+
 	case DEVPROP_FRIENDLYNAME:
 		if (buffer_len > 0 && buffer) {
 			ansi.len = snprintf(buf, sizeof(buf), "%d",

@@ -20,9 +20,15 @@
 LIST_HEAD(completed_irps);
 static spinlock_t completed_irps_lock = SPIN_LOCK_UNLOCKED;
 
-
 void usb_transfer_complete_tasklet(unsigned long dummy);
 DECLARE_TASKLET(completed_irps_tasklet, usb_transfer_complete_tasklet, 0);
+
+
+LIST_HEAD(canceled_irps);
+static spinlock_t canceled_irps_lock = SPIN_LOCK_UNLOCKED;
+
+void usb_cancel_worker(void *dummy);
+DECLARE_WORK(cancel_usb_irp_work, usb_cancel_worker, 0);
 
 
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
@@ -36,20 +42,16 @@ void usb_transfer_complete(struct urb *urb)
 
 	TRACEENTER3("urb = %p", urb);
 
-	wrap_spin_lock(&cancel_lock);
-	irp->cancel_routine = NULL;
-	if (irp->cancel)
-		wrap_spin_unlock(&cancel_lock);
-	else {
-		wrap_spin_unlock(&cancel_lock);
+	/* canceled? */
+	if ((urb->status == -ENOENT) || (urb->status == -ECONNRESET))
+		TRACEEXIT2(return);
 
-		spin_lock(&completed_irps_lock);
-		list_add_tail((struct list_head *)&irp->list_entry,
-			&completed_irps);
-		spin_unlock(&completed_irps_lock);
+	spin_lock(&completed_irps_lock);
+	list_add_tail((struct list_head *)&irp->list_entry, &completed_irps);
+	spin_unlock(&completed_irps_lock);
 
-		tasklet_schedule(&completed_irps_tasklet);
-	}
+	tasklet_schedule(&completed_irps_tasklet);
+	TRACEEXIT3(return);
 }
 
 void usb_transfer_complete_tasklet(unsigned long dummy)
@@ -59,7 +61,6 @@ void usb_transfer_complete_tasklet(unsigned long dummy)
 	struct io_stack_location *stack;
 	union nt_urb *nt_urb;
 	unsigned long flags;
-	unsigned long result;
 
 
 	while (1) {
@@ -93,11 +94,6 @@ void usb_transfer_complete_tasklet(unsigned long dummy)
 			irp->io_status.status = STATUS_SUCCESS;
 		irp->io_status.status_info = urb->actual_length;
 
-		if (irp->user_status) {
-			irp->user_status->status = irp->io_status.status;
-			irp->user_status->status_info = urb->actual_length;
-		}
-
 		/* also applies to ctrlDescReq or venClsReq */
 		nt_urb->bulkIntrTrans.transferBufLen = urb->actual_length;
 
@@ -123,29 +119,7 @@ void usb_transfer_complete_tasklet(unsigned long dummy)
 			kfree(irp->driver_context[2]);
 		}
 
-		if ((stack->completion_handler) &&
-		    ((((urb->status == 0) &&
-		       (stack->control & CALL_ON_SUCCESS)) ||
-		      ((urb->status != 0) &&
-		       (stack->control & CALL_ON_ERROR))))) {
-			DBGTRACE3("calling %p", stack->completion_handler);
-
-			result = stack->completion_handler(stack->dev_obj, irp,
-				stack->handler_arg);
-			if (result == STATUS_MORE_PROCESSING_REQUIRED) {
-				usb_free_urb(urb);
-				continue;
-			}
-		}
-
-		if (irp->user_event) {
-			DBGTRACE3("setting event %p", irp->user_event);
-			NdisSetEvent((struct ndis_event *)irp->user_event);
-		}
-
-		/* To-Do: what about IRP_DEALLOCATE_BUFFER...? */
-		DBGTRACE3("freeing irp %p", irp);
-		kfree(irp);
+		IofCompleteRequest(0, 0, irp);
 
 		usb_free_urb(urb);
 	}
@@ -154,22 +128,56 @@ void usb_transfer_complete_tasklet(unsigned long dummy)
 void STDCALL usb_cancel_transfer(struct device_object *dev_obj,
                                  struct irp *irp)
 {
-	struct urb *urb = irp->driver_context[3];
+	wrap_spin_unlock(&cancel_lock);
+
+	TRACEENTER2("irp = %p", irp);
+
+	/* while this function can run at DISPATCH_LEVEL, usb_unlink_urb will only
+	 * work successfully in schedulable context */
+	spin_lock_bh(&canceled_irps_lock);
+	list_add_tail(&irp->cancel_list_entry, &canceled_irps);
+	spin_unlock_bh(&canceled_irps_lock);
+
+	schedule_work(&cancel_usb_irp_work);
+}
+
+void usb_cancel_worker(void *dummy)
+{
+	struct irp *irp;
+	struct urb *urb;
 
 
-	TRACEENTER3("irp = %p", irp);
+	TRACEENTER2("%s", "");
 
-	usb_unlink_urb(urb);
+	while (1) {
+		spin_lock_bh(&canceled_irps_lock);
 
-	if (urb->setup_packet)
-		kfree(urb->setup_packet);
+		if (list_empty(&canceled_irps)) {
+			spin_unlock_bh(&canceled_irps_lock);
+			TRACEEXIT2(return);
+		}
+		irp = list_entry(canceled_irps.next, struct irp, cancel_list_entry);
+		list_del(&irp->cancel_list_entry);
 
-	usb_free_urb(urb);
+		spin_unlock_bh(&canceled_irps_lock);
 
-	if (irp->driver_context[2])
-		kfree(irp->driver_context[2]);
+		urb = irp->driver_context[3];
 
-	TRACEEXIT3(return);
+		if (usb_unlink_urb(urb) < 0)
+			TRACEEXIT2(return);
+
+		if (urb->setup_packet)
+			kfree(urb->setup_packet);
+
+		usb_free_urb(urb);
+
+		if (irp->driver_context[2])
+			kfree(irp->driver_context[2]);
+
+		irp->io_status.status      = STATUS_CANCELLED;
+		irp->io_status.status_info = 0;
+		IofCompleteRequest(0, 0, irp);
+	}
 }
 
 unsigned long usb_bulk_or_intr_trans(struct usb_device *dev,
