@@ -217,6 +217,8 @@ void wrapper_init_timer(struct ktimer *ktimer, void *handle, struct kdpc *kdpc)
 	TRACEEXIT5(return);
 }
 
+/* 'expires' is relative to jiffies, so when setting timer, add
+ * jiffies to it */
 int wrapper_set_timer(struct ktimer *ktimer, unsigned long expires,
 		      unsigned long repeat, struct kdpc *kdpc)
 {
@@ -247,13 +249,13 @@ int wrapper_set_timer(struct ktimer *ktimer, unsigned long expires,
 	if (wrapper_timer->active) {
 		DBGTRACE4("modifying timer %p to %lu, %lu",
 			  wrapper_timer, expires, repeat);
-		mod_timer(&wrapper_timer->timer, expires);
+		mod_timer(&wrapper_timer->timer, jiffies + expires);
 		kspin_unlock_irql(&wrapper_timer->lock, irql);
 		TRACEEXIT5(return TRUE);
 	} else {
 		DBGTRACE4("setting timer %p to %lu, %lu",
 			  wrapper_timer, expires, repeat);
-		wrapper_timer->timer.expires = expires;
+		wrapper_timer->timer.expires = jiffies + expires;
 		wrapper_timer->active = 1;
 		add_timer(&wrapper_timer->timer);
 		kspin_unlock_irql(&wrapper_timer->lock, irql);
