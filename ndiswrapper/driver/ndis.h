@@ -824,6 +824,7 @@ struct ndis_handle {
 	unsigned int xmit_ring_start;
 	unsigned int xmit_ring_pending;
 	unsigned int max_send_packets;
+	spinlock_t xmit_lock;
 
 	unsigned char send_ok;
 	spinlock_t send_packet_done_lock;
@@ -875,7 +876,6 @@ struct ndis_handle {
 	unsigned long wrapper_work;
 
 	unsigned long attributes;
-	spinlock_t lock;
 	struct ndis_resource_list *pci_resources;
 
 };
@@ -912,7 +912,6 @@ STDCALL void NdisWriteConfiguration(NDIS_STATUS *status,
 				    struct unicode_string *key,
 				    struct ndis_config_param *val);
 
-
 void *get_sp(void);
 int ndis_init(void);
 void ndis_exit_handle(struct ndis_handle *handle);
@@ -920,33 +919,30 @@ void ndis_exit(void);
 
 int usb_init(void);
 void usb_exit(void);
-
-int ndiswrapper_procfs_init(void);
-int ndiswrapper_procfs_add_iface(struct ndis_handle *handle);
-void ndiswrapper_procfs_remove_iface(struct ndis_handle *handle);
-void ndiswrapper_procfs_remove(void);
-
-void packet_recycler(void *param);
-int stricmp(const char *s1, const char *s2);
-
 void usb_cleanup(void);
 
 int ntoskrnl_init(void);
 void ntoskrnl_exit(void);
 int load_pe_images(struct pe_image[], int n);
 
+int ndiswrapper_procfs_init(void);
+int ndiswrapper_procfs_add_iface(struct ndis_handle *handle);
+void ndiswrapper_procfs_remove_iface(struct ndis_handle *handle);
+void ndiswrapper_procfs_remove(void);
+
 int misc_funcs_init(void);
 void misc_funcs_exit_handle(struct ndis_handle *handle);
 void misc_funcs_exit(void);
 void *wrap_kmalloc(size_t size, int flags);
 void wrap_kfree(void *ptr);
-
 void wrapper_init_timer(struct ktimer *ktimer, void *handle);
 int wrapper_set_timer(struct wrapper_timer *wrapper_timer,
                       unsigned long expires, unsigned long repeat,
                       struct kdpc *kdpc);
 void wrapper_cancel_timer(struct wrapper_timer *wrapper_timer, char *canceled);
 
+void packet_recycler(void *param);
+int stricmp(const char *s1, const char *s2);
 void dump_bytes(const char *where, const u8 *ip);
 
 /* Required OIDs */

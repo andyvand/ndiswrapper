@@ -715,9 +715,9 @@ static void xmit_worker(void *param)
 	/* some drivers e.g., new RT2500 driver, crash if any packets
 	 * are sent when the card is not associated */
 	while (handle->send_ok) {
-		spin_lock_bh(&handle->lock);
+		spin_lock_bh(&handle->xmit_lock);
 		if (handle->xmit_ring_pending == 0) {
-			spin_unlock_bh(&handle->lock);
+			spin_unlock_bh(&handle->xmit_lock);
 			break;
 		}
 		n = send_packets(handle, handle->xmit_ring_start,
@@ -727,7 +727,7 @@ static void xmit_worker(void *param)
 		handle->xmit_ring_pending -= n;
 		if (n > 0 && netif_queue_stopped(handle->net_dev))
 			netif_wake_queue(handle->net_dev);
-		spin_unlock_bh(&handle->lock);
+		spin_unlock_bh(&handle->xmit_lock);
 	}
 
 	TRACEEXIT3(return);
@@ -784,7 +784,7 @@ static int start_xmit(struct sk_buff *skb, struct net_device *dev)
 	}
 	dev_kfree_skb(skb);
 
-	spin_lock(&handle->lock);
+	spin_lock(&handle->xmit_lock);
 	xmit_ring_next_slot =
 		(handle->xmit_ring_start +
 		 handle->xmit_ring_pending) % XMIT_RING_SIZE;
@@ -792,7 +792,7 @@ static int start_xmit(struct sk_buff *skb, struct net_device *dev)
 	handle->xmit_ring_pending++;
 	if (handle->xmit_ring_pending == XMIT_RING_SIZE)
 		netif_stop_queue(handle->net_dev);
-	spin_unlock(&handle->lock);
+	spin_unlock(&handle->xmit_lock);
 
 	schedule_work(&handle->xmit_work);
 
@@ -908,7 +908,7 @@ void ndiswrapper_remove_one_dev(struct ndis_handle *handle)
 
 	/* flush_scheduled_work here causes crash with 2.4 kernels */
 	/* instead, throw away pending packets */
-	spin_lock_bh(&handle->lock);
+	spin_lock_bh(&handle->xmit_lock);
 	while (handle->xmit_ring_pending) {
 		struct ndis_packet *packet;
 
@@ -918,7 +918,7 @@ void ndiswrapper_remove_one_dev(struct ndis_handle *handle)
 			(handle->xmit_ring_start + 1) % XMIT_RING_SIZE;
 		handle->xmit_ring_pending--;
 	}
-	spin_unlock_bh(&handle->lock);
+	spin_unlock_bh(&handle->xmit_lock);
 
 	miniport_set_int(handle, OID_802_11_DISASSOCIATE, 0);
 
@@ -1515,7 +1515,7 @@ struct net_device *ndis_init_netdev(struct ndis_handle **phandle,
 	handle->net_dev = dev;
 	handle->ndis_irq = NULL;
 
-	spin_lock_init(&handle->lock);
+	spin_lock_init(&handle->xmit_lock);
 	init_MUTEX(&handle->ndis_comm_mutex);
 	init_waitqueue_head(&handle->ndis_comm_wq);
 	handle->ndis_comm_done = 0;

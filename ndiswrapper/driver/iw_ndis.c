@@ -1305,7 +1305,7 @@ static int wpa_set_key(struct net_device *dev, struct iw_request_info *info,
 	else
 		size = sizeof(wpa_key);
 	if (copy_from_user(&wpa_key, wrqu->data.pointer, size))
-			TRACEEXIT1(return -1);
+		TRACEEXIT1(return -1);
 	if (wpa_key.addr && copy_from_user(&addr, wpa_key.addr, ETH_ALEN))
 		TRACEEXIT1(return -1);
 
