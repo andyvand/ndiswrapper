@@ -25,6 +25,7 @@
 
 #include <linux/netdevice.h>
 #include <linux/etherdevice.h>
+#include <linux/ethtool.h>
 #include <linux/wireless.h>
 #include <linux/if_arp.h>
 #include <net/iw_handler.h>
@@ -866,6 +867,21 @@ static const struct iw_handler_def ndis_handler_def = {
 };
 
 
+
+
+static u32 ndis_get_link(struct net_device *dev)
+{
+	struct ndis_handle *handle = dev->priv;
+	return handle->link_status;
+}
+
+
+static struct ethtool_ops ndis_ethtool_ops = {
+	.get_link		= ndis_get_link,
+};
+
+
+
 static int call_init(struct ndis_handle *handle)
 {
 	__u32 res, res2;
@@ -1293,6 +1309,7 @@ static int setup_dev(struct net_device *dev)
 	dev->do_ioctl = ndis_ioctl;
 	dev->get_wireless_stats = ndis_get_wireless_stats;
 	dev->wireless_handlers	= (struct iw_handler_def *)&ndis_handler_def;
+	dev->ethtool_ops = &ndis_ethtool_ops;
 	
 	for(i = 0; i < 6; i++)
 	{
