@@ -235,38 +235,26 @@ STDCALL void RtlCopyUnicodeString(struct ustring *dst,
 
 STDCALL int RtlAnsiStringToUnicodeString(struct ustring *dst, struct ustring *src, unsigned int dup)
 {
-	int i, *d, using_tmp = 0;
-	char *s;
+	int i, *d;
 
-	DBGTRACE("%s Untested!\n", __FUNCTION__);
+	DBGTRACE("%s: dup: %d src: %s\n", __FUNCTION__, dup, src->buf);
 	if(dup)
 	{
 		char *buf = kmalloc((src->buflen+1) * 2, GFP_KERNEL);
 		if(!buf)
 			return NDIS_STATUS_FAILURE;
 		dst->buf = buf;
-		dst->buflen = (src->buflen+1) *2;
-		s = src->buf;
-	}
-	else
-	{
-		s = kmalloc(src->buflen, GFP_KERNEL);
-		if(!s)
-			return NDIS_STATUS_FAILURE;
-		using_tmp = 1;
-		memcpy(s, src->buf, src->buflen);
+		dst->buflen = (src->buflen+1) * 2;
 	}
 
-	d = (int*) src->buf;
+	d = (int*) dst->buf;
 	for(i = 0; i < src->len; i++)
 	{
-		d[i] = s[i];
+		d[i] = src->buf[i];
 	}
 	d[i] = 0;
 	
 	dst->len = i*2;
-	if(using_tmp)
-		kfree(s);
 	
 	return NDIS_STATUS_SUCCESS;
 }
@@ -275,7 +263,7 @@ STDCALL int RtlUnicodeStringToAnsiString(struct ustring *dst, struct ustring *sr
 {
 	int i, *s;
 
-	DBGTRACE("%s Untested!\n", __FUNCTION__);
+	DBGTRACE("%s dup: %d src->len: %d dst: %p", __FUNCTION__, dup, src->len, dst);
 	if(dup)
 	{
 		char *buf = kmalloc(src->buflen, GFP_KERNEL);
@@ -293,6 +281,7 @@ STDCALL int RtlUnicodeStringToAnsiString(struct ustring *dst, struct ustring *sr
 	}
 	dst->len = i;
 	dst->buf[i] = 0;
+	DBGTRACE(" buf: %s\n", dst->buf);
 	return NDIS_STATUS_SUCCESS;
 }
 
