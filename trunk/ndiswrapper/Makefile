@@ -24,12 +24,17 @@ install:
 		install -m 644 ndiswrapper.8 /usr/share/man/man8; \
 	fi
 
-.PHONY: clean
+.PHONY: clean distclean
 clean:
 	make -C driver clean
 	make -C utils clean
 	rm -f *~ ndiswrapper.spec
 	rm -fr ${distdir} ${distdir}.tar.gz *.deb patch-stamp
+
+distclean: clean
+	make -C driver distclean
+	make -C utils distclean
+	rm -f .\#*
 
 dist:
 	@rm -rf ${distdir}
