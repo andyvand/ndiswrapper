@@ -90,6 +90,7 @@ typedef uint32_t ULONG_PTR;
 #define CALL_ON_SUCCESS                 0x40
 #define CALL_ON_ERROR                   0x80
 
+typedef char		CHAR;
 typedef uint8_t		BOOLEAN;
 typedef uint8_t		BYTE;
 typedef uint8_t		UCHAR;
@@ -98,8 +99,14 @@ typedef uint16_t	USHORT;
 typedef uint16_t	WORD;
 typedef uint32_t	DWORD;
 typedef int32_t		LONG;
+typedef int32_t		INT;
 typedef uint32_t	ULONG;
+typedef uint32_t	UINT;
 typedef uint64_t	ULONGLONG;
+typedef int64_t		LARGE_INTEGER;
+
+typedef LONG KPRIORITY;
+typedef INT NT_STATUS;
 
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,7)
 #include <linux/kthread.h>
@@ -369,12 +376,12 @@ struct slist_entry
 };
 
 union slist_head {
-	unsigned long long align;
+	ULONGLONG align;
 	struct packed
 	{
 		struct slist_entry  *next;
-		unsigned short depth;
-		unsigned short sequence;
+		USHORT depth;
+		USHORT sequence;
 	} list;
 };
 
@@ -407,12 +414,17 @@ struct list_entry
 
 struct packed dispatch_header
 {
-	unsigned char type;
-	unsigned char absolute;
-	unsigned char size;
-	unsigned char inserted;
-	long signal_state;
+	UCHAR type;
+	UCHAR absolute;
+	UCHAR size;
+	UCHAR inserted;
+	LONG signal_state;
 	struct list_head wait_list_head;
+};
+
+struct kevent
+{
+	struct dispatch_header header;
 };
 
 struct ktimer;
@@ -435,9 +447,9 @@ struct wrapper_timer
 
 struct packed kdpc
 {
-	short type;
-	unsigned char number;
-	unsigned char importance;
+	SHORT type;
+	UCHAR number;
+	UCHAR importance;
 	struct list_entry dpc_list_entry;
 
 	void *func;
@@ -461,37 +473,70 @@ enum pool_type
 struct mdl
 {
 	struct mdl* next;
-	short size;
-	short mdlflags;
+	SHORT size;
+	SHORT mdlflags;
 	void *process;
 	void *mappedsystemva;
 	void *startva;
-	unsigned long bytecount;
-	unsigned long byteoffset;
+	ULONG bytecount;
+	ULONG byteoffset;
 };
 
 
 struct irp;
 
+struct device_queue_entry {
+	struct list_entry list_entry;
+	ULONG sort_key;
+	BOOLEAN inserted;
+};
+
+struct wait_ctx_block {
+	struct device_queue_entry wait_queue_entry;
+	void *dev_routine;
+	void *dev_ctx;
+	ULONG map_reg_count;
+	void *current_irp;
+	void *buffer_chaining_dpc;
+};
+
+struct kdevice_queue {
+	USHORT type;
+	USHORT size;
+	struct list_entry devlist_head;
+	KSPIN_LOCK lock;
+	BOOLEAN busy;
+};
+
 struct packed device_object
 {
-	short type;
-	unsigned short size;
-	long fill1;
+	SHORT type;
+	USHORT size;
+	LONG ref_count;
 	void *drv_obj;
 	struct device_object *next_dev;
-	void *fill2;
+	void *attached_dev;
 	struct irp *current_irp;
-	void *fill4;
-	unsigned long flags;
-	unsigned long characteristics;
-	void *fill5;
+	void *io_timer;
+	ULONG flags;
+	ULONG characteristics;
+	void *vpb;
 	void *dev_ext;
-	unsigned long dev_type;
-	char stack_size;
-	char fill6[3+10*4];
-	unsigned long align_req;
-	char fill7[100]; /* more than required */
+	BYTE stack_size;
+	union {
+		struct list_entry list_entry;
+		struct wait_ctx_block wcb;
+	} queue;
+	ULONG align_req;
+	struct kdevice_queue dev_queue;
+	struct kdpc dpc;
+	UINT active_threads;
+	void *security_desc;
+	struct kevent dev_lock;
+	USHORT sector_size;
+	USHORT spare;
+	void *dev_obj_ext;
+	void *reserved;
 
 	/* ndiswrapper-specific data */
 	union {
@@ -501,8 +546,8 @@ struct packed device_object
 };
 
 struct io_status_block {
-	long status;
-	unsigned long status_info;
+	NT_STATUS status;
+	ULONG status_info;
 };
 
 #define IRP_MJ_DEVICE_CONTROL           0x0E
@@ -595,23 +640,24 @@ enum nt_obj_type
 struct ktimer
 {
 	struct dispatch_header dispatch_header;
-	u64 due_time;
+	ULONGLONG due_time;
 	struct list_entry timer_list;
 	/* the space for kdpc is used for wrapper timer */
 	/* struct kdpc *kdpc; */
 	struct wrapper_timer *wrapper_timer;
-	long period;
+	LONG period;
 };
 
 struct kmutex
 {
 	struct dispatch_header dispatch_header;
-	/* struct list_entry list_entry */
-	long count;
-	unsigned int dummy;
+	union {
+		struct list_entry list_entry;
+		UINT count;
+	} u;
 	void *owner_thread;
 	BOOLEAN abandoned;
-	unsigned char apc_disable;
+	BOOLEAN apc_disable;
 };
 
 struct wait_block
@@ -620,8 +666,8 @@ struct wait_block
 	void *thread;
 	struct dispatch_header *object;
 	struct wait_block *next;
-	unsigned short wait_key;
-	unsigned short wait_type;
+	USHORT wait_key;
+	USHORT wait_type;
 };
 
 #define WAIT_ALL 0
@@ -632,13 +678,45 @@ struct wait_block
 
 #define NOTIFICATION_TIMER 1
 
-struct kevent
-{
-	struct dispatch_header header;
+enum ntos_event_type {
+	NOTIFICATION_EVENT,
+	SYNCHRONIZATION_EVENT
 };
 
-#define NOTIFICATION_EVENT	0
-#define SYNCHRONIZATION_EVENT	1
+typedef enum ntos_event_type KEVENT_TYPE;
+
+enum ntos_wait_reason {
+	WAIT_REASON_EXECUTIVE,
+	WAIT_REASON_FREEPAGE,
+	WAIT_REASON_PAGEIN,
+	WAIT_REASON_POOLALLOCATION,
+	WAIT_REASON_DELAYEXECUTION,
+	WAIT_REASON_SUSPENDED,
+	WAIT_REASON_USERREQUEST,
+	WAIT_REASON_WREXECUTIVE,
+	WAIT_REASON_WRFREEPAGE,
+	WAIT_REASON_WRPAGEIN,
+	WAIT_REASON_WRPOOLALLOCATION,
+	WAIT_REASON_WRDELAYEXECUTION,
+	WAIT_REASON_WRSUSPENDED,
+	WAIT_REASON_WRUSERREQUEST,
+	WAIT_REASON_WREVENTPAIR,
+	WAIT_REASON_WRQUEUE,
+	WAIT_REASON_WRLPCRECEIVE,
+	WAIT_REASON_WRLPCREPLY,
+	WAIT_REASON_WRVIRTUALMEMORY,
+	WAIT_REASON_WRPAGEOUT,
+	WAIT_REASON_WRRENDEZVOUS,
+	WAIT_REASON_SPARE2,
+	WAIT_REASON_SPARE3,
+	WAIT_REASON_SPARE4,
+	WAIT_REASON_SPARE5,
+	WAIT_REASON_SPARE6,
+	WAIT_REASON_WRKERNEL,
+	WAIT_REASON_MAXIMUM
+};
+
+typedef enum ntos_wait_reason KWAIT_REASON;
 
 #define LOW_PRIORITY 		1
 #define LOW_REALTIME_PRIORITY	16
@@ -651,21 +729,21 @@ typedef STDCALL void LOOKASIDE_FREE_FUNC(void *);
 
 struct packed npaged_lookaside_list {
 	union slist_head head;
-	unsigned short depth;
-	unsigned short maxdepth;
-	unsigned long totalallocs;
-	unsigned long allocmisses;
-	unsigned long totalfrees;
-	unsigned long freemisses;
+	USHORT depth;
+	USHORT maxdepth;
+	ULONG totalallocs;
+	ULONG allocmisses;
+	ULONG totalfrees;
+	ULONG freemisses;
 	enum pool_type pool_type;
-	unsigned long tag;
-	unsigned long size;
+	ULONG tag;
+	ULONG size;
 	LOOKASIDE_ALLOC_FUNC *alloc_func;
 	LOOKASIDE_FREE_FUNC *free_func;
 	struct list_entry listent;
-	unsigned long lasttotallocs;
-	unsigned long lastallocmisses;
-	unsigned long pad[2];
+	ULONG lasttotallocs;
+	ULONG lastallocmisses;
+	ULONG pad[2];
 	KSPIN_LOCK obsolete;
 };
 
@@ -703,13 +781,14 @@ int wrapper_set_timer(struct wrapper_timer *wrapper_timer,
                       unsigned long expires, unsigned long repeat,
                       struct kdpc *kdpc);
 void wrapper_cancel_timer(struct wrapper_timer *wrapper_timer, char *canceled);
-STDCALL void KeInitializeEvent(struct kevent *kevent, int type, int state);
-STDCALL long KeSetEvent(struct kevent *kevent, int incr, int wait);
-STDCALL long KeResetEvent(struct kevent *kevent);
-STDCALL unsigned int KeWaitForSingleObject(void *object, unsigned int reason,
-					   unsigned int waitmode,
-					   unsigned short alertable,
-					   s64 *timeout);
+STDCALL void KeInitializeEvent(struct kevent *kevent,
+			       KEVENT_TYPE type, BOOLEAN state);
+STDCALL LONG KeSetEvent(struct kevent *kevent, KPRIORITY incr, BOOLEAN wait);
+STDCALL LONG KeResetEvent(struct kevent *kevent);
+STDCALL NT_STATUS KeWaitForSingleObject(void *object, KWAIT_REASON reason,
+					KPROCESSOR_MODE waitmode,
+					BOOLEAN alertable,
+					LARGE_INTEGER *timeout);
 u64 ticks_1601(void);
 
 STDCALL KIRQL KeGetCurrentIrql(void);
@@ -787,7 +866,7 @@ static inline void init_dpc(struct kdpc *kdpc, void *func, void *ctx)
 	kdpc->ctx  = ctx;
 }
 
-static inline int SPAN_PAGES(unsigned int ptr, unsigned int len)
+static inline int SPAN_PAGES(unsigned long ptr, unsigned int len)
 {
 	unsigned int p = ptr & (PAGE_SIZE - 1);
 	return (p + len + (PAGE_SIZE - 1)) >> PAGE_SHIFT;

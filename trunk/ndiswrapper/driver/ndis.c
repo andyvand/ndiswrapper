@@ -63,7 +63,7 @@ void ndis_cleanup_handle(struct ndis_handle *handle)
 	if (handle->ndis_irq) {
 		unsigned long flags;
 
-		spin_lock_irqsave(handle->ndis_irq->spinlock, flags);
+		spin_lock_irqsave(&handle->ndis_irq->spinlock, flags);
 		if (miniport->disable_interrupts)
 			miniport->disable_interrupts(handle->adapter_ctx);
 		spin_unlock_irqrestore(handle->ndis_irq->spinlock, flags);
@@ -123,7 +123,7 @@ STDCALL static void WRAP_EXPORT(NdisInitializeWrapper)
 {
 	TRACEENTER1("handle=%p, SS1=%p, SS2=%p", ndis_handle,
 		    SystemSpecific1, SystemSpecific2);
-	*ndis_handle = (struct ndis_handle*) SystemSpecific1;
+	*ndis_handle = (struct ndis_handle *)SystemSpecific1;
 	TRACEEXIT1(return);
 }
 
@@ -253,7 +253,7 @@ NOREGPARM static void WRAP_EXPORT(NdisWriteErrorLogEntry)
 }
 
 STDCALL static void WRAP_EXPORT(NdisOpenConfiguration)
-	(unsigned int *status, struct ndis_handle **confhandle,
+	(int *status, struct ndis_handle **confhandle,
 	 struct ndis_handle *handle)
 {
 	TRACEENTER2("confHandle: %p, handle->dev_name: %s",
@@ -264,7 +264,7 @@ STDCALL static void WRAP_EXPORT(NdisOpenConfiguration)
 }
 
 STDCALL static void WRAP_EXPORT(NdisOpenConfigurationKeyByName)
-	(unsigned int *status, struct ndis_handle *handle, struct ustring *key,
+	(int *status, struct ndis_handle *handle, struct ustring *key,
 	 struct ndis_handle **subkeyhandle)
 {
 	TRACEENTER2("%s", "");
@@ -274,7 +274,7 @@ STDCALL static void WRAP_EXPORT(NdisOpenConfigurationKeyByName)
 }
 
 STDCALL static void WRAP_EXPORT(NdisOpenConfigurationKeyByIndex)
-	(unsigned int *status, struct ndis_handle *handle, unsigned long index,
+	(int *status, struct ndis_handle *handle, unsigned long index,
 	 struct ustring *key, struct ndis_handle **subkeyhandle)
 {
 	TRACEENTER2("%s", "");
@@ -291,7 +291,7 @@ STDCALL static void WRAP_EXPORT(NdisCloseConfiguration)
 }
 
 STDCALL static void WRAP_EXPORT(NdisOpenFile)
-	(unsigned int *status, struct ndis_bin_file **filehandle,
+	(int *status, struct ndis_bin_file **filehandle,
 	 unsigned int *filelength, struct ustring *filename,
 	 u64 highest_address)
 {
@@ -345,8 +345,7 @@ STDCALL static void WRAP_EXPORT(NdisOpenFile)
 }
 
 STDCALL static void WRAP_EXPORT(NdisMapFile)
-	(unsigned int *status, void **mappedbuffer,
-	 struct ndis_bin_file *filehandle)
+	(int *status, void **mappedbuffer, struct ndis_bin_file *filehandle)
 {
 	TRACEENTER2("Handle: %p", filehandle);
 
@@ -383,11 +382,11 @@ STDCALL static void WRAP_EXPORT(NdisGetSystemUpTime)
 }
 
 /* called as macro */
-STDCALL unsigned long WRAP_EXPORT(NDIS_BUFFER_TO_SPAN_PAGES)
+STDCALL ULONG WRAP_EXPORT(NDIS_BUFFER_TO_SPAN_PAGES)
 	(struct ndis_buffer *buffer)
 {
-	unsigned int p;
-	unsigned int i;
+	unsigned long size;
+	unsigned long i;
 
 	TRACEENTER3("%s", "");
 
@@ -396,8 +395,8 @@ STDCALL unsigned long WRAP_EXPORT(NDIS_BUFFER_TO_SPAN_PAGES)
 
 	if (buffer->len == 0)
 		return 1;
-	p = (unsigned int)buffer->data + buffer->offset;
-	i = SPAN_PAGES(PAGE_ALIGN(p), buffer->len);
+	size = (unsigned long)((char *)buffer->data) + buffer->offset;
+	i = SPAN_PAGES(PAGE_ALIGN(size), buffer->len);
 	DBGTRACE3("pages = %u", i);
 	TRACEEXIT3(return i);
 }
@@ -999,7 +998,7 @@ STDCALL static void WRAP_EXPORT(NdisMFreeSharedMemory)
 }
 
 STDCALL static void WRAP_EXPORT(NdisAllocateBufferPool)
-	(unsigned int *status, unsigned int *poolhandle, unsigned int size)
+	(int *status, unsigned int *poolhandle, unsigned int size)
 {
 	TRACEENTER4("%s", "");
 	*poolhandle = 0x0000fff8;
@@ -1015,8 +1014,8 @@ STDCALL static void WRAP_EXPORT(NdisFreeBufferPool)
 }
 
 STDCALL static void WRAP_EXPORT(NdisAllocateBuffer)
-	(unsigned int *status, void **buffer, void *poolhandle,
-	 void *virt, unsigned int len)
+	(int *status, void **buffer, void *poolhandle, void *virt,
+	 unsigned int len)
 {
 	struct ndis_buffer *my_buffer = kmalloc(sizeof(struct ndis_buffer),
 						GFP_ATOMIC);
@@ -1093,7 +1092,7 @@ STDCALL static unsigned long WRAP_EXPORT(NdisBufferLength)
 }
 
 STDCALL static void WRAP_EXPORT(NdisAllocatePacketPool)
-	(unsigned int *status, unsigned int *poolhandle,
+	(int *status, unsigned int *poolhandle,
 	 unsigned int size, unsigned int rsvlen)
 {
 	TRACEENTER3("size=%d", size);
@@ -1124,8 +1123,7 @@ STDCALL static void WRAP_EXPORT(NdisFreePacketPool)
 }
 
 STDCALL static void WRAP_EXPORT(NdisAllocatePacket)
-	(unsigned int *status, struct ndis_packet **packet_out,
-	 void *poolhandle)
+	(int *status, struct ndis_packet **packet_out, void *poolhandle)
 {
 	struct ndis_packet *packet;
 
@@ -1138,8 +1136,8 @@ STDCALL static void WRAP_EXPORT(NdisAllocatePacket)
 		TRACEEXIT3(return);
 	}
 	memset(packet, 0, sizeof(struct ndis_packet));
-	packet->oob_offset = offsetof(struct ndis_packet, timesent1);
-	packet->pool = (void*) 0xa000fff4;
+	packet->oob_offset = offsetof(struct ndis_packet, oob_tx.time_to_tx);
+	packet->pool = (void *)0xa000fff4;
 	packet->packet_flags = 0xc0;
 
 /* See comment in wrapper.c/send_one about this */
@@ -1325,7 +1323,7 @@ irqreturn_t ndis_irq_th(int irq, void *data, struct pt_regs *pt_regs)
 {
 	int recognized = 0;
 	int handled = 0;
-	struct ndis_irq *ndis_irq = (struct ndis_irq *) data;
+	struct ndis_irq *ndis_irq = (struct ndis_irq *)data;
 	struct ndis_handle *handle;
 	struct miniport_char *miniport;
 	unsigned long flags;
@@ -1336,7 +1334,7 @@ irqreturn_t ndis_irq_th(int irq, void *data, struct pt_regs *pt_regs)
 	miniport = &handle->driver->miniport_char;
 	/* this spinlock should be shared with NdisMSynchronizeWithInterrupt
 	 */
-	spin_lock_irqsave(ndis_irq->spinlock, flags);
+	spin_lock_irqsave(&ndis_irq->spinlock, flags);
 	if (ndis_irq->req_isr)
 		miniport->isr(&recognized, &handled, handle->adapter_ctx);
 	else { //if (miniport->disable_interrupts)
@@ -1344,7 +1342,7 @@ irqreturn_t ndis_irq_th(int irq, void *data, struct pt_regs *pt_regs)
 		/* it is not shared interrupt, so handler must be called */
 		recognized = handled = 1;
 	}
-	spin_unlock_irqrestore(ndis_irq->spinlock, flags);
+	spin_unlock_irqrestore(&ndis_irq->spinlock, flags);
 
 	if (recognized && handled)
 		schedule_work(&handle->irq_work);
@@ -1364,17 +1362,13 @@ STDCALL static unsigned int WRAP_EXPORT(NdisMRegisterInterrupt)
 		    "mode:%d sp:%p", ndis_irq, vector, level, req_isr,
 		    shared, mode, get_sp());
 
-	ndis_irq->spinlock = kmalloc(sizeof(spinlock_t), GFP_KERNEL);
-	if (ndis_irq->spinlock == NULL)
-		TRACEEXIT1(return NDIS_STATUS_RESOURCES);
-
-	ndis_irq->irq = vector;
+	ndis_irq->irq.irq = vector;
 	ndis_irq->handle = handle;
 	ndis_irq->req_isr = req_isr;
 	if (shared && !req_isr)
 		WARNING("%s", "shared but dynamic interrupt!");
 	ndis_irq->shared = shared;
-	spin_lock_init(ndis_irq->spinlock);
+	spin_lock_init(&ndis_irq->spinlock);
 	handle->ndis_irq = ndis_irq;
 
 	INIT_WORK(&handle->irq_work, &ndis_irq_bh, ndis_irq);
@@ -1411,9 +1405,7 @@ STDCALL void WRAP_EXPORT(NdisMDeregisterInterrupt)
 		set_current_state(TASK_INTERRUPTIBLE);
 		schedule_timeout(HZ/10);
 #endif
-		free_irq(ndis_irq->irq, ndis_irq);
-		kfree(ndis_irq->spinlock);
-		ndis_irq->spinlock = NULL;
+		free_irq(ndis_irq->irq.irq, ndis_irq);
 		ndis_irq->handle = NULL;
 		handle->ndis_irq = NULL;
 	}
@@ -1444,8 +1436,8 @@ STDCALL static unsigned char WRAP_EXPORT(NdisMSynchronizeWithInterrupt)
 
 /* called via fnuction pointer */
 STDCALL void
-NdisMIndicateStatus(struct ndis_handle *handle, unsigned int status, void *buf,
-		    unsigned int len)
+NdisMIndicateStatus(struct ndis_handle *handle,
+		    NDIS_STATUS status, void *buf, UINT len)
 {
 	TRACEENTER2("%08x", status);
 
@@ -1830,7 +1822,7 @@ STDCALL static unsigned int WRAP_EXPORT(NdisMRegisterIoPortRange)
 	 unsigned int start, unsigned int len)
 {
 	TRACEENTER3("%08x %08x", start, len);
-	*virt = (void*) start;
+	*virt = (void *)start;
 	return NDIS_STATUS_SUCCESS;
 }
 
@@ -1962,8 +1954,8 @@ STDCALL static void WRAP_EXPORT(NdisInitializeEvent)
 	KeInitializeEvent(&ndis_event->kevent, NOTIFICATION_EVENT, 0);
 }
 
-STDCALL int WRAP_EXPORT(NdisWaitEvent)
-	(struct ndis_event *ndis_event, unsigned int ms)
+STDCALL BOOLEAN WRAP_EXPORT(NdisWaitEvent)
+	(struct ndis_event *ndis_event, UINT ms)
 {
 	s64 ticks;
 	int res;
@@ -1993,9 +1985,11 @@ STDCALL static void WRAP_EXPORT(NdisResetEvent)
 
 /* called via function pointer */
 STDCALL void
-NdisMResetComplete(struct ndis_handle *handle, int status, int reset_status)
+NdisMResetComplete(struct ndis_handle *handle, NDIS_STATUS status,
+		   BOOLEAN address_reset)
 {
-	TRACEENTER2("status: %08X, reset status: %u", status, reset_status);
+	TRACEENTER2("status: %08X, reset status: %u", status,
+		    address_reset);
 
 	handle->ndis_comm_res = status;
 	handle->reset_status = status;
@@ -2351,7 +2345,7 @@ STDCALL static void WRAP_EXPORT(NdisMGetDeviceProperty)
 		dev->flags           = 0x00001004;
 		dev->characteristics = 01;
 		/* dev_type: FILE_DEVICE_UNKNOWN */
-		dev->dev_type        = 0x00000022;
+//		dev->dev_type        = 0x00000022;
 		dev->stack_size      = 1;
 
 		/* assumes that the handle refers to an USB device */

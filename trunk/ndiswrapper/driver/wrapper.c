@@ -485,7 +485,7 @@ static struct ndis_packet *alloc_packet(struct ndis_handle *handle,
 		packet->scatter_gather_ext = &packet->scatterlist;
 	}
 
-	packet->oob_offset = offsetof(struct ndis_packet, timesent1);
+	packet->oob_offset = offsetof(struct ndis_packet, oob_tx.time_to_tx);
 
 	packet->nr_pages = NDIS_BUFFER_TO_SPAN_PAGES(buffer);
 	packet->len = buffer->len;
@@ -1320,7 +1320,7 @@ int setup_dev(struct net_device *dev)
 	dev->ethtool_ops = &ndis_ethtool_ops;
 #endif
 	if (handle->ndis_irq)
-		dev->irq = handle->ndis_irq->irq;
+		dev->irq = handle->ndis_irq->irq.irq;
 	dev->mem_start = handle->mem_start;
 	dev->mem_end = handle->mem_end;
 
@@ -1380,9 +1380,9 @@ struct net_device *ndis_init_netdev(struct ndis_handle **phandle,
 
 	handle = dev->priv;
 
-	/* Poision the fileds as they may contain function pointers
+	/* Poison the fileds as they may contain function pointers
 	 * which my be called by the driver */
-	for (i = 0, ip = (int *)handle->signature;
+	for (i = 0, ip = (int *)&handle->signature;
 	     (void *)&ip[i] < (void *)&handle->dev.pci; i++)
 		ip[i] = 0x1000+i;
 

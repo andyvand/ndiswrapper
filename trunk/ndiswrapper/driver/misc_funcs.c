@@ -533,8 +533,8 @@ STDCALL void WRAP_EXPORT(RtlCopyUnicodeString)
 	TRACEEXIT1(return);
 }
 
-STDCALL int WRAP_EXPORT(RtlAnsiStringToUnicodeString)
-	(struct ustring *dst, struct ustring *src, unsigned int dup)
+STDCALL NT_STATUS WRAP_EXPORT(RtlAnsiStringToUnicodeString)
+	(struct ustring *dst, struct ustring *src, BOOLEAN dup)
 {
 	int i;
 	__u16 *d;
@@ -564,8 +564,8 @@ STDCALL int WRAP_EXPORT(RtlAnsiStringToUnicodeString)
 	TRACEEXIT2(return NDIS_STATUS_SUCCESS);
 }
 
-STDCALL int WRAP_EXPORT(RtlUnicodeStringToAnsiString)
-	(struct ustring *dst, struct ustring *src, unsigned int dup)
+STDCALL NT_STATUS WRAP_EXPORT(RtlUnicodeStringToAnsiString)
+	(struct ustring *dst, struct ustring *src, BOOLEAN dup)
 {
 	int i;
 	__u16 *s;
