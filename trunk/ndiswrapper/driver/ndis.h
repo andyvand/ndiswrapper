@@ -102,10 +102,10 @@ struct packed ndis_packet
 	unsigned int len;
 
 	struct ndis_buffer *buffer_head;
-	struct ndis_buffer *buffer_tail;
+	struct ndis_buffer *buffer_tail; 
 	void *pool;
 
-	/* 20 Number of buffers */
+	/* 14 Number of buffers */
 	unsigned int count;
 
 	unsigned int flags;
@@ -188,7 +188,7 @@ struct packed miniport_char
 	void (*return_packet)(void *ctx, void *packet) STDCALL;
 
 	/* Send packets */
-	void (*send_packets)(void *ctx, struct ndis_packet **packets, int nr_of_packets) STDCALL;
+	unsigned int (*send_packets)(void *ctx, struct ndis_packet **packets, int nr_of_packets) STDCALL;
 };
 
 struct ndis_work

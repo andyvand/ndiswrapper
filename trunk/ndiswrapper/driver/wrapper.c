@@ -889,23 +889,32 @@ static int ndis_start_xmit(struct sk_buff *skb, struct net_device *dev)
 
 	skb_copy_and_csum_dev(skb, data);
 	dev_kfree_skb(skb);
-//	DBGTRACE("Calling send_packets at %08x rva(%08x). sp:%08x\n", (int)handle->miniport_char.send_packets, (int)handle->miniport_char.send_packets - image_offset, getSp());
 
 	if(handle->driver->miniport_char.send_packets)
 	{
+		int res;
 		struct ndis_packet *packets[1];
 		packets[0] = packet;
-		handle->driver->miniport_char.send_packets(handle->adapter_ctx, &packets[0], 1);
+//		DBGTRACE("Calling send_packets at %08x rva(%08x)\n", (int)handle->driver->miniport_char.send_packets, (int)handle->driver->miniport_char.send_packets - image_offset);
+		res = handle->driver->miniport_char.send_packets(handle->adapter_ctx, &packets[0], 1);
+		if(!res)
+			DBGTRACE("send_packets returning %08x\n", res);
+		
 	}
 	else if(handle->driver->miniport_char.send)
 	{
-		int res = handle->driver->miniport_char.send(handle->adapter_ctx, packet, 0);
+		int res;
+//		DBGTRACE("Calling send at %08x rva(%08x)\n", (int)handle->driver->miniport_char.send, (int)handle->driver->miniport_char.send_packets - image_offset);
+		res = handle->driver->miniport_char.send(handle->adapter_ctx, packet, 0);
 
 		if(res == NDIS_STATUS_PENDING)
 		{
 			return 0;
 		}
 		ndis_sendpacket_done(handle, packet);
+		if(!res)
+			DBGTRACE("send_packets returning %08x\n", res);
+
 		return 0;
 	}
 	else
