@@ -65,16 +65,18 @@ STDCALL int WRAP_EXPORT(KeSetTimerEx)
 {
 	unsigned long expires;
 	unsigned long repeat;
+	unsigned int ms;
 
 	TRACEENTER4("%p, %ld, %u, %p", ktimer, (long)due_time, period, kdpc);
 
 	if (ktimer == NULL)
 		return 0;
 	if (due_time < 0)
-		expires = jiffies + HZ * (-due_time / 10000000);
+		ms = jiffies + HZ * (-due_time) / 10000;
 	else
-		expires = HZ * (due_time / 10000000);
+		ms = HZ * due_time / 10000;
 	repeat = HZ * (period / 1000);
+	expires = msecs_to_jiffies(ms);
 	return wrapper_set_timer(ktimer->wrapper_timer, expires, repeat, kdpc);
 }
 
@@ -451,7 +453,6 @@ STDCALL NT_STATUS WRAP_EXPORT(KeWaitForSingleObject)
 	struct kevent *kevent = (struct kevent *)object;
 	struct dispatch_header *header = &kevent->header;
 	int res;
-	unsigned long wait_ms;
 	long wait_jiffies;
 
 	/* Note: for now, object can only point to an event */
@@ -460,13 +461,6 @@ STDCALL NT_STATUS WRAP_EXPORT(KeWaitForSingleObject)
 		timeout);
 
 	DBGTRACE2("object type = %d, size = %d", header->type, header->size);
-
-	DBG_BLOCK() {
-		u8 *ip;
-
-		caller_return_address(ip);
-		dump_bytes(__FUNCTION__, ip);
-	}
 
 	if (header->size == NT_OBJ_MUTEX) {
 		struct kmutex *kmutex = (struct kmutex *)object;
@@ -484,19 +478,19 @@ STDCALL NT_STATUS WRAP_EXPORT(KeWaitForSingleObject)
 	}
 
 	if (timeout) {
+		long t;
+
 		DBGTRACE2("timeout = %Ld", *timeout);
-		if (*timeout == 0)
+		t = *timeout;
+		if (t == 0)
 			TRACEEXIT2(return STATUS_TIMEOUT);
-		else if (*timeout > 0)
-			wait_ms = ((*timeout) - ticks_1601()) / 10000;
+		else if (t > 0)
+			wait_jiffies = msecs_to_jiffies(t / 10000) - jiffies;
 		else
-			wait_ms = (-(*timeout)) / 10000;
+			wait_jiffies = msecs_to_jiffies((-t) / 10000);
 	} else
-		wait_ms = 0;
+		wait_jiffies = 0;
 
-	DBGTRACE2("wait ms = %lu", wait_ms);
-
-	wait_jiffies = (wait_ms * HZ) / 1000;
 	header->inserted++;
 	if (wait_jiffies == 0) {
 		if (alertable)
@@ -512,13 +506,11 @@ STDCALL NT_STATUS WRAP_EXPORT(KeWaitForSingleObject)
 		if (alertable)
 			res = wait_event_interruptible_timeout(
 				dispatch_event_wq,
-				(header->signal_state == TRUE),
-				wait_jiffies);
+				(header->signal_state == TRUE), wait_jiffies);
 		else
 			res = wait_event_timeout(
 				dispatch_event_wq,
-				(header->signal_state == TRUE),
-				wait_jiffies);
+				(header->signal_state == TRUE), wait_jiffies);
 	}
 
 	header->inserted--;
@@ -1054,22 +1046,24 @@ STDCALL NT_STATUS WRAP_EXPORT(KeDelayExecutionThread)
 	 LARGE_INTEGER *interval)
 {
 	int res;
-	int timeout;
+	long timeout;
+	long t = *interval;
 
-	TRACEENTER2("%s", "");
+	TRACEENTER2("thread: %p", get_current());
 	if (wait_mode != 0)
 		ERROR("illegal wait_mode %d", wait_mode);
 
-	if (*interval < 0)
-		timeout = jiffies + HZ * (-(*interval)) / 10000;
+	if (t < 0)
+		timeout = msecs_to_jiffies((-t) / 10000);
 	else
-		timeout = HZ * (*interval) / 10000;
+		timeout = jiffies - msecs_to_jiffies(t / 10000);
 
 	if (alertable)
 		set_current_state(TASK_INTERRUPTIBLE);
 	else
 		set_current_state(TASK_UNINTERRUPTIBLE);
 
+	DBGTRACE3("%ld, %ld, %Ld, %d", jiffies, timeout, *interval, alertable);
 	res = schedule_timeout(timeout);
 
 	if (res > 0)
