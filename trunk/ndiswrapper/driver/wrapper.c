@@ -2250,7 +2250,10 @@ static int __init wrapper_init(void)
         }
 
 	init_ndis_work();
-	call_usermodehelper("/sbin/loadndisdriver", argv, env, 0);	
+	call_usermodehelper("/sbin/loadndisdriver", argv, env, 1);
+
+	/* Wait a little to let card power up otherwise ifup might fail on boot */
+	schedule_timeout(HZ);
 	return 0;
 }
 
