@@ -916,7 +916,6 @@ void ndiswrapper_remove_one_dev(struct ndis_handle *handle)
 
 	miniport_set_int(handle, OID_802_11_DISASSOCIATE, 0);
 
-	DBGTRACE("");
 	if (handle->net_dev)
 		unregister_netdev(handle->net_dev);
 
