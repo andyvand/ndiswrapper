@@ -18,6 +18,7 @@ _win_to_lin:
 	mov	72(%rsp), %r8	# arg5 is at 9th position (offset 72)
 				# due to 4 more push'es
 	mov	80(%rsp), %r9	# arg6
+	mov	$0x0, %rax	# number of SSE regs for variadic funcs
 	call	*%r11
 	pop	%rdi
 	pop	%rsi
