@@ -36,7 +36,7 @@
 #include "ndis.h"
 
 #define DRV_NAME "ndiswrapper"
-#define DRV_VERSION "0.2"
+#define DRV_VERSION "0.2+CVS"
 
 /* Define this if you are developing and ndis_init_one crashes.
    When using the old PCI-API a reboot is not needed when this
