@@ -103,4 +103,4 @@ endif
 install: default
 	mkdir -p $(INST_DIR)
 	install -m 0644 $(MODULE) $(INST_DIR)
-	depmod -a
+	/sbin/depmod -a

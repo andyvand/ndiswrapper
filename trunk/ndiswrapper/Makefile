@@ -7,7 +7,7 @@ all:
 .PHONY: install
 install:
 	make -C driver install
-	make -C utils
+	make -C utils install
 
 .PHONY: clean
 clean:
