@@ -29,7 +29,9 @@
 #include <linux/random.h>
 #include <linux/ctype.h>
 #include <linux/usb.h>
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
 #include <linux/kthread.h>
+#endif
 #include <asm/mman.h>
 #include <asm/atomic.h>
 
