@@ -11,7 +11,8 @@ KSRC  ?= /lib/modules/$(KVERS)/build
 
 KPSUB := $(shell echo $(KVERS) |  sed -e 's/\([^\.]*\)\.\([^\.]*\)\..*/\1\2/')
 
-INST_DIR := /lib/modules/$(KVERS)/misc
+DESTDIR =
+INST_DIR := $(DESTDIR)/lib/modules/$(KVERS)/misc
 
 SRC_DIR=$(shell pwd)
 
@@ -56,9 +57,9 @@ endif
 
 ifeq ($(CONFIG_DEBUG_SPINLOCK),y)
 $(warning CONFIG_DEBUG_SPINLOCK conflicts with spinlocks used by \
-Windows driver. There is a workaround for it in ndiswrapper, but it \
-may not work correctly. Don't complain about kernel crashes until \
-CONFIG_DEBUG_SPINLOCK is disabled.)
+  Windows driver. There is a workaround for it in ndiswrapper, but it \
+  may not work correctly. Don't complain about kernel crashes until \
+  CONFIG_DEBUG_SPINLOCK is disabled.)
 endif
 
 divdi3.o: divdi3.c longlong.h
