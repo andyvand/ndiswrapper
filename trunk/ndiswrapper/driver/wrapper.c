@@ -45,7 +45,7 @@
 /* Define this if you are developing and ndis_init_one crashes.
    When using the old PCI-API a reboot is not needed when this
    function crashes. A simple rmmod -f will do the trick and
-   you can try again.
+   you can try again. (Currently broken)
 */
 
 /*#define DEBUG_CRASH_ON_INIT*/
@@ -510,15 +510,15 @@ static int ndis_get_bitrate(struct net_device *dev, struct iw_request_info *info
 	return 0;
 }
 
-static int ndis_set_bitrate(struct net_device *dev,
-							struct iw_request_info *info,
-							union iwreq_data *wrqu, char *extra)
+static int ndis_set_dummy(struct net_device *dev,
+                            struct iw_request_info *info,
+                            union iwreq_data *wrqu, char *extra)
 {
-	/* This is not really needed, as card negotiates the rate with AP.
-	 * However, some user space tools try to set the rate. For now,
-	 * make them happy by doing nothing.
-	 */
-	return 0;
+	/* Do nothing. Used for set_encode and set_rate. Having a dummy
+	 * function like this surpresses errors the user will get when
+	 * running ifup.
+	  */
+	 return 0;
 }
 
 static int ndis_get_rts_threshold(struct net_device *dev, struct iw_request_info *info,
@@ -845,7 +845,7 @@ static int ndis_set_scan(struct net_device *dev, struct iw_request_info *info,
 		res = set_int(handle, NDIS_OID_BSSID_LIST_SCAN, 0);
 		if (res)
 		{
-			printk(KERN_ERR "%s: scanning failed (%08X)\n", dev->name, res);
+			printk(KERN_INFO "%s: scanning failed (%08X)\n", dev->name, res);
 			handle->scan_timestamp = 0;
 			return -EOPNOTSUPP;
 		}
@@ -1103,7 +1103,7 @@ static const iw_handler	ndis_handler[] = {
 	[SIOCGIWTXPOW	- SIOCIWFIRST] = ndis_get_tx_power,
 	[SIOCSIWTXPOW	- SIOCIWFIRST] = ndis_set_tx_power,
 	[SIOCGIWRATE	- SIOCIWFIRST] = ndis_get_bitrate,
-	[SIOCSIWRATE	- SIOCIWFIRST] = ndis_set_bitrate,
+	[SIOCSIWRATE	- SIOCIWFIRST] = ndis_set_dummy,
 	[SIOCGIWRTS	- SIOCIWFIRST] = ndis_get_rts_threshold,
 	[SIOCGIWFRAG	- SIOCIWFIRST] = ndis_get_frag_threshold,
 	//[SIOCSIWRETRY	- SIOCIWFIRST] = ndis_get_rety_limit,
@@ -1121,6 +1121,7 @@ static const iw_handler	ndis_handler[] = {
 	[SIOCSIWSENS	- SIOCIWFIRST] = ndis_set_sensitivity,
 	[SIOCGIWNICKN	- SIOCIWFIRST] = ndis_get_nick,
 	[SIOCSIWNICKN	- SIOCIWFIRST] = ndis_set_nick,
+	[SIOCSIWENCODE	- SIOCIWFIRST] = ndis_set_dummy,
 };
 
 static const struct iw_handler_def ndis_handler_def = {
@@ -1222,7 +1223,7 @@ static void hangcheck_bh(void *data)
 	{
 		int res;
 		handle->reset_status = 0;
-		printk("ndiswrapper: Hangcheck returned true. Resetting!\n");
+		printk(KERN_INFO "ndiswrapper: Hangcheck returned true. Resetting!\n");
 		res = handle->driver->miniport_char.reset(&handle->reset_status, handle->adapter_ctx);
 		DBGTRACE("%s : %08X, %d\n", __FUNCTION__, res, handle->reset_status);
 	}
@@ -1492,9 +1493,9 @@ static void xmit_bh(void *param)
 }
 
 /*
- * This can probably be done a lot more effective (no copy of data needed).
- *
- *
+ * This function is called in BH disabled context and ndis drivers must have their
+ * send-functions called from sleepeable context so we just queue the packets up here
+ * and schedule a workqueue to run later.
  */
 static int ndis_start_xmit(struct sk_buff *skb, struct net_device *dev)
 {
@@ -2237,7 +2238,7 @@ static void unload_driver(struct ndis_driver *driver)
 
 /*
  * Called when userspace closes the filehandle for the misc device.
- * Check and remove and half-loaded drivers.
+ * Check and remove any half-loaded drivers.
  */
 
 static int misc_release(struct inode *inode, struct file *file)
