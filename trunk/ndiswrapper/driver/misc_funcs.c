@@ -271,7 +271,7 @@ STDCALL int RtlUnicodeStringToAnsiString(struct ustring *dst, struct ustring *sr
 	__u16 *s;
 	__u8 *d;
 
-	DBGTRACE("%s dup: %d src->len: %d src->buflen: %d, dst: %p", __FUNCTION__, dup, src->len, src->buflen, dst);
+	DBGTRACE("%s dup: %d src->len: %d src->buflen: %d, dst: %p\n", __FUNCTION__, dup, src->len, src->buflen, dst);
 	if(dup)
 	{
 		char *buf = kmalloc((src->buflen+1) / sizeof(__u16), GFP_KERNEL);
