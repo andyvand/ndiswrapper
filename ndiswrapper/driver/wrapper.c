@@ -50,7 +50,13 @@
 static char *if_name = "wlan%d";
 int proc_uid, proc_gid;
 static int hangcheck_interval;
-int debug;
+
+#if defined(DEBUG) && (DEBUG > 0)
+int debug = DEBUG;
+#else
+int debug = 0;
+#endif
+
 /* used to implement Windows spinlocks */
 spinlock_t spinlock_kspin_lock;
 
@@ -1493,11 +1499,6 @@ static int __init wrapper_init(void)
 	int err;
 
 	spin_lock_init(&spinlock_kspin_lock);
-#if defined(DEBUG) && DEBUG > 0
-	debug = DEBUG;
-#else
-	debug = 0;
-#endif
 	printk(KERN_INFO "%s version %s%s loaded (preempt=%s,smp=%s)\n",
 	       DRIVER_NAME, NDISWRAPPER_VERSION, EXTRA_VERSION,
 #if defined CONFIG_PREEMPT
