@@ -38,11 +38,13 @@ void KfReleaseSpinLock(void){UNIMPL();}
 
 STDCALL void WRITE_PORT_ULONG(unsigned int port, unsigned int value)
 {
+	DBGTRACE("%s %08x=%08x\n", __FUNCTION__, port, value);
 	outl(value, port);
 }
 
 STDCALL unsigned int READ_PORT_ULONG(unsigned int port)
 {
+	DBGTRACE("%s %08x\n", __FUNCTION__, port);
 	return inl(port);
 }
 
@@ -92,10 +94,6 @@ STDCALL void WRITE_REGISTER_UCHAR(unsigned int reg, unsigned char val)
 	writeb(val, reg);
 }
 
-STDCALL void KeInitializeEvent(void *event, unsigned int type, unsigned char state)
-{
-	UNIMPL();
-}
 STDCALL void IoBuildSynchronousFsdRequest(void)
 {
 	UNIMPL();
@@ -139,6 +137,47 @@ STDCALL void *ExAllocatePoolWithTag(unsigned int type, unsigned int size, unsign
 	UNIMPL();
 	return (void*)0x000afff8;
 }
+
+
+
+void KeInitializeDispatcherHeader(DISPATCHER_HEADER *Header,
+                                  unsigned long Type,
+                                  unsigned long Size,
+                                  unsigned long SignalState)
+{
+	Header->Type = Type;
+	Header->Absolute = 0;
+	Header->Inserted = 0;
+	Header->Size = Size;
+	Header->SignalState = SignalState;
+	InitializeListHead(&(Header->WaitListHead));
+}
+ 
+void STDCALL KeInitializeEvent(PKEVENT Event, EVENT_TYPE Type, int State)
+{
+	unsigned long IType;
+ 
+ 	if (Type == NotificationEvent)
+	{
+		IType = InternalNotificationEvent;
+	}
+	else if (Type == SynchronizationEvent)
+	{
+		IType = InternalSynchronizationEvent;
+	}
+	else
+	{
+		assert(FALSE);
+		return;
+	}
+ 
+	KeInitializeDispatcherHeader(&(Event->Header),
+	                             IType,
+				     sizeof(Event)/sizeof(unsigned long),State);
+	InitializeListHead(&(Event->Header.WaitListHead));
+}
+
+
 void IoDeleteSymbolicLink(void){UNIMPL();}
 void InterlockedExchange(void){UNIMPL();}
 void MmMapLockedPages(void){UNIMPL();}
