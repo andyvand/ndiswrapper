@@ -451,7 +451,7 @@ STDCALL void KeInitializeSpinLock(KSPIN_LOCK *lock)
 {
 	spinlock_t *spin_lock;
 
-	DBGTRACE("%s: lock = %p, *lock = %lu\n", __FUNCTION__, lock, *lock);
+	DBGTRACE("%s: lock = %p, *lock = %p\n", __FUNCTION__, lock, *lock);
 
 	if (!lock)
 		printk(KERN_ERR "%s: lock %p is not valid pointer?\n",
@@ -673,9 +673,8 @@ STDCALL void KeInitializeDpc(struct kdpc *kdpc, void *func, void *ctx)
 STDCALL int KeSetTimerEx(struct ktimer *ktimer, __s64 expires,
 			 __u32 repeat, struct kdpc *kdpc)
 {
-	DBGTRACE("%s: %p, %ld, %ld, %p\n",
-		 __FUNCTION__, ktimer, expires, repeat,
-		kdpc);
+	DBGTRACE("%s: %p, %ld, %u, %p\n",
+		 __FUNCTION__, ktimer, (long)expires, repeat, kdpc);
 
 	if (ktimer == NULL)
 		return 0;
@@ -686,7 +685,7 @@ STDCALL int KeSetTimerEx(struct ktimer *ktimer, __s64 expires,
 		ktimer->expires = (expires * HZ) / 10000;
 		if (repeat)
 			printk(KERN_ERR "%s: absolute time with repeat? (%ld, %u)\n",
-				   __FUNCTION__, (long int)expires, repeat);
+				   __FUNCTION__, (long)expires, repeat);
 	}
 	ktimer->repeat = (repeat * HZ) / 1000;
 	ktimer->kdpc = kdpc;
@@ -697,8 +696,8 @@ STDCALL int KeSetTimerEx(struct ktimer *ktimer, __s64 expires,
 	}
 	else
 	{
-		DBGTRACE("%s: adding timer at %u, %u\n",
-				 __FUNCTION__, ktimer->timer.expires, ktimer->timer.repeat);
+		DBGTRACE("%s: adding timer at %ld, %ld\n",
+				 __FUNCTION__, ktimer->timer.expires, ktimer->repeat);
 		ktimer->timer.expires = ktimer->expires;
 		add_timer(&ktimer->timer);
 		ktimer->active = 1;
@@ -714,8 +713,8 @@ STDCALL int KeCancelTimer(struct ktimer *ktimer)
 	ktimer->repeat = 0;
 	if (active)
 	{
-		DBGTRACE("%s: deleting timer at %u, %u\n",
-				 __FUNCTION__, ktimer->timer.expires, ktimer->timer.repeat);
+		DBGTRACE("%s: deleting timer at %ld, %ld\n",
+				 __FUNCTION__, ktimer->timer.expires, ktimer->repeat);
 		del_timer_sync(&ktimer->timer);
 		return 1;
 	}
