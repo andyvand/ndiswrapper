@@ -1,0 +1,674 @@
+#!/usr/bin/perl
+
+use strict;
+use Fcntl ':mode';
+
+my @sections;
+my %strings;
+my $driver_name;
+my $confdir = "/etc/ndiswrapper";
+my $instdir;
+my %fuzzlist;
+
+if(@ARGV < 1)
+{
+	usage();
+	exit();
+}
+
+my $res;
+if($ARGV[0] eq "-i" and @ARGV == 2)
+{
+	$res = install($ARGV[1]);
+}
+elsif($ARGV[0] eq "-e" and @ARGV == 2)
+{
+	$res = remove($ARGV[1]);
+}
+elsif($ARGV[0] eq "-l" and @ARGV == 1)
+{
+	$res = list();
+}
+else
+{
+	usage();
+	exit();
+}
+
+exit $res;
+
+sub usage
+{
+	print "Usage: ndiswrapper OPTION\n".
+	      "\n".
+	      "Manage ndis drivers for ndiswrapper.\n".
+	      "-i inffile   Install driver described by inffile\n".
+	      "-e driver    Remove driver\n".
+	      "-l           List installed drivers\n";
+}
+
+
+sub install
+{
+	my $inf = shift;
+	$driver_name = lc($inf);
+	$driver_name =~ s/\.inf//;
+	$driver_name = `basename $driver_name`;
+	$instdir = `dirname $inf`;
+	chomp($instdir);
+	chomp($driver_name);
+
+	if(isInstalled($driver_name))
+	{
+		print "$driver_name is already installed. Use -e to remove it\n";
+		return -1;
+	}
+	
+	if(!opendir(DH, $confdir))
+	{
+		mkdir($confdir);
+	}
+	else
+	{
+		close(DH);
+	}
+	
+	print "Installing $driver_name\n";
+	if(!mkdir("$confdir/$driver_name"))
+	{
+		print "Unable to create directory $confdir/$driver_name. Make sure you are running as root\n";
+		return -1;
+	}
+	
+	loadinf($inf);
+	initStrings(); 
+	parseManu();
+	processFuzz();
+}
+
+sub isInstalled
+{
+	my $installed;
+	my $name = shift;
+	open(LS, "ls -1 $confdir|");
+	while(my $f = <LS>)
+	{
+		chomp($f);
+		my $mode = (stat("$confdir/$f"))[2];
+		if(S_ISDIR($mode) and $name eq $f)
+		{
+			$installed = 1;
+		}
+		
+	}
+	close(LS);	
+	return $installed;
+}
+
+
+sub remove
+{
+	my $name = shift;
+	if(!isInstalled($name))
+	{
+		print "Driver $name is not installed. Use -l to list installed drivers\n";
+		return;
+	}
+	`rm -rf $confdir/$name`;
+}
+
+sub list
+{
+	my $s;
+	open(LS, "ls -1 $confdir|");
+	while(my $f = <LS>)
+	{
+		chomp($f);
+		my $mode = (stat("$confdir/$f"))[2];
+		if(S_ISDIR($mode))
+		{
+			$s .= "$f\n";
+		}
+	}
+	if($s)
+	{
+		print "Installed ndis drivers:\n$s";
+	}
+	else
+	{
+		print "No drivers installed\n$s";
+	}
+	close(LS);	
+}
+
+
+#
+# Create symlink for general device if not existing
+#
+sub processFuzz
+{
+	my @devs = keys(%fuzzlist);
+	for(my $i = 0; $i < @devs; $i++)
+	{
+		my $dev = $devs[$i];
+		if($dev ne $fuzzlist{$dev})
+		{
+			`ln -s $confdir/$driver_name/$fuzzlist{$dev}.conf $confdir/$driver_name/$dev.conf`;
+		}
+	}
+}
+
+#
+# Collect a list of supported PCI-Id's so we can add fuzzy entries if needed.
+#
+sub addFuzzEntry
+{
+	my $vendor = shift;
+	my $device = shift;
+	my $subvendor = shift;
+	my $subdevice = shift;
+
+	my $s = "$vendor:$device";
+
+	if(!$subvendor or !$fuzzlist{$s})
+	{
+		my $s2 = $s;
+		if($subvendor)
+		{
+			$s2 .= ":$subvendor:$subdevice";
+		}
+		$fuzzlist{$s} = $s2;
+	}
+}
+
+
+#
+# Parse the [Manufacturer] section.
+#
+sub parseManu
+{
+#Examples:
+#Vendor
+#Vendor,ME,NT,NT.5.1
+#Vendor.NTx86
+
+	my $manu = getSection("manufacturer");
+	if(!$manu)
+	{
+		return -1;
+	}
+
+	my @lines = split("\n", $manu->{data});
+	for(my $i = 0; $i < @lines; $i++)
+	{
+		my $line = remComment($lines[$i]);
+		(my $key, my $val) = getKeyVal($line, "=");
+
+		if($val)
+		{
+			my $section;
+			my @flavours = split(",", $val);
+			my $flavour = "";
+			if(@flavours == 1)
+			{
+				#Vendor
+				$section = $val;				
+			}
+			else
+			{
+				#Vendor,flavour1, flavour2 etc;
+				for(my $i = 1; $i < @flavours; $i++)
+				{
+					my $flav = trim($flavours[$i]);
+					$flav =~ s/\s*(\S+)\s*/\1/;
+					if(uc($flav) eq "NT.5.1")
+					{
+						#This is the best (XP)
+						$section = $flavours[0] . "." . $flav;
+						$flavour = $flav;
+					}
+					elsif(substr(uc($flav),0,2) eq "NT" and $section eq "")
+					{
+						#This is the second best (win2k)
+						$section = $flavours[0] . "." . $flav;
+						$flavour = $flav;
+					}
+				}
+				
+			}
+			my $res = parseVendor($flavour, $section);
+			if(!$res)
+			{
+				return $res;
+			}
+		}
+	}
+}
+
+#
+# Parse e vendor section. This section contains the PCI-ids. Each poiting to a section with config info.
+#	
+sub parseVendor
+{
+	my $flavour = shift;
+	my $vendor_name = shift;
+	my $vend = getSection($vendor_name);
+
+	if(!$vend)
+	{
+		print "no vendor\n";
+		return -1;
+	}
+
+	my @lines = split("\n", $vend->{data});
+	for(my $i = 0; $i < @lines; $i++)
+	{
+		my $line = remComment($lines[$i]);
+		(my $name, my $val) = getKeyVal($line, "=");
+
+		if($val)
+		{
+			(my $section, my $id) = split(",", $val);
+			$section = trim($section);
+			$id = trim($id);
+			(my $vendor, my $device, my $subvendor, my $subdevice) = parsePCI($id);		
+			if($vendor)
+			{
+				parseDevice($flavour, $section, $vendor, $device, $subvendor, $subdevice);
+			}
+		}
+	}
+}
+
+
+#
+# This section contains pointers to registry sections and copyfiles sections. 
+#
+sub parseDevice
+{
+	my $flavour = shift;
+	my $device_sect = shift;
+	my $device = shift;
+	my $vendor = shift;
+	my $subvendor = shift;
+	my $subdevice = shift;
+
+	my $dev = getSection("$device_sect.$flavour");
+	if(!$dev)
+	{
+		$dev = getSection("$device_sect.NT");
+	}
+	if(!$dev)
+	{
+		$dev = getSection("$device_sect");
+	}
+
+	if(!$dev)
+	{
+		print "no dev $device_sect $flavour\n";
+		return -1;
+	}
+
+#	print "$device:$vendor:$subvendor:$subdevice  $flavour\n";
+
+	my $copyfiles;
+	my $addreg;
+	my @lines = split("\n", $dev->{data});
+
+	for(my $i = 0; $i < @lines; $i++)
+	{
+		my $line = remComment($lines[$i]);
+		(my $key, my $val) = getKeyVal($line, "=");
+		if($key)
+		{
+			if(lc($key) eq "addreg")
+			{
+				$addreg = $val;
+			}
+			if(lc($key) eq "copyfiles")
+			{
+				$copyfiles = $val;
+			}
+		}
+	}		
+
+	my $filename = "$device:$vendor";
+	if($subvendor)
+	{
+		$filename .= ":$subvendor:$subdevice"
+	}
+
+	$filename .= ".conf";	
+	
+	addFuzzEntry($device, $vendor, $subvendor, $subdevice);
+	if(!open(CONF, ">$confdir/$driver_name/$filename"))
+	{
+		print "Unable to create file $filename";
+		return -1;
+	}
+
+	printf CONF "NdisVersion=0x00000002|0x50001\n";
+	printf CONF "Environment=0x00000002|1\n";
+	printf CONF "BusType=0x00000002|5\n\n";
+
+	
+	my @addregs = split(",", $addreg);
+	for(my $i = 0; $i < @addregs; $i++)
+	{
+		my $reg = trim($addregs[$i]);
+		addReg($reg);
+	}
+	
+	my @copyfiles = split(",", $copyfiles);
+	for(my $i = 0; $i < @copyfiles; $i++)
+	{
+		my $file = trim($copyfiles[$i]);
+		copyfiles($file);
+	}
+
+	close(CONF);
+}
+
+
+#
+# Process a copyfiles section.
+#
+sub copyfiles
+{
+	my $copy_name = shift;
+	my $copy = getSection($copy_name);
+	if(!$copy)
+	{
+		printf "Parse error in inf. Unable to find section $copy_name\n";
+		return -1;
+	}
+
+	my @lines = split("\n", $copy->{data});
+
+	for(my $i = 0; $i < @lines; $i++)
+	{
+		my $line = trim(remComment($lines[$i]));
+		if($line)
+		{
+			$line =~ s/,+.*//;
+			my $realname = findfile($line);
+			if($realname)
+			{
+				my $newname = lc($realname);
+				`cp -u $instdir/$realname $confdir/$driver_name/$newname`;	
+				`chmod 644 $confdir/$driver_name/$newname`;	
+			}
+		}
+	}
+}
+
+#
+# Find a file in a case-insensitive way.
+#
+sub findfile
+{
+	my $file = shift;
+
+	if(!opendir(DIR, $instdir))
+	{
+		print "Unable to open $instdir\n";
+		return "";
+	}
+	
+	my @allfiles = readdir(DIR);
+	for(my $i = 0; $i < @allfiles; $i++)
+	{
+		if(lc($allfiles[$i]) eq lc($file))
+		{
+			closedir(DIR);	
+			return $allfiles[$i]; 
+		}
+	}
+	closedir(DIR);	
+	return "";
+}
+
+
+
+
+#
+# This section contains pointers to the section with the parameters to be
+# added to the registry.
+#
+sub addReg
+{
+	my $reg_name = shift;
+	my $reg = getSection($reg_name);
+	if(!$reg)
+	{
+		printf "Parse error in inf. Unable to find section $reg_name\n";
+		return -1;
+	}
+
+	my $param;
+	my $type;
+	my $val;
+	my $found;
+	
+	my @lines = split("\n", $reg->{data});
+	for(my $i = 0; $i < @lines; $i++)
+	{
+		my $line = trim(remComment($lines[$i]));
+		if($line)
+		{
+			$line =~ /([^,]*),([^,]*),([^,]*),([^,]*),(.*)/; 
+			my $hkr = trim($1);
+			my $p1 = substStr(trim($2));
+			my $p2 = substStr(trim($3));
+			my $p3 = stripslashes(substStr(trim($4)));
+			my $p4 = stripslashes(substStr(trim($5)));
+
+			if($p1)
+			{
+				if($p1 =~ /ndi\\params\\(.+)/i)
+				{
+					$1 =~ /(.+)\\.*/;
+					
+					if($1 ne $param)
+					{
+						$found = 0;
+						$param = $1;
+						$type = "";
+						$val = "";
+					}
+					if(lc($p2) eq "type")
+					{
+						$found++;
+						$type = $p4;
+					}
+					elsif(lc($p2) eq "default")
+					{
+						$found++;
+						$val = $p4;
+					}
+					if($found == 2)
+					{
+						print CONF "$param|$type|$val\n";
+						$param = "";
+					}
+				}
+			}
+			else
+			{
+				#print "type 2: $reg_name '$p1', '$p2', '$p3', '$p4':'$line'\n";		
+				print CONF "$p2|$p3|$p4\n";
+			}
+		}
+	}
+}
+
+sub substStr
+{
+	my $s = shift;
+	if($s =~ /^\%(.+)$\%/)
+	{
+		return getString($1);
+	}
+	return $s;
+}
+
+
+#
+# Parse a PCI-id line.
+#
+sub parsePCI
+{
+	my $s = uc(shift);
+	if($s =~ /PCI\\VEN_(\w+)&DEV_(\w+)&SUBSYS_(\w{4})(\S{4})/)
+	{
+		return ($1, $2, $4, $3);
+	}
+	elsif($s =~ /PCI\\VEN_(\w+)&DEV_(\w+)/)
+	{
+		return ($1, $2);
+	}
+}
+
+#
+# remove whitespace at front and end.
+#
+sub trim
+{
+	my $s = shift;
+	$s =~ s/^\s*//;
+	$s =~ s/\s*$//;
+	return $s;
+}
+
+
+sub stripslashes
+{
+	my $s = shift;
+	$s =~ s/"(.*)"/\1/;
+	return $s;
+}
+
+
+sub getKeyVal
+{
+	my $line = shift;
+
+	$line = remComment($line);
+	(my $key, my $val) = split("=", $line);
+	if($line =~ /(.+)=(.+)/)
+	{
+		return (trim($1), trim($2));
+	}
+}
+
+
+sub remComment
+{
+	my $s = shift;
+	$s=~ s/([^;]*);.*/\1/;
+	return $s;
+}
+
+#
+# Initialize the string symbol table
+#
+sub initStrings
+{
+	my $s = getSection("strings");
+	if(!$s)
+	{
+		return;
+	}
+	my @lines = split("\n", $s->{data});
+
+	for(my $i = 0; $i < @lines; $i++)
+	{
+		(my $key, my $val) = getKeyVal($lines[$i]);
+		if($key)
+		{
+			$val =~ s/"(.+)"/\1/; 
+			$strings{$key} = $val;
+#			print "$key=$val\n";
+		}
+	}
+}
+
+
+#
+# fetch a string from the symbol table
+#
+sub getString
+{
+	my $s = shift;
+	return $strings{$s};
+}
+
+
+#
+# Loacate a section.
+#
+sub getSection
+{
+	my $needle = shift;
+
+	for(my $i = 0; $i < @sections;  $i++)
+	{
+#		print "Searching: '" . lc($sections[$i]->{name}) . "' == '" . lc($needle) . "'\n";
+
+		if( lc($sections[$i]->{name}) eq lc($needle))
+		{
+#			print "found!\n\n";
+			return $sections[$i];
+		}
+	}
+#	print "not found!\n\n";
+	return 0;
+}
+
+
+#
+# Load inf and split into different sections.
+#
+sub loadinf
+{
+	my $filename = shift;
+	my %def_section;
+	my $section = \%def_section;
+	
+	if(!open(INF, $filename))
+	{
+		return -1;
+	}
+
+	my $i = 0;
+	$section->{name} = "none";
+	while(my $s = <INF>)
+	{
+		$s =~ s/\s*$//;	#Remove trailing whitespace and \r
+		$s .= "\n";
+		if($s =~ /^\[(.+)\]\s*/)
+		{
+			$sections[$i++] = $section;		
+			my %new_section;
+			$section = \%new_section;
+			$section->{name} = $1;
+		}
+		else
+		{
+			$section->{data} .= $s;
+		}
+	}
+	
+	$sections[$i++] = $section;  
+	close(INF);
+
+
+#	print "Sections:\n";
+#	for(my $i = 0; $i < @sections; $i++)
+#	{
+#		print $sections[$i]->{name} . "\n";		
+#	}
+#	print "\n";
+}
+
+
