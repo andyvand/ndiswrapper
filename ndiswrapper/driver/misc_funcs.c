@@ -89,6 +89,16 @@ size_t my_strlen(const char *s)
        return strlen(s);
 }
 
+int my_strncmp(const char *s1, const char *s2, size_t n)
+{
+	return strncmp(s1, s2, n);
+}
+
+int my_tolower(int c)
+{
+	return tolower(c);
+}
+
 void *my_memcpy(void * to, const void * from, size_t n)
 {
 	return memcpy(to, from, n);

@@ -159,6 +159,8 @@ void KeWaitForSingleObject(void);
 void my_sprintf(void);
 void _allmul(void);
 void my_strlen(void);
+void my_strncmp(void);
+void my_tolower(void);
 void my_memcpy(void);
 void my_memset(void);
 
@@ -326,6 +328,8 @@ func("KeWaitForSingleObject"                , KeWaitForSingleObject),
 func("sprintf"                              , my_sprintf),
 func("_allmul"                              , _allmul),
 func("strlen"                               , my_strlen),
+func("strncmp"                              , my_strncmp),
+func("tolower"                              , my_tolower),
 func("memcpy"                               , my_memcpy),
 func("memset"                               , my_memset),
 
