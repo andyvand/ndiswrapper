@@ -1469,7 +1469,8 @@ static int wpa_associate(struct net_device *dev, struct iw_request_info *info,
 			auth_mode = Ndis802_11AuthModeWPA2;
 	} else {
 		priv_mode = Ndis802_11PrivFilter8021xWEP;
-		if (wpa_assoc_info.key_mgmt_suite == KEY_MGMT_WPA_NONE)
+		if (wpa_assoc_info.key_mgmt_suite == KEY_MGMT_WPA_NONE ||
+		    wpa_assoc_info.key_mgmt_suite == KEY_MGMT_802_1X_NO_WPA)
 			auth_mode = Ndis802_11AuthModeWPANone;
 		else if (wpa_assoc_info.key_mgmt_suite == KEY_MGMT_PSK)
 			auth_mode = Ndis802_11AuthModeWPAPSK;
