@@ -796,20 +796,6 @@ void ndis_remove_one(struct ndis_handle *handle)
 
 	miniport_set_int(handle, NDIS_OID_DISASSOCIATE, 0);
 
-	if (handle->phys_device_obj)
-		kfree(handle->phys_device_obj);
-
-	if (handle->net_dev)
-		unregister_netdev(handle->net_dev);
-
-	if (handle->multicast_list)
-		kfree(handle->multicast_list);
-	if (handle->net_dev)
-		free_netdev(handle->net_dev);
-
-	printk(KERN_INFO "%s: device %s removed\n", DRV_NAME,
-	       handle->net_dev->name);
-
 	DBGTRACE1("%d, %p",
 		  test_bit(ATTR_SURPRISE_REMOVE, &handle->attributes),
 		  miniport->pnp_event_notify);
@@ -820,9 +806,23 @@ void ndis_remove_one(struct ndis_handle *handle)
 					   NULL, 0);
 	}
 
+	if (handle->net_dev)
+		unregister_netdev(handle->net_dev);
+
+	if (handle->multicast_list)
+		kfree(handle->multicast_list);
+	if (handle->net_dev)
+		free_netdev(handle->net_dev);
+
 	DBGTRACE1("halting device %s", handle->driver->name);
 	miniport_halt(handle);
 	DBGTRACE1("halt successful");
+
+	if (handle->phys_device_obj)
+		kfree(handle->phys_device_obj);
+	printk(KERN_INFO "%s: device %s removed\n", DRV_NAME,
+	       handle->net_dev->name);
+
 }
 
 static void link_status_handler(struct ndis_handle *handle)
