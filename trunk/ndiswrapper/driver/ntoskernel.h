@@ -31,7 +31,7 @@ union slist_head {
 	} list;
 };
 
-typedef unsigned long KSPIN_LOCK;
+typedef unsigned long *KSPIN_LOCK;
 typedef unsigned char KIRQL;
 
 struct list_entry
