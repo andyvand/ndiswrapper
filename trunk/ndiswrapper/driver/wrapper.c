@@ -1807,6 +1807,8 @@ static int __devinit ndis_init_one(struct pci_dev *pdev,
 
 	handle->hangcheck_interval = 2 * HZ;
 	handle->scan_timestamp = 0;
+
+	memset(&handle->essid, 0, sizeof(handle->essid));
 	
 	res = pci_enable_device(pdev);
 	if(res)
