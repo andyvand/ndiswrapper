@@ -487,7 +487,7 @@ STDCALL void NdisAllocateBuffer(unsigned int *status,
 				void *virt,
 				unsigned int len)
 {
-	struct ndis_buffer *my_buffer = kmalloc(sizeof(struct ndis_buffer), GFP_KERNEL);
+	struct ndis_buffer *my_buffer = kmalloc(sizeof(struct ndis_buffer), GFP_ATOMIC);
 	if(!my_buffer)
 	{
 		*status = NDIS_STATUS_FAILIURE;
@@ -542,7 +542,7 @@ STDCALL void NdisFreePacketPool(void *poolhandle)
 
 STDCALL void NdisAllocatePacket(unsigned int *status, struct ndis_packet **packet_out, void *poolhandle)
 {
-	struct ndis_packet *packet = (struct ndis_packet*) kmalloc(sizeof(struct ndis_packet), GFP_KERNEL);
+	struct ndis_packet *packet = (struct ndis_packet*) kmalloc(sizeof(struct ndis_packet), GFP_ATOMIC);
 	if(!packet)
 	{
 		printk(KERN_ERR "%s failed\n", __FUNCTION__);

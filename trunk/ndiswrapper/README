@@ -3,17 +3,25 @@
 
 1. Compile the driver
 ---------------------
-* You need kernel 2.6.0-test8 or higher!
-* Make sure your kernel complied without framepointer and Sleep-inside-spinlock debugging
-  See the kernel hacking menu
-> cd driver
+* You need a recent 2.6.0 or 2.4 kernel
+* Make sure your kernel complied without framepointer (See the kernel hacking menu)
+
+Go to the driver directory and run
+
 > make
 
-This should produce a ndiswrapper.ko if all goes well.
+if you are using a 2.6 kernel or
+
+> make -f Makefile.24
+
+if you use a 2.4 kernel
+
+This should produce a ndiswrapper.(k)o if all goes well.
 
 2. Compile the loader:
 ----------------------
-> cd utils
+Go to the utils directory and run:
+
 > make
 
 This should produce a loaddriver executable.
@@ -21,7 +29,7 @@ This should produce a loaddriver executable.
 3. Get the windows driver
 -------------------------
 Download the Windows XP drivers for your card and locate the .sys and .inf file.
-Copy these files someplace.
+Copy these files some place.
    
 4. Find out the PCI vendor and device of you WLAN card.
 -------------------------------------------------------
@@ -44,17 +52,22 @@ The vendor is 14e4 and the device is is 4301.
 
 5. Load the kernel module
 -------------------------
-> insmod driver/ndiswrapper.ko
+> insmod driver/ndiswrapper.(k)o
 
 6. Load the windows driver
 --------------------------
+Eg:
 >utils/loadriver 14e4 4301 /path/to/bcmwl5.sys /path/to/bcmwl5.inf
 
 If you get no error the driver should now be loaded and active.
 
-7. Configure driver
--------------------
-Use the normal ifconfig, iwconfig etc.
+7. Configure interface
+----------------------
+Use the normal ifconfig, iwconfig, dhclient etc.
 
+I have noticed that iwconfig is rather picky about the order of the arguments so
+until I have investigated why you should use the following format for your
+iwconfig command:
 
+#iwconfig ethX mode Managed essid someid
 
