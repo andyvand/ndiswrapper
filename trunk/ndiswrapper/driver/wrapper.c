@@ -1241,6 +1241,7 @@ static int ndis_init_one(struct pci_dev *pdev, const struct pci_device_id *ent)
 	handle->reset_complete = &NdisMResetComplete;
 	handle->eth_rx_indicate = &EthRxIndicateHandler;
 	handle->eth_rx_complete = &EthRxComplete;
+	handle->td_complete = &NdisMTransferDataComplete;
 
 	handle->map_count = 0;
 	handle->map_dma_addr = NULL;

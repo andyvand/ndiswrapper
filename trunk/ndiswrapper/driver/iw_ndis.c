@@ -1357,6 +1357,7 @@ static int wpa_disassociate(struct net_device *dev,
 	
 	TRACEENTER("%s", "");
 	/* FIXME: clear keys, essid etc. */
+	handle->essid.length = 0;
 	if (set_int(handle, NDIS_OID_DISASSOCIATE, 0))
 		TRACEEXIT(return -EOPNOTSUPP);
 	TRACEEXIT(return 0);
@@ -1434,8 +1435,14 @@ static int wpa_deauthenticate(struct net_device *dev,
 			      struct iw_request_info *info,
 			      union iwreq_data *wrqu, char *extra)
 {
+	struct ndis_handle *handle = (struct ndis_handle *)dev->priv;
+
 	TRACEENTER(MACSTR, MAC2STR(wrqu->ap_addr.sa_data));
-	/* TODO: clear keys, ssid etc. */
+	/* FIXME: clear keys, essid etc. */
+	handle->essid.length = 0;
+	if (set_int(handle, NDIS_OID_DISASSOCIATE, 0))
+		TRACEEXIT(return -EOPNOTSUPP);
+	TRACEEXIT(return 0);
 	return 0;
 }
 

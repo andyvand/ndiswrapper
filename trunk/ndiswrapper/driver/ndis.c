@@ -1604,8 +1604,9 @@ EthRxIndicateHandler(void *adapter_ctx, void *rx_ctx, char *header1,
 		     char *header, u32 header_size, char *look_ahead,
 		     u32 look_ahead_size, u32 packet_size)
 {
-	struct sk_buff *skb;
+	struct sk_buff *skb = NULL;
 	struct ndis_handle *handle = ctx_to_handle(rx_ctx);
+	unsigned int skb_size = 0;
 
 	TRACEENTER3("adapter_ctx = %p, rx_ctx = %p, buf = %p, size = %d, "
 		    "buf = %p, size = %d, packet = %d",
@@ -1616,15 +1617,80 @@ EthRxIndicateHandler(void *adapter_ctx, void *rx_ctx, char *header1,
 	if (!handle)
 		TRACEEXIT3(return);
 
-	skb = dev_alloc_skb(header_size+packet_size);
-	if (skb)
+	if (look_ahead_size < packet_size)
+	{
+		struct ndis_packet *packet;
+		struct miniport_char *miniport;
+		unsigned int res, bytes_txed;
+
+		NdisAllocatePacket(&res, &packet, NULL);
+		if (res != NDIS_STATUS_SUCCESS)
+		{
+			handle->stats.rx_dropped++;
+			TRACEEXIT3(return);
+		}
+
+		miniport = &handle->driver->miniport_char;
+		res = miniport->tx_data(packet, &bytes_txed, adapter_ctx,
+					rx_ctx, look_ahead_size, packet_size);
+		if (res == NDIS_STATUS_SUCCESS)
+		{
+			skb = dev_alloc_skb(header_size+look_ahead_size+
+					    bytes_txed);
+			if (skb)
+			{
+				memcpy(skb->data, header, header_size);
+				memcpy(skb->data+header_size, look_ahead,
+				       look_ahead_size);
+				memcpy(skb->data+header_size+look_ahead_size,
+				       packet->buffer_head->data,
+				       bytes_txed);
+				skb_size = header_size+look_ahead_size+
+					bytes_txed;
+				NdisFreePacket(packet);
+			}
+		}
+		else if (res == NDIS_STATUS_PENDING)
+		{
+			/* driver will call td_complete */
+			packet->look_ahead = kmalloc(look_ahead_size,
+						     GFP_ATOMIC);
+			if (!packet->look_ahead)
+			{
+				NdisFreePacket(packet);
+				handle->stats.rx_dropped++;
+				TRACEEXIT3(return);
+			}
+			memcpy(&packet->header, header, 
+			       sizeof(packet->header));
+			memcpy(packet->look_ahead, look_ahead,
+			       look_ahead_size);
+			packet->look_ahead_size = look_ahead_size;
+		}
+		else
+		{
+			NdisFreePacket(packet);
+			handle->stats.rx_dropped++;
+			TRACEEXIT3(return);
+		}
+	}
+	else
+	{
+		skb_size = header_size+packet_size;
+		skb = dev_alloc_skb(skb_size);
+		if (skb)
+		{
+			memcpy(skb->data, header, header_size);
+			memcpy(skb->data+header_size, look_ahead, packet_size);
+		}
+	}
+
+	if (skb && skb_size > 0)
 	{
 		skb->dev = handle->net_dev;
-		memcpy(skb->data, header, header_size);
-		memcpy(skb->data+header_size, look_ahead, packet_size);
-		skb_put(skb, header_size+look_ahead_size);
+		skb_put(skb, skb_size);
 		skb->protocol = eth_type_trans(skb, handle->net_dev);
-		handle->stats.rx_bytes += packet_size;
+		handle->stats.rx_bytes += skb_size;
 		handle->stats.rx_packets++;
 		netif_rx(skb);
 	}
@@ -1632,6 +1698,57 @@ EthRxIndicateHandler(void *adapter_ctx, void *rx_ctx, char *header1,
 		handle->stats.rx_dropped++;
 
 	TRACEEXIT3(return);
+}
+
+/* called via function pointer */
+STDCALL void
+NdisMTransferDataComplete(struct ndis_handle *handle,
+			  struct ndis_packet *packet,
+			  unsigned int status, unsigned int bytes_txed)
+{
+	struct sk_buff *skb;
+	unsigned int skb_size;
+
+	TRACEENTER3("handle = %p, packet = %p, bytes_txed = %d",
+		    handle, packet, bytes_txed);
+
+	if (!packet)
+	{
+		WARNING("%s", "illegal packet");
+		TRACEEXIT3(return);
+	}
+
+	if ((int)packet->look_ahead_size <= 0)
+	{
+		WARNING("illegal packet? (look_ahead_size = %d)",
+			packet->look_ahead_size);
+		TRACEEXIT3(return);
+	}
+
+	skb_size = sizeof(packet->header)+packet->look_ahead_size+bytes_txed;
+
+	skb = dev_alloc_skb(skb_size);
+	if (!skb)
+	{
+		kfree(packet->look_ahead);
+		NdisFreePacket(packet);
+		handle->stats.rx_dropped++;
+		TRACEEXIT3(return);
+	}
+
+	skb->dev = handle->net_dev;
+	memcpy(skb->data, packet->header, sizeof(packet->header));
+	memcpy(skb->data+sizeof(packet->header), packet->look_ahead,
+	       packet->look_ahead_size);
+	memcpy(skb->data+sizeof(packet->header)+packet->look_ahead_size,
+	       packet->buffer_head->data, bytes_txed);
+	kfree(packet->look_ahead);
+	NdisFreePacket(packet);
+	skb_put(skb, skb_size);
+	skb->protocol = eth_type_trans(skb, handle->net_dev);
+	handle->stats.rx_bytes += skb_size;
+	handle->stats.rx_packets++;
+	netif_rx(skb);
 }
 
 /* called via function pointer */
