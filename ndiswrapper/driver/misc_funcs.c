@@ -104,9 +104,6 @@ void wrapper_timer_handler(unsigned long data)
 	BUG_ON(timer->kdpc == NULL);
 #endif
 
-	if (!timer->active)
-		TRACEEXIT5(return);
-
 	kdpc = timer->kdpc;
 	miniport_timer = kdpc->func;
 
@@ -118,15 +115,12 @@ void wrapper_timer_handler(unsigned long data)
 		lower_irql(irql);
 	}
 
-	/* don't add the timer if inactive; see wrapper_cancel_timer */
-	if (timer->active) {
-		if (timer->repeat) {
-			timer->timer.expires = jiffies + timer->repeat;
-			add_timer(&timer->timer);
-		}
-		else
-			timer->active = 0;
-	}
+	/* don't add the timer if aperiodic; see wrapper_cancel_timer */
+	if (timer->repeat) {
+		timer->timer.expires = jiffies + timer->repeat;
+		add_timer(&timer->timer);
+	} else
+		timer->active = 0;
 
 	TRACEEXIT5(return);
 }
@@ -214,10 +208,15 @@ void wrapper_cancel_timer(struct wrapper_timer *timer, char *canceled)
 	DBGTRACE4("canceling timer %p", timer);
 	BUG_ON(timer->wrapper_timer_magic != WRAPPER_TIMER_MAGIC);
 #endif
-	/* mark as inactive, so timer function doesn't call add_timer
-	 * after del_timer_sync returned */
-	timer->active = 0;
-	*canceled = del_timer_sync(&timer->timer);
+	if (timer->repeat) {
+		/* first mark as aperiodic, so timer function doesn't call
+		 * add_timer after del_timer_sync returned */
+		timer->repeat = 0;
+		del_timer_sync(&timer->timer);
+		/* periodic timers always return TRUE */
+		*canceled = TRUE;
+	} else
+		*canceled = del_timer_sync(&timer->timer);
 	TRACEEXIT5(return);
 }
 
