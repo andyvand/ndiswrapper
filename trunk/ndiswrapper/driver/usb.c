@@ -25,7 +25,11 @@ void usb_transfer_complete_tasklet(unsigned long dummy);
 DECLARE_TASKLET(completed_irps_tasklet, usb_transfer_complete_tasklet, 0);
 
 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
 void usb_transfer_complete(struct urb *urb, struct pt_regs *regs)
+#else
+void usb_transfer_complete(struct urb *urb)
+#endif
 {
 	struct irp *irp = urb->context;
 
@@ -154,7 +158,7 @@ unsigned long usb_bulk_or_intr_trans(struct usb_device *dev,
 		nt_urb->bulkIntrTrans.transferBuf);
 
 	/* XXX we should better check what GFP_ is required XXX */
-	urb = usb_alloc_urb(0, GFP_ATOMIC);
+	urb = WRAP_ALLOC_URB(0, GFP_ATOMIC);
 	if (!urb)
 		return -ENOMEM;
 
@@ -224,7 +228,7 @@ unsigned long usb_bulk_or_intr_trans(struct usb_device *dev,
 
 	DBGTRACE3("submitting urb %p on pipe %p", urb, pipe_handle.handle);
 	/* XXX we should better check what GFP_ is required XXX */
-	ret = usb_submit_urb(urb, GFP_ATOMIC);
+	ret = WRAP_SUBMIT_URB(urb, GFP_ATOMIC);
 	if (ret != 0) {
 		ERROR("usb_submit_urb() = %d", ret);
 		usb_free_urb(urb);
@@ -285,7 +289,6 @@ unsigned long usb_submit_nt_urb(struct usb_device *dev, union nt_urb *nt_urb,
                                 struct irp *irp)
 {
 	struct usb_interface *intf;
-	struct usb_host_endpoint *endp;
 	struct usbd_pipe_information *pipe_info;
 	int i, ret;
 
@@ -316,9 +319,12 @@ unsigned long usb_submit_nt_urb(struct usb_device *dev, union nt_urb *nt_urb,
 				ERROR("usb_ifnum_to_if() = %d", ret);
 				break;
 			}
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
 			for (i = 0;
 			     i < intf->cur_altsetting->desc.bNumEndpoints;
 			     i++) {
+				struct usb_host_endpoint *endp;
+
 				endp = intf->cur_altsetting->endpoint + i;
 				pipe_info = &nt_urb->selConf.intf.pipes[i];
 
@@ -348,6 +354,42 @@ unsigned long usb_submit_nt_urb(struct usb_device *dev, union nt_urb *nt_urb,
 					endp->desc.bInterval,
 					pipe_info->pipeHandle.handle);
 			}
+#else
+			for (i = 0; i < intf->altsetting[
+				intf->act_altsetting].bNumEndpoints; i++) {
+				struct usb_endpoint_descriptor *desc;
+
+				desc = &intf->altsetting[
+					intf->act_altsetting].endpoint[i];
+
+				pipe_info = &nt_urb->selConf.intf.pipes[i];
+
+				pipe_info->maxPacketSize =
+					desc->wMaxPacketSize;
+				pipe_info->endpointAddr =
+					desc->bEndpointAddress;
+				pipe_info->interval = desc->bInterval;
+				pipe_info->pipeType = desc->bmAttributes;
+
+				pipe_info->pipeHandle.encoded.endpointAddr =
+					desc->bEndpointAddress;
+				pipe_info->pipeHandle.encoded.pipeType =
+					desc->bmAttributes &
+					USB_ENDPOINT_XFERTYPE_MASK;
+				pipe_info->pipeHandle.encoded.interval =
+					(dev->speed == USB_SPEED_HIGH) ?
+					desc->bInterval + 3 : desc->bInterval;
+				pipe_info->pipeHandle.encoded.fill = 0;
+
+				DBGTRACE3("%i: Addr %X, Type %d, PkSz %d, "
+					"Intv %d, Handle %p", i,
+					desc->bEndpointAddress,
+					desc->bmAttributes,
+					desc->wMaxPacketSize,
+					desc->bInterval,
+					pipe_info->pipeHandle.handle);
+			}
+#endif
 			TRACEEXIT3(return STATUS_SUCCESS);
 
 		case FUNC_BULK_OR_INTERRUPT_TRANSFER:

@@ -231,14 +231,13 @@ int set_int(struct ndis_handle *handle, int oid, int data)
 			 &written, &needed);
 }
 
+#ifdef HAVE_ETHTOOL
 static u32 ndis_get_link(struct net_device *dev)
 {
 	struct ndis_handle *handle = dev->priv;
 	return handle->link_status;
 }
 
-
-#ifdef HAVE_ETHTOOL
 static struct ethtool_ops ndis_ethtool_ops = {
 	.get_link		= ndis_get_link,
 };
@@ -1469,7 +1468,65 @@ out_start:
 out_nodev:
 	TRACEEXIT1(return res);
 }
-#endif /* support on 2.4 not implemented */
+#else
+static void *ndis_init_one_usb(struct usb_device *udev, unsigned int ifnum,
+                               const struct usb_device_id *usb_id)
+{
+	struct ndis_device *device =
+		(struct ndis_device *)usb_id->driver_info;
+	struct ndis_driver *driver = device->driver;
+	struct ndis_handle *handle;
+	struct net_device *dev;
+	struct miniport_char *miniport;
+
+	TRACEENTER1("%04x:%04x\n", usb_id->idVendor, usb_id->idProduct);
+
+	dev = ndis_init_netdev(&handle, device, driver);
+	if(!dev) {
+		printk(KERN_ERR "Unable to alloc etherdev\n");
+		goto out_nodev;
+	}
+
+	handle->dev.usb = udev;
+
+	TRACEENTER1("%s", "Calling ndis init routine");
+	if(call_init(handle)) {
+		ERROR("%s", "Windows driver couldn't initialize the device");
+		goto out_start;
+	}
+
+	handle->hw_status = 0;
+	handle->wrapper_work = 0;
+
+	/* do we need to power up the card explicitly? */
+	set_int(handle, NDIS_OID_PNP_SET_POWER, NDIS_PM_STATE_D0);
+	miniport = &handle->driver->miniport_char;
+
+	/* WUSB54G requires it, maybe other USB drivers as well... */
+	doreset(handle);
+
+	/* Wait a little to let card power up otherwise ifup might fail after
+	   boot */
+	set_current_state(TASK_INTERRUPTIBLE);
+	schedule_timeout(HZ);
+
+	if(setup_dev(handle->net_dev)) {
+		ERROR("%s", "Couldn't setup interface");
+		goto out_setup;
+	}
+	hangcheck_add(handle);
+	statcollector_add(handle);
+	ndiswrapper_procfs_add_iface(handle);
+	TRACEEXIT1(return handle);
+
+out_setup:
+	call_halt(handle);
+out_start:
+	free_netdev(dev);
+out_nodev:
+	TRACEEXIT1(return NULL);
+}
+#endif
 
 static void __devexit ndis_remove_one(struct ndis_handle *handle)
 {
@@ -1545,7 +1602,16 @@ static void __devexit ndis_remove_one_usb(struct usb_interface *intf)
 
 	ndis_remove_one(handle);
 }
-#endif /* support on 2.4 not implemented */
+#else
+static void __devexit ndis_remove_one_usb(struct usb_device *udev, void *ptr)
+{
+	struct ndis_handle *handle = (struct ndis_handle *)ptr;
+
+	DBGTRACE("\n%s\n", __FUNCTION__);
+
+	ndis_remove_one(handle);
+}
+#endif
 
 /* Register one ndis driver with pci subsystem. */
 static int start_driver(struct ndis_driver *driver)
@@ -1605,7 +1671,6 @@ static int start_driver(struct ndis_driver *driver)
 			driver->dev_registered = 1;
 #endif
 	}
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
 	else { /* USB */
 		driver->idtable.usb = kmalloc(sizeof(struct usb_device_id)*(driver->nr_devices+1), GFP_KERNEL);
 		if(!driver->idtable.usb)
@@ -1638,7 +1703,6 @@ static int start_driver(struct ndis_driver *driver)
 		if(!res)
 			driver->dev_registered = 1;
 	}
-#endif /* support on 2.4 not implemented */
 
 	return res;
 }
@@ -1821,14 +1885,10 @@ static struct ndis_device *add_device(struct ndis_driver *driver,
 		} else {
 			list_add(&device->list, &driver->devices);
 		}
-	}
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
-	else if (device->bustype == 0) {      /* 0: USB */
+	} else if (device->bustype == 0) {      /* 0: USB */
 		DBGTRACE1("USB:%04x:%04x\n", device->vendor, device->device);
 		list_add(&device->list, &driver->devices);
-	}
-#endif /* support on 2.4 not implemented */
-	else {
+	} else {
 		kfree(device);
 		return NULL;
 	}
@@ -1919,10 +1979,8 @@ static void unload_driver(struct ndis_driver *driver)
 	if (driver->dev_registered) {
 		if (driver->bustype == 5)
 			pci_unregister_driver(&driver->driver.pci);
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
 		else
 			usb_deregister(&driver->driver.usb);
-#endif /* support on 2.4 not implemented */
 	}
 #ifdef DEBUG_CRASH_ON_INIT
 	if (driver->bustype == 5) {

@@ -100,7 +100,7 @@ typedef task_queue workqueue;
 #define HAVE_ETHTOOL 1
 #endif
 
-#if LINUX_VERSION_CODE <= KERNEL_VERSION(2,6,0)
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,0)
 #undef __wait_event_interruptible_timeout
 #undef wait_event_interruptible_timeout
 #define __wait_event_interruptible_timeout(wq, condition, ret)		\
@@ -140,7 +140,26 @@ do {									\
 #ifndef preempt_disable
 #define preempt_disable() (void)0
 #endif
-#endif // LINUX_VERSION_CODE <= KERNEL_VERSION(2,6,0)
+
+#ifndef container_of
+#define container_of(ptr, type, member) ({			\
+	const typeof( ((type *)0)->member ) *__mptr = (ptr);	\
+	(type *)( (char *)__mptr - offsetof(type,member) );})
+#endif
+
+#ifndef virt_addr_valid
+#define virt_addr_valid(addr) VALID_PAGE(virt_to_page(addr))
+#endif
+
+#define WRAP_ALLOC_URB(a, b)  usb_alloc_urb(a)
+#define WRAP_SUBMIT_URB(a, b) usb_submit_urb(a)
+
+#else // LINUX_VERSION_CODE < KERNEL_VERSION(2,6,0)
+
+#define WRAP_ALLOC_URB(a, b)  usb_alloc_urb(a, b)
+#define WRAP_SUBMIT_URB(a, b) usb_submit_urb(a, b)
+
+#endif // LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
 
 /* Interrupt backwards compatibility stuff */
 #include <linux/interrupt.h>
