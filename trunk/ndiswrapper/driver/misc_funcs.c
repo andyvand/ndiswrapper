@@ -569,4 +569,5 @@ void NdisMRegisterDevice(void) { UNIMPL(); }
 void NdisMDeregisterDevice(void) { UNIMPL(); }
 void NdisCancelTimer(void) { UNIMPL(); }
 void NdisInitializeTimer(void) { UNIMPL(); }
+void NdisMRemoveMiniport(void) { UNIMPL(); }
 #endif // DBG_TI
