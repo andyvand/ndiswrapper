@@ -90,31 +90,16 @@ typedef uint32_t ULONG_PTR;
 #define CALL_ON_SUCCESS                 0x40
 #define CALL_ON_ERROR                   0x80
 
-typedef uint8_t BOOLEAN;
-typedef uint8_t BYTE;
-typedef uint8_t *LPBYTE;
-typedef int16_t SHORT;
-typedef uint16_t USHORT;
-typedef uint16_t WORD;
-typedef uint32_t DWORD;
-typedef uint32_t *PDWORD;
-typedef int32_t LONG;
-typedef uint32_t ULONG;
-typedef uint64_t ULONGLONG;
-
-typedef size_t SIZE_T;
-
-typedef uint16_t wchar_t;
-typedef wchar_t WCHAR;
-typedef WCHAR *PWSTR;
-typedef WCHAR *LPWSTR;
-typedef char CHAR, *PCHAR;
-typedef unsigned char UCHAR, *PUCHAR;
-typedef const char *PCSTR, *LPCSTR;
-typedef const char *PCSZ;
-typedef const WCHAR *PCWSTR, *LPCWSTR;
-
-typedef LONG NTSTATUS;
+typedef uint8_t		BOOLEAN;
+typedef uint8_t		BYTE;
+typedef uint8_t		UCHAR;
+typedef int16_t		SHORT;
+typedef uint16_t	USHORT;
+typedef uint16_t	WORD;
+typedef uint32_t	DWORD;
+typedef int32_t		LONG;
+typedef uint32_t	ULONG;
+typedef uint64_t	ULONGLONG;
 
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,7)
 #include <linux/kthread.h>
@@ -373,9 +358,9 @@ void wrap_kfree_all(void);
 
 struct ustring
 {
-	USHORT len;
-	USHORT buflen;
-	PCHAR buf;
+	unsigned short len;
+	unsigned short buflen;
+	char *buf;
 };
 
 struct slist_entry

@@ -941,8 +941,21 @@ STDCALL static void WRAP_EXPORT(NdisMAllocateSharedMemory)
 	}
 
 	*(char **)virt = v;
-	phys->low = v == NULL ? 0 : (unsigned int)p;
-	phys->high = 0;
+	if (v == NULL) {
+#ifdef CONFIG_X86_64
+		phys->quad = 0;
+#else
+		phys->quad_low = 0;
+		phys->quad_high = 0;
+#endif
+	} else {
+#ifdef CONFIG_X86_64
+		phys->quad = p;
+#else
+		phys->quad_low = p;
+		phys->quad_high = 0;
+#endif
+	}
 	DBGTRACE3("allocated shared memory: %p", v);
 }
 
@@ -1334,7 +1347,7 @@ irqreturn_t ndis_irq_th(int irq, void *data, struct pt_regs *pt_regs)
 	spin_unlock_irqrestore(ndis_irq->spinlock, flags);
 
 	if (recognized && handled)
-		schedule_work(&handle->irq_bh);
+		schedule_work(&handle->irq_work);
 
 	if (recognized)
 		return IRQ_HANDLED;
@@ -1364,7 +1377,7 @@ STDCALL static unsigned int WRAP_EXPORT(NdisMRegisterInterrupt)
 	spin_lock_init(ndis_irq->spinlock);
 	handle->ndis_irq = ndis_irq;
 
-	INIT_WORK(&handle->irq_bh, &ndis_irq_bh, ndis_irq);
+	INIT_WORK(&handle->irq_work, &ndis_irq_bh, ndis_irq);
 	if (request_irq(vector, ndis_irq_th, shared? SA_SHIRQ : 0,
 			"ndiswrapper", ndis_irq)) {
 		printk(KERN_WARNING "%s: request for irq %d failed\n",
@@ -2225,6 +2238,7 @@ STDCALL static void WRAP_EXPORT(NdisMStartBufferPhysicalMapping)
 	 unsigned long phy_map_reg, unsigned int write_to_dev,
 	 struct ndis_phy_addr_unit *phy_addr_array, unsigned int  *array_size)
 {
+	dma_addr_t dma_addr;
 	TRACEENTER3("phy_map_reg: %ld", phy_map_reg);
 	if (!write_to_dev) {
 		ERROR( "dma from device not supported (%d)", write_to_dev);
@@ -2247,17 +2261,20 @@ STDCALL static void WRAP_EXPORT(NdisMStartBufferPhysicalMapping)
 
 	// map buffer
 	/* FIXME: do USB drivers call this? */
-	phy_addr_array[0].phy_addr.low =
-		PCI_DMA_MAP_SINGLE(handle->dev.pci, buf->data, buf->len,
-				   PCI_DMA_TODEVICE);
-	phy_addr_array[0].phy_addr.high = 0;
+	dma_addr = PCI_DMA_MAP_SINGLE(handle->dev.pci, buf->data, buf->len,
+				      PCI_DMA_TODEVICE);
+#ifdef CONFIG_X86_64
+	phy_addr_array[0].phy_addr.quad = dma_addr;
+#else
+	phy_addr_array[0].phy_addr.quad_low = dma_addr;
+	phy_addr_array[0].phy_addr.quad_high = 0;
+#endif
 	phy_addr_array[0].length= buf->len;
 
 	*array_size = 1;
 
 	// save mapping index
-	handle->map_dma_addr[phy_map_reg] =
-		(dma_addr_t)phy_addr_array[0].phy_addr.low;
+	handle->map_dma_addr[phy_map_reg] = dma_addr;
 }
 
 STDCALL static void WRAP_EXPORT(NdisMCompleteBufferPhysicalMapping)
