@@ -228,9 +228,9 @@ static void call_halt(struct ndis_handle *handle)
 	DBGTRACE("Calling halt at %08X rva(%08X)\n", (int)handle->driver->miniport_char.halt, (int)handle->driver->miniport_char.halt - image_offset);
 
 	set_int(handle, NDIS_OID_PNP_SET_POWER, NDIS_PM_STATE_D3);
-	pci_set_power_state(handle->pci_dev, 3);
 
 	handle->driver->miniport_char.halt(handle->adapter_ctx);
+	pci_set_power_state(handle->pci_dev, 3);
 }
 
 static unsigned int call_entry(struct ndis_driver *driver)
