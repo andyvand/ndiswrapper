@@ -235,7 +235,7 @@ void wrapper_init_timer(struct ktimer *ktimer, void *handle, struct kdpc *kdpc)
 		kspin_unlock(&ntoskernel_lock);
 	}
 
-	DBGTRACE4("added timer %p, wrapper_timer->list %p\n",
+	DBGTRACE4("added timer %p, wrapper_timer->list %p",
 		  wrapper_timer, &wrapper_timer->list);
 	TRACEEXIT5(return);
 }
