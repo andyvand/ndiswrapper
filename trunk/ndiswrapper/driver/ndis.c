@@ -1354,16 +1354,16 @@ STDCALL unsigned char NdisMSynchronizeWithInterrupt(struct ndis_irq *ndis_irq,
  * It's called using a macro that referenced the opaque miniport-handler
  *
  */
-STDCALL void NdisIndicateStatus(struct ndis_handle *handle, 
-				unsigned int status, void *buf,
-				unsigned int len)
+STDCALL void NdisMIndicateStatus(struct ndis_handle *handle, 
+				 unsigned int status, void *buf,
+				 unsigned int len)
 {
 	TRACEENTER3("%08x", status);
 	if(status == NDIS_STATUS_MEDIA_CONNECT)
 		handle->link_status = 1;
 	if(status == NDIS_STATUS_MEDIA_DISCONNECT)
 		handle->link_status = 0;
-#ifdef DEBUG_WPA
+#ifdef WPA
 	set_bit(WRAPPER_LINK_STATUS, &handle->wrapper_work);
 	schedule_work(&handle->wrapper_worker);
 #endif
@@ -1375,9 +1375,9 @@ STDCALL void NdisIndicateStatus(struct ndis_handle *handle,
  *
  * Called via function pointer.
  */
-STDCALL void NdisIndicateStatusComplete(struct ndis_handle *handle)
+STDCALL void NdisMIndicateStatusComplete(struct ndis_handle *handle)
 {
-	TRACEENTER4("%s", "");
+	TRACEENTER3("%s", "");
 }
 
 /*
@@ -1455,9 +1455,12 @@ STDCALL void NdisMIndicateReceivePacket(struct ndis_handle *handle,
 			 */
 			packet->status = NDIS_STATUS_PENDING;
 			spin_lock_bh(&handle->recycle_packets_lock);
-			list_add(&packet->recycle_list, &handle->recycle_packets);
+			list_add(&packet->recycle_list,
+				 &handle->recycle_packets);
 			spin_unlock_bh(&handle->recycle_packets_lock);
-			schedule_work(&handle->packet_recycler);
+			if (!queue_work(handle->ndis_wq,
+					&handle->recycle_packets_work))
+				ERROR("%s", "queue_work failed");
 		}
 	}
 	TRACEEXIT3(return);
@@ -2037,8 +2040,8 @@ struct wrap_func ndis_wrap_funcs[] =
 	WRAP_FUNC_ENTRY(NdisGetCurrentSystemTime),
 	WRAP_FUNC_ENTRY(NdisGetFirstBufferFromPacketSafe),
 	WRAP_FUNC_ENTRY(NdisGetSystemUpTime),
-	WRAP_FUNC_ENTRY(NdisIndicateStatus),
-	WRAP_FUNC_ENTRY(NdisIndicateStatusComplete),
+	WRAP_FUNC_ENTRY(NdisMIndicateStatus),
+	WRAP_FUNC_ENTRY(NdisMIndicateStatusComplete),
 	WRAP_FUNC_ENTRY(NdisInitAnsiString),
 	WRAP_FUNC_ENTRY(NdisInitUnicodeString),
 	WRAP_FUNC_ENTRY(NdisInitializeEvent),

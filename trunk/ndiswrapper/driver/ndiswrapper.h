@@ -168,11 +168,11 @@ void wrap_kfree_all(void);
 #define DBGTRACE4(fmt, ...) DBGTRACE(fmt, ## __VA_ARGS__)
 #endif
 
-#define TRACEENTER(fmt, ...) DBGTRACE("Enter " fmt, ## __VA_ARGS__)
-#define TRACEENTER1(fmt, ...) DBGTRACE1("Enter " fmt, ## __VA_ARGS__)
-#define TRACEENTER2(fmt, ...) DBGTRACE2("Enter " fmt, ## __VA_ARGS__)
-#define TRACEENTER3(fmt, ...) DBGTRACE3("Enter " fmt, ## __VA_ARGS__)
-#define TRACEENTER4(fmt, ...) DBGTRACE4("Enter " fmt, ## __VA_ARGS__)
+#define TRACEENTER(fmt, ...) DBGTRACE("Enter " fmt , ## __VA_ARGS__)
+#define TRACEENTER1(fmt, ...) DBGTRACE1("Enter " fmt , ## __VA_ARGS__)
+#define TRACEENTER2(fmt, ...) DBGTRACE2("Enter " fmt , ## __VA_ARGS__)
+#define TRACEENTER3(fmt, ...) DBGTRACE3("Enter " fmt , ## __VA_ARGS__)
+#define TRACEENTER4(fmt, ...) DBGTRACE4("Enter " fmt , ## __VA_ARGS__)
 
 #define TRACEEXIT(stmt) do { DBGTRACE("%s", "Exit"); stmt; } while(0)
 #define TRACEEXIT1(stmt) do { DBGTRACE1("%s", "Exit"); stmt; } while(0)
