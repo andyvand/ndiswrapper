@@ -242,7 +242,7 @@ STDCALL void NdisOpenFile(unsigned int *status,
 	struct list_head *curr, *tmp;
 	struct ndis_file *file;
 	
-	DBGTRACE("%s: entry, status = %p, filelength = %p, *filelength = %d, high = %ld, filehandle = %p, *filehandle = %p\n", __FUNCTION__, status, filelength, *filelength, highest_address, filehandle, *filehandle);
+	DBGTRACE("%s: entry, status = %p, filelength = %p, *filelength = %d, high = %lu, filehandle = %p, *filehandle = %p\n", __FUNCTION__, status, filelength, *filelength, (unsigned long)highest_address, filehandle, *filehandle);
 
 	ansi.buf = ansiname;
 	ansi.buflen = sizeof(ansiname);
