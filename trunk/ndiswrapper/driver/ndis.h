@@ -53,32 +53,21 @@ struct ndis_buffer {
 	UCHAR *data;
 };
 
-enum mm_page_priority {
-	LOW_PAGE_PRIORITY,
-	NORMAL_PAGE_PRIORITY = 16,
-	HIGH_PAGE_PRIORITY = 32
-};
-
-enum kinterrupt_mode {
-	INTERRUT_MODE_LEVELSENSITIVE,
-	INTERRUPT_MODE_LATCHED
-};
-
 enum ndis_per_packet_info {
-	NDIS_TCPIP_CSUM_INFO,
-	NDIS_IPSEC_INFO,
-	NDIS_LARGE_SEND_INFO,
-	NDIS_CLASS_HANDLE_INFO,
-	NDIS_RSVD,
-	NDIS_SCLIST_INFO,
-	NDIS_IEEE8021Q_INFO,
-	NDIS_ORIGINAL_PACKET_INFO,
-        NDIS_PACKET_CANCELID,
-	NDIS_MAX_PACKET_INFO
+	TcpIpChecksumPacketInfo,
+	IpSecPacketInfo,
+	TcpLargeSendPacketInfo,
+	ClassificationHandlePacketInfo,
+	NdisReserved,
+	ScatterGatherListPacketInfo,
+	Ieee8021QInfo,
+	OriginalPacketInfo,
+	PacketCancelId,
+	MaxPerPacketInfo
 };
 
 struct ndis_packet_extension {
-	void *info[NDIS_MAX_PACKET_INFO];
+	void *info[MaxPerPacketInfo];
 };
 
 struct ndis_packet_private {
@@ -140,36 +129,29 @@ struct ndis_packet {
 	unsigned int look_ahead_size;
 };
 
-enum ndis_pnp_event {
-	NDIS_PNP_QUERY_REMOVED,
-	NDIS_PNP_REMOVED,
-	NDIS_PNP_SURPRISE_REMOVED,
-	NDIS_PNP_QUERY_STOPPED,
-	NDIS_PNP_STOPPED,
-	NDIS_PNP_PROFILE_CHANGED,
-	NDIS_PNP_MAXIMUM,
-};
-
-enum work_queue_type {
-	CRITICAL_WORK_QUEUE,
-	DELAYED_WORK_QUEUE,
-	HYPER_CRITICAL_WORK_QUEUE,
-	MAXIMUM_WORK_QUEUE
+enum ndis_device_pnp_event {
+	NdisDevicePnPEventQueryRemoved,
+	NdisDevicePnPEventRemoved,
+	NdisDevicePnPEventSurpriseRemoved,
+	NdisDevicePnPEventQueryStopped,
+	NdisDevicePnPEventStopped,
+	NdisDevicePnPEventPowerProfileChanged,
+	NdisDevicePnPEventMaximum
 };
 
 enum ndis_request_type {
-	NDIS_REQUEST_QUERY_INFORMATION,
-	NDIS_REQUEST_SET_INFORMATION,
-	NDIS_REQUEST_QUERY_STATISTICS,
-	NDIS_REQUEST_OPEN,
-	NDIS_REQUEST_CLOSE,
-	NDIS_REQUEST_SEND,
-	NDIS_REQUEST_TRANSFER_DATA,
-	NDIS_REQUEST_RESET,
-	NDIS_REQUEST_GENERIC1,
-	NDIS_REQUEST_GENERIC2,
-	NDIS_REQUEST_GENERIC3,
-	NDIS_REQUEST_GENERIC4
+	NdisRequestQueryInformation,
+	NdisRequestSetInformation,
+	NdisRequestQueryStatistics,
+	NdisRequestOpen,
+	NdisRequestClose,
+	NdisRequestSend,
+	NdisRequestTransferData,
+	NdisRequestReset,
+	NdisRequestGeneric1,
+	NdisRequestGeneric2,
+	NdisRequestGeneric3,
+	NdisRequestGeneric4
 };
 
 struct ndis_request {
@@ -194,34 +176,43 @@ struct ndis_request {
 };
 
 enum ndis_medium {
-	NDIS_MEDIUM_802_3,
-	NDIS_MEDIUM_802_5,
-	NDIS_MEDIUM_FDDI,
-	NDIS_MEDIUM_WAN,
-	NDIS_MEDIUM_LOCALTALK,
-	NDIS_MEDIUM_DIX,
-	NDIS_MEDIUM_ARCNETRAW,
-	NDIS_MEDIUM_ARCNET878_2,
-	NDIS_MEDIUM_ATM,
-	NDIS_MEDIUM_WIRELESSWAN,
-	NDIS_MEDIUM_IRDA,
-	NDIS_MEDIUM_BPC,
-	NDIS_MEDIUM_COWAN,
-	NDIS_MEDIUM_1394,
-	NDIS_MEDIUM_MAX
+	NdisMedium802_3,
+	NdisMedium802_5,
+	NdisMediumFddi,
+	NdisMediumWan,
+	NdisMediumLocalTalk,
+	NdisMediumDix,
+	NdisMediumArcnetRaw,
+	NdisMediumArcnet878_2,
+	NdisMediumAtm,
+	NdisMediumWirelessWan,
+	NdisMediumIrda,
+	NdisMediumBpc,
+	NdisMediumCoWan,
+	NdisMedium1394,
+	NdisMediumMax
 };
 
 enum ndis_phys_medium {
-	NDIS_PHYSICAL_MEDIUM_UNSPECIFIED,
-	NDIS_PHYSICAL_MEDIUM_WIRELESSLAN,
-	NDIS_PHYSICAL_MEDIUM_CABLEMODEM,
-	NDIS_PHYSICAL_MEDIUM_PHONELINE,
-	NDIS_PHYSICAL_MEDIUM_POWERLINE,
-	NDIS_PHYSICAL_MEDIUM_DSL,
-	NDIS_PHYSICAL_MEDIUM_FIBRECHANNEL,
-	NDIS_PHYSICAL_MEDIUM_1394,
-	NDIS_PHYSICAL_MEDIUM_WIRELESSWAN,
-	NDIS_PHYSICAL_MEDIUM_MAX,
+	NdisPhysicalMediumUnspecified,
+	NdisPhysicalMediumWirelessLan,
+	NdisPhysicalMediumCableModem,
+	NdisPhysicalMediumPhoneLine,
+	NdisPhysicalMediumPowerLine,
+	NdisPhysicalMediumDSL,
+	NdisPhysicalMediumFibreChannel,
+	NdisPhysicalMedium1394,
+	NdisPhysicalMediumWirelessWan,
+	NdisPhysicalMediumMax
+};
+
+enum ndis_pm_state {
+	NdisDeviceStateUnspecified = 0,
+	NdisDeviceStateD0,
+	NdisDeviceStateD1,
+	NdisDeviceStateD2,
+	NdisDeviceStateD3,
+	NdisDeviceStateMaximum
 };
 
 typedef void (*ndis_isr_handler)(unsigned int *taken, unsigned int *callme,
@@ -296,8 +287,8 @@ struct miniport_char {
 
 	/* NDIS 5.1 extensions */
 	void *cancel_send_packets;
-	void (*pnp_event_notify)(void *ctx, enum ndis_pnp_event, void *inf_buf,
-				 ULONG inf_buf_len) STDCALL;
+	void (*pnp_event_notify)(void *ctx, enum ndis_device_pnp_event,
+				 void *inf_buf, ULONG inf_buf_len) STDCALL;
 	void (*adapter_shutdown)(void *ctx) STDCALL;
 	void *reserved1;
 	void *reserved2;
@@ -499,9 +490,14 @@ struct ndis_wireless_stats {
 	LARGE_INTEGER fcs_err;
 };
 
+enum ndis_status_type {
+	Ndis802_11StatusType_Authentication,
+	Ndis802_11StatusTypeMax
+};
+
 enum wrapper_work {
 	WRAPPER_LINK_STATUS,
-	SET_OP_MODE,
+	SET_INFRA_MODE,
 	SET_ESSID,
 	SET_PACKET_FILTER,
 	COLLECT_STATS,
@@ -543,32 +539,38 @@ struct ndis_encr_key {
 	unsigned char key[NDIS_ENCODING_TOKEN_MAX];
 };
 
-enum auth_mode {
-	AUTHMODE_OPEN,
-	AUTHMODE_RESTRICTED,
-	AUTHMODE_AUTO,
-	AUTHMODE_WPA,
-	AUTHMODE_WPAPSK,
-	AUTHMODE_WPANONE,
-	AUTHMODE_WPA2,
-	AUTHMODE_WPA2PSK,
+enum network_infrastructure {
+	Ndis802_11IBSS,
+	Ndis802_11Infrastructure,
+	Ndis802_11AutoUnknown,
+	Ndis802_11InfrastructureMax
 };
 
-enum encr_mode {
-	ENCR1_ENABLED,
-	ENCR_DISABLED,
-	ENCR1_NOKEY,
-	ENCR1_NO_SUPPORT,
-	ENCR2_ENABLED,
-	ENCR2_ABSENT,
-	ENCR3_ENABLED,
-	ENCR3_ABSENT,
+enum authentication_mode {
+	Ndis802_11AuthModeOpen,
+	Ndis802_11AuthModeShared,
+	Ndis802_11AuthModeAutoSwitch,
+	Ndis802_11AuthModeWPA,
+	Ndis802_11AuthModeWPAPSK,
+	Ndis802_11AuthModeWPANone,
+	Ndis802_11AuthModeWPA2,
+	Ndis802_11AuthModeWPA2PSK,
+	Ndis802_11AuthModeMax
 };
 
-enum op_mode {
-	NDIS_MODE_ADHOC,
-	NDIS_MODE_INFRA,
-	NDIS_MODE_AUTO
+enum encryption_status {
+	Ndis802_11WEPEnabled,
+	Ndis802_11Encryption1Enabled = Ndis802_11WEPEnabled,
+	Ndis802_11WEPDisabled,
+	Ndis802_11EncryptionDisabled = Ndis802_11WEPDisabled,
+	Ndis802_11WEPKeyAbsent,
+	Ndis802_11Encryption1KeyAbsent = Ndis802_11WEPKeyAbsent,
+	Ndis802_11WEPNotSupported,
+	Ndis802_11EncryptionNotSupported = Ndis802_11WEPNotSupported,
+	Ndis802_11Encryption2Enabled,
+	Ndis802_11Encryption2KeyAbsent,
+	Ndis802_11Encryption3Enabled,
+	Ndis802_11Encryption3KeyAbsent
 };
 
 struct ndis_timer {
@@ -850,9 +852,9 @@ struct ndis_handle {
 	struct ndis_essid essid;
 
 	unsigned long capa;
-	enum auth_mode auth_mode;
-	enum encr_mode encr_mode;
-	enum op_mode op_mode;
+	enum authentication_mode auth_mode;
+	enum encryption_status encr_mode;
+	enum network_infrastructure infrastructure_mode;
 
 	mac_address mac;
 
@@ -866,13 +868,6 @@ struct ndis_handle {
 	unsigned long wrapper_work;
 
 	unsigned long attributes;
-};
-
-enum ndis_pm_state {
-	NDIS_PM_STATE_D0 = 1,
-	NDIS_PM_STATE_D1 = 2,
-	NDIS_PM_STATE_D2 = 3,
-	NDIS_PM_STATE_D3 = 4,
 };
 
 STDCALL void NdisMIndicateReceivePacket(struct ndis_handle *handle,

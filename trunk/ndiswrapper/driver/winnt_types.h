@@ -91,6 +91,7 @@ typedef uint32_t DWORD;
 typedef int32_t  LONG;
 typedef uint32_t ULONG;
 typedef uint64_t ULONGLONG;
+typedef uint64_t ULONGULONG;
 
 typedef size_t SIZE_T;
 typedef SHORT wchar_t;
@@ -407,9 +408,16 @@ struct kmutex {
 	BOOLEAN apc_disable;
 };
 
+enum work_queue_type {
+	CriticalWorkQueue,
+	DelayedWorkQueue,
+	HyperCriticalWorkQueue,
+	MaximumWorkQueue
+};
+
 enum wait_type {
-	WAIT_ALL,
-	WAIT_ANY
+	WaitAll,
+	WaitAny
 };
 
 struct wait_block {
@@ -421,42 +429,51 @@ struct wait_block {
 	USHORT wait_type;
 };
 
-enum ntos_event_type {
-	NOTIFICATION_EVENT,
-	SYNCHRONIZATION_EVENT
+enum event_type {
+	NotificationEvent,
+	SynchronizationEvent
 };
 
-typedef enum ntos_event_type KEVENT_TYPE;
+enum mm_page_priority {
+	LowPagePriority,
+	NormalPagePriority = 16,
+	HighPagePriority = 32
+};
+
+enum kinterrupt_mode {
+	LevelSensitive,
+	Latched
+};
 
 enum ntos_wait_reason {
-	WAIT_REASON_EXECUTIVE,
-	WAIT_REASON_FREEPAGE,
-	WAIT_REASON_PAGEIN,
-	WAIT_REASON_POOLALLOCATION,
-	WAIT_REASON_DELAYEXECUTION,
-	WAIT_REASON_SUSPENDED,
-	WAIT_REASON_USERREQUEST,
-	WAIT_REASON_WREXECUTIVE,
-	WAIT_REASON_WRFREEPAGE,
-	WAIT_REASON_WRPAGEIN,
-	WAIT_REASON_WRPOOLALLOCATION,
-	WAIT_REASON_WRDELAYEXECUTION,
-	WAIT_REASON_WRSUSPENDED,
-	WAIT_REASON_WRUSERREQUEST,
-	WAIT_REASON_WREVENTPAIR,
-	WAIT_REASON_WRQUEUE,
-	WAIT_REASON_WRLPCRECEIVE,
-	WAIT_REASON_WRLPCREPLY,
-	WAIT_REASON_WRVIRTUALMEMORY,
-	WAIT_REASON_WRPAGEOUT,
-	WAIT_REASON_WRRENDEZVOUS,
-	WAIT_REASON_SPARE2,
-	WAIT_REASON_SPARE3,
-	WAIT_REASON_SPARE4,
-	WAIT_REASON_SPARE5,
-	WAIT_REASON_SPARE6,
-	WAIT_REASON_WRKERNEL,
-	WAIT_REASON_MAXIMUM
+	Executive,
+	FreePage,
+	PageIn,
+	PoolAllocation,
+	DelayExecution,
+	Suspended,
+	UserRequest,
+	WrExecutive,
+	WrFreePage,
+	WrPageIn,
+	WrPoolAllocation,
+	WrDelayExecution,
+	WrSuspended,
+	WrUserRequest,
+	WrEventPair,
+	WrQueue,
+	WrLpcReceive,
+	WrLpcReply,
+	WrVirtualMemory,
+	WrPageOut,
+	WrRendezvous,
+	Spare2,
+	Spare3,
+	Spare4,
+	Spare5,
+	Spare6,
+	WrKernel,
+	MaximumWaitReason
 };
 
 typedef enum ntos_wait_reason KWAIT_REASON;
@@ -486,37 +503,37 @@ struct npaged_lookaside_list {
 };
 
 enum device_registry_property {
-	DEVPROP_DEVICE_DESCRIPTION,
-	DEVPROP_HARDWARE_ID,
-	DEVPROP_COMPATIBLE_IDS,
-	DEVPROP_BOOTCONF,
-	DEVPROP_BOOTCONF_TRANSLATED,
-	DEVPROP_CLASS_NAME,
-	DEVPROP_CLASS_GUID,
-	DEVPROP_DRIVER_KEYNAME,
-	DEVPROP_MANUFACTURER,
-	DEVPROP_FRIENDLYNAME,
-	DEVPROP_LOCATION_INFO,
-	DEVPROP_PHYSDEV_NAME,
-	DEVPROP_BUSTYPE_GUID,
-	DEVPROP_LEGACY_BUSTYPE,
-	DEVPROP_BUS_NUMBER,
-	DEVPROP_ENUMERATOR_NAME,
-	DEVPROP_ADDRESS,
-	DEVPROP_UINUMBER,
-	DEVPROP_INSTALL_STATE,
-	DEVPROP_REMOVAL_POLICY,
+	DevicePropertyDeviceDescription,
+	DevicePropertyHardwareID,
+	DevicePropertyCompatibleIDs,
+	DevicePropertyBootConfiguration,
+	DevicePropertyBootConfigurationTranslated,
+	DevicePropertyClassName,
+	DevicePropertyClassGuid,
+	DevicePropertyDriverKeyName,
+	DevicePropertyManufacturer,
+	DevicePropertyFriendlyName,
+	DevicePropertyLocationInformation,
+	DevicePropertyPhysicalDeviceObjectName,
+	DevicePropertyBusTypeGuid,
+	DevicePropertyLegacyBusType,
+	DevicePropertyBusNumber,
+	DevicePropertyEnumeratorName,
+	DevicePropertyAddress,
+	DevicePropertyUINumber,
+	DevicePropertyInstallState,
+	DevicePropertyRemovalPolicy
 };
 
 enum trace_information_class {
-	TRACE_ID_CLASS,
-	TRACE_HANDLE_CLASS,
-	TRACE_ENABLE_FLAGS_CLASS,
-	TRACE_ENABLE_LEVEL_CLASS,
-	GLOBAL_LOGGER_HANDLE_CLASS,
-	EVENT_LOGGER_HANDLE_CLASS,
-	ALL_LOGGER_HANDLES_CLASS,
-	TRACE_HANDLE_BY_NAME_CLASS
+	TraceIdClass,
+	TraceHandleClass,
+	TraceEnableFlagsClass,
+	TraceEnableLevelClass,
+	GlobalLoggerHandleClass,
+	EventLoggerHandleClass,
+	AllLoggerHandlesClass,
+	TraceHandleByNameClass
 };
 
 #endif /* WINNT_TYPES_H */

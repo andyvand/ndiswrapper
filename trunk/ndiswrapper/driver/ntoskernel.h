@@ -324,8 +324,6 @@ struct pe_image {
 	IMAGE_OPTIONAL_HEADER *opt_hdr;
 };
 
-typedef unsigned char mac_address[ETH_ALEN];
-
 extern struct wrap_spinlock atomic_lock;
 extern struct wrap_spinlock cancel_lock;
 
@@ -357,7 +355,7 @@ int wrapper_set_timer(struct wrapper_timer *wrapper_timer,
                       struct kdpc *kdpc);
 void wrapper_cancel_timer(struct wrapper_timer *wrapper_timer, char *canceled);
 STDCALL void KeInitializeEvent(struct kevent *kevent,
-			       KEVENT_TYPE type, BOOLEAN state);
+			       enum event_type type, BOOLEAN state);
 STDCALL LONG KeSetEvent(struct kevent *kevent, KPRIORITY incr, BOOLEAN wait);
 STDCALL LONG KeResetEvent(struct kevent *kevent);
 STDCALL NT_STATUS KeWaitForSingleObject(void *object, KWAIT_REASON reason,
