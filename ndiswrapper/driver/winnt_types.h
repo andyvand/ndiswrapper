@@ -179,10 +179,6 @@ typedef struct wrap_spinlock *KSPIN_LOCK;
 
 #else
 
-#define WRAP_SPINLOCK(lock) &((lock)->klock.spinlock)
-#define K_SPINLOCK(lock) &(lock)->spinlock
-#endif
-
 typedef union {
 	spinlock_t spinlock;
 	ULONG_PTR ntoslock;
@@ -191,6 +187,10 @@ struct wrap_spinlock {
 	KSPIN_LOCK klock;
 	KIRQL use_bh;
 };
+
+#define WRAP_SPINLOCK(lock) &((lock)->klock.spinlock)
+#define K_SPINLOCK(lock) &(lock)->spinlock
+#endif
 
 struct kdpc {
 	SHORT type;

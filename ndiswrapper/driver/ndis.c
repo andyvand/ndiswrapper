@@ -127,7 +127,7 @@ static void free_handle_ctx(struct ndis_handle *handle)
 }
 
 /* Called from the driver entry. */
-STDCALL static void WRAP_EXPORT(NdisInitializeWrapper)
+STDCALL void WRAP_EXPORT(NdisInitializeWrapper)
 	(struct ndis_handle **ndis_handle, void *SystemSpecific1,
 	 void *SystemSpecific2, void *SystemSpecific3)
 {
@@ -137,14 +137,14 @@ STDCALL static void WRAP_EXPORT(NdisInitializeWrapper)
 	TRACEEXIT1(return);
 }
 
-STDCALL static void WRAP_EXPORT(NdisTerminateWrapper)
+STDCALL void WRAP_EXPORT(NdisTerminateWrapper)
 	(struct ndis_handle *handle, void *SystemSpecific1)
 {
 	TRACEEXIT1(return);
 }
 
 /* Register a miniport with NDIS. Called from driver entry */
-STDCALL static NDIS_STATUS WRAP_EXPORT(NdisMRegisterMiniport)
+STDCALL NDIS_STATUS WRAP_EXPORT(NdisMRegisterMiniport)
 	(struct ndis_driver *ndis_driver,
 	 struct miniport_char *miniport_char, UINT char_len)
 {
@@ -174,7 +174,7 @@ STDCALL static NDIS_STATUS WRAP_EXPORT(NdisMRegisterMiniport)
 	TRACEEXIT1(return NDIS_STATUS_SUCCESS);
 }
 
-STDCALL static NDIS_STATUS WRAP_EXPORT(NdisAllocateMemory)
+STDCALL NDIS_STATUS WRAP_EXPORT(NdisAllocateMemory)
 	(void **dest, UINT length, UINT flags,
 	 NDIS_PHY_ADDRESS highest_addr)
 {
@@ -199,7 +199,7 @@ STDCALL static NDIS_STATUS WRAP_EXPORT(NdisAllocateMemory)
 	TRACEEXIT3(return NDIS_STATUS_FAILURE);
 }
 
-STDCALL static unsigned int WRAP_EXPORT(NdisAllocateMemoryWithTag)
+STDCALL unsigned int WRAP_EXPORT(NdisAllocateMemoryWithTag)
 	(void **dest, UINT length, ULONG tag)
 {
 	NDIS_PHY_ADDRESS addr;
@@ -207,7 +207,7 @@ STDCALL static unsigned int WRAP_EXPORT(NdisAllocateMemoryWithTag)
 	TRACEEXIT3(return NdisAllocateMemory(dest, length, 0, addr));
 }
 
-STDCALL static void WRAP_EXPORT(NdisFreeMemory)
+STDCALL void WRAP_EXPORT(NdisFreeMemory)
 	(void *addr, UINT length, UINT flags)
 {
 	struct ndis_work_entry *ndis_work_entry;
@@ -256,14 +256,14 @@ STDCALL static void WRAP_EXPORT(NdisFreeMemory)
 /*
  * This function should not be STDCALL because it's a variable args function.
  */
-NOREGPARM static void WRAP_EXPORT(NdisWriteErrorLogEntry)
+NOREGPARM void WRAP_EXPORT(NdisWriteErrorLogEntry)
 	(struct ndis_handle *handle, unsigned int error, ULONG count,
 	 unsigned int p1)
 {
 	ERROR("log: %08X, count: %d (%08x)\n", error, count, p1);
 }
 
-STDCALL static void WRAP_EXPORT(NdisOpenConfiguration)
+STDCALL void WRAP_EXPORT(NdisOpenConfiguration)
 	(NDIS_STATUS *status, struct ndis_handle **confhandle,
 	 struct ndis_handle *handle)
 {
@@ -274,7 +274,7 @@ STDCALL static void WRAP_EXPORT(NdisOpenConfiguration)
 	TRACEEXIT2(return);
 }
 
-STDCALL static void WRAP_EXPORT(NdisOpenProtocolConfiguration)
+STDCALL void WRAP_EXPORT(NdisOpenProtocolConfiguration)
 	(NDIS_STATUS *status, struct ndis_handle **confhandle,
 	 struct unicode_string *section)
 {
@@ -284,7 +284,7 @@ STDCALL static void WRAP_EXPORT(NdisOpenProtocolConfiguration)
 	TRACEEXIT2(return);
 }
 
-STDCALL static void WRAP_EXPORT(NdisOpenConfigurationKeyByName)
+STDCALL void WRAP_EXPORT(NdisOpenConfigurationKeyByName)
 	(NDIS_STATUS *status, struct ndis_handle *handle,
 	 struct unicode_string *key, struct ndis_handle **subkeyhandle)
 {
@@ -294,7 +294,7 @@ STDCALL static void WRAP_EXPORT(NdisOpenConfigurationKeyByName)
 	TRACEEXIT2(return);
 }
 
-STDCALL static void WRAP_EXPORT(NdisOpenConfigurationKeyByIndex)
+STDCALL void WRAP_EXPORT(NdisOpenConfigurationKeyByIndex)
 	(NDIS_STATUS *status, struct ndis_handle *handle, ULONG index,
 	 struct unicode_string *key, struct ndis_handle **subkeyhandle)
 {
@@ -304,14 +304,14 @@ STDCALL static void WRAP_EXPORT(NdisOpenConfigurationKeyByIndex)
 	TRACEEXIT2(return);
 }
 
-STDCALL static void WRAP_EXPORT(NdisCloseConfiguration)
+STDCALL void WRAP_EXPORT(NdisCloseConfiguration)
 	(struct ndis_handle *handle)
 {
 	TRACEENTER2("handle: %p", handle);
 	return;
 }
 
-STDCALL static void WRAP_EXPORT(NdisOpenFile)
+STDCALL void WRAP_EXPORT(NdisOpenFile)
 	(NDIS_STATUS *status, struct ndis_bin_file **filehandle,
 	 UINT *filelength, struct unicode_string *filename,
 	 NDIS_PHY_ADDRESS highest_address)
@@ -365,7 +365,7 @@ STDCALL static void WRAP_EXPORT(NdisOpenFile)
 	TRACEEXIT2(return);
 }
 
-STDCALL static void WRAP_EXPORT(NdisMapFile)
+STDCALL void WRAP_EXPORT(NdisMapFile)
 	(NDIS_STATUS *status, void **mappedbuffer,
 	 struct ndis_bin_file *filehandle)
 {
@@ -381,21 +381,21 @@ STDCALL static void WRAP_EXPORT(NdisMapFile)
 	TRACEEXIT2(return);
 }
 
-STDCALL static void WRAP_EXPORT(NdisUnmapFile)
+STDCALL void WRAP_EXPORT(NdisUnmapFile)
 	(struct ndis_bin_file *filehandle)
 {
 	TRACEENTER2("handle: %p", filehandle);
 	TRACEEXIT2(return);
 }
 
-STDCALL static void WRAP_EXPORT(NdisCloseFile)
+STDCALL void WRAP_EXPORT(NdisCloseFile)
 	(struct ndis_bin_file *filehandle)
 {
 	TRACEENTER2("handle: %p", filehandle);
 	TRACEEXIT2(return);
 }
 
-STDCALL static void WRAP_EXPORT(NdisGetSystemUpTime)
+STDCALL void WRAP_EXPORT(NdisGetSystemUpTime)
 	(ULONG *systemuptime)
 {
 	TRACEENTER4("%s", "");
@@ -424,7 +424,7 @@ STDCALL ULONG WRAP_EXPORT(NDIS_BUFFER_TO_SPAN_PAGES)
 	TRACEEXIT3(return n);
 }
 
-STDCALL static void WRAP_EXPORT(NdisGetBufferPhysicalArraySize)
+STDCALL void WRAP_EXPORT(NdisGetBufferPhysicalArraySize)
 	(struct ndis_buffer *buffer, UINT *arraysize)
 {
 	TRACEENTER3("Buffer: %p", buffer);
@@ -510,7 +510,7 @@ static int ndis_decode_setting(struct device_setting *setting,
 	return NDIS_STATUS_SUCCESS;
 }
 
-STDCALL static void WRAP_EXPORT(NdisReadConfiguration)
+STDCALL void WRAP_EXPORT(NdisReadConfiguration)
 	(NDIS_STATUS *status, struct ndis_config_param **dest,
 	 struct ndis_handle *handle, struct unicode_string *key,
 	 enum ndis_config_param_type type)
@@ -597,7 +597,7 @@ STDCALL void WRAP_EXPORT(NdisWriteConfiguration)
 	TRACEEXIT2(return);
 }
 
-STDCALL static void WRAP_EXPORT(NdisInitializeString)
+STDCALL void WRAP_EXPORT(NdisInitializeString)
 	(struct unicode_string *dest, UCHAR *src)
 {
 	struct ansi_string ansi;
@@ -610,14 +610,14 @@ STDCALL static void WRAP_EXPORT(NdisInitializeString)
 	TRACEEXIT2(return);
 }
 
-STDCALL static void WRAP_EXPORT(NdisInitAnsiString)
+STDCALL void WRAP_EXPORT(NdisInitAnsiString)
 	(struct ansi_string *dst, CHAR *src)
 {
 	RtlInitAnsiString(dst, src);
 	TRACEEXIT2(return);
 }
 
-STDCALL static void WRAP_EXPORT(NdisInitUnicodeString)
+STDCALL void WRAP_EXPORT(NdisInitUnicodeString)
 	(struct unicode_string *dest, const wchar_t *src)
 {
 	int i;
@@ -638,7 +638,7 @@ STDCALL static void WRAP_EXPORT(NdisInitUnicodeString)
 	TRACEEXIT2(return);
 }
 
-STDCALL static NDIS_STATUS WRAP_EXPORT(NdisAnsiStringToUnicodeString)
+STDCALL NDIS_STATUS WRAP_EXPORT(NdisAnsiStringToUnicodeString)
 	(struct unicode_string *dst, struct ansi_string *src)
 {
 	int dup;
@@ -653,7 +653,7 @@ STDCALL static NDIS_STATUS WRAP_EXPORT(NdisAnsiStringToUnicodeString)
 	TRACEEXIT2(return RtlAnsiStringToUnicodeString(dst, src, 0));
 }
 
-STDCALL static NDIS_STATUS WRAP_EXPORT(NdisUnicodeStringToAnsiString)
+STDCALL NDIS_STATUS WRAP_EXPORT(NdisUnicodeStringToAnsiString)
 	(struct ansi_string *dst, struct unicode_string *src)
 {
 	int dup;
@@ -675,7 +675,7 @@ STDCALL static NDIS_STATUS WRAP_EXPORT(NdisUnicodeStringToAnsiString)
  * we also need handle in them, so we store handle X adapter_ctx map in
  * a global list.
  */
-STDCALL static void WRAP_EXPORT(NdisMSetAttributesEx)
+STDCALL void WRAP_EXPORT(NdisMSetAttributesEx)
 	(struct ndis_handle *handle, void *adapter_ctx,
 	 UINT hangcheck_interval, UINT attributes, ULONG adaptortype)
 {
@@ -738,7 +738,7 @@ static struct ndis_handle *ctx_to_handle(void *ctx)
 	return NULL;
 }
 
-STDCALL static ULONG WRAP_EXPORT(NdisReadPciSlotInformation)
+STDCALL ULONG WRAP_EXPORT(NdisReadPciSlotInformation)
 	(struct ndis_handle *handle, ULONG slot,
 	 ULONG offset, char *buf, ULONG len)
 {
@@ -749,7 +749,7 @@ STDCALL static ULONG WRAP_EXPORT(NdisReadPciSlotInformation)
 	return len;
 }
 
-STDCALL static ULONG WRAP_EXPORT(NdisWritePciSlotInformation)
+STDCALL ULONG WRAP_EXPORT(NdisWritePciSlotInformation)
 	(struct ndis_handle *handle, ULONG slot,
 	 ULONG offset, char *buf, ULONG len)
 {
@@ -760,7 +760,7 @@ STDCALL static ULONG WRAP_EXPORT(NdisWritePciSlotInformation)
 	return len;
 }
 
-STDCALL static void WRAP_EXPORT(NdisMQueryAdapterResources)
+STDCALL void WRAP_EXPORT(NdisMQueryAdapterResources)
 	(NDIS_STATUS *status, struct ndis_handle *handle,
 	 struct ndis_resource_list *resource_list, UINT *size)
 {
@@ -824,7 +824,7 @@ STDCALL static void WRAP_EXPORT(NdisMQueryAdapterResources)
 	TRACEEXIT2(return);
 }
 
-STDCALL static NDIS_STATUS WRAP_EXPORT(NdisMMapIoSpace)
+STDCALL NDIS_STATUS WRAP_EXPORT(NdisMMapIoSpace)
 	(void **virt, struct ndis_handle *handle,
 	 NDIS_PHY_ADDRESS phy_addr, UINT len)
 {
@@ -845,14 +845,14 @@ STDCALL static NDIS_STATUS WRAP_EXPORT(NdisMMapIoSpace)
 	TRACEEXIT2(return NDIS_STATUS_SUCCESS);
 }
 
-STDCALL static void WRAP_EXPORT(NdisMUnmapIoSpace)
+STDCALL void WRAP_EXPORT(NdisMUnmapIoSpace)
 	(struct ndis_handle *handle, void *virtaddr, UINT len)
 {
 	TRACEENTER2("%p, %d", virtaddr, len);
 	iounmap(virtaddr);
 }
 
-STDCALL static void WRAP_EXPORT(NdisAllocateSpinLock)
+STDCALL void WRAP_EXPORT(NdisAllocateSpinLock)
 	(struct ndis_spinlock *lock)
 {
 	TRACEENTER4("lock %p", lock);
@@ -869,7 +869,7 @@ STDCALL static void WRAP_EXPORT(NdisAllocateSpinLock)
 	TRACEEXIT4(return);
 }
 
-STDCALL static void WRAP_EXPORT(NdisFreeSpinLock)
+STDCALL void WRAP_EXPORT(NdisFreeSpinLock)
 	(struct ndis_spinlock *lock)
 {
 	TRACEENTER4("lock %p", lock);
@@ -878,7 +878,7 @@ STDCALL static void WRAP_EXPORT(NdisFreeSpinLock)
 	TRACEEXIT4(return);
 }
 
-STDCALL static void WRAP_EXPORT(NdisAcquireSpinLock)
+STDCALL void WRAP_EXPORT(NdisAcquireSpinLock)
 	(struct ndis_spinlock *lock)
 {
 	TRACEENTER5("lock %p", lock);
@@ -895,7 +895,7 @@ STDCALL static void WRAP_EXPORT(NdisAcquireSpinLock)
 	TRACEEXIT5(return);
 }
 
-STDCALL static void WRAP_EXPORT(NdisReleaseSpinLock)
+STDCALL void WRAP_EXPORT(NdisReleaseSpinLock)
 	(struct ndis_spinlock *lock)
 {
 	TRACEENTER5("lock %p", lock);
@@ -903,7 +903,7 @@ STDCALL static void WRAP_EXPORT(NdisReleaseSpinLock)
 	TRACEEXIT5(return);
 }
 
-STDCALL static void WRAP_EXPORT(NdisDprAcquireSpinLock)
+STDCALL void WRAP_EXPORT(NdisDprAcquireSpinLock)
 	(struct ndis_spinlock *lock)
 {
 	TRACEENTER5("lock %p", lock);
@@ -913,7 +913,7 @@ STDCALL static void WRAP_EXPORT(NdisDprAcquireSpinLock)
 	TRACEEXIT5(return);
 }
 
-STDCALL static void WRAP_EXPORT(NdisDprReleaseSpinLock)
+STDCALL void WRAP_EXPORT(NdisDprReleaseSpinLock)
 	(struct ndis_spinlock *lock)
 {
 	TRACEENTER5("lock %p", lock);
@@ -921,7 +921,7 @@ STDCALL static void WRAP_EXPORT(NdisDprReleaseSpinLock)
 	TRACEEXIT5(return);
 }
 
-STDCALL static NDIS_STATUS WRAP_EXPORT(NdisMAllocateMapRegisters)
+STDCALL NDIS_STATUS WRAP_EXPORT(NdisMAllocateMapRegisters)
 	(struct ndis_handle *handle, UINT dmachan,
 	 NDIS_DMA_SIZE dmasize, ULONG basemap, ULONG size)
 {
@@ -946,7 +946,7 @@ STDCALL static NDIS_STATUS WRAP_EXPORT(NdisMAllocateMapRegisters)
 	TRACEEXIT2(return NDIS_STATUS_SUCCESS);
 }
 
-STDCALL static void WRAP_EXPORT(NdisMFreeMapRegisters)
+STDCALL void WRAP_EXPORT(NdisMFreeMapRegisters)
 	(struct ndis_handle *handle)
 {
 	TRACEENTER2("handle: %p", handle);
@@ -957,7 +957,7 @@ STDCALL static void WRAP_EXPORT(NdisMFreeMapRegisters)
 	TRACEEXIT2(return);
 }
 
-STDCALL static void WRAP_EXPORT(NdisMAllocateSharedMemory)
+STDCALL void WRAP_EXPORT(NdisMAllocateSharedMemory)
 	(struct ndis_handle *handle, unsigned long size,
 	 char cached, void **virt, NDIS_PHY_ADDRESS *phys)
 {
@@ -986,7 +986,7 @@ STDCALL static void WRAP_EXPORT(NdisMAllocateSharedMemory)
 	DBGTRACE3("allocated shared memory: %p", v);
 }
 
-STDCALL static NDIS_STATUS WRAP_EXPORT(NdisMAllocateSharedMemoryAsync)
+STDCALL NDIS_STATUS WRAP_EXPORT(NdisMAllocateSharedMemoryAsync)
 	(struct ndis_handle *handle, ULONG size, BOOLEAN cached,
 	 void *ctx)
 {
@@ -1014,7 +1014,7 @@ STDCALL static NDIS_STATUS WRAP_EXPORT(NdisMAllocateSharedMemoryAsync)
 	TRACEEXIT3(return NDIS_STATUS_PENDING);
 }
 
-STDCALL static void WRAP_EXPORT(NdisMFreeSharedMemory)
+STDCALL void WRAP_EXPORT(NdisMFreeSharedMemory)
 	(struct ndis_handle *handle, ULONG size, BOOLEAN cached,
 	 void *virt, NDIS_PHY_ADDRESS addr)
 {
@@ -1028,14 +1028,14 @@ STDCALL static void WRAP_EXPORT(NdisMFreeSharedMemory)
 	TRACEEXIT3(return);
 }
 
-STDCALL static void WRAP_EXPORT(NdisAllocateBufferPool)
+STDCALL void WRAP_EXPORT(NdisAllocateBufferPool)
 	(NDIS_STATUS *status, void *poolhandle, UINT size)
 {
 	TRACEENTER4("%s", "");
 	*status = NDIS_STATUS_SUCCESS;
 }
 
-STDCALL static void WRAP_EXPORT(NdisFreeBufferPool)
+STDCALL void WRAP_EXPORT(NdisFreeBufferPool)
 	(void *poolhandle)
 {
 	TRACEENTER4("%s", "");
@@ -1043,7 +1043,7 @@ STDCALL static void WRAP_EXPORT(NdisFreeBufferPool)
 	TRACEEXIT4(return);
 }
 
-STDCALL static void WRAP_EXPORT(NdisAllocateBuffer)
+STDCALL void WRAP_EXPORT(NdisAllocateBuffer)
 	(NDIS_STATUS *status, struct ndis_buffer **buffer,
 	 void *poolhandle, void *virt, UINT len)
 {
@@ -1069,7 +1069,7 @@ STDCALL static void WRAP_EXPORT(NdisAllocateBuffer)
 	TRACEEXIT4(return);
 }
 
-STDCALL static void WRAP_EXPORT(NdisFreeBuffer)
+STDCALL void WRAP_EXPORT(NdisFreeBuffer)
 	(struct ndis_buffer *buffer)
 {
 	TRACEENTER4("%p", buffer);
@@ -1079,14 +1079,14 @@ STDCALL static void WRAP_EXPORT(NdisFreeBuffer)
 	TRACEEXIT4(return);
 }
 
-STDCALL static void WRAP_EXPORT(NdisAdjustBufferLength)
+STDCALL void WRAP_EXPORT(NdisAdjustBufferLength)
 	(struct ndis_buffer *buf, UINT len)
 {
 	TRACEENTER4("%s", "");
 	buf->len = len;
 }
 
-STDCALL static void WRAP_EXPORT(NdisQueryBuffer)
+STDCALL void WRAP_EXPORT(NdisQueryBuffer)
 	(struct ndis_buffer *buf, void **adr, UINT *len)
 {
 	TRACEENTER3("%s", "");
@@ -1096,7 +1096,7 @@ STDCALL static void WRAP_EXPORT(NdisQueryBuffer)
 		*len = buf->len;
 }
 
-STDCALL static void WRAP_EXPORT(NdisQueryBufferSafe)
+STDCALL void WRAP_EXPORT(NdisQueryBufferSafe)
 	(struct ndis_buffer *buf, void **adr,
 	 UINT *len, enum mm_page_priority priority)
 {
@@ -1107,21 +1107,21 @@ STDCALL static void WRAP_EXPORT(NdisQueryBufferSafe)
 		*len = buf->len;
 }
 
-STDCALL static void *WRAP_EXPORT(NdisBufferVirtualAddress)
+STDCALL void *WRAP_EXPORT(NdisBufferVirtualAddress)
 	(struct ndis_buffer *buf)
 {
 	TRACEENTER3("%s", "");
 	return buf->data;
 }
 
-STDCALL static ULONG WRAP_EXPORT(NdisBufferLength)
+STDCALL ULONG WRAP_EXPORT(NdisBufferLength)
 	(struct ndis_buffer *buf)
 {
 	TRACEENTER3("%s", "");
 	return buf->len;
 }
 
-STDCALL static void WRAP_EXPORT(NdisAllocatePacketPool)
+STDCALL void WRAP_EXPORT(NdisAllocatePacketPool)
 	(NDIS_STATUS *status, void *poolhandle,
 	 UINT size, UINT rsvlen)
 {
@@ -1130,7 +1130,7 @@ STDCALL static void WRAP_EXPORT(NdisAllocatePacketPool)
 	*status = NDIS_STATUS_SUCCESS;
 }
 
-STDCALL static void WRAP_EXPORT(NdisAllocatePacketPoolEx)
+STDCALL void WRAP_EXPORT(NdisAllocatePacketPoolEx)
 	(NDIS_STATUS *status, void *poolhandle,
 	 UINT size, UINT overflowsize, UINT rsvlen)
 {
@@ -1139,20 +1139,20 @@ STDCALL static void WRAP_EXPORT(NdisAllocatePacketPoolEx)
 	TRACEEXIT3(return);
 }
 
-STDCALL static UINT WRAP_EXPORT(NdisPacketPoolUsage)
+STDCALL UINT WRAP_EXPORT(NdisPacketPoolUsage)
 	(void *poolhandle)
 {
 	UNIMPL();
 	return 0;
 }
 
-STDCALL static void WRAP_EXPORT(NdisFreePacketPool)
+STDCALL void WRAP_EXPORT(NdisFreePacketPool)
 	(void *poolhandle)
 {
 	TRACEENTER3("handle: %p", poolhandle);
 }
 
-STDCALL static void WRAP_EXPORT(NdisAllocatePacket)
+STDCALL void WRAP_EXPORT(NdisAllocatePacket)
 	(NDIS_STATUS *status, struct ndis_packet **packet_out,
 	 void *poolhandle)
 {
@@ -1191,7 +1191,7 @@ STDCALL static void WRAP_EXPORT(NdisAllocatePacket)
 	TRACEEXIT3(return);
 }
 
-STDCALL static void WRAP_EXPORT(NdisFreePacket)
+STDCALL void WRAP_EXPORT(NdisFreePacket)
 	(struct ndis_packet *packet)
 {
 	TRACEENTER3("%s", "");
@@ -1202,7 +1202,7 @@ STDCALL static void WRAP_EXPORT(NdisFreePacket)
 	TRACEEXIT3(return);
 }
 
-STDCALL static void WRAP_EXPORT(NdisMInitializeTimer)
+STDCALL void WRAP_EXPORT(NdisMInitializeTimer)
 	(struct ndis_miniport_timer *timer_handle, struct ndis_handle *handle,
 	 void *func, void *ctx)
 {
@@ -1214,7 +1214,7 @@ STDCALL static void WRAP_EXPORT(NdisMInitializeTimer)
 	TRACEEXIT4(return);
 }
 
-STDCALL static void WRAP_EXPORT(NdisInitializeTimer)
+STDCALL void WRAP_EXPORT(NdisInitializeTimer)
 	(struct ndis_timer *timer_handle, void *func, void *ctx)
 {
 	TRACEENTER4("%p, %p, %p", timer_handle, func, ctx);
@@ -1225,7 +1225,7 @@ STDCALL static void WRAP_EXPORT(NdisInitializeTimer)
 	TRACEEXIT4(return);
 }
 
-STDCALL static void WRAP_EXPORT(NdisSetTimer)
+STDCALL void WRAP_EXPORT(NdisSetTimer)
 	(struct ndis_timer *timer_handle, UINT ms)
 {
 	unsigned long expires = jiffies + (ms * HZ) / 1000;
@@ -1236,7 +1236,7 @@ STDCALL static void WRAP_EXPORT(NdisSetTimer)
 	TRACEEXIT4(return);
 }
 
-STDCALL static void WRAP_EXPORT(NdisMSetPeriodicTimer)
+STDCALL void WRAP_EXPORT(NdisMSetPeriodicTimer)
 	(struct ndis_miniport_timer *timer_handle, UINT ms)
 {
 	unsigned long expires = jiffies + (ms * HZ) / 1000;
@@ -1248,7 +1248,7 @@ STDCALL static void WRAP_EXPORT(NdisMSetPeriodicTimer)
 	TRACEEXIT4(return);
 }
 
-STDCALL static void WRAP_EXPORT(NdisMCancelTimer)
+STDCALL void WRAP_EXPORT(NdisMCancelTimer)
 	(struct ndis_miniport_timer *timer_handle, BOOLEAN *canceled)
 {
 	TRACEENTER4("%s", "");
@@ -1256,7 +1256,7 @@ STDCALL static void WRAP_EXPORT(NdisMCancelTimer)
 	TRACEEXIT4(return);
 }
 
-STDCALL static void WRAP_EXPORT(NdisCancelTimer)
+STDCALL void WRAP_EXPORT(NdisCancelTimer)
 	(struct ndis_timer *timer_handle, BOOLEAN *canceled)
 {
 	TRACEENTER4("%s", "");
@@ -1268,7 +1268,7 @@ STDCALL static void WRAP_EXPORT(NdisCancelTimer)
  * The driver asks ndis what mac it should use. If this
  * function returns failiure it will use it's default mac.
  */
-STDCALL static void WRAP_EXPORT(NdisReadNetworkAddress)
+STDCALL void WRAP_EXPORT(NdisReadNetworkAddress)
 	(NDIS_STATUS *status, void **addr, UINT *len,
 	 struct ndis_handle *handle)
 {
@@ -1317,7 +1317,7 @@ STDCALL static void WRAP_EXPORT(NdisReadNetworkAddress)
 	TRACEEXIT1(return);
 }
 
-STDCALL static void WRAP_EXPORT(NdisMRegisterAdapterShutdownHandler)
+STDCALL void WRAP_EXPORT(NdisMRegisterAdapterShutdownHandler)
 	(struct ndis_handle *handle, void *ctx, void *func)
 {
 	TRACEENTER1("sp:%p", get_sp());
@@ -1325,7 +1325,7 @@ STDCALL static void WRAP_EXPORT(NdisMRegisterAdapterShutdownHandler)
 	handle->shutdown_ctx = ctx;
 }
 
-STDCALL static void WRAP_EXPORT(NdisMDeregisterAdapterShutdownHandler)
+STDCALL void WRAP_EXPORT(NdisMDeregisterAdapterShutdownHandler)
 	(struct ndis_handle *handle)
 {
 	TRACEENTER1("sp:%p", get_sp());
@@ -1386,7 +1386,7 @@ static irqreturn_t ndis_irq_th(int irq, void *data, struct pt_regs *pt_regs)
 	return IRQ_NONE;
 }
 
-STDCALL static NDIS_STATUS WRAP_EXPORT(NdisMRegisterInterrupt)
+STDCALL NDIS_STATUS WRAP_EXPORT(NdisMRegisterInterrupt)
 	(struct ndis_irq *ndis_irq, struct ndis_handle *handle,
 	 UINT vector, UINT level, BOOLEAN req_isr,
 	 BOOLEAN shared, enum kinterrupt_mode mode)
@@ -1458,7 +1458,7 @@ STDCALL void WRAP_EXPORT(NdisMDeregisterInterrupt)
 	TRACEEXIT1(return);
 }
 
-STDCALL static BOOLEAN WRAP_EXPORT(NdisMSynchronizeWithInterrupt)
+STDCALL BOOLEAN WRAP_EXPORT(NdisMSynchronizeWithInterrupt)
 	(struct ndis_irq *ndis_irq, void *func, void *ctx)
 {
 	unsigned char ret;
@@ -1844,7 +1844,7 @@ NdisMSetInformationComplete(struct ndis_handle *handle, NDIS_STATUS status)
 	TRACEEXIT3(return);
 }
 
-STDCALL static void WRAP_EXPORT(NdisMSleep)
+STDCALL void WRAP_EXPORT(NdisMSleep)
 	(ULONG us_to_sleep)
 {
 	TRACEENTER4("us: %u", us_to_sleep);
@@ -1862,7 +1862,7 @@ STDCALL void WRAP_EXPORT(NdisGetCurrentSystemTime)
 	*time = ticks_1601();
 }
 
-STDCALL static NDIS_STATUS WRAP_EXPORT(NdisMRegisterIoPortRange)
+STDCALL NDIS_STATUS WRAP_EXPORT(NdisMRegisterIoPortRange)
 	(void **virt, struct ndis_handle *handle, UINT start, UINT len)
 {
 	TRACEENTER3("%08x %08x", start, len);
@@ -1870,13 +1870,13 @@ STDCALL static NDIS_STATUS WRAP_EXPORT(NdisMRegisterIoPortRange)
 	return NDIS_STATUS_SUCCESS;
 }
 
-STDCALL static void WRAP_EXPORT(NdisMDeregisterIoPortRange)
+STDCALL void WRAP_EXPORT(NdisMDeregisterIoPortRange)
 	(struct ndis_handle *handle, UINT start, UINT len, void* virt)
 {
 	TRACEENTER1("%08x %08x", start, len);
 }
 
-STDCALL static LONG WRAP_EXPORT(NdisInterlockedDecrement)
+STDCALL LONG WRAP_EXPORT(NdisInterlockedDecrement)
 	(LONG *val)
 {
 	LONG x;
@@ -1889,7 +1889,7 @@ STDCALL static LONG WRAP_EXPORT(NdisInterlockedDecrement)
 	TRACEEXIT4(return x);
 }
 
-STDCALL static LONG WRAP_EXPORT(NdisInterlockedIncrement)
+STDCALL LONG WRAP_EXPORT(NdisInterlockedIncrement)
 	(LONG *val)
 {
 	LONG x;
@@ -1902,7 +1902,7 @@ STDCALL static LONG WRAP_EXPORT(NdisInterlockedIncrement)
 	TRACEEXIT4(return x);
 }
 
-STDCALL static struct list_entry * WRAP_EXPORT(NdisInterlockedInsertHeadList)
+STDCALL struct list_entry * WRAP_EXPORT(NdisInterlockedInsertHeadList)
 	(struct list_entry *head, struct list_entry *entry,
 	 struct ndis_spinlock *lock)
 {
@@ -1921,7 +1921,7 @@ STDCALL static struct list_entry * WRAP_EXPORT(NdisInterlockedInsertHeadList)
 	TRACEEXIT4(return (flink != head) ? flink : NULL);
 }
 
-STDCALL static struct list_entry * WRAP_EXPORT(NdisInterlockedInsertTailList)
+STDCALL struct list_entry * WRAP_EXPORT(NdisInterlockedInsertTailList)
 	(struct list_entry *head, struct list_entry *entry,
 	 struct ndis_spinlock *lock)
 {
@@ -1940,7 +1940,7 @@ STDCALL static struct list_entry * WRAP_EXPORT(NdisInterlockedInsertTailList)
 	TRACEEXIT4(return (flink != head) ? flink : NULL);
 }
 
-STDCALL static struct list_entry * WRAP_EXPORT(NdisInterlockedRemoveHeadList)
+STDCALL struct list_entry * WRAP_EXPORT(NdisInterlockedRemoveHeadList)
 	(struct list_entry *head, struct ndis_spinlock *lock)
 {
 	struct list_entry *flink;
@@ -1956,7 +1956,7 @@ STDCALL static struct list_entry * WRAP_EXPORT(NdisInterlockedRemoveHeadList)
 	TRACEEXIT4(return (flink != head) ? flink : NULL);
 }
 
-STDCALL static NDIS_STATUS WRAP_EXPORT(NdisMInitializeScatterGatherDma)
+STDCALL NDIS_STATUS WRAP_EXPORT(NdisMInitializeScatterGatherDma)
 	(struct ndis_handle *handle, BOOLEAN is64bit, ULONG max_phy_map)
 {
 	TRACEENTER2("64bit=%d, maxtransfer=%u", is64bit, max_phy_map);
@@ -1964,7 +1964,7 @@ STDCALL static NDIS_STATUS WRAP_EXPORT(NdisMInitializeScatterGatherDma)
 	return NDIS_STATUS_SUCCESS;
 }
 
-STDCALL static ULONG WRAP_EXPORT(NdisMGetDmaAlignment)
+STDCALL ULONG WRAP_EXPORT(NdisMGetDmaAlignment)
 	(struct ndis_handle *handle)
 {
 	TRACEENTER3("%s", "");
@@ -1975,7 +1975,7 @@ STDCALL static ULONG WRAP_EXPORT(NdisMGetDmaAlignment)
 #endif
 }
 
-STDCALL static void WRAP_EXPORT(NdisQueryBufferOffset)
+STDCALL void WRAP_EXPORT(NdisQueryBufferOffset)
 	(struct ndis_buffer *buffer, UINT *offset, UINT *length)
 {
 	TRACEENTER3("%s", "");
@@ -1983,13 +1983,13 @@ STDCALL static void WRAP_EXPORT(NdisQueryBufferOffset)
 	*length = buffer->len;
 }
 
-STDCALL static CHAR WRAP_EXPORT(NdisSystemProcessorCount)
+STDCALL CHAR WRAP_EXPORT(NdisSystemProcessorCount)
 	(void)
 {
 	return NR_CPUS;
 }
 
-STDCALL static void WRAP_EXPORT(NdisInitializeEvent)
+STDCALL void WRAP_EXPORT(NdisInitializeEvent)
 	(struct ndis_event *ndis_event)
 {
 	TRACEENTER3("%p", ndis_event);
@@ -2018,7 +2018,7 @@ STDCALL void WRAP_EXPORT(NdisSetEvent)
 	KeSetEvent(&ndis_event->kevent, 0, 0);
 }
 
-STDCALL static void WRAP_EXPORT(NdisResetEvent)
+STDCALL void WRAP_EXPORT(NdisResetEvent)
 	(struct ndis_event *ndis_event)
 {
 	TRACEENTER3("%p", ndis_event);
@@ -2141,7 +2141,7 @@ static void ndis_worker(void *data)
 	TRACEEXIT3(return);
 }
 
-STDCALL static struct ndis_io_work_item *WRAP_EXPORT(IoAllocateWorkItem)
+STDCALL struct ndis_io_work_item *WRAP_EXPORT(IoAllocateWorkItem)
 	(void *device_object)
 {
 	struct ndis_io_work_item *io_work_item;
@@ -2154,14 +2154,14 @@ STDCALL static struct ndis_io_work_item *WRAP_EXPORT(IoAllocateWorkItem)
 	return io_work_item;
 }
 
-STDCALL static void WRAP_EXPORT(IoFreeWorkItem)
+STDCALL void WRAP_EXPORT(IoFreeWorkItem)
 	(struct ndis_io_work_item *io_work_item)
 {
 	kfree(io_work_item);
 	return;
 }
 
-STDCALL static void WRAP_EXPORT(IoQueueWorkItem)
+STDCALL void WRAP_EXPORT(IoQueueWorkItem)
 	(struct ndis_io_work_item *io_work_item, void *func,
 	 enum work_queue_type queue_type, void *ctx)
 {
@@ -2190,7 +2190,7 @@ STDCALL static void WRAP_EXPORT(IoQueueWorkItem)
 	TRACEEXIT3(return);
 }
 
-STDCALL static NDIS_STATUS WRAP_EXPORT(NdisScheduleWorkItem)
+STDCALL NDIS_STATUS WRAP_EXPORT(NdisScheduleWorkItem)
 	(struct ndis_sched_work_item *ndis_sched_work_item)
 {
 	struct ndis_work_entry *ndis_work_entry;
@@ -2212,7 +2212,7 @@ STDCALL static NDIS_STATUS WRAP_EXPORT(NdisScheduleWorkItem)
 	TRACEEXIT3(return NDIS_STATUS_SUCCESS);
 }
 
-STDCALL static void WRAP_EXPORT(NdisUnchainBufferAtBack)
+STDCALL void WRAP_EXPORT(NdisUnchainBufferAtBack)
 	(struct ndis_packet *packet, struct ndis_buffer **buffer)
 {
 	struct ndis_buffer *b = packet->private.buffer_head;
@@ -2240,7 +2240,7 @@ STDCALL static void WRAP_EXPORT(NdisUnchainBufferAtBack)
 	TRACEEXIT3(return);
 }
 
-STDCALL static void WRAP_EXPORT(NdisUnchainBufferAtFront)
+STDCALL void WRAP_EXPORT(NdisUnchainBufferAtFront)
 	(struct ndis_packet *packet, struct ndis_buffer **buffer)
 {
 	struct ndis_buffer *b = packet->private.buffer_head;
@@ -2266,7 +2266,7 @@ STDCALL static void WRAP_EXPORT(NdisUnchainBufferAtFront)
 	TRACEEXIT3(return);
 }
 
-STDCALL static void WRAP_EXPORT(NdisGetFirstBufferFromPacketSafe)
+STDCALL void WRAP_EXPORT(NdisGetFirstBufferFromPacketSafe)
 	(struct ndis_packet *packet, struct ndis_buffer **buffer, void **virt,
 	 UINT *len, UINT *totlen, enum mm_page_priority priority)
 {
@@ -2280,7 +2280,7 @@ STDCALL static void WRAP_EXPORT(NdisGetFirstBufferFromPacketSafe)
 	*totlen = packet->private.len;
 }
 
-STDCALL static void WRAP_EXPORT(NdisMStartBufferPhysicalMapping)
+STDCALL void WRAP_EXPORT(NdisMStartBufferPhysicalMapping)
 	(struct ndis_handle *handle, struct ndis_buffer *buf,
 	 ULONG phy_map_reg, BOOLEAN write_to_dev,
 	 struct ndis_phy_addr_unit *phy_addr_array, UINT *array_size)
@@ -2319,7 +2319,7 @@ STDCALL static void WRAP_EXPORT(NdisMStartBufferPhysicalMapping)
 	handle->map_dma_addr[phy_map_reg] = dma_addr;
 }
 
-STDCALL static void WRAP_EXPORT(NdisMCompleteBufferPhysicalMapping)
+STDCALL void WRAP_EXPORT(NdisMCompleteBufferPhysicalMapping)
 	(struct ndis_handle *handle, struct ndis_buffer *buf,
 	 ULONG phy_map_reg)
 {
@@ -2346,7 +2346,7 @@ STDCALL static void WRAP_EXPORT(NdisMCompleteBufferPhysicalMapping)
 	handle->map_dma_addr[phy_map_reg] = 0;
 }
 
-STDCALL static NDIS_STATUS WRAP_EXPORT(NdisMRegisterDevice)
+STDCALL NDIS_STATUS WRAP_EXPORT(NdisMRegisterDevice)
 	(struct ndis_handle *handle, struct unicode_string *dev_name,
 	 struct unicode_string *sym_name, void **funcs,
 	 struct device_object **dev_object, struct ndis_handle **dev_handle)
@@ -2357,13 +2357,13 @@ STDCALL static NDIS_STATUS WRAP_EXPORT(NdisMRegisterDevice)
 	return NDIS_STATUS_SUCCESS;
 }
 
-STDCALL static NDIS_STATUS WRAP_EXPORT(NdisMDeregisterDevice)
+STDCALL NDIS_STATUS WRAP_EXPORT(NdisMDeregisterDevice)
 	(struct ndis_handle *handle)
 {
 	return NDIS_STATUS_SUCCESS;
 }
 
-STDCALL static void WRAP_EXPORT(NdisMGetDeviceProperty)
+STDCALL void WRAP_EXPORT(NdisMGetDeviceProperty)
 	(struct ndis_handle *handle, void **phy_dev, void **func_dev,
 	 void **next_dev, void **alloc_res, void**trans_res)
 {
@@ -2428,7 +2428,7 @@ STDCALL static void WRAP_EXPORT(NdisMGetDeviceProperty)
 	}
 }
 
-STDCALL static ULONG WRAP_EXPORT(NdisReadPcmciaAttributeMemory)
+STDCALL ULONG WRAP_EXPORT(NdisReadPcmciaAttributeMemory)
 	(struct ndis_handle *handle, ULONG offset, void *buffer,
 	 ULONG length)
 {
@@ -2436,7 +2436,7 @@ STDCALL static ULONG WRAP_EXPORT(NdisReadPcmciaAttributeMemory)
 	return 0;
 }
 
-STDCALL static ULONG WRAP_EXPORT(NdisWritePcmciaAttributeMemory)
+STDCALL ULONG WRAP_EXPORT(NdisWritePcmciaAttributeMemory)
 	(struct ndis_handle *handle, ULONG offset, void *buffer,
 	 ULONG length)
 {
@@ -2445,24 +2445,24 @@ STDCALL static ULONG WRAP_EXPORT(NdisWritePcmciaAttributeMemory)
 }
 
  /* Unimplemented...*/
-STDCALL static void WRAP_EXPORT(NdisMSetAttributes)(void){UNIMPL();}
-STDCALL static void WRAP_EXPORT(EthFilterDprIndicateReceiveComplete)
+STDCALL void WRAP_EXPORT(NdisMSetAttributes)(void){UNIMPL();}
+STDCALL void WRAP_EXPORT(EthFilterDprIndicateReceiveComplete)
 	(void){UNIMPL();}
-STDCALL static void WRAP_EXPORT(EthFilterDprIndicateReceive)(void){UNIMPL();}
-STDCALL static void WRAP_EXPORT(NdisMRemoveMiniport)(void) { UNIMPL(); }
-//STDCALL static void RndisMSendComplete(void) { UNIMPL(); }
-//STDCALL static void RndisMInitializeWrapper(void) { UNIMPL(); }
-STDCALL static void WRAP_EXPORT(RndisMIndicateReceive)(void) { UNIMPL(); }
+STDCALL void WRAP_EXPORT(EthFilterDprIndicateReceive)(void){UNIMPL();}
+STDCALL void WRAP_EXPORT(NdisMRemoveMiniport)(void) { UNIMPL(); }
+//STDCALL void RndisMSendComplete(void) { UNIMPL(); }
+//STDCALL void RndisMInitializeWrapper(void) { UNIMPL(); }
+STDCALL void WRAP_EXPORT(RndisMIndicateReceive)(void) { UNIMPL(); }
 
-STDCALL static void WRAP_EXPORT(NdisMCoActivateVcComplete)(void){UNIMPL();}
-STDCALL static void WRAP_EXPORT(NdisMRegisterUnloadHandler)
+STDCALL void WRAP_EXPORT(NdisMCoActivateVcComplete)(void){UNIMPL();}
+STDCALL void WRAP_EXPORT(NdisMRegisterUnloadHandler)
 	(struct ndis_handle *handle, void *unload)
 {
 	UNIMPL();
 	return;
 }
 
-STDCALL static void WRAP_EXPORT(NdisMCoDeactivateVcComplete)(void)
+STDCALL void WRAP_EXPORT(NdisMCoDeactivateVcComplete)(void)
 {
 	UNIMPL();
 	return;
