@@ -84,7 +84,6 @@ static int set_int(struct ndis_handle *handle, int oid, int data)
 }
 
 
-
 static int ndis_set_essid(struct net_device *dev,
 			    struct iw_request_info *info,
 			    union iwreq_data *wrqu, char *extra)
@@ -148,7 +147,7 @@ static int ndis_set_mode(struct net_device *dev, struct iw_request_info *info,
 		ndis_mode = 1;
 		break;	
 	default:
-		printk("%s Unknown mode %d\n", __FUNCTION__, wrqu->mode);	
+		printk(KERN_ERR "%s Unknown mode %d\n", __FUNCTION__, wrqu->mode);	
 		return -1;
 	}
 	
@@ -176,7 +175,7 @@ static int ndis_get_mode(struct net_device *dev, struct iw_request_info *info,
 		mode = IW_MODE_INFRA;
 		break;
 	default:
-		printk("%s Unknown mode\n", __FUNCTION__);
+		printk(KERN_ERR "%s Unknown mode\n", __FUNCTION__);
 		return -1;
 		break;
 	}
@@ -392,7 +391,7 @@ static int setup_dev(struct net_device *dev)
 	DBGTRACE("mac:%02x:%02x:%02x:%02x:%02x:%02x\n", mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
 	if(res)
 	{
-		printk("Unable to get MAC-addr from driver\n");
+		printk(KERN_ERR "Unable to get MAC-addr from driver\n");
 		return -1;
 	}
 
@@ -426,7 +425,7 @@ static int load_ndis_driver(int size, char *src)
 	dev = alloc_etherdev(sizeof *handle);
 	if(!dev)
 	{
-		printk("Unable to alloc etherdev\n");
+		printk(KERN_ERR "Unable to alloc etherdev\n");
 		goto out_nomem;
 	}
 	handle = dev->priv;
@@ -435,7 +434,7 @@ static int load_ndis_driver(int size, char *src)
 	handle->image = vmalloc(size);
 	if(!handle->image)
 	{
-		printk("Unable to allocate mem for driver\n");
+		printk(KERN_ERR "Unable to allocate mem for driver\n");
 		goto out_vmalloc;
 	}
 	copy_from_user(handle->image, src, size);
@@ -443,18 +442,18 @@ static int load_ndis_driver(int size, char *src)
 	handle->pci_dev = pci_find_device(pci_vendor, pci_device, handle->pci_dev);
 	if(!handle->pci_dev)
 	{
-		printk("PCI device %04x:%04x not found\n", pci_vendor, pci_device);
+		printk(KERN_ERR "PCI device %04x:%04x not found\n", pci_vendor, pci_device);
 		goto out_baddriver;
 	}
 
 	if(pci_enable_device(handle->pci_dev))
 	{
-		printk("PCI enable failed\n");
+		printk(KERN_ERR "PCI enable failed\n");
 	}
 
 	if(prepare_coffpe_image(&entry, handle->image, size))
 	{
-		printk("Unable to prepare driver\n");		
+		printk(KERN_ERR "Unable to prepare driver\n");		
 		goto out_baddriver;
 	}
 
@@ -484,7 +483,7 @@ static int load_ndis_driver(int size, char *src)
 
 	if(call_entry(handle))
 	{
-		printk("Driver entry return error\n");
+		printk(KERN_ERR "Driver entry return error\n");
 		goto out_baddriver;
 
 	}
@@ -493,7 +492,7 @@ static int load_ndis_driver(int size, char *src)
 	//test_query(handle);
 	if(setup_dev(dev))
 	{
-		printk("Unable to set up driver\n");
+		printk(KERN_ERR "Unable to set up driver\n");
 		goto out_baddriver;
 	}
 	thedev = dev;
@@ -530,12 +529,12 @@ static int misc_ioctl(struct inode *inode, struct file *file, unsigned int cmd, 
 			switch(arg)
 			{
 			default:
-				printk("Unknown test %ld\n", arg);
+				printk(KERN_ERR "Unknown test %ld\n", arg);
 				break;				
 			}
 		}
 	default:
-		printk("Unknown ioctl %08x\n", cmd);
+		printk(KERN_ERR "Unknown ioctl %08x\n", cmd);
 		return -EINVAL;
 		break;
 	}	

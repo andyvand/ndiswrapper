@@ -49,7 +49,7 @@ static struct mscoff_hdr *check_coff_hdr(void *image, int size, int offset)
 	
 	if(hdr->stdhdr.machine != COFF_MACHINE_I386)
 	{
-		printk("Not i386\n");
+		printk(KERN_ERR "Not i386\n");
 		return 0;
 	}
 
@@ -83,7 +83,7 @@ static int import(void *image, struct coffpe_import_dirent *dirent, char *dll)
 
 	for(i = 0; lookup_tbl[i]; i++) {
 		if(lookup_tbl[i] & 0x80000000) {
-			printk("ordinal import not supported: %d\n", (int) lookup_tbl[i]);
+			printk(KERN_ERR "ordinal import not supported: %d\n", (int) lookup_tbl[i]);
 			return -1;
 		}
 		else {
@@ -93,7 +93,7 @@ static int import(void *image, struct coffpe_import_dirent *dirent, char *dll)
 		adr = get_winsym(symname);
 		if(adr == 0)
 		{
-			printk("Unknown symbol: %s:%s\n", dll, symname);
+			printk(KERN_ERR "Unknown symbol: %s:%s\n", dll, symname);
 			ret = -1;
 		}
 //		printk("Importing rva %08x: %s : %s\n", (int)(&address_tbl[i]) - (int)image, dll, symname); 
@@ -140,7 +140,7 @@ static void reloc_block(void *image, cu32 blockbase, cu16 *fixups, int size, int
 		case COFF_FIXUP_ABSOLUTE:
 			break;
 		default:
-			printk("Unsupported fixup type 0x%x at offset %04x\n",
+			printk(KERN_ERR "Unsupported fixup type 0x%x at offset %04x\n",
 			       type, offset); 
 			break;
 		}
