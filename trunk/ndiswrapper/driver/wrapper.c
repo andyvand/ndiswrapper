@@ -373,7 +373,14 @@ static int ndis_set_freq(struct net_device *dev, struct iw_request_info *info,
 	unsigned int res, written, needed;
 	struct ndis_configuration req;
 
-	memset(&req, 0, sizeof(req));
+	res = doquery(handle, NDIS_OID_CONFIGURATION, (char *)&req,
+				  sizeof(req), &written, &needed);
+	if (res)
+	{
+		printk(KERN_INFO "%s: getting configuration failed (%08X)\n",
+			   dev->name, res);
+		return -EINVAL;
+	}
 	
 	if (wrqu->freq.m < 1000 && wrqu->freq.e == 0)
 	{
