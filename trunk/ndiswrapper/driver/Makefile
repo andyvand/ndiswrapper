@@ -82,7 +82,7 @@ wrapper.o: wrapper.c wrapper.h iw_ndis.h ntoskernel.h loader.h
 iw_ndis.h: ndis.h
 loader.h: ndiswrapper.h
 ndis.h: ntoskernel.h
-ntoskernel.h: ndiswrapper.h winnt_types.h winnt_pe.h
+ntoskernel.h: ndiswrapper.h winnt_types.h pe_linker.h
 usb.h: ntoskernel.h
 wrapper.h: ndis.h
 
