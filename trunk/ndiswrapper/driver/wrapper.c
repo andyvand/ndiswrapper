@@ -79,9 +79,9 @@ int doquery(struct ndis_handle *handle, unsigned int oid, char *buf, int bufsize
 {
 	int res;
 
-	down(&handle->query_mutex);
+	down(&handle->query_set_mutex);
 
-	handle->query_wait_done = 0;
+	handle->query_set_wait_done = 0;
 //	DBGTRACE("Calling query at %08x rva(%08x)\n", (int)handle->driver->miniport_char.query, (int)handle->driver->miniport_char.query - image_offset);
 	res = handle->driver->miniport_char.query(handle->adapter_ctx, oid, buf, bufsize, written, needed);
 
@@ -91,12 +91,12 @@ int doquery(struct ndis_handle *handle, unsigned int oid, char *buf, int bufsize
 	if(res != NDIS_STATUS_PENDING)
 		goto out;
 		
-	wait_event(handle->query_wqhead, (handle->query_wait_done == 1));
+	wait_event(handle->query_set_wqhead, (handle->query_set_wait_done == 1));
 	 
-	res = handle->query_wait_res;
+	res = handle->query_set_wait_res;
 
 out:
-	up(&handle->query_mutex);
+	up(&handle->query_set_mutex);
 	return res;
 	
 }
@@ -109,9 +109,9 @@ STDCALL void NdisMQueryInformationComplete(struct ndis_handle *handle, unsigned 
 {
 	DBGTRACE("%s: %08X\n", __FUNCTION__, status);
 
-	handle->query_wait_res = status;
-	handle->query_wait_done = 1;
-	wake_up(&handle->query_wqhead);
+	handle->query_set_wait_res = status;
+	handle->query_set_wait_done = 1;
+	wake_up(&handle->query_set_wqhead);
 }
 
 
@@ -123,9 +123,9 @@ int dosetinfo(struct ndis_handle *handle, unsigned int oid, char *buf, int bufsi
 {
 	int res;
 
-	down(&handle->setinfo_mutex);
+	down(&handle->query_set_mutex);
 	
-	handle->setinfo_wait_done = 0;
+	handle->query_set_wait_done = 0;
 //	DBGTRACE("Calling setinfo at %08x rva(%08x)\n", (int)handle->driver->miniport_char.setinfo, (int)handle->driver->miniport_char.setinfo - image_offset);
 	res = handle->driver->miniport_char.setinfo(handle->adapter_ctx, oid, buf, bufsize, written, needed);
 
@@ -135,12 +135,12 @@ int dosetinfo(struct ndis_handle *handle, unsigned int oid, char *buf, int bufsi
 	if(res != NDIS_STATUS_PENDING)
 		goto out;
 		
-	wait_event(handle->setinfo_wqhead, (handle->setinfo_wait_done == 1));
+	wait_event(handle->query_set_wqhead, (handle->query_set_wait_done == 1));
 		
-	res = handle->setinfo_wait_res;
+	res = handle->query_set_wait_res;
 
 out:
-	up(&handle->setinfo_mutex);
+	up(&handle->query_set_mutex);
 	return res;
 
 }
@@ -154,9 +154,9 @@ STDCALL void NdisMSetInformationComplete(struct ndis_handle *handle, unsigned in
 {
 	DBGTRACE("%s: %08X\n", __FUNCTION__, status);
 
-	handle->setinfo_wait_res = status;
-	handle->setinfo_wait_done = 1;
-	wake_up(&handle->setinfo_wqhead);
+	handle->query_set_wait_res = status;
+	handle->query_set_wait_done = 1;
+	wake_up(&handle->query_set_wqhead);
 }
 
 
@@ -815,18 +815,19 @@ static int ndis_set_scan(struct net_device *dev, struct iw_request_info *info,
 			   union iwreq_data *wrqu, char *extra)
 {
 	struct ndis_handle *handle = dev->priv;
-	unsigned int res;
+	unsigned int res = 0;
 
-	res = set_int(handle, NDIS_OID_BSSID_LIST_SCAN, 0);
-	
-	if (res)
+	if (time_before(handle->scan_timestamp + 10 * HZ, jiffies))
 	{
-		printk(KERN_ERR "%s: Scanning failed (%08X)\n", dev->name, res);
-		handle->scan_timestamp = 0;
+		res = set_int(handle, NDIS_OID_BSSID_LIST_SCAN, 0);
+		if (res)
+		{
+			printk(KERN_ERR "%s: scanning failed (%08X)\n", dev->name, res);
+			handle->scan_timestamp = 0;
+		}
+		else
+			handle->scan_timestamp = jiffies;
 	}
-	else
-		handle->scan_timestamp = jiffies;
-	
 	return res;
 }
 
@@ -842,10 +843,9 @@ static int ndis_get_scan(struct net_device *dev, struct iw_request_info *info,
 	if (!handle->scan_timestamp)
 		return -EOPNOTSUPP;
 
-	if (time_before(jiffies, handle->scan_timestamp + 3 * HZ))
+	if (time_before(jiffies, handle->scan_timestamp + 4 * HZ))
 		return -EAGAIN;
 	
-	handle->scan_timestamp = 0;
 	written = needed = 0;
 	memset(&list_scan, 0, sizeof(list_scan));
 	res = doquery(handle, NDIS_OID_BSSID_LIST, (char*)&list_scan, sizeof(list_scan), &written, &needed);
@@ -857,7 +857,7 @@ static int ndis_get_scan(struct net_device *dev, struct iw_request_info *info,
 	}
 
 	for (i = 0, cur_item = (char *)&(list_scan.items[0]) ;
-	     i < list_scan.num_items && i < MAX_SCAN_LIST_ITEMS ; i++)
+	     i < list_scan.num_items && i < IW_MAX_AP ; i++)
 	{
 		char *prev_item = cur_item ;
 		event = ndis_translate_scan(dev, event,
@@ -1721,10 +1721,8 @@ static int __devinit ndis_init_one(struct pci_dev *pdev,
 	handle->net_dev = dev;
 	pci_set_drvdata(pdev, handle);
 
-	init_MUTEX(&handle->query_mutex);
-	init_waitqueue_head(&handle->query_wqhead);
-	init_MUTEX(&handle->setinfo_mutex);
-	init_waitqueue_head(&handle->setinfo_wqhead);
+	init_MUTEX(&handle->query_set_mutex);
+	init_waitqueue_head(&handle->query_set_wqhead);
 
 	INIT_WORK(&handle->xmit_work, xmit_bh, handle); 	
 	handle->xmit_ring_lock = SPIN_LOCK_UNLOCKED;
@@ -1757,6 +1755,7 @@ static int __devinit ndis_init_one(struct pci_dev *pdev,
 	handle->pci_dev = pdev;
 
 	handle->hangcheck_interval = 2 * HZ;
+	handle->scan_timestamp = 0;
 	
 	res = pci_enable_device(pdev);
 	if(res)

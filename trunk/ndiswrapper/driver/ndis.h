@@ -414,15 +414,10 @@ struct packed ndis_handle
 	unsigned int xmit_ring_start;
 	unsigned int xmit_ring_pending;
 	
-	struct semaphore query_mutex;
-	wait_queue_head_t query_wqhead;
-	int query_wait_res;
-	int query_wait_done;
-
-	struct semaphore setinfo_mutex;
-	wait_queue_head_t setinfo_wqhead;
-	int setinfo_wait_res;
-	int setinfo_wait_done;
+	struct semaphore query_set_mutex;
+	wait_queue_head_t query_set_wqhead;
+	int query_set_wait_res;
+	int query_set_wait_done;
 
 	int use_scatter_gather;
 	int serialized_driver;
@@ -495,11 +490,10 @@ struct packed ssid_item
 	unsigned char ies[1];
 };
 
-#define MAX_SCAN_LIST_ITEMS 20
 struct packed list_scan
 {
 	unsigned long num_items;
-	struct ssid_item items[MAX_SCAN_LIST_ITEMS];
+	struct ssid_item items[IW_MAX_AP];
 };
 
 #define NDIS_ENCODE_ENABLED 0
