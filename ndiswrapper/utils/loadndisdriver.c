@@ -245,9 +245,9 @@ static void loadmod(void)
 {
 	if(!system("/sbin/modprobe ndiswrapper 2>/dev/null"))
 		return;
-	if(!system("/usr/sbin/modprobe ndiswrapper 2>/dev/nul"))
+	if(!system("/usr/sbin/modprobe ndiswrapper 2>/dev/null"))
 		return;
-	if(!system("modprobe ndiswrapper 2>/dev/nul"))
+	if(!system("modprobe ndiswrapper 2>/dev/null"))
 		return;
 }
 
