@@ -1,3 +1,11 @@
+Version 0.10 2004-08-xx
+=======================
+* Centrino 2200: works in ad-hoc mode, keyboard doesn't lock even
+  when there is no power to the card, suspend/resume works, restricted
+  mode encryption works
+* Should work with SMP
+* USB cards are supported (only Linksys WUSB54G tested with 2.6.7 kernel)
+
 Version 0.9 2004-08-05
 ======================
 * Wi-Fi Protected Access (WPA) is supported with both AES/CCMP and TKIP
