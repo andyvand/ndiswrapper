@@ -1495,9 +1495,7 @@ static int wpa_associate(struct net_device *dev,
 	TRACEENTER("%s", "");
 	copy_from_user(&wpa_assoc_info, wrqu->data.pointer,
 		       sizeof(wpa_assoc_info));
-
-	if(wpa_assoc_info.ssid)
-		copy_from_user(&ssid, wpa_assoc_info.ssid, NDIS_ESSID_MAX_SIZE);
+	copy_from_user(&ssid, wpa_assoc_info.ssid, NDIS_ESSID_MAX_SIZE);
 	
 	DBGTRACE("key_mgmt_suite = %d, pairwise_suite = %d, group_suite= %d",
 		 wpa_assoc_info.key_mgmt_suite,
@@ -1545,24 +1543,6 @@ static int wpa_associate(struct net_device *dev,
 		TRACEEXIT(return -EINVAL);
 	}
 
-	/* set channel */
-	for (i = 0; i < (sizeof(freq_chan)/sizeof(freq_chan[0])); i++)
-	{
-		if (wpa_assoc_info.freq == freq_chan[i])
-		{
-			union iwreq_data freq_req;
-
-			memset(&freq_req, 0, sizeof(freq_req));
-			freq_req.freq.m = i;
-			if (iw_set_freq(dev, NULL, &freq_req, NULL))
-				TRACEEXIT(return -EINVAL);
-		}
-	}
-
-	/* set ssid */
-	if (set_essid(handle, ssid, wpa_assoc_info.ssid_len))
-		TRACEEXIT(return -EINVAL);
-
 	/* set encryption/authentication modes until they are set */
 	for (i = 0; i < 4; i++)
 	{
@@ -1587,6 +1567,26 @@ static int wpa_associate(struct net_device *dev,
 		set_current_state(TASK_INTERRUPTIBLE);
 		schedule_timeout(HZ/100);
 	}
+
+#if 0
+	/* set channel */
+	for (i = 0; i < (sizeof(freq_chan)/sizeof(freq_chan[0])); i++)
+	{
+		if (wpa_assoc_info.freq == freq_chan[i])
+		{
+			union iwreq_data freq_req;
+
+			memset(&freq_req, 0, sizeof(freq_req));
+			freq_req.freq.m = i;
+			if (iw_set_freq(dev, NULL, &freq_req, NULL))
+				TRACEEXIT(return -EINVAL);
+		}
+	}
+#endif
+
+	/* set ssid */
+	if (set_essid(handle, ssid, wpa_assoc_info.ssid_len))
+		TRACEEXIT(return -EINVAL);
 
 	TRACEEXIT(return 0);
 }
