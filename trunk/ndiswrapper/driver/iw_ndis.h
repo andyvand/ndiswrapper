@@ -183,11 +183,11 @@ struct wpa_key {
 };
 
 struct wpa_assoc_info {
-	const char *bssid;
-	const char *ssid;
+	const u8 *bssid;
+	const u8 *ssid;
 	size_t ssid_len;
 	int freq;
-	const char *wpa_ie;
+	const u8 *wpa_ie;
 	size_t wpa_ie_len;
 	wpa_cipher pairwise_suite;
 	wpa_cipher group_suite;

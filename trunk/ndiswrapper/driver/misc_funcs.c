@@ -70,14 +70,12 @@ void wrap_kfree(void *ptr)
 
 void wrap_kfree_all(void)
 {
-	struct list_head *cur, *tmp;
-
 	TRACEENTER4("%s", "");
 	wrap_spin_lock(&wrap_allocs_lock, PASSIVE_LEVEL);
-	list_for_each_safe(cur, tmp, &wrap_allocs) {
+	while (!list_empty(&wrap_allocs)) {
 		struct wrap_alloc *alloc;
 
-		alloc = list_entry(cur, struct wrap_alloc, list);
+		alloc = list_entry(wrap_allocs.next, struct wrap_alloc, list);
 		list_del(&alloc->list);
 		kfree(alloc->ptr);
 		kfree(alloc);
@@ -283,7 +281,7 @@ NOREGPARM int WRAP_EXPORT(_wrap__vsnprintf)
 	return vsnprintf(str, size, format, ap);
 }
 
-NOREGPARM char * WRAP_EXPORT(_wrap_strncpy)
+NOREGPARM char *WRAP_EXPORT(_wrap_strncpy)
 	(char *dst, char *src, int n)
 {
 	return strncpy(dst, src, n);
@@ -457,7 +455,7 @@ STDCALL SIZE_T WRAP_EXPORT(RtlCompareMemory)
 }
 
 STDCALL long WRAP_EXPORT(RtlCompareString)
-	(const struct ustring *s1, const struct ustring *s2,
+	(const struct ansi_string *s1, const struct ansi_string *s2,
 	 BOOLEAN case_insensitive)
 {
 	unsigned int len;
@@ -481,17 +479,17 @@ STDCALL long WRAP_EXPORT(RtlCompareString)
 }
 
 STDCALL LONG WRAP_EXPORT(RtlCompareUnicodeString)
-	(const struct ustring *s1, const struct ustring *s2,
+	(const struct unicode_string *s1, const struct unicode_string *s2,
 	 BOOLEAN case_insensitive)
 {
 	unsigned int len;
-	long ret = 0;
-	const __u16 *p1, *p2;
+	LONG ret = 0;
+	const wchar_t *p1, *p2;
 
 	TRACEENTER1("%s", "");
 	len = min(s1->len, s2->len);
-	p1 = (__u16 *)s1->buf;
-	p2 = (__u16 *)s2->buf;
+	p1 = s1->buf;
+	p2 = s2->buf;
 
 	if (case_insensitive)
 		while (!ret && len--)
@@ -505,7 +503,7 @@ STDCALL LONG WRAP_EXPORT(RtlCompareUnicodeString)
 }
 
 STDCALL BOOLEAN WRAP_EXPORT(RtlEqualString)
-	(const struct ustring *s1, const struct ustring *s2,
+	(const struct ansi_string *s1, const struct ansi_string *s2,
 	 BOOLEAN case_insensitive)
 {
 	TRACEENTER1("%s", "");
@@ -515,7 +513,7 @@ STDCALL BOOLEAN WRAP_EXPORT(RtlEqualString)
 }
 
 STDCALL BOOLEAN WRAP_EXPORT(RtlEqualUnicodeString)
-	(const struct ustring *s1, const struct ustring *s2,
+	(const struct unicode_string *s1, const struct unicode_string *s2,
 	 BOOLEAN case_insensitive)
 {
 	if (s1->len != s2->len)
@@ -524,7 +522,7 @@ STDCALL BOOLEAN WRAP_EXPORT(RtlEqualUnicodeString)
 }
 
 STDCALL void WRAP_EXPORT(RtlCopyUnicodeString)
-	(struct ustring *dst, const struct ustring *src)
+	(struct unicode_string *dst, struct unicode_string *src)
 {
 	TRACEENTER1("%s", "");
 	if (src) {
@@ -540,29 +538,29 @@ STDCALL void WRAP_EXPORT(RtlCopyUnicodeString)
 }
 
 STDCALL NT_STATUS WRAP_EXPORT(RtlAnsiStringToUnicodeString)
-	(struct ustring *dst, struct ustring *src, BOOLEAN dup)
+	(struct unicode_string *dst, struct ansi_string *src, BOOLEAN dup)
 {
 	int i;
-	__u16 *d;
-	__u8 *s;
+	wchar_t *d;
+	char *s;
 
 	TRACEENTER2("dup: %d src: %s", dup, src->buf);
 	if (dup) {
-		char *buf = kmalloc((src->buflen+1) * sizeof(__u16),
-				    GFP_KERNEL);
+		wchar_t *buf = kmalloc((src->buflen+1) * sizeof(wchar_t),
+				       GFP_KERNEL);
 		if (!buf)
 			TRACEEXIT1(return NDIS_STATUS_FAILURE);
 		dst->buf = buf;
-		dst->buflen = (src->buflen+1) * sizeof(__u16);
+		dst->buflen = (src->buflen+1) * sizeof(wchar_t);
 	}
-	else if (dst->buflen < (src->len+1) * sizeof(__u16))
+	else if (dst->buflen < (src->len+1) * sizeof(wchar_t))
 		TRACEEXIT1(return NDIS_STATUS_FAILURE);
 
-	dst->len = src->len * sizeof(__u16);
-	d = (__u16 *)dst->buf;
-	s = (__u8 *)src->buf;
-	for (i = 0; i < src->len; i++)
-		d[i] = (__u16)s[i];
+	dst->len = src->len * sizeof(wchar_t);
+	d = dst->buf;
+	s = src->buf;
+	for(i = 0; i < src->len; i++)
+		d[i] = s[i];
 
 	d[i] = 0;
 
@@ -571,29 +569,30 @@ STDCALL NT_STATUS WRAP_EXPORT(RtlAnsiStringToUnicodeString)
 }
 
 STDCALL NT_STATUS WRAP_EXPORT(RtlUnicodeStringToAnsiString)
-	(struct ustring *dst, struct ustring *src, BOOLEAN dup)
+	(struct ansi_string *dst, struct unicode_string *src, BOOLEAN dup)
 {
 	int i;
-	__u16 *s;
-	__u8 *d;
+	wchar_t *s;
+	char *d;
 
-	TRACEENTER2("dup: %d src->len: %d src->buflen: %d, src->buf: %s,"
-		    " dst: %p", dup, src->len, src->buflen, src->buf, dst);
+	TRACEENTER2("dup: %d src->len: %d src->buflen: %d, src->buf: %p,"
+		    "dst: %p", dup, src->len, src->buflen, src->buf, dst);
+
 	if (dup) {
-		char *buf = kmalloc((src->buflen+1) / sizeof(__u16),
+		char *buf = kmalloc((src->buflen+1) / sizeof(wchar_t),
 				    GFP_KERNEL);
 		if (!buf)
 			return NDIS_STATUS_FAILURE;
 		dst->buf = buf;
-		dst->buflen = (src->buflen+1) / sizeof(__u16);
-	} else if (dst->buflen < (src->len+1) / sizeof(__u16))
+		dst->buflen = (src->buflen+1) / sizeof(wchar_t);
+	} else if (dst->buflen < (src->len+1) / sizeof(wchar_t))
 		return NDIS_STATUS_FAILURE;
 
-	dst->len = src->len / sizeof(__u16);
-	s = (__u16 *)src->buf;
-	d = (__u8 *)dst->buf;
-	for (i = 0; i < dst->len; i++)
-		d[i] = (__u8)s[i];
+	dst->len = src->len / sizeof(wchar_t);
+	s = src->buf;
+	d = dst->buf;
+	for(i = 0; i < dst->len; i++)
+		d[i] = s[i];
 	d[i] = 0;
 
 	DBGTRACE2("len = %d", dst->len);
@@ -602,16 +601,16 @@ STDCALL NT_STATUS WRAP_EXPORT(RtlUnicodeStringToAnsiString)
 }
 
 STDCALL NT_STATUS WRAP_EXPORT(RtlUnicodeStringToInteger)
-	(struct ustring *ustring, ULONG base, ULONG *value)
+	(struct unicode_string *ustring, ULONG base, ULONG *value)
 {
 	int negsign;
-	__u16 *str;
+	wchar_t *str;
 
 	*value = 0;
 	if (ustring->buflen <= 0)
 		return STATUS_INVALID_PARAMETER;
 
-	str = (__u16 *)ustring->buf;
+	str = ustring->buf;
 
 	negsign = 0;
 	switch (((char)*str)) {
@@ -667,10 +666,10 @@ STDCALL NT_STATUS WRAP_EXPORT(RtlUnicodeStringToInteger)
 }
 
 STDCALL NT_STATUS WRAP_EXPORT(RtlIntegerToUnicodeString)
-	(ULONG value, ULONG base, struct ustring *ustring)
+	(ULONG value, ULONG base, struct unicode_string *ustring)
 {
-	char string[sizeof(unsigned long) * 8 + 1];
-	struct ustring ansi;
+	char string[sizeof(wchar_t) * 8 + 1];
+	struct ansi_string ansi;
 	int i;
 
 	TRACEENTER1("%s", "");
@@ -700,9 +699,9 @@ STDCALL NT_STATUS WRAP_EXPORT(RtlIntegerToUnicodeString)
 }
 
 STDCALL void WRAP_EXPORT(RtlInitUnicodeString)
-	(struct ustring *dest, __u16 *src)
+	(struct unicode_string *dest, wchar_t *src)
 {
-	struct ustring *uc;
+	struct unicode_string *uc;
 
 	TRACEENTER1("%s", "");
 	uc = dest;
@@ -715,14 +714,14 @@ STDCALL void WRAP_EXPORT(RtlInitUnicodeString)
 		int i = 0;
 		while (src[i])
 			i++;
-		dest->buf = (char *)src;
+		dest->buf = src;
 		dest->len = dest->buflen = i * 2;
 	}
 	TRACEEXIT1(return);
 }
 
 STDCALL void WRAP_EXPORT(RtlInitAnsiString)
-	(struct ustring *dst, CHAR *src)
+	(struct ansi_string *dst, CHAR *src)
 {
 	TRACEENTER2("%s", "");
 	if (dst == NULL)
@@ -733,11 +732,11 @@ STDCALL void WRAP_EXPORT(RtlInitAnsiString)
 		TRACEEXIT2(return);
 	}
 	dst->len = dst->buflen = strlen(src);
-	dst->buf = src;
+	dst->buf = (char *)src;
 	TRACEEXIT2(return);
 }
 
-STDCALL void WRAP_EXPORT(RtlFreeUnicodeString)(struct ustring *string)
+STDCALL void WRAP_EXPORT(RtlFreeUnicodeString)(struct unicode_string *string)
 {
 	if (string == NULL || string->buf == NULL)
 		return;
@@ -748,7 +747,7 @@ STDCALL void WRAP_EXPORT(RtlFreeUnicodeString)(struct ustring *string)
 	return;
 }
 
-STDCALL void WRAP_EXPORT(RtlFreeAnsiString)(struct ustring *string)
+STDCALL void WRAP_EXPORT(RtlFreeAnsiString)(struct ansi_string *string)
 {
 	if (string == NULL || string->buf == NULL)
 		return;
@@ -762,7 +761,7 @@ STDCALL void WRAP_EXPORT(RtlFreeAnsiString)(struct ustring *string)
 static void WRAP_EXPORT(RtlUnwind)(void){UNIMPL();}
 
 STDCALL static NT_STATUS WRAP_EXPORT(RtlQueryRegistryValues)
-	(ULONG  relative, char *path, void *tbl,
+	(ULONG relative, wchar_t *path, void *tbl,
 	 void *context, void *env)
 {
 	TRACEENTER5("%s", "");
@@ -824,7 +823,8 @@ void dump_bytes(const char *where, const u8 *ip)
 	memset(code, 0, sizeof(code));
 	for (i = j = 0; i < 16; i++, j += 3) {
 		if (j+3 > sizeof(code))
-			ERROR("not enough space: %u > %u", j+3, (unsigned int)sizeof(code));
+			ERROR("not enough space: %u > %u", j+3,
+			      (unsigned int)sizeof(code));
 		else
 			sprintf(&code[j], "%02x ", ip[i]);
 	}

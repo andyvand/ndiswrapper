@@ -408,7 +408,7 @@ struct ndis_config_param {
 	enum ndis_config_param_type type;
 	union {
 		unsigned long intval;
-		struct ustring ustring;
+		struct unicode_string ustring;
 		struct ndis_binary_data binary_data;
 	} data;
 };
@@ -641,7 +641,7 @@ struct ndis_event {
 
 struct ndis_bind_paths {
 	UINT number;
-	struct ustring paths[1];
+	struct unicode_string paths[1];
 };
 
 struct ndis_reference {
@@ -687,7 +687,7 @@ struct packed ndis_handle {
 	struct ndis_handle *next;
 	struct ndis_driver *driver;
 	void *adapter_ctx;
-	struct ustring name;
+	struct unicode_string name;
 	struct ndis_bind_paths *bindpaths;
 	void *openqueue;
 	struct ndis_reference reference;
@@ -712,8 +712,8 @@ struct packed ndis_handle {
 	ULONG pnp_capa;
 	void *resources;
 	struct ndis_timer wakeup_dpc_timer;
-	struct ustring basename;
-	struct ustring symlink_name;
+	struct unicode_string basename;
+	struct unicode_string symlink_name;
 	ULONG ndis_hangcheck_interval;
 	USHORT hanghcheck_ticks;
 	USHORT hangcheck_tick;
@@ -740,7 +740,7 @@ struct packed ndis_handle {
 	USHORT max_send_pkts;
 	UINT fake_status;
 	void *lock_handler;
-	struct ustring *adapter_instance_name;
+	struct unicode_string *adapter_instance_name;
 	void *timer_queue;
 	UINT mac_options;
 	void *pending_req;
@@ -899,18 +899,18 @@ STDCALL void NdisMTransferDataComplete(struct ndis_handle *handle,
 				       UINT bytes_txed);
 STDCALL void NdisWriteConfiguration(NDIS_STATUS *status,
 				    struct ndis_handle *handle,
-				    struct ustring *key,
+				    struct unicode_string *key,
 				    struct ndis_config_param *val);
 
-STDCALL NT_STATUS RtlUnicodeStringToAnsiString(struct ustring *dst,
-					       struct ustring *src,
+STDCALL NT_STATUS RtlUnicodeStringToAnsiString(struct ansi_string *dst,
+					       struct unicode_string *src,
 					       BOOLEAN dup);
-STDCALL NT_STATUS RtlAnsiStringToUnicodeString(struct ustring *dst,
-					       struct ustring *src,
+STDCALL NT_STATUS RtlAnsiStringToUnicodeString(struct unicode_string *dst,
+					       struct ansi_string *src,
 					       BOOLEAN dup);
-STDCALL void RtlInitAnsiString(struct ustring *dst, CHAR *src);
-STDCALL void RtlFreeUnicodeString(struct ustring *string);
-STDCALL void RtlFreeAnsiString(struct ustring *string);
+STDCALL void RtlInitAnsiString(struct ansi_string *dst, CHAR *src);
+STDCALL void RtlFreeUnicodeString(struct unicode_string *string);
+STDCALL void RtlFreeAnsiString(struct ansi_string *string);
 
 void *get_sp(void);
 int ndis_init(void);

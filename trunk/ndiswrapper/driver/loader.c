@@ -575,10 +575,12 @@ static void unload_ndis_device(struct ndis_device *device)
 		    device->subdevice, device->driver_name);
 
 	while (!list_empty(&device->settings)) {
-		struct device_setting *setting =
-			(struct device_setting *)device->settings.next;
-		struct ndis_config_param *param =
-			&setting->config_param;
+		struct device_setting *setting;
+		struct ndis_config_param *param;
+
+		setting = list_entry(device->settings.next,
+				     struct device_setting, list);
+		param = &setting->config_param;
 		if (param->type == NDIS_CONFIG_PARAM_STRING)
 			RtlFreeUnicodeString(&param->data.ustring);
 		list_del(&setting->list);
@@ -610,17 +612,19 @@ static void unload_ndis_driver(struct ndis_driver *driver)
 static int start_driver(struct ndis_driver *driver)
 {
 	int i, ret, res;
-	struct ustring reg_string;
+	struct unicode_string reg_string;
 	char *reg_path = "\0\0t0m0p0";
 
 	TRACEENTER1("");
 
-	reg_string.buf = reg_path;
+	reg_string.buf = (wchar_t *)reg_path;
+
 	reg_string.buflen = reg_string.len = strlen(reg_path);
 	for (ret = res = 0, i = 0; i < driver->num_pe_images; i++)
 		/* dlls are already started by loader */
 		if (driver->pe_images[i].type == COFF_CHAR_IMAGE) {
-			UINT (*entry)(void *obj, struct ustring *p2) STDCALL;
+			UINT (*entry)(void *obj,
+				      struct unicode_string *p2) STDCALL;
 
 			entry = driver->pe_images[i].entry;
 			DBGTRACE1("entry: %p, %p", entry, *entry);
@@ -631,7 +635,7 @@ static int start_driver(struct ndis_driver *driver)
 				  driver->miniport_char.majorVersion,
 				  driver->miniport_char.minorVersion);
 		}
-	
+
 	if (ret) {
 		ERROR("driver initialization failed: %08X", ret);
 		TRACEEXIT1(return -EINVAL);
@@ -936,7 +940,6 @@ int loader_init(void)
 
 void loader_exit(void)
 {
-	struct list_head *cur, *tmp;
 	int i;
 
 	TRACEENTER1("");
@@ -958,10 +961,11 @@ void loader_exit(void)
 		vfree(ndis_devices);
 	}
 
-	list_for_each_safe(cur, tmp, &ndis_drivers) {
+	while (!list_empty(&ndis_drivers)) {
 		struct ndis_driver *driver;
 
-		driver = list_entry(cur, struct ndis_driver, list);
+		driver = list_entry(ndis_drivers.next,
+				    struct ndis_driver, list);
 		list_del(&driver->list);
 		unload_ndis_driver(driver);
 	}

@@ -1139,7 +1139,8 @@ STDCALL NT_STATUS WRAP_EXPORT(IoGetDeviceProperty)
 	 enum device_registry_property dev_property,
 	 ULONG buffer_len, void *buffer, ULONG *result_len)
 {
-	struct ustring ansi, unicode;
+	struct ansi_string ansi;
+	struct unicode_string unicode;
 	struct ndis_handle *handle;
 	char buf[32];
 

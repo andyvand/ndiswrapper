@@ -403,12 +403,13 @@ int load_pe_images(struct pe_image *pe_image, int n)
 		opt_hdr = &nt_hdr->opt_hdr;
 
 		if (pe_image[i].type == COFF_CHAR_DLL) {
-			struct ustring ustring;
-			char *buf = "0\0t0m0p00";
-			int (*dll_entry)(struct ustring *ustring) STDCALL;
+			struct unicode_string ustring;
+			char *buf = "0/0/0t0m0p00";
+			int (*dll_entry)(struct unicode_string *ustring)
+				STDCALL;
 
 			memset(&ustring, 0, sizeof(ustring));
-			ustring.buf = buf;
+			ustring.buf = (wchar_t *)buf;
 			dll_entry = (void *)get_dll_init(pe_image[i].name);
 
 			DBGTRACE1("calling dll_init at %p", dll_entry);
