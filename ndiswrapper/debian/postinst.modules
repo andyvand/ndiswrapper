@@ -2,6 +2,5 @@
 set -e
 
 if [ `uname -r` = #KVERS# ] ; then
-    echo "Executing depmod -a"
     depmod -a
 fi
