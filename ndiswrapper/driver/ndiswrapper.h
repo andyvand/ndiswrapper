@@ -97,6 +97,41 @@ typedef task_queue workqueue;
 #define HAVE_ETHTOOL 1
 #endif
 
+#if LINUX_VERSION_CODE <= KERNEL_VERSION(2,6,0)
+#undef __wait_event_interruptible_timeout
+#undef wait_event_interruptible_timeout
+#define __wait_event_interruptible_timeout(wq, condition, ret)		\
+do {									\
+	wait_queue_t __wait;						\
+	init_waitqueue_entry(&__wait, current);				\
+									\
+	add_wait_queue(&wq, &__wait);					\
+	for (;;) {							\
+		set_current_state(TASK_INTERRUPTIBLE);			\
+		if (condition)						\
+			break;						\
+		if (!signal_pending(current)) {				\
+			ret = schedule_timeout(ret);			\
+			if (!ret)					\
+				break;					\
+			continue;					\
+		}							\
+		ret = -ERESTARTSYS;					\
+		break;							\
+	}								\
+	current->state = TASK_RUNNING;					\
+	remove_wait_queue(&wq, &__wait);				\
+} while (0)
+
+#define wait_event_interruptible_timeout(wq, condition, timeout)	\
+({									\
+	long __ret = timeout;						\
+	if (!(condition))						\
+		__wait_event_interruptible_timeout(wq, condition, __ret); \
+	__ret;								\
+})
+#endif // LINUX_VERSION_CODE <= KERNEL_VERSION(2,6,0)
+
 /* Interrupt backwards compatibility stuff */
 #include <linux/interrupt.h>
 #ifndef IRQ_HANDLED
@@ -113,7 +148,7 @@ typedef task_queue workqueue;
 
 #define TICKSPERSEC             10000000
 #define SECSPERDAY              86400
- 
+
 /* 1601 to 1970 is 369 years plus 89 leap days */
 #define SECS_1601_TO_1970       ((369 * 365 + 89) * (u64)SECSPERDAY)
 #define TICKS_1601_TO_1970      (SECS_1601_TO_1970 * TICKSPERSEC)
