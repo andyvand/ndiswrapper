@@ -1,8 +1,8 @@
-DRV_VERSION="$(shell cat ../version)"
+-include ../version
 
 loadndisdriver_OBJS = loadndisdriver.o
 
-CFLAGS = -Wall -g -DDRV_VERSION=\"$(DRV_VERSION)\" 
+CFLAGS = -Wall -g -DNDISWRAPPER_VERSION=\"$(NDISWRAPPER_VERSION)\" 
 
 DISTFILES=Makefile ndiswrapper loadndisdriver.c ndiswrapper-buginfo
 

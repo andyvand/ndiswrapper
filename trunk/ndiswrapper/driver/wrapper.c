@@ -38,7 +38,7 @@
 #include "ndis.h"
 #include "iw_ndis.h"
 
-#ifndef DRV_VERSION
+#ifndef NDISWRAPPER_VERSION
 #error You must run make from the toplevel directory
 #endif
 
@@ -2182,15 +2182,15 @@ void module_cleanup(void)
 static int __init wrapper_init(void)
 {
 #if defined DEBUG && DEBUG >= 1
-	char *argv[] = {"loadndisdriver", "1", DRV_VERSION, "-a", 0};
+	char *argv[] = {"loadndisdriver", "1", NDISWRAPPER_VERSION, "-a", 0};
 #else
-	char *argv[] = {"loadndisdriver", "0", DRV_VERSION, "-a", 0};
+	char *argv[] = {"loadndisdriver", "0", NDISWRAPPER_VERSION, "-a", 0};
 #endif
 	char *env[] = {0};
 	int err;
 
-	printk(KERN_INFO "%s version %s loaded (preempt=%s,smp=%s)\n",
-	       DRV_NAME, DRV_VERSION,
+	printk(KERN_INFO "%s version %s%s loaded (preempt=%s,smp=%s)\n",
+	       DRV_NAME, NDISWRAPPER_VERSION, EXTRA_VERSION,
 #if defined CONFIG_PREEMPT
 	       "yes",
 #else

@@ -21,11 +21,12 @@ kplevel := $(shell echo $(KVERS) | sed 's/[^\.]*\.\([^\.]*\)\..*/\1/')
 MODDIR = ..
 
 NDISSRC = $(shell pwd)
-NDISVERS = $(shell cat $(NDISSRC)/version)
 MAINT = Giridhar Pemmasani
 MAINTEMAIL = pgiri@users.sourceforge.net
 DRIVERSRC = $(NDISSRC)/driver
 UTILSSRC = $(NDISSRC)/utils
+
+-include $(NDISSRC)/version
 
 kdist_image:
 	$(MAKE) $(MFLAGS) -f debian/rules binary-modules
@@ -74,11 +75,11 @@ check-perms:
 	dh_testroot
 
 build-modules-prep:
-	sed -e 's/#KVERS#/$(KVERS)/g' -e 's/#NDISVERS#/$(NDISVERS)/g' \
+	sed -e 's/#KVERS#/$(KVERS)/g' -e 's/#NDISVERS#/$(NDISWRAPPER_VERSION)/g' \
 		-e 's/#DATE#/'"`date --rfc-822`"'/g' \
 		-e 's/#MAINT#/$(MAINT) <$(MAINTEMAIL)>/g' \
 		debian/changelog.template > debian/changelog
-	sed -e 's/#KVERS#/$(KVERS)/' -e 's/#NDISVERS#/$(NDISVERS)/' \
+	sed -e 's/#KVERS#/$(KVERS)/' -e 's/#NDISVERS#/$(NDISWRAPPER_VERSION)/' \
 		debian/control.modules > debian/control
 	sed -e 's/#KVERS#/$(KVERS)/' debian/postinst.modules > debian/postinst
 
@@ -106,11 +107,11 @@ clean-modules: build-modules-prep
 	dh_clean
 
 build-utils-prep:
-	sed -e 's/-#KVERS#//g' -e 's/#NDISVERS#/$(NDISVERS)/g' \
+	sed -e 's/-#KVERS#//g' -e 's/#NDISVERS#/$(NDISWRAPPER_VERSION)/g' \
 		-e 's/#DATE#/'"`date --rfc-822`"'/g' \
 		-e 's/#MAINT#/$(MAINT) <$(MAINTEMAIL)>/g' \
 		debian/changelog.template > debian/changelog
-	sed -e 's/#NDISVERS#/$(NDISVERS)/' \
+	sed -e 's/#NDISVERS#/$(NDISWRAPPER_VERSION)/' \
 		-e 's/#MAINT#/$(MAINT) <$(MAINTEMAIL)>/g' \
 		debian/control.utils > debian/control
 	echo "utils/loadndisdriver /sbin" > debian/ndiswrapper-utils.install
@@ -134,11 +135,11 @@ clean-utils: build-utils-prep
 	dh_clean
 
 build-source-prep:
-	sed -e 's/-#KVERS#//g' -e 's/#NDISVERS#/$(NDISVERS)/g' \
+	sed -e 's/-#KVERS#//g' -e 's/#NDISVERS#/$(NDISWRAPPER_VERSION)/g' \
 		-e 's/#DATE#/'"`date --rfc-822`"'/g' \
 		-e 's/#MAINT#/$(MAINT) <$(MAINTEMAIL)>/g' \
 		debian/changelog.template > debian/changelog
-	sed -e 's/#NDISVERS#/$(NDISVERS)/' \
+	sed -e 's/#NDISVERS#/$(NDISWRAPPER_VERSION)/' \
 		-e 's/#MAINT#/$(MAINT) <$(MAINTEMAIL)>/g' \
 		debian/control.source > debian/control
 	echo "ndiswrapper-source.tar.gz /usr/src" \

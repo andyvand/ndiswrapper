@@ -1,6 +1,6 @@
 Summary: ndiswrapper allows you to use windows XP drivers for that WLAN card without proper Linux drivers.
 Name: ndiswrapper
-Version: DRV_VERSION
+Version: NDISWRAPPER_VERSION
 Release: 1
 License: GPL
 Group: System Environment/Base
@@ -18,7 +18,7 @@ just the userspace tools. You will also need the kernel module rpm.
 %package kernel-%(uname -r)
 Summary: Ndiswrapper kernel module
 Group: System Environment/Base
-Requires: kernel = %(uname -r), ndiswrapper = DRV_VERSION
+Requires: kernel = %(uname -r), ndiswrapper = NDISWRAPPER_VERSION
 
 %description kernel-%(uname -r)
 Kernel module for ndiswrapper.
