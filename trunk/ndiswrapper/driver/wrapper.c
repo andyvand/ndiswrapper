@@ -974,6 +974,11 @@ static int ndis_close(struct net_device *dev)
 }
 
 
+/*
+ * doquery (or query_int) may not be called from this function as
+ * it might sleep which is not allowed from the context this function
+ * is running in.
+ */
 static struct net_device_stats *ndis_get_stats(struct net_device *dev)
 {
 	struct ndis_handle *handle = dev->priv;
