@@ -47,7 +47,6 @@
  * but seem to work fine with dma functions
  */
 typedef struct workqueue_struct *workqueue;
-#define new_workqueue(queue, name) (queue) = create_workqueue(name)
 #include <asm/dma-mapping.h>
 #define PCI_DMA_ALLOC_COHERENT(pci_dev,size,dma_handle) \
 	dma_alloc_coherent(&pci_dev->dev,size,dma_handle,GFP_KERNEL|__GFP_DMA)
@@ -72,11 +71,6 @@ typedef struct workqueue_struct *workqueue;
 #define schedule_work schedule_task
 #define flush_scheduled_work flush_scheduled_tasks
 typedef task_queue workqueue;
-#define new_workqueue(queue, name) DECLARE_TASK_QUEUE(queue)
-#define queue_work(queue, work) do { \
-		queue_task(&queue, work); \
-		run_task_queue(&queue); \
-	} while (0)
 #include <linux/smp_lock.h>
 #ifdef CONFIG_PREEMPT
 #define in_atomic() ((preempt_get_count() & ~PREEMPT_ACTIVE) != kernel_locked())
@@ -189,5 +183,56 @@ void wrap_kfree_all(void);
 
 #define MAC2STR(a) (a)[0], (a)[1], (a)[2], (a)[3], (a)[4], (a)[5]
 #define MACSTR "%02x:%02x:%02x:%02x:%02x:%02x"
+
+#define NDIS_SPIN_LOCK_MAGIC 137
+
+struct packed wrap_spinlock
+{
+	spinlock_t spinlock;
+	unsigned short magic;
+	unsigned short in_bh;
+	atomic_t in_use;
+};
+
+static inline void wrap_spin_lock_init(struct wrap_spinlock *lock)
+{
+	spin_lock_init(&lock->spinlock);
+	lock->magic = NDIS_SPIN_LOCK_MAGIC;
+	atomic_set(&lock->in_use, 0);
+}
+
+static inline void wrap_spin_lock(struct wrap_spinlock *lock)
+{
+	if (lock->magic != NDIS_SPIN_LOCK_MAGIC)
+		WARNING("lock %p is not initlialized (%d)", lock, lock->magic);
+	if (atomic_read(&lock->in_use) == 1)
+		WARNING("lock %p is already locked", lock);
+
+	if (in_atomic() || irqs_disabled())
+	{
+		spin_lock(&lock->spinlock);
+		lock->in_bh = 0;
+	}
+	else
+	{
+		spin_lock_bh(&lock->spinlock);
+		lock->in_bh = 1;
+	}
+	atomic_set(&lock->in_use, 1);
+}
+
+static inline void wrap_spin_unlock(struct wrap_spinlock *lock)
+{
+	if (lock->magic != NDIS_SPIN_LOCK_MAGIC)
+		WARNING("lock %p is not initlialized (%d)", lock, lock->magic);
+	if (atomic_read(&lock->in_use) == 0)
+		WARNING("lock %p was not locked", lock);
+
+	atomic_set(&lock->in_use, 0);
+	if (lock->in_bh)
+		spin_unlock_bh(&lock->spinlock);
+	else
+		spin_unlock(&lock->spinlock);
+}
 
 #endif // NDISWRAPPER_H

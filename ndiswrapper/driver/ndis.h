@@ -205,18 +205,9 @@ struct ndis_irq
 	unsigned char req_isr;
 };
 
-#define NDIS_SPIN_LOCK_MAGIC 137
-
-struct packed linux_lock
-{
-	spinlock_t spinlock;
-	unsigned short magic;
-	atomic_t use;
-};
-
 struct ndis_spin_lock
 {
-	struct linux_lock *linux_lock;
+	struct wrap_spinlock *wrap_spinlock;
 	KIRQL kirql;
 };
 
@@ -510,15 +501,15 @@ struct packed ndis_handle
 	struct ndis_device *device;
 
 	struct work_struct xmit_work;
-	spinlock_t xmit_ring_lock;
+	struct wrap_spinlock xmit_ring_lock;
 	struct ndis_buffer *xmit_ring[XMIT_RING_SIZE];
 	unsigned int xmit_ring_start;
 	unsigned int xmit_ring_pending;
 	
 	int send_status;
 	struct ndis_packet *send_packet;
-	spinlock_t send_packet_lock;
-	spinlock_t send_packet_done_lock;
+	struct wrap_spinlock send_packet_lock;
+	struct wrap_spinlock send_packet_done_lock;
 
 	struct semaphore ndis_comm_mutex;
 	wait_queue_head_t ndis_comm_wqhead;
@@ -558,11 +549,8 @@ struct packed ndis_handle
 	enum op_mode op_mode;
 
 	struct list_head recycle_packets;
-	spinlock_t recycle_packets_lock;
+	struct wrap_spinlock recycle_packets_lock;
 	struct work_struct recycle_packets_work;
-
-	/* generic work queue */
-	workqueue ndis_wq;
 
 	/* List of initialized timers */
 	struct list_head timers;

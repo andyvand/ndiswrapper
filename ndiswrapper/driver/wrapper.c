@@ -70,17 +70,19 @@ MODULE_PARM_DESC(hangcheck_interval, "The interval, in seconds, for checking if 
 LIST_HEAD(ndis_driverlist);
 
 /* Protects driver list */
-static spinlock_t driverlist_lock = SPIN_LOCK_UNLOCKED;
+static struct wrap_spinlock driverlist_lock;
 
 extern int image_offset;
 
 extern struct list_head wrap_allocs;
+extern struct wrap_spinlock wrap_allocs_lock;
 
 void ndis_set_rx_mode(struct net_device *dev);
 
 int doreset(struct ndis_handle *handle)
 {
 	int res = 0;
+	struct miniport_char *miniport = &handle->driver->miniport_char;
 
 	TRACEENTER3("%s", "");
 
@@ -92,8 +94,7 @@ int doreset(struct ndis_handle *handle)
 
 	handle->reset_status = 0;
 //	handle->ndis_comm_done = 0;
-	res = handle->driver->miniport_char.reset(&handle->reset_status,
-						  handle->adapter_ctx);
+	res = miniport->reset(&handle->reset_status, handle->adapter_ctx);
 	if (!res)
 		goto out;
 
@@ -131,21 +132,25 @@ out:
  * Perform a sync query and deal with the possibility of an async operation.
  * This function must be called from process context as it will sleep.
  */
-int doquery(struct ndis_handle *handle, unsigned int oid, char *buf, int bufsize, unsigned int *written , unsigned int *needed)
+int doquery(struct ndis_handle *handle, unsigned int oid, char *buf,
+	    int bufsize, unsigned int *written , unsigned int *needed)
 {
 	int res;
+	struct miniport_char *miniport = &handle->driver->miniport_char;
 
-	TRACEENTER3("Calling query at %08x rva(%08x)", (int)handle->driver->miniport_char.query, (int)handle->driver->miniport_char.query - image_offset);
+	TRACEENTER3("Calling query at %p rva(%08x)",
+		    miniport->query, (int)miniport->query - image_offset);
 
 	if (down_interruptible(&handle->ndis_comm_mutex))
 		TRACEEXIT3(return NDIS_STATUS_FAILURE);
 
 //	handle->ndis_comm_done = 0;
-	res = handle->driver->miniport_char.query(handle->adapter_ctx, oid, buf, bufsize, written, needed);
-	if(!res)
+	res = miniport->query(handle->adapter_ctx, oid, buf, bufsize,
+			      written, needed);
+	if (!res)
 		goto out;
 
-	if(res != NDIS_STATUS_PENDING)
+	if (res != NDIS_STATUS_PENDING)
 		goto out;
 		
 //	if (wait_event_interruptible(handle->ndis_comm_wqhead,
@@ -165,21 +170,25 @@ out:
  * Perform a sync setinfo and deal with the possibility of an async operation.
  * This function must be called from process context as it will sleep.
  */
-int dosetinfo(struct ndis_handle *handle, unsigned int oid, char *buf, int bufsize, unsigned int *written , unsigned int *needed)
+int dosetinfo(struct ndis_handle *handle, unsigned int oid, char *buf,
+	      int bufsize, unsigned int *written , unsigned int *needed)
 {
 	int res;
+	struct miniport_char *miniport = &handle->driver->miniport_char;
 
-	TRACEENTER3("Calling setinfo at %08x rva(%08x)", (int)handle->driver->miniport_char.setinfo, (int)handle->driver->miniport_char.setinfo - image_offset);
+	TRACEENTER3("Calling setinfo at %p rva(%08x)",
+		    miniport->setinfo, (int)miniport->setinfo - image_offset);
 
 	if (down_interruptible(&handle->ndis_comm_mutex))
 		TRACEEXIT3(return NDIS_STATUS_FAILURE);
 
 //	handle->ndis_comm_done = 0;
-	res = handle->driver->miniport_char.setinfo(handle->adapter_ctx, oid, buf, bufsize, written, needed);
-	if(!res)
+	res = miniport->setinfo(handle->adapter_ctx, oid, buf, bufsize,
+			       written, needed);
+	if (!res)
 		goto out;
 
-	if(res != NDIS_STATUS_PENDING)
+	if (res != NDIS_STATUS_PENDING)
 		goto out;
 		
 //	if (wait_event_interruptible(handle->ndis_comm_wqhead,
@@ -204,8 +213,9 @@ int query_int(struct ndis_handle *handle, int oid, int *data)
 {
 	unsigned int res, written, needed;
 
-	res = doquery(handle, oid, (char*)data, sizeof(int), &written, &needed);
-	if(!res)
+	res = doquery(handle, oid, (char*)data, sizeof(int),
+		      &written, &needed);
+	if (!res)
 		return 0;
 	*data = 0;
 	return res;
@@ -219,7 +229,8 @@ int set_int(struct ndis_handle *handle, int oid, int data)
 {
 	unsigned int written, needed;
 
-	return dosetinfo(handle, oid, (char*)&data, sizeof(int), &written, &needed);
+	return dosetinfo(handle, oid, (char*)&data, sizeof(int),
+			 &written, &needed);
 }
 
 static u32 ndis_get_link(struct net_device *dev)
@@ -240,26 +251,25 @@ static int call_init(struct ndis_handle *handle)
 	__u32 res, res2;
 	__u32 selected_medium;
 	__u32 mediumtypes[] = {0,1,2,3,4,5,6,7,8,9,10,11,12};
+	struct miniport_char *miniport = &handle->driver->miniport_char;
 
-	TRACEENTER1("Calling NDIS driver init routine at %08X rva(%08X)",
-		    (int)handle->driver->miniport_char.init,
-		    (int)handle->driver->miniport_char.init - image_offset);
-	res = handle->driver->miniport_char.init(&res2, &selected_medium,
-						 mediumtypes, 13, handle,
-						 handle);
+	TRACEENTER1("Calling NDIS driver init routine at %p rva(%08X)",
+		    miniport->init, (int)miniport->init - image_offset);
+	res = miniport->init(&res2, &selected_medium, mediumtypes, 13, handle,
+			     handle);
 	DBGTRACE1("init returns %08X", res);
 	return res != 0;
 }
 
 static void call_halt(struct ndis_handle *handle)
 {
-	TRACEENTER1("Calling NDIS driver halt at %08X rva(%08X)",
-		    (int)handle->driver->miniport_char.halt,
-		    (int)handle->driver->miniport_char.halt - image_offset);
+	struct miniport_char *miniport = &handle->driver->miniport_char;
+	TRACEENTER1("Calling NDIS driver halt at %p rva(%08X)",
+		    miniport->halt, (int)miniport->halt - image_offset);
 
 	set_int(handle, NDIS_OID_PNP_SET_POWER, NDIS_PM_STATE_D3);
 
-	handle->driver->miniport_char.halt(handle->adapter_ctx);
+	miniport->halt(handle->adapter_ctx);
 	pci_set_power_state(handle->pci_dev, 3);
 	TRACEEXIT1(return);
 }
@@ -302,7 +312,8 @@ static unsigned int call_entry(struct ndis_driver *driver)
 		
 		for(i = 0; i < 16; i++)
 		{
-			DBGTRACE1("%08X (rva %08X):%s", adr[i], adr[i]?adr[i] - image_offset:0, name[i]); 
+			DBGTRACE1("%08X (rva %08X):%s", adr[i],
+				  adr[i]?adr[i] - image_offset:0, name[i]); 
 		}
 	}
 #endif
@@ -388,12 +399,14 @@ static void statcollector_bh(void *data)
 		iw_stats->discard.retries = (__u32)ndis_stats.retry +
 			(__u32)ndis_stats.multi_retry;
 		iw_stats->discard.misc = (__u32)ndis_stats.fcs_err +
-			(__u32)ndis_stats.rtss_fail + (__u32)ndis_stats.ack_fail +
+			(__u32)ndis_stats.rtss_fail +
+			(__u32)ndis_stats.ack_fail +
 			(__u32)ndis_stats.frame_dup;
 		
 		if (ndis_stats.tx_frag)
 			iw_stats->qual.qual = 100 - 100 *
-				((__u32)ndis_stats.retry + 2 * (__u32)ndis_stats.multi_retry +
+				((__u32)ndis_stats.retry +
+				 2 * (__u32)ndis_stats.multi_retry +
 				 3 * (__u32)ndis_stats.failed) /
 				(6 * (__u32)ndis_stats.tx_frag);
 		else
@@ -593,7 +606,8 @@ static struct ndis_packet *init_packet(struct ndis_handle *handle,
 	packet->buffer_head = buffer;
 	packet->buffer_tail = buffer;
 
-	//DBGTRACE4("Buffer: %08X, data %08X, len %d\n", (int)buffer, (int)buffer->data, (int)buffer->len); 	
+//	DBGTRACE4("Buffer: %08X, data %08X, len %d\n", (int)buffer,
+//		  (int)buffer->data, (int)buffer->len); 	
 	return packet;
 }
 
@@ -625,16 +639,15 @@ static void free_buffer(struct ndis_handle *handle, struct ndis_packet *packet)
 static int send_packet(struct ndis_handle *handle, struct ndis_packet *packet)
 {
 	int res;
+	struct miniport_char *miniport = &handle->driver->miniport_char;
 
 	TRACEENTER3("packet = %p", packet);
 
-	if(handle->driver->miniport_char.send_packets)
+	if (miniport->send_packets)
 	{
 		struct ndis_packet *packets[1];
 		packets[0] = packet;
-		handle->driver->miniport_char.send_packets(handle->adapter_ctx,
-							   &packets[0], 1);
-		
+		miniport->send_packets(handle->adapter_ctx, &packets[0], 1);
 
 		if(handle->serialized)
 		{
@@ -647,10 +660,9 @@ static int send_packet(struct ndis_handle *handle, struct ndis_packet *packet)
 			res = NDIS_STATUS_PENDING;
 		}
 	}
-	else if(handle->driver->miniport_char.send)
+	else if (miniport->send)
 	{
-		res = handle->driver->miniport_char.send(handle->adapter_ctx,
-							 packet, 0);
+		res = miniport->send(handle->adapter_ctx, packet, 0);
 	}
 	else
 	{
@@ -673,16 +685,16 @@ static void xmit_bh(void *param)
 
 	while (handle->send_status == 0)
 	{
-		spin_lock(&handle->xmit_ring_lock);
+		wrap_spin_lock(&handle->xmit_ring_lock);
 		if (!handle->xmit_ring_pending)
 		{
-			spin_unlock(&handle->xmit_ring_lock);
+			wrap_spin_unlock(&handle->xmit_ring_lock);
 			break;
 		}
 		buffer = handle->xmit_ring[handle->xmit_ring_start];
-		spin_unlock(&handle->xmit_ring_lock);
+		wrap_spin_unlock(&handle->xmit_ring_lock);
 
-		spin_lock(&handle->send_packet_lock);
+		wrap_spin_lock(&handle->send_packet_lock);
 		/* if we are resending a packet due to NDIS_STATUS_RESOURCES
 		 * then just pick up the packet already created
 		 */
@@ -692,7 +704,7 @@ static void xmit_bh(void *param)
 			handle->send_packet = init_packet(handle, buffer);
 			if (!handle->send_packet)
 			{
-				spin_unlock(&handle->send_packet_lock);
+				wrap_spin_unlock(&handle->send_packet_lock);
 				ERROR("%s", "couldn't get a packet");
 				return;
 			}
@@ -721,7 +733,7 @@ static void xmit_bh(void *param)
 			if (!handle->serialized)
 				ERROR("%s", "deserialized driver returning NDIS_STATUS_RESOURCES!");
 			handle->send_status = res;
-			spin_unlock(&handle->send_packet_lock);
+			wrap_spin_unlock(&handle->send_packet_lock);
 			/* this packet will be tried again */
 			return;
 
@@ -736,13 +748,13 @@ static void xmit_bh(void *param)
 		}
 
 		handle->send_packet = NULL;
-		spin_unlock(&handle->send_packet_lock);
+		wrap_spin_unlock(&handle->send_packet_lock);
 
-		spin_lock(&handle->xmit_ring_lock);
+		wrap_spin_lock(&handle->xmit_ring_lock);
 		handle->xmit_ring_start =
 			(handle->xmit_ring_start + 1) % XMIT_RING_SIZE;
 		handle->xmit_ring_pending--;
-		spin_unlock(&handle->xmit_ring_lock);
+		wrap_spin_unlock(&handle->xmit_ring_lock);
 		if (netif_queue_stopped(handle->net_dev))
 			netif_wake_queue(handle->net_dev);
 	}
@@ -757,12 +769,12 @@ void sendpacket_done(struct ndis_handle *handle, struct ndis_packet *packet)
 {
 	TRACEENTER3("%s", "");
 	/* is this lock necessary? */
-	spin_lock(&handle->send_packet_done_lock);
+	wrap_spin_lock(&handle->send_packet_done_lock);
 	handle->stats.tx_bytes += packet->len;
 	handle->stats.tx_packets++;
 
 	free_buffer(handle, packet);
-	spin_unlock(&handle->send_packet_done_lock);
+	wrap_spin_unlock(&handle->send_packet_done_lock);
 	TRACEEXIT3(return);
 }
 
@@ -796,12 +808,12 @@ static int start_xmit(struct sk_buff *skb, struct net_device *dev)
 	buffer->len = skb->len;
 	dev_kfree_skb(skb);
 
-	spin_lock_bh(&handle->xmit_ring_lock);
+	wrap_spin_lock(&handle->xmit_ring_lock);
 	xmit_ring_next_slot =
 		(handle->xmit_ring_start + handle->xmit_ring_pending) % XMIT_RING_SIZE;
 	handle->xmit_ring[xmit_ring_next_slot] = buffer;
 	handle->xmit_ring_pending++;
-	spin_unlock_bh(&handle->xmit_ring_lock);
+	wrap_spin_unlock(&handle->xmit_ring_lock);
 	if (handle->xmit_ring_pending == XMIT_RING_SIZE)
 		netif_stop_queue(handle->net_dev);
 
@@ -941,7 +953,10 @@ static void wrapper_worker_proc(void *param)
 			kfree(assoc_info);
 			return;
 		}
-		DBGTRACE("ndis_assoc_info: length = %lu, req_ies = %u, req_ie_length = %lu, offset_req_ies = %lu, resp_ies = %u, resp_ie_length = %lu, offset_resp_ies = %lu",
+		DBGTRACE("ndis_assoc_info: length = %lu, req_ies = %u, "
+			 "req_ie_length = %lu, offset_req_ies = %lu, "
+			 "resp_ies = %u, resp_ie_length = %lu, "
+			 "offset_resp_ies = %lu",
 		       ndis_assoc_info->length,
 		       ndis_assoc_info->req_ies,
 		       ndis_assoc_info->req_ie_length,
@@ -1097,8 +1112,7 @@ static int setup_dev(struct net_device *dev)
 	DBGTRACE1("%s: Querying for mac", DRV_NAME);
 	res = doquery(handle, 0x01010102, &mac[0], sizeof(mac),
 		      &written, &needed);
-	DBGTRACE1("mac:%02x:%02x:%02x:%02x:%02x:%02x",
-		 mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
+	DBGTRACE1("mac:" MACSTR, MAC2STR(mac));
 
 	if(res)
 	{
@@ -1120,7 +1134,8 @@ static int setup_dev(struct net_device *dev)
 	}
 
 	if(handle->multicast_list_size)
-		handle->multicast_list = kmalloc(handle->multicast_list_size * 6, GFP_KERNEL);
+		handle->multicast_list = 
+			kmalloc(handle->multicast_list_size * 6, GFP_KERNEL);
 
 #ifdef WPA
 	wrqu.param.value = NDIS_PRIV_ACCEPT_ALL;
@@ -1154,10 +1169,9 @@ static int setup_dev(struct net_device *dev)
 	if (res)
 		ERROR("cannot register net device %s", dev->name);
 	else
-		printk(KERN_INFO "%s: %s ethernet device "
-		       "%02x:%02x:%02x:%02x:%02x:%02x using driver %s\n",
-		       dev->name, DRV_NAME,
-		       mac[0], mac[1], mac[2], mac[3], mac[4], mac[5], handle->driver->name);
+		printk(KERN_INFO "%s: %s ethernet device " MACSTR
+		       " using driver %s\n",
+		       dev->name, DRV_NAME, MAC2STR(mac), handle->driver->name);
 	return res;
 }
 
@@ -1208,26 +1222,19 @@ static int ndis_init_one(struct pci_dev *pdev, const struct pci_device_id *ent)
 	handle->send_status = 0;
 	handle->send_packet = NULL;
 
-	spin_lock_init(&handle->send_packet_lock);
-	spin_lock_init(&handle->send_packet_done_lock);
+	wrap_spin_lock_init(&handle->send_packet_lock);
+	wrap_spin_lock_init(&handle->send_packet_done_lock);
+
 
 	INIT_WORK(&handle->xmit_work, xmit_bh, handle); 	
-	spin_lock_init(&handle->xmit_ring_lock);
+	wrap_spin_lock_init(&handle->xmit_ring_lock);
 	handle->xmit_ring_start = 0;
 	handle->xmit_ring_pending = 0;
 
-	spin_lock_init(&handle->recycle_packets_lock);
+	wrap_spin_lock_init(&handle->recycle_packets_lock);
 	INIT_LIST_HEAD(&handle->recycle_packets);
 
 	handle->reset_status = 0;
-
-//	handle->ndis_wq = create_workqueue("ndis_wq");
-	new_workqueue(handle->ndis_wq, "ndis_wq");
-	if (handle->ndis_wq == NULL)
-	{
-		ERROR("%s", "couldn't create workqueue");
-		goto out_enable;
-	}
 
 	INIT_WORK(&handle->recycle_packets_work, packet_recycler, handle);
 
@@ -1360,7 +1367,6 @@ static void __devexit ndis_remove_one(struct pci_dev *pdev)
 
 	/* Make sure all queued packets have been pushed out from xmit_bh before we call halt */
 	flush_scheduled_work();
-	flush_workqueue(handle->ndis_wq);
 
 #ifndef DEBUG_CRASH_ON_INIT
 	set_int(handle, NDIS_OID_DISASSOCIATE, 0);
@@ -1372,8 +1378,6 @@ static void __devexit ndis_remove_one(struct pci_dev *pdev)
 
 	/* Make sure any scheduled work is flushed before freeing the handle */
 	flush_scheduled_work();
-	flush_workqueue(handle->ndis_wq);
-	destroy_workqueue(handle->ndis_wq);
 
 	if(handle->multicast_list)
 		kfree(handle->multicast_list);
@@ -1510,7 +1514,7 @@ static int add_driver(struct ndis_driver *driver)
 	struct ndis_driver *tmp;
 	int dup = 0;
 
-	spin_lock(&driverlist_lock);
+	wrap_spin_lock(&driverlist_lock);
 	list_for_each_entry(tmp, &ndis_driverlist, list)
 	{
 		if(strcmp(tmp->name, driver->name) == 0)
@@ -1521,7 +1525,7 @@ static int add_driver(struct ndis_driver *driver)
 	}
 	if(!dup)
 		list_add(&driver->list, &ndis_driverlist);
-	spin_unlock(&driverlist_lock);
+	wrap_spin_unlock(&driverlist_lock);
 	if(dup)
 	{
 		ERROR("%s", "Cannot add duplicate driver");
@@ -1704,10 +1708,10 @@ static void unload_driver(struct ndis_driver *driver)
 			ndis_remove_one(pdev);
 	}
 #endif
-	spin_lock(&driverlist_lock);
+	wrap_spin_lock(&driverlist_lock);
 	if(driver->list.next)
 		list_del(&driver->list);
-	spin_unlock(&driverlist_lock);
+	wrap_spin_unlock(&driverlist_lock);
 
 	if(driver->image)
 		vfree(driver->image);
@@ -1873,6 +1877,8 @@ static int __init wrapper_init(void)
 
 	init_ndis_work();
 	INIT_LIST_HEAD(&wrap_allocs);
+	wrap_spin_lock_init(&wrap_allocs_lock);
+	wrap_spin_lock_init(&driverlist_lock);
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
 	err = call_usermodehelper("/sbin/loadndisdriver", argv, env, 1);
 #else
