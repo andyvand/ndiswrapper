@@ -642,6 +642,7 @@ static int start_driver(struct ndis_driver *driver)
 			res = entry((void *)driver, &reg_string);
 			ret |= res;
 			DBGTRACE1("entry returns %08X", res);
+			DBGTRACE1("miniport_char: %p", &driver->miniport_char);
 			DBGTRACE1("driver version: %d.%d",
 				  driver->miniport_char.majorVersion,
 				  driver->miniport_char.minorVersion);
@@ -836,7 +837,7 @@ static int register_devices(struct load_devices *load_devices)
 		ndiswrapper_pci_driver.id_table = ndiswrapper_pci_devices;
 		ndiswrapper_pci_driver.probe = ndiswrapper_add_one_pci_dev;
 		ndiswrapper_pci_driver.remove =
-				__devexit(ndiswrapper_remove_one_pci_dev);
+				__devexit_p(ndiswrapper_remove_one_pci_dev);
 		ndiswrapper_pci_driver.suspend = ndiswrapper_suspend_pci;
 		ndiswrapper_pci_driver.resume = ndiswrapper_resume_pci;
 		res = pci_register_driver(&ndiswrapper_pci_driver);
@@ -853,7 +854,7 @@ static int register_devices(struct load_devices *load_devices)
 		ndiswrapper_usb_driver.id_table = ndiswrapper_usb_devices;
 		ndiswrapper_usb_driver.probe = ndiswrapper_add_one_usb_dev;
 		ndiswrapper_usb_driver.disconnect =
-			__devexit(ndiswrapper_remove_one_usb_dev);
+			__devexit_p(ndiswrapper_remove_one_usb_dev);
 		res = usb_register(&ndiswrapper_usb_driver);
 		if (res) {
 			ERROR("couldn't register ndiswrapper usb driver");
@@ -881,8 +882,9 @@ static int wrapper_ioctl(struct inode *inode, struct file *file,
 	struct load_devices devices;
 	int res;
 
-	TRACEENTER1("cmd: %u (%u, %u)",
-		    cmd, NDIS_REGISTER_DEVICES, NDIS_LOAD_DRIVER);
+	TRACEENTER1("cmd: %u (%lu, %lu)",
+		    cmd, (unsigned long)NDIS_REGISTER_DEVICES,
+		    (unsigned long)NDIS_LOAD_DRIVER);
 
 	res = 0;
 	switch (cmd) {

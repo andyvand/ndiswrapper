@@ -756,6 +756,22 @@ STDCALL void WRAP_EXPORT(RtlFreeAnsiString)(struct ustring *string)
 	return;
 }
 
+STDCALL void WRAP_EXPORT(RtlInitString)
+	(struct ustring *dst, CHAR *src)
+{
+       TRACEENTER2("%s", "");
+       if (dst == NULL)
+               TRACEEXIT2(return);
+       if (src == NULL) {
+               dst->len = dst->buflen = 0;
+               dst->buf = NULL;
+               TRACEEXIT2(return);
+       }
+       dst->len = dst->buflen = strlen(src);
+       dst->buf = src;
+       TRACEEXIT2(return);
+}
+
 static void WRAP_EXPORT(RtlUnwind)(void){UNIMPL();}
 
 STDCALL static NT_STATUS WRAP_EXPORT(RtlQueryRegistryValues)
