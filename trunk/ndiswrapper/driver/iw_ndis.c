@@ -629,13 +629,13 @@ static int iw_set_encr(struct net_device *dev, struct iw_request_info *info,
 	TRACEENTER1("%s", "");
 	index = (wrqu->encoding.flags & IW_ENCODE_INDEX);
 	DBGTRACE2("index = %u", index);
-	if (index > MAX_ENCR_KEYS)
+	if (index < 0 || index >= MAX_ENCR_KEYS)
 	{
 		WARNING("encryption index out of range (%u)", index);
 		TRACEEXIT1(return -EINVAL);
 	}
 
-	if (index <= 0)
+	if (index == 0)
 		index = encr_info->active;
 	else	
 		index--;
@@ -718,8 +718,10 @@ static int iw_set_encr(struct net_device *dev, struct iw_request_info *info,
 	if (res)
 		WARNING("changing encr status failed (%08X)", res);
 
-	encr_info->keys[index].length = ndis_key.length;
-	memcpy(&encr_info->keys[index].key, ndis_key.key, ndis_key.length);
+	/* Atheros driver messes up ndis_key during ADD_WEP, so
+	 * don't rely on that; instead copy it from wrqu and extra */
+	encr_info->keys[index].length = wrqu->data.length;
+	memcpy(&encr_info->keys[index].key, extra, wrqu->data.length);
 	if (wrqu->data.length == 0)
 		encr_info->active = index;
 
@@ -1298,6 +1300,35 @@ static int key_str_to_hex(const char *str, unsigned char *key, int str_len)
 		TRACEEXIT(return -1);
 }
 
+static int remove_key(struct ndis_handle *handle, int key_index,
+		      mac_address bssid)
+{
+	struct ndis_remove_key ndis_remove_key;
+	int res, written, needed;
+
+	ndis_remove_key.struct_size = sizeof(ndis_remove_key);
+	ndis_remove_key.index = key_index;
+	memcpy(&ndis_remove_key.bssid, bssid, ETH_ALEN);
+
+	/* TI drivers crash if REMOVE_KEY is called for a key not set */
+	if (handle->device->vendor != 0x104c &&
+	    handle->encr_info.keys[key_index].length > 0) {
+		res = dosetinfo(handle, NDIS_OID_REMOVE_KEY,
+				(char *)&ndis_remove_key,
+				sizeof(ndis_remove_key), &written, &needed);
+		if (res == NDIS_STATUS_INVALID_DATA) {
+			DBGTRACE("removing key failed with %08X", res);
+			TRACEEXIT(return -EINVAL);
+		}
+	}
+	if (key_index >= 0 && key_index < MAX_ENCR_KEYS) {
+		handle->encr_info.keys[key_index].length = 0;
+		if (key_index == handle->encr_info.active)
+			set_encr_mode(handle, ENCR_DISABLED);
+	}
+	TRACEEXIT1(return 0);
+}
+
 static int wpa_set_key(struct net_device *dev, struct iw_request_info *info,
 		       union iwreq_data *wrqu, char *extra)
 {
@@ -1324,37 +1355,16 @@ static int wpa_set_key(struct net_device *dev, struct iw_request_info *info,
 	
 	if (wpa_key.alg == WPA_ALG_NONE || wpa_key.key_len == 0)
 	{
-		struct ndis_remove_key ndis_remove_key;
-
-		ndis_remove_key.struct_size = sizeof(ndis_remove_key);
-		ndis_remove_key.index = wpa_key.key_index;
+	    	mac_address bssid;
 		if (wpa_key.addr)
-			memcpy(&ndis_remove_key.bssid, addr, ETH_ALEN);
+			memcpy(&bssid, addr, ETH_ALEN);
 		else
-			memset(&ndis_remove_key.bssid, 0xff, ETH_ALEN);
-		/* TI drivers sometimes crash when REMOVE_KEY is called */
-		if (!(handle->device->vendor == 0x104c &&
-		      handle->device->device == 0x9066))
-		{
-			res = dosetinfo(handle, NDIS_OID_REMOVE_KEY,
-					(char *)&ndis_remove_key,
-					sizeof(ndis_remove_key), &written,
-					&needed);
-			if (res == NDIS_STATUS_INVALID_DATA)
-			{
-				DBGTRACE("removing key failed with %08X", res);
-				TRACEEXIT(return -EINVAL);
-			}
-		}
-		if (wpa_key.key_index >= 0 &&
-		    wpa_key.key_index < MAX_ENCR_KEYS)
-		{
-			handle->encr_info.keys[wpa_key.key_index].length = 0;
-			if (wpa_key.key_index == handle->encr_info.active)
-				set_encr_mode(handle, ENCR_DISABLED);
-		}
+			memset(&bssid, 0xff, ETH_ALEN);
 
-		TRACEEXIT(return 0);
+		if (remove_key(handle, wpa_key.key_index, bssid))
+			TRACEEXIT1(return -EINVAL);
+		else
+			TRACEEXIT(return 0);
 	}
 
 	if (wpa_key.alg == WPA_ALG_WEP)
@@ -1450,10 +1460,11 @@ static int wpa_set_key(struct net_device *dev, struct iw_request_info *info,
 			 res, written, needed, ndis_key.struct_size);
 		TRACEEXIT(return -EINVAL);
 	}
-	memcpy(&handle->encr_info.keys[wpa_key.key_index].key, &ndis_key.key,
-	       NDIS_ENCODING_TOKEN_MAX);
-	handle->encr_info.keys[wpa_key.key_index].length = 
-		wpa_key.key_len;
+	memcpy(&handle->encr_info.keys[wpa_key.key_index].key, &usrkey,
+	       wpa_key.key_len);
+	handle->encr_info.keys[wpa_key.key_index].length = wpa_key.key_len;
+	DBGTRACE("key %d added", wpa_key.key_index);
+
 	TRACEEXIT(return 0);
 }
 
@@ -1475,6 +1486,7 @@ static int wpa_disassociate(struct net_device *dev,
 
 	/* we set an impossible essid to disassociate - see note in
 	 * iw_set_essid; setting an empty essid doesn't disassociate */
+	copy_from_user(&ap_addr, wrqu->ap_addr.sa_data, sizeof(ap_addr));
 	set_essid(handle, " ", 1);
 	get_ap_address(handle, ap_addr);
 	DBGTRACE("bssid " MACSTR, MAC2STR(ap_addr));
@@ -1615,6 +1627,7 @@ static int wpa_deauthenticate(struct net_device *dev,
 
 	/* we set an impossible essid to disassociate - see note in
 	 * iw_set_essid; setting an empty essid doesn't disassociate */
+	copy_from_user(&ap_addr, wrqu->ap_addr.sa_data, sizeof(ap_addr));
 	set_essid(handle, " ", 1);
 	get_ap_address(handle, ap_addr);
 	DBGTRACE("bssid " MACSTR, MAC2STR(ap_addr));

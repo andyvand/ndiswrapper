@@ -515,7 +515,7 @@ int main(int argc, char *argv[0])
 	device = open_misc_device(misc_minor);
 	if (device == -1)
 	{
-		error("unable to open misc device in /tmp (%d)", errno);
+		error("unable to open misc device in /dev (%d)", errno);
 		res = 5;
 		goto out;
 	}

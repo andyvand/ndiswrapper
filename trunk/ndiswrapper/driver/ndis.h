@@ -1167,6 +1167,7 @@ extern struct wrap_spinlock cancel_lock;
 enum capa_list
 {
 	CAPA_ENCR1 = ENCR1_ENABLED,
+	CAPA_WEP = ENCR1_ENABLED,
 	CAPA_ENCR_NONE = ENCR_DISABLED,
 	CAPA_TKIP = ENCR2_ENABLED,
 	CAPA_AES = ENCR3_ENABLED,
