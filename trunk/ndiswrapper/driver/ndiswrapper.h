@@ -128,7 +128,7 @@ typedef task_queue workqueue;
 #endif // LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
 
 #ifdef CONFIG_SOFTWARE_SUSPEND2
-#define KTHREAD_RUN(a,b,c) kthread_run(a,0,b,c)
+#define KTHREAD_RUN(a,b,c) kthread_run(a,b,0,c)
 #else
 #define KTHREAD_RUN(a,b,c) kthread_run(a,b,c)
 #endif
