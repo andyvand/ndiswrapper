@@ -317,12 +317,19 @@ void MmMapLockedPages(void){UNIMPL();}
 void IoCreateDevice(void){UNIMPL();}
 void IoDeleteSymbolicLink(void){UNIMPL();}
 void InterlockedExchange(void){UNIMPL();}
+void KeSetEvent(void){UNIMPL();}
+void KeClearEvent(void){UNIMPL();}
+void MmMapLockedPagesSpecifyCache(void){UNIMPL();}
+void MmProbeAndLockPages(void){UNIMPL();}
+void MmUnlockPages(void){UNIMPL();}
+void IoAllocateMdl(void){UNIMPL();}
+void IoFreeMdl(void){UNIMPL();}
+void ObfReferenceObject(void){UNIMPL();}
+void ObReferenceObjectByHandle(void){UNIMPL();}
+void _except_handler3(void){UNIMPL();}
 
 struct wrap_func ntos_wrap_funcs[] =
 {
-	WRAP_FUNC_ENTRY(WRITE_REGISTER_UCHAR),
-	WRAP_FUNC_ENTRY(WRITE_REGISTER_ULONG),
-	WRAP_FUNC_ENTRY(WRITE_REGISTER_USHORT),
 	WRAP_FUNC_ENTRY(DbgBreakPoint),
 	WRAP_FUNC_ENTRY(DbgPrint),
 	WRAP_FUNC_ENTRY(ExAllocatePoolWithTag),
@@ -333,27 +340,40 @@ struct wrap_func ntos_wrap_funcs[] =
 	WRAP_FUNC_ENTRY(ExInterlockedPopEntrySList),
 	WRAP_FUNC_ENTRY(ExInterlockedPushEntrySList),
 	WRAP_FUNC_ENTRY(InterlockedExchange),
+	WRAP_FUNC_ENTRY(IoAllocateMdl),
 	WRAP_FUNC_ENTRY(IoBuildSynchronousFsdRequest),
 	WRAP_FUNC_ENTRY(IoCreateDevice),
 	WRAP_FUNC_ENTRY(IoCreateSymbolicLink),
 	WRAP_FUNC_ENTRY(IoDeleteDevice),
 	WRAP_FUNC_ENTRY(IoDeleteSymbolicLink),
+	WRAP_FUNC_ENTRY(IoFreeMdl),
 	WRAP_FUNC_ENTRY(IoIsWdmVersionAvailable),
 	WRAP_FUNC_ENTRY(IoReleaseCancelSpinLock),
 	WRAP_FUNC_ENTRY(IofCallDriver),
 	WRAP_FUNC_ENTRY(IofCompleteRequest),
 	WRAP_FUNC_ENTRY(KeAcquireSpinLock),
 	WRAP_FUNC_ENTRY(KeCancelTimer),
+	WRAP_FUNC_ENTRY(KeClearEvent),
 	WRAP_FUNC_ENTRY(KeInitializeDpc),
 	WRAP_FUNC_ENTRY(KeInitializeEvent),
 	WRAP_FUNC_ENTRY(KeInitializeSpinLock),
 	WRAP_FUNC_ENTRY(KeInitializeTimer),
 	WRAP_FUNC_ENTRY(KeReleaseSpinLock),
+	WRAP_FUNC_ENTRY(KeSetEvent),
 	WRAP_FUNC_ENTRY(KeSetTimerEx),
 	WRAP_FUNC_ENTRY(KeWaitForSingleObject),
 	WRAP_FUNC_ENTRY(MmMapIoSpace),
 	WRAP_FUNC_ENTRY(MmMapLockedPages),
+	WRAP_FUNC_ENTRY(MmMapLockedPagesSpecifyCache),
+	WRAP_FUNC_ENTRY(MmProbeAndLockPages),
+	WRAP_FUNC_ENTRY(MmUnlockPages),
 	WRAP_FUNC_ENTRY(MmUnmapIoSpace),
+	WRAP_FUNC_ENTRY(ObReferenceObjectByHandle),
+	WRAP_FUNC_ENTRY(ObfReferenceObject),
+	WRAP_FUNC_ENTRY(WRITE_REGISTER_UCHAR),
+	WRAP_FUNC_ENTRY(WRITE_REGISTER_ULONG),
+	WRAP_FUNC_ENTRY(WRITE_REGISTER_USHORT),
+	WRAP_FUNC_ENTRY(_except_handler3),
 
 	{NULL, NULL}
 };

@@ -514,6 +514,26 @@ STDCALL void NdisInitAnsiString(struct ustring *dest, char *src)
 	return;
 }
 
+STDCALL void NdisInitUnicodeString(struct ustring *dest, __u16 *src)
+{
+	int i;
+
+	DBGTRACE("%s begins\n", __FUNCTION__);
+	if (dest == NULL)
+		return;
+	if (src == NULL) {
+		dest->len = dest->buflen = 0;
+		dest->buf = NULL;
+		return;
+	}
+	
+	for (i = 0 ; src[i] ; i++)
+		;
+	dest->len = dest->buflen = i * 2;
+	dest->buf = (__u8 *)src;
+	return;
+}
+
 STDCALL unsigned int NdisAnsiStringToUnicodeString(struct ustring *dst,
 						   struct ustring *src)
 {
@@ -1467,8 +1487,8 @@ STDCALL long NdisInterlockedIncrement(long *val)
 
 STDCALL struct list_entry *
 NdisInterlockedInsertHeadList(struct list_entry *head,
-							  struct list_entry *entry,
-							  struct ndis_spin_lock *lock)
+			      struct list_entry *entry,
+			      struct ndis_spin_lock *lock)
 {
 	struct list_entry *flink;
 
@@ -1870,6 +1890,7 @@ struct wrap_func ndis_wrap_funcs[] =
 	WRAP_FUNC_ENTRY(NdisIndicateStatus),
 	WRAP_FUNC_ENTRY(NdisIndicateStatusComplete),
 	WRAP_FUNC_ENTRY(NdisInitAnsiString),
+	WRAP_FUNC_ENTRY(NdisInitUnicodeString),
 	WRAP_FUNC_ENTRY(NdisInitializeEvent),
 	WRAP_FUNC_ENTRY(NdisInitializeString),
 	WRAP_FUNC_ENTRY(NdisInitializeTimer),
