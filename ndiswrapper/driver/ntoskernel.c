@@ -928,7 +928,11 @@ _FASTCALL NTSTATUS WRAP_EXPORT(IofCallDriver)
 				ERROR("ioctl %08X NOT IMPLEMENTED!",
 					stack->params.ioctl.code);
 		}
-	} else
+	} else if (stack->major_fn == IRP_MJ_CREATE) {
+		UNIMPL();
+		ret = STATUS_SUCCESS;
+	}
+	else
 		ERROR("major_fn %08X NOT IMPLEMENTED!\n", stack->major_fn);
 
 	if (ret == STATUS_PENDING) {
@@ -1407,7 +1411,8 @@ _FASTCALL void WRAP_EXPORT(ObDereferenceObject)
 	TRACEEXIT3(return);
 }
 
-STDCALL NTSTATUS ZwClose(void *object)
+STDCALL NTSTATUS WRAP_EXPORT(ZwClose)
+	(void *object)
 {
 	ObfDereferenceObject(FASTCALL_ARGS_1(object));
 	TRACEEXIT3(return STATUS_SUCCESS);
