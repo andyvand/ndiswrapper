@@ -1639,7 +1639,6 @@ static int setup_dev(struct net_device *dev)
 	unsigned int res;
 	int i;
 	union iwreq_data wrqu;
-	struct ndis_configuration ndis_config;
 	unsigned long packet_filter;
 
 	if (strlen(if_name) > (IFNAMSIZ-1))
