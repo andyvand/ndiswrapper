@@ -790,7 +790,7 @@ static char *ndis_translate_scan(struct net_device *dev, char *event,
 	int i, nrates;
 	unsigned char buf[MAX_WPA_IE_LEN * 2 + 30];
 
-	TRACEENTER1("%s", "");
+	TRACEENTER1("%p, %p", event, item);
 	/* add mac address */
 	memset(&iwe, 0, sizeof(iwe));
 	iwe.cmd = SIOCGIWAP;
@@ -949,10 +949,6 @@ int set_scan(struct ndis_handle *handle)
 	NDIS_STATUS res;
 
 	TRACEENTER1("%s", "");
-	/* let the card do background scanning for 6 seconds, as per NDIS */
-	if (handle->scan_timestamp > 0 &&
-	    time_before(jiffies, handle->scan_timestamp + 6 * HZ))
-		TRACEEXIT(return 0);
 	res = miniport_set_int(handle, OID_802_11_BSSID_LIST_SCAN, 0);
 	handle->scan_timestamp = jiffies;
 	if (res == NDIS_STATUS_NOT_SUPPORTED ||
@@ -989,6 +985,9 @@ static int iw_get_scan(struct net_device *dev, struct iw_request_info *info,
 	/* try with space for a few scan items */
 	list_len = sizeof(ULONG) + sizeof(struct ndis_ssid_item) * 8;
 	bssid_list = kmalloc(list_len, GFP_KERNEL);
+	/* some drivers don't set bssid_list->num_items to 0 if
+	   OID_802_11_BSSID_LIST returns no items (prism54 driver, e.g.,) */
+	memset(bssid_list, 0, list_len);
 
 	res = miniport_query_info_needed(handle, OID_802_11_BSSID_LIST,
 					 bssid_list, list_len, &needed);
@@ -997,6 +996,7 @@ static int iw_get_scan(struct net_device *dev, struct iw_request_info *info,
 		kfree(bssid_list);
 		list_len = needed;
 		bssid_list = kmalloc(list_len, GFP_KERNEL);
+		memset(bssid_list, 0, list_len);
 
 		res = miniport_query_info(handle, OID_802_11_BSSID_LIST,
 					  bssid_list, list_len);
@@ -1014,7 +1014,7 @@ static int iw_get_scan(struct net_device *dev, struct iw_request_info *info,
 					    extra + IW_SCAN_MAX_DATA,
 					    cur_item);
 		cur_item = (struct ndis_ssid_item *)((char *)cur_item +
-						cur_item->length);
+						     cur_item->length);
 	}
 	wrqu->data.length = event - extra;
 	wrqu->data.flags = 0;
@@ -1416,6 +1416,8 @@ static int wpa_set_key(struct net_device *dev, struct iw_request_info *info,
 			wpa_key.key_len;
 		memcpy(&handle->encr_info.keys[wpa_key.key_index].key,
 		       &ndis_key.key, wpa_key.key_len);
+		if (wpa_key.set_tx)
+			handle->encr_info.tx_key_index = wpa_key.key_index;
 		DBGTRACE2("key %d added", wpa_key.key_index);
 	}
 
