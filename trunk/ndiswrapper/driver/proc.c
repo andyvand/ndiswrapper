@@ -122,13 +122,8 @@ static int procfs_read_encr(char *page, char **start, off_t off,
 			p += sprintf(p, "off");
 		p += sprintf(p, "\n");
 
-		p += sprintf(p, "status=%sabled\n",
-			     (encr_status == ENCR_DISABLED) ? "dis" : "en");
-		p += sprintf(p, "auth_mode=%s\n",
-			     (auth_mode == AUTHMODE_AUTO) ?
-			     "auto" :
-			     (auth_mode == AUTHMODE_RESTRICTED) ?
-			     "restricted" : "open");
+		p += sprintf(p, "status=%d\n", encr_status);
+		p += sprintf(p, "auth_mode=%d\n", auth_mode);
 	}
 
 	res = query_int(handle, NDIS_OID_MODE, &op_mode);
@@ -328,6 +323,32 @@ static int procfs_write_settings(struct file *file, const char *buf,
 		miniport->pnp_event_notify(handle->adapter_ctx,
 					   NDIS_PNP_PROFILE_CHANGED,
 					   &profile_inf, sizeof(profile_inf));
+	}
+	else if (!strcmp(setting, "auth_mode"))
+	{
+		int i;
+
+		if (!p)
+			return -EINVAL;
+		p++;
+		i = simple_strtol(p, NULL, 10);
+		if (i <= 0 || i > 5)
+			return -EINVAL;
+
+		set_auth_mode(handle, i);
+	}
+	else if (!strcmp(setting, "encr_mode"))
+	{
+		int i;
+
+		if (!p)
+			return -EINVAL;
+		p++;
+		i = simple_strtol(p, NULL, 10);
+		if (i <= 0 || i > 7)
+			return -EINVAL;
+
+		set_encr_mode(handle, i);
 	}
 	else
 		return -EINVAL;
