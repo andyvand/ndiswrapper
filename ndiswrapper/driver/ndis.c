@@ -1437,7 +1437,7 @@ STDCALL void WRAP_EXPORT(NdisInitializeTimer)
 STDCALL void WRAP_EXPORT(NdisSetTimer)
 	(struct ndis_timer *timer_handle, UINT ms)
 {
-	unsigned long expires = jiffies + ms * HZ / 1000;
+	unsigned long expires = ms * HZ / 1000;
 
 	TRACEENTER4("%p, %u", timer_handle, ms);
 	wrapper_set_timer(&timer_handle->ktimer, expires, 0, NULL);
@@ -1447,7 +1447,7 @@ STDCALL void WRAP_EXPORT(NdisSetTimer)
 STDCALL void WRAP_EXPORT(NdisMSetPeriodicTimer)
 	(struct ndis_miniport_timer *timer_handle, UINT ms)
 {
-	unsigned long expires = jiffies + ms * HZ / 1000;
+	unsigned long expires = ms * HZ / 1000;
 	unsigned long repeat = ms * HZ / 1000;
 
 	TRACEENTER4("%p, %u", timer_handle, ms);

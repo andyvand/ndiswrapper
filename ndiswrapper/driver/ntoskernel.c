@@ -135,7 +135,7 @@ _FASTCALL struct nt_slist_entry *WRAP_EXPORT(ExInterlockedPopEntrySList)
 	struct nt_slist_entry *ret;
 	KIRQL irql;
 
-	TRACEENTER4("head = %p, entry = %p", head, entry);
+	TRACEENTER4("head = %p", head);
 	KeAcquireSpinLock(lock, &irql);
 	ret = PopEntryList(head);
 	KeReleaseSpinLock(lock, irql);
@@ -229,9 +229,9 @@ STDCALL BOOLEAN WRAP_EXPORT(KeSetTimerEx)
 	TRACEENTER4("%p, %ld, %u, %p", ktimer, (long)due_time, period, kdpc);
 
 	if (due_time < 0)
-		expires = jiffies + HZ * (-due_time) / TICKSPERSEC;
+		expires = HZ * (-due_time) / TICKSPERSEC;
 	else
-		expires = HZ * due_time / TICKSPERSEC;
+		expires = HZ * due_time / TICKSPERSEC - jiffies;
 	repeat = HZ * period / TICKSPERSEC;
 	return wrapper_set_timer(ktimer, expires, repeat, kdpc);
 }
@@ -449,6 +449,7 @@ STDCALL void WRAP_EXPORT(KeInitializeEvent)
 STDCALL LONG WRAP_EXPORT(KeSetEvent)
 	(struct kevent *kevent, KPRIORITY incr, BOOLEAN wait)
 {
+	struct nt_list_entry *ent;
 	LONG old_state = kevent->dh.signal_state;
 
 	TRACEENTER3("event = %p, type = %d, wait = %d",
@@ -458,14 +459,15 @@ STDCALL LONG WRAP_EXPORT(KeSetEvent)
 
 	kspin_lock(&kevent_lock);
 	kevent->dh.signal_state = TRUE;
-	while (!IsListEmpty(&kevent->dh.wait_list)) {
-		struct nt_list_entry *ent;
+	while ((ent = RemoveHeadList(&kevent->dh.wait_list))) {
 		struct wait_block *wb;
 
-		ent = RemoveHeadList(&kevent->dh.wait_list);
 		wb = container_of(ent, struct wait_block, list_entry);
-		wake_up_process((task_t *)wb->thread);
-		DBGTRACE3("woken up %p", wb->thread);
+		DBGTRACE3("waking up %p", wb->thread);
+		if (wb->thread)
+			wake_up_process((task_t *)wb->thread);
+		else
+			ERROR("illegal wait block %p", wb);
 		if (kevent->dh.type == SynchronizationEvent)
 			break;
 	}
@@ -504,7 +506,7 @@ STDCALL NTSTATUS WRAP_EXPORT(KeWaitForMultipleObjects)
 	 struct wait_block *wait_block_array)
 {
 	int i, res = 0, wait_count, wait_index = 0;
-	long wait_jiffies = 0;
+	long wait_jiffies;
 	struct wait_block *wb, wb_array[THREAD_WAIT_OBJECTS];
 	struct kmutex *kmutex;
 	struct dispatch_header *dh;
@@ -551,10 +553,11 @@ STDCALL NTSTATUS WRAP_EXPORT(KeWaitForMultipleObjects)
 	for (i = 0, wait_count = 0; i < count; i++) {
 		dh = &object[i]->dh;
 		if (dh->signal_state == FALSE) {
-			InsertTailList(&dh->wait_list,
-				       &wb[i].list_entry);
+			InsertTailList(&dh->wait_list, &wb[i].list_entry);
 			wb[i].thread = get_current();
 			wb[i].object = object[i];
+			DBGTRACE3("%p (%p) waiting on event %p", &wb[i],
+				  wb[i].thread, wb[i].object);
 			wait_count++;
 		} else {
 			/* mark that this wb is not on the list */
@@ -565,6 +568,7 @@ STDCALL NTSTATUS WRAP_EXPORT(KeWaitForMultipleObjects)
 	}
 	kspin_unlock(&kevent_lock);
 
+	wait_jiffies = 0;
 	if (timeout) {
 		DBGTRACE2("timeout = %Ld", *timeout);
 		if (*timeout == 0)
@@ -592,7 +596,7 @@ STDCALL NTSTATUS WRAP_EXPORT(KeWaitForMultipleObjects)
 		if (signal_pending(current))
 			res = -ERESTARTSYS;
 		else {
-			if (timeout)
+			if (wait_jiffies > 0)
 				res = schedule_timeout(wait_jiffies);
 			else {
 				schedule();
@@ -605,6 +609,7 @@ STDCALL NTSTATUS WRAP_EXPORT(KeWaitForMultipleObjects)
 			if (dh->size == sizeof(*kmutex)) {
 				kmutex = (struct kmutex *)object[i];
 				if (kmutex->owner_thread == NULL) {
+					kmutex->dh.signal_state = TRUE;
 					kmutex->u.count++;
 					kmutex->owner_thread = get_current();
 				}
@@ -682,10 +687,10 @@ STDCALL NTSTATUS WRAP_EXPORT(KeDelayExecutionThread)
 
 	res = schedule_timeout(timeout);
 
-	if (res > 0)
-		TRACEEXIT3(return STATUS_ALERTED);
-	else
+	if (res == 0)
 		TRACEEXIT3(return STATUS_SUCCESS);
+	else
+		TRACEEXIT3(return STATUS_ALERTED);
 }
 
 STDCALL KPRIORITY WRAP_EXPORT(KeQueryPriorityThread)
@@ -745,7 +750,7 @@ STDCALL void WRAP_EXPORT(KeInitializeMutex)
 STDCALL LONG WRAP_EXPORT(KeReleaseMutex)
 	(struct kmutex *kmutex, BOOLEAN wait)
 {
-	int ret;
+	LONG ret;
 	kspin_lock(&kevent_lock);
 	ret = --(kmutex->u.count);
 	if (kmutex->u.count == 0) {
@@ -1101,10 +1106,8 @@ _FASTCALL NTSTATUS WRAP_EXPORT(IofCallDriver)
 	} else if (stack->major_fn == IRP_MJ_CREATE) {
 		UNIMPL();
 		ret = STATUS_SUCCESS;
-	} else {
+	} else
 		ERROR("major_fn %08X NOT IMPLEMENTED!\n", stack->major_fn);
-		ret = STATUS_SUCCESS;
-	}
 
 	if (ret == STATUS_PENDING) {
 		stack->control |= IS_PENDING;
