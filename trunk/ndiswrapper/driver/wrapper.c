@@ -700,7 +700,7 @@ static int add_setting(struct ndis_driver *driver, struct put_setting *put_setti
 	setting->val.type = 0;
 	setting->name = name;
 	setting->val.type = 0;
-	setting->val.data = val;	
+	setting->val.data.intval = val;	
 	
 	list_add(&setting->list, &driver->settings);
 	return 0;

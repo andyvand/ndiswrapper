@@ -100,17 +100,21 @@ STDCALL unsigned int KeWaitForSingleObject(void **object, unsigned int reason, u
 	return 0;
 }
 
-int RtlEqualUnicodeString(char *str1, char *str2, int hororcase)
+STDCALL int RtlEqualUnicodeString(struct ustring *str1, struct ustring *str2, int nocase)
 {
-	DBGTRACE("%s --UNIMPLEMENTED--: %08x %08x\n", __FUNCTION__, (int)str1, (int)str2);
+	DBGTRACE("%s\n", __FUNCTION__);
+	if(str1->len != str2->len)
+		return 0;
+	
+	if(memcmp(str1->buf, str2->buf, str1->len) == 0)
+		return 1;
 
-	return 0;	
+	if(nocase)
+		printk(KERN_ERR "ndiswrapper: case insensitive compare not implemented yet\n");
+	return 0;
 }
 
-
-
-
-STDCALL void RtlAnsiStringToUnicodeString(char *dst, char *src, unsigned int unknown)
+STDCALL void RtlAnsiStringToUnicodeString(char *dst, char *src, unsigned int dup)
 {
 	UNIMPL();
 }

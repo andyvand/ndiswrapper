@@ -24,6 +24,7 @@
 #include <linux/pci.h>
 
 #include <linux/version.h>
+
 /* Workqueue / task queue backwards compatibility stuff */
 #if LINUX_VERSION_CODE > KERNEL_VERSION(2,5,41)
 #include <linux/workqueue.h>
@@ -32,6 +33,14 @@
 #define work_struct tq_struct
 #define INIT_WORK INIT_TQUEUE
 #define schedule_work schedule_task
+#endif
+
+/* Interrupt backwards compatibility stuff */
+#include <linux/interrupt.h>
+#ifndef IRQ_HANDLED
+#define IRQ_HANDLED
+#define IRQ_NONE
+#define irqreturn_t
 #endif
 
 #define STDCALL __attribute__((__stdcall__))
@@ -51,6 +60,9 @@ int getSp(void);
 #else
 #define DBGTRACE(s, ...)
 #endif
+
+
+
 
 struct packed miniport_char
 {
@@ -107,10 +119,22 @@ struct ndis_irq
 
 };
 
+
+struct packed ustring
+{
+	__u16 len;
+	__u16 buflen;
+	char *buf;
+};
+
 struct ndis_setting_val
 {
 	unsigned int type;
-	unsigned int data;
+	union
+	{
+		unsigned int intval;
+		struct ustring ustring;
+	} data;
 };
 
 struct ndis_setting
@@ -221,12 +245,6 @@ struct packed ndis_packet
 };
 
 
-struct packed ustring
-{
-	__u16 x;
-	__u16 y;
-	char *buf;
-};
 
 struct ndis_timer
 {
