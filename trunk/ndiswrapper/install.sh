@@ -41,9 +41,9 @@ get_resp()
 	DEF="$*"
     fi
     while :; do
-	echo -n "${MSG}"
+	echo -n "${MSG} "
 	if [ "${DEF}" != "" ]; then
-	    echo -n "(${DEF})"
+	    echo -n "(${DEF}) "
 	fi
 	read RESP
 	if [ "${RESP}" != "" ]; then
@@ -85,7 +85,7 @@ fi
 
 # locate PCI id
 
-NCARDS=$(lspci | grep 'Network controller' | wc -l)
+NCARDS=$(lspci -n | grep 'Class 0280:' | wc -l)
 
 if [ ${NCARDS} -gt 1 ]; then
     error "You seem to have more than one 802.11 card; report output of lspci"
@@ -93,7 +93,8 @@ elif [ ${NCARDS} -eq 0 ]; then
     error "Can't find any 802.11 cards; report output of lspci"
 fi
 
-PCIID=$(lspci -n | grep `lspci | awk '/Network controller/ {print $1}'` | awk  '{print $4}')
+#PCIID=$(lspci -n | grep `lspci | awk '/Network controller:/ {print $1}'` | awk  '{print $4}')
+PCIID=$(lspci -n | grep 'Class 0280:' | awk  '{print $4}')
 
 VENDOR_ID=$(echo ${PCIID} | awk -F : '{print $1}')
 DEVICE_ID=$(echo ${PCIID} | awk -F : '{print $2}')
@@ -142,13 +143,13 @@ fi
 
 # install module
 
-echo "Executing make install to build the module and loaddriver."
+echo "Executing make install to build the module and loadndisdriver."
 make install
 if [ $? -ne 0 ]; then
-    error "Problems building the module and/or loaddriver."
+    error "Problems building the module and/or loadndisdriver."
 fi
 
-# install loaddriver and create loadndiswrapper
+# install loadndisdriver and add module aliases
 
 while :; do
     get_resp "Which directory should the loadndisdriver be installed in?" \
