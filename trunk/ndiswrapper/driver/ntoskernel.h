@@ -97,6 +97,7 @@ typedef uint8_t		BYTE;
 typedef uint8_t		*LPBYTE;
 typedef int16_t		SHORT;
 typedef uint16_t	USHORT;
+typedef short		CSHORT;
 typedef uint16_t	WORD;
 typedef uint32_t	DWORD;
 typedef int32_t		LONG;
@@ -561,6 +562,7 @@ struct io_status_block {
 
 #define IRP_MJ_DEVICE_CONTROL           0x0E
 #define IRP_MJ_INTERNAL_DEVICE_CONTROL  0x0F
+#define IRP_MJ_MAXIMUM_FUNCTION           0x1b
 
 struct packed io_stack_location {
 	char major_fn;

@@ -936,7 +936,7 @@ int loader_init(void)
 
 void loader_exit(void)
 {
-	struct ndis_driver *driver;
+	struct list_head *cur, *tmp;
 	int i;
 
 	TRACEENTER1("");
@@ -958,8 +958,10 @@ void loader_exit(void)
 		vfree(ndis_devices);
 	}
 
-	while (!list_empty(&ndis_drivers)) {
-		driver = (struct ndis_driver *)ndis_drivers.next;
+	list_for_each_safe(cur, tmp, &ndis_drivers) {
+		struct ndis_driver *driver;
+
+		driver = list_entry(cur, struct ndis_driver, list);
 		list_del(&driver->list);
 		unload_ndis_driver(driver);
 	}

@@ -53,7 +53,9 @@ void wrap_kfree(void *ptr)
 	TRACEENTER4("%p", ptr);
 	wrap_spin_lock(&wrap_allocs_lock, PASSIVE_LEVEL);
 	list_for_each_safe(cur, tmp, &wrap_allocs) {
-		struct wrap_alloc *alloc = (struct wrap_alloc *)cur;
+		struct wrap_alloc *alloc;
+
+		alloc = list_entry(cur, struct wrap_alloc, list);
 		if (alloc->ptr == ptr) {
 			list_del(&alloc->list);
 			kfree(alloc->ptr);
@@ -73,8 +75,9 @@ void wrap_kfree_all(void)
 	TRACEENTER4("%s", "");
 	wrap_spin_lock(&wrap_allocs_lock, PASSIVE_LEVEL);
 	list_for_each_safe(cur, tmp, &wrap_allocs) {
-		struct wrap_alloc *alloc = (struct wrap_alloc *)cur;
+		struct wrap_alloc *alloc;
 
+		alloc = list_entry(cur, struct wrap_alloc, list);
 		list_del(&alloc->list);
 		kfree(alloc->ptr);
 		kfree(alloc);
