@@ -155,7 +155,7 @@ static int put_pci_device(int device, char *conf_file_name)
 	}
 
 	confname_to_put_device(conf_file_name, &put_device);
-	printf("%04x:%04x:%04x:%04x\n", put_device.pci_vendor, put_device.pci_device, put_device.pci_subvendor, put_device.pci_subdevice);
+	//printf("%04x:%04x:%04x:%04x\n", put_device.pci_vendor, put_device.pci_device, put_device.pci_subvendor, put_device.pci_subdevice);
 
 	if (ioctl(device, NDIS_PUTDEVICE, &put_device))
 	{
@@ -200,8 +200,8 @@ static int put_pci_device(int device, char *conf_file_name)
 			printf("invalid setting3: %s\n", setting_line);
 			goto unload;
 		}
-		printf("Found setting: name=%s, val=\"%s\"\n",
-		       setting_name, setting_val);
+//		printf("Found setting: name=%s, val=\"%s\"\n",
+//		       setting_name, setting_val);
 
 		// setting_val can be empty, but not value
 		if (strlen(setting_name) == 0)
@@ -231,7 +231,7 @@ static int put_pci_device(int device, char *conf_file_name)
 	}
 	fclose(config);
 
-	printf("Calling startdriver ioctl\n");
+	//printf("Calling startdriver ioctl\n");
 	
 	return 0;
 unload:
@@ -431,7 +431,7 @@ int main(int argc, char *argv[0])
 
 	if (!res)
 	{
-		printf("driver loaded successfully\n");
+//		printf("Drivers loaded successfully\n");
 	}
 	
 	close(device);
