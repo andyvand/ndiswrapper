@@ -998,6 +998,10 @@ STDCALL char NdisMSynchronizeWithInterrupt(struct ndis_irq **ndis_irq_ptr,
 STDCALL void NdisIndicateStatus(struct ndis_handle *handle, unsigned int status, void *buf, unsigned int len)
 {
 	DBGTRACE("%s %08x\n", __FUNCTION__, status);
+	if(status == NDIS_STATUS_MEDIA_CONNECT)
+		handle->link_status = 1;
+	if(status == NDIS_STATUS_MEDIA_DISCONNECT)
+		handle->link_status = 0;
 }
 
 /*

@@ -328,6 +328,8 @@ struct packed ndis_handle
 	int key_len ;
 	unsigned char key_val[IW_ENCODING_TOKEN_MAX] ;
 	struct pm_dev *pm;
+
+	u32 link_status;
 };
 
 struct ndis_timer
@@ -453,6 +455,10 @@ struct packed list_scan
 #define NDIS_PM_STATE_D1 2
 #define NDIS_PM_STATE_D2 3
 #define NDIS_PM_STATE_D3 4
+
+
+#define NDIS_STATUS_MEDIA_CONNECT    0x4001000b
+#define NDIS_STATUS_MEDIA_DISCONNECT 0x4001000c
 
 void ndis_sendpacket_done(struct ndis_handle *handle, struct ndis_packet *packet);
 
