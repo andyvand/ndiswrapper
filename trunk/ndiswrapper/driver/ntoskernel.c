@@ -1166,10 +1166,12 @@ STDCALL void WRAP_EXPORT(IoFreeMdl)
 	 * to treat buffers allocated with Ndis calls differently, we
 	 * must call NdisFreeBuffer if it is allocated with Ndis
 	 * function. We set 'process' field in Ndis functions. */
-	if (mdl->process)
-		NdisFreeBuffer(mdl);
-	else if (mdl)
-		kfree(mdl);
+	if (mdl) {
+		if (mdl->process)
+			NdisFreeBuffer(mdl);
+		else
+			kfree(mdl);
+	}
 	TRACEEXIT3(return);
 }
 
