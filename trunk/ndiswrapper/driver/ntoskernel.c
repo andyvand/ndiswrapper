@@ -243,7 +243,7 @@ STDCALL void *MmMapIoSpace(__s64 phys_addr,
 		virt = ioremap(phys_addr, size);
 	else
 		virt = ioremap_nocache(phys_addr, size);
-	DBGTRACE("%s: %x, %lu, %d: %p\n",
+	DBGTRACE("%s: %Lx, %lu, %d: %p\n",
 		 __FUNCTION__, phys_addr, size, cache, virt);
 	return virt;
 }
@@ -287,14 +287,18 @@ STDCALL void IofCallDriver(void)
 	UNIMPL();
 }
 
-NOREGPARM void DbgPrint(char *format, ...)
+NOREGPARM unsigned long DbgPrint(char *format, ...)
 {
+	int res = 0;
+
 #ifdef DEBUG
 	va_list args;
+
 	va_start(args, format);
-	printf(format, args);
+	res = printk(format, args);
 	va_end(args);
 #endif
+	return res;
 
 }
 
