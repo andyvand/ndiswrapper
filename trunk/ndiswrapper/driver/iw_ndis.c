@@ -1234,8 +1234,20 @@ static int wpa_set_key(struct net_device *dev, struct iw_request_info *info,
 	struct ndis_wpa_key ndis_key;
 	struct wpa_key wpa_key;
 	int i, res, written, needed;
-	
+	u8 addr[ETH_ALEN];
+	u8 seq[IW_ENCODING_TOKEN_MAX];
+	u8 usrkey[IW_ENCODING_TOKEN_MAX];
+
 	copy_from_user(&wpa_key, wrqu->data.pointer, sizeof(wpa_key));
+	if(wpa_key.addr)
+		copy_from_user(&addr, wpa_key.addr, ETH_ALEN);
+
+	if(wpa_key.seq)
+		copy_from_user(&seq, wpa_key.seq, IW_ENCODING_TOKEN_MAX);
+
+	if(wpa_key.key)
+		copy_from_user(&usrkey, wpa_key.key, IW_ENCODING_TOKEN_MAX);
+	
 	TRACEENTER1("alg = %d, key_index = %d",
 		    wpa_key.alg, wpa_key.key_index);
 	
@@ -1246,7 +1258,7 @@ static int wpa_set_key(struct net_device *dev, struct iw_request_info *info,
 		ndis_remove_key.struct_size = sizeof(ndis_remove_key);
 		ndis_remove_key.index = wpa_key.key_index;
 		if (wpa_key.addr)
-			memcpy(&ndis_remove_key.bssid, wpa_key.addr,
+			memcpy(&ndis_remove_key.bssid, addr,
 			       ETH_ALEN);
 		else
 			memset(&ndis_remove_key.bssid, 0xff, ETH_ALEN);
@@ -1286,7 +1298,7 @@ static int wpa_set_key(struct net_device *dev, struct iw_request_info *info,
 			encr_req.data.flags |= IW_ENCODE_OPEN;
 		else
 			encr_req.data.flags |= IW_ENCODE_RESTRICTED;
-		i = key_str_to_hex(wpa_key.key, key, wpa_key.key_len);
+		i = key_str_to_hex(usrkey, key, wpa_key.key_len);
 		if (i < 0)
 			TRACEEXIT(return -EINVAL);
 		encr_req.data.length = i;
@@ -1315,7 +1327,7 @@ static int wpa_set_key(struct net_device *dev, struct iw_request_info *info,
 		DBGTRACE1("incorrect key? length = (%d)", wpa_key.key_len);
 		TRACEEXIT1(return -EINVAL);
 	}
-	memcpy(&ndis_key.key, wpa_key.key, wpa_key.key_len);
+	memcpy(&ndis_key.key, usrkey, wpa_key.key_len);
 
 	ndis_key.struct_size = sizeof(ndis_key);
 	ndis_key.length = wpa_key.key_len;
@@ -1327,14 +1339,14 @@ static int wpa_set_key(struct net_device *dev, struct iw_request_info *info,
 	}
 
 	for (i = 0, ndis_key.rsc = 0 ; i < wpa_key.seq_len ; i++)
-		ndis_key.rsc |= (wpa_key.seq[i] << (i * 8));
-	
+		ndis_key.rsc |= (seq[i] << (i * 8));
+
 	if (wpa_key.key_index == 0) /* pairwise key */
 		ndis_key.index = (1 << 31) | (1 << 30);
 	else
 		ndis_key.index = wpa_key.key_index;
 
-	if (!memcmp(wpa_key.addr, "\xff\xff\xff\xff\xff\xff", ETH_ALEN))
+	if (!memcmp(&addr, "\xff\xff\xff\xff\xff\xff", ETH_ALEN))
 	{
 		mac_address ap_addr;
 
@@ -1342,7 +1354,7 @@ static int wpa_set_key(struct net_device *dev, struct iw_request_info *info,
 		memcpy(&ndis_key.bssid, &ap_addr, ETH_ALEN);
 	}
 	else
-		memcpy(&ndis_key.bssid, wpa_key.addr, ETH_ALEN);
+		memcpy(&ndis_key.bssid, addr, ETH_ALEN);
 	DBGTRACE("bssid " MACSTR, MAC2STR(ndis_key.bssid));
 
 	if (wpa_key.alg == WPA_ALG_TKIP && wpa_key.key_len == 32)
@@ -1400,10 +1412,15 @@ static int wpa_associate(struct net_device *dev,
 {
 	struct ndis_handle *handle = (struct ndis_handle *)dev->priv;
 	struct wpa_assoc_info wpa_assoc_info;
+	char ssid[NDIS_ESSID_MAX_SIZE];
 	
 	TRACEENTER("%s", "");
 	copy_from_user(&wpa_assoc_info, wrqu->data.pointer,
 		       sizeof(wpa_assoc_info));
+
+	if(wpa_assoc_info.ssid)
+		copy_from_user(&ssid, wpa_assoc_info.ssid, NDIS_ESSID_MAX_SIZE);
+	
 	DBGTRACE("key_mgmt_suite = %d, pairwise_suite = %d, group_suite= %d",
 		 wpa_assoc_info.key_mgmt_suite,
 		 wpa_assoc_info.pairwise_suite, wpa_assoc_info.group_suite);
@@ -1447,7 +1464,7 @@ static int wpa_associate(struct net_device *dev,
 		TRACEEXIT(return -EINVAL);
 	}
 
-	if (set_essid(handle, wpa_assoc_info.ssid, wpa_assoc_info.ssid_len))
+	if (set_essid(handle, ssid, wpa_assoc_info.ssid_len))
 		TRACEEXIT(return -EINVAL);
 
 	TRACEEXIT(return 0);
