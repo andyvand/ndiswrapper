@@ -35,6 +35,7 @@
 #define work_struct tq_struct
 #define INIT_WORK INIT_TQUEUE
 #define schedule_work schedule_task
+#define flush_scheduled_work flush_scheduled_tasks
 #endif
 
 /* Interrupt backwards compatibility stuff */
@@ -524,6 +525,7 @@ void NdisMSetInformationComplete(struct ndis_handle *handle, unsigned int status
 
 #define NDIS_OID_PNP_SET_POWER      0xFD010101
 #define NDIS_OID_PNP_QUERY_POWER    0xFD010102
+#define NDIS_OID_CURRENT_MAC_ADDRESS 0x01010102
 
 #define NDIS_STATUS_NOT_SUPPORTED 0xC00000BB
 
