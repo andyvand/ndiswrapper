@@ -911,10 +911,10 @@ STDCALL void NdisMIndicateReceivePacket(struct ndis_handle *handle, struct ndis_
 			eth_copy_and_sum(skb, buffer->data, buffer->len, 0);
 			skb_put(skb, buffer->len);
 			skb->protocol = eth_type_trans (skb, handle->net_dev);
+			handle->stats.rx_bytes += buffer->len;
 			netif_rx(skb);
 		}
 		handle->driver->miniport_char.return_packet(handle->adapter_ctx,  packet);
-		handle->stats.rx_bytes += packet->len;
 	}
 }
 
