@@ -1,6 +1,15 @@
 * Quickstart guide *
 ====================
 
+0. Use install.sh script
+------------------------
+* Execute install.sh script in the ndiswrapper directory. This should create
+  the driver and configure modules. However, this is not tested extensively,
+  so this may not work for you.
+  * If it works for you, ignore steps below.
+  * If it doesn't work for you, follow the steps below (and mail to the
+    mailing list describing why install.sh script failed).
+
 1. Compile the driver
 ---------------------
 * You need a recent 2.6.0 or 2.4 kernel with source. 
@@ -22,7 +31,7 @@ running):
 
 > make
 
-This should produce a loaddriver executable.
+This should produce a loadndisdriver executable.
 
 3. Get the windows driver
 -------------------------
@@ -87,7 +96,7 @@ b) If you are running 2.4 kernel, run:
 --------------------------
 From the ndiswrapper directory, run:
 
-> utils/loaddriver <vendor> <device> <sysfile> <inffile>
+> utils/loadndisdriver <vendor> <device> <sysfile> <inffile>
 
 where <vendor> is the vendor ID and <device> is the device ID noted in
 step 4, <sysfile> is the full path to the .sys file and <inffile> is the
@@ -155,9 +164,9 @@ a) You need to copy the ndiswrapper module (produced in step 1) to
 
    > depmod -a
 
-   Copy the loaddriver executable to some place, e.g., /usr/local/bin:
+   Copy the loadndisdriver executable to some place, e.g., /usr/local/bin:
 
-   > cp utils/loaddriver /usr/local/bin
+   > cp utils/loadndisdriver /usr/local/bin
 
    Copy the .inf file and .sys file to some place, e.g.,
    /usr/local/share/ndiswrapper
@@ -170,7 +179,7 @@ b) Create alias for the interface:
 
 c) For kernel 2.6:
 
-   * First write a script that does insmod and loaddriver.
+   * First write a script that does insmod and loadndisdriver.
 
    * Add this line to /etc/modprobe.conf:
 
@@ -186,5 +195,5 @@ c) For kernel 2.6:
 
    * Add these line to /etc/modules.conf:
 
-     post-install ethX /usr/local/bin/loaddriver <vendor> <device>  /usr/local/share/ndiswrapper/*.sys /usr/local/share/ndiswrapper/*.inf 
+     post-install ethX /usr/local/bin/loadndisdriver <vendor> <device>  /usr/local/share/ndiswrapper/*.sys /usr/local/share/ndiswrapper/*.inf 
 
