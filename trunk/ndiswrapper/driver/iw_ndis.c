@@ -21,7 +21,6 @@
 #include <linux/rtnetlink.h>
 #include <asm/uaccess.h>
 
-#define DEBUG 3
 #include "iw_ndis.h"
 
 static int freq_chan[] = { 2412, 2417, 2422, 2427, 2432, 2437, 2442,
