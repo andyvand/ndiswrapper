@@ -1,6 +1,6 @@
 -include ../version
 
-DISTFILES=Makefile coffpe.h ndiswrapper.h loader.c loader.h  ndis.c ndis.h \
+DISTFILES=Makefile ndiswrapper.h pe_loader.c pe_loader.h  ndis.c ndis.h \
 				   hal.c ntoskernel.c ntoskernel.h  iw_ndis.c iw_ndis.h \
 				   wrapper.c wrapper.h  proc.c misc_funcs.c \
 				   divdi3.c longlong.h usb.c usb.h
@@ -18,11 +18,11 @@ SRC_DIR=$(shell pwd)
 
 all : prereq_check default
 
-wrapper.o: wrapper.c loader.h ndis.h
+wrapper.o: wrapper.c pe_loader.h ndis.h
 
 iw_ndis..o:	iw_ndis.c iw_ndis.h
 
-loader.o: loader.c loader.h ndis.h
+pe_loader.o: pe_loader.c pe_loader.h
 
 misc_funcs.o: misc_funcs.c ndis.h
 
@@ -44,7 +44,7 @@ ntoskernel.h : ndiswrapper.h
 
 usb.o: usb.c usb.h ndis.h
 
-OBJS := wrapper.o iw_ndis.o loader.o ntoskernel.o ndis.o \
+OBJS := wrapper.o iw_ndis.o pe_loader.o ntoskernel.o ndis.o \
 		  misc_funcs.o proc.o divdi3.o hal.o usb.o
 
 ifdef DEBUG
