@@ -565,62 +565,62 @@ NOREGPARM int WRAP_EXPORT(_win_atoi)
 	return i;
 }
 
-STDCALL __s64 WRAP_EXPORT(_alldiv)
-	(__s64 a, __s64 b)
+STDCALL s64 WRAP_EXPORT(_alldiv)
+	(s64 a, s64 b)
 {
 	return (a / b);
 }
 
-STDCALL __u64 WRAP_EXPORT(_aulldiv)
-	(__u64 a, __u64 b)
+STDCALL u64 WRAP_EXPORT(_aulldiv)
+	(u64 a, u64 b)
 {
 	return (a / b);
 }
 
-STDCALL __s64 WRAP_EXPORT(_allmul)
-	(__s64 a, __s64 b)
+STDCALL s64 WRAP_EXPORT(_allmul)
+	(s64 a, s64 b)
 {
 	return (a * b);
 }
 
-STDCALL __u64 WRAP_EXPORT(_aullmul)
-	(__u64 a, __u64 b)
+STDCALL u64 WRAP_EXPORT(_aullmul)
+	(u64 a, u64 b)
 {
 	return (a * b);
 }
 
-STDCALL __s64 WRAP_EXPORT(_allrem)
-	(__s64 a, __s64 b)
+STDCALL s64 WRAP_EXPORT(_allrem)
+	(s64 a, s64 b)
 {
 	return (a % b);
 }
 
-STDCALL __u64 WRAP_EXPORT(_aullrem)
-	(__u64 a, __u64 b)
+STDCALL u64 WRAP_EXPORT(_aullrem)
+	(u64 a, u64 b)
 {
 	return (a % b);
 }
 
-__attribute__ ((regparm(3))) __s64 WRAP_EXPORT(_allshl)
-	(__s64 a, __u8 b)
+__attribute__ ((regparm(3))) s64 WRAP_EXPORT(_allshl)
+	(s64 a, u8 b)
 {
 	return (a << b);
 }
 
-__attribute__ ((regparm(3))) __u64 WRAP_EXPORT(_aullshl)
-	(__u64 a, __u8 b)
+__attribute__ ((regparm(3))) u64 WRAP_EXPORT(_aullshl)
+	(u64 a, u8 b)
 {
 	return (a << b);
 }
 
-__attribute__ ((regparm(3))) __s64 WRAP_EXPORT(_allshr)
-	(__s64 a, __u8 b)
+__attribute__ ((regparm(3))) s64 WRAP_EXPORT(_allshr)
+	(s64 a, u8 b)
 {
 	return (a >> b);
 }
 
-__attribute__ ((regparm(3))) __u64 WRAP_EXPORT(_aullshr)
-	(__u64 a, __u8 b)
+__attribute__ ((regparm(3))) u64 WRAP_EXPORT(_aullshr)
+	(u64 a, u8 b)
 {
 	return (a >> b);
 }
@@ -695,7 +695,7 @@ STDCALL LONG WRAP_EXPORT(RtlCompareUnicodeString)
 
 	if (case_insensitive)
 		while (!ret && len--)
-			ret = toupper((__u8)*p1++) - toupper((__u8)*p2++);
+			ret = toupper((u8)*p1++) - toupper((u8)*p2++);
 	else
 		while (!ret && len--)
 			ret = *p1++ - *p2++;

@@ -1274,6 +1274,38 @@ static int priv_power_profile(struct net_device *dev,
 	TRACEEXIT2(return 0);
 }
 
+static int priv_network_type(struct net_device *dev,
+			     struct iw_request_info *info,
+			     union iwreq_data *wrqu, char *extra)
+{
+	struct ndis_handle *handle = dev->priv;
+	enum network_type network_type;
+	NDIS_STATUS res;
+	char type;
+
+	type = wrqu->param.value;
+	if (type == 'f')
+		network_type = Ndis802_11FH;
+	else if (type == 'b')
+		network_type = Ndis802_11DS;
+	else if (type == 'a')
+		network_type = Ndis802_11OFDM5;
+	else if (type == 'g')
+		network_type = Ndis802_11OFDM24;
+	else
+		network_type = Ndis802_11Automode;
+
+	res = miniport_set_int(handle, OID_802_11_NETWORK_TYPE_IN_USE,
+			       network_type);
+	if (res == NDIS_STATUS_INVALID_DATA) {
+		WARNING("setting network type to %d failed (%08X)",
+			network_type, res);
+		TRACEEXIT2(return -EINVAL);
+	}
+
+	TRACEEXIT2(return 0);
+}
+
 /* WPA support */
 
 static int wpa_set_wpa(struct net_device *dev, struct iw_request_info *info,
@@ -1623,38 +1655,6 @@ static int wpa_set_auth_alg(struct net_device *dev,
 	TRACEEXIT2(return 0);
 }
 
-static int priv_network_type(struct net_device *dev,
-			     struct iw_request_info *info,
-			     union iwreq_data *wrqu, char *extra)
-{
-	struct ndis_handle *handle = dev->priv;
-	enum network_type network_type;
-	NDIS_STATUS res;
-	char type;
-
-	type = wrqu->param.value;
-	if (type == 'f')
-		network_type = Ndis802_11FH;
-	else if (type == 'b')
-		network_type = Ndis802_11DS;
-	else if (type == 'a')
-		network_type = Ndis802_11OFDM5;
-	else if (type == 'g')
-		network_type = Ndis802_11OFDM24;
-	else
-		network_type = Ndis802_11Automode;
-
-	res = miniport_set_int(handle, OID_802_11_NETWORK_TYPE_IN_USE,
-			       network_type);
-	if (res == NDIS_STATUS_INVALID_DATA) {
-		WARNING("setting network type to %d failed (%08X)",
-			network_type, res);
-		TRACEEXIT2(return -EINVAL);
-	}
-
-	TRACEEXIT2(return 0);
-}
-
 static const struct iw_priv_args priv_args[] = {
 	{WPA_SET_WPA, IW_PRIV_TYPE_INT | IW_PRIV_SIZE_FIXED | 1, 0, "setwpa"},
 	{WPA_SET_KEY, IW_PRIV_TYPE_INT | IW_PRIV_SIZE_FIXED | 1, 0, "setkey"},
@@ -1665,7 +1665,7 @@ static const struct iw_priv_args priv_args[] = {
 	{WPA_DROP_UNENCRYPTED, IW_PRIV_TYPE_INT | IW_PRIV_SIZE_FIXED | 1, 0,
 	 "drop_unencrypted"},
 	{WPA_SET_COUNTERMEASURES, IW_PRIV_TYPE_INT | IW_PRIV_SIZE_FIXED | 1, 0,
-	 "countermeaures"},
+	 "countermeasures"},
 	{WPA_DEAUTHENTICATE, IW_PRIV_TYPE_INT | IW_PRIV_SIZE_FIXED | 1, 0,
 	 "deauthenticate"},
 	{WPA_SET_AUTH_ALG, IW_PRIV_TYPE_INT | IW_PRIV_SIZE_FIXED | 1, 0,
