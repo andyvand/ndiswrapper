@@ -1071,25 +1071,31 @@ int ndis_resume_usb(struct usb_interface *intf)
 }
 #endif
 
-#if 0
-static void resubmit_device_config(struct ndis_handle *handle)
+static void reinit_encryption(struct ndis_handle *handle)
 {
-	unsigned int i, written, needed;
+	unsigned int i;
+	struct encr_info *encr_info = &handle->encr_info;
 
-	for (i = 0; i < MAX_ENCR_KEYS; i++)
-		if (handle->encr_info.keys[i].length != 0) {
-			miniport_set_info(handle, NDIS_OID_ADD_WEP,
-					  (char *)&handle->encr_info.keys[i],
-					  sizeof(struct encr_key),
-					  &written, &needed);
-			set_encr_mode(handle, ENCR1_ENABLED);
-		}
+	TRACEENTER2("");
 
-	set_auth_mode(handle, handle->auth_mode);
-	set_essid(handle, handle->essid.essid,
-	          handle->essid.length);
+	if (handle->op_mode != NDIS_MODE_ADHOC)
+		return;
+
+	for (i = 0; i < MAX_ENCR_KEYS; i++) {
+		if (encr_info->keys[i].length == 0)
+			continue;
+		if (add_wep_key(handle, encr_info->keys[i].key,
+				encr_info->keys[i].length, i))
+			WARNING("setting wep key %d failed", i);
+	}
+
+	/* FIXME: is it dangerous to set essid directly or schedule
+	 * work again here? */
+	set_bit(SET_ESSID, &handle->wrapper_work);
+	schedule_work(&handle->wrapper_worker);
+//	set_essid(handle, handle->essid.essid, handle->essid.length);
+	TRACEEXIT2(return);
 }
-#endif
 
 /* worker procedure to take care of setting/checking various states */
 static void wrapper_worker_proc(void *param)
@@ -1112,21 +1118,26 @@ static void wrapper_worker_proc(void *param)
 		unsigned int i, res, written, needed;
 		const int assoc_size = sizeof(*ndis_assoc_info) +
 			 IW_CUSTOM_MAX;
-		static long last_assoc = 0;
 
 		DBGTRACE2("link status: %d", handle->link_status);
 		if (handle->link_status == 0) {
-//			for (i = 0; i < MAX_ENCR_KEYS; i++)
-//				handle->encr_info.keys[i].length = 0;
-			if (last_assoc + 2 * HZ < jiffies)
-				TRACEEXIT2(return);
+			DBGTRACE2("%s", "disassociate_event");
 
-			netif_carrier_off(handle->net_dev);
+			if (handle->op_mode == NDIS_MODE_ADHOC) {
+				reinit_encryption(handle);
+				return;
+			}
+			/* FIXME: not clear if NDIS says keys should
+			 * be cleared here */
+			for (i = 0; i < MAX_ENCR_KEYS; i++)
+				handle->encr_info.keys[i].length = 0;
+
+			if (netif_carrier_ok(handle->net_dev))
+				netif_carrier_off(handle->net_dev);
 			memset(&wrqu, 0, sizeof(wrqu));
 			wrqu.ap_addr.sa_family = ARPHRD_ETHER;
 			wireless_send_event(handle->net_dev, SIOCGIWAP, &wrqu,
 					    NULL);
-			DBGTRACE2("%s", "disassociate_event");
 			return;
 		}
 
@@ -1207,7 +1218,6 @@ static void wrapper_worker_proc(void *param)
 		get_ap_address(handle, (char *)&wrqu.ap_addr.sa_data);
 		wrqu.ap_addr.sa_family = ARPHRD_ETHER;
 		wireless_send_event(handle->net_dev, SIOCGIWAP, &wrqu, NULL);
-		last_assoc = jiffies;
 		DBGTRACE2("%s", "associate_event");
 	}
 

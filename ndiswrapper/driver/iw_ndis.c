@@ -617,18 +617,60 @@ static int iw_get_encr(struct net_device *dev, struct iw_request_info *info,
 	TRACEEXIT1(return 0);
 }
 
+/* index must be 0 - N, as per NDIS  */
+int add_wep_key(struct ndis_handle *handle, char *key, int key_len,
+		int index)
+{
+	struct ndis_encr_key ndis_key;
+	unsigned int res, written, needed;
+
+	if (key_len <= 0 || key_len > NDIS_ENCODING_TOKEN_MAX) {
+		WARNING("invalid key length (%d)", key_len);
+		TRACEEXIT(return -EINVAL);
+	}
+	ndis_key.length = key_len;
+	memcpy(&ndis_key.key, key, key_len);
+	/* active/transmit key works only if index is 0 */
+	if (index == handle->encr_info.active)
+		ndis_key.index = 0 | (1 << 31);
+	else
+		ndis_key.index = index;
+
+	res = miniport_set_info(handle, NDIS_OID_ADD_WEP, (char *)&ndis_key,
+				sizeof(ndis_key), &written, &needed);
+	if (res == NDIS_STATUS_INVALID_DATA) {
+		WARNING("adding encryption key %d failed (%08X)",
+			index+1, res);
+		TRACEEXIT1(return -EINVAL);
+	}
+		
+	/* Atheros driver messes up ndis_key during ADD_WEP, so
+	 * don't rely on that; instead use info in key and key_len */
+	handle->encr_info.keys[index].length = key_len;
+	memcpy(&handle->encr_info.keys[index].key, key, key_len);
+
+	if (index == handle->encr_info.active) {
+		/* active/transmit key is always stored at index 0 */
+		handle->encr_info.keys[0].length = key_len;
+		memcpy(&handle->encr_info.keys[0].key, key, key_len);
+	}
+	TRACEEXIT1(return 0);
+}
+
 static int iw_set_encr(struct net_device *dev, struct iw_request_info *info,
 		       union iwreq_data *wrqu, char *extra)
 {
 	struct ndis_handle *handle = dev->priv;
 	unsigned int res, written, needed, index;
 	struct encr_info *encr_info = &handle->encr_info;
-	struct ndis_encr_key ndis_key;
+	unsigned char *key;
+	int key_len;
 	
 	TRACEENTER1("%s", "");
 	index = (wrqu->encoding.flags & IW_ENCODE_INDEX);
 	DBGTRACE2("index = %u", index);
 
+	/* iwconfig gives index as 1 - N */
 	if (index > 0)
 		index--;
 	else
@@ -672,58 +714,23 @@ static int iw_set_encr(struct net_device *dev, struct iw_request_info *info,
 		TRACEEXIT1(return -EINVAL);
 	}
 
-	ndis_key.struct_size = sizeof(ndis_key);
-
 	if (wrqu->data.length > 0) {
-		if (wrqu->data.length > NDIS_ENCODING_TOKEN_MAX) {
-			WARNING("invalid key length (%d)", wrqu->data.length);
-			TRACEEXIT(return -EINVAL);
-		}
-		ndis_key.length = wrqu->data.length;
-		ndis_key.index = index;
-		memcpy(&ndis_key.key, extra, ndis_key.length);
-
-		res = miniport_set_info(handle, NDIS_OID_ADD_WEP,
-					(char *)&ndis_key,
-					sizeof(ndis_key), &written, &needed);
-		if (res == NDIS_STATUS_INVALID_DATA) {
-			WARNING("adding encryption key %d failed (%08X)",
-				index+1, res);
-			TRACEEXIT1(return -EINVAL);
-		}
-		
-		/* Atheros driver messes up ndis_key during ADD_WEP, so
-		 * don't rely on that; instead use info in wrqu and extra */
-		encr_info->keys[index].length = wrqu->data.length;
-		memcpy(&encr_info->keys[index].key, extra, wrqu->data.length);
-	} else // wrqu->data.length == 0
-		encr_info->active = index;
-
-	if (index == encr_info->active) {
+		key_len = wrqu->data.length;
+		key = extra;
+	} else { // must be set as tx key
 		if (encr_info->keys[index].length == 0) {
 			WARNING("key %d is not set", index+1);
 			TRACEEXIT1(return -EINVAL);
 		}
+		key_len = encr_info->keys[index].length;
+		key = encr_info->keys[index].key;
+		encr_info->active = index;
+	}
 
-		/* set group key as transmit key */
-		ndis_key.length = encr_info->keys[index].length;
-		ndis_key.index = 0 | (1 << 31);
-		memcpy(ndis_key.key, encr_info->keys[index].key,
-		       ndis_key.length);
-		res = miniport_set_info(handle, NDIS_OID_ADD_WEP,
-					(char *)&ndis_key, sizeof(ndis_key),
-					&written, &needed);
-		if (res == NDIS_STATUS_INVALID_DATA) {
-			WARNING("adding encryption key %d failed (%08X)",
-				index+1, res);
-			TRACEEXIT1(return -EINVAL);
-		}
+	if (add_wep_key(handle, key, key_len, index))
+		TRACEEXIT(return -EINVAL);
 
-		/* active/transmit key is always stored at index 0 */
-		encr_info->keys[0].length = ndis_key.length;
-		memcpy(&encr_info->keys[0].key, ndis_key.key,
-		       ndis_key.length);
-
+	if (index == encr_info->active) {
 		res = set_encr_mode(handle, ENCR1_ENABLED);
 		if (res)
 			WARNING("changing encr status failed (%08X)", res);
@@ -731,7 +738,6 @@ static int iw_set_encr(struct net_device *dev, struct iw_request_info *info,
 		/* ndis drivers want essid to be set after setting encr */
 		set_essid(handle, handle->essid.essid, handle->essid.length);
 	}
-
 	TRACEEXIT1(return 0);
 }
 	
