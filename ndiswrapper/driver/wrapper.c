@@ -979,7 +979,7 @@ static void check_capa(struct ndis_handle *handle)
 	int i, mode;
 	unsigned int res, written, needed;
 	struct ndis_assoc_info ndis_assoc_info;
-	struct ndis_key ndis_key;
+	struct ndis_wpa_key ndis_key;
 
 	TRACEENTER1("%s", "");
 	if (set_auth_mode(handle, AUTHMODE_WPA) ||
@@ -1022,11 +1022,11 @@ static void check_capa(struct ndis_handle *handle)
 		TRACEEXIT1(return);
 	}
 
-	ndis_key.key_len = 32;
-	ndis_key.key_index = 0xC0000001;
-	ndis_key.length = sizeof(ndis_key);
+	ndis_key.length = 32;
+	ndis_key.index = 0xC0000001;
+	ndis_key.struct_size = sizeof(ndis_key);
 	res = dosetinfo(handle, NDIS_OID_ADD_KEY, (char *)&ndis_key,
-			ndis_key.length, &written, &needed);
+			ndis_key.struct_size, &written, &needed);
 
 	DBGTRACE("add key returns %08X, needed = %d, size = %d\n",
 		 res, needed, sizeof(ndis_key));
@@ -1289,30 +1289,6 @@ out_nodev:
 }
 
 /*
- * Free the memory that is allocated when a timer is initialized. Also make sure all timers
- * are inactive.
- */
-static void fixup_timers(struct ndis_handle *handle)
-{
-	char x;
-	while(!list_empty(&handle->timers))
-	{
-		struct wrapper_timer *timer = (struct wrapper_timer*) handle->timers.next;
-		DBGTRACE4("fixing up timer %p, timer->list %p",
-			  timer, &timer->list);
-		list_del(&timer->list);
-		if(timer->active)
-		{
-			WARNING("%s", "Fixing an active timer left "
-				" by buggy windows driver");
-			wrapper_cancel_timer(timer, &x); 
-		}
-		wrap_kfree(timer);
-	}
-}
-
-
-/*
  * Remove one PCI-card (adaptor).
  */
 static void __devexit ndis_remove_one(struct pci_dev *pdev)
@@ -1336,8 +1312,6 @@ static void __devexit ndis_remove_one(struct pci_dev *pdev)
 	if(handle->net_dev)
 		unregister_netdev(handle->net_dev);
 	call_halt(handle);
-
-	fixup_timers(handle);
 
 	if(handle->multicast_list)
 		kfree(handle->multicast_list);
