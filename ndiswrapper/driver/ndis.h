@@ -354,6 +354,7 @@ struct packed ndis_handle
 	void *adapter_ctx;
 
 	struct work_struct irq_bh;
+	int ndis_irq_enabled;
 
 	int irq;
 	unsigned long mem_start;

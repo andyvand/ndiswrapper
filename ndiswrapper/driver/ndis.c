@@ -202,7 +202,8 @@ void NdisWriteErrorLogEntry(struct ndis_handle *handle,
 			    unsigned int length,
 			    unsigned int p1)
 {
-	printk(KERN_ERR "%s: error: %08x, %d %08x\n", __FUNCTION__, (int)error, (int) length, (int)p1);
+	printk(KERN_ERR "%s (%s): status error: %08X, length: %d (%08x)\n",
+	       handle->net_dev->name, __FUNCTION__, error, length, p1);
 }
 
 
@@ -910,7 +911,6 @@ STDCALL void NdisMDeregisterAdapterShutdownHandler(struct ndis_handle *handle)
 }
 
 
-static int ndis_irq_enabled;
 /*
  *  bottom half of the irq handler
  *
@@ -918,7 +918,7 @@ static int ndis_irq_enabled;
 void ndis_irq_bh(void *data)
 {
 	struct ndis_handle *handle = (struct ndis_handle *) data;
-	if (ndis_irq_enabled)
+	if (handle->ndis_irq_enabled)
 		handle->driver->miniport_char.handle_interrupt(handle->adapter_ctx);
 }
 
@@ -933,10 +933,11 @@ irqreturn_t ndis_irq_th(int irq, void *data, struct pt_regs *pt_regs)
 
 	struct ndis_irq *irqhandle = (struct ndis_irq *) data;
 	struct ndis_handle *handle = irqhandle->handle; 
+	unsigned long flags;
 
-	spin_lock(&irqhandle->spinlock);
+	spin_lock_irqsave(&irqhandle->spinlock, flags);
 	handle->driver->miniport_char.isr(&handeled, &more_work, handle->adapter_ctx);
-	spin_unlock(&irqhandle->spinlock);
+	spin_unlock_irqrestore(&irqhandle->spinlock, flags);
 
 	if(more_work)
 		schedule_work(&handle->irq_bh);
@@ -982,7 +983,7 @@ STDCALL unsigned int NdisMRegisterInterrupt(struct ndis_irq **ndis_irq_ptr,
 		kfree(ndis_irq);
 		return NDIS_STATUS_FAILURE;
 	}
-	ndis_irq_enabled = 1;
+	handle->ndis_irq_enabled = 1;
 	INIT_WORK(&handle->irq_bh, &ndis_irq_bh, handle);
 	return NDIS_STATUS_SUCCESS;
 }
@@ -994,12 +995,13 @@ STDCALL unsigned int NdisMRegisterInterrupt(struct ndis_irq **ndis_irq_ptr,
 STDCALL void NdisMDeregisterInterrupt(struct ndis_irq **ndis_irq_ptr)
 {
 	struct ndis_irq *ndis_irq = *ndis_irq_ptr;
+	struct ndis_handle *handle = ndis_irq->handle;
 
 	DBGTRACE("%s: %08x %d %08x\n", __FUNCTION__, (int)ndis_irq, ndis_irq->irq, (int)ndis_irq->handle);
 
 	if(ndis_irq)
 	{
-		ndis_irq_enabled = 0;
+		handle->ndis_irq_enabled = 0;
 		free_irq(ndis_irq->irq, ndis_irq);
 		kfree(ndis_irq);
 	}
