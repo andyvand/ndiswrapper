@@ -13,6 +13,7 @@
  *
  */
 
+#include "ntoskernel.h"
 #include "ndis.h"
 #include "usb.h"
 #include <linux/time.h>

@@ -436,6 +436,9 @@ enum wrapper_work
 	WRAPPER_LINK_STATUS,
 	SET_OP_MODE,
 	SET_ESSID,
+	SET_PACKET_FILTER,
+	COLLECT_STATS,
+	SUSPEND_RESUME,
 	/* do not work when this is set */
 	SHUTDOWN
 };
@@ -657,7 +660,6 @@ struct packed ndis_handle
 	int reset_status;
 
 	struct timer_list statcollector_timer;
-	struct work_struct statcollector_work;
 
 	unsigned long scan_timestamp;
 
@@ -685,8 +687,6 @@ struct packed ndis_handle
 	struct wrap_spinlock timers_lock;
 
 	struct proc_dir_entry *procfs_iface;
-
-	struct work_struct set_rx_mode_work;
 
 	struct work_struct wrapper_worker;
 	unsigned long wrapper_work;
@@ -790,8 +790,6 @@ STDCALL void RtlFreeAnsiString(struct ustring *string);
 void *get_sp(void);
 void ndis_init(void);
 void ndis_cleanup_handle(struct ndis_handle *handle);
-
-void usb_cleanup_handle(struct ndis_handle *handle);
 
 int ndiswrapper_procfs_init(void);
 int ndiswrapper_procfs_add_iface(struct ndis_handle *handle);

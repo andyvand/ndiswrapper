@@ -128,9 +128,6 @@ static int ndis_init_one_pci(struct pci_dev *pdev,
 		res = -EINVAL;
 		goto out_setup;
 	}
-	hangcheck_add(handle);
-	statcollector_add(handle);
-	ndiswrapper_procfs_add_iface(handle);
 	TRACEEXIT1(return 0);
 
 out_setup:
@@ -224,9 +221,6 @@ static void *ndis_init_one_usb(struct usb_device *udev, unsigned int ifnum,
 		res = -EINVAL;
 		goto out_setup;
 	}
-	hangcheck_add(handle);
-	statcollector_add(handle);
-	ndiswrapper_procfs_add_iface(handle);
 
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
 	TRACEEXIT1(return 0);
