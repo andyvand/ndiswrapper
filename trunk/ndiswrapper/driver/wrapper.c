@@ -167,7 +167,6 @@ int doquery(struct ndis_handle *handle, unsigned int oid, char *buf,
 			      written, needed);
 	if (res == NDIS_STATUS_PENDING)
 	{
-DBGTRACE("res: %d", res);
 		/* wait for NdisMQueryInformationComplete upto HZ */
 		if (!wait_event_interruptible_timeout(
 			    handle->ndis_comm_wq,
@@ -176,7 +175,6 @@ DBGTRACE("res: %d", res);
 		res = handle->ndis_comm_res;
 	}
 	up(&handle->ndis_comm_mutex);
-DBGTRACE("res: %d", res);
 	TRACEEXIT3(return res);
 }
 
