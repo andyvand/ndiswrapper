@@ -232,30 +232,30 @@ struct mdl {
 		(mdl)->bytecount = length;				\
 	}
 
-struct device_queue_entry {
+struct kdevice_queue_entry {
 	struct nt_list_entry list;
 	ULONG sort_key;
 	BOOLEAN inserted;
 };
 
-struct wait_ctx_block {
-	struct device_queue_entry wait_queue_entry;
-	void *dev_routine;
-	void *dev_ctx;
-	ULONG map_reg_count;
-	void *current_irp;
-	void *buffer_chaining_dpc;
-};
-
 struct kdevice_queue {
 	USHORT type;
 	USHORT size;
-	struct nt_list_entry devlist_head;
+	struct nt_list_entry list;
 	KSPIN_LOCK lock;
 	BOOLEAN busy;
 };
 
-struct wrapper_timer;
+struct wait_context_block {
+	struct kdevice_queue_entry wait_queue_entry;
+	void *device_routine;
+	void *device_context;
+	ULONG num_regs;
+	void *device_object;
+	void *current_irp;
+	void *buffer_chaining_dpc;
+};
+
 struct dispatch_header {
 	UCHAR type;
 	UCHAR absolute;
@@ -272,6 +272,7 @@ struct kevent {
 	struct dispatch_header dh;
 };
 
+struct wrapper_timer;
 struct ktimer {
 	struct dispatch_header dh;
 	ULONGLONG due_time;
@@ -312,7 +313,7 @@ struct dev_obj_ext;
 struct driver_object;
 
 struct device_object {
-	SHORT type;
+	CSHORT type;
 	USHORT size;
 	LONG ref_count;
 	struct driver_object *drv_obj;
@@ -324,19 +325,19 @@ struct device_object {
 	ULONG characteristics;
 	void *vpb;
 	void *dev_ext;
-	BYTE stack_size;
+	CCHAR stack_size;
 	union {
 		struct nt_list_entry queue_list;
-		struct wait_ctx_block wcb;
+		struct wait_context_block wcb;
 	} queue;
 	ULONG align_req;
 	struct kdevice_queue dev_queue;
 	struct kdpc dpc;
-	UINT active_threads;
+	ULONG active_threads;
 	void *security_desc;
 	struct kevent lock;
 	USHORT sector_size;
-	USHORT spare;
+	USHORT spare1;
 	struct dev_obj_ext *dev_obj_ext;
 	void *reserved;
 
@@ -358,23 +359,7 @@ struct io_status_block {
 	ULONG status_info;
 };
 
-struct kdevice_queue_entry {
-	struct nt_list_entry dev_list;
-	ULONG sort_key;
-	BOOLEAN inserted;
-};
-
 #define DEVICE_TYPE ULONG
-
-struct wait_context_block {
-	struct kdevice_queue_entry wait_queue_entry;
-	void *device_routine;
-	void *device_context;
-	ULONG num_regs;
-	void *device_object;
-	void *current_irp;
-	void *buffer_chaining_dpc;
-};
 
 struct driver_extension;
 
@@ -554,7 +539,8 @@ struct irp {
 	(irp)->tail.overlay.dev_q.context.driver_context
 
 enum nt_obj_type {
-	NT_OBJ_EVENT, NT_OBJ_MUTEX, NT_OBJ_THREAD, NT_OBJ_TIMER,
+	NT_OBJ_EVENT = 10, NT_OBJ_MUTEX, NT_OBJ_THREAD, NT_OBJ_TIMER,
+	NT_OBJ_SEMAPHORE,
 };
 
 struct common_body_header {
