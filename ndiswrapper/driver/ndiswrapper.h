@@ -56,7 +56,9 @@ typedef struct workqueue_struct *workqueue;
 	dma_map_single(&pci_dev->dev,addr,size,direction)
 #define PCI_DMA_UNMAP_SINGLE(pci_dev,dma_handle,size,direction) \
 	dma_unmap_single(&pci_dev->dev,dma_handle,size,direction)
+
 #else // linux version <= 2.5.41
+
 #define PCI_DMA_ALLOC_COHERENT(dev,size,dma_handle) \
 	pci_alloc_consistent(dev,size,dma_handle)
 #define PCI_DMA_FREE_COHERENT(dev,size,cpu_addr,dma_handle) \
@@ -72,12 +74,23 @@ typedef struct workqueue_struct *workqueue;
 #define flush_scheduled_work flush_scheduled_tasks
 typedef task_queue workqueue;
 #include <linux/smp_lock.h>
-#define irqs_disabled() 0
+
+/* RedHat kernels #define irqs_disabled this way */
+#ifndef irqs_disabled
+#define irqs_disabled()                \
+({                                     \
+       unsigned long flags;            \
+       __save_flags(flags);            \
+       !(flags & (1<<9));              \
+})
+#endif
+
 #ifdef CONFIG_PREEMPT
 #define in_atomic() ((preempt_get_count() & ~PREEMPT_ACTIVE) != kernel_locked())
 #else
 #define in_atomic() 0
 #endif // CONFIG_PREEMPT
+
 #endif // LINUX_VERSION_CODE
 
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,4,23)
