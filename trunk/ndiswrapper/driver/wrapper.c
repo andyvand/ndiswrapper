@@ -602,9 +602,9 @@ static void xmit_worker(void *param)
 		handle->xmit_ring_start =
 			(handle->xmit_ring_start + n) % XMIT_RING_SIZE;
 		handle->xmit_ring_pending -= n;
-		wrap_spin_unlock(&handle->xmit_ring_lock);
-		if (netif_queue_stopped(handle->net_dev))
+		if (n > 0 && netif_queue_stopped(handle->net_dev))
 			netif_wake_queue(handle->net_dev);
+		wrap_spin_unlock(&handle->xmit_ring_lock);
 	}
 
 	TRACEEXIT3(return);
@@ -1354,8 +1354,7 @@ int setup_dev(struct net_device *dev)
 
 struct net_device *ndis_init_netdev(struct ndis_handle **phandle,
 				    struct ndis_device *device,
-				    struct ndis_driver *driver,
-				    void *netdev)
+				    struct ndis_driver *driver, void *netdev)
 {
 	int i, *ip;
 	struct net_device *dev;

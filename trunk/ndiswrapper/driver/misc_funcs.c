@@ -806,36 +806,4 @@ void inline my_dumpstack(void)
 		printk("%p\n", (void *)((long *)sp)[i]);
 }
 
-/* the string should be of the form XX:XX:XX:XX:XX:XX, along with colons */
-int string_to_mac(unsigned char *mac, unsigned char *string, int string_len)
-{
-	int i, j;
-
-	memset(mac, 0, ETH_ALEN);
-
-	for (i = 0, j = 0; i < string_len && j < ETH_ALEN; i++) {
-		unsigned char m, a;
-
-		a = string[i];
-		if (a == ':')
-			j++;
-		else  {
-			if (a >= '0' &&  a <= '9')
-				m = a - '0';
-			else if (toupper(a) >= 'A' && toupper(a) <= 'F')
-				m = toupper(a) - 'A' + 10;
-			else
-				break;
-			mac[j] = mac[j] << 4 | m;
-		}
-	}
-	for (i = 0; i < ETH_ALEN; i++)
-		DBGTRACE1("mac[%d] = %02x", i, mac[i]);
-
-	if (j == ETH_ALEN || j == (ETH_ALEN - 1))
-		TRACEEXIT1(return 0);
-	else
-		TRACEEXIT1(return -EINVAL);
-}
-
 #include "misc_funcs_exports.h"

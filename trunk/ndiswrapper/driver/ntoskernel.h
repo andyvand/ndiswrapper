@@ -845,11 +845,11 @@ static inline void wrap_spin_lock(struct wrap_spinlock *lock, int irql)
 		} else {
 			spin_lock_bh(&(lock->lock.spinlock));
 			lock->use_bh = 1;
-#ifdef DEBUG_IRQL
-			if (!in_atomic())
-				WARNING("!in_atomic()");
-#endif
 		}
+#ifdef DEBUG_IRQL
+		if (!in_atomic())
+			WARNING("!in_atomic()");
+#endif
 	} else {
 			spin_lock(&(lock->lock.spinlock));
 			lock->use_bh = 0;
@@ -860,8 +860,8 @@ static inline void wrap_spin_unlock(struct wrap_spinlock *lock)
 {
 	if (lock->use_bh) {
 #ifdef DEBUG_IRQL
-	if (!in_atomic())
-		WARNING("!in_atomic()");
+		if (!in_atomic())
+			WARNING("!in_atomic()");
 #endif
 		spin_unlock_bh(&(lock->lock.spinlock));
 	} else {
