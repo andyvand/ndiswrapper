@@ -69,8 +69,6 @@ MODULE_PARM_DESC(hangcheck_interval, "The interval, in seconds, for checking"
 
 static void ndis_set_rx_mode(struct net_device *dev);
 
-extern struct ndis_handle *ghandle;
-
 /*
  * MiniportReset
  */
@@ -79,14 +77,14 @@ NDIS_STATUS miniport_reset(struct ndis_handle *handle)
 	NDIS_STATUS res = 0;
 	struct miniport_char *miniport;
 
-	TRACEENTER2("handle: %p, ghandle: %p", handle, ghandle);
+	TRACEENTER2("handle: %p", handle);
 
-	if (ghandle->reset_status)
+	if (handle->reset_status)
 		return NDIS_STATUS_PENDING;
 
-	if (down_interruptible(&ghandle->ndis_comm_mutex))
+	if (down_interruptible(&handle->ndis_comm_mutex))
 		TRACEEXIT3(return NDIS_STATUS_FAILURE);
-	miniport = &ghandle->driver->miniport_char;
+	miniport = &handle->driver->miniport_char;
 	/* reset_status is used for two purposes: to check if windows
 	 * driver needs us to reset filters etc (as per NDIS) and to
 	 * check if another reset is in progress */
@@ -580,7 +578,7 @@ static int send_packets_sg_dma(struct ndis_handle *handle, int n)
 		buffer = handle->xmit_array[i]->private.buffer_head;
 		handle->xmit_array[i-1]->private.buffer_head->next =
 			buffer;
-		DBGTRACE3("adjusting buffer[%d]: %x, %p, %d, %d", i,
+		DBGTRACE3("adjusting buffer[%d]: %p, %p, %d, %d", i,
 			  buffer->startva, phys_to_virt(ndis_sg_elements[i].address),
 			  buffer->bytecount, ndis_sg_elements[i].length);
 		buffer->startva = phys_to_virt(ndis_sg_elements[i].address);
@@ -588,7 +586,7 @@ static int send_packets_sg_dma(struct ndis_handle *handle, int n)
 		kfree(handle->xmit_array[i]);
 	}
 	buffer = handle->xmit_array[0]->private.buffer_head;
-	DBGTRACE3("adjusting buffer[0]: %x, %p, %d, %d",
+	DBGTRACE3("adjusting buffer[0]: %p, %p, %d, %d",
 		  buffer->startva, phys_to_virt(ndis_sg_elements[0].address),
 		  buffer->bytecount, ndis_sg_elements[0].length);
 	buffer->startva = phys_to_virt(ndis_sg_elements[0].address);

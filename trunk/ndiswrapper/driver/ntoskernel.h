@@ -329,10 +329,12 @@ struct wrap_export {
 #define WRAP_EXPORT_MAP(s,f)
 #define WRAP_EXPORT(x) x
 
-extern struct wrap_spinlock *wrap_spinlock_array[];
-typedef unsigned long spinlock_bitmap_t;
-#define SPINLOCK_COLUMNS (sizeof(spinlock_bitmap_t) * 8)
-#define SPINLOCK_ROWS 20
+struct wrap_spinlock {
+	spinlock_t spinlock;
+	KIRQL irql;
+	unsigned char use_bh;
+	KSPIN_LOCK kspin_lock;
+};
 
 struct wrap_alloc {
 	struct list_head list;
@@ -483,11 +485,9 @@ static inline void wrap_spin_lock_init(struct wrap_spinlock *lock)
 #define wrap_spin_unlock_irqrestore(lock, flags) \
 	spin_unlock_irqrestore(&(lock)->spinlock, flags)
 
-void allocate_kspin_lock(KSPIN_LOCK *lock);
-void free_kspin_lock(KSPIN_LOCK lock);
-void check_kspin_lock(KSPIN_LOCK lock);
-struct wrap_spinlock *kspin_wrap_lock(KSPIN_LOCK kspin_lock);
-int valid_kspin_lock(KSPIN_LOCK kspin_lock);
+struct wrap_spinlock *kspin_wrap_lock(void *kspin_lock);
+struct wrap_spinlock *allocate_kspin_lock(void *kspin_lock);
+int free_kspin_lock(void *kspin_lock);
 
 static inline void wrapper_set_timer_dpc(struct wrapper_timer *wrapper_timer,
                                          struct kdpc *kdpc)
