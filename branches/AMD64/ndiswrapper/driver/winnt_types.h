@@ -61,6 +61,7 @@ typedef uint64_t ULONGLONG;
 
 typedef size_t SIZE_T;
 typedef SHORT wchar_t;
+typedef short CSHORT;
 typedef int32_t INT;
 typedef long long LARGE_INTEGER;
 typedef uint32_t UINT;

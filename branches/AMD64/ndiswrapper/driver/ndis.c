@@ -109,12 +109,12 @@ static void wrap_free_timers(struct ndis_handle *handle)
 /* remove all 'handle X ctx' pairs for the given handle */
 static void free_handle_ctx(struct ndis_handle *handle)
 {
-	struct list_head *curr, *tmp;
+	struct list_head *cur, *tmp;
 
 	wrap_spin_lock(&atomic_lock, PASSIVE_LEVEL);
-	list_for_each_safe(curr, tmp, &handle_ctx_list) {
+	list_for_each_safe(cur, tmp, &handle_ctx_list) {
 		struct handle_ctx_entry *handle_ctx =
-			(struct handle_ctx_entry *)curr;
+			list_entry(cur, struct handle_ctx_entry, list);
 		if (handle_ctx->handle == handle) {
 			list_del(&handle_ctx->list);
 			kfree(handle_ctx);
@@ -149,8 +149,7 @@ STDCALL static NDIS_STATUS WRAP_EXPORT(NdisMRegisterMiniport)
 	int min_length = ((char *) &miniport_char->co_create_vc) -
 		((char *) miniport_char);
 
-	TRACEENTER1("driver: %p, miniport_char: %p",
-		    ndis_driver, miniport_char);
+	TRACEENTER1("driver: %p", ndis_driver);
 
 	if (miniport_char->majorVersion < 4) {
 		ERROR("Driver %s using ndis version %d which is too old.",
@@ -316,7 +315,7 @@ STDCALL static void WRAP_EXPORT(NdisOpenFile)
 	 NDIS_PHY_ADDRESS highest_address)
 {
 	struct ustring ansi;
-	struct list_head *curr, *tmp;
+	struct list_head *cur, *tmp;
 	struct ndis_bin_file *file;
 
 	TRACEENTER2("status = %p, filelength = %p, *filelength = %d, "
@@ -340,13 +339,14 @@ STDCALL static void WRAP_EXPORT(NdisOpenFile)
 	DBGTRACE2("Filename: %s", ansi.buf);
 
 	/* Loop through all drivers and all files to find the requested file */
-	list_for_each_safe(curr, tmp, &ndis_drivers) {
+	list_for_each_safe(cur, tmp, &ndis_drivers) {
+		struct ndis_driver *driver;
 		int i;
-		struct ndis_driver *driver = (struct ndis_driver *) curr;
 
+		driver = list_entry(cur, struct ndis_driver, list);
 		for (i = 0; i < driver->num_bin_files; i++) {
 			int n;
-			file = driver->bin_files[i];
+			file = &driver->bin_files[i];
 			DBGTRACE2("considering %s", file->name);
 			n = min(strlen(file->name), strlen(ansi.buf));
 			if (strnicmp(file->name, ansi.buf, n) == 0) {
@@ -1718,7 +1718,7 @@ EthRxIndicateHandler(void *adapter_ctx, void *rx_ctx, char *header1,
 				handle->stats.rx_dropped++;
 				TRACEEXIT3(return);
 			}
-			memcpy(&packet->header, header, 
+			memcpy(&packet->header, header,
 			       sizeof(packet->header));
 			memcpy(packet->look_ahead, look_ahead,
 			       look_ahead_size);
@@ -2447,7 +2447,6 @@ STDCALL static void WRAP_EXPORT(NdisMSetAttributes)(void){UNIMPL();}
 STDCALL static void WRAP_EXPORT(EthFilterDprIndicateReceiveComplete)
 	(void){UNIMPL();}
 STDCALL static void WRAP_EXPORT(EthFilterDprIndicateReceive)(void){UNIMPL();}
-STDCALL static void WRAP_EXPORT(NdisMPciAssignResources)(void){UNIMPL();}
 STDCALL static void WRAP_EXPORT(NdisMRemoveMiniport)(void) { UNIMPL(); }
 //STDCALL static void RndisMSendComplete(void) { UNIMPL(); }
 //STDCALL static void RndisMInitializeWrapper(void) { UNIMPL(); }
