@@ -1154,11 +1154,11 @@ static u32 ndis_get_link(struct net_device *dev)
 }
 
 
+#ifdef HAVE_ETHOOL
 static struct ethtool_ops ndis_ethtool_ops = {
 	.get_link		= ndis_get_link,
 };
-
-
+#endif
 
 static int call_init(struct ndis_handle *handle)
 {
@@ -1661,8 +1661,9 @@ static int setup_dev(struct net_device *dev)
 	dev->do_ioctl = ndis_ioctl;
 	dev->get_wireless_stats = ndis_get_wireless_stats;
 	dev->wireless_handlers	= (struct iw_handler_def *)&ndis_handler_def;
+#ifdef HAVE_ETHOOL
 	dev->ethtool_ops = &ndis_ethtool_ops;
-	
+#endif	
 	for(i = 0; i < ETH_ALEN; i++)
 	{
 		dev->dev_addr[i] = mac[i];
