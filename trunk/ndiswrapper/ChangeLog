@@ -1,5 +1,5 @@
-Version 0.7 2004- (not relesed yet)
-=====================
+Version 0.7 2004-04-23
+======================
 * Power down while unloading the module, so it saves trees!
 * Fixed a bug with scanning; earlier it would fail sometimes.
 * procfs exposes multiple cards, if present.
