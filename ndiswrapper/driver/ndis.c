@@ -334,7 +334,7 @@ STDCALL static void WRAP_EXPORT(NdisOpenFile)
 
 	if (RtlUnicodeStringToAnsiString(&ansi, filename, 0)) {
 		*status = NDIS_STATUS_RESOURCES;
-		kfree(ansi.buf);
+		RtlFreeAnsiString(&ansi);
 		TRACEEXIT2(return);
 	}
 	DBGTRACE2("Filename: %s", ansi.buf);
@@ -353,13 +353,13 @@ STDCALL static void WRAP_EXPORT(NdisOpenFile)
 				*filehandle = file;
 				*filelength = file->size;
 				*status = NDIS_STATUS_SUCCESS;
-				kfree(ansi.buf);
+				RtlFreeAnsiString(&ansi);
 				TRACEEXIT2(return);
 			}
 		}
 	}
 	*status = NDIS_STATUS_FILE_NOT_FOUND;
-	kfree(ansi.buf);
+	RtlFreeAnsiString(&ansi);
 	TRACEEXIT2(return);
 }
 
@@ -521,7 +521,7 @@ STDCALL static void WRAP_EXPORT(NdisReadConfiguration)
 	if (RtlUnicodeStringToAnsiString(&ansi, key, 1)) {
 		*dest = NULL;
 		*status = NDIS_STATUS_FAILURE;
-		kfree(ansi.buf);
+		RtlFreeAnsiString(&ansi);
 		TRACEEXIT2(return);
 	}
 	keyname = ansi.buf;
