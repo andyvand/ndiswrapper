@@ -498,31 +498,37 @@ static int ndis_set_wep(struct net_device *dev, struct iw_request_info *info,
 	}
 	else
 	{
-		req.len = sizeof(struct wep_req);
-		req.keyindex = wrqu->data.flags & IW_ENCODE_INDEX;
-		req.keyindex |= (1 << 31);
-		req.keylength = wrqu->data.length;
+		/* set key only if one is given */
+		if (wrqu->data.length > 0)
+		{
+			req.len = sizeof(req);
+			req.keyindex = wrqu->data.flags & IW_ENCODE_INDEX;
+			req.keyindex |= (1 << 31);
+			req.keylength = wrqu->data.length;
+			
+			handle->key_len = req.keylength;
+			memcpy(handle->key_val, wrqu->data.pointer, req.keylength);
+			memcpy(req.keymaterial, handle->key_val, req.keylength);
 		
-		handle->key_len = req.keylength;
-		memcpy(handle->key_val, wrqu->data.pointer, req.keylength);
-		memcpy(req.keymaterial, handle->key_val, req.keylength);
-		
-		res = dosetinfo(handle, NDIS_OID_ADD_WEP, (char*)&req, sizeof(req), &written, &needed);
+			res = dosetinfo(handle, NDIS_OID_ADD_WEP, (char*)&req, sizeof(req), &written, &needed);
 
-		if (res)
-			return -1;
+			if (res)
+				return -1;
+		}
 		
 		res = set_int(handle, NDIS_OID_WEP_STATUS, NDIS_ENCODE_ENABLED);
 		if (res)
 			return -1;
 
 		if (wrqu->data.flags & IW_ENCODE_RESTRICTED)
+			auth_mode = NDIS_ENCODE_RESTRICTED;
+		else if (wrqu->data.flags & IW_ENCODE_OPEN)
+			auth_mode = NDIS_ENCODE_OPEN;
+		else
 		{
-			printk(KERN_WARNING "%s: 'restricted' security mode may not work in all cases; use 'open' mode\n", dev->name);
+			printk(KERN_WARNING "%s: no security mode specified; using 'restricted' security mode, which may not work in all cases\n", dev->name);
 			auth_mode = NDIS_ENCODE_RESTRICTED;
 		}
-		else
-			auth_mode = NDIS_ENCODE_OPEN;
 		res = set_int(handle, NDIS_OID_AUTH_MODE, auth_mode);
 
 		if (res)
