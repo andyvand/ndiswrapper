@@ -174,6 +174,11 @@ void wrapper_cancel_timer(struct kdpc *kdpc, char *canceled)
 		return;
 	}
 
+	if (!timer->active)
+	{
+		*canceled = 0;
+		return;
+	}
 #ifdef DEBUG_TIMER
 	printk("Canceling timer %p\n", timer);
 	BUG_ON(timer->wrapper_timer_magic != WRAPPER_TIMER_MAGIC);
