@@ -1955,6 +1955,7 @@ static void __devexit ndis_remove_one(struct pci_dev *pdev)
 #endif
 
 	fixup_timers(handle);
+	flush_scheduled_work();
 
 	pci_release_regions(pdev);
 	pci_disable_device(pdev);
