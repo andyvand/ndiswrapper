@@ -289,10 +289,7 @@ struct ktimer {
 
 struct kmutex {
 	struct dispatch_header dh;
-	union {
-		struct nt_list_entry list;
-		UINT count;
-	} u;
+	struct nt_list_entry list;
 	void *owner_thread;
 	BOOLEAN abandoned;
 	BOOLEAN apc_disable;

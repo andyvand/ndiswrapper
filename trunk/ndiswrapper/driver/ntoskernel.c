@@ -726,9 +726,9 @@ STDCALL void WRAP_EXPORT(KeInitializeMutex)
 	kmutex->dh.size = sizeof(*kmutex);
 	kmutex->dh.signal_state = 1;
 	InitializeListHead(&kmutex->dh.wait_list);
+	InitializeListHead(&kmutex->list);
 	kmutex->abandoned = FALSE;
 	kmutex->apc_disable = 1;
-	kmutex->u.count = 0;
 	kmutex->owner_thread = NULL;
 	return;
 }
@@ -740,10 +740,9 @@ STDCALL LONG WRAP_EXPORT(KeReleaseMutex)
 	KIRQL irql;
 
 	irql = kspin_lock_irql(&kevent_lock, DISPATCH_LEVEL);
-	ret = --(kmutex->u.count);
-	if (kmutex->u.count == 0) {
+	ret = kmutex->dh.signal_state++;
+	if (kmutex->dh.signal_state > 0) {
 		kmutex->owner_thread = NULL;
-		kmutex->dh.signal_state = 1;
 		kspin_unlock_irql(&kevent_lock, irql);
 		wakeup_event((struct kevent *)kmutex);
 	} else
@@ -807,38 +806,30 @@ STDCALL NTSTATUS WRAP_EXPORT(KeWaitForMultipleObjects)
 		wb = wait_block_array;
 
 	kspin_lock(&kevent_lock);
-	for (i = 0; i < count; i++) {
-		dh = &object[i]->dh;
-		if (dh->size == sizeof(*kmutex)) {
-			kmutex = (struct kmutex *)object[i];
-			/* if noone else owns the mutex or if we
-			 * already own it, mark as signaled */
-			if (kmutex->owner_thread == NULL ||
-			    kmutex->owner_thread == get_current()) {
-				kmutex->dh.signal_state = 1;
-				kmutex->u.count++;
-				kmutex->owner_thread = get_current();
-			}
-		}
-
-		/* if aleady in signaled state and WaitAny, return */
-		if (wait_type == WaitAny && dh->signal_state > 0) {
-			if (dh->type == SynchronizationEvent ||
-			    dh->size == sizeof(*ksemaphore))
-				dh->signal_state--;
-			kspin_unlock(&kevent_lock);
-			TRACEEXIT3(return STATUS_WAIT_0 + i);
-		}
-	}
-	/* get list of objects to wait */
 	for (i = 0, wait_count = 0; i < count; i++) {
 		dh = &object[i]->dh;
-		if (dh->signal_state > 0) {
-			/* mark that this wb is not on the list */
-			wb[i].thread = NULL;
+		kmutex = (struct kmutex *)object[i];
+		/* wait succeeds if either object is in signal state
+		 * (i.e., dh->signal_state > 0) or it is mutex and we
+		 * already own it (in case of recursive mutexes,
+		 * signal state can be negative) */
+		if (dh->signal_state > 0 ||
+		    (dh->size == sizeof(*kmutex) &&
+		     kmutex->owner_thread == get_current())) {
+			/* if synchronization event or semaphore,
+			 * decrement count */
 			if (dh->type == SynchronizationEvent ||
 			    dh->size == sizeof(*ksemaphore))
 				dh->signal_state--;
+			if (dh->size == sizeof(*kmutex))
+				kmutex->owner_thread = get_current;
+			if (wait_type == WaitAny) {
+				kspin_unlock(&kevent_lock);
+				TRACEEXIT3(return STATUS_WAIT_0 + i);
+			}
+			/* mark that we are not waiting on this object */
+			wb[i].thread = NULL;
+			wb[i].object = NULL;
 		} else {
 			wb[i].thread = get_current();
 			wb[i].object = object[i];
@@ -888,21 +879,17 @@ STDCALL NTSTATUS WRAP_EXPORT(KeWaitForMultipleObjects)
 		kspin_lock(&kevent_lock);
 		for (i = 0; i < count; i++) {
 			dh = &object[i]->dh;
-			if (dh->size == sizeof(*kmutex)) {
-				kmutex = (struct kmutex *)object[i];
-				if (kmutex->owner_thread == NULL) {
-					kmutex->dh.signal_state = 1;
-					kmutex->u.count++;
-					kmutex->owner_thread = get_current();
-				}
-			}
+			kmutex = (struct kmutex *)object[i];
 			if (dh->signal_state > 0) {
-				/* mark that this wb is not on the list */
-				wb[i].thread = NULL;
-				RemoveEntryList(&wb[i].list_entry);
 				if (dh->type == SynchronizationEvent ||
 				    dh->size == sizeof(*ksemaphore))
 					dh->signal_state--;
+				if (dh->size == sizeof(*kmutex))
+					kmutex->owner_thread = get_current();
+				/* mark that this wb is not on the list */
+				wb[i].thread = NULL;
+				wb[i].object = NULL;
+				RemoveEntryList(&wb[i].list_entry);
 				wait_count--;
 				wait_index = i;
 			}
