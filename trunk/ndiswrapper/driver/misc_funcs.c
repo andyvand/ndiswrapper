@@ -986,6 +986,15 @@ STDCALL NTSTATUS WRAP_EXPORT(RtlWriteRegistryValue)
 	TRACEEXIT5(return STATUS_SUCCESS);
 }
 
+STDCALL void WRAP_EXPORT(RtlAssert)
+	(char *failed_assertion, char *file_name, ULONG line_num,
+	 char *message)
+{
+	ERROR("assertion '%s' failed at %s line %d%s",
+	      failed_assertion, file_name, line_num, message ? message : "");
+	return;
+}
+
 STDCALL int WRAP_EXPORT(rand)
 	(void)
 {
