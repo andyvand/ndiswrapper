@@ -908,6 +908,7 @@ STDCALL void NdisMDeregisterAdapterShutdownHandler(struct ndis_handle *handle)
 }
 
 
+static int ndis_irq_enabled;
 /*
  *  bottom half of the irq handler
  *
@@ -915,7 +916,8 @@ STDCALL void NdisMDeregisterAdapterShutdownHandler(struct ndis_handle *handle)
 void ndis_irq_bh(void *data)
 {
 	struct ndis_handle *handle = (struct ndis_handle *) data;
-	handle->driver->miniport_char.handle_interrupt(handle->adapter_ctx);
+	if (ndis_irq_enabled)
+		handle->driver->miniport_char.handle_interrupt(handle->adapter_ctx);
 }
 
 /*
@@ -978,6 +980,7 @@ STDCALL unsigned int NdisMRegisterInterrupt(struct ndis_irq **ndis_irq_ptr,
 		kfree(ndis_irq);
 		return NDIS_STATUS_FAILURE;
 	}
+	ndis_irq_enabled = 1;
 	INIT_WORK(&handle->irq_bh, &ndis_irq_bh, handle);
 	return NDIS_STATUS_SUCCESS;
 }
@@ -989,10 +992,12 @@ STDCALL unsigned int NdisMRegisterInterrupt(struct ndis_irq **ndis_irq_ptr,
 STDCALL void NdisMDeregisterInterrupt(struct ndis_irq **ndis_irq_ptr)
 {
 	struct ndis_irq *ndis_irq = *ndis_irq_ptr;
+
 	DBGTRACE("%s: %08x %d %08x\n", __FUNCTION__, (int)ndis_irq, ndis_irq->irq, (int)ndis_irq->handle);
 
 	if(ndis_irq)
 	{
+		ndis_irq_enabled = 0;
 		free_irq(ndis_irq->irq, ndis_irq);
 		kfree(ndis_irq);
 	}
@@ -1075,6 +1080,8 @@ STDCALL void NdisMIndicateReceivePacket(struct ndis_handle *handle, struct ndis_
 			handle->stats.rx_packets++;
 			netif_rx(skb);
 		}
+		else
+			handle->stats.rx_dropped++;
 		handle->driver->miniport_char.return_packet(handle->adapter_ctx,  packet);
 	}
 }
