@@ -13,6 +13,8 @@
  *
  */
 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(3,6,0)
+
 #define IOCTL_INTERNAL_USB_SUBMIT_URB	0x00220003
 
 #define USB_STATUS_SUCCESS		0x00000000
@@ -120,3 +122,5 @@ union nt_urb {
 
 unsigned long usb_submit_nt_urb(struct usb_device *dev, union nt_urb *nt_urb,
                                 struct irp *irp);
+
+#endif /* support on 2.4 not implemented */
