@@ -1252,7 +1252,11 @@ STDCALL UINT WRAP_EXPORT(NdisPacketPoolUsage)
 
 struct ndis_packet *allocate_ndis_packet(void)
 {
-	return kmem_cache_alloc(packet_cache, GFP_ATOMIC);
+	struct ndis_packet *packet;
+	packet = kmem_cache_alloc(packet_cache, GFP_ATOMIC);
+	if (packet)
+		memset(packet, 0, sizeof(*packet));
+	return packet;
 }
 
 void free_ndis_packet(struct ndis_packet *packet)
@@ -1882,12 +1886,11 @@ EthRxIndicateHandler(void *adapter_ctx, void *rx_ctx, char *header1,
 		struct miniport_char *miniport;
 		unsigned int res, bytes_txed;
 
-		packet = kmalloc(sizeof(*packet), GFP_ATOMIC);
+		packet = allocate_ndis_packet();
 		if (!packet) {
 			handle->stats.rx_dropped++;
 			TRACEEXIT3(return);
 		}
-		memset(packet, 0, sizeof(*packet));
 		packet->private.oob_offset =
 			offsetof(struct ndis_packet, oob_tx);
 		packet->private.pool = NULL;
@@ -1913,14 +1916,14 @@ EthRxIndicateHandler(void *adapter_ctx, void *rx_ctx, char *header1,
 				       bytes_txed);
 				skb_size = header_size+look_ahead_size+
 					bytes_txed;
-				kfree(packet);
+				free_ndis_packet(packet);
 			}
 		} else if (res == NDIS_STATUS_PENDING) {
 			/* driver will call td_complete */
 			packet->look_ahead = kmalloc(look_ahead_size,
 						     GFP_ATOMIC);
 			if (!packet->look_ahead) {
-				kfree(packet);
+				free_ndis_packet(packet);
 				handle->stats.rx_dropped++;
 				TRACEEXIT3(return);
 			}
@@ -1930,7 +1933,7 @@ EthRxIndicateHandler(void *adapter_ctx, void *rx_ctx, char *header1,
 			       look_ahead_size);
 			packet->look_ahead_size = look_ahead_size;
 		} else {
-			kfree(packet);
+			free_ndis_packet(packet);
 			handle->stats.rx_dropped++;
 			TRACEEXIT3(return);
 		}
@@ -1979,7 +1982,7 @@ NdisMTransferDataComplete(struct ndis_handle *handle,
 	skb = dev_alloc_skb(skb_size);
 	if (!skb) {
 		kfree(packet->look_ahead);
-		kfree(packet);
+		free_ndis_packet(packet);
 		handle->stats.rx_dropped++;
 		TRACEEXIT3(return);
 	}
@@ -1992,7 +1995,7 @@ NdisMTransferDataComplete(struct ndis_handle *handle,
 	       MmGetMdlVirtualAddress(packet->private.buffer_head),
 	       bytes_txed);
 	kfree(packet->look_ahead);
-	kfree(packet);
+	free_ndis_packet(packet);
 	skb_put(skb, skb_size);
 	skb->protocol = eth_type_trans(skb, handle->net_dev);
 	handle->stats.rx_bytes += skb_size;
