@@ -1065,7 +1065,7 @@ static void check_capa(struct ndis_handle *handle)
 	DBGTRACE("capbilities = %ld\n", handle->capa);
 	if (test_bit(CAPA_AES, &handle->capa))
 		printk(KERN_INFO "ndiswrapper device %s supports WPA with "
-		       "CCMP/AES and TKIP ciphers\n", handle->net_dev->name);
+		       "AES/CCMP and TKIP ciphers\n", handle->net_dev->name);
 	else
 		printk(KERN_INFO "ndiswrapper device %s supports WPA with "
 		       "TKIP cipher\n", handle->net_dev->name);
