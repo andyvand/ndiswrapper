@@ -59,6 +59,12 @@ typedef struct workqueue_struct *workqueue;
 #include <linux/tqueue.h>
 #define work_struct tq_struct
 #define INIT_WORK INIT_TQUEUE
+#define DECLARE_WORK(n, f, d) struct tq_struct n = { \
+	list: LIST_HEAD_INIT(n.list), \
+	sync: 0, \
+	routine: f, \
+	data: d \
+}
 #define schedule_work schedule_task
 #define flush_scheduled_work flush_scheduled_tasks
 typedef task_queue workqueue;
