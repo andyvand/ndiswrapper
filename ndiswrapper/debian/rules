@@ -25,7 +25,7 @@ DRIVERSRC = $(NDISSRC)/driver
 UTILSSRC = $(NDISSRC)/utils
 
 kdist_image:
-	$(MAKE) $(MFLAGS) -f debian/rules binary-modules
+	$(MAKE) $(MFLAGS) -f debian/rules binary-module
 	$(MAKE) $(MFLAGS) -f debian/rules clean
 
 # the kdist_clean target is called by make-kpkg modules_clean. It is
@@ -63,12 +63,39 @@ build-module-prep:
 		module=ndiswrapper.ko; \
 	fi; \
 	echo "driver/$$module /lib/modules/$(KVERS)/misc" \
-		> debian/ndiswrapper-module-$(KVERS).install
-	echo "lib/modules/$(KVERS)/misc" > debian/dirs
+		> debian/ndiswrapper-module.install
 
 build-module:
 	dh_installdirs lib/modules/$(KVERS)/misc
 	$(MAKE) -C $(DRIVERSRC)
+
+build-utils-prep:
+	sed -e 's/-#KVERS#//g' -e 's/#NDISVERS#/$(NDISVERS)/g' -e 's/#DATE#/'"`date --rfc-822`"'/g' -e 's/#MAINT#/$(MAINT) <$(MAINTEMAIL)>/g' debian/changelog.template > debian/changelog
+	sed -e 's/#NDISVERS#/$(NDISVERS)/' debian/control.utils > debian/control
+	echo "utils/loadndisdriver /sbin" > debian/ndiswrapper-utils.install
+	echo "utils/ndiswrapper /usr/sbin" >> debian/ndiswrapper-utils.install
+	echo "utils/ndiswrapper-buginfo /usr/sbin" >> debian/ndiswrapper-utils.install
+	cp debian/dirs.utils debian/dirs
+
+build-source-prep:
+	sed -e 's/-#KVERS#//g' -e 's/#NDISVERS#/$(NDISVERS)/g' -e 's/#DATE#/'"`date --rfc-822`"'/g' -e 's/#MAINT#/$(MAINT) <$(MAINTEMAIL)>/g' debian/changelog.template > debian/changelog
+	sed -e 's/#NDISVERS#/$(NDISVERS)/g' debian/control.source > debian/control
+	echo "ndiswrapper-source.tar.gz /usr/src" \
+		> debian/ndiswrapper-source.install
+
+build-source:
+	dh_installdirs usr/src/modules/ndiswrapper
+	mkdir -p modules/ndiswrapper/debian
+	mkdir -p modules/ndiswrapper/driver
+	$(MAKE) -C $(DRIVERSRC) distdir=../modules/ndiswrapper/driver dist
+	cp version ChangeLog modules/ndiswrapper
+	cp -a debian/rules debian/changelog.template \
+		debian/control.module debian/changelog \
+			modules/ndiswrapper/debian
+	tar zcvf ndiswrapper-source.tar.gz modules
+
+source: build-source-prep common-prolog build-source common-epilog
+	dh_builddeb --destdir=$(MODDIR)
 
 common-prolog:
 	dh_testdir
@@ -100,15 +127,10 @@ common-epilog:
 	dh_gencontrol
 	dh_md5sums
 
-build-utils-prep:
-	sed -e 's/-#KVERS#//g' -e 's/#NDISVERS#/$(NDISVERS)/g' -e 's/#DATE#/'"`date --rfc-822`"'/g' -e 's/#MAINT#/$(MAINT) <$(MAINTEMAIL)>/g' debian/changelog.template > debian/changelog
-	sed -e 's/#NDISVERS#/$(NDISVERS)/' debian/control.utils > debian/control
-	cp debian/dirs.utils debian/dirs
-
 build-utils:
 	export DH_OPTIONS='-i'
 	dh_installman ndiswrapper.8
-	$(MAKE) -C utils all
+	$(MAKE) -C utils
 
 binary-utils: build-utils-prep common-prolog build-utils common-epilog
 	dh_builddeb --destdir=$(MODDIR)
