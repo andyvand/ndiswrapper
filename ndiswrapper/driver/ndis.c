@@ -1113,7 +1113,6 @@ STDCALL void WRAP_EXPORT(NdisAllocateBuffer)
 
 	buf->startva = virt;
 	buf->byteoffset = 0;
-	buf->size = len;
 	buf->bytecount = len;
 	buf->next = NULL;
 
@@ -1144,11 +1143,14 @@ STDCALL void WRAP_EXPORT(NdisAdjustBufferLength)
 STDCALL void WRAP_EXPORT(NdisQueryBuffer)
 	(ndis_buffer *buf, void **adr, UINT *len)
 {
-	TRACEENTER3("%s", "");
+	TRACEENTER3("buffer: %p", buf);
+	DBGTRACE3("buffer: %x, %d",
+		  buf->startva, buf->bytecount);
 	if (adr)
 		*adr = MmGetMdlBaseVa(buf);
 	if (len)
 		*len = MmGetMdlByteCount(buf);
+	TRACEEXIT3(return);
 }
 
 STDCALL void WRAP_EXPORT(NdisQueryBufferSafe)
@@ -1740,7 +1742,6 @@ NdisMSendComplete(struct ndis_handle *handle,
 	/* In case a serialized driver has requested a pause by returning
 	 * NDIS_STATUS_RESOURCES we need to give the send-code a kick again.
 	 */
-	DBGTRACE2("packet: %p, sg_list: %p", packet, packet->sg_list);
 	handle->send_ok = 1;
 	schedule_work(&handle->xmit_work);
 	TRACEEXIT3(return);
@@ -2340,7 +2341,6 @@ STDCALL void WRAP_EXPORT(NdisUnchainBufferAtBack)
 	TRACEENTER3("%p", packet);
 	if (packet == NULL || buffer == NULL)
 		return;
-	DBGTRACE2("packet: %p, sg_list: %p", packet, packet->sg_list);
 	b = packet->private.buffer_head;
 	if (!b) {
 		/* no buffer in packet */
@@ -2375,7 +2375,6 @@ STDCALL void WRAP_EXPORT(NdisUnchainBufferAtFront)
 		TRACEEXIT3(return);
 	}
 
-	DBGTRACE2("packet: %p, sg_list: %p", packet, packet->sg_list);
 	packet->private.valid_counts = FALSE;
 	*buffer = packet->private.buffer_head;
 	if (packet->private.buffer_head == packet->private.buffer_tail) {
@@ -2396,7 +2395,6 @@ STDCALL void WRAP_EXPORT(NdisGetFirstBufferFromPacketSafe)
 	ndis_buffer *b = packet->private.buffer_head;
 
 	TRACEENTER3("%p", b);
-	DBGTRACE2("packet: %p, sg_list: %p", packet, packet->sg_list);
 	*first_buffer = b;
 	if (b) {
 		*first_buffer_va = MmGetMdlBaseVa(b);

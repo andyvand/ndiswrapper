@@ -475,10 +475,6 @@ static struct ndis_packet *alloc_packet(struct ndis_handle *handle,
 	packet->private.buffer_head = buffer;
 	packet->private.buffer_tail = buffer;
 
-	packet->sg_list = NULL;
-	packet->sg_ents = 0;
-	packet->ndis_sg_elements = NULL;
-
 	if (handle->dma_type == SG_DMA_DISABLED) {
 		packet->ndis_sg_element.address =
 			PCI_DMA_MAP_SINGLE(handle->dev.pci,
@@ -490,7 +486,6 @@ static struct ndis_packet *alloc_packet(struct ndis_handle *handle,
 		packet->ndis_sg_list.elements = &packet->ndis_sg_element;
 		packet->extension.info[ScatterGatherListPacketInfo] =
 			&packet->ndis_sg_list;
-		packet->sg_ents = 0;
 	}
 	return packet;
 }
@@ -508,13 +503,9 @@ static void free_packet(struct ndis_handle *handle, struct ndis_packet *packet)
 	if (handle->dma_type == SG_DMA_ENABLED) {
 		DBGTRACE3("unmapping sg_list");
 		/* FIXME: do USB drivers call this? */
-		UNMAP_SG(handle->dev.pci, packet->sg_list,
-			 packet->sg_ents, PCI_DMA_TODEVICE);
-		DBGTRACE3("freeing sg_list %p, dummy: %p",
-			  packet->sg_list, packet->dummy);
-		kfree(packet->sg_list);
-		DBGTRACE3("freeing ndis_sg_elements");
-		kfree(packet->ndis_sg_elements);
+		UNMAP_SG(handle->dev.pci, handle->sg_list,
+			 handle->sg_ents, PCI_DMA_TODEVICE);
+		handle->sg_ents = 0;
 	} else if (handle->dma_type == SG_DMA_DISABLED) {
 		ndis_buffer *buffer = packet->private.buffer_head;
 
@@ -552,66 +543,67 @@ static int send_packets_sg_dma(struct ndis_handle *handle, int n)
 {
 	struct scatterlist *sg_list;
 	struct ndis_sg_element *ndis_sg_elements;
-	unsigned int sg_ents;
 	ndis_buffer *buffer;
 	struct ndis_packet *packet;
 	int i;
 	struct miniport_char *miniport = &handle->driver->miniport_char;
 
-	sg_list = kmalloc(n * sizeof(*sg_list), GFP_ATOMIC);
-	if (!sg_list) {
-		ERROR("couldn't allocate memory");
-		return 0;
-	}
+	sg_list = handle->sg_list;
 	for (i = 0; i < n; i++) {
 		packet = handle->xmit_array[i];
 		buffer = packet->private.buffer_head;
 		sg_init_one(&sg_list[i], MmGetMdlVirtualAddress(buffer),
 			    MmGetMdlByteCount(buffer));
 	}
-	sg_ents = MAP_SG(handle->dev.pci, sg_list, n, PCI_DMA_TODEVICE);
-	DBGTRACE3("got %d sg_ents from %d packets", sg_ents, n);
-	if (sg_ents == 0) {
+	handle->sg_ents = MAP_SG(handle->dev.pci, sg_list, n, PCI_DMA_TODEVICE);
+	DBGTRACE3("got %d sg_ents from %d packets", handle->sg_ents, n);
+	if (handle->sg_ents == 0) {
 		ERROR("dma map failed");
-		kfree(sg_list);
 		TRACEEXIT3(return 0);
 	}
-	ndis_sg_elements = kmalloc(sg_ents * sizeof(*ndis_sg_elements),
-				   GFP_ATOMIC);
-	if (!ndis_sg_elements) {
-		ERROR("couldn't allocate memory");
-		UNMAP_SG(handle->dev.pci, sg_list, n, PCI_DMA_TODEVICE);
-		TRACEEXIT3(return 0);
-	}
-	for (i = 0; i < sg_ents; i++) {
+	ndis_sg_elements = handle->ndis_sg_elements;
+	for (i = 0; i < handle->sg_ents; i++) {
 		ndis_sg_elements[i].address = sg_dma_address(&sg_list[i]);
 		ndis_sg_elements[i].length = sg_dma_len(&sg_list[i]);
 		DBGTRACE3("address: %08x", (u32)ndis_sg_elements[i].address);
 	}
-	handle->xmit_array[0]->private.buffer_tail =
-		handle->xmit_array[n-1]->private.buffer_head;
 	/* we merge all packets into first packet by creating chain of
 	 * buffers of these packets */
-	for (i = n - 1; i > 0; i--) {
-		handle->xmit_array[i-1]->private.buffer_head->next =
-			handle->xmit_array[i]->private.buffer_head;
+	for (i = n - 1; i >= handle->sg_ents; i--) {
 		DBGTRACE3("freeing packet %p", handle->xmit_array[i]);
+		kfree(handle->xmit_array[i]->private.buffer_head);
 		kfree(handle->xmit_array[i]);
 	}
+	handle->xmit_array[0]->private.buffer_tail =
+		handle->xmit_array[handle->sg_ents-1]->private.buffer_head;
+	for (; i > 0; i--) {
+		buffer = handle->xmit_array[i]->private.buffer_head;
+		handle->xmit_array[i-1]->private.buffer_head->next =
+			buffer;
+		DBGTRACE3("adjusting buffer[%d]: %x, %p, %d, %d", i,
+			  buffer->startva, phys_to_virt(ndis_sg_elements[i].address),
+			  buffer->bytecount, ndis_sg_elements[i].length);
+		buffer->startva = phys_to_virt(ndis_sg_elements[i].address);
+		buffer->bytecount = ndis_sg_elements[i].length;
+		kfree(handle->xmit_array[i]);
+	}
+	buffer = handle->xmit_array[0]->private.buffer_head;
+	DBGTRACE3("adjusting buffer[0]: %x, %p, %d, %d",
+		  buffer->startva, phys_to_virt(ndis_sg_elements[0].address),
+		  buffer->bytecount, ndis_sg_elements[0].length);
+	buffer->startva = phys_to_virt(ndis_sg_elements[0].address);
+	buffer->bytecount = ndis_sg_elements[0].length;
+
 	packet = handle->xmit_array[0];
-	packet->ndis_sg_list.nent = sg_ents;
-	packet->ndis_sg_list.elements = ndis_sg_elements;
+	handle->ndis_sg_list.nent = handle->sg_ents;
+	handle->ndis_sg_list.elements = handle->ndis_sg_elements;
 	packet->extension.info[ScatterGatherListPacketInfo] =
-		&packet->ndis_sg_list;
-	packet->ndis_sg_elements = ndis_sg_elements;
-	packet->sg_list = sg_list;
-	packet->sg_ents = n;
+		&handle->ndis_sg_list;
+	handle->sg_ents = n;
 	DBGTRACE3("initialized sg_list %p in packet %p", sg_list, packet);
-	packet->dummy = sg_list;
 	DBGTRACE3("sending %d packets", n);
 	LIN2WIN3(miniport->send_packets, handle->adapter_ctx,
 		 handle->xmit_array, 1);
-	DBGTRACE3("sg_list: %p, dummy: %p", packet->sg_list, packet->dummy);
 	TRACEEXIT3(return n);
 }
 
@@ -768,7 +760,6 @@ static int start_xmit(struct sk_buff *skb, struct net_device *dev)
 	buffer->next = NULL;
 	buffer->byteoffset = 0;
 	buffer->bytecount = skb->len;
-	buffer->size = skb->len;
 	packet = alloc_packet(handle, buffer);
 	if (!packet) {
 		kfree(buffer);
@@ -936,6 +927,10 @@ void ndiswrapper_remove_one_dev(struct ndis_handle *handle)
 
 	if (handle->xmit_array)
 		kfree(handle->xmit_array);
+	if (handle->sg_list)
+		kfree(handle->sg_list);
+	if (handle->ndis_sg_elements)
+		kfree(handle->ndis_sg_elements);
 	if (handle->multicast_list)
 		kfree(handle->multicast_list);
 	if (handle->net_dev)
@@ -1394,7 +1389,27 @@ int setup_dev(struct net_device *dev)
 					     GFP_KERNEL);
 		if (!handle->xmit_array) {
 			ERROR("couldn't allocate memory for tx_packets");
-			return -EINVAL;
+			return -ENOMEM;
+		}
+		if (handle->dma_type == SG_DMA_ENABLED) {
+			handle->sg_list = kmalloc(sizeof(struct scatterlist *) *
+						  handle->max_send_packets,
+						  GFP_KERNEL);
+			if (!handle->sg_list) {
+				ERROR("couldn't allocate memory");
+				kfree(handle->xmit_array);
+				return -ENOMEM;
+			}
+			handle->ndis_sg_elements =
+				kmalloc(sizeof(struct ndis_sg_element *) *
+					handle->max_send_packets,
+					GFP_KERNEL);
+			if (!handle->ndis_sg_elements) {
+				ERROR("couldn't allocate memory");
+				kfree(handle->xmit_array);
+				kfree(handle->sg_list);
+				return -ENOMEM;
+			}
 		}
 	}
 	DBGTRACE2("maximum send packets used by ndiswrapper: %d",
