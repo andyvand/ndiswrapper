@@ -537,7 +537,7 @@ struct encr_info {
 		ULONG length;
 		UCHAR key[NDIS_ENCODING_TOKEN_MAX];
 	} keys[MAX_ENCR_KEYS];
-	unsigned short active;
+	unsigned short tx_key_index;
 };
 
 struct ndis_essid {

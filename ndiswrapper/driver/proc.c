@@ -110,15 +110,15 @@ static int procfs_read_encr(char *page, char **start, off_t off,
 				  &auth_mode);
 
 	if (!res) {
-		int active = handle->encr_info.active;
-		p += sprintf(p, "tx_key=%u\n", handle->encr_info.active);
+		int t = handle->encr_info.tx_key_index;
+		p += sprintf(p, "tx_key=%u\n", handle->encr_info.tx_key_index);
 		p += sprintf(p, "key=");
-		if (handle->encr_info.keys[active].length > 0)
+		if (handle->encr_info.keys[t].length > 0)
 			for (i = 0; i < NDIS_ENCODING_TOKEN_MAX &&
-				     i < handle->encr_info.keys[active].length;
+				     i < handle->encr_info.keys[t].length;
 			     i++)
 				p += sprintf(p, "%2.2X",
-					     handle->encr_info.keys[active].key[i]);
+					     handle->encr_info.keys[t].key[i]);
 		else
 			p += sprintf(p, "off");
 		p += sprintf(p, "\n");

@@ -550,14 +550,14 @@ static int iw_get_encr(struct net_device *dev, struct iw_request_info *info,
 	if (index > 0)
 		index--;
 	else
-		index = encr_info->active;
+		index = encr_info->tx_key_index;
 
 	if (index < 0 || index >= MAX_ENCR_KEYS) {
 		WARNING("encryption index out of range (%u)", index);
 		TRACEEXIT1(return -EINVAL);
 	}
 
-	if (index != encr_info->active) {
+	if (index != encr_info->tx_key_index) {
 		if (encr_info->keys[index].length > 0) {
 			wrqu->data.flags |= IW_ENCODE_ENABLED;
 			wrqu->data.length = encr_info->keys[index].length;
@@ -570,7 +570,7 @@ static int iw_get_encr(struct net_device *dev, struct iw_request_info *info,
 		TRACEEXIT1(return 0);
 	}
 	
-	/* active key */
+	/* transmit key */
 	res = miniport_query_int(handle, OID_802_11_ENCRYPTION_STATUS,
 				 &status);
 	if (res == NDIS_STATUS_NOT_SUPPORTED) {
@@ -627,7 +627,7 @@ int add_wep_key(struct ndis_handle *handle, char *key, int key_len,
 	ndis_key.length = key_len;
 	memcpy(&ndis_key.key, key, key_len);
 	ndis_key.index = index;
-	if (index == handle->encr_info.active)
+	if (index == handle->encr_info.tx_key_index)
 		ndis_key.index |= (1 << 31);
 
 	res = miniport_set_info(handle, OID_802_11_ADD_WEP, &ndis_key,
@@ -643,7 +643,7 @@ int add_wep_key(struct ndis_handle *handle, char *key, int key_len,
 	handle->encr_info.keys[index].length = key_len;
 	memcpy(&handle->encr_info.keys[index].key, key, key_len);
 
-	if (index == handle->encr_info.active) {
+	if (index == handle->encr_info.tx_key_index) {
 		res = set_encr_mode(handle, Ndis802_11Encryption1Enabled);
 		if (res)
 			WARNING("encryption couldn't be enabled (%08X)", res);
@@ -668,7 +668,7 @@ static int iw_set_encr(struct net_device *dev, struct iw_request_info *info,
 	if (index > 0)
 		index--;
 	else
-		index = encr_info->active;
+		index = encr_info->tx_key_index;
 
 	if (index < 0 || index >= MAX_ENCR_KEYS) {
 		WARNING("encryption index out of range (%u)", index);
@@ -687,8 +687,8 @@ static int iw_set_encr(struct net_device *dev, struct iw_request_info *info,
 		}
 		encr_info->keys[index].length = 0;
 		
-		/* if it is active key, disable encryption */
-		if (index == encr_info->active) {
+		/* if it is transmit key, disable encryption */
+		if (index == encr_info->tx_key_index) {
 			res = set_encr_mode(handle,
 					    Ndis802_11EncryptionDisabled);
 			if (res)
@@ -720,13 +720,15 @@ static int iw_set_encr(struct net_device *dev, struct iw_request_info *info,
 		}
 		key_len = encr_info->keys[index].length;
 		key = encr_info->keys[index].key;
-		encr_info->active = index;
+		/* static WEP works only if tx_key is at index 0 */
+		index = 0;
+		encr_info->tx_key_index = index;
 	}
 
 	if (add_wep_key(handle, key, key_len, index))
 		TRACEEXIT2(return -EINVAL);
 
-	if (index == encr_info->active) {
+	if (index == encr_info->tx_key_index) {
 		/* ndis drivers want essid to be set after setting encr */
 		set_essid(handle, handle->essid.essid, handle->essid.length);
 	}
@@ -1302,7 +1304,7 @@ static int wpa_set_key(struct net_device *dev, struct iw_request_info *info,
 			TRACEEXIT2(return -1);
 
 		if (wpa_key.set_tx)
-			handle->encr_info.active = wpa_key.key_index;
+			handle->encr_info.tx_key_index = wpa_key.key_index;
 
 		if (add_wep_key(handle, key, wpa_key.key_len,
 				wpa_key.key_index))
