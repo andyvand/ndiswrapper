@@ -198,7 +198,7 @@ static int ndis_set_essid(struct net_device *dev,
 	struct essid_req req;
 
 	memset(&req.essid, 0, sizeof(req.essid));
-
+	
 	if (wrqu->essid.flags == 0)
 		req.len = 0;
 	else
@@ -210,9 +210,9 @@ static int ndis_set_essid(struct net_device *dev,
 		req.len = wrqu->essid.length-1;
 	}
 	
-	res = dosetinfo(handle, NDIS_OID_ESSID, (char*)&req, sizeof(req), &written, &needed);
-	set_current_state(TASK_INTERRUPTIBLE);
-	schedule_timeout(HZ);
+	handle->essid.flags = wrqu->essid.flags;
+	handle->essid.length = wrqu->essid.length;
+	memcpy(handle->essid.name, extra, wrqu->essid.length+1);
 	res = dosetinfo(handle, NDIS_OID_ESSID, (char*)&req, sizeof(req), &written, &needed);
 	if(res)
 	{
@@ -660,10 +660,11 @@ static int ndis_set_wep(struct net_device *dev, struct iw_request_info *info,
 			return -EINVAL;
 		}
 
-		/* ndis driver wants essid to be set after setting wep,
-		 * so just enable essid */
+		/* ndis drivers want essid to be set after setting wep */
 		memset(&essid_wrqu, 0, sizeof(essid_wrqu));
-		ndis_set_essid(dev, NULL, &essid_wrqu, NULL);
+		essid_wrqu.essid.length = handle->essid.length;
+		essid_wrqu.essid.flags = handle->essid.flags;
+		ndis_set_essid(dev, NULL, &essid_wrqu, handle->essid.name);
 	}
 	return 0;
 }
@@ -1122,7 +1123,6 @@ static const iw_handler	ndis_handler[] = {
 	[SIOCSIWSENS	- SIOCIWFIRST] = ndis_set_sensitivity,
 	[SIOCGIWNICKN	- SIOCIWFIRST] = ndis_get_nick,
 	[SIOCSIWNICKN	- SIOCIWFIRST] = ndis_set_nick,
-	[SIOCSIWENCODE	- SIOCIWFIRST] = ndis_set_dummy,
 };
 
 static const struct iw_handler_def ndis_handler_def = {

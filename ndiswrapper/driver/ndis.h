@@ -383,6 +383,13 @@ struct packed ndis_configuration
 	} fh_config;
 };
 
+struct iw_essid
+{
+	char name[IW_ESSID_MAX_SIZE+1];
+	u16 flags;
+	u16 length;
+};
+
 #define XMIT_RING_SIZE 16
 /*
  * This is the per device struct. One per PCI-device exists.
@@ -456,6 +463,7 @@ struct packed ndis_handle
 	unsigned int pm_state;
 
 	int wireless_mode;
+	struct iw_essid essid;
 
 	struct list_head recycle_packets;
 	spinlock_t recycle_packets_lock;
