@@ -727,6 +727,11 @@ static int iw_set_encr(struct net_device *dev, struct iw_request_info *info,
 			TRACEEXIT1(return -EINVAL);
 		}
 
+		/* active/transmit key is always stored at index 0 */
+		encr_info->keys[0].length = ndis_key.length;
+		memcpy(&encr_info->keys[0].key, ndis_key.key,
+		       ndis_key.length);
+
 		res = set_encr_mode(handle, ENCR1_ENABLED);
 		if (res)
 			WARNING("changing encr status failed (%08X)", res);
