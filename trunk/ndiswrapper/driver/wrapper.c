@@ -121,9 +121,10 @@ int doreset(struct ndis_handle *handle)
 		 * for a while before sleeping, hoping reset will be done in
 		 * 1 ms */
 		mdelay(1);
-		/* wait for NdisMResetComplete */
-		wait_event(handle->ndis_comm_wq,
-			   (handle->ndis_comm_done == 1));
+		/* wait for NdisMResetComplete upto HZ */
+		if (!wait_event_interruptible_timeout(handle->ndis_comm_wq,
+			   (handle->ndis_comm_done == 1), HZ))
+			handle->ndis_comm_res = NDIS_STATUS_FAILURE;
 		res = handle->ndis_comm_res;
 		DBGTRACE2("res = %08X, reset_status = %08X",
 			  res, handle->reset_status);
@@ -170,9 +171,10 @@ int doquery(struct ndis_handle *handle, unsigned int oid, char *buf,
 			      written, needed);
 	if (res == NDIS_STATUS_PENDING)
 	{
-		/* wait for NdisMQueryInformationComplete */
-		wait_event(handle->ndis_comm_wq,
-			   (handle->ndis_comm_done == 1));
+		/* wait for NdisMQueryInformationComplete upto HZ */
+		if (!wait_event_interruptible_timeout(handle->ndis_comm_wq,
+			   (handle->ndis_comm_done == 1), HZ))
+			handle->ndis_comm_res = NDIS_STATUS_FAILURE;
 		res = handle->ndis_comm_res;
 	}
 	up(&handle->ndis_comm_mutex);
@@ -200,9 +202,10 @@ int dosetinfo(struct ndis_handle *handle, unsigned int oid, char *buf,
 			       written, needed);
 	if (res == NDIS_STATUS_PENDING)
 	{
-		/* wait for NdisMSetInformationComplete */
-		wait_event(handle->ndis_comm_wq,
-			   (handle->ndis_comm_done == 1));
+		/* wait for NdisMSetInformationComplete upto HZ */
+		if (!wait_event_interruptible_timeout(handle->ndis_comm_wq,
+			   (handle->ndis_comm_done == 1), HZ))
+			handle->ndis_comm_res = NDIS_STATUS_FAILURE;
 		res = handle->ndis_comm_res;
 	}
 	up(&handle->ndis_comm_mutex);
@@ -876,21 +879,22 @@ int ndis_suspend(struct pci_dev *pdev, u32 state)
 	/* use copy; query_power changes this value */
 	i = pm_state;
 	res = query_int(handle, NDIS_OID_PNP_QUERY_POWER, &i);
-	DBGTRACE2("%s: query power to state %d returns %d",
-			 dev->name, pm_state, res);
+	DBGTRACE2("%s: query power to state %d returns %08X",
+		  dev->name, pm_state, res);
 	if (res)
-		WARNING("No pnp capabilities for pm (%08X)\n", res);
+		WARNING("No pnp capabilities for pm (%08X)", res);
 
 	res = set_int(handle, NDIS_OID_PNP_SET_POWER, pm_state);
+	INFO("suspending returns %08X", res);
 	pci_save_state(pdev, handle->pci_state);
 	pci_set_power_state(pdev, state);
-	DBGTRACE2("%s: setting power to state %d returns %d",
-			 dev->name, pm_state, res);
+	DBGTRACE2("%s: setting power to state %d returns %08X",
+		  dev->name, pm_state, res);
 	if (res)
 		WARNING("No pnp capabilities for pm (%08X)", res);
 	set_bit(HW_SUSPENDED, &handle->hw_status);
 
-	DBGTRACE2("%s: device suspended!\n", dev->name);
+	DBGTRACE2("%s: device suspended", dev->name);
 	return 0;
 }
 
@@ -931,7 +935,10 @@ int ndis_resume(struct pci_dev *pdev)
 	*/
 
 	if (miniport->hangcheck && miniport->hangcheck(handle->adapter_ctx))
+	{
+		DBGTRACE2("%s", "resetting device");
 		doreset(handle);
+	}
 	set_int(handle, NDIS_OID_BSSID_LIST_SCAN, 0);
 
 	set_bit(SET_ESSID, &handle->wrapper_work);
@@ -942,7 +949,7 @@ int ndis_resume(struct pci_dev *pdev)
 	hangcheck_add(handle);
 	statcollector_add(handle);
 	clear_bit(HW_SUSPENDED, &handle->hw_status);
-	DBGTRACE2("%s: device resumed!", dev->name);
+	DBGTRACE2("%s: device resumed", dev->name);
 	return 0;
 }
 

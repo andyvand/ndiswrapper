@@ -29,29 +29,21 @@ extern int image_offset;
 extern struct list_head ndis_driverlist;
 
 struct list_head handle_ctx_list;
-static struct list_head alloc_list;
-static struct wrap_spinlock alloc_list_lock;
-static struct work_struct alloc_work;
 static struct wrap_spinlock atomic_lock;
 
 DECLARE_WAIT_QUEUE_HEAD(event_wq);
 
-static struct work_struct work;
-static struct list_head worklist;
-static struct wrap_spinlock worklist_lock;
+static struct work_struct ndis_work;
+static struct list_head ndis_work_list;
+static struct wrap_spinlock ndis_work_list_lock;
 
-static void alloc_worker(void *data);
-static void worker(void *context);
+static void ndis_worker(void *data);
 
 void init_ndis(void)
 {
-	INIT_WORK(&work, &worker, NULL);
-	INIT_LIST_HEAD(&worklist);
-	wrap_spin_lock_init(&worklist_lock);
-
-	INIT_WORK(&alloc_work, alloc_worker, NULL);
-	INIT_LIST_HEAD(&alloc_list);
-	wrap_spin_lock_init(&alloc_list_lock);
+	INIT_WORK(&ndis_work, &ndis_worker, NULL);
+	INIT_LIST_HEAD(&ndis_work_list);
+	wrap_spin_lock_init(&ndis_work_list_lock);
 
 	wrap_spin_lock_init(&atomic_lock);
 	return;
@@ -144,19 +136,53 @@ NdisAllocateMemoryWithTag(void **dest, unsigned int length,
 }
 
 STDCALL static void
-NdisFreeMemory(void *adr, unsigned int length, unsigned int flags)
+NdisFreeMemory(void *addr, unsigned int length, unsigned int flags)
 {
+	struct ndis_work_entry *ndis_work_entry;
+	struct ndis_free_mem *free_mem;
+
 	TRACEENTER3("length = %u, flags = %08X", length, flags);
 
-	if (!adr)
+	if (!addr)
 		TRACEEXIT3(return);
 
 	if (length <= KMALLOC_THRESHOLD)
-		kfree(adr);
+		kfree(addr);
 	else if (flags & NDIS_MEMORY_CONTIGUOUS)
-		kfree(adr);
+		kfree(addr);
 	else
-		vfree(adr);
+	{
+		if (!in_interrupt())
+		{
+			vfree(addr);
+			TRACEEXIT3(return);
+		}
+		/* Centrino 2200 driver calls this function when in
+		 * ad-hoc mode in interrupt context when length >
+		 * KMALLOC_THRESHOLD, which implies that vfree is
+		 * called in interrupt context, which is not
+		 * correct. So we use worker for it */
+		ndis_work_entry = kmalloc(sizeof(*ndis_work_entry),
+					  GFP_ATOMIC);
+		if (!ndis_work_entry)
+		{
+			BUG();
+		}
+
+		ndis_work_entry->type = _NDIS_FREE_MEM;
+		free_mem = &ndis_work_entry->entry.free_mem;
+
+		free_mem->addr = addr;
+		free_mem->length = length;
+		free_mem->flags = flags;
+
+		wrap_spin_lock(&ndis_work_list_lock);
+		list_add_tail(&ndis_work_entry->list, &ndis_work_list);
+		wrap_spin_unlock(&ndis_work_list_lock);
+
+		schedule_work(&ndis_work);
+	}
+
 	TRACEEXIT3(return);
 }
 
@@ -975,69 +1001,32 @@ NdisMAllocateSharedMemory(struct ndis_handle *handle, unsigned long size,
 	DBGTRACE3("allocated shared memory: %p", v);
 }
 
-static void alloc_worker(void *data)
-{
-	struct ndis_alloc_entry *alloc_entry;
-	void *virt;
-	struct ndis_phy_address phys;
-	struct ndis_handle *handle;
-	struct miniport_char *miniport;
-
-	TRACEENTER3("%s", "");
-	while (1)
-	{
-		wrap_spin_lock(&alloc_list_lock);
-		if (list_empty(&alloc_list))
-			alloc_entry = NULL;
-		else
-		{
-			alloc_entry =
-				(struct ndis_alloc_entry *)alloc_list.next;
-			list_del(&alloc_entry->list);
-		}
-		wrap_spin_unlock(&alloc_list_lock);
-
-		if (!alloc_entry)
-		{
-			DBGTRACE3("%s", "No more allocs");
-			break;
-		}
-
-		DBGTRACE3("Allocating %scached memory of length %ld",
-			  alloc_entry->cached ? "" : "un-",
-			  alloc_entry->size);
-		handle = (struct ndis_handle *)alloc_entry->handle;
-		miniport = &handle->driver->miniport_char;
-		NdisMAllocateSharedMemory(handle, alloc_entry->size,
-					  alloc_entry->cached, &virt, &phys);
-		miniport->alloc_complete(handle, virt, &phys,
-					 alloc_entry->size, alloc_entry->ctx);
-		kfree(alloc_entry);
-	}
-	TRACEEXIT3(return);
-}
-
 STDCALL static int
 NdisMAllocateSharedMemoryAsync(struct ndis_handle *handle,
 			       unsigned long size, char cached, void *ctx)
 {
-	struct ndis_alloc_entry *alloc_entry;
+	struct ndis_work_entry *ndis_work_entry;
+	struct ndis_alloc_mem *alloc_mem;
 
 	TRACEENTER3("%s", "");
-	alloc_entry = kmalloc(sizeof(*alloc_entry), GFP_ATOMIC);
-	if (!alloc_entry)
+	ndis_work_entry = kmalloc(sizeof(*ndis_work_entry), GFP_ATOMIC);
+	if (!ndis_work_entry)
 		return NDIS_STATUS_FAILURE;
 
-	alloc_entry->handle = handle;
-	alloc_entry->size = size;
-	alloc_entry->cached = cached;
-	alloc_entry->ctx = ctx;
+	ndis_work_entry->type = _NDIS_ALLOC_MEM;
 
-	wrap_spin_lock(&alloc_list_lock);
-	list_add_tail(&alloc_entry->list, &alloc_list);
-	wrap_spin_unlock(&alloc_list_lock);
+	alloc_mem = &ndis_work_entry->entry.alloc_mem;
 
-	schedule_work(&alloc_work);
+	alloc_mem->handle = handle;
+	alloc_mem->size = size;
+	alloc_mem->cached = cached;
+	alloc_mem->ctx = ctx;
+
+	wrap_spin_lock(&ndis_work_list_lock);
+	list_add_tail(&ndis_work_entry->list, &ndis_work_list);
+	wrap_spin_unlock(&ndis_work_list_lock);
+
+	schedule_work(&ndis_work);
 	TRACEEXIT3(return NDIS_STATUS_PENDING);
 }
 
@@ -1465,15 +1454,15 @@ NdisMIndicateStatus(struct ndis_handle *handle, unsigned int status, void *buf,
 {
 	TRACEENTER1("%08x", status);
 
+	if (status == NDIS_STATUS_MEDIA_DISCONNECT)
+		handle->link_status = 0;
+
 	if (status == NDIS_STATUS_MEDIA_CONNECT)
 	{
 		handle->link_status = 1;
 		set_bit(WRAPPER_LINK_STATUS, &handle->wrapper_work);
 		schedule_work(&handle->wrapper_worker);
 	}
-
-	if (status == NDIS_STATUS_MEDIA_DISCONNECT)
-		handle->link_status = 0;
 
 	if (status == NDIS_STATUS_MEDIA_SPECIFIC_INDICATION && buf)
 	{
@@ -2025,61 +2014,107 @@ NdisMResetComplete(struct ndis_handle *handle, int status, int reset_status)
 	TRACEEXIT3(return);
 }
 
-static void worker(void *context)
+static void ndis_worker(void *data)
 {
-	struct ndis_workentry *workentry;
-	struct ndis_work *ndis_work;
+	struct ndis_work_entry *ndis_work_entry;
+	struct ndis_sched_work_item *sched_work_item;
+	struct ndis_alloc_mem *alloc_mem;
+	struct ndis_free_mem *free_mem;
+	struct ndis_handle *handle;
+	struct miniport_char *miniport;
+	void *virt;
+	struct ndis_phy_address phys;
 
 	TRACEENTER3("%s", "");
 	while (1)
 	{
-		wrap_spin_lock(&worklist_lock);
-		if (list_empty(&worklist))
-			workentry = NULL;
+		wrap_spin_lock(&ndis_work_list_lock);
+		if (list_empty(&ndis_work_list))
+			ndis_work_entry = NULL;
 		else
 		{
-			workentry = (struct ndis_workentry*) worklist.next;
-			list_del(&workentry->list);
+			ndis_work_entry =
+				(struct ndis_work_entry*)ndis_work_list.next;
+			list_del(&ndis_work_entry->list);
 		}
-		wrap_spin_unlock(&worklist_lock);
+		wrap_spin_unlock(&ndis_work_list_lock);
 
-		if (!workentry)
+		if (!ndis_work_entry)
 		{
 			DBGTRACE3("%s", "No more work");
 			break;
 		}
 
-		ndis_work = workentry->work;
+		switch (ndis_work_entry->type)
+		{
+		case _NDIS_SCHED_WORK:
+			sched_work_item =
+				ndis_work_entry->entry.sched_work_item;
 
-		DBGTRACE3("Calling work at %08x (rva %08x)with parameter %08x",
-			  (int)ndis_work->func,
-			  (int)ndis_work->func - image_offset,
-			  (int)ndis_work->ctx);
-		ndis_work->func(ndis_work, ndis_work->ctx);
-		kfree(workentry);
+			DBGTRACE3("Calling work at %08x (rva %08x) with "
+				  "parameter %08x",
+				  (int)sched_work_item->func,
+				  (int)sched_work_item->func - image_offset,
+				  (int)sched_work_item->ctx);
+			sched_work_item->func(sched_work_item,
+					      sched_work_item->ctx);
+			break;
+
+		case _NDIS_ALLOC_MEM:
+			alloc_mem = &ndis_work_entry->entry.alloc_mem;
+
+			DBGTRACE3("Allocating %scached memory of length %ld",
+				  alloc_mem->cached ? "" : "un-",
+				  alloc_mem->size);
+			handle = (struct ndis_handle *)alloc_mem->handle;
+			miniport = &handle->driver->miniport_char;
+			NdisMAllocateSharedMemory(handle, alloc_mem->size,
+						  alloc_mem->cached,
+						  &virt, &phys);
+			miniport->alloc_complete(handle, virt, &phys,
+						 alloc_mem->size,
+						 alloc_mem->ctx);
+			break;
+
+		case _NDIS_FREE_MEM:
+			free_mem = &ndis_work_entry->entry.free_mem;
+			DBGTRACE3("Freeing memory of size %d, flags %d at %p",
+				  free_mem->length, free_mem->flags,
+				  free_mem->addr);
+			if (free_mem->addr)
+			{
+				vfree(free_mem->addr);
+			}
+			break;
+		default:
+			ERROR("%s", "unknown ndis work item");
+			break;
+		}
+		kfree(ndis_work_entry);
 	}
 	TRACEEXIT3(return);
 }
 
 STDCALL static int
-NdisScheduleWorkItem(struct ndis_work *ndis_work)
+NdisScheduleWorkItem(struct ndis_sched_work_item *ndis_sched_work_item)
 {
-	struct ndis_workentry *workentry;
+	struct ndis_work_entry *ndis_work_entry;
 
 	TRACEENTER3("%s", "");
 	/* this function is called from irq_bh by realtek driver */
-	workentry = kmalloc(sizeof(*workentry), GFP_ATOMIC);
-	if (!workentry)
+	ndis_work_entry = kmalloc(sizeof(*ndis_work_entry), GFP_ATOMIC);
+	if (!ndis_work_entry)
 	{
 		BUG();
 	}
-	workentry->work = ndis_work;
+	ndis_work_entry->type = _NDIS_SCHED_WORK;
+	ndis_work_entry->entry.sched_work_item = ndis_sched_work_item;
 
-	wrap_spin_lock(&worklist_lock);
-	list_add_tail(&workentry->list, &worklist);
-	wrap_spin_unlock(&worklist_lock);
+	wrap_spin_lock(&ndis_work_list_lock);
+	list_add_tail(&ndis_work_entry->list, &ndis_work_list);
+	wrap_spin_unlock(&ndis_work_list_lock);
 
-	schedule_work(&work);
+	schedule_work(&ndis_work);
 	TRACEEXIT3(return NDIS_STATUS_SUCCESS);
 }
 
