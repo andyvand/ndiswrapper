@@ -174,10 +174,10 @@ void wrap_kfree_all(void);
 #define TRACEENTER3(fmt, ...) DBGTRACE3("Enter " fmt, ## __VA_ARGS__)
 #define TRACEENTER4(fmt, ...) DBGTRACE4("Enter " fmt, ## __VA_ARGS__)
 
-#define TRACEEXIT(stmt) do { DBGTRACE("Exit"); stmt; } while(0)
-#define TRACEEXIT1(stmt) do { DBGTRACE1("Exit"); stmt; } while(0)
-#define TRACEEXIT2(stmt) do { DBGTRACE2("Exit"); stmt; } while(0)
-#define TRACEEXIT3(stmt) do { DBGTRACE3("Exit"); stmt; } while(0)
-#define TRACEEXIT4(stmt) do { DBGTRACE4("Exit"); stmt; } while(0)
+#define TRACEEXIT(stmt) do { DBGTRACE("%s", "Exit"); stmt; } while(0)
+#define TRACEEXIT1(stmt) do { DBGTRACE1("%s", "Exit"); stmt; } while(0)
+#define TRACEEXIT2(stmt) do { DBGTRACE2("%s", "Exit"); stmt; } while(0)
+#define TRACEEXIT3(stmt) do { DBGTRACE3("%s", "Exit"); stmt; } while(0)
+#define TRACEEXIT4(stmt) do { DBGTRACE4("%s", "Exit"); stmt; } while(0)
 
 #endif // NDISWRAPPER_H

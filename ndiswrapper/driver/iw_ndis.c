@@ -33,7 +33,7 @@ int ndis_set_essid(struct net_device *dev, struct iw_request_info *info,
 	unsigned int res, written, needed;
 	struct essid_req req;
 
-	TRACEENTER1();
+	TRACEENTER1("%s", "");
 	memset(&req.essid, 0, sizeof(req.essid));
 	
 	if (wrqu->essid.flags == 0)
@@ -69,7 +69,7 @@ static int ndis_get_essid(struct net_device *dev,
 	unsigned int res, written, needed;
 	struct essid_req req;
 
-	TRACEENTER1();
+	TRACEENTER1("%s", "");
 	res = doquery(handle, NDIS_OID_ESSID, (char*)&req, sizeof(req),
 		      &written, &needed);
 	if(res)
@@ -93,7 +93,7 @@ int ndis_set_mode(struct net_device *dev, struct iw_request_info *info,
 	enum op_mode ndis_mode;
 	int res;
 
-	TRACEENTER1();
+	TRACEENTER1("%s", "");
 	switch(wrqu->mode)
 	{
 	case IW_MODE_ADHOC:
@@ -127,7 +127,7 @@ static int ndis_get_mode(struct net_device *dev, struct iw_request_info *info,
 
 	int res;
 
-	TRACEENTER1();
+	TRACEENTER1("%s", "");
 	res = query_int(handle, NDIS_OID_MODE, &ndis_mode);
 	if(res)
 	{
@@ -401,7 +401,7 @@ int ndis_get_ap_address(struct net_device *dev, struct iw_request_info *info,
 	unsigned int res, written, needed;
 	__u8 mac_address[ETH_ALEN];
 
-	TRACEENTER1();
+	TRACEENTER1("%s", "");
 	memset(mac_address, 0, ETH_ALEN);
 	res = doquery(handle, NDIS_OID_BSSID, (char*)&mac_address, ETH_ALEN,
 		      &written, &needed);
@@ -424,7 +424,7 @@ static int ndis_set_ap_address(struct net_device *dev,
 	unsigned int res, written, needed;
 	__u8 mac_address[ETH_ALEN];
 
-	TRACEENTER1();
+	TRACEENTER1("%s", "");
         memcpy(mac_address, wrqu->ap_addr.sa_data, ETH_ALEN);
 	res = dosetinfo(handle, NDIS_OID_BSSID, (char*)&(mac_address[0]),
 			ETH_ALEN, &written, &needed);
@@ -445,7 +445,7 @@ static int ndis_get_encr(struct net_device *dev, struct iw_request_info *info,
 	int status, res, index;
 	struct wep_info *wep_info = &handle->wep_info;
 
-	TRACEENTER1();
+	TRACEENTER1("%s", "");
 	wrqu->data.length = 0;
 	extra[0] = 0;
 
@@ -520,7 +520,7 @@ static int ndis_set_encr(struct net_device *dev, struct iw_request_info *info,
 	struct wep_info *wep_info = &handle->wep_info;
 	struct wep_req wep_req;
 	
-	TRACEENTER1();
+	TRACEENTER1("%s", "");
 	index = (wrqu->data.flags & IW_ENCODE_INDEX);
 	DBGTRACE2("index = %u", index);
 	if (index > MAX_WEP_KEYS)
@@ -651,7 +651,7 @@ char *ndis_translate_scan(struct net_device *dev, char *event, char *end_buf,
 	int i;
 	char buf[MAX_WPA_IE_LEN * 2 + 30];
 
-	TRACEENTER1();
+	TRACEENTER1("%s", "");
 	/* add mac address */
 	memset(&iwe, 0, sizeof(iwe));
 	iwe.cmd = SIOCGIWAP;
@@ -800,7 +800,7 @@ static int ndis_set_scan(struct net_device *dev, struct iw_request_info *info,
 	struct ndis_handle *handle = dev->priv;
 	unsigned int res = 0;
 
-	TRACEENTER1();
+	TRACEENTER1("%s", "");
 	res = set_int(handle, NDIS_OID_BSSID_LIST_SCAN, 0);
 	if (res)
 	{
@@ -824,7 +824,7 @@ static int ndis_get_scan(struct net_device *dev, struct iw_request_info *info,
 	char *event = extra;
 	struct ssid_item *cur_item ;
 
-	TRACEENTER1();
+	TRACEENTER1("%s", "");
 	if (!handle->scan_timestamp)
 		TRACEEXIT1(return -EOPNOTSUPP);
 
@@ -1113,7 +1113,7 @@ static int ndis_set_wpa(struct net_device *dev, struct iw_request_info *info,
 	struct ndis_handle *handle = (struct ndis_handle *)dev->priv;
 	unsigned int res;
 	
-	TRACEENTER();
+	TRACEENTER("%s", "");
 	DBGTRACE("flags = %d, encr_alg = %d, handle->capa = %d, "
 		 "handle->encr_alg = %d", wrqu->data.flags, handle->encr_alg,
 	       handle->wpa_capa, handle->encr_alg);
@@ -1265,7 +1265,7 @@ static int ndis_set_associate(struct net_device *dev,
 			      struct iw_request_info *info,
 			      union iwreq_data *wrqu, char *extra)
 {
-	TRACEENTER();
+	TRACEENTER("%s", "");
 	/* FIXME: for now we simply set the essid */
 	wrqu->essid.flags = 1;
 	TRACEEXIT(return ndis_set_essid(dev, info, wrqu, extra));
@@ -1277,7 +1277,7 @@ static int ndis_set_disassociate(struct net_device *dev,
 {
 	struct ndis_handle *handle = (struct ndis_handle *)dev->priv;
 	
-	TRACEENTER();
+	TRACEENTER("%s", "");
 	if (set_int(handle, NDIS_OID_DISASSOCIATE, 0))
 		TRACEEXIT(return -EOPNOTSUPP);
 	TRACEEXIT(return 0);
@@ -1303,11 +1303,15 @@ static int ndis_set_generic_element(struct net_device *dev,
 				    union iwreq_data *wrqu, char *extra)
 {
 	int i;
+	union iwreq_data iwrq;
+
 	MESSAGE(KERN_INFO, "generic_element (%d): ", wrqu->data.length);
 	for (i = 0 ; i < wrqu->data.length; i ++)
 		printk(KERN_INFO "%02X ", ((char *)wrqu->data.pointer)[i]);
 	printk(KERN_INFO "\n");
 
+	iwrq.data.flags = 1;
+	ndis_set_wpa(dev, info, &iwrq, extra);
 	return 0;
 }
 

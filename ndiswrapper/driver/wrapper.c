@@ -81,7 +81,7 @@ int doreset(struct ndis_handle *handle)
 	int res;
 	int addressing_reset;
 
-	TRACEENTER3();
+	TRACEENTER3("%s", "");
 
 	if (down_interruptible(&handle->ndis_comm_mutex))
 		TRACEEXIT3(return NDIS_STATUS_FAILURE);
@@ -283,7 +283,7 @@ static void hangcheck_bh(void *data)
 {
 	struct ndis_handle *handle = (struct ndis_handle *)data;
 
-	TRACEENTER3();
+	TRACEENTER3("%s", "");
 	if(handle->driver->miniport_char.hangcheck(handle->adapter_ctx))
 	{
 		int res;
@@ -399,7 +399,7 @@ void statcollector_del(struct ndis_handle *handle)
 
 static int ndis_open(struct net_device *dev)
 {
-	TRACEENTER1();
+	TRACEENTER1("%s", "");
 	netif_start_queue(dev);
 	return 0;
 }
@@ -407,7 +407,7 @@ static int ndis_open(struct net_device *dev)
 
 static int ndis_close(struct net_device *dev)
 {
-	TRACEENTER1();
+	TRACEENTER1("%s", "");
 	netif_stop_queue(dev);
 	return 0;
 }
@@ -466,7 +466,7 @@ static void ndis_set_rx_mode_proc(void *param)
 	int res;
 	unsigned int written, needed;
 
-	TRACEENTER1();
+	TRACEENTER1("%s", "");
 	packet_filter = (NDIS_PACKET_TYPE_DIRECTED |
 	                 NDIS_PACKET_TYPE_BROADCAST |
 	                 NDIS_PACKET_TYPE_ALL_MULTICAST);
@@ -722,7 +722,7 @@ static void xmit_bh(void *param)
  */
 void sendpacket_done(struct ndis_handle *handle, struct ndis_packet *packet)
 {
-	TRACEENTER3();
+	TRACEENTER3("%s", "");
 	spin_lock_bh(&handle->send_packet_lock);
 	handle->stats.tx_bytes += packet->len;
 	handle->stats.tx_packets++;
@@ -976,7 +976,7 @@ static void check_wpa(struct ndis_handle *handle)
 	struct ndis_assoc_info ndis_assoc_info;
 	struct ndis_key ndis_key;
 
-	TRACEENTER1();
+	TRACEENTER1("%s", "");
 	handle->wpa_capa = 0;
 	res = set_int(handle, NDIS_OID_AUTH_MODE, AUTHMODE_WPAPSK);
 	if (res)
@@ -985,7 +985,7 @@ static void check_wpa(struct ndis_handle *handle)
 	if (res || i != AUTHMODE_WPAPSK)
 		return;
 	
-	DBGTRACE("checking for encr");
+	DBGTRACE("%s", "checking for encr");
 	/* check for highest encryption */
 	mode = WEP_ENCR3_ENABLED;
 	while (mode)
@@ -1303,7 +1303,7 @@ static void __devexit ndis_remove_one(struct pci_dev *pdev)
 {
 	struct ndis_handle *handle = (struct ndis_handle *) pci_get_drvdata(pdev);
 
-	TRACEENTER1();
+	TRACEENTER1("%s", "");
 
 	ndiswrapper_procfs_remove_iface(handle);
 	statcollector_del(handle);
@@ -1624,7 +1624,7 @@ static void delete_device(struct ndis_device *device)
 {
 	struct list_head *curr, *tmp2;
 
-	TRACEENTER1();
+	TRACEENTER1("%s", "");
 	list_for_each_safe(curr, tmp2, &device->settings)
 	{
 		struct ndis_setting *setting = (struct ndis_setting*) curr;
