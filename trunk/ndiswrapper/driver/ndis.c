@@ -1394,25 +1394,25 @@ NdisMStartBufferPhysicalMapping(struct ndis_handle *handle,
 {
 	if (!write_to_dev)
 	{
-		DBGTRACE("%s (%s): dma from device not supported (%d)\n",
-			 handle->net_dev->name, __FUNCTION__, write_to_dev);
+		printk(KERN_ERR "%s (%s): dma from device not supported (%d)\n",
+		       handle->net_dev->name, __FUNCTION__, write_to_dev);
 		*array_size = 0;
 		return;
 	}
 
 	if (phy_map_reg > handle->map_count)
 	{
-		DBGTRACE("%s (%s): map_register too big (%lu > %u)\n",
-			 handle->net_dev->name, __FUNCTION__,
-			 phy_map_reg, handle->map_count);
+		printk(KERN_ERR "%s (%s): map_register too big (%lu > %u)\n",
+		       handle->net_dev->name, __FUNCTION__,
+		       phy_map_reg, handle->map_count);
 		*array_size = 0;
 		return;
 	}
 	
 	if (handle->map_dma_addr[phy_map_reg] != 0)
 	{
-		DBGTRACE("%s (%s): map register already used (%lu)\n",
-			 handle->net_dev->name, __FUNCTION__, phy_map_reg);
+		printk(KERN_ERR "%s (%s): map register already used (%lu)\n",
+		       handle->net_dev->name, __FUNCTION__, phy_map_reg);
 		*array_size = 0;
 		return;
 	}
@@ -1443,16 +1443,16 @@ NdisMCompleteBufferPhysicalMapping(struct ndis_handle *handle,
 
 	if (phy_map_reg > handle->map_count)
 	{
-		DBGTRACE("%s (%s): map_register too big (%lu > %u)\n",
-			 handle->net_dev->name, __FUNCTION__,
-			 phy_map_reg, handle->map_count);
+		printk(KERN_ERR "%s (%s): map_register too big (%lu > %u)\n",
+		       handle->net_dev->name, __FUNCTION__,
+		       phy_map_reg, handle->map_count);
 		return;
 	}
 
 	if (handle->map_dma_addr[phy_map_reg] == 0)
 	{
-		DBGTRACE("%s (%s): map register not used (%lu)\n",
-			 handle->net_dev->name, __FUNCTION__, phy_map_reg);
+		printk(KERN_ERR "%s (%s): map register not used (%lu)\n",
+		       handle->net_dev->name, __FUNCTION__, phy_map_reg);
 		return;
 	}
 	
