@@ -154,6 +154,35 @@ typedef task_queue workqueue;
 #define KTHREAD_RUN(a,b,c) kthread_run(a,b,c)
 #endif
 
+#ifdef CONFIG_X86_64
+#define LIN2WIN1(func, arg1) \
+  lin_to_win1(func, (unsigned long)arg1)
+#define LIN2WIN2(func, arg1, arg2) \
+  lin_to_win2(func, (unsigned long)arg1, (unsigned long)arg2)
+#define LIN2WIN3(func, arg1, arg2, arg3) \
+  lin_to_win3(func, (unsigned long)arg1, (unsigned long)arg2, \
+	      (unsigned long)arg3)
+#define LIN2WIN4(func, arg1, arg2, arg3, arg4)		      \
+  lin_to_win4(func, (unsigned long)arg1, (unsigned long)arg2, \
+	      (unsigned long)arg3, (unsigned long)arg4)
+#define LIN2WIN5(func, arg1, arg2, arg3, arg4, arg5)	      \
+  lin_to_win5(func, (unsigned long)arg1, (unsigned long)arg2, \
+	      (unsigned long)arg3, (unsigned long)arg4, (unsigned long)arg5)
+#define LIN2WIN6(func, arg1, arg2, arg3, arg4, arg5, arg6)	      \
+  lin_to_win6(func, (unsigned long)arg1, (unsigned long)arg2, \
+	      (unsigned long)arg3, (unsigned long)arg4, (unsigned long)arg5, \
+	      (unsigned long)arg6)
+#else
+#define LIN2WIN1(func, arg1) func(arg1)
+#define LIN2WIN2(func, arg1, arg2) func(arg1, arg2)
+#define LIN2WIN3(func, arg1, arg2, arg3) func(arg1, arg2, arg3)
+#define LIN2WIN4(func, arg1, arg2, arg3, arg4) func(arg1, arg2, arg3, arg4)
+#define LIN2WIN5(func, arg1, arg2, arg3, arg4, arg5) \
+  func(arg1, arg2, arg3, arg4, arg5)
+#define LIN2WIN6(func, arg1, arg2, arg3, arg4, arg5, arg6) \
+  func(arg1, arg2, arg3, arg4, arg5, arg6)
+#endif
+
 #ifndef __wait_event_interruptible_timeout
 #define __wait_event_interruptible_timeout(wq, condition, ret)		\
 do {									\
@@ -349,6 +378,18 @@ _FASTCALL void
 KefReleaseSpinLockFromDpcLevel(FASTCALL_DECL_1(KSPIN_LOCK *lock));
 
 void dump_bytes(const char *where, const u8 *ip);
+
+unsigned long lin_to_win1(void *func, unsigned long);
+unsigned long lin_to_win2(void *func, unsigned long, unsigned long);
+unsigned long lin_to_win3(void *func, unsigned long, unsigned long,
+			  unsigned long);
+unsigned long lin_to_win4(void *func, unsigned long, unsigned long,
+			  unsigned long, unsigned long);
+unsigned long lin_to_win5(void *func, unsigned long, unsigned long,
+			  unsigned long, unsigned long, unsigned long);
+unsigned long lin_to_win6(void *func, unsigned long, unsigned long,
+			  unsigned long, unsigned long, unsigned long,
+			  unsigned long);
 
 #define raise_irql(irql) KfRaiseIrql(FASTCALL_ARGS_1(irql))
 #define lower_irql(irql) KfLowerIrql(FASTCALL_ARGS_1(irql))

@@ -1,6 +1,12 @@
 
 	.text
-
+	.globl lin_to_win1
+	.globl lin_to_win2
+	.globl lin_to_win3
+	.globl lin_to_win4
+	.globl lin_to_win5
+	.globl lin_to_win6
+	
 _win_to_lin:
 	push	%r10		# non volatile
 	push	%r11		# non volatile
@@ -19,7 +25,48 @@ _win_to_lin:
 	pop	%r10
 	ret
 
-	.macro	x86_64_stub name
+lin_to_win1:
+	mov %rsi, %rcx
+	jmp *%rdi
+
+lin_to_win2:
+	mov %rdi, %rax	# call
+	mov %rsi, %rcx	# arg1
+	#   arg2 is already in %rdx
+	jmp *%rdi
+
+lin_to_win3:
+	mov %rcx, %r8	# arg3
+	#   arg2 is already in %rdx
+	mov %rsi, %rcx	# arg1
+	jmp *%rdi
+
+lin_to_win4:
+	mov %r8, %r9	# arg4
+	mov %rcx, %r8	# arg3
+	#   arg2 is already in %rdx
+	mov %rsi, %rcx	# arg1
+	jmp *%rdi
+
+lin_to_win5:
+	mov %r9, 0x20(%rsp)	# arg5
+	mov %r8, %r9	# arg4
+	mov %rcx, %r8	# arg3
+	#   arg2 is already in %rdx
+	mov %rsi, %rcx	# arg1
+	jmp *%rdi
+
+lin_to_win6:
+	mov (%rsp), %rax
+	mov %rax, 0x28(%rsp) # arg6
+	mov %r9, 0x20(%rsp)	# arg5
+	mov %r8, %r9	# arg4
+	mov %rcx, %r8	# arg3
+	#   arg2 is already in %rdx
+	mov %rsi, %rcx	# arg1
+	jmp *%rdi
+
+	.macro	win_to_lin_stub name
 	.globl _\name
 _\name:
 	lea	\name(%rip),%rax

@@ -89,7 +89,8 @@ int miniport_reset(struct ndis_handle *handle)
 	handle->ndis_comm_res = NDIS_STATUS_PENDING;
 	handle->ndis_comm_done = 0;
 	irql = raise_irql(DISPATCH_LEVEL);
-	res = miniport->reset(&handle->reset_status, handle->adapter_ctx);
+	res = LIN2WIN2(miniport->reset, &handle->reset_status,
+		       handle->adapter_ctx);
 	lower_irql(irql);
 
 	DBGTRACE2("res = %08X, reset_status = %08X",
@@ -143,8 +144,8 @@ int miniport_query_info_needed(struct ndis_handle *handle, unsigned int oid,
 
 	handle->ndis_comm_done = 0;
 	irql = raise_irql(DISPATCH_LEVEL);
-	res = miniport->query(handle->adapter_ctx, oid, buf, bufsize,
-			      &written, needed);
+	res = LIN2WIN6(miniport->query, handle->adapter_ctx, oid, buf, bufsize,
+		       &written, needed);
 	lower_irql(irql);
 
 	DBGTRACE3("res = %08x", res);
@@ -189,8 +190,8 @@ int miniport_set_info(struct ndis_handle *handle, unsigned int oid, char *buf,
 
 	handle->ndis_comm_done = 0;
 	irql = raise_irql(DISPATCH_LEVEL);
-	res = miniport->setinfo(handle->adapter_ctx, oid, buf, bufsize,
-			       &written, &needed);
+	res = LIN2WIN6(miniport->setinfo, handle->adapter_ctx, oid, buf,
+		       bufsize, &written, &needed);
 	DBGTRACE3("res = %08x", res);
 	lower_irql(irql);
 
@@ -254,9 +255,9 @@ int miniport_init(struct ndis_handle *handle)
 		ERROR("%s", "initialization function is not setup correctly");
 		return -EINVAL;
 	}
-	res = miniport->init(&status, &medium_index, medium_array,
-			     sizeof(medium_array) / sizeof(medium_array[0]),
-			     handle, handle);
+	res = LIN2WIN6(miniport->init, &status, &medium_index, medium_array,
+		       sizeof(medium_array) / sizeof(medium_array[0]),
+		       handle, handle);
 	if (res)
 		return res;
 	return 0;
@@ -272,7 +273,7 @@ void miniport_halt(struct ndis_handle *handle)
 
 	miniport_set_int(handle, NDIS_OID_PNP_SET_POWER, NDIS_PM_STATE_D3);
 
-	miniport->halt(handle->adapter_ctx);
+	LIN2WIN1(miniport->halt, handle->adapter_ctx);
 
 	ndis_exit_handle(handle);
 
@@ -294,7 +295,7 @@ static void hangcheck_proc(unsigned long data)
 
 		miniport = &handle->driver->miniport_char;
 		irql = raise_irql(DISPATCH_LEVEL);
-		res = miniport->hangcheck(handle->adapter_ctx);
+		res = LIN2WIN1(miniport->hangcheck, handle->adapter_ctx);
 		lower_irql(irql);
 		if (res) {
 			WARNING("%s is being reset", handle->net_dev->name);
@@ -529,8 +530,8 @@ static int send_packets(struct ndis_handle *handle, unsigned int start,
 			int j = (start + i) % XMIT_RING_SIZE;
 			handle->xmit_array[i] = handle->xmit_ring[j];
 		}
-		miniport->send_packets(handle->adapter_ctx,
-				       handle->xmit_array, n);
+		LIN2WIN3(miniport->send_packets, handle->adapter_ctx,
+			 handle->xmit_array, n);
 		if (test_bit(ATTR_SERIALIZED, &handle->attributes)) {
 			for (sent = 0; sent < n && handle->send_ok;
 			     sent++) {
@@ -555,7 +556,7 @@ static int send_packets(struct ndis_handle *handle, unsigned int start,
 		}
 	} else {
 		packet = handle->xmit_ring[start];
-		res = miniport->send(handle->adapter_ctx, packet, 0);
+		res = LIN2WIN3(miniport->send, handle->adapter_ctx, packet, 0);
 
 		sent = 1;
 		switch (res) {
@@ -802,9 +803,8 @@ void ndiswrapper_remove_one_dev(struct ndis_handle *handle)
 		  miniport->pnp_event_notify);
 	if (test_bit(ATTR_SURPRISE_REMOVE, &handle->attributes) &&
 	    miniport->pnp_event_notify) {
-		miniport->pnp_event_notify(handle->adapter_ctx,
-					   NDIS_PNP_SURPRISE_REMOVED,
-					   NULL, 0);
+		LIN2WIN4(miniport->pnp_event_notify, handle->adapter_ctx,
+			 NDIS_PNP_SURPRISE_REMOVED, NULL, 0);
 	}
 
 	DBGTRACE1("halting device %s", handle->driver->name);
@@ -1065,7 +1065,7 @@ static void wrapper_worker_proc(void *param)
 			/*
 			  if (miniport->pnp_event_notify) {
 			  INFO("%s", "calling pnp_event_notify");
-			  miniport->pnp_event_notify(handle,
+			  LIN2WIN4(miniport->pnp_event_notify, handle,
 			  NDIS_PNP_PROFILE_CHANGED,
 			  &profile_inf, sizeof(profile_inf));
 			  }

@@ -66,7 +66,8 @@ void ndis_exit_handle(struct ndis_handle *handle)
 
 		spin_lock_irqsave(K_SPINLOCK(&(handle->ndis_irq->lock)), flags);
 		if (miniport->disable_interrupts)
-			miniport->disable_interrupts(handle->adapter_ctx);
+			LIN2WIN1(miniport->disable_interrupts,
+				 handle->adapter_ctx);
 		spin_unlock_irqrestore(K_SPINLOCK(&(handle->ndis_irq->lock)),
 				       flags);
 		NdisMDeregisterInterrupt(handle->ndis_irq);
@@ -1344,9 +1345,10 @@ static void ndis_irq_bh(void *data)
 		KIRQL irql;
 
 		irql = raise_irql(DISPATCH_LEVEL);
-		miniport->handle_interrupt(handle->adapter_ctx);
+		LIN2WIN1(miniport->handle_interrupt, handle->adapter_ctx);
 		if (miniport->enable_interrupts)
-			miniport->enable_interrupts(handle->adapter_ctx);
+			LIN2WIN1(miniport->enable_interrupts,
+				 handle->adapter_ctx);
 		lower_irql(irql);
 	}
 }
@@ -1369,9 +1371,10 @@ static irqreturn_t ndis_irq_th(int irq, void *data, struct pt_regs *pt_regs)
 	 */
 	spin_lock_irqsave(K_SPINLOCK(&(ndis_irq->lock)), flags);
 	if (ndis_irq->req_isr)
-		miniport->isr(&recognized, &handled, handle->adapter_ctx);
+		LIN2WIN3(miniport->isr, &recognized, &handled,
+			 handle->adapter_ctx);
 	else { //if (miniport->disable_interrupts)
-		miniport->disable_interrupts(handle->adapter_ctx);
+		LIN2WIN1(miniport->disable_interrupts, handle->adapter_ctx);
 		/* it is not shared interrupt, so handler must be called */
 		recognized = handled = 1;
 	}
@@ -1695,8 +1698,9 @@ EthRxIndicateHandler(void *adapter_ctx, void *rx_ctx, char *header1,
 
 		miniport = &handle->driver->miniport_char;
 		irql = raise_irql(DISPATCH_LEVEL);
-		res = miniport->tx_data(packet, &bytes_txed, adapter_ctx,
-					rx_ctx, look_ahead_size, packet_size);
+		res = LIN2WIN6(miniport->tx_data, packet, &bytes_txed,
+			       adapter_ctx, rx_ctx, look_ahead_size,
+			       packet_size);
 		lower_irql(irql);
 		if (res == NDIS_STATUS_SUCCESS) {
 			skb = dev_alloc_skb(header_size+look_ahead_size+
@@ -2108,9 +2112,8 @@ static void ndis_worker(void *data)
 						  alloc_mem->cached,
 						  &virt, &phys);
 			irql = raise_irql(DISPATCH_LEVEL);
-			miniport->alloc_complete(handle, virt, &phys,
-						 alloc_mem->size,
-						 alloc_mem->ctx);
+			LIN2WIN5(miniport->alloc_complete, handle, virt,
+				 &phys, alloc_mem->size, alloc_mem->ctx);
 			lower_irql(irql);
 			break;
 
@@ -2127,7 +2130,8 @@ static void ndis_worker(void *data)
 			packet = ndis_work_entry->entry.return_packet;
 			miniport = &handle->driver->miniport_char;
 			irql = raise_irql(DISPATCH_LEVEL);
-			miniport->return_packet(handle->adapter_ctx, packet);
+			LIN2WIN2(miniport->return_packet,
+				 handle->adapter_ctx, packet);
 			lower_irql(irql);
 			break;
 
