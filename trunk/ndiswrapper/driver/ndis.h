@@ -205,11 +205,18 @@ struct ndis_irq
 	unsigned char req_isr;
 };
 
-#define SPIN_LOCK_MAGIC_CHAR 137
+#define NDIS_SPIN_LOCK_MAGIC 137
+
+struct packed linux_lock
+{
+	spinlock_t spinlock;
+	unsigned short magic;
+	atomic_t use;
+};
 
 struct ndis_spin_lock
 {
-	KSPIN_LOCK spinlock;
+	struct linux_lock *linux_lock;
 	KIRQL kirql;
 };
 
@@ -508,17 +515,15 @@ struct packed ndis_handle
 	unsigned int xmit_ring_start;
 	unsigned int xmit_ring_pending;
 	
-	spinlock_t send_status_lock;
 	int send_status;
 	struct ndis_packet *send_packet;
-
 	spinlock_t send_packet_lock;
-	spinlock_t ndis_comm_lock;
+	spinlock_t send_packet_done_lock;
 
 	struct semaphore ndis_comm_mutex;
 	wait_queue_head_t ndis_comm_wqhead;
 	int ndis_comm_res;
-	int ndis_comm_done;
+	struct semaphore ndis_comm_done;
 
 	int serialized;
 	int use_scatter_gather;
@@ -703,6 +708,7 @@ int dosetinfo(struct ndis_handle *handle, unsigned int oid, char *buf, int bufsi
 int set_int(struct ndis_handle *handle, int oid, int data);
 int query_int(struct ndis_handle *handle, int oid, int *data);
 int doreset(struct ndis_handle *handle);
+void ndis_set_rx_mode(struct net_device *dev);
 
 void packet_recycler(void *param);
 

@@ -76,34 +76,55 @@ extern int image_offset;
 
 extern struct list_head wrap_allocs;
 
+void ndis_set_rx_mode(struct net_device *dev);
+
 int doreset(struct ndis_handle *handle)
 {
-	int res;
-	int addressing_reset;
+	int res = 0;
 
 	TRACEENTER3("%s", "");
+
+	if (handle->reset_status)
+		return NDIS_STATUS_PENDING;
 
 	if (down_interruptible(&handle->ndis_comm_mutex))
 		TRACEEXIT3(return NDIS_STATUS_FAILURE);
 
-	handle->ndis_comm_done = 0;
-	res = handle->driver->miniport_char.reset(&addressing_reset, handle->adapter_ctx);
-	if(!res)
+	handle->reset_status = 0;
+//	handle->ndis_comm_done = 0;
+	res = handle->driver->miniport_char.reset(&handle->reset_status,
+						  handle->adapter_ctx);
+	if (!res)
 		goto out;
 
-	if(res != NDIS_STATUS_PENDING)
+	if (res != NDIS_STATUS_PENDING)
 		goto out;
 		
-	if (wait_event_interruptible(handle->ndis_comm_wqhead,
-				     (handle->ndis_comm_done == 1)))
+//	if (wait_event_interruptible(handle->ndis_comm_wqhead,
+//				     (handle->ndis_comm_done == 1)))
+	if (down_interruptible(&handle->ndis_comm_done))
 		res = NDIS_STATUS_FAILURE;
 	else
 		res = handle->ndis_comm_res;
-
+	
 out:
 	up(&handle->ndis_comm_mutex);
+	DBGTRACE3("reset: res = %08X, reset status = %08X",
+		  res, handle->reset_status);
+	if (res == NDIS_STATUS_SUCCESS && handle->reset_status)
+	{
+		handle->indicate_receive_packet = &NdisMIndicateReceivePacket;
+		handle->send_complete = &NdisMSendComplete;
+		handle->send_resource_avail = &NdisMSendResourcesAvailable;
+		handle->indicate_status = &NdisMIndicateStatus;
+		handle->indicate_status_complete = &NdisMIndicateStatusComplete;
+		handle->query_complete = &NdisMQueryInformationComplete;
+		handle->set_complete = &NdisMSetInformationComplete;
+		handle->reset_complete = &NdisMResetComplete;
+		ndis_set_rx_mode(handle->net_dev);
+		handle->reset_status = 0;
+	}
 	TRACEEXIT3(return res);
-	
 }
 
 /*
@@ -119,7 +140,7 @@ int doquery(struct ndis_handle *handle, unsigned int oid, char *buf, int bufsize
 	if (down_interruptible(&handle->ndis_comm_mutex))
 		TRACEEXIT3(return NDIS_STATUS_FAILURE);
 
-	handle->ndis_comm_done = 0;
+//	handle->ndis_comm_done = 0;
 	res = handle->driver->miniport_char.query(handle->adapter_ctx, oid, buf, bufsize, written, needed);
 	if(!res)
 		goto out;
@@ -127,8 +148,9 @@ int doquery(struct ndis_handle *handle, unsigned int oid, char *buf, int bufsize
 	if(res != NDIS_STATUS_PENDING)
 		goto out;
 		
-	if (wait_event_interruptible(handle->ndis_comm_wqhead,
-				     (handle->ndis_comm_done == 1)))
+//	if (wait_event_interruptible(handle->ndis_comm_wqhead,
+//				     (handle->ndis_comm_done == 1)))
+	if (down_interruptible(&handle->ndis_comm_done))
 		res = NDIS_STATUS_FAILURE;
 	else
 		res = handle->ndis_comm_res;
@@ -152,7 +174,7 @@ int dosetinfo(struct ndis_handle *handle, unsigned int oid, char *buf, int bufsi
 	if (down_interruptible(&handle->ndis_comm_mutex))
 		TRACEEXIT3(return NDIS_STATUS_FAILURE);
 
-	handle->ndis_comm_done = 0;
+//	handle->ndis_comm_done = 0;
 	res = handle->driver->miniport_char.setinfo(handle->adapter_ctx, oid, buf, bufsize, written, needed);
 	if(!res)
 		goto out;
@@ -160,8 +182,9 @@ int dosetinfo(struct ndis_handle *handle, unsigned int oid, char *buf, int bufsi
 	if(res != NDIS_STATUS_PENDING)
 		goto out;
 		
-	if (wait_event_interruptible(handle->ndis_comm_wqhead,
-				     (handle->ndis_comm_done == 1)))
+//	if (wait_event_interruptible(handle->ndis_comm_wqhead,
+//				     (handle->ndis_comm_done == 1)))
+	if (down_interruptible(&handle->ndis_comm_done))
 		res = NDIS_STATUS_FAILURE;
 	else
 		res = handle->ndis_comm_res;
@@ -218,15 +241,21 @@ static int call_init(struct ndis_handle *handle)
 	__u32 selected_medium;
 	__u32 mediumtypes[] = {0,1,2,3,4,5,6,7,8,9,10,11,12};
 
-	TRACEENTER1("Calling NDIS driver init routine at %08X rva(%08X)", (int)handle->driver->miniport_char.init, (int)handle->driver->miniport_char.init - image_offset);
-	res = handle->driver->miniport_char.init(&res2, &selected_medium, mediumtypes, 13, handle, handle);
+	TRACEENTER1("Calling NDIS driver init routine at %08X rva(%08X)",
+		    (int)handle->driver->miniport_char.init,
+		    (int)handle->driver->miniport_char.init - image_offset);
+	res = handle->driver->miniport_char.init(&res2, &selected_medium,
+						 mediumtypes, 13, handle,
+						 handle);
 	DBGTRACE1("init returns %08X", res);
 	return res != 0;
 }
 
 static void call_halt(struct ndis_handle *handle)
 {
-	TRACEENTER1("Calling NDIS driver halt at %08X rva(%08X)", (int)handle->driver->miniport_char.halt, (int)handle->driver->miniport_char.halt - image_offset);
+	TRACEENTER1("Calling NDIS driver halt at %08X rva(%08X)",
+		    (int)handle->driver->miniport_char.halt,
+		    (int)handle->driver->miniport_char.halt - image_offset);
 
 	set_int(handle, NDIS_OID_PNP_SET_POWER, NDIS_PM_STATE_D3);
 
@@ -240,9 +269,12 @@ static unsigned int call_entry(struct ndis_driver *driver)
 	int res;
 	char regpath[] = {'a', 0, 'b', 0, 0, 0};
 
-	TRACEENTER1("Calling NDIS driver entry at %08X rva(%08X)", (int)driver->entry, (int)driver->entry - image_offset);
+	TRACEENTER1("Calling NDIS driver entry at %08X rva(%08X)",
+		    (int)driver->entry, (int)driver->entry - image_offset);
 	res = driver->entry((void*)driver, regpath);
-	DBGTRACE1("Past entry: Version: %d.%dn", driver->miniport_char.majorVersion, driver->miniport_char.minorVersion);
+	DBGTRACE1("Past entry: Version: %d.%dn",
+		  driver->miniport_char.majorVersion,
+		  driver->miniport_char.minorVersion);
 
 	/* Dump addresses of driver suppoled callbacks */
 #if defined DEBUG && DEBUG >= 1
@@ -287,7 +319,6 @@ static void hangcheck_bh(void *data)
 	if(handle->driver->miniport_char.hangcheck(handle->adapter_ctx))
 	{
 		int res;
-		handle->reset_status = 0;
 		INFO("%s", "Hangcheck returned true. Resetting!");
 		res = doreset(handle);
 		DBGTRACE3("reset returns %08X, %d", res, handle->reset_status);
@@ -431,7 +462,8 @@ static int ndis_ioctl(struct net_device *dev, struct ifreq *rq, int cmd)
 	return rc;
 }
 
-static void set_multicast_list(struct net_device *dev, struct ndis_handle *handle)
+static void set_multicast_list(struct net_device *dev,
+			       struct ndis_handle *handle)
 {
 	unsigned int written, needed;
 	struct dev_mc_list *mclist;
@@ -499,7 +531,7 @@ static void ndis_set_rx_mode_proc(void *param)
 /*
  * This function is called fom BH context...no sleep!
  */
-static void ndis_set_rx_mode(struct net_device *dev)
+void ndis_set_rx_mode(struct net_device *dev)
 {
 	struct ndis_handle *handle = dev->priv;
 	schedule_work(&handle->set_rx_mode_work);
@@ -638,19 +670,19 @@ static void xmit_bh(void *param)
 	int res;
 
 	TRACEENTER3("send status is %08X", handle->send_status);
-	if (down_interruptible(&handle->ndis_comm_mutex))
-		return;
+
 	while (handle->send_status == 0)
 	{
-		spin_lock_bh(&handle->xmit_ring_lock);
+		spin_lock(&handle->xmit_ring_lock);
 		if (!handle->xmit_ring_pending)
 		{
-			spin_unlock_bh(&handle->xmit_ring_lock);
+			spin_unlock(&handle->xmit_ring_lock);
 			break;
 		}
 		buffer = handle->xmit_ring[handle->xmit_ring_start];
-		spin_unlock_bh(&handle->xmit_ring_lock);
+		spin_unlock(&handle->xmit_ring_lock);
 
+		spin_lock(&handle->send_packet_lock);
 		/* if we are resending a packet due to NDIS_STATUS_RESOURCES
 		 * then just pick up the packet already created
 		 */
@@ -660,8 +692,9 @@ static void xmit_bh(void *param)
 			handle->send_packet = init_packet(handle, buffer);
 			if (!handle->send_packet)
 			{
+				spin_unlock(&handle->send_packet_lock);
 				ERROR("%s", "couldn't get a packet");
-				break;
+				return;
 			}
 		}
 
@@ -688,7 +721,7 @@ static void xmit_bh(void *param)
 			if (!handle->serialized)
 				ERROR("%s", "deserialized driver returning NDIS_STATUS_RESOURCES!");
 			handle->send_status = res;
-			up(&handle->ndis_comm_mutex);
+			spin_unlock(&handle->send_packet_lock);
 			/* this packet will be tried again */
 			return;
 
@@ -703,16 +736,16 @@ static void xmit_bh(void *param)
 		}
 
 		handle->send_packet = NULL;
+		spin_unlock(&handle->send_packet_lock);
 
-		spin_lock_bh(&handle->xmit_ring_lock);
+		spin_lock(&handle->xmit_ring_lock);
 		handle->xmit_ring_start =
 			(handle->xmit_ring_start + 1) % XMIT_RING_SIZE;
 		handle->xmit_ring_pending--;
-		spin_unlock_bh(&handle->xmit_ring_lock);
+		spin_unlock(&handle->xmit_ring_lock);
 		if (netif_queue_stopped(handle->net_dev))
 			netif_wake_queue(handle->net_dev);
 	}
-	up(&handle->ndis_comm_mutex);
 	TRACEEXIT3(return);
 }
 
@@ -723,12 +756,13 @@ static void xmit_bh(void *param)
 void sendpacket_done(struct ndis_handle *handle, struct ndis_packet *packet)
 {
 	TRACEENTER3("%s", "");
-	spin_lock_bh(&handle->send_packet_lock);
+	/* is this lock necessary? */
+	spin_lock(&handle->send_packet_done_lock);
 	handle->stats.tx_bytes += packet->len;
 	handle->stats.tx_packets++;
 
 	free_buffer(handle, packet);
-	spin_unlock_bh(&handle->send_packet_lock);
+	spin_unlock(&handle->send_packet_done_lock);
 	TRACEEXIT3(return);
 }
 
@@ -1133,8 +1167,7 @@ static int setup_dev(struct net_device *dev)
  * This function should not be marked __devinit because ndiswrapper 
  * adds PCI_id's dynamically.
  */
-static int ndis_init_one(struct pci_dev *pdev,
-			 const struct pci_device_id *ent)
+static int ndis_init_one(struct pci_dev *pdev, const struct pci_device_id *ent)
 {
 	int res = 0;
 	struct ndis_device *device = (struct ndis_device *) ent->driver_data;
@@ -1169,13 +1202,14 @@ static int ndis_init_one(struct pci_dev *pdev,
 	pci_set_drvdata(pdev, handle);
 
 	init_MUTEX(&handle->ndis_comm_mutex);
-	spin_lock_init(&handle->ndis_comm_lock);
+	init_MUTEX_LOCKED(&handle->ndis_comm_done);
 	init_waitqueue_head(&handle->ndis_comm_wqhead);
 
 	handle->send_status = 0;
 	handle->send_packet = NULL;
 
 	spin_lock_init(&handle->send_packet_lock);
+	spin_lock_init(&handle->send_packet_done_lock);
 
 	INIT_WORK(&handle->xmit_work, xmit_bh, handle); 	
 	spin_lock_init(&handle->xmit_ring_lock);
@@ -1184,6 +1218,8 @@ static int ndis_init_one(struct pci_dev *pdev,
 
 	spin_lock_init(&handle->recycle_packets_lock);
 	INIT_LIST_HEAD(&handle->recycle_packets);
+
+	handle->reset_status = 0;
 
 //	handle->ndis_wq = create_workqueue("ndis_wq");
 	new_workqueue(handle->ndis_wq, "ndis_wq");
@@ -1242,6 +1278,7 @@ static int ndis_init_one(struct pci_dev *pdev,
 	pci_set_power_state(pdev, 0);
 	pci_restore_state(pdev, NULL);
 
+	TRACEENTER1("%s", "Calling ndis init routine");
 	if(call_init(handle))
 	{
 		ERROR("%s", "Windows driver couldn't initialize the device");
@@ -1323,6 +1360,7 @@ static void __devexit ndis_remove_one(struct pci_dev *pdev)
 
 	/* Make sure all queued packets have been pushed out from xmit_bh before we call halt */
 	flush_scheduled_work();
+	flush_workqueue(handle->ndis_wq);
 
 #ifndef DEBUG_CRASH_ON_INIT
 	set_int(handle, NDIS_OID_DISASSOCIATE, 0);
@@ -1334,6 +1372,7 @@ static void __devexit ndis_remove_one(struct pci_dev *pdev)
 
 	/* Make sure any scheduled work is flushed before freeing the handle */
 	flush_scheduled_work();
+	flush_workqueue(handle->ndis_wq);
 	destroy_workqueue(handle->ndis_wq);
 
 	if(handle->multicast_list)

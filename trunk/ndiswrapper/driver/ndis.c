@@ -134,7 +134,7 @@ STDCALL unsigned int NdisAllocateMemory(void **dest,
 	TRACEENTER3("length = %u, flags = %08X", length, flags);
 	if (length <= KMALLOC_THRESHOLD)
 	{
-		if (in_irq() || in_atomic())
+		if (irqs_disabled() || in_atomic())
 			*dest = (void *)kmalloc(length, GFP_ATOMIC);
 		else
 			*dest = (void *)kmalloc(length, GFP_KERNEL);
@@ -675,8 +675,7 @@ STDCALL void NdisMSetAttributesEx(struct ndis_handle *handle,
 STDCALL unsigned int NdisReadPciSlotInformation(struct ndis_handle *handle,
                                                 unsigned int slot,
 						unsigned int offset,
-						char *buf,
-						unsigned int len)
+						char *buf, unsigned int len)
 {
 	int i;
 	for(i = 0; i < len; i++)
@@ -686,7 +685,6 @@ STDCALL unsigned int NdisReadPciSlotInformation(struct ndis_handle *handle,
 	return len;
 }
 
-
 /*
  * Write information to the PCI config area
  *
@@ -694,8 +692,7 @@ STDCALL unsigned int NdisReadPciSlotInformation(struct ndis_handle *handle,
 STDCALL unsigned int NdisWritePciSlotInformation(struct ndis_handle *handle,
                                                  unsigned int slot,
 						 unsigned int offset,
-						 char *buf,
-						 unsigned int len)
+						 char *buf, unsigned int len)
 {
 	int i;
 	for(i = 0; i < len; i++)
@@ -780,10 +777,8 @@ STDCALL void NdisMQueryAdapterResources(unsigned int *status,
 /*
  * Just like ioremap
  */
-STDCALL unsigned int NdisMMapIoSpace(void **virt,
-                                     struct ndis_handle *handle,
-				     unsigned int physlo,
-				     unsigned int physhi,
+STDCALL unsigned int NdisMMapIoSpace(void **virt, struct ndis_handle *handle,
+				     unsigned int physlo, unsigned int physhi,
 				     unsigned int len)
 {
 	TRACEENTER2("%08x, %d", (int)physlo, len);
@@ -802,58 +797,122 @@ STDCALL unsigned int NdisMMapIoSpace(void **virt,
 /*
  * Just like iounmap
  */
-STDCALL void NdisMUnmapIoSpace(struct ndis_handle *handle,
-                               void *virtaddr,
+STDCALL void NdisMUnmapIoSpace(struct ndis_handle *handle, void *virtaddr,
 			       unsigned int len)
 {
 	TRACEENTER2("%08x, %d", (int)virtaddr, len);
 	iounmap(virtaddr);
 }
 
-
 STDCALL void NdisAllocateSpinLock(struct ndis_spin_lock *lock)
 {
-	TRACEENTER3("%s", "");
+	struct linux_lock *linux_lock;
 
-	KeInitializeSpinLock(&lock->spinlock);
-	TRACEEXIT3(return);
+	TRACEENTER4("lock %p", lock);
+
+	linux_lock = wrap_kmalloc(sizeof(linux_lock), GFP_ATOMIC);
+	if (!linux_lock)
+		ERROR("%s", "Couldn't allocate space for spinlock");
+	else
+	{
+		DBGTRACE4("allocated spinlock %p", spin_lock);
+		linux_lock->magic = NDIS_SPIN_LOCK_MAGIC;
+		atomic_set(&linux_lock->use, 0);
+		spin_lock_init(&linux_lock->spinlock);
+		lock->linux_lock = linux_lock;
+	}
+	
+	TRACEEXIT4(return);
 }
 
 STDCALL void NdisFreeSpinLock(struct ndis_spin_lock *lock)
 {
-	TRACEENTER3("%s", "");
-	if (lock->spinlock)
-		wrap_kfree(lock->spinlock);
-	lock->spinlock = NULL;
-	TRACEEXIT3(return);
+	TRACEENTER4("lock %p", lock);
+	if (!lock->linux_lock)
+	{
+		ERROR("incorrect lock %p", lock);
+		return;
+	}
+#ifdef CONFIG_DEBUG_SPINLOCK
+	if (lock->linux_lock->magic != NDIS_SPIN_LOCK_MAGIC)
+		ERROR("uninitliazed lock %p (%u)",
+		      lock->linux_lock, lock->linux_lock->magic);
+	else
+#endif
+	{
+		wrap_kfree(lock->linux_lock);
+		lock->linux_lock = NULL;
+	}
+	TRACEEXIT4(return);
 }
-
 
 STDCALL void NdisAcquireSpinLock(struct ndis_spin_lock *lock)
 {
-	TRACEENTER4("%s", "");
-	KeAcquireSpinLock(&lock->spinlock, &lock->kirql);
+	TRACEENTER4("lock %p", lock);
+	if (!lock->linux_lock)
+	{
+		WARNING("Windows driver trying to use uninitialized lock %p,"
+		     " fixing it.", lock);
+		NdisAllocateSpinLock(lock);
+		if (!lock->linux_lock)
+			return;
+	}
+#ifdef CONFIG_DEBUG_SPINLOCK
+	if (lock->linux_lock->magic != NDIS_SPIN_LOCK_MAGIC)
+	{
+		ERROR("uninitliazed lock %p (%u)",
+		      lock->linux_lock, lock->linux_lock->magic);
+		return;
+	}
+#endif
+	if (atomic_read(&lock->linux_lock->use))
+		DBGTRACE4("lock %p already in use", lock);
+	else
+	{
+		atomic_set(&lock->linux_lock->use, 1);
+		spin_lock(&lock->linux_lock->spinlock);
+	}
 	TRACEEXIT4(return);
 }
 
 STDCALL void NdisReleaseSpinLock(struct ndis_spin_lock *lock)
 {
-	TRACEENTER4("%s", "");
-	KeReleaseSpinLock(&lock->spinlock, lock->kirql);
+	TRACEENTER4("lock %p", lock);
+	if (!lock->linux_lock)
+	{
+		ERROR("incorrect lock %p", lock);
+		return;
+	}
+#ifdef CONFIG_DEBUG_SPINLOCK
+	if (lock->linux_lock->magic != NDIS_SPIN_LOCK_MAGIC)
+	{
+		ERROR("lock magic %u is not correct", lock->linux_lock->magic);
+		return;
+	}
+#endif
+	if (atomic_read(&lock->linux_lock->use))
+	{
+		spin_unlock(&lock->linux_lock->spinlock);
+		atomic_set(&lock->linux_lock->use, 0);
+	}
+	else
+		DBGTRACE4("lock %p not in use", lock);
 	TRACEEXIT4(return);
 }
 
 STDCALL void NdisDprAcquireSpinLock(struct ndis_spin_lock *lock)
 {
-	spin_lock((spinlock_t *)&lock->spinlock);
+	TRACEENTER4("lock %p", lock);
+	NdisAcquireSpinLock(lock);
+	TRACEEXIT4(return);
 }
 
 STDCALL void NdisDprReleaseSpinLock(struct ndis_spin_lock *lock)
 {
-	spin_unlock((spinlock_t *)&lock->spinlock);
+	TRACEENTER4("lock %p", lock);
+	NdisReleaseSpinLock(lock);
+	TRACEEXIT4(return);
 }
-
-
 
 STDCALL unsigned int NdisMAllocateMapRegisters(struct ndis_handle *handle,
                                                unsigned int dmachan,
@@ -893,8 +952,7 @@ STDCALL void NdisMFreeMapRegisters(struct ndis_handle *handle)
 
 
 STDCALL void NdisMAllocateSharedMemory(struct ndis_handle *handle,
-                                       unsigned int size,
-				       char cached,
+                                       unsigned int size, char cached,
 				       void **virt,
 				       struct ndis_phy_address *phys)
 {
@@ -920,17 +978,13 @@ STDCALL void NdisMAllocateSharedMemory(struct ndis_handle *handle,
 }
 
 STDCALL void NdisMFreeSharedMemory(struct ndis_handle *handle,
-                                   unsigned int size,
-				   char cached,
-				   void *virt,
-				   unsigned int physlow,
-				   unsigned int physhigh)
+				   unsigned int size, char cached, void *virt,
+				   unsigned int physlow, unsigned int physhigh)
 {
 	TRACEENTER3("%s", "");
 	PCI_DMA_FREE_COHERENT(handle->pci_dev, size, virt, physlow);
 	TRACEEXIT3(return);
 }
-
 
 STDCALL void NdisAllocateBufferPool(unsigned int *status,
                                     unsigned int *poolhandle,
@@ -941,8 +995,6 @@ STDCALL void NdisAllocateBufferPool(unsigned int *status,
 	*status = NDIS_STATUS_SUCCESS;
 }
 
-
-
 STDCALL void NdisFreeBufferPool(void *poolhandle)
 {
 	TRACEENTER4("%s", "");
@@ -952,14 +1004,11 @@ STDCALL void NdisFreeBufferPool(void *poolhandle)
 	TRACEEXIT4(return);
 }
 
-
-STDCALL void NdisAllocateBuffer(unsigned int *status,
-                                void **buffer,
-				void *poolhandle,
-				void *virt,
-				unsigned int len)
+STDCALL void NdisAllocateBuffer(unsigned int *status, void **buffer,
+				void *poolhandle, void *virt, unsigned int len)
 {
-	struct ndis_buffer *my_buffer = kmalloc(sizeof(struct ndis_buffer), GFP_ATOMIC);
+	struct ndis_buffer *my_buffer = kmalloc(sizeof(struct ndis_buffer),
+						GFP_ATOMIC);
 	TRACEENTER4("%s", "");
 	if(!my_buffer)
 	{
@@ -1030,11 +1079,9 @@ STDCALL unsigned long NdisBufferLength(struct ndis_buffer *buf)
 	return buf->len;
 }
 
-
 STDCALL void NdisAllocatePacketPool(unsigned int *status,
-                                    unsigned int *poolhandle,
-				    unsigned int size,
-				    unsigned int rsvlen)
+				    unsigned int *poolhandle,
+				    unsigned int size, unsigned int rsvlen)
 {
 	TRACEENTER3("size=%d", size);
 	*poolhandle = 0xa000fff4;
@@ -1116,8 +1163,7 @@ STDCALL void NdisFreePacket(void *packet)
 
 STDCALL void NdisMInitializeTimer(struct ndis_miniport_timer *timer_handle,
                                   struct ndis_handle *handle,
-				  void *func,
-				  void *ctx)
+				  void *func, void *ctx)
 {
 	TRACEENTER4("%s", "");
 	wrapper_init_timer(&timer_handle->ktimer, handle);
@@ -1168,7 +1214,7 @@ STDCALL void NdisMSetPeriodicTimer(struct ndis_miniport_timer *timer_handle,
  * Cancel a pending timer
  */
 STDCALL void NdisMCancelTimer(struct ndis_miniport_timer *timer_handle,
-							  char *canceled)
+			      char *canceled)
 {
 	TRACEENTER4("%s", "");
 	wrapper_cancel_timer(timer_handle->ktimer.wrapper_timer, canceled);
@@ -1186,10 +1232,8 @@ STDCALL void NdisCancelTimer(struct ndis_timer *timer_handle, char *canceled)
  * The driver asks ndis what mac it should use. If this
  * function returns failiure it will use it's default mac.
  */
-STDCALL void NdisReadNetworkAddress(unsigned int *status,
-                                    char * adr,
-				    unsigned int *len,
-				    void *conf_handle)
+STDCALL void NdisReadNetworkAddress(unsigned int *status, char *adr,
+				    unsigned int *len, void *conf_handle)
 {
 	TRACEENTER1("%s", "");
 	*len = 0;
@@ -1197,10 +1241,8 @@ STDCALL void NdisReadNetworkAddress(unsigned int *status,
 	TRACEEXIT1(return);
 }
 
-
 STDCALL void NdisMRegisterAdapterShutdownHandler(struct ndis_handle *handle,
-                                                 void *ctx,
-						 void *func)
+                                                 void *ctx, void *func)
 {
 	TRACEENTER1("sp:%08x", getSp());
 	handle->driver->miniport_char.adapter_shutdown = func;
@@ -1239,12 +1281,14 @@ irqreturn_t ndis_irq_th(int irq, void *data, struct pt_regs *pt_regs)
 {
 	int recognized = 0;
 	int handle_interrupt = 0;
+	unsigned long flags;
 
 	struct ndis_irq *ndis_irq = (struct ndis_irq *) data;
 	struct ndis_handle *handle = ndis_irq->handle; 
 
 	/* We need a lock here in order to implement NdisMSynchronizeWithInterrupt,
 	  however the ISR is really fast anyway so it should not hurt performance */
+//	spin_lock_irqsave(ndis_irq->spinlock, flags);
 	spin_lock(ndis_irq->spinlock);
 	if (handle->ndis_irq->req_isr)
 		handle->driver->miniport_char.isr(&recognized, &handle_interrupt, handle->adapter_ctx);
@@ -1254,17 +1298,17 @@ irqreturn_t ndis_irq_th(int irq, void *data, struct pt_regs *pt_regs)
 		/* it is not shared interrupt, so handler must be called */
 		recognized = handle_interrupt = 1;
 	}
+//	spin_unlock_irqrestore(ndis_irq->spinlock, flags);
 	spin_unlock(ndis_irq->spinlock);
 
-	if(recognized && handle_interrupt)
+	if (recognized && handle_interrupt)
 		schedule_work(&handle->irq_bh);
 	
-	if(recognized)
+	if (recognized)
 		return IRQ_HANDLED;
 
 	return IRQ_NONE;
 }
-
 
 /*
  * Register an irq
@@ -1294,12 +1338,13 @@ STDCALL unsigned int NdisMRegisterInterrupt(struct ndis_irq *ndis_irq,
 	handle->ndis_irq = ndis_irq;
 
 	INIT_WORK(&handle->irq_bh, &ndis_irq_bh, ndis_irq);
-	if(request_irq(vector, ndis_irq_th, shared? SA_SHIRQ : 0,
-				   "ndiswrapper", ndis_irq))
+	if (request_irq(vector, ndis_irq_th, shared? SA_SHIRQ : 0,
+			"ndiswrapper", ndis_irq))
 	{
 		TRACEEXIT1(return NDIS_STATUS_RESOURCES);
 	}
 	ndis_irq->enabled = 1;
+	printk(KERN_INFO "%s: using irq %d\n", DRV_NAME, vector);
 	TRACEEXIT1(return NDIS_STATUS_SUCCESS);
 }
 
@@ -1322,7 +1367,6 @@ STDCALL void NdisMDeregisterInterrupt(struct ndis_irq *ndis_irq)
 	TRACEEXIT1(return);
 }
 
-
 /*
  * Run func synchorinized with the isr.
  *
@@ -1332,6 +1376,7 @@ STDCALL unsigned char NdisMSynchronizeWithInterrupt(struct ndis_irq *ndis_irq,
 {
 	unsigned char ret;
 	unsigned char (*sync_func)(void *ctx) STDCALL;
+	unsigned long flags;
 
 	TRACEENTER4("%08x %08x %08x %08x\n", (int) ndis_irq,
 		    (int) ndis_irq, (int) func, (int) ctx);
@@ -1340,14 +1385,15 @@ STDCALL unsigned char NdisMSynchronizeWithInterrupt(struct ndis_irq *ndis_irq,
 		TRACEEXIT4(return 0);
 
 	sync_func = func;
+//	spin_lock_irqsave(ndis_irq->spinlock, flags);
 	spin_lock(ndis_irq->spinlock);
 	ret = sync_func(ctx);
+//	spin_unlock_irqrestore(ndis_irq->spinlock, flags);
 	spin_unlock(ndis_irq->spinlock);
 
 	DBGTRACE4("sync_func returns %u", ret);
 	TRACEEXIT4(return ret);
 }
-
 
 /*
  * This function is not called in a format way.
@@ -1363,13 +1409,13 @@ STDCALL void NdisMIndicateStatus(struct ndis_handle *handle,
 	{
 		handle->link_status = 1;
 		set_bit(WRAPPER_LINK_STATUS, &handle->wrapper_work);
-		schedule_work(&handle->wrapper_worker);
+		queue_work(handle->ndis_wq, &handle->wrapper_worker);
 	}
 	if (status == NDIS_STATUS_MEDIA_DISCONNECT)
 	{
 		handle->link_status = 0;
 		set_bit(WRAPPER_LINK_STATUS, &handle->wrapper_work);
-		schedule_work(&handle->wrapper_worker);
+		queue_work(handle->ndis_wq, &handle->wrapper_worker);
 	}
 #ifdef WPA
 	if (status == NDIS_STATUS_MEDIA_SPECIFIC_INDICATION && buf)
@@ -1513,7 +1559,7 @@ STDCALL void NdisMSendComplete(struct ndis_handle *handle,
 	 * need to give the send-code a kick again.
 	 */
 	handle->send_status = 0;
-	schedule_work(&handle->xmit_work);
+	queue_work(handle->ndis_wq, &handle->xmit_work);
 	TRACEEXIT3(return);
 }
 
@@ -1527,7 +1573,7 @@ STDCALL void NdisMSendResourcesAvailable(struct ndis_handle *handle)
 	mdelay(5);
 	handle->send_status = 0;
 //	wake_up_interruptible(&handle->ndis_send_wqhead);
-	schedule_work(&handle->xmit_work);
+	queue_work(handle->ndis_wq, &handle->xmit_work);
 	TRACEEXIT3(return);
 }
 
@@ -1541,8 +1587,9 @@ STDCALL void NdisMQueryInformationComplete(struct ndis_handle *handle,
 	TRACEENTER3("%08X", status);
 
 	handle->ndis_comm_res = status;
-	handle->ndis_comm_done = 1;
-	wake_up_interruptible(&handle->ndis_comm_wqhead);
+//	handle->ndis_comm_done = 1;
+	up(&handle->ndis_comm_done);
+//	wake_up_interruptible(&handle->ndis_comm_wqhead);
 	TRACEEXIT3(return);
 }
 
@@ -1556,11 +1603,11 @@ STDCALL void NdisMSetInformationComplete(struct ndis_handle *handle,
 	TRACEENTER3("status = %08X", status);
 
 	handle->ndis_comm_res = status;
-	handle->ndis_comm_done = 1;
-	wake_up_interruptible(&handle->ndis_comm_wqhead);
+//	handle->ndis_comm_done = 1;
+//	wake_up_interruptible(&handle->ndis_comm_wqhead);
+	up(&handle->ndis_comm_done);
 	TRACEEXIT3(return);
 }
-
 
 /*
  * Sleeps for the given number of microseconds
@@ -1588,7 +1635,6 @@ STDCALL void NdisGetCurrentSystemTime(u64 *time)
 	*time = t;
 }
 
-
 STDCALL unsigned int NdisMRegisterIoPortRange(void **virt,
 					      struct ndis_handle *handle,
 					      unsigned int start,
@@ -1606,17 +1652,17 @@ STDCALL void NdisMDeregisterIoPortRange(struct ndis_handle *handle,
 	TRACEENTER1("%08x %08x", start, len);
 }
 
-spinlock_t atomic_lock = SPIN_LOCK_UNLOCKED;
+static spinlock_t atomic_lock = SPIN_LOCK_UNLOCKED;
 
 STDCALL long NdisInterlockedDecrement(long *val)
 {
 	long x;
 
 	TRACEENTER4("%s", "");
-	spin_lock_bh(&atomic_lock);
+	spin_lock(&atomic_lock);
 	(*val)--;
 	x = *val;
-	spin_unlock_bh(&atomic_lock);
+	spin_unlock(&atomic_lock);
 	TRACEEXIT4(return x);
 }
 
@@ -1625,10 +1671,10 @@ STDCALL long NdisInterlockedIncrement(long *val)
 	long x;
 
 	TRACEENTER4("%s", "");
-	spin_lock_bh(&atomic_lock);
+	spin_lock(&atomic_lock);
 	(*val)++;
 	x = *val;
-	spin_unlock_bh(&atomic_lock);
+	spin_unlock(&atomic_lock);
 	TRACEEXIT4(return x);
 }
 
@@ -1639,6 +1685,7 @@ NdisInterlockedInsertHeadList(struct list_entry *head,
 {
 	struct list_entry *flink;
 
+	TRACEENTER1("lock: %p", lock);
 	NdisAcquireSpinLock(lock);
 
 	flink = head->fwd_link;
@@ -1648,7 +1695,7 @@ NdisInterlockedInsertHeadList(struct list_entry *head,
 	head->fwd_link = entry;
 
 	NdisReleaseSpinLock(lock);
-	return (flink != head) ? flink : NULL;
+	TRACEEXIT1(return (flink != head) ? flink : NULL);
 }
 
 STDCALL struct list_entry *
@@ -1658,6 +1705,7 @@ NdisInterlockedInsertTailList(struct list_entry *head,
 {
 	struct list_entry *flink;
 
+	TRACEENTER1("lock: %p", lock);
 	NdisAcquireSpinLock(lock);
 
 	flink = head->bwd_link;
@@ -1667,7 +1715,7 @@ NdisInterlockedInsertTailList(struct list_entry *head,
 	head->bwd_link = entry;
 
 	NdisReleaseSpinLock(lock);
-	return (flink != head) ? flink : NULL;
+	TRACEEXIT1(return (flink != head) ? flink : NULL);
 }
 
 STDCALL struct list_entry *
@@ -1676,6 +1724,7 @@ NdisInterlockedRemoveHeadList(struct list_entry *head,
 {
 	struct list_entry *flink;
 
+	TRACEENTER1("lock: %p", lock);
 	NdisAcquireSpinLock(lock);
 
 	flink = head->fwd_link;
@@ -1683,7 +1732,7 @@ NdisInterlockedRemoveHeadList(struct list_entry *head,
 	head->fwd_link->bwd_link = head;
 
 	NdisReleaseSpinLock(lock);
-	return (flink != head) ? flink : NULL;
+	TRACEEXIT1(return (flink != head) ? flink : NULL);
 }
 
 /*
@@ -1707,7 +1756,6 @@ STDCALL unsigned int NdisMGetDmaAlignment(struct ndis_handle *handle)
 	return PAGE_SIZE;
 }
 
-
 STDCALL void NdisQueryBufferOffset(struct ndis_buffer *buffer,
 				   unsigned int *offset, unsigned int *length)
 {
@@ -1721,7 +1769,6 @@ STDCALL int NdisSystemProcessorCount(void)
 	return NR_CPUS;
 }
 
-
 DECLARE_WAIT_QUEUE_HEAD(event_wq);
 
 STDCALL void NdisInitializeEvent(struct ndis_event *event)
@@ -1729,24 +1776,30 @@ STDCALL void NdisInitializeEvent(struct ndis_event *event)
 	TRACEENTER3("%08x", (int)event);
 	event->state = 0;
 }
-                                                                                                                                                                                                                                    
+
+static struct work_struct work;
+
 STDCALL int NdisWaitEvent(struct ndis_event *event, int timeout)
 {
 	int res;
 
 	TRACEENTER3("%08x %08x", (int)event, timeout);
-	if(!timeout)
+	if (event->state)
+		TRACEEXIT3(return 1);
+	if (!timeout)
 	{
 		wait_event_interruptible(event_wq, event->state == 1);
 		return 1;
 	}
-	do
-	{
-		res = wait_event_interruptible_timeout(event_wq, event->state == 1, (timeout * HZ)/1000);
-	} while(res);
-		
+	
+	res = wait_event_interruptible_timeout(event_wq, event->state == 1,
+					       (timeout * HZ)/1000);
 	DBGTRACE3("%08x Woke up (%d)", (int)event, event->state);
-	TRACEEXIT3(return event->state);
+
+	if (event->state == 1)
+		TRACEEXIT3(return 1);
+		
+	TRACEEXIT3(return 0);
 }
 
 STDCALL void NdisSetEvent(struct ndis_event *event)
@@ -1764,12 +1817,26 @@ STDCALL void NdisResetEvent(struct ndis_event *event)
 STDCALL void NdisMResetComplete(struct ndis_handle *handle, int status,
 				int reset_status) 
 {
-	TRACEENTER3("%08X", status);
+	TRACEENTER3("status: %08X, reset status: %u", status, reset_status);
 
 	handle->ndis_comm_res = status;
-	handle->ndis_comm_done = 1;
-	handle->reset_status = reset_status;
-	wake_up_interruptible(&handle->ndis_comm_wqhead);
+	handle->reset_status = status;
+	if (reset_status)
+	{
+		handle->indicate_receive_packet = &NdisMIndicateReceivePacket;
+		handle->send_complete = &NdisMSendComplete;
+		handle->send_resource_avail = &NdisMSendResourcesAvailable;
+		handle->indicate_status = &NdisMIndicateStatus;
+		handle->indicate_status_complete = &NdisMIndicateStatusComplete;
+		handle->query_complete = &NdisMQueryInformationComplete;
+		handle->set_complete = &NdisMSetInformationComplete;
+		handle->reset_complete = &NdisMResetComplete;
+		ndis_set_rx_mode(handle->net_dev);
+		handle->reset_status = 0;
+	}
+//	handle->ndis_comm_done = 1;
+//	wake_up_interruptible(&handle->ndis_comm_wqhead);
+	up(&handle->ndis_comm_done);
 	TRACEEXIT3(return);
 }
 		  
@@ -1782,51 +1849,49 @@ static void worker(void *context)
 	struct ndis_work *ndis_work;
 
 	TRACEENTER3("%s", "");
-	while(1)
+	while (1)
 	{
-		spin_lock_bh(&worklist_lock);
-		if(!list_empty(&worklist))
+		spin_lock(&worklist_lock);
+		if (list_empty(&worklist))
+			workentry = NULL;
+		else
 		{
 			workentry = (struct ndis_workentry*) worklist.next;
 			list_del(&workentry->list);
 		}
-		else
-			workentry = 0;
-		spin_unlock_bh(&worklist_lock);
-		if(!workentry)
+		spin_unlock(&worklist_lock);
+
+		if (!workentry)
 		{
 			DBGTRACE3("%s", "No more work");
 			break;
 		}
 		
-
 		ndis_work = workentry->work;
-		kfree(workentry);
 
 		DBGTRACE3("Calling work at %08x (rva %08x)with parameter %08x",
 			  (int)ndis_work->func,
 			  (int)ndis_work->func - image_offset,
 			  (int)ndis_work->ctx);
 		ndis_work->func(ndis_work, ndis_work->ctx);
+		kfree(workentry);
 	}
 	TRACEEXIT3(return);
 }
-
-static struct work_struct work;
 
 void init_ndis_work(void)
 {
 	INIT_WORK(&work, &worker, NULL); 
 }
 
-STDCALL void NdisScheduleWorkItem(struct ndis_work *ndis_work)
+STDCALL static int NdisScheduleWorkItem(struct ndis_work *ndis_work)
 {
 	struct ndis_workentry *workentry;
 
 	TRACEENTER3("%s", "");
 	/* this function is called from irq_bh by realtek driver */
 	workentry = kmalloc(sizeof(*workentry), GFP_ATOMIC);
-	if(!workentry)
+	if (!workentry)
 	{
 		BUG();
 	}
@@ -1837,11 +1902,11 @@ STDCALL void NdisScheduleWorkItem(struct ndis_work *ndis_work)
 	spin_unlock_bh(&worklist_lock);
 	
 	schedule_work(&work);
-	TRACEEXIT3(return);
+	TRACEEXIT3(return NDIS_STATUS_SUCCESS);
 }
 
-STDCALL void NdisUnchainBufferAtBack(struct ndis_packet *packet,
-				     struct ndis_buffer **buffer)
+STDCALL static void NdisUnchainBufferAtBack(struct ndis_packet *packet,
+					    struct ndis_buffer **buffer)
 {
 	struct ndis_buffer *b = packet->buffer_head;
 	struct ndis_buffer *btail = packet->buffer_tail;

@@ -28,10 +28,10 @@ static spinlock_t wrap_allocs_lock = SPIN_LOCK_UNLOCKED;
 void *wrap_kmalloc(size_t size, int flags)
 {
 	struct wrap_alloc *alloc;
-	if (flags & GFP_KERNEL)
-		alloc = kmalloc(sizeof(*alloc), GFP_KERNEL);
-	else
+	if (flags & GFP_ATOMIC)
 		alloc = kmalloc(sizeof(*alloc), GFP_ATOMIC);
+	else
+		alloc = kmalloc(sizeof(*alloc), GFP_KERNEL);
 	if (!alloc)
 		return NULL;
 	alloc->ptr = kmalloc(size, flags);
@@ -40,9 +40,9 @@ void *wrap_kmalloc(size_t size, int flags)
 		kfree(alloc);
 		return NULL;
 	}
-	spin_lock_bh(&wrap_allocs_lock);
+	spin_lock(&wrap_allocs_lock);
 	list_add(&alloc->list, &wrap_allocs);
-	spin_unlock_bh(&wrap_allocs_lock);
+	spin_unlock(&wrap_allocs_lock);
 	return alloc->ptr;
 }
 
@@ -50,7 +50,7 @@ void wrap_kfree(void *ptr)
 {
 	struct list_head *cur, *tmp;
 	
-	spin_lock_bh(&wrap_allocs_lock);
+	spin_lock(&wrap_allocs_lock);
 	list_for_each_safe(cur, tmp, &wrap_allocs)
 	{
 		struct wrap_alloc *alloc = (struct wrap_alloc *)cur;
@@ -63,7 +63,7 @@ void wrap_kfree(void *ptr)
 		}
 	}
 
-	spin_unlock_bh(&wrap_allocs_lock);
+	spin_unlock(&wrap_allocs_lock);
 	return;
 }
 
@@ -71,7 +71,7 @@ void wrap_kfree_all(void)
 {
 	struct list_head *cur, *tmp;
 
-	spin_lock_bh(&wrap_allocs_lock);
+	spin_lock(&wrap_allocs_lock);
 	list_for_each_safe(cur, tmp, &wrap_allocs)
 	{
 		struct wrap_alloc *alloc = (struct wrap_alloc *)cur;
@@ -81,7 +81,7 @@ void wrap_kfree_all(void)
 		kfree(alloc);
 		
 	}
-	spin_unlock_bh(&wrap_allocs_lock);
+	spin_unlock(&wrap_allocs_lock);
 	return;
 }
 
@@ -575,10 +575,10 @@ void packet_recycler(void *param)
 	{
 		struct ndis_packet * packet = NULL;
 
-		spin_lock_bh(&handle->recycle_packets_lock);
+		spin_lock(&handle->recycle_packets_lock);
 		if (list_empty(&handle->recycle_packets))
 		{
-			spin_unlock_bh(&handle->recycle_packets_lock);
+			spin_unlock(&handle->recycle_packets_lock);
 			break;
 		}
 		else
@@ -590,7 +590,7 @@ void packet_recycler(void *param)
 			packet = (struct ndis_packet*) ((char*)packet - ((char*) &packet->recycle_list - (char*) &packet->nr_pages));
 		}
 
-		spin_unlock_bh(&handle->recycle_packets_lock);
+		spin_unlock(&handle->recycle_packets_lock);
 		
 		if (packet == NULL)
 			break;
