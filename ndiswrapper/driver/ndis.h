@@ -69,6 +69,50 @@ int getSp(void);
 #endif
 
 
+struct ndis_buffer
+{
+	struct ndis_buffer *next;
+	unsigned int len;
+	unsigned int offset;
+	unsigned char *data;
+};
+
+
+struct packed ndis_packet
+{
+	unsigned int nr_pages;
+
+	/* 4: Packet length */
+	unsigned int len;
+
+	void *buffer_head;
+	void *buffer_tail;
+	void *pool;
+
+	/* 20 Number of buffers */
+	unsigned int count;
+
+	unsigned int flags;
+
+	/* 1 If buffer count is valid? */
+	__u8 valid_counts;
+	__u8 packet_flags;
+	__u16 oob_offset;
+
+	/* For use by miniport */
+	unsigned char private_1 [6*sizeof(void*)];
+	unsigned char private_2[4]; 
+
+	/* OOB data */
+	__u32 timesent1;
+	__u32 timesent2;
+	__u32 timerec1;
+	__u32 timerec2;
+	unsigned int header_size;
+	unsigned int mediaspecific_size;
+	void *mediaspecific;
+	unsigned int status;
+};
 
 
 struct packed miniport_char
@@ -101,7 +145,7 @@ struct packed miniport_char
 	void * ResetHandler;		//s
 
 	/* Send one packet */
-	void (*send)(void *ctx, void *packets, unsigned int flags) STDCALL;
+	unsigned int (*send)(void *ctx, struct ndis_packet *packet, unsigned int flags) STDCALL;
 
 	/* Set parameters */
 	unsigned int (*setinfo)(void *ctx, unsigned int oid, char *buffer, unsigned int buflen, unsigned int *written, unsigned int *needed) STDCALL;
@@ -112,7 +156,7 @@ struct packed miniport_char
 	void (*return_packet)(void *ctx, void *packet) STDCALL;
 
 	/* Send packets */
-	void (*send_packets)(void *ctx, void *packets, int nr_of_packets) STDCALL;
+	void (*send_packets)(void *ctx, struct ndis_packet **packets, int nr_of_packets) STDCALL;
 
 	
 };
@@ -211,55 +255,6 @@ struct packed ndis_handle
 	int query_wait_res;
 	int query_wait_done;
 };
-
-
-
-struct ndis_buffer
-{
-	struct ndis_buffer *next;
-	unsigned int len;
-	unsigned int offset;
-	unsigned char *data;
-};
-
-
-struct packed ndis_packet
-{
-	unsigned int nr_pages;
-
-	/* 4: Packet length */
-	unsigned int len;
-
-	void *buffer_head;
-	void *buffer_tail;
-	void *pool;
-
-	/* 20 Number of buffers */
-	unsigned int count;
-
-	unsigned int flags;
-
-	/* 1 If buffer count is valid? */
-	__u8 valid_counts;
-	__u8 packet_flags;
-	__u16 oob_offset;
-
-	/* For use by miniport */
-	unsigned char private_1 [6*sizeof(void*)];
-	unsigned char private_2[4]; 
-
-	/* OOB data */
-	__u32 timesent1;
-	__u32 timesent2;
-	__u32 timerec1;
-	__u32 timerec2;
-	unsigned int header_size;
-	unsigned int mediaspecific_size;
-	void *mediaspecific;
-	unsigned int status;
-};
-
-
 
 struct ndis_timer
 {

@@ -513,7 +513,6 @@ STDCALL void NdisAllocateBufferPool(unsigned int *status,
                                     unsigned int *poolhandle,
 				    unsigned int size)
 {
-	DBGTRACE("%s: size=%d. \n", __FUNCTION__ , size);
 	*poolhandle = 0x0000fff8;
 	*status = NDIS_STATUS_SUCCESS;
 }
@@ -537,7 +536,7 @@ STDCALL void NdisAllocateBuffer(unsigned int *status,
 		*status = NDIS_STATUS_FAILURE;
 		return;
 	}
-	
+
 	memset(my_buffer, 0, sizeof(struct ndis_buffer));
 
 	my_buffer->data = virt;
@@ -934,7 +933,7 @@ STDCALL void NdisGetCurrentSystemTime(u64 *time)
 	do_gettimeofday(&now);
 	t = (u64) now.tv_sec * TICKSPERSEC;
 	t += now.tv_usec * 10 + TICKS_1601_TO_1970;
-	DBGTRACE("%s: %llu\n", __FUNCTION__, t);
+/*	DBGTRACE("%s: %llu\n", __FUNCTION__, t);*/
 	*time = t;
 }
 
@@ -990,11 +989,17 @@ STDCALL int NdisMInitializeScatterGatherDma(struct ndis_handle *handle,
 {
        DBGTRACE("NdisMInitializeScatterGatherDma: 64bit=%d, maxtransfer=%ld\n", is64bit, maxtransfer);
        return NDIS_STATUS_SUCCESS;
- }
+}
+
+STDCALL unsigned int NdisMGetDmaAlignment(struct ndis_handle *handle)
+{
+	DBGTRACE("%s\n", __FUNCTION__);
+	return PAGE_SIZE;
+}
+
 
 STDCALL void NdisQueryBufferOffset(struct ndis_buffer *buffer, unsigned int *offset, unsigned int *length)
 {
-	DBGTRACE("%s: %08x %08x %08x %08x %d\n", __FUNCTION__, (int)buffer, (int)buffer->data, (int)offset, (int)length, buffer->len);
 	*offset = 0;
 	*length = buffer->len;
 }
@@ -1030,7 +1035,6 @@ STDCALL void NdisScheduleWorkItem(void *workitem){UNIMPL();}
 
 
 STDCALL void NdisSystemProcessorCount(void){UNIMPL();}
-STDCALL void NdisMGetDmaAlignment(void){UNIMPL();}
 STDCALL void NdisUnicodeStringToAnsiString(void){UNIMPL();}
 
 STDCALL void NdisInitializeString(void){UNIMPL();}
