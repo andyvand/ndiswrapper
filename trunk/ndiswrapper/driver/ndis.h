@@ -20,7 +20,6 @@
 #include "pe_loader.h"
 
 #define SSID_MAX_WPA_IE_LEN 40
-#define MAX_NDIS_SETTING_VAL_LENGTH 64
 #define NDIS_ESSID_MAX_SIZE 32
 #define NDIS_ENCODING_TOKEN_MAX 32
 #define MAX_ENCR_KEYS 4
@@ -30,6 +29,9 @@
 #define WLAN_EID_RSN 48
 #define WLAN_EID_GENERIC 221
 #define MAX_WPA_IE_LEN 64
+
+#define NDIS_PCI_BUS 5
+#define NDIS_USB_BUS 0
 
 typedef unsigned char mac_address[ETH_ALEN];
 
@@ -362,21 +364,17 @@ struct ndis_config_param
 
 struct ndis_setting
 {
-	struct list_head list;
-	char *name;
-	char value[MAX_NDIS_SETTING_VAL_LENGTH];
+	char name[MAX_NDIS_SETTING_NAME_LEN];
+	char value[MAX_NDIS_SETTING_VALUE_LEN];
 	struct ndis_config_param config_param;
 };
 
-
-struct ndis_file
+struct ndis_bin_file
 {
-	struct list_head list;
-	char name[32];
+	char name[MAX_NDIS_SETTING_NAME_LEN];
 	int size;
 	void *data;
 };
-
 
 /*
  * There is one of these per driver. One per loaded driver exists.
@@ -385,10 +383,9 @@ struct ndis_file
 struct ndis_driver
 {
 	struct list_head list;
-	char name[DRIVERNAME_MAX];
-	char version[NDIS_VERSION_STRING_MAX];
+	char name[MAX_NDIS_SETTING_NAME_LEN];
+	char version[MAX_NDIS_SETTING_VALUE_LEN];
 
-	struct list_head devices;
 	struct list_head files;
 
 	int bustype;
@@ -403,14 +400,17 @@ struct ndis_driver
 	} idtable;
 
 	int nr_devices;
-	int started;
-
-	unsigned int dev_registered;
+	struct ndis_device **devices;
 
 	unsigned int num_pe_images;
 	struct pe_image pe_images[MAX_PE_IMAGES];
+
+	int nr_bin_files;
+	struct ndis_bin_file **bin_files;
+
+	int started;
+	unsigned int dev_registered;
 	struct miniport_char miniport_char;
-	struct ndis_device *current_device;
 };
 
 /*
@@ -419,16 +419,17 @@ struct ndis_driver
  */
 struct ndis_device
 {
-	struct list_head list;
-	struct list_head settings;
-	struct ndis_driver *driver;
-
 	int bustype;
 	int vendor;
 	int device;
 	int pci_subvendor;
 	int pci_subdevice;
 	int fuzzy;
+
+	int nr_settings;
+	struct ndis_setting **settings;
+
+	struct ndis_driver *driver;
 };
 
 typedef __u64 LARGE_INTEGER;

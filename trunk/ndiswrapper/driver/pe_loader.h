@@ -18,6 +18,8 @@
 
 #pragma pack(1)
 
+#include "wrapper.h"
+
 #define COFF_MACHINE_I386 0x14c
 #define COFF_MACHINE_ARM  0x1c0
 
@@ -193,7 +195,7 @@ struct exports
 
 struct pe_image
 {
-	char *name;
+	char name[MAX_DRIVER_NAME_LEN];
 	void *entry;
 	void *image;
 	int size;
