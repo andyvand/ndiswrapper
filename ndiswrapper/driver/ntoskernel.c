@@ -59,7 +59,7 @@ STDCALL void WRAP_EXPORT(KeInitializeDpc)
 	init_dpc(kdpc, func, ctx);
 }
 
-STDCALL int WRAP_EXPORT(KeSetTimerEx)
+STDCALL BOOLEAN WRAP_EXPORT(KeSetTimerEx)
 	(struct ktimer *ktimer, LARGE_INTEGER due_time, LONG period,
 	 struct kdpc *kdpc)
 {
@@ -80,14 +80,14 @@ STDCALL int WRAP_EXPORT(KeSetTimerEx)
 	return wrapper_set_timer(ktimer->wrapper_timer, expires, repeat, kdpc);
 }
 
-STDCALL int WRAP_EXPORT(KeSetTimer)
+STDCALL BOOLEAN WRAP_EXPORT(KeSetTimer)
 	(struct ktimer *ktimer, LARGE_INTEGER due_time, struct kdpc *kdpc)
 {
 	TRACEENTER4("%p, %ld, %p", ktimer, (long)due_time, kdpc);
 	return KeSetTimerEx(ktimer, due_time, 0, kdpc);
 }
 
-STDCALL int WRAP_EXPORT(KeCancelTimer)
+STDCALL BOOLEAN WRAP_EXPORT(KeCancelTimer)
 	(struct ktimer *ktimer)
 {
 	char canceled;
@@ -261,13 +261,13 @@ _FASTCALL struct list_entry *WRAP_EXPORT(ExfInterlockedRemoveHeadList)
 	TRACEEXIT3(return entry);
 }
 
-_FASTCALL unsigned short WRAP_EXPORT(ExQueryDepthSList)
+_FASTCALL USHORT WRAP_EXPORT(ExQueryDepthSList)
 	(union slist_head *head)
 {
 	return head->list.depth;
 }
 
-STDCALL void * WRAP_EXPORT(ExAllocatePoolWithTag)
+STDCALL void *WRAP_EXPORT(ExAllocatePoolWithTag)
 	(enum pool_type pool_type, SIZE_T size, ULONG tag)
 {
 	void *ret;
@@ -351,7 +351,7 @@ _FASTCALL void WRAP_EXPORT(ExInterlockedAddLargeStatistic)
 	spin_unlock_irqrestore(WRAP_SPINLOCK(&atomic_lock), flags);
 }
 
-STDCALL void * WRAP_EXPORT(MmMapIoSpace)
+STDCALL void *WRAP_EXPORT(MmMapIoSpace)
 	(PHYSICAL_ADDRESS phys_addr, SIZE_T size,
 	 enum memory_caching_type cache)
 {
@@ -709,7 +709,7 @@ STDCALL void WRAP_EXPORT(DbgBreakPoint)
 	UNIMPL();
 }
 
-STDCALL struct irp * WRAP_EXPORT(IoAllocateIrp)
+STDCALL struct irp *WRAP_EXPORT(IoAllocateIrp)
 	(char stack_size, BOOLEAN charge_quota)
 {
 	struct irp *irp;
@@ -756,7 +756,7 @@ STDCALL void WRAP_EXPORT(IoInitializeIrp)
 	TRACEEXIT3(return);
 }
 
-STDCALL struct irp * WRAP_EXPORT(IoBuildDeviceIoControlRequest)
+STDCALL struct irp *WRAP_EXPORT(IoBuildDeviceIoControlRequest)
 	(ULONG ioctl, struct device_object *dev_obj,
 	 void *input_buf, ULONG input_buf_len, void *output_buf,
 	 ULONG output_buf_len, BOOLEAN internal_ioctl,
@@ -841,7 +841,7 @@ STDCALL BOOLEAN WRAP_EXPORT(IoCancelIrp)
 {
 	struct io_stack_location *stack = irp->current_stack_location-1;
 	void (*cancel_routine)(struct device_object *, struct irp *) STDCALL;
-	KIRQL  irql;
+	KIRQL irql;
 
 	TRACEENTER2("irp = %p", irp);
 
@@ -1252,7 +1252,7 @@ STDCALL void WRAP_EXPORT(IoFreeMdl)
 }
 
 STDCALL ULONG WRAP_EXPORT(MmSizeOfMdl)
-	(void *base, ULONG length)
+	(void *base, SIZE_T length)
 {
 	ULONG pages;
 	ULONG_PTR start;
@@ -1265,7 +1265,7 @@ STDCALL ULONG WRAP_EXPORT(MmSizeOfMdl)
 STDCALL void WRAP_EXPORT(MmBuildMdlForNonPagedPool)
 	(struct mdl *mdl)
 {
-	mdl->mappedsystemva = (char *)mdl->startva + mdl->byteoffset;
+	mdl->mappedsystemva = MmGetMdlVirtualAddress(mdl);
 	return;
 }
 
@@ -1274,7 +1274,7 @@ STDCALL void *WRAP_EXPORT(MmMapLockedPagesSpecifyCache)
 	 enum memory_caching_type cache_type, void *base_address,
 	 ULONG bug_check, enum mm_page_priority priority)
 {
-	return (void *)(((char *)mdl->startva) + mdl->byteoffset);
+	return MmGetMdlVirtualAddress(mdl);
 }
 
 STDCALL void WRAP_EXPORT(MmUnmapLockedPages)

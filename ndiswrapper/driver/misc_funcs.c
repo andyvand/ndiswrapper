@@ -230,7 +230,7 @@ void wrapper_cancel_timer(struct wrapper_timer *timer, char *canceled)
 	TRACEEXIT5(return);
 }
 
-NOREGPARM int WRAP_EXPORT(_win_sprintf)
+NOREGPARM INT WRAP_EXPORT(_win_sprintf)
 	(char *buf, const char *format, ...)
 {
 	va_list args;
@@ -241,13 +241,13 @@ NOREGPARM int WRAP_EXPORT(_win_sprintf)
 	return res;
 }
 
-NOREGPARM int WRAP_EXPORT(_win_vsprintf)
+NOREGPARM INT WRAP_EXPORT(_win_vsprintf)
 	(char *str, const char *format, va_list ap)
 {
 	return vsprintf(str, format, ap);
 }
 
-NOREGPARM int WRAP_EXPORT(_win_snprintf)
+NOREGPARM INT WRAP_EXPORT(_win_snprintf)
 	(char *buf, SIZE_T count, const char *format, ...)
 {
 	va_list args;
@@ -259,7 +259,7 @@ NOREGPARM int WRAP_EXPORT(_win_snprintf)
 	return res;
 }
 
-NOREGPARM int WRAP_EXPORT(_win__snprintf)
+NOREGPARM INT WRAP_EXPORT(_win__snprintf)
 	(char *buf, SIZE_T count, const char *format, ...)
 {
 	va_list args;
@@ -271,37 +271,37 @@ NOREGPARM int WRAP_EXPORT(_win__snprintf)
 	return res;
 }
 
-NOREGPARM int WRAP_EXPORT(_win_vsnprintf)
+NOREGPARM INT WRAP_EXPORT(_win_vsnprintf)
 	(char *str, SIZE_T size, const char *format, va_list ap)
 {
 	return vsnprintf(str, size, format, ap);
 }
 
-NOREGPARM int WRAP_EXPORT(_win__vsnprintf)
+NOREGPARM INT WRAP_EXPORT(_win__vsnprintf)
 	(char *str, SIZE_T size, const char *format, va_list ap)
 {
 	return vsnprintf(str, size, format, ap);
 }
 
 NOREGPARM char *WRAP_EXPORT(_win_strncpy)
-	(char *dst, char *src, int n)
+	(char *dst, char *src, SIZE_T n)
 {
 	return strncpy(dst, src, n);
 }
 
-NOREGPARM size_t WRAP_EXPORT(_win_strlen)
+NOREGPARM SIZE_T WRAP_EXPORT(_win_strlen)
 	(const char *s)
 {
        return strlen(s);
 }
 
-NOREGPARM int WRAP_EXPORT(_win_strncmp)
+NOREGPARM INT WRAP_EXPORT(_win_strncmp)
 	(const char *s1, const char *s2, SIZE_T n)
 {
 	return strncmp(s1, s2, n);
 }
 
-NOREGPARM int WRAP_EXPORT(_win_strcmp)
+NOREGPARM INT WRAP_EXPORT(_win_strcmp)
 	(const char *s1, const char *s2)
 {
 	return strcmp(s1, s2);
@@ -316,14 +316,14 @@ int stricmp(const char *s1, const char *s2)
 	return (int)*s1 - (int)*s2;
 }
 
-NOREGPARM int WRAP_EXPORT(_win_tolower)
-	(int c)
+NOREGPARM INT WRAP_EXPORT(_win_tolower)
+	(INT c)
 {
 	return tolower(c);
 }
 
-NOREGPARM int WRAP_EXPORT(_win_toupper)
-	(int c)
+NOREGPARM INT WRAP_EXPORT(_win_toupper)
+	(INT c)
 {
 	return toupper(c);
 }
@@ -353,7 +353,7 @@ NOREGPARM void *WRAP_EXPORT(_win_memmove)
 }
 
 NOREGPARM void *WRAP_EXPORT(_win_memchr)
-	(const void *s, int c, SIZE_T n)
+	(const void *s, INT c, SIZE_T n)
 {
 	return memchr(s, c, n);
 }
@@ -752,7 +752,8 @@ STDCALL void WRAP_EXPORT(RtlInitString)
 	TRACEEXIT2(return);
 }
 
-STDCALL void WRAP_EXPORT(RtlFreeUnicodeString)(struct unicode_string *string)
+STDCALL void WRAP_EXPORT(RtlFreeUnicodeString)
+	(struct unicode_string *string)
 {
 	if (string == NULL || string->buf == NULL)
 		return;
@@ -763,7 +764,8 @@ STDCALL void WRAP_EXPORT(RtlFreeUnicodeString)(struct unicode_string *string)
 	return;
 }
 
-STDCALL void WRAP_EXPORT(RtlFreeAnsiString)(struct ansi_string *string)
+STDCALL void WRAP_EXPORT(RtlFreeAnsiString)
+	(struct ansi_string *string)
 {
 	if (string == NULL || string->buf == NULL)
 		return;
@@ -773,18 +775,14 @@ STDCALL void WRAP_EXPORT(RtlFreeAnsiString)(struct ansi_string *string)
 	string->buf = NULL;
 	return;
 }
-
-void WRAP_EXPORT(RtlUnwind)(void){UNIMPL();}
 
 STDCALL NT_STATUS WRAP_EXPORT(RtlQueryRegistryValues)
-	(ULONG relative, wchar_t *path, void *tbl,
-	 void *context, void *env)
+	(ULONG relative, wchar_t *path, void *tbl, void *context, void *env)
 {
 	TRACEENTER5("%s", "");
 	UNIMPL();
 	TRACEEXIT5(return STATUS_SUCCESS);
 }
-
 
 STDCALL int WRAP_EXPORT(rand)
 	(void)
@@ -808,6 +806,8 @@ ULONGLONG ticks_1601(void)
 	ticks += now.tv_usec * 10 + TICKS_1601_TO_1970;
 	return ticks;
 }
+
+void WRAP_EXPORT(RtlUnwind)(void){UNIMPL();}
 
 void *get_sp(void)
 {
