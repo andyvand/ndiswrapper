@@ -121,6 +121,7 @@ void NdisMRegisterDevice(void);
 void NdisMDeregisterDevice(void);
 void NdisCancelTimer(void);
 void NdisInitializeTimer(void);
+void NdisMRemoveMiniport(void);
 
 /* Cipe */
 void DbgPrint(void);
@@ -309,6 +310,7 @@ func("NdisMRegisterDevice"                 , NdisMRegisterDevice),
 func("NdisMDeregisterDevice"               , NdisMDeregisterDevice),
 func("NdisCancelTimer"                     , NdisCancelTimer),
 func("NdisInitializeTimer"                 , NdisInitializeTimer),
+func("NdisMRemoveMiniport"                 , NdisMRemoveMiniport),
 
 
 
