@@ -22,6 +22,7 @@
 #include <linux/wireless.h>
 #include <linux/pci.h>
 #include <linux/wait.h>
+#include <linux/pm.h>
 
 #include <linux/version.h>
 
@@ -325,6 +326,7 @@ struct packed ndis_handle
 
 	int key_len ;
 	unsigned char key_val[IW_ENCODING_TOKEN_MAX] ;
+	struct pm_dev *pm;
 
 };
 
@@ -481,10 +483,14 @@ void NdisMSetInformationComplete(struct ndis_handle *handle, unsigned int status
 #define NDIS_OID_BSSID_LIST_SCAN    0x0D01011A
 #define NDIS_OID_BSSID_LIST         0x0D010217
 #define NDIS_OID_POWER_MODE         0x0D010216
+#define NDIS_OID_DISASSOCIATE       0x0D010115
 
 
 /* general OIDs */
 #define NDIS_OID_GEN_SPEED          0x00010107
+
+#define NDIS_OID_PNP_SET_POWER      0xFD010101
+#define NDIS_OID_PNP_QUERY_POWER    0xFD010102
 
 #define UNIMPL() printk(KERN_ERR "%s --UNIMPLEMENTED--\n", __FUNCTION__ )
 
