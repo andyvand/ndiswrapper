@@ -16,9 +16,7 @@ INST_DIR := $(DESTDIR)/lib/modules/$(KVERS)/misc
 
 SRC_DIR=$(shell pwd)
 
-ifeq ($(KPSUB),24)
 -include $(KSRC)/.config
-endif
 
 CFLAGS += $(shell [ -f $(KSRC)/include/linux/modversions.h ] && \
 		  echo -DEXPORT_SYMTAB -DMODVERSIONS \
@@ -37,10 +35,10 @@ CFLAGS += -DNDISWRAPPER_VERSION=\"${NDISWRAPPER_VERSION}\" \
 		  -DEXTRA_VERSION=\"${EXTRA_VERSION}\"
 endif
 
-.PHONY: prereq_check x86_64_stubs gen_exports clean dist_clean \
+.PHONY: prereq_check gen_exports clean dist_clean \
 		 install stack_check
 
-all : prereq_check x86_64_stubs.h gen_exports default stack_check
+all : prereq_check gen_exports default stack_check
 
 OBJS := hal.o iw_ndis.o loader.o misc_funcs.o ndis.o ntoskernel.o \
 		pe_linker.o proc.o wrapper.o
@@ -50,12 +48,6 @@ OBJS += usb.o
 endif
 ifeq ($(CONFIG_USB),m)
 OBJS += usb.o
-endif
-
-ifneq ($(CONFIG_X86_64),y)
-OBJS += divdi3.o
-else
-OBJS += x86_64_stubs.o
 endif
 
 ifeq ($(CONFIG_DEBUG_SPINLOCK),y)
@@ -101,7 +93,9 @@ ndis_exports.h: ndis.c
 ntoskerlen_exports.h: ntoskernel.c
 usb_exports.h: usb.c
 
-x86_64_stubs.o: x86_64_stubs.S x86_64_stubs.h
+ifeq ($(CONFIG_X86_64),y)
+OBJS += x86_64_stubs.o
+x86_64_stubs.o: x86_64_stubs.h x86_64_stubs.S
 
 x86_64_stubs.h: hal.c misc_funcs.c ndis.c ntoskernel.c usb.c
 	if :; then \
@@ -116,6 +110,9 @@ x86_64_stubs.h: hal.c misc_funcs.c ndis.c ntoskernel.c usb.c
 					   $$file | sort; \
 		done; \
 	fi > $@
+else
+OBJS += divdi3.o
+endif
 
 # generate exports symbol table from C files
 %_exports.h: %.c
@@ -156,7 +153,7 @@ clean:
 	   divdi3.o .*.ko.cmd .*.o.cmd ndiswrapper.mod.[oc] *~ .tmp_versions
 
 distclean: clean
-	rm -f *_exports.h .\#* *_stub.S x86_64_stubs.h
+	rm -f *_exports.h .\#* x86_64_stubs.h
 
 ifeq ($(KPSUB),24)
 MODULE := ndiswrapper.o
@@ -173,13 +170,13 @@ else
 
 MODULE := ndiswrapper.ko
 obj-m := ndiswrapper.o 
+
 ndiswrapper-objs := $(OBJS)
 
 default:
 	$(MAKE) -C $(KSRC) SUBDIRS=$(SRC_DIR) \
 		NDISWRAPPER_VERSION=$(NDISWRAPPER_VERSION) \
 		EXTRA_VERSION=$(EXTRA_VERSION) modules
-
 
 endif
 
@@ -207,7 +204,7 @@ stack_check:
 			fi;\
 		fi
 
-install: prereq_check x86_64_stubs.h gen_exports default stack_check
+install: prereq_check gen_exports default stack_check
 	mkdir -p $(INST_DIR)
 	install -m 0644 $(MODULE) $(INST_DIR)
 	-/sbin/depmod -a
