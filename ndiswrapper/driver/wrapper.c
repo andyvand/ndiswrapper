@@ -912,7 +912,7 @@ static void link_status_handler(struct ndis_handle *handle)
 	/* we need 28 extra bytes for the format strings */
 	if ((ndis_assoc_info->req_ie_length +
 	     ndis_assoc_info->resp_ie_length + 28) > IW_CUSTOM_MAX) {
-		WARNING("information element is too long! (%lu,%lu),"
+		WARNING("information element is too long! (%u,%u),"
 			"association information dropped",
 			ndis_assoc_info->req_ie_length,
 			ndis_assoc_info->resp_ie_length);

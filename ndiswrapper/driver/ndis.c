@@ -767,9 +767,9 @@ STDCALL static void WRAP_EXPORT(NdisMQueryAdapterResources)
 		}
 
 		entry->share = 0;
-		entry->param1 = pci_resource_start(pci_dev, i);
-		entry->param2 = 0;
-		entry->param3 = pci_resource_len(pci_dev, i);
+		entry->u.generic.start =
+			(ULONG_PTR)pci_resource_start(pci_dev, i);
+		entry->u.generic.length = pci_resource_len(pci_dev, i);
 
 		i++;
 	}
@@ -779,9 +779,9 @@ STDCALL static void WRAP_EXPORT(NdisMQueryAdapterResources)
 	entry->type = 2;
 	entry->share = 0;
 	entry->flags = 0;
-	entry->param1 = pci_dev->irq; //Level
-	entry->param2 = pci_dev->irq; //Vector
-	entry->param3 = -1;  //affinity
+	entry->u.interrupt.level = pci_dev->irq;
+	entry->u.interrupt.vector = pci_dev->irq;
+	entry->u.interrupt.affinity = -1;
 
 	resource_list->length = len;
 	*size = (char*) (&resource_list->list[len]) - (char*)resource_list;
@@ -793,11 +793,10 @@ STDCALL static void WRAP_EXPORT(NdisMQueryAdapterResources)
 		  resource_list->length, *size);
 
 	for (i = 0; i < len; i++) {
-		DBGTRACE2("Resource: %d: %08x %08x %08x, %d",
+		DBGTRACE2("Resource: %d: %Lx %d, %d",
 			  resource_list->list[i].type,
-			  resource_list->list[i].param1,
-			  resource_list->list[i].param2,
-			  resource_list->list[i].param3,
+			  resource_list->list[i].u.generic.start,
+			  resource_list->list[i].u.generic.length,
 			  resource_list->list[i].flags);
 	}
 	TRACEEXIT2(return);
@@ -805,17 +804,13 @@ STDCALL static void WRAP_EXPORT(NdisMQueryAdapterResources)
 
 STDCALL static NDIS_STATUS WRAP_EXPORT(NdisMMapIoSpace)
 	(void **virt, struct ndis_handle *handle,
-	 UINT low, UINT high, UINT len)
+	 NDIS_PHY_ADDRESS phy_addr, UINT len)
 {
-	dma_addr_t addr;
+	ULONG_PTR addr;
 
-	TRACEENTER2("%08x, %08x, %u", low, high, len);
+	addr = (ULONG_PTR)phy_addr.quad;
 
-#ifdef CONFIG_X86_64
-	addr = phy_addr.quad;
-#else
-	addr = low;
-#endif
+	TRACEENTER2("%u, %u", addr, len);
 	*virt = ioremap(addr, len);
 	if (*virt == NULL) {
 		ERROR("%s", "ioremap failed");
@@ -951,14 +946,11 @@ STDCALL static void WRAP_EXPORT(NdisMAllocateSharedMemory)
 	}
 
 	*(char **)virt = v;
-	phys->s.high = 0;
-	if (v != NULL) {
-#ifdef CONFIG_X86_64
+	if (v == NULL)
+		phys->quad = 0;
+	else
 		phys->quad = p;
-#else
-		phys->s.low = p;
-#endif
-	}
+
 	DBGTRACE3("allocated shared memory: %p", v);
 }
 
@@ -1006,10 +998,9 @@ STDCALL static void WRAP_EXPORT(NdisMFreeSharedMemory)
 }
 
 STDCALL static void WRAP_EXPORT(NdisAllocateBufferPool)
-	(NDIS_STATUS *status, int *poolhandle, UINT size)
+	(NDIS_STATUS *status, void *poolhandle, UINT size)
 {
 	TRACEENTER4("%s", "");
-	*poolhandle = 0x0000fff8;
 	*status = NDIS_STATUS_SUCCESS;
 }
 
@@ -1809,7 +1800,7 @@ NdisMSetInformationComplete(struct ndis_handle *handle, NDIS_STATUS status)
 STDCALL static void WRAP_EXPORT(NdisMSleep)
 	(ULONG us_to_sleep)
 {
-	TRACEENTER4("us: %lu", us_to_sleep);
+	TRACEENTER4("us: %u", us_to_sleep);
 	if (us_to_sleep > 0) {
 		set_current_state(TASK_INTERRUPTIBLE);
 		schedule_timeout((us_to_sleep * HZ)/1000000);
