@@ -592,7 +592,6 @@ static int iw_get_encr(struct net_device *dev, struct iw_request_info *info,
 		if (status == ENCR1_NOKEY || status == ENCR2_ABSENT ||
 		    status == ENCR3_ABSENT)
 			wrqu->data.flags |= IW_ENCODE_NOKEY;
-
 		else
 		{
 			wrqu->data.flags |= IW_ENCODE_ENABLED | (index+1);

@@ -17,6 +17,7 @@
 #include "wrapper.h"
 #include "ndis.h"
 #include "usb.h"
+#include <linux/time.h>
 
 unsigned long long KeTickCount;
 STDCALL static void
@@ -367,19 +368,19 @@ KeWaitForSingleObject(void *object, unsigned int reason,
 		timeout);
 
 	if (timeout) {
-		/* absolute timeouts are not yet supported */
+		DBGTRACE3("timeout = %ld", *timeout);
 		if (*timeout > 0) {
-			UNIMPL();
-			ndis_timeout = 1000;
+			ndis_timeout = (*timeout) / 10000;
 		} else if (*timeout == 0) {
 			if (((struct kevent *)object)->header.signal_state)
 				TRACEEXIT3(return STATUS_SUCCESS);
 			else
 				TRACEEXIT3(return STATUS_TIMEOUT);
 		} else
-			ndis_timeout = *timeout / 10000;
+			ndis_timeout = jiffies_to_msecs(jiffies + msecs_to_jiffies((-(*timeout)) / 10000));
 	}
 
+	DBGTRACE3("ndis_timeout = %ld", ndis_timeout);
 	if (!NdisWaitEvent(object, ndis_timeout))
 		TRACEEXIT3(return STATUS_TIMEOUT);
 
@@ -721,6 +722,37 @@ STDCALL static long KeSetPriorityThread(void *thread, long priority)
 	return old_prio;
 }
 
+DECLARE_WAIT_QUEUE_HEAD(thread_wq);
+
+STDCALL static int
+KeDelayExecutionThread(KPROCESSOR_MODE wait_mode, BOOLEAN alterable,
+		       u64 *interval)
+{
+	int res;
+	int timeout;
+
+	TRACEENTER2("%s", "");
+	if (wait_mode != 0)
+		ERROR("illegal wait_mode %d", wait_mode);
+
+	if (*interval < 0)
+		timeout = jiffies + HZ * (-(*interval)) / 10000;
+	else
+		timeout = HZ * (*interval) / 10000;
+
+	res = wait_event_interruptible_timeout(thread_wq, 1, timeout);
+	if (res < 0)
+		TRACEEXIT2(return STATUS_ALERTED);
+	else
+		TRACEEXIT2(return STATUS_SUCCESS);
+}
+
+STDCALL u64
+KeQueryInterruptTime(void)
+{
+	TRACEEXIT2(return 10000);
+}
+
 STDCALL static unsigned long PsTerminateSystemThread(unsigned long status)
 {
 	TRACEENTER2("status = %ld", status);
@@ -960,6 +992,9 @@ struct wrap_func ntos_wrap_funcs[] =
 	WRAP_FUNC_ENTRY(WmiQueryTraceInformation),
 	WRAP_FUNC_ENTRY(IoWMIRegistrationControl),
 	WRAP_FUNC_ENTRY(KeBugCheckEx),
+
+	WRAP_FUNC_ENTRY(KeDelayExecutionThread),
+	WRAP_FUNC_ENTRY(KeQueryInterruptTime),
 
 	{"KeTickCount", (WRAP_FUNC *)&KeTickCount},
 

@@ -30,6 +30,7 @@
 #define STATUS_RESOURCES		0xC000009A
 #define STATUS_NOT_SUPPORTED		0xC00000BB
 #define STATUS_INVALID_PARAMETER_2	0xC00000F0
+#define STATUS_ALERTED			0x00000101
 
 #define IS_PENDING			0x01
 #define CALL_ON_CANCEL			0x20
@@ -54,6 +55,8 @@ union slist_head {
 
 typedef unsigned long *KSPIN_LOCK;
 typedef unsigned char KIRQL;
+typedef char KPROCESSOR_MODE;
+typedef unsigned char BOOLEAN;
 
 struct list_entry
 {
