@@ -292,10 +292,12 @@ static int ndis_set_tx_power(struct net_device *dev, struct iw_request_info *inf
 
 	if (wrqu->txpower.disabled)
 	{
-		res = set_int(handle, NDIS_OID_DISASSOCIATE, 0);
+		ndis_power = 0;
+		res = dosetinfo(handle, NDIS_OID_TX_POWER_LEVEL, (char *)&ndis_power,
+				sizeof(ndis_power), &written, &needed);
+		res |= set_int(handle, NDIS_OID_DISASSOCIATE, 0);
 		if (res)
 			return -EINVAL;
-		netif_carrier_off(handle->net_dev);
 		return 0;
 	}
 	else 
@@ -326,8 +328,6 @@ static int ndis_set_tx_power(struct net_device *dev, struct iw_request_info *inf
 		       dev->name, res);
 		return -EINVAL;
 	}
-	if (!netif_carrier_ok(handle->net_dev))
-		netif_carrier_on(handle->net_dev);
 
 	return 0;
 }
