@@ -106,7 +106,7 @@ int doreset(struct ndis_handle *handle)
 	up(&handle->ndis_comm_mutex);
 	DBGTRACE3("reset: res = %08X, reset status = %08X",
 		  res, handle->reset_status);
-#if 0
+#if 1
 	if (res == NDIS_STATUS_SUCCESS && handle->reset_status)
 	{
 		handle->indicate_receive_packet = &NdisMIndicateReceivePacket;
