@@ -1484,7 +1484,7 @@ static void module_cleanup(void)
 	loader_exit();
 	ndiswrapper_procfs_remove();
 	ndis_exit();
-	ntoskrnl_exit();
+	ntoskernel_exit();
 	misc_funcs_exit();
 }
 
@@ -1520,19 +1520,16 @@ static int __init wrapper_init(void)
 #endif
 		);
 
-	if (misc_funcs_init() || ntoskrnl_init() || ndis_init() ||
-	    loader_init()) {
-		module_cleanup();
-		ERROR("couldn't initialize %s", DRIVER_NAME);
-		TRACEEXIT1(return -EPERM);
-	}
+	if (misc_funcs_init() || ntoskernel_init() || ndis_init() ||
+	    loader_init()
 #ifdef CONFIG_USB
-	if (usb_init()) {
+	     || usb_init()
+#endif
+		) {
 		module_cleanup();
 		ERROR("couldn't initialize %s", DRIVER_NAME);
 		TRACEEXIT1(return -EPERM);
 	}
-#endif
 	ndiswrapper_procfs_init();
 	DBGTRACE1("%s", "calling loadndisdriver");
 	err = call_usermodehelper("/sbin/loadndisdriver", argv, env

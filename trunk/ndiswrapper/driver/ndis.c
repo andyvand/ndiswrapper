@@ -1140,7 +1140,6 @@ STDCALL void WRAP_EXPORT(NdisFreeBuffer)
 		TRACEEXIT3(return);
 	}
 	irql = kspin_lock(&pool->lock, DISPATCH_LEVEL);
-	memset(descr, 0, sizeof(*descr));
 	descr->next = pool->free_descr;
 	pool->free_descr = descr;
 	pool->num_allocated_descr--;
@@ -1288,6 +1287,7 @@ STDCALL void WRAP_EXPORT(NdisAllocatePacket)
 		if (pool->free_descr) {
 			descr = pool->free_descr;
 			pool->free_descr = descr->next;
+			memset(descr, 0, sizeof(*descr));
 		} else
 			descr = allocate_ndis_packet();
 	} else
@@ -1324,7 +1324,6 @@ STDCALL void WRAP_EXPORT(NdisFreePacket)
 		TRACEEXIT3(return);
 	}
 	irql = kspin_lock(&pool->lock, DISPATCH_LEVEL);
-	memset(descr, 0, sizeof(*descr));
 	descr->next = pool->free_descr;
 	pool->free_descr = descr;
 	pool->num_allocated_descr--;
