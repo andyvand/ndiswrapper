@@ -101,13 +101,15 @@ STDCALL int NdisMRegisterMiniport(struct ndis_driver *ndis_driver,
 	
 	if(miniport_char->majorVersion < 4)
 	{
-		printk(KERN_ERR "%s: Driver %s using ndis version %d which is too old.\n", DRV_NAME, ndis_driver->name, miniport_char->majorVersion); 
+		ERROR("Driver %s using ndis version %d which is too old.",
+		      ndis_driver->name, miniport_char->majorVersion); 
 		TRACEEXIT1(return NDIS_STATUS_BAD_VERSION);
 	}
 
 	if(char_len < min_length)
 	{
-		printk(KERN_ERR "%s: Characteristics length %d is too small for driver %s \n", DRV_NAME, char_len, ndis_driver->name); 
+		ERROR("Characteristics length %d is too small for driver %s",
+		      char_len, ndis_driver->name); 
 		TRACEEXIT1(return NDIS_STATUS_BAD_CHARACTERISTICS);
 	}
 
@@ -139,9 +141,8 @@ STDCALL unsigned int NdisAllocateMemory(void **dest,
 	}
 	else if (flags & NDIS_MEMORY_CONTIGUOUS)
 	{
-		printk(KERN_WARNING "%s: Allocating %u bytes of physically "
-		       "contiguous memory may fail\n",
-		       __FUNCTION__, length);
+		WARNING("Allocating %u bytes of physically "
+		       "contiguous memory may fail", length);
 		*dest = (void *)kmalloc(length, GFP_KERNEL);
 	}
 	else
@@ -191,8 +192,7 @@ NOREGPARM void NdisWriteErrorLogEntry(struct ndis_handle *handle,
 			    unsigned int length,
 			    unsigned int p1)
 {
-	printk(KERN_ERR "%s: error log: %08X, length: %d (%08x)\n",
-	       DRV_NAME, error, length, p1);
+	ERROR("log: %08X, length: %d (%08x)\n", error, length, p1);
 }
 
 
@@ -789,7 +789,7 @@ STDCALL unsigned int NdisMMapIoSpace(void **virt,
 	TRACEENTER2("%08x, %d", (int)physlo, len);
 	*virt = ioremap(physlo, len);
 	if(*virt == NULL) {
-		printk(KERN_ERR "IORemap failed\n");
+		ERROR("%s", "ioremap failed");
 		TRACEEXIT2(return NDIS_STATUS_FAILURE);
 	}
 	
@@ -899,16 +899,17 @@ STDCALL void NdisMAllocateSharedMemory(struct ndis_handle *handle,
 				       struct ndis_phy_address *phys)
 {
 	dma_addr_t p;
+	void *v;
 
 	TRACEENTER3();
 //	if (handle->map_dma_addr == NULL)
 //		printk(KERN_ERR "%s: DMA map address is not set!\n",
 //		       __FUNCTION__);
-	void *v = PCI_DMA_ALLOC_COHERENT(handle->pci_dev, size, &p);
+	v = PCI_DMA_ALLOC_COHERENT(handle->pci_dev, size, &p);
 	if(!v)
 	{
-		printk(KERN_ERR "Failed to allocate DMA coherent memory. "
-		       "Windows driver requested %d bytes of %scached memory\n",
+		ERROR("Failed to allocate DMA coherent memory. "
+		      "Windows driver requested %d bytes of %scached memory\n",
 		       size, cached ? "" : "un-");
 	}
 
@@ -962,7 +963,7 @@ STDCALL void NdisAllocateBuffer(unsigned int *status,
 	TRACEENTER4();
 	if(!my_buffer)
 	{
-		printk(KERN_ERR "%s failed\n", __FUNCTION__);
+		ERROR("%s", "Couldn't allocate memory");
 		*status = NDIS_STATUS_FAILURE;
 		TRACEEXIT4(return);
 	}
@@ -1071,7 +1072,7 @@ STDCALL void NdisAllocatePacket(unsigned int *status,
 	TRACEENTER3();
 	if(!packet)
 	{
-		printk(KERN_ERR "%s failed\n", __FUNCTION__);
+		ERROR("%s", "Couldn't allocate memory");
 		*packet_out = NULL;
 		*status = NDIS_STATUS_FAILURE;
 		TRACEEXIT3(return);
@@ -1287,8 +1288,7 @@ STDCALL unsigned int NdisMRegisterInterrupt(struct ndis_irq *ndis_irq,
 	ndis_irq->handle = handle;
 	ndis_irq->req_isr = req_isr;
 	if (shared && !req_isr)
-		printk(KERN_ERR "%s: shared but dynamic interrupt!\n",
-		       __FUNCTION__);
+		WARNING("%s", "shared but dynamic interrupt!");
 	ndis_irq->shared = shared;
 	spin_lock_init(ndis_irq->spinlock);
 	handle->ndis_irq = ndis_irq;
@@ -1400,7 +1400,7 @@ STDCALL void NdisMIndicateReceivePacket(struct ndis_handle *handle,
 		packet = packets[i];
 		if(!packet)
 		{
-			printk(KERN_WARNING "%s Skipping empty packet on receive\n", DRV_NAME); 
+			WARNING("%s", "Skipping empty packet on receive");
 			continue;
 		}
 		
@@ -1446,7 +1446,8 @@ STDCALL void NdisMIndicateReceivePacket(struct ndis_handle *handle,
 		else
 		{
 			if(packet->status != NDIS_STATUS_SUCCESS)
-				printk(KERN_WARNING "%s: %s packet->status is invalid\n", DRV_NAME, __FUNCTION__);
+				WARNING("invalid packet status %08X",
+					packet->status);
 
 			 
 			/* Signal the driver that took ownership of the packet and will
@@ -1890,25 +1891,22 @@ NdisMStartBufferPhysicalMapping(struct ndis_handle *handle,
 	TRACEENTER3("phy_map_reg: %ld", phy_map_reg);
 	if (!write_to_dev)
 	{
-		printk(KERN_ERR "%s (%s): dma from device not supported (%d)\n",
-		       handle->net_dev->name, __FUNCTION__, write_to_dev);
+		ERROR( "dma from device not supported (%d)", write_to_dev);
 		*array_size = 0;
 		return;
 	}
 
 	if (phy_map_reg > handle->map_count)
 	{
-		printk(KERN_ERR "%s (%s): map_register too big (%lu > %u)\n",
-		       handle->net_dev->name, __FUNCTION__,
-		       phy_map_reg, handle->map_count);
+		ERROR("map_register too big (%lu > %u)",
+		      phy_map_reg, handle->map_count);
 		*array_size = 0;
 		return;
 	}
 	
 	if (handle->map_dma_addr[phy_map_reg] != 0)
 	{
-		printk(KERN_ERR "%s (%s): map register already used (%lu)\n",
-		       handle->net_dev->name, __FUNCTION__, phy_map_reg);
+		ERROR("map register already used (%lu)", phy_map_reg);
 		*array_size = 0;
 		return;
 	}
@@ -1936,15 +1934,14 @@ NdisMCompleteBufferPhysicalMapping(struct ndis_handle *handle,
 
 	if (phy_map_reg > handle->map_count)
 	{
-		printk(KERN_ERR "%s: map_register too big (%lu > %u)\n",
-		       handle->net_dev->name, phy_map_reg, handle->map_count);
+		ERROR("map_register too big (%lu > %u)",
+		      phy_map_reg, handle->map_count);
 		return;
 	}
 
 	if (handle->map_dma_addr[phy_map_reg] == 0)
 	{
-		printk(KERN_ERR "%s (%s): map register not used (%lu)\n",
-		       handle->net_dev->name, __FUNCTION__, phy_map_reg);
+		ERROR("map register not used (%lu)", phy_map_reg);
 		return;
 	}
 	
