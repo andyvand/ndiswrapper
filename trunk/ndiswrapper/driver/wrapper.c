@@ -519,18 +519,16 @@ static void free_packet(struct ndis_handle *handle, struct ndis_packet *packet)
 	tail = packet->private.buffer_tail;
 	while (b != tail) {
 		ndis_buffer *t = b;
+
 		DBGTRACE3("freeing buffer %p", b);
 		b = b->next;
-		if (t->startva)
-			kfree(t->startva);
-		else
-			ERROR("wrong buffer: %p", t);
-		kfree(t);
+		kfree(MmGetMdlVirtualAddress(t));
+		IoFreeMdl(t);
 	}
 	if (b) {
 		DBGTRACE3("freeing buffer %p", b);
-		kfree(b->startva);
-		kfree(b);
+		kfree(MmGetMdlVirtualAddress(b));
+		IoFreeMdl(b);
 	}
 	DBGTRACE3("freeing packet %p", packet);
 	kfree(packet);
@@ -770,21 +768,17 @@ static int start_xmit(struct sk_buff *skb, struct net_device *dev)
 	if (!data)
 		return 1;
 
-	buffer = kmalloc(sizeof(ndis_buffer), GFP_ATOMIC);
+	buffer = IoAllocateMdl(data, skb->len, FALSE, FALSE, NULL);
 	if (!buffer) {
 		kfree(data);
 		return 1;
 	}
-//	memset(buffer, 0, sizeof(*buffer));
+	MmInitializeMdl(buffer, data, skb->len);
 
 	skb_copy_and_csum_dev(skb, data);
-	buffer->startva = data;
-	buffer->next = NULL;
-	buffer->byteoffset = 0;
-	buffer->bytecount = skb->len;
 	packet = alloc_packet(handle, buffer);
 	if (!packet) {
-		kfree(buffer);
+		IoFreeMdl(buffer);
 		kfree(data);
 		return 1;
 	}
