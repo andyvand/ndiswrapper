@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2003 Pontus Fuchs
+ *  Copyright (C) 2003-2004 Pontus Fuchs, Giridhar Pemmasani
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -12,7 +12,6 @@
  *  GNU General Public License for more details.
  *
  */
-
 #include <linux/module.h>
 #include <linux/mm.h>
 #include <asm/pgalloc.h>
