@@ -274,7 +274,8 @@ static void *ndiswrapper_add_one_usb_dev(struct usb_device *udev,
 	struct miniport_char *miniport;
 //	unsigned long profile_inf = NDIS_POWER_PROFILE_AC;
 
-	TRACEENTER1("usb_id: %p", usb_id);
+	TRACEENTER1("vendor: %04x, product: %04x",
+		    usb_id->idVendor, usb_id->idProduct);
 
 	device = &ndis_devices[usb_id->driver_info];
 	driver = ndiswrapper_load_driver(device);
@@ -361,14 +362,14 @@ out_nodev:
 static void
 ndiswrapper_remove_one_usb_dev(struct usb_interface *intf)
 {
-	struct ndis_handle *handle =
-		(struct ndis_handle *)usb_get_intfdata(intf);
+	struct ndis_handle *handle;
 
 	TRACEENTER1("");
+	handle = (struct ndis_handle *)usb_get_intfdata(intf);
 
-	usb_set_intfdata(intf, NULL);
 	if (!handle)
 		TRACEEXIT1(return);
+	usb_set_intfdata(intf, NULL);
 	atomic_dec(&handle->driver->users);
 	ndiswrapper_remove_one_dev(handle);
 }
@@ -648,6 +649,7 @@ static int start_driver(struct ndis_driver *driver)
 			DBGTRACE1("driver version: %d.%d",
 				  driver->miniport_char.majorVersion,
 				  driver->miniport_char.minorVersion);
+			driver->entry = entry;
 		}
 
 	if (ret) {

@@ -818,7 +818,6 @@ void ndiswrapper_remove_one_dev(struct ndis_handle *handle)
 		LIN2WIN4(miniport->pnp_event_notify, handle->adapter_ctx,
 			 NdisDevicePnPEventSurpriseRemoved, NULL, 0);
 	}
-
 	DBGTRACE1("halting device %s", handle->driver->name);
 	miniport_halt(handle);
 	DBGTRACE1("halt successful");
@@ -829,7 +828,6 @@ void ndiswrapper_remove_one_dev(struct ndis_handle *handle)
 		kfree(handle->multicast_list);
 	if (handle->net_dev)
 		free_netdev(handle->net_dev);
-
 	TRACEEXIT1(return);
 }
 

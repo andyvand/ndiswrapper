@@ -1437,19 +1437,18 @@ static int wpa_associate(struct net_device *dev, struct iw_request_info *info,
 			   wpa_assoc_info.ssid_len))
 		TRACEEXIT1(return -1);
 
+	/* setting the mode here clears the keys set earlier, so
+	 * ignore this request */
+	/*
 	if (wpa_assoc_info.mode == IEEE80211_MODE_IBSS)
 		set_infra_mode(handle, Ndis802_11IBSS);
 	else
 		set_infra_mode(handle, Ndis802_11Infrastructure);
+	*/
 
 	DBGTRACE1("key_mgmt_suite = %d, pairwise_suite = %d, group_suite= %d",
 		  wpa_assoc_info.key_mgmt_suite,
 		  wpa_assoc_info.pairwise_suite, wpa_assoc_info.group_suite);
-	if (wpa_assoc_info.key_mgmt_suite != KEY_MGMT_PSK &&
-	    wpa_assoc_info.key_mgmt_suite != KEY_MGMT_802_1X &&
-	    wpa_assoc_info.key_mgmt_suite != KEY_MGMT_802_1X_NO_WPA &&
-	    wpa_assoc_info.key_mgmt_suite != KEY_MGMT_WPA_NONE)
-		TRACEEXIT2(return -1);
 
 	if (wpa_assoc_info.wpa_ie == NULL || wpa_assoc_info.wpa_ie_len == 0) {
 		if (wpa_assoc_info.auth_alg & AUTH_ALG_SHARED_KEY) {

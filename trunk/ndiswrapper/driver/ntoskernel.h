@@ -140,14 +140,6 @@ typedef task_queue workqueue;
 #define SET_NETDEV_DEV(net,pdev) do { } while (0)
 #endif
 
-#define WRAP_ALLOC_URB(a, b)  usb_alloc_urb(a)
-#define WRAP_SUBMIT_URB(a, b) usb_submit_urb(a)
-
-#else // LINUX_VERSION_CODE < KERNEL_VERSION(2,6,0)
-
-#define WRAP_ALLOC_URB(a, b)  usb_alloc_urb(a, b)
-#define WRAP_SUBMIT_URB(a, b) usb_submit_urb(a, b)
-
 #endif // LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
 
 #ifdef CONFIG_SOFTWARE_SUSPEND2
