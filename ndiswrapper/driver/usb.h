@@ -155,7 +155,7 @@ struct control_descriptor_request {
 	ULONG reserved0;
 	ULONG transferBufLen;
 	void *transferBuf;
-	struct MDL *transferBufMdl;
+	struct mdl *transferBufMdl;
 	union nt_urb *urbLink;
 	struct urb_hcd_area hca;
 	USHORT reserved1;
@@ -181,8 +181,8 @@ struct vendor_or_class_request {
 	struct urb_hcd_area hca;
 	UCHAR reservedBits;
 	UCHAR request;
-	UCHAR value;
-	UCHAR index;
+	USHORT value;
+	USHORT index;
 	USHORT reserved1;
 };
 
