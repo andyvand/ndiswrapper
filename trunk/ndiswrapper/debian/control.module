@@ -5,9 +5,9 @@ Maintainer: #MAINT# <#MAINTEMAIL#>
 Build-Depends: debhelper (>> 4.0.0)
 Standards-Version: 3.6.0
 
-Package: ndiswrapper-modules
+Package: ndiswrapper-module
 Architecture: i386
-Provides: ndiswrapper-modules
+Provides: ndiswrapper-module
 Suggests: kernel-package
 Depends: ndiswrapper-utils-#NDISVERS#
 Description: Linux kernel module for NdisWrapper
