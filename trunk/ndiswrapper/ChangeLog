@@ -1,3 +1,12 @@
+Version 0.3 2003-12-16
+======================
+
+* Centrino now works with some drivers.
+* Unified makefile in driver directory for easier compiling.
+* SMP fixes (not 100% complete yet).
+* Support for Atheros AR5004 drivers.
+* Taint kernel when loading windows driver.
+
 Version 0.2 2003-12-04
 ======================
 
