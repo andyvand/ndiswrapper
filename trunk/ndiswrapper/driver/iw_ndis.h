@@ -159,14 +159,19 @@ enum capa_list {
 typedef enum { WPA_ALG_NONE, WPA_ALG_WEP, WPA_ALG_TKIP, WPA_ALG_CCMP } wpa_alg;
 typedef enum { CIPHER_NONE, CIPHER_WEP40, CIPHER_TKIP, CIPHER_CCMP,
 	       CIPHER_WEP104 } wpa_cipher;
-typedef enum { KEY_MGMT_802_1X, KEY_MGMT_PSK, KEY_MGMT_NONE } wpa_key_mgmt;
+typedef enum { KEY_MGMT_802_1X, KEY_MGMT_PSK, KEY_MGMT_NONE,
+	       KEY_MGMT_802_1X_NO_WPA, KEY_MGMT_WPA_NONE } wpa_key_mgmt;
 
 #define AUTH_ALG_OPEN_SYSTEM	0x01
 #define AUTH_ALG_SHARED_KEY	0x02
 #define AUTH_ALG_LEAP		0x04
 
-struct wpa_key
-{
+#define IEEE80211_MODE_INFRA	0
+#define IEEE80211_MODE_IBSS	1
+
+#define RSN_INFO_ELEM		0x30
+
+struct wpa_key {
 	wpa_alg alg;
 	u8 *addr;
 	int key_index;
@@ -177,8 +182,7 @@ struct wpa_key
 	size_t key_len;
 };
 
-struct wpa_assoc_info
-{
+struct wpa_assoc_info {
 	const char *bssid;
 	const char *ssid;
 	size_t ssid_len;
@@ -189,6 +193,7 @@ struct wpa_assoc_info
 	wpa_cipher group_suite;
 	wpa_key_mgmt key_mgmt_suite;
 	int auth_alg;
+	int mode;
 };
 
 #define WPA_SET_WPA 			SIOCIWFIRSTPRIV+1
