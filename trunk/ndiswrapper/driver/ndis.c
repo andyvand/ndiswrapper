@@ -28,7 +28,7 @@
 #include "wrapper.h"
 
 extern struct list_head ndis_drivers;
-extern KSPIN_LOCK ntoskrnl_lock;
+extern KSPIN_LOCK ntoskernel_lock;
 
 static struct list_head handle_ctx_list;
 
@@ -89,7 +89,7 @@ static void free_handle_ctx(struct ndis_handle *handle)
 	struct list_head *cur, *tmp;
 	KIRQL irql;
 
-	irql = kspin_lock(&ntoskrnl_lock, PASSIVE_LEVEL);
+	irql = kspin_lock(&ntoskernel_lock, PASSIVE_LEVEL);
 	list_for_each_safe(cur, tmp, &handle_ctx_list) {
 		struct handle_ctx_entry *handle_ctx =
 			list_entry(cur, struct handle_ctx_entry, list);
@@ -98,7 +98,7 @@ static void free_handle_ctx(struct ndis_handle *handle)
 			kfree(handle_ctx);
 		}
 	}
-	kspin_unlock(&ntoskrnl_lock, irql);
+	kspin_unlock(&ntoskernel_lock, irql);
 	return;
 }
 
@@ -713,12 +713,12 @@ STDCALL void WRAP_EXPORT(NdisMSetAttributesEx)
 	if (handle_ctx) {
 		handle_ctx->handle = handle;
 		handle_ctx->ctx = adapter_ctx;
-		/* ntoskrnl_lock is not meant for use here, but since this
+		/* ntoskernel_lock is not meant for use here, but since this
 		 * function is called during initialization only,
 		 * no harm abusing it */
-		irql = kspin_lock(&ntoskrnl_lock, PASSIVE_LEVEL);
+		irql = kspin_lock(&ntoskernel_lock, PASSIVE_LEVEL);
 		list_add(&handle_ctx->list, &handle_ctx_list);
-		kspin_unlock(&ntoskrnl_lock, irql);
+		kspin_unlock(&ntoskernel_lock, irql);
 	}
 
 	if (attributes & NDIS_ATTRIBUTE_BUS_MASTER)
@@ -752,14 +752,14 @@ static struct ndis_handle *ctx_to_handle(void *ctx)
 	struct handle_ctx_entry *handle_ctx;
 	KIRQL irql;
 
-	irql = kspin_lock(&ntoskrnl_lock, PASSIVE_LEVEL);
+	irql = kspin_lock(&ntoskernel_lock, PASSIVE_LEVEL);
 	list_for_each_entry(handle_ctx, &handle_ctx_list, list) {
 		if (handle_ctx->ctx == ctx) {
-			kspin_unlock(&ntoskrnl_lock, irql);
+			kspin_unlock(&ntoskernel_lock, irql);
 			return handle_ctx->handle;
 		}
 	}
-	kspin_unlock(&ntoskrnl_lock, irql);
+	kspin_unlock(&ntoskernel_lock, irql);
 
 	return NULL;
 }
@@ -2085,10 +2085,10 @@ STDCALL LONG WRAP_EXPORT(NdisInterlockedDecrement)
 	KIRQL irql;
 
 	TRACEENTER4("%s", "");
-	irql = kspin_lock(&ntoskrnl_lock, PASSIVE_LEVEL);
+	irql = kspin_lock(&ntoskernel_lock, PASSIVE_LEVEL);
 	(*val)--;
 	x = *val;
-	kspin_unlock(&ntoskrnl_lock, irql);
+	kspin_unlock(&ntoskernel_lock, irql);
 	TRACEEXIT4(return x);
 }
 
@@ -2099,10 +2099,10 @@ STDCALL LONG WRAP_EXPORT(NdisInterlockedIncrement)
 	KIRQL irql;
 
 	TRACEENTER4("%s", "");
-	irql = kspin_lock(&ntoskrnl_lock, PASSIVE_LEVEL);
+	irql = kspin_lock(&ntoskernel_lock, PASSIVE_LEVEL);
 	(*val)++;
 	x = *val;
-	kspin_unlock(&ntoskrnl_lock, irql);
+	kspin_unlock(&ntoskernel_lock, irql);
 	TRACEEXIT4(return x);
 }
 

@@ -1146,6 +1146,16 @@ STDCALL void WRAP_EXPORT(PoStartNextPowerIrp)
 	TRACEEXIT5(return);
 }
 
+STDCALL BOOLEAN WRAP_EXPORT(IoIs32bitProcess)
+	(struct irp *irp)
+{
+#ifdef CONFIG_X86_64
+	return FALSE;
+#else
+	return TRUE;
+#endif
+}
+
 STDCALL ULONG WRAP_EXPORT(MmSizeOfMdl)
 	(void *base, ULONG length)
 {
@@ -1383,5 +1393,6 @@ STDCALL void WRAP_EXPORT(IoDeleteSymbolicLink)(void){UNIMPL();}
 STDCALL void WRAP_EXPORT(ObfReferenceObject)(void){UNIMPL();}
 STDCALL void WRAP_EXPORT(ObReferenceObjectByHandle)(void){UNIMPL();}
 STDCALL void WRAP_EXPORT(_except_handler3)(void){UNIMPL();}
+STDCALL void WRAP_EXPORT(__C_specific_handler)(void){UNIMPL();}
 
 #include "ntoskernel_exports.h"
