@@ -1153,10 +1153,7 @@ STDCALL void NdisMCancelTimer(struct ndis_timer **timer_handle, char *canceled)
 {
 	DBGTRACE("%s\n", __FUNCTION__);
 	(*timer_handle)->repeat = 0;
-	if ((*timer_handle)->active)
-		*canceled = del_timer_sync(&(*timer_handle)->timer);
-	else
-		*canceled = 0;
+	*canceled = del_timer_sync(&(*timer_handle)->timer);
 	(*timer_handle)->active = 0;
 	return;
 }
