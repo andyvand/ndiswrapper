@@ -17,10 +17,6 @@
 #include "usb.h"
 
 
-#if LINUX_VERSION_CODE <= KERNEL_VERSION(2,6,0)
-#warning Note: USB support not available on kernels before 2.6
-#else
-
 LIST_HEAD(completed_irps);
 static spinlock_t completed_irps_lock = SPIN_LOCK_UNLOCKED;
 
@@ -495,5 +491,3 @@ struct wrap_func usb_wrap_funcs[] =
 	WRAP_FUNC_ENTRY(USBD_ParseConfigurationDescriptorEx),
 	{NULL, NULL}
 };
-
-#endif /* support on 2.4 not implemented */
