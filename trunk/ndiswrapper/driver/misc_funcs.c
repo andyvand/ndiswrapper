@@ -661,6 +661,15 @@ STDCALL void  WRAP_EXPORT(RtlInitUnicodeString)
 
 static void WRAP_EXPORT(RtlFreeUnicodeString)(void){UNIMPL();}
 static void WRAP_EXPORT(RtlUnwind)(void){UNIMPL();}
+STDCALL static unsigned int WRAP_EXPORT(RtlQueryRegistryValues)
+	(unsigned long relative, char* path, void* tbl,
+	 void* context, void* env)
+{
+	TRACEENTER5("%s", "");
+	UNIMPL();
+	TRACEEXIT5(return STATUS_SUCCESS);
+}
+
 
 STDCALL int WRAP_EXPORT(rand)
 	(void)

@@ -2439,6 +2439,7 @@ STDCALL static void WRAP_EXPORT(NdisMGetDeviceProperty)
 		for (i = 0; i < (sizeof(*dev)/sizeof(void *)); i++)
 			((int *)dev)[i] = 0x00000A00;
 
+		dev->drv_obj = handle;
 		dev->next_dev        = (void *)0x00000901;
 		dev->current_irp     = (void *)0x00000801;
 		/* flags: DO_BUFFERED_IO + DO_BUS_ENUMERATED_DEVICE */
