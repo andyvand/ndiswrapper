@@ -49,10 +49,7 @@ int set_essid(struct ndis_handle *handle, const char *ssid, int ssid_len)
 	res = dosetinfo(handle, NDIS_OID_ESSID, (char*)&req, sizeof(req),
 			&written, &needed);
 	if (res)
-	{
 		WARNING("setting essid failed (%08X)", res); 
-		return -EINVAL;
-	}
 
 	memcpy(&handle->essid, &req, sizeof(req));
 	TRACEEXIT1(return 0);
@@ -88,11 +85,8 @@ static int iw_get_essid(struct net_device *dev, struct iw_request_info *info,
 	TRACEENTER1("%s", "");
 	res = doquery(handle, NDIS_OID_ESSID, (char*)&req, sizeof(req),
 		      &written, &needed);
-	if(res)
-	{
+	if (res)
 		WARNING("getting essid failed (%08X)", res);
-		return -EOPNOTSUPP;
-	}
 
 	memcpy(extra, &req.essid, req.length);
 	extra[req.length] = 0;
@@ -108,7 +102,7 @@ int set_mode(struct ndis_handle *handle, enum op_mode mode)
 	TRACEENTER1("%s", "");
 
 	res = set_int(handle, NDIS_OID_MODE, mode);
-	if (res)
+	if (res == NDIS_STATUS_INVALID_DATA)
 	{
 		WARNING("setting operating mode failed (%08X)", res); 
 		TRACEEXIT1(return -EINVAL);
@@ -201,7 +195,7 @@ static int iw_get_name(struct net_device *dev, struct iw_request_info *info,
 	unsigned int network_type, res;
 	
 	res = query_int(handle, NDIS_OID_NETWORK_TYPE_IN_USE, &network_type);
-	if (res)
+	if (res == NDIS_STATUS_INVALID_DATA)
 		network_type = -1;
 
 	strncpy(wrqu->name, net_type_to_name(network_type),
@@ -219,11 +213,8 @@ static int iw_get_freq(struct net_device *dev, struct iw_request_info *info,
 
 	res = doquery(handle, NDIS_OID_CONFIGURATION, (char*)&req,
 		      sizeof(req), &written, &needed);
-	if(res)
-	{
+	if (res)
 		WARNING("getting configuration failed (%08X)", res);
-		return -EOPNOTSUPP;
-	}
 
 	memset(&(wrqu->freq), 0, sizeof(struct iw_freq));
 
@@ -255,10 +246,8 @@ static int iw_set_freq(struct net_device *dev, struct iw_request_info *info,
 	res = doquery(handle, NDIS_OID_CONFIGURATION, (char *)&req,
 				  sizeof(req), &written, &needed);
 	if (res)
-	{
 		WARNING("getting configuration failed (%08X)", res);
-		return -EINVAL;
-	}
+
 	if (wrqu->freq.m < 1000 && wrqu->freq.e == 0)
 	{
 		if (wrqu->freq.m >= 1 &&
@@ -278,7 +267,7 @@ static int iw_set_freq(struct net_device *dev, struct iw_request_info *info,
 	}
 	res = dosetinfo(handle, NDIS_OID_CONFIGURATION, (char*)&req,
 			sizeof(req), &written, &needed);
-	if(res)
+	if (res == NDIS_STATUS_INVALID_DATA)
 	{
 		WARNING("setting configuration failed (%08X)", res);
 		return -EINVAL;
@@ -296,7 +285,7 @@ static int iw_get_tx_power(struct net_device *dev,
 
 	res = doquery(handle, NDIS_OID_TX_POWER_LEVEL, (char*)&ndis_power,
 		      sizeof(ndis_power), &written, &needed);
-	if(res)
+	if (res == NDIS_STATUS_NOT_SUPPORTED)
 		return -EOPNOTSUPP;
 
 	wrqu->txpower.flags = IW_TXPOW_MWATT;
@@ -320,7 +309,9 @@ static int iw_set_tx_power(struct net_device *dev,
 		res = dosetinfo(handle, NDIS_OID_TX_POWER_LEVEL,
 				(char *)&ndis_power,
 				sizeof(ndis_power), &written, &needed);
-		res |= set_int(handle, NDIS_OID_DISASSOCIATE, 0);
+		if (res == NDIS_STATUS_INVALID_DATA)
+			return -EINVAL;
+		res = set_int(handle, NDIS_OID_DISASSOCIATE, 0);
 		if (res)
 			return -EINVAL;
 		return 0;
@@ -347,11 +338,12 @@ static int iw_set_tx_power(struct net_device *dev,
 	}
 	res = dosetinfo(handle, NDIS_OID_TX_POWER_LEVEL, (char*)&ndis_power,
 		      sizeof(ndis_power), &written, &needed);
-	if(res)
-	{
+	if (res)
 		WARNING("setting tx_power failed (%08X)", res);
+	if (res == NDIS_STATUS_NOT_SUPPORTED)
+		return -EOPNOTSUPP;
+	if (res == NDIS_STATUS_INVALID_DATA)
 		return -EINVAL;
-	}
 
 	return 0;
 }
@@ -363,11 +355,8 @@ static int iw_get_bitrate(struct net_device *dev, struct iw_request_info *info,
 	int ndis_rate;
 
 	int res = query_int(handle, NDIS_OID_GEN_SPEED, &ndis_rate);
-	if(res)
-	{
+	if (res)
 		WARNING("getting bitrate failed (%08X)", res);
-		return -EOPNOTSUPP;
-	}
 
 	wrqu->bitrate.value = ndis_rate * 100;
 	return 0;
@@ -388,7 +377,7 @@ static int iw_get_rts_threshold(struct net_device *dev,
 	int ndis_rts_threshold;
 
 	int res = query_int(handle, NDIS_OID_RTS_THRESH, &ndis_rts_threshold);
-	if(res)
+	if (res == NDIS_STATUS_NOT_SUPPORTED)
 	{
 		WARNING("getting RTS threshold failed (%08X)", res);
 		return -EOPNOTSUPP;
@@ -406,7 +395,7 @@ static int iw_get_frag_threshold(struct net_device *dev,
 	int ndis_frag_threshold;
 
 	int res = query_int(handle, NDIS_OID_FRAG_THRESH, &ndis_frag_threshold);
-	if(res)
+	if (res == NDIS_STATUS_NOT_SUPPORTED)
 	{
 		WARNING("getting fragmentation threshold failed (%08X)", res);
 		return -EOPNOTSUPP;
@@ -424,7 +413,7 @@ int get_ap_address(struct ndis_handle *handle, mac_address ap_addr)
 
 	res = doquery(handle, NDIS_OID_BSSID, ap_addr, ETH_ALEN,
 		      &written, &needed);
-	if (res)
+	if (res == NDIS_STATUS_ADAPTER_NOT_READY)
 		memset(ap_addr, 0, ETH_ALEN);
 
 	DBGTRACE1(MACSTR, MAC2STR(ap_addr));
@@ -472,7 +461,7 @@ int set_auth_mode(struct ndis_handle *handle, int auth_mode)
 {
 	unsigned int res;
 	res = set_int(handle, NDIS_OID_AUTH_MODE, auth_mode);
-	if (res)
+	if (res == NDIS_STATUS_INVALID_DATA)
 	{
 		WARNING("setting auth mode failed (%08X)", res);
 		return -EINVAL;
@@ -488,7 +477,7 @@ int set_wep_mode(struct ndis_handle *handle, int wep_mode)
 {
 	unsigned int res;
 	res = set_int(handle, NDIS_OID_WEP_STATUS, wep_mode);
-	if (res)
+	if (res == NDIS_STATUS_INVALID_DATA)
 	{
 		WARNING("setting wep mode failed (%08X)", res);
 		return -EINVAL;
@@ -541,7 +530,7 @@ static int iw_get_encr(struct net_device *dev, struct iw_request_info *info,
 	
 	/* active key */
 	res = query_int(handle, NDIS_OID_WEP_STATUS, &status);
-	if (res)
+	if (res == NDIS_STATUS_NOT_SUPPORTED)
 	{
 		WARNING("getting wep status failed (%08X)", res);
 		TRACEEXIT1(return -EOPNOTSUPP);
@@ -560,7 +549,7 @@ static int iw_get_encr(struct net_device *dev, struct iw_request_info *info,
 		wrqu->data.flags |= IW_ENCODE_NOKEY;
 
 	res = query_int(handle, NDIS_OID_AUTH_MODE, &status);
-	if (res)
+	if (res == NDIS_STATUS_NOT_SUPPORTED)
 	{
 		WARNING("getting authentication mode failed (%08X)", res);
 		TRACEEXIT1(return -EOPNOTSUPP);
@@ -611,7 +600,7 @@ static int iw_set_encr(struct net_device *dev, struct iw_request_info *info,
 		res = dosetinfo(handle, NDIS_OID_REMOVE_WEP,
 				(char *)&keyindex, sizeof(keyindex),
 				&written, &needed);
-		if (res)
+		if (res == NDIS_STATUS_INVALID_DATA)
 		{
 			WARNING("removing wep key %d failed (%08X)",
 				index, res);
@@ -860,7 +849,8 @@ static int iw_set_scan(struct net_device *dev, struct iw_request_info *info,
 
 	TRACEENTER1("%s", "");
 	res = set_int(handle, NDIS_OID_BSSID_LIST_SCAN, 0);
-	if (res)
+	if (res == NDIS_STATUS_NOT_SUPPORTED ||
+	    res == NDIS_STATUS_INVALID_DATA)
 	{
 		WARNING("scanning failed (%08X)", res);
 		handle->scan_timestamp = 0;
@@ -906,7 +896,7 @@ static int iw_get_scan(struct net_device *dev, struct iw_request_info *info,
 		res = doquery(handle, NDIS_OID_BSSID_LIST, (char*)bssid_list,
 			      list_len, &written, &needed);
 	}
-	if (res)
+	if (res == NDIS_STATUS_INVALID_DATA)
 	{
 		WARNING("getting BSSID list failed (%08X)", res);
 		kfree(bssid_list);
@@ -944,7 +934,7 @@ static int iw_set_power_mode(struct net_device *dev,
 		power_mode = NDIS_POWER_MAX;
 
 	res = set_int(handle, NDIS_OID_POWER_MODE, power_mode);
-	if (res)
+	if (res == NDIS_STATUS_INVALID_DATA)
 	{
 		WARNING("setting power mode failed (%08X)", res);
 		return -EINVAL;
@@ -961,7 +951,7 @@ static int iw_get_power_mode(struct net_device *dev,
 	int res, power_mode;
 
 	res = query_int(handle, NDIS_OID_POWER_MODE, &power_mode);
-	if (res)
+	if (res == NDIS_STATUS_NOT_SUPPORTED)
 	{
 		WARNING("getting power mode failed (%08X)", res);
 		return -EOPNOTSUPP;
@@ -1246,7 +1236,7 @@ static int wpa_set_key(struct net_device *dev, struct iw_request_info *info,
 		res = dosetinfo(handle, NDIS_OID_REMOVE_KEY,
 				(char *)&ndis_remove_key,
 				sizeof(ndis_remove_key), &written, &needed);
-		if (res)
+		if (res == NDIS_STATUS_INVALID_DATA)
 		{
 			DBGTRACE("removing key failed with %08X, %d, %d",
 			       res, needed, sizeof(ndis_remove_key));
@@ -1338,7 +1328,7 @@ static int wpa_set_key(struct net_device *dev, struct iw_request_info *info,
 
 	res = dosetinfo(handle, NDIS_OID_ADD_KEY, (char *)&ndis_key,
 			ndis_key.struct_size, &written, &needed);
-	if (res)
+	if (res == NDIS_STATUS_INVALID_DATA)
 	{
 		DBGTRACE("adding key failed (%08X), %d, %d, %lu",
 			 res, written, needed, ndis_key.struct_size);
@@ -1443,20 +1433,14 @@ static int wpa_deauthenticate(struct net_device *dev,
 
 int set_priv_filter(struct ndis_handle *handle, int flags)
 {
-	int i, res;
+	int res;
 
 	TRACEENTER("filter: %d", flags);
-	/* first check if this oid is supported;
-	 * not all drivers seem to support it.
-	 */
-	if (query_int(handle, NDIS_OID_PRIVACY_FILTER, &i))
-		TRACEEXIT(return 0);
-		
 	res = set_int(handle, NDIS_OID_PRIVACY_FILTER, flags);
-	if (res)
+	if (res == NDIS_STATUS_INVALID_DATA)
 	{
-		WARNING("setting privacy filter from %d to %d failed"
-			" (%08X)", i, flags, res);
+		WARNING("setting privacy filter to %d failed (%08X)",
+			flags, res);
 		TRACEEXIT(return -EINVAL);
 	}
 	TRACEEXIT(return 0);
