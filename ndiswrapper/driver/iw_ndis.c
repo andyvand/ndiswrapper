@@ -1298,6 +1298,7 @@ static int wpa_set_key(struct net_device *dev, struct iw_request_info *info,
 		else
 			memset(&ndis_remove_key.bssid, 0xff, ETH_ALEN);
 		/* TI drivers don't like deleting already deleted keys */
+#if 0
 		if (handle->encr_info.keys[wpa_key.key_index].length > 0)
 		{
 			res = dosetinfo(handle, NDIS_OID_REMOVE_KEY,
@@ -1310,6 +1311,7 @@ static int wpa_set_key(struct net_device *dev, struct iw_request_info *info,
 				TRACEEXIT(return -EINVAL);
 			}
 		}
+#endif
 		if (wpa_key.key_index >= 0 &&
 		    wpa_key.key_index < MAX_ENCR_KEYS)
 		{
@@ -1439,6 +1441,8 @@ static int wpa_disassociate(struct net_device *dev,
 
 	/* we set an impossible essid to disassociate - see note in
 	 * iw_set_essid; setting an empty essid doesn't disassociate */
+	set_auth_mode(handle, AUTHMODE_OPEN);
+	set_encr_mode(handle, ENCR_DISABLED);
 	set_essid(handle, " ", 1);
 	get_ap_address(handle, ap_addr);
 	DBGTRACE("bssid " MACSTR, MAC2STR(ap_addr));
@@ -1452,7 +1456,7 @@ static int wpa_associate(struct net_device *dev,
 	struct ndis_handle *handle = (struct ndis_handle *)dev->priv;
 	struct wpa_assoc_info wpa_assoc_info;
 	char ssid[NDIS_ESSID_MAX_SIZE];
-	int auth_mode, encr_mode;
+	int i, auth_mode, encr_mode;
 	
 	TRACEENTER("%s", "");
 	copy_from_user(&wpa_assoc_info, wrqu->data.pointer,
@@ -1513,6 +1517,22 @@ static int wpa_associate(struct net_device *dev,
 		TRACEEXIT(return -EINVAL);
 
 	if (set_essid(handle, ssid, wpa_assoc_info.ssid_len))
+		TRACEEXIT(return -EINVAL);
+
+	for (i = 0; i < (sizeof(freq_chan)/sizeof(freq_chan[0])); i++)
+	{
+		if (wpa_assoc_info.freq == freq_chan[i])
+		{
+			union iwreq_data freq_req;
+
+			memset(&freq_req, 0, sizeof(freq_req));
+			freq_req.freq.m = i;
+			if (iw_set_freq(dev, NULL, &freq_req, NULL))
+				TRACEEXIT(return -EINVAL);
+		}
+	}
+
+	if (set_auth_mode(handle, auth_mode))
 		TRACEEXIT(return -EINVAL);
 
 	TRACEEXIT(return 0);
