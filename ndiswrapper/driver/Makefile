@@ -37,13 +37,15 @@ winsyms.o:	winsyms.c ndis.h
 
 misc_funcs.o:	misc_funcs.c ndis.h
 
+ntoskernel.o: ntoskernel.c ntoskernel.h ndis.h
+
 ndis.o:	ndis.c ndis.h
 
 proc.o : proc.c ndis.h
 
 divdi3.o: divdi3.c longlong.h
 
-OBJS   := wrapper.o loader.o winsyms.o ndis.o misc_funcs.o proc.o divdi3.o
+OBJS   := wrapper.o loader.o winsyms.o ntoskernel.o ndis.o misc_funcs.o proc.o divdi3.o
 
 ifdef DEBUG
 CFLAGS += -DDEBUG -g

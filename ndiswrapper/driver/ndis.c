@@ -26,61 +26,9 @@
 #include "ndis.h"
 #include "ntoskernel.h"
 
-#if LINUX_VERSION_CODE <= KERNEL_VERSION(2,6,0)
-#undef __wait_event_interruptible_timeout
-#undef wait_event_interruptible_timeout
-#define __wait_event_interruptible_timeout(wq, condition, ret)		\
-do {									\
-	wait_queue_t __wait;						\
-	init_waitqueue_entry(&__wait, current);				\
-									\
-	add_wait_queue(&wq, &__wait);					\
-	for (;;) {							\
-		set_current_state(TASK_INTERRUPTIBLE);			\
-		if (condition)						\
-			break;						\
-		if (!signal_pending(current)) {				\
-			ret = schedule_timeout(ret);			\
-			if (!ret)					\
-				break;					\
-			continue;					\
-		}							\
-		ret = -ERESTARTSYS;					\
-		break;							\
-	}								\
-	current->state = TASK_RUNNING;					\
-	remove_wait_queue(&wq, &__wait);				\
-} while (0)
-
-#define wait_event_interruptible_timeout(wq, condition, timeout)	\
-({									\
-	long __ret = timeout;						\
-	if (!(condition))						\
-		__wait_event_interruptible_timeout(wq, condition, __ret); \
-	__ret;								\
-})
-#endif
-
 extern int image_offset;
 
 extern struct list_head ndis_driverlist;
-
-int getSp(void)
-{
-	volatile int i;
-	asm("movl %esp,(%esp,1)");
-	return i;
-}
-
-void inline my_dumpstack(void)
-{
-	int *sp = (int*) getSp();
-	int i;
-	for(i = 0; i < 20; i++)
-	{
-		printk("%08x\n", sp[i]);
-	}
-}
 
 /*
  * 
@@ -133,7 +81,6 @@ STDCALL int NdisMRegisterMiniport(struct ndis_driver *ndis_driver,
 }
 
 
-#define VMALLOC_THRESHOLD 65536
 /*
  * Allocate mem.
  *
@@ -220,20 +167,6 @@ STDCALL void NdisCloseConfiguration(void *confhandle)
 {
 	DBGTRACE("%s: confhandle: %08x\n", __FUNCTION__, (int) confhandle);
 }
-
-static int my_strcasecmp(char *s1, char *s2)
-{
-	int ret = 0;
-	int len = min(strlen(s1), strlen(s2));
-
-	while (!ret && len--)
-		ret = toupper(*s1++) - toupper(*s2++);
-
-	if (!ret)
-		ret = strlen(s1) - strlen(s2);
-	return ret;
-}
-
 
 STDCALL void NdisOpenFile(unsigned int *status,
 			  struct ndis_file **filehandle,
@@ -1363,39 +1296,6 @@ STDCALL void NdisIndicateStatusComplete(struct ndis_handle *handle)
 	DBGTRACE("%s\n", __FUNCTION__);
 }
 
-
-/*
- * This is the packet_recycler that gets scheduled from NdisMIndicateReceivePacket
- */
-void packet_recycler(void *param)
-{
-	struct ndis_handle *handle = (struct ndis_handle*) param;
-
-	DBGTRACE("%s Packet recycler running\n", __FUNCTION__);
-	while(1)
-	{
-		struct ndis_packet * packet;
-
-		spin_lock(&handle->recycle_packets_lock);
-		packet = 0;
-		if(!list_empty(&handle->recycle_packets))
-		{
-			packet = (struct ndis_packet*) handle->recycle_packets.next;
-
-			list_del(handle->recycle_packets.next);
-			DBGTRACE("%s Picking packet at %p!\n", __FUNCTION__, packet);
-			packet = (struct ndis_packet*) ((char*)packet - ((char*) &packet->recycle_list - (char*) &packet->nr_pages));
-		}
-
-		spin_unlock(&handle->recycle_packets_lock);
-		
-		if(!packet)
-			break;
-
-		handle->driver->miniport_char.return_packet(handle->adapter_ctx,  packet);
-	}
-}
-
 /*
  *
  *
@@ -1510,13 +1410,6 @@ STDCALL void NdisMSleep(unsigned long us_to_sleep)
 
 STDCALL void NdisGetCurrentSystemTime(u64 *time)
 {
-#define TICKSPERSEC             10000000
-#define SECSPERDAY              86400
- 
-/* 1601 to 1970 is 369 years plus 89 leap days */
-#define SECS_1601_TO_1970       ((369 * 365 + 89) * (u64)SECSPERDAY)
-#define TICKS_1601_TO_1970      (SECS_1601_TO_1970 * TICKSPERSEC)
-
 	struct timeval now;
 	u64 t;
  
@@ -1877,6 +1770,37 @@ NdisMCompleteBufferPhysicalMapping(struct ndis_handle *handle,
 	handle->map_dma_addr[phy_map_reg] = 0;
 }
 
+STDCALL int NdisMRegisterDevice(struct ndis_handle *handle,
+				struct ustring *dev_name,
+				struct ustring *sym_name,
+				void **funcs, void *dev_object,
+				struct ndis_handle **dev_handle)
+{
+	DBGTRACE("%s: %p, %p\n", __FUNCTION__, *dev_handle, handle);
+	*dev_handle = handle;
+	return NDIS_STATUS_SUCCESS;
+}
+
+STDCALL int NdisMDeregisterDevice(struct ndis_handle *handle)
+{
+	return NDIS_STATUS_SUCCESS;
+}
+
+STDCALL void NdisCancelTimer(struct ndis_timer **timer, char *cancelled)
+{
+	NdisMCancelTimer(timer, cancelled);
+}
+
+STDCALL void NdisInitializeTimer(struct ndis_timer **timer,
+								 void *func, void *ctx)
+{
+	DBGTRACE("%s(entry): %p, %p, %p\n",
+			 __FUNCTION__, timer, func, ctx);
+	NdisMInitializeTimer(timer, NULL, func, ctx);
+	DBGTRACE("%s(exit): %p, %p, %p\n",
+			 __FUNCTION__, timer, func, ctx);
+}
+
 STDCALL void NdisMGetDeviceProperty(struct ndis_handle handle,
 				    void **phy_dev, void **func_dev,
 				    void **next_dev,
@@ -1909,4 +1833,5 @@ STDCALL void NdisMSetAttributes(void){UNIMPL();}
 STDCALL void EthFilterDprIndicateReceiveComplete(void){UNIMPL();}
 STDCALL void EthFilterDprIndicateReceive(void){UNIMPL();}
 STDCALL void NdisMPciAssignResources(void){UNIMPL();}
+STDCALL void NdisMRemoveMiniport(void) { UNIMPL(); }
 

@@ -14,6 +14,8 @@
 #ifndef _NTOSKERNEL_H_
 #define _NTOSKERNEL_H_
 
+#include "ndis.h"
+
 #define DISPATCH_LEVEL 2
 
 struct slist_entry
@@ -69,8 +71,6 @@ struct ktimer
 typedef STDCALL void *LOOKASIDE_ALLOC_FUNC(POOL_TYPE, unsigned long, unsigned long);
 typedef STDCALL void LOOKASIDE_FREE_FUNC(void *);
 
-#define _FASTCALL __attribute__((__stdcall__)) __attribute__((regparm (3)))
-
 struct packed npaged_lookaside_list {
 	union slist_head head;
 	unsigned short depth;
@@ -97,5 +97,4 @@ struct wrapper_alloc
 	struct wrapper_alloc *next;
 };
 
-void wrapper_kfree_all(void);
 #endif // _NTOSKERNEL_H_

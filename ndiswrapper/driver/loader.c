@@ -20,6 +20,7 @@
 #include "coffpe.h"
 #include "winsyms.h"
 #include "ndis.h"
+#include "ntoskernel.h"
 
 #define RADR(base, rva, type) (type) ((char*)base + rva)
 
