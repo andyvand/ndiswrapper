@@ -497,8 +497,7 @@ static int iw_set_ap_address(struct net_device *dev,
 
         memcpy(ap_addr, wrqu->ap_addr.sa_data, ETH_ALEN);
 	DBGTRACE1(MACSTR, MAC2STR(ap_addr));
-	res = miniport_set_info(handle, OID_802_11_BSSID,
-				ap_addr, ETH_ALEN);
+	res = miniport_set_info(handle, OID_802_11_BSSID, ap_addr, ETH_ALEN);
 
 	if (res) {
 		WARNING("setting AP mac address failed (%08X)", res);

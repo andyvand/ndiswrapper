@@ -356,8 +356,8 @@ int wrapper_set_timer(struct wrapper_timer *timer, unsigned long expires,
 {
 	TRACEENTER5("%p", timer);
 	if (!timer) {
-		ERROR("%s", "invalid timer");
-		return 0;
+		ERROR("invalid timer");
+		return FALSE;
 	}
 
 #ifdef DEBUG_TIMER
@@ -379,7 +379,7 @@ int wrapper_set_timer(struct wrapper_timer *timer, unsigned long expires,
 			  timer, expires, repeat);
 		mod_timer(&timer->timer, expires);
 		spin_unlock_bh(&timer->lock);
-		TRACEEXIT5(return 1);
+		TRACEEXIT5(return TRUE);
 	} else {
 		DBGTRACE4("setting timer %p to %lu, %lu",
 			  timer, expires, repeat);
@@ -387,7 +387,7 @@ int wrapper_set_timer(struct wrapper_timer *timer, unsigned long expires,
 		timer->active = 1;
 		add_timer(&timer->timer);
 		spin_unlock_bh(&timer->lock);
-		TRACEEXIT5(return 0);
+		TRACEEXIT5(return FALSE);
 	}
 }
 
@@ -532,6 +532,12 @@ NOREGPARM void *WRAP_EXPORT(_win_strcpy)
 	(void *to, const void *from)
 {
 	return strcpy(to, from);
+}
+
+NOREGPARM char *WRAP_EXPORT(_win_strstr)
+	(const char *s1, const char *s2)
+{
+	return strstr(s1, s2);
 }
 
 NOREGPARM void *WRAP_EXPORT(_win_memset)

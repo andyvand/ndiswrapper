@@ -42,31 +42,13 @@ void ntoskrnl_exit(void)
 
 WRAP_EXPORT_MAP("KeTickCount", &jiffies);
 
-STDCALL void WRAP_EXPORT(WRITE_REGISTER_ULONG)
-	(void *reg, UINT val)
-{
-	writel(val, reg);
-}
-
-STDCALL void WRAP_EXPORT(WRITE_REGISTER_USHORT)
-	(void *reg, USHORT val)
-{
-	writew(val, reg);
-}
-
-STDCALL void WRAP_EXPORT(WRITE_REGISTER_UCHAR)
-	(void *reg, UCHAR val)
-{
-	writeb(val, reg);
-}
-
 STDCALL void WRAP_EXPORT(KeInitializeTimer)
 	(struct ktimer *ktimer)
 {
 	TRACEENTER4("%p", ktimer);
 
 	wrapper_init_timer(ktimer, NULL);
-	ktimer->dispatch_header.signal_state = 0;
+	ktimer->dispatch_header.signal_state = FALSE;
 }
 
 STDCALL void WRAP_EXPORT(KeInitializeDpc)
@@ -1202,6 +1184,15 @@ STDCALL void WRAP_EXPORT(MmUnmapLockedPages)
 	(void *base, struct mdl *mdl)
 {
 	return;
+}
+
+STDCALL BOOLEAN WRAP_EXPORT(MmIsAddressValid)
+	(void *virt_addr)
+{
+	if (virt_addr_valid(virt_addr))
+		return TRUE;
+	else
+		return FALSE;
 }
 
 _FASTCALL void WRAP_EXPORT(ObfDereferenceObject)

@@ -22,6 +22,12 @@
 #define NDIS_DMA_32BITS 1
 #define NDIS_DMA_64BITS 2
 
+#ifdef CONFIG_X86_64
+#define MAXIMUM_PROCESSORS  64
+#else
+#define MAXIMUM_PROCESSORS  32
+#endif
+
 typedef UINT NDIS_STATUS;
 typedef UCHAR NDIS_DMA_SIZE;
 typedef LONG ndis_rssi;
@@ -318,6 +324,22 @@ struct miniport_char {
 struct ndis_spinlock {
 	KSPIN_LOCK klock;
 	KIRQL use_bh;
+};
+
+union ndis_rw_lock_refcount {
+	UINT ref_count;
+	UCHAR cache_line[16];
+};
+
+struct ndis_rw_lock {
+	union {
+		struct {
+			KSPIN_LOCK klock;
+			void *context;
+		} s;
+		UCHAR reserved[16];
+	} u;
+    union ndis_rw_lock_refcount ref_count[MAXIMUM_PROCESSORS];
 };
 
 struct handle_ctx_entry {
