@@ -1886,8 +1886,9 @@ static int __init wrapper_init(void)
 		ERROR("loadndiswrapper failed (%d)", err);
 		ndiswrapper_procfs_remove();
 		misc_deregister(&wrapper_misc);
+		return -ENOEXEC;
 	}
-	return err;
+	return 0;
 }
 
 static void __exit wrapper_exit(void)
