@@ -4,7 +4,7 @@ distdir=ndiswrapper-${DRV_VERSION}
 distarchive=${distdir}.tar.gz
 
 DISTFILES=AUTHORS ChangeLog INSTALL Makefile README ndiswrapper.spec.in version
-DIST_SUBDIRS=utils driver
+DIST_SUBDIRS=utils driver debian
 
 .PHONY: all
 
@@ -43,6 +43,7 @@ dist:
  	
 	make -C driver distdir=../${distdir}/driver dist
 	make -C utils distdir=../${distdir}/utils dist
+	make -C debian distdir=../${distdir}/debian dist
 	tar cfz ${distarchive} ${distdir}
 	
 rpm: dist ndiswrapper.spec.in
@@ -56,7 +57,6 @@ rpm: dist ndiswrapper.spec.in
 
 deb: dist
 	@if [ -d debian ]; then \
-		cd $(distdir); cp -a ../debian .; \
 		echo -e "ndiswrapper (${DRV_VERSION}) unstable; urgency=low\n\n  * see ChangeLog for details\n\n -- NdisWrapper Team <ndiswrapper-general@lists.sourceforge.net>  `date '+%a, %d %b %Y %H:%M:%S %z'`" > debian/changelog; \
 		fakeroot make -f debian/rules binary; \
 	else \
