@@ -1135,11 +1135,11 @@ static void wrapper_worker_proc(void *param)
 			return;
 		}
 
-		kfree(wpa_assoc_info);
-		kfree(assoc_info);
-
 		wireless_send_event(handle->net_dev, IWEVCUSTOM, &wrqu,
 				    wpa_assoc_info);
+
+		kfree(wpa_assoc_info);
+		kfree(assoc_info);
 
 		get_ap_address(handle, (char *)&wrqu.ap_addr.sa_data);
 		wrqu.ap_addr.sa_family = ARPHRD_ETHER;
