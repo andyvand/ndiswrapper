@@ -687,8 +687,10 @@ STDCALL static void WRAP_EXPORT(NdisMSetAttributesEx)
 	if (attributes & NDIS_ATTRIBUTE_BUS_MASTER)
 		pci_set_master(handle->dev.pci);
 
-	if (!(attributes & NDIS_ATTRIBUTE_DESERIALIZE))
+	if (!(attributes & NDIS_ATTRIBUTE_DESERIALIZE)) {
+		DBGTRACE2("serialized driver");
 		set_bit(ATTR_SERIALIZED, &handle->attributes);
+	}
 
 	if (attributes & NDIS_ATTRIBUTE_SURPRISE_REMOVE_OK)
 		set_bit(ATTR_SURPRISE_REMOVE, &handle->attributes);
@@ -1537,40 +1539,31 @@ NdisMIndicateReceivePacket(struct ndis_handle *handle,
 		} else
 			handle->stats.rx_dropped++;
 
-		/* The driver normally sets status field to
-		 * NDIS_STATUS_SUCCESS which means a normal packet
-		 * delivery. We should then change status to
-		 * NDIS_STATUS_PENDING meaning that we now own the
-		 * package that we'll call the return_packet handler
-		 * later when the packet is processed.
-		 *
-		 * Since we always make a copy of the packet here it
-		 * would be tempting to call the return_packet from
-		 * here but we cannot to this because some some
-		 * drivers gets confused by this. The centrino driver
-		 * for example calls this function with a spinlock
-		 * held and when calling return_packet it tries to
-		 * take the same lock again leading to an instant
-		 * lockup on SMP.
-		 *
-		 * If status is NDIS_STATUS_RESOURCES it means that
-		 * the driver is running out of packets and expects us
-		 * to copy the packet and then set status to
-		 * NDIS_STATUS_SUCCESS and not call the return_packet
-		 * handler later.
-		 */
-
-		if (packet->status == NDIS_STATUS_RESOURCES) {
-			/* Signal the driver that we did not take
-			 * ownership of the packet. */
+		/* serialized drivers check the status upon return
+		 * from this function */
+		if (test_bit(ATTR_SERIALIZED, &handle->attributes)) {
 			packet->status = NDIS_STATUS_SUCCESS;
-			DBGTRACE3("%s", "Low on resources");
+			TRACEEXIT3(return);
+		}
+
+		/* if a deserialized driver sets
+		 * NDIS_STATUS_RESOURCES, then it reclaims the packet
+		 * upon return from this function: it doesn't matter
+		 * what value we set in the status */
+		if (packet->status == NDIS_STATUS_RESOURCES) {
+			packet->status = NDIS_STATUS_SUCCESS;
+			DBGTRACE3("low on resources");
 		} else {
 			if (packet->status != NDIS_STATUS_SUCCESS)
 				WARNING("invalid packet status %08X",
 					packet->status);
-			/* Signal the driver that we took ownership of
-			 * the packet and will call return_packet later
+			/* deserialized driver doesn't check the
+			 * status upon return from this function; we
+			 * need to call MiniportReturnPacket later for
+			 * this packet. Calling MiniportReturnPacket
+			 * from here is not correct - the driver
+			 * doesn't expect it (at least Centrino driver
+			 * crashes)
 			 */
 			packet->status = NDIS_STATUS_PENDING;
 			ndis_work_entry = kmalloc(sizeof(*ndis_work_entry),
