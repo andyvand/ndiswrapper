@@ -25,10 +25,17 @@
 #include <linux/pm.h>
 #include <linux/delay.h>
 #include <linux/mm.h>
+#include <linux/random.h>
+#include <linux/ctype.h>
 #include <asm/mman.h>
 
 #include <linux/version.h>
 #define DRV_NAME "ndiswrapper"
+
+#define STDCALL __attribute__((__stdcall__, regparm(0)))
+#define NOREGPARM __attribute__((regparm(0)))
+#define packed __attribute__((packed))
+#define _FASTCALL __attribute__((__stdcall__)) __attribute__((regparm (3)))
 
 /* Workqueue / task queue backwards compatibility stuff */
 #if LINUX_VERSION_CODE > KERNEL_VERSION(2,5,41)
@@ -58,18 +65,20 @@
 #endif
 
 
-#define STDCALL __attribute__((__stdcall__, regparm(0)))
-#define NOREGPARM __attribute__((regparm(0)))
-#define packed __attribute__((packed))
-
-int getSp(void);
-
-
 #ifdef DEBUG
 #define DBGTRACE(s, args...) printk(s, args)
 #else
 #define DBGTRACE(s, ...)
 #endif
+
+#define VMALLOC_THRESHOLD 65536
+
+#define TICKSPERSEC             10000000
+#define SECSPERDAY              86400
+ 
+/* 1601 to 1970 is 369 years plus 89 leap days */
+#define SECS_1601_TO_1970       ((369 * 365 + 89) * (u64)SECSPERDAY)
+#define TICKS_1601_TO_1970      (SECS_1601_TO_1970 * TICKSPERSEC)
 
 struct packed ndis_scatterentry
 {
@@ -566,22 +575,26 @@ struct list_scan
 
 
 void ndis_sendpacket_done(struct ndis_handle *handle, struct ndis_packet *packet);
-
-
-
 void NdisMIndicateReceivePacket(struct ndis_handle *handle, struct ndis_packet **packets, unsigned int nr_packets) STDCALL;
 void NdisMSendComplete(struct ndis_handle *handle, struct ndis_packet *packet, unsigned int status) STDCALL;
 void NdisIndicateStatus(struct ndis_handle *handle, unsigned int status, void *buf, unsigned int len) STDCALL;
 void NdisIndicateStatusComplete(struct ndis_handle *handle) STDCALL;
 void NdisMQueryInformationComplete(struct ndis_handle *handle, unsigned int status) STDCALL;
 void NdisMSetInformationComplete(struct ndis_handle *handle, unsigned int status) STDCALL;
+
 int RtlUnicodeStringToAnsiString(struct ustring *dst, struct ustring *src, unsigned int dup) STDCALL;
 int RtlAnsiStringToUnicodeString(struct ustring *dst, struct ustring *src, unsigned int dup) STDCALL;
+int my_strcasecmp(char *s1, char *s2);
+int getSp(void);
+
+void *wrapper_kmalloc(size_t size, int flags);
+void wrapper_kfree_all(void);
 
 int ndiswrapper_procfs_init(void);
 int ndiswrapper_procfs_add_iface(struct ndis_handle *handle);
 void ndiswrapper_procfs_remove_iface(struct ndis_handle *handle);
 void ndiswrapper_procfs_remove(void);
+
 int doquery(struct ndis_handle *handle, unsigned int oid, char *buf, int bufsize, unsigned int *written , unsigned int *needed);
 int query_int(struct ndis_handle *handle, int oid, int *data);
 

@@ -34,10 +34,10 @@
 
 #include <asm/uaccess.h>
 
+#include "ntoskernel.h"
 #include "wrapper.h"
 #include "loader.h"
 #include "ndis.h"
-#include "ntoskernel.h"
 
 #ifndef DRV_VERSION
 #error You must run make from the toplevel directory
