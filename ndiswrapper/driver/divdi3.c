@@ -19,6 +19,7 @@
    02111-1307 USA.  */
 
 #include <linux/module.h>
+#include <linux/kernel.h>
 
 #if BITS_PER_LONG != 32
 #error This is for 32-bit targets only
