@@ -178,11 +178,13 @@ typedef task_queue workqueue;
 })
 #endif
 
+#ifndef in_atomic
 #ifdef CONFIG_PREEMPT
 #define in_atomic() ((preempt_get_count() & ~PREEMPT_ACTIVE) != kernel_locked())
 #else
 #define in_atomic() (in_interrupt())
 #endif // CONFIG_PREEMPT
+#endif // in_atomic
 
 #define __GFP_NOWARN 0
 
