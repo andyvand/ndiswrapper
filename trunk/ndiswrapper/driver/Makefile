@@ -5,6 +5,7 @@ endif
 
 DISTFILES=Makefile \
  coffpe.h \
+ ndiswrapper.h \
  loader.c loader.h \
  ndis.c ndis.h \
  hal.c \
