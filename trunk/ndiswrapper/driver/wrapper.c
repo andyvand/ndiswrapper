@@ -28,6 +28,7 @@
 #include <linux/wireless.h>
 #include <linux/if_arp.h>
 #include <net/iw_handler.h>
+#include <linux/rtnetlink.h>
 
 #include <asm/uaccess.h>
 
@@ -45,6 +46,10 @@
 */
 
 /*#define DEBUG_CRASH_ON_INIT*/
+
+static char *dev_template = "eth%d";
+MODULE_PARM(dev_template, "s");
+MODULE_PARM_DESC(dev_template, "Prefix for network device name (default: eth%d)");
 
 /* List of loaded drivers */
 static LIST_HEAD(driverlist);
@@ -1153,7 +1158,20 @@ static int setup_dev(struct net_device *dev)
 	dev->mem_start = handle->mem_start;		
 	dev->mem_end = handle->mem_end;		
 
-	return register_netdev(dev);
+	if (strlen(dev_template) > IFNAMSIZ ||
+	    (strstr(dev_template, "%d") == NULL))
+	{
+		printk(KERN_ERR "%s: invalid dev_template '%s'\n",
+		       dev->name, dev_template);
+		return -1;
+	}
+	rtnl_lock();
+	res = dev_alloc_name(dev, dev_template);
+	rtnl_unlock();
+	if (res >= 0)
+		return register_netdev(dev);
+	else
+		return -1;
 }
 
 
