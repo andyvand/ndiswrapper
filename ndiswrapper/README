@@ -4,6 +4,7 @@
 1. Compile the driver
 ---------------------
 * You need a recent 2.6.0 or 2.4 kernel with source!
+* The driver has known problem with SMP and will not work reliably with it.
 
 Go to the driver directory and run
 
