@@ -512,7 +512,7 @@ do {							\
 #define kspin_lock(lock, newirql)					\
 ({									\
 	KIRQL _cur_irql_ = current_irql();				\
-	ULONG_PTR _val_ = *(lock);					\
+	KSPIN_LOCK _val_ = *(lock);					\
 	if (_val_ > KSPIN_LOCK_LOCKED)					\
 		ERROR("illegal spinlock: %p(%lu)", lock, _val_);	\
 	if (_cur_irql_ < DISPATCH_LEVEL && newirql == DISPATCH_LEVEL) {	\
@@ -526,7 +526,7 @@ do {							\
 #define kspin_unlock(lock, oldirql)					\
 do {									\
 	KIRQL _cur_irql_ = current_irql();				\
-	ULONG_PTR _val_ = *(lock);					\
+	KSPIN_LOCK _val_ = *(lock);					\
 	if (_val_ > KSPIN_LOCK_LOCKED)					\
 		ERROR("illegal spinlock: %p(%lu)", lock, _val_);	\
 	if (oldirql < DISPATCH_LEVEL && _cur_irql_ == DISPATCH_LEVEL) {	\
@@ -538,7 +538,7 @@ do {									\
 
 #define kspin_lock_irqsave(lock, flags)					\
 do {									\
-	ULONG_PTR _val_ = *(lock);					\
+	KSPIN_LOCK _val_ = *(lock);					\
 	if (_val_ > KSPIN_LOCK_LOCKED)					\
 		ERROR("illegal spinlock: %p(%lu)", lock, _val_);	\
 	local_irq_save(flags);						\
@@ -548,7 +548,7 @@ do {									\
 
 #define kspin_unlock_irqrestore(lock, flags)				\
 do {									\
-	ULONG_PTR _val_ = *(lock);					\
+	KSPIN_LOCK _val_ = *(lock);					\
 	if (_val_ > KSPIN_LOCK_LOCKED)					\
 		ERROR("illegal spinlock: %p(%lu)", lock, _val_);	\
 	_raw_kspin_unlock(lock);					\
