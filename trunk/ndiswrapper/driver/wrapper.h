@@ -16,7 +16,6 @@
 #define WRAPPER_H
 
 #include <linux/ioctl.h>
-#include <linux/list.h>
 
 #define DRIVERNAME_MAX 32
 
