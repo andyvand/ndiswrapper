@@ -14,6 +14,9 @@ loadndisdriver: $(OBJS) ../driver/wrapper.h
 clean:
 	rm -f *~ *.o loadndisdriver
 
+distclean: clean
+	rm -f .\#*
+
 install: all
 	install -m 755 loadndisdriver /sbin
 	install -m 755 ndiswrapper /usr/sbin

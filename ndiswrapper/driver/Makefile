@@ -129,7 +129,7 @@ clean:
 	   ndiswrapper.mod.[oc] *~ .tmp_versions
 
 distclean: clean
-	rm -f *_exports.h
+	rm -f *_exports.h .\#*
 
 ifeq ($(KPSUB),24)
 MODULE := ndiswrapper.o
