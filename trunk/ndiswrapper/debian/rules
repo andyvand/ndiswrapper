@@ -12,10 +12,6 @@
 # This has to be exported to make some magic below work.
 export DH_OPTIONS
 
-
-
-CFLAGS = -Wall
-
 KVERS ?= $(shell uname -r)
 KSRC ?= /lib/modules/$(KVERS)/build
 kplevel := $(shell echo $(KVERS) | sed 's/[^\.]*\.\([^\.]*\)\..*/\1/')
@@ -23,8 +19,8 @@ MODDIR = ..
 
 NDISSRC = $(shell pwd)
 NDISVERS = $(shell cat $(NDISSRC)/version)
-KMAINT = giri
-KEMAIL = ndiswrapper-general@lists.sourceforge.net
+MAINT = Giridhar Pemmasani
+MAINTEMAIL = ndiswrapper-general@lists.sourceforge.net
 DRIVERSRC = $(NDISSRC)/driver
 UTILSSRC = $(NDISSRC)/utils
 
@@ -40,18 +36,24 @@ kdist_clean: clean-module
 
 ### end  KERNEL SETUP
 
-clean: clean-utils
+clean: clean-module clean-utils
+
+clean-module: build-module-prep
+	echo "$(NDISSRC)"
+	-$(MAKE) -C $(DRIVERSRC) clean
+	-rm -f debian/ndiswrapper-module-$(KVERS).install
+	dh_clean
 
 check-perms:
 	dh_testdir
 	dh_testroot
 
 clean-utils: build-utils-prep
-	-$(MAKE) -C utils clean
+	-$(MAKE) -C $(UTILSSRC) clean
 	dh_clean
 
 build-module-prep:
-	sed -e 's/#KVERS#/$(KVERS)/g' -e 's/#NDISVERS#/$(NDISVERS)/g' -e 's/#DATE#/'"`date --rfc-822`"'/g' -e 's/#MAINT#/$(KMAINT) <$(KEMAIL)>/g' debian/changelog.template > debian/changelog
+	sed -e 's/#KVERS#/$(KVERS)/g' -e 's/#NDISVERS#/$(NDISVERS)/g' -e 's/#DATE#/'"`date --rfc-822`"'/g' -e 's/#MAINT#/$(MAINT) <$(MAINTEMAIL)>/g' debian/changelog.template > debian/changelog
 	sed -e 's/#KVERS#/$(KVERS)/' -e 's/#NDISVERS#/$(NDISVERS)/' \
 		debian/control.module > debian/control
 
@@ -99,7 +101,7 @@ common-epilog:
 	dh_md5sums
 
 build-utils-prep:
-	sed -e 's/-#KVERS#//g' -e 's/#NDISVERS#/$(NDISVERS)/g' -e 's/#DATE#/'"`date --rfc-822`"'/g' -e 's/#MAINT#/$(KMAINT) <$(KEMAIL)>/g' debian/changelog.template > debian/changelog
+	sed -e 's/-#KVERS#//g' -e 's/#NDISVERS#/$(NDISVERS)/g' -e 's/#DATE#/'"`date --rfc-822`"'/g' -e 's/#MAINT#/$(MAINT) <$(MAINTEMAIL)>/g' debian/changelog.template > debian/changelog
 	sed -e 's/#NDISVERS#/$(NDISVERS)/' debian/control.utils > debian/control
 	cp debian/dirs.utils debian/dirs
 
