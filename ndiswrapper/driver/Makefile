@@ -16,7 +16,7 @@ DISTFILES=Makefile \
  wrapper.c wrapper.h \
  proc.c misc_funcs.c \
  divdi3.c longlong.h \
- usb.c
+ usb.h usb.c
 
 
 ifndef KVER
