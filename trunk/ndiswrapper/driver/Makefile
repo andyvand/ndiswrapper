@@ -8,9 +8,7 @@ DISTFILES=Makefile \
  loader.c loader.h \
  ndis.c ndis.h \
  ntoskernel.c ntoskernel.h \
- hal.c \
  iw_ndis.c iw_ndis.h \
- winsyms.c winsyms.h \
  wrapper.c wrapper.h \
  proc.c misc_funcs.c \
  divdi3.c longlong.h
@@ -42,13 +40,9 @@ iw_ndis..o:	iw_ndis.c iw_ndis.h
 
 loader.o:	loader.c loader.h ndis.h
 
-winsyms.o:	winsyms.c winsyms.h ndis.h
-
 misc_funcs.o:	misc_funcs.c ndis.h
 
 ntoskernel.o: ntoskernel.c ntoskernel.h
-
-hal.o:		hal.c ndis.h
 
 ndis.o:	ndis.c ndis.h
 
@@ -62,7 +56,7 @@ ndis.h : ntoskernel.h
 
 ntoskernel.h : ndiswrapper.h
 
-OBJS   := wrapper.o iw_ndis.o loader.o winsyms.o ntoskernel.o ndis.o misc_funcs.o proc.o divdi3.o hal.o
+OBJS   := wrapper.o iw_ndis.o loader.o ntoskernel.o ndis.o misc_funcs.o proc.o divdi3.o 
 
 ifdef DEBUG
 CFLAGS += -DDEBUG -g -DDEBUG_TIMER
