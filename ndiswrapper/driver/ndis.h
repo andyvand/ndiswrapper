@@ -103,6 +103,9 @@ struct packed ndis_packet
 	struct ndis_scatterlist scatterlist;
 	dma_addr_t dataphys;
 	struct list_head recycle_list;
+	unsigned char header[ETH_HLEN];
+	unsigned char *look_ahead;
+	unsigned int look_ahead_size;
 };
 
 
@@ -151,7 +154,12 @@ struct miniport_char
 				unsigned int buflen, unsigned int *written,
 				unsigned int *needed) STDCALL;
 
-	void *tx_data;
+	/* transfer data from received packet */
+	unsigned int (*tx_data)(struct ndis_packet *ndis_packet,
+				unsigned int *bytes_txed,
+				void *adapter_ctx, void *rx_ctx,
+				unsigned int offset,
+				unsigned int bytes_to_tx) STDCALL;
 
 	/* upper layer is done with RX packet */
 	void (*return_packet)(void *ctx, void *packet) STDCALL;
@@ -789,6 +797,10 @@ STDCALL void EthRxIndicateHandler(void *adapter_ctx, void *rx_ctx,
 				  u32 look_aheader_size, u32 packet_size);
 STDCALL void EthRxComplete(struct ndis_handle *handle);
 void free_handle_ctx(struct ndis_handle *handle);
+STDCALL void NdisMTransferDataComplete(struct ndis_handle *handle,
+				       struct ndis_packet *packet,
+				       unsigned int status,
+				       unsigned int bytes_txed);
 
 STDCALL int RtlUnicodeStringToAnsiString(struct ustring *dst,
 					 struct ustring *src,
