@@ -48,8 +48,6 @@
    you can try again.
 */
 
-/*#define DEBUG_CRASH_ON_INIT*/
-
 static char *if_name = "wlan%d";
 int proc_uid, proc_gid;
 static int hangcheck_interval;
@@ -232,7 +230,7 @@ int miniport_query_int(struct ndis_handle *handle, int oid, int *data)
 /* Set an int */
 int miniport_set_int(struct ndis_handle *handle, int oid, int data)
 {
-	return miniport_set_info(handle, oid, (char*)&data, sizeof(int));
+	return miniport_set_info(handle, oid, (char *)&data, sizeof(int));
 }
 
 #ifdef HAVE_ETHTOOL
@@ -360,6 +358,7 @@ static void stats_proc(unsigned long data)
 	set_bit(COLLECT_STATS, &handle->wrapper_work);
 	schedule_work(&handle->wrapper_worker);
 	handle->stats_timer.expires = jiffies + 2 * HZ;
+	add_timer(&handle->stats_timer);
 }
 
 static void stats_timer_add(struct ndis_handle *handle)
@@ -695,6 +694,7 @@ int ndis_suspend_pci(struct pci_dev *pdev, u32 state)
 
 	DBGTRACE2("irql: %d", KeGetCurrentIrql());
 	DBGTRACE2("%s: detaching device", dev->name);
+	netif_stop_queue(dev);
 	netif_device_detach(dev);
 	hangcheck_del(handle);
 	stats_timer_del(handle);
@@ -729,7 +729,8 @@ int ndis_suspend_pci(struct pci_dev *pdev, u32 state)
 #else
 	pci_save_state(pdev, handle->pci_state);
 #endif
-	pci_set_power_state(pdev, state);
+	pci_disable_device(pdev);
+	pci_set_power_state(pdev, 3);
 
 	DBGTRACE2("%s: device suspended", dev->name);
 	return 0;
@@ -751,7 +752,7 @@ int ndis_resume_pci(struct pci_dev *pdev)
 	      test_bit(HW_HALTED, &handle->hw_status)))
 		return 0;
 
-	pci_set_power_state(pdev, 0);
+	pci_enable_device(pdev);
 #if LINUX_VERSION_CODE > KERNEL_VERSION(2,6,9)
 	pci_restore_state(pdev);
 #else
@@ -767,6 +768,7 @@ void ndis_remove_one(struct ndis_handle *handle)
 {
 	struct miniport_char *miniport = &handle->driver->miniport_char;
 
+	TRACEENTER1("%s", handle->net_dev->name);
 	ndiswrapper_procfs_remove_iface(handle);
 	stats_timer_del(handle);
 	hangcheck_del(handle);
@@ -804,7 +806,6 @@ void ndis_remove_one(struct ndis_handle *handle)
 
 	set_bit(SHUTDOWN, &handle->wrapper_work);
 
-#ifndef DEBUG_CRASH_ON_INIT
 	miniport_set_int(handle, NDIS_OID_DISASSOCIATE, 0);
 	miniport_halt(handle);
 
@@ -819,7 +820,6 @@ void ndis_remove_one(struct ndis_handle *handle)
 		kfree(handle->multicast_list);
 	if (handle->net_dev)
 		free_netdev(handle->net_dev);
-#endif
 }
 
 static void link_status_handler(struct ndis_handle *handle)
@@ -856,16 +856,12 @@ static void link_status_handler(struct ndis_handle *handle)
 		for (i = 0; i < MAX_ENCR_KEYS; i++)
 			handle->encr_info.keys[i].length = 0;
 
-		if (netif_carrier_ok(handle->net_dev))
-			netif_carrier_off(handle->net_dev);
 		memset(&wrqu, 0, sizeof(wrqu));
 		wrqu.ap_addr.sa_family = ARPHRD_ETHER;
 		wireless_send_event(handle->net_dev, SIOCGIWAP, &wrqu, NULL);
 		TRACEEXIT2(return);
 	}
 
-	if (!netif_carrier_ok(handle->net_dev))
-		netif_carrier_on(handle->net_dev);
 	if (!test_bit(CAPA_WPA, &handle->capa))
 		TRACEEXIT2(return);
 
@@ -1076,13 +1072,16 @@ static void wrapper_worker_proc(void *param)
 
 		if (!res) {
 			hangcheck_add(handle);
+			stats_timer_add(handle);
 			miniport_set_int(handle, NDIS_OID_BSSID_LIST_SCAN, 0);
 			set_bit(SET_ESSID, &handle->wrapper_work);
 			schedule_work(&handle->wrapper_worker);
 
-			netif_device_attach(net_dev);
+			if (netif_running(net_dev)) {
+				netif_device_attach(net_dev);
+				netif_start_queue(net_dev);
+			}
 
-			stats_timer_add(handle);
 			DBGTRACE2("%s: device resumed", net_dev->name);
 		}
 	}
@@ -1497,6 +1496,7 @@ static int __init wrapper_init(void)
 
 static void __exit wrapper_exit(void)
 {
+	TRACEENTER1("");
 	module_cleanup();
 }
 

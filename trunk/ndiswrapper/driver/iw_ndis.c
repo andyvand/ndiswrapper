@@ -1409,7 +1409,7 @@ static int wpa_associate(struct net_device *dev,
 	    wpa_assoc_info.key_mgmt_suite != KEY_MGMT_NONE)
 		TRACEEXIT(return -1);
 
-	switch (wpa_assoc_info.group_suite) {
+	switch (wpa_assoc_info.pairwise_suite) {
 	case CIPHER_CCMP:
 		if (!test_bit(CAPA_AES, &handle->capa))
 			TRACEEXIT(return -1);
