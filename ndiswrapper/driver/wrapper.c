@@ -288,6 +288,7 @@ void miniport_halt(struct ndis_handle *handle)
 	LIN2WIN1(miniport->halt, handle->adapter_ctx);
 
 	ndis_exit_handle(handle);
+	misc_funcs_exit_handle(handle);
 
 	if (handle->device->bustype == NDIS_PCI_BUS)
 		pci_set_power_state(handle->dev.pci, 3);

@@ -373,21 +373,6 @@ struct wrapper_timer {
 	struct wrap_spinlock lock;
 };
 
-int ntoskrnl_init(void);
-void ntoskrnl_exit(void);
-int load_pe_images(struct pe_image[], int n);
-
-int misc_funcs_init(void);
-void misc_funcs_exit(void);
-void *wrap_kmalloc(size_t size, int flags);
-void wrap_kfree(void *ptr);
-void wrap_kfree_all(void);
-
-void wrapper_init_timer(struct ktimer *ktimer, void *handle);
-int wrapper_set_timer(struct wrapper_timer *wrapper_timer,
-                      unsigned long expires, unsigned long repeat,
-                      struct kdpc *kdpc);
-void wrapper_cancel_timer(struct wrapper_timer *wrapper_timer, char *canceled);
 STDCALL void KeInitializeEvent(struct kevent *kevent,
 			       enum event_type type, BOOLEAN state);
 STDCALL LONG KeSetEvent(struct kevent *kevent, KPRIORITY incr, BOOLEAN wait);
@@ -413,8 +398,6 @@ _FASTCALL void
 IofCompleteRequest(FASTCALL_DECL_2(struct irp *irp, CHAR prio_boost));
 _FASTCALL void
 KefReleaseSpinLockFromDpcLevel(FASTCALL_DECL_1(KSPIN_LOCK *lock));
-
-void dump_bytes(const char *where, const u8 *ip);
 
 unsigned long lin_to_win1(void *func, unsigned long);
 unsigned long lin_to_win2(void *func, unsigned long, unsigned long);

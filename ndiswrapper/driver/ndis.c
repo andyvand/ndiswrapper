@@ -37,7 +37,6 @@ static struct list_head ndis_work_list;
 static struct wrap_spinlock ndis_work_list_lock;
 
 static void ndis_worker(void *data);
-static void wrap_free_timers(struct ndis_handle *handle);
 static void free_handle_ctx(struct ndis_handle *handle);
 
 /* ndis_init is called once when module is loaded */
@@ -49,6 +48,11 @@ int ndis_init(void)
 	INIT_LIST_HEAD(&handle_ctx_list);
 	wrap_spin_lock_init(&ndis_work_list_lock);
 	return 0;
+}
+
+/* ndis_exit is called once when module is removed */
+void ndis_exit(void)
+{
 }
 
 /* ndis_exit_handle is called for each handle */
@@ -70,43 +74,9 @@ void ndis_exit_handle(struct ndis_handle *handle)
 					    flags);
 		NdisMDeregisterInterrupt(handle->ndis_irq);
 	}
-	wrap_free_timers(handle);
 	free_handle_ctx(handle);
 	if (handle->pci_resources)
 		vfree(handle->pci_resources);
-}
-
-/* ndis_exit is called once when module is removed */
-void ndis_exit(void)
-{
-	wrap_kfree_all();
-}
-
-static void wrap_free_timers(struct ndis_handle *handle)
-{
-	char canceled;
-	/* Cancel any timers left by bugyy windows driver
-	 * Also free the memory for timers
-	 */
-	while (1) {
-		struct wrapper_timer *timer;
-
-		wrap_spin_lock(&handle->timers_lock, DISPATCH_LEVEL);
-		if (list_empty(&handle->timers)) {
-			wrap_spin_unlock(&handle->timers_lock);
-			break;
-		}
-
-		timer = list_entry(handle->timers.next,
-				   struct wrapper_timer, list);
-		list_del(&timer->list);
-		wrap_spin_unlock(&handle->timers_lock);
-
-		DBGTRACE1("fixing up timer %p, timer->list %p",
-			  timer, &timer->list);
-		wrapper_cancel_timer(timer, &canceled);
-		wrap_kfree(timer);
-	}
 }
 
 /* remove all 'handle X ctx' pairs for the given handle */
@@ -2070,12 +2040,14 @@ STDCALL NDIS_STATUS WRAP_EXPORT(NdisMInitializeScatterGatherDma)
 		ERROR("DMA size is not 64-bits");
 #endif
 	handle->dma_type = SG_DMA_TYPE;
+	/*
 	if (handle->dma_type == SG_DMA_ENABLED)
 		printk(KERN_INFO "%s: driver %s uses scatter/gather DMA\n",
 		       DRIVER_NAME, handle->driver->name);
 	else
 		printk(KERN_INFO "%s: scatter/gather DMA disabled for "
 		       "driver %s\n", DRIVER_NAME, handle->driver->name);
+	*/
 	return NDIS_STATUS_SUCCESS;
 }
 
