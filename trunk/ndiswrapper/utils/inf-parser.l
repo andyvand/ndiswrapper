@@ -123,9 +123,10 @@ static void setManufacturerStr(char *text)
 static int isDeviceSection(char *heading)
 {
     int x;
-	for(x = 0; deviceHeaders[x] != NULL; x++)
-	    if (strcmp(heading, deviceHeaders[x]) == 0)
-		    return 1;
+	if (deviceHeaders != NULL)
+    	for(x = 0; deviceHeaders[x] != NULL; x++)
+		    if (strcmp(heading, deviceHeaders[x]) == 0)
+			    return 1;
     return 0;
 }
 
