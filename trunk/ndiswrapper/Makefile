@@ -1,4 +1,4 @@
-DRV_VERSION=0.4+CVS
+DRV_VERSION=$(cat version)
 
 distdir=ndiswrapper-${DRV_VERSION}
 distarchive=${distdir}.tar.gz

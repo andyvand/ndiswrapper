@@ -1,3 +1,4 @@
+DRV_VERSION=$(cat ../version)
 #DEBUG=1
 
 DISTFILES=Makefile coffpe.h loader.c loader.h misc_funcs.c \
