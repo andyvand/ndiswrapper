@@ -1,3 +1,20 @@
+Version 1.0 2005-XX-XX
+======================
+* Spinlock rewrite: This time SMP should work. Really.
+* Sends multiple packets (if driver supports it) in each send
+  operation for better efficiency
+* Most of the functionality of loader is moved to userspace tool
+  loadndisdriver so it is more robust
+* Encryption info is restored during disassociation; this is useful if
+  ad-hoc mode is used as psuedo master mode
+* MAC address can be set in .conf files (in /etc/ndiswrapper/<driver>
+  directory) or changed at any time (with 'ifconfig hw class' command)
+* Association and disassociation should happen quickly especially with
+  wpa_supplicant
+* Compilation issues with old gcc and sed are fixed
+* Kernel crash when ejecting cards with cardctl in 2.4 kernels is
+  fixed
+
 Version 0.12 2004-11-25
 =======================
 * Works with Preempt and SMP kernels.
