@@ -34,7 +34,6 @@
 #include <asm/uaccess.h>
 
 #include "wrapper.h"
-#include "pe_linker.h"
 #include "iw_ndis.h"
 #include "loader.h"
 
@@ -75,7 +74,6 @@ static void ndis_set_rx_mode(struct net_device *dev);
 NDIS_STATUS miniport_reset(struct ndis_handle *handle)
 {
 	NDIS_STATUS res = 0;
-	KIRQL irql;
 	struct miniport_char *miniport = &handle->driver->miniport_char;
 
 	TRACEENTER2("%s", "");
@@ -92,10 +90,10 @@ NDIS_STATUS miniport_reset(struct ndis_handle *handle)
 	handle->reset_status = NDIS_STATUS_PENDING;
 	handle->ndis_comm_res = NDIS_STATUS_PENDING;
 	handle->ndis_comm_done = 0;
-	irql = raise_irql(DISPATCH_LEVEL);
+	wrap_spin_lock(&handle->lock, DISPATCH_LEVEL);
 	res = LIN2WIN2(miniport->reset, &handle->reset_status,
 		       handle->adapter_ctx);
-	lower_irql(irql);
+	wrap_spin_unlock(&handle->lock);
 
 	DBGTRACE2("res = %08X, reset_status = %08X",
 		  res, handle->reset_status);
@@ -143,22 +141,21 @@ NDIS_STATUS miniport_query_info_needed(struct ndis_handle *handle,
 {
 	NDIS_STATUS res;
 	ULONG written;
-	KIRQL irql;
 	struct miniport_char *miniport = &handle->driver->miniport_char;
 
 	TRACEENTER3("query is at %p", miniport->query);
 
 	if (down_interruptible(&handle->ndis_comm_mutex))
 		TRACEEXIT3(return NDIS_STATUS_FAILURE);
-
 	handle->ndis_comm_done = 0;
-	irql = raise_irql(DISPATCH_LEVEL);
+	wrap_spin_lock(&handle->lock, DISPATCH_LEVEL);
 	res = LIN2WIN6(miniport->query, handle->adapter_ctx, oid, buf, bufsize,
 		       &written, needed);
-	lower_irql(irql);
+	wrap_spin_unlock(&handle->lock);
 
 	DBGTRACE3("res = %08x", res);
 	if (res == NDIS_STATUS_PENDING) {
+
 		/* wait for NdisMQueryInformationComplete upto HZ */
 		if (!wait_event_interruptible_timeout(
 			    handle->ndis_comm_wq,
@@ -190,20 +187,18 @@ NDIS_STATUS miniport_set_info(struct ndis_handle *handle, ndis_oid oid,
 {
 	NDIS_STATUS res;
 	ULONG written, needed;
-	KIRQL irql;
 	struct miniport_char *miniport = &handle->driver->miniport_char;
 
 	TRACEENTER3("setinfo is at %p", miniport->setinfo);
 
 	if (down_interruptible(&handle->ndis_comm_mutex))
 		TRACEEXIT3(return NDIS_STATUS_FAILURE);
-
 	handle->ndis_comm_done = 0;
-	irql = raise_irql(DISPATCH_LEVEL);
+	wrap_spin_lock(&handle->lock, DISPATCH_LEVEL);
 	res = LIN2WIN6(miniport->setinfo, handle->adapter_ctx, oid, buf,
 		       bufsize, &written, &needed);
+	wrap_spin_unlock(&handle->lock);
 	DBGTRACE3("res = %08x", res);
-	lower_irql(irql);
 
 	if (res == NDIS_STATUS_PENDING) {
 		/* wait for NdisMSetInformationComplete upto HZ */
@@ -297,7 +292,6 @@ void miniport_halt(struct ndis_handle *handle)
 static void hangcheck_proc(unsigned long data)
 {
 	struct ndis_handle *handle = (struct ndis_handle *)data;
-	KIRQL irql;
 
 	TRACEENTER3("%s", "");
 	
@@ -306,9 +300,9 @@ static void hangcheck_proc(unsigned long data)
 		struct miniport_char *miniport;
 
 		miniport = &handle->driver->miniport_char;
-		irql = raise_irql(DISPATCH_LEVEL);
+		wrap_spin_lock(&handle->lock, DISPATCH_LEVEL);
 		res = LIN2WIN1(miniport->hangcheck, handle->adapter_ctx);
-		lower_irql(irql);
+		wrap_spin_unlock(&handle->lock);
 		if (res) {
 			WARNING("%s is being reset", handle->net_dev->name);
 			res = miniport_reset(handle);
@@ -473,7 +467,7 @@ static struct ndis_packet *alloc_packet(struct ndis_handle *handle,
 					   MmGetMdlByteCount(buffer),
 					   PCI_DMA_TODEVICE);
 		packet->sg_list.len = 1;
-		packet->sg_element.address.quad = packet->dataphys;
+		packet->sg_element.address = packet->dataphys;
 		packet->sg_element.len = MmGetMdlByteCount(buffer),
 		packet->sg_list.elements = &packet->sg_element;
 		packet->extension.info[ScatterGatherListPacketInfo] =
@@ -514,9 +508,9 @@ static void free_packet(struct ndis_handle *handle, struct ndis_packet *packet)
 
 /*
  * MiniportSend and MiniportSendPackets
- * this function is called from bh disabled context, so no need to raise
- * irql to DISPATCH_LEVEL during MiniportSend(Packets)
- */
+ * this function is called with lock held in DISPATCH_LEVEL, so no need
+ * to raise irql to DISPATCH_LEVEL during MiniportSend(Packets)
+*/
 static int send_packets(struct ndis_handle *handle, unsigned int start,
 			unsigned int pending)
 {
@@ -601,9 +595,9 @@ static void xmit_worker(void *param)
 	/* some drivers e.g., new RT2500 driver, crash if any packets
 	 * are sent when the card is not associated */
 	while (handle->send_ok) {
-		wrap_spin_lock(&handle->xmit_ring_lock, DISPATCH_LEVEL);
+		wrap_spin_lock(&handle->lock, DISPATCH_LEVEL);
 		if (handle->xmit_ring_pending == 0) {
-			wrap_spin_unlock(&handle->xmit_ring_lock);
+			wrap_spin_unlock(&handle->lock);
 			break;
 		}
 		n = send_packets(handle, handle->xmit_ring_start,
@@ -613,7 +607,7 @@ static void xmit_worker(void *param)
 		handle->xmit_ring_pending -= n;
 		if (n > 0 && netif_queue_stopped(handle->net_dev))
 			netif_wake_queue(handle->net_dev);
-		wrap_spin_unlock(&handle->xmit_ring_lock);
+		wrap_spin_unlock(&handle->lock);
 	}
 
 	TRACEEXIT3(return);
@@ -671,7 +665,7 @@ static int start_xmit(struct sk_buff *skb, struct net_device *dev)
 	}
 	dev_kfree_skb(skb);
 
-	wrap_spin_lock(&handle->xmit_ring_lock, PASSIVE_LEVEL);
+	wrap_spin_lock(&handle->lock, PASSIVE_LEVEL);
 	xmit_ring_next_slot =
 		(handle->xmit_ring_start +
 		 handle->xmit_ring_pending) % XMIT_RING_SIZE;
@@ -679,7 +673,7 @@ static int start_xmit(struct sk_buff *skb, struct net_device *dev)
 	handle->xmit_ring_pending++;
 	if (handle->xmit_ring_pending == XMIT_RING_SIZE)
 		netif_stop_queue(handle->net_dev);
-	wrap_spin_unlock(&handle->xmit_ring_lock);
+	wrap_spin_unlock(&handle->lock);
 
 	schedule_work(&handle->xmit_work);
 
@@ -702,7 +696,7 @@ int ndiswrapper_suspend_pci(struct pci_dev *pdev, u32 state)
 
 	if (test_bit(HW_SUSPENDED, &handle->hw_status) ||
 	    test_bit(HW_HALTED, &handle->hw_status))
-		return 0;
+		return -1;
 
 	DBGTRACE2("irql: %d", KeGetCurrentIrql());
 	DBGTRACE2("%s: detaching device", dev->name);
@@ -764,7 +758,7 @@ int ndiswrapper_resume_pci(struct pci_dev *pdev)
 
 	if (!(test_bit(HW_SUSPENDED, &handle->hw_status) ||
 	      test_bit(HW_HALTED, &handle->hw_status)))
-		return 0;
+		return -1;
 
 	pci_enable_device(pdev);
 #if LINUX_VERSION_CODE > KERNEL_VERSION(2,6,9)
@@ -795,7 +789,7 @@ void ndiswrapper_remove_one_dev(struct ndis_handle *handle)
 
 	/* flush_scheduled_work here causes crash with 2.4 kernels */
 	/* instead, throw away pending packets */
-	wrap_spin_lock(&handle->xmit_ring_lock, DISPATCH_LEVEL);
+	wrap_spin_lock(&handle->lock, DISPATCH_LEVEL);
 	while (handle->xmit_ring_pending) {
 		struct ndis_packet *packet;
 
@@ -805,7 +799,7 @@ void ndiswrapper_remove_one_dev(struct ndis_handle *handle)
 			(handle->xmit_ring_start + 1) % XMIT_RING_SIZE;
 		handle->xmit_ring_pending--;
 	}
-	wrap_spin_unlock(&handle->xmit_ring_lock);
+	wrap_spin_unlock(&handle->lock);
 
 	miniport_set_int(handle, OID_802_11_DISASSOCIATE, 0);
 
@@ -1400,6 +1394,7 @@ struct net_device *ndis_init_netdev(struct ndis_handle **phandle,
 	handle->net_dev = dev;
 	handle->ndis_irq = NULL;
 
+	wrap_spin_lock_init(&handle->lock);
 	init_MUTEX(&handle->ndis_comm_mutex);
 	init_waitqueue_head(&handle->ndis_comm_wq);
 	handle->ndis_comm_done = 0;
@@ -1408,7 +1403,6 @@ struct net_device *ndis_init_netdev(struct ndis_handle **phandle,
 	handle->send_ok = 0;
 
 	INIT_WORK(&handle->xmit_work, xmit_worker, handle);
-	wrap_spin_lock_init(&handle->xmit_ring_lock);
 	handle->xmit_ring_start = 0;
 	handle->xmit_ring_pending = 0;
 

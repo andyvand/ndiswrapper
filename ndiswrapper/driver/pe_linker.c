@@ -21,19 +21,23 @@
 #include <linux/types.h>
 #include <asm/errno.h>
 
-#include "pe_linker.h"
-
 #else
 
 #include <linux/types.h>
 #include <asm/errno.h>
 
-#include "pe_linker.h"
+#include "ntoskernel.h"
 
 #endif
 
-static struct exports exports[40];
-static int num_exports;
+struct pe_exports {
+	char *dll;
+	char *name;
+	WRAP_EXPORT_FUNC addr;
+};
+
+static struct pe_exports pe_exports[40];
+static int num_pe_exports;
 
 #define RVA2VA(image, rva, type) (type)(ULONG_PTR)((void *)image + rva)
 #define CHECK_SZ(a,b) { if (sizeof(a) != b) {				\
@@ -79,9 +83,9 @@ static char *get_export(char *name)
 			return (char *)usb_exports[i].func;
 #endif
 
-	for (i = 0; i < num_exports; i++)
-		if (strcmp(exports[i].name, name) == 0)
-			return (char *)exports[i].addr;
+	for (i = 0; i < num_pe_exports; i++)
+		if (strcmp(pe_exports[i].name, name) == 0)
+			return (char *)pe_exports[i].addr;
 
 	return NULL;
 }
@@ -90,10 +94,10 @@ static char *get_export(char *name)
 static void *get_dll_init(char *name)
 {
 	int i;
-	for (i = 0; i < num_exports; i++)
-		if ((strcmp(exports[i].dll, name) == 0) &&
-		    (strcmp(exports[i].name, "DllInitialize") == 0))
-			return (void *)exports[i].addr;
+	for (i = 0; i < num_pe_exports; i++)
+		if ((strcmp(pe_exports[i].dll, name) == 0) &&
+		    (strcmp(pe_exports[i].name, "DllInitialize") == 0))
+			return (void *)pe_exports[i].addr;
 	return NULL;
 }
 
@@ -270,11 +274,12 @@ static int read_exports(struct pe_image *pe)
 			  (char *)(pe->image + *name_table),
 			  pe->image + *export_addr_table);
 
-		exports[num_exports].dll = pe->name;
-		exports[num_exports].name = (pe->image + *name_table);
-		exports[num_exports].addr = (pe->image + *export_addr_table);
+		pe_exports[num_pe_exports].dll = pe->name;
+		pe_exports[num_pe_exports].name = (pe->image + *name_table);
+		pe_exports[num_pe_exports].addr =
+			(pe->image + *export_addr_table);
 
-		num_exports++;
+		num_pe_exports++;
 		name_table++;
 		export_addr_table++;
 	}
@@ -407,8 +412,15 @@ static int fix_pe_image(struct pe_image *pe)
 
 	image_size = pe->opt_hdr->SizeOfImage;
 #ifdef CONFIG_64BIT
+#ifdef PAGE_KERNEL_EXECUTABLE
+	image = __vmalloc(image_size, GFP_KERNEL | __GFP_HIGHMEM,
+			  PAGE_KERNEL_EXECUTABLE);
+#elif defined PAGE_KERNEL_EXEC
 	image = __vmalloc(image_size, GFP_KERNEL | __GFP_HIGHMEM,
 			  PAGE_KERNEL_EXEC);
+#else
+#error x86_64 should have either PAGE_KERNEL_EXECUTTABLE or PAGE_KERNEL_EXEC
+#endif
 #else
 	image = vmalloc(image_size);
 #endif

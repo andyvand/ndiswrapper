@@ -35,13 +35,7 @@ typedef ULONG ndis_rts_threshold;
 typedef ULONG ndis_antenna;
 typedef ULONG ndis_oid;
 
-typedef union packed ndis_phy_address {
-	ULONGLONG quad;
-	struct packed {
-		ULONG low;
-		ULONG high;
-	} s;
-} NDIS_PHY_ADDRESS;
+typedef uint64_t NDIS_PHY_ADDRESS;
 
 struct ndis_sg_element {
 	NDIS_PHY_ADDRESS address;
@@ -712,7 +706,7 @@ struct ndis_handle {
 	UCHAR lock_acquired;
 	UCHAR pmode_opens;
 	UCHAR assigned_cpu;
-	KSPIN_LOCK lock;
+	KSPIN_LOCK kspin_lock;
 	enum ndis_request_type *mediarequest;
 	struct ndis_miniport_interrupt *interrupt;
 	ULONG flags;
@@ -815,7 +809,6 @@ struct ndis_handle {
 	struct ndis_device *device;
 
 	struct work_struct xmit_work;
-	struct wrap_spinlock xmit_ring_lock;
 	struct ndis_packet *xmit_ring[XMIT_RING_SIZE];
 	struct ndis_packet **xmit_array;
 	unsigned int xmit_ring_start;
@@ -872,6 +865,7 @@ struct ndis_handle {
 	unsigned long wrapper_work;
 
 	unsigned long attributes;
+	struct wrap_spinlock lock;
 };
 
 STDCALL void NdisMIndicateReceivePacket(struct ndis_handle *handle,

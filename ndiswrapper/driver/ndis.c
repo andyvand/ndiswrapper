@@ -178,7 +178,7 @@ STDCALL NDIS_STATUS WRAP_EXPORT(NdisMRegisterMiniport)
 
 STDCALL NDIS_STATUS WRAP_EXPORT(NdisAllocateMemory)
 	(void **dest, UINT length, UINT flags,
-	 NDIS_PHY_ADDRESS highest_addr)
+	 NDIS_PHY_ADDRESS highest_address)
 {
 	TRACEENTER3("length = %u, flags = %08X", length, flags);
 	if (length <= KMALLOC_THRESHOLD) {
@@ -204,9 +204,7 @@ STDCALL NDIS_STATUS WRAP_EXPORT(NdisAllocateMemory)
 STDCALL NDIS_STATUS WRAP_EXPORT(NdisAllocateMemoryWithTag)
 	(void **dest, UINT length, ULONG tag)
 {
-	NDIS_PHY_ADDRESS addr;
-	addr.quad = 0;
-	TRACEEXIT3(return NdisAllocateMemory(dest, length, 0, addr));
+	TRACEEXIT3(return NdisAllocateMemory(dest, length, 0, 0));
 }
 
 STDCALL void WRAP_EXPORT(NdisFreeMemory)
@@ -323,9 +321,9 @@ STDCALL void WRAP_EXPORT(NdisOpenFile)
 	struct ndis_bin_file *file;
 
 	TRACEENTER2("status = %p, filelength = %p, *filelength = %d, "
-		    "filehandle = %p, *filehandle = %p",
+		    "high = %llx, filehandle = %p, *filehandle = %p",
 		    status, filelength, *filelength,
-		    filehandle, *filehandle);
+		    highest_address, filehandle, *filehandle);
 
 	ansi.buf = kmalloc(MAX_STR_LEN, GFP_KERNEL);
 	if (!ansi.buf) {
@@ -837,19 +835,16 @@ STDCALL NDIS_STATUS WRAP_EXPORT(NdisMMapIoSpace)
 	(void **virt, struct ndis_handle *handle,
 	 NDIS_PHY_ADDRESS phy_addr, UINT len)
 {
-	ULONG_PTR addr;
-
-	addr = (ULONG_PTR)phy_addr.quad;
-
-	TRACEENTER2("%p, %u", (void *)addr, len);
-	*virt = ioremap(addr, len);
+	TRACEENTER2("%016llx, %d", phy_addr, len);
+	*virt = ioremap(phy_addr, len);
 	if (*virt == NULL) {
 		ERROR("%s", "ioremap failed");
 		TRACEEXIT2(return NDIS_STATUS_FAILURE);
 	}
 
-	handle->mem_start = addr;
-	handle->mem_end = addr + len -1;
+	handle->mem_start = phy_addr;
+	handle->mem_end = phy_addr + len -1;
+
 	DBGTRACE2("ioremap successful %p", *virt);
 	TRACEEXIT2(return NDIS_STATUS_SUCCESS);
 }
@@ -986,11 +981,8 @@ STDCALL void WRAP_EXPORT(NdisMAllocateSharedMemory)
 		      "%scached memory\n", size, cached ? "" : "un-");
 	}
 
-	*(char **)virt = v;
-	if (v == NULL)
-		phys->quad = 0;
-	else
-		phys->quad = p;
+	*(char**)virt = v;
+	*phys = p;
 
 	DBGTRACE3("allocated shared memory: %p", v);
 }
@@ -1029,11 +1021,7 @@ STDCALL void WRAP_EXPORT(NdisMFreeSharedMemory)
 {
 	TRACEENTER3("%s", "");
 	/* FIXME: do USB drivers call this? */
-#ifdef CONFIG_X86_64
-	PCI_DMA_FREE_COHERENT(handle->dev.pci, size, virt, addr.quad);
-#else
-	PCI_DMA_FREE_COHERENT(handle->dev.pci, size, virt, addr.s.low);
-#endif
+	PCI_DMA_FREE_COHERENT(handle->dev.pci, size, virt, addr);
 	TRACEEXIT3(return);
 }
 
@@ -1350,14 +1338,12 @@ static void ndis_irq_bh(void *data)
 	struct miniport_char *miniport = &handle->driver->miniport_char;
 
 	if (ndis_irq->enabled) {
-		KIRQL irql;
-
-		irql = raise_irql(DISPATCH_LEVEL);
+		wrap_spin_lock(&handle->lock, DISPATCH_LEVEL);
 		LIN2WIN1(miniport->handle_interrupt, handle->adapter_ctx);
 		if (miniport->enable_interrupts)
 			LIN2WIN1(miniport->enable_interrupts,
 				 handle->adapter_ctx);
-		lower_irql(irql);
+		wrap_spin_unlock(&handle->lock);
 	}
 }
 
@@ -1684,7 +1670,6 @@ EthRxIndicateHandler(void *adapter_ctx, void *rx_ctx, char *header1,
 	struct sk_buff *skb = NULL;
 	struct ndis_handle *handle = ctx_to_handle(rx_ctx);
 	unsigned int skb_size = 0;
-	KIRQL irql;
 
 	TRACEENTER3("adapter_ctx = %p, rx_ctx = %p, buf = %p, size = %d, "
 		    "buf = %p, size = %d, packet = %d",
@@ -1707,11 +1692,11 @@ EthRxIndicateHandler(void *adapter_ctx, void *rx_ctx, char *header1,
 		}
 
 		miniport = &handle->driver->miniport_char;
-		irql = raise_irql(DISPATCH_LEVEL);
+		wrap_spin_lock(&handle->lock, DISPATCH_LEVEL);
 		res = LIN2WIN6(miniport->tx_data, packet, &bytes_txed,
 			       adapter_ctx, rx_ctx, look_ahead_size,
 			       packet_size);
-		lower_irql(irql);
+		wrap_spin_unlock(&handle->lock);
 		if (res == NDIS_STATUS_SUCCESS) {
 			ndis_buffer *buffer;
 			skb = dev_alloc_skb(header_size+look_ahead_size+
@@ -2075,7 +2060,6 @@ static void ndis_worker(void *data)
 	struct miniport_char *miniport;
 	void *virt;
 	NDIS_PHY_ADDRESS phys;
-	KIRQL irql;
 
 	TRACEENTER3("%s", "");
 
@@ -2130,10 +2114,10 @@ static void ndis_worker(void *data)
 			NdisMAllocateSharedMemory(handle, alloc_mem->size,
 						  alloc_mem->cached,
 						  &virt, &phys);
-			irql = raise_irql(DISPATCH_LEVEL);
+			wrap_spin_lock(&handle->lock, DISPATCH_LEVEL);
 			LIN2WIN5(miniport->alloc_complete, handle, virt,
 				 &phys, alloc_mem->size, alloc_mem->ctx);
-			lower_irql(irql);
+			wrap_spin_unlock(&handle->lock);
 			break;
 
 		case NDIS_FREE_MEM_WORK_ITEM:
@@ -2148,10 +2132,10 @@ static void ndis_worker(void *data)
 		case NDIS_RETURN_PACKET_WORK_ITEM:
 			packet = ndis_work_entry->entry.return_packet;
 			miniport = &handle->driver->miniport_char;
-			irql = raise_irql(DISPATCH_LEVEL);
+			wrap_spin_lock(&handle->lock, DISPATCH_LEVEL);
 			LIN2WIN2(miniport->return_packet,
 				 handle->adapter_ctx, packet);
-			lower_irql(irql);
+			wrap_spin_unlock(&handle->lock);
 			break;
 
 		default:
@@ -2205,7 +2189,7 @@ STDCALL void WRAP_EXPORT(IoQueueWorkItem)
 	io_work_item->ctx = ctx;
 	ndis_work_entry->entry.io_work_item = io_work_item;
 
-	wrap_spin_lock(&ndis_work_list_lock, DISPATCH_LEVEL);
+	wrap_spin_lock(&ndis_work_list_lock, PASSIVE_LEVEL);
 	list_add_tail(&ndis_work_entry->list, &ndis_work_list);
 	wrap_spin_unlock(&ndis_work_list_lock);
 
@@ -2227,7 +2211,7 @@ STDCALL NDIS_STATUS WRAP_EXPORT(NdisScheduleWorkItem)
 	ndis_work_entry->type = NDIS_SCHED_WORK_ITEM;
 	ndis_work_entry->entry.sched_work_item = ndis_sched_work_item;
 
-	wrap_spin_lock(&ndis_work_list_lock, DISPATCH_LEVEL);
+	wrap_spin_lock(&ndis_work_list_lock, PASSIVE_LEVEL);
 	list_add_tail(&ndis_work_entry->list, &ndis_work_list);
 	wrap_spin_unlock(&ndis_work_list_lock);
 
@@ -2317,7 +2301,6 @@ STDCALL void WRAP_EXPORT(NdisMStartBufferPhysicalMapping)
 	 ULONG phy_map_reg, BOOLEAN write_to_dev,
 	 struct ndis_phy_addr_unit *phy_addr_array, UINT *array_size)
 {
-	dma_addr_t dma_addr;
 	TRACEENTER3("phy_map_reg: %u", phy_map_reg);
 
 	if (handle->use_scatter_gather) {
@@ -2346,17 +2329,16 @@ STDCALL void WRAP_EXPORT(NdisMStartBufferPhysicalMapping)
 
 	// map buffer
 	/* FIXME: do USB drivers call this? */
-	dma_addr = PCI_DMA_MAP_SINGLE(handle->dev.pci,
-				      MmGetMdlVirtualAddress(buf),
-				      MmGetMdlByteCount(buf),
-				      PCI_DMA_TODEVICE);
-	phy_addr_array[0].phy_addr.quad = dma_addr;
+	phy_addr_array[0].phy_addr =
+		PCI_DMA_MAP_SINGLE(handle->dev.pci,
+				   MmGetMdlVirtualAddress(buf),
+				   MmGetMdlByteCount(buf), PCI_DMA_TODEVICE);
 	phy_addr_array[0].length= MmGetMdlByteCount(buf);
 
 	*array_size = 1;
 
 	// save mapping index
-	handle->map_dma_addr[phy_map_reg] = dma_addr;
+	handle->map_dma_addr[phy_map_reg] = phy_addr_array[0].phy_addr;
 }
 
 STDCALL void WRAP_EXPORT(NdisMCompleteBufferPhysicalMapping)
