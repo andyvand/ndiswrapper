@@ -18,6 +18,7 @@
 #include <asm/io.h>
 
 #include "ndis.h"
+#include "casemap.h"
 
 
 /** Functions from CIPE **/
@@ -129,40 +130,96 @@ STDCALL unsigned int KeWaitForSingleObject(void **object, unsigned int reason, u
 	return 0;
 }
 
-STDCALL int RtlEqualUnicodeString(struct ustring *str1, struct ustring *str2, int nocase)
+STDCALL long RtlCompareString(const struct ustring *s1,
+			      const struct ustring *s2, int CaseInsensitive)
 {
-	DBGTRACE("%s\n", __FUNCTION__);
-	if(str1->len != str2->len)
-		return 0;
+	unsigned int len;
+	long ret = 0;
+	const char *p1, *p2;
 	
-	if(memcmp(str1->buf, str2->buf, str1->len) == 0)
-		return 1;
-
-	if(nocase)
-		printk(KERN_ERR "ndiswrapper: case insensitive compare not implemented yet\n");
-	return 0;
+	len = min(s1->len, s2->len);
+	p1 = s1->buf;
+	p2 = s2->buf;
+	
+	if (CaseInsensitive)
+	{
+		while (!ret && len--)
+			ret = toupper(*p1++) - toupper(*p2++);
+	}
+	else
+	{
+		while (!ret && len--)
+			ret = *p1++ - *p2++;
+	}
+	if (!ret)
+		ret = s1->len - s2->len;
+	return ret;
 }
 
-STDCALL void RtlCopyUnicodeString(struct ustring *dest, struct ustring *source)
+static inline __u16 toupperW(__u16 ch)
 {
-	int i, end;
-	DBGTRACE("%s\n", __FUNCTION__);
+    extern const __u16 wine_casemap_upper[];
+    return ch + wine_casemap_upper[wine_casemap_upper[ch >> 8] + (ch & 0xff)];
+}
 
-	if (source == 0) {
-		dest->len = 0;
-		return;
-	}
 
-	if (source->len > dest->buflen) {
-		end = dest->buflen;
-	} else {
-		end = source->len;
+STDCALL long RtlCompareUnicodeString(const struct ustring *s1,
+				     const struct ustring *s2,
+				     int CaseInsensitive )
+{
+	unsigned int len;
+	long ret = 0;
+	const char *p1, *p2;
+	
+	len = min(s1->len, s2->len) / sizeof(__u16);
+	p1 = s1->buf;
+	p2 = s2->buf;
+	
+	if (CaseInsensitive)
+	{
+		while (!ret && len--)
+			ret = toupperW(*p1++) - toupperW(*p2++);
 	}
+	else
+	{
+		while (!ret && len--)
+			ret = *p1++ - *p2++;
+	}
+	if (!ret)
+		ret = s1->len - s2->len;
+	return ret;
+}
 
-	for (i = 0; i < end; i++) {
-		dest->buf[i] = source->buf[i];
+STDCALL int RtlEqualString(const struct ustring *s1,
+			   const struct ustring *s2, int CaseInsensitive )
+{
+	if (s1->len != s2->len)
+		return 0;
+	return !RtlCompareString(s1, s2, CaseInsensitive);
+}
+
+STDCALL int RtlEqualUnicodeString(const struct ustring *s1,
+				  const struct ustring *s2,
+				  int CaseInsensitive )
+{
+	if (s1->len != s2->len)
+		return 0;
+	return !RtlCompareUnicodeString(s1, s2, CaseInsensitive);
+}
+
+STDCALL void RtlCopyUnicodeString(struct ustring *dst,
+				  const struct ustring *src)
+{
+	if (src)
+	{
+		unsigned int len = min(src->len, dst->buflen);
+		memcpy(dst->buf, src->buf, len);
+		dst->len = len;
+		/* append terminating '\0' if enough space */
+		if (len < dst->buflen)
+			dst->buf[len / sizeof(__u16)] = 0;
 	}
-	dest->len = end;
+	else dst->len = 0;
 }
 
 STDCALL void RtlAnsiStringToUnicodeString(char *dst, char *src, unsigned int dup)
