@@ -96,7 +96,7 @@ static int ndis_set_essid(struct net_device *dev,
 		
 	if(wrqu->essid.length > 33)
 	{
-		DBGTRACE("%s: ESSID too long\n", __FUNCTION__);
+		printk(KERN_ERR "%s: ESSID too long\n", __FUNCTION__);
 		return -1;
 	}
 
@@ -105,7 +105,6 @@ static int ndis_set_essid(struct net_device *dev,
 	memcpy(&req.essid, extra, wrqu->essid.length-1);
 
 	res = handle->miniport_char.setinfo(handle->adapter_ctx, NDIS_OID_ESSID, (char*)&req, sizeof(req), &written, &needed);
-	DBGTRACE("set essid status %08x, %d, %d\n", res, written, needed);
 	if(res)
 		return -1;
 	return 0;
@@ -122,7 +121,6 @@ static int ndis_get_essid(struct net_device *dev,
 	struct essid_req req;
 
 	res = handle->miniport_char.query(handle->adapter_ctx, NDIS_OID_ESSID, (char*)&req, sizeof(req), &written, &needed);
-	DBGTRACE("get essid status %08x, %d, %d\n", res, written, needed);
 	if(res)
 		return -1;
 
@@ -138,7 +136,6 @@ static int ndis_set_mode(struct net_device *dev, struct iw_request_info *info,
 			   union iwreq_data *wrqu, char *extra)
 {
 	int ndis_mode;
-	DBGTRACE("%s\n", __FUNCTION__);
 
 	switch(wrqu->mode)
 	{
@@ -163,7 +160,6 @@ static int ndis_get_mode(struct net_device *dev, struct iw_request_info *info,
 	struct ndis_handle *handle = dev->priv; 
 	int ndis_mode, mode;
 
-	DBGTRACE("%s\n", __FUNCTION__);
 	int res = query_int(handle, NDIS_OID_MODE, &ndis_mode);
 	if(!res)
 		return -1;
@@ -182,7 +178,6 @@ static int ndis_get_mode(struct net_device *dev, struct iw_request_info *info,
 		break;
 	}
 	wrqu->mode = mode;
-	DBGTRACE("returned mode %d\n", mode);
 	return 0;	
 }
 
@@ -294,31 +289,37 @@ static int ndis_close (struct net_device *dev)
 static struct net_device_stats *ndis_get_stats (struct net_device *dev)
 {
 	struct ndis_handle *handle = dev->priv;
+	struct net_device_stats *stats = &handle->stats;
 	unsigned int x;
 
 	if(!query_int(handle, NDIS_OID_STAT_TX_OK, &x))
-		handle->stats.tx_packets = x; 
+		stats->tx_packets = x; 
 	if(!query_int(handle, NDIS_OID_STAT_RX_OK, &x))
-		handle->stats.rx_packets = x; 	
+		stats->rx_packets = x; 	
 	if(!query_int(handle, NDIS_OID_STAT_TX_ERROR, &x))
-		handle->stats.tx_errors = x; 	
+		stats->tx_errors = x; 	
 	if(!query_int(handle, NDIS_OID_STAT_RX_ERROR, &x))
-		handle->stats.rx_errors = x; 	
-	return &handle->stats;
+		stats->rx_errors = x; 	
+	return stats;
 }
 
 
 static struct iw_statistics *ndis_get_wireless_stats(struct net_device *dev)
 {
-	DBGTRACE("%s\n", __FUNCTION__);
-	return NULL;
+	struct ndis_handle *handle = dev->priv;
+	struct iw_statistics *stats = &handle->wireless_stats;
+	int x;
+
+	if(!query_int(handle, NDIS_OID_RSSI, &x))
+		stats->qual.level = x;
+		
+	return stats;
 }
 
 
 static int ndis_ioctl (struct net_device *dev, struct ifreq *rq, int cmd)
 {
 	int rc = -ENODEV;
-	DBGTRACE("%s\n", __FUNCTION__);
 	return rc;
 }
 
