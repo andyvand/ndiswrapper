@@ -9,9 +9,13 @@ DISTFILES=Makefile coffpe.h loader.c loader.h misc_funcs.c \
  divdi3.c longlong.h
 
 
-KSRC  := /lib/modules/$(shell uname -r)/build
+ifndef KVER
+KVER := $(shell uname -r)
+endif
 
-KVERS := $(shell uname -r |  sed -e 's/\([^\.]*\)\.\([^\.]*\)\..*/\1\2/')
+KVERS := $(shell echo $(KVER) |  sed -e 's/\([^\.]*\)\.\([^\.]*\)\..*/\1\2/')
+KSRC  := /lib/modules/$(KVER)/build
+
 
 INST_DIR := /lib/modules/$(shell uname -r)/misc
 
