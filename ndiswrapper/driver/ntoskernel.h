@@ -831,8 +831,8 @@ void dump_bytes(const char *where, const u8 *ip);
 static inline void wrap_spin_lock_init(struct wrap_spinlock *lock)
 {
 	if (sizeof(lock->lock) > sizeof(lock->lock.ntoslock)) {
-		ERROR("spinlock used is not compatible"
-		      " with KSPIN_LOCK: %u, %u",
+		ERROR("spinlock used is not compatible with KSPIN_LOCK; "
+		      "is CONFIG_DEBUG_SPINLOCK disabled? %u, %u",
 		      (unsigned int)sizeof(lock->lock),
 		      (unsigned int)sizeof(lock->lock.ntoslock));
 	}
