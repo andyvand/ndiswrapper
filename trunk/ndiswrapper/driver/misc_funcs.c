@@ -455,7 +455,13 @@ STDCALL SIZE_T WRAP_EXPORT(RtlCompareMemory)
 	return i;
 }
 
-STDCALL long WRAP_EXPORT(RtlCompareString)
+STDCALL void WRAP_EXPORT(RtlCopyMemory)
+	(void *dst, const void *src, SIZE_T length)
+{
+	memcpy(dst, src, length);
+}
+
+STDCALL LONG WRAP_EXPORT(RtlCompareString)
 	(const struct ansi_string *s1, const struct ansi_string *s2,
 	 BOOLEAN case_insensitive)
 {

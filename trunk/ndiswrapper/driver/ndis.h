@@ -871,8 +871,7 @@ STDCALL void NdisMIndicateReceivePacket(struct ndis_handle *handle,
 					struct ndis_packet **packets,
 					UINT nr_packets);
 STDCALL void NdisMSendComplete(struct ndis_handle *handle,
-			       struct ndis_packet *packet,
-			       NDIS_STATUS status);
+			       struct ndis_packet *packet, NDIS_STATUS status);
 STDCALL void NdisMSendResourcesAvailable(struct ndis_handle *handle);
 STDCALL void NdisMIndicateStatus(struct ndis_handle *handle,
 				 NDIS_STATUS status, void *buf, UINT len);
@@ -888,15 +887,13 @@ STDCALL BOOLEAN NdisWaitEvent(struct ndis_event *event, UINT timeout);
 STDCALL void NdisSetEvent(struct ndis_event *event);
 STDCALL void NdisMDeregisterInterrupt(struct ndis_irq *ndis_irq);
 STDCALL void EthRxIndicateHandler(void *adapter_ctx, void *rx_ctx,
-				  char *header1,
-				  char *header, UINT header_size,
-				  void *look_ahead,
+				  char *header1, char *header,
+				  UINT header_size, void *look_ahead,
 				  UINT look_ahead_size, UINT packet_size);
 STDCALL void EthRxComplete(struct ndis_handle *handle);
 STDCALL void NdisMTransferDataComplete(struct ndis_handle *handle,
 				       struct ndis_packet *packet,
-				       NDIS_STATUS status,
-				       UINT bytes_txed);
+				       NDIS_STATUS status, UINT bytes_txed);
 STDCALL void NdisWriteConfiguration(NDIS_STATUS *status,
 				    struct ndis_handle *handle,
 				    struct unicode_string *key,
