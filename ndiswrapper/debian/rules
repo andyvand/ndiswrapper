@@ -75,6 +75,7 @@ build-module-prep:
 		debian/changelog.template > debian/changelog
 	sed -e 's/#KVERS#/$(KVERS)/' -e 's/#NDISVERS#/$(NDISVERS)/' \
 		debian/control.module > debian/control
+	sed -e 's/#KVERS#/$(KVERS)/' debian/postinst.module > debian/postinst
 
 	if [ $(kplevel) == 4 ];then \
 		module=ndiswrapper.o; \
@@ -90,11 +91,12 @@ build-module:
 
 binary-module: build-module-prep common-prolog build-module common-epilog
 	dh_builddeb --destdir=$(MODDIR)
+	dh_clean
 
 clean-module: build-module-prep
 	echo "$(NDISSRC)"
 	-$(MAKE) -C $(DRIVERSRC) clean
-	-rm -f debian/ndiswrapper-module.install
+	-rm -f debian/ndiswrapper-module.install debian/postinst
 	dh_clean
 
 build-utils-prep:
@@ -117,6 +119,7 @@ build-utils:
 
 binary-utils: build-utils-prep common-prolog build-utils common-epilog
 	dh_builddeb --destdir=$(MODDIR)
+	dh_clean
 
 clean-utils: build-utils-prep
 	-$(MAKE) -C $(UTILSSRC) clean
@@ -155,9 +158,11 @@ clean-source:
 
 source: build-source-prep common-prolog build-source common-epilog
 	dh_builddeb --destdir=$(MODDIR)
+	dh_clean
 
 clean: clean-module clean-utils clean-source
-	-rm -f debian/changelog debian/control debian/dirs
+	dh_clean
+	-rm -f debian/changelog debian/control debian/dirs debian/postinst
 
 binary:
 	$(MAKE) -f debian/rules binary-utils
