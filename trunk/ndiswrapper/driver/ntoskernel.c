@@ -69,8 +69,10 @@ int ntoskernel_init(void)
 void ntoskernel_exit(void)
 {
 	struct nt_list *cur;
+	KIRQL irql;
+
 	if (mdl_cache) {
-		kspin_lock(&ntoskernel_lock);
+		irql = kspin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL);
 		if (!IsListEmpty(&wrap_mdl_list)) {
 			ERROR("Windows driver didn't free all MDLs; "
 			      "freeing them now");
@@ -85,11 +87,11 @@ void ntoskernel_exit(void)
 					kfree(p);
 			}
 		}
-		kspin_unlock(&ntoskernel_lock);
+		kspin_unlock_irql(&ntoskernel_lock, irql);
 		kmem_cache_destroy(mdl_cache);
 		mdl_cache = NULL;
 	}
-	kspin_lock(&ntoskernel_lock);
+	irql = kspin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL);
 	while ((cur = RemoveHeadList(&callback_objects))) {
 		struct callback_object *object;
 		struct nt_list *ent;
@@ -101,7 +103,7 @@ void ntoskernel_exit(void)
 		}
 		kfree(object);
 	}
-	kspin_unlock(&ntoskernel_lock);
+	kspin_unlock_irql(&ntoskernel_lock, irql);
 	return;
 }
 
@@ -111,6 +113,7 @@ STDCALL struct nt_list *WRAP_EXPORT(ExInterlockedInsertHeadList)
 {
 	struct nt_list *first;
 	KIRQL irql;
+
 	TRACEENTER4("head = %p, entry = %p", head, entry);
 	KeAcquireSpinLock(lock, &irql);
 	first = InsertHeadList(head, entry);
@@ -260,9 +263,13 @@ STDCALL void WRAP_EXPORT(KeInitializeTimerEx)
 STDCALL void WRAP_EXPORT(KeInitializeDpc)
 	(struct kdpc *kdpc, void *func, void *ctx)
 {
+	KIRQL irql;
+
 	TRACEENTER4("%p, %p, %p", kdpc, func, ctx);
+	irql = kspin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL);
 	kdpc->func = func;
 	kdpc->ctx  = ctx;
+	kspin_unlock_irql(&ntoskernel_lock, irql);
 }
 
 static void dpc_worker(void *data)
@@ -293,6 +300,7 @@ STDCALL BOOLEAN KeInsertQueueDpc(struct kdpc *kdpc, void *arg1, void *arg2)
 {
 	struct nt_list *cur;
 	struct qdpc *qdpc;
+	KIRQL irql;
 
 	qdpc = kmalloc(sizeof(*qdpc), GFP_ATOMIC);
 	if (!qdpc) {
@@ -302,7 +310,7 @@ STDCALL BOOLEAN KeInsertQueueDpc(struct kdpc *kdpc, void *arg1, void *arg2)
 	qdpc->kdpc = kdpc;
 	qdpc->arg1 = arg1;
 	qdpc->arg2 = arg2;
-	kspin_lock(&ntoskernel_lock);
+	irql = kspin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL);
 	nt_list_for_each(cur, &qdpc_list) {
 		qdpc = container_of(cur, struct qdpc, list);
 		if (qdpc->kdpc == kdpc) {
@@ -311,7 +319,7 @@ STDCALL BOOLEAN KeInsertQueueDpc(struct kdpc *kdpc, void *arg1, void *arg2)
 		}
 	}
 	InsertTailList(&qdpc_list, &qdpc->list);
-	kspin_unlock(&ntoskernel_lock);
+	kspin_unlock_irql(&ntoskernel_lock, irql);
 	schedule_work(&qdpc_work);
 	return TRUE;
 }
@@ -421,12 +429,13 @@ _FASTCALL LONG WRAP_EXPORT(InterlockedDecrement)
 	(FASTCALL_DECL_1(LONG volatile *val))
 {
 	LONG x;
+	KIRQL irql;
 
 	TRACEENTER4("%s", "");
-	kspin_lock(&ntoskernel_lock);
+	irql = kspin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL);
 	(*val)--;
 	x = *val;
-	kspin_unlock(&ntoskernel_lock);
+	kspin_unlock_irql(&ntoskernel_lock, irql);
 	TRACEEXIT4(return x);
 }
 
@@ -434,12 +443,13 @@ _FASTCALL LONG WRAP_EXPORT(InterlockedIncrement)
 	(FASTCALL_DECL_1(LONG volatile *val))
 {
 	LONG x;
+	KIRQL irql;
 
 	TRACEENTER4("%s", "");
-	kspin_lock(&ntoskernel_lock);
+	irql = kspin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL);
 	(*val)++;
 	x = *val;
-	kspin_unlock(&ntoskernel_lock);
+	kspin_unlock_irql(&ntoskernel_lock, irql);
 	TRACEEXIT4(return x);
 }
 
@@ -447,12 +457,13 @@ _FASTCALL LONG WRAP_EXPORT(InterlockedExchange)
 	(FASTCALL_DECL_2(LONG volatile *target, LONG val))
 {
 	LONG x;
+	KIRQL irql;
 
 	TRACEENTER4("%s", "");
-	kspin_lock(&ntoskernel_lock);
+	irql = kspin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL);
 	x = *target;
 	*target = val;
-	kspin_unlock(&ntoskernel_lock);
+	kspin_unlock_irql(&ntoskernel_lock, irql);
 	TRACEEXIT4(return x);
 }
 
@@ -460,13 +471,14 @@ _FASTCALL LONG WRAP_EXPORT(InterlockedCompareExchange)
 	(FASTCALL_DECL_3(LONG volatile *dest, LONG xchg, LONG comperand))
 {
 	LONG x;
+	KIRQL irql;
 
 	TRACEENTER4("%s", "");
-	kspin_lock(&ntoskernel_lock);
+	irql = kspin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL);
 	x = *dest;
 	if (*dest == comperand)
 		*dest = xchg;
-	kspin_unlock(&ntoskernel_lock);
+	kspin_unlock_irql(&ntoskernel_lock, irql);
 	TRACEEXIT4(return x);
 }
 
@@ -511,9 +523,9 @@ STDCALL void WRAP_EXPORT(ExInitializeNPagedLookasideList)
 	 ULONG flags, SIZE_T size, ULONG tag, USHORT depth)
 {
 	TRACEENTER3("lookaside: %p, size: %lu, flags: %u,"
-		    " head: %p, size of lookaside: %lu",
+		    " head: %p, alloc: %p, free: %p",
 		    lookaside, size, flags, lookaside->head.list.next,
-		    (unsigned long)sizeof(struct npaged_lookaside_list));
+		    alloc_func, free_func);
 
 	memset(lookaside, 0, sizeof(*lookaside));
 
@@ -521,6 +533,7 @@ STDCALL void WRAP_EXPORT(ExInitializeNPagedLookasideList)
 	lookaside->tag = tag;
 	lookaside->depth = 4;
 	lookaside->maxdepth = 256;
+	lookaside->pool_type = NonPagedPool;
 
 	if (alloc_func)
 		lookaside->alloc_func = alloc_func;
@@ -531,6 +544,7 @@ STDCALL void WRAP_EXPORT(ExInitializeNPagedLookasideList)
 	else
 		lookaside->free_func = ExFreePool;
 
+	DBGTRACE3("lock: %p", &lookaside->obsolete);
 	KeInitializeSpinLock(&lookaside->obsolete);
 	TRACEEXIT3(return);
 }
@@ -538,15 +552,13 @@ STDCALL void WRAP_EXPORT(ExInitializeNPagedLookasideList)
 STDCALL void WRAP_EXPORT(ExDeleteNPagedLookasideList)
 	(struct npaged_lookaside_list *lookaside)
 {
-	struct nt_slist *entry, *p;
+	struct nt_slist *entry;
 
 	TRACEENTER3("lookaside = %p", lookaside);
-	entry = lookaside->head.list.next;
-	while (entry) {
-		p = entry;
-		entry = entry->next;
-		lookaside->free_func(p);
-	}
+	while ((entry = ExInterlockedPopEntrySList(
+			FASTCALL_ARGS_2(&lookaside->head,
+					&lookaside->obsolete))))
+		(*lookaside->free_func)(entry);
 	TRACEEXIT4(return);
 }
 
@@ -556,19 +568,20 @@ STDCALL NTSTATUS WRAP_EXPORT(ExCreateCallback)
 {
 	struct callback_object *obj;
 	struct nt_list *cur;
+	KIRQL irql;
 
 	TRACEENTER2("");
-	kspin_lock(&ntoskernel_lock);
+	irql = kspin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL);
 	nt_list_for_each(cur, &callback_objects) {
 		obj = container_of(cur, struct callback_object,
 				   callback_funcs);
 		if (obj->attributes == attributes) {
-			kspin_unlock(&ntoskernel_lock);
+			kspin_unlock_irql(&ntoskernel_lock, irql);
 			*object = obj;
 			return STATUS_SUCCESS;
 		}
 	}
-	kspin_unlock(&ntoskernel_lock);
+	kspin_unlock_irql(&ntoskernel_lock, irql);
 	obj = kmalloc(sizeof(*obj), GFP_KERNEL);
 	if (!obj)
 		TRACEEXIT2(return STATUS_INSUFFICIENT_RESOURCES);
@@ -585,15 +598,16 @@ STDCALL void *WRAP_EXPORT(ExRegisterCallback)
 	 void *context)
 {
 	struct callback_func *callback;
+	KIRQL irql;
 
 	TRACEENTER2("");
-	kspin_lock(&object->lock);
+	irql = kspin_lock_irql(&object->lock, DISPATCH_LEVEL);
 	if (object->allow_multiple_callbacks == FALSE &&
 	    !IsListEmpty(&object->callback_funcs)) {
-		kspin_unlock(&object->lock);
+		kspin_unlock_irql(&object->lock, irql);
 		TRACEEXIT2(return NULL);
 	}
-	kspin_unlock(&ntoskernel_lock);
+	kspin_unlock_irql(&ntoskernel_lock, irql);
 	callback = kmalloc(sizeof(*callback), GFP_KERNEL);
 	if (!callback) {
 		ERROR("couldn't allocate memory");
@@ -602,9 +616,9 @@ STDCALL void *WRAP_EXPORT(ExRegisterCallback)
 	callback->func = func;
 	callback->context = context;
 	callback->object = object;
-	kspin_lock(&object->lock);
+	irql = kspin_lock_irql(&object->lock, DISPATCH_LEVEL);
 	InsertTailList(&object->callback_funcs, &callback->list);
-	kspin_unlock(&object->lock);
+	kspin_unlock_irql(&object->lock, irql);
 	TRACEEXIT2(return callback);
 }
 
@@ -612,13 +626,14 @@ STDCALL void WRAP_EXPORT(ExUnregisterCallback)
 	(struct callback_func *callback)
 {
 	struct callback_object *object;
+	KIRQL irql;
 
 	if (!callback)
 		return;
 	object = callback->object;
-	kspin_lock(&object->lock);
+	irql = kspin_lock_irql(&object->lock, DISPATCH_LEVEL);
 	RemoveEntryList(&callback->list);
-	kspin_unlock(&object->lock);
+	kspin_unlock_irql(&object->lock, irql);
 	return;
 }
 
@@ -627,13 +642,14 @@ STDCALL void WRAP_EXPORT(ExNotifyCallback)
 {
 	struct nt_list *cur;
 	struct callback_func *callback;
+	KIRQL irql;
 
-	kspin_lock(&object->lock);
+	irql = kspin_lock_irql(&object->lock, DISPATCH_LEVEL);
 	nt_list_for_each(cur, &object->callback_funcs){
 		callback = container_of(cur, struct callback_func, list);
 		LIN2WIN3(callback->func, callback->context, arg1, arg2);
 	}
-	kspin_unlock(&object->lock);
+	kspin_unlock_irql(&object->lock, irql);
 	return;
 }
 
@@ -837,7 +853,7 @@ STDCALL NTSTATUS WRAP_EXPORT(KeWaitForMultipleObjects)
 			if (dh->size == sizeof(*kmutex))
 				kmutex->owner_thread = get_current;
 			if (wait_type == WaitAny) {
-				kspin_unlock(&kevent_lock);
+				kspin_unlock_irql(&kevent_lock, irql);
 				TRACEEXIT3(return STATUS_WAIT_0 + i);
 			}
 			/* mark that we are not waiting on this object */
@@ -1593,10 +1609,11 @@ STDCALL NTSTATUS WRAP_EXPORT(PsTerminateSystemThread)
 	struct nt_list *ent;
 	struct obj_mgr_obj *object;
 	struct kevent *event;
+	KIRQL irql;
 
 	TRACEENTER2("status = %u", status);
 	event = NULL;
-	kspin_lock(&ntoskernel_lock);
+	irql = kspin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL);
 	nt_list_for_each(ent, &obj_mgr_obj_list) {
 		object = container_of(ent, struct obj_mgr_obj, list);
 		if (object->handle == get_current()) {
@@ -1604,7 +1621,7 @@ STDCALL NTSTATUS WRAP_EXPORT(PsTerminateSystemThread)
 			break;
 		}
 	}
-	kspin_unlock(&ntoskernel_lock);
+	kspin_unlock_irql(&ntoskernel_lock, irql);
 	if (event)
 		KeSetEvent(event, 0, FALSE);
 	complete_and_exit(NULL, status);
@@ -1651,15 +1668,16 @@ struct mdl *allocate_init_mdl(void *virt, ULONG length)
 	struct wrap_mdl *wrap_mdl;
 	struct mdl *mdl = NULL;
 	int mdl_size = MmSizeOfMdl(virt, length);
+	KIRQL irql;
 
 	if (mdl_size <= CACHE_MDL_SIZE) {
 		wrap_mdl = kmem_cache_alloc(mdl_cache, GFP_ATOMIC);
 		if (!wrap_mdl)
 			return NULL;
 		DBGTRACE3("allocated mdl cache: %p", wrap_mdl);
-		kspin_lock(&ntoskernel_lock);
+		irql = kspin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL);
 		InsertHeadList(&wrap_mdl_list, &wrap_mdl->list);
-		kspin_unlock(&ntoskernel_lock);
+		kspin_unlock_irql(&ntoskernel_lock, irql);
 		mdl = (struct mdl *)wrap_mdl->mdl;
 		memset(mdl, 0, CACHE_MDL_SIZE);
 		MmInitializeMdl(mdl, virt, length);
@@ -1674,9 +1692,9 @@ struct mdl *allocate_init_mdl(void *virt, ULONG length)
 			return NULL;
 		DBGTRACE3("allocated mdl: %p", wrap_mdl);
 		mdl = (struct mdl *)wrap_mdl->mdl;
-		kspin_lock(&ntoskernel_lock);
+		irql = kspin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL);
 		InsertHeadList(&wrap_mdl_list, &wrap_mdl->list);
-		kspin_unlock(&ntoskernel_lock);
+		kspin_unlock_irql(&ntoskernel_lock, irql);
 		memset(mdl, 0, mdl_size);
 		MmInitializeMdl(mdl, virt, length);
 	}
@@ -1685,6 +1703,8 @@ struct mdl *allocate_init_mdl(void *virt, ULONG length)
 
 void free_mdl(struct mdl *mdl)
 {
+	KIRQL irql;
+
 	/* A driver may allocate Mdl with NdisAllocateBuffer and free
 	 * with IoFreeMdl (e.g., 64-bit Broadcom). Since we need to
 	 * treat buffers allocated with Ndis calls differently, we
@@ -1697,9 +1717,10 @@ void free_mdl(struct mdl *mdl)
 			struct wrap_mdl *wrap_mdl;
 			wrap_mdl = (struct wrap_mdl *)
 				((char *)mdl - offsetof(struct wrap_mdl, mdl));
-			kspin_lock(&ntoskernel_lock);
+			irql = kspin_lock_irql(&ntoskernel_lock,
+					       DISPATCH_LEVEL);
 			RemoveEntryList(&wrap_mdl->list);
-			kspin_unlock(&ntoskernel_lock);
+			kspin_unlock_irql(&ntoskernel_lock, irql);
 
 			if (mdl->flags & MDL_CACHE_ALLOCATED) {
 				DBGTRACE3("freeing mdl cache: %p (%hu)",
@@ -1828,9 +1849,10 @@ STDCALL NTSTATUS WRAP_EXPORT(ObReferenceObjectByHandle)
 {
 	struct obj_mgr_obj *obj_mgr_obj;
 	struct nt_list *ent;
+	KIRQL irql;
 
 	obj_mgr_obj = NULL;
-	kspin_lock(&ntoskernel_lock);
+	irql = kspin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL);
 	nt_list_for_each(ent, &obj_mgr_obj_list) {
 		struct obj_mgr_obj *tmp;
 		tmp = container_of(ent, struct obj_mgr_obj, list);
@@ -1839,7 +1861,7 @@ STDCALL NTSTATUS WRAP_EXPORT(ObReferenceObjectByHandle)
 			break;
 		}
 	}
-	kspin_unlock(&ntoskernel_lock);
+	kspin_unlock_irql(&ntoskernel_lock, irql);
 	if (!obj_mgr_obj) {
 		obj_mgr_obj = kmalloc(sizeof(*obj_mgr_obj), GFP_KERNEL);
 		if (!obj_mgr_obj)
@@ -1850,13 +1872,13 @@ STDCALL NTSTATUS WRAP_EXPORT(ObReferenceObjectByHandle)
 		obj_mgr_obj->handle = handle;
 		obj_mgr_obj->ref_count = 1;
 		obj_mgr_obj->dh.size = sizeof(*obj_mgr_obj);
-		kspin_lock(&ntoskernel_lock);
+		irql = kspin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL);
 		InsertTailList(&obj_mgr_obj_list, &obj_mgr_obj->list);
-		kspin_unlock(&ntoskernel_lock);
+		kspin_unlock_irql(&ntoskernel_lock, irql);
 	} else {
-		kspin_lock(&ntoskernel_lock);
+		irql = kspin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL);
 		obj_mgr_obj->ref_count++;
-		kspin_unlock(&ntoskernel_lock);
+		kspin_unlock_irql(&ntoskernel_lock, irql);
 	}
 	*object = obj_mgr_obj;
 	return STATUS_SUCCESS;
@@ -1871,9 +1893,10 @@ _FASTCALL LONG WRAP_EXPORT(ObfReferenceObject)
 	struct obj_mgr_obj *obj_mgr_obj;
 	struct nt_list *ent;
 	LONG ret;
+	KIRQL irql;
 
 	ret = 0;
-	kspin_lock(&ntoskernel_lock);
+	irql = kspin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL);
 	nt_list_for_each(ent, &obj_mgr_obj_list) {
 		obj_mgr_obj = container_of(ent, struct obj_mgr_obj, list);
 		if (obj_mgr_obj == object) {
@@ -1881,7 +1904,7 @@ _FASTCALL LONG WRAP_EXPORT(ObfReferenceObject)
 			break;
 		}
 	}
-	kspin_unlock(&ntoskernel_lock);
+	kspin_unlock_irql(&ntoskernel_lock, irql);
 	return ret;
 }
 
@@ -1890,8 +1913,9 @@ _FASTCALL void WRAP_EXPORT(ObfDereferenceObject)
 {
 	struct obj_mgr_obj *obj_mgr_obj;
 	struct nt_list *ent;
+	KIRQL irql;
 
-	kspin_lock(&ntoskernel_lock);
+	irql = kspin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL);
 	nt_list_for_each(ent, &obj_mgr_obj_list) {
 		obj_mgr_obj = container_of(ent, struct obj_mgr_obj, list);
 		if (obj_mgr_obj == object) {
@@ -1905,7 +1929,7 @@ _FASTCALL void WRAP_EXPORT(ObfDereferenceObject)
 				/* kfree(obj_mgr_obj->handle); */
 				kfree(obj_mgr_obj);
 			}
-			kspin_unlock(&ntoskernel_lock);
+			kspin_unlock_irql(&ntoskernel_lock, irql);
 			return;
 		}
 	}
@@ -1965,6 +1989,7 @@ STDCALL NTSTATUS WRAP_EXPORT(IoAllocateDriverObjectExtension)
 	 void **ext)
 {
 	struct custom_ext *ce;
+	KIRQL irql;
 
 	ce = kmalloc(sizeof(*ce) + extlen, GFP_ATOMIC);
 	if (ce == NULL)
@@ -1972,9 +1997,9 @@ STDCALL NTSTATUS WRAP_EXPORT(IoAllocateDriverObjectExtension)
 
 	TRACEENTER1("custom_ext: %p", ce);
 	ce->client_id = client_id;
-	kspin_lock(&ntoskernel_lock);
+	irql = kspin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL);
 	InsertTailList(&drv_obj->drv_ext->custom_ext, &ce->list);
-	kspin_unlock(&ntoskernel_lock);
+	kspin_unlock_irql(&ntoskernel_lock, irql);
 
 	*ext = (void *)ce + sizeof(*ce);
 	TRACEENTER1("ext: %p", *ext);
@@ -1986,11 +2011,12 @@ STDCALL void *WRAP_EXPORT(IoGetDriverObjectExtension)
 {
 	struct nt_list *head, *ent;
 	void *ret;
+	KIRQL irql;
 
 	TRACEENTER2("drv_obj: %p, client_id: %p", drv_obj, client_id);
 	head = &drv_obj->drv_ext->custom_ext;
 	ret = NULL;
-	kspin_lock(&ntoskernel_lock);
+	irql = kspin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL);
 	nt_list_for_each(ent, head) {
 		struct custom_ext *ce;
 		ce = container_of(ent, struct custom_ext, list);
@@ -1999,7 +2025,7 @@ STDCALL void *WRAP_EXPORT(IoGetDriverObjectExtension)
 			break;
 		}
 	}
-	kspin_unlock(&ntoskernel_lock);
+	kspin_unlock_irql(&ntoskernel_lock, irql);
 	DBGTRACE2("ret: %p", ret);
 	return ret;
 }
@@ -2007,12 +2033,13 @@ STDCALL void *WRAP_EXPORT(IoGetDriverObjectExtension)
 void free_custom_ext(struct driver_extension *drv_ext)
 {
 	struct nt_list *head, *ent;
+	KIRQL irql;
 
 	head = &drv_ext->custom_ext;
-	kspin_lock(&ntoskernel_lock);
+	irql = kspin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL);
 	while ((ent = RemoveHeadList(head)))
 		kfree(ent);
-	kspin_unlock(&ntoskernel_lock);
+	kspin_unlock_irql(&ntoskernel_lock, irql);
 }
 
 STDCALL void WRAP_EXPORT(KeBugCheckEx)

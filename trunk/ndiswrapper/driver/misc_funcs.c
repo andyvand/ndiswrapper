@@ -40,17 +40,17 @@ int misc_funcs_init(void)
 void misc_funcs_exit_handle(struct ndis_handle *handle)
 {
 	BOOLEAN canceled;
+	KIRQL irql;
 
-	/* cancel any timers left by bugyy windows driver
-	 * Also free the memory for timers
-	 */
+	/* cancel any timers left by bugyy windows driver Also free
+	 * the memory for timers */
 	while (1) {
 		struct nt_list *ent;
 		struct wrapper_timer *wrapper_timer;
 
-		kspin_lock(&handle->timer_lock);
+		irql = kspin_lock_irql(&handle->timer_lock, DISPATCH_LEVEL);
 		ent = RemoveHeadList(&handle->wrapper_timer_list);
-		kspin_unlock(&handle->timer_lock);
+		kspin_unlock_irql(&handle->timer_lock, irql);
 		if (!ent)
 			break;
 		wrapper_timer = container_of(ent, struct wrapper_timer, list);
@@ -62,15 +62,17 @@ void misc_funcs_exit_handle(struct ndis_handle *handle)
 /* called when module is being removed */
 void misc_funcs_exit(void)
 {
+	KIRQL irql;
+
 	/* free kernel (Ke) timers */
 	while (1) {
 		struct nt_list *ent;
 		struct wrapper_timer *wrapper_timer;
 		BOOLEAN canceled;
 
-		kspin_lock(&ntoskernel_lock);
+		irql = kspin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL);
 		ent = RemoveTailList(&wrapper_timer_list);
-		kspin_unlock(&ntoskernel_lock);
+		kspin_unlock_irql(&ntoskernel_lock, irql);
 		if (!ent)
 			break;
 		wrapper_timer = container_of(ent, struct wrapper_timer, list);
@@ -78,7 +80,7 @@ void misc_funcs_exit(void)
 		wrap_kfree(wrapper_timer);
 	}
 	/* free all pointers on the allocated list */
-	kspin_lock(&wrap_allocs_lock);
+	irql = kspin_lock_irql(&wrap_allocs_lock, DISPATCH_LEVEL);
 	while (!list_empty(&wrap_allocs)) {
 		struct wrap_alloc *alloc;
 
@@ -87,7 +89,7 @@ void misc_funcs_exit(void)
 		kfree(alloc->ptr);
 		kfree(alloc);
 	}
-	kspin_unlock(&wrap_allocs_lock);
+	kspin_unlock_irql(&wrap_allocs_lock, irql);
 
 	TRACEEXIT4(return);
 }
@@ -101,6 +103,7 @@ void misc_funcs_exit(void)
 void *wrap_kmalloc(size_t size, int flags)
 {
 	struct wrap_alloc *alloc;
+	KIRQL irql;
 
 	TRACEENTER4("size = %lu, flags = %d", (unsigned long)size, flags);
 
@@ -115,9 +118,9 @@ void *wrap_kmalloc(size_t size, int flags)
 		kfree(alloc);
 		return NULL;
 	}
-	kspin_lock(&wrap_allocs_lock);
+	irql = kspin_lock_irql(&wrap_allocs_lock, DISPATCH_LEVEL);
 	list_add(&alloc->list, &wrap_allocs);
-	kspin_unlock(&wrap_allocs_lock);
+	kspin_unlock_irql(&wrap_allocs_lock, irql);
 	DBGTRACE4("%p, %p", alloc, alloc->ptr);
 	TRACEEXIT4(return alloc->ptr);
 }
@@ -126,9 +129,10 @@ void *wrap_kmalloc(size_t size, int flags)
 void wrap_kfree(void *ptr)
 {
 	struct list_head *cur, *tmp;
+	KIRQL irql;
 
 	TRACEENTER4("%p", ptr);
-	kspin_lock(&wrap_allocs_lock);
+	irql = kspin_lock_irql(&wrap_allocs_lock, DISPATCH_LEVEL);
 	list_for_each_safe(cur, tmp, &wrap_allocs) {
 		struct wrap_alloc *alloc;
 
@@ -140,7 +144,7 @@ void wrap_kfree(void *ptr)
 			break;
 		}
 	}
-	kspin_unlock(&wrap_allocs_lock);
+	kspin_unlock_irql(&wrap_allocs_lock, irql);
 	TRACEEXIT4(return);
 }
 
@@ -201,6 +205,7 @@ void wrapper_init_timer(struct ktimer *ktimer, void *handle, struct kdpc *kdpc)
 {
 	struct wrapper_timer *wrapper_timer;
 	struct ndis_handle *ndis_handle = (struct ndis_handle *)handle;
+	KIRQL irql;
 
 	TRACEENTER5("%s", "");
 	/* we allocate memory for wrapper_timer behind driver's back
@@ -225,14 +230,15 @@ void wrapper_init_timer(struct ktimer *ktimer, void *handle, struct kdpc *kdpc)
 	ktimer->wrapper_timer = wrapper_timer;
 	kspin_lock_init(&wrapper_timer->lock);
 	if (ndis_handle) {
-		kspin_lock(&ndis_handle->timer_lock);
+		irql = kspin_lock_irql(&ndis_handle->timer_lock,
+				       DISPATCH_LEVEL);
 		InsertHeadList(&ndis_handle->wrapper_timer_list,
 			       &wrapper_timer->list);
-		kspin_unlock(&ndis_handle->timer_lock);
+		kspin_unlock_irql(&ndis_handle->timer_lock, irql);
 	} else {
-		kspin_unlock(&ntoskernel_lock);
+		irql = kspin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL);
 		InsertHeadList(&wrapper_timer_list, &wrapper_timer->list);
-		kspin_unlock(&ntoskernel_lock);
+		kspin_unlock_irql(&ntoskernel_lock, irql);
 	}
 
 	DBGTRACE4("added timer %p, wrapper_timer->list %p",
@@ -242,8 +248,9 @@ void wrapper_init_timer(struct ktimer *ktimer, void *handle, struct kdpc *kdpc)
 
 /* 'expires' is relative to jiffies, so when setting timer, add
  * jiffies to it */
-int wrapper_set_timer(struct wrapper_timer *wrapper_timer, unsigned long expires,
-		      unsigned long repeat, struct kdpc *kdpc)
+int wrapper_set_timer(struct wrapper_timer *wrapper_timer,
+		      unsigned long expires, unsigned long repeat,
+		      struct kdpc *kdpc)
 {
 	KIRQL irql;
 	struct ktimer *ktimer = wrapper_timer->ktimer;
@@ -697,8 +704,8 @@ STDCALL void WRAP_EXPORT(RtlCopyUnicodeString)
 		/* append terminating '\0' if enough space */
 		if (len < dst->buflen)
 			dst->buf[len] = 0;
-	}
-	else dst->len = 0;
+	} else
+		dst->len = 0;
 	TRACEEXIT1(return);
 }
 
@@ -1009,7 +1016,7 @@ ULONGLONG ticks_1601(void)
 	ULONGLONG ticks;
 
 	do_gettimeofday(&now);
-	ticks = (ULONGLONG) now.tv_sec * TICKSPERSEC;
+	ticks = (ULONGLONG)now.tv_sec * TICKSPERSEC;
 	ticks += now.tv_usec * 10 + TICKS_1601_TO_1970;
 	return ticks;
 }
