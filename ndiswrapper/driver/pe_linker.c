@@ -166,25 +166,28 @@ static int check_nt_hdr(struct nt_header *nt_hdr)
 		return -EINVAL;
 
 	/* Make sure Image is PE32 */
-	if (nt_hdr->opt_hdr.opt_std_hdr.magic != COFF_MAGIC_PE32)
+	if (nt_hdr->opt_hdr.opt_std_hdr.magic != COFF_MAGIC_PE32 &&
+	    nt_hdr->opt_hdr.opt_std_hdr.magic != COFF_MAGIC_PE32PLUS)
 		return -EINVAL;
 	
-	if (nt_hdr->file_hdr.machine != COFF_MACHINE_I386) {
-		ERROR("%s", "Driver is not for i386");
+	if (nt_hdr->file_hdr.machine != COFF_MACHINE_I386 &&
+	    nt_hdr->file_hdr.machine != COFF_MACHINE_AMD64) {
+		ERROR("driver for machine %x is not supported (yet)",
+			nt_hdr->file_hdr.machine);
 		return -EINVAL;
 	}
 
-	/* Make sure this is a relocatable 32 bit dll */
-	char_must = COFF_CHAR_IMAGE | COFF_CHAR_32BIT;
+	/* Make sure this is executable image */
+	char_must = COFF_CHAR_IMAGE;
 	if ((nt_hdr->file_hdr.characteristics & char_must) != char_must)
 		return -EINVAL;
 
-	/* Must be a relocatable dll */
+	/* Must be relocatable */
 	if ((nt_hdr->file_hdr.characteristics & COFF_CHAR_RELOCS_STRIPPED))
 		return -EINVAL;
 
 	/* Make sure we have at least one section */
-	if (nt_hdr->file_hdr.num_sections == 0)
+	if (nt_hdr->file_hdr.num_sections <= 0)
 		return -EINVAL;
 
 	if (nt_hdr->opt_hdr.opt_nt_hdr.section_alignment <

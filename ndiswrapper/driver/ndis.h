@@ -18,6 +18,8 @@
 
 #include "ntoskernel.h"
 
+typedef int NDIS_STATUS;
+
 struct packed ndis_scatterentry
 {
 	unsigned int physlo;
@@ -35,8 +37,12 @@ struct packed ndis_scatterlist
 
 struct packed ndis_phy_address
 {
-	__u32 low;
-	__u32 high;
+#ifdef CONFIG_X86_64
+	uint64_t quad;
+#else
+	uint32_t quad_low;
+	int32_t quad_high;
+#endif
 };
 
 struct ndis_phy_addr_unit {
@@ -119,11 +125,19 @@ enum ndis_pnp_event
 	NDIS_PNP_MAXIMUM,
 };
 
-enum ndis_request_type
-{
-	NDIS_QUERY_INFO,
-	NDIS_SET_INFO,
-	NDIS_QUERY_STATS,
+enum ndis_request_type {
+	NDIS_REQUEST_QUERY_INFORMATION,
+	NDIS_REQUEST_SET_INFORMATION,
+	NDIS_REQUEST_QUERY_STATISTICS,
+	NDIS_REQUEST_OPEN,
+	NDIS_REQUEST_CLOSE,
+	NDIS_REQUEST_SEND,
+	NDIS_REQUEST_TRANSFER_DATA,
+	NDIS_REQUEST_RESET,
+	NDIS_REQUEST_GENERIC1,
+	NDIS_REQUEST_GENERIC2,
+	NDIS_REQUEST_GENERIC3,
+	NDIS_REQUEST_GENERIC4
 };
 
 struct ndis_request {
@@ -147,6 +161,10 @@ struct ndis_request {
 	} data;
 };
 
+typedef void (*ndis_isr_handler)(unsigned int *taken, unsigned int *callme,
+				 void *ctx) STDCALL;
+typedef void (*ndis_interrupt_handler)(void *ctx) STDCALL;
+
 struct miniport_char
 {
 	/* NDIS 3.0 */
@@ -162,7 +180,7 @@ struct miniport_char
 	void (*halt)(void *ctx) STDCALL;
 
 	/* Interrupt BH */
-	void (*handle_interrupt)(void *ctx) STDCALL;
+	ndis_interrupt_handler handle_interrupt;
 
 	/* Start miniport driver */
 	unsigned int (*init)(unsigned int *OpenErrorStatus,
@@ -172,8 +190,7 @@ struct miniport_char
 			     void *conf_handle) STDCALL;
 
 	/* Interrupt TH */
-	void (*isr)(unsigned int *taken, unsigned int *callme,
-		    void *ctx) STDCALL;
+	ndis_isr_handler isr;
 
 	/* Query parameters */
 	unsigned int (*query)(void *ctx, unsigned int oid,
@@ -308,7 +325,7 @@ struct ndis_irq
 	/* Taken by ISR, DisableInterrupt and SynchronizeWithInterrupt */
 	spinlock_t *spinlock;
 	void *id;
-	void *isr;
+	ndis_isr_handler isr;
 	void *dpc;
 
 	struct kdpc intr_dpc;
@@ -477,7 +494,6 @@ enum ndis_medium {
 	NDIS_MEDIUM_MAX
 };
 
-
 enum ndis_phys_medium
 {
 	NDIS_PHYSICAL_MEDIUM_UNSPECIFIED,
@@ -547,6 +563,82 @@ enum op_mode
 	NDIS_MODE_AUTO
 };
 
+struct ndis_timer
+{
+	struct ktimer ktimer;
+	struct kdpc kdpc;
+};
+
+struct ndis_miniport_timer
+{
+	struct ktimer ktimer;
+	struct kdpc kdpc;
+	void *timer_func;
+	void *timer_ctx;
+	struct ndis_handle *handle;
+	struct ndis_miniport_timer *next;
+};
+
+struct packed ndis_resource_entry
+{
+	__u8 type;
+	__u8 share;
+	__u16 flags;
+	__u32 param1;
+	__u32 param2;
+	__u32 param3;
+};
+
+struct packed ndis_resource_list
+{
+	__u16 version;
+	__u16 revision;
+	__u32 length;
+	struct ndis_resource_entry list[0];
+};
+
+
+struct ndis_event
+{
+	struct kevent kevent;
+};
+
+struct ndis_bind_paths {
+	unsigned int number;
+	struct ustring paths[1];
+};
+
+struct ndis_reference {
+	KSPIN_LOCK spinlock;
+	unsigned short ref_count;
+	BOOLEAN closing;
+};
+
+struct ndis_miniport_interrupt {
+	void *object;
+	KSPIN_LOCK dpc_count_lock;
+	void *reserved;
+	ndis_isr_handler irq_th;
+	ndis_interrupt_handler irq_bh;
+	struct kdpc interrupt_dpc;
+	struct ndis_miniport_block *miniport;
+	UCHAR dpc_count;
+	BOOLEAN filler1;
+	struct kevent dpcs_completed_event;
+        BOOLEAN shared_interrupt;
+	BOOLEAN isr_requested;
+};
+
+struct ndis_filterdbs {
+	union {
+		void *eth_db;
+		void *null_db;
+	} u;
+	void *trdb;
+	void *fddidb;
+	void *arcdb;
+};
+
 /*
  * This is the per device struct. One per PCI-device exists.
  *
@@ -555,7 +647,43 @@ enum op_mode
  */
 struct packed ndis_handle
 {
-	char fill1[232];
+	void *signature;
+	struct ndis_handle *next;
+	struct ndis_driver *driver;
+	void *adapter_ctx;
+	struct ustring name;
+	struct ndis_bind_paths *bindpaths;
+	void *openqueue;
+	struct ndis_reference reference;
+	void *device_ctx;
+	UCHAR padding;
+	UCHAR lock_acquired;
+	UCHAR pmode_opens;
+	UCHAR assigned_cpu;
+	KSPIN_LOCK lock;
+	enum ndis_request_type *mediarequest;
+	struct ndis_miniport_interrupt *interrupt;
+	unsigned long flags;
+	unsigned long pnp_flags;
+	struct list_entry packet_list;
+	struct ndis_packet *first_pending_tx_packet;
+	struct ndis_packet *return_packet_queue;
+	unsigned long request_buffer;
+	void *set_mcast_buffer;
+	struct ndis_handle *primary_miniport;
+	void *wrapper_ctx;
+	void *bus_data_ctx;
+	unsigned long pnp_capa;
+	void *resources;
+	struct ndis_timer wakeup_dpc_timer;
+	struct ustring basename;
+	struct ustring symlink_name;
+	unsigned long ndis_hangcheck_interval;
+	unsigned short hanghcheck_ticks;
+	unsigned short hangcheck_tick;
+	NDIS_STATUS ndis_reset_status;
+	void *resetopen;
+	struct ndis_filterdbs filterdbs;
 	void *rx_packet;
 	void *send_complete;
 	void *send_resource_avail;
@@ -584,7 +712,8 @@ struct packed ndis_handle
 	u32 max_short_addrs;
 	u32 cur_lookahead;
 	u32 max_lookahead;
-	void *interrupt;
+
+	ndis_interrupt_handler irq_bh;
 	void *disable_intr;
 	void *enable_intr;
 	void *send_pkts;
@@ -606,7 +735,10 @@ struct packed ndis_handle
 	void *wan_rx;
 	void *wan_rx_complete;
 
-	char fill3[200];
+	/* the rest are ndiswrapper specific */
+
+	/* keep a barrier in cases of over-stepping */
+	char barrier[200];
 
 	union {
 		struct pci_dev *pci;
@@ -617,10 +749,10 @@ struct packed ndis_handle
 	struct usb_interface *intf;
 #endif
 	struct net_device *net_dev;
-	void *adapter_ctx;
+//	void *adapter_ctx;
 	void *shutdown_ctx;
 
-	struct work_struct irq_bh;
+	struct work_struct irq_work;
 
 	struct ndis_irq *ndis_irq;
 	unsigned long mem_start;
@@ -629,7 +761,6 @@ struct packed ndis_handle
 	struct net_device_stats stats;
 	struct iw_statistics wireless_stats;
 	struct ndis_wireless_stats ndis_stats;
-	struct ndis_driver *driver;
 	struct ndis_device *device;
 
 	struct work_struct xmit_work;
@@ -693,46 +824,6 @@ struct packed ndis_handle
 	unsigned long wrapper_work;
 
 	unsigned long attributes;
-};
-
-struct ndis_timer
-{
-	struct ktimer ktimer;
-	struct kdpc kdpc;
-};
-
-struct ndis_miniport_timer
-{
-	struct ktimer ktimer;
-	struct kdpc kdpc;
-	void *timer_func;
-	void *timer_ctx;
-	struct ndis_handle *handle;
-	struct ndis_miniport_timer *next;
-};
-
-struct packed ndis_resource_entry
-{
-	__u8 type;
-	__u8 share;
-	__u16 flags;
-	__u32 param1;
-	__u32 param2;
-	__u32 param3;
-};
-
-struct packed ndis_resource_list
-{
-	__u16 version;
-	__u16 revision;
-	__u32 length;
-	struct ndis_resource_entry list[0];
-};
-
-
-struct ndis_event
-{
-	struct kevent kevent;
 };
 
 enum ndis_pm_state
