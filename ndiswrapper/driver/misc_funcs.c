@@ -135,6 +135,12 @@ void *my_memset(void * s, char c,size_t count)
 	return memset(s, c, count);
 }
 
+void *my_memmove(void *to, void *from, size_t count)
+{
+	return memmove(to, from, count);
+}
+ 
+
 STDCALL void WRITE_REGISTER_ULONG(unsigned int reg, unsigned int val)
 {
 	//DBGTRACE("%s: %08lx=%08lx\n", __FUNCTION__, reg, val);
