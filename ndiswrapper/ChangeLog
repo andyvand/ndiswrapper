@@ -1,13 +1,12 @@
-Version 0.12 2004-11-xx
+Version 0.12 2004-11-25
 =======================
 * Works with Preempt and SMP kernels.
-* Error with setting encryption key at index 4 fixed.
+* WPA-RADIUS is supported.
 * Compiles with kernels > 2.6.9 and swsuspend2
 * USB cards are reset during initialization; they should work without
   having to reset explicitly
 * Some crashes in USB, especially during initialization, are fixed.
-* Trasmit (active) WEP key can be set giving just index if that key is
-  already set.
+* WEP key setting problems fixed.
 * Check for 4K stack size during compilation and issue warning if necessary.
 * Bug fixes
 
