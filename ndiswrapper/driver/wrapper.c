@@ -926,7 +926,7 @@ static int ndis_get_power_mode(struct net_device *dev,
 		return -EOPNOTSUPP;
 	}
 	if (power_mode == NDIS_POWER_OFF)
-		wrqu->power.disabled = 1;
+		wrqu->power.disabled = 0;
 	else
 	{
 		wrqu->power.flags |= IW_POWER_ALL_R;
@@ -1768,14 +1768,14 @@ static void __devexit ndis_remove_one(struct pci_dev *pdev)
 
 #ifndef DEBUG_CRASH_ON_INIT
 	unregister_netdev(handle->net_dev);
-	set_int(handle, NDIS_OID_DISASSOCIATE, 0);
-	call_halt(handle);
 
 	if(handle->net_dev)
 		free_netdev(handle->net_dev);
+	set_int(handle, NDIS_OID_DISASSOCIATE, 0);
+	call_halt(handle);
 #endif
-	pci_release_regions(pdev);
 	pci_disable_device(pdev);
+	pci_release_regions(pdev);
 }
 
 
