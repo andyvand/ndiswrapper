@@ -95,6 +95,7 @@ typedef __u32	ULONG;
 typedef __u64	ULONGLONG;
 typedef __u64	ULONGULONG;
 
+typedef CHAR CCHAR;
 typedef size_t SIZE_T;
 typedef SHORT wchar_t;
 typedef SHORT CSHORT;
@@ -129,7 +130,7 @@ struct unicode_string {
 };
 
 struct slist_entry {
-	struct slist_entry  *next;
+	struct slist_entry *next;
 };
 
 union slist_head {
@@ -308,15 +309,34 @@ struct io_status_block {
 	ULONG status_info;
 };
 
+#ifdef CONFIG_X86_64
+#define POINTER_ALIGNMENT
+#else
+#define POINTER_ALIGNMENT __attribute__((aligned(8)))
+#endif
+
 #ifndef CONFIG_X86_64
 #pragma pack(push,4)
 #endif
 struct io_stack_location {
-	char major_fn;
-	char minor_fn;
-	char flags;
-	char control;
+	UCHAR major_fn;
+	UCHAR minor_fn;
+	UCHAR flags;
+	UCHAR control;
 	union {
+		struct {
+			void *security_context;
+			ULONG options;
+			USHORT POINTER_ALIGNMENT file_attributes;
+			USHORT share_access;
+			ULONG POINTER_ALIGNMENT ea_length;
+		} create;
+		struct {
+			ULONG length;
+			ULONG POINTER_ALIGNMENT key;
+			LARGE_INTEGER byte_offset;
+		} read;
+		/* FIXME: this structure is not complete */
 		struct {
 			ULONG output_buf_len;
 			ULONG input_buf_len; /*align to pointer size*/
@@ -331,7 +351,7 @@ struct io_stack_location {
 		} generic;
 	} params;
 	struct device_object *dev_obj;
-	void *fill;
+	void *file_obj;
 	ULONG (*completion_handler)(struct device_object *,
 				    struct irp *, void *) STDCALL;
 	void *handler_arg;
@@ -339,6 +359,29 @@ struct io_stack_location {
 #ifndef CONFIG_X86_64
 #pragma pack(pop)
 #endif
+
+struct kapc {
+	CSHORT type;
+	CSHORT size;
+	ULONG spare0;
+	struct kthread *thread;
+	struct list_entry apc_list_entry;
+	void *kernele_routine;
+	void *rundown_routine;
+	void *normal_routine;
+	void *normal_context;
+	void *sys_arg1;
+	void *sys_arg2;
+	CCHAR apc_state_index;
+	KPROCESSOR_MODE apc_mode;
+	BOOLEAN inserted;
+};
+
+struct kdevice_queue_entry {
+	struct list_entry dev_list_entry;
+	ULONG sort_key;
+	BOOLEAN inserted;
+};
 
 enum irp_work_type {
 	IRP_WORK_NONE,
@@ -349,7 +392,7 @@ enum irp_work_type {
 struct irp {
 	SHORT type;
 	USHORT size;
-	void *mdl;
+	struct mdl *mdl;
 	ULONG flags;
 	union {
 		struct irp *master_irp;
@@ -366,29 +409,57 @@ struct irp {
 	UCHAR cancel;
 	UCHAR cancel_irql;
 
-	CHAR fill2[2];
+	CHAR apc_env;
+	UCHAR alloc_flags;
 
 	struct io_status_block *user_status;
 	struct kevent *user_event;
 
-	void *fill3[2];
+	union {
+		struct {
+			void *user_apc_routine;
+			void *user_apc_context;
+		} async_params;
+		LARGE_INTEGER alloc_size;
+	} overlay;
 
 	void (*cancel_routine)(struct device_object *, struct irp *) STDCALL;
 	void *user_buf;
-	void *driver_context[4];
-	void *thread;
 
-	void *fill4;
-
-	struct list_entry list_entry;
-	struct io_stack_location *current_stack_location;
-
-	void *fill5[3];
+	union {
+		struct {
+			union {
+				struct kdevice_queue_entry dev_q_entry;
+				struct {
+					void *driver_context[4];
+				} context;
+			} dev_q;
+			void *thread;
+			char *aux_buf;
+			struct {
+				struct list_entry list_entry;
+				union {
+					struct io_stack_location *
+					current_stack_location;
+					ULONG packet_type;
+				} packet;
+			} packet_list;
+			void *file_object;
+		} overlay;
+		struct kapc apc;
+		void *completion_key;
+	} tail;
 
 	/* ndiswrapper extension */
 	enum irp_work_type irp_work_type;
-	struct list_head cancel_list_entry;
+	struct list_head completed_list;
+	struct list_head cancel_list;
 };
+
+#define IRP_CUR_STACK_LOC(irp)						\
+	(irp)->tail.overlay.packet_list.packet.current_stack_location
+#define IRP_DRIVER_CONTEXT(irp)					\
+	(irp)->tail.overlay.dev_q.context.driver_context
 
 enum nt_obj_type {
 	NT_OBJ_EVENT,

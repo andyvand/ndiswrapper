@@ -728,11 +728,11 @@ STDCALL struct irp *WRAP_EXPORT(IoAllocateIrp)
 		DBGTRACE3("allocated irp %p", irp);
 		memset(irp, 0, size);
 
-		irp->size       = size;
+		irp->size = size;
 		irp->stack_size = stack_size;
-		irp->stack_pos  = stack_size;
-		irp->current_stack_location =
-			((struct io_stack_location *)(irp+1)) + stack_size;
+		irp->stack_pos = stack_size;
+		IRP_CUR_STACK_LOC(irp) =
+			((struct io_stack_location *)(irp + 1)) + stack_size;
 	}
 
 	TRACEEXIT3(return irp);
@@ -748,10 +748,10 @@ STDCALL void WRAP_EXPORT(IoInitializeIrp)
 		DBGTRACE3("initializing irp %p", irp);
 		memset(irp, 0, size);
 
-		irp->size       = size;
+		irp->size = size;
 		irp->stack_size = stack_size;
-		irp->stack_pos  = stack_size;
-		irp->current_stack_location =
+		irp->stack_pos = stack_size;
+		IRP_CUR_STACK_LOC(irp) =
 			((struct io_stack_location *)(irp+1)) + stack_size;
 	}
 
@@ -776,25 +776,25 @@ STDCALL struct irp *WRAP_EXPORT(IoBuildDeviceIoControlRequest)
 		memset(irp, 0, sizeof(struct irp) +
 		       sizeof(struct io_stack_location));
 
-		irp->size                   = sizeof(struct irp) +
+		irp->size = sizeof(struct irp) +
 			sizeof(struct io_stack_location);
-		irp->stack_size             = 1;
-		irp->stack_pos              = 1;
-		irp->user_status            = io_status;
-		irp->user_event             = event;
-		irp->user_buf               = output_buf;
+		irp->stack_size = 1;
+		irp->stack_pos = 1;
+		irp->user_status = io_status;
+		irp->user_event = event;
+		irp->user_buf = output_buf;
 
-		stack = (struct io_stack_location *)(irp+1);
-		irp->current_stack_location = stack+1;
+		stack = (struct io_stack_location *)(irp + 1);
+		IRP_CUR_STACK_LOC(irp) = stack + 1;
 
-		stack->params.ioctl.code            = ioctl;
-		stack->params.ioctl.input_buf_len   = input_buf_len;
-		stack->params.ioctl.output_buf_len  = output_buf_len;
+		stack->params.ioctl.code = ioctl;
+		stack->params.ioctl.input_buf_len = input_buf_len;
+		stack->params.ioctl.output_buf_len = output_buf_len;
 		stack->params.ioctl.type3_input_buf = input_buf;
-		stack->dev_obj                      = dev_obj;
+		stack->dev_obj = dev_obj;
 
-		stack->major_fn = (internal_ioctl)?
-			IRP_MJ_INTERNAL_DEVICE_CONTROL: IRP_MJ_DEVICE_CONTROL;
+		stack->major_fn = (internal_ioctl) ?
+			IRP_MJ_INTERNAL_DEVICE_CONTROL : IRP_MJ_DEVICE_CONTROL;
 	}
 
 	TRACEEXIT3(return irp);
@@ -803,7 +803,7 @@ STDCALL struct irp *WRAP_EXPORT(IoBuildDeviceIoControlRequest)
 _FASTCALL void WRAP_EXPORT(IofCompleteRequest)
 	(FASTCALL_DECL_2(struct irp *irp, CHAR prio_boost))
 {
-	struct io_stack_location *stack = irp->current_stack_location-1;
+	struct io_stack_location *stack = IRP_CUR_STACK_LOC(irp) - 1;
 
 	TRACEENTER3("irp = %p", irp);
 
@@ -841,7 +841,7 @@ _FASTCALL void WRAP_EXPORT(IofCompleteRequest)
 STDCALL BOOLEAN WRAP_EXPORT(IoCancelIrp)
 	(struct irp *irp)
 {
-	struct io_stack_location *stack = irp->current_stack_location-1;
+	struct io_stack_location *stack = IRP_CUR_STACK_LOC(irp) - 1;
 	void (*cancel_routine)(struct device_object *, struct irp *) STDCALL;
 	KIRQL irql;
 
@@ -877,7 +877,7 @@ STDCALL void WRAP_EXPORT(IoFreeIrp)
 _FASTCALL NT_STATUS WRAP_EXPORT(IofCallDriver)
 	(FASTCALL_DECL_2(struct device_object *dev_obj, struct irp *irp))
 {
-	struct io_stack_location *stack = irp->current_stack_location-1;
+	struct io_stack_location *stack = IRP_CUR_STACK_LOC(irp) - 1;
 	NT_STATUS ret = STATUS_NOT_SUPPORTED;
 	unsigned long result;
 
@@ -979,7 +979,7 @@ STDCALL NT_STATUS WRAP_EXPORT(PsCreateSystemThread)
 	if (!ctx)
 		TRACEEXIT2(return STATUS_RESOURCES);
 	ctx->start_routine = start_routine;
-	ctx->context       = context;
+	ctx->context = context;
 
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,7)
 	pid = kernel_thread(kthread_trampoline, ctx,

@@ -442,6 +442,7 @@ struct ndis_driver {
 	void *major_func[IRP_MJ_MAXIMUM_FUNCTION + 1];
 
 	/* rest is ndiswrapper specific info */
+	void *entry;
 	struct list_head list;
 	char name[MAX_NDIS_SETTING_NAME_LEN];
 	char version[MAX_NDIS_SETTING_VALUE_LEN];
@@ -925,6 +926,8 @@ void ndiswrapper_procfs_remove(void);
 
 void packet_recycler(void *param);
 int stricmp(const char *s1, const char *s2);
+
+void usb_cleanup(void);
 
 /* Required OIDs */
 #define OID_GEN_SUPPORTED_LIST			0x00010101
