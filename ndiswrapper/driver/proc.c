@@ -76,10 +76,9 @@ static int ndis_proc_read_wep(char *page, char **start, off_t off,
 		      sizeof(ap_address), &written, &needed);
 	if (res)
 		memset(ap_address, 255, ETH_ALEN);
-	p += sprintf(p, "ap_address=");
-	for (i = 0 ; i < ETH_ALEN ; i++)
-		p += sprintf(p, "%02x:", ap_address[i]);
-	p += sprintf(p, "%02x", ap_address[i]);
+	p += sprintf(p, "ap_address=%2.2X", ap_address[0]);
+	for (i = 1 ; i < ETH_ALEN ; i++)
+		p += sprintf(p, ":%2.2X", ap_address[i]);
 	p += sprintf(p, "\n");
 
 	res = doquery(handle, NDIS_OID_ESSID, (char*)&essid,
@@ -101,7 +100,7 @@ static int ndis_proc_read_wep(char *page, char **start, off_t off,
 		if (handle->wep.keylength > 0)
 			for (i = 0 ; i < NDIS_ENCODING_TOKEN_MAX &&
 				     i < handle->wep.keylength; i++)
-				p += sprintf(p, "%02x",
+				p += sprintf(p, "%2.2X",
 					     handle->wep.keymaterial[i]);
 		else
 			p += sprintf(p, "off");
