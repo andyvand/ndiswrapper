@@ -29,13 +29,13 @@ typedef union packed ndis_phy_address {
 	} s;
 } NDIS_PHY_ADDRESS;
 
-struct packed ndis_sg_element {
+struct ndis_sg_element {
 	NDIS_PHY_ADDRESS address;
 	UINT len;
 	UINT reserved;
 };
 
-struct packed ndis_sg_list {
+struct ndis_sg_list {
 	UINT len;
 	UINT reserved;
 	struct ndis_sg_element *elements;
@@ -94,7 +94,7 @@ struct ndis_packet_private {
 	USHORT oob_offset;
 };
 
-struct packed ndis_packet {
+struct ndis_packet {
 
 	struct ndis_packet_private private;
 
@@ -531,12 +531,12 @@ struct encr_info {
 	int active;
 };
 
-struct packed ndis_essid {
+struct ndis_essid {
 	unsigned int length;
 	char essid[NDIS_ESSID_MAX_SIZE];
 };
 
-struct packed ndis_encr_key {
+struct ndis_encr_key {
 	unsigned long struct_size;
 	unsigned long index;
 	unsigned long length;
@@ -585,7 +585,7 @@ struct ndis_miniport_timer {
 	struct ndis_miniport_timer *next;
 };
 
-struct packed ndis_resource_entry {
+struct ndis_resource_entry {
 	UCHAR type;
 	UCHAR share;
 	USHORT flags;
@@ -628,7 +628,7 @@ struct packed ndis_resource_entry {
 	} u;
 };
 
-struct packed ndis_resource_list {
+struct ndis_resource_list {
 	USHORT version;
 	USHORT revision;
 	ULONG length;
@@ -692,8 +692,8 @@ enum ndis_interface_type {
  * directly via macros, so it's important that they are at the correct
  * position hence the paddings.
  */
-struct packed_i386 ndis_handle {
-	ULONG signature;
+struct ndis_handle {
+	void *signature;
 	struct ndis_handle *next;
 	struct ndis_driver *driver;
 	void *adapter_ctx;
@@ -735,7 +735,7 @@ struct packed_i386 ndis_handle {
 	void *send_resource_avail;
 	void *reset_complete;
 
-	ULONG media_type;
+	enum ndis_medium media_type;
 	ULONG bus_number;
 	enum ndis_interface_type bus_type;
 	enum ndis_interface_type adapter_type;
