@@ -636,14 +636,26 @@ STDCALL int NdisUnicodeStringToAnsiString(struct ustring *dst,
  * it in out handle.
  *
  */ 
+struct list_head handle_ctx_list;
 STDCALL void NdisMSetAttributesEx(struct ndis_handle *handle,
                                   void* adapter_ctx,
 				  unsigned int hangcheck_interval,
 				  unsigned int attributes,
 				  unsigned int adaptortype)
 {
+	struct handle_ctx_entry *handle_ctx;
+
 	TRACEENTER2("%08x, %08x %d %08x, %d", (int)handle, (int)adapter_ctx,
 		    hangcheck_interval, attributes, adaptortype);
+	/* FIXME: is it possible to have duplicate ctx's? */
+	handle_ctx = wrap_kmalloc(sizeof(*handle_ctx), GFP_KERNEL);
+	if (handle_ctx)
+	{
+		handle_ctx->handle = handle;
+		handle_ctx->ctx = adapter_ctx;
+		list_add(&handle_ctx->list, &handle_ctx_list);
+	}
+
 	if(attributes & 8)
 	{
 		pci_set_master(handle->pci_dev);
@@ -665,6 +677,17 @@ STDCALL void NdisMSetAttributesEx(struct ndis_handle *handle,
 
 	handle->adapter_ctx = adapter_ctx;
 	TRACEEXIT2(return);
+}
+
+static struct ndis_handle *ctx_to_handle(void *ctx)
+{
+	struct handle_ctx_entry *handle_ctx;
+	list_for_each_entry(handle_ctx, &handle_ctx_list, list)
+	{
+		if (handle_ctx->ctx == ctx)
+			return handle_ctx->handle;
+	}
+	return NULL;
 }
 
 /*
@@ -1545,7 +1568,7 @@ STDCALL void NdisMIndicateReceivePacket(struct ndis_handle *handle,
 		
 			eth_copy_and_sum(skb, buffer->data, buffer->len, 0);
 			skb_put(skb, buffer->len);
-			skb->protocol = eth_type_trans (skb, handle->net_dev);
+			skb->protocol = eth_type_trans(skb, handle->net_dev);
 			handle->stats.rx_bytes += buffer->len;
 			handle->stats.rx_packets++;
 			netif_rx(skb);
@@ -1596,11 +1619,7 @@ STDCALL void NdisMIndicateReceivePacket(struct ndis_handle *handle,
 	TRACEEXIT3(return);
 }
 
-/*
- *
- *
- * Called via function pointer.
- */
+/* Called via function pointer. */
 STDCALL void NdisMSendComplete(struct ndis_handle *handle,
 			       struct ndis_packet *packet, unsigned int status)
 {
@@ -1625,10 +1644,47 @@ STDCALL void NdisMSendResourcesAvailable(struct ndis_handle *handle)
 	TRACEEXIT3(return);
 }
 
-/*
- *
- * Called via function pointer if query returns NDIS_STATUS_PENDING
- */
+STDCALL void EthRxIndicateHandler(void *adapter_ctx, void *rx_ctx,
+				  char *header1, char *header,
+				  u32 header_size, char *look_ahead,
+				  u32 look_ahead_size, u32 packet_size)
+{
+	struct sk_buff *skb;
+	struct ndis_handle *handle = ctx_to_handle(rx_ctx);
+
+	TRACEENTER3("adapter_ctx = %p, rx_ctx = %p, buf = %p, size = %d, "
+		    "buf = %p, size = %d, packet = %d",
+		    adapter_ctx, rx_ctx, header, header_size, look_ahead,
+		    look_ahead_size, packet_size);
+
+	DBGTRACE3("handle = %p", handle);
+	if (!handle)
+		TRACEEXIT3(return);
+
+	skb = dev_alloc_skb(header_size+packet_size);
+	if (skb)
+	{
+		skb->dev = handle->net_dev;
+		memcpy(skb->data, header, header_size);
+		memcpy(skb->data+header_size, look_ahead, packet_size);
+		skb_put(skb, header_size+look_ahead_size);
+		skb->protocol = eth_type_trans(skb, handle->net_dev);
+		handle->stats.rx_bytes += packet_size;
+		handle->stats.rx_packets++;
+		netif_rx(skb);
+	}
+	else
+		handle->stats.rx_dropped++;
+
+	TRACEEXIT3(return);
+}
+
+STDCALL void EthRxComplete(struct ndis_handle *handle)
+{
+	DBGTRACE3("%s", "");
+}
+
+/* Called via function pointer if query returns NDIS_STATUS_PENDING */
 STDCALL void NdisMQueryInformationComplete(struct ndis_handle *handle,
 					   unsigned int status)
 {
@@ -1639,10 +1695,7 @@ STDCALL void NdisMQueryInformationComplete(struct ndis_handle *handle,
 	TRACEEXIT3(return);
 }
 
-/*
- *
- * Called via function pointer if setinfo returns NDIS_STATUS_PENDING
- */
+/* Called via function pointer if setinfo returns NDIS_STATUS_PENDING */
 STDCALL void NdisMSetInformationComplete(struct ndis_handle *handle,
 					 unsigned int status)
 {
@@ -1653,9 +1706,7 @@ STDCALL void NdisMSetInformationComplete(struct ndis_handle *handle,
 	TRACEEXIT3(return);
 }
 
-/*
- * Sleeps for the given number of microseconds
- */
+/* Sleeps for the given number of microseconds */
 STDCALL void NdisMSleep(unsigned long us_to_sleep)
 {
 	TRACEENTER4("us: %lu", us_to_sleep);
