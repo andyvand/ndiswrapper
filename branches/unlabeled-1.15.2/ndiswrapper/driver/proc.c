@@ -235,7 +235,7 @@ int ndiswrapper_procfs_init(void)
 	ndiswrapper_procfs_entry = proc_mkdir(DRV_NAME, proc_net);
 	if (ndiswrapper_procfs_entry == NULL)
 	{
-		printk(KERN_INFO "%s: Couldn't create procfs directory\n",
+		printk(KERN_ERR "%s: Couldn't create procfs directory\n",
 		       DRV_NAME);
 		return -ENOMEM;
 	}
@@ -259,7 +259,7 @@ int ndiswrapper_procfs_add_iface(struct ndis_handle *handle)
 
 	if (proc_iface == NULL)
 	{
-		printk(KERN_INFO "%s: Couldn't create proc directory %s\n",
+		printk(KERN_ERR "%s: Couldn't create proc directory %s\n",
 		       DRV_NAME, dev->name);
 		return -ENOMEM;
 	}
@@ -270,7 +270,7 @@ int ndiswrapper_procfs_add_iface(struct ndis_handle *handle)
 								   proc_iface);
 	if (procfs_entry == NULL)
 	{
-		printk(KERN_INFO "%s: Couldn't create proc entry for 'hw'\n",
+		printk(KERN_ERR "%s: Couldn't create proc entry for 'hw'\n",
 			   dev->name);
 		return -ENOMEM;
 	}
@@ -286,7 +286,7 @@ int ndiswrapper_procfs_add_iface(struct ndis_handle *handle)
 								   proc_iface);
 	if (procfs_entry == NULL)
 	{
-		printk(KERN_INFO "%s: Couldn't create proc entry for 'stats'\n",
+		printk(KERN_ERR "%s: Couldn't create proc entry for 'stats'\n",
 			   dev->name);
 		return -ENOMEM;
 	}
@@ -302,7 +302,7 @@ int ndiswrapper_procfs_add_iface(struct ndis_handle *handle)
 								   proc_iface);
 	if (procfs_entry == NULL)
 	{
-		printk(KERN_INFO "%s: Couldn't create proc entry for 'wep'\n",
+		printk(KERN_ERR "%s: Couldn't create proc entry for 'wep'\n",
 			   dev->name);
 		return -ENOMEM;
 	}

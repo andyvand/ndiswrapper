@@ -69,17 +69,24 @@ STDCALL void KeStallExecutionProcessor(unsigned int usecs)
 	udelay(usecs);
 }
 
-void KfReleaseSpinLock(void){UNIMPL();}
 
-extern STDCALL void KeAcquireSpinLock(KSPIN_LOCK *lock, KIRQL *irql);
-STDCALL void KfAcquireSpinLock(KSPIN_LOCK *lock, KIRQL *oldirql)
+STDCALL KIRQL KfAcquireSpinLock(KSPIN_LOCK *lock)
 {
-	KeAcquireSpinLock(lock, oldirql);
-}
+	KIRQL irql;
 
-STDCALL int KeGetCurrentIrql(void)
-{
-	return DISPATCH_LEVEL;
+	irql = KeGetCurrentIrql();
+	DBGTRACE4("lock = %p, *lock = %p", lock, (void *)lock);
+	if (lock && *lock)
+	{
+		if (irql == DISPATCH_LEVEL)
+			spin_lock((spinlock_t *)(*lock));
+		else // irql == PASSIVE_LEVEL
+			spin_lock_bh((spinlock_t *)(*lock));
+	}
+	else
+		printk(KERN_ERR "%s: lock %p is not initialized!\n",
+		       __FUNCTION__, lock);
+	return irql;
 }
 
 struct wrap_func hal_wrap_funcs[] =
@@ -94,7 +101,6 @@ struct wrap_func hal_wrap_funcs[] =
 	WRAP_FUNC_ENTRY(READ_PORT_USHORT),
 	WRAP_FUNC_ENTRY(KeStallExecutionProcessor),
 	WRAP_FUNC_ENTRY(KfAcquireSpinLock),
-	WRAP_FUNC_ENTRY(KeGetCurrentIrql),
 	{NULL, NULL}
 };
 

@@ -101,13 +101,13 @@ STDCALL int NdisMRegisterMiniport(struct ndis_driver *ndis_driver,
 	
 	if(miniport_char->majorVersion < 4)
 	{
-		printk(KERN_WARNING "%s: Driver %s i using ndis version %d which is too old.\n", DRV_NAME, ndis_driver->name, miniport_char->majorVersion); 
+		printk(KERN_ERR "%s: Driver %s using ndis version %d which is too old.\n", DRV_NAME, ndis_driver->name, miniport_char->majorVersion); 
 		TRACEEXIT1(return NDIS_STATUS_BAD_VERSION);
 	}
 
 	if(char_len < min_length)
 	{
-		printk(KERN_WARNING "%s: Characteristics length to small %d for driver %s\n", DRV_NAME, char_len, ndis_driver->name); 
+		printk(KERN_ERR "%s: Characteristics length %d is too small for driver %s \n", DRV_NAME, char_len, ndis_driver->name); 
 		TRACEEXIT1(return NDIS_STATUS_BAD_CHARACTERISTICS);
 	}
 
@@ -816,36 +816,16 @@ STDCALL void NdisAllocateSpinLock(struct ndis_spin_lock *lock)
 {
 	TRACEENTER3();
 
-	lock->linux_lock = kmalloc(sizeof(struct ndis_linux_spin_lock),
-				   GFP_ATOMIC);
-	if (lock->linux_lock)
-	{
-		memset(lock->linux_lock, 0, 
-		       sizeof(struct ndis_linux_spin_lock));
-		spin_lock_init(&lock->linux_lock->lock);
-		lock->kirql = NDIS_SPIN_LOCK_MAGIC_CHAR;
-	}
-	
-	else
-	{
-		printk(KERN_ERR "%s: couldn't allocate spinlock (%s)\n",
-			   DRV_NAME, __FUNCTION__);
-		lock->kirql = 0;
-	}
+	KeInitializeSpinLock(&lock->spinlock);
 	TRACEEXIT3(return);
 }
 
 STDCALL void NdisFreeSpinLock(struct ndis_spin_lock *lock)
 {
 	TRACEENTER3();
-	if(!lock)
-	{
-		TRACEEXIT3(return);       
-	}
-	if(lock->linux_lock)
-		kfree(lock->linux_lock);
-	lock->linux_lock = NULL;
-	lock->kirql = 0;
+	if (lock->spinlock)
+		wrap_kfree(lock->spinlock);
+	lock->spinlock = NULL;
 	TRACEEXIT3(return);
 }
 
@@ -853,41 +833,26 @@ STDCALL void NdisFreeSpinLock(struct ndis_spin_lock *lock)
 STDCALL void NdisAcquireSpinLock(struct ndis_spin_lock *lock)
 {
 	TRACEENTER3();
-	if(lock->kirql != NDIS_SPIN_LOCK_MAGIC_CHAR ||
-	   lock->linux_lock == NULL)
-	{
-		printk(KERN_INFO "%s: Buggy ndis driver trying to use unintilized spinlock. Trying to recover...", DRV_NAME);
-		NdisAllocateSpinLock(lock);
-		if (lock->kirql != NDIS_SPIN_LOCK_MAGIC_CHAR ||
-			lock->linux_lock == NULL)
-		{
-			printk("failed.\n");
-			BUG();
-		}
-		else
-			printk("ok.\n");
-	}
-		
-	spin_lock_bh(&lock->linux_lock->lock);
+	KeAcquireSpinLock(&lock->spinlock, &lock->kirql);
 	TRACEEXIT3(return);
 }
 
 STDCALL void NdisReleaseSpinLock(struct ndis_spin_lock *lock)
 {
 	TRACEENTER3();
-	spin_unlock_bh(&lock->linux_lock->lock);
+	KeReleaseSpinLock(&lock->spinlock, lock->kirql);
 	TRACEEXIT3(return);
 }
 
 
 STDCALL void NdisDprAcquireSpinLock(struct ndis_spin_lock *lock)
 {
-	NdisAcquireSpinLock(lock);
+	spin_lock((spinlock_t *)&lock->spinlock);
 }
 
 STDCALL void NdisDprReleaseSpinLock(struct ndis_spin_lock *lock)
 {
-	NdisReleaseSpinLock(lock);
+	spin_unlock((spinlock_t *)&lock->spinlock);
 }
 
 
@@ -1087,7 +1052,7 @@ STDCALL void NdisAllocatePacketPoolEx(unsigned int *status,
 
 STDCALL unsigned int NdisPacketPoolUsage(void *poolhandle)
 {
-	printk("NdisWrapper %s: Untested function\n", __FUNCTION__);
+	UNIMPL();
 	return 0;
 }
 
@@ -1476,7 +1441,7 @@ STDCALL void NdisMIndicateReceivePacket(struct ndis_handle *handle,
 		else
 		{
 			if(packet->status != NDIS_STATUS_SUCCESS)
-				printk(KERN_INFO "%s: %s packet->status is invalid\n", DRV_NAME, __FUNCTION__);
+				printk(KERN_WARNING "%s: %s packet->status is invalid\n", DRV_NAME, __FUNCTION__);
 
 			 
 			/* Signal the driver that took ownership of the packet and will
@@ -1517,7 +1482,7 @@ STDCALL void NdisMSendResourcesAvailable(struct ndis_handle *handle)
 	   so wait for a while before sending the packet again */
 //	set_current_state(TASK_INTERRUPTIBLE);
 //	schedule_timeout(HZ/2);
-	mdelay(1);
+	mdelay(5);
 	handle->send_status = 0;
 	schedule_work(&handle->xmit_work);
 	TRACEEXIT3(return);
@@ -1605,10 +1570,10 @@ STDCALL long NdisInterlockedDecrement(long *val)
 	long x;
 
 	TRACEENTER3();
-	spin_lock(&atomic_lock);
+	spin_lock_bh(&atomic_lock);
 	(*val)--;
 	x = *val;
-	spin_unlock(&atomic_lock);
+	spin_unlock_bh(&atomic_lock);
 	TRACEEXIT3(return x);
 }
 
@@ -1617,10 +1582,10 @@ STDCALL long NdisInterlockedIncrement(long *val)
 	long x;
 
 	TRACEENTER3();
-	spin_lock(&atomic_lock);
+	spin_lock_bh(&atomic_lock);
 	(*val)++;
 	x = *val;
-	spin_unlock(&atomic_lock);
+	spin_unlock_bh(&atomic_lock);
 	TRACEEXIT3(return x);
 }
 

@@ -81,7 +81,7 @@ int doreset(struct ndis_handle *handle)
 	int res;
 	int addressing_reset;
 
-	TRACEENTER4();
+	TRACEENTER3();
 
 	if (down_interruptible(&handle->ndis_comm_mutex))
 		return NDIS_STATUS_FAILURE;
@@ -102,7 +102,7 @@ int doreset(struct ndis_handle *handle)
 
 out:
 	up(&handle->ndis_comm_mutex);
-	TRACEEXIT4(return res);
+	TRACEEXIT3(return res);
 	
 }
 
@@ -114,7 +114,7 @@ int doquery(struct ndis_handle *handle, unsigned int oid, char *buf, int bufsize
 {
 	int res;
 
-	TRACEENTER4("Calling query at %08x rva(%08x)", (int)handle->driver->miniport_char.query, (int)handle->driver->miniport_char.query - image_offset);
+	TRACEENTER3("Calling query at %08x rva(%08x)", (int)handle->driver->miniport_char.query, (int)handle->driver->miniport_char.query - image_offset);
 
 	if (down_interruptible(&handle->ndis_comm_mutex))
 		return NDIS_STATUS_FAILURE;
@@ -135,7 +135,7 @@ int doquery(struct ndis_handle *handle, unsigned int oid, char *buf, int bufsize
 
 out:
 	up(&handle->ndis_comm_mutex);
-	TRACEEXIT4(return res);
+	TRACEEXIT3(return res);
 	
 }
 
@@ -147,7 +147,7 @@ int dosetinfo(struct ndis_handle *handle, unsigned int oid, char *buf, int bufsi
 {
 	int res;
 
-	TRACEENTER4("Calling setinfo at %08x rva(%08x)", (int)handle->driver->miniport_char.setinfo, (int)handle->driver->miniport_char.setinfo - image_offset);
+	TRACEENTER3("Calling setinfo at %08x rva(%08x)", (int)handle->driver->miniport_char.setinfo, (int)handle->driver->miniport_char.setinfo - image_offset);
 
 	if (down_interruptible(&handle->ndis_comm_mutex))
 		return NDIS_STATUS_FAILURE;
@@ -168,7 +168,7 @@ int dosetinfo(struct ndis_handle *handle, unsigned int oid, char *buf, int bufsi
 
 out:
 	up(&handle->ndis_comm_mutex);
-	TRACEEXIT4(return res);
+	TRACEEXIT3(return res);
 
 }
 
@@ -181,12 +181,12 @@ int query_int(struct ndis_handle *handle, int oid, int *data)
 {
 	unsigned int res, written, needed;
 
-	TRACEENTER4();
+	TRACEENTER3();
 	res = doquery(handle, oid, (char*)data, sizeof(int), &written, &needed);
 	if(!res)
 		return 0;
 	*data = 0;
-	TRACEEXIT4(return res);
+	TRACEEXIT3(return res);
 }
 
 /*

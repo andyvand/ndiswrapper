@@ -21,7 +21,7 @@
 #include <linux/rtnetlink.h>
 
 #include "iw_ndis.h"
-#include "wpa_support.h"
+#include "wpa_ndiswrapper.h"
 
 static int freq_chan[] = { 2412, 2417, 2422, 2427, 2432, 2437, 2442,
 			   2447, 2452, 2457, 2462, 2467, 2472, 2484 };
@@ -51,9 +51,13 @@ int ndis_set_essid(struct net_device *dev, struct iw_request_info *info,
 	memcpy(handle->essid.name, req.essid, req.len);
 	res = dosetinfo(handle, NDIS_OID_ESSID, (char*)&req, sizeof(req),
 			&written, &needed);
+	set_current_state(TASK_INTERRUPTIBLE);
+	schedule_timeout(HZ/500);
+	res = dosetinfo(handle, NDIS_OID_ESSID, (char*)&req, sizeof(req),
+			&written, &needed);
 	if(res)
 	{
-		printk(KERN_INFO "%s: setting essid failed (%08X)\n",
+		printk(KERN_ERR "%s: setting essid failed (%08X)\n",
 		       dev->name, res); 
 		return -EINVAL;
 	}
@@ -73,7 +77,7 @@ static int ndis_get_essid(struct net_device *dev,
 		      &written, &needed);
 	if(res)
 	{
-		printk(KERN_INFO "%s: getting essid failed (%08X)\n",
+		printk(KERN_ERR "%s: getting essid failed (%08X)\n",
 		       dev->name, res);
 		return -EOPNOTSUPP;
 	}
@@ -111,7 +115,7 @@ int ndis_set_mode(struct net_device *dev, struct iw_request_info *info,
 	res = set_int(handle, NDIS_OID_MODE, ndis_mode);
 	if(res)
 	{
-		printk(KERN_INFO "%s: setting operating mode failed (%08X)\n",
+		printk(KERN_ERR "%s: setting operating mode failed (%08X)\n",
 		       dev->name, res); 
 		return -EINVAL;
 	}
@@ -128,7 +132,7 @@ static int ndis_get_mode(struct net_device *dev, struct iw_request_info *info,
 	int res = query_int(handle, NDIS_OID_MODE, &ndis_mode);
 	if(res)
 	{
-		printk(KERN_INFO "%s: getting operating mode failed (%08X)\n",
+		printk(KERN_ERR "%s: getting operating mode failed (%08X)\n",
 		       dev->name, res);
 		return -EOPNOTSUPP;
 	}
@@ -145,7 +149,7 @@ static int ndis_get_mode(struct net_device *dev, struct iw_request_info *info,
 		iw_mode = IW_MODE_AUTO;
 		break;
 	default:
-		printk(KERN_INFO "%s: invalid operating mode (%u)\n",
+		printk(KERN_ERR "%s: invalid operating mode (%u)\n",
 		       dev->name, ndis_mode);
 		return -1;
 		break;
@@ -193,7 +197,7 @@ static int ndis_get_freq(struct net_device *dev, struct iw_request_info *info,
 	res = doquery(handle, NDIS_OID_CONFIGURATION, (char*)&req, sizeof(req), &written, &needed);
 	if(res)
 	{
-		printk(KERN_INFO "%s: getting configuration failed (%08X)\n",
+		printk(KERN_ERR "%s: getting configuration failed (%08X)\n",
 		       dev->name, res);
 		return -EOPNOTSUPP;
 	}
@@ -229,7 +233,7 @@ static int ndis_set_freq(struct net_device *dev, struct iw_request_info *info,
 				  sizeof(req), &written, &needed);
 	if (res)
 	{
-		printk(KERN_INFO "%s: getting configuration failed (%08X)\n",
+		printk(KERN_ERR "%s: getting configuration failed (%08X)\n",
 			   dev->name, res);
 		return -EINVAL;
 	}
@@ -254,7 +258,7 @@ static int ndis_set_freq(struct net_device *dev, struct iw_request_info *info,
 			sizeof(req), &written, &needed);
 	if(res)
 	{
-		printk(KERN_INFO "%s: setting configuration failed (%08X)\n",
+		printk(KERN_ERR "%s: setting configuration failed (%08X)\n",
 		       dev->name, res);
 		return -EINVAL;
 	}
@@ -321,7 +325,7 @@ static int ndis_set_tx_power(struct net_device *dev, struct iw_request_info *inf
 		      sizeof(ndis_power), &written, &needed);
 	if(res)
 	{
-		printk(KERN_INFO "%s: setting tx_power failed (%08X)\n",
+		printk(KERN_ERR "%s: setting tx_power failed (%08X)\n",
 		       dev->name, res);
 		return -EINVAL;
 	}
@@ -338,7 +342,7 @@ static int ndis_get_bitrate(struct net_device *dev, struct iw_request_info *info
 	int res = query_int(handle, NDIS_OID_GEN_SPEED, &ndis_rate);
 	if(res)
 	{
-		printk(KERN_INFO "%s: getting bitrate failed (%08X)\n",
+		printk(KERN_ERR "%s: getting bitrate failed (%08X)\n",
 		       dev->name, res);
 		return -EOPNOTSUPP;
 	}
@@ -367,7 +371,7 @@ static int ndis_get_rts_threshold(struct net_device *dev, struct iw_request_info
 	int res = query_int(handle, NDIS_OID_RTS_THRESH, &ndis_rts_threshold);
 	if(res)
 	{
-		printk(KERN_INFO "%s: getting RTS threshold failed (%08X)\n",
+		printk(KERN_ERR "%s: getting RTS threshold failed (%08X)\n",
 		       dev->name, res);
 		return -EOPNOTSUPP;
 	}
@@ -385,7 +389,7 @@ static int ndis_get_frag_threshold(struct net_device *dev, struct iw_request_inf
 	int res = query_int(handle, NDIS_OID_FRAG_THRESH, &ndis_frag_threshold);
 	if(res)
 	{
-		printk(KERN_INFO "%s: getting fragmentation threshold failed (%08X)\n",
+		printk(KERN_ERR "%s: getting fragmentation threshold failed (%08X)\n",
 		       dev->name, res);
 		return -EOPNOTSUPP;
 	}
@@ -422,7 +426,7 @@ static int ndis_set_ap_address(struct net_device *dev, struct iw_request_info *i
 
 	if(res)
 	{
-		printk(KERN_INFO "%s: setting AP mac address failed (%08X)\n",
+		printk(KERN_ERR "%s: setting AP mac address failed (%08X)\n",
 		       dev->name, res);
 		return -EINVAL;
 	}
@@ -444,7 +448,7 @@ static int ndis_get_wep(struct net_device *dev, struct iw_request_info *info,
 	DBGTRACE2("index = %u", index);
 	if (index && (index <= 0 || index > MAX_WEP_KEYS))
 	{
-		printk(KERN_INFO "%s: wep index out of range (%u)\n",
+		printk(KERN_ERR "%s: wep index out of range (%u)\n",
 		       dev->name, index);
 		return -EINVAL;
 	}
@@ -473,7 +477,7 @@ static int ndis_get_wep(struct net_device *dev, struct iw_request_info *info,
 	res = query_int(handle, NDIS_OID_WEP_STATUS, &status);
 	if (res)
 	{
-		printk(KERN_INFO "%s: getting wep status failed (%08X)\n",
+		printk(KERN_ERR "%s: getting wep status failed (%08X)\n",
 		       dev->name, res);
 		return -EOPNOTSUPP;
 	}
@@ -493,7 +497,7 @@ static int ndis_get_wep(struct net_device *dev, struct iw_request_info *info,
 	res = query_int(handle, NDIS_OID_AUTH_MODE, &status);
 	if (res)
 	{
-		printk(KERN_INFO "%s: getting authentication mode failed (%08X)\n",
+		printk(KERN_ERR "%s: getting authentication mode failed (%08X)\n",
 		       dev->name, res);
 		return -EOPNOTSUPP;
 	}
@@ -519,7 +523,7 @@ static int ndis_set_wep(struct net_device *dev, struct iw_request_info *info,
 	DBGTRACE2("index = %u", index);
 	if (index > MAX_WEP_KEYS)
 	{
-		printk(KERN_INFO "%s: wep index out of range (%u)\n",
+		printk(KERN_ERR "%s: wep index out of range (%u)\n",
 		       dev->name, index);
 		return -EINVAL;
 	}
@@ -546,7 +550,7 @@ static int ndis_set_wep(struct net_device *dev, struct iw_request_info *info,
 				&written, &needed);
 		if (res)
 		{
-			printk(KERN_INFO "%s: removing wep key %d failed (%08X)\n",
+			printk(KERN_ERR "%s: removing wep key %d failed (%08X)\n",
 			       dev->name, index, res);
 			return -EINVAL;
 		}
@@ -558,11 +562,8 @@ static int ndis_set_wep(struct net_device *dev, struct iw_request_info *info,
 			res = set_int(handle, NDIS_OID_WEP_STATUS,
 				      WEP_DISABLED);
 			if (res)
-			{
-				printk(KERN_INFO "%s: changing wep status failed (%08X)\n",
+				printk(KERN_WARNING "%s: changing wep status failed (%08X)\n",
 				       dev->name, res);
-				return -1;
-			}
 		}
 		return 0;
 	}
@@ -588,17 +589,14 @@ static int ndis_set_wep(struct net_device *dev, struct iw_request_info *info,
 
 		res = set_int(handle, NDIS_OID_WEP_STATUS, WEP_ENABLED);
 		if (res)
-		{
-			printk(KERN_INFO "%s: changing wep status failed (%08X)\n",
+			printk(KERN_WARNING "%s: changing wep status failed (%08X)\n",
 			       dev->name, res);
-			return -1;
-		}
 
 		res = dosetinfo(handle, NDIS_OID_ADD_WEP, (char *)&wep_req,
 				sizeof(wep_req), &written, &needed);
 		if (res)
 		{
-			printk(KERN_INFO "%s: adding wep key %d failed (%08X)\n",
+			printk(KERN_ERR "%s: adding wep key %d failed (%08X)\n",
 			       dev->name, index, res);
 			return -EINVAL;
 		}
@@ -623,9 +621,9 @@ static int ndis_set_wep(struct net_device *dev, struct iw_request_info *info,
 			      AUTHMODE_RESTRICTED);
 	if (res)
 	{
-		printk(KERN_INFO "%s: setting wep mode failed (%08X)\n",
+		printk(KERN_ERR "%s: setting wep mode failed (%08X)\n",
 		       dev->name, res);
-		return -1;
+		return -EINVAL;
 	}
 
 	return 0;
@@ -757,7 +755,7 @@ static int ndis_set_scan(struct net_device *dev, struct iw_request_info *info,
 	res = set_int(handle, NDIS_OID_BSSID_LIST_SCAN, 0);
 	if (res)
 	{
-		printk(KERN_INFO "%s: scanning failed (%08X)\n", dev->name, res);
+		printk(KERN_ERR "%s: scanning failed (%08X)\n", dev->name, res);
 		handle->scan_timestamp = 0;
 		return -EOPNOTSUPP;
 	}
@@ -802,7 +800,7 @@ static int ndis_get_scan(struct net_device *dev, struct iw_request_info *info,
 	}
 	if (res)
 	{
-		printk(KERN_INFO "%s: getting BSSID list failed (%08X)\n",
+		printk(KERN_ERR "%s: getting BSSID list failed (%08X)\n",
 		       dev->name, res);
 		kfree(bssid_list);
 		return -EOPNOTSUPP;
@@ -841,7 +839,7 @@ static int ndis_set_power_mode(struct net_device *dev,
 	res = set_int(handle, NDIS_OID_POWER_MODE, power_mode);
 	if (res)
 	{
-		printk(KERN_INFO "%s: setting power mode failed (%08X)\n",
+		printk(KERN_ERR "%s: setting power mode failed (%08X)\n",
 		       dev->name, res);
 		return -EINVAL;
 	}
@@ -859,7 +857,7 @@ static int ndis_get_power_mode(struct net_device *dev,
 	res = query_int(handle, NDIS_OID_POWER_MODE, &power_mode);
 	if (res)
 	{
-		printk(KERN_INFO "%s: getting power mode failed (%08X)\n",
+		printk(KERN_ERR "%s: getting power mode failed (%08X)\n",
 		       dev->name, res);
 		return -EOPNOTSUPP;
 	}
@@ -1185,7 +1183,7 @@ int ndis_set_key(struct net_device *dev, struct iw_request_info *info,
 	{
 		printk(KERN_ERR "%s: incorrect key length (%d)\n",
 		       dev->name, wpa_key->key_len);
-		return -1;
+		return -EINVAL;
 	}
 	
 	ndis_key.key_index = wpa_key->key_index;
@@ -1206,12 +1204,13 @@ int ndis_set_key(struct net_device *dev, struct iw_request_info *info,
 	{
 		printk(KERN_ERR "%s: adding key failed (%08X)\n",
 		       dev->name, res);
-		return -1;
+		return -EINVAL;
 	}
 	
 	/* FIXME: check for TKIP -> encr mode */
 	handle->encr_alg = wpa_key->alg;
-	printk("%s: encr_alg = %d\n", __FUNCTION__, handle->encr_alg);
+	printk(KERN_INFO "%s: encr_alg = %d\n",
+	       __FUNCTION__, handle->encr_alg);
 	return 0;
 }
 
@@ -1219,7 +1218,7 @@ int ndis_set_associate(struct net_device *dev,
 		   struct iw_request_info *info,
 		   union iwreq_data *wrqu, char *extra)
 {
-	printk("%s: Entry\n", __FUNCTION__);
+	printk(KERN_INFO "%s: Entry\n", __FUNCTION__);
 	/* FIXME: for now we simply set the essid */
 	wrqu->essid.flags = 1;
 	return ndis_set_essid(dev, info, wrqu, extra);
@@ -1231,7 +1230,7 @@ int ndis_set_disassociate(struct net_device *dev,
 {
 	struct ndis_handle *handle = (struct ndis_handle *)dev->priv;
 	
-	printk("%s: Entry\n", __FUNCTION__);
+	printk(KERN_INFO "%s: Entry\n", __FUNCTION__);
 	if (set_int(handle, NDIS_OID_DISASSOCIATE, 0))
 		return -1;
 	return 0;
@@ -1244,7 +1243,7 @@ int ndis_set_priv_filter(struct net_device *dev,
 	struct ndis_handle *handle = (struct ndis_handle *)dev->priv;
 	int res;
 
-	printk("%s: Entry (%d)\n", __FUNCTION__, wrqu->param.value);
+	printk(KERN_INFO "%s: Entry (%d)\n", __FUNCTION__, wrqu->param.value);
 	if (wrqu->param.value == NDIS_PRIV_WEP)
 		res = set_int(handle, NDIS_OID_PRIVACY_FILTER, NDIS_PRIV_WEP);
 	else
@@ -1257,11 +1256,11 @@ int ndis_set_generic_element(struct net_device *dev,
 			     union iwreq_data *wrqu, char *extra)
 {
 	int i;
-	printk("%s: Entry\n", __FUNCTION__);
-	printk("generic_element (%d):", wrqu->data.length);
+	printk(KERN_INFO "%s: Entry\n", __FUNCTION__);
+	printk(KERN_INFO "generic_element (%d):", wrqu->data.length);
 	for (i = 0 ; i < wrqu->data.length; i ++)
-		printk("%02X ", ((char *)wrqu->data.pointer)[i]);
-	printk("\n");
+		printk(KERN_INFO "%02X ", ((char *)wrqu->data.pointer)[i]);
+	printk(KERN_INFO "\n");
 
 	return 0;
 }

@@ -205,18 +205,10 @@ struct ndis_irq
 	unsigned char req_isr;
 };
 
-struct ndis_linux_spin_lock
-{
-	spinlock_t lock;
-	unsigned long flags;
-};
-
-
-#define NDIS_SPIN_LOCK_MAGIC_CHAR 213
 struct ndis_spin_lock
 {
-	struct ndis_linux_spin_lock *linux_lock;
-	unsigned char kirql;
+	KSPIN_LOCK spinlock;
+	KIRQL kirql;
 };
 
 struct packed ustring
