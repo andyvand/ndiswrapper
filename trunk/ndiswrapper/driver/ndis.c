@@ -293,16 +293,34 @@ STDCALL void NdisGetSystemUpTime(unsigned int *systemuptime)
 	*systemuptime = 10 * jiffies / HZ;
 }
 
+static inline int SPAN_PAGES(unsigned int ptr, unsigned int len)
+{
+	unsigned int p = ptr & (PAGE_SIZE - 1);
+	return (p + len + (PAGE_SIZE - 1)) >> PAGE_SHIFT;
+}
+
+STDCALL unsigned long NDIS_BUFFER_TO_SPAN_PAGES(struct ndis_buffer *buffer)
+{
+	unsigned int p;
+	unsigned int i;
+	DBGTRACE("%s\n", __FUNCTION__ );
+
+	if (buffer == NULL)
+		return 0;
+
+	if (buffer->len == 0)
+		return 1;
+	p = (unsigned int)buffer->data + buffer->offset;
+	i = SPAN_PAGES(PAGE_ALIGN(p), buffer->len);
+	DBGTRACE("%s: pages = %u\n", __FUNCTION__, i);
+	return i;
+}
+
 STDCALL void NdisGetBufferPhysicalArraySize(struct ndis_buffer *buffer,
 					    unsigned int *arraysize)
 {
-	int i = 0;
-	struct ndis_buffer *mdl = buffer;
 	DBGTRACE("%s: Buffer: %08x\n", __FUNCTION__, (int) buffer);
-	for (i = 1, mdl = buffer; mdl ; mdl = mdl->next)
-		i++;
-	DBGTRACE("%s: arraysize = %d\n", __FUNCTION__, i);
-	*arraysize = i;
+	*arraysize = NDIS_BUFFER_TO_SPAN_PAGES(buffer);
 	DBGTRACE("%s: exit\n", __FUNCTION__);
 }
 
@@ -1391,15 +1409,7 @@ STDCALL void NdisMIndicateReceivePacket(struct ndis_handle *handle, struct ndis_
 STDCALL void NdisMSendComplete(struct ndis_handle *handle, struct ndis_packet *packet, unsigned int status)
 {
 	DBGTRACE("%s %08x\n", __FUNCTION__, status);
-	handle->stats.tx_bytes += packet->len;
-	handle->stats.tx_packets++;
 	ndis_sendpacket_done(handle, packet);
-}
-
-STDCALL unsigned long NDIS_BUFFER_TO_SPAN_PAGES(void *buffer)
-{
-	DBGTRACE("%s\n", __FUNCTION__ );
-	return 1;
 }
 
 /*

@@ -552,15 +552,15 @@ static int send_one(struct ndis_handle *handle, struct ndis_buffer *buffer)
 		spin_unlock(&handle->send_packet_lock);
 		
 
-		if(!handle->serialized)
-		{
-			/* Deserialized miniports always call NdisMSendComplete */
-			res = NDIS_STATUS_PENDING;
-		}
-		else
+		if(handle->serialized)
 		{
 			/* Serialized miniports sets packet->status */
 			res = packet->status;
+		}
+		else
+		{
+			/* Deserialized miniports always call NdisMSendComplete */
+			res = NDIS_STATUS_PENDING;
 		}
 	}
 	else if(handle->driver->miniport_char.send)
@@ -587,7 +587,7 @@ static int send_one(struct ndis_handle *handle, struct ndis_buffer *buffer)
 	 */
 	if(res == NDIS_STATUS_RESOURCES && handle->serialized)
 	{
-		return 1;		
+		return 1;
 	}
 
 	if(res == NDIS_STATUS_PENDING)
@@ -696,6 +696,8 @@ static int ndis_start_xmit(struct sk_buff *skb, struct net_device *dev)
  */
 void ndis_sendpacket_done(struct ndis_handle *handle, struct ndis_packet *packet)
 {
+	handle->stats.tx_bytes += packet->len;
+	handle->stats.tx_packets++;
 	if(packet->dataphys)
 	{
 		PCI_DMA_UNMAP_SINGLE(handle->pci_dev, packet->dataphys,
