@@ -858,6 +858,21 @@ _FASTCALL static long InterlockedExchange(int dummy, long val, long *target)
 	TRACEEXIT4(return x);
 }
 
+_FASTCALL static long
+InterlockedCompareExchange(int dummy, long xchg, long volatile *dest,
+			   long comperand)
+{
+	long x;
+
+	TRACEENTER4("%s", "");
+	wrap_spin_lock(&atomic_lock);
+	x = *dest;
+	if (*dest == comperand)
+		*dest = xchg;
+	wrap_spin_unlock(&atomic_lock);
+	TRACEEXIT4(return x);
+}
+
 STDCALL unsigned long 
 IoGetDeviceProperty(struct device_object *dev_obj, int dev_property,
                     unsigned long buffer_len, void *buffer,
@@ -998,6 +1013,7 @@ struct wrap_func ntos_wrap_funcs[] =
 	WRAP_FUNC_ENTRY(ExInterlockedPopEntrySList),
 	WRAP_FUNC_ENTRY(ExInterlockedPushEntrySList),
 	WRAP_FUNC_ENTRY(InterlockedExchange),
+	WRAP_FUNC_ENTRY(InterlockedCompareExchange),
 	WRAP_FUNC_ENTRY(IoAllocateMdl),
 	WRAP_FUNC_ENTRY(IoBuildSynchronousFsdRequest),
 	WRAP_FUNC_ENTRY(IoCreateDevice),
