@@ -589,6 +589,7 @@ static int ndis_set_wep(struct net_device *dev, struct iw_request_info *info,
 	unsigned int res, written, needed, auth_mode;
 	struct wep_req req;
 	int keyindex;
+	union iwreq_data essid_wrqu;
 
 	if ((wrqu->data.flags & IW_ENCODE_NOKEY) || 
 	    (wrqu->data.flags & IW_ENCODE_DISABLED))
@@ -647,7 +648,10 @@ static int ndis_set_wep(struct net_device *dev, struct iw_request_info *info,
 			return -EINVAL;
 		}
 
-		
+		/* ndis driver wants essid to be set after setting wep,
+		 * so just enable essid */
+		memset(&essid_wrqu, 0, sizeof(essid_wrqu));
+		ndis_set_essid(dev, NULL, &essid_wrqu, NULL);
 	}
 	return 0;
 }
