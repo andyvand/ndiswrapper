@@ -19,6 +19,7 @@
 #include <linux/if_arp.h>
 #include <net/iw_handler.h>
 #include <linux/rtnetlink.h>
+#include <asm/uaccess.h>
 
 #include "iw_ndis.h"
 
@@ -61,9 +62,16 @@ static int iw_set_essid(struct net_device *dev, struct iw_request_info *info,
 	struct ndis_handle *handle = dev->priv;
 	char ssid[IW_ESSID_MAX_SIZE];
 
+	memset(ssid, 0, sizeof(ssid));
 	/* iwconfig adds 1 to the actual length */
 	if (wrqu->essid.flags)
 		wrqu->essid.length--;
+
+	/* when 'iwconfig iface essid off' is called, we actually set
+	 * an impossible essid, which will disassociate without having
+	 * to call NDIS_OID_DISASSOCIATE, which also turns off the radio
+	 * some cards don't come back when a new essid is given
+	 */
 
 	if (wrqu->essid.length > IW_ESSID_MAX_SIZE)
 		TRACEEXIT1(return -EINVAL);
@@ -1373,15 +1381,16 @@ static int wpa_disassociate(struct net_device *dev,
 	get_ap_address(handle, ap_addr);
 	DBGTRACE("bssid " MACSTR, MAC2STR(ap_addr));
 	/* FIXME: clear keys, essid etc. */
-	handle->essid.length = 0;
-	handle->essid.essid[0] = 0;
 	/* calling NDIS_OID_DISASSOCIATE here turns off the radio and further
 	 * communication is not possible */
-	set_essid(handle, handle->essid.essid, handle->essid.length);
-	get_ap_address(handle, ap_addr);
-	DBGTRACE("bssid " MACSTR, MAC2STR(ap_addr));
 //	if (doreset(handle))
 //		TRACEEXIT(return -EOPNOTSUPP);
+
+	/* we set an impossible essid to disassociate - see note in
+	 * iw_set_essid; setting an empty essid doesn't disassociate */
+	set_essid(handle, " ", 1);
+	get_ap_address(handle, ap_addr);
+	DBGTRACE("bssid " MACSTR, MAC2STR(ap_addr));
 	TRACEEXIT(return 0);
 }
 
@@ -1463,15 +1472,16 @@ static int wpa_deauthenticate(struct net_device *dev,
 	get_ap_address(handle, ap_addr);
 	DBGTRACE("bssid " MACSTR, MAC2STR(ap_addr));
 	/* FIXME: clear keys, essid etc. */
-	handle->essid.length = 0;
-	handle->essid.essid[0] = 0;
 	/* calling NDIS_OID_DISASSOCIATE here turns off the radio and further
 	 * communication is not possible, so do a reset */
-	set_essid(handle, handle->essid.essid, handle->essid.length);
-	get_ap_address(handle, ap_addr);
-	DBGTRACE("bssid " MACSTR, MAC2STR(ap_addr));
 //	if (doreset(handle))
 //		TRACEEXIT(return -EOPNOTSUPP);
+
+	/* we set an impossible essid to disassociate - see note in
+	 * iw_set_essid; setting an empty essid doesn't disassociate */
+	set_essid(handle, " ", 1);
+	get_ap_address(handle, ap_addr);
+	DBGTRACE("bssid " MACSTR, MAC2STR(ap_addr));
 	TRACEEXIT(return 0);
 }
 
