@@ -68,6 +68,8 @@
 #define INIT_WORK INIT_TQUEUE
 #define schedule_work schedule_task
 #define flush_scheduled_work flush_scheduled_tasks
+
+#include <linux/smp_lock.h>
 #ifdef CONFIG_PREEMPT
 #define in_atomic() ((preempt_count() & ~PREEMPT_ACTIVE) != kernel_locked())
 #else
