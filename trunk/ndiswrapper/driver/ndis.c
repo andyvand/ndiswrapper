@@ -656,14 +656,11 @@ NdisMSetAttributesEx(struct ndis_handle *handle, void* adapter_ctx,
 	if (attributes & NDIS_ATTRIBUTE_SURPRISE_REMOVE_OK)
 		handle->surprise_remove = 1;
 
-	if (handle->hangcheck_interval == 0)
-	{
-		if (hangcheck_interval > 2)
-			handle->hangcheck_interval = 2*hangcheck_interval * HZ;
-		/* less than 3 seconds seem to be problematic */
-		else
-			handle->hangcheck_interval = 3 * HZ;
-	}
+	/* less than 3 seconds seem to be problematic */
+	if (hangcheck_interval > 2)
+		handle->hangcheck_interval = 2 * hangcheck_interval * HZ;
+	else
+		handle->hangcheck_interval = 3 * HZ;
 
 	handle->adapter_ctx = adapter_ctx;
 	TRACEEXIT2(return);
@@ -2021,7 +2018,6 @@ NdisMResetComplete(struct ndis_handle *handle, int status, int reset_status)
 
 	handle->ndis_comm_res = status;
 	handle->reset_status = status;
-	up(&handle->ndis_comm_done);
 	TRACEEXIT3(return);
 }
 
