@@ -32,47 +32,49 @@ STDCALL static void WRAP_EXPORT(WRITE_PORT_ULONG)
 STDCALL static ULONG WRAP_EXPORT(READ_PORT_ULONG)
 	(ULONG_PTR port)
 {
-	return inl((unsigned int)port);
+	return inl((unsigned long)port);
 }
 
 STDCALL static void WRAP_EXPORT(WRITE_PORT_USHORT)
 	(ULONG_PTR port, USHORT value)
 {
-	outw(value, (unsigned int)port);
+	outw(value, (unsigned long)port);
 }
 
 STDCALL static USHORT WRAP_EXPORT(READ_PORT_USHORT)
 	(ULONG_PTR port)
 {
-	return inw((unsigned int)port);
+	return inw((unsigned long)port);
 }
 
 STDCALL static void WRAP_EXPORT(WRITE_PORT_UCHAR)
 	(ULONG_PTR port, UCHAR value)
 {
-	outb(value, (unsigned int)port);
+	outb(value, (unsigned long)port);
 }
 
 STDCALL static UCHAR WRAP_EXPORT(READ_PORT_UCHAR)
 	(ULONG_PTR port)
 {
-	return inb((unsigned int)port);
+	return inb((unsigned long)port);
 }
 
 STDCALL static void WRAP_EXPORT(WRITE_PORT_BUFFER_USHORT)
 	(ULONG_PTR port, USHORT *buf, ULONG count)
 {
 	ULONG i;
+
 	for (i = 0 ; i < count ; i++)
-		outw(buf[i], (unsigned int)port);
+		outw(buf[i], (unsigned long)port);
 }
 
 STDCALL static void WRAP_EXPORT(READ_PORT_BUFFER_USHORT)
 	(ULONG_PTR port, USHORT *buf, ULONG count)
 {
 	ULONG i;
+
 	for (i = 0 ; i < count; i++)
-		buf[i] = inw((unsigned int)port);
+		buf[i] = inw((unsigned long)port);
 }
 
 STDCALL static void WRAP_EXPORT(KeStallExecutionProcessor)

@@ -1455,7 +1455,7 @@ static int __init wrapper_init(void)
 			"0"
 #endif
 			, NDISWRAPPER_VERSION, "-a", 0};
-	char *env[] = {0};
+	char *env[] = {NULL};
 	int err;
 
 	printk(KERN_INFO "%s version %s%s loaded (preempt=%s,smp=%s)\n",

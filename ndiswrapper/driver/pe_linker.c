@@ -404,7 +404,7 @@ int load_pe_images(struct pe_image *pe_image, int n)
 
 		if (pe_image[i].type == COFF_CHAR_DLL) {
 			struct unicode_string ustring;
-			char *buf = "0/0/0t0m0p00";
+			char *buf = "0/0t0m0p00";
 			int (*dll_entry)(struct unicode_string *ustring)
 				STDCALL;
 
