@@ -1188,6 +1188,9 @@ static int ndis_set_key(struct net_device *dev, struct iw_request_info *info,
 		struct ndis_remove_key ndis_remove_key;
 		ndis_remove_key.length = sizeof(ndis_remove_key);
 		ndis_remove_key.key_index = wpa_key->key_index;
+		/* Isn't this wpa_key->addr user space address?? This may
+		 * work on x86 in most cases, but copy_from_user() should
+		 * really be used.. Same for seq and key. */
 		if (wpa_key->addr)
 			memcpy(&ndis_remove_key.bssid, wpa_key->addr, ETH_ALEN);
 		else
@@ -1249,11 +1252,13 @@ static int ndis_set_key(struct net_device *dev, struct iw_request_info *info,
 	
 	if (wpa_key->key_index == 0)
 	{
-		union iwreq_data wrqu;
-
 		/* pairwise key */
 		ndis_key.key_index |= (1 << 30);
 		ndis_key.key_index |= (1 << 31);
+	}
+
+	{ /* jkm: need to set bssid also for broadcast keys */
+		union iwreq_data wrqu;
 
 		DBGTRACE("bssid " MACSTR, MAC2STR(wpa_key->addr));
 		if (!memcmp(wpa_key->addr,
@@ -1265,9 +1270,21 @@ static int ndis_set_key(struct net_device *dev, struct iw_request_info *info,
 		}
 		else
 			memcpy(&ndis_key.bssid, wpa_key->addr, ETH_ALEN);
+
 		
+#if 0 /* jkm: why is this here? */
 		wrqu.data.flags = 1;
 		ndis_set_wpa(dev, NULL, &wrqu, NULL);
+#endif
+	}
+
+	if (wpa_key->alg == WPA_ALG_TKIP && wpa_key->key_len == 32) {
+		/* wpa_supplicant gives us the Michael MIC RX/TX keys in
+		 * different order than NDIS spec, so swap the order here. */
+		u8 tmp[8];
+		memcpy(tmp, ndis_key.key + 16, 8);
+		memcpy(ndis_key.key + 16, ndis_key.key + 24, 8);
+		memcpy(ndis_key.key + 24, tmp, 8);
 	}
 
 	res = dosetinfo(handle, NDIS_OID_ADD_KEY, (char *)&ndis_key,

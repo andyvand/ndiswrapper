@@ -1018,7 +1018,7 @@ static void check_wpa(struct ndis_handle *handle)
 	DBGTRACE("%s", "checking for encr");
 	/* check for highest encryption */
 	mode = WEP_ENCR3_ENABLED;
-	while (mode)
+	for (;;) // while (mode)
 	{
 		DBGTRACE("checking wep mode %d", mode);
 		if (!set_wep_mode(handle, mode))
@@ -1034,6 +1034,7 @@ static void check_wpa(struct ndis_handle *handle)
 		{
 			ERROR("wrong wep mode %d", mode);
 			mode = WEP_DISABLED;
+			break;
 		}
 	}
 	DBGTRACE("wep_mode = %d", mode);
