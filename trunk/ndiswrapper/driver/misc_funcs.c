@@ -107,7 +107,7 @@ void allocate_kspin_lock(KSPIN_LOCK *kspin_lock)
 	size = sizeof(wrap_spinlock_bitmap[r]) * 8;
 	c = ffz(wrap_spinlock_bitmap[r]);
 	if (test_and_set_bit(c, &wrap_spinlock_bitmap[r]))
-		ERROR("bug: lock at [%d][%d] is already in use", r,  c );
+		ERROR("bug: spinlock at [%d][%d] is already in use", r,  c );
 	lock = wrap_spinlock_array[r];
 	lock = &lock[c];
 
@@ -124,15 +124,19 @@ void free_kspin_lock(KSPIN_LOCK kspin_lock)
 {
 	unsigned int r, c;
 
-	r = kspin_lock / SPINLOCK_COLUMNS;
-	c = kspin_lock % SPINLOCK_COLUMNS;
-	if ((r == 0 && c == 0) || !test_bit(c, &wrap_spinlock_bitmap[r]))
-		ERROR("buggy Windows driver freeing uninitialized spinlock %d",
+	if (!valid_kspin_lock(kspin_lock))
+		ERROR("buggy Windows driver freeing invalid spinlock %d",
 		      (u32)kspin_lock);
 	else {
-		clear_bit(c, &wrap_spinlock_bitmap[r]);
-		DBGTRACE2("freed spinlock at %d (row: %d, column: %d)",
-			  (u32)kspin_lock, r, c);
+		r = kspin_lock / SPINLOCK_COLUMNS;
+		c = kspin_lock % SPINLOCK_COLUMNS;
+		if (test_bit(c, &wrap_spinlock_bitmap[r])) {
+			clear_bit(c, &wrap_spinlock_bitmap[r]);
+			DBGTRACE2("freed spinlock at %d (row: %d, column: %d)",
+				  (u32)kspin_lock, r, c);
+		} else
+			ERROR("buggy Windows driver freeing invalid "
+			      "spinlock %d", (u32)kspin_lock);
 	}
 }
 
