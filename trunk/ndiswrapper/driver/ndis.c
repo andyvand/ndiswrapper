@@ -1101,6 +1101,8 @@ STDCALL void NdisMInitializeTimer(struct ndis_timer **timer_handle,
 	timer->ctx = ctx;
 	timer->active = 0;
 	*timer_handle = timer;
+	timer->timer_handle = timer_handle;
+	list_add(&timer->list, &handle->timers);
 	DBGTRACE("Allocated timer at %08x\n", (int)timer);
 }
 
@@ -1113,7 +1115,12 @@ STDCALL void NdisSetTimer(struct ndis_timer **timer_handle, unsigned int ms)
 	struct ndis_timer *ndis_timer = *timer_handle;
 	unsigned long expires = jiffies + (ms * HZ) / 1000;
 
-//	DBGTRACE("%s: entry\n", __FUNCTION__);
+	if(!ndis_timer)
+	{
+		printk("%s: Driver calling NdisSetTimer on an uninitilized timer\n", DRV_NAME);		
+		return;
+	}
+	
 	ndis_timer->repeat = 0;
 	if(ndis_timer->active)
 		mod_timer(&ndis_timer->timer, expires);
@@ -1136,6 +1143,12 @@ STDCALL void NdisMSetPeriodicTimer(struct ndis_timer **timer_handle,
 	struct ndis_timer *ndis_timer = *timer_handle;
 	unsigned long expires = jiffies + (ms * HZ) / 1000;
 
+	if(!ndis_timer)
+	{
+		printk("%s: Driver calling NdisSetPeriodicTimer on an uninitilized timer\n", DRV_NAME);		
+		return;
+	}
+
 	DBGTRACE("%s: entry\n", __FUNCTION__);
 	ndis_timer->repeat = (ms * HZ) / 1000;
 	if(ndis_timer->active)
@@ -1154,10 +1167,18 @@ STDCALL void NdisMSetPeriodicTimer(struct ndis_timer **timer_handle,
  */
 STDCALL void NdisMCancelTimer(struct ndis_timer **timer_handle, char *canceled)
 {
+	struct ndis_timer *ndis_timer = *timer_handle;
+
 	DBGTRACE("%s\n", __FUNCTION__);
-	(*timer_handle)->repeat = 0;
+	if(!ndis_timer)
+	{
+		printk("%s: Driver calling NdisCancelTimer on an uninitilized timer\n", DRV_NAME);		
+		return;
+	}
+
+	ndis_timer->repeat = 0;
 	*canceled = del_timer_sync(&(*timer_handle)->timer);
-	(*timer_handle)->active = 0;
+	ndis_timer->active = 0;
 	return;
 }
 
@@ -1188,7 +1209,6 @@ STDCALL void NdisMDeregisterAdapterShutdownHandler(struct ndis_handle *handle)
 {
 	DBGTRACE("%s sp:%08x\n", __FUNCTION__ , getSp());
 }
-
 
 /*
  *  bottom half of the irq handler
