@@ -913,7 +913,7 @@ STDCALL void WRAP_EXPORT(NdisAcquireSpinLock)
 	 * KeInitializeSpinLock doesn't really allocate a spinlock if
 	 * it is already allocated */
 	NdisAllocateSpinLock(lock);
-	kspin_lock(&lock->klock, PASSIVE_LEVEL);
+	kspin_lock(&lock->klock, DISPATCH_LEVEL);
 	TRACEEXIT5(return);
 }
 
@@ -929,9 +929,7 @@ STDCALL void WRAP_EXPORT(NdisDprAcquireSpinLock)
 	(struct ndis_spinlock *lock)
 {
 	TRACEENTER5("lock %p", lock);
-	/* we use PASSIVE_LEVEL here because this function is not
-	 * supposed to change IRQL */
-	kspin_lock(&lock->klock, PASSIVE_LEVEL);
+	kspin_lock(&lock->klock, DISPATCH_LEVEL);
 	TRACEEXIT5(return);
 }
 
