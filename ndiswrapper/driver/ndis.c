@@ -146,11 +146,8 @@ void NdisWriteErrorLogEntry(struct ndis_handle *handle,
 			    unsigned int length,
 			    unsigned int p1)
 {
-	int *sp;
 	printk(KERN_ERR "%s: error: %08x, %d %08x\n", __FUNCTION__, (int)error, (int) length, (int)p1);
-	sp = (int*) getSp();
-	printk("Possibly from rva %08x\n", sp[8] - image_offset);
-	printk("08 %08x\n", sp[8]);
+	dump_stack();
 }
 
 
@@ -496,7 +493,7 @@ STDCALL void NdisAllocateBufferPool(unsigned int *status,
 				    unsigned int size)
 {
 	DBGTRACE("%s: size=%d. \n", __FUNCTION__ , size);
-	*poolhandle = 0xa000fff8;
+	*poolhandle = 0x0000fff8;
 	*status = NDIS_STATUS_SUCCESS;
 }
 
@@ -515,6 +512,7 @@ STDCALL void NdisAllocateBuffer(unsigned int *status,
 	struct ndis_buffer *my_buffer = kmalloc(sizeof(struct ndis_buffer), GFP_ATOMIC);
 	if(!my_buffer)
 	{
+		printk(KERN_ERR "%s failed\n", __FUNCTION__);
 		*status = NDIS_STATUS_FAILIURE;
 		return;
 	}
@@ -938,11 +936,11 @@ STDCALL void NdisMDeregisterIoPortRange(struct ndis_handle *handle, unsigned int
  * int Dma64BitAddress: Boolean if NIC can handle 64 bit addresses
  * unsigned long MaximumPhysicalMapping: Number of bytes the NIC can transfer on a single DMA operation
  */
-STDCALL int NdisMInitializeScatterGatherDma(struct ndis_handle MiniportAdapterHandle,
-                                            int Dma64BitAddress,
-                                            unsigned long MaximumPhysicalMapping)
+STDCALL int NdisMInitializeScatterGatherDma(struct ndis_handle *handle,
+                                            int is64bit,
+                                            unsigned long maxtransfer)
 {
-       DBGTRACE("NdisMInitializeScatterGatherDma: 64bit=%d, maxlen=%ld\n",Dma64BitAddress, MaximumPhysicalMapping);
+       DBGTRACE("NdisMInitializeScatterGatherDma: 64bit=%d, maxtransfer=%ld\n", is64bit, maxtransfer);
        return NDIS_STATUS_SUCCESS;
  }
 
