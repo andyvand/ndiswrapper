@@ -1174,10 +1174,18 @@ static void wrapper_worker_proc(void *param)
 		if (handle->link_status == 0) {
 //			for (i = 0; i < MAX_ENCR_KEYS; i++)
 //				handle->encr_info.keys[i].length = 0;
+#if 0
+			/* some drivers (e.g., TI) callback with DISCONNECT
+			 * info (which means control comes here) when essid
+			 * is set; consequently when essid is set, we send
+			 * disassociate info, and the driver doesn't stay
+			 * associated at all. So for now we don't send
+			 * disassociation command */
 			memset(&wrqu, 0, sizeof(wrqu));
 			wrqu.ap_addr.sa_family = ARPHRD_ETHER;
 			wireless_send_event(handle->net_dev, SIOCGIWAP, &wrqu,
 					    NULL);
+#endif
 			return;
 		}
 
