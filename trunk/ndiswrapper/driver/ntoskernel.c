@@ -402,11 +402,7 @@ STDCALL void WRAP_EXPORT(KeInitializeSpinLock)
 STDCALL void WRAP_EXPORT(KeAcquireSpinLock)
 	(KSPIN_LOCK *lock, KIRQL *irql)
 {
-#ifdef X86_64
 	*irql = kspin_lock_irql(lock, DISPATCH_LEVEL);
-#else
-	*irql = kspin_lock(lock);
-#endif
 }
 
 STDCALL void WRAP_EXPORT(KeReleaseSpinLock)
@@ -506,7 +502,8 @@ _FASTCALL void WRAP_EXPORT(ExInterlockedAddLargeStatistic)
 	(FASTCALL_DECL_2(LARGE_INTEGER *plint, ULONG n))
 {
 	unsigned long flags;
-	TRACEENTER4("Stat %p = %llu, n = %u", plint, *plint, n);
+
+	TRACEENTER4("%p = %llu, n = %u", plint, *plint, n);
 	kspin_lock_irqsave(&ntoskernel_lock, flags);
 	*plint += n;
 	kspin_unlock_irqrestore(&ntoskernel_lock, flags);
@@ -525,7 +522,7 @@ STDCALL void *WRAP_EXPORT(ExAllocatePoolWithTag)
 	else
 		ret = kmalloc(size, GFP_KERNEL);
 			
-	DBGTRACE2("return value = %p", ret);
+	DBGTRACE2("%p", ret);
 	return ret;
 }
 
@@ -571,7 +568,7 @@ STDCALL void WRAP_EXPORT(ExInitializeNPagedLookasideList)
 
 #ifndef X86_64
 	DBGTRACE3("lock: %p", &lookaside->obsolete);
-	KeInitializeSpinLock(&lookaside->obsolete);
+	kspin_lock_init(&lookaside->obsolete);
 #endif
 	TRACEEXIT3(return);
 }
