@@ -1174,10 +1174,12 @@ static void wrapper_worker_proc(void *param)
 		if (handle->link_status == 0) {
 //			for (i = 0; i < MAX_ENCR_KEYS; i++)
 //				handle->encr_info.keys[i].length = 0;
+
 			memset(&wrqu, 0, sizeof(wrqu));
 			wrqu.ap_addr.sa_family = ARPHRD_ETHER;
 			wireless_send_event(handle->net_dev, SIOCGIWAP, &wrqu,
 					    NULL);
+			DBGTRACE1("%s", "disassociate_event");
 			return;
 		}
 
@@ -1256,6 +1258,8 @@ static void wrapper_worker_proc(void *param)
 		get_ap_address(handle, (char *)&wrqu.ap_addr.sa_data);
 		wrqu.ap_addr.sa_family = ARPHRD_ETHER;
 		wireless_send_event(handle->net_dev, SIOCGIWAP, &wrqu, NULL);
+
+		DBGTRACE1("%s", "associate_event");
 	}
 
 	if (test_and_clear_bit(SET_ESSID, &handle->wrapper_work))
