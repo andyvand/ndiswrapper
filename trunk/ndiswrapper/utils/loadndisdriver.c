@@ -235,40 +235,63 @@ static int read_conf_file(char *conf_file_name, struct load_driver *driver)
  * open a windows driver and pass it to the kernel module.
  * returns 0: on success, -1 on error
  */
-static int load_driver(int ioctl_device, DIR *dir, char *driver_name,
+static int load_driver(int ioctl_device, char *driver_name,
 		       char *conf_file_name)
 {
 	int i;
 	struct dirent *dirent;
 	struct load_driver *driver;
 	int nr_sys_files, nr_bin_files;
+	DIR *driver_dir;
 
-	if (!dir || !driver_name) {
-		error("invalid driver");
-		return -1;
+	driver_dir = NULL;
+	nr_sys_files = 0;
+	nr_bin_files = 0;
+
+	if (chdir(confdir) || chdir(driver_name)) {
+		error("couldn't change to directory %s: %s",
+		      driver_name, strerror(errno));
+		return -EINVAL;
 	}
-
+	if ((driver_dir = opendir(".")) == NULL) {
+		error("couldn't open driver directory %s: %s",
+		      driver_name, strerror(errno));
+		return -EINVAL;
+	}
+		
 	if ((driver = malloc(sizeof(*driver))) == NULL) {
 		error("couldn't allocate memory for driver %s", driver_name);
-		return -1;
+		goto err;
 	}
 	memset(driver, 0, sizeof(*driver));
 	strncpy(driver->name, driver_name, MAX_DRIVER_NAME_LEN);
 
-	nr_sys_files = 0;
-	nr_bin_files = 0;
-
+	if (read_conf_file(conf_file_name, driver)) {
+		error("couldn't read conf file %s", dirent->d_name);
+		goto err;
+	}
 	dbg("loading driver %s", driver_name);
-	while ((dirent = readdir(dir))) {
+	while ((dirent = readdir(driver_dir))) {
 		int len;
+		struct stat statbuf;
 
 		if (strcmp(dirent->d_name, ".") == 0 ||
 		    strcmp(dirent->d_name, "..") == 0)
 			continue;
 
+		if (stat(dirent->d_name, &statbuf) ||
+		    !S_ISREG(statbuf.st_mode)) {
+			error("%s in %s is not a valid file: %s",
+			      dirent->d_name, driver_name, strerror(errno));
+			continue;
+		}
+
 		len = strlen(dirent->d_name);
 		if (len > 4 &&
 		     strcmp(&dirent->d_name[len-4], ".inf") == 0)
+			continue;
+		if (len > 5 &&
+		     strcmp(&dirent->d_name[len-4], ".conf") == 0)
 			continue;
 
 		if (len > 4 && strcmp(&dirent->d_name[len-4], ".sys") == 0) {
@@ -279,14 +302,6 @@ static int load_driver(int ioctl_device, DIR *dir, char *driver_name,
 				goto err;
 			} else
 				nr_sys_files++;
-		} else if (len > 5 &&
-			   strcmp(&dirent->d_name[len-5], ".conf") == 0) {
-			if (strcmp(dirent->d_name, conf_file_name) == 0)
-				if (read_conf_file(conf_file_name, driver)) {
-					error("couldn't read conf file %s",
-					      dirent->d_name);
-					goto err;
-				}
 		} else if (len > 4 &&
 			   strcmp(&dirent->d_name[len-4], ".bin") == 0) {
 			if (read_file(dirent->d_name,
@@ -330,11 +345,14 @@ static int load_driver(int ioctl_device, DIR *dir, char *driver_name,
 		goto err;
 #endif
 
+	closedir(driver_dir);
 	dbg("driver %s loaded", driver_name);
 	free(driver);
 	return 0;
 
 err:
+	if (driver_dir)
+		closedir(driver_dir);
 	for (i = 0; i < nr_sys_files; i++)
 		free(driver->sys_files[i].data);
 	for (i = 0; i < nr_bin_files; i++)
@@ -621,37 +639,13 @@ int main(int argc, char *argv[0])
 		else
 			res = 0;
 	} else {
-		DIR *driver_dir;
-
 		/* load specific driver and conf file */
 		if (argc != 5) {
 			error("incorrect usage of %s (%d)", argv[0], argc);
 			res = 11;
 			goto out;
 		}
-
-		if (chdir(confdir)) {
-			error("directory %s is not valid: %s",
-			      confdir, strerror(errno));
-			res = 8;
-			goto out;
-		}
-		if ((driver_dir = opendir(argv[3])) == NULL) {
-			error("couldn't open driver directory %s: %s",
-			      argv[3], strerror(errno));
-			res = 9;
-			goto out;
-		} else {
-			if (chdir(argv[3])) {
-				error("directory %s is not valid: %s",
-				      argv[3], strerror(errno));
-				res = 10;
-				goto out;
-			}
-			res = load_driver(ioctl_device, driver_dir,
-					  argv[3], argv[4]);
-			closedir(driver_dir);
-		}
+		res = load_driver(ioctl_device, argv[3], argv[4]);
 	}
 
 out:
