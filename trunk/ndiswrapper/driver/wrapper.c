@@ -359,12 +359,11 @@ static int ndis_set_freq(struct net_device *dev, struct iw_request_info *info,
 	}
 	else
 	{
-		double f;
 		int i;
-		for (f = wrqu->freq.m, i = wrqu->freq.e ; i > 0 ; i--)
-			f *= 10;
-		f /= 1000;
-		req.ds_config = f;
+		for (req.ds_config = wrqu->freq.m, i = wrqu->freq.e ;
+		     i > 0 ; i--)
+			req.ds_config *= 10;
+		req.ds_config /= 1000;
 		
 	}
 	res = dosetinfo(handle, NDIS_OID_CONFIGURATION, (char*)&req,
@@ -421,12 +420,11 @@ static int ndis_set_tx_power(struct net_device *dev, struct iw_request_info *inf
 				int ip = wrqu->txpower.value / 10 ;
 				int fp = wrqu->txpower.value % 10 ;
 				int k;
-				double res = 1.0;
+				ndis_power = 1;
 				for (k = 0 ; k < ip ; k++)
-					res *= 10;
+					ndis_power *= 10;
 				for (k = 0 ; k < fp ; k++)
-					res *= 1.25892541179; // LOG10_MAGIC
-				ndis_power = (unsigned long)res;
+					ndis_power *= 1.25892541179;
 			}
 		}
 	}
@@ -739,6 +737,8 @@ static int ndis_get_scan(struct net_device *dev, struct iw_request_info *info,
 	struct list_scan list_scan;
 	char *event = extra;
 	char *cur_item ;
+	struct iw_statistics *stats = &handle->wireless_stats;
+	long rssi;
 
 	written = needed = 0;
 	res = doquery(handle, NDIS_OID_BSSID_LIST, (char*)&list_scan, sizeof(list_scan), &written, &needed);
@@ -758,6 +758,13 @@ static int ndis_get_scan(struct net_device *dev, struct iw_request_info *info,
 	}
 	wrqu->data.length = event - extra;
 	wrqu->data.flags = 0;
+
+	if (doquery(handle, NDIS_OID_RSSI, (char *)&rssi, sizeof(rssi),
+		    &written, &needed))
+		printk(KERN_INFO "%s: get rssi failed\n", dev->name);
+	else
+		stats->qual.level = rssi;
+		
 	return 0;
 }
 
@@ -1044,13 +1051,8 @@ static struct net_device_stats *ndis_get_stats(struct net_device *dev)
 static struct iw_statistics *ndis_get_wireless_stats(struct net_device *dev)
 {
 	struct ndis_handle *handle = dev->priv;
-	struct iw_statistics *stats = &handle->wireless_stats;
-	int x;
 
-	if(!query_int(handle, NDIS_OID_RSSI, &x))
-		stats->qual.level = x;
-		
-	return stats;
+	return &handle->wireless_stats;
 }
 
 
