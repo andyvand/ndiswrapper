@@ -329,7 +329,7 @@ STDCALL static void WRAP_EXPORT(NdisOpenFile)
 		for (i = 0; i < driver->nr_bin_files; i++) {
 			int n;
 			file = driver->bin_files[i];
-			DBGTRACE2("Considering %s", file->name);
+			DBGTRACE2("considering %s", file->name);
 			n = min(strlen(file->name), strlen(ansi.buf));
 			if (strnicmp(file->name, ansi.buf, n) == 0) {
 				*filehandle = file;
@@ -349,7 +349,7 @@ STDCALL static void WRAP_EXPORT(NdisMapFile)
 	(NDIS_STATUS *status, void **mappedbuffer,
 	 struct ndis_bin_file *filehandle)
 {
-	TRACEENTER2("Handle: %p", filehandle);
+	TRACEENTER2("handle: %p", filehandle);
 
 	if (!filehandle) {
 		*status = NDIS_STATUS_ALREADY_MAPPED;
@@ -364,14 +364,14 @@ STDCALL static void WRAP_EXPORT(NdisMapFile)
 STDCALL static void WRAP_EXPORT(NdisUnmapFile)
 	(struct ndis_bin_file *filehandle)
 {
-	TRACEENTER2("Handle: %p", filehandle);
+	TRACEENTER2("handle: %p", filehandle);
 	TRACEEXIT2(return);
 }
 
 STDCALL static void WRAP_EXPORT(NdisCloseFile)
 	(struct ndis_bin_file *filehandle)
 {
-	TRACEENTER2("Handle: %p", filehandle);
+	TRACEENTER2("handle: %p", filehandle);
 	TRACEEXIT2(return);
 }
 
@@ -793,7 +793,7 @@ STDCALL static void WRAP_EXPORT(NdisMQueryAdapterResources)
 		  resource_list->length, *size);
 
 	for (i = 0; i < len; i++) {
-		DBGTRACE2("Resource: %d: %Lx %d, %d",
+		DBGTRACE2("resource: %d: %Lx %d, %d",
 			  resource_list->list[i].type,
 			  resource_list->list[i].u.generic.start,
 			  resource_list->list[i].u.generic.length,
@@ -853,7 +853,7 @@ STDCALL static void WRAP_EXPORT(NdisAcquireSpinLock)
 	(struct ndis_spinlock *lock)
 {
 	TRACEENTER5("lock %p", lock);
-	/* TI ACX 100 driver doesn't NdisAllocateSpinLock before
+	/* TI ACX 100 driver doesn't call NdisAllocateSpinLock before
 	 * calling NdisAcquireSpinLock and in those cases, lock seems
 	 * to be set to 0, so check if that is the case and initialize
 	 * it */
@@ -1554,7 +1554,7 @@ NdisMIndicateReceivePacket(struct ndis_handle *handle,
 			if (packet->status != NDIS_STATUS_SUCCESS)
 				WARNING("invalid packet status %08X",
 					packet->status);
-			/* Signal the driver that took ownership of
+			/* Signal the driver that we took ownership of
 			 * the packet and will call return_packet later
 			 */
 			packet->status = NDIS_STATUS_PENDING;
@@ -2252,12 +2252,7 @@ STDCALL static void WRAP_EXPORT(NdisMStartBufferPhysicalMapping)
 	/* FIXME: do USB drivers call this? */
 	dma_addr = PCI_DMA_MAP_SINGLE(handle->dev.pci, buf->data, buf->len,
 				      PCI_DMA_TODEVICE);
-#ifdef CONFIG_X86_64
 	phy_addr_array[0].phy_addr.quad = dma_addr;
-#else
-	phy_addr_array[0].phy_addr.s.low = dma_addr;
-	phy_addr_array[0].phy_addr.s.high = 0;
-#endif
 	phy_addr_array[0].length= buf->len;
 
 	*array_size = 1;
@@ -2339,8 +2334,6 @@ STDCALL static void WRAP_EXPORT(NdisMGetDeviceProperty)
 		/* flags: DO_BUFFERED_IO + DO_BUS_ENUMERATED_DEVICE */
 		dev->flags           = 0x00001004;
 		dev->characteristics = 01;
-		/* dev_type: FILE_DEVICE_UNKNOWN */
-//		dev->dev_type        = 0x00000022;
 		dev->stack_size      = 1;
 
 		/* assumes that the handle refers to an USB device */

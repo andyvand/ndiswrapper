@@ -50,7 +50,6 @@ void usb_transfer_complete(struct urb *urb)
 	struct irp *irp = urb->context;
 	int cancel;
 
-
 	TRACEENTER3("urb = %p", urb);
 
 	/* canceled via usb_unlink_urb? */
@@ -81,7 +80,6 @@ void usb_transfer_complete_tasklet(unsigned long dummy)
 	struct io_stack_location *stack;
 	union nt_urb *nt_urb;
 	unsigned long flags;
-
 
 	while (1) {
 		spin_lock_irqsave(&completed_irps_lock, flags);
@@ -171,7 +169,6 @@ void usb_cancel_worker(void *dummy)
 	struct irp *irp;
 	struct urb *urb;
 
-
 	TRACEENTER2("%s", "");
 
 	while (1) {
@@ -217,7 +214,7 @@ unsigned long usb_bulk_or_intr_trans(struct usb_device *dev,
 	struct urb *urb;
 	unsigned int pipe;
 	int ret;
-
+	UCHAR endpoint;
 
 	ASSERT(!nt_urb->bulkIntrTrans.transferBufMdl);
 	ASSERT(!nt_urb->bulkIntrTrans.urbLink);
@@ -236,27 +233,53 @@ unsigned long usb_bulk_or_intr_trans(struct usb_device *dev,
 	irp->cancel_routine = usb_cancel_transfer;
 
 	pipe_handle = nt_urb->bulkIntrTrans.pipeHandle;
-	if (pipe_handle.encoded.pipeType == USB_ENDPOINT_XFER_BULK) {
+//	INFO("pipe type = %d", pipe_handle.encoded.pipeType);
+
+	endpoint = pipe_handle.encoded.endpointAddr;
+	switch(pipe_handle.encoded.pipeType) {
+	case USB_ENDPOINT_XFER_CONTROL:
 		if (nt_urb->bulkIntrTrans.transferFlags &
 		    USBD_TRANSFER_DIRECTION_IN)
-			pipe = usb_rcvbulkpipe(dev,
-				pipe_handle.encoded.endpointAddr);
+			pipe = usb_rcvctrlpipe(dev, endpoint);
 		else
-			pipe = usb_sndbulkpipe(dev,
-				pipe_handle.encoded.endpointAddr);
+			pipe = usb_sndctrlpipe(dev, endpoint);
+
+		usb_fill_control_urb(urb, dev, pipe, urb->setup_packet,
+				     nt_urb->bulkIntrTrans.transferBuf,
+				     nt_urb->bulkIntrTrans.transferBufLen,
+				     usb_transfer_complete, irp);
+		break;
+	case USB_ENDPOINT_XFER_ISOC:
+		if (nt_urb->bulkIntrTrans.transferFlags &
+		    USBD_TRANSFER_DIRECTION_IN)
+			pipe = usb_rcvisocpipe(dev, endpoint);
+		else
+			pipe = usb_sndisocpipe(dev, endpoint);
+		break;
+	case USB_ENDPOINT_XFER_BULK:
+		if (nt_urb->bulkIntrTrans.transferFlags &
+		    USBD_TRANSFER_DIRECTION_IN)
+			pipe = usb_rcvbulkpipe(dev, endpoint);
+		else
+			pipe = usb_sndbulkpipe(dev, endpoint);
 
 		usb_fill_bulk_urb(urb, dev, pipe,
 			nt_urb->bulkIntrTrans.transferBuf,
 			nt_urb->bulkIntrTrans.transferBufLen,
 			usb_transfer_complete, irp);
-	} else { /* USB_ENDPOINT_XFER_INT */
-		pipe = usb_rcvintpipe(dev, pipe_handle.encoded.endpointAddr);
+		break;
+	case USB_ENDPOINT_XFER_INT:
+		pipe = usb_rcvintpipe(dev, endpoint);
 
 		usb_fill_int_urb(urb, dev, pipe,
-			nt_urb->bulkIntrTrans.transferBuf,
-			nt_urb->bulkIntrTrans.transferBufLen,
-			usb_transfer_complete, irp,
-			pipe_handle.encoded.interval);
+				 nt_urb->bulkIntrTrans.transferBuf,
+				 nt_urb->bulkIntrTrans.transferBufLen,
+				 usb_transfer_complete, irp,
+				 pipe_handle.encoded.interval);
+		break;
+	default:
+		ERROR("unknown pipe type: %d", pipe_handle.encoded.pipeType);
+		return -EINVAL;
 	}
 	if ((nt_urb->bulkIntrTrans.transferFlags &
 	     (USBD_TRANSFER_DIRECTION_IN | USBD_SHORT_TRANSFER_OK)) ==
@@ -317,7 +340,6 @@ unsigned long usb_vendor_or_class_intf(struct usb_device *dev,
 	char req_type;
 	unsigned int pipe;
 	int ret;
-
 
 	ASSERT(!nt_urb->venClsReq.transferBufMdl);
 	ASSERT(!nt_urb->venClsReq.urbLink);
@@ -425,7 +447,6 @@ unsigned long usb_reset_pipe(struct usb_device *dev,
 {
 	int pipe;
 
-
 	DBGTRACE3("pipe = %p", pipe_handle.handle);
 	switch (pipe_handle.encoded.pipeType) {
 		case USB_ENDPOINT_XFER_CONTROL:
@@ -473,7 +494,6 @@ unsigned long usb_submit_nt_urb(struct usb_device *dev, union nt_urb *nt_urb,
 	struct usb_interface *intf;
 	struct usbd_pipe_information *pipe_info;
 	int i, ret;
-
 
 	TRACEENTER3("nt_urb = %p, irp = %p, length = %d, function = %x",
 		nt_urb, irp, nt_urb->header.length, nt_urb->header.function);
@@ -629,7 +649,6 @@ unsigned long usb_submit_nt_urb(struct usb_device *dev, union nt_urb *nt_urb,
 			ERROR("function %X NOT IMPLEMENTED!\n",
 				nt_urb->header.function);
 	}
-
 	nt_urb->header.status = USB_STATUS_ERROR;
 	TRACEEXIT3(return STATUS_FAILURE);
 }
@@ -658,7 +677,6 @@ STDCALL union nt_urb * WRAP_EXPORT(USBD_CreateConfigurationRequest)
 	char *pos = (char *)config;
 	int cfg_size = config->wTotalLength;
 	int found = 0;
-
 
 	TRACEENTER2("config = %p, urb_size = %p", config, urb_size);
 	ASSERT(config->bNumInterfaces < 2);
@@ -712,7 +730,6 @@ STDCALL union nt_urb * WRAP_EXPORT(USBD_CreateConfigurationRequestEx)
 	struct usb_interface_descriptor *intf_desc;
 	struct usbd_interface_information *intf_info;
 
-
 	/*
 	 * Note: This function is more or less a hack - due to a lack of
 	 *       understanding of the underlying USB details. It only sets up
@@ -764,7 +781,6 @@ STDCALL struct usb_interface_descriptor *
 	int size = config->wTotalLength;
 	char *pos = startPos;
 	struct usb_interface_descriptor *intf;
-
 
 	TRACEENTER2("config = %p, startPos = %p, intfNum = %ld, altSet = %ld,"
 		" intfClass = %ld, intfSubClass = %ld, intfProto = %ld",
