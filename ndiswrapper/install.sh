@@ -170,17 +170,40 @@ done
 
 # configure modules
 
-get_resp "What interface should ndiswrapper configure?" "${IFACE_NAME}"
-IFACE_NAME=${RESP}
-
 if modprobe -c | grep -q ndiswrapper; then
     warn "It seems modprobe is already configured for ndiswrapper; assuming it is correct. Otherwise, delete the current configuration and try again."
 else 
-
+    
+    get_resp "What interface should ndiswrapper configure?" "${IFACE_NAME}"
+    IFACE_NAME=${RESP}
+    BASENAME=$(echo -n ${IFACE_NAME} | sed -e 's/[0-9\ ]//g')
+    
+    if [ ${KVERSMINOR} -gt 4 ]; then
+	# 2.6
+	if [ -f /etc/debian_version ]; then
+	    # debian
+	    MOD_CONF=/etc/modprobe.d/ndiswrapper
+	else
+	    # non-debian
+	    MOD_CONF=/etc/modprobe.conf
+	fi
+    else
+	# 2.4
+	if [ -f /etc/debian_version ]; then
+	    # debian
+	    MOD_CONF=/etc/modutils/ndiswrapper
+	else
+	    # non-debian
+	    MOD_CONF=/etc/modules.conf
+	fi
+    fi
+    
     get_resp "Where should module directives be placed?" "${MOD_CONF}"
     MOD_CONF=${RESP} 
     if :; then
 	echo "alias ${IFACE_NAME} ndiswrapper"
+	
+	echo "options ndiswrapper basename=${BASENAME}"
 	
 	if [ ${KVERSMINOR} -gt 4 ]; then
 	    echo -n "install ndiswrapper /sbin/modprobe --ignore-install ndiswrapper; "
@@ -189,6 +212,10 @@ else
 	fi
 	echo "${LOADER} ${VENDOR_ID} ${DEVICE_ID} ${SYS} ${INF}"
     fi >> ${MOD_CONF}
+    
+    if [ -f /etc/debian_version ]; then
+	/sbin/update-modules
+    fi
 
 fi
 exit 0
