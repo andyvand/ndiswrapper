@@ -929,9 +929,12 @@ static int ndis_get_power_mode(struct net_device *dev,
 		wrqu->power.disabled = 1;
 	else
 	{
+		if (wrqu->power.flags != 0)
+			return 0;
 		wrqu->power.flags |= IW_POWER_ALL_R;
 		wrqu->power.flags |= IW_POWER_TIMEOUT;
 		wrqu->power.value = 0;
+		wrqu->power.disabled = 0;
 
 		if (power_mode == NDIS_POWER_MIN)
 			wrqu->power.flags |= IW_POWER_MIN;
@@ -1687,6 +1690,8 @@ static int __devinit ndis_init_one(struct pci_dev *pdev,
 	handle->map_count = 0;
 	handle->map_dma_addr = NULL; 
 
+	handle->ndis_irq_enabled = 0;
+
 	handle->pci_dev = pdev;
 
 	handle->hangcheck_interval = 2 * HZ;
@@ -1751,15 +1756,17 @@ static void __devexit ndis_remove_one(struct pci_dev *pdev)
 	if (handle->pm)
 		pm_unregister(handle->pm);
 	ndis_remove_proc(handle);
+	if (!netif_queue_stopped(handle->net_dev))
+		netif_stop_queue(handle->net_dev);
 
 #ifndef DEBUG_CRASH_ON_INIT
 	set_int(handle, NDIS_OID_DISASSOCIATE, 0);
 	call_halt(handle);
-	unregister_netdev(handle->net_dev);
-
 	if(handle->net_dev)
+	{
+		unregister_netdev(handle->net_dev);
 		free_netdev(handle->net_dev);
-
+	}
 #endif
 	pci_release_regions(pdev);
 	pci_disable_device(pdev);
