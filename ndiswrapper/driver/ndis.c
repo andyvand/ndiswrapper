@@ -2492,6 +2492,7 @@ STDCALL ULONG WRAP_EXPORT(NdisWritePcmciaAttributeMemory)
 
  /* Unimplemented...*/
 STDCALL void WRAP_EXPORT(NdisMSetAttributes)(void){UNIMPL();}
+STDCALL void WRAP_EXPORT(NdisMPciAssignResources)(void){UNIMPL();}
 STDCALL void WRAP_EXPORT(EthFilterDprIndicateReceiveComplete)
 	(void){UNIMPL();}
 STDCALL void WRAP_EXPORT(EthFilterDprIndicateReceive)(void){UNIMPL();}
