@@ -1039,95 +1039,37 @@ STDCALL void WRAP_EXPORT(NdisMFreeSharedMemory)
 }
 
 STDCALL void WRAP_EXPORT(NdisAllocateBufferPool)
-	(NDIS_STATUS *status, struct ndis_buffer_pool **pool_handle,
-	 UINT num_buffers)
+	(NDIS_STATUS *status, void *poolhandle, UINT size)
 {
-	struct ndis_buffer_pool *pool;
-
-	TRACEENTER4("buffers: %d", num_buffers);
-	pool = kmalloc(sizeof(struct ndis_buffer_pool), GFP_ATOMIC);
-	if (!pool) {
-		*status = NDIS_STATUS_RESOURCES;
-		TRACEEXIT2(return);
-	}
-	spin_lock_init(&pool->lock);
-	pool->buffers =
-		ExAllocatePoolWithTag(NonPagedPool,
-				      num_buffers * sizeof(ndis_buffer), 0);
-	if (!pool->buffers) {
-		*status = NDIS_STATUS_RESOURCES;
-		kfree(pool);
-		TRACEEXIT2(return);
-	}
-	memset(pool->buffers, 0, num_buffers * sizeof(ndis_buffer));
-	pool->num_buffers = num_buffers;
-	*pool_handle = pool;
+	TRACEENTER4("%d", size);
 	*status = NDIS_STATUS_SUCCESS;
-	TRACEEXIT2(return);
+	TRACEEXIT4(return);
 }
 
 STDCALL void WRAP_EXPORT(NdisFreeBufferPool)
-	(struct ndis_buffer_pool *pool)
+	(void *poolhandle)
 {
-	TRACEENTER4("pool: %p", pool);
-	ExFreePool(pool->buffers);
-	kfree(pool);
+	TRACEENTER4("%s", "");
 	TRACEEXIT4(return);
 }
 
 STDCALL void WRAP_EXPORT(NdisAllocateBuffer)
-	(NDIS_STATUS *status, ndis_buffer **buffer,
-	 struct ndis_buffer_pool *pool, void *virt, UINT length)
+	(NDIS_STATUS *status, ndis_buffer **buffer, void *poolhandle,
+	 void *virt, UINT length)
 {
-	int i;
-	ndis_buffer *free;
+	*buffer = IoAllocateMdl(virt, length, FALSE, FALSE, NULL);
 
-	TRACEENTER4("pool: %p", pool);
-	if (!pool) {
-                *status = NDIS_STATUS_FAILURE;
-                TRACEEXIT4(return);
-        }
-	spin_lock(&pool->lock);
-	/* apparently Broadcom driver for amd64 allocates buffer for
-	 * same virtual address many times, so we must first check if
-	 * it is already allocated; we use mappedsystemva to store
-	 * given virtual address */
-	for (i = 0, free = NULL; i < pool->num_buffers; i++) {
-		*buffer = &pool->buffers[i];
-		if ((*buffer)->mappedsystemva == virt)
-			break;
-		if ((*buffer)->mappedsystemva == NULL)
-			free = *buffer;
-	}
-	if (i == pool->num_buffers)
-		*buffer = free;
-
-	if (*buffer) {
-		MmInitializeMdl(*buffer, virt, length);
-		/* NdisFreeBuffer doesn't pass pool, so we use
-		 * process for pool */
-		(*buffer)->process = pool;
-		(*buffer)->mappedsystemva = virt;
-		DBGTRACE4("allocated buffer %p for %p", *buffer, virt);
+	if (*buffer)
 		*status = NDIS_STATUS_SUCCESS;
-	} else
+	else
 		*status = NDIS_STATUS_FAILURE;
-
-	spin_unlock(&pool->lock);
 	TRACEEXIT4(return);
 }
 
 STDCALL void WRAP_EXPORT(NdisFreeBuffer)
 	(ndis_buffer *buffer)
 {
-	struct ndis_buffer_pool *pool;
-
-	TRACEENTER4("buffer: %p", buffer);
-	pool = buffer->process;
-	spin_lock(&pool->lock);
-	memset(buffer, 0, sizeof(*buffer));
-	spin_unlock(&pool->lock);
-	TRACEEXIT4(return);
+	IoFreeMdl(buffer);
 }
 
 STDCALL void WRAP_EXPORT(NdisAdjustBufferLength)
@@ -1142,7 +1084,7 @@ STDCALL void WRAP_EXPORT(NdisQueryBuffer)
 {
 	TRACEENTER3("buffer: %p", buffer);
 	if (virt)
-		*virt = MmGetMdlBaseVa(buffer);
+		*virt = MmGetMdlVirtualAddress(buffer);
 	if (length)
 		*length = MmGetMdlByteCount(buffer);
 	TRACEEXIT3(return);
@@ -1154,7 +1096,7 @@ STDCALL void WRAP_EXPORT(NdisQueryBufferSafe)
 {
 	TRACEENTER3("%p, %p, %p", buffer, virt, length);
 	if (virt)
-		*virt = MmGetMdlBaseVa(buffer);
+		*virt = MmGetMdlVirtualAddress(buffer);
 	if (length)
 		*length = MmGetMdlByteCount(buffer);
 }
@@ -1163,7 +1105,7 @@ STDCALL void *WRAP_EXPORT(NdisBufferVirtualAddress)
 	(ndis_buffer *buffer)
 {
 	TRACEENTER3("%s", "");
-	return MmGetMdlBaseVa(buffer);
+	return MmGetMdlVirtualAddress(buffer);
 }
 
 STDCALL ULONG WRAP_EXPORT(NdisBufferLength)
@@ -1218,6 +1160,7 @@ STDCALL void WRAP_EXPORT(NdisAllocatePacket)
 		*status = NDIS_STATUS_FAILURE;
 		TRACEEXIT3(return);
 	}
+	memset(packet, 0, sizeof(*packet));
 	packet->private.oob_offset = offsetof(struct ndis_packet, oob_tx);
 	packet->private.pool = (void *)0xa000fff4;
 	packet->private.packet_flags = 0xc0;
@@ -2397,7 +2340,7 @@ STDCALL void WRAP_EXPORT(NdisGetFirstBufferFromPacketSafe)
 	TRACEENTER3("%p", b);
 	*first_buffer = b;
 	if (b) {
-		*first_buffer_va = MmGetMdlBaseVa(b);
+		*first_buffer_va = MmGetMdlVirtualAddress(b);
 		*first_buffer_length = *total_buffer_length =
 			MmGetMdlByteCount(b);
 		for (b = b->next; b != NULL; b = b->next)

@@ -223,7 +223,7 @@ struct mdl {
 		(mdl)->flags = 0;					\
 		(mdl)->startva = (void *)((ULONG_PTR)baseva &		\
 					  ~(PAGE_SIZE - 1));		\
-		(mdl)->byteoffset = (ULONG)((ULONG_PTR)baseva & \
+		(mdl)->byteoffset = (ULONG)((ULONG_PTR)baseva &		\
 					    (PAGE_SIZE - 1));		\
 		(mdl)->bytecount = length;				\
 	}
