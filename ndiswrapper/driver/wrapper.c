@@ -1303,6 +1303,7 @@ static int setup_dev(struct net_device *dev)
 
 	check_capa(handle);
 	/* check_capa changes auth_mode and encr_mode, so set them again */
+	set_mode(handle, NDIS_MODE_INFRA);
 	set_auth_mode(handle, AUTHMODE_OPEN);
 	set_encr_mode(handle, ENCR_DISABLED);
 
