@@ -178,7 +178,7 @@ sub pciid_driver
 		chomp($f);
 		if ($f =~ /\.conf$/)
 		{
-			`ln -s $f $confdir/$driver/$pciid.conf`;
+			`ln -s $f $confdir/$driver/$pciid.$bustype.conf`;
 			print "Driver '$driver' is used for PCIID '$pciid'\n";
 			$done = 1;
 			last;
