@@ -25,13 +25,14 @@ DECLARE_TASKLET(completed_irps_tasklet, usb_transfer_complete_tasklet, 0);
 
 
 LIST_HEAD(canceled_irps);
-static spinlock_t canceled_irps_lock = SPIN_LOCK_UNLOCKED;
+static struct wrap_spinlock canceled_irps_lock;
 
 void usb_cancel_worker(void *dummy);
 DECLARE_WORK(cancel_usb_irp_work, usb_cancel_worker, 0);
 
 void usb_init(void)
 {
+	wrap_spin_lock_init(&canceled_irps_lock);
 	return;
 }
 
@@ -157,9 +158,9 @@ STDCALL void usb_cancel_transfer(struct device_object *dev_obj,
 
 	/* while this function can run at DISPATCH_LEVEL, usb_unlink/kill_urb will
 	 * only work successfully in schedulable context */
-	spin_lock_bh(&canceled_irps_lock);
+	wrap_spin_lock(&canceled_irps_lock);
 	list_add_tail(&irp->cancel_list_entry, &canceled_irps);
-	spin_unlock_bh(&canceled_irps_lock);
+	wrap_spin_unlock(&canceled_irps_lock);
 
 	schedule_work(&cancel_usb_irp_work);
 }
@@ -173,16 +174,16 @@ void usb_cancel_worker(void *dummy)
 	TRACEENTER2("%s", "");
 
 	while (1) {
-		spin_lock_bh(&canceled_irps_lock);
+		wrap_spin_lock(&canceled_irps_lock);
 
 		if (list_empty(&canceled_irps)) {
-			spin_unlock_bh(&canceled_irps_lock);
+			wrap_spin_unlock(&canceled_irps_lock);
 			TRACEEXIT2(return);
 		}
 		irp = list_entry(canceled_irps.next, struct irp, cancel_list_entry);
 		list_del(&irp->cancel_list_entry);
 
-		spin_unlock_bh(&canceled_irps_lock);
+		wrap_spin_unlock(&canceled_irps_lock);
 
 		urb = irp->driver_context[3];
 

@@ -765,7 +765,7 @@ struct packed ndis_handle
 
 	/* List of initialized timers */
 	struct list_head timers;
-	spinlock_t timers_lock;
+	struct wrap_spinlock timers_lock;
 
 	struct proc_dir_entry *procfs_iface;
 

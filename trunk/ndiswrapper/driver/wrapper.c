@@ -378,13 +378,13 @@ static void hangcheck_proc(unsigned long data)
 		DBGTRACE3("reset returns %08X, %d", res, handle->reset_status);
 	}
 
-	spin_lock(&handle->timers_lock);
+	wrap_spin_lock(&handle->timers_lock);
 	if (handle->hangcheck_active) {
 		handle->hangcheck_timer.expires = 
 			jiffies + handle->hangcheck_interval;
 		add_timer(&handle->hangcheck_timer);
 	}
-	spin_unlock(&handle->timers_lock);
+	wrap_spin_unlock(&handle->timers_lock);
 
 	TRACEEXIT3(return);
 }
@@ -412,10 +412,10 @@ void hangcheck_del(struct ndis_handle *handle)
 	    handle->hangcheck_interval <= 0)
 		return;
 
-	spin_lock_bh(&handle->timers_lock);
+	wrap_spin_lock(&handle->timers_lock);
 	handle->hangcheck_active = 0;
 	del_timer(&handle->hangcheck_timer);
-	spin_unlock_bh(&handle->timers_lock);
+	wrap_spin_unlock(&handle->timers_lock);
 }
 
 
@@ -1527,7 +1527,7 @@ static struct net_device *ndis_init_netdev(struct ndis_handle **phandle,
 	INIT_WORK(&handle->set_rx_mode_work, ndis_set_rx_mode_proc, dev);
 
 	INIT_LIST_HEAD(&handle->timers);
-	spin_lock_init(&handle->timers_lock);
+	wrap_spin_lock_init(&handle->timers_lock);
 
 	handle->rx_packet = &NdisMIndicateReceivePacket;
 	handle->send_complete = &NdisMSendComplete;
