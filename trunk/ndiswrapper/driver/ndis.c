@@ -895,8 +895,7 @@ STDCALL void NdisMIndicateReceivePacket(struct ndis_handle *handle, struct ndis_
  */
 STDCALL void NdisMSendComplete(struct ndis_handle *handle, struct ndis_packet *packet, unsigned int status)
 {
-	kfree(packet->buffer_head);
-	kfree(packet);
+	ndis_sendpacket_done(handle, packet);
 }
 
 STDCALL unsigned long NDIS_BUFFER_TO_SPAN_PAGES(void *buffer)
@@ -987,8 +986,9 @@ STDCALL int NdisMInitializeScatterGatherDma(struct ndis_handle *handle,
                                             int is64bit,
                                             unsigned long maxtransfer)
 {
-       DBGTRACE("NdisMInitializeScatterGatherDma: 64bit=%d, maxtransfer=%ld\n", is64bit, maxtransfer);
-       return NDIS_STATUS_SUCCESS;
+	DBGTRACE("NdisMInitializeScatterGatherDma: 64bit=%d, maxtransfer=%ld\n", is64bit, maxtransfer);
+	handle->use_scatter_gather = 1;
+	return NDIS_STATUS_SUCCESS;
 }
 
 STDCALL unsigned int NdisMGetDmaAlignment(struct ndis_handle *handle)

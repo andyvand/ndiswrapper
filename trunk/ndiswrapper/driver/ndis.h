@@ -68,6 +68,20 @@ int getSp(void);
 #define DBGTRACE(s, ...)
 #endif
 
+struct packed ndis_scatterentry
+{
+	unsigned int physlo;
+	unsigned int physhi;
+	unsigned int len;
+	unsigned int reserved;
+};
+
+struct packed ndis_scatterlist
+{
+	unsigned int len;
+	unsigned int reserved;
+	struct ndis_scatterentry entry;
+};
 
 struct ndis_buffer
 {
@@ -85,8 +99,8 @@ struct packed ndis_packet
 	/* 4: Packet length */
 	unsigned int len;
 
-	void *buffer_head;
-	void *buffer_tail;
+	struct ndis_buffer *buffer_head;
+	struct ndis_buffer *buffer_tail;
 	void *pool;
 
 	/* 20 Number of buffers */
@@ -113,7 +127,21 @@ struct packed ndis_packet
 	void *mediaspecific;
 	unsigned int status;
 
-	char fill[4*12];
+	void *ext1;
+	void *ext2;
+	void *ext3;
+	void *ext4;
+	void *ext5;
+	struct ndis_scatterlist *scatter_gather_ext;
+	void *ext7;
+	void *ext8;
+	void *ext9;
+	void *ext10;
+	void *ext11;
+	void *ext12;
+	
+	struct ndis_scatterlist scatterlist;
+	dma_addr_t dataphys;
 };
 
 
@@ -253,9 +281,11 @@ struct packed ndis_handle
 	struct iw_statistics wireless_stats;
 	struct ndis_driver *driver;
 	
-	wait_queue_head_t query_wait;
+	spinlock_t query_lock;
 	int query_wait_res;
 	int query_wait_done;
+
+	int use_scatter_gather;
 };
 
 struct ndis_timer
@@ -312,6 +342,10 @@ struct packed ndis_configuration
 		__u32 dwell_time;
 	} fh_config;
 };
+
+void ndis_sendpacket_done(struct ndis_handle *handle, struct ndis_packet *packet);
+
+
 
 void NdisMIndicateReceivePacket(struct ndis_handle *handle, struct ndis_packet **packets, unsigned int nr_packets) STDCALL;
 void NdisMSendComplete(struct ndis_handle *handle, struct ndis_packet *packet, unsigned int status) STDCALL;
