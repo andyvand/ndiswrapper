@@ -641,42 +641,54 @@ static int iw_set_encr(struct net_device *dev, struct iw_request_info *info,
 		TRACEEXIT1(return -EINVAL);
 	}
 
-	if (wrqu->data.length > 0)
+	ndis_key.struct_size = sizeof(ndis_key);
+	if (wrqu->data.length == 0)
 	{
-		ndis_key.struct_size = sizeof(ndis_key);
-		ndis_key.length = wrqu->data.length;
-		ndis_key.index = index;
-
-		if ((index == encr_info->active) || (wrqu->data.length == 0))
+		/* should we allow as yet unset tx_key? */
+		if (encr_info->keys[index].length == 0)
 		{
-			DBGTRACE2("setting key %d as tx key", index);
-			ndis_key.index |= 1 << 31;
-			encr_info->active = index;
-		}
-
-		memcpy(&ndis_key.key, extra, ndis_key.length);
-
-		res = dosetinfo(handle, NDIS_OID_ADD_WEP, (char *)&ndis_key,
-				sizeof(ndis_key), &written, &needed);
-		if (res == NDIS_STATUS_INVALID_DATA)
-		{
-			WARNING("adding encryption key %d failed (%08X)",
-				index, res);
+			WARNING("key %d is not set", index+1);
 			TRACEEXIT1(return -EINVAL);
 		}
-
-		DBGTRACE("key length = %ld", ndis_key.length);
-		res = set_encr_mode(handle, ENCR1_ENABLED);
-		if (res)
-			WARNING("changing encr status failed (%08X)", res);
-
-		/* ndis drivers want essid to be set after setting encr */
-		set_essid(handle, handle->essid.essid, handle->essid.length);
-
-		encr_info->keys[index].length = ndis_key.length;
-		memcpy(&encr_info->keys[index].key, extra, ndis_key.length);
+		ndis_key.length = encr_info->keys[index].length;
+		ndis_key.index = index | (1 << 31);
+		memcpy(ndis_key.key, encr_info->keys[index].key,
+		       ndis_key.length);
+	}
+	else //	if (wrqu->data.length > 0)
+	{
+		if (wrqu->data.length > NDIS_ENCODING_TOKEN_MAX)
+		{
+			WARNING("invalid key length (%d)", wrqu->data.length);
+			TRACEEXIT(return -EINVAL);
+		}
+		ndis_key.length = wrqu->data.length;
+		ndis_key.index = index;
+		if (index == encr_info->active)
+			ndis_key.index |= 1 << 31;
+		memcpy(&ndis_key.key, extra, ndis_key.length);
 	}
 
+	res = dosetinfo(handle, NDIS_OID_ADD_WEP, (char *)&ndis_key,
+			sizeof(ndis_key), &written, &needed);
+	if (res == NDIS_STATUS_INVALID_DATA)
+	{
+		WARNING("adding encryption key %d failed (%08X)",
+			index+1, res);
+		TRACEEXIT1(return -EINVAL);
+	}
+
+	res = set_encr_mode(handle, ENCR1_ENABLED);
+	if (res)
+		WARNING("changing encr status failed (%08X)", res);
+
+	encr_info->keys[index].length = ndis_key.length;
+	memcpy(&encr_info->keys[index].key, ndis_key.key, ndis_key.length);
+	if (wrqu->data.length == 0)
+		encr_info->active = index;
+
+	/* ndis drivers want essid to be set after setting encr */
+	set_essid(handle, handle->essid.essid, handle->essid.length);
 
 	TRACEEXIT1(return 0);
 }
