@@ -282,7 +282,7 @@ struct packed wrap_spinlock
 	spinlock_t spinlock;
 	unsigned short magic;
 	unsigned short in_bh;
-	atomic_t in_use;
+	/* atomic_t in_use; */
 };
 
 static inline void wrap_spin_lock_init(struct wrap_spinlock *lock)
@@ -290,7 +290,7 @@ static inline void wrap_spin_lock_init(struct wrap_spinlock *lock)
 	TRACEENTER5("lock: %p", lock);
 	spin_lock_init(&lock->spinlock);
 	lock->magic = NDIS_SPIN_LOCK_MAGIC;
-	atomic_set(&lock->in_use, 0);
+	/* atomic_set(&lock->in_use, 0); */
 	TRACEEXIT5(return);
 }
 #if defined DEBUG
@@ -305,10 +305,12 @@ if(!(expr)) { \
 static inline void wrap_spin_lock(struct wrap_spinlock *lock)
 {
 	TRACEENTER5("lock: %p", lock);
+	/*
 	if (lock->magic != NDIS_SPIN_LOCK_MAGIC)
 		WARNING("lock %p is not initlialized (%d)", lock, lock->magic);
 	if (atomic_read(&lock->in_use) == 1)
 		WARNING("lock %p is already locked", lock);
+	*/
 
 	if (in_atomic() || irqs_disabled())
 	{
@@ -320,19 +322,22 @@ static inline void wrap_spin_lock(struct wrap_spinlock *lock)
 		spin_lock_bh(&lock->spinlock);
 		lock->in_bh = 1;
 	}
-	atomic_set(&lock->in_use, 1);
+	/* atomic_set(&lock->in_use, 1); */
 	TRACEEXIT5(return);
 }
 
 static inline void wrap_spin_unlock(struct wrap_spinlock *lock)
 {
 	TRACEENTER5("lock: %p", lock);
+	/*
 	if (lock->magic != NDIS_SPIN_LOCK_MAGIC)
 		WARNING("lock %p is not initlialized (%d)", lock, lock->magic);
 	if (atomic_read(&lock->in_use) == 0)
 		WARNING("lock %p was not locked", lock);
 
 	atomic_set(&lock->in_use, 0);
+	*/
+
 	if (lock->in_bh)
 		spin_unlock_bh(&lock->spinlock);
 	else

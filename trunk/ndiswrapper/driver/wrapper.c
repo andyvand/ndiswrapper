@@ -1390,7 +1390,6 @@ static struct net_device *ndis_init_netdev(struct ndis_handle **phandle,
 	handle->nick[0] = 0;
 
 	handle->hangcheck_interval = hangcheck_interval;
-	handle->hangcheck = hangcheck;
 	handle->scan_timestamp = 0;
 
 	memset(&handle->essid, 0, sizeof(handle->essid));
