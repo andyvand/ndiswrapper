@@ -226,8 +226,6 @@ struct miniport_char
 	void *pnp_event_notify;
 	void (*adapter_shutdown)(void *ctx) STDCALL;
 
-	/* These are specific to ndiswrapper, not part of NDIS */
-	void *shutdown_ctx;
 };
 
 struct ndis_work
@@ -443,6 +441,7 @@ struct packed ndis_handle
 	struct pci_dev *pci_dev;
 	struct net_device *net_dev;
 	void *adapter_ctx;
+	void *shutdown_ctx;
 
 	struct work_struct irq_bh;
 	int ndis_irq_enabled;

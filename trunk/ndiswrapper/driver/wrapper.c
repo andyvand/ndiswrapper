@@ -210,8 +210,9 @@ static void call_halt(struct ndis_handle *handle)
 	DBGTRACE("Calling halt at %08X rva(%08X)\n", (int)handle->driver->miniport_char.halt, (int)handle->driver->miniport_char.halt - image_offset);
 	/* Call shutdown function so it is powered down */
 	if (handle->driver->miniport_char.adapter_shutdown &&
-		handle->driver->miniport_char.shutdown_ctx)
-		handle->driver->miniport_char.adapter_shutdown(handle->driver->miniport_char.shutdown_ctx);
+		handle->shutdown_ctx)
+		handle->driver->miniport_char.adapter_shutdown(handle->shutdown_ctx);
+
 	handle->driver->miniport_char.halt(handle->adapter_ctx);
 }
 
