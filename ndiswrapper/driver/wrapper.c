@@ -52,6 +52,7 @@
 
 static char *if_name = "wlan%d";
 int proc_uid, proc_gid;
+static int hangcheck_interval;
 
 MODULE_PARM(if_name, "s");
 MODULE_PARM_DESC(if_name, "Network interface name or template (default: wlan%d)");
@@ -59,6 +60,8 @@ MODULE_PARM(proc_uid, "i");
 MODULE_PARM_DESC(proc_uid, "The uid of the files created in /proc (default: 0).");
 MODULE_PARM(proc_gid, "i");
 MODULE_PARM_DESC(proc_gid, "The gid of the files created in /proc (default: 0).");
+MODULE_PARM(hangcheck_interval, "i");
+MODULE_PARM_DESC(hangcheck_interval, "The interval, in seconds, for checking if driver is hung.");
 
 /* List of loaded drivers */
 LIST_HEAD(ndis_driverlist);
@@ -313,6 +316,8 @@ static void hangcheck(unsigned long data)
 
 static void hangcheck_reinit(struct ndis_handle *handle)
 {
+	if (handle->hangcheck_interval <= 0)
+		return;
 	handle->hangcheck_timer.data = (unsigned long) handle;
 	handle->hangcheck_timer.function = &hangcheck;
 	handle->hangcheck_timer.expires = jiffies + handle->hangcheck_interval;
@@ -880,6 +885,8 @@ static int setup_dev(struct net_device *dev)
 	strncpy(dev->name, if_name, IFNAMSIZ-1);
 	dev->name[IFNAMSIZ-1] = '\0';
 
+	handle->hangcheck_interval = HZ * hangcheck_interval;
+
 	DBGTRACE("%s: Querying for mac\n", __FUNCTION__);
 	res = doquery(handle, 0x01010102, &mac[0], sizeof(mac),
 		      &written, &needed);
@@ -1037,6 +1044,8 @@ static int ndis_init_one(struct pci_dev *pdev,
 	memset(&handle->essid, 0, sizeof(handle->essid));
 	memset(&handle->wep_info, 0, sizeof(handle->wep_info));
 	
+	handle->hangcheck_interval = hangcheck_interval;
+
 	res = pci_enable_device(pdev);
 	if(res)
 		goto out_enable;
