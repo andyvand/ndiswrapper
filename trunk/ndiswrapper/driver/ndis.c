@@ -1473,6 +1473,7 @@ STDCALL void NdisMSleep(unsigned long us_to_sleep)
 	DBGTRACE("%s called to sleep for %lu us\n", __FUNCTION__, us_to_sleep);
 	if (us_to_sleep > 0)
 	{
+		set_current_state(TASK_INTERRUPTIBLE);
 		schedule_timeout((us_to_sleep * HZ)/1000000);
 		DBGTRACE("%s woke up\n", __FUNCTION__);
 	} 
