@@ -829,11 +829,12 @@ static int ndis_set_scan(struct net_device *dev, struct iw_request_info *info,
 		{
 			printk(KERN_ERR "%s: scanning failed (%08X)\n", dev->name, res);
 			handle->scan_timestamp = 0;
+			return -EOPNOTSUPP;
 		}
 		else
 			handle->scan_timestamp = jiffies;
 	}
-	return res;
+	return 0;
 }
 
 static int ndis_get_scan(struct net_device *dev, struct iw_request_info *info,
@@ -869,7 +870,7 @@ static int ndis_get_scan(struct net_device *dev, struct iw_request_info *info,
 	}
 
 	for (i = 0, cur_item = (char *)&(list_scan.items[0]) ;
-	     i < list_scan.num_items && i < IW_MAX_AP ; i++)
+	     i < list_scan.num_items && i < MAX_SCAN_ITEMS ; i++)
 	{
 		char *prev_item = cur_item ;
 		event = ndis_translate_scan(dev, event,
