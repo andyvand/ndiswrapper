@@ -408,6 +408,7 @@ struct packed ndis_handle
 	int use_scatter_gather;
 	int map_count;
 	int multicast_list_size;
+	char *multicast_list;
 	dma_addr_t *map_dma_addr;
 
 	int hangcheck_interval;
