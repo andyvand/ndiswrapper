@@ -1039,4 +1039,9 @@ STDCALL void NdisInitializeString(void){UNIMPL();}
 STDCALL void NdisUnchainBufferAtBack(void){UNIMPL();}
 STDCALL void NdisGetFirstBufferFromPacketSafe(void){UNIMPL();}
 STDCALL void NdisUnchainBufferAtFront(void){UNIMPL();}
+STDCALL void NdisMSetAttributes(void){UNIMPL();}
+STDCALL void EthFilterDprIndicateReceiveComplete(void){UNIMPL();}
+STDCALL void EthFilterDprIndicateReceive(void){UNIMPL();}
+STDCALL void NdisMStartBufferPhysicalMapping(void){UNIMPL();}
+STDCALL void NdisMCompleteBufferPhysicalMapping(void){UNIMPL();}
 
