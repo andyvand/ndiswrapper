@@ -25,9 +25,6 @@
 struct list_head wrap_allocs;
 struct wrap_spinlock wrap_allocs_lock;
 
-DECLARE_WAIT_QUEUE_HEAD(dispatch_event_wq);
-struct wrap_spinlock dispatch_event_lock;
-
 void *wrap_kmalloc(size_t size, int flags)
 {
 	struct wrap_alloc *alloc;
@@ -233,6 +230,7 @@ void wrapper_cancel_timer(struct wrapper_timer *timer, char *canceled)
 	TRACEEXIT5(return);
 }
 
+#if 0
 void
 wrapper_init_event(struct dispatch_header *header, int type, int state)
 {
@@ -255,7 +253,7 @@ wrapper_set_event(struct dispatch_header *header)
 	 * Or is it guaranteed that for synchronization events, the
 	 * header is unique? In that case, we can ignore this check.
 	 */
-	wake_up_interruptible(&dispatch_event_wq);
+	wake_up(&dispatch_event_wq);
 	DBGTRACE3("woken up %p", header);
 	if (header->type == SYNCHRONIZATION_EVENT)
 		header->signal_state = 0;
@@ -277,16 +275,17 @@ wrapper_wait_event(struct dispatch_header *header, int ms)
 
 	if (ms == 0)
 		wait_event_interruptible(dispatch_event_wq,
-					 header->signal_state == 1);
+					 (header->signal_state == 1));
 	else
 		wait_event_interruptible_timeout(dispatch_event_wq,
-						 header->signal_state == 1,
+						 (header->signal_state == 1),
 						 (ms * HZ)/1000);
 	DBGTRACE3("%p, type = %d woke up (%ld)",
 		  header, header->type, header->signal_state);
 
 	TRACEEXIT3(return header->signal_state);
 }
+#endif
 
 NOREGPARM int wrap_sprintf(char *buf, const char *format, ...)
 {
