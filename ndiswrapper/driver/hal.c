@@ -63,7 +63,7 @@ STDCALL void READ_PORT_BUFFER_USHORT (unsigned int port, unsigned short *buf,
 		buf[i] = inw(port);
 }
 
-STDCALL void KeStallExecutionProcessor(unsigned int usecs)
+STDCALL void KeStallExecutionProcessor(unsigned long usecs)
 {
 	//DBGTRACE("%s %d\n", __FUNCTION__ , usecs);
 	udelay(usecs);
