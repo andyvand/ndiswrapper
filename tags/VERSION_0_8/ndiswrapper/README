@@ -1,0 +1,59 @@
+ndiswrapper
+
+What is it?
+===========
+
+Some wireless LAN vendors refuse to release hardware specifications or
+drivers for their products for operating systems other than Microsoft
+Windows. The ndiswrapper project makes it possible to use such
+hardware with Linux by means of a loadable kernel module that "wraps
+around" NDIS (Windows network driver API) drivers.
+
+Status
+======
+
+The following chipsets are known to work:
+   * Broadcom (4301, 94306)
+   * Intel Centrino (2100)
+   * Admtek (8211)
+   * Atheros (AR5004)
+   * SMC2802 V2
+   * 3Com 3CRSHPW796
+   * TI AC111
+
+Installation
+============
+
+See the INSTALL document for instruction on how to compile and install
+ndiswrapper.
+
+Upgrading
+=========
+
+Many things changed between 0.4 and 0.5 so if you are upgrading from
+0.4 or earlier it's best to first remove the old installation and carefully
+read the INSTALL document again!
+
+Problems
+========
+
+Note that the project, despite being very usable already, is still in
+its early development stages. Support for Linux userspace tools, such
+as monitoring tools, is very limited.
+
+Before sending bug reports, please check archives of mailing list and
+public forum available at project home page:
+http://ndiswrapper.sourceforge.net. Both these have search facility.
+Follow the instructions below when sending a bug report:
+
+   * Enable DEBUG option the Makefile in driver directory and
+     recompile all sources. Report dmesg output. Without this step,
+     proper feedback may not be possible.  Include details about your
+     card, chipset (reported by lspci), distribution, kernel version
+     in the post.
+
+   * Check if latest CVS works.
+
+   * Use an alternate windows driver; see the 'Supported Cards' page on
+     the project homepage for a driver that is known to work for your
+     chipset.

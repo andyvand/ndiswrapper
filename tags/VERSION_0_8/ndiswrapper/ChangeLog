@@ -1,0 +1,80 @@
+Version 0.8 2004-06-10
+======================
+* Support for 802.1x (multiple wep keys).
+* Support for more chipsets/cards (DWL-G630, Marvell W8100, Atheros 5211,
+  Atheros 5212).
+* Many bug fixes (scanning, dma aka shared memory allocation, timers, irqs,
+  spinlocks, memory allocation, serialized drivers).
+* Added hangcheck_interval module option to either disable it (some realtek
+  drivers seem to have problems with it) or force it to any given value.
+
+Version 0.7 2004-04-23
+======================
+* Power down while unloading the module, so it saves trees!
+* Fixed a bug with scanning; earlier it would fail sometimes.
+* procfs exposes multiple cards, if present.
+* Fixed problems with unloading of module in some cases.
+* Realtek 8180L is supported.
+* Support for more cards/chips (see "Supported Chipsets" page for details).
+* Many bug fixes!
+
+Version 0.6 2004-03-17
+======================
+* Support for kernels with CONFIG_REGPARM.
+* SMP problem with Centrino driver fixed.
+* essid problems with WEP enabled on Centrino fixed.
+* Compiles on 2.4 kernels with old ethtool.
+* Support for SMC2802 V2 card.
+* Support for 3Com 3CRSHPW796 card.
+* Support for TI AC111 card.
+
+Version 0.5 2004-03-08
+======================
+* Integrated RPM packaging.
+* Better makefiles.
+* New simpler installation.
+* Better support for multiple driver and cards.
+* Compiles on some more kernels.
+* Suspend/resume follow new power management driver model and work with S3/S4.
+* Powerup the card during initializtion so ndiswrapper works if the card is in
+  powered down state.
+* Background AP scanning is removed, so it doesn't affect IP traffic anymore.
+* WEP key and essid can be set in any order, not necessarily key first and
+  essid later.
+* Essid is set twice with a delay in between so that it gets set properly
+  the first time after the machine is booted.
+* A new util for controlling the radio for Averatec 5110HX laptop added.
+
+Version 0.4 2004-01-05
+======================
+* Admtek chipset works, including WEP.
+* Performance issues on Centrino have been fixed.
+* Removing the module doesn't give oops anymore.
+* Power management (suspend/resume) works reliably.
+* procfs interface is added.
+* Removed unnecessary 64 bit and floating point operations.
+
+Version 0.3 2003-12-16
+======================
+
+* Centrino now works with some drivers.
+* Unified makefile in driver directory for easier compiling.
+* SMP fixes (not 100% complete yet).
+* Support for Atheros AR5004 drivers.
+* Taint kernel when loading windows driver.
+
+Version 0.2 2003-12-04
+======================
+
+* New inf file parser.
+* Access point scanning.
+* WEP support.
+* Byte statistics for ifconfig.
+* Kernel 2.4 support.
+* Support for more Broadcom cards (No centrino yet).
+* Tons of bugfixes should improve stability a lot. 
+
+Version 0.1 2003-11-17
+======================
+
+* Initial release.
