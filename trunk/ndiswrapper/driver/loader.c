@@ -419,17 +419,11 @@ static int load_bin_files(struct ndis_driver *driver,
 static int load_settings(struct ndis_device *device,
 			 struct load_device *load_device)
 {
-	struct device_setting **settings;
-	int i;
+	int i, nr_settings;
 
 	TRACEENTER1("");
-	settings = kmalloc(load_device->nr_settings * sizeof(*settings),
-			   GFP_KERNEL);
-	if (!settings)
-		TRACEEXIT1(return -ENOMEM);
-	memset(settings, 0, sizeof(*settings));
 
-	device->nr_settings = 0;
+	nr_settings = 0;
 	for (i = 0; i < load_device->nr_settings; i++) {
 		struct load_device_setting *load_setting =
 			&load_device->settings[i];
@@ -452,17 +446,14 @@ static int load_settings(struct ndis_device *device,
 			memcpy(device->driver->version, setting->value,
 			       MAX_NDIS_SETTING_VALUE_LEN);
 		}
-		settings[device->nr_settings] = setting;
-		device->nr_settings++;
+		list_add(&setting->list, &device->settings);
+		nr_settings++;
 	}
 	/* it is not a fatal error if some settings couldn't be loaded */
-	if (device->nr_settings > 0) {
-		device->settings = settings;
+	if (nr_settings > 0)
 		TRACEEXIT1(return 0);
-	} else {
-		kfree(settings);
+	else
 		TRACEEXIT1(return -EINVAL);
-	}
 }
 
 /* add devices handled by driver */
@@ -513,6 +504,7 @@ static int load_devices(struct ndis_driver *driver,
 		device->fuzzy = load_device->fuzzy;
 		device->driver = driver;
 
+		INIT_LIST_HEAD(&device->settings);
 		if (load_settings(device, load_device)) {
 			kfree(device);
 			continue;
@@ -575,10 +567,12 @@ static void unload_ndis_driver(struct ndis_driver *driver)
 	kfree(driver->bin_files);
 
 	for (i = 0; i < driver->nr_devices; i++) {
-		int j;
 		struct ndis_device *device = driver->devices[i];
-		for (j = 0; j < device->nr_settings; j++) {
-			struct device_setting *setting = device->settings[j];
+		struct list_head *cur, *tmp;
+
+		list_for_each_safe(cur, tmp, &device->settings) {
+			struct device_setting *setting =
+				(struct device_setting *)cur;
 			struct ndis_config_param *param =
 				&setting->config_param;
 

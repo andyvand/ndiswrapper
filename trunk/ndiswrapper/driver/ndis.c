@@ -496,7 +496,6 @@ STDCALL static void WRAP_EXPORT(NdisReadConfiguration)
 	struct device_setting *setting;
 	struct ustring ansi;
 	char *keyname;
-	int i;
 
 	TRACEENTER2("%s", "");
 	if (RtlUnicodeStringToAnsiString(&ansi, key, 1)) {
@@ -507,8 +506,7 @@ STDCALL static void WRAP_EXPORT(NdisReadConfiguration)
 	}
 	keyname = ansi.buf;
 
-	for (i = 0; i < handle->device->nr_settings; i++) {
-		setting = handle->device->settings[i];
+	list_for_each_entry(setting, &handle->device->settings, list) {
 		if (stricmp(keyname, setting->name) == 0) {
 			DBGTRACE2("setting found %s=%s",
 				 keyname, setting->value);
@@ -539,7 +537,6 @@ STDCALL void WRAP_EXPORT(NdisWriteConfiguration)
 	struct ustring ansi;
 	char *keyname;
 	struct device_setting *setting;
-	int i;
 
 	TRACEENTER2("%s", "");
 	if (RtlUnicodeStringToAnsiString(&ansi, key, 1)) {
@@ -549,8 +546,7 @@ STDCALL void WRAP_EXPORT(NdisWriteConfiguration)
 	keyname = ansi.buf;
 	DBGTRACE2("key = %s", keyname);
 
-	for (i = 0; i < handle->device->nr_settings; i++) {
-		setting = handle->device->settings[i];
+	list_for_each_entry(setting, &handle->device->settings, list) {
 		if (strcmp(keyname, setting->name) == 0) {
 			*status = ndis_decode_setting(setting, param);
 			DBGTRACE2("setting changed %s=%s",
@@ -560,7 +556,22 @@ STDCALL void WRAP_EXPORT(NdisWriteConfiguration)
 		}
 	}
 
-	ERROR("adding new settings not implemented");
+	if ((setting = kmalloc(sizeof(*setting), GFP_KERNEL)) == NULL) {
+		*status = NDIS_STATUS_RESOURCES;
+		RtlFreeAnsiString(&ansi);
+		TRACEEXIT2(return);
+	}
+	memset(setting, 0, sizeof(*setting));
+	memcpy(setting->name, keyname, ansi.len);
+	setting->name[ansi.len] = 0;
+	*status = ndis_decode_setting(setting, param);
+	if (*status == NDIS_STATUS_SUCCESS)
+		list_add(&setting->list, &handle->device->settings);
+	else {
+		kfree(setting->name);
+		kfree(setting);
+	}
+	RtlFreeAnsiString(&ansi);
 	TRACEEXIT2(return);
 }
 
