@@ -44,6 +44,10 @@
 #define flush_scheduled_work flush_scheduled_tasks
 #endif
 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,4,23)
+#define HAVE_ETHTOOL
+#endif
+
 /* Interrupt backwards compatibility stuff */
 #include <linux/interrupt.h>
 #ifndef IRQ_HANDLED
