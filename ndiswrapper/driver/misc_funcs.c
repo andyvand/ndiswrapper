@@ -36,9 +36,15 @@ STDCALL void KeStallExecutionProcessor(unsigned int usecs)
 void KfAcquireSpinLock(void){UNIMPL();}
 void KfReleaseSpinLock(void){UNIMPL();}
 
-void WRITE_PORT_ULONG(void){UNIMPL();}
-void READ_PORT_ULONG(void){UNIMPL();}
+STDCALL void WRITE_PORT_ULONG(unsigned int port, unsigned int value)
+{
+	outl(value, port);
+}
 
+STDCALL unsigned int READ_PORT_ULONG(unsigned int port)
+{
+	return inl(port);
+}
 
 /** Functions from ntoskrnl **/
 int my_sprintf(char *str, const char *format, int p1, int p2, int p3, int p4, int p5, int p6)
@@ -60,9 +66,20 @@ char * my_strncpy(char *dst, char *src, int n)
 	return strncpy(dst, src, n);
 }
 
-void my_strlen(void){UNIMPL();}
-void my_memcpy(void){UNIMPL();}
-void my_memset(void){UNIMPL();}
+size_t my_strlen(const char *s)
+{
+       return strlen(s);
+}
+
+void *my_memcpy(void * to, const void * from, size_t n)
+{
+	return memcpy(to, from, n);
+}
+
+void *my_memset(void * s, char c,size_t count)
+{
+	return memset(s, c, count);
+}
 
 STDCALL void WRITE_REGISTER_ULONG(unsigned int reg, unsigned int val)
 {

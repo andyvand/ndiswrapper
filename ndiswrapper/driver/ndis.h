@@ -40,8 +40,13 @@
 #ifndef IRQ_HANDLED
 #define IRQ_HANDLED
 #define IRQ_NONE
-#define irqreturn_t
+#define irqreturn_t void
 #endif
+
+#ifndef free_netdev
+#define free_netdev kfree
+#endif
+
 
 #define STDCALL __attribute__((__stdcall__))
 #define packed __attribute__((packed))
