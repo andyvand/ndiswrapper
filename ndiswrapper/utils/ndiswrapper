@@ -31,6 +31,7 @@ my @copy_blacklist;
 
 #Fixup list for parameters. 
 my %param_fixlist = ("EnableRadio|0" => "EnableRadio|1",
+		     "IBSSGMode|0" => "IBSSGMode|2",
                      "PrivacyMode|0" => "PrivacyMode|2"); 
 
 
