@@ -18,6 +18,7 @@
 #include <linux/ioctl.h>
 
 #define DRIVERNAME_MAX 32
+#define NDIS_VERSION_STRING_MAX 64
 
 struct put_file {
 	char name[DRIVERNAME_MAX];
@@ -35,6 +36,7 @@ struct put_device {
 	int pci_subvendor;
 	int pci_subdevice;
 	int fuzzy;
+	int bustype;
 };
 
 struct put_setting

@@ -189,6 +189,9 @@ void wrap_kfree_all(void);
 #define DBGTRACE4(fmt, ...) (void)0
 #define DBGTRACE5(fmt, ...) (void)0
 
+/* for a block of code */
+#define DBG_BLOCK() while (0)
+
 #define MSG(level, fmt, ...) printk(level "ndiswrapper (%s:%d): " fmt "\n", \
 				    __FUNCTION__, __LINE__, ## __VA_ARGS__)
 #define WARNING(fmt, ...) MSG(KERN_WARNING, fmt, ## __VA_ARGS__)
@@ -197,8 +200,10 @@ void wrap_kfree_all(void);
 
 #if defined DEBUG
 #undef DBGTRACE
-#define DBGTRACE(fmt, ...)  printk(KERN_INFO "ndiswrapper (%s:%d): " fmt "\n", \
-				   __FUNCTION__, __LINE__, ## __VA_ARGS__)
+#define DBGTRACE(fmt, ...) printk(KERN_INFO "ndiswrapper (%s:%d): " fmt "\n", \
+				  __FUNCTION__, __LINE__, ## __VA_ARGS__)
+#undef DBG_BLOCK
+#define DBG_BLOCK()
 #endif
 
 #if defined DEBUG && DEBUG >= 1

@@ -17,6 +17,8 @@
 
 #include "ndis.h"
 
+#define MAX_PROC_STR_LEN 32
+
 static struct proc_dir_entry *ndiswrapper_procfs_entry;
 extern int proc_uid, proc_gid;
 
@@ -225,6 +227,102 @@ static int procfs_read_hw(char *page, char **start, off_t off,
 	return (p - page);
 }
 
+static int procfs_read_settings(char *page, char **start, off_t off,
+				int count, int *eof, void *data)
+{
+	char *p = page;
+	struct ndis_handle *handle = (struct ndis_handle *)data;
+
+	if (off != 0) {
+		*eof = 1;
+		return 0;
+	}
+
+	p += sprintf(p, "hangcheck_interval=%d\n",
+		     handle->hangcheck_interval / HZ);
+
+	return (p - page);
+}
+
+static int procfs_write_settings(struct file *file, const char __user *buf,
+				 unsigned long count, void *data)
+{
+	struct ndis_handle *handle = (struct ndis_handle *)data;
+	char setting[MAX_PROC_STR_LEN], *p;
+
+	if (count > MAX_PROC_STR_LEN)
+		return -EINVAL;
+
+	memset(setting, 0, sizeof(setting));
+	if (copy_from_user(setting, buf, count))
+		return -EFAULT;
+
+	if ((p = strchr(setting, '\n')))
+		*p = 0;
+
+	if ((p = strchr(setting, '=')))
+		*p = 0;
+
+	if (!strcmp(setting, "hangcheck_interval"))
+	{
+		int i;
+
+		if (!p)
+			return -EINVAL;
+		p++;
+		i = simple_strtol(p, NULL, 10);
+		hangcheck_del(handle);
+		handle->hangcheck_interval = i * HZ;
+		hangcheck_add(handle);
+	}
+	else if (!strcmp(setting, "suspend"))
+	{
+		int i;
+
+		if (!p)
+			return -EINVAL;
+		p++;
+		i = simple_strtol(p, NULL, 10);
+		if (i <= 0 || i > 3)
+			return -EINVAL;
+		ndis_suspend(handle->pci_dev, i);
+	}
+	else if (!strcmp(setting, "resume"))
+		ndis_resume(handle->pci_dev);
+	else if (!strcmp(setting, "power_profile"))
+	{
+		int i;
+		struct miniport_char *miniport;
+		unsigned long profile_inf;
+
+		if (!p)
+			return -EINVAL;
+		p++;
+		i = simple_strtol(p, NULL, 10);
+		if (i < 0 || i > 1)
+			return -EINVAL;
+
+		miniport = &handle->driver->miniport_char;
+		if (!miniport->pnp_event_notify)
+			return -EFAULT;
+
+		/* 1 for AC and 0 for Battery */
+		if (i)
+			profile_inf = NDIS_POWER_PROFILE_AC;
+		else
+			profile_inf = NDIS_POWER_PROFILE_BATTERY;
+		
+		miniport->pnp_event_notify(handle->adapter_ctx,
+					   NDIS_PNP_PROFILE_CHANGED,
+					   &profile_inf, sizeof(profile_inf));
+	}
+	else
+		return -EINVAL;
+
+	return count;
+
+}
+
 int ndiswrapper_procfs_init(void)
 {
 	ndiswrapper_procfs_entry = proc_mkdir(DRV_NAME, proc_net);
@@ -304,6 +402,22 @@ int ndiswrapper_procfs_add_iface(struct ndis_handle *handle)
 		procfs_entry->read_proc = procfs_read_encr;
 	}
 
+	procfs_entry = create_proc_entry("settings", S_IFREG |
+					 S_IRUSR | S_IRGRP |
+					 S_IWUSR | S_IWGRP, proc_iface);
+	if (procfs_entry == NULL)
+	{
+		ERROR("%s", "Couldn't create proc entry for 'encr'");
+		return -ENOMEM;
+	}
+	else
+	{
+		procfs_entry->uid = proc_uid;
+		procfs_entry->gid = proc_gid;
+		procfs_entry->data = handle;
+		procfs_entry->read_proc = procfs_read_settings;
+		procfs_entry->write_proc = procfs_write_settings;
+	}
 	return 0;
 }
 
@@ -317,6 +431,7 @@ void ndiswrapper_procfs_remove_iface(struct ndis_handle *handle)
 	remove_proc_entry("hw", procfs_iface);
 	remove_proc_entry("stats", procfs_iface);
 	remove_proc_entry("encr", procfs_iface);
+	remove_proc_entry("settings", procfs_iface);
 	if (ndiswrapper_procfs_entry != NULL)
 		remove_proc_entry(dev->name, ndiswrapper_procfs_entry);
 	handle->procfs_iface = NULL;

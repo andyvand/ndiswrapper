@@ -111,6 +111,7 @@ int doreset(struct ndis_handle *handle)
 		else
 			res = handle->ndis_comm_res;
 	}
+	mdelay(20);
 	up(&handle->ndis_comm_mutex);
 	DBGTRACE3("reset: res = %08X, reset status = %08X",
 		  res, handle->reset_status);
@@ -339,7 +340,8 @@ static void hangcheck_bh(void *data)
 	struct ndis_handle *handle = (struct ndis_handle *)data;
 
 	TRACEENTER3("%s", "");
-	if (handle->driver->miniport_char.hangcheck(handle->adapter_ctx))
+	if (!handle->reset_status &&
+	    handle->driver->miniport_char.hangcheck(handle->adapter_ctx))
 	{
 		int res;
 		INFO("Hangcheck returned true. Resetting %s!",
@@ -829,11 +831,11 @@ static int start_xmit(struct sk_buff *skb, struct net_device *dev)
 	return 0;
 }
 
-static int ndis_suspend(struct pci_dev *pdev, u32 state)
+int ndis_suspend(struct pci_dev *pdev, u32 state)
 {
 	struct net_device *dev;
 	struct ndis_handle *handle;
-	int res, pm_state;
+	int res, i, pm_state;
 
 	if (!pdev)
 		return -1;
@@ -842,11 +844,13 @@ static int ndis_suspend(struct pci_dev *pdev, u32 state)
 		return -1;
 	dev = handle->net_dev;
 
-	if (handle->pm_state != NDIS_PM_STATE_D0)
+	if (test_bit(HW_SUSPENDED, &handle->hw_status))
 		return 0;
 
 	DBGTRACE2("%s: detaching device", dev->name);
 	netif_device_detach(dev);
+	hangcheck_del(handle);
+	statcollector_del(handle);
 
 	if (state == 1)
 		pm_state = NDIS_PM_STATE_D1;
@@ -855,26 +859,28 @@ static int ndis_suspend(struct pci_dev *pdev, u32 state)
 	else
 		pm_state = NDIS_PM_STATE_D3;
 
-	handle->pm_state = pm_state;
-
-	res = query_int(handle, NDIS_OID_PNP_QUERY_POWER, &pm_state);
-	DBGTRACE2("%s: query power to state %d returns %d",
-			 dev->name, handle->pm_state, res);
+	/* keep a copy; query_power changes this value */
+	i = pm_state;
+	res = query_int(handle, NDIS_OID_PNP_QUERY_POWER, &i);
+	INFO("%s: query power to state %d returns %d",
+			 dev->name, pm_state, res);
 	if (res)
 		WARNING("No pnp capabilities for pm (%08X)\n", res);
 
-	res = set_int(handle, NDIS_OID_PNP_SET_POWER, handle->pm_state);
+	res = set_int(handle, NDIS_OID_PNP_SET_POWER, pm_state);
 	pci_save_state(pdev, handle->pci_state);
 	pci_set_power_state(pdev, state);
-	DBGTRACE2("%s: setting power to state %d returns %d",
-			 dev->name, handle->pm_state, res);
+	INFO("%s: setting power to state %d returns %d",
+			 dev->name, pm_state, res);
 	if (res)
 		WARNING("No pnp capabilities for pm (%08X)", res);
+	set_bit(HW_SUSPENDED, &handle->hw_status);
+
 	DBGTRACE2("%s: device suspended!\n", dev->name);
 	return 0;
 }
 
-static int ndis_resume(struct pci_dev *pdev)
+int ndis_resume(struct pci_dev *pdev)
 {
 	struct net_device *dev;
 	struct ndis_handle *handle;
@@ -889,15 +895,14 @@ static int ndis_resume(struct pci_dev *pdev)
 		return -1;
 	dev = handle->net_dev;
 
-	if (handle->pm_state == NDIS_PM_STATE_D0)
+	if (!test_bit(HW_SUSPENDED, &handle->hw_status))
 		return 0;
 
-	handle->pm_state = NDIS_PM_STATE_D0;
 	pci_set_power_state(pdev, 0);
 	pci_restore_state(pdev, handle->pci_state);
-	res = set_int(handle, NDIS_OID_PNP_SET_POWER, handle->pm_state);
-	DBGTRACE2("%s: setting power to state %d returns %d",
-			 dev->name, handle->pm_state, res);
+	res = set_int(handle, NDIS_OID_PNP_SET_POWER, NDIS_PM_STATE_D0);
+	INFO("%s: setting power to state %d returns %d",
+	     dev->name, NDIS_PM_STATE_D0, res);
 	if (res)
 		WARNING("No pnp capabilities for pm (%08X)", res);
 
@@ -920,6 +925,9 @@ static int ndis_resume(struct pci_dev *pdev)
 	DBGTRACE2("%s: attaching device\n", dev->name);
 	netif_device_attach(dev);
 
+	hangcheck_add(handle);
+	statcollector_add(handle);
+	clear_bit(HW_SUSPENDED, &handle->hw_status);
 	DBGTRACE2("%s: device resumed!", dev->name);
 	return 0;
 }
@@ -1264,6 +1272,7 @@ static int ndis_init_one(struct pci_dev *pdev, const struct pci_device_id *ent)
 	handle->eth_rx_indicate = &EthRxIndicateHandler;
 	handle->eth_rx_complete = &EthRxComplete;
 	handle->td_complete = &NdisMTransferDataComplete;
+	handle->driver->miniport_char.adapter_shutdown = NULL;
 
 	handle->map_count = 0;
 	handle->map_dma_addr = NULL;
@@ -1301,9 +1310,11 @@ static int ndis_init_one(struct pci_dev *pdev, const struct pci_device_id *ent)
 		goto out_start;
 	}
 
+	handle->hw_status = 0;
+	handle->wrapper_work = 0;
+
 	/* do we need to power up the card explicitly? */
-	handle->pm_state = NDIS_PM_STATE_D0;
-	set_int(handle, NDIS_OID_PNP_SET_POWER, handle->pm_state);
+	set_int(handle, NDIS_OID_PNP_SET_POWER, NDIS_PM_STATE_D0);
 	miniport = &handle->driver->miniport_char;
 	/* According NDIS, pnp_event_notify should be called whenever power
 	 * is set to D0
@@ -1540,7 +1551,6 @@ static int add_driver(struct ndis_driver *driver)
 		return -EBUSY;
 	}
 
-	printk(KERN_INFO "%s: driver %s added\n", DRV_NAME, driver->name);
 	return 0;
 }
 
@@ -1660,7 +1670,20 @@ static int add_setting(struct ndis_device *device,
 	setting->val_str[put_setting->val_str_len] = 0;
 	setting->value.type = NDIS_SETTING_NONE;
 
-	list_add(&setting->list, &device->settings);
+	if (strcmp(setting->name, "ndis_version") == 0)
+	{
+		if (put_setting->val_str_len > NDIS_VERSION_STRING_MAX)
+			put_setting->val_str_len = NDIS_VERSION_STRING_MAX;
+
+		memcpy(device->driver->version, setting->val_str,
+		       put_setting->val_str_len);
+		device->driver->version[put_setting->val_str_len] = 0;
+		kfree(setting->val_str);
+		kfree(setting->name);
+		kfree(setting);
+	}
+	else
+		list_add(&setting->list, &device->settings);
 	return 0;
 
 val_str_fail:
@@ -1772,6 +1795,7 @@ static int misc_ioctl(struct inode *inode, struct file *file,
 				return -EINVAL;
 			file->private_data = driver;
 
+			driver->version[0] = 0;
 			return add_driver(driver);
 		}
 		break;
@@ -1822,6 +1846,9 @@ static int misc_ioctl(struct inode *inode, struct file *file,
 
 			if (res)
 				unload_driver(driver);
+			else
+				printk(KERN_INFO "%s: driver %s (%s) added\n",
+				       DRV_NAME, driver->name, driver->version);
 			return res;
 		}
 		break;
@@ -1857,9 +1884,28 @@ static struct miscdevice wrapper_misc = {
 	.fops   = &wrapper_fops
 };
 
+void module_cleanup(void)
+{
+	struct ndis_driver *driver;
+
+	while (!list_empty(&ndis_driverlist))
+	{
+		driver = (struct ndis_driver*) ndis_driverlist.next;
+		unload_driver(driver);
+	}
+
+	ndiswrapper_procfs_remove();
+	misc_deregister(&wrapper_misc);
+	wrap_kfree_all();
+}
+
 static int __init wrapper_init(void)
 {
-	char *argv[] = {"loadndisdriver", "-a", 0};
+#if defined DEBUG && DEBUG >= 1
+	char *argv[] = {"loadndisdriver", 1, DRV_VERSION, "-a", 0};
+#else
+	char *argv[] = {"loadndisdriver", 0, DRV_VERSION, "-a", 0};
+#endif
 	char *env[] = {0};
 	int err;
 
@@ -1883,9 +1929,9 @@ static int __init wrapper_init(void)
 
 	if (err)
 	{
-		ERROR("loadndiswrapper failed (%d)", err);
-		ndiswrapper_procfs_remove();
-		misc_deregister(&wrapper_misc);
+		ERROR("loadndiswrapper failed (%d);"
+		      "check utils version mismatch", err);
+		module_cleanup();
 		return -ENOEXEC;
 	}
 	return 0;
@@ -1893,15 +1939,7 @@ static int __init wrapper_init(void)
 
 static void __exit wrapper_exit(void)
 {
-	while(!list_empty(&ndis_driverlist))
-	{
-		struct ndis_driver *driver = (struct ndis_driver*) ndis_driverlist.next;
-		unload_driver(driver);
-	}
-
-	ndiswrapper_procfs_remove();
-	misc_deregister(&wrapper_misc);
-	wrap_kfree_all();
+	module_cleanup();
 }
 
 module_init(wrapper_init);
