@@ -32,7 +32,6 @@
 static int freq_chan[] = { 2412, 2417, 2422, 2427, 2432, 2437, 2442,
 			   2447, 2452, 2457, 2462, 2467, 2472, 2484 };
 
-
 int set_essid(struct ndis_handle *handle, const char *ssid, int ssid_len)
 {
 	unsigned int res;
@@ -1067,7 +1066,6 @@ static int iw_set_sensitivity(struct net_device *dev,
 static int iw_get_ndis_stats(struct net_device *dev,
 			     struct iw_request_info *info,
 			     union iwreq_data *wrqu, char *extra)
-
 {
 	struct ndis_handle *handle = dev->priv;
 	struct iw_statistics *stats = &handle->wireless_stats;
@@ -1248,7 +1246,7 @@ static int wpa_set_key(struct net_device *dev, struct iw_request_info *info,
 		       union iwreq_data *wrqu, char *extra)
 {
 	struct ndis_handle *handle = (struct ndis_handle *)dev->priv;
-	struct ndis_wpa_key ndis_key;
+	struct ndis_add_key ndis_key;
 	struct wpa_key wpa_key;
 	int i, res;
 	u8 addr[ETH_ALEN];

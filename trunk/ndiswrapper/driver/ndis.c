@@ -44,6 +44,7 @@ static void free_handle_ctx(struct ndis_handle *handle);
 /* ndis_init is called once when module is loaded */
 int ndis_init(void)
 {
+	/* only one worker is used for all drivers */
 	INIT_WORK(&ndis_work, &ndis_worker, NULL);
 	INIT_LIST_HEAD(&ndis_work_list);
 	INIT_LIST_HEAD(&handle_ctx_list);
@@ -2014,6 +2015,7 @@ NdisMResetComplete(struct ndis_handle *handle, NDIS_STATUS status,
 	TRACEEXIT3(return);
 }
 
+/* one worker for all drivers/handles */
 static void ndis_worker(void *data)
 {
 	struct ndis_work_entry *ndis_work_entry;
@@ -2063,10 +2065,8 @@ static void ndis_worker(void *data)
 			io_work_item =
 				ndis_work_entry->entry.io_work_item;
 
-			DBGTRACE3("Calling work at %p with "
-				  "parameter %p",
-				  io_work_item->func,
-				  io_work_item->ctx);
+			DBGTRACE3("Calling work at %p with parameter %p",
+				  io_work_item->func, io_work_item->ctx);
 			io_work_item->func(io_work_item->device_object,
 					   io_work_item->ctx);
 			break;
@@ -2095,7 +2095,6 @@ static void ndis_worker(void *data)
 				  free_mem->addr);
 			if (free_mem->addr)
 				vfree(free_mem->addr);
-
 			break;
 
 		case NDIS_RETURN_PACKET_WORK_ITEM:
