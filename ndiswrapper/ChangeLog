@@ -1,4 +1,14 @@
-Version 0.10 2004-10-xx
+Version 0.12 2004-11-xx
+=======================
+* Spinlocks, IRQL and events implemented as per NDIS. 
+* Works with Preempt and SMP kernels.
+* Error with setting encryption key at index 4 fixed.
+* Compiles with kernels > 2.6.9 and swsuspend2
+* USB cards are reset during initialization; they should work without
+  having to reset explicitly
+* Bug fixes
+
+Version 0.11 2004-10-08
 =======================
 * Compilation issues with USB are fixed.
 * WPA issues fixed.
@@ -9,7 +19,7 @@ Version 0.10 2004-10-xx
   drivers properly when the CopyFiles section has commented out file names.
 * ndiswrapper script lists USB devices and reports status of drivers
   with more understandable messages.
-* Lots of bug fixes and improvements
+* Many bug fixes and improvements
 
 Version 0.10 2004-08-20
 =======================
