@@ -61,13 +61,13 @@ int proc_uid, proc_gid;
 static int hangcheck_interval;
 //static int resubmit_config;
 
-MODULE_PARM(if_name, "s");
+NW_MODULE_PARM_STRING(if_name, 0400);
 MODULE_PARM_DESC(if_name, "Network interface name or template (default: wlan%d)");
-MODULE_PARM(proc_uid, "i");
+NW_MODULE_PARM_INT(proc_uid, 0600);
 MODULE_PARM_DESC(proc_uid, "The uid of the files created in /proc (default: 0).");
-MODULE_PARM(proc_gid, "i");
+NW_MODULE_PARM_INT(proc_gid, 0600);
 MODULE_PARM_DESC(proc_gid, "The gid of the files created in /proc (default: 0).");
-MODULE_PARM(hangcheck_interval, "i");
+NW_MODULE_PARM_INT(hangcheck_interval, 0600);
 /* 0 - default value provided by NDIS driver,
  * positive value - force hangcheck interval to that many seconds
  * negative value - disable hangcheck
