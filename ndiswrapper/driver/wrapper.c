@@ -852,17 +852,12 @@ int ndis_suspend(struct pci_dev *pdev, u32 state)
 	hangcheck_del(handle);
 	statcollector_del(handle);
 
-	if (state == 1)
-		pm_state = NDIS_PM_STATE_D1;
-	else if (state == 2)
-		pm_state = NDIS_PM_STATE_D2;
-	else
-		pm_state = NDIS_PM_STATE_D3;
-
-	/* keep a copy; query_power changes this value */
+	/* some drivers don't support D2, so force them state = 3 and D3 */
+	pm_state = NDIS_PM_STATE_D3;
+	/* use copy; query_power changes this value */
 	i = pm_state;
 	res = query_int(handle, NDIS_OID_PNP_QUERY_POWER, &i);
-	INFO("%s: query power to state %d returns %d",
+	DBGTRACE2("%s: query power to state %d returns %d",
 			 dev->name, pm_state, res);
 	if (res)
 		WARNING("No pnp capabilities for pm (%08X)\n", res);
@@ -870,7 +865,7 @@ int ndis_suspend(struct pci_dev *pdev, u32 state)
 	res = set_int(handle, NDIS_OID_PNP_SET_POWER, pm_state);
 	pci_save_state(pdev, handle->pci_state);
 	pci_set_power_state(pdev, state);
-	INFO("%s: setting power to state %d returns %d",
+	DBGTRACE2("%s: setting power to state %d returns %d",
 			 dev->name, pm_state, res);
 	if (res)
 		WARNING("No pnp capabilities for pm (%08X)", res);
@@ -901,7 +896,7 @@ int ndis_resume(struct pci_dev *pdev)
 	pci_set_power_state(pdev, 0);
 	pci_restore_state(pdev, handle->pci_state);
 	res = set_int(handle, NDIS_OID_PNP_SET_POWER, NDIS_PM_STATE_D0);
-	INFO("%s: setting power to state %d returns %d",
+	DBGTRACE2("%s: setting power to state %d returns %d",
 	     dev->name, NDIS_PM_STATE_D0, res);
 	if (res)
 		WARNING("No pnp capabilities for pm (%08X)", res);
