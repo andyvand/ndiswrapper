@@ -316,7 +316,7 @@ KeInitializeEvent(struct kevent *event, int event_type, int state)
 	event->header.signal_state = state;
 }
 
-STDCALL static unsigned long
+STDCALL static long
 KeSetEvent(struct kevent *event, int incr, int wait)
 {
 	TRACEENTER("event = %p, incr = %d, wait = %d", event, incr, wait);
@@ -329,6 +329,16 @@ KeClearEvent(struct kevent *event)
 {
 	TRACEENTER("event = %p", event);
 	event->header.signal_state = 0;
+}
+
+STDCALL static long
+KeResetEvent(struct kevent *event)
+{
+	long old_state = event->header.signal_state;
+
+	TRACEENTER("event = %p", event);
+	event->header.signal_state = 0;
+	return old_state;
 }
 
 STDCALL static unsigned int
@@ -716,6 +726,18 @@ _FASTCALL static long InterlockedExchange(int dummy, long val, long *target)
 	TRACEEXIT4(return x);
 }
 
+STDCALL unsigned long 
+IoGetDeviceProperty(struct device_object *dev_obj, int dev_property,
+                    unsigned long buffer_len, void *buffer,
+                    unsigned long *result_len)
+{
+	TRACEENTER1("dev_obj = %p, dev_property = %d, buffer_len = %d, "
+		"buffer = %p, result_len = %d", dev_obj, dev_property,
+		buffer_len, buffer, result_len);
+
+return STATUS_FAILURE;
+}
+
 STDCALL static void IoReleaseCancelSpinLock(void){UNIMPL();}
 STDCALL static void IoDeleteDevice(void){UNIMPL();}
 STDCALL static void IoCreateSymbolicLink(void){UNIMPL();}
@@ -788,6 +810,8 @@ struct wrap_func ntos_wrap_funcs[] =
 	WRAP_FUNC_ENTRY(PsTerminateSystemThread),
 	WRAP_FUNC_ENTRY(InterlockedDecrement),
 	WRAP_FUNC_ENTRY(InterlockedIncrement),
+	WRAP_FUNC_ENTRY(KeResetEvent),
+	WRAP_FUNC_ENTRY(IoGetDeviceProperty),
 
 	{NULL, NULL}
 };
