@@ -1695,7 +1695,8 @@ static int setup_dev(struct net_device *dev)
 		printk(KERN_ERR "%s: Unable to set managed mode\n", DRV_NAME);
 
 	packet_filter = (NDIS_PACKET_TYPE_DIRECTED| NDIS_PACKET_TYPE_MULTICAST|
-					 NDIS_PACKET_TYPE_BROADCAST);
+					 NDIS_PACKET_TYPE_BROADCAST |
+					 NDIS_PACKET_TYPE_ALL_MULTICAST);
 	res = dosetinfo(handle, NDIS_OID_PACKET_FILTER, (char *)&packet_filter,
 					sizeof(packet_filter), &written, &needed);
 	if (res)
