@@ -1446,24 +1446,19 @@ STDCALL void NdisMIndicateStatus(struct ndis_handle *handle,
 				 unsigned int status, void *buf,
 				 unsigned int len)
 {
-	TRACEENTER3("%08x", status);
+	TRACEENTER1("%08x", status);
 	if (status == NDIS_STATUS_MEDIA_CONNECT)
 	{
 		handle->link_status = 1;
-#ifdef WPA
 		set_bit(WRAPPER_LINK_STATUS, &handle->wrapper_work);
 		schedule_work(&handle->wrapper_worker);
-#endif
 	}
 	if (status == NDIS_STATUS_MEDIA_DISCONNECT)
 	{
 		handle->link_status = 0;
-#ifdef WPA
-//		set_bit(WRAPPER_LINK_STATUS, &handle->wrapper_work);
-//		schedule_work(&handle->wrapper_worker);
-#endif
+		set_bit(WRAPPER_LINK_STATUS, &handle->wrapper_work);
+		schedule_work(&handle->wrapper_worker);
 	}
-#ifdef WPA
 	if (status == NDIS_STATUS_MEDIA_SPECIFIC_INDICATION && buf)
 	{
 		struct status_indication *status =
@@ -1492,8 +1487,7 @@ STDCALL void NdisMIndicateStatus(struct ndis_handle *handle,
 		}
 	}
 
-#endif
-	TRACEEXIT3(return);
+	TRACEEXIT1(return);
 }
 
 /*

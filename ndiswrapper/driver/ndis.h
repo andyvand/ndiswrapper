@@ -897,6 +897,8 @@ int stricmp(const char *s1, const char *s2);
 #define NDIS_MEMORY_CONTIGUOUS			0x00000001
 #define NDIS_MEMORY_NONCACHED			0x00000002
 
+/* WPA support - these have to match what is in wpa_supplicant */
+
 typedef enum { WPA_ALG_NONE, WPA_ALG_WEP, WPA_ALG_TKIP, WPA_ALG_CCMP } wpa_alg;
 
 struct wpa_key
@@ -914,10 +916,7 @@ struct wpa_key
 #define PRIV_RESET 		SIOCIWFIRSTPRIV+0
 #define WPA_SET_WPA 		SIOCIWFIRSTPRIV+1
 #define WPA_SET_KEY 		SIOCIWFIRSTPRIV+2
-#define WPA_ASSOCIATE 		SIOCIWFIRSTPRIV+3
-#define WPA_DISASSOCIATE 	SIOCIWFIRSTPRIV+4
-#define WPA_SET_PRIV_FILTER 	SIOCIWFIRSTPRIV+5
-#define WPA_SET_GENERIC_ELEMENT	SIOCIWFIRSTPRIV+6
-
+#define WPA_DISASSOCIATE 	SIOCIWFIRSTPRIV+3
+#define WPA_SET_PRIV_FILTER 	SIOCIWFIRSTPRIV+4
 
 #endif /* NDIS_H */
