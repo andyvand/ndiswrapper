@@ -491,14 +491,11 @@ int set_encr_mode(struct ndis_handle *handle, int encr_mode)
 	unsigned int res;
 	res = set_int(handle, NDIS_OID_ENCR_STATUS, encr_mode);
 	if (res == NDIS_STATUS_INVALID_DATA)
-	{
-		WARNING("setting encryption mode failed (%08X)", res);
-		return -EINVAL;
-	}
+		TRACEEXIT2(return -EINVAL);
 	else
 	{
 		handle->encr_mode = encr_mode;
-		return 0;
+		TRACEEXIT2(return 0);
 	}
 }
 
