@@ -158,7 +158,7 @@ struct packed miniport_char
 	__u16 reserved1;
 	__u32 reserved2;
 
-	void * CheckForHangTimer;
+	int (*hangcheck)(void *ctx) STDCALL;
 	void * DisableInterruptHandler;
 	void * EnableInterruptHandler;
 
@@ -178,7 +178,7 @@ struct packed miniport_char
 	unsigned int (*query)(void *ctx, unsigned int oid, char *buffer, unsigned int buflen, unsigned int *written, unsigned int *needed) STDCALL;
 
 	void * ReconfigureHandler;
-	void * ResetHandler;		//s
+	int (*reset)(int *needs_set, void *ctx) STDCALL;
 
 	/* Send one packet */
 	unsigned int (*send)(void *ctx, struct ndis_packet *packet, unsigned int flags) STDCALL;
@@ -282,13 +282,15 @@ struct packed ndis_handle
 	char fill1[232];
 	void *indicate_receive_packet;
 	void *send_complete;
-	char fill2[140];
+	char fill2[4];
+	void *reset_complete;
+	char fill3[132];
 	void *indicate_status;
 	void *indicate_status_complete;
-	char fill3[4];
+	char fill4[4];
 	void *query_complete;
 	void *set_complete;
-	char fill4[200];
+	char fill5[200];
 
 	struct pci_dev *pci_dev;
 	struct net_device *net_dev;
@@ -313,6 +315,11 @@ struct packed ndis_handle
 	int setinfo_wait_done;
 
 	int use_scatter_gather;
+
+	int hangcheck_interval;
+	struct timer_list hangcheck_timer;
+	struct work_struct hangcheck_work;
+	int reset_status;
 };
 
 struct ndis_timer

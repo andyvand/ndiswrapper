@@ -760,7 +760,7 @@ static unsigned int call_entry(struct ndis_driver *driver)
 #ifdef DEBUG
 	{
 		int i;
-		int *adr = (int*) &driver->miniport_char.CheckForHangTimer;
+		int *adr = (int*) &driver->miniport_char.hangcheck;
 		char *name[] = {
 				"CheckForHangTimer",
 				"DisableInterruptHandler",
@@ -795,6 +795,62 @@ static unsigned int call_entry(struct ndis_driver *driver)
 	}
 #endif
 	return res;
+}
+
+
+
+
+static void hangcheck_reinit(struct ndis_handle *handle);
+
+STDCALL void NdisMResetComplete(struct ndis_handle *handle, int status, int reset_status) 
+{
+	DBGTRACE("%s: %08x, %d\n", __FUNCTION__, status, reset_status);
+}
+
+
+static void hangcheck_bh(void *data)
+{
+	struct ndis_handle *handle = (struct ndis_handle *)data;
+	DBGTRACE("%s: Hangcheck timer\n", __FUNCTION__);
+
+	if(handle->driver->miniport_char.hangcheck(handle->adapter_ctx))
+	{
+		int res;
+		handle->reset_status = 0;
+		printk("ndiswrapper: Hangcheck returned true. Resetting!\n");
+		res = handle->driver->miniport_char.reset(&handle->reset_status, handle->adapter_ctx);
+		DBGTRACE("%s : %08x, %d\n", __FUNCTION__, res, handle->reset_status);
+	}
+}
+
+
+static void hangcheck(unsigned long data)
+{
+	struct ndis_handle *handle = (struct ndis_handle *)data;
+	schedule_work(&handle->hangcheck_work);
+	hangcheck_reinit(handle);
+}
+
+
+static void hangcheck_reinit(struct ndis_handle *handle)
+{
+	handle->hangcheck_timer.data = (unsigned long) handle;
+	handle->hangcheck_timer.function = &hangcheck;
+	handle->hangcheck_timer.expires = jiffies + handle->hangcheck_interval;;
+	add_timer(&handle->hangcheck_timer);
+
+}
+
+static void hangcheck_add(struct ndis_handle *handle)
+{
+	INIT_WORK(&handle->hangcheck_work, &hangcheck_bh, handle);
+	init_timer(&handle->hangcheck_timer);
+	hangcheck_reinit(handle);
+}
+
+static void hangcheck_del(struct ndis_handle *handle)
+{
+	del_timer_sync(&handle->hangcheck_timer);
 }
 
 
@@ -1057,6 +1113,7 @@ static int __devinit ndis_init_one(struct pci_dev *pdev,
 	memset(&handle->fill2, 0x13, sizeof(handle->fill2));
 	memset(&handle->fill3, 0x14, sizeof(handle->fill3));
 	memset(&handle->fill4, 0x15, sizeof(handle->fill4));
+	memset(&handle->fill5, 0x16, sizeof(handle->fill5));
 
 	handle->indicate_receive_packet = &NdisMIndicateReceivePacket;
 	handle->send_complete = &NdisMSendComplete;
@@ -1064,8 +1121,11 @@ static int __devinit ndis_init_one(struct pci_dev *pdev,
 	handle->indicate_status_complete = &NdisIndicateStatusComplete;	
 	handle->query_complete = &NdisMQueryInformationComplete;	
 	handle->set_complete = &NdisMSetInformationComplete;
+	handle->reset_complete = &NdisMResetComplete;
 	
 	handle->pci_dev = pdev;
+
+	handle->hangcheck_interval = 2 * HZ;
 	
 	res = pci_enable_device(pdev);
 	if(res)
@@ -1091,7 +1151,7 @@ static int __devinit ndis_init_one(struct pci_dev *pdev,
 	handle->driver->key_len = 0;
 	init_timer(&(handle->driver->timer_list));
 	add_scan_timer((unsigned long)handle);
-
+	hangcheck_add(handle);
 	return 0;
 
 out_start:
@@ -1110,6 +1170,7 @@ static void __devexit ndis_remove_one(struct pci_dev *pdev)
 
 	DBGTRACE("%s\n", __FUNCTION__);
 
+	hangcheck_del(handle);
 	del_timer(&(handle->driver->timer_list));
 #ifndef DEBUG_CRASH_ON_INIT
 	unregister_netdev(handle->net_dev);

@@ -354,11 +354,11 @@ STDCALL void NdisReadConfiguration(unsigned int *status,
  */ 
 STDCALL void NdisMSetAttributesEx(struct ndis_handle *handle,
                                   void* adapter_ctx,
-				  unsigned int hangchecktime,
+				  unsigned int hangcheck_interval,
 				  unsigned int attributes,
 				  unsigned int adaptortype)
 {
-	DBGTRACE("%s, %08x, %08x %d %08x, %d\n", __FUNCTION__, (int)handle, (int)adapter_ctx, hangchecktime, attributes, adaptortype);
+	DBGTRACE("%s, %08x, %08x %d %08x, %d\n", __FUNCTION__, (int)handle, (int)adapter_ctx, hangcheck_interval, attributes, adaptortype);
 	if(attributes & 8)
 	{
 		pci_set_master(handle->pci_dev);
@@ -368,7 +368,12 @@ STDCALL void NdisMSetAttributesEx(struct ndis_handle *handle,
 	{
 		printk(KERN_ERR "NDIS: Not a deserialized miniport!\n");
 	}
-	
+
+	if(hangcheck_interval)
+	{
+		handle->hangcheck_interval = hangcheck_interval * HZ;
+	}
+
 	handle->adapter_ctx = adapter_ctx;
 }
 
