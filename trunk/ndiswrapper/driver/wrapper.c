@@ -811,59 +811,41 @@ char *ndis_translate_scan(struct net_device *dev, char *event, char *end_buf,
 	return event;
 }
 
-static int ndis_list_scan(struct ndis_handle *handle)
-{
-	unsigned int res, written, needed;
-	struct iw_statistics *iw_stats = &handle->wireless_stats;
-	struct ndis_wireless_stats ndis_stats;
-	long rssi;
-
-	res = doquery(handle, NDIS_OID_RSSI, (char *)&rssi, sizeof(rssi),
-				  &written, &needed);
-	if (!res)
-		iw_stats->qual.level = rssi;
-		
-	memset(&ndis_stats, 0, sizeof(ndis_stats));
-	res = doquery(handle, NDIS_OID_STATISTICS, (char *)&ndis_stats,
-		      sizeof(ndis_stats), &written, &needed);
-	if (!res)
-	{
-		iw_stats->discard.retries = (__u32)ndis_stats.retry +
-			(__u32)ndis_stats.multi_retry;
-		iw_stats->discard.misc = (__u32)ndis_stats.fcs_err +
-			(__u32)ndis_stats.rtss_fail + (__u32)ndis_stats.ack_fail +
-			(__u32)ndis_stats.frame_dup;
-		
-		if (ndis_stats.tx_frag)
-			iw_stats->qual.qual = 100 - 100 *
-				((__u32)ndis_stats.retry + 2 * (__u32)ndis_stats.multi_retry +
-				 3 * (__u32)ndis_stats.failed) /
-				(6 * (__u32)ndis_stats.tx_frag);
-		else
-			iw_stats->qual.qual = 100;
-	}
-
-	res = set_int(handle, NDIS_OID_BSSID_LIST_SCAN, 0);
-	
-	return res;
-}
-
 static int ndis_set_scan(struct net_device *dev, struct iw_request_info *info,
 			   union iwreq_data *wrqu, char *extra)
 {
-	/* all work is now done by timer func ndis_list_scan */
-	return 0;
+	struct ndis_handle *handle = dev->priv;
+	unsigned int res;
+
+	res = set_int(handle, NDIS_OID_BSSID_LIST_SCAN, 0);
+	
+	if (res)
+	{
+		printk(KERN_ERR "%s: Scanning failed (%08X)\n", dev->name, res);
+		handle->scan_timestamp = 0;
+	}
+	else
+		handle->scan_timestamp = jiffies;
+	
+	return res;
 }
 
 static int ndis_get_scan(struct net_device *dev, struct iw_request_info *info,
 			   union iwreq_data *wrqu, char *extra)
 {
-	struct ndis_handle *handle = dev->priv;
+ 	struct ndis_handle *handle = dev->priv;
 	int i, res, written, needed;
 	struct list_scan list_scan;
 	char *event = extra;
 	char *cur_item ;
 
+	if (!handle->scan_timestamp)
+		return -EOPNOTSUPP;
+
+	if (time_before(jiffies, handle->scan_timestamp + 3 * HZ))
+		return -EAGAIN;
+	
+	handle->scan_timestamp = 0;
 	written = needed = 0;
 	memset(&list_scan, 0, sizeof(list_scan));
 	res = doquery(handle, NDIS_OID_BSSID_LIST, (char*)&list_scan, sizeof(list_scan), &written, &needed);
@@ -887,39 +869,6 @@ static int ndis_get_scan(struct net_device *dev, struct iw_request_info *info,
 	wrqu->data.flags = 0;
 
 	return 0;
-}
-
-void scan_bh(void *param)
-{
-	struct ndis_handle *handle = (struct ndis_handle *) param;
-	ndis_list_scan(handle);
-}
-
-
-
-void add_scan_timer(unsigned long param)
-{
-	struct ndis_handle *handle = (struct ndis_handle *)param;
-	struct timer_list *timer_list = &handle->apscan_timer;
-
-	schedule_work(&handle->apscan_work);
-
-	timer_list->data = (unsigned long) handle;
-	timer_list->function = &add_scan_timer;
-	timer_list->expires = jiffies + 10 * HZ;
-	add_timer(timer_list);
-}
-
-void apscan_init(struct ndis_handle *handle)
-{
-	INIT_WORK(&handle->apscan_work, scan_bh, handle); 	
-	init_timer(&handle->apscan_timer);
-	add_scan_timer((unsigned long)handle);
-}
-
-void apscan_del(struct ndis_handle *handle)
-{
-	del_timer_sync(&handle->apscan_timer);
 }
 
 static int ndis_set_power_mode(struct net_device *dev,
@@ -1020,6 +969,35 @@ static int ndis_set_sensitivity(struct net_device *dev,
 static struct iw_statistics *ndis_get_wireless_stats(struct net_device *dev)
 {
 	struct ndis_handle *handle = dev->priv;
+	unsigned int res, written, needed;
+	struct iw_statistics *iw_stats = &handle->wireless_stats;
+	struct ndis_wireless_stats ndis_stats;
+	long rssi;
+
+	res = doquery(handle, NDIS_OID_RSSI, (char *)&rssi, sizeof(rssi),
+				  &written, &needed);
+	if (!res)
+		iw_stats->qual.level = rssi;
+		
+	memset(&ndis_stats, 0, sizeof(ndis_stats));
+	res = doquery(handle, NDIS_OID_STATISTICS, (char *)&ndis_stats,
+		      sizeof(ndis_stats), &written, &needed);
+	if (!res)
+	{
+		iw_stats->discard.retries = (__u32)ndis_stats.retry +
+			(__u32)ndis_stats.multi_retry;
+		iw_stats->discard.misc = (__u32)ndis_stats.fcs_err +
+			(__u32)ndis_stats.rtss_fail + (__u32)ndis_stats.ack_fail +
+			(__u32)ndis_stats.frame_dup;
+		
+		if (ndis_stats.tx_frag)
+			iw_stats->qual.qual = 100 - 100 *
+				((__u32)ndis_stats.retry + 2 * (__u32)ndis_stats.multi_retry +
+				 3 * (__u32)ndis_stats.failed) /
+				(6 * (__u32)ndis_stats.tx_frag);
+		else
+			iw_stats->qual.qual = 100;
+	}
 
 	return &handle->wireless_stats;
 }
@@ -1516,7 +1494,7 @@ static int ndis_suspend(struct pci_dev *pdev, u32 state)
 	struct ndis_handle *handle;
 	int res;
 
-	printk("%s called with %p, %d\n",
+	DBGTRACE("%s called with %p, %d\n",
 			 __FUNCTION__, pdev, state);
 	if (!pdev)
 		return -1;
@@ -1533,7 +1511,6 @@ static int ndis_suspend(struct pci_dev *pdev, u32 state)
 			 dev->name, handle->pm_state, res);
 	if (res)
 		printk(KERN_INFO "%s: device doesn't support pnp capabilities for power management? (%08X)\n", dev->name, res);
-	apscan_del(handle);
 
 	/* do we need this? */
 //		DBGTRACE("%s: stopping queue\n", dev->name);
@@ -1593,7 +1570,6 @@ static int ndis_resume(struct pci_dev *pdev)
 //		DBGTRACE("%s: starting queue\n", dev->name);
 //		netif_wake_queue(dev);
 	
-	add_scan_timer((unsigned long)handle);
 	DBGTRACE("%s: device resumed!\n", dev->name);
 	return 0;
 }
@@ -1805,7 +1781,6 @@ static int __devinit ndis_init_one(struct pci_dev *pdev,
 	}
 	handle->pm_state = NDIS_PM_STATE_D0;
 	handle->send_packet_lock = SPIN_LOCK_UNLOCKED;
-	apscan_init(handle);
 	//hangcheck_add(handle);
 
 	ndis_init_proc(handle);
@@ -1828,7 +1803,6 @@ static void __devexit ndis_remove_one(struct pci_dev *pdev)
 	DBGTRACE("%s\n", __FUNCTION__);
 
 	//hangcheck_del(handle);
-	apscan_del(handle);
 
 	ndis_remove_proc(handle);
 	if (!netif_queue_stopped(handle->net_dev))
