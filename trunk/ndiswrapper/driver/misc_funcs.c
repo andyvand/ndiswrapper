@@ -54,15 +54,8 @@ int my_sprintf(char *str, const char *format, int p1, int p2, int p3, int p4, in
 	return res;
 }
 
-char * my_strncpy(char *dst, char *src, int n)
+char *my_strncpy(char *dst, char *src, int n)
 {
-	int i;
-	for(i = 0; i < n; i++)
-	{
-		if(src[i] == 0)
-			break;
-	}
-	
 	return strncpy(dst, src, n);
 }
 

@@ -335,30 +335,23 @@ STDCALL void NdisMQueryAdapterResources(unsigned int *status,
 		if(pci_resource_flags(pci_dev, i) & IORESOURCE_MEM)
 		{
 			entry->type = 3;
-			entry->share = 0;
-
-			//Param 2 and 3 seems to be swapped...investigate...
-			entry->param1 = pci_resource_start(pci_dev, i);		
-			entry->param3 = 0;
-			entry->param2 = pci_resource_len(pci_dev, i);		
+			entry->flags = 0;
+			
 		}
-
-		
 		
 		else if(pci_resource_flags(pci_dev, i) & IORESOURCE_IO)
 		{
 			entry->type = 1;
-			entry->share = 0;
 			entry->flags = 1;
-			//Param 2 and 3 seems to be swapped...investigate...
-			entry->param1 = pci_resource_start(pci_dev, i);		
-			entry->param2 = 0;
-			entry->param3 = pci_resource_len(pci_dev, i);		
 		}
+
+		entry->share = 0;
+		entry->param1 = pci_resource_start(pci_dev, i);		
+		entry->param2 = 0;
+		entry->param3 = pci_resource_len(pci_dev, i);		
 		
 		i++;
 	}
-
 
 	/* Put IRQ resource */
 	entry = &resource_list->list[len++];
@@ -393,18 +386,19 @@ STDCALL void NdisMQueryAdapterResources(unsigned int *status,
  */
 STDCALL unsigned int NdisMMapIoSpace(void **virt,
                                      struct ndis_handle *handle,
-				     unsigned int phys,
+				     unsigned int physlo,
+				     unsigned int physhi,
 				     unsigned int len)
 {
-	DBGTRACE("%s: %08x, %d\n", __FUNCTION__, (int)phys, len);
-	*virt = ioremap(phys, len);
+	DBGTRACE("%s: %08x, %d\n", __FUNCTION__, (int)physlo, len);
+	*virt = ioremap(physlo, len);
 	if(*virt == NULL) {
 		printk(KERN_ERR "IORemap failed\n");
 		return NDIS_STATUS_FAILIURE;
 	}
 	
-	handle->mem_start = phys;
-	handle->mem_end = phys + len -1;
+	handle->mem_start = physlo;
+	handle->mem_end = physlo + len -1;
 	DBGTRACE("ioremap successful %08x\n", (int)*virt);
 	return NDIS_STATUS_SUCCESS;
 }
@@ -900,6 +894,23 @@ STDCALL void NdisMSleep(unsigned long us_to_sleep)
 	} 
 }
 
+STDCALL void NdisGetCurrentSystemTime(unsigned long *time)
+{
+	/* This is totally bogus, but at least to increases... */
+	time[0] = jiffies;	
+	time[1] = 0;	
+}
+
+
+STDCALL unsigned int NdisMRegisterIoPortRange(void **virt, struct ndis_handle *handle, unsigned int startlo, unsigned int starthi, unsigned int len)
+{
+	DBGTRACE("%s %08x %08x\n", __FUNCTION__, startlo, len);
+	/* TODO: Register ioport with linux */
+	*virt = (void*) startlo;
+	return NDIS_STATUS_SUCCESS;
+}
+
+
 
 /* Unimplemented...*/
 STDCALL void NdisInitAnsiString(void *src, void *dst) {UNIMPL();}
@@ -912,29 +923,22 @@ STDCALL unsigned long NdisWritePcmciaAttributeMemory(void *handle, unsigned int 
 STDCALL unsigned long NdisReadPcmciaAttributeMemory(void *handle, unsigned int offset, void *buffer, unsigned int length){UNIMPL();return 0;}
 STDCALL void NdisInitializeEvent(void *event){UNIMPL();}
 
-unsigned int NdisMRegisterIoPortRange(void **virt, struct ndis_handle *handle, unsigned int start, unsigned int len)
-{
-	DBGTRACE("%s %08x %08x\n", __FUNCTION__, start, len);
-	*virt = (void*) start;
-	return NDIS_STATUS_SUCCESS;
-}
 
-void NdisInterlockedDecrement(void){UNIMPL();}
-void NdisGetCurrentSystemTime(void){UNIMPL();}
-void NdisMDeregisterIoPortRange(void){UNIMPL();}
-void NdisWaitEvent(void){UNIMPL();}
-void NdisDprAcquireSpinLock(void){UNIMPL();}
-void NdisDprReleaseSpinLock(void){UNIMPL();}
-void NdisInterlockedIncrement(void){UNIMPL();}
-void NdisSetEvent(void){UNIMPL();}
-void NdisMInitializeScatterGatherDma(void){UNIMPL();}
-void NdisSystemProcessorCount(void){UNIMPL();}
-void NdisMGetDmaAlignment(void){UNIMPL();}
-void NdisUnicodeStringToAnsiString(void){UNIMPL();}
+STDCALL void NdisInterlockedDecrement(void){UNIMPL();}
+STDCALL void NdisMDeregisterIoPortRange(void){UNIMPL();}
+STDCALL void NdisWaitEvent(void){UNIMPL();}
+STDCALL void NdisDprAcquireSpinLock(void){UNIMPL();}
+STDCALL void NdisDprReleaseSpinLock(void){UNIMPL();}
+STDCALL void NdisInterlockedIncrement(void){UNIMPL();}
+STDCALL void NdisSetEvent(void){UNIMPL();}
+STDCALL void NdisMInitializeScatterGatherDma(void){UNIMPL();}
+STDCALL void NdisSystemProcessorCount(void){UNIMPL();}
+STDCALL void NdisMGetDmaAlignment(void){UNIMPL();}
+STDCALL void NdisUnicodeStringToAnsiString(void){UNIMPL();}
 
-void NdisResetEvent(void){UNIMPL();}
-void NdisInitializeString(void){UNIMPL();}
-void NdisUnchainBufferAtBack(void){UNIMPL();}
-void NdisGetFirstBufferFromPacketSafe(void){UNIMPL();}
-void NdisUnchainBufferAtFront(void){UNIMPL();}
+STDCALL void NdisResetEvent(void){UNIMPL();}
+STDCALL void NdisInitializeString(void){UNIMPL();}
+STDCALL void NdisUnchainBufferAtBack(void){UNIMPL();}
+STDCALL void NdisGetFirstBufferFromPacketSafe(void){UNIMPL();}
+STDCALL void NdisUnchainBufferAtFront(void){UNIMPL();}
 

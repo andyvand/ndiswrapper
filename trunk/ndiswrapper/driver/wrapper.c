@@ -43,7 +43,7 @@
    function crashes. A simple rmmod -f will do the trick and
    you can try again.
 */
-#define DBG_OLD_PCI
+/*#define DBG_OLD_PCI*/
 
 
 /* List of loaded drivers */
@@ -624,7 +624,6 @@ static void __devexit ndis_remove_one(struct pci_dev *pdev)
 
 	if(handle->net_dev)
 		free_netdev(handle->net_dev);
-
 	pci_release_regions(pdev);
 	pci_disable_device(pdev);
 }
