@@ -1297,6 +1297,9 @@ static int ndis_init_one(struct pci_dev *pdev, const struct pci_device_id *ent)
 	handle->pm_state = NDIS_PM_STATE_D0;
 	set_int(handle, NDIS_OID_PNP_SET_POWER, handle->pm_state);
 	
+	/* SMC cards need reset for wep/essid */
+	doreset(handle);
+
 	/* Wait a little to let card power up otherwise ifup might fail after
 	   boot */
 	set_current_state(TASK_INTERRUPTIBLE);

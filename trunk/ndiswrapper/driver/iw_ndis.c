@@ -85,7 +85,6 @@ static int ndis_get_essid(struct net_device *dev,
 	TRACEEXIT1(return 0);
 }
 
-
 int ndis_set_mode(struct net_device *dev, struct iw_request_info *info,
 		  union iwreq_data *wrqu, char *extra)
 {
@@ -154,7 +153,7 @@ static int ndis_get_mode(struct net_device *dev, struct iw_request_info *info,
 	TRACEEXIT1(return 0);
 }
 
-const char *net_type_to_name(int net_type)
+static const char *net_type_to_name(int net_type)
 {
 	static const char *net_names[] = {"IEEE 802.11FH", "IEEE 802.11b",
 	              "IEEE 802.11a", "IEEE 802.11g"};
@@ -641,8 +640,8 @@ static int ndis_get_nick(struct net_device *dev, struct iw_request_info *info,
 	return 0;
 }
 
-char *ndis_translate_scan(struct net_device *dev, char *event, char *end_buf,
-			  struct ssid_item *item)
+static char *ndis_translate_scan(struct net_device *dev, char *event,
+				 char *end_buf, struct ssid_item *item)
 {
 	struct iw_event iwe;
 	char *current_val;
@@ -1297,8 +1296,9 @@ static int ndis_set_disassociate(struct net_device *dev,
 	TRACEEXIT(return 0);
 }
 
-int ndis_set_priv_filter(struct net_device *dev, struct iw_request_info *info,
-			 union iwreq_data *wrqu, char *extra)
+static int ndis_set_priv_filter(struct net_device *dev,
+				struct iw_request_info *info,
+				union iwreq_data *wrqu, char *extra)
 {
 	struct ndis_handle *handle = (struct ndis_handle *)dev->priv;
 	int res;
@@ -1329,8 +1329,8 @@ static int ndis_set_generic_element(struct net_device *dev,
 	return 0;
 }
 
-int ndis_dummy(struct net_device *dev, struct iw_request_info *info,
-	       union iwreq_data *wrqu, char *extra)
+static int ndis_dummy(struct net_device *dev, struct iw_request_info *info,
+		      union iwreq_data *wrqu, char *extra)
 {
 	TRACEENTER("mode = %d\n", wrqu->mode);
 	return 0;
