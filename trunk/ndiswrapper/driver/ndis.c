@@ -894,11 +894,6 @@ STDCALL void WRAP_EXPORT(NdisAcquireSpinLock)
 	(struct ndis_spinlock *lock)
 {
 	TRACEENTER5("lock %p", lock);
-	/* TI ACX 100 driver doesn't call NdisAllocateSpinLock before
-	 * calling NdisAcquireSpinLock, so we allocate it. Note that
-	 * KeInitializeSpinLock doesn't really allocate a spinlock if
-	 * it is already allocated */
-	NdisAllocateSpinLock(lock);
 	lock->irql = kspin_lock(&lock->klock, DISPATCH_LEVEL);
 	TRACEEXIT5(return);
 }
@@ -915,7 +910,9 @@ STDCALL void WRAP_EXPORT(NdisDprAcquireSpinLock)
 	(struct ndis_spinlock *lock)
 {
 	TRACEENTER5("lock %p", lock);
-	lock->irql = kspin_lock(&lock->klock, DISPATCH_LEVEL);
+	/* this function should not change IRQL, as it is called from
+	 * DISPATCH_LEVEL, so we use PASSIVE_LEVEL */
+	lock->irql = kspin_lock(&lock->klock, PASSIVE_LEVEL);
 	TRACEEXIT5(return);
 }
 
