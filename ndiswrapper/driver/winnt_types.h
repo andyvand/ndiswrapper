@@ -187,6 +187,7 @@ struct wrap_spinlock {
 	KSPIN_LOCK klock;
 	KIRQL use_bh;
 };
+
 #define WRAP_SPINLOCK(lock) &((lock)->klock.spinlock)
 #define K_SPINLOCK(lock) &(lock)->spinlock
 #endif

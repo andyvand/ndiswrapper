@@ -759,9 +759,9 @@ STDCALL void WRAP_EXPORT(RtlFreeAnsiString)(struct ansi_string *string)
 	return;
 }
 
-static void WRAP_EXPORT(RtlUnwind)(void){UNIMPL();}
+void WRAP_EXPORT(RtlUnwind)(void){UNIMPL();}
 
-STDCALL static NT_STATUS WRAP_EXPORT(RtlQueryRegistryValues)
+STDCALL NT_STATUS WRAP_EXPORT(RtlQueryRegistryValues)
 	(ULONG relative, wchar_t *path, void *tbl,
 	 void *context, void *env)
 {

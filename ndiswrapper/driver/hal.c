@@ -23,43 +23,43 @@
 
 #include "ntoskernel.h"
 
-STDCALL static void WRAP_EXPORT(WRITE_PORT_ULONG)
+STDCALL void WRAP_EXPORT(WRITE_PORT_ULONG)
 	(ULONG_PTR port, ULONG value)
 {
 	outl(value, port);
 }
 
-STDCALL static ULONG WRAP_EXPORT(READ_PORT_ULONG)
+STDCALL ULONG WRAP_EXPORT(READ_PORT_ULONG)
 	(ULONG_PTR port)
 {
 	return inl((unsigned long)port);
 }
 
-STDCALL static void WRAP_EXPORT(WRITE_PORT_USHORT)
+STDCALL void WRAP_EXPORT(WRITE_PORT_USHORT)
 	(ULONG_PTR port, USHORT value)
 {
 	outw(value, (unsigned long)port);
 }
 
-STDCALL static USHORT WRAP_EXPORT(READ_PORT_USHORT)
+STDCALL USHORT WRAP_EXPORT(READ_PORT_USHORT)
 	(ULONG_PTR port)
 {
 	return inw((unsigned long)port);
 }
 
-STDCALL static void WRAP_EXPORT(WRITE_PORT_UCHAR)
+STDCALL void WRAP_EXPORT(WRITE_PORT_UCHAR)
 	(ULONG_PTR port, UCHAR value)
 {
 	outb(value, (unsigned long)port);
 }
 
-STDCALL static UCHAR WRAP_EXPORT(READ_PORT_UCHAR)
+STDCALL UCHAR WRAP_EXPORT(READ_PORT_UCHAR)
 	(ULONG_PTR port)
 {
 	return inb((unsigned long)port);
 }
 
-STDCALL static void WRAP_EXPORT(WRITE_PORT_BUFFER_USHORT)
+STDCALL void WRAP_EXPORT(WRITE_PORT_BUFFER_USHORT)
 	(ULONG_PTR port, USHORT *buf, ULONG count)
 {
 	ULONG i;
@@ -68,7 +68,7 @@ STDCALL static void WRAP_EXPORT(WRITE_PORT_BUFFER_USHORT)
 		outw(buf[i], (unsigned long)port);
 }
 
-STDCALL static void WRAP_EXPORT(READ_PORT_BUFFER_USHORT)
+STDCALL void WRAP_EXPORT(READ_PORT_BUFFER_USHORT)
 	(ULONG_PTR port, USHORT *buf, ULONG count)
 {
 	ULONG i;
@@ -77,7 +77,7 @@ STDCALL static void WRAP_EXPORT(READ_PORT_BUFFER_USHORT)
 		buf[i] = inw((unsigned long)port);
 }
 
-STDCALL static void WRAP_EXPORT(KeStallExecutionProcessor)
+STDCALL void WRAP_EXPORT(KeStallExecutionProcessor)
 	(ULONG usecs)
 {
 	udelay(usecs);
@@ -143,7 +143,7 @@ _FASTCALL void WRAP_EXPORT(KfReleaseSpinLock)
 	TRACEEXIT4(return);
 }
 
-_FASTCALL static void WRAP_EXPORT(KefAcquireSpinLockAtDpcLevel)
+_FASTCALL void WRAP_EXPORT(KefAcquireSpinLockAtDpcLevel)
 	(FASTCALL_DECL_1(KSPIN_LOCK *lock))
 {
 	KIRQL irql;
