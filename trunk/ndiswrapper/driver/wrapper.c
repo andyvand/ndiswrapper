@@ -292,6 +292,11 @@ static int ndis_ioctl (struct net_device *dev, struct ifreq *rq, int cmd)
 	
 	memset(packet, 0, sizeof(*packet));
 	packet->oob_offset = (int)(&packet->timesent1) - (int)packet;
+
+	buffer->data = data;
+	buffer->next = 0;
+	buffer->len = skb->len;
+
 	packet->nr_pages = 1;
 	packet->len = buffer->len;
 	packet->count = 1;
@@ -300,14 +305,11 @@ static int ndis_ioctl (struct net_device *dev, struct ifreq *rq, int cmd)
 	packet->buffer_head = buffer;
 	packet->buffer_tail = buffer;
 
-	buffer->data = data;
-	buffer->next = 0;
-	buffer->len = skb->len;
-
 	printk("Buffer: %08x, data %08x, len %d\n", (int)buffer, (int)buffer->data, (int)buffer->len); 	
 
 	skb_copy_and_csum_dev(skb, data);
 	dev_kfree_skb(skb);
+/*
 	{
 		printk("sending packet size %d:\n", buffer->len);
 		int i;
@@ -317,8 +319,8 @@ static int ndis_ioctl (struct net_device *dev, struct ifreq *rq, int cmd)
 		}
 		printk("\n");		
 	}
-	
-	printk("Calling send_packets at %08x rva(%08x). sp:%08x\n", (int)handle->miniport_char.send_packets, (int)handle->miniport_char.send_packets - image_offset, getSp());
+*/	
+//	printk("Calling send_packets at %08x rva(%08x). sp:%08x\n", (int)handle->miniport_char.send_packets, (int)handle->miniport_char.send_packets - image_offset, getSp());
 	handle->miniport_char.send_packets(handle->adapter_ctx, &packet, 1);
 
 	return 0;
@@ -408,6 +410,7 @@ static int load_ndis_driver(int size, char *src)
 
 
 	printk("size: %08x\n", sizeof(handle->fill1));
+
 	/* Poision this because it may contain function pointers */
 	memset(&handle->fill1, 0x11, sizeof(handle->fill1));
 	memset(&handle->fill2, 0x11, sizeof(handle->fill2));
@@ -508,8 +511,6 @@ void test(void)
 		for(i = 0; i < DEVICE_COUNT_RESOURCE; i++)
 		{
 			resource = &dev->resource[i];
-//			if(resource->name == NULL)
-//				break;
 			printk("Resource: %s, %08lx, %08lx, %08lx\n", resource->name, resource->start, resource->end, resource->flags);
 		}
 
@@ -517,8 +518,6 @@ void test(void)
 		for(i = 0; i < DEVICE_COUNT_IRQ; i++)
 		{
 			resource = &dev->irq_resource[i];
-//			if(resource->name == NULL)
-//				break;
 			printk("IRQ-Resource: %s, %08lx, %08lx, %08lx\n", resource->name, resource->start, resource->end, resource->flags);
 		}
 
@@ -526,8 +525,6 @@ void test(void)
 		for(i = 0; i < DEVICE_COUNT_DMA; i++)
 		{
 			resource = &dev->dma_resource[i];
-//			if(resource->name == NULL)
-//				break;
 			printk("DMA-Resource: %s, %08lx, %08lx, %08lx\n", resource->name, resource->start, resource->end, resource->flags);
 		}
 	}
