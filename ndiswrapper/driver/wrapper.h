@@ -17,49 +17,49 @@
 
 #include <linux/ioctl.h>
 
-#define DRIVERNAME_MAX 32
-#define NDIS_VERSION_STRING_MAX 64
-#define MAX_PE_IMAGES 4
+#define MAX_DRIVER_NAME_LEN 32
+#define MAX_NDIS_VERSION_STRING_LEN 64
+#define MAX_NDIS_SETTING_NAME_LEN 128
+#define MAX_NDIS_SETTING_VALUE_LEN 256
 
-struct put_file {
-	char name[DRIVERNAME_MAX];
+#define MAX_PE_IMAGES 4
+#define MAX_NDIS_DEVICES 20
+#define MAX_NDIS_BIN_FILES 5
+#define MAX_NDIS_SETTINGS 256
+
+struct load_driver_file {
+	char name[MAX_DRIVER_NAME_LEN];
 	size_t size;
 	void *data;
 };
 
-struct del_driver {
-	char name[DRIVERNAME_MAX];
+struct load_device_setting {
+	char name[MAX_NDIS_SETTING_NAME_LEN];
+	char value[MAX_NDIS_SETTING_VALUE_LEN];
 };
-
-struct put_device {
+		
+struct load_device {
 	int bustype;
 	int vendor;
 	int device;
 	int pci_subvendor;
 	int pci_subdevice;
 	int fuzzy;
+	unsigned int nr_settings;
+	struct load_device_setting settings[MAX_NDIS_SETTINGS];
 };
 
-struct put_setting
-{
-	size_t name_len;
-	size_t val_str_len;
-	char *name;
-	char *value;
+struct load_driver {
+	char name[MAX_DRIVER_NAME_LEN];
+	unsigned int nr_sys_files;
+	struct load_driver_file sys_files[MAX_PE_IMAGES];
+	unsigned int nr_devices;
+	struct load_device devices[MAX_NDIS_DEVICES];
+	unsigned int nr_bin_files;
+	struct load_driver_file bin_files[MAX_NDIS_BIN_FILES];
 };
 
-struct driver_files
-{
-	unsigned int count;
-	char name[DRIVERNAME_MAX];
-	struct put_file file[MAX_PE_IMAGES];
-};
+#define NDIS_ADD_DRIVER     _IOW('N', 0, struct load_driver *)
 
-#define NDIS_PUTDRIVER     _IOWR('N', 0, struct driver_files *)
-#define NDIS_PUTSETTING    _IOWR('N', 1, struct put_setting*)
-#define NDIS_STARTDRIVER   _IOWR('N', 2, int)
-#define NDIS_DELDRIVER     _IOWR('N', 4, struct del_driver*)
-#define NDIS_PUTDEVICE     _IOWR('N', 5, struct put_device*)
-#define NDIS_PUTFILE       _IOWR('N', 6, struct put_file*)
 #endif /* WRAPPER_H */
 

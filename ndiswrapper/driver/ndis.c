@@ -57,8 +57,7 @@ void ndis_cleanup_handle(struct ndis_handle *handle)
 	struct miniport_char *miniport = &handle->driver->miniport_char;
 
 	/* TI driver doesn't call NdisMDeregisterInterrupt during halt! */
-	if (handle->ndis_irq)
-	{
+	if (handle->ndis_irq) {
 		unsigned long flags;
 
 		spin_lock_irqsave(handle->ndis_irq->spinlock, flags);
@@ -106,8 +105,7 @@ static void free_handle_ctx(struct ndis_handle *handle)
 	{
 		struct handle_ctx_entry *handle_ctx =
 			(struct handle_ctx_entry *)curr;
-		if (handle_ctx->handle == handle)
-		{
+		if (handle_ctx->handle == handle) {
 			list_del(&handle_ctx->list);
 			kfree(handle_ctx);
 		}
@@ -143,15 +141,13 @@ STDCALL static int WRAP_EXPORT(NdisMRegisterMiniport)
 
 	TRACEENTER1("driver: %p", ndis_driver);
 
-	if(miniport_char->majorVersion < 4)
-	{
+	if(miniport_char->majorVersion < 4) {
 		ERROR("Driver %s using ndis version %d which is too old.",
 		      ndis_driver->name, miniport_char->majorVersion);
 		TRACEEXIT1(return NDIS_STATUS_BAD_VERSION);
 	}
 
-	if(char_len < min_length)
-	{
+	if(char_len < min_length) {
 		ERROR("Characteristics length %d is too small for driver %s",
 		      char_len, ndis_driver->name);
 		TRACEEXIT1(return NDIS_STATUS_BAD_CHARACTERISTICS);
@@ -171,22 +167,18 @@ STDCALL static unsigned int WRAP_EXPORT(NdisAllocateMemory)
 	 unsigned int highest_addr)
 {
 	TRACEENTER3("length = %u, flags = %08X", length, flags);
-	if (length <= KMALLOC_THRESHOLD)
-	{
+	if (length <= KMALLOC_THRESHOLD) {
 		if (KeGetCurrentIrql() == PASSIVE_LEVEL)
 			*dest = (void *)kmalloc(length,
 						GFP_KERNEL | __GFP_NOWARN);
 		else
 			*dest = (void *)kmalloc(length,
 						GFP_ATOMIC | __GFP_NOWARN);
-	}
-	else if (flags & NDIS_MEMORY_CONTIGUOUS)
-	{
+	} else if (flags & NDIS_MEMORY_CONTIGUOUS) {
 		WARNING("Allocating %u bytes of physically "
 		       "contiguous memory may fail", length);
 		*dest = (void *)kmalloc(length, GFP_KERNEL | __GFP_NOWARN);
-	}
-	else
+	} else
 		*dest = vmalloc(length);
 
 	if (*dest)
@@ -216,10 +208,8 @@ STDCALL static void WRAP_EXPORT(NdisFreeMemory)
 		kfree(addr);
 	else if (flags & NDIS_MEMORY_CONTIGUOUS)
 		kfree(addr);
-	else
-	{
-		if (!in_interrupt())
-		{
+	else {
+		if (!in_interrupt()) {
 			vfree(addr);
 			TRACEEXIT3(return);
 		}
@@ -231,9 +221,7 @@ STDCALL static void WRAP_EXPORT(NdisFreeMemory)
 		ndis_work_entry = kmalloc(sizeof(*ndis_work_entry),
 					  GFP_ATOMIC);
 		if (!ndis_work_entry)
-		{
 			BUG();
-		}
 
 		ndis_work_entry->type = NDIS_FREE_MEM;
 		free_mem = &ndis_work_entry->entry.free_mem;
@@ -296,25 +284,18 @@ STDCALL static void WRAP_EXPORT(NdisOpenConfigurationKeyByIndex)
 STDCALL static void WRAP_EXPORT(NdisCloseConfiguration)
 	(struct ndis_handle *handle)
 {
-	struct list_head *curr, *tmp2;
-
 	TRACEENTER2("handle: %p", handle);
-	list_for_each_safe(curr, tmp2, &handle->device->settings)
-	{
-		struct ndis_setting *setting = (struct ndis_setting*) curr;
-		setting->config_param.type = NDIS_SETTING_NONE;
-	}
 	return;
 }
 
 STDCALL static void WRAP_EXPORT(NdisOpenFile)
-	(unsigned int *status, struct ndis_file **filehandle,
+	(unsigned int *status, struct ndis_bin_file **filehandle,
 	 unsigned int *filelength, struct ustring *filename,
 	 u64 highest_address)
 {
 	struct ustring ansi;
 	struct list_head *curr, *tmp;
-	struct ndis_file *file;
+	struct ndis_bin_file *file;
 
 	TRACEENTER2("status = %p, filelength = %p, *filelength = %d, "
 		    "high = %lu, filehandle = %p, *filehandle = %p",
@@ -322,17 +303,14 @@ STDCALL static void WRAP_EXPORT(NdisOpenFile)
 		    (unsigned long)highest_address, filehandle, *filehandle);
 
 	ansi.buf = kmalloc(MAX_STR_LEN, GFP_KERNEL);
-	if (!ansi.buf)
-	{
+	if (!ansi.buf) {
 		*status = NDIS_STATUS_RESOURCES;
 		return;
 	}
 	ansi.buf[MAX_STR_LEN-1] = 0;
 	ansi.buflen = MAX_STR_LEN;
 
-
-	if (RtlUnicodeStringToAnsiString(&ansi, filename, 0))
-	{
+	if (RtlUnicodeStringToAnsiString(&ansi, filename, 0)) {
 		*status = NDIS_STATUS_RESOURCES;
 		kfree(ansi.buf);
 		TRACEEXIT2(return);
@@ -341,19 +319,16 @@ STDCALL static void WRAP_EXPORT(NdisOpenFile)
 			 ansi.buf, (int) highest_address);
 
 	/* Loop through all drivers and all files to find the requested file */
-	list_for_each_safe(curr, tmp, &ndis_driverlist)
-	{
-		struct list_head *curr2, *tmp2;
-
+	list_for_each_safe(curr, tmp, &ndis_driverlist) {
+		int i;
 		struct ndis_driver *driver = (struct ndis_driver *) curr;
-		list_for_each_safe(curr2, tmp2, &driver->files)
-		{
+
+		for (i = 0; i < driver->nr_bin_files; i++) {
 			int n;
-			file = (struct ndis_file*) curr2;
+			file = driver->bin_files[i];
 			DBGTRACE2("Considering %s", file->name);
 			n = min(strlen(file->name), strlen(ansi.buf));
-			if(strnicmp(file->name, ansi.buf, n) == 0)
-			{
+			if (strnicmp(file->name, ansi.buf, n) == 0) {
 				*filehandle = file;
 				*filelength = file->size;
 				*status = NDIS_STATUS_SUCCESS;
@@ -369,12 +344,11 @@ STDCALL static void WRAP_EXPORT(NdisOpenFile)
 
 STDCALL static void WRAP_EXPORT(NdisMapFile)
 	(unsigned int *status, void **mappedbuffer,
-	 struct ndis_file *filehandle)
+	 struct ndis_bin_file *filehandle)
 {
 	TRACEENTER2("Handle: %p", filehandle);
 
-	if (!filehandle)
-	{
+	if (!filehandle) {
 		*status = NDIS_STATUS_ALREADY_MAPPED;
 		TRACEEXIT2(return);
 	}
@@ -385,14 +359,14 @@ STDCALL static void WRAP_EXPORT(NdisMapFile)
 }
 
 STDCALL static void WRAP_EXPORT(NdisUnmapFile)
-	(struct ndis_file *filehandle)
+	(struct ndis_bin_file *filehandle)
 {
 	TRACEENTER2("Handle: %p", filehandle);
 	TRACEEXIT2(return);
 }
 
 STDCALL static void WRAP_EXPORT(NdisCloseFile)
-	(struct ndis_file *filehandle)
+	(struct ndis_bin_file *filehandle)
 {
 	TRACEENTER2("Handle: %p", filehandle);
 	TRACEEXIT2(return);
@@ -443,8 +417,7 @@ static int ndis_encode_setting(struct ndis_setting *setting,
 	if (setting->config_param.type == ndis_setting_type)
 		return NDIS_STATUS_SUCCESS;
 
-	switch(ndis_setting_type)
-	{
+	switch(ndis_setting_type) {
 	case NDIS_SETTING_INT:
 		setting->config_param.data.intval =
 			simple_strtol(setting->value, NULL, 0);
@@ -481,8 +454,7 @@ static int ndis_decode_setting(struct ndis_setting *setting,
 	    setting->config_param.data.ustring.buf)
 		RtlFreeUnicodeString(&setting->config_param.data.ustring);
 
-	switch(val->type)
-	{
+	switch(val->type) {
 	case NDIS_SETTING_INT:
 		snprintf(setting->value, sizeof(long), "%lu",
 			 (unsigned long)val->data.intval);
@@ -519,6 +491,7 @@ STDCALL static void WRAP_EXPORT(NdisReadConfiguration)
 	struct ndis_setting *setting;
 	struct ustring ansi;
 	char *keyname;
+	int i;
 
 	TRACEENTER2("%s", "");
 	if (RtlUnicodeStringToAnsiString(&ansi, key, 1)) {
@@ -529,10 +502,9 @@ STDCALL static void WRAP_EXPORT(NdisReadConfiguration)
 	}
 	keyname = ansi.buf;
 
-	list_for_each_entry(setting, &handle->device->settings, list)
-	{
-		if(stricmp(keyname, setting->name) == 0)
-		{
+	for (i = 0; i < handle->device->nr_settings; i++) {
+		setting = handle->device->settings[i];
+		if (stricmp(keyname, setting->name) == 0) {
 			DBGTRACE2("setting found %s=%s",
 				 keyname, setting->value);
 
@@ -560,22 +532,21 @@ STDCALL void WRAP_EXPORT(NdisWriteConfiguration)
 	 struct ustring *key, struct ndis_config_param *param)
 {
 	struct ustring ansi;
-	struct ndis_setting *setting;
 	char *keyname;
+	struct ndis_setting *setting;
+	int i;
 
 	TRACEENTER2("%s", "");
-	if (RtlUnicodeStringToAnsiString(&ansi, key, 1))
-	{
+	if (RtlUnicodeStringToAnsiString(&ansi, key, 1)) {
 		*status = NDIS_STATUS_FAILURE;
 		TRACEEXIT2(return);
 	}
 	keyname = ansi.buf;
 	DBGTRACE2("key = %s", keyname);
 
-	list_for_each_entry(setting, &handle->device->settings, list)
-	{
-		if(strcmp(keyname, setting->name) == 0)
-		{
+	for (i = 0; i < handle->device->nr_settings; i++) {
+		setting = handle->device->settings[i];
+		if (strcmp(keyname, setting->name) == 0) {
 			*status = ndis_decode_setting(setting, param);
 			DBGTRACE2("setting changed %s=%s",
 				 keyname, setting->value);
@@ -584,31 +555,7 @@ STDCALL void WRAP_EXPORT(NdisWriteConfiguration)
 		}
 	}
 
-	if ((setting = kmalloc(sizeof(*setting), GFP_KERNEL)) == NULL)
-	{
-		*status = NDIS_STATUS_RESOURCES;
-		RtlFreeAnsiString(&ansi);
-		TRACEEXIT2(return);
-	}
-	memset(setting, 0, sizeof(*setting));
-	if ((setting->name = kmalloc(ansi.len+1, GFP_KERNEL)) == NULL)
-	{
-		kfree(setting);
-		*status = NDIS_STATUS_RESOURCES;
-		RtlFreeAnsiString(&ansi);
-		TRACEEXIT2(return);
-	}
-	memcpy(setting->name, keyname, ansi.len);
-	setting->name[ansi.len] = 0;
-	*status = ndis_decode_setting(setting, param);
-	if (*status == NDIS_STATUS_SUCCESS)
-		list_add(&setting->list, &handle->device->settings);
-	else
-	{
-		kfree(setting->name);
-		kfree(setting);
-	}
-	RtlFreeAnsiString(&ansi);
+	ERROR("adding new settings not implemented");
 	TRACEEXIT2(return);
 }
 
