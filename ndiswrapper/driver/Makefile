@@ -63,8 +63,8 @@ OBJS   := wrapper.o iw_ndis.o loader.o ntoskernel.o ndis.o misc_funcs.o proc.o d
 
 CFLAGS += -I$(SUBDIRS)/../utils/wpa_supplicant
 
-ifdef DEBUG_WPA
-CFLAGS += -DDEBUG_WPA=1
+ifdef WPA
+CFLAGS += -DWPA=1
 endif
 
 ifdef DEBUG

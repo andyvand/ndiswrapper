@@ -571,13 +571,17 @@ void packet_recycler(void *param)
 	struct ndis_handle *handle = (struct ndis_handle*) param;
 
 	TRACEENTER3("%s", "Packet recycler running");
-	while(1)
+	while (1)
 	{
-		struct ndis_packet * packet;
+		struct ndis_packet * packet = NULL;
 
 		spin_lock_bh(&handle->recycle_packets_lock);
-		packet = 0;
-		if(!list_empty(&handle->recycle_packets))
+		if (list_empty(&handle->recycle_packets))
+		{
+			spin_unlock_bh(&handle->recycle_packets_lock);
+			break;
+		}
+		else
 		{
 			packet = (struct ndis_packet*) handle->recycle_packets.next;
 
@@ -588,7 +592,7 @@ void packet_recycler(void *param)
 
 		spin_unlock_bh(&handle->recycle_packets_lock);
 		
-		if(!packet)
+		if (packet == NULL)
 			break;
 
 		packet->status = NDIS_STATUS_SUCCESS;

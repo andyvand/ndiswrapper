@@ -1258,6 +1258,20 @@ static int ndis_set_key(struct net_device *dev, struct iw_request_info *info,
 	/* FIXME: check for TKIP -> encr mode */
 	handle->encr_alg = wpa_key->alg;
 	DBGTRACE("encr_alg = %d", handle->encr_alg);
+	if (wpa_key->key_index == 3)
+	{
+		char buf[128];
+		union iwreq_data wrqu;
+		char bssid[6];
+
+#define MAC2STR(a) (a)[0], (a)[1], (a)[2], (a)[3], (a)[4], (a)[5]
+#define MACSTR "%02x:%02x:%02x:%02x:%02x:%02x"
+
+		sprintf(buf, "MLME-MICHAELMICFAILURE.indication(keyid=? broadcast addr=" MACSTR ")", MAC2STR(bssid));
+//		sprintf(buf, "MLME-MICHAELMICFAILURE.indication(keyid=? unicast addr=" MACSTR ")", MAC2STR(BSSID));
+		wrqu.data.length = strlen(buf);
+		wireless_send_event(handle->net_dev, IWEVCUSTOM, &wrqu, buf);
+	}
 	TRACEEXIT(return 0);
 }
 

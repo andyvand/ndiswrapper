@@ -1088,7 +1088,7 @@ static int setup_dev(struct net_device *dev)
 	if(handle->multicast_list_size)
 		handle->multicast_list = kmalloc(handle->multicast_list_size * 6, GFP_KERNEL);
 
-#ifdef DEBUG_WPA
+#ifdef WPA
 	wrqu.param.value = NDIS_PRIV_ACCEPT_ALL;
 	if (ndis_set_priv_filter(dev, NULL, &wrqu, NULL))
 		WARNING("%s", "Unable to set privacy filter");
@@ -1183,8 +1183,10 @@ static int ndis_init_one(struct pci_dev *pdev,
 	handle->xmit_ring_pending = 0;
 
 	spin_lock_init(&handle->recycle_packets_lock);
-	INIT_WORK(&handle->packet_recycler, packet_recycler, handle);
 	INIT_LIST_HEAD(&handle->recycle_packets);
+
+	handle->ndis_wq = create_workqueue("ndis_wq");
+	INIT_WORK(&handle->recycle_packets_work, packet_recycler, handle);
 
 	INIT_WORK(&handle->set_rx_mode_work, ndis_set_rx_mode_proc, dev);
 
@@ -1199,8 +1201,8 @@ static int ndis_init_one(struct pci_dev *pdev,
 	handle->indicate_receive_packet = &NdisMIndicateReceivePacket;
 	handle->send_complete = &NdisMSendComplete;
 	handle->send_resource_avail = &NdisMSendResourcesAvailable;
-	handle->indicate_status = &NdisIndicateStatus;	
-	handle->indicate_status_complete = &NdisIndicateStatusComplete;	
+	handle->indicate_status = &NdisMIndicateStatus;	
+	handle->indicate_status_complete = &NdisMIndicateStatusComplete;
 	handle->query_complete = &NdisMQueryInformationComplete;	
 	handle->set_complete = &NdisMSetInformationComplete;
 	handle->reset_complete = &NdisMResetComplete;
@@ -1325,6 +1327,7 @@ static void __devexit ndis_remove_one(struct pci_dev *pdev)
 
 	/* Make sure any scheduled work is flushed before freeing the handle */
 	flush_scheduled_work();
+	destroy_workqueue(handle->ndis_wq);
 
 	if(handle->multicast_list)
 		kfree(handle->multicast_list);

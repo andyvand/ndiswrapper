@@ -554,7 +554,10 @@ struct packed ndis_handle
 
 	struct list_head recycle_packets;
 	spinlock_t recycle_packets_lock;
-	struct work_struct packet_recycler;
+	struct work_struct recycle_packets_work;
+
+	/* generic work queue */
+	struct workqueue_struct *ndis_wq;
 
 	/* List of initialized timers */
 	struct list_head timers;
@@ -659,8 +662,8 @@ void sendpacket_done(struct ndis_handle *handle, struct ndis_packet *packet);
 STDCALL void NdisMIndicateReceivePacket(struct ndis_handle *handle, struct ndis_packet **packets, unsigned int nr_packets) STDCALL;
 STDCALL void NdisMSendComplete(struct ndis_handle *handle, struct ndis_packet *packet, unsigned int status) STDCALL;
 STDCALL void NdisMSendResourcesAvailable(struct ndis_handle *handle) STDCALL;
-STDCALL void NdisIndicateStatus(struct ndis_handle *handle, unsigned int status, void *buf, unsigned int len) STDCALL;
-STDCALL void NdisIndicateStatusComplete(struct ndis_handle *handle) STDCALL;
+STDCALL void NdisMIndicateStatus(struct ndis_handle *handle, unsigned int status, void *buf, unsigned int len) STDCALL;
+STDCALL void NdisMIndicateStatusComplete(struct ndis_handle *handle) STDCALL;
 STDCALL void NdisMQueryInformationComplete(struct ndis_handle *handle, unsigned int status) STDCALL;
 STDCALL void NdisMSetInformationComplete(struct ndis_handle *handle, unsigned int status) STDCALL;
 STDCALL void NdisMResetComplete(struct ndis_handle *handle, int status, int reset_status);
