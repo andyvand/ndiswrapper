@@ -320,12 +320,19 @@ unsigned long usb_submit_nt_urb(struct usb_device *dev, union nt_urb *nt_urb,
 				break;
 			}
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,5)
 			for (i = 0;
 			     i < intf->cur_altsetting->desc.bNumEndpoints;
 			     i++) {
-				struct usb_host_endpoint *endp;
-
-				endp = intf->cur_altsetting->endpoint + i;
+				struct usb_host_endpoint *endp =
+					intf->cur_altsetting->endpoint + i;
+#else /* 2.6.0...2.6.4 */
+			for (i = 0;
+			     i < intf->altsetting[intf->act_altsetting].desc.bNumEndpoints;
+			     i++) {
+				struct usb_host_endpoint *endp =
+					intf->altsetting[intf->act_altsetting].endpoint + i;
+#endif
 				pipe_info = &nt_urb->selConf.intf.pipes[i];
 
 				pipe_info->maxPacketSize =
@@ -356,7 +363,7 @@ unsigned long usb_submit_nt_urb(struct usb_device *dev, union nt_urb *nt_urb,
 			}
 #else
 			for (i = 0; i < intf->altsetting[
-				intf->act_altsetting].bNumEndpoints; i++) {
+			     intf->act_altsetting].bNumEndpoints; i++) {
 				struct usb_endpoint_descriptor *desc;
 
 				desc = &intf->altsetting[
