@@ -774,15 +774,15 @@ WRAP_EXPORT_MAP("_USBD_CreateConfigurationRequestEx@8",	USBD_CreateConfiguration
 STDCALL struct usb_interface_descriptor *
 	WRAP_EXPORT(USBD_ParseConfigurationDescriptorEx)
 	(struct usb_config_descriptor *config,
-	 void *startPos, long intfNum, long altSet,
-	 long intfClass, long intfSubClass, long intfProto)
+	 void *startPos, __s32 intfNum, __s32 altSet,
+	 __s32 intfClass, __s32 intfSubClass, __s32 intfProto)
 {
 	int size = config->wTotalLength;
 	char *pos = startPos;
 	struct usb_interface_descriptor *intf;
 
-	TRACEENTER2("config = %p, startPos = %p, intfNum = %ld, altSet = %ld,"
-		" intfClass = %ld, intfSubClass = %ld, intfProto = %ld",
+	TRACEENTER2("config = %p, startPos = %p, intfNum = %d, altSet = %d,"
+		" intfClass = %d, intfSubClass = %d, intfProto = %d",
 		config, startPos, intfNum, altSet, intfClass, intfSubClass,
                 intfProto);
 
@@ -816,7 +816,7 @@ WRAP_EXPORT_MAP("_USBD_ParseConfigurationDescriptorEx@28", USBD_ParseConfigurati
 STDCALL struct usb_interface_descriptor *
 	WRAP_EXPORT(USBD_ParseConfigurationDescriptor)
 	(struct usb_config_descriptor *config,
-	 long intfNum, long altSet)
+	 unsigned char intfNum, unsigned char altSet)
 {
 	return USBD_ParseConfigurationDescriptorEx(config, config,
 						   intfNum, altSet,
