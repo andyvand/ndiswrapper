@@ -307,7 +307,7 @@ static int procfs_write_settings(struct file *file, const char *buf,
 		if (i < 0 || i > 1)
 			return -EINVAL;
 
-		miniport = &handle->driver->miniport_char;
+		miniport = &handle->driver->miniport;
 		if (!miniport->pnp_event_notify)
 			return -EFAULT;
 

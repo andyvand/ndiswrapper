@@ -106,7 +106,7 @@ NDIS_STATUS miniport_reset(struct ndis_handle *handle)
 
 	if (down_interruptible(&handle->ndis_comm_mutex))
 		TRACEEXIT3(return NDIS_STATUS_FAILURE);
-	miniport = &handle->driver->miniport_char;
+	miniport = &handle->driver->miniport;
 	/* reset_status is used for two purposes: to check if windows
 	 * driver needs us to reset filters etc (as per NDIS) and to
 	 * check if another reset is in progress */
@@ -159,7 +159,7 @@ NDIS_STATUS miniport_query_info_needed(struct ndis_handle *handle,
 {
 	NDIS_STATUS res;
 	ULONG written;
-	struct miniport_char *miniport = &handle->driver->miniport_char;
+	struct miniport_char *miniport = &handle->driver->miniport;
 	KIRQL irql;
 
 	TRACEENTER3("query is at %p", miniport->query);
@@ -206,7 +206,7 @@ NDIS_STATUS miniport_set_info(struct ndis_handle *handle, ndis_oid oid,
 {
 	NDIS_STATUS res;
 	ULONG written, needed;
-	struct miniport_char *miniport = &handle->driver->miniport_char;
+	struct miniport_char *miniport = &handle->driver->miniport;
 	KIRQL irql;
 
 	TRACEENTER3("setinfo is at %p", miniport->setinfo);
@@ -264,7 +264,7 @@ NDIS_STATUS miniport_init(struct ndis_handle *handle)
 	NDIS_STATUS status, res;
 	UINT medium_index;
 	UINT medium_array[] = {NdisMedium802_3};
-	struct miniport_char *miniport = &handle->driver->miniport_char;
+	struct miniport_char *miniport = &handle->driver->miniport;
 
 	TRACEENTER1("driver init routine is at %p", miniport->init);
 	if (miniport->init == NULL) {
@@ -275,8 +275,8 @@ NDIS_STATUS miniport_init(struct ndis_handle *handle)
 		       sizeof(medium_array) / sizeof(medium_array[0]),
 		       handle, handle);
 	if (res)
-		return res;
-	return 0;
+		TRACEEXIT1(return res);
+	TRACEEXIT1(return 0);
 }
 
 /*
@@ -284,7 +284,7 @@ NDIS_STATUS miniport_init(struct ndis_handle *handle)
  */
 void miniport_halt(struct ndis_handle *handle)
 {
-	struct miniport_char *miniport = &handle->driver->miniport_char;
+	struct miniport_char *miniport = &handle->driver->miniport;
 	TRACEENTER1("driver halt is at %p", miniport->halt);
 
 	miniport_set_int(handle, OID_PNP_SET_POWER, NdisDeviceStateD3);
@@ -310,7 +310,7 @@ static void hangcheck_proc(unsigned long data)
 		NDIS_STATUS res;
 		struct miniport_char *miniport;
 
-		miniport = &handle->driver->miniport_char;
+		miniport = &handle->driver->miniport;
 		irql = raise_irql(DISPATCH_LEVEL);
 		res = LIN2WIN1(miniport->hangcheck, handle->adapter_ctx);
 		lower_irql(irql);
@@ -322,20 +322,20 @@ static void hangcheck_proc(unsigned long data)
 		}
 	}
 
-	kspin_lock(&handle->timers_lock);
+	kspin_lock(&handle->timer_lock);
 	if (handle->hangcheck_active) {
 		handle->hangcheck_timer.expires =
 			jiffies + handle->hangcheck_interval;
 		add_timer(&handle->hangcheck_timer);
 	}
-	kspin_unlock(&handle->timers_lock);
+	kspin_unlock(&handle->timer_lock);
 
 	TRACEEXIT3(return);
 }
 
 void hangcheck_add(struct ndis_handle *handle)
 {
-	if (!handle->driver->miniport_char.hangcheck ||
+	if (!handle->driver->miniport.hangcheck ||
 	    handle->hangcheck_interval <= 0) {
 		handle->hangcheck_active = 0;
 		return;
@@ -345,23 +345,23 @@ void hangcheck_add(struct ndis_handle *handle)
 	handle->hangcheck_timer.data = (unsigned long)handle;
 	handle->hangcheck_timer.function = &hangcheck_proc;
 
-	kspin_lock(&handle->timers_lock);
+	kspin_lock(&handle->timer_lock);
 	add_timer(&handle->hangcheck_timer);
 	handle->hangcheck_active = 1;
-	kspin_unlock(&handle->timers_lock);
+	kspin_unlock(&handle->timer_lock);
 	return;
 }
 
 void hangcheck_del(struct ndis_handle *handle)
 {
-	if (!handle->driver->miniport_char.hangcheck ||
+	if (!handle->driver->miniport.hangcheck ||
 	    handle->hangcheck_interval <= 0)
 		return;
 
-	kspin_lock(&handle->timers_lock);
+	kspin_lock(&handle->timer_lock);
 	handle->hangcheck_active = 0;
 	del_timer(&handle->hangcheck_timer);
-	kspin_unlock(&handle->timers_lock);
+	kspin_unlock(&handle->timer_lock);
 }
 
 static void stats_proc(unsigned long data)
@@ -385,9 +385,9 @@ static void stats_timer_add(struct ndis_handle *handle)
 
 static void stats_timer_del(struct ndis_handle *handle)
 {
-	kspin_lock(&handle->timers_lock);
+	kspin_lock(&handle->timer_lock);
 	del_timer_sync(&handle->stats_timer);
-	kspin_unlock(&handle->timers_lock);
+	kspin_unlock(&handle->timer_lock);
 }
 
 static int ndis_open(struct net_device *dev)
@@ -528,7 +528,7 @@ static int send_packets(struct ndis_handle *handle, unsigned int start,
 			unsigned int pending)
 {
 	NDIS_STATUS res;
-	struct miniport_char *miniport = &handle->driver->miniport_char;
+	struct miniport_char *miniport = &handle->driver->miniport;
 	unsigned int sent, n;
 	struct ndis_packet *packet;
 
@@ -1286,7 +1286,7 @@ int setup_dev(struct net_device *dev)
 	memcpy(&dev->dev_addr, mac, ETH_ALEN);
 
 	handle->max_send_packets = 1;
-	if (handle->driver->miniport_char.send_packets) {
+	if (handle->driver->miniport.send_packets) {
 		res = miniport_query_int(handle, OID_GEN_MAXIMUM_SEND_PACKETS,
 					 &handle->max_send_packets);
 		DBGTRACE2("maximum send packets supported by driver: %d",
@@ -1438,8 +1438,8 @@ struct net_device *ndis_init_netdev(struct ndis_handle **phandle,
 
 	handle->reset_status = 0;
 
-	INIT_LIST_HEAD(&handle->timers);
-	kspin_lock_init(&handle->timers_lock);
+	InitializeListHead(&handle->ktimers);
+	kspin_lock_init(&handle->timer_lock);
 
 	handle->rx_packet = WRAP_FUNC_PTR(NdisMIndicateReceivePacket);
 	handle->send_complete = WRAP_FUNC_PTR(NdisMSendComplete);
@@ -1453,7 +1453,7 @@ struct net_device *ndis_init_netdev(struct ndis_handle **phandle,
 	handle->eth_rx_indicate = WRAP_FUNC_PTR(EthRxIndicateHandler);
 	handle->eth_rx_complete = WRAP_FUNC_PTR(EthRxComplete);
 	handle->td_complete = WRAP_FUNC_PTR(NdisMTransferDataComplete);
-	handle->driver->miniport_char.adapter_shutdown = NULL;
+	handle->driver->miniport.adapter_shutdown = NULL;
 
 	handle->map_count = 0;
 	handle->map_dma_addr = NULL;
@@ -1471,7 +1471,7 @@ struct net_device *ndis_init_netdev(struct ndis_handle **phandle,
 
 	INIT_WORK(&handle->wrapper_worker, wrapper_worker_proc, handle);
 
-	handle->phys_device_obj = NULL;
+	handle->phys_dev_obj = NULL;
 
 	*phandle = handle;
 	return dev;

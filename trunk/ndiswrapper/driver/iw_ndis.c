@@ -1256,10 +1256,10 @@ static int priv_power_profile(struct net_device *dev,
 			      union iwreq_data *wrqu, char *extra)
 {
 	struct ndis_handle *handle = dev->priv;
-	struct miniport_char *miniport = &handle->driver->miniport_char;
+	struct miniport_char *miniport;
 	ULONG profile_inf;
 
-	miniport = &handle->driver->miniport_char;
+	miniport = &handle->driver->miniport;
 	if (!miniport->pnp_event_notify)
 		TRACEEXIT2(return -EOPNOTSUPP);
 
