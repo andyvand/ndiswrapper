@@ -618,9 +618,13 @@ int add_wep_key(struct ndis_handle *handle, char *key, int key_len,
 	struct ndis_encr_key ndis_key;
 	NDIS_STATUS res;
 
-	TRACEENTER2("handle = %p", handle);
+	TRACEENTER2("key index: %d", index);
 	if (key_len <= 0 || key_len > NDIS_ENCODING_TOKEN_MAX) {
 		WARNING("invalid key length (%d)", key_len);
+		TRACEEXIT2(return -EINVAL);
+	}
+	if (index < 0 || index >= MAX_ENCR_KEYS) {
+		WARNING("invalid key index (%d)", index);
 		TRACEEXIT2(return -EINVAL);
 	}
 	ndis_key.struct_size = sizeof(ndis_key);
@@ -720,8 +724,6 @@ static int iw_set_encr(struct net_device *dev, struct iw_request_info *info,
 		}
 		key_len = encr_info->keys[index].length;
 		key = encr_info->keys[index].key;
-		/* static WEP works only if tx_key is at index 0 */
-		index = 0;
 		encr_info->tx_key_index = index;
 	}
 
@@ -729,6 +731,25 @@ static int iw_set_encr(struct net_device *dev, struct iw_request_info *info,
 		TRACEEXIT2(return -EINVAL);
 
 	if (index == encr_info->tx_key_index) {
+		/* if transmit key is at index other than 0, some
+		 * drivers, at least Atheros and TI, want another
+		 * (global) non-transmit key to be set; don't know why */
+		if (index != 0) {
+			int i;
+			for (i = 0; i < MAX_ENCR_KEYS; i++)
+				if (i != index &&
+				    encr_info->keys[i].length != 0)
+					break;
+			if (i == MAX_ENCR_KEYS) {
+				if (index == 0)
+					i = index + 1;
+				else
+					i = index - 1;
+				if (add_wep_key(handle, key, key_len, i))
+					WARNING("couldn't add broadcast key"
+						" at %d", i);
+			}
+		}
 		/* ndis drivers want essid to be set after setting encr */
 		set_essid(handle, handle->essid.essid, handle->essid.length);
 	}
