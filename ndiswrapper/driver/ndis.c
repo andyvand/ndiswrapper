@@ -1282,7 +1282,9 @@ STDCALL static void WRAP_EXPORT(NdisReadNetworkAddress)
 			int i;
 			for (i = 0; i < ETH_ALEN; i++)
 				handle->mac[i] = int_mac[i];
-			INFO("new mac: " MACSTR, MAC2STR(handle->mac));
+			printk(KERN_INFO "%s: %s ethernet device " MACSTR "\n",
+			       handle->net_dev->name, DRV_NAME,
+			       MAC2STR(handle->mac));
 			*len = ETH_ALEN;
 			*addr = handle->mac;
 			*status = NDIS_STATUS_SUCCESS;
