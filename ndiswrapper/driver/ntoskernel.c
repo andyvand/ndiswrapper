@@ -51,8 +51,9 @@ int ntoskrnl_init(void)
 
 void ntoskrnl_exit(void)
 {
-	if (kmem_cache_destroy(mdl_cache))
-		ERROR("Windows driver didn't free MDL(s)");
+	if (mdl_cache && kmem_cache_destroy(mdl_cache))
+		ERROR("A Windows driver didn't free all MDL(s);"
+		      "memory is leaking");
 	return;
 }
 

@@ -66,8 +66,9 @@ int ndis_init(void)
 /* ndis_exit is called once when module is removed */
 void ndis_exit(void)
 {
-	if (kmem_cache_destroy(packet_cache))
-		ERROR("Windows driver didn't free packet(s)");
+	if (packet_cache && kmem_cache_destroy(packet_cache))
+		ERROR("A Windows driver didn't free all packet(s);"
+		      "memory is leaking");
 	return;
 }
 
