@@ -453,6 +453,9 @@ STDCALL void KeInitializeSpinLock(KSPIN_LOCK *lock)
 
 	DBGTRACE("%s: lock = %p, *lock = %lu\n", __FUNCTION__, lock, *lock);
 
+	if (!lock)
+		printk(KERN_ERR "%s: lock %p is not valid pointer?\n",
+			   __FUNCTION__, lock);
 	spin_lock = wrap_kmalloc(sizeof(spinlock_t), GFP_KERNEL);
 	if (!spin_lock)
 		printk(KERN_ERR "%s: couldn't allocate space for spinlock\n",
@@ -469,14 +472,22 @@ STDCALL void KeAcquireSpinLock(KSPIN_LOCK *lock, KIRQL *irql)
 {
 	printk(KERN_INFO "%s: lock = %p, *lock = %p\n",
 		   __FUNCTION__, lock, (void *)*lock);
-	spin_lock((spinlock_t *)(*lock));
+	if (lock && *lock)
+		spin_lock((spinlock_t *)(*lock));
+	else
+		printk(KERN_ERR "%s: lock %p is not initialized?\n",
+			   __FUNCTION__, lock);
 }
 
 STDCALL void KeReleaseSpinLock(KSPIN_LOCK *lock, KIRQL *oldirql)
 {
 	printk(KERN_INFO "%s: lock = %p, *lock = %p\n",
 		   __FUNCTION__, lock, (void *)*lock);
-	spin_unlock((spinlock_t *)(*lock));
+	if (lock && *lock)
+		spin_unlock((spinlock_t *)(*lock));
+	else
+		printk(KERN_ERR "%s: lock %p is not initialized?\n",
+			   __FUNCTION__, lock);
 }
 
 STDCALL void KfAcquireSpinLock(KSPIN_LOCK *lock, KIRQL *oldirql)
