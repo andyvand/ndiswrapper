@@ -931,14 +931,13 @@ int ndis_resume(struct pci_dev *pdev)
 	}
 	*/
 
-	if (miniport->hangcheck(handle->adapter_ctx))
+	if (miniport->hangcheck && miniport->hangcheck(handle->adapter_ctx))
 		doreset(handle);
 	set_int(handle, NDIS_OID_BSSID_LIST_SCAN, 0);
 
 	set_bit(SET_ESSID, &handle->wrapper_work);
 	schedule_work(&handle->wrapper_worker);
 
-	DBGTRACE2("%s: attaching device\n", dev->name);
 	netif_device_attach(dev);
 
 	hangcheck_add(handle);
