@@ -1131,9 +1131,37 @@ STDCALL void NdisScheduleWorkItem(struct ndis_work *ndis_work)
 	
 	schedule_work(&work);
 }
-                                                                                                                                                                                                                                    
+
+STDCALL void NdisUnchainBufferAtBack(struct ndis_packet *packet, struct ndis_buffer **buffer)
+{
+	struct ndis_buffer *b = packet->buffer_head;
+	struct ndis_buffer *btail = packet->buffer_tail;
+
+	DBGTRACE("%s\n", __FUNCTION__);
+
+	if(!b) {
+		/* No buffer in packet */
+		*buffer = 0;
+		return;
+	}
+
+	if(b == btail) {
+		/* Only buffer in packet */
+		packet->buffer_head = 0;
+		packet->buffer_tail = 0;
+	} else {
+		while(b->next != btail) {
+			b = b->next;
+		}
+		packet->buffer_tail = b;
+	}
+	b->next = 0;
+	packet->valid_counts = 0;
+	*buffer = btail;
+}
+
  
-/* Unimplemented...*/
+ /* Unimplemented...*/
 STDCALL void NdisInitAnsiString(void *src, void *dst) {UNIMPL();}
 STDCALL void NdisOpenConfigurationKeyByName(unsigned int *status, void *handle, void *key, void *subkeyhandle){UNIMPL();}
 STDCALL void NdisWriteConfiguration(unsigned int *status, void *handle, void *keyword, void *val){UNIMPL();}
@@ -1144,7 +1172,6 @@ STDCALL unsigned long NdisReadPcmciaAttributeMemory(void *handle, unsigned int o
 STDCALL void NdisUnicodeStringToAnsiString(void){UNIMPL();}
 
 STDCALL void NdisInitializeString(void){UNIMPL();}
-STDCALL void NdisUnchainBufferAtBack(void){UNIMPL();}
 STDCALL void NdisGetFirstBufferFromPacketSafe(void){UNIMPL();}
 STDCALL void NdisUnchainBufferAtFront(void){UNIMPL();}
 STDCALL void NdisMSetAttributes(void){UNIMPL();}
