@@ -472,7 +472,7 @@ STDCALL LONG WRAP_EXPORT(KeResetEvent)
 	TRACEEXIT3(return old_state);
 }
 
-STDCALL NT_STATUS WRAP_EXPORT(KeWaitForSingleObject)
+STDCALL NTSTATUS WRAP_EXPORT(KeWaitForSingleObject)
 	(void *object, KWAIT_REASON reason, KPROCESSOR_MODE waitmode,
 	 BOOLEAN alertable, LARGE_INTEGER *timeout)
 {
@@ -575,7 +575,7 @@ STDCALL NT_STATUS WRAP_EXPORT(KeWaitForSingleObject)
  * not tested at all. notification events are not handled properly as
  * yet
  */
-STDCALL NT_STATUS WRAP_EXPORT(KeWaitForMultipleObjects)
+STDCALL NTSTATUS WRAP_EXPORT(KeWaitForMultipleObjects)
 	(ULONG count, void *object[], enum wait_type wait_type,
 	 KWAIT_REASON wait_reason, KPROCESSOR_MODE waitmode,
 	 BOOLEAN alertable, LARGE_INTEGER *timeout,
@@ -700,7 +700,7 @@ STDCALL NT_STATUS WRAP_EXPORT(KeWaitForMultipleObjects)
 }
 
 STDCALL void WRAP_EXPORT(IoReuseIrp)
-	(struct irp *irp, NT_STATUS status)
+	(struct irp *irp, NTSTATUS status)
 {
 	TRACEENTER3("irp = %p, status = %d", irp, status);
 	if (irp)
@@ -900,11 +900,11 @@ STDCALL void WRAP_EXPORT(IoFreeIrp)
 	TRACEEXIT3(return);
 }
 
-_FASTCALL NT_STATUS WRAP_EXPORT(IofCallDriver)
+_FASTCALL NTSTATUS WRAP_EXPORT(IofCallDriver)
 	(FASTCALL_DECL_2(struct device_object *dev_obj, struct irp *irp))
 {
 	struct io_stack_location *stack = IRP_CUR_STACK_LOC(irp) - 1;
-	NT_STATUS ret = STATUS_NOT_SUPPORTED;
+	NTSTATUS ret = STATUS_NOT_SUPPORTED;
 	unsigned long result;
 
 
@@ -963,7 +963,7 @@ _FASTCALL NT_STATUS WRAP_EXPORT(IofCallDriver)
 	TRACEEXIT3(return ret);
 }
 
-STDCALL NT_STATUS WRAP_EXPORT(PoCallDriver)
+STDCALL NTSTATUS WRAP_EXPORT(PoCallDriver)
 	(struct device_object *dev_obj, struct irp *irp)
 {
 	TRACEENTER5("irp = %p", irp);
@@ -987,7 +987,7 @@ int kthread_trampoline(void *data)
 	return 0;
 }
 
-STDCALL NT_STATUS WRAP_EXPORT(PsCreateSystemThread)
+STDCALL NTSTATUS WRAP_EXPORT(PsCreateSystemThread)
 	(void **phandle, ULONG access, void *obj_attr, void *process,
 	 void *client_id, void (*start_routine)(void *) STDCALL, void *context)
 {
@@ -1029,8 +1029,8 @@ STDCALL NT_STATUS WRAP_EXPORT(PsCreateSystemThread)
 	TRACEEXIT2(return STATUS_SUCCESS);
 }
 
-STDCALL NT_STATUS WRAP_EXPORT(PsTerminateSystemThread)
-	(NT_STATUS status)
+STDCALL NTSTATUS WRAP_EXPORT(PsTerminateSystemThread)
+	(NTSTATUS status)
 {
 	TRACEENTER2("status = %u", status);
 	complete_and_exit(NULL, status);
@@ -1069,7 +1069,7 @@ STDCALL KPRIORITY WRAP_EXPORT(KeSetPriorityThread)
 	return old_prio;
 }
 
-STDCALL NT_STATUS WRAP_EXPORT(KeDelayExecutionThread)
+STDCALL NTSTATUS WRAP_EXPORT(KeDelayExecutionThread)
 	(KPROCESSOR_MODE wait_mode, BOOLEAN alertable,
 	 LARGE_INTEGER *interval)
 {
@@ -1191,7 +1191,7 @@ _FASTCALL LONG WRAP_EXPORT(InterlockedCompareExchange)
 	TRACEEXIT4(return x);
 }
 
-STDCALL NT_STATUS WRAP_EXPORT(IoGetDeviceProperty)
+STDCALL NTSTATUS WRAP_EXPORT(IoGetDeviceProperty)
 	(struct device_object *dev_obj,
 	 enum device_registry_property dev_property,
 	 ULONG buffer_len, void *buffer, ULONG *result_len)
@@ -1376,7 +1376,7 @@ _FASTCALL void WRAP_EXPORT(ObDereferenceObject)
 	TRACEEXIT3(return);
 }
 
-NOREGPARM NT_STATUS WRAP_EXPORT(WmiTraceMessage)
+NOREGPARM NTSTATUS WRAP_EXPORT(WmiTraceMessage)
 	(void *tracehandle, ULONG message_flags,
 	 void *message_guid, USHORT message_no, ...)
 {
@@ -1384,7 +1384,7 @@ NOREGPARM NT_STATUS WRAP_EXPORT(WmiTraceMessage)
 	TRACEEXIT2(return STATUS_SUCCESS);
 }
 
-STDCALL NT_STATUS WRAP_EXPORT(WmiQueryTraceInformation)
+STDCALL NTSTATUS WRAP_EXPORT(WmiQueryTraceInformation)
 	(enum trace_information_class trace_info_class, void *trace_info,
 	 ULONG *req_length, void *buf)
 {

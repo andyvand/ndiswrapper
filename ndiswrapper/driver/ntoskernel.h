@@ -373,7 +373,7 @@ STDCALL void KeInitializeEvent(struct kevent *kevent,
 			       enum event_type type, BOOLEAN state);
 STDCALL LONG KeSetEvent(struct kevent *kevent, KPRIORITY incr, BOOLEAN wait);
 STDCALL LONG KeResetEvent(struct kevent *kevent);
-STDCALL NT_STATUS KeWaitForSingleObject(void *object, KWAIT_REASON reason,
+STDCALL NTSTATUS KeWaitForSingleObject(void *object, KWAIT_REASON reason,
 					KPROCESSOR_MODE waitmode,
 					BOOLEAN alertable,
 					LARGE_INTEGER *timeout);
@@ -394,6 +394,16 @@ _FASTCALL void
 IofCompleteRequest(FASTCALL_DECL_2(struct irp *irp, CHAR prio_boost));
 _FASTCALL void
 KefReleaseSpinLockFromDpcLevel(FASTCALL_DECL_1(KSPIN_LOCK *lock));
+STDCALL NTSTATUS RtlUnicodeStringToAnsiString(struct ansi_string *dst,
+					       struct unicode_string *src,
+					       BOOLEAN dup);
+STDCALL NTSTATUS RtlAnsiStringToUnicodeString(struct unicode_string *dst,
+					       struct ansi_string *src,
+					       BOOLEAN dup);
+STDCALL void RtlInitAnsiString(struct ansi_string *dst, CHAR *src);
+STDCALL void RtlInitString(struct ansi_string *dst, CHAR *src);
+STDCALL void RtlFreeUnicodeString(struct unicode_string *string);
+STDCALL void RtlFreeAnsiString(struct ansi_string *string);
 
 unsigned long lin_to_win1(void *func, unsigned long);
 unsigned long lin_to_win2(void *func, unsigned long, unsigned long);

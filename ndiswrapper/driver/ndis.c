@@ -2084,7 +2084,7 @@ STDCALL BOOLEAN WRAP_EXPORT(NdisWaitEvent)
 	(struct ndis_event *ndis_event, UINT ms)
 {
 	LARGE_INTEGER ticks;
-	NT_STATUS res;
+	NTSTATUS res;
 
 	TRACEENTER3("%p %u", ndis_event, ms);
 	ticks = ms * 10000;
