@@ -466,7 +466,7 @@ STDCALL LONG WRAP_EXPORT(RtlCompareString)
 	 BOOLEAN case_insensitive)
 {
 	unsigned int len;
-	long ret = 0;
+	LONG ret = 0;
 	const char *p1, *p2;
 
 	TRACEENTER1("%s", "");

@@ -782,8 +782,8 @@ WRAP_EXPORT_MAP("_USBD_CreateConfigurationRequestEx@8",	USBD_CreateConfiguration
 STDCALL struct usb_interface_descriptor *
 	WRAP_EXPORT(USBD_ParseConfigurationDescriptorEx)
 	(struct usb_config_descriptor *config,
-	 void *startPos, __s32 intfNum, __s32 altSet,
-	 __s32 intfClass, __s32 intfSubClass, __s32 intfProto)
+	 void *startPos, LONG intfNum, LONG altSet,
+	 LONG intfClass, LONG intfSubClass, LONG intfProto)
 {
 	int size = config->wTotalLength;
 	char *pos = startPos;
