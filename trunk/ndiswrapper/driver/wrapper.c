@@ -743,7 +743,8 @@ static int ndis_list_scan(struct ndis_handle *handle)
 	else
 	{
 		iw_stats->discard.retries = (__u32)ndis_stats.retry + (__u32)ndis_stats.multi_retry;
-		iw_stats->discard.misc = (__u32)(ndis_stats.rtss_fail + (__u32)ndis_stats.ack_fail + (__u32)ndis_stats.frame_dup);
+		iw_stats->discard.misc = (__u32)ndis_stats.fcs_err + (__u32)ndis_stats.rtss_fail + (__u32)ndis_stats.ack_fail + (__u32)ndis_stats.frame_dup;
+//		iw_stats->discard.fragment = (__u32)ndis_stats.rx_frag + (__u32)ndis_stats.multi_rx_frag;
 		
 		if (ndis_stats.trans_frag)
 			iw_stats->qual.qual = 100 - 100 * ((__u32)ndis_stats.retry + 2 * (__u32)ndis_stats.multi_retry + 3 * (__u32)ndis_stats.failed) /(6 * (__u32)ndis_stats.trans_frag);
@@ -1554,7 +1555,6 @@ static int __devinit ndis_init_one(struct pci_dev *pdev,
 	else
 		handle->pm->data = dev;
 
-	netif_start_queue(dev);
 	return 0;
 
 out_start:
