@@ -240,18 +240,6 @@ NDIS_STATUS miniport_set_int(struct ndis_handle *handle, ndis_oid oid,
 	return miniport_set_info(handle, oid, &data, sizeof(data));
 }
 
-#ifdef HAVE_ETHTOOL
-static u32 ndis_get_link(struct net_device *dev)
-{
-	struct ndis_handle *handle = dev->priv;
-	return handle->link_status;
-}
-
-static struct ethtool_ops ndis_ethtool_ops = {
-	.get_link		= ndis_get_link,
-};
-#endif
-
 /*
  * MiniportInitialize
  */
@@ -500,7 +488,6 @@ static void free_packet(struct ndis_handle *handle, struct ndis_packet *packet)
 	}
 
 	if (handle->dma_type == SG_DMA_ENABLED) {
-		DBGTRACE3("unmapping sg_list");
 		/* FIXME: do USB drivers call this? */
 		UNMAP_SG(handle->dev.pci, packet->sg_list,
 			 packet->sg_ents, PCI_DMA_TODEVICE);
@@ -611,6 +598,7 @@ static int send_packets_sg_dma(struct ndis_handle *handle, int n)
 
 	packet = handle->xmit_array[0];
 	packet->sg_ents = sg_ents;
+	packet->sg_list = sg_list;
 	packet->ndis_sg_list.nent = sg_ents;
 	packet->ndis_sg_elements = ndis_sg_elements;
 	packet->ndis_sg_list.elements = packet->ndis_sg_elements;
@@ -1142,6 +1130,18 @@ static struct iw_statistics *get_wireless_stats(struct net_device *dev)
 	struct ndis_handle *handle = dev->priv;
 	return &handle->wireless_stats;
 }
+
+#ifdef HAVE_ETHTOOL
+static u32 ndis_get_link(struct net_device *dev)
+{
+	struct ndis_handle *handle = dev->priv;
+	return handle->link_status;
+}
+
+static struct ethtool_ops ndis_ethtool_ops = {
+	.get_link		= ndis_get_link,
+};
+#endif
 
 /* worker procedure to take care of setting/checking various states */
 static void wrapper_worker_proc(void *param)

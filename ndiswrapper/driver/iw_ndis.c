@@ -1624,24 +1624,27 @@ static int priv_network_type(struct net_device *dev,
 	struct ndis_handle *handle = dev->priv;
 	enum network_type network_type;
 	NDIS_STATUS res;
-	char num;
-	
-	num = wrqu->param.value;
-	if (num == 'f')
+	char type;
+
+	type = wrqu->param.value;
+	if (type == 'f')
 		network_type = Ndis802_11FH;
-	else if (num == 'b')
+	else if (type == 'b')
 		network_type = Ndis802_11DS;
-	else if (num == 'a')
+	else if (type == 'a')
 		network_type = Ndis802_11OFDM5;
-	else if (num == 'g')
+	else if (type == 'g')
 		network_type = Ndis802_11OFDM24;
 	else
 		network_type = Ndis802_11Automode;
 
 	res = miniport_set_int(handle, OID_802_11_NETWORK_TYPE_IN_USE,
 			       network_type);
-	if (res == NDIS_STATUS_INVALID_DATA)
+	if (res == NDIS_STATUS_INVALID_DATA) {
+		WARNING("setting network type to %d failed (%08X)",
+			network_type, res);
 		TRACEEXIT2(return -EINVAL);
+	}
 
 	TRACEEXIT2(return 0);
 }
