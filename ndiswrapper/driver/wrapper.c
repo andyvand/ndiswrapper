@@ -737,7 +737,7 @@ void sendpacket_done(struct ndis_handle *handle, struct ndis_packet *packet)
 	handle->stats.tx_packets++;
 	handle->send_status = NDIS_STATUS_SUCCESS;
 
-	free_packet(handle, packet);
+	free_buffer(handle, packet);
 }
 
 static int ndis_suspend(struct pci_dev *pdev, u32 state)
