@@ -76,7 +76,7 @@ static int procfs_read_wep(char *page, char **start, off_t off,
 	struct ndis_handle *handle = (struct ndis_handle *) data;
 	int i, wep_status, auth_mode, op_mode;
 	unsigned int res, written, needed;
-	struct essid_req essid;
+	struct ndis_essid essid;
 	__u8 ap_address[ETH_ALEN];
 
 	if (off != 0) {
@@ -97,7 +97,7 @@ static int procfs_read_wep(char *page, char **start, off_t off,
 		      sizeof(essid), &written, &needed);
 	if (!res)
 	{
-		essid.essid[essid.len] = '\0';
+		essid.essid[essid.length] = '\0';
 		p += sprintf(p, "essid=%s\n", essid.essid);
 	}
 

@@ -333,9 +333,9 @@ struct ndis_wireless_stats {
 };
 
 #define NDIS_ESSID_MAX_SIZE 32
-struct packed essid_req
+struct packed ndis_essid
 {
-	unsigned int len;
+	unsigned int length;
 	char essid[NDIS_ESSID_MAX_SIZE];
 };
 
@@ -466,13 +466,6 @@ struct packed ndis_configuration
 	} fh_config;
 };
 
-struct iw_essid
-{
-	char name[IW_ESSID_MAX_SIZE+1];
-	u16 flags;
-	u16 length;
-};
-
 #define XMIT_RING_SIZE 16
 /*
  * This is the per device struct. One per PCI-device exists.
@@ -552,7 +545,7 @@ struct packed ndis_handle
 	u32 pci_state[16];
 	unsigned int pm_state;
 
-	struct iw_essid essid;
+	struct ndis_essid essid;
 
 	unsigned long capa;
 	int encr_alg;
@@ -621,7 +614,7 @@ struct ssid_item
 	unsigned long length;
 	__u8 mac[ETH_ALEN];
 	unsigned char reserved[2];
-	struct essid_req ssid;
+	struct ndis_essid ssid;
 	unsigned long privacy;
 	long rssi;
 	unsigned int net_type;
@@ -897,9 +890,26 @@ int stricmp(const char *s1, const char *s2);
 #define NDIS_MEMORY_CONTIGUOUS			0x00000001
 #define NDIS_MEMORY_NONCACHED			0x00000002
 
-/* WPA support - these have to match what is in wpa_supplicant */
+/* WPA support */
 
+enum capa_list
+{
+	CAPA_WPA,
+	CAPA_WEP = WEP_ENCR1_ENABLED,
+	CAPA_WEP_NONE = WEP_DISABLED,
+	CAPA_TKIP = WEP_ENCR2_ENABLED,
+	CAPA_AES = WEP_ENCR3_ENABLED,
+};
+
+/* these have to match what is in wpa_supplicant */
 typedef enum { WPA_ALG_NONE, WPA_ALG_WEP, WPA_ALG_TKIP, WPA_ALG_CCMP } wpa_alg;
+typedef enum { CIPHER_NONE, CIPHER_WEP40, CIPHER_TKIP, CIPHER_CCMP,
+	       CIPHER_WEP104 } wpa_cipher;
+typedef enum { KEY_MGMT_802_1X, KEY_MGMT_PSK, KEY_MGMT_NONE } wpa_key_mgmt;
+
+#define AUTH_ALG_OPEN_SYSTEM    0x01
+#define AUTH_ALG_SHARED_KEY 0x02
+#define AUTH_ALG_LEAP       0x04
 
 struct wpa_key
 {
@@ -913,15 +923,27 @@ struct wpa_key
 	size_t key_len;
 };
 
-#define PRIV_RESET 		SIOCIWFIRSTPRIV+0
-#define WPA_SET_WPA 		SIOCIWFIRSTPRIV+1
-#define WPA_SET_KEY 		SIOCIWFIRSTPRIV+2
-#define WPA_DISASSOCIATE 	SIOCIWFIRSTPRIV+3
-#define WPA_SET_PRIV_FILTER 	SIOCIWFIRSTPRIV+4
-
-enum capa_list
+struct wpa_assoc_info
 {
-	CAPA_WPA,
+	const char *bssid;
+	const char *ssid;
+	size_t ssid_len;
+	int freq;
+	const char *wpa_ie;
+	size_t wpa_ie_len;
+	wpa_cipher pairwise_suite;
+	wpa_cipher group_suite;
+	wpa_key_mgmt key_mgmt_suite;
 };
+
+#define PRIV_RESET	 		SIOCIWFIRSTPRIV+0
+#define WPA_SET_WPA 			SIOCIWFIRSTPRIV+1
+#define WPA_SET_KEY 			SIOCIWFIRSTPRIV+2
+#define WPA_ASSOCIATE		 	SIOCIWFIRSTPRIV+3
+#define WPA_DISASSOCIATE 		SIOCIWFIRSTPRIV+4
+#define WPA_DROP_UNENCRYPTED 		SIOCIWFIRSTPRIV+5
+#define WPA_SET_COUNTERMEASURES 	SIOCIWFIRSTPRIV+6
+#define WPA_DEAUTHENTICATE	 	SIOCIWFIRSTPRIV+7
+#define WPA_SET_AUTH_ALG	 	SIOCIWFIRSTPRIV+8
 
 #endif /* NDIS_H */

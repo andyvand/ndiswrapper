@@ -19,18 +19,12 @@
 
 extern const struct iw_handler_def ndis_handler_def;
 
-int ndis_set_mode(struct net_device *dev, struct iw_request_info *info,
-				  union iwreq_data *wrqu, char *extra);
-struct iw_statistics *ndis_get_wireless_stats(struct net_device *dev);
-int ndis_set_essid(struct net_device *dev, struct iw_request_info *info,
-		   union iwreq_data *wrqu, char *extra);
-
-int ndis_get_ap_address(struct net_device *dev, struct iw_request_info *info,
-			union iwreq_data *wrqu, char *extra);
+int set_essid(struct ndis_handle *handle, const char *ssid, int ssid_len);
+int set_mode(struct ndis_handle *handle, enum op_mode mode);
+struct iw_statistics *get_wireless_stats(struct net_device *dev);
+int get_ap_address(struct ndis_handle *handle, mac_address mac);
 int set_auth_mode(struct ndis_handle *handle, int auth_mode);
 int set_wep_mode(struct ndis_handle *handle, int wep_mode);
-int ndis_set_priv_filter(struct net_device *dev,
-			 struct iw_request_info *info,
-			 union iwreq_data *wrqu, char *extra);
+int set_priv_filter(struct ndis_handle *handle, int flags);
 
 #endif // IW_NDIS_H

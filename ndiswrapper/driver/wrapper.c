@@ -802,7 +802,6 @@ static int start_xmit(struct sk_buff *skb, struct net_device *dev)
 	return 0;
 }
 
-
 static int ndis_suspend(struct pci_dev *pdev, u32 state)
 {
 	struct net_device *dev;
@@ -887,16 +886,11 @@ static int ndis_resume(struct pci_dev *pdev)
 static void wrapper_worker_proc(void *param)
 {
 	struct ndis_handle *handle = (struct ndis_handle *)param;
-	union iwreq_data wrqu;
 	
 	DBGTRACE("%lu\n", handle->wrapper_work);
 
 	if (test_and_clear_bit(SET_OP_MODE, &handle->wrapper_work))
-	{
-		memset(&wrqu, 0, sizeof(wrqu));
-		wrqu.mode = handle->op_mode;
-		ndis_set_mode(handle->net_dev, NULL, &wrqu, NULL);
-	}
+		set_mode(handle, handle->op_mode);
 
 	if (test_and_clear_bit(WRAPPER_LINK_STATUS, &handle->wrapper_work))
 	{
@@ -971,23 +965,16 @@ static void wrapper_worker_proc(void *param)
 				    wpa_assoc_info);
 		kfree(assoc_info);
 
-		ndis_get_ap_address(handle->net_dev, NULL, &wrqu, NULL);
+		get_ap_address(handle, (char *)&wrqu.ap_addr.sa_data);
 		wrqu.ap_addr.sa_family = ARPHRD_ETHER;
 		wireless_send_event(handle->net_dev, SIOCGIWAP, &wrqu, NULL);
 	}
 
 	if (test_and_clear_bit(SET_ESSID, &handle->wrapper_work))
-	{
-		memset(&wrqu, 0, sizeof(wrqu));
-		wrqu.essid.length = handle->essid.length + 1;
-		wrqu.essid.flags = handle->essid.flags;
-		wrqu.essid.pointer = handle->essid.name;
-		ndis_set_essid(handle->net_dev, NULL, &wrqu,
-			       handle->essid.name);
-	}
+		set_essid(handle, handle->essid.essid, handle->essid.length);
 }
 
-static void check_wpa(struct ndis_handle *handle)
+static void check_capa(struct ndis_handle *handle)
 {
 	int i, mode;
 	unsigned int res, written, needed;
@@ -1000,29 +987,40 @@ static void check_wpa(struct ndis_handle *handle)
 		TRACEEXIT1(return);
 
 	/* check for highest encryption */
-	mode = WEP_ENCR3_ENABLED;
-	for (;;)
+	for (mode = WEP_ENCR3_ENABLED; mode != WEP_DISABLED; )
 	{
 		DBGTRACE("checking wep mode %d", mode);
-		if (!set_wep_mode(handle, mode) &&
-		    !query_int(handle, NDIS_OID_WEP_STATUS, &i) && i == mode)
-			break;
+		if (set_wep_mode(handle, mode) ||
+		    query_int(handle, NDIS_OID_WEP_STATUS, &i))
+			i = WEP_DISABLED;
 
 		if (mode == WEP_ENCR3_ENABLED)
-			mode = WEP_ENCR2_ENABLED;
-		else if (mode == WEP_ENCR2_ENABLED)
-			mode = WEP_ENCR1_ENABLED;
-		else
 		{
-			mode = WEP_DISABLED;
-			break;
+			if (i == mode || i == WEP_ENCR3_ABSENT)
+				break;
+			else
+				mode = WEP_ENCR2_ENABLED;
 		}
+		else if (mode == WEP_ENCR2_ENABLED)
+		{
+			if (i == mode || i == WEP_ENCR2_ABSENT)
+				break;
+			else
+				mode = WEP_ENCR1_ENABLED;
+		}
+		else
+			mode = WEP_DISABLED;
 	}
-	DBGTRACE("wep_mode = %d", mode);
+	DBGTRACE("highest wep mode supported = %d", mode);
+	set_bit(mode, &handle->capa);
 	set_wep_mode(handle, mode);
 
-	if (handle->wep_mode == WEP_DISABLED)
+	if (handle->wep_mode == WEP_DISABLED ||
+	    handle->wep_mode == WEP_ENCR1_ENABLED)
+	{
+		DBGTRACE("%s", "wpa is not supported");
 		TRACEEXIT1(return);
+	}
 
 	ndis_key.key_len = 32;
 	ndis_key.key_index = 0xC0000001;
@@ -1042,6 +1040,7 @@ static void check_wpa(struct ndis_handle *handle)
 		TRACEEXIT1(return);
 	set_bit(CAPA_WPA, &handle->capa);
 
+	DBGTRACE1("%s", "wpa is supported");
 	DBGTRACE("capbilities = %ld\n", handle->capa);
 	TRACEEXIT1(return);
 }
@@ -1094,12 +1093,11 @@ static int setup_dev(struct net_device *dev)
 		handle->multicast_list = 
 			kmalloc(handle->multicast_list_size * 6, GFP_KERNEL);
 
-	DBGTRACE1("%s", "checking if WPA is supported");
-	wrqu.param.value = NDIS_PRIV_ACCEPT_ALL;
-	if (ndis_set_priv_filter(dev, NULL, &wrqu, NULL))
+	if (set_priv_filter(handle, NDIS_PRIV_ACCEPT_ALL))
 		WARNING("%s", "Unable to set privacy filter");
 
-	check_wpa(handle);
+	DBGTRACE1("%s", "checking if WPA is supported");
+	check_capa(handle);
 	ndis_set_rx_mode_proc(dev);
 	
 	dev->open = ndis_open;
@@ -1107,7 +1105,7 @@ static int setup_dev(struct net_device *dev)
 	dev->stop = ndis_close;
 	dev->get_stats = ndis_get_stats;
 	dev->do_ioctl = ndis_ioctl;
-	dev->get_wireless_stats = ndis_get_wireless_stats;
+	dev->get_wireless_stats = get_wireless_stats;
 	dev->wireless_handlers	= (struct iw_handler_def *)&ndis_handler_def;
 	dev->set_multicast_list = ndis_set_rx_mode;
 #ifdef HAVE_ETHTOOL

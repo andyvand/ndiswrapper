@@ -1429,9 +1429,9 @@ STDCALL unsigned char NdisMSynchronizeWithInterrupt(struct ndis_irq *ndis_irq,
 		TRACEEXIT4(return 0);
 
 	sync_func = func;
-	spin_lock(ndis_irq->spinlock);
+	spin_lock_bh(ndis_irq->spinlock);
 	ret = sync_func(ctx);
-	spin_unlock(ndis_irq->spinlock);
+	spin_unlock_bh(ndis_irq->spinlock);
 
 	DBGTRACE4("sync_func returns %u", ret);
 	TRACEEXIT4(return ret);
@@ -1697,10 +1697,10 @@ STDCALL long NdisInterlockedDecrement(long *val)
 	long x;
 
 	TRACEENTER4("%s", "");
-	spin_lock(&atomic_lock);
+	spin_lock_bh(&atomic_lock);
 	(*val)--;
 	x = *val;
-	spin_unlock(&atomic_lock);
+	spin_unlock_bh(&atomic_lock);
 	TRACEEXIT4(return x);
 }
 
@@ -1709,10 +1709,10 @@ STDCALL long NdisInterlockedIncrement(long *val)
 	long x;
 
 	TRACEENTER4("%s", "");
-	spin_lock(&atomic_lock);
+	spin_lock_bh(&atomic_lock);
 	(*val)++;
 	x = *val;
-	spin_unlock(&atomic_lock);
+	spin_unlock_bh(&atomic_lock);
 	TRACEEXIT4(return x);
 }
 
