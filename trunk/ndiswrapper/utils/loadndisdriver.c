@@ -33,6 +33,8 @@
 
 #include "../driver/wrapper.h"
 
+#define PROG_NAME "loadndisdriver"
+
 #define SETTING_LEN 1024
 #define NAME_LEN 200
 #define TYPE_LEN 200
@@ -50,12 +52,12 @@ static int debug;
 #endif
 
 #define error(fmt, args...) do { if (debug)	\
-			syslog(LOG_KERN | LOG_ERR, "%s(%d): " fmt "\n", \
-			       __FUNCTION__, __LINE__, ## args);	\
+			syslog(LOG_KERN | LOG_ERR, "%s: %s(%d): " fmt "\n", \
+			       PROG_NAME, __FUNCTION__, __LINE__, ## args);	\
 	} while (0)
 #define info(fmt, args...) do { if (debug)	\
-			syslog(LOG_KERN | LOG_ERR, "%s(%d): " fmt "\n", \
-			       __FUNCTION__, __LINE__, ## args);	\
+			syslog(LOG_KERN | LOG_ERR, "%s: %s(%d): " fmt "\n", \
+			       PROG_NAME, __FUNCTION__, __LINE__, ## args);	\
 	} while (0)
 
 
@@ -456,7 +458,9 @@ int main(int argc, char *argv[0])
 	device = -1;
 	debug = 1;
 
-	openlog("loadndisdriver", LOG_PERROR | LOG_CONS, LOG_KERN);
+	openlog(PROG_NAME, LOG_PERROR | LOG_CONS, LOG_KERN);
+
+	info("version %s started", NDISWRAPPER_VERSION);
 
 	if (argc < 3)
 	{
@@ -503,6 +507,8 @@ int main(int argc, char *argv[0])
 
 	if (strcmp(argv[2], NDISWRAPPER_VERSION))
 	{
+		error("version %s doesn't match driver version %s",
+				NDISWRAPPER_VERSION, argv[2]);
 		res = -EINVAL;
 		goto out;
 	}
