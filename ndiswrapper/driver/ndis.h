@@ -81,34 +81,34 @@ struct packed miniport_char
 	void * EnableInterruptHandler;
 
 	/* Stop miniport */
-	STDCALL void (*halt)(void *ctx);
+	void (*halt)(void *ctx) STDCALL;
 
 	/* Interrupt BH */
-	STDCALL void (*handle_interrupt)(void *ctx);
+	void (*handle_interrupt)(void *ctx) STDCALL;
 
 	/* Start miniport driver */
-	STDCALL unsigned int (*init)(unsigned int *OpenErrorStatus, unsigned int *SelectedmediumIndex, unsigned int *MediumArray, unsigned int MediumArraySize, void *ndis_handle, void *conf_handle);
+	unsigned int (*init)(unsigned int *OpenErrorStatus, unsigned int *SelectedmediumIndex, unsigned int *MediumArray, unsigned int MediumArraySize, void *ndis_handle, void *conf_handle) STDCALL;
 
 	/* Interrupt TH */
-	STDCALL void (*isr)(unsigned int *taken, unsigned int *callme, void *ctx);
+	void (*isr)(unsigned int *taken, unsigned int *callme, void *ctx) STDCALL;
 
 	/* Query parameters */
-	STDCALL unsigned int (*query)(void *ctx, unsigned int oid, char *buffer, unsigned int buflen, unsigned int *written, unsigned int *needed);
+	unsigned int (*query)(void *ctx, unsigned int oid, char *buffer, unsigned int buflen, unsigned int *written, unsigned int *needed) STDCALL;
 
 	void * ReconfigureHandler;
 	void * ResetHandler;		//s
 	void * SendHandler;
 
 	/* Set parameters */
-	STDCALL unsigned int (*setinfo)(void *ctx, unsigned int oid, char *buffer, unsigned int buflen, unsigned int *written, unsigned int *needed);
+	unsigned int (*setinfo)(void *ctx, unsigned int oid, char *buffer, unsigned int buflen, unsigned int *written, unsigned int *needed) STDCALL;
 
 	void * TransferDataHandler;
 
 	/* upper layer is done with RX packet */	
-	STDCALL void (*return_packet)(void *ctx, void *packet);
+	void (*return_packet)(void *ctx, void *packet) STDCALL;
 
 	/* Send packets */
-	STDCALL void (*send_packets)(void *ctx, void *packets, int nr_of_packets);
+	void (*send_packets)(void *ctx, void *packets, int nr_of_packets) STDCALL;
 
 	
 };
@@ -166,7 +166,7 @@ struct ndis_driver
 	struct list_head settings;
 
 	void *image;
-	STDCALL unsigned int (*entry)(void *obj, char *p2);
+	unsigned int (*entry)(void *obj, char *p2) STDCALL;
 	struct miniport_char miniport_char;
 };
 
@@ -306,10 +306,10 @@ struct packed ndis_configuration
 	} fh_config;
 };
 
-STDCALL void NdisMIndicateReceivePacket(struct ndis_handle *handle, struct ndis_packet **packets, unsigned int nr_packets);
-STDCALL void NdisMSendComplete(struct ndis_handle *handle, struct ndis_packet *packet, unsigned int status);
-STDCALL void NdisIndicateStatus(struct ndis_handle *handle, unsigned int status, void *buf, unsigned int len);
-STDCALL void NdisIndicateStatusComplete(struct ndis_handle *handle);
+void NdisMIndicateReceivePacket(struct ndis_handle *handle, struct ndis_packet **packets, unsigned int nr_packets) STDCALL;
+void NdisMSendComplete(struct ndis_handle *handle, struct ndis_packet *packet, unsigned int status) STDCALL;
+void NdisIndicateStatus(struct ndis_handle *handle, unsigned int status, void *buf, unsigned int len) STDCALL;
+void NdisIndicateStatusComplete(struct ndis_handle *handle) STDCALL;
 
 
 #define NDIS_OID_STAT_TX_OK         0x00020101

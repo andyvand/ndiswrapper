@@ -172,6 +172,8 @@ static int load(int pci_vendor, int pci_device, char *driver_name, char *inf_nam
 	struct put_driver put_driver;
 	int driver = open(driver_name, O_RDONLY);
 	char *driver_basename;
+	int size;
+	void * image;
 
 	if(driver == -1)
 	{
@@ -179,8 +181,7 @@ static int load(int pci_vendor, int pci_device, char *driver_name, char *inf_nam
 		return 1;
 	}
 
-	int size = get_filesize(driver);
-	void * image;
+	size = get_filesize(driver);
 	image = mmap(0, size, PROT_READ, MAP_PRIVATE, driver, 0);
 
 	if((int)image == -1)
