@@ -59,7 +59,7 @@ The vendor is 14e4 and the device is is 4301.
 6. Load the windows driver
 --------------------------
 Eg:
->utils/loadriver 14e4 4301 /path/to/bcmwl5.sys /path/to/bcmwl5.inf
+>utils/loaddriver 14e4 4301 /path/to/bcmwl5.sys /path/to/bcmwl5.inf
 
 If you get no error the driver should now be loaded and active.
 
