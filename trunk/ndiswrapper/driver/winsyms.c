@@ -173,6 +173,7 @@ void my_strncmp(void);
 void my_strcmp(void);
 void my_tolower(void);
 void my_memcpy(void);
+void my_strcpy(void);
 void my_memset(void);
 void my_memmove(void);
 void my_srand(void);
@@ -370,6 +371,7 @@ func("strncmp"                              , my_strncmp),
 func("strcmp"                               , my_strcmp),
 func("tolower"                              , my_tolower),
 func("memcpy"                               , my_memcpy),
+func("strcpy"                               , my_strcpy),
 func("memset"                               , my_memset),
 func("memmove"                              , my_memmove),
 func("srand"                                , my_srand),
