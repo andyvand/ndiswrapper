@@ -165,7 +165,7 @@ static int ndiswrapper_add_one_pci_dev(struct pci_dev *pdev,
 		goto out_enable;
 	}
 
-	res = pci_request_regions(pdev, driver->name);
+	res = pci_request_regions(pdev, DRIVER_NAME);
 	if (res) {
 		ERROR("couldn't request PCI regions: %08x", res);
 		goto out_regions;
