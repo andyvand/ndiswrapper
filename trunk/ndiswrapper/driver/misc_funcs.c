@@ -826,7 +826,7 @@ void *get_sp(void)
 {
 	volatile unsigned long i;
 
-#ifdef CONFIG_64BIT
+#ifdef CONFIG_X86_64
 	asm("movq %rsp,(%rsp,1)");
 #else
 	asm("movl %esp,(%esp,1)");

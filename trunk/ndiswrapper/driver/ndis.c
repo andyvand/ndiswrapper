@@ -1362,7 +1362,9 @@ void ndis_irq_bh(void *data)
 
 		irql = raise_irql(DISPATCH_LEVEL);
 		miniport->handle_interrupt(handle->adapter_ctx);
-		if (miniport->enable_interrupts)
+
+		if ((!miniport->disable_interrupts) &&
+		    miniport->enable_interrupts)
 			miniport->enable_interrupts(handle->adapter_ctx);
 		lower_irql(irql);
 	}

@@ -32,10 +32,16 @@
 
 #include <linux/version.h>
 
+#ifdef CONFIG_X86_64
+#define STDCALL
+#define _FASTCALL __attribute__((regparm (4)))
+#else 
 #define STDCALL __attribute__((__stdcall__, regparm(0)))
+#define _FASTCALL __attribute__((__stdcall__)) __attribute__((regparm (3)))
+#endif
+
 #define NOREGPARM __attribute__((regparm(0)))
 #define packed __attribute__((packed))
-#define _FASTCALL __attribute__((__stdcall__)) __attribute__((regparm (3)))
 
 #define MAX_STR_LEN 512
 
@@ -63,6 +69,38 @@
 #define CALL_ON_SUCCESS                 0x40
 #define CALL_ON_ERROR                   0x80
 
+typedef uint8_t BOOLEAN;
+typedef uint8_t BYTE;
+typedef uint8_t *LPBYTE;
+typedef int16_t SHORT;
+typedef uint16_t USHORT;
+typedef uint16_t WORD;
+typedef uint32_t DWORD;
+typedef uint32_t *PDWORD;
+typedef int32_t LONG;
+typedef uint32_t ULONG;
+typedef uint64_t ULONGLONG;
+
+typedef size_t SIZE_T;
+
+typedef uint16_t wchar_t;
+typedef wchar_t WCHAR;
+typedef WCHAR *PWSTR;
+typedef WCHAR *LPWSTR;
+typedef char CHAR, *PCHAR;
+typedef unsigned char UCHAR, *PUCHAR;
+typedef const char *PCSTR, *LPCSTR;
+typedef const char *PCSZ;
+typedef const WCHAR *PCWSTR, *LPCWSTR;
+
+typedef LONG NTSTATUS;
+
+struct ustring
+{
+	USHORT len;
+	USHORT buflen;
+	PCHAR buf;
+};
 
 struct slist_entry
 {
@@ -90,7 +128,6 @@ struct packed wrap_spinlock
 /* typedef unsigned long *KSPIN_LOCK; */
 typedef struct wrap_spinlock *KSPIN_LOCK;
 typedef char KPROCESSOR_MODE;
-typedef unsigned char BOOLEAN;
 
 struct list_entry
 {
