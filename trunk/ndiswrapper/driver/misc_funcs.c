@@ -571,8 +571,8 @@ STDCALL int WRAP_EXPORT(RtlUnicodeStringToAnsiString)
 	__u16 *s;
 	__u8 *d;
 
-	TRACEENTER2("dup: %d src->len: %d src->buflen: %d, src->buf: %s, dst: %p",
-		    dup, src->len, src->buflen, src->buf, dst);
+	TRACEENTER2("dup: %d src->len: %d src->buflen: %d, src->buf: %s,"
+		    " dst: %p", dup, src->len, src->buflen, src->buf, dst);
 	if (dup) {
 		char *buf = kmalloc((src->buflen+1) / sizeof(__u16),
 				    GFP_KERNEL);

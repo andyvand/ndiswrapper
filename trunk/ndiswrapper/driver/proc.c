@@ -31,7 +31,7 @@ static int procfs_read_stats(char *page, char **start, off_t off,
 	char *p = page;
 	struct ndis_handle *handle = (struct ndis_handle *) data;
 	struct ndis_wireless_stats stats;
-	unsigned int res, written, needed;
+	unsigned int res;
 	long rssi;
 
 	if (off != 0) {
@@ -40,12 +40,12 @@ static int procfs_read_stats(char *page, char **start, off_t off,
 	}
 
 	res = miniport_query_info(handle, NDIS_OID_RSSI, (char*)&rssi,
-				  sizeof(rssi), &written, &needed);
+				  sizeof(rssi));
 	if (!res)
 		p += sprintf(p, "signal_level=%ld dBm\n", rssi);
 
 	res = miniport_query_info(handle, NDIS_OID_STATISTICS, (char*)&stats,
-				  sizeof(stats), &written, &needed);
+				  sizeof(stats));
 	if (!res) {
 
 		p += sprintf(p, "tx_frames=%Lu\n", stats.tx_frag);
@@ -78,7 +78,7 @@ static int procfs_read_encr(char *page, char **start, off_t off,
 	char *p = page;
 	struct ndis_handle *handle = (struct ndis_handle *) data;
 	int i, encr_status, auth_mode, op_mode;
-	unsigned int res, written, needed;
+	unsigned int res;
 	struct ndis_essid essid;
 	mac_address ap_address;
 
@@ -88,7 +88,7 @@ static int procfs_read_encr(char *page, char **start, off_t off,
 	}
 
 	res = miniport_query_info(handle, NDIS_OID_BSSID, (char*)&ap_address,
-				  sizeof(ap_address), &written, &needed);
+				  sizeof(ap_address));
 	if (res)
 		memset(ap_address, 0, ETH_ALEN);
 	p += sprintf(p, "ap_address=%2.2X", ap_address[0]);
@@ -97,7 +97,7 @@ static int procfs_read_encr(char *page, char **start, off_t off,
 	p += sprintf(p, "\n");
 
 	res = miniport_query_info(handle, NDIS_OID_ESSID, (char*)&essid,
-				  sizeof(essid), &written, &needed);
+				  sizeof(essid));
 	if (!res) {
 		essid.essid[essid.length] = '\0';
 		p += sprintf(p, "essid=%s\n", essid.essid);
@@ -142,7 +142,7 @@ static int procfs_read_hw(char *page, char **start, off_t off,
 	char *p = page;
 	struct ndis_handle *handle = (struct ndis_handle *)data;
 	struct ndis_configuration config;
-	unsigned int res, written, needed, power_mode;
+	unsigned int res, power_mode;
 	unsigned long tx_power, bit_rate, rts_threshold, frag_threshold;
 	unsigned long antenna;
 
@@ -152,8 +152,7 @@ static int procfs_read_hw(char *page, char **start, off_t off,
 	}
 
 	res = miniport_query_info(handle, NDIS_OID_CONFIGURATION,
-				  (char*)&config, sizeof(config),
-				  &written, &needed);
+				  (char*)&config, sizeof(config));
 	if (!res) {
 		p += sprintf(p, "beacon_period=%u msec\n",
 			     config.beacon_period);
@@ -168,25 +167,24 @@ static int procfs_read_hw(char *page, char **start, off_t off,
 	}
 
 	res = miniport_query_info(handle, NDIS_OID_TX_POWER_LEVEL,
-				  (char*)&tx_power, sizeof(tx_power),
-				  &written, &needed);
+				  (char*)&tx_power, sizeof(tx_power));
 	if (!res)
 		p += sprintf(p, "tx_power=%lu mW\n", tx_power);
 
 	res = miniport_query_info(handle, NDIS_OID_GEN_SPEED, (char*)&bit_rate,
-				  sizeof(bit_rate), &written, &needed);
+				  sizeof(bit_rate));
 	if (!res)
 		p += sprintf(p, "bit_rate=%lu kBps\n", bit_rate / 10);
 
 	res = miniport_query_info(handle, NDIS_OID_RTS_THRESH,
 				  (char*)&rts_threshold,
-				  sizeof(rts_threshold), &written, &needed);
+				  sizeof(rts_threshold));
 	if (!res)
 		p += sprintf(p, "rts_threshold=%lu bytes\n", rts_threshold);
 
 	res = miniport_query_info(handle, NDIS_OID_FRAG_THRESH,
 				  (char*)&frag_threshold,
-				  sizeof(frag_threshold), &written, &needed);
+				  sizeof(frag_threshold));
 	if (!res)
 		p += sprintf(p, "frag_threshold=%lu bytes\n", frag_threshold);
 
@@ -199,22 +197,19 @@ static int procfs_read_hw(char *page, char **start, off_t off,
 			     "max_savings" : "min_savings");
 
 	res = miniport_query_info(handle, NDIS_OID_NUM_ANTENNA,
-				  (char *)&antenna, sizeof(antenna),
-				  &written, &needed);
+				  (char *)&antenna, sizeof(antenna));
 	if (!res)
 		p += sprintf(p, "num_antennas=%lu\n",
 			     antenna);
 
 	res = miniport_query_info(handle, NDIS_OID_TX_ANTENNA,
-				  (char *)&antenna, sizeof(antenna),
-				  &written, &needed);
+				  (char *)&antenna, sizeof(antenna));
 	if (!res)
 		p += sprintf(p, "tx_antenna=%lu\n",
 			     antenna);
 
 	res = miniport_query_info(handle, NDIS_OID_RX_ANTENNA,
-				  (char *)&antenna, sizeof(antenna),
-				  &written, &needed);
+				  (char *)&antenna, sizeof(antenna));
 	if (!res)
 		p += sprintf(p, "rx_antenna=%lu\n",
 			     antenna);
@@ -287,19 +282,11 @@ static int procfs_write_settings(struct file *file, const char *buf,
 		i = simple_strtol(p, NULL, 10);
 		if (i <= 0 || i > 3)
 			return -EINVAL;
-		if (handle->device->bustype == 5)
+		if (handle->device->bustype == NDIS_PCI_BUS)
 			ndis_suspend_pci(handle->dev.pci, i);
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0) && defined(CONFIG_USB)
-		else
-			ndis_suspend_usb(handle->intf, i);
-#endif
 	} else if (!strcmp(setting, "resume")) {
-		if (handle->device->bustype == 5)
+		if (handle->device->bustype == NDIS_PCI_BUS)
 			ndis_resume_pci(handle->dev.pci);
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0) && defined(CONFIG_USB)
-		else
-			ndis_resume_usb(handle->intf);
-#endif
 	} else if (!strcmp(setting, "reinit")) {
 		if (ndis_reinit(handle))
 			return -EINVAL;
