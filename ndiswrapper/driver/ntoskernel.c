@@ -1005,9 +1005,9 @@ STDCALL static KPRIORITY WRAP_EXPORT(KeSetPriorityThread)
 	else
 		old_prio = MAXIMUM_PRIORITY;
 	if (priority == LOW_REALTIME_PRIORITY)
-		set_user_nice((task_t *)thread, MAX_RT_PRIO);
+		set_user_nice((task_t *)thread, -20);
 	else
-		set_user_nice((task_t *)thread, MAX_PRIO);
+		set_user_nice((task_t *)thread, 10);
 #endif
 	return old_prio;
 }
@@ -1050,7 +1050,10 @@ STDCALL static KPRIORITY WRAP_EXPORT(KeQueryPriorityThread)
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,0)
 	prio = 1;
 #else
-	prio = 32 - task_nice((task_t *)thread) + 20;
+	if (rt_task((task_t *)thread))
+		prio = LOW_REALTIME_PRIORITY;
+	else
+		prio = MAXIMUM_PRIORITY;
 #endif
 	TRACEEXIT5(return prio);
 }
