@@ -281,6 +281,7 @@ struct packed ndis_handle
 	void *indicate_status_complete;
 	char fill3[4];
 	void *query_complete;
+	void *set_complete;
 	char fill4[200];
 
 	struct pci_dev *pci_dev;
@@ -432,6 +433,7 @@ void NdisMSendComplete(struct ndis_handle *handle, struct ndis_packet *packet, u
 void NdisIndicateStatus(struct ndis_handle *handle, unsigned int status, void *buf, unsigned int len) STDCALL;
 void NdisIndicateStatusComplete(struct ndis_handle *handle) STDCALL;
 void NdisMQueryInformationComplete(struct ndis_handle *handle, unsigned int status) STDCALL;
+void NdisMSetInformationComplete(struct ndis_handle *handle, unsigned int status) STDCALL;
 
 #define NDIS_OID_STAT_TX_OK         0x00020101
 #define NDIS_OID_STAT_RX_OK         0x00020102
