@@ -72,10 +72,15 @@ if [ ! -e "${KSRC}/include/asm" ]; then
 fi
 
 if [ -f ${KSRC}/.config ]; then
-    grep CONFIG_SMP ${KSRC}/.config | grep '^#'
+    grep CONFIG_SMP ${KSRC}/.config | grep -q '^#'
     if [ $? -ne 0 ]; then
 	error "SMP is not supported yet; disable SMP in your kernel."
     fi
+fi
+
+# this is probably better way to detect SMP
+if grep -q ' SMP ' /proc/version; then
+    error "SMP is not supported yet; disable SMP in your kernel."
 fi
 
 # locate PCI id
@@ -167,7 +172,7 @@ done
 get_resp "What interface should ndiswrapper configure?" "${IFACE_NAME}"
 IFACE_NAME=${RESP}
 
-if modprobe -c | grep ndiswrapper; then
+if modprobe -c | grep -q ndiswrapper; then
     warn "It seems modprobe is already configured for ndiswrapper; assuming it is correct. Otherwise, delete the current configuration and try again."
 else 
 
