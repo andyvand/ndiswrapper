@@ -205,18 +205,10 @@ struct ndis_irq
 	unsigned char req_isr;
 };
 
-struct ndis_linux_spin_lock
-{
-	spinlock_t lock;
-	unsigned long flags;
-};
-
-
-#define NDIS_SPIN_LOCK_MAGIC_CHAR 213
 struct ndis_spin_lock
 {
-	struct ndis_linux_spin_lock *linux_lock;
-	unsigned char kirql;
+	KSPIN_LOCK spinlock;
+	KIRQL kirql;
 };
 
 struct packed ustring
@@ -342,21 +334,75 @@ struct packed wep_req
 	unsigned long len;
 	unsigned long keyindex;
 	unsigned long keylength;
-	unsigned char keymaterial[NDIS_ENCODING_TOKEN_MAX];
+	unsigned char key[NDIS_ENCODING_TOKEN_MAX];
+};
+
+typedef unsigned char mac_address[ETH_ALEN];
+
+struct ndis_key
+{
+	unsigned long length;
+	unsigned long key_index;
+	unsigned long key_len;
+	mac_address bssid;
+	unsigned long long key_rsc;
+	unsigned char key[32];
+};
+
+struct packed ndis_remove_key
+{
+	unsigned long length;
+	unsigned long key_index;
+	mac_address bssid;
 };
 
 enum auth_mode
 {
-	NDIS_ENCODE_OPEN,
-	NDIS_ENCODE_RESTRICTED,
-	NDIS_ENCODE_OPEN_RESTRICTED,
+	AUTHMODE_OPEN,
+	AUTHMODE_RESTRICTED,
+	AUTHMODE_AUTO,
+	AUTHMODE_WPA,
+	AUTHMODE_WPAPSK,
+	AUTHMODE_WPANONE
 };
 
-enum wep_status
+enum wep_mode
 {
-	NDIS_ENCODE_ENABLED,
-	NDIS_ENCODE_DISABLED,
-	NDIS_ENCODE_NOKEY
+	WEP_ENABLED,
+	WEP_ENCR1_ENABLED = WEP_ENABLED,
+	WEP_DISABLED,
+	WEP_NOKEY,
+	WEP_NO_SUPPORT,
+	WEP_ENCR2_ENABLED,
+	WEP_ENCR2_ABSENT,
+	WEP_ENCR3_ENABLED,
+	WEP_ENCR3_ABSENT
+};
+
+struct ndis_assoc_info
+{
+	unsigned long length;
+	unsigned short req_ies;
+	struct req_ie {
+		unsigned short capa;
+		unsigned short listen_interval;
+		mac_address cur_ap_address;
+	} req_ie;
+	unsigned long req_ie_length;
+	unsigned long offset_req_ies;
+	unsigned short resp_ies;
+	struct resp_ie {
+		unsigned short capa;
+		unsigned short status_code;
+		unsigned short assoc_id;
+	} resp_ie;
+	unsigned long resp_ie_length;
+	unsigned long offset_resp_ies;
+};
+
+enum wrapper_work
+{
+	WRAPPER_LINK_STATUS,
 };
 
 enum op_mode
@@ -483,6 +529,12 @@ struct packed ndis_handle
 
 	struct iw_essid essid;
 
+	int wpa_capa;
+	int encr_alg;
+	enum auth_mode auth_mode;
+	enum wep_mode wep_mode;
+	enum op_mode op_mode;
+
 	struct list_head recycle_packets;
 	spinlock_t recycle_packets_lock;
 	struct work_struct packet_recycler;
@@ -493,6 +545,9 @@ struct packed ndis_handle
 	struct proc_dir_entry *procfs_iface;
 
 	struct work_struct set_rx_mode_work;
+
+	struct work_struct wrapper_worker;
+	unsigned long wrapper_work;
 };
 
 struct ndis_timer

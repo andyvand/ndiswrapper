@@ -124,7 +124,7 @@ void wrapper_init_timer(struct ktimer *ktimer, void *handle)
 	wrapper_timer = wrap_kmalloc(sizeof(struct wrapper_timer), GFP_ATOMIC);
 	if(!wrapper_timer)
 	{
-		printk("%s: Cannot malloc mem for timer\n", DRV_NAME);
+		printk(KERN_ERR "%s: Cannot malloc mem for timer\n", DRV_NAME);
 		return;
 	}
 
@@ -141,11 +141,8 @@ void wrapper_init_timer(struct ktimer *ktimer, void *handle)
 	ktimer->wrapper_timer = wrapper_timer;
 	if (handle)
 		list_add(&wrapper_timer->list, &ndis_handle->timers);
-#ifdef DEBUG_TIMER
-	printk(KERN_INFO "%s: added timer %p, wrapper_timer->list %p\n",
-	       __FUNCTION__, wrapper_timer, &wrapper_timer->list);
-#endif
-	DBGTRACE("Allocated timer at %08x\n", (int)wrapper_timer);
+	DBGTRACE4("added timer %p, wrapper_timer->list %p\n",
+		  wrapper_timer, &wrapper_timer->list);
 }
 
 int wrapper_set_timer(struct wrapper_timer *timer,
@@ -153,14 +150,14 @@ int wrapper_set_timer(struct wrapper_timer *timer,
 {
 	if (!timer)
 	{
-		printk("%s: Driver calling NdisSetTimer on an uninitilized timer\n", DRV_NAME);		
+		printk(KERN_ERR "%s: Driver calling NdisSetTimer on an uninitilized timer\n", DRV_NAME);		
 		return 0;
 	}
 	
 #ifdef DEBUG_TIMER
 	if (timer->wrapper_timer_magic != WRAPPER_TIMER_MAGIC)
 	{
-		printk(KERN_INFO "%s: timer %p is not initialized (%lu)\n",
+		printk(KERN_WARNING "%s: timer %p is not initialized (%lu)\n",
 		       __FUNCTION__, timer, timer->wrapper_timer_magic);
 		timer->wrapper_timer_magic = WRAPPER_TIMER_MAGIC;
 	}
@@ -169,17 +166,15 @@ int wrapper_set_timer(struct wrapper_timer *timer,
 	
 	if (timer->active)
 	{
-#ifdef DEBUG_TIMER
-	printk("Modifying timer %p to %lu, %lu\n", timer, expires, repeat);
-#endif
+		DBGTRACE4("modifying timer %p to %lu, %lu",
+			  timer, expires, repeat);
 		mod_timer(&timer->timer, expires);
 		return 1;
 	}
 	else
 	{
-#ifdef DEBUG_TIMER
-//	printk("Setting timer %p to %lu, %lu\n", timer, expires, repeat);
-#endif
+		DBGTRACE4("setting timer %p to %lu, %lu",
+			  timer, expires, repeat);
 		timer->timer.expires = expires;
 		add_timer(&timer->timer);
 		timer->active = 1;
@@ -189,10 +184,10 @@ int wrapper_set_timer(struct wrapper_timer *timer,
 
 void wrapper_cancel_timer(struct wrapper_timer *timer, char *canceled)
 {
-	DBGTRACE("%s: timer = %p, canceled = %p\n", __FUNCTION__, timer, canceled);
+	TRACEENTER4("timer = %p, canceled = %p", timer, canceled);
 	if(!timer)
 	{
-		printk("%s: Driver calling NdisCancelTimer on an uninitilized timer\n", DRV_NAME);		
+		printk(KERN_ERR "%s: Driver calling NdisCancelTimer on an uninitilized timer\n", DRV_NAME);		
 		return;
 	}
 
@@ -202,7 +197,7 @@ void wrapper_cancel_timer(struct wrapper_timer *timer, char *canceled)
 		return;
 	}
 #ifdef DEBUG_TIMER
-	printk("Canceling timer %p\n", timer);
+	DBGTRACE4("canceling timer %p", timer);
 	BUG_ON(timer->wrapper_timer_magic != WRAPPER_TIMER_MAGIC);
 #endif
 	
@@ -367,7 +362,7 @@ STDCALL size_t RtlCompareMemory(const void *a, const void *b, size_t len)
 	size_t i, same;
 	char *x, *y;
 	
-	DBGTRACE("%s: Entry\n", __FUNCTION__);
+	TRACEENTER1();
 
 	x = (char *)a;
 	y = (char *)b;
@@ -384,7 +379,7 @@ STDCALL long RtlCompareString(const struct ustring *s1,
 	long ret = 0;
 	const char *p1, *p2;
 	
-	DBGTRACE("%s: entry\n", __FUNCTION__);
+	TRACEENTER1();
 	len = min(s1->len, s2->len);
 	p1 = s1->buf;
 	p2 = s2->buf;
@@ -409,7 +404,7 @@ STDCALL long RtlCompareUnicodeString(const struct ustring *s1,
 	long ret = 0;
 	const __u16 *p1, *p2;
 	
-	DBGTRACE("%s: entry\n", __FUNCTION__);
+	TRACEENTER1();
 	len = min(s1->len, s2->len);
 	p1 = (__u16 *)s1->buf;
 	p2 = (__u16 *)s2->buf;
@@ -428,7 +423,7 @@ STDCALL long RtlCompareUnicodeString(const struct ustring *s1,
 STDCALL int RtlEqualString(const struct ustring *s1,
 			   const struct ustring *s2, int case_insensitive)
 {
-	DBGTRACE("%s: entry\n", __FUNCTION__);
+	TRACEENTER1();
 	if (s1->len != s2->len)
 		return 0;
 	return !RtlCompareString(s1, s2, case_insensitive);
@@ -446,7 +441,7 @@ STDCALL int RtlEqualUnicodeString(const struct ustring *s1,
 STDCALL void RtlCopyUnicodeString(struct ustring *dst,
 				  const struct ustring *src)
 {
-	DBGTRACE("%s: entry\n", __FUNCTION__);
+	TRACEENTER1();
 	if (src)
 	{
 		unsigned int len = min(src->len, dst->buflen);
@@ -457,6 +452,7 @@ STDCALL void RtlCopyUnicodeString(struct ustring *dst,
 			dst->buf[len] = 0;
 	}
 	else dst->len = 0;
+	TRACEEXIT1(return);
 }
 
 STDCALL int RtlAnsiStringToUnicodeString(struct ustring *dst, struct ustring *src, unsigned int dup)
@@ -465,7 +461,7 @@ STDCALL int RtlAnsiStringToUnicodeString(struct ustring *dst, struct ustring *sr
 	__u16 *d;
 	__u8 *s;
 
-	DBGTRACE("%s: dup: %d src: %s\n", __FUNCTION__, dup, src->buf);
+	TRACEENTER2("dup: %d src: %s", dup, src->buf);
 	if(dup)
 	{
 		char *buf = kmalloc((src->buflen+1) * sizeof(__u16), GFP_KERNEL);
@@ -486,7 +482,7 @@ STDCALL int RtlAnsiStringToUnicodeString(struct ustring *dst, struct ustring *sr
 	}
 	d[i] = 0;
 	
-	return NDIS_STATUS_SUCCESS;
+	TRACEEXIT2(return NDIS_STATUS_SUCCESS);
 }
 
 STDCALL int RtlUnicodeStringToAnsiString(struct ustring *dst, struct ustring *src, unsigned int dup)
@@ -495,10 +491,12 @@ STDCALL int RtlUnicodeStringToAnsiString(struct ustring *dst, struct ustring *sr
 	__u16 *s;
 	__u8 *d;
 
-//	DBGTRACE("%s dup: %d src->len: %d src->buflen: %d, dst: %p\n", __FUNCTION__, dup, src->len, src->buflen, dst);
+	TRACEENTER2("dup: %d src->len: %d src->buflen: %d, dst: %p",
+		    dup, src->len, src->buflen, dst);
 	if(dup)
 	{
-		char *buf = kmalloc((src->buflen+1) / sizeof(__u16), GFP_KERNEL);
+		char *buf = kmalloc((src->buflen+1) / sizeof(__u16),
+				    GFP_KERNEL);
 		if(!buf)
 			return NDIS_STATUS_FAILURE;
 		dst->buf = buf;
@@ -514,8 +512,7 @@ STDCALL int RtlUnicodeStringToAnsiString(struct ustring *dst, struct ustring *sr
 		d[i] = (__u8)s[i];
 	d[i] = 0;
 
-//	DBGTRACE(" buf: %s\n", dst->buf);
-	return NDIS_STATUS_SUCCESS;
+	TRACEEXIT2(return NDIS_STATUS_SUCCESS);
 }
 
 STDCALL int RtlIntegerToUnicodeString(unsigned long value, unsigned long base,
@@ -525,7 +522,7 @@ STDCALL int RtlIntegerToUnicodeString(unsigned long value, unsigned long base,
 	struct ustring ansi;
 	int i;
 
-	DBGTRACE("%s: entry\n", __FUNCTION__);
+	TRACEENTER1();
 	if (base == 0)
 		base = 10;
 	if (!(base == 2 || base == 8 || base == 10 || base == 16))
@@ -573,7 +570,7 @@ void packet_recycler(void *param)
 {
 	struct ndis_handle *handle = (struct ndis_handle*) param;
 
-	DBGTRACE("%s Packet recycler running\n", __FUNCTION__);
+	TRACEENTER3("%s", "Packet recycler running");
 	while(1)
 	{
 		struct ndis_packet * packet;
@@ -585,7 +582,7 @@ void packet_recycler(void *param)
 			packet = (struct ndis_packet*) handle->recycle_packets.next;
 
 			list_del(handle->recycle_packets.next);
-			DBGTRACE("%s Picking packet at %p!\n", __FUNCTION__, packet);
+			DBGTRACE3("Picking packet at %p!", packet);
 			packet = (struct ndis_packet*) ((char*)packet - ((char*) &packet->recycle_list - (char*) &packet->nr_pages));
 		}
 
@@ -597,6 +594,7 @@ void packet_recycler(void *param)
 		packet->status = NDIS_STATUS_SUCCESS;
 		handle->driver->miniport_char.return_packet(handle->adapter_ctx,  packet);
 	}
+	TRACEEXIT3(return);
 }
 
 int getSp(void)

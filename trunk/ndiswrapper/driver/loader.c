@@ -128,7 +128,7 @@ static int import(void *image, struct coffpe_import_dirent *dirent, char *dll)
 			printk(KERN_ERR "Unknown symbol: %s:%s\n", dll, symname);
 			ret = -1;
 		}
-		DBGTRACE("Importing rva %08x: %s : %s\n", (int)(&address_tbl[i]) - (int)image, dll, symname); 
+		DBGTRACE1("Importing rva %08x: %s : %s\n", (int)(&address_tbl[i]) - (int)image, dll, symname); 
 		address_tbl[i] = (cu32)adr;
 	}
 	return ret;
