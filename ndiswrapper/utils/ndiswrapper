@@ -464,7 +464,7 @@ sub parseManu
 
 		if ($key eq $version{"Provider"})
 		  {
-		    $version{"Provider"} = trim($val);
+		    $strings{$key} = trim($val);
 		  }
 
 		if($val)
@@ -620,7 +620,8 @@ sub parseDevice
  	printf CONF "BusType|$bustype\n";
 	my $ver=$version{"DriverVer"};
 	my $provider=$version{"Provider"};
-	printf CONF "ndis_version|$provider,$ver\n\n";
+	my $providerstring = stripquotes(substStr(trim($provider)));
+	printf CONF "ndis_version|$providerstring,$ver\n\n";
 
 	my @addregs = split(",", $addreg);
 	for(my $i = 0; $i < @addregs; $i++)
