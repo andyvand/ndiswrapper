@@ -12,7 +12,8 @@
 
 #include <linux/netdevice.h>
 #include <linux/etherdevice.h>
- 
+#include <linux/wireless.h>
+#include <net/iw_handler.h>
 
 #include <asm/uaccess.h>
 
@@ -40,9 +41,163 @@ static struct miscdevice wrapper_misc = {
 	.fops   = &wrapper_fops
 };
 
+/*
+ * Make a query that has an int as the result.
+ *
+ */
+static int query_int(struct ndis_handle *handle, int oid, int *data)
+{
+	unsigned int res, written, needed;
+
+	res = handle->miniport_char.query(handle->adapter_ctx, oid, (char*)data, 4, &written, &needed);
+	printk("query_int iod=%08x res %d data %d\n", oid, res, *data); 
+	if(!res)
+		return -1;
+	*data = 0;
+	return 0;
+}
+
+/*
+ * Set an int
+ *
+ */
+static int set_int(struct ndis_handle *handle, int oid, int data)
+{
+	unsigned int res, written, needed;
+
+	res = handle->miniport_char.setinfo(handle->adapter_ctx, oid, (char*)&data, sizeof(int), &written, &needed);
+	printk("set_infra status %08x, %d, %d\n", res, written, needed);
+	if(!res)
+		return -1;
+	return 0;
+}
 
 
-void call_init(struct ndis_handle *handle)
+
+static int ndis_set_essid(struct net_device *dev,
+			    struct iw_request_info *info,
+			    union iwreq_data *wrqu, char *extra)
+{
+	struct ndis_handle *handle = dev->priv; 
+	unsigned int res, written, needed;
+	struct essid_req req;
+		
+	if(wrqu->essid.length > 33)
+	{
+		printk("%s: ESSID too long\n", __FUNCTION__);
+		return -1;
+	}
+
+	
+	memset(&req.essid, 0, sizeof(req.essid));
+	memcpy(&req.essid, extra, wrqu->essid.length-1);
+
+	res = handle->miniport_char.setinfo(handle->adapter_ctx, NDIS_IOD_ESSID, (char*)&req, sizeof(req), &written, &needed);
+	printk("set essid status %08x, %d, %d\n", res, written, needed);
+	if(res)
+		return -1;
+	return 0;
+
+
+}
+
+static int ndis_get_essid(struct net_device *dev,
+			    struct iw_request_info *info,
+			    union iwreq_data *wrqu, char *extra)
+{
+	struct ndis_handle *handle = dev->priv; 
+	unsigned int res, written, needed;
+	struct essid_req req;
+
+	res = handle->miniport_char.query(handle->adapter_ctx, NDIS_IOD_ESSID, (char*)&req, sizeof(req), &written, &needed);
+	printk("get essid status %08x, %d, %d\n", res, written, needed);
+	if(res)
+		return -1;
+
+	memcpy(extra, &req.essid, req.len);	
+	extra[req.len] = 0;
+	wrqu->essid.flags  = 1;
+	wrqu->essid.length = req.len + 1;
+	return 0;
+}
+
+
+static int ndis_set_mode(struct net_device *dev, struct iw_request_info *info,
+			   union iwreq_data *wrqu, char *extra)
+{
+	int ndis_mode;
+	printk("%s\n", __FUNCTION__);
+
+	switch(wrqu->mode)
+	{
+	case IW_MODE_ADHOC:
+		ndis_mode = 0;
+		break;	
+	case IW_MODE_INFRA:
+		ndis_mode = 1;
+		break;	
+	default:
+		printk("%s Unknown mode %d\n", __FUNCTION__, wrqu->mode);	
+		return -1;
+	}
+	
+	set_int(dev->priv, NDIS_OID_MODE, ndis_mode);
+	return 0;
+}
+
+static int ndis_get_mode(struct net_device *dev, struct iw_request_info *info,
+			   union iwreq_data *wrqu, char *extra)
+{
+	struct ndis_handle *handle = dev->priv; 
+	int ndis_mode, mode;
+
+	printk("%s\n", __FUNCTION__);
+	int res = query_int(handle, NDIS_OID_MODE, &ndis_mode);
+	if(!res)
+		return -1;
+
+	switch(ndis_mode)
+	{
+	case 0:
+		mode = IW_MODE_ADHOC;
+		break;
+	case 1:
+		mode = IW_MODE_INFRA;
+		break;
+	default:
+		printk("%s Unknown mode\n", __FUNCTION__);
+		return -1;
+		break;
+	}
+	wrqu->mode = mode;
+	printk("returned mode %d\n", mode);
+	return 0;	
+}
+
+
+static int ndis_get_name(struct net_device *dev, struct iw_request_info *info,
+			   union iwreq_data *wrqu, char *extra)
+{
+	strlcpy(wrqu->name, "IEEE 802.11-DS", sizeof(wrqu->name));
+	return 0;
+}
+
+
+static const iw_handler	ndis_handler[] = {
+	[SIOCGIWNAME	- SIOCIWFIRST] = ndis_get_name,
+	[SIOCSIWESSID	- SIOCIWFIRST] = ndis_set_essid,
+	[SIOCGIWESSID	- SIOCIWFIRST] = ndis_get_essid,
+	[SIOCSIWMODE	- SIOCIWFIRST] = ndis_set_mode,
+	[SIOCGIWMODE	- SIOCIWFIRST] = ndis_get_mode,
+};
+
+static const struct iw_handler_def ndis_handler_def = {
+	.num_standard	= sizeof(ndis_handler) / sizeof(iw_handler),
+	.standard	= (iw_handler *)ndis_handler,
+};
+
+
+static void call_init(struct ndis_handle *handle)
 {
 	__u32 res;
 	__u32 selected_medium;
@@ -52,106 +207,13 @@ void call_init(struct ndis_handle *handle)
 	printk("past init sp:%08x %08x\n\n\n", getSp(), res);
 }
 
-void call_halt(struct ndis_handle *handle)
+static void call_halt(struct ndis_handle *handle)
 {
-	printk("Calling halt at %08x rva(%08x). sp:%08x\n", (int)handle->miniport_char.halt, (int)handle->miniport_char.halt - image_offset, getSp());
+	printk("Calling halt at %08x rva(%08x)\n", (int)handle->miniport_char.halt, (int)handle->miniport_char.halt - image_offset);
 	handle->miniport_char.halt(handle->adapter_ctx);
-	printk("past halt sp:%08x\n\n\n", getSp());
 }
 
-void call_query(struct ndis_handle *handle)
-{
-	__u32 res;
-	__u32 written;
-	__u32 needed;
-	unsigned char mac[10];
-	printk("Calling query at %08x rva(%08x). sp:%08x\n", (int)handle->miniport_char.query, (int)handle->miniport_char.query - image_offset, getSp());
-	res = handle->miniport_char.query(handle->adapter_ctx, 0x01010102, &mac[0], 10, &written, &needed);
-	printk("past query sp:%08x %08x\n\n\n", getSp(), res);
-	printk("mac:%02x:%02x:%02x:%02x:%02x:%02x\n", mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
-}
-
-struct packed essid_req
-{
-	unsigned int len;
-	char essid[32];
-};
-
-
-int set_essid(struct ndis_handle *handle, char *name)
-{
-	unsigned int res, written, needed;
-	struct essid_req req;
-		
-	if(strlen(name) > 32)
-		req.len = 32;
-	else
-		req.len = strlen(name);
-
-	memset(&req.essid, 0, 32);
-	memcpy(&req.essid, name, req.len);
-
-
-	printk("Set essid data: ");
-	for(res = 0; res < 36; res++)
-	{
-		printk("%02x ", ((char*)&req)[res]);
-	}
-	printk("\n");	
-	
-	res = handle->miniport_char.setinfo(handle->adapter_ctx, 0x0D010102, (char*)&req, 36, &written, &needed);
-	printk("set essid status %08x, %d, %d\n", res, written, needed);
-	return res;
-}
-
-int get_essid(struct ndis_handle *handle)
-{
-	unsigned int res, written, needed;
-	char data[36];
-	int i;
-
-	res = handle->miniport_char.query(handle->adapter_ctx, 0x0D010102, data, 36, &written, &needed);
-	printk("get essid status %08x, %d, %d\n", res, written, needed);
-	printk("data: ");
-	for(i = 0; i < written; i++)
-	{
-		printk("%02x ", data[i]);
-	}
-	printk("\n");
-	return res;
-}
-
-
-
-int set_infra(struct ndis_handle *handle, int mode)
-{
-	unsigned int res, written, needed;
-
-
-	res = handle->miniport_char.setinfo(handle->adapter_ctx, 0x0D010108, (char*)&mode, 4, &written, &needed);
-	printk("set_infra status %08x, %d, %d\n", res, written, needed);
-	return res;
-
-}
-
-
-int get_infra(struct ndis_handle *handle)
-{
-	unsigned int res = 0, written = 0, needed = 0;
-	char data[4];
-		
-	res = handle->miniport_char.query(handle->adapter_ctx, 0x0D010108, data, 4, &written, &needed);
-	printk("infra status %08x, %d, %d\n", res, written, needed);
-	if(written == 4)
-	{
-		printk("infra mode: %08x\n", *(int*)data);
-	}
-	
-	return res;
-}
-
-
-unsigned int call_entry(struct ndis_handle *handle)
+static unsigned int call_entry(struct ndis_handle *handle)
 {
 	int res;
 	char regpath[] = {'a', 0, 'b', 0, 0, 0};
@@ -206,6 +268,7 @@ static int ndis_open (struct net_device *dev)
 	return 0;
 }
 
+
 static int ndis_close (struct net_device *dev)
 {
 	printk("%s\n", __FUNCTION__);
@@ -213,50 +276,37 @@ static int ndis_close (struct net_device *dev)
 }
 
 
-
-static int query_int(struct ndis_handle *handle, int oid, int *data)
-{
-
-	unsigned int res;
-	unsigned int written;
-	unsigned int needed;
-
-	res = handle->miniport_char.query(handle->adapter_ctx, oid, (char*)data, 4, &written, &needed);
-	printk("query_int iod=%08x res %d data %d\n", oid, res, *data); 
-	if(!res)
-	{
-		return 0;
-	}
-	*data = 0;
-	return -1;
-}
-
-
-
 static struct net_device_stats *ndis_get_stats (struct net_device *dev)
 {
 	struct ndis_handle *handle = dev->priv;
 	unsigned int x;
 
-	printk("%s\n", __FUNCTION__);
-
-
-	if(!query_int(handle, 0x00020101, &x))
+	if(!query_int(handle, NDIS_OID_STAT_TX_OK, &x))
 		handle->stats.tx_packets = x; 	
-	if(!query_int(handle, 0x00020102, &x))
+	if(!query_int(handle, NDIS_OID_STAT_RX_OK, &x))
 		handle->stats.rx_packets = x; 	
-	if(!query_int(handle, 0x00020103, &x))
+	if(!query_int(handle, NDIS_OID_STAT_TX_ERROR, &x))
 		handle->stats.tx_errors = x; 	
-	if(!query_int(handle, 0x00020104, &x))
+	if(!query_int(handle, NDIS_OID_STAT_RX_ERROR, &x))
 		handle->stats.rx_errors = x; 	
 
 	return &handle->stats;
 }
 
-static int ndis_ioctl (struct net_device *dev, struct ifreq *rq, int cmd)
+
+static struct iw_statistics *ndis_get_wireless_stats(struct net_device *dev)
 {
 	printk("%s\n", __FUNCTION__);
-	return -EOPNOTSUPP;
+	return NULL;
+}
+
+
+static int ndis_ioctl (struct net_device *dev, struct ifreq *rq, int cmd)
+{
+	int rc = -ENODEV;
+
+	printk("%s\n", __FUNCTION__);
+	return rc;
 }
 
 
@@ -309,17 +359,6 @@ static int ndis_ioctl (struct net_device *dev, struct ifreq *rq, int cmd)
 
 	skb_copy_and_csum_dev(skb, data);
 	dev_kfree_skb(skb);
-/*
-	{
-		printk("sending packet size %d:\n", buffer->len);
-		int i;
-		for(i = 0; i < buffer->len; i++)
-		{
-			printk("%02x ", buffer->data[i]);
-		}
-		printk("\n");		
-	}
-*/	
 //	printk("Calling send_packets at %08x rva(%08x). sp:%08x\n", (int)handle->miniport_char.send_packets, (int)handle->miniport_char.send_packets - image_offset, getSp());
 	handle->miniport_char.send_packets(handle->adapter_ctx, &packet, 1);
 
@@ -352,7 +391,8 @@ static int setup_dev(struct net_device *dev)
 	dev->stop = ndis_close;
 	dev->get_stats = ndis_get_stats;
 	dev->do_ioctl = ndis_ioctl;
-
+	dev->get_wireless_stats = ndis_get_wireless_stats;
+	dev->wireless_handlers	= (struct iw_handler_def *)&ndis_handler_def;
 	
 	for(i = 0; i < 6; i++)
 	{
@@ -474,24 +514,13 @@ static int wrapper_ioctl(struct inode *inode, struct file *file, unsigned int cm
 		{
 			switch(arg)
 			{
-			case 1:
-				set_essid(thedev->priv, "pf");
-				break;				
-			case 2:
-				get_essid(thedev->priv);
-				break;
-			case 3:
-				set_infra(thedev->priv, 1);
-				break;
-			case 4:
-				get_infra(thedev->priv);
-				break;
 			default:
 				printk("Unknown test %ld\n", arg);
 				break;				
 			}
 		}
 	default:
+		printk("Unknown ioctl %08x\n", cmd);
 		return -EINVAL;
 		break;
 	}	

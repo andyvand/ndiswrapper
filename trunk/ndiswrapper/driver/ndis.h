@@ -184,4 +184,19 @@ struct packed ndis_phy_address
 	__u32 high;
 };
 
+
+struct packed essid_req
+{
+	unsigned int len;
+	char essid[32];
+};
+
+
+#define NDIS_OID_STAT_TX_OK         0x00020101
+#define NDIS_OID_STAT_RX_OK         0x00020102
+#define NDIS_OID_STAT_TX_ERROR      0x00020103
+#define NDIS_OID_STAT_RX_ERROR      0x00020104
+
+#define NDIS_OID_ESSID              0x0D010102
+#define NDIS_OID_MODE               0x0D010108
 #endif /* NDIS_H */
