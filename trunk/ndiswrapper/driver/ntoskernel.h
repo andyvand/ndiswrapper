@@ -90,10 +90,10 @@ typedef struct workqueue_struct *workqueue;
 #define work_struct tq_struct
 #define INIT_WORK INIT_TQUEUE
 #define DECLARE_WORK(n, f, d) struct tq_struct n = { \
-	list: LIST_HEAD_INIT(n.list), \
-	sync: 0, \
-	routine: f, \
-	data: d \
+		list: LIST_HEAD_INIT(n.list),	     \
+		sync: 0,			     \
+		routine: f,			     \
+		data: d				     \
 }
 #define schedule_work schedule_task
 #define flush_scheduled_work flush_scheduled_tasks
@@ -104,7 +104,7 @@ typedef task_queue workqueue;
 #ifndef irqs_disabled
 #define irqs_disabled()                \
 ({                                     \
-       unsigned long flags;            \
+	unsigned long flags;	       \
        __save_flags(flags);            \
        !(flags & (1<<9));              \
 })
@@ -150,9 +150,11 @@ typedef task_queue workqueue;
 #endif
 
 #ifndef container_of
-#define container_of(ptr, type, member) ({			\
-	const typeof( ((type *)0)->member ) *__mptr = (ptr);	\
-	(type *)( (char *)__mptr - offsetof(type,member) );})
+#define container_of(ptr, type, member)					\
+({									\
+	const typeof( ((type *)0)->member ) *__mptr = (ptr);		\
+	(type *)( (char *)__mptr - offsetof(type,member) );		\
+})
 #endif
 
 #ifndef virt_addr_valid
@@ -172,32 +174,33 @@ typedef task_queue workqueue;
 #endif
 
 #ifdef CONFIG_X86_64
-#define LIN2WIN1(func, arg1) \
-  lin_to_win1(func, (unsigned long)arg1)
-#define LIN2WIN2(func, arg1, arg2) \
-  lin_to_win2(func, (unsigned long)arg1, (unsigned long)arg2)
-#define LIN2WIN3(func, arg1, arg2, arg3) \
-  lin_to_win3(func, (unsigned long)arg1, (unsigned long)arg2, \
-	      (unsigned long)arg3)
-#define LIN2WIN4(func, arg1, arg2, arg3, arg4)		      \
-  lin_to_win4(func, (unsigned long)arg1, (unsigned long)arg2, \
-	      (unsigned long)arg3, (unsigned long)arg4)
-#define LIN2WIN5(func, arg1, arg2, arg3, arg4, arg5)	      \
-  lin_to_win5(func, (unsigned long)arg1, (unsigned long)arg2, \
-	      (unsigned long)arg3, (unsigned long)arg4, (unsigned long)arg5)
-#define LIN2WIN6(func, arg1, arg2, arg3, arg4, arg5, arg6)	      \
-  lin_to_win6(func, (unsigned long)arg1, (unsigned long)arg2, \
-	      (unsigned long)arg3, (unsigned long)arg4, (unsigned long)arg5, \
-	      (unsigned long)arg6)
+#define LIN2WIN1(func, arg1)			\
+	lin_to_win1(func, (unsigned long)arg1)
+#define LIN2WIN2(func, arg1, arg2)					\
+	lin_to_win2(func, (unsigned long)arg1, (unsigned long)arg2)
+#define LIN2WIN3(func, arg1, arg2, arg3)				\
+	lin_to_win3(func, (unsigned long)arg1, (unsigned long)arg2,	\
+		    (unsigned long)arg3)
+#define LIN2WIN4(func, arg1, arg2, arg3, arg4)				\
+	lin_to_win4(func, (unsigned long)arg1, (unsigned long)arg2,	\
+		    (unsigned long)arg3, (unsigned long)arg4)
+#define LIN2WIN5(func, arg1, arg2, arg3, arg4, arg5)			\
+	lin_to_win5(func, (unsigned long)arg1, (unsigned long)arg2,	\
+		    (unsigned long)arg3, (unsigned long)arg4,		\
+		    (unsigned long)arg5)
+#define LIN2WIN6(func, arg1, arg2, arg3, arg4, arg5, arg6)		\
+	lin_to_win6(func, (unsigned long)arg1, (unsigned long)arg2,	\
+		    (unsigned long)arg3, (unsigned long)arg4,		\
+		    (unsigned long)arg5, (unsigned long)arg6)
 #else
 #define LIN2WIN1(func, arg1) func(arg1)
 #define LIN2WIN2(func, arg1, arg2) func(arg1, arg2)
 #define LIN2WIN3(func, arg1, arg2, arg3) func(arg1, arg2, arg3)
 #define LIN2WIN4(func, arg1, arg2, arg3, arg4) func(arg1, arg2, arg3, arg4)
-#define LIN2WIN5(func, arg1, arg2, arg3, arg4, arg5) \
-  func(arg1, arg2, arg3, arg4, arg5)
-#define LIN2WIN6(func, arg1, arg2, arg3, arg4, arg5, arg6) \
-  func(arg1, arg2, arg3, arg4, arg5, arg6)
+#define LIN2WIN5(func, arg1, arg2, arg3, arg4, arg5)	\
+	func(arg1, arg2, arg3, arg4, arg5)
+#define LIN2WIN6(func, arg1, arg2, arg3, arg4, arg5, arg6)	\
+	func(arg1, arg2, arg3, arg4, arg5, arg6)
 #endif
 
 #ifndef __wait_event_interruptible_timeout
@@ -515,7 +518,7 @@ int unmap_kspin_lock(KSPIN_LOCK *kspin_lock);
 
 #define wrap_spin_unlock_irql(lock, newirql) do {			\
 		if (*(lock) != newirql)					\
-			ERROR("irql %d != %d", *(lock), newirql);	\
+			ERROR("irql %lu != %d", *(lock), newirql);	\
 		else							\
 			wrap_spin_unlock(lock);				\
 	} while (0)

@@ -42,6 +42,7 @@
 #define CALL_ON_SUCCESS                 0x40
 #define CALL_ON_ERROR                   0x80
 
+#define IRP_MJ_CREATE			0x0
 #define IRP_MJ_DEVICE_CONTROL           0x0E
 #define IRP_MJ_INTERNAL_DEVICE_CONTROL  0x0F
 #define IRP_MJ_MAXIMUM_FUNCTION           0x1b
@@ -79,24 +80,23 @@
 #define NOREGPARM __attribute__((regparm(0)))
 #define packed __attribute__((packed))
 
-typedef __u8	BOOLEAN;
-typedef __u8	BYTE;
-typedef __u8	*LPBYTE;
-typedef __s8	CHAR;
-typedef __u8	UCHAR;
-typedef __s16	SHORT;
-typedef __u16	USHORT;
-typedef __u16	WORD;
-typedef __s32	INT;
-typedef __u32	UINT;
-typedef __u32	DWORD;
-typedef __u32	LONG;
-typedef __u32	ULONG;
-typedef __u64	ULONGLONG;
-typedef __u64	ULONGULONG;
+typedef u8	BOOLEAN;
+typedef u8	BYTE;
+typedef u8	*LPBYTE;
+typedef s8	CHAR;
+typedef u8	UCHAR;
+typedef s16	SHORT;
+typedef u16	USHORT;
+typedef u16	WORD;
+typedef s32	INT;
+typedef u32	UINT;
+typedef u32	DWORD;
+typedef u32	LONG;
+typedef u32	ULONG;
+typedef u64	ULONGLONG;
+typedef u64	ULONGULONG;
 
 typedef CHAR CCHAR;
-typedef size_t SIZE_T;
 typedef SHORT wchar_t;
 typedef SHORT CSHORT;
 typedef long long LARGE_INTEGER;
@@ -108,12 +108,11 @@ typedef LARGE_INTEGER PHYSICAL_ADDRESS;
 typedef UCHAR KIRQL;
 typedef CHAR KPROCESSOR_MODE;
 
-#ifdef CONFIG_X86_64
-typedef __u64 ULONG_PTR;
-#else
-typedef __u32 ULONG_PTR;
-#endif
+/* ULONG_PTR is 32 bits on 32-bit platforms and 64 bits on 64-bit
+ * platform, which is same as 'unsigned long' in Linux */
+typedef unsigned long ULONG_PTR;
 
+typedef ULONG_PTR SIZE_T;
 typedef ULONG_PTR	KAFFINITY;
 
 struct ansi_string {
@@ -159,15 +158,10 @@ struct kevent {
 	struct dispatch_header header;
 };
 
-/* KSPIN_LOCK is typedef to ULONG_PTR, where ULONG_PTR is 32-bit
- * 32-bit platforms, 64-bit on 64 bit platforms; it is NOT pointer to
- * unsigned long  */
-/* spinlock_t is 32-bits, provided CONFIG_DEBUG_SPINLOCK is disabled;
- * so for x86 32-bits, we can safely typedef KSPIN_LOCK to
- * spinlock_t */
-
-/* We now use KSPIN_LOCK as an index into an array ow wrap_spinlocks */
 typedef ULONG_PTR KSPIN_LOCK;
+/* if CONFIG_DEBUG_SPINLOCK is enabled, the space for KSPIN_LOCK is
+ * not enough to store spinlock_t, so we use KSPIN_LOCK as an index
+ * into an array of wrap_spinlocks */
 
 struct kdpc {
 	SHORT type;

@@ -299,11 +299,8 @@ STDCALL void *WRAP_EXPORT(ExAllocatePoolWithTag)
 	void *ret;
 
 	TRACEENTER1("pool_type: %d, size: %lu, tag: %u", pool_type,
-		    (unsigned long)size, tag);
+		    size, tag);
 
-	/* FIXME: should this function allocate using kmem_cache/mem_pool
-	   instead? */
-	
 	if (KeGetCurrentIrql() == DISPATCH_LEVEL)
 		ret = kmalloc(size, GFP_ATOMIC);
 	else
@@ -327,10 +324,9 @@ STDCALL void WRAP_EXPORT(ExInitializeNPagedLookasideList)
 	 ULONG flags, SIZE_T size, ULONG tag, USHORT depth)
 {
 	TRACEENTER3("lookaside: %p, size: %lu, flags: %u,"
-		    " head: %p, size of lookaside: %lu\n",
-		    lookaside, (unsigned long)size, flags,
-		    lookaside->head.list.next,
-		    (unsigned long)sizeof(struct npaged_lookaside_list));
+		    " head: %p, size of lookaside: %u\n",
+		    lookaside, size, flags, lookaside->head.list.next,
+		    sizeof(struct npaged_lookaside_list));
 
 	memset(lookaside, 0, sizeof(*lookaside));
 
@@ -386,15 +382,14 @@ STDCALL void *WRAP_EXPORT(MmMapIoSpace)
 		virt = ioremap(phys_addr, size);
 	else
 		virt = ioremap_nocache(phys_addr, size);
-	DBGTRACE3("%Lx, %lu, %d: %p", phys_addr, (unsigned long)size,
-		  cache, virt);
+	DBGTRACE3("%Lx, %lu, %d: %p", phys_addr, size, cache, virt);
 	return virt;
 }
 
 STDCALL void WRAP_EXPORT(MmUnmapIoSpace)
 	(void *addr, SIZE_T size)
 {
-	TRACEENTER3("%p, %lu", addr, (unsigned long)size);
+	TRACEENTER3("%p, %lu", addr, size);
 	iounmap(addr);
 	return;
 }
