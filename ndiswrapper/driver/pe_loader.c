@@ -352,10 +352,6 @@ static int fixup_reloc(void *image, struct nt_header *nt_hdr)
 	return 0;
 }
 
-/* This one can be used to calc RVA's from virtual addressed so it's
- * nice to have as a global */
-int image_offset = 0;
-
 int load_pe_images(struct pe_image *pe_image, int n)
 {
 	struct nt_header *nt_hdr;
@@ -429,14 +425,7 @@ int load_pe_images(struct pe_image *pe_image, int n)
 				      pe_image[i].name);
 		}
 		else if (pe_image[i].type == COFF_CHAR_IMAGE)
-		{
-			if (image_offset)
-				ERROR("driver already loaded; ignoring '%s'",
-				      pe_image[i].name);
-			else
-				image_offset = (int)image - 
-					opt_hdr->opt_nt_hdr.image_base;
-		}
+			;
 		else
 			ERROR("illegal image type: %d", pe_image[i].type);
 	}

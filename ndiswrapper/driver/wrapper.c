@@ -79,8 +79,6 @@ LIST_HEAD(ndis_driverlist);
 /* Protects driver list */
 static struct wrap_spinlock driverlist_lock;
 
-extern int image_offset;
-
 extern struct list_head wrap_allocs;
 extern struct wrap_spinlock wrap_allocs_lock;
 
@@ -157,8 +155,7 @@ int doquery(struct ndis_handle *handle, unsigned int oid, char *buf,
 	int res;
 	struct miniport_char *miniport = &handle->driver->miniport_char;
 
-	TRACEENTER3("Calling query at %p rva(%08x)",
-		    miniport->query, (int)miniport->query - image_offset);
+	TRACEENTER3("query is at %p", miniport->query);
 
 	if (down_interruptible(&handle->ndis_comm_mutex))
 		TRACEEXIT3(return NDIS_STATUS_FAILURE);
@@ -188,8 +185,7 @@ int dosetinfo(struct ndis_handle *handle, unsigned int oid, char *buf,
 	int res;
 	struct miniport_char *miniport = &handle->driver->miniport_char;
 
-	TRACEENTER3("Calling setinfo at %p rva(%08x)",
-		    miniport->setinfo, (int)miniport->setinfo - image_offset);
+	TRACEENTER3("setinfo is at %p", miniport->setinfo);
 
 	if (down_interruptible(&handle->ndis_comm_mutex))
 		TRACEEXIT3(return NDIS_STATUS_FAILURE);
@@ -250,8 +246,7 @@ int call_init(struct ndis_handle *handle)
 	__u32 mediumtypes[] = {0,1,2,3,4,5,6,7,8,9,10,11,12};
 	struct miniport_char *miniport = &handle->driver->miniport_char;
 
-	TRACEENTER1("Calling NDIS driver init routine at %p rva(%08X)",
-		    miniport->init, (int)miniport->init - image_offset);
+	TRACEENTER1("driver init routine is at %p", miniport->init);
 	if (miniport->init == NULL)
 	{
 		ERROR("%s", "initialization function is not setup correctly");
@@ -266,8 +261,7 @@ int call_init(struct ndis_handle *handle)
 void call_halt(struct ndis_handle *handle)
 {
 	struct miniport_char *miniport = &handle->driver->miniport_char;
-	TRACEENTER1("Calling NDIS driver halt at %p rva(%08X)",
-		    miniport->halt, (int)miniport->halt - image_offset);
+	TRACEENTER1("driver halt is at %p", miniport->halt);
 
 	set_int(handle, NDIS_OID_PNP_SET_POWER, NDIS_PM_STATE_D3);
 
@@ -444,8 +438,9 @@ static void statcollector_bh(void *data)
 	memset(&ndis_stats, 0, sizeof(ndis_stats));
 	res = doquery(handle, NDIS_OID_STATISTICS, (char *)&ndis_stats,
 		      sizeof(ndis_stats), &written, &needed);
-	if (res != NDIS_STATUS_NOT_SUPPORTED)
-	{
+	if (res == NDIS_STATUS_NOT_SUPPORTED)
+		iw_stats->qual.qual = ((rssi & 0x7F) * 100) / 154;
+	else {
 		iw_stats->discard.retries = (__u32)ndis_stats.retry +
 			(__u32)ndis_stats.multi_retry;
 		iw_stats->discard.misc = (__u32)ndis_stats.fcs_err +
@@ -1286,15 +1281,12 @@ static void check_capa(struct ndis_handle *handle)
 	DBGTRACE("assoc info returns %d", res);
 	if (res == NDIS_STATUS_NOT_SUPPORTED)
 		TRACEEXIT1(return);
-	set_bit(CAPA_WPA, &handle->capa);
 
-	DBGTRACE("capbilities = %ld", handle->capa);
-	if (test_bit(CAPA_AES, &handle->capa))
-		printk(KERN_INFO "ndiswrapper device %s supports WPA with "
-		       "AES/CCMP and TKIP ciphers\n", handle->net_dev->name);
-	else
-		printk(KERN_INFO "ndiswrapper device %s supports "
-		       " WPA with TKIP cipher\n", handle->net_dev->name);
+	set_bit(CAPA_WPA, &handle->capa);
+	if (mode == ENCR3_ENABLED)
+		set_bit(CAPA_AES, &handle->capa);
+	set_bit(CAPA_TKIP, &handle->capa);
+
 	TRACEEXIT1(return);
 }
 
@@ -1373,6 +1365,15 @@ static int setup_dev(struct net_device *dev)
 	       dev->name, DRV_NAME, MAC2STR(mac), handle->driver->name);
 
 	check_capa(handle);
+
+	DBGTRACE("capbilities = %ld", handle->capa);
+	printk(KERN_INFO "%s: encryption modes supported: %s%s%s%s\n",
+	       dev->name,
+	       test_bit(CAPA_WEP, &handle->capa) ? "WEP" : "none",
+	       test_bit(CAPA_WPA, &handle->capa) ? ", WPA with " : "",
+	       test_bit(CAPA_TKIP, &handle->capa) ? "TKIP" : "",
+	       test_bit(CAPA_AES, &handle->capa) ? ", AES/CCMP" : "");
+
 	/* check_capa changes auth_mode and encr_mode, so set them again */
 	set_mode(handle, NDIS_MODE_INFRA);
 	set_auth_mode(handle, AUTHMODE_OPEN);
