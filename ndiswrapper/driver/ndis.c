@@ -128,6 +128,10 @@ STDCALL static void
 NdisFreeMemory(void *adr, unsigned int length, unsigned int flags)
 {
 	TRACEENTER3("length = %u, flags = %08X", length, flags);
+
+	if (!adr)
+		TRACEEXIT3(return);
+
 	if (length <= KMALLOC_THRESHOLD)
 		kfree(adr);
 	else if (flags & NDIS_MEMORY_CONTIGUOUS)
