@@ -1487,7 +1487,8 @@ STDCALL void WRAP_EXPORT(NdisSetTimer)
 	unsigned long expires = ms * HZ / 1000;
 
 	TRACEENTER4("%p, %u", timer_handle, ms);
-	wrapper_set_timer(timer_handle->ktimer.wrapper_timer, expires, 0, NULL);
+	wrapper_set_timer(timer_handle->ktimer.wrapper_timer, expires, 0,
+			  NULL);
 	TRACEEXIT4(return);
 }
 
@@ -1498,7 +1499,8 @@ STDCALL void WRAP_EXPORT(NdisMSetPeriodicTimer)
 	unsigned long repeat = ms * HZ / 1000;
 
 	TRACEENTER4("%p, %u", timer_handle, ms);
-	wrapper_set_timer(timer_handle->ktimer.wrapper_timer, expires, repeat, NULL);
+	wrapper_set_timer(timer_handle->ktimer.wrapper_timer, expires, repeat,
+			  NULL);
 	TRACEEXIT4(return);
 }
 

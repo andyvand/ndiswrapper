@@ -300,12 +300,16 @@ do {									\
 #define KMALLOC_THRESHOLD 131072
 
 /* TICK is 100ns */
-#define TICKSPERSEC             10000000
-#define SECSPERDAY              86400
+#define TICKSPERSEC		10000000
+#define TICKSPERMSEC		10000
+#define SECSPERDAY		86400
+#define SECSPERHOUR		3600
+#define SECSPERMIN		60
+#define DAYSPERWEEK		7
 
 /* 1601 to 1970 is 369 years plus 89 leap days */
-#define SECS_1601_TO_1970       ((369 * 365 + 89) * (u64)SECSPERDAY)
-#define TICKS_1601_TO_1970      (SECS_1601_TO_1970 * TICKSPERSEC)
+#define SECS_1601_TO_1970	((369 * 365 + 89) * (u64)SECSPERDAY)
+#define TICKS_1601_TO_1970	(SECS_1601_TO_1970 * TICKSPERSEC)
 
 typedef void (*WRAP_EXPORT_FUNC)(void);
 
@@ -364,6 +368,13 @@ struct wrapper_timer {
 	long repeat;
 	int active;
 	KSPIN_LOCK lock;
+};
+
+struct qdpc {
+	struct list_head list;
+	struct kdpc *kdpc;
+	void *arg1;
+	void *arg2;
 };
 
 typedef struct mdl ndis_buffer;
@@ -449,7 +460,8 @@ void wrapper_init_timer(struct ktimer *ktimer, void *handle,
 			struct kdpc *kdpc);
 int wrapper_set_timer(struct wrapper_timer *wrapper_timer, unsigned long expires,
 		      unsigned long repeat, struct kdpc *kdpc);
-void wrapper_cancel_timer(struct wrapper_timer *wrapper_timer, char *canceled);
+void wrapper_cancel_timer(struct wrapper_timer *wrapper_timer,
+			  BOOLEAN *canceled);
 
 unsigned long lin_to_win1(void *func, unsigned long);
 unsigned long lin_to_win2(void *func, unsigned long, unsigned long);

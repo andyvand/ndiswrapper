@@ -39,7 +39,7 @@ int misc_funcs_init(void)
 /* called when a handle is being removed */
 void misc_funcs_exit_handle(struct ndis_handle *handle)
 {
-	char canceled;
+	BOOLEAN canceled;
 
 	/* cancel any timers left by bugyy windows driver
 	 * Also free the memory for timers
@@ -66,7 +66,7 @@ void misc_funcs_exit(void)
 	while (1) {
 		struct nt_list_entry *ent;
 		struct wrapper_timer *wrapper_timer;
-		char canceled;
+		BOOLEAN canceled;
 
 		kspin_lock(&ntoskernel_lock);
 		ent = RemoveTailList(&wrapper_timer_list);
@@ -286,7 +286,8 @@ int wrapper_set_timer(struct wrapper_timer *wrapper_timer, unsigned long expires
 	}
 }
 
-void wrapper_cancel_timer(struct wrapper_timer *wrapper_timer, char *canceled)
+void wrapper_cancel_timer(struct wrapper_timer *wrapper_timer,
+			  BOOLEAN *canceled)
 {
 	KIRQL irql;
 
@@ -403,6 +404,50 @@ NOREGPARM INT WRAP_EXPORT(_win_strcmp)
 	(const char *s1, const char *s2)
 {
 	return strcmp(s1, s2);
+}
+
+NOREGPARM INT WRAP_EXPORT(_win_stricmp)
+	(const char *s1, const char *s2)
+{
+	return stricmp(s1, s2);
+}
+
+NOREGPARM char *WRAP_EXPORT(_win_strncat)
+	(char *dest, const char *src, SIZE_T n)
+{
+	return strncat(dest, src, n);
+}
+
+NOREGPARM INT WRAP_EXPORT(_win_wcscmp)
+	(const wchar_t *s1, const wchar_t *s2)
+{
+	while (*s1 && *s2 && *s1 == *s2) {
+		s1++;
+		s2++;
+	}
+	return *s1 - *s2;
+}
+
+NOREGPARM SIZE_T WRAP_EXPORT(_win_wcslen)
+	(const wchar_t *s)
+{
+	SIZE_T i = 0;
+	while (s[i])
+		i++;
+	return i;
+}
+
+NOREGPARM wchar_t *WRAP_EXPORT(_win_wcsncpy)
+	(wchar_t *dest, const wchar_t *src, SIZE_T n)
+{
+	SIZE_T i = 0;
+	while (i < n && src[i]) {
+		dest[i] = src[i];
+		i++;
+	}
+	if (i < n)
+		dest[i] = 0;
+	return dest;
 }
 
 NOREGPARM INT WRAP_EXPORT(_win_tolower)
@@ -645,6 +690,33 @@ STDCALL void WRAP_EXPORT(RtlCopyUnicodeString)
 	}
 	else dst->len = 0;
 	TRACEEXIT1(return);
+}
+
+STDCALL NTSTATUS WRAP_EXPORT(RtlAppendUnicodeToString)
+	(struct unicode_string *dst, wchar_t *src)
+{
+	int i;
+
+	for (i = 0; src[i] != 0 && dst->len + i < dst->buflen; i++)
+		dst->buf[dst->len + i] = src[i];
+	if (src[i] != 0)
+		return STATUS_BUFFER_TOO_SMALL;
+	dst->len += i;
+	return STATUS_SUCCESS;
+}
+
+STDCALL NTSTATUS WRAP_EXPORT(RtlAppendUnicodeStringToString)
+	(struct unicode_string *dst, struct unicode_string *src)
+{
+	int i;
+
+	if (dst->buflen < dst->len + src->len)
+		return STATUS_BUFFER_TOO_SMALL;
+
+	for (i = 0; i < src->len; i++)
+		dst->buf[dst->len + i] = src->buf[i];
+	dst->len += i;
+	return STATUS_SUCCESS;
 }
 
 STDCALL NTSTATUS WRAP_EXPORT(RtlAnsiStringToUnicodeString)
@@ -892,6 +964,12 @@ STDCALL NTSTATUS WRAP_EXPORT(RtlWriteRegistryValue)
 	 void *data, ULONG length)
 {
 	TRACEEXIT5(return STATUS_SUCCESS);
+}
+
+STDCALL NTSTATUS WRAP_EXPORT(RtlDeleteRegistryValue)
+	(ULONG relative, wchar_t *path, wchar_t *name)
+{
+	return STATUS_SUCCESS;
 }
 
 STDCALL void WRAP_EXPORT(RtlAssert)
