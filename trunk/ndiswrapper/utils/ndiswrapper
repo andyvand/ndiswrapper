@@ -359,18 +359,9 @@ sub installStatus
 		chomp($device);
 		my $d = $device;
 
-		if ($d =~ /\.sys$/)
-		  {
-		    $sys = 1;
-		  }
-		if ($d =~ /\.inf$/)
-		  {
-		    $inf = 1;
-		  }
-		if ($d =~ /\.conf$/)
-		  {
-		    $conf = 1;
-		  }
+		$sys = 1 if $d =~ /\.sys$/;
+		$inf = 1 if $d =~ /\.inf$/;
+		$conf = 1 if $d =~ /\.conf$/;
 		$d =~ s/.conf//;
 		if($d =~ /(.{4}):(.{4}):(.{4}):(.{4})/)
 		{
@@ -415,18 +406,9 @@ sub installStatus
 	  }
 	else
 	  {
-	    if ($conf eq 1)
-	      {
-		$ret = $ret . "driver present ";
-	      }
-	    if ($conf eq 2)
-	      {
-		$ret = $ret . "hardware present,fuzzy ";
-	      }
-	    if ($conf eq 3)
-	      {
-		$ret = $ret . "hardware present ";
-	      }
+	    $ret = $ret . "driver present " if $conf eq 1;
+	    $ret = $ret . "hardware present,fuzzy " if $conf eq 2;
+	    $ret = $ret . "hardware present " if $conf eq 3;
 	  }
 	return $ret;
 }
