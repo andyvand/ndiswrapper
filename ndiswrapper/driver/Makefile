@@ -1,5 +1,7 @@
+#Comment out this line to disable debugging
+CFLAGS += -DDEBUG
+
 #CFLAGS += -DTEST_PM
-#CFLAGS += -DDEBUG
 
 KSRC  := /lib/modules/$(shell uname -r)/build
 
@@ -52,6 +54,7 @@ default:
 	$(MAKE) -C $(KSRC) SUBDIRS=$(SRC_DIR) modules
 
 clean:
-	rm -f $(MODULE).ko $(OBJS)
+	rm -f $(MODULE).ko $(MODULE).o $(OBJS) .$(MODULE).ko.cmd $(MODULE).mod.[oc] .*.o.cmd *~
 
 endif
+
