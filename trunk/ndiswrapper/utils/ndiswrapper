@@ -979,7 +979,7 @@ sub addReg
 			}
 
 			
-			if($gotParam and $param ne "BusType")
+			if($gotParam and $param ne "BusType" and $param ne "")
 			{
 				my $s = "$param|$val";
 				if($param_fixlist{"$s"})
