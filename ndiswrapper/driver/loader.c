@@ -413,8 +413,8 @@ static int load_sys_files(struct ndis_driver *driver,
 		pe_image->name[MAX_DRIVER_NAME_LEN-1] = 0;
 		memcpy(pe_image->name, load_driver->sys_files[i].name,
 		       MAX_DRIVER_NAME_LEN);
-		DBGTRACE1("image size: %lu bytes",
-			  (unsigned long)load_driver->sys_files[i].size);
+		DBGTRACE1("image size: %u bytes",
+			  load_driver->sys_files[i].size);
 
 #ifdef CONFIG_X86_64
 #ifdef PAGE_KERNEL_EXECUTABLE
@@ -899,9 +899,8 @@ static int wrapper_ioctl(struct inode *inode, struct file *file,
 	struct load_devices devices;
 	int res;
 
-	TRACEENTER1("cmd: %u (%lu, %lu)", cmd,
-		    (unsigned long)NDIS_REGISTER_DEVICES, 
-		    (unsigned long)NDIS_LOAD_DRIVER);
+	TRACEENTER1("cmd: %u (%u, %u)", cmd, NDIS_REGISTER_DEVICES, 
+		    NDIS_LOAD_DRIVER);
 
 	res = 0;
 	switch (cmd) {

@@ -235,7 +235,7 @@ void misc_funcs_exit(void)
 void *wrap_kmalloc(size_t size, int flags)
 {
 	struct wrap_alloc *alloc;
-	TRACEENTER4("size = %lu, flags = %d", (unsigned long)size, flags);
+	TRACEENTER4("size = %u, flags = %d", size, flags);
 
 	if ((flags & GFP_ATOMIC) || irqs_disabled())
 		alloc = kmalloc(sizeof(*alloc), GFP_ATOMIC);

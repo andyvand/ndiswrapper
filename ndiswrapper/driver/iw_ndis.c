@@ -884,7 +884,6 @@ static char *ndis_translate_scan(struct net_device *dev, char *event,
 	iwe.u.data.length = strlen(buf);
 	event = iwe_stream_add_point(event, end_buf, &iwe, buf);
 	
-	DBGTRACE2("%s: adding atim", __FUNCTION__);
 	memset(&iwe, 0, sizeof(iwe));
 	iwe.cmd = IWEVCUSTOM;
 	sprintf(buf, "atim=%u", item->config.atim_window);
@@ -912,8 +911,7 @@ static char *ndis_translate_scan(struct net_device *dev, char *event,
 				for (i = 0; i < ielen; i++)
 					p += sprintf(p, "%02x", iep[i]);
 				
-				DBGTRACE2("adding wpa_ie :%lu",
-					  (unsigned long)strlen(buf));
+				DBGTRACE2("adding wpa_ie :%u", strlen(buf));
 
 				memset(&iwe, 0, sizeof(iwe));
 				iwe.cmd = IWEVCUSTOM;
@@ -925,8 +923,7 @@ static char *ndis_translate_scan(struct net_device *dev, char *event,
 				for (i = 0; i < ielen; i++)
 					p += sprintf(p, "%02x", iep[i]);
 
-				DBGTRACE2("adding rsn_ie :%lu\n",
-					  (unsigned long)strlen(buf));
+				DBGTRACE2("adding rsn_ie :%u\n", strlen(buf));
 				memset(&iwe, 0, sizeof(iwe));
 				iwe.cmd = IWEVCUSTOM;
 				iwe.u.data.length = strlen(buf);
@@ -996,7 +993,7 @@ static int iw_get_scan(struct net_device *dev, struct iw_request_info *info,
 		kfree(bssid_list);
 		list_len = needed;
 		bssid_list = kmalloc(list_len, GFP_KERNEL);
-	
+
 		res = miniport_query_info(handle, OID_802_11_BSSID_LIST,
 					  bssid_list, list_len);
 	}
@@ -1302,8 +1299,8 @@ static int wpa_set_key(struct net_device *dev, struct iw_request_info *info,
 	int i, size;
 	NDIS_STATUS res;
 	mac_address addr;
-	__u8 seq[IW_ENCODING_TOKEN_MAX];
-	__u8 key[IW_ENCODING_TOKEN_MAX];
+	u8 seq[IW_ENCODING_TOKEN_MAX];
+	u8 key[IW_ENCODING_TOKEN_MAX];
 
 	if (wrqu->data.length)
 		size = wrqu->data.length;

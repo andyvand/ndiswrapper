@@ -338,7 +338,7 @@ void hangcheck_add(struct ndis_handle *handle)
 	}
 
 	init_timer(&handle->hangcheck_timer);
-	handle->hangcheck_timer.data = (unsigned long) handle;
+	handle->hangcheck_timer.data = (unsigned long)handle;
 	handle->hangcheck_timer.function = &hangcheck_proc;
 
 	spin_lock(&handle->timers_lock);
@@ -373,7 +373,7 @@ static void stats_proc(unsigned long data)
 static void stats_timer_add(struct ndis_handle *handle)
 {
 	init_timer(&handle->stats_timer);
-	handle->stats_timer.data = (unsigned long) handle;
+	handle->stats_timer.data = (unsigned long)handle;
 	handle->stats_timer.function = &stats_proc;
 	handle->stats_timer.expires = jiffies + 2 * HZ;
 	add_timer(&handle->stats_timer);
@@ -1278,8 +1278,7 @@ static void check_capa(struct ndis_handle *handle)
 	res = miniport_set_info(handle, OID_802_11_ADD_KEY, &ndis_key,
 				ndis_key.struct_size);
 
-	DBGTRACE2("add key returns %08X, size = %ld\n",
-		  res, (unsigned long)sizeof(ndis_key));
+	DBGTRACE2("add key returns %08X, size = %u\n", res, sizeof(ndis_key));
 	if (res != NDIS_STATUS_INVALID_DATA)
 		TRACEEXIT1(return);
 	res = miniport_query_info(handle, OID_802_11_ASSOCIATION_INFORMATION,

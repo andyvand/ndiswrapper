@@ -32,31 +32,31 @@ STDCALL void WRAP_EXPORT(WRITE_PORT_ULONG)
 STDCALL ULONG WRAP_EXPORT(READ_PORT_ULONG)
 	(ULONG_PTR port)
 {
-	return inl((unsigned long)port);
+	return inl(port);
 }
 
 STDCALL void WRAP_EXPORT(WRITE_PORT_USHORT)
 	(ULONG_PTR port, USHORT value)
 {
-	outw(value, (unsigned long)port);
+	outw(value, port);
 }
 
 STDCALL USHORT WRAP_EXPORT(READ_PORT_USHORT)
 	(ULONG_PTR port)
 {
-	return inw((unsigned long)port);
+	return inw(port);
 }
 
 STDCALL void WRAP_EXPORT(WRITE_PORT_UCHAR)
 	(ULONG_PTR port, UCHAR value)
 {
-	outb(value, (unsigned long)port);
+	outb(value, port);
 }
 
 STDCALL UCHAR WRAP_EXPORT(READ_PORT_UCHAR)
 	(ULONG_PTR port)
 {
-	return inb((unsigned long)port);
+	return inb(port);
 }
 
 STDCALL void WRAP_EXPORT(WRITE_PORT_BUFFER_USHORT)
@@ -65,7 +65,7 @@ STDCALL void WRAP_EXPORT(WRITE_PORT_BUFFER_USHORT)
 	ULONG i;
 
 	for (i = 0 ; i < count ; i++)
-		outw(buf[i], (unsigned long)port);
+		outw(buf[i], port);
 }
 
 STDCALL void WRAP_EXPORT(READ_PORT_BUFFER_USHORT)
@@ -74,7 +74,7 @@ STDCALL void WRAP_EXPORT(READ_PORT_BUFFER_USHORT)
 	ULONG i;
 
 	for (i = 0 ; i < count; i++)
-		buf[i] = inw((unsigned long)port);
+		buf[i] = inw(port);
 }
 
 STDCALL void WRAP_EXPORT(KeStallExecutionProcessor)
