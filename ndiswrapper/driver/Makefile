@@ -1,5 +1,5 @@
 #Comment out this line to disable debugging
-CFLAGS += -DDEBUG
+#CFLAGS += -DDEBUG
 
 #CFLAGS += -DTEST_PM
 
