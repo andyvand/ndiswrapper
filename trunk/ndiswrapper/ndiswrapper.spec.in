@@ -16,12 +16,13 @@ around" NDIS (Windows network driver API) drivers.  This rpm contains
 just the kernel module and loader.  You will also need the
 ndiswrapper-manufacturer-chipset rpm for your specific chipset.
 
-%package kernel
+%package kernel-%(uname -r)
 Summary: Ndiswrapper kernel module
 Group: System Environment/Base
-Requires: kernel >= %(uname -r | sed s/-.*//), ndiswrapper = DRV_VERSION
+Requires: kernel = %(uname -r), ndiswrapper = DRV_VERSION
 
-%description kernel
+%description kernel-%(uname -r)
+Kernel module for ndiswrapper.
 
 
 %prep
@@ -47,14 +48,14 @@ rm -rf $RPM_BUILD_ROOT
 /usr/sbin/ndiswrapper
 %doc README AUTHORS ChangeLog INSTALL
 
-%files kernel
+%files kernel-%(uname -r)
 /lib/modules/%(uname -r)/misc/ndiswrapper.*
 
-%post kernel
+%post kernel-%(uname -r)
 /sbin/depmod -a
 
 
-%postun kernel
+%postun kernel-%(uname -r)
 /sbin/depmod -a
 
 
