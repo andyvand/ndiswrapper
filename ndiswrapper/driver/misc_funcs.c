@@ -89,7 +89,7 @@ void wrapper_kfree_all(void)
 	
 
 /** Functions from CIPE **/
-void DbgPrint(char *str, int x, int y, int z)
+NOREGPARM void DbgPrint(char *str, int x, int y, int z)
 {
 	DBGTRACE(str, x, y, z);
 }
@@ -159,64 +159,64 @@ STDCALL void READ_PORT_BUFFER_USHORT (unsigned int port, unsigned short *buf,
 }
 
 /** Functions from ntoskrnl **/
-int my_sprintf(char *str, const char *format, int p1, int p2, int p3, int p4, int p5, int p6)
+NOREGPARM int my_sprintf(char *str, const char *format, int p1, int p2, int p3, int p4, int p5, int p6)
 {
 	int res;
 	res = sprintf(str, format, p1, p2, p3, p4, p5, p6);
 	return res;
 }
 
-int my_vsprintf (char *str, const char *format, va_list ap)
+NOREGPARM int my_vsprintf (char *str, const char *format, va_list ap)
 {
 	return vsprintf(str, format, ap);
 }
 
-char *my_strncpy(char *dst, char *src, int n)
+NOREGPARM char *my_strncpy(char *dst, char *src, int n)
 {
 	return strncpy(dst, src, n);
 }
 
-size_t my_strlen(const char *s)
+NOREGPARM size_t my_strlen(const char *s)
 {
        return strlen(s);
 }
 
-int my_strncmp(const char *s1, const char *s2, size_t n)
+NOREGPARM int my_strncmp(const char *s1, const char *s2, size_t n)
 {
 	return strncmp(s1, s2, n);
 }
 
-int my_strcmp(const char *s1, const char *s2)
+NOREGPARM int my_strcmp(const char *s1, const char *s2)
 {
 	return strcmp(s1, s2);
 }
 
-int my_tolower(int c)
+NOREGPARM int my_tolower(int c)
 {
 	return tolower(c);
 }
 
-void *my_memcpy(void * to, const void * from, size_t n)
+NOREGPARM void *my_memcpy(void * to, const void * from, size_t n)
 {
 	return memcpy(to, from, n);
 }
 
-void *my_memset(void * s, char c,size_t count)
+NOREGPARM void *my_memset(void * s, char c,size_t count)
 {
 	return memset(s, c, count);
 }
 
-void *my_memmove(void *to, void *from, size_t count)
+NOREGPARM void *my_memmove(void *to, void *from, size_t count)
 {
 	return memmove(to, from, count);
 }
  
-void my_srand(unsigned int seed)
+NOREGPARM void my_srand(unsigned int seed)
 {
 	net_srandom(seed);
 }
 
-int my_atoi(const char *ptr)
+NOREGPARM int my_atoi(const char *ptr)
 {
 	int i = simple_strtol(ptr, NULL, 10);
 	return i;
