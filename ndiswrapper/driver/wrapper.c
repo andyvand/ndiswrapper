@@ -91,7 +91,6 @@ out:
 
 /*
  *
- *
  * Called via function pointer if query returns NDIS_STATUS_PENDING
  */
 STDCALL void NdisMQueryInformationComplete(struct ndis_handle *handle, unsigned int status)
@@ -101,6 +100,15 @@ STDCALL void NdisMQueryInformationComplete(struct ndis_handle *handle, unsigned 
 	handle->query_wait_done = 1;
 }
 
+
+/*
+ *
+ * Called via function pointer if setinformation returns NDIS_STATUS_PENDING
+ */
+STDCALL void NdisMSetInformationComplete(struct ndis_handle *handle, unsigned int status)
+{
+	DBGTRACE("%s: %08x\n", __FUNCTION__, status);
+}
 
 
 /*
@@ -979,14 +987,15 @@ static int __devinit ndis_init_one(struct pci_dev *pdev,
 	memset(&handle->fill1, 0x12, sizeof(handle->fill1));
 	memset(&handle->fill2, 0x13, sizeof(handle->fill2));
 	memset(&handle->fill3, 0x14, sizeof(handle->fill3));
-	memset(&handle->fill4, 0x15, sizeof(handle->fill3));
+	memset(&handle->fill4, 0x15, sizeof(handle->fill4));
 
 	handle->indicate_receive_packet = &NdisMIndicateReceivePacket;
 	handle->send_complete = &NdisMSendComplete;
 	handle->indicate_status = &NdisIndicateStatus;	
 	handle->indicate_status_complete = &NdisIndicateStatusComplete;	
 	handle->query_complete = &NdisMQueryInformationComplete;	
-
+	handle->set_complete = &NdisMSetInformationComplete;
+	
 	handle->pci_dev = pdev;
 	
 	res = pci_enable_device(pdev);
