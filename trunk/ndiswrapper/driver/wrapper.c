@@ -765,10 +765,12 @@ static int start_xmit(struct sk_buff *skb, struct net_device *dev)
 void sendpacket_done(struct ndis_handle *handle, struct ndis_packet *packet)
 {
 	TRACEENTER3();
+	spin_lock_bh(&handle->send_packet_lock);
 	handle->stats.tx_bytes += packet->len;
 	handle->stats.tx_packets++;
 
 	free_buffer(handle, packet);
+	spin_unlock_bh(&handle->send_packet_lock);
 }
 
 static int ndis_suspend(struct pci_dev *pdev, u32 state)
@@ -846,7 +848,8 @@ static int ndis_resume(struct pci_dev *pdev)
 	
 	/* do we need this? */
 //		netif_wake_queue(dev);
-	
+	set_bit(SET_ESSID, &handle->wrapper_work);
+	schedule_work(&handle->wrapper_worker);
 	DBGTRACE2("%s: device resumed!", dev->name);
 	return 0;
 }
@@ -854,8 +857,17 @@ static int ndis_resume(struct pci_dev *pdev)
 static void wrapper_worker_proc(void *param)
 {
 	struct ndis_handle *handle = (struct ndis_handle *)param;
+	union iwreq_data wrqu;
 	
-	printk("%s: Entry (%lu)\n", __FUNCTION__, handle->wrapper_work);
+	DBGTRACE("%lu\n", handle->wrapper_work);
+
+	if (test_and_clear_bit(SET_OP_MODE, &handle->wrapper_work))
+	{
+		memset(&wrqu, 0, sizeof(wrqu));
+		wrqu.mode = handle->op_mode;
+		ndis_set_mode(handle->net_dev, NULL, &wrqu, NULL);
+	}
+
 	if (test_and_clear_bit(WRAPPER_LINK_STATUS, &handle->wrapper_work))
 	{
 		unsigned char *assoc_info;
@@ -868,9 +880,6 @@ static void wrapper_worker_proc(void *param)
 		unsigned int res, written, needed;
 		char *dbg_buf;
 		
-		if (netif_carrier_ok(handle->net_dev))
-			printk("%s: netif_carrier is ok\n", __FUNCTION__);
-
 		assoc_info = kmalloc(sizeof(*ndis_assoc_info) + 512,
 				     GFP_KERNEL);
 		if (!assoc_info)
@@ -895,7 +904,7 @@ static void wrapper_worker_proc(void *param)
 			kfree(assoc_info);
 			return;
 		}
-		printk(KERN_INFO "ndis_assoc_info: length = %lu, req_ies = %u, req_ie_length = %lu, offset_req_ies = %lu, resp_ies = %u, resp_ie_length = %lu, offset_resp_ies = %lu\n",
+		DBGTRACE("ndis_assoc_info: length = %lu, req_ies = %u, req_ie_length = %lu, offset_req_ies = %lu, resp_ies = %u, resp_ie_length = %lu, offset_resp_ies = %lu",
 		       ndis_assoc_info->length,
 		       ndis_assoc_info->req_ies,
 		       ndis_assoc_info->req_ie_length,
@@ -912,8 +921,8 @@ static void wrapper_worker_proc(void *param)
 			for (i = 0; i < written; i++)
 				dp += sprintf(dp,"%02x ", assoc_info[i]);
 			*dp = '\0';
-			printk(KERN_INFO "assoc_info (%d): %s\n",
-			       dp - dbg_buf, dbg_buf);
+			DBGTRACE("assoc_info (%d): %s",
+				 dp - dbg_buf, dbg_buf);
 			kfree(dbg_buf);
 		}
 		p = wpa_assoc_info;
@@ -922,7 +931,7 @@ static void wrapper_worker_proc(void *param)
 			ndis_assoc_info->offset_req_ies;
 		for (i = 0 ; i < 256 && i < ndis_assoc_info->req_ie_length ;
 		     i++)
-			if (i < 13 || i > 20)
+//			if (i < 13 || i > 20)
 				p += sprintf(p, "%02x", *(offset + i));
 			
 		p += sprintf(p, " RespIEs=");
@@ -936,8 +945,7 @@ static void wrapper_worker_proc(void *param)
 
 		memset(&wrqu, 0, sizeof(wrqu));
 		wrqu.data.length = p - wpa_assoc_info;
-		printk(KERN_INFO "%s: adding %d bytes\n",
-		       __FUNCTION__, wrqu.data.length);
+		DBGTRACE("adding %d bytes", wrqu.data.length);
 		wireless_send_event(handle->net_dev, IWEVCUSTOM, &wrqu,
 				    wpa_assoc_info);
 		kfree(assoc_info);
@@ -945,6 +953,16 @@ static void wrapper_worker_proc(void *param)
 		ndis_get_ap_address(handle->net_dev, NULL, &wrqu, NULL);
 		wrqu.ap_addr.sa_family = ARPHRD_ETHER;
 		wireless_send_event(handle->net_dev, SIOCGIWAP, &wrqu, NULL);
+	}
+
+	if (test_and_clear_bit(SET_ESSID, &handle->wrapper_work))
+	{
+		memset(&wrqu, 0, sizeof(wrqu));
+		wrqu.essid.length = handle->essid.length + 1;
+		wrqu.essid.flags = handle->essid.flags;
+		wrqu.essid.pointer = handle->essid.name;
+		ndis_set_essid(handle->net_dev, NULL, &wrqu,
+			       handle->essid.name);
 	}
 }
 
@@ -997,27 +1015,26 @@ static void check_wpa(struct ndis_handle *handle)
 //	    handle->wep_mode == WEP_ENCR2_ENABLED)
 	if (handle->wep_mode != WEP_DISABLED)
 	{
-		printk("%s: checking key\n", __FUNCTION__);
 		ndis_key.key_len = 32;
 		ndis_key.key_index = 0xC0000001;
 		ndis_key.length = sizeof(ndis_key);
 		res = dosetinfo(handle, NDIS_OID_ADD_KEY, (char *)&ndis_key,
 				ndis_key.length, &written, &needed);
 
-		printk("%s: add key returns %08X, needed = %d, size = %d\n",
-			 __FUNCTION__, res, needed, sizeof(ndis_key));
+		DBGTRACE("add key returns %08X, needed = %d, size = %d\n",
+			 res, needed, sizeof(ndis_key));
 		if (res != NDIS_STATUS_INVALID_DATA)
 			return;
 		res = doquery(handle, NDIS_OID_ASSOC_INFO,
 			      (char *)&ndis_assoc_info,
 			      sizeof(ndis_assoc_info), &written, &needed);
-		printk("%s: assoc info returns %d\n", __FUNCTION__, res);
+		DBGTRACE("assoc info returns %d", res);
 		if (res)
 			return;
 		handle->wpa_capa = 1;
 	}
 
-	printk("%s: wpa is enabled? = %d\n",
+	DBGTRACE("%s: wpa is enabled? = %d\n",
 		 handle->net_dev->name, handle->wpa_capa);
 	return;
 }
@@ -1058,14 +1075,9 @@ static int setup_dev(struct net_device *dev)
 
 	memset(&wrqu, 0, sizeof(wrqu));
 
-	wrqu.mode = IW_MODE_INFRA;
-	if (ndis_set_mode(dev, NULL, &wrqu, NULL))
-		printk(KERN_ERR "%s: Unable to set managed mode\n", DRV_NAME);
-
-	wrqu.essid.flags = 0;
-	wrqu.essid.length = 1;
-	if (ndis_set_essid(dev, NULL, &wrqu, NULL))
-		printk(KERN_ERR "%s: Unable to set empty essid\n", DRV_NAME);
+	set_bit(SET_OP_MODE, &handle->wrapper_work);
+	set_bit(SET_ESSID, &handle->wrapper_work);
+	schedule_work(&handle->wrapper_worker);
 
 	res = query_int(handle, OID_802_3_MAXIMUM_LIST_SIZE, &i);
 	if(res == NDIS_STATUS_SUCCESS)
@@ -1209,6 +1221,8 @@ static int ndis_init_one(struct pci_dev *pdev,
 
 	memset(&handle->essid, 0, sizeof(handle->essid));
 	memset(&handle->wep_info, 0, sizeof(handle->wep_info));
+
+	handle->op_mode = IW_MODE_INFRA;
 	
 	INIT_WORK(&handle->wrapper_worker, wrapper_worker_proc, handle);
 

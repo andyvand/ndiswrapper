@@ -417,6 +417,8 @@ struct ndis_assoc_info
 enum wrapper_work
 {
 	WRAPPER_LINK_STATUS,
+	SET_OP_MODE,
+	SET_ESSID,
 };
 
 enum op_mode
