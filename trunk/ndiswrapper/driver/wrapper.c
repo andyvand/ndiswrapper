@@ -42,12 +42,6 @@
 #error You must run make from the toplevel directory
 #endif
 
-/* Define this if you are developing and ndis_init_one crashes.
-   When using the old PCI-API a reboot is not needed when this
-   function crashes. A simple rmmod -f will do the trick and
-   you can try again.
-*/
-
 static char *if_name = "wlan%d";
 int proc_uid, proc_gid;
 static int hangcheck_interval;
@@ -220,7 +214,7 @@ int miniport_query_int(struct ndis_handle *handle, int oid, int *data)
 {
 	unsigned int res;
 
-	res = miniport_query_info(handle, oid, (char*)data, sizeof(int));
+	res = miniport_query_info(handle, oid, (char *)data, sizeof(int));
 	if (!res)
 		return 0;
 	*data = 0;
@@ -674,7 +668,7 @@ static int start_xmit(struct sk_buff *skb, struct net_device *dev)
 	return 0;
 }
 
-int ndis_suspend_pci(struct pci_dev *pdev, u32 state)
+int ndiswrapper_suspend_pci(struct pci_dev *pdev, u32 state)
 {
 	struct net_device *dev;
 	struct ndis_handle *handle;
@@ -737,7 +731,7 @@ int ndis_suspend_pci(struct pci_dev *pdev, u32 state)
 	return 0;
 }
 
-int ndis_resume_pci(struct pci_dev *pdev)
+int ndiswrapper_resume_pci(struct pci_dev *pdev)
 {
 	struct net_device *dev;
 	struct ndis_handle *handle;
@@ -765,7 +759,7 @@ int ndis_resume_pci(struct pci_dev *pdev)
 	return 0;
 }
 
-void ndis_remove_one(struct ndis_handle *handle)
+void ndiswrapper_remove_one_dev(struct ndis_handle *handle)
 {
 	struct miniport_char *miniport = &handle->driver->miniport_char;
 
@@ -796,10 +790,11 @@ void ndis_remove_one(struct ndis_handle *handle)
 
 	miniport_set_int(handle, NDIS_OID_DISASSOCIATE, 0);
 
+	DBGTRACE("");
 	if (handle->net_dev)
 		unregister_netdev(handle->net_dev);
 
-	printk(KERN_INFO "%s: device %s removed\n", DRV_NAME,
+	printk(KERN_INFO "%s: device %s removed\n", DRIVER_NAME,
 	       handle->net_dev->name);
 
 	DBGTRACE1("%d, %p",
@@ -816,13 +811,17 @@ void ndis_remove_one(struct ndis_handle *handle)
 	miniport_halt(handle);
 	DBGTRACE1("halt successful");
 
+	DBGTRACE("");
 	if (handle->multicast_list)
 		kfree(handle->multicast_list);
+	DBGTRACE("");
 	if (handle->net_dev)
 		free_netdev(handle->net_dev);
 
+	DBGTRACE("");
 	if (handle->phys_device_obj)
 		kfree(handle->phys_device_obj);
+	DBGTRACE("");
 }
 
 static void link_status_handler(struct ndis_handle *handle)
@@ -960,7 +959,7 @@ static void set_packet_filter(struct ndis_handle *handle)
 		   (handle->multicast_list == 0)) {
 		/* Too many to filter perfectly -- accept all multicasts. */
 
-		DBGTRACE1("Multicast list to long. Accepting all");
+		DBGTRACE1("Multicast list too long. Accepting all");
 		packet_filter |= NDIS_PACKET_TYPE_ALL_MULTICAST;
 	} else if (dev->mc_count > 0) {
 		packet_filter |= NDIS_PACKET_TYPE_MULTICAST;
@@ -1179,8 +1178,8 @@ int ndis_reinit(struct ndis_handle *handle)
 	int i = test_bit(ATTR_HALT_ON_SUSPEND, &handle->attributes);
 	set_bit(ATTR_HALT_ON_SUSPEND, &handle->attributes);
 	if (handle->device->bustype == NDIS_PCI_BUS) {
-		ndis_suspend_pci(handle->dev.pci, 3);
-		ndis_resume_pci(handle->dev.pci);
+		ndiswrapper_suspend_pci(handle->dev.pci, 3);
+		ndiswrapper_resume_pci(handle->dev.pci);
 	}
 
 	if (!i)
@@ -1246,7 +1245,7 @@ int setup_dev(struct net_device *dev)
 	strncpy(dev->name, if_name, IFNAMSIZ-1);
 	dev->name[IFNAMSIZ-1] = '\0';
 
-	DBGTRACE1("%s: Querying for mac", DRV_NAME);
+	DBGTRACE1("%s: Querying for mac", DRIVER_NAME);
 	res = miniport_query_info(handle, OID_802_3_CURRENT_ADDRESS,
 				  &mac[0], sizeof(mac));
 	DBGTRACE1("mac:" MACSTR, MAC2STR(mac));
@@ -1324,7 +1323,7 @@ int setup_dev(struct net_device *dev)
 
 	netif_stop_queue(dev);
 	printk(KERN_INFO "%s: %s ethernet device " MACSTR " using driver %s\n",
-	       dev->name, DRV_NAME, MAC2STR(dev->dev_addr),
+	       dev->name, DRIVER_NAME, MAC2STR(dev->dev_addr),
 	       handle->driver->name);
 
 	check_capa(handle);
@@ -1448,16 +1447,18 @@ static void module_cleanup(void)
 
 static int __init wrapper_init(void)
 {
+	char *argv[] = {"loadndisdriver", 
 #if defined DEBUG && DEBUG >= 1
-	char *argv[] = {"loadndisdriver", "1", NDISWRAPPER_VERSION, "-a", 0};
+			"1"
 #else
-	char *argv[] = {"loadndisdriver", "0", NDISWRAPPER_VERSION, "-a", 0};
+			"0"
 #endif
+			, NDISWRAPPER_VERSION, "-a", 0};
 	char *env[] = {0};
 	int err;
 
 	printk(KERN_INFO "%s version %s%s loaded (preempt=%s,smp=%s)\n",
-	       DRV_NAME, NDISWRAPPER_VERSION, EXTRA_VERSION,
+	       DRIVER_NAME, NDISWRAPPER_VERSION, EXTRA_VERSION,
 #if defined CONFIG_PREEMPT
 	       "yes",
 #else
@@ -1482,12 +1483,11 @@ static int __init wrapper_init(void)
 	wrap_spin_lock_init(&dispatch_event_lock);
 	ndiswrapper_procfs_init();
 	DBGTRACE1("%s", "calling loadndisdriver");
+	err = call_usermodehelper("/sbin/loadndisdriver", argv, env
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
-	err = call_usermodehelper("/sbin/loadndisdriver", argv, env, 1);
-#else
-	err = call_usermodehelper("/sbin/loadndisdriver", argv, env);
+				  , 1
 #endif
-
+		);
 	if (err) {
 		ERROR("loadndiswrapper failed (%d); check system log "
 		      "for messages from 'loadndisdriver'", err);

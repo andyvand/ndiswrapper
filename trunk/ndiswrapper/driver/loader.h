@@ -33,24 +33,33 @@ struct load_device {
 	int bustype;
 	int vendor;
 	int device;
-	int pci_subvendor;
-	int pci_subdevice;
-	int fuzzy;
-	unsigned int nr_settings;
-	struct load_device_setting settings[MAX_NDIS_SETTINGS];
+	int subvendor;
+	int subdevice;
+	char driver_name[MAX_DRIVER_NAME_LEN];
+};
+
+struct load_devices {
+	int count;
+	struct load_device *devices;
 };
 
 struct load_driver {
 	char name[MAX_DRIVER_NAME_LEN];
+	int bustype;
+	int vendor;
+	int device;
+	int subvendor;
+	int subdevice;
 	unsigned int nr_sys_files;
 	struct load_driver_file sys_files[MAX_PE_IMAGES];
-	unsigned int nr_devices;
-	struct load_device devices[MAX_NDIS_DEVICES];
+	unsigned int nr_settings;
+	struct load_device_setting settings[MAX_NDIS_SETTINGS];
 	unsigned int nr_bin_files;
 	struct load_driver_file bin_files[MAX_NDIS_BIN_FILES];
 };
 
-#define NDIS_ADD_DRIVER     _IOW('N', 0, struct load_driver *)
+#define NDIS_REGISTER_DEVICES	_IOW('N', 0, struct load_devices *)
+#define NDIS_LOAD_DRIVER	_IOW('N', 1, struct load_driver *)
 
 int loader_init(void);
 void loader_exit(void);

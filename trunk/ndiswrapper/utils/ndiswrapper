@@ -21,10 +21,11 @@ my @sections;
 my %strings;
 my %version;
 my $driver_name;
-my $confdir = "/etc/ndiswrapper";
+my $confdir = "/etc/ndiswrapper.demand";
 my $hotplug_conf = "modules.ndiswrapper";
 my $instdir;
 my %fuzzlist;
+my $bustype;
 
 #Blacklist of files not to install.
 my @copy_blacklist;
@@ -32,8 +33,7 @@ my @copy_blacklist;
 #Fixup list for parameters. 
 my %param_fixlist = ("EnableRadio|0" => "EnableRadio|1",
 		     "IBSSGMode|0" => "IBSSGMode|2",
-                     "PrivacyMode|0" => "PrivacyMode|2",
-		     "RadioState|0" => "RadioState|1"); 
+                     "PrivacyMode|0" => "PrivacyMode|2");
 
 if(@ARGV < 1)
 {
@@ -520,7 +520,7 @@ sub processPCIFuzz
 		my $dev = $devs[$i];
 		if($dev ne $fuzzlist{$dev})
 		{
-			`ln -s $confdir/$driver_name/$fuzzlist{$dev}.conf $confdir/$driver_name/$dev.conf`;
+			`ln -s $confdir/$driver_name/$fuzzlist{$dev}.$bustype.conf $confdir/$driver_name/$dev.$bustype.conf`;
 		}
 	}
 }
@@ -669,10 +669,10 @@ sub parseVendor
 			(my $section, my $id) = split(",", $val);
 			$section = trim($section);
 			$id = trim($id);
-			(my $bustype, my $vendor, my $device, my $subvendor, my $subdevice) = parseID($id);
+			($bustype, my $vendor, my $device, my $subvendor, my $subdevice) = parseID($id);
 			if($vendor)
 			{
-				parseDevice($flavour, $section, $bustype, $vendor, $device, $subvendor, $subdevice);
+				parseDevice($flavour, $section, $vendor, $device, $subvendor, $subdevice);
 			}
 		}
 	}
@@ -686,7 +686,6 @@ sub parseDevice
 {
 	my $flavour = shift;
 	my $device_sect = shift;
-	my $bustype = shift;
 	my $device = shift;
 	my $vendor = shift;
 	my $subvendor = shift;
@@ -741,7 +740,7 @@ sub parseDevice
 		$filename .= ":$subvendor:$subdevice"
 	}
 
-	$filename .= ".conf";	
+	$filename .= ".$bustype.conf";
 	
 	if($bustype == 5)
 	{

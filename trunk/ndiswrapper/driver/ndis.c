@@ -27,7 +27,7 @@
 #include "iw_ndis.h"
 #include "wrapper.h"
 
-extern struct list_head ndis_driver_list;
+extern struct list_head ndis_drivers;
 
 struct list_head handle_ctx_list;
 struct wrap_spinlock atomic_lock;
@@ -165,7 +165,7 @@ STDCALL static NDIS_STATUS WRAP_EXPORT(NdisMRegisterMiniport)
 
 	DBGTRACE1("Version %d.%d", miniport_char->majorVersion,
 		 miniport_char->minorVersion);
-	DBGTRACE1("Len: %08x:%lu", char_len, sizeof(struct miniport_char));
+	DBGTRACE1("Len: %08x:%u", char_len, (u32)sizeof(struct miniport_char));
 	memcpy(&ndis_driver->miniport_char, miniport_char,
 	       sizeof(struct miniport_char));
 
@@ -339,11 +339,11 @@ STDCALL static void WRAP_EXPORT(NdisOpenFile)
 	DBGTRACE2("Filename: %s", ansi.buf);
 
 	/* Loop through all drivers and all files to find the requested file */
-	list_for_each_safe(curr, tmp, &ndis_driver_list) {
+	list_for_each_safe(curr, tmp, &ndis_drivers) {
 		int i;
 		struct ndis_driver *driver = (struct ndis_driver *) curr;
 
-		for (i = 0; i < driver->nr_bin_files; i++) {
+		for (i = 0; i < driver->num_bin_files; i++) {
 			int n;
 			file = driver->bin_files[i];
 			DBGTRACE2("considering %s", file->name);
@@ -803,7 +803,7 @@ STDCALL static void WRAP_EXPORT(NdisMQueryAdapterResources)
 	entry->u.interrupt.affinity = -1;
 
 	resource_list->length = len;
-	*size = (char*) (&resource_list->list[len]) - (char*)resource_list;
+	*size = (char *) (&resource_list->list[len]) - (char *)resource_list;
 	*status = NDIS_STATUS_SUCCESS;
 
 
@@ -1173,12 +1173,12 @@ STDCALL static void WRAP_EXPORT(NdisAllocatePacket)
 	{
 		int i = 0;
 		/* Poision extra packet info */
-		int *x = (int*) &packet->ext1;
+		int *x = (int *)&packet->ext1;
 		for (i = 0; i <= 12; i++)
 			x[i] = i;
 
 		packet->mediaspecific_size = 0x100;
-		packet->mediaspecific = (void*) 0x0001f00;
+		packet->mediaspecific = (void *)0x0001f00;
 	}
 #endif
 
@@ -1302,7 +1302,7 @@ STDCALL static void WRAP_EXPORT(NdisReadNetworkAddress)
 			for (i = 0; i < ETH_ALEN; i++)
 				handle->mac[i] = int_mac[i];
 			printk(KERN_INFO "%s: %s ethernet device " MACSTR "\n",
-			       handle->net_dev->name, DRV_NAME,
+			       handle->net_dev->name, DRIVER_NAME,
 			       MAC2STR(handle->mac));
 			*len = ETH_ALEN;
 			*addr = handle->mac;
@@ -1332,7 +1332,7 @@ STDCALL static void WRAP_EXPORT(NdisMDeregisterAdapterShutdownHandler)
 /* bottom half of the irq handler */
 void ndis_irq_bh(void *data)
 {
-	struct ndis_irq *ndis_irq = (struct ndis_irq *) data;
+	struct ndis_irq *ndis_irq = (struct ndis_irq *)data;
 	struct ndis_handle *handle = ndis_irq->handle;
 	struct miniport_char *miniport = &handle->driver->miniport_char;
 
@@ -1413,11 +1413,11 @@ STDCALL static NDIS_STATUS WRAP_EXPORT(NdisMRegisterInterrupt)
 	if (request_irq(vector, ndis_irq_th, shared? SA_SHIRQ : 0,
 			"ndiswrapper", ndis_irq)) {
 		printk(KERN_WARNING "%s: request for irq %d failed\n",
-		       DRV_NAME, vector);
+		       DRIVER_NAME, vector);
 		TRACEEXIT1(return NDIS_STATUS_RESOURCES);
 	}
 	ndis_irq->enabled = 1;
-	printk(KERN_INFO "%s: using irq %d\n", DRV_NAME, vector);
+	printk(KERN_INFO "%s: using irq %d\n", DRIVER_NAME, vector);
 	TRACEEXIT1(return NDIS_STATUS_SUCCESS);
 }
 
@@ -1475,7 +1475,7 @@ STDCALL static BOOLEAN WRAP_EXPORT(NdisMSynchronizeWithInterrupt)
 	TRACEEXIT5(return ret);
 }
 
-/* called via fnuction pointer */
+/* called via function pointer */
 STDCALL void
 NdisMIndicateStatus(struct ndis_handle *handle,
 		    NDIS_STATUS status, void *buf, UINT len)

@@ -33,14 +33,10 @@ void miniport_halt(struct ndis_handle *handle);
 void hangcheck_add(struct ndis_handle *handle);
 void hangcheck_del(struct ndis_handle *handle);
 void sendpacket_done(struct ndis_handle *handle, struct ndis_packet *packet);
-int ndis_suspend_pci(struct pci_dev *pdev, u32 state);
-int ndis_resume_pci(struct pci_dev *pdev);
+int ndiswrapper_suspend_pci(struct pci_dev *pdev, u32 state);
+int ndiswrapper_resume_pci(struct pci_dev *pdev);
 
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0) && defined(CONFIG_USB)
-int ndis_suspend_usb(struct usb_interface *intf, u32 state);
-int ndis_resume_usb(struct usb_interface *intf);
-#endif
-void ndis_remove_one(struct ndis_handle *handle);
+void ndiswrapper_remove_one_dev(struct ndis_handle *handle);
 int ndis_reinit(struct ndis_handle *handle);
 int setup_dev(struct net_device *dev);
 

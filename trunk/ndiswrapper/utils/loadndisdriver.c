@@ -145,8 +145,9 @@ static int parse_setting_line(const char *setting_line, char *setting_name,
 	return 1;
 }
 
-/* read .conf file and store info in device */
-static int read_conf_file(char *conf_file_name, struct load_device *device)
+/* read .conf file and store info in driver */
+static int read_conf_file(char *conf_file_name, struct load_driver *driver,
+			  int vendor, int device, int subvendor, int subdevice)
 {
 	char setting_line[SETTING_LEN];
 	struct stat statbuf;
@@ -155,20 +156,11 @@ static int read_conf_file(char *conf_file_name, struct load_device *device)
 	char setting_value[MAX_NDIS_SETTING_VALUE_LEN];
 	int ret, nr_settings;
 	char *file_name, *s;
+	int v, d, sv, sd, bustype;
 
 	if (lstat(conf_file_name, &statbuf)) {
 		error("unable to open config file: %s", strerror(errno));
-		goto err;
-	}
-
-	if (S_ISLNK(statbuf.st_mode))
-		device->fuzzy = 1;
-	else
-		device->fuzzy = 0;
-
-	if ((config = fopen(conf_file_name, "r")) == NULL) {
-		error("unable to open config file: %s", strerror(errno));
-		goto err;
+		return -EINVAL;
 	}
 
 	file_name = strdup(conf_file_name);
@@ -176,22 +168,38 @@ static int read_conf_file(char *conf_file_name, struct load_device *device)
 	/* remove ".conf" */
 	s[strlen(s)-5] = 0;
 
-	if (strlen(s) == 9) {
-		sscanf(s, "%04x:%04x", &device->vendor, &device->device);
-		device->pci_subdevice = -1;
-		device->pci_subvendor = -1;
-	} else if (strlen(s) == 19) {
-		sscanf(s, "%04x:%04x:%04x:%04x", &device->vendor,
-		       &device->device, &device->pci_subvendor,
-		       &device->pci_subdevice);
+	sv = sd = DEV_ANY_ID;
+	if (strlen(s) == 11) {
+		sscanf(s, "%04x:%04x.%1d", &v, &d, &bustype);
+	} else if (strlen(s) == 21) {
+		sscanf(s, "%04x:%04x:%04x:%04x.%1d",
+		       &v, &d, &sv, &sd, &bustype);
 	} else
-		goto err;
+		return -EINVAL;
 
 	free(file_name);
 
-	device->bustype = -1;
-	nr_settings = 0;
+	if (v != vendor || d != device || sv != subvendor || sd != subdevice)
+		return 0;
 
+	if (bustype != NDIS_PCI_BUS &&
+	    bustype != NDIS_USB_BUS) {
+		error("invalid bustype %d", bustype);
+		return -EINVAL;
+	}
+
+	nr_settings = 0;
+	driver->bustype = -1;
+	driver->nr_settings = 0;
+	driver->vendor = v;
+	driver->device = d;
+	driver->subvendor = sv;
+	driver->subdevice = sd;
+
+	if ((config = fopen(conf_file_name, "r")) == NULL) {
+		error("unable to open config file: %s", strerror(errno));
+		return -EINVAL;
+	}
 	while (fgets(setting_line, SETTING_LEN-1, config)) {
 		struct load_device_setting *setting;
 
@@ -201,17 +209,17 @@ static int read_conf_file(char *conf_file_name, struct load_device *device)
 		if (ret == 0)
 			continue;
 		if (ret < 0)
-			goto err;
+			return -EINVAL;
 
 		if (strcmp(setting_name, "BusType") == 0) {
-			device->bustype = strtol(setting_value, NULL, 10);
-			if (device->bustype != NDIS_PCI_BUS &&
-			    device->bustype != NDIS_USB_BUS) {
-				error("invalid bustype: %d", device->bustype);
-				goto err;
+			driver->bustype = strtol(setting_value, NULL, 10);
+			if (driver->bustype != bustype) {
+				error("invalid bustype: %d (%d)",
+				      driver->bustype, bustype);
+				return -EINVAL;
 			}
-		} 
-		setting = &device->settings[nr_settings];
+		}
+		setting = &driver->settings[nr_settings];
 		strncpy(setting->name, setting_name,
 			MAX_NDIS_SETTING_NAME_LEN);
 		strncpy(setting->value, setting_value,
@@ -220,34 +228,32 @@ static int read_conf_file(char *conf_file_name, struct load_device *device)
 		nr_settings++;
 		if (nr_settings >= MAX_NDIS_SETTINGS) {
 			error("too many settings");
-			goto err;
+			return -EINVAL;
 		}
 	}
 
 	fclose(config);
 
-	if (device->bustype == -1) {
+	if (driver->bustype == -1) {
 		error("coudn't find device type in settings");
-		goto err;
+		return -EINVAL;
 	}
 
-	device->nr_settings = nr_settings;
+	driver->nr_settings = nr_settings;
 	return 0;
-err:
-	device->nr_settings = 0;
-	return -EINVAL;
 }
 
 /*
  * open a windows driver and pass it to the kernel module.
  * returns 0: on success, -1 on error
  */
-static int load_driver(int ioctl_device, DIR *dir, char *driver_name)
+static int load_driver(int ioctl_device, DIR *dir, char *driver_name,
+		       int vendor, int device, int subvendor, int subdevice)
 {
 	int i;
 	struct dirent *dirent;
 	struct load_driver *driver;
-	int nr_sys_files, nr_devices, nr_bin_files;
+	int nr_sys_files, nr_bin_files;
 
 	if (!dir || !driver_name) {
 		error("invalid driver");
@@ -261,8 +267,6 @@ static int load_driver(int ioctl_device, DIR *dir, char *driver_name)
 	memset(driver, 0, sizeof(*driver));
 	strncpy(driver->name, driver_name, MAX_DRIVER_NAME_LEN);
 
-	nr_sys_files = 0;
-	nr_devices = 0;
 	nr_sys_files = 0;
 	nr_bin_files = 0;
 
@@ -289,13 +293,8 @@ static int load_driver(int ioctl_device, DIR *dir, char *driver_name)
 				nr_sys_files++;
 		} else if (len > 5 &&
 			   strcmp(&dirent->d_name[len-5], ".conf") == 0) {
-			if (read_conf_file(dirent->d_name,
-					   &driver->devices[nr_devices])) {
-				error("couldn't load .conf file %s",
-				      dirent->d_name);
-				goto err;
-			} else
-				nr_devices++;
+			read_conf_file(dirent->d_name, driver, vendor,
+				       device, subvendor, subdevice);
 		} else if (len > 4 &&
 			   strcmp(&dirent->d_name[len-4], ".bin") == 0) {
 			if (read_file(dirent->d_name,
@@ -313,11 +312,6 @@ static int load_driver(int ioctl_device, DIR *dir, char *driver_name)
 			      driver_name);
 			goto err;
 		}
-		if (nr_devices == MAX_NDIS_DEVICES) {
-			error("too many .conf files for driver %s",
-			      driver_name);
-			goto err;
-		}
 		if (nr_bin_files == MAX_NDIS_BIN_FILES) {
 			error("too many .bin files for driver %s",
 			      driver_name);
@@ -325,17 +319,24 @@ static int load_driver(int ioctl_device, DIR *dir, char *driver_name)
 		}
 	}
 
-	if (nr_sys_files == 0 || nr_devices == 0) {
+	if (nr_sys_files == 0) {
 		error("coudln't find valid drivers files for driver %s",
 		      driver_name);
 		goto err;
 	}
+	if (driver->nr_settings == 0) {
+		error("couldn't find required .conf file for "
+		      "%04X:%04X:%04X:%04X for driver %s", vendor, device,
+		      subvendor, subdevice, driver_name);
+		goto err;
+	}
 	driver->nr_sys_files = nr_sys_files;
-	driver->nr_devices = nr_devices;
 	driver->nr_bin_files = nr_bin_files;
 
-	if (ioctl(ioctl_device, NDIS_ADD_DRIVER, driver))
+#ifndef DEBUG
+	if (ioctl(ioctl_device, NDIS_LOAD_DRIVER, driver))
 		goto err;
+#endif
 
 	dbg("driver %s loaded", driver_name);
 	free(driver);
@@ -351,28 +352,130 @@ err:
 	return -1;
 }
 
+/* check if a device is already in devices */
+static int duplicate_device(struct load_device *device, int n,
+			    struct load_device devices[])
+{
+	int i;
+
+	for (i = 0; i < n; i++)
+		if (device->vendor == devices[i].vendor &&
+		    device->device == devices[i].device &&
+		    device->subvendor == devices[i].subvendor &&
+		    device->subdevice == devices[i].subdevice)
+			return 1;
+
+	return 0;
+}
+
+/* add all devices (based on conf files) for a given driver */
+static int add_driver_devices(DIR *dir, char *driver_name,
+			      int from, struct load_device devices[])
+{
+	struct dirent *dirent;
+	int n;
+
+	n = from;
+	if (!dir || !driver_name) {
+		error("invalid driver");
+		return n;
+	}
+
+	dbg("adding devices for driver %s", driver_name);
+	while ((dirent = readdir(dir))) {
+		int len;
+
+		if (strcmp(dirent->d_name, ".") == 0 ||
+		    strcmp(dirent->d_name, "..") == 0)
+			continue;
+
+		len = strlen(dirent->d_name);
+		if (len > 5 &&
+			   strcmp(&dirent->d_name[len-5], ".conf") == 0) {
+			struct stat statbuf;
+			char *s;
+			struct load_device *device;
+
+			if (lstat(dirent->d_name, &statbuf)) {
+				error("unable to open config file: %s",
+				      strerror(errno));
+				continue;
+			}
+
+			s = basename(dirent->d_name);
+			/* remove ".conf" */
+			s[strlen(s)-5] = 0;
+
+			device = &devices[n];
+			if (strlen(s) == 11 &&
+			    sscanf(s, "%04x:%04x.%1d", &device->vendor,
+				   &device->device, &device->bustype) == 3) {
+				device->subvendor = DEV_ANY_ID;
+				device->subdevice = DEV_ANY_ID;
+			} else if (strlen(s) == 21 &&
+				   sscanf(s, "%04x:%04x:%04x:%04x.%1d",
+					  &device->vendor, &device->device,
+					  &device->subvendor,
+					  &device->subdevice,
+					  &device->bustype) == 5) {
+				;
+			} else {
+				error("file %s is not valid - ignored",
+				      dirent->d_name);
+				continue;
+			}
+			if (device->bustype != NDIS_PCI_BUS &&
+			    device->bustype != NDIS_USB_BUS) {
+				error("incorrect bus type %d",
+				      device->bustype);
+				continue;
+			}
+			if (duplicate_device(device, n, devices))
+				dbg("device %04X:%04X is duplicate - ignored",
+				    device->vendor, device->device);
+			else {
+				strncpy(device->driver_name, driver_name,
+					sizeof(device->driver_name));
+				dbg("device %04X:%04X:%04X:%04X is added",
+				    device->vendor, device->device,
+				    device->subvendor, device->subdevice);
+				n++;
+			}
+		}
+	}
+	dbg("total number of devices added: %d", n);
+	return n;
+}
+
 /*
  * load all installed drivers
  * returns: number of drivers loadeed successfully
  */
-static int load_all_drivers(int ioctl_device)
+static int load_all_devices(int ioctl_device)
 {
 	struct stat statbuf;
 	struct dirent  *dirent;
 	DIR *dir, *driver;
-	int loaded;
+	int loaded, res;
+	struct load_device *devices;
+	struct load_devices load_devices;
 
 	if (chdir(confdir)) {
 		error("directory %s is not valid: %s",
 		      confdir, strerror(errno));
-		return 0;
+		return -EINVAL;
 	}
 	if ((dir = opendir(confdir)) == NULL) {
 		error("directory %s is not valid: %s",
 		      confdir, strerror(errno));
-		return 0;
+		return -EINVAL;
 	}
 
+	devices = malloc(sizeof(*devices) * MAX_DEVICES);
+	if (!devices) {
+		error("couldn't allocate memory");
+		return -EINVAL;
+	}
 	loaded = 0;
 	while((dirent = readdir(dir))) {
 		if (strcmp(dirent->d_name, ".") == 0 ||
@@ -393,13 +496,33 @@ static int load_all_drivers(int ioctl_device)
 			closedir(driver);
 			continue;
 		}
-		if (!load_driver(ioctl_device, driver, dirent->d_name))
-			loaded++;
+		loaded = add_driver_devices(driver, dirent->d_name,
+					    loaded, devices);
 		chdir("..");
 		closedir(driver);
 	}
 	closedir(dir);
-	return loaded;
+
+	if (loaded == 0) {
+		error("no valid NDIS drives found in %s; you may need to"
+		      " reinstall Windows drivers", confdir);
+		free(devices);
+		return -1;
+	}
+	load_devices.count = loaded;
+	load_devices.devices = devices;
+
+#ifndef DEBUG
+	res = ioctl(ioctl_device, NDIS_REGISTER_DEVICES, &load_devices);
+#endif
+	free(devices);
+
+	if (res) {
+		error("couldn't load devices");
+		return -1;
+	}
+
+	return 0;
 }
 
 /*
@@ -419,7 +542,7 @@ static int get_ioctl_device()
 		return -1;
 	minor_dev = -1;
 	while (fgets(line, sizeof(line), proc_misc)) {
-		if (strstr(line, "ndiswrapper")) {
+		if (strstr(line, DRIVER_NAME)) {
 			long i = strtol(line, 0, 10);
 			if (i != LONG_MAX && i != LONG_MIN) {
 				minor_dev = i;
@@ -453,16 +576,18 @@ static int get_ioctl_device()
 	return fd;
 }
 
+/* two ways to call this program:
+ *  first, to load all devices, use "-a" argument
+ *  later, load a specific driver and device (i.e., conf file) with
+ *  arguments driver name, vendor, device, subvendor, subdevice
+*/
 int main(int argc, char *argv[0])
 {
 	int i, ioctl_device, res;
 
 	openlog(PROG_NAME, LOG_PERROR | LOG_CONS, LOG_KERN | LOG_DEBUG);
 
-	info("version %s started", NDISWRAPPER_VERSION);
-
-	if (argc != 4) {
-		error("Usage: %s <debug> <version> [-a] [driver]", argv[0]);
+	if (argc < 4) {
 		res = 1;
 		goto out;
 	}
@@ -476,12 +601,14 @@ int main(int argc, char *argv[0])
 	} else
 		debug = i;
 
+#ifndef DEBUG
 	ioctl_device = get_ioctl_device();
 	if (ioctl_device == -1) {
 		error("unable to open ioctl device %s", ioctl_file);
 		res = 5;
 		goto out;
 	}
+#endif
 
 	if (strcmp(argv[2], NDISWRAPPER_VERSION)) {
 		error("version %s doesn't match driver version %s",
@@ -491,14 +618,28 @@ int main(int argc, char *argv[0])
 	}
 
 	if (strcmp(argv[3], "-a") == 0) {
-		if (load_all_drivers(ioctl_device) > 0)
-			res = 0;
-		else {
-			error("no useable drivers found, aborting");
+		if (load_all_devices(ioctl_device))
 			res = 7;
-		}
+		else
+			res = 0;
 	} else {
 		DIR *driver_dir;
+		int vendor, device, subvendor, subdevice;
+
+		/* load specific driver and conf file */
+		if (argc != 8) {
+			error("incorrect usage of %s (%d)", argv[0], argc);
+			res = 11;
+			goto out;
+		}
+
+		vendor = atoi(argv[4]);
+		device = atoi(argv[5]);
+		subvendor = atoi(argv[6]);
+		subdevice = atoi(argv[7]);
+
+		dbg("loading %s for %d:%d:%d:%d", argv[3], vendor, device,
+		    subdevice, subvendor);
 		if (chdir(confdir)) {
 			error("directory %s is not valid: %s",
 			      confdir, strerror(errno));
@@ -518,10 +659,12 @@ int main(int argc, char *argv[0])
 				goto out;
 			}
 			res = load_driver(ioctl_device, driver_dir,
-					  argv[3]);
+					  argv[3], vendor, device,
+					  subvendor, subdevice);
 			closedir(driver_dir);
 		}
 	}
+
 out:
 	if (ioctl_device != -1)
 		close(ioctl_device);
