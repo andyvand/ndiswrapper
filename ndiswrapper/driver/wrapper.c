@@ -1668,7 +1668,7 @@ static int setup_dev(struct net_device *dev)
 	packet_filter = (NDIS_PACKET_TYPE_DIRECTED| NDIS_PACKET_TYPE_MULTICAST|
 					 NDIS_PACKET_TYPE_BROADCAST);
 	res = dosetinfo(handle, NDIS_OID_PACKET_FILTER, (char *)&packet_filter,
-					sizeof(filter), &written, &needed);
+					sizeof(packet_filter), &written, &needed);
 	if (res)
 		printk(KERN_ERR "%s: Unable to set packet filter (%08X)\n",
 			   DRV_NAME, res);

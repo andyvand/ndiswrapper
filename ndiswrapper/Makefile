@@ -1,4 +1,4 @@
-DRV_VERSION=$(cat version)
+DRV_VERSION=$(shell cat version)
 
 distdir=ndiswrapper-${DRV_VERSION}
 distarchive=${distdir}.tar.gz
@@ -9,14 +9,14 @@ DIST_SUBDIRS=utils driver
 .PHONY: all
 
 all: 
-	make -C driver DRV_VERSION=${DRV_VERSION} 
-	make -C utils DRV_VERSION=${DRV_VERSION}
+	make -C driver
+	make -C utils
 
 	
 .PHONY: install
 install:
-	make -C driver DRV_VERSION=${DRV_VERSION} install
-	make -C utils DRV_VERSION=${DRV_VERSION} install
+	make -C driver install
+	make -C utils install
 
 .PHONY: clean
 clean:
