@@ -115,9 +115,9 @@ _FASTCALL struct nt_list *WRAP_EXPORT(ExfInterlockedInsertHeadList)
 	KIRQL irql;
 
 	TRACEENTER4("head = %p, entry = %p", head, entry);
-	KeAcquireSpinLock(lock, &irql);
+	irql = kspin_lock_irql(lock, DISPATCH_LEVEL);
 	first = InsertHeadList(head, entry);
-	KeReleaseSpinLock(lock, irql);
+	kspin_unlock_irql(lock, irql);
 	DBGTRACE4("head = %p, old = %p", head, first);
 	return first;
 }
@@ -137,9 +137,9 @@ _FASTCALL struct nt_list *WRAP_EXPORT(ExfInterlockedInsertTailList)
 	KIRQL irql;
 
 	TRACEENTER4("head = %p, entry = %p", head, entry);
-	KeAcquireSpinLock(lock, &irql);
+	irql = kspin_lock_irql(lock, DISPATCH_LEVEL);
 	last = InsertTailList(head, entry);
-	KeReleaseSpinLock(lock, irql);
+	kspin_unlock_irql(lock, irql);
 	DBGTRACE4("head = %p, old = %p", head, last);
 	return last;
 }
@@ -157,10 +157,11 @@ _FASTCALL struct nt_list *WRAP_EXPORT(ExfInterlockedRemoveHeadList)
 {
 	struct nt_list *ret;
 	KIRQL irql;
+
 	TRACEENTER4("head = %p", head);
-	KeAcquireSpinLock(lock, &irql);
+	irql = kspin_lock_irql(lock, DISPATCH_LEVEL);
 	ret = RemoveHeadList(head);
-	KeReleaseSpinLock(lock, irql);
+	kspin_unlock_irql(lock, irql);
 	DBGTRACE4("head = %p, ret = %p", head, ret);
 	return ret;
 }
@@ -176,10 +177,11 @@ _FASTCALL struct nt_list *WRAP_EXPORT(ExfInterlockedRemoveTailList)
 {
 	struct nt_list *ret;
 	KIRQL irql;
+
 	TRACEENTER4("head = %p", head);
-	KeAcquireSpinLock(lock, &irql);
+	irql = kspin_lock_irql(lock, DISPATCH_LEVEL);
 	ret = RemoveTailList(head);
-	KeReleaseSpinLock(lock, irql);
+	kspin_unlock_irql(lock, irql);
 	DBGTRACE4("head = %p, ret = %p", head, ret);
 	return ret;
 }
@@ -197,9 +199,9 @@ STDCALL struct nt_slist *WRAP_EXPORT(ExpInterlockedPushEntrySList)
 	KIRQL irql;
 
 	TRACEENTER4("head = %p", head);
-	KeAcquireSpinLock(&ntoskernel_lock, &irql);
+	irql = kspin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL);
 	ret = PushEntryList(head, entry);
-	KeReleaseSpinLock(&ntoskernel_lock, irql);
+	kspin_unlock_irql(&ntoskernel_lock, irql);
 	DBGTRACE4("head = %p, ret = %p", head, ret);
 	return ret;
 }
@@ -224,9 +226,9 @@ STDCALL struct nt_slist *WRAP_EXPORT(ExpInterlockedPopEntrySList)
 	KIRQL irql;
 
 	TRACEENTER4("head = %p", head);
-	KeAcquireSpinLock(&ntoskernel_lock, &irql);
+	irql = kspin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL);
 	ret = PopEntryList(head);
-	KeReleaseSpinLock(&ntoskernel_lock, irql);
+	kspin_unlock_irql(&ntoskernel_lock, irql);
 	DBGTRACE4("head = %p, ret = %p", head, ret);
 	return ret;
 }
@@ -400,37 +402,47 @@ STDCALL void WRAP_EXPORT(KeInitializeSpinLock)
 STDCALL void WRAP_EXPORT(KeAcquireSpinLock)
 	(KSPIN_LOCK *lock, KIRQL *irql)
 {
-	*irql = KfAcquireSpinLock(FASTCALL_ARGS_1(lock));
+#ifdef X86_64
+	*irql = kspin_lock_irql(lock, DISPATCH_LEVEL);
+#else
+	*irql = kspin_lock(lock);
+#endif
 }
 
 STDCALL void WRAP_EXPORT(KeReleaseSpinLock)
 	(KSPIN_LOCK *lock, KIRQL oldirql)
 {
-	KfReleaseSpinLock(FASTCALL_ARGS_2(lock, oldirql));
+	kspin_unlock_irql(lock, oldirql);
 }
 
 STDCALL void WRAP_EXPORT(KeAcquireSpinLockAtDpcLevel)
 	(KSPIN_LOCK *lock)
 {
-	KfAcquireSpinLock(FASTCALL_ARGS_1(lock));
+	kspin_lock(lock);
+}
+
+STDCALL void WRAP_EXPORT(KeRaiseIrql)
+	(KIRQL newirql, KIRQL *oldirql)
+{
+	*oldirql = raise_irql(newirql);
 }
 
 STDCALL void WRAP_EXPORT(KeLowerIrql)
 	(KIRQL irql)
 {
-	KfLowerIrql(FASTCALL_ARGS_1(irql));
+	lower_irql(irql);
 }
 
 STDCALL KIRQL WRAP_EXPORT(KeAcquireSpinLockRaiseToDpc)
         (KSPIN_LOCK *lock)
 {
-	return KfAcquireSpinLock(FASTCALL_ARGS_1(lock));
+	return kspin_lock_irql(lock, DISPATCH_LEVEL);
 }
 
 STDCALL void WRAP_EXPORT(KeReleaseSpinLockFromDpcLevel)
 	(KSPIN_LOCK *lock)
 {
-	KefReleaseSpinLockFromDpcLevel(FASTCALL_ARGS_1(lock));
+	kspin_unlock(lock);
 }
 
 _FASTCALL LONG WRAP_EXPORT(InterlockedDecrement)
