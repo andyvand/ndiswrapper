@@ -59,7 +59,7 @@
 static char *if_name = "wlan%d";
 int proc_uid, proc_gid;
 static int hangcheck_interval;
-static int hangcheck;
+static int hangcheck = 1;
 
 MODULE_PARM(if_name, "s");
 MODULE_PARM_DESC(if_name, "Network interface name or template (default: wlan%d)");
@@ -74,7 +74,7 @@ MODULE_PARM(hangcheck_interval, "i");
 MODULE_PARM_DESC(hangcheck_interval, "The interval, in seconds, for checking if driver is hung. (default: 0)");
 
 MODULE_PARM(hangcheck, "i");
-MODULE_PARM_DESC(hangcheck, "Boolean for checking if driver is hung: 0 to disable hangcheck and 1 to enable hangcheck. (default: 0)");
+MODULE_PARM_DESC(hangcheck, "Boolean for checking if driver is hung: 0 to disable hangcheck and 1 to enable hangcheck. (default: 1)");
 
 /* List of loaded drivers */
 LIST_HEAD(ndis_driverlist);
@@ -96,7 +96,7 @@ int doreset(struct ndis_handle *handle)
 	int res = 0;
 	struct miniport_char *miniport = &handle->driver->miniport_char;
 
-	TRACEENTER3("%s", "");
+	TRACEENTER2("%s", "");
 
 	if (handle->reset_status)
 		return NDIS_STATUS_PENDING;
@@ -109,25 +109,27 @@ int doreset(struct ndis_handle *handle)
 	 * check if another reset is in progress */
 	handle->reset_status = NDIS_STATUS_PENDING;
 	handle->ndis_comm_res = NDIS_STATUS_PENDING;
+	handle->ndis_comm_done = 0;
 	res = miniport->reset(&handle->reset_status, handle->adapter_ctx);
 
-	up(&handle->ndis_comm_mutex);
-
-	/* instead of waiting asynchrounously for NdisMResetComplete,
-	 * we wait for a while; waiting asynchronously seems to lock
-	 * up the keyboard, especially for Centrino 2200 */
-	mdelay(20);
-	if (res) {
+	DBGTRACE2("res = %08X, reset_status = %08X",
+		  res, handle->reset_status);
+	if (res == NDIS_STATUS_PENDING)
+	{
+		DBGTRACE2("%s", "waiting for reset_complete");
+		/* reset is supposed to run at DISPATCH_LEVEL, so we busy wait
+		 * for a while before sleeping, hoping reset will be done in
+		 * 1 ms */
+		mdelay(1);
+		/* wait for NdisMResetComplete */
+		wait_event(handle->ndis_comm_wq,
+			   (handle->ndis_comm_done == 1));
 		res = handle->ndis_comm_res;
-		if (res == NDIS_STATUS_PENDING) {
-			/* INTERMEDIATE HACK: sleep for 10 s */
-			set_current_state(TASK_INTERRUPTIBLE);
-			schedule_timeout(HZ*10);
-			res = handle->ndis_comm_res;
-		}
+		DBGTRACE2("res = %08X, reset_status = %08X",
+			  res, handle->reset_status);
 	}
-
-	DBGTRACE3("reset: res = %08X, reset status = %08X",
+	up(&handle->ndis_comm_mutex);
+	DBGTRACE2("reset: res = %08X, reset status = %08X",
 		  res, handle->reset_status);
 
 	if (res == NDIS_STATUS_SUCCESS && handle->reset_status)
@@ -163,15 +165,15 @@ int doquery(struct ndis_handle *handle, unsigned int oid, char *buf,
 	if (down_interruptible(&handle->ndis_comm_mutex))
 		TRACEEXIT3(return NDIS_STATUS_FAILURE);
 
+	handle->ndis_comm_done = 0;
 	res = miniport->query(handle->adapter_ctx, oid, buf, bufsize,
 			      written, needed);
 	if (res == NDIS_STATUS_PENDING)
 	{
 		/* wait for NdisMQueryInformationComplete */
-		if (down_interruptible(&handle->ndis_comm_done))
-			res = NDIS_STATUS_FAILURE;
-		else
-			res = handle->ndis_comm_res;
+		wait_event(handle->ndis_comm_wq,
+			   (handle->ndis_comm_done == 1));
+		res = handle->ndis_comm_res;
 	}
 	up(&handle->ndis_comm_mutex);
 	TRACEEXIT3(return res);
@@ -193,15 +195,15 @@ int dosetinfo(struct ndis_handle *handle, unsigned int oid, char *buf,
 	if (down_interruptible(&handle->ndis_comm_mutex))
 		TRACEEXIT3(return NDIS_STATUS_FAILURE);
 
+	handle->ndis_comm_done = 0;
 	res = miniport->setinfo(handle->adapter_ctx, oid, buf, bufsize,
 			       written, needed);
 	if (res == NDIS_STATUS_PENDING)
 	{
 		/* wait for NdisMSetInformationComplete */
-		if (down_interruptible(&handle->ndis_comm_done))
-			res = NDIS_STATUS_FAILURE;
-		else
-			res = handle->ndis_comm_res;
+		wait_event(handle->ndis_comm_wq,
+			   (handle->ndis_comm_done == 1));
+		res = handle->ndis_comm_res;
 	}
 	up(&handle->ndis_comm_mutex);
 	TRACEEXIT3(return res);
@@ -355,7 +357,7 @@ static void hangcheck_bh(void *data)
 	struct ndis_handle *handle = (struct ndis_handle *)data;
 
 	TRACEENTER3("%s", "");
-	if (!handle->reset_status &&
+	if (handle->reset_status == 0 &&
 	    handle->driver->miniport_char.hangcheck(handle->adapter_ctx))
 	{
 		int res;
@@ -1227,8 +1229,8 @@ static struct net_device *ndis_init_netdev(struct ndis_handle **phandle,
 	handle->ndis_irq = NULL;
 
 	init_MUTEX(&handle->ndis_comm_mutex);
-	init_MUTEX_LOCKED(&handle->ndis_comm_done);
-	init_waitqueue_head(&handle->ndis_comm_wqhead);
+	init_waitqueue_head(&handle->ndis_comm_wq);
+	handle->ndis_comm_done = 0;
 
 	handle->send_status = 0;
 	handle->send_packet = NULL;
