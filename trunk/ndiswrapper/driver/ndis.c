@@ -248,16 +248,10 @@ STDCALL void NdisUnmapFile(void *filehandle)
 	DBGTRACE("%s: Handle: %08x\n", __FUNCTION__, (int) filehandle);
 }
 
-/*  returns the number of milliseconds that have elapsed since the system
-    was booted. */
 STDCALL void NdisGetSystemUpTime(unsigned int *systemuptime)
 {
-	DBGTRACE("%s: FIXME: returning 70000\n", __FUNCTION__);
-	/* FIXME XXX
-	   I suspect this is being used to seed a RNG, so returnng a static
-	   value is very insecure.
-	*/
-	*systemuptime = 70000;
+	DBGTRACE("%s:\n", __FUNCTION__);
+	*systemuptime = 10 * jiffies / HZ;
 }
 
 STDCALL void NdisGetBufferPhysicalArraySize(void **buffer,
