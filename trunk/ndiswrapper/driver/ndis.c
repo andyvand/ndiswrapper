@@ -959,7 +959,6 @@ STDCALL long NdisInterlockedDecrement(long *val)
 	*val--;
 	x = *val;
 	spin_unlock_irqrestore(&atomic_lock, flags);
-	restore_flags(flags);
 	return x;
 }
 
@@ -971,7 +970,6 @@ STDCALL long NdisInterlockedIncrement(long *val)
 	*val++;
 	x = *val;
 	spin_unlock_irqrestore(&atomic_lock, flags);
-	restore_flags(flags);
 	return x;
 }
 
