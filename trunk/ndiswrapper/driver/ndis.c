@@ -998,7 +998,11 @@ STDCALL void NdisAllocatePacketPoolEx(unsigned int *status,
 	NdisAllocatePacketPool(status, poolhandle, size, rsvlen);
 }
 
-
+STDCALL unsigned int NdisPacketPoolUsage(void *poolhandle)
+{
+	printk("NdisWrapper: Untested function\n");
+	return 0;
+}
 
 STDCALL void NdisFreePacketPool(void *poolhandle)
 {

@@ -115,6 +115,7 @@ void NdisMCompleteBufferPhysicalMapping(void);
 void NdisBufferVirtualAddress(void);
 void NdisBufferLength(void);
 void NdisAllocatePacketPoolEx(void);
+void NdisPacketPoolUsage(void);
 
 void IoIsWdmVersionAvailable(void);
 void NdisMRegisterDevice(void);
@@ -172,6 +173,7 @@ void my_strncmp(void);
 void my_tolower(void);
 void my_memcpy(void);
 void my_memset(void);
+void my_memmove(void);
 
 void RtlCopyUnicodeString(void);
 
@@ -306,14 +308,13 @@ func("NdisMCompleteBufferPhysicalMapping"   , NdisMCompleteBufferPhysicalMapping
 func("NdisBufferVirtualAddress"             , NdisBufferVirtualAddress),
 func("NdisBufferLength"                     , NdisBufferLength),
 func("NdisAllocatePacketPoolEx"             , NdisAllocatePacketPoolEx),
-
+func("NdisPacketPoolUsage"                  , NdisPacketPoolUsage),
 func("IoIsWdmVersionAvailable"              , IoIsWdmVersionAvailable),
 func("NdisMRegisterDevice"                  , NdisMRegisterDevice),
 func("NdisMDeregisterDevice"                , NdisMDeregisterDevice),
 func("NdisCancelTimer"                      , NdisCancelTimer),
 func("NdisInitializeTimer"                  , NdisInitializeTimer),
 func("NdisMRemoveMiniport"                  , NdisMRemoveMiniport),
-
 
 
 /* HAL */
@@ -363,6 +364,7 @@ func("strncmp"                              , my_strncmp),
 func("tolower"                              , my_tolower),
 func("memcpy"                               , my_memcpy),
 func("memset"                               , my_memset),
+func("memmove"                              , my_memmove),
 
 func("RtlCopyUnicodeString"		    , RtlCopyUnicodeString),
 func("RtlCompareMemory"                     , RtlCompareMemory),
