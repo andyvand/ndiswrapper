@@ -485,8 +485,6 @@ static inline ULONG SPAN_PAGES(ULONG_PTR ptr, SIZE_T length)
 	end = (ptr + length + PAGE_SIZE - 1) & PAGE_MASK;
 	n = (end - start) / PAGE_SIZE;
 
-	n = ((ULONG)(((ptr & (PAGE_SIZE -1)) + (length) + (PAGE_SIZE - 1)) >> PAGE_SHIFT));
-
 	return n;
 }
 
