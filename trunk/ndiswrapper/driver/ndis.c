@@ -4,7 +4,8 @@
 #include <linux/spinlock.h>
 #include <linux/timer.h>
 #include <linux/interrupt.h>
-
+#include <linux/netdevice.h>
+#include <linux/etherdevice.h>
 #endif
 #include <linux/types.h>
 
@@ -523,6 +524,56 @@ STDCALL void NdisFreeBufferPool(void *poolhandle)
 }
 
 
+STDCALL void NdisAllocateBuffer(unsigned int *status,
+                                void **buffer,
+				void *poolhandle,
+				void *virt,
+				unsigned int len)
+{
+	//printk("%s, %08x, %08x, %08x, %08x\n", __FUNCTION__, (int)buffer, (int)poolhandle, (int)virt, len);
+
+	struct ndis_buffer *my_buffer = kmalloc(sizeof(struct ndis_buffer), GFP_KERNEL);
+	if(!my_buffer)
+	{
+		*status = NDIS_STATUS_FAILIURE;
+		return;
+	}
+	
+	memset(my_buffer, 0, sizeof(struct ndis_buffer));
+
+	my_buffer->data = virt;
+	my_buffer->next = 0;
+	my_buffer->len = len;
+
+	*buffer = my_buffer;
+	
+
+	*status = NDIS_STATUS_SUCCESS;
+
+}
+
+STDCALL void NdisFreeBuffer(void *buffer)
+{
+	//printk("%s: %08x\n", __FUNCTION__, (int)buffer);
+	if(buffer)
+	{
+		memset(buffer, 0, sizeof(struct ndis_buffer));
+		kfree(buffer);
+	}
+}
+STDCALL void NdisAdjustBufferLength(struct ndis_buffer *buf, unsigned int len)
+{
+	//printk("%s: %08x %08x\n", __FUNCTION__, (int)buffer, len);
+	buf->len = len;
+}
+STDCALL void NdisQueryBuffer(struct ndis_buffer *buf, void **adr, unsigned int *len)
+{
+	printk("%s %08x %08x %d\n", __FUNCTION__, (int)buf, (int)buf->data, buf->len);
+	*adr = buf->data;
+	*len = buf->len;
+}
+
+
 STDCALL void NdisAllocatePacketPool(unsigned int *status,
                                     unsigned int *poolhandle,
 				    unsigned int size,
@@ -537,6 +588,36 @@ STDCALL void NdisFreePacketPool(void *poolhandle)
 {
 	printk("%s: %08x\n", __FUNCTION__, (int)poolhandle);
 }
+
+STDCALL void NdisAllocatePacket(unsigned int *status, struct ndis_packet **packet_out, void *poolhandle)
+{
+	printk("%s\n", __FUNCTION__);
+	struct ndis_packet *packet = (struct ndis_packet*) kmalloc(sizeof(struct ndis_packet), GFP_KERNEL);
+	if(!packet)
+	{
+		printk("%s failed\n", __FUNCTION__);
+		*packet_out = NULL;
+		*status = NDIS_STATUS_FAILIURE;
+		return;
+	}
+	memset(packet, 0, sizeof(struct ndis_packet));
+	packet->oob_offset = (int)(&packet->timesent1) - (int)packet;
+
+	printk("oob_offset: %08x\n", packet->oob_offset);
+	
+	*packet_out = packet;
+	*status = NDIS_STATUS_SUCCESS;	
+}
+STDCALL void NdisFreePacket(void *packet)
+{
+	printk("%s\n", __FUNCTION__);
+	if(packet)
+	{
+		memset(packet, 0, sizeof(struct ndis_packet));
+		kfree(packet);
+	}
+}
+
 
 
 /*
@@ -762,28 +843,6 @@ STDCALL char NdisMSynchronizeWithInterrupt(struct ndis_irq *interrupt,
 	return ret;
 }
 
-STDCALL void NdisAllocateBuffer(unsigned int *status,
-                                void **buffer,
-				void *poolhandle,
-				void *virt,
-				unsigned int len)
-{
-	//printk("%s, %08x, %08x, %08x, %08x\n", __FUNCTION__, (int)buffer, (int)poolhandle, (int)virt, len);
-	
-	memset(virt, 0xaa, len);
-	*buffer = (void*)0x00000040;
-	*status = NDIS_STATUS_SUCCESS;
-}
-
-STDCALL void NdisFreeBuffer(void *buffer)
-{
-	//printk("%s: %08x\n", __FUNCTION__, (int)buffer);
-}
-STDCALL void NdisAdjustBufferLength(void **buffer, unsigned int len)
-{
-	//printk("%s: %08x %08x\n", __FUNCTION__, (int)buffer, len);
-}
-
 
 /*
  * This function is not called in a format way.
@@ -792,7 +851,7 @@ STDCALL void NdisAdjustBufferLength(void **buffer, unsigned int len)
  */
 STDCALL void NdisIndicateStatus(struct ndis_handle *handle, unsigned int status, void *buf, unsigned int len)
 {
-	printk("%s===================================>%08x\n", __FUNCTION__, status);
+	printk("%s%08x\n", __FUNCTION__, status);
 }
 
 /*
@@ -802,7 +861,7 @@ STDCALL void NdisIndicateStatus(struct ndis_handle *handle, unsigned int status,
  */
 STDCALL void NdisIndicateStatusComplete(struct ndis_handle *handle)
 {
-	printk("%s======================================>\n", __FUNCTION__);
+	printk("%s\n", __FUNCTION__);
 }
 
 
@@ -811,9 +870,31 @@ STDCALL void NdisIndicateStatusComplete(struct ndis_handle *handle)
  *
  * Called via function pointer.
  */
-STDCALL void NdisMIndicateReceivePacket(struct ndis_handle *handle, void *packet, unsigned int nr_packets)
+STDCALL void NdisMIndicateReceivePacket(struct ndis_handle *handle, struct ndis_packet **packets, unsigned int nr_packets)
 {
-	printk("%s\n", __FUNCTION__);
+	struct ndis_buffer *buffer;
+	struct ndis_packet *packet;
+	struct sk_buff *skb;
+	int i;
+	for(i = 0; i < nr_packets; i++)
+	{
+		packet = packets[i];
+		buffer = packet->buffer_head;
+		printk("header_size %x, status %08x\n", packet->header_size, packet->status);
+		printk("%s %08x, %d, %d\n", __FUNCTION__, (int)buffer->data, buffer->len, buffer->offset);
+
+		skb = dev_alloc_skb (buffer->len);
+		if(skb)
+		{
+			skb->dev = handle->net_dev;
+		
+			eth_copy_and_sum(skb, buffer->data, buffer->len, 0);
+			skb_put(skb, buffer->len);
+			skb->protocol = eth_type_trans (skb, handle->net_dev);
+			netif_rx(skb);
+		}
+		handle->miniport_char.return_packet(handle->adapter_ctx,  packet);
+	}
 }
 
 /*
@@ -821,24 +902,16 @@ STDCALL void NdisMIndicateReceivePacket(struct ndis_handle *handle, void *packet
  *
  * Called via function pointer.
  */
-STDCALL void NdisMSendComplete(struct ndis_handle *handle, void *packet, unsigned int status)
+STDCALL void NdisMSendComplete(struct ndis_handle *handle, struct ndis_packet *packet, unsigned int status)
 {
-	printk("%s\n", __FUNCTION__);
+	printk("%s status %08x\n", __FUNCTION__, status);
+	kfree(packet->buffer_head);
+	kfree(packet);
 }
 
 
 /* Unimplemented...*/
 STDCALL void NdisInitAnsiString(void *src, void *dst)
-{
-	printk("%s --UNIMPLEMENTED--\n", __FUNCTION__ );
-}
-STDCALL void NdisAllocatePacket(unsigned int *status, void **packet, void *poolhandle)
-{
-	printk("%s --UNIMPLEMENTED--\n", __FUNCTION__ );
-	*packet = (void*)0x000a0008;
-
-}
-STDCALL void NdisFreePacket(void *packet)
 {
 	printk("%s --UNIMPLEMENTED--\n", __FUNCTION__ );
 }
@@ -855,14 +928,10 @@ STDCALL unsigned int NdisAnsiStringToUnicodeString(void *dst, void *src)
 	printk("%s --UNIMPLEMENTED--\n", __FUNCTION__ );
 	return 0;
 }
-STDCALL void NdisQueryBuffer(void *buffer, void **adr, unsigned int *len)
-{
-	printk("%s --UNIMPLEMENTED--\n", __FUNCTION__ );
-}
 STDCALL unsigned long NDIS_BUFFER_TO_SPAN_PAGES(void *buffer)
 {
-	printk("%s --UNIMPLEMENTED--\n", __FUNCTION__ );
-	return 0;
+	printk("%s\n", __FUNCTION__ );
+	return 1;
 }
 STDCALL void NdisQueryBufferOffset(void *buffer, unsigned int offset, unsigned int length)
 {

@@ -150,156 +150,14 @@ int get_infra(struct ndis_handle *handle)
 	return res;
 }
 
-int get_type(struct ndis_handle *handle)
-{
-	unsigned int res = 0, written = 0, needed = 0;
-	char data[4];
-		
-	res = handle->miniport_char.query(handle->adapter_ctx, 0x0D010204, data, 4, &written, &needed);
-	printk("get_type status %08x, %d, %d\n", res, written, needed);
-	if(written == 4)
-	{
-		printk("type: %08x\n", *(int*)data);
-	}
-	
-	return res;
-}
-
-
-int set_type(struct ndis_handle *handle, int mode)
-{
-	unsigned int res, written, needed;
-
-	res = handle->miniport_char.setinfo(handle->adapter_ctx, 0x0D010204, (char*)&mode, 4, &written, &needed);
-	printk("set_type status %08x, %d, %d\n", res, written, needed);
-	return res;
-
-}
-
-
-int set_bssid(struct ndis_handle *handle)
-{
-	char mac[] = {0x00,0x80,0xC8,0x37,0xF5,0xD1};
-
-	unsigned int res, written, needed;
-
-	res = handle->miniport_char.setinfo(handle->adapter_ctx, 0x0D010101, mac, 6, &written, &needed);
-	printk("set_bssid status %08x, %d, %d\n", res, written, needed);
-	return res;
-}
-
-int get_bssid(struct ndis_handle *handle)
-{
-	unsigned int res = 0, written = 0, needed = 0;
-	char data[6];
-	int i;
-
-	res = handle->miniport_char.query(handle->adapter_ctx, 0x0D010101, data, 6, &written, &needed);
-	printk("get_bssid status %08x, %d, %d\n", res, written, needed);
-
-	printk("data: ");
-	for(i = 0; i < written; i++)
-	{
-		printk("%02x ", data[i]);
-	}
-	printk("\n");
-
-	return res;
-}
-
-
-int scan(struct ndis_handle *handle)
-{
-	unsigned int res = 0, written = 0, needed = 0;
-	char data[1];
-		
-	res = handle->miniport_char.setinfo(handle->adapter_ctx, 0x0D01011A, data, 0, &written, &needed);
-	printk("scan status %08x, %d, %d\n", res, written, needed);
-	return res;
-}
-
-int list(struct ndis_handle *handle)
-{
-	unsigned int res = 0, written = 0, needed = 0;
-	char data[1024];
-		
-	res = handle->miniport_char.query(handle->adapter_ctx, 0x0D010217, data, 1024, &written, &needed);
-	printk("list status %08x, %d, %d\n", res, written, needed);
-
-
-	if(written)
-	{
-		int i;
-		printk("Data: ");
-		for(i = 0; i < written; i++)
-		{
-			printk("%02x ", data[i]);
-		}
-		printk("\n");
-	}
-	return res;
-}
-
-
-
-void test_query(struct ndis_handle *handle)
-{
-/*
-	__u32 res;
-	__u32 written;
-	__u32 needed;
-	int i;
-	unsigned char data[1024] = {0,};
-	unsigned int oid;
-
-	
-	data[0] = 4;
-	data[1] = 0;
-	data[2] = 0;
-	data[3] = 0;
-	data[4] = 0;
-	data[5] = 'd';
-	data[6] = '1';
-	data[7] = '1';
-	data[8] = 'b';
-	
-	res = handle->miniport_char.setinfo(handle->adapter_ctx, 0x0d010102, &data[0], 36, &written, &needed);
-	printk("res %08x\n", res);
-	
-	res = handle->miniport_char.query(handle->adapter_ctx, 0x0d010102, &data[0], 1024, &written, &needed);
-	printk("Query res: %08x, written %d %d\n", res, written, needed);
-	if(res == 0)
-	{
-		printk("data:");
-		for(i = 0; i < written; i++)
-		{
-			printk("%02x ", data[i]);
-		}	
-	
-		printk("\n");
-
-		if(written == 4)
-		{
-			printk("%d, 0x%08x\n", *(int*)data, *(int*)data);
-		}
-		printk("\n");
-//0x0d010102
-		res = handle->miniport_char.setinfo(handle->adapter_ctx, 0x0d010118, &data[0], 4, &written, &needed);
-		printk("res %08x\n", res);
-	}
-
-*/
-}
-
-
 
 unsigned int call_entry(struct ndis_handle *handle)
 {
 	int res;
 	char regpath[] = {'a', 0, 'b', 0, 0, 0};
-	printk("Calling entry at %08x rva(%08x). sp:%08x\n", (int)handle->entry, (int)handle->entry - image_offset, getSp());
+	printk("Calling entry at %08x rva(%08x)\n", (int)handle->entry, (int)handle->entry - image_offset);
 	res = handle->entry((void*)handle, regpath);
-	printk("Past entry: Version: %d.%d. sp:%08x\n\n\n", handle->miniport_char.majorVersion, handle->miniport_char.minorVersion, getSp());
+	printk("Past entry: Version: %d.%d\n\n\n", handle->miniport_char.majorVersion, handle->miniport_char.minorVersion);
 
 	/* Dump addresses of driver suppoled callbacks */
 	{
@@ -353,10 +211,45 @@ static int ndis_close (struct net_device *dev)
 	printk("%s\n", __FUNCTION__);
 	return 0;
 }
+
+
+
+static int query_int(struct ndis_handle *handle, int oid, int *data)
+{
+
+	unsigned int res;
+	unsigned int written;
+	unsigned int needed;
+
+	res = handle->miniport_char.query(handle->adapter_ctx, oid, (char*)data, 4, &written, &needed);
+	printk("query_int iod=%08x res %d data %d\n", oid, res, *data); 
+	if(!res)
+	{
+		return 0;
+	}
+	*data = 0;
+	return -1;
+}
+
+
+
 static struct net_device_stats *ndis_get_stats (struct net_device *dev)
 {
 	struct ndis_handle *handle = dev->priv;
+	unsigned int x;
+
 	printk("%s\n", __FUNCTION__);
+
+
+	if(!query_int(handle, 0x00020101, &x))
+		handle->stats.tx_packets = x; 	
+	if(!query_int(handle, 0x00020102, &x))
+		handle->stats.rx_packets = x; 	
+	if(!query_int(handle, 0x00020103, &x))
+		handle->stats.tx_errors = x; 	
+	if(!query_int(handle, 0x00020104, &x))
+		handle->stats.rx_errors = x; 	
+
 	return &handle->stats;
 }
 
@@ -367,9 +260,67 @@ static int ndis_ioctl (struct net_device *dev, struct ifreq *rq, int cmd)
 }
 
 
-static int ndis_start_xmit (struct sk_buff *skb, struct net_device *dev)
+/*
+ * This can probably be done a lot more effective (no copy of data needed).
+ *
+ *
+ */
+ static int ndis_start_xmit (struct sk_buff *skb, struct net_device *dev)
 {
-	printk("%s\n", __FUNCTION__);
+	struct ndis_handle *handle = dev->priv;
+
+	char *data = kmalloc(skb->len, GFP_KERNEL);
+	if(!data)
+	{
+		return 0;
+	}
+
+	struct ndis_buffer *buffer = kmalloc(sizeof(struct ndis_buffer), GFP_KERNEL);
+	if(!buffer)
+	{
+		kfree(data);
+		return 0;
+	}
+
+	struct ndis_packet *packet = kmalloc(sizeof(struct ndis_packet), GFP_KERNEL);
+	if(!packet)
+	{
+		kfree(data);
+		kfree(buffer);
+		return 0;
+	}
+	
+	memset(packet, 0, sizeof(*packet));
+	packet->oob_offset = (int)(&packet->timesent1) - (int)packet;
+	packet->nr_pages = 1;
+	packet->len = buffer->len;
+	packet->count = 1;
+	packet->valid_counts = 1;
+
+	packet->buffer_head = buffer;
+	packet->buffer_tail = buffer;
+
+	buffer->data = data;
+	buffer->next = 0;
+	buffer->len = skb->len;
+
+	printk("Buffer: %08x, data %08x, len %d\n", (int)buffer, (int)buffer->data, (int)buffer->len); 	
+
+	skb_copy_and_csum_dev(skb, data);
+	dev_kfree_skb(skb);
+	{
+		printk("sending packet size %d:\n", buffer->len);
+		int i;
+		for(i = 0; i < buffer->len; i++)
+		{
+			printk("%02x ", buffer->data[i]);
+		}
+		printk("\n");		
+	}
+	
+	printk("Calling send_packets at %08x rva(%08x). sp:%08x\n", (int)handle->miniport_char.send_packets, (int)handle->miniport_char.send_packets - image_offset, getSp());
+	handle->miniport_char.send_packets(handle->adapter_ctx, &packet, 1);
+
 	return 0;
 }
 
@@ -411,9 +362,6 @@ static int setup_dev(struct net_device *dev)
 
 	return register_netdev(dev);
 }
-
-
-
 
 
 static int load_ndis_driver(int size, char *src)
@@ -534,24 +482,6 @@ static int wrapper_ioctl(struct inode *inode, struct file *file, unsigned int cm
 				break;
 			case 4:
 				get_infra(thedev->priv);
-				break;
-			case 5:
-				scan(thedev->priv);
-				break;
-			case 6:
-				list(thedev->priv);
-				break;
-			case 7:
-				set_type(thedev->priv, 1);
-				break;
-			case 8:
-				get_type(thedev->priv);
-				break;
-			case 9:
-				set_bssid(thedev->priv);
-				break;
-			case 10:
-				get_bssid(thedev->priv);
 				break;
 			default:
 				printk("Unknown test %ld\n", arg);
