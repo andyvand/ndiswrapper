@@ -51,13 +51,6 @@ prereq_check:
 		       install them in /usr/src, link $(KSRC) to it and try again."; \
 		exit 1;\
 	  fi
-	@ if grep -q ' SMP ' /proc/version; then \
-		echo "SMP is enabled in the kernel;\
-			right now ndiswrapper doesn't work with SMP.\
-			Disable SMP to use ndiswrapper.";\
-		exit 1;\
-	fi
-
 
 CFLAGS += $(shell [ -f $(KSRC)/include/linux/modversions.h ] && echo -DEXPORT_SYMTAB -DMODVERSIONS -include $(KSRC)/include/linux/modversions.h)
 
