@@ -459,10 +459,8 @@ STDCALL LONG WRAP_EXPORT(KeSetEvent)
 
 	spin_lock(&dispatch_event_lock);
 	kevent->header.signal_state = TRUE;
-	if (kevent->header.type == SynchronizationEvent) {
-		wake_up_nr(&dispatch_event_wq, 1);
+	if (kevent->header.type == SynchronizationEvent)
 		kevent->header.signal_state = FALSE;
-	}
 	else
 		wake_up_all(&dispatch_event_wq);
 	DBGTRACE3("woken up %p", kevent);
@@ -506,8 +504,11 @@ STDCALL NTSTATUS WRAP_EXPORT(KeWaitForSingleObject)
 
 	DBGTRACE2("object type = %d, size = %d", header->type, header->size);
 
-	if (header->signal_state == TRUE)
+	if (header->signal_state == TRUE) {
+		if (header->type == SynchronizationEvent)
+			header->signal_state = FALSE;
  		TRACEEXIT3(return STATUS_SUCCESS);
+	}
 
 	if (timeout) {
 		DBGTRACE2("timeout = %Ld", *timeout);
@@ -558,7 +559,8 @@ STDCALL NTSTATUS WRAP_EXPORT(KeWaitForSingleObject)
 		TRACEEXIT2(return STATUS_TIMEOUT);
 
 	/* res > 0 */
-
+	if (header->type == SynchronizationEvent)
+		header->signal_state = FALSE;
 	TRACEEXIT2(return STATUS_SUCCESS);
 }
 
