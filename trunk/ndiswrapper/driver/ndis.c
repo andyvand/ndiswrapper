@@ -148,7 +148,30 @@ STDCALL NDIS_STATUS WRAP_EXPORT(NdisMRegisterMiniport)
 	(struct ndis_driver *ndis_driver,
 	 struct miniport_char *miniport_char, UINT char_len)
 {
-	int min_length = ((char *) &miniport_char->co_create_vc) -
+	int i, min_length;
+	int *func;
+	char *miniport_funcs[] = {
+		"query",
+		"reconfig",
+		"reset",
+		"send",
+		"setinfo",
+		"tx_data",
+		"return_packet",
+		"send_packets",
+		"alloc_complete",
+		"co_create_vc",
+		"co_delete_vc",
+		"co_activate_vc",
+		"co_deactivate_vc",
+		"co_send_packets",
+		"co_request",
+		"cancel_send_packets",
+		"pnp_event_notify",
+		"adapter_shutdown",
+	};
+
+	min_length = ((char *) &miniport_char->co_create_vc) -
 		((char *) miniport_char);
 
 	TRACEENTER1("driver: %p %p %d", ndis_driver, miniport_char, char_len);
@@ -166,10 +189,18 @@ STDCALL NDIS_STATUS WRAP_EXPORT(NdisMRegisterMiniport)
 	}
 
 	DBGTRACE1("Version %d.%d", miniport_char->majorVersion,
-		 miniport_char->minorVersion);
+		  miniport_char->minorVersion);
 	DBGTRACE1("Len: %08x:%u", char_len, (u32)sizeof(struct miniport_char));
 	memcpy(&ndis_driver->miniport_char, miniport_char,
 	       sizeof(struct miniport_char));
+
+	i = 0;
+	func = (int *)&ndis_driver->miniport_char.query;
+	while (i < sizeof(miniport_funcs) / sizeof(miniport_funcs[0])) {
+		DBGTRACE2("miniport function '%s' is at %lx",
+			  miniport_funcs[i], (unsigned long)func[i]);
+		i++;
+	}
 
 	TRACEEXIT1(return NDIS_STATUS_SUCCESS);
 }
