@@ -456,7 +456,6 @@ static int get_ioctl_device()
 int main(int argc, char *argv[0])
 {
 	int i, ioctl_device, res;
-	FILE *taint;
 
 	openlog(PROG_NAME, LOG_PERROR | LOG_CONS, LOG_KERN | LOG_DEBUG);
 
@@ -482,13 +481,6 @@ int main(int argc, char *argv[0])
 		error("unable to open ioctl device %s", ioctl_file);
 		res = 5;
 		goto out;
-	}
-
-	/* taint kernel */
-	taint = fopen("/proc/sys/kernel/tainted", "w");
-	if (taint) {
-		fputs("1\n", taint);
-		fclose(taint);
 	}
 
 	if (strcmp(argv[2], NDISWRAPPER_VERSION)) {

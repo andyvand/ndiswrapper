@@ -807,7 +807,9 @@ void ndis_remove_one(struct ndis_handle *handle)
 	set_bit(SHUTDOWN, &handle->wrapper_work);
 
 	miniport_set_int(handle, NDIS_OID_DISASSOCIATE, 0);
+	DBGTRACE1("halting device %s", handle->driver->name);
 	miniport_halt(handle);
+	DBGTRACE1("halt successful");
 
 	set_current_state(TASK_INTERRUPTIBLE);
 	schedule_timeout(HZ);
