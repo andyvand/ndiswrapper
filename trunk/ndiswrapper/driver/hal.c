@@ -78,7 +78,6 @@ STDCALL static void WRAP_EXPORT(READ_PORT_BUFFER_USHORT)
 STDCALL static void WRAP_EXPORT(KeStallExecutionProcessor)
 	(ULONG usecs)
 {
-	//DBGTRACE("%s %d\n", __FUNCTION__ , usecs);
 	udelay(usecs);
 }
 

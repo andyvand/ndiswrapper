@@ -828,7 +828,7 @@ int loader_init(void)
 		ERROR("couldn't register module (%d)", err);
 		TRACEEXIT1(return err);
 	}
-	TRACEEXIT(return 0);
+	TRACEEXIT1(return 0);
 }
 
 void loader_exit(void)
