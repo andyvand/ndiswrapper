@@ -21,7 +21,7 @@ my @sections;
 my %strings;
 my %version;
 my $driver_name;
-my $confdir = "/etc/ndiswrapper.demand";
+my $confdir = "/etc/ndiswrapper";
 my $hotplug_conf = "modules.ndiswrapper";
 my $instdir;
 my %fuzzlist;
