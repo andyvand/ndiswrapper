@@ -29,7 +29,7 @@
 #define RADR(base, rva, type) (type) ((char*)base + rva)
 
 
-#if LINUX_VERSION_CODE <= KERNEL_VERSION(2,4,20)
+#if LINUX_VERSION_CODE <= KERNEL_VERSION(2,4,21)
 #undef __flush_tlb_global
 #define __flush_tlb_global()						\
 	do {								\
