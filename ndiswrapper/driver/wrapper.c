@@ -510,6 +510,17 @@ static int ndis_get_bitrate(struct net_device *dev, struct iw_request_info *info
 	return 0;
 }
 
+static int ndis_set_bitrate(struct net_device *dev,
+							struct iw_request_info *info,
+							union iwreq_data *wrqu, char *extra)
+{
+	/* This is not really needed, as card negotiates the rate with AP.
+	 * However, some user space tools try to set the rate. For now,
+	 * make them happy by doing nothing.
+	 */
+	return 0;
+}
+
 static int ndis_get_rts_threshold(struct net_device *dev, struct iw_request_info *info,
 			   union iwreq_data *wrqu, char *extra)
 {
@@ -1092,6 +1103,7 @@ static const iw_handler	ndis_handler[] = {
 	[SIOCGIWTXPOW	- SIOCIWFIRST] = ndis_get_tx_power,
 	[SIOCSIWTXPOW	- SIOCIWFIRST] = ndis_set_tx_power,
 	[SIOCGIWRATE	- SIOCIWFIRST] = ndis_get_bitrate,
+	[SIOCSIWRATE	- SIOCIWFIRST] = ndis_set_bitrate,
 	[SIOCGIWRTS	- SIOCIWFIRST] = ndis_get_rts_threshold,
 	[SIOCGIWFRAG	- SIOCIWFIRST] = ndis_get_frag_threshold,
 	//[SIOCSIWRETRY	- SIOCIWFIRST] = ndis_get_rety_limit,
