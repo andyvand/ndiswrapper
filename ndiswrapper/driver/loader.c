@@ -93,9 +93,11 @@ static struct ndis_driver *ndiswrapper_load_driver(struct ndis_device *device)
 			TRACEEXIT1(return NULL);
 		}
 
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,0)
 		/* wait for the driver to load and initialize */
 		set_current_state(TASK_INTERRUPTIBLE);
-		schedule_timeout(HZ/2);
+		schedule_timeout(HZ);
+#endif
 		found = 0;
 		spin_lock(&loader_lock);
 		list_for_each_entry(ndis_driver, &ndis_drivers, list) {
