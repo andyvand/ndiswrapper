@@ -55,6 +55,7 @@ int ntoskernel_init(void)
 	InitializeListHead(&obj_mgr_obj_list);
 	InitializeListHead(&wrap_mdl_list);
 	InitializeListHead(&qdpc_list);
+	InitializeListHead(&callback_objects);
 	INIT_WORK(&qdpc_work, &dpc_worker, NULL);
 	mdl_cache = kmem_cache_create("ndis_mdl", sizeof(struct wrap_mdl),
 				      0, 0, NULL, NULL);
@@ -604,7 +605,7 @@ STDCALL void *WRAP_EXPORT(ExRegisterCallback)
 	kspin_lock(&object->lock);
 	InsertTailList(&object->callback_funcs, &callback->list);
 	kspin_unlock(&object->lock);
-	TRACEEXIT(return callback);
+	TRACEEXIT2(return callback);
 }
 
 STDCALL void WRAP_EXPORT(ExUnregisterCallback)
@@ -652,9 +653,8 @@ STDCALL void WRAP_EXPORT(KeInitializeEvent)
 static void wakeup_event(struct kevent *kevent)
 {
 	struct nt_list_entry *ent;
-	KIRQL irql;
 
-	irql = kspin_lock_irql(&kevent_lock, DISPATCH_LEVEL);
+	kspin_lock(&kevent_lock);
 	while ((ent = RemoveHeadList(&kevent->dh.wait_list)) &&
 		kevent->dh.signal_state > 0) {
 		struct wait_block *wb;
@@ -662,14 +662,19 @@ static void wakeup_event(struct kevent *kevent)
 		wb = container_of(ent, struct wait_block, list_entry);
 		DBGTRACE3("waking up process %p (%p,%p)", wb->thread, wb,
 			  kevent);
-		if (wb->thread)
+		if (wb->thread) {
+			/* make sure that the thread calls schedule
+			   before trying to wake it up; otherwise we
+			   may wake up a thread before it puts itself
+			   to sleep, and it will stay in sleep */
 			wake_up_process((task_t *)wb->thread);
-		else
+//			set_task_state((task_t *)wb->thread, TASK_RUNNING);
+		} else
 			ERROR("illegal wait block %p(%p)", wb, kevent);
 		if (kevent->dh.type == SynchronizationEvent)
 			break;
 	}
-	kspin_unlock_irql(&kevent_lock, irql);
+	kspin_unlock(&kevent_lock);
 	return;
 }
 
@@ -794,6 +799,7 @@ STDCALL NTSTATUS WRAP_EXPORT(KeWaitForMultipleObjects)
 	struct kmutex *kmutex;
 	struct ksemaphore *ksemaphore;
 	struct dispatch_header *dh;
+	KIRQL irql;
 
 	TRACEENTER2("count = %d, reason = %u, waitmode = %u, alertable = %u,"
 		    " timeout = %p", count, wait_reason, wait_mode,
@@ -808,44 +814,6 @@ STDCALL NTSTATUS WRAP_EXPORT(KeWaitForMultipleObjects)
 		wb = &wb_array[0];
 	else
 		wb = wait_block_array;
-
-	/* first get the list of objects the thread need to wait on
-	 * and add put it on the wait list for each such object */
-	kspin_lock(&kevent_lock);
-	for (i = 0, wait_count = 0; i < count; i++) {
-		dh = &object[i]->dh;
-		kmutex = (struct kmutex *)object[i];
-		/* wait succeeds if either object is in signal state
-		 * (i.e., dh->signal_state > 0) or it is mutex and we
-		 * already own it (in case of recursive mutexes,
-		 * signal state can be negative) */
-		if (dh->signal_state > 0 ||
-		    (dh->size == sizeof(*kmutex) &&
-		     kmutex->owner_thread == get_current())) {
-			/* if synchronization event or semaphore,
-			 * decrement count */
-			if (dh->type == SynchronizationEvent ||
-			    dh->size == sizeof(*ksemaphore))
-				dh->signal_state--;
-			if (dh->size == sizeof(*kmutex))
-				kmutex->owner_thread = get_current;
-			if (wait_type == WaitAny) {
-				kspin_unlock(&kevent_lock);
-				TRACEEXIT3(return STATUS_WAIT_0 + i);
-			}
-			/* mark that we are not waiting on this object */
-			wb[i].thread = NULL;
-			wb[i].object = NULL;
-		} else {
-			wb[i].thread = get_current();
-			wb[i].object = object[i];
-			InsertTailList(&dh->wait_list, &wb[i].list_entry);
-			wait_count++;
-			DBGTRACE3("%p (%p) waiting on event %p", &wb[i],
-				  wb[i].thread, wb[i].object);
-		}
-	}
-	kspin_unlock(&kevent_lock);
 
 	wait_jiffies = 0;
 	if (timeout) {
@@ -866,15 +834,62 @@ STDCALL NTSTATUS WRAP_EXPORT(KeWaitForMultipleObjects)
 			wait_jiffies = HZ * (-(*timeout)) / TICKSPERSEC;
 	}
 
+	/* we put the task state in appropriate state before checking
+	 * if we need to put this thread on the wait list, so that if
+	 * the event is set to signaled state after putting the thread
+	 * on the wait list but before we put the thread into sleep
+	 * (with 'schedule'), wakup_event will put the thread back
+	 * into running state; otherwise, wakeup_event may put this
+	 * into running state and _then_ we go to sleep causing thread
+	 * to miss the event */
+	irql = kspin_lock_irql(&kevent_lock, DISPATCH_LEVEL);
+	if (alertable)
+		set_current_state(TASK_INTERRUPTIBLE);
+	else
+		set_current_state(TASK_UNINTERRUPTIBLE);
+	/* first get the list of objects the thread need to wait on
+	 * and add put it on the wait list for each such object */
+	for (i = 0, wait_count = 0; i < count; i++) {
+		dh = &object[i]->dh;
+		kmutex = (struct kmutex *)object[i];
+		/* wait succeeds if either object is in signal state
+		 * (i.e., dh->signal_state > 0) or it is mutex and we
+		 * already own it (in case of recursive mutexes,
+		 * signal state can be negative) */
+		if (dh->signal_state > 0 ||
+		    (dh->size == sizeof(*kmutex) &&
+		     kmutex->owner_thread == get_current())) {
+			/* if synchronization event or semaphore,
+			 * decrement count */
+			if (dh->type == SynchronizationEvent ||
+			    dh->size == sizeof(*ksemaphore))
+				dh->signal_state--;
+			if (dh->size == sizeof(*kmutex))
+				kmutex->owner_thread = get_current;
+			if (wait_type == WaitAny) {
+				kspin_unlock(&kevent_lock);
+				set_current_state(TASK_RUNNING);
+				TRACEEXIT3(return STATUS_WAIT_0 + i);
+			}
+			/* mark that we are not waiting on this object */
+			wb[i].thread = NULL;
+			wb[i].object = NULL;
+		} else {
+			wb[i].thread = get_current();
+			wb[i].object = object[i];
+			InsertTailList(&dh->wait_list, &wb[i].list_entry);
+			wait_count++;
+			DBGTRACE3("%p (%p) waiting on event %p", &wb[i],
+				  wb[i].thread, wb[i].object);
+		}
+	}
+	kspin_unlock_irql(&kevent_lock, irql);
+
 	DBGTRACE3("%p is going to sleep for %ld", get_current(), wait_jiffies);
 	while (wait_count) {
 		if (signal_pending(current))
 			res = -ERESTARTSYS;
 		else {
-			if (alertable)
-				set_current_state(TASK_INTERRUPTIBLE);
-			else
-				set_current_state(TASK_UNINTERRUPTIBLE);
 			if (wait_jiffies > 0)
 				res = schedule_timeout(wait_jiffies);
 			else {
@@ -882,7 +897,12 @@ STDCALL NTSTATUS WRAP_EXPORT(KeWaitForMultipleObjects)
 				res = 1;
 			}
 		}
-		kspin_lock(&kevent_lock);
+		irql = kspin_lock_irql(&kevent_lock, DISPATCH_LEVEL);
+		if (alertable)
+			set_current_state(TASK_INTERRUPTIBLE);
+		else
+			set_current_state(TASK_UNINTERRUPTIBLE);
+		DBGTRACE3("%p woke up, res = %d", get_current(), res);
 		for (i = 0; i < count; i++) {
 			dh = &object[i]->dh;
 			kmutex = (struct kmutex *)object[i];
@@ -904,8 +924,9 @@ STDCALL NTSTATUS WRAP_EXPORT(KeWaitForMultipleObjects)
 			/* we are done; remove from wait list */
 			for (i = 0; i < count; i++)
 				if (wb[i].thread)
-					RemoveTailList(&wb[i].list_entry);
-			kspin_unlock(&kevent_lock);
+					RemoveEntryList(&wb[i].list_entry);
+			set_current_state(TASK_RUNNING);
+			kspin_unlock_irql(&kevent_lock, irql);
 			DBGTRACE3("%p woke up, res = %d", get_current(), res);
 			if (res < 0)
 				TRACEEXIT2(return STATUS_ALERTED);
@@ -919,11 +940,12 @@ STDCALL NTSTATUS WRAP_EXPORT(KeWaitForMultipleObjects)
 					TRACEEXIT2(return STATUS_SUCCESS);
 			}
 		}
-		kspin_unlock(&kevent_lock);
+		kspin_unlock_irql(&kevent_lock, irql);
 		wait_jiffies = res;
 	}
 
 	DBGTRACE3("%p woke up, res = %d", get_current(), res);
+	set_current_state(TASK_RUNNING);
 	TRACEEXIT2(return STATUS_SUCCESS);
 }
 
@@ -932,7 +954,7 @@ STDCALL NTSTATUS WRAP_EXPORT(KeWaitForSingleObject)
 	 KPROCESSOR_MODE wait_mode, BOOLEAN alertable, LARGE_INTEGER *timeout)
 {
 	struct kevent *obj = object;
-	return KeWaitForMultipleObjects(1, &obj, WaitAny, wait_reason,
+	return KeWaitForMultipleObjects(1, &obj, WaitAll, wait_reason,
 					wait_mode, alertable, timeout, NULL);
 }
 
