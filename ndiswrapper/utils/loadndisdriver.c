@@ -62,8 +62,8 @@ static int debug;
 		       PROG_NAME, __FUNCTION__, __LINE__ , ## __VA_ARGS__); \
 	} while (0)
 
-/* read system file (either .sys or .bin) */
-static int read_file(char *filename, struct load_driver_file *driver_file)
+/* load .sys or .bin file */
+static int load_file(char *filename, struct load_driver_file *driver_file)
 {
 	int fd;
 	size_t size;
@@ -248,6 +248,7 @@ static int load_driver(int ioctl_device, char *driver_name,
 	nr_sys_files = 0;
 	nr_bin_files = 0;
 
+	dbg("loading driver %s", driver_name);
 	if (chdir(confdir) || chdir(driver_name)) {
 		error("couldn't change to directory %s: %s",
 		      driver_name, strerror(errno));
@@ -266,11 +267,12 @@ static int load_driver(int ioctl_device, char *driver_name,
 	memset(driver, 0, sizeof(*driver));
 	strncpy(driver->name, driver_name, MAX_DRIVER_NAME_LEN);
 
-	if (read_conf_file(conf_file_name, driver)) {
-		error("couldn't read conf file %s", dirent->d_name);
+	if (read_conf_file(conf_file_name, driver) ||
+	    driver->nr_settings == 0) {
+		error("couldn't read conf file %s for driver %s",
+		      conf_file_name, driver_name);
 		goto err;
 	}
-	dbg("loading driver %s", driver_name);
 	while ((dirent = readdir(driver_dir))) {
 		int len;
 		struct stat statbuf;
@@ -295,7 +297,7 @@ static int load_driver(int ioctl_device, char *driver_name,
 			continue;
 
 		if (len > 4 && strcmp(&dirent->d_name[len-4], ".sys") == 0) {
-			if (read_file(dirent->d_name,
+			if (load_file(dirent->d_name,
 				      &driver->sys_files[nr_sys_files])) {
 				error("couldn't load .sys file %s",
 				      dirent->d_name);
@@ -304,7 +306,7 @@ static int load_driver(int ioctl_device, char *driver_name,
 				nr_sys_files++;
 		} else if (len > 4 &&
 			   strcmp(&dirent->d_name[len-4], ".bin") == 0) {
-			if (read_file(dirent->d_name,
+			if (load_file(dirent->d_name,
 				      &driver->bin_files[nr_bin_files])) {
 				error("coudln't load .bin file %s",
 				      dirent->d_name);
@@ -329,10 +331,6 @@ static int load_driver(int ioctl_device, char *driver_name,
 	if (nr_sys_files == 0) {
 		error("coudln't find valid drivers files for driver %s",
 		      driver_name);
-		goto err;
-	}
-	if (driver->nr_settings == 0) {
-		error("couldn't find required .conf file %s", conf_file_name);
 		goto err;
 	}
 	driver->nr_sys_files = nr_sys_files;
