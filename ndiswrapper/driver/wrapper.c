@@ -233,31 +233,37 @@ static int ndis_get_mode(struct net_device *dev, struct iw_request_info *info,
 	return 0;
 }
 
+const char *net_type_to_name(int net_type)
+{
+	static const char *net_names[] = {"IEEE 802.11FH", "IEEE 802.11b",
+	              "IEEE 802.11a", "IEEE 802.11g"};
+	static const char *unknown = "IEEE 802.11";
+
+	if (net_type >= 0 &&
+	    net_type < (sizeof(net_names)/sizeof(net_names[0])))
+		return net_names[net_type];
+	else
+		return unknown;
+}
 
 static int ndis_get_name(struct net_device *dev, struct iw_request_info *info,
 			   union iwreq_data *wrqu, char *extra)
 {
 	struct ndis_handle *handle = dev->priv;
 	unsigned int network_type, res;
-	const char *types[] = {"IEEE 802.11b", "IEEE 802.11-DS",
-		"IEEE 802.11-FDM5", "IEEE 802.11g"};
-
+	
 	res = query_int(handle, NDIS_OID_NETWORK_TYPE_IN_USE, &network_type);
 	if (res)
-		strncpy(wrqu->name, "IEEE 802.11", sizeof(wrqu->name)-1);
-	else
-		if (network_type >= 0 && 
-			network_type < (sizeof(types)/sizeof(types[0])))
-			strncpy(wrqu->name, types[network_type], sizeof(wrqu->name)-1);
-		else
-			strncpy(wrqu->name, "IEEE 802.11", sizeof(wrqu->name)-1);
+		network_type = -1;
 
+	strncpy(wrqu->name, net_type_to_name(network_type),
+	        sizeof(wrqu->name) - 1);
 	wrqu->name[sizeof(wrqu->name)-1] = 0;
 	return 0;
 }
 
 static int ndis_get_freq(struct net_device *dev, struct iw_request_info *info,
-			   union iwreq_data *wrqu, char *extra)
+                         union iwreq_data *wrqu, char *extra)
 {
 	struct ndis_handle *handle = dev->priv;
 	unsigned int res, written, needed;
