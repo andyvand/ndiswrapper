@@ -50,7 +50,7 @@
 #define MACINTADR(a) (int*)&((a)[0]), (int*)&((a)[1]), (int*)&((a)[2]), (int*)&((a)[3]), (int*)&((a)[4]), (int*)&((a)[5])
 
 #ifdef CONFIG_X86_64
-#define caller_return_address(ip)  asm("push 4(%%rbp)\npop %0\n" : "=g"(ip))
+#define caller_return_address(ip)  asm("push 8(%%rbp)\npop %0\n" : "=g"(ip))
 #else
 #define caller_return_address(ip)  asm("push 4(%%ebp)\npop %0\n" : "=g"(ip))
 #endif
