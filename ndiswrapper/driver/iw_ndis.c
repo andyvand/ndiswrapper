@@ -1261,7 +1261,8 @@ static int wpa_set_wpa(struct net_device *dev, struct iw_request_info *info,
 	DBGTRACE1("flags = %d,  handle->capa = %ld",
 		  wrqu->data.flags, handle->capa);
 	
-	if (test_bit(CAPA_WPA, &handle->capa))
+	if (test_bit(Ndis802_11Encryption2Enabled, &handle->capa) ||
+	    test_bit(Ndis802_11Encryption3Enabled, &handle->capa))
 		TRACEEXIT2(return 0);
 	else {
 		WARNING("%s", "driver is not WPA capable");
@@ -1302,7 +1303,7 @@ static int wpa_set_key(struct net_device *dev, struct iw_request_info *info,
 		    wpa_key.alg, wpa_key.key_index);
 	
 	if (wpa_key.alg == WPA_ALG_WEP) {
-		if (test_bit(CAPA_ENCR_NONE, &handle->capa))
+		if (test_bit(Ndis802_11EncryptionDisabled, &handle->capa))
 			TRACEEXIT2(return -1);
 
 		if (wpa_key.set_tx)

@@ -991,7 +991,8 @@ static void link_status_handler(struct ndis_handle *handle)
 		TRACEEXIT2(return);
 	}
 
-	if (!test_bit(CAPA_WPA, &handle->capa))
+	if (!test_bit(Ndis802_11Encryption2Enabled, &handle->capa) &&
+	    !test_bit(Ndis802_11Encryption3Enabled, &handle->capa))
 		TRACEEXIT2(return);
 
 	assoc_info = kmalloc(assoc_size, GFP_KERNEL);
@@ -1232,7 +1233,7 @@ static void check_capa(struct ndis_handle *handle)
 			       OID_802_11_ENCRYPTION_STATUS, &i) == 0 &&
 	    (i == Ndis802_11Encryption1Enabled ||
 	     i == Ndis802_11Encryption1KeyAbsent))
-		set_bit(CAPA_WEP, &handle->capa);
+		set_bit(Ndis802_11Encryption1Enabled, &handle->capa);
 
 	/* check if WPA is supported */
 	DBGTRACE2("%s", "");
@@ -1268,7 +1269,7 @@ static void check_capa(struct ndis_handle *handle)
 	if (mode == Ndis802_11EncryptionDisabled)
 		TRACEEXIT1(return);
 
-	set_bit(CAPA_WEP, &handle->capa);
+	set_bit(Ndis802_11Encryption1Enabled, &handle->capa);
 	if (mode == Ndis802_11Encryption1Enabled)
 		TRACEEXIT1(return);
 
@@ -1288,10 +1289,9 @@ static void check_capa(struct ndis_handle *handle)
 	if (res == NDIS_STATUS_NOT_SUPPORTED)
 		TRACEEXIT1(return);
 
-	set_bit(CAPA_WPA, &handle->capa);
+	set_bit(Ndis802_11Encryption2Enabled, &handle->capa);
 	if (mode == Ndis802_11Encryption3Enabled)
-		set_bit(CAPA_AES, &handle->capa);
-	set_bit(CAPA_TKIP, &handle->capa);
+		set_bit(Ndis802_11Encryption3Enabled, &handle->capa);
 
 	TRACEEXIT1(return);
 }
@@ -1462,9 +1462,12 @@ int setup_dev(struct net_device *dev)
 	DBGTRACE1("capbilities = %ld", handle->capa);
 	printk(KERN_INFO "%s: encryption modes supported: %s%s%s\n",
 	       dev->name,
-	       test_bit(CAPA_WEP, &handle->capa) ? "WEP" : "none",
-	       test_bit(CAPA_TKIP, &handle->capa) ? ", WPA with TKIP" : "",
-	       test_bit(CAPA_AES, &handle->capa) ? ", WPA with AES/CCMP" : "");
+	       test_bit(Ndis802_11Encryption1Enabled, &handle->capa) ?
+	       "WEP" : "none",
+	       test_bit(Ndis802_11Encryption2Enabled, &handle->capa) ?
+	       ", WPA with TKIP" : "",
+	       test_bit(Ndis802_11Encryption3Enabled, &handle->capa) ?
+	       ", WPA with AES/CCMP" : "");
 
 	/* check_capa changes auth_mode and encr_mode, so set them again */
 	set_infra_mode(handle, Ndis802_11Infrastructure);

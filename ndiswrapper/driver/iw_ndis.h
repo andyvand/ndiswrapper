@@ -158,15 +158,6 @@ int set_privacy_filter(struct ndis_handle *handle, int flags);
 
 /* WPA support */
 
-enum capa_list {
-	CAPA_ENCR1 = Ndis802_11Encryption1Enabled,
-	CAPA_WEP = Ndis802_11Encryption1Enabled,
-	CAPA_ENCR_NONE = Ndis802_11EncryptionDisabled,
-	CAPA_TKIP = Ndis802_11Encryption2Enabled,
-	CAPA_AES = Ndis802_11Encryption3Enabled,
-	CAPA_WPA,
-};
-
 #define PRIV_RESET	 		SIOCIWFIRSTPRIV+16
 #define PRIV_POWER_PROFILE	 	SIOCIWFIRSTPRIV+17
 #define PRIV_NETWORK_TYPE	 	SIOCIWFIRSTPRIV+18
