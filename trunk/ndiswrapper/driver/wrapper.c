@@ -775,20 +775,19 @@ static int ndis_get_scan(struct net_device *dev, struct iw_request_info *info,
 	res = doquery(handle, NDIS_OID_STATISTICS, (char *)&ndis_stats,
 		      sizeof(ndis_stats), &written, &needed);
 	if (res)
-	{
-		printk(KERN_ERR "%s: get statitics failed with %x\n",
+		printk(KERN_WARNING "%s: get statistics failed with %x\n",
 		       dev->name, res);
-		return -1;
-	}
-
-	iw_stats->discard.retries = (__u32)ndis_stats.retry + (__u32)ndis_stats.multi_retry;
-iw_stats->discard.misc = (__u32)(ndis_stats.rtss_fail + (__u32)ndis_stats.ack_fail + (__u32)ndis_stats.frame_dup);
-
-	if (ndis_stats.trans_frag)
-		iw_stats->qual.qual = 100 - 100 * ((__u32)ndis_stats.retry + 2 * (__u32)ndis_stats.multi_retry + 3 * (__u32)ndis_stats.failed) /(6 * (__u32)ndis_stats.trans_frag);
 	else
-		iw_stats->qual.qual = 100;
-	DBGTRACE("%s: quality = %d\n", dev->name, iw_stats->qual.qual);
+	{
+		iw_stats->discard.retries = (__u32)ndis_stats.retry + (__u32)ndis_stats.multi_retry;
+		iw_stats->discard.misc = (__u32)(ndis_stats.rtss_fail + (__u32)ndis_stats.ack_fail + (__u32)ndis_stats.frame_dup);
+		
+		if (ndis_stats.trans_frag)
+			iw_stats->qual.qual = 100 - 100 * ((__u32)ndis_stats.retry + 2 * (__u32)ndis_stats.multi_retry + 3 * (__u32)ndis_stats.failed) /(6 * (__u32)ndis_stats.trans_frag);
+		else
+			iw_stats->qual.qual = 100;
+		DBGTRACE("%s: quality = %d\n", dev->name, iw_stats->qual.qual);
+	}
 
 	return 0;
 }
@@ -1586,6 +1585,7 @@ static void __devexit ndis_remove_one(struct pci_dev *pdev)
 	if(handle->net_dev)
 		free_netdev(handle->net_dev);
 #endif
+	flush_scheduled_work();
 	pci_release_regions(pdev);
 	pci_disable_device(pdev);
 }
