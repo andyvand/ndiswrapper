@@ -18,10 +18,10 @@
 /*
  * Send some ioctl to module 
  */
-void test(int device)
+void test(int device, unsigned long test)
 {
 	printf("Calling test ioctl\n");
-	ioctl(device, WDIOC_TEST, 0);
+	ioctl(device, WDIOC_TEST, test);
 }
 	
 
@@ -125,7 +125,7 @@ int main(int argc, char* argv[])
 	int misc_minor;
 
 
-	if(argc != 2)
+	if(argc < 2)
 	{
 		fprintf(stderr, "Usage: %s windowsdriver.sys\n", argv[0]);
 		return 1;
@@ -147,7 +147,7 @@ int main(int argc, char* argv[])
 	}
 	
 	if(strcmp(argv[1], "-t") == 0)
-		test(device);
+		test(device, atoi(argv[2]));
 	else
 		load(argv[1], device);
 
