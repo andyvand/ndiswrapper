@@ -21,6 +21,7 @@
 
 DECLARE_WAIT_QUEUE_HEAD(dispatch_event_wq);
 struct wrap_spinlock dispatch_event_lock;
+unsigned char global_signal_state = 0;
 
 WRAP_EXPORT_MAP("KeTickCount", &jiffies);
 
@@ -137,6 +138,12 @@ STDCALL void WRAP_EXPORT(KeReleaseSpinLock)
 	KfReleaseSpinLock(0, oldirql, lock);
 }
 
+STDCALL void WRAP_EXPORT(KeReleaseSpinLockFromDpcLevel)
+	(KSPIN_LOCK *lock)
+{
+	KefReleaseSpinLockFromDpcLevel(0, 0, lock);
+}
+
 _FASTCALL static struct slist_entry *WRAP_EXPORT(ExInterlockedPushEntrySList)
 	(int dummy, struct slist_entry *entry, union slist_head *head,
 	 KSPIN_LOCK *lock)
@@ -180,14 +187,80 @@ _FASTCALL static struct slist_entry * WRAP_EXPORT(ExInterlockedPopEntrySList)
 	return first;
 }
 
+_FASTCALL static struct list_entry *WRAP_EXPORT(ExfInterlockedInsertTailList)
+	(int dummy, struct list_entry *entry, struct list_entry *head,
+	 KSPIN_LOCK *lock)
+{
+	struct list_entry *oldhead;
+	KIRQL irql;
+
+	TRACEENTER3("head = %p", head);
+
+	KeAcquireSpinLock(lock, &irql);
+	if (head == NULL)
+		oldhead = NULL;
+	else
+		oldhead = head->bwd_link;
+
+	entry->fwd_link = head;
+	entry->bwd_link = head->bwd_link;
+	head->bwd_link->fwd_link = entry;
+	head->bwd_link = entry;
+	KeReleaseSpinLock(lock, irql);
+	DBGTRACE3("head = %p, oldhead = %p", head, oldhead);
+	return(oldhead);
+}
+
+_FASTCALL static struct list_entry *WRAP_EXPORT(ExfInterlockedRemoveHeadList)
+	(int dummy, KSPIN_LOCK *lock, struct list_entry *head)
+{
+	struct list_entry *entry, *tmp;
+	KIRQL irql;
+
+	TRACEENTER3("head = %p", head);
+
+	KeAcquireSpinLock(lock, &irql);
+	if (head == NULL)
+		TRACEEXIT3(return NULL);
+	
+	entry = head->fwd_link;
+	if (entry == NULL || entry->bwd_link == NULL ||
+	    entry->fwd_link == NULL ||
+	    entry->bwd_link->fwd_link != entry ||
+	    entry->fwd_link->bwd_link != entry) {
+		ERROR("illegal list_entry %p", entry);
+		TRACEEXIT3(return NULL);
+	}
+
+	tmp = entry->bwd_link;
+	entry->fwd_link->bwd_link = entry->bwd_link;
+	tmp->fwd_link = entry->fwd_link;
+
+	entry->fwd_link = NULL;
+	entry->bwd_link = NULL;
+	KeReleaseSpinLock(lock, irql);
+	DBGTRACE3("head = %p", head);
+	TRACEEXIT3(return entry);
+}
+
+
 STDCALL static void * WRAP_EXPORT(ExAllocatePoolWithTag)
 	(enum pool_type pool_type, size_t size, unsigned long tag)
 {
+	void *ret;
+
 	TRACEENTER1("pool_type: %d, size: %d, tag: %lu", pool_type, size, tag);
 
 	/* FIXME: should this function allocate using kmem_cache/mem_pool
 	   instead? */
-	return kmalloc(size, GFP_ATOMIC);
+	
+	if (KeGetCurrentIrql() == DISPATCH_LEVEL)
+		ret = kmalloc(size, GFP_ATOMIC);
+	else
+		ret = kmalloc(size, GFP_KERNEL);
+			
+	DBGTRACE2("return value = %p", ret);
+	return ret;
 }
 
 STDCALL static void WRAP_EXPORT(ExFreePool)
@@ -300,6 +373,7 @@ STDCALL void WRAP_EXPORT(KeInitializeEvent)
 	wrap_spin_lock(&dispatch_event_lock);
 	kevent->header.type = type;
 	kevent->header.signal_state = state;
+	kevent->header.inserted = 0;
 	wrap_spin_unlock(&dispatch_event_lock);
 }
 
@@ -313,26 +387,17 @@ STDCALL long WRAP_EXPORT(KeSetEvent)
 	if (wait == TRUE)
 		WARNING("wait = %d, not yet implemented", wait);
 
-	if (old_state == 0) {
-		wrap_spin_lock(&dispatch_event_lock);
-		kevent->header.signal_state = 1;
-		if (kevent->header.type == SYNCHRONIZATION_EVENT)
-			wake_up_nr(&dispatch_event_wq, 1);
-		else
-			wake_up_all(&dispatch_event_wq);
-		DBGTRACE3("woken up %p", kevent);
-		if (kevent->header.type == SYNCHRONIZATION_EVENT)
-			kevent->header.signal_state = 0;
-		/* NDIS seems to say the event should be cleared after waking
-		 * up, but drivers seem to not work that way! It is not clear
-		 * if NDIS says the event should be cleared here or will
-		 * be cleared later
-		 */
-		/* But if called from NdisSetEvent, the event should be left
-		 * in signaled state */
-		/* kevent->header.signal_state = 0; */
-		wrap_spin_unlock(&dispatch_event_lock);
-	}
+	wrap_spin_lock(&dispatch_event_lock);
+	kevent->header.signal_state = TRUE;
+	kevent->header.absolute = TRUE;
+	global_signal_state = TRUE;
+	if (kevent->header.type == SYNCHRONIZATION_EVENT)
+		wake_up_nr(&dispatch_event_wq, 1);
+	else
+		wake_up_all(&dispatch_event_wq);
+//	global_signal_state = FALSE;
+	DBGTRACE3("woken up %p", kevent);
+	wrap_spin_unlock(&dispatch_event_lock);
 	TRACEEXIT3(return old_state);
 }
 
@@ -340,9 +405,9 @@ STDCALL static void WRAP_EXPORT(KeClearEvent)
 	(struct kevent *kevent)
 {
 	TRACEENTER3("event = %p", kevent);
-	wrap_spin_lock(&dispatch_event_lock);
-	kevent->header.signal_state = 0;
-	wrap_spin_unlock(&dispatch_event_lock);
+	kevent->header.signal_state = FALSE;
+	kevent->header.absolute = FALSE;
+	global_signal_state = FALSE;
 }
 
 STDCALL long WRAP_EXPORT(KeResetEvent)
@@ -352,10 +417,11 @@ STDCALL long WRAP_EXPORT(KeResetEvent)
 
 	TRACEENTER3("event = %p", kevent);
 
-	wrap_spin_lock(&dispatch_event_lock);
 	old_state = kevent->header.signal_state;
-	kevent->header.signal_state = 0;
-	wrap_spin_unlock(&dispatch_event_lock);
+	kevent->header.signal_state = FALSE;
+	kevent->header.absolute = FALSE;
+	/* FIXME: should we reset global signal state? */
+	global_signal_state = FALSE;
 
 	TRACEEXIT3(return old_state);
 }
@@ -366,8 +432,9 @@ STDCALL unsigned int WRAP_EXPORT(KeWaitForSingleObject)
 {
 	struct kevent *kevent = (struct kevent *)object;
 	struct dispatch_header *header = &kevent->header;
-	unsigned int ms;
 	int res;
+	unsigned long wait_ms;
+	long wait_jiffies;
 
 	/* Note: for now, object can only point to an event */
 	TRACEENTER2("event = %p, reason = %u, waitmode = %u, alertable = %u,"
@@ -376,54 +443,197 @@ STDCALL unsigned int WRAP_EXPORT(KeWaitForSingleObject)
 
 	DBGTRACE2("object type = %d, size = %d", header->type, header->size);
 
-	if (header->signal_state)
-		TRACEEXIT3(return STATUS_SUCCESS);
+	if (header->signal_state == TRUE) {
+		if (header->type == SYNCHRONIZATION_EVENT)
+			header->signal_state = FALSE;
+ 		TRACEEXIT3(return STATUS_SUCCESS);
+	}
 
 	if (timeout) {
 		DBGTRACE2("timeout = %Ld", *timeout);
 		if (*timeout == 0)
 			TRACEEXIT2(return STATUS_TIMEOUT);
 		else if (*timeout > 0)
-			ms = ((*timeout) - ticks_1601()) / 10000;
+			wait_ms = ((*timeout) - ticks_1601()) / 10000;
 		else
-			ms = (-(*timeout)) / 10000;
+			wait_ms = (-(*timeout)) / 10000;
 	} else
-		ms = 0;
+		wait_ms = 0;
 
-	DBGTRACE2("wait ms = %u", ms);
+	DBGTRACE2("wait ms = %lu", wait_ms);
 
-	if (ms == 0) {
+	wait_jiffies = (wait_ms * HZ) / 1000;
+	header->inserted++;
+	if (wait_jiffies == 0) {
 		if (alertable)
 			res = wait_event_interruptible(
 				dispatch_event_wq,
-				(header->signal_state == 1));
+				(header->signal_state == TRUE));
 		else {
 			wait_event(dispatch_event_wq,
-				   (header->signal_state == 1));
+				   (header->signal_state == TRUE));
 			res = 1;
 		}
 	} else {
 		if (alertable)
 			res = wait_event_interruptible_timeout(
 				dispatch_event_wq,
-				(header->signal_state == 1),
-				(ms * HZ)/1000);
+				(header->signal_state == TRUE),
+				wait_jiffies);
 		else
 			res = wait_event_timeout(
 				dispatch_event_wq,
-				(header->signal_state == 1),
-				(ms * HZ)/1000);
+				(header->signal_state == TRUE),
+				wait_jiffies);
 	}
+
+	header->inserted--;
+	/* check if it is last event in case of notification event */
+	if (header->inserted == 0)
+		header->signal_state = FALSE;
 
 	DBGTRACE3("%p, type = %d woke up (%ld), res = %d",
 		  kevent, header->type, header->signal_state, res);
-	if (res > 0)
-		TRACEEXIT2(return STATUS_SUCCESS);
-	else if (res < 0)
+	if (res < 0)
 		TRACEEXIT2(return STATUS_ALERTED);
-	else
+
+	if (res == 0)
 		TRACEEXIT2(return STATUS_TIMEOUT);
 
+	/* res > 0 */
+	TRACEEXIT2(return STATUS_SUCCESS);
+}
+
+STDCALL unsigned int WRAP_EXPORT(KeWaitForMultipleObjects)
+	(unsigned long count, void *object[], unsigned long wait_type,
+	 unsigned int wait_reason, unsigned int waitmode,
+	 unsigned short alertable, s64 *timeout, struct wait_block *wait_block)
+{
+	struct kevent *kevent = NULL;
+	struct kmutex *kmutex;
+	unsigned long wait_ms;
+	long wait_jiffies;
+	int i, sat_index = 0, wait_count;
+	int res = 0;
+
+	/* FIXME: Do all objects have same dispatch header? If so,
+	 * signal_state of any object can be used to wait and wakeup;
+	 * otherwise, we need a global signal state; then we check
+	 * which objects have been signaled */
+
+	/* Note: for now, object can only point to an event */
+	TRACEENTER2("reason = %u, waitmode = %u, alertable = %u,"
+		" timeout = %p", wait_reason, waitmode, alertable,
+		timeout);
+
+	if (count > MAX_WAIT_OBJECTS ||
+	    (count > THREAD_WAIT_OBJECTS && wait_block == NULL))
+		TRACEEXIT3(return STATUS_INVALID_PARAMETER);
+
+	for (i = 0, wait_count = 0; i < count; i++) {
+		kevent = (struct kevent *)object[i];
+		if (kevent->header.type == NT_OBJ_MUTEX) {
+			kmutex = (struct kmutex *)kevent;
+			if (kmutex->owner_thread == NULL ||
+			    kmutex->owner_thread == get_current()) {
+				kmutex->dispatch_header.signal_state = FALSE;
+				kmutex->count++;
+				kmutex->owner_thread = get_current();
+				if (wait_type == WAIT_ANY)
+					return STATUS_WAIT_0 + i;
+			}
+		} else if (kevent->header.signal_state == TRUE) {
+			if (kevent->header.type == SYNCHRONIZATION_EVENT)
+				kevent->header.signal_state = FALSE;
+			if (wait_type == WAIT_ANY)
+				return STATUS_WAIT_0 + i;
+		}
+		if (kevent->header.signal_state == FALSE)
+			wait_count++;
+	}
+					
+	if (timeout) {
+		DBGTRACE2("timeout = %Ld", *timeout);
+		if (*timeout == 0)
+			TRACEEXIT2(return STATUS_TIMEOUT);
+		else if (*timeout > 0)
+			wait_ms = ((*timeout) - ticks_1601()) / 10000;
+		else
+			wait_ms = (-(*timeout)) / 10000;
+	} else
+		wait_ms = 0;
+
+	DBGTRACE2("wait ms = %lu", wait_ms);
+	wait_jiffies = (wait_ms * HZ) / 1000;
+
+	global_signal_state = FALSE;
+	while (wait_count > 0) {
+		if (wait_jiffies == 0) {
+			if (alertable)
+				res = wait_event_interruptible(
+					dispatch_event_wq,
+					(global_signal_state == TRUE));
+			else {
+				wait_event(dispatch_event_wq,
+					   (global_signal_state == TRUE));
+				res = 1;
+			}
+		} else {
+			if (alertable)
+				res = wait_event_interruptible_timeout(
+					dispatch_event_wq,
+					(global_signal_state == TRUE),
+					wait_jiffies);
+			else
+				res = wait_event_timeout(
+					dispatch_event_wq,
+					(global_signal_state == TRUE),
+					wait_jiffies);
+		}
+		wrap_spin_lock(&dispatch_event_lock);
+		if (res > 0) {
+			for (i = 0; i < count; i++) {
+				kevent = (struct kevent *)object[i];
+				if (kevent->header.absolute == TRUE) {
+					kevent->header.absolute = FALSE;
+					sat_index = i;
+					wait_count--;
+				}
+
+				kmutex = (struct kmutex *)object[i];
+				if (kmutex->owner_thread == NULL) {
+					kmutex->owner_thread = get_current();
+					kmutex->count++;
+				}
+			}
+		}
+		wrap_spin_unlock(&dispatch_event_lock);
+		if (res > 0)
+			wait_jiffies = res;
+		if (wait_type == WAIT_ANY)
+			break;
+	}
+
+	if (res < 0)
+		TRACEEXIT2(return STATUS_ALERTED);
+
+	if (res == 0)
+		TRACEEXIT2(return STATUS_TIMEOUT);
+
+	/* res > 0 */
+	if (wait_type == WAIT_ANY && wait_count > 0)
+		return STATUS_WAIT_0 + sat_index;
+
+	TRACEEXIT2(return STATUS_SUCCESS);
+}
+
+STDCALL static void WRAP_EXPORT(IoReuseIrp)
+	(struct irp *irp, int status)
+{
+	TRACEENTER3("irp = %p, status = %d", irp, status);
+	if (irp)
+		irp->io_status.status = status;
+	TRACEEXIT3(return);
 }
 
 STDCALL static void WRAP_EXPORT(IoBuildSynchronousFsdRequest)
@@ -978,6 +1188,55 @@ STDCALL unsigned long WRAP_EXPORT(IoGetDeviceProperty)
 	default:
 		TRACEEXIT1(return STATUS_INVALID_PARAMETER_2);
 	}
+}
+
+STDCALL static unsigned long WRAP_EXPORT(MmSizeOfMdl)
+	(void *base, size_t length)
+{
+	unsigned long pages;
+	pages = SPAN_PAGES((unsigned int)base, length);
+	return (sizeof(struct mdl) + pages * sizeof(unsigned long));
+}
+
+STDCALL static void WRAP_EXPORT(MmBuildMdlForNonPagedPool)
+	(struct mdl *mdl)
+{
+	mdl->mappedsystemva = (char *)mdl->startva + mdl->byteoffset;
+	return;
+}
+
+STDCALL static void WRAP_EXPORT(KeInitializeMutex)
+	(struct kmutex *mutex, BOOLEAN wait)
+{
+	INIT_LIST_HEAD(&mutex->dispatch_header.wait_list_head);
+	mutex->abandoned = FALSE;
+	mutex->apc_disable = 1;
+	mutex->dispatch_header.signal_state = TRUE;
+	mutex->dispatch_header.type = SYNCHRONIZATION_EVENT;
+	mutex->dispatch_header.size = NT_OBJ_MUTEX;
+	mutex->count = 0;
+	mutex->owner_thread = NULL;
+	return;
+}
+
+STDCALL static long WRAP_EXPORT(KeReleaseMutex)
+	(struct kmutex *mutex, BOOLEAN wait)
+{
+	wrap_spin_lock(&dispatch_event_lock);
+	mutex->count--;
+	if (mutex->count == 0) {
+		mutex->owner_thread = NULL;
+		wrap_spin_unlock(&dispatch_event_lock);
+		KeSetEvent((struct kevent *)&mutex->dispatch_header, 0, 0);
+	} else
+		wrap_spin_unlock(&dispatch_event_lock);
+	return mutex->count;
+}
+
+STDCALL static void WRAP_EXPORT(MmUnmapLockedPages)
+	(void *base, struct mdl *mdl)
+{
+	return;
 }
 
 NOREGPARM static unsigned int WRAP_EXPORT(WmiTraceMessage)

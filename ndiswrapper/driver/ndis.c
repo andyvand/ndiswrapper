@@ -407,12 +407,6 @@ STDCALL static void WRAP_EXPORT(NdisGetSystemUpTime)
 	TRACEEXIT4(return);
 }
 
-static inline int SPAN_PAGES(unsigned int ptr, unsigned int len)
-{
-	unsigned int p = ptr & (PAGE_SIZE - 1);
-	TRACEEXIT3(return (p + len + (PAGE_SIZE - 1)) >> PAGE_SHIFT);
-}
-
 /* called as macro */
 STDCALL unsigned long WRAP_EXPORT(NDIS_BUFFER_TO_SPAN_PAGES)
 	(struct ndis_buffer *buffer)
@@ -2522,13 +2516,6 @@ STDCALL static unsigned long WRAP_EXPORT(NdisWritePcmciaAttributeMemory)
 {
 	UNIMPL();
 	return 0;
-}
-
-STDCALL void WRAP_EXPORT(MmBuildMdlForNonPagedPool)
-	(struct mdl *mdl)
-{
-	UNIMPL();
-	return;
 }
 
  /* Unimplemented...*/

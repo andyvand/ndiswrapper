@@ -55,18 +55,6 @@ struct ndis_buffer
 	unsigned char *data;
 };
 
-struct mdl
-{
-	struct mdl* next;
-	short size;
-	short mdlflags;
-	void *process;
-	void *mappedsystemva;
-	void *startva;
-	unsigned long bytecount;
-	unsigned long byteoffset;
-};
-
 struct packed ndis_packet
 {
 	unsigned int nr_pages;
