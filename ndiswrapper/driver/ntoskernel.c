@@ -1143,6 +1143,7 @@ STDCALL struct mdl *WRAP_EXPORT(IoAllocateMdl)
 		return NULL;
 
 	MmInitializeMdl(mdl, virt, length);
+	mdl->process = NULL;
 	if (irp) {
 		if (second_buf == TRUE) {
 			struct mdl *last;
