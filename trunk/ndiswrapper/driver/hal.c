@@ -77,18 +77,52 @@ KeStallExecutionProcessor(unsigned long usecs)
 	udelay(usecs);
 }
 
-
 _FASTCALL static KIRQL
+KfRaiseIrql(int dummy1, int dummy2, unsigned char newirql)
+{
+	KIRQL irql;
+
+	TRACEENTER4("irql = %d", newirql);
+
+	irql = KeGetCurrentIrql();
+	if (newirql < irql) {
+		ERROR("invalid irql %d", irql);
+		TRACEEXIT4(return PASSIVE_LEVEL);
+	}
+
+	if (irql < DISPATCH_LEVEL)
+		local_bh_disable();
+
+	TRACEEXIT4(return irql);
+}
+	
+_FASTCALL static void
+KfLowerIrql(int dummy1, int dummy2, unsigned char oldirql)
+{
+	TRACEENTER4("irql = %d", oldirql);
+
+	if (KeGetCurrentIrql() != DISPATCH_LEVEL) {
+		ERROR("invalid irql %d", oldirql);
+		TRACEEXIT4(return);
+	}
+
+	if (oldirql == PASSIVE_LEVEL)
+		local_bh_enable();
+
+	TRACEEXIT4(return);
+}
+
+_FASTCALL KIRQL
 KfAcquireSpinLock(int dummy1, int dummy2, KSPIN_LOCK *lock)
 {
 	KIRQL irql;
 
 	TRACEENTER4("lock = %p, *lock = %p", lock, (void *)lock);
-	irql = KeGetCurrentIrql();
 
-	if (!lock) {
+	if (!lock)
+	{
 		ERROR("%s", "invalid lock");
-		return irql;
+		TRACEEXIT4(return PASSIVE_LEVEL);
 	}
 
 	if (!*lock)
@@ -105,48 +139,24 @@ KfAcquireSpinLock(int dummy1, int dummy2, KSPIN_LOCK *lock)
 		}
 	}
 
+	irql = KfRaiseIrql(0, 0, DISPATCH_LEVEL);
 	wrap_spin_lock((struct wrap_spinlock *)*lock);
-	return irql;
+	TRACEEXIT4(return irql);
 }
 
-_FASTCALL static void
-KfReleaseSpinLock(int dummy, KIRQL newirql, KSPIN_LOCK *lock)
+_FASTCALL void
+KfReleaseSpinLock(int dummy, KIRQL oldirql, KSPIN_LOCK *lock)
 {
-	TRACEENTER4("lock = %p, *lock = %p", lock, (void *)*lock);
+	TRACEENTER4("lock = %p, *lock = %p, irql = %d",
+		    lock, (void *)*lock, oldirql);
 
 	if (!lock || !*lock)
-	{
 		ERROR("invalid spin lock %p", lock);
-		return;
-	}
+	else
+		wrap_spin_unlock((struct wrap_spinlock *)*lock);
 
-	wrap_spin_unlock((struct wrap_spinlock *)*lock);
-}
-
-STDCALL static unsigned char
-KfRaiseIrql(unsigned char irql)
-{
-	if (irql != PASSIVE_LEVEL) {
-		ERROR("%s", "can't raise irql");
-		return PASSIVE_LEVEL;
-	}
-	if (in_atomic() || irqs_disabled())
-		return DISPATCH_LEVEL;
-	else {
-		preempt_enable();
-		return PASSIVE_LEVEL;
-	}
-}
-	
-STDCALL static void
-KfLowerIrql(unsigned char old_irql)
-{
-	if (old_irql != PASSIVE_LEVEL) {
-		ERROR("%s", "can't lower irql");
-		return;
-	}
-	preempt_disable();
-	return;
+	KfLowerIrql(0, 0, oldirql);
+	TRACEEXIT4(return);
 }
 
 struct wrap_func hal_wrap_funcs[] =

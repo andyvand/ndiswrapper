@@ -121,64 +121,15 @@ KeInitializeSpinLock(KSPIN_LOCK *lock)
 }
 
 STDCALL static void
-KeAcquireSpinLock(KSPIN_LOCK *lock, KIRQL *oldirql)
+KeAcquireSpinLock(KSPIN_LOCK *lock, KIRQL *irql)
 {
-	TRACEENTER4("lock = %p, *lock = %p", lock, (void *)*lock);
-
-	if (!lock)
-	{
-		ERROR("%s", "invalid lock");
-		return;
-	}
-
-	*oldirql = KeGetCurrentIrql();
-	if (*oldirql > DISPATCH_LEVEL)
-	{
-		ERROR("invalid IRQL: %d", *oldirql);
-		return;
-	}
-
-	if (!*lock)
-	{
-		printk(KERN_WARNING "Buggy Windows driver trying to use "
-		       "uninitialized lock. Trying to recover...");
-		KeInitializeSpinLock(lock);
-		if (*lock)
-			printk(KERN_WARNING "ok\n");
-		else
-		{
-			printk(KERN_WARNING "failed\n");
-			BUG();
-		}
-	}
-	/* is this supposed to protect from user contexts or from soft irqs,
-	 * i.e., should we preempt_disable or local_bh_disable? */
-	if (*oldirql == PASSIVE_LEVEL)
-		local_bh_disable();
-	wrap_spin_lock((struct wrap_spinlock *)*lock);
-	TRACEEXIT4(return);
+	*irql = KfAcquireSpinLock(0, 0, lock);
 }
 
 STDCALL static void
-KeReleaseSpinLock(KSPIN_LOCK *lock, KIRQL newirql)
+KeReleaseSpinLock(KSPIN_LOCK *lock, KIRQL oldirql)
 {
-	KIRQL irql;
-
-	TRACEENTER4("lock = %p, *lock = %p, irql = %d",
-		    lock, (void *)*lock, newirql);
-
-	if (!lock || !*lock)
-	{
-		ERROR("invalid spin lock %p", lock);
-		return;
-	}
-
-	if ((irql = KeGetCurrentIrql()) != DISPATCH_LEVEL)
-		WARNING("invalid irql: %d", irql);
-
-	wrap_spin_unlock((struct wrap_spinlock *)*lock);
-	if (newirql == PASSIVE_LEVEL)
-		local_bh_enable();
+	KfReleaseSpinLock(0, oldirql, lock);
 }
 
 _FASTCALL static struct slist_entry *
