@@ -519,10 +519,10 @@ static int ndis_set_wep(struct net_device *dev, struct iw_request_info *info,
 		if (wrqu->data.flags & IW_ENCODE_OPEN)
 			auth_mode = NDIS_ENCODE_OPEN;
 		else
+		{
+			printk(KERN_WARNING "%s: 'restricted' security mode may not work in all cases; use 'open' mode\n", dev->name);
 			auth_mode = NDIS_ENCODE_RESTRICTED;
-		/* Ndis has another flag Ndis802_11AuthModeAutoSwitch
-		 * However, there is no equivalent IW_ENCODE flag for it
-		 */
+		}
 		res = set_int(handle, NDIS_OID_AUTH_MODE, auth_mode);
 
 		if (res)
@@ -564,9 +564,9 @@ static int ndis_get_wep(struct net_device *dev, struct iw_request_info *info,
 		return -1;
 	if (status == NDIS_ENCODE_OPEN)
 		wrqu->data.flags |= IW_ENCODE_OPEN;
-	if (status == NDIS_ENCODE_RESTRICTED)
+	else if (status == NDIS_ENCODE_RESTRICTED)
 		wrqu->data.flags |= IW_ENCODE_RESTRICTED;
-	if (status == NDIS_ENCODE_OPEN_RESTRICTED)
+	else if (status == NDIS_ENCODE_OPEN_RESTRICTED)
 		wrqu->data.flags |= (IW_ENCODE_OPEN | IW_ENCODE_RESTRICTED);
 
 
