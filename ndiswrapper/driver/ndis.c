@@ -416,7 +416,6 @@ STDCALL void NdisReadConfiguration(unsigned int *status,
 	struct ustring ansi;
 	char *keyname, string[512];
 
-	DBGTRACE("%s: entry\n", __FUNCTION__);
 	ansi.buf = string;
 	ansi.buflen = 512;
 	if (RtlUnicodeStringToAnsiString(&ansi, key, 0))
@@ -1002,7 +1001,7 @@ STDCALL void NdisAllocatePacketPoolEx(unsigned int *status,
 
 STDCALL unsigned int NdisPacketPoolUsage(void *poolhandle)
 {
-	printk("NdisWrapper: Untested function\n");
+	printk("NdisWrapper %s: Untested function\n", __FUNCTION__);
 	return 0;
 }
 
@@ -1014,7 +1013,7 @@ STDCALL void NdisFreePacketPool(void *poolhandle)
 STDCALL void NdisAllocatePacket(unsigned int *status, struct ndis_packet **packet_out, void *poolhandle)
 {
 	struct ndis_packet *packet = (struct ndis_packet*) kmalloc(sizeof(struct ndis_packet), GFP_ATOMIC);
-	DBGTRACE("%s: entry\n", __FUNCTION__);
+//	DBGTRACE("%s: entry\n", __FUNCTION__);
 	if(!packet)
 	{
 		printk(KERN_ERR "%s failed\n", __FUNCTION__);
@@ -1087,6 +1086,7 @@ STDCALL void NdisMInitializeTimer(struct ndis_timer **timer_handle,
 	timer = kmalloc(sizeof(struct ndis_timer), GFP_KERNEL);
 	if(!timer)
 	{
+		printk("%s: Cannot malloc mem for timer\n", DRV_NAME);
 		timer_handle = NULL;
 		return;
 	}
@@ -1462,6 +1462,7 @@ STDCALL void NdisMIndicateReceivePacket(struct ndis_handle *handle, struct ndis_
  */
 STDCALL void NdisMSendComplete(struct ndis_handle *handle, struct ndis_packet *packet, unsigned int status)
 {
+	DBGTRACE("%s %08x\n", __FUNCTION__, status);
 	handle->stats.tx_bytes += packet->len;
 	handle->stats.tx_packets++;
 	ndis_sendpacket_done(handle, packet);
