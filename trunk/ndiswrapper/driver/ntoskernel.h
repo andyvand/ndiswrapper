@@ -39,10 +39,6 @@
 #include "ndiswrapper.h"
 #include "winnt_pe.h"
 
-/* set DEBUG_SPINLOCK to non-zero to see if a Windows driver is
- abusing spinlocks or spinlock implementation in ndiswrapper is buggy */
-#define DEBUG_SPINLOCK 1
-
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,7)
 #include <linux/kthread.h>
 #endif

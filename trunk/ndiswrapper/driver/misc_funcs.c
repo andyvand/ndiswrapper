@@ -31,8 +31,16 @@ static spinlock_t timers_lock;
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
 #include <linux/hash.h>
 #else
-#error kernel version < 2.6.0 with either CONFIG_SMP or CONFIG_DEBUG_SPINLOCK \
-	enabled is not supported
+#define hash_ptr(ptr, bits) (((unsigned long)(ptr)) >> (BITS_PER_LONG - bits))
+#define hlist_head list_head
+#define hlist_node list_head
+#define hlist_add_head(node, head) list_add(node, head)
+#define hlist_del(node) list_del(node)
+#define INIT_HLIST_HEAD(head) INIT_LIST_HEAD(head)
+#define hlist_for_each_safe(node, next, head) \
+	list_for_each_safe(node, next, head)
+#define hlist_for_each(node, head) list_for_each(node, head)
+#define hlist_entry(node, type, member) list_entry(node, type, member)
 #endif
 
 #define SPINLOCK_HASH_BITS 6
