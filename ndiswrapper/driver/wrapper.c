@@ -843,7 +843,11 @@ static int ndis_get_scan(struct net_device *dev, struct iw_request_info *info,
 	if (!handle->scan_timestamp)
 		return -EOPNOTSUPP;
 
-	if (time_before(handle->scan_timestamp + 10 * HZ, jiffies))
+	/* There could be some delay between when set_scan is called and
+	 * when get_scan is called, so check for timeout of 11 seconds
+	 * instead of 10 seconds
+	 */
+	if (time_before(handle->scan_timestamp + 11 * HZ, jiffies))
 		return -EOPNOTSUPP;
 
 	if (time_before(jiffies, handle->scan_timestamp + 3 * HZ))
