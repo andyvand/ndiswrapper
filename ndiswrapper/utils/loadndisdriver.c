@@ -280,11 +280,13 @@ static int load_driver(int ioctl_device, DIR *dir, char *driver_name,
 			} else
 				nr_sys_files++;
 		} else if (len > 5 &&
-			   strcmp(&dirent->d_name[len-5], ".conf") == 0 &&
-			   strcmp(dirent->d_name, conf_file_name) == 0) {
-			if (read_conf_file(conf_file_name, driver))
-				error("couldn't read conf file %s",
-				      dirent->d_name);
+			   strcmp(&dirent->d_name[len-5], ".conf") == 0) {
+			if (strcmp(dirent->d_name, conf_file_name) == 0)
+				if (read_conf_file(conf_file_name, driver)) {
+					error("couldn't read conf file %s",
+					      dirent->d_name);
+					goto err;
+				}
 		} else if (len > 4 &&
 			   strcmp(&dirent->d_name[len-4], ".bin") == 0) {
 			if (read_file(dirent->d_name,
