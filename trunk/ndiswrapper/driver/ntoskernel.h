@@ -29,9 +29,9 @@
 #include <linux/random.h>
 #include <linux/ctype.h>
 #include <linux/usb.h>
+
 #include <linux/spinlock.h>
 #include <asm/mman.h>
-#include <asm/atomic.h>
 
 #include <linux/version.h>
 
@@ -143,10 +143,10 @@ typedef task_queue workqueue;
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,0)
 
 #ifndef preempt_enable
-#define preempt_enable()  (void)0
+#define preempt_enable()  do { } while (0)
 #endif
 #ifndef preempt_disable
-#define preempt_disable() (void)0
+#define preempt_disable() do { } while (0)
 #endif
 
 #ifndef container_of
@@ -328,13 +328,6 @@ struct wrap_export {
 #define WRAP_EXPORT_MAP(s,f)
 #define WRAP_EXPORT(x) x
 
-struct wrap_spinlock {
-	spinlock_t spinlock;
-	KIRQL irql;
-	unsigned char use_bh;
-	void *kspin_lock;
-};
-
 struct wrap_alloc {
 	struct list_head list;
 	void *ptr;
@@ -351,8 +344,8 @@ struct pe_image {
 	IMAGE_OPTIONAL_HEADER *opt_hdr;
 };
 
-extern struct wrap_spinlock atomic_lock;
-extern struct wrap_spinlock cancel_lock;
+extern KSPIN_LOCK atomic_lock;
+extern KSPIN_LOCK cancel_lock;
 
 #define DEBUG_IRQL 1
 
@@ -369,7 +362,7 @@ struct wrapper_timer {
 	int active;
 	struct ktimer *ktimer;
 	struct kdpc *kdpc;
-	struct wrap_spinlock lock;
+	KSPIN_LOCK lock;
 };
 
 typedef struct mdl ndis_buffer;
@@ -430,122 +423,132 @@ unsigned long lin_to_win6(void *func, unsigned long, unsigned long,
 			  unsigned long, unsigned long, unsigned long,
 			  unsigned long);
 
-#define raise_irql(irql) KfRaiseIrql(FASTCALL_ARGS_1(irql))
-#define lower_irql(irql) KfLowerIrql(FASTCALL_ARGS_1(irql))
-
-#define MSG(level, fmt, ...) printk(level "ndiswrapper (%s:%d): " fmt "\n", \
-				    __FUNCTION__, __LINE__ , ## __VA_ARGS__)
+#define MSG(level, fmt, ...)				\
+	printk(level "ndiswrapper (%s:%d): " fmt "\n",	\
+	       __FUNCTION__, __LINE__ , ## __VA_ARGS__)
 #define WARNING(fmt, ...) MSG(KERN_WARNING, fmt, ## __VA_ARGS__)
 #define ERROR(fmt, ...) MSG(KERN_ERR, fmt , ## __VA_ARGS__)
 #define INFO(fmt, ...) MSG(KERN_INFO, fmt , ## __VA_ARGS__)
 
-#if defined(CONFIG_SMP) || defined(CONFIG_DEBUG_SPINLOCK)
+static inline KIRQL current_irql(void)
+{
+	if (in_atomic() || irqs_disabled())
+		return DISPATCH_LEVEL;
+	else
+		return PASSIVE_LEVEL;
+}
 
-struct wrap_spinlock *map_kspin_lock(KSPIN_LOCK *kspin_lock);
-int unmap_kspin_lock(KSPIN_LOCK *kspin_lock);
+static inline KIRQL raise_irql(KIRQL newirql)
+{
+	KIRQL irql = current_irql();
+	if (irql < DISPATCH_LEVEL && newirql == DISPATCH_LEVEL) {
+		local_bh_disable();
+		preempt_disable();
+	}
+	return irql;
+}
 
-#define wrap_spin_lock_init(lock) do {			\
-		spin_lock_init(&(lock)->spinlock);	\
-		(lock)->use_bh = 0;			\
-	} while (0)
-#define kspin_lock_init(lock) map_kspin_lock(lock)
+static inline void lower_irql(KIRQL oldirql)
+{
+	KIRQL irql = current_irql();
+	if (oldirql < DISPATCH_LEVEL && irql == DISPATCH_LEVEL) {
+		preempt_enable();
+		local_bh_enable();
+	}
+}
 
-#define wrap_spin_lock(lock, newirql)				 \
-({								 \
-	(lock)->irql = KeGetCurrentIrql();			 \
-	if (newirql == DISPATCH_LEVEL) {			 \
-		if ((lock)->irql == DISPATCH_LEVEL) {		 \
-			spin_lock(&(lock)->spinlock);		 \
-			(lock)->use_bh = 0;			 \
-		} else {					 \
-			spin_lock_bh(&(lock)->spinlock);	 \
-			(lock)->use_bh = 1;			 \
-		}						 \
-	} else {						 \
-		spin_lock(&(lock)->spinlock);			 \
-		(lock)->use_bh = 0;				 \
-	}							 \
-	(lock)->irql;						 \
+/* the reason for value of unlocked spinlock to be 0, instead of 1
+ * (which is what linux spinlocks use), is that some drivers don't
+ * first call to initialize spinlock; in those case, the value of the
+ * lock seems to be 0 (presumably in Windows value of unlocked
+ * spinlock is 0).
+ */
+#define KSPIN_LOCK_UNLOCKED 0
+#define KSPIN_LOCK_LOCKED 1
+
+#define kspin_lock_init(lock) *(lock) = KSPIN_LOCK_UNLOCKED
+
+#ifdef CONFIG_SMP
+
+#ifdef __HAVE_ARCH_CMPXCHG
+
+#define _raw_kspin_lock(lock)						\
+	while (cmpxchg(lock, KSPIN_LOCK_UNLOCKED, KSPIN_LOCK_LOCKED) != \
+	       KSPIN_LOCK_UNLOCKED)
+
+#else
+
+extern spinlock_t spinlock_kspin_lock;
+
+#define _raw_kspin_lock(lock)			\
+do {						\
+	while (1) {				\
+		spin_lock(&spinlock_kspin_lock);	\
+		if (*(lock) == KSPIN_LOCK_UNLOCKED)	\
+			break;				\
+		spin_unlock(&spinlock_kspin_lock);	\
+	}						\
+	*(lock) = KSPIN_LOCK_LOCKED;			\
+	spin_unlock(&spinlock_kspin_lock);		\
+} while (0)
+		
+#endif // __HAVE_ARCH_CMPXCHG
+
+#define _raw_kspin_unlock(lock) xchg(lock, KSPIN_LOCK_UNLOCKED)
+
+#else
+
+#define _raw_kspin_lock(lock) *(lock) = KSPIN_LOCK_LOCKED
+#define _raw_kspin_unlock(lock) *(lock) = KSPIN_LOCK_UNLOCKED
+
+#endif // CONFIG_SMP
+
+#define kspin_lock(lock, newirql)					\
+({									\
+	KIRQL _cur_irql_ = current_irql();				\
+	ULONG_PTR _val_ = *(lock);					\
+	if (_val_ > KSPIN_LOCK_LOCKED)					\
+		ERROR("illegal spinlock: %p(%lu)", lock, _val_);	\
+	if (_cur_irql_ < DISPATCH_LEVEL && newirql == DISPATCH_LEVEL) {	\
+		local_bh_disable();					\
+		preempt_disable();					\
+	}								\
+	_raw_kspin_lock(lock);						\
+	_cur_irql_;							\
 })
-#define kspin_lock(lock, newirql)			\
-	wrap_spin_lock(map_kspin_lock(lock), newirql)
 
-#define wrap_spin_unlock(lock) do {					\
-		if ((lock)->use_bh == 1)				\
-			spin_unlock_bh(&(lock)->spinlock);		\
-		else							\
-			spin_unlock(&(lock)->spinlock);			\
-	} while (0)
-#define kspin_unlock(lock) wrap_spin_unlock(map_kspin_lock(lock))
+#define kspin_unlock(lock, oldirql)					\
+do {									\
+	KIRQL _cur_irql_ = current_irql();				\
+	ULONG_PTR _val_ = *(lock);					\
+	if (_val_ > KSPIN_LOCK_LOCKED)					\
+		ERROR("illegal spinlock: %p(%lu)", lock, _val_);	\
+	if (oldirql < DISPATCH_LEVEL && _cur_irql_ == DISPATCH_LEVEL) {	\
+		preempt_enable();					\
+		local_bh_enable();					\
+	}								\
+	_raw_kspin_unlock(lock);					\
+} while (0)
 
-#define wrap_spin_unlock_irql(lock, newirql) do {			\
-		wrap_spin_unlock(lock);					\
-		if ((lock)->irql != newirql)				\
-			DBGTRACE3("irql %d != %d", (lock)->irql, newirql); \
-	} while (0)
-#define kspin_unlock_irql(lock, newirql)			\
-	wrap_spin_unlock_irql(map_kspin_lock(lock), newirql)
+#define kspin_lock_irqsave(lock, flags)					\
+do {									\
+	ULONG_PTR _val_ = *(lock);					\
+	if (_val_ > KSPIN_LOCK_LOCKED)					\
+		ERROR("illegal spinlock: %p(%lu)", lock, _val_);	\
+	local_irq_save(flags);						\
+	preempt_disable();						\
+	_raw_kspin_lock(lock);						\
+} while (0)
 
-#define wrap_spin_lock_irqsave(lock, flags)		\
-	spin_lock_irqsave(&(lock)->spinlock, flags)
-#define kspin_lock_irqsave(lock, flags)				\
-	wrap_spin_lock_irqsave(map_kspin_lock(lock), flags)
-
-#define wrap_spin_unlock_irqrestore(lock, flags)		\
-	spin_unlock_irqrestore(&(lock)->spinlock, flags)
 #define kspin_unlock_irqrestore(lock, flags)				\
-	wrap_spin_unlock_irqrestore(map_kspin_lock(lock), flags)
-
-#else // CONFIG_SMP || CONFIG_DEBUG_SPINLOCK
-
-#define kspin_lock_init(lock) ({ *(lock) = 255; *(lock); })
-#define wrap_spin_lock_init(lock) (lock)->irql = 255
-
-#define kspin_lock(lock, newirql)				 \
-({								 \
-	*(lock) = KeGetCurrentIrql();				 \
-	if (newirql == DISPATCH_LEVEL) {			 \
-		if (*(lock) == PASSIVE_LEVEL) {			 \
-			preempt_disable();			 \
-			local_bh_disable();			 \
-		}						 \
-	}							 \
-	*(lock);						 \
-})
-#define wrap_spin_lock(lock, newirql) kspin_lock(&(lock)->irql, newirql)
-
-#define kspin_unlock(lock) do {					\
-		if (*(lock) == PASSIVE_LEVEL) {			\
-			KIRQL irql = KeGetCurrentIrql();	\
-			if (irql == DISPATCH_LEVEL) {		\
-				local_bh_enable();		\
-				preempt_enable();		\
-			}					\
-		}						\
-		*(lock) = 255;					\
-	} while (0)
-#define wrap_spin_unlock(lock) kspin_unlock(&(lock)->irql)
-
-#define kspin_unlock_irql(lock, newirql) do {				\
-		if (*(lock) != newirql)					\
-			DBGTRACE3("irql %lu != %d", *(lock), newirql);	\
-		kspin_unlock(lock);					\
-	} while (0)
-#define wrap_spin_unlock_irql(lock, newirql)		\
-	kspin_unlock_irql(&(lock->irql), newirql)
-
-#define kspin_lock_irqsave(lock, flags)			\
-	spin_lock_irqsave((spinlock_t *)(lock), flags)
-#define wrap_spin_lock_irqsave(lock, flags) \
-	spin_lock_irqsave(&(lock)->spinlock, flags)
-
-#define kspin_unlock_irqrestore(lock, flags)			\
-	spin_unlock_irqrestore((spinlock_t *)(lock), flags)
-#define wrap_unlock_irqrestore(lock, flags)		\
-	spin_unlock_irqrestore(&(lock)->spinlock, flags)
-
-#define unmap_kspin_lock(lock) 0
-#endif // CONFIG_SMP || CONFIG_DEBUG_SPINLOCK
+do {									\
+	ULONG_PTR _val_ = *(lock);					\
+	if (_val_ > KSPIN_LOCK_UNLOCKED)				\
+		ERROR("illegal spinlock: %p(%lu)", lock, _val_);	\
+	_raw_kspin_unlock(lock);					\
+	local_irq_restore(flags);					\
+	preempt_enable();						\
+} while (0)
 
 static inline void wrapper_set_timer_dpc(struct wrapper_timer *wrapper_timer,
                                          struct kdpc *kdpc)
@@ -563,7 +566,7 @@ static inline ULONG SPAN_PAGES(ULONG_PTR ptr, SIZE_T length)
 {
 	ULONG n;
 
-	n = (((ULONG_PTR)(ptr) & (PAGE_SIZE - 1)) +
+	n = (((ULONG_PTR)ptr & (PAGE_SIZE - 1)) +
 	     length + (PAGE_SIZE - 1)) >> PAGE_SHIFT;
 
 	return n;
@@ -571,12 +574,12 @@ static inline ULONG SPAN_PAGES(ULONG_PTR ptr, SIZE_T length)
 
 /* DEBUG macros */
 
-#define DBGTRACE(fmt, ...) (void)0
-#define DBGTRACE1(fmt, ...) (void)0
-#define DBGTRACE2(fmt, ...) (void)0
-#define DBGTRACE3(fmt, ...) (void)0
-#define DBGTRACE4(fmt, ...) (void)0
-#define DBGTRACE5(fmt, ...) (void)0
+#define DBGTRACE(fmt, ...) do { } while (0)
+#define DBGTRACE1(fmt, ...) do { } while (0)
+#define DBGTRACE2(fmt, ...) do { } while (0)
+#define DBGTRACE3(fmt, ...) do { }  while (0)
+#define DBGTRACE4(fmt, ...) do { } while (0)
+#define DBGTRACE5(fmt, ...) do { } while (0)
 
 /* for a block of code */
 #define DBG_BLOCK() while (0)

@@ -159,9 +159,6 @@ struct kevent {
 };
 
 typedef ULONG_PTR KSPIN_LOCK;
-/* if CONFIG_DEBUG_SPINLOCK is enabled, the space for KSPIN_LOCK is
- * not enough to store spinlock_t, so we use KSPIN_LOCK as an index
- * into an array of wrap_spinlocks */
 
 struct kdpc {
 	SHORT type;

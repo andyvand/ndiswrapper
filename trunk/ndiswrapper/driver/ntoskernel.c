@@ -22,21 +22,24 @@ static wait_queue_head_t dispatch_event_wq;
 static spinlock_t dispatch_event_lock;
 spinlock_t irp_cancel_lock;
 KSPIN_LOCK ntoskrnl_lock;
+#ifndef __HAVE_ARCH_CMPXCHG
+spinlock_t spinlock_kspin_lock;
+#endif
 
 int ntoskrnl_init(void)
 {
+#ifndef __HAVE_ARCH_CMPXCHG
+	spin_lock_init(&spinlock_kspin_lock);
+#endif
 	spin_lock_init(&dispatch_event_lock);
 	spin_lock_init(&irp_cancel_lock);
-	if (!kspin_lock_init(&ntoskrnl_lock))
-		return -ENOMEM;
+	kspin_lock_init(&ntoskrnl_lock);
 	init_waitqueue_head(&dispatch_event_wq);
 	return 0;
 }
 
 void ntoskrnl_exit(void)
 {
-	if (unmap_kspin_lock(&ntoskrnl_lock))
-		ERROR("ntoskrnl_lock already unmapped?");
 	return;
 }
 
@@ -95,18 +98,13 @@ STDCALL BOOLEAN WRAP_EXPORT(KeCancelTimer)
 STDCALL KIRQL WRAP_EXPORT(KeGetCurrentIrql)
 	(void)
 {
-	if (in_atomic() || irqs_disabled())
-		return DISPATCH_LEVEL;
-	else
-		return PASSIVE_LEVEL;
+	return current_irql();
 }
 
 STDCALL void WRAP_EXPORT(KeInitializeSpinLock)
 	(KSPIN_LOCK *lock)
 {
-	/* if already mapped, use that; otherwise, allocate and initialize */
-	if (!kspin_lock_init(lock))
-		ERROR("couldn't allocate/initialize spinlock");
+	kspin_lock_init(lock);
 }
 
 STDCALL void WRAP_EXPORT(KeAcquireSpinLock)
@@ -280,12 +278,13 @@ _FASTCALL LONG WRAP_EXPORT(InterlockedDecrement)
 	(FASTCALL_DECL_1(LONG volatile *val))
 {
 	LONG x;
+	KIRQL irql;
 
 	TRACEENTER4("%s", "");
-	kspin_lock(&ntoskrnl_lock, PASSIVE_LEVEL);
+	irql = kspin_lock(&ntoskrnl_lock, PASSIVE_LEVEL);
 	(*val)--;
 	x = *val;
-	kspin_unlock(&ntoskrnl_lock);
+	kspin_unlock(&ntoskrnl_lock, irql);
 	TRACEEXIT4(return x);
 }
 
@@ -293,12 +292,13 @@ _FASTCALL LONG WRAP_EXPORT(InterlockedIncrement)
 	(FASTCALL_DECL_1(LONG volatile *val))
 {
 	LONG x;
+	KIRQL irql;
 
 	TRACEENTER4("%s", "");
-	kspin_lock(&ntoskrnl_lock, PASSIVE_LEVEL);
+	irql = kspin_lock(&ntoskrnl_lock, PASSIVE_LEVEL);
 	(*val)++;
 	x = *val;
-	kspin_unlock(&ntoskrnl_lock);
+	kspin_unlock(&ntoskrnl_lock, irql);
 	TRACEEXIT4(return x);
 }
 
@@ -306,12 +306,13 @@ _FASTCALL LONG WRAP_EXPORT(InterlockedExchange)
 	(FASTCALL_DECL_2(LONG volatile *target, LONG val))
 {
 	LONG x;
+	KIRQL irql;
 
 	TRACEENTER4("%s", "");
-	kspin_lock(&ntoskrnl_lock, PASSIVE_LEVEL);
+	irql = kspin_lock(&ntoskrnl_lock, PASSIVE_LEVEL);
 	x = *target;
 	*target = val;
-	kspin_unlock(&ntoskrnl_lock);
+	kspin_unlock(&ntoskrnl_lock, irql);
 	TRACEEXIT4(return x);
 }
 
@@ -319,13 +320,14 @@ _FASTCALL LONG WRAP_EXPORT(InterlockedCompareExchange)
 	(FASTCALL_DECL_3(LONG volatile *dest, LONG xchg, LONG comperand))
 {
 	LONG x;
+	KIRQL irql;
 
 	TRACEENTER4("%s", "");
-	kspin_lock(&ntoskrnl_lock, PASSIVE_LEVEL);
+	irql = kspin_lock(&ntoskrnl_lock, PASSIVE_LEVEL);
 	x = *dest;
 	if (*dest == comperand)
 		*dest = xchg;
-	kspin_unlock(&ntoskrnl_lock);
+	kspin_unlock(&ntoskrnl_lock, irql);
 	TRACEEXIT4(return x);
 }
 
@@ -347,7 +349,7 @@ STDCALL void *WRAP_EXPORT(ExAllocatePoolWithTag)
 	TRACEENTER1("pool_type: %d, size: %lu, tag: %u", pool_type,
 		    size, tag);
 
-	if (KeGetCurrentIrql() == DISPATCH_LEVEL)
+	if (current_irql() == DISPATCH_LEVEL)
 		ret = kmalloc(size, GFP_ATOMIC);
 	else
 		ret = kmalloc(size, GFP_KERNEL);
@@ -870,7 +872,7 @@ STDCALL BOOLEAN WRAP_EXPORT(IoCancelIrp)
 
 	USBTRACEENTER("irp = %p", irp);
 
-	irql = KeGetCurrentIrql();
+	irql = current_irql();
 	spin_lock(&irp_cancel_lock);
 	cancel_routine = xchg(&irp->cancel_routine, NULL);
 
