@@ -25,7 +25,7 @@
 
 #include <linux/version.h>
 
-/* Define this to emable debugging */
+/* Define this to enable debugging */
 /*#define DEBUG 1*/
 
 
