@@ -371,6 +371,49 @@ struct packed wep_req
 	unsigned char keymaterial[IW_ENCODING_TOKEN_MAX];
 };
 
+struct packed ndis_ssid {
+	unsigned long length;
+	unsigned char ssid[IW_ESSID_MAX_SIZE];
+};
+
+struct packed ndis_config_fh {
+	unsigned long length;
+	unsigned long hop_pattern;
+	unsigned long hop_set;
+	unsigned long dwell_time;
+};
+
+struct packed ndis_config {
+	unsigned long length;
+	unsigned long beacon_period;
+	unsigned long atim_window;
+	unsigned long ds_config;
+	struct ndis_config_fh fh_config;
+};
+
+struct packed ssid_item
+{
+	unsigned long length;
+	__u8 mac[6];
+	unsigned char reserved[2];
+	struct ndis_ssid ssid;
+	unsigned long privacy;
+	long rssi;
+	unsigned int net_type;
+	struct ndis_config config;
+	unsigned int mode;
+	unsigned char rates[8];
+	unsigned long ie_length;
+	unsigned char ies[1];
+};
+
+#define MAX_LIST_SCAN 5
+struct packed list_scan
+{
+	unsigned long num_items;
+	struct ssid_item items[MAX_LIST_SCAN];
+};
+
 #define NDIS_ENCODE_ENABLED 0
 #define NDIS_ENCODE_DISABLED 1
 #define NDIS_ENCODE_NOKEY 2
@@ -378,6 +421,16 @@ struct packed wep_req
 #define NDIS_ENCODE_OPEN 0
 #define NDIS_ENCODE_RESTRICTED 1
 #define NDIS_ENCODE_OPEN_RESTRICTED 2
+
+#define NDIS_MODE_BSS 0
+#define NDIS_MODE_INFRA 1
+#define NDIS_MODE_AUTO 2
+
+#define NDIS_MODE_ADHOC 0
+#define NDIS_MODE_INFRA 1
+
+#define NDIS_PRIV_ACCEPT_ALL 0
+#define NDIS_PRIV_WEP 1
 
 void ndis_sendpacket_done(struct ndis_handle *handle, struct ndis_packet *packet);
 
@@ -408,6 +461,9 @@ void NdisMQueryInformationComplete(struct ndis_handle *handle, unsigned int stat
 #define NDIS_OID_AUTH_MODE          0x0D010118
 #define NDIS_OID_PRIVACY_FILTER     0x0D010119
 #define NDIS_OID_NETWORK_TYPE_IN_USE 0x0D010204
+#define NDIS_OID_BSSID_LIST_SCAN    0x0D01011A
+#define NDIS_OID_BSSID_LIST         0x0D010217
+
 
 /* general OIDs */
 #define NDIS_OID_GEN_SPEED          0x00010107
