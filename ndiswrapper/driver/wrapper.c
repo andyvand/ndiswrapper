@@ -829,7 +829,7 @@ static void link_status_handler(struct ndis_handle *handle)
 #if WIRELESS_EXT < 18
 	unsigned char *wpa_assoc_info, *ies;
 #endif
-	unsigned char *assoc_info;
+	unsigned char *assoc_info, *p;
 	union iwreq_data wrqu;
 	unsigned int i;
 	NDIS_STATUS res;
@@ -901,9 +901,10 @@ static void link_status_handler(struct ndis_handle *handle)
 	}
 
 	/*
-	 * TODO: backwards compatibility would require that IWEVCUSTOM is send
-	 * even if WIRELESS_EXT > 17. This version does not do this in order to
-	 * allow wpa_supplicant to be tested with WE-18.
+	 * TODO: backwards compatibility would require that IWEVCUSTOM
+	 * is sent even if WIRELESS_EXT > 17. This version does not do
+	 * this in order to allow wpa_supplicant to be tested with
+	 * WE-18.
 	 */
 #if WIRELESS_EXT > 17
 	memset(&wrqu, 0, sizeof(wrqu));

@@ -63,6 +63,7 @@ int set_essid(struct ndis_handle *handle, const char *ssid, int ssid_len)
 
 static int set_assoc_params(struct ndis_handle *handle)
 {
+#if WIRELESS_EXT > 17
 	int auth_mode, encr_mode, priv_mode;
 
 	priv_mode = Ndis802_11PrivFilterAcceptAll;
@@ -115,9 +116,10 @@ static int set_assoc_params(struct ndis_handle *handle)
 	set_privacy_filter(handle, priv_mode);
 	set_auth_mode(handle, auth_mode);
 	set_encr_mode(handle, encr_mode);
-
+#endif
 	return 0;
 }
+
 
 static int iw_set_essid(struct net_device *dev, struct iw_request_info *info,
 			union iwreq_data *wrqu, char *extra)
@@ -139,6 +141,7 @@ static int iw_set_essid(struct net_device *dev, struct iw_request_info *info,
 
 	if (handle->iw_auth_set) {
 		int ret = set_assoc_params(handle);
+		handle->iw_auth_set = 0;
 		if (ret < 0)
 			TRACEEXIT1(return ret);
 	}
