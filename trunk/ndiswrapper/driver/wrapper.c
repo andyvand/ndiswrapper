@@ -1668,6 +1668,8 @@ static void __devexit ndis_remove_one(struct ndis_handle *handle)
 		
 	netif_carrier_off(handle->net_dev);
 
+	set_current_state(TASK_INTERRUPTIBLE);
+	schedule_timeout(HZ/2);
 	if (handle->phys_device_obj)
 		kfree(handle->phys_device_obj);
 
