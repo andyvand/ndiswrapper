@@ -1255,15 +1255,18 @@ static int wpa_set_key(struct net_device *dev, struct iw_request_info *info,
 	u8 seq[IW_ENCODING_TOKEN_MAX];
 	u8 key[IW_ENCODING_TOKEN_MAX];
 
-	copy_from_user(&wpa_key, wrqu->data.pointer, sizeof(wpa_key));
-	if (wpa_key.addr)
-		copy_from_user(&addr, wpa_key.addr, ETH_ALEN);
+	if (copy_from_user(&wpa_key, wrqu->data.pointer, sizeof(wpa_key)))
+		TRACEEXIT1(return -1);
+	if (wpa_key.addr && copy_from_user(&addr, wpa_key.addr, ETH_ALEN))
+		TRACEEXIT1(return -1);
 
-	if (wpa_key.seq)
-		copy_from_user(&seq, wpa_key.seq, IW_ENCODING_TOKEN_MAX);
+	if (wpa_key.seq &&
+	    copy_from_user(&seq, wpa_key.seq, IW_ENCODING_TOKEN_MAX))
+		TRACEEXIT1(return -1);
 
-	if (wpa_key.key)
-		copy_from_user(&key, wpa_key.key, IW_ENCODING_TOKEN_MAX);
+	if (wpa_key.key &&
+	    copy_from_user(&key, wpa_key.key, IW_ENCODING_TOKEN_MAX))
+		TRACEEXIT1(return -1);
 	
 	TRACEENTER2("alg = %d, key_index = %d",
 		    wpa_key.alg, wpa_key.key_index);
@@ -1391,9 +1394,10 @@ static int wpa_associate(struct net_device *dev,
 	int auth_mode, encr_mode, wpa2 = 0;
 	
 	TRACEENTER("%s", "");
-	copy_from_user(&wpa_assoc_info, wrqu->data.pointer,
-		       sizeof(wpa_assoc_info));
-	copy_from_user(&ssid, wpa_assoc_info.ssid, NDIS_ESSID_MAX_SIZE);
+	if (copy_from_user(&wpa_assoc_info, wrqu->data.pointer,
+			   sizeof(wpa_assoc_info)) ||
+	    copy_from_user(&ssid, wpa_assoc_info.ssid, NDIS_ESSID_MAX_SIZE))
+		TRACEEXIT1(return -1);
 
 	if (wpa_assoc_info.wpa_ie_len > 0 &&
 	    copy_from_user(&ie, wpa_assoc_info.wpa_ie, 1) == 0 &&
