@@ -1,7 +1,0 @@
-driver/*                usr/src/modules/ndiswrapper/
-INSTALL             usr/src/modules/ndiswrapper/
-version             usr/src/modules/ndiswrapper/
-debian/rules            usr/src/modules/ndiswrapper/debian
-debian/changelog        usr/src/modules/ndiswrapper/debian
-debian/copyright        usr/src/modules/ndiswrapper/debian
-debian/*.modules.in         usr/src/modules/ndiswrapper/debian
