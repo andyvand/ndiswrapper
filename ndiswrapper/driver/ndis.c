@@ -728,7 +728,8 @@ STDCALL void NdisAllocatePacket(unsigned int *status, struct ndis_packet **packe
 	}
 	memset(packet, 0, sizeof(struct ndis_packet));
 	packet->oob_offset = (int)(&packet->timesent1) - (int)packet;
-
+	packet->pool = (void*) 0xa000fff4; 
+	
 	
 #ifdef DEBUG
 	{
