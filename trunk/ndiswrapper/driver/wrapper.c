@@ -1148,16 +1148,14 @@ static void wrapper_worker_proc(void *param)
 			return;
 		}
 
-		/* we put 2 bytes into wpa_assoc_info for every byte in
-		 * ies; we also need 28 extra bytes for the format strings */
-		if (((ndis_assoc_info->req_ie_length +
-		      ndis_assoc_info->resp_ie_length) * 2 + 28) >
-		    IW_CUSTOM_MAX)
+		/* we need 28 extra bytes for the format strings */
+		if ((ndis_assoc_info->req_ie_length +
+		     ndis_assoc_info->resp_ie_length + 28) > IW_CUSTOM_MAX)
 		{
-			WARNING("information element is too long! (%lu),"
+			WARNING("information element is too long! (%lu,%lu),"
 				"association information dropped",
-				(ndis_assoc_info->req_ie_length +
-				 ndis_assoc_info->resp_ie_length));
+				ndis_assoc_info->req_ie_length,
+				ndis_assoc_info->resp_ie_length);
 			kfree(assoc_info);
 			return;
 		}
