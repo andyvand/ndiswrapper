@@ -96,21 +96,21 @@ static void *get_dll_init(char *name)
 
 
 static const char image_directory_name[15][15] = {
-  "EXPORT",
-  "IMPORT",
-  "RESOURCE",
-  "EXCEPTION",
-  "SECURITY",
-  "BASERELOC",
-  "DEBUG",
-  "COPYRIGHT",
-  "GLOBALPTR",
-  "TLS",
-  "LOAD_CONFIG",
-  "BOUND_IMPORT",
-  "IAT",
-  "DELAY_IMPORT",
-  "COM_DESCRIPTOR" };
+	"EXPORT",
+	"IMPORT",
+	"RESOURCE",
+	"EXCEPTION",
+	"SECURITY",
+	"BASERELOC",
+	"DEBUG",
+	"COPYRIGHT",
+	"GLOBALPTR",
+	"TLS",
+	"LOAD_CONFIG",
+	"BOUND_IMPORT",
+	"IAT",
+	"DELAY_IMPORT",
+	"COM_DESCRIPTOR" };
 /*
  * Find and validate the coff header
  *
@@ -126,26 +126,24 @@ static int check_nt_hdr(IMAGE_NT_HEADERS *nt_hdr)
 		return -EINVAL;
 	}
 
-
 	/* Make sure Image is PE32 or PE32+ */
 	if(nt_hdr->OptionalHeader.Magic != IMAGE_NT_OPTIONAL_HDR_MAGIC) {
 		ERROR("bad magic: %04X", nt_hdr->OptionalHeader.Magic);
 		return -EINVAL;
 	}
-	
 
 	/* Validate the image for the current architecture. */
 	if (nt_hdr->FileHeader.Machine !=
 #ifdef CONFIG_64BIT
-		IMAGE_FILE_MACHINE_AMD64
+	    IMAGE_FILE_MACHINE_AMD64
 #else
-		IMAGE_FILE_MACHINE_I386
+	    IMAGE_FILE_MACHINE_I386
 #endif
 		) {
-		ERROR("Driver is not for current architecture (PE signature is %04X)", nt_hdr->FileHeader.Machine);
+		ERROR("Driver is not for current architecture "
+		      " (PE signature is %04X)", nt_hdr->FileHeader.Machine);
 		return -EINVAL;
 	}
-
 
 	/* Must have attributes */
 #ifdef CONFIG_64BIT
@@ -155,7 +153,6 @@ static int check_nt_hdr(IMAGE_NT_HEADERS *nt_hdr)
 #endif
 	if((nt_hdr->FileHeader.Characteristics & attr) != attr)
 		return -EINVAL;
-
 
 	/* Must be relocatable */
 	attr = IMAGE_FILE_RELOCS_STRIPPED;
@@ -174,11 +171,14 @@ static int check_nt_hdr(IMAGE_NT_HEADERS *nt_hdr)
 		return -EINVAL;
 	}
 
-	DBGTRACE1("Number of DataDictionary entries %d", nt_hdr->OptionalHeader.NumberOfRvaAndSizes);
+	DBGTRACE1("Number of DataDictionary entries %d",
+		  nt_hdr->OptionalHeader.NumberOfRvaAndSizes);
 	for(i=0; i< nt_hdr->OptionalHeader.NumberOfRvaAndSizes; i++) {
-	  DBGTRACE3("DataDirectory %s RVA:%X Size:%d", (i<=IMAGE_DIRECTORY_ENTRY_COM_DESCRIPTOR)?image_directory_name[i]:"Unknown",
-		    nt_hdr->OptionalHeader.DataDirectory[i].VirtualAddress,
-		    nt_hdr->OptionalHeader.DataDirectory[i].Size);
+		DBGTRACE3("DataDirectory %s RVA:%X Size:%d",
+			  (i<=IMAGE_DIRECTORY_ENTRY_COM_DESCRIPTOR)?
+			  image_directory_name[i] : "Unknown",
+			  nt_hdr->OptionalHeader.DataDirectory[i].VirtualAddress,
+			  nt_hdr->OptionalHeader.DataDirectory[i].Size);
 	}
 
 	if((nt_hdr->FileHeader.Characteristics & IMAGE_FILE_DLL))
@@ -207,8 +207,8 @@ static int import(void *image, IMAGE_IMPORT_DESCRIPTOR *dirent, char *dll)
 		}
 		else {
 			symname = RVA2VA(image,
-					 ((lookup_tbl[i] & ~IMAGE_ORDINAL_FLAG) + 2),
-					 char *);
+					 ((lookup_tbl[i] &
+					   ~IMAGE_ORDINAL_FLAG) + 2), char *);
 		}
 
 		adr = get_export(symname);
@@ -232,32 +232,38 @@ static int read_exports(struct pe_image *pe)
 	uint32_t *export_addr_table;
 	int i;
 	uint32_t *name_table;
+	PIMAGE_OPTIONAL_HEADER opt_hdr;
+	IMAGE_DATA_DIRECTORY *export_data_dir;
 
-	if (pe->nt_hdr->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_EXPORT].Size == 0) {
+	opt_hdr = &pe->nt_hdr->OptionalHeader;
+	export_data_dir =
+		&opt_hdr->DataDirectory[IMAGE_DIRECTORY_ENTRY_EXPORT];
+
+	if (export_data_dir->Size == 0) {
 		DBGTRACE1("No exports");
 		return 0;
 	}
 
-	export_dir_table = RVA2VA(pe->image, 
-				  pe->nt_hdr->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_EXPORT].VirtualAddress, 
-				  IMAGE_EXPORT_DIRECTORY *);
+	export_dir_table =
+		RVA2VA(pe->image, export_data_dir->VirtualAddress,
+		       IMAGE_EXPORT_DIRECTORY *);
 
-	name_table = (unsigned int *)(pe->image + export_dir_table->AddressOfNames);
+	name_table = (unsigned int *)(pe->image +
+				      export_dir_table->AddressOfNames);
 	export_addr_table = (uint32_t *)
 		(pe->image + export_dir_table->AddressOfFunctions);
 
 	for (i = 0; i < export_dir_table->NumberOfNames; i++) {
 
-		if (pe->nt_hdr->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_EXPORT].VirtualAddress <= *export_addr_table ||
-		    *export_addr_table >= (pe->nt_hdr->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_EXPORT].VirtualAddress +
-					   pe->nt_hdr->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_EXPORT].Size))
+		if (export_data_dir->VirtualAddress <= *export_addr_table ||
+		    *export_addr_table >= (export_data_dir->VirtualAddress +
+					   export_data_dir->Size))
 			DBGTRACE1("%s", "forwarder rva");
 
-
 		DBGTRACE1("export symbol: %s, at %p",
-		     (char *)(pe->image + *name_table),
-		     pe->image + *export_addr_table);
-		     
+			  (char *)(pe->image + *name_table),
+			  pe->image + *export_addr_table);
+
 		exports[num_exports].dll = pe->name;
 		exports[num_exports].name = (pe->image + *name_table);
 		exports[num_exports].addr = (pe->image + *export_addr_table);
@@ -275,9 +281,14 @@ static int fixup_imports(void *image, IMAGE_NT_HEADERS *nt_hdr)
 	char *name;
 	int ret = 0;
 	IMAGE_IMPORT_DESCRIPTOR *dirent;
+	IMAGE_DATA_DIRECTORY *import_data_dir;
+	PIMAGE_OPTIONAL_HEADER opt_hdr;
 
-	dirent = RVA2VA(image, nt_hdr->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_IMPORT].VirtualAddress,
-			  IMAGE_IMPORT_DESCRIPTOR *);
+	opt_hdr = &nt_hdr->OptionalHeader;
+	import_data_dir =
+		&opt_hdr->DataDirectory[IMAGE_DIRECTORY_ENTRY_IMPORT];
+	dirent = RVA2VA(image, import_data_dir->VirtualAddress,
+			IMAGE_IMPORT_DESCRIPTOR *);
 
 	for (i = 0; dirent[i].Name; i++) {
 		name = RVA2VA(image, dirent[i].Name, char*);
@@ -293,25 +304,31 @@ static int fixup_reloc(void *image, IMAGE_NT_HEADERS *nt_hdr)
         ULONG_PTR base;
 	ULONG_PTR size;
 	IMAGE_BASE_RELOCATION *fixup_block;
+	IMAGE_DATA_DIRECTORY *base_reloc_data_dir;
+	PIMAGE_OPTIONAL_HEADER opt_hdr;
 
-	base = nt_hdr->OptionalHeader.ImageBase;
-	if (nt_hdr->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_BASERELOC].Size == 0) {
+	opt_hdr = &nt_hdr->OptionalHeader;
+	base = opt_hdr->ImageBase;
+	base_reloc_data_dir = 
+		&opt_hdr->DataDirectory[IMAGE_DIRECTORY_ENTRY_BASERELOC];
+	if (base_reloc_data_dir->Size == 0) {
 		ERROR("%s", "No relocation found");
 		return -EINVAL;
 	}
 
-	fixup_block = RVA2VA(image, nt_hdr->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_BASERELOC].VirtualAddress, IMAGE_BASE_RELOCATION *);
+	fixup_block = RVA2VA(image, base_reloc_data_dir->VirtualAddress,
+			     IMAGE_BASE_RELOCATION *);
 	DBGTRACE3("fixup_block=%p, image=%p",
-			  fixup_block, image);
+		  fixup_block, image);
 	DBGTRACE3("fixup_block info: %x %d", 
-			  fixup_block->VirtualAddress, fixup_block->SizeOfBlock);
+		  fixup_block->VirtualAddress, fixup_block->SizeOfBlock);
 
 	do {
 		int i;
 		WORD fixup, offset;
 
-		size = (fixup_block->SizeOfBlock - sizeof(IMAGE_BASE_RELOCATION)) /
-			sizeof(WORD);
+		size = (fixup_block->SizeOfBlock -
+			sizeof(IMAGE_BASE_RELOCATION)) / sizeof(WORD);
 		DBGTRACE3("found %Lu relocations in this block",
 			  (uint64_t)size);
 
@@ -324,30 +341,36 @@ static int fixup_reloc(void *image, IMAGE_NT_HEADERS *nt_hdr)
 
 			case IMAGE_REL_BASED_HIGHLOW: {
 				uint32_t addr;
-				uint32_t *loc = RVA2VA(image, fixup_block->VirtualAddress + offset, uint32_t *);
+				uint32_t *loc =
+					RVA2VA(image,
+					       fixup_block->VirtualAddress +
+					       offset, uint32_t *);
 				addr = RVA2VA(image, (*loc - base), uint32_t);
-				DBGTRACE3("relocation: *%p (Val:%X)= %X", loc, *loc, addr);
+				DBGTRACE3("relocation: *%p (Val:%X)= %X",
+					  loc, *loc, addr);
 				*loc = addr;
 			}
 				break;
 
 			case IMAGE_REL_BASED_DIR64: {
 				uint64_t addr;
-				uint64_t *loc = RVA2VA(image, fixup_block->VirtualAddress + offset, uint64_t *);
-				//DBGTRACE3("relocation: loc=%p/%p", loc, image);
+				uint64_t *loc =
+					RVA2VA(image,
+					       fixup_block->VirtualAddress +
+					       offset, uint64_t *);
 				addr = RVA2VA(image, (*loc - base), uint64_t);
-				//DBGTRACE3("relocation: addr = %llx", addr);
-				DBGTRACE3("relocation: *%p (Val:%llX)= %llx", loc, *loc, addr);
+				DBGTRACE3("relocation: *%p (Val:%llX)= %llx",
+					  loc, *loc, addr);
 				*loc = addr;
 			}
 				break;
 
 			default:
-				ERROR("unknown fixup: %08X", (fixup >> 12) & 0x0f);
+				ERROR("unknown fixup: %08X",
+				      (fixup >> 12) & 0x0f);
 				return -EOPNOTSUPP;
 				break;
 			}
-
 		}
 		DBGTRACE1("Finished relocating block");
 
@@ -380,13 +403,14 @@ static int fix_pe_image(struct pe_image *pe)
 
 	image_size = pe->opt_hdr->SizeOfImage;
 #ifdef CONFIG_64BIT
-	image = __vmalloc(image_size, GFP_KERNEL | __GFP_HIGHMEM, PAGE_KERNEL_EXEC);
+	image = __vmalloc(image_size, GFP_KERNEL | __GFP_HIGHMEM,
+			  PAGE_KERNEL_EXEC);
 #else
 	image = vmalloc(image_size);
 #endif
 	if (image == NULL) {
-		ERROR("Failed to allocate enough space for new image: %d bytes",
-			  image_size);
+		ERROR("Failed to allocate enough space for new image:"
+		      " %d bytes", image_size);
 		return -ENOMEM;
 	}
 
@@ -397,22 +421,23 @@ static int fix_pe_image(struct pe_image *pe)
 
 	DBGTRACE3("Copying headers: %u bytes", sect_hdr->PointerToRawData);
 
-	memcpy(image, pe->image, 
-		   sect_hdr->PointerToRawData);
+	memcpy(image, pe->image, sect_hdr->PointerToRawData);
 
 	/* Copy all the sections */
 	for (i = 0; i < sections; i++) {
-		DBGTRACE3("Copy section %s from %x to %x", sect_hdr->Name, sect_hdr->PointerToRawData, sect_hdr->VirtualAddress);
-		if (sect_hdr->VirtualAddress+sect_hdr->SizeOfRawData > image_size) {
+		DBGTRACE3("Copy section %s from %x to %x",
+			  sect_hdr->Name, sect_hdr->PointerToRawData,
+			  sect_hdr->VirtualAddress);
+		if (sect_hdr->VirtualAddress+sect_hdr->SizeOfRawData >
+		    image_size) {
 			ERROR("Invalid section %s in driver", sect_hdr->Name);
 			vfree(image);
 			return -EINVAL;
 		}
 
 		memcpy(image+sect_hdr->VirtualAddress,
-			   pe->image + sect_hdr->PointerToRawData,
-			   sect_hdr->SizeOfRawData);
-
+		       pe->image + sect_hdr->PointerToRawData,
+		       sect_hdr->SizeOfRawData);
 		sect_hdr++;
 	}
 
@@ -421,11 +446,13 @@ static int fix_pe_image(struct pe_image *pe)
 	pe->size = image_size;
 
 	/* Update our internal pointers */
-	pe->nt_hdr = (IMAGE_NT_HEADERS *)(pe->image + ((IMAGE_DOS_HEADER *)pe->image)->e_lfanew);
+	pe->nt_hdr =
+		(IMAGE_NT_HEADERS *)(pe->image +
+				     ((IMAGE_DOS_HEADER *)pe->image)->e_lfanew);
 	pe->opt_hdr = &pe->nt_hdr->OptionalHeader;
 
 	DBGTRACE3("set nt headers: nt_hdr=%p, opt_hdr=%p, image=%p",
-			  pe->nt_hdr, pe->opt_hdr, pe->image);
+		  pe->nt_hdr, pe->opt_hdr, pe->image);
 
 	return 0;
 }
@@ -437,12 +464,15 @@ int load_pe_images(struct pe_image *pe_image, int n)
 
 #ifdef DEBUG
 	/* Sanity checkings */
-#define CHECK_SZ(a,b) { if (sizeof(a) != b) { ERROR("%s is bad, got %zd, expected %d", #a , sizeof(a), (b)); return -EINVAL; } }
+#define CHECK_SZ(a,b) { if (sizeof(a) != b) {			 \
+			ERROR("%s is bad, got %zd, expected %d",	\
+			      #a , sizeof(a), (b)); return -EINVAL; } }
 
 	CHECK_SZ(IMAGE_SECTION_HEADER, IMAGE_SIZEOF_SECTION_HEADER);
 	CHECK_SZ(IMAGE_FILE_HEADER, IMAGE_SIZEOF_FILE_HEADER);
 	CHECK_SZ(IMAGE_OPTIONAL_HEADER, IMAGE_SIZEOF_NT_OPTIONAL_HEADER);
-	CHECK_SZ(IMAGE_NT_HEADERS, 4 + IMAGE_SIZEOF_FILE_HEADER + IMAGE_SIZEOF_NT_OPTIONAL_HEADER);
+	CHECK_SZ(IMAGE_NT_HEADERS, 4 + IMAGE_SIZEOF_FILE_HEADER +
+		 IMAGE_SIZEOF_NT_OPTIONAL_HEADER);
 	CHECK_SZ(IMAGE_DOS_HEADER, 0x40);
 	CHECK_SZ(IMAGE_EXPORT_DIRECTORY, 40);
 	CHECK_SZ(IMAGE_BASE_RELOCATION, 8);
@@ -460,7 +490,8 @@ int load_pe_images(struct pe_image *pe_image, int n)
  			return -EINVAL;
 		}
 
-		pe->nt_hdr = (IMAGE_NT_HEADERS *)(pe->image + dos_hdr->e_lfanew);
+		pe->nt_hdr =
+			(IMAGE_NT_HEADERS *)(pe->image + dos_hdr->e_lfanew);
 		pe->opt_hdr = &pe->nt_hdr->OptionalHeader;
 
 		pe->type = check_nt_hdr(pe->nt_hdr);
@@ -493,11 +524,12 @@ int load_pe_images(struct pe_image *pe_image, int n)
 		}
 		flush_icache_range(pe->image, pe->size);
 
-		pe->entry = RVA2VA(pe->image,
-				   pe->nt_hdr->OptionalHeader.AddressOfEntryPoint,
-				   void *);
+		pe->entry =
+			RVA2VA(pe->image,
+			       pe->nt_hdr->OptionalHeader.AddressOfEntryPoint,
+			       void *);
 		DBGTRACE1("entry is at %p, rva at %08X", pe_image[i].entry, 
-					  pe->opt_hdr->AddressOfEntryPoint);
+			  pe->opt_hdr->AddressOfEntryPoint);
 	} for (i = 0; i < n; i++) {
 	        pe = &pe_image[i];
 
