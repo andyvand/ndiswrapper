@@ -16,6 +16,21 @@
 #include "ntoskernel.h"
 #include "ndis.h"
 
+STDCALL void WRITE_REGISTER_ULONG(unsigned int reg, unsigned int val)
+{
+	writel(val, reg);
+}
+
+STDCALL void WRITE_REGISTER_USHORT(unsigned int reg, unsigned short val)
+{
+	writew(val, reg);
+}
+
+STDCALL void WRITE_REGISTER_UCHAR(unsigned int reg, unsigned char val)
+{
+	writeb(val, reg);
+}
+
 NOREGPARM int my_sprintf(char *str, const char *format, int p1, int p2, int p3, int p4, int p5, int p6)
 {
 	int res;
@@ -102,68 +117,6 @@ NOREGPARM int my_atoi(const char *ptr)
 	return i;
 }
 
-STDCALL void WRITE_REGISTER_ULONG(unsigned int reg, unsigned int val)
-{
-	writel(val, reg);
-}
-
-STDCALL void WRITE_REGISTER_USHORT(unsigned int reg, unsigned short val)
-{
-	writew(val, reg);
-}
-
-STDCALL void WRITE_REGISTER_UCHAR(unsigned int reg, unsigned char val)
-{
-	writeb(val, reg);
-}
-
-
-STDCALL void WRITE_PORT_ULONG(unsigned int port, unsigned int value)
-{
-	outl(value, port);
-}
-
-STDCALL unsigned int READ_PORT_ULONG(unsigned int port)
-{
-	return inl(port);
-}
-
-STDCALL void WRITE_PORT_USHORT(unsigned int port, unsigned short value)
-{
-	outw(value, port);
-}
-
-STDCALL unsigned short READ_PORT_USHORT(unsigned int port)
-{
-	return inw(port);
-}
-
-STDCALL void WRITE_PORT_UCHAR(unsigned int port, unsigned char value)
-{
-	outb(value, port);
-}
-
-STDCALL unsigned short READ_PORT_UCHAR(unsigned int port)
-{
-	return inb(port);
-}
-
-
-STDCALL void WRITE_PORT_BUFFER_USHORT (unsigned int port, unsigned short *buf,
-				       unsigned long count)
-{
-	unsigned long i;
-	for (i = 0 ; i < count ; i++)
-		outw(buf[i], port);
-}
-
-STDCALL void READ_PORT_BUFFER_USHORT (unsigned int port, unsigned short *buf,
-				      unsigned long count)
-{
-	unsigned long i;
-	for (i = 0 ; i < count; i++)
-		buf[i] = inw(port);
-}
 
 STDCALL __s64 _alldiv(__s64 a, __s64 b)
 {
@@ -380,11 +333,6 @@ STDCALL int rand(void)
 }
 
 
-STDCALL int KeGetCurrentIrql(void)
-{
-	return DISPATCH_LEVEL;
-}
-
 STDCALL void KeInitializeSpinLock(KSPIN_LOCK *lock)
 {
 	spinlock_t *spin_lock;
@@ -426,10 +374,6 @@ STDCALL void KeReleaseSpinLock(KSPIN_LOCK *lock, KIRQL *oldirql)
 			   __FUNCTION__, lock);
 }
 
-STDCALL void KfAcquireSpinLock(KSPIN_LOCK *lock, KIRQL *oldirql)
-{
-	KeAcquireSpinLock(lock, oldirql);
-}
 
 _FASTCALL struct slist_entry *
 ExInterlockedPushEntrySList(int dummy, 
@@ -574,19 +518,6 @@ STDCALL int IoIsWdmVersionAvailable(unsigned char major, unsigned char minor)
 	return 0;
 }
 
-/** Functions from CIPE **/
-NOREGPARM void DbgPrint(char *str, int x, int y, int z)
-{
-	DBGTRACE(str, x, y, z);
-}
-
-/** Functions from HAL **/
-STDCALL void KeStallExecutionProcessor(unsigned int usecs)
-{
-	//DBGTRACE("%s %d\n", __FUNCTION__ , usecs);
-	udelay(usecs);
-}
-
 STDCALL unsigned int KeWaitForSingleObject(void **object, unsigned int reason, unsigned int waitmode, unsigned short alertable, void *timeout)
 {
 	UNIMPL();
@@ -614,7 +545,6 @@ void DbgBreakPoint(void)
 
 void IofCompleteRequest(void){UNIMPL();}
 void IoReleaseCancelSpinLock(void){UNIMPL();}
-void KfReleaseSpinLock(void){UNIMPL();}
 void KeInitializeEvent(void *event){UNIMPL();}
 void IoDeleteDevice(void){UNIMPL();}
 void IoCreateSymbolicLink(void){UNIMPL();}
@@ -623,3 +553,4 @@ void MmMapLockedPages(void){UNIMPL();}
 void IoCreateDevice(void){UNIMPL();}
 void IoDeleteSymbolicLink(void){UNIMPL();}
 void InterlockedExchange(void){UNIMPL();}
+

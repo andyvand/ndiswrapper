@@ -220,7 +220,7 @@ static unsigned int call_entry(struct ndis_driver *driver)
 	char regpath[] = {'a', 0, 'b', 0, 0, 0};
 	DBGTRACE("Calling entry at %08X rva(%08X)\n", (int)driver->entry, (int)driver->entry - image_offset);
 	res = driver->entry((void*)driver, regpath);
-	DBGTRACE("Past entry: Version: %d.%d\n\n\n", driver->miniport_char.majorVersion, driver->miniport_char.minorVersion);
+	DBGTRACE("Past entry: Version: %d.%d\n\n", driver->miniport_char.majorVersion, driver->miniport_char.minorVersion);
 
 	/* Dump addresses of driver suppoled callbacks */
 #ifdef DEBUG
@@ -375,8 +375,6 @@ void statcollector_del(struct ndis_handle *handle)
 	del_timer_sync(&handle->statcollector_timer);
 }
 
-
-
 static int ndis_open(struct net_device *dev)
 {
 	DBGTRACE("%s\n", __FUNCTION__);
@@ -411,7 +409,65 @@ static int ndis_ioctl(struct net_device *dev, struct ifreq *rq, int cmd)
 	return rc;
 }
 
-static void send_one(struct ndis_handle *handle, struct ndis_buffer *buffer)
+static void set_multicast_list(struct net_device *dev, struct ndis_handle *handle)
+{
+	//Work in progress...
+}
+
+
+/*
+ * Like ndis_set_rx_mode but this one will sleep.
+ */
+static void ndis_set_rx_mode_proc(void *param)
+{
+	struct net_device *dev = (struct net_device*) param;
+	struct ndis_handle *handle = dev->priv;
+	unsigned long packet_filter;
+	int res;
+	unsigned int written, needed;
+
+	DBGTRACE("%s\n", __FUNCTION__);
+	packet_filter = (NDIS_PACKET_TYPE_DIRECTED |
+	                 NDIS_PACKET_TYPE_BROADCAST |
+	                 NDIS_PACKET_TYPE_ALL_MULTICAST);
+
+	if (dev->flags & IFF_PROMISC) {
+		DBGTRACE("%s: Going into promiscuous mode\n", __FUNCTION__);
+		packet_filter &= NDIS_PACKET_TYPE_PROMISCUOUS;
+	}
+	else if ((dev->mc_count > handle->multicast_list_size) ||
+	         (dev->flags & IFF_ALLMULTI))
+	{
+		/* Too many to filter perfectly -- accept all multicasts. */
+		DBGTRACE("%s: Multicast list to long. Accepting all\n", __FUNCTION__);
+		packet_filter &= NDIS_PACKET_TYPE_ALL_MULTICAST;
+	}
+	else
+	{
+		packet_filter &= NDIS_PACKET_TYPE_ALL_MULTICAST;
+//		packet_filter &= NDIS_PACKET_TYPE_MULTICAST;
+		set_multicast_list(dev, handle);
+	}
+	
+	res = dosetinfo(handle, NDIS_OID_PACKET_FILTER, (char *)&packet_filter,
+					sizeof(packet_filter), &written, &needed);
+	if (res)
+		printk(KERN_ERR "%s: Unable to set packet filter (%08X)\n",
+			   DRV_NAME, res);
+}
+
+
+/*
+ * This function is called fom BH context...no sleep!
+ */
+static void ndis_set_rx_mode(struct net_device *dev)
+{
+	struct ndis_handle *handle = dev->priv;
+	schedule_work(&handle->set_rx_mode_work);
+}
+
+
+static int send_one(struct ndis_handle *handle, struct ndis_buffer *buffer)
 {
 	struct ndis_packet *packet;
 	int res;
@@ -421,7 +477,7 @@ static void send_one(struct ndis_handle *handle, struct ndis_buffer *buffer)
 	{
 		kfree(buffer->data);
 		kfree(buffer);
-		return;
+		return 1;
 	}
 	
 	memset(packet, 0, sizeof(*packet));
@@ -487,22 +543,28 @@ static void send_one(struct ndis_handle *handle, struct ndis_buffer *buffer)
 	else
 	{
 		DBGTRACE("%s: No send handler\n", __FUNCTION__);
-		return;
+		return 1;
 	}
 	if(res)
 		DBGTRACE("send_packets returning %08X\n", res);
 		
 
-	if(res == NDIS_STATUS_PENDING)
+	/* If the driver returns...
+	 * NDIS_STATUS_SUCCESS we still own the packet and driver will not call NdisMSendComplete.
+	 * NDIS_STATUS_PENDING the driver owns the packet and will return it using NdisMSendComplete.
+	 * NDIS_STATUS_RESOURCES and driver is deserialized: Drop it!
+	 * NDIS_STATUS_RESOURCES and driver is serialized: Requeue it!
+	 */
+	if(res == NDIS_STATUS_RESOURCES && handle->serialized)
 	{
-		/* Packet will be returned later by a call to NdisMSendComplete */
-		return;
+		return 1;		
 	}
-	else
+
+	if(res == NDIS_STATUS_SUCCESS)
 	{
-		DBGTRACE("send packets failed, should queue for send_complete, but for now - just drop: %i \n", res);
 		ndis_sendpacket_done(handle, packet);
 	}
+	return 0;
 }
 
 
@@ -527,14 +589,22 @@ static void xmit_bh(void *param)
 			return;
 		}
 		buffer = handle->xmit_ring[handle->xmit_ring_start];
+		spin_unlock_bh(&handle->xmit_ring_lock);
+
+		if(send_one(handle, buffer))
+		{
+			/* Serialized driver is out of resources. */
+			netif_stop_queue(handle->net_dev);
+			return;
+		}
+		
+		spin_lock_bh(&handle->xmit_ring_lock);
 		handle->xmit_ring_start =
 			(handle->xmit_ring_start + 1) % XMIT_RING_SIZE;
 		handle->xmit_ring_pending--;
 		if (netif_queue_stopped(handle->net_dev))
 			netif_wake_queue(handle->net_dev);
 		spin_unlock_bh(&handle->xmit_ring_lock);
-
-		send_one(handle, buffer);
 	}
 }
 
@@ -603,6 +673,12 @@ void ndis_sendpacket_done(struct ndis_handle *handle, struct ndis_packet *packet
 	kfree(packet->buffer_head->data);
 	kfree(packet->buffer_head);
 	kfree(packet);
+
+	/* In case a serialized driver has requested a pause by returning NDIS_STATUS_RESOURCES we
+	 * need to give the send-code a kick again.
+	 */
+	if(handle->xmit_ring_pending)
+		schedule_work(&handle->xmit_work);
 }
 
 static int ndis_suspend(struct pci_dev *pdev, u32 state)
@@ -702,7 +778,6 @@ static int setup_dev(struct net_device *dev)
 	unsigned int res;
 	int i;
 	union iwreq_data wrqu;
-	unsigned long packet_filter;
 
 	if (strlen(if_name) > (IFNAMSIZ-1))
 	{
@@ -733,15 +808,17 @@ static int setup_dev(struct net_device *dev)
 	if (ndis_set_mode(dev, NULL, &wrqu, NULL))
 		printk(KERN_ERR "%s: Unable to set managed mode\n", DRV_NAME);
 
-	packet_filter = (NDIS_PACKET_TYPE_DIRECTED| NDIS_PACKET_TYPE_MULTICAST|
-					 NDIS_PACKET_TYPE_BROADCAST |
-					 NDIS_PACKET_TYPE_ALL_MULTICAST);
-	res = dosetinfo(handle, NDIS_OID_PACKET_FILTER, (char *)&packet_filter,
-					sizeof(packet_filter), &written, &needed);
-	if (res)
-		printk(KERN_ERR "%s: Unable to set packet filter (%08X)\n",
-			   DRV_NAME, res);
 
+	res = query_int(handle, OID_802_3_MAXIMUM_LIST_SIZE, &i);
+	if(res == NDIS_STATUS_SUCCESS)
+	{
+		DBGTRACE("Multicast list size is %d\n", i);
+		handle->multicast_list_size = i;
+	}
+	
+
+	ndis_set_rx_mode_proc(dev);
+	
 	dev->open = ndis_open;
 	dev->hard_start_xmit = ndis_start_xmit;
 	dev->stop = ndis_close;
@@ -749,6 +826,7 @@ static int setup_dev(struct net_device *dev)
 	dev->do_ioctl = ndis_ioctl;
 	dev->get_wireless_stats = ndis_get_wireless_stats;
 	dev->wireless_handlers	= (struct iw_handler_def *)&ndis_handler_def;
+	dev->set_multicast_list = ndis_set_rx_mode;
 #ifdef HAVE_ETHTOOL
 	dev->ethtool_ops = &ndis_ethtool_ops;
 #endif	
@@ -827,6 +905,8 @@ static int ndis_init_one(struct pci_dev *pdev,
 	INIT_WORK(&handle->packet_recycler, packet_recycler, handle);
 	INIT_LIST_HEAD(&handle->recycle_packets);
 
+	INIT_WORK(&handle->set_rx_mode_work, ndis_set_rx_mode_proc, dev);
+
 	INIT_LIST_HEAD(&handle->timers);
 
 	/* Poision this because it may contain function pointers */
@@ -853,7 +933,7 @@ static int ndis_init_one(struct pci_dev *pdev,
 
 	handle->pci_dev = pdev;
 
-	handle->hangcheck_interval = 2 * HZ;
+	handle->hangcheck_interval = 3*HZ;
 	handle->scan_timestamp = 0;
 
 	memset(&handle->essid, 0, sizeof(handle->essid));
@@ -933,7 +1013,7 @@ static void __devexit ndis_remove_one(struct pci_dev *pdev)
 {
 	struct ndis_handle *handle = (struct ndis_handle *) pci_get_drvdata(pdev);
 
-	DBGTRACE("%s\n", __FUNCTION__);
+	DBGTRACE("\n%s\n", __FUNCTION__);
 
 	ndiswrapper_procfs_remove_iface(handle);
 	statcollector_del(handle);
@@ -1001,6 +1081,7 @@ static int start_driver(struct ndis_driver *driver)
 		device = (struct ndis_device*) device->list.next;
 	}
 
+	DBGTRACE("%s", "\n");
 	memset(&driver->pci_driver, 0, sizeof(driver->pci_driver));
 	driver->pci_driver.name = driver->name;
 	driver->pci_driver.id_table = driver->pci_idtable;

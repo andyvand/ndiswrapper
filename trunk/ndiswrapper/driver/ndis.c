@@ -252,7 +252,6 @@ STDCALL void NdisOpenFile(unsigned int *status,
 			}
 		}
 	}
-
 	*status = NDIS_STATUS_FILE_NOT_FOUND;
 }
 			   
@@ -266,13 +265,13 @@ STDCALL void NdisMapFile(unsigned int *status,
 	if (!filehandle)
 	{
 		*status = NDIS_STATUS_ALREADY_MAPPED;
-		DBGTRACE("%s (exit)\n", __FUNCTION__);
+		DBGTRACE("%s: failed\n", __FUNCTION__);
 		return;
 	}
 
 	*status = NDIS_STATUS_SUCCESS;
 	*mappedbuffer = filehandle->data;
-	DBGTRACE("%s (exit)\n", __FUNCTION__);
+	DBGTRACE("%s: ok!\n", __FUNCTION__);
 	return;
 }
 
@@ -410,11 +409,11 @@ STDCALL void NdisReadConfiguration(unsigned int *status,
 			*status = ndis_encode_setting(setting, type);
 			if (*status == NDIS_STATUS_SUCCESS)
 				*dest = &setting->value;
-			else
+			else {
 				*dest = NULL;
-			DBGTRACE("%s: status = %d\n",
-				 __FUNCTION__, *status);
-			return;
+				DBGTRACE("%s: status = %d\n", __FUNCTION__, *status);
+			}
+			 return;
 		}
 	}
 	
@@ -546,7 +545,7 @@ STDCALL int NdisUnicodeStringToAnsiString(struct ustring *dst,
  * Called by driver from the init callback.
  *
  * The adapter_ctx should be supplied to most other callbacks so we save
- * it in out handle.
+ * it in our handle.
  *
  */ 
 STDCALL void NdisMSetAttributesEx(struct ndis_handle *handle,
@@ -563,7 +562,8 @@ STDCALL void NdisMSetAttributesEx(struct ndis_handle *handle,
 
 	if(!(attributes & 0x20))
 	{
-		printk(KERN_ERR "%s: Driver is serialized. This will not work!\n", DRV_NAME);
+		handle->serialized = 1;
+		printk(KERN_ERR "%s: Driver %s is serialized. This might not work!\n", DRV_NAME, handle->driver->name);
 	}
 
 	if(hangcheck_interval)
@@ -615,8 +615,6 @@ STDCALL unsigned int NdisWritePciSlotInformation(struct ndis_handle *handle,
 /*
  * Read information about IRQ and other resources
  *
- * - This needs to be more general, and I'm not sure it's correct..
- * - IOPort resources are not handled.
  */
 STDCALL void NdisMQueryAdapterResources(unsigned int *status,
                                         struct ndis_handle *handle,
