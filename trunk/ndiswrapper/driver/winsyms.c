@@ -176,6 +176,7 @@ void my_memcpy(void);
 void my_memset(void);
 void my_memmove(void);
 void my_srand(void);
+void my_atoi(void);
 
 void RtlCopyUnicodeString(void);
 
@@ -372,6 +373,7 @@ func("memcpy"                               , my_memcpy),
 func("memset"                               , my_memset),
 func("memmove"                              , my_memmove),
 func("srand"                                , my_srand),
+func("atoi"                                 , my_atoi),
 
 func("RtlCopyUnicodeString"		    , RtlCopyUnicodeString),
 func("RtlCompareMemory"                     , RtlCompareMemory),
