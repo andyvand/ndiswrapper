@@ -919,10 +919,10 @@ void ndiswrapper_remove_one_dev(struct ndis_handle *handle)
 	printk(KERN_INFO "%s: device %s removed\n", DRIVER_NAME,
 	       handle->net_dev->name);
 
+#if 0
 	DBGTRACE1("%d, %p",
 		  test_bit(ATTR_SURPRISE_REMOVE, &handle->attributes),
 		  miniport->pnp_event_notify);
-#if 0
 	if (test_bit(ATTR_SURPRISE_REMOVE, &handle->attributes) &&
 	    miniport->pnp_event_notify) {
 		LIN2WIN4(miniport->pnp_event_notify, handle->adapter_ctx,

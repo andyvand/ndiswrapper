@@ -95,7 +95,7 @@ static struct ndis_driver *ndiswrapper_load_driver(struct ndis_device *device)
 
 		/* wait for the driver to load and initialize */
 		set_current_state(TASK_INTERRUPTIBLE);
-		schedule_timeout(HZ);
+		schedule_timeout(HZ/2);
 		found = 0;
 		spin_lock(&loader_lock);
 		list_for_each_entry(ndis_driver, &ndis_drivers, list) {
