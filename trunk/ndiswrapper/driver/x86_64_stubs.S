@@ -38,28 +38,72 @@
 # variables and 4 and higher in case of floating point variabes (passed
 # in SSE registers).
 
+/*
+In a windows function, the stackframe/registers look like this:
+
+# 0x0040 arg8
+# 0x0038 arg7
+# 0x0030 arg6
+# 0x0028 arg5
+# 0x0020 arg4 %r9
+# 0x0018 arg3 %r8
+# 0x0010 arg2 %rdx
+# 0x0008 arg1 %rcx
+# 0x0000 ret
+*/
+
 _win_to_lin:
+	push	%rbx	# just save everything to be sure
+	push	%rcx	# clean this up later when everything works.
+	push	%rdx
+	push	%rsi
+	push	%rdi
+	push	%rbp
+	push	%r8
+	push	%r9
+	push	%r10
 	push	%r11
-	push	%r10		# non volatile
-	push	%rsi		# non volatile
-	push	%rdi		# non volatile
-	mov	%rcx, %rdi	# arg1
+	push	%r12
+	push	%r13
+	push	%r14
+	push	%r15	# 14
+
+	mov	%rax, %r11	# function to call
+	mov	%rcx, %rax
+
+	lea     (7+14)*8(%rsp), %rsi
+	sub     $648, %rsp
+	mov     %rsp, %rdi
+	mov     $640/8-8, %rcx
+	rep     movsq
+	
+	mov	%rax, %rdi	# arg1
 	mov	%rdx, %rsi	# arg2
 	mov	%r8, %rdx	# arg3
 	mov	%r9, %rcx	# arg4
-	mov	0x48(%rsp), %r8	# arg5 is at 9th position (offset 0x48)
-				# due to 4 more push'es %r11 to %rdi
-	mov	0x50(%rsp), %r9	# arg6
-	mov	%rax, %r11
-	mov	0x58(%rsp), %rax
-	push	%rax		# arg7
-	xor	%al, %al	# number of SSE regs for variadic funcs
+	mov	(5+14)*8+648(%rsp), %r8
+				# arg5 is at 9th position (offset 72)
+				# due to 4 more push'es
+	mov	(6+14)*8+648(%rsp), %r9	# arg6
+	xor	%eax, %eax	# number of SSE regs for variadic funcs
 	call	*%r11
+
+	add	$648, %rsp	
+
+	pop	%r15
+	pop	%r14
+	pop	%r13
+	pop	%r12
 	pop	%r11
+	pop	%r10
+	pop	%r9
+	pop	%r8
+	pop	%rbp
 	pop	%rdi
 	pop	%rsi
-	pop	%r10
-	pop	%r11
+	pop	%rdx
+	pop	%rcx
+	pop	%rbx
 	ret
 
 

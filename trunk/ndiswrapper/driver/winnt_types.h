@@ -67,6 +67,7 @@
 #define FASTCALL_ARGS_1(arg1) arg1
 #define FASTCALL_ARGS_2(arg1,arg2) arg1, arg2
 #define FASTCALL_ARGS_3(arg1,arg2,arg3) arg1, arg2, arg3
+#define packed_i386 
 #else 
 #define STDCALL __attribute__((__stdcall__, regparm(0)))
 #define _FASTCALL __attribute__((__stdcall__)) __attribute__((regparm (3)))
@@ -76,6 +77,7 @@
 #define FASTCALL_ARGS_1(arg1) 0, 0, arg1
 #define FASTCALL_ARGS_2(arg1,arg2) 0, arg2, arg1
 #define FASTCALL_ARGS_3(arg1,arg2,arg3) 0, arg2, arg1, arg3
+#define packed __attribute__((packed))
 #endif
 
 #define NOREGPARM __attribute__((regparm(0)))

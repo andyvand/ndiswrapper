@@ -675,6 +675,16 @@ struct ndis_filterdbs {
 	void *arcdb;
 };
 
+enum ndis_interface_type {
+	NdisInterfaceInternal,
+	NdisInterfaceIsa,
+	NdisInterfaceEisa,
+	NdisInterfaceMca,
+	NdisInterfaceTurboChannel,
+	NdisInterfacePci,
+	NdisInterfacePcMcia,
+};
+
 /*
  * This is the per device struct. One per PCI-device exists.
  *
@@ -682,8 +692,8 @@ struct ndis_filterdbs {
  * directly via macros, so it's important that they are at the correct
  * position hence the paddings.
  */
-struct packed ndis_handle {
-	void *signature;
+struct packed_i386 ndis_handle {
+	ULONG signature;
 	struct ndis_handle *next;
 	struct ndis_driver *driver;
 	void *adapter_ctx;
@@ -726,9 +736,9 @@ struct packed ndis_handle {
 	void *reset_complete;
 
 	ULONG media_type;
-	UINT bus_number;
-	UINT bus_type;
-	UINT adapter_type;
+	ULONG bus_number;
+	enum ndis_interface_type bus_type;
+	enum ndis_interface_type adapter_type;
 	struct device_object *device_obj;
 	struct device_object *phys_device_obj;
 	struct device_object *next_device_obj;
@@ -738,7 +748,7 @@ struct packed ndis_handle {
 	void *setinfobuf;
 	USHORT setinfo_buf_len;
 	USHORT max_send_pkts;
-	UINT fake_status;
+	NDIS_STATUS fake_status;
 	void *lock_handler;
 	struct unicode_string *adapter_instance_name;
 	void *timer_queue;
