@@ -1206,7 +1206,11 @@ void ndis_irq_bh(void *data)
 	struct ndis_handle *handle = ndis_irq->handle;
 
 	if (ndis_irq->enabled)
+	{
 		handle->driver->miniport_char.handle_interrupt(handle->adapter_ctx);
+		if (handle->driver->miniport_char.enable_interrupts)
+			handle->driver->miniport_char.enable_interrupts(handle->adapter_ctx);
+	}
 }
 
 /*
