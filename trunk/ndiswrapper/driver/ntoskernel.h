@@ -444,7 +444,7 @@ static inline void wrap_spin_lock_init(struct wrap_spinlock *lock)
 }
 
 #define wrap_spin_lock(lock, newirql)				 \
-({							 \
+({								 \
 	(lock)->irql = KeGetCurrentIrql();			 \
 	if (newirql == DISPATCH_LEVEL) {			 \
 		if ((lock)->irql == DISPATCH_LEVEL) {		 \
@@ -464,7 +464,7 @@ static inline void wrap_spin_lock_init(struct wrap_spinlock *lock)
 })
 
 #define wrap_spin_unlock(lock) do {					\
-		if ((lock)->use_bh == 1) {			\
+		if ((lock)->use_bh == 1) {				\
 			if (!in_atomic())				\
 				WARNING("!in_atomic()");		\
 			spin_unlock_bh(&(lock)->spinlock);		\
@@ -479,15 +479,15 @@ static inline void wrap_spin_lock_init(struct wrap_spinlock *lock)
 			ERROR("irql %d != %d", (lock)->irql, newirql);	\
 	} while (0)
 
-#define wrap_spin_lock_irqsave(lock, flags) \
+#define wrap_spin_lock_irqsave(lock, flags)		\
 	spin_lock_irqsave(&(lock)->spinlock, flags)
 
-#define wrap_spin_unlock_irqrestore(lock, flags) \
+#define wrap_spin_unlock_irqrestore(lock, flags)		\
 	spin_unlock_irqrestore(&(lock)->spinlock, flags)
 
-struct wrap_spinlock *kspin_wrap_lock(void *kspin_lock);
-struct wrap_spinlock *allocate_kspin_lock(void *kspin_lock);
-int free_kspin_lock(void *kspin_lock);
+struct wrap_spinlock *kspin_wrap_lock(KSPIN_LOCK *kspin_lock);
+struct wrap_spinlock *allocate_kspin_lock(KSPIN_LOCK *kspin_lock);
+int free_kspin_lock(KSPIN_LOCK *kspin_lock);
 
 static inline void wrapper_set_timer_dpc(struct wrapper_timer *wrapper_timer,
                                          struct kdpc *kdpc)

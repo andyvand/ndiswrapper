@@ -559,7 +559,7 @@ static int send_packets_sg_dma(struct ndis_handle *handle, int n)
 			    MmGetMdlByteCount(buffer));
 	}
 	sg_ents = MAP_SG(handle->dev.pci, sg_list, n, PCI_DMA_TODEVICE);
-	DBGTRACE3("got %d sg_ents from %d packets", handle->sg_ents, n);
+	DBGTRACE3("got %d sg_ents from %d packets", sg_ents, n);
 	if (sg_ents == 0) {
 		ERROR("dma map failed");
 		kfree(sg_list);
@@ -1116,19 +1116,19 @@ static void update_wireless_stats(struct ndis_handle *handle)
 	if (res == NDIS_STATUS_NOT_SUPPORTED)
 		iw_stats->qual.qual = ((rssi & 0x7F) * 100) / 154;
 	else {
-		iw_stats->discard.retries = (__u32)ndis_stats.retry +
-			(__u32)ndis_stats.multi_retry;
-		iw_stats->discard.misc = (__u32)ndis_stats.fcs_err +
-			(__u32)ndis_stats.rtss_fail +
-			(__u32)ndis_stats.ack_fail +
-			(__u32)ndis_stats.frame_dup;
+		iw_stats->discard.retries = (u32)ndis_stats.retry +
+			(u32)ndis_stats.multi_retry;
+		iw_stats->discard.misc = (u32)ndis_stats.fcs_err +
+			(u32)ndis_stats.rtss_fail +
+			(u32)ndis_stats.ack_fail +
+			(u32)ndis_stats.frame_dup;
 
-		if ((__u32)ndis_stats.tx_frag)
+		if ((u32)ndis_stats.tx_frag)
 			iw_stats->qual.qual = 100 - 100 *
-				((__u32)ndis_stats.retry +
-				 2 * (__u32)ndis_stats.multi_retry +
-				 3 * (__u32)ndis_stats.failed) /
-				(6 * (__u32)ndis_stats.tx_frag);
+				((u32)ndis_stats.retry +
+				 2 * (u32)ndis_stats.multi_retry +
+				 3 * (u32)ndis_stats.failed) /
+				(6 * (u32)ndis_stats.tx_frag);
 		else
 			iw_stats->qual.qual = 100;
 	}
@@ -1279,7 +1279,7 @@ static void check_capa(struct ndis_handle *handle)
 				ndis_key.struct_size);
 
 	DBGTRACE2("add key returns %08X, size = %ld\n",
-		 res, (unsigned long)sizeof(ndis_key));
+		  res, (unsigned long)sizeof(ndis_key));
 	if (res != NDIS_STATUS_INVALID_DATA)
 		TRACEEXIT1(return);
 	res = miniport_query_info(handle, OID_802_11_ASSOCIATION_INFORMATION,
