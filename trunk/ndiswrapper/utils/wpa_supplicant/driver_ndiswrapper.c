@@ -133,7 +133,7 @@ int wpa_ndiswrapper_wext_get_ssid(const char *ifname, char *ssid)
 		perror("ioctl[SIOCGIWESSID]");
 		ret = -1;
 	} else
-		ret = iwr.u.essid.length;
+		ret = iwr.u.essid.length - 1;
 
 	close(s);
 	return ret;
