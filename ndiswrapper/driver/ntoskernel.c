@@ -656,8 +656,8 @@ static void wakeup_event(struct kevent *kevent)
 {
 	struct nt_list *ent;
 
-	while ((ent = RemoveHeadList(&kevent->dh.wait_list)) &&
-		kevent->dh.signal_state > 0) {
+	while (kevent->dh.signal_state > 0 &&
+	       (ent = RemoveHeadList(&kevent->dh.wait_list))) {
 		struct wait_block *wb;
 
 		wb = container_of(ent, struct wait_block, list_entry);
@@ -782,7 +782,8 @@ STDCALL LONG WRAP_EXPORT(KeReleaseSemaphore)
 	ksemaphore->dh.signal_state += adjustment;
 	if (ksemaphore->dh.signal_state > ksemaphore->limit)
 		ksemaphore->dh.signal_state = ksemaphore->limit;
-	wakeup_event((struct kevent *)ksemaphore);
+	if (ksemaphore->dh.signal_state > 0)
+		wakeup_event((struct kevent *)ksemaphore);
 	kspin_unlock_irql(&kevent_lock, irql);
 	return ret;
 }
