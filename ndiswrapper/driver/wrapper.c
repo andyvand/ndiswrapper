@@ -322,20 +322,20 @@ static int ndis_start_xmit(struct sk_buff *skb, struct net_device *dev)
 	struct ndis_buffer *buffer;
 	struct ndis_packet *packet;
 
-	char *data = kmalloc(skb->len, GFP_KERNEL);
+	char *data = kmalloc(skb->len, GFP_ATOMIC);
 	if(!data)
 	{
 		return 0;
 	}
 
-	buffer = kmalloc(sizeof(struct ndis_buffer), GFP_KERNEL);
+	buffer = kmalloc(sizeof(struct ndis_buffer), GFP_ATOMIC);
 	if(!buffer)
 	{
 		kfree(data);
 		return 0;
 	}
 
-	packet = kmalloc(sizeof(struct ndis_packet), GFP_KERNEL);
+	packet = kmalloc(sizeof(struct ndis_packet), GFP_ATOMIC);
 	if(!packet)
 	{
 		kfree(data);
