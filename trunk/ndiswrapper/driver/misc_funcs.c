@@ -97,20 +97,17 @@ void wrapper_timer_handler(unsigned long data)
 	STDCALL void (*func)(void *res1, void *data, void *res3, void *res4);
 
 	TRACEENTER5("%s", "");
-	if (!timer)
-	{
-		ERROR("%s", "invalid timer");
-		return;
-	}
-	kdpc = timer->kdpc;
 #ifdef DEBUG_TIMER
+	BUG_ON(timer == NULL);
 	BUG_ON(timer->wrapper_timer_magic != WRAPPER_TIMER_MAGIC);
-	BUG_ON(kdpc == NULL);
+	BUG_ON(timer->kdpc == NULL);
 #endif
+
+	spin_lock(&timer->lock);
+
+	kdpc = timer->kdpc;
 	func = kdpc->func;
 
-	if (!timer->active)
-		return;
 	if (timer->repeat)
 	{
 		timer->timer.expires = jiffies + timer->repeat;
@@ -118,6 +115,8 @@ void wrapper_timer_handler(unsigned long data)
 	}
 	else
 		timer->active = 0;
+
+	spin_unlock(&timer->lock);
 
 	if (func)
 		func(kdpc, kdpc->ctx, kdpc->arg1, kdpc->arg2);
@@ -156,7 +155,8 @@ void wrapper_init_timer(struct ktimer *ktimer, void *handle)
 }
 
 int wrapper_set_timer(struct wrapper_timer *timer,
-                      unsigned long expires, unsigned long repeat)
+                      unsigned long expires, unsigned long repeat,
+                      struct kdpc *kdpc)
 {
 	TRACEENTER5("%s", "");
 	if (!timer)
@@ -173,13 +173,18 @@ int wrapper_set_timer(struct wrapper_timer *timer,
 		timer->wrapper_timer_magic = WRAPPER_TIMER_MAGIC;
 	}
 #endif
+
+	spin_lock_bh(&timer->lock);
 	timer->repeat = repeat;
+	if (kdpc)
+		timer->kdpc = kdpc;
 
 	if (timer->active)
 	{
 		DBGTRACE4("modifying timer %p to %lu, %lu",
 			  timer, expires, repeat);
 		mod_timer(&timer->timer, expires);
+		spin_unlock_bh(&timer->lock);
 		TRACEEXIT5(return 1);
 	}
 	else
@@ -189,6 +194,7 @@ int wrapper_set_timer(struct wrapper_timer *timer,
 		timer->timer.expires = expires;
 		add_timer(&timer->timer);
 		timer->active = 1;
+		spin_unlock_bh(&timer->lock);
 		TRACEEXIT5(return 0);
 	}
 }
@@ -202,10 +208,12 @@ void wrapper_cancel_timer(struct wrapper_timer *timer, char *canceled)
 		return;
 	}
 
+	spin_lock_bh(&timer->lock);
 	if (!timer->active)
 	{
 		*canceled = 0;
-		return;
+		spin_unlock_bh(&timer->lock);
+		TRACEEXIT5(return);
 	}
 #ifdef DEBUG_TIMER
 	DBGTRACE4("canceling timer %p", timer);
@@ -213,8 +221,8 @@ void wrapper_cancel_timer(struct wrapper_timer *timer, char *canceled)
 #endif
 
 	timer->repeat = 0;
-	*canceled = del_timer_sync(&(timer->timer));
-	timer->active = 0;
+	*canceled = del_timer(&timer->timer);
+	spin_unlock_bh(&timer->lock);
 	TRACEEXIT5(return);
 }
 

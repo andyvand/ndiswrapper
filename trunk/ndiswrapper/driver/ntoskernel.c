@@ -69,9 +69,7 @@ KeSetTimerEx(struct ktimer *ktimer, __s64 due_time, __u32 period,
 	else
 		expires = HZ * (due_time / 10000000);
 	repeat = HZ * (period / 1000);
-	if (kdpc)
-		wrapper_set_timer_dpc(ktimer->wrapper_timer, kdpc);
-	return wrapper_set_timer(ktimer->wrapper_timer, expires, repeat);
+	return wrapper_set_timer(ktimer->wrapper_timer, expires, repeat, kdpc);
 }
 
 STDCALL static int

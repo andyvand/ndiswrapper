@@ -89,6 +89,7 @@ struct wrapper_timer
 	int active;
 	struct ktimer *ktimer;
 	struct kdpc *kdpc;
+	spinlock_t lock;
 };
 
 struct packed kdpc
@@ -288,14 +289,11 @@ enum device_prop
 	DEVPROP_REMOVAL_POLICY,
 };
 
-void wrapper_timer_handler(unsigned long data);
 void wrapper_init_timer(struct ktimer *ktimer, void *handle);
 int wrapper_set_timer(struct wrapper_timer *wrapper_timer,
-                      unsigned long expires, unsigned long repeat);
+                      unsigned long expires, unsigned long repeat,
+                      struct kdpc *kdpc);
 void wrapper_cancel_timer(struct wrapper_timer *wrapper_timer, char *canceled);
-
-STDCALL KIRQL KeGetCurrentIrql(void);
-STDCALL void KeInitializeSpinLock(KSPIN_LOCK *lock);
 
 static inline void wrapper_set_timer_dpc(struct wrapper_timer *wrapper_timer,
                                          struct kdpc *kdpc)
@@ -308,5 +306,8 @@ static inline void init_dpc(struct kdpc *kdpc, void *func, void *ctx)
 	kdpc->func = func;
 	kdpc->ctx  = ctx;
 }
+
+STDCALL KIRQL KeGetCurrentIrql(void);
+STDCALL void KeInitializeSpinLock(KSPIN_LOCK *lock);
 
 #endif // _NTOSKERNEL_H_
