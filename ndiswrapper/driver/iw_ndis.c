@@ -551,16 +551,16 @@ static int iw_get_encr(struct net_device *dev, struct iw_request_info *info,
 
 	index = (wrqu->data.flags & IW_ENCODE_INDEX);
 	DBGTRACE2("index = %u", index);
-	if (index && (index <= 0 || index > MAX_ENCR_KEYS))
-	{
-		WARNING("encryption index out of range (%u)", index);
-		TRACEEXIT1(return -EINVAL);
-	}
-
 	if (index == 0)
 		index = encr_info->active;
 	else	
 		index--;
+
+	if (index < 0 || index >= MAX_ENCR_KEYS))
+	{
+		WARNING("encryption index out of range (%u)", index);
+		TRACEEXIT1(return -EINVAL);
+	}
 
 	if (index != encr_info->active)
 	{
@@ -628,16 +628,17 @@ static int iw_set_encr(struct net_device *dev, struct iw_request_info *info,
 	TRACEENTER1("%s", "");
 	index = (wrqu->encoding.flags & IW_ENCODE_INDEX);
 	DBGTRACE2("index = %u", index);
-	if (index < 0 || index >= MAX_ENCR_KEYS)
-	{
-		WARNING("encryption index out of range (%u)", index);
-		TRACEEXIT1(return -EINVAL);
-	}
 
 	if (index == 0)
 		index = encr_info->active;
 	else	
 		index--;
+
+	if (index < 0 || index >= MAX_ENCR_KEYS)
+	{
+		WARNING("encryption index out of range (%u)", index);
+		TRACEEXIT1(return -EINVAL);
+	}
 
 	/* remove key if disabled */
 	if (wrqu->data.flags & IW_ENCODE_DISABLED)
