@@ -417,10 +417,15 @@ unsigned long lin_to_win6(void *func, unsigned long, unsigned long,
 #define INFO(fmt, ...) MSG(KERN_INFO, fmt , ## __VA_ARGS__)
 
 #if defined(CONFIG_SMP) || defined(CONFIG_DEBUG_SPINLOCK)
+
+struct wrap_spinlock *map_kspin_lock(KSPIN_LOCK *kspin_lock);
+int unmap_kspin_lock(KSPIN_LOCK *kspin_lock);
+
 #define wrap_spin_lock_init(lock) do {			\
 		spin_lock_init(&(lock)->spinlock);	\
 		(lock)->use_bh = 0;			\
 	} while (0)
+#define kspin_lock_init(lock) map_kspin_lock(lock)
 
 #define wrap_spin_lock(lock, newirql)				 \
 ({								 \
@@ -439,6 +444,8 @@ unsigned long lin_to_win6(void *func, unsigned long, unsigned long,
 	}							 \
 	(lock)->irql;						 \
 })
+#define kspin_lock(lock, newirql)			\
+	wrap_spin_lock(map_kspin_lock(lock), newirql)
 
 #define wrap_spin_unlock(lock) do {					\
 		if ((lock)->use_bh == 1)				\
@@ -446,25 +453,31 @@ unsigned long lin_to_win6(void *func, unsigned long, unsigned long,
 		else							\
 			spin_unlock(&(lock)->spinlock);			\
 	} while (0)
+#define kspin_unlock(lock) wrap_spin_unlock(map_kspin_lock(lock))
 
 #define wrap_spin_unlock_irql(lock, newirql) do {			\
 		wrap_spin_unlock(lock);					\
 		if ((lock)->irql != newirql)				\
 			ERROR("irql %d != %d", (lock)->irql, newirql);	\
 	} while (0)
+#define kspin_unlock_irql(lock, newirql)			\
+	wrap_spin_unlock_irql(map_kspin_lock(lock), newirql)
 
 #define wrap_spin_lock_irqsave(lock, flags)		\
 	spin_lock_irqsave(&(lock)->spinlock, flags)
+#define kspin_lock_irqsave(lock, flags)				\
+	wrap_spin_lock_irqsave(map_kspin_lock(lock), flags)
 
 #define wrap_spin_unlock_irqrestore(lock, flags)		\
 	spin_unlock_irqrestore(&(lock)->spinlock, flags)
-
-struct wrap_spinlock *map_kspin_lock(KSPIN_LOCK *kspin_lock);
-int unmap_kspin_lock(KSPIN_LOCK *kspin_lock);
+#define kspin_unlock_irqrestore(lock, flags)				\
+	wrap_spin_unlock_irqrestore(map_kspin_lock(lock), flags)
 
 #else // CONFIG_SMP || CONFIG_DEBUG_SPINLOCK
 
 #define wrap_spin_lock_init(lock) *(lock) = 255
+#define kspin_lock_init(lock) ({ *(lock) = 255; *(lock); })
+
 #define wrap_spin_lock(lock, newirql)				 \
 ({								 \
 	*(lock) = KeGetCurrentIrql();				 \
@@ -476,6 +489,8 @@ int unmap_kspin_lock(KSPIN_LOCK *kspin_lock);
 	}							 \
 	*(lock);						 \
 })
+#define kspin_lock(lock, newirql) wrap_spin_lock(lock, newirql)
+
 #define wrap_spin_unlock(lock) do {				\
 		if (*(lock) == PASSIVE_LEVEL) {			\
 			KIRQL irql = KeGetCurrentIrql();	\
@@ -486,18 +501,25 @@ int unmap_kspin_lock(KSPIN_LOCK *kspin_lock);
 		}						\
 		*(lock) = 255;					\
 	} while (0)
+#define kspin_unlock(lock) wrap_spin_unlock(lock)
+
 #define wrap_spin_unlock_irql(lock, newirql) do {			\
 		if (*(lock) != newirql)					\
 			ERROR("irql %d != %d", *(lock), newirql);	\
 		else							\
 			wrap_spin_unlock(lock);				\
 	} while (0)
+#define kspin_unlock_irql(lock, newirql) wrap_spin_unlock_irql(lock, newirql)
+
 #define wrap_spin_lock_irqsave(lock, flags)		\
 	spin_lock_irqsave((spinlock_t *)(lock), flags)
+#define kspin_lock_irqsave(lock, flags) wrap_spin_lock_irqsave(lock, flags)
+
 #define wrap_spin_unlock_irqrestore(lock, flags)		\
 	spin_unlock_irqrestore((spinlock_t *)(lock), flags)
+#define kspin_unlock_irqrestore(lock, flags)		\
+	wrap_spin_unlock_irqrestore(lock, flags)
 
-#define map_kspin_lock(lock) (lock)
 #define unmap_kspin_lock(lock) 0
 #endif // CONFIG_SMP || CONFIG_DEBUG_SPINLOCK
 
