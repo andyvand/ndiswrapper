@@ -420,11 +420,10 @@ unsigned long lin_to_win6(void *func, unsigned long, unsigned long,
 #define ERROR(fmt, ...) MSG(KERN_ERR, fmt , ## __VA_ARGS__)
 #define INFO(fmt, ...) MSG(KERN_INFO, fmt , ## __VA_ARGS__)
 
-static inline void wrap_spin_lock_init(struct wrap_spinlock *lock)
-{
-	spin_lock_init(&(lock)->spinlock);
-	lock->use_bh = 0;
-}
+#define wrap_spin_lock_init(lock) do {			\
+		spin_lock_init(&(lock)->spinlock);	\
+		(lock)->use_bh = 0;			\
+	} while (0)
 
 #define wrap_spin_lock(lock, newirql)				 \
 ({								 \
@@ -463,9 +462,8 @@ static inline void wrap_spin_lock_init(struct wrap_spinlock *lock)
 #define wrap_spin_unlock_irqrestore(lock, flags)		\
 	spin_unlock_irqrestore(&(lock)->spinlock, flags)
 
-struct wrap_spinlock *kspin_wrap_lock(KSPIN_LOCK *kspin_lock);
-struct wrap_spinlock *allocate_kspin_lock(KSPIN_LOCK *kspin_lock);
-int free_kspin_lock(KSPIN_LOCK *kspin_lock);
+struct wrap_spinlock *map_kspin_lock(KSPIN_LOCK *kspin_lock);
+int unmap_kspin_lock(KSPIN_LOCK *kspin_lock);
 
 static inline void wrapper_set_timer_dpc(struct wrapper_timer *wrapper_timer,
                                          struct kdpc *kdpc)

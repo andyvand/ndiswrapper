@@ -27,16 +27,15 @@ struct wrap_spinlock irp_cancel_lock;
 int ntoskrnl_init(void)
 {
 	wrap_spin_lock_init(&dispatch_event_lock);
-	if (!allocate_kspin_lock(&ntoskrnl_lock))
+	if (!map_kspin_lock(&ntoskrnl_lock))
 		return -ENOMEM;
-	wrap_spin_lock_init(kspin_wrap_lock(&ntoskrnl_lock));
 	wrap_spin_lock_init(&irp_cancel_lock);
 	return 0;
 }
 
 void ntoskrnl_exit(void)
 {
-	free_kspin_lock(&ntoskrnl_lock);
+	unmap_kspin_lock(&ntoskrnl_lock);
 	return;
 }
 
@@ -127,7 +126,7 @@ STDCALL void WRAP_EXPORT(KeInitializeSpinLock)
 	(KSPIN_LOCK *lock)
 {
 	/* if already mapped, use that; otherwise, allocate and initialize */
-	if (!allocate_kspin_lock(lock))
+	if (!map_kspin_lock(lock))
 		ERROR("couldn't allocate/initialize spinlock");
 }
 
@@ -371,9 +370,9 @@ _FASTCALL void WRAP_EXPORT(ExInterlockedAddLargeStatistic)
 {
 	unsigned long flags;
 	TRACEENTER3("Stat %p = %llu, n = %u", plint, *plint, n);
-	wrap_spin_lock_irqsave(kspin_wrap_lock(&ntoskrnl_lock), flags);
+	wrap_spin_lock_irqsave(map_kspin_lock(&ntoskrnl_lock), flags);
 	*plint += n;
-	wrap_spin_unlock_irqrestore(kspin_wrap_lock(&ntoskrnl_lock), flags);
+	wrap_spin_unlock_irqrestore(map_kspin_lock(&ntoskrnl_lock), flags);
 }
 
 STDCALL void *WRAP_EXPORT(MmMapIoSpace)
@@ -1143,10 +1142,10 @@ _FASTCALL LONG WRAP_EXPORT(InterlockedDecrement)
 	LONG x;
 
 	TRACEENTER4("%s", "");
-	wrap_spin_lock(kspin_wrap_lock(&ntoskrnl_lock), PASSIVE_LEVEL);
+	wrap_spin_lock(map_kspin_lock(&ntoskrnl_lock), PASSIVE_LEVEL);
 	(*val)--;
 	x = *val;
-	wrap_spin_unlock(kspin_wrap_lock(&ntoskrnl_lock));
+	wrap_spin_unlock(map_kspin_lock(&ntoskrnl_lock));
 	TRACEEXIT4(return x);
 }
 
@@ -1156,10 +1155,10 @@ _FASTCALL LONG WRAP_EXPORT(InterlockedIncrement)
 	LONG x;
 
 	TRACEENTER4("%s", "");
-	wrap_spin_lock(kspin_wrap_lock(&ntoskrnl_lock), PASSIVE_LEVEL);
+	wrap_spin_lock(map_kspin_lock(&ntoskrnl_lock), PASSIVE_LEVEL);
 	(*val)++;
 	x = *val;
-	wrap_spin_unlock(kspin_wrap_lock(&ntoskrnl_lock));
+	wrap_spin_unlock(map_kspin_lock(&ntoskrnl_lock));
 	TRACEEXIT4(return x);
 }
 
@@ -1169,10 +1168,10 @@ _FASTCALL LONG WRAP_EXPORT(InterlockedExchange)
 	LONG x;
 
 	TRACEENTER4("%s", "");
-	wrap_spin_lock(kspin_wrap_lock(&ntoskrnl_lock), PASSIVE_LEVEL);
+	wrap_spin_lock(map_kspin_lock(&ntoskrnl_lock), PASSIVE_LEVEL);
 	x = *target;
 	*target = val;
-	wrap_spin_unlock(kspin_wrap_lock(&ntoskrnl_lock));
+	wrap_spin_unlock(map_kspin_lock(&ntoskrnl_lock));
 	TRACEEXIT4(return x);
 }
 
@@ -1182,11 +1181,11 @@ _FASTCALL LONG WRAP_EXPORT(InterlockedCompareExchange)
 	LONG x;
 
 	TRACEENTER4("%s", "");
-	wrap_spin_lock(kspin_wrap_lock(&ntoskrnl_lock), PASSIVE_LEVEL);
+	wrap_spin_lock(map_kspin_lock(&ntoskrnl_lock), PASSIVE_LEVEL);
 	x = *dest;
 	if (*dest == comperand)
 		*dest = xchg;
-	wrap_spin_unlock(kspin_wrap_lock(&ntoskrnl_lock));
+	wrap_spin_unlock(map_kspin_lock(&ntoskrnl_lock));
 	TRACEEXIT4(return x);
 }
 
