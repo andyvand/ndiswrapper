@@ -93,8 +93,8 @@ STDCALL int NdisMRegisterMiniport(struct ndis_driver *ndis_driver,
 		return NDIS_STATUS_BAD_CHAR;
 	}
 
-	printk(KERN_INFO "Version %d.%d\n", miniport_char->majorVersion, miniport_char->minorVersion);
-	DBGTRACE("Len: %08x:%08x\n", char_len, sizeof(struct miniport_char));
+	DBGTRACE("%s Version %d.%d\n", __FUNCTION__, miniport_char->majorVersion, miniport_char->minorVersion);
+	DBGTRACE("%s Len: %08x:%08x\n", __FUNCTION__, char_len, sizeof(struct miniport_char));
 	memcpy(&ndis_driver->miniport_char, miniport_char, sizeof(struct miniport_char));
 
 	return NDIS_STATUS_SUCCESS;
