@@ -199,8 +199,6 @@ sub modconf
 		return;
 	}
 	
-	my $debian = stat("/etc/debian_version");	
-
 
 	my $v =  `uname -r`;	
 
@@ -212,7 +210,7 @@ sub modconf
 	my $modconf;
 	if($minor > 4)
 	{
-		if($debian)
+		if(-d "/etc/modprobe.d")
 		{
 			$modconf = "/etc/modprobe.d/ndiswrapper" 
 		}
@@ -223,7 +221,7 @@ sub modconf
 	}
 	else
 	{
-		if($debian)
+		if(-d "/etc/modutils")
 		{
 			$modconf = "/etc/modutils/ndiswrapper";
 		}
@@ -237,7 +235,7 @@ sub modconf
 	print "Adding \"alias wlan0 ndiswrapper\" to $modconf\n";
 	system("echo \"alias wlan0 ndiswrapper\" >>$modconf");
 	
-    	if($debian)
+    	if(-x "/sbin/update-modules")
 	{
 		system("/sbin/update-modules");
 	}
@@ -417,7 +415,7 @@ sub parseManu
 				for(my $i = 1; $i < @flavours; $i++)
 				{
 					my $flav = trim($flavours[$i]);
-					$flav =~ s/\s*(\S+)\s*/\1/;
+					$flav =~ s/\s*(\S+)\s*/$1/;
 					if(uc($flav) eq "NT.5.1")
 					{
 						#This is the best (XP)
@@ -795,7 +793,7 @@ sub trim
 sub stripquotes
 {
 	my $s = shift;
-	$s =~ s/"(.*)"/\1/;
+	$s =~ s/"(.*)"/$1/;
 	return $s;
 }
 
@@ -816,7 +814,7 @@ sub getKeyVal
 sub remComment
 {
 	my $s = shift;
-	$s=~ s/([^;]*);.*/\1/;
+	$s=~ s/([^;]*);.*/$1/;
 	return $s;
 }
 
@@ -837,7 +835,7 @@ sub initStrings
 		(my $key, my $val) = getKeyVal($lines[$i]);
 		if($key)
 		{
-			$val =~ s/"(.+)"/\1/; 
+			$val =~ s/"(.+)"/$1/; 
 			$strings{$key} = $val;
 #			print "$key=$val\n";
 		}
