@@ -442,7 +442,7 @@ struct ndis_driver {
 	struct pe_image pe_images[MAX_PE_IMAGES];
 
 	int num_bin_files;
-	struct ndis_bin_file **bin_files;
+	struct ndis_bin_file *bin_files;
 
 	atomic_t users;
 	struct miniport_char miniport_char;
