@@ -68,7 +68,9 @@ MODULE_PARM_DESC(hangcheck_interval, "The interval, in seconds, for checking"
 		 " if driver is hung. (default: 0)");
 
 MODULE_AUTHOR("ndiswrapper team <ndiswrapper-general@lists.sourceforge.net>");
+#ifdef MODULE_VERSION
 MODULE_VERSION(NDISWRAPPER_VERSION);
+#endif
 static void ndis_set_rx_mode(struct net_device *dev);
 static void set_multicast_list(struct net_device *dev,
 			       struct ndis_handle *handle);
@@ -887,14 +889,14 @@ void ndiswrapper_remove_one_dev(struct ndis_handle *handle)
 
 	TRACEENTER1("%s", handle->net_dev->name);
 
+	set_bit(SHUTDOWN, &handle->wrapper_work);
+
 	stats_timer_del(handle);
 	hangcheck_del(handle);
 	ndiswrapper_procfs_remove_iface(handle);
 
 	ndis_close(handle->net_dev);
 	netif_carrier_off(handle->net_dev);
-
-	set_bit(SHUTDOWN, &handle->wrapper_work);
 
 	/* flush_scheduled_work here causes crash with 2.4 kernels */
 	/* instead, throw away pending packets */
