@@ -106,7 +106,7 @@ KfLowerIrql(int dummy1, int dummy2, unsigned char oldirql)
 		TRACEEXIT4(return);
 	}
 
-	if (oldirql == PASSIVE_LEVEL)
+	if (oldirql < DISPATCH_LEVEL)
 		local_bh_enable();
 
 	TRACEEXIT4(return);
