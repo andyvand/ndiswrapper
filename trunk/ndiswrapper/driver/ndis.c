@@ -678,6 +678,20 @@ STDCALL void NdisAllocatePacket(unsigned int *status, struct ndis_packet **packe
 	memset(packet, 0, sizeof(struct ndis_packet));
 	packet->oob_offset = (int)(&packet->timesent1) - (int)packet;
 
+	
+#ifdef DEBUG
+	{
+		int i = 0;
+		/* Poision extra packet info */
+		int *x = (int*) &packet->ext1;
+		for(i = 0; i <= 12; i++)
+		{
+			x[i] = i;
+		}
+	}
+#endif
+
+	
 	*packet_out = packet;
 	*status = NDIS_STATUS_SUCCESS;	
 }
