@@ -1057,7 +1057,7 @@ static void worker(void *context)
 	while(1)
 	{
 		spin_lock_irqsave(&worklist_lock, flags);
-		if(!list_empty)
+		if(!list_empty(&worklist))
 		{
 			workentry = (struct ndis_workentry*) worklist.next;
 			list_del(&workentry->list);
@@ -1066,7 +1066,11 @@ static void worker(void *context)
 			workentry = 0;
 		spin_unlock_irqrestore(&worklist_lock, flags);
 		if(!workentry)
+		{
+			DBGTRACE("%s No more work\n", __FUNCTION__);
 			break;
+		}
+		
 
 		ndis_work = workentry->work;
 		kfree(workentry);
