@@ -481,6 +481,9 @@ static int ndis_get_encr(struct net_device *dev, struct iw_request_info *info,
 		WARNING("getting wep status failed (%08X)", res);
 		TRACEEXIT1(return -EOPNOTSUPP);
 	}
+	if (handle->wep_mode != status)
+		WARNING("current wep mode %d is different from %d",
+			status, handle->wep_mode);
 
 	if (status == WEP_ENABLED)
 	{
@@ -509,6 +512,32 @@ static int ndis_get_encr(struct net_device *dev, struct iw_request_info *info,
 	TRACEEXIT1(return 0);
 }
 	
+static int set_auth_mode(struct ndis_handle *handle, int auth_mode)
+{
+	unsigned int res;
+	res = set_int(handle, NDIS_OID_AUTH_MODE, auth_mode);
+	if (res)
+		return -EINVAL;
+	else
+	{
+		handle->auth_mode = auth_mode;
+		return 0;
+	}
+}
+
+static int set_wep_mode(struct ndis_handle *handle, int wep_mode)
+{
+	unsigned int res;
+	res = set_int(handle, NDIS_OID_WEP_STATUS, wep_mode);
+	if (res)
+		return -EINVAL;
+	else
+	{
+		handle->wep_mode = wep_mode;
+		return 0;
+	}
+}
+
 static int ndis_set_encr(struct net_device *dev, struct iw_request_info *info,
 			 union iwreq_data *wrqu, char *extra)
 {
@@ -557,8 +586,7 @@ static int ndis_set_encr(struct net_device *dev, struct iw_request_info *info,
 		/* if it is active key, disable wep */
 		if (index == wep_info->active)
 		{
-			res = set_int(handle, NDIS_OID_WEP_STATUS,
-				      WEP_DISABLED);
+			res = set_wep_mode(handle, WEP_DISABLED);
 			if (res)
 				WARNING("changing wep status failed (%08X)",
 					res);
@@ -585,7 +613,7 @@ static int ndis_set_encr(struct net_device *dev, struct iw_request_info *info,
 		memcpy(&wep_req.key, wep_info->keys[index].key,
 		       wep_info->keys[index].length);
 
-		res = set_int(handle, NDIS_OID_WEP_STATUS, WEP_ENABLED);
+		res = set_wep_mode(handle, WEP_ENABLED);
 		if (res)
 			WARNING("changing wep status failed (%08X)", res);
 
@@ -605,10 +633,9 @@ static int ndis_set_encr(struct net_device *dev, struct iw_request_info *info,
 
 	/* global wep state (for all keys) */
 	if (wrqu->data.flags & IW_ENCODE_OPEN)
-		res = set_int(handle, NDIS_OID_AUTH_MODE, AUTHMODE_OPEN);
+		res = set_auth_mode(handle, AUTHMODE_OPEN);
 	else // if (wrqu->data.flags & IW_ENCODE_RESTRICTED)
-		res = set_int(handle, NDIS_OID_AUTH_MODE,
-			      AUTHMODE_RESTRICTED);
+		res = set_auth_mode(handle, AUTHMODE_RESTRICTED);
 	if (res)
 	{
 		WARNING("setting wep mode failed (%08X)", res);
@@ -1119,10 +1146,10 @@ static int ndis_set_wpa(struct net_device *dev, struct iw_request_info *info,
 	{
 
 		/* FIXME : what should the authmode be? */
-		res = set_int(handle, NDIS_OID_AUTH_MODE, AUTHMODE_RESTRICTED);
+		res = set_auth_mode(handle, AUTHMODE_RESTRICTED);
 		if (res)
 			TRACEEXIT(return -EINVAL);
-		res = set_int(handle, NDIS_OID_WEP_STATUS, WEP_ENABLED);
+		res = set_wep_mode(handle, WEP_ENABLED);
 		if (res)
 			TRACEEXIT(return -EINVAL);
 		TRACEEXIT(return 0);
@@ -1133,28 +1160,16 @@ static int ndis_set_wpa(struct net_device *dev, struct iw_request_info *info,
 
 	DBGTRACE1("authmode = %d, wepmode = %d", handle->auth_mode,
 		 handle->wep_mode);
+
+	res = set_auth_mode(handle, AUTHMODE_WPAPSK);
+	if (res)
+		TRACEEXIT(return -EINVAL);
 	handle->auth_mode = AUTHMODE_WPAPSK;
+
+	res = set_wep_mode(handle, WEP_ENCR2_ENABLED);
+	if (res)
+		TRACEEXIT(return -EINVAL);
 	handle->wep_mode = WEP_ENCR2_ENABLED;
-
-	if (handle->auth_mode == AUTHMODE_WPA ||
-	    handle->auth_mode == AUTHMODE_WPAPSK)
-	{
-		res = set_int(handle, NDIS_OID_AUTH_MODE, handle->auth_mode);
-		if (res)
-			TRACEEXIT(return -EINVAL);
-	}
-	else
-		TRACEEXIT(return -EINVAL);
-
-	if (handle->wep_mode == WEP_ENCR3_ENABLED ||
-	    handle->wep_mode == WEP_ENCR2_ENABLED)
-	{
-		res = set_int(handle, NDIS_OID_WEP_STATUS, handle->wep_mode);
-		if (res)
-			TRACEEXIT(return -EINVAL);
-	}
-	else
-		TRACEEXIT(return -EINVAL);
 	
 	DBGTRACE("%s", "wpa enabled");
 	TRACEEXIT(return 0);
@@ -1201,17 +1216,14 @@ static int ndis_set_key(struct net_device *dev, struct iw_request_info *info,
 		wep.keylength = wpa_key->key_len;
 		memcpy(&wep.key, wpa_key->key, wpa_key->key_len);
 
-		handle->auth_mode = AUTHMODE_RESTRICTED;
-		handle->wep_mode = WEP_ENCR1_ENABLED;
-
-		res = set_int(handle, NDIS_OID_AUTH_MODE, handle->auth_mode);
+		res = set_auth_mode(handle, AUTHMODE_RESTRICTED);
 		if (res)
 			TRACEEXIT(return -EINVAL);
 		res = dosetinfo(handle, NDIS_OID_ADD_WEP, (char *)&wep,
 				sizeof(wep), &written, &needed);
 		if (res)
 			TRACEEXIT(return -EINVAL);
-		res = set_int(handle, NDIS_OID_WEP_STATUS, handle->wep_mode);
+		res = set_wep_mode(handle, WEP_ENCR1_ENABLED);
 		if (res)
 			TRACEEXIT(return -EINVAL);
 		TRACEEXIT(return 0);
@@ -1326,13 +1338,6 @@ static int ndis_set_generic_element(struct net_device *dev,
 
 	iwrq.data.flags = 1;
 	ndis_set_wpa(dev, info, &iwrq, extra);
-	return 0;
-}
-
-static int ndis_dummy(struct net_device *dev, struct iw_request_info *info,
-		      union iwreq_data *wrqu, char *extra)
-{
-	TRACEENTER("mode = %d\n", wrqu->mode);
 	return 0;
 }
 

@@ -93,25 +93,20 @@ int doreset(struct ndis_handle *handle)
 		TRACEEXIT3(return NDIS_STATUS_FAILURE);
 
 	handle->reset_status = 0;
-//	handle->ndis_comm_done = 0;
 	res = miniport->reset(&handle->reset_status, handle->adapter_ctx);
-	if (!res)
-		goto out;
 
-	if (res != NDIS_STATUS_PENDING)
-		goto out;
-		
-//	if (wait_event_interruptible(handle->ndis_comm_wqhead,
-//				     (handle->ndis_comm_done == 1)))
-	if (down_interruptible(&handle->ndis_comm_done))
-		res = NDIS_STATUS_FAILURE;
-	else
-		res = handle->ndis_comm_res;
-	
-out:
+	if (res == NDIS_STATUS_PENDING)
+	{
+		/* wait for NdisMResetComplete */
+		if (down_interruptible(&handle->ndis_comm_done))
+			res = NDIS_STATUS_FAILURE;
+		else
+			res = handle->ndis_comm_res;
+	}
 	up(&handle->ndis_comm_mutex);
 	DBGTRACE3("reset: res = %08X, reset status = %08X",
 		  res, handle->reset_status);
+#if 0
 	if (res == NDIS_STATUS_SUCCESS && handle->reset_status)
 	{
 		handle->indicate_receive_packet = &NdisMIndicateReceivePacket;
@@ -122,9 +117,10 @@ out:
 		handle->query_complete = &NdisMQueryInformationComplete;
 		handle->set_complete = &NdisMSetInformationComplete;
 		handle->reset_complete = &NdisMResetComplete;
-		ndis_set_rx_mode(handle->net_dev);
 		handle->reset_status = 0;
+		ndis_set_rx_mode(handle->net_dev);
 	}
+#endif
 	TRACEEXIT3(return res);
 }
 
@@ -144,26 +140,18 @@ int doquery(struct ndis_handle *handle, unsigned int oid, char *buf,
 	if (down_interruptible(&handle->ndis_comm_mutex))
 		TRACEEXIT3(return NDIS_STATUS_FAILURE);
 
-//	handle->ndis_comm_done = 0;
 	res = miniport->query(handle->adapter_ctx, oid, buf, bufsize,
 			      written, needed);
-	if (!res)
-		goto out;
-
-	if (res != NDIS_STATUS_PENDING)
-		goto out;
-		
-//	if (wait_event_interruptible(handle->ndis_comm_wqhead,
-//				     (handle->ndis_comm_done == 1)))
-	if (down_interruptible(&handle->ndis_comm_done))
-		res = NDIS_STATUS_FAILURE;
-	else
-		res = handle->ndis_comm_res;
-
-out:
+	if (res == NDIS_STATUS_PENDING)
+	{		
+		/* wait for NdisMQueryInformationComplete */
+		if (down_interruptible(&handle->ndis_comm_done))
+			res = NDIS_STATUS_FAILURE;
+		else
+			res = handle->ndis_comm_res;
+	}
 	up(&handle->ndis_comm_mutex);
 	TRACEEXIT3(return res);
-	
 }
 
 /*
@@ -182,26 +170,18 @@ int dosetinfo(struct ndis_handle *handle, unsigned int oid, char *buf,
 	if (down_interruptible(&handle->ndis_comm_mutex))
 		TRACEEXIT3(return NDIS_STATUS_FAILURE);
 
-//	handle->ndis_comm_done = 0;
 	res = miniport->setinfo(handle->adapter_ctx, oid, buf, bufsize,
 			       written, needed);
-	if (!res)
-		goto out;
-
-	if (res != NDIS_STATUS_PENDING)
-		goto out;
-		
-//	if (wait_event_interruptible(handle->ndis_comm_wqhead,
-//				     (handle->ndis_comm_done == 1)))
-	if (down_interruptible(&handle->ndis_comm_done))
-		res = NDIS_STATUS_FAILURE;
-	else
-		res = handle->ndis_comm_res;
-
-out:
+	if (res == NDIS_STATUS_PENDING)
+	{
+		/* wait for NdisMSetInformationComplete */
+		if (down_interruptible(&handle->ndis_comm_done))
+			res = NDIS_STATUS_FAILURE;
+		else
+			res = handle->ndis_comm_res;
+	}
 	up(&handle->ndis_comm_mutex);
 	TRACEEXIT3(return res);
-
 }
 
 
@@ -918,7 +898,9 @@ static void wrapper_worker_proc(void *param)
 		ndis_set_mode(handle->net_dev, NULL, &wrqu, NULL);
 	}
 
-	if (test_and_clear_bit(WRAPPER_LINK_STATUS, &handle->wrapper_work))
+	if (test_and_clear_bit(WRAPPER_LINK_STATUS, &handle->wrapper_work)
+	    && (handle->auth_mode == AUTHMODE_WPA ||
+		handle->auth_mode == AUTHMODE_WPAPSK))
 	{
 		unsigned char *assoc_info;
 		struct ndis_assoc_info *ndis_assoc_info;
@@ -1297,8 +1279,10 @@ static int ndis_init_one(struct pci_dev *pdev, const struct pci_device_id *ent)
 	handle->pm_state = NDIS_PM_STATE_D0;
 	set_int(handle, NDIS_OID_PNP_SET_POWER, handle->pm_state);
 	
-	/* SMC cards need reset for wep/essid */
-	doreset(handle);
+	/* Centrino cards don't like to be reset */
+	/* Is it only 2200? 2100 likes it or not? */
+	if (ent->vendor != 0x8086)
+		doreset(handle);
 
 	/* Wait a little to let card power up otherwise ifup might fail after
 	   boot */
