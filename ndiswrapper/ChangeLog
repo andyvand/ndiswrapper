@@ -1,5 +1,12 @@
 Version 1.0 2005-XX-XX
 ======================
+* Workaround for CONFIG_DEBUG_SPINLOCK, but this option is discouraged
+* task_nice is not used anymore, so should compile with kernels where
+  this is not exported
+* More spinlock correction. Some drivers are reported to work with
+  SMP. Not all drivers may work (at least Prism54 USB driver seems to
+  be buggy)
+
 * Spinlock rewrite: This time SMP should work. Really.
 * Sends multiple packets (if driver supports it) in each send
   operation for better efficiency

@@ -1,5 +1,9 @@
 -include ../version
 
+DESTDIR =
+sbindir = $(DESTDIR)/sbin
+usrsbindir = $(DESTDIR)/usr/sbin
+
 OBJS = loadndisdriver.o
 
 CFLAGS = -Wall -g -DNDISWRAPPER_VERSION=\"$(NDISWRAPPER_VERSION)\" 
@@ -18,9 +22,9 @@ distclean: clean
 	rm -f .\#*
 
 install: all
-	install -m 755 loadndisdriver /sbin
-	install -m 755 ndiswrapper /usr/sbin
-	install -m 755 ndiswrapper-buginfo /usr/sbin
+	install -D -m 755 loadndisdriver $(sbindir)/loadndisdriver
+	install -D -m 755 ndiswrapper $(usrsbindir)/ndiswrapper
+	install -D -m 755 ndiswrapper-buginfo $(usrsbindir)/ndiswrapper-buginfo
 
 dist:
 	@for file in $(DISTFILES); do \

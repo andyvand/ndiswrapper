@@ -1,28 +1,26 @@
 -include version
 
-RPM_SOURCE_DIR ?= `rpmbuild -E %{_sourcedir}`
-
 distdir=ndiswrapper-${NDISWRAPPER_VERSION}
 distarchive=${distdir}.tar.gz
 
 DISTFILES=AUTHORS ChangeLog INSTALL Makefile README ndiswrapper.spec.in version ndiswrapper.8
 DIST_SUBDIRS=utils driver debian
 
+DESTDIR = 
+mandir = $(DESTDIR)$(shell [ -d /usr/man/man8 ] && echo /usr/man || echo /usr/share/man )
+
 .PHONY: all
 
 all: 
 	make -C driver
 	make -C utils
-	
+
 .PHONY: install
 install:
 	make -C driver install
 	make -C utils install
-	@if test -d /usr/man/man8; then \
-		install -m 644 ndiswrapper.8 /usr/man/man8; \
-	else \
-		install -m 644 ndiswrapper.8 /usr/share/man/man8; \
-	fi
+	mkdir -p -m 0755 $(mandir)/man8
+	install -m 644 ndiswrapper.8 $(mandir)/man8
 
 .PHONY: clean distclean
 clean:
@@ -57,10 +55,10 @@ dist:
 	make -C debian distdir=../${distdir}/debian dist
 	tar cfz ${distarchive} ${distdir}
 	
-rpm: dist ndiswrapper.spec.in
-	cat ndiswrapper.spec.in | sed s/NDISWRAPPER_VERSION/${NDISWRAPPER_VERSION}/ >ndiswrapper.spec
+rpm: RPM_SOURCE_DIR ?= $(shell rpmbuild -E %{_sourcedir} )
+rpm: dist ndiswrapper.spec
 	cp $(distarchive) $(RPM_SOURCE_DIR)
-	rpmbuild -ba ndiswrapper.spec
+	rpmbuild -ba ndiswrapper.spec --define="ndiswrapper_version $(NDISWRAPPER_VERSION)"
 
 deb:
 	@if [ -d debian ]; then \
