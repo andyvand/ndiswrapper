@@ -659,7 +659,7 @@ void free_handle_ctx(struct ndis_handle *handle)
 		struct handle_ctx_entry *handle_ctx =
 			(struct handle_ctx_entry *)curr;
 		if (handle_ctx->handle == handle)
-			kfree(handle_ctx);
+			list_del(&handle_ctx->list);
 	}
 	return;
 }
