@@ -214,6 +214,9 @@ static int ndis_set_essid(struct net_device *dev,
 	handle->essid.length = wrqu->essid.length;
 	memcpy(handle->essid.name, extra, wrqu->essid.length+1);
 	res = dosetinfo(handle, NDIS_OID_ESSID, (char*)&req, sizeof(req), &written, &needed);
+	set_current_state(TASK_INTERRUPTIBLE);
+	schedule_timeout(HZ);
+	res = dosetinfo(handle, NDIS_OID_ESSID, (char*)&req, sizeof(req), &written, &needed);
 	if(res)
 	{
 		printk(KERN_INFO "%s: setting essid failed (%08X)\n", dev->name, res); 
