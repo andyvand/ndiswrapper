@@ -52,6 +52,17 @@ struct ndis_buffer
 	unsigned char *data;
 };
 
+struct mdl
+{
+	struct mdl* next;
+	short size;
+	short mdlflags;
+	void *process;
+	void *mappedsystemva;
+	void *startva;
+	unsigned long bytecount;
+	unsigned long byteoffset;
+};
 
 struct packed ndis_packet
 {
@@ -219,6 +230,13 @@ struct ndis_sched_work_item
 	unsigned char reserved[8 * sizeof(void *)];
 };
 
+struct io_work_item
+{
+	void *ctx;
+	void *device_object;
+	void (*func)(void *device_object, void *ctx) STDCALL;
+};
+
 struct ndis_alloc_mem
 {
 	struct ndis_handle *handle;
@@ -239,6 +257,7 @@ enum ndis_work_entry_type
 	_NDIS_SCHED_WORK,
 	_NDIS_ALLOC_MEM,
 	_NDIS_FREE_MEM,
+	_IO_WORK_ITEM,
 };
 
 struct ndis_work_entry
@@ -250,6 +269,7 @@ struct ndis_work_entry
 		struct ndis_sched_work_item *sched_work_item;
 		struct ndis_alloc_mem alloc_mem;
 		struct ndis_free_mem free_mem;
+		struct io_work_item *io_work_item;
 	} entry;
 };
 

@@ -247,8 +247,7 @@ static int fixup_reloc(void *image, struct nt_header *nt_hdr)
 			case COFF_FIXUP_HIGHLOW:
 				addr = RVA2VA(image, (*loc - base), uint32_t);
 				*loc = addr;
-				DBGTRACE2("fixing up %08X with %08X",
-					 loc, *loc);
+//				DBGTRACE2("fixing up %08X with %08X", loc, *loc);
 				break;
 			default:
 				ERROR("unknown fixup: %08X", fixup);

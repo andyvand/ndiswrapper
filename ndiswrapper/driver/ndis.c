@@ -2022,6 +2022,7 @@ static void ndis_worker(void *data)
 	struct ndis_sched_work_item *sched_work_item;
 	struct ndis_alloc_mem *alloc_mem;
 	struct ndis_free_mem *free_mem;
+	struct io_work_item *io_work_item;
 	struct ndis_handle *handle;
 	struct miniport_char *miniport;
 	void *virt;
@@ -2062,6 +2063,18 @@ static void ndis_worker(void *data)
 					      sched_work_item->ctx);
 			break;
 
+		case _IO_WORK_ITEM:
+			io_work_item =
+				ndis_work_entry->entry.io_work_item;
+
+			DBGTRACE3("Calling work at %08x with "
+				  "parameter %08x",
+				  (int)io_work_item->func,
+				  (int)io_work_item->ctx);
+			io_work_item->func(io_work_item->device_object,
+					   io_work_item->ctx);
+			break;
+
 		case _NDIS_ALLOC_MEM:
 			alloc_mem = &ndis_work_entry->entry.alloc_mem;
 
@@ -2094,6 +2107,58 @@ static void ndis_worker(void *data)
 		}
 		kfree(ndis_work_entry);
 	}
+	TRACEEXIT3(return);
+}
+
+STDCALL static struct io_work_item *
+IoAllocateWorkItem(void *device_object)
+{
+	struct io_work_item *io_work_item;
+
+	io_work_item = kmalloc(sizeof(*io_work_item), GFP_ATOMIC);
+	if (!io_work_item)
+		return NULL;
+
+	io_work_item->device_object = device_object;
+	return io_work_item;
+}
+
+STDCALL static void
+IoFreeWorkItem(struct io_work_item *io_work_item)
+{
+	kfree(io_work_item);
+	return;
+}
+
+STDCALL static void
+IoQueueWorkItem(struct io_work_item *io_work_item, void *func, int queue_type,
+		void *ctx)
+{
+	struct ndis_work_entry *ndis_work_entry;
+
+	TRACEENTER3("%s", "");
+	if (io_work_item == NULL)
+	{
+		ERROR("%s", "io_work_item is NULL; item not queued");
+		return;
+	}
+
+	ndis_work_entry = kmalloc(sizeof(*ndis_work_entry), GFP_ATOMIC);
+	if (!ndis_work_entry)
+	{
+		BUG();
+	}
+
+	ndis_work_entry->type = _IO_WORK_ITEM;
+	io_work_item->func = func;
+	io_work_item->ctx = ctx;
+	ndis_work_entry->entry.io_work_item = io_work_item;
+
+	wrap_spin_lock(&ndis_work_list_lock);
+	list_add_tail(&ndis_work_entry->list, &ndis_work_list);
+	wrap_spin_unlock(&ndis_work_list_lock);
+
+	schedule_work(&ndis_work);
 	TRACEEXIT3(return);
 }
 
@@ -2372,12 +2437,22 @@ NdisWritePcmciaAttributeMemory(struct ndis_handle *handle,
 	return 0;
 }
 
+STDCALL void MmBuildMdlForNonPagedPool(struct mdl *mdl)
+{
+	INFO("%s", "");
+	UNIMPL();
+	return;
+}
+
  /* Unimplemented...*/
 STDCALL static void NdisMSetAttributes(void){UNIMPL();}
 STDCALL static void EthFilterDprIndicateReceiveComplete(void){UNIMPL();}
 STDCALL static void EthFilterDprIndicateReceive(void){UNIMPL();}
 STDCALL static void NdisMPciAssignResources(void){UNIMPL();}
 STDCALL static void NdisMRemoveMiniport(void) { UNIMPL(); }
+//STDCALL static void RndisMSendComplete(void) { UNIMPL(); }
+//STDCALL static void RndisMInitializeWrapper(void) { UNIMPL(); }
+STDCALL static void RndisMIndicateReceive(void) { UNIMPL(); }
 
 struct wrap_func ndis_wrap_funcs[] =
 {
@@ -2477,6 +2552,9 @@ struct wrap_func ndis_wrap_funcs[] =
 	WRAP_FUNC_ENTRY(NdisReleaseSpinLock),
 	WRAP_FUNC_ENTRY(NdisResetEvent),
 	WRAP_FUNC_ENTRY(NdisScheduleWorkItem),
+	WRAP_FUNC_ENTRY(IoAllocateWorkItem),
+	WRAP_FUNC_ENTRY(IoQueueWorkItem),
+	WRAP_FUNC_ENTRY(IoFreeWorkItem),
 	WRAP_FUNC_ENTRY(NdisSetEvent),
 	WRAP_FUNC_ENTRY(NdisSetTimer),
 	WRAP_FUNC_ENTRY(NdisSystemProcessorCount),
@@ -2490,6 +2568,12 @@ struct wrap_func ndis_wrap_funcs[] =
 	WRAP_FUNC_ENTRY(NdisWriteErrorLogEntry),
 	WRAP_FUNC_ENTRY(NdisWritePciSlotInformation),
 	WRAP_FUNC_ENTRY(NdisWritePcmciaAttributeMemory),
+	WRAP_FUNC_ENTRY(MmBuildMdlForNonPagedPool),
 
+	{"RndisMSendComplete",
+	 (WRAP_FUNC *)NdisMSendComplete},
+	{"RndisMInitializeWrapper",
+	 (WRAP_FUNC *)NdisInitializeWrapper},
+	WRAP_FUNC_ENTRY(RndisMIndicateReceive),
 	{NULL, NULL}
 };
