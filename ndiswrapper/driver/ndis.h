@@ -493,7 +493,7 @@ struct ndis_event
 };
 
 #define NDIS_MAX_RATES 16
-struct packed ssid_item
+struct ssid_item
 {
 	unsigned long length;
 	__u8 mac[ETH_ALEN];
@@ -509,10 +509,11 @@ struct packed ssid_item
 	unsigned char ies[1];
 };
 
-struct packed list_scan
+#define MAX_SCAN_ITEMS 20
+struct list_scan
 {
 	unsigned long num_items;
-	struct ssid_item items[IW_MAX_AP];
+	struct ssid_item items[MAX_SCAN_ITEMS];
 };
 
 #define NDIS_ENCODE_ENABLED 0
