@@ -50,7 +50,6 @@ static struct usb_driver ndiswrapper_usb_driver;
 /* load driver for given device, if not already loaded */
 static struct ndis_driver *ndiswrapper_load_driver(struct ndis_device *device)
 {
-	char v[10], d[10], sv[10], sd[10];
 	int err, found;
 	struct ndis_driver *ndis_driver;
 
@@ -68,11 +67,6 @@ static struct ndis_driver *ndiswrapper_load_driver(struct ndis_device *device)
 	}
 	spin_unlock(&loader_lock);
 
-	snprintf(v, sizeof(v), "%d", device->vendor);
-	snprintf(d, sizeof(d), "%d", device->device);
-	snprintf(sv, sizeof(sv), "%d", device->subvendor);
-	snprintf(sd, sizeof(sd), "%d", device->subdevice);
-
 	if (found)
 		TRACEEXIT1(return ndis_driver);
 	else {
@@ -83,7 +77,7 @@ static struct ndis_driver *ndiswrapper_load_driver(struct ndis_device *device)
 				"0",
 #endif
 				NDISWRAPPER_VERSION, device->driver_name,
-				v, d, sv, sd, NULL};
+				device->conf_file_name, NULL};
 		char *env[] = {NULL};
 
 		DBGTRACE1("loading driver %s", device->driver_name);
@@ -528,10 +522,8 @@ static int load_settings(struct ndis_driver *ndis_driver,
 	found = 0;
 	spin_lock(&loader_lock);
 	for (i = 0; i < num_ndis_devices; i++) {
-		if (ndis_devices[i].vendor == load_driver->vendor &&
-		    ndis_devices[i].device == load_driver->device &&
-		    ndis_devices[i].subvendor == load_driver->subvendor &&
-		    ndis_devices[i].subdevice == load_driver->subdevice) {
+		if (strcmp(ndis_devices[i].conf_file_name,
+			   load_driver->conf_file_name) == 0) {
 			found = 1;
 			break;
 		}
@@ -539,9 +531,8 @@ static int load_settings(struct ndis_driver *ndis_driver,
 	spin_unlock(&loader_lock);
 
 	if (!found) {
-		ERROR("device %04X:%04X:%04X:%04X is not registered",
-		      load_driver->vendor, load_driver->device,
-		      load_driver->subvendor, load_driver->subdevice);
+		ERROR("conf file %s not found",
+		      ndis_devices[i].conf_file_name);
 		TRACEEXIT1(return -EINVAL);
 	}
 
@@ -790,6 +781,8 @@ static int register_devices(struct load_devices *load_devices)
 		INIT_LIST_HEAD(&ndis_device->settings);
 		memcpy(&ndis_device->driver_name, device->driver_name,
 		       sizeof(ndis_device->driver_name));
+		memcpy(&ndis_device->conf_file_name, device->conf_file_name,
+		       sizeof(ndis_device->conf_file_name));
 		ndis_device->bustype = device->bustype;
 
 		ndis_device->vendor = device->vendor;

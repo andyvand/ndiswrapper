@@ -1451,9 +1451,10 @@ int setup_dev(struct net_device *dev)
 	}
 
 	netif_stop_queue(dev);
-	printk(KERN_INFO "%s: %s ethernet device " MACSTR " using driver %s\n",
+	printk(KERN_INFO "%s: %s ethernet device " MACSTR " using driver %s,"
+	       " configuration file %s\n",
 	       dev->name, DRIVER_NAME, MAC2STR(dev->dev_addr),
-	       handle->driver->name);
+	       handle->driver->name, handle->device->conf_file_name);
 
 	check_capa(handle);
 

@@ -485,6 +485,7 @@ struct ndis_device {
 	struct ndis_driver *driver;
 	char driver_name[MAX_DRIVER_NAME_LEN];
 	struct ndis_handle *handle;
+	char conf_file_name[MAX_DRIVER_NAME_LEN];
 };
 
 struct ndis_wireless_stats {
