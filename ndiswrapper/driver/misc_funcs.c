@@ -127,11 +127,11 @@ void free_kspin_lock(KSPIN_LOCK kspin_lock)
 	r = kspin_lock / SPINLOCK_COLUMNS;
 	c = kspin_lock % SPINLOCK_COLUMNS;
 	if (r == 0 && c == 0)
-		ERROR("%d is not a valid spinlock", kspin_lock);
+		ERROR("%d is not a valid spinlock", (u32)kspin_lock);
 	else {
 		clear_bit(c, &wrap_spinlock_bitmap[r]);
 		DBGTRACE2("freed spinlock at %d (row: %d, column: %d)",
-			  kspin_lock, r, c);
+			  (u32)kspin_lock, r, c);
 	}
 }
 
@@ -144,11 +144,11 @@ struct wrap_spinlock *kspin_wrap_lock(KSPIN_LOCK kspin_lock)
 	c = kspin_lock % SPINLOCK_COLUMNS;
 #ifdef DEBUG_SPINLOCK
 	if (r == 0 && c == 0)
-		ERROR("%d is not a valid spinlock", kspin_lock);
+		ERROR("%d is not a valid spinlock", (u32)kspin_lock);
 #endif
 	if (!test_bit(c, &wrap_spinlock_bitmap[r])) {
-		ERROR("spinlock %d at [%d][%d] is not allocated but being used",
-		      kspin_lock, r, c);
+		ERROR("spinlock %d at [%d][%d] is not allocated but"
+		      "being used", (u32)kspin_lock, r, c);
 		r = c = 0;
 	}
 	return &wrap_spinlock_array[r][c];

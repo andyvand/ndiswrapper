@@ -124,8 +124,8 @@ _FASTCALL KIRQL WRAP_EXPORT(KfAcquireSpinLock)
 	(FASTCALL_DECL_1(KSPIN_LOCK *lock))
 {
 	KIRQL oldirql;
-	TRACEENTER4("lock = %p", lock);
 	struct wrap_spinlock *wrap_lock;
+	TRACEENTER4("lock = %p", lock);
 
 	wrap_lock = kspin_wrap_lock(*lock);
 	oldirql = wrap_spin_lock(wrap_lock, DISPATCH_LEVEL);
@@ -135,8 +135,8 @@ _FASTCALL KIRQL WRAP_EXPORT(KfAcquireSpinLock)
 _FASTCALL void WRAP_EXPORT(KfReleaseSpinLock)
 	(FASTCALL_DECL_2(KSPIN_LOCK *lock, KIRQL newirql))
 {
-	TRACEENTER4("lock = %p, irql = %d", lock, newirql);
 	struct wrap_spinlock *wrap_lock;
+	TRACEENTER4("lock = %p, irql = %d", lock, newirql);
 
 	wrap_lock = kspin_wrap_lock(*lock);
 	wrap_spin_unlock_irql(wrap_lock, newirql);
