@@ -23,7 +23,13 @@ my $driver_name;
 my $confdir = "/etc/ndiswrapper";
 my $instdir;
 my %fuzzlist;
+
+#Backlist of files not to install.
 my @copy_blacklist = ("prismusb.sys");
+
+#Fixup list for parameters. 
+my %param_fixlist = ("EnableRadio|0" => "EnableRadio|1"); 
+
 
 if(@ARGV < 1)
 {
@@ -697,8 +703,6 @@ sub findfile
 }
 
 
-
-
 #
 # This section contains pointers to the section with the parameters to be
 # added to the registry.
@@ -717,6 +721,7 @@ sub addReg
 	my $type;
 	my $val;
 	my $found;
+	my $gotParam = 0;
 	
 	my @lines = split("\n", $reg->{data});
 	for(my $i = 0; $i < @lines; $i++)
@@ -754,17 +759,35 @@ sub addReg
 						$found++;
 						$val = $p4;
 					}
+
 					if($found == 2)
 					{
-						print CONF "$param|$val\n";
-						$param = "";
+						$gotParam = 1;
 					}
 				}
 			}
 			else
 			{
 				#print "type 2: $reg_name '$p1', '$p2', '$p3', '$p4':'$line'\n";		
-				print CONF "$p2|$p4\n";
+				$param = $p2;
+				$val = $p4;
+				$gotParam = 1;
+			}
+
+			
+			if($gotParam)
+			{
+				my $s = "$param|$val";
+				if($param_fixlist{"$s"})
+				{
+					my $sOld = $s;
+					$s = $param_fixlist{"$s"};
+					print "Forcing parameter $sOld to $s\n"; 
+				}
+				
+				print CONF "$s\n";
+				$param = "";
+				$gotParam = 0;
 			}
 		}
 	}
