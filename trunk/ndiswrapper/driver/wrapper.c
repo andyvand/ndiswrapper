@@ -1041,6 +1041,11 @@ static void check_capa(struct ndis_handle *handle)
 
 	DBGTRACE1("%s", "wpa is supported");
 	DBGTRACE("capbilities = %ld\n", handle->capa);
+	if (test_bit(CAPA_AES, &handle->capa))
+		INFO("%s supports WPA with CCMP/AES and TKIP ciphers",
+			handle->net_dev->name);
+	else
+		INFO("%s", "driver supports WPA with TKIP cipher only");
 	TRACEEXIT1(return);
 }
 
@@ -1096,7 +1101,6 @@ static int setup_dev(struct net_device *dev)
 		WARNING("%s", "Unable to set privacy filter");
 
 	DBGTRACE1("%s", "checking if WPA is supported");
-	check_capa(handle);
 	ndis_set_rx_mode_proc(dev);
 	
 	dev->open = ndis_open;
@@ -1125,6 +1129,7 @@ static int setup_dev(struct net_device *dev)
 		printk(KERN_INFO "%s: %s ethernet device " MACSTR
 		       " using driver %s\n",
 		       dev->name, DRV_NAME, MAC2STR(mac), handle->driver->name);
+	check_capa(handle);
 	return res;
 }
 
@@ -1813,6 +1818,7 @@ static int __init wrapper_init(void)
 	INIT_LIST_HEAD(&wrap_allocs);
 	wrap_spin_lock_init(&wrap_allocs_lock);
 	wrap_spin_lock_init(&driverlist_lock);
+	ndiswrapper_procfs_init();
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
 	err = call_usermodehelper("/sbin/loadndisdriver", argv, env, 1);
 #else
@@ -1822,13 +1828,8 @@ static int __init wrapper_init(void)
 	if (err)
 	{
 		ERROR("loadndiswrapper failed (%d)", err);
+		ndiswrapper_procfs_remove();
 		misc_deregister(&wrapper_misc);
-	}
-	else
-	{
-		ndiswrapper_procfs_init();
-		
-		
 	}
 	return err;
 }

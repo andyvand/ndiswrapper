@@ -110,8 +110,9 @@ static int procfs_read_wep(char *page, char **start, off_t off,
 		p += sprintf(p, "key_index=%u\n", handle->wep_info.active);
 		p += sprintf(p, "key=");
 		if (handle->wep_info.keys[active].length > 0)
-			for (i = 0 ; i < NDIS_ENCODING_TOKEN_MAX &&
-				     i < handle->wep_info.keys[active].length; i++)
+			for (i = 0; i < NDIS_ENCODING_TOKEN_MAX &&
+				     i < handle->wep_info.keys[active].length;
+			     i++)
 				p += sprintf(p, "%2.2X",
 					     handle->wep_info.keys[active].key[i]);
 		else

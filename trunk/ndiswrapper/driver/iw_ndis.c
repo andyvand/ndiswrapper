@@ -1166,7 +1166,10 @@ static int wpa_set_wpa(struct net_device *dev, struct iw_request_info *info,
 	if (test_bit(CAPA_WPA, &handle->capa))
 		TRACEEXIT(return 0);
 	else
+	{
+		WARNING("%s", "driver is not WPA capable");
 		TRACEEXIT(return -EINVAL);
+	}
 }
 
 static int char_to_hex(int c)
