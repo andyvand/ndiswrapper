@@ -123,6 +123,32 @@ KfReleaseSpinLock(int dummy, KIRQL newirql, KSPIN_LOCK *lock)
 	wrap_spin_unlock((struct wrap_spinlock *)*lock);
 }
 
+STDCALL static unsigned char
+KfRaiseIrql(unsigned char irql)
+{
+	if (irql != PASSIVE_LEVEL) {
+		ERROR("%s", "can't raise irql");
+		return PASSIVE_LEVEL;
+	}
+	if (in_atomic() || irqs_disabled())
+		return DISPATCH_LEVEL;
+	else {
+		preempt_enable();
+		return PASSIVE_LEVEL;
+	}
+}
+	
+STDCALL static void
+KfLowerIrql(unsigned char old_irql)
+{
+	if (old_irql != PASSIVE_LEVEL) {
+		ERROR("%s", "can't lower irql");
+		return;
+	}
+	preempt_disable();
+	return;
+}
+
 struct wrap_func hal_wrap_funcs[] =
 {
 	WRAP_FUNC_ENTRY(WRITE_PORT_BUFFER_USHORT),
@@ -136,6 +162,8 @@ struct wrap_func hal_wrap_funcs[] =
 	WRAP_FUNC_ENTRY(KeStallExecutionProcessor),
 	WRAP_FUNC_ENTRY(KfAcquireSpinLock),
 	WRAP_FUNC_ENTRY(KfReleaseSpinLock),
+	WRAP_FUNC_ENTRY(KfRaiseIrql),
+	WRAP_FUNC_ENTRY(KfLowerIrql),
 	{NULL, NULL}
 };
 
