@@ -85,7 +85,7 @@ fi
 
 # locate PCI id
 
-NCARDS=$(lspci | grep 'Network controller' | egrep (802.11|Wireless) | wc -l)
+NCARDS=$(lspci | grep 'Network controller' | wc -l)
 
 if [ ${NCARDS} -gt 1 ]; then
     error "You seem to have more than one 802.11 card; report output of lspci"
@@ -93,7 +93,7 @@ elif [ ${NCARDS} -eq 0 ]; then
     error "Can't find any 802.11 cards; report output of lspci"
 fi
 
-PCIID=$(lspci -n | grep `lspci | awk '/802.11/ {print $1}'` | awk  '{print $4}')
+PCIID=$(lspci -n | grep `lspci | awk '/Network controller/ {print $1}'` | awk  '{print $4}')
 
 VENDOR_ID=$(echo ${PCIID} | awk -F : '{print $1}')
 DEVICE_ID=$(echo ${PCIID} | awk -F : '{print $2}')
