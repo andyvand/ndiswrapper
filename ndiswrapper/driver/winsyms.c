@@ -176,13 +176,16 @@ void my_memset(void);
 
 void RtlCopyUnicodeString(void);
 
-void _alldiv(void);
 void RtlCompareMemory(void);
-void _aullrem(void);
+void _alldiv(void);
 void _aulldiv(void);
+void _allmul(void);
+void _aullmul(void);
+void _allrem(void);
+void _aullrem(void);
 void _allshr(void);
 void _allshl(void);
-void _allrem(void);
+
 void ExDeleteNPagedLookasideList(void);
 void ExInitializeNPagedLookasideList(void);
 void ExInterlockedPopEntrySList(void);
@@ -364,14 +367,17 @@ func("memcpy"                               , my_memcpy),
 func("memset"                               , my_memset),
 
 func("RtlCopyUnicodeString"		    , RtlCopyUnicodeString),
+func("RtlCompareMemory"                     , RtlCompareMemory),
 
 func("_alldiv"                              , _alldiv),
-func("RtlCompareMemory"                     , RtlCompareMemory),
-func("_aullrem"                             , _aullrem),
 func("_aulldiv"                             , _aulldiv),
-func("_allshr"                              , _allshr),
-func("_allshl"                               , _allshl),
+func("_allmul"                              , _allmul),
+func("_aullmul"                             , _aullmul),
 func("_allrem"                              , _allrem),
+func("_aullrem"                             , _aullrem),
+func("_allshl"                              , _allshl),
+func("_allshr"                              , _allshr),
+
 func("ExDeleteNPagedLookasideList"          , ExDeleteNPagedLookasideList),
 func("ExInitializeNPagedLookasideList"      , ExInitializeNPagedLookasideList),
 func("ExInterlockedPopEntrySList"           , ExInterlockedPopEntrySList),

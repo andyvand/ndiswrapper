@@ -193,34 +193,6 @@ STDCALL void ExDeleteNPagedLookasideList(struct npaged_lookaside_list *lookaside
 		printk(KERN_INFO "%s: lookaside is NULL\n", __FUNCTION__);
 	g_kmem_cache = NULL;
 }
-	
-STDCALL __u64 _aulldiv(__u64 a, __u64 b)
-{
-	return (a / b);
-}
-STDCALL __u64 _aullrem(__u64 a, __u64 b)
-{
-	return (a % b);
-}
-STDCALL __s64 _allmul(__s64 a, __s64 b)
-{
-	return (a * b);
-}
-STDCALL __s64 _allrem(__s64 a, __s64 b)
-{
-	return (a % b);
-}
-STDCALL __s64 _alldiv(__s64 a, __s64 b)
-{
-	return (a / b);
-}
-__attribute__ ((regparm(3))) __u64 _allshl(__u64 a, __u8 b)
-{
-	return (a << b);
-}
-__attribute__ ((regparm(3))) __u64 _allshr(__u64 a, __u8 b)
-{
-	return (a >> b);
-}
 
 #endif // DBG_REALTEK
+	

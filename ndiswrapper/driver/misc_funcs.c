@@ -496,14 +496,47 @@ void KfReleaseSpinLock(void){UNIMPL();}
 void KeInitializeEvent(void *event){UNIMPL();}
 void RtlCompareMemory(void){UNIMPL();}
 
+STDCALL __s64 _alldiv(__s64 a, __s64 b)
+{
+	return (a / b);
+}
+
+STDCALL __u64 _aulldiv(__u64 a, __u64 b)
+{
+	return (a / b);
+}
+
+STDCALL __s64 _allmul(__s64 a, __s64 b)
+{
+	return (a * b);
+}
+
+STDCALL __u64 _aullmul(__u64 a, __u64 b)
+{
+	return (a * b);
+}
+
+STDCALL __s64 _allrem(__s64 a, __s64 b)
+{
+	return (a % b);
+}
+
+STDCALL __u64 _aullrem(__u64 a, __u64 b)
+{
+	return (a % b);
+}
+
+__attribute__ ((regparm(3))) __u64 _allshl(__u64 a, __u8 b)
+{
+	return (a << b);
+}
+
+__attribute__ ((regparm(3))) __u64 _allshr(__u64 a, __u8 b)
+{
+	return (a >> b);
+}
+
 #ifndef DBG_REALTEK
-void _allmul(long p1, long p2, long p3, long p4){UNIMPL();}
-void _aullrem(void){UNIMPL();}
-void _aulldiv(void){UNIMPL();}
-void _allshr(void){UNIMPL();}
-void _allshl(void){UNIMPL();}
-void _allrem(void){UNIMPL();}
-void _alldiv(void){UNIMPL();}
 void ExDeleteNPagedLookasideList(void){UNIMPL();}
 void ExInitializeNPagedLookasideList(void){UNIMPL();}
 void ExInterlockedPopEntrySList(void){UNIMPL();}
