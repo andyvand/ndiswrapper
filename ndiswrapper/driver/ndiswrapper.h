@@ -130,13 +130,17 @@ void wrap_kfree_all(void);
 
 /* DEBUG macros */
 
-#define DBGTRACE(fmt, ...) printk("%s(%d) " fmt "\n", \
-				  __FUNCTION__, __LINE__, ## __VA_ARGS__)
-
+#define DBGTRACE(fmt, ...) (void)0
 #define DBGTRACE1(fmt, ...) (void)0
 #define DBGTRACE2(fmt, ...) (void)0
 #define DBGTRACE3(fmt, ...) (void)0
 #define DBGTRACE4(fmt, ...) (void)0
+
+#if defined DEBUG
+#undef DBGTRACE
+#define DBGTRACE(fmt, ...) printk("%s(%d) " fmt "\n", \
+				  __FUNCTION__, __LINE__, ## __VA_ARGS__)
+#endif
 
 #if defined DEBUG && DEBUG >= 1
 #undef DBGTRACE1

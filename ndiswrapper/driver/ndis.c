@@ -1365,8 +1365,10 @@ STDCALL void NdisIndicateStatus(struct ndis_handle *handle,
 		handle->link_status = 1;
 	if(status == NDIS_STATUS_MEDIA_DISCONNECT)
 		handle->link_status = 0;
+#ifdef DEBUG_WPA
 	set_bit(WRAPPER_LINK_STATUS, &handle->wrapper_work);
 	schedule_work(&handle->wrapper_worker);
+#endif
 	TRACEEXIT3(return);
 }
 

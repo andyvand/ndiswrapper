@@ -33,6 +33,7 @@ int ndis_set_essid(struct net_device *dev, struct iw_request_info *info,
 	unsigned int res, written, needed;
 	struct essid_req req;
 
+	TRACEENTER1();
 	memset(&req.essid, 0, sizeof(req.essid));
 	
 	if (wrqu->essid.flags == 0)
@@ -62,7 +63,7 @@ int ndis_set_essid(struct net_device *dev, struct iw_request_info *info,
 		return -EINVAL;
 	}
 
-	return 0;
+	TRACEEXIT1(return 0);
 }
 
 static int ndis_get_essid(struct net_device *dev,
@@ -92,12 +93,13 @@ static int ndis_get_essid(struct net_device *dev,
 
 
 int ndis_set_mode(struct net_device *dev, struct iw_request_info *info,
-			   union iwreq_data *wrqu, char *extra)
+		  union iwreq_data *wrqu, char *extra)
 {
 	struct ndis_handle *handle = dev->priv;
 	enum op_mode ndis_mode;
 	int res;
 
+	TRACEENTER1();
 	switch(wrqu->mode)
 	{
 	case IW_MODE_ADHOC:
@@ -121,7 +123,7 @@ int ndis_set_mode(struct net_device *dev, struct iw_request_info *info,
 		return -EINVAL;
 	}
 
-	return 0;
+	TRACEEXIT1(return 0);
 }
 
 static int ndis_get_mode(struct net_device *dev, struct iw_request_info *info,
@@ -130,6 +132,7 @@ static int ndis_get_mode(struct net_device *dev, struct iw_request_info *info,
 	struct ndis_handle *handle = dev->priv; 
 	int ndis_mode, iw_mode;
 
+	TRACEENTER1();
 	int res = query_int(handle, NDIS_OID_MODE, &ndis_mode);
 	if(res)
 	{
@@ -156,7 +159,7 @@ static int ndis_get_mode(struct net_device *dev, struct iw_request_info *info,
 		break;
 	}
 	wrqu->mode = iw_mode;
-	return 0;
+	TRACEEXIT1(return 0);
 }
 
 const char *net_type_to_name(int net_type)
@@ -406,6 +409,7 @@ int ndis_get_ap_address(struct net_device *dev, struct iw_request_info *info,
 	unsigned int res, written, needed;
 	__u8 mac_address[ETH_ALEN];
 
+	TRACEENTER1();
 	memset(mac_address, 0, ETH_ALEN);
 	res = doquery(handle, NDIS_OID_BSSID, (char*)&mac_address, ETH_ALEN,
 		      &written, &needed);
@@ -414,10 +418,10 @@ int ndis_get_ap_address(struct net_device *dev, struct iw_request_info *info,
 
         memcpy(wrqu->ap_addr.sa_data, mac_address, ETH_ALEN);
         wrqu->ap_addr.sa_family = ARPHRD_ETHER;
-	DBGTRACE("%02X:%02X:%02X:%02X:%02X:%02X", mac_address[0],
+	DBGTRACE1("%02X:%02X:%02X:%02X:%02X:%02X", mac_address[0],
 		 mac_address[1], mac_address[2], mac_address[3],
 		 mac_address[4], mac_address[5]);
-        return 0;
+        TRACEEXIT1(return 0);
 }
 
 static int ndis_set_ap_address(struct net_device *dev, struct iw_request_info *info,
@@ -427,6 +431,7 @@ static int ndis_set_ap_address(struct net_device *dev, struct iw_request_info *i
 	unsigned int res, written, needed;
 	__u8 mac_address[ETH_ALEN];
 
+	TRACEENTER1();
         memcpy(mac_address, wrqu->ap_addr.sa_data, ETH_ALEN);
 	res = dosetinfo(handle, NDIS_OID_BSSID, (char*)&(mac_address[0]), ETH_ALEN, &written, &needed);
 
@@ -437,7 +442,7 @@ static int ndis_set_ap_address(struct net_device *dev, struct iw_request_info *i
 		return -EINVAL;
 	}
 
-        return 0;
+        TRACEEXIT1(return 0);
 }
 
 static int ndis_get_wep(struct net_device *dev, struct iw_request_info *info,
@@ -447,6 +452,7 @@ static int ndis_get_wep(struct net_device *dev, struct iw_request_info *info,
 	int status, res, index;
 	struct wep_info *wep_info = &handle->wep_info;
 
+	TRACEENTER1();
 	wrqu->data.length = 0;
 	extra[0] = 0;
 
@@ -476,7 +482,7 @@ static int ndis_get_wep(struct net_device *dev, struct iw_request_info *info,
 		else
 			wrqu->data.flags |= IW_ENCODE_DISABLED;
 
-		return 0;
+		TRACEEXIT1(return 0);
 	}
 	
 	/* active key */
@@ -513,7 +519,7 @@ static int ndis_get_wep(struct net_device *dev, struct iw_request_info *info,
 	else if (status == AUTHMODE_RESTRICTED)
 		wrqu->data.flags |= IW_ENCODE_RESTRICTED;
 	
-	return 0;
+	TRACEEXIT1(return 0);
 }
 	
 static int ndis_set_wep(struct net_device *dev, struct iw_request_info *info,
@@ -521,10 +527,10 @@ static int ndis_set_wep(struct net_device *dev, struct iw_request_info *info,
 {
 	struct ndis_handle *handle = dev->priv;
 	unsigned int res, written, needed, index;
-	union iwreq_data essid_wrqu;
 	struct wep_info *wep_info = &handle->wep_info;
 	struct wep_req wep_req;
 	
+	TRACEENTER1();
 	index = (wrqu->data.flags & IW_ENCODE_INDEX);
 	DBGTRACE2("index = %u", index);
 	if (index > MAX_WEP_KEYS)
@@ -571,7 +577,7 @@ static int ndis_set_wep(struct net_device *dev, struct iw_request_info *info,
 				printk(KERN_WARNING "%s: changing wep status failed (%08X)\n",
 				       dev->name, res);
 		}
-		return 0;
+		TRACEEXIT1(return 0);
 	}
 
 	if (wep_info->keys[index].length > 0)
@@ -608,15 +614,8 @@ static int ndis_set_wep(struct net_device *dev, struct iw_request_info *info,
 		}
 
 		/* ndis drivers want essid to be set after setting wep */
-		if (handle->essid.length > 0)
-		{
-			memset(&essid_wrqu, 0, sizeof(essid_wrqu));
-			essid_wrqu.essid.length = handle->essid.length + 1;
-			essid_wrqu.essid.flags = handle->essid.flags;
-			essid_wrqu.essid.pointer = handle->essid.name;
-			ndis_set_essid(dev, NULL, &essid_wrqu, handle->essid.name);
-		}
-
+		set_bit(SET_ESSID, &handle->wrapper_work);
+		schedule_work(&handle->wrapper_worker);
 	}
 
 	/* global wep state (for all keys) */
@@ -632,7 +631,7 @@ static int ndis_set_wep(struct net_device *dev, struct iw_request_info *info,
 		return -EINVAL;
 	}
 
-	return 0;
+	TRACEEXIT1(return 0);
 }
 	
 static int ndis_set_nick(struct net_device *dev, struct iw_request_info *info,
@@ -665,6 +664,7 @@ char *ndis_translate_scan(struct net_device *dev, char *event, char *end_buf,
 	int i;
 	char buf[MAX_WPA_IE_LEN * 2 + 30];
 
+	TRACEENTER1();
 	/* add mac address */
 	memset(&iwe, 0, sizeof(iwe));
 	iwe.cmd = SIOCGIWAP;
@@ -763,7 +763,7 @@ char *ndis_translate_scan(struct net_device *dev, char *event, char *end_buf,
 		unsigned char *iep = (unsigned char *)(fixed_ies + 1);
 		int iel = item->ie_length - sizeof(*fixed_ies);
 		
-		DBGTRACE("%s: adding atim\n", __FUNCTION__);
+		DBGTRACE2("%s: adding atim\n", __FUNCTION__);
 		memset(&iwe, 0, sizeof(iwe));
 		iwe.cmd = IWEVCUSTOM;
 		sprintf(buf, "atim=%u", item->config.atim_window);
@@ -785,7 +785,7 @@ char *ndis_translate_scan(struct net_device *dev, char *event, char *end_buf,
 				for (i = 0; i < iel; i++)
 					p += sprintf(p, "%02x", iep[i]);
 				
-				DBGTRACE("adding wpa_ie :%d\n", strlen(buf));
+				DBGTRACE2("adding wpa_ie :%d\n", strlen(buf));
 				memset(&iwe, 0, sizeof(iwe));
 				iwe.cmd = IWEVCUSTOM;
 				iwe.u.data.length = strlen(buf);
@@ -801,9 +801,9 @@ char *ndis_translate_scan(struct net_device *dev, char *event, char *end_buf,
 		}
 	}
 
-	DBGTRACE("event = %p, current_val = %p", event, current_val);
+	DBGTRACE2("event = %p, current_val = %p", event, current_val);
 
-	return event;
+	TRACEEXIT1(return event);
 }
 
 static int ndis_set_scan(struct net_device *dev, struct iw_request_info *info,
@@ -812,6 +812,7 @@ static int ndis_set_scan(struct net_device *dev, struct iw_request_info *info,
 	struct ndis_handle *handle = dev->priv;
 	unsigned int res = 0;
 
+	TRACEENTER1();
 	res = set_int(handle, NDIS_OID_BSSID_LIST_SCAN, 0);
 	if (res)
 	{
@@ -822,7 +823,7 @@ static int ndis_set_scan(struct net_device *dev, struct iw_request_info *info,
 	else
 	{
 		handle->scan_timestamp = jiffies;
-		return 0;
+		TRACEEXIT1(return 0);
 	}
 }
 
@@ -835,6 +836,7 @@ static int ndis_get_scan(struct net_device *dev, struct iw_request_info *info,
 	char *event = extra;
 	struct ssid_item *cur_item ;
 
+	TRACEENTER1();
 	if (!handle->scan_timestamp)
 		return -EOPNOTSUPP;
 
@@ -879,7 +881,7 @@ static int ndis_get_scan(struct net_device *dev, struct iw_request_info *info,
 	wrqu->data.flags = 0;
 
 	kfree(bssid_list);
-	return 0;
+	TRACEEXIT1(return 0);
 }
 
 static int ndis_set_power_mode(struct net_device *dev,
@@ -1126,7 +1128,7 @@ static int ndis_set_wpa(struct net_device *dev, struct iw_request_info *info,
 	unsigned int res;
 	
 	TRACEENTER1();
-	DBGTRACE("flags = %d, encr_alg = %d, handle->capa = %d, "
+	DBGTRACE1("flags = %d, encr_alg = %d, handle->capa = %d, "
 		 "handle->encr_alg = %d", wrqu->data.flags, handle->encr_alg,
 	       handle->wpa_capa, handle->encr_alg);
 	
@@ -1146,7 +1148,7 @@ static int ndis_set_wpa(struct net_device *dev, struct iw_request_info *info,
 	if (!handle->wpa_capa)
 		return -1;
 
-	DBGTRACE("authmode = %d, wepmode = %d", handle->auth_mode,
+	DBGTRACE1("authmode = %d, wepmode = %d", handle->auth_mode,
 		 handle->wep_mode);
 	handle->auth_mode = AUTHMODE_WPAPSK;
 	handle->wep_mode = WEP_ENCR2_ENABLED;
@@ -1172,7 +1174,7 @@ static int ndis_set_wpa(struct net_device *dev, struct iw_request_info *info,
 	else
 		return -1;
 	
-	DBGTRACE("%s", "wpa enabled");
+	DBGTRACE1("%s", "wpa enabled");
 	TRACEEXIT1(return 0);
 }
 
@@ -1201,7 +1203,7 @@ static int ndis_set_key(struct net_device *dev, struct iw_request_info *info,
 				&written, &needed);
 		if (res)
 		{
-			DBGTRACE("removing key failed with %08X, %d, %d",
+			DBGTRACE1("removing key failed with %08X, %d, %d",
 			       res, needed, sizeof(ndis_remove_key));
 			return 0;
 		}
@@ -1238,17 +1240,18 @@ static int ndis_set_key(struct net_device *dev, struct iw_request_info *info,
 
 	if (wpa_key->key_len > sizeof(ndis_key.key))
 	{
-		DBGTRACE("incorrect key length (%d)", wpa_key->key_len);
+		DBGTRACE1("incorrect key length (%d)", wpa_key->key_len);
 		TRACEEXIT1(return -EINVAL);
 	}
 	
-	DBGTRACE("adding key %d, %d", wpa_key->key_index, wpa_key->key_len);
+	DBGTRACE1("adding key %d, %d", wpa_key->key_index, wpa_key->key_len);
 
 	ndis_key.length = sizeof(ndis_key);
 	ndis_key.key_index = wpa_key->key_index;
 	ndis_key.key_index |= (1 << 31);
-	if (wpa_key->key_index == 0)
-		ndis_key.key_index |= (1 << 30);
+
+//	if (wpa_key->key_index == 0)
+//		ndis_key.key_index |= (1 << 30);
 
 	ndis_key.key_len = wpa_key->key_len;
 	memcpy(&ndis_key.key, wpa_key->key, wpa_key->key_len);
@@ -1262,14 +1265,14 @@ static int ndis_set_key(struct net_device *dev, struct iw_request_info *info,
 			ndis_key.length, &written, &needed);
 	if (res)
 	{
-		DBGTRACE("adding key failed (%08X), %d, %d, %lu",
+		DBGTRACE1("adding key failed (%08X), %d, %d, %lu",
 			 res, written, needed, ndis_key.length);
 		TRACEEXIT1(return -EINVAL);
 	}
 	
 	/* FIXME: check for TKIP -> encr mode */
 	handle->encr_alg = wpa_key->alg;
-	DBGTRACE("encr_alg = %d", handle->encr_alg);
+	DBGTRACE1("encr_alg = %d", handle->encr_alg);
 	TRACEEXIT1(return 0);
 }
 
