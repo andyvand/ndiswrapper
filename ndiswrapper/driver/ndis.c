@@ -1341,7 +1341,7 @@ irqreturn_t ndis_irq_th(int irq, void *data, struct pt_regs *pt_regs)
 	miniport = &handle->driver->miniport_char;
 	/* this spinlock should be shared with NdisMSynchronizeWithInterrupt
 	 */
-	spin_lock(ndis_irq->spinlock);
+	wrap_spin_lock(ndis_irq->spinlock);
 	if (ndis_irq->req_isr)
 		miniport->isr(&recognized, &handled, handle->adapter_ctx);
 	else //if (miniport->disable_interrupts)
@@ -1350,7 +1350,7 @@ irqreturn_t ndis_irq_th(int irq, void *data, struct pt_regs *pt_regs)
 		/* it is not shared interrupt, so handler must be called */
 		recognized = handled = 1;
 	}
-	spin_unlock(ndis_irq->spinlock);
+	wrap_spin_unlock(ndis_irq->spinlock);
 
 	if (recognized && handled)
 		schedule_work(&handle->irq_bh);
@@ -1371,7 +1371,8 @@ NdisMRegisterInterrupt(struct ndis_irq *ndis_irq, struct ndis_handle *handle,
 		    "mode:%d sp:%08x",(int)ndis_irq, vector, level, req_isr,
 		    shared, mode, (int)getSp());
 
-	ndis_irq->spinlock = kmalloc(sizeof(spinlock_t), GFP_KERNEL);
+	ndis_irq->spinlock = kmalloc(sizeof(struct wrap_spinlock),
+				     GFP_KERNEL);
 	if (ndis_irq->spinlock == NULL)
 		TRACEEXIT1(return NDIS_STATUS_RESOURCES);
 
@@ -1381,7 +1382,7 @@ NdisMRegisterInterrupt(struct ndis_irq *ndis_irq, struct ndis_handle *handle,
 	if (shared && !req_isr)
 		WARNING("%s", "shared but dynamic interrupt!");
 	ndis_irq->shared = shared;
-	spin_lock_init(ndis_irq->spinlock);
+	wrap_spin_lock_init(ndis_irq->spinlock);
 	handle->ndis_irq = ndis_irq;
 
 	INIT_WORK(&handle->irq_bh, &ndis_irq_bh, ndis_irq);
@@ -1436,9 +1437,9 @@ NdisMSynchronizeWithInterrupt(struct ndis_irq *ndis_irq, void *func, void *ctx)
 		TRACEEXIT5(return 0);
 
 	sync_func = func;
-	spin_lock_bh(ndis_irq->spinlock);
+	wrap_spin_lock(ndis_irq->spinlock);
 	ret = sync_func(ctx);
-	spin_unlock_bh(ndis_irq->spinlock);
+	wrap_spin_unlock(ndis_irq->spinlock);
 
 	DBGTRACE5("sync_func returns %u", ret);
 	TRACEEXIT5(return ret);
