@@ -14,6 +14,7 @@
  */
 
 #define IOCTL_INTERNAL_USB_SUBMIT_URB	0x00220003
+#define IOCTL_INTERNAL_USB_RESET_PORT	0x00220007
 
 #define USB_STATUS_SUCCESS		0x00000000
 #define USB_STATUS_ERROR		0x80000000
@@ -21,6 +22,9 @@
 #define FUNC_SELECT_CONFIGURATION	0x0000
 #define FUNC_BULK_OR_INTERRUPT_TRANSFER	0x0009
 #define FUNC_GET_DESCRIPTOR_FROM_DEVICE	0x000B
+#define FUNC_VENDOR_DEVICE		0x0017
+#define FUNC_VENDOR_INTERFACE		0x0018
+#define FUNC_CLASS_INTERFACE		0x001B
 #define FUNC_RESET_PIPE			0x001E
 
 #define USBD_TRANSFER_DIRECTION_IN	0x00000001
@@ -110,13 +114,31 @@ struct packed pipe_request {
 	union pipe_handle pipeHandle;
 };
 
+struct packed vendor_or_class_request {
+	struct nt_urb_header header;
+	void *fill1;
+	unsigned long transferFlags;
+	unsigned long transferBufLen;
+	void *transferBuf;
+	void *transferBufMdl;
+	union nt_urb *urbLink;
+	void *fill2[8];
+	unsigned char reservedBits;
+	unsigned char request;
+	unsigned short value;
+	unsigned short index;
+	unsigned short fill3;
+};
+
 union nt_urb {
 	struct nt_urb_header header;
 	struct select_configuration selConf;
 	struct bulk_or_intr_transfer bulkIntrTrans;
 	struct control_descriptor_request ctrlDescReq;
+	struct vendor_or_class_request venClsReq;
 	struct pipe_request pipeReq;
 };
 
 unsigned long usb_submit_nt_urb(struct usb_device *dev, union nt_urb *nt_urb,
                                 struct irp *irp);
+unsigned long usb_reset_port(struct usb_device *dev);

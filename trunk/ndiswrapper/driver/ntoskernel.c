@@ -91,7 +91,7 @@ KeGetCurrentIrql(void)
 		return PASSIVE_LEVEL;
 }
 
-STDCALL static void
+STDCALL void
 KeInitializeSpinLock(KSPIN_LOCK *lock)
 {
 	struct wrap_spinlock *spin_lock;
@@ -307,13 +307,62 @@ IoIsWdmVersionAvailable(unsigned char major, unsigned char minor)
 	return 0;
 }
 
-STDCALL static unsigned int
-KeWaitForSingleObject(void **object, unsigned int reason,
-		      unsigned int waitmode, unsigned short alertable,
-		      void *timeout)
+STDCALL static void
+KeInitializeEvent(struct kevent *event, int event_type, int state)
 {
-	UNIMPL();
-	return 0;
+	TRACEENTER("event = %p, event_type = %d, state = %d",
+		event, event_type, state);
+	event->header.type         = event_type;
+	event->header.signal_state = state;
+}
+
+STDCALL static unsigned long
+KeSetEvent(struct kevent *event, int incr, int wait)
+{
+	TRACEENTER("event = %p, incr = %d, wait = %d", event, incr, wait);
+	NdisSetEvent((struct ndis_event *)event);
+	return STATUS_SUCCESS;
+}
+
+STDCALL static void
+KeClearEvent(struct kevent *event)
+{
+	TRACEENTER("event = %p", event);
+	event->header.signal_state = 0;
+}
+
+STDCALL static unsigned int
+KeWaitForSingleObject(void *object, unsigned int reason,
+		      unsigned int waitmode, unsigned short alertable,
+		      u64 *timeout)
+{
+	unsigned int ndis_timeout = 0;
+
+	/* Note: for now, object can only point to an event */
+	TRACEENTER3("object = %p, reason = %u, waitmode = %u, alertable = %u,"
+		" timeout = %p", object, reason, waitmode, alertable,
+		timeout);
+
+	if (timeout) {
+		/* absolute timeouts are not yet supported */
+		if (*timeout > 0) {
+			UNIMPL();
+			ndis_timeout = 1000;
+		} else if (*timeout == 0) {
+			if (((struct kevent *)object)->header.signal_state)
+				TRACEEXIT3(return STATUS_SUCCESS);
+			else
+				TRACEEXIT3(return STATUS_TIMEOUT);
+		} else
+			ndis_timeout = *timeout / 10000;
+	}
+
+	if (!NdisWaitEvent(object, ndis_timeout))
+		TRACEEXIT3(return STATUS_TIMEOUT);
+
+	if (((struct kevent *)object)->header.type == SYNCHRONIZATION_EVENT)
+		((struct kevent *)object)->header.signal_state = 0;
+	TRACEEXIT3(return STATUS_SUCCESS);
 }
 
 STDCALL static void *
@@ -321,6 +370,14 @@ ExAllocatePoolWithTag(unsigned int type, unsigned int size, unsigned int tag)
 {
 	UNIMPL();
 	return (void*)0x000afff8;
+}
+
+STDCALL static void
+ExFreePool(void *p)
+{
+	DBGTRACE("p = %p (WARNING: function not fully implemented)", p);
+	/* WARNING: this only applies to some buggy ATMEL USB WLAN driver */
+	kfree(p);
 }
 
 STDCALL static void
@@ -354,7 +411,8 @@ STDCALL static void DbgBreakPoint(void)
 	UNIMPL();
 }
 
-STDCALL struct irp *IoAllocateIrp(char stack_size, unsigned char charge_quota)
+STDCALL static struct irp *
+IoAllocateIrp(char stack_size, unsigned char charge_quota)
 {
 	struct irp *irp;
 	int size;
@@ -380,7 +438,7 @@ STDCALL struct irp *IoAllocateIrp(char stack_size, unsigned char charge_quota)
 	TRACEEXIT3(return irp);
 }
 
-STDCALL struct irp *
+STDCALL static struct irp *
 IoBuildDeviceIoControlRequest(unsigned long ioctl,
                               struct device_object *dev_obj,
                               void *input_buf, unsigned long input_buf_len,
@@ -429,23 +487,32 @@ IoBuildDeviceIoControlRequest(unsigned long ioctl,
 	TRACEEXIT3(return irp);
 }
 
-_FASTCALL void IofCompleteRequest(int dummy, char prio_boost, struct irp *irp)
+_FASTCALL static void 
+IofCompleteRequest(int dummy, char prio_boost, struct irp *irp)
 {
 	UNIMPL();
 }
 
-STDCALL void IoCancelIrp(struct irp *irp)
+STDCALL unsigned char
+IoCancelIrp(struct irp *irp)
 {
 	struct io_stack_location *stack = irp->current_stack_location-1;
 	int free_irp = 1;
-
+	void (*cancel_routine)(struct device_object *, struct irp *) STDCALL;
 
 	TRACEENTER3("irp = %p", irp);
 
+	wrap_spin_lock(&cancel_lock);
 	irp->pending_returned = 1;
 	irp->cancel = 1;
-	if (irp->cancel_routine)
-		irp->cancel_routine(stack->dev_obj, irp);
+	cancel_routine = irp->cancel_routine;
+	irp->cancel_routine = NULL;
+	wrap_spin_unlock(&cancel_lock);
+
+	if (!cancel_routine)
+		TRACEEXIT3(return 0);
+
+	cancel_routine(stack->dev_obj, irp);
 
 	if ((stack->completion_handler) &&
 	    (stack->control & CALL_ON_CANCEL)) {
@@ -466,10 +533,10 @@ STDCALL void IoCancelIrp(struct irp *irp)
 		kfree(irp);
 	}
 
-	TRACEEXIT3(return);
+	TRACEEXIT3(return 1);
 }
 
-STDCALL void IoFreeIrp(struct irp *irp)
+STDCALL static void IoFreeIrp(struct irp *irp)
 {
 	TRACEENTER3("irp = %p", irp);
 
@@ -478,8 +545,8 @@ STDCALL void IoFreeIrp(struct irp *irp)
 	TRACEEXIT3(return);
 }
 
-_FASTCALL unsigned long IofCallDriver(int dummy, struct irp *irp,
-                                      struct device_object *dev_obj)
+_FASTCALL static unsigned long IofCallDriver(int dummy, struct irp *irp,
+                                             struct device_object *dev_obj)
 {
 	struct io_stack_location *stack = irp->current_stack_location-1;
 	unsigned long ret = STATUS_NOT_SUPPORTED;
@@ -494,6 +561,10 @@ _FASTCALL unsigned long IofCallDriver(int dummy, struct irp *irp,
 			case IOCTL_INTERNAL_USB_SUBMIT_URB:
 				ret = usb_submit_nt_urb(dev_obj->device.usb,
 					stack->params.generic.arg1, irp);
+				break;
+
+			case IOCTL_INTERNAL_USB_RESET_PORT:
+				ret = usb_reset_port(dev_obj->device.usb);
 				break;
 
 			default:
@@ -535,17 +606,122 @@ _FASTCALL unsigned long IofCallDriver(int dummy, struct irp *irp,
 	TRACEEXIT3(return ret);
 }
 
+struct trampoline_context {
+	void (*start_routine)(void *) STDCALL;
+	void *context;
+};
+
+int kthread_trampoline(void *data)
+{
+	struct trampoline_context ctx;
+
+	memcpy(&ctx, data, sizeof(ctx));
+	kfree(data);
+
+	ctx.start_routine(ctx.context);
+
+	return 0;
+}
+
+STDCALL static unsigned long
+PsCreateSystemThread(void **phandle, unsigned long access, void *obj_attr,
+                     void *process, void *client_id,
+                     void (*start_routine)(void *) STDCALL, void *context)
+{
+	struct trampoline_context *ctx;
+
+	TRACEENTER2("phandle = %p, access = %lu, obj_attr = %p, process = %p, "
+	            "client_id = %p, start_routine = %p, context = %p",
+	            phandle, access, obj_attr, process, client_id,
+	            start_routine, context);
+
+	ctx = kmalloc(sizeof(struct trampoline_context), GFP_KERNEL);
+	if (!ctx)
+		TRACEEXIT2(return STATUS_RESOURCES);
+	ctx->start_routine = start_routine;
+	ctx->context       = context;
+
+	*phandle = kthread_run(kthread_trampoline, ctx, "ndiswrapper");
+	DBGTRACE2("*phandle = %p", *phandle);
+	if (IS_ERR(*phandle)) {
+		kfree(ctx);
+		TRACEEXIT2(return STATUS_FAILURE);
+	}
+
+	TRACEEXIT2(return STATUS_SUCCESS);
+}
+
+STDCALL static void *KeGetCurrentThread(void)
+{
+	void *thread = get_current();
+
+	TRACEENTER2("current thread = %p", thread);
+	return thread;
+}
+
+STDCALL static long KeSetPriorityThread(void *thread, long priority)
+{
+	long old_prio;
+
+	TRACEENTER2("thread = %p, priority = %ld", thread, priority);
+
+	old_prio = 32 - (task_nice((task_t *)thread) + 20);
+	set_user_nice((task_t *)thread, (32 - priority) - 20);
+
+	return old_prio;
+}
+
+STDCALL static unsigned long PsTerminateSystemThread(unsigned long status)
+{
+	TRACEENTER2("status = %ld", status);
+	complete_and_exit(NULL, status);
+	return 0;
+}
+
+_FASTCALL static long
+InterlockedDecrement(int dummy1, int dummy2, long *val)
+{
+	long x;
+
+	TRACEENTER4("%s", "");
+	wrap_spin_lock(&atomic_lock);
+	(*val)--;
+	x = *val;
+	wrap_spin_unlock(&atomic_lock);
+	TRACEEXIT4(return x);
+}
+
+_FASTCALL static long
+InterlockedIncrement(int dummy1, int dummy2, long *val)
+{
+	long x;
+
+	TRACEENTER4("%s", "");
+	wrap_spin_lock(&atomic_lock);
+	(*val)++;
+	x = *val;
+	wrap_spin_unlock(&atomic_lock);
+	TRACEEXIT4(return x);
+}
+
+_FASTCALL static long InterlockedExchange(int dummy, long val, long *target)
+{
+	long x;
+
+	TRACEENTER4("%s", "");
+	wrap_spin_lock(&atomic_lock);
+	x = *target;
+	*target = val;
+	wrap_spin_unlock(&atomic_lock);
+	TRACEEXIT4(return x);
+}
+
 STDCALL static void IoReleaseCancelSpinLock(void){UNIMPL();}
-STDCALL static void KeInitializeEvent(void *event){UNIMPL();}
 STDCALL static void IoDeleteDevice(void){UNIMPL();}
 STDCALL static void IoCreateSymbolicLink(void){UNIMPL();}
-STDCALL static void ExFreePool(void){UNIMPL();}
 STDCALL static void MmMapLockedPages(void){UNIMPL();}
 STDCALL static void IoCreateDevice(void){UNIMPL();}
 STDCALL static void IoDeleteSymbolicLink(void){UNIMPL();}
-STDCALL static void InterlockedExchange(void){UNIMPL();}
-STDCALL static void KeSetEvent(void){UNIMPL();}
-STDCALL static void KeClearEvent(void){UNIMPL();}
 STDCALL static void MmMapLockedPagesSpecifyCache(void){UNIMPL();}
 STDCALL static void MmProbeAndLockPages(void){UNIMPL();}
 STDCALL static void MmUnlockPages(void){UNIMPL();}
@@ -606,6 +782,12 @@ struct wrap_func ntos_wrap_funcs[] =
 	WRAP_FUNC_ENTRY(WRITE_REGISTER_ULONG),
 	WRAP_FUNC_ENTRY(WRITE_REGISTER_USHORT),
 	WRAP_FUNC_ENTRY(_except_handler3),
+	WRAP_FUNC_ENTRY(PsCreateSystemThread),
+	WRAP_FUNC_ENTRY(KeGetCurrentThread),
+	WRAP_FUNC_ENTRY(KeSetPriorityThread),
+	WRAP_FUNC_ENTRY(PsTerminateSystemThread),
+	WRAP_FUNC_ENTRY(InterlockedDecrement),
+	WRAP_FUNC_ENTRY(InterlockedIncrement),
 
 	{NULL, NULL}
 };

@@ -78,23 +78,49 @@ KeStallExecutionProcessor(unsigned long usecs)
 }
 
 
-STDCALL static KIRQL
-KfAcquireSpinLock(KSPIN_LOCK *lock)
+_FASTCALL static KIRQL
+KfAcquireSpinLock(int dummy1, int dummy2, KSPIN_LOCK *lock)
 {
 	KIRQL irql;
 
+	TRACEENTER4("lock = %p, *lock = %p", lock, (void *)lock);
 	irql = KeGetCurrentIrql();
-	DBGTRACE4("lock = %p, *lock = %p", lock, (void *)lock);
-	if (lock && *lock)
-	{
-		if (irql == DISPATCH_LEVEL)
-			spin_lock((spinlock_t *)(*lock));
-		else // irql == PASSIVE_LEVEL
-			spin_lock_bh((spinlock_t *)(*lock));
+
+	if (!lock) {
+		ERROR("%s", "invalid lock");
+		return irql;
 	}
-	else
-		ERROR("lock %p is not initialized!", lock);
+
+	if (!*lock)
+	{
+		printk(KERN_WARNING "Buggy Windows driver trying to use "
+		       "uninitialized lock. Trying to recover...");
+		KeInitializeSpinLock(lock);
+		if (*lock)
+			printk(KERN_WARNING "ok\n");
+		else
+		{
+			printk(KERN_WARNING "failed\n");
+			BUG();
+		}
+	}
+
+	wrap_spin_lock((struct wrap_spinlock *)*lock);
 	return irql;
+}
+
+_FASTCALL static void
+KfReleaseSpinLock(int dummy, KIRQL newirql, KSPIN_LOCK *lock)
+{
+	TRACEENTER4("lock = %p, *lock = %p", lock, (void *)*lock);
+
+	if (!lock || !*lock)
+	{
+		ERROR("invalid spin lock %p", lock);
+		return;
+	}
+
+	wrap_spin_unlock((struct wrap_spinlock *)*lock);
 }
 
 struct wrap_func hal_wrap_funcs[] =
@@ -109,6 +135,7 @@ struct wrap_func hal_wrap_funcs[] =
 	WRAP_FUNC_ENTRY(READ_PORT_USHORT),
 	WRAP_FUNC_ENTRY(KeStallExecutionProcessor),
 	WRAP_FUNC_ENTRY(KfAcquireSpinLock),
+	WRAP_FUNC_ENTRY(KfReleaseSpinLock),
 	{NULL, NULL}
 };
 

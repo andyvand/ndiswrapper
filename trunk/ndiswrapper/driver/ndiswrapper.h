@@ -29,6 +29,7 @@
 #include <linux/random.h>
 #include <linux/ctype.h>
 #include <linux/usb.h>
+#include <linux/kthread.h>
 #include <asm/mman.h>
 #include <asm/atomic.h>
 

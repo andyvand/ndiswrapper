@@ -253,11 +253,6 @@ struct ndis_work_entry
 	} entry;
 };
 
-struct kevent
-{
-	struct dispatch_header header;
-};
-
 struct ndis_irq
 {
 	/* void *intr_obj is used for irq */
@@ -593,15 +588,14 @@ struct packed ndis_handle
 	void *send_complete;
 	void *send_resource_avail;
 	void *reset_complete;
-//	char fill2[132];
 
 	unsigned long media_type;
 	unsigned int bus_number;
 	unsigned int bus_type;
 	unsigned int adapter_type;
-	void *device_obj;
-	void *phys_device_obj;
-	void *next_device_obj;
+	struct device_object *device_obj;
+	struct device_object *phys_device_obj;
+	struct device_object *next_device_obj;
 	void *mapreg;
 	void *call_mgraflist;
 	void *miniport_thread;
@@ -665,7 +659,6 @@ struct packed ndis_handle
 	struct ndis_wireless_stats ndis_stats;
 	struct ndis_driver *driver;
 	struct ndis_device *device;
-	struct device_object *phy_dev;
 
 	struct work_struct xmit_work;
 	struct wrap_spinlock xmit_ring_lock;
@@ -768,7 +761,7 @@ struct packed ndis_resource_list
 
 struct ndis_event
 {
-	int state;
+	struct kevent event;
 };
 
 #define NDIS_MAX_RATES 16
@@ -861,6 +854,7 @@ STDCALL void NdisMSetInformationComplete(struct ndis_handle *handle,
 STDCALL void NdisMResetComplete(struct ndis_handle *handle, int status,
 				int reset_status);
 STDCALL unsigned long NDIS_BUFFER_TO_SPAN_PAGES(struct ndis_buffer *buffer);
+STDCALL int NdisWaitEvent(struct ndis_event *event, unsigned int timeout);
 STDCALL void NdisSetEvent(struct ndis_event *event);
 STDCALL void NdisMDeregisterInterrupt(struct ndis_irq *ndis_irq);
 STDCALL void EthRxIndicateHandler(void *adapter_ctx, void *rx_ctx,
@@ -907,6 +901,10 @@ int ndis_resume_usb(struct usb_interface *intf);
 void packet_recycler(void *param);
 
 int stricmp(const char *s1, const char *s2);
+
+
+extern struct wrap_spinlock atomic_lock;
+extern struct wrap_spinlock cancel_lock;
 
 #define NDIS_OID_STAT_TX_OK         0x00020101
 #define NDIS_OID_STAT_RX_OK         0x00020102
