@@ -26,9 +26,6 @@
 
 #include <linux/version.h>
 
-/* Define this to enable debugging */
-#define DEBUG 1
-
 
 /* Workqueue / task queue backwards compatibility stuff */
 #if LINUX_VERSION_CODE > KERNEL_VERSION(2,5,41)
@@ -69,7 +66,7 @@
 int getSp(void);
 
 
-#if DEBUG > 0
+#ifdef DEBUG
 #define DBGTRACE(s, args...) printk(s, args)
 #else
 #define DBGTRACE(s, ...)
