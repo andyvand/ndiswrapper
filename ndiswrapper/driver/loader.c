@@ -985,7 +985,7 @@ void loader_exit(void)
 			unload_ndis_device(&ndis_devices[i]);
 
 		vfree(ndis_devices);
-		ndis_devices = NULL:
+		ndis_devices = NULL;
 	}
 
 	while (!list_empty(&ndis_drivers)) {
