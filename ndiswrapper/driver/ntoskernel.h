@@ -322,10 +322,12 @@ struct wrap_export {
 #define WRAP_EXPORT_SYMBOL(f) {#f, (WRAP_EXPORT_FUNC)x86_64_ ## f}
 #define WRAP_EXPORT_WIN_FUNC(f) {#f, (WRAP_EXPORT_FUNC)x86_64__win_ ## f}
 #define WRAP_FUNC_PTR(f) &x86_64_ ## f
+#define WRAP_FUNC_PTR_DECL(f) void x86_64_ ## f(void)
 #else
 #define WRAP_EXPORT_SYMBOL(f) {#f, (WRAP_EXPORT_FUNC)f}
 #define WRAP_EXPORT_WIN_FUNC(f) {#f, (WRAP_EXPORT_FUNC)_win_ ## f}
 #define WRAP_FUNC_PTR(f) &f
+#define WRAP_FUNC_PTR_DECL(f)
 #endif
 /* map name s to function f - if f is different from s */
 #define WRAP_EXPORT_MAP(s,f)

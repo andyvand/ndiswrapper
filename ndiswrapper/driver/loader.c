@@ -1019,7 +1019,6 @@ int loader_init(void)
 void loader_exit(void)
 {
 	int i;
-	KIRQL irql;
 
 	TRACEENTER1("");
 	misc_deregister(&wrapper_misc);
@@ -1036,7 +1035,7 @@ void loader_exit(void)
 		kfree(ndiswrapper_pci_devices);
 		ndiswrapper_pci_devices = NULL;
 	}
-	irql = kspin_lock_irql(&loader_lock, DISPATCH_LEVEL);
+	kspin_lock(&loader_lock);
 	if (ndis_devices) {
 		for (i = 0; i < num_ndis_devices; i++)
 			unload_ndis_device(&ndis_devices[i]);
@@ -1053,6 +1052,6 @@ void loader_exit(void)
 		list_del(&driver->list);
 		unload_ndis_driver(driver);
 	}
-	kspin_unlock_irql(&loader_lock, irql);
+	kspin_unlock(&loader_lock);
 	TRACEEXIT1(return);
 }
