@@ -23,6 +23,7 @@
 #include <linux/pci.h>
 #include <linux/wait.h>
 #include <linux/pm.h>
+#include <linux/delay.h>
 
 #include <linux/version.h>
 
@@ -266,6 +267,53 @@ struct ndis_driver
 	struct miniport_char miniport_char;
 };
 
+typedef __u64 LARGE_INTEGER;
+struct ndis_wireless_stats {
+	LARGE_INTEGER length;
+	LARGE_INTEGER tx_frag;
+	LARGE_INTEGER tx_multi_frag;
+	LARGE_INTEGER failed;
+	LARGE_INTEGER retry;
+	LARGE_INTEGER multi_retry;
+	LARGE_INTEGER rtss_succ;
+	LARGE_INTEGER rtss_fail;
+	LARGE_INTEGER ack_fail;
+	LARGE_INTEGER frame_dup;
+	LARGE_INTEGER rx_frag;
+	LARGE_INTEGER rx_multi_frag;
+	LARGE_INTEGER fcs_err;
+};
+
+#define NDIS_ESSID_MAX_SIZE 32
+struct packed essid_req
+{
+	unsigned int len;
+	char essid[NDIS_ESSID_MAX_SIZE];
+};
+
+#define NDIS_ENCODING_TOKEN_MAX 32
+struct packed wep_req
+{
+	unsigned long len;
+	unsigned long keyindex;
+	unsigned long keylength;
+	unsigned char keymaterial[NDIS_ENCODING_TOKEN_MAX];
+};
+
+struct packed ndis_configuration
+{
+	__u32 length;
+	__u32 beacon_period;
+	__u32 atim_window;
+	__u32 ds_config;
+	struct ndis_configuration_fh
+	{
+		__u32 length;
+		__u32 hop_pattern;
+		__u32 hop_set;
+		__u32 dwell_time;
+	} fh_config;
+};
 
 /*
  * This is the per device struct. One per PCI-device exists.
@@ -300,6 +348,7 @@ struct packed ndis_handle
 
 	struct net_device_stats stats;
 	struct iw_statistics wireless_stats;
+	struct ndis_wireless_stats ndis_stats;
 	struct ndis_driver *driver;
 	
 	struct work_struct xmit_work;
@@ -326,12 +375,15 @@ struct packed ndis_handle
 	struct timer_list apscan_timer;
 	struct work_struct apscan_work;
 
-	int key_len ;
-	unsigned char key_val[IW_ENCODING_TOKEN_MAX] ;
 	struct pm_dev *pm;
 	unsigned int pm_state;
 
 	u32 link_status;
+	struct essid_req essid;
+	struct wep_req wep;
+	unsigned int wep_status;
+	unsigned int auth_mode;
+	long rssi;
 };
 
 struct ndis_timer
@@ -374,47 +426,13 @@ struct ndis_event
 	int state;
 };
 
-struct packed essid_req
-{
-	unsigned int len;
-	char essid[32];
-};
-
-struct packed ndis_configuration
-{
-	__u32 length;
-	__u32 beacon_period;
-	__u32 atim_window;
-	__u32 ds_config;
-	struct ndis_configuration_fh
-	{
-		__u32 length;
-		__u32 hop_pattern;
-		__u32 hop_set;
-		__u32 dwell_time;
-	} fh_config;
-};
-
-struct packed wep_req
-{
-	unsigned long len;
-	unsigned long keyindex;
-	unsigned long keylength;
-	unsigned char keymaterial[IW_ENCODING_TOKEN_MAX];
-};
-
-struct packed ndis_ssid {
-	unsigned long length;
-	unsigned char ssid[IW_ESSID_MAX_SIZE];
-};
-
 #define NDIS_MAX_RATES 16
 struct packed ssid_item
 {
 	unsigned long length;
 	__u8 mac[6];
 	unsigned char reserved[2];
-	struct ndis_ssid ssid;
+	struct essid_req ssid;
 	unsigned long privacy;
 	long rssi;
 	unsigned int net_type;
@@ -430,23 +448,6 @@ struct packed list_scan
 {
 	unsigned long num_items;
 	struct ssid_item items[MAX_SCAN_LIST_ITEMS];
-};
-
-typedef __u64 LARGE_INTEGER;
-struct ndis_wireless_stats {
-	LARGE_INTEGER length;
-	LARGE_INTEGER trans_frag;
-	LARGE_INTEGER multi_trans_frag;
-	LARGE_INTEGER failed;
-	LARGE_INTEGER retry;
-	LARGE_INTEGER multi_retry;
-	LARGE_INTEGER rtss_succ;
-	LARGE_INTEGER rtss_fail;
-	LARGE_INTEGER ack_fail;
-	LARGE_INTEGER frame_dup;
-	LARGE_INTEGER rx_frag;
-	LARGE_INTEGER multi_rx_frag;
-	LARGE_INTEGER fcs_err;
 };
 
 #define NDIS_ENCODE_ENABLED 0
@@ -491,6 +492,10 @@ void NdisIndicateStatusComplete(struct ndis_handle *handle) STDCALL;
 void NdisMQueryInformationComplete(struct ndis_handle *handle, unsigned int status) STDCALL;
 void NdisMSetInformationComplete(struct ndis_handle *handle, unsigned int status) STDCALL;
 
+int ndis_init_proc(struct ndis_handle *handle);
+void ndis_remove_proc(struct ndis_handle *handle);
+
+
 #define NDIS_OID_STAT_TX_OK         0x00020101
 #define NDIS_OID_STAT_RX_OK         0x00020102
 #define NDIS_OID_STAT_TX_ERROR      0x00020103
@@ -528,8 +533,8 @@ void NdisMSetInformationComplete(struct ndis_handle *handle, unsigned int status
 #define NDIS_OID_CURRENT_MAC_ADDRESS 0x01010102
 
 #define NDIS_STATUS_NOT_SUPPORTED 0xC00000BB
+#define NDIS_STATUS_INVALID_LENGTH  0xC0010014
 
-#define UNIMPL() printk(KERN_ERR "%s --UNIMPLEMENTED--\n", __FUNCTION__ )
-
+#define UNIMPL() printk(KERN_ERR "%s --UNIMPLEMENTED--\n", __FUNCTION__ );
 
 #endif /* NDIS_H */
