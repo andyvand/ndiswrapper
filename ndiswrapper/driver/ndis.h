@@ -434,10 +434,7 @@ struct packed ndis_handle
 	struct work_struct hangcheck_work;
 	int reset_status;
 
-	struct timer_list apscan_timer;
-	struct work_struct apscan_work;
-
-	unsigned int pm_state;
+	unsigned long scan_timestamp;
 
 	u32 link_status;
 	struct wep_req wep;
@@ -445,6 +442,7 @@ struct packed ndis_handle
 	spinlock_t send_packet_lock;
 
 	u32 pci_state[16];
+	unsigned int pm_state;
 };
 
 struct ndis_timer
