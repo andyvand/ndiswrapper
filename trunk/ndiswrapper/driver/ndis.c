@@ -2016,8 +2016,7 @@ NdisResetEvent(struct ndis_event *event)
 STDCALL void
 NdisMResetComplete(struct ndis_handle *handle, int status, int reset_status)
 {
-	TRACEENTER3("status: %08X, reset status: %u", status, reset_status);
-	INFO("status: %08X, reset status: %u", status, reset_status);
+	TRACEENTER2("status: %08X, reset status: %u", status, reset_status);
 
 	handle->ndis_comm_res = status;
 	handle->reset_status = status;
