@@ -413,7 +413,26 @@ static int ndis_ioctl(struct net_device *dev, struct ifreq *rq, int cmd)
 
 static void set_multicast_list(struct net_device *dev, struct ndis_handle *handle)
 {
-	//Work in progress...
+	unsigned int written, needed;
+	struct dev_mc_list *mclist;
+	int i;
+	char *list = handle->multicast_list;
+	int size = 0, res;
+	
+	for (i = 0, mclist = dev->mc_list; mclist && i < dev->mc_count;
+	     i++, mclist = mclist->next)
+	{
+		memcpy(list, mclist->dmi_addr, 6);
+		list += 6;
+		size += 6;
+	}
+	DBGTRACE("%s: %d entries. size=%d\n", __FUNCTION__, dev->mc_count, size);
+
+	res = dosetinfo(handle, OID_802_3_MULTICAST_LIST, list,
+	                size, &written, &needed);
+	if (res)
+		printk(KERN_ERR "%s: Unable to set multicast list (%08X)\n",
+		       DRV_NAME, res);
 }
 
 
@@ -438,24 +457,24 @@ static void ndis_set_rx_mode_proc(void *param)
 		packet_filter |= NDIS_PACKET_TYPE_PROMISCUOUS;
 	}
 	else if ((dev->mc_count > handle->multicast_list_size) ||
-	         (dev->flags & IFF_ALLMULTI))
+	         (dev->flags & IFF_ALLMULTI) ||
+	         (handle->multicast_list == 0))
 	{
 		/* Too many to filter perfectly -- accept all multicasts. */
 		DBGTRACE("%s: Multicast list to long. Accepting all\n", __FUNCTION__);
 		packet_filter |= NDIS_PACKET_TYPE_ALL_MULTICAST;
 	}
-	else
+	else if(dev->mc_count > 0)
 	{
-		packet_filter |= NDIS_PACKET_TYPE_ALL_MULTICAST;
-//		packet_filter |= NDIS_PACKET_TYPE_MULTICAST;
+		packet_filter |= NDIS_PACKET_TYPE_MULTICAST;
 		set_multicast_list(dev, handle);
 	}
 	
 	res = dosetinfo(handle, NDIS_OID_PACKET_FILTER, (char *)&packet_filter,
-					sizeof(packet_filter), &written, &needed);
+	                sizeof(packet_filter), &written, &needed);
 	if (res)
 		printk(KERN_ERR "%s: Unable to set packet filter (%08X)\n",
-			   DRV_NAME, res);
+		       DRV_NAME, res);
 }
 
 
@@ -817,7 +836,9 @@ static int setup_dev(struct net_device *dev)
 		DBGTRACE("Multicast list size is %d\n", i);
 		handle->multicast_list_size = i;
 	}
-	
+
+	if(handle->multicast_list_size)
+		handle->multicast_list = kmalloc(handle->multicast_list_size * 6, GFP_KERNEL);
 
 	ndis_set_rx_mode_proc(dev);
 	
@@ -1036,6 +1057,8 @@ static void __devexit ndis_remove_one(struct pci_dev *pdev)
 	if(handle->net_dev)
 		unregister_netdev(handle->net_dev);
 	call_halt(handle);
+	if(handle->multicast_list)
+		kfree(handle->multicast_list);
 	if(handle->net_dev)
 		free_netdev(handle->net_dev);
 #endif
