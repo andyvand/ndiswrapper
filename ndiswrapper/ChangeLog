@@ -1,3 +1,11 @@
+Version 0.5 2004-xx-yy
+======================
+* Integrated RPM packaging.
+* Better makefiles.
+* New simpler installation.
+* Better support for multiple driver and cards.
+* Compiles on some more kernels.
+
 Version 0.4 2004-01-05
 ======================
 * Admtek chipset works, including WEP.
