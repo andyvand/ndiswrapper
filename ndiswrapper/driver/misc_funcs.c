@@ -781,10 +781,18 @@ STDCALL void WRAP_EXPORT(RtlFreeAnsiString)
 }
 
 STDCALL NT_STATUS WRAP_EXPORT(RtlQueryRegistryValues)
-	(ULONG relative, wchar_t *path, void *tbl, void *context, void *env)
+	(ULONG relative, const wchar_t *path, void *tbl, void *context,
+	 void *env)
 {
 	TRACEENTER5("%s", "");
 	UNIMPL();
+	TRACEEXIT5(return STATUS_SUCCESS);
+}
+
+STDCALL NT_STATUS WRAP_EXPORT(RtlWriteRegistryValue)
+	(ULONG relative, const wchar_t *path, const wchar_t *name, ULONG type,
+	 void *data, ULONG length)
+{
 	TRACEEXIT5(return STATUS_SUCCESS);
 }
 
