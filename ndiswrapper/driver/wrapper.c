@@ -679,7 +679,7 @@ static int ndis_set_nick(struct net_device *dev, struct iw_request_info *info,
 	
 	if (wrqu->data.length > IW_ESSID_MAX_SIZE)
 		return -EINVAL;
-	memcpy(handle->nick, extra, IW_ESSID_MAX_SIZE+1);
+	memcpy(handle->nick, extra, wrqu->data.length);
 	handle->nick[IW_ESSID_MAX_SIZE] = 0;
 	return 0;
 }
