@@ -35,6 +35,8 @@ STDCALL void KeStallExecutionProcessor(unsigned int usecs)
 
 void KfAcquireSpinLock(void){UNIMPL();}
 void KfReleaseSpinLock(void){UNIMPL();}
+void KeGetCurrentIrql(void){UNIMPL();}
+void KeInitializeEvent(void *event){UNIMPL();}
 
 STDCALL void WRITE_PORT_ULONG(unsigned int port, unsigned int value)
 {
@@ -54,6 +56,16 @@ STDCALL void WRITE_PORT_USHORT(unsigned int port, unsigned short value)
 STDCALL unsigned short READ_PORT_USHORT(unsigned int port)
 {
 	return inw(port);
+}
+
+STDCALL void WRITE_PORT_UCHAR(unsigned int port, unsigned char value)
+{
+	outb(value, port);
+}
+
+STDCALL unsigned short READ_PORT_UCHAR(unsigned int port)
+{
+	return inb(port);
 }
 
 
@@ -147,44 +159,6 @@ STDCALL void *ExAllocatePoolWithTag(unsigned int type, unsigned int size, unsign
 	return (void*)0x000afff8;
 }
 
-
-
-void KeInitializeDispatcherHeader(DISPATCHER_HEADER *Header,
-                                  unsigned long Type,
-                                  unsigned long Size,
-                                  unsigned long SignalState)
-{
-	Header->Type = Type;
-	Header->Absolute = 0;
-	Header->Inserted = 0;
-	Header->Size = Size;
-	Header->SignalState = SignalState;
-	InitializeListHead(&(Header->WaitListHead));
-}
- 
-void STDCALL KeInitializeEvent(PKEVENT Event, EVENT_TYPE Type, int State)
-{
-	unsigned long IType;
- 
- 	if (Type == NotificationEvent)
-	{
-		IType = InternalNotificationEvent;
-	}
-	else if (Type == SynchronizationEvent)
-	{
-		IType = InternalSynchronizationEvent;
-	}
-	else
-	{
-		assert(FALSE);
-		return;
-	}
- 
-	KeInitializeDispatcherHeader(&(Event->Header),
-	                             IType,
-				     sizeof(Event)/sizeof(unsigned long),State);
-	InitializeListHead(&(Event->Header.WaitListHead));
-}
 
 
 void IoDeleteSymbolicLink(void){UNIMPL();}

@@ -1007,20 +1007,41 @@ STDCALL int NdisSystemProcessorCount(void)
 }
 
 
- /* Copied from ReactOS */
-STDCALL void NdisInitializeEvent(PNDIS_EVENT Event)
-/*
- * FUNCTION: Initializes an event to be used for synchronization
- * ARGUMENTS:
- *     Event = Pointer to an NDIS event structure to be initialized
- */
+DECLARE_WAIT_QUEUE_HEAD(event_wq);
+
+STDCALL void NdisInitializeEvent(struct ndis_event *event)
 {
-	KeInitializeEvent(&Event->Event, NotificationEvent, FALSE);
+	DBGTRACE("%s %08x\n", __FUNCTION__, (int)event);
+	event->state = 0;
 }
                                                                                                                                                                                                                                     
-int NdisWaitEvent(void *event, int timeout){UNIMPL(); return 0;}
-void NdisSetEvent(void *event){UNIMPL();}
-void NdisResetEvent(void *event){UNIMPL();}
+int NdisWaitEvent(struct ndis_event *event, int timeout)
+{
+	DBGTRACE("%s %08x %08x\n", __FUNCTION__, (int)event, timeout);
+	wait_event(event_wq, event->state == 1);
+	DBGTRACE("%s %08x Woke up\n", __FUNCTION__, (int)event);
+	return 1;
+}
+
+void NdisSetEvent(struct ndis_event *event)
+{
+	int i;
+	int *x = (int*) getSp();
+	DBGTRACE("%s %08x\n", __FUNCTION__, (int)event);
+	for(i = 0; i < 10; i++)
+	{
+		printk("%08x\n", x[i]);
+	}
+
+	event->state = 1;
+	wake_up(&event_wq);
+}
+
+void NdisResetEvent(struct ndis_event *event)
+{
+	DBGTRACE("%s %08x\n", __FUNCTION__, (int)event);
+	event->state = 0;
+}
 
 
 
@@ -1103,4 +1124,5 @@ STDCALL void EthFilterDprIndicateReceiveComplete(void){UNIMPL();}
 STDCALL void EthFilterDprIndicateReceive(void){UNIMPL();}
 STDCALL void NdisMStartBufferPhysicalMapping(void){UNIMPL();}
 STDCALL void NdisMCompleteBufferPhysicalMapping(void){UNIMPL();}
+STDCALL void NdisMPciAssignResources(void){UNIMPL();}
 

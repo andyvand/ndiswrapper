@@ -36,7 +36,7 @@
 #include "ndis.h"
 
 #define DRV_NAME "ndiswrapper"
-
+#define DRV_VERSION "0.1+CVS"
 
 /* Define this if you are developing and ndis_init_one crashes.
    When using the old PCI-API a reboot is not needed when this
@@ -45,7 +45,6 @@
 */
 
 /*#define DEBUG_CRASH_ON_INIT*/
-
 
 /* List of loaded drivers */
 static LIST_HEAD(driverlist);
@@ -1172,6 +1171,8 @@ void init_ndis_work(void);
 static int __init wrapper_init(void)
 {
 	int err;
+
+	printk(KERN_INFO "ndiswrapper version %s loaded\n", DRV_VERSION);
         if ( (err = misc_register(&wrapper_misc)) < 0 ) {
                 printk(KERN_ERR "misc_register failed\n");
 		return err;
