@@ -26,6 +26,7 @@
 #include <linux/netdevice.h>
 #include <linux/etherdevice.h>
 #include <linux/wireless.h>
+#include <linux/if_arp.h>
 #include <net/iw_handler.h>
 
 #include <asm/uaccess.h>
@@ -42,7 +43,7 @@
    function crashes. A simple rmmod -f will do the trick and
    you can try again.
 */
-/*#define DBG_OLD_PCI*/
+#define DBG_OLD_PCI
 
 
 /* List of loaded drivers */
@@ -108,7 +109,6 @@ static int ndis_set_essid(struct net_device *dev,
 	return 0;
 }
 
-
 static int ndis_get_essid(struct net_device *dev,
 			    struct iw_request_info *info,
 			    union iwreq_data *wrqu, char *extra)
@@ -164,7 +164,7 @@ static int ndis_get_mode(struct net_device *dev, struct iw_request_info *info,
 	int ndis_mode, mode;
 
 	int res = query_int(handle, NDIS_OID_MODE, &ndis_mode);
-	if(!res)
+	if(res)
 		return -1;
 
 	switch(ndis_mode)
@@ -181,7 +181,7 @@ static int ndis_get_mode(struct net_device *dev, struct iw_request_info *info,
 		break;
 	}
 	wrqu->mode = mode;
-	return 0;	
+	return 0;
 }
 
 
@@ -193,6 +193,113 @@ static int ndis_get_name(struct net_device *dev, struct iw_request_info *info,
 	return 0;
 }
 
+static int ndis_get_freq(struct net_device *dev, struct iw_request_info *info,
+			   union iwreq_data *wrqu, char *extra)
+{
+	struct ndis_handle *handle = dev->priv;
+	unsigned int res, written, needed;
+	struct ndis_configuration req;
+
+	res = handle->driver->miniport_char.query(handle->adapter_ctx, NDIS_OID_CONFIGURATION, (char*)&req, sizeof(req), &written, &needed);
+	if(res)
+		return -1;
+
+	memset(&(wrqu->freq), 0, sizeof(struct iw_freq));
+
+	/* see comment in wireless.h above the "struct iw_freq"
+	   definition for an explanation of this if
+	   NOTE: 1000000 is due to the kHz
+	*/
+	if (req.ds_config > 1000000)
+	{
+		wrqu->freq.m = req.ds_config / 10;
+		wrqu->freq.e = 1;
+	}
+	else
+		wrqu->freq.m = req.ds_config;
+
+	/* convert from kHz to Hz */
+	wrqu->freq.e += 3;
+	return 0;
+}
+
+static int ndis_get_tx_power(struct net_device *dev, struct iw_request_info *info,
+			   union iwreq_data *wrqu, char *extra)
+{
+	struct ndis_handle *handle = dev->priv; 
+	int ndis_power;
+
+	int res = query_int(handle, NDIS_OID_MODE, &ndis_power);
+	if(res)
+		return -1;
+
+	/* TODO: convert mW to dBm but, without floating point we
+	   could at best do a table, so for now just
+	   return the mW * 1000 as an obviously bogus value.
+	*/
+	wrqu->power.value = ndis_power * 1000;
+	return 0;
+}
+
+static int ndis_get_bitrate(struct net_device *dev, struct iw_request_info *info,
+			   union iwreq_data *wrqu, char *extra)
+{
+	struct ndis_handle *handle = dev->priv; 
+	int ndis_rate;
+
+	/* not sure if this is the corrent OID or if it gives only the max rate */
+	int res = query_int(handle, NDIS_OID_GEN_SPEED, &ndis_rate);
+	if(res)
+		return -1;
+
+	/* *of course* windows specifies the rate in multiples of 100 */
+	wrqu->bitrate.value = ndis_rate * 100;
+	return 0;
+}
+
+static int ndis_get_rts_threshold(struct net_device *dev, struct iw_request_info *info,
+			   union iwreq_data *wrqu, char *extra)
+{
+	struct ndis_handle *handle = dev->priv;
+	int ndis_rts_threshold;
+
+	int res = query_int(handle, NDIS_OID_RTS_THRESH, &ndis_rts_threshold);
+	if(res)
+		return -1;
+
+	wrqu->rts.value = ndis_rts_threshold;
+	return 0;
+}
+
+static int ndis_get_frag_threshold(struct net_device *dev, struct iw_request_info *info,
+			   union iwreq_data *wrqu, char *extra)
+{
+	struct ndis_handle *handle = dev->priv; 
+	int ndis_frag_threshold;
+
+	int res = query_int(handle, NDIS_OID_FRAG_THRESH, &ndis_frag_threshold);
+	if(res)
+		return -1;
+
+	wrqu->frag.value = ndis_frag_threshold;
+	return 0;
+}
+
+static int ndis_get_ap_address(struct net_device *dev, struct iw_request_info *info,
+			   union iwreq_data *wrqu, char *extra)
+{
+	struct ndis_handle *handle = dev->priv; 
+	unsigned int res, written, needed;
+	__u8 mac_address[6];
+
+	res = handle->driver->miniport_char.query(handle->adapter_ctx, NDIS_OID_BSSID, (char*)&mac_address, sizeof(mac_address), &written, &needed);
+	if(res)
+		return -1;
+
+        memcpy(wrqu->ap_addr.sa_data, mac_address, 6);
+        wrqu->ap_addr.sa_family = ARPHRD_ETHER;
+        return 0;
+}
 
 static const iw_handler	ndis_handler[] = {
 	//[SIOCGIWSENS    - SIOCIWFIRST] = ndis_get_sens,
@@ -201,6 +308,13 @@ static const iw_handler	ndis_handler[] = {
 	[SIOCGIWESSID	- SIOCIWFIRST] = ndis_get_essid,
 	[SIOCSIWMODE	- SIOCIWFIRST] = ndis_set_mode,
 	[SIOCGIWMODE	- SIOCIWFIRST] = ndis_get_mode,
+	[SIOCGIWFREQ	- SIOCIWFIRST] = ndis_get_freq,
+	[SIOCGIWTXPOW	- SIOCIWFIRST] = ndis_get_tx_power,
+	[SIOCGIWRATE	- SIOCIWFIRST] = ndis_get_bitrate,
+	[SIOCGIWRTS	- SIOCIWFIRST] = ndis_get_rts_threshold,
+	[SIOCGIWFRAG	- SIOCIWFIRST] = ndis_get_frag_threshold,
+	//[SIOCSIWRETRY	- SIOCIWFIRST] = ndis_get_rety_limit,
+	[SIOCGIWAP	- SIOCIWFIRST] = ndis_get_ap_address,
 };
 
 static const struct iw_handler_def ndis_handler_def = {

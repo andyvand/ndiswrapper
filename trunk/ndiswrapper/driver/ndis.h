@@ -291,6 +291,20 @@ struct packed essid_req
 	char essid[32];
 };
 
+struct packed ndis_configuration
+{
+	__u32 length;
+	__u32 beacon_period;
+	__u32 atim_window;
+	__u32 ds_config;
+	struct ndis_configuration_fh
+	{
+		__u32 length;
+		__u32 hop_pattern;
+		__u32 hop_set;
+		__u32 dwell_time;
+	} fh_config;
+};
 
 STDCALL void NdisMIndicateReceivePacket(struct ndis_handle *handle, struct ndis_packet **packets, unsigned int nr_packets);
 STDCALL void NdisMSendComplete(struct ndis_handle *handle, struct ndis_packet *packet, unsigned int status);
@@ -304,8 +318,16 @@ STDCALL void NdisIndicateStatusComplete(struct ndis_handle *handle);
 #define NDIS_OID_STAT_RX_ERROR      0x00020104
 
 #define NDIS_OID_ESSID              0x0D010102
+#define NDIS_OID_BSSID              0x0D010101
 #define NDIS_OID_MODE               0x0D010108
 #define NDIS_OID_RSSI               0x0D010206
+#define NDIS_OID_CONFIGURATION      0x0D010211
+#define NDIS_OID_TX_POWER_LEVEL     0x0D010205
+#define NDIS_OID_RTS_THRESH         0x0D01020A
+#define NDIS_OID_FRAG_THRESH        0x0D010209
+
+/* general OIDs */
+#define NDIS_OID_GEN_SPEED          0x00010107
 
 #define UNIMPL() printk(KERN_ERR "%s --UNIMPLEMENTED--\n", __FUNCTION__ )
 
