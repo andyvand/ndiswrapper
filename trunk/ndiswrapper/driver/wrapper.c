@@ -1122,6 +1122,55 @@ void ndis_sendpacket_done(struct ndis_handle *handle, struct ndis_packet *packet
 	kfree(packet);
 }
 
+static int ndiswrapper_pm_callback(struct pm_dev *pm_dev, pm_request_t rqst,
+				   void *data)
+{
+	struct net_device *dev;
+	struct ndis_handle *handle;
+	int res, pm_state;
+
+	DBGTRACE("%s called with %p, %d, %p\n",
+		 __FUNCTION__, pm_dev, rqst, data);
+	if (!pm_dev || !pm_dev->data)
+		return -1;
+	dev = (struct net_device *)pm_dev->data;
+	handle = dev->priv;
+	switch(rqst)
+	{
+	case PM_SUSPEND:
+		apscan_del(handle);
+		DBGTRACE("%s: detaching device\n", dev->name);
+		netif_device_detach(dev);
+		DBGTRACE("%s: stopping queue\n", dev->name);
+		netif_stop_queue(dev);
+		DBGTRACE("%s: disassociating\n", dev->name);
+		pm_state = 4;
+		res = query_int(handle, NDIS_OID_PNP_QUERY_POWER, &pm_state);
+		DBGTRACE("%s: query power to state %d returns %d\n",
+		       dev->name, pm_state, res);
+		res = set_int(handle, NDIS_OID_PNP_SET_POWER, pm_state);
+		DBGTRACE("%s: setting power to state %d returns %d\n",
+		       dev->name, pm_state, res);
+		break;
+	case PM_RESUME:
+		pm_state = 1;
+		res = set_int(handle, NDIS_OID_PNP_SET_POWER, pm_state);
+		DBGTRACE("%s: setting power to state %d returns %d\n",
+		       dev->name, pm_state, res);
+		DBGTRACE("%s: starting queue\n", dev->name);
+		netif_start_queue(dev);
+		DBGTRACE("%s: attaching device\n", dev->name);
+		netif_device_attach(dev);
+		add_scan_timer((unsigned long)handle);
+		break;
+	default:
+		printk(KERN_ERR "%s: rqst didn't match %d or %d\n",
+		       dev->name, PM_SUSPEND, PM_RESUME);
+		break;
+	}
+	return 0;
+}
+
 static int setup_dev(struct net_device *dev)
 {
 	struct ndis_handle *handle = dev->priv;
@@ -1259,6 +1308,18 @@ static int __devinit ndis_init_one(struct pci_dev *pdev,
 	handle->key_len = 0;
 	apscan_init(handle);
 	//hangcheck_add(handle);
+
+#ifdef TEST_PM
+	handle->pm = pm_register(PM_PCI_DEV, 0, ndiswrapper_pm_callback);
+#else
+	handle->pm = NULL;
+#endif
+	if (handle->pm == NULL)
+		printk(KERN_WARNING "%s: power management not possible\n",
+		       dev->name);
+	else
+		handle->pm->data = dev;
+
 	return 0;
 
 out_start:
@@ -1279,6 +1340,9 @@ static void __devexit ndis_remove_one(struct pci_dev *pdev)
 
 	//hangcheck_del(handle);
 	apscan_del(handle);
+	if (handle->pm)
+		pm_unregister(handle->pm);
+
 #ifndef DEBUG_CRASH_ON_INIT
 	unregister_netdev(handle->net_dev);
 	call_halt(handle);
