@@ -475,6 +475,10 @@ static int ndis_start_xmit(struct sk_buff *skb, struct net_device *dev)
 	}
 	
 	memset(packet, 0, sizeof(*packet));
+
+	/* Poision extra packet info */
+	memset(&packet->fill, 0x03, sizeof(packet->fill));
+
 	packet->oob_offset = (int)(&packet->timesent1) - (int)packet;
 
 	buffer->data = data;
