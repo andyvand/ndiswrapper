@@ -873,7 +873,7 @@ static char *ndis_translate_scan(struct net_device *dev, char *event,
 				for (i = 0; i < ielen; i++)
 					p += sprintf(p, "%02x", iep[i]);
 				
-				DBGTRACE2("adding wpa_ie :%d", strlen(buf));
+				DBGTRACE2("adding wpa_ie :%ld", strlen(buf));
 				memset(&iwe, 0, sizeof(iwe));
 				iwe.cmd = IWEVCUSTOM;
 				iwe.u.data.length = strlen(buf);
@@ -884,7 +884,7 @@ static char *ndis_translate_scan(struct net_device *dev, char *event,
 				for (i = 0; i < ielen; i++)
 					p += sprintf(p, "%02x", iep[i]);
 
-				DBGTRACE2("adding rsn_ie :%d\n", strlen(buf));
+				DBGTRACE2("adding rsn_ie :%ld\n", strlen(buf));
 				memset(&iwe, 0, sizeof(iwe));
 				iwe.cmd = IWEVCUSTOM;
 				iwe.u.data.length = strlen(buf);
@@ -1288,16 +1288,16 @@ static int wpa_set_key(struct net_device *dev, struct iw_request_info *info,
 		TRACEEXIT2(return -1);
 
 	if (wpa_key.key_len > sizeof(ndis_key.key)) {
-		DBGTRACE2("incorrect key length (%d)", wpa_key.key_len);
+		DBGTRACE2("incorrect key length (%ld)", wpa_key.key_len);
 		TRACEEXIT2(return -1);
 	}
 	
 	if (wpa_key.seq_len > IW_ENCODING_TOKEN_MAX) {
-		DBGTRACE2("incorrect seq? length = (%d)", wpa_key.seq_len);
+		DBGTRACE2("incorrect seq? length = (%ld)", wpa_key.seq_len);
 		TRACEEXIT2(return -1);
 	}
 
-	DBGTRACE2("setting key %d, %d", wpa_key.key_index, wpa_key.key_len);
+	DBGTRACE2("setting key %d, %ld", wpa_key.key_index, wpa_key.key_len);
 	memset(&ndis_key, 0, sizeof(ndis_key));
 
 	ndis_key.struct_size = sizeof(ndis_key);

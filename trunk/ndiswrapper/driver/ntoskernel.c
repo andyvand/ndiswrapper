@@ -233,7 +233,8 @@ STDCALL static void * WRAP_EXPORT(ExAllocatePoolWithTag)
 {
 	void *ret;
 
-	TRACEENTER1("pool_type: %d, size: %d, tag: %u", pool_type, size, tag);
+	TRACEENTER1("pool_type: %d, size: %lu, tag: %u", pool_type,
+		    (unsigned long)size, tag);
 
 	/* FIXME: should this function allocate using kmem_cache/mem_pool
 	   instead? */
@@ -262,8 +263,9 @@ STDCALL static void WRAP_EXPORT(ExInitializeNPagedLookasideList)
 {
 	TRACEENTER3("lookaside: %p, size: %u, flags: %u,"
 		    " head: %p, size of lookaside: %u\n",
-		    lookaside, size, flags, lookaside->head.list.next,
-		    sizeof(struct npaged_lookaside_list));
+		    lookaside, (unsigned int)size, flags,
+		    lookaside->head.list.next,
+		    (unsigned int)sizeof(struct npaged_lookaside_list));
 
 	memset(lookaside, 0, sizeof(*lookaside));
 
@@ -319,14 +321,15 @@ STDCALL static void * WRAP_EXPORT(MmMapIoSpace)
 		virt = ioremap(phys_addr, size);
 	else
 		virt = ioremap_nocache(phys_addr, size);
-	DBGTRACE3("%Lx, %u, %d: %p", phys_addr, size, cache, virt);
+	DBGTRACE3("%Lx, %lu, %d: %p", phys_addr, (unsigned long)size,
+		  cache, virt);
 	return virt;
 }
 
 STDCALL static void WRAP_EXPORT(MmUnmapIoSpace)
 	(void *addr, SIZE_T size)
 {
-	TRACEENTER3("%p, %u", addr, size);
+	TRACEENTER3("%p, %lu", addr, (unsigned long)size);
 	iounmap(addr);
 	return;
 }
