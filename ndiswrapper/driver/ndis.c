@@ -26,8 +26,19 @@
 #include "ndis.h"
 
 extern int image_offset;
-
 extern struct list_head ndis_driverlist;
+
+struct list_head handle_ctx_list;
+static struct list_head alloc_list;
+static struct wrap_spinlock alloc_list_lock;
+static struct work_struct alloc_work;
+static spinlock_t atomic_lock = SPIN_LOCK_UNLOCKED;
+
+DECLARE_WAIT_QUEUE_HEAD(event_wq);
+
+static struct work_struct work;
+static struct list_head worklist;
+static struct wrap_spinlock worklist_lock;
 
 #if LINUX_VERSION_CODE <= KERNEL_VERSION(2,6,0)
 #undef __wait_event_interruptible_timeout
@@ -64,15 +75,10 @@ do {									\
 })
 #endif
 
-/*
- * 
- *
- * Called from the driver entry.
- */
-STDCALL void NdisInitializeWrapper(struct ndis_handle **ndis_handle,
-	                           void *SystemSpecific1,
-				   void *SystemSpecific2,
-				   void *SystemSpecific3)
+/* Called from the driver entry. */
+STDCALL static void
+NdisInitializeWrapper(struct ndis_handle **ndis_handle, void *SystemSpecific1,
+		      void *SystemSpecific2, void *SystemSpecific3)
 {
 	TRACEENTER1("handle=%08x, SS1=%08x, SS2=%08x", (int)ndis_handle,
 		    (int)SystemSpecific1, (int)SystemSpecific2);
@@ -80,55 +86,48 @@ STDCALL void NdisInitializeWrapper(struct ndis_handle **ndis_handle,
 	TRACEEXIT1(return);
 }
 
-STDCALL void NdisTerminateWrapper(struct ndis_handle *handle,
-	                          void *SystemSpecific1)
+STDCALL static void
+NdisTerminateWrapper(struct ndis_handle *handle, void *SystemSpecific1)
 {
 }
 
-/*
- * Register a miniport with NDIS. 
- *
- * Called from driver entry
- */
-STDCALL int NdisMRegisterMiniport(struct ndis_driver *ndis_driver,
-	                          struct miniport_char *miniport_char,
-	                          unsigned int char_len)
+/* Register a miniport with NDIS. Called from driver entry */
+STDCALL static int
+NdisMRegisterMiniport(struct ndis_driver *ndis_driver,
+		      struct miniport_char *miniport_char,
+		      unsigned int char_len)
 {
-	int min_length = ((char*) &miniport_char->co_create_vc) - ((char*) miniport_char);
+	int min_length = ((char*) &miniport_char->co_create_vc) -
+		((char*) miniport_char);
 
 	TRACEENTER1("driver: %p", ndis_driver);
-	
+
 	if(miniport_char->majorVersion < 4)
 	{
 		ERROR("Driver %s using ndis version %d which is too old.",
-		      ndis_driver->name, miniport_char->majorVersion); 
+		      ndis_driver->name, miniport_char->majorVersion);
 		TRACEEXIT1(return NDIS_STATUS_BAD_VERSION);
 	}
 
 	if(char_len < min_length)
 	{
 		ERROR("Characteristics length %d is too small for driver %s",
-		      char_len, ndis_driver->name); 
+		      char_len, ndis_driver->name);
 		TRACEEXIT1(return NDIS_STATUS_BAD_CHARACTERISTICS);
 	}
 
 	DBGTRACE1("Version %d.%d", miniport_char->majorVersion,
 		 miniport_char->minorVersion);
 	DBGTRACE1("Len: %08x:%08x", char_len, sizeof(struct miniport_char));
-	memcpy(&ndis_driver->miniport_char, miniport_char, sizeof(struct miniport_char));
+	memcpy(&ndis_driver->miniport_char, miniport_char,
+	       sizeof(struct miniport_char));
 
 	TRACEEXIT1(return NDIS_STATUS_SUCCESS);
 }
 
-
-/*
- * Allocate mem.
- *
- */
-STDCALL unsigned int NdisAllocateMemory(void **dest,
-	                                unsigned int length,
-					unsigned int flags,
-					unsigned int highest_addr)
+STDCALL static unsigned int
+NdisAllocateMemory(void **dest, unsigned int length, unsigned int flags,
+		   unsigned int highest_addr)
 {
 	TRACEENTER3("length = %u, flags = %08X", length, flags);
 	if (length <= KMALLOC_THRESHOLD)
@@ -153,22 +152,15 @@ STDCALL unsigned int NdisAllocateMemory(void **dest,
 	TRACEEXIT3(return NDIS_STATUS_FAILURE);
 }
 
-/*
- * Allocate mem.
- *
- * Debug version?
- */
-STDCALL unsigned int NdisAllocateMemoryWithTag(void **dest,
-	                                       unsigned int length,
-					       unsigned int tag)
+STDCALL static unsigned int
+NdisAllocateMemoryWithTag(void **dest, unsigned int length,
+			  unsigned int tag)
 {
 	TRACEEXIT3(return NdisAllocateMemory(dest, length, 0, 0));
 }
 
-/*
- * Free mem.
- */
-STDCALL void NdisFreeMemory(void *adr, unsigned int length, unsigned int flags)
+STDCALL static void
+NdisFreeMemory(void *adr, unsigned int length, unsigned int flags)
 {
 	TRACEENTER3("length = %u, flags = %08X", length, flags);
 	if (length <= KMALLOC_THRESHOLD)
@@ -180,24 +172,19 @@ STDCALL void NdisFreeMemory(void *adr, unsigned int length, unsigned int flags)
 	TRACEEXIT3(return);
 }
 
-
 /*
- * Log an error.
- *
- * This function should not be STDCALL because it's a variable args function. 
+ * This function should not be STDCALL because it's a variable args function.
  */
-NOREGPARM void NdisWriteErrorLogEntry(struct ndis_handle *handle,
-	                    unsigned int error,
-			    unsigned int length,
-			    unsigned int p1)
+NOREGPARM static void
+NdisWriteErrorLogEntry(struct ndis_handle *handle, unsigned int error,
+			    unsigned int length, unsigned int p1)
 {
 	ERROR("log: %08X, length: %d (%08x)\n", error, length, p1);
 }
 
-
-STDCALL void NdisOpenConfiguration(unsigned int *status,
-	                           struct ndis_handle **confhandle,
-				   struct ndis_handle *handle)
+STDCALL static void
+NdisOpenConfiguration(unsigned int *status, struct ndis_handle **confhandle,
+		      struct ndis_handle *handle)
 {
 	TRACEENTER2("confHandle: %p, handle->dev_name: %s",
 			confhandle, handle->net_dev->name);
@@ -206,10 +193,10 @@ STDCALL void NdisOpenConfiguration(unsigned int *status,
 	TRACEEXIT2(return);
 }
 
-STDCALL void NdisOpenConfigurationKeyByName(unsigned int *status,
-					    struct ndis_handle *handle,
-					    struct ustring *key,
-					    struct ndis_handle **subkeyhandle)
+STDCALL static void
+NdisOpenConfigurationKeyByName(unsigned int *status,
+			       struct ndis_handle *handle, struct ustring *key,
+			       struct ndis_handle **subkeyhandle)
 {
 	TRACEENTER2("%s", "");
 	*subkeyhandle = handle;
@@ -217,22 +204,25 @@ STDCALL void NdisOpenConfigurationKeyByName(unsigned int *status,
 	TRACEEXIT2(return);
 }
 
-STDCALL void NdisCloseConfiguration(void *confhandle)
+STDCALL static void
+NdisCloseConfiguration(void *confhandle)
 {
 	TRACEENTER2("confhandle: %08x", (int) confhandle);
 }
 
-STDCALL void NdisOpenFile(unsigned int *status,
-			  struct ndis_file **filehandle,
-			  unsigned int *filelength,
-			  struct ustring *filename,
-			  __u64 highest_address)
+STDCALL static void
+NdisOpenFile(unsigned int *status, struct ndis_file **filehandle,
+	     unsigned int *filelength, struct ustring *filename,
+	     u64 highest_address)
 {
 	struct ustring ansi;
 	struct list_head *curr, *tmp;
 	struct ndis_file *file;
-	
-	TRACEENTER2("status = %p, filelength = %p, *filelength = %d, high = %lu, filehandle = %p, *filehandle = %p", status, filelength, *filelength, (unsigned long)highest_address, filehandle, *filehandle);
+
+	TRACEENTER2("status = %p, filelength = %p, *filelength = %d, "
+		    "high = %lu, filehandle = %p, *filehandle = %p",
+		    status, filelength, *filelength,
+		    (unsigned long)highest_address, filehandle, *filehandle);
 
 	ansi.buf = kmalloc(MAX_STR_LEN, GFP_KERNEL);
 	if (!ansi.buf)
@@ -252,9 +242,8 @@ STDCALL void NdisOpenFile(unsigned int *status,
 	}
 	DBGTRACE2("Filename: %s, Highest Address: %08x",
 			 ansi.buf, (int) highest_address);
-	
-	/* Loop through all driver and then all files to find the requested file */
-	
+
+	/* Loop through all drivers and all files to find the requested file */
 	list_for_each_safe(curr, tmp, &ndis_driverlist)
 	{
 		struct list_head *curr2, *tmp2;
@@ -264,7 +253,7 @@ STDCALL void NdisOpenFile(unsigned int *status,
 		{
 			int n;
 			file = (struct ndis_file*) curr2;
-			DBGTRACE2("Considering %s", file->name); 
+			DBGTRACE2("Considering %s", file->name);
 			n = min(strlen(file->name), strlen(ansi.buf));
 			if(strnicmp(file->name, ansi.buf, n) == 0)
 			{
@@ -280,9 +269,10 @@ STDCALL void NdisOpenFile(unsigned int *status,
 	kfree(ansi.buf);
 	TRACEEXIT2(return);
 }
-			   
-STDCALL void NdisMapFile(unsigned int *status, void **mappedbuffer,
-			 struct ndis_file *filehandle)
+
+STDCALL static void
+NdisMapFile(unsigned int *status, void **mappedbuffer,
+	    struct ndis_file *filehandle)
 {
 	TRACEENTER2("Handle: %08x", (int) filehandle);
 
@@ -297,19 +287,22 @@ STDCALL void NdisMapFile(unsigned int *status, void **mappedbuffer,
 	TRACEEXIT2(return);
 }
 
-STDCALL void NdisUnmapFile(struct ndis_file *filehandle)
+STDCALL static void
+NdisUnmapFile(struct ndis_file *filehandle)
 {
 	TRACEENTER2("Handle: %08x", (int) filehandle);
 	TRACEEXIT2(return);
 }
 
-STDCALL void NdisCloseFile(struct ndis_file *filehandle)
+STDCALL static void
+NdisCloseFile(struct ndis_file *filehandle)
 {
 	TRACEENTER2("Handle: %08x", (int) filehandle);
 	TRACEEXIT2(return);
 }
 
-STDCALL void NdisGetSystemUpTime(unsigned int *systemuptime)
+STDCALL static void
+NdisGetSystemUpTime(unsigned int *systemuptime)
 {
 	TRACEENTER4("%s", "");
 	*systemuptime = 10 * jiffies / HZ;
@@ -322,7 +315,9 @@ static inline int SPAN_PAGES(unsigned int ptr, unsigned int len)
 	TRACEEXIT3(return (p + len + (PAGE_SIZE - 1)) >> PAGE_SHIFT);
 }
 
-STDCALL unsigned long NDIS_BUFFER_TO_SPAN_PAGES(struct ndis_buffer *buffer)
+/* called as macro */
+STDCALL unsigned long
+NDIS_BUFFER_TO_SPAN_PAGES(struct ndis_buffer *buffer)
 {
 	unsigned int p;
 	unsigned int i;
@@ -336,12 +331,13 @@ STDCALL unsigned long NDIS_BUFFER_TO_SPAN_PAGES(struct ndis_buffer *buffer)
 		return 1;
 	p = (unsigned int)buffer->data + buffer->offset;
 	i = SPAN_PAGES(PAGE_ALIGN(p), buffer->len);
-	DBGTRACE3("%s: pages = %u", __FUNCTION__, i);
+	DBGTRACE3("pages = %u", i);
 	TRACEEXIT3(return i);
 }
 
-STDCALL void NdisGetBufferPhysicalArraySize(struct ndis_buffer *buffer,
-					    unsigned int *arraysize)
+STDCALL static void
+NdisGetBufferPhysicalArraySize(struct ndis_buffer *buffer,
+			       unsigned int *arraysize)
 {
 	TRACEENTER3("Buffer: %08x", (int) buffer);
 	*arraysize = NDIS_BUFFER_TO_SPAN_PAGES(buffer);
@@ -366,7 +362,7 @@ static int ndis_encode_setting(struct ndis_setting *setting,
 			simple_strtol(setting->val_str, NULL, 0);
 		break;
 	case NDIS_SETTING_HEXINT:
-		setting->value.data.intval = 
+		setting->value.data.intval =
 			simple_strtol(setting->val_str, NULL, 16);
 		break;
 	case NDIS_SETTING_STRING:
@@ -427,11 +423,10 @@ static int ndis_decode_setting(struct ndis_setting *setting,
 	return NDIS_STATUS_SUCCESS;
 }
 
-STDCALL void NdisReadConfiguration(unsigned int *status,
-                                   struct ndis_setting_val **dest,
-				   struct ndis_handle *handle,
-				   struct ustring *key,
-				   unsigned int type)
+STDCALL static void
+NdisReadConfiguration(unsigned int *status, struct ndis_setting_val **dest,
+		      struct ndis_handle *handle, struct ustring *key,
+		      unsigned int type)
 {
 	struct ndis_setting *setting;
 	struct ustring ansi;
@@ -474,7 +469,7 @@ STDCALL void NdisReadConfiguration(unsigned int *status,
 			TRACEEXIT2(return);
 		}
 	}
-	
+
 	DBGTRACE2("setting %s not found (type:%d)", keyname, type);
 
 	*dest = NULL;
@@ -483,10 +478,9 @@ STDCALL void NdisReadConfiguration(unsigned int *status,
 	TRACEEXIT2(return);
 }
 
-STDCALL void NdisWriteConfiguration(unsigned int *status,
-				    struct ndis_handle *handle,
-				    struct ustring *key,
-				    struct ndis_setting_val *val)
+STDCALL static void
+NdisWriteConfiguration(unsigned int *status, struct ndis_handle *handle,
+		       struct ustring *key, struct ndis_setting_val *val)
 {
 	struct ustring ansi;
 	struct ndis_setting *setting;
@@ -552,7 +546,8 @@ STDCALL void NdisWriteConfiguration(unsigned int *status,
 	TRACEEXIT2(return);
 }
 
-STDCALL void NdisInitializeString(struct ustring *dest, char *src)
+STDCALL static void
+NdisInitializeString(struct ustring *dest, char *src)
 {
 	struct ustring ansi;
 
@@ -564,7 +559,8 @@ STDCALL void NdisInitializeString(struct ustring *dest, char *src)
 	TRACEEXIT2(return);
 }
 
-STDCALL void NdisInitAnsiString(struct ustring *dest, char *src)
+STDCALL static void
+NdisInitAnsiString(struct ustring *dest, char *src)
 {
 	TRACEENTER2("%s", "");
 	if (dest == NULL)
@@ -579,7 +575,8 @@ STDCALL void NdisInitAnsiString(struct ustring *dest, char *src)
 	TRACEEXIT2(return);
 }
 
-STDCALL void NdisInitUnicodeString(struct ustring *dest, __u16 *src)
+STDCALL static void
+NdisInitUnicodeString(struct ustring *dest, u16 *src)
 {
 	int i;
 
@@ -591,16 +588,16 @@ STDCALL void NdisInitUnicodeString(struct ustring *dest, __u16 *src)
 		dest->buf = NULL;
 		TRACEEXIT2(return);
 	}
-	
+
 	for (i = 0 ; src[i] ; i++)
 		;
 	dest->len = dest->buflen = i * 2;
-	dest->buf = (__u8 *)src;
+	dest->buf = (u8 *)src;
 	TRACEEXIT2(return);
 }
 
-STDCALL unsigned int NdisAnsiStringToUnicodeString(struct ustring *dst,
-						   struct ustring *src)
+STDCALL static unsigned int
+NdisAnsiStringToUnicodeString(struct ustring *dst, struct ustring *src)
 {
 	int dup;
 
@@ -614,8 +611,8 @@ STDCALL unsigned int NdisAnsiStringToUnicodeString(struct ustring *dst,
 	TRACEEXIT2(return RtlAnsiStringToUnicodeString(dst, src, 0));
 }
 
-STDCALL int NdisUnicodeStringToAnsiString(struct ustring *dst,
-					  struct ustring *src)
+STDCALL static int
+NdisUnicodeStringToAnsiString(struct ustring *dst, struct ustring *src)
 {
 	int dup;
 
@@ -631,24 +628,22 @@ STDCALL int NdisUnicodeStringToAnsiString(struct ustring *dst,
 
 /*
  * Called by driver from the init callback.
- *
  * The adapter_ctx should be supplied to most other callbacks so we save
- * it in out handle.
- *
- */ 
-struct list_head handle_ctx_list;
-STDCALL void NdisMSetAttributesEx(struct ndis_handle *handle,
-                                  void* adapter_ctx,
-				  unsigned int hangcheck_interval,
-				  unsigned int attributes,
-				  unsigned int adaptortype)
+ * it in out handle. Some functions are called only with adapter_ctx, but
+ * we also need handle in them, so we store handle X adapter_ctx map in
+ * a global list.
+ */
+STDCALL static void
+NdisMSetAttributesEx(struct ndis_handle *handle, void* adapter_ctx,
+		     unsigned int hangcheck_interval,
+		     unsigned int attributes, unsigned int adaptortype)
 {
 	struct handle_ctx_entry *handle_ctx;
 
 	TRACEENTER2("%08x, %08x %d %08x, %d", (int)handle, (int)adapter_ctx,
 		    hangcheck_interval, attributes, adaptortype);
 	/* FIXME: is it possible to have duplicate ctx's? */
-	handle_ctx = wrap_kmalloc(sizeof(*handle_ctx), GFP_KERNEL);
+	handle_ctx = kmalloc(sizeof(*handle_ctx), GFP_KERNEL);
 	if (handle_ctx)
 	{
 		handle_ctx->handle = handle;
@@ -669,9 +664,9 @@ STDCALL void NdisMSetAttributesEx(struct ndis_handle *handle,
 	if (handle->hangcheck_interval == 0)
 	{
 		if (hangcheck_interval > 2)
-			handle->hangcheck_interval = 2 * hangcheck_interval * HZ;
+			handle->hangcheck_interval = 2*hangcheck_interval * HZ;
 		/* less than 3 seconds seem to be problematic */
-		else 
+		else
 			handle->hangcheck_interval = 3 * HZ;
 	}
 
@@ -690,14 +685,23 @@ static struct ndis_handle *ctx_to_handle(void *ctx)
 	return NULL;
 }
 
-/*
- * Read information from the PCI config area
- *
- */  
-STDCALL unsigned int NdisReadPciSlotInformation(struct ndis_handle *handle,
-                                                unsigned int slot,
-						unsigned int offset,
-						char *buf, unsigned int len)
+/* remove all 'handle X ctx' pairs for the given handle */
+void free_handle_ctx(struct ndis_handle *handle)
+{
+	struct list_head *curr, *tmp;
+	list_for_each_safe(curr, tmp, &handle_ctx_list)
+	{
+		struct handle_ctx_entry *handle_ctx =
+			(struct handle_ctx_entry *)curr;
+		if (handle_ctx->handle == handle)
+			kfree(handle_ctx);
+	}
+	return;
+}
+
+STDCALL static unsigned int
+NdisReadPciSlotInformation(struct ndis_handle *handle, unsigned int slot,
+			   unsigned int offset, char *buf, unsigned int len)
 {
 	int i;
 	for(i = 0; i < len; i++)
@@ -707,14 +711,9 @@ STDCALL unsigned int NdisReadPciSlotInformation(struct ndis_handle *handle,
 	return len;
 }
 
-/*
- * Write information to the PCI config area
- *
- */  
-STDCALL unsigned int NdisWritePciSlotInformation(struct ndis_handle *handle,
-                                                 unsigned int slot,
-						 unsigned int offset,
-						 char *buf, unsigned int len)
+STDCALL static unsigned int
+NdisWritePciSlotInformation(struct ndis_handle *handle, unsigned int slot,
+			    unsigned int offset, char *buf, unsigned int len)
 {
 	int i;
 	for(i = 0; i < len; i++)
@@ -724,15 +723,10 @@ STDCALL unsigned int NdisWritePciSlotInformation(struct ndis_handle *handle,
 	return len;
 }
 
-
-/*
- * Read information about IRQ and other resources
- *
- */
-STDCALL void NdisMQueryAdapterResources(unsigned int *status,
-                                        struct ndis_handle *handle,
-					struct ndis_resource_list *resource_list,
-					unsigned int *size)
+STDCALL static void
+NdisMQueryAdapterResources(unsigned int *status, struct ndis_handle *handle,
+			   struct ndis_resource_list *resource_list,
+			   unsigned int *size)
 {
 	int i;
 	int len = 0;
@@ -753,9 +747,9 @@ STDCALL void NdisMQueryAdapterResources(unsigned int *status,
 		{
 			entry->type = 3;
 			entry->flags = 0;
-			
+
 		}
-		
+
 		else if(pci_resource_flags(pci_dev, i) & IORESOURCE_IO)
 		{
 			entry->type = 1;
@@ -763,10 +757,10 @@ STDCALL void NdisMQueryAdapterResources(unsigned int *status,
 		}
 
 		entry->share = 0;
-		entry->param1 = pci_resource_start(pci_dev, i);		
+		entry->param1 = pci_resource_start(pci_dev, i);
 		entry->param2 = 0;
-		entry->param3 = pci_resource_len(pci_dev, i);		
-		
+		entry->param3 = pci_resource_len(pci_dev, i);
+
 		i++;
 	}
 
@@ -790,18 +784,19 @@ STDCALL void NdisMQueryAdapterResources(unsigned int *status,
 
 	for(i = 0; i < len; i++)
 	{
-		DBGTRACE2("Resource: %d: %08x %08x %08x, %d", resource_list->list[i].type, resource_list->list[i].param1, resource_list->list[i].param2, resource_list->list[i].param3, resource_list->list[i].flags); 
-	}	
+		DBGTRACE2("Resource: %d: %08x %08x %08x, %d",
+			  resource_list->list[i].type,
+			  resource_list->list[i].param1,
+			  resource_list->list[i].param2,
+			  resource_list->list[i].param3,
+			  resource_list->list[i].flags);
+	}
 	TRACEEXIT2(return);
 }
 
-
-/*
- * Just like ioremap
- */
-STDCALL unsigned int NdisMMapIoSpace(void **virt, struct ndis_handle *handle,
-				     unsigned int physlo, unsigned int physhi,
-				     unsigned int len)
+STDCALL static unsigned int
+NdisMMapIoSpace(void **virt, struct ndis_handle *handle,
+		unsigned int physlo, unsigned int physhi, unsigned int len)
 {
 	TRACEENTER2("%08x, %d", (int)physlo, len);
 	*virt = ioremap(physlo, len);
@@ -809,24 +804,22 @@ STDCALL unsigned int NdisMMapIoSpace(void **virt, struct ndis_handle *handle,
 		ERROR("%s", "ioremap failed");
 		TRACEEXIT2(return NDIS_STATUS_FAILURE);
 	}
-	
+
 	handle->mem_start = physlo;
 	handle->mem_end = physlo + len -1;
 	DBGTRACE2("ioremap successful %08x", (int)*virt);
 	TRACEEXIT2(return NDIS_STATUS_SUCCESS);
 }
 
-/*
- * Just like iounmap
- */
-STDCALL void NdisMUnmapIoSpace(struct ndis_handle *handle, void *virtaddr,
-			       unsigned int len)
+STDCALL static void
+NdisMUnmapIoSpace(struct ndis_handle *handle, void *virtaddr, unsigned int len)
 {
 	TRACEENTER2("%08x, %d", (int)virtaddr, len);
 	iounmap(virtaddr);
 }
 
-STDCALL void NdisAllocateSpinLock(struct ndis_spin_lock *lock)
+STDCALL static void
+NdisAllocateSpinLock(struct ndis_spin_lock *lock)
 {
 	struct wrap_spinlock *wrap_spinlock;
 
@@ -841,11 +834,12 @@ STDCALL void NdisAllocateSpinLock(struct ndis_spin_lock *lock)
 		wrap_spin_lock_init(wrap_spinlock);
 		lock->wrap_spinlock = wrap_spinlock;
 	}
-	
+
 	TRACEEXIT4(return);
 }
 
-STDCALL void NdisFreeSpinLock(struct ndis_spin_lock *lock)
+STDCALL static void
+NdisFreeSpinLock(struct ndis_spin_lock *lock)
 {
 	TRACEENTER4("lock %p", lock);
 	if (!lock->wrap_spinlock)
@@ -866,7 +860,8 @@ STDCALL void NdisFreeSpinLock(struct ndis_spin_lock *lock)
 	TRACEEXIT4(return);
 }
 
-STDCALL void NdisAcquireSpinLock(struct ndis_spin_lock *lock)
+STDCALL static void
+NdisAcquireSpinLock(struct ndis_spin_lock *lock)
 {
 	TRACEENTER5("lock %p", lock);
 	if (!lock->wrap_spinlock)
@@ -881,7 +876,8 @@ STDCALL void NdisAcquireSpinLock(struct ndis_spin_lock *lock)
 	TRACEEXIT5(return);
 }
 
-STDCALL void NdisReleaseSpinLock(struct ndis_spin_lock *lock)
+STDCALL static void
+NdisReleaseSpinLock(struct ndis_spin_lock *lock)
 {
 	TRACEENTER5("lock %p", lock);
 	if (!lock->wrap_spinlock)
@@ -893,25 +889,26 @@ STDCALL void NdisReleaseSpinLock(struct ndis_spin_lock *lock)
 	TRACEEXIT5(return);
 }
 
-STDCALL void NdisDprAcquireSpinLock(struct ndis_spin_lock *lock)
+STDCALL static void
+NdisDprAcquireSpinLock(struct ndis_spin_lock *lock)
 {
 	TRACEENTER5("lock %p", lock);
 	NdisAcquireSpinLock(lock);
 	TRACEEXIT5(return);
 }
 
-STDCALL void NdisDprReleaseSpinLock(struct ndis_spin_lock *lock)
+STDCALL static void
+NdisDprReleaseSpinLock(struct ndis_spin_lock *lock)
 {
 	TRACEENTER5("lock %p", lock);
 	NdisReleaseSpinLock(lock);
 	TRACEEXIT5(return);
 }
 
-STDCALL unsigned int NdisMAllocateMapRegisters(struct ndis_handle *handle,
-                                               unsigned int dmachan,
-					       unsigned char dmasize,
-					       unsigned int basemap,
-					       unsigned int size)
+STDCALL static  unsigned int
+NdisMAllocateMapRegisters(struct ndis_handle *handle, unsigned int dmachan,
+			  unsigned char dmasize, unsigned int basemap,
+			  unsigned int size)
 {
 	TRACEENTER2("%d %d %d %d", dmachan, dmasize, basemap, size);
 
@@ -924,31 +921,31 @@ STDCALL unsigned int NdisMAllocateMapRegisters(struct ndis_handle *handle,
 			 handle->net_dev->name, handle->map_count);
 		TRACEEXIT2(return NDIS_STATUS_RESOURCES);
 	}
-	
+
 	handle->map_count = basemap;
 	handle->map_dma_addr = kmalloc(basemap * sizeof(dma_addr_t),
 				       GFP_KERNEL);
 	if (!handle->map_dma_addr)
 		TRACEEXIT2(return NDIS_STATUS_RESOURCES);
 	memset(handle->map_dma_addr, 0, basemap * sizeof(dma_addr_t));
-	
+
 	TRACEEXIT2(return NDIS_STATUS_SUCCESS);
 }
 
-STDCALL void NdisMFreeMapRegisters(struct ndis_handle *handle)
+STDCALL static void
+NdisMFreeMapRegisters(struct ndis_handle *handle)
 {
 	TRACEENTER2("handle: %08x", (int)handle);
-	
+
 	if (handle->map_dma_addr != NULL)
 		kfree(handle->map_dma_addr);
 	TRACEEXIT2(return);
 }
 
-
-STDCALL void NdisMAllocateSharedMemory(struct ndis_handle *handle,
-                                       unsigned long size, char cached,
-				       void **virt,
-				       struct ndis_phy_address *phys)
+STDCALL static void
+NdisMAllocateSharedMemory(struct ndis_handle *handle, unsigned long size,
+			  char cached, void **virt,
+			  struct ndis_phy_address *phys)
 {
 	dma_addr_t p;
 	void *v;
@@ -971,10 +968,6 @@ STDCALL void NdisMAllocateSharedMemory(struct ndis_handle *handle,
 	DBGTRACE3("allocated shared memory: %p", v);
 }
 
-static struct list_head alloc_list;
-static struct wrap_spinlock alloc_list_lock;
-static struct work_struct alloc_work;
-
 static void alloc_worker(void *data)
 {
 	struct ndis_alloc_entry *alloc_entry;
@@ -991,7 +984,7 @@ static void alloc_worker(void *data)
 			alloc_entry = NULL;
 		else
 		{
-			alloc_entry = 
+			alloc_entry =
 				(struct ndis_alloc_entry *)alloc_list.next;
 			list_del(&alloc_entry->list);
 		}
@@ -1002,7 +995,7 @@ static void alloc_worker(void *data)
 			DBGTRACE3("%s", "No more allocs");
 			break;
 		}
-		
+
 		DBGTRACE3("Allocating %scached memory of length %ld",
 			  alloc_entry->cached ? "" : "un-",
 			  alloc_entry->size);
@@ -1024,9 +1017,9 @@ void init_alloc_work(void)
 	wrap_spin_lock_init(&alloc_list_lock);
 }
 
-STDCALL static int NdisMAllocateSharedMemoryAsync(struct ndis_handle *handle,
-						  unsigned long size,
-						  char cached, void *ctx)
+STDCALL static int
+NdisMAllocateSharedMemoryAsync(struct ndis_handle *handle,
+			       unsigned long size, char cached, void *ctx)
 {
 	struct ndis_alloc_entry *alloc_entry;
 
@@ -1039,42 +1032,45 @@ STDCALL static int NdisMAllocateSharedMemoryAsync(struct ndis_handle *handle,
 	alloc_entry->size = size;
 	alloc_entry->cached = cached;
 	alloc_entry->ctx = ctx;
-	
+
 	wrap_spin_lock(&alloc_list_lock);
 	list_add_tail(&alloc_entry->list, &alloc_list);
 	wrap_spin_unlock(&alloc_list_lock);
-	
+
 	schedule_work(&alloc_work);
 	TRACEEXIT3(return NDIS_STATUS_PENDING);
 }
 
-STDCALL void NdisMFreeSharedMemory(struct ndis_handle *handle,
-				   unsigned int size, char cached, void *virt,
-				   unsigned int physlow, unsigned int physhigh)
+STDCALL static void
+NdisMFreeSharedMemory(struct ndis_handle *handle, unsigned int size,
+		      char cached, void *virt,
+		      unsigned int physlow, unsigned int physhigh)
 {
 	TRACEENTER3("%s", "");
 	PCI_DMA_FREE_COHERENT(handle->pci_dev, size, virt, physlow);
 	TRACEEXIT3(return);
 }
 
-STDCALL void NdisAllocateBufferPool(unsigned int *status,
-                                    unsigned int *poolhandle,
-				    unsigned int size)
+STDCALL static void
+NdisAllocateBufferPool(unsigned int *status, unsigned int *poolhandle,
+		       unsigned int size)
 {
 	TRACEENTER4("%s", "");
 	*poolhandle = 0x0000fff8;
 	*status = NDIS_STATUS_SUCCESS;
 }
 
-STDCALL void NdisFreeBufferPool(void *poolhandle)
+STDCALL static void
+NdisFreeBufferPool(void *poolhandle)
 {
 	TRACEENTER4("%s", "");
 
 	TRACEEXIT4(return);
 }
 
-STDCALL void NdisAllocateBuffer(unsigned int *status, void **buffer,
-				void *poolhandle, void *virt, unsigned int len)
+STDCALL static void
+NdisAllocateBuffer(unsigned int *status, void **buffer, void *poolhandle,
+		   void *virt, unsigned int len)
 {
 	struct ndis_buffer *my_buffer = kmalloc(sizeof(struct ndis_buffer),
 						GFP_ATOMIC);
@@ -1093,13 +1089,14 @@ STDCALL void NdisAllocateBuffer(unsigned int *status, void **buffer,
 	my_buffer->len = len;
 
 	*buffer = my_buffer;
-	
+
 	DBGTRACE4("allocated buffer: %p", buffer);
 	*status = NDIS_STATUS_SUCCESS;
 	TRACEEXIT4(return);
 }
 
-STDCALL void NdisFreeBuffer(void *buffer)
+STDCALL static void
+NdisFreeBuffer(void *buffer)
 {
 	TRACEENTER4("%s", "");
 	if(buffer)
@@ -1110,14 +1107,15 @@ STDCALL void NdisFreeBuffer(void *buffer)
 	TRACEEXIT4(return);
 }
 
-STDCALL void NdisAdjustBufferLength(struct ndis_buffer *buf, unsigned int len)
+STDCALL static void
+NdisAdjustBufferLength(struct ndis_buffer *buf, unsigned int len)
 {
 	TRACEENTER4("%s", "");
 	buf->len = len;
 }
 
-STDCALL void NdisQueryBuffer(struct ndis_buffer *buf, void **adr,
-			     unsigned int *len)
+STDCALL static void
+NdisQueryBuffer(struct ndis_buffer *buf, void **adr, unsigned int *len)
 {
 	TRACEENTER3("%s", "");
 	if(adr)
@@ -1126,66 +1124,71 @@ STDCALL void NdisQueryBuffer(struct ndis_buffer *buf, void **adr,
 		*len = buf->len;
 }
 
-STDCALL void NdisQueryBufferSafe(struct ndis_buffer *buf, void **adr,
-				 unsigned int *len, unsigned int priority)
+STDCALL static void
+NdisQueryBufferSafe(struct ndis_buffer *buf, void **adr,
+		    unsigned int *len, unsigned int priority)
 {
 	TRACEENTER3("%08x, %08x, %08x", (int)buf, (int)adr, (int)len);
 	if(adr)
 		*adr = buf->data;
 	if(len)
 		*len = buf->len;
-}                                
-
-STDCALL void *NdisBufferVirtualAddress(struct ndis_buffer *buf)
-{
-	TRACEENTER3("%s", "");
-	return buf->data; 
 }
 
-STDCALL unsigned long NdisBufferLength(struct ndis_buffer *buf)
+STDCALL static void *
+NdisBufferVirtualAddress(struct ndis_buffer *buf)
+{
+	TRACEENTER3("%s", "");
+	return buf->data;
+}
+
+STDCALL static unsigned long
+NdisBufferLength(struct ndis_buffer *buf)
 {
 	TRACEENTER3("%s", "");
 	return buf->len;
 }
 
-STDCALL void NdisAllocatePacketPool(unsigned int *status,
-				    unsigned int *poolhandle,
-				    unsigned int size, unsigned int rsvlen)
+STDCALL static void
+NdisAllocatePacketPool(unsigned int *status, unsigned int *poolhandle,
+		       unsigned int size, unsigned int rsvlen)
 {
 	TRACEENTER3("size=%d", size);
 	*poolhandle = 0xa000fff4;
 	*status = NDIS_STATUS_SUCCESS;
 }
 
-STDCALL void NdisAllocatePacketPoolEx(unsigned int *status,
-                                      unsigned int *poolhandle,
-				      unsigned int size,
-				      unsigned int overflowsize,
-				      unsigned int rsvlen)
+STDCALL static void
+NdisAllocatePacketPoolEx(unsigned int *status, unsigned int *poolhandle,
+			 unsigned int size, unsigned int overflowsize,
+			 unsigned int rsvlen)
 {
 	TRACEENTER3("%s", "");
 	NdisAllocatePacketPool(status, poolhandle, size, rsvlen);
 	TRACEEXIT3(return);
 }
 
-STDCALL unsigned int NdisPacketPoolUsage(void *poolhandle)
+STDCALL static unsigned int
+NdisPacketPoolUsage(void *poolhandle)
 {
 	UNIMPL();
 	return 0;
 }
 
-STDCALL void NdisFreePacketPool(void *poolhandle)
+STDCALL static void
+NdisFreePacketPool(void *poolhandle)
 {
 	TRACEENTER3("handle: %08x", (int)poolhandle);
 }
 
-STDCALL void NdisAllocatePacket(unsigned int *status,
-				struct ndis_packet **packet_out,
-				void *poolhandle)
+STDCALL static void
+NdisAllocatePacket(unsigned int *status, struct ndis_packet **packet_out,
+		   void *poolhandle)
 {
-	struct ndis_packet *packet = (struct ndis_packet*) kmalloc(sizeof(struct ndis_packet), GFP_ATOMIC);
+	struct ndis_packet *packet;
 
 	TRACEENTER3("%s", "");
+	packet = kmalloc(sizeof(struct ndis_packet), GFP_ATOMIC);
 	if(!packet)
 	{
 		ERROR("%s", "Couldn't allocate memory");
@@ -1195,10 +1198,10 @@ STDCALL void NdisAllocatePacket(unsigned int *status,
 	}
 	memset(packet, 0, sizeof(struct ndis_packet));
 	packet->oob_offset = (int)(&packet->timesent1) - (int)packet;
-	packet->pool = (void*) 0xa000fff4; 
+	packet->pool = (void*) 0xa000fff4;
 	packet->packet_flags = 0xc0;
-	
-/* See comment in wrapper.c/send_one about this */	
+
+/* See comment in wrapper.c/send_one about this */
 #if 0
 	{
 		int i = 0;
@@ -1213,13 +1216,14 @@ STDCALL void NdisAllocatePacket(unsigned int *status,
 	}
 #endif
 
-	
+
 	*packet_out = packet;
-	*status = NDIS_STATUS_SUCCESS;	
+	*status = NDIS_STATUS_SUCCESS;
 	TRACEEXIT3(return);
 }
 
-STDCALL void NdisFreePacket(void *packet)
+STDCALL static void
+NdisFreePacket(void *packet)
 {
 	TRACEENTER3("%s", "");
 	if(packet)
@@ -1230,9 +1234,9 @@ STDCALL void NdisFreePacket(void *packet)
 	TRACEEXIT3(return);
 }
 
-STDCALL void NdisMInitializeTimer(struct ndis_miniport_timer *timer_handle,
-                                  struct ndis_handle *handle,
-				  void *func, void *ctx)
+STDCALL static void
+NdisMInitializeTimer(struct ndis_miniport_timer *timer_handle,
+		     struct ndis_handle *handle, void *func, void *ctx)
 {
 	TRACEENTER4("%s", "");
 	wrapper_init_timer(&timer_handle->ktimer, handle);
@@ -1242,8 +1246,8 @@ STDCALL void NdisMInitializeTimer(struct ndis_miniport_timer *timer_handle,
 	TRACEEXIT4(return);
 }
 
-STDCALL void NdisInitializeTimer(struct ndis_timer *timer_handle,
-				 void *func, void *ctx)
+STDCALL static void
+NdisInitializeTimer(struct ndis_timer *timer_handle, void *func, void *ctx)
 {
 	TRACEENTER4("%p, %p, %p", timer_handle, func, ctx);
 	wrapper_init_timer(&timer_handle->ktimer, NULL);
@@ -1253,10 +1257,8 @@ STDCALL void NdisInitializeTimer(struct ndis_timer *timer_handle,
 	TRACEEXIT4(return);
 }
 
-/*
- * Start a one shot timer.
- */
-STDCALL void NdisSetTimer(struct ndis_timer *timer_handle, unsigned int ms)
+STDCALL static void
+NdisSetTimer(struct ndis_timer *timer_handle, unsigned int ms)
 {
 	unsigned long expires = jiffies + (ms * HZ) / 1000;
 
@@ -1265,11 +1267,9 @@ STDCALL void NdisSetTimer(struct ndis_timer *timer_handle, unsigned int ms)
 	TRACEEXIT4(return);
 }
 
-/*
- * Start a repeated timer.
- */
-STDCALL void NdisMSetPeriodicTimer(struct ndis_miniport_timer *timer_handle,
-                                   unsigned int ms)
+STDCALL static void
+NdisMSetPeriodicTimer(struct ndis_miniport_timer *timer_handle,
+		      unsigned int ms)
 {
 	unsigned long expires = jiffies + (ms * HZ) / 1000;
 	unsigned long repeat = ms * HZ / 1000;
@@ -1279,18 +1279,16 @@ STDCALL void NdisMSetPeriodicTimer(struct ndis_miniport_timer *timer_handle,
 	TRACEEXIT4(return);
 }
 
-/*
- * Cancel a pending timer
- */
-STDCALL void NdisMCancelTimer(struct ndis_miniport_timer *timer_handle,
-			      char *canceled)
+STDCALL static void
+NdisMCancelTimer(struct ndis_miniport_timer *timer_handle, char *canceled)
 {
 	TRACEENTER4("%s", "");
 	wrapper_cancel_timer(timer_handle->ktimer.wrapper_timer, canceled);
 	TRACEEXIT4(return);
 }
 
-STDCALL void NdisCancelTimer(struct ndis_timer *timer_handle, char *canceled)
+STDCALL static void
+NdisCancelTimer(struct ndis_timer *timer_handle, char *canceled)
 {
 	TRACEENTER4("%s", "");
 	wrapper_cancel_timer(timer_handle->ktimer.wrapper_timer, canceled);
@@ -1301,8 +1299,9 @@ STDCALL void NdisCancelTimer(struct ndis_timer *timer_handle, char *canceled)
  * The driver asks ndis what mac it should use. If this
  * function returns failiure it will use it's default mac.
  */
-STDCALL void NdisReadNetworkAddress(unsigned int *status, char *adr,
-				    unsigned int *len, void *conf_handle)
+STDCALL static void
+NdisReadNetworkAddress(unsigned int *status, char *adr, unsigned int *len,
+		       void *conf_handle)
 {
 	TRACEENTER1("%s", "");
 	*len = 0;
@@ -1310,25 +1309,24 @@ STDCALL void NdisReadNetworkAddress(unsigned int *status, char *adr,
 	TRACEEXIT1(return);
 }
 
-STDCALL void NdisMRegisterAdapterShutdownHandler(struct ndis_handle *handle,
-                                                 void *ctx, void *func)
+STDCALL static void
+NdisMRegisterAdapterShutdownHandler(struct ndis_handle *handle,
+				    void *ctx, void *func)
 {
 	TRACEENTER1("sp:%08x", getSp());
 	handle->driver->miniport_char.adapter_shutdown = func;
 	handle->shutdown_ctx = ctx;
 }
 
-STDCALL void NdisMDeregisterAdapterShutdownHandler(struct ndis_handle *handle)
+STDCALL static void
+NdisMDeregisterAdapterShutdownHandler(struct ndis_handle *handle)
 {
 	TRACEENTER1("sp:%08x", getSp());
 	handle->driver->miniport_char.adapter_shutdown = NULL;
 	handle->shutdown_ctx = NULL;
 }
 
-/*
- *  bottom half of the irq handler
- *
- */
+/* bottom half of the irq handler */
 void ndis_irq_bh(void *data)
 {
 	struct ndis_irq *ndis_irq = (struct ndis_irq *) data;
@@ -1343,19 +1341,15 @@ void ndis_irq_bh(void *data)
 	}
 }
 
-/*
- *  Top half of the irq handler
- *
- */
+/* Top half of the irq handler */
 irqreturn_t ndis_irq_th(int irq, void *data, struct pt_regs *pt_regs)
 {
 	int recognized = 0;
 	int handled = 0;
-
 	struct ndis_irq *ndis_irq = (struct ndis_irq *) data;
 	struct ndis_handle *handle;
 	struct miniport_char *miniport;
- 
+
 	if (!ndis_irq || !ndis_irq->handle)
 		return IRQ_NONE;
 	handle = ndis_irq->handle;
@@ -1375,26 +1369,22 @@ irqreturn_t ndis_irq_th(int irq, void *data, struct pt_regs *pt_regs)
 
 	if (recognized && handled)
 		schedule_work(&handle->irq_bh);
-	
+
 	if (recognized)
 		return IRQ_HANDLED;
 
 	return IRQ_NONE;
 }
 
-/*
- * Register an irq
- *
- */
-STDCALL unsigned int NdisMRegisterInterrupt(struct ndis_irq *ndis_irq,
-                                            struct ndis_handle *handle,
-					    unsigned int vector,
-					    unsigned int level,
-					    unsigned char req_isr,
-					    unsigned char shared,
-					    unsigned int mode)
+STDCALL static unsigned int
+NdisMRegisterInterrupt(struct ndis_irq *ndis_irq, struct ndis_handle *handle,
+		       unsigned int vector, unsigned int level,
+		       unsigned char req_isr, unsigned char shared,
+		       unsigned int mode)
 {
-	TRACEENTER1("%08x, vector:%d, level:%d, req_isr:%d, shared:%d, mode:%d sp:%08x",(int)ndis_irq, vector, level, req_isr, shared, mode, (int)getSp());
+	TRACEENTER1("%08x, vector:%d, level:%d, req_isr:%d, shared:%d, "
+		    "mode:%d sp:%08x",(int)ndis_irq, vector, level, req_isr,
+		    shared, mode, (int)getSp());
 
 	ndis_irq->spinlock = kmalloc(sizeof(spinlock_t), GFP_KERNEL);
 	if (ndis_irq->spinlock == NULL)
@@ -1420,11 +1410,9 @@ STDCALL unsigned int NdisMRegisterInterrupt(struct ndis_irq *ndis_irq,
 	TRACEEXIT1(return NDIS_STATUS_SUCCESS);
 }
 
-/*
- * Deregister an irq
- *
- */
-STDCALL void NdisMDeregisterInterrupt(struct ndis_irq *ndis_irq)
+/* called in call_halt */
+STDCALL void
+NdisMDeregisterInterrupt(struct ndis_irq *ndis_irq)
 {
 	TRACEENTER1("%p", ndis_irq);
 
@@ -1448,12 +1436,8 @@ STDCALL void NdisMDeregisterInterrupt(struct ndis_irq *ndis_irq)
 	TRACEEXIT1(return);
 }
 
-/*
- * Run func synchorinized with the isr.
- *
- */
-STDCALL unsigned char NdisMSynchronizeWithInterrupt(struct ndis_irq *ndis_irq,
-						    void *func, void *ctx)
+STDCALL static unsigned char
+NdisMSynchronizeWithInterrupt(struct ndis_irq *ndis_irq, void *func, void *ctx)
 {
 	unsigned char ret;
 	unsigned char (*sync_func)(void *ctx) STDCALL;
@@ -1473,14 +1457,10 @@ STDCALL unsigned char NdisMSynchronizeWithInterrupt(struct ndis_irq *ndis_irq,
 	TRACEEXIT5(return ret);
 }
 
-/*
- * This function is not called in a format way.
- * It's called using a macro that referenced the opaque miniport-handler
- *
- */
-STDCALL void NdisMIndicateStatus(struct ndis_handle *handle,
-				 unsigned int status, void *buf,
-				 unsigned int len)
+/* called via fnuction pointer */
+STDCALL void
+NdisMIndicateStatus(struct ndis_handle *handle, unsigned int status, void *buf,
+		    unsigned int len)
 {
 	TRACEENTER1("%08x", status);
 
@@ -1509,13 +1489,13 @@ STDCALL void NdisMIndicateStatus(struct ndis_handle *handle,
 				auth_req = (struct auth_req *)buf;
 				DBGTRACE(MACSTR, MAC2STR(auth_req->bssid));
 				if (auth_req->flags & 0x01)
-					DBGTRACE("%s", "request_requth");
+					DBGTRACE("%s", "reqauth");
 				if (auth_req->flags & 0x02)
-					DBGTRACE("%s", "request_keyupdate");
+					DBGTRACE("%s", "keyupdate");
 				if (auth_req->flags & 0x06)
-					DBGTRACE("%s", "request_pairwise_error");
+					DBGTRACE("%s", "pairwise_error");
 				if (auth_req->flags & 0x0E)
-					DBGTRACE("%s", "request_group_error");
+					DBGTRACE("%s", "group_error");
 				len -= auth_req->length;
 				buf = (char *)buf + auth_req->length;
 			}
@@ -1525,24 +1505,18 @@ STDCALL void NdisMIndicateStatus(struct ndis_handle *handle,
 	TRACEEXIT1(return);
 }
 
-/*
- *
- *
- * Called via function pointer.
- */
-STDCALL void NdisMIndicateStatusComplete(struct ndis_handle *handle)
+/* called via function pointer */
+STDCALL void
+NdisMIndicateStatusComplete(struct ndis_handle *handle)
 {
 	TRACEENTER3("%s", "");
 }
 
-/*
- *
- *
- * Called via function pointer.
- */
-STDCALL void NdisMIndicateReceivePacket(struct ndis_handle *handle,
-					struct ndis_packet **packets,
-					unsigned int nr_packets)
+/* called via function pointer */
+STDCALL void
+NdisMIndicateReceivePacket(struct ndis_handle *handle,
+			   struct ndis_packet **packets,
+			   unsigned int nr_packets)
 {
 	struct ndis_buffer *buffer;
 	struct ndis_packet *packet;
@@ -1558,14 +1532,13 @@ STDCALL void NdisMIndicateReceivePacket(struct ndis_handle *handle,
 			WARNING("%s", "Skipping empty packet on receive");
 			continue;
 		}
-		
+
 		buffer = packet->buffer_head;
 
 		skb = dev_alloc_skb(buffer->len);
 		if(skb)
 		{
 			skb->dev = handle->net_dev;
-		
 			eth_copy_and_sum(skb, buffer->data, buffer->len, 0);
 			skb_put(skb, buffer->len);
 			skb->protocol = eth_type_trans(skb, handle->net_dev);
@@ -1576,37 +1549,43 @@ STDCALL void NdisMIndicateReceivePacket(struct ndis_handle *handle,
 		else
 			handle->stats.rx_dropped++;
 
-		/* The driver normally sets status field to NDIS_STATUS_SUCCESS which means
-		 * a normal packet delivery. We should then change status to NDIS_STATUS_PENDING
-		 * meaning that we now own the package that we'll call the return_packet
-		 * handler later when the packet is processed.
+		/* The driver normally sets status field to
+		 * NDIS_STATUS_SUCCESS which means a normal packet
+		 * delivery. We should then change status to
+		 * NDIS_STATUS_PENDING meaning that we now own the
+		 * package that we'll call the return_packet handler
+		 * later when the packet is processed.
 		 *
-		 * Since we always make a copy of the packet here it would be tempting to
-		 * call the return_packet from here but we cannot to this because
-		 * some some drivers gets confused by this. The centrino driver for example
-		 * calls this function with a spinlock held and when calling return_packet
-		 * it tries to take the same lock again leading to an instant lockup on SMP.
+		 * Since we always make a copy of the packet here it
+		 * would be tempting to call the return_packet from
+		 * here but we cannot to this because some some
+		 * drivers gets confused by this. The centrino driver
+		 * for example calls this function with a spinlock
+		 * held and when calling return_packet it tries to
+		 * take the same lock again leading to an instant
+		 * lockup on SMP.
 		 *
-		 * If status is NDIS_STATUS_RESOURCES it means that the driver is running
-		 * out of packets and expects us to copy the packet and then set status
-		 * to NDIS_STATUS_SUCCESS and not call the return_packet handler later.
+		 * If status is NDIS_STATUS_RESOURCES it means that
+		 * the driver is running out of packets and expects us
+		 * to copy the packet and then set status to
+		 * NDIS_STATUS_SUCCESS and not call the return_packet
+		 * handler later.
 		 */
 
 		if(packet->status == NDIS_STATUS_RESOURCES)
 		{
-			/* Signal the driver that we did not take ownership of the packet. */
+			/* Signal the driver that we did not take
+			 * ownership of the packet. */
 			packet->status = NDIS_STATUS_SUCCESS;
-			DBGTRACE3("%s Low on resources!\n", __FUNCTION__);
+			DBGTRACE3("%s", "Low on resources");
 		}
 		else
 		{
 			if(packet->status != NDIS_STATUS_SUCCESS)
 				WARNING("invalid packet status %08X",
 					packet->status);
-
-			 
-			/* Signal the driver that took ownership of the packet and will
-			 * call return_packet later
+			/* Signal the driver that took ownership of
+			 * the packet and will call return_packet later
 			 */
 			packet->status = NDIS_STATUS_PENDING;
 			wrap_spin_lock(&handle->recycle_packets_lock);
@@ -1619,21 +1598,24 @@ STDCALL void NdisMIndicateReceivePacket(struct ndis_handle *handle,
 	TRACEEXIT3(return);
 }
 
-/* Called via function pointer. */
-STDCALL void NdisMSendComplete(struct ndis_handle *handle,
-			       struct ndis_packet *packet, unsigned int status)
+/* called via function pointer */
+STDCALL void
+NdisMSendComplete(struct ndis_handle *handle,
+		  struct ndis_packet *packet, unsigned int status)
 {
 	TRACEENTER3("%08x", status);
 	sendpacket_done(handle, packet);
-	/* In case a serialized driver has requested a pause by returning NDIS_STATUS_RESOURCES we
-	 * need to give the send-code a kick again.
+	/* In case a serialized driver has requested a pause by returning
+	 * NDIS_STATUS_RESOURCES we need to give the send-code a kick again.
 	 */
 	handle->send_status = 0;
 	schedule_work(&handle->xmit_work);
 	TRACEEXIT3(return);
 }
 
-STDCALL void NdisMSendResourcesAvailable(struct ndis_handle *handle)
+/* called via function pointer */
+STDCALL void
+NdisMSendResourcesAvailable(struct ndis_handle *handle)
 {
 	TRACEENTER3("%s", "");
 	/* sending packets immediately seem to result in NDIS_STATUS_FAILURE,
@@ -1644,10 +1626,11 @@ STDCALL void NdisMSendResourcesAvailable(struct ndis_handle *handle)
 	TRACEEXIT3(return);
 }
 
-STDCALL void EthRxIndicateHandler(void *adapter_ctx, void *rx_ctx,
-				  char *header1, char *header,
-				  u32 header_size, char *look_ahead,
-				  u32 look_ahead_size, u32 packet_size)
+/* called via function pointer (by NdisMEthIndicateReiceve macro) */
+STDCALL void
+EthRxIndicateHandler(void *adapter_ctx, void *rx_ctx, char *header1,
+		     char *header, u32 header_size, char *look_ahead,
+		     u32 look_ahead_size, u32 packet_size)
 {
 	struct sk_buff *skb;
 	struct ndis_handle *handle = ctx_to_handle(rx_ctx);
@@ -1679,14 +1662,16 @@ STDCALL void EthRxIndicateHandler(void *adapter_ctx, void *rx_ctx,
 	TRACEEXIT3(return);
 }
 
-STDCALL void EthRxComplete(struct ndis_handle *handle)
+/* called via function pointer */
+STDCALL void
+EthRxComplete(struct ndis_handle *handle)
 {
 	DBGTRACE3("%s", "");
 }
 
 /* Called via function pointer if query returns NDIS_STATUS_PENDING */
-STDCALL void NdisMQueryInformationComplete(struct ndis_handle *handle,
-					   unsigned int status)
+STDCALL void
+NdisMQueryInformationComplete(struct ndis_handle *handle, unsigned int status)
 {
 	TRACEENTER3("%08X", status);
 
@@ -1696,7 +1681,8 @@ STDCALL void NdisMQueryInformationComplete(struct ndis_handle *handle,
 }
 
 /* Called via function pointer if setinfo returns NDIS_STATUS_PENDING */
-STDCALL void NdisMSetInformationComplete(struct ndis_handle *handle,
+STDCALL void
+NdisMSetInformationComplete(struct ndis_handle *handle,
 					 unsigned int status)
 {
 	TRACEENTER3("status = %08X", status);
@@ -1706,8 +1692,8 @@ STDCALL void NdisMSetInformationComplete(struct ndis_handle *handle,
 	TRACEEXIT3(return);
 }
 
-/* Sleeps for the given number of microseconds */
-STDCALL void NdisMSleep(unsigned long us_to_sleep)
+STDCALL static void
+NdisMSleep(unsigned long us_to_sleep)
 {
 	TRACEENTER4("us: %lu", us_to_sleep);
 	if (us_to_sleep > 0)
@@ -1719,37 +1705,36 @@ STDCALL void NdisMSleep(unsigned long us_to_sleep)
 	TRACEEXIT4(return);
 }
 
-STDCALL void NdisGetCurrentSystemTime(u64 *time)
+STDCALL static void
+NdisGetCurrentSystemTime(u64 *time)
 {
 	struct timeval now;
 	u64 t;
- 
+
 	do_gettimeofday(&now);
 	t = (u64) now.tv_sec * TICKSPERSEC;
 	t += now.tv_usec * 10 + TICKS_1601_TO_1970;
 	*time = t;
 }
 
-STDCALL unsigned int NdisMRegisterIoPortRange(void **virt,
-					      struct ndis_handle *handle,
-					      unsigned int start,
-					      unsigned int len)
+STDCALL static unsigned int
+NdisMRegisterIoPortRange(void **virt, struct ndis_handle *handle,
+			 unsigned int start, unsigned int len)
 {
 	TRACEENTER3("%08x %08x", start, len);
 	*virt = (void*) start;
 	return NDIS_STATUS_SUCCESS;
 }
 
-STDCALL void NdisMDeregisterIoPortRange(struct ndis_handle *handle,
-					unsigned int start, unsigned int len,
-					void* virt)
+STDCALL static void
+NdisMDeregisterIoPortRange(struct ndis_handle *handle, unsigned int start,
+			   unsigned int len, void* virt)
 {
 	TRACEENTER1("%08x %08x", start, len);
 }
 
-static spinlock_t atomic_lock = SPIN_LOCK_UNLOCKED;
-
-STDCALL long NdisInterlockedDecrement(long *val)
+STDCALL static long
+NdisInterlockedDecrement(long *val)
 {
 	long x;
 
@@ -1761,7 +1746,8 @@ STDCALL long NdisInterlockedDecrement(long *val)
 	TRACEEXIT4(return x);
 }
 
-STDCALL long NdisInterlockedIncrement(long *val)
+STDCALL static long
+NdisInterlockedIncrement(long *val)
 {
 	long x;
 
@@ -1773,7 +1759,7 @@ STDCALL long NdisInterlockedIncrement(long *val)
 	TRACEEXIT4(return x);
 }
 
-STDCALL struct list_entry *
+STDCALL static struct list_entry *
 NdisInterlockedInsertHeadList(struct list_entry *head,
 			      struct list_entry *entry,
 			      struct ndis_spin_lock *lock)
@@ -1793,7 +1779,7 @@ NdisInterlockedInsertHeadList(struct list_entry *head,
 	TRACEEXIT1(return (flink != head) ? flink : NULL);
 }
 
-STDCALL struct list_entry *
+STDCALL static struct list_entry *
 NdisInterlockedInsertTailList(struct list_entry *head,
 			      struct list_entry *entry,
 			      struct ndis_spin_lock *lock)
@@ -1813,7 +1799,7 @@ NdisInterlockedInsertTailList(struct list_entry *head,
 	TRACEEXIT1(return (flink != head) ? flink : NULL);
 }
 
-STDCALL struct list_entry *
+STDCALL static struct list_entry *
 NdisInterlockedRemoveHeadList(struct list_entry *head,
 			      struct ndis_spin_lock *lock)
 {
@@ -1830,49 +1816,46 @@ NdisInterlockedRemoveHeadList(struct list_entry *head,
 	TRACEEXIT1(return (flink != head) ? flink : NULL);
 }
 
-/*
- * Arguments:
- * ndis_handle MiniportAdapterHandle: Handle input to MiniportInitialize
- * int Dma64BitAddress: Boolean if NIC can handle 64 bit addresses
- * unsigned long MaximumPhysicalMapping: Number of bytes the NIC can transfer on a single DMA operation
- */
-STDCALL int NdisMInitializeScatterGatherDma(struct ndis_handle *handle,
-                                            int is64bit,
-                                            unsigned long maxtransfer)
+STDCALL static int
+NdisMInitializeScatterGatherDma(struct ndis_handle *handle, int is64bit,
+				unsigned long maxtransfer)
 {
 	TRACEENTER2("64bit=%d, maxtransfer=%ld", is64bit, maxtransfer);
 	handle->use_scatter_gather = 1;
 	return NDIS_STATUS_SUCCESS;
 }
 
-STDCALL unsigned int NdisMGetDmaAlignment(struct ndis_handle *handle)
+STDCALL static unsigned int
+NdisMGetDmaAlignment(struct ndis_handle *handle)
 {
 	TRACEENTER3("%s", "");
 	return PAGE_SIZE;
 }
 
-STDCALL void NdisQueryBufferOffset(struct ndis_buffer *buffer,
-				   unsigned int *offset, unsigned int *length)
+STDCALL static void
+NdisQueryBufferOffset(struct ndis_buffer *buffer, unsigned int *offset,
+		      unsigned int *length)
 {
 	TRACEENTER3("%s", "");
 	*offset = 0;
 	*length = buffer->len;
 }
 
-STDCALL int NdisSystemProcessorCount(void)
+STDCALL static int
+NdisSystemProcessorCount(void)
 {
 	return NR_CPUS;
 }
 
-DECLARE_WAIT_QUEUE_HEAD(event_wq);
-
-STDCALL void NdisInitializeEvent(struct ndis_event *event)
+STDCALL static void
+NdisInitializeEvent(struct ndis_event *event)
 {
 	TRACEENTER3("%08x", (int)event);
 	event->state = 0;
 }
 
-STDCALL int NdisWaitEvent(struct ndis_event *event, int timeout)
+STDCALL static int
+NdisWaitEvent(struct ndis_event *event, int timeout)
 {
 	int res;
 
@@ -1884,31 +1867,34 @@ STDCALL int NdisWaitEvent(struct ndis_event *event, int timeout)
 		wait_event_interruptible(event_wq, event->state == 1);
 		return 1;
 	}
-	
+
 	res = wait_event_interruptible_timeout(event_wq, event->state == 1,
 					       (timeout * HZ)/1000);
 	DBGTRACE3("%08x Woke up (%d)", (int)event, event->state);
 
 	if (event->state == 1)
 		TRACEEXIT3(return 1);
-		
+
 	TRACEEXIT3(return 0);
 }
 
-STDCALL void NdisSetEvent(struct ndis_event *event)
+STDCALL static void
+NdisSetEvent(struct ndis_event *event)
 {
 	event->state = 1;
 	wake_up_interruptible(&event_wq);
 }
 
-STDCALL void NdisResetEvent(struct ndis_event *event)
+STDCALL static void
+NdisResetEvent(struct ndis_event *event)
 {
 	TRACEENTER3("%08x", (int)event);
 	event->state = 0;
 }
 
-STDCALL void NdisMResetComplete(struct ndis_handle *handle, int status,
-				int reset_status) 
+/* called via function pointer */
+STDCALL void
+NdisMResetComplete(struct ndis_handle *handle, int status, int reset_status)
 {
 	TRACEENTER3("status: %08X, reset status: %u", status, reset_status);
 
@@ -1917,10 +1903,6 @@ STDCALL void NdisMResetComplete(struct ndis_handle *handle, int status,
 	up(&handle->ndis_comm_done);
 	TRACEEXIT3(return);
 }
-		  
-static struct work_struct work;
-static struct list_head worklist;
-static struct wrap_spinlock worklist_lock;
 
 static void worker(void *context)
 {
@@ -1945,7 +1927,7 @@ static void worker(void *context)
 			DBGTRACE3("%s", "No more work");
 			break;
 		}
-		
+
 		ndis_work = workentry->work;
 
 		DBGTRACE3("Calling work at %08x (rva %08x)with parameter %08x",
@@ -1960,12 +1942,13 @@ static void worker(void *context)
 
 void init_ndis_work(void)
 {
-	INIT_WORK(&work, &worker, NULL); 
+	INIT_WORK(&work, &worker, NULL);
 	INIT_LIST_HEAD(&worklist);
 	wrap_spin_lock_init(&worklist_lock);
 }
 
-STDCALL static int NdisScheduleWorkItem(struct ndis_work *ndis_work)
+STDCALL static int
+NdisScheduleWorkItem(struct ndis_work *ndis_work)
 {
 	struct ndis_workentry *workentry;
 
@@ -1977,17 +1960,18 @@ STDCALL static int NdisScheduleWorkItem(struct ndis_work *ndis_work)
 		BUG();
 	}
 	workentry->work = ndis_work;
-	
+
 	wrap_spin_lock(&worklist_lock);
 	list_add_tail(&workentry->list, &worklist);
 	wrap_spin_unlock(&worklist_lock);
-	
+
 	schedule_work(&work);
 	TRACEEXIT3(return NDIS_STATUS_SUCCESS);
 }
 
-STDCALL static void NdisUnchainBufferAtBack(struct ndis_packet *packet,
-					    struct ndis_buffer **buffer)
+STDCALL static void
+NdisUnchainBufferAtBack(struct ndis_packet *packet,
+			struct ndis_buffer **buffer)
 {
 	struct ndis_buffer *b = packet->buffer_head;
 	struct ndis_buffer *btail = packet->buffer_tail;
@@ -2015,8 +1999,9 @@ STDCALL static void NdisUnchainBufferAtBack(struct ndis_packet *packet,
 	TRACEEXIT3(return);
 }
 
-STDCALL void NdisUnchainBufferAtFront(struct ndis_packet *packet,
-				      struct ndis_buffer **buffer)
+STDCALL static void
+NdisUnchainBufferAtFront(struct ndis_packet *packet,
+			 struct ndis_buffer **buffer)
 {
 	struct ndis_buffer *b = packet->buffer_head;
 
@@ -2036,7 +2021,7 @@ STDCALL void NdisUnchainBufferAtFront(struct ndis_packet *packet,
 	{
 		packet->buffer_head = b->next;
 	}
-	
+
 	b->next = 0;
 	packet->valid_counts = 0;
 
@@ -2044,13 +2029,11 @@ STDCALL void NdisUnchainBufferAtFront(struct ndis_packet *packet,
 	TRACEEXIT3(return);
 }
 
-
-STDCALL void NdisGetFirstBufferFromPacketSafe(struct ndis_packet *packet,
-                                              struct ndis_buffer **buffer,
-                                              void **virt,
-                                              unsigned int *len,
-                                              unsigned int *totlen,
-                                              unsigned int priority)
+STDCALL static void
+NdisGetFirstBufferFromPacketSafe(struct ndis_packet *packet,
+				 struct ndis_buffer **buffer, void **virt,
+				 unsigned int *len, unsigned int *totlen,
+				 unsigned int priority)
 {
 	struct ndis_buffer *b = packet->buffer_head;
 
@@ -2061,8 +2044,8 @@ STDCALL void NdisGetFirstBufferFromPacketSafe(struct ndis_packet *packet,
 	*len = b->len;
 	*totlen = packet->len;
 }
- 
-STDCALL void
+
+STDCALL static void
 NdisMStartBufferPhysicalMapping(struct ndis_handle *handle,
 				struct ndis_buffer *buf,
 				unsigned long phy_map_reg,
@@ -2085,7 +2068,7 @@ NdisMStartBufferPhysicalMapping(struct ndis_handle *handle,
 		*array_size = 0;
 		return;
 	}
-	
+
 	if (handle->map_dma_addr[phy_map_reg] != 0)
 	{
 		ERROR("map register already used (%lu)", phy_map_reg);
@@ -2099,15 +2082,15 @@ NdisMStartBufferPhysicalMapping(struct ndis_handle *handle,
 				   PCI_DMA_TODEVICE);
 	phy_addr_array[0].phy_addr.high = 0;
 	phy_addr_array[0].length= buf->len;
-	
+
 	*array_size = 1;
-	
+
 	// save mapping index
 	handle->map_dma_addr[phy_map_reg] =
 		(dma_addr_t)phy_addr_array[0].phy_addr.low;
 }
 
-STDCALL void
+STDCALL static void
 NdisMCompleteBufferPhysicalMapping(struct ndis_handle *handle,
 				   struct ndis_buffer *buf,
 				   unsigned long phy_map_reg)
@@ -2126,7 +2109,7 @@ NdisMCompleteBufferPhysicalMapping(struct ndis_handle *handle,
 		ERROR("map register not used (%lu)", phy_map_reg);
 		return;
 	}
-	
+
 	// unmap buffer
 	PCI_DMA_UNMAP_SINGLE(handle->pci_dev,
 			     handle->map_dma_addr[phy_map_reg],
@@ -2136,32 +2119,32 @@ NdisMCompleteBufferPhysicalMapping(struct ndis_handle *handle,
 	handle->map_dma_addr[phy_map_reg] = 0;
 }
 
-STDCALL int NdisMRegisterDevice(struct ndis_handle *handle,
-				struct ustring *dev_name,
-				struct ustring *sym_name,
-				void **funcs, void *dev_object,
-				struct ndis_handle **dev_handle)
+STDCALL static int
+NdisMRegisterDevice(struct ndis_handle *handle, struct ustring *dev_name,
+		    struct ustring *sym_name, void **funcs, void *dev_object,
+		    struct ndis_handle **dev_handle)
 {
 	TRACEENTER1("%p, %p", *dev_handle, handle);
 	*dev_handle = handle;
 	return NDIS_STATUS_SUCCESS;
 }
 
-STDCALL int NdisMDeregisterDevice(struct ndis_handle *handle)
+STDCALL static int
+NdisMDeregisterDevice(struct ndis_handle *handle)
 {
 	return NDIS_STATUS_SUCCESS;
 }
 
-STDCALL void NdisMGetDeviceProperty(struct ndis_handle handle,
-				    void **phy_dev, void **func_dev,
-				    void **next_dev,
-				    void **alloc_res, void**trans_res)
+STDCALL static void
+NdisMGetDeviceProperty(struct ndis_handle handle, void **phy_dev,
+		       void **func_dev, void **next_dev, void **alloc_res,
+		       void**trans_res)
 {
 	TRACEENTER1("%s", "");
 	return;
 }
 
-STDCALL unsigned long
+STDCALL static unsigned long
 NdisReadPcmciaAttributeMemory(struct ndis_handle *handle,
 			       unsigned int offset, void *buffer,
 			       unsigned long length)
@@ -2170,7 +2153,7 @@ NdisReadPcmciaAttributeMemory(struct ndis_handle *handle,
 	return 0;
 }
 
-STDCALL unsigned long
+STDCALL static unsigned long
 NdisWritePcmciaAttributeMemory(struct ndis_handle *handle,
 			       unsigned int offset, void *buffer,
 			       unsigned long length)
@@ -2180,11 +2163,11 @@ NdisWritePcmciaAttributeMemory(struct ndis_handle *handle,
 }
 
  /* Unimplemented...*/
-STDCALL void NdisMSetAttributes(void){UNIMPL();}
-STDCALL void EthFilterDprIndicateReceiveComplete(void){UNIMPL();}
-STDCALL void EthFilterDprIndicateReceive(void){UNIMPL();}
-STDCALL void NdisMPciAssignResources(void){UNIMPL();}
-STDCALL void NdisMRemoveMiniport(void) { UNIMPL(); }
+STDCALL static void NdisMSetAttributes(void){UNIMPL();}
+STDCALL static void EthFilterDprIndicateReceiveComplete(void){UNIMPL();}
+STDCALL static void EthFilterDprIndicateReceive(void){UNIMPL();}
+STDCALL static void NdisMPciAssignResources(void){UNIMPL();}
+STDCALL static void NdisMRemoveMiniport(void) { UNIMPL(); }
 
 struct wrap_func ndis_wrap_funcs[] =
 {
@@ -2219,8 +2202,8 @@ struct wrap_func ndis_wrap_funcs[] =
 	WRAP_FUNC_ENTRY(NdisGetCurrentSystemTime),
 	WRAP_FUNC_ENTRY(NdisGetFirstBufferFromPacketSafe),
 	WRAP_FUNC_ENTRY(NdisGetSystemUpTime),
-	WRAP_FUNC_ENTRY(NdisMIndicateStatus),
-	WRAP_FUNC_ENTRY(NdisMIndicateStatusComplete),
+//	WRAP_FUNC_ENTRY(NdisMIndicateStatus),
+//	WRAP_FUNC_ENTRY(NdisMIndicateStatusComplete),
 	WRAP_FUNC_ENTRY(NdisInitAnsiString),
 	WRAP_FUNC_ENTRY(NdisInitUnicodeString),
 	WRAP_FUNC_ENTRY(NdisInitializeEvent),
@@ -2245,25 +2228,25 @@ struct wrap_func ndis_wrap_funcs[] =
 	WRAP_FUNC_ENTRY(NdisMFreeSharedMemory),
 	WRAP_FUNC_ENTRY(NdisMGetDeviceProperty),
 	WRAP_FUNC_ENTRY(NdisMGetDmaAlignment),
-	WRAP_FUNC_ENTRY(NdisMIndicateReceivePacket),
+//	WRAP_FUNC_ENTRY(NdisMIndicateReceivePacket),
 	WRAP_FUNC_ENTRY(NdisMInitializeScatterGatherDma),
 	WRAP_FUNC_ENTRY(NdisMInitializeTimer),
 	WRAP_FUNC_ENTRY(NdisMMapIoSpace),
 	WRAP_FUNC_ENTRY(NdisMPciAssignResources),
 	WRAP_FUNC_ENTRY(NdisMQueryAdapterResources),
-	WRAP_FUNC_ENTRY(NdisMQueryInformationComplete),
+//	WRAP_FUNC_ENTRY(NdisMQueryInformationComplete),
 	WRAP_FUNC_ENTRY(NdisMRegisterAdapterShutdownHandler),
 	WRAP_FUNC_ENTRY(NdisMRegisterDevice),
 	WRAP_FUNC_ENTRY(NdisMRegisterInterrupt),
 	WRAP_FUNC_ENTRY(NdisMRegisterIoPortRange),
 	WRAP_FUNC_ENTRY(NdisMRegisterMiniport),
 	WRAP_FUNC_ENTRY(NdisMRemoveMiniport),
-	WRAP_FUNC_ENTRY(NdisMResetComplete),
-	WRAP_FUNC_ENTRY(NdisMSendComplete),
-	WRAP_FUNC_ENTRY(NdisMSendResourcesAvailable),
+//	WRAP_FUNC_ENTRY(NdisMResetComplete),
+//	WRAP_FUNC_ENTRY(NdisMSendComplete),
+//	WRAP_FUNC_ENTRY(NdisMSendResourcesAvailable),
 	WRAP_FUNC_ENTRY(NdisMSetAttributes),
 	WRAP_FUNC_ENTRY(NdisMSetAttributesEx),
-	WRAP_FUNC_ENTRY(NdisMSetInformationComplete),
+//	WRAP_FUNC_ENTRY(NdisMSetInformationComplete),
 	WRAP_FUNC_ENTRY(NdisMSetPeriodicTimer),
 	WRAP_FUNC_ENTRY(NdisMSleep),
 	WRAP_FUNC_ENTRY(NdisMStartBufferPhysicalMapping),
