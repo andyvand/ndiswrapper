@@ -191,8 +191,8 @@ struct packed miniport_char
 
 struct ndis_work
 {
-	void (*func)(struct ndis_work *work, void *ctx) STDCALL;
 	void *ctx;
+	void (*func)(struct ndis_work *work, void *ctx) STDCALL;
 	struct list_head list;
 };
 
@@ -341,8 +341,6 @@ struct ndis_event
 {
 	int state;
 };
-
-
 
 struct packed essid_req
 {
