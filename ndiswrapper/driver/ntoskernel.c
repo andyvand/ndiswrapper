@@ -22,6 +22,7 @@ DECLARE_WAIT_QUEUE_HEAD(dispatch_event_wq);
 static unsigned char global_signal_state = 0;
 struct wrap_spinlock dispatch_event_lock;
 extern struct wrap_spinlock atomic_lock;
+static KSPIN_LOCK ntoskrnl_lock;
 
 WRAP_EXPORT_MAP("KeTickCount", &jiffies);
 
@@ -177,6 +178,13 @@ _FASTCALL struct slist_entry *WRAP_EXPORT(ExpInterlockedPushEntrySList)
 	return ExInterlockedPushEntrySList(FASTCALL_ARGS_3(head, entry, lock));
 }
 
+_FASTCALL struct slist_entry *WRAP_EXPORT(InterlockedPushEntrySList)
+	(FASTCALL_DECL_2(union slist_head *head, struct slist_entry *entry))
+{
+	return ExInterlockedPushEntrySList(FASTCALL_ARGS_3(head, entry,
+							   &ntoskrnl_lock));
+}
+
 _FASTCALL struct slist_entry * WRAP_EXPORT(ExInterlockedPopEntrySList)
 	(FASTCALL_DECL_2(union slist_head *head, KSPIN_LOCK *lock))
 {
@@ -203,6 +211,13 @@ _FASTCALL struct slist_entry * WRAP_EXPORT(ExpInterlockedPopEntrySList)
 	(FASTCALL_DECL_2(union slist_head *head, KSPIN_LOCK *lock))
 {
 	return ExInterlockedPopEntrySList(FASTCALL_ARGS_2(head, lock));
+}
+
+_FASTCALL struct slist_entry * WRAP_EXPORT(InterlockedPopEntrySList)
+	(FASTCALL_DECL_1(union slist_head *head))
+{
+	return ExInterlockedPopEntrySList(FASTCALL_ARGS_2(head,
+							  &ntoskrnl_lock));
 }
 
 _FASTCALL struct list_entry *WRAP_EXPORT(ExfInterlockedInsertTailList)
