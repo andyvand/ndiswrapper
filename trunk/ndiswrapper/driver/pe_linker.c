@@ -433,7 +433,13 @@ static int fix_pe_image(struct pe_image *pe)
 #error x86_64 should have either PAGE_KERNEL_EXECUTABLE or PAGE_KERNEL_EXEC
 #endif
 #else
-	image = vmalloc(image_size);
+	/* hate to play with kernel macros, but PAGE_KERNEL_EXEC is
+	 * not available to modules! */
+	if (cpu_has_nx)
+		image = __vmalloc(image_size, GFP_KERNEL | __GFP_HIGHMEM,
+				  __pgprot(__PAGE_KERNEL & ~_PAGE_NX));
+	else
+		image = vmalloc(image_size);
 #endif
 	if (image == NULL) {
 		ERROR("failed to allocate enough space for new image:"
