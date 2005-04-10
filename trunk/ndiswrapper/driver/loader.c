@@ -421,7 +421,31 @@ static int load_sys_files(struct ndis_driver *driver,
 		DBGTRACE1("image size: %lu bytes",
 			  (unsigned long)load_driver->sys_files[i].size);
 
+#ifdef CONFIG_X86_64
+#ifdef PAGE_KERNEL_EXECUTABLE
+		pe_image->image =
+			__vmalloc(load_driver->sys_files[i].size,
+				  GFP_KERNEL | __GFP_HIGHMEM,
+				  PAGE_KERNEL_EXECUTABLE);
+#elif defined PAGE_KERNEL_EXEC
+		pe_image->image =
+			__vmalloc(load_driver->sys_files[i].size,
+				  GFP_KERNEL | __GFP_HIGHMEM,
+				  PAGE_KERNEL_EXEC);
+#else
+#error x86_64 should have either PAGE_KERNEL_EXECUTABLE or PAGE_KERNEL_EXEC
+#endif
+#else
+	/* hate to play with kernel macros, but PAGE_KERNEL_EXEC is
+	 * not available to modules! */
+	if (cpu_has_nx)
+		pe_image->image =
+			__vmalloc(load_driver->sys_files[i].size,
+				  GFP_KERNEL | __GFP_HIGHMEM,
+				  __pgprot(__PAGE_KERNEL & ~_PAGE_NX));
+	else
 		pe_image->image = vmalloc(load_driver->sys_files[i].size);
+#endif
 		if (!pe_image->image) {
 			ERROR("couldn't allocate memory");
 			break;
