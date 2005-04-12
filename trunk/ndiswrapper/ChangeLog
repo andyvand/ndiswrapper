@@ -1,3 +1,8 @@
+Version 1.2 2005-XX-XX
+======================
+* Support for systems with NX (no-execute) bit
+* Many bug fixes
+
 Versoin 1.1 2005-03-04
 ======================
 * Free kmem_cache of MDLs; this fixes crashes when removing module.
