@@ -403,14 +403,17 @@ STDCALL void IoFreeMdl(struct mdl *mdl);
 STDCALL void NdisFreeBuffer(ndis_buffer *buffer);
 _FASTCALL LONG InterlockedDecrement(FASTCALL_DECL_1(LONG volatile *val));
 _FASTCALL LONG InterlockedIncrement(FASTCALL_DECL_1(LONG volatile *val));
-STDCALL struct nt_list *
-ExInterlockedInsertHeadList(struct nt_list *head,
-			    struct nt_list *entry, KSPIN_LOCK *lock);
-STDCALL struct nt_list *
-ExInterlockedInsertTailList(struct nt_list *head,
-			    struct nt_list *entry, KSPIN_LOCK *lock);
-STDCALL struct nt_list *
-ExInterlockedRemoveHeadList(struct nt_list *head, KSPIN_LOCK *lock);
+_FASTCALL struct nt_list *
+ExInterlockedInsertHeadList(FASTCALL_DECL_3(struct nt_list *head,
+					    struct nt_list *entry,
+					    KSPIN_LOCK *lock));
+_FASTCALL struct nt_list *
+ExInterlockedInsertTailList(FASTCALL_DECL_3(struct nt_list *head,
+					    struct nt_list *entry,
+					    KSPIN_LOCK *lock));
+_FASTCALL struct nt_list *
+ExInterlockedRemoveHeadList(FASTCALL_DECL_2(struct nt_list *head,
+					    KSPIN_LOCK *lock));
 STDCALL NTSTATUS IoCreateDevice(struct driver_object *driver,
 				ULONG dev_ext_length,
 				struct unicode_string *dev_name,
