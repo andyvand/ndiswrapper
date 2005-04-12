@@ -123,9 +123,11 @@ _FASTCALL struct nt_list *WRAP_EXPORT(ExfInterlockedInsertHeadList)
 	return first;
 }
 
-STDCALL struct nt_list *WRAP_EXPORT(ExInterlockedInsertHeadList)
-	(struct nt_list *head, struct nt_list *entry, KSPIN_LOCK *lock)
+_FASTCALL struct nt_list *WRAP_EXPORT(ExInterlockedInsertHeadList)
+	(FASTCALL_DECL_3(struct nt_list *head, struct nt_list *entry,
+			 KSPIN_LOCK *lock))
 {
+	TRACEENTER4("%p", head);
 	return ExfInterlockedInsertHeadList(FASTCALL_ARGS_3(head, entry,
 							    lock));
 }
@@ -145,10 +147,11 @@ _FASTCALL struct nt_list *WRAP_EXPORT(ExfInterlockedInsertTailList)
 	return last;
 }
 
-STDCALL struct nt_list *WRAP_EXPORT(ExInterlockedInsertTailList)
-	(struct nt_list *head, struct nt_list *entry,
-	 KSPIN_LOCK *lock)
+_FASTCALL struct nt_list *WRAP_EXPORT(ExInterlockedInsertTailList)
+	(FASTCALL_DECL_3(struct nt_list *head, struct nt_list *entry,
+			 KSPIN_LOCK *lock))
 {
+	TRACEENTER4("%p", head);
 	return ExfInterlockedInsertTailList(FASTCALL_ARGS_3(head, entry,
 							    lock));
 }
@@ -167,9 +170,10 @@ _FASTCALL struct nt_list *WRAP_EXPORT(ExfInterlockedRemoveHeadList)
 	return ret;
 }
 
-STDCALL struct nt_list *WRAP_EXPORT(ExInterlockedRemoveHeadList)
-	(struct nt_list *head, KSPIN_LOCK *lock)
+_FASTCALL struct nt_list *WRAP_EXPORT(ExInterlockedRemoveHeadList)
+	(FASTCALL_DECL_2(struct nt_list *head, KSPIN_LOCK *lock))
 {
+	TRACEENTER4("%p", head);
 	return ExfInterlockedRemoveHeadList(FASTCALL_ARGS_2(head, lock));
 }
 
@@ -187,9 +191,10 @@ _FASTCALL struct nt_list *WRAP_EXPORT(ExfInterlockedRemoveTailList)
 	return ret;
 }
 
-STDCALL struct nt_list *WRAP_EXPORT(ExInterlockedRemoveTailList)
-	(struct nt_list *head, KSPIN_LOCK *lock)
+_FASTCALL struct nt_list *WRAP_EXPORT(ExInterlockedRemoveTailList)
+	(FASTCALL_DECL_2(struct nt_list *head, KSPIN_LOCK *lock))
 {
+	TRACEENTER4("%p", head);
 	return ExfInterlockedRemoveTailList(FASTCALL_ARGS_2(head, lock));
 }
 
@@ -211,12 +216,14 @@ _FASTCALL struct nt_slist *WRAP_EXPORT(ExInterlockedPushEntrySList)
 	(FASTCALL_DECL_3(union nt_slist_head *head, struct nt_slist *entry,
 			 KSPIN_LOCK *lock))
 {
+	TRACEENTER4("%p", head);
 	return ExpInterlockedPushEntrySList(head, entry);
 }
 
 _FASTCALL struct nt_slist *WRAP_EXPORT(InterlockedPushEntrySList)
 	(FASTCALL_DECL_2(union nt_slist_head *head, struct nt_slist *entry))
 {
+	TRACEENTER4("%p", head);
 	return ExpInterlockedPushEntrySList(head, entry);
 }
 
@@ -237,18 +244,21 @@ STDCALL struct nt_slist *WRAP_EXPORT(ExpInterlockedPopEntrySList)
 _FASTCALL struct nt_slist *WRAP_EXPORT(ExInterlockedPopEntrySList)
 	(FASTCALL_DECL_2(union nt_slist_head *head, KSPIN_LOCK *lock))
 {
+	TRACEENTER4("%p", head);
 	return ExpInterlockedPopEntrySList(head);
 }
 
 _FASTCALL struct nt_slist *WRAP_EXPORT(InterlockedPopEntrySList)
 	(FASTCALL_DECL_1(union nt_slist_head *head))
 {
+	TRACEENTER4("%p", head);
 	return ExpInterlockedPopEntrySList(head);
 }
 
 STDCALL USHORT WRAP_EXPORT(ExQueryDepthSList)
 	(union nt_slist_head *head)
 {
+	TRACEENTER4("%p", head);
 	return head->list.depth;
 }
 
@@ -729,7 +739,7 @@ STDCALL LONG WRAP_EXPORT(KeSetEvent)
 	LONG old_state;
 	KIRQL irql;
 
-	TRACEENTER3("event = %p, type = %d, wait = %d",
+	TRACEENTER4("event = %p, type = %d, wait = %d",
 		    kevent, kevent->dh.type, wait);
 	if (wait == TRUE)
 		WARNING("wait = %d, not yet implemented", wait);
@@ -739,7 +749,7 @@ STDCALL LONG WRAP_EXPORT(KeSetEvent)
 	kevent->dh.signal_state = 1;
 	wakeup_event(kevent);
 	kspin_unlock_irql(&kevent_lock, irql);
-	TRACEEXIT3(return old_state);
+	TRACEEXIT4(return old_state);
 }
 
 STDCALL void WRAP_EXPORT(KeClearEvent)
@@ -747,10 +757,11 @@ STDCALL void WRAP_EXPORT(KeClearEvent)
 {
 	KIRQL irql;
 
-	TRACEENTER3("event = %p", kevent);
+	TRACEENTER4("event = %p", kevent);
 	irql = kspin_lock_irql(&kevent_lock, DISPATCH_LEVEL);
 	kevent->dh.signal_state = 0;
 	kspin_unlock_irql(&kevent_lock, irql);
+	TRACEEXIT4(return);
 }
 
 STDCALL LONG WRAP_EXPORT(KeResetEvent)
@@ -759,14 +770,14 @@ STDCALL LONG WRAP_EXPORT(KeResetEvent)
 	LONG old_state;
 	KIRQL irql;
 
-	TRACEENTER3("event = %p", kevent);
+	TRACEENTER4("event = %p", kevent);
 
 	irql = kspin_lock_irql(&kevent_lock, DISPATCH_LEVEL);
 	old_state = kevent->dh.signal_state;
 	kevent->dh.signal_state = 0;
 	kspin_unlock_irql(&kevent_lock, irql);
 
-	TRACEEXIT3(return old_state);
+	TRACEEXIT4(return old_state);
 }
 
 STDCALL void WRAP_EXPORT(KeInitializeMutex)

@@ -238,7 +238,11 @@ STDCALL NDIS_STATUS WRAP_EXPORT(NdisAllocateMemory)
 STDCALL NDIS_STATUS WRAP_EXPORT(NdisAllocateMemoryWithTag)
 	(void **dest, UINT length, ULONG tag)
 {
-	TRACEEXIT3(return NdisAllocateMemory(dest, length, 0, 0));
+	NDIS_STATUS res;
+
+	TRACEENTER3("dest = %p, *dest = %p", dest, *dest);
+	res = NdisAllocateMemory(dest, length, 0, 0);
+	return res;
 }
 
 STDCALL void WRAP_EXPORT(NdisFreeMemory)
@@ -580,8 +584,6 @@ STDCALL void WRAP_EXPORT(NdisReadConfiguration)
 			*status = ndis_encode_setting(setting, type);
 			if (*status == NDIS_STATUS_SUCCESS)
 				*dest = &setting->config_param;
-			else
-				*dest = NULL;
 			RtlFreeAnsiString(&ansi);
 			DBGTRACE2("status = %d", *status);
 			TRACEEXIT2(return);
@@ -590,7 +592,6 @@ STDCALL void WRAP_EXPORT(NdisReadConfiguration)
 
 	DBGTRACE2("setting %s not found (type:%d)", keyname, type);
 
-	*dest = NULL;
 	*status = NDIS_STATUS_FAILURE;
 	RtlFreeAnsiString(&ansi);
 	TRACEEXIT2(return);
@@ -2211,20 +2212,23 @@ STDCALL struct nt_list *WRAP_EXPORT(NdisInterlockedInsertHeadList)
 	(struct nt_list *head, struct nt_list *entry,
 	 struct ndis_spinlock *lock)
 {
-	return ExInterlockedInsertHeadList(head, entry, &lock->klock);
+	return ExInterlockedInsertHeadList(FASTCALL_ARGS_3(head, entry,
+							   &lock->klock));
 }
 
 STDCALL struct nt_list *WRAP_EXPORT(NdisInterlockedInsertTailList)
 	(struct nt_list *head, struct nt_list *entry,
 	 struct ndis_spinlock *lock)
 {
-	return ExInterlockedInsertTailList(head, entry, &lock->klock);
+	return ExInterlockedInsertTailList(FASTCALL_ARGS_3(head, entry,
+							   &lock->klock));
 }
 
 STDCALL struct nt_list *WRAP_EXPORT(NdisInterlockedRemoveHeadList)
 	(struct nt_list *head, struct ndis_spinlock *lock)
 {
-	return ExInterlockedRemoveHeadList(head, &lock->klock);
+	return ExInterlockedRemoveHeadList(FASTCALL_ARGS_2(head,
+							   &lock->klock));
 }
 
 STDCALL NDIS_STATUS WRAP_EXPORT(NdisMInitializeScatterGatherDma)
