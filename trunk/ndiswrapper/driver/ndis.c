@@ -299,10 +299,8 @@ NOREGPARM void WRAP_EXPORT(NdisWriteErrorLogEntry)
 	(struct ndis_handle *handle, unsigned int error, ULONG count,
 	 unsigned int p1)
 {
-	ERROR("log: %08X, count: %d (%08x), return address: %p, entry: %p"
-	      " offset: %lu", error, count, p1, __builtin_return_address(0),
-	      handle->driver->drv_obj->driver_start,
-	      (unsigned long)addr_offset(handle->driver));
+	ERROR("log: %08X, count: %d (%08x), return address: %p",
+	      error, count, p1, __builtin_return_address(0));
 	return;
 }
 
