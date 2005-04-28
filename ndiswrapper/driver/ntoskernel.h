@@ -631,6 +631,7 @@ static inline ULONG SPAN_PAGES(ULONG_PTR ptr, SIZE_T length)
 #define DBGTRACE3(fmt, ...) do { }  while (0)
 #define DBGTRACE4(fmt, ...) do { } while (0)
 #define DBGTRACE5(fmt, ...) do { } while (0)
+#define DBGTRACE6(fmt, ...) do { } while (0)
 
 /* for a block of code */
 #define DBG_BLOCK() while (0)
@@ -674,12 +675,18 @@ extern int debug;
 #define DBGTRACE5(fmt, ...) DBGTRACE(5, fmt , ## __VA_ARGS__)
 #endif
 
+#if defined DEBUG && DEBUG >= 6
+#undef DBGTRACE6
+#define DBGTRACE6(fmt, ...) DBGTRACE(6, fmt , ## __VA_ARGS__)
+#endif
+
 #define TRACEENTER(fmt, ...) DBGTRACE("Enter " fmt , ## __VA_ARGS__)
 #define TRACEENTER1(fmt, ...) DBGTRACE1("Enter " fmt , ## __VA_ARGS__)
 #define TRACEENTER2(fmt, ...) DBGTRACE2("Enter " fmt , ## __VA_ARGS__)
 #define TRACEENTER3(fmt, ...) DBGTRACE3("Enter " fmt , ## __VA_ARGS__)
 #define TRACEENTER4(fmt, ...) DBGTRACE4("Enter " fmt , ## __VA_ARGS__)
 #define TRACEENTER5(fmt, ...) DBGTRACE5("Enter " fmt , ## __VA_ARGS__)
+#define TRACEENTER6(fmt, ...) DBGTRACE6("Enter " fmt , ## __VA_ARGS__)
 
 #define TRACEEXIT(stmt) do { DBGTRACE("Exit"); stmt; } while(0)
 #define TRACEEXIT1(stmt) do { DBGTRACE1("Exit"); stmt; } while(0)
@@ -687,6 +694,7 @@ extern int debug;
 #define TRACEEXIT3(stmt) do { DBGTRACE3("Exit"); stmt; } while(0)
 #define TRACEEXIT4(stmt) do { DBGTRACE4("Exit"); stmt; } while(0)
 #define TRACEEXIT5(stmt) do { DBGTRACE5("Exit"); stmt; } while(0)
+#define TRACEEXIT6(stmt) do { DBGTRACE6("Exit"); stmt; } while(0)
 
 #ifdef USB_DEBUG
 #define USBTRACE(fmt, ...) DBGTRACE1(fmt, ## __VA_ARGS__)

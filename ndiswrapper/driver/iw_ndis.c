@@ -786,7 +786,7 @@ static int iw_set_encr(struct net_device *dev, struct iw_request_info *info,
 
 	if (wrqu->data.length > 0) {
 		key_len = wrqu->data.length;
-		key = wrqu->data.pointer;
+		key = extra;
 	} else { // must be set as tx key
 		if (encr_info->keys[index].length == 0) {
 			WARNING("key %d is not set", index+1);
