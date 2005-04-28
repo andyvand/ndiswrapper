@@ -943,33 +943,33 @@ STDCALL void WRAP_EXPORT(NdisFreeSpinLock)
 STDCALL void WRAP_EXPORT(NdisAcquireSpinLock)
 	(struct ndis_spinlock *lock)
 {
-	TRACEENTER5("lock %p", lock);
+	TRACEENTER6("lock %p", lock);
 	lock->irql = kspin_lock_irql(&lock->klock, DISPATCH_LEVEL);
-	TRACEEXIT5(return);
+	TRACEEXIT6(return);
 }
 
 STDCALL void WRAP_EXPORT(NdisReleaseSpinLock)
 	(struct ndis_spinlock *lock)
 {
-	TRACEENTER5("lock %p", lock);
+	TRACEENTER6("lock %p", lock);
 	kspin_unlock_irql(&lock->klock, lock->irql);
-	TRACEEXIT5(return);
+	TRACEEXIT6(return);
 }
 
 STDCALL void WRAP_EXPORT(NdisDprAcquireSpinLock)
 	(struct ndis_spinlock *lock)
 {
-	TRACEENTER5("lock %p", lock);
+	TRACEENTER6("lock %p", lock);
 	kspin_lock(&lock->klock);
-	TRACEEXIT5(return);
+	TRACEEXIT6(return);
 }
 
 STDCALL void WRAP_EXPORT(NdisDprReleaseSpinLock)
 	(struct ndis_spinlock *lock)
 {
-	TRACEENTER5("lock %p", lock);
+	TRACEENTER6("lock %p", lock);
 	kspin_unlock(&lock->klock);
-	TRACEEXIT5(return);
+	TRACEEXIT6(return);
 }
 
 STDCALL void WRAP_EXPORT(NdisInitializeReadWriteLock)
@@ -1716,18 +1716,18 @@ STDCALL BOOLEAN WRAP_EXPORT(NdisMSynchronizeWithInterrupt)
 	unsigned char (*sync_func)(void *ctx) STDCALL;
 	unsigned long flags;
 
-	TRACEENTER5("%p %p %p\n", ndis_irq, func, ctx);
+	TRACEENTER6("%p %p %p\n", ndis_irq, func, ctx);
 
 	if (func == NULL || ctx == NULL)
-		TRACEEXIT5(return 0);
+		TRACEEXIT6(return 0);
 
 	sync_func = func;
 	kspin_lock_irqsave(&ndis_irq->lock, flags);
 	ret = LIN2WIN1(sync_func, ctx);
 	kspin_unlock_irqrestore(&ndis_irq->lock, flags);
 
-	DBGTRACE5("sync_func returns %u", ret);
-	TRACEEXIT5(return ret);
+	DBGTRACE6("sync_func returns %u", ret);
+	TRACEEXIT6(return ret);
 }
 
 /* called via function pointer */
