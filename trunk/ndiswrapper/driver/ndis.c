@@ -2568,6 +2568,18 @@ STDCALL void WRAP_EXPORT(NdisGetFirstBufferFromPacketSafe)
 		*first_buffer_length = 0;
 		*total_buffer_length = 0;
 	}
+	TRACEEXIT3(return);
+}
+
+STDCALL void WRAP_EXPORT(NdisGetFirstBufferFromPacket)
+	(struct ndis_packet *packet, ndis_buffer **first_buffer,
+	 void **first_buffer_va, UINT *first_buffer_length,
+	 UINT *total_buffer_length, enum mm_page_priority priority)
+{
+	NdisGetFirstBufferFromPacketSafe(packet, first_buffer,
+					 first_buffer_va, first_buffer_length,
+					 total_buffer_length,
+					 NormalPagePriority);
 }
 
 STDCALL void WRAP_EXPORT(NdisCopyFromPacketToPacketSafe)
@@ -2792,7 +2804,7 @@ STDCALL void WRAP_EXPORT(NdisMGetDeviceProperty)
 STDCALL void WRAP_EXPORT(NdisMRegisterUnloadHandler)
 	(struct ndis_driver *driver, void *unload)
 {
-	if (driver)
+	if (driver && driver->drv_obj)
 		driver->drv_obj->driver_unload = unload;
 	return;
 }
