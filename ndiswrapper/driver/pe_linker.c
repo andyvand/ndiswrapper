@@ -30,6 +30,21 @@
 
 #endif
 
+static struct pe_exports pe_exports[40];
+static int num_pe_exports;
+extern struct kuser_shared_data kuser_shared_data;
+
+struct pe_exports {
+	char *dll;
+	char *name;
+	WRAP_EXPORT_FUNC addr;
+};
+
+#define RVA2VA(image, rva, type) (type)(ULONG_PTR)((void *)image + rva)
+#define CHECK_SZ(a,b) { if (sizeof(a) != b) {				\
+			ERROR("%s is bad, got %zd, expected %d",	\
+			      #a , sizeof(a), (b)); return -EINVAL; } }
+
 #if defined(DEBUGLINKER) && DEBUGLINKER > 0
 #define DBGLINKER(fmt, ...) printk(KERN_INFO "%s (%s:%d): " fmt "\n",	\
 				   DRIVER_NAME, __FUNCTION__,		\
@@ -53,20 +68,6 @@ static const char *image_directory_name[] = {
 #else
 #define DBGLINKER(fmt, ...) do { } while (0)
 #endif
-
-struct pe_exports {
-	char *dll;
-	char *name;
-	WRAP_EXPORT_FUNC addr;
-};
-
-static struct pe_exports pe_exports[40];
-static int num_pe_exports;
-
-#define RVA2VA(image, rva, type) (type)(ULONG_PTR)((void *)image + rva)
-#define CHECK_SZ(a,b) { if (sizeof(a) != b) {				\
-			ERROR("%s is bad, got %zd, expected %d",	\
-			      #a , sizeof(a), (b)); return -EINVAL; } }
 
 #ifdef TEST_LOADER
 #define WRAP_EXPORT_FUNC char *
@@ -489,6 +490,21 @@ static int fix_pe_image(struct pe_image *pe)
 	return 0;
 }
 
+void change_user_shared_data_addr(char *driver, unsigned long length)
+{
+	unsigned long i, n, max_addr, *addr;
+
+	n = length - sizeof(unsigned long);
+	max_addr = KI_USER_SHARED_DATA + sizeof(kuser_shared_data);
+	for (i = 0; i < n; i++) {
+		addr = (unsigned long *)(driver + i);
+		if (*addr >= KI_USER_SHARED_DATA && *addr < max_addr) {
+			*addr -= KI_USER_SHARED_DATA;
+			*addr += (unsigned long)&kuser_shared_data;
+		}
+	}
+}
+
 int load_pe_images(struct pe_image *pe_image, int n)
 {
 	int i;
@@ -549,6 +565,10 @@ int load_pe_images(struct pe_image *pe_image, int n)
 			DBGTRACE1("fixup imports failed");
 			return -EINVAL;
 		}
+#ifdef INPROCOMM_AMD64
+		change_user_shared_data_addr(pe_image[i].image,
+					     pe_image[i].size);
+#endif
 		flush_icache_range(pe->image, pe->size);
 
 		pe->entry =

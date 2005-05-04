@@ -59,6 +59,8 @@
 #define HIGH_PRIORITY		32
 #define MAXIMUM_PRIORITY	32
 
+#define PROCESSOR_FEATURE_MAX 64
+
 #ifdef CONFIG_X86_64
 #define STDCALL
 #define _FASTCALL
@@ -68,7 +70,11 @@
 #define FASTCALL_ARGS_1(arg1) arg1
 #define FASTCALL_ARGS_2(arg1,arg2) arg1, arg2
 #define FASTCALL_ARGS_3(arg1,arg2,arg3) arg1, arg2, arg3
+
+#define KI_USER_SHARED_DATA 0xfffff78000000000
+
 #else 
+
 #define STDCALL __attribute__((__stdcall__, regparm(0)))
 #define _FASTCALL __attribute__((__stdcall__)) __attribute__((regparm (3)))
 #define FASTCALL_DECL_1(decl1) int _dummy1_, int _dummy2_, decl1
@@ -77,6 +83,9 @@
 #define FASTCALL_ARGS_1(arg1) 0, 0, arg1
 #define FASTCALL_ARGS_2(arg1,arg2) 0, arg2, arg1
 #define FASTCALL_ARGS_3(arg1,arg2,arg3) 0, arg2, arg1, arg3
+
+#define KI_USER_SHARED_DATA 0xffdf0000
+
 #endif
 
 #define NOREGPARM __attribute__((regparm(0)))
@@ -98,6 +107,7 @@ typedef u32	ULONG;
 typedef s64	LONGLONG;
 typedef u64	ULONGLONG;
 typedef u64	ULONGULONG;
+typedef u64	ULONG64;
 
 typedef CHAR CCHAR;
 typedef SHORT wchar_t;
@@ -719,6 +729,61 @@ struct callback_object {
 	struct nt_list callback_funcs;
 	BOOLEAN allow_multiple_callbacks;
 	struct object_attributes *attributes;
+};
+
+struct ksystem_time {
+	ULONG low_part;
+	LONG high1_time;
+	LONG high2_time;
+};
+
+enum nt_product_type {
+	nt_product_win_nt = 1, nt_product_lan_man_nt, nt_product_server
+};
+
+enum alt_arch_type {
+	arch_type_standard, arch_type_nex98x86, end_alternatives
+};
+
+struct kuser_shared_data {
+	ULONG tick_count;
+	ULONG tick_count_multiplier;
+	volatile struct ksystem_time interrupt_time;
+	volatile struct ksystem_time system_time;
+	volatile struct ksystem_time time_zone_bias;
+	USHORT image_number_low;
+	USHORT image_number_high;
+	wchar_t nt_system_root[260];
+	ULONG max_stack_trace_depth;
+	ULONG crypto_exponent;
+	ULONG time_zone_id;
+	ULONG large_page_min;
+	ULONG reserved2[7];
+	enum nt_product_type nt_product_type;
+	BOOLEAN product_type_is_valid;
+	ULONG nt_major_version;
+	ULONG nt_minor_version;
+	BOOLEAN processor_features[PROCESSOR_FEATURE_MAX];
+	ULONG reserved1;
+	ULONG reserved3;
+	volatile LONG time_slip;
+	enum alt_arch_type alt_arch_type;
+	LARGE_INTEGER system_expiration_date;
+	ULONG suite_mask;
+	BOOLEAN kdbg_enabled;
+	volatile ULONG active_console;
+	volatile ULONG dismount_count;
+	ULONG com_plus_package;
+	ULONG last_system_rite_event_tick_count;
+	ULONG num_phys_pages;
+	BOOLEAN safe_boot_mode;
+	ULONG trace_log;
+	ULONGLONG fill0;
+	ULONGLONG sys_call[4];
+	union {
+		volatile struct ksystem_time tick_count;
+		volatile ULONG64 tick_count_quad;
+	} tick;
 };
 
 /* some of the functions below are slightly different from DDK's

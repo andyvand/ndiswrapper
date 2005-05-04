@@ -12,6 +12,7 @@
  *  GNU General Public License for more details.
  *
  */
+
 #include <linux/types.h>
 #include <linux/module.h>
 #include <linux/delay.h>
@@ -25,15 +26,29 @@
 static struct list_head wrap_allocs;
 static KSPIN_LOCK wrap_allocs_lock;
 static struct nt_list wrapper_timer_list;
+static struct timer_list shared_data_timer;
 
 extern KSPIN_LOCK ntoskernel_lock;
 extern struct work_struct kdpc_work;
+
+struct kuser_shared_data kuser_shared_data;
+static void update_user_shared_data_proc(unsigned long data);
 
 int misc_funcs_init(void)
 {
 	INIT_LIST_HEAD(&wrap_allocs);
 	kspin_lock_init(&wrap_allocs_lock);
 	InitializeListHead(&wrapper_timer_list);
+
+	memset(&kuser_shared_data, 0, sizeof(kuser_shared_data));
+	kuser_shared_data.system_time.low_part = ticks_1601();
+	init_timer(&shared_data_timer);
+	shared_data_timer.function = &update_user_shared_data_proc;
+#ifdef INPROCOMM_AMD64
+	shared_data_timer.data = (unsigned long)0;
+	shared_data_timer.expires = jiffies + 10 * HZ / 1000;
+	add_timer(&shared_data_timer);
+#endif
 	return 0;
 }
 
@@ -99,7 +114,22 @@ void misc_funcs_exit(void)
 	}
 	kspin_unlock_irql(&wrap_allocs_lock, irql);
 
+#ifdef INPROCOMM_AMD64
+	del_timer_sync(&shared_data_timer);
+#endif
+
 	TRACEEXIT4(return);
+}
+
+static void update_user_shared_data_proc(unsigned long data)
+{
+	LARGE_INTEGER *system_time = 
+		(LARGE_INTEGER *)&kuser_shared_data.system_time.low_part;
+	/* timer is scheduled every 10ms and the system timer is in
+	 * 100ns */
+	*system_time += 100000;
+	shared_data_timer.expires = jiffies + 10 * HZ / 1000;
+	add_timer(&shared_data_timer);
 }
 
 /* allocate memory with given flags and add it to list of allocated pointers;
