@@ -488,6 +488,8 @@ unsigned long lin_to_win6(void *func, unsigned long, unsigned long,
 
 #define UNIMPL() ERROR("--UNIMPLEMENTED--")
 
+void adjust_user_shared_data_addr(char *driver, unsigned long length);
+
 static inline KIRQL current_irql(void)
 {
 	if (in_atomic() || irqs_disabled())
