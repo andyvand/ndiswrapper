@@ -44,7 +44,7 @@ int misc_funcs_init(void)
 	kuser_shared_data.system_time.low_part = ticks_1601();
 	init_timer(&shared_data_timer);
 	shared_data_timer.function = &update_user_shared_data_proc;
-#ifdef INPROCOMM_AMD64
+#if defined(CONFIG_X86_64) && defined(INPROCOMM_AMD64)
 	shared_data_timer.data = (unsigned long)0;
 	shared_data_timer.expires = jiffies + 10 * HZ / 1000;
 	add_timer(&shared_data_timer);
@@ -114,7 +114,7 @@ void misc_funcs_exit(void)
 	}
 	kspin_unlock_irql(&wrap_allocs_lock, irql);
 
-#ifdef INPROCOMM_AMD64
+#if defined(CONFIG_X86_64) && defined(INPROCOMM_AMD64)
 	del_timer_sync(&shared_data_timer);
 #endif
 
