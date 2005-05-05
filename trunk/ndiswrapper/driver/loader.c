@@ -972,6 +972,7 @@ static struct file_operations wrapper_fops = {
 
 static struct miscdevice wrapper_misc = {
 	.name   = DRIVER_NAME,
+	.minor	= MISC_DYNAMIC_MINOR,
 	.fops   = &wrapper_fops
 };
 

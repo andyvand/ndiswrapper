@@ -490,7 +490,7 @@ static int fix_pe_image(struct pe_image *pe)
 	return 0;
 }
 
-void change_user_shared_data_addr(char *driver, unsigned long length)
+void fix_user_shared_data_addr(char *driver, unsigned long length)
 {
 	unsigned long i, n, max_addr, *addr;
 
@@ -565,9 +565,9 @@ int load_pe_images(struct pe_image *pe_image, int n)
 			DBGTRACE1("fixup imports failed");
 			return -EINVAL;
 		}
-#ifdef INPROCOMM_AMD64
-		change_user_shared_data_addr(pe_image[i].image,
-					     pe_image[i].size);
+#if defined(CONFIG_X86_64) && defined(INPROCOMM_AMD64)
+		INFO("fixing KI_USER_SHARED_DATA address in the driver");
+		fix_user_shared_data_addr(pe_image[i].image, pe_image[i].size);
 #endif
 		flush_icache_range(pe->image, pe->size);
 
