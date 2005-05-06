@@ -597,7 +597,7 @@ STDCALL void WRAP_EXPORT(ExDeleteNPagedLookasideList)
 
 	TRACEENTER3("lookaside = %p", lookaside);
 	while ((entry = ExpInterlockedPopEntrySList(&lookaside->head)))
-		(lookaside->free_func)(entry);
+		ExFreePool(entry);
 
 	TRACEEXIT4(return);
 }
