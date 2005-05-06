@@ -152,7 +152,7 @@ STDCALL NDIS_STATUS WRAP_EXPORT(NdisMRegisterMiniport)
 	 struct miniport_char *miniport_char, UINT char_len)
 {
 	int i, min_length;
-	int *func;
+	unsigned long *func;
 	char *miniport_funcs[] = {
 		"query",
 		"reconfig",
