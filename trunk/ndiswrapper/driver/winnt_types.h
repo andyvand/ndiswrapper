@@ -360,7 +360,7 @@ struct device_object {
 	union {
 		struct usb_device *usb;
 	} device;
-	void *handle;
+	void *wd;
 };
 
 struct dev_obj_ext {
@@ -397,8 +397,9 @@ struct driver_object {
 };
 
 struct driver_extension {
-	struct drier_object *drv_obj;
-	void *add_device_func;
+	struct driver_object *drv_obj;
+	NTSTATUS (*add_device_func)(struct driver_object *drv_obj,
+				    struct device_object *dev_obj) STDCALL;
 	ULONG count;
 	struct unicode_string service_key_name;
 	struct nt_list custom_ext;

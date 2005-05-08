@@ -246,7 +246,7 @@ struct miniport_char {
 	/* Start miniport driver */
 	UINT (*init)(UINT *status, UINT *medium_index,
 		     enum ndis_medium medium[], UINT medium_array_size,
-		     void *ndis_handle, void *conf_handle) STDCALL;
+		     void *handle, void *conf_handle) STDCALL;
 
 	/* Interrupt TH */
 	ndis_isr_handler isr;
@@ -325,9 +325,9 @@ struct ndis_rw_lock {
     union ndis_rw_lock_refcount ref_count[MAXIMUM_PROCESSORS];
 };
 
-struct handle_ctx_entry {
+struct wd_ctx_entry {
 	struct list_head list;
-	void *handle;
+	void *wd;
 	void *ctx;
 };
 
@@ -364,7 +364,7 @@ enum ndis_work_entry_type {
 struct ndis_work_entry {
 	struct list_head list;
 	enum ndis_work_entry_type type;
-	struct ndis_handle *handle;
+	struct wrapper_dev *wd;
 	union {
 		struct ndis_sched_work_item *sched_work_item;
 		struct ndis_alloc_mem_work_item alloc_mem_work_item;
@@ -387,7 +387,7 @@ struct ndis_irq {
 	void *dpc;
 
 	struct kdpc intr_dpc;
-	struct ndis_handle *handle;
+	struct wrapper_dev *wd;
 	UCHAR dpc_count;
 	/* unsigned char filler1 is used for enabled */
 	UCHAR enabled;
@@ -447,7 +447,7 @@ struct ndis_driver {
 	struct miniport_char miniport;
 };
 
-struct ndis_handle;
+struct wrapper_dev;
 
 struct ndis_device {
 	struct list_head settings;
@@ -459,7 +459,7 @@ struct ndis_device {
 
 	struct ndis_driver *ndis_driver;
 	char driver_name[MAX_DRIVER_NAME_LEN];
-	struct ndis_handle *handle;
+	struct wrapper_dev *wd;
 	char conf_file_name[MAX_DRIVER_NAME_LEN];
 };
 
@@ -566,7 +566,7 @@ struct ndis_miniport_timer {
 	struct kdpc kdpc;
 	void *timer_func;
 	void *timer_ctx;
-	struct ndis_handle *handle;
+	struct wrapper_dev *wd;
 	struct ndis_miniport_timer *next;
 };
 
@@ -622,6 +622,9 @@ struct ndis_resource_list {
 	struct ndis_resource_entry list[0];
 };
 
+/* number of resources to be allocated by NdisMPciAssignResources */
+#define MAX_NDIS_PCI_RESOURCES 20
+
 struct ndis_event {
 	struct kevent kevent;
 };
@@ -636,6 +639,8 @@ struct ndis_reference {
 	USHORT ref_count;
 	BOOLEAN closing;
 };
+
+struct ndis_miniport_block;
 
 struct ndis_miniport_interrupt {
 	void *object;
@@ -669,18 +674,13 @@ enum ndis_interface_type {
 };
 
 /*
- * This is the per device struct. One per PCI-device exists.
- *
  * This struct contains function pointers that the drivers references
  * directly via macros, so it's important that they are at the correct
- * position hence the paddings.
+ * position.
  */
-/* This is called NDIS_MINIPORT_BLOCK in NDIS; however, when using it
- * in Ndis functions, it is passed as void *handle. To avoid
- * unnecessary typecasting, we declare it as ndis_handle */
-struct ndis_handle {
+struct ndis_miniport_block {
 	void *signature;
-	struct ndis_handle *next;
+	struct ndis_miniport_block *next;
 	struct driver_object *drv_obj;
 	void *adapter_ctx;
 	struct unicode_string name;
@@ -702,7 +702,7 @@ struct ndis_handle {
 	struct ndis_packet *return_packet_queue;
 	ULONG request_buffer;
 	void *set_mcast_buffer;
-	struct ndis_handle *primary_miniport;
+	struct ndis_miniport_block *primary_miniport;
 	void *wrapper_ctx;
 	void *bus_data_ctx;
 	ULONG pnp_capa;
@@ -725,9 +725,9 @@ struct ndis_handle {
 	ULONG bus_number;
 	enum ndis_interface_type bus_type;
 	enum ndis_interface_type adapter_type;
-	struct device_object *device_obj;
-	struct device_object *phys_dev_obj;
-	struct device_object *next_dev_obj;
+	struct device_object *fdo;
+	struct device_object *pdo;
+	struct device_object *next_device;
 	void *mapreg;
 	void *call_mgraflist;
 	void *miniport_thread;
@@ -766,18 +766,14 @@ struct ndis_handle {
 	void *wan_tx_complete;
 	void *wan_rx;
 	void *wan_rx_complete;
+	/* ndiswrapper specific */
+	struct wrapper_dev *wd;
+};
 
-	/* the rest are ndiswrapper specific */
-
-	/* keep a barrier in cases of over-stepping */
-	char barrier[200];
-
+struct wrapper_dev {
+	struct ndis_miniport_block *nmb;
 	struct ndis_driver *driver;
-	union {
-		struct pci_dev *pci;
-		struct usb_device *usb;
-		void *ptr;
-	} dev;
+	struct phys_dev dev;
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
 	struct usb_interface *intf;
 #endif
@@ -785,7 +781,6 @@ struct ndis_handle {
 	void *shutdown_ctx;
 
 	struct work_struct irq_work;
-
 	struct ndis_irq *ndis_irq;
 	unsigned long mem_start;
 	unsigned long mem_end;
@@ -793,7 +788,7 @@ struct ndis_handle {
 	struct net_device_stats stats;
 	struct iw_statistics wireless_stats;
 	struct ndis_wireless_stats ndis_stats;
-	struct ndis_device *device;
+	struct ndis_device *ndis_device;
 
 	struct work_struct xmit_work;
 	struct ndis_packet *xmit_ring[XMIT_RING_SIZE];
@@ -878,21 +873,21 @@ struct ndis_pmkid_candidate_list
 
 struct ndis_packet *allocate_ndis_packet(void);
 void free_ndis_packet(struct ndis_packet *packet);
-STDCALL void NdisMIndicateReceivePacket(struct ndis_handle *handle,
+STDCALL void NdisMIndicateReceivePacket(struct ndis_miniport_block *nmb,
 					struct ndis_packet **packets,
 					UINT nr_packets);
-STDCALL void NdisMSendComplete(struct ndis_handle *handle,
+STDCALL void NdisMSendComplete(struct ndis_miniport_block *nmb,
 			       struct ndis_packet *packet, NDIS_STATUS status);
-STDCALL void NdisMSendResourcesAvailable(struct ndis_handle *handle);
-STDCALL void NdisMIndicateStatus(struct ndis_handle *handle,
+STDCALL void NdisMSendResourcesAvailable(struct ndis_miniport_block *nmb);
+STDCALL void NdisMIndicateStatus(struct ndis_miniport_block *nmb,
 				 NDIS_STATUS status, void *buf, UINT len);
-STDCALL void NdisMIndicateStatusComplete(struct ndis_handle *handle);
-STDCALL void NdisMQueryInformationComplete(struct ndis_handle *handle,
+STDCALL void NdisMIndicateStatusComplete(struct ndis_miniport_block *nmb);
+STDCALL void NdisMQueryInformationComplete(struct ndis_miniport_block *nmb,
 					   NDIS_STATUS status);
-STDCALL void NdisMSetInformationComplete(struct ndis_handle *handle,
+STDCALL void NdisMSetInformationComplete(struct ndis_miniport_block *nmb,
 					 NDIS_STATUS status);
-STDCALL void NdisMResetComplete(struct ndis_handle *handle, NDIS_STATUS status,
-				BOOLEAN address_reset);
+STDCALL void NdisMResetComplete(struct ndis_miniport_block *nmb,
+				NDIS_STATUS status, BOOLEAN address_reset);
 STDCALL ULONG NDIS_BUFFER_TO_SPAN_PAGES(ndis_buffer *buffer);
 STDCALL BOOLEAN NdisWaitEvent(struct ndis_event *event, UINT timeout);
 STDCALL void NdisSetEvent(struct ndis_event *event);
@@ -901,18 +896,18 @@ STDCALL void EthRxIndicateHandler(void *adapter_ctx, void *rx_ctx,
 				  char *header1, char *header,
 				  UINT header_size, void *look_ahead,
 				  UINT look_ahead_size, UINT packet_size);
-STDCALL void EthRxComplete(struct ndis_handle *handle);
-STDCALL void NdisMTransferDataComplete(struct ndis_handle *handle,
+STDCALL void EthRxComplete(struct ndis_miniport_block *nmb);
+STDCALL void NdisMTransferDataComplete(struct ndis_miniport_block *nmb,
 				       struct ndis_packet *packet,
 				       NDIS_STATUS status, UINT bytes_txed);
 STDCALL void NdisWriteConfiguration(NDIS_STATUS *status,
-				    struct ndis_handle *handle,
+				    struct ndis_miniport_block *nmb,
 				    struct unicode_string *key,
 				    struct ndis_config_param *val);
 
 void *get_sp(void);
 int ndis_init(void);
-void ndis_exit_handle(struct ndis_handle *handle);
+void ndis_exit_device(struct wrapper_dev *wd);
 void ndis_exit(void);
 
 int usb_init(void);
@@ -922,12 +917,12 @@ void usb_cleanup(void);
 int load_pe_images(struct pe_image[], int n);
 
 int ndiswrapper_procfs_init(void);
-int ndiswrapper_procfs_add_iface(struct ndis_handle *handle);
-void ndiswrapper_procfs_remove_iface(struct ndis_handle *handle);
+int ndiswrapper_procfs_add_iface(struct wrapper_dev *wd);
+void ndiswrapper_procfs_remove_iface(struct wrapper_dev *wd);
 void ndiswrapper_procfs_remove(void);
 
 int misc_funcs_init(void);
-void misc_funcs_exit_handle(struct ndis_handle *handle);
+void misc_funcs_exit_device(struct wrapper_dev *wd);
 void misc_funcs_exit(void);
 
 void packet_recycler(void *param);

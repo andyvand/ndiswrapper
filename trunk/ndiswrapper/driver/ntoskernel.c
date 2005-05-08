@@ -32,6 +32,12 @@ struct wrap_mdl {
 	char mdl[CACHE_MDL_SIZE];
 };
 
+struct bus_driver {
+	struct nt_list list;
+	char name[MAX_DRIVER_NAME_LEN];
+	struct driver_object *drv_obj;
+};
+
 /* everything here is for all drivers/devices - not per driver/device */
 static KSPIN_LOCK kevent_lock;
 KSPIN_LOCK irp_cancel_lock;
@@ -46,7 +52,14 @@ static void kdpc_worker(void *data);
 
 static struct nt_list callback_objects;
 
+static struct nt_list bus_driver_list;
+static struct driver_object pci_bus_driver;
+static struct driver_object usb_bus_driver;
+static void del_bus_drivers(void);
+
 WRAP_EXPORT_MAP("KeTickCount", &jiffies);
+
+static int add_bus_driver(struct driver_object *drv_obj, const char *name);
 
 int ntoskernel_init(void)
 {
@@ -57,7 +70,13 @@ int ntoskernel_init(void)
 	InitializeListHead(&wrap_mdl_list);
 	InitializeListHead(&kdpc_list);
 	InitializeListHead(&callback_objects);
+	InitializeListHead(&bus_driver_list);
 	INIT_WORK(&kdpc_work, &kdpc_worker, NULL);
+	if (add_bus_driver(&pci_bus_driver, "PCI") ||
+	    add_bus_driver(&usb_bus_driver, "USB")) {
+		ntoskernel_exit();
+		return -ENOMEM;
+	}
 	mdl_cache = kmem_cache_create("ndis_mdl", sizeof(struct wrap_mdl),
 				      0, 0, NULL, NULL);
 	if (!mdl_cache) {
@@ -72,6 +91,7 @@ void ntoskernel_exit(void)
 	struct nt_list *cur;
 	KIRQL irql;
 
+	del_bus_drivers();
 	if (mdl_cache) {
 		irql = kspin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL);
 		if (!IsListEmpty(&wrap_mdl_list)) {
@@ -106,6 +126,79 @@ void ntoskernel_exit(void)
 	}
 	kspin_unlock_irql(&ntoskernel_lock, irql);
 	return;
+}
+
+static int add_bus_driver(struct driver_object *drv_obj, const char *name)
+{
+	struct bus_driver *bus_driver;
+
+	bus_driver = kmalloc(sizeof(*bus_driver), GFP_KERNEL);
+	if (!bus_driver) {
+		ERROR("couldn't allocate memory");
+		return -ENOMEM;
+	}
+	memset(bus_driver, 0, sizeof(*bus_driver));
+	strncpy(bus_driver->name, name, sizeof(bus_driver->name));
+	InsertTailList(&bus_driver_list, &bus_driver->list);
+	bus_driver->drv_obj = drv_obj;
+	return 0;
+}
+
+static void del_bus_drivers(void)
+{
+	struct nt_list *ent;
+	while ((ent = RemoveHeadList(&bus_driver_list))) {
+		struct bus_driver *bus_driver;
+		bus_driver = container_of(ent, struct bus_driver, list);
+		/* TODO: make sure all all drivers are shutdown/removed */
+		kfree(bus_driver);
+	}
+}
+
+struct driver_object *find_bus_driver(const char *name)
+{
+	struct nt_list *ent;
+	nt_list_for_each(ent, &bus_driver_list) {
+		struct bus_driver *bus_driver;
+		bus_driver = container_of(ent, struct bus_driver, list);
+		if (strcmp(bus_driver->name, name) == 0)
+			return bus_driver->drv_obj;
+	}
+	return NULL;
+}
+
+static struct device_object *find_pdo(struct driver_object *drv_obj,
+				      struct phys_dev *dev)
+{
+	struct device_object *pdo;
+
+	pdo = drv_obj->dev_obj;
+	while (pdo && pdo->dev_ext != dev)
+		pdo = pdo->next;
+	return pdo;
+}
+
+struct device_object *alloc_pdo(struct driver_object *drv_obj,
+				struct phys_dev *dev)
+{
+	struct device_object *pdo;
+	NTSTATUS res ;
+
+	res = IoCreateDevice(drv_obj, 0, NULL, FILE_DEVICE_UNKNOWN,
+			     0, FALSE, &pdo);
+	DBGTRACE2("%d, %p", res, pdo);
+	if (res != STATUS_SUCCESS)
+		return NULL;
+	pdo->dev_ext = dev;
+	return pdo;
+}
+
+void free_pdo(struct driver_object *drv_obj, struct phys_dev *dev)
+{
+	struct device_object *pdo;
+
+	pdo = find_pdo(drv_obj, dev);
+	IoDeleteDevice(pdo);
 }
 
 _FASTCALL struct nt_list *WRAP_EXPORT(ExfInterlockedInsertHeadList)
@@ -404,57 +497,59 @@ STDCALL BOOLEAN WRAP_EXPORT(KeCancelTimer)
 	return canceled;
 }
 
-STDCALL KIRQL WRAP_EXPORT(KeGetCurrentIrql)
-	(void)
-{
-	return current_irql();
-}
-
 STDCALL void WRAP_EXPORT(KeInitializeSpinLock)
 	(KSPIN_LOCK *lock)
 {
+	TRACEENTER6("%p", lock);
 	kspin_lock_init(lock);
 }
 
 STDCALL void WRAP_EXPORT(KeAcquireSpinLock)
 	(KSPIN_LOCK *lock, KIRQL *irql)
 {
+	TRACEENTER6("%p", lock);
 	*irql = kspin_lock_irql(lock, DISPATCH_LEVEL);
 }
 
 STDCALL void WRAP_EXPORT(KeReleaseSpinLock)
 	(KSPIN_LOCK *lock, KIRQL oldirql)
 {
+	TRACEENTER6("%p", lock);
 	kspin_unlock_irql(lock, oldirql);
 }
 
 STDCALL void WRAP_EXPORT(KeAcquireSpinLockAtDpcLevel)
 	(KSPIN_LOCK *lock)
 {
+	TRACEENTER6("%p", lock);
 	kspin_lock(lock);
 }
 
 STDCALL void WRAP_EXPORT(KeRaiseIrql)
 	(KIRQL newirql, KIRQL *oldirql)
 {
+	TRACEENTER6("%d", newirql);
 	*oldirql = raise_irql(newirql);
 }
 
 STDCALL void WRAP_EXPORT(KeLowerIrql)
 	(KIRQL irql)
 {
+	TRACEENTER6("%d", irql);
 	lower_irql(irql);
 }
 
 STDCALL KIRQL WRAP_EXPORT(KeAcquireSpinLockRaiseToDpc)
         (KSPIN_LOCK *lock)
 {
+	TRACEENTER6("%p", lock);
 	return kspin_lock_irql(lock, DISPATCH_LEVEL);
 }
 
 STDCALL void WRAP_EXPORT(KeReleaseSpinLockFromDpcLevel)
 	(KSPIN_LOCK *lock)
 {
+	TRACEENTER6("%p", lock);
 	kspin_unlock(lock);
 }
 
@@ -668,6 +763,7 @@ STDCALL void WRAP_EXPORT(ExUnregisterCallback)
 	struct callback_object *object;
 	KIRQL irql;
 
+	TRACEENTER3("%p", callback);
 	if (!callback)
 		return;
 	object = callback->object;
@@ -684,6 +780,7 @@ STDCALL void WRAP_EXPORT(ExNotifyCallback)
 	struct callback_func *callback;
 	KIRQL irql;
 
+	TRACEENTER3("%p", object);
 	irql = kspin_lock_irql(&object->lock, DISPATCH_LEVEL);
 	nt_list_for_each(cur, &object->callback_funcs){
 		callback = container_of(cur, struct callback_func, list);
@@ -697,12 +794,15 @@ STDCALL void WRAP_EXPORT(KeInitializeEvent)
 	(struct kevent *kevent, enum event_type type, BOOLEAN state)
 {
 	TRACEENTER3("event = %p, type = %d, state = %d", kevent, type, state);
+	DBGTRACE2("");
 	kevent->dh.type = type;
 	if (state == TRUE)
 		kevent->dh.signal_state = 1;
 	else
 		kevent->dh.signal_state = 0;
+	DBGTRACE2("");
 	InitializeListHead(&kevent->dh.wait_list);
+	TRACEEXIT3(return);
 }
 
 /* this function should be called holding kevent_lock spinlock at
@@ -783,6 +883,7 @@ STDCALL LONG WRAP_EXPORT(KeResetEvent)
 STDCALL void WRAP_EXPORT(KeInitializeMutex)
 	(struct kmutex *kmutex, BOOLEAN wait)
 {
+	TRACEENTER3("%p", kmutex);
 	memset(kmutex, 0, sizeof(*kmutex));
 	kmutex->dh.type = SynchronizationEvent;
 	kmutex->dh.size = sizeof(*kmutex);
@@ -801,6 +902,7 @@ STDCALL LONG WRAP_EXPORT(KeReleaseMutex)
 	LONG ret;
 	KIRQL irql;
 
+	TRACEENTER5("%p", kmutex);
 	irql = kspin_lock_irql(&kevent_lock, DISPATCH_LEVEL);
 	ret = kmutex->dh.signal_state++;
 	if (kmutex->dh.signal_state > 0) {
@@ -815,6 +917,7 @@ STDCALL LONG WRAP_EXPORT(KeReleaseMutex)
 STDCALL void WRAP_EXPORT(KeInitializeSemaphore)
 	(struct ksemaphore *ksemaphore, LONG count, LONG limit)
 {
+	TRACEENTER3("%p", ksemaphore);
 	memset(ksemaphore, 0, sizeof(*ksemaphore));
 	/* if limit > 1, we need to satisfy as many waits (until count
 	 * becomes 0); so we set it as notification event, and keep
@@ -833,6 +936,7 @@ STDCALL LONG WRAP_EXPORT(KeReleaseSemaphore)
 	LONG ret;
 	KIRQL irql;
 
+	TRACEENTER5("%p", ksemaphore);
 	irql = kspin_lock_irql(&kevent_lock, DISPATCH_LEVEL);
 	ret = ksemaphore->dh.signal_state;
 	ksemaphore->dh.signal_state += adjustment;
@@ -1145,19 +1249,19 @@ STDCALL BOOLEAN WRAP_EXPORT(KeRemoveEntryDeviceQueue)
 }
 
 STDCALL NTSTATUS WRAP_EXPORT(IoGetDeviceProperty)
-	(struct device_object *dev_obj,
+	(struct device_object *pdo,
 	 enum device_registry_property dev_property,
 	 ULONG buffer_len, void *buffer, ULONG *result_len)
 {
 	struct ansi_string ansi;
 	struct unicode_string unicode;
-	struct ndis_handle *handle;
+	struct wrapper_dev *wd;
 	char buf[32];
 
-	handle = (struct ndis_handle *)dev_obj->handle;
+	wd = (struct wrapper_dev *)pdo->wd;
 
 	TRACEENTER1("dev_obj = %p, dev_property = %d, buffer_len = %u, "
-		"buffer = %p, result_len = %p", dev_obj, dev_property,
+		"buffer = %p, result_len = %p", pdo, dev_property,
 		buffer_len, buffer, result_len);
 
 	switch (dev_property) {
@@ -1175,7 +1279,7 @@ STDCALL NTSTATUS WRAP_EXPORT(IoGetDeviceProperty)
 	case DevicePropertyFriendlyName:
 		if (buffer_len > 0 && buffer) {
 			ansi.len = snprintf(buf, sizeof(buf), "%d",
-					    handle->dev.usb->devnum);
+					    wd->dev.usb->devnum);
 			ansi.buf = buf;
 			ansi.len = strlen(ansi.buf);
 			if (ansi.len <= 0) {
@@ -1196,14 +1300,14 @@ STDCALL NTSTATUS WRAP_EXPORT(IoGetDeviceProperty)
 			}
 		} else {
 			ansi.len = snprintf(buf, sizeof(buf), "%d",
-					    handle->dev.usb->devnum);
+					    wd->dev.usb->devnum);
 			*result_len = 2 * (ansi.len + 1);
 			TRACEEXIT1(return STATUS_BUFFER_TOO_SMALL);
 		}
 		break;
 
 	case DevicePropertyDriverKeyName:
-//		ansi.buf = handle->driver->name;
+//		ansi.buf = wd->driver->name;
 		ansi.buf = buf;
 		ansi.len = strlen(ansi.buf);
 		ansi.buflen = ansi.len;
@@ -2035,6 +2139,7 @@ STDCALL NTSTATUS WRAP_EXPORT(IoAllocateDriverObjectExtension)
 	struct custom_ext *ce;
 	KIRQL irql;
 
+	TRACEENTER2("%p, %p", drv_obj, client_id);
 	ce = kmalloc(sizeof(*ce) + extlen, GFP_ATOMIC);
 	if (ce == NULL)
 		return STATUS_INSUFFICIENT_RESOURCES;
@@ -2047,7 +2152,7 @@ STDCALL NTSTATUS WRAP_EXPORT(IoAllocateDriverObjectExtension)
 
 	*ext = (void *)ce + sizeof(*ce);
 	TRACEENTER1("ext: %p", *ext);
-	return STATUS_SUCCESS;
+	TRACEEXIT2(return STATUS_SUCCESS);
 }
 
 STDCALL void *WRAP_EXPORT(IoGetDriverObjectExtension)
@@ -2071,7 +2176,7 @@ STDCALL void *WRAP_EXPORT(IoGetDriverObjectExtension)
 	}
 	kspin_unlock_irql(&ntoskernel_lock, irql);
 	DBGTRACE2("ret: %p", ret);
-	return ret;
+	TRACEEXIT2(return ret);
 }
 
 void free_custom_ext(struct driver_extension *drv_ext)
@@ -2079,11 +2184,179 @@ void free_custom_ext(struct driver_extension *drv_ext)
 	struct nt_list *head, *ent;
 	KIRQL irql;
 
+	TRACEENTER2("%p", drv_ext);
 	head = &drv_ext->custom_ext;
 	irql = kspin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL);
 	while ((ent = RemoveHeadList(head)))
 		kfree(ent);
 	kspin_unlock_irql(&ntoskernel_lock, irql);
+	TRACEEXIT2(return);
+}
+
+
+STDCALL NTSTATUS WRAP_EXPORT(IoCreateDevice)
+	(struct driver_object *drv_obj, ULONG dev_ext_length,
+	 struct unicode_string *dev_name, DEVICE_TYPE dev_type,
+	 ULONG dev_chars, BOOLEAN exclusive, struct device_object **newdev)
+{
+	struct device_object *dev;
+
+	TRACEENTER2("%p", drv_obj);
+	dev = kmalloc(sizeof(*dev), GFP_KERNEL);
+	if (!dev)
+		TRACEEXIT2(return STATUS_INSUFFICIENT_RESOURCES);
+	memset(dev, 0, sizeof(*dev));
+	dev->type = dev_type;
+	dev->drv_obj = drv_obj;
+	dev->flags = 0;
+	if (dev_ext_length) {
+		dev->dev_ext = kmalloc(dev_ext_length, GFP_KERNEL);
+		if (!dev->dev_ext) {
+			kfree(dev);
+			TRACEEXIT2(return STATUS_INSUFFICIENT_RESOURCES);
+		}
+	} else
+		dev->dev_ext = NULL;
+	dev->size = sizeof(*dev) + dev_ext_length;
+	dev->ref_count = 1;
+	dev->attached = NULL;
+	dev->next = NULL;
+	dev->type = dev_type;
+	dev->stack_size = 1;
+	dev->align_req = 1;
+	dev->characteristics = dev_chars;
+	dev->io_timer = NULL;
+	KeInitializeEvent(&dev->lock, SynchronizationEvent, TRUE);
+	dev->vpb = NULL;
+	dev->dev_obj_ext = kmalloc(sizeof(*(dev->dev_obj_ext)), GFP_KERNEL);
+	if (!dev->dev_obj_ext) {
+		if (dev->dev_ext)
+			kfree(dev->dev_ext);
+		kfree(dev);
+		TRACEEXIT2(return STATUS_INSUFFICIENT_RESOURCES);
+	}
+	dev->dev_obj_ext->type = 0;
+	dev->dev_obj_ext->size = sizeof(*dev->dev_obj_ext);
+	dev->dev_obj_ext->dev_obj = dev;
+	drv_obj->dev_obj = dev;
+	if (drv_obj->dev_obj)
+		dev->next = drv_obj->dev_obj;
+	else
+		dev->next = NULL;
+	DBGTRACE2("%p", dev);
+	*newdev = dev;
+	TRACEEXIT2(return STATUS_SUCCESS);
+}
+
+STDCALL void WRAP_EXPORT(IoDeleteDevice)
+	(struct device_object *dev)
+{
+	struct device_object *prev;
+
+	TRACEENTER2("%p", dev);
+	if (dev == NULL)
+		TRACEEXIT2(return);
+	if (dev->dev_obj_ext)
+		kfree(dev->dev_obj_ext);
+	if (dev->dev_ext)
+		kfree(dev->dev_ext);
+	prev = dev->drv_obj->dev_obj;
+	if (prev == dev)
+		dev->drv_obj->dev_obj = dev->next;
+	else {
+		while (prev->next != dev)
+			prev = prev->next;
+		prev->next = dev->next;
+	}
+	kfree(dev);
+	TRACEEXIT2(return);
+}
+
+STDCALL struct device_object *WRAP_EXPORT(IoGetAttachedDevice)
+	(struct device_object *dev)
+{
+	struct device_object *d;
+
+	TRACEENTER2("%p", dev);
+	if (!dev)
+		TRACEEXIT2(return NULL);
+	for (d = dev; d->attached; d = d->attached)
+		;
+
+	TRACEEXIT2(return d);
+}
+
+STDCALL struct device_object *WRAP_EXPORT(IoAttachDeviceToDeviceStack)
+	(struct device_object *src, struct device_object *dst)
+{
+	struct device_object *attached;
+
+	TRACEENTER2("%p, %p", src, dst);
+	attached = IoGetAttachedDevice(dst);
+	DBGTRACE3("%p", attached);
+	if (attached)
+		attached->attached = src;
+	src->attached = NULL;
+	src->stack_size = attached->stack_size + 1;
+	TRACEEXIT2(return attached);
+}
+
+STDCALL void WRAP_EXPORT(IoDetachDevice)
+	(struct device_object *topdev)
+{
+	struct device_object *tail;
+
+	TRACEENTER2("%p", topdev);
+	tail = topdev->attached;
+	if (!tail)
+		TRACEEXIT2(return);
+	topdev->attached = tail->attached;
+	topdev->ref_count--;
+
+	tail = topdev->attached;
+	while (tail) {
+		tail->stack_size--;
+		tail = tail->attached;
+	}
+
+	TRACEEXIT2(return);
+}
+
+STDCALL NTSTATUS ndis_add_device(struct driver_object *drv_obj,
+				 struct device_object *pdo)
+{
+	struct device_object *fdo;
+	struct ndis_miniport_block *nmb;
+	NTSTATUS ret;
+
+	TRACEENTER2("%p, %p", drv_obj, pdo);
+	ret = IoCreateDevice(drv_obj, sizeof(*nmb), NULL,
+			     FILE_DEVICE_UNKNOWN, 0, FALSE, &fdo);
+	if (ret != STATUS_SUCCESS)
+		TRACEEXIT2(return ret);
+	nmb = fdo->dev_ext;
+	nmb->fdo = fdo;
+	nmb->pdo = pdo;
+	DBGTRACE2("nmb: %p, fdo: %p", nmb, nmb->fdo);
+	nmb->wd = (struct wrapper_dev *)pdo->wd;
+	nmb->wd->nmb = nmb;
+	nmb->next_device = IoAttachDeviceToDeviceStack(fdo, pdo);
+	KeInitializeSpinLock(&nmb->lock);
+	nmb->rx_packet = WRAP_FUNC_PTR(NdisMIndicateReceivePacket);
+	nmb->send_complete = WRAP_FUNC_PTR(NdisMSendComplete);
+	nmb->send_resource_avail =
+		WRAP_FUNC_PTR(NdisMSendResourcesAvailable);
+	nmb->status = WRAP_FUNC_PTR(NdisMIndicateStatus);
+	nmb->status_complete = WRAP_FUNC_PTR(NdisMIndicateStatusComplete);
+	nmb->query_complete = WRAP_FUNC_PTR(NdisMQueryInformationComplete);
+	nmb->set_complete = WRAP_FUNC_PTR(NdisMSetInformationComplete);
+	nmb->reset_complete = WRAP_FUNC_PTR(NdisMResetComplete);
+	nmb->eth_rx_indicate = WRAP_FUNC_PTR(EthRxIndicateHandler);
+	nmb->eth_rx_complete = WRAP_FUNC_PTR(EthRxComplete);
+	nmb->td_complete = WRAP_FUNC_PTR(NdisMTransferDataComplete);
+	nmb->wd->driver->miniport.adapter_shutdown = NULL;
+
+	TRACEEXIT2(return STATUS_SUCCESS);
 }
 
 STDCALL void WRAP_EXPORT(KeBugCheckEx)

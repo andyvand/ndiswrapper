@@ -53,7 +53,7 @@ int misc_funcs_init(void)
 }
 
 /* called when a handle is being removed */
-void misc_funcs_exit_handle(struct ndis_handle *handle)
+void misc_funcs_exit_device(struct wrapper_dev *wd)
 {
 	BOOLEAN canceled;
 	KIRQL irql;
@@ -64,16 +64,16 @@ void misc_funcs_exit_handle(struct ndis_handle *handle)
 		struct nt_list *ent;
 		struct wrapper_timer *wrapper_timer;
 
-		irql = kspin_lock_irql(&handle->timer_lock, DISPATCH_LEVEL);
-		ent = RemoveHeadList(&handle->wrapper_timer_list);
-		kspin_unlock_irql(&handle->timer_lock, irql);
+		irql = kspin_lock_irql(&wd->timer_lock, DISPATCH_LEVEL);
+		ent = RemoveHeadList(&wd->wrapper_timer_list);
+		kspin_unlock_irql(&wd->timer_lock, irql);
 		if (!ent)
 			break;
 		wrapper_timer = container_of(ent, struct wrapper_timer, list);
 		wrapper_cancel_timer(wrapper_timer, &canceled);
 		if (canceled == TRUE)
 			WARNING("Buggy Windows driver '%s' left a timer (%p)"
-				"running - fixed it", handle->driver->name,
+				"running - fixed it", wd->driver->name,
 				wrapper_timer->ktimer);
 		wrap_kfree(wrapper_timer);
 	}
@@ -231,7 +231,7 @@ void wrapper_timer_handler(unsigned long data)
 void wrapper_init_timer(struct ktimer *ktimer, void *handle, struct kdpc *kdpc)
 {
 	struct wrapper_timer *wrapper_timer;
-	struct ndis_handle *ndis_handle = (struct ndis_handle *)handle;
+	struct wrapper_dev *wd = (struct wrapper_dev *)handle;
 	KIRQL irql;
 
 	TRACEENTER5("%s", "");
@@ -256,12 +256,11 @@ void wrapper_init_timer(struct ktimer *ktimer, void *handle, struct kdpc *kdpc)
 	wrapper_timer->ktimer = ktimer;
 	ktimer->wrapper_timer = wrapper_timer;
 	kspin_lock_init(&wrapper_timer->lock);
-	if (ndis_handle) {
-		irql = kspin_lock_irql(&ndis_handle->timer_lock,
-				       DISPATCH_LEVEL);
-		InsertHeadList(&ndis_handle->wrapper_timer_list,
+	if (wd) {
+		irql = kspin_lock_irql(&wd->timer_lock, DISPATCH_LEVEL);
+		InsertHeadList(&wd->wrapper_timer_list,
 			       &wrapper_timer->list);
-		kspin_unlock_irql(&ndis_handle->timer_lock, irql);
+		kspin_unlock_irql(&wd->timer_lock, irql);
 	} else {
 		irql = kspin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL);
 		InsertHeadList(&wrapper_timer_list, &wrapper_timer->list);
@@ -930,13 +929,10 @@ STDCALL NTSTATUS WRAP_EXPORT(RtlIntegerToUnicodeString)
 }
 
 STDCALL void WRAP_EXPORT(RtlInitUnicodeString)
-	(struct unicode_string *dest, wchar_t *src)
+	(struct unicode_string *dest, const wchar_t *src)
 {
-	struct unicode_string *uc;
-
 	TRACEENTER1("%s", "");
-	uc = dest;
-	if (uc == NULL)
+	if (dest == NULL)
 		TRACEEXIT1(return);
 	if (src == NULL) {
 		dest->len = dest->buflen = 0;
@@ -945,7 +941,7 @@ STDCALL void WRAP_EXPORT(RtlInitUnicodeString)
 		int i = 0;
 		while (src[i])
 			i++;
-		dest->buf = src;
+		dest->buf = (wchar_t *)src;
 		dest->len = dest->buflen = i * 2;
 	}
 	TRACEEXIT1(return);

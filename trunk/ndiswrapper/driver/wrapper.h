@@ -18,31 +18,31 @@
 
 #include "ndis.h"
 
-NDIS_STATUS miniport_reset(struct ndis_handle *handle);
-NDIS_STATUS miniport_query_info_needed(struct ndis_handle *handle,
+NDIS_STATUS miniport_reset(struct wrapper_dev *wd);
+NDIS_STATUS miniport_query_info_needed(struct wrapper_dev *wd,
 				       ndis_oid oid, void *buf,
 				       ULONG bufsize, ULONG *needed);
-NDIS_STATUS miniport_query_info(struct ndis_handle *handle, ndis_oid oid,
+NDIS_STATUS miniport_query_info(struct wrapper_dev *wd, ndis_oid oid,
 				void *buf, ULONG bufsize);
-NDIS_STATUS miniport_set_info(struct ndis_handle *handle, ndis_oid oid,
+NDIS_STATUS miniport_set_info(struct wrapper_dev *wd, ndis_oid oid,
 			      void *buf, ULONG bufsize);
-NDIS_STATUS miniport_query_int(struct ndis_handle *handle, ndis_oid oid,
+NDIS_STATUS miniport_query_int(struct wrapper_dev *wd, ndis_oid oid,
 			       void *data);
-NDIS_STATUS miniport_set_int(struct ndis_handle *handle, ndis_oid oid,
+NDIS_STATUS miniport_set_int(struct wrapper_dev *wd, ndis_oid oid,
 			     ULONG data);
-NDIS_STATUS miniport_init(struct ndis_handle *handle);
-void miniport_halt(struct ndis_handle *handle);
-void hangcheck_add(struct ndis_handle *handle);
-void hangcheck_del(struct ndis_handle *handle);
-void sendpacket_done(struct ndis_handle *handle, struct ndis_packet *packet);
+NDIS_STATUS miniport_init(struct wrapper_dev *wd);
+void miniport_halt(struct wrapper_dev *wd);
+void hangcheck_add(struct wrapper_dev *wd);
+void hangcheck_del(struct wrapper_dev *wd);
+void sendpacket_done(struct wrapper_dev *wd, struct ndis_packet *packet);
 int ndiswrapper_suspend_pci(struct pci_dev *pdev, u32 state);
 int ndiswrapper_resume_pci(struct pci_dev *pdev);
 
-void ndiswrapper_remove_one_dev(struct ndis_handle *handle);
-int ndis_reinit(struct ndis_handle *handle);
-int setup_dev(struct net_device *dev);
+void ndiswrapper_remove_device(struct wrapper_dev *wd);
+int ndis_reinit(struct wrapper_dev *wd);
+int setup_device(struct net_device *dev);
 
-struct net_device *ndis_init_netdev(struct ndis_handle **phandle,
+struct net_device *ndis_init_netdev(struct wrapper_dev **pwd,
 				    struct ndis_device *device,
 				    struct ndis_driver *driver);
 
