@@ -20,6 +20,7 @@
 #include <string.h>
 #include <linux/types.h>
 #include <asm/errno.h>
+#include <asm/pgtable.h>
 
 #else
 
@@ -434,6 +435,7 @@ static int fix_pe_image(struct pe_image *pe)
 #error x86_64 should have either PAGE_KERNEL_EXECUTABLE or PAGE_KERNEL_EXEC
 #endif
 #else
+#ifdef cpu_has_nx
 	/* hate to play with kernel macros, but PAGE_KERNEL_EXEC is
 	 * not available to modules! */
 	if (cpu_has_nx)
@@ -441,6 +443,9 @@ static int fix_pe_image(struct pe_image *pe)
 				  __pgprot(__PAGE_KERNEL & ~_PAGE_NX));
 	else
 		image = vmalloc(image_size);
+#else
+		image = vmalloc(image_size);
+#endif
 #endif
 	if (image == NULL) {
 		ERROR("failed to allocate enough space for new image:"

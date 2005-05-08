@@ -49,6 +49,8 @@
 #define CONFIG_USB 1
 #endif
 
+#define USB_DEBUG 1
+
 #define addr_offset(drvr) (__builtin_return_address(0) - \
 			     (drvr)->drv_obj->driver_start)
 
@@ -374,8 +376,18 @@ struct wrapper_timer {
 
 typedef struct mdl ndis_buffer;
 
+struct phys_dev {
+	int dev_type;
+	struct pci_dev *pci;
+	struct usb_device *usb;
+};
+
 int ntoskernel_init(void);
 void ntoskernel_exit(void);
+struct driver_object *find_bus_driver(const char *name);
+struct device_object *alloc_pdo(struct driver_object *drv_obj,
+				struct phys_dev *dev);
+
 STDCALL void *ExAllocatePoolWithTag(enum pool_type pool_type, SIZE_T size,
 				    ULONG tag);
 STDCALL void ExFreePool(void *p);
@@ -420,6 +432,8 @@ STDCALL NTSTATUS IoCreateDevice(struct driver_object *driver,
 				DEVICE_TYPE dev_type,
 				ULONG dev_chars, BOOLEAN exclusive,
 				struct device_object **dev_obj);
+STDCALL void IoDeleteDevice(struct device_object *dev);
+STDCALL void IoDetachDevice(struct device_object *topdev);
 STDCALL NTSTATUS
 IoAllocateDriverObjectExtension(struct driver_object *drv_obj,
 				void *client_id, ULONG extlen, void **ext);
@@ -428,9 +442,9 @@ STDCALL void *IoGetDriverObjectExtension(struct driver_object *drv,
 STDCALL void KeInitializeEvent(struct kevent *kevent, enum event_type type,
 			       BOOLEAN state);
 void free_custom_ext(struct driver_extension *drv_obj_ext);
+STDCALL NTSTATUS ndis_add_device(struct driver_object *drv_obj,
+				 struct device_object *pdo);
 ULONGLONG ticks_1601(void);
-STDCALL NTSTATUS NdisAddDevice(struct driver_object *drv_obj,
-			       struct device_object *pdo);
 
 STDCALL KIRQL KeGetCurrentIrql(void);
 STDCALL void KeInitializeSpinLock(KSPIN_LOCK *lock);
@@ -455,6 +469,8 @@ STDCALL NTSTATUS RtlAnsiStringToUnicodeString(struct unicode_string *dst,
 					       BOOLEAN dup);
 STDCALL void RtlInitAnsiString(struct ansi_string *dst, CHAR *src);
 STDCALL void RtlInitString(struct ansi_string *dst, CHAR *src);
+STDCALL void RtlInitUnicodeString(struct unicode_string *dest,
+				  const wchar_t *src);
 STDCALL void RtlFreeUnicodeString(struct unicode_string *string);
 STDCALL void RtlFreeAnsiString(struct ansi_string *string);
 

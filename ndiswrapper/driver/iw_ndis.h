@@ -150,17 +150,18 @@ struct ndis_pmkid {
 	struct ndis_bssid_info bssid_info[1];
 };
 
-int add_wep_key(struct ndis_handle *handle, char *key, int key_len, int index);
+int add_wep_key(struct wrapper_dev *wd, char *key, int key_len,
+		int index);
 extern const struct iw_handler_def ndis_handler_def;
 
-int set_essid(struct ndis_handle *handle, const char *ssid, int ssid_len);
-int set_infra_mode(struct ndis_handle *handle,
+int set_essid(struct wrapper_dev *wd, const char *ssid, int ssid_len);
+int set_infra_mode(struct wrapper_dev *wd,
 		   enum network_infrastructure mode);
-int get_ap_address(struct ndis_handle *handle, mac_address mac);
-int set_auth_mode(struct ndis_handle *handle, int auth_mode);
-int set_encr_mode(struct ndis_handle *handle, int encr_mode);
-int set_privacy_filter(struct ndis_handle *handle, int flags);
-int set_scan(struct ndis_handle *handle);
+int get_ap_address(struct wrapper_dev *wd, mac_address mac);
+int set_auth_mode(struct wrapper_dev *wd, int auth_mode);
+int set_encr_mode(struct wrapper_dev *wd, int encr_mode);
+int set_privacy_filter(struct wrapper_dev *wd, int flags);
+int set_scan(struct wrapper_dev *wd);
 
 /* WPA support */
 

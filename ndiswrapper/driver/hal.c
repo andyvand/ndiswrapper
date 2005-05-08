@@ -101,6 +101,12 @@ STDCALL void WRAP_EXPORT(KeStallExecutionProcessor)
 	udelay(usecs);
 }
 
+STDCALL KIRQL WRAP_EXPORT(KeGetCurrentIrql)
+	(void)
+{
+	return current_irql();
+}
+
 _FASTCALL KIRQL WRAP_EXPORT(KfRaiseIrql)
 	(FASTCALL_DECL_1(KIRQL newirql))
 {

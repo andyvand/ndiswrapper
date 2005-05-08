@@ -29,7 +29,7 @@ static int procfs_read_stats(char *page, char **start, off_t off,
 			     int count, int *eof, void *data)
 {
 	char *p = page;
-	struct ndis_handle *handle = (struct ndis_handle *) data;
+	struct wrapper_dev *wd = (struct wrapper_dev *)data;
 	struct ndis_wireless_stats stats;
 	NDIS_STATUS res;
 	ndis_rssi rssi;
@@ -39,12 +39,11 @@ static int procfs_read_stats(char *page, char **start, off_t off,
 		return 0;
 	}
 
-	res = miniport_query_info(handle, OID_802_11_RSSI, &rssi,
-				  sizeof(rssi));
+	res = miniport_query_info(wd, OID_802_11_RSSI, &rssi, sizeof(rssi));
 	if (!res)
 		p += sprintf(p, "signal_level=%d dBm\n", (s32)rssi);
 
-	res = miniport_query_info(handle, OID_802_11_STATISTICS,
+	res = miniport_query_info(wd, OID_802_11_STATISTICS,
 				  &stats, sizeof(stats));
 	if (!res) {
 
@@ -77,7 +76,7 @@ static int procfs_read_encr(char *page, char **start, off_t off,
 			    int count, int *eof, void *data)
 {
 	char *p = page;
-	struct ndis_handle *handle = (struct ndis_handle *) data;
+	struct wrapper_dev *wd = (struct wrapper_dev *)data;
 	int i, encr_status, auth_mode, infra_mode;
 	NDIS_STATUS res;
 	struct ndis_essid essid;
@@ -88,7 +87,7 @@ static int procfs_read_encr(char *page, char **start, off_t off,
 		return 0;
 	}
 
-	res = miniport_query_info(handle, OID_802_11_BSSID,
+	res = miniport_query_info(wd, OID_802_11_BSSID,
 				  &ap_address, sizeof(ap_address));
 	if (res)
 		memset(ap_address, 0, ETH_ALEN);
@@ -97,28 +96,28 @@ static int procfs_read_encr(char *page, char **start, off_t off,
 		p += sprintf(p, ":%2.2X", ap_address[i]);
 	p += sprintf(p, "\n");
 
-	res = miniport_query_info(handle, OID_802_11_SSID, &essid,
+	res = miniport_query_info(wd, OID_802_11_SSID, &essid,
 				  sizeof(essid));
 	if (!res) {
 		essid.essid[essid.length] = '\0';
 		p += sprintf(p, "essid=%s\n", essid.essid);
 	}
 
-	res = miniport_query_int(handle, OID_802_11_ENCRYPTION_STATUS,
+	res = miniport_query_int(wd, OID_802_11_ENCRYPTION_STATUS,
 				 &encr_status);
-	res |= miniport_query_int(handle, OID_802_11_AUTHENTICATION_MODE,
+	res |= miniport_query_int(wd, OID_802_11_AUTHENTICATION_MODE,
 				  &auth_mode);
 
 	if (!res) {
-		int t = handle->encr_info.tx_key_index;
-		p += sprintf(p, "tx_key=%u\n", handle->encr_info.tx_key_index);
+		int t = wd->encr_info.tx_key_index;
+		p += sprintf(p, "tx_key=%u\n", wd->encr_info.tx_key_index);
 		p += sprintf(p, "key=");
-		if (handle->encr_info.keys[t].length > 0)
+		if (wd->encr_info.keys[t].length > 0)
 			for (i = 0; i < NDIS_ENCODING_TOKEN_MAX &&
-				     i < handle->encr_info.keys[t].length;
+				     i < wd->encr_info.keys[t].length;
 			     i++)
 				p += sprintf(p, "%2.2X",
-					     handle->encr_info.keys[t].key[i]);
+					     wd->encr_info.keys[t].key[i]);
 		else
 			p += sprintf(p, "off");
 		p += sprintf(p, "\n");
@@ -127,7 +126,7 @@ static int procfs_read_encr(char *page, char **start, off_t off,
 		p += sprintf(p, "auth_mode=%d\n", auth_mode);
 	}
 
-	res = miniport_query_int(handle, OID_802_11_INFRASTRUCTURE_MODE,
+	res = miniport_query_int(wd, OID_802_11_INFRASTRUCTURE_MODE,
 				 &infra_mode);
 	p += sprintf(p, "mode=%s\n", (infra_mode == Ndis802_11IBSS) ?
 		     "adhoc" : (infra_mode == Ndis802_11Infrastructure) ?
@@ -145,7 +144,7 @@ static int procfs_read_hw(char *page, char **start, off_t off,
 			  int count, int *eof, void *data)
 {
 	char *p = page;
-	struct ndis_handle *handle = (struct ndis_handle *)data;
+	struct wrapper_dev *wd = (struct wrapper_dev *)data;
 	struct ndis_configuration config;
 	unsigned int power_mode;
 	NDIS_STATUS res;
@@ -160,7 +159,7 @@ static int procfs_read_hw(char *page, char **start, off_t off,
 		return 0;
 	}
 
-	res = miniport_query_info(handle, OID_802_11_CONFIGURATION,
+	res = miniport_query_info(wd, OID_802_11_CONFIGURATION,
 				  &config, sizeof(config));
 	if (!res) {
 		p += sprintf(p, "beacon_period=%u msec\n",
@@ -175,27 +174,27 @@ static int procfs_read_hw(char *page, char **start, off_t off,
 			     config.fh_config.dwell_time);
 	}
 
-	res = miniport_query_info(handle, OID_802_11_TX_POWER_LEVEL,
+	res = miniport_query_info(wd, OID_802_11_TX_POWER_LEVEL,
 				  &tx_power, sizeof(tx_power));
 	if (!res)
 		p += sprintf(p, "tx_power=%u mW\n", tx_power);
 
-	res = miniport_query_info(handle, OID_GEN_LINK_SPEED,
+	res = miniport_query_info(wd, OID_GEN_LINK_SPEED,
 				  &bit_rate, sizeof(bit_rate));
 	if (!res)
 		p += sprintf(p, "bit_rate=%u kBps\n", (u32)bit_rate / 10);
 
-	res = miniport_query_info(handle, OID_802_11_RTS_THRESHOLD,
+	res = miniport_query_info(wd, OID_802_11_RTS_THRESHOLD,
 				  &rts_threshold, sizeof(rts_threshold));
 	if (!res)
 		p += sprintf(p, "rts_threshold=%u bytes\n", rts_threshold);
 
-	res = miniport_query_info(handle, OID_802_11_FRAGMENTATION_THRESHOLD,
+	res = miniport_query_info(wd, OID_802_11_FRAGMENTATION_THRESHOLD,
 				  &frag_threshold, sizeof(frag_threshold));
 	if (!res)
 		p += sprintf(p, "frag_threshold=%u bytes\n", frag_threshold);
 
-	res = miniport_query_int(handle, OID_802_11_POWER_MODE, &power_mode);
+	res = miniport_query_int(wd, OID_802_11_POWER_MODE, &power_mode);
 	if (!res)
 		p += sprintf(p, "power_mode=%s\n",
 			     (power_mode == NDIS_POWER_OFF) ?
@@ -203,17 +202,17 @@ static int procfs_read_hw(char *page, char **start, off_t off,
 			     (power_mode == NDIS_POWER_MAX) ?
 			     "max_savings" : "min_savings");
 
-	res = miniport_query_info(handle, OID_802_11_NUMBER_OF_ANTENNAS,
+	res = miniport_query_info(wd, OID_802_11_NUMBER_OF_ANTENNAS,
 				  &antenna, sizeof(antenna));
 	if (!res)
 		p += sprintf(p, "num_antennas=%u\n", antenna);
 
-	res = miniport_query_info(handle, OID_802_11_TX_ANTENNA_SELECTED,
+	res = miniport_query_info(wd, OID_802_11_TX_ANTENNA_SELECTED,
 				  &antenna, sizeof(antenna));
 	if (!res)
 		p += sprintf(p, "tx_antenna=%u\n", antenna);
 
-	res = miniport_query_info(handle, OID_802_11_RX_ANTENNA_SELECTED,
+	res = miniport_query_info(wd, OID_802_11_RX_ANTENNA_SELECTED,
 				  &antenna, sizeof(antenna));
 	if (!res)
 		p += sprintf(p, "rx_antenna=%u\n", antenna);
@@ -231,7 +230,7 @@ static int procfs_read_settings(char *page, char **start, off_t off,
 				int count, int *eof, void *data)
 {
 	char *p = page;
-	struct ndis_handle *handle = (struct ndis_handle *)data;
+	struct wrapper_dev *wd = (struct wrapper_dev *)data;
 	struct device_setting *setting;
 
 	if (off != 0) {
@@ -240,9 +239,9 @@ static int procfs_read_settings(char *page, char **start, off_t off,
 	}
 
 	p += sprintf(p, "hangcheck_interval=%d\n",
-		     (int)(handle->hangcheck_interval / HZ));
+		     (int)(wd->hangcheck_interval / HZ));
 
-	list_for_each_entry(setting, &handle->device->settings, list) {
+	list_for_each_entry(setting, &wd->ndis_device->settings, list) {
 		p += sprintf(p, "%s=%s\n", setting->name, setting->value);
 	}
 
@@ -252,7 +251,7 @@ static int procfs_read_settings(char *page, char **start, off_t off,
 static int procfs_write_settings(struct file *file, const char *buf,
 				 unsigned long count, void *data)
 {
-	struct ndis_handle *handle = (struct ndis_handle *)data;
+	struct wrapper_dev *wd = (struct wrapper_dev *)data;
 	char setting[MAX_PROC_STR_LEN], *p;
 
 	if (count > MAX_PROC_STR_LEN)
@@ -275,9 +274,9 @@ static int procfs_write_settings(struct file *file, const char *buf,
 			return -EINVAL;
 		p++;
 		i = simple_strtol(p, NULL, 10);
-		hangcheck_del(handle);
-		handle->hangcheck_interval = i * HZ;
-		hangcheck_add(handle);
+		hangcheck_del(wd);
+		wd->hangcheck_interval = i * HZ;
+		hangcheck_add(wd);
 	} else if (!strcmp(setting, "suspend")) {
 		int i;
 
@@ -287,13 +286,13 @@ static int procfs_write_settings(struct file *file, const char *buf,
 		i = simple_strtol(p, NULL, 10);
 		if (i <= 0 || i > 3)
 			return -EINVAL;
-		if (handle->device->bustype == NDIS_PCI_BUS)
-			ndiswrapper_suspend_pci(handle->dev.pci, i);
+		if (wd->ndis_device->bustype == NDIS_PCI_BUS)
+			ndiswrapper_suspend_pci(wd->dev.pci, i);
 	} else if (!strcmp(setting, "resume")) {
-		if (handle->device->bustype == NDIS_PCI_BUS)
-			ndiswrapper_resume_pci(handle->dev.pci);
+		if (wd->ndis_device->bustype == NDIS_PCI_BUS)
+			ndiswrapper_resume_pci(wd->dev.pci);
 	} else if (!strcmp(setting, "reinit")) {
-		if (ndis_reinit(handle))
+		if (ndis_reinit(wd))
 			return -EINVAL;
 	} else if (!strcmp(setting, "power_profile")) {
 		int i;
@@ -307,7 +306,7 @@ static int procfs_write_settings(struct file *file, const char *buf,
 		if (i < 0 || i > 1)
 			return -EINVAL;
 
-		miniport = &handle->driver->miniport;
+		miniport = &wd->driver->miniport;
 		if (!miniport->pnp_event_notify)
 			return -EFAULT;
 
@@ -317,7 +316,7 @@ static int procfs_write_settings(struct file *file, const char *buf,
 		else
 			profile_inf = NdisPowerProfileBattery;
 		
-		miniport->pnp_event_notify(handle->adapter_ctx,
+		miniport->pnp_event_notify(wd->nmb->adapter_ctx,
 					   NdisDevicePnPEventPowerProfileChanged,
 					   &profile_inf, sizeof(profile_inf));
 	} else if (!strcmp(setting, "auth_mode")) {
@@ -330,7 +329,7 @@ static int procfs_write_settings(struct file *file, const char *buf,
 		if (i <= 0 || i > 5)
 			return -EINVAL;
 
-		if (set_auth_mode(handle, i))
+		if (set_auth_mode(wd, i))
 			return -EINVAL;
 	} else if (!strcmp(setting, "encr_mode")) {
 		int i;
@@ -342,7 +341,7 @@ static int procfs_write_settings(struct file *file, const char *buf,
 		if (i <= 0 || i > 7)
 			return -EINVAL;
 
-		if (set_encr_mode(handle, i))
+		if (set_encr_mode(wd, i))
 			return -EINVAL;
 	} else {
 		int res = -1;
@@ -352,7 +351,7 @@ static int procfs_write_settings(struct file *file, const char *buf,
 			TRACEEXIT1(return -EINVAL);
 		p++;
 		DBGTRACE1("name='%s', value='%s'\n", setting, p);
-		list_for_each_entry(dev_setting, &handle->device->settings,
+		list_for_each_entry(dev_setting, &wd->ndis_device->settings,
 				    list) {
 			struct ndis_config_param *param;
 
@@ -377,18 +376,18 @@ static int procfs_write_settings(struct file *file, const char *buf,
 
 }
 
-int ndiswrapper_procfs_add_iface(struct ndis_handle *handle)
+int ndiswrapper_procfs_add_iface(struct wrapper_dev *wd)
 {
-	struct net_device *dev = handle->net_dev;
+	struct net_device *dev = wd->net_dev;
 	struct proc_dir_entry *proc_iface, *procfs_entry;
 
-	handle->procfs_iface = NULL;
+	wd->procfs_iface = NULL;
 	if (ndiswrapper_procfs_entry == NULL)
 		return -ENOMEM;
 
 	proc_iface = proc_mkdir(dev->name, ndiswrapper_procfs_entry);
 
-	handle->procfs_iface = proc_iface;
+	wd->procfs_iface = proc_iface;
 
 	if (proc_iface == NULL) {
 		ERROR("%s", "Couldn't create proc directory");
@@ -405,7 +404,7 @@ int ndiswrapper_procfs_add_iface(struct ndis_handle *handle)
 	} else {
 		procfs_entry->uid = proc_uid;
 		procfs_entry->gid = proc_gid;
-		procfs_entry->data = handle;
+		procfs_entry->data = wd;
 		procfs_entry->read_proc = procfs_read_hw;
 	}
 
@@ -417,7 +416,7 @@ int ndiswrapper_procfs_add_iface(struct ndis_handle *handle)
 	} else {
 		procfs_entry->uid = proc_uid;
 		procfs_entry->gid = proc_gid;
-		procfs_entry->data = handle;
+		procfs_entry->data = wd;
 		procfs_entry->read_proc = procfs_read_stats;
 	}
 
@@ -429,7 +428,7 @@ int ndiswrapper_procfs_add_iface(struct ndis_handle *handle)
 	} else {
 		procfs_entry->uid = proc_uid;
 		procfs_entry->gid = proc_gid;
-		procfs_entry->data = handle;
+		procfs_entry->data = wd;
 		procfs_entry->read_proc = procfs_read_encr;
 	}
 
@@ -442,17 +441,17 @@ int ndiswrapper_procfs_add_iface(struct ndis_handle *handle)
 	} else {
 		procfs_entry->uid = proc_uid;
 		procfs_entry->gid = proc_gid;
-		procfs_entry->data = handle;
+		procfs_entry->data = wd;
 		procfs_entry->read_proc = procfs_read_settings;
 		procfs_entry->write_proc = procfs_write_settings;
 	}
 	return 0;
 }
 
-void ndiswrapper_procfs_remove_iface(struct ndis_handle *handle)
+void ndiswrapper_procfs_remove_iface(struct wrapper_dev *wd)
 {
-	struct net_device *dev = handle->net_dev;
-	struct proc_dir_entry *procfs_iface = handle->procfs_iface;
+	struct net_device *dev = wd->net_dev;
+	struct proc_dir_entry *procfs_iface = wd->procfs_iface;
 
 	if (procfs_iface == NULL)
 		return;
@@ -462,7 +461,7 @@ void ndiswrapper_procfs_remove_iface(struct ndis_handle *handle)
 	remove_proc_entry("settings", procfs_iface);
 	if (ndiswrapper_procfs_entry != NULL)
 		remove_proc_entry(dev->name, ndiswrapper_procfs_entry);
-	handle->procfs_iface = NULL;
+	wd->procfs_iface = NULL;
 }
 
 static int procfs_read_debug(char *page, char **start, off_t off,
