@@ -204,7 +204,9 @@ STDCALL NDIS_STATUS WRAP_EXPORT(NdisMRegisterMiniport)
 		TRACEEXIT1(return -EINVAL);
 	}
 	drv_obj->drv_ext->add_device_func = ndis_add_device;
-	memcpy(&driver->miniport, miniport_char, sizeof(*miniport_char));
+	memcpy(&driver->miniport, miniport_char, 
+	       char_len > sizeof(*miniport_char) ?
+	       sizeof(*miniport_char : char_len));
 
 	i = 0;
 	func = (unsigned long *)&driver->miniport.query;
