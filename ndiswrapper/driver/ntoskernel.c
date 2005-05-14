@@ -2322,43 +2322,6 @@ STDCALL void WRAP_EXPORT(IoDetachDevice)
 	TRACEEXIT2(return);
 }
 
-STDCALL NTSTATUS ndis_add_device(struct driver_object *drv_obj,
-				 struct device_object *pdo)
-{
-	struct device_object *fdo;
-	struct ndis_miniport_block *nmb;
-	NTSTATUS ret;
-
-	TRACEENTER2("%p, %p", drv_obj, pdo);
-	ret = IoCreateDevice(drv_obj, sizeof(*nmb), NULL,
-			     FILE_DEVICE_UNKNOWN, 0, FALSE, &fdo);
-	if (ret != STATUS_SUCCESS)
-		TRACEEXIT2(return ret);
-	nmb = fdo->dev_ext;
-	nmb->fdo = fdo;
-	nmb->pdo = pdo;
-	DBGTRACE2("nmb: %p, fdo: %p", nmb, nmb->fdo);
-	nmb->wd = (struct wrapper_dev *)pdo->wd;
-	nmb->wd->nmb = nmb;
-	nmb->next_device = IoAttachDeviceToDeviceStack(fdo, pdo);
-	KeInitializeSpinLock(&nmb->lock);
-	nmb->rx_packet = WRAP_FUNC_PTR(NdisMIndicateReceivePacket);
-	nmb->send_complete = WRAP_FUNC_PTR(NdisMSendComplete);
-	nmb->send_resource_avail =
-		WRAP_FUNC_PTR(NdisMSendResourcesAvailable);
-	nmb->status = WRAP_FUNC_PTR(NdisMIndicateStatus);
-	nmb->status_complete = WRAP_FUNC_PTR(NdisMIndicateStatusComplete);
-	nmb->query_complete = WRAP_FUNC_PTR(NdisMQueryInformationComplete);
-	nmb->set_complete = WRAP_FUNC_PTR(NdisMSetInformationComplete);
-	nmb->reset_complete = WRAP_FUNC_PTR(NdisMResetComplete);
-	nmb->eth_rx_indicate = WRAP_FUNC_PTR(EthRxIndicateHandler);
-	nmb->eth_rx_complete = WRAP_FUNC_PTR(EthRxComplete);
-	nmb->td_complete = WRAP_FUNC_PTR(NdisMTransferDataComplete);
-	nmb->wd->driver->miniport.adapter_shutdown = NULL;
-
-	TRACEEXIT2(return STATUS_SUCCESS);
-}
-
 STDCALL void WRAP_EXPORT(KeBugCheckEx)
 	(ULONG code, ULONG_PTR param1, ULONG_PTR param2,
 	 ULONG_PTR param3, ULONG_PTR param4)
@@ -2382,5 +2345,5 @@ STDCALL void WRAP_EXPORT(IoDeleteSymbolicLink)(void){UNIMPL();}
 STDCALL void WRAP_EXPORT(_except_handler3)(void){UNIMPL();}
 STDCALL void WRAP_EXPORT(__C_specific_handler)(void){UNIMPL();}
 
-#include "ntoskernel_exports.h"
 
+#include "ntoskernel_exports.h"

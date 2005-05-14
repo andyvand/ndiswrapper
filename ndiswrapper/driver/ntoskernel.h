@@ -439,6 +439,8 @@ IoAllocateDriverObjectExtension(struct driver_object *drv_obj,
 				void *client_id, ULONG extlen, void **ext);
 STDCALL void *IoGetDriverObjectExtension(struct driver_object *drv,
 					 void *client_id);
+STDCALL struct device_object *IoAttachDeviceToDeviceStack
+	(struct device_object *src, struct device_object *dst);
 STDCALL void KeInitializeEvent(struct kevent *kevent, enum event_type type,
 			       BOOLEAN state);
 void free_custom_ext(struct driver_extension *drv_obj_ext);
