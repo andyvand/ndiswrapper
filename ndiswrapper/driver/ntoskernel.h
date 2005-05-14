@@ -49,8 +49,6 @@
 #define CONFIG_USB 1
 #endif
 
-#define USB_DEBUG 1
-
 #define addr_offset(drvr) (__builtin_return_address(0) - \
 			     (drvr)->drv_obj->driver_start)
 
@@ -716,7 +714,7 @@ extern int debug;
 #define TRACEEXIT5(stmt) do { DBGTRACE5("Exit"); stmt; } while(0)
 #define TRACEEXIT6(stmt) do { DBGTRACE6("Exit"); stmt; } while(0)
 
-#ifdef USB_DEBUG
+#if defined(DEBUG) && defined(USB_DEBUG)
 #define USBTRACE(fmt, ...) DBGTRACE1(fmt, ## __VA_ARGS__)
 #define USBTRACEENTER(fmt, ...) TRACEENTER1(fmt, ## __VA_ARGS__)
 #define USBTRACEEXIT(stmt) TRACEEXIT1(stmt)
