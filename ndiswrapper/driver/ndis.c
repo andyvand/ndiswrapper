@@ -152,7 +152,7 @@ STDCALL NDIS_STATUS WRAP_EXPORT(NdisMRegisterMiniport)
 	 struct miniport_char *miniport_char, UINT char_len)
 {
 	int i, min_length;
-	unsigned long *func;
+	void **func;
 	struct ndis_driver *driver;
 	char *miniport_funcs[] = {
 		"query",
@@ -209,7 +209,7 @@ STDCALL NDIS_STATUS WRAP_EXPORT(NdisMRegisterMiniport)
 	       sizeof(*miniport_char) : char_len);
 
 	i = 0;
-	func = (unsigned long *)&driver->miniport.query;
+	func = (void **)&driver->miniport.query;
 	while (i < sizeof(miniport_funcs) / sizeof(miniport_funcs[0])) {
 		DBGTRACE2("miniport function '%s' is at %p",
 			  miniport_funcs[i], func[i]);
@@ -1870,6 +1870,8 @@ STDCALL void NdisMIndicateStatusComplete(struct ndis_miniport_block *nmb)
 	struct wrapper_dev *wd = nmb->wd;
 	TRACEENTER3("");
 	schedule_work(&wd->wrapper_worker);
+	if (wd->send_ok)
+		schedule_work(&wd->xmit_work);
 }
 
 /* called via function pointer */
