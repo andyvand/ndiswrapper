@@ -240,7 +240,7 @@ NDIS_STATUS miniport_query_int(struct wrapper_dev *wd, ndis_oid oid,
 	res = miniport_query_info(wd, oid, data, sizeof(ULONG));
 	if (!res)
 		return 0;
-	*(char *)data = 0;
+	*(int *)data = 0;
 	return res;
 }
 
