@@ -657,6 +657,18 @@ STDCALL void WRAP_EXPORT(RtlCopyMemory)
 	memcpy(dst, src, length);
 }
 
+STDCALL void WRAP_EXPORT(RtlZeroMemory)
+	(void *dst, SIZE_T length)
+{
+	memset(dst, 0, length);
+}
+
+STDCALL void WRAP_EXPORT(RtlSecureZeroMemory)
+	(void *dst, SIZE_T length)
+{
+	memset(dst, 0, length);
+}
+
 STDCALL LONG WRAP_EXPORT(RtlCompareString)
 	(const struct ansi_string *s1, const struct ansi_string *s2,
 	 BOOLEAN case_insensitive)
