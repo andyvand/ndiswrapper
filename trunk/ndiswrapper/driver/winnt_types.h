@@ -44,7 +44,10 @@
 #define CALL_ON_SUCCESS                 0x40
 #define CALL_ON_ERROR                   0x80
 
-#define IRP_MJ_CREATE			0x0
+#define IRP_MJ_CREATE			0x00
+#define IRP_MJ_CREATE_NAMED_PIPE        0x01
+#define IRP_MJ_CLOSE                    0x02
+
 #define IRP_MJ_DEVICE_CONTROL           0x0E
 #define IRP_MJ_INTERNAL_DEVICE_CONTROL  0x0F
 #define IRP_MJ_MAXIMUM_FUNCTION           0x1b
@@ -72,6 +75,9 @@
 #define FASTCALL_ARGS_3(arg1,arg2,arg3) arg1, arg2, arg3
 
 #define KI_USER_SHARED_DATA 0xfffff78000000000
+#define SHARED_INTERRUPT_TIME (((char *)&kuser_shared_data + 0x8))
+#define SHARED_SYSTEM_TIME (((char *)&kuser_shared_data + 0x14))
+#define SHARED_TICK_COUNT (((char *)&kuser_shared_data + 0x320))
 
 #else 
 
@@ -410,6 +416,36 @@ struct custom_ext {
 	void *client_id;
 };
 
+struct file_object {
+	CSHORT type;
+	CSHORT size;
+	struct device_object *dev_obj;
+	void *volume_parameter_block;
+	void *fs_context;
+	void *fs_context2;
+	void *section_object_pointer;
+	void *private_cache_map;
+	NTSTATUS final_status;
+	struct file_object *related_file_object;
+	BOOLEAN lock_operation;
+	BOOLEAN delete_pending;
+	BOOLEAN read_access;
+	BOOLEAN write_access;
+	BOOLEAN delete_access;
+	BOOLEAN shared_read;
+	BOOLEAN shared_write;
+	BOOLEAN shared_delete;
+	ULONG flags;
+	struct unicode_string file_name;
+	LARGE_INTEGER current_byte_offset;
+	ULONG waiters;
+	ULONG busy;
+	void *last_lock;
+	struct kevent lock;
+	struct kevent event;
+	void *completion_context;
+};
+
 #ifdef CONFIG_X86_64
 #define POINTER_ALIGNMENT
 #else
@@ -452,7 +488,7 @@ struct io_stack_location {
 		} generic;
 	} params;
 	struct device_object *dev_obj;
-	void *file_obj;
+	struct file_object *file_obj;
 	ULONG (*completion_handler)(struct device_object *,
 				    struct irp *, void *) STDCALL;
 	void *handler_arg;
@@ -537,7 +573,7 @@ struct irp {
 					ULONG packet_type;
 				} packet;
 			} packet_list;
-			void *file_object;
+			struct file_object *file_object;
 		} overlay;
 		struct kapc apc;
 		void *completion_key;

@@ -1327,6 +1327,8 @@ void free_ndis_packet(struct ndis_packet *packet)
 	struct wrap_ndis_packet *wrap_ndis_packet;
 	KIRQL irql;
 
+	packet->private.buffer_head = NULL;
+	packet->private.valid_counts = FALSE;
 	wrap_ndis_packet = container_of(packet, struct wrap_ndis_packet,
 					ndis_packet);
 	irql = kspin_lock_irql(&wrap_ndis_packet_lock, DISPATCH_LEVEL);
@@ -1394,6 +1396,8 @@ STDCALL void WRAP_EXPORT(NdisFreePacket)
 		TRACEEXIT3(return);
 	}
 	irql = kspin_lock_irql(&pool->lock, DISPATCH_LEVEL);
+	descr->private.buffer_head = NULL;
+	descr->private.valid_counts = FALSE;
 	descr->next = pool->free_descr;
 	pool->free_descr = descr;
 	pool->num_allocated_descr--;

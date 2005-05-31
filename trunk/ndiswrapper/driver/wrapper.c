@@ -453,11 +453,12 @@ allocate_send_packet(struct wrapper_dev *wd, ndis_buffer *buffer)
 	if (!packet)
 		return NULL;
 
-	packet->private.nr_pages = NDIS_BUFFER_TO_SPAN_PAGES(buffer);
-	packet->private.len = MmGetMdlByteCount(buffer);
-	packet->private.count = 1;
-	packet->private.valid_counts = TRUE;
-
+	/*
+	  packet->private.nr_pages = NDIS_BUFFER_TO_SPAN_PAGES(buffer);
+	  packet->private.len = MmGetMdlByteCount(buffer);
+	  packet->private.count = 1;
+	  packet->private.valid_counts = TRUE;
+	*/
 	packet->private.buffer_head = buffer;
 	packet->private.buffer_tail = buffer;
 
@@ -1461,6 +1462,8 @@ struct net_device *ndis_init_netdev(struct wrapper_dev **pwd,
 	wd->hangcheck_interval = hangcheck_interval;
 	wd->hangcheck_active = 0;
 	wd->scan_timestamp = 0;
+	wd->hw_status = 0;
+	wd->wrapper_work = 0;
 	memset(&wd->essid, 0, sizeof(wd->essid));
 	memset(&wd->encr_info, 0, sizeof(wd->encr_info));
 	wd->infrastructure_mode = Ndis802_11Infrastructure;
