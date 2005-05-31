@@ -44,7 +44,7 @@ int misc_funcs_init(void)
 	init_timer(&shared_data_timer);
 	shared_data_timer.function = &update_user_shared_data_proc;
 #if defined(CONFIG_X86_64) && defined(INPROCOMM_AMD64)
-	*((ULONG64)SHARED_SYSTEM_TIME) = ticks_1601();
+	*((ULONG64 *)SHARED_SYSTEM_TIME) = ticks_1601();
 	shared_data_timer.data = (unsigned long)0;
 	shared_data_timer.expires = jiffies + 10 * HZ / 1000;
 	add_timer(&shared_data_timer);
@@ -126,9 +126,9 @@ static void update_user_shared_data_proc(unsigned long data)
 #if defined(CONFIG_X86_64) && defined(INPROCOMM_AMD64)
 	/* timer is scheduled every 10ms and the system timer is in
 	 * 100ns */
-	*((ULONG64)SHARED_SYSTEM_TIME) = ticks_1601();
-	*((ULONG64)SHARED_INTERRUPT_TIME) = jiffies * TICKSPERSEC / HZ;
-	*((ULONG64)SHARED_TICK_COUNT) = jiffies;
+	*((ULONG64 *)SHARED_SYSTEM_TIME) = ticks_1601();
+	*((ULONG64 *)SHARED_INTERRUPT_TIME) = jiffies * TICKSPERSEC / HZ;
+	*((ULONG64 *)SHARED_TICK_COUNT) = jiffies;
 #endif
 	shared_data_timer.expires = jiffies + 10 * HZ / 1000;
 	add_timer(&shared_data_timer);
