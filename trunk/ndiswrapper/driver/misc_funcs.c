@@ -168,15 +168,22 @@ void *wrap_kmalloc(size_t size, int flags)
 /* free pointer and remove from list of allocated pointers */
 void wrap_kfree(void *ptr)
 {
+	struct list_head *cur, *tmp;
 	KIRQL irql;
-	struct wrap_alloc *alloc;
 
 	TRACEENTER4("%p", ptr);
 	irql = kspin_lock_irql(&wrap_allocs_lock, DISPATCH_LEVEL);
-	alloc = container_of(ptr, struct wrap_alloc, ptr);
-	list_del(&alloc->list);
-	kfree(alloc->ptr);
-	kfree(alloc);
+	list_for_each_safe(cur, tmp, &wrap_allocs) {
+		struct wrap_alloc *alloc;
+
+		alloc = list_entry(cur, struct wrap_alloc, list);
+		if (alloc->ptr == ptr) {
+			list_del(&alloc->list);
+			kfree(alloc->ptr);
+			kfree(alloc);
+			break;
+		}
+	}
 	kspin_unlock_irql(&wrap_allocs_lock, irql);
 	TRACEEXIT4(return);
 }
