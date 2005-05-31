@@ -170,7 +170,7 @@ typedef task_queue workqueue;
 
 #endif // LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
 
-#ifdef CONFIG_SOFTWARE_SUSPEND2
+#if defined(CONFIG_SOFTWARE_SUSPEND2) || defined(CONFIG_SUSPEND2)
 #define KTHREAD_RUN(a,b,c) kthread_run(a,b,0,c)
 #else
 #define KTHREAD_RUN(a,b,c) kthread_run(a,b,c)
@@ -478,8 +478,9 @@ void *wrap_kmalloc(size_t size, int flags);
 void wrap_kfree(void *ptr);
 void wrapper_init_timer(struct ktimer *ktimer, void *handle,
 			struct kdpc *kdpc);
-int wrapper_set_timer(struct wrapper_timer *wrapper_timer, unsigned long expires,
-		      unsigned long repeat, struct kdpc *kdpc);
+int wrapper_set_timer(struct wrapper_timer *wrapper_timer,
+		      unsigned long expires, unsigned long repeat,
+		      struct kdpc *kdpc);
 void wrapper_cancel_timer(struct wrapper_timer *wrapper_timer,
 			  BOOLEAN *canceled);
 
@@ -570,7 +571,7 @@ do {							\
 	*(lock) = KSPIN_LOCK_LOCKED;			\
 	spin_unlock(&spinlock_kspin_lock);		\
 } while (0)
-		
+
 #endif // __HAVE_ARCH_CMPXCHG
 
 #define kspin_unlock(lock) xchg(lock, KSPIN_LOCK_UNLOCKED)
