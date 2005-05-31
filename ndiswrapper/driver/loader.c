@@ -220,9 +220,6 @@ static int ndiswrapper_add_pci_device(struct pci_dev *pdev,
 		goto out_start;
 	}
 
-	wd->hw_status = 0;
-	wd->wrapper_work = 0;
-
 	/* do we need to power up the card explicitly? */
 	miniport_set_int(wd, OID_PNP_SET_POWER, NdisDeviceStateD0);
 	miniport = &wd->driver->miniport;
@@ -367,9 +364,6 @@ static void *ndiswrapper_add_usb_device(struct usb_device *udev,
 		res = -EINVAL;
 		goto out_start;
 	}
-
-	wd->hw_status = 0;
-	wd->wrapper_work = 0;
 
 	/* do we need to power up the card explicitly? */
 	miniport_set_int(wd, OID_PNP_SET_POWER, NdisDeviceStateD0);

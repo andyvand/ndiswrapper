@@ -41,10 +41,10 @@ int misc_funcs_init(void)
 	InitializeListHead(&wrapper_timer_list);
 
 	memset(&kuser_shared_data, 0, sizeof(kuser_shared_data));
-	kuser_shared_data.system_time.low_part = ticks_1601();
 	init_timer(&shared_data_timer);
 	shared_data_timer.function = &update_user_shared_data_proc;
 #if defined(CONFIG_X86_64) && defined(INPROCOMM_AMD64)
+	*((ULONG64)SHARED_SYSTEM_TIME) = ticks_1601();
 	shared_data_timer.data = (unsigned long)0;
 	shared_data_timer.expires = jiffies + 10 * HZ / 1000;
 	add_timer(&shared_data_timer);
@@ -123,11 +123,13 @@ void misc_funcs_exit(void)
 
 static void update_user_shared_data_proc(unsigned long data)
 {
-	LARGE_INTEGER *system_time = 
-		(LARGE_INTEGER *)&kuser_shared_data.system_time.low_part;
+#if defined(CONFIG_X86_64) && defined(INPROCOMM_AMD64)
 	/* timer is scheduled every 10ms and the system timer is in
 	 * 100ns */
-	*system_time += 100000;
+	*((ULONG64)SHARED_SYSTEM_TIME) = ticks_1601();
+	*((ULONG64)SHARED_INTERRUPT_TIME) = jiffies * TICKSPERSEC / HZ;
+	*((ULONG64)SHARED_TICK_COUNT) = jiffies;
+#endif
 	shared_data_timer.expires = jiffies + 10 * HZ / 1000;
 	add_timer(&shared_data_timer);
 }
@@ -166,22 +168,15 @@ void *wrap_kmalloc(size_t size, int flags)
 /* free pointer and remove from list of allocated pointers */
 void wrap_kfree(void *ptr)
 {
-	struct list_head *cur, *tmp;
 	KIRQL irql;
+	struct wrap_alloc *alloc;
 
 	TRACEENTER4("%p", ptr);
 	irql = kspin_lock_irql(&wrap_allocs_lock, DISPATCH_LEVEL);
-	list_for_each_safe(cur, tmp, &wrap_allocs) {
-		struct wrap_alloc *alloc;
-
-		alloc = list_entry(cur, struct wrap_alloc, list);
-		if (alloc->ptr == ptr) {
-			list_del(&alloc->list);
-			kfree(alloc->ptr);
-			kfree(alloc);
-			break;
-		}
-	}
+	alloc = container_of(ptr, struct wrap_alloc, ptr);
+	list_del(&alloc->list);
+	kfree(alloc->ptr);
+	kfree(alloc);
 	kspin_unlock_irql(&wrap_allocs_lock, irql);
 	TRACEEXIT4(return);
 }

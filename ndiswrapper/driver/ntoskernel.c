@@ -1558,10 +1558,33 @@ _FASTCALL NTSTATUS WRAP_EXPORT(IofCallDriver)
 					stack->params.ioctl.code);
 		}
 	} else if (stack->major_fn == IRP_MJ_CREATE) {
-		UNIMPL();
+		struct file_object *file_object;
+
+		file_object = stack->file_obj;
+		if (file_object) {
+			struct ansi_string ansi;
+			char file_name[256];
+
+			ansi.buf = file_name;
+			ansi.buflen = sizeof(file_name);
+			if (!RtlUnicodeStringToAnsiString(&ansi,
+							  &file_object->file_name, 0)) {
+				file_name[sizeof(file_name) - 1] = 0;
+				INFO("file: %s", file_name);
+			}
+			INFO("context: %p", file_object->fs_context);
+		}
+		irp->io_status.status_info = 0;
 		ret = STATUS_SUCCESS;
-	} else
+	} else if (stack->major_fn & IRP_MJ_CLOSE) {
+		irp->io_status.status_info = 0;
+		ret = STATUS_SUCCESS;
 		ERROR("major_fn %08X NOT IMPLEMENTED!\n", stack->major_fn);
+	} else {
+		irp->io_status.status_info = 0;
+		ret = STATUS_SUCCESS;
+		ERROR("major_fn %08X NOT IMPLEMENTED!\n", stack->major_fn);
+	}
 
 	if (ret == STATUS_PENDING) {
 		stack->control |= IS_PENDING;
