@@ -31,15 +31,15 @@
 
 #endif
 
-static struct pe_exports pe_exports[40];
-static int num_pe_exports;
-extern struct kuser_shared_data kuser_shared_data;
-
 struct pe_exports {
 	char *dll;
 	char *name;
 	WRAP_EXPORT_FUNC addr;
 };
+
+static struct pe_exports pe_exports[40];
+static int num_pe_exports;
+extern struct kuser_shared_data kuser_shared_data;
 
 #define RVA2VA(image, rva, type) (type)(ULONG_PTR)((void *)image + rva)
 #define CHECK_SZ(a,b) { if (sizeof(a) != b) {				\
