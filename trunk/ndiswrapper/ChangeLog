@@ -1,6 +1,8 @@
-Version 1.2 2005-XX-XX
+Version 1.2 2005-06-10
 ======================
-* Support for systems with NX (no-execute) bit
+* Support for NX (no-execute) bit
+* 64-bit Broadcom driver works with HIGHMEM.
+* Implemented I/O manager layer.
 * Many bug fixes
 
 Versoin 1.1 2005-03-04
