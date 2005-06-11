@@ -31,6 +31,7 @@
 #include <linux/ctype.h>
 #include <linux/usb.h>
 #include <linux/list.h>
+#include <linux/sched.h>
 
 #include <linux/spinlock.h>
 #include <asm/mman.h>

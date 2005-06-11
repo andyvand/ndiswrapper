@@ -204,6 +204,7 @@ static int ndiswrapper_add_pci_device(struct pci_dev *pdev,
 	pci_restore_state(pdev, NULL);
 #endif
 
+#ifdef CONFIG_X86_64
 	/* 64-bit broadcom driver doesn't work if DMA is allocated
 	 * from over 1GB */
 	if (strcmp(device->driver_name, "netbc564") == 0) {
@@ -212,6 +213,7 @@ static int ndiswrapper_add_pci_device(struct pci_dev *pdev,
 			WARNING("DMA mask couldn't be set; this driver "
 				"may not work with more than 1GB RAM");
 	}
+#endif
 	DBGTRACE1("%s", "calling ndis init routine");
 	if ((res = miniport_init(wd))) {
 		ERROR("Windows driver couldn't initialize the device (%08X)",
