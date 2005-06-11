@@ -823,8 +823,7 @@ static void wakeup_event(struct kevent *kevent)
 			   before trying to wake it up; otherwise we
 			   may wake up a thread before it puts itself
 			   to sleep, and it will stay in sleep */
-			wake_up_process((task_t *)wb->thread);
-//			set_task_state((task_t *)wb->thread, TASK_RUNNING);
+			wake_up_process((struct task_struct *)wb->thread);
 		} else
 			ERROR("illegal wait block %p(%p)", wb, kevent);
 		if (kevent->dh.type == SynchronizationEvent)
