@@ -160,6 +160,8 @@ int set_infra_mode(struct wrapper_dev *wd,
 int get_ap_address(struct wrapper_dev *wd, mac_address mac);
 int set_auth_mode(struct wrapper_dev *wd, int auth_mode);
 int set_encr_mode(struct wrapper_dev *wd, int encr_mode);
+int get_auth_mode(struct wrapper_dev *wd);
+int get_encr_mode(struct wrapper_dev *wd);
 int set_privacy_filter(struct wrapper_dev *wd, int flags);
 int set_scan(struct wrapper_dev *wd);
 

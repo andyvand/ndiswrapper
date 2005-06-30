@@ -868,8 +868,8 @@ static void link_status_handler(struct wrapper_dev *wd)
 		TRACEEXIT2(return);
 	}
 
-	if (!test_bit(Ndis802_11Encryption2Enabled, &wd->capa) &&
-	    !test_bit(Ndis802_11Encryption3Enabled, &wd->capa))
+	if (!test_bit(Ndis802_11Encryption2Enabled, &wd->capa.encr) &&
+	    !test_bit(Ndis802_11Encryption3Enabled, &wd->capa.encr))
 		TRACEEXIT2(return);
 
 	assoc_info = kmalloc(assoc_size, GFP_KERNEL);
@@ -1150,58 +1150,56 @@ static void wrapper_worker_proc(void *param)
 /* check capabilites - mainly for WPA */
 static void check_capa(struct wrapper_dev *wd)
 {
-	int i, mode;
+	int i, len, mode;
 	NDIS_STATUS res;
 	struct ndis_assoc_info ndis_assoc_info;
 	struct ndis_add_key ndis_key;
+	struct ndis_capability *c;
+	char *buf;
 
 	TRACEENTER1("%s", "");
 
 	/* check if WEP is supported */
 	if (set_encr_mode(wd, Ndis802_11Encryption1Enabled) == 0 &&
-	    miniport_query_int(wd,
-			       OID_802_11_ENCRYPTION_STATUS, &i) == 0 &&
-	    (i == Ndis802_11Encryption1Enabled ||
-	     i == Ndis802_11Encryption1KeyAbsent))
-		set_bit(Ndis802_11Encryption1Enabled, &wd->capa);
+	    get_encr_mode(wd) == Ndis802_11Encryption1KeyAbsent)
+		set_bit(Ndis802_11Encryption1Enabled, &wd->capa.encr);
 
 	/* check if WPA is supported */
-	DBGTRACE2("%s", "");
-	if (set_auth_mode(wd, Ndis802_11AuthModeWPA) ||
-	    miniport_query_int(wd, OID_802_11_AUTHENTICATION_MODE, &i) ||
-	    i != Ndis802_11AuthModeWPA)
+	DBGTRACE1("%s", "");
+	if (set_auth_mode(wd, Ndis802_11AuthModeWPA) == 0 &&
+	    get_auth_mode(wd) == Ndis802_11AuthModeWPA)
+		set_bit(Ndis802_11AuthModeWPA, &wd->capa.auth);
+	else
 		TRACEEXIT1(return);
+
+	if (set_auth_mode(wd, Ndis802_11AuthModeWPAPSK) == 0 &&
+	    get_auth_mode(wd) == Ndis802_11AuthModeWPAPSK)
+		set_bit(Ndis802_11AuthModeWPAPSK, &wd->capa.auth);
 
 	/* check for highest encryption */
+	mode = 0;
 	if (set_encr_mode(wd, Ndis802_11Encryption3Enabled) == 0 &&
-	    miniport_query_int(wd,
-			       OID_802_11_ENCRYPTION_STATUS, &i) == 0 &&
-	    (i == Ndis802_11Encryption3Enabled ||
-	     i == Ndis802_11Encryption3KeyAbsent))
+	    (i = get_encr_mode(wd)) > 0 &&
+	    (i == Ndis802_11Encryption3KeyAbsent ||
+	     i == Ndis802_11Encryption3Enabled))
 		mode = Ndis802_11Encryption3Enabled;
 	else if (set_encr_mode(wd, Ndis802_11Encryption2Enabled) == 0 &&
-		 miniport_query_int(wd,
-				    OID_802_11_ENCRYPTION_STATUS, &i) == 0 &&
-		 (i == Ndis802_11Encryption2Enabled ||
-		  i == Ndis802_11Encryption2KeyAbsent))
+		 (i = get_encr_mode(wd)) > 0 &&
+		 (i == Ndis802_11Encryption2KeyAbsent ||
+		  i == Ndis802_11Encryption2Enabled))
 		mode = Ndis802_11Encryption2Enabled;
 	else if (set_encr_mode(wd, Ndis802_11Encryption1Enabled) == 0 &&
-		 miniport_query_int(wd,
-				    OID_802_11_ENCRYPTION_STATUS, &i) == 0 &&
-		 (i == Ndis802_11Encryption1Enabled ||
-		  i == Ndis802_11Encryption1KeyAbsent))
+		 (i = get_encr_mode(wd)) > 0 &&
+		 (i == Ndis802_11Encryption1KeyAbsent ||
+		  i == Ndis802_11Encryption1Enabled))
 		mode = Ndis802_11Encryption1Enabled;
-	else
-		mode = Ndis802_11EncryptionDisabled;
 
-	DBGTRACE1("highest encryption mode supported = %d", mode);
-
-	if (mode == Ndis802_11EncryptionDisabled)
+	if (mode == 0)
 		TRACEEXIT1(return);
-
-	set_bit(Ndis802_11Encryption1Enabled, &wd->capa);
-	if (mode == Ndis802_11Encryption1Enabled)
+	if (mode == Ndis802_11Encryption1Enabled) {
+		set_bit(Ndis802_11Encryption1Enabled, &wd->capa.encr);
 		TRACEEXIT1(return);
+	}
 
 	ndis_key.length = 32;
 	ndis_key.index = 0xC0000001;
@@ -1219,10 +1217,54 @@ static void check_capa(struct wrapper_dev *wd)
 	if (res == NDIS_STATUS_NOT_SUPPORTED)
 		TRACEEXIT1(return);
 
-	set_bit(Ndis802_11Encryption2Enabled, &wd->capa);
+	set_bit(Ndis802_11Encryption2Enabled, &wd->capa.encr);
 	if (mode == Ndis802_11Encryption3Enabled)
-		set_bit(Ndis802_11Encryption3Enabled, &wd->capa);
+		set_bit(Ndis802_11Encryption3Enabled, &wd->capa.encr);
 
+	/* check for wpa2 */
+	buf = kmalloc(512, GFP_KERNEL);
+	if (!buf) {
+		ERROR("couldn't allocate memory");
+		TRACEEXIT1(return);
+	}
+	len = miniport_query_info(wd, OID_802_11_CAPABILITY, buf, sizeof(buf));
+	c = (struct ndis_capability *)buf;
+	if (len < 0 || len < sizeof(*c) || c->version != 2) {
+		kfree(buf);
+		TRACEEXIT1(return);
+	}
+	wd->num_pmkids = c->num_PMKIDs;
+
+	for (i = 0; i < c->num_auth_encr_pair_supported; i++) {
+		struct ndis_auth_encr *ae;
+
+		ae = &c->auth_encr_supported[i];
+		if ((char *)(ae + 1) > buf + len)
+			break;
+		switch (ae->auth_mode) {
+		case Ndis802_11AuthModeOpen:
+		case Ndis802_11AuthModeShared:
+		case Ndis802_11AuthModeWPA:
+		case Ndis802_11AuthModeWPAPSK:
+		case Ndis802_11AuthModeWPA2:
+		case Ndis802_11AuthModeWPA2PSK:
+		case Ndis802_11AuthModeWPANone:
+			set_bit(ae->auth_mode, &wd->capa.auth);
+			break;
+		default:
+			break;
+		}
+		switch (ae->encr_mode) {
+		case Ndis802_11Encryption1Enabled:
+		case Ndis802_11Encryption2Enabled:
+		case Ndis802_11Encryption3Enabled:
+			set_bit(ae->encr_mode, &wd->capa.encr);
+			break;
+		default:
+			break;
+		}
+	}
+	kfree(buf);
 	TRACEEXIT1(return);
 }
 
@@ -1393,14 +1435,14 @@ int setup_device(struct net_device *dev)
 
 	check_capa(wd);
 
-	DBGTRACE1("capbilities = %ld", wd->capa);
+	DBGTRACE1("capbilities = %ld", wd->capa.encr);
 	printk(KERN_INFO "%s: encryption modes supported: %s%s%s\n",
 	       dev->name,
-	       test_bit(Ndis802_11Encryption1Enabled, &wd->capa) ?
+	       test_bit(Ndis802_11Encryption1Enabled, &wd->capa.encr) ?
 	       "WEP" : "none",
-	       test_bit(Ndis802_11Encryption2Enabled, &wd->capa) ?
+	       test_bit(Ndis802_11Encryption2Enabled, &wd->capa.encr) ?
 	       ", WPA with TKIP" : "",
-	       test_bit(Ndis802_11Encryption3Enabled, &wd->capa) ?
+	       test_bit(Ndis802_11Encryption3Enabled, &wd->capa.encr) ?
 	       ", WPA with AES/CCMP" : "");
 
 	/* check_capa changes auth_mode and encr_mode, so set them again */
@@ -1451,7 +1493,8 @@ struct net_device *ndis_init_netdev(struct wrapper_dev **pwd,
 	kspin_lock_init(&wd->send_packet_done_lock);
 	wd->encr_mode = Ndis802_11EncryptionDisabled;
 	wd->auth_mode = Ndis802_11AuthModeOpen;
-	wd->capa = 0;
+	wd->capa.encr = 0;
+	wd->capa.auth = 0;
 	wd->attributes = 0;
 	wd->reset_status = 0;
 	InitializeListHead(&wd->wrapper_timer_list);

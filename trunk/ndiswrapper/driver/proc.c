@@ -217,6 +217,14 @@ static int procfs_read_hw(char *page, char **start, off_t off,
 	if (!res)
 		p += sprintf(p, "rx_antenna=%u\n", antenna);
 
+	p += sprintf(p, "encryption_modes=%s%s%s\n",
+		     test_bit(Ndis802_11Encryption1Enabled, &wd->capa.encr) ?
+		     "WEP" : "none",
+		     test_bit(Ndis802_11Encryption2Enabled, &wd->capa.encr) ?
+		     ", WPA with TKIP" : "",
+		     test_bit(Ndis802_11Encryption3Enabled, &wd->capa.encr) ?
+		     ", WPA with AES/CCMP" : "");
+
 	if (p - page > count) {
 		WARNING("wrote %lu bytes (limit is %u)",
 			(unsigned long)(p - page), count);

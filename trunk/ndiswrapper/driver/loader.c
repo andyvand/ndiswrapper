@@ -239,7 +239,8 @@ static int ndiswrapper_add_pci_device(struct pci_dev *pdev,
 	*/
 
 	/* IPW2200 devices turn off radio if reset is called */
-	if (pdev->vendor != 0x8086)
+	/* Airgo driver never recovers from reset */
+	if (!(pdev->vendor == 0x8086 || pdev->vendor == 0x17CB))
 		miniport_reset(wd);
 
 	/* Wait a little to let card power up otherwise ifup might fail after
@@ -309,6 +310,7 @@ static void *ndiswrapper_add_usb_device(struct usb_device *udev,
 	struct miniport_char *miniport;
 	struct device_object *pdo;
 	struct driver_object *drv_obj;
+	struct pci_dev *pdev;
 //	unsigned long profile_inf = NDIS_POWER_PROFILE_AC;
 
 	TRACEENTER1("vendor: %04x, product: %04x",
