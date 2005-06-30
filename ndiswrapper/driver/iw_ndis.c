@@ -589,6 +589,16 @@ int set_auth_mode(struct wrapper_dev *wd, int auth_mode)
 	}
 }
 
+int get_auth_mode(struct wrapper_dev *wd)
+{
+	int i;
+
+	if (miniport_query_int(wd, OID_802_11_AUTHENTICATION_MODE, &i))
+		TRACEEXIT2(return -EINVAL);
+	else
+		TRACEEXIT2(return i);
+}
+
 int set_encr_mode(struct wrapper_dev *wd, int encr_mode)
 {
 	NDIS_STATUS res;
@@ -601,6 +611,16 @@ int set_encr_mode(struct wrapper_dev *wd, int encr_mode)
 		wd->encr_mode = encr_mode;
 		TRACEEXIT2(return 0);
 	}
+}
+
+int get_encr_mode(struct wrapper_dev *wd)
+{
+	int i;
+
+	if (miniport_query_int(wd, OID_802_11_ENCRYPTION_STATUS, &i))
+		TRACEEXIT2(return -EINVAL);
+	else
+		TRACEEXIT2(return i);
 }
 
 static int iw_get_encr(struct net_device *dev, struct iw_request_info *info,
@@ -1681,8 +1701,8 @@ static int wpa_init(struct net_device *dev, struct iw_request_info *info,
 
 	TRACEENTER2("");
 
-	if (test_bit(Ndis802_11Encryption2Enabled, &wd->capa) ||
-	    test_bit(Ndis802_11Encryption3Enabled, &wd->capa)) {
+	if (test_bit(Ndis802_11Encryption2Enabled, &wd->capa.encr) ||
+	    test_bit(Ndis802_11Encryption3Enabled, &wd->capa.encr)) {
 		if (set_infra_mode(wd, Ndis802_11Infrastructure))
 			WARNING("couldn't enable infrastructure/managed mode");
 		TRACEEXIT2(return 0);
@@ -1705,12 +1725,12 @@ static int wpa_set_wpa(struct net_device *dev, struct iw_request_info *info,
 	struct wrapper_dev *wd = dev->priv;
 	
 	TRACEENTER2("");
-	DBGTRACE1("flags = %d,  wd->capa = %ld",
-		  wrqu->data.flags, wd->capa);
+	DBGTRACE1("flags = %d,  wd->capa.encr = %ld",
+		  wrqu->data.flags, wd->capa.encr);
 
 	if (wrqu->data.flags) {
-		if (test_bit(Ndis802_11Encryption2Enabled, &wd->capa) ||
-		    test_bit(Ndis802_11Encryption3Enabled, &wd->capa))
+		if (test_bit(Ndis802_11Encryption2Enabled, &wd->capa.encr) ||
+		    test_bit(Ndis802_11Encryption3Enabled, &wd->capa.encr))
 			TRACEEXIT2(return 0);
 		else {
 			WARNING("driver is not WPA capable");
@@ -1753,7 +1773,7 @@ static int wpa_set_key(struct net_device *dev, struct iw_request_info *info,
 		    wpa_key.alg, wpa_key.key_index);
 	
 	if (wpa_key.alg == WPA_ALG_WEP) {
-		if (test_bit(Ndis802_11EncryptionDisabled, &wd->capa))
+		if (test_bit(Ndis802_11EncryptionDisabled, &wd->capa.encr))
 			TRACEEXIT2(return -1);
 
 		if (wpa_key.set_tx)

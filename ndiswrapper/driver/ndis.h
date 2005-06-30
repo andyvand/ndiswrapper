@@ -477,6 +477,18 @@ struct ndis_wireless_stats {
 	LARGE_INTEGER rx_frag;
 	LARGE_INTEGER rx_multi_frag;
 	LARGE_INTEGER fcs_err;
+	LARGE_INTEGER tkip_local_mic_failures;
+	LARGE_INTEGER tkip_icv_errors;
+	LARGE_INTEGER tkip_counter_measures_invoked;
+	LARGE_INTEGER tkip_replays;
+	LARGE_INTEGER ccmp_format_errors;
+	LARGE_INTEGER ccmp_replays;
+	LARGE_INTEGER ccmp_decrypt_errors;
+	LARGE_INTEGER fourway_handshake_failures;
+	LARGE_INTEGER wep_undecryptable_count;
+	LARGE_INTEGER wep_icv_errorcount;
+	LARGE_INTEGER decrypt_success_count;
+	LARGE_INTEGER decrypt_failure_count;
 };
 
 enum ndis_status_type {
@@ -554,6 +566,19 @@ enum encryption_status {
 	Ndis802_11EncryptionNotSupported = Ndis802_11WEPNotSupported,
 	Ndis802_11Encryption2Enabled, Ndis802_11Encryption2KeyAbsent,
 	Ndis802_11Encryption3Enabled, Ndis802_11Encryption3KeyAbsent
+};
+
+struct ndis_auth_encr {
+	enum authentication_mode auth_mode;
+	enum encryption_status encr_mode;
+};
+
+struct ndis_capability {
+	ULONG length;
+	ULONG version;
+	ULONG num_PMKIDs;
+	ULONG num_auth_encr_pair_supported;
+	struct ndis_auth_encr auth_encr_supported[1];
 };
 
 struct ndis_timer {
@@ -671,6 +696,11 @@ enum ndis_interface_type {
 	NdisInterfaceInternal, NdisInterfaceIsa, NdisInterfaceEisa,
 	NdisInterfaceMca, NdisInterfaceTurboChannel, NdisInterfacePci,
 	NdisInterfacePcMcia,
+};
+
+struct auth_encr_capa {
+	unsigned long auth;
+	unsigned long encr;
 };
 
 /*
@@ -831,10 +861,11 @@ struct wrapper_dev {
 
 	struct ndis_essid essid;
 
-	unsigned long capa;
+	struct auth_encr_capa capa;
 	enum authentication_mode auth_mode;
 	enum encryption_status encr_mode;
 	enum network_infrastructure infrastructure_mode;
+	int num_pmkids;
 
 	mac_address mac;
 

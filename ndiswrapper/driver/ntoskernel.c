@@ -1810,6 +1810,7 @@ STDCALL void *WRAP_EXPORT(MmMapIoSpace)
 	 enum memory_caching_type cache)
 {
 	void *virt;
+
 	if (cache)
 		virt = ioremap(phys_addr, size);
 	else
