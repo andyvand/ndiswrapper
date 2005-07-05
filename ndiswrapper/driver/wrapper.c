@@ -1150,12 +1150,13 @@ static void wrapper_worker_proc(void *param)
 /* check capabilites - mainly for WPA */
 static void check_capa(struct wrapper_dev *wd)
 {
-	int i, len, mode;
+	int i, mode;
 	NDIS_STATUS res;
 	struct ndis_assoc_info ndis_assoc_info;
 	struct ndis_add_key ndis_key;
 	struct ndis_capability *c;
 	char *buf;
+	const int buf_len = 512;
 
 	TRACEENTER1("%s", "");
 
@@ -1196,10 +1197,9 @@ static void check_capa(struct wrapper_dev *wd)
 
 	if (mode == 0)
 		TRACEEXIT1(return);
-	if (mode == Ndis802_11Encryption1Enabled) {
-		set_bit(Ndis802_11Encryption1Enabled, &wd->capa.encr);
+	set_bit(Ndis802_11Encryption1Enabled, &wd->capa.encr);
+	if (mode == Ndis802_11Encryption1Enabled)
 		TRACEEXIT1(return);
-	}
 
 	ndis_key.length = 32;
 	ndis_key.index = 0xC0000001;
@@ -1222,45 +1222,50 @@ static void check_capa(struct wrapper_dev *wd)
 		set_bit(Ndis802_11Encryption3Enabled, &wd->capa.encr);
 
 	/* check for wpa2 */
-	buf = kmalloc(512, GFP_KERNEL);
+	buf = kmalloc(buf_len, GFP_KERNEL);
 	if (!buf) {
 		ERROR("couldn't allocate memory");
 		TRACEEXIT1(return);
 	}
-	len = miniport_query_info(wd, OID_802_11_CAPABILITY, buf, sizeof(buf));
+	memset(buf, 0, buf_len);
 	c = (struct ndis_capability *)buf;
-	if (len < 0 || len < sizeof(*c) || c->version != 2) {
+	res = miniport_query_info(wd, OID_802_11_CAPABILITY, buf, buf_len);
+	if (res < 0 || c->version != 2) {
+		DBGTRACE1("res: %X", res);
 		kfree(buf);
 		TRACEEXIT1(return);
 	}
 	wd->num_pmkids = c->num_PMKIDs;
 
-	for (i = 0; i < c->num_auth_encr_pair_supported; i++) {
-		struct ndis_auth_encr *ae;
+	for (i = 0; i < c->num_auth_encr_pair; i++) {
+		struct ndis_auth_encr_pair *ae;
 
-		ae = &c->auth_encr_supported[i];
-		if ((char *)(ae + 1) > buf + len)
+		ae = &c->auth_encr_pair[i];
+		if ((char *)(ae + 1) > buf + buf_len)
 			break;
 		switch (ae->auth_mode) {
 		case Ndis802_11AuthModeOpen:
 		case Ndis802_11AuthModeShared:
 		case Ndis802_11AuthModeWPA:
 		case Ndis802_11AuthModeWPAPSK:
+		case Ndis802_11AuthModeWPANone:
 		case Ndis802_11AuthModeWPA2:
 		case Ndis802_11AuthModeWPA2PSK:
-		case Ndis802_11AuthModeWPANone:
 			set_bit(ae->auth_mode, &wd->capa.auth);
 			break;
 		default:
+			WARNING("unknown auth_mode: %d", ae->auth_mode);
 			break;
 		}
 		switch (ae->encr_mode) {
+		case Ndis802_11EncryptionDisabled:
 		case Ndis802_11Encryption1Enabled:
 		case Ndis802_11Encryption2Enabled:
 		case Ndis802_11Encryption3Enabled:
 			set_bit(ae->encr_mode, &wd->capa.encr);
 			break;
 		default:
+			WARNING("unknown encr_mode: %d", ae->encr_mode);
 			break;
 		}
 	}
@@ -1436,14 +1441,24 @@ int setup_device(struct net_device *dev)
 	check_capa(wd);
 
 	DBGTRACE1("capbilities = %ld", wd->capa.encr);
-	printk(KERN_INFO "%s: encryption modes supported: %s%s%s\n",
+	printk(KERN_INFO "%s: encryption modes supported: %s%s%s%s%s%s%s\n",
 	       dev->name,
 	       test_bit(Ndis802_11Encryption1Enabled, &wd->capa.encr) ?
 	       "WEP" : "none",
+
 	       test_bit(Ndis802_11Encryption2Enabled, &wd->capa.encr) ?
-	       ", WPA with TKIP" : "",
+	       "; TKIP with WPA" : "",
+	       test_bit(Ndis802_11AuthModeWPA2, &wd->capa.auth) ?
+	       ", WPA2" : "",
+	       test_bit(Ndis802_11AuthModeWPA2PSK, &wd->capa.auth) ?
+	       ", WPA2PSK" : "",
+
 	       test_bit(Ndis802_11Encryption3Enabled, &wd->capa.encr) ?
-	       ", WPA with AES/CCMP" : "");
+	       "; AES/CCMP with WPA" : "",
+	       test_bit(Ndis802_11AuthModeWPA2, &wd->capa.auth) ?
+	       ", WPA2" : "",
+	       test_bit(Ndis802_11AuthModeWPA2PSK, &wd->capa.auth) ?
+	       ", WPA2PSK" : "");
 
 	/* check_capa changes auth_mode and encr_mode, so set them again */
 	set_infra_mode(wd, Ndis802_11Infrastructure);
