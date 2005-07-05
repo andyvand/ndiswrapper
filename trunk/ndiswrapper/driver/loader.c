@@ -310,7 +310,6 @@ static void *ndiswrapper_add_usb_device(struct usb_device *udev,
 	struct miniport_char *miniport;
 	struct device_object *pdo;
 	struct driver_object *drv_obj;
-	struct pci_dev *pdev;
 //	unsigned long profile_inf = NDIS_POWER_PROFILE_AC;
 
 	TRACEENTER1("vendor: %04x, product: %04x",

@@ -568,7 +568,7 @@ enum encryption_status {
 	Ndis802_11Encryption3Enabled, Ndis802_11Encryption3KeyAbsent
 };
 
-struct ndis_auth_encr {
+struct ndis_auth_encr_pair {
 	enum authentication_mode auth_mode;
 	enum encryption_status encr_mode;
 };
@@ -577,8 +577,8 @@ struct ndis_capability {
 	ULONG length;
 	ULONG version;
 	ULONG num_PMKIDs;
-	ULONG num_auth_encr_pair_supported;
-	struct ndis_auth_encr auth_encr_supported[1];
+	ULONG num_auth_encr_pair;
+	struct ndis_auth_encr_pair auth_encr_pair[1];
 };
 
 struct ndis_timer {

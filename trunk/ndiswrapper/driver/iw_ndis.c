@@ -1020,8 +1020,10 @@ static char *ndis_translate_scan(struct net_device *dev, char *event,
 				iwe.u.data.length = strlen(buf);
 				event = iwe_stream_add_point(event, end_buf,
 							     &iwe, buf);
-			} else if (iep[0] == WLAN_EID_RSN) {
+			} else if (iep[0] == RSN_INFO_ELEM) {
 				unsigned char *p = buf;
+
+				p += sprintf(p, "rsn_ie=");
 				for (i = 0; i < ielen; i++)
 					p += sprintf(p, "%02x", iep[i]);
 

@@ -25,7 +25,6 @@
 #define XMIT_RING_SIZE 32
 #define NDIS_MAX_RATES 8
 #define NDIS_MAX_RATES_EX 16
-#define WLAN_EID_RSN 48
 #define WLAN_EID_GENERIC 221
 #define MAX_WPA_IE_LEN 64
 #define MAX_STR_LEN 512
