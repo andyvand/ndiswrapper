@@ -1230,7 +1230,7 @@ static void check_capa(struct wrapper_dev *wd)
 	memset(buf, 0, buf_len);
 	c = (struct ndis_capability *)buf;
 	res = miniport_query_info(wd, OID_802_11_CAPABILITY, buf, buf_len);
-	if (res < 0 || c->version != 2) {
+	if (res != NDIS_STATUS_SUCCESS || c->version != 2) {
 		DBGTRACE1("res: %X", res);
 		kfree(buf);
 		TRACEEXIT1(return);
