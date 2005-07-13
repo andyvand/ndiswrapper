@@ -1222,6 +1222,10 @@ static void check_capa(struct wrapper_dev *wd)
 	set_bit(Ndis802_11Encryption2Enabled, &wd->capa.encr);
 	if (mode == Ndis802_11Encryption3Enabled)
 		set_bit(Ndis802_11Encryption3Enabled, &wd->capa.encr);
+	/* not all drivers support OID_802_11_CAPABILITY, so we don't
+	 * know for sure if driver support WPA or WPAPSK; assume
+	 * WPA */
+	set_bit(Ndis802_11AuthModeWPA, &wd->capa.auth);
 
 	/* check for wpa2 */
 	buf = kmalloc(buf_len, GFP_KERNEL);
@@ -1232,7 +1236,7 @@ static void check_capa(struct wrapper_dev *wd)
 	memset(buf, 0, buf_len);
 	c = (struct ndis_capability *)buf;
 	res = miniport_query_info(wd, OID_802_11_CAPABILITY, buf, buf_len);
-	if (res != NDIS_STATUS_SUCCESS || c->version != 2) {
+	if (!(res == NDIS_STATUS_SUCCESS && c->version == 2)) {
 		DBGTRACE1("res: %X", res);
 		kfree(buf);
 		TRACEEXIT1(return);
