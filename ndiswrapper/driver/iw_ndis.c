@@ -1320,9 +1320,9 @@ static int iw_get_range(struct net_device *dev, struct iw_request_info *info,
 #if WIRELESS_EXT > 17
 	/* TODO: should determine WPA/WPA2 support in check_capa(). */
 	range->enc_capa = IW_ENC_CAPA_WPA | IW_ENC_CAPA_WPA2;
-	if (test_bit(Ndis802_11Encryption2Enabled, &wd->capa))
+	if (test_bit(Ndis802_11Encryption2Enabled, &wd->capa.encr))
 		range->enc_capa |= IW_ENC_CAPA_CIPHER_TKIP;
-	if (test_bit(Ndis802_11Encryption3Enabled, &wd->capa))
+	if (test_bit(Ndis802_11Encryption3Enabled, &wd->capa.encr))
 		range->enc_capa |= IW_ENC_CAPA_CIPHER_CCMP;
 #endif /* WIRELESS_EXT > 17 */
 
@@ -1453,7 +1453,7 @@ static int iw_set_encodeext(struct net_device *dev,
 		return -EINVAL;
 
 	if (ext->alg == IW_ENCODE_ALG_WEP) {
-		if (test_bit(Ndis802_11EncryptionDisabled, &wd->capa))
+		if (test_bit(Ndis802_11EncryptionDisabled, &wd->capa.encr))
 			TRACEEXIT2(return -1);
 
 		if (ext->ext_flags & IW_ENCODE_EXT_SET_TX_KEY)

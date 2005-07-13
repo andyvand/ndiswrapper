@@ -35,7 +35,7 @@ void miniport_halt(struct wrapper_dev *wd);
 void hangcheck_add(struct wrapper_dev *wd);
 void hangcheck_del(struct wrapper_dev *wd);
 void sendpacket_done(struct wrapper_dev *wd, struct ndis_packet *packet);
-int ndiswrapper_suspend_pci(struct pci_dev *pdev, u32 state);
+int ndiswrapper_suspend_pci(struct pci_dev *pdev, pm_message_t state);
 int ndiswrapper_resume_pci(struct pci_dev *pdev);
 
 void ndiswrapper_remove_device(struct wrapper_dev *wd);

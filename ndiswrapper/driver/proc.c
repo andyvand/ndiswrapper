@@ -305,7 +305,7 @@ static int procfs_write_settings(struct file *file, const char *buf,
 		if (i <= 0 || i > 3)
 			return -EINVAL;
 		if (wd->ndis_device->bustype == NDIS_PCI_BUS)
-			ndiswrapper_suspend_pci(wd->dev.pci, i);
+			ndiswrapper_suspend_pci(wd->dev.pci, PMSG_SUSPEND);
 	} else if (!strcmp(setting, "resume")) {
 		if (wd->ndis_device->bustype == NDIS_PCI_BUS)
 			ndiswrapper_resume_pci(wd->dev.pci);

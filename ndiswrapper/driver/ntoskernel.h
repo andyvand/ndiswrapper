@@ -76,6 +76,12 @@ typedef struct workqueue_struct *workqueue;
 #define UNMAP_SG(pci_dev, sglist, nents, direction) \
 	dma_unmap_sg(&pci_dev->dev, sglist, nents, direction)
 
+#ifndef PMSG_SUSPEND
+#define PMSG_ON 0
+#define PMSG_SUSPEND 3
+typedef u32 __bitwise pm_message_t;
+#endif
+
 #else // linux version <= 2.5.41
 
 #define PCI_DMA_ALLOC_COHERENT(dev,size,dma_handle) \
