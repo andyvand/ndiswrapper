@@ -289,8 +289,10 @@ void miniport_halt(struct wrapper_dev *wd)
 	ndis_exit_device(wd);
 	misc_funcs_exit_device(wd);
 
+	/*
 	if (wd->ndis_device->bustype == NDIS_PCI_BUS)
-		pci_set_power_state(wd->dev.pci, 3);
+		pci_set_power_state(wd->dev.pci, PMSG_SUSPEND);
+	*/
 	TRACEEXIT1(return);
 }
 
@@ -676,7 +678,7 @@ static int start_xmit(struct sk_buff *skb, struct net_device *dev)
 	return 0;
 }
 
-int ndiswrapper_suspend_pci(struct pci_dev *pdev, u32 state)
+int ndiswrapper_suspend_pci(struct pci_dev *pdev, pm_message_t state)
 {
 	struct net_device *dev;
 	struct wrapper_dev *wd;
@@ -734,7 +736,7 @@ int ndiswrapper_suspend_pci(struct pci_dev *pdev, u32 state)
 	pci_save_state(pdev, wd->pci_state);
 #endif
 	pci_disable_device(pdev);
-	pci_set_power_state(pdev, 3);
+	pci_set_power_state(pdev, PMSG_SUSPEND);
 
 	DBGTRACE2("%s: device suspended", dev->name);
 	return 0;
@@ -1281,7 +1283,7 @@ int ndis_reinit(struct wrapper_dev *wd)
 	int i = test_bit(ATTR_HALT_ON_SUSPEND, &wd->attributes);
 	set_bit(ATTR_HALT_ON_SUSPEND, &wd->attributes);
 	if (wd->ndis_device->bustype == NDIS_PCI_BUS) {
-		ndiswrapper_suspend_pci(wd->dev.pci, 3);
+		ndiswrapper_suspend_pci(wd->dev.pci, PMSG_SUSPEND);
 		ndiswrapper_resume_pci(wd->dev.pci);
 	}
 

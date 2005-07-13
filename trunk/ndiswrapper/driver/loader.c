@@ -199,7 +199,7 @@ static int ndiswrapper_add_pci_device(struct pci_dev *pdev,
 		goto out_regions;
 	}
 
-	pci_set_power_state(pdev, 0);
+	pci_set_power_state(pdev, PMSG_ON);
 #if LINUX_VERSION_CODE <= KERNEL_VERSION(2,6,9)
 	pci_restore_state(pdev, NULL);
 #endif
