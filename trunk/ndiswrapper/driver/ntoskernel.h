@@ -76,12 +76,6 @@ typedef struct workqueue_struct *workqueue;
 #define UNMAP_SG(pci_dev, sglist, nents, direction) \
 	dma_unmap_sg(&pci_dev->dev, sglist, nents, direction)
 
-#ifndef PMSG_SUSPEND
-#define PMSG_ON 0
-#define PMSG_SUSPEND 3
-typedef u32 __bitwise pm_message_t;
-#endif
-
 #else // linux version <= 2.5.41
 
 #define PCI_DMA_ALLOC_COHERENT(dev,size,dma_handle) \
@@ -176,6 +170,12 @@ typedef task_queue workqueue;
 #endif
 
 #endif // LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
+
+#ifndef PMSG_SUSPEND
+#define PMSG_ON 0
+#define PMSG_SUSPEND 3
+typedef u32 pm_message_t;
+#endif
 
 #if defined(CONFIG_SOFTWARE_SUSPEND2) || defined(CONFIG_SUSPEND2)
 #define KTHREAD_RUN(a,b,c) kthread_run(a,b,0,c)
