@@ -568,6 +568,12 @@ NOREGPARM int WRAP_EXPORT(_win_atoi)
 	return i;
 }
 
+STDCALL int WRAP_EXPORT(_win_isprint)
+	(int c)
+{
+	return isprint(c);
+}
+
 STDCALL s64 WRAP_EXPORT(_alldiv)
 	(s64 a, s64 b)
 {
