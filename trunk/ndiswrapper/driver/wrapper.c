@@ -37,7 +37,7 @@
 #include "iw_ndis.h"
 #include "loader.h"
 
-#ifndef NDISWRAPPER_VERSION
+#ifndef DRIVER_VERSION
 #error ndiswrapper version is not defined; run 'make' only from ndiswrapper \
 	directory or driver directory
 #endif
@@ -77,7 +77,7 @@ MODULE_PARM_DESC(hangcheck_interval, "The interval, in seconds, for checking"
 
 MODULE_AUTHOR("ndiswrapper team <ndiswrapper-general@lists.sourceforge.net>");
 #ifdef MODULE_VERSION
-MODULE_VERSION(NDISWRAPPER_VERSION);
+MODULE_VERSION(DRIVER_VERSION);
 #endif
 static void ndis_set_rx_mode(struct net_device *dev);
 static void set_multicast_list(struct net_device *dev,
@@ -95,6 +95,9 @@ NDIS_STATUS miniport_reset(struct wrapper_dev *wd)
 	UINT max_lookahead;
 
 	TRACEENTER2("wd: %p", wd);
+
+	if (wd->hw_unavailable)
+		TRACEEXIT1(return NDIS_STATUS_FAILURE);
 
 	if (wd->reset_status)
 		return NDIS_STATUS_PENDING;
@@ -120,14 +123,13 @@ NDIS_STATUS miniport_reset(struct wrapper_dev *wd)
 	if (res == NDIS_STATUS_PENDING) {
 		if (wait_event_interruptible_timeout(
 			    wd->ndis_comm_wq,
-			    (wd->ndis_comm_done == 1), 1*HZ))
+			    (wd->ndis_comm_done == 1), 5*HZ))
 			res = wd->ndis_comm_res;
 		else
 			res = NDIS_STATUS_FAILURE;
 		DBGTRACE2("res = %08X, reset_status = %08X",
 			  res, wd->reset_status);
 	}
-	up(&wd->ndis_comm_mutex);
 	DBGTRACE2("reset: res = %08X, reset status = %08X",
 		  res, wd->reset_status);
 
@@ -139,6 +141,7 @@ NDIS_STATUS miniport_reset(struct wrapper_dev *wd)
 		ndis_set_rx_mode(wd->net_dev);
 	}
 	wd->reset_status = 0;
+	up(&wd->ndis_comm_mutex);
 
 	TRACEEXIT3(return res);
 }
@@ -159,6 +162,9 @@ NDIS_STATUS miniport_query_info_needed(struct wrapper_dev *wd,
 
 	TRACEENTER3("query is at %p", miniport->query);
 
+	if (wd->hw_unavailable)
+		TRACEEXIT1(return NDIS_STATUS_FAILURE);
+
 	if (down_interruptible(&wd->ndis_comm_mutex))
 		TRACEEXIT3(return NDIS_STATUS_FAILURE);
 	wd->ndis_comm_done = 0;
@@ -172,7 +178,7 @@ NDIS_STATUS miniport_query_info_needed(struct wrapper_dev *wd,
 		/* wait for NdisMQueryInformationComplete upto HZ */
 		if (wait_event_interruptible_timeout(
 			    wd->ndis_comm_wq,
-			    (wd->ndis_comm_done == 1), 1*HZ))
+			    (wd->ndis_comm_done == 1), 2*HZ))
 			res = wd->ndis_comm_res;
 		else
 			res = NDIS_STATUS_FAILURE;
@@ -206,6 +212,9 @@ NDIS_STATUS miniport_set_info(struct wrapper_dev *wd, ndis_oid oid,
 
 	TRACEENTER3("setinfo is at %p", miniport->setinfo);
 
+	if (wd->hw_unavailable)
+		TRACEEXIT1(return NDIS_STATUS_FAILURE);
+
 	if (down_interruptible(&wd->ndis_comm_mutex))
 		TRACEEXIT3(return NDIS_STATUS_FAILURE);
 	wd->ndis_comm_done = 0;
@@ -219,10 +228,11 @@ NDIS_STATUS miniport_set_info(struct wrapper_dev *wd, ndis_oid oid,
 		/* wait for NdisMSetInformationComplete upto HZ */
 		if (wait_event_interruptible_timeout(
 			    wd->ndis_comm_wq,
-			    (wd->ndis_comm_done == 1), 1*HZ))
+			    (wd->ndis_comm_done == 1), 2*HZ))
 			res = wd->ndis_comm_res;
 		else
 			res = NDIS_STATUS_FAILURE;
+		DBGTRACE2("res = %x", res);
 	}
 	up(&wd->ndis_comm_mutex);
 	if (needed)
@@ -271,7 +281,63 @@ NDIS_STATUS miniport_init(struct wrapper_dev *wd)
 		       wd->nmb, wd->nmb);
 	if (res)
 		TRACEEXIT1(return res);
+
+	/* do we need to power up the card explicitly? */
+//	res = miniport_set_pm_state(wd, NdisDeviceStateD0);
+	/* do we need to reset the device? */
+//	res = miniport_reset(wd);
+
+	/* Wait a little to let card power up otherwise ifup might fail after
+	   boot */
+	set_current_state(TASK_INTERRUPTIBLE);
+	schedule_timeout(HZ/2);
+
 	TRACEEXIT1(return 0);
+}
+
+int ndiswrapper_start_device(struct wrapper_dev *wd)
+{
+	NTSTATUS status;
+	struct irp *irp;
+	struct io_stack_location *irp_sl;
+
+	TRACEENTER1("%p", wd);
+	irp = IoAllocateIrp(wd->nmb->fdo->stack_size, FALSE);
+	irp_sl = IoGetNextIrpStackLocation(irp);
+	DBGTRACE1("irp = %p, stack = %p", irp, irp_sl);
+	irp_sl->major_fn = IRP_MJ_PNP;
+	irp_sl->minor_fn = IRP_MN_START_DEVICE;
+	irp->io_status.status = STATUS_NOT_SUPPORTED;
+	status = IoCallDriver(wd->nmb->fdo, irp);
+	TRACEEXIT1(return status);
+}
+
+NDIS_STATUS miniport_set_pm_state(struct wrapper_dev *wd,
+				  enum ndis_pm_state pm_state)
+{
+	NDIS_STATUS res;
+	struct miniport_char *miniport;
+
+	miniport = &wd->driver->miniport;
+	res = miniport_set_int(wd, OID_PNP_SET_POWER, pm_state);
+	/* According NDIS, pnp_event_notify should be called whenever power
+	 * is set to D0
+	 * Only NDIS 5.1 drivers are required to supply this function; some
+	 * drivers don't seem to support it (at least Orinoco)
+	 */
+	if (res == NDIS_STATUS_SUCCESS && pm_state == NdisDeviceStateD0) {
+		miniport = &wd->driver->miniport;
+		if (miniport->pnp_event_notify) {
+			ULONG pnp_info;
+			pnp_info = NdisPowerProfileAcOnLine;
+			DBGTRACE3("calling pnp_event_notify");
+			LIN2WIN4(miniport->pnp_event_notify,
+				 wd->nmb->adapter_ctx,
+				 NdisDevicePnPEventPowerProfileChanged,
+				 &pnp_info, (ULONG)sizeof(pnp_info));
+		}
+	}
+	return res;
 }
 
 /*
@@ -280,20 +346,28 @@ NDIS_STATUS miniport_init(struct wrapper_dev *wd)
 void miniport_halt(struct wrapper_dev *wd)
 {
 	struct miniport_char *miniport = &wd->driver->miniport;
-	TRACEENTER1("driver halt is at %p", miniport->halt);
-
-	miniport_set_int(wd, OID_PNP_SET_POWER, NdisDeviceStateD3);
+	DBGTRACE1("driver halt is at %p", miniport->halt);
 
 	LIN2WIN1(miniport->halt, wd->nmb->adapter_ctx);
 
 	ndis_exit_device(wd);
 	misc_funcs_exit_device(wd);
 
-	/*
-	if (wd->ndis_device->bustype == NDIS_PCI_BUS)
-		pci_set_power_state(wd->dev.pci, PMSG_SUSPEND);
-	*/
 	TRACEEXIT1(return);
+}
+
+void ndiswrapper_stop_device(struct wrapper_dev *wd)
+{
+	struct irp *irp;
+	struct io_stack_location *irp_sl;
+
+	irp = IoAllocateIrp(wd->nmb->fdo->stack_size, FALSE);
+	irp_sl = IoGetNextIrpStackLocation(irp);
+	DBGTRACE1("irp = %p, stack = %p", irp, irp_sl);
+	irp_sl->major_fn = IRP_MJ_PNP;
+	irp_sl->minor_fn = IRP_MN_STOP_DEVICE;
+	irp->io_status.status = STATUS_NOT_SUPPORTED;
+	IoCallDriver(wd->nmb->fdo, irp);
 }
 
 static void hangcheck_proc(unsigned long data)
@@ -303,6 +377,7 @@ static void hangcheck_proc(unsigned long data)
 
 	TRACEENTER3("%s", "");
 	
+	return;
 	set_bit(HANGCHECK, &wd->wrapper_work);
 	schedule_work(&wd->wrapper_worker);
 
@@ -356,7 +431,7 @@ static void stats_proc(unsigned long data)
 
 	set_bit(COLLECT_STATS, &wd->wrapper_work);
 	schedule_work(&wd->wrapper_worker);
-	wd->stats_timer.expires = jiffies + 2 * HZ;
+	wd->stats_timer.expires = jiffies + 5 * HZ;
 	add_timer(&wd->stats_timer);
 }
 
@@ -365,7 +440,7 @@ static void stats_timer_add(struct wrapper_dev *wd)
 	init_timer(&wd->stats_timer);
 	wd->stats_timer.data = (unsigned long)wd;
 	wd->stats_timer.function = &stats_proc;
-	wd->stats_timer.expires = jiffies + 2 * HZ;
+	wd->stats_timer.expires = jiffies + 5 * HZ;
 	add_timer(&wd->stats_timer);
 }
 
@@ -593,12 +668,10 @@ static void xmit_worker(void *param)
 
 	/* some drivers e.g., new RT2500 driver, crash if any packets
 	 * are sent when the card is not associated */
+	irql = kspin_lock_irql(&wd->xmit_lock, DISPATCH_LEVEL);
 	while (wd->send_ok) {
-		irql = kspin_lock_irql(&wd->xmit_lock, DISPATCH_LEVEL);
-		if (wd->xmit_ring_pending == 0) {
-			kspin_unlock_irql(&wd->xmit_lock, irql);
+		if (wd->xmit_ring_pending == 0)
 			break;
-		}
 		n = send_packets(wd, wd->xmit_ring_start,
 				 wd->xmit_ring_pending);
 		wd->xmit_ring_start =
@@ -606,8 +679,8 @@ static void xmit_worker(void *param)
 		wd->xmit_ring_pending -= n;
 		if (n > 0 && netif_queue_stopped(wd->net_dev))
 			netif_wake_queue(wd->net_dev);
-		kspin_unlock_irql(&wd->xmit_lock, irql);
 	}
+	kspin_unlock_irql(&wd->xmit_lock, irql);
 
 	TRACEEXIT3(return);
 }
@@ -678,15 +751,57 @@ static int start_xmit(struct sk_buff *skb, struct net_device *dev)
 	return 0;
 }
 
+struct irp *allocate_power_irp(struct device_object *dev,
+			       enum device_power_state new_state)
+{
+	struct irp *irp;
+	struct io_stack_location *stack;
+
+	irp = IoAllocateIrp(dev->stack_size, FALSE);
+	DBGTRACE1("stack size: %d, irp = %p", dev->stack_size, irp);
+	DBGTRACE1("drv_obj: %p", dev->drv_obj);
+	stack = IoGetNextIrpStackLocation(irp);
+	stack->major_fn = IRP_MJ_POWER;
+	stack->minor_fn = IRP_MN_SET_POWER;
+	stack->params.power.type = DevicePowerState;
+	stack->params.power.state.device_state = new_state;
+	irp->io_status.status = STATUS_NOT_SUPPORTED;
+	return irp;
+}
+
 int ndiswrapper_suspend_pci(struct pci_dev *pdev, pm_message_t state)
 {
-	struct net_device *dev;
+	struct irp *irp;
+	NTSTATUS status;
+	struct device_object *dev;
 	struct wrapper_dev *wd;
-	int pm_state;
-	NDIS_STATUS res;
 
 	if (!pdev)
 		return -1;
+	wd = pci_get_drvdata(pdev);
+	if (!wd)
+		return -1;
+	dev = wd->nmb->fdo;
+	DBGTRACE1("pdev: %p", pdev);
+	irp = allocate_power_irp(dev, PowerDeviceD3);
+	status = PoCallDriver(dev, irp);
+	DBGTRACE1("status = %d", status);
+	if (status)
+		return -1;
+	else
+		return 0;
+}
+
+int pdo_suspend_pci(struct pci_dev *pdev, pm_message_t state)
+{
+	struct net_device *dev;
+	int pm_state;
+	NDIS_STATUS res;
+	struct wrapper_dev *wd;
+
+	if (!pdev)
+		return -1;
+	DBGTRACE1("pdev: %p", pdev);
 	wd = pci_get_drvdata(pdev);
 	if (!wd)
 		return -1;
@@ -698,6 +813,7 @@ int ndiswrapper_suspend_pci(struct pci_dev *pdev, pm_message_t state)
 
 	DBGTRACE2("irql: %d", current_irql());
 	DBGTRACE2("%s: detaching device", dev->name);
+	netif_poll_disable(dev);
 	if (netif_running(dev)) {
 		netif_stop_queue(dev);
 		netif_device_detach(dev);
@@ -706,30 +822,31 @@ int ndiswrapper_suspend_pci(struct pci_dev *pdev, pm_message_t state)
 	stats_timer_del(wd);
 
 	if (test_bit(ATTR_HALT_ON_SUSPEND, &wd->attributes)) {
-		DBGTRACE2("%s", "driver requests halt_on_suspend");
-		miniport_halt(wd);
+		DBGTRACE1("%s", "driver requests halt_on_suspend");
+		ndiswrapper_stop_device(wd);
 		set_bit(HW_HALTED, &wd->hw_status);
 	} else {
-		int i;
+		enum ndis_pm_state ps;
 		/* some drivers don't support D2, so force D3 */
 		pm_state = NdisDeviceStateD3;
-		/* use copy; query_power changes this value */
-		i = pm_state;
-		res = miniport_query_int(wd, OID_PNP_QUERY_POWER, &i);
-		DBGTRACE2("%s: query power to state %d returns %08X",
-			  dev->name, pm_state, res);
-		if (res) {
+		/* some drivers smother argument to OID_PNP_SET_POWER, so
+		   use a copy */
+		ps = pm_state;
+		res = miniport_query_int(wd, OID_PNP_SET_POWER, &ps);
+		if (res != NDIS_STATUS_SUCCESS) {
+			DBGTRACE2("%s: query power to state %d returns %08X",
+				  dev->name, pm_state, res);
 			WARNING("No pnp capabilities for pm (%08X); halting",
 				res);
-			miniport_halt(wd);
+			ndiswrapper_stop_device(wd);
 			set_bit(HW_HALTED, &wd->hw_status);
 		} else {
-			res = miniport_set_int(wd, OID_PNP_SET_POWER,
-					       pm_state);
+			miniport_set_pm_state(wd, pm_state);
 			DBGTRACE2("suspending returns %08X", res);
 			set_bit(HW_SUSPENDED, &wd->hw_status);
 		}
 	}
+	wd->hw_unavailable++;
 #if LINUX_VERSION_CODE > KERNEL_VERSION(2,6,9)
 	pci_save_state(pdev);
 #else
@@ -743,6 +860,28 @@ int ndiswrapper_suspend_pci(struct pci_dev *pdev, pm_message_t state)
 }
 
 int ndiswrapper_resume_pci(struct pci_dev *pdev)
+{
+	struct irp *irp;
+	NTSTATUS status;
+	struct device_object *dev;
+	struct wrapper_dev *wd;
+
+	if (!pdev)
+		return -1;
+	wd = pci_get_drvdata(pdev);
+	if (!wd)
+		return -1;
+	dev = wd->nmb->fdo;
+	irp = allocate_power_irp(dev, PowerDeviceD0);
+	status = PoCallDriver(dev, irp);
+	DBGTRACE1("status = %d", status);
+	if (status)
+		return -1;
+	else
+		return 0;
+}
+
+int pdo_resume_pci(struct pci_dev *pdev)
 {
 	struct net_device *dev;
 	struct wrapper_dev *wd;
@@ -818,8 +957,10 @@ void ndiswrapper_remove_device(struct wrapper_dev *wd)
 	}
 #endif
 	DBGTRACE1("halting device %s", wd->driver->name);
-	miniport_halt(wd);
+	ndiswrapper_stop_device(wd);
 	DBGTRACE1("halt successful");
+	IoDeleteDevice(wd->nmb->fdo);
+	IoDeleteDevice(wd->nmb->pdo);
 
 	if (wd->xmit_array)
 		kfree(wd->xmit_array);
@@ -870,8 +1011,8 @@ static void link_status_handler(struct wrapper_dev *wd)
 		TRACEEXIT2(return);
 	}
 
-	if (!test_bit(Ndis802_11Encryption2Enabled, &wd->capa.encr) &&
-	    !test_bit(Ndis802_11Encryption3Enabled, &wd->capa.encr))
+	if (!(test_bit(Ndis802_11Encryption2Enabled, &wd->capa.encr) ||
+	      test_bit(Ndis802_11Encryption3Enabled, &wd->capa.encr)))
 		TRACEEXIT2(return);
 
 	assoc_info = kmalloc(assoc_size, GFP_KERNEL);
@@ -1009,6 +1150,8 @@ static void update_wireless_stats(struct wrapper_dev *wd)
 	ndis_rssi rssi;
 	NDIS_STATUS res;
 
+	return;
+	TRACEENTER2("");
 	if (wd->reset_status)
 		return;
 	res = miniport_query_info(wd, OID_802_11_RSSI, &rssi,
@@ -1107,31 +1250,24 @@ static void wrapper_worker_proc(void *param)
 
 		if (test_bit(HW_HALTED, &wd->hw_status)) {
 			res = miniport_init(wd);
+//			res = ndiswrapper_start_device(wd);
 			if (res)
 				ERROR("initialization failed: %08X", res);
 			clear_bit(HW_HALTED, &wd->hw_status);
 		} else {
-			res = miniport_set_int(wd, OID_PNP_SET_POWER,
-					       NdisDeviceStateD0);
-			clear_bit(HW_SUSPENDED, &wd->hw_status);
+			res = miniport_set_pm_state(wd, NdisDeviceStateD0);
 			DBGTRACE2("%s: setting power to state %d returns %d",
 				  net_dev->name, NdisDeviceStateD0, res);
+			clear_bit(HW_SUSPENDED, &wd->hw_status);
 			if (res)
 				WARNING("No pnp capabilities for pm (%08X)",
 					res);
 			/* ignore this error and continue */
 			res = 0;
-			/*
-			  if (miniport->pnp_event_notify) {
-			  INFO("%s", "calling pnp_event_notify");
-			  LIN2WIN4(miniport->pnp_event_notify, wd,
-			  NDIS_PNP_PROFILE_CHANGED,
-			  &profile_inf, sizeof(profile_inf));
-			  }
-			*/
 		}
 
 		if (!res) {
+			wd->hw_unavailable--;
 			hangcheck_add(wd);
 			stats_timer_add(wd);
 			set_scan(wd);
@@ -1142,6 +1278,7 @@ static void wrapper_worker_proc(void *param)
 				netif_device_attach(net_dev);
 				netif_start_queue(net_dev);
 			}
+			netif_poll_enable(net_dev);
 
 			DBGTRACE2("%s: device resumed", net_dev->name);
 		}
@@ -1498,6 +1635,19 @@ struct net_device *ndis_init_netdev(struct wrapper_dev **pwd,
 	wd = dev->priv;
 	DBGTRACE1("wd= %p", wd);
 
+	wd->nmb = kmalloc(sizeof(struct ndis_miniport_block), GFP_KERNEL);
+	if (!wd->nmb) {
+		ERROR("couldn't allocate memory");
+		free_netdev(dev);
+		return NULL;
+	}
+	memset(wd->nmb, 0, sizeof(struct ndis_miniport_block));
+	wd->nmb->wd = wd;
+	wd->nmb->filterdbs.eth_db = wd->nmb;
+	wd->nmb->filterdbs.tr_db = wd->nmb;
+	wd->nmb->filterdbs.fddi_db = wd->nmb;
+	wd->nmb->filterdbs.arc_db = wd->nmb;
+
 	wd->driver = driver;
 	wd->ndis_device = device;
 	wd->net_dev = dev;
@@ -1532,6 +1682,7 @@ struct net_device *ndis_init_netdev(struct wrapper_dev **pwd,
 	memset(&wd->encr_info, 0, sizeof(wd->encr_info));
 	wd->infrastructure_mode = Ndis802_11Infrastructure;
 	INIT_WORK(&wd->wrapper_worker, wrapper_worker_proc, wd);
+	wd->hw_unavailable = 0;
 
 	*pwd = wd;
 	return dev;
@@ -1554,13 +1705,13 @@ static int __init wrapper_init(void)
 #else
 			"0"
 #endif
-			, NDISWRAPPER_VERSION, "-a", 0};
+			, UTILS_VERSION, "-a", 0};
 	char *env[] = {NULL};
 	int err;
 
 	spin_lock_init(&spinlock_kspin_lock);
-	printk(KERN_INFO "%s version %s%s loaded (preempt=%s,smp=%s)\n",
-	       DRIVER_NAME, NDISWRAPPER_VERSION, EXTRA_VERSION,
+	printk(KERN_INFO "%s version %s loaded (preempt=%s,smp=%s)\n",
+	       DRIVER_NAME, DRIVER_VERSION,
 #if defined CONFIG_PREEMPT
 	       "yes",
 #else

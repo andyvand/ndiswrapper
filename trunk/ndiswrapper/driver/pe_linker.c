@@ -77,8 +77,8 @@ static WRAP_EXPORT_FUNC get_export(char *name)
 	return name;
 }
 #else
-extern struct wrap_export ntoskernel_exports[], ndis_exports[],
-	misc_funcs_exports[], hal_exports[];
+extern struct wrap_export ntoskernel_exports[], ntoskernel_io_exports[],
+       ndis_exports[], misc_funcs_exports[], hal_exports[];
 #ifdef CONFIG_USB
 extern struct wrap_export usb_exports[];
 #endif
@@ -90,6 +90,10 @@ static char *get_export(char *name)
 	for (i = 0 ; ntoskernel_exports[i].name != NULL; i++)
 		if (strcmp(ntoskernel_exports[i].name, name) == 0)
 			return (char *)ntoskernel_exports[i].func;
+
+	for (i = 0 ; ntoskernel_io_exports[i].name != NULL; i++)
+		if (strcmp(ntoskernel_io_exports[i].name, name) == 0)
+			return (char *)ntoskernel_io_exports[i].func;
 
 	for (i = 0 ; ndis_exports[i].name != NULL; i++)
 		if (strcmp(ndis_exports[i].name, name) == 0)

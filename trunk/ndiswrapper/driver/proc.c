@@ -312,6 +312,32 @@ static int procfs_write_settings(struct file *file, const char *buf,
 	} else if (!strcmp(setting, "reinit")) {
 		if (ndis_reinit(wd))
 			return -EINVAL;
+#ifdef USB_DEBUG
+	} else if (!strcmp(setting, "irp")) {
+		struct irp *irp;
+		struct io_stack_location *irp_sl;
+		NTSTATUS status;
+		int major_fn, minor_fn, n;
+		struct device_object *dev;
+		if (!p)
+			return -EINVAL;
+		p++;
+		n = sscanf(p, "%d,%d,%x", &major_fn, &minor_fn, (int *)&dev);
+		DBGTRACE1("n = %d, mj = %d, mn = %d, dev = %p", n, major_fn,
+			  minor_fn, dev);
+		if (n != 3)
+			return -EINVAL;
+		irp = IoAllocateIrp(dev->stack_size, FALSE);
+		DBGTRACE1("stack size: %d, irp = %p", dev->stack_size, irp);
+		DBGTRACE1("drv_obj: %p", dev->drv_obj);
+		irp_sl = IoGetNextIrpStackLocation(irp);
+		irp_sl->major_fn = major_fn;
+		irp_sl->minor_fn = minor_fn;
+		irp->io_status.status = STATUS_NOT_SUPPORTED;
+		status = 0;
+		status = IoCallDriver(dev, irp);
+		DBGTRACE1("status = %d", status);
+#endif
 	} else if (!strcmp(setting, "power_profile")) {
 		int i;
 		struct miniport_char *miniport;

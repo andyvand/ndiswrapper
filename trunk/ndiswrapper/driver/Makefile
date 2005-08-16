@@ -2,7 +2,7 @@
 
 DISTFILES=divdi3.c hal.c iw_ndis.c iw_ndis.h loader.c loader.h \
 		longlong.h Makefile misc_funcs.c ndis.c ndis.h \
-		ndiswrapper.h ntoskernel.c ntoskernel.h \
+		ndiswrapper.h ntoskernel.c ntoskernel.h ntoskernel_io.c \
 		pe_linker.c pe_linker.h proc.c usb.c usb.h winnt_types.h \
 		wrapper.c wrapper.h x86_64_stubs.S
 
@@ -30,9 +30,9 @@ ifdef DEBUG_TIMER
 CFLAGS += -DDEBUG_TIMER
 endif
 
-ifdef NDISWRAPPER_VERSION
-CFLAGS += -DNDISWRAPPER_VERSION=\"${NDISWRAPPER_VERSION}\" \
-		  -DEXTRA_VERSION=\"${EXTRA_VERSION}\"
+ifdef DRIVER_VERSION
+CFLAGS += -DDRIVER_VERSION=\"${DRIVER_VERSION}\" \
+		  -DUTILS_VERSION=\"${UTILS_VERSION}\"
 endif
 
 ifdef INPROCOMM_AMD64
@@ -45,7 +45,7 @@ endif
 all : prereq_check x86_64_stubs gen_exports default stack_check
 
 OBJS := hal.o iw_ndis.o loader.o misc_funcs.o ndis.o ntoskernel.o \
-		pe_linker.o proc.o wrapper.o
+		ntoskernel_io.o pe_linker.o proc.o wrapper.o
 
 ifeq ($(CONFIG_USB),y)
 OBJS += usb.o
@@ -75,6 +75,8 @@ ndis.o: ndis.c ndis.h iw_ndis.h wrapper.h
 
 ntoskernel.o: ntoskernel.c ndis.h usb.h
 
+ntoskernel_io.o: ntoskernel_io.c ndis.h usb.h
+
 pe_linker.o: pe_linker.c
 
 proc.o: proc.c ndis.h iw_ndis.h wrapper.h
@@ -93,7 +95,8 @@ wrapper.h: ndis.h
 hal_exports.h: hal.c
 misc_funcs_exports.h: misc_funcs.c
 ndis_exports.h: ndis.c
-ntoskerlen_exports.h: ntoskernel.c
+ntoskernel_exports.h: ntoskernel.c
+ntoskernel_io_exports.h: ntoskernel_io.c
 usb_exports.h: usb.c
 
 ifeq ($(CONFIG_X86_64),y)
@@ -149,7 +152,8 @@ endif
 	fi > $@
 
 gen_exports: ndis_exports.h hal_exports.h ntoskernel_exports.h \
-			 misc_funcs_exports.h usb_exports.h wrapper_exports.h
+			 ntoskernel_io_exports.h misc_funcs_exports.h \
+			 usb_exports.h wrapper_exports.h
 
 prereq_check:
 	@ if [ ! -f $(KSRC)/include/linux/version.h ]; then \
@@ -186,8 +190,8 @@ ndiswrapper-objs := $(OBJS)
 
 default:
 	$(MAKE) -C $(KSRC) SUBDIRS=$(SRC_DIR) \
-		NDISWRAPPER_VERSION=$(NDISWRAPPER_VERSION) \
-		EXTRA_VERSION=$(EXTRA_VERSION) modules
+		DRIVER_VERSION=$(DRIVER_VERSION) \
+		UTILS_VERSION=$(UTILS_VERSION) modules
 
 endif
 

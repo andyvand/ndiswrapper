@@ -31,6 +31,8 @@ NDIS_STATUS miniport_query_int(struct wrapper_dev *wd, ndis_oid oid,
 NDIS_STATUS miniport_set_int(struct wrapper_dev *wd, ndis_oid oid,
 			     ULONG data);
 NDIS_STATUS miniport_init(struct wrapper_dev *wd);
+NDIS_STATUS miniport_set_pm_state(struct wrapper_dev *wd,
+				     enum ndis_pm_state);
 void miniport_halt(struct wrapper_dev *wd);
 void hangcheck_add(struct wrapper_dev *wd);
 void hangcheck_del(struct wrapper_dev *wd);
@@ -38,6 +40,8 @@ void sendpacket_done(struct wrapper_dev *wd, struct ndis_packet *packet);
 int ndiswrapper_suspend_pci(struct pci_dev *pdev, pm_message_t state);
 int ndiswrapper_resume_pci(struct pci_dev *pdev);
 
+int ndiswrapper_start_device(struct wrapper_dev *wd);
+void ndiswrapper_stop_device(struct wrapper_dev *wd);
 void ndiswrapper_remove_device(struct wrapper_dev *wd);
 int ndis_reinit(struct wrapper_dev *wd);
 int setup_device(struct net_device *dev);

@@ -77,7 +77,7 @@ static struct ndis_driver *ndiswrapper_load_driver(struct ndis_device *device)
 #else
 				"0",
 #endif
-				NDISWRAPPER_VERSION, device->driver_name,
+				UTILS_VERSION, device->driver_name,
 				device->conf_file_name, NULL};
 		char *env[] = {NULL};
 
@@ -135,9 +135,9 @@ static int ndiswrapper_add_pci_device(struct pci_dev *pdev,
 	struct ndis_driver *driver;
 	struct wrapper_dev *wd;
 	struct net_device *dev;
-	struct miniport_char *miniport;
 	struct device_object *pdo;
 	struct driver_object *drv_obj;
+	NTSTATUS status;
 
 	TRACEENTER1("ent: %p", ent);
 
@@ -167,19 +167,21 @@ static int ndiswrapper_add_pci_device(struct pci_dev *pdev,
 	wd->dev.dev_type = NDIS_PCI_BUS;
 	wd->dev.pci = pdev;
 	DBGTRACE1("");
-	pdo = alloc_pdo(drv_obj, &wd->dev);
+	pdo = alloc_pdo(drv_obj);
 	if (!pdo) {
 		res = -ENODEV;
 		goto out_start;
 	}
-	pdo->wd = wd;
+	pdo->dev_ext = wd;
+	wd->nmb->pdo = pdo;
+	DBGTRACE1("driver: %p", pdo->drv_obj);
 
-	DBGTRACE1("");
 	/* this creates (empty) fdo */
 	res = driver->drv_obj->drv_ext->add_device_func(driver->drv_obj,
 							pdo);
 	if (res != STATUS_SUCCESS)
 		goto out_start;
+	DBGTRACE1("fdo: %p", wd->nmb->fdo);
 
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
 	SET_NETDEV_DEV(dev, &pdev->dev);
@@ -214,39 +216,13 @@ static int ndiswrapper_add_pci_device(struct pci_dev *pdev,
 				"may not work with more than 1GB RAM");
 	}
 #endif
-	DBGTRACE1("%s", "calling ndis init routine");
-	if ((res = miniport_init(wd))) {
+	status = ndiswrapper_start_device(wd);
+	if (status) {
 		ERROR("Windows driver couldn't initialize the device (%08X)",
-			res);
+		      res);
 		res = -EINVAL;
 		goto out_start;
 	}
-
-	/* do we need to power up the card explicitly? */
-	miniport_set_int(wd, OID_PNP_SET_POWER, NdisDeviceStateD0);
-	miniport = &wd->driver->miniport;
-	/* According NDIS, pnp_event_notify should be called whenever power
-	 * is set to D0
-	 * Only NDIS 5.1 drivers are required to supply this function; some
-	 * drivers don't seem to support it (at least Orinoco)
-	 */
-	/*
-	if (miniport->pnp_event_notify) {
-		DBGTRACE3("%s", "calling pnp_event_notify");
-		miniport->pnp_event_notify(nmb, NDIS_PNP_PROFILE_CHANGED,
-					 &profile_inf, sizeof(profile_inf));
-	}
-	*/
-
-	/* IPW2200 devices turn off radio if reset is called */
-	/* Airgo driver never recovers from reset */
-	if (!(pdev->vendor == 0x8086 || pdev->vendor == 0x17CB))
-		miniport_reset(wd);
-
-	/* Wait a little to let card power up otherwise ifup might fail after
-	   boot */
-	set_current_state(TASK_INTERRUPTIBLE);
-	schedule_timeout(HZ/2);
 
 	if (setup_device(wd->net_dev)) {
 		ERROR("couldn't setup network device");
@@ -257,7 +233,7 @@ static int ndiswrapper_add_pci_device(struct pci_dev *pdev,
 	TRACEEXIT1(return 0);
 
 out_setup:
-	miniport_halt(wd);
+	ndiswrapper_stop_device(wd);
 out_start:
 	pci_release_regions(pdev);
 out_regions:
@@ -307,10 +283,8 @@ static void *ndiswrapper_add_usb_device(struct usb_device *udev,
 	struct ndis_driver *driver;
 	struct wrapper_dev *wd;
 	struct net_device *dev;
-	struct miniport_char *miniport;
 	struct device_object *pdo;
 	struct driver_object *drv_obj;
-//	unsigned long profile_inf = NDIS_POWER_PROFILE_AC;
 
 	TRACEENTER1("vendor: %04x, product: %04x",
 		    usb_id->idVendor, usb_id->idProduct);
@@ -336,12 +310,13 @@ static void *ndiswrapper_add_usb_device(struct usb_device *udev,
 		goto out_start;
 	wd->dev.dev_type = NDIS_USB_BUS;
 	DBGTRACE1("");
-	pdo = alloc_pdo(drv_obj, &wd->dev);
+	pdo = alloc_pdo(drv_obj);
 	if (!pdo) {
 		res = -ENODEV;
 		goto out_start;
 	}
-	pdo->wd = wd;
+	pdo->dev_ext = wd;
+	wd->nmb->pdo = pdo;
 
 	DBGTRACE1("");
 	/* this creates (empty) fdo */
@@ -361,31 +336,14 @@ static void *ndiswrapper_add_usb_device(struct usb_device *udev,
 	pdo->device.usb = wd->dev.usb;
 
 	TRACEENTER1("calling ndis init routine");
-	if ((res = miniport_init(wd))) {
+
+	res = ndiswrapper_start_device(wd);
+	if (res) {
 		ERROR("Windows driver couldn't initialize the device (%08X)",
 			res);
 		res = -EINVAL;
 		goto out_start;
 	}
-
-	/* do we need to power up the card explicitly? */
-	miniport_set_int(wd, OID_PNP_SET_POWER, NdisDeviceStateD0);
-	miniport = &wd->driver->miniport;
-	/*
-	if (miniport->pnp_event_notify) {
-		DBGTRACE3("%s", "calling pnp_event_notify");
-		miniport->pnp_event_notify(wd->adapter_ctx,
-					   NDIS_PNP_PROFILE_CHANGED,
-					   &profile_inf, sizeof(profile_inf));
-		DBGTRACE3("%s", "done");
-	}
-	*/
-
-	miniport_reset(wd);
-	/* wait here seems crucial; without this delay, at least
-	 * prism54 driver crashes (why?) */
-	set_current_state(TASK_INTERRUPTIBLE);
-	schedule_timeout(3*HZ);
 
 	if (setup_device(wd->net_dev)) {
 		ERROR("couldn't setup network device");
@@ -402,7 +360,7 @@ static void *ndiswrapper_add_usb_device(struct usb_device *udev,
 #endif
 
 out_setup:
-	miniport_halt(wd);
+	ndiswrapper_stop_device(wd);
 out_start:
 	free_netdev(dev);
 out_nodev:
@@ -650,6 +608,7 @@ static int load_settings(struct ndis_driver *ndis_driver,
 /* this function is called while holding load_lock spinlock */
 static void unload_ndis_device(struct ndis_device *device)
 {
+	struct ndis_miniport_block *nmb;
 	TRACEENTER1("unloading device %p (%04X:%04X:%04X:%04X), driver %s",
 		    device, device->vendor, device->device, device->subvendor,
 		    device->subdevice, device->driver_name);
@@ -669,6 +628,7 @@ static void unload_ndis_device(struct ndis_device *device)
 		list_del(&setting->list);
 		kfree(setting);
 	}
+	nmb = device->wd->nmb;
 	TRACEEXIT1(return);
 }
 
@@ -682,16 +642,21 @@ static void unload_ndis_driver(struct ndis_driver *driver)
 	DBGTRACE1("freeing %d images", driver->num_pe_images);
 	drv_obj = driver->drv_obj;
 	for (i = 0; i < driver->num_pe_images; i++)
-		if (driver->pe_images[i].image)
+		if (driver->pe_images[i].image) {
+			DBGTRACE1("freeing image at %p",
+				  driver->pe_images[i].image);
 			vfree(driver->pe_images[i].image);
+		}
 
 	DBGTRACE1("freeing %d bin files", driver->num_bin_files);
-	for (i = 0; i < driver->num_bin_files; i++)
+	for (i = 0; i < driver->num_bin_files; i++) {
+		DBGTRACE1("freeing image at %p", driver->bin_files[i].data);
 		vfree(driver->bin_files[i].data);
+	}
 	if (driver->bin_files)
 		kfree(driver->bin_files);
 
-	IoDetachDevice(drv_obj->dev_obj->next);
+//	IoDetachDevice(drv_obj->dev_obj);
 	RtlFreeUnicodeString(&drv_obj->driver_name);
 	/* this frees driver */
 	free_custom_ext(drv_obj->drv_ext);
@@ -703,7 +668,8 @@ static void unload_ndis_driver(struct ndis_driver *driver)
 /* call the entry point of the driver */
 static int start_driver(struct ndis_driver *driver)
 {
-	int i, ret, res;
+	int i;
+	NTSTATUS ret, res;
 	struct driver_object *drv_obj;
 	UINT (*entry)(struct driver_object *obj,
 		      struct unicode_string *path) STDCALL;
@@ -770,6 +736,7 @@ static int load_ndis_driver(struct load_driver *load_driver)
 	struct driver_object *drv_obj;
 	struct ansi_string ansi_reg;
 	struct ndis_driver *ndis_driver = NULL;
+	int i;
 
 	TRACEENTER1("");
 	ansi_reg.buf = "/tmp";
@@ -780,12 +747,15 @@ static int load_ndis_driver(struct load_driver *load_driver)
 		TRACEEXIT1(return -ENOMEM);
 	}
 	DBGTRACE1("drv_obj: %p", drv_obj);
+	memset(drv_obj, 0, sizeof(*drv_obj));
 	drv_obj->drv_ext = kmalloc(sizeof(*(drv_obj->drv_ext)), GFP_KERNEL);
 	if (!drv_obj->drv_ext) {
 		ERROR("couldn't allocate memory");
 		kfree(drv_obj);
 		TRACEEXIT1(return -ENOMEM);
 	}
+	memset(drv_obj->drv_ext, 0, sizeof(*(drv_obj->drv_ext)));
+	drv_obj->drv_ext->add_device_func = AddDevice;
 	InitializeListHead(&drv_obj->drv_ext->custom_ext);
 	DBGTRACE1("");
 	if (IoAllocateDriverObjectExtension(drv_obj,
@@ -795,6 +765,10 @@ static int load_ndis_driver(struct load_driver *load_driver)
 	    STATUS_SUCCESS)
 		TRACEEXIT1(return NDIS_STATUS_RESOURCES);
 	DBGTRACE1("driver: %p", ndis_driver);
+	for (i = 0; i <= IRP_MJ_MAXIMUM_FUNCTION; i++)
+		drv_obj->major_func[i] = IopPassIrpDown;
+//	drv_obj->major_func[IRP_MJ_PNP] = fdoDispatchPnp;
+
 	memset(ndis_driver, 0, sizeof(*ndis_driver));
 	ndis_driver->bustype = -1;
 	ndis_driver->drv_obj = drv_obj;

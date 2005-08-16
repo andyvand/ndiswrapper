@@ -16,11 +16,11 @@
 #ifndef WINNT_TYPES_H
 #define WINNT_TYPES_H
 
-#define TRUE 1
-#define FALSE 0
+#define TRUE				1
+#define FALSE				0
 
-#define PASSIVE_LEVEL 0
-#define DISPATCH_LEVEL 2
+#define PASSIVE_LEVEL			0
+#define DISPATCH_LEVEL			2
 
 #define STATUS_WAIT_0			0
 #define STATUS_SUCCESS                  0
@@ -34,35 +34,57 @@
 #define STATUS_BUFFER_TOO_SMALL         0xC0000023
 #define STATUS_RESOURCES                0xC000009A
 #define STATUS_NOT_SUPPORTED            0xC00000BB
+#define STATUS_NOT_IMPLEMENTED		0xC0000002
 #define STATUS_INVALID_PARAMETER        0xC000000D
 #define STATUS_INSUFFICIENT_RESOURCES	0xC000009A
 #define STATUS_INVALID_PARAMETER_2      0xC00000F0
 #define STATUS_CANCELLED                0xC0000120
 
-#define IS_PENDING                      0x01
-#define CALL_ON_CANCEL                  0x20
-#define CALL_ON_SUCCESS                 0x40
-#define CALL_ON_ERROR                   0x80
+#define SL_PENDING_RETURNED		0x01
+#define CALL_ON_CANCEL			0x20
+#define CALL_ON_SUCCESS			0x40
+#define CALL_ON_ERROR			0x80
 
 #define IRP_MJ_CREATE			0x00
-#define IRP_MJ_CREATE_NAMED_PIPE        0x01
-#define IRP_MJ_CLOSE                    0x02
+#define IRP_MJ_CREATE_NAMED_PIPE	0x01
+#define IRP_MJ_CLOSE			0x02
+#define IRP_MJ_READ			0x03
+#define IRP_MJ_WRITE			0x04
 
-#define IRP_MJ_DEVICE_CONTROL           0x0E
-#define IRP_MJ_INTERNAL_DEVICE_CONTROL  0x0F
-#define IRP_MJ_MAXIMUM_FUNCTION           0x1b
+#define IRP_MJ_DEVICE_CONTROL		0x0E
+#define IRP_MJ_INTERNAL_DEVICE_CONTROL	0x0F
+#define IRP_MJ_POWER			0x16
+#define IRP_MJ_PNP			0x1b
+#define IRP_MJ_MAXIMUM_FUNCTION		0x1b
 
-#define THREAD_WAIT_OBJECTS 3
-#define MAX_WAIT_OBJECTS 64
+#define IRP_MN_WAIT_WAKE		0x00
+#define IRP_MN_POWER_SEQUENCE		0x01
+#define IRP_MN_SET_POWER		0x02
+#define IRP_MN_QUERY_POWER		0x03
 
-#define NOTIFICATION_TIMER 1
+#define IRP_MN_START_DEVICE		0x00
+#define IRP_MN_REMOVE_DEVICE		0x02
+#define IRP_MN_STOP_DEVICE		0x04
 
-#define LOW_PRIORITY 		1
-#define LOW_REALTIME_PRIORITY	16
-#define HIGH_PRIORITY		32
-#define MAXIMUM_PRIORITY	32
+#define IRP_BUFFERED_IO			0x00000010
+#define IRP_DEALLOCATE_BUFFER		0x00000020
 
-#define PROCESSOR_FEATURE_MAX 64
+#define IRP_DEFFER_IO_COMPLETION	0x00000800
+
+#define THREAD_WAIT_OBJECTS		3
+#define MAX_WAIT_OBJECTS		64
+
+#define NOTIFICATION_TIMER		1
+
+#define LOW_PRIORITY			1
+#define LOW_REALTIME_PRIORITY		16
+#define HIGH_PRIORITY			32
+#define MAXIMUM_PRIORITY		32
+
+#define PROCESSOR_FEATURE_MAX		64
+
+#define IO_NO_INCREMENT			0
+
 
 #ifdef CONFIG_X86_64
 #define STDCALL
@@ -322,12 +344,20 @@ struct ksemaphore {
 	LONG limit;
 };
 
-struct obj_mgr_obj {
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,0)
+typedef struct task_struct task_t;
+#endif
+
+#pragma pack(push,1)
+struct kthread {
 	struct dispatch_header dh;
-	struct nt_list list;
-	void *handle;
-	LONG ref_count;
+	/* the rest in Windows is a long structure; since this
+	 * structure is opaque to drivers, we just define what we
+	 * need */
+	int pid;
+	task_t *task;
 };
+#pragma pack(pop)
 
 struct irp;
 struct dev_obj_ext;
@@ -366,7 +396,7 @@ struct device_object {
 	union {
 		struct usb_device *usb;
 	} device;
-	void *wd;
+//	void *wd;
 };
 
 struct dev_obj_ext {
@@ -384,6 +414,9 @@ struct io_status_block {
 
 struct driver_extension;
 
+typedef NTSTATUS (driver_dispatch_t)(struct device_object *dev_obj,
+				     struct irp *irp) STDCALL;
+
 struct driver_object {
 	CSHORT type;
 	CSHORT size;
@@ -399,7 +432,7 @@ struct driver_object {
 	void *driver_init;
 	void *driver_start_io;
 	void (*driver_unload)(struct driver_object *driver) STDCALL;
-	void *major_func[IRP_MJ_MAXIMUM_FUNCTION + 1];
+	driver_dispatch_t *major_func[IRP_MJ_MAXIMUM_FUNCTION + 1];
 };
 
 struct driver_extension {
@@ -452,6 +485,35 @@ struct file_object {
 #define POINTER_ALIGNMENT __attribute__((aligned(8)))
 #endif
 
+enum system_power_state {
+	PowerSystemUnspecified = 0,
+	PowerSystemWorking, PowerSystemSleeping1, PowerSystemSleeping2,
+	PowerSystemSleeping3, PowerSystemHibernate, PowerSystemShutdown,
+	PowerSystemMaximum,
+};
+
+enum device_power_state {
+	PowerDeviceUnspecified = 0,
+	PowerDeviceD0, PowerDeviceD1, PowerDeviceD2, PowerDeviceD3,
+	PowerDeviceMaximum,
+};
+
+union power_state {
+	enum system_power_state system_state;
+	enum device_power_state device_state;
+};
+
+enum power_state_type {
+	SystemPowerState = 0, DevicePowerState,
+};
+
+enum power_action {
+	PowerActionNone = 0,
+	PowerActionReserved, PowerActionSleep, PowerActionHibernate,
+	PowerActionShutdown, PowerActionShutdownReset, PowerActionShutdownOff,
+	PowerActionWarmEject,
+};
+
 #ifndef CONFIG_X86_64
 #pragma pack(push,4)
 #endif
@@ -473,6 +535,17 @@ struct io_stack_location {
 			ULONG POINTER_ALIGNMENT key;
 			LARGE_INTEGER byte_offset;
 		} read;
+		struct {
+			ULONG length;
+			ULONG POINTER_ALIGNMENT key;
+			LARGE_INTEGER byte_offset;
+		} write;
+		struct {
+			ULONG sys_context;
+			enum power_state_type POINTER_ALIGNMENT type;
+			union power_state POINTER_ALIGNMENT state;
+			enum power_action POINTER_ALIGNMENT shutdown_type;
+		} power;
 		/* FIXME: this structure is not complete */
 		struct {
 			ULONG output_buf_len;
@@ -485,17 +558,20 @@ struct io_stack_location {
 			void *arg2;
 			void *arg3;
 			void *arg4;
-		} generic;
+		} others;
 	} params;
 	struct device_object *dev_obj;
 	struct file_object *file_obj;
-	ULONG (*completion_handler)(struct device_object *,
-				    struct irp *, void *) STDCALL;
-	void *handler_arg;
+	NTSTATUS (*completion_routine)(struct device_object *,
+				       struct irp *, void *) STDCALL;
+	void *context;
 };
 #ifndef CONFIG_X86_64
 #pragma pack(pop)
 #endif
+
+#define URB_FROM_IRP(irp)					\
+	(IoGetCurrentIrpStackLocation(irp)->params.others.arg1)
 
 struct kapc {
 	CSHORT type;
@@ -514,10 +590,6 @@ struct kapc {
 	BOOLEAN inserted;
 };
 
-enum irp_work_type {
-	IRP_WORK_NONE, IRP_WORK_COMPLETE, IRP_WORK_CANCEL,
-};
-
 struct irp {
 	SHORT type;
 	USHORT size;
@@ -525,7 +597,7 @@ struct irp {
 	ULONG flags;
 	union {
 		struct irp *master_irp;
-		void *sys_buf;
+		void *system_buffer;
 	} associated_irp;
 
 	struct nt_list threads;
@@ -533,8 +605,8 @@ struct irp {
 	struct io_status_block io_status;
 	KPROCESSOR_MODE requestor_mode;
 	BOOLEAN pending_returned;
-	CHAR stack_size;
-	CHAR stack_pos;
+	CHAR stack_count;
+	CHAR current_location;
 	BOOLEAN cancel;
 	KIRQL cancel_irql;
 
@@ -561,8 +633,8 @@ struct irp {
 				struct kdevice_queue_entry dev_q_entry;
 				struct {
 					void *driver_context[4];
-				} context;
-			} dev_q;
+				};
+			};
 			void *thread;
 			char *aux_buf;
 			struct {
@@ -571,8 +643,8 @@ struct irp {
 					struct io_stack_location *
 					current_stack_location;
 					ULONG packet_type;
-				} packet;
-			} packet_list;
+				};
+			};
 			struct file_object *file_object;
 		} overlay;
 		struct kapc apc;
@@ -580,40 +652,107 @@ struct irp {
 	} tail;
 
 	/* ndiswrapper extension */
-	enum irp_work_type irp_work_type;
-	struct list_head completed_list;
-	struct list_head cancel_list;
+	struct nt_list urb_list;
+	struct urb *urb;
 };
 
-#define IRP_CUR_STACK_LOC(irp)						\
-	(irp)->tail.overlay.packet_list.packet.current_stack_location
-#define IRP_DRIVER_CONTEXT(irp)					\
-	(irp)->tail.overlay.dev_q.context.driver_context
+#define IoSizeOfIrp(stack_size) \
+	((USHORT)(sizeof(struct irp) + ((stack_size) *	\
+					sizeof(struct io_stack_location))))
+#define IoGetCurrentIrpStackLocation(irp)				\
+	(irp)->tail.overlay.current_stack_location
+#define IoGetNextIrpStackLocation(irp)		\
+	(IoGetCurrentIrpStackLocation(irp) - 1)
+#define IoGetPreviousIrpStackLocation(irp)	\
+	(IoGetCurrentIrpStackLocation(irp) + 1)
+#define IoSetNextIrpStackLocation(IRP)				\
+	{							\
+		(IRP)->current_location--;			\
+		IoGetCurrentIrpStackLocation(IRP)--;		\
+	}
+#define IoSkipCurrentIrpStackLocation(IRP) 			\
+	{							\
+		(IRP)->current_location++;			\
+		IoGetCurrentIrpStackLocation(IRP)++;		\
+	}
+#define IoCopyCurrentIrpStackLocationToNext(IRP) 			\
+	{								\
+		struct io_stack_location *_irp_sl, *_next;		\
+		_irp_sl = IoGetCurrentIrpStackLocation(IRP);		\
+		_next = IoGetNextIrpStackLocation(IRP);			\
+		RtlCopyMemory(_next, _irp_sl,				\
+			      offsetof(struct io_stack_location,	\
+				       completion_routine));		\
+		_next->control = 0;					\
+	}
+#define IoSetCompletionRoutine(IRP, ROUTINE, CONTEXT, SUC, ERR, CANCEL) \
+	{								\
+		struct io_stack_location *__irp_sl;			\
+		__irp_sl = IoGetNextIrpStackLocation(IRP);		\
+		__irp_sl->completion_routine = (ROUTINE);		\
+		__irp_sl->context = (CONTEXT);				\
+		__irp_sl->control = 0;					\
+		if (SUC) { __irp_sl->control |= CALL_ON_SUCCESS; }	\
+		if (ERR) { __irp_sl->control |= CALL_ON_ERROR; }	\
+		if (CANCEL) { __irp_sl->control |= CALL_ON_CANCEL; }	\
+	}
+#define IoMarkIrpPending(irp)						\
+	(IoGetCurrentIrpStackLocation((irp))->control |= SL_PENDING_RETURNED)
+
+#define IRP_SL(irp, i) (((struct io_stack_location *)((irp) + 1)) + (i))
+#define IRP_DRIVER_CONTEXT(irp) (irp)->tail.overlay.driver_context
 
 enum nt_obj_type {
 	NT_OBJ_EVENT = 10, NT_OBJ_MUTEX, NT_OBJ_THREAD, NT_OBJ_TIMER,
 	NT_OBJ_SEMAPHORE,
 };
 
-struct common_body_header {
-	CSHORT type;
-	CSHORT size;
+enum common_object_type {
+	OBJECT_TYPE_NONE, OBJECT_TYPE_DEVICE, OBJECT_TYPE_DRIVER,
+	OBJECT_TYPE_THREAD,
 };
 
-struct object_header {
-	struct unicode_string name;
+struct common_object_header {
 	struct nt_list list;
-	LONG ref_count;
-	LONG handle_count;
+	enum common_object_type type;
+	int size;
+	struct unicode_string name;
+	unsigned int ref_count;
 	BOOLEAN close_in_process;
 	BOOLEAN permanent;
-	BOOLEAN inherit;
-	void *parent;
-	void *object_type;
-	void *security_desc;
-	CSHORT type;
-	CSHORT size;
 };
+
+#define OBJECT_TO_HEADER(object) \
+	(struct common_object_header *)((void *)(object) - \
+					sizeof(struct common_object_header))
+#define OBJECT_SIZE(object) \
+	(sizeof(object) + sizeof(struct common_object_header))
+#define HEADER_TO_OBJECT(hdr) \
+	((void *)(hdr) + sizeof(struct common_object_header))
+#define HANDLE_TO_OBJECT(handle) HEADER_TO_OBJECT(handle)
+#define HANDLE_TO_HEADER(handle) (handle)
+
+#define ALLOCATE_OBJECT(object, flags, obj_type)			\
+	({								\
+		struct common_object_header *__hdr;			\
+		void *__body;						\
+		__hdr = kmalloc(OBJECT_SIZE(object), (flags));		\
+		memset(__hdr, 0, OBJECT_SIZE(object));			\
+		__hdr->type = obj_type;					\
+		__hdr->ref_count = 1;					\
+		InsertTailList(&object_list, &__hdr->list);		\
+		__body = HEADER_TO_OBJECT(__hdr);			\
+		DBGTRACE3("allocated hdr: %p, body: %p", __hdr, __body); \
+		__body;							\
+	})
+#define FREE_OBJECT(object)						\
+	do {								\
+		struct common_object_header *__hdr;			\
+		__hdr = OBJECT_TO_HEADER(object);			\
+		RemoveEntryList(&__hdr->list);				\
+		DBGTRACE3("freed hdr: %p, body: %p", __hdr, object);	\
+		kfree(__hdr);						\
+	} while (0)
 
 enum work_queue_type {
 	CriticalWorkQueue, DelayedWorkQueue, HyperCriticalWorkQueue,

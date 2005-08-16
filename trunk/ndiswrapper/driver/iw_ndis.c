@@ -982,19 +982,19 @@ static char *ndis_translate_scan(struct net_device *dev, char *event,
 	if (item->length > sizeof(*item)) {
 		unsigned char *iep = (unsigned char *)item->ies +
 			sizeof(struct ndis_fixed_ies);
+		unsigned char *end = iep + item->ie_length;
 	/*
 	 * TODO: backwards compatibility would require that IWEVCUSTOM
 	 * is send even if WIRELESS_EXT > 17. This version does not do
 	 * this in order to allow wpa_supplicant to be tested with
 	 * WE-18.
 	 */
-#if WIRELESS_EXT > 17
+#if 0
 		memset(&iwe, 0, sizeof(iwe));
 		iwe.cmd = IWEVGENIE;
 		iwe.u.data.length = item->ie_length;
 		event = iwe_stream_add_point(event, end_buf, &iwe, iep);
-#else
-		unsigned char *end = iep + item->ie_length;
+#endif
 
 		while (iep + 1 < end && iep + 2 + iep[1] <= end) {
 			unsigned char ielen = 2 + iep[1];
@@ -1038,7 +1038,6 @@ static char *ndis_translate_scan(struct net_device *dev, char *event,
 
 			iep += ielen;
 		}
-#endif
 	}
 
 	DBGTRACE2("event = %p, current_val = %p", event, current_val);
