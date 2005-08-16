@@ -21,9 +21,6 @@
 #define IOCTL_INTERNAL_USB_SUBMIT_URB	0x00220003
 #define IOCTL_INTERNAL_USB_RESET_PORT	0x00220007
 
-#define USB_STATUS_SUCCESS		0x00000000
-#define USB_STATUS_ERROR		0x80000000
-
 #define URB_FUNCTION_SELECT_CONFIGURATION            0x0000
 #define URB_FUNCTION_SELECT_INTERFACE                0x0001
 #define URB_FUNCTION_ABORT_PIPE                      0x0002
@@ -76,10 +73,43 @@
 #define URB_FUNCTION_SYNC_RESET_PIPE                 0x0030
 #define URB_FUNCTION_SYNC_CLEAR_STALL                0x0031
 
-#define USBD_TRANSFER_DIRECTION_IN	0x00000001
-#define USBD_SHORT_TRANSFER_OK		0x00000002
+#define USBD_TRANSFER_DIRECTION			0x00000001
+#define USBD_SHORT_TRANSFER_OK			0x00000002
+
+#define USBD_TRANSFER_DIRECTION_FLAG(flags) ((flags) & USBD_TRANSFER_DIRECTION)
+#define USBD_TRANSFER_DIRECTION_OUT		0
+#define USBD_TRANSFER_DIRECTION_IN		1
+#define USBD_DIRECTION_IN(flags)					\
+	(USBD_TRANSFER_DIRECTION_FLAG(flags) == USBD_TRANSFER_DIRECTION_IN)
+#define USBD_DIRECTION_OUT(flags)					\
+	(USBD_TRANSFER_DIRECTION_FLAG(flags) == USBD_TRANSFER_DIRECTION_OUT)
 
 typedef LONG USBD_STATUS;
+
+#define USBD_STATUS_SUCCESS			0x0
+#define USBD_STATUS_CRC				0xC0000001
+#define USBD_STATUS_BTSTUFF			0xC0000002
+#define USBD_STATUS_DATA_TOGGLE_MISMATCH	0xC0000003
+#define USBD_STATUS_STALL_PID			0xC0000004
+#define USBD_STATUS_DEV_NOT_RESPONDING		0xC0000005
+#define USBD_STATUS_PID_CHECK_FAILURE		0xC0000006
+#define USBD_STATUS_UNEXPECTED_PID	     	0xC0000007
+#define USBD_STATUS_DATA_OVERRUN		0xC0000008
+#define USBD_STATUS_DATA_UNDERRUN		0xC0000009
+#define USBD_STATUS_RESERVED1			0xC000000A
+#define USBD_STATUS_RESERVED2			0xC000000B
+#define USBD_STATUS_BUFFER_OVERRUN		0xC000000C
+#define USBD_STATUS_BUFFER_UNDERRUN		0xC000000D
+#define USBD_STATUS_NOT_ACCESSED		0xC000000F
+#define USBD_STATUS_FIFO			0xC0000010
+#define USBD_STATUS_XACT_ERROR			0xC0000011
+#define USBD_STATUS_BABBLE_DETECTED		0xC0000012
+#define USBD_STATUS_DATA_BUFFER_ERROR		0xC0000013
+#define USBD_STATUS_DEVICE_GONE			0xC0007000
+
+#define USBD_STATUS_INVALID_URB_FUNCTION	0x80000200L
+#define USBD_STATUS_INVALID_PARAMETER		0x80000300L
+#define USBD_STATUS_REQUEST_FAILED		0x80000500L
 
 union pipe_handle {
 	void *handle;
@@ -209,13 +239,15 @@ struct isochronous_transfer {
 
 union nt_urb {
 	struct nt_urb_header header;
-	struct select_configuration selConf;
-	struct bulk_or_intr_transfer bulkIntrTrans;
-	struct control_descriptor_request ctrlDescReq;
-	struct vendor_or_class_request venClsReq;
-	struct isochronous_transfer isochTrans;
-	struct pipe_request pipeReq;
+	struct select_configuration select_conf;
+	struct bulk_or_intr_transfer bulk_int_transfer;
+	struct control_descriptor_request control_request;
+	struct vendor_or_class_request vendor_class_request;
+	struct isochronous_transfer isochronous;
+	struct pipe_request pipe_req;
 };
+
+#define NT_URB_STATUS(nt_urb) ((nt_urb)->header.status)
 
 unsigned long usb_submit_nt_urb(struct usb_device *dev, union nt_urb *nt_urb,
                                 struct irp *irp);

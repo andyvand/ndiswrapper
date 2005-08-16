@@ -222,6 +222,10 @@ enum ndis_pm_state {
 	NdisDeviceStateD3, NdisDeviceStateMaximum
 };
 
+enum ndis_power_profile {
+	NdisPowerProfileBattery, NdisPowerProfileAcOnLine
+};
+
 typedef void (*ndis_isr_handler)(unsigned int *taken, unsigned int *callme,
 				 void *ctx) STDCALL;
 typedef void (*ndis_interrupt_handler)(void *ctx) STDCALL;
@@ -686,10 +690,10 @@ struct ndis_filterdbs {
 	union {
 		void *eth_db;
 		void *null_db;
-	} u;
-	void *trdb;
-	void *fddidb;
-	void *arcdb;
+	};
+	void *tr_db;
+	void *fddi_db;
+	void *arc_db;
 };
 
 enum ndis_interface_type {
@@ -835,6 +839,7 @@ struct wrapper_dev {
 	wait_queue_head_t ndis_comm_wq;
 	int ndis_comm_res;
 	int ndis_comm_done;
+	int hw_unavailable;
 
 	int serialized;
 	int use_sg_dma;
@@ -923,8 +928,8 @@ STDCALL ULONG NDIS_BUFFER_TO_SPAN_PAGES(ndis_buffer *buffer);
 STDCALL BOOLEAN NdisWaitEvent(struct ndis_event *event, UINT timeout);
 STDCALL void NdisSetEvent(struct ndis_event *event);
 STDCALL void NdisMDeregisterInterrupt(struct ndis_irq *ndis_irq);
-STDCALL void EthRxIndicateHandler(void *adapter_ctx, void *rx_ctx,
-				  char *header1, char *header,
+STDCALL void EthRxIndicateHandler(struct ndis_miniport_block *nmb,
+				  void *rx_ctx, char *header1, char *header,
 				  UINT header_size, void *look_ahead,
 				  UINT look_ahead_size, UINT packet_size);
 STDCALL void EthRxComplete(struct ndis_miniport_block *nmb);
@@ -959,6 +964,9 @@ void misc_funcs_exit(void);
 void packet_recycler(void *param);
 int stricmp(const char *s1, const char *s2);
 void dump_bytes(const char *where, const u8 *ip);
+
+int pdo_suspend_pci(struct pci_dev *pdev, pm_message_t state);
+int pdo_resume_pci(struct pci_dev *pdev);
 
 /* Required OIDs */
 #define OID_GEN_SUPPORTED_LIST			0x00010101

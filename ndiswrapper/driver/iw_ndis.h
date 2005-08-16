@@ -128,11 +128,6 @@ enum ndis_power {
 	NDIS_POWER_MIN,
 };
 
-enum ndis_power_profile {
-	NdisPowerProfileBattery,
-	NdisPowerProfileAcOnLine
-};
-
 struct ndis_auth_req {
 	ULONG length;
 	mac_address bssid;

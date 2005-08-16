@@ -16,6 +16,8 @@
 #ifndef _NTOSKERNEL_H_
 #define _NTOSKERNEL_H_
 
+#define UTILS_VERSION "1.2"
+
 #include <linux/types.h>
 #include <linux/timer.h>
 #include <linux/time.h>
@@ -179,8 +181,10 @@ typedef u32 pm_message_t;
 
 #if defined(CONFIG_SOFTWARE_SUSPEND2) || defined(CONFIG_SUSPEND2)
 #define KTHREAD_RUN(a,b,c) kthread_run(a,b,0,c)
+#define KTHREAD_CREATE(a,b,c) kthread_run(a,b,0,c)
 #else
 #define KTHREAD_RUN(a,b,c) kthread_run(a,b,c)
+#define KTHREAD_CREATE(a,b,c) kthread_run(a,b,c)
 #endif
 
 #ifdef CONFIG_X86_64
@@ -390,8 +394,7 @@ struct phys_dev {
 int ntoskernel_init(void);
 void ntoskernel_exit(void);
 struct driver_object *find_bus_driver(const char *name);
-struct device_object *alloc_pdo(struct driver_object *drv_obj,
-				struct phys_dev *dev);
+struct device_object *alloc_pdo(struct driver_object *drv_obj);
 
 STDCALL void *ExAllocatePoolWithTag(enum pool_type pool_type, SIZE_T size,
 				    ULONG tag);
@@ -449,8 +452,31 @@ STDCALL struct device_object *IoAttachDeviceToDeviceStack
 STDCALL void KeInitializeEvent(struct kevent *kevent, enum event_type type,
 			       BOOLEAN state);
 void free_custom_ext(struct driver_extension *drv_obj_ext);
-STDCALL NTSTATUS ndis_add_device(struct driver_object *drv_obj,
-				 struct device_object *pdo);
+STDCALL NTSTATUS AddDevice(struct driver_object *drv_obj,
+			   struct device_object *pdo);
+driver_dispatch_t IopInvalidDeviceRequest;
+driver_dispatch_t IopPassIrpDown;
+driver_dispatch_t pdoDispatchInternalDeviceControl;
+driver_dispatch_t pdoDispatchDeviceControl;
+driver_dispatch_t pdoDispatchPnp;
+driver_dispatch_t pdoDispatchPower;
+driver_dispatch_t IopPassIrpDownAndWait;
+driver_dispatch_t fdoDispatchPnp;
+
+STDCALL struct irp *IoAllocateIrp(char stack_size, BOOLEAN charge_quota);
+STDCALL void IoFreeIrp(struct irp *irp);
+_FASTCALL NTSTATUS IofCallDriver
+	(FASTCALL_DECL_2(struct device_object *dev_obj, struct irp *irp));
+STDCALL struct irp *WRAP_EXPORT(IoBuildSynchronousFsdRequest)
+	(ULONG major_func, struct device_object *dev_obj, void *buf,
+	 ULONG length, LARGE_INTEGER *offset, struct kevent *event,
+	 struct io_status_block *status);
+STDCALL struct irp *WRAP_EXPORT(IoBuildAsynchronousFsdRequest)
+	(ULONG major_func, struct device_object *dev_obj, void *buf,
+	 ULONG length, LARGE_INTEGER *offset,
+	 struct io_status_block *status);
+STDCALL NTSTATUS PoCallDriver(struct device_object *dev_obj, struct irp *irp);
+
 ULONGLONG ticks_1601(void);
 
 STDCALL KIRQL KeGetCurrentIrql(void);
@@ -468,6 +494,7 @@ _FASTCALL void
 IofCompleteRequest(FASTCALL_DECL_2(struct irp *irp, CHAR prio_boost));
 _FASTCALL void
 KefReleaseSpinLockFromDpcLevel(FASTCALL_DECL_1(KSPIN_LOCK *lock));
+STDCALL void RtlCopyMemory(void *dst, const void *src, SIZE_T length);
 STDCALL NTSTATUS RtlUnicodeStringToAnsiString(struct ansi_string *dst,
 					       struct unicode_string *src,
 					       BOOLEAN dup);
@@ -503,6 +530,20 @@ unsigned long lin_to_win6(void *func, unsigned long, unsigned long,
 			  unsigned long, unsigned long, unsigned long,
 			  unsigned long);
 
+STDCALL struct kthread *KeGetCurrentThread(void);
+STDCALL NTSTATUS
+ObReferenceObjectByHandle(void *handle, ACCESS_MASK desired_access,
+			  void *obj_type, KPROCESSOR_MODE access_mode,
+			  void **object, void *handle_info);
+
+_FASTCALL LONG ObfReferenceObject(FASTCALL_DECL_1(void *object));
+_FASTCALL void ObfDereferenceObject(FASTCALL_DECL_1(void *object));
+STDCALL NTSTATUS ZwClose(void *object);
+#define ObReferenceObject(object)  \
+	ObfReferenceObject(FASTCALL_ARGS_1(object))
+#define ObDereferenceObject(object)  \
+	ObfDereferenceObject(FASTCALL_ARGS_1(object))
+
 #define MSG(level, fmt, ...)				\
 	printk(level "ndiswrapper (%s:%d): " fmt "\n",	\
 	       __FUNCTION__, __LINE__ , ## __VA_ARGS__)
@@ -513,6 +554,11 @@ unsigned long lin_to_win6(void *func, unsigned long, unsigned long,
 #define UNIMPL() ERROR("--UNIMPLEMENTED--")
 
 void adjust_user_shared_data_addr(char *driver, unsigned long length);
+
+#define IoCompleteRequest(irp, prio) \
+	IofCompleteRequest(FASTCALL_ARGS_2(irp, prio));
+#define IoCallDriver(dev, irp) \
+	IofCallDriver(FASTCALL_ARGS_2(dev, irp));
 
 static inline KIRQL current_irql(void)
 {
@@ -722,6 +768,8 @@ extern int debug;
 #define TRACEEXIT5(stmt) do { DBGTRACE5("Exit"); stmt; } while(0)
 #define TRACEEXIT6(stmt) do { DBGTRACE6("Exit"); stmt; } while(0)
 
+#define USB_DEBUG 1
+
 #if defined(DEBUG) && defined(USB_DEBUG)
 #define USBTRACE(fmt, ...) DBGTRACE1(fmt, ## __VA_ARGS__)
 #define USBTRACEENTER(fmt, ...) TRACEENTER1(fmt, ## __VA_ARGS__)
@@ -740,6 +788,22 @@ extern int debug;
 	} while (0)
 #else
 #define ASSERT(expr)
+#endif
+
+#if defined(DEBUG) && defined(USB_DEBUG)
+#define DUMP_IRP(__irp)							\
+	do {								\
+		struct io_stack_location *_irp_sl;			\
+		_irp_sl = IoGetCurrentIrpStackLocation(__irp);		\
+		INFO("irp: %p, stack size: %d, cl: %d, sl: %p, "	\
+		     "dev_obj: %p, mj_fn: %d, minor_fn: %d, nt_urb: %p", \
+		     __irp, __irp->stack_count,	(__irp)->current_location, \
+		     _irp_sl, _irp_sl->dev_obj, _irp_sl->major_fn,	\
+		     _irp_sl->minor_fn, URB_FROM_IRP(__irp));		\
+	} while (0)
+
+#else
+#define DUMP_IRP(__irp)
 #endif
 
 #endif // _NTOSKERNEL_H_
