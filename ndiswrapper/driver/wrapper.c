@@ -1150,7 +1150,6 @@ static void update_wireless_stats(struct wrapper_dev *wd)
 	ndis_rssi rssi;
 	NDIS_STATUS res;
 
-	return;
 	TRACEENTER2("");
 	if (wd->reset_status)
 		return;
