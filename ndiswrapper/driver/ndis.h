@@ -329,22 +329,10 @@ struct ndis_rw_lock {
     union ndis_rw_lock_refcount ref_count[MAXIMUM_PROCESSORS];
 };
 
-struct wd_ctx_entry {
-	struct list_head list;
-	void *wd;
-	void *ctx;
-};
-
 struct ndis_sched_work_item {
 	void *ctx;
 	void (*func)(struct ndis_sched_work_item *, void *ctx) STDCALL;
 	UCHAR reserved[8 * sizeof(void *)];
-};
-
-struct ndis_io_work_item {
-	void *ctx;
-	void *device_object;
-	void (*func)(void *device_object, void *ctx) STDCALL;
 };
 
 struct ndis_alloc_mem_work_item {
@@ -361,19 +349,23 @@ struct ndis_free_mem_work_item {
 
 enum ndis_work_entry_type {
 	NDIS_SCHED_WORK_ITEM, NDIS_ALLOC_MEM_WORK_ITEM,
-	NDIS_FREE_MEM_WORK_ITEM, NDIS_IO_WORK_ITEM,
-	NDIS_RETURN_PACKET_WORK_ITEM,
+	NDIS_FREE_MEM_WORK_ITEM, NDIS_RETURN_PACKET_WORK_ITEM,
+};
+
+struct ndis_work_item {
+	void *context;
+	void *routine;
+	UCHAR reserved[8 * sizeof(void *)];
 };
 
 struct ndis_work_entry {
-	struct list_head list;
+	struct nt_list list;
 	enum ndis_work_entry_type type;
 	struct wrapper_dev *wd;
 	union {
 		struct ndis_sched_work_item *sched_work_item;
 		struct ndis_alloc_mem_work_item alloc_mem_work_item;
 		struct ndis_free_mem_work_item free_mem_work_item;
-		struct ndis_io_work_item *io_work_item;
 		struct ndis_packet *return_packet;
 	} entry;
 };

@@ -34,7 +34,7 @@ extern struct list_head ndis_drivers;
 extern KSPIN_LOCK ntoskernel_lock;
 
 static struct work_struct ndis_work;
-static struct list_head ndis_work_list;
+static struct nt_list ndis_work_list;
 static KSPIN_LOCK ndis_work_list_lock;
 
 static KSPIN_LOCK wrap_ndis_packet_lock;
@@ -52,8 +52,8 @@ static kmem_cache_t *packet_cache;
 int ndis_init(void)
 {
 	/* only one worker is used for all drivers */
-	INIT_WORK(&ndis_work, &ndis_worker, NULL);
-	INIT_LIST_HEAD(&ndis_work_list);
+	INIT_WORK(&ndis_work, ndis_worker, NULL);
+	InitializeListHead(&ndis_work_list);
 	kspin_lock_init(&ndis_work_list_lock);
 	kspin_lock_init(&wrap_ndis_packet_lock);
 	InitializeListHead(&wrap_ndis_packet_list);
@@ -304,7 +304,7 @@ STDCALL void WRAP_EXPORT(NdisFreeMemory)
 		free_mem->flags = flags;
 
 		irql = kspin_lock_irql(&ndis_work_list_lock, DISPATCH_LEVEL);
-		list_add_tail(&ndis_work_entry->list, &ndis_work_list);
+		InsertTailList(&ndis_work_list, &ndis_work_entry->list);
 		kspin_unlock_irql(&ndis_work_list_lock, irql);
 
 		schedule_work(&ndis_work);
@@ -1052,7 +1052,7 @@ STDCALL NDIS_STATUS WRAP_EXPORT(NdisMAllocateSharedMemoryAsync)
 	alloc_mem->ctx = ctx;
 
 	irql = kspin_lock_irql(&ndis_work_list_lock, DISPATCH_LEVEL);
-	list_add_tail(&ndis_work_entry->list, &ndis_work_list);
+	InsertTailList(&ndis_work_list, &ndis_work_entry->list);
 	kspin_unlock_irql(&ndis_work_list_lock, irql);
 
 	schedule_work(&ndis_work);
@@ -1665,7 +1665,7 @@ STDCALL NDIS_STATUS WRAP_EXPORT(NdisMRegisterInterrupt)
 	ndis_irq->shared = shared;
 	kspin_lock_init(&ndis_irq->lock);
 
-	INIT_WORK(&wd->irq_work, &ndis_irq_bh, ndis_irq);
+	INIT_WORK(&wd->irq_work, ndis_irq_bh, ndis_irq);
 	if (request_irq(vector, ndis_irq_th, shared? SA_SHIRQ : 0,
 			"ndiswrapper", ndis_irq)) {
 		printk(KERN_WARNING "%s: request for irq %d failed\n",
@@ -1931,7 +1931,7 @@ NdisMIndicateReceivePacket(struct ndis_miniport_block *nmb,
 		ndis_work_entry->entry.return_packet = packet;
 
 		irql = kspin_lock_irql(&ndis_work_list_lock, DISPATCH_LEVEL);
-		list_add_tail(&ndis_work_entry->list, &ndis_work_list);
+		InsertTailList(&ndis_work_list, &ndis_work_entry->list);
 		kspin_unlock_irql(&ndis_work_list_lock, irql);
 	}
 	schedule_work(&ndis_work);
@@ -2344,7 +2344,6 @@ static void ndis_worker(void *data)
 	struct ndis_sched_work_item *sched_work_item;
 	struct ndis_alloc_mem_work_item *alloc_mem;
 	struct ndis_free_mem_work_item *free_mem;
-	struct ndis_io_work_item *io_work_item;
 	struct ndis_packet *packet;
 	struct wrapper_dev *wd;
 	struct miniport_char *miniport;
@@ -2355,21 +2354,20 @@ static void ndis_worker(void *data)
 	TRACEENTER3("%s", "");
 
 	while (1) {
+		struct nt_list *cur;
+
 		irql = kspin_lock_irql(&ndis_work_list_lock, DISPATCH_LEVEL);
-		if (list_empty(&ndis_work_list))
-			ndis_work_entry = NULL;
-		else {
+		cur = RemoveHeadList(&ndis_work_list);
+		if (cur)
 			ndis_work_entry =
-				list_entry(ndis_work_list.next,
-					   struct ndis_work_entry, list);
-			list_del(&ndis_work_entry->list);
-		}
+				container_of(cur, struct ndis_work_entry,
+					     list);
+		else
+			ndis_work_entry = NULL;
 		kspin_unlock_irql(&ndis_work_list_lock, irql);
 
-		if (!ndis_work_entry) {
-			DBGTRACE3("%s", "No more work");
+		if (ndis_work_entry == NULL)
 			break;
-		}
 
 		wd = ndis_work_entry->wd;
 		switch (ndis_work_entry->type) {
@@ -2382,17 +2380,6 @@ static void ndis_worker(void *data)
 				  sched_work_item->ctx);
 			LIN2WIN2(sched_work_item->func, sched_work_item,
 				 sched_work_item->ctx);
-			break;
-
-		case NDIS_IO_WORK_ITEM:
-			io_work_item =
-				ndis_work_entry->entry.io_work_item;
-
-			DBGTRACE3("Calling work at %p with parameter %p",
-				  io_work_item->func, io_work_item->ctx);
-			LIN2WIN2(io_work_item->func,
-				io_work_item->device_object,
-				io_work_item->ctx);
 			break;
 
 		case NDIS_ALLOC_MEM_WORK_ITEM:
@@ -2439,57 +2426,6 @@ static void ndis_worker(void *data)
 	TRACEEXIT3(return);
 }
 
-STDCALL struct ndis_io_work_item *WRAP_EXPORT(IoAllocateWorkItem)
-	(void *device_object)
-{
-	struct ndis_io_work_item *io_work_item;
-
-	TRACEENTER3("%p", device_object);
-	io_work_item = kmalloc(sizeof(*io_work_item), GFP_ATOMIC);
-	if (!io_work_item)
-		TRACEEXIT3(return NULL);
-
-	io_work_item->device_object = device_object;
-	TRACEEXIT3(return io_work_item);
-}
-
-STDCALL void WRAP_EXPORT(IoFreeWorkItem)
-	(struct ndis_io_work_item *io_work_item)
-{
-	kfree(io_work_item);
-	TRACEEXIT3(return);
-}
-
-STDCALL void WRAP_EXPORT(IoQueueWorkItem)
-	(struct ndis_io_work_item *io_work_item, void *func,
-	 enum work_queue_type queue_type, void *ctx)
-{
-	struct ndis_work_entry *ndis_work_entry;
-	KIRQL irql;
-
-	TRACEENTER3("%s", "");
-	if (io_work_item == NULL) {
-		ERROR("%s", "io_work_item is NULL; item not queued");
-		return;
-	}
-
-	ndis_work_entry = kmalloc(sizeof(*ndis_work_entry), GFP_ATOMIC);
-	if (!ndis_work_entry)
-		BUG();
-
-	ndis_work_entry->type = NDIS_IO_WORK_ITEM;
-	io_work_item->func = func;
-	io_work_item->ctx = ctx;
-	ndis_work_entry->entry.io_work_item = io_work_item;
-
-	irql = kspin_lock_irql(&ndis_work_list_lock, DISPATCH_LEVEL);
-	list_add_tail(&ndis_work_entry->list, &ndis_work_list);
-	kspin_unlock_irql(&ndis_work_list_lock, irql);
-
-	schedule_work(&ndis_work);
-	TRACEEXIT3(return);
-}
-
 STDCALL NDIS_STATUS WRAP_EXPORT(NdisScheduleWorkItem)
 	(struct ndis_sched_work_item *ndis_sched_work_item)
 {
@@ -2506,7 +2442,7 @@ STDCALL NDIS_STATUS WRAP_EXPORT(NdisScheduleWorkItem)
 	ndis_work_entry->entry.sched_work_item = ndis_sched_work_item;
 
 	irql = kspin_lock_irql(&ndis_work_list_lock, DISPATCH_LEVEL);
-	list_add_tail(&ndis_work_entry->list, &ndis_work_list);
+	InsertTailList(&ndis_work_list, &ndis_work_entry->list);
 	kspin_unlock_irql(&ndis_work_list_lock, irql);
 
 	schedule_work(&ndis_work);
