@@ -405,8 +405,7 @@ unsigned long usb_vendor_or_class_intf(struct usb_device *dev,
 	dr->wLength = vc_req->transferBufLen;
 
 	usb_fill_control_urb(urb, dev, pipe, (unsigned char *)dr,
-			     urb->transfer_buffer,
-			     vc_req->transferBufLen,
+			     urb->transfer_buffer, vc_req->transferBufLen,
 			     usb_transfer_complete, irp);
 
 	if (USBD_DIRECTION_IN(vc_req->transferFlags) &&
@@ -523,6 +522,7 @@ unsigned long usb_submit_nt_urb(struct usb_device *dev, union nt_urb *nt_urb,
 {
 	struct control_descriptor_request *ctrl_req;
 	int ret;
+	char *buf;
 
 	USBTRACEENTER("nt_urb = %p, irp = %p, length = %d, function = %x",
 		    nt_urb, irp, nt_urb->header.length,
@@ -553,14 +553,20 @@ unsigned long usb_submit_nt_urb(struct usb_device *dev, union nt_urb *nt_urb,
 			  ctrl_req->transferBuf,
 			  ctrl_req->transferBufLen);
 
+		buf = kmalloc(ctrl_req->transferBufLen, GFP_NOIO);
+		if (!buf) {
+			ERROR("couldn't allocate memory");
+			break;
+		}
 		ret = usb_get_descriptor(dev, ctrl_req->desctype,
-					 ctrl_req->index,
-					 ctrl_req->transferBuf,
+					 ctrl_req->index, buf,
 					 ctrl_req->transferBufLen);
 		if (ret < 0) {
 			ERROR("usb_get_descriptor() = %d", ret);
 			break;
 		}
+		memcpy(ctrl_req->transferBuf, buf, ret);
+		kfree(buf);
 		ctrl_req->transferBufLen = ret;
 		USBTRACEEXIT(return STATUS_SUCCESS);
 
