@@ -1150,6 +1150,12 @@ static void update_wireless_stats(struct wrapper_dev *wd)
 	ndis_rssi rssi;
 	NDIS_STATUS res;
 
+	/* TODO: Airgo driver crashes when one of the query functions
+	 * below is called */
+	if (wd->ndis_device->vendor == 0x17cb &&
+	    wd->ndis_device->device == 0x0001)
+		return;
+
 	TRACEENTER2("");
 	if (wd->reset_status)
 		return;
