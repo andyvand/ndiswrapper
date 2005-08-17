@@ -376,8 +376,6 @@ static void hangcheck_proc(unsigned long data)
 	KIRQL irql;
 
 	TRACEENTER3("%s", "");
-	
-	return;
 	set_bit(HANGCHECK, &wd->wrapper_work);
 	schedule_work(&wd->wrapper_worker);
 
@@ -1147,21 +1145,21 @@ static void update_wireless_stats(struct wrapper_dev *wd)
 {
 	struct iw_statistics *iw_stats = &wd->wireless_stats;
 	struct ndis_wireless_stats ndis_stats;
-	ndis_rssi rssi;
 	NDIS_STATUS res;
-
-	/* TODO: Airgo driver crashes when one of the query functions
-	 * below is called */
-	if (wd->ndis_device->vendor == 0x17cb &&
-	    wd->ndis_device->device == 0x0001)
-		return;
+	ndis_rssi rssi;
 
 	TRACEENTER2("");
-	if (wd->reset_status)
-		return;
-	res = miniport_query_info(wd, OID_802_11_RSSI, &rssi,
-				  sizeof(rssi));
-	iw_stats->qual.level = rssi;
+	rssi = 0;
+	/* Prism1 USB and Airgo cards crash kernel if RSSI is queried */
+	if (!((wd->ndis_device->vendor == 0x17cb &&
+	       wd->ndis_device->device == 0x0001) ||
+	      (wd->ndis_device->vendor == 0x2001 &&
+	       wd->ndis_device->device == 0x3700))) {
+		res = miniport_query_info(wd, OID_802_11_RSSI, &rssi,
+					  sizeof(rssi));
+		if (res == NDIS_STATUS_SUCCESS)
+			iw_stats->qual.level = rssi;
+	}
 
 	memset(&ndis_stats, 0, sizeof(ndis_stats));
 	res = miniport_query_info(wd, OID_802_11_STATISTICS,
