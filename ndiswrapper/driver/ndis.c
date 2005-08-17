@@ -318,10 +318,19 @@ STDCALL void WRAP_EXPORT(NdisFreeMemory)
  */
 NOREGPARM void WRAP_EXPORT(NdisWriteErrorLogEntry)
 	(struct driver_object *drv_obj, unsigned int error, ULONG count,
-	 unsigned int p1)
+	 ...)
 {
-	ERROR("log: %08X, count: %d (%08x), return address: %p",
-	      error, count, p1, __builtin_return_address(0));
+	va_list args;
+	int i, code;
+
+	va_start(args, count);
+	ERROR("log: %08X, count: %d, return_address: %p",
+			error, count, __builtin_return_address(0));
+	for (i = 0; i < count; i++) {
+		code = va_arg(args, int);
+		ERROR("code: %u", code);
+	}
+	va_end(args);
 	return;
 }
 
