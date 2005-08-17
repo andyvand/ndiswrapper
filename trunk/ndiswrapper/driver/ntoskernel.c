@@ -58,6 +58,11 @@ static struct driver_object pci_bus_driver;
 static struct driver_object usb_bus_driver;
 static void del_bus_drivers(void);
 
+struct work_struct io_work;
+struct nt_list io_workitem_list;
+KSPIN_LOCK io_workitem_list_lock;
+void io_worker(void *data);
+
 WRAP_EXPORT_MAP("KeTickCount", &jiffies);
 
 static int add_bus_driver(struct driver_object *drv_obj, const char *name);
@@ -69,12 +74,15 @@ int ntoskernel_init(void)
 	kspin_lock_init(&kevent_lock);
 	kspin_lock_init(&urb_tx_complete_list_lock);
 	kspin_lock_init(&ntoskernel_lock);
+	kspin_lock_init(&io_workitem_list_lock);
 	InitializeListHead(&wrap_mdl_list);
 	InitializeListHead(&kdpc_list);
 	InitializeListHead(&callback_objects);
 	InitializeListHead(&bus_driver_list);
 	InitializeListHead(&object_list);
-	INIT_WORK(&kdpc_work, &kdpc_worker, NULL);
+	InitializeListHead(&io_workitem_list);
+	INIT_WORK(&kdpc_work, kdpc_worker, NULL);
+	INIT_WORK(&io_work, io_worker, NULL);
 	if (add_bus_driver(&pci_bus_driver, "PCI") ||
 	    add_bus_driver(&usb_bus_driver, "USB")) {
 		ntoskernel_exit();
@@ -464,7 +472,8 @@ BOOLEAN remove_kdpc_work(struct kdpc *kdpc)
 	return FALSE;
 }
 
-STDCALL BOOLEAN KeInsertQueueDpc(struct kdpc *kdpc, void *arg1, void *arg2)
+STDCALL BOOLEAN WRAP_EXPORT(KeInsertQueueDpc)
+	(struct kdpc *kdpc, void *arg1, void *arg2)
 {
 	BOOLEAN ret;
 
@@ -478,7 +487,8 @@ STDCALL BOOLEAN KeInsertQueueDpc(struct kdpc *kdpc, void *arg1, void *arg2)
 	TRACEEXIT3(return ret);
 }
 
-STDCALL BOOLEAN KeRemoveQueueDpc(struct kdpc *kdpc)
+STDCALL BOOLEAN WRAP_EXPORT(KeRemoveQueueDpc)
+	(struct kdpc *kdpc)
 {
 	BOOLEAN ret;
 	KIRQL irql;

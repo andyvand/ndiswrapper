@@ -140,7 +140,7 @@ typedef u64	ULONG64;
 typedef CHAR CCHAR;
 typedef SHORT wchar_t;
 typedef SHORT CSHORT;
-typedef long long LARGE_INTEGER;
+typedef LONGLONG LARGE_INTEGER;
 
 typedef LONG NTSTATUS;
 
@@ -757,6 +757,19 @@ struct common_object_header {
 enum work_queue_type {
 	CriticalWorkQueue, DelayedWorkQueue, HyperCriticalWorkQueue,
 	MaximumWorkQueue
+};
+
+struct io_workitem {
+	enum work_queue_type type;
+	struct device_object *dev_obj;
+	void (*worker_routine)(struct device_object *dev_obj,
+			       void *context) STDCALL;
+	void *context;
+};
+
+struct io_workitem_entry {
+	struct nt_list list;
+	struct io_workitem *io_workitem;
 };
 
 enum wait_type {
