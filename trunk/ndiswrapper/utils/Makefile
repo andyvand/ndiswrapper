@@ -6,7 +6,7 @@ usrsbindir = $(DESTDIR)/usr/sbin
 
 OBJS = loadndisdriver.o
 
-CFLAGS = -Wall -g -DNDISWRAPPER_VERSION=\"$(NDISWRAPPER_VERSION)\" 
+CFLAGS = -Wall -g -DUTILS_VERSION=\"$(UTILS_VERSION)\" 
 
 DISTFILES=Makefile ndiswrapper loadndisdriver.c ndiswrapper-buginfo
 

@@ -14,7 +14,7 @@
 #*/
 
 
-use strict;
+#use strict;
 use Fcntl ':mode';
 
 my @sections;
@@ -511,11 +511,9 @@ sub installStatus
 	}
 	else
 	{
-		$ret = $ret . "driver present " if $conf eq 1;
-		$ret = $ret . "driver present, hardware present " if
-			$conf eq 2;
-		$ret = $ret . "driver present, hardware present " if
-			$conf eq 3;
+	  $ret = "\tdriver present " if $conf eq 1;
+	  $ret = "\tdriver present, hardware present " if $conf eq 2;
+	  $ret = "\tdriver present, hardware present " if $conf eq 3;
 	}
 	return $ret;
 }

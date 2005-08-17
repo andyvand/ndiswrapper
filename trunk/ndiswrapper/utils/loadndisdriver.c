@@ -43,7 +43,7 @@ static const char *confdir = "/etc/ndiswrapper";
 static const char *ioctl_file = "/dev/ndiswrapper";
 static int debug;
 
-#ifndef NDISWRAPPER_VERSION
+#ifndef UTILS_VERSION
 #error Compile this file with 'make' in the 'utils' \
 	directory only
 #endif
@@ -338,10 +338,8 @@ static int load_driver(int ioctl_device, char *driver_name,
 	strncpy(driver->conf_file_name, conf_file_name,
 		sizeof(driver->conf_file_name));
 
-#ifndef DEBUG
 	if (ioctl(ioctl_device, NDIS_LOAD_DRIVER, driver))
 		goto err;
-#endif
 
 	closedir(driver_dir);
 	dbg("driver %s loaded", driver_name);
@@ -526,9 +524,7 @@ static int load_all_devices(int ioctl_device)
 	load_devices.count = loaded;
 	load_devices.devices = devices;
 
-#ifndef DEBUG
 	res = ioctl(ioctl_device, NDIS_REGISTER_DEVICES, &load_devices);
-#endif
 	free(devices);
 
 	if (res) {
@@ -615,18 +611,16 @@ int main(int argc, char *argv[0])
 	} else
 		debug = i;
 
-#ifndef DEBUG
 	ioctl_device = get_ioctl_device();
 	if (ioctl_device == -1) {
 		error("unable to open ioctl device %s", ioctl_file);
 		res = 5;
 		goto out;
 	}
-#endif
 
-	if (strcmp(argv[2], NDISWRAPPER_VERSION)) {
+	if (atof(argv[2]) != atof(UTILS_VERSION)) {
 		error("version %s doesn't match driver version %s",
-		      NDISWRAPPER_VERSION, argv[2]);
+		      UTILS_VERSION, argv[2]);
 		res = 6;
 		goto out;
 	}
