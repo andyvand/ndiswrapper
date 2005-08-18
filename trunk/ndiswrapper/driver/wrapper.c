@@ -335,15 +335,17 @@ NDIS_STATUS miniport_set_pm_state(struct wrapper_dev *wd,
 {
 	NDIS_STATUS res;
 	struct miniport_char *miniport;
-	enum ndis_pm_state ps;
 
-	miniport = &wd->driver->miniport;
-
-	ps = pm_state;
-	res = miniport_query_int(wd, OID_PNP_SET_POWER, &ps);
+	res = NDIS_STATUS_SUCCESS;
+	if (pm_state != NdisDeviceStateD0) {
+		enum ndis_pm_state ps;
+		ps = pm_state;
+		res = miniport_query_int(wd, OID_PNP_QUERY_POWER, &ps);
+	}
 	if (res == NDIS_STATUS_SUCCESS)
 		res = miniport_set_int(wd, OID_PNP_SET_POWER, pm_state);
-	else {
+#if 0
+	if (res != NDIS_STATUS_SUCCESS) {
 		struct device_object *fdo;
 		struct irp *irp;
 
@@ -353,24 +355,23 @@ NDIS_STATUS miniport_set_pm_state(struct wrapper_dev *wd,
 		res = PoCallDriver(fdo, irp);
 		DBGTRACE1("res = %d", res);
 	}
-#if 0
+#endif
+	miniport = &wd->driver->miniport;
+
 	/* According NDIS, pnp_event_notify should be called whenever power
 	 * is set to D0
 	 * Only NDIS 5.1 drivers are required to supply this function; some
 	 * drivers don't seem to support it (at least Orinoco)
 	 */
-	if (res == NDIS_STATUS_SUCCESS && pm_state == NdisDeviceStateD0) {
-		if (miniport->pnp_event_notify) {
-			ULONG pnp_info;
-			pnp_info = NdisPowerProfileAcOnLine;
-			DBGTRACE3("calling pnp_event_notify");
-			LIN2WIN4(miniport->pnp_event_notify,
-				 wd->nmb->adapter_ctx,
-				 NdisDevicePnPEventPowerProfileChanged,
-				 &pnp_info, (ULONG)sizeof(pnp_info));
-		}
+	if (res == NDIS_STATUS_SUCCESS && pm_state == NdisDeviceStateD0 &&
+	    miniport->pnp_event_notify) {
+		ULONG pnp_info;
+		pnp_info = NdisPowerProfileAcOnLine;
+		DBGTRACE3("calling pnp_event_notify");
+		LIN2WIN4(miniport->pnp_event_notify, wd->nmb->adapter_ctx,
+			 NdisDevicePnPEventPowerProfileChanged,
+			 &pnp_info, (ULONG)sizeof(pnp_info));
 	}
-#endif
 	return res;
 }
 
@@ -903,7 +904,7 @@ int ndiswrapper_suspend_usb(struct usb_interface *intf, pm_message_t state)
 	wd = usb_get_intfdata(intf);
 	/* some drivers support only D3, so force it */
 	ret = ndiswrapper_suspend_device(wd, NdisDeviceStateD3);
-//	usb_cancel_pending_urbs();
+	msleep(100);
 	DBGTRACE2("ret = %d", ret);
 	return ret;
 }

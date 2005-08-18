@@ -19,7 +19,7 @@
 #include "usb.h"
 
 extern KSPIN_LOCK ntoskernel_lock;
-extern KSPIN_LOCK urb_tx_complete_list_lock;
+extern KSPIN_LOCK urb_list_lock;
 extern struct nt_list object_list;
 
 extern struct work_struct io_work;
@@ -189,7 +189,7 @@ STDCALL BOOLEAN WRAP_EXPORT(IoCancelIrp)
 	USBTRACEENTER("irp = %p", irp);
 
 	DUMP_IRP(irp);
-	irql = kspin_lock_irql(&urb_tx_complete_list_lock, DISPATCH_LEVEL);
+	irql = kspin_lock_irql(&urb_list_lock, DISPATCH_LEVEL);
 	irp->cancel = TRUE;
 	irp->cancel_irql = irql;
 	cancel_routine = irp->cancel_routine;
@@ -202,7 +202,7 @@ STDCALL BOOLEAN WRAP_EXPORT(IoCancelIrp)
 		cancel_routine(irp_sl->dev_obj, irp);
 		USBTRACEEXIT(return TRUE);
 	} else {
-		kspin_unlock_irql(&urb_tx_complete_list_lock, irql);
+		kspin_unlock_irql(&urb_list_lock, irql);
 		USBTRACEEXIT(return FALSE);
 	}
 }
@@ -436,6 +436,8 @@ pdoDispatchInternalDeviceControl(struct device_object *dev_obj,
 {
 	struct io_stack_location *irp_sl;
 	NTSTATUS ret;
+	struct wrapper_dev *wd;
+	union nt_urb *nt_urb;
 
 	DUMP_IRP(irp);
 
@@ -445,6 +447,15 @@ pdoDispatchInternalDeviceControl(struct device_object *dev_obj,
 		      irp->stack_count);
 		USBTRACEEXIT(return STATUS_FAILURE);
 	}
+	wd = dev_obj->dev_ext;
+	nt_urb = URB_FROM_IRP(irp);
+#if 0
+	if (wd->hw_unavailable) {
+		NT_URB_STATUS(nt_urb) = USBD_STATUS_REQUEST_FAILED;
+		USBTRACEEXIT(return STATUS_FAILURE);
+	}
+#endif
+
 	irp_sl = IoGetCurrentIrpStackLocation(irp);
 
 	switch (irp_sl->params.ioctl.code) {
