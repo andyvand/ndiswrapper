@@ -450,8 +450,7 @@ pdoDispatchInternalDeviceControl(struct device_object *dev_obj,
 	switch (irp_sl->params.ioctl.code) {
 #ifdef CONFIG_USB
 	case IOCTL_INTERNAL_USB_SUBMIT_URB:
-		ret = usb_submit_nt_urb(dev_obj->device.usb,
-					URB_FROM_IRP(irp), irp);
+		ret = usb_submit_nt_urb(dev_obj->device.usb, irp);
 		break;
 
 	case IOCTL_INTERNAL_USB_RESET_PORT:

@@ -499,32 +499,10 @@ unsigned long usb_reset_pipe(struct usb_device *dev,
 
 	USBTRACE("pipe = %p", pipe_handle.handle);
 	endpoint = pipe_handle.encoded.endpointAddr;
-	switch (pipe_handle.encoded.pipeType) {
-	case USB_ENDPOINT_XFER_CONTROL:
-		if (pipe_handle.encoded.endpointAddr & USB_ENDPOINT_DIR_MASK)
-			pipe = usb_rcvctrlpipe(dev, endpoint);
-		else
-			pipe = usb_sndctrlpipe(dev, endpoint);
-		break;
-
-	case USB_ENDPOINT_XFER_BULK:
-		if (pipe_handle.encoded.endpointAddr & USB_ENDPOINT_DIR_MASK)
-			pipe = usb_rcvbulkpipe(dev, endpoint);
-		else
-			pipe = usb_sndbulkpipe(dev, endpoint);
-		break;
-
-	case USB_ENDPOINT_XFER_INT:
-		if (pipe_handle.encoded.endpointAddr & USB_ENDPOINT_DIR_MASK)
-			pipe = usb_rcvbulkpipe(dev, endpoint);
-		else
-			pipe = usb_sndbulkpipe(dev, endpoint);
-		break;
-	default:
-		WARNING("unknown pipe type: %d", pipe_handle.encoded.pipeType);
-		return -EINVAL;
-	}
-
+	if (pipe_handle.encoded.endpointAddr & USB_ENDPOINT_DIR_MASK)
+		pipe = usb_rcvctrlpipe(dev, endpoint);
+	else
+		pipe = usb_sndctrlpipe(dev, endpoint);
 	return usb_clear_halt(dev, pipe);
 }
 
@@ -546,13 +524,13 @@ unsigned long usb_select_configuration(struct usb_device *dev,
 	ret = usb_set_interface(dev, sel_conf->intf.intfNum,
 				sel_conf->intf.altSet);
 	if (ret < 0) {
-		ERROR("usb_set_interface() = %d", ret);
+		ERROR("usb_set_interface failed with %d", ret);
 		USBTRACEEXIT(return ret);
 	}
 
 	intf = usb_ifnum_to_if(dev, sel_conf->intf.intfNum);
 	if (!intf) {
-		ERROR("usb_ifnum_to_if() = %d", ret);
+		ERROR("usb_ifnum_to_if failed with %d", ret);
 		USBTRACEEXIT(return ret);
 	}
 
@@ -587,23 +565,25 @@ unsigned long usb_select_configuration(struct usb_device *dev,
 	USBTRACEEXIT(return 0);
 }
 
-unsigned long usb_submit_nt_urb(struct usb_device *dev, union nt_urb *nt_urb,
-				struct irp *irp)
+unsigned long usb_submit_nt_urb(struct usb_device *dev, struct irp *irp)
 {
 	struct control_descriptor_request *ctrl_req;
 	int ret;
 	char *buf;
+	union nt_urb *nt_urb;
 
+	nt_urb = URB_FROM_IRP(irp);
 	USBTRACEENTER("nt_urb = %p, irp = %p, length = %d, function = %x",
 		    nt_urb, irp, nt_urb->header.length,
 		    nt_urb->header.function);
 
 	DUMP_IRP(irp);
-	nt_urb->header.status = USBD_STATUS_SUCCESS;
-
+	NT_URB_STATUS(nt_urb) = USBD_STATUS_SUCCESS;
 	switch (nt_urb->header.function) {
 	case URB_FUNCTION_SELECT_CONFIGURATION:
-		usb_select_configuration(dev, nt_urb, irp);
+		ret = usb_select_configuration(dev, nt_urb, irp);
+		if (ret < 0)
+			break;
 		USBTRACEEXIT(return STATUS_SUCCESS);
 
 	case URB_FUNCTION_BULK_OR_INTERRUPT_TRANSFER:
@@ -632,7 +612,7 @@ unsigned long usb_submit_nt_urb(struct usb_device *dev, union nt_urb *nt_urb,
 					 ctrl_req->index, buf,
 					 ctrl_req->transferBufLen);
 		if (ret < 0) {
-			ERROR("usb_get_descriptor() = %d", ret);
+			ERROR("usb_get_descriptor failed with %d", ret);
 			break;
 		}
 		memcpy(ctrl_req->transferBuf, buf, ret);
@@ -652,7 +632,7 @@ unsigned long usb_submit_nt_urb(struct usb_device *dev, union nt_urb *nt_urb,
 	case URB_FUNCTION_SYNC_RESET_PIPE_AND_CLEAR_STALL:
 		ret = usb_reset_pipe(dev, nt_urb->pipe_req.pipeHandle);
 		if (ret < 0) {
-			ERROR("usb_reset_pipe() = %d", ret);
+			ERROR("usb_reset_pipe failed with %d", ret);
 			break;
 		}
 		USBTRACEEXIT(return STATUS_SUCCESS);
@@ -661,7 +641,7 @@ unsigned long usb_submit_nt_urb(struct usb_device *dev, union nt_urb *nt_urb,
 		ERROR("function %X NOT IMPLEMENTED!\n",
 		      nt_urb->header.function);
 	}
-	nt_urb->header.status = USBD_STATUS_INVALID_URB_FUNCTION;
+	NT_URB_STATUS(nt_urb) = USBD_STATUS_REQUEST_FAILED;
 	USBTRACEEXIT(return STATUS_FAILURE);
 }
 

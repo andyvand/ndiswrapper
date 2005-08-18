@@ -49,6 +49,8 @@ void ndiswrapper_remove_device(struct wrapper_dev *wd);
 int ndis_reinit(struct wrapper_dev *wd);
 int setup_device(struct net_device *dev);
 
+void check_capa(struct wrapper_dev *wd);
+
 struct net_device *ndis_init_netdev(struct wrapper_dev **pwd,
 				    struct ndis_device *device,
 				    struct ndis_driver *driver);

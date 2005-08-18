@@ -290,7 +290,7 @@ NDIS_STATUS miniport_init(struct wrapper_dev *wd)
 	/* Wait a little to let card power up otherwise ifup might fail after
 	   boot; USB devices seem to need long delays */
 	set_current_state(TASK_INTERRUPTIBLE);
-	schedule_timeout(2 * HZ);
+	schedule_timeout(4 * HZ);
 
 	TRACEEXIT1(return 0);
 }
@@ -353,6 +353,7 @@ NDIS_STATUS miniport_set_pm_state(struct wrapper_dev *wd,
 		res = PoCallDriver(fdo, irp);
 		DBGTRACE1("res = %d", res);
 	}
+#if 0
 	/* According NDIS, pnp_event_notify should be called whenever power
 	 * is set to D0
 	 * Only NDIS 5.1 drivers are required to supply this function; some
@@ -369,6 +370,7 @@ NDIS_STATUS miniport_set_pm_state(struct wrapper_dev *wd,
 				 &pnp_info, (ULONG)sizeof(pnp_info));
 		}
 	}
+#endif
 	return res;
 }
 
@@ -825,7 +827,7 @@ int ndiswrapper_suspend_device(struct wrapper_dev *wd,
 			ndiswrapper_stop_device(wd);
 			set_bit(HW_HALTED, &wd->hw_status);
 		} else {
-			miniport_set_pm_state(wd, pm_state);
+			status = miniport_set_pm_state(wd, pm_state);
 			DBGTRACE2("suspending returns %08X", status);
 			set_bit(HW_SUSPENDED, &wd->hw_status);
 		}
@@ -855,7 +857,7 @@ int ndiswrapper_suspend_pci(struct pci_dev *pdev, pm_message_t state)
 	pci_disable_device(pdev);
 	pci_set_power_state(pdev, PMSG_SUSPEND);
 
-	DBGTRACE2("%s: device suspended", dev->name);
+	DBGTRACE2("%s: device suspended", wd->net_dev->name);
 	return 0;
 }
 
@@ -867,7 +869,8 @@ int ndiswrapper_suspend_usb(struct usb_interface *intf, pm_message_t state)
 	wd = usb_get_intfdata(intf);
 	/* some drivers support only D3, so force it */
 	ret = ndiswrapper_suspend_device(wd, NdisDeviceStateD3);
-	usb_cancel_pending_urbs();
+//	usb_cancel_pending_urbs();
+	DBGTRACE2("ret = %d", ret);
 	return ret;
 }
 
@@ -1298,7 +1301,7 @@ static void wrapper_worker_proc(void *param)
 }
 
 /* check capabilites - mainly for WPA */
-static void check_capa(struct wrapper_dev *wd)
+void check_capa(struct wrapper_dev *wd)
 {
 	int i, mode;
 	NDIS_STATUS res;
@@ -1518,6 +1521,37 @@ int setup_device(struct net_device *dev)
 	DBGTRACE1("mac:" MACSTR, MAC2STR(mac));
 	memcpy(&dev->dev_addr, mac, ETH_ALEN);
 
+	check_capa(wd);
+
+	DBGTRACE1("capbilities = %ld", wd->capa.encr);
+	printk(KERN_INFO "%s: encryption modes supported: %s%s%s%s%s%s%s\n",
+	       dev->name,
+	       test_bit(Ndis802_11Encryption1Enabled, &wd->capa.encr) ?
+	       "WEP" : "none",
+
+	       test_bit(Ndis802_11Encryption2Enabled, &wd->capa.encr) ?
+	       "; TKIP with WPA" : "",
+	       test_bit(Ndis802_11AuthModeWPA2, &wd->capa.auth) ?
+	       ", WPA2" : "",
+	       test_bit(Ndis802_11AuthModeWPA2PSK, &wd->capa.auth) ?
+	       ", WPA2PSK" : "",
+
+	       test_bit(Ndis802_11Encryption3Enabled, &wd->capa.encr) ?
+	       "; AES/CCMP with WPA" : "",
+	       test_bit(Ndis802_11AuthModeWPA2, &wd->capa.auth) ?
+	       ", WPA2" : "",
+	       test_bit(Ndis802_11AuthModeWPA2PSK, &wd->capa.auth) ?
+	       ", WPA2PSK" : "");
+
+	/* check_capa changes auth_mode and encr_mode, so set them again */
+	set_infra_mode(wd, Ndis802_11Infrastructure);
+	set_auth_mode(wd, Ndis802_11AuthModeOpen);
+	set_encr_mode(wd, Ndis802_11EncryptionDisabled);
+	set_essid(wd, "", 0);
+
+	/* some cards (e.g., RaLink) need a scan before they can associate */
+	set_scan(wd);
+
 	wd->max_send_packets = 1;
 	if (wd->driver->miniport.send_packets) {
 		res = miniport_query_int(wd, OID_GEN_MAXIMUM_SEND_PACKETS,
@@ -1591,37 +1625,6 @@ int setup_device(struct net_device *dev)
 	       " configuration file %s\n",
 	       dev->name, DRIVER_NAME, MAC2STR(dev->dev_addr),
 	       wd->driver->name, wd->ndis_device->conf_file_name);
-
-	check_capa(wd);
-
-	DBGTRACE1("capbilities = %ld", wd->capa.encr);
-	printk(KERN_INFO "%s: encryption modes supported: %s%s%s%s%s%s%s\n",
-	       dev->name,
-	       test_bit(Ndis802_11Encryption1Enabled, &wd->capa.encr) ?
-	       "WEP" : "none",
-
-	       test_bit(Ndis802_11Encryption2Enabled, &wd->capa.encr) ?
-	       "; TKIP with WPA" : "",
-	       test_bit(Ndis802_11AuthModeWPA2, &wd->capa.auth) ?
-	       ", WPA2" : "",
-	       test_bit(Ndis802_11AuthModeWPA2PSK, &wd->capa.auth) ?
-	       ", WPA2PSK" : "",
-
-	       test_bit(Ndis802_11Encryption3Enabled, &wd->capa.encr) ?
-	       "; AES/CCMP with WPA" : "",
-	       test_bit(Ndis802_11AuthModeWPA2, &wd->capa.auth) ?
-	       ", WPA2" : "",
-	       test_bit(Ndis802_11AuthModeWPA2PSK, &wd->capa.auth) ?
-	       ", WPA2PSK" : "");
-
-	/* check_capa changes auth_mode and encr_mode, so set them again */
-	set_infra_mode(wd, Ndis802_11Infrastructure);
-	set_auth_mode(wd, Ndis802_11AuthModeOpen);
-	set_encr_mode(wd, Ndis802_11EncryptionDisabled);
-	set_essid(wd, "", 0);
-
-	/* some cards (e.g., RaLink) need a scan before they can associate */
-	set_scan(wd);
 
 	hangcheck_add(wd);
 	stats_timer_add(wd);
