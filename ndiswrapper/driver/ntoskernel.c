@@ -41,7 +41,6 @@ struct bus_driver {
 /* everything here is for all drivers/devices - not per driver/device */
 static KSPIN_LOCK kevent_lock;
 KSPIN_LOCK ntoskernel_lock;
-KSPIN_LOCK urb_tx_complete_list_lock;
 static kmem_cache_t *mdl_cache;
 static struct nt_list wrap_mdl_list;
 
@@ -72,7 +71,6 @@ int ntoskernel_init(void)
 	struct kthread *kthread;
 
 	kspin_lock_init(&kevent_lock);
-	kspin_lock_init(&urb_tx_complete_list_lock);
 	kspin_lock_init(&ntoskernel_lock);
 	kspin_lock_init(&io_workitem_list_lock);
 	InitializeListHead(&wrap_mdl_list);
