@@ -861,19 +861,6 @@ int ndiswrapper_suspend_pci(struct pci_dev *pdev, pm_message_t state)
 	return 0;
 }
 
-int ndiswrapper_suspend_usb(struct usb_interface *intf, pm_message_t state)
-{
-	struct wrapper_dev *wd;
-	int ret;
-
-	wd = usb_get_intfdata(intf);
-	/* some drivers support only D3, so force it */
-	ret = ndiswrapper_suspend_device(wd, NdisDeviceStateD3);
-//	usb_cancel_pending_urbs();
-	DBGTRACE2("ret = %d", ret);
-	return ret;
-}
-
 int ndiswrapper_resume_device(struct wrapper_dev *wd)
 {
 	if (!wd)
@@ -907,6 +894,20 @@ int ndiswrapper_resume_pci(struct pci_dev *pdev)
 	return ret;
 }
 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
+int ndiswrapper_suspend_usb(struct usb_interface *intf, pm_message_t state)
+{
+	struct wrapper_dev *wd;
+	int ret;
+
+	wd = usb_get_intfdata(intf);
+	/* some drivers support only D3, so force it */
+	ret = ndiswrapper_suspend_device(wd, NdisDeviceStateD3);
+//	usb_cancel_pending_urbs();
+	DBGTRACE2("ret = %d", ret);
+	return ret;
+}
+
 int ndiswrapper_resume_usb(struct usb_interface *intf)
 {
 	struct wrapper_dev *wd;
@@ -914,6 +915,7 @@ int ndiswrapper_resume_usb(struct usb_interface *intf)
 	wd = usb_get_intfdata(intf);
 	return ndiswrapper_resume_device(wd);
 }
+#endif
 
 void ndiswrapper_remove_device(struct wrapper_dev *wd)
 {
@@ -1164,10 +1166,8 @@ static void update_wireless_stats(struct wrapper_dev *wd)
 	       wd->ndis_device->device == 0x3700))
 		return;
 
-	return;
 	rssi = 0;
-	res = miniport_query_info(wd, OID_802_11_RSSI, &rssi,
-				  sizeof(rssi));
+	res = miniport_query_info(wd, OID_802_11_RSSI, &rssi, sizeof(rssi));
 	if (res == NDIS_STATUS_SUCCESS)
 		iw_stats->qual.level = rssi;
 
