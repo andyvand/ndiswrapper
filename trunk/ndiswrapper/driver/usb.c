@@ -31,6 +31,15 @@ static struct work_struct urb_tx_complete_work;
 STDCALL void usb_cancel_transfer(struct device_object *dev_obj,
 				 struct irp *irp);
 
+/* keep track of allocated urbs so they can be canceled/freed */
+struct wrap_urb {
+	struct nt_list list;
+	struct irp *irp;
+	struct urb *urb;
+};
+static struct nt_list wrap_urb_list;
+static KSPIN_LOCK wrap_urb_list_lock;
+
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,0)
 static void *usb_buffer_alloc(struct usb_device *dev, size_t size,
 			      unsigned mem_flags, dma_addr_t *dma)
@@ -72,16 +81,30 @@ static struct urb *wrap_alloc_urb(unsigned int mem_flags, struct irp *irp,
 				  struct usb_device *dev, int tx_buf_len)
 {
 	struct urb *urb;
+
+	struct wrap_urb *wrap_urb;
+	KIRQL irql;
+
+	wrap_urb = kmalloc(sizeof(*wrap_urb), mem_flags);
+	if (!wrap_urb) {
+		ERROR("couldn't allocate memory");
+		return NULL;
+	}
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,0)
 	urb = usb_alloc_urb(0);
-	/* TODO: set USB_ASYNC_UNLINK so usb_unlink_urb works correctly? */
 #else
 	urb = usb_alloc_urb(0, mem_flags);
 #endif
 	if (!urb) {
 		WARNING("couldn't allocate urb");
+		kfree(wrap_urb);
 		return NULL;
 	}
+	wrap_urb->urb = urb;
+	wrap_urb->irp = irp;
+	irql = kspin_lock_irql(&wrap_urb_list_lock, DISPATCH_LEVEL);
+	InsertTailList(&wrap_urb_list, &wrap_urb->list);
+	kspin_unlock_irql(&wrap_urb_list_lock, irql);
 	irp->urb = urb;
 	irp->cancel_routine = usb_cancel_transfer;
 	if (tx_buf_len) {
@@ -97,14 +120,23 @@ static struct urb *wrap_alloc_urb(unsigned int mem_flags, struct irp *irp,
 		urb->transfer_flags |= URB_NO_TRANSFER_DMA_MAP;
 	} else
 		urb->transfer_buffer = NULL;
+	urb->context = wrap_urb;
 	return urb;
 }
 
-static inline void wrap_free_urb(struct urb *urb)
+static void wrap_free_urb(struct urb *urb)
 {
 	struct irp *irp;
 
-	irp = urb->context;
+	struct wrap_urb *wrap_urb;
+	KIRQL irql;
+
+	wrap_urb = urb->context;
+	irql = kspin_lock_irql(&wrap_urb_list_lock, DISPATCH_LEVEL);
+	RemoveEntryList(&wrap_urb->list);
+	kspin_unlock_irql(&wrap_urb_list_lock, irql);
+
+	irp = wrap_urb->irp;
 	irp->cancel_routine = NULL;
 	if (urb->transfer_buffer)
 		usb_buffer_free(urb->dev, urb->transfer_buffer_length, 
@@ -113,7 +145,31 @@ static inline void wrap_free_urb(struct urb *urb)
 		usb_buffer_free(urb->dev, sizeof(struct usb_ctrlrequest),
 				urb->setup_packet, urb->setup_dma);
 	usb_free_urb(urb);
+	kfree(wrap_urb);
 	irp->urb = NULL;
+	return;
+}
+
+void usb_cancel_pending_urbs(void)
+{
+	while (1) {
+		struct nt_list *cur;
+		struct wrap_urb *wrap_urb;
+		KIRQL irql;
+		
+		irql = kspin_lock_irql(&wrap_urb_list_lock, DISPATCH_LEVEL);
+		cur = GetHeadList(&wrap_urb_list);
+		kspin_unlock_irql(&wrap_urb_list_lock, irql);
+		if (!cur)
+			break;
+		wrap_urb = container_of(cur, struct wrap_urb, list);
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,8)
+		usb_kill_urb(wrap_urb->urb);
+#else
+		usb_unlink_urb(wrap_urb->urb);
+#endif
+		USBTRACE("urb %p killed", wrap_urb->urb);
+	}
 	return;
 }
 
@@ -121,6 +177,7 @@ static inline int wrap_submit_urb(struct urb *urb, unsigned int mem_flags)
 {
 	int ret;
 
+	USBTRACE("wrap_urb: %p, urb: %p", urb->context, urb);
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,0)
 	ret = usb_submit_urb(urb);
 #else
@@ -135,28 +192,37 @@ static inline int wrap_submit_urb(struct urb *urb, unsigned int mem_flags)
 int wrap_urb_status(int urb_status)
 {
 	switch (urb_status) {
+	case 0:
+		return USBD_STATUS_SUCCESS;
 	case -EPROTO:
 		return USBD_STATUS_BTSTUFF;
 	case -EILSEQ:
 		return USBD_STATUS_CRC;
-	case -EOVERFLOW:
-		return USBD_STATUS_BABBLE_DETECTED;
-	case -ESHUTDOWN:
-	case -ENODEV:
-		return USBD_STATUS_DEVICE_GONE;
+	case -EPIPE:
+		return USBD_STATUS_INVALID_PIPE_HANDLE;
 	case -ECOMM:
 		return USBD_STATUS_DATA_OVERRUN;
 	case -ENOSR:
 		return USBD_STATUS_DATA_UNDERRUN;
+	case -EOVERFLOW:
+		return USBD_STATUS_BABBLE_DETECTED;
+	case -EREMOTEIO:
+		return USBD_STATUS_ERROR_SHORT_TRANSFER;;
+	case -ENODEV:
+	case -ESHUTDOWN:
+		return USBD_STATUS_DEVICE_GONE;
 	default:
 		return USBD_STATUS_REQUEST_FAILED;
 	}
 }
+
 int usb_init(void)
 {
 	kspin_lock_init(&urb_tx_complete_list_lock);
 	InitializeListHead(&urb_tx_complete_list);
 	INIT_WORK(&urb_tx_complete_work, urb_tx_complete_worker, NULL);
+	InitializeListHead(&wrap_urb_list);
+	kspin_lock_init(&wrap_urb_list_lock);
 	return 0;
 }
 
@@ -172,13 +238,13 @@ void usb_transfer_complete(struct urb *urb, struct pt_regs *regs)
 void usb_transfer_complete(struct urb *urb)
 #endif
 {
-	struct irp *irp = urb->context;
+	struct wrap_urb *wrap_urb;
+	struct irp *irp;
 	KIRQL irql;
 
-	USBTRACEENTER("urb = %p", urb);
-	DUMP_IRP(irp);
-
+	wrap_urb = urb->context;
 	irql = kspin_lock_irql(&urb_tx_complete_list_lock, DISPATCH_LEVEL);
+	irp = wrap_urb->irp;
 	irp->cancel_routine = NULL;
 	InsertTailList(&urb_tx_complete_list, &irp->urb_list);
 	kspin_unlock_irql(&urb_tx_complete_list_lock, irql);
@@ -221,28 +287,34 @@ void urb_tx_complete_worker(void *dummy)
 		irql = kspin_lock_irql(&urb_tx_complete_list_lock,
 				       DISPATCH_LEVEL);
 		entry = RemoveHeadList(&urb_tx_complete_list);
-		if (entry == NULL) {
-			kspin_unlock_irql(&urb_tx_complete_list_lock, irql);
-			break;
-		}
-		irp = container_of(entry, struct irp, urb_list);
+		if (entry == NULL)
+			irp = NULL;
+		else
+			irp = container_of(entry, struct irp, urb_list);
 		kspin_unlock_irql(&urb_tx_complete_list_lock, irql);
 
+		if (!irp)
+			break;
 		DUMP_IRP(irp);
 		urb = irp->urb;
+		if (!urb) {
+			ERROR("urb for %p already freed?", irp);
+			continue;
+		}
 		nt_urb = URB_FROM_IRP(irp);
+		if (!nt_urb) {
+			ERROR("nt_urb for %p already freed?", irp);
+			continue;
+		}
 		USBTRACE("urb: %p, nt_urb: %p", urb, nt_urb);
 
 		switch (urb->status) {
 		case -ENOENT:
 		case -ECONNRESET:
-			USBTRACE("killing urb = %p, irp = %p", urb, irp);
-
 			irp->io_status.status = STATUS_CANCELLED;
 			irp->io_status.status_info = 0;
 			break;
 		case 0:
-			USBTRACE("done urb = %p, irp = %p", urb, irp);
 			if (urb->status) {
 				irp->io_status.status = STATUS_FAILURE;
 				irp->io_status.status_info = 0;
@@ -252,10 +324,8 @@ void urb_tx_complete_worker(void *dummy)
 					urb->actual_length;
 			}
 
-			USBTRACE("nt_urb: %p", nt_urb);
 			bulk_int_tx = &nt_urb->bulk_int_transfer;
 			bulk_int_tx->transferBufLen = urb->actual_length;
-			USBTRACE("bulk_int_tx: %p", bulk_int_tx->transferBuf);
 			if (urb->transfer_buffer &&
 			    USBD_DIRECTION_IN(bulk_int_tx->transferFlags))
 				memcpy(bulk_int_tx->transferBuf,
@@ -266,8 +336,8 @@ void urb_tx_complete_worker(void *dummy)
 		default:
 			irp->io_status.status = STATUS_FAILURE;
 			irp->io_status.status_info = 0;
-			NT_URB_STATUS(nt_urb) = wrap_urb_status(urb->status);
 		}
+		NT_URB_STATUS(nt_urb) = wrap_urb_status(urb->status);
 		wrap_free_urb(urb);
 		USBTRACE("irp: %p, status: %d", irp, irp->io_status.status);
 		IoCompleteRequest(irp, IO_NO_INCREMENT);
@@ -317,7 +387,7 @@ unsigned long usb_bulk_or_intr_trans(struct usb_device *dev,
 
 		usb_fill_bulk_urb(urb, dev, pipe, urb->transfer_buffer,
 				  bulk_int_tx->transferBufLen,
-				  usb_transfer_complete, irp);
+				  usb_transfer_complete, urb->context);
 		break;
 	case USB_ENDPOINT_XFER_INT:
 		if (USBD_DIRECTION_IN(bulk_int_tx->transferFlags))
@@ -327,7 +397,7 @@ unsigned long usb_bulk_or_intr_trans(struct usb_device *dev,
 
 		usb_fill_int_urb(urb, dev, pipe, urb->transfer_buffer,
 				 bulk_int_tx->transferBufLen,
-				 usb_transfer_complete, irp,
+				 usb_transfer_complete, urb->context,
 				 pipe_handle.encoded.interval);
 		break;
 	default:
@@ -406,7 +476,7 @@ unsigned long usb_vendor_or_class_intf(struct usb_device *dev,
 
 	usb_fill_control_urb(urb, dev, pipe, (unsigned char *)dr,
 			     urb->transfer_buffer, vc_req->transferBufLen,
-			     usb_transfer_complete, irp);
+			     usb_transfer_complete, urb->context);
 
 	if (USBD_DIRECTION_IN(vc_req->transferFlags) &&
 	    (!(vc_req->transferFlags &

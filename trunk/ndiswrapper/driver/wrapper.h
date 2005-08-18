@@ -40,7 +40,10 @@ void sendpacket_done(struct wrapper_dev *wd, struct ndis_packet *packet);
 int ndiswrapper_suspend_pci(struct pci_dev *pdev, pm_message_t state);
 int ndiswrapper_resume_pci(struct pci_dev *pdev);
 
-int ndiswrapper_start_device(struct wrapper_dev *wd);
+int ndiswrapper_suspend_usb(struct usb_interface *intf, pm_message_t state);
+int ndiswrapper_resume_usb(struct usb_interface *intf);
+
+NTSTATUS ndiswrapper_start_device(struct wrapper_dev *wd);
 void ndiswrapper_stop_device(struct wrapper_dev *wd);
 void ndiswrapper_remove_device(struct wrapper_dev *wd);
 int ndis_reinit(struct wrapper_dev *wd);

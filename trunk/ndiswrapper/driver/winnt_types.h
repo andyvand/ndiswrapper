@@ -1022,6 +1022,14 @@ static inline struct nt_list *RemoveHeadList(struct nt_list *head)
 	}
 }
 
+static inline struct nt_list *GetHeadList(struct nt_list *head)
+{
+	if (IsListEmpty(head))
+		return NULL;
+	else
+		return head->next;
+}
+
 static inline struct nt_list *RemoveTailList(struct nt_list *head)
 {
 	struct nt_list *prev, *entry;
