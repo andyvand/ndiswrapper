@@ -1189,7 +1189,7 @@ STDCALL KPRIORITY WRAP_EXPORT(KeQueryPriorityThread)
 {
 	KPRIORITY prio;
 
-	TRACEENTER5("thread = %p", kthread->task);
+	DBGTRACE2("thread = %p", kthread->task);
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,0)
 	prio = 1;
 #else
@@ -1257,7 +1257,7 @@ STDCALL struct kthread *WRAP_EXPORT(KeGetCurrentThread)
 	kspin_unlock_irql(&ntoskernel_lock, irql);
 	if (ret == NULL)
 		ERROR("couldn't find thread object: %p", task);
-	TRACEENTER2("current thread = %p", ret);
+	DBGTRACE2("current thread = %p", ret);
 	return ret;
 }
 
@@ -1266,7 +1266,7 @@ STDCALL KPRIORITY WRAP_EXPORT(KeSetPriorityThread)
 {
 	KPRIORITY old_prio;
 
-	TRACEENTER2("thread = %p, priority = %u", kthread, priority);
+	DBGTRACE2("thread = %p, priority = %u", kthread, priority);
 
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,0)
 	/* FIXME: is there a way to set kernel thread prio on 2.4? */
@@ -1325,7 +1325,6 @@ STDCALL NTSTATUS WRAP_EXPORT(PsCreateSystemThread)
 		kfree(ctx);
 		TRACEEXIT2(return STATUS_RESOURCES);
 	}
-	memset(kthread, 0, sizeof(*kthread));
 	ctx->start_routine = start_routine;
 	ctx->context = context;
 
@@ -1340,6 +1339,7 @@ STDCALL NTSTATUS WRAP_EXPORT(PsCreateSystemThread)
 	DBGTRACE2("pid = %d", pid);
 	if (pid < 0) {
 		kfree(ctx);
+		FREE_OBJECT(kthread);
 		TRACEEXIT2(return STATUS_FAILURE);
 	}
 	kthread->task = find_task_by_pid(pid);
@@ -1352,6 +1352,9 @@ STDCALL NTSTATUS WRAP_EXPORT(PsCreateSystemThread)
 	}
 	*phandle = kthread;
 #endif
+	DBGTRACE2("created thread: %p, task: %p, pid: %d",
+		  kthread, kthread->task, kthread->task->pid);
+//	ObReferenceObject(kthread);
 	DBGTRACE2("*phandle = %p", *phandle);
 	TRACEEXIT2(return STATUS_SUCCESS);
 }
@@ -1362,10 +1365,13 @@ STDCALL NTSTATUS WRAP_EXPORT(PsTerminateSystemThread)
 	struct kthread *kthread;
 
 	kthread = KeGetCurrentThread();
+	DBGTRACE2("terminating thread: %p, task: %p, pid: %d",
+		  kthread, kthread->task, kthread->task->pid);
 	if (kthread) {
 		KeSetEvent((struct kevent *)&kthread->dh, 0, FALSE);
 		ObDereferenceObject(kthread);
 	}
+	DBGTRACE2("terminated thread: %p", kthread);
 	complete_and_exit(NULL, status);
 	/* driver will not get this status */
 	return STATUS_SUCCESS;

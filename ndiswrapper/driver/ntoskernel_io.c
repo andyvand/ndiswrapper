@@ -132,12 +132,12 @@ STDCALL BOOLEAN WRAP_EXPORT(IoIs32bitProcess)
 }
 
 STDCALL void WRAP_EXPORT(IoInitializeIrp)
-	(struct irp *irp, USHORT packet_size, CCHAR stack_size)
+	(struct irp *irp, USHORT size, CCHAR stack_size)
 {
 	DBGTRACE4("irp = %p, stack_size = %d", irp, stack_size);
 
-	memset(irp, 0, packet_size);
-	irp->size = packet_size;
+	memset(irp, 0, size);
+	irp->size = size;
 	irp->stack_count = stack_size;
 	irp->current_location = stack_size;
 	IoGetCurrentIrpStackLocation(irp) = IRP_SL(irp, stack_size);
@@ -392,6 +392,7 @@ _FASTCALL void WRAP_EXPORT(IofCompleteRequest)
 					 irp_sl->completion_routine);
 				res = LIN2WIN3(irp_sl->completion_routine,
 					       dev_obj, irp, irp_sl->context);
+				USBTRACE("completion routine returned");
 				if (res == STATUS_MORE_PROCESSING_REQUIRED)
 					USBTRACEEXIT(return);
 			} else {
@@ -567,7 +568,6 @@ STDCALL NTSTATUS pdoDispatchPower(struct device_object *dev_obj,
 	struct io_stack_location *irp_sl;
 	struct wrapper_dev *wd;
 	enum device_power_state state;
-	struct pci_dev *pdev;
 	NTSTATUS res;
 
 	irp_sl = IoGetCurrentIrpStackLocation(irp);
@@ -577,19 +577,12 @@ STDCALL NTSTATUS pdoDispatchPower(struct device_object *dev_obj,
 	switch (irp_sl->minor_fn) {
 	case IRP_MN_SET_POWER:
 		state = irp_sl->params.power.state.device_state;
-		pdev = wd->dev.pci;
 		if (state == PowerDeviceD0) {
 			DBGTRACE2("resuming device %p", wd);
-			if (pdo_resume_pci(pdev))
-				irp->io_status.status = STATUS_FAILURE;
-			else
-				irp->io_status.status = STATUS_SUCCESS;
+			irp->io_status.status = STATUS_SUCCESS;
 		} else {
 			DBGTRACE2("suspending device %p", wd);
-			if (pdo_suspend_pci(pdev, state))
-				irp->io_status.status = STATUS_FAILURE;
-			else
-				irp->io_status.status = STATUS_SUCCESS;
+			irp->io_status.status = STATUS_SUCCESS;
 		}
 		break;
 	case IRP_MN_QUERY_POWER:

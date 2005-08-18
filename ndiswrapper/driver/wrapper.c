@@ -288,14 +288,14 @@ NDIS_STATUS miniport_init(struct wrapper_dev *wd)
 //	res = miniport_reset(wd);
 
 	/* Wait a little to let card power up otherwise ifup might fail after
-	   boot */
+	   boot; USB devices seem to need long delays */
 	set_current_state(TASK_INTERRUPTIBLE);
-	schedule_timeout(HZ/2);
+	schedule_timeout(2 * HZ);
 
 	TRACEEXIT1(return 0);
 }
 
-int ndiswrapper_start_device(struct wrapper_dev *wd)
+NTSTATUS ndiswrapper_start_device(struct wrapper_dev *wd)
 {
 	NTSTATUS status;
 	struct irp *irp;
@@ -312,21 +312,53 @@ int ndiswrapper_start_device(struct wrapper_dev *wd)
 	TRACEEXIT1(return status);
 }
 
+struct irp *allocate_power_irp(struct device_object *dev,
+			       enum device_power_state new_state)
+{
+	struct irp *irp;
+	struct io_stack_location *stack;
+
+	irp = IoAllocateIrp(dev->stack_size, FALSE);
+	DBGTRACE1("stack size: %d, irp = %p", dev->stack_size, irp);
+	DBGTRACE1("drv_obj: %p", dev->drv_obj);
+	stack = IoGetNextIrpStackLocation(irp);
+	stack->major_fn = IRP_MJ_POWER;
+	stack->minor_fn = IRP_MN_SET_POWER;
+	stack->params.power.type = DevicePowerState;
+	stack->params.power.state.device_state = new_state;
+	irp->io_status.status = STATUS_NOT_SUPPORTED;
+	return irp;
+}
+
 NDIS_STATUS miniport_set_pm_state(struct wrapper_dev *wd,
 				  enum ndis_pm_state pm_state)
 {
 	NDIS_STATUS res;
 	struct miniport_char *miniport;
+	enum ndis_pm_state ps;
 
 	miniport = &wd->driver->miniport;
-	res = miniport_set_int(wd, OID_PNP_SET_POWER, pm_state);
+
+	ps = pm_state;
+	res = miniport_query_int(wd, OID_PNP_SET_POWER, &ps);
+	if (res == NDIS_STATUS_SUCCESS)
+		res = miniport_set_int(wd, OID_PNP_SET_POWER, pm_state);
+	else {
+		struct device_object *fdo;
+		struct irp *irp;
+
+		fdo = wd->nmb->fdo;
+		DBGTRACE1("fdo: %p", fdo);
+		irp = allocate_power_irp(fdo, pm_state);
+		res = PoCallDriver(fdo, irp);
+		DBGTRACE1("res = %d", res);
+	}
 	/* According NDIS, pnp_event_notify should be called whenever power
 	 * is set to D0
 	 * Only NDIS 5.1 drivers are required to supply this function; some
 	 * drivers don't seem to support it (at least Orinoco)
 	 */
 	if (res == NDIS_STATUS_SUCCESS && pm_state == NdisDeviceStateD0) {
-		miniport = &wd->driver->miniport;
 		if (miniport->pnp_event_notify) {
 			ULONG pnp_info;
 			pnp_info = NdisPowerProfileAcOnLine;
@@ -376,6 +408,7 @@ static void hangcheck_proc(unsigned long data)
 	KIRQL irql;
 
 	TRACEENTER3("%s", "");
+	return;
 	set_bit(HANGCHECK, &wd->wrapper_work);
 	schedule_work(&wd->wrapper_worker);
 
@@ -749,102 +782,71 @@ static int start_xmit(struct sk_buff *skb, struct net_device *dev)
 	return 0;
 }
 
-struct irp *allocate_power_irp(struct device_object *dev,
-			       enum device_power_state new_state)
+int ndiswrapper_suspend_device(struct wrapper_dev *wd,
+			       enum ndis_pm_state pm_state)
 {
-	struct irp *irp;
-	struct io_stack_location *stack;
-
-	irp = IoAllocateIrp(dev->stack_size, FALSE);
-	DBGTRACE1("stack size: %d, irp = %p", dev->stack_size, irp);
-	DBGTRACE1("drv_obj: %p", dev->drv_obj);
-	stack = IoGetNextIrpStackLocation(irp);
-	stack->major_fn = IRP_MJ_POWER;
-	stack->minor_fn = IRP_MN_SET_POWER;
-	stack->params.power.type = DevicePowerState;
-	stack->params.power.state.device_state = new_state;
-	irp->io_status.status = STATUS_NOT_SUPPORTED;
-	return irp;
-}
-
-int ndiswrapper_suspend_pci(struct pci_dev *pdev, pm_message_t state)
-{
-	struct irp *irp;
-	NTSTATUS status;
-	struct device_object *dev;
-	struct wrapper_dev *wd;
-
-	if (!pdev)
-		return -1;
-	wd = pci_get_drvdata(pdev);
 	if (!wd)
 		return -1;
-	dev = wd->nmb->fdo;
-	DBGTRACE1("pdev: %p", pdev);
-	irp = allocate_power_irp(dev, PowerDeviceD3);
-	status = PoCallDriver(dev, irp);
-	DBGTRACE1("status = %d", status);
-	if (status)
-		return -1;
-	else
-		return 0;
-}
-
-int pdo_suspend_pci(struct pci_dev *pdev, pm_message_t state)
-{
-	struct net_device *dev;
-	int pm_state;
-	NDIS_STATUS res;
-	struct wrapper_dev *wd;
-
-	if (!pdev)
-		return -1;
-	DBGTRACE1("pdev: %p", pdev);
-	wd = pci_get_drvdata(pdev);
-	if (!wd)
-		return -1;
-	dev = wd->net_dev;
 
 	if (test_bit(HW_SUSPENDED, &wd->hw_status) ||
 	    test_bit(HW_HALTED, &wd->hw_status))
 		return -1;
 
 	DBGTRACE2("irql: %d", current_irql());
-	DBGTRACE2("%s: detaching device", dev->name);
-	netif_poll_disable(dev);
-	if (netif_running(dev)) {
-		netif_stop_queue(dev);
-		netif_device_detach(dev);
+	DBGTRACE2("detaching device: %s", wd->net_dev->name);
+	netif_poll_disable(wd->net_dev);
+	if (netif_running(wd->net_dev)) {
+		netif_stop_queue(wd->net_dev);
+		netif_device_detach(wd->net_dev);
 	}
 	hangcheck_del(wd);
 	stats_timer_del(wd);
 
-	if (test_bit(ATTR_HALT_ON_SUSPEND, &wd->attributes)) {
-		DBGTRACE1("%s", "driver requests halt_on_suspend");
+	/* USB devices seem to die if halted during suspend, so avoid
+	 * it */
+	if (test_bit(ATTR_HALT_ON_SUSPEND, &wd->attributes) &&
+		wd->ndis_device->bustype == NDIS_PCI_BUS) {
+		DBGTRACE2("driver requests halt_on_suspend");
 		ndiswrapper_stop_device(wd);
 		set_bit(HW_HALTED, &wd->hw_status);
 	} else {
 		enum ndis_pm_state ps;
-		/* some drivers don't support D2, so force D3 */
-		pm_state = NdisDeviceStateD3;
+		NTSTATUS status;
 		/* some drivers smother argument to OID_PNP_SET_POWER, so
 		   use a copy */
 		ps = pm_state;
-		res = miniport_query_int(wd, OID_PNP_SET_POWER, &ps);
-		if (res != NDIS_STATUS_SUCCESS) {
+		status = miniport_query_int(wd, OID_PNP_SET_POWER, &ps);
+		if (status != NDIS_STATUS_SUCCESS &&
+		    wd->ndis_device->bustype == NDIS_PCI_BUS) {
 			DBGTRACE2("%s: query power to state %d returns %08X",
-				  dev->name, pm_state, res);
+				  wd->net_dev->name, pm_state, status);
 			WARNING("No pnp capabilities for pm (%08X); halting",
-				res);
+				status);
 			ndiswrapper_stop_device(wd);
 			set_bit(HW_HALTED, &wd->hw_status);
 		} else {
 			miniport_set_pm_state(wd, pm_state);
-			DBGTRACE2("suspending returns %08X", res);
+			DBGTRACE2("suspending returns %08X", status);
 			set_bit(HW_SUSPENDED, &wd->hw_status);
 		}
 	}
 	wd->hw_unavailable++;
+	return 0;
+}
+
+int ndiswrapper_suspend_pci(struct pci_dev *pdev, pm_message_t state)
+{
+	struct wrapper_dev *wd;
+	int ret;
+
+	if (!pdev)
+		return -1;
+	wd = pci_get_drvdata(pdev);
+	/* some drivers support only D3, so force it */
+	ret = ndiswrapper_suspend_device(wd, NdisDeviceStateD3);
+	if (ret)
+		return ret;
+
 #if LINUX_VERSION_CODE > KERNEL_VERSION(2,6,9)
 	pci_save_state(pdev);
 #else
@@ -857,54 +859,57 @@ int pdo_suspend_pci(struct pci_dev *pdev, pm_message_t state)
 	return 0;
 }
 
-int ndiswrapper_resume_pci(struct pci_dev *pdev)
+int ndiswrapper_suspend_usb(struct usb_interface *intf, pm_message_t state)
 {
-	struct irp *irp;
-	NTSTATUS status;
-	struct device_object *dev;
 	struct wrapper_dev *wd;
+	int ret;
 
-	if (!pdev)
-		return -1;
-	wd = pci_get_drvdata(pdev);
-	if (!wd)
-		return -1;
-	dev = wd->nmb->fdo;
-	irp = allocate_power_irp(dev, PowerDeviceD0);
-	status = PoCallDriver(dev, irp);
-	DBGTRACE1("status = %d", status);
-	if (status)
-		return -1;
-	else
-		return 0;
+	wd = usb_get_intfdata(intf);
+	/* some drivers support only D3, so force it */
+	ret = ndiswrapper_suspend_device(wd, NdisDeviceStateD3);
+	usb_cancel_pending_urbs();
+	return ret;
 }
 
-int pdo_resume_pci(struct pci_dev *pdev)
+int ndiswrapper_resume_device(struct wrapper_dev *wd)
 {
-	struct net_device *dev;
-	struct wrapper_dev *wd;
-
-	if (!pdev)
-		return -1;
-	wd = pci_get_drvdata(pdev);
 	if (!wd)
 		return -1;
-	dev = wd->net_dev;
-
 	if (!(test_bit(HW_SUSPENDED, &wd->hw_status) ||
 	      test_bit(HW_HALTED, &wd->hw_status)))
 		return -1;
 
+	set_bit(SUSPEND_RESUME, &wd->wrapper_work);
+	schedule_work(&wd->wrapper_worker);
+	return 0;
+}
+
+int ndiswrapper_resume_pci(struct pci_dev *pdev)
+{
+	struct wrapper_dev *wd;
+	int ret;
+
+	if (!pdev)
+		return -1;
+	wd = pci_get_drvdata(pdev);
+	if (!wd)
+		return -1;
 	pci_enable_device(pdev);
 #if LINUX_VERSION_CODE > KERNEL_VERSION(2,6,9)
 	pci_restore_state(pdev);
 #else
 	pci_restore_state(pdev, wd->pci_state);
 #endif
-	DBGTRACE2("irql: %d", current_irql());
-	set_bit(SUSPEND_RESUME, &wd->wrapper_work);
-	schedule_work(&wd->wrapper_worker);
-	return 0;
+	ret = ndiswrapper_resume_device(wd);
+	return ret;
+}
+
+int ndiswrapper_resume_usb(struct usb_interface *intf)
+{
+	struct wrapper_dev *wd;
+
+	wd = usb_get_intfdata(intf);
+	return ndiswrapper_resume_device(wd);
 }
 
 void ndiswrapper_remove_device(struct wrapper_dev *wd)
@@ -1149,17 +1154,19 @@ static void update_wireless_stats(struct wrapper_dev *wd)
 	ndis_rssi rssi;
 
 	TRACEENTER2("");
-	rssi = 0;
 	/* Prism1 USB and Airgo cards crash kernel if RSSI is queried */
-	if (!((wd->ndis_device->vendor == 0x17cb &&
+	if ((wd->ndis_device->vendor == 0x17cb &&
 	       wd->ndis_device->device == 0x0001) ||
 	      (wd->ndis_device->vendor == 0x2001 &&
-	       wd->ndis_device->device == 0x3700))) {
-		res = miniport_query_info(wd, OID_802_11_RSSI, &rssi,
-					  sizeof(rssi));
-		if (res == NDIS_STATUS_SUCCESS)
-			iw_stats->qual.level = rssi;
-	}
+	       wd->ndis_device->device == 0x3700))
+		return;
+
+	return;
+	rssi = 0;
+	res = miniport_query_info(wd, OID_802_11_RSSI, &rssi,
+				  sizeof(rssi));
+	if (res == NDIS_STATUS_SUCCESS)
+		iw_stats->qual.level = rssi;
 
 	memset(&ndis_stats, 0, sizeof(ndis_stats));
 	res = miniport_query_info(wd, OID_802_11_STATISTICS,
@@ -1252,8 +1259,8 @@ static void wrapper_worker_proc(void *param)
 		struct net_device *net_dev = wd->net_dev;
 
 		if (test_bit(HW_HALTED, &wd->hw_status)) {
-			res = miniport_init(wd);
-//			res = ndiswrapper_start_device(wd);
+			res = ndiswrapper_start_device(wd);
+			DBGTRACE2("res: %08X", res);
 			if (res)
 				ERROR("initialization failed: %08X", res);
 			clear_bit(HW_HALTED, &wd->hw_status);
@@ -1269,6 +1276,7 @@ static void wrapper_worker_proc(void *param)
 			res = 0;
 		}
 
+		DBGTRACE2("res: %08X", res);
 		if (!res) {
 			wd->hw_unavailable--;
 			hangcheck_add(wd);

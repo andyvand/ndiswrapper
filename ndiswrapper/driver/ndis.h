@@ -941,6 +941,7 @@ void ndis_exit(void);
 int usb_init(void);
 void usb_exit(void);
 void usb_cleanup(void);
+void usb_cancel_pending_urbs(void);
 
 int load_pe_images(struct pe_image[], int n);
 

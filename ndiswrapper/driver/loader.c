@@ -955,6 +955,8 @@ static int register_devices(struct load_devices *load_devices)
 		ndiswrapper_usb_driver.probe = ndiswrapper_add_usb_device;
 		ndiswrapper_usb_driver.disconnect =
 			ndiswrapper_remove_usb_device;
+		ndiswrapper_usb_driver.suspend = ndiswrapper_suspend_usb;
+		ndiswrapper_usb_driver.resume = ndiswrapper_resume_usb;
 		res = usb_register(&ndiswrapper_usb_driver);
 		if (res < 0) {
 			ERROR("couldn't register ndiswrapper usb driver");

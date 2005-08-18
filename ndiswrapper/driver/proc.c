@@ -305,10 +305,19 @@ static int procfs_write_settings(struct file *file, const char *buf,
 		if (i <= 0 || i > 3)
 			return -EINVAL;
 		if (wd->ndis_device->bustype == NDIS_PCI_BUS)
-			ndiswrapper_suspend_pci(wd->dev.pci, PMSG_SUSPEND);
+			ndiswrapper_suspend_pci(wd->dev.pci,
+						       PMSG_SUSPEND);
+		else if (wd->ndis_device->bustype == NDIS_USB_BUS)
+			ndiswrapper_suspend_usb(wd->intf, PMSG_SUSPEND);
+		else
+			return -EINVAL;
 	} else if (!strcmp(setting, "resume")) {
 		if (wd->ndis_device->bustype == NDIS_PCI_BUS)
 			ndiswrapper_resume_pci(wd->dev.pci);
+		else if (wd->ndis_device->bustype == NDIS_USB_BUS)
+			ndiswrapper_resume_usb(wd->intf);
+		else
+			return -EINVAL;
 	} else if (!strcmp(setting, "reinit")) {
 		if (ndis_reinit(wd))
 			return -EINVAL;
