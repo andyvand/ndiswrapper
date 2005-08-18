@@ -295,6 +295,26 @@ static int procfs_write_settings(struct file *file, const char *buf,
 		hangcheck_del(wd);
 		wd->hangcheck_interval = i * HZ;
 		hangcheck_add(wd);
+	} else if (!strcmp(setting, "check_capa")) {
+		check_capa(wd);
+		printk(KERN_INFO "%s: encryption modes supported: %s%s%s%s%s%s%s\n",
+		       wd->net_dev->name,
+		       test_bit(Ndis802_11Encryption1Enabled, &wd->capa.encr) ?
+		       "WEP" : "none",
+
+		       test_bit(Ndis802_11Encryption2Enabled, &wd->capa.encr) ?
+		       "; TKIP with WPA" : "",
+		       test_bit(Ndis802_11AuthModeWPA2, &wd->capa.auth) ?
+		       ", WPA2" : "",
+		       test_bit(Ndis802_11AuthModeWPA2PSK, &wd->capa.auth) ?
+		       ", WPA2PSK" : "",
+
+		       test_bit(Ndis802_11Encryption3Enabled, &wd->capa.encr) ?
+		       "; AES/CCMP with WPA" : "",
+		       test_bit(Ndis802_11AuthModeWPA2, &wd->capa.auth) ?
+		       ", WPA2" : "",
+		       test_bit(Ndis802_11AuthModeWPA2PSK, &wd->capa.auth) ?
+		       ", WPA2PSK" : "");
 	} else if (!strcmp(setting, "suspend")) {
 		int i;
 
