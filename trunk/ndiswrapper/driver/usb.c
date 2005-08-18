@@ -70,6 +70,22 @@ static void usb_buffer_free(struct usb_device *dev, size_t size,
 #define DUMP_URB(urb)
 #endif /* DUMPURBS */
 
+int usb_init(void)
+{
+	kspin_lock_init(&urb_list_lock);
+	InitializeListHead(&urb_tx_complete_list);
+	INIT_WORK(&urb_tx_complete_work, urb_tx_complete_worker, NULL);
+	INIT_WORK(&urb_cancel_work, urb_cancel_worker, NULL);
+	InitializeListHead(&urb_cancel_list);
+	return 0;
+}
+
+void usb_exit(void)
+{
+	/* TODO: free all urbs? */
+	return;
+}
+
 static struct urb *wrap_alloc_urb(unsigned int mem_flags, struct irp *irp,
 				  struct usb_device *dev, int tx_buf_len)
 {
@@ -161,22 +177,6 @@ int wrap_urb_status(int urb_status)
 	default:
 		return USBD_STATUS_REQUEST_FAILED;
 	}
-}
-
-int usb_init(void)
-{
-	kspin_lock_init(&urb_list_lock);
-	InitializeListHead(&urb_tx_complete_list);
-	INIT_WORK(&urb_tx_complete_work, urb_tx_complete_worker, NULL);
-	INIT_WORK(&urb_cancel_work, urb_cancel_worker, NULL);
-	InitializeListHead(&urb_cancel_list);
-	return 0;
-}
-
-void usb_exit(void)
-{
-	/* TODO: free all urbs? */
-	return;
 }
 
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
@@ -401,20 +401,15 @@ unsigned long usb_vendor_or_class_intf(struct usb_device *dev,
 	vc_req = &nt_urb->vendor_class_request;
 	ASSERT(!vc_req->transferBufMdl);
 	ASSERT(!vc_req->urbLink);
-	USBTRACE("reservedBits = %x, request = %x, "
-		 "value = %d, index = %d, transferFlags = %x, "
-		 "transferBuf = %p, transferBufLen = %d",
-		 vc_req->reservedBits,
-		 vc_req->request, vc_req->value,
-		 vc_req->index,
-		 vc_req->transferFlags,
-		 vc_req->transferBuf,
+	USBTRACE("reservedBits = %x, request = %x, value = %d, index = %d,"
+		 "transferFlags = %x, transferBuf = %p, transferBufLen = %d",
+		 vc_req->reservedBits, vc_req->request, vc_req->value,
+		 vc_req->index, vc_req->transferFlags, vc_req->transferBuf,
 		 vc_req->transferBufLen);
 
 	DUMP_IRP(irp);
 	/* FIXME: we should better check what GFP_ is required */
-	urb = wrap_alloc_urb(GFP_ATOMIC, irp, dev,
-			     vc_req->transferBufLen);
+	urb = wrap_alloc_urb(GFP_ATOMIC, irp, dev, vc_req->transferBufLen);
 	if (!urb) {
 		ERROR("couldn't allocate urb");
 		return -ENOMEM;
@@ -424,8 +419,7 @@ unsigned long usb_vendor_or_class_intf(struct usb_device *dev,
 		memcpy(urb->transfer_buffer, vc_req->transferBuf,
 		       vc_req->transferBufLen);
 
-	req_type = USB_TYPE_VENDOR | USB_RECIP_DEVICE |
-		vc_req->reservedBits;
+	req_type = USB_TYPE_VENDOR | USB_RECIP_DEVICE | vc_req->reservedBits;
 
 	if (USBD_DIRECTION_IN(vc_req->transferFlags)) {
 		pipe = usb_rcvctrlpipe(dev, 0);
@@ -571,11 +565,9 @@ unsigned long usb_submit_nt_urb(struct usb_device *dev, struct irp *irp)
 		ctrl_req = &nt_urb->control_request;
 		ASSERT(!ctrl_req->transferBufMdl);
 		ASSERT(!ctrl_req->urbLink);
-		USBTRACE("desctype = %d, descindex = %d, "
-			  "transferBuf = %p, transferBufLen = %d",
-			  ctrl_req->desctype,
-			  ctrl_req->index,
-			  ctrl_req->transferBuf,
+		USBTRACE("desctype = %d, descindex = %d, transferBuf = %p,"
+			 "transferBufLen = %d", ctrl_req->desctype,
+			  ctrl_req->index, ctrl_req->transferBuf,
 			  ctrl_req->transferBufLen);
 
 		buf = kmalloc(ctrl_req->transferBufLen, GFP_NOIO);
