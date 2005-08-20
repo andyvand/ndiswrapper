@@ -1,6 +1,6 @@
 -include version
 
-distdir=ndiswrapper-${NDISWRAPPER_VERSION}
+distdir=ndiswrapper-${DRIVER_VERSION}
 distarchive=${distdir}.tar.gz
 
 DISTFILES=AUTHORS ChangeLog INSTALL Makefile README ndiswrapper.spec version ndiswrapper.8
@@ -72,15 +72,15 @@ dist:
 	make -C utils distdir=../${distdir}/utils dist
 	make -C debian distdir=../${distdir}/debian dist
 	# Update version in dist rpm spec file - don't crash if it fails
-	-sed -i "s/\%define\s\+ndiswrapper_version\s\+[^\}]\+\}/%define ndiswrapper_version $(NDISWRAPPER_VERSION)\}/" $(distdir)/ndiswrapper.spec
+	-sed -i "s/\%define\s\+ndiswrapper_version\s\+[^\}]\+\}/%define ndiswrapper_version $(DRIVER_VERSION)\}/" $(distdir)/ndiswrapper.spec
 	tar cfz ${distarchive} ${distdir}
 
 rpm: dist ndiswrapper.spec
-	rpmbuild -ta $(distarchive) --define="ndiswrapper_version $(NDISWRAPPER_VERSION)"
+	rpmbuild -ta $(distarchive) --define="ndiswrapper_version $(DRIVER_VERSION)"
 
 deb:
 	@if [ -d debian ]; then \
-		echo -e "ndiswrapper (${NDISWRAPPER_VERSION}) unstable; urgency=low\n\n  * see ChangeLog for details\n\n -- NdisWrapper Team <ndiswrapper-general@lists.sourceforge.net>  `date '+%a, %d %b %Y %H:%M:%S %z'`" > debian/changelog; \
+		echo -e "ndiswrapper (${DRIVER_VERSION}) unstable; urgency=low\n\n  * see ChangeLog for details\n\n -- NdisWrapper Team <ndiswrapper-general@lists.sourceforge.net>  `date '+%a, %d %b %Y %H:%M:%S %z'`" > debian/changelog; \
 		fakeroot make -f debian/rules binary; \
 	else \
 		 echo "Huh?"; \
