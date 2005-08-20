@@ -791,8 +791,8 @@ enum wait_type {
 };
 
 struct wait_block {
-	struct nt_list list_entry;
-	void *thread;
+	struct nt_list list;
+	task_t *thread;
 	void *object;
 	struct wait_block *next;
 	USHORT wait_key;
