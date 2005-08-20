@@ -866,7 +866,7 @@ static void wakeup_event(struct dispatch_header *dh)
 	       (ent = RemoveHeadList(&dh->wait_blocks))) {
 		struct wait_block *wb;
 
-		wb = container_of(ent, struct wait_block, list_entry);
+		wb = container_of(ent, struct wait_block, list);
 		DBGINFO("waking up process %p (%p,%p)", wb->thread, wb, dh);
 		if (wb->thread) {
 			/* make sure that the thread calls schedule
@@ -996,16 +996,55 @@ STDCALL LONG WRAP_EXPORT(KeReleaseSemaphore)
 	return ret;
 }
 
+/* check if object is in signaled state; should be called with
+ * kevent_lock held */
+static BOOLEAN inline is_signaled_state(void *object)
+{
+	struct dispatch_header *dh;
+
+	/* succeeds if either object is in signal state (i.e.,
+	 * dh->signal_state > 0) or it is mutex and we already own it
+	 * or no one else owns it (in case of recursive mutexes,
+	 * signal state can be negative) */
+	dh = object;
+	if (dh->signal_state > 0)
+		return TRUE;
+	if (is_mutex_object(dh)) {
+		struct kmutex *kmutex;
+
+		kmutex = object;
+		if (kmutex->owner_thread == NULL ||
+		    (kmutex->owner_thread == get_current()))
+			return TRUE;
+	}
+	return FALSE;
+}
+
+/* set object as being in signaled state; should be called with
+ * kevent_lock held */
+static void inline set_signaled_state(void *object)
+{
+	struct dispatch_header *dh;
+
+	dh = object;
+	if (dh->type == SynchronizationEvent)
+		dh->signal_state = 0;
+	if (is_semaphore_object(dh))
+		dh->signal_state--;
+	else if (is_mutex_object(dh))
+		((struct kmutex *)object)->owner_thread = get_current();
+	return;
+}
+
 STDCALL NTSTATUS WRAP_EXPORT(KeWaitForMultipleObjects)
-	(ULONG count, struct kevent *object[],
-	 enum wait_type wait_type, KWAIT_REASON wait_reason,
-	 KPROCESSOR_MODE wait_mode, BOOLEAN alertable, LARGE_INTEGER *timeout,
+	(ULONG count, void *object[], enum wait_type wait_type,
+	 KWAIT_REASON wait_reason, KPROCESSOR_MODE wait_mode,
+	 BOOLEAN alertable, LARGE_INTEGER *timeout,
 	 struct wait_block *wait_block_array)
 {
 	int i, res = 0, wait_count;
 	long wait_jiffies = 0;
 	struct wait_block *wb, wb_array[THREAD_WAIT_OBJECTS];
-	struct kmutex *kmutex;
 	struct dispatch_header *dh;
 	KIRQL irql;
 
@@ -1023,59 +1062,22 @@ STDCALL NTSTATUS WRAP_EXPORT(KeWaitForMultipleObjects)
 	else
 		wb = wait_block_array;
 
-	irql = kspin_lock_irql(&kevent_lock, DISPATCH_LEVEL);
-	/* first get the list of objects the thread need to wait on
-	 * and add put it on the wait list for each such object */
-	for (i = 0, wait_count = 0; i < count; i++) {
-		dh = &object[i]->dh;
-		kmutex = (struct kmutex *)object[i];
-		/* wait succeeds if either object is in signal state
-		 * (i.e., dh->signal_state > 0) or it is mutex and we
-		 * already own it or no one else owns it (in case of
-		 * recursive mutexes, signal state can be negative) */
-		if ((dh->signal_state > 0) ||
-		    (is_mutex_object(dh) &&
-		     (kmutex->owner_thread == NULL ||
-		      (kmutex->owner_thread == get_current())))) {
-			DBGINFO("%p is already signaled", object[i]);
-			/* if synchronization event or semaphore,
-			 * decrement count */
-			if (dh->type == SynchronizationEvent)
-				dh->signal_state = 0;
-			if (is_semaphore_object(dh))
-				dh->signal_state--;
-			else if (is_mutex_object(dh))
-				kmutex->owner_thread = get_current();
-			if (wait_type == WaitAny) {
-				kspin_unlock_irql(&kevent_lock, irql);
-				DBGINFOEXIT(return STATUS_WAIT_0 + i);
-			}
-			/* mark that we are not waiting on this object */
-			wb[i].thread = NULL;
-			wb[i].object = NULL;
-		} else {
-			wb[i].thread = get_current();
-			wb[i].object = object[i];
-			InsertTailList(&dh->wait_blocks, &wb[i].list_entry);
-			wait_count++;
-			DBGINFO("%p (%p) waiting on event %p", &wb[i],
-				  wb[i].thread, wb[i].object);
-		}
-	}
-	if (wait_count == 0) {
-		kspin_unlock_irql(&kevent_lock, irql);
-		DBGINFOEXIT(return STATUS_SUCCESS);
-	}
-
 	if (timeout) {
 		DBGINFO("timeout = %Ld", *timeout);
 		if (*timeout == 0) {
-			/* done; remove from wait list */
-			for (i = 0; i < count; i++)
-				if (wb[i].thread)
-					RemoveEntryList(&wb[i].list_entry);
+			irql = kspin_lock_irql(&kevent_lock, DISPATCH_LEVEL);
+			for (i = 0, wait_count = 0; i < count; i++)
+				/* TODO: only check or set signaled
+				 * state too? */
+				if (is_signaled_state(object[i]))
+					set_signaled_state(object[i]);
+				else
+					wait_count++;
 			kspin_unlock_irql(&kevent_lock, irql);
-			DBGINFOEXIT(return STATUS_TIMEOUT);
+			if (wait_count)
+				DBGINFOEXIT(return STATUS_TIMEOUT);
+			else
+				DBGINFOEXIT(return STATUS_SUCCESS);
 		} else if (*timeout > 0) {
 			long d = (*timeout) - ticks_1601();
 			/* some drivers call this function with much
@@ -1090,6 +1092,37 @@ STDCALL NTSTATUS WRAP_EXPORT(KeWaitForMultipleObjects)
 			wait_jiffies = HZ * (-(*timeout)) / TICKSPERSEC;
 	} else
 		wait_jiffies = 0;
+
+	irql = kspin_lock_irql(&kevent_lock, DISPATCH_LEVEL);
+	/* first get the list of objects the thread need to wait on
+	 * and add put it on the wait list for each such object */
+	for (i = 0, wait_count = 0; i < count; i++) {
+		dh = object[i];
+		if (is_signaled_state(object[i])) {
+			DBGINFO("%p is already signaled", object[i]);
+			/* if synchronization event or semaphore,
+			 * decrement count */
+			set_signaled_state(object[i]);
+			if (wait_type == WaitAny) {
+				kspin_unlock_irql(&kevent_lock, irql);
+				DBGINFOEXIT(return STATUS_WAIT_0 + i);
+			}
+			/* mark that we are not waiting on this object */
+			wb[i].thread = NULL;
+			wb[i].object = NULL;
+		} else {
+			wb[i].thread = get_current();
+			wb[i].object = object[i];
+			InsertTailList(&dh->wait_blocks, &wb[i].list);
+			wait_count++;
+			DBGINFO("%p (%p) waiting on event %p", &wb[i],
+				  wb[i].thread, wb[i].object);
+		}
+	}
+	if (wait_count == 0) {
+		kspin_unlock_irql(&kevent_lock, irql);
+		DBGINFOEXIT(return STATUS_SUCCESS);
+	}
 
 	/* we put the task state in appropriate state before releasing
 	 * the spinlock, so that if the event is set to signaled state
@@ -1120,7 +1153,7 @@ STDCALL NTSTATUS WRAP_EXPORT(KeWaitForMultipleObjects)
 			/* we are done; remove from wait list */
 			for (i = 0; i < count; i++)
 				if (wb[i].thread)
-					RemoveEntryList(&wb[i].list_entry);
+					RemoveEntryList(&wb[i].list);
 			kspin_unlock_irql(&kevent_lock, irql);
 			if (res < 0)
 				DBGINFOEXIT(return STATUS_ALERTED);
@@ -1128,43 +1161,37 @@ STDCALL NTSTATUS WRAP_EXPORT(KeWaitForMultipleObjects)
 				DBGINFOEXIT(return STATUS_TIMEOUT);
 		}
 		for (i = 0; wait_count && i < count; i++) {
-			dh = &object[i]->dh;
-			kmutex = (struct kmutex *)object[i];
-			if ((dh->signal_state > 0) ||
-			    (is_mutex_object(dh) &&
-			     (kmutex->owner_thread == NULL ||
-			      (kmutex->owner_thread == get_current())))) {
-				if (dh->type == SynchronizationEvent)
-					dh->signal_state = 0;
-				if (is_semaphore_object(dh))
-					dh->signal_state--;
-				else if (is_mutex_object(dh))
-					kmutex->owner_thread = get_current();
-				RemoveEntryList(&wb[i].list_entry);
-				/* mark that this wb is not on the list */
-				wb[i].thread = NULL;
-				wb[i].object = NULL;
-				wait_count--;
-				if (wait_type == WaitAny) {
-					/* done; remove from rest of wait list */
-					int j;
-					for (j = i; j < count; j++)
-						if (wb[j].thread)
-							RemoveEntryList(&wb[j].list_entry);
-					kspin_unlock_irql(&kevent_lock, irql);
-					DBGINFOEXIT(return STATUS_WAIT_0 + i);
+			if (!is_signaled_state(object[i]))
+				continue;
+			set_signaled_state(object[i]);
+			RemoveEntryList(&wb[i].list);
+			/* mark that this wb is not on the list */
+			wb[i].thread = NULL;
+			wb[i].object = NULL;
+			wait_count--;
+			if (wait_type == WaitAny) {
+				/* done; remove from rest of wait list */
+				int j;
+				for (j = i; j < count; j++) {
+					if (!wb[j].thread)
+						continue;
+					RemoveEntryList(&wb[j].list);
 				}
+				kspin_unlock_irql(&kevent_lock, irql);
+				DBGINFOEXIT(return STATUS_WAIT_0 + i);
 			}
 		}
-		kspin_unlock_irql(&kevent_lock, irql);
-		if (wait_count == 0)
+		if (wait_count == 0) {
+			kspin_unlock_irql(&kevent_lock, irql);
 			DBGINFOEXIT(return STATUS_SUCCESS);
+		}
 		/* res > 0 */
 		wait_jiffies = res;
 		if (alertable)
 			set_current_state(TASK_INTERRUPTIBLE);
 		else
 			set_current_state(TASK_UNINTERRUPTIBLE);
+		kspin_unlock_irql(&kevent_lock, irql);
 	}
 	/* this should never reach, but compiler wants return value */
 	set_current_state(TASK_RUNNING);
@@ -1172,11 +1199,10 @@ STDCALL NTSTATUS WRAP_EXPORT(KeWaitForMultipleObjects)
 }
 
 STDCALL NTSTATUS WRAP_EXPORT(KeWaitForSingleObject)
-	(struct kevent *object, KWAIT_REASON wait_reason,
-	 KPROCESSOR_MODE wait_mode, BOOLEAN alertable, LARGE_INTEGER *timeout)
+	(void *object, KWAIT_REASON wait_reason, KPROCESSOR_MODE wait_mode,
+	 BOOLEAN alertable, LARGE_INTEGER *timeout)
 {
-	struct kevent *obj = object;
-	return KeWaitForMultipleObjects(1, &obj, WaitAll, wait_reason,
+	return KeWaitForMultipleObjects(1, &object, WaitAll, wait_reason,
 					wait_mode, alertable, timeout, NULL);
 }
 
