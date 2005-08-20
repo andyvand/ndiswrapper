@@ -1402,11 +1402,7 @@ STDCALL NTSTATUS WRAP_EXPORT(PsTerminateSystemThread)
 		task = kthread->task;
 		KeSetEvent((struct kevent *)&kthread->dh, 0, FALSE);
 		ObDereferenceObject(kthread);
-//		complete_and_exit(NULL, status);
-		if (kthread_stop(task) == 0)
-			return STATUS_SUCCESS;
-		else
-			return STATUS_FAILURE;
+		complete_and_exit(NULL, status);
 	}
 	return STATUS_FAILURE;
 }
