@@ -1,8 +1,18 @@
+Version 1.3 2005-XX-XX
+======================
+* WPA2 support added
+* Implemented most of IO manager, PnP manager and Obj manager
+* No need to update utils everytime ndiswrapper is updated but only when utils
+  interface changes
+* Many fixes in USB layer - USB devices should work with HIGHMEM,
+  suspend/resume support for USB devices added
+* Bug fixes
+
 Version 1.2 2005-06-10
 ======================
 * Support for NX (no-execute) bit
 * 64-bit Broadcom driver works with HIGHMEM.
-* Implemented I/O manager layer.
+* Implemented I/O manager and Object layers.
 * Many bug fixes
 
 Versoin 1.1 2005-03-04
