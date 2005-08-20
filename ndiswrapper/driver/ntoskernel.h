@@ -414,8 +414,7 @@ BOOLEAN insert_kdpc_work(struct kdpc *kdpc, BOOLEAN dup_check);
 BOOLEAN remove_kdpc_work(struct kdpc *kdpc);
 STDCALL BOOLEAN KeInsertQueueDpc(struct kdpc *kdpc, void *arg1, void *arg2);
 STDCALL BOOLEAN KeRemoveQueueDpc(struct kdpc *kdpc);
-STDCALL NTSTATUS KeWaitForSingleObject(struct kevent *object,
-				       KWAIT_REASON reason,
+STDCALL NTSTATUS KeWaitForSingleObject(void *object, KWAIT_REASON reason,
 				       KPROCESSOR_MODE waitmode,
 				       BOOLEAN alertable,
 				       LARGE_INTEGER *timeout);

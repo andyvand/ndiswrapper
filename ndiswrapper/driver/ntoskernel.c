@@ -873,7 +873,7 @@ static void wakeup_event(struct dispatch_header *dh)
 			   before trying to wake it up; otherwise we
 			   may wake up a thread before it puts itself
 			   to sleep, and it will stay in sleep */
-			wake_up_process((struct task_struct *)wb->thread);
+			wake_up_process(wb->thread);
 		} else
 			ERROR("illegal wait block %p(%p)", wb, dh);
 		if (dh->type == SynchronizationEvent)
@@ -1247,7 +1247,7 @@ STDCALL KPRIORITY WRAP_EXPORT(KeQueryPriorityThread)
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,0)
 	prio = 1;
 #else
-	if (rt_task((task_t *)(kthread->task)))
+	if (rt_task(kthread->task))
 		prio = LOW_REALTIME_PRIORITY;
 	else
 		prio = MAXIMUM_PRIORITY;
@@ -1290,7 +1290,7 @@ STDCALL struct kthread *WRAP_EXPORT(KeGetCurrentThread)
 {
 	struct nt_list *cur;
 	KIRQL irql;
-	void *task = get_current();
+	task_t *task = get_current();
 	struct kthread *ret;
 
 	TRACEENTER4("task: %p", task);
@@ -1764,6 +1764,6 @@ STDCALL ULONG WRAP_EXPORT(ExSetTimerResolution)
 STDCALL void WRAP_EXPORT(DbgBreakPoint)(void){UNIMPL();}
 STDCALL void WRAP_EXPORT(_except_handler3)(void){UNIMPL();}
 STDCALL void WRAP_EXPORT(__C_specific_handler)(void){UNIMPL();}
-
+void WRAP_EXPORT(_purecall)(void) { UNIMPL(); }
 
 #include "ntoskernel_exports.h"
