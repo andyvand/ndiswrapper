@@ -232,8 +232,8 @@ typedef void (*ndis_interrupt_handler)(void *ctx) STDCALL;
 
 struct miniport_char {
 	/* NDIS 3.0 */
-	UCHAR majorVersion;
-	UCHAR minorVersion;
+	UCHAR major_version;
+	UCHAR minor_version;
 	USHORT filler;
 	UINT reserved;
 
@@ -518,7 +518,7 @@ enum wrapper_work {
 };
 
 enum ndis_attributes {
-	ATTR_SERIALIZED, ATTR_SURPRISE_REMOVE, ATTR_HALT_ON_SUSPEND,
+	ATTR_SERIALIZED, ATTR_SURPRISE_REMOVE, ATTR_NO_HALT_ON_SUSPEND,
 };
 
 enum hw_status {
@@ -956,7 +956,7 @@ void misc_funcs_exit(void);
 
 void packet_recycler(void *param);
 int stricmp(const char *s1, const char *s2);
-void dump_bytes(const char *where, const u8 *ip);
+void dump_bytes(const char *name, const u8 *from, int len);
 
 int pdo_suspend_pci(struct pci_dev *pdev, pm_message_t state);
 int pdo_resume_pci(struct pci_dev *pdev);
@@ -1240,5 +1240,8 @@ int pdo_resume_pci(struct pci_dev *pdev);
 #define NDIS_ATTRIBUTE_SURPRISE_REMOVE_OK       0x00000080
 #define NDIS_ATTRIBUTE_NOT_CO_NDIS              0x00000100
 #define NDIS_ATTRIBUTE_USES_SAFE_BUFFER_APIS    0x00000200
+
+#define NDIS_FLAGS_PROTOCOL_ID_MASK		0x0000000F
+#define NDIS_PROTOCOL_ID_TCP_IP			0x02
 
 #endif /* NDIS_H */

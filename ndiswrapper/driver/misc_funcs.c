@@ -204,9 +204,9 @@ void wrapper_timer_handler(unsigned long data)
 #endif
 
 	kdpc = wrapper_timer->kdpc;
-	if (kdpc) {
+	if (kdpc && kdpc->func) {
 		kspin_lock(&ntoskernel_lock);
-		insert_kdpc_work(kdpc);
+		insert_kdpc_work(kdpc, wrapper_timer->kernel_timer);
 		kspin_unlock(&ntoskernel_lock);
 	}
 	kspin_lock(&wrapper_timer->lock);
@@ -277,7 +277,7 @@ void wrapper_init_timer(struct ktimer *ktimer, void *handle, struct kdpc *kdpc)
  * jiffies to it */
 int wrapper_set_timer(struct wrapper_timer *wrapper_timer,
 		      unsigned long expires, unsigned long repeat,
-		      struct kdpc *kdpc)
+		      struct kdpc *kdpc, BOOLEAN kernel_timer)
 {
 	KIRQL irql;
 	struct ktimer *ktimer = wrapper_timer->ktimer;
@@ -303,6 +303,7 @@ int wrapper_set_timer(struct wrapper_timer *wrapper_timer,
 	if (kdpc)
 		wrapper_timer->kdpc = kdpc;
 	wrapper_timer->repeat = repeat;
+	wrapper_timer->kernel_timer = kernel_timer;
 	if (wrapper_timer->active) {
 		DBGTRACE4("modifying timer %p to %lu, %lu",
 			  wrapper_timer, expires, repeat);
@@ -1100,21 +1101,22 @@ void dump_stack(void)
 		printk(KERN_DEBUG "sp[%d] = %p\n", i, (void *)sp[i]);
 }
 
-void dump_bytes(const char *where, const u8 *ip)
+void dump_bytes(const char *name, const u8 *from, int len)
 {
 	int i, j;
-	u8 code[50];
+	u8 code[100];
 
 	memset(code, 0, sizeof(code));
-	for (i = j = 0; i < 16; i++, j += 3) {
-		if (j+3 > sizeof(code))
+	for (i = j = 0; i < len; i++, j += 3) {
+		if (j+3 > sizeof(code)) {
 			ERROR("not enough space: %u > %u", j+3,
 			      (unsigned int)sizeof(code));
-		else
-			sprintf(&code[j], "%02x ", ip[i]);
+			break;
+		} else
+			sprintf(&code[j], "%02x ", from[i]);
 	}
 	code[sizeof(code)-1] = 0;
-	printk(KERN_DEBUG "%s: %p: %s\n", where, ip, code);
+	printk(KERN_DEBUG "%s: %p: %s\n", name, from, code);
 }
 
 #include "misc_funcs_exports.h"

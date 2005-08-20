@@ -420,6 +420,15 @@ static int procfs_write_settings(struct file *file, const char *buf,
 
 		if (set_encr_mode(wd, i))
 			return -EINVAL;
+	} else if (!strcmp(setting, "kevent")) {
+		unsigned int i;
+
+		if (!p)
+			return -EINVAL;
+		p++;
+		i = simple_strtol(p, NULL, 16);
+		INFO("waking event: %08x", i);
+		KeSetEvent((struct kevent *)i, 0, FALSE);
 	} else {
 		int res = -1;
 		struct device_setting *dev_setting;
@@ -561,9 +570,44 @@ static int procfs_write_debug(struct file *file, const char *buf,
 {
 	char debug_level[MAX_PROC_STR_LEN];
 	int i;
+	char setting[MAX_PROC_STR_LEN], *p;
 
 	if (count > MAX_PROC_STR_LEN)
 		return -EINVAL;
+
+	memset(setting, 0, sizeof(setting));
+	if (copy_from_user(setting, buf, count))
+		return -EFAULT;
+
+	if ((p = strchr(setting, '\n')))
+		*p = 0;
+
+	if ((p = strchr(setting, '=')))
+		*p = 0;
+
+	if (count > MAX_PROC_STR_LEN)
+		return -EINVAL;
+
+	if (!strcmp(setting, "kevent")) {
+		unsigned int i;
+
+		if (!p)
+			return -EINVAL;
+		p++;
+		i = simple_strtol(p, NULL, 16);
+		INFO("waking event: %08x", i);
+		KeSetEvent((struct kevent *)i, 0, FALSE);
+	} else if (!strcmp(setting, "kthread")) {
+		struct kthread *kthread;
+
+		if (!p)
+			return -EINVAL;
+		p++;
+		kthread = (void *)simple_strtol(p, NULL, 16);
+		INFO("waking ktreahd: %p, task: %p", kthread, kthread->task);
+		wake_up_process(kthread->task);
+	}
+	return count;
 
 	memset(debug_level, 0, sizeof(debug_level));
 	if (copy_from_user(debug_level, buf, count))
