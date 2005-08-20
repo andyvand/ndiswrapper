@@ -381,6 +381,10 @@ struct wrapper_timer {
 	long repeat;
 	int active;
 	KSPIN_LOCK lock;
+	/* kdpc's associated with kernel timers should be inserted
+	 * into kdpc when timer expires and kdpc's associated with
+	 * NDIS timers should be executed when timer expires */
+	BOOLEAN kernel_timer;
 };
 
 typedef struct mdl ndis_buffer;
@@ -406,7 +410,7 @@ STDCALL LONG KeSetEvent(struct kevent *kevent, KPRIORITY incr, BOOLEAN wait);
 STDCALL LONG KeResetEvent(struct kevent *kevent);
 STDCALL void KeClearEvent(struct kevent *kevent);
 STDCALL void KeInitializeDpc(struct kdpc *kdpc, void *func, void *ctx);
-BOOLEAN insert_kdpc_work(struct kdpc *kdpc);
+BOOLEAN insert_kdpc_work(struct kdpc *kdpc, BOOLEAN dup_check);
 BOOLEAN remove_kdpc_work(struct kdpc *kdpc);
 STDCALL BOOLEAN KeInsertQueueDpc(struct kdpc *kdpc, void *arg1, void *arg2);
 STDCALL BOOLEAN KeRemoveQueueDpc(struct kdpc *kdpc);
@@ -514,7 +518,7 @@ void wrapper_init_timer(struct ktimer *ktimer, void *handle,
 			struct kdpc *kdpc);
 int wrapper_set_timer(struct wrapper_timer *wrapper_timer,
 		      unsigned long expires, unsigned long repeat,
-		      struct kdpc *kdpc);
+		      struct kdpc *kdpc, BOOLEAN kernel_timer);
 void wrapper_cancel_timer(struct wrapper_timer *wrapper_timer,
 			  BOOLEAN *canceled);
 
@@ -550,6 +554,8 @@ STDCALL NTSTATUS ZwClose(void *object);
 #define WARNING(fmt, ...) MSG(KERN_WARNING, fmt, ## __VA_ARGS__)
 #define ERROR(fmt, ...) MSG(KERN_ERR, fmt , ## __VA_ARGS__)
 #define INFO(fmt, ...) MSG(KERN_INFO, fmt , ## __VA_ARGS__)
+
+#define INFOEXIT(stmt) do { INFO("Exit"); stmt; } while(0)
 
 #define UNIMPL() ERROR("--UNIMPLEMENTED--")
 
@@ -722,32 +728,32 @@ extern int debug;
 #define DBG_BLOCK()
 #endif
 
-#if defined DEBUG && DEBUG >= 1
+#if defined(DEBUG) && DEBUG >= 1
 #undef DBGTRACE1
 #define DBGTRACE1(fmt, ...) DBGTRACE(1, fmt , ## __VA_ARGS__)
 #endif
 
-#if defined DEBUG && DEBUG >= 2
+#if defined(DEBUG) && DEBUG >= 2
 #undef DBGTRACE2
 #define DBGTRACE2(fmt, ...) DBGTRACE(2, fmt , ## __VA_ARGS__)
 #endif
 
-#if defined DEBUG && DEBUG >= 3
+#if defined(DEBUG) && DEBUG >= 3
 #undef DBGTRACE3
 #define DBGTRACE3(fmt, ...) DBGTRACE(3, fmt , ## __VA_ARGS__)
 #endif
 
-#if defined DEBUG && DEBUG >= 4
+#if defined(DEBUG) && DEBUG >= 4
 #undef DBGTRACE4
 #define DBGTRACE4(fmt, ...) DBGTRACE(4, fmt , ## __VA_ARGS__)
 #endif
 
-#if defined DEBUG && DEBUG >= 5
+#if defined(DEBUG) && DEBUG >= 5
 #undef DBGTRACE5
 #define DBGTRACE5(fmt, ...) DBGTRACE(5, fmt , ## __VA_ARGS__)
 #endif
 
-#if defined DEBUG && DEBUG >= 6
+#if defined(DEBUG) && DEBUG >= 6
 #undef DBGTRACE6
 #define DBGTRACE6(fmt, ...) DBGTRACE(6, fmt , ## __VA_ARGS__)
 #endif
@@ -768,7 +774,7 @@ extern int debug;
 #define TRACEEXIT5(stmt) do { DBGTRACE5("Exit"); stmt; } while(0)
 #define TRACEEXIT6(stmt) do { DBGTRACE6("Exit"); stmt; } while(0)
 
-//#define USB_DEBUG 1
+#define USB_DEBUG 1
 
 #if defined(DEBUG) && defined(USB_DEBUG)
 #define USBTRACE(fmt, ...) DBGTRACE1(fmt, ## __VA_ARGS__)

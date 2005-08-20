@@ -157,9 +157,9 @@ STDCALL NDIS_STATUS WRAP_EXPORT(NdisMRegisterMiniport)
 
 	TRACEENTER1("%p %p %d", drv_obj, miniport_char, char_len);
 
-	if (miniport_char->majorVersion < 4) {
+	if (miniport_char->major_version < 4) {
 		ERROR("Driver is using ndis version %d which is too old.",
-		      miniport_char->majorVersion);
+		      miniport_char->major_version);
 		TRACEEXIT1(return NDIS_STATUS_BAD_VERSION);
 	}
 
@@ -169,8 +169,8 @@ STDCALL NDIS_STATUS WRAP_EXPORT(NdisMRegisterMiniport)
 		TRACEEXIT1(return NDIS_STATUS_BAD_CHARACTERISTICS);
 	}
 
-	DBGTRACE1("Version %d.%d", miniport_char->majorVersion,
-		  miniport_char->minorVersion);
+	DBGTRACE1("Version %d.%d", miniport_char->major_version,
+		  miniport_char->minor_version);
 	DBGTRACE1("Len: %08x:%u", char_len, (u32)sizeof(struct miniport_char));
 
 	driver = IoGetDriverObjectExtension(drv_obj,
@@ -763,10 +763,8 @@ STDCALL void WRAP_EXPORT(NdisMSetAttributesEx)
 	if (attributes & NDIS_ATTRIBUTE_SURPRISE_REMOVE_OK)
 		set_bit(ATTR_SURPRISE_REMOVE, &wd->attributes);
 
-	if (!(attributes & NDIS_ATTRIBUTE_NO_HALT_ON_SUSPEND)) {
-		DBGTRACE1("driver requests halt on suspend");
-		set_bit(ATTR_HALT_ON_SUSPEND, &wd->attributes);
-	}
+	if (attributes & NDIS_ATTRIBUTE_NO_HALT_ON_SUSPEND)
+		set_bit(ATTR_NO_HALT_ON_SUSPEND, &wd->attributes);
 
 	if (wd->hangcheck_interval >= 0) {
 		/* less than 3 seconds seem to be problematic */
@@ -1500,7 +1498,7 @@ STDCALL void WRAP_EXPORT(NdisSetTimer)
 
 	TRACEENTER4("%p, %u", timer_handle, ms);
 	wrapper_set_timer(timer_handle->ktimer.wrapper_timer, expires, 0,
-			  NULL);
+			  NULL, FALSE);
 	TRACEEXIT4(return);
 }
 
@@ -1512,7 +1510,7 @@ STDCALL void WRAP_EXPORT(NdisMSetPeriodicTimer)
 
 	TRACEENTER4("%p, %u", timer_handle, ms);
 	wrapper_set_timer(timer_handle->ktimer.wrapper_timer, expires, repeat,
-			  NULL);
+			  NULL, FALSE);
 	TRACEEXIT4(return);
 }
 
@@ -1915,7 +1913,6 @@ NdisMIndicateReceivePacket(struct ndis_miniport_block *nmb,
 		 * what value we set in the status */
 		if (packet->oob_data.status == NDIS_STATUS_RESOURCES) {
 			packet->oob_data.status = NDIS_STATUS_SUCCESS;
-			WARNING("low on resources");
 			continue;
 		}
 

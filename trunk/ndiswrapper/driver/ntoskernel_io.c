@@ -141,7 +141,7 @@ STDCALL void WRAP_EXPORT(IoInitializeIrp)
 	irp->stack_count = stack_size;
 	irp->current_location = stack_size;
 	IoGetCurrentIrpStackLocation(irp) = IRP_SL(irp, stack_size);
-		
+
 	USBTRACEEXIT(return);
 }
 
@@ -183,15 +183,15 @@ STDCALL void WRAP_EXPORT(IoReuseIrp)
 STDCALL BOOLEAN WRAP_EXPORT(IoCancelIrp)
 	(struct irp *irp)
 {
-	KIRQL irql;
 	void (*cancel_routine)(struct device_object *, struct irp *) STDCALL;
 
 	USBTRACEENTER("irp = %p", irp);
 
+	if (!irp)
+		return FALSE;
 	DUMP_IRP(irp);
-	irql = kspin_lock_irql(&urb_list_lock, DISPATCH_LEVEL);
+	irp->cancel_irql = kspin_lock_irql(&urb_list_lock, DISPATCH_LEVEL);
 	irp->cancel = TRUE;
-	irp->cancel_irql = irql;
 	cancel_routine = irp->cancel_routine;
 	irp->cancel_routine = NULL;
 	if (cancel_routine) {
@@ -202,7 +202,7 @@ STDCALL BOOLEAN WRAP_EXPORT(IoCancelIrp)
 		cancel_routine(irp_sl->dev_obj, irp);
 		USBTRACEEXIT(return TRUE);
 	} else {
-		kspin_unlock_irql(&urb_list_lock, irql);
+		kspin_unlock_irql(&urb_list_lock, irp->cancel_irql);
 		USBTRACEEXIT(return FALSE);
 	}
 }
@@ -392,9 +392,9 @@ _FASTCALL void WRAP_EXPORT(IofCompleteRequest)
 					 irp_sl->completion_routine);
 				res = LIN2WIN3(irp_sl->completion_routine,
 					       dev_obj, irp, irp_sl->context);
-				USBTRACE("completion routine returned");
 				if (res == STATUS_MORE_PROCESSING_REQUIRED)
 					USBTRACEEXIT(return);
+				USBTRACE("completion routine returned");
 			} else {
 				ERROR("completion routine not set for %p",
 				      irp_sl);
@@ -431,13 +431,12 @@ _FASTCALL void WRAP_EXPORT(IofCompleteRequest)
 }
 
 STDCALL NTSTATUS
-pdoDispatchInternalDeviceControl(struct device_object *dev_obj,
+pdoDispatchInternalDeviceControl(struct device_object *pdo,
 				 struct  irp *irp)
 {
 	struct io_stack_location *irp_sl;
 	NTSTATUS ret;
 	struct wrapper_dev *wd;
-	union nt_urb *nt_urb;
 
 	DUMP_IRP(irp);
 
@@ -447,25 +446,17 @@ pdoDispatchInternalDeviceControl(struct device_object *dev_obj,
 		      irp->stack_count);
 		USBTRACEEXIT(return STATUS_FAILURE);
 	}
-	wd = dev_obj->dev_ext;
-	nt_urb = URB_FROM_IRP(irp);
-#if 0
-	if (wd->hw_unavailable) {
-		NT_URB_STATUS(nt_urb) = USBD_STATUS_REQUEST_FAILED;
-		USBTRACEEXIT(return STATUS_FAILURE);
-	}
-#endif
-
 	irp_sl = IoGetCurrentIrpStackLocation(irp);
 
+	wd = pdo->dev_ext;
 	switch (irp_sl->params.ioctl.code) {
 #ifdef CONFIG_USB
 	case IOCTL_INTERNAL_USB_SUBMIT_URB:
-		ret = usb_submit_nt_urb(dev_obj->device.usb, irp);
+		ret = usb_submit_nt_urb(wd->dev.usb, irp);
 		break;
 
 	case IOCTL_INTERNAL_USB_RESET_PORT:
-		ret = usb_reset_port(dev_obj->device.usb);
+		ret = usb_reset_port(wd->dev.usb);
 		break;
 #endif
 	default:
@@ -479,10 +470,10 @@ pdoDispatchInternalDeviceControl(struct device_object *dev_obj,
 	USBTRACEEXIT(return ret);
 }
 
-STDCALL NTSTATUS pdoDispatchDeviceControl(struct device_object *dev_obj,
+STDCALL NTSTATUS pdoDispatchDeviceControl(struct device_object *pdo,
 					  struct irp *irp)
 {
-	return pdoDispatchInternalDeviceControl(dev_obj, irp);
+	return pdoDispatchInternalDeviceControl(pdo, irp);
 }
 
 STDCALL NTSTATUS IopInvalidDeviceRequest(struct device_object *dev_obj,
@@ -538,7 +529,7 @@ STDCALL NTSTATUS IopPassIrpDown(struct device_object *dev_obj,
 	return status;
 }
 
-STDCALL NTSTATUS pdoDispatchPnp(struct device_object *dev_obj,
+STDCALL NTSTATUS pdoDispatchPnp(struct device_object *pdo,
 				struct irp *irp)
 {
 	struct io_stack_location *irp_sl;
@@ -546,7 +537,7 @@ STDCALL NTSTATUS pdoDispatchPnp(struct device_object *dev_obj,
 	NTSTATUS res;
 
 	irp_sl = IoGetCurrentIrpStackLocation(irp);
-	wd = dev_obj->dev_ext;
+	wd = pdo->dev_ext;
 	DBGTRACE2("fn %d:%d, wd: %p", irp_sl->major_fn, irp_sl->minor_fn, wd);
 	switch (irp_sl->minor_fn) {
 	case IRP_MN_START_DEVICE:
@@ -556,9 +547,16 @@ STDCALL NTSTATUS pdoDispatchPnp(struct device_object *dev_obj,
 		miniport_halt(wd);
 		irp->io_status.status = STATUS_SUCCESS;
 		break;
+	case IRP_MN_QUERY_STOP_DEVICE:
+		irp->io_status.status = STATUS_SUCCESS;
+		break;
+	case IRP_MN_QUERY_REMOVE_DEVICE:
+		irp->io_status.status = STATUS_SUCCESS;
+		break;
 	case IRP_MN_REMOVE_DEVICE:
 		miniport_halt(wd);
-		IoDeleteDevice(dev_obj);
+		IoDeleteDevice(wd->nmb->fdo);
+		IoDeleteDevice(wd->nmb->pdo);
 		irp->io_status.status = STATUS_SUCCESS;
 		break;
 	default:
@@ -572,21 +570,23 @@ STDCALL NTSTATUS pdoDispatchPnp(struct device_object *dev_obj,
 	return res;
 }
 
-STDCALL NTSTATUS pdoDispatchPower(struct device_object *dev_obj,
+STDCALL NTSTATUS pdoDispatchPower(struct device_object *pdo,
 				  struct irp *irp)
 {
 	struct io_stack_location *irp_sl;
 	struct wrapper_dev *wd;
 	enum device_power_state state;
+	struct pci_dev *pdev;
 	NTSTATUS res;
 
 	irp_sl = IoGetCurrentIrpStackLocation(irp);
-	wd = dev_obj->dev_ext;
-	DBGTRACE2("dev_obj: %p, fn: %d:%d, wd: %p",
-		  dev_obj, irp_sl->major_fn, irp_sl->minor_fn, wd);
+	wd = pdo->dev_ext;
+	DBGTRACE2("pdo: %p, fn: %d:%d, wd: %p",
+		  pdo, irp_sl->major_fn, irp_sl->minor_fn, wd);
 	switch (irp_sl->minor_fn) {
 	case IRP_MN_SET_POWER:
 		state = irp_sl->params.power.state.device_state;
+		pdev = wd->dev.pci;
 		if (state == PowerDeviceD0) {
 			DBGTRACE2("resuming device %p", wd);
 			irp->io_status.status = STATUS_SUCCESS;
@@ -610,24 +610,24 @@ STDCALL NTSTATUS pdoDispatchPower(struct device_object *dev_obj,
 	return res;
 }
 
-STDCALL NTSTATUS fdoDispatchPnp(struct device_object *dev_obj,
+STDCALL NTSTATUS fdoDispatchPnp(struct device_object *fdo,
 				struct irp *irp)
 {
 	struct io_stack_location *irp_sl;
 	struct wrapper_dev *wd;
 
-	DBGTRACE2("dev_obj: %p, irp: %p", dev_obj, irp);
+	DBGTRACE2("fdo: %p, irp: %p", fdo, irp);
 	irp_sl = IoGetCurrentIrpStackLocation(irp);
 	DBGTRACE2("irp_sl: %p, handler: %p",
 		  irp_sl, irp_sl->completion_routine);
-	wd = dev_obj->dev_ext;
+	wd = fdo->dev_ext;
 	switch (irp_sl->minor_fn) {
 	case IRP_MN_REMOVE_DEVICE:
 		/*
 		IoSkipCurrentIrpStackLocation(irp);
 		IoCallDriver(wd->nmb->pdo, irp);
 		IoDetachDevice(wd->nmb->pdo);
-		IoDeleteDevice(dev_obj);
+		IoDeleteDevice(fdo);
 		*/
 		break;
 	case IRP_MN_START_DEVICE:

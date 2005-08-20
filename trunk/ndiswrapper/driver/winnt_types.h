@@ -63,8 +63,12 @@
 #define IRP_MN_QUERY_POWER		0x03
 
 #define IRP_MN_START_DEVICE		0x00
+#define IRP_MN_QUERY_REMOVE_DEVICE	0x01
 #define IRP_MN_REMOVE_DEVICE		0x02
+#define IRP_MN_CANCEL_REMOVE_DEVICE	0x03
 #define IRP_MN_STOP_DEVICE		0x04
+#define IRP_MN_QUERY_STOP_DEVICE	0x05
+#define IRP_MN_CANCEL_STOP_DEVICE	0x06
 
 #define IRP_BUFFERED_IO			0x00000010
 #define IRP_DEALLOCATE_BUFFER		0x00000020
@@ -307,7 +311,7 @@ struct dispatch_header {
 	UCHAR size;
 	UCHAR inserted;
 	LONG signal_state;
-	struct nt_list wait_list;
+	struct nt_list wait_blocks;
 };
 
 /* objects that use dispatch_header have it as the first field, so
@@ -358,6 +362,16 @@ struct kthread {
 	task_t *task;
 };
 #pragma pack(pop)
+
+enum dh_type {
+	DH_KEVENT, DH_KTIMER, DH_KMUTEX, DH_KSEMAPHORE, DH_KTHREAD,
+};
+
+#define is_kevent_object(dh)      ((dh)->inserted == DH_KVENT)
+#define is_ktimer_object(dh)      ((dh)->inserted == DH_KTIMER)
+#define is_mutex_object(dh)       ((dh)->inserted == DH_KMUTEX)
+#define is_semaphore_object(dh)   ((dh)->inserted == DH_KSEMAPHORE)
+#define is_kthread_object(dh)     ((dh)->inserted == DH_KTHREAD)
 
 struct irp;
 struct dev_obj_ext;
@@ -709,7 +723,7 @@ enum nt_obj_type {
 
 enum common_object_type {
 	OBJECT_TYPE_NONE, OBJECT_TYPE_DEVICE, OBJECT_TYPE_DRIVER,
-	OBJECT_TYPE_THREAD,
+	OBJECT_TYPE_KTHREAD,
 };
 
 struct common_object_header {
