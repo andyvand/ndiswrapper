@@ -72,6 +72,10 @@ struct nt_list io_workitem_list;
 KSPIN_LOCK io_workitem_list_lock;
 void io_worker(void *data);
 
+/* wrap_epoch is when ntoskernel gets initialized */
+static u64 wrap_ticks_to_epoch;
+static typeof(jiffies) wrap_epoch;
+
 WRAP_EXPORT_MAP("KeTickCount", &jiffies);
 
 static int add_bus_driver(struct driver_object *drv_obj, const char *name);
@@ -79,6 +83,7 @@ static int add_bus_driver(struct driver_object *drv_obj, const char *name);
 int ntoskernel_init(void)
 {
 	struct kthread *kthread;
+	struct timeval now;
 
 	kspin_lock_init(&kevent_lock);
 	kspin_lock_init(&ntoskernel_lock);
@@ -91,6 +96,13 @@ int ntoskernel_init(void)
 	InitializeListHead(&io_workitem_list);
 	INIT_WORK(&kdpc_work, kdpc_worker, NULL);
 	INIT_WORK(&io_work, io_worker, NULL);
+
+	/* compute ticks since 1601 into wrap_ticks_to_epoch */
+	do_gettimeofday(&now);
+	wrap_epoch = jiffies;
+	wrap_ticks_to_epoch = (u64)now.tv_sec * TICKSPERSEC;
+	wrap_ticks_to_epoch += now.tv_usec * 10 + TICKS_1601_TO_1970;
+
 	if (add_bus_driver(&pci_bus_driver, "PCI") ||
 	    add_bus_driver(&usb_bus_driver, "USB")) {
 		ntoskernel_exit();
@@ -163,6 +175,14 @@ void ntoskernel_exit(void)
 	}
 	kspin_unlock_irql(&ntoskernel_lock, irql);
 	return;
+}
+
+u64 ticks_1601(void)
+{
+	u64 ticks;
+	ticks = wrap_ticks_to_epoch +
+		((u64)(jiffies - wrap_epoch) * TICKSPERSEC / HZ);
+	return ticks;
 }
 
 static int add_bus_driver(struct driver_object *drv_obj, const char *name)

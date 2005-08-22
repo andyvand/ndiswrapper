@@ -1072,17 +1072,6 @@ STDCALL int WRAP_EXPORT(rand)
 	return r;
 }
 
-ULONGLONG ticks_1601(void)
-{
-	struct timeval now;
-	ULONGLONG ticks;
-
-	do_gettimeofday(&now);
-	ticks = (ULONGLONG)now.tv_sec * TICKSPERSEC;
-	ticks += now.tv_usec * 10 + TICKS_1601_TO_1970;
-	return ticks;
-}
-
 void WRAP_EXPORT(RtlUnwind)(void){UNIMPL();}
 
 int stricmp(const char *s1, const char *s2)
