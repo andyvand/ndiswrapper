@@ -100,6 +100,7 @@ int ntoskernel_init(void)
 				      0, 0, NULL, NULL);
 	if (!mdl_cache) {
 		ERROR("couldn't allocate MDL cache");
+		ntoskernel_exit();
 		return -ENOMEM;
 	}
 	kthread = ALLOCATE_OBJECT(struct kthread, GFP_KERNEL,
@@ -108,7 +109,7 @@ int ntoskernel_init(void)
 		kthread->task = get_current();
 	else {
 		ERROR("couldn't allocate thread object");
-		kmem_cache_destroy(mdl_cache);
+		ntoskernel_exit();
 		return -ENOMEM;
 	}
 	DBGTRACE2("kthread: %p, task: %p", kthread, kthread->task);
@@ -396,7 +397,7 @@ STDCALL void WRAP_EXPORT(KeInitializeTimer)
 	TRACEENTER4("%p", ktimer);
 
 	initialize_dh(&ktimer->dh, NotificationEvent, 0, DH_KTIMER);
-	wrapper_init_timer(ktimer, NULL, NULL);
+	wrap_init_timer(ktimer, NULL, NULL, TRUE);
 }
 
 STDCALL void WRAP_EXPORT(KeInitializeTimerEx)
@@ -405,7 +406,7 @@ STDCALL void WRAP_EXPORT(KeInitializeTimerEx)
 	TRACEENTER4("%p", ktimer);
 
 	initialize_dh(&ktimer->dh, SynchronizationEvent, 0, DH_KTIMER);
-	wrapper_init_timer(ktimer, NULL, NULL);
+	wrap_init_timer(ktimer, NULL, NULL, TRUE);
 }
 
 STDCALL void WRAP_EXPORT(KeInitializeDpc)
@@ -415,6 +416,7 @@ STDCALL void WRAP_EXPORT(KeInitializeDpc)
 
 	TRACEENTER3("%p, %p, %p", kdpc, func, ctx);
 	irql = kspin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL);
+	memset(kdpc, 0, sizeof(*kdpc));
 	kdpc->func = func;
 	kdpc->ctx  = ctx;
 	kspin_unlock_irql(&ntoskernel_lock, irql);
@@ -452,44 +454,52 @@ static void kdpc_worker(void *data)
 	}
 }
 
-/* this function should be called with ntoskernel_lock held at
- * DISPATCH_LEVEL */
-BOOLEAN insert_kdpc_work(struct kdpc *kdpc, BOOLEAN dup_check)
+BOOLEAN insert_kdpc_work(struct kdpc *kdpc)
 {
-	struct nt_list *cur;
+	KIRQL irql;
+	BOOLEAN ret;
 
 	TRACEENTER3("%p", kdpc);
 	if (!kdpc) {
 		ERROR("kdpc is NULL");
 		return FALSE;
 	}
-	if (dup_check == TRUE) {
-		nt_list_for_each(cur, &kdpc_list) {
-			struct kdpc *tmp;
-			tmp = container_of(cur, struct kdpc, list);
-			if (tmp == kdpc)
-				TRACEEXIT3(return FALSE);
-		}
+	irql = kspin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL);
+	if (kdpc->number) {
+		if (kdpc->number != 1)
+			ERROR("kdpc->number: %d", kdpc->number);
+		ret = FALSE;
+	} else {
+		kdpc->number = 1;
+		InsertTailList(&kdpc_list, &kdpc->list);
+		ret = TRUE;
 	}
-	InsertTailList(&kdpc_list, &kdpc->list);
-	schedule_work(&kdpc_work);
-	TRACEEXIT3(return TRUE);
+	kspin_unlock_irql(&ntoskernel_lock, irql);
+	if (ret == TRUE)
+		schedule_work(&kdpc_work);
+	TRACEEXIT3(return ret);
 }
 
-/* this function should be called with ntoskernel_lock held at
- * DISPATCH_LEVEL */
 BOOLEAN remove_kdpc_work(struct kdpc *kdpc)
 {
-	struct nt_list *cur;
+	KIRQL irql;
+	BOOLEAN ret;
 
-	nt_list_for_each(cur, &kdpc_list) {
-		struct kdpc *tmp = container_of(cur, struct kdpc, list);
-		if (tmp == kdpc) {
-			RemoveEntryList(&kdpc->list);
-			return TRUE;
-		}
+	if (!kdpc) {
+		ERROR("kdpc is NULL");
+		return FALSE;
 	}
-	return FALSE;
+	irql = kspin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL);
+	if (kdpc->number) {
+		if (kdpc->number != 1)
+			ERROR("kdpc->number: %d", kdpc->number);
+		RemoveEntryList(&kdpc->list);
+		kdpc->number = 0;
+		ret = TRUE;
+	} else
+		ret = FALSE;
+	kspin_unlock_irql(&ntoskernel_lock, irql);
+	return ret;
 }
 
 STDCALL BOOLEAN WRAP_EXPORT(KeInsertQueueDpc)
@@ -497,13 +507,10 @@ STDCALL BOOLEAN WRAP_EXPORT(KeInsertQueueDpc)
 {
 	BOOLEAN ret;
 
-	/* this function is called at IRQL >= DISPATCH_LEVEL */
 	TRACEENTER3("%p, %p, %p", kdpc, arg1, arg2);
-	kspin_lock(&ntoskernel_lock);
 	kdpc->arg1 = arg1;
 	kdpc->arg2 = arg2;
-	ret = insert_kdpc_work(kdpc, TRUE);
-	kspin_unlock(&ntoskernel_lock);
+	ret = insert_kdpc_work(kdpc);
 	TRACEEXIT3(return ret);
 }
 
@@ -511,12 +518,9 @@ STDCALL BOOLEAN WRAP_EXPORT(KeRemoveQueueDpc)
 	(struct kdpc *kdpc)
 {
 	BOOLEAN ret;
-	KIRQL irql;
 
 	TRACEENTER3("%p", kdpc);
-	irql = kspin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL);
 	ret = remove_kdpc_work(kdpc);
-	kspin_unlock_irql(&ntoskernel_lock, irql);
 	TRACEEXIT3(return ret);
 }
 
@@ -534,8 +538,7 @@ STDCALL BOOLEAN WRAP_EXPORT(KeSetTimerEx)
 	else
 		expires = HZ * due_time / TICKSPERSEC - jiffies;
 	repeat = HZ * period / TICKSPERSEC;
-	return wrapper_set_timer(ktimer->wrapper_timer, expires, repeat,
-				 kdpc, TRUE);
+	return wrap_set_timer(ktimer, expires, repeat, kdpc, TRUE);
 }
 
 STDCALL BOOLEAN WRAP_EXPORT(KeSetTimer)
@@ -551,7 +554,7 @@ STDCALL BOOLEAN WRAP_EXPORT(KeCancelTimer)
 	char canceled;
 
 	TRACEENTER4("%p", ktimer);
-	wrapper_cancel_timer(ktimer->wrapper_timer, &canceled);
+	wrap_cancel_timer(ktimer, &canceled);
 	return canceled;
 }
 

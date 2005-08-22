@@ -449,6 +449,13 @@ pdoDispatchInternalDeviceControl(struct device_object *pdo,
 	irp_sl = IoGetCurrentIrpStackLocation(irp);
 
 	wd = pdo->dev_ext;
+	if (wd->intf == NULL) {
+		union nt_urb *nt_urb = URB_FROM_IRP(irp);
+		NT_URB_STATUS(nt_urb) = USBD_STATUS_DEVICE_GONE;
+		irp->io_status.status = STATUS_FAILURE;
+		irp->io_status.status_info = 0;
+		return STATUS_FAILURE;
+	}
 	switch (irp_sl->params.ioctl.code) {
 #ifdef CONFIG_USB
 	case IOCTL_INTERNAL_USB_SUBMIT_URB:

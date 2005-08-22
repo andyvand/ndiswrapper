@@ -328,11 +328,11 @@ static void *ndiswrapper_add_usb_device(struct usb_device *udev,
 	SET_NETDEV_DEV(dev, &intf->dev);
 
 	wd->dev.usb = interface_to_usbdev(intf);
-	wd->intf    = intf;
 	usb_set_intfdata(intf, wd);
 #else
 	wd->dev.usb = udev;
 #endif
+	wd->intf = intf;
 	pdo->device.usb = wd->dev.usb;
 
 	TRACEENTER1("calling ndis init routine");
@@ -384,6 +384,7 @@ ndiswrapper_remove_usb_device(struct usb_interface *intf)
 
 	if (!wd)
 		TRACEEXIT1(return);
+	wd->intf = NULL;
 	usb_set_intfdata(intf, NULL);
 	atomic_dec(&wd->driver->users);
 	ndiswrapper_remove_device(wd);
@@ -399,6 +400,7 @@ ndiswrapper_remove_usb_device(struct usb_device *udev, void *ptr)
 	if (!wd || !wd->dev.usb)
 		TRACEEXIT1(return);
 	wd->dev.usb = NULL;
+	wd->intf = NULL;
 	atomic_dec(&wd->driver->users);
 	ndiswrapper_remove_device(wd);
 }

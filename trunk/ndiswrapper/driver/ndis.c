@@ -943,6 +943,10 @@ STDCALL void WRAP_EXPORT(NdisReleaseSpinLock)
 	(struct ndis_spinlock *lock)
 {
 	TRACEENTER6("lock %p", lock);
+	if (!lock) {
+		ERROR("invalid lock");
+		return;
+	}
 	kspin_unlock_irql(&lock->klock, lock->irql);
 	TRACEEXIT6(return);
 }
@@ -1474,9 +1478,8 @@ STDCALL void WRAP_EXPORT(NdisMInitializeTimer)
 	struct wrapper_dev *wd = nmb->wd;
 	TRACEENTER4("%s", "");
 	KeInitializeDpc(&timer_handle->kdpc, func, ctx);
-	KeInitializeEvent((struct kevent *)&timer_handle->ktimer,
-			  NotificationEvent, FALSE);
-	wrapper_init_timer(&timer_handle->ktimer, wd, &timer_handle->kdpc);
+	wrap_init_timer(&timer_handle->ktimer, wd, &timer_handle->kdpc,
+			FALSE);
 	TRACEEXIT4(return);
 }
 
@@ -1485,9 +1488,8 @@ STDCALL void WRAP_EXPORT(NdisInitializeTimer)
 {
 	TRACEENTER4("%p, %p, %p", timer_handle, func, ctx);
 	KeInitializeDpc(&timer_handle->kdpc, func, ctx);
-	KeInitializeEvent((struct kevent *)&timer_handle->ktimer,
-			  NotificationEvent, FALSE);
-	wrapper_init_timer(&timer_handle->ktimer, NULL, &timer_handle->kdpc);
+	wrap_init_timer(&timer_handle->ktimer, NULL, &timer_handle->kdpc,
+			FALSE);
 	TRACEEXIT4(return);
 }
 
@@ -1497,8 +1499,7 @@ STDCALL void WRAP_EXPORT(NdisSetTimer)
 	unsigned long expires = ms * HZ / 1000;
 
 	TRACEENTER4("%p, %u", timer_handle, ms);
-	wrapper_set_timer(timer_handle->ktimer.wrapper_timer, expires, 0,
-			  NULL, FALSE);
+	wrap_set_timer(&timer_handle->ktimer, expires, 0, NULL, FALSE);
 	TRACEEXIT4(return);
 }
 
@@ -1509,8 +1510,7 @@ STDCALL void WRAP_EXPORT(NdisMSetPeriodicTimer)
 	unsigned long repeat = ms * HZ / 1000;
 
 	TRACEENTER4("%p, %u", timer_handle, ms);
-	wrapper_set_timer(timer_handle->ktimer.wrapper_timer, expires, repeat,
-			  NULL, FALSE);
+	wrap_set_timer(&timer_handle->ktimer, expires, repeat, NULL, FALSE);
 	TRACEEXIT4(return);
 }
 
@@ -1518,7 +1518,7 @@ STDCALL void WRAP_EXPORT(NdisMCancelTimer)
 	(struct ndis_miniport_timer *timer_handle, BOOLEAN *canceled)
 {
 	TRACEENTER4("%s", "");
-	wrapper_cancel_timer(timer_handle->ktimer.wrapper_timer, canceled);
+	wrap_cancel_timer(&timer_handle->ktimer, canceled);
 	TRACEEXIT4(return);
 }
 
@@ -1526,7 +1526,7 @@ STDCALL void WRAP_EXPORT(NdisCancelTimer)
 	(struct ndis_timer *timer_handle, BOOLEAN *canceled)
 {
 	TRACEENTER4("%s", "");
-	wrapper_cancel_timer(timer_handle->ktimer.wrapper_timer, canceled);
+	wrap_cancel_timer(&timer_handle->ktimer, canceled);
 	TRACEEXIT4(return);
 }
 
