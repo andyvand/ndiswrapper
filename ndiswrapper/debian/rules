@@ -76,12 +76,14 @@ check-perms:
 
 build-modules-prep:
 	sed -e 's/#KVERS#/$(KVERS)/g' \
-		-e 's/#NDISVERS#/$(DRIVER_VERSION)/g' \
+		-e 's/#DRIVER_VERSION#/$(DRIVER_VERSION)/g' \
+		-e 's/#UTILS_VERSION#/$(UTILS_VERSION)/g' \
 		-e 's/#DATE#/'"`date --rfc-822`"'/g' \
 		-e 's/#MAINT#/$(MAINT) <$(MAINTEMAIL)>/g' \
-		debian/changelog.template > debian/changelog
+		debian/changelog.modules > debian/changelog
 	sed -e 's/#KVERS#/$(KVERS)/' \
-		-e 's/#NDISVERS#/$(DRIVER_VERSION)/' \
+		-e 's/#DRIVER_VERSION#/$(DRIVER_VERSION)/' \
+		-e 's/#UTILS_VERSION#/$(UTILS_VERSION)/' \
 		debian/control.modules > debian/control
 	sed -e 's/#KVERS#/$(KVERS)/' debian/postinst.modules > debian/postinst
 
@@ -110,11 +112,13 @@ clean-modules: build-modules-prep
 
 build-utils-prep:
 	sed -e 's/-#KVERS#//g' \
-		-e 's/#NDISVERS#/$(UTILS_VERSION)/g' \
+		-e 's/#DRIVER_VERSION#/$(DRIVER_VERSION)/g' \
+		-e 's/#UTILS_VERSION#/$(UTILS_VERSION)/g' \
 		-e 's/#DATE#/'"`date --rfc-822`"'/g' \
 		-e 's/#MAINT#/$(MAINT) <$(MAINTEMAIL)>/g' \
-		debian/changelog.template > debian/changelog
-	sed -e 's/#NDISVERS#/$(DRIVER_VERSION)/' \
+		debian/changelog.utils > debian/changelog
+	sed -e 's/#DRIVER_VERSION#/$(DRIVER_VERSION)/' \
+		-e 's/#UTILS_VERSION#/$(UTILS_VERSION)/' \
 		-e 's/#MAINT#/$(MAINT) <$(MAINTEMAIL)>/g' \
 		debian/control.utils > debian/control
 	echo "utils/loadndisdriver /sbin" > debian/ndiswrapper-utils.install
@@ -139,11 +143,13 @@ clean-utils: build-utils-prep
 
 build-source-prep:
 	sed -e 's/-#KVERS#//g' \
-		-e 's/#NDISVERS#/$(NDISWRAPPER_VERSION)$(EXTRA_VERSION)/g' \
+		-e 's/#DRIVER_VERSION#/$(DRIVER_VERSION)/g' \
+		-e 's/#UTILS_VERSION#/$(UTILS_VERSION)/g' \
 		-e 's/#DATE#/'"`date --rfc-822`"'/g' \
 		-e 's/#MAINT#/$(MAINT) <$(MAINTEMAIL)>/g' \
-		debian/changelog.template > debian/changelog
-	sed -e 's/#NDISVERS#/$(NDISWRAPPER_VERSION)$(EXTRA_VERSION)/' \
+		debian/changelog.modules > debian/changelog
+	sed -e 's/#DRIVER_VERSION#/$(DRIVER_VERSION)/' \
+		-e 's/#UTILS_VERSION#/$(UTILS_VERSION)/' \
 		-e 's/#MAINT#/$(MAINT) <$(MAINTEMAIL)>/g' \
 		debian/control.source > debian/control
 	echo "ndiswrapper-source.tar.gz /usr/src" \
@@ -157,7 +163,9 @@ build-source:
 	$(MAKE) -C $(DRIVERSRC) distdir=../modules/ndiswrapper/driver dist
 	$(MAKE) -C $(UTILSSRC) distdir=../modules/ndiswrapper/utils dist
 	cp version ChangeLog ndiswrapper.8 modules/ndiswrapper
-	cp -a debian/rules debian/changelog.template \
+	cp -a debian/rules debian/changelog.source \
+		debian/rules debian/changelog.modules \
+		debian/rules debian/changelog.utils \
 		debian/control.modules debian/changelog debian/control.utils \
 		debian/dirs.utils debian/postinst.modules \
 			modules/ndiswrapper/debian
