@@ -398,6 +398,7 @@ void miniport_halt(struct wrapper_dev *wd)
 
 void ndiswrapper_stop_device(struct wrapper_dev *wd)
 {
+#if 0
 	struct irp *irp;
 	struct io_stack_location *irp_sl;
 
@@ -408,6 +409,9 @@ void ndiswrapper_stop_device(struct wrapper_dev *wd)
 	irp_sl->minor_fn = IRP_MN_STOP_DEVICE;
 	irp->io_status.status = STATUS_NOT_SUPPORTED;
 	IoCallDriver(wd->nmb->fdo, irp);
+#else
+	miniport_halt(wd);
+#endif
 }
 
 static void hangcheck_proc(unsigned long data)
@@ -926,6 +930,7 @@ int ndiswrapper_resume_usb(struct usb_interface *intf)
 void ndiswrapper_remove_device(struct wrapper_dev *wd)
 {
 	KIRQL irql;
+//	struct miniport_char *miniport = &wd->driver->miniport;
 
 	TRACEENTER1("%s", wd->net_dev->name);
 
@@ -965,7 +970,9 @@ void ndiswrapper_remove_device(struct wrapper_dev *wd)
 			 NdisDevicePnPEventSurpriseRemoved, NULL, 0);
 	}
 #endif
+	TRACEENTER1("stopping device");
 	ndiswrapper_stop_device(wd);
+	TRACEENTER1("stopped");
 	IoDeleteDevice(wd->nmb->fdo);
 	IoDeleteDevice(wd->nmb->pdo);
 	if (wd->xmit_array)
@@ -1678,7 +1685,7 @@ struct net_device *ndis_init_netdev(struct wrapper_dev **pwd,
 	wd->capa.auth = 0;
 	wd->attributes = 0;
 	wd->reset_status = 0;
-	InitializeListHead(&wd->wrapper_timer_list);
+	InitializeListHead(&wd->wrap_timer_list);
 	kspin_lock_init(&wd->timer_lock);
 	wd->map_count = 0;
 	wd->map_dma_addr = NULL;

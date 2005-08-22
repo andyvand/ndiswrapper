@@ -802,6 +802,8 @@ struct wrapper_dev {
 	struct phys_dev dev;
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
 	struct usb_interface *intf;
+#else
+	void *intf;
 #endif
 	struct net_device *net_dev;
 	void *shutdown_ctx;
@@ -867,7 +869,7 @@ struct wrapper_dev {
 	mac_address mac;
 
 	/* list of initialized timers */
-	struct nt_list wrapper_timer_list;
+	struct nt_list wrap_timer_list;
 	KSPIN_LOCK timer_lock;
 
 	struct proc_dir_entry *procfs_iface;

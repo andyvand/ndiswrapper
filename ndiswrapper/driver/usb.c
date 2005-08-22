@@ -475,19 +475,35 @@ unsigned long usb_vendor_or_class_intf(struct usb_device *dev,
 	USBTRACEEXIT(return ret);
 }
 
-unsigned long usb_reset_pipe(struct usb_device *dev,
-			     union pipe_handle pipe_handle)
+unsigned long usb_reset_pipe(struct usb_device *dev, struct irp *irp)
 {
 	int pipe;
 	UCHAR endpoint;
+	int ret;
+	union nt_urb *nt_urb;
+	union pipe_handle pipe_handle;
 
-	USBTRACE("pipe = %p", pipe_handle.handle);
+	USBTRACE("irp = %p", irp);
+	nt_urb = URB_FROM_IRP(irp);
+	pipe_handle = nt_urb->pipe_req.pipeHandle;
 	endpoint = pipe_handle.encoded.endpointAddr;
 	if (pipe_handle.encoded.endpointAddr & USB_ENDPOINT_DIR_MASK)
 		pipe = usb_rcvctrlpipe(dev, endpoint);
 	else
 		pipe = usb_sndctrlpipe(dev, endpoint);
-	return usb_clear_halt(dev, pipe);
+	ret = usb_clear_halt(dev, pipe);
+	switch (ret) {
+	case 0:
+		NT_URB_STATUS(nt_urb) = USBD_STATUS_SUCCESS;
+		break;
+	case EPROTO:
+		NT_URB_STATUS(nt_urb) = USBD_STATUS_DEVICE_GONE;
+		break;
+	default:
+		NT_URB_STATUS(nt_urb) = USBD_STATUS_REQUEST_FAILED;
+		break;
+	}
+	return ret;
 }
 
 unsigned long usb_select_configuration(struct usb_device *dev,
@@ -622,11 +638,7 @@ unsigned long usb_submit_nt_urb(struct usb_device *dev, struct irp *irp)
 		break;
 
 	case URB_FUNCTION_SYNC_RESET_PIPE_AND_CLEAR_STALL:
-		ret = usb_reset_pipe(dev, nt_urb->pipe_req.pipeHandle);
-		if (ret < 0) {
-			ERROR("usb_reset_pipe failed with %d", ret);
-			NT_URB_STATUS(nt_urb) = USBD_STATUS_REQUEST_FAILED;
-		}
+		usb_reset_pipe(dev, irp);
 		break;
 
 	default:

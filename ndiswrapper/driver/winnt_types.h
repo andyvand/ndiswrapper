@@ -199,6 +199,7 @@ typedef STDCALL void (*DPC)(struct kdpc *kdpc, void *ctx, void *arg1,
 
 struct kdpc {
 	SHORT type;
+	/* number is used to represent if the dpc is queued or not */
 	UCHAR number;
 	UCHAR importance;
 	struct nt_list list;
@@ -321,17 +322,19 @@ struct kevent {
 	struct dispatch_header dh;
 };
 
-struct wrapper_timer;
+struct wrap_timer;
 struct ktimer {
 	struct dispatch_header dh;
-	ULONGLONG due_time;
-	struct nt_list list;
 	/* We can't fit Linux timer in this structure. Instead of
-	 * padding the ktimer structure, we replace *kdpc field with
-	 * *wrapper_timer and allocate memory for it when ktimer is
+	 * padding the ktimer structure, we replace due_time field
+	 * with *wrap_timer and allocate memory for it when ktimer is
 	 * initialized */
-	/* struct kdpc *kdpc; */
-	struct wrapper_timer *wrapper_timer;
+	union {
+		ULONGLONG due_time;
+		struct wrap_timer *wrap_timer;
+	};
+	struct nt_list list;
+	struct kdpc *kdpc;
 	LONG period;
 };
 
