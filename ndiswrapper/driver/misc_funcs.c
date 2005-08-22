@@ -284,7 +284,7 @@ void wrap_init_timer(struct ktimer *ktimer, void *handle, struct kdpc *kdpc,
 
 /* 'expires' is relative to jiffies, so when setting timer, add
  * jiffies to it */
-int wrap_set_timer(struct ktimer *ktimer, unsigned long expires,
+int wrap_set_timer(struct ktimer *ktimer, long expires,
 		      unsigned long repeat, struct kdpc *kdpc,
 		      BOOLEAN kernel_timer)
 {
@@ -296,6 +296,10 @@ int wrap_set_timer(struct ktimer *ktimer, unsigned long expires,
 	if (!wrap_timer) {
 //		ERROR("invalid timer");
 		return FALSE;
+	}
+	if (expires < 0) {
+		ERROR("expires (%ld) reset to 0", expires);
+		expires = 0;
 	}
 
 #ifdef DEBUG_TIMER

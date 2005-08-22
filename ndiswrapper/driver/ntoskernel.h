@@ -322,6 +322,10 @@ do {									\
 #define SECS_1601_TO_1970	((369 * 365 + 89) * (u64)SECSPERDAY)
 #define TICKS_1601_TO_1970	(SECS_1601_TO_1970 * TICKSPERSEC)
 
+#define SYSTEM_TIME_TO_HZ(sys_time)					\
+	((sys_time) < 0) ? HZ * (-(sys_time)) / TICKSPERSEC :		\
+	HZ * ((sys_time) - ticks_1601()) / TICKSPERSEC
+
 typedef void (*WRAP_EXPORT_FUNC)(void);
 
 struct wrap_export {
@@ -510,7 +514,7 @@ void *wrap_kmalloc(size_t size, int flags);
 void wrap_kfree(void *ptr);
 void wrap_init_timer(struct ktimer *ktimer, void *handle,
 		     struct kdpc *kdpc, BOOLEAN kernel_timer);
-int wrap_set_timer(struct ktimer *ktimer, unsigned long expires,
+int wrap_set_timer(struct ktimer *ktimer, long expires,
 		   unsigned long repeat, struct kdpc *kdpc,
 		   BOOLEAN kernel_timer);
 void wrap_cancel_timer(struct ktimer *ktimer, BOOLEAN *canceled);
