@@ -533,10 +533,7 @@ STDCALL BOOLEAN WRAP_EXPORT(KeSetTimerEx)
 
 	TRACEENTER4("%p, %ld, %u, %p", ktimer, (long)due_time, period, kdpc);
 
-	if (due_time < 0)
-		expires = HZ * (-due_time) / TICKSPERSEC;
-	else
-		expires = HZ * due_time / TICKSPERSEC - jiffies;
+	expires = SYSTEM_TIME_TO_HZ(due_time);
 	repeat = HZ * period / TICKSPERSEC;
 	return wrap_set_timer(ktimer, expires, repeat, kdpc, TRUE);
 }
@@ -1081,18 +1078,8 @@ STDCALL NTSTATUS WRAP_EXPORT(KeWaitForMultipleObjects)
 				DBGINFOEXIT(return STATUS_TIMEOUT);
 			else
 				DBGINFOEXIT(return STATUS_SUCCESS);
-		} else if (*timeout > 0) {
-			long d = (*timeout) - ticks_1601();
-			/* some drivers call this function with much
-			 * smaller numbers that suggest either drivers
-			 * are broken or explanation for this is
-			 * wrong */
-			if (d > 0)
-				wait_jiffies = HZ * d / TICKSPERSEC;
-			else
-				wait_jiffies = 0;
-		} else
-			wait_jiffies = HZ * (-(*timeout)) / TICKSPERSEC;
+		} else 
+			wait_jiffies = SYSTEM_TIME_TO_HZ(*timeout);
 	} else
 		wait_jiffies = 0;
 
@@ -1221,10 +1208,7 @@ STDCALL NTSTATUS WRAP_EXPORT(KeDelayExecutionThread)
 	if (wait_mode != 0)
 		ERROR("invalid wait_mode %d", wait_mode);
 
-	if (t < 0)
-		timeout = HZ * (-t) / TICKSPERSEC;
-	else
-		timeout = HZ * t / TICKSPERSEC - jiffies;
+	timeout = SYSTEM_TIME_TO_HZ(t);
 
 	if (timeout <= 0)
 		TRACEEXIT3(return STATUS_SUCCESS);
