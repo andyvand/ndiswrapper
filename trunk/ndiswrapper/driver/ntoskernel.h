@@ -311,7 +311,7 @@ do {									\
 #define KMALLOC_THRESHOLD 131072
 
 /* TICK is 100ns */
-#define TICKSPERSEC		10000000
+#define TICKSPERSEC		10000000ULL
 #define TICKSPERMSEC		10000
 #define SECSPERDAY		86400
 #define SECSPERHOUR		3600
@@ -323,8 +323,8 @@ do {									\
 #define TICKS_1601_TO_1970	(SECS_1601_TO_1970 * TICKSPERSEC)
 
 #define SYSTEM_TIME_TO_HZ(sys_time)					\
-	((sys_time) < 0) ? HZ * (-(sys_time)) / TICKSPERSEC :		\
-	HZ * ((sys_time) - ticks_1601()) / TICKSPERSEC
+	((sys_time) < 0) ? (u64)HZ * (-(sys_time)) / TICKSPERSEC :	\
+	(u64)HZ * ((sys_time) - ticks_1601()) / TICKSPERSEC
 
 typedef void (*WRAP_EXPORT_FUNC)(void);
 
@@ -479,7 +479,7 @@ STDCALL struct irp *WRAP_EXPORT(IoBuildAsynchronousFsdRequest)
 	 struct io_status_block *status);
 STDCALL NTSTATUS PoCallDriver(struct device_object *dev_obj, struct irp *irp);
 
-ULONGLONG ticks_1601(void);
+u64 ticks_1601(void);
 
 STDCALL KIRQL KeGetCurrentIrql(void);
 STDCALL void KeInitializeSpinLock(KSPIN_LOCK *lock);
