@@ -211,6 +211,12 @@ struct kdpc {
 	KSPIN_LOCK *lock;
 };
 
+enum kdpc_type {
+	KDPC_TYPE_NONE,
+	KDPC_TYPE_KERNEL,
+	KDPC_TYPE_NDIS
+};
+
 enum pool_type {
 	NonPagedPool, PagedPool, NonPagedPoolMustSucceed, DontUseThisType,
 	NonPagedPoolCacheAligned, PagedPoolCacheAligned,
@@ -323,6 +329,8 @@ struct kevent {
 };
 
 struct wrap_timer;
+
+enum ktimer_type { KTIMER_TYPE_KERNEL, KTIMER_TYPE_NDIS };
 struct ktimer {
 	struct dispatch_header dh;
 	/* We can't fit Linux timer in this structure. Instead of
@@ -367,7 +375,7 @@ struct kthread {
 #pragma pack(pop)
 
 enum dh_type {
-	DH_KEVENT, DH_KTIMER, DH_KMUTEX, DH_KSEMAPHORE, DH_KTHREAD,
+	DH_NONE, DH_KEVENT, DH_KTIMER, DH_KMUTEX, DH_KSEMAPHORE, DH_KTHREAD,
 };
 
 #define is_kevent_object(dh)      ((dh)->inserted == DH_KVENT)
@@ -789,10 +797,6 @@ struct io_workitem_entry {
 	struct io_workitem *io_workitem;
 };
 
-enum wait_type {
-	WaitAll, WaitAny
-};
-
 struct wait_block {
 	struct nt_list list;
 	task_t *thread;
@@ -802,7 +806,17 @@ struct wait_block {
 	USHORT wait_type;
 };
 
-enum event_type {NotificationEvent, SynchronizationEvent};
+enum event_type {
+	NotificationEvent, SynchronizationEvent
+};
+
+enum timer_type {
+	NotificationTimer, SynchronizationTimer
+};
+
+enum wait_type {
+	WaitAll, WaitAny
+};
 
 enum mm_page_priority {
 	LowPagePriority, NormalPagePriority = 16, HighPagePriority = 32

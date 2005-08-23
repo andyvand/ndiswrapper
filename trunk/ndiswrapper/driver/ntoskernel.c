@@ -56,6 +56,7 @@ static struct nt_list wrap_mdl_list;
 
 struct work_struct kdpc_work;
 static struct nt_list kdpc_list;
+static KSPIN_LOCK kdpc_list_lock;
 static void kdpc_worker(void *data);
 
 static struct nt_list callback_objects;
@@ -76,9 +77,9 @@ void io_worker(void *data);
 static u64 wrap_ticks_to_epoch;
 static typeof(jiffies) wrap_epoch;
 
-WRAP_EXPORT_MAP("KeTickCount", &jiffies);
-
 static int add_bus_driver(struct driver_object *drv_obj, const char *name);
+
+WRAP_EXPORT_MAP("KeTickCount", &jiffies);
 
 int ntoskernel_init(void)
 {
@@ -88,6 +89,7 @@ int ntoskernel_init(void)
 	kspin_lock_init(&kevent_lock);
 	kspin_lock_init(&ntoskernel_lock);
 	kspin_lock_init(&io_workitem_list_lock);
+	kspin_lock_init(&kdpc_list_lock);
 	InitializeListHead(&wrap_mdl_list);
 	InitializeListHead(&kdpc_list);
 	InitializeListHead(&callback_objects);
@@ -133,6 +135,7 @@ void ntoskernel_exit(void)
 	struct nt_list *cur;
 	KIRQL irql;
 
+	KeFlushQueuedDpcs();
 	del_bus_drivers();
 	if (mdl_cache) {
 		irql = kspin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL);
@@ -166,7 +169,7 @@ void ntoskernel_exit(void)
 		}
 		kfree(object);
 	}
-	/* delete alll objects */
+	/* delete all objects */
 	while ((cur = RemoveHeadList(&object_list))) {
 		struct common_object_header *header;
 		header = container_of(cur, struct common_object_header, list);
@@ -405,6 +408,7 @@ void initialize_dh(struct dispatch_header *dh,
 				enum event_type type, int state,
 				enum dh_type dh_type)
 {
+	memset(dh, 0, sizeof(*dh));
 	dh->type = type;
 	dh->signal_state = state;
 	dh->inserted = dh_type;
@@ -416,21 +420,52 @@ STDCALL void WRAP_EXPORT(KeInitializeTimer)
 {
 	TRACEENTER4("%p", ktimer);
 
-	initialize_dh(&ktimer->dh, NotificationEvent, 0, DH_KTIMER);
-	wrap_init_timer(ktimer, NULL, NULL, TRUE);
+	initialize_dh(&ktimer->dh, NotificationTimer, 0, DH_KTIMER);
+	wrap_init_timer(ktimer, NULL, NULL, KTIMER_TYPE_KERNEL);
 }
 
 STDCALL void WRAP_EXPORT(KeInitializeTimerEx)
-	(struct ktimer *ktimer)
+	(struct ktimer *ktimer, enum timer_type type)
 {
 	TRACEENTER4("%p", ktimer);
 
-	initialize_dh(&ktimer->dh, SynchronizationEvent, 0, DH_KTIMER);
-	wrap_init_timer(ktimer, NULL, NULL, TRUE);
+	initialize_dh(&ktimer->dh, type, 0, DH_KTIMER);
+	wrap_init_timer(ktimer, NULL, NULL, KTIMER_TYPE_KERNEL);
 }
 
-STDCALL void WRAP_EXPORT(KeInitializeDpc)
-	(struct kdpc *kdpc, void *func, void *ctx)
+STDCALL BOOLEAN WRAP_EXPORT(KeSetTimerEx)
+	(struct ktimer *ktimer, LARGE_INTEGER due_time, LONG period,
+	 struct kdpc *kdpc)
+{
+	unsigned long expires;
+	unsigned long repeat;
+
+	TRACEENTER4("%p, %ld, %u, %p", ktimer, (long)due_time, period, kdpc);
+
+	expires = SYSTEM_TIME_TO_HZ(due_time);
+	repeat = HZ * period / TICKSPERSEC;
+	return wrap_set_timer(ktimer->wrap_timer, expires, repeat, kdpc);
+}
+
+STDCALL BOOLEAN WRAP_EXPORT(KeSetTimer)
+	(struct ktimer *ktimer, LARGE_INTEGER due_time, struct kdpc *kdpc)
+{
+	TRACEENTER4("%p, %ld, %p", ktimer, (long)due_time, kdpc);
+	return KeSetTimerEx(ktimer, due_time, 0, kdpc);
+}
+
+STDCALL BOOLEAN WRAP_EXPORT(KeCancelTimer)
+	(struct ktimer *ktimer)
+{
+	char canceled;
+
+	TRACEENTER4("%p", ktimer);
+	wrap_cancel_timer(ktimer->wrap_timer, &canceled);
+	return canceled;
+}
+
+void initialize_kdpc(struct kdpc *kdpc, void *func, void *ctx,
+		     enum kdpc_type type)
 {
 	KIRQL irql;
 
@@ -439,8 +474,15 @@ STDCALL void WRAP_EXPORT(KeInitializeDpc)
 	memset(kdpc, 0, sizeof(*kdpc));
 	kdpc->func = func;
 	kdpc->ctx  = ctx;
+	kdpc->type = type;
 	kspin_unlock_irql(&ntoskernel_lock, irql);
 	TRACEEXIT3(return);
+}
+
+STDCALL void WRAP_EXPORT(KeInitializeDpc)
+	(struct kdpc *kdpc, void *func, void *ctx)
+{
+	initialize_kdpc(kdpc, func, ctx, KDPC_TYPE_KERNEL);
 }
 
 static void kdpc_worker(void *data)
@@ -451,27 +493,35 @@ static void kdpc_worker(void *data)
 	DPC dpc_func;
 
 	while (1) {
-		irql = kspin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL);
+		irql = kspin_lock_irql(&kdpc_list_lock, DISPATCH_LEVEL);
 		entry = RemoveHeadList(&kdpc_list);
-		kspin_unlock_irql(&ntoskernel_lock, irql);
-		if (!entry)
+		if (!entry) {
+			kspin_unlock_irql(&kdpc_list_lock, irql);
 			break;
+		}
 		kdpc = container_of(entry, struct kdpc, list);
 		if (!kdpc) {
 			WARNING("kdpc is NULL");
-			break;
+			kspin_unlock_irql(&kdpc_list_lock, irql);
+			continue;
 		}
+		kdpc->number = 0;
 		dpc_func = kdpc->func;
 		if (!dpc_func) {
 			WARNING("dpc func for %p is NULL!", kdpc);
-			break;
+			kspin_unlock_irql(&kdpc_list_lock, irql);
+			continue;
 		}
 		DBGTRACE3("%p, %p, %p, %p, %p", kdpc, dpc_func, kdpc->ctx,
 			  kdpc->arg1, kdpc->arg2);
-		irql = raise_irql(DISPATCH_LEVEL);
 		LIN2WIN4(dpc_func, kdpc, kdpc->ctx, kdpc->arg1, kdpc->arg2);
-		lower_irql(irql);
+		kspin_unlock_irql(&kdpc_list_lock, irql);
 	}
+}
+
+STDCALL void KeFlushQueuedDpcs(void)
+{
+	kdpc_worker(NULL);
 }
 
 BOOLEAN insert_kdpc_work(struct kdpc *kdpc)
@@ -480,11 +530,11 @@ BOOLEAN insert_kdpc_work(struct kdpc *kdpc)
 	BOOLEAN ret;
 
 	TRACEENTER3("%p", kdpc);
-	if (!kdpc) {
-		ERROR("kdpc is NULL");
+	if (!kdpc)
 		return FALSE;
-	}
-	irql = kspin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL);
+	if (kdpc->type != KDPC_TYPE_KERNEL)
+		ERROR("kdpc type: %d", kdpc->type);
+	irql = kspin_lock_irql(&kdpc_list_lock, DISPATCH_LEVEL);
 	if (kdpc->number) {
 		if (kdpc->number != 1)
 			ERROR("kdpc->number: %d", kdpc->number);
@@ -494,7 +544,7 @@ BOOLEAN insert_kdpc_work(struct kdpc *kdpc)
 		InsertTailList(&kdpc_list, &kdpc->list);
 		ret = TRUE;
 	}
-	kspin_unlock_irql(&ntoskernel_lock, irql);
+	kspin_unlock_irql(&kdpc_list_lock, irql);
 	if (ret == TRUE)
 		schedule_work(&kdpc_work);
 	TRACEEXIT3(return ret);
@@ -505,11 +555,9 @@ BOOLEAN remove_kdpc_work(struct kdpc *kdpc)
 	KIRQL irql;
 	BOOLEAN ret;
 
-	if (!kdpc) {
-		ERROR("kdpc is NULL");
+	if (!kdpc)
 		return FALSE;
-	}
-	irql = kspin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL);
+	irql = kspin_lock_irql(&kdpc_list_lock, DISPATCH_LEVEL);
 	if (kdpc->number) {
 		if (kdpc->number != 1)
 			ERROR("kdpc->number: %d", kdpc->number);
@@ -518,7 +566,7 @@ BOOLEAN remove_kdpc_work(struct kdpc *kdpc)
 		ret = TRUE;
 	} else
 		ret = FALSE;
-	kspin_unlock_irql(&ntoskernel_lock, irql);
+	kspin_unlock_irql(&kdpc_list_lock, irql);
 	return ret;
 }
 
@@ -542,37 +590,6 @@ STDCALL BOOLEAN WRAP_EXPORT(KeRemoveQueueDpc)
 	TRACEENTER3("%p", kdpc);
 	ret = remove_kdpc_work(kdpc);
 	TRACEEXIT3(return ret);
-}
-
-STDCALL BOOLEAN WRAP_EXPORT(KeSetTimerEx)
-	(struct ktimer *ktimer, LARGE_INTEGER due_time, LONG period,
-	 struct kdpc *kdpc)
-{
-	unsigned long expires;
-	unsigned long repeat;
-
-	TRACEENTER4("%p, %ld, %u, %p", ktimer, (long)due_time, period, kdpc);
-
-	expires = SYSTEM_TIME_TO_HZ(due_time);
-	repeat = HZ * period / TICKSPERSEC;
-	return wrap_set_timer(ktimer, expires, repeat, kdpc, TRUE);
-}
-
-STDCALL BOOLEAN WRAP_EXPORT(KeSetTimer)
-	(struct ktimer *ktimer, LARGE_INTEGER due_time, struct kdpc *kdpc)
-{
-	TRACEENTER4("%p, %ld, %p", ktimer, (long)due_time, kdpc);
-	return KeSetTimerEx(ktimer, due_time, 0, kdpc);
-}
-
-STDCALL BOOLEAN WRAP_EXPORT(KeCancelTimer)
-	(struct ktimer *ktimer)
-{
-	char canceled;
-
-	TRACEENTER4("%p", ktimer);
-	wrap_cancel_timer(ktimer, &canceled);
-	return canceled;
 }
 
 STDCALL void WRAP_EXPORT(KeInitializeSpinLock)
@@ -970,6 +987,8 @@ STDCALL LONG WRAP_EXPORT(KeReleaseMutex)
 	KIRQL irql;
 
 	DBGINFO("%p", kmutex);
+	if (wait == TRUE)
+		WARNING("wait: %d", wait);
 	irql = kspin_lock_irql(&kevent_lock, DISPATCH_LEVEL);
 	ret = kmutex->dh.signal_state++;
 	if (kmutex->dh.signal_state > 0) {
@@ -1016,44 +1035,31 @@ STDCALL LONG WRAP_EXPORT(KeReleaseSemaphore)
 	return ret;
 }
 
-/* check if object is in signaled state; should be called with
- * kevent_lock held */
-static BOOLEAN inline is_signaled_state(void *object)
+/* check and set signaled state; should be called with kevent_lock held */
+static BOOLEAN inline check_reset_signaled_state(void *object)
 {
 	struct dispatch_header *dh;
+	struct kmutex *kmutex;
+	BOOLEAN ret;
 
-	/* succeeds if either object is in signal state (i.e.,
-	 * dh->signal_state > 0) or it is mutex and we already own it
-	 * or no one else owns it (in case of recursive mutexes,
-	 * signal state can be negative) */
 	dh = object;
-	if (dh->signal_state > 0)
-		return TRUE;
-	if (is_mutex_object(dh)) {
-		struct kmutex *kmutex;
-
-		kmutex = object;
-		if (kmutex->owner_thread == NULL ||
-		    (kmutex->owner_thread == get_current()))
-			return TRUE;
+	kmutex = container_of(object, struct kmutex, dh);
+	ret = FALSE;
+	if (dh->signal_state > 0) {
+		if (dh->type == SynchronizationEvent)
+			dh->signal_state--;
+		ret = TRUE;
 	}
-	return FALSE;
-}
-
-/* set object as being in signaled state; should be called with
- * kevent_lock held */
-static void inline set_signaled_state(void *object)
-{
-	struct dispatch_header *dh;
-
-	dh = object;
-	if (dh->type == SynchronizationEvent)
-		dh->signal_state = 0;
-	if (is_semaphore_object(dh))
-		dh->signal_state--;
-	else if (is_mutex_object(dh))
-		((struct kmutex *)object)->owner_thread = get_current();
-	return;
+	/* if mutex object, this thread can grab if no other thread
+	 * owns it or it already grabbed it earlier, in which case the
+	 * value of signal_state can be negative */
+	if (is_mutex_object(dh) &&
+	    (kmutex->owner_thread == NULL ||
+	     kmutex->owner_thread == get_current())) {
+		kmutex->owner_thread = get_current();
+		ret = TRUE;
+	}
+	return ret;
 }
 
 STDCALL NTSTATUS WRAP_EXPORT(KeWaitForMultipleObjects)
@@ -1082,6 +1088,7 @@ STDCALL NTSTATUS WRAP_EXPORT(KeWaitForMultipleObjects)
 	else
 		wb = wait_block_array;
 
+	alertable = TRUE;
 	if (timeout) {
 		DBGINFO("timeout = %Ld", *timeout);
 		if (*timeout == 0) {
@@ -1089,9 +1096,7 @@ STDCALL NTSTATUS WRAP_EXPORT(KeWaitForMultipleObjects)
 			for (i = 0, wait_count = 0; i < count; i++)
 				/* TODO: only check or set signaled
 				 * state too? */
-				if (is_signaled_state(object[i]))
-					set_signaled_state(object[i]);
-				else
+				if (!check_reset_signaled_state(object[i]))
 					wait_count++;
 			kspin_unlock_irql(&kevent_lock, irql);
 			if (wait_count)
@@ -1108,11 +1113,8 @@ STDCALL NTSTATUS WRAP_EXPORT(KeWaitForMultipleObjects)
 	 * and add put it on the wait list for each such object */
 	for (i = 0, wait_count = 0; i < count; i++) {
 		dh = object[i];
-		if (is_signaled_state(object[i])) {
+		if (check_reset_siganled_state(object[i])) {
 			DBGINFO("%p is already signaled", object[i]);
-			/* if synchronization event or semaphore,
-			 * decrement count */
-			set_signaled_state(object[i]);
 			if (wait_type == WaitAny) {
 				kspin_unlock_irql(&kevent_lock, irql);
 				DBGINFOEXIT(return STATUS_WAIT_0 + i);
@@ -1171,9 +1173,8 @@ STDCALL NTSTATUS WRAP_EXPORT(KeWaitForMultipleObjects)
 				DBGINFOEXIT(return STATUS_TIMEOUT);
 		}
 		for (i = 0; wait_count && i < count; i++) {
-			if (!is_signaled_state(object[i]))
+			if (!check_reset_signaled_state(object[i]))
 				continue;
-			set_signaled_state(object[i]);
 			RemoveEntryList(&wb[i].list);
 			/* mark that this wb is not on the list */
 			wb[i].thread = NULL;
@@ -1413,7 +1414,7 @@ STDCALL NTSTATUS WRAP_EXPORT(PsCreateSystemThread)
 		TRACEEXIT2(return STATUS_FAILURE);
 	}
 	*phandle = kthread;
-	DBGTRACE4("created thread: %p, task: %p, pid: %d",
+	INFO("created thread: %p, task: %p, pid: %d",
 		  kthread, kthread->task, kthread->task->pid);
 	wake_up_process(kthread->task);
 #endif
@@ -1426,16 +1427,17 @@ STDCALL NTSTATUS WRAP_EXPORT(PsTerminateSystemThread)
 	(NTSTATUS status)
 {
 	struct kthread *kthread;
-	task_t *task;
 
 	kthread = KeGetCurrentThread();
-	DBGTRACE4("terminating thread: %p, task: %p, pid: %d",
+	INFO("terminating thread: %p, task: %p, pid: %d",
 		  kthread, kthread->task, kthread->task->pid);
 	if (kthread) {
-		task = kthread->task;
+		INFO("setting event for thread: %p", kthread);
 		KeSetEvent((struct kevent *)&kthread->dh, 0, FALSE);
-		ObDereferenceObject(kthread);
+		INFO("set event for thread: %p", kthread);
+//		ObDereferenceObject(kthread);
 		complete_and_exit(NULL, status);
+		INFO("done: %p, %d", kthread->task, kthread->pid);
 	}
 	return STATUS_FAILURE;
 }

@@ -374,6 +374,7 @@ struct wrap_timer {
 	struct nt_list list;
 	struct timer_list timer;
 	struct ktimer *ktimer;
+	enum timer_type type;
 #ifdef DEBUG_TIMER
 	unsigned long wrap_timer_magic;
 #endif
@@ -383,7 +384,7 @@ struct wrap_timer {
 	/* kdpc's associated with kernel timers should be inserted
 	 * into kdpc when timer expires and kdpc's associated with
 	 * NDIS timers should be executed when timer expires */
-	BOOLEAN kernel_timer;
+	BOOLEAN queue_dpc;
 };
 
 typedef struct mdl ndis_buffer;
@@ -409,10 +410,13 @@ STDCALL LONG KeSetEvent(struct kevent *kevent, KPRIORITY incr, BOOLEAN wait);
 STDCALL LONG KeResetEvent(struct kevent *kevent);
 STDCALL void KeClearEvent(struct kevent *kevent);
 STDCALL void KeInitializeDpc(struct kdpc *kdpc, void *func, void *ctx);
+void initialize_kdpc(struct kdpc *kdpc, void *func, void *ctx,
+		     enum kdpc_type type);
 BOOLEAN insert_kdpc_work(struct kdpc *kdpc);
 BOOLEAN remove_kdpc_work(struct kdpc *kdpc);
 STDCALL BOOLEAN KeInsertQueueDpc(struct kdpc *kdpc, void *arg1, void *arg2);
 STDCALL BOOLEAN KeRemoveQueueDpc(struct kdpc *kdpc);
+STDCALL void KeFlushQueuedDpcs(void);
 STDCALL NTSTATUS KeWaitForSingleObject(void *object, KWAIT_REASON reason,
 				       KPROCESSOR_MODE waitmode,
 				       BOOLEAN alertable,
@@ -513,11 +517,10 @@ STDCALL void RtlFreeAnsiString(struct ansi_string *string);
 void *wrap_kmalloc(size_t size, int flags);
 void wrap_kfree(void *ptr);
 void wrap_init_timer(struct ktimer *ktimer, void *handle,
-		     struct kdpc *kdpc, BOOLEAN kernel_timer);
-int wrap_set_timer(struct ktimer *ktimer, long expires,
-		   unsigned long repeat, struct kdpc *kdpc,
-		   BOOLEAN kernel_timer);
-void wrap_cancel_timer(struct ktimer *ktimer, BOOLEAN *canceled);
+		     struct kdpc *kdpc, enum timer_type type);
+int wrap_set_timer(struct wrap_timer *wrap_timer, long expires,
+		   unsigned long repeat, struct kdpc *kdpc);
+void wrap_cancel_timer(struct wrap_timer *wrap_timer, BOOLEAN *canceled);
 
 unsigned long lin_to_win1(void *func, unsigned long);
 unsigned long lin_to_win2(void *func, unsigned long, unsigned long);

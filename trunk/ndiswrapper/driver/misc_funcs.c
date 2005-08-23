@@ -29,7 +29,6 @@ static struct nt_list wrap_timer_list;
 static struct timer_list shared_data_timer;
 
 extern KSPIN_LOCK ntoskernel_lock;
-extern struct work_struct kdpc_work;
 
 struct kuser_shared_data kuser_shared_data;
 static void update_user_shared_data_proc(unsigned long data);
@@ -55,7 +54,6 @@ int misc_funcs_init(void)
 /* called when a handle is being removed */
 void misc_funcs_exit_device(struct wrapper_dev *wd)
 {
-	BOOLEAN canceled;
 	KIRQL irql;
 
 	/* cancel any timers left by bugyy windows driver Also free
@@ -70,11 +68,6 @@ void misc_funcs_exit_device(struct wrapper_dev *wd)
 		if (!ent)
 			break;
 		wrap_timer = container_of(ent, struct wrap_timer, list);
-		wrap_cancel_timer(wrap_timer->ktimer, &canceled);
-		if (canceled == TRUE)
-			WARNING("Buggy Windows driver '%s' left a timer (%p)"
-				"running - fixed it", wd->driver->name,
-				wrap_timer->ktimer);
 		wrap_kfree(wrap_timer);
 	}
 }
@@ -88,7 +81,6 @@ void misc_funcs_exit(void)
 	while (1) {
 		struct nt_list *ent;
 		struct wrap_timer *wrap_timer;
-		BOOLEAN canceled;
 
 		irql = kspin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL);
 		ent = RemoveTailList(&wrap_timer_list);
@@ -96,10 +88,6 @@ void misc_funcs_exit(void)
 		if (!ent)
 			break;
 		wrap_timer = container_of(ent, struct wrap_timer, list);
-		wrap_cancel_timer(wrap_timer->ktimer, &canceled);
-		if (canceled == TRUE)
-			WARNING("Buggy Windows driver left a timer (%p)"
-				"running - fixed it", wrap_timer);
 		wrap_kfree(wrap_timer);
 	}
 	/* free all pointers on the allocated list */
@@ -190,12 +178,13 @@ void wrap_kfree(void *ptr)
 
 void wrap_timer_handler(unsigned long data)
 {
-	struct ktimer *ktimer = (struct ktimer *)data;
-	struct wrap_timer *wrap_timer;
+	struct wrap_timer *wrap_timer = (struct wrap_timer *)data;
+	struct ktimer *ktimer;
 	struct kdpc *kdpc;
+	KIRQL irql;
 
-	TRACEENTER5("%p", ktimer);
-	wrap_timer = ktimer->wrap_timer;
+	TRACEENTER5("%p", wrap_timer);
+	ktimer = wrap_timer->ktimer;
 
 #ifdef DEBUG_TIMER
 	BUG_ON(wrap_timer == NULL);
@@ -203,27 +192,27 @@ void wrap_timer_handler(unsigned long data)
 	BUG_ON(ktimer->kdpc == NULL);
 #endif
 
+	irql = kspin_lock_irql(&wrap_timer->lock, DISPATCH_LEVEL);
 	kdpc = ktimer->kdpc;
-	if (wrap_timer->kernel_timer == TRUE) {
+	if (wrap_timer->type == KTIMER_TYPE_KERNEL)
 		KeSetEvent((struct kevent *)ktimer, 0, FALSE);
-		if (kdpc && kdpc->func)
+	if (kdpc && kdpc->func) {
+		if (kdpc->type == KDPC_TYPE_KERNEL)
 			insert_kdpc_work(kdpc);
-	} else {
-		/* this function already runs at DISPATCH_LEVEL */
-		if (kdpc && kdpc->func)
+		else
+			/* this function already runs at DISPATCH_LEVEL */
 			LIN2WIN4(kdpc->func, kdpc, kdpc->ctx,
-					kdpc->arg1, kdpc->arg2);
+				 kdpc->arg1, kdpc->arg2);
 	}
 
-	kspin_lock(&wrap_timer->lock);
-	/* don't add the timer if aperiodic - see wrapper_cancel_timer;
-	 * protect access to kdpc, repeat, and active via spinlock */
+	/* don't add the timer if aperiodic - see
+	 * wrapper_cancel_timer */
 	if (wrap_timer->repeat) {
 		wrap_timer->timer.expires = jiffies + wrap_timer->repeat;
 		add_timer(&wrap_timer->timer);
 	} else
 		wrap_timer->active = 0;
-	kspin_unlock(&wrap_timer->lock);
+	kspin_unlock_irql(&wrap_timer->lock, irql);
 
 	TRACEEXIT5(return);
 }
@@ -235,13 +224,13 @@ void wrap_timer_handler(unsigned long data)
  * timers set it during timer setup, so it is passed to both
  * wrapper_init_timer and wrapper_set_timer */
 void wrap_init_timer(struct ktimer *ktimer, void *handle, struct kdpc *kdpc,
-		     BOOLEAN kernel_timer)
+		     enum timer_type type)
 {
 	struct wrap_timer *wrap_timer;
 	struct wrapper_dev *wd = (struct wrapper_dev *)handle;
 	KIRQL irql;
 
-	TRACEENTER5("%s", "");
+	TRACEENTER5("%p", ktimer);
 	/* we allocate memory for wrap_timer behind driver's back
 	 * and there is no NDIS/DDK function where this memory can be
 	 * freed, so we use wrap_kmalloc so it gets freed when driver
@@ -254,7 +243,7 @@ void wrap_init_timer(struct ktimer *ktimer, void *handle, struct kdpc *kdpc,
 
 	memset(wrap_timer, 0, sizeof(*wrap_timer));
 	init_timer(&wrap_timer->timer);
-	wrap_timer->timer.data = (unsigned long)ktimer;
+	wrap_timer->timer.data = (unsigned long)wrap_timer;
 	wrap_timer->timer.function = &wrap_timer_handler;
 #ifdef DEBUG_TIMER
 	wrap_timer->wrap_timer_magic = WRAP_TIMER_MAGIC;
@@ -265,18 +254,14 @@ void wrap_init_timer(struct ktimer *ktimer, void *handle, struct kdpc *kdpc,
 	kspin_lock_init(&wrap_timer->lock);
 	if (wd) {
 		irql = kspin_lock_irql(&wd->timer_lock, DISPATCH_LEVEL);
-		InsertHeadList(&wd->wrap_timer_list,
-			       &wrap_timer->list);
+		InsertTailList(&wd->wrap_timer_list, &wrap_timer->list);
 		kspin_unlock_irql(&wd->timer_lock, irql);
 	} else {
 		irql = kspin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL);
-		InsertHeadList(&wrap_timer_list, &wrap_timer->list);
+		InsertTailList(&wrap_timer_list, &wrap_timer->list);
 		kspin_unlock_irql(&ntoskernel_lock, irql);
 	}
-	wrap_timer->kernel_timer = kernel_timer;
-	if (kernel_timer)
-		KeInitializeEvent((struct kevent *)ktimer,
-				  SynchronizationEvent, 0);
+	wrap_timer->type = type;
 
 	DBGTRACE4("added timer %p", wrap_timer);
 	TRACEEXIT5(return);
@@ -284,12 +269,11 @@ void wrap_init_timer(struct ktimer *ktimer, void *handle, struct kdpc *kdpc,
 
 /* 'expires' is relative to jiffies, so when setting timer, add
  * jiffies to it */
-int wrap_set_timer(struct ktimer *ktimer, long expires,
-		      unsigned long repeat, struct kdpc *kdpc,
-		      BOOLEAN kernel_timer)
+int wrap_set_timer(struct wrap_timer *wrap_timer, long expires,
+		   unsigned long repeat, struct kdpc *kdpc)
 {
 	KIRQL irql;
-	struct wrap_timer *wrap_timer = ktimer->wrap_timer;
+	struct ktimer *ktimer = wrap_timer->ktimer;
 	BOOLEAN ret;
 
 	TRACEENTER5("%p", wrap_timer);
@@ -313,16 +297,16 @@ int wrap_set_timer(struct ktimer *ktimer, long expires,
 	/* timer handler also uses timer->repeat, active, and kdpc, so
 	 * protect in case of SMP */
 	irql = kspin_lock_irql(&wrap_timer->lock, DISPATCH_LEVEL);
-	if (kdpc)
-		ktimer->kdpc = kdpc;
-	wrap_timer->repeat = repeat;
-	wrap_timer->kernel_timer = kernel_timer;
+	if (ktimer->kdpc && ktimer->kdpc->type == KDPC_TYPE_KERNEL) {
+		remove_kdpc_work(ktimer->kdpc);
+		ktimer->kdpc = NULL;
+	}
 	if (wrap_timer->active) {
-		if (kernel_timer)
+		mod_timer(&wrap_timer->timer, jiffies + expires);
+		if (wrap_timer->type == KTIMER_TYPE_KERNEL)
 			KeClearEvent((struct kevent *)ktimer);
 		DBGTRACE4("modifying timer %p to %lu, %lu",
 			  wrap_timer, expires, repeat);
-		mod_timer(&wrap_timer->timer, jiffies + expires);
 		ret = TRUE;
 	} else {
 		DBGTRACE4("setting timer %p to %lu, %lu",
@@ -332,17 +316,26 @@ int wrap_set_timer(struct ktimer *ktimer, long expires,
 		add_timer(&wrap_timer->timer);
 		ret = FALSE;
 	}
+	if (kdpc)
+		ktimer->kdpc = kdpc;
+	wrap_timer->repeat = repeat;
 	kspin_unlock_irql(&wrap_timer->lock, irql);
 	return ret;
 }
 
-void wrap_cancel_timer(struct ktimer *ktimer, BOOLEAN *canceled)
+void wrap_cancel_timer(struct wrap_timer *wrap_timer, BOOLEAN *canceled)
 {
 	KIRQL irql;
-	struct wrap_timer *wrap_timer = ktimer->wrap_timer;
+	struct ktimer *ktimer;
+	struct kdpc *kdpc;
 
-	TRACEENTER4("timer = %p, canceled = %p", wrap_timer, canceled);
+	TRACEENTER4("timer = %p", wrap_timer);
 	if (!wrap_timer) {
+		ERROR("%s", "invalid wrap_timer");
+		return;
+	}
+	ktimer = wrap_timer->ktimer;
+	if (!ktimer) {
 		ERROR("%s", "invalid wrap_timer");
 		return;
 	}
@@ -351,35 +344,27 @@ void wrap_cancel_timer(struct ktimer *ktimer, BOOLEAN *canceled)
 	DBGTRACE4("canceling timer %p", wrap_timer);
 	BUG_ON(wrap_timer->wrap_timer_magic != WRAP_TIMER_MAGIC);
 #endif
-	/* timer handler also uses timer->repeat, so protect it in
-	 * case of SMP */
-
-	/* Oh, and del_timer_sync is not required ('canceled' argument
-	 * tells the driver if the timer was deleted or not) here; nor
-	 * is del_timer_sync correct, as this function may be called
-	 * at DISPATCH_LEVEL */
-	irql = raise_irql(DISPATCH_LEVEL);
-	if (wrap_timer->kernel_timer)
-		remove_kdpc_work(ktimer->kdpc);
-	kspin_lock(&wrap_timer->lock);
-	if (wrap_timer->active) {
-		if (wrap_timer->repeat) {
-			/* first mark as aperiodic, so timer function
-			 * doesn't call add_timer after del_timer
-			 * returned */
-			wrap_timer->repeat = 0;
-			del_timer(&wrap_timer->timer);
-			/* periodic timers always return TRUE */
-			*canceled = TRUE;
-		} else
-			*canceled = del_timer(&wrap_timer->timer);
-		wrap_timer->active = 0;
-	} else
+	/* del_timer_sync may not be called here, as this function can
+	 * be called at DISPATCH_LEVEL */
+	irql = kspin_lock_irql(&wrap_timer->lock, DISPATCH_LEVEL);
+	if (wrap_timer->active)
+		*canceled = del_timer(&wrap_timer->timer);
+	else
 		*canceled = FALSE;
-	kspin_unlock(&wrap_timer->lock);
-	lower_irql(irql);
-	if (*canceled == TRUE && wrap_timer->kernel_timer)
+	wrap_timer->active = 0;
+	if (wrap_timer->type == KTIMER_TYPE_KERNEL)
 		KeClearEvent((struct kevent *)ktimer);
+	/* TODO: it is not clear if KeCancelTimer returns status of
+	 * timer in the queue or DPC in the queue */
+	kdpc = ktimer->kdpc;
+	if (kdpc && kdpc->type == KDPC_TYPE_KERNEL) {
+		*canceled = remove_kdpc_work(kdpc);
+		ktimer->kdpc = NULL;
+	}
+	if (wrap_timer->repeat)
+		*canceled = TRUE;
+	wrap_timer->repeat = 0;
+	kspin_unlock_irql(&wrap_timer->lock, irql);
 	TRACEEXIT5(return);
 }
 
