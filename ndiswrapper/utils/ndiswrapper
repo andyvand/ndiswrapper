@@ -423,8 +423,8 @@ sub processPCIFuzz {
     for (my $i = 0; $i < @devs; $i++) {
 	my $dev = $devs[$i];
 	if ($dev ne $fuzzlist{$dev}) {
-	    my $src = $confdir/$driver_name/$fuzzlist{$dev}.$bustype.conf;
-	    my $dst = $confdir/$driver_name/$dev.$bustype.conf;
+	    my $src = "$confdir/$driver_name/$fuzzlist{$dev}.$bustype.conf";
+	    my $dst = "$confdir/$driver_name/$dev.$bustype.conf";
 	    `ln -s $src $dst`;
 	}
     }
