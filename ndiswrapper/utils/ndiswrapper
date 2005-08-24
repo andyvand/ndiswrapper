@@ -642,8 +642,8 @@ sub parseDevice {
     }
     for (my $i = 0; $i < @copyfiles; $i++) {
 	my @copy_sec = split(",", $copyfiles[i]);
-	for(my $j = 0; $j < @copyfiles; $j++) {
-	    my $file = trim($copyfiles[$j]);
+	for (my $j = 0; $j < @copy_sec; $j++) {
+	    my $file = trim($copy_sec[$j]);
 	    copyfiles($file);
 	}
     }
