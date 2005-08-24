@@ -78,8 +78,6 @@
 #define THREAD_WAIT_OBJECTS		3
 #define MAX_WAIT_OBJECTS		64
 
-#define NOTIFICATION_TIMER		1
-
 #define LOW_PRIORITY			1
 #define LOW_REALTIME_PRIORITY		16
 #define HIGH_PRIORITY			32
@@ -316,9 +314,16 @@ struct dispatch_header {
 	UCHAR type;
 	UCHAR absolute;
 	UCHAR size;
+	/* 'inserted' field is used by ndiswrapper differently - to
+	 * store type of object this header is associated with */
 	UCHAR inserted;
 	LONG signal_state;
 	struct nt_list wait_blocks;
+};
+
+/* type of object a dh is associated with */
+enum dh_type {
+	DH_NONE, DH_KEVENT, DH_KTIMER, DH_KMUTEX, DH_KSEMAPHORE, DH_KTHREAD,
 };
 
 /* objects that use dispatch_header have it as the first field, so
@@ -373,10 +378,6 @@ struct kthread {
 	task_t *task;
 };
 #pragma pack(pop)
-
-enum dh_type {
-	DH_NONE, DH_KEVENT, DH_KTIMER, DH_KMUTEX, DH_KSEMAPHORE, DH_KTHREAD,
-};
 
 #define is_kevent_object(dh)      ((dh)->inserted == DH_KVENT)
 #define is_ktimer_object(dh)      ((dh)->inserted == DH_KTIMER)
@@ -1113,8 +1114,12 @@ static inline struct nt_list *InsertTailList(struct nt_list *head,
 }
 
 #define nt_list_for_each(pos, head)					\
-	for (pos = (head)->next; prefetch(pos->next), pos != (head);	\
+	for (pos = (head)->next; pos != (head);				\
 	     pos = pos->next)
+
+#define nt_list_for_each_safe(pos, n, head)		       \
+	for (pos = (head)->next, n = pos->next; pos != (head); \
+	     pos = n, n = pos->next)
 
 static inline struct nt_slist *
 PushEntryList(union nt_slist_head *head, struct nt_slist *entry)

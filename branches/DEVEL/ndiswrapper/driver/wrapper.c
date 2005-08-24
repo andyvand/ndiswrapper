@@ -301,6 +301,7 @@ NDIS_STATUS miniport_init(struct wrapper_dev *wd)
 NTSTATUS ndiswrapper_start_device(struct wrapper_dev *wd)
 {
 	NTSTATUS status;
+#if 0
 	struct irp *irp;
 	struct io_stack_location *irp_sl;
 
@@ -312,6 +313,9 @@ NTSTATUS ndiswrapper_start_device(struct wrapper_dev *wd)
 	irp_sl->minor_fn = IRP_MN_START_DEVICE;
 	irp->io_status.status = STATUS_NOT_SUPPORTED;
 	status = IoCallDriver(wd->nmb->fdo, irp);
+#else
+	status = miniport_init(wd);
+#endif
 	TRACEEXIT1(return status);
 }
 
@@ -1167,6 +1171,7 @@ static void update_wireless_stats(struct wrapper_dev *wd)
 	NDIS_STATUS res;
 	ndis_rssi rssi;
 
+	return;
 	TRACEENTER2("");
 	/* Prism1 USB and Airgo cards crash kernel if RSSI is queried */
 	if ((wd->ndis_device->vendor == 0x17cb &&
@@ -1500,10 +1505,9 @@ static int ndis_set_mac_addr(struct net_device *dev, void *p)
 int setup_device(struct net_device *dev)
 {
 	struct wrapper_dev *wd = dev->priv;
-	unsigned int i;
 	NDIS_STATUS res;
 	mac_address mac;
-	union iwreq_data wrqu;
+	int i;
 
 	if (strlen(if_name) > (IFNAMSIZ-1)) {
 		ERROR("interface name '%s' is too long", if_name);
@@ -1553,6 +1557,7 @@ int setup_device(struct net_device *dev)
 //	netif_stop_queue(dev);
 
 	check_capa(wd);
+//	debug = 2;
 
 	DBGTRACE1("capbilities = %ld", wd->capa.encr);
 	printk(KERN_INFO "%s: encryption modes supported: %s%s%s%s%s%s%s\n",
@@ -1573,15 +1578,6 @@ int setup_device(struct net_device *dev)
 	       ", WPA2" : "",
 	       test_bit(Ndis802_11AuthModeWPA2PSK, &wd->capa.auth) ?
 	       ", WPA2PSK" : "");
-
-	/* check_capa changes auth_mode and encr_mode, so set them again */
-	set_infra_mode(wd, Ndis802_11Infrastructure);
-	set_auth_mode(wd, Ndis802_11AuthModeOpen);
-	set_encr_mode(wd, Ndis802_11EncryptionDisabled);
-	set_essid(wd, "", 0);
-
-	/* some cards (e.g., RaLink) need a scan before they can associate */
-	set_scan(wd);
 
 	wd->max_send_packets = 1;
 	if (wd->driver->miniport.send_packets) {
@@ -1606,13 +1602,6 @@ int setup_device(struct net_device *dev)
 	DBGTRACE2("maximum send packets used by ndiswrapper: %d",
 		  wd->max_send_packets);
 
-	memset(&wrqu, 0, sizeof(wrqu));
-
-	miniport_set_int(wd, OID_802_11_NETWORK_TYPE_IN_USE,
-			 Ndis802_11Automode);
-	set_infra_mode(wd, Ndis802_11Infrastructure);
-	set_essid(wd, "", 0);
-
 	res = miniport_query_int(wd, OID_802_3_MAXIMUM_LIST_SIZE, &i);
 	if (res == NDIS_STATUS_SUCCESS) {
 		DBGTRACE1("Multicast list size is %d", i);
@@ -1627,6 +1616,16 @@ int setup_device(struct net_device *dev)
 	if (set_privacy_filter(wd, Ndis802_11PrivFilterAcceptAll))
 		WARNING("%s", "Unable to set privacy filter");
 
+	/* check_capa changes auth_mode and encr_mode, so set them again */
+
+	set_infra_mode(wd, Ndis802_11Infrastructure);
+	miniport_set_int(wd, OID_802_11_NETWORK_TYPE_IN_USE,
+			 Ndis802_11Automode);
+	/* some cards (e.g., RaLink) need a scan before they can associate */
+	set_scan(wd);
+	set_auth_mode(wd, Ndis802_11AuthModeOpen);
+	set_encr_mode(wd, Ndis802_11EncryptionDisabled);
+	set_essid(wd, "", 0);
 //	ndis_set_rx_mode(dev);
 
 	hangcheck_add(wd);
@@ -1726,6 +1725,7 @@ static int __init wrapper_init(void)
 	char *env[] = {NULL};
 	int err;
 
+	debug = 0;
 	spin_lock_init(&spinlock_kspin_lock);
 	printk(KERN_INFO "%s version %s loaded (preempt=%s,smp=%s)\n",
 	       DRIVER_NAME, DRIVER_VERSION,

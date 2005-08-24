@@ -440,6 +440,7 @@ static int procfs_write_settings(struct file *file, const char *buf,
 		list_for_each_entry(dev_setting, &wd->ndis_device->settings,
 				    list) {
 			struct ndis_config_param *param;
+			struct unicode_string *ustring;
 
 			param = &dev_setting->config_param;
 			if (!stricmp(dev_setting->name, setting)) {
@@ -448,8 +449,9 @@ static int procfs_write_settings(struct file *file, const char *buf,
 				memset(dev_setting->value, 0,
 				       MAX_NDIS_SETTING_VALUE_LEN);
 				memcpy(dev_setting->value, p, strlen(p));
+				ustring = &param->data.ustring;
 				if (param->type == NDIS_CONFIG_PARAM_STRING)
-					RtlFreeUnicodeString(&param->data.ustring);
+					RtlFreeUnicodeString(ustring);
 				param->type = NDIS_CONFIG_PARAM_NONE;
 				res = 0;
 			}
@@ -568,7 +570,6 @@ static int procfs_read_debug(char *page, char **start, off_t off,
 static int procfs_write_debug(struct file *file, const char *buf,
 			      unsigned long count, void *data)
 {
-	char debug_level[MAX_PROC_STR_LEN];
 	int i;
 	char setting[MAX_PROC_STR_LEN], *p;
 
@@ -584,9 +585,6 @@ static int procfs_write_debug(struct file *file, const char *buf,
 
 	if ((p = strchr(setting, '=')))
 		*p = 0;
-
-	if (count > MAX_PROC_STR_LEN)
-		return -EINVAL;
 
 	if (!strcmp(setting, "kevent")) {
 		unsigned int i;
@@ -606,22 +604,13 @@ static int procfs_write_debug(struct file *file, const char *buf,
 		kthread = (void *)simple_strtol(p, NULL, 16);
 		INFO("waking ktreahd: %p, task: %p", kthread, kthread->task);
 		wake_up_process(kthread->task);
+	} else {
+		i = simple_strtol(setting, NULL, 10);
+		if (i >= 0 && i < 10)
+			debug = i;
+		else
+			return -EINVAL;
 	}
-	return count;
-
-	memset(debug_level, 0, sizeof(debug_level));
-	if (copy_from_user(debug_level, buf, count))
-		return -EFAULT;
-
-	i = simple_strtol(debug_level, NULL, 10);
-#if defined(DEBUG) && DEBUG > 0
-	if (i < 0 || i > DEBUG)
-		return -EINVAL;
-#else
-	return -EINVAL;
-#endif
-	debug = i;
-
 	return count;
 }
 

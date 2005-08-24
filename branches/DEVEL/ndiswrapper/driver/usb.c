@@ -101,6 +101,7 @@ static struct urb *wrap_alloc_urb(unsigned int mem_flags, struct irp *irp,
 		return NULL;
 	}
 	irp->urb = urb;
+	InitializeListHead(&irp->urb_list);
 	irp->cancel_routine = usb_cancel_transfer;
 	if (tx_buf_len) {
 		urb->transfer_buffer =
@@ -192,6 +193,9 @@ void usb_transfer_complete(struct urb *urb)
 	irql = kspin_lock_irql(&urb_list_lock, DISPATCH_LEVEL);
 	irp = urb->context;
 	irp->cancel_routine = NULL;
+	/* this packet may already be on cancel list, remove it from
+	 * there */
+	RemoveEntryList(&irp->urb_list);
 	InsertTailList(&urb_tx_complete_list, &irp->urb_list);
 	kspin_unlock_irql(&urb_list_lock, irql);
 	USBTRACE("urb: %p, irp: %p", urb, irp);
@@ -210,14 +214,10 @@ static void urb_cancel_worker(void *dummy)
 
 		irql = kspin_lock_irql(&urb_list_lock, DISPATCH_LEVEL);
 		entry = RemoveHeadList(&urb_cancel_list);
-		if (entry == NULL)
-			irp = NULL;
-		else
-			irp = container_of(entry, struct irp, urb_list);
 		kspin_unlock_irql(&urb_list_lock, irql);
-
-		if (!irp)
+		if (!entry)
 			break;
+		irp = container_of(entry, struct irp, urb_list);
 		DUMP_IRP(irp);
 		urb = irp->urb;
 		if (!urb) {
@@ -273,12 +273,12 @@ void urb_tx_complete_worker(void *dummy)
 
 		irql = kspin_lock_irql(&urb_list_lock, DISPATCH_LEVEL);
 		entry = RemoveHeadList(&urb_tx_complete_list);
-		if (entry == NULL)
-			irp = NULL;
-		else
+		if (entry) {
+			InitializeListHead(entry);
 			irp = container_of(entry, struct irp, urb_list);
+		} else
+			irp = NULL;
 		kspin_unlock_irql(&urb_list_lock, irql);
-
 		if (!irp)
 			break;
 		DUMP_IRP(irp);
@@ -622,7 +622,6 @@ unsigned long usb_submit_nt_urb(struct usb_device *dev, struct irp *irp)
 		}
 		memcpy(ctrl_req->transferBuf, buf, ret);
 		kfree(buf);
-		DBG_BLOCK() { dump_bytes(__FUNCTION__, buf, ret); }
 		ctrl_req->transferBufLen = ret;
 		break;
 
