@@ -1477,7 +1477,7 @@ STDCALL void WRAP_EXPORT(NdisMInitializeTimer)
 {
 	struct wrapper_dev *wd = nmb->wd;
 	TRACEENTER4("%s", "");
-	initialize_kdpc(&timer_handle->kdpc, func, ctx, KDPC_TYPE_NDIS);
+	initialize_kdpc(&timer_handle->kdpc, func, ctx, KDPC_TYPE_KERNEL);
 	wrap_init_timer(&timer_handle->ktimer, wd, &timer_handle->kdpc,
 			KTIMER_TYPE_NDIS);
 	TRACEEXIT4(return);
