@@ -1613,20 +1613,22 @@ int setup_device(struct net_device *dev)
 			kmalloc(wd->multicast_list_size * ETH_ALEN,
 				GFP_KERNEL);
 
+#if 0
 	if (set_privacy_filter(wd, Ndis802_11PrivFilterAcceptAll))
 		WARNING("%s", "Unable to set privacy filter");
 
 	/* check_capa changes auth_mode and encr_mode, so set them again */
 
 	set_infra_mode(wd, Ndis802_11Infrastructure);
-	miniport_set_int(wd, OID_802_11_NETWORK_TYPE_IN_USE,
-			 Ndis802_11Automode);
+//	miniport_set_int(wd, OID_802_11_NETWORK_TYPE_IN_USE,
+//			 Ndis802_11Automode);
 	/* some cards (e.g., RaLink) need a scan before they can associate */
-	set_scan(wd);
 	set_auth_mode(wd, Ndis802_11AuthModeOpen);
 	set_encr_mode(wd, Ndis802_11EncryptionDisabled);
 	set_essid(wd, "", 0);
 //	ndis_set_rx_mode(dev);
+#endif
+	set_scan(wd);
 
 	hangcheck_add(wd);
 	stats_timer_add(wd);
