@@ -26,6 +26,7 @@
 static struct list_head wrap_allocs;
 static KSPIN_LOCK wrap_allocs_lock;
 static struct nt_list wrap_timer_list;
+static KSPIN_LOCK timer_lock;
 static struct timer_list shared_data_timer;
 
 extern KSPIN_LOCK ntoskernel_lock;
@@ -37,6 +38,7 @@ int misc_funcs_init(void)
 {
 	INIT_LIST_HEAD(&wrap_allocs);
 	kspin_lock_init(&wrap_allocs_lock);
+	kspin_lock_init(&timer_lock);
 	InitializeListHead(&wrap_timer_list);
 
 	memset(&kuser_shared_data, 0, sizeof(kuser_shared_data));
@@ -192,7 +194,7 @@ void wrap_timer_handler(unsigned long data)
 	BUG_ON(ktimer->kdpc == NULL);
 #endif
 
-	irql = kspin_lock_irql(&wrap_timer->lock, DISPATCH_LEVEL);
+	irql = kspin_lock_irql(&timer_lock, DISPATCH_LEVEL);
 	kdpc = ktimer->kdpc;
 	if (wrap_timer->type == KTIMER_TYPE_KERNEL)
 		KeSetEvent((struct kevent *)ktimer, 0, FALSE);
@@ -212,7 +214,7 @@ void wrap_timer_handler(unsigned long data)
 		add_timer(&wrap_timer->timer);
 	} else
 		wrap_timer->active = 0;
-	kspin_unlock_irql(&wrap_timer->lock, irql);
+	kspin_unlock_irql(&timer_lock, irql);
 
 	TRACEEXIT5(return);
 }
@@ -251,7 +253,7 @@ void wrap_init_timer(struct ktimer *ktimer, void *handle, struct kdpc *kdpc,
 	ktimer->kdpc = kdpc;
 	wrap_timer->ktimer = ktimer;
 	ktimer->wrap_timer = wrap_timer;
-	kspin_lock_init(&wrap_timer->lock);
+	kspin_lock_init(&timer_lock);
 	if (wd) {
 		irql = kspin_lock_irql(&wd->timer_lock, DISPATCH_LEVEL);
 		InsertTailList(&wd->wrap_timer_list, &wrap_timer->list);
@@ -296,12 +298,10 @@ int wrap_set_timer(struct wrap_timer *wrap_timer, long expires,
 
 	/* timer handler also uses timer->repeat, active, and kdpc, so
 	 * protect in case of SMP */
-	irql = kspin_lock_irql(&wrap_timer->lock, DISPATCH_LEVEL);
-	if (ktimer->kdpc && ktimer->kdpc->type == KDPC_TYPE_KERNEL) {
-		remove_kdpc_work(ktimer->kdpc);
-		ktimer->kdpc = NULL;
-	}
+	irql = kspin_lock_irql(&timer_lock, DISPATCH_LEVEL);
 	if (wrap_timer->active) {
+		if (ktimer->kdpc && ktimer->kdpc->type == KDPC_TYPE_KERNEL)
+			remove_kdpc_work(ktimer->kdpc);
 		mod_timer(&wrap_timer->timer, jiffies + expires);
 		if (wrap_timer->type == KTIMER_TYPE_KERNEL)
 			KeClearEvent((struct kevent *)ktimer);
@@ -319,7 +319,7 @@ int wrap_set_timer(struct wrap_timer *wrap_timer, long expires,
 	if (kdpc)
 		ktimer->kdpc = kdpc;
 	wrap_timer->repeat = repeat;
-	kspin_unlock_irql(&wrap_timer->lock, irql);
+	kspin_unlock_irql(&timer_lock, irql);
 	return ret;
 }
 
@@ -346,10 +346,11 @@ void wrap_cancel_timer(struct wrap_timer *wrap_timer, BOOLEAN *canceled)
 #endif
 	/* del_timer_sync may not be called here, as this function can
 	 * be called at DISPATCH_LEVEL */
-	irql = kspin_lock_irql(&wrap_timer->lock, DISPATCH_LEVEL);
-	if (wrap_timer->active)
-		*canceled = del_timer(&wrap_timer->timer);
-	else
+	irql = kspin_lock_irql(&timer_lock, DISPATCH_LEVEL);
+	if (wrap_timer->active) {
+		del_timer(&wrap_timer->timer);
+		*canceled = TRUE;
+	} else
 		*canceled = FALSE;
 	wrap_timer->active = 0;
 	if (wrap_timer->type == KTIMER_TYPE_KERNEL)
@@ -357,14 +358,12 @@ void wrap_cancel_timer(struct wrap_timer *wrap_timer, BOOLEAN *canceled)
 	/* TODO: it is not clear if KeCancelTimer returns status of
 	 * timer in the queue or DPC in the queue */
 	kdpc = ktimer->kdpc;
-	if (kdpc && kdpc->type == KDPC_TYPE_KERNEL) {
-		*canceled = remove_kdpc_work(kdpc);
-		ktimer->kdpc = NULL;
-	}
+	if (kdpc && kdpc->type == KDPC_TYPE_KERNEL)
+		remove_kdpc_work(kdpc);
 	if (wrap_timer->repeat)
 		*canceled = TRUE;
 	wrap_timer->repeat = 0;
-	kspin_unlock_irql(&wrap_timer->lock, irql);
+	kspin_unlock_irql(&timer_lock, irql);
 	TRACEEXIT5(return);
 }
 
@@ -1093,6 +1092,7 @@ void dump_bytes(const char *name, const u8 *from, int len)
 	int i, j;
 	u8 code[100];
 
+	return;
 	memset(code, 0, sizeof(code));
 	for (i = j = 0; i < len; i++, j += 3) {
 		if (j+3 > sizeof(code)) {

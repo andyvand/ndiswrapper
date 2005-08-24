@@ -19,12 +19,14 @@
 
 /* macros for (temporarily) debugging SIS USB driver, whose thread
  * keeps going back to uninterruptible wait */
-#if 1
-#define DBGINFO(fmt, ...)
-#define DBGINFOEXIT(stmt) do { } while (0)
-#else
+#if 0
 #define DBGINFO(fmt, ...) MSG(KERN_INFO, fmt , ## __VA_ARGS__)
 #define DBGINFOEXIT(stmt) do { DBGINFO("Exit"); stmt; } while(0)
+#else
+#define DBGINFO DBGTRACE2
+#define DBGINFOEXIT TRACEEXIT2
+//#define DBGINFO(fmt, ...)
+//#define DBGINFOEXIT(stmt) stmt
 #endif
 
 /* MDLs describe a range of virtual address with an array of physical
@@ -404,11 +406,10 @@ STDCALL USHORT WRAP_EXPORT(ExQueryDepthSList)
 	return head->list.depth;
 }
 
-void initialize_dh(struct dispatch_header *dh,
-				enum event_type type, int state,
+/* should be called with kevent_lock held at DISPATCH_LEVEL */
+void initialize_dh(struct dispatch_header *dh, enum event_type type, int state,
 				enum dh_type dh_type)
 {
-	memset(dh, 0, sizeof(*dh));
 	dh->type = type;
 	dh->signal_state = state;
 	dh->inserted = dh_type;
@@ -418,18 +419,24 @@ void initialize_dh(struct dispatch_header *dh,
 STDCALL void WRAP_EXPORT(KeInitializeTimer)
 	(struct ktimer *ktimer)
 {
-	TRACEENTER4("%p", ktimer);
+	KIRQL irql;
 
+	TRACEENTER4("%p", ktimer);
+	irql = kspin_lock_irql(&kevent_lock, DISPATCH_LEVEL);
 	initialize_dh(&ktimer->dh, NotificationTimer, 0, DH_KTIMER);
+	kspin_unlock_irql(&kevent_lock, irql);
 	wrap_init_timer(ktimer, NULL, NULL, KTIMER_TYPE_KERNEL);
 }
 
 STDCALL void WRAP_EXPORT(KeInitializeTimerEx)
 	(struct ktimer *ktimer, enum timer_type type)
 {
-	TRACEENTER4("%p", ktimer);
+	KIRQL irql;
 
+	TRACEENTER4("%p", ktimer);
+	irql = kspin_lock_irql(&kevent_lock, DISPATCH_LEVEL);
 	initialize_dh(&ktimer->dh, type, 0, DH_KTIMER);
+	kspin_unlock_irql(&kevent_lock, irql);
 	wrap_init_timer(ktimer, NULL, NULL, KTIMER_TYPE_KERNEL);
 }
 
@@ -888,33 +895,79 @@ STDCALL void WRAP_EXPORT(ExNotifyCallback)
 STDCALL void WRAP_EXPORT(KeInitializeEvent)
 	(struct kevent *kevent, enum event_type type, BOOLEAN state)
 {
+	KIRQL irql;
+
 	DBGINFO("event = %p, type = %d, state = %d", kevent, type, state);
+	irql = kspin_lock_irql(&kevent_lock, DISPATCH_LEVEL);
 	initialize_dh(&kevent->dh, type, state, DH_KEVENT);
-	TRACEEXIT2(return);
+	kspin_unlock_irql(&kevent_lock, irql);
+	TRACEEXIT4(return);
+}
+
+/* check and set signaled state; should be called with kevent_lock held */
+static BOOLEAN inline check_reset_signaled_state(void *object, task_t *task)
+{
+	struct dispatch_header *dh;
+	struct kmutex *kmutex;
+	BOOLEAN ret;
+
+	dh = object;
+	kmutex = container_of(object, struct kmutex, dh);
+	ret = FALSE;
+	if (dh->signal_state > 0) {
+		if (dh->type == SynchronizationEvent)
+			dh->signal_state--;
+		ret = TRUE;
+	}
+	/* if mutex object, this thread can grab if no other thread
+	 * owns it or it already grabbed it earlier, in which case the
+	 * value of signal_state can be negative */
+	if (is_mutex_object(dh) &&
+	    (kmutex->owner_thread == NULL ||
+	     kmutex->owner_thread == task)) {
+		dh->signal_state--;
+		kmutex->owner_thread = task;
+		ret = TRUE;
+	}
+	return ret;
 }
 
 /* this function should be called holding kevent_lock spinlock at
  * DISPATCH_LEVEL */
-static void wakeup_event(struct dispatch_header *dh)
+static void wakeup_threads(struct dispatch_header *dh)
 {
 	struct nt_list *ent;
+	KIRQL irql;
+	struct wait_block *wb;
 
-	while (dh->signal_state > 0 &&
-	       (ent = RemoveHeadList(&dh->wait_blocks))) {
-		struct wait_block *wb;
+	while (1) {
+		irql = kspin_lock_irql(&kevent_lock, DISPATCH_LEVEL);
+		ent = RemoveHeadList(&dh->wait_blocks);
+		if (ent) {
+			wb = container_of(ent, struct wait_block, list);
+			if (check_reset_signaled_state(dh, wb->thread)) {
+				if (wb->object == NULL)
+					ERROR("wb: %p object is NULL", wb);
+				wb->object = NULL;
+			} else {
+				InsertHeadList(&dh->wait_blocks, ent);
+				wb = NULL;
+			}
+		} else
+			wb = NULL;
+		kspin_unlock_irql(&kevent_lock, irql);
 
-		wb = container_of(ent, struct wait_block, list);
-		DBGINFO("waking up process %p (%p,%p)", wb->thread, wb, dh);
-		if (wb->thread) {
+		if (!wb)
+			break;
+		if (wb->object == NULL) {
+			DBGINFO("waking up process %p (%p,%p)",
+				wb->thread, wb, dh);
 			/* make sure that the thread calls schedule
 			   before trying to wake it up; otherwise we
 			   may wake up a thread before it puts itself
 			   to sleep, and it will stay in sleep */
 			wake_up_process(wb->thread);
-		} else
-			ERROR("illegal wait block %p(%p)", wb, dh);
-		if (dh->type == SynchronizationEvent)
-			break;
+		}
 	}
 	return;
 }
@@ -933,9 +986,9 @@ STDCALL LONG WRAP_EXPORT(KeSetEvent)
 	irql = kspin_lock_irql(&kevent_lock, DISPATCH_LEVEL);
 	old_state = kevent->dh.signal_state;
 	kevent->dh.signal_state = 1;
-	wakeup_event(&kevent->dh);
 	kspin_unlock_irql(&kevent_lock, irql);
-	TRACEEXIT4(return old_state);
+	wakeup_threads(&kevent->dh);
+	DBGINFOEXIT(return old_state);
 }
 
 STDCALL void WRAP_EXPORT(KeClearEvent)
@@ -969,9 +1022,12 @@ STDCALL LONG WRAP_EXPORT(KeResetEvent)
 STDCALL void WRAP_EXPORT(KeInitializeMutex)
 	(struct kmutex *kmutex, BOOLEAN wait)
 {
+	KIRQL irql;
+
 	DBGINFO("%p", kmutex);
-	memset(kmutex, 0, sizeof(*kmutex));
+	irql = kspin_lock_irql(&kevent_lock, DISPATCH_LEVEL);
 	initialize_dh(&kmutex->dh, SynchronizationEvent, 1, DH_KMUTEX);
+	kspin_unlock_irql(&kevent_lock, irql);
 	kmutex->dh.size = sizeof(*kmutex);
 	InitializeListHead(&kmutex->list);
 	kmutex->abandoned = FALSE;
@@ -991,25 +1047,24 @@ STDCALL LONG WRAP_EXPORT(KeReleaseMutex)
 		WARNING("wait: %d", wait);
 	irql = kspin_lock_irql(&kevent_lock, DISPATCH_LEVEL);
 	ret = kmutex->dh.signal_state++;
-	if (kmutex->dh.signal_state > 0) {
-		kmutex->owner_thread = NULL;
-		wakeup_event(&kmutex->dh);
-		kspin_unlock_irql(&kevent_lock, irql);
-	} else
-		kspin_unlock_irql(&kevent_lock, irql);
+	kspin_unlock_irql(&kevent_lock, irql);
+	wakeup_threads(&kmutex->dh);
 	return ret;
 }
 
 STDCALL void WRAP_EXPORT(KeInitializeSemaphore)
 	(struct ksemaphore *ksemaphore, LONG count, LONG limit)
 {
-	DBGINFO("%p", ksemaphore);
-	memset(ksemaphore, 0, sizeof(*ksemaphore));
+	KIRQL irql;
+
+	DBGINFO("%p: %d", ksemaphore, count);
 	/* if limit > 1, we need to satisfy as many waits (until count
 	 * becomes 0); so we set it as notification event, and keep
 	 * decrementing count everytime a wait is satisified */
-	initialize_dh(&ksemaphore->dh, NotificationEvent, count,
+	irql = kspin_lock_irql(&kevent_lock, DISPATCH_LEVEL);
+	initialize_dh(&ksemaphore->dh, SynchronizationEvent, count,
 		      DH_KSEMAPHORE);
+	kspin_unlock_irql(&kevent_lock, irql);
 	ksemaphore->dh.size = sizeof(*ksemaphore);
 	ksemaphore->limit = limit;
 }
@@ -1021,7 +1076,7 @@ STDCALL LONG WRAP_EXPORT(KeReleaseSemaphore)
 	LONG ret;
 	KIRQL irql;
 
-	TRACEENTER5("%p", ksemaphore);
+	DBGINFO("%p", ksemaphore);
 	irql = kspin_lock_irql(&kevent_lock, DISPATCH_LEVEL);
 	ret = ksemaphore->dh.signal_state;
 	if (ret <= 0)
@@ -1029,36 +1084,8 @@ STDCALL LONG WRAP_EXPORT(KeReleaseSemaphore)
 	ksemaphore->dh.signal_state += adjustment;
 	if (ksemaphore->dh.signal_state > ksemaphore->limit)
 		ksemaphore->dh.signal_state = ksemaphore->limit;
-	if (ksemaphore->dh.signal_state > 0)
-		wakeup_event(&ksemaphore->dh);
 	kspin_unlock_irql(&kevent_lock, irql);
-	return ret;
-}
-
-/* check and set signaled state; should be called with kevent_lock held */
-static BOOLEAN inline check_reset_signaled_state(void *object)
-{
-	struct dispatch_header *dh;
-	struct kmutex *kmutex;
-	BOOLEAN ret;
-
-	dh = object;
-	kmutex = container_of(object, struct kmutex, dh);
-	ret = FALSE;
-	if (dh->signal_state > 0) {
-		if (dh->type == SynchronizationEvent)
-			dh->signal_state--;
-		ret = TRUE;
-	}
-	/* if mutex object, this thread can grab if no other thread
-	 * owns it or it already grabbed it earlier, in which case the
-	 * value of signal_state can be negative */
-	if (is_mutex_object(dh) &&
-	    (kmutex->owner_thread == NULL ||
-	     kmutex->owner_thread == get_current())) {
-		kmutex->owner_thread = get_current();
-		ret = TRUE;
-	}
+	wakeup_threads(&ksemaphore->dh);
 	return ret;
 }
 
@@ -1096,7 +1123,8 @@ STDCALL NTSTATUS WRAP_EXPORT(KeWaitForMultipleObjects)
 			for (i = 0, wait_count = 0; i < count; i++)
 				/* TODO: only check or set signaled
 				 * state too? */
-				if (!check_reset_signaled_state(object[i]))
+				if (!check_reset_signaled_state(object[i],
+								get_current()))
 					wait_count++;
 			kspin_unlock_irql(&kevent_lock, irql);
 			if (wait_count)
@@ -1110,11 +1138,11 @@ STDCALL NTSTATUS WRAP_EXPORT(KeWaitForMultipleObjects)
 
 	irql = kspin_lock_irql(&kevent_lock, DISPATCH_LEVEL);
 	/* first get the list of objects the thread need to wait on
-	 * and add put it on the wait list for each such object */
+	 * and add it on the wait list for each such object */
 	for (i = 0, wait_count = 0; i < count; i++) {
 		dh = object[i];
-		if (check_reset_siganled_state(object[i])) {
-			DBGINFO("%p is already signaled", object[i]);
+		if (check_reset_signaled_state(dh, get_current())) {
+			DBGINFO("%p is already signaled", dh);
 			if (wait_type == WaitAny) {
 				kspin_unlock_irql(&kevent_lock, irql);
 				DBGINFOEXIT(return STATUS_WAIT_0 + i);
@@ -1124,11 +1152,11 @@ STDCALL NTSTATUS WRAP_EXPORT(KeWaitForMultipleObjects)
 			wb[i].object = NULL;
 		} else {
 			wb[i].thread = get_current();
-			wb[i].object = object[i];
+			wb[i].object = dh;
 			InsertTailList(&dh->wait_blocks, &wb[i].list);
 			wait_count++;
 			DBGINFO("%p (%p) waiting on event %p", &wb[i],
-				  wb[i].thread, wb[i].object);
+				  wb[i].thread, dh);
 		}
 	}
 	if (wait_count == 0) {
@@ -1141,7 +1169,7 @@ STDCALL NTSTATUS WRAP_EXPORT(KeWaitForMultipleObjects)
 	 * after putting the thread on the wait list but before we put
 	 * the thread into sleep (with 'schedule'), wakup_event will
 	 * put the thread back into running state; otherwise,
-	 * wakeup_event may put this into running state and _then_ we
+	 * wakeup_threads may put this into running state and _then_ we
 	 * go to sleep causing thread to miss the event */
 	if (alertable)
 		set_current_state(TASK_INTERRUPTIBLE);
@@ -1163,9 +1191,15 @@ STDCALL NTSTATUS WRAP_EXPORT(KeWaitForMultipleObjects)
 		DBGINFO("%p woke up, res = %d", get_current(), res);
 		if (res <= 0) {
 			/* we are done; remove from wait list */
-			for (i = 0; i < count; i++)
-				if (wb[i].thread)
+			for (i = 0; i < count; i++) {
+				if (wb[i].thread && !wb[i].object)
+					ERROR("wb: %p already dequeued?", wb);
+				if (wb[i].object) {
+					DBGINFO("%d: %p", i, &wb[i].list);
 					RemoveEntryList(&wb[i].list);
+					wb[i].object = NULL;
+				}
+			}
 			kspin_unlock_irql(&kevent_lock, irql);
 			if (res < 0)
 				DBGINFOEXIT(return STATUS_ALERTED);
@@ -1173,20 +1207,22 @@ STDCALL NTSTATUS WRAP_EXPORT(KeWaitForMultipleObjects)
 				DBGINFOEXIT(return STATUS_TIMEOUT);
 		}
 		for (i = 0; wait_count && i < count; i++) {
-			if (!check_reset_signaled_state(object[i]))
+			if (!wb[i].thread)
 				continue;
-			RemoveEntryList(&wb[i].list);
-			/* mark that this wb is not on the list */
-			wb[i].thread = NULL;
-			wb[i].object = NULL;
+			/* woken up by wakeup_threads */
+			if (wb[i].object) {
+				ERROR("wb: %p woke up %p!", wb, wb[i].thread);
+				continue;
+			}
 			wait_count--;
 			if (wait_type == WaitAny) {
-				/* done; remove from rest of wait list */
 				int j;
+				/* done; remove from rest of wait list */
 				for (j = i; j < count; j++) {
-					if (!wb[j].thread)
-						continue;
-					RemoveEntryList(&wb[j].list);
+					if (wb[j].thread && !wb[j].object)
+						ERROR("wb: %p dequeued?", wb);
+					if (wb[j].object)
+						RemoveEntryList(&wb[j].list);
 				}
 				kspin_unlock_irql(&kevent_lock, irql);
 				DBGINFOEXIT(return STATUS_WAIT_0 + i);
@@ -1372,6 +1408,7 @@ STDCALL NTSTATUS WRAP_EXPORT(PsCreateSystemThread)
 {
 	struct trampoline_context *ctx;
 	struct kthread *kthread;
+	KIRQL irql;
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,7)
 	int pid;
 #endif
@@ -1393,7 +1430,9 @@ STDCALL NTSTATUS WRAP_EXPORT(PsCreateSystemThread)
 	ctx->start_routine = start_routine;
 	ctx->context = context;
 
-	initialize_dh(&kthread->dh, NotificationEvent, 0, DH_KTHREAD);
+	irql = kspin_lock_irql(&kevent_lock, DISPATCH_LEVEL);
+	initialize_dh(&kthread->dh, SynchronizationEvent, 0, DH_KTHREAD);
+	kspin_unlock_irql(&kevent_lock, irql);
 	kthread->dh.size = sizeof(*kthread);
 
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,7)
@@ -1414,8 +1453,8 @@ STDCALL NTSTATUS WRAP_EXPORT(PsCreateSystemThread)
 		TRACEEXIT2(return STATUS_FAILURE);
 	}
 	*phandle = kthread;
-	INFO("created thread: %p, task: %p, pid: %d",
-		  kthread, kthread->task, kthread->task->pid);
+	DBGINFO("created thread: %p, task: %p, pid: %d",
+		kthread, kthread->task, kthread->task->pid);
 	wake_up_process(kthread->task);
 #endif
 	ObReferenceObject(kthread);
@@ -1429,8 +1468,8 @@ STDCALL NTSTATUS WRAP_EXPORT(PsTerminateSystemThread)
 	struct kthread *kthread;
 
 	kthread = KeGetCurrentThread();
-	INFO("terminating thread: %p, task: %p, pid: %d",
-		  kthread, kthread->task, kthread->task->pid);
+	DBGINFO("terminating thread: %p, task: %p, pid: %d",
+		kthread, kthread->task, kthread->task->pid);
 	if (kthread) {
 		INFO("setting event for thread: %p", kthread);
 		KeSetEvent((struct kevent *)&kthread->dh, 0, FALSE);
