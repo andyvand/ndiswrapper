@@ -47,6 +47,8 @@ static struct usb_device_id *ndiswrapper_usb_devices;
 static struct pci_driver ndiswrapper_pci_driver;
 static struct usb_driver ndiswrapper_usb_driver;
 
+extern int debug;
+
 /* load driver for given device, if not already loaded */
 static struct ndis_driver *ndiswrapper_load_driver(struct ndis_device *device)
 {
@@ -379,7 +381,8 @@ ndiswrapper_remove_usb_device(struct usb_interface *intf)
 {
 	struct wrapper_dev *wd;
 
-	TRACEENTER1("");
+	debug = 3;
+	INFO("");
 	wd = (struct wrapper_dev *)usb_get_intfdata(intf);
 
 	if (!wd)
@@ -388,6 +391,7 @@ ndiswrapper_remove_usb_device(struct usb_interface *intf)
 	usb_set_intfdata(intf, NULL);
 	atomic_dec(&wd->driver->users);
 	ndiswrapper_remove_device(wd);
+	debug = 0;
 }
 #else
 static void

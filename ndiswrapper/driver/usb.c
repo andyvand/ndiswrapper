@@ -25,9 +25,6 @@
 static struct nt_list urb_tx_complete_list;
 KSPIN_LOCK urb_list_lock;
 void usb_tx_complete_tasklet(unsigned long dummy);
-static void urb_cancel_worker(void *dummy);
-static struct work_struct urb_cancel_work;
-static struct nt_list urb_cancel_list;
 void urb_tx_complete_worker(void *dummy);
 static struct work_struct urb_tx_complete_work;
 STDCALL void usb_cancel_transfer(struct device_object *dev_obj,
@@ -75,8 +72,6 @@ int usb_init(void)
 	kspin_lock_init(&urb_list_lock);
 	InitializeListHead(&urb_tx_complete_list);
 	INIT_WORK(&urb_tx_complete_work, urb_tx_complete_worker, NULL);
-	INIT_WORK(&urb_cancel_work, urb_cancel_worker, NULL);
-	InitializeListHead(&urb_cancel_list);
 	return 0;
 }
 
@@ -101,7 +96,6 @@ static struct urb *wrap_alloc_urb(unsigned int mem_flags, struct irp *irp,
 		return NULL;
 	}
 	irp->urb = urb;
-	InitializeListHead(&irp->urb_list);
 	irp->cancel_routine = usb_cancel_transfer;
 	if (tx_buf_len) {
 		urb->transfer_buffer =
@@ -192,10 +186,11 @@ void usb_transfer_complete(struct urb *urb)
 
 	irql = kspin_lock_irql(&urb_list_lock, DISPATCH_LEVEL);
 	irp = urb->context;
+	if (irp->cancel_routine == NULL && (urb->status != -ENOENT &&
+					    urb->status != -ECONNRESET))
+		WARNING("urb %p finished after canceling: %d",
+			urb, -urb->status);
 	irp->cancel_routine = NULL;
-	/* this packet may already be on cancel list, remove it from
-	 * there */
-	RemoveEntryList(&irp->urb_list);
 	InsertTailList(&urb_tx_complete_list, &irp->urb_list);
 	kspin_unlock_irql(&urb_list_lock, irql);
 	USBTRACE("urb: %p, irp: %p", urb, irp);
@@ -203,37 +198,6 @@ void usb_transfer_complete(struct urb *urb)
 	USBTRACEEXIT(return);
 }
 
-static void urb_cancel_worker(void *dummy)
-{
-	struct irp *irp;
-	struct urb *urb;
-	KIRQL irql;
-
-	while (1) {
-		struct nt_list *entry;
-
-		irql = kspin_lock_irql(&urb_list_lock, DISPATCH_LEVEL);
-		entry = RemoveHeadList(&urb_cancel_list);
-		kspin_unlock_irql(&urb_list_lock, irql);
-		if (!entry)
-			break;
-		irp = container_of(entry, struct irp, urb_list);
-		DUMP_IRP(irp);
-		urb = irp->urb;
-		if (!urb) {
-			ERROR("urb for %p already freed?", irp);
-			continue;
-		}
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,8)
-		usb_kill_urb(urb);
-#else
-		usb_unlink_urb(urb);
-#endif
-	}
-	return;
-}
-
-/* this is called holding irp_cancel_lock */
 STDCALL void usb_cancel_transfer(struct device_object *dev_obj,
 				 struct irp *irp)
 {
@@ -243,20 +207,18 @@ STDCALL void usb_cancel_transfer(struct device_object *dev_obj,
 	urb = irp->urb;
 	USBTRACE("canceling urb %p", urb);
 
-	/* if IoCancelIrp was called from schedulable context, we
-	 * can release the lock and kill the urb here; otherwise,
-	 * we do so in schedulable context with a worker thread */
-	if (irp->cancel_irql >= DISPATCH_LEVEL) {
-		InsertTailList(&urb_cancel_list, &irp->urb_list);
-		kspin_unlock_irql(&urb_list_lock, irp->cancel_irql);
-		schedule_work(&urb_cancel_work);
-	} else {
-		kspin_unlock_irql(&urb_list_lock, irp->cancel_irql);
+	/* NB: this function is called holding irp_cancel_lock */
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,8)
+	if (irp->cancel_irql < DISPATCH_LEVEL) {
+		kspin_unlock_irql(&urb_list_lock, irp->cancel_irql);
 		usb_kill_urb(urb);
-#else
-		usb_unlink_urb(urb);
+	} else 
 #endif
+	{
+		urb->transfer_flags |= URB_ASYNC_UNLINK;
+		if (usb_unlink_urb(urb) != -EINPROGRESS)
+			WARNING("usb_unlink_urb returns %d", -urb->status);
+		kspin_unlock_irql(&urb_list_lock, irp->cancel_irql);
 	}
 }
 
@@ -273,12 +235,12 @@ void urb_tx_complete_worker(void *dummy)
 
 		irql = kspin_lock_irql(&urb_list_lock, DISPATCH_LEVEL);
 		entry = RemoveHeadList(&urb_tx_complete_list);
-		if (entry) {
-			InitializeListHead(entry);
-			irp = container_of(entry, struct irp, urb_list);
-		} else
+		if (entry == NULL)
 			irp = NULL;
+		else
+			irp = container_of(entry, struct irp, urb_list);
 		kspin_unlock_irql(&urb_list_lock, irql);
+
 		if (!irp)
 			break;
 		DUMP_IRP(irp);
@@ -298,18 +260,11 @@ void urb_tx_complete_worker(void *dummy)
 		switch (urb->status) {
 		case -ENOENT:
 		case -ECONNRESET:
-			irp->io_status.status = STATUS_CANCELLED;
-			irp->io_status.status_info = 0;
+			/* irp canceled */
 			break;
 		case 0:
-			if (urb->status) {
-				irp->io_status.status = STATUS_FAILURE;
-				irp->io_status.status_info = 0;
-			} else {
-				irp->io_status.status = STATUS_SUCCESS;
-				irp->io_status.status_info =
-					urb->actual_length;
-			}
+			irp->io_status.status = STATUS_SUCCESS;
+			irp->io_status.status_info = urb->actual_length;
 
 			bulk_int_tx = &nt_urb->bulk_int_transfer;
 			bulk_int_tx->transferBufLen = urb->actual_length;
@@ -319,15 +274,22 @@ void urb_tx_complete_worker(void *dummy)
 				       urb->transfer_buffer,
 				       urb->actual_length);
 			DUMP_URB(urb);
+			NT_URB_STATUS(nt_urb) = wrap_urb_status(urb->status);
+			wrap_free_urb(urb);
+			USBTRACE("irp: %p, status: %08X",
+				 irp, irp->io_status.status);
+			IoCompleteRequest(irp, IO_NO_INCREMENT);
 			break;
 		default:
 			irp->io_status.status = STATUS_FAILURE;
 			irp->io_status.status_info = 0;
+			NT_URB_STATUS(nt_urb) = wrap_urb_status(urb->status);
+			wrap_free_urb(urb);
+			USBTRACE("irp: %p, status: %08X",
+				 irp, irp->io_status.status);
+			IoCompleteRequest(irp, IO_NO_INCREMENT);
+			break;
 		}
-		NT_URB_STATUS(nt_urb) = wrap_urb_status(urb->status);
-		wrap_free_urb(urb);
-		USBTRACE("irp: %p, status: %08X", irp, irp->io_status.status);
-		IoCompleteRequest(irp, IO_NO_INCREMENT);
 	}
 }
 

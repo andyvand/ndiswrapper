@@ -905,7 +905,7 @@ STDCALL void WRAP_EXPORT(KeInitializeEvent)
 }
 
 /* check and set signaled state; should be called with kevent_lock held */
-static BOOLEAN inline check_reset_signaled_state(void *object, task_t *task)
+static BOOLEAN inline check_reset_signaled_state(void *object, task_t *thread)
 {
 	struct dispatch_header *dh;
 	struct kmutex *kmutex;
@@ -914,6 +914,8 @@ static BOOLEAN inline check_reset_signaled_state(void *object, task_t *task)
 	dh = object;
 	kmutex = container_of(object, struct kmutex, dh);
 	ret = FALSE;
+
+#if 0
 	if (dh->signal_state > 0) {
 		if (dh->type == SynchronizationEvent)
 			dh->signal_state--;
@@ -924,11 +926,32 @@ static BOOLEAN inline check_reset_signaled_state(void *object, task_t *task)
 	 * value of signal_state can be negative */
 	if (is_mutex_object(dh) &&
 	    (kmutex->owner_thread == NULL ||
-	     kmutex->owner_thread == task)) {
-		dh->signal_state--;
-		kmutex->owner_thread = task;
+	     kmutex->owner_thread == thread)) {
+		kmutex->owner_thread = thread;
 		ret = TRUE;
 	}
+#else
+	if (dh->signal_state > 0) {
+		if (dh->type == SynchronizationEvent)
+			dh->signal_state--;
+		if (is_mutex_object(dh)) {
+			if (kmutex->owner_thread != NULL)
+				WARNING("mutex: %d, %p", dh->signal_state,
+					kmutex->owner_thread);
+			kmutex->owner_thread = thread;
+		}
+		ret = TRUE;
+	} else {
+		if (is_mutex_object(dh)) {
+			if (kmutex->owner_thread == NULL)
+				WARNING("mutex: %d", dh->signal_state);
+			if (kmutex->owner_thread == thread) {
+				dh->signal_state--;
+				ret = TRUE;
+			}
+		}
+	}
+#endif
 	return ret;
 }
 
@@ -940,11 +963,14 @@ static void wakeup_threads(struct dispatch_header *dh)
 	KIRQL irql;
 	struct wait_block *wb;
 
+	DBGINFO("dh: %p", dh);
 	while (1) {
 		irql = kspin_lock_irql(&kevent_lock, DISPATCH_LEVEL);
 		ent = RemoveHeadList(&dh->wait_blocks);
+		DBGINFO("ent: %p", ent);
 		if (ent) {
 			wb = container_of(ent, struct wait_block, list);
+			DBGINFO("wb: %p, thread: %p", wb, wb->thread);
 			if (check_reset_signaled_state(dh, wb->thread)) {
 				if (wb->object == NULL)
 					ERROR("wb: %p object is NULL", wb);
@@ -1048,7 +1074,8 @@ STDCALL LONG WRAP_EXPORT(KeReleaseMutex)
 	irql = kspin_lock_irql(&kevent_lock, DISPATCH_LEVEL);
 	ret = kmutex->dh.signal_state++;
 	kspin_unlock_irql(&kevent_lock, irql);
-	wakeup_threads(&kmutex->dh);
+	if (ret >= 0)
+		wakeup_threads(&kmutex->dh);
 	return ret;
 }
 

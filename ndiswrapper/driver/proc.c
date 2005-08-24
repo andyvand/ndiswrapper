@@ -429,6 +429,44 @@ static int procfs_write_settings(struct file *file, const char *buf,
 		i = simple_strtol(p, NULL, 16);
 		INFO("waking event: %08x", i);
 		KeSetEvent((struct kevent *)i, 0, FALSE);
+	} else if (!strcmp(setting, "tx_antenna")) {
+		ndis_antenna antenna;
+		unsigned int i;
+		NTSTATUS res;
+
+		if (!p)
+			return -EINVAL;
+		p++;
+		i = simple_strtol(p, NULL, 16);
+		res = miniport_query_info(wd, OID_802_11_NUMBER_OF_ANTENNAS,
+					  &antenna, sizeof(antenna));
+		if (res)
+			return -EINVAL;
+		if (i >= -1 && i < antenna)
+			antenna = i;
+		res = miniport_set_info(wd, OID_802_11_TX_ANTENNA_SELECTED,
+				  &antenna, sizeof(antenna));
+		if (res)
+			return -EINVAL;
+	} else if (!strcmp(setting, "rx_antenna")) {
+		ndis_antenna antenna;
+		unsigned int i;
+		NTSTATUS res;
+
+		if (!p)
+			return -EINVAL;
+		p++;
+		i = simple_strtol(p, NULL, 16);
+		res = miniport_query_info(wd, OID_802_11_NUMBER_OF_ANTENNAS,
+					  &antenna, sizeof(antenna));
+		if (res)
+			return -EINVAL;
+		if (i >= -1 && i < antenna)
+			antenna = i;
+		res = miniport_set_info(wd, OID_802_11_RX_ANTENNA_SELECTED,
+				  &antenna, sizeof(antenna));
+		if (res)
+			return -EINVAL;
 	} else {
 		int res = -1;
 		struct device_setting *dev_setting;

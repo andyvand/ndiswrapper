@@ -185,13 +185,13 @@ STDCALL BOOLEAN WRAP_EXPORT(IoCancelIrp)
 {
 	void (*cancel_routine)(struct device_object *, struct irp *) STDCALL;
 
+	/* NB: this function may be called at DISPATCH_LEVEL */
 	USBTRACEENTER("irp = %p", irp);
 
 	if (!irp)
 		return FALSE;
 	DUMP_IRP(irp);
 	irp->cancel_irql = kspin_lock_irql(&urb_list_lock, DISPATCH_LEVEL);
-	irp->cancel = TRUE;
 	cancel_routine = irp->cancel_routine;
 	irp->cancel_routine = NULL;
 	if (cancel_routine) {
@@ -202,6 +202,7 @@ STDCALL BOOLEAN WRAP_EXPORT(IoCancelIrp)
 		cancel_routine(irp_sl->dev_obj, irp);
 		USBTRACEEXIT(return TRUE);
 	} else {
+		irp->cancel = TRUE;
 		kspin_unlock_irql(&urb_list_lock, irp->cancel_irql);
 		USBTRACEEXIT(return FALSE);
 	}
