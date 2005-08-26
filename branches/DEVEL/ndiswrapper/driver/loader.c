@@ -380,16 +380,27 @@ static void
 ndiswrapper_remove_usb_device(struct usb_interface *intf)
 {
 	struct wrapper_dev *wd;
+        struct miniport_char *miniport;
 
-	debug = 3;
+	debug = 4;
 	INFO("");
 	wd = (struct wrapper_dev *)usb_get_intfdata(intf);
 
 	if (!wd)
 		TRACEEXIT1(return);
-	wd->intf = NULL;
-	usb_set_intfdata(intf, NULL);
-	atomic_dec(&wd->driver->users);
+        miniport = &wd->driver->miniport;
+        wd->intf = NULL;
+	DBGTRACE1("%d, %p",
+		  test_bit(ATTR_SURPRISE_REMOVE, &wd->attributes),
+		  miniport->pnp_event_notify);
+
+	if (wd->hw_unavailable == 0 && miniport->pnp_event_notify) {
+		DBGTRACE1("calling surprise_removed");
+		LIN2WIN4(miniport->pnp_event_notify, wd->nmb->adapter_ctx,
+			 NdisDevicePnPEventSurpriseRemoved, NULL, 0);
+		wd->hw_unavailable = -1;
+	}
+//	atomic_dec(&wd->driver->users);
 	ndiswrapper_remove_device(wd);
 	debug = 0;
 }
@@ -614,7 +625,6 @@ static int load_settings(struct ndis_driver *ndis_driver,
 /* this function is called while holding load_lock spinlock */
 static void unload_ndis_device(struct ndis_device *device)
 {
-	struct ndis_miniport_block *nmb;
 	TRACEENTER1("unloading device %p (%04X:%04X:%04X:%04X), driver %s",
 		    device, device->vendor, device->device, device->subvendor,
 		    device->subdevice, device->driver_name);
@@ -634,7 +644,6 @@ static void unload_ndis_device(struct ndis_device *device)
 		list_del(&setting->list);
 		kfree(setting);
 	}
-	nmb = device->wd->nmb;
 	TRACEEXIT1(return);
 }
 
@@ -1074,6 +1083,12 @@ void loader_exit(void)
 
 	TRACEENTER1("");
 	misc_deregister(&wrapper_misc);
+
+	if (ndis_devices) {
+		for (i = 0; i < num_ndis_devices; i++)
+			if (ndis_devices[i].wd)
+				ndis_devices[i].wd->hw_unavailable = -1;
+	}
 
 #ifdef CONFIG_USB
 	if (ndiswrapper_usb_devices) {

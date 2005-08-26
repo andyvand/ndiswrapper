@@ -521,6 +521,8 @@ int wrap_set_timer(struct wrap_timer *wrap_timer, long expires,
 		   unsigned long repeat, struct kdpc *kdpc);
 void wrap_cancel_timer(struct wrap_timer *wrap_timer, BOOLEAN *canceled);
 
+STDCALL void KeInitializeTimer(struct ktimer *ktimer);
+
 unsigned long lin_to_win1(void *func, unsigned long);
 unsigned long lin_to_win2(void *func, unsigned long, unsigned long);
 unsigned long lin_to_win3(void *func, unsigned long, unsigned long,

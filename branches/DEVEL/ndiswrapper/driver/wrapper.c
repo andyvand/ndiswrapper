@@ -178,7 +178,7 @@ NDIS_STATUS miniport_query_info_needed(struct wrapper_dev *wd,
 		/* wait for NdisMQueryInformationComplete upto HZ */
 		if (wait_event_interruptible_timeout(
 			    wd->ndis_comm_wq,
-			    (wd->ndis_comm_done == 1), 2*HZ))
+			    (wd->ndis_comm_done == 1), 3*HZ))
 			res = wd->ndis_comm_res;
 		else
 			res = NDIS_STATUS_FAILURE;
@@ -231,7 +231,7 @@ NDIS_STATUS miniport_set_info(struct wrapper_dev *wd, ndis_oid oid,
 		/* wait for NdisMSetInformationComplete upto HZ */
 		if (wait_event_interruptible_timeout(
 			    wd->ndis_comm_wq,
-			    (wd->ndis_comm_done == 1), 2*HZ))
+			    (wd->ndis_comm_done == 1), 3*HZ))
 			res = wd->ndis_comm_res;
 		else
 			res = NDIS_STATUS_FAILURE;
@@ -286,7 +286,7 @@ NDIS_STATUS miniport_init(struct wrapper_dev *wd)
 		TRACEEXIT1(return res);
 
 	/* do we need to power up the card explicitly? */
-//	res = miniport_set_pm_state(wd, NdisDeviceStateD0);
+	res = miniport_set_pm_state(wd, NdisDeviceStateD0);
 	/* do we need to reset the device? */
 //	res = miniport_reset(wd);
 
@@ -934,18 +934,17 @@ int ndiswrapper_resume_usb(struct usb_interface *intf)
 void ndiswrapper_remove_device(struct wrapper_dev *wd)
 {
 	KIRQL irql;
-//	struct miniport_char *miniport = &wd->driver->miniport;
 
 	TRACEENTER1("%s", wd->net_dev->name);
 
 	set_bit(SHUTDOWN, &wd->wrapper_work);
 
+	ndis_close(wd->net_dev);
+	netif_carrier_off(wd->net_dev);
+
 	stats_timer_del(wd);
 	hangcheck_del(wd);
 	ndiswrapper_procfs_remove_iface(wd);
-
-	ndis_close(wd->net_dev);
-	netif_carrier_off(wd->net_dev);
 
 	/* flush_scheduled_work here causes crash with 2.4 kernels */
 	/* instead, throw away pending packets */
@@ -961,33 +960,42 @@ void ndiswrapper_remove_device(struct wrapper_dev *wd)
 	}
 	kspin_unlock_irql(&wd->xmit_lock, irql);
 
-	miniport_set_int(wd, OID_802_11_DISASSOCIATE, 0);
+//	miniport_set_int(wd, OID_802_11_DISASSOCIATE, 0);
 
-#if 0
-	miniport = &wd->driver->miniport;
-	DBGTRACE1("%d, %p",
-		  test_bit(ATTR_SURPRISE_REMOVE, &wd->attributes),
-		  miniport->pnp_event_notify);
-	if (test_bit(ATTR_SURPRISE_REMOVE, &wd->attributes) &&
-	    miniport->pnp_event_notify) {
-		LIN2WIN4(miniport->pnp_event_notify, wd->nmb->adapter_ctx,
-			 NdisDevicePnPEventSurpriseRemoved, NULL, 0);
+	if (wd->hw_unavailable == 0) {
+		DBGTRACE1("stopping device");
+		ndiswrapper_stop_device(wd);
+		DBGTRACE1("stopped");
 	}
-#endif
-	TRACEENTER1("stopping device");
-	ndiswrapper_stop_device(wd);
-	TRACEENTER1("stopped");
-	IoDeleteDevice(wd->nmb->fdo);
-	IoDeleteDevice(wd->nmb->pdo);
+	usb_set_intfdata(wd->intf, NULL);
+	wd->intf = NULL;
+	unregister_netdev(wd->net_dev);
+	/* dev_ext for fdo and pdo is wd, which needs to be freed with
+	 * free_netdev below, so set them to NULL */
+	wd->nmb->fdo->dev_ext = NULL;
+	wd->nmb->pdo->dev_ext = NULL;
+//	wd->nmb->fdo->dev_ext = NULL;
+//	wd->nmb->pdo->dev_ext = NULL;
+//	IoDeleteDevice(wd->nmb->fdo);
+//	IoDeleteDevice(wd->nmb->pdo);
+	DBGTRACE1("deleted devices");
 	if (wd->xmit_array)
 		kfree(wd->xmit_array);
+	DBGTRACE1("");
 	if (wd->multicast_list)
 		kfree(wd->multicast_list);
+	DBGTRACE1("");
 	if (wd->net_dev) {
+		struct net_device *net_dev;
+		net_dev = wd->net_dev;
+		wd->net_dev = NULL;
+		DBGTRACE1("");
+		kfree(wd->nmb);
 		printk(KERN_INFO "%s: device %s removed\n", DRIVER_NAME,
-		       wd->net_dev->name);
-		unregister_netdev(wd->net_dev);
-		free_netdev(wd->net_dev);
+		       net_dev->name);
+		DBGTRACE1("");
+		free_netdev(net_dev);
+		DBGTRACE1("");
 	}
 	TRACEEXIT1(return);
 }
@@ -1619,15 +1627,15 @@ int setup_device(struct net_device *dev)
 
 	/* check_capa changes auth_mode and encr_mode, so set them again */
 
-	set_infra_mode(wd, Ndis802_11Infrastructure);
 //	miniport_set_int(wd, OID_802_11_NETWORK_TYPE_IN_USE,
 //			 Ndis802_11Automode);
 	/* some cards (e.g., RaLink) need a scan before they can associate */
-	set_auth_mode(wd, Ndis802_11AuthModeOpen);
-	set_encr_mode(wd, Ndis802_11EncryptionDisabled);
 	set_essid(wd, "", 0);
 //	ndis_set_rx_mode(dev);
 #endif
+	set_infra_mode(wd, Ndis802_11Infrastructure);
+	set_auth_mode(wd, Ndis802_11AuthModeOpen);
+	set_encr_mode(wd, Ndis802_11EncryptionDisabled);
 	set_scan(wd);
 
 	hangcheck_add(wd);

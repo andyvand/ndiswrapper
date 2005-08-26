@@ -410,6 +410,7 @@ STDCALL USHORT WRAP_EXPORT(ExQueryDepthSList)
 void initialize_dh(struct dispatch_header *dh, enum event_type type, int state,
 				enum dh_type dh_type)
 {
+	memset(dh, 0xa3, sizeof(*dh));
 	dh->type = type;
 	dh->signal_state = state;
 	dh->inserted = dh_type;
@@ -441,24 +442,27 @@ STDCALL void WRAP_EXPORT(KeInitializeTimerEx)
 }
 
 STDCALL BOOLEAN WRAP_EXPORT(KeSetTimerEx)
-	(struct ktimer *ktimer, LARGE_INTEGER due_time, LONG period,
+	(struct ktimer *ktimer, LARGE_INTEGER duetime_ticks, LONG period_ms,
 	 struct kdpc *kdpc)
 {
 	unsigned long expires;
 	unsigned long repeat;
 
-	TRACEENTER4("%p, %ld, %u, %p", ktimer, (long)due_time, period, kdpc);
+	TRACEENTER4("%p, %ld, %u, %p", ktimer, (long)duetime_ticks, period_ms, kdpc);
 
-	expires = SYSTEM_TIME_TO_HZ(due_time);
-	repeat = HZ * period / TICKSPERSEC;
+	expires = SYSTEM_TIME_TO_HZ(duetime_ticks);
+	repeat = HZ * period_ms / 1000 ;
 	return wrap_set_timer(ktimer->wrap_timer, expires, repeat, kdpc);
 }
 
 STDCALL BOOLEAN WRAP_EXPORT(KeSetTimer)
-	(struct ktimer *ktimer, LARGE_INTEGER due_time, struct kdpc *kdpc)
+	(struct ktimer *ktimer, LARGE_INTEGER duetime_ticks, struct kdpc *kdpc)
 {
-	TRACEENTER4("%p, %ld, %p", ktimer, (long)due_time, kdpc);
-	return KeSetTimerEx(ktimer, due_time, 0, kdpc);
+	unsigned long expires;
+
+	TRACEENTER4("%p, %ld, %p", ktimer, (long)duetime_ticks, kdpc);
+	expires = SYSTEM_TIME_TO_HZ(duetime_ticks);
+	return wrap_set_timer(ktimer->wrap_timer, expires, 0, kdpc);
 }
 
 STDCALL BOOLEAN WRAP_EXPORT(KeCancelTimer)
@@ -479,9 +483,11 @@ void initialize_kdpc(struct kdpc *kdpc, void *func, void *ctx,
 	TRACEENTER3("%p, %p, %p", kdpc, func, ctx);
 	irql = kspin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL);
 	memset(kdpc, 0, sizeof(*kdpc));
+	kdpc->number = 0;
+	kdpc->type = type;
 	kdpc->func = func;
 	kdpc->ctx  = ctx;
-	kdpc->type = type;
+//	InitializeListHead(&kdpc->list);
 	kspin_unlock_irql(&ntoskernel_lock, irql);
 	TRACEEXIT3(return);
 }
@@ -959,42 +965,28 @@ static BOOLEAN inline check_reset_signaled_state(void *object, task_t *thread)
  * DISPATCH_LEVEL */
 static void wakeup_threads(struct dispatch_header *dh)
 {
-	struct nt_list *ent;
+	struct nt_list *cur, *tmp;
 	KIRQL irql;
 	struct wait_block *wb;
 
 	DBGINFO("dh: %p", dh);
-	while (1) {
-		irql = kspin_lock_irql(&kevent_lock, DISPATCH_LEVEL);
-		ent = RemoveHeadList(&dh->wait_blocks);
-		DBGINFO("ent: %p", ent);
-		if (ent) {
-			wb = container_of(ent, struct wait_block, list);
-			DBGINFO("wb: %p, thread: %p", wb, wb->thread);
-			if (check_reset_signaled_state(dh, wb->thread)) {
-				if (wb->object == NULL)
-					ERROR("wb: %p object is NULL", wb);
-				wb->object = NULL;
-			} else {
-				InsertHeadList(&dh->wait_blocks, ent);
-				wb = NULL;
-			}
-		} else
-			wb = NULL;
-		kspin_unlock_irql(&kevent_lock, irql);
-
-		if (!wb)
-			break;
-		if (wb->object == NULL) {
-			DBGINFO("waking up process %p (%p,%p)",
-				wb->thread, wb, dh);
-			/* make sure that the thread calls schedule
-			   before trying to wake it up; otherwise we
-			   may wake up a thread before it puts itself
-			   to sleep, and it will stay in sleep */
+	irql = kspin_lock_irql(&kevent_lock, DISPATCH_LEVEL);
+	nt_list_for_each_safe(cur, tmp, &dh->wait_blocks) {
+		if (cur == NULL)
+			ERROR("cur is NULL");
+		if (tmp == NULL)
+			ERROR("tmp is NULL");
+		wb = container_of(cur, struct wait_block, list);
+		DBGINFO("wait block: %p", wb);
+		if (check_reset_signaled_state(dh, wb->thread)) {
+			/* mark that this thread is done */
+			wb->object = NULL;
+			RemoveEntryList(cur);
+			DBGINFO("waking up process: %p", wb->thread);
 			wake_up_process(wb->thread);
 		}
 	}
+	kspin_unlock_irql(&kevent_lock, irql);
 	return;
 }
 
@@ -1217,15 +1209,19 @@ STDCALL NTSTATUS WRAP_EXPORT(KeWaitForMultipleObjects)
 		irql = kspin_lock_irql(&kevent_lock, DISPATCH_LEVEL);
 		DBGINFO("%p woke up, res = %d", get_current(), res);
 		if (res <= 0) {
-			/* we are done; remove from wait list */
+			/* timed out or interrupted; remove from wait list */
 			for (i = 0; i < count; i++) {
-				if (wb[i].thread && !wb[i].object)
-					ERROR("wb: %p already dequeued?", wb);
-				if (wb[i].object) {
-					DBGINFO("%d: %p", i, &wb[i].list);
-					RemoveEntryList(&wb[i].list);
-					wb[i].object = NULL;
+				if (!wb[i].thread)
+					continue;
+				if (!wb[i].object) {
+					ERROR("%p already dequeud by %p",
+					      get_current(), object[i]);
+					continue;
 				}
+				DBGINFO("%d: %p", i, &wb[i].list);
+				RemoveEntryList(&wb[i].list);
+				wb[i].object = NULL;
+				wb[i].thread = NULL;
 			}
 			kspin_unlock_irql(&kevent_lock, irql);
 			if (res < 0)
@@ -1233,24 +1229,23 @@ STDCALL NTSTATUS WRAP_EXPORT(KeWaitForMultipleObjects)
 			if (res == 0)
 				DBGINFOEXIT(return STATUS_TIMEOUT);
 		}
+		/* woken up by wakeup_threads */
 		for (i = 0; wait_count && i < count; i++) {
+			/* only if wb[i].thread is not NULL and
+			 * wb[i].object is NULL this thread is woken
+			 * up for this dh */
 			if (!wb[i].thread)
 				continue;
-			/* woken up by wakeup_threads */
-			if (wb[i].object) {
-				ERROR("wb: %p woke up %p!", wb, wb[i].thread);
+			if (wb[i].object)
 				continue;
-			}
+			dh = object[i];
 			wait_count--;
 			if (wait_type == WaitAny) {
 				int j;
 				/* done; remove from rest of wait list */
-				for (j = i; j < count; j++) {
-					if (wb[j].thread && !wb[j].object)
-						ERROR("wb: %p dequeued?", wb);
-					if (wb[j].object)
+				for (j = i; j < count; j++)
+					if (wb[j].thread && wb[j].object)
 						RemoveEntryList(&wb[j].list);
-				}
 				kspin_unlock_irql(&kevent_lock, irql);
 				DBGINFOEXIT(return STATUS_WAIT_0 + i);
 			}
@@ -1259,7 +1254,8 @@ STDCALL NTSTATUS WRAP_EXPORT(KeWaitForMultipleObjects)
 			kspin_unlock_irql(&kevent_lock, irql);
 			DBGINFOEXIT(return STATUS_SUCCESS);
 		}
-		/* res > 0 */
+		/* this thread is still waiting for more objects, so
+		 * let it wait for remaining time and those objects */
 		wait_jiffies = res;
 		if (alertable)
 			set_current_state(TASK_INTERRUPTIBLE);
@@ -1503,7 +1499,7 @@ STDCALL NTSTATUS WRAP_EXPORT(PsTerminateSystemThread)
 		INFO("set event for thread: %p", kthread);
 //		ObDereferenceObject(kthread);
 		complete_and_exit(NULL, status);
-		INFO("done: %p, %d", kthread->task, kthread->pid);
+		INFO("oops: %p, %d", kthread->task, kthread->pid);
 	}
 	return STATUS_FAILURE;
 }

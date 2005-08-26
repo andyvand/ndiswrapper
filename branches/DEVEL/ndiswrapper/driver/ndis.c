@@ -1477,21 +1477,22 @@ STDCALL void WRAP_EXPORT(NdisMInitializeTimer)
 {
 	struct wrapper_dev *wd = nmb->wd;
 	TRACEENTER4("%s", "");
-	initialize_kdpc(&timer_handle->kdpc, func, ctx, KDPC_TYPE_KERNEL);
+	initialize_kdpc(&timer_handle->kdpc, func, ctx, KDPC_TYPE_NDIS);
+	KeInitializeTimer(&timer_handle->ktimer);
 	wrap_init_timer(&timer_handle->ktimer, wd, &timer_handle->kdpc,
-			KTIMER_TYPE_NDIS);
+			KTIMER_TYPE_KERNEL);
 	TRACEEXIT4(return);
 }
 
 STDCALL void WRAP_EXPORT(NdisMSetPeriodicTimer)
-	(struct ndis_miniport_timer *timer_handle, UINT ms)
+	(struct ndis_miniport_timer *timer_handle, UINT period_ms)
 {
 	unsigned long expires;
 
-	TRACEENTER4("%p, %u", timer_handle, ms);
-	expires = ms * HZ / 1000;
+	TRACEENTER4("%p, %u", timer_handle, period_ms);
+	expires = period_ms * HZ / 1000;
 	wrap_set_timer(timer_handle->ktimer.wrap_timer, expires, expires,
-		       NULL);
+		       &timer_handle->kdpc);
 	TRACEEXIT4(return);
 }
 
@@ -1508,18 +1509,20 @@ STDCALL void WRAP_EXPORT(NdisInitializeTimer)
 {
 	TRACEENTER4("%p, %p, %p", timer_handle, func, ctx);
 	initialize_kdpc(&timer_handle->kdpc, func, ctx, KDPC_TYPE_NDIS);
-	wrap_init_timer(&timer_handle->ktimer, NULL,
-			&timer_handle->kdpc, KTIMER_TYPE_NDIS);
+	KeInitializeTimer(&timer_handle->ktimer);
+	wrap_init_timer(&timer_handle->ktimer, NULL, &timer_handle->kdpc,
+			KTIMER_TYPE_KERNEL);
 	TRACEEXIT4(return);
 }
 
 STDCALL void WRAP_EXPORT(NdisSetTimer)
-	(struct ndis_timer *timer_handle, UINT ms)
+	(struct ndis_timer *timer_handle, UINT duetime_ms)
 {
-	unsigned long expires = ms * HZ / 1000;
+	unsigned long expires = duetime_ms * HZ / 1000;
 
-	TRACEENTER4("%p, %u", timer_handle, ms);
-	wrap_set_timer(timer_handle->ktimer.wrap_timer, expires, 0, NULL);
+	TRACEENTER4("%p, %u", timer_handle, duetime_ms);
+	wrap_set_timer(timer_handle->ktimer.wrap_timer, expires, 0,
+		       &timer_handle->kdpc);
 	TRACEEXIT4(return);
 }
 
