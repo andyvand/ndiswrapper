@@ -450,6 +450,7 @@ pdoDispatchInternalDeviceControl(struct device_object *pdo,
 	irp_sl = IoGetCurrentIrpStackLocation(irp);
 
 	wd = pdo->dev_ext;
+#if 1
 	if (wd->intf == NULL) {
 		union nt_urb *nt_urb = URB_FROM_IRP(irp);
 		NT_URB_STATUS(nt_urb) = USBD_STATUS_DEVICE_GONE;
@@ -457,6 +458,7 @@ pdoDispatchInternalDeviceControl(struct device_object *pdo,
 		irp->io_status.status_info = 0;
 		return STATUS_FAILURE;
 	}
+#endif
 	switch (irp_sl->params.ioctl.code) {
 #ifdef CONFIG_USB
 	case IOCTL_INTERNAL_USB_SUBMIT_URB:
@@ -563,8 +565,8 @@ STDCALL NTSTATUS pdoDispatchPnp(struct device_object *pdo,
 		break;
 	case IRP_MN_REMOVE_DEVICE:
 		miniport_halt(wd);
-		IoDeleteDevice(wd->nmb->fdo);
-		IoDeleteDevice(wd->nmb->pdo);
+//		IoDeleteDevice(wd->nmb->fdo);
+//		IoDeleteDevice(wd->nmb->pdo);
 		irp->io_status.status = STATUS_SUCCESS;
 		break;
 	default:

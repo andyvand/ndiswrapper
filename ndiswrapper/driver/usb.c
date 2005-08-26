@@ -545,13 +545,13 @@ unsigned long usb_submit_nt_urb(struct usb_device *dev, struct irp *irp)
 	case URB_FUNCTION_SELECT_CONFIGURATION:
 		ret = usb_select_configuration(dev, nt_urb, irp);
 		if (ret < 0)
-			NT_URB_STATUS(nt_urb) = USBD_STATUS_REQUEST_FAILED;
+			NT_URB_STATUS(nt_urb) = wrap_urb_status(ret);
 		break;
 
 	case URB_FUNCTION_BULK_OR_INTERRUPT_TRANSFER:
 		ret = usb_bulk_or_intr_trans(dev, nt_urb, irp);
 		if (ret < 0)
-			NT_URB_STATUS(nt_urb) = USBD_STATUS_REQUEST_FAILED;
+			NT_URB_STATUS(nt_urb) = wrap_urb_status(ret);
 		else
 			NT_URB_STATUS(nt_urb) = USBD_STATUS_PENDING;
 		break;
@@ -593,7 +593,7 @@ unsigned long usb_submit_nt_urb(struct usb_device *dev, struct irp *irp)
 		USBTRACE("func: %d", nt_urb->header.function);
 		ret = usb_vendor_or_class_intf(dev, nt_urb, irp);
 		if (ret < 0)
-			NT_URB_STATUS(nt_urb) = USBD_STATUS_REQUEST_FAILED;
+			NT_URB_STATUS(nt_urb) = wrap_urb_status(ret);
 		else
 			NT_URB_STATUS(nt_urb) = USBD_STATUS_PENDING;
 		break;
