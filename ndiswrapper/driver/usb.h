@@ -107,6 +107,7 @@ typedef LONG USBD_STATUS;
 #define USBD_STATUS_XACT_ERROR			0xC0000011
 #define USBD_STATUS_BABBLE_DETECTED		0xC0000012
 #define USBD_STATUS_DATA_BUFFER_ERROR		0xC0000013
+#define USBD_STATUS_NOT_SUPPORTED		0xC0000E00
 #define USBD_STATUS_DEVICE_GONE			0xC0007000
 
 #define USBD_STATUS_INVALID_URB_FUNCTION	0x80000200
@@ -254,6 +255,6 @@ union nt_urb {
 #define NT_URB_STATUS(nt_urb) ((nt_urb)->header.status)
 
 unsigned long usb_submit_nt_urb(struct usb_device *dev, struct irp *irp);
-unsigned long usb_reset_port(struct usb_device *dev);
+unsigned long usb_reset_port(struct usb_device *dev, struct irp *irp);
 
 #endif /* USB_H */

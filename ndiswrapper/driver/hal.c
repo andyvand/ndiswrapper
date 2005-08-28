@@ -112,17 +112,17 @@ _FASTCALL KIRQL WRAP_EXPORT(KfRaiseIrql)
 {
 	KIRQL irql;
 
-	TRACEENTER4("irql = %d", newirql);
+	TRACEENTER5("irql = %d", newirql);
 	irql = raise_irql(newirql);
-	TRACEEXIT4(return irql);
+	TRACEEXIT5(return irql);
 }
 	
 _FASTCALL void WRAP_EXPORT(KfLowerIrql)
 	(FASTCALL_DECL_1(KIRQL oldirql))
 {
-	TRACEENTER4("irql = %d", oldirql);
+	TRACEENTER5("irql = %d", oldirql);
 	lower_irql(oldirql);
-	TRACEEXIT4(return);
+	TRACEEXIT5(return);
 }
 
 _FASTCALL KIRQL WRAP_EXPORT(KfAcquireSpinLock)
@@ -130,17 +130,17 @@ _FASTCALL KIRQL WRAP_EXPORT(KfAcquireSpinLock)
 {
 	KIRQL oldirql;
 
-	TRACEENTER4("lock = %p", lock);
+	TRACEENTER5("lock = %p", lock);
 	oldirql = kspin_lock_irql(lock, DISPATCH_LEVEL);
-	TRACEEXIT4(return oldirql);
+	TRACEEXIT5(return oldirql);
 }
 
 _FASTCALL void WRAP_EXPORT(KfReleaseSpinLock)
 	(FASTCALL_DECL_2(KSPIN_LOCK *lock, KIRQL newirql))
 {
-	TRACEENTER4("lock = %p, irql = %d", lock, newirql);
+	TRACEENTER5("lock = %p, irql = %d", lock, newirql);
 	kspin_unlock_irql(lock, newirql);
-	TRACEEXIT4(return);
+	TRACEEXIT5(return);
 }
 
 _FASTCALL void WRAP_EXPORT(KefAcquireSpinLockAtDpcLevel)
@@ -148,26 +148,26 @@ _FASTCALL void WRAP_EXPORT(KefAcquireSpinLockAtDpcLevel)
 {
 	KIRQL irql;
 
-	TRACEENTER4("lock = %p", lock);
+	TRACEENTER5("lock = %p", lock);
 #if DEBUG_IRQL
 	irql = current_irql();
 	if (irql != DISPATCH_LEVEL)
 		ERROR("irql %d != DISPATCH_LEVEL", irql);
 #endif
 	kspin_lock(lock);
-	TRACEEXIT4(return);
+	TRACEEXIT5(return);
 }
 
 _FASTCALL void WRAP_EXPORT(KefReleaseSpinLockFromDpcLevel)
 	(FASTCALL_DECL_1(KSPIN_LOCK *lock))
 {
-	TRACEENTER4("lock = %p", lock);
+	TRACEENTER5("lock = %p", lock);
 #ifdef DEBUG_IRQL
 	if (current_irql() != DISPATCH_LEVEL)
 		ERROR("irql != DISPATCH_LEVEL");
 #endif
 	kspin_unlock(lock);
-	TRACEEXIT4(return);
+	TRACEEXIT5(return);
 }
 
 #include "hal_exports.h"

@@ -30,12 +30,12 @@
 #include "iw_ndis.h"
 #include "wrapper.h"
 
-extern struct list_head ndis_drivers;
+extern struct nt_list ndis_drivers;
 extern KSPIN_LOCK ntoskernel_lock;
 
 static struct work_struct ndis_work;
-static struct nt_list ndis_work_list;
-static KSPIN_LOCK ndis_work_list_lock;
+struct nt_list ndis_work_list;
+KSPIN_LOCK ndis_work_list_lock;
 
 static KSPIN_LOCK wrap_ndis_packet_lock;
 static struct nt_list wrap_ndis_packet_list;
@@ -212,10 +212,10 @@ STDCALL NDIS_STATUS WRAP_EXPORT(NdisMRegisterDevice)
 
 		*dev_obj = tmp;
 		*dev_obj_handle = *dev_obj;
-		for (i = 0; i <= IRP_MJ_MAXIMUM_FUNCTION + 1; i++)
+		for (i = 0; i <= IRP_MJ_MAXIMUM_FUNCTION; i++)
 			if (funcs[i]) {
 				drv_obj->major_func[i] = funcs[i];
-				DBGTRACE1("major function for 0x%x is at %p",
+				INFO("major function for 0x%x is at %p",
 					  i, funcs[i]);
 			}
 	}
@@ -229,20 +229,22 @@ STDCALL NDIS_STATUS WRAP_EXPORT(NdisMDeregisterDevice)
 	return NDIS_STATUS_SUCCESS;
 }
 
-STDCALL NDIS_STATUS WRAP_EXPORT(NdisAllocateMemory)
-	(void **dest, UINT length, UINT flags,
-	 NDIS_PHY_ADDRESS highest_address)
+STDCALL NDIS_STATUS WRAP_EXPORT(NdisAllocateMemoryWithTag)
+	(void **dest, UINT length, ULONG tag)
 {
-	TRACEENTER3("length = %u, flags = %08X", length, flags);
+	TRACEENTER3("dest = %p, *dest = %p", dest, *dest);
+#if 0
+	*dest = ExAllocatePoolWithTag(NonPagedPool, length, tag);
+	if (*dest)
+		return NDIS_STATUS_SUCCESS;
+	else
+		return NDIS_STATUS_FAILURE;
+#else
 	if (length <= KMALLOC_THRESHOLD) {
 		if (current_irql() < DISPATCH_LEVEL)
 			*dest = kmalloc(length, GFP_KERNEL);
 		else
 			*dest = kmalloc(length, GFP_ATOMIC);
-	} else if (flags & NDIS_MEMORY_CONTIGUOUS) {
-		WARNING("Allocating %u bytes of physically "
-		       "contiguous memory may fail", length);
-		*dest = kmalloc(length, GFP_KERNEL);
 	} else {
 		if (current_irql() == DISPATCH_LEVEL)
 			ERROR("Windows driver allocating too big a block"
@@ -254,21 +256,23 @@ STDCALL NDIS_STATUS WRAP_EXPORT(NdisAllocateMemory)
 		TRACEEXIT3(return NDIS_STATUS_SUCCESS);
 	DBGTRACE3("Allocatemem failed size=%d", length);
 	TRACEEXIT3(return NDIS_STATUS_FAILURE);
+#endif
 }
 
-STDCALL NDIS_STATUS WRAP_EXPORT(NdisAllocateMemoryWithTag)
-	(void **dest, UINT length, ULONG tag)
+STDCALL NDIS_STATUS WRAP_EXPORT(NdisAllocateMemory)
+	(void **dest, UINT length, UINT flags,
+	 NDIS_PHY_ADDRESS highest_address)
 {
-	NDIS_STATUS res;
-
-	TRACEENTER3("dest = %p, *dest = %p", dest, *dest);
-	res = NdisAllocateMemory(dest, length, 0, 0);
-	return res;
+	TRACEENTER3("length = %u, flags = %08X", length, flags);
+	return NdisAllocateMemoryWithTag(dest, length, 0);
 }
 
 STDCALL void WRAP_EXPORT(NdisFreeMemory)
 	(void *addr, UINT length, UINT flags)
 {
+#if 0
+	ExFreePool(addr);
+#else
 	struct ndis_work_entry *ndis_work_entry;
 	struct ndis_free_mem_work_item *free_mem;
 	KIRQL irql;
@@ -309,16 +313,14 @@ STDCALL void WRAP_EXPORT(NdisFreeMemory)
 
 		schedule_work(&ndis_work);
 	}
-
-	TRACEEXIT3(return);
+#endif
 }
 
 /*
  * This function should not be STDCALL because it's a variable args function.
  */
 NOREGPARM void WRAP_EXPORT(NdisWriteErrorLogEntry)
-	(struct driver_object *drv_obj, unsigned int error, ULONG count,
-	 ...)
+	(struct driver_object *drv_obj, ULONG error, ULONG count, ...)
 {
 	va_list args;
 	int i, code;
@@ -386,7 +388,7 @@ STDCALL void WRAP_EXPORT(NdisOpenFile)
 	 NDIS_PHY_ADDRESS highest_address)
 {
 	struct ansi_string ansi;
-	struct list_head *cur, *tmp;
+	struct nt_list *cur, *tmp;
 	struct ndis_bin_file *file;
 
 	TRACEENTER2("status = %p, filelength = %p, *filelength = %d, "
@@ -410,11 +412,11 @@ STDCALL void WRAP_EXPORT(NdisOpenFile)
 	DBGTRACE2("Filename: %s", ansi.buf);
 
 	/* Loop through all drivers and all files to find the requested file */
-	list_for_each_safe(cur, tmp, &ndis_drivers) {
+	nt_list_for_each_safe(cur, tmp, &ndis_drivers) {
 		struct ndis_driver *driver;
 		int i;
 
-		driver = list_entry(cur, struct ndis_driver, list);
+		driver = container_of(cur, struct ndis_driver, list);
 		for (i = 0; i < driver->num_bin_files; i++) {
 			int n;
 			file = &driver->bin_files[i];
@@ -589,6 +591,7 @@ STDCALL void WRAP_EXPORT(NdisReadConfiguration)
 	char *keyname;
 	int ret;
 	struct wrapper_dev *wd;
+	struct nt_list *cur;
 
 	TRACEENTER2("nmb: %p", nmb);
 	wd = nmb->wd;
@@ -603,7 +606,8 @@ STDCALL void WRAP_EXPORT(NdisReadConfiguration)
 	DBGTRACE3("wd: %p, string: %s", wd, ansi.buf);
 	keyname = ansi.buf;
 
-	list_for_each_entry(setting, &wd->ndis_device->settings, list) {
+	nt_list_for_each(cur, &wd->ndis_device->settings) {
+		setting = container_of(cur, struct device_setting, list);
 		if (stricmp(keyname, setting->name) == 0) {
 			DBGTRACE2("setting found %s=%s",
 				 keyname, setting->value);
@@ -632,6 +636,7 @@ STDCALL void WRAP_EXPORT(NdisWriteConfiguration)
 	char *keyname;
 	struct device_setting *setting;
 	struct wrapper_dev *wd;
+	struct nt_list *cur;
 
 	TRACEENTER2("nmb: %p", nmb);
 	wd = nmb->wd;
@@ -642,7 +647,8 @@ STDCALL void WRAP_EXPORT(NdisWriteConfiguration)
 	keyname = ansi.buf;
 	DBGTRACE2("key = %s", keyname);
 
-	list_for_each_entry(setting, &wd->ndis_device->settings, list) {
+	nt_list_for_each(cur, &wd->ndis_device->settings) {
+		setting = container_of(cur, struct device_setting, list);
 		if (strcmp(keyname, setting->name) == 0) {
 			*status = ndis_decode_setting(setting, param);
 			DBGTRACE2("setting changed %s=%s",
@@ -662,7 +668,7 @@ STDCALL void WRAP_EXPORT(NdisWriteConfiguration)
 	setting->name[ansi.len] = 0;
 	*status = ndis_decode_setting(setting, param);
 	if (*status == NDIS_STATUS_SUCCESS)
-		list_add(&setting->list, &wd->ndis_device->settings);
+		InsertTailList(&wd->ndis_device->settings, &setting->list);
 	else {
 		kfree(setting->name);
 		kfree(setting);
@@ -1477,7 +1483,7 @@ STDCALL void WRAP_EXPORT(NdisMInitializeTimer)
 {
 	struct wrapper_dev *wd = nmb->wd;
 	TRACEENTER4("%s", "");
-	initialize_kdpc(&timer_handle->kdpc, func, ctx, KDPC_TYPE_NDIS);
+	initialize_kdpc(&timer_handle->kdpc, func, ctx, KDPC_TYPE_KERNEL);
 	KeInitializeTimer(&timer_handle->ktimer);
 	wrap_init_timer(&timer_handle->ktimer, wd, &timer_handle->kdpc,
 			KTIMER_TYPE_KERNEL);
@@ -1508,7 +1514,7 @@ STDCALL void WRAP_EXPORT(NdisInitializeTimer)
 	(struct ndis_timer *timer_handle, void *func, void *ctx)
 {
 	TRACEENTER4("%p, %p, %p", timer_handle, func, ctx);
-	initialize_kdpc(&timer_handle->kdpc, func, ctx, KDPC_TYPE_NDIS);
+	initialize_kdpc(&timer_handle->kdpc, func, ctx, KDPC_TYPE_KERNEL);
 	KeInitializeTimer(&timer_handle->ktimer);
 	wrap_init_timer(&timer_handle->ktimer, NULL, &timer_handle->kdpc,
 			KTIMER_TYPE_KERNEL);
@@ -2368,16 +2374,11 @@ static void ndis_worker(void *data)
 
 		irql = kspin_lock_irql(&ndis_work_list_lock, DISPATCH_LEVEL);
 		cur = RemoveHeadList(&ndis_work_list);
-		if (cur)
-			ndis_work_entry =
-				container_of(cur, struct ndis_work_entry,
-					     list);
-		else
-			ndis_work_entry = NULL;
 		kspin_unlock_irql(&ndis_work_list_lock, irql);
-
-		if (ndis_work_entry == NULL)
+		if (!cur)
 			break;
+		ndis_work_entry = container_of(cur, struct ndis_work_entry,
+					       list);
 
 		wd = ndis_work_entry->wd;
 		switch (ndis_work_entry->type) {
@@ -2772,8 +2773,8 @@ STDCALL NTSTATUS AddDevice(struct driver_object *drv_obj,
 			     FILE_DEVICE_UNKNOWN, 0, FALSE, &fdo);
 	if (ret != STATUS_SUCCESS)
 		TRACEEXIT2(return ret);
-	wd = pdo->dev_ext;
-	fdo->dev_ext = wd;
+	wd = pdo->reserved;
+	fdo->reserved = wd;
 	nmb = wd->nmb;
 	nmb->fdo = fdo;
 	DBGTRACE1("nmb: %p, pdo: %p, fdo: %p, attached: %p, next: %p",
