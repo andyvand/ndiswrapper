@@ -1006,7 +1006,6 @@ void ndiswrapper_remove_device(struct wrapper_dev *wd)
 	if (wd->multicast_list)
 		kfree(wd->multicast_list);
 	DBGTRACE1("");
-	kfree(wd->nmb);
 	printk(KERN_INFO "%s: device %s removed\n", DRIVER_NAME,
 	       wd->net_dev->name);
 	DBGTRACE1("");
@@ -1673,14 +1672,8 @@ struct net_device *ndis_init_netdev(struct wrapper_dev **pwd,
 	wd = dev->priv;
 	DBGTRACE1("wd= %p", wd);
 
-	wd->nmb = kmalloc(sizeof(struct ndis_miniport_block), GFP_KERNEL);
-	if (!wd->nmb) {
-		ERROR("couldn't allocate memory");
-		free_netdev(dev);
-		return NULL;
-	}
-	memset(wd->nmb, 0, sizeof(struct ndis_miniport_block));
-	wd->nmb->wd = wd;
+	wd->nmb = wd;
+	wd->wd = wd;
 	wd->nmb->filterdbs.eth_db = wd->nmb;
 	wd->nmb->filterdbs.tr_db = wd->nmb;
 	wd->nmb->filterdbs.fddi_db = wd->nmb;
