@@ -996,7 +996,6 @@ void ndiswrapper_remove_device(struct wrapper_dev *wd)
 	DBGTRACE1("stopped");
 
 	ndiswrapper_procfs_remove_iface(wd);
-	unregister_netdev(wd->net_dev);
 	IoDeleteDevice(wd->nmb->fdo);
 	IoDeleteDevice(wd->nmb->pdo);
 	DBGTRACE1("deleted devices");
@@ -1008,6 +1007,7 @@ void ndiswrapper_remove_device(struct wrapper_dev *wd)
 	DBGTRACE1("");
 	printk(KERN_INFO "%s: device %s removed\n", DRIVER_NAME,
 	       wd->net_dev->name);
+	unregister_netdev(wd->net_dev);
 	DBGTRACE1("");
 	free_netdev(wd->net_dev);
 	DBGTRACE1("");
@@ -1662,8 +1662,9 @@ struct net_device *ndis_init_netdev(struct wrapper_dev **pwd,
 {
 	struct net_device *dev;
 	struct wrapper_dev *wd;
+	struct ndis_miniport_block *nmb;
 
-	dev = alloc_etherdev(sizeof(*wd));
+	dev = alloc_etherdev(sizeof(*wd) + sizeof(*nmb));
 	if (!dev) {
 		ERROR("%s", "Unable to alloc etherdev");
 		return NULL;
@@ -1672,12 +1673,13 @@ struct net_device *ndis_init_netdev(struct wrapper_dev **pwd,
 	wd = netdev_priv(dev);
 	DBGTRACE1("wd= %p", wd);
 
-	wd->nmb = (void *)wd;
-	wd->wd = wd;
-	wd->nmb->filterdbs.eth_db = wd->nmb;
-	wd->nmb->filterdbs.tr_db = wd->nmb;
-	wd->nmb->filterdbs.fddi_db = wd->nmb;
-	wd->nmb->filterdbs.arc_db = wd->nmb;
+	nmb = ((void *)wd) + sizeof(*wd);
+	wd->nmb = nmb;
+	nmb->wd = wd;
+	nmb->filterdbs.eth_db = nmb;
+	nmb->filterdbs.tr_db = nmb;
+	nmb->filterdbs.fddi_db = nmb;
+	nmb->filterdbs.arc_db = nmb;
 
 	wd->driver = driver;
 	wd->ndis_device = device;
