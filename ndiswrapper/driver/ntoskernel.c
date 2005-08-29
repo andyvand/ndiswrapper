@@ -183,10 +183,10 @@ int ntoskernel_init_device(struct wrapper_dev *wd)
 {
 	struct kthread *kthread;
 
-	INFO("task: %p", get_current());
+	DBGTRACE1("task: %p", get_current());
 	kthread = KeGetCurrentThread();
 	if (kthread) {
-		INFO("kthread: %p, task: %p", kthread, kthread->task);
+		DBGTRACE1("kthread: %p, task: %p", kthread, kthread->task);
 		return 0;
 	}
 	return 0;
@@ -198,7 +198,8 @@ void ntoskernel_exit_device(struct wrapper_dev *wd)
 
 	kthread = KeGetCurrentThread();
 	if (kthread) {
-		INFO("deleting thread: %p, task: %p", kthread, kthread->task);
+		DBGTRACE1("deleting thread: %p, task: %p",
+			  kthread, kthread->task);
 		ObDereferenceObject(kthread);
 	}
 	return;
@@ -217,7 +218,7 @@ struct kthread *get_current_thread(void)
 		kthread->task = get_current();
 		kspin_lock_init(&kthread->lock);
 		InitializeListHead(&kthread->irps);
-		INFO("kthread: %p, task: %p", kthread, kthread->task);
+		DBGTRACE1("kthread: %p, task: %p", kthread, kthread->task);
 	} else
 		ERROR("couldn't allocate thread object");
 	return kthread;
@@ -1466,7 +1467,7 @@ STDCALL struct kthread *WRAP_EXPORT(KeGetCurrentThread)
 	task_t *task = get_current();
 	struct kthread *ret;
 
-	INFO("task: %p", task);
+	DBGTRACE3("task: %p", task);
 	ret = NULL;
 	irql = kspin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL);
 	nt_list_for_each(cur, &object_list) {
@@ -1476,16 +1477,14 @@ STDCALL struct kthread *WRAP_EXPORT(KeGetCurrentThread)
 		if (header->type != OBJECT_TYPE_KTHREAD)
 			continue;
 		kthread = HEADER_TO_OBJECT(header);
-		INFO("kthread: %p, task: %p", kthread, kthread->task);
+		DBGTRACE3("kthread: %p, task: %p", kthread, kthread->task);
 		if (kthread->task == task) {
 			ret = kthread;
 			break;
 		}
 	}
 	kspin_unlock_irql(&ntoskernel_lock, irql);
-	if (ret == NULL)
-		ERROR("couldn't find thread object: %p", task);
-	INFO("current thread = %p", ret);
+	DBGTRACE3("current thread = %p", ret);
 	return ret;
 }
 
@@ -1582,8 +1581,8 @@ STDCALL NTSTATUS WRAP_EXPORT(PsCreateSystemThread)
 		TRACEEXIT2(return STATUS_FAILURE);
 	}
 	*phandle = kthread;
-	INFO("created thread: %p, task: %p, pid: %d",
-		kthread, kthread->task, kthread->task->pid);
+	DBGTRACE2("created thread: %p, task: %p, pid: %d",
+		  kthread, kthread->task, kthread->task->pid);
 	wake_up_process(kthread->task);
 #endif
 	DBGTRACE2("*phandle = %p", *phandle);
@@ -1596,8 +1595,8 @@ STDCALL NTSTATUS WRAP_EXPORT(PsTerminateSystemThread)
 	struct kthread *kthread;
 
 	kthread = KeGetCurrentThread();
-	DBGINFO("terminating thread: %p, task: %p, pid: %d",
-		kthread, kthread->task, kthread->task->pid);
+	DBGTRACE2("terminating thread: %p, task: %p, pid: %d",
+		  kthread, kthread->task, kthread->task->pid);
 	if (kthread) {
 		KIRQL irql;
 		struct nt_list *ent;
@@ -1612,12 +1611,12 @@ STDCALL NTSTATUS WRAP_EXPORT(PsTerminateSystemThread)
 //			IoFreeIrp(irp);
 		}
 		kspin_unlock_irql(&kthread->lock, irql);
-		INFO("setting event for thread: %p", kthread);
+		DBGTRACE2("setting event for thread: %p", kthread);
 		KeSetEvent((struct kevent *)&kthread->dh, 0, FALSE);
-		INFO("set event for thread: %p", kthread);
+		DBGTRACE2("set event for thread: %p", kthread);
 //		ObDereferenceObject(kthread);
 		complete_and_exit(NULL, status);
-		INFO("oops: %p, %d", kthread->task, kthread->pid);
+		ERROR("oops: %p, %d", kthread->task, kthread->pid);
 	}
 	return STATUS_FAILURE;
 }

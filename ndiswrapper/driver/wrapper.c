@@ -530,7 +530,7 @@ static int ndis_close(struct net_device *dev)
  */
 static struct net_device_stats *ndis_get_stats(struct net_device *dev)
 {
-	struct wrapper_dev *wd = dev->priv;
+	struct wrapper_dev *wd = netdev_priv(dev);
 	return &wd->stats;
 }
 
@@ -567,7 +567,7 @@ static void set_multicast_list(struct net_device *dev,
  */
 static void ndis_set_rx_mode(struct net_device *dev)
 {
-	struct wrapper_dev *wd = dev->priv;
+	struct wrapper_dev *wd = netdev_priv(dev);
 	set_bit(SET_PACKET_FILTER, &wd->wrapper_work);
 	schedule_work(&wd->wrapper_worker);
 }
@@ -767,7 +767,7 @@ void sendpacket_done(struct wrapper_dev *wd,
  */
 static int start_xmit(struct sk_buff *skb, struct net_device *dev)
 {
-	struct wrapper_dev *wd = dev->priv;
+	struct wrapper_dev *wd = netdev_priv(dev);
 	ndis_buffer *buffer;
 	struct ndis_packet *packet;
 	unsigned int xmit_ring_next_slot;
@@ -1234,14 +1234,14 @@ static void update_wireless_stats(struct wrapper_dev *wd)
 
 static struct iw_statistics *get_wireless_stats(struct net_device *dev)
 {
-	struct wrapper_dev *wd = dev->priv;
+	struct wrapper_dev *wd = netdev_priv(dev);
 	return &wd->wireless_stats;
 }
 
 #ifdef HAVE_ETHTOOL
 static u32 ndis_get_link(struct net_device *dev)
 {
-	struct wrapper_dev *wd = dev->priv;
+	struct wrapper_dev *wd = netdev_priv(dev);
 	return wd->link_status;
 }
 
@@ -1476,7 +1476,7 @@ int ndis_reinit(struct wrapper_dev *wd)
 
 static int ndis_set_mac_addr(struct net_device *dev, void *p)
 {
-	struct wrapper_dev *wd = dev->priv;
+	struct wrapper_dev *wd = netdev_priv(dev);
 	struct sockaddr *addr = p;
 	struct ndis_config_param param;
 	struct unicode_string key;
@@ -1525,7 +1525,7 @@ static int ndis_set_mac_addr(struct net_device *dev, void *p)
 
 int setup_device(struct net_device *dev)
 {
-	struct wrapper_dev *wd = dev->priv;
+	struct wrapper_dev *wd = netdev_priv(dev);
 	NDIS_STATUS res;
 	mac_address mac;
 	int i;
@@ -1669,10 +1669,10 @@ struct net_device *ndis_init_netdev(struct wrapper_dev **pwd,
 		return NULL;
 	}
 	SET_MODULE_OWNER(dev);
-	wd = dev->priv;
+	wd = netdev_priv(dev);
 	DBGTRACE1("wd= %p", wd);
 
-	wd->nmb = wd;
+	wd->nmb = (void *)wd;
 	wd->wd = wd;
 	wd->nmb->filterdbs.eth_db = wd->nmb;
 	wd->nmb->filterdbs.tr_db = wd->nmb;
