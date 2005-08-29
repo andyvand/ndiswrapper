@@ -41,11 +41,13 @@
 static KSPIN_LOCK loader_lock;
 static struct ndis_device *ndis_devices;
 static unsigned int num_ndis_devices;
-struct list_head ndis_drivers;
+struct nt_list ndis_drivers;
 static struct pci_device_id *ndiswrapper_pci_devices;
 static struct usb_device_id *ndiswrapper_usb_devices;
 static struct pci_driver ndiswrapper_pci_driver;
 static struct usb_driver ndiswrapper_usb_driver;
+
+extern int debug;
 
 /* load driver for given device, if not already loaded */
 static struct ndis_driver *ndiswrapper_load_driver(struct ndis_device *device)
@@ -53,12 +55,15 @@ static struct ndis_driver *ndiswrapper_load_driver(struct ndis_device *device)
 	int err, found;
 	struct ndis_driver *ndis_driver;
 	KIRQL irql;
+	struct nt_list *cur;
 
 	TRACEENTER1("device: %04X:%04X:%04X:%04X", device->vendor,
 		    device->device, device->subvendor, device->subdevice);
 	found = 0;
+	ndis_driver = NULL;
 	irql = kspin_lock_irql(&loader_lock, DISPATCH_LEVEL);
-	list_for_each_entry(ndis_driver, &ndis_drivers, list) {
+	nt_list_for_each(cur, &ndis_drivers) {
+		ndis_driver = container_of(cur, struct ndis_driver, list);
 		if (strcmp(ndis_driver->name, device->driver_name) == 0) {
 			DBGTRACE1("driver %s already loaded",
 				  ndis_driver->name);
@@ -101,7 +106,9 @@ static struct ndis_driver *ndiswrapper_load_driver(struct ndis_device *device)
 #endif
 		found = 0;
 		irql = kspin_lock_irql(&loader_lock, DISPATCH_LEVEL);
-		list_for_each_entry(ndis_driver, &ndis_drivers, list) {
+		nt_list_for_each(cur, &ndis_drivers) {
+			ndis_driver = container_of(cur,
+						   struct ndis_driver, list);
 			if (strcmp(ndis_driver->name,
 				   device->driver_name) == 0) {
 				found = 1;
@@ -172,7 +179,7 @@ static int ndiswrapper_add_pci_device(struct pci_dev *pdev,
 		res = -ENODEV;
 		goto out_start;
 	}
-	pdo->dev_ext = wd;
+	pdo->reserved = wd;
 	wd->nmb->pdo = pdo;
 	DBGTRACE1("driver: %p", pdo->drv_obj);
 
@@ -315,7 +322,7 @@ static void *ndiswrapper_add_usb_device(struct usb_device *udev,
 		res = -ENODEV;
 		goto out_start;
 	}
-	pdo->dev_ext = wd;
+	pdo->reserved = wd;
 	wd->nmb->pdo = pdo;
 
 	DBGTRACE1("");
@@ -333,7 +340,6 @@ static void *ndiswrapper_add_usb_device(struct usb_device *udev,
 	wd->dev.usb = udev;
 #endif
 	wd->intf = intf;
-	pdo->device.usb = wd->dev.usb;
 
 	TRACEENTER1("calling ndis init routine");
 
@@ -379,15 +385,21 @@ ndiswrapper_remove_usb_device(struct usb_interface *intf)
 {
 	struct wrapper_dev *wd;
 
+	debug = 4;
 	TRACEENTER1("");
-	wd = (struct wrapper_dev *)usb_get_intfdata(intf);
 
+	wd = (struct wrapper_dev *)usb_get_intfdata(intf);
 	if (!wd)
 		TRACEEXIT1(return);
+	/* big lock will be released in ndiswrapper_remove_device */
+	lock_kernel();
+	if (!test_bit(HW_UNLOADING, &wd->hw_status))
+		set_bit(HW_REMOVED, &wd->hw_status);
 	wd->intf = NULL;
 	usb_set_intfdata(intf, NULL);
 	atomic_dec(&wd->driver->users);
 	ndiswrapper_remove_device(wd);
+	debug = 0;
 }
 #else
 static void
@@ -399,6 +411,12 @@ ndiswrapper_remove_usb_device(struct usb_device *udev, void *ptr)
 
 	if (!wd || !wd->dev.usb)
 		TRACEEXIT1(return);
+	if (!test_bit(HW_UNLOADING, &wd->hw_status) == 0 &&
+	    miniport->pnp_event_notify) {
+		DBGTRACE1("calling surprise_removed");
+		LIN2WIN4(miniport->pnp_event_notify, wd->nmb->adapter_ctx,
+			 NdisDevicePnPEventSurpriseRemoved, NULL, 0);
+	}
 	wd->dev.usb = NULL;
 	wd->intf = NULL;
 	atomic_dec(&wd->driver->users);
@@ -596,7 +614,7 @@ static int load_settings(struct ndis_driver *ndis_driver,
 			memcpy(ndis_driver->version, setting->value,
 			       sizeof(ndis_driver->version));
 		irql = kspin_lock_irql(&loader_lock, DISPATCH_LEVEL);
-		list_add(&setting->list, &ndis_device->settings);
+		InsertTailList(&ndis_device->settings, &setting->list);
 		kspin_unlock_irql(&loader_lock, irql);
 		nr_settings++;
 	}
@@ -610,7 +628,7 @@ static int load_settings(struct ndis_driver *ndis_driver,
 /* this function is called while holding load_lock spinlock */
 static void unload_ndis_device(struct ndis_device *device)
 {
-	struct ndis_miniport_block *nmb;
+	struct nt_list *cur;
 	TRACEENTER1("unloading device %p (%04X:%04X:%04X:%04X), driver %s",
 		    device, device->vendor, device->device, device->subvendor,
 		    device->subdevice, device->driver_name);
@@ -618,19 +636,16 @@ static void unload_ndis_device(struct ndis_device *device)
 	DBGTRACE3("%p", device->ndis_driver);
 	if (!device->ndis_driver)
 		TRACEEXIT1(return);
-	while (!list_empty(&device->settings)) {
+	while ((cur = RemoveHeadList(&device->settings))) {
 		struct device_setting *setting;
 		struct ndis_config_param *param;
 
-		setting = list_entry(device->settings.next,
-				     struct device_setting, list);
+		setting = container_of(cur, struct device_setting, list);
 		param = &setting->config_param;
 		if (param->type == NDIS_CONFIG_PARAM_STRING)
 			RtlFreeUnicodeString(&param->data.ustring);
-		list_del(&setting->list);
 		kfree(setting);
 	}
-	nmb = device->wd->nmb;
 	TRACEEXIT1(return);
 }
 
@@ -714,19 +729,21 @@ static int start_driver(struct ndis_driver *driver)
  */
 static int add_driver(struct ndis_driver *driver)
 {
-	struct ndis_driver *tmp;
 	KIRQL irql;
+	struct nt_list *cur;
 
 	TRACEENTER1("");
 	irql = kspin_lock_irql(&loader_lock, DISPATCH_LEVEL);
-	list_for_each_entry(tmp, &ndis_drivers, list) {
+	nt_list_for_each(cur, &ndis_drivers) {
+		struct ndis_driver *tmp;
+		tmp = container_of(cur, struct ndis_driver, list);
 		if (strcmp(tmp->name, driver->name) == 0) {
 			kspin_unlock_irql(&loader_lock, irql);
 			ERROR("cannot add duplicate driver");
 			TRACEEXIT1(return -EBUSY);
 		}
 	}
-	list_add(&driver->list, &ndis_drivers);
+	InsertTailList(&ndis_drivers, &driver->list);
 	kspin_unlock_irql(&loader_lock, irql);
 
 	TRACEEXIT1(return 0);
@@ -872,7 +889,7 @@ static int register_devices(struct load_devices *load_devices)
 
 		ndis_device = &ndis_devices[num_pci + num_usb];
 
-		INIT_LIST_HEAD(&ndis_device->settings);
+		InitializeListHead(&ndis_device->settings);
 		memcpy(&ndis_device->driver_name, device->driver_name,
 		       sizeof(ndis_device->driver_name));
 		memcpy(&ndis_device->conf_file_name, device->conf_file_name,
@@ -1055,7 +1072,7 @@ int loader_init(void)
 {
 	int err;
 
-	INIT_LIST_HEAD(&ndis_drivers);
+	InitializeListHead(&ndis_drivers);
 	kspin_lock_init(&loader_lock);
 	if ((err = misc_register(&wrapper_misc)) < 0 ) {
 		ERROR("couldn't register module (%d)", err);
@@ -1067,10 +1084,14 @@ int loader_init(void)
 void loader_exit(void)
 {
 	int i;
+	struct nt_list *cur;
 
 	TRACEENTER1("");
 	misc_deregister(&wrapper_misc);
 
+	for (i = 0; i < num_ndis_devices; i++)
+		if (ndis_devices[i].wd)
+			set_bit(HW_UNLOADING, &ndis_devices[i].wd->hw_status);
 #ifdef CONFIG_USB
 	if (ndiswrapper_usb_devices) {
 		usb_deregister(&ndiswrapper_usb_driver);
@@ -1092,12 +1113,10 @@ void loader_exit(void)
 		ndis_devices = NULL;
 	}
 
-	while (!list_empty(&ndis_drivers)) {
+	while ((cur = RemoveHeadList(&ndis_drivers))) {
 		struct ndis_driver *driver;
 
-		driver = list_entry(ndis_drivers.next,
-				    struct ndis_driver, list);
-		list_del(&driver->list);
+		driver = container_of(cur, struct ndis_driver, list);
 		unload_ndis_driver(driver);
 	}
 	kspin_unlock(&loader_lock);

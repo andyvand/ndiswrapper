@@ -265,7 +265,7 @@ void wrap_init_timer(struct ktimer *ktimer, void *handle, struct kdpc *kdpc,
 	}
 	wrap_timer->type = type;
 
-	DBGTRACE4("added timer %p", wrap_timer);
+	DBGTRACE5("added timer %p", wrap_timer);
 	TRACEEXIT5(return);
 }
 
@@ -305,11 +305,11 @@ int wrap_set_timer(struct wrap_timer *wrap_timer, long expires,
 		mod_timer(&wrap_timer->timer, jiffies + expires);
 		if (wrap_timer->type == KTIMER_TYPE_KERNEL)
 			KeClearEvent((struct kevent *)ktimer);
-		DBGTRACE4("modifying timer %p to %lu, %lu",
+		DBGTRACE5("modifying timer %p to %lu, %lu",
 			  wrap_timer, expires, repeat);
 		ret = TRUE;
 	} else {
-		DBGTRACE4("setting timer %p to %lu, %lu",
+		DBGTRACE5("setting timer %p to %lu, %lu",
 			  wrap_timer, expires, repeat);
 		wrap_timer->timer.expires = jiffies + expires;
 		wrap_timer->active = 1;
@@ -329,7 +329,7 @@ void wrap_cancel_timer(struct wrap_timer *wrap_timer, BOOLEAN *canceled)
 	struct ktimer *ktimer;
 	struct kdpc *kdpc;
 
-	TRACEENTER4("timer = %p", wrap_timer);
+	TRACEENTER5("timer = %p", wrap_timer);
 	if (!wrap_timer) {
 		ERROR("%s", "invalid wrap_timer");
 		return;
@@ -341,7 +341,7 @@ void wrap_cancel_timer(struct wrap_timer *wrap_timer, BOOLEAN *canceled)
 	}
 
 #ifdef DEBUG_TIMER
-	DBGTRACE4("canceling timer %p", wrap_timer);
+	DBGTRACE5("canceling timer %p", wrap_timer);
 	BUG_ON(wrap_timer->wrap_timer_magic != WRAP_TIMER_MAGIC);
 #endif
 	/* del_timer_sync may not be called here, as this function can
