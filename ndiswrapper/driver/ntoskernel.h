@@ -394,8 +394,12 @@ struct phys_dev {
 	struct usb_device *usb;
 };
 
+struct wrapper_dev;
+
 int ntoskernel_init(void);
 void ntoskernel_exit(void);
+int ntoskernel_init_device(struct wrapper_dev *wd);
+void ntoskernel_exit_device(struct wrapper_dev *wd);
 struct driver_object *find_bus_driver(const char *name);
 struct device_object *alloc_pdo(struct driver_object *drv_obj);
 
@@ -470,6 +474,7 @@ driver_dispatch_t fdoDispatchPnp;
 
 STDCALL struct irp *IoAllocateIrp(char stack_size, BOOLEAN charge_quota);
 STDCALL void IoFreeIrp(struct irp *irp);
+STDCALL BOOLEAN IoCancelIrp(struct irp *irp);
 _FASTCALL NTSTATUS IofCallDriver
 	(FASTCALL_DECL_2(struct device_object *dev_obj, struct irp *irp));
 STDCALL struct irp *WRAP_EXPORT(IoBuildSynchronousFsdRequest)
@@ -482,6 +487,7 @@ STDCALL struct irp *WRAP_EXPORT(IoBuildAsynchronousFsdRequest)
 	 struct io_status_block *status);
 STDCALL NTSTATUS PoCallDriver(struct device_object *dev_obj, struct irp *irp);
 
+struct kthread *get_current_thread(void);
 u64 ticks_1601(void);
 
 STDCALL KIRQL KeGetCurrentIrql(void);
@@ -512,6 +518,11 @@ STDCALL void RtlInitUnicodeString(struct unicode_string *dest,
 				  const wchar_t *src);
 STDCALL void RtlFreeUnicodeString(struct unicode_string *string);
 STDCALL void RtlFreeAnsiString(struct ansi_string *string);
+STDCALL LONG RtlCompareUnicodeString
+	(const struct unicode_string *s1, const struct unicode_string *s2,
+	 BOOLEAN case_insensitive);
+STDCALL void RtlCopyUnicodeString
+	(struct unicode_string *dst, struct unicode_string *src);
 
 void *wrap_kmalloc(size_t size, int flags);
 void wrap_kfree(void *ptr);
@@ -520,6 +531,8 @@ void wrap_init_timer(struct ktimer *ktimer, void *handle,
 int wrap_set_timer(struct wrap_timer *wrap_timer, long expires,
 		   unsigned long repeat, struct kdpc *kdpc);
 void wrap_cancel_timer(struct wrap_timer *wrap_timer, BOOLEAN *canceled);
+
+STDCALL void KeInitializeTimer(struct ktimer *ktimer);
 
 unsigned long lin_to_win1(void *func, unsigned long);
 unsigned long lin_to_win2(void *func, unsigned long, unsigned long);
@@ -795,9 +808,9 @@ extern int debug;
 #define ASSERT(expr)
 #endif
 
-#if defined(DEBUG) && defined(USB_DEBUG)
+#if defined(DEBUG)
 #define DUMP_IRP(__irp)							\
-	do {								\
+	while (debug >= DEBUG) {					\
 		struct io_stack_location *_irp_sl;			\
 		_irp_sl = IoGetCurrentIrpStackLocation(__irp);		\
 		INFO("irp: %p, stack size: %d, cl: %d, sl: %p, "	\
@@ -805,10 +818,10 @@ extern int debug;
 		     __irp, __irp->stack_count,	(__irp)->current_location, \
 		     _irp_sl, _irp_sl->dev_obj, _irp_sl->major_fn,	\
 		     _irp_sl->minor_fn, URB_FROM_IRP(__irp));		\
-	} while (0)
-
+		break;							\
+	}
 #else
-#define DUMP_IRP(__irp)
+#define DUMP_IRP(__irp) do { } while (0)
 #endif
 
 #endif // _NTOSKERNEL_H_

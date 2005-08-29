@@ -413,7 +413,7 @@ struct ndis_config_param {
 };
 
 struct device_setting {
-	struct list_head list;
+	struct nt_list list;
 	char name[MAX_NDIS_SETTING_NAME_LEN];
 	char value[MAX_NDIS_SETTING_VALUE_LEN];
 	struct ndis_config_param config_param;
@@ -430,7 +430,7 @@ struct ndis_bin_file {
 #define CE_MINIPORT_CLIENT_ID 2
 
 struct ndis_driver {
-	struct list_head list;
+	struct nt_list list;
 	struct driver_object *drv_obj;
 	char name[MAX_NDIS_SETTING_NAME_LEN];
 	char version[MAX_NDIS_SETTING_VALUE_LEN];
@@ -446,7 +446,7 @@ struct ndis_driver {
 struct wrapper_dev;
 
 struct ndis_device {
-	struct list_head settings;
+	struct nt_list settings;
 	int bustype;
 	int vendor;
 	int device;
@@ -522,7 +522,8 @@ enum ndis_attributes {
 };
 
 enum hw_status {
-	HW_NORMAL, HW_SUSPENDED, HW_HALTED, HW_UNAVAILABLE,
+	HW_NORMAL, HW_SUSPENDED, HW_HALTED, HW_UNLOADING, HW_AVAILABLE,
+	HW_REMOVED,
 };
 
 struct encr_info {
@@ -833,7 +834,6 @@ struct wrapper_dev {
 	wait_queue_head_t ndis_comm_wq;
 	int ndis_comm_res;
 	int ndis_comm_done;
-	int hw_unavailable;
 
 	int serialized;
 	int use_sg_dma;
