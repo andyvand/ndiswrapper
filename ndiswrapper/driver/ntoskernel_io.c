@@ -522,13 +522,14 @@ pdoDispatchInternalDeviceControl(struct device_object *pdo,
 	}
 
 	USBTRACE("ret: %d", ret);
-	irp->io_status.status = ret;
 	if (ret != STATUS_SUCCESS)
 		irp->io_status.status_info = 0;
 	if (ret == STATUS_PENDING) {
-		irp_sl->control |= SL_PENDING_RETURNED;
+		irp->pending_returned = TRUE;
+		IoMarkIrpPending(irp);
 		return ret;
 	}
+	irp->io_status.status = ret;
 	IoCompleteRequest(irp, IO_NO_INCREMENT);
 	USBTRACEEXIT(return ret);
 }
