@@ -815,6 +815,7 @@ extern int debug;
 #define ASSERT(expr)
 #endif
 
+#if defined(DEBUG)
 #define DUMP_IRP(__irp)							\
 	while (debug >= DEBUG) {					\
 		struct io_stack_location *_irp_sl;			\
@@ -826,6 +827,8 @@ extern int debug;
 		     _irp_sl->minor_fn, URB_FROM_IRP(__irp));		\
 		break;							\
 	}
-
+#else
+#define DUMP_IRP(__irp) do { } while (0)
+#endif
 
 #endif // _NTOSKERNEL_H_
