@@ -1009,11 +1009,13 @@ STDCALL void WRAP_EXPORT(IoDeleteDevice)
 		TRACEEXIT2(return);
 	if (dev->dev_obj_ext)
 		kfree(dev->dev_obj_ext);
-	prev = dev->drv_obj->dev_obj;
+	prev = NULL;
+	if (dev->drv_obj)
+		prev = dev->drv_obj->dev_obj;
 	if (prev == dev)
 		dev->drv_obj->dev_obj = dev->next;
 	else {
-		while (prev->next != dev)
+		while (prev && prev->next != dev)
 			prev = prev->next;
 		prev->next = dev->next;
 	}

@@ -202,9 +202,7 @@ void wrap_timer_handler(unsigned long data)
 		if (kdpc->type == KDPC_TYPE_KERNEL)
 			insert_kdpc_work(kdpc);
 		else
-			/* this function already runs at DISPATCH_LEVEL */
-			LIN2WIN4(kdpc->func, kdpc, kdpc->ctx,
-				 kdpc->arg1, kdpc->arg2);
+			insert_ndis_kdpc_work(kdpc);
 	}
 
 	/* don't add the timer if aperiodic - see
@@ -347,22 +345,22 @@ void wrap_cancel_timer(struct wrap_timer *wrap_timer, BOOLEAN *canceled)
 	/* del_timer_sync may not be called here, as this function can
 	 * be called at DISPATCH_LEVEL */
 	irql = kspin_lock_irql(&timer_lock, DISPATCH_LEVEL);
-	if (wrap_timer->active) {
-		del_timer(&wrap_timer->timer);
+	kdpc = ktimer->kdpc;
+	*canceled = del_timer(&wrap_timer->timer);
+	if (kdpc) {
+		if (kdpc->type == KDPC_TYPE_KERNEL)
+			*canceled = remove_kdpc_work(kdpc);
+		else
+			*canceled = remove_ndis_kdpc_work(kdpc);
+	}
+	if (wrap_timer->repeat)
 		*canceled = TRUE;
-	} else
-		*canceled = FALSE;
 	wrap_timer->active = 0;
+	wrap_timer->repeat = 0;
 	if (wrap_timer->type == KTIMER_TYPE_KERNEL)
 		KeClearEvent((struct kevent *)ktimer);
 	/* TODO: it is not clear if KeCancelTimer returns status of
 	 * timer in the queue or DPC in the queue */
-	kdpc = ktimer->kdpc;
-	if (kdpc && kdpc->type == KDPC_TYPE_KERNEL)
-		remove_kdpc_work(kdpc);
-	if (wrap_timer->repeat)
-		*canceled = TRUE;
-	wrap_timer->repeat = 0;
 	kspin_unlock_irql(&timer_lock, irql);
 	TRACEEXIT5(return);
 }

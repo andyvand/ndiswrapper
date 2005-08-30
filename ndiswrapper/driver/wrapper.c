@@ -123,7 +123,7 @@ NDIS_STATUS miniport_reset(struct wrapper_dev *wd)
 	if (res == NDIS_STATUS_PENDING) {
 		if (wait_event_interruptible_timeout(
 			    wd->ndis_comm_wq,
-			    (wd->ndis_comm_done == 1), 5*HZ))
+			    (wd->ndis_comm_done == 1), HZ))
 			res = wd->ndis_comm_res;
 		else
 			res = NDIS_STATUS_FAILURE;
@@ -178,7 +178,7 @@ NDIS_STATUS miniport_query_info_needed(struct wrapper_dev *wd,
 		/* wait for NdisMQueryInformationComplete upto HZ */
 		if (wait_event_interruptible_timeout(
 			    wd->ndis_comm_wq,
-			    (wd->ndis_comm_done == 1), 3*HZ))
+			    (wd->ndis_comm_done == 1), HZ))
 			res = wd->ndis_comm_res;
 		else
 			res = NDIS_STATUS_FAILURE;
@@ -231,7 +231,7 @@ NDIS_STATUS miniport_set_info(struct wrapper_dev *wd, ndis_oid oid,
 		/* wait for NdisMSetInformationComplete upto HZ */
 		if (wait_event_interruptible_timeout(
 			    wd->ndis_comm_wq,
-			    (wd->ndis_comm_done == 1), 3*HZ))
+			    (wd->ndis_comm_done == 1), HZ))
 			res = wd->ndis_comm_res;
 		else
 			res = NDIS_STATUS_FAILURE;
@@ -296,7 +296,7 @@ NDIS_STATUS miniport_init(struct wrapper_dev *wd)
 	/* Wait a little to let card power up otherwise ifup might fail after
 	   boot; USB devices seem to need long delays */
 	set_current_state(TASK_INTERRUPTIBLE);
-	schedule_timeout(HZ/2);
+	schedule_timeout(3 * HZ);
 
 	TRACEEXIT1(return 0);
 }
@@ -937,7 +937,6 @@ int ndiswrapper_resume_usb(struct usb_interface *intf)
 
 void ndiswrapper_remove_device(struct wrapper_dev *wd)
 {
-        struct miniport_char *miniport;
 	KIRQL irql;
 
 	TRACEENTER1("%s", wd->net_dev->name);
@@ -965,31 +964,6 @@ void ndiswrapper_remove_device(struct wrapper_dev *wd)
 	kspin_unlock_irql(&wd->xmit_lock, irql);
 
 //	miniport_set_int(wd, OID_802_11_DISASSOCIATE, 0);
-
-	if (test_bit(HW_REMOVED, &wd->hw_status)) {
-		miniport = &wd->driver->miniport;
-		/* only disconnect function of USB devices set this
-		 * bit when the device is disconnected */
-		DBGTRACE1("%d, %p",
-			  test_bit(ATTR_SURPRISE_REMOVE, &wd->attributes),
-			  miniport->pnp_event_notify);
-
-		/* disconnect function obtained big lock, so release
-		 * it before calling MiniportPnpEventNotify, which
-		 * runs at PASSIVE_LEVEL */
-		unlock_kernel();
-		if (miniport->pnp_event_notify) {
-			DBGTRACE1("calling surprise_removed");
-			LIN2WIN4(miniport->pnp_event_notify,
-				 wd->nmb->adapter_ctx,
-				 NdisDevicePnPEventSurpriseRemoved, NULL, 0);
-		} else {
-			WARNING("%s: Windows driver for device %s doesn't"
-				"support MiniportPnpEventNotify for safely"
-				"removing the device", DRIVER_NAME,
-				wd->net_dev->name);
-		}
-	}
 
 	DBGTRACE1("stopping device");
 	ndiswrapper_stop_device(wd);
@@ -1636,19 +1610,20 @@ int setup_device(struct net_device *dev)
 
 	if (set_privacy_filter(wd, Ndis802_11PrivFilterAcceptAll))
 		WARNING("%s", "Unable to set privacy filter");
-#if 0
 
 	/* check_capa changes auth_mode and encr_mode, so set them again */
+#if 0
 
 //	miniport_set_int(wd, OID_802_11_NETWORK_TYPE_IN_USE,
 //			 Ndis802_11Automode);
-//	ndis_set_rx_mode(dev);
 #endif
+	ndis_set_rx_mode(dev);
 	set_infra_mode(wd, Ndis802_11Infrastructure);
 	set_auth_mode(wd, Ndis802_11AuthModeOpen);
 	set_encr_mode(wd, Ndis802_11EncryptionDisabled);
 	set_scan(wd);
 
+	
 	hangcheck_add(wd);
 	stats_timer_add(wd);
 	ndiswrapper_procfs_add_iface(wd);
@@ -1690,7 +1665,7 @@ struct net_device *ndis_init_netdev(struct wrapper_dev **pwd,
 	init_waitqueue_head(&wd->ndis_comm_wq);
 	wd->ndis_comm_done = 0;
 	/* don't send packets until the card is associated */
-	wd->send_ok = 1;
+	wd->send_ok = 0;
 	INIT_WORK(&wd->xmit_work, xmit_worker, wd);
 	wd->xmit_ring_start = 0;
 	wd->xmit_ring_pending = 0;
@@ -1742,7 +1717,7 @@ static int __init wrapper_init(void)
 	char *env[] = {NULL};
 	int err;
 
-	debug = 4;
+	debug = 0;
 	spin_lock_init(&spinlock_kspin_lock);
 	printk(KERN_INFO "%s version %s loaded (preempt=%s,smp=%s)\n",
 	       DRIVER_NAME, DRIVER_VERSION,

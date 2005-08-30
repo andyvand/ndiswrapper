@@ -939,6 +939,8 @@ void *get_sp(void);
 int ndis_init(void);
 void ndis_exit_device(struct wrapper_dev *wd);
 void ndis_exit(void);
+void insert_ndis_kdpc_work(struct kdpc *kdpc);
+BOOLEAN remove_ndis_kdpc_work(struct kdpc *kdpc);
 
 int usb_init(void);
 void usb_exit(void);

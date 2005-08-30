@@ -592,6 +592,7 @@ unsigned long usb_submit_nt_urb(struct usb_device *dev, struct irp *irp)
 		} else {
 			NT_URB_STATUS(nt_urb) = USBD_STATUS_SUCCESS;
 			memcpy(ctrl_req->transferBuf, buf, ret);
+			irp->io_status.status_info = ret;
 		}
 		kfree(buf);
 		ctrl_req->transferBufLen = ret;
