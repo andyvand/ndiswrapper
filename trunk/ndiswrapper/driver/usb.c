@@ -573,7 +573,7 @@ unsigned long usb_submit_nt_urb(struct usb_device *dev, struct irp *irp)
 			 ctrl_req->index, ctrl_req->transferBuf,
 			 ctrl_req->transferBufLen);
 
-		buf = kmalloc(ctrl_req->transferBufLen, GFP_NOIO);
+		buf = kmalloc(ctrl_req->transferBufLen, GFP_ATOMIC);
 		if (!buf) {
 			ERROR("couldn't allocate memory");
 			break;
@@ -589,13 +589,13 @@ unsigned long usb_submit_nt_urb(struct usb_device *dev, struct irp *irp)
 		if (ret < 0) {
 			ERROR("usb_get_descriptor failed with %d", ret);
 			NT_URB_STATUS(nt_urb) = USBD_STATUS_REQUEST_FAILED;
+			ctrl_req->transferBufLen = 0;
 		} else {
 			NT_URB_STATUS(nt_urb) = USBD_STATUS_SUCCESS;
 			memcpy(ctrl_req->transferBuf, buf, ret);
 			irp->io_status.status_info = ret;
 		}
 		kfree(buf);
-		ctrl_req->transferBufLen = ret;
 		break;
 
 	case URB_FUNCTION_VENDOR_DEVICE:
