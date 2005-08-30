@@ -767,82 +767,17 @@ STDCALL void *WRAP_EXPORT(ExAllocatePoolWithTag)
 	TRACEENTER1("pool_type: %d, size: %lu, tag: %u", pool_type,
 		    size, tag);
 
-#if 0
-	SIZE_T n;
-	enum memory_alloc_type type;
-	n = MEM_TAG_SIZE(size);
-	if (n <= KMALLOC_THRESHOLD) {
-		if (current_irql() < DISPATCH_LEVEL)
-			ret = kmalloc(n, GFP_KERNEL);
-		else
-			ret = kmalloc(n, GFP_ATOMIC);
-		type = ALLOC_TYPE_KMALLOC;
-	} else {
-		if (current_irql() == DISPATCH_LEVEL)
-			ERROR("Windows driver allocating too big a block"
-			      " at DISPATCH_LEVEL: %lu", n);
-		ret = vmalloc(n);
-		type = ALLOC_TYPE_VMALLOC;
-	}
-	DBGTRACE2("%p", ret);
-	if (!ret)
-		WARNING("couldn't allocate memory");
-	else
-		ret = TAG_MEM(ret, type, tag);
-	return ret;
-#else
 	if (current_irql() < DISPATCH_LEVEL)
 		ret = kmalloc(size, GFP_KERNEL);
 	else
 		ret = kmalloc(size, GFP_ATOMIC);
 	return ret;
-#endif
 }
 
 STDCALL void WRAP_EXPORT(ExFreePool)
 	(void *p)
 {
-#if 0
-	enum memory_alloc_type type;
-
-	TRACEENTER2("%p", p);
-	type = MEM_ALLOC_TYPE(p);
-	if (type != ALLOC_TYPE_KMALLOC &&
-	    type != ALLOC_TYPE_VMALLOC)
-		ERROR("type %d is invalid", type);
-	if (type == ALLOC_TYPE_KMALLOC)
-		kfree(p);
-	else {
-		struct ndis_work_entry *ndis_work_entry;
-		struct ndis_free_mem_work_item *free_mem;
-		KIRQL irql;
-
-		if (!in_interrupt()) {
-			vfree(p);
-			TRACEEXIT3(return);
-		}
-		/* Centrino 2200 driver calls this function when in
-		 * ad-hoc mode in interrupt context when length >
-		 * KMALLOC_THRESHOLD, which implies that vfree is
-		 * called in interrupt context, which is not
-		 * correct. So we use worker for it */
-		ndis_work_entry = kmalloc(sizeof(*ndis_work_entry),
-					  GFP_ATOMIC);
-		BUG_ON(!ndis_work_entry);
-
-		ndis_work_entry->type = NDIS_FREE_MEM_WORK_ITEM;
-		free_mem = &ndis_work_entry->entry.free_mem_work_item;
-
-		free_mem->addr = p;
-
-		irql = kspin_lock_irql(&ndis_work_list_lock, DISPATCH_LEVEL);
-		InsertTailList(&ndis_work_list, &ndis_work_entry->list);
-		kspin_unlock_irql(&ndis_work_list_lock, irql);
-		TRACEEXIT2(return);
-	}
-#else
 	kfree(p);
-#endif
 }
 
 WRAP_FUNC_PTR_DECL(ExAllocatePoolWithTag)

@@ -243,13 +243,6 @@ STDCALL NDIS_STATUS WRAP_EXPORT(NdisAllocateMemoryWithTag)
 	(void **dest, UINT length, ULONG tag)
 {
 	TRACEENTER3("dest = %p, *dest = %p", dest, *dest);
-#if 0
-	*dest = ExAllocatePoolWithTag(NonPagedPool, length, tag);
-	if (*dest)
-		return NDIS_STATUS_SUCCESS;
-	else
-		return NDIS_STATUS_FAILURE;
-#else
 	if (length <= KMALLOC_THRESHOLD) {
 		if (current_irql() < DISPATCH_LEVEL)
 			*dest = kmalloc(length, GFP_KERNEL);
@@ -266,7 +259,6 @@ STDCALL NDIS_STATUS WRAP_EXPORT(NdisAllocateMemoryWithTag)
 		TRACEEXIT3(return NDIS_STATUS_SUCCESS);
 	DBGTRACE3("Allocatemem failed size=%d", length);
 	TRACEEXIT3(return NDIS_STATUS_FAILURE);
-#endif
 }
 
 STDCALL NDIS_STATUS WRAP_EXPORT(NdisAllocateMemory)
@@ -280,9 +272,6 @@ STDCALL NDIS_STATUS WRAP_EXPORT(NdisAllocateMemory)
 STDCALL void WRAP_EXPORT(NdisFreeMemory)
 	(void *addr, UINT length, UINT flags)
 {
-#if 0
-	ExFreePool(addr);
-#else
 	struct ndis_work_entry *ndis_work_entry;
 	struct ndis_free_mem_work_item *free_mem;
 	KIRQL irql;
@@ -323,7 +312,6 @@ STDCALL void WRAP_EXPORT(NdisFreeMemory)
 
 		schedule_work(&ndis_work);
 	}
-#endif
 }
 
 /*
