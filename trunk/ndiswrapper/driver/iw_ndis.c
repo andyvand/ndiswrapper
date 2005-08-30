@@ -496,15 +496,34 @@ static int iw_get_rts_threshold(struct net_device *dev,
 				union iwreq_data *wrqu, char *extra)
 {
 	struct wrapper_dev *wd = netdev_priv(dev);
-	ndis_rts_threshold rts_threshold;
+	ndis_rts_threshold threshold;
 	NDIS_STATUS res;
 
 	res = miniport_query_info(wd, OID_802_11_RTS_THRESHOLD,
-				  &rts_threshold, sizeof(rts_threshold));
+				  &threshold, sizeof(threshold));
 	if (res == NDIS_STATUS_NOT_SUPPORTED)
 		return -EOPNOTSUPP;
 
-	wrqu->rts.value = rts_threshold;
+	wrqu->rts.value = threshold;
+	return 0;
+}
+
+static int iw_set_rts_threshold(struct net_device *dev,
+				struct iw_request_info *info,
+				union iwreq_data *wrqu, char *extra)
+{
+	struct wrapper_dev *wd = netdev_priv(dev);
+	ndis_rts_threshold threshold;
+	NDIS_STATUS res;
+
+	threshold = wrqu->rts.value;
+	res = miniport_set_info(wd, OID_802_11_RTS_THRESHOLD,
+				&threshold, sizeof(threshold));
+	if (res == NDIS_STATUS_NOT_SUPPORTED)
+		return -EOPNOTSUPP;
+	if (res == NDIS_STATUS_INVALID_DATA)
+		return -EINVAL;
+
 	return 0;
 }
 
@@ -525,13 +544,36 @@ static int iw_get_frag_threshold(struct net_device *dev,
 	return 0;
 }
 
+static int iw_set_frag_threshold(struct net_device *dev,
+				 struct iw_request_info *info,
+				 union iwreq_data *wrqu, char *extra)
+{
+	struct wrapper_dev *wd = netdev_priv(dev);
+	ndis_rts_threshold threshold;
+	NDIS_STATUS res;
+
+	threshold = wrqu->frag.value;
+	res = miniport_set_info(wd, OID_802_11_FRAGMENTATION_THRESHOLD,
+				&threshold, sizeof(threshold));
+	if (res == NDIS_STATUS_NOT_SUPPORTED)
+		return -EOPNOTSUPP;
+	if (res == NDIS_STATUS_INVALID_DATA)
+		return -EINVAL;
+
+	return 0;
+}
+
 int get_ap_address(struct wrapper_dev *wd, mac_address ap_addr)
 {
 	NDIS_STATUS res;
 
 	TRACEENTER1("%s", "");
 
-	res = miniport_query_info(wd, OID_802_11_BSSID, ap_addr, ETH_ALEN);
+	res = NDIS_STATUS_ADAPTER_NOT_READY;
+	/* this OID is valid only when associated */
+	if (wd->link_status)
+		res = miniport_query_info(wd, OID_802_11_BSSID, ap_addr,
+					  ETH_ALEN);
 	if (res == NDIS_STATUS_ADAPTER_NOT_READY)
 		memset(ap_addr, 0, ETH_ALEN);
 
@@ -1092,7 +1134,8 @@ static int iw_get_scan(struct net_device *dev, struct iw_request_info *info,
 
 	res = miniport_query_info_needed(wd, OID_802_11_BSSID_LIST,
 					 bssid_list, list_len, &needed);
-	if (needed > 0 || res == NDIS_STATUS_INVALID_LENGTH) {
+	if (needed > 0 || res == NDIS_STATUS_INVALID_LENGTH ||
+	    res == NDIS_STATUS_BUFFER_TOO_SHORT) {
 		/* now try with required space */
 		kfree(bssid_list);
 		list_len = needed;
@@ -1603,7 +1646,9 @@ static const iw_handler	ndis_handler[] = {
 	[SIOCGIWRATE	- SIOCIWFIRST] = iw_get_bitrate,
 	[SIOCSIWRATE	- SIOCIWFIRST] = iw_set_bitrate,
 	[SIOCGIWRTS	- SIOCIWFIRST] = iw_get_rts_threshold,
+	[SIOCSIWRTS	- SIOCIWFIRST] = iw_set_rts_threshold,
 	[SIOCGIWFRAG	- SIOCIWFIRST] = iw_get_frag_threshold,
+	[SIOCSIWFRAG	- SIOCIWFIRST] = iw_set_frag_threshold,
 	[SIOCGIWAP	- SIOCIWFIRST] = iw_get_ap_address,
 	[SIOCSIWAP	- SIOCIWFIRST] = iw_set_ap_address,
 	[SIOCSIWENCODE	- SIOCIWFIRST] = iw_set_encr,

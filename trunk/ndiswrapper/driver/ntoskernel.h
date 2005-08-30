@@ -323,8 +323,8 @@ do {									\
 #define TICKS_1601_TO_1970	(SECS_1601_TO_1970 * TICKSPERSEC)
 
 #define SYSTEM_TIME_TO_HZ(sys_time)					\
-	((sys_time) < 0) ? (u64)HZ * (-(sys_time)) / TICKSPERSEC :	\
-	(u64)HZ * ((sys_time) - ticks_1601()) / TICKSPERSEC
+	(((sys_time) < 0) ? (((u64)HZ * (-(sys_time))) / TICKSPERSEC) :	\
+	 (((u64)HZ * ((sys_time) - ticks_1601())) / TICKSPERSEC))
 
 typedef void (*WRAP_EXPORT_FUNC)(void);
 
@@ -786,12 +786,12 @@ extern int debug;
 #define TRACEEXIT5(stmt) do { DBGTRACE5("Exit"); stmt; } while(0)
 #define TRACEEXIT6(stmt) do { DBGTRACE6("Exit"); stmt; } while(0)
 
-//#define USB_DEBUG 1
+#define USB_DEBUG 1
 
 #if defined(DEBUG) && defined(USB_DEBUG)
-#define USBTRACE(fmt, ...) DBGTRACE1(fmt, ## __VA_ARGS__)
-#define USBTRACEENTER(fmt, ...) TRACEENTER1(fmt, ## __VA_ARGS__)
-#define USBTRACEEXIT(stmt) TRACEEXIT1(stmt)
+#define USBTRACE(fmt, ...) DBGTRACE4(fmt, ## __VA_ARGS__)
+#define USBTRACEENTER(fmt, ...) TRACEENTER4(fmt, ## __VA_ARGS__)
+#define USBTRACEEXIT(stmt) TRACEEXIT4(stmt)
 #else
 #define USBTRACE(fmt, ...)
 #define USBTRACEENTER(fmt, ...)
@@ -814,10 +814,12 @@ extern int debug;
 		struct io_stack_location *_irp_sl;			\
 		_irp_sl = IoGetCurrentIrpStackLocation(__irp);		\
 		INFO("irp: %p, stack size: %d, cl: %d, sl: %p, "	\
-		     "dev_obj: %p, mj_fn: %d, minor_fn: %d, nt_urb: %p", \
+		     "dev_obj: %p, mj_fn: %d, minor_fn: %d, "		\
+		     "nt_urb: %p, event: %p",				\
 		     __irp, __irp->stack_count,	(__irp)->current_location, \
 		     _irp_sl, _irp_sl->dev_obj, _irp_sl->major_fn,	\
-		     _irp_sl->minor_fn, URB_FROM_IRP(__irp));		\
+		     _irp_sl->minor_fn, URB_FROM_IRP(__irp),		\
+		     (__irp)->user_event);				\
 		break;							\
 	}
 #else

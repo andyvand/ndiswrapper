@@ -539,7 +539,6 @@ static void kdpc_worker(void *data)
 	struct nt_list *entry;
 	struct kdpc *kdpc;
 	KIRQL irql;
-	DPC dpc_func;
 
 	while (1) {
 		irql = kspin_lock_irql(&kdpc_list_lock, DISPATCH_LEVEL);
@@ -549,21 +548,10 @@ static void kdpc_worker(void *data)
 			break;
 		}
 		kdpc = container_of(entry, struct kdpc, list);
-		if (!kdpc) {
-			WARNING("kdpc is NULL");
-			kspin_unlock_irql(&kdpc_list_lock, irql);
-			continue;
-		}
 		kdpc->number = 0;
-		dpc_func = kdpc->func;
-		if (!dpc_func) {
-			WARNING("dpc func for %p is NULL!", kdpc);
-			kspin_unlock_irql(&kdpc_list_lock, irql);
-			continue;
-		}
 		DBGTRACE5("%p, %p, %p, %p, %p", kdpc, dpc_func, kdpc->ctx,
 			  kdpc->arg1, kdpc->arg2);
-		LIN2WIN4(dpc_func, kdpc, kdpc->ctx, kdpc->arg1, kdpc->arg2);
+		LIN2WIN4(kdpc->func, kdpc, kdpc->ctx, kdpc->arg1, kdpc->arg2);
 		kspin_unlock_irql(&kdpc_list_lock, irql);
 	}
 }
@@ -1387,14 +1375,14 @@ STDCALL NTSTATUS WRAP_EXPORT(KeDelayExecutionThread)
 {
 	int res;
 	long timeout;
-	long t = *interval;
 
-	TRACEENTER5("thread: %p, interval: %ld", get_current(), t);
 	if (wait_mode != 0)
 		ERROR("invalid wait_mode %d", wait_mode);
 
-	timeout = SYSTEM_TIME_TO_HZ(t);
+	timeout = SYSTEM_TIME_TO_HZ(*interval) + 1;
 
+	TRACEENTER4("thread: %p, interval: %Ld, timeout: %ld",
+		    get_current(), *interval, timeout);
 	if (timeout <= 0)
 		TRACEEXIT3(return STATUS_SUCCESS);
 
@@ -1404,6 +1392,7 @@ STDCALL NTSTATUS WRAP_EXPORT(KeDelayExecutionThread)
 		set_current_state(TASK_UNINTERRUPTIBLE);
 
 	res = schedule_timeout(timeout);
+	DBGTRACE4("thread: %p, res: %d", get_current(), res);
 	if (res == 0)
 		TRACEEXIT3(return STATUS_SUCCESS);
 	else
