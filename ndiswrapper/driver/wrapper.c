@@ -428,7 +428,6 @@ static void hangcheck_proc(unsigned long data)
 	KIRQL irql;
 
 	TRACEENTER3("%s", "");
-	return;
 	set_bit(HANGCHECK, &wd->wrapper_work);
 	schedule_work(&wd->wrapper_worker);
 
@@ -1167,9 +1166,8 @@ static void update_wireless_stats(struct wrapper_dev *wd)
 	NDIS_STATUS res;
 	ndis_rssi rssi;
 
-	return;
 	TRACEENTER2("");
-	/* Prism1 USB and Airgo cards crash kernel if RSSI is queried */
+	/* TODO: Prism1 USB and Airgo cards crash kernel if RSSI is queried */
 	if ((wd->ndis_device->vendor == 0x17cb &&
 	       wd->ndis_device->device == 0x0001) ||
 	      (wd->ndis_device->vendor == 0x2001 &&
@@ -1272,12 +1270,6 @@ static void wrapper_worker_proc(void *param)
 		struct net_device *net_dev = wd->net_dev;
 
 		DBGTRACE2("resuming device %s", net_dev->name);
-#if 0
-		/* see if pm issues are with kernel or ndiswrapper; if
-		 * we make it this far, kernel is sane */
-		set_current_state(TASK_INTERRUPTIBLE);
-		schedule_timeout(20 * HZ);
-#endif
 		set_bit(HW_AVAILABLE, &wd->hw_status);
 		DBGTRACE2("continuing resume of device %s", net_dev->name);
 		if (test_and_clear_bit(HW_HALTED, &wd->hw_status)) {
@@ -1611,19 +1603,18 @@ int setup_device(struct net_device *dev)
 	if (set_privacy_filter(wd, Ndis802_11PrivFilterAcceptAll))
 		WARNING("%s", "Unable to set privacy filter");
 
-	/* check_capa changes auth_mode and encr_mode, so set them again */
 #if 0
 
 //	miniport_set_int(wd, OID_802_11_NETWORK_TYPE_IN_USE,
 //			 Ndis802_11Automode);
 #endif
 	ndis_set_rx_mode(dev);
+	/* check_capa changes auth_mode and encr_mode, so set them again */
 	set_infra_mode(wd, Ndis802_11Infrastructure);
 	set_auth_mode(wd, Ndis802_11AuthModeOpen);
 	set_encr_mode(wd, Ndis802_11EncryptionDisabled);
 	set_scan(wd);
 
-	
 	hangcheck_add(wd);
 	stats_timer_add(wd);
 	ndiswrapper_procfs_add_iface(wd);
@@ -1708,7 +1699,7 @@ static void module_cleanup(void)
 static int __init wrapper_init(void)
 {
 	char *argv[] = {"loadndisdriver", 
-#if defined DEBUG && DEBUG >= 1
+#if defined(DEBUG) && DEBUG >= 1
 			"1"
 #else
 			"0"
@@ -1717,7 +1708,6 @@ static int __init wrapper_init(void)
 	char *env[] = {NULL};
 	int err;
 
-	debug = 0;
 	spin_lock_init(&spinlock_kspin_lock);
 	printk(KERN_INFO "%s version %s loaded (preempt=%s,smp=%s)\n",
 	       DRIVER_NAME, DRIVER_VERSION,

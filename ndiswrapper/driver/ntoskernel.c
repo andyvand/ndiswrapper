@@ -1065,10 +1065,6 @@ static void wakeup_threads(struct dispatch_header *dh)
 	DBGINFO("dh: %p", dh);
 	irql = kspin_lock_irql(&kevent_lock, DISPATCH_LEVEL);
 	nt_list_for_each_safe(cur, tmp, &dh->wait_blocks) {
-		if (cur == NULL)
-			ERROR("cur is NULL");
-		if (tmp == NULL)
-			ERROR("tmp is NULL");
 		wb = container_of(cur, struct wait_block, list);
 		DBGINFO("wait block: %p", wb);
 		if (check_reset_signaled_state(dh, wb->thread)) {
