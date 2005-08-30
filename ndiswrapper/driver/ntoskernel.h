@@ -349,7 +349,7 @@ struct wrap_export {
 #define WRAP_EXPORT(x) x
 
 struct wrap_alloc {
-	struct list_head list;
+	struct nt_list list;
 	void *ptr;
 };
 

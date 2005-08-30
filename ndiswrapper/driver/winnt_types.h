@@ -240,22 +240,6 @@ enum memory_caching_type {
 	MmNonCachedUnordered, MmUSWCCached, MmMaximumCacheType
 };
 
-enum memory_alloc_type {
-	ALLOC_TYPE_KMALLOC = 1, ALLOC_TYPE_VMALLOC,
-};
-
-/* we allocate two extra ULONGs to store type of allocation (kmalloc
- * or vmalloc) and the tag; tag is not used by ndiswrapper, at least
- * right now */
-#define MEM_TAG_SIZE(ptr) ((ptr) + 2 * sizeof(ULONG))
-#define TAG_MEM(ptr, type, tag)			\
-	({					\
-		*((ULONG *)ptr) = type;		\
-		*(((ULONG *)ptr) + 1) = tag;	\
-		(void *)(((ULONG *)ptr) + 2);	\
-	})
-#define MEM_ALLOC_TYPE(ptr) (((ULONG *)ptr)[-2])
-
 enum lock_operation {
 	IoReadAccess, IoWriteAccess, IoModifyAccess
 };
