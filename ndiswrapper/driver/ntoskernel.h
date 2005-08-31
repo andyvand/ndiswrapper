@@ -786,7 +786,7 @@ extern int debug;
 #define TRACEEXIT5(stmt) do { DBGTRACE5("Exit"); stmt; } while(0)
 #define TRACEEXIT6(stmt) do { DBGTRACE6("Exit"); stmt; } while(0)
 
-#define USB_DEBUG 1
+//#define USB_DEBUG 1
 
 #if defined(DEBUG) && defined(USB_DEBUG)
 #define USBTRACE(fmt, ...) DBGTRACE4(fmt, ## __VA_ARGS__)
