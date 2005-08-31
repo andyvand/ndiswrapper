@@ -290,13 +290,16 @@ NDIS_STATUS miniport_init(struct wrapper_dev *wd)
 
 	/* do we need to power up the card explicitly? */
 	res = miniport_set_pm_state(wd, NdisDeviceStateD0);
+	if (res)
+		WARNING("setting power state to device %s returns %08X",
+			wd->net_dev->name, res);
 	/* do we need to reset the device? */
 //	res = miniport_reset(wd);
 
 	/* Wait a little to let card power up otherwise ifup might fail after
 	   boot; USB devices seem to need long delays */
 	set_current_state(TASK_INTERRUPTIBLE);
-	schedule_timeout(3 * HZ);
+	schedule_timeout(HZ/2);
 
 	TRACEEXIT1(return 0);
 }
@@ -420,6 +423,30 @@ void ndiswrapper_stop_device(struct wrapper_dev *wd)
 #else
 	miniport_halt(wd);
 #endif
+}
+
+NDIS_STATUS miniport_surprise_remove(struct wrapper_dev *wd)
+{
+	struct miniport_char *miniport;
+
+	miniport = &wd->driver->miniport;
+	DBGTRACE1("%d, %p",
+		  test_bit(ATTR_SURPRISE_REMOVE, &wd->attributes),
+		  miniport->pnp_event_notify);
+
+	if (miniport->pnp_event_notify) {
+		DBGTRACE1("calling surprise_removed");
+		LIN2WIN4(miniport->pnp_event_notify,
+			 wd->nmb->adapter_ctx,
+			 NdisDevicePnPEventSurpriseRemoved, NULL, 0);
+		return NDIS_STATUS_SUCCESS;
+	} else {
+		WARNING("%s: Windows driver for device %s doesn't"
+			"support MiniportPnpEventNotify for safely"
+			"removing the device", DRIVER_NAME,
+			wd->net_dev->name);
+		return NDIS_STATUS_FAILURE;
+	}
 }
 
 static void hangcheck_proc(unsigned long data)
@@ -837,16 +864,9 @@ int ndiswrapper_suspend_device(struct wrapper_dev *wd,
 	if (status == NDIS_STATUS_SUCCESS)
 		set_bit(HW_SUSPENDED, &wd->hw_status);
 	else {
-		if (test_bit(ATTR_NO_HALT_ON_SUSPEND, &wd->attributes)) {
-			set_bit(SUSPEND_RESUME, &wd->wrapper_work);
-			schedule_work(&wd->wrapper_worker);
-			ndiswrapper_resume_device(wd);
-			return -1;
-		} else {
-			DBGTRACE2("no pm: halting the device");
-			ndiswrapper_stop_device(wd);
-			set_bit(HW_HALTED, &wd->hw_status);
-		}
+		DBGTRACE2("no pm: halting the device");
+		ndiswrapper_stop_device(wd);
+		set_bit(HW_HALTED, &wd->hw_status);
 	}
 	clear_bit(HW_AVAILABLE, &wd->hw_status);
 	return 0;
@@ -880,16 +900,16 @@ int ndiswrapper_suspend_pci(struct pci_dev *pdev, pm_message_t state)
 int ndiswrapper_resume_device(struct wrapper_dev *wd)
 {
 	if (!wd)
-		return -1;
+		TRACEEXIT1(return -1);
 	if (test_bit(HW_AVAILABLE, &wd->hw_status))
-		return -1;
+		TRACEEXIT1(return -1);
 	if (!(test_bit(HW_SUSPENDED, &wd->hw_status) ||
 	      test_bit(HW_HALTED, &wd->hw_status)))
-		return -1;
+		TRACEEXIT1(return -1);
 
 	set_bit(SUSPEND_RESUME, &wd->wrapper_work);
 	schedule_work(&wd->wrapper_worker);
-	return 0;
+	TRACEEXIT1(return 0);
 }
 
 int ndiswrapper_resume_pci(struct pci_dev *pdev)
@@ -922,6 +942,10 @@ int ndiswrapper_suspend_usb(struct usb_interface *intf, pm_message_t state)
 	/* some drivers support only D3, so force it */
 	ret = ndiswrapper_suspend_device(wd, NdisDeviceStateD3);
 	DBGTRACE2("ret = %d", ret);
+	/* TODO: suspend seems to work fine and resume also works if
+	 * resumed from command line, but resuming from S3 crashes
+	 * kernel. Should we kill any pending urbs? what about
+	 * irps? */
 	return ret;
 }
 
@@ -1269,23 +1293,26 @@ static void wrapper_worker_proc(void *param)
 		NDIS_STATUS res;
 		struct net_device *net_dev = wd->net_dev;
 
-		DBGTRACE2("resuming device %s", net_dev->name);
+		DBGTRACE1("resuming device %s", net_dev->name);
 		set_bit(HW_AVAILABLE, &wd->hw_status);
-		DBGTRACE2("continuing resume of device %s", net_dev->name);
-		if (test_and_clear_bit(HW_HALTED, &wd->hw_status)) {
-			res = ndiswrapper_start_device(wd);
-			DBGTRACE2("res: %08X", res);
-			if (res)
-				ERROR("initialization failed: %08X", res);
-			clear_bit(HW_AVAILABLE, &wd->hw_status);
-			return;
-		} else if (test_and_clear_bit(HW_SUSPENDED, &wd->hw_status)) {
+		DBGTRACE1("continuing resume of device %s", net_dev->name);
+		if (test_and_clear_bit(HW_SUSPENDED, &wd->hw_status)) {
 			res = miniport_set_pm_state(wd, NdisDeviceStateD0);
-			DBGTRACE2("%s: setting power to state %d returns %08X",
+			DBGTRACE1("%s: setting power to state %d returns %08X",
 				  net_dev->name, NdisDeviceStateD0, res);
 			if (res)
-				WARNING("No pnp capabilities for pm (%08X)",
-					res);
+				WARNING("device %s may not have resumed "
+					"properly (%08X)", net_dev->name, res);
+		} else if (test_and_clear_bit(HW_HALTED, &wd->hw_status)) {
+			res = ndiswrapper_start_device(wd);
+			DBGTRACE1("res: %08X", res);
+			if (res) {
+				ERROR("device %s re-initialization failed "
+				      "(%08X)", net_dev->name, res);
+				clear_bit(HW_AVAILABLE, &wd->hw_status);
+				/* TODO: should be halted? */
+				return;
+			}
 		}
 		hangcheck_add(wd);
 		stats_timer_add(wd);
@@ -1297,7 +1324,6 @@ static void wrapper_worker_proc(void *param)
 			netif_start_queue(net_dev);
 		}
 		netif_poll_enable(net_dev);
-
 		DBGTRACE2("%s: device resumed", net_dev->name);
 	}
 	TRACEEXIT3(return);
@@ -1507,7 +1533,7 @@ int setup_device(struct net_device *dev)
 	res = miniport_query_info(wd, OID_802_3_CURRENT_ADDRESS,
 				  mac, sizeof(mac));
 	if (res) {
-		ERROR("%s", "unable to get mac address from driver");
+		ERROR("unable to get mac address from driver");
 		return -EINVAL;
 	}
 	DBGTRACE1("mac:" MACSTR, MAC2STR(mac));

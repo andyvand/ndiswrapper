@@ -391,28 +391,9 @@ ndiswrapper_remove_usb_device(struct usb_interface *intf)
 	wd = (struct wrapper_dev *)usb_get_intfdata(intf);
 	if (!wd)
 		TRACEEXIT1(return);
-	/* big lock will be released in ndiswrapper_remove_device */
-	if (!test_bit(HW_UNLOADING, &wd->hw_status)) {
-		struct miniport_char *miniport;
 
-		miniport = &wd->driver->miniport;
-		/* only disconnect function of USB devices set this
-		 * bit when the device is disconnected */
-		DBGTRACE1("%d, %p",
-			  test_bit(ATTR_SURPRISE_REMOVE, &wd->attributes),
-			  miniport->pnp_event_notify);
-
-		if (miniport->pnp_event_notify) {
-			DBGTRACE1("calling surprise_removed");
-			LIN2WIN4(miniport->pnp_event_notify,
-				 wd->nmb->adapter_ctx,
-				 NdisDevicePnPEventSurpriseRemoved, NULL, 0);
-		} else
-			WARNING("%s: Windows driver for device %s doesn't"
-				"support MiniportPnpEventNotify for safely"
-				"removing the device", DRIVER_NAME,
-				wd->net_dev->name);
-	}
+	if (!test_bit(HW_UNLOADING, &wd->hw_status))
+		miniport_surprise_remove(wd);
 	wd->intf = NULL;
 	usb_set_intfdata(intf, NULL);
 	atomic_dec(&wd->driver->users);
@@ -429,12 +410,8 @@ ndiswrapper_remove_usb_device(struct usb_device *udev, void *ptr)
 
 	if (!wd || !wd->dev.usb)
 		TRACEEXIT1(return);
-	if (!test_bit(HW_UNLOADING, &wd->hw_status) == 0 &&
-	    miniport->pnp_event_notify) {
-		DBGTRACE1("calling surprise_removed");
-		LIN2WIN4(miniport->pnp_event_notify, wd->nmb->adapter_ctx,
-			 NdisDevicePnPEventSurpriseRemoved, NULL, 0);
-	}
+	if (!test_bit(HW_UNLOADING, &wd->hw_status))
+		miniport_suprise_remove(wd);
 	wd->dev.usb = NULL;
 	wd->intf = NULL;
 	atomic_dec(&wd->driver->users);

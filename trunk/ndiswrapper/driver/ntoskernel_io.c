@@ -1015,7 +1015,7 @@ STDCALL void WRAP_EXPORT(IoDeleteDevice)
 	if (prev == dev)
 		dev->drv_obj->dev_obj = dev->next;
 	else {
-		while (prev && prev->next != dev)
+		while (prev->next != dev)
 			prev = prev->next;
 		prev->next = dev->next;
 	}
