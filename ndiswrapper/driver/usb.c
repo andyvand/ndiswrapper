@@ -31,15 +31,20 @@ STDCALL void usb_cancel_transfer(struct device_object *dev_obj,
 				 struct irp *irp);
 
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,0)
-static void *usb_buffer_alloc(struct usb_device *dev, size_t size,
-			      unsigned mem_flags, dma_addr_t *dma)
+static inline void *usb_buffer_alloc(struct usb_device *dev, size_t size,
+				     unsigned mem_flags, dma_addr_t *dma)
 {
-	return NULL;
+	void *buf;
+	/* TODO: provide dma buffer */
+	buf = kmalloc(size, mem_flags);
+	if (buf)
+		memset(buf, 0, size);
+	return buf;
 }
-static void usb_buffer_free(struct usb_device *dev, size_t size,
-			    void *addr, dma_addr_t dma)
+static inline void usb_buffer_free(struct usb_device *dev, size_t size,
+				   void *addr, dma_addr_t dma)
 {
-	return;
+	kfree(addr);
 }
 #define URB_NO_TRANSFER_DMA_MAP 0
 #define URB_NO_SETUP_DMA_MAP 0

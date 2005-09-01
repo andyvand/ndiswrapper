@@ -295,11 +295,11 @@ do {									\
 #endif
 
 #if LINUX_VERSION_CODE > KERNEL_VERSION(2,6,9)
-#define NW_MODULE_PARM_INT(name, perm) module_param(name, int, perm)
-#define NW_MODULE_PARM_STRING(name, perm) module_param(name, charp, perm)
+#define WRAP_MODULE_PARM_INT(name, perm) module_param(name, int, perm)
+#define WRAP_MODULE_PARM_STRING(name, perm) module_param(name, charp, perm)
 #else
-#define NW_MODULE_PARM_INT(name, perm) MODULE_PARM(name, "i")
-#define NW_MODULE_PARM_STRING(name, perm) MODULE_PARM(name, "s")
+#define WRAP_MODULE_PARM_INT(name, perm) MODULE_PARM(name, "i")
+#define WRAP_MODULE_PARM_STRING(name, perm) MODULE_PARM(name, "s")
 #endif
 
 /* this ugly hack is to handle RH kernels; I don't know any better,
@@ -322,6 +322,8 @@ do {									\
 #define SECS_1601_TO_1970	((369 * 365 + 89) * (u64)SECSPERDAY)
 #define TICKS_1601_TO_1970	(SECS_1601_TO_1970 * TICKSPERSEC)
 
+/* 100ns units to HZ; if sys_time is negative, relative to current
+ * clock, otherwise from year 1601 */
 #define SYSTEM_TIME_TO_HZ(sys_time)					\
 	(((sys_time) < 0) ? (((u64)HZ * (-(sys_time))) / TICKSPERSEC) :	\
 	 (((u64)HZ * ((sys_time) - ticks_1601())) / TICKSPERSEC))
@@ -367,7 +369,7 @@ struct pe_image {
 extern KSPIN_LOCK atomic_lock;
 extern KSPIN_LOCK cancel_lock;
 
-#define DEBUG_IRQL 1
+//#define DEBUG_IRQL 1
 
 #define WRAP_TIMER_MAGIC 47697249
 struct wrap_timer {
