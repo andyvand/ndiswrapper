@@ -497,6 +497,7 @@ pdoDispatchInternalDeviceControl(struct device_object *pdo,
 	struct io_stack_location *irp_sl;
 	NTSTATUS ret;
 	struct wrapper_dev *wd;
+	union nt_urb *nt_urb;
 
 	DUMP_IRP(irp);
 
@@ -525,18 +526,15 @@ pdoDispatchInternalDeviceControl(struct device_object *pdo,
 		ERROR("ioctl %08X NOT IMPLEMENTED!",
 		      irp_sl->params.ioctl.code);
 		ret = STATUS_INVALID_DEVICE_REQUEST;
+		irp->io_status.status = ret;
+		irp->io_status.status_info = 0;
+		nt_urb = URB_FROM_IRP(irp);
+		NT_URB_STATUS(nt_urb) = USBD_STATUS_NOT_SUPPORTED;
 	}
 
 	USBTRACE("ret: %d", ret);
-	if (ret != STATUS_SUCCESS)
-		irp->io_status.status_info = 0;
-	if (ret == STATUS_PENDING) {
-		irp->pending_returned = TRUE;
-		IoMarkIrpPending(irp);
-		return ret;
-	}
-	irp->io_status.status = ret;
-	IoCompleteRequest(irp, IO_NO_INCREMENT);
+	if (ret != STATUS_PENDING)
+		IoCompleteRequest(irp, IO_NO_INCREMENT);
 	USBTRACEEXIT(return ret);
 }
 
