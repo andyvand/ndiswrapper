@@ -834,6 +834,7 @@ struct wrapper_dev {
 	wait_queue_head_t ndis_comm_wq;
 	int ndis_comm_res;
 	int ndis_comm_done;
+	int ndis_comm_wait_time;
 
 	int serialized;
 	int use_sg_dma;

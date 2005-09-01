@@ -123,7 +123,7 @@ NDIS_STATUS miniport_reset(struct wrapper_dev *wd)
 	if (res == NDIS_STATUS_PENDING) {
 		if (wait_event_interruptible_timeout(wd->ndis_comm_wq,
 						     (wd->ndis_comm_done == 1),
-						     2 * HZ) <= 0)
+						     wd->ndis_comm_wait_time) <= 0)
 			res = NDIS_STATUS_FAILURE;
 		else
 			res = wd->ndis_comm_res;
@@ -181,7 +181,7 @@ NDIS_STATUS miniport_query_info_needed(struct wrapper_dev *wd,
 		 * driver doesn't call it, so timeout is used */
 		if (wait_event_interruptible_timeout(wd->ndis_comm_wq,
 						     (wd->ndis_comm_done == 1),
-						     2 * HZ) <= 0)
+						     wd->ndis_comm_wait_time) <= 0)
 			res = NDIS_STATUS_FAILURE;
 		else
 			res = wd->ndis_comm_res;
@@ -234,7 +234,7 @@ NDIS_STATUS miniport_set_info(struct wrapper_dev *wd, ndis_oid oid,
 		/* wait a little for NdisMSetInformationComplete */
 		if (wait_event_interruptible_timeout(wd->ndis_comm_wq,
 						     (wd->ndis_comm_done == 1),
-						     2 * HZ) <= 0)
+						     wd->ndis_comm_wait_time) <= 0)
 			res = NDIS_STATUS_FAILURE;
 		else
 			res = wd->ndis_comm_res;
@@ -301,7 +301,7 @@ NDIS_STATUS miniport_init(struct wrapper_dev *wd)
 	/* Wait a little to let card power up otherwise ifup might fail after
 	   boot; USB devices seem to need long delays */
 	set_current_state(TASK_INTERRUPTIBLE);
-	schedule_timeout(HZ/2);
+	schedule_timeout(HZ / 2);
 
 	TRACEEXIT1(return 0);
 }
@@ -1699,6 +1699,15 @@ struct net_device *ndis_init_netdev(struct wrapper_dev **pwd,
 	init_MUTEX(&wd->ndis_comm_mutex);
 	init_waitqueue_head(&wd->ndis_comm_wq);
 	wd->ndis_comm_done = 0;
+	/* prism1 usb driver crashes during MiniportSetInformation if
+	 * we wait for shorter time periods */
+	if ((wd->ndis_device->vendor == 0x2001 &&
+	     wd->ndis_device->device == 0x3700) ||
+	    (wd->ndis_device->vendor == 0x0846 &&
+	     wd->ndis_device->device == 0x4110))
+		wd->ndis_comm_wait_time = 4 * HZ;
+	else
+		wd->ndis_comm_wait_time = 2 * HZ;
 	/* don't send packets until the card is associated */
 	wd->send_ok = 0;
 	INIT_WORK(&wd->xmit_work, xmit_worker, wd);
