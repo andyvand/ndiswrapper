@@ -242,7 +242,7 @@ STDCALL NDIS_STATUS WRAP_EXPORT(NdisMDeregisterDevice)
 STDCALL NDIS_STATUS WRAP_EXPORT(NdisAllocateMemoryWithTag)
 	(void **dest, UINT length, ULONG tag)
 {
-	TRACEENTER3("dest = %p, *dest = %p", dest, *dest);
+	TRACEENTER3("dest = %p, length = %u", dest, length);
 	if (length <= KMALLOC_THRESHOLD) {
 		if (current_irql() < DISPATCH_LEVEL)
 			*dest = kmalloc(length, GFP_KERNEL);
@@ -257,7 +257,7 @@ STDCALL NDIS_STATUS WRAP_EXPORT(NdisAllocateMemoryWithTag)
 
 	if (*dest)
 		TRACEEXIT3(return NDIS_STATUS_SUCCESS);
-	DBGTRACE3("Allocatemem failed size=%d", length);
+	WARNING("couldnt' allocate memory: %u", length);
 	TRACEEXIT3(return NDIS_STATUS_FAILURE);
 }
 
@@ -2196,12 +2196,13 @@ NdisMSetInformationComplete(struct ndis_miniport_block *nmb,
 STDCALL void WRAP_EXPORT(NdisMSleep)
 	(ULONG us)
 {
+	unsigned long delay;
+
 	TRACEENTER4("us: %u", us);
-	if (us > 0) {
-		set_current_state(TASK_INTERRUPTIBLE);
-		schedule_timeout(HZ * us / 1000000);
-		DBGTRACE4("%s", "woke up");
-	}
+	delay = ((HZ * us) / 1000000) + 1;
+	set_current_state(TASK_INTERRUPTIBLE);
+	schedule_timeout(delay);
+	DBGTRACE4("%s", "woke up");
 	TRACEEXIT4(return);
 }
 

@@ -348,21 +348,30 @@ void wrap_cancel_timer(struct wrap_timer *wrap_timer, BOOLEAN *canceled)
 	 * be called at DISPATCH_LEVEL */
 	irql = kspin_lock_irql(&timer_lock, DISPATCH_LEVEL);
 	kdpc = ktimer->kdpc;
-	*canceled = del_timer(&wrap_timer->timer);
-	if (kdpc) {
-		if (kdpc->type == KDPC_TYPE_KERNEL)
-			*canceled = remove_kdpc_work(kdpc);
-		else
-			*canceled = remove_ndis_kdpc_work(kdpc);
-	}
-	if (wrap_timer->repeat)
+	if (wrap_timer->active) {
+		/* disable timer before deleting so it won't be
+		 * re-armed after deleting */
+		wrap_timer->active = 0;
+		del_timer(&wrap_timer->timer);
+		if (kdpc) {
+			if (kdpc->type == KDPC_TYPE_KERNEL)
+				*canceled = remove_kdpc_work(kdpc);
+			else
+				*canceled = remove_ndis_kdpc_work(kdpc);
+		} else
+			*canceled = TRUE;
+	} else
+		*canceled = FALSE;
+#if 0
+	if (wrap_timer->repeat) {
 		*canceled = TRUE;
-	wrap_timer->active = 0;
+		wrap_timer->repeat = 0;
+	}
+#else
 	wrap_timer->repeat = 0;
+#endif
 	if (wrap_timer->type == KTIMER_TYPE_KERNEL)
 		KeClearEvent((struct kevent *)ktimer);
-	/* TODO: it is not clear if KeCancelTimer returns status of
-	 * timer in the queue or DPC in the queue */
 	kspin_unlock_irql(&timer_lock, irql);
 	TRACEEXIT5(return);
 }

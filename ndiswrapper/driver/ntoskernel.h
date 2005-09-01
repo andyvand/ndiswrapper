@@ -498,6 +498,9 @@ STDCALL void KeAcquireSpinLock(KSPIN_LOCK *lock, KIRQL *irql);
 STDCALL void KeReleaseSpinLock(KSPIN_LOCK *lock, KIRQL oldirql);
 STDCALL KIRQL KeAcquireSpinLockRaiseToDpc(KSPIN_LOCK *lock);
 
+STDCALL void IoAcquireCancelSpinLock(KIRQL *irql);
+STDCALL void IoReleaseCancelSpinLock(KIRQL irql);
+
 _FASTCALL KIRQL KfRaiseIrql(FASTCALL_DECL_1(KIRQL newirql));
 _FASTCALL void KfLowerIrql(FASTCALL_DECL_1(KIRQL oldirql));
 _FASTCALL KIRQL KfAcquireSpinLock(FASTCALL_DECL_1(KSPIN_LOCK *lock));

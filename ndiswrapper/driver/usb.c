@@ -22,13 +22,12 @@
 #define CUR_ALT_SETTING(intf) (intf)->altsetting[(intf)->act_altsetting]
 #endif
 
-static struct nt_list irp_complete_list;
-KSPIN_LOCK irp_list_lock;
-void usb_tx_complete_tasklet(unsigned long dummy);
-void urb_tx_complete_worker(void *dummy);
-static struct work_struct urb_tx_complete_work;
 STDCALL void usb_cancel_transfer(struct device_object *dev_obj,
 				 struct irp *irp);
+static KSPIN_LOCK usb_tx_complete_list_lock;
+static struct nt_list usb_tx_complete_list;
+static void usb_tx_complete_worker(void *data);
+static struct work_struct usb_tx_complete_work;
 
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,0)
 static inline void *usb_buffer_alloc(struct usb_device *dev, size_t size,
@@ -74,9 +73,9 @@ static inline void usb_buffer_free(struct usb_device *dev, size_t size,
 
 int usb_init(void)
 {
-	kspin_lock_init(&irp_list_lock);
-	InitializeListHead(&irp_complete_list);
-	INIT_WORK(&urb_tx_complete_work, urb_tx_complete_worker, NULL);
+	kspin_lock_init(&usb_tx_complete_list_lock);
+	INIT_WORK(&usb_tx_complete_work, usb_tx_complete_worker, NULL);
+	InitializeListHead(&usb_tx_complete_list);
 	return 0;
 }
 
@@ -205,20 +204,18 @@ void usb_transfer_complete(struct urb *urb)
 	struct irp *irp;
 	KIRQL irql;
 
-	irql = kspin_lock_irql(&irp_list_lock, DISPATCH_LEVEL);
 	irp = urb->context;
-	if (irp->cancel_routine == NULL &&
-	    (urb->status != -ENOENT && urb->status != -ECONNRESET))
-		WARNING("urb %p finished after canceling: %d",
-			urb, urb->status);
+	IoAcquireCancelSpinLock(&irp->cancel_irql);
 	irp->cancel_routine = NULL;
-	InsertTailList(&irp_complete_list, &irp->list);
-	kspin_unlock_irql(&irp_list_lock, irql);
+	IoReleaseCancelSpinLock(irp->cancel_irql);
 	USBTRACE("urb: %p, irp: %p", urb, irp);
-	schedule_work(&urb_tx_complete_work);
-	USBTRACEEXIT(return);
-}
 
+	irql = kspin_lock_irql(&usb_tx_complete_list_lock, DISPATCH_LEVEL);
+	InsertTailList(&usb_tx_complete_list, &irp->list);
+	kspin_unlock_irql(&usb_tx_complete_list_lock, irql);
+	schedule_work(&usb_tx_complete_work);
+	return;
+}
 STDCALL void usb_cancel_transfer(struct device_object *dev_obj,
 				 struct irp *irp)
 {
@@ -231,58 +228,44 @@ STDCALL void usb_cancel_transfer(struct device_object *dev_obj,
 	/* NB: this function is called holding irp_cancel_lock */
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,8)
 	if (irp->cancel_irql < DISPATCH_LEVEL) {
-		kspin_unlock_irql(&irp_list_lock, irp->cancel_irql);
+		IoReleaseCancelSpinLock(irp->cancel_irql);
 		usb_kill_urb(urb);
-	} else 
+	} else
 #endif
 	{
 		urb->transfer_flags |= URB_ASYNC_UNLINK;
 		if (usb_unlink_urb(urb) != -EINPROGRESS)
 			WARNING("usb_unlink_urb returns %d", urb->status);
-		kspin_unlock_irql(&irp_list_lock, irp->cancel_irql);
+		IoReleaseCancelSpinLock(irp->cancel_irql);
 	}
 }
 
-void urb_tx_complete_worker(void *dummy)
+static void usb_tx_complete_worker(void *data)
 {
+	struct bulk_or_intr_transfer *bulk_int_tx;
+	union nt_urb *nt_urb;
 	struct irp *irp;
 	struct urb *urb;
 	KIRQL irql;
-	struct bulk_or_intr_transfer *bulk_int_tx;
-	union nt_urb *nt_urb;
 
 	while (1) {
-		struct nt_list *entry;
+		struct nt_list *ent;
 
-		irql = kspin_lock_irql(&irp_list_lock, DISPATCH_LEVEL);
-		entry = RemoveHeadList(&irp_complete_list);
-		if (entry == NULL)
-			irp = NULL;
-		else
-			irp = container_of(entry, struct irp, list);
-		kspin_unlock_irql(&irp_list_lock, irql);
-
-		if (!irp)
+		irql = kspin_lock_irql(&usb_tx_complete_list_lock,
+				       DISPATCH_LEVEL);
+		ent = RemoveHeadList(&usb_tx_complete_list);
+		kspin_unlock_irql(&usb_tx_complete_list_lock, irql);
+		if (!ent)
 			break;
-		DUMP_IRP(irp);
+		irp = container_of(ent, struct irp, list);
 		urb = irp->urb;
-		if (!urb) {
-			ERROR("urb for %p already freed?", irp);
-			continue;
-		}
+		DUMP_URB(urb);
+		DUMP_IRP(irp);
 		nt_urb = URB_FROM_IRP(irp);
-		if (!nt_urb) {
-			ERROR("nt_urb for %p already freed?", irp);
-			continue;
-		}
 		USBTRACE("urb: %p, nt_urb: %p, status: %d",
-				urb, nt_urb, -(urb->status));
+			 urb, nt_urb, -(urb->status));
 
 		switch (urb->status) {
-		case -ENOENT:
-		case -ECONNRESET:
-			/* irp canceled */
-			break;
 		case 0:
 			NT_URB_STATUS(nt_urb) = wrap_urb_status(urb->status);
 			irp->io_status.status = STATUS_SUCCESS;
@@ -295,23 +278,28 @@ void urb_tx_complete_worker(void *dummy)
 				memcpy(bulk_int_tx->transferBuf,
 				       urb->transfer_buffer,
 				       urb->actual_length);
-			DUMP_URB(urb);
-			wrap_free_urb(urb);
 			USBTRACE("irp: %p, status: %08X",
 				 irp, irp->io_status.status);
-			IoCompleteRequest(irp, IO_NO_INCREMENT);
+			break;
+		case -ENOENT:
+		case -ECONNRESET:
+			/* irp canceled */
+			NT_URB_STATUS(nt_urb) = USBD_STATUS_CANCELLED;
+			irp->io_status.status = STATUS_CANCELLED;
+			irp->io_status.status_info = 0;
+			USBTRACE("irp %p canceled", irp);
 			break;
 		default:
 			NT_URB_STATUS(nt_urb) = wrap_urb_status(urb->status);
 			irp->io_status.status =
 				nt_urb_irp_status(NT_URB_STATUS(nt_urb));
 			irp->io_status.status_info = 0;
-			wrap_free_urb(urb);
 			USBTRACE("irp: %p, status: %08X",
 				 irp, irp->io_status.status);
-			IoCompleteRequest(irp, IO_NO_INCREMENT);
 			break;
 		}
+		wrap_free_urb(urb);
+		IoCompleteRequest(irp, IO_NO_INCREMENT);
 	}
 }
 
@@ -490,6 +478,10 @@ unsigned long usb_select_configuration(struct usb_device *dev,
 	struct select_configuration *sel_conf;
 
 	sel_conf = &nt_urb->select_conf;
+	if (sel_conf->config == NULL) {
+		/* TODO: driver is stopping the device, process it */
+		return 0;
+	}
 	ASSERT(sel_conf->config->bNumInterfaces == 1);
 	USBTRACE("intf.intfNum = %d, intf.altSet = %d",
 		 sel_conf->intf.intfNum,
@@ -583,10 +575,13 @@ unsigned long usb_submit_nt_urb(struct usb_device *dev, struct irp *irp)
 			ERROR("couldn't allocate memory");
 			break;
 		}
-		if (ctrl_req->desctype == USB_DT_STRING)
+		/* TODO: find out if usb_get_string or usb_string need
+		 * to be used from langid */
+		if (ctrl_req->desctype == USB_DT_STRING) {
+			USBTRACE("langid: %d", ctrl_req->langid);
 			ret = usb_string(dev, ctrl_req->index, buf,
 					 ctrl_req->transferBufLen);
-		else
+		} else
 			ret = usb_get_descriptor(dev, ctrl_req->desctype,
 						 ctrl_req->index, buf,
 						 ctrl_req->transferBufLen);

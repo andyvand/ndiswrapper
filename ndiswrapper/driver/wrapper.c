@@ -123,7 +123,7 @@ NDIS_STATUS miniport_reset(struct wrapper_dev *wd)
 	if (res == NDIS_STATUS_PENDING) {
 		if (wait_event_interruptible_timeout(wd->ndis_comm_wq,
 						     (wd->ndis_comm_done == 1),
-						     2 * HZ) <= 0)
+						     HZ) <= 0)
 			res = NDIS_STATUS_FAILURE;
 		else
 			res = wd->ndis_comm_res;
@@ -181,7 +181,7 @@ NDIS_STATUS miniport_query_info_needed(struct wrapper_dev *wd,
 		 * driver doesn't call it, so timeout is used */
 		if (wait_event_interruptible_timeout(wd->ndis_comm_wq,
 						     (wd->ndis_comm_done == 1),
-						     2 * HZ) <= 0)
+						     HZ) <= 0)
 			res = NDIS_STATUS_FAILURE;
 		else
 			res = wd->ndis_comm_res;
@@ -234,7 +234,7 @@ NDIS_STATUS miniport_set_info(struct wrapper_dev *wd, ndis_oid oid,
 		/* wait a little for NdisMSetInformationComplete */
 		if (wait_event_interruptible_timeout(wd->ndis_comm_wq,
 						     (wd->ndis_comm_done == 1),
-						     2 * HZ) <= 0)
+						     HZ) <= 0)
 			res = NDIS_STATUS_FAILURE;
 		else
 			res = wd->ndis_comm_res;
@@ -1296,9 +1296,9 @@ static void wrapper_worker_proc(void *param)
 		struct net_device *net_dev = wd->net_dev;
 
 		DBGTRACE1("resuming device %s", net_dev->name);
-		set_bit(HW_AVAILABLE, &wd->hw_status);
 		DBGTRACE1("continuing resume of device %s", net_dev->name);
 		if (test_and_clear_bit(HW_SUSPENDED, &wd->hw_status)) {
+			set_bit(HW_AVAILABLE, &wd->hw_status);
 			res = miniport_set_pm_state(wd, NdisDeviceStateD0);
 			DBGTRACE1("%s: setting power to state %d returns %08X",
 				  net_dev->name, NdisDeviceStateD0, res);
@@ -1311,10 +1311,11 @@ static void wrapper_worker_proc(void *param)
 			if (res) {
 				ERROR("device %s re-initialization failed "
 				      "(%08X)", net_dev->name, res);
-				clear_bit(HW_AVAILABLE, &wd->hw_status);
 				/* TODO: should be halted? */
+				set_bit(SHUTDOWN, &wd->hw_status);
 				return;
-			}
+			} else
+				set_bit(HW_AVAILABLE, &wd->hw_status);
 		}
 		hangcheck_add(wd);
 		stats_timer_add(wd);
