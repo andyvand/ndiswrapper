@@ -56,6 +56,13 @@ else
     log "kernel sources missing"
 fi
 
+newblock
+log "module information:"
+log_cmd 'modprobe -c | grep ndis'
+log "module(s):"
+log_cmd "find /lib/modules/$KVERS/ -name ndiswrapper\* | xargs ls -l"
+log ""
+
 # the verion of gcc
 newblock
 log "gcc --version:"
@@ -108,11 +115,6 @@ done
 if [ $FULL -eq 1 ]; then
     # module information
     newblock
-    log "module information:"
-    log_cmd 'modprobe -c | grep ndis'
-    log "module is at:"
-    log_cmd "find /lib/modules/$KVERS/ -name ndiswrapper\* | xargs ls -l"
-    log ""
 
     # pci devices
     newblock
