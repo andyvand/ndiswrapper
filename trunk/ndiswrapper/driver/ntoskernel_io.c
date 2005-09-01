@@ -19,7 +19,7 @@
 #include "usb.h"
 
 extern KSPIN_LOCK ntoskernel_lock;
-extern KSPIN_LOCK irp_list_lock;
+extern KSPIN_LOCK irp_cancel_lock;
 extern struct nt_list object_list;
 
 extern struct work_struct io_work;
@@ -33,6 +33,20 @@ extern KSPIN_LOCK io_workitem_list_lock;
 #define DBGINFO DBGTRACE4
 #define DBGINFOEXIT TRACEEXIT4
 #endif
+
+extern KSPIN_LOCK irp_cancel_lock;
+
+STDCALL void WRAP_EXPORT(IoAcquireCancelSpinLock)
+	(KIRQL *irql)
+{
+	*irql = kspin_lock_irql(&irp_cancel_lock, DISPATCH_LEVEL);
+}
+
+STDCALL void WRAP_EXPORT(IoReleaseCancelSpinLock)
+	(KIRQL irql)
+{
+	kspin_unlock_irql(&irp_cancel_lock, irql);
+}
 
 STDCALL NTSTATUS WRAP_EXPORT(IoGetDeviceProperty)
 	(struct device_object *pdo,
@@ -204,7 +218,7 @@ STDCALL BOOLEAN WRAP_EXPORT(IoCancelIrp)
 	if (!irp)
 		return FALSE;
 	DUMP_IRP(irp);
-	irp->cancel_irql = kspin_lock_irql(&irp_list_lock, DISPATCH_LEVEL);
+	IoAcquireCancelSpinLock(&irp->cancel_irql);
 	cancel_routine = irp->cancel_routine;
 	irp->cancel_routine = NULL;
 	irp->cancel = TRUE;
@@ -216,7 +230,7 @@ STDCALL BOOLEAN WRAP_EXPORT(IoCancelIrp)
 		cancel_routine(irp_sl->dev_obj, irp);
 		USBTRACEEXIT(return TRUE);
 	} else {
-		kspin_unlock_irql(&irp_list_lock, irp->cancel_irql);
+		IoReleaseCancelSpinLock(irp->cancel_irql);
 		USBTRACEEXIT(return FALSE);
 	}
 }
@@ -951,7 +965,7 @@ STDCALL NTSTATUS WRAP_EXPORT(IoCreateDevice)
 {
 	struct device_object *dev;
 
-	TRACEENTER2("%p", drv_obj);
+	TRACEENTER2("%p, %u", drv_obj, dev_ext_length);
 	dev = ALLOCATE_OBJECT(struct device_object, GFP_KERNEL,
 			      OBJECT_TYPE_DEVICE);
 	if (!dev)
@@ -1009,7 +1023,9 @@ STDCALL void WRAP_EXPORT(IoDeleteDevice)
 		TRACEEXIT2(return);
 	if (dev->dev_obj_ext)
 		kfree(dev->dev_obj_ext);
+
 	prev = NULL;
+#if 0
 	if (dev->drv_obj)
 		prev = dev->drv_obj->dev_obj;
 	if (prev == dev)
@@ -1019,6 +1035,7 @@ STDCALL void WRAP_EXPORT(IoDeleteDevice)
 			prev = prev->next;
 		prev->next = dev->next;
 	}
+#endif
 	ObDereferenceObject(dev);
 	TRACEEXIT2(return);
 }
@@ -1136,7 +1153,6 @@ STDCALL NTSTATUS WRAP_EXPORT(IoSetDeviceInterfaceState)
 	return STATUS_SUCCESS;
 }
 
-STDCALL void WRAP_EXPORT(IoReleaseCancelSpinLock)(void){UNIMPL();}
 STDCALL void WRAP_EXPORT(IoCreateSymbolicLink)(void){UNIMPL();}
 STDCALL void WRAP_EXPORT(IoCreateUnprotectedSymbolicLink)(void){UNIMPL();}
 STDCALL void WRAP_EXPORT(IoDeleteSymbolicLink)(void){UNIMPL();}

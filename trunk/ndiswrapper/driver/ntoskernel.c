@@ -73,6 +73,8 @@ struct nt_list io_workitem_list;
 KSPIN_LOCK io_workitem_list_lock;
 void io_worker(void *data);
 
+KSPIN_LOCK irp_cancel_lock;
+
 /* wrap_epoch is when ntoskernel gets initialized */
 static u64 wrap_ticks_to_epoch;
 static typeof(jiffies) wrap_epoch;
@@ -93,6 +95,7 @@ int ntoskernel_init(void)
 	kspin_lock_init(&ntoskernel_lock);
 	kspin_lock_init(&io_workitem_list_lock);
 	kspin_lock_init(&kdpc_list_lock);
+	kspin_lock_init(&irp_cancel_lock);
 	InitializeListHead(&wrap_mdl_list);
 	InitializeListHead(&kdpc_list);
 	InitializeListHead(&callback_objects);
@@ -1799,8 +1802,10 @@ _FASTCALL void WRAP_EXPORT(ObfDereferenceObject)
 	struct common_object_header *hdr;
 	KIRQL irql;
 
+	TRACEENTER2("object: %p", object);
 	irql = kspin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL);
 	hdr = OBJECT_TO_HEADER(object);
+	DBGTRACE2("hdr: %p", hdr);
 	hdr->ref_count--;
 	if (hdr->ref_count < 0)
 		ERROR("invalid object: %p (%d)", object, hdr->ref_count);
