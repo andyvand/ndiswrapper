@@ -149,7 +149,7 @@ _FASTCALL void WRAP_EXPORT(KefAcquireSpinLockAtDpcLevel)
 	KIRQL irql;
 
 	TRACEENTER5("lock = %p", lock);
-#if DEBUG_IRQL
+#ifdef DEBUG_IRQL
 	irql = current_irql();
 	if (irql != DISPATCH_LEVEL)
 		ERROR("irql %d != DISPATCH_LEVEL", irql);

@@ -55,21 +55,21 @@ int debug = 0;
 /* used to implement Windows spinlocks */
 spinlock_t spinlock_kspin_lock;
 
-NW_MODULE_PARM_STRING(if_name, 0400);
+WRAP_MODULE_PARM_STRING(if_name, 0400);
 MODULE_PARM_DESC(if_name, "Network interface name or template "
 		 "(default: wlan%d)");
-NW_MODULE_PARM_INT(proc_uid, 0600);
+WRAP_MODULE_PARM_INT(proc_uid, 0600);
 MODULE_PARM_DESC(proc_uid, "The uid of the files created in /proc "
 		 "(default: 0).");
-NW_MODULE_PARM_INT(proc_gid, 0600);
+WRAP_MODULE_PARM_INT(proc_gid, 0600);
 MODULE_PARM_DESC(proc_gid, "The gid of the files created in /proc "
 		 "(default: 0).");
-NW_MODULE_PARM_INT(hangcheck_interval, 0600);
+WRAP_MODULE_PARM_INT(hangcheck_interval, 0600);
 /* 0 - default value provided by NDIS driver,
  * positive value - force hangcheck interval to that many seconds
  * negative value - disable hangcheck
  */
-NW_MODULE_PARM_INT(debug, 0600);
+WRAP_MODULE_PARM_INT(debug, 0600);
 MODULE_PARM_DESC(debug, "debug level");
 
 MODULE_PARM_DESC(hangcheck_interval, "The interval, in seconds, for checking"
@@ -121,12 +121,12 @@ NDIS_STATUS miniport_reset(struct wrapper_dev *wd)
 	DBGTRACE2("res = %08X, reset_status = %08X",
 		  res, wd->reset_status);
 	if (res == NDIS_STATUS_PENDING) {
-		if (wait_event_interruptible_timeout(
-			    wd->ndis_comm_wq,
-			    (wd->ndis_comm_done == 1), HZ))
-			res = wd->ndis_comm_res;
-		else
+		if (wait_event_interruptible_timeout(wd->ndis_comm_wq,
+						     (wd->ndis_comm_done == 1),
+						     2 * HZ) <= 0)
 			res = NDIS_STATUS_FAILURE;
+		else
+			res = wd->ndis_comm_res;
 		DBGTRACE2("res = %08X, reset_status = %08X",
 			  res, wd->reset_status);
 	}
@@ -175,13 +175,16 @@ NDIS_STATUS miniport_query_info_needed(struct wrapper_dev *wd,
 
 	DBGTRACE3("res = %08x", res);
 	if (res == NDIS_STATUS_PENDING) {
-		/* wait for NdisMQueryInformationComplete upto HZ */
-		if (wait_event_interruptible_timeout(
-			    wd->ndis_comm_wq,
-			    (wd->ndis_comm_done == 1), HZ))
-			res = wd->ndis_comm_res;
-		else
+		/* wait a little for NdisMQueryInformationComplete */
+		/* DDK seems to imply we wait until miniport calls
+		 * back completion routine, but at least prism usb
+		 * driver doesn't call it, so timeout is used */
+		if (wait_event_interruptible_timeout(wd->ndis_comm_wq,
+						     (wd->ndis_comm_done == 1),
+						     2 * HZ) <= 0)
 			res = NDIS_STATUS_FAILURE;
+		else
+			res = wd->ndis_comm_res;
 	}
 	up(&wd->ndis_comm_mutex);
 	if (res && needed)
@@ -228,13 +231,13 @@ NDIS_STATUS miniport_set_info(struct wrapper_dev *wd, ndis_oid oid,
 	DBGTRACE3("res = %08x", res);
 
 	if (res == NDIS_STATUS_PENDING) {
-		/* wait for NdisMSetInformationComplete upto HZ */
-		if (wait_event_interruptible_timeout(
-			    wd->ndis_comm_wq,
-			    (wd->ndis_comm_done == 1), HZ))
-			res = wd->ndis_comm_res;
-		else
+		/* wait a little for NdisMSetInformationComplete */
+		if (wait_event_interruptible_timeout(wd->ndis_comm_wq,
+						     (wd->ndis_comm_done == 1),
+						     2 * HZ) <= 0)
 			res = NDIS_STATUS_FAILURE;
+		else
+			res = wd->ndis_comm_res;
 		DBGTRACE2("res = %x", res);
 	}
 	up(&wd->ndis_comm_mutex);
@@ -834,12 +837,11 @@ static int start_xmit(struct sk_buff *skb, struct net_device *dev)
 	return 0;
 }
 
-int ndiswrapper_resume_device(struct wrapper_dev *wd);
-
 int ndiswrapper_suspend_device(struct wrapper_dev *wd,
 			       enum ndis_pm_state pm_state)
 {
 	NDIS_STATUS status;
+
 	if (!wd)
 		return -1;
 
@@ -1593,24 +1595,28 @@ int setup_device(struct net_device *dev)
 	       ", WPA2PSK" : "");
 
 	wd->max_send_packets = 1;
-	if (wd->driver->miniport.send_packets) {
+	if (test_bit(ATTR_SERIALIZED, &wd->attributes)) {
 		res = miniport_query_int(wd, OID_GEN_MAXIMUM_SEND_PACKETS,
 					 &wd->max_send_packets);
-		DBGTRACE2("maximum send packets supported by driver: %d",
-			  wd->max_send_packets);
 		if (res == NDIS_STATUS_NOT_SUPPORTED)
 			wd->max_send_packets = 1;
-		else if (wd->max_send_packets > XMIT_RING_SIZE)
-			wd->max_send_packets = XMIT_RING_SIZE;
-
-		wd->xmit_array = kmalloc(sizeof(struct ndis_packet *) *
-					     wd->max_send_packets,
-					     GFP_KERNEL);
-		if (!wd->xmit_array) {
-			ERROR("couldn't allocate memory for tx_packets");
-			unregister_netdev(dev);
-			return -ENOMEM;
-		}
+	} else {
+		/* deserialized drivers don't have a limit, but we
+		 * keep max at XMIT_RING_SIZE to allocate xmit_array
+		 * below */
+		wd->max_send_packets = XMIT_RING_SIZE;
+	}
+	DBGTRACE2("maximum send packets supported by driver: %d",
+		  wd->max_send_packets);
+	if (wd->max_send_packets > XMIT_RING_SIZE)
+		wd->max_send_packets = XMIT_RING_SIZE;
+	wd->xmit_array =
+		kmalloc(sizeof(struct ndis_packet *) * wd->max_send_packets,
+			GFP_KERNEL);
+	if (!wd->xmit_array) {
+		ERROR("couldn't allocate memory for tx_packets");
+		unregister_netdev(dev);
+		return -ENOMEM;
 	}
 	DBGTRACE2("maximum send packets used by ndiswrapper: %d",
 		  wd->max_send_packets);
