@@ -303,8 +303,8 @@ static void usb_tx_complete_worker(void *data)
 	}
 }
 
-unsigned long usb_bulk_or_intr_trans(struct usb_device *dev,
-				     union nt_urb *nt_urb, struct irp *irp)
+USBD_STATUS usb_bulk_or_intr_trans(struct usb_device *dev,
+				   union nt_urb *nt_urb, struct irp *irp)
 {
 	union pipe_handle pipe_handle;
 	struct urb *urb;
@@ -373,11 +373,19 @@ unsigned long usb_bulk_or_intr_trans(struct usb_device *dev,
 	/* FIXME: we should better check what GFP_ is required */
 	ret = wrap_submit_urb(urb, GFP_ATOMIC);
 	USBTRACE("ret: %d", ret);
+	if (ret == 0) {
+		ret = NT_URB_STATUS(nt_urb) = USBD_STATUS_PENDING;
+		irp->pending_returned = TRUE;
+		IoMarkIrpPending(irp);
+		irp->io_status.status = STATUS_PENDING;
+	} else {
+		ret = NT_URB_STATUS(nt_urb) = wrap_urb_status(ret);
+	}
 	return ret;
 }
 
-unsigned long usb_vendor_or_class_intf(struct usb_device *dev,
-				       union nt_urb *nt_urb, struct irp *irp)
+USBD_STATUS usb_vendor_or_class_intf(struct usb_device *dev,
+				     union nt_urb *nt_urb, struct irp *irp)
 {
 	struct urb *urb;
 	struct usb_ctrlrequest *dr;
@@ -445,6 +453,15 @@ unsigned long usb_vendor_or_class_intf(struct usb_device *dev,
 	USBTRACE("submitting urb %p on control pipe", urb);
 	/* FIXME: we should better check what GFP_ is required */
 	ret = wrap_submit_urb(urb, GFP_ATOMIC);
+	USBTRACE("ret: %d", ret);
+	if (ret == 0) {
+		ret = NT_URB_STATUS(nt_urb) = USBD_STATUS_PENDING;
+		irp->pending_returned = TRUE;
+		IoMarkIrpPending(irp);
+		irp->io_status.status = STATUS_PENDING;
+	} else {
+		ret = NT_URB_STATUS(nt_urb) = wrap_urb_status(ret);
+	}
 	USBTRACEEXIT(return ret);
 }
 
@@ -544,21 +561,27 @@ NTSTATUS usb_submit_nt_urb(struct usb_device *dev, struct irp *irp)
 		      nt_urb->header.function);
 
 	DUMP_IRP(irp);
+	ret = 0;
 	switch (nt_urb->header.function) {
+	case URB_FUNCTION_BULK_OR_INTERRUPT_TRANSFER:
+		ret = usb_bulk_or_intr_trans(dev, nt_urb, irp);
+		/* status for NT_URB and IRP are already set */
+		break;
+
+	case URB_FUNCTION_VENDOR_DEVICE:
+	case URB_FUNCTION_VENDOR_INTERFACE:
+	case URB_FUNCTION_CLASS_INTERFACE:
+		USBTRACE("func: %d", nt_urb->header.function);
+		ret = usb_vendor_or_class_intf(dev, nt_urb, irp);
+		/* status for NT_URB and IRP are already set */
+		break;
+
 	case URB_FUNCTION_SELECT_CONFIGURATION:
 		ret = usb_select_configuration(dev, nt_urb, irp);
 		if (ret < 0)
 			NT_URB_STATUS(nt_urb) = wrap_urb_status(ret);
 		else
 			NT_URB_STATUS(nt_urb) = USBD_STATUS_SUCCESS;
-		break;
-
-	case URB_FUNCTION_BULK_OR_INTERRUPT_TRANSFER:
-		ret = usb_bulk_or_intr_trans(dev, nt_urb, irp);
-		if (ret < 0)
-			NT_URB_STATUS(nt_urb) = wrap_urb_status(ret);
-		else
-			NT_URB_STATUS(nt_urb) = USBD_STATUS_PENDING;
 		break;
 
 	case URB_FUNCTION_GET_DESCRIPTOR_FROM_DEVICE:
@@ -599,17 +622,6 @@ NTSTATUS usb_submit_nt_urb(struct usb_device *dev, struct irp *irp)
 		kfree(buf);
 		break;
 
-	case URB_FUNCTION_VENDOR_DEVICE:
-	case URB_FUNCTION_VENDOR_INTERFACE:
-	case URB_FUNCTION_CLASS_INTERFACE:
-		USBTRACE("func: %d", nt_urb->header.function);
-		ret = usb_vendor_or_class_intf(dev, nt_urb, irp);
-		if (ret < 0)
-			NT_URB_STATUS(nt_urb) = wrap_urb_status(ret);
-		else
-			NT_URB_STATUS(nt_urb) = USBD_STATUS_PENDING;
-		break;
-
 	case URB_FUNCTION_SYNC_RESET_PIPE_AND_CLEAR_STALL:
 		ret = usb_reset_pipe(dev, irp);
 		NT_URB_STATUS(nt_urb) = wrap_urb_status(ret);
@@ -617,13 +629,13 @@ NTSTATUS usb_submit_nt_urb(struct usb_device *dev, struct irp *irp)
 	default:
 		ERROR("function %X NOT IMPLEMENTED!\n",
 		      nt_urb->header.function);
-		NT_URB_STATUS(nt_urb) = USBD_STATUS_NOT_SUPPORTED;
+		ret = NT_URB_STATUS(nt_urb) = USBD_STATUS_NOT_SUPPORTED;
 		break;
 	}
+	if (ret == USBD_STATUS_PENDING)
+		return STATUS_PENDING;
 	ret = nt_urb_irp_status(NT_URB_STATUS(nt_urb));
 	USBTRACE("ret: %08X", ret);
-	if (ret == STATUS_PENDING)
-		return ret;
 	irp->io_status.status = ret;
 	USBTRACEEXIT(return ret);
 }
@@ -643,6 +655,40 @@ NTSTATUS usb_reset_port(struct usb_device *dev, struct irp *irp)
 	ret = nt_urb_irp_status(NT_URB_STATUS(nt_urb));
 	irp->io_status.status = ret;
 	USBTRACEEXIT(return ret);
+}
+
+NTSTATUS usb_submit_irp(struct device_object *pdo, struct irp *irp)
+{
+	struct io_stack_location *irp_sl;
+	struct usb_device *udev;
+	int ret;
+	union nt_urb *nt_urb;
+	struct wrapper_dev *wd;
+
+	irp_sl = IoGetCurrentIrpStackLocation(irp);
+	wd = pdo->reserved;
+	udev = wd->dev.usb;
+
+	switch (irp_sl->params.ioctl.code) {
+	case IOCTL_INTERNAL_USB_SUBMIT_URB:
+		ret = usb_submit_nt_urb(wd->dev.usb, irp);
+		break;
+
+	case IOCTL_INTERNAL_USB_RESET_PORT:
+		ret = usb_reset_port(wd->dev.usb, irp);
+		break;
+	default:
+ 		ERROR("ioctl %08X NOT IMPLEMENTED!", irp_sl->params.ioctl.code);
+ 		ret = STATUS_INVALID_DEVICE_REQUEST;
+		irp->io_status.status = ret;
+		irp->io_status.status_info = 0;
+		nt_urb = URB_FROM_IRP(irp);
+		NT_URB_STATUS(nt_urb) = USBD_STATUS_NOT_SUPPORTED;
+	}
+
+	USBTRACE("ret: %d", ret);
+	return ret;
+
 }
 
 STDCALL union nt_urb *WRAP_EXPORT(USBD_CreateConfigurationRequest)

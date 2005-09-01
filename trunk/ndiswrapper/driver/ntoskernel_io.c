@@ -240,12 +240,17 @@ STDCALL void IoQueueThreadIrp(struct irp *irp)
 	struct kthread *kthread;
 	KIRQL irql;
 
-	kthread = get_current_thread();
+	kthread = KeGetCurrentThread();
+	if (!kthread) {
+		WARNING("couldn't find thread for irp: %p, task: %p, pid: %d",
+			irp, get_current(), get_current()->pid);
+		IoIrpThread(irp) = NULL;
+		return;
+	}
 	DBGINFO("kthread: %p, task: %p", kthread, kthread->task);
-	irp->flags |= IRP_SYNCHRONOUS_API;
 	irql = kspin_lock_irql(&kthread->lock, DISPATCH_LEVEL);
+	irp->flags |= IRP_SYNCHRONOUS_API;
 	InsertTailList(&kthread->irps, &irp->threads);
-	InitializeListHead(&irp->threads);
 	IoIrpThread(irp) = kthread;
 	kspin_unlock_irql(&kthread->lock, irql);
 }
@@ -255,19 +260,12 @@ STDCALL void IoDequeueThreadIrp(struct irp *irp)
 	struct kthread *kthread;
 	KIRQL irql;
 
-	if (!(irp->flags & IRP_SYNCHRONOUS_API)) {
-		ERROR("atttempt to dequeue asynch irp: %p", irp);
-		return;
-	}
-
 	kthread = IoIrpThread(irp);
 	if (kthread) {
 		irql = kspin_lock_irql(&kthread->lock, DISPATCH_LEVEL);
 		RemoveEntryList(&irp->threads);
 		kspin_unlock_irql(&kthread->lock, irql);
-	} else
-		ERROR("coudln't find thread for IRP: %p, task: %p",
-		      irp, get_current());
+	}
 }
 
 STDCALL void WRAP_EXPORT(IoFreeIrp)
@@ -496,8 +494,6 @@ pdoDispatchInternalDeviceControl(struct device_object *pdo,
 {
 	struct io_stack_location *irp_sl;
 	NTSTATUS ret;
-	struct wrapper_dev *wd;
-	union nt_urb *nt_urb;
 
 	DUMP_IRP(irp);
 
@@ -511,28 +507,10 @@ pdoDispatchInternalDeviceControl(struct device_object *pdo,
 	}
 	irp_sl = IoGetCurrentIrpStackLocation(irp);
 
-	wd = pdo->reserved;
-	switch (irp_sl->params.ioctl.code) {
 #ifdef CONFIG_USB
-	case IOCTL_INTERNAL_USB_SUBMIT_URB:
-		ret = usb_submit_nt_urb(wd->dev.usb, irp);
-		break;
-
-	case IOCTL_INTERNAL_USB_RESET_PORT:
-		ret = usb_reset_port(wd->dev.usb, irp);
-		break;
-#endif
-	default:
-		ERROR("ioctl %08X NOT IMPLEMENTED!",
-		      irp_sl->params.ioctl.code);
-		ret = STATUS_INVALID_DEVICE_REQUEST;
-		irp->io_status.status = ret;
-		irp->io_status.status_info = 0;
-		nt_urb = URB_FROM_IRP(irp);
-		NT_URB_STATUS(nt_urb) = USBD_STATUS_NOT_SUPPORTED;
-	}
-
+	ret = usb_submit_irp(pdo, irp);
 	USBTRACE("ret: %d", ret);
+#endif
 	if (ret != STATUS_PENDING)
 		IoCompleteRequest(irp, IO_NO_INCREMENT);
 	USBTRACEEXIT(return ret);
