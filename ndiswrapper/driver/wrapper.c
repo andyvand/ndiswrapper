@@ -291,11 +291,10 @@ NDIS_STATUS miniport_init(struct wrapper_dev *wd)
 	if (res)
 		TRACEEXIT1(return res);
 
-	/* do we need to power up the card explicitly? */
 	res = miniport_set_pm_state(wd, NdisDeviceStateD0);
 	if (res)
-		WARNING("setting power state to device %s returns %08X",
-			wd->net_dev->name, res);
+		DBGTRACE1("setting power state to device %s returns %08X",
+			  wd->net_dev->name, res);
 	/* do we need to reset the device? */
 //	res = miniport_reset(wd);
 
@@ -310,6 +309,11 @@ NDIS_STATUS miniport_init(struct wrapper_dev *wd)
 NTSTATUS ndiswrapper_start_device(struct wrapper_dev *wd)
 {
 	NTSTATUS status;
+
+	if (wrap_create_current_thread() == NULL) {
+		ERROR("couldn't allocate thread object");
+		return STATUS_INSUFFICIENT_RESOURCES;
+	}
 #if 0
 	struct irp *irp;
 	struct io_stack_location *irp_sl;
@@ -325,6 +329,7 @@ NTSTATUS ndiswrapper_start_device(struct wrapper_dev *wd)
 #else
 	status = miniport_init(wd);
 #endif
+	wrap_remove_current_thread();
 	TRACEEXIT1(return status);
 }
 
@@ -399,10 +404,16 @@ NDIS_STATUS miniport_set_pm_state(struct wrapper_dev *wd,
 void miniport_halt(struct wrapper_dev *wd)
 {
 	struct miniport_char *miniport = &wd->driver->miniport;
+
+	if (wrap_create_current_thread() == NULL)
+		WARNING("couldn't create system thread for task: %p",
+			get_current());
 	DBGTRACE1("driver halt is at %p", miniport->halt);
 
+	DBGTRACE2("task: %p, pid: %d", get_current(), get_current()->pid);
 	LIN2WIN1(miniport->halt, wd->nmb->adapter_ctx);
 
+	wrap_remove_current_thread();
 	ndis_exit_device(wd);
 	misc_funcs_exit_device(wd);
 	ntoskernel_exit_device(wd);
@@ -444,8 +455,8 @@ NDIS_STATUS miniport_surprise_remove(struct wrapper_dev *wd)
 			 NdisDevicePnPEventSurpriseRemoved, NULL, 0);
 		return NDIS_STATUS_SUCCESS;
 	} else {
-		WARNING("%s: Windows driver for device %s doesn't"
-			"support MiniportPnpEventNotify for safely"
+		WARNING("%s: Windows driver for device %s doesn't "
+			"support MiniportPnpEventNotify for safely "
 			"removing the device", DRIVER_NAME,
 			wd->net_dev->name);
 		return NDIS_STATUS_FAILURE;
@@ -1722,6 +1733,7 @@ struct net_device *ndis_init_netdev(struct wrapper_dev **pwd,
 
 static void module_cleanup(void)
 {
+	INFO("task: %p, pid: %d", get_current(), get_current()->pid);
 	loader_exit();
 	ndiswrapper_procfs_remove();
 	ndis_exit();
@@ -1741,6 +1753,7 @@ static int __init wrapper_init(void)
 	char *env[] = {NULL};
 	int err;
 
+	debug = 0;
 	spin_lock_init(&spinlock_kspin_lock);
 	printk(KERN_INFO "%s version %s loaded (preempt=%s,smp=%s)\n",
 	       DRIVER_NAME, DRIVER_VERSION,

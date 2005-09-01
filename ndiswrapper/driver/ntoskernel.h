@@ -489,7 +489,8 @@ STDCALL struct irp *WRAP_EXPORT(IoBuildAsynchronousFsdRequest)
 	 struct io_status_block *status);
 STDCALL NTSTATUS PoCallDriver(struct device_object *dev_obj, struct irp *irp);
 
-struct kthread *get_current_thread(void);
+struct kthread *wrap_create_current_thread(void);
+void wrap_remove_current_thread(void);
 u64 ticks_1601(void);
 
 STDCALL KIRQL KeGetCurrentIrql(void);

@@ -385,7 +385,7 @@ ndiswrapper_remove_usb_device(struct usb_interface *intf)
 {
 	struct wrapper_dev *wd;
 
-	debug = 4;
+//	debug = 4;
 	TRACEENTER1("");
 
 	wd = (struct wrapper_dev *)usb_get_intfdata(intf);
@@ -408,11 +408,10 @@ ndiswrapper_remove_usb_device(struct usb_device *udev, void *ptr)
 
 	TRACEENTER1("");
 
-	if (!wd || !wd->dev.usb)
+	if (!wd || !wd->intf)
 		TRACEEXIT1(return);
 	if (!test_bit(HW_UNLOADING, &wd->hw_status))
-		miniport_suprise_remove(wd);
-	wd->dev.usb = NULL;
+		miniport_surprise_remove(wd);
 	wd->intf = NULL;
 	atomic_dec(&wd->driver->users);
 	ndiswrapper_remove_device(wd);
