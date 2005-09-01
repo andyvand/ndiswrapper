@@ -531,7 +531,7 @@ unsigned long usb_select_configuration(struct usb_device *dev,
 	USBTRACEEXIT(return 0);
 }
 
-unsigned long usb_submit_nt_urb(struct usb_device *dev, struct irp *irp)
+NTSTATUS usb_submit_nt_urb(struct usb_device *dev, struct irp *irp)
 {
 	struct control_descriptor_request *ctrl_req;
 	int ret;
@@ -622,10 +622,13 @@ unsigned long usb_submit_nt_urb(struct usb_device *dev, struct irp *irp)
 	}
 	ret = nt_urb_irp_status(NT_URB_STATUS(nt_urb));
 	USBTRACE("ret: %08X", ret);
+	if (ret == STATUS_PENDING)
+		return ret;
+	irp->io_status.status = ret;
 	USBTRACEEXIT(return ret);
 }
 
-unsigned long usb_reset_port(struct usb_device *dev, struct irp *irp)
+NTSTATUS usb_reset_port(struct usb_device *dev, struct irp *irp)
 {
 	int ret;
 	union nt_urb *nt_urb;
@@ -638,6 +641,7 @@ unsigned long usb_reset_port(struct usb_device *dev, struct irp *irp)
 		ERROR("usb_reset_device() = %d", ret);
 	NT_URB_STATUS(nt_urb) = wrap_urb_status(ret);
 	ret = nt_urb_irp_status(NT_URB_STATUS(nt_urb));
+	irp->io_status.status = ret;
 	USBTRACEEXIT(return ret);
 }
 
