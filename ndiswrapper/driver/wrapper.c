@@ -123,7 +123,7 @@ NDIS_STATUS miniport_reset(struct wrapper_dev *wd)
 	if (res == NDIS_STATUS_PENDING) {
 		if (wait_event_interruptible_timeout(wd->ndis_comm_wq,
 						     (wd->ndis_comm_done == 1),
-						     HZ) <= 0)
+						     2 * HZ) <= 0)
 			res = NDIS_STATUS_FAILURE;
 		else
 			res = wd->ndis_comm_res;
@@ -181,7 +181,7 @@ NDIS_STATUS miniport_query_info_needed(struct wrapper_dev *wd,
 		 * driver doesn't call it, so timeout is used */
 		if (wait_event_interruptible_timeout(wd->ndis_comm_wq,
 						     (wd->ndis_comm_done == 1),
-						     HZ) <= 0)
+						     2 * HZ) <= 0)
 			res = NDIS_STATUS_FAILURE;
 		else
 			res = wd->ndis_comm_res;
@@ -234,7 +234,7 @@ NDIS_STATUS miniport_set_info(struct wrapper_dev *wd, ndis_oid oid,
 		/* wait a little for NdisMSetInformationComplete */
 		if (wait_event_interruptible_timeout(wd->ndis_comm_wq,
 						     (wd->ndis_comm_done == 1),
-						     HZ) <= 0)
+						     2 * HZ) <= 0)
 			res = NDIS_STATUS_FAILURE;
 		else
 			res = wd->ndis_comm_res;
@@ -1733,7 +1733,6 @@ struct net_device *ndis_init_netdev(struct wrapper_dev **pwd,
 
 static void module_cleanup(void)
 {
-	INFO("task: %p, pid: %d", get_current(), get_current()->pid);
 	loader_exit();
 	ndiswrapper_procfs_remove();
 	ndis_exit();
