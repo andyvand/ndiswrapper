@@ -385,16 +385,15 @@ ndiswrapper_remove_usb_device(struct usb_interface *intf)
 {
 	struct wrapper_dev *wd;
 
-	debug = 4;
+//	debug = 4;
 	TRACEENTER1("");
 
 	wd = (struct wrapper_dev *)usb_get_intfdata(intf);
 	if (!wd)
 		TRACEEXIT1(return);
-	/* big lock will be released in ndiswrapper_remove_device */
-	lock_kernel();
+
 	if (!test_bit(HW_UNLOADING, &wd->hw_status))
-		set_bit(HW_REMOVED, &wd->hw_status);
+		miniport_surprise_remove(wd);
 	wd->intf = NULL;
 	usb_set_intfdata(intf, NULL);
 	atomic_dec(&wd->driver->users);
@@ -409,15 +408,10 @@ ndiswrapper_remove_usb_device(struct usb_device *udev, void *ptr)
 
 	TRACEENTER1("");
 
-	if (!wd || !wd->dev.usb)
+	if (!wd || !wd->intf)
 		TRACEEXIT1(return);
-	if (!test_bit(HW_UNLOADING, &wd->hw_status) == 0 &&
-	    miniport->pnp_event_notify) {
-		DBGTRACE1("calling surprise_removed");
-		LIN2WIN4(miniport->pnp_event_notify, wd->nmb->adapter_ctx,
-			 NdisDevicePnPEventSurpriseRemoved, NULL, 0);
-	}
-	wd->dev.usb = NULL;
+	if (!test_bit(HW_UNLOADING, &wd->hw_status))
+		miniport_surprise_remove(wd);
 	wd->intf = NULL;
 	atomic_dec(&wd->driver->users);
 	ndiswrapper_remove_device(wd);

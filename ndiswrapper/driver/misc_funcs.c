@@ -23,7 +23,7 @@
 
 #include "ndis.h"
 
-static struct list_head wrap_allocs;
+static struct nt_list wrap_allocs;
 static KSPIN_LOCK wrap_allocs_lock;
 static struct nt_list wrap_timer_list;
 static KSPIN_LOCK timer_lock;
@@ -36,7 +36,7 @@ static void update_user_shared_data_proc(unsigned long data);
 
 int misc_funcs_init(void)
 {
-	INIT_LIST_HEAD(&wrap_allocs);
+	InitializeListHead(&wrap_allocs);
 	kspin_lock_init(&wrap_allocs_lock);
 	kspin_lock_init(&timer_lock);
 	InitializeListHead(&wrap_timer_list);
@@ -78,10 +78,10 @@ void misc_funcs_exit_device(struct wrapper_dev *wd)
 void misc_funcs_exit(void)
 {
 	KIRQL irql;
+	struct nt_list *ent;
 
 	/* free kernel (Ke) timers */
 	while (1) {
-		struct nt_list *ent;
 		struct wrap_timer *wrap_timer;
 
 		irql = kspin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL);
@@ -94,11 +94,13 @@ void misc_funcs_exit(void)
 	}
 	/* free all pointers on the allocated list */
 	irql = kspin_lock_irql(&wrap_allocs_lock, DISPATCH_LEVEL);
-	while (!list_empty(&wrap_allocs)) {
+	while (1) {
 		struct wrap_alloc *alloc;
 
-		alloc = list_entry(wrap_allocs.next, struct wrap_alloc, list);
-		list_del(&alloc->list);
+		ent = RemoveHeadList(&wrap_allocs);
+		if (!ent)
+			break;
+		alloc = container_of(ent, struct wrap_alloc, list);
 		kfree(alloc->ptr);
 		kfree(alloc);
 	}
@@ -149,7 +151,7 @@ void *wrap_kmalloc(size_t size, int flags)
 		return NULL;
 	}
 	irql = kspin_lock_irql(&wrap_allocs_lock, DISPATCH_LEVEL);
-	list_add(&alloc->list, &wrap_allocs);
+	InsertTailList(&wrap_allocs, &alloc->list);
 	kspin_unlock_irql(&wrap_allocs_lock, irql);
 	DBGTRACE4("%p, %p", alloc, alloc->ptr);
 	TRACEEXIT4(return alloc->ptr);
@@ -158,17 +160,17 @@ void *wrap_kmalloc(size_t size, int flags)
 /* free pointer and remove from list of allocated pointers */
 void wrap_kfree(void *ptr)
 {
-	struct list_head *cur, *tmp;
+	struct nt_list *cur, *tmp;
 	KIRQL irql;
 
 	TRACEENTER4("%p", ptr);
 	irql = kspin_lock_irql(&wrap_allocs_lock, DISPATCH_LEVEL);
-	list_for_each_safe(cur, tmp, &wrap_allocs) {
+	nt_list_for_each_safe(cur, tmp, &wrap_allocs) {
 		struct wrap_alloc *alloc;
 
-		alloc = list_entry(cur, struct wrap_alloc, list);
+		alloc = container_of(cur, struct wrap_alloc, list);
 		if (alloc->ptr == ptr) {
-			list_del(&alloc->list);
+			RemoveEntryList(&alloc->list);
 			kfree(alloc->ptr);
 			kfree(alloc);
 			break;
@@ -202,9 +204,7 @@ void wrap_timer_handler(unsigned long data)
 		if (kdpc->type == KDPC_TYPE_KERNEL)
 			insert_kdpc_work(kdpc);
 		else
-			/* this function already runs at DISPATCH_LEVEL */
-			LIN2WIN4(kdpc->func, kdpc, kdpc->ctx,
-				 kdpc->arg1, kdpc->arg2);
+			insert_ndis_kdpc_work(kdpc);
 	}
 
 	/* don't add the timer if aperiodic - see
@@ -347,22 +347,31 @@ void wrap_cancel_timer(struct wrap_timer *wrap_timer, BOOLEAN *canceled)
 	/* del_timer_sync may not be called here, as this function can
 	 * be called at DISPATCH_LEVEL */
 	irql = kspin_lock_irql(&timer_lock, DISPATCH_LEVEL);
+	kdpc = ktimer->kdpc;
 	if (wrap_timer->active) {
+		/* disable timer before deleting so it won't be
+		 * re-armed after deleting */
+		wrap_timer->active = 0;
 		del_timer(&wrap_timer->timer);
-		*canceled = TRUE;
+		if (kdpc) {
+			if (kdpc->type == KDPC_TYPE_KERNEL)
+				*canceled = remove_kdpc_work(kdpc);
+			else
+				*canceled = remove_ndis_kdpc_work(kdpc);
+		} else
+			*canceled = TRUE;
 	} else
 		*canceled = FALSE;
-	wrap_timer->active = 0;
+#if 1
+	if (wrap_timer->repeat) {
+		*canceled = TRUE;
+		wrap_timer->repeat = 0;
+	}
+#else
+	wrap_timer->repeat = 0;
+#endif
 	if (wrap_timer->type == KTIMER_TYPE_KERNEL)
 		KeClearEvent((struct kevent *)ktimer);
-	/* TODO: it is not clear if KeCancelTimer returns status of
-	 * timer in the queue or DPC in the queue */
-	kdpc = ktimer->kdpc;
-	if (kdpc && kdpc->type == KDPC_TYPE_KERNEL)
-		remove_kdpc_work(kdpc);
-	if (wrap_timer->repeat)
-		*canceled = TRUE;
-	wrap_timer->repeat = 0;
 	kspin_unlock_irql(&timer_lock, irql);
 	TRACEEXIT5(return);
 }

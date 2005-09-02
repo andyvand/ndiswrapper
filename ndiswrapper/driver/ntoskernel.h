@@ -295,11 +295,11 @@ do {									\
 #endif
 
 #if LINUX_VERSION_CODE > KERNEL_VERSION(2,6,9)
-#define NW_MODULE_PARM_INT(name, perm) module_param(name, int, perm)
-#define NW_MODULE_PARM_STRING(name, perm) module_param(name, charp, perm)
+#define WRAP_MODULE_PARM_INT(name, perm) module_param(name, int, perm)
+#define WRAP_MODULE_PARM_STRING(name, perm) module_param(name, charp, perm)
 #else
-#define NW_MODULE_PARM_INT(name, perm) MODULE_PARM(name, "i")
-#define NW_MODULE_PARM_STRING(name, perm) MODULE_PARM(name, "s")
+#define WRAP_MODULE_PARM_INT(name, perm) MODULE_PARM(name, "i")
+#define WRAP_MODULE_PARM_STRING(name, perm) MODULE_PARM(name, "s")
 #endif
 
 /* this ugly hack is to handle RH kernels; I don't know any better,
@@ -322,9 +322,11 @@ do {									\
 #define SECS_1601_TO_1970	((369 * 365 + 89) * (u64)SECSPERDAY)
 #define TICKS_1601_TO_1970	(SECS_1601_TO_1970 * TICKSPERSEC)
 
+/* 100ns units to HZ; if sys_time is negative, relative to current
+ * clock, otherwise from year 1601 */
 #define SYSTEM_TIME_TO_HZ(sys_time)					\
-	((sys_time) < 0) ? (u64)HZ * (-(sys_time)) / TICKSPERSEC :	\
-	(u64)HZ * ((sys_time) - ticks_1601()) / TICKSPERSEC
+	(((sys_time) < 0) ? (((u64)HZ * (-(sys_time))) / TICKSPERSEC) :	\
+	 (((u64)HZ * ((sys_time) - ticks_1601())) / TICKSPERSEC))
 
 typedef void (*WRAP_EXPORT_FUNC)(void);
 
@@ -348,8 +350,11 @@ struct wrap_export {
 #define WRAP_EXPORT_MAP(s,f)
 #define WRAP_EXPORT(x) x
 
+#define POOL_TAG(A, B, C, D)					\
+	((ULONG)((A) + ((B) << 8) + ((C) << 16) + ((D) << 24)))
+
 struct wrap_alloc {
-	struct list_head list;
+	struct nt_list list;
 	void *ptr;
 };
 
@@ -367,7 +372,7 @@ struct pe_image {
 extern KSPIN_LOCK atomic_lock;
 extern KSPIN_LOCK cancel_lock;
 
-#define DEBUG_IRQL 1
+//#define DEBUG_IRQL 1
 
 #define WRAP_TIMER_MAGIC 47697249
 struct wrap_timer {
@@ -487,7 +492,8 @@ STDCALL struct irp *WRAP_EXPORT(IoBuildAsynchronousFsdRequest)
 	 struct io_status_block *status);
 STDCALL NTSTATUS PoCallDriver(struct device_object *dev_obj, struct irp *irp);
 
-struct kthread *get_current_thread(void);
+struct kthread *wrap_create_current_thread(void);
+void wrap_remove_current_thread(void);
 u64 ticks_1601(void);
 
 STDCALL KIRQL KeGetCurrentIrql(void);
@@ -495,6 +501,9 @@ STDCALL void KeInitializeSpinLock(KSPIN_LOCK *lock);
 STDCALL void KeAcquireSpinLock(KSPIN_LOCK *lock, KIRQL *irql);
 STDCALL void KeReleaseSpinLock(KSPIN_LOCK *lock, KIRQL oldirql);
 STDCALL KIRQL KeAcquireSpinLockRaiseToDpc(KSPIN_LOCK *lock);
+
+STDCALL void IoAcquireCancelSpinLock(KIRQL *irql);
+STDCALL void IoReleaseCancelSpinLock(KIRQL irql);
 
 _FASTCALL KIRQL KfRaiseIrql(FASTCALL_DECL_1(KIRQL newirql));
 _FASTCALL void KfLowerIrql(FASTCALL_DECL_1(KIRQL oldirql));
@@ -789,21 +798,14 @@ extern int debug;
 //#define USB_DEBUG 1
 
 #if defined(DEBUG) && defined(USB_DEBUG)
-#define USBTRACE(fmt, ...) DBGTRACE1(fmt, ## __VA_ARGS__)
-#define USBTRACEENTER(fmt, ...) TRACEENTER1(fmt, ## __VA_ARGS__)
-#define USBTRACEEXIT(stmt) TRACEEXIT1(stmt)
+#define USBTRACE(fmt, ...) DBGTRACE4(fmt, ## __VA_ARGS__)
+#define USBTRACEENTER(fmt, ...) TRACEENTER4(fmt, ## __VA_ARGS__)
+#define USBTRACEEXIT(stmt) TRACEEXIT4(stmt)
 #else
 #define USBTRACE(fmt, ...)
 #define USBTRACEENTER(fmt, ...)
 #define USBTRACEEXIT(stmt) stmt
 #endif
-
-#undef USBTRACE
-#undef USBTRACEENTER
-#undef USBTRACEEXIT
-#define USBTRACE DBGTRACE4
-#define USBTRACEENTER TRACEENTER4
-#define USBTRACEEXIT TRACEEXIT4
 
 #if defined DEBUG
 #define ASSERT(expr) do {						\
@@ -821,10 +823,12 @@ extern int debug;
 		struct io_stack_location *_irp_sl;			\
 		_irp_sl = IoGetCurrentIrpStackLocation(__irp);		\
 		INFO("irp: %p, stack size: %d, cl: %d, sl: %p, "	\
-		     "dev_obj: %p, mj_fn: %d, minor_fn: %d, nt_urb: %p", \
+		     "dev_obj: %p, mj_fn: %d, minor_fn: %d, "		\
+		     "nt_urb: %p, event: %p",				\
 		     __irp, __irp->stack_count,	(__irp)->current_location, \
 		     _irp_sl, _irp_sl->dev_obj, _irp_sl->major_fn,	\
-		     _irp_sl->minor_fn, URB_FROM_IRP(__irp));		\
+		     _irp_sl->minor_fn, URB_FROM_IRP(__irp),		\
+		     (__irp)->user_event);				\
 		break;							\
 	}
 #else

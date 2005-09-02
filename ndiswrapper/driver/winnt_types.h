@@ -240,22 +240,6 @@ enum memory_caching_type {
 	MmNonCachedUnordered, MmUSWCCached, MmMaximumCacheType
 };
 
-enum memory_alloc_type {
-	ALLOC_TYPE_KMALLOC = 1, ALLOC_TYPE_VMALLOC,
-};
-
-/* we allocate two extra ULONGs to store type of allocation (kmalloc
- * or vmalloc) and the tag; tag is not used by ndiswrapper, at least
- * right now */
-#define MEM_TAG_SIZE(ptr) ((ptr) + 2 * sizeof(ULONG))
-#define TAG_MEM(ptr, type, tag)			\
-	({					\
-		*((ULONG *)ptr) = type;		\
-		*(((ULONG *)ptr) + 1) = tag;	\
-		(void *)(((ULONG *)ptr) + 2);	\
-	})
-#define MEM_ALLOC_TYPE(ptr) (((ULONG *)ptr)[-2])
-
 enum lock_operation {
 	IoReadAccess, IoWriteAccess, IoModifyAccess
 };
@@ -828,15 +812,20 @@ struct common_object_header {
 #define HANDLE_TO_OBJECT(handle) HEADER_TO_OBJECT(handle)
 #define HANDLE_TO_HEADER(handle) (handle)
 
+extern struct nt_list object_list;
+extern KSPIN_LOCK ntoskernel_lock;
 #define ALLOCATE_OBJECT(object, flags, obj_type)			\
 	({								\
 		struct common_object_header *__hdr;			\
+		KIRQL __irql;						\
 		void *__body;						\
 		__hdr = kmalloc(OBJECT_SIZE(object), (flags));		\
 		memset(__hdr, 0, OBJECT_SIZE(object));			\
 		__hdr->type = obj_type;					\
 		__hdr->ref_count = 1;					\
+		__irql = kspin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL); \
 		InsertTailList(&object_list, &__hdr->list);		\
+		kspin_unlock_irql(&ntoskernel_lock, __irql);		\
 		__body = HEADER_TO_OBJECT(__hdr);			\
 		DBGTRACE3("allocated hdr: %p, body: %p", __hdr, __body); \
 		__body;							\
@@ -844,8 +833,11 @@ struct common_object_header {
 #define FREE_OBJECT(object)						\
 	do {								\
 		struct common_object_header *__hdr;			\
+		KIRQL __irql;						\
 		__hdr = OBJECT_TO_HEADER(object);			\
+		__irql = kspin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL); \
 		RemoveEntryList(&__hdr->list);				\
+		kspin_unlock_irql(&ntoskernel_lock, __irql);		\
 		DBGTRACE3("freed hdr: %p, body: %p", __hdr, object);	\
 		kfree(__hdr);						\
 	} while (0)
