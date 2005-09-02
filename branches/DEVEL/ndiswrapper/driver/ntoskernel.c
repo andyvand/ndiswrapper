@@ -25,8 +25,6 @@
 #else
 #define DBGINFO DBGTRACE4
 #define DBGINFOEXIT TRACEEXIT4
-//#define DBGINFO(fmt, ...)
-//#define DBGINFOEXIT(stmt) stmt
 #endif
 
 /* MDLs describe a range of virtual address with an array of physical
@@ -75,6 +73,8 @@ struct nt_list io_workitem_list;
 KSPIN_LOCK io_workitem_list_lock;
 void io_worker(void *data);
 
+KSPIN_LOCK irp_cancel_lock;
+
 /* wrap_epoch is when ntoskernel gets initialized */
 static u64 wrap_ticks_to_epoch;
 static typeof(jiffies) wrap_epoch;
@@ -95,6 +95,7 @@ int ntoskernel_init(void)
 	kspin_lock_init(&ntoskernel_lock);
 	kspin_lock_init(&io_workitem_list_lock);
 	kspin_lock_init(&kdpc_list_lock);
+	kspin_lock_init(&irp_cancel_lock);
 	InitializeListHead(&wrap_mdl_list);
 	InitializeListHead(&kdpc_list);
 	InitializeListHead(&callback_objects);
@@ -122,8 +123,6 @@ int ntoskernel_init(void)
 		ntoskernel_exit();
 		return -ENOMEM;
 	}
-	if (!get_current_thread())
-		return -ENOMEM;
 	return 0;
 }
 
@@ -203,25 +202,6 @@ void ntoskernel_exit_device(struct wrapper_dev *wd)
 		ObDereferenceObject(kthread);
 	}
 	return;
-}
-
-struct kthread *get_current_thread(void)
-{
-	struct kthread *kthread;
-
-	kthread = KeGetCurrentThread();
-	if (kthread)
-		return kthread;
-	kthread = ALLOCATE_OBJECT(struct kthread, GFP_KERNEL,
-				  OBJECT_TYPE_KTHREAD);
-	if (kthread) {
-		kthread->task = get_current();
-		kspin_lock_init(&kthread->lock);
-		InitializeListHead(&kthread->irps);
-		DBGTRACE1("kthread: %p, task: %p", kthread, kthread->task);
-	} else
-		ERROR("couldn't allocate thread object");
-	return kthread;
 }
 
 u64 ticks_1601(void)
@@ -541,7 +521,6 @@ static void kdpc_worker(void *data)
 	struct nt_list *entry;
 	struct kdpc *kdpc;
 	KIRQL irql;
-	DPC dpc_func;
 
 	while (1) {
 		irql = kspin_lock_irql(&kdpc_list_lock, DISPATCH_LEVEL);
@@ -551,21 +530,10 @@ static void kdpc_worker(void *data)
 			break;
 		}
 		kdpc = container_of(entry, struct kdpc, list);
-		if (!kdpc) {
-			WARNING("kdpc is NULL");
-			kspin_unlock_irql(&kdpc_list_lock, irql);
-			continue;
-		}
 		kdpc->number = 0;
-		dpc_func = kdpc->func;
-		if (!dpc_func) {
-			WARNING("dpc func for %p is NULL!", kdpc);
-			kspin_unlock_irql(&kdpc_list_lock, irql);
-			continue;
-		}
 		DBGTRACE5("%p, %p, %p, %p, %p", kdpc, dpc_func, kdpc->ctx,
 			  kdpc->arg1, kdpc->arg2);
-		LIN2WIN4(dpc_func, kdpc, kdpc->ctx, kdpc->arg1, kdpc->arg2);
+		LIN2WIN4(kdpc->func, kdpc, kdpc->ctx, kdpc->arg1, kdpc->arg2);
 		kspin_unlock_irql(&kdpc_list_lock, irql);
 	}
 }
@@ -781,82 +749,17 @@ STDCALL void *WRAP_EXPORT(ExAllocatePoolWithTag)
 	TRACEENTER1("pool_type: %d, size: %lu, tag: %u", pool_type,
 		    size, tag);
 
-#if 0
-	SIZE_T n;
-	enum memory_alloc_type type;
-	n = MEM_TAG_SIZE(size);
-	if (n <= KMALLOC_THRESHOLD) {
-		if (current_irql() < DISPATCH_LEVEL)
-			ret = kmalloc(n, GFP_KERNEL);
-		else
-			ret = kmalloc(n, GFP_ATOMIC);
-		type = ALLOC_TYPE_KMALLOC;
-	} else {
-		if (current_irql() == DISPATCH_LEVEL)
-			ERROR("Windows driver allocating too big a block"
-			      " at DISPATCH_LEVEL: %lu", n);
-		ret = vmalloc(n);
-		type = ALLOC_TYPE_VMALLOC;
-	}
-	DBGTRACE2("%p", ret);
-	if (!ret)
-		WARNING("couldn't allocate memory");
-	else
-		ret = TAG_MEM(ret, type, tag);
-	return ret;
-#else
 	if (current_irql() < DISPATCH_LEVEL)
 		ret = kmalloc(size, GFP_KERNEL);
 	else
 		ret = kmalloc(size, GFP_ATOMIC);
 	return ret;
-#endif
 }
 
 STDCALL void WRAP_EXPORT(ExFreePool)
 	(void *p)
 {
-#if 0
-	enum memory_alloc_type type;
-
-	TRACEENTER2("%p", p);
-	type = MEM_ALLOC_TYPE(p);
-	if (type != ALLOC_TYPE_KMALLOC &&
-	    type != ALLOC_TYPE_VMALLOC)
-		ERROR("type %d is invalid", type);
-	if (type == ALLOC_TYPE_KMALLOC)
-		kfree(p);
-	else {
-		struct ndis_work_entry *ndis_work_entry;
-		struct ndis_free_mem_work_item *free_mem;
-		KIRQL irql;
-
-		if (!in_interrupt()) {
-			vfree(p);
-			TRACEEXIT3(return);
-		}
-		/* Centrino 2200 driver calls this function when in
-		 * ad-hoc mode in interrupt context when length >
-		 * KMALLOC_THRESHOLD, which implies that vfree is
-		 * called in interrupt context, which is not
-		 * correct. So we use worker for it */
-		ndis_work_entry = kmalloc(sizeof(*ndis_work_entry),
-					  GFP_ATOMIC);
-		BUG_ON(!ndis_work_entry);
-
-		ndis_work_entry->type = NDIS_FREE_MEM_WORK_ITEM;
-		free_mem = &ndis_work_entry->entry.free_mem_work_item;
-
-		free_mem->addr = p;
-
-		irql = kspin_lock_irql(&ndis_work_list_lock, DISPATCH_LEVEL);
-		InsertTailList(&ndis_work_list, &ndis_work_entry->list);
-		kspin_unlock_irql(&ndis_work_list_lock, irql);
-		TRACEEXIT2(return);
-	}
-#else
 	kfree(p);
-#endif
 }
 
 WRAP_FUNC_PTR_DECL(ExAllocatePoolWithTag)
@@ -1079,10 +982,6 @@ static void wakeup_threads(struct dispatch_header *dh)
 	DBGINFO("dh: %p", dh);
 	irql = kspin_lock_irql(&kevent_lock, DISPATCH_LEVEL);
 	nt_list_for_each_safe(cur, tmp, &dh->wait_blocks) {
-		if (cur == NULL)
-			ERROR("cur is NULL");
-		if (tmp == NULL)
-			ERROR("tmp is NULL");
 		wb = container_of(cur, struct wait_block, list);
 		DBGINFO("wait block: %p", wb);
 		if (check_reset_signaled_state(dh, wb->thread)) {
@@ -1389,14 +1288,14 @@ STDCALL NTSTATUS WRAP_EXPORT(KeDelayExecutionThread)
 {
 	int res;
 	long timeout;
-	long t = *interval;
 
-	TRACEENTER5("thread: %p, interval: %ld", get_current(), t);
 	if (wait_mode != 0)
 		ERROR("invalid wait_mode %d", wait_mode);
 
-	timeout = SYSTEM_TIME_TO_HZ(t);
+	timeout = SYSTEM_TIME_TO_HZ(*interval) + 1;
 
+	TRACEENTER4("thread: %p, interval: %Ld, timeout: %ld",
+		    get_current(), *interval, timeout);
 	if (timeout <= 0)
 		TRACEEXIT3(return STATUS_SUCCESS);
 
@@ -1406,6 +1305,7 @@ STDCALL NTSTATUS WRAP_EXPORT(KeDelayExecutionThread)
 		set_current_state(TASK_UNINTERRUPTIBLE);
 
 	res = schedule_timeout(timeout);
+	DBGTRACE4("thread: %p, res: %d", get_current(), res);
 	if (res == 0)
 		TRACEEXIT3(return STATUS_SUCCESS);
 	else
@@ -1474,6 +1374,7 @@ STDCALL struct kthread *WRAP_EXPORT(KeGetCurrentThread)
 		struct common_object_header *header;
 		struct kthread *kthread;
 		header = container_of(cur, struct common_object_header, list);
+		DBGTRACE1("header: %p, type: %d", header, header->type);
 		if (header->type != OBJECT_TYPE_KTHREAD)
 			continue;
 		kthread = HEADER_TO_OBJECT(header);
@@ -1530,13 +1431,62 @@ int kthread_trampoline(void *data)
 	return 0;
 }
 
+struct kthread *wrap_create_current_thread(void)
+{
+	struct kthread *kthread;
+	KIRQL irql;
+
+	kthread = ALLOCATE_OBJECT(struct kthread, GFP_KERNEL,
+				  OBJECT_TYPE_KTHREAD);
+	if (kthread) {
+		kthread->task = get_current();
+		kthread->pid = kthread->task->pid;
+		kspin_lock_init(&kthread->lock);
+		InitializeListHead(&kthread->irps);
+		irql = kspin_lock_irql(&kevent_lock, DISPATCH_LEVEL);
+		initialize_dh(&kthread->dh, SynchronizationEvent,
+			      0, DH_KTHREAD);
+		kspin_unlock_irql(&kevent_lock, irql);
+		kthread->dh.size = sizeof(*kthread);
+
+		DBGTRACE2("kthread: %p, task: %p, pid: %d",
+			  kthread, kthread->task, kthread->pid);
+	} else
+		ERROR("couldn't allocate thread object");
+	return kthread;
+}
+
+void wrap_remove_current_thread(void)
+{
+	struct kthread *kthread;
+	KIRQL irql;
+	struct nt_list *ent;
+
+	kthread = KeGetCurrentThread();
+	if (kthread) {
+		DBGTRACE2("terminating thread: %p, task: %p, pid: %d",
+			  kthread, kthread->task, kthread->task->pid);
+		irql = kspin_lock_irql(&kthread->lock, DISPATCH_LEVEL);
+		while ((ent = RemoveHeadList(&kthread->irps))) {
+			struct irp *irp;
+
+			irp = container_of(ent, struct irp, threads);
+			if (!irp->cancel)
+				IoCancelIrp(irp);
+		}
+		kspin_unlock_irql(&kthread->lock, irql);
+		ObDereferenceObject(kthread);
+	} else
+		ERROR("couldn't find thread for task: %p", get_current());
+	return;
+}
+
 STDCALL NTSTATUS WRAP_EXPORT(PsCreateSystemThread)
 	(void **phandle, ULONG access, void *obj_attr, void *process,
 	 void *client_id, void (*start_routine)(void *) STDCALL, void *context)
 {
 	struct trampoline_context *ctx;
 	struct kthread *kthread;
-	KIRQL irql;
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,7)
 	int pid;
 #endif
@@ -1549,19 +1499,15 @@ STDCALL NTSTATUS WRAP_EXPORT(PsCreateSystemThread)
 	ctx = kmalloc(sizeof(struct trampoline_context), GFP_KERNEL);
 	if (!ctx)
 		TRACEEXIT2(return STATUS_RESOURCES);
-	kthread = get_current_thread();
+	/* we create thread with current task, but will change task
+	 * and pid members to newly created task and pid below */
+	kthread = wrap_create_current_thread();
 	if (!kthread) {
 		kfree(ctx);
 		TRACEEXIT2(return STATUS_RESOURCES);
 	}
 	ctx->start_routine = start_routine;
 	ctx->context = context;
-
-	irql = kspin_lock_irql(&kevent_lock, DISPATCH_LEVEL);
-	initialize_dh(&kthread->dh, SynchronizationEvent, 0, DH_KTHREAD);
-	kspin_unlock_irql(&kevent_lock, irql);
-	kthread->dh.size = sizeof(*kthread);
-	ObReferenceObject(kthread);
 
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,7)
 	pid = kernel_thread(kthread_trampoline, ctx,
@@ -1572,6 +1518,7 @@ STDCALL NTSTATUS WRAP_EXPORT(PsCreateSystemThread)
 		FREE_OBJECT(kthread);
 		TRACEEXIT2(return STATUS_FAILURE);
 	}
+	kthread->pid = pid;
 	kthread->task = find_task_by_pid(pid);
 #else
 	kthread->task = kthread_create(kthread_trampoline, ctx, DRIVER_NAME);
@@ -1580,11 +1527,12 @@ STDCALL NTSTATUS WRAP_EXPORT(PsCreateSystemThread)
 		FREE_OBJECT(kthread);
 		TRACEEXIT2(return STATUS_FAILURE);
 	}
+	kthread->pid = kthread->task->pid;
 	*phandle = kthread;
-	DBGTRACE2("created thread: %p, task: %p, pid: %d",
-		  kthread, kthread->task, kthread->task->pid);
 	wake_up_process(kthread->task);
 #endif
+	DBGTRACE2("created thread: %p, task: %p, pid: %d",
+		  kthread, kthread->task, kthread->pid);
 	DBGTRACE2("*phandle = %p", *phandle);
 	TRACEEXIT2(return STATUS_SUCCESS);
 }
@@ -1595,29 +1543,15 @@ STDCALL NTSTATUS WRAP_EXPORT(PsTerminateSystemThread)
 	struct kthread *kthread;
 
 	kthread = KeGetCurrentThread();
-	DBGTRACE2("terminating thread: %p, task: %p, pid: %d",
-		  kthread, kthread->task, kthread->task->pid);
 	if (kthread) {
-		KIRQL irql;
-		struct nt_list *ent;
-
-		irql = kspin_lock_irql(&kthread->lock, DISPATCH_LEVEL);
-		while ((ent = RemoveHeadList(&kthread->irps))) {
-			struct irp *irp;
-
-			irp = container_of(ent, struct irp, threads);
-			if (!irp->cancel)
-				IoCancelIrp(irp);
-//			IoFreeIrp(irp);
-		}
-		kspin_unlock_irql(&kthread->lock, irql);
 		DBGTRACE2("setting event for thread: %p", kthread);
 		KeSetEvent((struct kevent *)&kthread->dh, 0, FALSE);
 		DBGTRACE2("set event for thread: %p", kthread);
-//		ObDereferenceObject(kthread);
+		wrap_remove_current_thread();
 		complete_and_exit(NULL, status);
 		ERROR("oops: %p, %d", kthread->task, kthread->pid);
-	}
+	} else
+		ERROR("couldn't find thread for task: %p", get_current);
 	return STATUS_FAILURE;
 }
 
@@ -1881,8 +1815,10 @@ _FASTCALL void WRAP_EXPORT(ObfDereferenceObject)
 	struct common_object_header *hdr;
 	KIRQL irql;
 
+	TRACEENTER2("object: %p", object);
 	irql = kspin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL);
 	hdr = OBJECT_TO_HEADER(object);
+	DBGTRACE2("hdr: %p", hdr);
 	hdr->ref_count--;
 	if (hdr->ref_count < 0)
 		ERROR("invalid object: %p (%d)", object, hdr->ref_count);
@@ -1897,7 +1833,7 @@ STDCALL NTSTATUS WRAP_EXPORT(ZwCreateFile)
 	 ULONG file_attr, ULONG share_access, ULONG create_disposition,
 	 ULONG create_options, void *ea_buffer, ULONG ea_length)
 {
-	struct nt_list *cur, *tmp;
+	struct nt_list *cur;
 	struct object_attr *oa;
 	struct ansi_string ansi;
 	struct ndis_bin_file *file;
@@ -1943,7 +1879,7 @@ STDCALL NTSTATUS WRAP_EXPORT(ZwCreateFile)
 	RtlCopyUnicodeString(&oa->name, &obj_attr->name);
 	*handle = OBJECT_TO_HEADER(oa);
 	/* Loop through all drivers and all files to find the requested file */
-	nt_list_for_each_safe(cur, tmp, &ndis_drivers) {
+	nt_list_for_each(cur, &ndis_drivers) {
 		struct ndis_driver *driver;
 		int i;
 

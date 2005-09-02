@@ -19,7 +19,7 @@
 #include "usb.h"
 
 extern KSPIN_LOCK ntoskernel_lock;
-extern KSPIN_LOCK irp_list_lock;
+extern KSPIN_LOCK irp_cancel_lock;
 extern struct nt_list object_list;
 
 extern struct work_struct io_work;
@@ -32,15 +32,21 @@ extern KSPIN_LOCK io_workitem_list_lock;
 #else
 #define DBGINFO DBGTRACE4
 #define DBGINFOEXIT TRACEEXIT4
-#undef USBTRACE
-#undef USBTRACEENTER
-#undef USBTRACEEXIT
-#define USBTRACE DBGTRACE4
-#define USBTRACEENTER TRACEENTER4
-#define USBTRACEEXIT TRACEEXIT4
-//#define DBGINFO(fmt, ...)
-//#define DBGINFOEXIT(stmt) stmt
 #endif
+
+extern KSPIN_LOCK irp_cancel_lock;
+
+STDCALL void WRAP_EXPORT(IoAcquireCancelSpinLock)
+	(KIRQL *irql)
+{
+	*irql = kspin_lock_irql(&irp_cancel_lock, DISPATCH_LEVEL);
+}
+
+STDCALL void WRAP_EXPORT(IoReleaseCancelSpinLock)
+	(KIRQL irql)
+{
+	kspin_unlock_irql(&irp_cancel_lock, irql);
+}
 
 STDCALL NTSTATUS WRAP_EXPORT(IoGetDeviceProperty)
 	(struct device_object *pdo,
@@ -212,7 +218,7 @@ STDCALL BOOLEAN WRAP_EXPORT(IoCancelIrp)
 	if (!irp)
 		return FALSE;
 	DUMP_IRP(irp);
-	irp->cancel_irql = kspin_lock_irql(&irp_list_lock, DISPATCH_LEVEL);
+	IoAcquireCancelSpinLock(&irp->cancel_irql);
 	cancel_routine = irp->cancel_routine;
 	irp->cancel_routine = NULL;
 	irp->cancel = TRUE;
@@ -224,7 +230,7 @@ STDCALL BOOLEAN WRAP_EXPORT(IoCancelIrp)
 		cancel_routine(irp_sl->dev_obj, irp);
 		USBTRACEEXIT(return TRUE);
 	} else {
-		kspin_unlock_irql(&irp_list_lock, irp->cancel_irql);
+		IoReleaseCancelSpinLock(irp->cancel_irql);
 		USBTRACEEXIT(return FALSE);
 	}
 }
@@ -234,12 +240,17 @@ STDCALL void IoQueueThreadIrp(struct irp *irp)
 	struct kthread *kthread;
 	KIRQL irql;
 
-	kthread = get_current_thread();
-	INFO("kthread: %p, task: %p", kthread, kthread->task);
-	irp->flags |= IRP_SYNCHRONOUS_API;
+	kthread = KeGetCurrentThread();
+	if (!kthread) {
+		WARNING("couldn't find thread for irp: %p, task: %p, pid: %d",
+			irp, get_current(), get_current()->pid);
+		IoIrpThread(irp) = NULL;
+		return;
+	}
+	DBGINFO("kthread: %p, task: %p", kthread, kthread->task);
 	irql = kspin_lock_irql(&kthread->lock, DISPATCH_LEVEL);
+	irp->flags |= IRP_SYNCHRONOUS_API;
 	InsertTailList(&kthread->irps, &irp->threads);
-	InitializeListHead(&irp->threads);
 	IoIrpThread(irp) = kthread;
 	kspin_unlock_irql(&kthread->lock, irql);
 }
@@ -249,19 +260,12 @@ STDCALL void IoDequeueThreadIrp(struct irp *irp)
 	struct kthread *kthread;
 	KIRQL irql;
 
-	if (!(irp->flags & IRP_SYNCHRONOUS_API)) {
-		ERROR("atttempt to dequeue asynch irp: %p", irp);
-		return;
-	}
-
 	kthread = IoIrpThread(irp);
 	if (kthread) {
 		irql = kspin_lock_irql(&kthread->lock, DISPATCH_LEVEL);
 		RemoveEntryList(&irp->threads);
 		kspin_unlock_irql(&kthread->lock, irql);
-	} else
-		ERROR("coudln't find thread for IRP: %p, task: %p",
-		      irp, get_current());
+	}
 }
 
 STDCALL void WRAP_EXPORT(IoFreeIrp)
@@ -467,7 +471,7 @@ _FASTCALL void WRAP_EXPORT(IofCompleteRequest)
 		irp->user_status->status_info = irp->io_status.status_info;
 	}
 
-	if (irp->user_event) {
+	if ((irp->flags & IRP_SYNCHRONOUS_API) && irp->user_event) {
 		USBTRACE("setting event %p", irp->user_event);
 		KeSetEvent(irp->user_event, prio_boost, FALSE);
 	}
@@ -490,7 +494,6 @@ pdoDispatchInternalDeviceControl(struct device_object *pdo,
 {
 	struct io_stack_location *irp_sl;
 	NTSTATUS ret;
-	struct wrapper_dev *wd;
 
 	DUMP_IRP(irp);
 
@@ -504,33 +507,12 @@ pdoDispatchInternalDeviceControl(struct device_object *pdo,
 	}
 	irp_sl = IoGetCurrentIrpStackLocation(irp);
 
-	wd = pdo->reserved;
-	switch (irp_sl->params.ioctl.code) {
 #ifdef CONFIG_USB
-	case IOCTL_INTERNAL_USB_SUBMIT_URB:
-		ret = usb_submit_nt_urb(wd->dev.usb, irp);
-		break;
-
-	case IOCTL_INTERNAL_USB_RESET_PORT:
-		ret = usb_reset_port(wd->dev.usb, irp);
-		break;
-#endif
-	default:
-		ERROR("ioctl %08X NOT IMPLEMENTED!",
-		      irp_sl->params.ioctl.code);
-		ret = STATUS_INVALID_DEVICE_REQUEST;
-	}
-
+	ret = usb_submit_irp(pdo, irp);
 	USBTRACE("ret: %d", ret);
-	if (ret != STATUS_SUCCESS)
-		irp->io_status.status_info = 0;
-	if (ret == STATUS_PENDING) {
-		irp->pending_returned = TRUE;
-		IoMarkIrpPending(irp);
-		return ret;
-	}
-	irp->io_status.status = ret;
-	IoCompleteRequest(irp, IO_NO_INCREMENT);
+#endif
+	if (ret != STATUS_PENDING)
+		IoCompleteRequest(irp, IO_NO_INCREMENT);
 	USBTRACEEXIT(return ret);
 }
 
@@ -959,7 +941,7 @@ STDCALL NTSTATUS WRAP_EXPORT(IoCreateDevice)
 {
 	struct device_object *dev;
 
-	TRACEENTER2("%p", drv_obj);
+	TRACEENTER2("%p, %u", drv_obj, dev_ext_length);
 	dev = ALLOCATE_OBJECT(struct device_object, GFP_KERNEL,
 			      OBJECT_TYPE_DEVICE);
 	if (!dev)
@@ -1017,7 +999,11 @@ STDCALL void WRAP_EXPORT(IoDeleteDevice)
 		TRACEEXIT2(return);
 	if (dev->dev_obj_ext)
 		kfree(dev->dev_obj_ext);
-	prev = dev->drv_obj->dev_obj;
+
+	prev = NULL;
+#if 0
+	if (dev->drv_obj)
+		prev = dev->drv_obj->dev_obj;
 	if (prev == dev)
 		dev->drv_obj->dev_obj = dev->next;
 	else {
@@ -1025,6 +1011,7 @@ STDCALL void WRAP_EXPORT(IoDeleteDevice)
 			prev = prev->next;
 		prev->next = dev->next;
 	}
+#endif
 	ObDereferenceObject(dev);
 	TRACEEXIT2(return);
 }
@@ -1142,7 +1129,6 @@ STDCALL NTSTATUS WRAP_EXPORT(IoSetDeviceInterfaceState)
 	return STATUS_SUCCESS;
 }
 
-STDCALL void WRAP_EXPORT(IoReleaseCancelSpinLock)(void){UNIMPL();}
 STDCALL void WRAP_EXPORT(IoCreateSymbolicLink)(void){UNIMPL();}
 STDCALL void WRAP_EXPORT(IoCreateUnprotectedSymbolicLink)(void){UNIMPL();}
 STDCALL void WRAP_EXPORT(IoDeleteSymbolicLink)(void){UNIMPL();}

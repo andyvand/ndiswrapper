@@ -88,6 +88,7 @@ typedef LONG USBD_STATUS;
 
 #define USBD_STATUS_SUCCESS			0x0
 #define USBD_STATUS_PENDING			0x40000000
+#define USBD_STATUS_CANCELLED			0x00010000
 
 #define USBD_STATUS_CRC				0xC0000001
 #define USBD_STATUS_BTSTUFF			0xC0000002
@@ -116,13 +117,15 @@ typedef LONG USBD_STATUS;
 #define USBD_STATUS_INVALID_PIPE_HANDLE		0x80000600
 #define USBD_STATUS_ERROR_SHORT_TRANSFER	0x80000900
 
+#define USBD_DEFAULT_MAXIMUM_TRANSFER_SIZE	PAGE_SIZE
+
 union pipe_handle {
 	void *handle;
 	struct {
-		unsigned char endpointAddr;
-		unsigned char pipeType;
-		unsigned char interval;
-		unsigned char fill;
+		UCHAR endpoint;
+		UCHAR type;
+		UCHAR interval;
+		UCHAR fill;
 	} encoded;
 };
 
@@ -130,31 +133,33 @@ struct urb_hcd_area {
 	void *reserved8[8];
 };
 
+enum pipe_type {ptControl, ptIsochronous, ptBulk, ptIntr};
+
 struct usbd_pipe_information {
-	USHORT maxPacketSize;
-	UCHAR endpointAddr;
+	USHORT max_pkt_size;
+	UCHAR endpoint;
 	UCHAR interval;
-	enum {ptControl, ptIsochronous, ptBulk, ptIntr} pipeType;
-	union pipe_handle pipeHandle;
-	ULONG maxTransferSize;
-	ULONG pipeFlags;
+	enum pipe_type type;
+	union pipe_handle handle;
+	ULONG max_tx_size;
+	ULONG flags;
 };
 
 struct usbd_interface_information {
 	USHORT length;
-	UCHAR intfNum;
-	UCHAR altSet;
+	UCHAR ifnum;
+	UCHAR alt_setting;
 	UCHAR class;
-	UCHAR subClass;
+	UCHAR sub_class;
 	UCHAR proto;
-	UCHAR fill;
-	void *intfHandle;
-	ULONG pipeNum;
+	UCHAR reserved;
+	void *handle;
+	ULONG pipe_num;
 	struct usbd_pipe_information pipes[1];
 };
 
 struct usbd_interface_list_entry {
-	struct usb_interface_descriptor *intfDesc;
+	struct usb_interface_descriptor *intf_desc;
 	struct usbd_interface_information *intf;
 };
 
@@ -162,59 +167,59 @@ struct nt_urb_header {
 	USHORT length;
 	USHORT function;
 	USBD_STATUS status;
-	void *usbdDevHandle;
-	ULONG usbdFlags;
+	void *usbd_dev_handle;
+	ULONG usbd_flags;
 };
 
-struct select_configuration {
+struct usbd_select_configuration {
 	struct nt_urb_header header;
 	struct usb_config_descriptor *config;
-	void *configHandle;
+	void *handle;
 	struct usbd_interface_information intf;
 };
 
-struct bulk_or_intr_transfer {
+struct usbd_bulk_or_intr_transfer {
 	struct nt_urb_header header;
-	union pipe_handle pipeHandle;
-	ULONG transferFlags;
-	ULONG transferBufLen;
-	void *transferBuf;
-	struct mdl *transferBufMdl;
-	union nt_urb *urbLink;
+	union pipe_handle pipe_handle;
+	ULONG transfer_flags;
+	ULONG transfer_buffer_length;
+	void *transfer_buffer;
+	struct mdl *transfer_buffer_mdl;
+	union nt_urb *urb_link;
 	struct urb_hcd_area hca;
 };
 
-struct control_descriptor_request {
+struct usbd_control_descriptor_request {
 	struct nt_urb_header header;
 	void *reserved;
 	ULONG reserved0;
-	ULONG transferBufLen;
-	void *transferBuf;
-	struct mdl *transferBufMdl;
-	union nt_urb *urbLink;
+	ULONG transfer_buffer_length;
+	void *transfer_buffer;
+	struct mdl *transfer_buffer_mdl;
+	union nt_urb *urb_link;
 	struct urb_hcd_area hca;
 	USHORT reserved1;
 	UCHAR index;
-	UCHAR desctype;
-	USHORT langid;
+	UCHAR desc_type;
+	USHORT language_id;
 	USHORT reserved2;
 };
 
-struct pipe_request {
+struct usbd_pipe_request {
 	struct nt_urb_header header;
-	union pipe_handle pipeHandle;
+	union pipe_handle pipe_handle;
 };
 
-struct vendor_or_class_request {
+struct usbd_vendor_or_class_request {
 	struct nt_urb_header header;
 	void *reserved;
-	ULONG transferFlags;
-	ULONG transferBufLen;
-	void *transferBuf;
-	struct mdl *transferBufMdl;
-	union nt_urb *urbLink;
+	ULONG transfer_flags;
+	ULONG transfer_buffer_length;
+	void *transfer_buffer;
+	struct mdl *transfer_buffer_mdl;
+	union nt_urb *urb_link;
 	struct urb_hcd_area hca;
-	UCHAR reservedBits;
+	UCHAR reserved_bits;
 	UCHAR request;
 	USHORT value;
 	USHORT index;
@@ -227,34 +232,33 @@ struct usbd_iso_packet_desc {
 	USBD_STATUS status;
 };
 
-struct isochronous_transfer {
+struct usbd_isochronous_transfer {
 	struct nt_urb_header header;
-	union pipe_handle pipeHandle;
-	ULONG transferFlags;
-	ULONG transferBufLen;
-	void *transferBuf;
-	struct mdl *transferMDL;
-	union nt_urb *urbLink;
+	union pipe_handle pipe_handle;
+	ULONG transfer_flags;
+	ULONG transfer_buffer_length;
+	void *transfer_buffer;
+	struct mdl *transfer_buffer_mdl;
+	union nt_urb *urb_link;
 	struct urb_hcd_area hca;
-	ULONG startFrame;
-	ULONG numPackets;
-	ULONG errorCount;
-	struct usbd_iso_packet_desc isoPacket[1];
+	ULONG start_frame;
+	ULONG number_of_packets;
+	ULONG error_count;
+	struct usbd_iso_packet_desc iso_packet[1];
 };
 
 union nt_urb {
 	struct nt_urb_header header;
-	struct select_configuration select_conf;
-	struct bulk_or_intr_transfer bulk_int_transfer;
-	struct control_descriptor_request control_request;
-	struct vendor_or_class_request vendor_class_request;
-	struct isochronous_transfer isochronous;
-	struct pipe_request pipe_req;
+	struct usbd_select_configuration select_conf;
+	struct usbd_bulk_or_intr_transfer bulk_int_transfer;
+	struct usbd_control_descriptor_request control_request;
+	struct usbd_vendor_or_class_request vendor_class_request;
+	struct usbd_isochronous_transfer isochronous;
+	struct usbd_pipe_request pipe_req;
 };
 
 #define NT_URB_STATUS(nt_urb) ((nt_urb)->header.status)
 
-unsigned long usb_submit_nt_urb(struct usb_device *dev, struct irp *irp);
-unsigned long usb_reset_port(struct usb_device *dev, struct irp *irp);
+NTSTATUS usb_submit_irp(struct device_object *pdo, struct irp *irp);
 
 #endif /* USB_H */

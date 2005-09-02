@@ -37,10 +37,15 @@ static struct work_struct ndis_work;
 struct nt_list ndis_work_list;
 KSPIN_LOCK ndis_work_list_lock;
 
+static struct work_struct ndis_kdpc_work;
+static struct nt_list ndis_kdpc_work_list;
+static KSPIN_LOCK ndis_kdpc_work_list_lock;
+
 static KSPIN_LOCK wrap_ndis_packet_lock;
 static struct nt_list wrap_ndis_packet_list;
 
 static void ndis_worker(void *data);
+static void ndis_kdpc_worker(void *data);
 
 /* Some drivers allocate all NDIS_PACKETs they need at the beginning
  * and others allocate them quite often - every time a packet is
@@ -55,6 +60,11 @@ int ndis_init(void)
 	INIT_WORK(&ndis_work, ndis_worker, NULL);
 	InitializeListHead(&ndis_work_list);
 	kspin_lock_init(&ndis_work_list_lock);
+
+	INIT_WORK(&ndis_kdpc_work, ndis_kdpc_worker, NULL);
+	InitializeListHead(&ndis_kdpc_work_list);
+	kspin_lock_init(&ndis_kdpc_work_list_lock);
+
 	kspin_lock_init(&wrap_ndis_packet_lock);
 	InitializeListHead(&wrap_ndis_packet_list);
 	packet_cache = kmem_cache_create("ndis_packet",
@@ -215,7 +225,7 @@ STDCALL NDIS_STATUS WRAP_EXPORT(NdisMRegisterDevice)
 		for (i = 0; i <= IRP_MJ_MAXIMUM_FUNCTION; i++)
 			if (funcs[i]) {
 				drv_obj->major_func[i] = funcs[i];
-				INFO("major function for 0x%x is at %p",
+				DBGTRACE1("major function for 0x%x is at %p",
 					  i, funcs[i]);
 			}
 	}
@@ -232,14 +242,7 @@ STDCALL NDIS_STATUS WRAP_EXPORT(NdisMDeregisterDevice)
 STDCALL NDIS_STATUS WRAP_EXPORT(NdisAllocateMemoryWithTag)
 	(void **dest, UINT length, ULONG tag)
 {
-	TRACEENTER3("dest = %p, *dest = %p", dest, *dest);
-#if 0
-	*dest = ExAllocatePoolWithTag(NonPagedPool, length, tag);
-	if (*dest)
-		return NDIS_STATUS_SUCCESS;
-	else
-		return NDIS_STATUS_FAILURE;
-#else
+	TRACEENTER3("dest = %p, length = %u", dest, length);
 	if (length <= KMALLOC_THRESHOLD) {
 		if (current_irql() < DISPATCH_LEVEL)
 			*dest = kmalloc(length, GFP_KERNEL);
@@ -254,9 +257,8 @@ STDCALL NDIS_STATUS WRAP_EXPORT(NdisAllocateMemoryWithTag)
 
 	if (*dest)
 		TRACEEXIT3(return NDIS_STATUS_SUCCESS);
-	DBGTRACE3("Allocatemem failed size=%d", length);
+	WARNING("couldnt' allocate memory: %u", length);
 	TRACEEXIT3(return NDIS_STATUS_FAILURE);
-#endif
 }
 
 STDCALL NDIS_STATUS WRAP_EXPORT(NdisAllocateMemory)
@@ -270,9 +272,6 @@ STDCALL NDIS_STATUS WRAP_EXPORT(NdisAllocateMemory)
 STDCALL void WRAP_EXPORT(NdisFreeMemory)
 	(void *addr, UINT length, UINT flags)
 {
-#if 0
-	ExFreePool(addr);
-#else
 	struct ndis_work_entry *ndis_work_entry;
 	struct ndis_free_mem_work_item *free_mem;
 	KIRQL irql;
@@ -313,7 +312,6 @@ STDCALL void WRAP_EXPORT(NdisFreeMemory)
 
 		schedule_work(&ndis_work);
 	}
-#endif
 }
 
 /*
@@ -388,7 +386,7 @@ STDCALL void WRAP_EXPORT(NdisOpenFile)
 	 NDIS_PHY_ADDRESS highest_address)
 {
 	struct ansi_string ansi;
-	struct nt_list *cur, *tmp;
+	struct nt_list *cur;
 	struct ndis_bin_file *file;
 
 	TRACEENTER2("status = %p, filelength = %p, *filelength = %d, "
@@ -412,7 +410,7 @@ STDCALL void WRAP_EXPORT(NdisOpenFile)
 	DBGTRACE2("Filename: %s", ansi.buf);
 
 	/* Loop through all drivers and all files to find the requested file */
-	nt_list_for_each_safe(cur, tmp, &ndis_drivers) {
+	nt_list_for_each(cur, &ndis_drivers) {
 		struct ndis_driver *driver;
 		int i;
 
@@ -1482,11 +1480,11 @@ STDCALL void WRAP_EXPORT(NdisMInitializeTimer)
 	 struct ndis_miniport_block *nmb, void *func, void *ctx)
 {
 	struct wrapper_dev *wd = nmb->wd;
-	TRACEENTER4("%s", "");
-	initialize_kdpc(&timer_handle->kdpc, func, ctx, KDPC_TYPE_KERNEL);
+	TRACEENTER4("timer: %p", &timer_handle->ktimer);
+	initialize_kdpc(&timer_handle->kdpc, func, ctx, KDPC_TYPE_NDIS);
 	KeInitializeTimer(&timer_handle->ktimer);
 	wrap_init_timer(&timer_handle->ktimer, wd, &timer_handle->kdpc,
-			KTIMER_TYPE_KERNEL);
+			KTIMER_TYPE_NDIS);
 	TRACEEXIT4(return);
 }
 
@@ -1513,11 +1511,12 @@ STDCALL void WRAP_EXPORT(NdisMCancelTimer)
 STDCALL void WRAP_EXPORT(NdisInitializeTimer)
 	(struct ndis_timer *timer_handle, void *func, void *ctx)
 {
-	TRACEENTER4("%p, %p, %p", timer_handle, func, ctx);
-	initialize_kdpc(&timer_handle->kdpc, func, ctx, KDPC_TYPE_KERNEL);
+	TRACEENTER4("%p, %p, %p, %p", timer_handle, func, ctx,
+		    &timer_handle->ktimer);
+	initialize_kdpc(&timer_handle->kdpc, func, ctx, KDPC_TYPE_NDIS);
 	KeInitializeTimer(&timer_handle->ktimer);
 	wrap_init_timer(&timer_handle->ktimer, NULL, &timer_handle->kdpc,
-			KTIMER_TYPE_KERNEL);
+			KTIMER_TYPE_NDIS);
 	TRACEEXIT4(return);
 }
 
@@ -2197,12 +2196,13 @@ NdisMSetInformationComplete(struct ndis_miniport_block *nmb,
 STDCALL void WRAP_EXPORT(NdisMSleep)
 	(ULONG us)
 {
+	unsigned long delay;
+
 	TRACEENTER4("us: %u", us);
-	if (us > 0) {
-		set_current_state(TASK_INTERRUPTIBLE);
-		schedule_timeout(HZ * us / 1000000);
-		DBGTRACE4("%s", "woke up");
-	}
+	delay = ((HZ * us) / 1000000) + 1;
+	set_current_state(TASK_INTERRUPTIBLE);
+	schedule_timeout(delay);
+	DBGTRACE4("%s", "woke up");
 	TRACEEXIT4(return);
 }
 
@@ -2351,6 +2351,54 @@ NdisMResetComplete(struct ndis_miniport_block *nmb, NDIS_STATUS status,
 	wd->ndis_comm_done = 1;
 	wake_up(&wd->ndis_comm_wq);
 	TRACEEXIT3(return);
+}
+
+static void ndis_kdpc_worker(void *data)
+{
+	struct kdpc *kdpc;
+	struct nt_list *cur;
+	KIRQL irql;
+
+	while (1) {
+
+		irql = kspin_lock_irql(&ndis_kdpc_work_list_lock,
+				       DISPATCH_LEVEL);
+		cur = RemoveHeadList(&ndis_kdpc_work_list);
+		if (!cur) {
+			kspin_unlock_irql(&ndis_kdpc_work_list_lock, irql);
+			break;
+		}
+		kdpc = container_of(cur, struct kdpc, list);
+		kdpc->number = 0;
+		LIN2WIN4(kdpc->func, kdpc, kdpc->ctx, kdpc->arg1, kdpc->arg2);
+		kspin_unlock_irql(&ndis_kdpc_work_list_lock, irql);
+	}
+}
+
+void insert_ndis_kdpc_work(struct kdpc *kdpc)
+{
+	KIRQL irql;
+
+	irql = kspin_lock_irql(&ndis_kdpc_work_list_lock, DISPATCH_LEVEL);
+	InsertTailList(&ndis_kdpc_work_list, &kdpc->list);
+	kdpc->number = 1;
+	kspin_unlock_irql(&ndis_kdpc_work_list_lock, irql);
+	schedule_work(&ndis_kdpc_work);
+}
+
+BOOLEAN remove_ndis_kdpc_work(struct kdpc *kdpc)
+{
+	KIRQL irql;
+	BOOLEAN ret;
+
+	irql = kspin_lock_irql(&ndis_kdpc_work_list_lock, DISPATCH_LEVEL);
+	if (kdpc->number) {
+		RemoveEntryList(&kdpc->list);
+		ret = TRUE;
+	} else
+		ret = FALSE;
+	kspin_unlock_irql(&ndis_kdpc_work_list_lock, irql);
+	return ret;
 }
 
 /* one worker for all drivers/handles */

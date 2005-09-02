@@ -55,21 +55,21 @@ int debug = 0;
 /* used to implement Windows spinlocks */
 spinlock_t spinlock_kspin_lock;
 
-NW_MODULE_PARM_STRING(if_name, 0400);
+WRAP_MODULE_PARM_STRING(if_name, 0400);
 MODULE_PARM_DESC(if_name, "Network interface name or template "
 		 "(default: wlan%d)");
-NW_MODULE_PARM_INT(proc_uid, 0600);
+WRAP_MODULE_PARM_INT(proc_uid, 0600);
 MODULE_PARM_DESC(proc_uid, "The uid of the files created in /proc "
 		 "(default: 0).");
-NW_MODULE_PARM_INT(proc_gid, 0600);
+WRAP_MODULE_PARM_INT(proc_gid, 0600);
 MODULE_PARM_DESC(proc_gid, "The gid of the files created in /proc "
 		 "(default: 0).");
-NW_MODULE_PARM_INT(hangcheck_interval, 0600);
+WRAP_MODULE_PARM_INT(hangcheck_interval, 0600);
 /* 0 - default value provided by NDIS driver,
  * positive value - force hangcheck interval to that many seconds
  * negative value - disable hangcheck
  */
-NW_MODULE_PARM_INT(debug, 0600);
+WRAP_MODULE_PARM_INT(debug, 0600);
 MODULE_PARM_DESC(debug, "debug level");
 
 MODULE_PARM_DESC(hangcheck_interval, "The interval, in seconds, for checking"
@@ -121,12 +121,12 @@ NDIS_STATUS miniport_reset(struct wrapper_dev *wd)
 	DBGTRACE2("res = %08X, reset_status = %08X",
 		  res, wd->reset_status);
 	if (res == NDIS_STATUS_PENDING) {
-		if (wait_event_interruptible_timeout(
-			    wd->ndis_comm_wq,
-			    (wd->ndis_comm_done == 1), 5*HZ))
-			res = wd->ndis_comm_res;
-		else
+		if (wait_event_interruptible_timeout(wd->ndis_comm_wq,
+						     (wd->ndis_comm_done == 1),
+						     wd->ndis_comm_wait_time) <= 0)
 			res = NDIS_STATUS_FAILURE;
+		else
+			res = wd->ndis_comm_res;
 		DBGTRACE2("res = %08X, reset_status = %08X",
 			  res, wd->reset_status);
 	}
@@ -175,13 +175,16 @@ NDIS_STATUS miniport_query_info_needed(struct wrapper_dev *wd,
 
 	DBGTRACE3("res = %08x", res);
 	if (res == NDIS_STATUS_PENDING) {
-		/* wait for NdisMQueryInformationComplete upto HZ */
-		if (wait_event_interruptible_timeout(
-			    wd->ndis_comm_wq,
-			    (wd->ndis_comm_done == 1), 3*HZ))
-			res = wd->ndis_comm_res;
-		else
+		/* wait a little for NdisMQueryInformationComplete */
+		/* DDK seems to imply we wait until miniport calls
+		 * back completion routine, but at least prism usb
+		 * driver doesn't call it, so timeout is used */
+		if (wait_event_interruptible_timeout(wd->ndis_comm_wq,
+						     (wd->ndis_comm_done == 1),
+						     wd->ndis_comm_wait_time) <= 0)
 			res = NDIS_STATUS_FAILURE;
+		else
+			res = wd->ndis_comm_res;
 	}
 	up(&wd->ndis_comm_mutex);
 	if (res && needed)
@@ -228,13 +231,13 @@ NDIS_STATUS miniport_set_info(struct wrapper_dev *wd, ndis_oid oid,
 	DBGTRACE3("res = %08x", res);
 
 	if (res == NDIS_STATUS_PENDING) {
-		/* wait for NdisMSetInformationComplete upto HZ */
-		if (wait_event_interruptible_timeout(
-			    wd->ndis_comm_wq,
-			    (wd->ndis_comm_done == 1), 3*HZ))
-			res = wd->ndis_comm_res;
-		else
+		/* wait a little for NdisMSetInformationComplete */
+		if (wait_event_interruptible_timeout(wd->ndis_comm_wq,
+						     (wd->ndis_comm_done == 1),
+						     wd->ndis_comm_wait_time) <= 0)
 			res = NDIS_STATUS_FAILURE;
+		else
+			res = wd->ndis_comm_res;
 		DBGTRACE2("res = %x", res);
 	}
 	up(&wd->ndis_comm_mutex);
@@ -288,15 +291,17 @@ NDIS_STATUS miniport_init(struct wrapper_dev *wd)
 	if (res)
 		TRACEEXIT1(return res);
 
-	/* do we need to power up the card explicitly? */
 	res = miniport_set_pm_state(wd, NdisDeviceStateD0);
+	if (res)
+		DBGTRACE1("setting power state to device %s returns %08X",
+			  wd->net_dev->name, res);
 	/* do we need to reset the device? */
 //	res = miniport_reset(wd);
 
 	/* Wait a little to let card power up otherwise ifup might fail after
 	   boot; USB devices seem to need long delays */
 	set_current_state(TASK_INTERRUPTIBLE);
-	schedule_timeout(HZ/2);
+	schedule_timeout(HZ / 2);
 
 	TRACEEXIT1(return 0);
 }
@@ -304,6 +309,11 @@ NDIS_STATUS miniport_init(struct wrapper_dev *wd)
 NTSTATUS ndiswrapper_start_device(struct wrapper_dev *wd)
 {
 	NTSTATUS status;
+
+	if (wrap_create_current_thread() == NULL) {
+		ERROR("couldn't allocate thread object");
+		return STATUS_INSUFFICIENT_RESOURCES;
+	}
 #if 0
 	struct irp *irp;
 	struct io_stack_location *irp_sl;
@@ -319,6 +329,7 @@ NTSTATUS ndiswrapper_start_device(struct wrapper_dev *wd)
 #else
 	status = miniport_init(wd);
 #endif
+	wrap_remove_current_thread();
 	TRACEEXIT1(return status);
 }
 
@@ -393,10 +404,16 @@ NDIS_STATUS miniport_set_pm_state(struct wrapper_dev *wd,
 void miniport_halt(struct wrapper_dev *wd)
 {
 	struct miniport_char *miniport = &wd->driver->miniport;
+
+	if (wrap_create_current_thread() == NULL)
+		WARNING("couldn't create system thread for task: %p",
+			get_current());
 	DBGTRACE1("driver halt is at %p", miniport->halt);
 
+	DBGTRACE2("task: %p, pid: %d", get_current(), get_current()->pid);
 	LIN2WIN1(miniport->halt, wd->nmb->adapter_ctx);
 
+	wrap_remove_current_thread();
 	ndis_exit_device(wd);
 	misc_funcs_exit_device(wd);
 	ntoskernel_exit_device(wd);
@@ -422,13 +439,36 @@ void ndiswrapper_stop_device(struct wrapper_dev *wd)
 #endif
 }
 
+NDIS_STATUS miniport_surprise_remove(struct wrapper_dev *wd)
+{
+	struct miniport_char *miniport;
+
+	miniport = &wd->driver->miniport;
+	DBGTRACE1("%d, %p",
+		  test_bit(ATTR_SURPRISE_REMOVE, &wd->attributes),
+		  miniport->pnp_event_notify);
+
+	if (miniport->pnp_event_notify) {
+		DBGTRACE1("calling surprise_removed");
+		LIN2WIN4(miniport->pnp_event_notify,
+			 wd->nmb->adapter_ctx,
+			 NdisDevicePnPEventSurpriseRemoved, NULL, 0);
+		return NDIS_STATUS_SUCCESS;
+	} else {
+		WARNING("%s: Windows driver for device %s doesn't "
+			"support MiniportPnpEventNotify for safely "
+			"removing the device", DRIVER_NAME,
+			wd->net_dev->name);
+		return NDIS_STATUS_FAILURE;
+	}
+}
+
 static void hangcheck_proc(unsigned long data)
 {
 	struct wrapper_dev *wd = (struct wrapper_dev *)data;
 	KIRQL irql;
 
 	TRACEENTER3("%s", "");
-	return;
 	set_bit(HANGCHECK, &wd->wrapper_work);
 	schedule_work(&wd->wrapper_worker);
 
@@ -808,12 +848,11 @@ static int start_xmit(struct sk_buff *skb, struct net_device *dev)
 	return 0;
 }
 
-int ndiswrapper_resume_device(struct wrapper_dev *wd);
-
 int ndiswrapper_suspend_device(struct wrapper_dev *wd,
 			       enum ndis_pm_state pm_state)
 {
 	NDIS_STATUS status;
+
 	if (!wd)
 		return -1;
 
@@ -838,16 +877,9 @@ int ndiswrapper_suspend_device(struct wrapper_dev *wd,
 	if (status == NDIS_STATUS_SUCCESS)
 		set_bit(HW_SUSPENDED, &wd->hw_status);
 	else {
-		if (test_bit(ATTR_NO_HALT_ON_SUSPEND, &wd->attributes)) {
-			set_bit(SUSPEND_RESUME, &wd->wrapper_work);
-			schedule_work(&wd->wrapper_worker);
-			ndiswrapper_resume_device(wd);
-			return -1;
-		} else {
-			DBGTRACE2("no pm: halting the device");
-			ndiswrapper_stop_device(wd);
-			set_bit(HW_HALTED, &wd->hw_status);
-		}
+		DBGTRACE2("no pm: halting the device");
+		ndiswrapper_stop_device(wd);
+		set_bit(HW_HALTED, &wd->hw_status);
 	}
 	clear_bit(HW_AVAILABLE, &wd->hw_status);
 	return 0;
@@ -881,16 +913,16 @@ int ndiswrapper_suspend_pci(struct pci_dev *pdev, pm_message_t state)
 int ndiswrapper_resume_device(struct wrapper_dev *wd)
 {
 	if (!wd)
-		return -1;
+		TRACEEXIT1(return -1);
 	if (test_bit(HW_AVAILABLE, &wd->hw_status))
-		return -1;
+		TRACEEXIT1(return -1);
 	if (!(test_bit(HW_SUSPENDED, &wd->hw_status) ||
 	      test_bit(HW_HALTED, &wd->hw_status)))
-		return -1;
+		TRACEEXIT1(return -1);
 
 	set_bit(SUSPEND_RESUME, &wd->wrapper_work);
 	schedule_work(&wd->wrapper_worker);
-	return 0;
+	TRACEEXIT1(return 0);
 }
 
 int ndiswrapper_resume_pci(struct pci_dev *pdev)
@@ -923,6 +955,10 @@ int ndiswrapper_suspend_usb(struct usb_interface *intf, pm_message_t state)
 	/* some drivers support only D3, so force it */
 	ret = ndiswrapper_suspend_device(wd, NdisDeviceStateD3);
 	DBGTRACE2("ret = %d", ret);
+	/* TODO: suspend seems to work fine and resume also works if
+	 * resumed from command line, but resuming from S3 crashes
+	 * kernel. Should we kill any pending urbs? what about
+	 * irps? */
 	return ret;
 }
 
@@ -937,7 +973,6 @@ int ndiswrapper_resume_usb(struct usb_interface *intf)
 
 void ndiswrapper_remove_device(struct wrapper_dev *wd)
 {
-        struct miniport_char *miniport;
 	KIRQL irql;
 
 	TRACEENTER1("%s", wd->net_dev->name);
@@ -965,31 +1000,6 @@ void ndiswrapper_remove_device(struct wrapper_dev *wd)
 	kspin_unlock_irql(&wd->xmit_lock, irql);
 
 //	miniport_set_int(wd, OID_802_11_DISASSOCIATE, 0);
-
-	if (test_bit(HW_REMOVED, &wd->hw_status)) {
-		miniport = &wd->driver->miniport;
-		/* only disconnect function of USB devices set this
-		 * bit when the device is disconnected */
-		DBGTRACE1("%d, %p",
-			  test_bit(ATTR_SURPRISE_REMOVE, &wd->attributes),
-			  miniport->pnp_event_notify);
-
-		/* disconnect function obtained big lock, so release
-		 * it before calling MiniportPnpEventNotify, which
-		 * runs at PASSIVE_LEVEL */
-		unlock_kernel();
-		if (miniport->pnp_event_notify) {
-			DBGTRACE1("calling surprise_removed");
-			LIN2WIN4(miniport->pnp_event_notify,
-				 wd->nmb->adapter_ctx,
-				 NdisDevicePnPEventSurpriseRemoved, NULL, 0);
-		} else {
-			WARNING("%s: Windows driver for device %s doesn't"
-				"support MiniportPnpEventNotify for safely"
-				"removing the device", DRIVER_NAME,
-				wd->net_dev->name);
-		}
-	}
 
 	DBGTRACE1("stopping device");
 	ndiswrapper_stop_device(wd);
@@ -1193,9 +1203,8 @@ static void update_wireless_stats(struct wrapper_dev *wd)
 	NDIS_STATUS res;
 	ndis_rssi rssi;
 
-	return;
 	TRACEENTER2("");
-	/* Prism1 USB and Airgo cards crash kernel if RSSI is queried */
+	/* TODO: Prism1 USB and Airgo cards crash kernel if RSSI is queried */
 	if ((wd->ndis_device->vendor == 0x17cb &&
 	       wd->ndis_device->device == 0x0001) ||
 	      (wd->ndis_device->vendor == 0x2001 &&
@@ -1297,29 +1306,27 @@ static void wrapper_worker_proc(void *param)
 		NDIS_STATUS res;
 		struct net_device *net_dev = wd->net_dev;
 
-		DBGTRACE2("resuming device %s", net_dev->name);
-#if 0
-		/* see if pm issues are with kernel or ndiswrapper; if
-		 * we make it this far, kernel is sane */
-		set_current_state(TASK_INTERRUPTIBLE);
-		schedule_timeout(20 * HZ);
-#endif
-		set_bit(HW_AVAILABLE, &wd->hw_status);
-		DBGTRACE2("continuing resume of device %s", net_dev->name);
-		if (test_and_clear_bit(HW_HALTED, &wd->hw_status)) {
-			res = ndiswrapper_start_device(wd);
-			DBGTRACE2("res: %08X", res);
-			if (res)
-				ERROR("initialization failed: %08X", res);
-			clear_bit(HW_AVAILABLE, &wd->hw_status);
-			return;
-		} else if (test_and_clear_bit(HW_SUSPENDED, &wd->hw_status)) {
+		DBGTRACE1("resuming device %s", net_dev->name);
+		DBGTRACE1("continuing resume of device %s", net_dev->name);
+		if (test_and_clear_bit(HW_SUSPENDED, &wd->hw_status)) {
+			set_bit(HW_AVAILABLE, &wd->hw_status);
 			res = miniport_set_pm_state(wd, NdisDeviceStateD0);
-			DBGTRACE2("%s: setting power to state %d returns %08X",
+			DBGTRACE1("%s: setting power to state %d returns %08X",
 				  net_dev->name, NdisDeviceStateD0, res);
 			if (res)
-				WARNING("No pnp capabilities for pm (%08X)",
-					res);
+				WARNING("device %s may not have resumed "
+					"properly (%08X)", net_dev->name, res);
+		} else if (test_and_clear_bit(HW_HALTED, &wd->hw_status)) {
+			res = ndiswrapper_start_device(wd);
+			DBGTRACE1("res: %08X", res);
+			if (res) {
+				ERROR("device %s re-initialization failed "
+				      "(%08X)", net_dev->name, res);
+				/* TODO: should be halted? */
+				set_bit(SHUTDOWN, &wd->hw_status);
+				return;
+			} else
+				set_bit(HW_AVAILABLE, &wd->hw_status);
 		}
 		hangcheck_add(wd);
 		stats_timer_add(wd);
@@ -1331,7 +1338,6 @@ static void wrapper_worker_proc(void *param)
 			netif_start_queue(net_dev);
 		}
 		netif_poll_enable(net_dev);
-
 		DBGTRACE2("%s: device resumed", net_dev->name);
 	}
 	TRACEEXIT3(return);
@@ -1541,7 +1547,7 @@ int setup_device(struct net_device *dev)
 	res = miniport_query_info(wd, OID_802_3_CURRENT_ADDRESS,
 				  mac, sizeof(mac));
 	if (res) {
-		ERROR("%s", "unable to get mac address from driver");
+		ERROR("unable to get mac address from driver");
 		return -EINVAL;
 	}
 	DBGTRACE1("mac:" MACSTR, MAC2STR(mac));
@@ -1601,24 +1607,28 @@ int setup_device(struct net_device *dev)
 	       ", WPA2PSK" : "");
 
 	wd->max_send_packets = 1;
-	if (wd->driver->miniport.send_packets) {
+	if (test_bit(ATTR_SERIALIZED, &wd->attributes)) {
 		res = miniport_query_int(wd, OID_GEN_MAXIMUM_SEND_PACKETS,
 					 &wd->max_send_packets);
-		DBGTRACE2("maximum send packets supported by driver: %d",
-			  wd->max_send_packets);
 		if (res == NDIS_STATUS_NOT_SUPPORTED)
 			wd->max_send_packets = 1;
-		else if (wd->max_send_packets > XMIT_RING_SIZE)
-			wd->max_send_packets = XMIT_RING_SIZE;
-
-		wd->xmit_array = kmalloc(sizeof(struct ndis_packet *) *
-					     wd->max_send_packets,
-					     GFP_KERNEL);
-		if (!wd->xmit_array) {
-			ERROR("couldn't allocate memory for tx_packets");
-			unregister_netdev(dev);
-			return -ENOMEM;
-		}
+	} else {
+		/* deserialized drivers don't have a limit, but we
+		 * keep max at XMIT_RING_SIZE to allocate xmit_array
+		 * below */
+		wd->max_send_packets = XMIT_RING_SIZE;
+	}
+	DBGTRACE2("maximum send packets supported by driver: %d",
+		  wd->max_send_packets);
+	if (wd->max_send_packets > XMIT_RING_SIZE)
+		wd->max_send_packets = XMIT_RING_SIZE;
+	wd->xmit_array =
+		kmalloc(sizeof(struct ndis_packet *) * wd->max_send_packets,
+			GFP_KERNEL);
+	if (!wd->xmit_array) {
+		ERROR("couldn't allocate memory for tx_packets");
+		unregister_netdev(dev);
+		return -ENOMEM;
 	}
 	DBGTRACE2("maximum send packets used by ndiswrapper: %d",
 		  wd->max_send_packets);
@@ -1636,14 +1646,14 @@ int setup_device(struct net_device *dev)
 
 	if (set_privacy_filter(wd, Ndis802_11PrivFilterAcceptAll))
 		WARNING("%s", "Unable to set privacy filter");
-#if 0
 
-	/* check_capa changes auth_mode and encr_mode, so set them again */
+#if 0
 
 //	miniport_set_int(wd, OID_802_11_NETWORK_TYPE_IN_USE,
 //			 Ndis802_11Automode);
-//	ndis_set_rx_mode(dev);
 #endif
+	ndis_set_rx_mode(dev);
+	/* check_capa changes auth_mode and encr_mode, so set them again */
 	set_infra_mode(wd, Ndis802_11Infrastructure);
 	set_auth_mode(wd, Ndis802_11AuthModeOpen);
 	set_encr_mode(wd, Ndis802_11EncryptionDisabled);
@@ -1689,6 +1699,15 @@ struct net_device *ndis_init_netdev(struct wrapper_dev **pwd,
 	init_MUTEX(&wd->ndis_comm_mutex);
 	init_waitqueue_head(&wd->ndis_comm_wq);
 	wd->ndis_comm_done = 0;
+	/* prism1 usb driver crashes during MiniportSetInformation if
+	 * we wait for shorter time periods */
+	if ((wd->ndis_device->vendor == 0x2001 &&
+	     wd->ndis_device->device == 0x3700) ||
+	    (wd->ndis_device->vendor == 0x0846 &&
+	     wd->ndis_device->device == 0x4110))
+		wd->ndis_comm_wait_time = 4 * HZ;
+	else
+		wd->ndis_comm_wait_time = 2 * HZ;
 	/* don't send packets until the card is associated */
 	wd->send_ok = 0;
 	INIT_WORK(&wd->xmit_work, xmit_worker, wd);
@@ -1733,7 +1752,7 @@ static void module_cleanup(void)
 static int __init wrapper_init(void)
 {
 	char *argv[] = {"loadndisdriver", 
-#if defined DEBUG && DEBUG >= 1
+#if defined(DEBUG) && DEBUG >= 1
 			"1"
 #else
 			"0"
