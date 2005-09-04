@@ -39,6 +39,7 @@
 #define STATUS_INSUFFICIENT_RESOURCES	0xC000009A
 #define STATUS_NOT_SUPPORTED            0xC00000BB
 #define STATUS_INVALID_PARAMETER_2      0xC00000F0
+#define STATUS_NO_MEMORY		0xC0000017
 #define STATUS_CANCELLED                0xC0000120
 #define STATUS_DEVICE_REMOVED		0xC00002B6
 
@@ -681,6 +682,7 @@ struct irp {
 
 	/* ndiswrapper extension */
 	struct nt_list list;
+	struct nt_list tx_submit_list;
 	struct urb *urb;
 };
 

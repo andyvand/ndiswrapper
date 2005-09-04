@@ -1166,8 +1166,9 @@ static void set_packet_filter(struct wrapper_dev *wd)
 
 	packet_filter = (NDIS_PACKET_TYPE_DIRECTED |
 			 NDIS_PACKET_TYPE_BROADCAST |
-			 NDIS_PACKET_TYPE_ALL_MULTICAST);
+			 NDIS_PACKET_TYPE_MULTICAST);
 
+#if 0
 	if (dev->flags & IFF_PROMISC) {
 		packet_filter |= NDIS_PACKET_TYPE_ALL_LOCAL |
 			NDIS_PACKET_TYPE_PROMISCUOUS;
@@ -1181,9 +1182,11 @@ static void set_packet_filter(struct wrapper_dev *wd)
 		packet_filter |= NDIS_PACKET_TYPE_MULTICAST;
 		set_multicast_list(dev, wd);
 	}
+#endif
 
 	res = miniport_set_info(wd, OID_GEN_CURRENT_PACKET_FILTER,
 				&packet_filter, sizeof(packet_filter));
+#if 0
 	if (res && (packet_filter & NDIS_PACKET_TYPE_PROMISCUOUS)) {
 		/* 802.11 drivers may fail when PROMISCUOUS flag is
 		 * set, so try without */
@@ -1191,6 +1194,7 @@ static void set_packet_filter(struct wrapper_dev *wd)
 		res = miniport_set_info(wd, OID_GEN_CURRENT_PACKET_FILTER,
 					&packet_filter, sizeof(packet_filter));
 	}
+#endif
 	if (res && res != NDIS_STATUS_NOT_SUPPORTED)
 		ERROR("unable to set packet filter (%08X)", res);
 	TRACEEXIT2(return);
@@ -1761,7 +1765,7 @@ static int __init wrapper_init(void)
 	char *env[] = {NULL};
 	int err;
 
-	debug = 0;
+	debug = 2;
 	spin_lock_init(&spinlock_kspin_lock);
 	printk(KERN_INFO "%s version %s loaded (preempt=%s,smp=%s)\n",
 	       DRIVER_NAME, DRIVER_VERSION,
