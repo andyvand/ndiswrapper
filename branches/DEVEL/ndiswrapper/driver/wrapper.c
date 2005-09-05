@@ -280,6 +280,11 @@ NDIS_STATUS miniport_init(struct wrapper_dev *wd)
 	res = ntoskernel_init_device(wd);
 	if (res)
 		return res;
+	if (wd->dev.dev_type == NDIS_USB_BUS) {
+		res = usb_init_device(wd);
+		if (res)
+			return res;
+	}
 	TRACEENTER1("driver init routine is at %p", miniport->init);
 	if (miniport->init == NULL) {
 		ERROR("%s", "initialization function is not setup correctly");
@@ -417,6 +422,8 @@ void miniport_halt(struct wrapper_dev *wd)
 	ndis_exit_device(wd);
 	misc_funcs_exit_device(wd);
 	ntoskernel_exit_device(wd);
+	if (wd->dev.dev_type == NDIS_USB_BUS)
+		usb_exit_device(wd);
 
 	TRACEEXIT1(return);
 }
@@ -1655,13 +1662,13 @@ int setup_device(struct net_device *dev)
 
 //	miniport_set_int(wd, OID_802_11_NETWORK_TYPE_IN_USE,
 //			 Ndis802_11Automode);
-#endif
 	ndis_set_rx_mode(dev);
 	/* check_capa changes auth_mode and encr_mode, so set them again */
 	set_infra_mode(wd, Ndis802_11Infrastructure);
 	set_auth_mode(wd, Ndis802_11AuthModeOpen);
 	set_encr_mode(wd, Ndis802_11EncryptionDisabled);
 	set_scan(wd);
+#endif
 
 	hangcheck_add(wd);
 	stats_timer_add(wd);

@@ -334,10 +334,10 @@ static void *ndiswrapper_add_usb_device(struct usb_device *udev,
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
 	SET_NETDEV_DEV(dev, &intf->dev);
 
-	wd->dev.usb = interface_to_usbdev(intf);
+	wd->dev.usb.udev = interface_to_usbdev(intf);
 	usb_set_intfdata(intf, wd);
 #else
-	wd->dev.usb = udev;
+	wd->dev.usb.udev = udev;
 #endif
 	wd->intf = intf;
 

@@ -76,6 +76,8 @@
 #define USBD_TRANSFER_DIRECTION			0x00000001
 #define USBD_SHORT_TRANSFER_OK			0x00000002
 
+#define USBD_PF_CHANGE_MAX_PACKET		0x00000001
+
 #define USBD_TRANSFER_DIRECTION_FLAG(flags) ((flags) & USBD_TRANSFER_DIRECTION)
 #define USBD_TRANSFER_DIRECTION_OUT		0
 #define USBD_TRANSFER_DIRECTION_IN		1
@@ -120,42 +122,38 @@ typedef LONG USBD_STATUS;
 
 #define USBD_DEFAULT_MAXIMUM_TRANSFER_SIZE	PAGE_SIZE
 
-union pipe_handle {
-	void *handle;
-	struct {
-		UCHAR endpoint;
-		UCHAR type;
-		UCHAR interval;
-		UCHAR fill;
-	} encoded;
-};
+struct usbd_pipe_information;
+typedef struct usbd_pipe_information *usbd_pipe_handle;
 
 struct urb_hcd_area {
 	void *reserved8[8];
 };
 
-enum pipe_type {ptControl, ptIsochronous, ptBulk, ptIntr};
+enum pipe_type {ptControl = USB_ENDPOINT_XFER_CONTROL,
+		ptIsoc = USB_ENDPOINT_XFER_ISOC,
+		ptBulk = USB_ENDPOINT_XFER_BULK,
+		ptInt = USB_ENDPOINT_XFER_INT};
 
 struct usbd_pipe_information {
-	USHORT max_pkt_size;
-	UCHAR endpoint;
-	UCHAR interval;
-	enum pipe_type type;
-	union pipe_handle handle;
+	USHORT wMaxPacketSize;
+	UCHAR bEndpointAddress;
+	UCHAR bInterval;
+	enum pipe_type pipe_type;
+	usbd_pipe_handle pipe_handle;
 	ULONG max_tx_size;
 	ULONG flags;
 };
 
 struct usbd_interface_information {
-	USHORT length;
-	UCHAR ifnum;
-	UCHAR alt_setting;
-	UCHAR class;
-	UCHAR sub_class;
-	UCHAR proto;
+	USHORT bLength;
+	UCHAR bInterfaceNumber;
+	UCHAR bAlternateSetting;
+	UCHAR bInterfaceClass;
+	UCHAR bInterfaceSubClass;
+	UCHAR bInterfaceProtocol;
 	UCHAR reserved;
 	void *handle;
-	ULONG pipe_num;
+	ULONG bNumEndpoints;
 	struct usbd_pipe_information pipes[1];
 };
 
@@ -181,7 +179,7 @@ struct usbd_select_configuration {
 
 struct usbd_bulk_or_intr_transfer {
 	struct nt_urb_header header;
-	union pipe_handle pipe_handle;
+	usbd_pipe_handle pipe_handle;
 	ULONG transfer_flags;
 	ULONG transfer_buffer_length;
 	void *transfer_buffer;
@@ -208,7 +206,7 @@ struct usbd_control_descriptor_request {
 
 struct usbd_pipe_request {
 	struct nt_urb_header header;
-	union pipe_handle pipe_handle;
+	usbd_pipe_handle pipe_handle;
 };
 
 struct usbd_vendor_or_class_request {
@@ -218,7 +216,7 @@ struct usbd_vendor_or_class_request {
 	ULONG transfer_buffer_length;
 	void *transfer_buffer;
 	struct mdl *transfer_buffer_mdl;
-	union nt_urb *urb_link;
+	union nt_urb *link;
 	struct urb_hcd_area hca;
 	UCHAR reserved_bits;
 	UCHAR request;
@@ -235,7 +233,7 @@ struct usbd_iso_packet_desc {
 
 struct usbd_isochronous_transfer {
 	struct nt_urb_header header;
-	union pipe_handle pipe_handle;
+	usbd_pipe_handle pipe_handle;
 	ULONG transfer_flags;
 	ULONG transfer_buffer_length;
 	void *transfer_buffer;

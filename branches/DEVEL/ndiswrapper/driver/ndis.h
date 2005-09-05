@@ -945,6 +945,8 @@ BOOLEAN remove_ndis_kdpc_work(struct kdpc *kdpc);
 
 int usb_init(void);
 void usb_exit(void);
+int usb_init_device(struct wrapper_dev *wd);
+void usb_exit_device(struct wrapper_dev *wd);
 void usb_cleanup(void);
 void usb_cancel_pending_urbs(void);
 
