@@ -165,6 +165,7 @@ int set_scan(struct wrapper_dev *wd);
 #define PRIV_RESET	 		SIOCIWFIRSTPRIV+16
 #define PRIV_POWER_PROFILE	 	SIOCIWFIRSTPRIV+17
 #define PRIV_NETWORK_TYPE	 	SIOCIWFIRSTPRIV+18
+#define PRIV_USB_RESET	 		SIOCIWFIRSTPRIV+19
 
 /* these have to match what is in wpa_supplicant */
 typedef enum { WPA_ALG_NONE, WPA_ALG_WEP, WPA_ALG_TKIP, WPA_ALG_CCMP } wpa_alg;

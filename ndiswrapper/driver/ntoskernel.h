@@ -396,7 +396,10 @@ typedef struct mdl ndis_buffer;
 struct phys_dev {
 	int dev_type;
 	struct pci_dev *pci;
-	struct usb_device *usb;
+	struct {
+		struct usb_device *udev;
+		struct usbd_pipe_information *pipes;
+	} usb;
 };
 
 struct wrapper_dev;

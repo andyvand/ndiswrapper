@@ -362,7 +362,7 @@ void wrap_cancel_timer(struct wrap_timer *wrap_timer, BOOLEAN *canceled)
 			*canceled = TRUE;
 	} else
 		*canceled = FALSE;
-#if 1
+#if 0
 	if (wrap_timer->repeat) {
 		*canceled = TRUE;
 		wrap_timer->repeat = 0;

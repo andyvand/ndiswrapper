@@ -1764,6 +1764,21 @@ static int priv_reset(struct net_device *dev, struct iw_request_info *info,
 	return 0;
 }
 
+static int priv_usb_reset(struct net_device *dev, struct iw_request_info *info,
+			  union iwreq_data *wrqu, char *extra)
+{
+	int res;
+	struct wrapper_dev *wd;
+
+	wd = netdev_priv(dev);
+	res = usb_reset_configuration(wd->dev.usb.udev);
+	if (res) {
+		WARNING("reset returns %08X", res);
+		return -EOPNOTSUPP;
+	}
+	return 0;
+}
+
 static int priv_power_profile(struct net_device *dev,
 			      struct iw_request_info *info,
 			      union iwreq_data *wrqu, char *extra)
@@ -2224,6 +2239,7 @@ static const struct iw_priv_args priv_args[] = {
 	 "power_profile"},
 	{PRIV_NETWORK_TYPE, IW_PRIV_TYPE_CHAR | IW_PRIV_SIZE_FIXED | 1, 0,
 	 "network_type"},
+	{PRIV_USB_RESET, 0, 0, "usb_reset"},
 };
 
 static const iw_handler priv_handler[] = {
@@ -2241,6 +2257,7 @@ static const iw_handler priv_handler[] = {
 	[PRIV_RESET 		- SIOCIWFIRSTPRIV] = priv_reset,
 	[PRIV_POWER_PROFILE 	- SIOCIWFIRSTPRIV] = priv_power_profile,
 	[PRIV_NETWORK_TYPE 	- SIOCIWFIRSTPRIV] = priv_network_type,
+	[PRIV_USB_RESET		- SIOCIWFIRSTPRIV] = priv_usb_reset,
 };
 
 const struct iw_handler_def ndis_handler_def = {

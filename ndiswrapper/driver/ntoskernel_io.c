@@ -81,7 +81,7 @@ STDCALL NTSTATUS WRAP_EXPORT(IoGetDeviceProperty)
 	case DevicePropertyFriendlyName:
 		if (buffer_len > 0 && buffer) {
 			ansi.len = snprintf(buf, sizeof(buf), "%d",
-					    wd->dev.usb->devnum);
+					    wd->dev.usb.udev->devnum);
 			ansi.buf = buf;
 			ansi.len = strlen(ansi.buf);
 			if (ansi.len <= 0) {
@@ -102,7 +102,7 @@ STDCALL NTSTATUS WRAP_EXPORT(IoGetDeviceProperty)
 			}
 		} else {
 			ansi.len = snprintf(buf, sizeof(buf), "%d",
-					    wd->dev.usb->devnum);
+					    wd->dev.usb.udev->devnum);
 			*result_len = 2 * (ansi.len + 1);
 			TRACEEXIT1(return STATUS_BUFFER_TOO_SMALL);
 		}
