@@ -208,7 +208,7 @@ static int ndiswrapper_add_pci_device(struct pci_dev *pdev,
 		goto out_regions;
 	}
 
-	pci_set_power_state(pdev, PMSG_ON);
+	res = pci_set_power_state(pdev, PCI_D0);
 #if LINUX_VERSION_CODE <= KERNEL_VERSION(2,6,9)
 	pci_restore_state(pdev, NULL);
 #endif
@@ -336,10 +336,11 @@ static void *ndiswrapper_add_usb_device(struct usb_device *udev,
 
 	wd->dev.usb.udev = interface_to_usbdev(intf);
 	usb_set_intfdata(intf, wd);
+	wd->intf = intf;
 #else
 	wd->dev.usb.udev = udev;
+	wd->intf = usb_ifnum_to_if(udev, ifnum);
 #endif
-	wd->intf = intf;
 
 	TRACEENTER1("calling ndis init routine");
 

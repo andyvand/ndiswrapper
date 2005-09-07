@@ -1713,7 +1713,7 @@ STDCALL void WRAP_EXPORT(NdisMDeregisterInterrupt)
 	/* cancel_delayed_work is probably better, but 2.4 kernels
 	 * don't have equivalent function
 	 */
-#if LINUX_KERNEL_VERSION >= KERNEL_VERSION(2,6,0)
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
 	flush_scheduled_work();
 #else
 	set_current_state(TASK_INTERRUPTIBLE);

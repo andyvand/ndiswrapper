@@ -473,7 +473,7 @@ _FASTCALL void WRAP_EXPORT(IofCompleteRequest)
 		irp->user_status->status_info = irp->io_status.status_info;
 	}
 
-	if ((irp->flags & IRP_SYNCHRONOUS_API) && irp->user_event) {
+	if (irp->user_event) {
 		USBTRACE("setting event %p", irp->user_event);
 		KeSetEvent(irp->user_event, prio_boost, FALSE);
 	}

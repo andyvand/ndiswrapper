@@ -317,6 +317,7 @@ static int procfs_write_settings(struct file *file, const char *buf,
 		       ", WPA2PSK" : "");
 	} else if (!strcmp(setting, "suspend")) {
 		int i;
+		pm_message_t state;
 
 		if (!p)
 			return -EINVAL;
@@ -324,12 +325,12 @@ static int procfs_write_settings(struct file *file, const char *buf,
 		i = simple_strtol(p, NULL, 10);
 		if (i <= 0 || i > 3)
 			return -EINVAL;
+		state.event = PM_EVENT_SUSPEND;
 		if (wd->ndis_device->bustype == NDIS_PCI_BUS)
-			ndiswrapper_suspend_pci(wd->dev.pci,
-						       PMSG_SUSPEND);
+			ndiswrapper_suspend_pci(wd->dev.pci, state);
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
 		else if (wd->ndis_device->bustype == NDIS_USB_BUS)
-			ndiswrapper_suspend_usb(wd->intf, PMSG_SUSPEND);
+			ndiswrapper_suspend_usb(wd->intf, state);
 #endif
 		else
 			return -EINVAL;
