@@ -242,7 +242,7 @@ struct miniport_char {
 	void (*enable_interrupts)(void *ctx) STDCALL;
 
 	/* Stop miniport */
-	void (*halt)(void *ctx) STDCALL;
+	void (*miniport_halt)(void *ctx) STDCALL;
 
 	/* Interrupt BH */
 	ndis_interrupt_handler handle_interrupt;
@@ -801,11 +801,7 @@ struct wrapper_dev {
 	struct ndis_miniport_block *nmb;
 	struct ndis_driver *driver;
 	struct phys_dev dev;
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
 	struct usb_interface *intf;
-#else
-	void *intf;
-#endif
 	struct net_device *net_dev;
 	void *shutdown_ctx;
 

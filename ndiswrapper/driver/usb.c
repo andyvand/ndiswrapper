@@ -32,6 +32,10 @@
 #define CUR_ALT_SETTING(intf) (intf)->altsetting[(intf)->act_altsetting]
 #endif
 
+#ifndef USB_CTRL_SET_TIMEOUT
+#define USB_CTRL_SET_TIMEOUT 5000
+#endif
+
 static STDCALL void usb_cancel_transfer(struct device_object *dev_obj,
 					struct irp *irp);
 static struct nt_list usb_tx_complete_list;
@@ -63,8 +67,6 @@ static inline void usb_buffer_free(struct usb_device *dev, size_t size,
 #endif
 
 #ifdef DUMPURBS
-int urb_num;
-
 #define DUMP_URB(urb) do {						\
 		USBTRACE("urb: %p, buf: %p, len: %d, pipe: %u",		\
 			 urb, urb->transfer_buffer,			\
@@ -196,8 +198,13 @@ static void usb_tx_submit_worker(void *data)
 #endif
 		USBTRACE("ret: %d", ret);
 		if (ret) {
-			if (!usb_clear_halt(urb->dev, urb->pipe))
+			if (!usb_clear_halt(urb->dev, urb->pipe)) {
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,0)
+				ret = usb_submit_urb(urb);
+#else
 				ret = usb_submit_urb(urb, GFP_KERNEL);
+#endif
+			}
 			if (ret) {
 				WARNING("couldn't submit urb: %p", urb);
 				wrap_free_urb(urb);
@@ -288,18 +295,13 @@ static STDCALL void usb_cancel_transfer(struct device_object *dev_obj,
 	 * has not been submitted to Linux USB layer yet and is still
 	 * in tx_submit queue? We should keep a flag to indicate
 	 * status of urb */
+	IoReleaseCancelSpinLock(irp->cancel_irql);
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,8)
-	if (irp->cancel_irql < DISPATCH_LEVEL) {
-		IoReleaseCancelSpinLock(irp->cancel_irql);
-		usb_kill_urb(urb);
-	} else
+	usb_kill_urb(urb);
+#else
+	if (usb_unlink_urb(urb) != -EINPROGRESS)
+		WARNING("usb_unlink_urb returns %d", urb->status);
 #endif
-	{
-		urb->transfer_flags |= URB_ASYNC_UNLINK;
-		if (usb_unlink_urb(urb) != -EINPROGRESS)
-			WARNING("usb_unlink_urb returns %d", urb->status);
-		IoReleaseCancelSpinLock(irp->cancel_irql);
-	}
 }
 
 static void usb_tx_complete_worker(void *data)

@@ -174,9 +174,18 @@ typedef task_queue workqueue;
 #endif // LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
 
 #ifndef PMSG_SUSPEND
-#define PMSG_ON 0
-#define PMSG_SUSPEND 3
-typedef u32 pm_message_t;
+typedef struct {
+	int event;
+} pm_message_t;
+#endif
+
+#ifndef PCI_D0
+#define PCI_D0 0
+#define PCI_D3hot 3
+#endif
+
+#ifndef PM_EVENT_SUSPEND
+#define PM_EVENT_SUSPEND 2
 #endif
 
 #if defined(CONFIG_SOFTWARE_SUSPEND2) || defined(CONFIG_SUSPEND2)

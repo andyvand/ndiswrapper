@@ -416,7 +416,7 @@ void miniport_halt(struct wrapper_dev *wd)
 	DBGTRACE1("driver halt is at %p", miniport->halt);
 
 	DBGTRACE2("task: %p, pid: %d", get_current(), get_current()->pid);
-	LIN2WIN1(miniport->halt, wd->nmb->adapter_ctx);
+	LIN2WIN1(miniport->miniport_halt, wd->nmb->adapter_ctx);
 
 	wrap_remove_current_thread();
 	ndis_exit_device(wd);
@@ -877,8 +877,6 @@ int ndiswrapper_suspend_device(struct wrapper_dev *wd,
 	hangcheck_del(wd);
 	stats_timer_del(wd);
 
-	/* USB devices seem to die if halted during suspend, so avoid
-	 * it */
 	status = miniport_set_pm_state(wd, pm_state);
 	DBGTRACE2("suspending returns %08X", status);
 	if (status == NDIS_STATUS_SUCCESS)
@@ -889,31 +887,6 @@ int ndiswrapper_suspend_device(struct wrapper_dev *wd,
 		set_bit(HW_HALTED, &wd->hw_status);
 	}
 	clear_bit(HW_AVAILABLE, &wd->hw_status);
-	return 0;
-}
-
-int ndiswrapper_suspend_pci(struct pci_dev *pdev, pm_message_t state)
-{
-	struct wrapper_dev *wd;
-	int ret;
-
-	if (!pdev)
-		return -1;
-	wd = pci_get_drvdata(pdev);
-	/* some drivers support only D3, so force it */
-	ret = ndiswrapper_suspend_device(wd, NdisDeviceStateD3);
-	if (ret)
-		return ret;
-
-#if LINUX_VERSION_CODE > KERNEL_VERSION(2,6,9)
-	pci_save_state(pdev);
-#else
-	pci_save_state(pdev, wd->pci_state);
-#endif
-	pci_disable_device(pdev);
-	pci_set_power_state(pdev, PMSG_SUSPEND);
-
-	DBGTRACE2("%s: device suspended", wd->net_dev->name);
 	return 0;
 }
 
@@ -932,6 +905,32 @@ int ndiswrapper_resume_device(struct wrapper_dev *wd)
 	TRACEEXIT1(return 0);
 }
 
+int ndiswrapper_suspend_pci(struct pci_dev *pdev, pm_message_t state)
+{
+	struct wrapper_dev *wd;
+	int ret;
+
+	if (!pdev)
+		return -1;
+	wd = pci_get_drvdata(pdev);
+	/* some drivers support only D3, so force it */
+	ret = ndiswrapper_suspend_device(wd, NdisDeviceStateD3);
+	if (ret)
+		return ret;
+
+#if LINUX_VERSION_CODE <= KERNEL_VERSION(2,6,9)
+	pci_save_state(pdev, wd->pci_state);
+#endif
+	/* PM seems to be in constant flux and documentation is not
+	 * up-to-date on what is the correct way to suspend/resume, so
+	 * this needs to be tweaked for different kernel versions */
+//	pci_disable_device(pdev);
+//	ret = pci_set_power_state(pdev, PCI_D3hot);
+
+	DBGTRACE2("%s: device suspended", wd->net_dev->name);
+	return 0;
+}
+
 int ndiswrapper_resume_pci(struct pci_dev *pdev)
 {
 	struct wrapper_dev *wd;
@@ -942,12 +941,15 @@ int ndiswrapper_resume_pci(struct pci_dev *pdev)
 	wd = pci_get_drvdata(pdev);
 	if (!wd)
 		return -1;
-	pci_enable_device(pdev);
+	/* TODO: is pci_restore_state necessary if we didn't
+	 * pci_save_state during suspend? */
+//	ret = pci_set_power_state(PCI_D0);
 #if LINUX_VERSION_CODE > KERNEL_VERSION(2,6,9)
 	pci_restore_state(pdev);
 #else
 	pci_restore_state(pdev, wd->pci_state);
 #endif
+//	ret = pci_enable_device(pdev);
 	ret = ndiswrapper_resume_device(wd);
 	return ret;
 }
@@ -1167,7 +1169,7 @@ static void link_status_handler(struct wrapper_dev *wd)
 
 static void set_packet_filter(struct wrapper_dev *wd)
 {
-	struct net_device *dev = (struct net_device *)wd->net_dev;
+	struct net_device *dev;
 	ULONG packet_filter;
 	NDIS_STATUS res;
 
@@ -1175,6 +1177,7 @@ static void set_packet_filter(struct wrapper_dev *wd)
 			 NDIS_PACKET_TYPE_BROADCAST |
 			 NDIS_PACKET_TYPE_MULTICAST);
 
+	dev = (struct net_device *)wd->net_dev;
 #if 0
 	if (dev->flags & IFF_PROMISC) {
 		packet_filter |= NDIS_PACKET_TYPE_ALL_LOCAL |

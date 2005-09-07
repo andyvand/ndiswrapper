@@ -470,7 +470,8 @@ STDCALL BOOLEAN WRAP_EXPORT(KeSetTimerEx)
 	unsigned long expires;
 	unsigned long repeat;
 
-	TRACEENTER5("%p, %ld, %u, %p", ktimer, (long)duetime_ticks, period_ms, kdpc);
+	TRACEENTER5("%p, %ld, %u, %p",
+		    ktimer, (long)duetime_ticks, period_ms, kdpc);
 
 	expires = SYSTEM_TIME_TO_HZ(duetime_ticks);
 	repeat = HZ * period_ms / 1000 ;
