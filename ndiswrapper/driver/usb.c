@@ -32,8 +32,8 @@
 #define CUR_ALT_SETTING(intf) (intf)->altsetting[(intf)->act_altsetting]
 #endif
 
-STDCALL void usb_cancel_transfer(struct device_object *dev_obj,
-				 struct irp *irp);
+static STDCALL void usb_cancel_transfer(struct device_object *dev_obj,
+					struct irp *irp);
 static struct nt_list usb_tx_complete_list;
 static void usb_tx_complete_worker(void *data);
 static struct work_struct usb_tx_complete_work;
@@ -140,7 +140,7 @@ static struct urb *wrap_alloc_urb(unsigned int mem_flags, struct irp *irp,
 	return urb;
 }
 
-static void wrap_free_urb(struct urb *urb)
+static inline void wrap_free_urb(struct urb *urb)
 {
 	struct irp *irp;
 
@@ -208,7 +208,7 @@ static void usb_tx_submit_worker(void *data)
 }
 
 /* for a given Linux urb status code, return corresponding NT urb status */
-USBD_STATUS wrap_urb_status(int urb_status)
+static USBD_STATUS wrap_urb_status(int urb_status)
 {
 	switch (urb_status) {
 	case 0:
@@ -237,7 +237,7 @@ USBD_STATUS wrap_urb_status(int urb_status)
 	}
 }
 
-NTSTATUS nt_urb_irp_status(USBD_STATUS nt_urb_status)
+static NTSTATUS nt_urb_irp_status(USBD_STATUS nt_urb_status)
 {
 	switch (nt_urb_status) {
 	case USBD_STATUS_SUCCESS:
@@ -256,9 +256,9 @@ NTSTATUS nt_urb_irp_status(USBD_STATUS nt_urb_status)
 }
 
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
-void usb_transfer_complete(struct urb *urb, struct pt_regs *regs)
+static void usb_transfer_complete(struct urb *urb, struct pt_regs *regs)
 #else
-void usb_transfer_complete(struct urb *urb)
+static void usb_transfer_complete(struct urb *urb)
 #endif
 {
 	struct irp *irp;
@@ -273,8 +273,9 @@ void usb_transfer_complete(struct urb *urb)
 	schedule_work(&usb_tx_complete_work);
 	return;
 }
-STDCALL void usb_cancel_transfer(struct device_object *dev_obj,
-				 struct irp *irp)
+
+static STDCALL void usb_cancel_transfer(struct device_object *dev_obj,
+					struct irp *irp)
 {
 	struct urb *urb;
 
@@ -749,7 +750,7 @@ static void wrap_get_descriptor(struct wrapper_dev *wd, union nt_urb *nt_urb,
 	USBTRACEEXIT(return);
 }
 
-NTSTATUS wrap_process_nt_urb(struct wrapper_dev *wd, struct irp *irp)
+static NTSTATUS wrap_process_nt_urb(struct wrapper_dev *wd, struct irp *irp)
 {
 	union nt_urb *nt_urb;
 	struct usb_device *udev;
@@ -805,7 +806,7 @@ NTSTATUS wrap_process_nt_urb(struct wrapper_dev *wd, struct irp *irp)
 	USBTRACEEXIT(return irp->io_status.status);
 }
 
-NTSTATUS wrap_reset_port(struct wrapper_dev *wd, struct irp *irp)
+static NTSTATUS wrap_reset_port(struct wrapper_dev *wd, struct irp *irp)
 {
 	int ret;
 	union nt_urb *nt_urb;
