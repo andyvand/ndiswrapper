@@ -122,8 +122,7 @@ typedef LONG USBD_STATUS;
 
 #define USBD_DEFAULT_MAXIMUM_TRANSFER_SIZE	PAGE_SIZE
 
-struct usbd_pipe_information;
-typedef struct usbd_pipe_information *usbd_pipe_handle;
+typedef struct usb_endpoint_descriptor *usbd_pipe_handle;
 
 struct urb_hcd_area {
 	void *reserved8[8];

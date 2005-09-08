@@ -413,7 +413,7 @@ void miniport_halt(struct wrapper_dev *wd)
 	if (wrap_create_current_thread() == NULL)
 		WARNING("couldn't create system thread for task: %p",
 			get_current());
-	DBGTRACE1("driver halt is at %p", miniport->halt);
+	DBGTRACE1("driver halt is at %p", miniport->miniport_halt);
 
 	DBGTRACE2("task: %p, pid: %d", get_current(), get_current()->pid);
 	LIN2WIN1(miniport->miniport_halt, wd->nmb->adapter_ctx);
@@ -1721,7 +1721,7 @@ struct net_device *ndis_init_netdev(struct wrapper_dev **pwd,
 	     wd->ndis_device->device == 0x4110))
 		wd->ndis_comm_wait_time = 4 * HZ;
 	else
-		wd->ndis_comm_wait_time = 2 * HZ;
+		wd->ndis_comm_wait_time = 1 * HZ;
 	/* don't send packets until the card is associated */
 	wd->send_ok = 0;
 	INIT_WORK(&wd->xmit_work, xmit_worker, wd);
@@ -1775,7 +1775,7 @@ static int __init wrapper_init(void)
 	char *env[] = {NULL};
 	int err;
 
-	debug = 2;
+	debug = 0;
 	spin_lock_init(&spinlock_kspin_lock);
 	printk(KERN_INFO "%s version %s loaded (preempt=%s,smp=%s)\n",
 	       DRIVER_NAME, DRIVER_VERSION,
