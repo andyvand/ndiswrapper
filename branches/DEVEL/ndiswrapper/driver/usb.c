@@ -39,9 +39,9 @@
 		for (__i = 0; __i < len &&				\
 			     __t < &__msg[sizeof(__msg) - 4]; __i++) {	\
 			__t += sprintf(__t, "%02X ",			\
-				       (((UCHAR *)buf)[__i]));	\
+				       (((UCHAR *)buf)[__i]));		\
 		}							\
-		printk(KERN_INFO "%s\n", __msg);			\
+		INFO("%s", __msg);					\
 		break;							\
 	}
 
@@ -49,6 +49,10 @@
 #define CUR_ALT_SETTING(intf) (intf)->cur_altsetting
 #else
 #define CUR_ALT_SETTING(intf) (intf)->altsetting[(intf)->act_altsetting]
+#endif
+
+#ifndef USB_CTRL_SET_TIMEOUT
+#define USB_CTRL_SET_TIMEOUT 5000
 #endif
 
 static STDCALL void usb_cancel_transfer(struct device_object *dev_obj,
@@ -60,26 +64,6 @@ static struct work_struct usb_tx_complete_work;
 static struct nt_list usb_tx_submit_list;
 static void usb_tx_submit_worker(void *data);
 struct work_struct usb_tx_submit_work;
-
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,0)
-static inline void *usb_buffer_alloc(struct usb_device *udev, size_t size,
-				     unsigned mem_flags, dma_addr_t *dma)
-{
-	void *buf;
-	/* TODO: provide dma buffer? */
-	buf = kmalloc(size, mem_flags);
-	if (buf)
-		memset(buf, 0, size);
-	return buf;
-}
-static inline void usb_buffer_free(struct usb_device *udev, size_t size,
-				   void *addr, dma_addr_t dma)
-{
-	kfree(addr);
-}
-#define URB_NO_TRANSFER_DMA_MAP 0
-#define URB_NO_SETUP_DMA_MAP 0
-#endif
 
 int usb_init(void)
 {
@@ -106,38 +90,44 @@ void usb_exit_device(struct wrapper_dev *wd)
 	return;
 }
 
-static struct urb *wrap_alloc_urb(unsigned int mem_flags, struct irp *irp,
-				  struct usb_device *udev, int buf_len)
+static struct urb *wrap_alloc_urb(struct usb_device *udev, struct irp *irp,
+				  unsigned int pipe, void *buf,
+				  unsigned int buf_len)
 {
 	struct urb *urb;
 
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,0)
 	urb = usb_alloc_urb(0);
 #else
-	urb = usb_alloc_urb(0, mem_flags);
+	urb = usb_alloc_urb(0, GFP_KERNEL);
 #endif
 	if (!urb) {
 		WARNING("couldn't allocate urb");
 		return NULL;
 	}
+	if (buf_len && buf) {
+		if (virt_addr_valid(buf))
+			urb->transfer_buffer = buf;
+		else {
+			urb->transfer_buffer =
+				usb_buffer_alloc(udev, buf_len, GFP_KERNEL,
+						 &urb->transfer_dma);
+			if (!urb->transfer_buffer) {
+				WARNING("couldn't allocate dma buf");
+				usb_free_urb(urb);
+				return NULL;
+			}
+			urb->transfer_flags |= URB_NO_TRANSFER_DMA_MAP;
+			if (usb_pipeout(pipe))
+				memcpy(urb->transfer_buffer, buf, buf_len);
+		}
+	} else
+		urb->transfer_buffer = NULL;
+	urb->transfer_buffer_length = buf_len;
 	irp->urb = urb;
 	irp->cancel_routine = usb_cancel_transfer;
-	if (buf_len) {
-		urb->transfer_buffer =
-			usb_buffer_alloc(udev, buf_len, mem_flags,
-					 &urb->transfer_dma);
-		if (!urb->transfer_buffer) {
-			WARNING("couldn't allocate dma buf");
-			usb_free_urb(urb);
-			return NULL;
-		}
-		urb->transfer_buffer_length = buf_len;
-		urb->transfer_flags |= URB_NO_TRANSFER_DMA_MAP;
-	} else {
-		urb->transfer_buffer = NULL;
-		urb->transfer_buffer_length = 0;
-	}
 	urb->context = irp;
+	irp->urb_state = URB_ALLOCATED;
 	return urb;
 }
 
@@ -147,12 +137,14 @@ static void wrap_free_urb(struct urb *urb)
 
 	irp = urb->context;
 	irp->cancel_routine = NULL;
-	if (urb->transfer_buffer)
+	if (urb->transfer_buffer &&
+	    (urb->transfer_flags & URB_NO_TRANSFER_DMA_MAP))
 		usb_buffer_free(urb->dev, urb->transfer_buffer_length, 
 				urb->transfer_buffer, urb->transfer_dma);
 	if (urb->setup_packet)
 		kfree(urb->setup_packet);
 	usb_free_urb(urb);
+	irp->urb_state = URB_FREED;
 	irp->urb = NULL;
 	return;
 }
@@ -167,7 +159,10 @@ static inline void wrap_submit_urb(struct urb *urb)
 
 	irp = urb->context;
 	IoAcquireCancelSpinLock(&irql);
+	if (irp->urb_state != URB_ALLOCATED)
+		WARNING("urb in wrong state: %d", irp->urb_state);
 	InsertTailList(&usb_tx_submit_list, &irp->tx_submit_list);
+	irp->urb_state = URB_QUEUED;
 	nt_urb = URB_FROM_IRP(irp);
 	NT_URB_STATUS(nt_urb) = USBD_STATUS_PENDING;
 	irp->pending_returned = TRUE;
@@ -190,10 +185,17 @@ static void usb_tx_submit_worker(void *data)
 	while (1) {
 		IoAcquireCancelSpinLock(&irql);
 		ent = RemoveHeadList(&usb_tx_submit_list);
+		if (ent) {
+			irp = container_of(ent, struct irp, tx_submit_list);
+			if (irp->urb_state != URB_QUEUED)
+				WARNING("urb in wrong state: %d",
+					irp->urb_state);
+			irp->urb_state = URB_SUBMITTED;
+		} else
+			irp = NULL;
 		IoReleaseCancelSpinLock(irql);
-		if (!ent)
+		if (!irp)
 			break;
-		irp = container_of(ent, struct irp, tx_submit_list);
 		urb = irp->urb;
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,0)
 		ret = usb_submit_urb(urb);
@@ -267,6 +269,10 @@ static void usb_transfer_complete(struct urb *urb)
 	IoAcquireCancelSpinLock(&irp->cancel_irql);
 	irp->cancel_routine = NULL;
 	InsertTailList(&usb_tx_complete_list, &irp->list);
+	if (irp->urb_state != URB_SUBMITTED &&
+	    irp->urb_state != URB_CANCELED)
+		WARNING("urb in wrong state: %d", irp->urb_state);
+	irp->urb_state = URB_COMPLETED;
 	IoReleaseCancelSpinLock(irp->cancel_irql);
 	USBTRACE("urb: %p, irp: %p", urb, irp);
 
@@ -288,7 +294,9 @@ static STDCALL void usb_cancel_transfer(struct device_object *dev_obj,
 	 * has not been submitted to Linux USB layer yet (still in
 	 * tx_submit queue)? We should keep a flag to indicate status
 	 * of urb */
-//	RemoveEntryList(&usb_tx_submit_list);
+	if (irp->urb_state == URB_QUEUED)
+		RemoveEntryList(&usb_tx_submit_list);
+	irp->urb_state = URB_CANCELED;
 	IoReleaseCancelSpinLock(irp->cancel_irql);
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,8)
 	usb_kill_urb(urb);
@@ -311,10 +319,17 @@ static void usb_tx_complete_worker(void *data)
 	while (1) {
 		IoAcquireCancelSpinLock(&irql);
 		ent = RemoveHeadList(&usb_tx_complete_list);
+		if (ent) {
+			irp = container_of(ent, struct irp, list);
+			if (irp->urb_state != URB_COMPLETED &&
+			    irp->urb_state != URB_CANCELED)
+				WARNING("urb in wrong state: %d",
+					irp->urb_state);
+		} else
+			irp = NULL;
 		IoReleaseCancelSpinLock(irql);
-		if (!ent)
+		if (!irp)
 			break;
-		irp = container_of(ent, struct irp, list);
 		urb = irp->urb;
 		DUMP_URB(urb);
 		DUMP_IRP(irp);
@@ -329,18 +344,19 @@ static void usb_tx_complete_worker(void *data)
 			irp->io_status.status = STATUS_SUCCESS;
 			irp->io_status.status_info = urb->actual_length;
 
+			/* from WDM examples, it seems we don't need
+			 * to update MDL's byte count if MDL is used */
 			switch (nt_urb->header.function) {
 			case URB_FUNCTION_BULK_OR_INTERRUPT_TRANSFER:
 				bulk_int_tx = &nt_urb->bulk_int_transfer;
 				bulk_int_tx->transfer_buffer_length =
 					urb->actual_length;
-				if (urb->transfer_buffer &&
-				    usb_pipein(urb->pipe))
+				DUMP_BUFFER(urb->transfer_buffer,
+					    urb->actual_length);
+				if (usb_pipein(urb->pipe))
 					memcpy(bulk_int_tx->transfer_buffer,
 					       urb->transfer_buffer,
 					       urb->actual_length);
-				DUMP_BUFFER(urb->transfer_buffer,
-					    urb->actual_length);
 				break;
 			case URB_FUNCTION_VENDOR_DEVICE:
 			case URB_FUNCTION_VENDOR_INTERFACE:
@@ -353,22 +369,20 @@ static void usb_tx_complete_worker(void *data)
 				vc_req = &nt_urb->vendor_class_request;
 				vc_req->transfer_buffer_length =
 					urb->actual_length;
-				if (urb->transfer_buffer &&
-				    usb_pipein(urb->pipe))
+				DUMP_BUFFER(urb->transfer_buffer,
+					    urb->actual_length);
+				DUMP_BUFFER(urb->setup_packet,
+					    sizeof(struct usb_ctrlrequest));
+				if (usb_pipein(urb->pipe))
 					memcpy(vc_req->transfer_buffer,
 					       urb->transfer_buffer,
 					       urb->actual_length);
-				DUMP_BUFFER(urb->transfer_buffer,
-					    urb->actual_length);
-				DUMP_BUFFER(urb->setup_packet, 4);
 				break;
 			default:
-				WARNING("nt_urb type: %d unknown",
-					nt_urb->header.function);
+				ERROR("nt_urb type: %d unknown",
+				      nt_urb->header.function);
 				break;
 			}
-			USBTRACE("irp: %p, status: %d (%08X)",
-				 irp, urb->status, irp->io_status.status);
 			break;
 		case -ENOENT:
 		case -ECONNRESET:
@@ -392,8 +406,9 @@ static void usb_tx_complete_worker(void *data)
 	}
 }
 
-static void wrap_bulk_or_intr_trans(struct usb_device *udev,
-				    union nt_urb *nt_urb, struct irp *irp)
+static USBD_STATUS wrap_bulk_or_intr_trans(struct usb_device *udev,
+					   union nt_urb *nt_urb,
+					   struct irp *irp)
 {
 	usbd_pipe_handle pipe_handle;
 	struct urb *urb;
@@ -408,24 +423,29 @@ static void wrap_bulk_or_intr_trans(struct usb_device *udev,
 		  bulk_int_tx->transfer_buffer);
 
 	DUMP_IRP(irp);
-	urb = wrap_alloc_urb(GFP_KERNEL, irp, udev,
-			     bulk_int_tx->transfer_buffer_length);
-	if (!urb) {
-		ERROR("couldn't allocate urb");
-		NT_URB_STATUS(nt_urb) = USBD_STATUS_NO_MEMORY;
-		return;
-	}
-
 	pipe_handle = bulk_int_tx->pipe_handle;
 	endpoint = pipe_handle->bEndpointAddress;
 	if (USBD_DIRECTION_IN(bulk_int_tx->transfer_flags))
 		pipe = usb_rcvbulkpipe(udev, endpoint);
-	else {
+	else
 		pipe = usb_sndbulkpipe(udev, endpoint);
-		if (urb->transfer_buffer)
-			memcpy(urb->transfer_buffer,
-			       bulk_int_tx->transfer_buffer,
-			       bulk_int_tx->transfer_buffer_length);
+
+	if (unlikely(bulk_int_tx->transfer_buffer == NULL &&
+		     bulk_int_tx->transfer_buffer_length > 0)) {
+		if (MmGetMdlByteCount(bulk_int_tx->mdl) !=
+		    bulk_int_tx->transfer_buffer_length)
+			WARNING("mdl size %d != %d",
+				MmGetMdlByteCount(bulk_int_tx->mdl),
+				bulk_int_tx->transfer_buffer_length);
+		bulk_int_tx->transfer_buffer =
+			MmGetMdlVirtualAddress(bulk_int_tx->mdl);
+	}
+
+	urb = wrap_alloc_urb(udev, irp, pipe, bulk_int_tx->transfer_buffer,
+			     bulk_int_tx->transfer_buffer_length);
+	if (!urb) {
+		ERROR("couldn't allocate urb");
+		return USBD_STATUS_NO_MEMORY;
 	}
 
 	switch(usb_pipetype(pipe)) {
@@ -436,6 +456,7 @@ static void wrap_bulk_or_intr_trans(struct usb_device *udev,
 		USBTRACE("submitting urb %p on pipe %u",
 			urb, pipe_handle->bEndpointAddress);
 		wrap_submit_urb(urb);
+		return USBD_STATUS_PENDING;
 		break;
 	case USB_ENDPOINT_XFER_INT:
 		usb_fill_int_urb(urb, udev, pipe, urb->transfer_buffer,
@@ -445,16 +466,17 @@ static void wrap_bulk_or_intr_trans(struct usb_device *udev,
 		USBTRACE("submitting urb %p on pipe %u",
 			 urb, pipe_handle->bEndpointAddress);
 		wrap_submit_urb(urb);
+		return USBD_STATUS_PENDING;
 		break;
 	default:
 		ERROR("unknown pipe type: %u", pipe_handle->bEndpointAddress);
-		NT_URB_STATUS(nt_urb) = wrap_urb_status(-EINVAL);
+		USBTRACEEXIT(return USBD_STATUS_NOT_SUPPORTED);
 	}
-	USBTRACEEXIT(return);
 }
 
-static void wrap_vendor_or_class_req(struct usb_device *udev,
-				     union nt_urb *nt_urb, struct irp *irp)
+static USBD_STATUS wrap_vendor_or_class_req(struct usb_device *udev,
+					    union nt_urb *nt_urb,
+					    struct irp *irp)
 {
 	struct urb *urb;
 	struct usb_ctrlrequest *dr;
@@ -500,39 +522,46 @@ static void wrap_vendor_or_class_req(struct usb_device *udev,
 	}
 
 	req_type |= vc_req->reserved_bits;
+	USBTRACE("req type: %08x", req_type);
 
-	urb = wrap_alloc_urb(GFP_KERNEL, irp, udev,
-			     vc_req->transfer_buffer_length);
-	if (!urb) {
-		ERROR("couldn't allocate urb");
-		NT_URB_STATUS(nt_urb) = USBD_STATUS_NO_MEMORY;
-		return;
+	if (unlikely(vc_req->transfer_buffer == NULL &&
+		     vc_req->transfer_buffer_length > 0)) {
+		if (MmGetMdlByteCount(vc_req->mdl) !=
+		    vc_req->transfer_buffer_length)
+			WARNING("mdl size %d != %d",
+				MmGetMdlByteCount(vc_req->mdl),
+				vc_req->transfer_buffer_length);
+		vc_req->transfer_buffer = MmGetMdlVirtualAddress(vc_req->mdl);
 	}
+
 	if (USBD_DIRECTION_IN(vc_req->transfer_flags)) {
 		pipe = usb_rcvctrlpipe(udev, 0);
 		req_type |= USB_DIR_IN;
 		USBTRACE("pipe: %u, dir in", pipe);
-		if (!(vc_req->transfer_flags & USBD_SHORT_TRANSFER_OK)) {
-			USBTRACE("short not ok");
-			urb->transfer_flags |= URB_SHORT_NOT_OK;
-		}
 	} else {
 		pipe = usb_sndctrlpipe(udev, 0);
 		req_type |= USB_DIR_OUT;
-		if (urb->transfer_buffer)
-			memcpy(urb->transfer_buffer, vc_req->transfer_buffer,
-			       vc_req->transfer_buffer_length);
 		USBTRACE("pipe: %u, dir out", pipe);
 	}
 
-	USBTRACE("req type: %08x", req_type);
+	urb = wrap_alloc_urb(udev, irp, pipe, vc_req->transfer_buffer,
+			     vc_req->transfer_buffer_length);
+	if (!urb) {
+		ERROR("couldn't allocate urb");
+		return USBD_STATUS_NO_MEMORY;
+	}
+
+	if (usb_pipein(pipe) &&
+	    !(vc_req->transfer_flags & USBD_SHORT_TRANSFER_OK)) {
+		USBTRACE("short not ok");
+		urb->transfer_flags |= URB_SHORT_NOT_OK;
+	}
 
 	dr = kmalloc(sizeof(*dr), GFP_KERNEL);
 	if (!dr) {
 		ERROR("couldn't allocate memory");
 		wrap_free_urb(urb);
-		NT_URB_STATUS(nt_urb) = USBD_STATUS_NO_MEMORY;
-		return;
+		return USBD_STATUS_NO_MEMORY;
 	}
 	memset(dr, 0, sizeof(*dr));
 	dr->bRequestType = req_type;
@@ -542,15 +571,15 @@ static void wrap_vendor_or_class_req(struct usb_device *udev,
 	dr->wLength = cpu_to_le16p((u16 *)&vc_req->transfer_buffer_length);
 
 	usb_fill_control_urb(urb, udev, pipe, (unsigned char *)dr,
-			     urb->transfer_buffer,
+			    urb->transfer_buffer,
 			     vc_req->transfer_buffer_length,
 			     usb_transfer_complete, urb->context);
 
 	wrap_submit_urb(urb);
-	USBTRACEEXIT(return);
+	USBTRACEEXIT(return USBD_STATUS_PENDING);
 }
 
-static void wrap_reset_pipe(struct usb_device *udev, struct irp *irp)
+static USBD_STATUS wrap_reset_pipe(struct usb_device *udev, struct irp *irp)
 {
 	unsigned int pipe;
 	int ret;
@@ -567,12 +596,12 @@ static void wrap_reset_pipe(struct usb_device *udev, struct irp *irp)
 		pipe = usb_sndctrlpipe(udev, pipe_handle->bEndpointAddress);
 		ret = usb_clear_halt(udev, pipe);
 	}
-	NT_URB_STATUS(nt_urb) = wrap_urb_status(ret);
-	return;
+	return wrap_urb_status(ret);
 }
 
-static void wrap_select_configuration(struct wrapper_dev *wd,
-				      union nt_urb *nt_urb, struct irp *irp)
+static USBD_STATUS wrap_select_configuration(struct wrapper_dev *wd,
+					     union nt_urb *nt_urb,
+					     struct irp *irp)
 {
 	struct usbd_pipe_information *pipe;
 	int i, n, ret, pipe_num;
@@ -592,8 +621,7 @@ static void wrap_select_configuration(struct wrapper_dev *wd,
 		ret = usb_control_msg(udev, usb_sndctrlpipe(udev, 0),
 				      USB_REQ_SET_CONFIGURATION, 0,
 				      0, 0, NULL, 0, USB_CTRL_SET_TIMEOUT);
-		NT_URB_STATUS(nt_urb) = wrap_urb_status(ret);
-		return;
+		return wrap_urb_status(ret);
 	}
 
 	USBTRACE("conf: %d, type: %d, length: %d, numif: %d, attr: %08x",
@@ -607,8 +635,7 @@ static void wrap_select_configuration(struct wrapper_dev *wd,
 			      NULL, 0, USB_CTRL_SET_TIMEOUT);
 	if (ret < 0) {
 		ERROR("ret: %d", ret);
-		NT_URB_STATUS(nt_urb) = wrap_urb_status(ret);
-		USBTRACEEXIT(return);
+		return wrap_urb_status(ret);
 	}
 
 	/* find out total number of endpoints for all interfaces */
@@ -622,24 +649,22 @@ static void wrap_select_configuration(struct wrapper_dev *wd,
 
 	pipe_num = 0;
 	intf = &sel_conf->intf;
-	for (n = 0; n < config->bNumInterfaces && intf->bLength > 0; n++) {
+	for (n = 0; n < config->bNumInterfaces && intf->bLength > 0;
+	     n++, intf = (((void *)intf) + intf->bLength)) {
+
 		USBTRACE("intf: %d, alt setting: %d",
 			 intf->bInterfaceNumber, intf->bAlternateSetting);
 		ret = usb_set_interface(udev, intf->bInterfaceNumber,
 					intf->bAlternateSetting);
 		if (ret < 0) {
-			ERROR("usb_set_interface failed with %d", ret);
-			NT_URB_STATUS(nt_urb) = wrap_urb_status(ret);
-			USBTRACEEXIT(return);
+			ERROR("failed with %d", ret);
+			return wrap_urb_status(ret);
 		}
-		usb_intf =
-			usb_ifnum_to_if(udev, sel_conf->intf.bInterfaceNumber);
+		usb_intf = usb_ifnum_to_if(udev, intf->bInterfaceNumber);
 		if (!usb_intf) {
-			ERROR("usb_ifnum_to_if failed with %d", ret);
-			NT_URB_STATUS(nt_urb) = wrap_urb_status(ret);
-			USBTRACEEXIT(return);
+			ERROR("couldn't obtain ifnum");
+			return USBD_STATUS_REQUEST_FAILED;
 		}
-
 		USBTRACE("intf: %p, num ep: %d", intf, intf->bNumEndpoints);
 
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
@@ -668,23 +693,21 @@ static void wrap_select_configuration(struct wrapper_dev *wd,
 			pipe->wMaxPacketSize = ep->wMaxPacketSize;
 			pipe->bEndpointAddress = ep->bEndpointAddress;
 			pipe->bInterval = ep->bInterval;
-			pipe->pipe_type =
+			pipe->type =
 				ep->bmAttributes & USB_ENDPOINT_XFERTYPE_MASK;
 
-			pipe->pipe_handle = ep;
+			pipe->handle = ep;
 			USBTRACE("%d: addr %X, type %d, pkt_sz %d, intv %d,"
 				 "handle %p", i, ep->bEndpointAddress,
 				 ep->bmAttributes, ep->wMaxPacketSize,
 				 ep->bInterval, pipe->pipe_handle);
 		}
-		intf = (((void *)intf) + intf->bLength);
 	}
-	NT_URB_STATUS(nt_urb) = USBD_STATUS_SUCCESS;
-	USBTRACEEXIT(return);
+	return USBD_STATUS_SUCCESS;
 }
 
-static void wrap_get_descriptor(struct wrapper_dev *wd, union nt_urb *nt_urb,
-				struct irp *irp)
+static USBD_STATUS wrap_get_descriptor(struct wrapper_dev *wd,
+				       union nt_urb *nt_urb, struct irp *irp)
 {
 	struct usbd_control_descriptor_request *ctrl_req;
 	int ret;
@@ -692,8 +715,6 @@ static void wrap_get_descriptor(struct wrapper_dev *wd, union nt_urb *nt_urb,
 
 	udev = wd->dev.usb.udev;
 	ctrl_req = &nt_urb->control_request;
-	ASSERT(!ctrl_req->transfer_buffer_mdl);
-	ASSERT(!ctrl_req->urb_link);
 	USBTRACE("desctype = %d, descindex = %d, transfer_buffer = %p,"
 		 "transfer_buffer_length = %d", ctrl_req->desc_type,
 		 ctrl_req->index, ctrl_req->transfer_buffer,
@@ -711,23 +732,23 @@ static void wrap_get_descriptor(struct wrapper_dev *wd, union nt_urb *nt_urb,
 					 ctrl_req->transfer_buffer,
 					 ctrl_req->transfer_buffer_length);
 	if (ret < 0) {
-		WARNING("usb_get_descriptor failed with %d", ret);
-		NT_URB_STATUS(nt_urb) = USBD_STATUS_REQUEST_FAILED;
+		WARNING("failed with %d", ret);
+		return USBD_STATUS_REQUEST_FAILED;
 		ctrl_req->transfer_buffer_length = 0;
 	} else {
 		USBTRACE("ret: %08x", ret);
 		DUMP_BUFFER(ctrl_req->transfer_buffer, ret);
 		ctrl_req->transfer_buffer_length = ret;
 		irp->io_status.status_info = ret;
-		NT_URB_STATUS(nt_urb) = USBD_STATUS_SUCCESS;
+		return USBD_STATUS_SUCCESS;
 	}
-	USBTRACEEXIT(return);
 }
 
-static NTSTATUS wrap_process_nt_urb(struct wrapper_dev *wd, struct irp *irp)
+static USBD_STATUS wrap_process_nt_urb(struct wrapper_dev *wd, struct irp *irp)
 {
 	union nt_urb *nt_urb;
 	struct usb_device *udev;
+	USBD_STATUS status;
 
 	udev = wd->dev.usb.udev;
 	nt_urb = URB_FROM_IRP(irp);
@@ -738,7 +759,7 @@ static NTSTATUS wrap_process_nt_urb(struct wrapper_dev *wd, struct irp *irp)
 	DUMP_IRP(irp);
 	switch (nt_urb->header.function) {
 	case URB_FUNCTION_BULK_OR_INTERRUPT_TRANSFER:
-		wrap_bulk_or_intr_trans(udev, nt_urb, irp);
+		status = wrap_bulk_or_intr_trans(udev, nt_urb, irp);
 		break;
 
 	case URB_FUNCTION_VENDOR_DEVICE:
@@ -750,35 +771,30 @@ static NTSTATUS wrap_process_nt_urb(struct wrapper_dev *wd, struct irp *irp)
 	case URB_FUNCTION_CLASS_ENDPOINT:
 	case URB_FUNCTION_CLASS_OTHER:
 		USBTRACE("func: %d", nt_urb->header.function);
-		wrap_vendor_or_class_req(udev, nt_urb, irp);
+		status = wrap_vendor_or_class_req(udev, nt_urb, irp);
 		break;
 
 	case URB_FUNCTION_SELECT_CONFIGURATION:
-		wrap_select_configuration(wd, nt_urb, irp);
+		status = wrap_select_configuration(wd, nt_urb, irp);
 		break;
 
 	case URB_FUNCTION_GET_DESCRIPTOR_FROM_DEVICE:
-		wrap_get_descriptor(wd, nt_urb, irp);
+		status = wrap_get_descriptor(wd, nt_urb, irp);
 		break;
 
 	case URB_FUNCTION_SYNC_RESET_PIPE_AND_CLEAR_STALL:
-		wrap_reset_pipe(udev, irp);
+		status = wrap_reset_pipe(udev, irp);
 		break;
 	default:
 		ERROR("function %X NOT IMPLEMENTED", nt_urb->header.function);
-		NT_URB_STATUS(nt_urb) = USBD_STATUS_NOT_SUPPORTED;
+		status = NT_URB_STATUS(nt_urb) = USBD_STATUS_NOT_SUPPORTED;
 		break;
 	}
-	USBTRACE("status: %08X", NT_URB_STATUS(nt_urb));
-	if (NT_URB_STATUS(nt_urb) == USBD_STATUS_PENDING)
-		return STATUS_PENDING;
-	irp->io_status.status = nt_urb_irp_status(NT_URB_STATUS(nt_urb));
-	if (NT_URB_STATUS(nt_urb) != USBD_STATUS_SUCCESS)
-		irp->io_status.status_info = 0;
-	USBTRACEEXIT(return irp->io_status.status);
+	USBTRACE("status: %08X", status);
+	return status;
 }
 
-static NTSTATUS wrap_reset_port(struct wrapper_dev *wd, struct irp *irp)
+static USBD_STATUS wrap_reset_port(struct wrapper_dev *wd, struct irp *irp)
 {
 	int ret;
 	union nt_urb *nt_urb;
@@ -789,40 +805,50 @@ static NTSTATUS wrap_reset_port(struct wrapper_dev *wd, struct irp *irp)
 	ret = usb_reset_device(wd->dev.usb.udev);
 	if (ret < 0)
 		WARNING("reset failed: %d", ret);
-	NT_URB_STATUS(nt_urb) = wrap_urb_status(ret);
-	irp->io_status.status = nt_urb_irp_status(NT_URB_STATUS(nt_urb));
-	USBTRACEEXIT(return irp->io_status.status);
+	return wrap_urb_status(ret);
 }
 
 NTSTATUS usb_submit_irp(struct device_object *pdo, struct irp *irp)
 {
 	struct io_stack_location *irp_sl;
 	struct wrapper_dev *wd;
-	NTSTATUS ret;
+	USBD_STATUS status;
 	union nt_urb *nt_urb;
 
 	irp_sl = IoGetCurrentIrpStackLocation(irp);
 	wd = pdo->reserved;
 
+	if (unlikely(wd->intf == NULL)) {
+		nt_urb = URB_FROM_IRP(irp);
+		NT_URB_STATUS(nt_urb) = USBD_STATUS_DEVICE_GONE;
+		irp->io_status.status = STATUS_DEVICE_REMOVED;
+		irp->io_status.status_info = 0;
+		return irp->io_status.status;
+	}
+
 	switch (irp_sl->params.ioctl.code) {
 	case IOCTL_INTERNAL_USB_SUBMIT_URB:
-		ret = wrap_process_nt_urb(wd, irp);
+		status = wrap_process_nt_urb(wd, irp);
 		break;
 
 	case IOCTL_INTERNAL_USB_RESET_PORT:
-		ret = wrap_reset_port(wd, irp);
+		status = wrap_reset_port(wd, irp);
 		break;
 	default:
  		ERROR("ioctl %08X NOT IMPLEMENTED", irp_sl->params.ioctl.code);
- 		ret = STATUS_INVALID_DEVICE_REQUEST;
-		irp->io_status.status = ret;
-		irp->io_status.status_info = 0;
-		nt_urb = URB_FROM_IRP(irp);
-		NT_URB_STATUS(nt_urb) = USBD_STATUS_NOT_SUPPORTED;
+		status = USBD_STATUS_NOT_SUPPORTED;
+		break;
 	}
 
-	USBTRACE("ret: %08X", ret);
-	return ret;
+	USBTRACE("status: %08X", status);
+	if (status == USBD_STATUS_PENDING)
+		return STATUS_PENDING;
+	nt_urb = URB_FROM_IRP(irp);
+	NT_URB_STATUS(nt_urb) = status;
+	irp->io_status.status = nt_urb_irp_status(status);
+	if (status != USBD_STATUS_SUCCESS)
+		irp->io_status.status_info = 0;
+	USBTRACEEXIT(return irp->io_status.status);
 }
 
 /* TODO: The example on msdn in reference section suggests that it
@@ -951,10 +977,7 @@ static STDCALL union nt_urb *WRAP_EXPORT(USBD_CreateConfigurationRequest)
 	if (!nt_urb)
 		return NULL;
 
-	*size = sizeof(struct usbd_select_configuration) +
-		(intf_desc->bNumEndpoints - 1) *
-		sizeof(struct usbd_pipe_information);
-
+	*size = nt_urb->select_conf.header.length;
 	USBTRACEEXIT(return nt_urb);
 }
 

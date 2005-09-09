@@ -367,10 +367,6 @@ struct ksemaphore {
 	LONG limit;
 };
 
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,0)
-typedef struct task_struct task_t;
-#endif
-
 #pragma pack(push,1)
 struct kthread {
 	struct dispatch_header dh;
@@ -378,7 +374,7 @@ struct kthread {
 	 * structure is opaque to drivers, we just define what we
 	 * need */
 	int pid;
-	task_t *task;
+	struct task_struct *task;
 	struct nt_list irps;
 	KSPIN_LOCK lock;
 };
@@ -619,6 +615,10 @@ struct kapc {
 #define IRP_SYNCHRONOUS_API		0x00000004
 #define IRP_ASSOCIATED_IRP		0x00000008
 
+enum urb_state {
+	URB_ALLOCATED = 1, URB_QUEUED, URB_SUBMITTED, URB_CANCELED,
+	URB_COMPLETED, URB_FREED };
+
 struct irp {
 	SHORT type;
 	USHORT size;
@@ -683,6 +683,7 @@ struct irp {
 	/* ndiswrapper extension */
 	struct nt_list list;
 	struct nt_list tx_submit_list;
+	enum urb_state urb_state;
 	struct urb *urb;
 };
 
@@ -864,7 +865,7 @@ struct io_workitem_entry {
 
 struct wait_block {
 	struct nt_list list;
-	task_t *thread;
+	struct task_struct *thread;
 	void *object;
 	struct wait_block *next;
 	USHORT wait_key;

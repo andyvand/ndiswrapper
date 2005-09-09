@@ -177,6 +177,7 @@ typedef task_queue workqueue;
 typedef struct {
 	int event;
 } pm_message_t;
+#define PMSG_SUSPEND ((pm_message_t) {.event = 3})
 #endif
 
 #ifndef PCI_D0

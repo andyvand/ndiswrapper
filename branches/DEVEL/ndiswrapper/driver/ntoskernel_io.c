@@ -495,7 +495,7 @@ pdoDispatchInternalDeviceControl(struct device_object *pdo,
 				 struct  irp *irp)
 {
 	struct io_stack_location *irp_sl;
-	NTSTATUS ret;
+	NTSTATUS status;
 
 	DUMP_IRP(irp);
 
@@ -510,14 +510,14 @@ pdoDispatchInternalDeviceControl(struct device_object *pdo,
 	irp_sl = IoGetCurrentIrpStackLocation(irp);
 
 #ifdef CONFIG_USB
-	ret = usb_submit_irp(pdo, irp);
+	status = usb_submit_irp(pdo, irp);
 	USBTRACE("ret: %d", ret);
 #endif
-	if (ret == STATUS_PENDING)
+	if (status == STATUS_PENDING)
 		schedule_work(&usb_tx_submit_work);
 	else
 		IoCompleteRequest(irp, IO_NO_INCREMENT);
-	USBTRACEEXIT(return ret);
+	USBTRACEEXIT(return status);
 }
 
 STDCALL NTSTATUS pdoDispatchDeviceControl(struct device_object *pdo,

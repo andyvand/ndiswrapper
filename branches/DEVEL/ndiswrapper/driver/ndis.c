@@ -321,13 +321,14 @@ NOREGPARM void WRAP_EXPORT(NdisWriteErrorLogEntry)
 	(struct driver_object *drv_obj, ULONG error, ULONG count, ...)
 {
 	va_list args;
-	int i, code;
+	int i;
+	ULONG code;
 
 	va_start(args, count);
 	ERROR("log: %08X, count: %d, return_address: %p",
 			error, count, __builtin_return_address(0));
 	for (i = 0; i < count; i++) {
-		code = va_arg(args, int);
+		code = va_arg(args, ULONG);
 		ERROR("code: %u", code);
 	}
 	va_end(args);
