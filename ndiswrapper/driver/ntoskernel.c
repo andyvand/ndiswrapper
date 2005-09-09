@@ -922,7 +922,8 @@ STDCALL void WRAP_EXPORT(KeInitializeEvent)
 }
 
 /* check and set signaled state; should be called with kevent_lock held */
-static BOOLEAN inline check_reset_signaled_state(void *object, task_t *thread)
+static BOOLEAN inline check_reset_signaled_state(void *object,
+						 struct task_struct *thread)
 {
 	struct dispatch_header *dh;
 	struct kmutex *kmutex;
@@ -1365,7 +1366,7 @@ STDCALL struct kthread *WRAP_EXPORT(KeGetCurrentThread)
 {
 	struct nt_list *cur;
 	KIRQL irql;
-	task_t *task = get_current();
+	struct task_struct *task = get_current();
 	struct kthread *ret;
 
 	DBGTRACE3("task: %p", task);

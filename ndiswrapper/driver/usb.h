@@ -137,8 +137,8 @@ struct usbd_pipe_information {
 	USHORT wMaxPacketSize;
 	UCHAR bEndpointAddress;
 	UCHAR bInterval;
-	enum pipe_type pipe_type;
-	usbd_pipe_handle pipe_handle;
+	enum pipe_type type;
+	usbd_pipe_handle handle;
 	ULONG max_tx_size;
 	ULONG flags;
 };
@@ -182,7 +182,7 @@ struct usbd_bulk_or_intr_transfer {
 	ULONG transfer_flags;
 	ULONG transfer_buffer_length;
 	void *transfer_buffer;
-	struct mdl *transfer_buffer_mdl;
+	struct mdl *mdl;
 	union nt_urb *urb_link;
 	struct urb_hcd_area hca;
 };
@@ -193,7 +193,7 @@ struct usbd_control_descriptor_request {
 	ULONG reserved0;
 	ULONG transfer_buffer_length;
 	void *transfer_buffer;
-	struct mdl *transfer_buffer_mdl;
+	struct mdl *mdl;
 	union nt_urb *urb_link;
 	struct urb_hcd_area hca;
 	USHORT reserved1;
@@ -214,7 +214,7 @@ struct usbd_vendor_or_class_request {
 	ULONG transfer_flags;
 	ULONG transfer_buffer_length;
 	void *transfer_buffer;
-	struct mdl *transfer_buffer_mdl;
+	struct mdl *mdl;
 	union nt_urb *link;
 	struct urb_hcd_area hca;
 	UCHAR reserved_bits;
@@ -236,7 +236,7 @@ struct usbd_isochronous_transfer {
 	ULONG transfer_flags;
 	ULONG transfer_buffer_length;
 	void *transfer_buffer;
-	struct mdl *transfer_buffer_mdl;
+	struct mdl *mdl;
 	union nt_urb *urb_link;
 	struct urb_hcd_area hca;
 	ULONG start_frame;

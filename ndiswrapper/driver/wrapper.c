@@ -173,7 +173,7 @@ NDIS_STATUS miniport_query_info_needed(struct wrapper_dev *wd,
 		       bufsize, &written, needed);
 	lower_irql(irql);
 
-	DBGTRACE3("res = %08x", res);
+	DBGTRACE3("res = %08X", res);
 	if (res == NDIS_STATUS_PENDING) {
 		/* wait a little for NdisMQueryInformationComplete */
 		/* DDK seems to imply we wait until miniport calls
@@ -228,7 +228,7 @@ NDIS_STATUS miniport_set_info(struct wrapper_dev *wd, ndis_oid oid,
 	res = LIN2WIN6(miniport->setinfo, wd->nmb->adapter_ctx, oid, buf,
 		       bufsize, &written, &needed);
 	lower_irql(irql);
-	DBGTRACE3("res = %08x", res);
+	DBGTRACE3("res = %08X", res);
 
 	if (res == NDIS_STATUS_PENDING) {
 		/* wait a little for NdisMSetInformationComplete */
@@ -238,7 +238,7 @@ NDIS_STATUS miniport_set_info(struct wrapper_dev *wd, ndis_oid oid,
 			res = NDIS_STATUS_FAILURE;
 		else
 			res = wd->ndis_comm_res;
-		DBGTRACE2("res = %x", res);
+		DBGTRACE2("res = %08X", res);
 	}
 	up(&wd->ndis_comm_mutex);
 	if (res && needed)
@@ -968,15 +968,21 @@ int ndiswrapper_suspend_usb(struct usb_interface *intf, pm_message_t state)
 	 * resumed from command line, but resuming from S3 crashes
 	 * kernel. Should we kill any pending urbs? what about
 	 * irps? */
+	if (!ret)
+		intf->dev.power.power_state = state;
 	return ret;
 }
 
 int ndiswrapper_resume_usb(struct usb_interface *intf)
 {
 	struct wrapper_dev *wd;
+	int ret;
 
 	wd = usb_get_intfdata(intf);
-	return ndiswrapper_resume_device(wd);
+	ret = ndiswrapper_resume_device(wd);
+	if (!ret)
+		intf->dev.power.power_state = PMSG_ON;
+	return ret;
 }
 #endif
 
@@ -1020,16 +1026,12 @@ void ndiswrapper_remove_device(struct wrapper_dev *wd)
 	DBGTRACE1("deleted devices");
 	if (wd->xmit_array)
 		kfree(wd->xmit_array);
-	DBGTRACE1("");
 	if (wd->multicast_list)
 		kfree(wd->multicast_list);
-	DBGTRACE1("");
 	printk(KERN_INFO "%s: device %s removed\n", DRIVER_NAME,
 	       wd->net_dev->name);
 	unregister_netdev(wd->net_dev);
-	DBGTRACE1("");
 	free_netdev(wd->net_dev);
-	DBGTRACE1("");
 	TRACEEXIT1(return);
 }
 
@@ -1595,11 +1597,7 @@ int setup_device(struct net_device *dev)
 	       dev->name, DRIVER_NAME, MAC2STR(dev->dev_addr),
 	       wd->driver->name, wd->ndis_device->conf_file_name);
 
-//	netif_stop_queue(dev);
-
 	check_capa(wd);
-//	debug = 2;
-
 	DBGTRACE1("capbilities = %ld", wd->capa.encr);
 	printk(KERN_INFO "%s: encryption modes supported: %s%s%s%s%s%s%s\n",
 	       dev->name,
@@ -1620,22 +1618,20 @@ int setup_device(struct net_device *dev)
 	       test_bit(Ndis802_11AuthModeWPA2PSK, &wd->capa.auth) ?
 	       ", WPA2PSK" : "");
 
-	wd->max_send_packets = 1;
 	if (test_bit(ATTR_SERIALIZED, &wd->attributes)) {
 		res = miniport_query_int(wd, OID_GEN_MAXIMUM_SEND_PACKETS,
 					 &wd->max_send_packets);
 		if (res == NDIS_STATUS_NOT_SUPPORTED)
 			wd->max_send_packets = 1;
+		if (wd->max_send_packets > XMIT_RING_SIZE)
+			wd->max_send_packets = XMIT_RING_SIZE;
 	} else {
 		/* deserialized drivers don't have a limit, but we
 		 * keep max at XMIT_RING_SIZE to allocate xmit_array
 		 * below */
 		wd->max_send_packets = XMIT_RING_SIZE;
 	}
-	DBGTRACE2("maximum send packets supported by driver: %d",
-		  wd->max_send_packets);
-	if (wd->max_send_packets > XMIT_RING_SIZE)
-		wd->max_send_packets = XMIT_RING_SIZE;
+	DBGTRACE2("maximum send packets: %d", wd->max_send_packets);
 	wd->xmit_array =
 		kmalloc(sizeof(struct ndis_packet *) * wd->max_send_packets,
 			GFP_KERNEL);
@@ -1644,14 +1640,13 @@ int setup_device(struct net_device *dev)
 		unregister_netdev(dev);
 		return -ENOMEM;
 	}
-	DBGTRACE2("maximum send packets used by ndiswrapper: %d",
-		  wd->max_send_packets);
 
 	res = miniport_query_int(wd, OID_802_3_MAXIMUM_LIST_SIZE, &i);
 	if (res == NDIS_STATUS_SUCCESS) {
-		DBGTRACE1("Multicast list size is %d", i);
+		DBGTRACE1("multicast list size: %d", i);
 		wd->multicast_list_size = i;
-	}
+	} else
+		wd->multicast_list_size = 0;
 
 	if (wd->multicast_list_size)
 		wd->multicast_list =
@@ -1659,10 +1654,9 @@ int setup_device(struct net_device *dev)
 				GFP_KERNEL);
 
 	if (set_privacy_filter(wd, Ndis802_11PrivFilterAcceptAll))
-		WARNING("%s", "Unable to set privacy filter");
+		WARNING("unable to set privacy filter");
 
 #if 0
-
 //	miniport_set_int(wd, OID_802_11_NETWORK_TYPE_IN_USE,
 //			 Ndis802_11Automode);
 	ndis_set_rx_mode(dev);
@@ -1672,7 +1666,6 @@ int setup_device(struct net_device *dev)
 	set_encr_mode(wd, Ndis802_11EncryptionDisabled);
 	set_scan(wd);
 #endif
-
 	hangcheck_add(wd);
 	stats_timer_add(wd);
 	ndiswrapper_procfs_add_iface(wd);
