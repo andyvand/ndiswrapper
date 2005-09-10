@@ -681,8 +681,8 @@ struct irp {
 	} tail;
 
 	/* ndiswrapper extension */
-	struct nt_list tx_complete_list;
-	struct nt_list tx_submit_list;
+	struct nt_list complete_list;
+	struct nt_list submit_list;
 	struct urb *urb;
 	enum urb_state urb_state;
 	struct wrapper_dev *wd;
