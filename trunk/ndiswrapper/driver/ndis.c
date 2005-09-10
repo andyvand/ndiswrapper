@@ -321,13 +321,14 @@ NOREGPARM void WRAP_EXPORT(NdisWriteErrorLogEntry)
 	(struct driver_object *drv_obj, ULONG error, ULONG count, ...)
 {
 	va_list args;
-	int i, code;
+	int i;
+	ULONG code;
 
 	va_start(args, count);
 	ERROR("log: %08X, count: %d, return_address: %p",
 			error, count, __builtin_return_address(0));
 	for (i = 0; i < count; i++) {
-		code = va_arg(args, int);
+		code = va_arg(args, ULONG);
 		ERROR("code: %u", code);
 	}
 	va_end(args);
@@ -1713,7 +1714,7 @@ STDCALL void WRAP_EXPORT(NdisMDeregisterInterrupt)
 	/* cancel_delayed_work is probably better, but 2.4 kernels
 	 * don't have equivalent function
 	 */
-#if LINUX_KERNEL_VERSION >= KERNEL_VERSION(2,6,0)
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
 	flush_scheduled_work();
 #else
 	set_current_state(TASK_INTERRUPTIBLE);

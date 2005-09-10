@@ -174,9 +174,19 @@ typedef task_queue workqueue;
 #endif // LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
 
 #ifndef PMSG_SUSPEND
-#define PMSG_ON 0
-#define PMSG_SUSPEND 3
-typedef u32 pm_message_t;
+typedef struct {
+	int event;
+} pm_message_t;
+#define PMSG_SUSPEND ((pm_message_t) {.event = 3})
+#endif
+
+#ifndef PCI_D0
+#define PCI_D0 0
+#define PCI_D3hot 3
+#endif
+
+#ifndef PM_EVENT_SUSPEND
+#define PM_EVENT_SUSPEND 2
 #endif
 
 #if defined(CONFIG_SOFTWARE_SUSPEND2) || defined(CONFIG_SUSPEND2)
@@ -350,6 +360,9 @@ struct wrap_export {
 #define WRAP_EXPORT_MAP(s,f)
 #define WRAP_EXPORT(x) x
 
+#define POOL_TAG(A, B, C, D)					\
+	((ULONG)((A) + ((B) << 8) + ((C) << 16) + ((D) << 24)))
+
 struct wrap_alloc {
 	struct nt_list list;
 	void *ptr;
@@ -393,7 +406,10 @@ typedef struct mdl ndis_buffer;
 struct phys_dev {
 	int dev_type;
 	struct pci_dev *pci;
-	struct usb_device *usb;
+	struct {
+		struct usb_device *udev;
+		struct usbd_pipe_information *pipes;
+	} usb;
 };
 
 struct wrapper_dev;
@@ -737,7 +753,7 @@ extern int debug;
 #if defined DEBUG
 #undef DBGTRACE
 #define DBGTRACE(level, fmt, ...) do {					\
-		if (level <= debug)					\
+		if (debug >= level)					\
 			printk(KERN_INFO "%s (%s:%d): " fmt "\n",	\
 			       DRIVER_NAME, __FUNCTION__,		\
 			       __LINE__ , ## __VA_ARGS__);		\

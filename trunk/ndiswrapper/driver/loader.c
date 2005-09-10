@@ -208,10 +208,7 @@ static int ndiswrapper_add_pci_device(struct pci_dev *pdev,
 		goto out_regions;
 	}
 
-	pci_set_power_state(pdev, PMSG_ON);
-#if LINUX_VERSION_CODE <= KERNEL_VERSION(2,6,9)
-	pci_restore_state(pdev, NULL);
-#endif
+	res = pci_set_power_state(pdev, PCI_D0);
 
 #ifdef CONFIG_X86_64
 	/* 64-bit broadcom driver doesn't work if DMA is allocated
@@ -334,12 +331,13 @@ static void *ndiswrapper_add_usb_device(struct usb_device *udev,
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
 	SET_NETDEV_DEV(dev, &intf->dev);
 
-	wd->dev.usb = interface_to_usbdev(intf);
+	wd->dev.usb.udev = interface_to_usbdev(intf);
 	usb_set_intfdata(intf, wd);
-#else
-	wd->dev.usb = udev;
-#endif
 	wd->intf = intf;
+#else
+	wd->dev.usb.udev = udev;
+	wd->intf = usb_ifnum_to_if(udev, ifnum);
+#endif
 
 	TRACEENTER1("calling ndis init routine");
 
@@ -385,15 +383,18 @@ ndiswrapper_remove_usb_device(struct usb_interface *intf)
 {
 	struct wrapper_dev *wd;
 
-//	debug = 4;
+//	debug = 3;
 	TRACEENTER1("");
 
 	wd = (struct wrapper_dev *)usb_get_intfdata(intf);
 	if (!wd)
 		TRACEEXIT1(return);
 
-	if (!test_bit(HW_UNLOADING, &wd->hw_status))
+	if (!test_bit(HW_UNLOADING, &wd->hw_status)) {
 		miniport_surprise_remove(wd);
+		/* give time for driver to free irps */
+		msleep(50);
+	}
 	wd->intf = NULL;
 	usb_set_intfdata(intf, NULL);
 	atomic_dec(&wd->driver->users);

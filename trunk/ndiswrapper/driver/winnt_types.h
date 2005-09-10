@@ -39,6 +39,7 @@
 #define STATUS_INSUFFICIENT_RESOURCES	0xC000009A
 #define STATUS_NOT_SUPPORTED            0xC00000BB
 #define STATUS_INVALID_PARAMETER_2      0xC00000F0
+#define STATUS_NO_MEMORY		0xC0000017
 #define STATUS_CANCELLED                0xC0000120
 #define STATUS_DEVICE_REMOVED		0xC00002B6
 
@@ -366,10 +367,6 @@ struct ksemaphore {
 	LONG limit;
 };
 
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,0)
-typedef struct task_struct task_t;
-#endif
-
 #pragma pack(push,1)
 struct kthread {
 	struct dispatch_header dh;
@@ -377,7 +374,7 @@ struct kthread {
 	 * structure is opaque to drivers, we just define what we
 	 * need */
 	int pid;
-	task_t *task;
+	struct task_struct *task;
 	struct nt_list irps;
 	KSPIN_LOCK lock;
 };
@@ -618,6 +615,10 @@ struct kapc {
 #define IRP_SYNCHRONOUS_API		0x00000004
 #define IRP_ASSOCIATED_IRP		0x00000008
 
+enum urb_state {
+	URB_QUEUED = 1, URB_SUBMITTED, URB_CANCELED,
+	URB_COMPLETED, URB_FREED };
+
 struct irp {
 	SHORT type;
 	USHORT size;
@@ -680,8 +681,11 @@ struct irp {
 	} tail;
 
 	/* ndiswrapper extension */
-	struct nt_list list;
+	struct nt_list tx_complete_list;
+	struct nt_list tx_submit_list;
 	struct urb *urb;
+	enum urb_state urb_state;
+	struct wrapper_dev *wd;
 };
 
 #define IoSizeOfIrp(stack_size) \
@@ -862,7 +866,7 @@ struct io_workitem_entry {
 
 struct wait_block {
 	struct nt_list list;
-	task_t *thread;
+	struct task_struct *thread;
 	void *object;
 	struct wait_block *next;
 	USHORT wait_key;
@@ -1085,7 +1089,7 @@ static inline void InitializeListHead(struct nt_list *head)
 
 static inline BOOLEAN IsListEmpty(struct nt_list *head)
 {
-	if (head->next == head)
+	if (head == head->next)
 		return TRUE;
 	else
 		return FALSE;
@@ -1093,86 +1097,71 @@ static inline BOOLEAN IsListEmpty(struct nt_list *head)
 
 static inline void RemoveEntryList(struct nt_list *entry)
 {
-	struct nt_list *prev, *next;
-
-	next = entry->next;
-	prev = entry->prev;
-	prev->next = next;
-	next->prev = prev;
+	entry->prev->next = entry->next;
+	entry->next->prev = entry->prev;
 }
 
 static inline struct nt_list *RemoveHeadList(struct nt_list *head)
 {
-	struct nt_list *next, *entry;
+	struct nt_list *entry;
 
-	if (IsListEmpty(head))
+	entry = head->next;
+	if (entry == head)
 		return NULL;
 	else {
-		entry = head->next;
-		next = entry->next;
-		head->next = next;
-		next->prev = head;
+		RemoveEntryList(entry);
 		return entry;
 	}
-}
-
-static inline struct nt_list *GetHeadList(struct nt_list *head)
-{
-	if (IsListEmpty(head))
-		return NULL;
-	else
-		return head->next;
 }
 
 static inline struct nt_list *RemoveTailList(struct nt_list *head)
 {
-	struct nt_list *prev, *entry;
+	struct nt_list *entry;
 
-	if (IsListEmpty(head))
+	entry = head->prev;
+	if (entry == head)
 		return NULL;
 	else {
-		entry = head->prev;
-		prev = entry->prev;
-		head->prev = prev;
-		prev->next = head;
+		RemoveEntryList(entry);
 		return entry;
 	}
+}
+
+static inline void InsertListEntry(struct nt_list *entry, struct nt_list *prev,
+				   struct nt_list *next)
+{
+	next->prev = entry;
+	entry->next = next;
+	entry->prev = prev;
+	prev->next = entry;
 }
 
 static inline struct nt_list *InsertHeadList(struct nt_list *head,
 					     struct nt_list *entry)
 {
-	struct nt_list *next, *first;
+	struct nt_list *ret;
 
 	if (IsListEmpty(head))
-		first = NULL;
+		ret = NULL;
 	else
-		first = head->next;
+		ret = head->next;
 
-	next = head->next;
-	entry->next = next;
-	entry->prev = head;
-	next->prev = entry;
-	head->next = entry;
-	return first;
+	InsertListEntry(entry, head, head->next);
+	return ret;
 }
 
 static inline struct nt_list *InsertTailList(struct nt_list *head,
 					     struct nt_list *entry)
 {
-	struct nt_list *prev, *last;
+	struct nt_list *ret;
 
 	if (IsListEmpty(head))
-		last = NULL;
+		ret = NULL;
 	else
-		last = head->prev;
+		ret = head->prev;
 
-	prev = head->prev;
-	entry->next = head;
-	entry->prev = prev;
-	prev->next = entry;
-	head->prev = entry;
-	return last;
+	InsertListEntry(entry, head->prev, head);
+	return ret;
 }
 
 #define nt_list_for_each(pos, head)					\
