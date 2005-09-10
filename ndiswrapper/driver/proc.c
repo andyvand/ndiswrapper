@@ -325,8 +325,7 @@ static int procfs_write_settings(struct file *file, const char *buf,
 		if (i <= 0 || i > 3)
 			return -EINVAL;
 		if (wd->ndis_device->bustype == NDIS_PCI_BUS)
-			ndiswrapper_suspend_pci(wd->dev.pci,
-						       PMSG_SUSPEND);
+			ndiswrapper_suspend_pci(wd->dev.pci, PMSG_SUSPEND);
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
 		else if (wd->ndis_device->bustype == NDIS_USB_BUS)
 			ndiswrapper_suspend_usb(wd->intf, PMSG_SUSPEND);
@@ -420,15 +419,17 @@ static int procfs_write_settings(struct file *file, const char *buf,
 
 		if (set_encr_mode(wd, i))
 			return -EINVAL;
-	} else if (!strcmp(setting, "kevent")) {
-		unsigned int i;
+	} else if (!strcmp(setting, "stats_enabled")) {
+		int i;
 
 		if (!p)
 			return -EINVAL;
 		p++;
-		i = simple_strtol(p, NULL, 16);
-		INFO("waking event: %08x", i);
-		KeSetEvent((struct kevent *)i, 0, FALSE);
+		i = simple_strtol(p, NULL, 10);
+		if (i > 0)
+			wd->stats_enabled = TRUE;
+		else
+			wd->stats_enabled = FALSE;
 	} else if (!strcmp(setting, "tx_antenna")) {
 		ndis_antenna antenna;
 		unsigned int i;

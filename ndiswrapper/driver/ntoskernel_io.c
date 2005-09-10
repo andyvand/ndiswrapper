@@ -26,6 +26,8 @@ extern struct work_struct io_work;
 extern struct nt_list io_workitem_list;
 extern KSPIN_LOCK io_workitem_list_lock;
 
+extern struct work_struct irp_tx_submit_work;
+
 #if 0
 #define DBGINFO(fmt, ...) MSG(KERN_INFO, fmt , ## __VA_ARGS__)
 #define DBGINFOEXIT(stmt) do { DBGINFO("Exit"); stmt; } while(0)
@@ -79,7 +81,7 @@ STDCALL NTSTATUS WRAP_EXPORT(IoGetDeviceProperty)
 	case DevicePropertyFriendlyName:
 		if (buffer_len > 0 && buffer) {
 			ansi.len = snprintf(buf, sizeof(buf), "%d",
-					    wd->dev.usb->devnum);
+					    wd->dev.usb.udev->devnum);
 			ansi.buf = buf;
 			ansi.len = strlen(ansi.buf);
 			if (ansi.len <= 0) {
@@ -100,7 +102,7 @@ STDCALL NTSTATUS WRAP_EXPORT(IoGetDeviceProperty)
 			}
 		} else {
 			ansi.len = snprintf(buf, sizeof(buf), "%d",
-					    wd->dev.usb->devnum);
+					    wd->dev.usb.udev->devnum);
 			*result_len = 2 * (ansi.len + 1);
 			TRACEEXIT1(return STATUS_BUFFER_TOO_SMALL);
 		}
@@ -450,13 +452,13 @@ _FASTCALL void WRAP_EXPORT(IofCompleteRequest)
 		      (irp->io_status.status != STATUS_SUCCESS &&
 		       irp_sl->control & CALL_ON_ERROR) ||
 		      (irp->cancel && (irp_sl->control & CALL_ON_CANCEL)))) {
-			USBTRACE("calling completion_routine at: %p",
+			DBGTRACE1("calling completion_routine at: %p",
 				 irp_sl->completion_routine);
 			res = LIN2WIN3(irp_sl->completion_routine, dev_obj,
 				       irp, irp_sl->context);
 			if (res == STATUS_MORE_PROCESSING_REQUIRED)
 				USBTRACEEXIT(return);
-			USBTRACE("completion routine returned");
+			DBGTRACE1("completion routine returned");
 		} else {
 			if (irp->current_location <= irp->stack_count &&
 			    irp->pending_returned)
@@ -493,7 +495,7 @@ pdoDispatchInternalDeviceControl(struct device_object *pdo,
 				 struct  irp *irp)
 {
 	struct io_stack_location *irp_sl;
-	NTSTATUS ret;
+	NTSTATUS status;
 
 	DUMP_IRP(irp);
 
@@ -508,12 +510,14 @@ pdoDispatchInternalDeviceControl(struct device_object *pdo,
 	irp_sl = IoGetCurrentIrpStackLocation(irp);
 
 #ifdef CONFIG_USB
-	ret = usb_submit_irp(pdo, irp);
+	status = usb_submit_irp(pdo, irp);
 	USBTRACE("ret: %d", ret);
 #endif
-	if (ret != STATUS_PENDING)
+	if (status == STATUS_PENDING)
+		schedule_work(&irp_tx_submit_work);
+	else
 		IoCompleteRequest(irp, IO_NO_INCREMENT);
-	USBTRACEEXIT(return ret);
+	USBTRACEEXIT(return status);
 }
 
 STDCALL NTSTATUS pdoDispatchDeviceControl(struct device_object *pdo,

@@ -470,7 +470,8 @@ STDCALL BOOLEAN WRAP_EXPORT(KeSetTimerEx)
 	unsigned long expires;
 	unsigned long repeat;
 
-	TRACEENTER5("%p, %ld, %u, %p", ktimer, (long)duetime_ticks, period_ms, kdpc);
+	TRACEENTER5("%p, %ld, %u, %p",
+		    ktimer, (long)duetime_ticks, period_ms, kdpc);
 
 	expires = SYSTEM_TIME_TO_HZ(duetime_ticks);
 	repeat = HZ * period_ms / 1000 ;
@@ -921,7 +922,8 @@ STDCALL void WRAP_EXPORT(KeInitializeEvent)
 }
 
 /* check and set signaled state; should be called with kevent_lock held */
-static BOOLEAN inline check_reset_signaled_state(void *object, task_t *thread)
+static BOOLEAN inline check_reset_signaled_state(void *object,
+						 struct task_struct *thread)
 {
 	struct dispatch_header *dh;
 	struct kmutex *kmutex;
@@ -931,22 +933,6 @@ static BOOLEAN inline check_reset_signaled_state(void *object, task_t *thread)
 	kmutex = container_of(object, struct kmutex, dh);
 	ret = FALSE;
 
-#if 0
-	if (dh->signal_state > 0) {
-		if (dh->type == SynchronizationEvent)
-			dh->signal_state--;
-		ret = TRUE;
-	}
-	/* if mutex object, this thread can grab if no other thread
-	 * owns it or it already grabbed it earlier, in which case the
-	 * value of signal_state can be negative */
-	if (is_mutex_object(dh) &&
-	    (kmutex->owner_thread == NULL ||
-	     kmutex->owner_thread == thread)) {
-		kmutex->owner_thread = thread;
-		ret = TRUE;
-	}
-#else
 	if (dh->signal_state > 0) {
 		if (dh->type == SynchronizationEvent)
 			dh->signal_state--;
@@ -967,7 +953,6 @@ static BOOLEAN inline check_reset_signaled_state(void *object, task_t *thread)
 			}
 		}
 	}
-#endif
 	return ret;
 }
 
@@ -1364,7 +1349,7 @@ STDCALL struct kthread *WRAP_EXPORT(KeGetCurrentThread)
 {
 	struct nt_list *cur;
 	KIRQL irql;
-	task_t *task = get_current();
+	struct task_struct *task = get_current();
 	struct kthread *ret;
 
 	DBGTRACE3("task: %p", task);
@@ -1374,7 +1359,7 @@ STDCALL struct kthread *WRAP_EXPORT(KeGetCurrentThread)
 		struct common_object_header *header;
 		struct kthread *kthread;
 		header = container_of(cur, struct common_object_header, list);
-		DBGTRACE1("header: %p, type: %d", header, header->type);
+		DBGTRACE3("header: %p, type: %d", header, header->type);
 		if (header->type != OBJECT_TYPE_KTHREAD)
 			continue;
 		kthread = HEADER_TO_OBJECT(header);
