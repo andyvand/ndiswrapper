@@ -587,7 +587,7 @@ sub parseDevice {
 	return -1;
     }
     # print "$device:$vendor:$subvendor:$subdevice  $flavour\n";
-    my @copyfiles;
+    my @copy_files;
     my $addreg;
     my @lines = split("\n", $dev->{data});
 
@@ -599,7 +599,7 @@ sub parseDevice {
 		$addreg = $val;
 	    }
 	    if (lc($key) eq "copyfiles") {
-		push @copyfiles, $val;
+		push @copy_files, $val;
 	    }
 	}
     }		
@@ -635,15 +635,16 @@ sub parseDevice {
 	return -1;
     }
 
+    my $i, $j, $file;
     my @addregs = split(",", $addreg);
-    for (my $i = 0; $i < @addregs; $i++) {
+    for ($i = 0; $i < @addregs; $i++) {
 	my $reg = trim($addregs[$i]);
 	addReg($reg);
     }
-    for (my $i = 0; $i < @copyfiles; $i++) {
-	my @copy_sec = split(",", $copyfiles[i]);
-	for (my $j = 0; $j < @copy_sec; $j++) {
-	    my $file = trim($copy_sec[$j]);
+    for ($i = 0; $i < @copy_files; $i++) {
+	my @copy_sec = split(",", $copy_files[$i]);
+	for($j = 0; $j < @copy_sec; $j++) {
+	    $file = trim($copy_sec[$j]);
 	    copyfiles($file);
 	}
     }
