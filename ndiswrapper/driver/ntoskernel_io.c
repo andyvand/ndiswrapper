@@ -26,7 +26,7 @@ extern struct work_struct io_work;
 extern struct nt_list io_workitem_list;
 extern KSPIN_LOCK io_workitem_list_lock;
 
-extern struct work_struct irp_tx_submit_work;
+extern struct work_struct irp_submit_work;
 
 #if 0
 #define DBGINFO(fmt, ...) MSG(KERN_INFO, fmt , ## __VA_ARGS__)
@@ -514,7 +514,7 @@ pdoDispatchInternalDeviceControl(struct device_object *pdo,
 	USBTRACE("ret: %d", ret);
 #endif
 	if (status == STATUS_PENDING)
-		schedule_work(&irp_tx_submit_work);
+		schedule_work(&irp_submit_work);
 	else
 		IoCompleteRequest(irp, IO_NO_INCREMENT);
 	USBTRACEEXIT(return status);
