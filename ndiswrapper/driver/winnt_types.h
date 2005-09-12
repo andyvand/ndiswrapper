@@ -616,7 +616,7 @@ struct kapc {
 #define IRP_ASSOCIATED_IRP		0x00000008
 
 enum urb_state {
-	URB_ALLOCATED = 1, URB_QUEUED, URB_SUBMITTED, URB_CANCELED,
+	URB_QUEUED = 1, URB_SUBMITTED, URB_CANCELED,
 	URB_COMPLETED, URB_FREED };
 
 struct irp {
@@ -681,10 +681,11 @@ struct irp {
 	} tail;
 
 	/* ndiswrapper extension */
-	struct nt_list list;
-	struct nt_list tx_submit_list;
-	enum urb_state urb_state;
+	struct nt_list complete_list;
+	struct nt_list submit_list;
 	struct urb *urb;
+	enum urb_state urb_state;
+	struct wrapper_dev *wd;
 };
 
 #define IoSizeOfIrp(stack_size) \
@@ -1088,7 +1089,7 @@ static inline void InitializeListHead(struct nt_list *head)
 
 static inline BOOLEAN IsListEmpty(struct nt_list *head)
 {
-	if (head->next == head)
+	if (head == head->next)
 		return TRUE;
 	else
 		return FALSE;
@@ -1096,86 +1097,71 @@ static inline BOOLEAN IsListEmpty(struct nt_list *head)
 
 static inline void RemoveEntryList(struct nt_list *entry)
 {
-	struct nt_list *prev, *next;
-
-	next = entry->next;
-	prev = entry->prev;
-	prev->next = next;
-	next->prev = prev;
+	entry->prev->next = entry->next;
+	entry->next->prev = entry->prev;
 }
 
 static inline struct nt_list *RemoveHeadList(struct nt_list *head)
 {
-	struct nt_list *next, *entry;
+	struct nt_list *entry;
 
-	if (IsListEmpty(head))
+	entry = head->next;
+	if (entry == head)
 		return NULL;
 	else {
-		entry = head->next;
-		next = entry->next;
-		head->next = next;
-		next->prev = head;
+		RemoveEntryList(entry);
 		return entry;
 	}
-}
-
-static inline struct nt_list *GetHeadList(struct nt_list *head)
-{
-	if (IsListEmpty(head))
-		return NULL;
-	else
-		return head->next;
 }
 
 static inline struct nt_list *RemoveTailList(struct nt_list *head)
 {
-	struct nt_list *prev, *entry;
+	struct nt_list *entry;
 
-	if (IsListEmpty(head))
+	entry = head->prev;
+	if (entry == head)
 		return NULL;
 	else {
-		entry = head->prev;
-		prev = entry->prev;
-		head->prev = prev;
-		prev->next = head;
+		RemoveEntryList(entry);
 		return entry;
 	}
+}
+
+static inline void InsertListEntry(struct nt_list *entry, struct nt_list *prev,
+				   struct nt_list *next)
+{
+	next->prev = entry;
+	entry->next = next;
+	entry->prev = prev;
+	prev->next = entry;
 }
 
 static inline struct nt_list *InsertHeadList(struct nt_list *head,
 					     struct nt_list *entry)
 {
-	struct nt_list *next, *first;
+	struct nt_list *ret;
 
 	if (IsListEmpty(head))
-		first = NULL;
+		ret = NULL;
 	else
-		first = head->next;
+		ret = head->next;
 
-	next = head->next;
-	entry->next = next;
-	entry->prev = head;
-	next->prev = entry;
-	head->next = entry;
-	return first;
+	InsertListEntry(entry, head, head->next);
+	return ret;
 }
 
 static inline struct nt_list *InsertTailList(struct nt_list *head,
 					     struct nt_list *entry)
 {
-	struct nt_list *prev, *last;
+	struct nt_list *ret;
 
 	if (IsListEmpty(head))
-		last = NULL;
+		ret = NULL;
 	else
-		last = head->prev;
+		ret = head->prev;
 
-	prev = head->prev;
-	entry->next = head;
-	entry->prev = prev;
-	prev->next = entry;
-	head->prev = entry;
-	return last;
+	InsertListEntry(entry, head->prev, head);
+	return ret;
 }
 
 #define nt_list_for_each(pos, head)					\

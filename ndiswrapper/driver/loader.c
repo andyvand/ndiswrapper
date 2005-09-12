@@ -209,9 +209,6 @@ static int ndiswrapper_add_pci_device(struct pci_dev *pdev,
 	}
 
 	res = pci_set_power_state(pdev, PCI_D0);
-#if LINUX_VERSION_CODE <= KERNEL_VERSION(2,6,9)
-	pci_restore_state(pdev, NULL);
-#endif
 
 #ifdef CONFIG_X86_64
 	/* 64-bit broadcom driver doesn't work if DMA is allocated
@@ -386,15 +383,18 @@ ndiswrapper_remove_usb_device(struct usb_interface *intf)
 {
 	struct wrapper_dev *wd;
 
-//	debug = 4;
+//	debug = 3;
 	TRACEENTER1("");
 
 	wd = (struct wrapper_dev *)usb_get_intfdata(intf);
 	if (!wd)
 		TRACEEXIT1(return);
 
-	if (!test_bit(HW_UNLOADING, &wd->hw_status))
+	if (!test_bit(HW_UNLOADING, &wd->hw_status)) {
 		miniport_surprise_remove(wd);
+		/* give time for driver to free irps */
+		msleep(50);
+	}
 	wd->intf = NULL;
 	usb_set_intfdata(intf, NULL);
 	atomic_dec(&wd->driver->users);

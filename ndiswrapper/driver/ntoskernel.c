@@ -429,8 +429,8 @@ STDCALL USHORT WRAP_EXPORT(ExQueryDepthSList)
 }
 
 /* should be called with kevent_lock held at DISPATCH_LEVEL */
-void initialize_dh(struct dispatch_header *dh, enum event_type type, int state,
-				enum dh_type dh_type)
+void initialize_dh(struct dispatch_header *dh, enum event_type type,
+		   int state, enum dh_type dh_type)
 {
 	memset(dh, 0xa3, sizeof(*dh));
 	dh->type = type;
@@ -922,55 +922,36 @@ STDCALL void WRAP_EXPORT(KeInitializeEvent)
 }
 
 /* check and set signaled state; should be called with kevent_lock held */
-static BOOLEAN inline check_reset_signaled_state(void *object,
-						 struct task_struct *thread)
+static int inline check_reset_signaled_state(void *object,
+					     struct task_struct *thread,
+					     int reset)
 {
 	struct dispatch_header *dh;
 	struct kmutex *kmutex;
-	BOOLEAN ret;
 
 	dh = object;
 	kmutex = container_of(object, struct kmutex, dh);
-	ret = FALSE;
 
-#if 0
-	if (dh->signal_state > 0) {
-		if (dh->type == SynchronizationEvent)
-			dh->signal_state--;
-		ret = TRUE;
-	}
-	/* if mutex object, this thread can grab if no other thread
-	 * owns it or it already grabbed it earlier, in which case the
-	 * value of signal_state can be negative */
-	if (is_mutex_object(dh) &&
-	    (kmutex->owner_thread == NULL ||
-	     kmutex->owner_thread == thread)) {
-		kmutex->owner_thread = thread;
-		ret = TRUE;
-	}
-#else
-	if (dh->signal_state > 0) {
-		if (dh->type == SynchronizationEvent)
-			dh->signal_state--;
-		if (is_mutex_object(dh)) {
-			if (kmutex->owner_thread != NULL)
-				WARNING("mutex: %d, %p", dh->signal_state,
-					kmutex->owner_thread);
-			kmutex->owner_thread = thread;
-		}
-		ret = TRUE;
-	} else {
-		if (is_mutex_object(dh)) {
-			if (kmutex->owner_thread == NULL)
-				WARNING("mutex: %d", dh->signal_state);
-			if (kmutex->owner_thread == thread) {
+	if (is_mutex_object(dh)) {
+		/* either no thread owns the mutex or this thread owns
+		 * it */
+		if (kmutex->owner_thread == NULL ||
+		    kmutex->owner_thread == thread) {
+			assert(kmutex->owner_thread == NULL &&
+			       dh->signal_state == 1);
+			if (reset) {
 				dh->signal_state--;
-				ret = TRUE;
+				kmutex->owner_thread = thread;
 			}
+			return 1;
 		}
+	} else if (dh->signal_state > 0) {
+		/* decrement signal_state for synchronization events */
+		if (dh->type == SynchronizationEvent && reset)
+			dh->signal_state--;
+		return 1;
 	}
-#endif
-	return ret;
+	return 0;
 }
 
 /* this function should be called holding kevent_lock spinlock at
@@ -986,7 +967,7 @@ static void wakeup_threads(struct dispatch_header *dh)
 	nt_list_for_each_safe(cur, tmp, &dh->wait_blocks) {
 		wb = container_of(cur, struct wait_block, list);
 		DBGINFO("wait block: %p", wb);
-		if (check_reset_signaled_state(dh, wb->thread)) {
+		if (check_reset_signaled_state(dh, wb->thread, 1)) {
 			/* mark that this thread is done */
 			wb->object = NULL;
 			RemoveEntryList(cur);
@@ -1127,6 +1108,7 @@ STDCALL NTSTATUS WRAP_EXPORT(KeWaitForMultipleObjects)
 	struct wait_block *wb, wb_array[THREAD_WAIT_OBJECTS];
 	struct dispatch_header *dh;
 	KIRQL irql;
+	struct task_struct *task;
 
 	DBGINFO("count = %d, reason = %u, waitmode = %u, alertable = %u,"
 		    " timeout = %p", count, wait_reason, wait_mode,
@@ -1142,56 +1124,52 @@ STDCALL NTSTATUS WRAP_EXPORT(KeWaitForMultipleObjects)
 	else
 		wb = wait_block_array;
 
+	task = get_current();
 	alertable = TRUE;
-	if (timeout) {
-		DBGINFO("timeout = %Ld", *timeout);
-		if (*timeout == 0) {
-			irql = kspin_lock_irql(&kevent_lock, DISPATCH_LEVEL);
-			for (i = 0, wait_count = 0; i < count; i++)
-				/* TODO: only check or set signaled
-				 * state too? */
-				if (!check_reset_signaled_state(object[i],
-								get_current()))
-					wait_count++;
-			kspin_unlock_irql(&kevent_lock, irql);
-			if (wait_count)
-				DBGINFOEXIT(return STATUS_TIMEOUT);
-			else
-				DBGINFOEXIT(return STATUS_SUCCESS);
-		} else 
-			wait_jiffies = SYSTEM_TIME_TO_HZ(*timeout);
-	} else
-		wait_jiffies = 0;
-
 	irql = kspin_lock_irql(&kevent_lock, DISPATCH_LEVEL);
-	/* first get the list of objects the thread need to wait on
-	 * and add it on the wait list for each such object */
-	for (i = 0, wait_count = 0; i < count; i++) {
+	/* if *timeout == 0, we first check if the wait can be
+	 * satisfied or not, without grabbing the objects */
+	if (timeout && *timeout == 0) {
+		for (i = wait_count = 0; i < count; i++) {
+			dh = object[i];
+			if (!check_reset_signaled_state(dh, task, 0))
+				wait_count++;
+		}
+		if (wait_count) {
+			kspin_unlock_irql(&kevent_lock, irql);
+			DBGINFOEXIT(return STATUS_TIMEOUT);
+		}
+	}
+	/* get the list of objects the thread (task) needs to wait on
+	 * and add the thread on the wait list for each such object */
+	/* if *timeout == 0, this step will grab the objects */
+	for (i = wait_count = 0; i < count; i++) {
 		dh = object[i];
-		if (check_reset_signaled_state(dh, get_current())) {
-			DBGINFO("%p is already signaled", dh);
-			if (wait_type == WaitAny) {
-				kspin_unlock_irql(&kevent_lock, irql);
-				DBGINFOEXIT(return STATUS_WAIT_0 + i);
-			}
+		if (check_reset_signaled_state(dh, task, 1)) {
 			/* mark that we are not waiting on this object */
 			wb[i].thread = NULL;
 			wb[i].object = NULL;
 		} else {
-			wb[i].thread = get_current();
+			wb[i].thread = task;
 			wb[i].object = dh;
 			InsertTailList(&dh->wait_blocks, &wb[i].list);
 			wait_count++;
 			DBGINFO("%p (%p) waiting on event %p", &wb[i],
-				  wb[i].thread, dh);
+				wb[i].thread, dh);
 		}
 	}
-	if (wait_count == 0) {
+	if (timeout == NULL)
+		wait_jiffies = 0;
+	else if (*timeout == 0) {
+		/* we should've grabbed all the objects, else it
+		 * should've timed out already */
+		assert (wait_count == 0);
 		kspin_unlock_irql(&kevent_lock, irql);
 		DBGINFOEXIT(return STATUS_SUCCESS);
-	}
+	} else
+		wait_jiffies = SYSTEM_TIME_TO_HZ(*timeout);
 
-	/* we put the task state in appropriate state before releasing
+	/* we put the thread state in appropriate state before releasing
 	 * the spinlock, so that if the event is set to signaled state
 	 * after putting the thread on the wait list but before we put
 	 * the thread into sleep (with 'schedule'), wakup_event will
@@ -1204,7 +1182,7 @@ STDCALL NTSTATUS WRAP_EXPORT(KeWaitForMultipleObjects)
 		set_current_state(TASK_UNINTERRUPTIBLE);
 	kspin_unlock_irql(&kevent_lock, irql);
 
-	DBGINFO("%p is going to sleep for %ld", get_current(), wait_jiffies);
+	DBGINFO("%p is going to sleep for %ld", task, wait_jiffies);
 	while (wait_count) {
 		if (wait_jiffies > 0)
 			res = schedule_timeout(wait_jiffies);
@@ -1215,7 +1193,7 @@ STDCALL NTSTATUS WRAP_EXPORT(KeWaitForMultipleObjects)
 		if (signal_pending(current))
 			res = -ERESTARTSYS;
 		irql = kspin_lock_irql(&kevent_lock, DISPATCH_LEVEL);
-		DBGINFO("%p woke up, res = %d", get_current(), res);
+		DBGINFO("%p woke up, res = %d", task, res);
 		if (res <= 0) {
 			/* timed out or interrupted; remove from wait list */
 			for (i = 0; i < count; i++) {
@@ -1223,7 +1201,7 @@ STDCALL NTSTATUS WRAP_EXPORT(KeWaitForMultipleObjects)
 					continue;
 				if (!wb[i].object) {
 					ERROR("%p already dequeud by %p",
-					      get_current(), object[i]);
+					      task, object[i]);
 					continue;
 				}
 				DBGINFO("%d: %p", i, &wb[i].list);
@@ -1264,7 +1242,12 @@ STDCALL NTSTATUS WRAP_EXPORT(KeWaitForMultipleObjects)
 		}
 		/* this thread is still waiting for more objects, so
 		 * let it wait for remaining time and those objects */
-		wait_jiffies = res;
+		/* we already set res to 1 if timeout was NULL, so
+		 * reinitialize wait_jiffies if timeout is NULL */
+		if (timeout)
+			wait_jiffies = res;
+		else
+			wait_jiffies = 0;
 		if (alertable)
 			set_current_state(TASK_INTERRUPTIBLE);
 		else
@@ -1376,7 +1359,7 @@ STDCALL struct kthread *WRAP_EXPORT(KeGetCurrentThread)
 		struct common_object_header *header;
 		struct kthread *kthread;
 		header = container_of(cur, struct common_object_header, list);
-		DBGTRACE1("header: %p, type: %d", header, header->type);
+		DBGTRACE3("header: %p, type: %d", header, header->type);
 		if (header->type != OBJECT_TYPE_KTHREAD)
 			continue;
 		kthread = HEADER_TO_OBJECT(header);
@@ -1446,7 +1429,7 @@ struct kthread *wrap_create_current_thread(void)
 		kspin_lock_init(&kthread->lock);
 		InitializeListHead(&kthread->irps);
 		irql = kspin_lock_irql(&kevent_lock, DISPATCH_LEVEL);
-		initialize_dh(&kthread->dh, SynchronizationEvent,
+		initialize_dh(&kthread->dh, NotificationEvent,
 			      0, DH_KTHREAD);
 		kspin_unlock_irql(&kevent_lock, irql);
 		kthread->dh.size = sizeof(*kthread);

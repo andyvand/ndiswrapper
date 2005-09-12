@@ -419,15 +419,17 @@ static int procfs_write_settings(struct file *file, const char *buf,
 
 		if (set_encr_mode(wd, i))
 			return -EINVAL;
-	} else if (!strcmp(setting, "kevent")) {
-		unsigned int i;
+	} else if (!strcmp(setting, "stats_enabled")) {
+		int i;
 
 		if (!p)
 			return -EINVAL;
 		p++;
-		i = simple_strtol(p, NULL, 16);
-		INFO("waking event: %08x", i);
-		KeSetEvent((struct kevent *)i, 0, FALSE);
+		i = simple_strtol(p, NULL, 10);
+		if (i > 0)
+			wd->stats_enabled = TRUE;
+		else
+			wd->stats_enabled = FALSE;
 	} else if (!strcmp(setting, "tx_antenna")) {
 		ndis_antenna antenna;
 		unsigned int i;
