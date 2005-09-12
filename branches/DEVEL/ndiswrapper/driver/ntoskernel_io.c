@@ -26,7 +26,7 @@ extern struct work_struct io_work;
 extern struct nt_list io_workitem_list;
 extern KSPIN_LOCK io_workitem_list_lock;
 
-extern struct work_struct usb_tx_submit_work;
+extern struct tasklet_struct irp_submit_work;
 
 #if 0
 #define DBGINFO(fmt, ...) MSG(KERN_INFO, fmt , ## __VA_ARGS__)
@@ -452,13 +452,13 @@ _FASTCALL void WRAP_EXPORT(IofCompleteRequest)
 		      (irp->io_status.status != STATUS_SUCCESS &&
 		       irp_sl->control & CALL_ON_ERROR) ||
 		      (irp->cancel && (irp_sl->control & CALL_ON_CANCEL)))) {
-			USBTRACE("calling completion_routine at: %p",
+			DBGTRACE1("calling completion_routine at: %p",
 				 irp_sl->completion_routine);
 			res = LIN2WIN3(irp_sl->completion_routine, dev_obj,
 				       irp, irp_sl->context);
 			if (res == STATUS_MORE_PROCESSING_REQUIRED)
 				USBTRACEEXIT(return);
-			USBTRACE("completion routine returned");
+			DBGTRACE1("completion routine returned");
 		} else {
 			if (irp->current_location <= irp->stack_count &&
 			    irp->pending_returned)
@@ -510,12 +510,14 @@ pdoDispatchInternalDeviceControl(struct device_object *pdo,
 	irp_sl = IoGetCurrentIrpStackLocation(irp);
 
 #ifdef CONFIG_USB
+//	tasklet_disable(&irp_submit_work);
 	status = usb_submit_irp(pdo, irp);
-	USBTRACE("ret: %d", ret);
+	USBTRACE("status: %08X", status);
 #endif
-	if (status == STATUS_PENDING)
-		schedule_work(&usb_tx_submit_work);
-	else
+	if (status == STATUS_PENDING) {
+		USBTRACE("scheduling irp work: %p", irp);
+		tasklet_schedule(&irp_submit_work);
+	} else
 		IoCompleteRequest(irp, IO_NO_INCREMENT);
 	USBTRACEEXIT(return status);
 }

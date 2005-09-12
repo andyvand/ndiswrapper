@@ -54,6 +54,7 @@ int debug = 0;
 
 /* used to implement Windows spinlocks */
 spinlock_t spinlock_kspin_lock;
+struct workqueue_struct *ndiswrapper_wq;
 
 WRAP_MODULE_PARM_STRING(if_name, 0400);
 MODULE_PARM_DESC(if_name, "Network interface name or template "
@@ -121,9 +122,10 @@ NDIS_STATUS miniport_reset(struct wrapper_dev *wd)
 	DBGTRACE2("res = %08X, reset_status = %08X",
 		  res, wd->reset_status);
 	if (res == NDIS_STATUS_PENDING) {
-		if (wait_event_interruptible_timeout(wd->ndis_comm_wq,
-						     (wd->ndis_comm_done == 1),
-						     wd->ndis_comm_wait_time) <= 0)
+		if (wait_event_interruptible_timeout(
+			    wd->ndis_comm_wq,
+			    (wd->ndis_comm_done == 1),
+			    wd->ndis_comm_wait_time) <= 0)
 			res = NDIS_STATUS_FAILURE;
 		else
 			res = wd->ndis_comm_res;
@@ -138,7 +140,7 @@ NDIS_STATUS miniport_reset(struct wrapper_dev *wd)
 		 * functional address (?) or multicast filter */
 		wd->nmb->cur_lookahead = cur_lookahead;
 		wd->nmb->max_lookahead = max_lookahead;
-		ndis_set_rx_mode(wd->net_dev);
+//		ndis_set_rx_mode(wd->net_dev);
 	}
 	wd->reset_status = 0;
 	up(&wd->ndis_comm_mutex);
@@ -179,9 +181,10 @@ NDIS_STATUS miniport_query_info_needed(struct wrapper_dev *wd,
 		/* DDK seems to imply we wait until miniport calls
 		 * back completion routine, but at least prism usb
 		 * driver doesn't call it, so timeout is used */
-		if (wait_event_interruptible_timeout(wd->ndis_comm_wq,
-						     (wd->ndis_comm_done == 1),
-						     wd->ndis_comm_wait_time) <= 0)
+		if (wait_event_interruptible_timeout(
+			    wd->ndis_comm_wq,
+			    (wd->ndis_comm_done == 1),
+			    wd->ndis_comm_wait_time) <= 0)
 			res = NDIS_STATUS_FAILURE;
 		else
 			res = wd->ndis_comm_res;
@@ -232,13 +235,14 @@ NDIS_STATUS miniport_set_info(struct wrapper_dev *wd, ndis_oid oid,
 
 	if (res == NDIS_STATUS_PENDING) {
 		/* wait a little for NdisMSetInformationComplete */
-		if (wait_event_interruptible_timeout(wd->ndis_comm_wq,
-						     (wd->ndis_comm_done == 1),
-						     wd->ndis_comm_wait_time) <= 0)
+		if (wait_event_interruptible_timeout(
+			    wd->ndis_comm_wq,
+			    (wd->ndis_comm_done == 1),
+			    wd->ndis_comm_wait_time) <= 0)
 			res = NDIS_STATUS_FAILURE;
 		else
 			res = wd->ndis_comm_res;
-		DBGTRACE2("res = %08X", res);
+		DBGTRACE3("res = %08X", res);
 	}
 	up(&wd->ndis_comm_mutex);
 	if (res && needed)
@@ -475,7 +479,7 @@ static void hangcheck_proc(unsigned long data)
 	struct wrapper_dev *wd = (struct wrapper_dev *)data;
 	KIRQL irql;
 
-	TRACEENTER3("%s", "");
+	TRACEENTER3("");
 	set_bit(HANGCHECK, &wd->wrapper_work);
 	schedule_work(&wd->wrapper_worker);
 
@@ -918,14 +922,16 @@ int ndiswrapper_suspend_pci(struct pci_dev *pdev, pm_message_t state)
 	if (ret)
 		return ret;
 
-#if LINUX_VERSION_CODE <= KERNEL_VERSION(2,6,9)
+#if LINUX_VERSION_CODE > KERNEL_VERSION(2,6,9)
+	pci_save_state(pdev);
+#else
 	pci_save_state(pdev, wd->pci_state);
 #endif
 	/* PM seems to be in constant flux and documentation is not
 	 * up-to-date on what is the correct way to suspend/resume, so
 	 * this needs to be tweaked for different kernel versions */
 //	pci_disable_device(pdev);
-//	ret = pci_set_power_state(pdev, PCI_D3hot);
+//	ret = pci_set_power_state(pdev, pci_choose_state(pdev, state));
 
 	DBGTRACE2("%s: device suspended", wd->net_dev->name);
 	return 0;
@@ -941,17 +947,15 @@ int ndiswrapper_resume_pci(struct pci_dev *pdev)
 	wd = pci_get_drvdata(pdev);
 	if (!wd)
 		return -1;
-	/* TODO: is pci_restore_state necessary if we didn't
-	 * pci_save_state during suspend? */
-//	ret = pci_set_power_state(PCI_D0);
+//	ret = pci_set_power_state(pdev, PCI_D0);
+//	ret = pci_enable_device(pdev);
 #if LINUX_VERSION_CODE > KERNEL_VERSION(2,6,9)
 	pci_restore_state(pdev);
 #else
 	pci_restore_state(pdev, wd->pci_state);
 #endif
-//	ret = pci_enable_device(pdev);
 	ret = ndiswrapper_resume_device(wd);
-	return ret;
+	return 0;
 }
 
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
@@ -1220,13 +1224,9 @@ static void update_wireless_stats(struct wrapper_dev *wd)
 	ndis_rssi rssi;
 
 	TRACEENTER2("");
-	/* TODO: Prism1 USB and Airgo cards crash kernel if RSSI is queried */
-	if ((wd->ndis_device->vendor == 0x17cb &&
-	       wd->ndis_device->device == 0x0001) ||
-	      (wd->ndis_device->vendor == 0x2001 &&
-	       wd->ndis_device->device == 0x3700))
+	if (wd->stats_enabled == FALSE)
 		return;
-
+	/* TODO: Prism1 USB and Airgo cards crash kernel if RSSI is queried */
 	rssi = 0;
 	res = miniport_query_info(wd, OID_802_11_RSSI, &rssi, sizeof(rssi));
 	if (res == NDIS_STATUS_SUCCESS)
@@ -1661,11 +1661,15 @@ int setup_device(struct net_device *dev)
 //			 Ndis802_11Automode);
 	ndis_set_rx_mode(dev);
 	/* check_capa changes auth_mode and encr_mode, so set them again */
-	set_infra_mode(wd, Ndis802_11Infrastructure);
-	set_auth_mode(wd, Ndis802_11AuthModeOpen);
-	set_encr_mode(wd, Ndis802_11EncryptionDisabled);
-	set_scan(wd);
 #endif
+	/* ZyDas driver hangs if anything is set */
+	if (!(wd->ndis_device->vendor == 0x0ace &&
+	      wd->ndis_device->device == 0x1211)) {
+		set_auth_mode(wd, Ndis802_11AuthModeOpen);
+		set_encr_mode(wd, Ndis802_11EncryptionDisabled);
+		set_infra_mode(wd, Ndis802_11Infrastructure);
+		set_scan(wd);
+	}
 	hangcheck_add(wd);
 	stats_timer_add(wd);
 	ndiswrapper_procfs_add_iface(wd);
@@ -1711,10 +1715,12 @@ struct net_device *ndis_init_netdev(struct wrapper_dev **pwd,
 	if ((wd->ndis_device->vendor == 0x2001 &&
 	     wd->ndis_device->device == 0x3700) ||
 	    (wd->ndis_device->vendor == 0x0846 &&
-	     wd->ndis_device->device == 0x4110))
-		wd->ndis_comm_wait_time = 4 * HZ;
+	     wd->ndis_device->device == 0x4110) ||
+	    (wd->ndis_device->vendor == 0x0ace &&
+	     wd->ndis_device->device == 0x1211))
+		wd->ndis_comm_wait_time = 6 * HZ;
 	else
-		wd->ndis_comm_wait_time = 1 * HZ;
+		wd->ndis_comm_wait_time = 2 * HZ;
 	/* don't send packets until the card is associated */
 	wd->send_ok = 0;
 	INIT_WORK(&wd->xmit_work, xmit_worker, wd);
@@ -1743,12 +1749,23 @@ struct net_device *ndis_init_netdev(struct wrapper_dev **pwd,
 	INIT_WORK(&wd->wrapper_worker, wrapper_worker_proc, wd);
 	set_bit(HW_AVAILABLE, &wd->hw_status);
 
+	if ((wd->ndis_device->vendor == 0x17cb &&
+	       wd->ndis_device->device == 0x0001) ||
+	      (wd->ndis_device->vendor == 0x2001 &&
+	       wd->ndis_device->device == 0x3700) ||
+	      (wd->ndis_device->vendor == 0x0ace &&
+	       wd->ndis_device->device == 0x1211))
+		wd->stats_enabled = FALSE;
+	else
+		wd->stats_enabled = TRUE;
+
 	*pwd = wd;
 	return dev;
 }
 
 static void module_cleanup(void)
 {
+	destroy_workqueue(ndiswrapper_wq);
 	loader_exit();
 	ndiswrapper_procfs_remove();
 	ndis_exit();
@@ -1768,8 +1785,9 @@ static int __init wrapper_init(void)
 	char *env[] = {NULL};
 	int err;
 
-	debug = 0;
+//	debug = 2;
 	spin_lock_init(&spinlock_kspin_lock);
+	ndiswrapper_wq = create_singlethread_workqueue(DRIVER_NAME);
 	printk(KERN_INFO "%s version %s loaded (preempt=%s,smp=%s)\n",
 	       DRIVER_NAME, DRIVER_VERSION,
 #if defined CONFIG_PREEMPT

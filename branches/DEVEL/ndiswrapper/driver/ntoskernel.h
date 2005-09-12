@@ -334,9 +334,12 @@ do {									\
 
 /* 100ns units to HZ; if sys_time is negative, relative to current
  * clock, otherwise from year 1601 */
+/* with smaller HZ, each timer interrupt occurs at longer intervals,
+ * so wait for one timer interrupt longer, else the driver may not
+ * expect to be woken up quickly */
 #define SYSTEM_TIME_TO_HZ(sys_time)					\
-	(((sys_time) < 0) ? (((u64)HZ * (-(sys_time))) / TICKSPERSEC) :	\
-	 (((u64)HZ * ((sys_time) - ticks_1601())) / TICKSPERSEC))
+	((((sys_time) < 0) ? (((u64)HZ * (-(sys_time))) / TICKSPERSEC) : \
+	  (((u64)HZ * ((sys_time) - ticks_1601())) / TICKSPERSEC)) + 1)
 
 typedef void (*WRAP_EXPORT_FUNC)(void);
 
@@ -413,6 +416,9 @@ struct phys_dev {
 };
 
 struct wrapper_dev;
+extern struct workqueue_struct *ndiswrapper_wq;
+
+#define schedule_work(work_struct) queue_work(ndiswrapper_wq, (work_struct))
 
 int ntoskernel_init(void);
 void ntoskernel_exit(void);
@@ -808,7 +814,7 @@ extern int debug;
 #define TRACEEXIT5(stmt) do { DBGTRACE5("Exit"); stmt; } while(0)
 #define TRACEEXIT6(stmt) do { DBGTRACE6("Exit"); stmt; } while(0)
 
-//#define USB_DEBUG 1
+#define USB_DEBUG 1
 
 #if defined(DEBUG) && defined(USB_DEBUG)
 #define USBTRACE(fmt, ...) DBGTRACE4(fmt, ## __VA_ARGS__)
@@ -821,13 +827,13 @@ extern int debug;
 #endif
 
 #if defined DEBUG
-#define ASSERT(expr) do {						\
+#define assert(expr) do {						\
 		if (!(expr)) {						\
-			ERROR("Assertion failed! %s", (#expr));		\
+			ERROR("assertion failed: %s", (#expr));		\
 		}							\
 	} while (0)
 #else
-#define ASSERT(expr)
+#define assert(expr)
 #endif
 
 #if defined(DEBUG)
