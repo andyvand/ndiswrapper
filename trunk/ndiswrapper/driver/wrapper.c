@@ -54,6 +54,7 @@ int debug = 0;
 
 /* used to implement Windows spinlocks */
 spinlock_t spinlock_kspin_lock;
+struct workqueue_struct *ndiswrapper_wq;
 
 WRAP_MODULE_PARM_STRING(if_name, 0400);
 MODULE_PARM_DESC(if_name, "Network interface name or template "
@@ -139,7 +140,7 @@ NDIS_STATUS miniport_reset(struct wrapper_dev *wd)
 		 * functional address (?) or multicast filter */
 		wd->nmb->cur_lookahead = cur_lookahead;
 		wd->nmb->max_lookahead = max_lookahead;
-		ndis_set_rx_mode(wd->net_dev);
+//		ndis_set_rx_mode(wd->net_dev);
 	}
 	wd->reset_status = 0;
 	up(&wd->ndis_comm_mutex);
@@ -241,7 +242,7 @@ NDIS_STATUS miniport_set_info(struct wrapper_dev *wd, ndis_oid oid,
 			res = NDIS_STATUS_FAILURE;
 		else
 			res = wd->ndis_comm_res;
-		DBGTRACE2("res = %08X", res);
+		DBGTRACE3("res = %08X", res);
 	}
 	up(&wd->ndis_comm_mutex);
 	if (res && needed)
@@ -478,7 +479,7 @@ static void hangcheck_proc(unsigned long data)
 	struct wrapper_dev *wd = (struct wrapper_dev *)data;
 	KIRQL irql;
 
-	TRACEENTER3("%s", "");
+	TRACEENTER3("");
 	set_bit(HANGCHECK, &wd->wrapper_work);
 	schedule_work(&wd->wrapper_worker);
 
@@ -929,8 +930,8 @@ int ndiswrapper_suspend_pci(struct pci_dev *pdev, pm_message_t state)
 	/* PM seems to be in constant flux and documentation is not
 	 * up-to-date on what is the correct way to suspend/resume, so
 	 * this needs to be tweaked for different kernel versions */
-	pci_disable_device(pdev);
-	ret = pci_set_power_state(pdev, PCI_D3hot);
+//	pci_disable_device(pdev);
+//	ret = pci_set_power_state(pdev, pci_choose_state(pdev, state));
 
 	DBGTRACE2("%s: device suspended", wd->net_dev->name);
 	return 0;
@@ -946,15 +947,15 @@ int ndiswrapper_resume_pci(struct pci_dev *pdev)
 	wd = pci_get_drvdata(pdev);
 	if (!wd)
 		return -1;
-	ret = pci_set_power_state(pdev, PCI_D0);
-	ret = pci_enable_device(pdev);
+//	ret = pci_set_power_state(pdev, PCI_D0);
+//	ret = pci_enable_device(pdev);
 #if LINUX_VERSION_CODE > KERNEL_VERSION(2,6,9)
 	pci_restore_state(pdev);
 #else
 	pci_restore_state(pdev, wd->pci_state);
 #endif
 	ret = ndiswrapper_resume_device(wd);
-	return ret;
+	return 0;
 }
 
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
@@ -1764,6 +1765,7 @@ struct net_device *ndis_init_netdev(struct wrapper_dev **pwd,
 
 static void module_cleanup(void)
 {
+	destroy_workqueue(ndiswrapper_wq);
 	loader_exit();
 	ndiswrapper_procfs_remove();
 	ndis_exit();
@@ -1783,8 +1785,9 @@ static int __init wrapper_init(void)
 	char *env[] = {NULL};
 	int err;
 
-	debug = 2;
+//	debug = 2;
 	spin_lock_init(&spinlock_kspin_lock);
+	ndiswrapper_wq = create_singlethread_workqueue(DRIVER_NAME);
 	printk(KERN_INFO "%s version %s loaded (preempt=%s,smp=%s)\n",
 	       DRIVER_NAME, DRIVER_VERSION,
 #if defined CONFIG_PREEMPT

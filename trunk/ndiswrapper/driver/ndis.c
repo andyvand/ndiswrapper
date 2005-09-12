@@ -1869,7 +1869,6 @@ STDCALL void NdisMIndicateStatusComplete(struct ndis_miniport_block *nmb)
 {
 	struct wrapper_dev *wd = nmb->wd;
 	TRACEENTER3("");
-	schedule_work(&wd->wrapper_worker);
 	if (wd->send_ok)
 		schedule_work(&wd->xmit_work);
 }

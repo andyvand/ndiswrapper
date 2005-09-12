@@ -334,9 +334,12 @@ do {									\
 
 /* 100ns units to HZ; if sys_time is negative, relative to current
  * clock, otherwise from year 1601 */
+/* with smaller HZ, each timer interrupt occurs at longer intervals,
+ * so wait for one timer interrupt longer, else the driver may not
+ * expect to be woken up quickly */
 #define SYSTEM_TIME_TO_HZ(sys_time)					\
-	(((sys_time) < 0) ? (((u64)HZ * (-(sys_time))) / TICKSPERSEC) :	\
-	 (((u64)HZ * ((sys_time) - ticks_1601())) / TICKSPERSEC))
+	((((sys_time) < 0) ? (((u64)HZ * (-(sys_time))) / TICKSPERSEC) : \
+	  (((u64)HZ * ((sys_time) - ticks_1601())) / TICKSPERSEC)) + 1)
 
 typedef void (*WRAP_EXPORT_FUNC)(void);
 
@@ -413,6 +416,11 @@ struct phys_dev {
 };
 
 struct wrapper_dev;
+
+/* until issues with threads hogging cpu are resolved, we don't want
+ * to use shared workqueue to take keyboard etc down */
+extern struct workqueue_struct *ndiswrapper_wq;
+#define schedule_work(work_struct) queue_work(ndiswrapper_wq, (work_struct))
 
 int ntoskernel_init(void);
 void ntoskernel_exit(void);
@@ -577,9 +585,9 @@ ObReferenceObjectByHandle(void *handle, ACCESS_MASK desired_access,
 _FASTCALL LONG ObfReferenceObject(FASTCALL_DECL_1(void *object));
 _FASTCALL void ObfDereferenceObject(FASTCALL_DECL_1(void *object));
 STDCALL NTSTATUS ZwClose(void *object);
-#define ObReferenceObject(object)  \
+#define ObReferenceObject(object)			\
 	ObfReferenceObject(FASTCALL_ARGS_1(object))
-#define ObDereferenceObject(object)  \
+#define ObDereferenceObject(object)			\
 	ObfDereferenceObject(FASTCALL_ARGS_1(object))
 
 #define MSG(level, fmt, ...)				\
@@ -595,9 +603,9 @@ STDCALL NTSTATUS ZwClose(void *object);
 
 void adjust_user_shared_data_addr(char *driver, unsigned long length);
 
-#define IoCompleteRequest(irp, prio) \
+#define IoCompleteRequest(irp, prio)			\
 	IofCompleteRequest(FASTCALL_ARGS_2(irp, prio));
-#define IoCallDriver(dev, irp) \
+#define IoCallDriver(dev, irp)				\
 	IofCallDriver(FASTCALL_ARGS_2(dev, irp));
 
 static inline KIRQL current_irql(void)
@@ -809,30 +817,51 @@ extern int debug;
 #define TRACEEXIT6(stmt) do { DBGTRACE6("Exit"); stmt; } while(0)
 
 //#define USB_DEBUG 1
+//#define EVENT_DEBUG 1
+//#define IO_DEBUG 1
 
-#if defined(DEBUG) && defined(USB_DEBUG)
-#define USBTRACE(fmt, ...) DBGTRACE4(fmt, ## __VA_ARGS__)
-#define USBTRACEENTER(fmt, ...) TRACEENTER4(fmt, ## __VA_ARGS__)
-#define USBTRACEEXIT(stmt) TRACEEXIT4(stmt)
+#if defined(USB_DEBUG)
+#define USBTRACE(fmt, ...) DBGTRACE1(fmt, ## __VA_ARGS__)
+#define USBENTER(fmt, ...) TRACEENTER1(fmt, ## __VA_ARGS__)
+#define USBEXIT(stmt) TRACEEXIT1(stmt)
 #else
 #define USBTRACE(fmt, ...)
-#define USBTRACEENTER(fmt, ...)
-#define USBTRACEEXIT(stmt) stmt
+#define USBENTER(fmt, ...)
+#define USBEXIT(stmt) stmt
+#endif
+
+#if defined(EVENT_DEBUG)
+#define EVENTTRACE DBGTRACE1
+#define EVENTENTER TRACEENTER1
+#define EVENTEXIT TRACEEXIT1
+#else
+#define EVENTTRACE(fmt, ...)
+#define EVENTENTER(fmt, ...)
+#define EVENTEXIT(stmt) stmt
+#endif
+
+#if defined(IO_DEBUG)
+#define IOTRACE DBGTRACE1
+#define IOENTER TRACEENTER1
+#define IOEXIT TRACEEXIT1
+#else
+#define IOTRACE(fmt, ...)
+#define IOENTER(fmt, ...)
+#define IOEXIT(stmt) stmt
 #endif
 
 #if defined DEBUG
-#define ASSERT(expr) do {						\
-		if (!(expr)) {						\
-			ERROR("Assertion failed! %s", (#expr));		\
-		}							\
+#define assert(expr) do {						\
+		if (!(expr))						\
+			ERROR("assertion failed: %s", (#expr));		\
 	} while (0)
 #else
-#define ASSERT(expr)
+#define assert(expr)
 #endif
 
-#if defined(DEBUG)
+#if defined(IO_DEBUG)
 #define DUMP_IRP(__irp)							\
-	while (debug >= DEBUG) {					\
+	do {								\
 		struct io_stack_location *_irp_sl;			\
 		_irp_sl = IoGetCurrentIrpStackLocation(__irp);		\
 		INFO("irp: %p, stack size: %d, cl: %d, sl: %p, "	\
@@ -842,8 +871,7 @@ extern int debug;
 		     _irp_sl, _irp_sl->dev_obj, _irp_sl->major_fn,	\
 		     _irp_sl->minor_fn, URB_FROM_IRP(__irp),		\
 		     (__irp)->user_event);				\
-		break;							\
-	}
+	} while (0)
 #else
 #define DUMP_IRP(__irp) do { } while (0)
 #endif
