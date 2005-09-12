@@ -16,15 +16,6 @@
 #include "ndis.h"
 #include "usb.h"
 
-#if 1
-#undef USBTRACE
-#undef USBTRACEENTER
-#undef USBTRACEEXIT
-#define USBTRACE(fmt, ...) DBGTRACE1(fmt, ## __VA_ARGS__)
-#define USBTRACEENTER(fmt, ...) TRACEENTER1(fmt, ## __VA_ARGS__)
-#define USBTRACEEXIT(stmt) TRACEEXIT1(stmt)
-#endif
-
 #define DUMP_URB(urb) DBGTRACE1("urb: %p, buf: %p, len: %d, pipe: %u",	\
 				urb, urb->transfer_buffer,		\
 				urb->transfer_buffer_length, urb->pipe)
@@ -324,22 +315,21 @@ static STDCALL void wrap_cancel_irp(struct device_object *dev_obj,
 	union nt_urb *nt_urb;
 
 	/* NB: this function is called holding Cancel spinlock */
-	USBTRACEENTER("irp: %p", irp);
+	USBENTER("irp: %p", irp);
 	urb = irp->urb;
 	USBTRACE("canceling urb %p", urb);
 
-	if (irp->urb_state == URB_QUEUED)
-		RemoveEntryList(&irp->submit_list);
 	prev_state = irp->urb_state;
+	if (prev_state == URB_QUEUED)
+		RemoveEntryList(&irp->submit_list);
 	irp->urb_state = URB_CANCELED;
+	IoReleaseCancelSpinLock(irp->cancel_irql);
 	if (prev_state == URB_SUBMITTED) {
 		if (usb_unlink_urb(urb) != -EINPROGRESS)
 			WARNING("unlinking urb %p returns %d",
 				urb, urb->status);
 		/* this IRP will be returned in irp_complete_worker */
-	}
-	IoReleaseCancelSpinLock(irp->cancel_irql);
-	if (prev_state != URB_SUBMITTED) {
+	} else {
 		/* this URB has not been submitted, send the IRP back
 		 * from here itself */
 		USBTRACE("urb %p canceled; prev state: %d", urb, prev_state);
@@ -423,7 +413,7 @@ static USBD_STATUS wrap_bulk_or_intr_trans(struct irp *irp)
 		status = USBD_STATUS_NOT_SUPPORTED;
 		break;
 	}
-	USBTRACEEXIT(return status);
+	USBEXIT(return status);
 }
 
 static USBD_STATUS wrap_vendor_or_class_req(struct irp *irp)
@@ -532,7 +522,7 @@ static USBD_STATUS wrap_vendor_or_class_req(struct irp *irp)
 			     wrap_urb_complete, urb->context);
 
 	status = wrap_submit_urb(urb);
-	USBTRACEEXIT(return status);
+	USBEXIT(return status);
 }
 
 static void irp_submit_worker(unsigned long data)
@@ -543,7 +533,7 @@ static void irp_submit_worker(unsigned long data)
 	union nt_urb *nt_urb;
 	USBD_STATUS status;
 
-	USBTRACEENTER("");
+	USBENTER("");
 	while (1) {
 		IoAcquireCancelSpinLock(&irql);
 		ent = RemoveHeadList(&irp_submit_list);
@@ -589,7 +579,7 @@ static void irp_submit_worker(unsigned long data)
 			IoCompleteRequest(irp, IO_NO_INCREMENT);
 		}
 	}
-	USBTRACEEXIT(return);
+	USBEXIT(return);
 }
 
 static USBD_STATUS wrap_reset_pipe(struct usb_device *udev, struct irp *irp)
@@ -759,7 +749,7 @@ static USBD_STATUS wrap_process_nt_urb(struct irp *irp)
 	wd = irp->wd;
 	udev = wd->dev.usb.udev;
 	nt_urb = URB_FROM_IRP(irp);
-	USBTRACEENTER("nt_urb = %p, irp = %p, length = %d, function = %x",
+	USBENTER("nt_urb = %p, irp = %p, length = %d, function = %x",
 		      nt_urb, irp, nt_urb->header.length,
 		      nt_urb->header.function);
 
@@ -818,7 +808,7 @@ static USBD_STATUS wrap_reset_port(struct irp *irp)
 	union nt_urb *nt_urb;
 
 	wd = irp->wd;
-	USBTRACEENTER("%p, %p", wd, wd->dev.usb.udev);
+	USBENTER("%p, %p", wd, wd->dev.usb.udev);
 
 	nt_urb = URB_FROM_IRP(irp);
 	ret = usb_reset_device(wd->dev.usb.udev);
@@ -867,7 +857,7 @@ NTSTATUS usb_submit_irp(struct device_object *pdo, struct irp *irp)
 	irp->io_status.status = nt_urb_irp_status(status);
 	if (status != USBD_STATUS_SUCCESS)
 		irp->io_status.status_info = 0;
-	USBTRACEEXIT(return irp->io_status.status);
+	USBEXIT(return irp->io_status.status);
 }
 
 /* TODO: The example on msdn in reference section suggests that second
@@ -885,7 +875,7 @@ static STDCALL union nt_urb *WRAP_EXPORT(USBD_CreateConfigurationRequestEx)
 	struct usb_interface_descriptor *intf_desc;
 	struct usbd_select_configuration *select_conf;
 
-	USBTRACEENTER("config = %p, intf_list = %p", config, intf_list);
+	USBENTER("config = %p, intf_list = %p", config, intf_list);
 
 	/* calculate size required; select_conf already has space for
 	 * one intf structure */
@@ -935,7 +925,7 @@ static STDCALL union nt_urb *WRAP_EXPORT(USBD_CreateConfigurationRequestEx)
 	select_conf->header.function = URB_FUNCTION_SELECT_CONFIGURATION;
 	select_conf->header.length = size;
 	select_conf->config = config;
-	USBTRACEEXIT(return (union nt_urb *)select_conf);
+	USBEXIT(return (union nt_urb *)select_conf);
 }
 
 WRAP_EXPORT_MAP("_USBD_CreateConfigurationRequestEx@8",	USBD_CreateConfigurationRequestEx);
@@ -949,7 +939,7 @@ WRAP_EXPORT(USBD_ParseConfigurationDescriptorEx)
 	void *pos;
 	struct usb_interface_descriptor *intf;
 
-	USBTRACEENTER("config = %p, start = %p, ifnum = %d, alt_setting = %d,"
+	USBENTER("config = %p, start = %p, ifnum = %d, alt_setting = %d,"
 		      " class = %d, subclass = %d, proto = %d", config, start,
 		      bInterfaceNumber, bAlternateSetting,
 		      bInterfaceClass, bInterfaceSubClass, bInterfaceProtocol);
@@ -958,6 +948,7 @@ WRAP_EXPORT(USBD_ParseConfigurationDescriptorEx)
 	     pos += intf->bLength) {
 
 		intf = pos;
+
 		if ((intf->bDescriptorType == USB_DT_INTERFACE) &&
 		    ((bInterfaceNumber == -1) ||
 		     (intf->bInterfaceNumber == bInterfaceNumber)) &&
@@ -970,10 +961,10 @@ WRAP_EXPORT(USBD_ParseConfigurationDescriptorEx)
 		    ((bInterfaceProtocol == -1) ||
 		     (intf->bInterfaceProtocol == bInterfaceProtocol))) {
 			USBTRACE("selected interface = %p", intf);
-			USBTRACEEXIT(return intf);
+			USBEXIT(return intf);
 		}
 	}
-	USBTRACEEXIT(return NULL);
+	USBEXIT(return NULL);
 }
 
 WRAP_EXPORT_MAP("_USBD_ParseConfigurationDescriptorEx@28", USBD_ParseConfigurationDescriptorEx);
@@ -985,7 +976,7 @@ static STDCALL union nt_urb *WRAP_EXPORT(USBD_CreateConfigurationRequest)
 	struct usbd_interface_list_entry intf_list[2];
 	struct usb_interface_descriptor *intf_desc;
 
-	USBTRACEENTER("config = %p, urb_size = %p", config, size);
+	USBENTER("config = %p, urb_size = %p", config, size);
 
 	intf_desc = USBD_ParseConfigurationDescriptorEx(config, config, -1, -1,
 							-1, -1, -1);
@@ -998,7 +989,7 @@ static STDCALL union nt_urb *WRAP_EXPORT(USBD_CreateConfigurationRequest)
 		return NULL;
 
 	*size = nt_urb->select_conf.header.length;
-	USBTRACEEXIT(return nt_urb);
+	USBEXIT(return nt_urb);
 }
 
 static STDCALL struct usb_interface_descriptor *

@@ -416,8 +416,10 @@ struct phys_dev {
 };
 
 struct wrapper_dev;
-extern struct workqueue_struct *ndiswrapper_wq;
 
+/* until issues with threads hogging cpu are resolved, we don't want
+ * to use shared workqueue to take keyboard etc down */
+extern struct workqueue_struct *ndiswrapper_wq;
 #define schedule_work(work_struct) queue_work(ndiswrapper_wq, (work_struct))
 
 int ntoskernel_init(void);
@@ -583,9 +585,9 @@ ObReferenceObjectByHandle(void *handle, ACCESS_MASK desired_access,
 _FASTCALL LONG ObfReferenceObject(FASTCALL_DECL_1(void *object));
 _FASTCALL void ObfDereferenceObject(FASTCALL_DECL_1(void *object));
 STDCALL NTSTATUS ZwClose(void *object);
-#define ObReferenceObject(object)  \
+#define ObReferenceObject(object)			\
 	ObfReferenceObject(FASTCALL_ARGS_1(object))
-#define ObDereferenceObject(object)  \
+#define ObDereferenceObject(object)			\
 	ObfDereferenceObject(FASTCALL_ARGS_1(object))
 
 #define MSG(level, fmt, ...)				\
@@ -601,9 +603,9 @@ STDCALL NTSTATUS ZwClose(void *object);
 
 void adjust_user_shared_data_addr(char *driver, unsigned long length);
 
-#define IoCompleteRequest(irp, prio) \
+#define IoCompleteRequest(irp, prio)			\
 	IofCompleteRequest(FASTCALL_ARGS_2(irp, prio));
-#define IoCallDriver(dev, irp) \
+#define IoCallDriver(dev, irp)				\
 	IofCallDriver(FASTCALL_ARGS_2(dev, irp));
 
 static inline KIRQL current_irql(void)
@@ -814,31 +816,52 @@ extern int debug;
 #define TRACEEXIT5(stmt) do { DBGTRACE5("Exit"); stmt; } while(0)
 #define TRACEEXIT6(stmt) do { DBGTRACE6("Exit"); stmt; } while(0)
 
-#define USB_DEBUG 1
+//#define USB_DEBUG 1
+//#define EVENT_DEBUG 1
+//#define IO_DEBUG 1
 
-#if defined(DEBUG) && defined(USB_DEBUG)
-#define USBTRACE(fmt, ...) DBGTRACE4(fmt, ## __VA_ARGS__)
-#define USBTRACEENTER(fmt, ...) TRACEENTER4(fmt, ## __VA_ARGS__)
-#define USBTRACEEXIT(stmt) TRACEEXIT4(stmt)
+#if defined(USB_DEBUG)
+#define USBTRACE(fmt, ...) DBGTRACE1(fmt, ## __VA_ARGS__)
+#define USBENTER(fmt, ...) TRACEENTER1(fmt, ## __VA_ARGS__)
+#define USBEXIT(stmt) TRACEEXIT1(stmt)
 #else
 #define USBTRACE(fmt, ...)
-#define USBTRACEENTER(fmt, ...)
-#define USBTRACEEXIT(stmt) stmt
+#define USBENTER(fmt, ...)
+#define USBEXIT(stmt) stmt
+#endif
+
+#if defined(EVENT_DEBUG)
+#define EVENTTRACE DBGTRACE1
+#define EVENTENTER TRACEENTER1
+#define EVENTEXIT TRACEEXIT1
+#else
+#define EVENTTRACE(fmt, ...)
+#define EVENTENTER(fmt, ...)
+#define EVENTEXIT(stmt) stmt
+#endif
+
+#if defined(IO_DEBUG)
+#define IOTRACE DBGTRACE1
+#define IOENTER TRACEENTER1
+#define IOEXIT TRACEEXIT1
+#else
+#define IOTRACE(fmt, ...)
+#define IOENTER(fmt, ...)
+#define IOEXIT(stmt) stmt
 #endif
 
 #if defined DEBUG
 #define assert(expr) do {						\
-		if (!(expr)) {						\
+		if (!(expr))						\
 			ERROR("assertion failed: %s", (#expr));		\
-		}							\
 	} while (0)
 #else
 #define assert(expr)
 #endif
 
-#if defined(DEBUG)
+#if defined(IO_DEBUG)
 #define DUMP_IRP(__irp)							\
-	while (debug >= DEBUG) {					\
+	do {								\
 		struct io_stack_location *_irp_sl;			\
 		_irp_sl = IoGetCurrentIrpStackLocation(__irp);		\
 		INFO("irp: %p, stack size: %d, cl: %d, sl: %p, "	\
@@ -848,8 +871,7 @@ extern int debug;
 		     _irp_sl, _irp_sl->dev_obj, _irp_sl->major_fn,	\
 		     _irp_sl->minor_fn, URB_FROM_IRP(__irp),		\
 		     (__irp)->user_event);				\
-		break;							\
-	}
+	} while (0)
 #else
 #define DUMP_IRP(__irp) do { } while (0)
 #endif
