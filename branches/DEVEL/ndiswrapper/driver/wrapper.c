@@ -1718,7 +1718,7 @@ struct net_device *ndis_init_netdev(struct wrapper_dev **pwd,
 	     wd->ndis_device->device == 0x4110) ||
 	    (wd->ndis_device->vendor == 0x0ace &&
 	     wd->ndis_device->device == 0x1211))
-		wd->ndis_comm_wait_time = 6 * HZ;
+		wd->ndis_comm_wait_time = 4 * HZ;
 	else
 		wd->ndis_comm_wait_time = 2 * HZ;
 	/* don't send packets until the card is associated */
