@@ -974,11 +974,10 @@ STDCALL NTSTATUS WRAP_EXPORT(KeWaitForMultipleObjects)
 
 	task = get_current();
 	kthread = KeGetCurrentThread();
-	EVENTTRACE("task: %p, kthread: %p", task, kthread);
 	assert(kthread != NULL);
-	EVENTENTER("%p (%p): count = %d, reason = %u, waitmode = %u,"
-		   "alertable = %u, timeout = %p", task, kthread, count,
-		   wait_reason, wait_mode, alertable, timeout);
+	EVENTENTER("tasl: %p, thread: %p, count = %d, reason = %u, "
+		   "waitmode = %u, alertable = %u, timeout = %p", task,
+		   kthread, count, wait_reason, wait_mode, alertable, timeout);
 
 	if (count > MAX_WAIT_OBJECTS)
 		EVENTEXIT(return STATUS_INVALID_PARAMETER);
