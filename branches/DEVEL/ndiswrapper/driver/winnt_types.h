@@ -377,7 +377,10 @@ struct kthread {
 	struct task_struct *task;
 	struct nt_list irps;
 	KSPIN_LOCK lock;
+	/* wait queue is used to wait on objects (by
+	 * KeWaitFor(Multiple/Single)Object(s) */
 	wait_queue_head_t event_wq;
+	/* to signal wait queue if a wait is done */
 	int event_wait_done;
 };
 #pragma pack(pop)
