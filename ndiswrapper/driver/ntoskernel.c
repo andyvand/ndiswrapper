@@ -946,10 +946,7 @@ static void wakeup_threads(struct dispatch_header *dh)
 		EVENTTRACE("wait block: %p", wb);
 		assert(wb->kthread != NULL && wb->object != NULL);
 		if (wb->kthread &&
-		    check_reset_signaled_state(dh, wb->kthread, 1)) {
-			/* mark that this thread is done */
-			wb->object = NULL;
-			RemoveEntryList(cur);
+		    check_reset_signaled_state(dh, wb->kthread, 0)) {
 			EVENTTRACE("waking up process: %p", wb->kthread);
 			wb->kthread->event_wait_done = 1;
 			wake_up(&wb->kthread->event_wq);
@@ -1048,7 +1045,7 @@ STDCALL NTSTATUS WRAP_EXPORT(KeWaitForMultipleObjects)
 	kspin_unlock_irql(&kevent_lock, irql);
 
 	while (wait_count) {
-		if (wait_jiffies > 0) {
+		if (timeout) {
 			if (alertable)
 				res = wait_event_interruptible_timeout(
 					kthread->event_wq,
@@ -1080,11 +1077,6 @@ STDCALL NTSTATUS WRAP_EXPORT(KeWaitForMultipleObjects)
 			for (i = 0; i < count; i++) {
 				if (!wb[i].kthread)
 					continue;
-				if (!wb[i].object) {
-					ERROR("%p: event %p already dequeued",
-					      task, object[i]);
-					continue;
-				}
 				EVENTTRACE("%p: timedout, deq'ing %p",
 					   task, wb[i].object);
 				RemoveEntryList(&wb[i].list);
@@ -1099,17 +1091,12 @@ STDCALL NTSTATUS WRAP_EXPORT(KeWaitForMultipleObjects)
 		}
 		/* woken up by wakeup_threads */
 		for (i = 0; wait_count && i < count; i++) {
-			/* only if wb[i].thread is not NULL and
-			 * wb[i].object is NULL this thread is woken
-			 * up for this dh */
 			if (!wb[i].kthread)
 				continue;
-			if (wb[i].object) {
-				EVENTTRACE("%p: event %p not signaled yet",
-					   task, object[i]);
-				continue;
-			}
 			dh = object[i];
+			if (!check_reset_signaled_state(dh, kthread, 1))
+				continue;
+			RemoveEntryList(&wb[i].list);
 			wait_count--;
 			if (wait_type == WaitAny) {
 				int j;
@@ -1117,6 +1104,7 @@ STDCALL NTSTATUS WRAP_EXPORT(KeWaitForMultipleObjects)
 				for (j = i; j < count; j++)
 					if (wb[j].kthread && wb[j].object)
 						RemoveEntryList(&wb[j].list);
+				wb[i].kthread = NULL;
 				kspin_unlock_irql(&kevent_lock, irql);
 				EVENTEXIT(return STATUS_WAIT_0 + i);
 			}
