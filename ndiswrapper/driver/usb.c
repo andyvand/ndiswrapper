@@ -53,10 +53,13 @@ static struct nt_list irp_submit_list;
 static void irp_submit_worker(unsigned long data);
 struct tasklet_struct irp_submit_work;
 DECLARE_TASKLET(irp_submit_work, irp_submit_worker, 0);
+//static void irp_submit_worker(void *data);
+//struct work_struct irp_submit_work;
 
 int usb_init(void)
 {
 	InitializeListHead(&irp_submit_list);
+//	INIT_WORK(&irp_submit_work, irp_submit_worker, (void *)0);
 	return 0;
 }
 
@@ -526,6 +529,7 @@ static USBD_STATUS wrap_vendor_or_class_req(struct irp *irp)
 }
 
 static void irp_submit_worker(unsigned long data)
+//static void irp_submit_worker(void *data)
 {
 	KIRQL irql;
 	struct irp *irp;

@@ -198,8 +198,10 @@ void wrap_timer_handler(unsigned long data)
 
 	irql = kspin_lock_irql(&timer_lock, DISPATCH_LEVEL);
 	kdpc = ktimer->kdpc;
-	if (wrap_timer->type == KTIMER_TYPE_KERNEL)
+	if (wrap_timer->type == KTIMER_TYPE_KERNEL) {
+		EVENTTRACE("setting event: %p", ktimer);
 		KeSetEvent((struct kevent *)ktimer, 0, FALSE);
+	}
 	if (kdpc && kdpc->func) {
 		if (kdpc->type == KDPC_TYPE_KERNEL)
 			insert_kdpc_work(kdpc);
@@ -207,8 +209,7 @@ void wrap_timer_handler(unsigned long data)
 			insert_ndis_kdpc_work(kdpc);
 	}
 
-	/* don't add the timer if aperiodic - see
-	 * wrapper_cancel_timer */
+	/* don't add the timer if aperiodic - see wrapper_cancel_timer */
 	if (wrap_timer->repeat) {
 		wrap_timer->timer.expires = jiffies + wrap_timer->repeat;
 		add_timer(&wrap_timer->timer);
@@ -348,28 +349,23 @@ void wrap_cancel_timer(struct wrap_timer *wrap_timer, BOOLEAN *canceled)
 	 * be called at DISPATCH_LEVEL */
 	irql = kspin_lock_irql(&timer_lock, DISPATCH_LEVEL);
 	kdpc = ktimer->kdpc;
-	if (wrap_timer->active) {
-		/* disable timer before deleting so it won't be
-		 * re-armed after deleting */
-		wrap_timer->active = 0;
-		del_timer(&wrap_timer->timer);
-		if (kdpc) {
-			if (kdpc->type == KDPC_TYPE_KERNEL)
-				*canceled = remove_kdpc_work(kdpc);
-			else
-				*canceled = remove_ndis_kdpc_work(kdpc);
-		} else
-			*canceled = TRUE;
-	} else
-		*canceled = FALSE;
-#if 1
 	if (wrap_timer->repeat) {
 		*canceled = TRUE;
+		/* disable timer before deleting so it won't be
+		 * re-armed after deleting */
 		wrap_timer->repeat = 0;
 	}
-#else
-	wrap_timer->repeat = 0;
-#endif
+	if (wrap_timer->active) {
+		del_timer(&wrap_timer->timer);
+		wrap_timer->active = 0;
+		*canceled = TRUE;
+	}
+	if (kdpc) {
+		if (kdpc->type == KDPC_TYPE_KERNEL)
+			*canceled |= remove_kdpc_work(kdpc);
+		else
+			*canceled |= remove_ndis_kdpc_work(kdpc);
+	}
 	if (wrap_timer->type == KTIMER_TYPE_KERNEL)
 		KeClearEvent((struct kevent *)ktimer);
 	kspin_unlock_irql(&timer_lock, irql);

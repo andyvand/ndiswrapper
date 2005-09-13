@@ -27,6 +27,7 @@ extern struct nt_list io_workitem_list;
 extern KSPIN_LOCK io_workitem_list_lock;
 
 extern struct tasklet_struct irp_submit_work;
+//extern struct work_struct irp_submit_work;
 
 extern KSPIN_LOCK irp_cancel_lock;
 
@@ -502,10 +503,12 @@ pdoDispatchInternalDeviceControl(struct device_object *pdo,
 	irp_sl = IoGetCurrentIrpStackLocation(irp);
 
 #ifdef CONFIG_USB
-	tasklet_disable(&irp_submit_work);
+//	tasklet_disable(&irp_submit_work);
 	status = usb_submit_irp(pdo, irp);
 	IOTRACE("status: %08X", status);
-	tasklet_enable(&irp_submit_work);
+//	tasklet_enable(&irp_submit_work);
+	tasklet_schedule(&irp_submit_work);
+//	schedule_work(&irp_submit_work);
 #endif
 	if (status != STATUS_PENDING)
 		IoCompleteRequest(irp, IO_NO_INCREMENT);

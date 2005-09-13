@@ -377,6 +377,8 @@ struct kthread {
 	struct task_struct *task;
 	struct nt_list irps;
 	KSPIN_LOCK lock;
+	wait_queue_head_t event_wq;
+	int event_wait_done;
 };
 #pragma pack(pop)
 
@@ -818,6 +820,8 @@ struct common_object_header {
 
 extern struct nt_list object_list;
 extern KSPIN_LOCK ntoskernel_lock;
+/* threads are looked up often, so insert them at the beginning so
+ * lookup are faster */
 #define ALLOCATE_OBJECT(object, flags, obj_type)			\
 	({								\
 		struct common_object_header *__hdr;			\
@@ -828,7 +832,10 @@ extern KSPIN_LOCK ntoskernel_lock;
 		__hdr->type = obj_type;					\
 		__hdr->ref_count = 1;					\
 		__irql = kspin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL); \
-		InsertTailList(&object_list, &__hdr->list);		\
+		if (obj_type == OBJECT_TYPE_KTHREAD)			\
+			InsertHeadList(&object_list, &__hdr->list);	\
+		else							\
+			InsertTailList(&object_list, &__hdr->list);	\
 		kspin_unlock_irql(&ntoskernel_lock, __irql);		\
 		__body = HEADER_TO_OBJECT(__hdr);			\
 		DBGTRACE3("allocated hdr: %p, body: %p", __hdr, __body); \
@@ -866,7 +873,8 @@ struct io_workitem_entry {
 
 struct wait_block {
 	struct nt_list list;
-	struct task_struct *thread;
+	struct kthread *kthread;
+//	struct task_struct *task;
 	void *object;
 	struct wait_block *next;
 	USHORT wait_key;

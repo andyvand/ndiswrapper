@@ -319,7 +319,7 @@ NTSTATUS ndiswrapper_start_device(struct wrapper_dev *wd)
 {
 	NTSTATUS status;
 
-	if (wrap_create_current_thread() == NULL) {
+	if (wrap_create_thread(get_current()) == NULL) {
 		ERROR("couldn't allocate thread object");
 		return STATUS_INSUFFICIENT_RESOURCES;
 	}
@@ -338,7 +338,7 @@ NTSTATUS ndiswrapper_start_device(struct wrapper_dev *wd)
 #else
 	status = miniport_init(wd);
 #endif
-	wrap_remove_current_thread();
+//	wrap_remove_current_thread();
 	TRACEEXIT1(return status);
 }
 
@@ -413,8 +413,10 @@ NDIS_STATUS miniport_set_pm_state(struct wrapper_dev *wd,
 void miniport_halt(struct wrapper_dev *wd)
 {
 	struct miniport_char *miniport = &wd->driver->miniport;
+	struct kthread *kthread;
 
-	if (wrap_create_current_thread() == NULL)
+	kthread = wrap_create_thread(get_current());
+	if (kthread == NULL)
 		WARNING("couldn't create system thread for task: %p",
 			get_current());
 	DBGTRACE1("driver halt is at %p", miniport->miniport_halt);
@@ -422,7 +424,8 @@ void miniport_halt(struct wrapper_dev *wd)
 	DBGTRACE2("task: %p, pid: %d", get_current(), get_current()->pid);
 	LIN2WIN1(miniport->miniport_halt, wd->nmb->adapter_ctx);
 
-	wrap_remove_current_thread();
+	if (kthread)
+		wrap_remove_thread(kthread);
 	ndis_exit_device(wd);
 	misc_funcs_exit_device(wd);
 	ntoskernel_exit_device(wd);
@@ -1763,10 +1766,46 @@ struct net_device *ndis_init_netdev(struct wrapper_dev **pwd,
 	return dev;
 }
 
+/* we need to get kthread for the task running ndiswrapper_wq, so
+ * schedule a worker for it soon after initializing ndiswrapper_wq */
+static struct work_struct _ndiswrapper_wq_init;
+static int _ndiswrapper_wq_init_state;
+#define NDISWRAPPER_WQ_INIT 1
+#define NDISWRAPPER_WQ_EXIT 2
+
+static void _ndiswrapper_wq_init_worker(void *data)
+{
+	struct task_struct *task;
+	struct kthread *kthread;
+
+	task = get_current();
+	if (_ndiswrapper_wq_init_state == NDISWRAPPER_WQ_INIT) {
+		kthread = wrap_create_thread(task);
+		DBGTRACE1("task: %p, pid: %d, thread: %p",
+			  task, task->pid, kthread);
+		if (!kthread) {
+			_ndiswrapper_wq_init_state = -1;
+			return;
+		}
+	} else {
+		kthread = KeGetCurrentThread();
+		if (kthread) {
+			DBGTRACE1("task: %p, pid: %d, thread: %p",
+				  task, task->pid, kthread);
+			wrap_remove_thread(kthread);
+		}
+	}
+	_ndiswrapper_wq_init_state = 0;
+}
+
 static void module_cleanup(void)
 {
-	destroy_workqueue(ndiswrapper_wq);
 	loader_exit();
+	_ndiswrapper_wq_init_state = NDISWRAPPER_WQ_EXIT;
+	schedule_work(&_ndiswrapper_wq_init);
+	while (_ndiswrapper_wq_init_state)
+		schedule_timeout(2);
+	destroy_workqueue(ndiswrapper_wq);
 	ndiswrapper_procfs_remove();
 	ndis_exit();
 	ntoskernel_exit();
@@ -1783,11 +1822,9 @@ static int __init wrapper_init(void)
 #endif
 			, UTILS_VERSION, "-a", 0};
 	char *env[] = {NULL};
-	int err;
+	int ret;
 
 //	debug = 2;
-	spin_lock_init(&spinlock_kspin_lock);
-	ndiswrapper_wq = create_singlethread_workqueue(DRIVER_NAME);
 	printk(KERN_INFO "%s version %s loaded (preempt=%s,smp=%s)\n",
 	       DRIVER_NAME, DRIVER_VERSION,
 #if defined CONFIG_PREEMPT
@@ -1802,30 +1839,41 @@ static int __init wrapper_init(void)
 #endif
 		);
 
-	if (misc_funcs_init() || ntoskernel_init() || ndis_init() ||
-	    loader_init()
+	spin_lock_init(&spinlock_kspin_lock);
+	if (misc_funcs_init() || ntoskernel_init() || ndis_init()
 #ifdef CONFIG_USB
 	     || usb_init()
 #endif
-		) {
-		module_cleanup();
-		ERROR("couldn't initialize %s", DRIVER_NAME);
-		TRACEEXIT1(return -EPERM);
-	}
+		)
+		goto err;
+	ndiswrapper_wq = create_singlethread_workqueue("ndiswrapwq");
+	INIT_WORK(&_ndiswrapper_wq_init, _ndiswrapper_wq_init_worker, 0);
+	_ndiswrapper_wq_init_state = NDISWRAPPER_WQ_INIT;
+	schedule_work(&_ndiswrapper_wq_init);
+	while (_ndiswrapper_wq_init_state > 0)
+		schedule_timeout(2);
+	if (_ndiswrapper_wq_init_state < 0)
+		goto err;
 	ndiswrapper_procfs_init();
-	DBGTRACE1("%s", "calling loadndisdriver");
-	err = call_usermodehelper("/sbin/loadndisdriver", argv, env
+	if (loader_init())
+		goto err;
+	DBGTRACE1("calling loadndisdriver");
+	ret = call_usermodehelper("/sbin/loadndisdriver", argv, env
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
 				  , 1
 #endif
 		);
-	if (err) {
+	if (ret) {
 		ERROR("loadndiswrapper failed (%d); check system log "
-		      "for messages from 'loadndisdriver'", err);
-		module_cleanup();
-		TRACEEXIT1(return -EPERM);
+		      "for messages from 'loadndisdriver'", ret);
+		goto err;
 	}
 	TRACEEXIT1(return 0);
+
+err:
+	module_cleanup();
+	ERROR("%s: initialization failed", DRIVER_NAME);
+	return -EINVAL;
 }
 
 static void __exit wrapper_exit(void)
