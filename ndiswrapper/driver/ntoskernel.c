@@ -989,6 +989,7 @@ STDCALL NTSTATUS WRAP_EXPORT(KeWaitForMultipleObjects)
 	else
 		wb = wait_block_array;
 
+	/* TODO: should we allow threads to wait in non-alertable state? */
 	alertable = TRUE;
 	irql = kspin_lock_irql(&kevent_lock, DISPATCH_LEVEL);
 	/* if *timeout == 0, we first check if the wait can be
