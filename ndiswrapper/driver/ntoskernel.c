@@ -900,6 +900,9 @@ STDCALL void WRAP_EXPORT(ExNotifyCallback)
 }
 
 /* check and set signaled state; should be called with kevent_lock held */
+/* @reset indicates if the event should be reset to not-signaled state
+ * - note that a semaphore may stay in signaled state for multiple
+ * 'resets' if the count is > 1 */
 static int inline check_reset_signaled_state(void *object,
 					     struct kthread *thread,
 					     int reset)
