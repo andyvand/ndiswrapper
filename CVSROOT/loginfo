@@ -26,4 +26,5 @@
 #DEFAULT (echo ""; id; echo %{sVv}; date; cat) >> $CVSROOT/CVSROOT/commitlog
 # ndiswrapper (echo "path:"; echo %p; echo "file:"; echo %s) >> /home/groups/n/nd/ndiswrapper/commitlog; install -d /home/groups/n/nd/ndiswrapper/%p; install %{s} /home/groups/n/nd/ndiswrapper/%p
 
-DEFAULT (echo ""; id; echo %{sVv}; date; cat) >> $CVSROOT/CVSROOT/commitlog
+#DEFAULT (echo ""; id; echo %{sVv}; date; cat) >> $CVSROOT/CVSROOT/commitlog
+DEFAULT /cvsroot/sitedocs/CVSROOT/cvstools/syncmail %{sVv} pgiri@users.sourceforge.net
