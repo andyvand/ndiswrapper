@@ -418,7 +418,7 @@ struct phys_dev {
 struct wrapper_dev;
 
 /* until issues with threads hogging cpu are resolved, we don't want
- * to use shared workqueue to take keyboard etc down */
+ * to use shared workqueue, lest the threads take keyboard etc down */
 extern struct workqueue_struct *ndiswrapper_wq;
 #define schedule_work(work_struct) queue_work(ndiswrapper_wq, (work_struct))
 
@@ -513,8 +513,8 @@ STDCALL struct irp *WRAP_EXPORT(IoBuildAsynchronousFsdRequest)
 	 struct io_status_block *status);
 STDCALL NTSTATUS PoCallDriver(struct device_object *dev_obj, struct irp *irp);
 
-struct kthread *wrap_create_current_thread(void);
-void wrap_remove_current_thread(void);
+struct kthread *wrap_create_thread(struct task_struct *task);
+void wrap_remove_thread(struct kthread *kthread);
 u64 ticks_1601(void);
 
 STDCALL KIRQL KeGetCurrentIrql(void);
@@ -821,9 +821,9 @@ extern int debug;
 //#define IO_DEBUG 1
 
 #if defined(USB_DEBUG)
-#define USBTRACE(fmt, ...) DBGTRACE1(fmt, ## __VA_ARGS__)
-#define USBENTER(fmt, ...) TRACEENTER1(fmt, ## __VA_ARGS__)
-#define USBEXIT(stmt) TRACEEXIT1(stmt)
+#define USBTRACE DBGTRACE1
+#define USBENTER TRACEENTER1
+#define USBEXIT TRACEEXIT1
 #else
 #define USBTRACE(fmt, ...)
 #define USBENTER(fmt, ...)

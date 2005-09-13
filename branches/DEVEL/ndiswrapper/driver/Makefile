@@ -26,19 +26,19 @@ ifdef DEBUG
 CFLAGS += -DDEBUG=$(DEBUG) -g -DDEBUG_TIMER 
 endif
 
-ifdef DEBUG_TIMER
-CFLAGS += -DDEBUG_TIMER
+ifdef TIMER_DEBUG
+CFLAGS += -DTIMER_DEBUG
 endif
 
-ifdef DEBUG_EVENT
+ifdef EVENT_DEBUG
 CFLAGS += -DEVENT_DEBUG
 endif
 
-ifdef DEBUG_USB
+ifdef USB_DEBUG
 CFLAGS += -DUSB_DEBUG
 endif
 
-ifdef DEBUG_IO
+ifdef IO_DEBUG
 CFLAGS += -DIO_DEBUG
 endif
 
