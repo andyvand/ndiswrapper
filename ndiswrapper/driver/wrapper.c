@@ -338,7 +338,7 @@ NTSTATUS ndiswrapper_start_device(struct wrapper_dev *wd)
 #else
 	status = miniport_init(wd);
 #endif
-//	wrap_remove_current_thread();
+	wrap_remove_current_thread();
 	TRACEEXIT1(return status);
 }
 
@@ -1665,14 +1665,11 @@ int setup_device(struct net_device *dev)
 	ndis_set_rx_mode(dev);
 	/* check_capa changes auth_mode and encr_mode, so set them again */
 #endif
-	/* ZyDas driver hangs if anything is set */
-	if (!(wd->ndis_device->vendor == 0x0ace &&
-	      wd->ndis_device->device == 0x1211)) {
-		set_auth_mode(wd, Ndis802_11AuthModeOpen);
-		set_encr_mode(wd, Ndis802_11EncryptionDisabled);
-		set_infra_mode(wd, Ndis802_11Infrastructure);
-		set_scan(wd);
-	}
+	set_auth_mode(wd, Ndis802_11AuthModeOpen);
+	set_encr_mode(wd, Ndis802_11EncryptionDisabled);
+	set_infra_mode(wd, Ndis802_11Infrastructure);
+	set_scan(wd);
+
 	hangcheck_add(wd);
 	stats_timer_add(wd);
 	ndiswrapper_procfs_add_iface(wd);
@@ -1718,9 +1715,7 @@ struct net_device *ndis_init_netdev(struct wrapper_dev **pwd,
 	if ((wd->ndis_device->vendor == 0x2001 &&
 	     wd->ndis_device->device == 0x3700) ||
 	    (wd->ndis_device->vendor == 0x0846 &&
-	     wd->ndis_device->device == 0x4110) ||
-	    (wd->ndis_device->vendor == 0x0ace &&
-	     wd->ndis_device->device == 0x1211))
+	     wd->ndis_device->device == 0x4110))
 		wd->ndis_comm_wait_time = 4 * HZ;
 	else
 		wd->ndis_comm_wait_time = 2 * HZ;
@@ -1768,6 +1763,7 @@ struct net_device *ndis_init_netdev(struct wrapper_dev **pwd,
 
 /* we need to get kthread for the task running ndiswrapper_wq, so
  * schedule a worker for it soon after initializing ndiswrapper_wq */
+
 static struct work_struct _ndiswrapper_wq_init;
 static int _ndiswrapper_wq_init_state;
 #define NDISWRAPPER_WQ_INIT 1

@@ -16,9 +16,9 @@
 #include "ndis.h"
 #include "usb.h"
 
-#define DUMP_URB(urb) DBGTRACE1("urb: %p, buf: %p, len: %d, pipe: %u",	\
-				urb, urb->transfer_buffer,		\
-				urb->transfer_buffer_length, urb->pipe)
+#define DUMP_URB(urb) USBTRACE("urb: %p, buf: %p, len: %d, pipe: %u",	\
+			       urb, urb->transfer_buffer,		\
+			       urb->transfer_buffer_length, urb->pipe)
 
 #define DUMP_BUFFER(buf, len)						\
 	while (debug >= 2) {						\
@@ -32,7 +32,7 @@
 			__t += sprintf(__t, "%02X ",			\
 				       (((UCHAR *)buf)[__i]));		\
 		}							\
-		INFO("%s", __msg);					\
+		USBTRACE("%s", __msg);					\
 		break;							\
 	}
 

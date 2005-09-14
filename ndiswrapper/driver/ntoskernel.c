@@ -946,14 +946,16 @@ static void wakeup_threads(struct dispatch_header *dh)
 	EVENTENTER("dh: %p", dh);
 	nt_list_for_each_safe(cur, tmp, &dh->wait_blocks) {
 		wb = container_of(cur, struct wait_block, list);
-		EVENTTRACE("wait block: %p", wb);
-		assert(wb->kthread != NULL && wb->object != NULL);
+		EVENTTRACE("wait block: %p, thread: %p", wb, wb->kthread);
+		assert(wb->kthread != NULL && wb->object == dh);
 		if (wb->kthread &&
 		    check_reset_signaled_state(dh, wb->kthread, 0)) {
-			EVENTTRACE("waking up process: %p", wb->kthread);
+			EVENTTRACE("waking up task: %p", wb->kthread->task);
 			wb->kthread->event_wait_done = 1;
 			wake_up(&wb->kthread->event_wq);
-		}
+		} else
+			EVENTTRACE("not waking up task: %p",
+				   wb->kthread->task);
 	}
 	EVENTEXIT(return);
 }
@@ -975,7 +977,7 @@ STDCALL NTSTATUS WRAP_EXPORT(KeWaitForMultipleObjects)
 	task = get_current();
 	kthread = KeGetCurrentThread();
 	assert(kthread != NULL);
-	EVENTENTER("tasl: %p, thread: %p, count = %d, reason = %u, "
+	EVENTENTER("task: %p, thread: %p, count = %d, reason = %u, "
 		   "waitmode = %u, alertable = %u, timeout = %p", task,
 		   kthread, count, wait_reason, wait_mode, alertable, timeout);
 
@@ -1038,7 +1040,7 @@ STDCALL NTSTATUS WRAP_EXPORT(KeWaitForMultipleObjects)
 	else if (*timeout == 0) {
 		/* we should've grabbed all the objects, else it
 		 * should've timed out already */
-		ERROR("bug in events: objects still needed: %d", wait_count);
+		ERROR("%p: objects still needed: %d", task, wait_count);
 		kspin_unlock_irql(&kevent_lock, irql);
 		EVENTEXIT(return STATUS_TIMEOUT);
 	} else
@@ -1083,8 +1085,8 @@ STDCALL NTSTATUS WRAP_EXPORT(KeWaitForMultipleObjects)
 				EVENTTRACE("%p: timedout, deq'ing %p",
 					   task, wb[i].object);
 				RemoveEntryList(&wb[i].list);
-				wb[i].object = NULL;
 				wb[i].kthread = NULL;
+				wb[i].object = NULL;
 			}
 			kspin_unlock_irql(&kevent_lock, irql);
 			if (res < 0)
@@ -1119,7 +1121,7 @@ STDCALL NTSTATUS WRAP_EXPORT(KeWaitForMultipleObjects)
 		/* this thread is still waiting for more objects, so
 		 * let it wait for remaining time and those objects */
 		/* we already set res to 1 if timeout was NULL, so
-		 * reinitialize wait_jiffies if timeout is NULL */
+		 * reinitialize wait_jiffies accordingly */
 		if (timeout)
 			wait_jiffies = res;
 		else
@@ -1507,6 +1509,7 @@ STDCALL NTSTATUS WRAP_EXPORT(PsCreateSystemThread)
 		kfree(ctx);
 		TRACEEXIT2(return STATUS_RESOURCES);
 	}
+	ctx->kthread = kthread;
 
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,7)
 	pid = kernel_thread(kthread_trampoline, ctx,
@@ -1525,7 +1528,7 @@ STDCALL NTSTATUS WRAP_EXPORT(PsCreateSystemThread)
 		FREE_OBJECT(kthread);
 		TRACEEXIT2(return STATUS_FAILURE);
 	}
-	DBGTRACE2("created task: %d (%d)", task, task->pid);
+	DBGTRACE2("created task: %p (%d)", task, task->pid);
 #endif
 	*phandle = kthread;
 	DBGTRACE2("created thread: %p", kthread);

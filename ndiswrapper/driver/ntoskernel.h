@@ -864,13 +864,13 @@ extern int debug;
 	do {								\
 		struct io_stack_location *_irp_sl;			\
 		_irp_sl = IoGetCurrentIrpStackLocation(__irp);		\
-		INFO("irp: %p, stack size: %d, cl: %d, sl: %p, "	\
-		     "dev_obj: %p, mj_fn: %d, minor_fn: %d, "		\
-		     "nt_urb: %p, event: %p",				\
-		     __irp, __irp->stack_count,	(__irp)->current_location, \
-		     _irp_sl, _irp_sl->dev_obj, _irp_sl->major_fn,	\
-		     _irp_sl->minor_fn, URB_FROM_IRP(__irp),		\
-		     (__irp)->user_event);				\
+		IOTRACE("irp: %p, stack size: %d, cl: %d, sl: %p, "	\
+			"dev_obj: %p, mj_fn: %d, minor_fn: %d, "	\
+			"nt_urb: %p, event: %p",			\
+			__irp, __irp->stack_count, (__irp)->current_location, \
+			_irp_sl, _irp_sl->dev_obj, _irp_sl->major_fn,	\
+			_irp_sl->minor_fn, URB_FROM_IRP(__irp),		\
+			(__irp)->user_event);				\
 	} while (0)
 #else
 #define DUMP_IRP(__irp) do { } while (0)
