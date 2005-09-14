@@ -513,20 +513,22 @@ static void kdpc_worker(void *data)
 	struct kdpc *kdpc;
 	KIRQL irql;
 
+	irql = raise_irql(DISPATCH_LEVEL);
 	while (1) {
-		irql = kspin_lock_irql(&kdpc_list_lock, DISPATCH_LEVEL);
+		kspin_lock(&kdpc_list_lock);
 		entry = RemoveHeadList(&kdpc_list);
 		if (!entry) {
-			kspin_unlock_irql(&kdpc_list_lock, irql);
+			kspin_unlock(&kdpc_list_lock);
 			break;
 		}
 		kdpc = container_of(entry, struct kdpc, list);
 		kdpc->number = 0;
+		kspin_unlock(&kdpc_list_lock);
 		DBGTRACE5("%p, %p, %p, %p, %p", kdpc, dpc_func, kdpc->ctx,
 			  kdpc->arg1, kdpc->arg2);
 		LIN2WIN4(kdpc->func, kdpc, kdpc->ctx, kdpc->arg1, kdpc->arg2);
-		kspin_unlock_irql(&kdpc_list_lock, irql);
 	}
+	lower_irql(irql);
 }
 
 STDCALL void KeFlushQueuedDpcs(void)
@@ -940,11 +942,11 @@ static int inline check_reset_signaled_state(void *object,
  * DISPATCH_LEVEL */
 static void wakeup_threads(struct dispatch_header *dh)
 {
-	struct nt_list *cur, *tmp;
+	struct nt_list *cur, *next;
 	struct wait_block *wb;
 
 	EVENTENTER("dh: %p", dh);
-	nt_list_for_each_safe(cur, tmp, &dh->wait_blocks) {
+	nt_list_for_each_safe(cur, next, &dh->wait_blocks) {
 		wb = container_of(cur, struct wait_block, list);
 		EVENTTRACE("wait block: %p, thread: %p", wb, wb->kthread);
 		assert(wb->kthread != NULL && wb->object == dh);

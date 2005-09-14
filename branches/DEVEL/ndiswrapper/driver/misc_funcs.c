@@ -297,8 +297,6 @@ int wrap_set_timer(struct wrap_timer *wrap_timer, long expires,
 	}
 #endif
 
-	/* timer handler also uses timer->repeat, active, and kdpc, so
-	 * protect in case of SMP */
 	irql = kspin_lock_irql(&timer_lock, DISPATCH_LEVEL);
 	if (wrap_timer->active) {
 		if (ktimer->kdpc) {

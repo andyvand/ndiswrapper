@@ -2785,7 +2785,7 @@ STDCALL NTSTATUS AddDevice(struct driver_object *drv_obj,
 	nmb->eth_rx_indicate = WRAP_FUNC_PTR(EthRxIndicateHandler);
 	nmb->eth_rx_complete = WRAP_FUNC_PTR(EthRxComplete);
 	nmb->td_complete = WRAP_FUNC_PTR(NdisMTransferDataComplete);
-	nmb->wd->driver->miniport.adapter_shutdown = NULL;
+	wd->driver->miniport.adapter_shutdown = NULL;
 
 	TRACEEXIT2(return STATUS_SUCCESS);
 }
