@@ -377,10 +377,7 @@ struct kthread {
 	struct task_struct *task;
 	struct nt_list irps;
 	KSPIN_LOCK lock;
-	/* wait queue is used to wait on objects (by
-	 * KeWaitFor(Multiple/Single)Object(s) */
 	wait_queue_head_t event_wq;
-	/* to signal wait queue if a wait is done */
 	int event_wait_done;
 };
 #pragma pack(pop)
@@ -823,8 +820,6 @@ struct common_object_header {
 
 extern struct nt_list object_list;
 extern KSPIN_LOCK ntoskernel_lock;
-/* threads are looked up often, so insert them at the beginning so
- * lookup are faster */
 #define ALLOCATE_OBJECT(object, flags, obj_type)			\
 	({								\
 		struct common_object_header *__hdr;			\

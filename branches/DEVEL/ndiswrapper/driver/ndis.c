@@ -36,16 +36,11 @@ extern KSPIN_LOCK ntoskernel_lock;
 static struct work_struct ndis_work;
 struct nt_list ndis_work_list;
 KSPIN_LOCK ndis_work_list_lock;
-
-static struct work_struct ndis_kdpc_work;
-static struct nt_list ndis_kdpc_work_list;
-static KSPIN_LOCK ndis_kdpc_work_list_lock;
+static void ndis_worker(void *data);
 
 static KSPIN_LOCK wrap_ndis_packet_lock;
 static struct nt_list wrap_ndis_packet_list;
 
-static void ndis_worker(void *data);
-static void ndis_kdpc_worker(void *data);
 
 /* Some drivers allocate all NDIS_PACKETs they need at the beginning
  * and others allocate them quite often - every time a packet is
@@ -60,10 +55,6 @@ int ndis_init(void)
 	INIT_WORK(&ndis_work, ndis_worker, NULL);
 	InitializeListHead(&ndis_work_list);
 	kspin_lock_init(&ndis_work_list_lock);
-
-	INIT_WORK(&ndis_kdpc_work, ndis_kdpc_worker, NULL);
-	InitializeListHead(&ndis_kdpc_work_list);
-	kspin_lock_init(&ndis_kdpc_work_list_lock);
 
 	kspin_lock_init(&wrap_ndis_packet_lock);
 	InitializeListHead(&wrap_ndis_packet_list);
@@ -1869,6 +1860,7 @@ STDCALL void NdisMIndicateStatusComplete(struct ndis_miniport_block *nmb)
 {
 	struct wrapper_dev *wd = nmb->wd;
 	TRACEENTER3("");
+	schedule_work(&wd->wrapper_worker);
 	if (wd->send_ok)
 		schedule_work(&wd->xmit_work);
 }
@@ -2351,54 +2343,6 @@ NdisMResetComplete(struct ndis_miniport_block *nmb, NDIS_STATUS status,
 	wd->ndis_comm_done = 1;
 	wake_up(&wd->ndis_comm_wq);
 	TRACEEXIT3(return);
-}
-
-static void ndis_kdpc_worker(void *data)
-{
-	struct kdpc *kdpc;
-	struct nt_list *cur;
-	KIRQL irql;
-
-	while (1) {
-
-		irql = kspin_lock_irql(&ndis_kdpc_work_list_lock,
-				       DISPATCH_LEVEL);
-		cur = RemoveHeadList(&ndis_kdpc_work_list);
-		if (!cur) {
-			kspin_unlock_irql(&ndis_kdpc_work_list_lock, irql);
-			break;
-		}
-		kdpc = container_of(cur, struct kdpc, list);
-		kdpc->number = 0;
-		LIN2WIN4(kdpc->func, kdpc, kdpc->ctx, kdpc->arg1, kdpc->arg2);
-		kspin_unlock_irql(&ndis_kdpc_work_list_lock, irql);
-	}
-}
-
-void insert_ndis_kdpc_work(struct kdpc *kdpc)
-{
-	KIRQL irql;
-
-	irql = kspin_lock_irql(&ndis_kdpc_work_list_lock, DISPATCH_LEVEL);
-	InsertTailList(&ndis_kdpc_work_list, &kdpc->list);
-	kdpc->number = 1;
-	kspin_unlock_irql(&ndis_kdpc_work_list_lock, irql);
-	schedule_work(&ndis_kdpc_work);
-}
-
-BOOLEAN remove_ndis_kdpc_work(struct kdpc *kdpc)
-{
-	KIRQL irql;
-	BOOLEAN ret;
-
-	irql = kspin_lock_irql(&ndis_kdpc_work_list_lock, DISPATCH_LEVEL);
-	if (kdpc->number) {
-		RemoveEntryList(&kdpc->list);
-		ret = TRUE;
-	} else
-		ret = FALSE;
-	kspin_unlock_irql(&ndis_kdpc_work_list_lock, irql);
-	return ret;
 }
 
 /* one worker for all drivers/handles */
