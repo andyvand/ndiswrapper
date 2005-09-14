@@ -26,7 +26,8 @@ extern struct work_struct io_work;
 extern struct nt_list io_workitem_list;
 extern KSPIN_LOCK io_workitem_list_lock;
 
-extern struct tasklet_struct irp_submit_work;
+//extern struct tasklet_struct irp_submit_work;
+extern struct work_struct irp_submit_work;
 
 extern KSPIN_LOCK irp_cancel_lock;
 
@@ -502,14 +503,10 @@ pdoDispatchInternalDeviceControl(struct device_object *pdo,
 	irp_sl = IoGetCurrentIrpStackLocation(irp);
 
 #ifdef CONFIG_USB
-	/* disable tasklet to submit urb's so urb completion function
-	 * doesn't get executed (rather, there is less chance of that
-	 * happening) before we return STATUS_PENDING to driver from
-	 * here */
-	tasklet_disable(&irp_submit_work);
 	status = usb_submit_irp(pdo, irp);
 	IOTRACE("status: %08X", status);
-	tasklet_enable(&irp_submit_work);
+//	tasklet_schedule(&irp_submit_work);
+	schedule_work(&irp_submit_work);
 #endif
 	if (status != STATUS_PENDING)
 		IoCompleteRequest(irp, IO_NO_INCREMENT);
