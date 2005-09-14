@@ -318,8 +318,10 @@ NDIS_STATUS miniport_init(struct wrapper_dev *wd)
 NTSTATUS ndiswrapper_start_device(struct wrapper_dev *wd)
 {
 	NTSTATUS status;
+	struct kthread *kthread;
 
-	if (wrap_create_thread(get_current()) == NULL) {
+	kthread = wrap_create_thread(get_current());
+	if (!kthread) {
 		ERROR("couldn't allocate thread object");
 		return STATUS_INSUFFICIENT_RESOURCES;
 	}
@@ -338,7 +340,7 @@ NTSTATUS ndiswrapper_start_device(struct wrapper_dev *wd)
 #else
 	status = miniport_init(wd);
 #endif
-	wrap_remove_current_thread();
+	wrap_remove_thread(kthread);
 	TRACEEXIT1(return status);
 }
 
