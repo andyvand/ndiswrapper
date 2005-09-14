@@ -50,16 +50,16 @@ static STDCALL void wrap_cancel_irp(struct device_object *dev_obj,
 				    struct irp *irp);
 
 static struct nt_list irp_submit_list;
-static void irp_submit_worker(unsigned long data);
-struct tasklet_struct irp_submit_work;
-DECLARE_TASKLET(irp_submit_work, irp_submit_worker, 0);
-//static void irp_submit_worker(void *data);
-//struct work_struct irp_submit_work;
+//static void irp_submit_worker(unsigned long data);
+//struct tasklet_struct irp_submit_work;
+//DECLARE_TASKLET(irp_submit_work, irp_submit_worker, 0);
+struct work_struct irp_submit_work;
+static void irp_submit_worker(void *data);
 
 int usb_init(void)
 {
 	InitializeListHead(&irp_submit_list);
-//	INIT_WORK(&irp_submit_work, irp_submit_worker, (void *)0);
+	INIT_WORK(&irp_submit_work, irp_submit_worker, (void *)0);
 	return 0;
 }
 
@@ -236,7 +236,7 @@ static void wrap_urb_complete(struct urb *urb)
 	DUMP_IRP(irp);
 	nt_urb = URB_FROM_IRP(irp);
 	USBTRACE("urb: %p, nt_urb: %p, status: %d",
-		 urb, nt_urb, -(urb->status));
+		 urb, nt_urb, (urb->status));
 
 	switch (urb->status) {
 	case 0:
@@ -254,8 +254,7 @@ static void wrap_urb_complete(struct urb *urb)
 				urb->actual_length;
 			DUMP_BUFFER(urb->transfer_buffer,
 				    urb->actual_length);
-			if ((urb->transfer_flags &
-			     URB_NO_TRANSFER_DMA_MAP) &&
+			if ((urb->transfer_flags & URB_NO_TRANSFER_DMA_MAP) &&
 			    usb_pipein(urb->pipe))
 				memcpy(bulk_int_tx->transfer_buffer,
 				       urb->transfer_buffer,
@@ -276,8 +275,7 @@ static void wrap_urb_complete(struct urb *urb)
 				    urb->actual_length);
 			DUMP_BUFFER(urb->setup_packet,
 				    sizeof(struct usb_ctrlrequest));
-			if ((urb->transfer_flags &
-			     URB_NO_TRANSFER_DMA_MAP) &&
+			if ((urb->transfer_flags & URB_NO_TRANSFER_DMA_MAP) &&
 			    usb_pipein(urb->pipe))
 				memcpy(vc_req->transfer_buffer,
 				       urb->transfer_buffer,
@@ -528,8 +526,8 @@ static USBD_STATUS wrap_vendor_or_class_req(struct irp *irp)
 	USBEXIT(return status);
 }
 
-static void irp_submit_worker(unsigned long data)
-//static void irp_submit_worker(void *data)
+//static void irp_submit_worker(unsigned long data)
+static void irp_submit_worker(void *data)
 {
 	KIRQL irql;
 	struct irp *irp;
