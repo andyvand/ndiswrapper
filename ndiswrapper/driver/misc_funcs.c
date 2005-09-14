@@ -204,7 +204,8 @@ void wrap_timer_handler(unsigned long data)
 		if (kdpc->type == KDPC_TYPE_KERNEL)
 			insert_kdpc_work(kdpc);
 		else
-			insert_ndis_kdpc_work(kdpc);
+			LIN2WIN4(kdpc->func, kdpc, kdpc->ctx,
+				 kdpc->arg1, kdpc->arg2);
 	}
 
 	/* don't add the timer if aperiodic - see
@@ -296,12 +297,12 @@ int wrap_set_timer(struct wrap_timer *wrap_timer, long expires,
 	}
 #endif
 
-	/* timer handler also uses timer->repeat, active, and kdpc, so
-	 * protect in case of SMP */
 	irql = kspin_lock_irql(&timer_lock, DISPATCH_LEVEL);
 	if (wrap_timer->active) {
-		if (ktimer->kdpc && ktimer->kdpc->type == KDPC_TYPE_KERNEL)
-			remove_kdpc_work(ktimer->kdpc);
+		if (ktimer->kdpc) {
+			if (ktimer->kdpc->type == KDPC_TYPE_KERNEL)
+				remove_kdpc_work(ktimer->kdpc);
+		}
 		mod_timer(&wrap_timer->timer, jiffies + expires);
 		if (wrap_timer->type == KTIMER_TYPE_KERNEL)
 			KeClearEvent((struct kevent *)ktimer);
@@ -328,6 +329,7 @@ void wrap_cancel_timer(struct wrap_timer *wrap_timer, BOOLEAN *canceled)
 	KIRQL irql;
 	struct ktimer *ktimer;
 	struct kdpc *kdpc;
+	long repeat;
 
 	TRACEENTER5("timer = %p", wrap_timer);
 	if (!wrap_timer) {
@@ -348,28 +350,23 @@ void wrap_cancel_timer(struct wrap_timer *wrap_timer, BOOLEAN *canceled)
 	 * be called at DISPATCH_LEVEL */
 	irql = kspin_lock_irql(&timer_lock, DISPATCH_LEVEL);
 	kdpc = ktimer->kdpc;
+	/* disable timer before deleting so it won't be re-armed after
+	 * deleting */
+	repeat = wrap_timer->repeat;
+	wrap_timer->repeat = 0;
 	if (wrap_timer->active) {
-		/* disable timer before deleting so it won't be
-		 * re-armed after deleting */
 		wrap_timer->active = 0;
 		del_timer(&wrap_timer->timer);
 		if (kdpc) {
 			if (kdpc->type == KDPC_TYPE_KERNEL)
 				*canceled = remove_kdpc_work(kdpc);
-			else
-				*canceled = remove_ndis_kdpc_work(kdpc);
 		} else
 			*canceled = TRUE;
 	} else
 		*canceled = FALSE;
-#if 1
-	if (wrap_timer->repeat) {
+	/* for periodic timers return TRUE - see KeCancelTimer */
+	if (repeat)
 		*canceled = TRUE;
-		wrap_timer->repeat = 0;
-	}
-#else
-	wrap_timer->repeat = 0;
-#endif
 	if (wrap_timer->type == KTIMER_TYPE_KERNEL)
 		KeClearEvent((struct kevent *)ktimer);
 	kspin_unlock_irql(&timer_lock, irql);

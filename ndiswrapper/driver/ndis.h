@@ -109,9 +109,7 @@ struct ndis_packet_oob_data {
 };
 
 struct ndis_packet {
-
 	struct ndis_packet_private private;
-
 	/* for use by miniport */
 	union {
 		/* for connectionless mininports */
@@ -130,7 +128,6 @@ struct ndis_packet {
 	} u;
 	ULONG_PTR reserved[2];
 	UCHAR protocol_reserved[1];
-
 	struct ndis_packet_oob_data oob_data;
 	struct ndis_packet_extension extension;
 
@@ -272,8 +269,8 @@ struct miniport_char {
 
 	/* transfer data from received packet */
 	UINT (*tx_data)(struct ndis_packet *ndis_packet, UINT *bytes_txed,
-				void *adapter_ctx, void *rx_ctx,
-				UINT offset, UINT bytes_to_tx) STDCALL;
+			void *adapter_ctx, void *rx_ctx,
+			UINT offset, UINT bytes_to_tx) STDCALL;
 
 	/* NDIS 4.0 extensions */
 	/* upper layer is done with RX packet */
@@ -326,7 +323,7 @@ struct ndis_rw_lock {
 		} s;
 		UCHAR reserved[16];
 	} u;
-    union ndis_rw_lock_refcount ref_count[MAXIMUM_PROCESSORS];
+	union ndis_rw_lock_refcount ref_count[MAXIMUM_PROCESSORS];
 };
 
 struct ndis_sched_work_item {
@@ -381,7 +378,6 @@ struct ndis_irq {
 	void *id;
 	ndis_isr_handler isr;
 	void *dpc;
-
 	struct kdpc intr_dpc;
 	struct wrapper_dev *wd;
 	UCHAR dpc_count;
