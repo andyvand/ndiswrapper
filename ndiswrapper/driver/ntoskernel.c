@@ -462,9 +462,8 @@ STDCALL BOOLEAN WRAP_EXPORT(KeSetTimerEx)
 
 	TRACEENTER5("%p, %ld, %u, %p",
 		    ktimer, (long)duetime_ticks, period_ms, kdpc);
-
 	expires = SYSTEM_TIME_TO_HZ(duetime_ticks);
-	repeat = HZ * period_ms / 1000 ;
+	repeat = MSEC_TO_HZ(period_ms);
 	return wrap_set_timer(ktimer->wrap_timer, expires, repeat, kdpc);
 }
 
@@ -473,8 +472,9 @@ STDCALL BOOLEAN WRAP_EXPORT(KeSetTimer)
 {
 	unsigned long expires;
 
-	TRACEENTER5("%p, %ld, %p", ktimer, (long)duetime_ticks, kdpc);
 	expires = SYSTEM_TIME_TO_HZ(duetime_ticks);
+	TRACEENTER5("%p, %ld, %lu, %p", ktimer, (long)duetime_ticks,
+		    expires, kdpc);
 	return wrap_set_timer(ktimer->wrap_timer, expires, 0, kdpc);
 }
 
@@ -524,7 +524,7 @@ static void kdpc_worker(void *data)
 		kdpc = container_of(entry, struct kdpc, list);
 		kdpc->number = 0;
 		kspin_unlock(&kdpc_list_lock);
-		DBGTRACE5("%p, %p, %p, %p, %p", kdpc, dpc_func, kdpc->ctx,
+		DBGTRACE5("%p, %p, %p, %p, %p", kdpc, kdpc->func, kdpc->ctx,
 			  kdpc->arg1, kdpc->arg2);
 		LIN2WIN4(kdpc->func, kdpc, kdpc->ctx, kdpc->arg1, kdpc->arg2);
 	}
@@ -672,7 +672,7 @@ _FASTCALL LONG WRAP_EXPORT(InterlockedDecrement)
 	LONG x;
 	KIRQL irql;
 
-	TRACEENTER5("%s", "");
+	TRACEENTER5("%p, %x", val, *val);
 	irql = kspin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL);
 	(*val)--;
 	x = *val;
@@ -686,7 +686,7 @@ _FASTCALL LONG WRAP_EXPORT(InterlockedIncrement)
 	LONG x;
 	KIRQL irql;
 
-	TRACEENTER5("%s", "");
+	TRACEENTER5("%p, %x", val, *val);
 	irql = kspin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL);
 	(*val)++;
 	x = *val;
@@ -700,7 +700,7 @@ _FASTCALL LONG WRAP_EXPORT(InterlockedExchange)
 	LONG x;
 	KIRQL irql;
 
-	TRACEENTER5("%s", "");
+	TRACEENTER5("%p, %x", target, val);
 	irql = kspin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL);
 	x = *target;
 	*target = val;
@@ -714,7 +714,7 @@ _FASTCALL LONG WRAP_EXPORT(InterlockedCompareExchange)
 	LONG x;
 	KIRQL irql;
 
-	TRACEENTER5("%s", "");
+	TRACEENTER5("%p, %x, %x", dest, xchg, comperand);
 	irql = kspin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL);
 	x = *dest;
 	if (*dest == comperand)
