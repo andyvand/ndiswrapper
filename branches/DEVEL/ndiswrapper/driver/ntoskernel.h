@@ -341,6 +341,12 @@ do {									\
 	((((sys_time) < 0) ? (((u64)HZ * (-(sys_time))) / TICKSPERSEC) : \
 	  (((u64)HZ * ((sys_time) - ticks_1601())) / TICKSPERSEC)) + 1)
 
+#define MSEC_TO_HZ(ms)				\
+	((((ms) * HZ) / 1000) + 1)
+
+#define USEC_TO_HZ(us)				\
+	((((us) * HZ) / 1000000) + 1)
+
 typedef void (*WRAP_EXPORT_FUNC)(void);
 
 struct wrap_export {

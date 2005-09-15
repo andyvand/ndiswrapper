@@ -1486,7 +1486,7 @@ STDCALL void WRAP_EXPORT(NdisMSetPeriodicTimer)
 	unsigned long expires;
 
 	TRACEENTER4("%p, %u", timer_handle, period_ms);
-	expires = period_ms * HZ / 1000;
+	expires = MSEC_TO_HZ(period_ms);
 	wrap_set_timer(timer_handle->ktimer.wrap_timer, expires, expires,
 		       &timer_handle->kdpc);
 	TRACEEXIT4(return);
@@ -1515,7 +1515,7 @@ STDCALL void WRAP_EXPORT(NdisInitializeTimer)
 STDCALL void WRAP_EXPORT(NdisSetTimer)
 	(struct ndis_timer *timer_handle, UINT duetime_ms)
 {
-	unsigned long expires = duetime_ms * HZ / 1000;
+	unsigned long expires = MSEC_TO_HZ(duetime_ms);
 
 	TRACEENTER4("%p, %u", timer_handle, duetime_ms);
 	wrap_set_timer(timer_handle->ktimer.wrap_timer, expires, 0,
@@ -2191,10 +2191,10 @@ STDCALL void WRAP_EXPORT(NdisMSleep)
 	unsigned long delay;
 
 	TRACEENTER4("us: %u", us);
-	delay = ((HZ * us) / 1000000) + 1;
+	delay = USEC_TO_HZ(us);
 	set_current_state(TASK_INTERRUPTIBLE);
 	schedule_timeout(delay);
-	DBGTRACE4("%s", "woke up");
+	DBGTRACE4("woke up");
 	TRACEEXIT4(return);
 }
 
