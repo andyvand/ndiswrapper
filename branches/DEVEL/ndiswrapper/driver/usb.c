@@ -128,8 +128,8 @@ static NTSTATUS nt_urb_irp_status(USBD_STATUS nt_urb_status)
 }
 
 static struct urb *wrap_alloc_urb(struct usb_device *udev, struct irp *irp,
-				  unsigned int pipe, void *buf,
-				  unsigned int buf_len)
+				  unsigned int pipe, ULONG transfer_flags,
+				  void *buf, unsigned int buf_len)
 {
 	struct urb *urb;
 
@@ -161,9 +161,16 @@ static struct urb *wrap_alloc_urb(struct usb_device *udev, struct irp *irp,
 			USBTRACE("DMA buffer for urb %p is %p",
 				 urb, urb->transfer_buffer);
 		}
-	} else
+		urb->transfer_buffer_length = buf_len;
+		if (usb_pipein(pipe) &&
+		    (!(transfer_flags & USBD_SHORT_TRANSFER_OK))) {
+			INFO("short not ok");
+			urb->transfer_flags |= URB_SHORT_NOT_OK;
+		}
+	} else {
 		urb->transfer_buffer = NULL;
-	urb->transfer_buffer_length = buf_len;
+		urb->transfer_buffer_length = 0;
+	}
 	irp->urb = urb;
 	irp->cancel_routine = wrap_cancel_irp;
 	urb->context = irp;
@@ -326,14 +333,13 @@ static STDCALL void wrap_cancel_irp(struct device_object *dev_obj,
 	irp->urb_state = URB_CANCELED;
 	IoReleaseCancelSpinLock(irp->cancel_irql);
 	if (prev_state == URB_SUBMITTED) {
-		if (usb_unlink_urb(urb) != -EINPROGRESS)
-			WARNING("unlinking urb %p returns %d",
-				urb, urb->status);
+		usb_unlink_urb(urb);
 		/* this IRP will be returned in irp_complete_worker */
 	} else {
 		/* this URB has not been submitted, send the IRP back
 		 * from here itself */
 		USBTRACE("urb %p canceled; prev state: %d", urb, prev_state);
+		wrap_free_urb(urb);
 		nt_urb = URB_FROM_IRP(irp);
 		NT_URB_STATUS(nt_urb) = USBD_STATUS_CANCELLED;
 		irp->io_status.status = STATUS_CANCELLED;
@@ -379,22 +385,18 @@ static USBD_STATUS wrap_bulk_or_intr_trans(struct irp *irp)
 			MmGetMdlVirtualAddress(bulk_int_tx->mdl);
 	}
 
-	urb = wrap_alloc_urb(udev, irp, pipe, bulk_int_tx->transfer_buffer,
+	urb = wrap_alloc_urb(udev, irp, pipe, bulk_int_tx->transfer_flags,
+			     bulk_int_tx->transfer_buffer,
 			     bulk_int_tx->transfer_buffer_length);
 	if (!urb) {
 		ERROR("couldn't allocate urb");
 		return USBD_STATUS_NO_MEMORY;
 	}
-	if (usb_pipein(pipe) &&
-	    (!(bulk_int_tx->transfer_flags & USBD_SHORT_TRANSFER_OK))) {
-		INFO("short not ok");
-		urb->transfer_flags |= URB_SHORT_NOT_OK;
-	}
 
 	switch(usb_pipetype(pipe)) {
 	case USB_ENDPOINT_XFER_BULK:
 		usb_fill_bulk_urb(urb, udev, pipe, urb->transfer_buffer,
-				  bulk_int_tx->transfer_buffer_length,
+				  urb->transfer_buffer_length,
 				  wrap_urb_complete, urb->context);
 		USBTRACE("submitting urb %p on pipe %u",
 			 urb, pipe_handle->bEndpointAddress);
@@ -402,7 +404,7 @@ static USBD_STATUS wrap_bulk_or_intr_trans(struct irp *irp)
 		break;
 	case USB_ENDPOINT_XFER_INT:
 		usb_fill_int_urb(urb, udev, pipe, urb->transfer_buffer,
-				 bulk_int_tx->transfer_buffer_length,
+				 urb->transfer_buffer_length,
 				 wrap_urb_complete, urb->context,
 				 pipe_handle->bInterval);
 		USBTRACE("submitting urb %p on pipe %u",
@@ -491,17 +493,12 @@ static USBD_STATUS wrap_vendor_or_class_req(struct irp *irp)
 		USBTRACE("pipe: %u, dir out", pipe);
 	}
 
-	urb = wrap_alloc_urb(udev, irp, pipe, vc_req->transfer_buffer,
+	urb = wrap_alloc_urb(udev, irp, pipe, vc_req->transfer_flags,
+			     vc_req->transfer_buffer,
 			     vc_req->transfer_buffer_length);
 	if (!urb) {
 		ERROR("couldn't allocate urb");
 		return USBD_STATUS_NO_MEMORY;
-	}
-
-	if (usb_pipein(pipe) &&
-	    (!(vc_req->transfer_flags & USBD_SHORT_TRANSFER_OK))) {
-		INFO("short not ok");
-		urb->transfer_flags |= URB_SHORT_NOT_OK;
 	}
 
 	dr = kmalloc(sizeof(*dr), GFP_ATOMIC);
@@ -513,13 +510,13 @@ static USBD_STATUS wrap_vendor_or_class_req(struct irp *irp)
 	memset(dr, 0, sizeof(*dr));
 	dr->bRequestType = req_type;
 	dr->bRequest = vc_req->request;
-	dr->wValue = cpu_to_le16p(&vc_req->value);
-	dr->wIndex = cpu_to_le16p(&vc_req->index);
-	dr->wLength = cpu_to_le16p((u16 *)&vc_req->transfer_buffer_length);
+	dr->wValue = cpu_to_le16(vc_req->value);
+	dr->wIndex = cpu_to_le16(vc_req->index);
+	dr->wLength = cpu_to_le16(vc_req->transfer_buffer_length);
 
-	usb_fill_control_urb(urb, udev, pipe, (unsigned char *)dr,
+	usb_fill_control_urb(urb, udev, pipe, (void *)dr,
 			     urb->transfer_buffer,
-			     vc_req->transfer_buffer_length,
+			     urb->transfer_buffer_length,
 			     wrap_urb_complete, urb->context);
 
 	status = wrap_submit_urb(urb);

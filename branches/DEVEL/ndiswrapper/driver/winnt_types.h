@@ -419,7 +419,9 @@ struct device_object {
 	USHORT sector_size;
 	USHORT spare1;
 	struct dev_obj_ext *dev_obj_ext;
-	void *reserved;
+	/* 'reserved' field is used to store pointer to ndiswrapper's
+	 * device structure */
+	struct wrapper_dev *reserved;
 };
 
 struct dev_obj_ext {
