@@ -819,7 +819,7 @@ NTSTATUS wrap_submit_irp(struct device_object *pdo, struct irp *irp)
  * description and examples elsewhere suggest that it should be
  * usbd_interface_list_entry structre. Which is correct? */
 
-static STDCALL union nt_urb *WRAP_EXPORT(USBD_CreateConfigurationRequestEx)
+STDCALL union nt_urb *WRAP_EXPORT(USBD_CreateConfigurationRequestEx)
 	(struct usb_config_descriptor *config,
 	 struct usbd_interface_list_entry *intf_list)
 {
@@ -884,7 +884,7 @@ static STDCALL union nt_urb *WRAP_EXPORT(USBD_CreateConfigurationRequestEx)
 
 WRAP_EXPORT_MAP("_USBD_CreateConfigurationRequestEx@8",	USBD_CreateConfigurationRequestEx);
 
-static STDCALL struct usb_interface_descriptor *
+STDCALL struct usb_interface_descriptor *
 WRAP_EXPORT(USBD_ParseConfigurationDescriptorEx)
 	(struct usb_config_descriptor *config, void *start,
 	 LONG bInterfaceNumber, LONG bAlternateSetting, LONG bInterfaceClass,
@@ -923,7 +923,7 @@ WRAP_EXPORT(USBD_ParseConfigurationDescriptorEx)
 
 WRAP_EXPORT_MAP("_USBD_ParseConfigurationDescriptorEx@28", USBD_ParseConfigurationDescriptorEx);
 
-static STDCALL union nt_urb *WRAP_EXPORT(USBD_CreateConfigurationRequest)
+STDCALL union nt_urb *WRAP_EXPORT(USBD_CreateConfigurationRequest)
 	(struct usb_config_descriptor *config, USHORT *size)
 {
 	union nt_urb *nt_urb;
@@ -946,7 +946,7 @@ static STDCALL union nt_urb *WRAP_EXPORT(USBD_CreateConfigurationRequest)
 	USBEXIT(return nt_urb);
 }
 
-static STDCALL struct usb_interface_descriptor *
+STDCALL struct usb_interface_descriptor *
 WRAP_EXPORT(USBD_ParseConfigurationDescriptor)
 	(struct usb_config_descriptor *config, UCHAR bInterfaceNumber,
 	 UCHAR bAlternateSetting)
