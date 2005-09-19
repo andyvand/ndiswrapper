@@ -864,7 +864,6 @@ struct wrapper_dev {
 
 	/* list of initialized timers */
 	struct nt_list wrap_timer_list;
-	KSPIN_LOCK timer_lock;
 
 	struct proc_dir_entry *procfs_iface;
 

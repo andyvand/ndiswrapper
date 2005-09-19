@@ -26,9 +26,6 @@ extern struct work_struct io_work;
 extern struct nt_list io_workitem_list;
 extern KSPIN_LOCK io_workitem_list_lock;
 
-//extern struct tasklet_struct irp_submit_work;
-extern struct work_struct irp_submit_work;
-
 extern KSPIN_LOCK irp_cancel_lock;
 
 STDCALL void WRAP_EXPORT(IoAcquireCancelSpinLock)
@@ -158,6 +155,7 @@ STDCALL void WRAP_EXPORT(IoInitializeIrp)
 	irp->stack_count = stack_size;
 	irp->current_location = stack_size + 1;
 	IoGetCurrentIrpStackLocation(irp) = IRP_SL(irp, (stack_size + 1));
+	irp->pending_returned_done = 0;
 	IOEXIT(return);
 }
 
@@ -503,14 +501,31 @@ pdoDispatchInternalDeviceControl(struct device_object *pdo,
 	irp_sl = IoGetCurrentIrpStackLocation(irp);
 
 #ifdef CONFIG_USB
-	status = usb_submit_irp(pdo, irp);
+	status = wrap_submit_irp(pdo, irp);
 	IOTRACE("status: %08X", status);
-//	tasklet_schedule(&irp_submit_work);
-	schedule_work(&irp_submit_work);
-#endif
-	if (status != STATUS_PENDING)
+	if (status == STATUS_PENDING) {
+		/* although as per DDK, we are not supposed to touch
+		 * irp when STAUS_PENDING is returned, this irp hasn't
+		 * been submitted to usb yet (and not completed), so
+		 * it is safe in this case */
+		status = wrap_submit_urb(irp);
+	}
+	if (status == STATUS_PENDING)
+		return status;
+	else {
 		IoCompleteRequest(irp, IO_NO_INCREMENT);
-	IOEXIT(return status);
+		return status;
+	}
+#else
+	do {
+		union nt_urb *nt_urb;
+		status = irp->io_status.status = STATUS_NOT_IMPLEMENTED;
+		nt_urb = URB_FROM_IRP(irp);
+		NT_URB_STATUS(nt_urb) = USBD_STATUS_NOT_SUPPORTED;
+		IoCompleteRequest(irp, IO_NO_INCREMENT);
+		return status;
+	} while (0)
+#endif
 }
 
 STDCALL NTSTATUS pdoDispatchDeviceControl(struct device_object *pdo,
