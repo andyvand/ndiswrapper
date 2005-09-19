@@ -155,7 +155,6 @@ STDCALL void WRAP_EXPORT(IoInitializeIrp)
 	irp->stack_count = stack_size;
 	irp->current_location = stack_size + 1;
 	IoGetCurrentIrpStackLocation(irp) = IRP_SL(irp, (stack_size + 1));
-	irp->pending_returned_done = 0;
 	IOEXIT(return);
 }
 

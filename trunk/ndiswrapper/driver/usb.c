@@ -282,8 +282,7 @@ static void wrap_urb_complete(struct urb *urb)
 				urb->actual_length;
 			DUMP_BUFFER(urb->transfer_buffer,
 				    urb->actual_length);
-			if ((urb->transfer_flags &
-			     URB_NO_TRANSFER_DMA_MAP) &&
+			if ((urb->transfer_flags & URB_NO_TRANSFER_DMA_MAP) &&
 			    usb_pipein(urb->pipe))
 				memcpy(bulk_int_tx->transfer_buffer,
 				       urb->transfer_buffer,
@@ -304,8 +303,7 @@ static void wrap_urb_complete(struct urb *urb)
 				    urb->actual_length);
 			DUMP_BUFFER(urb->setup_packet,
 				    sizeof(struct usb_ctrlrequest));
-			if ((urb->transfer_flags &
-			     URB_NO_TRANSFER_DMA_MAP) &&
+			if ((urb->transfer_flags & URB_NO_TRANSFER_DMA_MAP) &&
 			    usb_pipein(urb->pipe))
 				memcpy(vc_req->transfer_buffer,
 				       urb->transfer_buffer,
@@ -343,7 +341,6 @@ static STDCALL void wrap_cancel_irp(struct device_object *dev_obj,
 {
 	struct urb *urb;
 	enum urb_state prev_state;
-	union nt_urb *nt_urb;
 
 	/* NB: this function is called holding Cancel spinlock */
 	USBENTER("irp: %p", irp);
@@ -351,28 +348,17 @@ static STDCALL void wrap_cancel_irp(struct device_object *dev_obj,
 	USBTRACE("canceling urb %p", urb);
 
 	prev_state = irp->urb_state;
-	if (prev_state == URB_QUEUED)
-		RemoveEntryList(&irp->submit_list);
 	irp->urb_state = URB_CANCELED;
 	IoReleaseCancelSpinLock(irp->cancel_irql);
 	if (prev_state == URB_SUBMITTED) {
 		if (usb_unlink_urb(urb) != -EINPROGRESS)
 			WARNING("unlinking urb %p returns %d",
 				urb, urb->status);
-		/* this IRP will be returned in irp_complete_worker */
-	} else if (prev_state == URB_QUEUED) {
-		/* this URB has not been submitted, send the IRP back
-		 * from here itself */
-		USBTRACE("urb %p canceled; prev state: %d", urb, prev_state);
-		nt_urb = URB_FROM_IRP(irp);
-		NT_URB_STATUS(nt_urb) = USBD_STATUS_CANCELLED;
-		irp->io_status.status = STATUS_CANCELLED;
-		irp->io_status.status_info = 0;
-		IoCompleteRequest(irp, IO_NO_INCREMENT);
+		USBTRACE("urb %p canceled", urb);
+		/* this IRP will be returned in urb's completion function */
 	} else
-		WARNING("urb %p canceled in state: %d", urb, prev_state);
+		ERROR("urb %p in wrong state: %d", urb, prev_state);
 
-	USBTRACE("urb %p canceled", urb);
 }
 
 static USBD_STATUS wrap_bulk_or_intr_trans(struct irp *irp)

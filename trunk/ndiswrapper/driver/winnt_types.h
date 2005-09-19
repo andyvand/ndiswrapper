@@ -683,12 +683,9 @@ struct irp {
 	} tail;
 
 	/* ndiswrapper extension */
-	struct nt_list complete_list;
-	struct nt_list submit_list;
 	struct urb *urb;
 	enum urb_state urb_state;
 	struct wrapper_dev *wd;
-	int pending_returned_done;
 };
 
 #define IoSizeOfIrp(stack_size) \
