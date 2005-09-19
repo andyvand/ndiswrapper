@@ -1495,8 +1495,8 @@ STDCALL void WRAP_EXPORT(NdisMSetPeriodicTimer)
 STDCALL void WRAP_EXPORT(NdisMCancelTimer)
 	(struct ndis_miniport_timer *timer_handle, BOOLEAN *canceled)
 {
-	TRACEENTER4("%s", "");
-	wrap_cancel_timer(timer_handle->ktimer.wrap_timer, canceled);
+	TRACEENTER4("%p", timer_handle);
+	wrap_cancel_timer(timer_handle->ktimer.wrap_timer, canceled, 0);
 	TRACEEXIT4(return);
 }
 
@@ -1527,7 +1527,7 @@ STDCALL void WRAP_EXPORT(NdisCancelTimer)
 	(struct ndis_timer *timer_handle, BOOLEAN *canceled)
 {
 	TRACEENTER4("%s", "");
-	wrap_cancel_timer(timer_handle->ktimer.wrap_timer, canceled);
+	wrap_cancel_timer(timer_handle->ktimer.wrap_timer, canceled, 0);
 	TRACEEXIT4(return);
 }
 
@@ -2190,11 +2190,11 @@ STDCALL void WRAP_EXPORT(NdisMSleep)
 {
 	unsigned long delay;
 
-	TRACEENTER4("us: %u", us);
-	delay = ((HZ * us) / 1000000) + 1;
+	TRACEENTER4("%p: us: %u", get_current(), us);
+	delay = HZ * us / 1000000;
 	set_current_state(TASK_INTERRUPTIBLE);
 	schedule_timeout(delay);
-	DBGTRACE4("%s", "woke up");
+	DBGTRACE4("%p: woke up", get_current());
 	TRACEEXIT4(return);
 }
 
@@ -2359,7 +2359,7 @@ static void ndis_worker(void *data)
 	NDIS_PHY_ADDRESS phys;
 	KIRQL irql;
 
-	TRACEENTER3("%s", "");
+	TRACEENTER3("");
 
 	while (1) {
 		struct nt_list *cur;
@@ -2413,6 +2413,7 @@ static void ndis_worker(void *data)
 		case NDIS_RETURN_PACKET_WORK_ITEM:
 			packet = ndis_work_entry->entry.return_packet;
 			miniport = &wd->driver->miniport;
+			DBGTRACE3("returning packet %p", packet);
 			irql = raise_irql(DISPATCH_LEVEL);
 			LIN2WIN2(miniport->return_packet,
 				 wd->nmb->adapter_ctx, packet);

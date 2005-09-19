@@ -397,7 +397,6 @@ struct wrap_timer {
 	unsigned long wrap_timer_magic;
 #endif
 	long repeat;
-	int active;
 	/* kdpc's associated with kernel timers should be inserted
 	 * into kdpc when timer expires and kdpc's associated with
 	 * NDIS timers should be executed when timer expires */
@@ -420,7 +419,7 @@ struct wrapper_dev;
 /* until issues with threads hogging cpu are resolved, we don't want
  * to use shared workqueue, lest the threads take keyboard etc down */
 extern struct workqueue_struct *ndiswrapper_wq;
-#define schedule_work(work_struct) queue_work(ndiswrapper_wq, (work_struct))
+//#define schedule_work(work_struct) queue_work(ndiswrapper_wq, (work_struct))
 
 int ntoskernel_init(void);
 void ntoskernel_exit(void);
@@ -560,7 +559,8 @@ void wrap_init_timer(struct ktimer *ktimer, void *handle,
 		     struct kdpc *kdpc, enum timer_type type);
 int wrap_set_timer(struct wrap_timer *wrap_timer, long expires,
 		   unsigned long repeat, struct kdpc *kdpc);
-void wrap_cancel_timer(struct wrap_timer *wrap_timer, BOOLEAN *canceled);
+void wrap_cancel_timer(struct wrap_timer *wrap_timer, BOOLEAN *canceled,
+		       int remove_kdpc);
 
 STDCALL void KeInitializeTimer(struct ktimer *ktimer);
 

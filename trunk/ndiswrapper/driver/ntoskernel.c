@@ -121,7 +121,7 @@ void ntoskernel_exit(void)
 	struct nt_list *cur;
 	KIRQL irql;
 
-	KeFlushQueuedDpcs();
+//	KeFlushQueuedDpcs();
 	if (mdl_cache) {
 		irql = kspin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL);
 		if (!IsListEmpty(&wrap_mdl_list)) {
@@ -170,27 +170,11 @@ void ntoskernel_exit(void)
 
 int ntoskernel_init_device(struct wrapper_dev *wd)
 {
-	struct kthread *kthread;
-
-	DBGTRACE1("task: %p", get_current());
-	kthread = KeGetCurrentThread();
-	if (kthread) {
-		DBGTRACE1("kthread: %p, task: %p", kthread, kthread->task);
-		return 0;
-	}
 	return 0;
 }
 
 void ntoskernel_exit_device(struct wrapper_dev *wd)
 {
-	struct kthread *kthread;
-
-	kthread = KeGetCurrentThread();
-	if (kthread) {
-		DBGTRACE1("deleting thread: %p, task: %p",
-			  kthread, kthread->task);
-		ObDereferenceObject(kthread);
-	}
 	return;
 }
 
@@ -460,8 +444,8 @@ STDCALL BOOLEAN WRAP_EXPORT(KeSetTimerEx)
 	unsigned long expires;
 	unsigned long repeat;
 
-	TRACEENTER5("%p, %ld, %u, %p",
-		    ktimer, (long)duetime_ticks, period_ms, kdpc);
+	TRACEENTER5("%p, %Ld, %u, %p",
+		    ktimer, duetime_ticks, period_ms, kdpc);
 
 	expires = SYSTEM_TIME_TO_HZ(duetime_ticks);
 	repeat = HZ * period_ms / 1000 ;
@@ -473,7 +457,7 @@ STDCALL BOOLEAN WRAP_EXPORT(KeSetTimer)
 {
 	unsigned long expires;
 
-	TRACEENTER5("%p, %ld, %p", ktimer, (long)duetime_ticks, kdpc);
+	TRACEENTER5("%p, %Ld, %p", ktimer, duetime_ticks, kdpc);
 	expires = SYSTEM_TIME_TO_HZ(duetime_ticks);
 	return wrap_set_timer(ktimer->wrap_timer, expires, 0, kdpc);
 }
@@ -484,7 +468,7 @@ STDCALL BOOLEAN WRAP_EXPORT(KeCancelTimer)
 	char canceled;
 
 	TRACEENTER5("%p", ktimer);
-	wrap_cancel_timer(ktimer->wrap_timer, &canceled);
+	wrap_cancel_timer(ktimer->wrap_timer, &canceled, 1);
 	return canceled;
 }
 
@@ -524,7 +508,7 @@ static void kdpc_worker(void *data)
 		kdpc = container_of(entry, struct kdpc, list);
 		kdpc->number = 0;
 		kspin_unlock(&kdpc_list_lock);
-		DBGTRACE5("%p, %p, %p, %p, %p", kdpc, dpc_func, kdpc->ctx,
+		DBGTRACE5("%p, %p, %p, %p, %p", kdpc, kdpc->func, kdpc->ctx,
 			  kdpc->arg1, kdpc->arg2);
 		LIN2WIN4(kdpc->func, kdpc, kdpc->ctx, kdpc->arg1, kdpc->arg2);
 	}
@@ -979,6 +963,8 @@ STDCALL NTSTATUS WRAP_EXPORT(KeWaitForMultipleObjects)
 	task = get_current();
 	kthread = KeGetCurrentThread();
 	assert(kthread != NULL);
+	if (kthread == NULL)
+		return STATUS_RESOURCES;
 	EVENTENTER("task: %p, thread: %p, count = %d, reason = %u, "
 		   "waitmode = %u, alertable = %u, timeout = %p", task,
 		   kthread, count, wait_reason, wait_mode, alertable, timeout);

@@ -618,7 +618,7 @@ struct kapc {
 #define IRP_ASSOCIATED_IRP		0x00000008
 
 enum urb_state {
-	URB_QUEUED = 1, URB_SUBMITTED, URB_CANCELED,
+	URB_QUEUED = 1, URB_ALLOCATED, URB_SUBMITTED, URB_CANCELED,
 	URB_COMPLETED, URB_FREED };
 
 struct irp {
@@ -688,6 +688,7 @@ struct irp {
 	struct urb *urb;
 	enum urb_state urb_state;
 	struct wrapper_dev *wd;
+	int pending_returned_done;
 };
 
 #define IoSizeOfIrp(stack_size) \
@@ -732,6 +733,9 @@ struct irp {
 	}
 #define IoMarkIrpPending(irp)						\
 	(IoGetCurrentIrpStackLocation((irp))->control |= SL_PENDING_RETURNED)
+
+#define IoUnmarkIrpPending(irp)						\
+	(IoGetCurrentIrpStackLocation((irp))->control &= ~SL_PENDING_RETURNED)
 
 #define IRP_SL(irp, i) (((struct io_stack_location *)((irp) + 1)) + (i))
 #define IRP_DRIVER_CONTEXT(irp) (irp)->tail.overlay.driver_context
