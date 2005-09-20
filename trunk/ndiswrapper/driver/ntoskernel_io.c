@@ -910,17 +910,14 @@ STDCALL NTSTATUS WRAP_EXPORT(IoAllocateDriverObjectExtension)
 STDCALL void *WRAP_EXPORT(IoGetDriverObjectExtension)
 	(struct driver_object *drv_obj, void *client_id)
 {
-	struct nt_list *head, *ent;
+	struct custom_ext *ce;
 	void *ret;
 	KIRQL irql;
 
 	IOENTER("drv_obj: %p, client_id: %p", drv_obj, client_id);
-	head = &drv_obj->drv_ext->custom_ext;
 	ret = NULL;
 	irql = kspin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL);
-	nt_list_for_each(ent, head) {
-		struct custom_ext *ce;
-		ce = container_of(ent, struct custom_ext, list);
+	nt_list_for_each_entry(ce, &drv_obj->drv_ext->custom_ext, list) {
 		if (ce->client_id == client_id) {
 			ret = (void *)ce + sizeof(*ce);
 			break;
@@ -933,13 +930,12 @@ STDCALL void *WRAP_EXPORT(IoGetDriverObjectExtension)
 
 void free_custom_ext(struct driver_extension *drv_ext)
 {
-	struct nt_list *head, *ent;
+	struct nt_list *ent;
 	KIRQL irql;
 
 	IOENTER("%p", drv_ext);
-	head = &drv_ext->custom_ext;
 	irql = kspin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL);
-	while ((ent = RemoveHeadList(head)))
+	while ((ent = RemoveHeadList(&drv_ext->custom_ext)))
 		kfree(ent);
 	kspin_unlock_irql(&ntoskernel_lock, irql);
 	IOEXIT(return);

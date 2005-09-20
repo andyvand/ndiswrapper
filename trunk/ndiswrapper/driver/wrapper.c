@@ -1162,7 +1162,7 @@ static void link_status_handler(struct wrapper_dev *wd)
 	get_ap_address(wd, (char *)&wrqu.ap_addr.sa_data);
 	wrqu.ap_addr.sa_family = ARPHRD_ETHER;
 	wireless_send_event(wd->net_dev, SIOCGIWAP, &wrqu, NULL);
-	DBGTRACE2("%s", "associate_event");
+	DBGTRACE2("associate to " MACSTR, MAC2STR(wrqu.ap_addr.sa_data));
 	TRACEEXIT2(return);
 }
 

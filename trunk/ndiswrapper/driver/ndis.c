@@ -73,27 +73,25 @@ void ndis_exit(void)
 {
 	KIRQL irql;
 
-	if (packet_cache) {
-		irql = kspin_lock_irql(&wrap_ndis_packet_lock, DISPATCH_LEVEL);
-		if (!IsListEmpty(&wrap_ndis_packet_list)) {
-			struct nt_list *cur;
-			ERROR("Windows driver didn't free all packets; "
-			      "freeing them now");
-			while (1) {
-				struct wrap_ndis_packet *p;
-				cur = RemoveHeadList(&wrap_ndis_packet_list);
-				if (!cur)
-					break;
-				p = container_of(cur, struct wrap_ndis_packet,
-						 list);
-				DBGTRACE3("feeing packet %p", &p->ndis_packet);
-				kmem_cache_free(packet_cache, p);
-			}
+	irql = kspin_lock_irql(&wrap_ndis_packet_lock, DISPATCH_LEVEL);
+	if (!IsListEmpty(&wrap_ndis_packet_list)) {
+		struct nt_list *cur;
+		WARNING("Windows driver didn't free all packets; "
+			"freeing them now");
+		while (1) {
+			struct wrap_ndis_packet *p;
+			cur = RemoveHeadList(&wrap_ndis_packet_list);
+			if (!cur)
+				break;
+			p = container_of(cur, struct wrap_ndis_packet, list);
+			DBGTRACE3("feeing packet %p", &p->ndis_packet);
+			kmem_cache_free(packet_cache, p);
 		}
-		kspin_unlock_irql(&wrap_ndis_packet_lock, irql);
-		kmem_cache_destroy(packet_cache);
-		packet_cache = NULL;
 	}
+	kspin_unlock_irql(&wrap_ndis_packet_lock, irql);
+	if (packet_cache)
+		kmem_cache_destroy(packet_cache);
+	packet_cache = NULL;
 	return;
 }
 
@@ -378,7 +376,7 @@ STDCALL void WRAP_EXPORT(NdisOpenFile)
 	 NDIS_PHY_ADDRESS highest_address)
 {
 	struct ansi_string ansi;
-	struct nt_list *cur;
+	struct ndis_driver *driver;
 	struct ndis_bin_file *file;
 
 	TRACEENTER2("status = %p, filelength = %p, *filelength = %d, "
@@ -402,11 +400,9 @@ STDCALL void WRAP_EXPORT(NdisOpenFile)
 	DBGTRACE2("Filename: %s", ansi.buf);
 
 	/* Loop through all drivers and all files to find the requested file */
-	nt_list_for_each(cur, &ndis_drivers) {
-		struct ndis_driver *driver;
+	nt_list_for_each_entry(driver, &ndis_drivers, list) {
 		int i;
 
-		driver = container_of(cur, struct ndis_driver, list);
 		for (i = 0; i < driver->num_bin_files; i++) {
 			int n;
 			file = &driver->bin_files[i];
@@ -581,7 +577,6 @@ STDCALL void WRAP_EXPORT(NdisReadConfiguration)
 	char *keyname;
 	int ret;
 	struct wrapper_dev *wd;
-	struct nt_list *cur;
 
 	TRACEENTER2("nmb: %p", nmb);
 	wd = nmb->wd;
@@ -596,8 +591,7 @@ STDCALL void WRAP_EXPORT(NdisReadConfiguration)
 	DBGTRACE3("wd: %p, string: %s", wd, ansi.buf);
 	keyname = ansi.buf;
 
-	nt_list_for_each(cur, &wd->ndis_device->settings) {
-		setting = container_of(cur, struct device_setting, list);
+	nt_list_for_each_entry(setting, &wd->ndis_device->settings, list) {
 		if (stricmp(keyname, setting->name) == 0) {
 			DBGTRACE2("setting found %s=%s",
 				 keyname, setting->value);
@@ -626,7 +620,6 @@ STDCALL void WRAP_EXPORT(NdisWriteConfiguration)
 	char *keyname;
 	struct device_setting *setting;
 	struct wrapper_dev *wd;
-	struct nt_list *cur;
 
 	TRACEENTER2("nmb: %p", nmb);
 	wd = nmb->wd;
@@ -637,8 +630,7 @@ STDCALL void WRAP_EXPORT(NdisWriteConfiguration)
 	keyname = ansi.buf;
 	DBGTRACE2("key = %s", keyname);
 
-	nt_list_for_each(cur, &wd->ndis_device->settings) {
-		setting = container_of(cur, struct device_setting, list);
+	nt_list_for_each_entry(setting, &wd->ndis_device->settings, list) {
 		if (strcmp(keyname, setting->name) == 0) {
 			*status = ndis_decode_setting(setting, param);
 			DBGTRACE2("setting changed %s=%s",
@@ -730,13 +722,6 @@ STDCALL NDIS_STATUS WRAP_EXPORT(NdisUnicodeStringToAnsiString)
 	TRACEEXIT2(return RtlUnicodeStringToAnsiString(dst, src, dup));
 }
 
-/*
- * Called by driver from the init callback.
- * The adapter_ctx should be supplied to most other callbacks so we save
- * it in out handle. Some functions are called only with adapter_ctx, but
- * we also need handle in them, so we store handle X adapter_ctx map in
- * a global list.
- */
 STDCALL void WRAP_EXPORT(NdisMSetAttributesEx)
 	(struct ndis_miniport_block *nmb, void *adapter_ctx,
 	 UINT hangcheck_interval, UINT attributes, ULONG adaptortype)
@@ -2436,7 +2421,7 @@ STDCALL NDIS_STATUS WRAP_EXPORT(NdisScheduleWorkItem)
 	struct ndis_work_entry *ndis_work_entry;
 	KIRQL irql;
 
-	TRACEENTER3("%s", "");
+	TRACEENTER3("");
 	/* this function is called from irq_bh by realtek driver */
 	ndis_work_entry = kmalloc(sizeof(*ndis_work_entry), GFP_ATOMIC);
 	if (!ndis_work_entry)
