@@ -1172,8 +1172,12 @@ static inline struct nt_list *InsertTailList(struct nt_list *head,
 }
 
 #define nt_list_for_each(pos, head)					\
-	for (pos = (head)->next; pos != (head);				\
-	     pos = pos->next)
+	for (pos = (head)->next; pos != (head); pos = pos->next)
+
+#define nt_list_for_each_entry(pos, head, member)			\
+	for (pos = container_of((head)->next, typeof(*pos), member);	\
+	     &pos->member != (head);					\
+	     pos = container_of(pos->member.next, typeof(*pos), member))
 
 #define nt_list_for_each_safe(pos, n, head)		       \
 	for (pos = (head)->next, n = pos->next; pos != (head); \

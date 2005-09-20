@@ -225,10 +225,8 @@ static void del_bus_drivers(void)
 
 struct driver_object *find_bus_driver(const char *name)
 {
-	struct nt_list *ent;
-	nt_list_for_each(ent, &bus_driver_list) {
-		struct bus_driver *bus_driver;
-		bus_driver = container_of(ent, struct bus_driver, list);
+	struct bus_driver *bus_driver;
+	nt_list_for_each_entry(bus_driver, &bus_driver_list, list) {
 		if (strcmp(bus_driver->name, name) == 0)
 			return bus_driver->drv_obj;
 	}
@@ -797,14 +795,11 @@ STDCALL NTSTATUS WRAP_EXPORT(ExCreateCallback)
 	 BOOLEAN create, BOOLEAN allow_multiple_callbacks)
 {
 	struct callback_object *obj;
-	struct nt_list *cur;
 	KIRQL irql;
 
 	TRACEENTER2("");
 	irql = kspin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL);
-	nt_list_for_each(cur, &callback_objects) {
-		obj = container_of(cur, struct callback_object,
-				   callback_funcs);
+	nt_list_for_each_entry(obj, &callback_objects, callback_funcs) {
 		if (obj->attributes == attributes) {
 			kspin_unlock_irql(&ntoskernel_lock, irql);
 			*object = obj;
@@ -871,14 +866,12 @@ STDCALL void WRAP_EXPORT(ExUnregisterCallback)
 STDCALL void WRAP_EXPORT(ExNotifyCallback)
 	(struct callback_object *object, void *arg1, void *arg2)
 {
-	struct nt_list *cur;
 	struct callback_func *callback;
 	KIRQL irql;
 
 	TRACEENTER3("%p", object);
 	irql = kspin_lock_irql(&object->lock, DISPATCH_LEVEL);
-	nt_list_for_each(cur, &object->callback_funcs){
-		callback = container_of(cur, struct callback_func, list);
+	nt_list_for_each_entry(callback, &object->callback_funcs, list){
 		LIN2WIN3(callback->func, callback->context, arg1, arg2);
 	}
 	kspin_unlock_irql(&object->lock, irql);
@@ -926,12 +919,10 @@ static int inline check_reset_signaled_state(void *object,
  * DISPATCH_LEVEL */
 static void wakeup_threads(struct dispatch_header *dh)
 {
-	struct nt_list *cur, *next;
 	struct wait_block *wb;
 
 	EVENTENTER("dh: %p", dh);
-	nt_list_for_each_safe(cur, next, &dh->wait_blocks) {
-		wb = container_of(cur, struct wait_block, list);
+	nt_list_for_each_entry(wb, &dh->wait_blocks, list) {
 		EVENTTRACE("wait block: %p, thread: %p", wb, wb->kthread);
 		assert(wb->kthread != NULL && wb->object == dh);
 		if (wb->kthread &&
@@ -1331,7 +1322,7 @@ STDCALL void WRAP_EXPORT(KeQuerySystemTime)
 STDCALL LARGE_INTEGER WRAP_EXPORT(KeQueryPerformanceCounter)
 	(LARGE_INTEGER *counter)
 {
-	unsigned long res;
+	typeof(jiffies) res;
 
 	res = jiffies;
 	if (counter)
@@ -1342,18 +1333,16 @@ STDCALL LARGE_INTEGER WRAP_EXPORT(KeQueryPerformanceCounter)
 STDCALL struct kthread *WRAP_EXPORT(KeGetCurrentThread)
 	(void)
 {
-	struct nt_list *cur;
 	KIRQL irql;
 	struct task_struct *task = get_current();
 	struct kthread *ret;
+	struct common_object_header *header;
 
 	DBGTRACE3("task: %p", task);
 	ret = NULL;
 	irql = kspin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL);
-	nt_list_for_each(cur, &object_list) {
-		struct common_object_header *header;
+	nt_list_for_each_entry(header, &object_list, list) {
 		struct kthread *kthread;
-		header = container_of(cur, struct common_object_header, list);
 		DBGTRACE3("header: %p, type: %d", header, header->type);
 		if (header->type != OBJECT_TYPE_KTHREAD)
 			continue;
@@ -1544,15 +1533,13 @@ STDCALL NTSTATUS WRAP_EXPORT(PsTerminateSystemThread)
 STDCALL BOOLEAN WRAP_EXPORT(KeRemoveEntryDeviceQueue)
 	(struct kdevice_queue *dev_queue, struct kdevice_queue_entry *entry)
 {
-	struct nt_list *cur;
+	struct kdevice_queue_entry *e;
 	KIRQL irql;
 
 	irql = kspin_lock_irql(&dev_queue->lock, DISPATCH_LEVEL);
-	nt_list_for_each(cur, &dev_queue->list) {
-		struct kdevice_queue_entry *e;
-		e = container_of(cur, struct kdevice_queue_entry, list);
+	nt_list_for_each_entry(e, &dev_queue->list, list) {
 		if (e == entry) {
-			RemoveEntryList(cur);
+			RemoveEntryList(&e->list);
 			kspin_unlock_irql(&dev_queue->lock, irql);
 			return TRUE;
 		}
@@ -1819,7 +1806,8 @@ STDCALL NTSTATUS WRAP_EXPORT(ZwCreateFile)
 	 ULONG file_attr, ULONG share_access, ULONG create_disposition,
 	 ULONG create_options, void *ea_buffer, ULONG ea_length)
 {
-	struct nt_list *cur;
+	struct common_object_header *header;
+	struct ndis_driver *driver;
 	struct object_attr *oa;
 	struct ansi_string ansi;
 	struct ndis_bin_file *file;
@@ -1839,10 +1827,7 @@ STDCALL NTSTATUS WRAP_EXPORT(ZwCreateFile)
 	DBGTRACE2("Filename: %s", ansi.buf);
 
 	irql = kspin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL);
-	nt_list_for_each(cur, &object_list) {
-		struct common_object_header *header;
-
-		header = container_of(cur, struct common_object_header, list);
+	nt_list_for_each_entry(header, &object_list, list) {
 		if (header->type != OBJECT_TYPE_FILE)
 			continue;
 		oa = HEADER_TO_OBJECT(header);
@@ -1865,11 +1850,8 @@ STDCALL NTSTATUS WRAP_EXPORT(ZwCreateFile)
 	RtlCopyUnicodeString(&oa->name, &obj_attr->name);
 	*handle = OBJECT_TO_HEADER(oa);
 	/* Loop through all drivers and all files to find the requested file */
-	nt_list_for_each(cur, &ndis_drivers) {
-		struct ndis_driver *driver;
+	nt_list_for_each_entry(driver, &ndis_drivers, list) {
 		int i;
-
-		driver = container_of(cur, struct ndis_driver, list);
 		for (i = 0; i < driver->num_bin_files; i++) {
 			int n;
 			file = &driver->bin_files[i];
