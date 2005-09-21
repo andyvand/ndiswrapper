@@ -162,7 +162,7 @@ static int iw_get_essid(struct net_device *dev, struct iw_request_info *info,
 	NDIS_STATUS res;
 	struct ndis_essid req;
 
-	TRACEENTER1("%s", "");
+	TRACEENTER1("");
 	memset(&req, 0, sizeof(req));
 	res = miniport_query_info(wd, OID_802_11_SSID, &req, sizeof(req));
 	if (res == NDIS_STATUS_FAILURE)
@@ -187,7 +187,7 @@ int set_infra_mode(struct wrapper_dev *wd,
 	NDIS_STATUS res;
 	unsigned int i;
 
-	TRACEENTER1("%s", "");
+	TRACEENTER1("");
 
 	res = miniport_set_int(wd, OID_802_11_INFRASTRUCTURE_MODE, mode);
 	if (res == NDIS_STATUS_FAILURE)
@@ -210,7 +210,7 @@ static int iw_set_infra_mode(struct net_device *dev,
 	struct wrapper_dev *wd = netdev_priv(dev);
 	enum network_infrastructure ndis_mode;
 
-	TRACEENTER1("%s", "");
+	TRACEENTER1("");
 	switch (wrqu->mode) {
 	case IW_MODE_ADHOC:
 		ndis_mode = Ndis802_11IBSS;
@@ -239,7 +239,7 @@ static int iw_get_infra_mode(struct net_device *dev,
 	int ndis_mode, iw_mode;
 	NDIS_STATUS res;
 
-	TRACEENTER1("%s", "");
+	TRACEENTER1("");
 	res = miniport_query_int(wd, OID_802_11_INFRASTRUCTURE_MODE,
 				 &ndis_mode);
 	if (res == NDIS_STATUS_FAILURE)
@@ -606,7 +606,7 @@ int get_ap_address(struct wrapper_dev *wd, mac_address ap_addr)
 {
 	NDIS_STATUS res;
 
-	TRACEENTER1("%s", "");
+	TRACEENTER1("");
 
 	res = NDIS_STATUS_ADAPTER_NOT_READY;
 	/* this OID is valid only when associated */
@@ -616,7 +616,7 @@ int get_ap_address(struct wrapper_dev *wd, mac_address ap_addr)
 	if (res == NDIS_STATUS_FAILURE)
 		return -ENOTSUPP;
 	if (res == NDIS_STATUS_ADAPTER_NOT_READY)
-		memset(ap_addr, 0, ETH_ALEN);
+		memset(ap_addr, 0xff, ETH_ALEN);
 
 	DBGTRACE1(MACSTR, MAC2STR(ap_addr));
         TRACEEXIT1(return 0);
@@ -629,7 +629,7 @@ static int iw_get_ap_address(struct net_device *dev,
 	struct wrapper_dev *wd = netdev_priv(dev);
 	mac_address ap_addr;
 
-	TRACEENTER1("%s", "");
+	TRACEENTER1("");
 	get_ap_address(wd, ap_addr);
 
 	memcpy(wrqu->ap_addr.sa_data, ap_addr, ETH_ALEN);
@@ -847,7 +847,7 @@ static int iw_set_encr(struct net_device *dev, struct iw_request_info *info,
 	struct encr_info *encr_info = &wd->encr_info;
 	unsigned char *key;
 	
-	TRACEENTER1("%s", "");
+	TRACEENTER1("");
 	index = (wrqu->encoding.flags & IW_ENCODE_INDEX);
 	DBGTRACE2("index = %u", index);
 
@@ -1144,7 +1144,7 @@ int set_scan(struct wrapper_dev *wd)
 {
 	NDIS_STATUS res;
 
-	TRACEENTER1("%s", "");
+	TRACEENTER1("");
 	res = miniport_set_int(wd, OID_802_11_BSSID_LIST_SCAN, 0);
 	if (res == NDIS_STATUS_FAILURE)
 		return -EOPNOTSUPP;
@@ -1176,7 +1176,7 @@ static int iw_get_scan(struct net_device *dev, struct iw_request_info *info,
 	char *event = extra;
 	struct ndis_ssid_item *cur_item ;
 
-	TRACEENTER1("%s", "");
+	TRACEENTER1("");
 
 	if (time_before(jiffies, wd->scan_timestamp + 3 * HZ))
 		return -EAGAIN;
@@ -2025,7 +2025,7 @@ static int wpa_disassociate(struct net_device *dev,
 	unsigned char buf[NDIS_ESSID_MAX_SIZE];
 	int i;
 	
-	TRACEENTER2("%s", "");
+	TRACEENTER2("");
 	get_random_bytes(buf, sizeof(buf));
 	for (i = 0; i < sizeof(buf); i++)
 		buf[i] = 'a' + (buf[i] % ('z' - 'a'));
@@ -2041,7 +2041,7 @@ static int wpa_associate(struct net_device *dev, struct iw_request_info *info,
 	char ssid[NDIS_ESSID_MAX_SIZE];
 	int auth_mode, encr_mode, priv_mode, size;
 	
-	TRACEENTER2("%s", "");
+	TRACEENTER2("");
 
 	if (wrqu->data.length == 0)
 		size = (void *)&wpa_assoc_info.key_mgmt_suite - 
@@ -2149,7 +2149,7 @@ static int wpa_set_countermeasures(struct net_device *dev,
 				   struct iw_request_info *info,
 				   union iwreq_data *wrqu, char *extra)
 {
-	TRACEENTER2("%s", "");
+	TRACEENTER2("");
 	return 0;
 }
 
@@ -2159,7 +2159,7 @@ static int wpa_deauthenticate(struct net_device *dev,
 {
 	int ret;
 	
-	TRACEENTER2("%s", "");
+	TRACEENTER2("");
 	ret = wpa_disassociate(dev, info, wrqu, extra);
 	TRACEEXIT2(return ret);
 }

@@ -26,9 +26,6 @@ extern struct work_struct io_work;
 extern struct nt_list io_workitem_list;
 extern KSPIN_LOCK io_workitem_list_lock;
 
-//extern struct tasklet_struct irp_submit_work;
-extern struct work_struct irp_submit_work;
-
 extern KSPIN_LOCK irp_cancel_lock;
 
 STDCALL void WRAP_EXPORT(IoAcquireCancelSpinLock)
@@ -503,14 +500,31 @@ pdoDispatchInternalDeviceControl(struct device_object *pdo,
 	irp_sl = IoGetCurrentIrpStackLocation(irp);
 
 #ifdef CONFIG_USB
-	status = usb_submit_irp(pdo, irp);
+	status = wrap_submit_irp(pdo, irp);
 	IOTRACE("status: %08X", status);
-//	tasklet_schedule(&irp_submit_work);
-	schedule_work(&irp_submit_work);
-#endif
-	if (status != STATUS_PENDING)
+	if (status == STATUS_PENDING) {
+		/* although as per DDK, we are not supposed to touch
+		 * irp when STAUS_PENDING is returned, this irp hasn't
+		 * been submitted to usb yet (and not completed), so
+		 * it is safe in this case */
+		status = wrap_submit_urb(irp);
+	}
+	if (status == STATUS_PENDING)
+		return status;
+	else {
 		IoCompleteRequest(irp, IO_NO_INCREMENT);
-	IOEXIT(return status);
+		return status;
+	}
+#else
+	do {
+		union nt_urb *nt_urb;
+		status = irp->io_status.status = STATUS_NOT_IMPLEMENTED;
+		nt_urb = URB_FROM_IRP(irp);
+		NT_URB_STATUS(nt_urb) = USBD_STATUS_NOT_SUPPORTED;
+		IoCompleteRequest(irp, IO_NO_INCREMENT);
+		return status;
+	} while (0)
+#endif
 }
 
 STDCALL NTSTATUS pdoDispatchDeviceControl(struct device_object *pdo,
@@ -896,17 +910,14 @@ STDCALL NTSTATUS WRAP_EXPORT(IoAllocateDriverObjectExtension)
 STDCALL void *WRAP_EXPORT(IoGetDriverObjectExtension)
 	(struct driver_object *drv_obj, void *client_id)
 {
-	struct nt_list *head, *ent;
+	struct custom_ext *ce;
 	void *ret;
 	KIRQL irql;
 
 	IOENTER("drv_obj: %p, client_id: %p", drv_obj, client_id);
-	head = &drv_obj->drv_ext->custom_ext;
 	ret = NULL;
 	irql = kspin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL);
-	nt_list_for_each(ent, head) {
-		struct custom_ext *ce;
-		ce = container_of(ent, struct custom_ext, list);
+	nt_list_for_each_entry(ce, &drv_obj->drv_ext->custom_ext, list) {
 		if (ce->client_id == client_id) {
 			ret = (void *)ce + sizeof(*ce);
 			break;
@@ -919,13 +930,12 @@ STDCALL void *WRAP_EXPORT(IoGetDriverObjectExtension)
 
 void free_custom_ext(struct driver_extension *drv_ext)
 {
-	struct nt_list *head, *ent;
+	struct nt_list *ent;
 	KIRQL irql;
 
 	IOENTER("%p", drv_ext);
-	head = &drv_ext->custom_ext;
 	irql = kspin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL);
-	while ((ent = RemoveHeadList(head)))
+	while ((ent = RemoveHeadList(&drv_ext->custom_ext)))
 		kfree(ent);
 	kspin_unlock_irql(&ntoskernel_lock, irql);
 	IOEXIT(return);

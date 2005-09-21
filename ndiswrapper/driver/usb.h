@@ -258,6 +258,7 @@ union nt_urb {
 
 #define NT_URB_STATUS(nt_urb) ((nt_urb)->header.status)
 
-NTSTATUS usb_submit_irp(struct device_object *pdo, struct irp *irp);
+NTSTATUS wrap_submit_irp(struct device_object *pdo, struct irp *irp);
+NTSTATUS wrap_submit_urb(struct irp *irp);
 
 #endif /* USB_H */

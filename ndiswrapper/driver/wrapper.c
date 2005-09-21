@@ -84,6 +84,8 @@ static void ndis_set_rx_mode(struct net_device *dev);
 static void set_multicast_list(struct net_device *dev,
 			       struct wrapper_dev *wd);
 
+extern KSPIN_LOCK timer_lock;
+
 /*
  * MiniportReset
  */
@@ -291,7 +293,7 @@ NDIS_STATUS miniport_init(struct wrapper_dev *wd)
 	}
 	TRACEENTER1("driver init routine is at %p", miniport->init);
 	if (miniport->init == NULL) {
-		ERROR("%s", "initialization function is not setup correctly");
+		ERROR("initialization function is not setup correctly");
 		return -EINVAL;
 	}
 	res = LIN2WIN6(miniport->init, &status, &medium_index, medium_array,
@@ -482,27 +484,21 @@ NDIS_STATUS miniport_surprise_remove(struct wrapper_dev *wd)
 static void hangcheck_proc(unsigned long data)
 {
 	struct wrapper_dev *wd = (struct wrapper_dev *)data;
-	KIRQL irql;
 
 	TRACEENTER3("");
 	set_bit(HANGCHECK, &wd->wrapper_work);
 	schedule_work(&wd->wrapper_worker);
 
-	irql = kspin_lock_irql(&wd->timer_lock, DISPATCH_LEVEL);
 	if (wd->hangcheck_active) {
-		wd->hangcheck_timer.expires =
-			jiffies + wd->hangcheck_interval;
+		wd->hangcheck_timer.expires += wd->hangcheck_interval;
 		add_timer(&wd->hangcheck_timer);
 	}
-	kspin_unlock_irql(&wd->timer_lock, irql);
 
 	TRACEEXIT3(return);
 }
 
 void hangcheck_add(struct wrapper_dev *wd)
 {
-	KIRQL irql;
-
 	if (!wd->driver->miniport.hangcheck || wd->hangcheck_interval <= 0) {
 		wd->hangcheck_active = 0;
 		return;
@@ -511,25 +507,19 @@ void hangcheck_add(struct wrapper_dev *wd)
 	init_timer(&wd->hangcheck_timer);
 	wd->hangcheck_timer.data = (unsigned long)wd;
 	wd->hangcheck_timer.function = &hangcheck_proc;
-
-	irql = kspin_lock_irql(&wd->timer_lock, DISPATCH_LEVEL);
+	wd->hangcheck_timer.expires = jiffies + wd->hangcheck_interval;
 	add_timer(&wd->hangcheck_timer);
 	wd->hangcheck_active = 1;
-	kspin_unlock_irql(&wd->timer_lock, irql);
 	return;
 }
 
 void hangcheck_del(struct wrapper_dev *wd)
 {
-	KIRQL irql;
-
 	if (!wd->driver->miniport.hangcheck || wd->hangcheck_interval <= 0)
 		return;
 
-	irql = kspin_lock_irql(&wd->timer_lock, DISPATCH_LEVEL);
 	wd->hangcheck_active = 0;
-	del_timer(&wd->hangcheck_timer);
-	kspin_unlock_irql(&wd->timer_lock, irql);
+	del_timer_sync(&wd->hangcheck_timer);
 }
 
 static void stats_proc(unsigned long data)
@@ -538,7 +528,7 @@ static void stats_proc(unsigned long data)
 
 	set_bit(COLLECT_STATS, &wd->wrapper_work);
 	schedule_work(&wd->wrapper_worker);
-	wd->stats_timer.expires = jiffies + 5 * HZ;
+	wd->stats_timer.expires += 5 * HZ;
 	add_timer(&wd->stats_timer);
 }
 
@@ -553,11 +543,7 @@ static void stats_timer_add(struct wrapper_dev *wd)
 
 static void stats_timer_del(struct wrapper_dev *wd)
 {
-	KIRQL irql;
-
-	irql = kspin_lock_irql(&wd->timer_lock, DISPATCH_LEVEL);
 	del_timer_sync(&wd->stats_timer);
-	kspin_unlock_irql(&wd->timer_lock, irql);
 }
 
 static int ndis_open(struct net_device *dev)
@@ -1060,6 +1046,7 @@ static void link_status_handler(struct wrapper_dev *wd)
 
 	TRACEENTER2("link status: %d", wd->link_status);
 	if (wd->link_status == 0) {
+#if 0
 		if (wd->encr_mode == Ndis802_11Encryption1Enabled ||
 		    wd->infrastructure_mode == Ndis802_11IBSS) {
 			for (i = 0; i < MAX_ENCR_KEYS; i++) {
@@ -1073,10 +1060,11 @@ static void link_status_handler(struct wrapper_dev *wd)
 			schedule_work(&wd->wrapper_worker);
 			TRACEEXIT2(return);
 		}
-		/* FIXME: not clear if NDIS says keys should
+		/* TODO: not clear if NDIS says keys should
 		 * be cleared here */
 		for (i = 0; i < MAX_ENCR_KEYS; i++)
 			wd->encr_info.keys[i].length = 0;
+#endif
 
 		memset(&wrqu, 0, sizeof(wrqu));
 		wrqu.ap_addr.sa_family = ARPHRD_ETHER;
@@ -1174,7 +1162,7 @@ static void link_status_handler(struct wrapper_dev *wd)
 	get_ap_address(wd, (char *)&wrqu.ap_addr.sa_data);
 	wrqu.ap_addr.sa_family = ARPHRD_ETHER;
 	wireless_send_event(wd->net_dev, SIOCGIWAP, &wrqu, NULL);
-	DBGTRACE2("%s", "associate_event");
+	DBGTRACE2("associate to " MACSTR, MAC2STR(wrqu.ap_addr.sa_data));
 	TRACEEXIT2(return);
 }
 
@@ -1229,8 +1217,10 @@ static void update_wireless_stats(struct wrapper_dev *wd)
 	ndis_rssi rssi;
 
 	TRACEENTER2("");
-	if (wd->stats_enabled == FALSE)
+	if (wd->stats_enabled == FALSE) {
+		memset(&iw_stats->qual, 0, sizeof(iw_stats->qual));
 		return;
+	}
 	/* TODO: Prism1 USB and Airgo cards crash kernel if RSSI is queried */
 	rssi = 0;
 	res = miniport_query_info(wd, OID_802_11_RSSI, &rssi, sizeof(rssi));
@@ -1667,10 +1657,12 @@ int setup_device(struct net_device *dev)
 	ndis_set_rx_mode(dev);
 	/* check_capa changes auth_mode and encr_mode, so set them again */
 #endif
+#if 0
 	set_auth_mode(wd, Ndis802_11AuthModeOpen);
 	set_encr_mode(wd, Ndis802_11EncryptionDisabled);
 	set_infra_mode(wd, Ndis802_11Infrastructure);
 	set_scan(wd);
+#endif
 
 	hangcheck_add(wd);
 	stats_timer_add(wd);
@@ -1734,7 +1726,6 @@ struct net_device *ndis_init_netdev(struct wrapper_dev **pwd,
 	wd->attributes = 0;
 	wd->reset_status = 0;
 	InitializeListHead(&wd->wrap_timer_list);
-	kspin_lock_init(&wd->timer_lock);
 	wd->map_count = 0;
 	wd->map_dma_addr = NULL;
 	wd->nick[0] = 0;
@@ -1750,11 +1741,11 @@ struct net_device *ndis_init_netdev(struct wrapper_dev **pwd,
 	set_bit(HW_AVAILABLE, &wd->hw_status);
 
 	if ((wd->ndis_device->vendor == 0x17cb &&
-	       wd->ndis_device->device == 0x0001) ||
-	      (wd->ndis_device->vendor == 0x2001 &&
-	       wd->ndis_device->device == 0x3700) ||
-	      (wd->ndis_device->vendor == 0x0ace &&
-	       wd->ndis_device->device == 0x1211))
+	     wd->ndis_device->device == 0x0001) ||
+	    (wd->ndis_device->vendor == 0x2001 &&
+	     wd->ndis_device->device == 0x3700) ||
+	    (wd->ndis_device->vendor == 0x0ace &&
+	     wd->ndis_device->device == 0x1211))
 		wd->stats_enabled = FALSE;
 	else
 		wd->stats_enabled = TRUE;
