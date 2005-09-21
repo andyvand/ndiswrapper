@@ -625,31 +625,11 @@ static int procfs_write_debug(struct file *file, const char *buf,
 	if ((p = strchr(setting, '=')))
 		*p = 0;
 
-	if (!strcmp(setting, "kevent")) {
-		unsigned int i;
-
-		if (!p)
-			return -EINVAL;
-		p++;
-		i = simple_strtol(p, NULL, 16);
-		INFO("waking event: %08x", i);
-		KeSetEvent((struct kevent *)i, 0, FALSE);
-	} else if (!strcmp(setting, "kthread")) {
-		struct kthread *kthread;
-
-		if (!p)
-			return -EINVAL;
-		p++;
-		kthread = (void *)simple_strtol(p, NULL, 16);
-		INFO("waking ktreahd: %p, task: %p", kthread, kthread->task);
-		wake_up_process(kthread->task);
-	} else {
-		i = simple_strtol(setting, NULL, 10);
-		if (i >= 0 && i < 10)
-			debug = i;
-		else
-			return -EINVAL;
-	}
+	i = simple_strtol(setting, NULL, 10);
+	if (i >= 0 && i < 10)
+		debug = i;
+	else
+		return -EINVAL;
 	return count;
 }
 

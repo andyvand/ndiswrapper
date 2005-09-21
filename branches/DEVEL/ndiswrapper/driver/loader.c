@@ -55,15 +55,13 @@ static struct ndis_driver *ndiswrapper_load_driver(struct ndis_device *device)
 	int err, found;
 	struct ndis_driver *ndis_driver;
 	KIRQL irql;
-	struct nt_list *cur;
 
 	TRACEENTER1("device: %04X:%04X:%04X:%04X", device->vendor,
 		    device->device, device->subvendor, device->subdevice);
 	found = 0;
 	ndis_driver = NULL;
 	irql = kspin_lock_irql(&loader_lock, DISPATCH_LEVEL);
-	nt_list_for_each(cur, &ndis_drivers) {
-		ndis_driver = container_of(cur, struct ndis_driver, list);
+	nt_list_for_each_entry(ndis_driver, &ndis_drivers, list) {
 		if (strcmp(ndis_driver->name, device->driver_name) == 0) {
 			DBGTRACE1("driver %s already loaded",
 				  ndis_driver->name);
@@ -106,9 +104,7 @@ static struct ndis_driver *ndiswrapper_load_driver(struct ndis_device *device)
 #endif
 		found = 0;
 		irql = kspin_lock_irql(&loader_lock, DISPATCH_LEVEL);
-		nt_list_for_each(cur, &ndis_drivers) {
-			ndis_driver = container_of(cur,
-						   struct ndis_driver, list);
+		nt_list_for_each_entry(ndis_driver, &ndis_drivers, list) {
 			if (strcmp(ndis_driver->name,
 				   device->driver_name) == 0) {
 				found = 1;
@@ -725,13 +721,11 @@ static int start_driver(struct ndis_driver *driver)
 static int add_driver(struct ndis_driver *driver)
 {
 	KIRQL irql;
-	struct nt_list *cur;
+	struct ndis_driver *tmp;
 
 	TRACEENTER1("");
 	irql = kspin_lock_irql(&loader_lock, DISPATCH_LEVEL);
-	nt_list_for_each(cur, &ndis_drivers) {
-		struct ndis_driver *tmp;
-		tmp = container_of(cur, struct ndis_driver, list);
+	nt_list_for_each_entry(tmp, &ndis_drivers, list) {
 		if (strcmp(tmp->name, driver->name) == 0) {
 			kspin_unlock_irql(&loader_lock, irql);
 			ERROR("cannot add duplicate driver");

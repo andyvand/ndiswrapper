@@ -212,12 +212,6 @@ struct kdpc {
 	KSPIN_LOCK *lock;
 };
 
-enum kdpc_type {
-	KDPC_TYPE_NONE,
-	KDPC_TYPE_KERNEL,
-	KDPC_TYPE_NDIS
-};
-
 enum pool_type {
 	NonPagedPool, PagedPool, NonPagedPoolMustSucceed, DontUseThisType,
 	NonPagedPoolCacheAligned, PagedPoolCacheAligned,
@@ -315,10 +309,10 @@ struct wait_context_block {
 
 struct dispatch_header {
 	UCHAR type;
+	/* 'absolute' field is used by ndiswrapper differently - to
+	 * store type of object this header is associated with */
 	UCHAR absolute;
 	UCHAR size;
-	/* 'inserted' field is used by ndiswrapper differently - to
-	 * store type of object this header is associated with */
 	UCHAR inserted;
 	LONG signal_state;
 	struct nt_list wait_blocks;
@@ -338,7 +332,8 @@ struct kevent {
 
 struct wrap_timer;
 
-enum ktimer_type { KTIMER_TYPE_KERNEL, KTIMER_TYPE_NDIS };
+#define WRAP_TIMER_MAGIC 47697249
+
 struct ktimer {
 	struct dispatch_header dh;
 	/* We can't fit Linux timer in this structure. Instead of
@@ -351,7 +346,10 @@ struct ktimer {
 	};
 	struct nt_list list;
 	struct kdpc *kdpc;
-	LONG period;
+	union {
+		LONG period;
+		LONG wrap_timer_magic;
+	};
 };
 
 struct kmutex {
@@ -382,11 +380,12 @@ struct kthread {
 };
 #pragma pack(pop)
 
-#define is_kevent_object(dh)      ((dh)->inserted == DH_KVENT)
-#define is_ktimer_object(dh)      ((dh)->inserted == DH_KTIMER)
-#define is_mutex_object(dh)       ((dh)->inserted == DH_KMUTEX)
-#define is_semaphore_object(dh)   ((dh)->inserted == DH_KSEMAPHORE)
-#define is_kthread_object(dh)     ((dh)->inserted == DH_KTHREAD)
+#define set_dh_type(dh, type)		((dh)->absolute = (type))
+#define is_kevent_dh(dh)		((dh)->absolute == DH_KVENT)
+#define is_ktimer_dh(dh)		((dh)->absolute == DH_KTIMER)
+#define is_mutex_dh(dh)			((dh)->absolute == DH_KMUTEX)
+#define is_semaphore_dh(dh)		((dh)->absolute == DH_KSEMAPHORE)
+#define is_kthread_dh(dh)		((dh)->absolute == DH_KTHREAD)
 
 struct irp;
 struct dev_obj_ext;
@@ -419,9 +418,7 @@ struct device_object {
 	USHORT sector_size;
 	USHORT spare1;
 	struct dev_obj_ext *dev_obj_ext;
-	/* 'reserved' field is used to store pointer to ndiswrapper's
-	 * device structure */
-	struct wrapper_dev *reserved;
+	void *reserved;
 };
 
 struct dev_obj_ext {
@@ -620,7 +617,7 @@ struct kapc {
 #define IRP_ASSOCIATED_IRP		0x00000008
 
 enum urb_state {
-	URB_QUEUED = 1, URB_SUBMITTED, URB_CANCELED,
+	URB_QUEUED = 1, URB_ALLOCATED, URB_SUBMITTED, URB_CANCELED,
 	URB_COMPLETED, URB_FREED };
 
 struct irp {
@@ -685,8 +682,6 @@ struct irp {
 	} tail;
 
 	/* ndiswrapper extension */
-	struct nt_list complete_list;
-	struct nt_list submit_list;
 	struct urb *urb;
 	enum urb_state urb_state;
 	struct wrapper_dev *wd;
@@ -734,6 +729,9 @@ struct irp {
 	}
 #define IoMarkIrpPending(irp)						\
 	(IoGetCurrentIrpStackLocation((irp))->control |= SL_PENDING_RETURNED)
+
+#define IoUnmarkIrpPending(irp)						\
+	(IoGetCurrentIrpStackLocation((irp))->control &= ~SL_PENDING_RETURNED)
 
 #define IRP_SL(irp, i) (((struct io_stack_location *)((irp) + 1)) + (i))
 #define IRP_DRIVER_CONTEXT(irp) (irp)->tail.overlay.driver_context
@@ -1173,8 +1171,12 @@ static inline struct nt_list *InsertTailList(struct nt_list *head,
 }
 
 #define nt_list_for_each(pos, head)					\
-	for (pos = (head)->next; pos != (head);				\
-	     pos = pos->next)
+	for (pos = (head)->next; pos != (head); pos = pos->next)
+
+#define nt_list_for_each_entry(pos, head, member)			\
+	for (pos = container_of((head)->next, typeof(*pos), member);	\
+	     &pos->member != (head);					\
+	     pos = container_of(pos->member.next, typeof(*pos), member))
 
 #define nt_list_for_each_safe(pos, n, head)		       \
 	for (pos = (head)->next, n = pos->next; pos != (head); \
