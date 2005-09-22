@@ -2296,7 +2296,7 @@ const struct iw_handler_def ndis_handler_def = {
 	.standard	= (iw_handler *)ndis_handler,
 	.private	= (iw_handler *)priv_handler,
 	.private_args	= (struct iw_priv_args *)priv_args,
-#if WIRELESS_EXT > 19
+#if WIRELESS_EXT >= 19
 	.get_wireless_stats = get_wireless_stats,
 #endif
 };
