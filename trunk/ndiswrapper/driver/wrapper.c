@@ -1575,7 +1575,7 @@ int setup_device(struct net_device *dev)
 	dev->stop = ndis_close;
 	dev->get_stats = ndis_get_stats;
 	dev->do_ioctl = ndis_ioctl;
-#if WIRELESS_EXT <= 19
+#if WIRELESS_EXT < 19
 	dev->get_wireless_stats = get_wireless_stats;
 #endif
 	dev->wireless_handlers	= (struct iw_handler_def *)&ndis_handler_def;
