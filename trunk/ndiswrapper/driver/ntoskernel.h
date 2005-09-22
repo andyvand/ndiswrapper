@@ -411,10 +411,12 @@ struct phys_dev {
 
 struct wrapper_dev;
 
+#if LINUX_VERSION_CODE > KERNEL_VERSION(2,6,0)
 /* until issues with threads hogging cpu are resolved, we don't want
  * to use shared workqueue, lest the threads take keyboard etc down */
 extern struct workqueue_struct *ndiswrapper_wq;
 #define schedule_work(work_struct) queue_work(ndiswrapper_wq, (work_struct))
+#endif
 
 int ntoskernel_init(void);
 void ntoskernel_exit(void);

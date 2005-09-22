@@ -431,10 +431,12 @@ void miniport_halt(struct wrapper_dev *wd)
 	if (kthread)
 		wrap_remove_thread(kthread);
 	ndis_exit_device(wd);
-	misc_funcs_exit_device(wd);
-	ntoskernel_exit_device(wd);
+#ifdef CONFIG_USB
 	if (wd->dev.dev_type == NDIS_USB_BUS)
 		usb_exit_device(wd);
+#endif
+	misc_funcs_exit_device(wd);
+	ntoskernel_exit_device(wd);
 
 	TRACEEXIT1(return);
 }
@@ -1754,6 +1756,7 @@ struct net_device *ndis_init_netdev(struct wrapper_dev **pwd,
 	return dev;
 }
 
+#if LINUX_VERSION_CODE > KERNEL_VERSION(2,6,0)
 /* we need to get kthread for the task running ndiswrapper_wq, so
  * schedule a worker for it soon after initializing ndiswrapper_wq */
 
@@ -1786,17 +1789,23 @@ static void _ndiswrapper_wq_init_worker(void *data)
 	}
 	_ndiswrapper_wq_init_state = 0;
 }
+#endif
 
 static void module_cleanup(void)
 {
 	loader_exit();
+#if LINUX_VERSION_CODE > KERNEL_VERSION(2,6,0)
 	_ndiswrapper_wq_init_state = NDISWRAPPER_WQ_EXIT;
 	schedule_work(&_ndiswrapper_wq_init);
 	while (_ndiswrapper_wq_init_state)
 		schedule_timeout(2);
 	destroy_workqueue(ndiswrapper_wq);
+#endif
 	ndiswrapper_procfs_remove();
 	ndis_exit();
+#ifdef CONFIG_USB
+	usb_exit();
+#endif
 	ntoskernel_exit();
 	misc_funcs_exit();
 }
@@ -1835,6 +1844,7 @@ static int __init wrapper_init(void)
 #endif
 		)
 		goto err;
+#if LINUX_VERSION_CODE > KERNEL_VERSION(2,6,0)
 	ndiswrapper_wq = create_singlethread_workqueue("ndiswrapwq");
 	INIT_WORK(&_ndiswrapper_wq_init, _ndiswrapper_wq_init_worker, 0);
 	_ndiswrapper_wq_init_state = NDISWRAPPER_WQ_INIT;
@@ -1843,6 +1853,7 @@ static int __init wrapper_init(void)
 		schedule_timeout(2);
 	if (_ndiswrapper_wq_init_state < 0)
 		goto err;
+#endif
 	ndiswrapper_procfs_init();
 	if (loader_init())
 		goto err;

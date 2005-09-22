@@ -69,6 +69,23 @@ void usb_exit_device(struct wrapper_dev *wd)
 	return;
 }
 
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,0)
+/* TODO: are these correct? */
+#define URB_NO_TRANSFER_DMA_MAP 0x0004
+#define URB_NO_SETUP_DMA_MAP 0x0004
+static void *usb_buffer_alloc(struct usb_device *udev, size_t size,
+			      unsigned mem_flags, dma_addr_t *dma)
+{
+	return kmalloc(size, mem_flags);
+}
+
+static void usb_buffer_free(struct usb_device *udev, size_t size, void *addr,
+			    dma_addr_t dma)
+{
+	kfree(addr);
+}
+#endif
+
 /* for a given Linux urb status code, return corresponding NT urb status */
 static USBD_STATUS wrap_urb_status(int urb_status)
 {
@@ -666,7 +683,7 @@ static USBD_STATUS wrap_get_descriptor(struct wrapper_dev *wd,
 				       union nt_urb *nt_urb, struct irp *irp)
 {
 	struct usbd_control_descriptor_request *ctrl_req;
-	int ret;
+	int ret = 0;
 	struct usb_device *udev;
 
 	udev = wd->dev.usb.udev;
