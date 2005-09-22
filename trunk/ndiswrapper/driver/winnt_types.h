@@ -198,6 +198,8 @@ struct kdpc;
 typedef STDCALL void (*DPC)(struct kdpc *kdpc, void *ctx, void *arg1,
 			    void *arg2);
 
+enum kdpc_type { KDPC_TYPE_KERNEL = 1, KDPC_TYPE_NDIS };
+
 struct kdpc {
 	SHORT type;
 	/* number is used to represent if the dpc is queued or not */
