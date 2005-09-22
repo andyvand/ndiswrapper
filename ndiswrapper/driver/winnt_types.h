@@ -212,12 +212,6 @@ struct kdpc {
 	KSPIN_LOCK *lock;
 };
 
-enum kdpc_type {
-	KDPC_TYPE_NONE,
-	KDPC_TYPE_KERNEL,
-	KDPC_TYPE_NDIS
-};
-
 enum pool_type {
 	NonPagedPool, PagedPool, NonPagedPoolMustSucceed, DontUseThisType,
 	NonPagedPoolCacheAligned, PagedPoolCacheAligned,
@@ -315,10 +309,10 @@ struct wait_context_block {
 
 struct dispatch_header {
 	UCHAR type;
+	/* 'absolute' field is used by ndiswrapper differently - to
+	 * store type of object this header is associated with */
 	UCHAR absolute;
 	UCHAR size;
-	/* 'inserted' field is used by ndiswrapper differently - to
-	 * store type of object this header is associated with */
 	UCHAR inserted;
 	LONG signal_state;
 	struct nt_list wait_blocks;
@@ -338,7 +332,8 @@ struct kevent {
 
 struct wrap_timer;
 
-enum ktimer_type { KTIMER_TYPE_KERNEL, KTIMER_TYPE_NDIS };
+#define WRAP_TIMER_MAGIC 47697249
+
 struct ktimer {
 	struct dispatch_header dh;
 	/* We can't fit Linux timer in this structure. Instead of
@@ -351,7 +346,10 @@ struct ktimer {
 	};
 	struct nt_list list;
 	struct kdpc *kdpc;
-	LONG period;
+	union {
+		LONG period;
+		LONG wrap_timer_magic;
+	};
 };
 
 struct kmutex {
@@ -382,11 +380,12 @@ struct kthread {
 };
 #pragma pack(pop)
 
-#define is_kevent_object(dh)      ((dh)->inserted == DH_KVENT)
-#define is_ktimer_object(dh)      ((dh)->inserted == DH_KTIMER)
-#define is_mutex_object(dh)       ((dh)->inserted == DH_KMUTEX)
-#define is_semaphore_object(dh)   ((dh)->inserted == DH_KSEMAPHORE)
-#define is_kthread_object(dh)     ((dh)->inserted == DH_KTHREAD)
+#define set_dh_type(dh, type)		((dh)->absolute = (type))
+#define is_kevent_dh(dh)		((dh)->absolute == DH_KVENT)
+#define is_ktimer_dh(dh)		((dh)->absolute == DH_KTIMER)
+#define is_mutex_dh(dh)			((dh)->absolute == DH_KMUTEX)
+#define is_semaphore_dh(dh)		((dh)->absolute == DH_KSEMAPHORE)
+#define is_kthread_dh(dh)		((dh)->absolute == DH_KTHREAD)
 
 struct irp;
 struct dev_obj_ext;
