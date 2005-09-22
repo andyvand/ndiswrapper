@@ -1199,6 +1199,8 @@ STDCALL void WRAP_EXPORT(NdisQueryBuffer)
 		*virt = MmGetMdlVirtualAddress(buffer);
 	if (length)
 		*length = MmGetMdlByteCount(buffer);
+	DBGTRACE4("%p, %u",
+		  MmGetMdlVirtualAddress(buffer), MmGetMdlByteCount(buffer));
 	TRACEEXIT3(return);
 }
 
@@ -1211,6 +1213,8 @@ STDCALL void WRAP_EXPORT(NdisQueryBufferSafe)
 		*virt = MmGetMdlVirtualAddress(buffer);
 	if (length)
 		*length = MmGetMdlByteCount(buffer);
+	DBGTRACE4("%p, %u",
+		  MmGetMdlVirtualAddress(buffer), MmGetMdlByteCount(buffer));
 }
 
 STDCALL void *WRAP_EXPORT(NdisBufferVirtualAddress)
@@ -1287,9 +1291,13 @@ struct ndis_packet *allocate_ndis_packet(void)
 		ndis_packet->private.oob_offset =
 			offsetof(struct ndis_packet, oob_data);
 		ndis_packet->private.packet_flags = fPACKET_ALLOCATED_BY_NDIS;
-		return ndis_packet;
-	} else
-		return NULL;
+		DBGTRACE4("allocated packet: %p(%p)",
+			  ndis_packet, wrap_ndis_packet);
+		TRACEEXIT4(return ndis_packet);
+	} else {
+		WARNING("couldn't allocate packet");
+		TRACEEXIT4(return NULL);
+	}
 }
 
 void free_ndis_packet(struct ndis_packet *packet)
@@ -1297,6 +1305,7 @@ void free_ndis_packet(struct ndis_packet *packet)
 	struct wrap_ndis_packet *wrap_ndis_packet;
 	KIRQL irql;
 
+	TRACEENTER4("freeing packet: %p", packet);
 	packet->private.buffer_head = NULL;
 	packet->private.valid_counts = FALSE;
 	wrap_ndis_packet = container_of(packet, struct wrap_ndis_packet,
@@ -1458,10 +1467,10 @@ STDCALL void WRAP_EXPORT(NdisMInitializeTimer)
 {
 	struct wrapper_dev *wd = nmb->wd;
 	TRACEENTER4("timer: %p", &timer_handle->ktimer);
-	initialize_kdpc(&timer_handle->kdpc, func, ctx, KDPC_TYPE_NDIS);
+	initialize_kdpc(&timer_handle->kdpc, func, ctx);
 	KeInitializeTimer(&timer_handle->ktimer);
-	wrap_init_timer(&timer_handle->ktimer, wd, &timer_handle->kdpc,
-			KTIMER_TYPE_NDIS);
+	wrap_init_timer(&timer_handle->ktimer, wd);
+	timer_handle->ktimer.kdpc = &timer_handle->kdpc;
 	TRACEEXIT4(return);
 }
 
@@ -1472,8 +1481,7 @@ STDCALL void WRAP_EXPORT(NdisMSetPeriodicTimer)
 
 	TRACEENTER4("%p, %u", timer_handle, period_ms);
 	expires = period_ms * HZ / 1000;
-	wrap_set_timer(timer_handle->ktimer.wrap_timer, expires, expires,
-		       &timer_handle->kdpc);
+	wrap_set_timer(&timer_handle->ktimer, expires, expires);
 	TRACEEXIT4(return);
 }
 
@@ -1481,7 +1489,7 @@ STDCALL void WRAP_EXPORT(NdisMCancelTimer)
 	(struct ndis_miniport_timer *timer_handle, BOOLEAN *canceled)
 {
 	TRACEENTER4("%p", timer_handle);
-	wrap_cancel_timer(timer_handle->ktimer.wrap_timer, canceled, 0);
+	wrap_cancel_timer(timer_handle->ktimer.wrap_timer, canceled);
 	TRACEEXIT4(return);
 }
 
@@ -1490,10 +1498,10 @@ STDCALL void WRAP_EXPORT(NdisInitializeTimer)
 {
 	TRACEENTER4("%p, %p, %p, %p", timer_handle, func, ctx,
 		    &timer_handle->ktimer);
-	initialize_kdpc(&timer_handle->kdpc, func, ctx, KDPC_TYPE_NDIS);
+	initialize_kdpc(&timer_handle->kdpc, func, ctx);
 	KeInitializeTimer(&timer_handle->ktimer);
-	wrap_init_timer(&timer_handle->ktimer, NULL, &timer_handle->kdpc,
-			KTIMER_TYPE_NDIS);
+	wrap_init_timer(&timer_handle->ktimer, NULL);
+	timer_handle->ktimer.kdpc = &timer_handle->kdpc;
 	TRACEEXIT4(return);
 }
 
@@ -1503,8 +1511,7 @@ STDCALL void WRAP_EXPORT(NdisSetTimer)
 	unsigned long expires = duetime_ms * HZ / 1000;
 
 	TRACEENTER4("%p, %u", timer_handle, duetime_ms);
-	wrap_set_timer(timer_handle->ktimer.wrap_timer, expires, 0,
-		       &timer_handle->kdpc);
+	wrap_set_timer(&timer_handle->ktimer, expires, 0);
 	TRACEEXIT4(return);
 }
 
@@ -1512,7 +1519,7 @@ STDCALL void WRAP_EXPORT(NdisCancelTimer)
 	(struct ndis_timer *timer_handle, BOOLEAN *canceled)
 {
 	TRACEENTER4("%s", "");
-	wrap_cancel_timer(timer_handle->ktimer.wrap_timer, canceled, 0);
+	wrap_cancel_timer(timer_handle->ktimer.wrap_timer, canceled);
 	TRACEEXIT4(return);
 }
 
@@ -2499,7 +2506,7 @@ STDCALL void WRAP_EXPORT(NdisGetFirstBufferFromPacketSafe)
 {
 	ndis_buffer *b = packet->private.buffer_head;
 
-	TRACEENTER3("%p", b);
+	TRACEENTER3("%p(%p)", packet, b);
 	*first_buffer = b;
 	if (b) {
 		*first_buffer_va = MmGetMdlVirtualAddress(b);

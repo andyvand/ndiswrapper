@@ -56,4 +56,5 @@ struct net_device *ndis_init_netdev(struct wrapper_dev **pwd,
 				    struct ndis_device *device,
 				    struct ndis_driver *driver);
 
+struct iw_statistics *get_wireless_stats(struct net_device *dev);
 #endif /* WRAPPER_H */

@@ -996,6 +996,9 @@ void ndiswrapper_remove_device(struct wrapper_dev *wd)
 	hangcheck_del(wd);
 
 	/* flush_scheduled_work here causes crash with 2.4 kernels */
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
+	flush_scheduled_work();
+#endif
 	/* instead, throw away pending packets */
 	irql = kspin_lock_irql(&wd->xmit_lock, DISPATCH_LEVEL);
 	while (wd->xmit_ring_pending) {
@@ -1033,7 +1036,7 @@ void ndiswrapper_remove_device(struct wrapper_dev *wd)
 static void link_status_handler(struct wrapper_dev *wd)
 {
 	struct ndis_assoc_info *ndis_assoc_info;
-#if WIRELESS_EXT < 18
+#if WIRELESS_EXT < 20
 	unsigned char *wpa_assoc_info, *ies;
 	unsigned char *p;
 #endif
@@ -1116,7 +1119,7 @@ static void link_status_handler(struct wrapper_dev *wd)
 	 * this in order to allow wpa_supplicant to be tested with
 	 * WE-18.
 	 */
-#if WIRELESS_EXT > 17
+#if WIRELESS_EXT > 20
 	memset(&wrqu, 0, sizeof(wrqu));
 	wrqu.data.length = ndis_assoc_info->req_ie_length;
 	wireless_send_event(wd->net_dev, IWEVASSOCREQIE, &wrqu,
@@ -1228,9 +1231,10 @@ static void update_wireless_stats(struct wrapper_dev *wd)
 		iw_stats->qual.level = rssi;
 
 	memset(&ndis_stats, 0, sizeof(ndis_stats));
+	ndis_stats.length = sizeof(ndis_stats);
 	res = miniport_query_info(wd, OID_802_11_STATISTICS,
 				  &ndis_stats, sizeof(ndis_stats));
-	if (res == NDIS_STATUS_NOT_SUPPORTED)
+	if (res)
 		iw_stats->qual.qual = ((rssi & 0x7F) * 100) / 154;
 	else {
 		iw_stats->discard.retries = (u32)ndis_stats.retry +
@@ -1252,7 +1256,7 @@ static void update_wireless_stats(struct wrapper_dev *wd)
 	TRACEEXIT2(return);
 }
 
-static struct iw_statistics *get_wireless_stats(struct net_device *dev)
+struct iw_statistics *get_wireless_stats(struct net_device *dev)
 {
 	struct wrapper_dev *wd = netdev_priv(dev);
 	return &wd->wireless_stats;
@@ -1569,7 +1573,9 @@ int setup_device(struct net_device *dev)
 	dev->stop = ndis_close;
 	dev->get_stats = ndis_get_stats;
 	dev->do_ioctl = ndis_ioctl;
+#if WIRELESS_EXT <= 19
 	dev->get_wireless_stats = get_wireless_stats;
+#endif
 	dev->wireless_handlers	= (struct iw_handler_def *)&ndis_handler_def;
 	dev->set_multicast_list = ndis_set_rx_mode;
 	dev->set_mac_address = ndis_set_mac_addr;
@@ -1704,9 +1710,7 @@ struct net_device *ndis_init_netdev(struct wrapper_dev **pwd,
 	wd->ndis_comm_done = 0;
 	/* prism1 usb driver crashes during MiniportSetInformation if
 	 * we wait for shorter time periods */
-	if ((wd->ndis_device->vendor == 0x2001 &&
-	     wd->ndis_device->device == 0x3700) ||
-	    (wd->ndis_device->vendor == 0x0846 &&
+	if ((wd->ndis_device->vendor == 0x0846 &&
 	     wd->ndis_device->device == 0x4110))
 		wd->ndis_comm_wait_time = 4 * HZ;
 	else
@@ -1739,11 +1743,9 @@ struct net_device *ndis_init_netdev(struct wrapper_dev **pwd,
 	set_bit(HW_AVAILABLE, &wd->hw_status);
 
 	if ((wd->ndis_device->vendor == 0x17cb &&
-	       wd->ndis_device->device == 0x0001) ||
-	      (wd->ndis_device->vendor == 0x2001 &&
-	       wd->ndis_device->device == 0x3700) ||
-	      (wd->ndis_device->vendor == 0x0ace &&
-	       wd->ndis_device->device == 0x1211))
+	     wd->ndis_device->device == 0x0001) ||
+	    (wd->ndis_device->vendor == 0x0ace &&
+	     wd->ndis_device->device == 0x1211))
 		wd->stats_enabled = FALSE;
 	else
 		wd->stats_enabled = TRUE;

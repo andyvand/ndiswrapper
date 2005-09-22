@@ -407,7 +407,7 @@ void initialize_dh(struct dispatch_header *dh, enum event_type type,
 	memset(dh, 0, sizeof(*dh));
 	dh->type = type;
 	dh->signal_state = state;
-	dh->inserted = dh_type;
+	set_dh_type(dh, dh_type);
 	InitializeListHead(&dh->wait_blocks);
 }
 
@@ -419,8 +419,9 @@ STDCALL void WRAP_EXPORT(KeInitializeTimer)
 	TRACEENTER5("%p", ktimer);
 	irql = kspin_lock_irql(&kevent_lock, DISPATCH_LEVEL);
 	initialize_dh(&ktimer->dh, NotificationTimer, 0, DH_KTIMER);
+	ktimer->kdpc = NULL;
 	kspin_unlock_irql(&kevent_lock, irql);
-	wrap_init_timer(ktimer, NULL, NULL, KTIMER_TYPE_KERNEL);
+	wrap_init_timer(ktimer, NULL);
 }
 
 STDCALL void WRAP_EXPORT(KeInitializeTimerEx)
@@ -431,8 +432,10 @@ STDCALL void WRAP_EXPORT(KeInitializeTimerEx)
 	TRACEENTER5("%p", ktimer);
 	irql = kspin_lock_irql(&kevent_lock, DISPATCH_LEVEL);
 	initialize_dh(&ktimer->dh, type, 0, DH_KTIMER);
+	ktimer->wrap_timer = NULL;
+	ktimer->kdpc = NULL;
 	kspin_unlock_irql(&kevent_lock, irql);
-	wrap_init_timer(ktimer, NULL, NULL, KTIMER_TYPE_KERNEL);
+	wrap_init_timer(ktimer, NULL);
 }
 
 STDCALL BOOLEAN WRAP_EXPORT(KeSetTimerEx)
@@ -446,8 +449,11 @@ STDCALL BOOLEAN WRAP_EXPORT(KeSetTimerEx)
 		    ktimer, duetime_ticks, period_ms, kdpc);
 
 	expires = SYSTEM_TIME_TO_HZ(duetime_ticks);
+	KeClearEvent((struct kevent *)ktimer);
 	repeat = HZ * period_ms / 1000 ;
-	return wrap_set_timer(ktimer->wrap_timer, expires, repeat, kdpc);
+	if (kdpc)
+		ktimer->kdpc = kdpc;
+	return wrap_set_timer(ktimer, expires, repeat);
 }
 
 STDCALL BOOLEAN WRAP_EXPORT(KeSetTimer)
@@ -457,26 +463,27 @@ STDCALL BOOLEAN WRAP_EXPORT(KeSetTimer)
 
 	TRACEENTER5("%p, %Ld, %p", ktimer, duetime_ticks, kdpc);
 	expires = SYSTEM_TIME_TO_HZ(duetime_ticks);
-	return wrap_set_timer(ktimer->wrap_timer, expires, 0, kdpc);
+	KeClearEvent((struct kevent *)ktimer);
+	if (kdpc)
+		ktimer->kdpc = kdpc;
+	return wrap_set_timer(ktimer, expires, 0);
 }
 
 STDCALL BOOLEAN WRAP_EXPORT(KeCancelTimer)
 	(struct ktimer *ktimer)
 {
-	char canceled;
+	BOOLEAN canceled;
 
 	TRACEENTER5("%p", ktimer);
-	wrap_cancel_timer(ktimer->wrap_timer, &canceled, 1);
+	wrap_cancel_timer(ktimer->wrap_timer, &canceled);
 	return canceled;
 }
 
-void initialize_kdpc(struct kdpc *kdpc, void *func, void *ctx,
-		     enum kdpc_type type)
+void initialize_kdpc(struct kdpc *kdpc, void *func, void *ctx)
 {
 	TRACEENTER3("%p, %p, %p", kdpc, func, ctx);
 	memset(kdpc, 0, sizeof(*kdpc));
 	kdpc->number = 0;
-	kdpc->type = type;
 	kdpc->func = func;
 	kdpc->ctx  = ctx;
 	InitializeListHead(&kdpc->list);
@@ -486,7 +493,7 @@ void initialize_kdpc(struct kdpc *kdpc, void *func, void *ctx,
 STDCALL void WRAP_EXPORT(KeInitializeDpc)
 	(struct kdpc *kdpc, void *func, void *ctx)
 {
-	initialize_kdpc(kdpc, func, ctx, KDPC_TYPE_KERNEL);
+	initialize_kdpc(kdpc, func, ctx);
 }
 
 static void kdpc_worker(void *data)
@@ -526,8 +533,6 @@ BOOLEAN insert_kdpc_work(struct kdpc *kdpc)
 	TRACEENTER5("%p", kdpc);
 	if (!kdpc)
 		return FALSE;
-	if (kdpc->type != KDPC_TYPE_KERNEL)
-		ERROR("kdpc type: %d", kdpc->type);
 	irql = kspin_lock_irql(&kdpc_list_lock, DISPATCH_LEVEL);
 	if (kdpc->number) {
 		if (kdpc->number != 1)
@@ -892,7 +897,7 @@ static int inline check_reset_signaled_state(void *object,
 	dh = object;
 	kmutex = container_of(object, struct kmutex, dh);
 
-	if (is_mutex_object(dh)) {
+	if (is_mutex_dh(dh)) {
 		/* either no thread owns the mutex or this thread owns
 		 * it */
 		if (kmutex->owner_thread == NULL ||
@@ -907,8 +912,9 @@ static int inline check_reset_signaled_state(void *object,
 		}
 	} else if (dh->signal_state > 0) {
 		/* if resetting, decrement signal_state for
-		 * synchronization events only */
-		if (dh->type == SynchronizationEvent && reset)
+		 * synchronization or semaphore objects */
+		if (reset && (dh->type == SynchronizationEvent ||
+			      is_semaphore_dh(dh)))
 			dh->signal_state--;
 		return 1;
 	}
@@ -930,6 +936,14 @@ static void wakeup_threads(struct dispatch_header *dh)
 			EVENTTRACE("waking up task: %p", wb->kthread->task);
 			wb->kthread->event_wait_done = 1;
 			wake_up(&wb->kthread->event_wq);
+#if 0
+			/* DDK says only one thread will be woken up,
+			 * but we don't do that - we let each waking
+			 * thread to check if the object is in
+			 * signaled state anyway */
+			if (dh->type == SynchronizationEvent)
+				break;
+#endif
 		} else
 			EVENTTRACE("not waking up task: %p",
 				   wb->kthread->task);
@@ -1225,7 +1239,7 @@ STDCALL void WRAP_EXPORT(KeInitializeSemaphore)
 	 * becomes 0); so we keep decrementing count everytime a wait
 	 * is satisified */
 	irql = kspin_lock_irql(&kevent_lock, DISPATCH_LEVEL);
-	initialize_dh(&ksemaphore->dh, SynchronizationEvent, count,
+	initialize_dh(&ksemaphore->dh, NotificationEvent, count,
 		      DH_KSEMAPHORE);
 	kspin_unlock_irql(&kevent_lock, irql);
 	ksemaphore->dh.size = sizeof(*ksemaphore);
@@ -1244,9 +1258,9 @@ STDCALL LONG WRAP_EXPORT(KeReleaseSemaphore)
 	irql = kspin_lock_irql(&kevent_lock, DISPATCH_LEVEL);
 	ret = ksemaphore->dh.signal_state;
 	assert(ret >= 0);
-	ksemaphore->dh.signal_state += adjustment;
-	if (ksemaphore->dh.signal_state > ksemaphore->limit)
-		ksemaphore->dh.signal_state = ksemaphore->limit;
+	if (ksemaphore->dh.signal_state + adjustment <= ksemaphore->limit)
+		ksemaphore->dh.signal_state += adjustment;
+	/* else raise exception */
 	if (ksemaphore->dh.signal_state > 0)
 		wakeup_threads(&ksemaphore->dh);
 	kspin_unlock_irql(&kevent_lock, irql);
