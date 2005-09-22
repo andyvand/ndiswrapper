@@ -1596,7 +1596,7 @@ int setup_device(struct net_device *dev)
 	}
 
 	printk(KERN_INFO "%s: %s ethernet device " MACSTR " using driver %s,"
-	       " configuration file %s\n",
+	       " %s\n",
 	       dev->name, DRIVER_NAME, MAC2STR(dev->dev_addr),
 	       wd->driver->name, wd->ndis_device->conf_file_name);
 

@@ -191,10 +191,8 @@ typedef struct {
 
 #if defined(CONFIG_SOFTWARE_SUSPEND2) || defined(CONFIG_SUSPEND2)
 #define KTHREAD_RUN(a,b,c) kthread_run(a,b,0,c)
-#define KTHREAD_CREATE(a,b,c) kthread_run(a,b,0,c)
 #else
 #define KTHREAD_RUN(a,b,c) kthread_run(a,b,c)
-#define KTHREAD_CREATE(a,b,c) kthread_run(a,b,c)
 #endif
 
 #ifdef CONFIG_X86_64
