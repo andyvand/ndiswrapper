@@ -942,9 +942,8 @@ static void wakeup_threads(struct dispatch_header *dh)
 			wake_up(&wb->kthread->event_wq);
 #if 0
 			/* DDK says only one thread will be woken up,
-			 * but we don't do that - we let each waking
-			 * thread to check if the object is in
-			 * signaled state anyway */
+			 * but we let each waking thread to check if
+			 * the object is in signaled state anyway */
 			if (dh->type == SynchronizationEvent)
 				break;
 #endif
@@ -1106,7 +1105,6 @@ STDCALL NTSTATUS WRAP_EXPORT(KeWaitForMultipleObjects)
 				for (j = i; j < count; j++)
 					if (wb[j].kthread && wb[j].object)
 						RemoveEntryList(&wb[j].list);
-				wb[i].kthread = NULL;
 				kspin_unlock_irql(&kevent_lock, irql);
 				EVENTEXIT(return STATUS_WAIT_0 + i);
 			}

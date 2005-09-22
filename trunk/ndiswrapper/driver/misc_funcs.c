@@ -336,11 +336,10 @@ void wrap_cancel_timer(struct wrap_timer *wrap_timer, BOOLEAN *canceled)
 #endif
 	/* del_timer_sync may not be called here, as this function can
 	 * be called at DISPATCH_LEVEL */
+	irql = kspin_lock_irql(&timer_lock, DISPATCH_LEVEL);
+	DBGTRACE5("deleting timer %p(%p)", wrap_timer, ktimer);
 	/* disable timer before deleting so it won't be re-armed after
 	 * deleting */
-	irql = kspin_lock_irql(&timer_lock, DISPATCH_LEVEL);
-	/* for periodic timers return TRUE - see KeCancelTimer */
-	DBGTRACE5("deleting timer %p(%p)", wrap_timer, ktimer);
 	wrap_timer->repeat = 0;
 	if (del_timer(&wrap_timer->timer))
 		*canceled = TRUE;

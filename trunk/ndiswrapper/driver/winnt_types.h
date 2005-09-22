@@ -686,6 +686,7 @@ struct irp {
 	/* ndiswrapper extension */
 	struct urb *urb;
 	enum urb_state urb_state;
+	struct nt_list complete_list;
 	struct wrapper_dev *wd;
 };
 
@@ -874,7 +875,6 @@ struct io_workitem_entry {
 struct wait_block {
 	struct nt_list list;
 	struct kthread *kthread;
-//	struct task_struct *task;
 	void *object;
 	struct wait_block *next;
 	USHORT wait_key;

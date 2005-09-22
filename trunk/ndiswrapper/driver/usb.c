@@ -46,11 +46,17 @@
 #define USB_CTRL_SET_TIMEOUT 5000
 #endif
 
+static struct work_struct irp_complete_work;
+static struct nt_list irp_complete_list;
+
 static STDCALL void wrap_cancel_irp(struct device_object *dev_obj,
 				    struct irp *irp);
+static void irp_complete_worker(void *data);
 
 int usb_init(void)
 {
+	InitializeListHead(&irp_complete_list);
+	INIT_WORK(&irp_complete_work, irp_complete_worker, NULL);
 	return 0;
 }
 
@@ -198,7 +204,8 @@ static void wrap_free_urb(struct urb *urb)
 	    (urb->transfer_flags & URB_NO_TRANSFER_DMA_MAP)) {
 		USBTRACE("freeing DMA buffer for URB: %p %p",
 			 urb, urb->transfer_buffer);
-		usb_buffer_free(urb->dev, urb->transfer_buffer_length, 
+		usb_buffer_free(irp->wd->dev.usb.udev,
+				urb->transfer_buffer_length, 
 				urb->transfer_buffer, urb->transfer_dma);
 	}
 	if (urb->setup_packet)
@@ -263,9 +270,6 @@ static void wrap_urb_complete(struct urb *urb)
 #endif
 {
 	struct irp *irp;
-	struct usbd_bulk_or_intr_transfer *bulk_int_tx;
-	struct usbd_vendor_or_class_request *vc_req;
-	union nt_urb *nt_urb;
 
 	irp = urb->context;
 	IoAcquireCancelSpinLock(&irp->cancel_irql);
@@ -274,82 +278,110 @@ static void wrap_urb_complete(struct urb *urb)
 	    irp->urb_state != URB_CANCELED)
 		WARNING("urb %p in wrong state: %d", urb, irp->urb_state);
 	irp->urb_state = URB_COMPLETED;
+	InsertTailList(&irp_complete_list, &irp->complete_list);
 	IoReleaseCancelSpinLock(irp->cancel_irql);
 	USBTRACE("urb %p (irp: %p) completed", urb, irp);
-	DUMP_URB(urb);
-	DUMP_IRP(irp);
-	nt_urb = URB_FROM_IRP(irp);
-	USBTRACE("urb: %p, nt_urb: %p, status: %d",
-		 urb, nt_urb, (urb->status));
-	IoUnmarkIrpPending(irp);
-	irp->pending_returned = FALSE;
-	switch (urb->status) {
-	case 0:
-		/* succesfully transferred */
-		NT_URB_STATUS(nt_urb) = wrap_urb_status(urb->status);
-		irp->io_status.status = STATUS_SUCCESS;
-		irp->io_status.status_info = urb->actual_length;
+	schedule_work(&irp_complete_work);
+}
 
-		/* from WDM examples, it seems we don't need
-		 * to update MDL's byte count if MDL is used */
-		switch (nt_urb->header.function) {
-		case URB_FUNCTION_BULK_OR_INTERRUPT_TRANSFER:
-			bulk_int_tx = &nt_urb->bulk_int_transfer;
-			bulk_int_tx->transfer_buffer_length =
-				urb->actual_length;
-			DUMP_BUFFER(urb->transfer_buffer,
-				    urb->actual_length);
-			if ((urb->transfer_flags & URB_NO_TRANSFER_DMA_MAP) &&
-			    usb_pipein(urb->pipe))
-				memcpy(bulk_int_tx->transfer_buffer,
-				       urb->transfer_buffer,
-				       urb->actual_length);
+static void irp_complete_worker(void *data)
+{
+	struct irp *irp;
+	struct urb *urb;
+	struct usbd_bulk_or_intr_transfer *bulk_int_tx;
+	struct usbd_vendor_or_class_request *vc_req;
+	union nt_urb *nt_urb;
+	struct nt_list *ent;
+	KIRQL irql;
+
+	while (1) {
+		IoAcquireCancelSpinLock(&irql);
+		ent = RemoveHeadList(&irp_complete_list);
+		IoReleaseCancelSpinLock(irql);
+		if (!ent)
 			break;
-		case URB_FUNCTION_VENDOR_DEVICE:
-		case URB_FUNCTION_VENDOR_INTERFACE:
-		case URB_FUNCTION_VENDOR_ENDPOINT:
-		case URB_FUNCTION_VENDOR_OTHER:
-		case URB_FUNCTION_CLASS_DEVICE:
-		case URB_FUNCTION_CLASS_INTERFACE:
-		case URB_FUNCTION_CLASS_ENDPOINT:
-		case URB_FUNCTION_CLASS_OTHER:
-			vc_req = &nt_urb->vendor_class_request;
-			vc_req->transfer_buffer_length =
-				urb->actual_length;
-			DUMP_BUFFER(urb->transfer_buffer,
-				    urb->actual_length);
-			DUMP_BUFFER(urb->setup_packet,
-				    sizeof(struct usb_ctrlrequest));
-			if ((urb->transfer_flags & URB_NO_TRANSFER_DMA_MAP) &&
-			    usb_pipein(urb->pipe))
-				memcpy(vc_req->transfer_buffer,
-				       urb->transfer_buffer,
-				       urb->actual_length);
+		irp = container_of(ent, struct irp, complete_list);
+		DUMP_IRP(irp);
+		urb = irp->urb;
+		DUMP_URB(urb);
+		if (irp->urb_state != URB_COMPLETED)
+			WARNING("urb %p in wrong state: %d",
+				urb, irp->urb_state);
+		nt_urb = URB_FROM_IRP(irp);
+		USBTRACE("urb: %p, nt_urb: %p, status: %d",
+			 urb, nt_urb, (urb->status));
+		IoUnmarkIrpPending(irp);
+		irp->pending_returned = FALSE;
+		switch (urb->status) {
+		case 0:
+			/* succesfully transferred */
+			NT_URB_STATUS(nt_urb) = wrap_urb_status(urb->status);
+			irp->io_status.status = STATUS_SUCCESS;
+			irp->io_status.status_info = urb->actual_length;
+
+			/* from WDM examples, it seems we don't need
+			 * to update MDL's byte count if MDL is used */
+			switch (nt_urb->header.function) {
+			case URB_FUNCTION_BULK_OR_INTERRUPT_TRANSFER:
+				bulk_int_tx = &nt_urb->bulk_int_transfer;
+				bulk_int_tx->transfer_buffer_length =
+					urb->actual_length;
+				DUMP_BUFFER(urb->transfer_buffer,
+					    urb->actual_length);
+				if ((urb->transfer_flags &
+				     URB_NO_TRANSFER_DMA_MAP) &&
+				    usb_pipein(urb->pipe))
+					memcpy(bulk_int_tx->transfer_buffer,
+					       urb->transfer_buffer,
+					       urb->actual_length);
+				break;
+			case URB_FUNCTION_VENDOR_DEVICE:
+			case URB_FUNCTION_VENDOR_INTERFACE:
+			case URB_FUNCTION_VENDOR_ENDPOINT:
+			case URB_FUNCTION_VENDOR_OTHER:
+			case URB_FUNCTION_CLASS_DEVICE:
+			case URB_FUNCTION_CLASS_INTERFACE:
+			case URB_FUNCTION_CLASS_ENDPOINT:
+			case URB_FUNCTION_CLASS_OTHER:
+				vc_req = &nt_urb->vendor_class_request;
+				vc_req->transfer_buffer_length =
+					urb->actual_length;
+				DUMP_BUFFER(urb->transfer_buffer,
+					    urb->actual_length);
+				DUMP_BUFFER(urb->setup_packet,
+					    sizeof(struct usb_ctrlrequest));
+				if ((urb->transfer_flags &
+				     URB_NO_TRANSFER_DMA_MAP) &&
+				    usb_pipein(urb->pipe))
+					memcpy(vc_req->transfer_buffer,
+					       urb->transfer_buffer,
+					       urb->actual_length);
+				break;
+			default:
+				ERROR("nt_urb type: %d unknown",
+				      nt_urb->header.function);
+				break;
+			}
+			break;
+		case -ENOENT:
+		case -ECONNRESET:
+			/* irp canceled */
+			NT_URB_STATUS(nt_urb) = USBD_STATUS_CANCELLED;
+			irp->io_status.status = STATUS_CANCELLED;
+			irp->io_status.status_info = 0;
+			USBTRACE("irp %p canceled", irp);
 			break;
 		default:
-			ERROR("nt_urb type: %d unknown",
-			      nt_urb->header.function);
+			NT_URB_STATUS(nt_urb) = wrap_urb_status(urb->status);
+			irp->io_status.status =
+				nt_urb_irp_status(NT_URB_STATUS(nt_urb));
+			irp->io_status.status_info = 0;
+			USBTRACE("irp: %p, status: %d", irp, urb->status);
 			break;
 		}
-		break;
-	case -ENOENT:
-	case -ECONNRESET:
-		/* irp canceled */
-		NT_URB_STATUS(nt_urb) = USBD_STATUS_CANCELLED;
-		irp->io_status.status = STATUS_CANCELLED;
-		irp->io_status.status_info = 0;
-		USBTRACE("irp %p canceled", irp);
-		break;
-	default:
-		NT_URB_STATUS(nt_urb) = wrap_urb_status(urb->status);
-		irp->io_status.status =
-			nt_urb_irp_status(NT_URB_STATUS(nt_urb));
-		irp->io_status.status_info = 0;
-		USBTRACE("irp: %p, status: %d", irp, urb->status);
-		break;
+		wrap_free_urb(urb);
+		IoCompleteRequest(irp, IO_NO_INCREMENT);
 	}
-	wrap_free_urb(urb);
-	IoCompleteRequest(irp, IO_NO_INCREMENT);
 	return;
 }
 
