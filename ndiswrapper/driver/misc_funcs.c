@@ -75,6 +75,7 @@ void misc_funcs_exit_device(struct wrapper_dev *wd)
 		if (canceled == TRUE)
 			WARNING("Buggy Windows driver left timer %p running; "
 				"removed it", wrap_timer->ktimer);
+		memset(wrap_timer, 0, sizeof(*wrap_timer));
 		wrap_kfree(wrap_timer);
 	}
 }
@@ -100,6 +101,7 @@ void misc_funcs_exit(void)
 		if (canceled == TRUE)
 			WARNING("Buggy Windows driver left timer %p running; "
 				"removed it", wrap_timer->ktimer);
+		memset(wrap_timer, 0, sizeof(*wrap_timer));
 		wrap_kfree(wrap_timer);
 	}
 	/* free all pointers on the allocated list */
@@ -206,8 +208,20 @@ void wrap_timer_handler(unsigned long data)
 	irql = kspin_lock_irql(&timer_lock, DISPATCH_LEVEL);
 	kdpc = ktimer->kdpc;
 	KeSetEvent((struct kevent *)ktimer, 0, FALSE);
-	if (kdpc && kdpc->func)
-		insert_kdpc_work(kdpc);
+	/* Prism1 USB driver calls NdisSetTimer with due time as 0,
+	 * which according to DDK is wrong - minimum delay should be
+	 * 10 milliseconds. The driver then sets two timers with 0
+	 * delay and expects them to be executed right
+	 * away. Scheduling timer which schedules kdpc's with a worker
+	 * in this case results in kernel crash. So we check here for
+	 * this case and execute kdpc right away */
+	if (kdpc && kdpc->func) {
+		if (kdpc->type == KDPC_TYPE_KERNEL)
+			insert_kdpc_work(kdpc);
+		else
+			LIN2WIN4(kdpc->func, kdpc, kdpc->ctx,
+				 kdpc->arg1, kdpc->arg2);
+	}
 
 	/* don't add the timer if aperiodic - see
 	 * wrapper_cancel_timer */
@@ -300,29 +314,7 @@ int wrap_set_timer(struct ktimer *ktimer, long expires, unsigned long repeat)
 #endif
 
 	irql = kspin_lock_irql(&timer_lock, DISPATCH_LEVEL);
-	/* Prism1 USB driver calls NdisSetTimer with due time as 0,
-	 * which according to DDK is wrong - minimum delay should be
-	 * 10 milliseconds. The driver then sets two timers with 0
-	 * delay and expects them to be executed right
-	 * away. Scheduling timer which schedules kdpc's with a worker
-	 * in this case results in kernel crash. So we check here for
-	 * this case and execute kdpc right away */
-	if (expires == 0) {
-		struct kdpc *kdpc;
-		kdpc = ktimer->kdpc;
-		if (kdpc && kdpc->func)
-			LIN2WIN4(kdpc->func, kdpc, kdpc->ctx,
-				 kdpc->arg1, kdpc->arg2);
-		expires = repeat;
-	}
-	if (expires == 0 && repeat == 0)
-		ret = FALSE;
-	else {
-		ret = mod_timer(&wrap_timer->timer, jiffies + expires);
-		DBGTRACE5("set timer %p(%p) to %lu, %lu, ret: %d", wrap_timer,
-			  wrap_timer->ktimer, expires, repeat, ret);
-	}
-	wrap_timer->repeat = repeat;
+	ret = mod_timer(&wrap_timer->timer, jiffies + expires);
 	kspin_unlock_irql(&timer_lock, irql);
 	return ret;
 }

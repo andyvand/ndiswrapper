@@ -1478,9 +1478,13 @@ STDCALL void WRAP_EXPORT(NdisMSetPeriodicTimer)
 	(struct ndis_miniport_timer *timer_handle, UINT period_ms)
 {
 	unsigned long expires;
+	struct kdpc *kdpc;
 
 	TRACEENTER4("%p, %u", timer_handle, period_ms);
 	expires = period_ms * HZ / 1000;
+	kdpc = timer_handle->ktimer.kdpc;
+	if (kdpc)
+		kdpc->type = KDPC_TYPE_NDIS;
 	wrap_set_timer(&timer_handle->ktimer, expires, expires);
 	TRACEEXIT4(return);
 }
@@ -1509,8 +1513,12 @@ STDCALL void WRAP_EXPORT(NdisSetTimer)
 	(struct ndis_timer *timer_handle, UINT duetime_ms)
 {
 	unsigned long expires = duetime_ms * HZ / 1000;
+	struct kdpc *kdpc;
 
 	TRACEENTER4("%p, %u", timer_handle, duetime_ms);
+	kdpc = timer_handle->ktimer.kdpc;
+	if (kdpc)
+		kdpc->type = KDPC_TYPE_NDIS;
 	wrap_set_timer(&timer_handle->ktimer, expires, 0);
 	TRACEEXIT4(return);
 }

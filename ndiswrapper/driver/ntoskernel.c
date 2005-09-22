@@ -451,8 +451,10 @@ STDCALL BOOLEAN WRAP_EXPORT(KeSetTimerEx)
 	expires = SYSTEM_TIME_TO_HZ(duetime_ticks);
 	KeClearEvent((struct kevent *)ktimer);
 	repeat = HZ * period_ms / 1000 ;
-	if (kdpc)
+	if (kdpc) {
 		ktimer->kdpc = kdpc;
+		kdpc->type = KDPC_TYPE_KERNEL;
+	}
 	return wrap_set_timer(ktimer, expires, repeat);
 }
 
@@ -464,8 +466,10 @@ STDCALL BOOLEAN WRAP_EXPORT(KeSetTimer)
 	TRACEENTER5("%p, %Ld, %p", ktimer, duetime_ticks, kdpc);
 	expires = SYSTEM_TIME_TO_HZ(duetime_ticks);
 	KeClearEvent((struct kevent *)ktimer);
-	if (kdpc)
+	if (kdpc) {
 		ktimer->kdpc = kdpc;
+		kdpc->type = KDPC_TYPE_KERNEL;
+	}
 	return wrap_set_timer(ktimer, expires, 0);
 }
 
