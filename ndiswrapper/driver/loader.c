@@ -386,11 +386,8 @@ ndiswrapper_remove_usb_device(struct usb_interface *intf)
 	if (!wd)
 		TRACEEXIT1(return);
 
-	if (!test_bit(HW_UNLOADING, &wd->hw_status)) {
+	if (!test_bit(HW_UNLOADING, &wd->hw_status))
 		miniport_surprise_remove(wd);
-		/* give time for driver to free irps */
-		msleep(50);
-	}
 	wd->intf = NULL;
 	usb_set_intfdata(intf, NULL);
 	atomic_dec(&wd->driver->users);

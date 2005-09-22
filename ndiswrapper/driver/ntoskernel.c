@@ -1513,7 +1513,7 @@ STDCALL NTSTATUS WRAP_EXPORT(PsCreateSystemThread)
 	}
 	DBGTRACE2("created task: %p (%d)", find_task_by_pid(pid), pid);
 #else
-	task = kthread_run(kthread_trampoline, ctx, DRIVER_NAME);
+	task = KTHREAD_RUN(kthread_trampoline, ctx, DRIVER_NAME);
 	if (IS_ERR(task)) {
 		kfree(ctx);
 		FREE_OBJECT(kthread);
