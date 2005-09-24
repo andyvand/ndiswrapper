@@ -191,10 +191,8 @@ typedef struct {
 
 #if defined(CONFIG_SOFTWARE_SUSPEND2) || defined(CONFIG_SUSPEND2)
 #define KTHREAD_RUN(a,b,c) kthread_run(a,b,0,c)
-#define KTHREAD_CREATE(a,b,c) kthread_run(a,b,0,c)
 #else
 #define KTHREAD_RUN(a,b,c) kthread_run(a,b,c)
-#define KTHREAD_CREATE(a,b,c) kthread_run(a,b,c)
 #endif
 
 #ifdef CONFIG_X86_64
@@ -400,21 +398,25 @@ struct wrap_timer {
 
 typedef struct mdl ndis_buffer;
 
+#define MAX_URBS 10
+
 struct phys_dev {
 	int dev_type;
 	struct pci_dev *pci;
 	struct {
 		struct usb_device *udev;
-		struct usbd_pipe_information *pipes;
+		struct wrap_urb wrap_urbs[MAX_URBS];
 	} usb;
 };
 
 struct wrapper_dev;
 
+#if LINUX_VERSION_CODE > KERNEL_VERSION(2,6,0)
 /* until issues with threads hogging cpu are resolved, we don't want
  * to use shared workqueue, lest the threads take keyboard etc down */
 extern struct workqueue_struct *ndiswrapper_wq;
 #define schedule_work(work_struct) queue_work(ndiswrapper_wq, (work_struct))
+#endif
 
 int ntoskernel_init(void);
 void ntoskernel_exit(void);
@@ -551,7 +553,7 @@ void *wrap_kmalloc(size_t size, int flags);
 void wrap_kfree(void *ptr);
 void wrap_init_timer(struct ktimer *ktimer, void *handle);
 int wrap_set_timer(struct ktimer *ktimer, long expires, unsigned long repeat);
-void wrap_cancel_timer(struct ktimer *ktimer, BOOLEAN *canceled);
+void wrap_cancel_timer(struct wrap_timer *wrap_timer, BOOLEAN *canceled);
 
 STDCALL void KeInitializeTimer(struct ktimer *ktimer);
 

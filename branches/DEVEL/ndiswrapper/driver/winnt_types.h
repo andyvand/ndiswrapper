@@ -198,6 +198,8 @@ struct kdpc;
 typedef STDCALL void (*DPC)(struct kdpc *kdpc, void *ctx, void *arg1,
 			    void *arg2);
 
+enum kdpc_type { KDPC_TYPE_KERNEL = 1, KDPC_TYPE_NDIS };
+
 struct kdpc {
 	SHORT type;
 	/* number is used to represent if the dpc is queued or not */
@@ -617,8 +619,14 @@ struct kapc {
 #define IRP_ASSOCIATED_IRP		0x00000008
 
 enum urb_state {
-	URB_QUEUED = 1, URB_ALLOCATED, URB_SUBMITTED, URB_CANCELED,
-	URB_COMPLETED, URB_FREED };
+	URB_INVALID = 1, URB_ALLOCATED, URB_SUBMITTED, URB_CANCELED,
+	URB_COMPLETED, URB_FREE };
+
+struct wrap_urb {
+	enum urb_state state;
+	struct urb *urb;
+	struct irp *irp;
+};
 
 struct irp {
 	SHORT type;
@@ -682,8 +690,8 @@ struct irp {
 	} tail;
 
 	/* ndiswrapper extension */
-	struct urb *urb;
-	enum urb_state urb_state;
+	struct wrap_urb *wrap_urb;
+	struct nt_list complete_list;
 	struct wrapper_dev *wd;
 };
 
@@ -872,7 +880,6 @@ struct io_workitem_entry {
 struct wait_block {
 	struct nt_list list;
 	struct kthread *kthread;
-//	struct task_struct *task;
 	void *object;
 	struct wait_block *next;
 	USHORT wait_key;

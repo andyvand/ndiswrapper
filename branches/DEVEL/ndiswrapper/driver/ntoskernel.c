@@ -451,8 +451,10 @@ STDCALL BOOLEAN WRAP_EXPORT(KeSetTimerEx)
 	expires = SYSTEM_TIME_TO_HZ(duetime_ticks);
 	KeClearEvent((struct kevent *)ktimer);
 	repeat = HZ * period_ms / 1000 ;
-	if (kdpc)
+	if (kdpc) {
 		ktimer->kdpc = kdpc;
+		kdpc->type = KDPC_TYPE_KERNEL;
+	}
 	return wrap_set_timer(ktimer, expires, repeat);
 }
 
@@ -464,8 +466,10 @@ STDCALL BOOLEAN WRAP_EXPORT(KeSetTimer)
 	TRACEENTER5("%p, %Ld, %p", ktimer, duetime_ticks, kdpc);
 	expires = SYSTEM_TIME_TO_HZ(duetime_ticks);
 	KeClearEvent((struct kevent *)ktimer);
-	if (kdpc)
+	if (kdpc) {
 		ktimer->kdpc = kdpc;
+		kdpc->type = KDPC_TYPE_KERNEL;
+	}
 	return wrap_set_timer(ktimer, expires, 0);
 }
 
@@ -475,7 +479,7 @@ STDCALL BOOLEAN WRAP_EXPORT(KeCancelTimer)
 	BOOLEAN canceled;
 
 	TRACEENTER5("%p", ktimer);
-	wrap_cancel_timer(ktimer, &canceled);
+	wrap_cancel_timer(ktimer->wrap_timer, &canceled);
 	return canceled;
 }
 
@@ -659,7 +663,7 @@ _FASTCALL LONG WRAP_EXPORT(InterlockedDecrement)
 	LONG x;
 	KIRQL irql;
 
-	TRACEENTER5("%s", "");
+	TRACEENTER5("");
 	irql = kspin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL);
 	(*val)--;
 	x = *val;
@@ -673,7 +677,7 @@ _FASTCALL LONG WRAP_EXPORT(InterlockedIncrement)
 	LONG x;
 	KIRQL irql;
 
-	TRACEENTER5("%s", "");
+	TRACEENTER5("");
 	irql = kspin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL);
 	(*val)++;
 	x = *val;
@@ -687,7 +691,7 @@ _FASTCALL LONG WRAP_EXPORT(InterlockedExchange)
 	LONG x;
 	KIRQL irql;
 
-	TRACEENTER5("%s", "");
+	TRACEENTER5("");
 	irql = kspin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL);
 	x = *target;
 	*target = val;
@@ -701,7 +705,7 @@ _FASTCALL LONG WRAP_EXPORT(InterlockedCompareExchange)
 	LONG x;
 	KIRQL irql;
 
-	TRACEENTER5("%s", "");
+	TRACEENTER5("");
 	irql = kspin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL);
 	x = *dest;
 	if (*dest == comperand)
@@ -938,9 +942,8 @@ static void wakeup_threads(struct dispatch_header *dh)
 			wake_up(&wb->kthread->event_wq);
 #if 0
 			/* DDK says only one thread will be woken up,
-			 * but we don't do that - we let each waking
-			 * thread to check if the object is in
-			 * signaled state anyway */
+			 * but we let each waking thread to check if
+			 * the object is in signaled state anyway */
 			if (dh->type == SynchronizationEvent)
 				break;
 #endif
@@ -1043,7 +1046,7 @@ STDCALL NTSTATUS WRAP_EXPORT(KeWaitForMultipleObjects)
 	kspin_unlock_irql(&kevent_lock, irql);
 
 	while (wait_count) {
-		if (timeout) {
+		if (wait_jiffies) {
 			if (alertable)
 				res = wait_event_interruptible_timeout(
 					kthread->event_wq,
@@ -1102,7 +1105,6 @@ STDCALL NTSTATUS WRAP_EXPORT(KeWaitForMultipleObjects)
 				for (j = i; j < count; j++)
 					if (wb[j].kthread && wb[j].object)
 						RemoveEntryList(&wb[j].list);
-				wb[i].kthread = NULL;
 				kspin_unlock_irql(&kevent_lock, irql);
 				EVENTEXIT(return STATUS_WAIT_0 + i);
 			}
@@ -1268,8 +1270,7 @@ STDCALL LONG WRAP_EXPORT(KeReleaseSemaphore)
 }
 
 STDCALL NTSTATUS WRAP_EXPORT(KeDelayExecutionThread)
-	(KPROCESSOR_MODE wait_mode, BOOLEAN alertable,
-	 LARGE_INTEGER *interval)
+	(KPROCESSOR_MODE wait_mode, BOOLEAN alertable, LARGE_INTEGER *interval)
 {
 	int res;
 	long timeout;
@@ -1513,7 +1514,7 @@ STDCALL NTSTATUS WRAP_EXPORT(PsCreateSystemThread)
 	}
 	DBGTRACE2("created task: %p (%d)", find_task_by_pid(pid), pid);
 #else
-	task = kthread_run(kthread_trampoline, ctx, DRIVER_NAME);
+	task = KTHREAD_RUN(kthread_trampoline, ctx, DRIVER_NAME);
 	if (IS_ERR(task)) {
 		kfree(ctx);
 		FREE_OBJECT(kthread);
