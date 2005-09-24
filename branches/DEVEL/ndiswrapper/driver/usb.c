@@ -184,10 +184,8 @@ static void wrap_free_urb(struct urb *urb)
 	irp = wrap_urb->irp;
 	IoAcquireCancelSpinLock(&irp->cancel_irql);
 	irp->cancel_routine = NULL;
-	wrap_urb->state = URB_FREE;
 	wrap_urb->irp = NULL;
 	irp->wrap_urb = NULL;
-	IoReleaseCancelSpinLock(irp->cancel_irql);
 	if (urb->transfer_buffer &&
 	    (urb->transfer_flags & URB_NO_TRANSFER_DMA_MAP)) {
 		USBTRACE("freeing DMA buffer for URB: %p %p",
@@ -198,6 +196,9 @@ static void wrap_free_urb(struct urb *urb)
 	}
 	if (urb->setup_packet)
 		kfree(urb->setup_packet);
+	usb_init_urb(urb);
+	wrap_urb->state = URB_FREE;
+	IoReleaseCancelSpinLock(irp->cancel_irql);
 	return;
 }
 
