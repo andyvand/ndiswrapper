@@ -71,11 +71,11 @@ void misc_funcs_exit_device(struct wrapper_dev *wd)
 		if (!ent)
 			break;
 		wrap_timer = container_of(ent, struct wrap_timer, list);
-		wrap_cancel_timer(wrap_timer->ktimer, &canceled);
+		wrap_cancel_timer(wrap_timer, &canceled);
 		if (canceled == TRUE)
 			WARNING("Buggy Windows driver left timer %p running; "
 				"removed it", wrap_timer->ktimer);
-		wrap_timer->ktimer->wrap_timer_magic = -1;
+		memset(wrap_timer, 0, sizeof(*wrap_timer));
 		wrap_kfree(wrap_timer);
 	}
 }
@@ -97,11 +97,11 @@ void misc_funcs_exit(void)
 		if (!ent)
 			break;
 		wrap_timer = container_of(ent, struct wrap_timer, list);
-		wrap_cancel_timer(wrap_timer->ktimer, &canceled);
+		wrap_cancel_timer(wrap_timer, &canceled);
 		if (canceled == TRUE)
 			WARNING("Buggy Windows driver left timer %p running; "
 				"removed it", wrap_timer->ktimer);
-		wrap_timer->ktimer->wrap_timer_magic = -1;
+		memset(wrap_timer, 0, sizeof(*wrap_timer));
 		wrap_kfree(wrap_timer);
 	}
 	/* free all pointers on the allocated list */
@@ -208,8 +208,20 @@ void wrap_timer_handler(unsigned long data)
 	irql = kspin_lock_irql(&timer_lock, DISPATCH_LEVEL);
 	kdpc = ktimer->kdpc;
 	KeSetEvent((struct kevent *)ktimer, 0, FALSE);
-	if (kdpc && kdpc->func)
-		insert_kdpc_work(kdpc);
+	/* Prism1 USB driver calls NdisSetTimer with due time as 0,
+	 * which according to DDK is wrong - minimum delay should be
+	 * 10 milliseconds. The driver then sets two timers with 0
+	 * delay and expects them to be executed right
+	 * away. Scheduling timer which schedules kdpc's with a worker
+	 * in this case results in kernel crash. So we check here for
+	 * this case and execute kdpc right away */
+	if (kdpc && kdpc->func) {
+		if (kdpc->type == KDPC_TYPE_KERNEL)
+			insert_kdpc_work(kdpc);
+		else
+			LIN2WIN4(kdpc->func, kdpc, kdpc->ctx,
+				 kdpc->arg1, kdpc->arg2);
+	}
 
 	/* don't add the timer if aperiodic - see
 	 * wrapper_cancel_timer */
@@ -224,16 +236,17 @@ void wrap_timer_handler(unsigned long data)
 
 /* we don't initialize ktimer event's signal here; that is caller's
  * responsibility */
-
-/* NDIS (miniport) timers set kdpc during timer initialization and Ke
- * timers set it during timer setup, so it is passed to both
- * wrapper_init_timer and wrapper_set_timer */
 void wrap_init_timer(struct ktimer *ktimer, void *handle)
 {
 	struct wrap_timer *wrap_timer;
 	struct wrapper_dev *wd = (struct wrapper_dev *)handle;
 	KIRQL irql;
 
+	/* TODO: if a timer is initialized more than once, we allocate
+	 * memory for wrap_timer more than once for the same ktimer,
+	 * wasting memory. We can check if ktimer->wrap_timer_magic is
+	 * set and not allocate, but it is not guaranteed always to be
+	 * safe */
 	TRACEENTER5("%p", ktimer);
 	/* we allocate memory for wrap_timer behind driver's back
 	 * and there is no NDIS/DDK function where this memory can be
@@ -252,10 +265,6 @@ void wrap_init_timer(struct ktimer *ktimer, void *handle)
 	wrap_timer->ktimer = ktimer;
 	ktimer->wrap_timer = wrap_timer;
 #ifdef DEBUG_TIMER
-	if (ktimer->wrap_timer_magic == WRAP_TIMER_MAGIC ||
-	    wrap_timer->wrap_timer_magic == WRAP_TIMER_MAGIC)
-		WARNING("timer %p(%p) already initialized?",
-			wrap_timer, ktimer);
 	wrap_timer->wrap_timer_magic = WRAP_TIMER_MAGIC;
 #endif
 	ktimer->wrap_timer_magic = WRAP_TIMER_MAGIC;
@@ -283,7 +292,7 @@ int wrap_set_timer(struct ktimer *ktimer, long expires, unsigned long repeat)
 
 	TRACEENTER5("%p, repeat: %lu", ktimer, repeat);
 	if (!ktimer) {
-//		ERROR("invalid timer");
+		ERROR("invalid timer");
 		return FALSE;
 	}
 	if (expires < 0) {
@@ -307,36 +316,31 @@ int wrap_set_timer(struct ktimer *ktimer, long expires, unsigned long repeat)
 
 	irql = kspin_lock_irql(&timer_lock, DISPATCH_LEVEL);
 	ret = mod_timer(&wrap_timer->timer, jiffies + expires);
-	DBGTRACE5("set timer %p(%p) to %lu, %lu, ret: %d",
-		  wrap_timer, wrap_timer->ktimer, expires, repeat, ret);
-	wrap_timer->repeat = repeat;
 	kspin_unlock_irql(&timer_lock, irql);
 	return ret;
 }
 
-void wrap_cancel_timer(struct ktimer *ktimer, BOOLEAN *canceled)
+void wrap_cancel_timer(struct wrap_timer *wrap_timer, BOOLEAN *canceled)
 {
 	KIRQL irql;
-	struct wrap_timer *wrap_timer;
+	struct ktimer *ktimer;
 
-	TRACEENTER5("timer = %p", ktimer);
-	if (!ktimer) {
+	TRACEENTER5("timer = %p", wrap_timer);
+	if (!wrap_timer) {
 		ERROR("invalid wrap_timer");
 		return;
 	}
-	wrap_timer = ktimer->wrap_timer;
+	ktimer = wrap_timer->ktimer;
 #ifdef DEBUG_TIMER
 	DBGTRACE5("canceling timer %p", wrap_timer);
 	BUG_ON(wrap_timer->wrap_timer_magic != WRAP_TIMER_MAGIC);
-	BUG_ON(ktimer->wrap_timer_magic != WRAP_TIMER_MAGIC);
 #endif
 	/* del_timer_sync may not be called here, as this function can
 	 * be called at DISPATCH_LEVEL */
+	irql = kspin_lock_irql(&timer_lock, DISPATCH_LEVEL);
+	DBGTRACE5("deleting timer %p(%p)", wrap_timer, ktimer);
 	/* disable timer before deleting so it won't be re-armed after
 	 * deleting */
-	irql = kspin_lock_irql(&timer_lock, DISPATCH_LEVEL);
-	/* for periodic timers return TRUE - see KeCancelTimer */
-	DBGTRACE5("deleting timer %p(%p)", wrap_timer, ktimer);
 	wrap_timer->repeat = 0;
 	if (del_timer(&wrap_timer->timer))
 		*canceled = TRUE;

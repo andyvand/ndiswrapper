@@ -12,6 +12,7 @@
  *  GNU General Public License for more details.
  *
  */
+
 #include <linux/init.h>
 #include <linux/module.h>
 #include <linux/kernel.h>
@@ -181,8 +182,8 @@ NDIS_STATUS miniport_query_info_needed(struct wrapper_dev *wd,
 	if (res == NDIS_STATUS_PENDING) {
 		/* wait a little for NdisMQueryInformationComplete */
 		/* DDK seems to imply we wait until miniport calls
-		 * back completion routine, but at least prism usb
-		 * driver doesn't call it, so timeout is used */
+		 * back completion routine, but to be safe, timeout is
+		 * used */
 		if (wait_event_interruptible_timeout(
 			    wd->ndis_comm_wq,
 			    (wd->ndis_comm_done == 1),
@@ -431,10 +432,13 @@ void miniport_halt(struct wrapper_dev *wd)
 	if (kthread)
 		wrap_remove_thread(kthread);
 	ndis_exit_device(wd);
-	misc_funcs_exit_device(wd);
-	ntoskernel_exit_device(wd);
+#ifdef CONFIG_USB
 	if (wd->dev.dev_type == NDIS_USB_BUS)
 		usb_exit_device(wd);
+#endif
+	NdisFreePacketPool(wd->wrapper_packet_pool);
+	misc_funcs_exit_device(wd);
+	ntoskernel_exit_device(wd);
 
 	TRACEEXIT1(return);
 }
@@ -486,39 +490,32 @@ static void hangcheck_proc(unsigned long data)
 	struct wrapper_dev *wd = (struct wrapper_dev *)data;
 
 	TRACEENTER3("");
+	if (wd->hangcheck_interval <= 0)
+		return;
+
 	set_bit(HANGCHECK, &wd->wrapper_work);
 	schedule_work(&wd->wrapper_worker);
 
-	if (wd->hangcheck_active) {
-		wd->hangcheck_timer.expires += wd->hangcheck_interval;
-		add_timer(&wd->hangcheck_timer);
-	}
+	wd->hangcheck_timer.expires += wd->hangcheck_interval;
+	add_timer(&wd->hangcheck_timer);
 
 	TRACEEXIT3(return);
 }
 
 void hangcheck_add(struct wrapper_dev *wd)
 {
-	if (!wd->driver->miniport.hangcheck || wd->hangcheck_interval <= 0) {
-		wd->hangcheck_active = 0;
+	if (!wd->driver->miniport.hangcheck || wd->hangcheck_interval <= 0)
 		return;
-	}
-
 	init_timer(&wd->hangcheck_timer);
 	wd->hangcheck_timer.data = (unsigned long)wd;
 	wd->hangcheck_timer.function = &hangcheck_proc;
 	wd->hangcheck_timer.expires = jiffies + wd->hangcheck_interval;
 	add_timer(&wd->hangcheck_timer);
-	wd->hangcheck_active = 1;
 	return;
 }
 
 void hangcheck_del(struct wrapper_dev *wd)
 {
-	if (!wd->driver->miniport.hangcheck || wd->hangcheck_interval <= 0)
-		return;
-
-	wd->hangcheck_active = 0;
 	del_timer_sync(&wd->hangcheck_timer);
 }
 
@@ -526,6 +523,8 @@ static void stats_proc(unsigned long data)
 {
 	struct wrapper_dev *wd = (struct wrapper_dev *)data;
 
+	if (wd->stats_enabled == FALSE)
+		return;
 	set_bit(COLLECT_STATS, &wd->wrapper_work);
 	schedule_work(&wd->wrapper_worker);
 	wd->stats_timer.expires += 5 * HZ;
@@ -548,7 +547,7 @@ static void stats_timer_del(struct wrapper_dev *wd)
 
 static int ndis_open(struct net_device *dev)
 {
-	TRACEENTER1("%s", "");
+	TRACEENTER1("");
 	netif_device_attach(dev);
 	netif_start_queue(dev);
 	return 0;
@@ -556,7 +555,7 @@ static int ndis_open(struct net_device *dev)
 
 static int ndis_close(struct net_device *dev)
 {
-	TRACEENTER1("%s", "");
+	TRACEENTER1("");
 
 	if (netif_running(dev)) {
 		netif_stop_queue(dev);
@@ -618,9 +617,11 @@ static struct ndis_packet *
 allocate_send_packet(struct wrapper_dev *wd, ndis_buffer *buffer)
 {
 	struct ndis_packet *packet;
+	struct wrap_ndis_packet *wrap_ndis_packet;
+	NDIS_STATUS status;
 
-	packet = allocate_ndis_packet();
-	if (!packet)
+	NdisAllocatePacket(&status, &packet, wd->wrapper_packet_pool);
+	if (status != NDIS_STATUS_SUCCESS)
 		return NULL;
 
 	/*
@@ -633,18 +634,21 @@ allocate_send_packet(struct wrapper_dev *wd, ndis_buffer *buffer)
 	packet->private.buffer_tail = buffer;
 //	packet->private.flags = NDIS_PROTOCOL_ID_TCP_IP;
 
+	wrap_ndis_packet = packet->wrap_ndis_packet;
 	if (wd->use_sg_dma) {
-		packet->ndis_sg_element.address =
+		wrap_ndis_packet->ndis_sg_element.address =
 			PCI_DMA_MAP_SINGLE(wd->dev.pci,
 					   MmGetMdlVirtualAddress(buffer),
 					   MmGetMdlByteCount(buffer),
 					   PCI_DMA_TODEVICE);
 
-		packet->ndis_sg_element.length = MmGetMdlByteCount(buffer);
-		packet->ndis_sg_list.nent = 1;
-		packet->ndis_sg_list.elements = &packet->ndis_sg_element;
-		packet->extension.info[ScatterGatherListPacketInfo] =
-			&packet->ndis_sg_list;
+		wrap_ndis_packet->ndis_sg_element.length =
+			MmGetMdlByteCount(buffer);
+		wrap_ndis_packet->ndis_sg_list.nent = 1;
+		wrap_ndis_packet->ndis_sg_list.elements =
+			&wrap_ndis_packet->ndis_sg_element;
+		wrap_ndis_packet->extension.info[ScatterGatherListPacketInfo] =
+			&wrap_ndis_packet->ndis_sg_list;
 	}
 
 	return packet;
@@ -654,6 +658,7 @@ static void free_send_packet(struct wrapper_dev *wd,
 			     struct ndis_packet *packet)
 {
 	ndis_buffer *buffer;
+	struct wrap_ndis_packet *wrap_ndis_packet;
 
 	TRACEENTER3("packet: %p", packet);
 	if (!packet) {
@@ -662,10 +667,11 @@ static void free_send_packet(struct wrapper_dev *wd,
 	}
 
 	buffer = packet->private.buffer_head;
+	wrap_ndis_packet = packet->wrap_ndis_packet;
 	if (wd->use_sg_dma)
 		PCI_DMA_UNMAP_SINGLE(wd->dev.pci,
-				     packet->ndis_sg_element.address,
-				     packet->ndis_sg_element.length,
+				     wrap_ndis_packet->ndis_sg_element.address,
+				     wrap_ndis_packet->ndis_sg_element.length,
 				     PCI_DMA_TODEVICE);
 
 	DBGTRACE3("freeing buffer %p", buffer);
@@ -673,7 +679,7 @@ static void free_send_packet(struct wrapper_dev *wd,
 	free_mdl(buffer);
 
 	DBGTRACE3("freeing packet %p", packet);
-	free_ndis_packet(packet);
+	NdisFreePacket(packet);
 	TRACEEXIT3(return);
 }
 
@@ -689,6 +695,7 @@ static int send_packets(struct wrapper_dev *wd, unsigned int start,
 	struct miniport_char *miniport = &wd->driver->miniport;
 	unsigned int sent, n;
 	struct ndis_packet *packet;
+	struct wrap_ndis_packet *wrap_ndis_packet;
 
 	TRACEENTER3("start: %d, pending: %d", start, pending);
 
@@ -715,7 +722,8 @@ static int send_packets(struct wrapper_dev *wd, unsigned int start,
 		if (test_bit(ATTR_SERIALIZED, &wd->attributes)) {
 			for (sent = 0; sent < n && wd->send_ok; sent++) {
 				packet = wd->xmit_array[sent];
-				switch(packet->oob_data.status) {
+				wrap_ndis_packet = packet->wrap_ndis_packet;
+				switch(wrap_ndis_packet->oob_data.status) {
 				case NDIS_STATUS_SUCCESS:
 					sendpacket_done(wd, packet);
 					break;
@@ -787,12 +795,11 @@ static void xmit_worker(void *param)
 /*
  * Free and unmap packet created in xmit
  */
-void sendpacket_done(struct wrapper_dev *wd,
-		     struct ndis_packet *packet)
+void sendpacket_done(struct wrapper_dev *wd, struct ndis_packet *packet)
 {
 	KIRQL irql;
 
-	TRACEENTER3("%s", "");
+	TRACEENTER3("");
 	irql = kspin_lock_irql(&wd->send_packet_done_lock, DISPATCH_LEVEL);
 	wd->stats.tx_bytes += packet->private.len;
 	wd->stats.tx_packets++;
@@ -996,6 +1003,9 @@ void ndiswrapper_remove_device(struct wrapper_dev *wd)
 	hangcheck_del(wd);
 
 	/* flush_scheduled_work here causes crash with 2.4 kernels */
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
+	flush_scheduled_work();
+#endif
 	/* instead, throw away pending packets */
 	irql = kspin_lock_irql(&wd->xmit_lock, DISPATCH_LEVEL);
 	while (wd->xmit_ring_pending) {
@@ -1046,7 +1056,7 @@ static void link_status_handler(struct wrapper_dev *wd)
 
 	TRACEENTER2("link status: %d", wd->link_status);
 	if (wd->link_status == 0) {
-#if 0
+#if 1
 		if (wd->encr_mode == Ndis802_11Encryption1Enabled ||
 		    wd->infrastructure_mode == Ndis802_11IBSS) {
 			for (i = 0; i < MAX_ENCR_KEYS; i++) {
@@ -1078,7 +1088,7 @@ static void link_status_handler(struct wrapper_dev *wd)
 
 	assoc_info = kmalloc(assoc_size, GFP_KERNEL);
 	if (!assoc_info) {
-		ERROR("%s", "couldn't allocate memory");
+		ERROR("couldn't allocate memory");
 		TRACEEXIT2(return);
 	}
 	memset(assoc_info, 0, assoc_size);
@@ -1129,7 +1139,7 @@ static void link_status_handler(struct wrapper_dev *wd)
 #else
 	wpa_assoc_info = kmalloc(IW_CUSTOM_MAX, GFP_KERNEL);
 	if (!wpa_assoc_info) {
-		ERROR("%s", "couldn't allocate memory");
+		ERROR("couldn't allocate memory");
 		kfree(assoc_info);
 		TRACEEXIT2(return);
 	}
@@ -1156,7 +1166,6 @@ static void link_status_handler(struct wrapper_dev *wd)
 
 	kfree(wpa_assoc_info);
 #endif
-
 	kfree(assoc_info);
 
 	get_ap_address(wd, (char *)&wrqu.ap_addr.sa_data);
@@ -1174,10 +1183,10 @@ static void set_packet_filter(struct wrapper_dev *wd)
 
 	packet_filter = (NDIS_PACKET_TYPE_DIRECTED |
 			 NDIS_PACKET_TYPE_BROADCAST |
-			 NDIS_PACKET_TYPE_MULTICAST);
+			 NDIS_PACKET_TYPE_ALL_MULTICAST);
 
 	dev = (struct net_device *)wd->net_dev;
-#if 0
+#if 1
 	if (dev->flags & IFF_PROMISC) {
 		packet_filter |= NDIS_PACKET_TYPE_ALL_LOCAL |
 			NDIS_PACKET_TYPE_PROMISCUOUS;
@@ -1195,7 +1204,7 @@ static void set_packet_filter(struct wrapper_dev *wd)
 
 	res = miniport_set_info(wd, OID_GEN_CURRENT_PACKET_FILTER,
 				&packet_filter, sizeof(packet_filter));
-#if 0
+#if 1
 	if (res && (packet_filter & NDIS_PACKET_TYPE_PROMISCUOUS)) {
 		/* 802.11 drivers may fail when PROMISCUOUS flag is
 		 * set, so try without */
@@ -1217,20 +1226,16 @@ static void update_wireless_stats(struct wrapper_dev *wd)
 	ndis_rssi rssi;
 
 	TRACEENTER2("");
-	if (wd->stats_enabled == FALSE) {
-		memset(&iw_stats->qual, 0, sizeof(iw_stats->qual));
-		return;
-	}
-	/* TODO: Prism1 USB and Airgo cards crash kernel if RSSI is queried */
 	rssi = 0;
 	res = miniport_query_info(wd, OID_802_11_RSSI, &rssi, sizeof(rssi));
 	if (res == NDIS_STATUS_SUCCESS)
 		iw_stats->qual.level = rssi;
 
 	memset(&ndis_stats, 0, sizeof(ndis_stats));
+	ndis_stats.length = sizeof(ndis_stats);
 	res = miniport_query_info(wd, OID_802_11_STATISTICS,
 				  &ndis_stats, sizeof(ndis_stats));
-	if (res == NDIS_STATUS_NOT_SUPPORTED)
+	if (res)
 		iw_stats->qual.qual = ((rssi & 0x7F) * 100) / 154;
 	else {
 		iw_stats->discard.retries = (u32)ndis_stats.retry +
@@ -1252,7 +1257,7 @@ static void update_wireless_stats(struct wrapper_dev *wd)
 	TRACEEXIT2(return);
 }
 
-static struct iw_statistics *get_wireless_stats(struct net_device *dev)
+struct iw_statistics *get_wireless_stats(struct net_device *dev)
 {
 	struct wrapper_dev *wd = netdev_priv(dev);
 	return &wd->wireless_stats;
@@ -1365,7 +1370,7 @@ void check_capa(struct wrapper_dev *wd)
 	char *buf;
 	const int buf_len = 512;
 
-	TRACEENTER1("%s", "");
+	TRACEENTER1("");
 
 	/* check if WEP is supported */
 	if (set_encr_mode(wd, Ndis802_11Encryption1Enabled) == 0 &&
@@ -1373,7 +1378,7 @@ void check_capa(struct wrapper_dev *wd)
 		set_bit(Ndis802_11Encryption1Enabled, &wd->capa.encr);
 
 	/* check if WPA is supported */
-	DBGTRACE1("%s", "");
+	DBGTRACE1("");
 	if (set_auth_mode(wd, Ndis802_11AuthModeWPA) == 0 &&
 	    get_auth_mode(wd) == Ndis802_11AuthModeWPA)
 		set_bit(Ndis802_11AuthModeWPA, &wd->capa.auth);
@@ -1569,7 +1574,9 @@ int setup_device(struct net_device *dev)
 	dev->stop = ndis_close;
 	dev->get_stats = ndis_get_stats;
 	dev->do_ioctl = ndis_ioctl;
+#if WIRELESS_EXT < 19
 	dev->get_wireless_stats = get_wireless_stats;
+#endif
 	dev->wireless_handlers	= (struct iw_handler_def *)&ndis_handler_def;
 	dev->set_multicast_list = ndis_set_rx_mode;
 	dev->set_mac_address = ndis_set_mac_addr;
@@ -1588,7 +1595,7 @@ int setup_device(struct net_device *dev)
 	}
 
 	printk(KERN_INFO "%s: %s ethernet device " MACSTR " using driver %s,"
-	       " configuration file %s\n",
+	       " %s\n",
 	       dev->name, DRIVER_NAME, MAC2STR(dev->dev_addr),
 	       wd->driver->name, wd->ndis_device->conf_file_name);
 
@@ -1635,6 +1642,13 @@ int setup_device(struct net_device *dev)
 		unregister_netdev(dev);
 		return -ENOMEM;
 	}
+	NdisAllocatePacketPoolEx(&res, &wd->wrapper_packet_pool,
+				 wd->max_send_packets + 1, 0,
+				 PROTOCOL_RESERVED_SIZE_IN_PACKET);
+	if (res != NDIS_STATUS_SUCCESS) {
+		ERROR("couldn't allocate packet pool");
+		return -ENOMEM;
+	}
 
 	res = miniport_query_int(wd, OID_802_3_MAXIMUM_LIST_SIZE, &i);
 	if (res == NDIS_STATUS_SUCCESS) {
@@ -1648,21 +1662,16 @@ int setup_device(struct net_device *dev)
 			kmalloc(wd->multicast_list_size * ETH_ALEN,
 				GFP_KERNEL);
 
-	if (set_privacy_filter(wd, Ndis802_11PrivFilterAcceptAll))
-		WARNING("unable to set privacy filter");
-
-#if 0
-//	miniport_set_int(wd, OID_802_11_NETWORK_TYPE_IN_USE,
-//			 Ndis802_11Automode);
-	ndis_set_rx_mode(dev);
+	miniport_set_int(wd, OID_802_11_NETWORK_TYPE_IN_USE,
+			 Ndis802_11Automode);
+//	ndis_set_rx_mode(dev);
 	/* check_capa changes auth_mode and encr_mode, so set them again */
-#endif
-#if 0
 	set_auth_mode(wd, Ndis802_11AuthModeOpen);
 	set_encr_mode(wd, Ndis802_11EncryptionDisabled);
+	if (set_privacy_filter(wd, Ndis802_11PrivFilterAcceptAll))
+		WARNING("unable to set privacy filter");
 	set_infra_mode(wd, Ndis802_11Infrastructure);
 	set_scan(wd);
-#endif
 
 	hangcheck_add(wd);
 	stats_timer_add(wd);
@@ -1681,12 +1690,12 @@ struct net_device *ndis_init_netdev(struct wrapper_dev **pwd,
 
 	dev = alloc_etherdev(sizeof(*wd) + sizeof(*nmb));
 	if (!dev) {
-		ERROR("%s", "Unable to alloc etherdev");
+		ERROR("unable to allocate device");
 		return NULL;
 	}
 	SET_MODULE_OWNER(dev);
 	wd = netdev_priv(dev);
-	DBGTRACE1("wd= %p", wd);
+	DBGTRACE1("wd: %p", wd);
 
 	nmb = ((void *)wd) + sizeof(*wd);
 	wd->nmb = nmb;
@@ -1706,9 +1715,7 @@ struct net_device *ndis_init_netdev(struct wrapper_dev **pwd,
 	wd->ndis_comm_done = 0;
 	/* prism1 usb driver crashes during MiniportSetInformation if
 	 * we wait for shorter time periods */
-	if ((wd->ndis_device->vendor == 0x2001 &&
-	     wd->ndis_device->device == 0x3700) ||
-	    (wd->ndis_device->vendor == 0x0846 &&
+	if ((wd->ndis_device->vendor == 0x0846 &&
 	     wd->ndis_device->device == 0x4110))
 		wd->ndis_comm_wait_time = 4 * HZ;
 	else
@@ -1730,8 +1737,9 @@ struct net_device *ndis_init_netdev(struct wrapper_dev **pwd,
 	wd->map_dma_addr = NULL;
 	wd->nick[0] = 0;
 	wd->hangcheck_interval = hangcheck_interval;
-	wd->hangcheck_active = 0;
+	init_timer(&wd->hangcheck_timer);
 	wd->scan_timestamp = 0;
+	init_timer(&wd->stats_timer);
 	wd->hw_status = 0;
 	wd->wrapper_work = 0;
 	memset(&wd->essid, 0, sizeof(wd->essid));
@@ -1740,10 +1748,9 @@ struct net_device *ndis_init_netdev(struct wrapper_dev **pwd,
 	INIT_WORK(&wd->wrapper_worker, wrapper_worker_proc, wd);
 	set_bit(HW_AVAILABLE, &wd->hw_status);
 
+	/* some devices have issues with collecting stats */
 	if ((wd->ndis_device->vendor == 0x17cb &&
 	     wd->ndis_device->device == 0x0001) ||
-	    (wd->ndis_device->vendor == 0x2001 &&
-	     wd->ndis_device->device == 0x3700) ||
 	    (wd->ndis_device->vendor == 0x0ace &&
 	     wd->ndis_device->device == 0x1211))
 		wd->stats_enabled = FALSE;
@@ -1754,6 +1761,7 @@ struct net_device *ndis_init_netdev(struct wrapper_dev **pwd,
 	return dev;
 }
 
+#if LINUX_VERSION_CODE > KERNEL_VERSION(2,6,0)
 /* we need to get kthread for the task running ndiswrapper_wq, so
  * schedule a worker for it soon after initializing ndiswrapper_wq */
 
@@ -1786,17 +1794,23 @@ static void _ndiswrapper_wq_init_worker(void *data)
 	}
 	_ndiswrapper_wq_init_state = 0;
 }
+#endif
 
 static void module_cleanup(void)
 {
 	loader_exit();
+#if LINUX_VERSION_CODE > KERNEL_VERSION(2,6,0)
 	_ndiswrapper_wq_init_state = NDISWRAPPER_WQ_EXIT;
 	schedule_work(&_ndiswrapper_wq_init);
 	while (_ndiswrapper_wq_init_state)
 		schedule_timeout(2);
 	destroy_workqueue(ndiswrapper_wq);
+#endif
 	ndiswrapper_procfs_remove();
 	ndis_exit();
+#ifdef CONFIG_USB
+	usb_exit();
+#endif
 	ntoskernel_exit();
 	misc_funcs_exit();
 }
@@ -1835,6 +1849,7 @@ static int __init wrapper_init(void)
 #endif
 		)
 		goto err;
+#if LINUX_VERSION_CODE > KERNEL_VERSION(2,6,0)
 	ndiswrapper_wq = create_singlethread_workqueue("ndiswrapwq");
 	INIT_WORK(&_ndiswrapper_wq_init, _ndiswrapper_wq_init_worker, 0);
 	_ndiswrapper_wq_init_state = NDISWRAPPER_WQ_INIT;
@@ -1843,6 +1858,7 @@ static int __init wrapper_init(void)
 		schedule_timeout(2);
 	if (_ndiswrapper_wq_init_state < 0)
 		goto err;
+#endif
 	ndiswrapper_procfs_init();
 	if (loader_init())
 		goto err;
