@@ -48,22 +48,27 @@
 
 extern KSPIN_LOCK irp_cancel_lock;
 
-static struct work_struct irp_complete_work;
+/* TODO: using a worker instead of tasklet is probably preferable,
+ * since we don't know if IoCompleteRequest can be called from atomic
+ * context, but with ZyDas driver the worker never gets executed, even
+ * though it gets scheduled */
+static struct tasklet_struct irp_complete_work;
 static struct nt_list irp_complete_list;
 
 static STDCALL void wrap_cancel_irp(struct device_object *dev_obj,
 				    struct irp *irp);
-static void irp_complete_worker(void *data);
+static void irp_complete_worker(unsigned long data);
 
 int usb_init(void)
 {
 	InitializeListHead(&irp_complete_list);
-	INIT_WORK(&irp_complete_work, irp_complete_worker, NULL);
+	tasklet_init(&irp_complete_work, irp_complete_worker, 0);
 	return 0;
 }
 
 void usb_exit(void)
 {
+	tasklet_kill(&irp_complete_work);
 	return;
 }
 
@@ -397,12 +402,12 @@ static void wrap_urb_complete(struct urb *urb)
 	InsertTailList(&irp_complete_list, &irp->complete_list);
 	IoReleaseCancelSpinLock(irp->cancel_irql);
 	USBTRACE("urb %p (irp: %p) completed", urb, irp);
-	schedule_work(&irp_complete_work);
+	tasklet_schedule(&irp_complete_work);
 	/* TODO: 2.6.14-rcX and newer need interrupt urb's be
 	 * resubmitted */
 }
 
-static void irp_complete_worker(void *data)
+static void irp_complete_worker(unsigned long data)
 {
 	struct irp *irp;
 	struct urb *urb;
