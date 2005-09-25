@@ -620,10 +620,11 @@ struct kapc {
 
 enum urb_state {
 	URB_INVALID = 1, URB_ALLOCATED, URB_SUBMITTED, URB_CANCELED,
-	URB_COMPLETED, URB_FREE };
+	URB_COMPLETED, URB_FREE, URB_SUSPEND };
 
 struct wrap_urb {
 	enum urb_state state;
+	unsigned int alloc_flags;
 	struct urb *urb;
 	struct irp *irp;
 };

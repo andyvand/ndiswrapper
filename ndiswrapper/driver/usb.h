@@ -260,5 +260,7 @@ union nt_urb {
 
 NTSTATUS wrap_submit_irp(struct device_object *pdo, struct irp *irp);
 NTSTATUS wrap_submit_urb(struct irp *irp);
+void wrap_suspend_urbs(struct wrapper_dev *wd);
+void wrap_resume_urbs(struct wrapper_dev *wd);
 
 #endif /* USB_H */
