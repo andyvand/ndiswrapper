@@ -1132,6 +1132,10 @@ STDCALL void WRAP_EXPORT(NdisFreeBufferPool)
 	KIRQL irql;
 
 	DBGTRACE3("pool: %p", pool);
+	if (!pool) {
+		WARNING("invalid pool");
+		TRACEEXIT3(return);
+	}
 	irql = kspin_lock_irql(&pool->lock, DISPATCH_LEVEL);
 	cur = pool->free_descr;
 	while (cur) {
@@ -1241,6 +1245,10 @@ STDCALL void WRAP_EXPORT(NdisFreePacketPool)
 	KIRQL irql;
 
 	TRACEENTER3("pool: %p", pool);
+	if (!pool) {
+		WARNING("invalid pool");
+		TRACEEXIT3(return);
+	}
 	irql = kspin_lock_irql(&pool->lock, DISPATCH_LEVEL);
 	cur = pool->free_descr;
 	while (cur) {

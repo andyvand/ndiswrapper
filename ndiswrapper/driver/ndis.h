@@ -511,7 +511,7 @@ struct ndis_radio_status_indication
 };
 
 enum wrapper_work {
-	LINK_STATUS_CHANGED, SET_INFRA_MODE, SET_ESSID, SET_PACKET_FILTER,
+	LINK_STATUS_CHANGED, SET_INFRA_MODE, SET_ESSID, SET_MULTICAST_LIST,
 	COLLECT_STATS, SUSPEND_RESUME, HANGCHECK,
 	/* do not work when this is set */
 	SHUTDOWN

@@ -81,9 +81,6 @@ MODULE_AUTHOR("ndiswrapper team <ndiswrapper-general@lists.sourceforge.net>");
 #ifdef MODULE_VERSION
 MODULE_VERSION(DRIVER_VERSION);
 #endif
-static void ndis_set_rx_mode(struct net_device *dev);
-static void set_multicast_list(struct net_device *dev,
-			       struct wrapper_dev *wd);
 
 extern KSPIN_LOCK timer_lock;
 
@@ -431,8 +428,10 @@ void miniport_halt(struct wrapper_dev *wd)
 
 	if (kthread)
 		wrap_remove_thread(kthread);
-	NdisFreePacketPool(wd->wrapper_packet_pool);
-	NdisFreeBufferPool(wd->wrapper_buffer_pool);
+	if (wd->wrapper_packet_pool)
+		NdisFreePacketPool(wd->wrapper_packet_pool);
+	if (wd->wrapper_buffer_pool)
+		NdisFreeBufferPool(wd->wrapper_buffer_pool);
 #ifdef CONFIG_USB
 	if (wd->dev.dev_type == NDIS_USB_BUS)
 		usb_exit_device(wd);
@@ -524,8 +523,6 @@ static void stats_proc(unsigned long data)
 {
 	struct wrapper_dev *wd = (struct wrapper_dev *)data;
 
-	if (wd->stats_enabled == FALSE)
-		return;
 	set_bit(COLLECT_STATS, &wd->wrapper_work);
 	schedule_work(&wd->wrapper_worker);
 	wd->stats_timer.expires += 5 * HZ;
@@ -546,9 +543,42 @@ static void stats_timer_del(struct wrapper_dev *wd)
 	del_timer_sync(&wd->stats_timer);
 }
 
+static int add_packet_filter(struct wrapper_dev *wd, ULONG packet_filter)
+{
+	NDIS_STATUS res;
+	ULONG filter;
+
+	TRACEENTER3("%x", packet_filter);
+	res = miniport_query_info(wd, OID_GEN_CURRENT_PACKET_FILTER,
+				  &filter, sizeof(filter));
+	if (res) {
+		WARNING("couldn't get packet filter: %08X", res);
+		TRACEEXIT3(return res);
+	}
+	filter |= packet_filter;
+	res = miniport_set_info(wd, OID_GEN_CURRENT_PACKET_FILTER,
+				&filter, sizeof(filter));
+	if (res) {
+		WARNING("couldn't set packet filter: %08X", res);
+		TRACEEXIT3(return res);
+	}
+	TRACEEXIT3(return 0);
+}
+
 static int ndis_open(struct net_device *dev)
 {
+	ULONG packet_filter;
+	struct wrapper_dev *wd = netdev_priv(dev);
+
 	TRACEENTER1("");
+	packet_filter = NDIS_PACKET_TYPE_DIRECTED;
+	if (dev->flags & IFF_BROADCAST)
+		packet_filter |= NDIS_PACKET_TYPE_BROADCAST;
+	if (dev->flags & IFF_PROMISC)
+		packet_filter |= NDIS_PACKET_TYPE_ALL_LOCAL;
+	/* NDIS_PACKET_TYPE_PROMISCUOUS will not work with 802.11 */
+	if (add_packet_filter(wd, packet_filter))
+		WARNING("couldn't add packet filter %x", packet_filter);
 	netif_device_attach(dev);
 	netif_start_queue(dev);
 	return 0;
@@ -582,36 +612,57 @@ static int ndis_ioctl(struct net_device *dev, struct ifreq *rq, int cmd)
 	return rc;
 }
 
-static void set_multicast_list(struct net_device *dev,
-			       struct wrapper_dev *wd)
-{
-	struct dev_mc_list *mclist;
-	int i, size = 0;
-	char *list = wd->multicast_list;
-	NDIS_STATUS res;
-
-	for (i = 0, mclist = dev->mc_list;
-	     mclist && i < dev->mc_count && size < wd->multicast_list_size;
-	     i++, mclist = mclist->next) {
-		memcpy(list, mclist->dmi_addr, ETH_ALEN);
-		list += ETH_ALEN;
-		size += ETH_ALEN;
-	}
-	DBGTRACE1("%d entries. size=%d", dev->mc_count, size);
-
-	res = miniport_set_info(wd, OID_802_3_MULTICAST_LIST, list, size);
-	if (res)
-		ERROR("Unable to set multicast list (%08X)", res);
-}
-
 /*
  * This function is called fom BH context...no sleep!
  */
-static void ndis_set_rx_mode(struct net_device *dev)
+static void ndis_set_multicast_list(struct net_device *dev)
 {
 	struct wrapper_dev *wd = netdev_priv(dev);
-	set_bit(SET_PACKET_FILTER, &wd->wrapper_work);
+	set_bit(SET_MULTICAST_LIST, &wd->wrapper_work);
 	schedule_work(&wd->wrapper_worker);
+}
+
+static void set_multicast_list(struct wrapper_dev *wd)
+{
+	struct net_device *net_dev;
+	ULONG packet_filter;
+	NDIS_STATUS res = 0;
+	int i, size;
+	struct dev_mc_list *mclist;
+	char *ndis_mc_list;
+
+	net_dev = wd->net_dev;
+	if (net_dev->mc_count == 0)
+		TRACEEXIT3(return);
+
+	ndis_mc_list = wd->multicast_list;
+	size = 0;
+	for (i = 0, mclist = net_dev->mc_list;
+	     mclist && i < net_dev->mc_count && size < wd->multicast_list_size;
+	     i++, mclist = mclist->next) {
+		memcpy(ndis_mc_list, mclist->dmi_addr, ETH_ALEN);
+		ndis_mc_list += ETH_ALEN;
+		size += ETH_ALEN;
+	}
+	DBGTRACE1("%d entries. size=%d", net_dev->mc_count, size);
+
+	res = miniport_set_info(wd, OID_802_3_MULTICAST_LIST,
+				ndis_mc_list, size);
+	if (res) {
+		ERROR("unable to set multicast list (%08X)", res);
+		TRACEEXIT3(return);
+	} else {
+		packet_filter = NDIS_PACKET_TYPE_MULTICAST;
+		if (net_dev->mc_count > wd->multicast_list_size ||
+		    net_dev->flags & IFF_ALLMULTI)
+			packet_filter = NDIS_PACKET_TYPE_ALL_MULTICAST;
+	}
+	DBGTRACE2("packet filter: %08x", packet_filter);
+	res = add_packet_filter(wd, packet_filter);
+	if (res)
+		ERROR("unable to set packet filter (%08X)", res);
+
+	TRACEEXIT2(return);
 }
 
 static struct ndis_packet *
@@ -1180,46 +1231,6 @@ static void link_status_handler(struct wrapper_dev *wd)
 	TRACEEXIT2(return);
 }
 
-static void set_packet_filter(struct wrapper_dev *wd)
-{
-	struct net_device *dev;
-	ULONG packet_filter;
-	NDIS_STATUS res;
-
-	packet_filter = (NDIS_PACKET_TYPE_DIRECTED |
-			 NDIS_PACKET_TYPE_BROADCAST |
-			 NDIS_PACKET_TYPE_ALL_MULTICAST);
-
-	dev = (struct net_device *)wd->net_dev;
-	if (dev->flags & IFF_PROMISC) {
-		packet_filter |= NDIS_PACKET_TYPE_ALL_LOCAL |
-			NDIS_PACKET_TYPE_PROMISCUOUS;
-	} else if ((dev->mc_count > wd->multicast_list_size) ||
-		   (dev->flags & IFF_ALLMULTI) ||
-		   (wd->multicast_list == 0)) {
-		/* too many to filter perfectly -- accept all multicasts. */
-		DBGTRACE1("multicast list too long; accepting all");
-		packet_filter |= NDIS_PACKET_TYPE_ALL_MULTICAST;
-	} else if (dev->mc_count > 0) {
-		packet_filter |= NDIS_PACKET_TYPE_MULTICAST;
-		set_multicast_list(dev, wd);
-	}
-	DBGTRACE2("packet filter: %08x", packet_filter);
-	res = miniport_set_info(wd, OID_GEN_CURRENT_PACKET_FILTER,
-				&packet_filter, sizeof(packet_filter));
-	if (res && (packet_filter & NDIS_PACKET_TYPE_PROMISCUOUS)) {
-		DBGTRACE2("res: %08x", res);
-		/* 802.11 drivers may fail when PROMISCUOUS flag is
-		 * set, so try without */
-		packet_filter &= ~NDIS_PACKET_TYPE_PROMISCUOUS;
-		res = miniport_set_info(wd, OID_GEN_CURRENT_PACKET_FILTER,
-					&packet_filter, sizeof(packet_filter));
-	}
-	if (res && res != NDIS_STATUS_NOT_SUPPORTED)
-		ERROR("unable to set packet filter (%08X)", res);
-	TRACEEXIT2(return);
-}
-
 static void update_wireless_stats(struct wrapper_dev *wd)
 {
 	struct iw_statistics *iw_stats = &wd->wireless_stats;
@@ -1228,6 +1239,10 @@ static void update_wireless_stats(struct wrapper_dev *wd)
 	ndis_rssi rssi;
 
 	TRACEENTER2("");
+	if (wd->stats_enabled == FALSE) {
+		memset(iw_stats, 0, sizeof(*iw_stats));
+		TRACEEXIT2(return);
+	}
 	rssi = 0;
 	res = miniport_query_info(wd, OID_802_11_RSSI, &rssi, sizeof(rssi));
 	if (res == NDIS_STATUS_SUCCESS)
@@ -1296,8 +1311,8 @@ static void wrapper_worker_proc(void *param)
 	if (test_and_clear_bit(SET_ESSID, &wd->wrapper_work))
 		set_essid(wd, wd->essid.essid, wd->essid.length);
 
-	if (test_and_clear_bit(SET_PACKET_FILTER, &wd->wrapper_work))
-		set_packet_filter(wd);
+	if (test_and_clear_bit(SET_MULTICAST_LIST, &wd->wrapper_work))
+		set_multicast_list(wd);
 
 	if (test_and_clear_bit(COLLECT_STATS, &wd->wrapper_work))
 		update_wireless_stats(wd);
@@ -1580,7 +1595,7 @@ int setup_device(struct net_device *dev)
 	dev->get_wireless_stats = get_wireless_stats;
 #endif
 	dev->wireless_handlers	= (struct iw_handler_def *)&ndis_handler_def;
-	dev->set_multicast_list = ndis_set_rx_mode;
+	dev->set_multicast_list = ndis_set_multicast_list;
 	dev->set_mac_address = ndis_set_mac_addr;
 #ifdef HAVE_ETHTOOL
 	dev->ethtool_ops = &ndis_ethtool_ops;
@@ -1671,7 +1686,6 @@ int setup_device(struct net_device *dev)
 
 	miniport_set_int(wd, OID_802_11_NETWORK_TYPE_IN_USE,
 			 Ndis802_11Automode);
-//	ndis_set_rx_mode(dev);
 	/* check_capa changes auth_mode and encr_mode, so set them again */
 	set_auth_mode(wd, Ndis802_11AuthModeOpen);
 	set_encr_mode(wd, Ndis802_11EncryptionDisabled);
@@ -1687,9 +1701,14 @@ int setup_device(struct net_device *dev)
 	return 0;
 
 buffer_pool_err:
-	NdisFreePacketPool(wd->wrapper_packet_pool);
+	wd->wrapper_buffer_pool = NULL;
+	if (wd->wrapper_packet_pool) {
+		NdisFreePacketPool(wd->wrapper_packet_pool);
+		wd->wrapper_packet_pool = NULL;
+	}
 packet_pool_err:
 	kfree(wd->xmit_array);
+	wd->xmit_array = NULL;
 xmit_array_err:
 	unregister_netdev(wd->net_dev);
 	return -ENOMEM;
