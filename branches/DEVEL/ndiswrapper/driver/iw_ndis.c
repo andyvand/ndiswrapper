@@ -2196,6 +2196,7 @@ int set_privacy_filter(struct wrapper_dev *wd, int flags)
 	NDIS_STATUS res;
 
 	TRACEENTER2("filter: %d", flags);
+	TRACEEXIT2(return 0);
 	res = miniport_set_int(wd, OID_802_11_PRIVACY_FILTER, flags);
 	if (res == NDIS_STATUS_FAILURE)
 		return -EOPNOTSUPP;

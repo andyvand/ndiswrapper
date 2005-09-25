@@ -437,6 +437,7 @@ void miniport_halt(struct wrapper_dev *wd)
 		usb_exit_device(wd);
 #endif
 	NdisFreePacketPool(wd->wrapper_packet_pool);
+	NdisFreeBufferPool(wd->wrapper_buffer_pool);
 	misc_funcs_exit_device(wd);
 	ntoskernel_exit_device(wd);
 
@@ -558,7 +559,7 @@ static int ndis_close(struct net_device *dev)
 	TRACEENTER1("");
 
 	if (netif_running(dev)) {
-		netif_stop_queue(dev);
+		netif_tx_disable(dev);
 		netif_device_detach(dev);
 	}
 	return 0;
@@ -676,7 +677,7 @@ static void free_send_packet(struct wrapper_dev *wd,
 
 	DBGTRACE3("freeing buffer %p", buffer);
 	kfree(MmGetMdlVirtualAddress(buffer));
-	free_mdl(buffer);
+	NdisFreeBuffer(buffer);
 
 	DBGTRACE3("freeing packet %p", packet);
 	NdisFreePacket(packet);
@@ -822,19 +823,22 @@ static int start_xmit(struct sk_buff *skb, struct net_device *dev)
 	unsigned int xmit_ring_next_slot;
 	char *data;
 	KIRQL irql;
+	NDIS_STATUS res;
 
+	/* TODO: we can avoid copying data */
 	data = kmalloc(skb->len, GFP_ATOMIC);
 	if (!data)
 		return 1;
 
-	buffer = allocate_init_mdl(data, skb->len);
-	if (!buffer) {
+	NdisAllocateBuffer(&res, &buffer, wd->wrapper_buffer_pool,
+			   data, skb->len);
+	if (res != NDIS_STATUS_SUCCESS) {
 		kfree(data);
 		return 1;
 	}
 	packet = allocate_send_packet(wd, buffer);
 	if (!packet) {
-		free_mdl(buffer);
+		NdisFreeBuffer(buffer);
 		kfree(data);
 		return 1;
 	}
@@ -873,7 +877,7 @@ int ndiswrapper_suspend_device(struct wrapper_dev *wd,
 	DBGTRACE2("detaching device: %s", wd->net_dev->name);
 	netif_poll_disable(wd->net_dev);
 	if (netif_running(wd->net_dev)) {
-		netif_stop_queue(wd->net_dev);
+		netif_tx_disable(wd->net_dev);
 		netif_device_detach(wd->net_dev);
 	}
 	hangcheck_del(wd);
@@ -1201,11 +1205,12 @@ static void set_packet_filter(struct wrapper_dev *wd)
 		set_multicast_list(dev, wd);
 	}
 #endif
-
+	DBGTRACE2("packet filter: %08x", packet_filter);
 	res = miniport_set_info(wd, OID_GEN_CURRENT_PACKET_FILTER,
 				&packet_filter, sizeof(packet_filter));
 #if 1
 	if (res && (packet_filter & NDIS_PACKET_TYPE_PROMISCUOUS)) {
+		DBGTRACE2("res: %08x", res);
 		/* 802.11 drivers may fail when PROMISCUOUS flag is
 		 * set, so try without */
 		packet_filter &= ~NDIS_PACKET_TYPE_PROMISCUOUS;
@@ -1351,7 +1356,7 @@ static void wrapper_worker_proc(void *param)
 
 		if (netif_running(net_dev)) {
 			netif_device_attach(net_dev);
-			netif_start_queue(net_dev);
+			netif_wake_queue(net_dev);
 		}
 		netif_poll_enable(net_dev);
 		DBGTRACE2("%s: device resumed", net_dev->name);
@@ -1639,17 +1644,22 @@ int setup_device(struct net_device *dev)
 			GFP_KERNEL);
 	if (!wd->xmit_array) {
 		ERROR("couldn't allocate memory for tx_packets");
-		unregister_netdev(dev);
-		return -ENOMEM;
+		goto xmit_array_err;
+
 	}
 	NdisAllocatePacketPoolEx(&res, &wd->wrapper_packet_pool,
 				 wd->max_send_packets + 1, 0,
 				 PROTOCOL_RESERVED_SIZE_IN_PACKET);
 	if (res != NDIS_STATUS_SUCCESS) {
 		ERROR("couldn't allocate packet pool");
-		return -ENOMEM;
+		goto packet_pool_err;
 	}
-
+	NdisAllocateBufferPool(&res, &wd->wrapper_buffer_pool,
+			       wd->max_send_packets);
+	if (res != NDIS_STATUS_SUCCESS) {
+		ERROR("couldn't allocate buffer pool");
+		goto buffer_pool_err;
+	}
 	res = miniport_query_int(wd, OID_802_3_MAXIMUM_LIST_SIZE, &i);
 	if (res == NDIS_STATUS_SUCCESS) {
 		DBGTRACE1("multicast list size: %d", i);
@@ -1678,6 +1688,14 @@ int setup_device(struct net_device *dev)
 	ndiswrapper_procfs_add_iface(wd);
 
 	return 0;
+
+buffer_pool_err:
+	NdisFreePacketPool(wd->wrapper_packet_pool);
+packet_pool_err:
+	kfree(wd->xmit_array);
+xmit_array_err:
+	unregister_netdev(wd->net_dev);
+	return -ENOMEM;
 }
 
 struct net_device *ndis_init_netdev(struct wrapper_dev **pwd,

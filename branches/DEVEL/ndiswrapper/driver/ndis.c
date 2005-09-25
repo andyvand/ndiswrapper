@@ -1081,6 +1081,7 @@ STDCALL void WRAP_EXPORT(NdisAllocateBuffer)
 			flags = descr->flags;
 			memset(descr, 0, sizeof(*descr));
 			MmInitializeMdl(descr, virt, length);
+			MmBuildMdlForNonPagedPool(descr);
 			if (flags & MDL_CACHE_ALLOCATED)
 				descr->flags = MDL_CACHE_ALLOCATED;
 		} else
@@ -1094,7 +1095,8 @@ STDCALL void WRAP_EXPORT(NdisAllocateBuffer)
 		descr->process = pool;
 		pool->num_allocated_descr++;
 		*status = NDIS_STATUS_SUCCESS;
-		DBGTRACE3("allocated buffer %p for %p", descr, virt);
+		DBGTRACE3("allocated buffer %p for %p, %d",
+			  descr, virt, length);
 	} else
 		*status = NDIS_STATUS_FAILURE;
 
@@ -1171,12 +1173,12 @@ STDCALL void WRAP_EXPORT(NdisQueryBufferSafe)
 	(ndis_buffer *buffer, void **virt, UINT *length,
 	 enum mm_page_priority priority)
 {
-	TRACEENTER3("%p, %p, %p", buffer, virt, length);
+	TRACEENTER3("%p, %p, %p, %d", buffer, virt, length, priority);
 	if (virt)
 		*virt = MmGetMdlVirtualAddress(buffer);
 	if (length)
 		*length = MmGetMdlByteCount(buffer);
-	DBGTRACE4("%p, %u",
+	DBGTRACE3("%p, %u",
 		  MmGetMdlVirtualAddress(buffer), MmGetMdlByteCount(buffer));
 }
 
@@ -1424,19 +1426,19 @@ STDCALL void WRAP_EXPORT(NdisSend)
 	TRACEEXIT3(return);
 }
 
-/* FIXME: not sure if NDIS timers are synchronization or notification
- * events, but we have to initialize the event's wait_list so that
- * when timer expires, the handler can reference it */
 STDCALL void WRAP_EXPORT(NdisMInitializeTimer)
 	(struct ndis_miniport_timer *timer_handle,
 	 struct ndis_miniport_block *nmb, void *func, void *ctx)
 {
 	struct wrapper_dev *wd = nmb->wd;
-	TRACEENTER4("timer: %p", &timer_handle->ktimer);
+	TRACEENTER4("timer: %p, func: %p, ctx: %p",
+		    &timer_handle->ktimer, func, ctx);
 	initialize_kdpc(&timer_handle->kdpc, func, ctx);
-	KeInitializeTimer(&timer_handle->ktimer);
-	wrap_init_timer(&timer_handle->ktimer, wd);
 	timer_handle->ktimer.kdpc = &timer_handle->kdpc;
+	timer_handle->timer_func = func;
+	timer_handle->timer_ctx = ctx;
+	timer_handle->wd = nmb->wd;
+	wrap_init_timer(&timer_handle->ktimer, wd);
 	TRACEEXIT4(return);
 }
 
@@ -1449,9 +1451,13 @@ STDCALL void WRAP_EXPORT(NdisMSetPeriodicTimer)
 	TRACEENTER4("%p, %u", timer_handle, period_ms);
 	expires = period_ms * HZ / 1000;
 	kdpc = timer_handle->ktimer.kdpc;
-	if (kdpc)
-		kdpc->type = KDPC_TYPE_NDIS;
-	wrap_set_timer(&timer_handle->ktimer, expires, expires);
+	kdpc->type = KDPC_TYPE_NDIS;
+	if (timer_handle->timer_func != kdpc->func ||
+	    timer_handle->timer_ctx != kdpc->ctx)
+		WARNING("func for timer %p is invalid: %p",
+			&timer_handle->ktimer, timer_handle->timer_func);
+	wrap_set_timer(&timer_handle->ktimer, expires, expires,
+		       WRAP_TIMER_NDIS);
 	TRACEEXIT4(return);
 }
 
@@ -1469,9 +1475,8 @@ STDCALL void WRAP_EXPORT(NdisInitializeTimer)
 	TRACEENTER4("%p, %p, %p, %p", timer_handle, func, ctx,
 		    &timer_handle->ktimer);
 	initialize_kdpc(&timer_handle->kdpc, func, ctx);
-	KeInitializeTimer(&timer_handle->ktimer);
-	wrap_init_timer(&timer_handle->ktimer, NULL);
 	timer_handle->ktimer.kdpc = &timer_handle->kdpc;
+	wrap_init_timer(&timer_handle->ktimer, NULL);
 	TRACEEXIT4(return);
 }
 
@@ -1483,9 +1488,8 @@ STDCALL void WRAP_EXPORT(NdisSetTimer)
 
 	TRACEENTER4("%p, %u", timer_handle, duetime_ms);
 	kdpc = timer_handle->ktimer.kdpc;
-	if (kdpc)
-		kdpc->type = KDPC_TYPE_NDIS;
-	wrap_set_timer(&timer_handle->ktimer, expires, 0);
+	kdpc->type = KDPC_TYPE_NDIS;
+	wrap_set_timer(&timer_handle->ktimer, expires, 0, WRAP_TIMER_NDIS);
 	TRACEEXIT4(return);
 }
 
@@ -2258,9 +2262,10 @@ STDCALL ULONG WRAP_EXPORT(NdisMGetDmaAlignment)
 STDCALL void WRAP_EXPORT(NdisQueryBufferOffset)
 	(ndis_buffer *buffer, UINT *offset, UINT *length)
 {
-	TRACEENTER3("");
+	TRACEENTER3("%p", buffer);
 	*offset = MmGetMdlByteOffset(buffer);
 	*length = MmGetMdlByteCount(buffer);
+	DBGTRACE3("%d, %d", *offset, *length);
 }
 
 STDCALL CHAR WRAP_EXPORT(NdisSystemProcessorCount)
@@ -2505,6 +2510,8 @@ STDCALL void WRAP_EXPORT(NdisGetFirstBufferFromPacketSafe)
 		*first_buffer_length = 0;
 		*total_buffer_length = 0;
 	}
+	DBGTRACE3("%p, %d, %d", *first_buffer_va, *first_buffer_length,
+		  *total_buffer_length);
 	TRACEEXIT3(return);
 }
 

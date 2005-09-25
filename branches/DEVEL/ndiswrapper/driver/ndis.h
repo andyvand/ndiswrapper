@@ -129,6 +129,7 @@ struct wrap_ndis_packet {
 	unsigned char header[ETH_HLEN];
 	unsigned char *look_ahead;
 	UINT look_ahead_size;
+	struct sk_buff *skb;
 };
 
 struct ndis_packet {
@@ -585,6 +586,8 @@ struct ndis_timer {
 struct ndis_miniport_timer {
 	struct ktimer ktimer;
 	struct kdpc kdpc;
+	/* since kdpc already can store func, ctx, I don't know what
+	 * the following two fields are for */
 	void *timer_func;
 	void *timer_ctx;
 	struct wrapper_dev *wd;
@@ -882,6 +885,7 @@ struct wrapper_dev {
 	int iw_auth_key_mgmt;
 	int iw_auth_80211_auth_alg;
 	struct ndis_packet_pool *wrapper_packet_pool;
+	struct ndis_buffer_pool *wrapper_buffer_pool;
 };
 
 struct ndis_pmkid_candidate
@@ -905,6 +909,14 @@ STDCALL void NdisAllocatePacket(NDIS_STATUS *status,
 				struct ndis_packet **packet,
 				struct ndis_packet_pool *pool);
 STDCALL void NdisFreePacket(struct ndis_packet *descr);
+STDCALL void NdisAllocateBufferPool
+	(NDIS_STATUS *status, struct ndis_buffer_pool **pool_handle,
+	 UINT num_descr);
+STDCALL void NdisFreeBufferPool(struct ndis_buffer_pool *pool);
+STDCALL void NdisAllocateBuffer
+	(NDIS_STATUS *status, ndis_buffer **buffer,
+	 struct ndis_buffer_pool *pool, void *virt, UINT length);
+STDCALL void NdisFreeBuffer(ndis_buffer *descr);
 STDCALL void NdisMIndicateReceivePacket(struct ndis_miniport_block *nmb,
 					struct ndis_packet **packets,
 					UINT nr_packets);

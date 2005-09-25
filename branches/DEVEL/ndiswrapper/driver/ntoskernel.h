@@ -385,6 +385,8 @@ extern KSPIN_LOCK cancel_lock;
 
 //#define DEBUG_IRQL 1
 
+enum wrap_timer_type { WRAP_TIMER_KERNEL = 1, WRAP_TIMER_NDIS, };
+
 struct wrap_timer {
 	long repeat;
 	struct nt_list list;
@@ -394,6 +396,7 @@ struct wrap_timer {
 	unsigned long wrap_timer_magic;
 #endif
 	BOOLEAN active;
+	enum wrap_timer_type type;
 };
 
 typedef struct mdl ndis_buffer;
@@ -435,6 +438,8 @@ STDCALL LONG KeSetEvent(struct kevent *kevent, KPRIORITY incr, BOOLEAN wait);
 STDCALL LONG KeResetEvent(struct kevent *kevent);
 STDCALL void KeClearEvent(struct kevent *kevent);
 STDCALL void KeInitializeDpc(struct kdpc *kdpc, void *func, void *ctx);
+void initialize_dh(struct dispatch_header *dh, enum event_type type,
+		   int state, enum dh_type dh_type);
 void initialize_kdpc(struct kdpc *kdpc, void *func, void *ctx);
 BOOLEAN insert_kdpc_work(struct kdpc *kdpc);
 BOOLEAN remove_kdpc_work(struct kdpc *kdpc);
@@ -449,6 +454,7 @@ struct mdl *allocate_init_mdl(void *virt, ULONG length);
 void free_mdl(struct mdl *mdl);
 STDCALL struct mdl *IoAllocateMdl(void *virt, ULONG length, BOOLEAN second_buf,
 				  BOOLEAN charge_quota, struct irp *irp);
+STDCALL void MmBuildMdlForNonPagedPool(struct mdl *mdl);
 STDCALL void IoFreeMdl(struct mdl *mdl);
 STDCALL void NdisFreeBuffer(ndis_buffer *buffer);
 _FASTCALL LONG InterlockedDecrement(FASTCALL_DECL_1(LONG volatile *val));
@@ -552,7 +558,8 @@ STDCALL void RtlCopyUnicodeString
 void *wrap_kmalloc(size_t size, int flags);
 void wrap_kfree(void *ptr);
 void wrap_init_timer(struct ktimer *ktimer, void *handle);
-int wrap_set_timer(struct ktimer *ktimer, long expires, unsigned long repeat);
+int wrap_set_timer(struct ktimer *ktimer, long expires, unsigned long repeat,
+		   enum wrap_timer_type type);
 void wrap_cancel_timer(struct wrap_timer *wrap_timer, BOOLEAN *canceled);
 
 STDCALL void KeInitializeTimer(struct ktimer *ktimer);
