@@ -431,13 +431,13 @@ void miniport_halt(struct wrapper_dev *wd)
 
 	if (kthread)
 		wrap_remove_thread(kthread);
-	ndis_exit_device(wd);
+	NdisFreePacketPool(wd->wrapper_packet_pool);
+	NdisFreeBufferPool(wd->wrapper_buffer_pool);
 #ifdef CONFIG_USB
 	if (wd->dev.dev_type == NDIS_USB_BUS)
 		usb_exit_device(wd);
 #endif
-	NdisFreePacketPool(wd->wrapper_packet_pool);
-	NdisFreeBufferPool(wd->wrapper_buffer_pool);
+	ndis_exit_device(wd);
 	misc_funcs_exit_device(wd);
 	ntoskernel_exit_device(wd);
 
@@ -1053,14 +1053,15 @@ static void link_status_handler(struct wrapper_dev *wd)
 #endif
 	unsigned char *assoc_info;
 	union iwreq_data wrqu;
-	unsigned int i;
 	NDIS_STATUS res;
 	const int assoc_size = sizeof(*ndis_assoc_info) + IW_CUSTOM_MAX;
-	struct encr_info *encr_info = &wd->encr_info;
 
 	TRACEENTER2("link status: %d", wd->link_status);
 	if (wd->link_status == 0) {
-#if 1
+#if 0
+		unsigned int i;
+		struct encr_info *encr_info = &wd->encr_info;
+
 		if (wd->encr_mode == Ndis802_11Encryption1Enabled ||
 		    wd->infrastructure_mode == Ndis802_11IBSS) {
 			for (i = 0; i < MAX_ENCR_KEYS; i++) {
@@ -1190,7 +1191,6 @@ static void set_packet_filter(struct wrapper_dev *wd)
 			 NDIS_PACKET_TYPE_ALL_MULTICAST);
 
 	dev = (struct net_device *)wd->net_dev;
-#if 1
 	if (dev->flags & IFF_PROMISC) {
 		packet_filter |= NDIS_PACKET_TYPE_ALL_LOCAL |
 			NDIS_PACKET_TYPE_PROMISCUOUS;
@@ -1204,11 +1204,9 @@ static void set_packet_filter(struct wrapper_dev *wd)
 		packet_filter |= NDIS_PACKET_TYPE_MULTICAST;
 		set_multicast_list(dev, wd);
 	}
-#endif
 	DBGTRACE2("packet filter: %08x", packet_filter);
 	res = miniport_set_info(wd, OID_GEN_CURRENT_PACKET_FILTER,
 				&packet_filter, sizeof(packet_filter));
-#if 1
 	if (res && (packet_filter & NDIS_PACKET_TYPE_PROMISCUOUS)) {
 		DBGTRACE2("res: %08x", res);
 		/* 802.11 drivers may fail when PROMISCUOUS flag is
@@ -1217,7 +1215,6 @@ static void set_packet_filter(struct wrapper_dev *wd)
 		res = miniport_set_info(wd, OID_GEN_CURRENT_PACKET_FILTER,
 					&packet_filter, sizeof(packet_filter));
 	}
-#endif
 	if (res && res != NDIS_STATUS_NOT_SUPPORTED)
 		ERROR("unable to set packet filter (%08X)", res);
 	TRACEEXIT2(return);
