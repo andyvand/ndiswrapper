@@ -71,6 +71,8 @@ struct ndis_buffer_pool {
 #define fPACKET_CONTAINS_MEDIA_SPECIFIC_INFO	0x40
 #define fPACKET_ALLOCATED_BY_NDIS		0x80
 
+#define PROTOCOL_RESERVED_SIZE_IN_PACKET (4 * sizeof(void *))
+
 enum ndis_per_packet_info {
 	TcpIpChecksumPacketInfo, IpSecPacketInfo, TcpLargeSendPacketInfo,
 	ClassificationHandlePacketInfo, NdisReserved,
@@ -108,6 +110,28 @@ struct ndis_packet_oob_data {
 	NDIS_STATUS status;
 };
 
+/* ndiswrapper specific info */
+struct wrap_ndis_packet {
+	struct ndis_packet_oob_data oob_data;
+	struct ndis_packet_extension extension;
+
+	struct ndis_packet *next;
+	struct scatterlist *sg_list;
+	unsigned int sg_ents;
+	struct ndis_sg_list ndis_sg_list;
+	struct ndis_sg_element *ndis_sg_elements;
+	/* RTL8180L overshoots past ndis_eg_elements (during
+	 * MiniportSendPackets) and overwrites what is below, if SG
+	 * DMA is used, so don't use ndis_sg_element in that
+	 * case. This structure is used only when SG is disabled */
+	struct ndis_sg_element ndis_sg_element;
+
+	unsigned char header[ETH_HLEN];
+	unsigned char *look_ahead;
+	UINT look_ahead_size;
+	struct sk_buff *skb;
+};
+
 struct ndis_packet {
 	struct ndis_packet_private private;
 	/* for use by miniport */
@@ -127,31 +151,9 @@ struct ndis_packet {
 		} mac_reserved;
 	} u;
 	ULONG_PTR reserved[2];
+//	UCHAR protocol_reserved[PROTOCOL_RESERVED_SIZE_IN_PACKET];
 	UCHAR protocol_reserved[1];
-	struct ndis_packet_oob_data oob_data;
-	struct ndis_packet_extension extension;
-
-	/* ndiswrapper specific info */
-	struct ndis_packet *next;
-	struct scatterlist *sg_list;
-	unsigned int sg_ents;
-	/* ndiswrapper-specific info */
-	struct ndis_sg_list ndis_sg_list;
-	struct ndis_sg_element *ndis_sg_elements;
-	/* RTL8180L overshoots past ndis_eg_elements (during
-	 * MiniportSendPackets) and overwrites what is below, if SG
-	 * DMA is used, so don't use ndis_sg_element in that
-	 * case. This structure is used only when SG is disabled */
-	struct ndis_sg_element ndis_sg_element;
-
-	unsigned char header[ETH_HLEN];
-	unsigned char *look_ahead;
-	UINT look_ahead_size;
-};
-
-struct wrap_ndis_packet {
-	struct nt_list list;
-	struct ndis_packet ndis_packet;
+	struct wrap_ndis_packet *wrap_ndis_packet;
 };
 
 struct ndis_packet_pool {
@@ -159,6 +161,8 @@ struct ndis_packet_pool {
 	int num_allocated_descr;
 	struct ndis_packet *free_descr;
 	KSPIN_LOCK lock;
+	int proto_rsvd_length;
+	struct nt_list list;
 };
 
 enum ndis_device_pnp_event {
@@ -507,7 +511,7 @@ struct ndis_radio_status_indication
 };
 
 enum wrapper_work {
-	LINK_STATUS_CHANGED, SET_INFRA_MODE, SET_ESSID, SET_PACKET_FILTER,
+	LINK_STATUS_CHANGED, SET_INFRA_MODE, SET_ESSID, SET_MULTICAST_LIST,
 	COLLECT_STATS, SUSPEND_RESUME, HANGCHECK,
 	/* do not work when this is set */
 	SHUTDOWN
@@ -518,7 +522,7 @@ enum ndis_attributes {
 };
 
 enum hw_status {
-	HW_NORMAL, HW_SUSPENDED, HW_HALTED, HW_UNLOADING, HW_AVAILABLE,
+	HW_NORMAL, HW_SUSPENDED, HW_HALTED, HW_RMMOD, HW_AVAILABLE,
 	HW_REMOVED,
 };
 
@@ -574,6 +578,16 @@ struct ndis_capability {
 	struct ndis_auth_encr_pair auth_encr_pair[1];
 };
 
+struct ndis_guid {
+	struct guid guid;
+	union {
+		ndis_oid oid;
+		NDIS_STATUS status;
+	};
+	ULONG size;
+	ULONG flags;
+};
+
 struct ndis_timer {
 	struct ktimer ktimer;
 	struct kdpc kdpc;
@@ -582,6 +596,8 @@ struct ndis_timer {
 struct ndis_miniport_timer {
 	struct ktimer ktimer;
 	struct kdpc kdpc;
+	/* since kdpc already can store func, ctx, I don't know what
+	 * the following two fields are for */
 	void *timer_func;
 	void *timer_ctx;
 	struct wrapper_dev *wd;
@@ -837,7 +853,6 @@ struct wrapper_dev {
 	dma_addr_t *map_dma_addr;
 
 	int hangcheck_interval;
-	int hangcheck_active;
 	struct timer_list hangcheck_timer;
 	int reset_status;
 
@@ -879,6 +894,8 @@ struct wrapper_dev {
 	int iw_auth_cipher_group;
 	int iw_auth_key_mgmt;
 	int iw_auth_80211_auth_alg;
+	struct ndis_packet_pool *wrapper_packet_pool;
+	struct ndis_buffer_pool *wrapper_buffer_pool;
 };
 
 struct ndis_pmkid_candidate
@@ -894,8 +911,22 @@ struct ndis_pmkid_candidate_list
 	struct ndis_pmkid_candidate candidates[1];
 };
 
-struct ndis_packet *allocate_ndis_packet(void);
-void free_ndis_packet(struct ndis_packet *packet);
+STDCALL void NdisAllocatePacketPoolEx
+	(NDIS_STATUS *status, struct ndis_packet_pool **pool_handle,
+	 UINT num_descr, UINT overflowsize, UINT proto_rsvd_length);
+STDCALL void NdisFreePacketPool(struct ndis_packet_pool *pool);
+STDCALL void NdisAllocatePacket(NDIS_STATUS *status,
+				struct ndis_packet **packet,
+				struct ndis_packet_pool *pool);
+STDCALL void NdisFreePacket(struct ndis_packet *descr);
+STDCALL void NdisAllocateBufferPool
+	(NDIS_STATUS *status, struct ndis_buffer_pool **pool_handle,
+	 UINT num_descr);
+STDCALL void NdisFreeBufferPool(struct ndis_buffer_pool *pool);
+STDCALL void NdisAllocateBuffer
+	(NDIS_STATUS *status, ndis_buffer **buffer,
+	 struct ndis_buffer_pool *pool, void *virt, UINT length);
+STDCALL void NdisFreeBuffer(ndis_buffer *descr);
 STDCALL void NdisMIndicateReceivePacket(struct ndis_miniport_block *nmb,
 					struct ndis_packet **packets,
 					UINT nr_packets);

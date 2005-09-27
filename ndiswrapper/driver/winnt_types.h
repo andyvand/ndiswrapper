@@ -619,8 +619,15 @@ struct kapc {
 #define IRP_ASSOCIATED_IRP		0x00000008
 
 enum urb_state {
-	URB_QUEUED = 1, URB_ALLOCATED, URB_SUBMITTED, URB_CANCELED,
-	URB_COMPLETED, URB_FREED };
+	URB_INVALID = 1, URB_ALLOCATED, URB_SUBMITTED, URB_CANCELED,
+	URB_COMPLETED, URB_FREE, URB_SUSPEND };
+
+struct wrap_urb {
+	enum urb_state state;
+	unsigned int alloc_flags;
+	struct urb *urb;
+	struct irp *irp;
+};
 
 struct irp {
 	SHORT type;
@@ -684,8 +691,7 @@ struct irp {
 	} tail;
 
 	/* ndiswrapper extension */
-	struct urb *urb;
-	enum urb_state urb_state;
+	struct wrap_urb *wrap_urb;
 	struct nt_list complete_list;
 	struct wrapper_dev *wd;
 };

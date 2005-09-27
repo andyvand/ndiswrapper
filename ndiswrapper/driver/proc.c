@@ -517,7 +517,7 @@ int ndiswrapper_procfs_add_iface(struct wrapper_dev *wd)
 	wd->procfs_iface = proc_iface;
 
 	if (proc_iface == NULL) {
-		ERROR("%s", "Couldn't create proc directory");
+		ERROR("couldn't create proc directory");
 		return -ENOMEM;
 	}
 	proc_iface->uid = proc_uid;
@@ -526,7 +526,7 @@ int ndiswrapper_procfs_add_iface(struct wrapper_dev *wd)
 	procfs_entry = create_proc_entry("hw", S_IFREG | S_IRUSR | S_IRGRP,
 					 proc_iface);
 	if (procfs_entry == NULL) {
-		ERROR("%s", "Couldn't create proc entry for 'hw'");
+		ERROR("couldn't create proc entry for 'hw'");
 		return -ENOMEM;
 	} else {
 		procfs_entry->uid = proc_uid;
@@ -538,7 +538,7 @@ int ndiswrapper_procfs_add_iface(struct wrapper_dev *wd)
 	procfs_entry = create_proc_entry("stats", S_IFREG | S_IRUSR | S_IRGRP,
 					 proc_iface);
 	if (procfs_entry == NULL) {
-		ERROR("%s", "Couldn't create proc entry for 'stats'");
+		ERROR("couldn't create proc entry for 'stats'");
 		return -ENOMEM;
 	} else {
 		procfs_entry->uid = proc_uid;
@@ -550,7 +550,7 @@ int ndiswrapper_procfs_add_iface(struct wrapper_dev *wd)
 	procfs_entry = create_proc_entry("encr", S_IFREG | S_IRUSR | S_IRGRP,
 					 proc_iface);
 	if (procfs_entry == NULL) {
-		ERROR("%s", "Couldn't create proc entry for 'encr'");
+		ERROR("couldn't create proc entry for 'encr'");
 		return -ENOMEM;
 	} else {
 		procfs_entry->uid = proc_uid;
@@ -563,7 +563,7 @@ int ndiswrapper_procfs_add_iface(struct wrapper_dev *wd)
 					 S_IRUSR | S_IRGRP |
 					 S_IWUSR | S_IWGRP, proc_iface);
 	if (procfs_entry == NULL) {
-		ERROR("%s", "Couldn't create proc entry for 'settings'");
+		ERROR("couldn't create proc entry for 'settings'");
 		return -ENOMEM;
 	} else {
 		procfs_entry->uid = proc_uid;
