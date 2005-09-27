@@ -486,7 +486,7 @@ static int load_sys_files(struct ndis_driver *driver,
 	}
 
 	if (load_pe_images(driver->pe_images, driver->num_pe_images)) {
-		ERROR("unable to prepare driver '%s'", load_driver->name);
+		ERROR("couldn't prepare driver '%s'", load_driver->name);
 		err = -EINVAL;
 	}
 

@@ -344,27 +344,27 @@ NTSTATUS wrap_submit_urb(struct irp *irp)
 		alloc_flags = GFP_KERNEL;
 	else
 		alloc_flags = GFP_ATOMIC;
+	IoAcquireCancelSpinLock(&irp->cancel_irql);
 	urb = irp->wrap_urb->urb;
 	nt_urb = URB_FROM_IRP(irp);
-	IoAcquireCancelSpinLock(&irp->cancel_irql);
 	if (irp->wrap_urb->state != URB_ALLOCATED) {
-		IoReleaseCancelSpinLock(irp->cancel_irql);
 		ERROR("urb %p is in wrong state: %d",
 		      urb, irp->wrap_urb->state);
 		status = NT_URB_STATUS(nt_urb) = USBD_STATUS_REQUEST_FAILED;
 		irp->io_status.status = STATUS_NOT_SUPPORTED;
 		irp->io_status.status_info = 0;
+		IoReleaseCancelSpinLock(irp->cancel_irql);
 		return status;
 	}
 	irp->wrap_urb->state = URB_SUBMITTED;
-	IoReleaseCancelSpinLock(irp->cancel_irql);
-	/* before we submit it, we mark it as pending since we can't
-	 * touch irp once its urb has been submitted */
 	IoMarkIrpPending(irp);
 	NT_URB_STATUS(nt_urb) = USBD_STATUS_PENDING;
 	irp->io_status.status = STATUS_PENDING;
 	irp->io_status.status_info = 0;
 	irp->pending_returned = TRUE;
+	IoReleaseCancelSpinLock(irp->cancel_irql);
+	/* before we submit it, we mark it as pending since we can't
+	 * touch irp once its urb has been submitted */
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
 	ret = usb_submit_urb(urb, alloc_flags);
 #else

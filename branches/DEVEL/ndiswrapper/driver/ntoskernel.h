@@ -339,6 +339,10 @@ do {									\
 	((((sys_time) < 0) ? (((u64)HZ * (-(sys_time))) / TICKSPERSEC) : \
 	  (((u64)HZ * ((sys_time) - ticks_1601())) / TICKSPERSEC)) + 1)
 
+/* for expiration timers only, add 1 for the same reason as above */
+#define MSEC_TO_HZ(ms) (((ms) * HZ / 1000) + 1)
+#define USEC_TO_HZ(ms) (((us) * HZ / 1000000) + 1)
+
 typedef void (*WRAP_EXPORT_FUNC)(void);
 
 struct wrap_export {

@@ -832,6 +832,11 @@ int add_wep_key(struct wrapper_dev *wd, char *key, int key_len,
 	if (index == wd->encr_info.tx_key_index)
 		ndis_key.index |= (1 << 31);
 
+	if (index == wd->encr_info.tx_key_index) {
+		res = set_encr_mode(wd, Ndis802_11Encryption1Enabled);
+		if (res)
+			WARNING("encryption couldn't be enabled (%08X)", res);
+	}
 	res = miniport_set_info(wd, OID_802_11_ADD_WEP, &ndis_key,
 				sizeof(ndis_key));
 	if (res == NDIS_STATUS_FAILURE)
@@ -847,11 +852,6 @@ int add_wep_key(struct wrapper_dev *wd, char *key, int key_len,
 	wd->encr_info.keys[index].length = key_len;
 	memcpy(&wd->encr_info.keys[index].key, key, key_len);
 
-	if (index == wd->encr_info.tx_key_index) {
-		res = set_encr_mode(wd, Ndis802_11Encryption1Enabled);
-		if (res)
-			WARNING("encryption couldn't be enabled (%08X)", res);
-	}
 	TRACEEXIT2(return 0);
 }
 
