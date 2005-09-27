@@ -46,6 +46,33 @@
 #define USB_CTRL_SET_TIMEOUT 5000
 #endif
 
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,0)
+/* TODO: are these correct? */
+#define URB_NO_TRANSFER_DMA_MAP 0x0004
+#define URB_NO_SETUP_DMA_MAP 0x0004
+static void *usb_buffer_alloc(struct usb_device *udev, size_t size,
+			      unsigned mem_flags, dma_addr_t *dma)
+{
+	return kmalloc(size, mem_flags);
+}
+
+static void usb_buffer_free(struct usb_device *udev, size_t size, void *addr,
+			    dma_addr_t dma)
+{
+	kfree(addr);
+}
+
+static void usb_init_urb(struct urb *urb)
+{
+	memset(urb, 0, sizeof(*urb));
+}
+
+static void usb_kill_urb(struct urb *urb)
+{
+	usb_unlink_urb(urb);
+}
+#endif
+
 extern KSPIN_LOCK irp_cancel_lock;
 
 /* TODO: using a worker instead of tasklet is probably preferable,
@@ -119,23 +146,6 @@ void usb_exit_device(struct wrapper_dev *wd)
 	IoReleaseCancelSpinLock(irql);
 	return;
 }
-
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,0)
-/* TODO: are these correct? */
-#define URB_NO_TRANSFER_DMA_MAP 0x0004
-#define URB_NO_SETUP_DMA_MAP 0x0004
-static void *usb_buffer_alloc(struct usb_device *udev, size_t size,
-			      unsigned mem_flags, dma_addr_t *dma)
-{
-	return kmalloc(size, mem_flags);
-}
-
-static void usb_buffer_free(struct usb_device *udev, size_t size, void *addr,
-			    dma_addr_t dma)
-{
-	kfree(addr);
-}
-#endif
 
 /* for a given Linux urb status code, return corresponding NT urb status */
 static USBD_STATUS wrap_urb_status(int urb_status)
