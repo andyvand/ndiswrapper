@@ -1074,7 +1074,7 @@ STDCALL void WRAP_EXPORT(NdisAllocateBuffer)
 		TRACEEXIT4(return);
 	}
 	irql = kspin_lock_irql(&pool->lock, DISPATCH_LEVEL);
-	if (pool->num_allocated_descr >= pool->max_descr)
+	if (pool->num_allocated_descr > pool->max_descr)
 		WARNING("pool %p is full: %d(%d)", pool,
 			pool->num_allocated_descr, pool->max_descr);
 	if (pool->free_descr) {
@@ -1298,7 +1298,7 @@ STDCALL void WRAP_EXPORT(NdisAllocatePacket)
 		sizeof(struct wrap_ndis_packet);
 	ndis_packet = NULL;
 	irql = kspin_lock_irql(&pool->lock, DISPATCH_LEVEL);
-	if (pool->num_allocated_descr >= pool->max_descr)
+	if (pool->num_allocated_descr > pool->max_descr)
 		WARNING("pool %p is full: %d(%d)", pool,
 			pool->num_allocated_descr, pool->max_descr);
 	if (pool->free_descr) {

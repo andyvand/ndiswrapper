@@ -1131,6 +1131,7 @@ static void link_status_handler(struct wrapper_dev *wd)
 #if WIRELESS_EXT < 18
 	unsigned char *wpa_assoc_info, *ies;
 	unsigned char *p;
+	int i;
 #endif
 	unsigned char *assoc_info;
 	union iwreq_data wrqu;
@@ -1860,7 +1861,7 @@ struct net_device *ndis_init_netdev(struct wrapper_dev **pwd,
 	return dev;
 }
 
-#if LINUX_VERSION_CODE > KERNEL_VERSION(2,6,0)
+#ifdef USE_OWN_WORKQUEUE
 /* we need to get kthread for the task running ndiswrapper_wq, so
  * schedule a worker for it soon after initializing ndiswrapper_wq */
 
@@ -1898,7 +1899,7 @@ static void _ndiswrapper_wq_init_worker(void *data)
 static void module_cleanup(void)
 {
 	loader_exit();
-#if LINUX_VERSION_CODE > KERNEL_VERSION(2,6,0)
+#ifdef USE_OWN_WORKQUEUE
 	_ndiswrapper_wq_init_state = NDISWRAPPER_WQ_EXIT;
 	schedule_work(&_ndiswrapper_wq_init);
 	while (_ndiswrapper_wq_init_state) {
@@ -1950,7 +1951,7 @@ static int __init wrapper_init(void)
 #endif
 		)
 		goto err;
-#if LINUX_VERSION_CODE > KERNEL_VERSION(2,6,0)
+#ifdef USE_OWN_WORKQUEUE
 	ndiswrapper_wq = create_singlethread_workqueue("ndiswrapwq");
 	INIT_WORK(&_ndiswrapper_wq_init, _ndiswrapper_wq_init_worker, 0);
 	_ndiswrapper_wq_init_state = NDISWRAPPER_WQ_INIT;
