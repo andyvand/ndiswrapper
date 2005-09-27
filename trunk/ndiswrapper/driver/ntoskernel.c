@@ -450,12 +450,11 @@ STDCALL BOOLEAN WRAP_EXPORT(KeSetTimerEx)
 
 	expires = SYSTEM_TIME_TO_HZ(duetime_ticks);
 	KeClearEvent((struct kevent *)ktimer);
-	repeat = HZ * period_ms / 1000 ;
-	if (kdpc) {
-		ktimer->kdpc = kdpc;
+	repeat = MSEC_TO_HZ(period_ms) ;
+	ktimer->kdpc = kdpc;
+	if (kdpc)
 		kdpc->type = KDPC_TYPE_KERNEL;
-	}
-	return wrap_set_timer(ktimer, expires, repeat);
+	return wrap_set_timer(ktimer, expires, repeat, WRAP_TIMER_KERNEL);
 }
 
 STDCALL BOOLEAN WRAP_EXPORT(KeSetTimer)
@@ -466,11 +465,10 @@ STDCALL BOOLEAN WRAP_EXPORT(KeSetTimer)
 	TRACEENTER5("%p, %Ld, %p", ktimer, duetime_ticks, kdpc);
 	expires = SYSTEM_TIME_TO_HZ(duetime_ticks);
 	KeClearEvent((struct kevent *)ktimer);
-	if (kdpc) {
-		ktimer->kdpc = kdpc;
+	ktimer->kdpc = kdpc;
+	if (kdpc)
 		kdpc->type = KDPC_TYPE_KERNEL;
-	}
-	return wrap_set_timer(ktimer, expires, 0);
+	return wrap_set_timer(ktimer, expires, 0, WRAP_TIMER_KERNEL);
 }
 
 STDCALL BOOLEAN WRAP_EXPORT(KeCancelTimer)
@@ -663,7 +661,7 @@ _FASTCALL LONG WRAP_EXPORT(InterlockedDecrement)
 	LONG x;
 	KIRQL irql;
 
-	TRACEENTER5("%s", "");
+	TRACEENTER5("");
 	irql = kspin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL);
 	(*val)--;
 	x = *val;
@@ -677,7 +675,7 @@ _FASTCALL LONG WRAP_EXPORT(InterlockedIncrement)
 	LONG x;
 	KIRQL irql;
 
-	TRACEENTER5("%s", "");
+	TRACEENTER5("");
 	irql = kspin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL);
 	(*val)++;
 	x = *val;
@@ -691,7 +689,7 @@ _FASTCALL LONG WRAP_EXPORT(InterlockedExchange)
 	LONG x;
 	KIRQL irql;
 
-	TRACEENTER5("%s", "");
+	TRACEENTER5("");
 	irql = kspin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL);
 	x = *target;
 	*target = val;
@@ -705,7 +703,7 @@ _FASTCALL LONG WRAP_EXPORT(InterlockedCompareExchange)
 	LONG x;
 	KIRQL irql;
 
-	TRACEENTER5("%s", "");
+	TRACEENTER5("");
 	irql = kspin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL);
 	x = *dest;
 	if (*dest == comperand)
@@ -1046,7 +1044,7 @@ STDCALL NTSTATUS WRAP_EXPORT(KeWaitForMultipleObjects)
 	kspin_unlock_irql(&kevent_lock, irql);
 
 	while (wait_count) {
-		if (timeout) {
+		if (wait_jiffies) {
 			if (alertable)
 				res = wait_event_interruptible_timeout(
 					kthread->event_wq,
@@ -1270,8 +1268,7 @@ STDCALL LONG WRAP_EXPORT(KeReleaseSemaphore)
 }
 
 STDCALL NTSTATUS WRAP_EXPORT(KeDelayExecutionThread)
-	(KPROCESSOR_MODE wait_mode, BOOLEAN alertable,
-	 LARGE_INTEGER *interval)
+	(KPROCESSOR_MODE wait_mode, BOOLEAN alertable, LARGE_INTEGER *interval)
 {
 	int res;
 	long timeout;
@@ -1335,15 +1332,18 @@ STDCALL void WRAP_EXPORT(KeQuerySystemTime)
 	return;
 }
 
+STDCALL void WRAP_EXPORT(KeQUeryTickCount)
+	(LARGE_INTEGER *j)
+{
+	*j = jiffies;
+}
+
 STDCALL LARGE_INTEGER WRAP_EXPORT(KeQueryPerformanceCounter)
 	(LARGE_INTEGER *counter)
 {
-	typeof(jiffies) res;
-
-	res = jiffies;
 	if (counter)
-		*counter = res;
-	return res;
+		*counter = HZ;
+	return jiffies;
 }
 
 STDCALL struct kthread *WRAP_EXPORT(KeGetCurrentThread)
@@ -1628,11 +1628,11 @@ struct mdl *allocate_init_mdl(void *virt, ULONG length)
 		wrap_mdl = kmem_cache_alloc(mdl_cache, GFP_ATOMIC);
 		if (!wrap_mdl)
 			return NULL;
-		DBGTRACE3("allocated mdl cache: %p", wrap_mdl);
 		irql = kspin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL);
 		InsertHeadList(&wrap_mdl_list, &wrap_mdl->list);
 		kspin_unlock_irql(&ntoskernel_lock, irql);
 		mdl = (struct mdl *)wrap_mdl->mdl;
+		DBGTRACE3("allocated mdl cache: %p(%p)", wrap_mdl, mdl);
 		memset(mdl, 0, CACHE_MDL_SIZE);
 		MmInitializeMdl(mdl, virt, length);
 		/* mark the MDL as allocated from cache pool so when
@@ -1644,14 +1644,15 @@ struct mdl *allocate_init_mdl(void *virt, ULONG length)
 				GFP_ATOMIC);
 		if (!wrap_mdl)
 			return NULL;
-		DBGTRACE3("allocated mdl: %p", wrap_mdl);
 		mdl = (struct mdl *)wrap_mdl->mdl;
+		DBGTRACE3("allocated mdl: %p (%p)", wrap_mdl, mdl);
 		irql = kspin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL);
 		InsertHeadList(&wrap_mdl_list, &wrap_mdl->list);
 		kspin_unlock_irql(&ntoskernel_lock, irql);
 		memset(mdl, 0, mdl_size);
 		MmInitializeMdl(mdl, virt, length);
 	}
+	MmBuildMdlForNonPagedPool(mdl);
 	return mdl;
 }
 

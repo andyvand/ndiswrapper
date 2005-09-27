@@ -386,7 +386,7 @@ ndiswrapper_remove_usb_device(struct usb_interface *intf)
 	if (!wd)
 		TRACEEXIT1(return);
 
-	if (!test_bit(HW_UNLOADING, &wd->hw_status))
+	if (!test_bit(HW_RMMOD, &wd->hw_status))
 		miniport_surprise_remove(wd);
 	wd->intf = NULL;
 	usb_set_intfdata(intf, NULL);
@@ -404,7 +404,7 @@ ndiswrapper_remove_usb_device(struct usb_device *udev, void *ptr)
 
 	if (!wd || !wd->intf)
 		TRACEEXIT1(return);
-	if (!test_bit(HW_UNLOADING, &wd->hw_status))
+	if (!test_bit(HW_RMMOD, &wd->hw_status))
 		miniport_surprise_remove(wd);
 	wd->intf = NULL;
 	atomic_dec(&wd->driver->users);
@@ -486,7 +486,7 @@ static int load_sys_files(struct ndis_driver *driver,
 	}
 
 	if (load_pe_images(driver->pe_images, driver->num_pe_images)) {
-		ERROR("unable to prepare driver '%s'", load_driver->name);
+		ERROR("couldn't prepare driver '%s'", load_driver->name);
 		err = -EINVAL;
 	}
 
@@ -1077,7 +1077,7 @@ void loader_exit(void)
 
 	for (i = 0; i < num_ndis_devices; i++)
 		if (ndis_devices[i].wd)
-			set_bit(HW_UNLOADING, &ndis_devices[i].wd->hw_status);
+			set_bit(HW_RMMOD, &ndis_devices[i].wd->hw_status);
 #ifdef CONFIG_USB
 	if (ndiswrapper_usb_devices) {
 		usb_deregister(&ndiswrapper_usb_driver);

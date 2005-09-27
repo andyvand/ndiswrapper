@@ -204,10 +204,10 @@ void wrap_timer_handler(unsigned long data)
 	BUG_ON(wrap_timer->wrap_timer_magic != WRAP_TIMER_MAGIC);
 	BUG_ON(ktimer->wrap_timer_magic != WRAP_TIMER_MAGIC);
 #endif
-
 	irql = kspin_lock_irql(&timer_lock, DISPATCH_LEVEL);
 	kdpc = ktimer->kdpc;
-	KeSetEvent((struct kevent *)ktimer, 0, FALSE);
+	if (wrap_timer->type == WRAP_TIMER_KERNEL)
+		KeSetEvent((struct kevent *)ktimer, 0, FALSE);
 	/* Prism1 USB driver calls NdisSetTimer with due time as 0,
 	 * which according to DDK is wrong - minimum delay should be
 	 * 10 milliseconds. The driver then sets two timers with 0
@@ -242,6 +242,11 @@ void wrap_init_timer(struct ktimer *ktimer, void *handle)
 	struct wrapper_dev *wd = (struct wrapper_dev *)handle;
 	KIRQL irql;
 
+	/* TODO: if a timer is initialized more than once, we allocate
+	 * memory for wrap_timer more than once for the same ktimer,
+	 * wasting memory. We can check if ktimer->wrap_timer_magic is
+	 * set and not allocate, but it is not guaranteed always to be
+	 * safe */
 	TRACEENTER5("%p", ktimer);
 	/* we allocate memory for wrap_timer behind driver's back
 	 * and there is no NDIS/DDK function where this memory can be
@@ -260,10 +265,6 @@ void wrap_init_timer(struct ktimer *ktimer, void *handle)
 	wrap_timer->ktimer = ktimer;
 	ktimer->wrap_timer = wrap_timer;
 #ifdef DEBUG_TIMER
-	if (ktimer->wrap_timer_magic == WRAP_TIMER_MAGIC ||
-	    wrap_timer->wrap_timer_magic == WRAP_TIMER_MAGIC)
-		WARNING("timer %p(%p) already initialized?",
-			wrap_timer, ktimer);
 	wrap_timer->wrap_timer_magic = WRAP_TIMER_MAGIC;
 #endif
 	ktimer->wrap_timer_magic = WRAP_TIMER_MAGIC;
@@ -283,7 +284,8 @@ void wrap_init_timer(struct ktimer *ktimer, void *handle)
 
 /* 'expires' is relative to jiffies, so when setting timer, add
  * jiffies to it */
-int wrap_set_timer(struct ktimer *ktimer, long expires, unsigned long repeat)
+int wrap_set_timer(struct ktimer *ktimer, long expires, unsigned long repeat,
+		   enum wrap_timer_type type)
 {
 	KIRQL irql;
 	BOOLEAN ret;
@@ -305,6 +307,8 @@ int wrap_set_timer(struct ktimer *ktimer, long expires, unsigned long repeat)
 		wrap_init_timer(ktimer, NULL);
 	}
 	wrap_timer = ktimer->wrap_timer;
+	irql = kspin_lock_irql(&timer_lock, DISPATCH_LEVEL);
+	wrap_timer->type = type;
 #ifdef DEBUG_TIMER
 	if (wrap_timer->wrap_timer_magic != WRAP_TIMER_MAGIC) {
 		WARNING("timer %p is not initialized (%lu)",
@@ -312,8 +316,6 @@ int wrap_set_timer(struct ktimer *ktimer, long expires, unsigned long repeat)
 		wrap_timer->wrap_timer_magic = WRAP_TIMER_MAGIC;
 	}
 #endif
-
-	irql = kspin_lock_irql(&timer_lock, DISPATCH_LEVEL);
 	ret = mod_timer(&wrap_timer->timer, jiffies + expires);
 	kspin_unlock_irql(&timer_lock, irql);
 	return ret;

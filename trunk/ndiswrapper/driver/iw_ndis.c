@@ -628,7 +628,7 @@ int get_ap_address(struct wrapper_dev *wd, mac_address ap_addr)
 	if (res == NDIS_STATUS_FAILURE)
 		return -ENOTSUPP;
 	if (res == NDIS_STATUS_ADAPTER_NOT_READY)
-		memset(ap_addr, 0xff, ETH_ALEN);
+		memset(ap_addr, 0x0, ETH_ALEN);
 
 	DBGTRACE2(MACSTR, MAC2STR(ap_addr));
         TRACEEXIT2(return 0);
@@ -676,7 +676,7 @@ int set_auth_mode(struct wrapper_dev *wd, int auth_mode)
 {
 	NDIS_STATUS res;
 
-	TRACEENTER2("");
+	TRACEENTER2("%d", auth_mode);
 	res = miniport_set_int(wd, OID_802_11_AUTHENTICATION_MODE,
 			       auth_mode);
 	if (res == NDIS_STATUS_FAILURE)
@@ -832,6 +832,11 @@ int add_wep_key(struct wrapper_dev *wd, char *key, int key_len,
 	if (index == wd->encr_info.tx_key_index)
 		ndis_key.index |= (1 << 31);
 
+	if (index == wd->encr_info.tx_key_index) {
+		res = set_encr_mode(wd, Ndis802_11Encryption1Enabled);
+		if (res)
+			WARNING("encryption couldn't be enabled (%08X)", res);
+	}
 	res = miniport_set_info(wd, OID_802_11_ADD_WEP, &ndis_key,
 				sizeof(ndis_key));
 	if (res == NDIS_STATUS_FAILURE)
@@ -847,11 +852,6 @@ int add_wep_key(struct wrapper_dev *wd, char *key, int key_len,
 	wd->encr_info.keys[index].length = key_len;
 	memcpy(&wd->encr_info.keys[index].key, key, key_len);
 
-	if (index == wd->encr_info.tx_key_index) {
-		res = set_encr_mode(wd, Ndis802_11Encryption1Enabled);
-		if (res)
-			WARNING("encryption couldn't be enabled (%08X)", res);
-	}
 	TRACEEXIT2(return 0);
 }
 
@@ -2056,7 +2056,7 @@ static int wpa_disassociate(struct net_device *dev,
 	TRACEENTER2("");
 	get_random_bytes(buf, sizeof(buf));
 	for (i = 0; i < sizeof(buf); i++)
-		buf[i] = 'a' + (buf[i] % ('z' - 'a'));
+		buf[i] = 'a' + (buf[i] % 26);
 	set_essid(wd, buf, sizeof(buf));
 	TRACEEXIT2(return 0);
 }
@@ -2196,6 +2196,7 @@ int set_privacy_filter(struct wrapper_dev *wd, int flags)
 	NDIS_STATUS res;
 
 	TRACEENTER2("filter: %d", flags);
+	TRACEEXIT2(return 0);
 	res = miniport_set_int(wd, OID_802_11_PRIVACY_FILTER, flags);
 	if (res == NDIS_STATUS_FAILURE)
 		return -EOPNOTSUPP;
