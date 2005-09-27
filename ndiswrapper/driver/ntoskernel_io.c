@@ -806,15 +806,11 @@ void io_worker(void *data)
 
 		irql = kspin_lock_irql(&io_workitem_list_lock, DISPATCH_LEVEL);
 		cur = RemoveHeadList(&io_workitem_list);
-		if (cur)
-			io_workitem_entry =
-				container_of(cur, struct io_workitem_entry,
-					     list);
-		else
-			io_workitem_entry = NULL;
 		kspin_unlock_irql(&io_workitem_list_lock, irql);
-		if (io_workitem_entry == NULL)
+		if (!cur)
 			break;
+		io_workitem_entry = container_of(cur, struct io_workitem_entry,
+						 list);
 		kspin_unlock_irql(&io_workitem_list_lock, irql);
 		io_workitem = io_workitem_entry->io_workitem;
 		LIN2WIN2(io_workitem->worker_routine, io_workitem->dev_obj,

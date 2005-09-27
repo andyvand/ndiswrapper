@@ -578,6 +578,16 @@ struct ndis_capability {
 	struct ndis_auth_encr_pair auth_encr_pair[1];
 };
 
+struct ndis_guid {
+	struct guid guid;
+	union {
+		ndis_oid oid;
+		NDIS_STATUS status;
+	};
+	ULONG size;
+	ULONG flags;
+};
+
 struct ndis_timer {
 	struct ktimer ktimer;
 	struct kdpc kdpc;

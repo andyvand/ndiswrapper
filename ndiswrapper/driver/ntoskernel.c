@@ -450,7 +450,7 @@ STDCALL BOOLEAN WRAP_EXPORT(KeSetTimerEx)
 
 	expires = SYSTEM_TIME_TO_HZ(duetime_ticks);
 	KeClearEvent((struct kevent *)ktimer);
-	repeat = HZ * period_ms / 1000 ;
+	repeat = MSEC_TO_HZ(period_ms) ;
 	ktimer->kdpc = kdpc;
 	if (kdpc)
 		kdpc->type = KDPC_TYPE_KERNEL;
@@ -1332,15 +1332,18 @@ STDCALL void WRAP_EXPORT(KeQuerySystemTime)
 	return;
 }
 
+STDCALL void WRAP_EXPORT(KeQUeryTickCount)
+	(LARGE_INTEGER *j)
+{
+	*j = jiffies;
+}
+
 STDCALL LARGE_INTEGER WRAP_EXPORT(KeQueryPerformanceCounter)
 	(LARGE_INTEGER *counter)
 {
-	typeof(jiffies) res;
-
-	res = jiffies;
 	if (counter)
-		*counter = res;
-	return res;
+		*counter = HZ;
+	return jiffies;
 }
 
 STDCALL struct kthread *WRAP_EXPORT(KeGetCurrentThread)

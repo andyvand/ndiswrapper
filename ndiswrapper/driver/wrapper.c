@@ -38,11 +38,6 @@
 #include "iw_ndis.h"
 #include "loader.h"
 
-#ifndef DRIVER_VERSION
-#error ndiswrapper version is not defined; run 'make' only from ndiswrapper \
-	directory or driver directory
-#endif
-
 static char *if_name = "wlan%d";
 int proc_uid, proc_gid;
 static int hangcheck_interval;
@@ -162,7 +157,7 @@ NDIS_STATUS miniport_query_info_needed(struct wrapper_dev *wd,
 	struct miniport_char *miniport = &wd->driver->miniport;
 	KIRQL irql;
 
-	TRACEENTER3("query is at %p", miniport->query);
+	DBGTRACE2("query %p, oid: %08X", miniport->query, oid);
 
 	if (!test_bit(HW_AVAILABLE, &wd->hw_status))
 		TRACEEXIT1(return NDIS_STATUS_FAILURE);
@@ -170,12 +165,13 @@ NDIS_STATUS miniport_query_info_needed(struct wrapper_dev *wd,
 	if (down_interruptible(&wd->ndis_comm_mutex))
 		TRACEEXIT3(return NDIS_STATUS_FAILURE);
 	wd->ndis_comm_done = 0;
+	DBGTRACE2("query %p, oid: %08X", miniport->query, oid);
 	irql = raise_irql(DISPATCH_LEVEL);
 	res = LIN2WIN6(miniport->query, wd->nmb->adapter_ctx, oid, buf,
 		       bufsize, &written, needed);
 	lower_irql(irql);
 
-	DBGTRACE3("res = %08X", res);
+	DBGTRACE2("res: %08X, oid: %08X", res, oid);
 	if (res == NDIS_STATUS_PENDING) {
 		/* wait a little for NdisMQueryInformationComplete */
 		/* DDK seems to imply we wait until miniport calls
@@ -188,6 +184,7 @@ NDIS_STATUS miniport_query_info_needed(struct wrapper_dev *wd,
 			res = NDIS_STATUS_FAILURE;
 		else
 			res = wd->ndis_comm_res;
+		DBGTRACE2("res: %08X", res);
 	}
 	up(&wd->ndis_comm_mutex);
 	if (res && needed)
@@ -206,6 +203,13 @@ NDIS_STATUS miniport_query_info(struct wrapper_dev *wd, ndis_oid oid,
 	return res;
 }
 
+#if 0
+#undef DBGTRACE2
+#define DBGTRACE2 DBGTRACE3
+#undef TRACEENTER2
+#define TRACEENTER2 TRACEENTER3
+#endif
+
 /*
  * MiniportSetInformation
  * Perform a sync setinfo and deal with the possibility of an async operation.
@@ -219,7 +223,7 @@ NDIS_STATUS miniport_set_info(struct wrapper_dev *wd, ndis_oid oid,
 	struct miniport_char *miniport = &wd->driver->miniport;
 	KIRQL irql;
 
-	TRACEENTER3("setinfo is at %p", miniport->setinfo);
+	DBGTRACE2("set: %p, oid: %08X", miniport->setinfo, oid);
 
 	if (!test_bit(HW_AVAILABLE, &wd->hw_status))
 		TRACEEXIT1(return NDIS_STATUS_FAILURE);
@@ -231,7 +235,7 @@ NDIS_STATUS miniport_set_info(struct wrapper_dev *wd, ndis_oid oid,
 	res = LIN2WIN6(miniport->setinfo, wd->nmb->adapter_ctx, oid, buf,
 		       bufsize, &written, &needed);
 	lower_irql(irql);
-	DBGTRACE3("res = %08X", res);
+	DBGTRACE2("res: %08X, oid: %08X", res, oid);
 
 	if (res == NDIS_STATUS_PENDING) {
 		/* wait a little for NdisMSetInformationComplete */
@@ -242,7 +246,7 @@ NDIS_STATUS miniport_set_info(struct wrapper_dev *wd, ndis_oid oid,
 			res = NDIS_STATUS_FAILURE;
 		else
 			res = wd->ndis_comm_res;
-		DBGTRACE3("res = %08X", res);
+		DBGTRACE2("res: %08X", res);
 	}
 	up(&wd->ndis_comm_mutex);
 	if (res && needed)
@@ -543,23 +547,36 @@ static void stats_timer_del(struct wrapper_dev *wd)
 	del_timer_sync(&wd->stats_timer);
 }
 
-static int add_packet_filter(struct wrapper_dev *wd, ULONG packet_filter)
+static int set_packet_filter(struct wrapper_dev *wd, ULONG packet_filter)
 {
 	NDIS_STATUS res;
-	ULONG filter;
 
 	TRACEENTER3("%x", packet_filter);
-	res = miniport_query_info(wd, OID_GEN_CURRENT_PACKET_FILTER,
-				  &filter, sizeof(filter));
-	if (res) {
-		WARNING("couldn't get packet filter: %08X", res);
-		TRACEEXIT3(return res);
-	}
-	filter |= packet_filter;
+	/* ZyDas driver doesn't support it */
+	if(wd->ndis_device->vendor == 0x0ace &&
+	   wd->ndis_device->device == 0x1211)
+		TRACEEXIT2(return NDIS_STATUS_NOT_SUPPORTED);
 	res = miniport_set_info(wd, OID_GEN_CURRENT_PACKET_FILTER,
-				&filter, sizeof(filter));
+				&packet_filter, sizeof(packet_filter));
 	if (res) {
 		WARNING("couldn't set packet filter: %08X", res);
+		TRACEEXIT3(return res);
+	}
+	TRACEEXIT3(return 0);
+}
+
+static int get_packet_filter(struct wrapper_dev *wd, ULONG *packet_filter)
+{
+	NDIS_STATUS res;
+
+	TRACEENTER3("");
+	if(wd->ndis_device->vendor == 0x0ace &&
+	   wd->ndis_device->device == 0x1211)
+		TRACEEXIT2(return NDIS_STATUS_NOT_SUPPORTED);
+	res = miniport_query_info(wd, OID_GEN_CURRENT_PACKET_FILTER,
+				  packet_filter, sizeof(*packet_filter));
+	if (res) {
+		WARNING("couldn't get packet filter: %08X", res);
 		TRACEEXIT3(return res);
 	}
 	TRACEEXIT3(return 0);
@@ -571,14 +588,18 @@ static int ndis_open(struct net_device *dev)
 	struct wrapper_dev *wd = netdev_priv(dev);
 
 	TRACEENTER1("");
-	packet_filter = NDIS_PACKET_TYPE_DIRECTED;
-	if (dev->flags & IFF_BROADCAST)
-		packet_filter |= NDIS_PACKET_TYPE_BROADCAST;
+	packet_filter = NDIS_PACKET_TYPE_DIRECTED | NDIS_PACKET_TYPE_BROADCAST;
+	/* first try with minimum required */
+	if (set_packet_filter(wd, packet_filter))
+		WARNING("couldn't set packet filter %x", packet_filter);
+	else
+		DBGTRACE1("set packet filter");
+	/* add any dev specific filters */
 	if (dev->flags & IFF_PROMISC)
 		packet_filter |= NDIS_PACKET_TYPE_ALL_LOCAL;
-	/* NDIS_PACKET_TYPE_PROMISCUOUS will not work with 802.11 */
-	if (add_packet_filter(wd, packet_filter))
+	if (set_packet_filter(wd, packet_filter))
 		WARNING("couldn't add packet filter %x", packet_filter);
+	/* NDIS_PACKET_TYPE_PROMISCUOUS will not work with 802.11 */
 	netif_device_attach(dev);
 	netif_start_queue(dev);
 	return 0;
@@ -627,40 +648,54 @@ static void set_multicast_list(struct wrapper_dev *wd)
 	struct net_device *net_dev;
 	ULONG packet_filter;
 	NDIS_STATUS res = 0;
-	int i, size;
+	int i, size, max_size;
 	struct dev_mc_list *mclist;
-	char *ndis_mc_list;
+	char *ndis_mclist;
+
+	res = get_packet_filter(wd, &packet_filter);
+	if (res) {
+//		WARNING("couldn't get packet filter: %08X", res);
+		TRACEEXIT3(return);
+	}
 
 	net_dev = wd->net_dev;
-	if (net_dev->mc_count == 0)
+	if (net_dev->mc_count == 0 && !(net_dev->flags & IFF_ALLMULTI))
 		TRACEEXIT3(return);
-
-	ndis_mc_list = wd->multicast_list;
-	size = 0;
-	for (i = 0, mclist = net_dev->mc_list;
-	     mclist && i < net_dev->mc_count && size < wd->multicast_list_size;
-	     i++, mclist = mclist->next) {
-		memcpy(ndis_mc_list, mclist->dmi_addr, ETH_ALEN);
-		ndis_mc_list += ETH_ALEN;
-		size += ETH_ALEN;
+	if (net_dev->mc_count > 0) {
+		res = miniport_query_int(wd, OID_802_3_MAXIMUM_LIST_SIZE,
+					 &max_size);
+		if (res)
+			max_size = 0;
 	}
-	DBGTRACE1("%d entries. size=%d", net_dev->mc_count, size);
-
-	res = miniport_set_info(wd, OID_802_3_MULTICAST_LIST,
-				ndis_mc_list, size);
-	if (res) {
-		ERROR("unable to set multicast list (%08X)", res);
-		TRACEEXIT3(return);
-	} else {
-		packet_filter = NDIS_PACKET_TYPE_MULTICAST;
-		if (net_dev->mc_count > wd->multicast_list_size ||
-		    net_dev->flags & IFF_ALLMULTI)
-			packet_filter = NDIS_PACKET_TYPE_ALL_MULTICAST;
+	if (max_size) {
+		ndis_mclist = kmalloc(max_size * ETH_ALEN, GFP_KERNEL);
+		if (!ndis_mclist) {
+			WARNING("couldn't allocate memory");
+			max_size = 0;
+		}
 	}
+	if (max_size) {
+		for (i = size = 0, mclist = net_dev->mc_list;
+		     mclist && i < net_dev->mc_count && size < max_size;
+		     i++, mclist = mclist->next) {
+			memcpy(ndis_mclist, mclist->dmi_addr, ETH_ALEN);
+			ndis_mclist += ETH_ALEN;
+			size += ETH_ALEN;
+		}
+		DBGTRACE1("entries: %d, size: %d", i, size);
+		res = miniport_set_info(wd, OID_802_3_MULTICAST_LIST,
+					ndis_mclist, size);
+		if (res)
+			ERROR("couldn't set multicast list (%08X)", res);
+		else
+			packet_filter |= NDIS_PACKET_TYPE_MULTICAST;
+	}
+	if (net_dev->mc_count > max_size || (net_dev->flags & IFF_ALLMULTI))
+		packet_filter |= NDIS_PACKET_TYPE_ALL_MULTICAST;
 	DBGTRACE2("packet filter: %08x", packet_filter);
-	res = add_packet_filter(wd, packet_filter);
+	res = set_packet_filter(wd, packet_filter);
 	if (res)
-		ERROR("unable to set packet filter (%08X)", res);
+		ERROR("couldn't set packet filter (%08X)", res);
 
 	TRACEEXIT2(return);
 }
@@ -876,7 +911,7 @@ static int start_xmit(struct sk_buff *skb, struct net_device *dev)
 	KIRQL irql;
 	NDIS_STATUS res;
 
-	/* TODO: we can avoid copying data */
+	/* TODO: can we avoid copying data? */
 	data = kmalloc(skb->len, GFP_ATOMIC);
 	if (!data)
 		return 1;
@@ -1138,6 +1173,13 @@ static void link_status_handler(struct wrapper_dev *wd)
 		TRACEEXIT2(return);
 	}
 
+	/* ZyDas driver crashes if ASSOCIATION_INFO is requested;
+	 * however, strangely, if DEBUG is set to 1 in just this file,
+	 * it works (took me days to figure this behavior) */
+	if (wd->ndis_device->vendor == 0x0ace &&
+	    wd->ndis_device->device == 0x1211)
+		return;
+
 	if (!(test_bit(Ndis802_11Encryption2Enabled, &wd->capa.encr) ||
 	      test_bit(Ndis802_11Encryption3Enabled, &wd->capa.encr)))
 		TRACEEXIT2(return);
@@ -1150,13 +1192,14 @@ static void link_status_handler(struct wrapper_dev *wd)
 	memset(assoc_info, 0, assoc_size);
 
 	ndis_assoc_info = (struct ndis_assoc_info *)assoc_info;
+#if 0
 	ndis_assoc_info->length = sizeof(*ndis_assoc_info);
 	ndis_assoc_info->offset_req_ies = sizeof(*ndis_assoc_info);
 	ndis_assoc_info->req_ie_length = IW_CUSTOM_MAX / 2;
 	ndis_assoc_info->offset_resp_ies = sizeof(*ndis_assoc_info) +
 		ndis_assoc_info->req_ie_length;
 	ndis_assoc_info->resp_ie_length = IW_CUSTOM_MAX / 2;
-
+#endif
 	res = miniport_query_info(wd, OID_802_11_ASSOCIATION_INFORMATION,
 				  assoc_info, assoc_size);
 	if (res) {
@@ -1217,8 +1260,7 @@ static void link_status_handler(struct wrapper_dev *wd)
 	memset(&wrqu, 0, sizeof(wrqu));
 	wrqu.data.length = p - wpa_assoc_info;
 	DBGTRACE2("adding %d bytes", wrqu.data.length);
-	wireless_send_event(wd->net_dev, IWEVCUSTOM, &wrqu,
-			    wpa_assoc_info);
+	wireless_send_event(wd->net_dev, IWEVCUSTOM, &wrqu, wpa_assoc_info);
 
 	kfree(wpa_assoc_info);
 #endif
@@ -1305,9 +1347,6 @@ static void wrapper_worker_proc(void *param)
 	if (test_and_clear_bit(SET_INFRA_MODE, &wd->wrapper_work))
 		set_infra_mode(wd, wd->infrastructure_mode);
 
-	if (test_and_clear_bit(LINK_STATUS_CHANGED, &wd->wrapper_work))
-		link_status_handler(wd);
-
 	if (test_and_clear_bit(SET_ESSID, &wd->wrapper_work))
 		set_essid(wd, wd->essid.essid, wd->essid.length);
 
@@ -1316,6 +1355,9 @@ static void wrapper_worker_proc(void *param)
 
 	if (test_and_clear_bit(COLLECT_STATS, &wd->wrapper_work))
 		update_wireless_stats(wd);
+
+	if (test_and_clear_bit(LINK_STATUS_CHANGED, &wd->wrapper_work))
+		link_status_handler(wd);
 
 	if (test_and_clear_bit(HANGCHECK, &wd->wrapper_work) &&
 	    wd->reset_status == 0) {
@@ -1442,7 +1484,7 @@ void check_capa(struct wrapper_dev *wd)
 		TRACEEXIT1(return);
 	res = miniport_query_info(wd, OID_802_11_ASSOCIATION_INFORMATION,
 				  &ndis_assoc_info, sizeof(ndis_assoc_info));
-	DBGTRACE2("assoc info returns %d", res);
+	DBGTRACE1("assoc info returns %08X", res);
 	if (res == NDIS_STATUS_NOT_SUPPORTED)
 		TRACEEXIT1(return);
 
@@ -1562,13 +1604,49 @@ static int ndis_set_mac_addr(struct net_device *dev, void *p)
 	TRACEEXIT1(return 0);
 }
 
+static void show_guids(struct wrapper_dev *wd)
+{
+	int i, j;
+	char *buf;
+	struct ndis_guid *ndis_guid;
+	NDIS_STATUS res;
+
+	res = miniport_query_info_needed(wd, OID_GEN_SUPPORTED_GUIDS,
+					 NULL, 0, &i);
+	DBGTRACE1("res: %08X", res);
+	if (res != NDIS_STATUS_INVALID_LENGTH)
+		return;
+
+	buf = kmalloc(i, GFP_KERNEL);
+	if (!buf) {
+		WARNING("couldn't allocate memory");
+		return;
+	}
+	DBGTRACE1 = miniport_query_info(wd, OID_GEN_SUPPORTED_LIST, buf, i);
+	INFO("res: %08X", res);
+	if (res) {
+		DBGTRACE1("query failed: %08X", res);
+		kfree(buf);
+		return;
+	}
+	for (j = 0; j < i; j += sizeof(*ndis_guid)) {
+		ndis_guid = (struct ndis_guid *)(buf + j);
+		DBGTRACE1("%lu, %u, %u, %08X, %u, %08X",
+			  ndis_guid->guid.data1, ndis_guid->guid.data2,
+			  ndis_guid->guid.data3, ndis_guid->oid,
+			  ndis_guid->size, ndis_guid->flags);
+	}
+	kfree(buf);
+	return;
+}
+
 int setup_device(struct net_device *dev)
 {
 	struct wrapper_dev *wd = netdev_priv(dev);
 	NDIS_STATUS res;
 	mac_address mac;
-	int i;
 
+	show_guids(wd);
 	if (strlen(if_name) > (IFNAMSIZ-1)) {
 		ERROR("interface name '%s' is too long", if_name);
 		return -1;
@@ -1580,7 +1658,7 @@ int setup_device(struct net_device *dev)
 	res = miniport_query_info(wd, OID_802_3_CURRENT_ADDRESS,
 				  mac, sizeof(mac));
 	if (res) {
-		ERROR("unable to get mac address from driver");
+		ERROR("couldn't get mac address: %08X", res);
 		return -EINVAL;
 	}
 	DBGTRACE1("mac:" MACSTR, MAC2STR(mac));
@@ -1650,7 +1728,8 @@ int setup_device(struct net_device *dev)
 		 * below */
 		wd->max_send_packets = XMIT_RING_SIZE;
 	}
-	DBGTRACE2("maximum send packets: %d", wd->max_send_packets);
+
+	DBGTRACE1("maximum send packets: %d", wd->max_send_packets);
 	wd->xmit_array =
 		kmalloc(sizeof(struct ndis_packet *) * wd->max_send_packets,
 			GFP_KERNEL);
@@ -1659,6 +1738,8 @@ int setup_device(struct net_device *dev)
 		goto xmit_array_err;
 
 	}
+	/* we need at least one extra packet for
+	 * EthRxIndicateHandler */
 	NdisAllocatePacketPoolEx(&res, &wd->wrapper_packet_pool,
 				 wd->max_send_packets + 1, 0,
 				 PROTOCOL_RESERVED_SIZE_IN_PACKET);
@@ -1667,32 +1748,21 @@ int setup_device(struct net_device *dev)
 		goto packet_pool_err;
 	}
 	NdisAllocateBufferPool(&res, &wd->wrapper_buffer_pool,
-			       wd->max_send_packets);
+			       wd->max_send_packets + 4);
 	if (res != NDIS_STATUS_SUCCESS) {
 		ERROR("couldn't allocate buffer pool");
 		goto buffer_pool_err;
 	}
-	res = miniport_query_int(wd, OID_802_3_MAXIMUM_LIST_SIZE, &i);
-	if (res == NDIS_STATUS_SUCCESS) {
-		DBGTRACE1("multicast list size: %d", i);
-		wd->multicast_list_size = i;
-	} else
-		wd->multicast_list_size = 0;
-
-	if (wd->multicast_list_size)
-		wd->multicast_list =
-			kmalloc(wd->multicast_list_size * ETH_ALEN,
-				GFP_KERNEL);
-
+	DBGTRACE1("pool: %p", wd->wrapper_buffer_pool);
 	miniport_set_int(wd, OID_802_11_NETWORK_TYPE_IN_USE,
 			 Ndis802_11Automode);
 	/* check_capa changes auth_mode and encr_mode, so set them again */
+	set_scan(wd);
+	set_infra_mode(wd, Ndis802_11Infrastructure);
 	set_auth_mode(wd, Ndis802_11AuthModeOpen);
 	set_encr_mode(wd, Ndis802_11EncryptionDisabled);
 	if (set_privacy_filter(wd, Ndis802_11PrivFilterAcceptAll))
-		WARNING("unable to set privacy filter");
-	set_infra_mode(wd, Ndis802_11Infrastructure);
-	set_scan(wd);
+		WARNING("couldn't set privacy filter");
 
 	hangcheck_add(wd);
 	stats_timer_add(wd);
@@ -1724,7 +1794,7 @@ struct net_device *ndis_init_netdev(struct wrapper_dev **pwd,
 
 	dev = alloc_etherdev(sizeof(*wd) + sizeof(*nmb));
 	if (!dev) {
-		ERROR("unable to allocate device");
+		ERROR("couldn't allocate device");
 		return NULL;
 	}
 	SET_MODULE_OWNER(dev);
@@ -1836,8 +1906,10 @@ static void module_cleanup(void)
 #if LINUX_VERSION_CODE > KERNEL_VERSION(2,6,0)
 	_ndiswrapper_wq_init_state = NDISWRAPPER_WQ_EXIT;
 	schedule_work(&_ndiswrapper_wq_init);
-	while (_ndiswrapper_wq_init_state)
-		schedule_timeout(2);
+	while (_ndiswrapper_wq_init_state) {
+		set_current_state(TASK_INTERRUPTIBLE);
+		schedule_timeout(4);
+	}
 	destroy_workqueue(ndiswrapper_wq);
 #endif
 	ndiswrapper_procfs_remove();
@@ -1888,8 +1960,10 @@ static int __init wrapper_init(void)
 	INIT_WORK(&_ndiswrapper_wq_init, _ndiswrapper_wq_init_worker, 0);
 	_ndiswrapper_wq_init_state = NDISWRAPPER_WQ_INIT;
 	schedule_work(&_ndiswrapper_wq_init);
-	while (_ndiswrapper_wq_init_state > 0)
-		schedule_timeout(2);
+	while (_ndiswrapper_wq_init_state > 0) {
+		set_current_state(TASK_INTERRUPTIBLE);
+		schedule_timeout(4);
+	}
 	if (_ndiswrapper_wq_init_state < 0)
 		goto err;
 #endif
