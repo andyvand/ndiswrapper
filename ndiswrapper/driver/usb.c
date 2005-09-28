@@ -274,20 +274,21 @@ static struct urb *wrap_alloc_urb(struct usb_device *udev, struct irp *irp,
 		}
 		memset(wrap_urb, 0, sizeof(*wrap_urb));
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
-		wrap_urb->urb = usb_alloc_urb(0, alloc_flags);
+		urb = usb_alloc_urb(0, alloc_flags);
 #else
-		wrap_urb->urb = usb_alloc_urb(0);
-		wrap_urb->urb->transfer_flags |= USB_ASYNC_UNLINK;
+		urb = usb_alloc_urb(0);
+		if (urb)
+			urb->transfer_flags |= USB_ASYNC_UNLINK;
 #endif
-		if (!wrap_urb->urb) {
+		if (!urb) {
 			WARNING("couldn't allocate urb");
 			kfree(wrap_urb);
 		}
 		IoAcquireCancelSpinLock(&irp->cancel_irql);
+		wrap_urb->urb = urb;
 		wrap_urb->state = URB_ALLOCATED;
 		InsertTailList(&wd->dev.usb.alloc_list, &wrap_urb->list);
 		wd->dev.usb.num_alloc_urbs++;
-		urb = wrap_urb->urb;
 	}
 
 	urb->context = wrap_urb;
@@ -912,15 +913,18 @@ static USBD_STATUS wrap_process_nt_urb(struct irp *irp)
 	case URB_FUNCTION_CLASS_OTHER:
 		USBTRACE("submitting vendor/class irp: %p", irp);
 		status = wrap_vendor_or_class_req(irp);
+		NT_URB_STATUS(nt_urb) = status;
 		break;
 
 		/* rest are synchronous */
 	case URB_FUNCTION_SELECT_CONFIGURATION:
 		status = wrap_select_configuration(wd, nt_urb, irp);
+		NT_URB_STATUS(nt_urb) = status;
 		break;
 
 	case URB_FUNCTION_GET_DESCRIPTOR_FROM_DEVICE:
 		status = wrap_get_descriptor(wd, nt_urb, irp);
+		NT_URB_STATUS(nt_urb) = status;
 		break;
 
 	case URB_FUNCTION_SYNC_RESET_PIPE_AND_CLEAR_STALL:
@@ -944,17 +948,14 @@ static USBD_STATUS wrap_reset_port(struct irp *irp)
 {
 	int ret;
 	struct wrapper_dev *wd;
-	union nt_urb *nt_urb;
 
 	wd = irp->wd;
 	USBENTER("%p, %p", wd, wd->dev.usb.udev);
 
-	nt_urb = URB_FROM_IRP(irp);
 	ret = usb_reset_device(wd->dev.usb.udev);
 	if (ret < 0)
 		WARNING("reset failed: %d", ret);
-	irp->io_status.status_info = 0;
-	return wrap_urb_status(ret);
+	return USBD_STATUS_SUCCESS;
 }
 
 static USBD_STATUS wrap_get_port_status(struct irp *irp)
@@ -988,14 +989,11 @@ NTSTATUS wrap_submit_irp(struct device_object *pdo, struct irp *irp)
 	struct io_stack_location *irp_sl;
 	struct wrapper_dev *wd;
 	USBD_STATUS status;
-	union nt_urb *nt_urb;
 
 	irp_sl = IoGetCurrentIrpStackLocation(irp);
 	wd = pdo->reserved;
 
 	if (unlikely(wd->intf == NULL)) {
-		nt_urb = URB_FROM_IRP(irp);
-		NT_URB_STATUS(nt_urb) = USBD_STATUS_DEVICE_GONE;
 		irp->io_status.status = STATUS_DEVICE_REMOVED;
 		irp->io_status.status_info = 0;
 		return irp->io_status.status;
@@ -1021,8 +1019,6 @@ NTSTATUS wrap_submit_irp(struct device_object *pdo, struct irp *irp)
 	USBTRACE("status: %08X", status);
 	if (status == USBD_STATUS_PENDING)
 		return STATUS_PENDING;
-	nt_urb = URB_FROM_IRP(irp);
-	NT_URB_STATUS(nt_urb) = status;
 	irp->io_status.status = nt_urb_irp_status(status);
 	if (status != USBD_STATUS_SUCCESS)
 		irp->io_status.status_info = 0;

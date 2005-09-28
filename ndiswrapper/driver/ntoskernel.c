@@ -48,6 +48,8 @@ KSPIN_LOCK ntoskernel_lock;
 static kmem_cache_t *mdl_cache;
 static struct nt_list wrap_mdl_list;
 
+static KSPIN_LOCK inter_lock;
+
 struct work_struct kdpc_work;
 static struct nt_list kdpc_list;
 static KSPIN_LOCK kdpc_list_lock;
@@ -91,6 +93,7 @@ int ntoskernel_init(void)
 	kspin_lock_init(&io_workitem_list_lock);
 	kspin_lock_init(&kdpc_list_lock);
 	kspin_lock_init(&irp_cancel_lock);
+	kspin_lock_init(&inter_lock);
 	InitializeListHead(&wrap_mdl_list);
 	InitializeListHead(&kdpc_list);
 	InitializeListHead(&callback_objects);
@@ -348,9 +351,9 @@ STDCALL struct nt_slist *WRAP_EXPORT(ExpInterlockedPushEntrySList)
 	KIRQL irql;
 
 	TRACEENTER5("head = %p", head);
-	irql = kspin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL);
+	irql = kspin_lock_irql(&inter_lock, DISPATCH_LEVEL);
 	ret = PushEntryList(head, entry);
-	kspin_unlock_irql(&ntoskernel_lock, irql);
+	kspin_unlock_irql(&inter_lock, irql);
 	DBGTRACE5("head = %p, ret = %p", head, ret);
 	return ret;
 }
@@ -377,9 +380,9 @@ STDCALL struct nt_slist *WRAP_EXPORT(ExpInterlockedPopEntrySList)
 	KIRQL irql;
 
 	TRACEENTER5("head = %p", head);
-	irql = kspin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL);
+	irql = kspin_lock_irql(&inter_lock, DISPATCH_LEVEL);
 	ret = PopEntryList(head);
-	kspin_unlock_irql(&ntoskernel_lock, irql);
+	kspin_unlock_irql(&inter_lock, irql);
 	DBGTRACE5("head = %p, ret = %p", head, ret);
 	return ret;
 }
@@ -667,10 +670,10 @@ _FASTCALL LONG WRAP_EXPORT(InterlockedDecrement)
 	KIRQL irql;
 
 	TRACEENTER5("");
-	irql = kspin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL);
+	irql = kspin_lock_irql(&inter_lock, DISPATCH_LEVEL);
 	(*val)--;
 	x = *val;
-	kspin_unlock_irql(&ntoskernel_lock, irql);
+	kspin_unlock_irql(&inter_lock, irql);
 	TRACEEXIT5(return x);
 }
 
@@ -681,10 +684,10 @@ _FASTCALL LONG WRAP_EXPORT(InterlockedIncrement)
 	KIRQL irql;
 
 	TRACEENTER5("");
-	irql = kspin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL);
+	irql = kspin_lock_irql(&inter_lock, DISPATCH_LEVEL);
 	(*val)++;
 	x = *val;
-	kspin_unlock_irql(&ntoskernel_lock, irql);
+	kspin_unlock_irql(&inter_lock, irql);
 	TRACEEXIT5(return x);
 }
 
@@ -695,10 +698,10 @@ _FASTCALL LONG WRAP_EXPORT(InterlockedExchange)
 	KIRQL irql;
 
 	TRACEENTER5("");
-	irql = kspin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL);
+	irql = kspin_lock_irql(&inter_lock, DISPATCH_LEVEL);
 	x = *target;
 	*target = val;
-	kspin_unlock_irql(&ntoskernel_lock, irql);
+	kspin_unlock_irql(&inter_lock, irql);
 	TRACEEXIT5(return x);
 }
 
@@ -709,11 +712,11 @@ _FASTCALL LONG WRAP_EXPORT(InterlockedCompareExchange)
 	KIRQL irql;
 
 	TRACEENTER5("");
-	irql = kspin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL);
+	irql = kspin_lock_irql(&inter_lock, DISPATCH_LEVEL);
 	x = *dest;
 	if (*dest == comperand)
 		*dest = xchg;
-	kspin_unlock_irql(&ntoskernel_lock, irql);
+	kspin_unlock_irql(&inter_lock, irql);
 	TRACEEXIT5(return x);
 }
 
@@ -723,9 +726,9 @@ _FASTCALL void WRAP_EXPORT(ExInterlockedAddLargeStatistic)
 	unsigned long flags;
 
 	TRACEENTER5("%p = %llu, n = %u", plint, *plint, n);
-	kspin_lock_irqsave(&ntoskernel_lock, flags);
+	kspin_lock_irqsave(&inter_lock, flags);
 	*plint += n;
-	kspin_unlock_irqrestore(&ntoskernel_lock, flags);
+	kspin_unlock_irqrestore(&inter_lock, flags);
 }
 
 /* We need to keep track of whether memory is allocated with kmalloc
