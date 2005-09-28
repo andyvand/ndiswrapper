@@ -662,6 +662,7 @@ static void set_multicast_list(struct wrapper_dev *wd)
 		if (res)
 			max_size = 0;
 	}
+	ndis_mclist = NULL;
 	if (max_size) {
 		ndis_mclist = kmalloc(max_size * ETH_ALEN, GFP_KERNEL);
 		if (!ndis_mclist) {
@@ -669,7 +670,7 @@ static void set_multicast_list(struct wrapper_dev *wd)
 			max_size = 0;
 		}
 	}
-	if (max_size) {
+	if (ndis_mclist) {
 		for (i = size = 0, mclist = net_dev->mc_list;
 		     mclist && i < net_dev->mc_count && size < max_size;
 		     i++, mclist = mclist->next) {
@@ -1172,8 +1173,8 @@ static void link_status_handler(struct wrapper_dev *wd)
 	/* ZyDas driver crashes if ASSOCIATION_INFO is requested;
 	 * however, strangely, if DEBUG is set to 1 in just this file,
 	 * it works (took me days to figure this behavior) */
-	if (wd->ndis_device->vendor == 0x0ace &&
-	    wd->ndis_device->device == 0x1211)
+	if ((wd->ndis_device->vendor == 0x0ace &&
+	     wd->ndis_device->device == 0x1211))
 		TRACEEXIT2(return);
 
 	if (!(test_bit(Ndis802_11Encryption2Enabled, &wd->capa.encr) ||

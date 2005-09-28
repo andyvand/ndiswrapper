@@ -405,14 +405,15 @@ struct wrap_timer {
 
 typedef struct mdl ndis_buffer;
 
-#define MAX_URBS 10
+#define MAX_ALLOCATED_URBS 15
 
 struct phys_dev {
 	int dev_type;
 	struct pci_dev *pci;
 	struct {
 		struct usb_device *udev;
-		struct wrap_urb wrap_urbs[MAX_URBS];
+		int num_alloc_urbs;
+		struct nt_list alloc_list;
 	} usb;
 };
 

@@ -623,6 +623,7 @@ enum urb_state {
 	URB_COMPLETED, URB_FREE, URB_SUSPEND };
 
 struct wrap_urb {
+	struct nt_list list;
 	enum urb_state state;
 	unsigned int alloc_flags;
 	struct urb *urb;
