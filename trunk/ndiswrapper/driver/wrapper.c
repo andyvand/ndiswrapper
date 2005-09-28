@@ -571,7 +571,7 @@ static int get_packet_filter(struct wrapper_dev *wd, ULONG *packet_filter)
 	res = miniport_query_info(wd, OID_GEN_CURRENT_PACKET_FILTER,
 				  packet_filter, sizeof(*packet_filter));
 	if (res) {
-		WARNING("couldn't get packet filter: %08X", res);
+		DBGTRACE1("couldn't get packet filter: %08X", res);
 		TRACEEXIT3(return res);
 	}
 	TRACEEXIT3(return 0);
@@ -593,7 +593,7 @@ static int ndis_open(struct net_device *dev)
 	if (dev->flags & IFF_PROMISC)
 		packet_filter |= NDIS_PACKET_TYPE_ALL_LOCAL;
 	if (set_packet_filter(wd, packet_filter))
-		WARNING("couldn't add packet filter %x", packet_filter);
+		DBGTRACE1("couldn't add packet filter %x", packet_filter);
 	/* NDIS_PACKET_TYPE_PROMISCUOUS will not work with 802.11 */
 	netif_device_attach(dev);
 	netif_start_queue(dev);

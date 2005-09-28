@@ -967,13 +967,15 @@ STDCALL NTSTATUS WRAP_EXPORT(KeWaitForMultipleObjects)
 	struct task_struct *task;
 
 	task = get_current();
+	EVENTENTER("task: %p, count = %d, reason = %u, "
+		   "waitmode = %u, alertable = %u, timeout = %p", task,
+		   count, wait_reason, wait_mode, alertable, timeout);
+
 	kthread = KeGetCurrentThread();
+	EVENTTRACE("thread: %p", kthread);
 	assert(kthread != NULL);
 	if (kthread == NULL)
 		return STATUS_RESOURCES;
-	EVENTENTER("task: %p, thread: %p, count = %d, reason = %u, "
-		   "waitmode = %u, alertable = %u, timeout = %p", task,
-		   kthread, count, wait_reason, wait_mode, alertable, timeout);
 
 	if (count > MAX_WAIT_OBJECTS)
 		EVENTEXIT(return STATUS_INVALID_PARAMETER);

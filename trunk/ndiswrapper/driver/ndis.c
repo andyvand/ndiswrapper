@@ -32,6 +32,10 @@
 
 #define MAX_ALLOCATED_NDIS_PACKETS 20
 
+#define WRAP_KMALLOC_TAG 0x4b6d41
+#define WRAP_VMALLOC_TAG 0x766d9f
+typedef unsigned long wrap_alloc_tag_t;
+
 extern struct nt_list ndis_drivers;
 extern KSPIN_LOCK ntoskernel_lock;
 
@@ -191,56 +195,77 @@ STDCALL NDIS_STATUS WRAP_EXPORT(NdisMDeregisterDevice)
 	return NDIS_STATUS_SUCCESS;
 }
 
+/* We need to keep track of whether memory is allocated with kmalloc
+ * or vmalloc so we can free with kfree or vfree later. So we allocate
+ * a bit more memory and store the tag there. This tag is inspected
+ * while freeing memory. */
+/* TODO: we should use ExAllocateMemoryWithTag instead */
 STDCALL NDIS_STATUS WRAP_EXPORT(NdisAllocateMemoryWithTag)
 	(void **dest, UINT length, ULONG tag)
 {
-	TRACEENTER3("dest = %p, length = %u", dest, length);
-	if (length <= KMALLOC_THRESHOLD) {
+	void *addr;
+	UINT total;
+	wrap_alloc_tag_t wrap_tag;
+
+	TRACEENTER4("dest = %p, length = %u", dest, length);
+	total = length + sizeof(wrap_tag);
+	if (total <= KMALLOC_THRESHOLD) {
 		if (current_irql() < DISPATCH_LEVEL)
-			*dest = kmalloc(length, GFP_KERNEL);
+			addr = kmalloc(total, GFP_KERNEL);
 		else
-			*dest = kmalloc(length, GFP_ATOMIC);
+			addr = kmalloc(total, GFP_ATOMIC);
+		wrap_tag = WRAP_KMALLOC_TAG;
 	} else {
 		if (current_irql() == DISPATCH_LEVEL)
 			ERROR("Windows driver allocating too big a block"
-			      " at DISPATCH_LEVEL: %d", length);
-		*dest = vmalloc(length);
+			      " at DISPATCH_LEVEL: %d", total);
+		addr = vmalloc(total);
+		wrap_tag = WRAP_VMALLOC_TAG;
 	}
-
+	if (addr) {
+		DBGTRACE4("addr: %p", addr);
+		*(typeof(wrap_tag) *)addr = wrap_tag;
+		addr += sizeof(wrap_tag);
+		DBGTRACE4("addr: %p, tag: %lu", addr, wrap_tag);
+	}
+	*dest = addr;
 	if (*dest)
-		TRACEEXIT3(return NDIS_STATUS_SUCCESS);
-	WARNING("couldnt' allocate memory: %u", length);
-	TRACEEXIT3(return NDIS_STATUS_FAILURE);
+		TRACEEXIT4(return NDIS_STATUS_SUCCESS);
+	else {
+		WARNING("couldnt' allocate memory: %u", length);
+		TRACEEXIT3(return NDIS_STATUS_FAILURE);
+	}
 }
 
 STDCALL NDIS_STATUS WRAP_EXPORT(NdisAllocateMemory)
 	(void **dest, UINT length, UINT flags,
 	 NDIS_PHY_ADDRESS highest_address)
 {
-	TRACEENTER3("length = %u, flags = %08X", length, flags);
+	DBGTRACE4("length = %u, flags = %08X", length, flags);
 	return NdisAllocateMemoryWithTag(dest, length, 0);
 }
 
+/* length_tag is either length or tag, depending on if
+ * NdisAllocateMemory or NdisAllocateMemoryTag is used to allocate
+ * memory */
 STDCALL void WRAP_EXPORT(NdisFreeMemory)
-	(void *addr, UINT length, UINT flags)
+	(void *addr, UINT length_tag, UINT flags)
 {
+	wrap_alloc_tag_t wrap_tag;
 	struct ndis_work_entry *ndis_work_entry;
 	struct ndis_free_mem_work_item *free_mem;
-	KIRQL irql;
 
-	TRACEENTER3("addr = %p, flags = %08X", addr, flags);
-
-	if (!addr)
-		TRACEEXIT3(return);
-
-	if (length <= KMALLOC_THRESHOLD)
+	DBGTRACE4("addr: %p", addr);
+	addr -= sizeof(wrap_tag);
+	wrap_tag = *(typeof(wrap_tag) *)addr;
+	DBGTRACE4("tag: %lu", wrap_tag);
+	if (wrap_tag == WRAP_KMALLOC_TAG) {
 		kfree(addr);
-	else if (flags & NDIS_MEMORY_CONTIGUOUS)
-		kfree(addr);
-	else {
+		return;
+	} else if (wrap_tag == WRAP_VMALLOC_TAG) {
 		if (!in_interrupt()) {
 			vfree(addr);
-			TRACEEXIT3(return);
+			return;
 		}
 		/* Centrino 2200 driver calls this function when in
 		 * ad-hoc mode in interrupt context when length >
@@ -255,14 +280,17 @@ STDCALL void WRAP_EXPORT(NdisFreeMemory)
 		free_mem = &ndis_work_entry->entry.free_mem_work_item;
 
 		free_mem->addr = addr;
-		free_mem->length = length;
+		free_mem->length_tag = length_tag;
 		free_mem->flags = flags;
 
-		irql = kspin_lock_irql(&ndis_work_list_lock, DISPATCH_LEVEL);
+		kspin_lock(&ndis_work_list_lock);
 		InsertTailList(&ndis_work_list, &ndis_work_entry->list);
-		kspin_unlock_irql(&ndis_work_list_lock, irql);
-
+		kspin_unlock(&ndis_work_list_lock);
 		schedule_work(&ndis_work);
+		return;
+	} else {
+		ERROR("wrong tag: %lu", wrap_tag);
+		return;
 	}
 }
 
@@ -1075,8 +1103,8 @@ STDCALL void WRAP_EXPORT(NdisAllocateBuffer)
 	}
 	irql = kspin_lock_irql(&pool->lock, DISPATCH_LEVEL);
 	if (pool->num_allocated_descr > pool->max_descr)
-		WARNING("pool %p is full: %d(%d)", pool,
-			pool->num_allocated_descr, pool->max_descr);
+		DBGTRACE2("pool %p is full: %d(%d)", pool,
+			  pool->num_allocated_descr, pool->max_descr);
 	if (pool->free_descr) {
 		typeof(descr->flags) flags;
 		descr = pool->free_descr;
@@ -1299,8 +1327,8 @@ STDCALL void WRAP_EXPORT(NdisAllocatePacket)
 	ndis_packet = NULL;
 	irql = kspin_lock_irql(&pool->lock, DISPATCH_LEVEL);
 	if (pool->num_allocated_descr > pool->max_descr)
-		WARNING("pool %p is full: %d(%d)", pool,
-			pool->num_allocated_descr, pool->max_descr);
+		DBGTRACE2("pool %p is full: %d(%d)", pool,
+			  pool->num_allocated_descr, pool->max_descr);
 	if (pool->free_descr) {
 		ndis_packet = pool->free_descr;
 		wrap_ndis_packet =
@@ -2386,7 +2414,7 @@ static void ndis_worker(void *data)
 		case NDIS_FREE_MEM_WORK_ITEM:
 			free_mem = &ndis_work_entry->entry.free_mem_work_item;
 			DBGTRACE3("freeing memory of size %d, flags %d at %p",
-				  free_mem->length, free_mem->flags,
+				  free_mem->length_tag, free_mem->flags,
 				  free_mem->addr);
 			if (free_mem->addr)
 				vfree(free_mem->addr);
@@ -2726,10 +2754,6 @@ STDCALL void WRAP_EXPORT(EthFilterDprIndicateReceiveComplete)
 	(void){UNIMPL();}
 STDCALL void WRAP_EXPORT(EthFilterDprIndicateReceive)(void){UNIMPL();}
 STDCALL void WRAP_EXPORT(NdisMRemoveMiniport)(void) { UNIMPL(); }
-//STDCALL void RndisMSendComplete(void) { UNIMPL(); }
-//STDCALL void RndisMInitializeWrapper(void) { UNIMPL(); }
-STDCALL void WRAP_EXPORT(RndisMIndicateReceive)(void) { UNIMPL(); }
-
 STDCALL void WRAP_EXPORT(NdisMCoActivateVcComplete)(void){UNIMPL();}
 
 STDCALL void WRAP_EXPORT(NdisMCoDeactivateVcComplete)(void)
