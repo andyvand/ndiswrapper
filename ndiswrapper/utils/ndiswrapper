@@ -1,4 +1,4 @@
-#!/usr/bin/perl
+#!/usr/bin/perl -d
 
 #/*
 #*  Copyright (C) 2005 Pontus Fuchs, Giridhar Pemmasani
@@ -24,7 +24,7 @@ my @sections;
 my %strings;
 my %version;
 my $driver_name;
-my $confdir = "/etc/ndiswrapper";
+my $confdir = "/tmp/ndiswrapper";
 my $modhotplugconf = "$confdir" . "/modalias";
 my $instdir;
 my %fuzzlist;
@@ -572,14 +572,28 @@ sub parseDevice {
     my $vendor = shift;
     my $subvendor = shift;
     my $subdevice = shift;
+    my $dev;
 
-    my $dev = getSection("$device_sect.$flavour");
+    # for RNDIS INF file (for USR5420), vendor section names device
+    # section as RNDIS.NT.5.1, but copyfiles section is RNDIS.NT, so
+    # first strip flavour from device_sect and then look for matching
+    # section
+
+    my $base_dev = $device_sect;
+    $base_dev =~ s/\.$flavour$//;
+    if ($base_dev eq "RNDIS") {
+	$dev = getSection("$base_dev.NT");
+    }
+    if (!dev) {
+	$dev = getSection("$device_sect.$flavour");
+    }
     if (!$dev) {
 	$dev = getSection("$device_sect.NT");
     }
     if (!$dev) {
 	$dev = getSection("$device_sect.NTx86");
     }
+
     if (!$dev) {
 	$dev = getSection("$device_sect");
     }
