@@ -286,10 +286,18 @@ static void *ndiswrapper_add_usb_device(struct usb_device *udev,
 	struct device_object *pdo;
 	struct driver_object *drv_obj;
 
-	TRACEENTER1("vendor: %04x, product: %04x",
-		    usb_id->idVendor, usb_id->idProduct);
+	TRACEENTER1("vendor: %04x, product: %04x, intf: %p, %p",
+		    usb_id->idVendor, usb_id->idProduct, intf, usb_id);
 
 	device = &ndis_devices[usb_id->driver_info];
+	/* RNDIS devices have two interfaces, so prevent from
+	 * initializing the device again, if it has already been
+	 * initialized */
+	if (device->wd) {
+		DBGTRACE1("device is already loaded");
+		TRACEEXIT1(return 0);
+	}
+
 	driver = ndiswrapper_load_driver(device);
 	if (!driver) {
 		res = -ENODEV;

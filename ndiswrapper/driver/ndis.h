@@ -344,8 +344,8 @@ struct ndis_alloc_mem_work_item {
 
 struct ndis_free_mem_work_item {
 	void *addr;
-	unsigned int length;
-	unsigned int flags;
+	UINT length_tag;
+	UINT flags;
 };
 
 enum ndis_work_entry_type {
