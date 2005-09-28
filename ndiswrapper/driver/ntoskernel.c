@@ -17,6 +17,10 @@
 #include "ndis.h"
 #include "usb.h"
 
+#define WRAP_KMALLOC_TAG 0x4b6d41
+#define WRAP_VMALLOC_TAG 0x766d9f
+typedef unsigned long wrap_alloc_tag_t;
+
 /* MDLs describe a range of virtual address with an array of physical
  * pages right after the header. For different ranges of virtual
  * addresses, the number of entries of physical pages may be different
@@ -72,6 +76,7 @@ static typeof(jiffies) wrap_epoch;
 extern struct nt_list ndis_drivers;
 extern struct nt_list ndis_work_list;
 extern KSPIN_LOCK ndis_work_list_lock;
+extern struct work_struct ndis_work;
 
 static int add_bus_driver(struct driver_object *drv_obj, const char *name);
 
@@ -723,25 +728,93 @@ _FASTCALL void WRAP_EXPORT(ExInterlockedAddLargeStatistic)
 	kspin_unlock_irqrestore(&ntoskernel_lock, flags);
 }
 
+/* We need to keep track of whether memory is allocated with kmalloc
+ * or vmalloc so we can free with kfree or vfree later. So we allocate
+ * a bit more memory and store the tag there. This tag is inspected
+ * while freeing memory. */
 STDCALL void *WRAP_EXPORT(ExAllocatePoolWithTag)
 	(enum pool_type pool_type, SIZE_T size, ULONG tag)
 {
-	void *ret;
+	void *addr;
+	UINT total;
+	wrap_alloc_tag_t wrap_tag;
+	KIRQL irql;
 
-	TRACEENTER1("pool_type: %d, size: %lu, tag: %u", pool_type,
+	TRACEENTER4("pool_type: %d, size: %lu, tag: %u", pool_type,
 		    size, tag);
 
-	if (current_irql() < DISPATCH_LEVEL)
-		ret = kmalloc(size, GFP_KERNEL);
-	else
-		ret = kmalloc(size, GFP_ATOMIC);
-	return ret;
+	total = size + sizeof(wrap_tag);
+	irql = current_irql();
+	if (total <= KMALLOC_THRESHOLD) {
+		if (irql < DISPATCH_LEVEL)
+			addr = kmalloc(total, GFP_KERNEL);
+		else
+			addr = kmalloc(total, GFP_ATOMIC);
+		wrap_tag = WRAP_KMALLOC_TAG;
+	} else {
+		if (irql == DISPATCH_LEVEL)
+			ERROR("Windows driver allocating too big a block"
+			      " at DISPATCH_LEVEL: %d", total);
+		addr = vmalloc(total);
+		wrap_tag = WRAP_VMALLOC_TAG;
+	}
+	if (addr) {
+		DBGTRACE4("addr: %p", addr);
+		*(typeof(wrap_tag) *)addr = wrap_tag;
+		addr += sizeof(wrap_tag);
+		DBGTRACE4("addr: %p, tag: %lu", addr, wrap_tag);
+	} else
+		WARNING("couldnt' allocate memory: %lu", size);
+	TRACEEXIT4(return addr);
 }
 
 STDCALL void WRAP_EXPORT(ExFreePool)
-	(void *p)
+	(void *addr)
 {
-	kfree(p);
+	wrap_alloc_tag_t wrap_tag;
+	struct ndis_work_entry *ndis_work_entry;
+	struct ndis_free_mem_work_item *free_mem;
+
+	DBGTRACE4("addr: %p", addr);
+	addr -= sizeof(wrap_tag);
+	wrap_tag = *(typeof(wrap_tag) *)addr;
+	DBGTRACE4("tag: %lu", wrap_tag);
+	if (wrap_tag == WRAP_KMALLOC_TAG) {
+		kfree(addr);
+		return;
+	} else if (wrap_tag == WRAP_VMALLOC_TAG) {
+		if (!in_interrupt()) {
+			vfree(addr);
+			return;
+		}
+		/* Centrino 2200 driver calls this function when in
+		 * ad-hoc mode in interrupt context when length >
+		 * KMALLOC_THRESHOLD, which implies that vfree is
+		 * called in interrupt context, which is not
+		 * correct. So we use worker for it */
+		/* Instead of using yet another worker, use ndis_work
+		 * for thisk, although ntos layer using ndis functions
+		 * is counter-intuitive */
+		ndis_work_entry = kmalloc(sizeof(*ndis_work_entry),
+					  GFP_ATOMIC);
+		BUG_ON(!ndis_work_entry);
+
+		ndis_work_entry->type = NDIS_FREE_MEM_WORK_ITEM;
+		free_mem = &ndis_work_entry->entry.free_mem_work_item;
+		free_mem->addr = addr;
+
+		kspin_lock(&ndis_work_list_lock);
+		InsertTailList(&ndis_work_list, &ndis_work_entry->list);
+		kspin_unlock(&ndis_work_list_lock);
+		schedule_work(&ndis_work);
+		return;
+	} else {
+		ERROR("wrong tag: %lu", wrap_tag);
+		/* releasing memory here is dangerous, but it will
+		 * catch errors and prevent leaks */
+		kfree(addr);
+		return;
+	}
 }
 
 WRAP_FUNC_PTR_DECL(ExAllocatePoolWithTag)
