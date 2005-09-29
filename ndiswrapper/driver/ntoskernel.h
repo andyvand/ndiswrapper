@@ -195,6 +195,10 @@ typedef struct {
 #define KTHREAD_RUN(a,b,c) kthread_run(a,b,c)
 #endif
 
+#if !defined(HAVE_NETDEV_PRIV)
+#define netdev_priv(dev)  ((dev)->priv)
+#endif
+
 #ifdef CONFIG_X86_64
 #define LIN2WIN1(func, arg1)			\
 	lin_to_win1(func, (unsigned long)arg1)
@@ -413,7 +417,7 @@ struct phys_dev {
 	struct {
 		struct usb_device *udev;
 		int num_alloc_urbs;
-		struct nt_list alloc_list;
+		struct nt_list wrap_urb_list;
 	} usb;
 };
 

@@ -27,12 +27,14 @@ static struct nt_list wrap_allocs;
 static KSPIN_LOCK wrap_allocs_lock;
 static struct nt_list wrap_timer_list;
 KSPIN_LOCK timer_lock;
-static struct timer_list shared_data_timer;
 
 extern KSPIN_LOCK ntoskernel_lock;
 
+#if defined(CONFIG_X86_64)
+static struct timer_list shared_data_timer;
 struct kuser_shared_data kuser_shared_data;
 static void update_user_shared_data_proc(unsigned long data);
+#endif
 
 int misc_funcs_init(void)
 {
@@ -41,14 +43,28 @@ int misc_funcs_init(void)
 	kspin_lock_init(&timer_lock);
 	InitializeListHead(&wrap_timer_list);
 
+#if defined(CONFIG_X86_64)
 	memset(&kuser_shared_data, 0, sizeof(kuser_shared_data));
 	init_timer(&shared_data_timer);
 	shared_data_timer.function = &update_user_shared_data_proc;
-#if defined(CONFIG_X86_64) && defined(INPROCOMM_AMD64)
-	*((ULONG64 *)SHARED_SYSTEM_TIME) = ticks_1601();
-	shared_data_timer.data = (unsigned long)0;
-	shared_data_timer.expires = jiffies + 10 * HZ / 1000;
-	add_timer(&shared_data_timer);
+#endif
+	return 0;
+}
+
+int misc_funcs_init_device(struct wrapper_dev *wd)
+{
+	InitializeListHead(&wd->wrap_timer_list);
+
+#if defined(CONFIG_X86_64)
+	if(wd->ndis_device->vendor == 0x17fe &&
+	   wd->ndis_device->device == 0x2220) {
+		*((ULONG64 *)SHARED_SYSTEM_TIME) = ticks_1601();
+		shared_data_timer.data = (unsigned long)0;
+		shared_data_timer.expires = jiffies + 10 * HZ / 1000 + 1;
+		/* don't use add_timer - to avoid creating more than
+		 * one timer */
+		mod_timer(&shared_data_timer);
+	}
 #endif
 	return 0;
 }
@@ -87,6 +103,10 @@ void misc_funcs_exit(void)
 	struct nt_list *ent;
 	BOOLEAN canceled;
 
+#if defined(CONFIG_X86_64)
+	del_timer_sync(&shared_data_timer);
+#endif
+
 	/* free kernel (Ke) timers */
 	while (1) {
 		struct wrap_timer *wrap_timer;
@@ -118,25 +138,25 @@ void misc_funcs_exit(void)
 	}
 	kspin_unlock_irql(&wrap_allocs_lock, irql);
 
-#if defined(CONFIG_X86_64) && defined(INPROCOMM_AMD64)
-	del_timer_sync(&shared_data_timer);
-#endif
-
 	TRACEEXIT4(return);
 }
 
+#if defined(CONFIG_X86_64)
 static void update_user_shared_data_proc(unsigned long data)
 {
-#if defined(CONFIG_X86_64) && defined(INPROCOMM_AMD64)
+	/* this function is called only for inprocomm2220 64-bit
+	 * driver */
+
 	/* timer is scheduled every 10ms and the system timer is in
 	 * 100ns */
 	*((ULONG64 *)SHARED_SYSTEM_TIME) = ticks_1601();
 	*((ULONG64 *)SHARED_INTERRUPT_TIME) = jiffies * TICKSPERSEC / HZ;
 	*((ULONG64 *)SHARED_TICK_COUNT) = jiffies;
-#endif
-	shared_data_timer.expires += 10 * HZ / 1000;
+
+	shared_data_timer.expires += (10 * HZ / 1000) + 1;
 	add_timer(&shared_data_timer);
 }
+#endif
 
 /* allocate memory with given flags and add it to list of allocated pointers;
  * if a driver doesn't free this memory for any reason (buggy driver or we

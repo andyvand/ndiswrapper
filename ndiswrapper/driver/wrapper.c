@@ -283,6 +283,9 @@ NDIS_STATUS miniport_init(struct wrapper_dev *wd)
 	res = ntoskernel_init_device(wd);
 	if (res)
 		return res;
+	res = misc_funcs_init_device(wd);
+	if (res)
+		return res;
 	if (wd->dev.dev_type == NDIS_USB_BUS) {
 		res = usb_init_device(wd);
 		if (res)
@@ -1833,7 +1836,6 @@ struct net_device *ndis_init_netdev(struct wrapper_dev **pwd,
 	wd->capa.auth = 0;
 	wd->attributes = 0;
 	wd->reset_status = 0;
-	InitializeListHead(&wd->wrap_timer_list);
 	wd->map_count = 0;
 	wd->map_dma_addr = NULL;
 	wd->nick[0] = 0;
