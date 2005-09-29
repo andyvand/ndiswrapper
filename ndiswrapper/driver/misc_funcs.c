@@ -60,10 +60,9 @@ int misc_funcs_init_device(struct wrapper_dev *wd)
 	   wd->ndis_device->device == 0x2220) {
 		*((ULONG64 *)SHARED_SYSTEM_TIME) = ticks_1601();
 		shared_data_timer.data = (unsigned long)0;
-		shared_data_timer.expires = jiffies + 10 * HZ / 1000 + 1;
 		/* don't use add_timer - to avoid creating more than
 		 * one timer */
-		mod_timer(&shared_data_timer);
+		mod_timer(&shared_data_timer, jiffies + 10 * HZ / 1000 + 1);
 	}
 #endif
 	return 0;
