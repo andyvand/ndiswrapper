@@ -145,6 +145,7 @@ NDIS_STATUS miniport_reset(struct wrapper_dev *wd)
 	TRACEEXIT3(return res);
 }
 
+
 /*
  * MiniportQueryInformation
  * Perform a sync query and deal with the possibility of an async operation.
@@ -269,6 +270,7 @@ NDIS_STATUS miniport_set_int(struct wrapper_dev *wd, ndis_oid oid,
 {
 	return miniport_set_info(wd, oid, &data, sizeof(data));
 }
+
 
 /*
  * MiniportInitialize
@@ -1173,13 +1175,6 @@ static void link_status_handler(struct wrapper_dev *wd)
 		TRACEEXIT2(return);
 	}
 
-	/* ZyDas driver crashes if ASSOCIATION_INFO is requested;
-	 * however, strangely, if DEBUG is set to 1 in just this file,
-	 * it works (took me days to figure this behavior) */
-	if ((wd->ndis_device->vendor == 0x0ace &&
-	     wd->ndis_device->device == 0x1211))
-		TRACEEXIT2(return);
-
 	if (!(test_bit(Ndis802_11Encryption2Enabled, &wd->capa.encr) ||
 	      test_bit(Ndis802_11Encryption3Enabled, &wd->capa.encr)))
 		TRACEEXIT2(return);
@@ -1376,24 +1371,34 @@ static void wrapper_worker_proc(void *param)
 				  res, wd->reset_status);
 		}
 	}
-
 	if (test_and_clear_bit(SUSPEND_RESUME, &wd->wrapper_work)) {
 		NDIS_STATUS res;
 		struct net_device *net_dev = wd->net_dev;
 
-		DBGTRACE1("resuming device %s", net_dev->name);
-		DBGTRACE1("continuing resume of device %s", net_dev->name);
+		DBGTRACE2("resuming device %s", net_dev->name);
+		DBGTRACE2("continuing resume of device %s", net_dev->name);
 		if (test_and_clear_bit(HW_SUSPENDED, &wd->hw_status)) {
 			set_bit(HW_AVAILABLE, &wd->hw_status);
 			res = miniport_set_pm_state(wd, NdisDeviceStateD0);
-			DBGTRACE1("%s: setting power to state %d returns %08X",
-				  net_dev->name, NdisDeviceStateD0, res);
+			/* For some unfathomable reason, without the
+			 * following "fix", ZyDas driver crashes when
+			 * ASSOCIATION_INFO OID is called during
+			 * association. This "fix" defies all logic
+			 * and can only be attributed to some voodoo
+			 * powers. */
+			if (debug >= 1 &&
+			    (wd->ndis_device->vendor == 0x0ace &&
+			     wd->ndis_device->device == 0x1211))
+				printk(KERN_INFO "%s:%d: %s: setting power to "
+				       "state %d returns %08X", __FUNCTION__,
+				       __LINE__, net_dev->name,
+				       NdisDeviceStateD0, res);
 			if (res)
 				WARNING("device %s may not have resumed "
 					"properly (%08X)", net_dev->name, res);
 		} else if (test_and_clear_bit(HW_HALTED, &wd->hw_status)) {
 			res = ndiswrapper_start_device(wd);
-			DBGTRACE1("res: %08X", res);
+			DBGTRACE2("res: %08X", res);
 			if (res) {
 				ERROR("device %s re-initialization failed "
 				      "(%08X)", net_dev->name, res);
@@ -1415,6 +1420,7 @@ static void wrapper_worker_proc(void *param)
 		netif_poll_enable(net_dev);
 		DBGTRACE2("%s: device resumed", net_dev->name);
 	}
+
 	TRACEEXIT3(return);
 }
 

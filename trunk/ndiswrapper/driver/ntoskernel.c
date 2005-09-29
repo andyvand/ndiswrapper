@@ -1216,6 +1216,7 @@ STDCALL void WRAP_EXPORT(KeInitializeEvent)
 	KIRQL irql;
 
 	EVENTENTER("event = %p, type = %d, state = %d", kevent, type, state);
+//	dump_bytes(__FUNCTION__, __builtin_return_address(0), 20);
 	irql = kspin_lock_irql(&kevent_lock, DISPATCH_LEVEL);
 	initialize_dh(&kevent->dh, type, state, DH_KEVENT);
 	kspin_unlock_irql(&kevent_lock, irql);
@@ -1430,23 +1431,25 @@ STDCALL struct kthread *WRAP_EXPORT(KeGetCurrentThread)
 	struct kthread *ret;
 	struct common_object_header *header;
 
-	DBGTRACE3("task: %p", task);
+	DBGTRACE5("task: %p", task);
 	ret = NULL;
 	irql = kspin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL);
 	nt_list_for_each_entry(header, &object_list, list) {
 		struct kthread *kthread;
-		DBGTRACE3("header: %p, type: %d", header, header->type);
+		DBGTRACE5("header: %p, type: %d", header, header->type);
 		if (header->type != OBJECT_TYPE_KTHREAD)
 			continue;
 		kthread = HEADER_TO_OBJECT(header);
-		DBGTRACE3("kthread: %p, task: %p", kthread, kthread->task);
+		DBGTRACE5("kthread: %p, task: %p", kthread, kthread->task);
 		if (kthread->task == task) {
 			ret = kthread;
 			break;
 		}
 	}
 	kspin_unlock_irql(&ntoskernel_lock, irql);
-	DBGTRACE3("current thread = %p", ret);
+	if (ret == NULL)
+		WARNING("couldn't find thread for task %p", task);
+	DBGTRACE5("current thread = %p", ret);
 	return ret;
 }
 
@@ -1516,8 +1519,7 @@ struct kthread *wrap_create_thread(struct task_struct *task)
 		init_waitqueue_head(&kthread->event_wq);
 		InitializeListHead(&kthread->irps);
 		irql = kspin_lock_irql(&kevent_lock, DISPATCH_LEVEL);
-		initialize_dh(&kthread->dh, NotificationEvent,
-			      0, DH_KTHREAD);
+		initialize_dh(&kthread->dh, NotificationEvent, 0, DH_KTHREAD);
 		kspin_unlock_irql(&kevent_lock, irql);
 		kthread->dh.size = sizeof(*kthread);
 
@@ -1906,6 +1908,7 @@ STDCALL NTSTATUS WRAP_EXPORT(ZwCreateFile)
 	struct ndis_bin_file *file;
 	KIRQL irql;
 
+	TRACEENTER2("");
 	ansi.buf = kmalloc(MAX_STR_LEN, GFP_KERNEL);
 	if (!ansi.buf) {
 		return STATUS_INSUFFICIENT_RESOURCES;
@@ -2046,7 +2049,8 @@ STDCALL NTSTATUS WRAP_EXPORT(WmiQueryTraceInformation)
 STDCALL unsigned int WRAP_EXPORT(IoWMIRegistrationControl)
 	(struct device_object *dev_obj, ULONG action)
 {
-	TRACEENTER2("");
+	TRACEENTER2("%d", action);
+
 	TRACEEXIT2(return STATUS_SUCCESS);
 }
 

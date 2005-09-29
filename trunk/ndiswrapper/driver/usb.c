@@ -402,6 +402,7 @@ static void wrap_urb_complete(struct urb *urb)
 	 * resubmitted */
 }
 
+/* one worker for all devices */
 static void irp_complete_worker(unsigned long data)
 {
 	struct irp *irp;
