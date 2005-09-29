@@ -734,12 +734,7 @@ static USBD_STATUS wrap_reset_pipe(struct usb_device *udev, struct irp *irp)
 
 static USBD_STATUS wrap_abort_pipe(struct usb_device *udev, struct irp *irp)
 {
-	union nt_urb *nt_urb;
-	usbd_pipe_handle pipe_handle;
-
 	USBTRACE("irp = %p", irp);
-	nt_urb = URB_FROM_IRP(irp);
-	pipe_handle = nt_urb->pipe_req.pipe_handle;
 	/* TODO: not clear if both directions should be cleared? */
 	return USBD_STATUS_SUCCESS;
 }
