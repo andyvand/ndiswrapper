@@ -591,7 +591,7 @@ static int ndis_open(struct net_device *dev)
 	packet_filter = NDIS_PACKET_TYPE_DIRECTED | NDIS_PACKET_TYPE_BROADCAST;
 	/* first try with minimum required */
 	if (set_packet_filter(wd, packet_filter))
-		WARNING("couldn't set packet filter %x", packet_filter);
+		DBGTRACE1("couldn't set packet filter %x", packet_filter);
 	else
 		DBGTRACE1("set packet filter");
 	/* add any dev specific filters */
@@ -1389,10 +1389,9 @@ static void wrapper_worker_proc(void *param)
 			if (debug >= 1 &&
 			    (wd->ndis_device->vendor == 0x0ace &&
 			     wd->ndis_device->device == 0x1211))
-				printk(KERN_INFO "%s:%d: %s: setting power to "
-				       "state %d returns %08X", __FUNCTION__,
-				       __LINE__, net_dev->name,
-				       NdisDeviceStateD0, res);
+				INFO("%s: setting power to state %d returns "
+				     "%08X", net_dev->name,
+				     NdisDeviceStateD0, res);
 			if (res)
 				WARNING("device %s may not have resumed "
 					"properly (%08X)", net_dev->name, res);
