@@ -45,10 +45,6 @@ endif
 CFLAGS += -DDRIVER_VERSION=\"${DRIVER_VERSION}\" \
 		  -DUTILS_VERSION=\"${UTILS_VERSION}\"
 
-ifdef INPROCOMM_AMD64
-CFLAGS += -DINPROCOMM_AMD64
-endif
-
 .PHONY: prereq_check gen_exports clean dist_clean \
 		 x86_64_stubs install stack_check
 

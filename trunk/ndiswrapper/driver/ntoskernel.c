@@ -741,21 +741,19 @@ STDCALL void *WRAP_EXPORT(ExAllocatePoolWithTag)
 	void *addr;
 	UINT total;
 	wrap_alloc_tag_t wrap_tag;
-	KIRQL irql;
 
 	TRACEENTER4("pool_type: %d, size: %lu, tag: %u", pool_type,
 		    size, tag);
 
 	total = size + sizeof(wrap_tag);
-	irql = current_irql();
 	if (total <= KMALLOC_THRESHOLD) {
-		if (irql < DISPATCH_LEVEL)
+		if (current_irql() < DISPATCH_LEVEL)
 			addr = kmalloc(total, GFP_KERNEL);
 		else
 			addr = kmalloc(total, GFP_ATOMIC);
 		wrap_tag = WRAP_KMALLOC_TAG;
 	} else {
-		if (irql == DISPATCH_LEVEL)
+		if (current_irql() == DISPATCH_LEVEL)
 			ERROR("Windows driver allocating too big a block"
 			      " at DISPATCH_LEVEL: %d", total);
 		addr = vmalloc(total);
@@ -767,7 +765,7 @@ STDCALL void *WRAP_EXPORT(ExAllocatePoolWithTag)
 		addr += sizeof(wrap_tag);
 		DBGTRACE4("addr: %p, tag: %lu", addr, wrap_tag);
 	} else
-		WARNING("couldnt' allocate memory: %lu", size);
+		WARNING("couldn't allocate memory: %lu", size);
 	TRACEEXIT4(return addr);
 }
 

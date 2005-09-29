@@ -109,7 +109,7 @@ void usb_exit(void)
 
 int usb_init_device(struct wrapper_dev *wd)
 {
-	InitializeListHead(&wd->dev.usb.alloc_list);
+	InitializeListHead(&wd->dev.usb.wrap_urb_list);
 	wd->dev.usb.num_alloc_urbs = 0;
 	return 0;
 }
@@ -122,7 +122,7 @@ void usb_exit_device(struct wrapper_dev *wd)
 
 	while (1) {
 		IoAcquireCancelSpinLock(&irql);
-		ent = RemoveHeadList(&wd->dev.usb.alloc_list);
+		ent = RemoveHeadList(&wd->dev.usb.wrap_urb_list);
 		IoReleaseCancelSpinLock(irql);
 		if (!ent)
 			break;
@@ -257,7 +257,7 @@ static struct urb *wrap_alloc_urb(struct usb_device *udev, struct irp *irp,
 	wd = irp->wd;
 	IoAcquireCancelSpinLock(&irp->cancel_irql);
 	urb = NULL;
-	nt_list_for_each_entry(wrap_urb, &wd->dev.usb.alloc_list, list) {
+	nt_list_for_each_entry(wrap_urb, &wd->dev.usb.wrap_urb_list, list) {
 		if (wrap_urb->state == URB_FREE) {
 			wrap_urb->state = URB_ALLOCATED;
 			urb = wrap_urb->urb;
@@ -272,7 +272,6 @@ static struct urb *wrap_alloc_urb(struct usb_device *udev, struct irp *irp,
 			WARNING("couldn't allocate memory");
 			return NULL;
 		}
-		memset(wrap_urb, 0, sizeof(*wrap_urb));
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
 		urb = usb_alloc_urb(0, alloc_flags);
 #else
@@ -285,9 +284,10 @@ static struct urb *wrap_alloc_urb(struct usb_device *udev, struct irp *irp,
 			kfree(wrap_urb);
 		}
 		IoAcquireCancelSpinLock(&irp->cancel_irql);
+		memset(wrap_urb, 0, sizeof(*wrap_urb));
 		wrap_urb->urb = urb;
 		wrap_urb->state = URB_ALLOCATED;
-		InsertTailList(&wd->dev.usb.alloc_list, &wrap_urb->list);
+		InsertTailList(&wd->dev.usb.wrap_urb_list, &wrap_urb->list);
 		wd->dev.usb.num_alloc_urbs++;
 	}
 

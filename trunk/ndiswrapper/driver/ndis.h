@@ -981,6 +981,7 @@ void ndiswrapper_procfs_remove_iface(struct wrapper_dev *wd);
 void ndiswrapper_procfs_remove(void);
 
 int misc_funcs_init(void);
+int misc_funcs_init_device(struct wrapper_dev *wd);
 void misc_funcs_exit_device(struct wrapper_dev *wd);
 void misc_funcs_exit(void);
 
