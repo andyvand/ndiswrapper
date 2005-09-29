@@ -565,7 +565,7 @@ STDCALL LONG RtlCompareUnicodeString
 STDCALL void RtlCopyUnicodeString
 	(struct unicode_string *dst, struct unicode_string *src);
 
-void *wrap_kmalloc(size_t size, int flags);
+void *wrap_kmalloc(size_t size);
 void wrap_kfree(void *ptr);
 void wrap_init_timer(struct ktimer *ktimer, void *handle);
 int wrap_set_timer(struct ktimer *ktimer, long expires, unsigned long repeat,

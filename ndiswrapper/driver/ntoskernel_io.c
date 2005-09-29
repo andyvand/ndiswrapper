@@ -954,7 +954,8 @@ STDCALL NTSTATUS WRAP_EXPORT(IoCreateDevice)
 	dev->drv_obj = drv_obj;
 	dev->flags = 0;
 	if (dev_ext_length) {
-		dev->dev_ext = kmalloc(dev_ext_length, GFP_KERNEL);
+		dev->dev_ext = ExAllocatePoolWithTag(NonPagedPool,
+						     dev_ext_length, 0);
 		if (!dev->dev_ext) {
 			ObDereferenceObject(dev);
 			IOEXIT(return STATUS_INSUFFICIENT_RESOURCES);
@@ -972,10 +973,12 @@ STDCALL NTSTATUS WRAP_EXPORT(IoCreateDevice)
 	dev->io_timer = NULL;
 	KeInitializeEvent(&dev->lock, SynchronizationEvent, TRUE);
 	dev->vpb = NULL;
-	dev->dev_obj_ext = kmalloc(sizeof(*(dev->dev_obj_ext)), GFP_KERNEL);
+	dev->dev_obj_ext = ExAllocatePoolWithTag(NonPagedPool,
+						 sizeof(*(dev->dev_obj_ext)),
+						 0);
 	if (!dev->dev_obj_ext) {
 		if (dev->dev_ext)
-			kfree(dev->dev_ext);
+			ExFreePool(dev->dev_ext);
 		ObDereferenceObject(dev);
 		IOEXIT(return STATUS_INSUFFICIENT_RESOURCES);
 	}
@@ -1000,8 +1003,10 @@ STDCALL void WRAP_EXPORT(IoDeleteDevice)
 	IOENTER("%p", dev);
 	if (dev == NULL)
 		IOEXIT(return);
+	if (dev->dev_ext)
+		ExFreePool(dev->dev_ext);
 	if (dev->dev_obj_ext)
-		kfree(dev->dev_obj_ext);
+		ExFreePool(dev->dev_obj_ext);
 
 	prev = NULL;
 #if 0

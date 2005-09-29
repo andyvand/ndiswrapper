@@ -164,20 +164,22 @@ static void update_user_shared_data_proc(unsigned long data)
  * corresponding Windows structure provides etc.), this gets freed
  * automatically during module unloading
  */
-void *wrap_kmalloc(size_t size, int flags)
+void *wrap_kmalloc(size_t size)
 {
 	struct wrap_alloc *alloc;
 	KIRQL irql;
+	unsigned int alloc_flags;
 
-	TRACEENTER4("size = %lu, flags = %d", (unsigned long)size, flags);
+	TRACEENTER4("size = %lu", (unsigned long)size);
 
-	if ((flags & GFP_ATOMIC) || irqs_disabled())
-		alloc = kmalloc(sizeof(*alloc), GFP_ATOMIC);
+	if (current_irql() < DISPATCH_LEVEL)
+		alloc_flags = GFP_KERNEL;
 	else
-		alloc = kmalloc(sizeof(*alloc), GFP_KERNEL);
+		alloc_flags = GFP_ATOMIC;
+	alloc = kmalloc(sizeof(*alloc), alloc_flags);
 	if (!alloc)
 		return NULL;
-	alloc->ptr = kmalloc(size, flags);
+	alloc->ptr = kmalloc(size, alloc_flags);
 	if (!alloc->ptr) {
 		kfree(alloc);
 		return NULL;
@@ -272,7 +274,7 @@ void wrap_init_timer(struct ktimer *ktimer, void *handle)
 	 * and there is no NDIS/DDK function where this memory can be
 	 * freed, so we use wrap_kmalloc so it gets freed when driver
 	 * is unloaded */
-	wrap_timer = wrap_kmalloc(sizeof(*wrap_timer), GFP_ATOMIC);
+	wrap_timer = wrap_kmalloc(sizeof(*wrap_timer));
 	if (!wrap_timer) {
 		ERROR("couldn't allocate memory for timer");
 		return;
@@ -1019,18 +1021,49 @@ STDCALL void WRAP_EXPORT(RtlFreeAnsiString)
 }
 
 STDCALL NTSTATUS WRAP_EXPORT(RtlQueryRegistryValues)
-	(ULONG relative, const wchar_t *path, void *tbl, void *context,
+	(ULONG relative, wchar_t *path, void *tbl, void *context,
 	 void *env)
 {
-	TRACEENTER5("%s", "");
+	struct ansi_string ansi;
+	struct unicode_string unicode;
+	char buf[32];
+
+	TRACEENTER3("%d, %p", relative, tbl);
 	UNIMPL();
-	TRACEEXIT5(return STATUS_SUCCESS);
+	TRACEEXIT3(return STATUS_SUCCESS);
+
+	ansi.buf = buf;
+	ansi.buflen = sizeof(buf);
+	unicode.buf = path;
+	unicode.len = unicode.buflen = _win_wcslen(path);
+	RtlUnicodeStringToAnsiString(&ansi, &unicode, FALSE);
+	TRACEENTER3("%d, %s, %p", relative, buf, tbl);
+	UNIMPL();
+	TRACEEXIT3(return STATUS_SUCCESS);
 }
 
 STDCALL NTSTATUS WRAP_EXPORT(RtlWriteRegistryValue)
-	(ULONG relative, const wchar_t *path, const wchar_t *name, ULONG type,
+	(ULONG relative, wchar_t *path, wchar_t *name, ULONG type,
 	 void *data, ULONG length)
 {
+	struct ansi_string ansi;
+	struct unicode_string unicode;
+	char buf[32];
+
+	TRACEENTER3("%d", relative);
+	UNIMPL();
+	TRACEEXIT3(return STATUS_SUCCESS);
+
+	ansi.buf = buf;
+	ansi.buflen = sizeof(buf);
+	unicode.buf = path;
+	unicode.len = unicode.buflen = _win_wcslen(path);
+	RtlUnicodeStringToAnsiString(&ansi, &unicode, FALSE);
+	TRACEENTER3("%d, %s", relative, buf);
+	unicode.buf = name;
+	unicode.len = unicode.buflen = _win_wcslen(name);
+	RtlUnicodeStringToAnsiString(&ansi, &unicode, FALSE);
+	DBGTRACE3("name: %s", buf);
 	TRACEEXIT5(return STATUS_SUCCESS);
 }
 
