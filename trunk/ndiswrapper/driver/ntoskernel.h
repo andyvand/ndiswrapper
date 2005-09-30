@@ -174,10 +174,19 @@ typedef task_queue workqueue;
 #endif // LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
 
 #ifndef PMSG_SUSPEND
+#ifdef PM_SUSPEND
+/* this is not correct - the value of PM_SUSPEND is different from
+ * PMSG_SUSPEND, but ndiswrapper doesn't care about the value when
+ * suspending */
+#define PMSG_SUSPEND PM_SUSPEND
+#define PSMG_ON PM_ON
+#else
 typedef struct {
 	int event;
 } pm_message_t;
 #define PMSG_SUSPEND ((pm_message_t) {.event = 3})
+#deinfe PMSG_ON ((pm_message_t) {.event = 0})
+#endif
 #endif
 
 #ifndef PCI_D0
