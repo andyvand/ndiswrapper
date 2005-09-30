@@ -690,6 +690,7 @@ static void set_multicast_list(struct wrapper_dev *wd)
 			ERROR("couldn't set multicast list (%08X)", res);
 		else
 			packet_filter |= NDIS_PACKET_TYPE_MULTICAST;
+		kfree(ndis_mclist);
 	}
 	if (net_dev->mc_count > max_size || (net_dev->flags & IFF_ALLMULTI))
 		packet_filter |= NDIS_PACKET_TYPE_ALL_MULTICAST;
@@ -1083,7 +1084,7 @@ void ndiswrapper_remove_device(struct wrapper_dev *wd)
 {
 	KIRQL irql;
 
-	TRACEENTER1("%s", wd->net_dev->name);
+	DBGTRACE1("%s", wd->net_dev->name);
 
 	set_bit(SHUTDOWN, &wd->wrapper_work);
 
@@ -1119,11 +1120,8 @@ void ndiswrapper_remove_device(struct wrapper_dev *wd)
 	ndiswrapper_procfs_remove_iface(wd);
 	IoDeleteDevice(wd->nmb->fdo);
 	IoDeleteDevice(wd->nmb->pdo);
-	DBGTRACE1("deleted devices");
 	if (wd->xmit_array)
 		kfree(wd->xmit_array);
-	if (wd->multicast_list)
-		kfree(wd->multicast_list);
 	printk(KERN_INFO "%s: device %s removed\n", DRIVER_NAME,
 	       wd->net_dev->name);
 	unregister_netdev(wd->net_dev);
@@ -1907,6 +1905,13 @@ static void _ndiswrapper_wq_init_worker(void *data)
 static void module_cleanup(void)
 {
 	loader_exit();
+#ifdef CONFIG_USB
+	usb_exit();
+#endif
+	ndiswrapper_procfs_remove();
+	ndis_exit();
+	ntoskernel_exit();
+	misc_funcs_exit();
 #ifdef USE_OWN_WORKQUEUE
 	_ndiswrapper_wq_init_state = NDISWRAPPER_WQ_EXIT;
 	schedule_work(&_ndiswrapper_wq_init);
@@ -1916,13 +1921,6 @@ static void module_cleanup(void)
 	}
 	destroy_workqueue(ndiswrapper_wq);
 #endif
-	ndiswrapper_procfs_remove();
-	ndis_exit();
-#ifdef CONFIG_USB
-	usb_exit();
-#endif
-	ntoskernel_exit();
-	misc_funcs_exit();
 }
 
 static int __init wrapper_init(void)
