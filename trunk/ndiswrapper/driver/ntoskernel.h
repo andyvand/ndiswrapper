@@ -400,8 +400,6 @@ extern KSPIN_LOCK cancel_lock;
 
 //#define DEBUG_IRQL 1
 
-enum wrap_timer_type { WRAP_TIMER_KERNEL = 1, WRAP_TIMER_NDIS, };
-
 struct wrap_timer {
 	long repeat;
 	struct nt_list list;
@@ -411,7 +409,6 @@ struct wrap_timer {
 	unsigned long wrap_timer_magic;
 #endif
 	BOOLEAN active;
-	enum wrap_timer_type type;
 };
 
 typedef struct mdl ndis_buffer;
@@ -460,7 +457,6 @@ STDCALL void KeClearEvent(struct kevent *kevent);
 STDCALL void KeInitializeDpc(struct kdpc *kdpc, void *func, void *ctx);
 void initialize_dh(struct dispatch_header *dh, enum event_type type,
 		   int state, enum dh_type dh_type);
-void initialize_kdpc(struct kdpc *kdpc, void *func, void *ctx);
 BOOLEAN insert_kdpc_work(struct kdpc *kdpc);
 BOOLEAN remove_kdpc_work(struct kdpc *kdpc);
 STDCALL BOOLEAN KeInsertQueueDpc(struct kdpc *kdpc, void *arg1, void *arg2);
@@ -578,11 +574,18 @@ STDCALL void RtlCopyUnicodeString
 void *wrap_kmalloc(size_t size);
 void wrap_kfree(void *ptr);
 void wrap_init_timer(struct ktimer *ktimer, void *handle);
-int wrap_set_timer(struct ktimer *ktimer, long expires, unsigned long repeat,
-		   enum wrap_timer_type type);
+int wrap_set_timer(struct ktimer *ktimer, long expires, unsigned long repeat);
 void wrap_cancel_timer(struct wrap_timer *wrap_timer, BOOLEAN *canceled);
 
 STDCALL void KeInitializeTimer(struct ktimer *ktimer);
+STDCALL void KeInitializeTimerEx(struct ktimer *ktimer, enum timer_type type);
+STDCALL BOOLEAN KeSetTimerEx(struct ktimer *ktimer,
+			     LARGE_INTEGER duetime_ticks, LONG period_ms,
+			     struct kdpc *kdpc);
+STDCALL BOOLEAN KeSetTimer(struct ktimer *ktimer, LARGE_INTEGER duetime_ticks,
+			   struct kdpc *kdpc);
+STDCALL BOOLEAN KeCancelTimer(struct ktimer *ktimer);
+STDCALL void KeInitializeDpc(struct kdpc *kdpc, void *func, void *ctx);
 
 unsigned long lin_to_win1(void *func, unsigned long);
 unsigned long lin_to_win2(void *func, unsigned long, unsigned long);

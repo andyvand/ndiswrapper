@@ -227,22 +227,9 @@ void wrap_timer_handler(unsigned long data)
 #endif
 	irql = kspin_lock_irql(&timer_lock, DISPATCH_LEVEL);
 	kdpc = ktimer->kdpc;
-	if (wrap_timer->type == WRAP_TIMER_KERNEL)
-		KeSetEvent((struct kevent *)ktimer, 0, FALSE);
-	/* Prism1 USB driver calls NdisSetTimer with due time as 0,
-	 * which according to DDK is wrong - minimum delay should be
-	 * 10 milliseconds. The driver then sets two timers with 0
-	 * delay and expects them to be executed right
-	 * away. Scheduling timer which schedules kdpc's with a worker
-	 * in this case results in kernel crash. So we check here for
-	 * this case and execute kdpc right away */
-	if (kdpc && kdpc->func) {
-		if (kdpc->type == KDPC_TYPE_KERNEL)
-			insert_kdpc_work(kdpc);
-		else
-			LIN2WIN4(kdpc->func, kdpc, kdpc->ctx,
-				 kdpc->arg1, kdpc->arg2);
-	}
+	KeSetEvent((struct kevent *)ktimer, 0, FALSE);
+	if (kdpc && kdpc->func)
+		insert_kdpc_work(kdpc);
 
 	/* don't add the timer if aperiodic - see
 	 * wrapper_cancel_timer */
@@ -305,8 +292,7 @@ void wrap_init_timer(struct ktimer *ktimer, void *handle)
 
 /* 'expires' is relative to jiffies, so when setting timer, add
  * jiffies to it */
-int wrap_set_timer(struct ktimer *ktimer, long expires, unsigned long repeat,
-		   enum wrap_timer_type type)
+int wrap_set_timer(struct ktimer *ktimer, long expires, unsigned long repeat)
 {
 	KIRQL irql;
 	BOOLEAN ret;
@@ -329,7 +315,6 @@ int wrap_set_timer(struct ktimer *ktimer, long expires, unsigned long repeat,
 	}
 	wrap_timer = ktimer->wrap_timer;
 	irql = kspin_lock_irql(&timer_lock, DISPATCH_LEVEL);
-	wrap_timer->type = type;
 #ifdef DEBUG_TIMER
 	if (wrap_timer->wrap_timer_magic != WRAP_TIMER_MAGIC) {
 		WARNING("timer %p is not initialized (%lu)",

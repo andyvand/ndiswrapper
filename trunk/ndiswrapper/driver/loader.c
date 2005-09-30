@@ -161,7 +161,6 @@ static int ndiswrapper_add_pci_device(struct pci_dev *pdev,
 		res = -ENOMEM;
 		goto out_nodev;
 	}
-	device->wd = wd;
 	DBGTRACE1("");
 	/* first create pdo */
 	drv_obj = find_bus_driver("PCI");
@@ -230,6 +229,8 @@ static int ndiswrapper_add_pci_device(struct pci_dev *pdev,
 		goto out_setup;
 	}
 	atomic_inc(&driver->users);
+	device->wd = wd;
+	wd->ndis_device = device;
 	TRACEEXIT1(return 0);
 
 out_setup:
@@ -261,6 +262,8 @@ static void __devexit ndiswrapper_remove_pci_device(struct pci_dev *pdev)
 		TRACEEXIT1(return);
 
 	atomic_dec(&wd->driver->users);
+	if (wd->ndis_device)
+		wd->ndis_device->wd = NULL;
 	ndiswrapper_remove_device(wd);
 
 	pci_release_regions(pdev);
@@ -310,8 +313,6 @@ static void *ndiswrapper_add_usb_device(struct usb_device *udev,
 		goto out_nodev;
 	}
 
-	device->wd = wd;
-
 	/* first create pdo */
 	drv_obj = find_bus_driver("USB");
 	if (!drv_obj)
@@ -360,6 +361,8 @@ static void *ndiswrapper_add_usb_device(struct usb_device *udev,
 	}
 
 	atomic_inc(&driver->users);
+	device->wd = wd;
+	wd->ndis_device = device;
 
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
 	TRACEEXIT1(return 0);
@@ -368,6 +371,7 @@ static void *ndiswrapper_add_usb_device(struct usb_device *udev,
 #endif
 
 out_setup:
+	device->wd = NULL;
 	ndiswrapper_stop_device(wd);
 out_start:
 	free_netdev(dev);
@@ -399,6 +403,8 @@ ndiswrapper_remove_usb_device(struct usb_interface *intf)
 	wd->intf = NULL;
 	usb_set_intfdata(intf, NULL);
 	atomic_dec(&wd->driver->users);
+	if (wd->ndis_device)
+		wd->ndis_device->wd = NULL;
 	ndiswrapper_remove_device(wd);
 	debug = 0;
 }
@@ -416,6 +422,8 @@ ndiswrapper_remove_usb_device(struct usb_device *udev, void *ptr)
 		miniport_surprise_remove(wd);
 	wd->intf = NULL;
 	atomic_dec(&wd->driver->users);
+	if (wd->ndis_device)
+		wd->ndis_device->wd = NULL;
 	ndiswrapper_remove_device(wd);
 }
 #endif
