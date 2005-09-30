@@ -411,19 +411,6 @@ void initialize_dh(struct dispatch_header *dh, enum event_type type,
 	InitializeListHead(&dh->wait_blocks);
 }
 
-STDCALL void WRAP_EXPORT(KeInitializeTimer)
-	(struct ktimer *ktimer)
-{
-	KIRQL irql;
-
-	TRACEENTER5("%p", ktimer);
-	irql = kspin_lock_irql(&kevent_lock, DISPATCH_LEVEL);
-	initialize_dh(&ktimer->dh, NotificationTimer, 0, DH_KTIMER);
-	ktimer->kdpc = NULL;
-	kspin_unlock_irql(&kevent_lock, irql);
-	wrap_init_timer(ktimer, NULL);
-}
-
 STDCALL void WRAP_EXPORT(KeInitializeTimerEx)
 	(struct ktimer *ktimer, enum timer_type type)
 {
@@ -438,6 +425,13 @@ STDCALL void WRAP_EXPORT(KeInitializeTimerEx)
 	wrap_init_timer(ktimer, NULL);
 }
 
+STDCALL void WRAP_EXPORT(KeInitializeTimer)
+	(struct ktimer *ktimer)
+{
+	TRACEENTER5("%p", ktimer);
+	KeInitializeTimerEx(ktimer, NotificationTimer);
+}
+
 STDCALL BOOLEAN WRAP_EXPORT(KeSetTimerEx)
 	(struct ktimer *ktimer, LARGE_INTEGER duetime_ticks, LONG period_ms,
 	 struct kdpc *kdpc)
@@ -449,26 +443,18 @@ STDCALL BOOLEAN WRAP_EXPORT(KeSetTimerEx)
 		    ktimer, duetime_ticks, period_ms, kdpc);
 
 	expires = SYSTEM_TIME_TO_HZ(duetime_ticks);
+	DBGTRACE6("%Ld, %lu, %ld", duetime_ticks, expires, jiffies);
 	KeClearEvent((struct kevent *)ktimer);
 	repeat = MSEC_TO_HZ(period_ms) ;
 	ktimer->kdpc = kdpc;
-	if (kdpc)
-		kdpc->type = KDPC_TYPE_KERNEL;
-	return wrap_set_timer(ktimer, expires, repeat, WRAP_TIMER_KERNEL);
+	return wrap_set_timer(ktimer, expires, repeat);
 }
 
 STDCALL BOOLEAN WRAP_EXPORT(KeSetTimer)
 	(struct ktimer *ktimer, LARGE_INTEGER duetime_ticks, struct kdpc *kdpc)
 {
-	unsigned long expires;
-
 	TRACEENTER5("%p, %Ld, %p", ktimer, duetime_ticks, kdpc);
-	expires = SYSTEM_TIME_TO_HZ(duetime_ticks);
-	KeClearEvent((struct kevent *)ktimer);
-	ktimer->kdpc = kdpc;
-	if (kdpc)
-		kdpc->type = KDPC_TYPE_KERNEL;
-	return wrap_set_timer(ktimer, expires, 0, WRAP_TIMER_KERNEL);
+	return KeSetTimerEx(ktimer, duetime_ticks, 0, kdpc);
 }
 
 STDCALL BOOLEAN WRAP_EXPORT(KeCancelTimer)
@@ -481,7 +467,8 @@ STDCALL BOOLEAN WRAP_EXPORT(KeCancelTimer)
 	return canceled;
 }
 
-void initialize_kdpc(struct kdpc *kdpc, void *func, void *ctx)
+STDCALL void WRAP_EXPORT(KeInitializeDpc)
+	(struct kdpc *kdpc, void *func, void *ctx)
 {
 	TRACEENTER3("%p, %p, %p", kdpc, func, ctx);
 	memset(kdpc, 0, sizeof(*kdpc));
@@ -489,13 +476,6 @@ void initialize_kdpc(struct kdpc *kdpc, void *func, void *ctx)
 	kdpc->func = func;
 	kdpc->ctx  = ctx;
 	InitializeListHead(&kdpc->list);
-	TRACEEXIT3(return);
-}
-
-STDCALL void WRAP_EXPORT(KeInitializeDpc)
-	(struct kdpc *kdpc, void *func, void *ctx)
-{
-	initialize_kdpc(kdpc, func, ctx);
 }
 
 static void kdpc_worker(void *data)
@@ -759,10 +739,10 @@ STDCALL void *WRAP_EXPORT(ExAllocatePoolWithTag)
 		wrap_tag = WRAP_VMALLOC_TAG;
 	}
 	if (addr) {
-		DBGTRACE4("addr: %p", addr);
 		*(typeof(wrap_tag) *)addr = wrap_tag;
 		addr += sizeof(wrap_tag);
-		DBGTRACE4("addr: %p, tag: %lu", addr, wrap_tag);
+		DBGTRACE4("addr: %p, tag: %lu, size: %lu",
+			  addr, wrap_tag, size);
 	} else
 		WARNING("couldn't allocate memory: %lu", size);
 	TRACEEXIT4(return addr);

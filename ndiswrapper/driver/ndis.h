@@ -598,9 +598,9 @@ struct ndis_miniport_timer {
 	struct kdpc kdpc;
 	/* since kdpc already can store func, ctx, I don't know what
 	 * the following two fields are for */
-	void *timer_func;
-	void *timer_ctx;
-	struct wrapper_dev *wd;
+	DPC func;
+	void *ctx;
+	void *handle;
 	struct ndis_miniport_timer *next;
 };
 
