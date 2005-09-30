@@ -2127,9 +2127,14 @@ STDCALL void WRAP_EXPORT(NdisMSleep)
 	unsigned long delay;
 
 	TRACEENTER4("%p: us: %u", get_current(), us);
-	delay = USEC_TO_HZ(us);
-	set_current_state(TASK_INTERRUPTIBLE);
-	schedule_timeout(delay);
+	if (current_irql() >= DISPATCH_LEVEL) {
+		WARNING("sleep in atomic context!");
+		udelay(us);
+	} else {
+		delay = USEC_TO_HZ(us);
+		set_current_state(TASK_INTERRUPTIBLE);
+		schedule_timeout(delay);
+	}
 	DBGTRACE4("%p: woke up", get_current());
 	TRACEEXIT4(return);
 }

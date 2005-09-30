@@ -71,9 +71,9 @@ void io_worker(void *data);
 
 KSPIN_LOCK irp_cancel_lock;
 
-/* wrap_epoch is when ntoskernel gets initialized */
-static u64 wrap_ticks_to_epoch;
-static typeof(jiffies) wrap_epoch;
+/* compute ticks (100ns) since 1601 until when system booted into
+ * wrap_ticks_to_boot */
+u64 wrap_ticks_to_boot;
 
 extern struct nt_list ndis_drivers;
 extern struct nt_list ndis_work_list;
@@ -103,11 +103,11 @@ int ntoskernel_init(void)
 	INIT_WORK(&kdpc_work, kdpc_worker, NULL);
 	INIT_WORK(&io_work, io_worker, NULL);
 
-	/* compute ticks since 1601 into wrap_ticks_to_epoch */
 	do_gettimeofday(&now);
-	wrap_epoch = jiffies;
-	wrap_ticks_to_epoch = (u64)now.tv_sec * TICKSPERSEC;
-	wrap_ticks_to_epoch += now.tv_usec * 10 + TICKS_1601_TO_1970;
+	wrap_ticks_to_boot = (u64)now.tv_sec * TICKSPERSEC;
+	wrap_ticks_to_boot += now.tv_usec * 10;
+	wrap_ticks_to_boot -= jiffies * TICKSPERSEC / HZ;
+	wrap_ticks_to_boot += TICKS_1601_TO_1970;
 
 	if (add_bus_driver(&pci_bus_driver, "PCI") ||
 	    add_bus_driver(&usb_bus_driver, "USB")) {
@@ -184,14 +184,6 @@ int ntoskernel_init_device(struct wrapper_dev *wd)
 void ntoskernel_exit_device(struct wrapper_dev *wd)
 {
 	return;
-}
-
-u64 ticks_1601(void)
-{
-	u64 ticks;
-	ticks = wrap_ticks_to_epoch +
-		((u64)(jiffies - wrap_epoch) * TICKSPERSEC / HZ);
-	return ticks;
 }
 
 static int add_bus_driver(struct driver_object *drv_obj, const char *name)
@@ -654,6 +646,13 @@ STDCALL KIRQL WRAP_EXPORT(KeAcquireSpinLockRaiseToDpc)
 {
 	TRACEENTER6("%p", lock);
 	return kspin_lock_irql(lock, DISPATCH_LEVEL);
+}
+
+STDCALL void WRAP_EXPORT(KeAcquireSpinLockdAtDpcLevel)
+        (KSPIN_LOCK *lock)
+{
+	TRACEENTER6("%p", lock);
+	kspin_lock(lock);
 }
 
 STDCALL void WRAP_EXPORT(KeReleaseSpinLockFromDpcLevel)
@@ -2049,7 +2048,7 @@ STDCALL NTSTATUS WRAP_EXPORT(WmiQueryTraceInformation)
 STDCALL unsigned int WRAP_EXPORT(IoWMIRegistrationControl)
 	(struct device_object *dev_obj, ULONG action)
 {
-	TRACEENTER2("%d", action);
+	TRACEENTER2("%p, %d", dev_obj, action);
 
 	TRACEEXIT2(return STATUS_SUCCESS);
 }

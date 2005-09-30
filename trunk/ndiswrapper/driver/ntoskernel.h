@@ -347,6 +347,13 @@ do {									\
 #define MSEC_TO_HZ(ms) (((ms) * HZ / 1000) + 1)
 #define USEC_TO_HZ(ms) (((us) * HZ / 1000000) + 1)
 
+extern u64 wrap_ticks_to_boot;
+
+static inline u64 ticks_1601(void)
+{
+	return wrap_ticks_to_boot + (u64)jiffies * TICKSPERSEC / HZ;
+}
+
 typedef void (*WRAP_EXPORT_FUNC)(void);
 
 struct wrap_export {

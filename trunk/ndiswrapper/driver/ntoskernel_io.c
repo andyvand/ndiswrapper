@@ -279,6 +279,7 @@ STDCALL struct irp *WRAP_EXPORT(IoBuildAsynchronousFsdRequest)
 	struct irp *irp;
 	struct io_stack_location *irp_sl;
 
+	IOENTER("%p", dev_obj);
 	irp = IoAllocateIrp(dev_obj->stack_size, FALSE);
 	if (irp == NULL)
 		return NULL;
@@ -811,7 +812,6 @@ void io_worker(void *data)
 			break;
 		io_workitem_entry = container_of(cur, struct io_workitem_entry,
 						 list);
-		kspin_unlock_irql(&io_workitem_list_lock, irql);
 		io_workitem = io_workitem_entry->io_workitem;
 		LIN2WIN2(io_workitem->worker_routine, io_workitem->dev_obj,
 			 io_workitem->context);
@@ -944,7 +944,7 @@ STDCALL NTSTATUS WRAP_EXPORT(IoCreateDevice)
 {
 	struct device_object *dev;
 
-	IOENTER("%p, %u", drv_obj, dev_ext_length);
+	IOENTER("%p, %u, %p", drv_obj, dev_ext_length, dev_name);
 	dev = ALLOCATE_OBJECT(struct device_object, GFP_KERNEL,
 			      OBJECT_TYPE_DEVICE);
 	if (!dev)
@@ -1125,15 +1125,18 @@ STDCALL NTSTATUS WRAP_EXPORT(PoRequestPowerIrp)
 }
 
 STDCALL NTSTATUS WRAP_EXPORT(IoRegisterDeviceInterface)
-	(struct device_object *pdo, void *guid_class,
+	(struct device_object *pdo, struct guid *guid_class,
 	 struct unicode_string *reference, struct unicode_string *link)
 {
+	TRACEENTER1("pdo: %p, ref: %p, link: %p", pdo, reference, link);
+	
 	return STATUS_SUCCESS;
 }
 
 STDCALL NTSTATUS WRAP_EXPORT(IoSetDeviceInterfaceState)
-	(struct unicode_string *unicode, BOOLEAN enable)
+	(struct unicode_string *link, BOOLEAN enable)
 {
+	TRACEENTER1("link: %p, enable: %d", link, enable);
 	return STATUS_SUCCESS;
 }
 

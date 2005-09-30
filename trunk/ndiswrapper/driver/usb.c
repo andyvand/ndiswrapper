@@ -136,7 +136,6 @@ void usb_exit_device(struct wrapper_dev *wd)
 		kfree(wrap_urb);
 	}
 	wd->dev.usb.num_alloc_urbs = 0;
-	IoReleaseCancelSpinLock(irql);
 	return;
 }
 
@@ -241,9 +240,8 @@ void wrap_resume_urbs(struct wrapper_dev *wd)
 	/* TODO: do we need to resubmit urbs? */
 }
 
-static struct urb *wrap_alloc_urb(struct usb_device *udev, struct irp *irp,
-				  unsigned int pipe, void *buf,
-				  unsigned int buf_len)
+static struct urb *wrap_alloc_urb(struct irp *irp, unsigned int pipe,
+				  void *buf, unsigned int buf_len)
 {
 	struct urb *urb;
 	unsigned int alloc_flags;
@@ -303,7 +301,8 @@ static struct urb *wrap_alloc_urb(struct usb_device *udev, struct irp *irp,
 			urb->transfer_buffer = buf;
 		else {
 			urb->transfer_buffer =
-				usb_buffer_alloc(udev, buf_len, alloc_flags,
+				usb_buffer_alloc(irp->wd->dev.usb.udev,
+						 buf_len, alloc_flags,
 						 &urb->transfer_dma);
 			if (!urb->transfer_buffer) {
 				WARNING("couldn't allocate dma buf");
@@ -565,7 +564,7 @@ static USBD_STATUS wrap_bulk_or_intr_trans(struct irp *irp)
 			MmGetMdlVirtualAddress(bulk_int_tx->mdl);
 	}
 
-	urb = wrap_alloc_urb(udev, irp, pipe, bulk_int_tx->transfer_buffer,
+	urb = wrap_alloc_urb(irp, pipe, bulk_int_tx->transfer_buffer,
 			     bulk_int_tx->transfer_buffer_length);
 	if (!urb) {
 		ERROR("couldn't allocate urb");
@@ -677,7 +676,7 @@ static USBD_STATUS wrap_vendor_or_class_req(struct irp *irp)
 		USBTRACE("pipe: %u, dir out", pipe);
 	}
 
-	urb = wrap_alloc_urb(udev, irp, pipe, vc_req->transfer_buffer,
+	urb = wrap_alloc_urb(irp, pipe, vc_req->transfer_buffer,
 			     vc_req->transfer_buffer_length);
 	if (!urb) {
 		ERROR("couldn't allocate urb");

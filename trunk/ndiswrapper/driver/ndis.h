@@ -848,8 +848,6 @@ struct wrapper_dev {
 	int serialized;
 	int use_sg_dma;
 	int map_count;
-	int multicast_list_size;
-	char *multicast_list;
 	dma_addr_t *map_dma_addr;
 
 	int hangcheck_interval;
