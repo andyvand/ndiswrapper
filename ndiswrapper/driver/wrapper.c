@@ -72,7 +72,7 @@ WRAP_MODULE_PARM_INT(debug, 0600);
 MODULE_PARM_DESC(debug, "debug level");
 
 MODULE_PARM_DESC(hangcheck_interval, "The interval, in seconds, for checking"
-		 " if driver is hung. (default: 0)");
+		 " if driver is hung. (default: -1)");
 
 MODULE_AUTHOR("ndiswrapper team <ndiswrapper-general@lists.sourceforge.net>");
 #ifdef MODULE_VERSION
@@ -314,7 +314,7 @@ NDIS_STATUS miniport_init(struct wrapper_dev *wd)
 	/* Wait a little to let card power up otherwise ifup might fail after
 	   boot; USB devices seem to need long delays */
 	set_current_state(TASK_INTERRUPTIBLE);
-	schedule_timeout(HZ / 2);
+	schedule_timeout(HZ);
 
 	TRACEEXIT1(return 0);
 }
@@ -429,6 +429,7 @@ void miniport_halt(struct wrapper_dev *wd)
 
 	DBGTRACE2("task: %p, pid: %d", get_current(), get_current()->pid);
 	LIN2WIN1(miniport->miniport_halt, wd->nmb->adapter_ctx);
+	ndis_exit_device(wd);
 
 	if (kthread)
 		wrap_remove_thread(kthread);
@@ -440,7 +441,6 @@ void miniport_halt(struct wrapper_dev *wd)
 	if (wd->dev.dev_type == NDIS_USB_BUS)
 		usb_exit_device(wd);
 #endif
-	ndis_exit_device(wd);
 	misc_funcs_exit_device(wd);
 	ntoskernel_exit_device(wd);
 
@@ -1467,6 +1467,7 @@ void check_capa(struct wrapper_dev *wd)
 		  i == Ndis802_11Encryption1Enabled))
 		mode = Ndis802_11Encryption1Enabled;
 
+	DBGTRACE1("mode: %d", mode);
 	if (mode == 0)
 		TRACEEXIT1(return);
 	set_bit(Ndis802_11Encryption1Enabled, &wd->capa.encr);
@@ -1478,10 +1479,9 @@ void check_capa(struct wrapper_dev *wd)
 	ndis_key.struct_size = sizeof(ndis_key);
 	res = miniport_set_info(wd, OID_802_11_ADD_KEY, &ndis_key,
 				ndis_key.struct_size);
-
 	DBGTRACE2("add key returns %08X, size = %lu",
 		  res, (unsigned long)sizeof(ndis_key));
-	if (res != NDIS_STATUS_INVALID_DATA)
+	if (res && res != NDIS_STATUS_INVALID_DATA)
 		TRACEEXIT1(return);
 	res = miniport_query_info(wd, OID_802_11_ASSOCIATION_INFORMATION,
 				  &ndis_assoc_info, sizeof(ndis_assoc_info));

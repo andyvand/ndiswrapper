@@ -102,9 +102,6 @@
 #define FASTCALL_ARGS_3(arg1,arg2,arg3) arg1, arg2, arg3
 
 #define KI_USER_SHARED_DATA 0xfffff78000000000
-#define SHARED_INTERRUPT_TIME (((char *)&kuser_shared_data + 0x8))
-#define SHARED_SYSTEM_TIME (((char *)&kuser_shared_data + 0x14))
-#define SHARED_TICK_COUNT (((char *)&kuser_shared_data + 0x320))
 
 #else 
 
@@ -626,6 +623,7 @@ struct wrap_urb {
 	unsigned int alloc_flags;
 	struct urb *urb;
 	struct irp *irp;
+	unsigned int pipe;
 };
 
 struct irp {

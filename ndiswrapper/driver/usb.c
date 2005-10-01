@@ -292,6 +292,7 @@ static struct urb *wrap_alloc_urb(struct irp *irp, unsigned int pipe,
 	urb->context = wrap_urb;
 	wrap_urb->irp = irp;
 	wrap_urb->state = URB_ALLOCATED;
+	wrap_urb->pipe = pipe;
 	irp->wrap_urb = wrap_urb;
 	irp->cancel_routine = wrap_cancel_irp;
 	IoReleaseCancelSpinLock(irp->cancel_irql);
@@ -713,27 +714,75 @@ static USBD_STATUS wrap_vendor_or_class_req(struct irp *irp)
 
 static USBD_STATUS wrap_reset_pipe(struct usb_device *udev, struct irp *irp)
 {
-	unsigned int pipe;
+	unsigned int pipe1, pipe2;
 	int ret;
 	union nt_urb *nt_urb;
 	usbd_pipe_handle pipe_handle;
+	enum pipe_type pipe_type;
 
-	USBTRACE("irp = %p", irp);
+	INFO("irp = %p", irp);
 	nt_urb = URB_FROM_IRP(irp);
 	pipe_handle = nt_urb->pipe_req.pipe_handle;
+	pipe_type = pipe_handle->bmAttributes & USB_ENDPOINT_XFERTYPE_MASK;
 	/* TODO: not clear if both directions should be cleared? */
-	pipe = usb_rcvctrlpipe(udev, pipe_handle->bEndpointAddress);
-	ret = usb_clear_halt(udev, pipe);
-	if (!ret) {
-		pipe = usb_sndctrlpipe(udev, pipe_handle->bEndpointAddress);
-		ret = usb_clear_halt(udev, pipe);
+	if (pipe_type == USB_ENDPOINT_XFER_BULK) {
+		pipe1 = usb_rcvbulkpipe(udev, pipe_handle->bEndpointAddress);
+		pipe2 = usb_sndbulkpipe(udev, pipe_handle->bEndpointAddress);
+	} else if (pipe_type == USB_ENDPOINT_XFER_INT) {
+		pipe1 = usb_rcvintpipe(udev, pipe_handle->bEndpointAddress);
+		pipe2 = usb_sndintpipe(udev, pipe_handle->bEndpointAddress);
+	} else if (pipe_type == USB_ENDPOINT_XFER_CONTROL) {
+		pipe1 = usb_rcvctrlpipe(udev, pipe_handle->bEndpointAddress);
+		pipe2 = usb_sndctrlpipe(udev, pipe_handle->bEndpointAddress);
+	} else {
+		WARNING("pipe type %d not handled", pipe_type);
+		return USBD_STATUS_SUCCESS;
 	}
+	ret = usb_clear_halt(udev, pipe1);
+	if (ret)
+		WARNING("resetting pipe %d failed", pipe_type);
+	ret = usb_clear_halt(udev, pipe2);
+	if (ret)
+		WARNING("resetting pipe %d failed", pipe_type);
 	return wrap_urb_status(ret);
 }
 
 static USBD_STATUS wrap_abort_pipe(struct usb_device *udev, struct irp *irp)
 {
-	USBTRACE("irp = %p", irp);
+	union nt_urb *nt_urb;
+	usbd_pipe_handle pipe_handle;
+	unsigned long flags;
+	struct urb *urb;
+	struct wrap_urb *wrap_urb;
+	struct wrapper_dev *wd;
+
+	INFO("irp = %p", irp);
+	wd = irp->wd;
+	nt_urb = URB_FROM_IRP(irp);
+	pipe_handle = nt_urb->pipe_req.pipe_handle;
+
+	nt_urb = URB_FROM_IRP(irp);
+	while (1) {
+		kspin_lock_irqsave(&irp_cancel_lock, flags);
+		urb = NULL;
+		nt_list_for_each_entry(wrap_urb, &wd->dev.usb.wrap_urb_list,
+				       list) {
+			if (wrap_urb->state == URB_SUBMITTED &&
+			    (usb_pipeendpoint(wrap_urb->pipe) ==
+			     pipe_handle->bEndpointAddress)) {
+				wrap_urb->state = URB_CANCELED;
+				urb = wrap_urb->urb;
+				break;
+			}
+		}
+		kspin_unlock_irqrestore(&irp_cancel_lock, flags);
+		if (urb) {
+			wrap_cancel_urb(urb);
+			INFO("canceled urb: %p", urb);
+		} else
+			break;
+	}
+
 	/* TODO: not clear if both directions should be cleared? */
 	return USBD_STATUS_SUCCESS;
 }
@@ -863,7 +912,7 @@ static USBD_STATUS wrap_get_descriptor(struct wrapper_dev *wd,
 					 ctrl_req->transfer_buffer_length);
 	}
 	if (ret < 0) {
-		WARNING("failed with %d", ret);
+		WARNING("request %d failed with %d", ctrl_req->desc_type, ret);
 		ctrl_req->transfer_buffer_length = 0;
 		return USBD_STATUS_REQUEST_FAILED;
 	} else {
@@ -963,19 +1012,16 @@ static USBD_STATUS wrap_get_port_status(struct irp *irp)
 	wd = irp->wd;
 	USBENTER("%p, %p", wd, wd->dev.usb.udev);
 	status = IoGetCurrentIrpStackLocation(irp)->params.others.arg1;
-	/* TODO: I think we need to get status of endpoint, but it is
-	 * not clear which endpoint. For now we just get status of
-	 * device */
-	ret = 0;
+	/* TODO: USB_RECIP_DEVICE doesn't indicate if device is
+	 * connected or not, but if it is not, the request should
+	 * fail; not sure if this is correct way */
 	data = 0;
-#if 0
 	ret = usb_get_status(wd->dev.usb.udev, USB_RECIP_DEVICE, 0, &data);
 	if (ret < 0)
 		*status = 0;
 	else
-#endif
 		*status = USBD_PORT_ENABLED | USBD_PORT_CONNECTED;
-	irp->io_status.status_info = 0;
+//	irp->io_status.status_info = 0;
 	return USBD_STATUS_SUCCESS;
 }
 
