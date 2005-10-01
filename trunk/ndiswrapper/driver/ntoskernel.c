@@ -148,7 +148,7 @@ int ntoskernel_init_device(struct wrapper_dev *wd)
 #if defined(CONFIG_X86_64)
 	if(wd->ndis_device->vendor == 0x17fe &&
 	   wd->ndis_device->device == 0x2220) {
-		*((ULONG64 *)SHARED_SYSTEM_TIME) = ticks_1601();
+		*((ULONG64 *)&kuser_shared_data.system_time) = ticks_1601();
 		shared_data_timer.data = (unsigned long)0;
 		/* don't use add_timer - to avoid creating more than
 		 * one timer */
@@ -265,11 +265,12 @@ static void update_user_shared_data_proc(unsigned long data)
 
 	/* timer is scheduled every 10ms and the system timer is in
 	 * 100ns */
-	*((ULONG64 *)SHARED_SYSTEM_TIME) = ticks_1601();
-	*((ULONG64 *)SHARED_INTERRUPT_TIME) = jiffies * TICKSPERSEC / HZ;
-	*((ULONG64 *)SHARED_TICK_COUNT) = jiffies;
+	*((ULONG64 *)&kuser_shared_data.system_time) = ticks_1601();
+	*((ULONG64 *)&kuser_shared_data.interrupt_time) =
+		jiffies * TICKSPERSEC / HZ;
+	*((ULONG64 *)&kuser_shared_data.tick) = jiffies;
 
-	shared_data_timer.expires += 10 * HZ / 1000;
+	sharedp_data_timer.expires += 10 * HZ / 1000;
 	add_timer(&shared_data_timer);
 }
 #endif
@@ -521,9 +522,12 @@ static void timer_proc(unsigned long data)
 
 	wrap_timer = ktimer->wrap_timer;
 	TRACEENTER5("%p: %p", wrap_timer, ktimer);
+	if (wrap_timer == NULL) {
+		WARNING("wrong timer: %p", ktimer);
+		return;
+	}
 
 #ifdef DEBUG_TIMER
-	BUG_ON(wrap_timer == NULL);
 	BUG_ON(wrap_timer->wrap_timer_magic != WRAP_TIMER_MAGIC);
 	BUG_ON(ktimer->wrap_timer_magic != WRAP_TIMER_MAGIC);
 #endif
@@ -621,7 +625,10 @@ STDCALL BOOLEAN WRAP_EXPORT(KeSetTimerEx)
 		    ktimer, duetime_ticks, period_ms, kdpc);
 
 	expires = SYSTEM_TIME_TO_HZ(duetime_ticks);
-	assert(expires >= 0);
+	if (expires < 0) {
+		WARNING("expires: %ld", expires);
+		expires = 0;
+	}
 	DBGTRACE6("%Ld, %lu, %ld", duetime_ticks, expires, jiffies);
 	KeClearEvent((struct kevent *)ktimer);
 	repeat = MSEC_TO_HZ(period_ms);
@@ -1735,7 +1742,7 @@ void wrap_remove_thread(struct kthread *kthread)
 	struct nt_list *ent;
 
 	if (kthread) {
-		DBGTRACE2("terminating thread: %p, task: %p, pid: %d",
+		DBGTRACE1("terminating thread: %p, task: %p, pid: %d",
 			  kthread, kthread->task, kthread->task->pid);
 		/* TODO: make sure waitqueue is empty and destroy it */
 		irql = kspin_lock_irql(&kthread->lock, DISPATCH_LEVEL);

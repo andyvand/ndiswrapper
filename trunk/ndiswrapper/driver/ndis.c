@@ -1536,12 +1536,13 @@ static void ndis_irq_bh(void *data)
 {
 	struct ndis_irq *ndis_irq = (struct ndis_irq *)data;
 	struct wrapper_dev *wd = ndis_irq->wd;
-	struct miniport_char *miniport = &wd->driver->miniport;
+	struct miniport_char *miniport;
 	KIRQL irql;
 
 	/* Dpcs run at DISPATCH_LEVEL */
 	irql = raise_irql(DISPATCH_LEVEL);
 	if (ndis_irq->enabled) {
+		miniport = &wd->driver->miniport;
 		LIN2WIN1(miniport->handle_interrupt,
 			 wd->nmb->adapter_ctx);
 		if (miniport->enable_interrupts)
@@ -1631,6 +1632,7 @@ STDCALL void WRAP_EXPORT(NdisMDeregisterInterrupt)
 		TRACEEXIT1(return);
 
 	ndis_irq->enabled = 0;
+	ndis_irq->wd = NULL;
 	/* flush irq_bh workqueue; calling it before enabled=0 will
 	 * crash since some drivers (Centrino at least) don't expect
 	 * irq hander to be called anymore */
@@ -1644,7 +1646,6 @@ STDCALL void WRAP_EXPORT(NdisMDeregisterInterrupt)
 	schedule_timeout(HZ/10);
 #endif
 	free_irq(ndis_irq->irq.irq, ndis_irq);
-	ndis_irq->wd = NULL;
 	wd->ndis_irq = NULL;
 	TRACEEXIT1(return);
 }
