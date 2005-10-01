@@ -31,6 +31,7 @@
 #include "wrapper.h"
 
 #define MAX_ALLOCATED_NDIS_PACKETS 20
+#define MAX_ALLOCATED_NDIS_BUFFERS 40
 
 extern struct nt_list ndis_drivers;
 extern KSPIN_LOCK ntoskernel_lock;
@@ -1041,14 +1042,18 @@ STDCALL void WRAP_EXPORT(NdisAllocateBuffer)
 		MmBuildMdlForNonPagedPool(descr);
 		if (flags & MDL_CACHE_ALLOCATED)
 			descr->flags = MDL_CACHE_ALLOCATED;
-	} else
+	} else {
+		kspin_unlock_irql(&pool->lock, irql);
 		descr = allocate_init_mdl(virt, length);
+		irql = kspin_lock_irql(&pool->lock, DISPATCH_LEVEL);
+		if (descr)
+			pool->num_allocated_descr++;
+	}
 
 	if (descr) {
 		/* NdisFreeBuffer doesn't pass pool, so we store pool
 		 * in unused field 'process' */
 		descr->process = pool;
-		pool->num_allocated_descr++;
 		*status = NDIS_STATUS_SUCCESS;
 		DBGTRACE3("allocated buffer %p for %p, %d",
 			  descr, virt, length);
@@ -1073,9 +1078,13 @@ STDCALL void WRAP_EXPORT(NdisFreeBuffer)
 		TRACEEXIT3(return);
 	}
 	irql = kspin_lock_irql(&pool->lock, DISPATCH_LEVEL);
-	descr->next = pool->free_descr;
-	pool->free_descr = descr;
-	pool->num_allocated_descr--;
+	if (pool->num_allocated_descr > MAX_ALLOCATED_NDIS_BUFFERS) {
+		pool->num_allocated_descr--;
+		kfree(descr);
+	} else {
+		descr->next = pool->free_descr;
+		pool->free_descr = descr;
+	}
 	kspin_unlock_irql(&pool->lock, irql);
 	TRACEEXIT3(return);
 }
@@ -1261,8 +1270,8 @@ STDCALL void WRAP_EXPORT(NdisAllocatePacket)
 			ndis_packet->wrap_ndis_packet;
 		pool->free_descr = wrap_ndis_packet->next;
 	}
-	kspin_unlock_irql(&pool->lock, irql);
 	if (!ndis_packet) {
+		kspin_unlock_irql(&pool->lock, irql);
 		if (current_irql() < DISPATCH_LEVEL)
 			alloc_flags = GFP_KERNEL;
 		else
@@ -1277,6 +1286,8 @@ STDCALL void WRAP_EXPORT(NdisAllocatePacket)
 			(void *)ndis_packet + packet_length -
 			sizeof(struct wrap_ndis_packet);
 		DBGTRACE4("allocated packet: %p", ndis_packet);
+		irql = kspin_lock_irql(&pool->lock, DISPATCH_LEVEL);
+		pool->num_allocated_descr++;
 	}
 	memset(ndis_packet, 0, packet_length);
 	ndis_packet->wrap_ndis_packet = wrap_ndis_packet;
@@ -1285,11 +1296,9 @@ STDCALL void WRAP_EXPORT(NdisAllocatePacket)
 		(void *)ndis_packet;
 	wrap_ndis_packet->next = NULL;
 	ndis_packet->private.packet_flags = fPACKET_ALLOCATED_BY_NDIS;
-
-	irql = kspin_lock_irql(&pool->lock, DISPATCH_LEVEL);
-	pool->num_allocated_descr++;
-	kspin_unlock_irql(&pool->lock, irql);
 	ndis_packet->private.pool = pool;
+	kspin_unlock_irql(&pool->lock, irql);
+
 	*status = NDIS_STATUS_SUCCESS;
 	*packet = ndis_packet;
 	DBGTRACE3("packet: %p, pool: %p", ndis_packet, pool);
@@ -1317,16 +1326,15 @@ STDCALL void WRAP_EXPORT(NdisFreePacket)
 	}
 		
 	irql = kspin_lock_irql(&pool->lock, DISPATCH_LEVEL);
-	pool->num_allocated_descr--;
 	if (pool->num_allocated_descr > MAX_ALLOCATED_NDIS_PACKETS) {
 		kfree(descr);
-		kspin_unlock_irql(&pool->lock, irql);
-		TRACEEXIT3(return);
+		pool->num_allocated_descr--;
+	} else {
+		descr->private.buffer_head = NULL;
+		descr->private.valid_counts = FALSE;
+		descr->wrap_ndis_packet->next = pool->free_descr;
+		pool->free_descr = descr;
 	}
-	descr->private.buffer_head = NULL;
-	descr->private.valid_counts = FALSE;
-	descr->wrap_ndis_packet->next = pool->free_descr;
-	pool->free_descr = descr;
 	kspin_unlock_irql(&pool->lock, irql);
 	TRACEEXIT3(return);
 }

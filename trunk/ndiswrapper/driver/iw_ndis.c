@@ -1708,6 +1708,10 @@ static int iw_set_pmksa(struct net_device *dev,
 	 * one is added. */
 
 	TRACEENTER2("");
+
+	if (wd->auth_mode != Ndis802_11AuthModeWPA2)
+		return -EOPNOTSUPP;
+
 	memset(&pmkid, 0, sizeof(pmkid));
 	if (pmksa->cmd == IW_PMKSA_ADD) {
 		pmkid.bssid_info_count = 1;
