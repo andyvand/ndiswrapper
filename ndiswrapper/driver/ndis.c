@@ -1405,7 +1405,6 @@ STDCALL void WRAP_EXPORT(NdisMInitializeTimer)
 	timer->nmb = nmb;
 	KeInitializeDpc(&timer->kdpc, func, ctx);
 	wrap_init_timer(&timer->ktimer, NotificationTimer, nmb->wd);
-	timer->ktimer.kdpc = &timer->kdpc;
 	TRACEEXIT4(return);
 }
 
@@ -1433,25 +1432,16 @@ STDCALL void WRAP_EXPORT(NdisInitializeTimer)
 	TRACEENTER4("%p, %p, %p, %p", timer, func, ctx, &timer->ktimer);
 	KeInitializeDpc(&timer->kdpc, func, ctx);
 	KeInitializeTimer(&timer->ktimer);
-	timer->ktimer.kdpc = &timer->kdpc;
 	TRACEEXIT4(return);
 }
 
 STDCALL void WRAP_EXPORT(NdisSetTimer)
 	(struct ndis_timer *timer, UINT duetime_ms)
 {
+	long expires = ((long)duetime_ms) * -10000;
+
 	DBGTRACE4("%p, %u", timer, duetime_ms);
-	/* some drivers (e.g., Prism1 USB) call with duetime_ms == 0
-	 * and in that case, if we schedule DPC to be called later,
-	 * the drivers crash - they seem to expect that the DPC be
-	 * called right away, so we deal with this case here */
-	if (duetime_ms == 0) {
-		struct kdpc *kdpc = &timer->kdpc;
-		LIN2WIN4(kdpc->func, kdpc, kdpc->ctx, kdpc->arg1, kdpc->arg2);
-	} else {
-		long expires = ((long)duetime_ms) * -10000;
-		KeSetTimerEx(&timer->ktimer, expires, 0, &timer->kdpc);
-	}
+	KeSetTimerEx(&timer->ktimer, expires, 0, &timer->kdpc);
 	TRACEEXIT4(return);
 }
 

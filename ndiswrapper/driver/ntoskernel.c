@@ -270,7 +270,7 @@ static void update_user_shared_data_proc(unsigned long data)
 		jiffies * TICKSPERSEC / HZ;
 	*((ULONG64 *)&kuser_shared_data.tick) = jiffies;
 
-	sharedp_data_timer.expires += 10 * HZ / 1000;
+	shared_data_timer.expires += 10 * HZ / 1000;
 	add_timer(&shared_data_timer);
 }
 #endif
@@ -534,8 +534,12 @@ static void timer_proc(unsigned long data)
 	irql = kspin_lock_irql(&timer_lock, DISPATCH_LEVEL);
 	kdpc = ktimer->kdpc;
 	KeSetEvent((struct kevent *)ktimer, 0, FALSE);
+	/* some drivers (e.g., Prism1 USB) call with expires == 0
+	 * and in that case, if we schedule DPC to be called later,
+	 * the drivers crash - they seem to expect that the DPC be
+	 * called right away */
 	if (kdpc && kdpc->func)
-		insert_kdpc_work(kdpc);
+		LIN2WIN4(kdpc->func, kdpc, kdpc->ctx, kdpc->arg1, kdpc->arg2);
 
 	/* don't add the timer if aperiodic - see
 	 * wrapper_cancel_timer */
