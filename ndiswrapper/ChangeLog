@@ -15,6 +15,12 @@ Version 1.4 2005-XX-XX
   locking up keyboard etc. in case of kernel crash.
 * Support for new kernels added.
 * Many bug fixes.
+* Added support for Inprocomm IPN2220 with 64-bit.
+* Added support for RNDIS USB devices (tested with U.S. Robotics
+  USR5420).
+* Issue with unloading module with some drirvers (e.g., sis and
+  Inprocomm ipn2220) fixed.
+* Issue with WPA with sis162u, sis163u and ZyDas zd1211 fixed.
 
 Version 1.2 2005-06-10
 ======================
