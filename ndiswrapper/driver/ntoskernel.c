@@ -1010,7 +1010,7 @@ STDCALL void WRAP_EXPORT(ExFreePool)
 		schedule_work(&ndis_work);
 		return;
 	} else {
-		ERROR("wrong tag: %lu", wrap_tag);
+		ERROR("wrong tag: %lu (%p)", wrap_tag, addr);
 		/* releasing memory here is dangerous, but it will
 		 * catch errors and prevent leaks */
 		kfree(addr);
@@ -1026,10 +1026,9 @@ STDCALL void WRAP_EXPORT(ExInitializeNPagedLookasideList)
 	 LOOKASIDE_ALLOC_FUNC *alloc_func, LOOKASIDE_FREE_FUNC *free_func,
 	 ULONG flags, SIZE_T size, ULONG tag, USHORT depth)
 {
-	TRACEENTER3("lookaside: %p, size: %lu, flags: %u,"
-		    " head: %p, alloc: %p, free: %p",
-		    lookaside, size, flags, lookaside->head.list.next,
-		    alloc_func, free_func);
+	TRACEENTER3("lookaside: %p, size: %lu, flags: %u, head: %p, "
+		    "alloc: %p, free: %p", lookaside, size, flags,
+		    lookaside->head.list.next, alloc_func, free_func);
 
 	memset(lookaside, 0, sizeof(*lookaside));
 
@@ -1903,7 +1902,14 @@ struct mdl *allocate_init_mdl(void *virt, ULONG length)
 	KIRQL irql;
 
 	if (mdl_size <= CACHE_MDL_SIZE) {
-		wrap_mdl = kmem_cache_alloc(mdl_cache, GFP_ATOMIC);
+		unsigned int alloc_flags;
+
+		if (current_irql() < DISPATCH_LEVEL)
+			alloc_flags = GFP_KERNEL;
+		else
+			alloc_flags = GFP_ATOMIC;
+		
+		wrap_mdl = kmem_cache_alloc(mdl_cache, alloc_flags);
 		if (!wrap_mdl)
 			return NULL;
 		irql = kspin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL);
