@@ -722,6 +722,7 @@ static USBD_STATUS wrap_reset_pipe(struct usb_device *udev, struct irp *irp)
 
 	INFO("irp = %p", irp);
 	nt_urb = URB_FROM_IRP(irp);
+
 	pipe_handle = nt_urb->pipe_req.pipe_handle;
 	pipe_type = pipe_handle->bmAttributes & USB_ENDPOINT_XFERTYPE_MASK;
 	/* TODO: not clear if both directions should be cleared? */
@@ -740,11 +741,11 @@ static USBD_STATUS wrap_reset_pipe(struct usb_device *udev, struct irp *irp)
 	}
 	ret = usb_clear_halt(udev, pipe1);
 	if (ret)
-		WARNING("resetting pipe %d failed", pipe_type);
+		WARNING("resetting pipe %d failed: %d", pipe_type, ret);
 	ret = usb_clear_halt(udev, pipe2);
 	if (ret)
-		WARNING("resetting pipe %d failed", pipe_type);
-	return wrap_urb_status(ret);
+		WARNING("resetting pipe %d failed: %d", pipe_type, ret);
+	return USBD_STATUS_SUCCESS;
 }
 
 static USBD_STATUS wrap_abort_pipe(struct usb_device *udev, struct irp *irp)
@@ -783,7 +784,6 @@ static USBD_STATUS wrap_abort_pipe(struct usb_device *udev, struct irp *irp)
 			break;
 	}
 
-	/* TODO: not clear if both directions should be cleared? */
 	return USBD_STATUS_SUCCESS;
 }
 
