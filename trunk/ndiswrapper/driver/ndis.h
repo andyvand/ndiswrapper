@@ -344,8 +344,6 @@ struct ndis_alloc_mem_work_item {
 
 struct ndis_free_mem_work_item {
 	void *addr;
-	UINT length_tag;
-	UINT flags;
 };
 
 enum ndis_work_entry_type {
@@ -600,7 +598,7 @@ struct ndis_miniport_timer {
 	 * the following two fields are for */
 	DPC func;
 	void *ctx;
-	void *handle;
+	void *nmb;
 	struct ndis_miniport_timer *next;
 };
 
