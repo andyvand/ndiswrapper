@@ -1320,6 +1320,7 @@ STDCALL void WRAP_EXPORT(NdisFreePacket)
 	pool->num_allocated_descr--;
 	if (pool->num_allocated_descr > MAX_ALLOCATED_NDIS_PACKETS) {
 		kfree(descr);
+		kspin_unlock_irql(&pool->lock, irql);
 		TRACEEXIT3(return);
 	}
 	descr->private.buffer_head = NULL;
@@ -1386,23 +1387,25 @@ STDCALL void WRAP_EXPORT(NdisSend)
 }
 
 STDCALL void WRAP_EXPORT(NdisMInitializeTimer)
-	(struct ndis_miniport_timer *timer, void *handle,
+	(struct ndis_miniport_timer *timer, struct ndis_miniport_block *nmb,
 	 void *func, void *ctx)
 {
-	TRACEENTER4("timer: %p, func: %p, ctx: %p",
-		    &timer->ktimer, func, ctx);
+	TRACEENTER4("timer: %p, func: %p, ctx: %p, nmb: %p",
+		    &timer->ktimer, func, ctx, nmb);
 	timer->func = func;
 	timer->ctx = ctx;
-	timer->handle = handle;
+	timer->nmb = nmb;
 	KeInitializeDpc(&timer->kdpc, func, ctx);
-	KeInitializeTimer(&timer->ktimer);
+	wrap_init_timer(&timer->ktimer, NotificationTimer, nmb->wd);
+	timer->ktimer.kdpc = &timer->kdpc;
 	TRACEEXIT4(return);
 }
 
 STDCALL void WRAP_EXPORT(NdisMSetPeriodicTimer)
 	(struct ndis_miniport_timer *timer, UINT period_ms)
 {
-	long expires = period_ms * -10000;
+	long expires = ((long)period_ms) * -10000;
+
 	DBGTRACE4("%p, %u, %ld", timer, period_ms, expires);
 	KeSetTimerEx(&timer->ktimer, expires, period_ms, &timer->kdpc);
 	TRACEEXIT4(return);
@@ -1429,10 +1432,18 @@ STDCALL void WRAP_EXPORT(NdisInitializeTimer)
 STDCALL void WRAP_EXPORT(NdisSetTimer)
 	(struct ndis_timer *timer, UINT duetime_ms)
 {
-	long expires = duetime_ms * -10000;
-
-	DBGTRACE4("%p, %u, %ld", timer, duetime_ms, expires);
-	KeSetTimer(&timer->ktimer, expires, &timer->kdpc);
+	DBGTRACE4("%p, %u", timer, duetime_ms);
+	/* some drivers (e.g., Prism1 USB) call with duetime_ms == 0
+	 * and in that case, if we schedule DPC to be called later,
+	 * the drivers crash - they seem to expect that the DPC be
+	 * called right away, so we deal with this case here */
+	if (duetime_ms == 0) {
+		struct kdpc *kdpc = &timer->kdpc;
+		LIN2WIN4(kdpc->func, kdpc, kdpc->ctx, kdpc->arg1, kdpc->arg2);
+	} else {
+		long expires = ((long)duetime_ms) * -10000;
+		KeSetTimerEx(&timer->ktimer, expires, 0, &timer->kdpc);
+	}
 	TRACEEXIT4(return);
 }
 
@@ -2111,14 +2122,9 @@ STDCALL void WRAP_EXPORT(NdisMSleep)
 	unsigned long delay;
 
 	TRACEENTER4("%p: us: %u", get_current(), us);
-	if (current_irql() >= DISPATCH_LEVEL) {
-		WARNING("sleep in atomic context!");
-		udelay(us);
-	} else {
-		delay = USEC_TO_HZ(us);
-		set_current_state(TASK_INTERRUPTIBLE);
-		schedule_timeout(delay);
-	}
+	delay = USEC_TO_HZ(us);
+	set_current_state(TASK_INTERRUPTIBLE);
+	schedule_timeout(delay);
 	DBGTRACE4("%p: woke up", get_current());
 	TRACEEXIT4(return);
 }
@@ -2328,9 +2334,7 @@ static void ndis_worker(void *data)
 
 		case NDIS_FREE_MEM_WORK_ITEM:
 			free_mem = &ndis_work_entry->entry.free_mem_work_item;
-			DBGTRACE3("freeing memory of size %d, flags %d at %p",
-				  free_mem->length_tag, free_mem->flags,
-				  free_mem->addr);
+			DBGTRACE3("freeing memory at %p", free_mem->addr);
 			if (free_mem->addr)
 				vfree(free_mem->addr);
 			break;

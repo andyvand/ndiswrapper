@@ -1274,10 +1274,8 @@ static void update_wireless_stats(struct wrapper_dev *wd)
 	ndis_rssi rssi;
 
 	TRACEENTER2("");
-	if (wd->stats_enabled == FALSE) {
-		memset(iw_stats, 0, sizeof(*iw_stats));
+	if (wd->stats_enabled == FALSE || wd->link_status == 0)
 		TRACEEXIT2(return);
-	}
 	rssi = 0;
 	res = miniport_query_info(wd, OID_802_11_RSSI, &rssi, sizeof(rssi));
 	if (res == NDIS_STATUS_SUCCESS)

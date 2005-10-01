@@ -332,7 +332,7 @@ do {									\
 #define KMALLOC_THRESHOLD 131072
 
 /* TICK is 100ns */
-#define TICKSPERSEC		10000000ULL
+#define TICKSPERSEC		10000000LL
 #define TICKSPERMSEC		10000
 #define SECSPERDAY		86400
 #define SECSPERHOUR		3600
@@ -345,16 +345,12 @@ do {									\
 
 /* 100ns units to HZ; if sys_time is negative, relative to current
  * clock, otherwise from year 1601 */
-/* with smaller HZ, each timer interrupt occurs at longer intervals,
- * so wait for one timer interrupt longer, else the driver may not
- * expect to be woken up quickly */
 #define SYSTEM_TIME_TO_HZ(sys_time)					\
-	((((sys_time) < 0) ? (((u64)HZ * (-(sys_time))) / TICKSPERSEC) : \
-	  (((u64)HZ * ((sys_time) - ticks_1601())) / TICKSPERSEC)) + 1)
+	((((sys_time) <= 0) ? (((u64)HZ * (-(sys_time))) / TICKSPERSEC) : \
+	  (((u64)HZ * ((sys_time) - ticks_1601())) / TICKSPERSEC)))
 
-/* for expiration timers only, add 1 for the same reason as above */
-#define MSEC_TO_HZ(ms) (((ms) * HZ / 1000) + 1)
-#define USEC_TO_HZ(ms) (((us) * HZ / 1000000) + 1)
+#define MSEC_TO_HZ(ms) ((ms) * HZ / 1000)
+#define USEC_TO_HZ(ms) ((us) * HZ / 1000000)
 
 extern u64 wrap_ticks_to_boot;
 
@@ -417,7 +413,6 @@ struct wrap_timer {
 #ifdef DEBUG_TIMER
 	unsigned long wrap_timer_magic;
 #endif
-	BOOLEAN active;
 };
 
 typedef struct mdl ndis_buffer;
@@ -464,10 +459,6 @@ STDCALL LONG KeSetEvent(struct kevent *kevent, KPRIORITY incr, BOOLEAN wait);
 STDCALL LONG KeResetEvent(struct kevent *kevent);
 STDCALL void KeClearEvent(struct kevent *kevent);
 STDCALL void KeInitializeDpc(struct kdpc *kdpc, void *func, void *ctx);
-void initialize_dh(struct dispatch_header *dh, enum event_type type,
-		   int state, enum dh_type dh_type);
-BOOLEAN insert_kdpc_work(struct kdpc *kdpc);
-BOOLEAN remove_kdpc_work(struct kdpc *kdpc);
 STDCALL BOOLEAN KeInsertQueueDpc(struct kdpc *kdpc, void *arg1, void *arg2);
 STDCALL BOOLEAN KeRemoveQueueDpc(struct kdpc *kdpc);
 STDCALL void KeFlushQueuedDpcs(void);
@@ -582,9 +573,8 @@ STDCALL void RtlCopyUnicodeString
 
 void *wrap_kmalloc(size_t size);
 void wrap_kfree(void *ptr);
-void wrap_init_timer(struct ktimer *ktimer, void *handle);
-int wrap_set_timer(struct ktimer *ktimer, long expires, unsigned long repeat);
-void wrap_cancel_timer(struct wrap_timer *wrap_timer, BOOLEAN *canceled);
+void wrap_init_timer(struct ktimer *ktimer, enum timer_type type,
+		     struct wrapper_dev *wd);
 
 STDCALL void KeInitializeTimer(struct ktimer *ktimer);
 STDCALL void KeInitializeTimerEx(struct ktimer *ktimer, enum timer_type type);
