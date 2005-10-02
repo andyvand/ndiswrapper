@@ -185,7 +185,7 @@ typedef struct {
 	int event;
 } pm_message_t;
 #define PMSG_SUSPEND ((pm_message_t) {.event = 3})
-#deinfe PMSG_ON ((pm_message_t) {.event = 0})
+#define PMSG_ON ((pm_message_t) {.event = 0})
 #endif
 #endif
 
