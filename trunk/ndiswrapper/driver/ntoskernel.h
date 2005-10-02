@@ -575,6 +575,8 @@ void *wrap_kmalloc(size_t size);
 void wrap_kfree(void *ptr);
 void wrap_init_timer(struct ktimer *ktimer, enum timer_type type,
 		     struct wrapper_dev *wd);
+BOOLEAN wrap_set_timer(struct ktimer *ktimer, unsigned long expires_hz,
+		       unsigned long repeat_hz, struct kdpc *kdpc);
 
 STDCALL void KeInitializeTimer(struct ktimer *ktimer);
 STDCALL void KeInitializeTimerEx(struct ktimer *ktimer, enum timer_type type);
