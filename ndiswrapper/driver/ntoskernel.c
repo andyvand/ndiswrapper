@@ -521,7 +521,7 @@ static void timer_proc(unsigned long data)
 	KIRQL irql;
 
 	wrap_timer = ktimer->wrap_timer;
-	TRACEENTER5("%p: %p", wrap_timer, ktimer);
+	TRACEENTER5("%p(%p), %lu", wrap_timer, ktimer, jiffies);
 	if (wrap_timer == NULL) {
 		WARNING("wrong timer: %p", ktimer);
 		return;
@@ -538,8 +538,10 @@ static void timer_proc(unsigned long data)
 	 * and in that case, if we schedule DPC to be called later,
 	 * the drivers crash - they seem to expect that the DPC be
 	 * called right away */
-	if (kdpc && kdpc->func)
+	if (kdpc && kdpc->func) {
+		DBGTRACE5("calling kdpc %p (%p)", kdpc, kdpc->func);
 		LIN2WIN4(kdpc->func, kdpc, kdpc->ctx, kdpc->arg1, kdpc->arg2);
+	}
 
 	/* don't add the timer if aperiodic - see
 	 * wrapper_cancel_timer */
@@ -623,8 +625,8 @@ BOOLEAN wrap_set_timer(struct ktimer *ktimer, unsigned long expires_hz,
 	KIRQL irql;
 	struct wrap_timer *wrap_timer;
 
-	DBGTRACE4("%p, %Ld, %u, %p",
-		    ktimer, duetime_ticks, period_ms, kdpc);
+	TRACEENTER4("%p, %lu, %lu, %p, %lu",
+		    ktimer, expires_hz, repeat_hz, kdpc, jiffies);
 
 	KeClearEvent((struct kevent *)ktimer);
 	wrap_timer = ktimer->wrap_timer;
@@ -637,15 +639,17 @@ BOOLEAN wrap_set_timer(struct ktimer *ktimer, unsigned long expires_hz,
 		return FALSE;
 	}
 	if (wrap_timer->wrap_timer_magic != WRAP_TIMER_MAGIC) {
-		WARNING("timer %p is not initialized (%lu)",
+		WARNING("timer %p is not initialized (%lx)?",
 			wrap_timer, wrap_timer->wrap_timer_magic);
 		wrap_timer->wrap_timer_magic = WRAP_TIMER_MAGIC;
 	}
 #endif
 	wrap_timer->repeat = repeat_hz;
+	if (kdpc)
+		ktimer->kdpc = kdpc;
 	ret = mod_timer(&wrap_timer->timer, jiffies + expires_hz);
 	kspin_unlock_irql(&timer_lock, irql);
-	return ret;
+	TRACEEXIT5(return ret);
 }
 
 STDCALL BOOLEAN WRAP_EXPORT(KeSetTimerEx)
@@ -654,6 +658,7 @@ STDCALL BOOLEAN WRAP_EXPORT(KeSetTimerEx)
 {
 	unsigned long expires_hz, repeat_hz;
 
+	DBGTRACE5("%p, %Ld, %ld", ktimer, duetime_ticks, period_ms);
 	expires_hz = SYSTEM_TIME_TO_HZ(duetime_ticks);
 	repeat_hz = MSEC_TO_HZ(period_ms);
 	return wrap_set_timer(ktimer, expires_hz, repeat_hz, kdpc);
