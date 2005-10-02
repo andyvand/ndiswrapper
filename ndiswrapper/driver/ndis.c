@@ -1411,10 +1411,10 @@ STDCALL void WRAP_EXPORT(NdisMInitializeTimer)
 STDCALL void WRAP_EXPORT(NdisMSetPeriodicTimer)
 	(struct ndis_miniport_timer *timer, UINT period_ms)
 {
-	long expires = ((long)period_ms) * -10000;
+	unsigned long expires = MSEC_TO_HZ(period_ms);
 
 	DBGTRACE4("%p, %u, %ld", timer, period_ms, expires);
-	KeSetTimerEx(&timer->ktimer, expires, period_ms, &timer->kdpc);
+	wrap_set_timer(&timer->ktimer, expires, expires, &timer->kdpc);
 	TRACEEXIT4(return);
 }
 
@@ -1438,10 +1438,10 @@ STDCALL void WRAP_EXPORT(NdisInitializeTimer)
 STDCALL void WRAP_EXPORT(NdisSetTimer)
 	(struct ndis_timer *timer, UINT duetime_ms)
 {
-	long expires = ((long)duetime_ms) * -10000;
+	unsigned long expires = MSEC_TO_HZ(duetime_ms);
 
-	DBGTRACE4("%p, %u", timer, duetime_ms);
-	KeSetTimerEx(&timer->ktimer, expires, 0, &timer->kdpc);
+	DBGTRACE4("%p, %u, %ld", timer, duetime_ms, expires);
+	wrap_set_timer(&timer->ktimer, expires, 0, &timer->kdpc);
 	TRACEEXIT4(return);
 }
 
@@ -1883,7 +1883,7 @@ NdisMSendComplete(struct ndis_miniport_block *nmb, struct ndis_packet *packet,
 		  NDIS_STATUS status)
 {
 	struct wrapper_dev *wd = nmb->wd;
-	TRACEENTER3("%08x", status);
+	TRACEENTER3("%p, %08x", packet, status);
 	sendpacket_done(wd, packet);
 	/* In case a serialized driver has requested a pause by returning
 	 * NDIS_STATUS_RESOURCES we need to give the send-code a kick again.

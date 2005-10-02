@@ -615,29 +615,18 @@ STDCALL void WRAP_EXPORT(KeInitializeTimer)
 	wrap_init_timer(ktimer, NotificationTimer, NULL);
 }
 
-STDCALL BOOLEAN WRAP_EXPORT(KeSetTimerEx)
-	(struct ktimer *ktimer, LARGE_INTEGER duetime_ticks, LONG period_ms,
-	 struct kdpc *kdpc)
+/* expires and repeat are in HZ */
+BOOLEAN wrap_set_timer(struct ktimer *ktimer, unsigned long expires_hz,
+		       unsigned long repeat_hz, struct kdpc *kdpc)
 {
-	long expires;
-	long repeat;
 	BOOLEAN ret;
 	KIRQL irql;
 	struct wrap_timer *wrap_timer;
 
-	TRACEENTER5("%p, %Ld, %u, %p",
+	DBGTRACE4("%p, %Ld, %u, %p",
 		    ktimer, duetime_ticks, period_ms, kdpc);
 
-	expires = SYSTEM_TIME_TO_HZ(duetime_ticks);
-	if (expires < 0) {
-		WARNING("expires: %ld", expires);
-		expires = 0;
-	}
-	DBGTRACE6("%Ld, %lu, %ld", duetime_ticks, expires, jiffies);
 	KeClearEvent((struct kevent *)ktimer);
-	repeat = MSEC_TO_HZ(period_ms);
-	if (kdpc)
-		ktimer->kdpc = kdpc;
 	wrap_timer = ktimer->wrap_timer;
 
 	irql = kspin_lock_irql(&timer_lock, DISPATCH_LEVEL);
@@ -653,10 +642,21 @@ STDCALL BOOLEAN WRAP_EXPORT(KeSetTimerEx)
 		wrap_timer->wrap_timer_magic = WRAP_TIMER_MAGIC;
 	}
 #endif
-	wrap_timer->repeat = repeat;
-	ret = mod_timer(&wrap_timer->timer, jiffies + expires);
+	wrap_timer->repeat = repeat_hz;
+	ret = mod_timer(&wrap_timer->timer, jiffies + expires_hz);
 	kspin_unlock_irql(&timer_lock, irql);
 	return ret;
+}
+
+STDCALL BOOLEAN WRAP_EXPORT(KeSetTimerEx)
+	(struct ktimer *ktimer, LARGE_INTEGER duetime_ticks, LONG period_ms,
+	 struct kdpc *kdpc)
+{
+	unsigned long expires_hz, repeat_hz;
+
+	expires_hz = SYSTEM_TIME_TO_HZ(duetime_ticks);
+	repeat_hz = MSEC_TO_HZ(period_ms);
+	return wrap_set_timer(ktimer, expires_hz, repeat_hz, kdpc);
 }
 
 STDCALL BOOLEAN WRAP_EXPORT(KeSetTimer)
