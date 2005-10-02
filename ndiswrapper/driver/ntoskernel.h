@@ -181,11 +181,9 @@ typedef task_queue workqueue;
 #define PMSG_SUSPEND PM_SUSPEND
 #define PSMG_ON PM_ON
 #else
-typedef struct {
-	int event;
-} pm_message_t;
-#define PMSG_SUSPEND ((pm_message_t) {.event = 3})
-#define PMSG_ON ((pm_message_t) {.event = 0})
+typedef u32 pm_message_t;
+#define PMSG_SUSPEND 3
+#deinfe PMSG_ON 0
 #endif
 #endif
 
