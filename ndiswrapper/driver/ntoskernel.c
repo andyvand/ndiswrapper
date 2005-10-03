@@ -659,7 +659,7 @@ STDCALL BOOLEAN WRAP_EXPORT(KeSetTimerEx)
 {
 	unsigned long expires_hz, repeat_hz;
 
-	DBGTRACE5("%p, %Ld, %ld", ktimer, duetime_ticks, period_ms);
+	DBGTRACE5("%p, %Ld, %d", ktimer, duetime_ticks, period_ms);
 	expires_hz = SYSTEM_TIME_TO_HZ(duetime_ticks);
 	repeat_hz = MSEC_TO_HZ(period_ms);
 	return wrap_set_timer(ktimer, expires_hz, repeat_hz, kdpc);
