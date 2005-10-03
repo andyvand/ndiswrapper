@@ -1276,10 +1276,11 @@ static void update_wireless_stats(struct wrapper_dev *wd)
 	TRACEENTER2("");
 	if (wd->stats_enabled == FALSE || wd->link_status == 0)
 		TRACEEXIT2(return);
-	rssi = 0;
 	res = miniport_query_info(wd, OID_802_11_RSSI, &rssi, sizeof(rssi));
 	if (res == NDIS_STATUS_SUCCESS)
 		iw_stats->qual.level = rssi;
+	else
+		rssi = iw_stats->qual.level = 0;
 
 	memset(&ndis_stats, 0, sizeof(ndis_stats));
 	ndis_stats.length = sizeof(ndis_stats);
@@ -1956,7 +1957,11 @@ static int __init wrapper_init(void)
 		)
 		goto err;
 #ifdef USE_OWN_WORKQUEUE
+#if defined(CONFIG_SUSPEND2)
+	ndiswrapper_wq = create_nofreeze_singlethread_workqueue("ndiswrapwq");
+#else
 	ndiswrapper_wq = create_singlethread_workqueue("ndiswrapwq");
+#endif
 	INIT_WORK(&_ndiswrapper_wq_init, _ndiswrapper_wq_init_worker, 0);
 	_ndiswrapper_wq_init_state = NDISWRAPPER_WQ_INIT;
 	schedule_work(&_ndiswrapper_wq_init);

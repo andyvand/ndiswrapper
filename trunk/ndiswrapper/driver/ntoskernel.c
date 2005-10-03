@@ -636,6 +636,7 @@ BOOLEAN wrap_set_timer(struct ktimer *ktimer, unsigned long expires_hz,
 	if (ktimer->wrap_timer_magic != WRAP_TIMER_MAGIC) {
 		WARNING("Buggy Windows timer didn't initialize timer %p",
 			ktimer);
+		kspin_unlock_irql(&timer_lock, irql);
 		return FALSE;
 	}
 	if (wrap_timer->wrap_timer_magic != WRAP_TIMER_MAGIC) {
