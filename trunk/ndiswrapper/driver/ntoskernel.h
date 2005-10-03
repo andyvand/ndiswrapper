@@ -183,7 +183,7 @@ typedef task_queue workqueue;
 #else
 typedef u32 pm_message_t;
 #define PMSG_SUSPEND 3
-#deinfe PMSG_ON 0
+#define PMSG_ON 0
 #endif
 #endif
 
