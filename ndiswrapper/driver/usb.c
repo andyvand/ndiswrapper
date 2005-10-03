@@ -731,7 +731,8 @@ static USBD_STATUS wrap_reset_pipe(struct usb_device *udev, struct irp *irp)
 		pipe2 = usb_sndbulkpipe(udev, pipe_handle->bEndpointAddress);
 	} else if (pipe_type == USB_ENDPOINT_XFER_INT) {
 		pipe1 = usb_rcvintpipe(udev, pipe_handle->bEndpointAddress);
-		pipe2 = usb_sndintpipe(udev, pipe_handle->bEndpointAddress);
+		/* outoing interrupt pipes shouldn't be reset */
+		pipe2 = pipe1;
 	} else if (pipe_type == USB_ENDPOINT_XFER_CONTROL) {
 		pipe1 = usb_rcvctrlpipe(udev, pipe_handle->bEndpointAddress);
 		pipe2 = usb_sndctrlpipe(udev, pipe_handle->bEndpointAddress);
@@ -742,9 +743,12 @@ static USBD_STATUS wrap_reset_pipe(struct usb_device *udev, struct irp *irp)
 	ret = usb_clear_halt(udev, pipe1);
 	if (ret)
 		WARNING("resetting pipe %d failed: %d", pipe_type, ret);
-	ret = usb_clear_halt(udev, pipe2);
-	if (ret)
-		WARNING("resetting pipe %d failed: %d", pipe_type, ret);
+	if (pipe2 != pipe1) {
+		ret = usb_clear_halt(udev, pipe2);
+		if (ret)
+			WARNING("resetting pipe %d failed: %d",
+				pipe_type, ret);
+	}
 	return USBD_STATUS_SUCCESS;
 }
 
@@ -935,8 +939,7 @@ static USBD_STATUS wrap_process_nt_urb(struct irp *irp)
 	udev = wd->dev.usb.udev;
 	nt_urb = URB_FROM_IRP(irp);
 	USBENTER("nt_urb = %p, irp = %p, length = %d, function = %x",
-		      nt_urb, irp, nt_urb->header.length,
-		      nt_urb->header.function);
+		 nt_urb, irp, nt_urb->header.length, nt_urb->header.function);
 
 	DUMP_IRP(irp);
 	switch (nt_urb->header.function) {
