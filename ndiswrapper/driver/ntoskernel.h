@@ -435,9 +435,6 @@ struct wrapper_dev;
 #define USE_OWN_WORKQUEUE 1
 extern struct workqueue_struct *ndiswrapper_wq;
 #define schedule_work(work_struct) queue_work(ndiswrapper_wq, (work_struct))
-#if defined(CONFIG_SUSPEND2)
-#define create_singlethread_workqueue create_nofreeze_singlethread_workqueue
-#endif
 #endif
 
 int ntoskernel_init(void);
