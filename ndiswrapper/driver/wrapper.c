@@ -1686,7 +1686,7 @@ int setup_device(struct net_device *dev)
 	res = miniport_query_info(wd, OID_GEN_VENDOR_DESCRIPTION,
 				  buf, sizeof(buf));
 	if (res == NDIS_STATUS_SUCCESS)
-		printk(KERN_INFO "%s: vendor: '%s'", dev->name, buf);
+		printk(KERN_INFO "%s: vendor: '%s'\n", dev->name, buf);
 
 	printk(KERN_INFO "%s: %s ethernet device " MACSTR " using driver %s,"
 	       " %s\n",
