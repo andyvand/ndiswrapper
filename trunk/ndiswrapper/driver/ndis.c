@@ -1080,7 +1080,7 @@ STDCALL void WRAP_EXPORT(NdisFreeBuffer)
 	irql = kspin_lock_irql(&pool->lock, DISPATCH_LEVEL);
 	if (pool->num_allocated_descr > MAX_ALLOCATED_NDIS_BUFFERS) {
 		pool->num_allocated_descr--;
-		kfree(descr);
+		free_mdl(descr);
 	} else {
 		descr->next = pool->free_descr;
 		pool->free_descr = descr;
