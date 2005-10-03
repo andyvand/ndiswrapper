@@ -771,7 +771,6 @@ STDCALL NTSTATUS WRAP_EXPORT(RtlQueryRegistryValues)
 
 	TRACEENTER3("%d, %p", relative, tbl);
 	UNIMPL();
-	TRACEEXIT3(return STATUS_SUCCESS);
 
 	ansi.buf = buf;
 	ansi.buflen = sizeof(buf);
@@ -779,7 +778,6 @@ STDCALL NTSTATUS WRAP_EXPORT(RtlQueryRegistryValues)
 	unicode.len = unicode.buflen = _win_wcslen(path);
 	RtlUnicodeStringToAnsiString(&ansi, &unicode, FALSE);
 	TRACEENTER3("%d, %s, %p", relative, buf, tbl);
-	UNIMPL();
 	TRACEEXIT3(return STATUS_SUCCESS);
 }
 
@@ -793,7 +791,6 @@ STDCALL NTSTATUS WRAP_EXPORT(RtlWriteRegistryValue)
 
 	TRACEENTER3("%d", relative);
 	UNIMPL();
-	TRACEEXIT3(return STATUS_SUCCESS);
 
 	ansi.buf = buf;
 	ansi.buflen = sizeof(buf);
