@@ -552,10 +552,6 @@ static int set_packet_filter(struct wrapper_dev *wd, ULONG packet_filter)
 	NDIS_STATUS res;
 
 	TRACEENTER3("%x", packet_filter);
-	/* ZyDas driver doesn't support it */
-	if(wd->ndis_device->vendor == 0x0ace &&
-	   wd->ndis_device->device == 0x1211)
-		TRACEEXIT2(return NDIS_STATUS_NOT_SUPPORTED);
 	res = miniport_set_info(wd, OID_GEN_CURRENT_PACKET_FILTER,
 				&packet_filter, sizeof(packet_filter));
 	if (res) {
@@ -570,9 +566,6 @@ static int get_packet_filter(struct wrapper_dev *wd, ULONG *packet_filter)
 	NDIS_STATUS res;
 
 	TRACEENTER3("");
-	if(wd->ndis_device->vendor == 0x0ace &&
-	   wd->ndis_device->device == 0x1211)
-		TRACEEXIT2(return NDIS_STATUS_NOT_SUPPORTED);
 	res = miniport_query_info(wd, OID_GEN_CURRENT_PACKET_FILTER,
 				  packet_filter, sizeof(*packet_filter));
 	if (res) {
@@ -1113,9 +1106,9 @@ void ndiswrapper_remove_device(struct wrapper_dev *wd)
 
 //	miniport_set_int(wd, OID_802_11_DISASSOCIATE, 0);
 
-	DBGTRACE1("stopping device");
+	DBGTRACE1("stopping device; irql: %d", current_irql());
 	ndiswrapper_stop_device(wd);
-	DBGTRACE1("stopped");
+	DBGTRACE1("stopped; irql: %d", current_irql());
 
 	ndiswrapper_procfs_remove_iface(wd);
 	IoDeleteDevice(wd->nmb->fdo);
@@ -1279,16 +1272,23 @@ static void update_wireless_stats(struct wrapper_dev *wd)
 	res = miniport_query_info(wd, OID_802_11_RSSI, &rssi, sizeof(rssi));
 	if (res == NDIS_STATUS_SUCCESS)
 		iw_stats->qual.level = rssi;
-	else
+	else {
+		WARNING("statistics disabled for device %s (%08X)",
+			wd->net_dev->name, res);
+		wd->stats_enabled = FALSE;
 		rssi = iw_stats->qual.level = 0;
+	}
 
+	if (wd->stats_enabled == FALSE)
+		TRACEEXIT2(return);
 	memset(&ndis_stats, 0, sizeof(ndis_stats));
-	ndis_stats.length = sizeof(ndis_stats);
 	res = miniport_query_info(wd, OID_802_11_STATISTICS,
 				  &ndis_stats, sizeof(ndis_stats));
-	if (res)
-		iw_stats->qual.qual = ((rssi & 0x7F) * 100) / 154;
-	else {
+	if (res) {
+		WARNING("statistics disabled for device %s (%08X)",
+			wd->net_dev->name, res);
+		wd->stats_enabled = FALSE;
+	} else {
 		iw_stats->discard.retries = (u32)ndis_stats.retry +
 			(u32)ndis_stats.multi_retry;
 		iw_stats->discard.misc = (u32)ndis_stats.fcs_err +
@@ -1377,18 +1377,8 @@ static void wrapper_worker_proc(void *param)
 		if (test_and_clear_bit(HW_SUSPENDED, &wd->hw_status)) {
 			set_bit(HW_AVAILABLE, &wd->hw_status);
 			res = miniport_set_pm_state(wd, NdisDeviceStateD0);
-			/* For some unfathomable reason, without the
-			 * following "fix", ZyDas driver crashes when
-			 * ASSOCIATION_INFO OID is called during
-			 * association. This "fix" defies all logic
-			 * and can only be attributed to some voodoo
-			 * powers. */
-			if (debug >= 1 &&
-			    (wd->ndis_device->vendor == 0x0ace &&
-			     wd->ndis_device->device == 0x1211))
-				INFO("%s: setting power to state %d returns "
-				     "%08X", net_dev->name,
-				     NdisDeviceStateD0, res);
+			DBGTRACE1("%s: setting power state returns %08X",
+				  net_dev->name, res);
 			if (res)
 				WARNING("device %s may not have resumed "
 					"properly (%08X)", net_dev->name, res);
@@ -1647,6 +1637,7 @@ int setup_device(struct net_device *dev)
 	struct wrapper_dev *wd = netdev_priv(dev);
 	NDIS_STATUS res;
 	mac_address mac;
+	char buf[256];
 
 	show_guids(wd);
 	if (strlen(if_name) > (IFNAMSIZ-1)) {
@@ -1690,6 +1681,12 @@ int setup_device(struct net_device *dev)
 		ERROR("cannot register net device %s", dev->name);
 		return res;
 	}
+
+	memset(buf, 0, sizeof(buf));
+	res = miniport_query_info(wd, OID_GEN_VENDOR_DESCRIPTION,
+				  buf, sizeof(buf));
+	if (res == NDIS_STATUS_SUCCESS)
+		printk(KERN_INFO "%s: vendor: '%s'", dev->name, buf);
 
 	printk(KERN_INFO "%s: %s ethernet device " MACSTR " using driver %s,"
 	       " %s\n",
@@ -1763,8 +1760,7 @@ int setup_device(struct net_device *dev)
 	set_infra_mode(wd, Ndis802_11Infrastructure);
 	set_auth_mode(wd, Ndis802_11AuthModeOpen);
 	set_encr_mode(wd, Ndis802_11EncryptionDisabled);
-	if (set_privacy_filter(wd, Ndis802_11PrivFilterAcceptAll))
-		WARNING("couldn't set privacy filter");
+	set_privacy_filter(wd, Ndis802_11PrivFilterAcceptAll);
 
 	hangcheck_add(wd);
 	stats_timer_add(wd);
@@ -1819,13 +1815,7 @@ struct net_device *ndis_init_netdev(struct wrapper_dev **pwd,
 	init_MUTEX(&wd->ndis_comm_mutex);
 	init_waitqueue_head(&wd->ndis_comm_wq);
 	wd->ndis_comm_done = 0;
-	/* prism1 usb driver crashes during MiniportSetInformation if
-	 * we wait for shorter time periods */
-	if ((wd->ndis_device->vendor == 0x0846 &&
-	     wd->ndis_device->device == 0x4110))
-		wd->ndis_comm_wait_time = 4 * HZ;
-	else
-		wd->ndis_comm_wait_time = 2 * HZ;
+	wd->ndis_comm_wait_time = 1 * HZ;
 	/* don't send packets until the card is associated */
 	wd->send_ok = 0;
 	INIT_WORK(&wd->xmit_work, xmit_worker, wd);
@@ -1854,13 +1844,7 @@ struct net_device *ndis_init_netdev(struct wrapper_dev **pwd,
 	set_bit(HW_AVAILABLE, &wd->hw_status);
 
 	/* some devices have issues with collecting stats */
-	if ((wd->ndis_device->vendor == 0x17cb &&
-	     wd->ndis_device->device == 0x0001) ||
-	    (wd->ndis_device->vendor == 0x0ace &&
-	     wd->ndis_device->device == 0x1211))
-		wd->stats_enabled = FALSE;
-	else
-		wd->stats_enabled = TRUE;
+	wd->stats_enabled = TRUE;
 
 	*pwd = wd;
 	return dev;
