@@ -550,10 +550,11 @@ static void stats_timer_del(struct wrapper_dev *wd)
 static int set_packet_filter(struct wrapper_dev *wd, ULONG packet_filter)
 {
 	NDIS_STATUS res;
+	ULONG filter = packet_filter;
 
 	TRACEENTER3("%x", packet_filter);
 	res = miniport_set_info(wd, OID_GEN_CURRENT_PACKET_FILTER,
-				&packet_filter, sizeof(packet_filter));
+				&filter, sizeof(filter));
 	if (res) {
 		WARNING("couldn't set packet filter: %08X", res);
 		TRACEEXIT3(return res);
