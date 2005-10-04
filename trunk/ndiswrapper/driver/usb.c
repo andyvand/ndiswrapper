@@ -532,6 +532,7 @@ static STDCALL void wrap_cancel_irp(struct device_object *dev_obj,
 		irp->io_status.status = STATUS_INVALID_PARAMETER;
 		irp->io_status.status_info = 0;
 		IoReleaseCancelSpinLock(irp->cancel_irql);
+		wrap_free_urb(urb);
 		IoCompleteRequest(irp, IO_NO_INCREMENT);
 	}
 }
