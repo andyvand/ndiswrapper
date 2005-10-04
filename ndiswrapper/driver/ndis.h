@@ -822,7 +822,7 @@ struct wrapper_dev {
 
 	struct net_device_stats stats;
 	struct iw_statistics wireless_stats;
-	int stats_enabled;
+	BOOLEAN stats_enabled;
 	struct ndis_wireless_stats ndis_stats;
 	struct ndis_device *ndis_device;
 

@@ -301,21 +301,21 @@ NDIS_STATUS miniport_init(struct wrapper_dev *wd)
 	res = LIN2WIN6(miniport->init, &status, &medium_index, medium_array,
 		       sizeof(medium_array) / sizeof(medium_array[0]),
 		       wd->nmb, wd->nmb);
+	DBGTRACE1("init returns: %08X", res);
 	if (res)
 		TRACEEXIT1(return res);
-
-	res = miniport_set_pm_state(wd, NdisDeviceStateD0);
-	if (res)
-		DBGTRACE1("setting power state to device %s returns %08X",
-			  wd->net_dev->name, res);
-	/* do we need to reset the device? */
-//	res = miniport_reset(wd);
 
 	/* Wait a little to let card power up otherwise ifup might fail after
 	   boot; USB devices seem to need long delays */
 	set_current_state(TASK_INTERRUPTIBLE);
 	schedule_timeout(HZ);
 
+	/* do we need to reset the device? */
+//	res = miniport_reset(wd);
+	res = miniport_set_pm_state(wd, NdisDeviceStateD0);
+	if (res)
+		DBGTRACE1("setting power state to device %s returns %08X",
+			  wd->net_dev->name, res);
 	TRACEEXIT1(return 0);
 }
 
@@ -529,7 +529,7 @@ static void stats_proc(unsigned long data)
 
 	set_bit(COLLECT_STATS, &wd->wrapper_work);
 	schedule_work(&wd->wrapper_worker);
-	wd->stats_timer.expires += 5 * HZ;
+	wd->stats_timer.expires += 10 * HZ;
 	add_timer(&wd->stats_timer);
 }
 
@@ -538,7 +538,7 @@ static void stats_timer_add(struct wrapper_dev *wd)
 	init_timer(&wd->stats_timer);
 	wd->stats_timer.data = (unsigned long)wd;
 	wd->stats_timer.function = &stats_proc;
-	wd->stats_timer.expires = jiffies + 5 * HZ;
+	wd->stats_timer.expires = jiffies + 10 * HZ;
 	add_timer(&wd->stats_timer);
 }
 
@@ -1274,38 +1274,34 @@ static void update_wireless_stats(struct wrapper_dev *wd)
 	if (res == NDIS_STATUS_SUCCESS)
 		iw_stats->qual.level = rssi;
 	else {
-		WARNING("statistics disabled for device %s (%08X)",
-			wd->net_dev->name, res);
+		WARNING("statistics disabled for %s", wd->net_dev->name);
 		wd->stats_enabled = FALSE;
-		rssi = iw_stats->qual.level = 0;
+		TRACEEXIT2(return);
 	}
 
-	if (wd->stats_enabled == FALSE)
-		TRACEEXIT2(return);
 	memset(&ndis_stats, 0, sizeof(ndis_stats));
 	res = miniport_query_info(wd, OID_802_11_STATISTICS,
 				  &ndis_stats, sizeof(ndis_stats));
-	if (res) {
-		WARNING("statistics disabled for device %s (%08X)",
-			wd->net_dev->name, res);
+	if (res != NDIS_STATUS_SUCCESS) {
+		WARNING("statistics disabled for %s", wd->net_dev->name);
 		wd->stats_enabled = FALSE;
-	} else {
-		iw_stats->discard.retries = (u32)ndis_stats.retry +
-			(u32)ndis_stats.multi_retry;
-		iw_stats->discard.misc = (u32)ndis_stats.fcs_err +
-			(u32)ndis_stats.rtss_fail +
-			(u32)ndis_stats.ack_fail +
-			(u32)ndis_stats.frame_dup;
-
-		if ((u32)ndis_stats.tx_frag)
-			iw_stats->qual.qual = 100 - 100 *
-				((u32)ndis_stats.retry +
-				 2 * (u32)ndis_stats.multi_retry +
-				 3 * (u32)ndis_stats.failed) /
-				(6 * (u32)ndis_stats.tx_frag);
-		else
-			iw_stats->qual.qual = 100;
+		TRACEEXIT2(return);
 	}
+	iw_stats->discard.retries = (u32)ndis_stats.retry +
+		(u32)ndis_stats.multi_retry;
+	iw_stats->discard.misc = (u32)ndis_stats.fcs_err +
+		(u32)ndis_stats.rtss_fail +
+		(u32)ndis_stats.ack_fail +
+		(u32)ndis_stats.frame_dup;
+
+	if ((u32)ndis_stats.tx_frag)
+		iw_stats->qual.qual = 100 - 100 *
+			((u32)ndis_stats.retry +
+			 2 * (u32)ndis_stats.multi_retry +
+			 3 * (u32)ndis_stats.failed) /
+			(6 * (u32)ndis_stats.tx_frag);
+	else
+		iw_stats->qual.qual = 100;
 	TRACEEXIT2(return);
 }
 
@@ -1597,40 +1593,32 @@ static int ndis_set_mac_addr(struct net_device *dev, void *p)
 	TRACEEXIT1(return 0);
 }
 
-static void show_guids(struct wrapper_dev *wd)
+static void show_supported_oids(struct wrapper_dev *wd)
 {
-	int i, j;
-	char *buf;
-	struct ndis_guid *ndis_guid;
 	NDIS_STATUS res;
+	int i, n, needed;
+	ndis_oid *oids;
 
-	res = miniport_query_info_needed(wd, OID_GEN_SUPPORTED_GUIDS,
-					 NULL, 0, &i);
-	DBGTRACE1("res: %08X", res);
-	if (res != NDIS_STATUS_INVALID_LENGTH)
-		return;
-
-	buf = kmalloc(i, GFP_KERNEL);
-	if (!buf) {
-		WARNING("couldn't allocate memory");
-		return;
+	res = miniport_query_info_needed(wd, OID_GEN_SUPPORTED_LIST, NULL, 0,
+					 &needed);
+	if (res != NDIS_STATUS_BUFFER_TOO_SHORT &&
+	    res != NDIS_STATUS_INVALID_LENGTH)
+		TRACEEXIT1(return);
+	oids = kmalloc(needed, GFP_KERNEL);
+	if (!oids) {
+		DBGTRACE1("couldn't allocate memory");
+		TRACEEXIT1(return);
 	}
-	res = miniport_query_info(wd, OID_GEN_SUPPORTED_LIST, buf, i);
-	DBGTRACE1("res: %08X", res);
+	res = miniport_query_info(wd, OID_GEN_SUPPORTED_LIST, oids, needed);
 	if (res) {
-		DBGTRACE1("query failed: %08X", res);
-		kfree(buf);
-		return;
+		DBGTRACE1("failed: %08X", res);
+		kfree(oids);
+		TRACEEXIT1(return);
 	}
-	for (j = 0; j < i; j += sizeof(*ndis_guid)) {
-		ndis_guid = (struct ndis_guid *)(buf + j);
-		DBGTRACE1("%lu, %u, %u, %08X, %u, %08X",
-			  ndis_guid->guid.data1, ndis_guid->guid.data2,
-			  ndis_guid->guid.data3, ndis_guid->oid,
-			  ndis_guid->size, ndis_guid->flags);
-	}
-	kfree(buf);
-	return;
+	for (i = 0, n = needed / sizeof(*oids); i < n; i++)
+		DBGTRACE1("oid: %08X", oids[i]);
+	kfree(oids);
+	TRACEEXIT1(return);
 }
 
 int setup_device(struct net_device *dev)
@@ -1640,7 +1628,7 @@ int setup_device(struct net_device *dev)
 	mac_address mac;
 	char buf[256];
 
-	show_guids(wd);
+	show_supported_oids(wd);
 	if (strlen(if_name) > (IFNAMSIZ-1)) {
 		ERROR("interface name '%s' is too long", if_name);
 		return -1;
@@ -1816,7 +1804,7 @@ struct net_device *ndis_init_netdev(struct wrapper_dev **pwd,
 	init_MUTEX(&wd->ndis_comm_mutex);
 	init_waitqueue_head(&wd->ndis_comm_wq);
 	wd->ndis_comm_done = 0;
-	wd->ndis_comm_wait_time = 1 * HZ;
+	wd->ndis_comm_wait_time = 2 * HZ;
 	/* don't send packets until the card is associated */
 	wd->send_ok = 0;
 	INIT_WORK(&wd->xmit_work, xmit_worker, wd);
@@ -1843,8 +1831,6 @@ struct net_device *ndis_init_netdev(struct wrapper_dev **pwd,
 	wd->infrastructure_mode = Ndis802_11Infrastructure;
 	INIT_WORK(&wd->wrapper_worker, wrapper_worker_proc, wd);
 	set_bit(HW_AVAILABLE, &wd->hw_status);
-
-	/* some devices have issues with collecting stats */
 	wd->stats_enabled = TRUE;
 
 	*pwd = wd;
