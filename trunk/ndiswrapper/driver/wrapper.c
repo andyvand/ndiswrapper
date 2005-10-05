@@ -1931,11 +1931,7 @@ static int __init wrapper_init(void)
 		)
 		goto err;
 #ifdef USE_OWN_WORKQUEUE
-#if defined(CONFIG_SUSPEND2)
-	ndiswrapper_wq = create_nofreeze_singlethread_workqueue("ndiswrapwq");
-#else
 	ndiswrapper_wq = create_singlethread_workqueue("ndiswrapwq");
-#endif
 	INIT_WORK(&_ndiswrapper_wq_init, _ndiswrapper_wq_init_worker, 0);
 	_ndiswrapper_wq_init_state = NDISWRAPPER_WQ_INIT;
 	schedule_work(&_ndiswrapper_wq_init);
