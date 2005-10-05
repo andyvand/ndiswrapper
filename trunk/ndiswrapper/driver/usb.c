@@ -210,8 +210,7 @@ static void wrap_free_urb(struct urb *urb)
 				urb->transfer_buffer_length, 
 				urb->transfer_buffer, urb->transfer_dma);
 	}
-	if (urb->setup_packet &&
-	    (wrap_urb->alloc_flags & URB_NO_SETUP_DMA_MAP))
+	if (urb->setup_packet)
 		kfree(urb->setup_packet);
 	if (wd->dev.usb.num_alloc_urbs > MAX_ALLOCATED_URBS) {
 		RemoveEntryList(&wrap_urb->list);
@@ -729,7 +728,6 @@ static USBD_STATUS wrap_reset_pipe(struct usb_device *udev, struct irp *irp)
 	enum pipe_type pipe_type;
 
 	USBTRACE("irp = %p", irp);
-	return USBD_STATUS_SUCCESS;
 	nt_urb = URB_FROM_IRP(irp);
 
 	pipe_handle = nt_urb->pipe_req.pipe_handle;
@@ -770,7 +768,7 @@ static USBD_STATUS wrap_abort_pipe(struct usb_device *udev, struct irp *irp)
 	struct wrap_urb *wrap_urb;
 	struct wrapper_dev *wd;
 
-	INFO("irp = %p", irp);
+	USBENTER("irp = %p", irp);
 	wd = irp->wd;
 	nt_urb = URB_FROM_IRP(irp);
 	pipe_handle = nt_urb->pipe_req.pipe_handle;
@@ -792,12 +790,11 @@ static USBD_STATUS wrap_abort_pipe(struct usb_device *udev, struct irp *irp)
 		kspin_unlock_irqrestore(&irp_cancel_lock, flags);
 		if (urb) {
 			wrap_cancel_urb(urb);
-			INFO("canceled urb: %p", urb);
+			USBTRACE("canceled urb: %p", urb);
 		} else
 			break;
 	}
-
-	return USBD_STATUS_SUCCESS;
+	USBEXIT(return USBD_STATUS_SUCCESS);
 }
 
 static USBD_STATUS wrap_select_configuration(struct wrapper_dev *wd,
@@ -969,7 +966,6 @@ static USBD_STATUS wrap_process_nt_urb(struct irp *irp)
 	case URB_FUNCTION_CLASS_OTHER:
 		USBTRACE("submitting vendor/class irp: %p", irp);
 		status = wrap_vendor_or_class_req(irp);
-		NT_URB_STATUS(nt_urb) = status;
 		break;
 
 		/* rest are synchronous */
@@ -985,10 +981,12 @@ static USBD_STATUS wrap_process_nt_urb(struct irp *irp)
 
 	case URB_FUNCTION_SYNC_RESET_PIPE_AND_CLEAR_STALL:
 		status = wrap_reset_pipe(udev, irp);
+		NT_URB_STATUS(nt_urb) = status;
 		break;
 
 	case URB_FUNCTION_ABORT_PIPE:
 		status = wrap_abort_pipe(udev, irp);
+		NT_URB_STATUS(nt_urb) = status;
 		break;
 
 	default:

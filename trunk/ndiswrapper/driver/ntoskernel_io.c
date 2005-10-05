@@ -510,12 +510,9 @@ pdoDispatchInternalDeviceControl(struct device_object *pdo,
 		 * it is safe in this case */
 		status = wrap_submit_urb(irp);
 	}
-	if (status == STATUS_PENDING)
-		return status;
-	else {
+	if (status != STATUS_PENDING)
 		IoCompleteRequest(irp, IO_NO_INCREMENT);
-		return status;
-	}
+	IOEXIT(return status);
 #else
 	do {
 		union nt_urb *nt_urb;

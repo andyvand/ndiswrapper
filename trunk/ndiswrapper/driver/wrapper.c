@@ -81,6 +81,26 @@ MODULE_VERSION(DRIVER_VERSION);
 
 extern KSPIN_LOCK timer_lock;
 
+static int inline ndis_wait_pending_completion(struct wrapper_dev *wd)
+{
+	/* wait for NdisMXXComplete to be called*/
+	/* DDK seems to imply we wait until miniport calls back
+	 * completion routine, but some drivers don't call back, so
+	 * timeout is used; TODO: find out why drivers don't call
+	 * completion function */
+#if 1
+	if (wait_event_interruptible_timeout(wd->ndis_comm_wq,
+					     (wd->ndis_comm_done == 1),
+					     4 * HZ) <= 0)
+#else
+	if (wait_event_interruptible(wd->ndis_comm_wq,
+				     (wd->ndis_comm_done == 1)))
+#endif
+		return -1;
+	else
+		return 0;
+}
+
 /*
  * MiniportReset
  */
@@ -91,14 +111,12 @@ NDIS_STATUS miniport_reset(struct wrapper_dev *wd)
 	struct miniport_char *miniport;
 	UINT cur_lookahead;
 	UINT max_lookahead;
+	BOOLEAN reset_address;
 
 	TRACEENTER2("wd: %p", wd);
 
 	if (!test_bit(HW_AVAILABLE, &wd->hw_status))
 		TRACEEXIT1(return NDIS_STATUS_FAILURE);
-
-	if (wd->reset_status)
-		return NDIS_STATUS_PENDING;
 
 	if (down_interruptible(&wd->ndis_comm_mutex))
 		TRACEEXIT3(return NDIS_STATUS_FAILURE);
@@ -106,40 +124,35 @@ NDIS_STATUS miniport_reset(struct wrapper_dev *wd)
 	/* reset_status is used for two purposes: to check if windows
 	 * driver needs us to reset filters etc (as per NDIS) and to
 	 * check if another reset is in progress */
-	wd->reset_status = NDIS_STATUS_PENDING;
-	wd->ndis_comm_res = NDIS_STATUS_PENDING;
+	wd->ndis_comm_status = NDIS_STATUS_PENDING;
 	wd->ndis_comm_done = 0;
 	cur_lookahead = wd->nmb->cur_lookahead;
 	max_lookahead = wd->nmb->max_lookahead;
 	irql = raise_irql(DISPATCH_LEVEL);
-	res = LIN2WIN2(miniport->reset, &wd->reset_status,
+	res = LIN2WIN2(miniport->reset, &reset_address,
 		       wd->nmb->adapter_ctx);
 	lower_irql(irql);
 
-	DBGTRACE2("res = %08X, reset_status = %08X",
-		  res, wd->reset_status);
+	DBGTRACE2("res = %08X, reset_status = %08X", res, reset_address);
 	if (res == NDIS_STATUS_PENDING) {
-		if (wait_event_interruptible_timeout(
-			    wd->ndis_comm_wq,
-			    (wd->ndis_comm_done == 1),
-			    wd->ndis_comm_wait_time) <= 0)
+		/* wait for NdisMResetComplete */
+		if (ndis_wait_pending_completion(wd))
 			res = NDIS_STATUS_FAILURE;
 		else
-			res = wd->ndis_comm_res;
+			res = wd->ndis_comm_status;
 		DBGTRACE2("res = %08X, reset_status = %08X",
-			  res, wd->reset_status);
+			  res, reset_address);
 	}
 	DBGTRACE2("reset: res = %08X, reset status = %08X",
-		  res, wd->reset_status);
+		  res, reset_address);
 
-	if (res == NDIS_STATUS_SUCCESS && wd->reset_status) {
+	if (res == NDIS_STATUS_SUCCESS && reset_address) {
 		/* NDIS says we should set lookahead size (?)
 		 * functional address (?) or multicast filter */
 		wd->nmb->cur_lookahead = cur_lookahead;
 		wd->nmb->max_lookahead = max_lookahead;
 //		ndis_set_rx_mode(wd->net_dev);
 	}
-	wd->reset_status = 0;
 	up(&wd->ndis_comm_mutex);
 
 	TRACEEXIT3(return res);
@@ -176,17 +189,11 @@ NDIS_STATUS miniport_query_info_needed(struct wrapper_dev *wd,
 
 	DBGTRACE2("res: %08X, oid: %08X", res, oid);
 	if (res == NDIS_STATUS_PENDING) {
-		/* wait a little for NdisMQueryInformationComplete */
-		/* DDK seems to imply we wait until miniport calls
-		 * back completion routine, but to be safe, timeout is
-		 * used */
-		if (wait_event_interruptible_timeout(
-			    wd->ndis_comm_wq,
-			    (wd->ndis_comm_done == 1),
-			    wd->ndis_comm_wait_time) <= 0)
+		/* wait for NdisMQueryInformationComplete */
+		if (ndis_wait_pending_completion(wd))
 			res = NDIS_STATUS_FAILURE;
 		else
-			res = wd->ndis_comm_res;
+			res = wd->ndis_comm_status;
 		DBGTRACE2("res: %08X", res);
 	}
 	up(&wd->ndis_comm_mutex);
@@ -234,14 +241,11 @@ NDIS_STATUS miniport_set_info(struct wrapper_dev *wd, ndis_oid oid,
 	DBGTRACE2("res: %08X, oid: %08X", res, oid);
 
 	if (res == NDIS_STATUS_PENDING) {
-		/* wait a little for NdisMSetInformationComplete */
-		if (wait_event_interruptible_timeout(
-			    wd->ndis_comm_wq,
-			    (wd->ndis_comm_done == 1),
-			    wd->ndis_comm_wait_time) <= 0)
+		/* wait for NdisMSetInformationComplete */
+		if (ndis_wait_pending_completion(wd))
 			res = NDIS_STATUS_FAILURE;
 		else
-			res = wd->ndis_comm_res;
+			res = wd->ndis_comm_status;
 		DBGTRACE2("res: %08X", res);
 	}
 	up(&wd->ndis_comm_mutex);
@@ -312,10 +316,12 @@ NDIS_STATUS miniport_init(struct wrapper_dev *wd)
 
 	/* do we need to reset the device? */
 //	res = miniport_reset(wd);
+#if 0
 	res = miniport_set_pm_state(wd, NdisDeviceStateD0);
 	if (res)
 		DBGTRACE1("setting power state to device %s returns %08X",
 			  wd->net_dev->name, res);
+#endif
 	TRACEEXIT1(return 0);
 }
 
@@ -1348,8 +1354,7 @@ static void wrapper_worker_proc(void *param)
 	if (test_and_clear_bit(LINK_STATUS_CHANGED, &wd->wrapper_work))
 		link_status_handler(wd);
 
-	if (test_and_clear_bit(HANGCHECK, &wd->wrapper_work) &&
-	    wd->reset_status == 0) {
+	if (test_and_clear_bit(HANGCHECK, &wd->wrapper_work)) {
 		NDIS_STATUS res;
 		struct miniport_char *miniport;
 		KIRQL irql;
@@ -1804,7 +1809,6 @@ struct net_device *ndis_init_netdev(struct wrapper_dev **pwd,
 	init_MUTEX(&wd->ndis_comm_mutex);
 	init_waitqueue_head(&wd->ndis_comm_wq);
 	wd->ndis_comm_done = 0;
-	wd->ndis_comm_wait_time = 2 * HZ;
 	/* don't send packets until the card is associated */
 	wd->send_ok = 0;
 	INIT_WORK(&wd->xmit_work, xmit_worker, wd);
@@ -1816,7 +1820,6 @@ struct net_device *ndis_init_netdev(struct wrapper_dev **pwd,
 	wd->capa.encr = 0;
 	wd->capa.auth = 0;
 	wd->attributes = 0;
-	wd->reset_status = 0;
 	wd->map_count = 0;
 	wd->map_dma_addr = NULL;
 	wd->nick[0] = 0;
