@@ -249,39 +249,42 @@ struct miniport_char {
 	ndis_interrupt_handler handle_interrupt;
 
 	/* Start miniport driver */
-	UINT (*init)(UINT *status, UINT *medium_index,
-		     enum ndis_medium medium[], UINT medium_array_size,
-		     void *handle, void *conf_handle) STDCALL;
+	NDIS_STATUS (*init)(NDIS_STATUS *status, UINT *medium_index,
+			    enum ndis_medium medium[], UINT medium_array_size,
+			    void *handle, void *conf_handle) STDCALL;
 
 	/* Interrupt TH */
 	ndis_isr_handler isr;
 
 	/* Query parameters */
-	UINT (*query)(void *ctx, UINT oid, char *buffer,
-		      UINT buflen, UINT *written, UINT *needed) STDCALL;
+	NDIS_STATUS (*query)(void *ctx, ndis_oid oid, void *buffer,
+			     ULONG buflen, ULONG *written,
+			     ULONG *needed) STDCALL;
 
 	void *reconfig;
-	INT (*reset)(INT *needs_set, void *ctx) STDCALL;
+	NDIS_STATUS (*reset)(BOOLEAN *reset_address, void *ctx) STDCALL;
 
 	/* Send one packet */
-	UINT (*send)(void *ctx, struct ndis_packet *packet,
-		     UINT flags) STDCALL;
+	NDIS_STATUS (*send)(void *ctx, struct ndis_packet *packet,
+			    UINT flags) STDCALL;
 
 	/* Set parameters */
-	UINT (*setinfo)(void *ctx, UINT oid, char *buffer, UINT buflen,
-			UINT *written, UINT *needed) STDCALL;
+	NDIS_STATUS (*setinfo)(void *ctx, ndis_oid oid, void *buffer,
+			       ULONG buflen, ULONG *written,
+			       ULONG *needed) STDCALL;
 
 	/* transfer data from received packet */
-	UINT (*tx_data)(struct ndis_packet *ndis_packet, UINT *bytes_txed,
-			void *adapter_ctx, void *rx_ctx,
-			UINT offset, UINT bytes_to_tx) STDCALL;
+	NDIS_STATUS (*tx_data)(struct ndis_packet *ndis_packet,
+			       UINT *bytes_txed, void *adapter_ctx,
+			       void *rx_ctx, UINT offset,
+			       UINT bytes_to_tx) STDCALL;
 
 	/* NDIS 4.0 extensions */
 	/* upper layer is done with RX packet */
 	void (*return_packet)(void *ctx, void *packet) STDCALL;
 
 	/* Send packets */
-	UINT (*send_packets)(void *ctx, struct ndis_packet **packets,
+	void (*send_packets)(void *ctx, struct ndis_packet **packets,
 			     INT nr_of_packets) STDCALL;
 
 	void (*alloc_complete)(void *handle, void *virt,
@@ -289,17 +292,18 @@ struct miniport_char {
 			       ULONG size, void *ctx) STDCALL;
 
 	/* NDIS 5.0 extensions */
-	UINT (*co_create_vc)(void *ctx, void *vc_handle, void *vc_ctx) STDCALL;
-	UINT (*co_delete_vc)(void *vc_ctx) STDCALL;
-	UINT (*co_activate_vc)(void *vc_ctx, void *call_params) STDCALL;
-	UINT (*co_deactivate_vc)(void *vc_ctx) STDCALL;
-	UINT (*co_send_packets)(void *vc_ctx, void **packets,
-				UINT nr_of_packets) STDCALL;
-	UINT (*co_request)(void *ctx, void *vc_ctx, UINT *req) STDCALL;
+	NDIS_STATUS (*co_create_vc)(void *ctx, void *vc_handle,
+				    void *vc_ctx) STDCALL;
+	NDIS_STATUS (*co_delete_vc)(void *vc_ctx) STDCALL;
+	NDIS_STATUS (*co_activate_vc)(void *vc_ctx, void *call_params) STDCALL;
+	NDIS_STATUS (*co_deactivate_vc)(void *vc_ctx) STDCALL;
+	NDIS_STATUS (*co_send_packets)(void *vc_ctx, void **packets,
+				       UINT nr_of_packets) STDCALL;
+	NDIS_STATUS (*co_request)(void *ctx, void *vc_ctx, UINT *req) STDCALL;
 
 	/* NDIS 5.1 extensions */
-	void *cancel_send_packets;
-	void (*pnp_event_notify)(void *ctx, enum ndis_device_pnp_event,
+	void (*cancel_send_packets)(void *ctx, void *id) STDCALL;
+	void (*pnp_event_notify)(void *ctx, enum ndis_device_pnp_event event,
 				 void *inf_buf, ULONG inf_buf_len) STDCALL;
 	void (*adapter_shutdown)(void *ctx) STDCALL;
 	void *reserved1;
@@ -839,9 +843,8 @@ struct wrapper_dev {
 
 	struct semaphore ndis_comm_mutex;
 	wait_queue_head_t ndis_comm_wq;
-	int ndis_comm_res;
 	int ndis_comm_done;
-	int ndis_comm_wait_time;
+	int ndis_comm_status;
 
 	int serialized;
 	int use_sg_dma;
@@ -850,7 +853,6 @@ struct wrapper_dev {
 
 	int hangcheck_interval;
 	struct timer_list hangcheck_timer;
-	int reset_status;
 
 	struct timer_list stats_timer;
 

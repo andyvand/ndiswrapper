@@ -1667,23 +1667,32 @@ NdisMIndicateStatus(struct ndis_miniport_block *nmb, NDIS_STATUS status,
 		    void *buf, UINT len)
 {
 	struct wrapper_dev *wd = nmb->wd;
+	struct ndis_status_indication *si;
+	struct ndis_auth_req *auth_req;
+	struct ndis_radio_status_indication *radio_status;
+
 	TRACEENTER2("status=0x%x len=%d", status, len);
-	if (status == NDIS_STATUS_MEDIA_DISCONNECT) {
+	switch (status) {
+	case  NDIS_STATUS_MEDIA_DISCONNECT:
+		if (wd->link_status != 0) {
+			wd->link_status = 0;
+			set_bit(LINK_STATUS_CHANGED, &wd->wrapper_work);
+		}
 		wd->link_status = 0;
 		wd->send_ok = 0;
-		set_bit(LINK_STATUS_CHANGED, &wd->wrapper_work);
-	}
-	if (status == NDIS_STATUS_MEDIA_CONNECT) {
+		break;
+	case NDIS_STATUS_MEDIA_CONNECT:
+		if (wd->link_status != 1) {
+			wd->link_status = 1;
+			set_bit(LINK_STATUS_CHANGED, &wd->wrapper_work);
+		}
 		wd->link_status = 1;
 		wd->send_ok = 1;
-		set_bit(LINK_STATUS_CHANGED, &wd->wrapper_work);
-	}
-
-	if (status == NDIS_STATUS_MEDIA_SPECIFIC_INDICATION && buf) {
-		struct ndis_status_indication *si = buf;
-		struct ndis_auth_req *auth_req;
-		struct ndis_radio_status_indication *radio_status;
-
+		break;
+	case NDIS_STATUS_MEDIA_SPECIFIC_INDICATION:
+		if (!buf)
+			break;
+		si = buf;
 		DBGTRACE2("status_type=%d", si->status_type);
 
 		switch (si->status_type) {
@@ -1773,6 +1782,10 @@ NdisMIndicateStatus(struct ndis_miniport_block *nmb, NDIS_STATUS status,
 				INFO("radio is turned off by software");
 			break;
 		}
+		break;
+	default:
+		WARNING("status %08X not handled", status);
+		break;
 	}
 
 	TRACEEXIT1(return);
@@ -1782,7 +1795,7 @@ NdisMIndicateStatus(struct ndis_miniport_block *nmb, NDIS_STATUS status,
 STDCALL void NdisMIndicateStatusComplete(struct ndis_miniport_block *nmb)
 {
 	struct wrapper_dev *wd = nmb->wd;
-	TRACEENTER3("");
+	TRACEENTER2("");
 	schedule_work(&wd->wrapper_worker);
 	if (wd->send_ok)
 		schedule_work(&wd->xmit_work);
@@ -2082,7 +2095,7 @@ NdisMQueryInformationComplete(struct ndis_miniport_block *nmb,
 	struct wrapper_dev *wd = nmb->wd;
 
 	TRACEENTER2("nmb: %p, wd: %p, %08X", nmb, wd, status);
-	wd->ndis_comm_res = status;
+	wd->ndis_comm_status = status;
 	wd->ndis_comm_done = 1;
 	wake_up(&wd->ndis_comm_wq);
 	TRACEEXIT2(return);
@@ -2095,7 +2108,7 @@ STDCALL void WRAP_EXPORT(NdisMCoRequestComplete)
 	struct wrapper_dev *wd = nmb->wd;
 
 	TRACEENTER3("%08X", status);
-	wd->ndis_comm_res = status;
+	wd->ndis_comm_status = status;
 	wd->ndis_comm_done = 1;
 	wake_up(&wd->ndis_comm_wq);
 	TRACEEXIT3(return);
@@ -2109,7 +2122,7 @@ NdisMSetInformationComplete(struct ndis_miniport_block *nmb,
 	struct wrapper_dev *wd = nmb->wd;
 	TRACEENTER2("status = %08X", status);
 
-	wd->ndis_comm_res = status;
+	wd->ndis_comm_status = status;
 	wd->ndis_comm_done = 1;
 	wake_up(&wd->ndis_comm_wq);
 	TRACEEXIT3(return);
@@ -2269,8 +2282,7 @@ NdisMResetComplete(struct ndis_miniport_block *nmb, NDIS_STATUS status,
 	TRACEENTER3("status: %08X, reset status: %u", status,
 		    address_reset);
 
-	wd->ndis_comm_res = status;
-	wd->reset_status = status;
+	wd->ndis_comm_status = status;
 	wd->ndis_comm_done = 1;
 	wake_up(&wd->ndis_comm_wq);
 	TRACEEXIT3(return);

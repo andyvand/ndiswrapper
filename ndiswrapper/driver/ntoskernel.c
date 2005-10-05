@@ -1664,7 +1664,7 @@ STDCALL struct kthread *WRAP_EXPORT(KeGetCurrentThread)
 	}
 	kspin_unlock_irql(&ntoskernel_lock, irql);
 	if (ret == NULL)
-		WARNING("couldn't find thread for task %p", task);
+		DBGTRACE1("couldn't find thread for task %p", task);
 	DBGTRACE5("current thread = %p", ret);
 	return ret;
 }
