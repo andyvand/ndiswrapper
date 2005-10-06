@@ -289,8 +289,8 @@ static void *ndiswrapper_add_usb_device(struct usb_device *udev,
 	struct device_object *pdo;
 	struct driver_object *drv_obj;
 
-	TRACEENTER1("vendor: %04x, product: %04x, intf: %p, %p",
-		    usb_id->idVendor, usb_id->idProduct, intf, usb_id);
+	TRACEENTER1("vendor: %04x, product: %04x, id: %p",
+		    usb_id->idVendor, usb_id->idProduct, usb_id);
 
 	device = &ndis_devices[usb_id->driver_info];
 	/* RNDIS devices have two interfaces, so prevent from
