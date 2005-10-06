@@ -1016,6 +1016,7 @@ static USBD_STATUS wrap_get_port_status(struct irp *irp)
 {
 	struct wrapper_dev *wd;
 	ULONG *status;
+#if LINUX_VERSION_CODE > KERNEL_VERSION(2,6,0)
 	enum usb_device_state state;
 
 	wd = irp->wd;
@@ -1026,6 +1027,20 @@ static USBD_STATUS wrap_get_port_status(struct irp *irp)
 		*status |= USBD_PORT_CONNECTED;
 	if (state & USB_STATE_CONFIGURED)
 		*status |= USBD_PORT_ENABLED;
+#else
+	u16 data;
+	wd = irp->wd;
+	USBENTER("%p, %p", wd, wd->dev.usb.udev);
+	status = IoGetCurrentIrpStackLocation(irp)->params.others.arg1;
+        data = 0;
+        if (usb_get_status(wd->dev.usb.udev, USB_RECIP_DEVICE, 0, &data) < 0)
+                *status = 0;
+        else
+                *status = USBD_PORT_ENABLED | USBD_PORT_CONNECTED;
+//      irp->io_status.status_info = 0;
+	*status |= USBD_PORT_CONNECTED | USBD_PORT_ENABLED;
+#endif
+
 //	irp->io_status.status_info = 0;
 	return USBD_STATUS_SUCCESS;
 }
