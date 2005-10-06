@@ -761,8 +761,8 @@ static void free_send_packet(struct wrapper_dev *wd,
 				     PCI_DMA_TODEVICE);
 
 	DBGTRACE3("freeing buffer %p", buffer);
-	kfree(MmGetMdlVirtualAddress(buffer));
 	NdisFreeBuffer(buffer);
+	dev_kfree_skb(wrap_ndis_packet->skb);
 
 	DBGTRACE3("freeing packet %p", packet);
 	NdisFreePacket(packet);
@@ -906,31 +906,19 @@ static int start_xmit(struct sk_buff *skb, struct net_device *dev)
 	ndis_buffer *buffer;
 	struct ndis_packet *packet;
 	unsigned int xmit_ring_next_slot;
-	char *data;
 	KIRQL irql;
 	NDIS_STATUS res;
 
-	/* TODO: can we avoid copying data? */
-	data = kmalloc(skb->len, GFP_ATOMIC);
-	if (!data)
-		return 1;
-
 	NdisAllocateBuffer(&res, &buffer, wd->wrapper_buffer_pool,
-			   data, skb->len);
-	if (res != NDIS_STATUS_SUCCESS) {
-		kfree(data);
+			   skb->data, skb->len);
+	if (res != NDIS_STATUS_SUCCESS)
 		return 1;
-	}
 	packet = allocate_send_packet(wd, buffer);
 	if (!packet) {
 		NdisFreeBuffer(buffer);
-		kfree(data);
 		return 1;
 	}
-
-	skb_copy_and_csum_dev(skb, data);
-	dev_kfree_skb(skb);
-
+	packet->wrap_ndis_packet->skb = skb;
 	irql = kspin_lock_irql(&wd->xmit_lock, DISPATCH_LEVEL);
 	xmit_ring_next_slot =
 		(wd->xmit_ring_start +
