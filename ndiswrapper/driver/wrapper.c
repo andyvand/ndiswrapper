@@ -84,10 +84,10 @@ extern KSPIN_LOCK timer_lock;
 static int inline ndis_wait_pending_completion(struct wrapper_dev *wd)
 {
 	/* wait for NdisMXXComplete to be called*/
-	/* DDK seems to imply we wait until miniport calls back
-	 * completion routine, but some drivers don't call back, so
-	 * timeout is used; TODO: find out why drivers don't call
-	 * completion function */
+	/* As per spec, we should wait until miniport calls back
+	 * completion routine, but some drivers (e.g., ZyDas) don't
+	 * call back, so timeout is used; TODO: find out why drivers
+	 * don't call completion function */
 #if 1
 	if (wait_event_interruptible_timeout(wd->ndis_comm_wq,
 					     (wd->ndis_comm_done == 1),
@@ -121,9 +121,6 @@ NDIS_STATUS miniport_reset(struct wrapper_dev *wd)
 	if (down_interruptible(&wd->ndis_comm_mutex))
 		TRACEEXIT3(return NDIS_STATUS_FAILURE);
 	miniport = &wd->driver->miniport;
-	/* reset_status is used for two purposes: to check if windows
-	 * driver needs us to reset filters etc (as per NDIS) and to
-	 * check if another reset is in progress */
 	wd->ndis_comm_status = NDIS_STATUS_PENDING;
 	wd->ndis_comm_done = 0;
 	cur_lookahead = wd->nmb->cur_lookahead;
@@ -173,7 +170,7 @@ NDIS_STATUS miniport_query_info_needed(struct wrapper_dev *wd,
 	struct miniport_char *miniport = &wd->driver->miniport;
 	KIRQL irql;
 
-	DBGTRACE2("query %p, oid: %08X", miniport->query, oid);
+	DBGTRACE2("oid: %08X", oid);
 
 	if (!test_bit(HW_AVAILABLE, &wd->hw_status))
 		TRACEEXIT1(return NDIS_STATUS_FAILURE);
@@ -226,7 +223,7 @@ NDIS_STATUS miniport_set_info(struct wrapper_dev *wd, ndis_oid oid,
 	struct miniport_char *miniport = &wd->driver->miniport;
 	KIRQL irql;
 
-	DBGTRACE2("set: %p, oid: %08X", miniport->setinfo, oid);
+	DBGTRACE2("oid: %08X", oid);
 
 	if (!test_bit(HW_AVAILABLE, &wd->hw_status))
 		TRACEEXIT1(return NDIS_STATUS_FAILURE);
@@ -286,28 +283,32 @@ NDIS_STATUS miniport_init(struct wrapper_dev *wd)
 	UINT medium_array[] = {NdisMedium802_3};
 	struct miniport_char *miniport = &wd->driver->miniport;
 
+	TRACEENTER1("driver init routine is at %p", miniport->init);
+	if (miniport->init == NULL) {
+		ERROR("initialization function is not setup correctly");
+		return -EINVAL;
+	}
 	res = ntoskernel_init_device(wd);
 	if (res)
 		return res;
 	res = misc_funcs_init_device(wd);
 	if (res)
-		return res;
+		goto err_misc_funcs;
 	if (wd->dev.dev_type == NDIS_USB_BUS) {
+#ifdef CONFIG_USB
 		res = usb_init_device(wd);
+#else
+		res = -EINVAL;
+#endif
 		if (res)
-			return res;
-	}
-	TRACEENTER1("driver init routine is at %p", miniport->init);
-	if (miniport->init == NULL) {
-		ERROR("initialization function is not setup correctly");
-		return -EINVAL;
+			goto err_usb;
 	}
 	res = LIN2WIN6(miniport->init, &status, &medium_index, medium_array,
 		       sizeof(medium_array) / sizeof(medium_array[0]),
 		       wd->nmb, wd->nmb);
 	DBGTRACE1("init returns: %08X", res);
 	if (res)
-		TRACEEXIT1(return res);
+		goto err_miniport_init;
 
 	/* Wait a little to let card power up otherwise ifup might fail after
 	   boot; USB devices seem to need long delays */
@@ -323,6 +324,16 @@ NDIS_STATUS miniport_init(struct wrapper_dev *wd)
 			  wd->net_dev->name, res);
 #endif
 	TRACEEXIT1(return 0);
+
+err_miniport_init:
+#ifdef CONFIG_USB
+	usb_exit_device(wd);
+#endif
+err_usb:
+	misc_funcs_exit_device(wd);
+ err_misc_funcs:
+	ntoskernel_exit_device(wd);
+	return res;
 }
 
 NTSTATUS ndiswrapper_start_device(struct wrapper_dev *wd)
@@ -335,21 +346,7 @@ NTSTATUS ndiswrapper_start_device(struct wrapper_dev *wd)
 		ERROR("couldn't allocate thread object");
 		return STATUS_INSUFFICIENT_RESOURCES;
 	}
-#if 0
-	struct irp *irp;
-	struct io_stack_location *irp_sl;
-
-	TRACEENTER1("%p", wd);
-	irp = IoAllocateIrp(wd->nmb->fdo->stack_size, FALSE);
-	irp_sl = IoGetNextIrpStackLocation(irp);
-	DBGTRACE1("irp = %p, stack = %p", irp, irp_sl);
-	irp_sl->major_fn = IRP_MJ_PNP;
-	irp_sl->minor_fn = IRP_MN_START_DEVICE;
-	irp->io_status.status = STATUS_NOT_SUPPORTED;
-	status = IoCallDriver(wd->nmb->fdo, irp);
-#else
 	status = miniport_init(wd);
-#endif
 	wrap_remove_thread(kthread);
 	TRACEEXIT1(return status);
 }
@@ -1366,8 +1363,7 @@ static void wrapper_worker_proc(void *param)
 		if (res) {
 			WARNING("%s is being reset", wd->net_dev->name);
 			res = miniport_reset(wd);
-			DBGTRACE3("reset returns %08X, %d",
-				  res, wd->reset_status);
+			DBGTRACE3("reset returns %08X", res);
 		}
 	}
 	if (test_and_clear_bit(SUSPEND_RESUME, &wd->wrapper_work)) {
