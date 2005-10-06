@@ -1,4 +1,4 @@
-Version 1.4 2005-XX-XX
+Version 1.4 2005-10-06
 ======================
 * WPA2 support added.
 * Implemented most of IO manager, PnP manager and Obj manager.
@@ -21,6 +21,7 @@ Version 1.4 2005-XX-XX
 * Issue with unloading module with some drirvers (e.g., sis and
   Inprocomm ipn2220) fixed.
 * Issue with WPA with sis162u, sis163u and ZyDas zd1211 fixed.
+* Initialization failure with WUSB54v1 fixed.
 
 Version 1.2 2005-06-10
 ======================
