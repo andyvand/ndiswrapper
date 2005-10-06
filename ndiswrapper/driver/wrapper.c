@@ -327,7 +327,8 @@ NDIS_STATUS miniport_init(struct wrapper_dev *wd)
 
 err_miniport_init:
 #ifdef CONFIG_USB
-	usb_exit_device(wd);
+	if (wd->dev.dev_type == NDIS_USB_BUS)
+		usb_exit_device(wd);
 #endif
 err_usb:
 	misc_funcs_exit_device(wd);
