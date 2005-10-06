@@ -485,9 +485,9 @@ static void irp_complete_worker(unsigned long data)
 			break;
 		case -ENOENT:
 		case -ECONNRESET:
+			/* irp canceled */
 			if (irp->wrap_urb->state == URB_SUSPEND)
 				continue;
-			/* irp canceled */
 			NT_URB_STATUS(nt_urb) = USBD_STATUS_CANCELLED;
 			irp->io_status.status = STATUS_CANCELLED;
 			irp->io_status.status_info = 0;
@@ -1016,21 +1016,16 @@ static USBD_STATUS wrap_get_port_status(struct irp *irp)
 {
 	struct wrapper_dev *wd;
 	ULONG *status;
-	int ret;
-	u16 data;
+	enum usb_device_state state;
 
 	wd = irp->wd;
 	USBENTER("%p, %p", wd, wd->dev.usb.udev);
 	status = IoGetCurrentIrpStackLocation(irp)->params.others.arg1;
-	/* TODO: USB_RECIP_DEVICE doesn't indicate if device is
-	 * connected or not, but if it is not, the request should
-	 * fail; not sure if this is correct way */
-	data = 0;
-	ret = usb_get_status(wd->dev.usb.udev, USB_RECIP_DEVICE, 0, &data);
-	if (ret < 0)
-		*status = 0;
-	else
-		*status = USBD_PORT_ENABLED | USBD_PORT_CONNECTED;
+	state = wd->dev.usb.udev->state;
+	if (state & USB_STATE_ATTACHED)
+		*status |= USBD_PORT_CONNECTED;
+	if (state & USB_STATE_CONFIGURED)
+		*status |= USBD_PORT_ENABLED;
 //	irp->io_status.status_info = 0;
 	return USBD_STATUS_SUCCESS;
 }
