@@ -16,7 +16,7 @@
 #ifndef _NTOSKERNEL_H_
 #define _NTOSKERNEL_H_
 
-#define UTILS_VERSION "1.2"
+#define UTILS_VERSION "1.4"
 
 #include <linux/types.h>
 #include <linux/timer.h>
@@ -174,10 +174,17 @@ typedef task_queue workqueue;
 #endif // LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
 
 #ifndef PMSG_SUSPEND
-typedef struct {
-	int event;
-} pm_message_t;
-#define PMSG_SUSPEND ((pm_message_t) {.event = 3})
+#ifdef PM_SUSPEND
+/* this is not correct - the value of PM_SUSPEND is different from
+ * PMSG_SUSPEND, but ndiswrapper doesn't care about the value when
+ * suspending */
+#define PMSG_SUSPEND PM_SUSPEND
+#define PSMG_ON PM_ON
+#else
+typedef u32 pm_message_t;
+#define PMSG_SUSPEND 3
+#define PMSG_ON 0
+#endif
 #endif
 
 #ifndef PCI_D0
@@ -193,6 +200,10 @@ typedef struct {
 #define KTHREAD_RUN(a,b,c) kthread_run(a,b,0,c)
 #else
 #define KTHREAD_RUN(a,b,c) kthread_run(a,b,c)
+#endif
+
+#if !defined(HAVE_NETDEV_PRIV)
+#define netdev_priv(dev)  ((dev)->priv)
 #endif
 
 #ifdef CONFIG_X86_64
@@ -319,7 +330,7 @@ do {									\
 #define KMALLOC_THRESHOLD 131072
 
 /* TICK is 100ns */
-#define TICKSPERSEC		10000000ULL
+#define TICKSPERSEC		10000000LL
 #define TICKSPERMSEC		10000
 #define SECSPERDAY		86400
 #define SECSPERHOUR		3600
@@ -332,16 +343,19 @@ do {									\
 
 /* 100ns units to HZ; if sys_time is negative, relative to current
  * clock, otherwise from year 1601 */
-/* with smaller HZ, each timer interrupt occurs at longer intervals,
- * so wait for one timer interrupt longer, else the driver may not
- * expect to be woken up quickly */
 #define SYSTEM_TIME_TO_HZ(sys_time)					\
-	((((sys_time) < 0) ? (((u64)HZ * (-(sys_time))) / TICKSPERSEC) : \
-	  (((u64)HZ * ((sys_time) - ticks_1601())) / TICKSPERSEC)) + 1)
+	((((sys_time) <= 0) ? (((u64)HZ * (-(sys_time))) / TICKSPERSEC) : \
+	  (((u64)HZ * ((sys_time) - ticks_1601())) / TICKSPERSEC)))
 
-/* for expiration timers only, add 1 for the same reason as above */
-#define MSEC_TO_HZ(ms) (((ms) * HZ / 1000) + 1)
-#define USEC_TO_HZ(ms) (((us) * HZ / 1000000) + 1)
+#define MSEC_TO_HZ(ms) ((ms) * HZ / 1000)
+#define USEC_TO_HZ(ms) ((us) * HZ / 1000000)
+
+extern u64 wrap_ticks_to_boot;
+
+static inline u64 ticks_1601(void)
+{
+	return wrap_ticks_to_boot + (u64)jiffies * TICKSPERSEC / HZ;
+}
 
 typedef void (*WRAP_EXPORT_FUNC)(void);
 
@@ -389,8 +403,6 @@ extern KSPIN_LOCK cancel_lock;
 
 //#define DEBUG_IRQL 1
 
-enum wrap_timer_type { WRAP_TIMER_KERNEL = 1, WRAP_TIMER_NDIS, };
-
 struct wrap_timer {
 	long repeat;
 	struct nt_list list;
@@ -399,20 +411,19 @@ struct wrap_timer {
 #ifdef DEBUG_TIMER
 	unsigned long wrap_timer_magic;
 #endif
-	BOOLEAN active;
-	enum wrap_timer_type type;
 };
 
 typedef struct mdl ndis_buffer;
 
-#define MAX_URBS 10
+#define MAX_ALLOCATED_URBS 15
 
 struct phys_dev {
 	int dev_type;
 	struct pci_dev *pci;
 	struct {
 		struct usb_device *udev;
-		struct wrap_urb wrap_urbs[MAX_URBS];
+		int num_alloc_urbs;
+		struct nt_list wrap_urb_list;
 	} usb;
 };
 
@@ -421,6 +432,7 @@ struct wrapper_dev;
 #if LINUX_VERSION_CODE > KERNEL_VERSION(2,6,0)
 /* until issues with threads hogging cpu are resolved, we don't want
  * to use shared workqueue, lest the threads take keyboard etc down */
+#define USE_OWN_WORKQUEUE 1
 extern struct workqueue_struct *ndiswrapper_wq;
 #define schedule_work(work_struct) queue_work(ndiswrapper_wq, (work_struct))
 #endif
@@ -442,11 +454,6 @@ STDCALL LONG KeSetEvent(struct kevent *kevent, KPRIORITY incr, BOOLEAN wait);
 STDCALL LONG KeResetEvent(struct kevent *kevent);
 STDCALL void KeClearEvent(struct kevent *kevent);
 STDCALL void KeInitializeDpc(struct kdpc *kdpc, void *func, void *ctx);
-void initialize_dh(struct dispatch_header *dh, enum event_type type,
-		   int state, enum dh_type dh_type);
-void initialize_kdpc(struct kdpc *kdpc, void *func, void *ctx);
-BOOLEAN insert_kdpc_work(struct kdpc *kdpc);
-BOOLEAN remove_kdpc_work(struct kdpc *kdpc);
 STDCALL BOOLEAN KeInsertQueueDpc(struct kdpc *kdpc, void *arg1, void *arg2);
 STDCALL BOOLEAN KeRemoveQueueDpc(struct kdpc *kdpc);
 STDCALL void KeFlushQueuedDpcs(void);
@@ -559,14 +566,22 @@ STDCALL LONG RtlCompareUnicodeString
 STDCALL void RtlCopyUnicodeString
 	(struct unicode_string *dst, struct unicode_string *src);
 
-void *wrap_kmalloc(size_t size, int flags);
+void *wrap_kmalloc(size_t size);
 void wrap_kfree(void *ptr);
-void wrap_init_timer(struct ktimer *ktimer, void *handle);
-int wrap_set_timer(struct ktimer *ktimer, long expires, unsigned long repeat,
-		   enum wrap_timer_type type);
-void wrap_cancel_timer(struct wrap_timer *wrap_timer, BOOLEAN *canceled);
+void wrap_init_timer(struct ktimer *ktimer, enum timer_type type,
+		     struct wrapper_dev *wd);
+BOOLEAN wrap_set_timer(struct ktimer *ktimer, unsigned long expires_hz,
+		       unsigned long repeat_hz, struct kdpc *kdpc);
 
 STDCALL void KeInitializeTimer(struct ktimer *ktimer);
+STDCALL void KeInitializeTimerEx(struct ktimer *ktimer, enum timer_type type);
+STDCALL BOOLEAN KeSetTimerEx(struct ktimer *ktimer,
+			     LARGE_INTEGER duetime_ticks, LONG period_ms,
+			     struct kdpc *kdpc);
+STDCALL BOOLEAN KeSetTimer(struct ktimer *ktimer, LARGE_INTEGER duetime_ticks,
+			   struct kdpc *kdpc);
+STDCALL BOOLEAN KeCancelTimer(struct ktimer *ktimer);
+STDCALL void KeInitializeDpc(struct kdpc *kdpc, void *func, void *ctx);
 
 unsigned long lin_to_win1(void *func, unsigned long);
 unsigned long lin_to_win2(void *func, unsigned long, unsigned long);

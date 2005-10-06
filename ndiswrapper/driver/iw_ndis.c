@@ -1708,6 +1708,10 @@ static int iw_set_pmksa(struct net_device *dev,
 	 * one is added. */
 
 	TRACEENTER2("");
+
+	if (wd->auth_mode != Ndis802_11AuthModeWPA2)
+		return -EOPNOTSUPP;
+
 	memset(&pmkid, 0, sizeof(pmkid));
 	if (pmksa->cmd == IW_PMKSA_ADD) {
 		pmkid.bssid_info_count = 1;
@@ -1795,6 +1799,7 @@ static int priv_usb_reset(struct net_device *dev, struct iw_request_info *info,
 
 	TRACEENTER2("");
 	wd = netdev_priv(dev);
+	res = 0;
 #if LINUX_VERSION_CODE > KERNEL_VERSION(2,6,0)
 	res = usb_reset_configuration(wd->dev.usb.udev);
 	if (res) {

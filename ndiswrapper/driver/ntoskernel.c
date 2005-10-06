@@ -17,6 +17,10 @@
 #include "ndis.h"
 #include "usb.h"
 
+#define WRAP_KMALLOC_TAG 0x4b6d41
+#define WRAP_VMALLOC_TAG 0x766d9f
+typedef unsigned long wrap_alloc_tag_t;
+
 /* MDLs describe a range of virtual address with an array of physical
  * pages right after the header. For different ranges of virtual
  * addresses, the number of entries of physical pages may be different
@@ -44,6 +48,8 @@ KSPIN_LOCK ntoskernel_lock;
 static kmem_cache_t *mdl_cache;
 static struct nt_list wrap_mdl_list;
 
+static KSPIN_LOCK inter_lock;
+
 struct work_struct kdpc_work;
 static struct nt_list kdpc_list;
 static KSPIN_LOCK kdpc_list_lock;
@@ -65,15 +71,26 @@ void io_worker(void *data);
 
 KSPIN_LOCK irp_cancel_lock;
 
-/* wrap_epoch is when ntoskernel gets initialized */
-static u64 wrap_ticks_to_epoch;
-static typeof(jiffies) wrap_epoch;
-
 extern struct nt_list ndis_drivers;
 extern struct nt_list ndis_work_list;
 extern KSPIN_LOCK ndis_work_list_lock;
+extern struct work_struct ndis_work;
+
+static struct nt_list wrap_timer_list;
+KSPIN_LOCK timer_lock;
+
+/* compute ticks (100ns) since 1601 until when system booted into
+ * wrap_ticks_to_boot */
+u64 wrap_ticks_to_boot;
+
+#if defined(CONFIG_X86_64)
+static struct timer_list shared_data_timer;
+struct kuser_shared_data kuser_shared_data;
+static void update_user_shared_data_proc(unsigned long data);
+#endif
 
 static int add_bus_driver(struct driver_object *drv_obj, const char *name);
+static BOOLEAN insert_kdpc_work(struct kdpc *kdpc);
 
 WRAP_EXPORT_MAP("KeTickCount", &jiffies);
 
@@ -86,6 +103,7 @@ int ntoskernel_init(void)
 	kspin_lock_init(&io_workitem_list_lock);
 	kspin_lock_init(&kdpc_list_lock);
 	kspin_lock_init(&irp_cancel_lock);
+	kspin_lock_init(&inter_lock);
 	InitializeListHead(&wrap_mdl_list);
 	InitializeListHead(&kdpc_list);
 	InitializeListHead(&callback_objects);
@@ -95,11 +113,14 @@ int ntoskernel_init(void)
 	INIT_WORK(&kdpc_work, kdpc_worker, NULL);
 	INIT_WORK(&io_work, io_worker, NULL);
 
-	/* compute ticks since 1601 into wrap_ticks_to_epoch */
+	kspin_lock_init(&timer_lock);
+	InitializeListHead(&wrap_timer_list);
+
 	do_gettimeofday(&now);
-	wrap_epoch = jiffies;
-	wrap_ticks_to_epoch = (u64)now.tv_sec * TICKSPERSEC;
-	wrap_ticks_to_epoch += now.tv_usec * 10 + TICKS_1601_TO_1970;
+	wrap_ticks_to_boot = (u64)now.tv_sec * TICKSPERSEC;
+	wrap_ticks_to_boot += now.tv_usec * 10;
+	wrap_ticks_to_boot -= jiffies * TICKSPERSEC / HZ;
+	wrap_ticks_to_boot += TICKS_1601_TO_1970;
 
 	if (add_bus_driver(&pci_bus_driver, "PCI") ||
 	    add_bus_driver(&usb_bus_driver, "USB")) {
@@ -113,7 +134,55 @@ int ntoskernel_init(void)
 		ntoskernel_exit();
 		return -ENOMEM;
 	}
+#if defined(CONFIG_X86_64)
+	memset(&kuser_shared_data, 0, sizeof(kuser_shared_data));
+	init_timer(&shared_data_timer);
+	shared_data_timer.function = &update_user_shared_data_proc;
+#endif
 	return 0;
+}
+
+int ntoskernel_init_device(struct wrapper_dev *wd)
+{
+	InitializeListHead(&wd->wrap_timer_list);
+#if defined(CONFIG_X86_64)
+	if(wd->ndis_device->vendor == 0x17fe &&
+	   wd->ndis_device->device == 0x2220) {
+		*((ULONG64 *)&kuser_shared_data.system_time) = ticks_1601();
+		shared_data_timer.data = (unsigned long)0;
+		/* don't use add_timer - to avoid creating more than
+		 * one timer */
+		mod_timer(&shared_data_timer, jiffies + 10 * HZ / 1000);
+	}
+#endif
+	return 0;
+}
+
+void ntoskernel_exit_device(struct wrapper_dev *wd)
+{
+	KIRQL irql;
+
+	KeFlushQueuedDpcs();
+
+	/* cancel any timers left by bugyy windows driver Also free
+	 * the memory for timers */
+	while (1) {
+		struct nt_list *ent;
+		struct wrap_timer *wrap_timer;
+
+		irql = kspin_lock_irql(&timer_lock, DISPATCH_LEVEL);
+		ent = RemoveHeadList(&wd->wrap_timer_list);
+		kspin_unlock_irql(&timer_lock, irql);
+		if (!ent)
+			break;
+		wrap_timer = container_of(ent, struct wrap_timer, list);
+		if (del_timer_sync(&wrap_timer->timer))
+			WARNING("Buggy Windows driver left timer %p running",
+				&wrap_timer->timer);
+		memset(wrap_timer, 0, sizeof(*wrap_timer));
+		wrap_kfree(wrap_timer);
+	}
+	return;
 }
 
 void ntoskernel_exit(void)
@@ -121,7 +190,23 @@ void ntoskernel_exit(void)
 	struct nt_list *cur;
 	KIRQL irql;
 
-//	KeFlushQueuedDpcs();
+	/* free kernel (Ke) timers */
+	while (1) {
+		struct wrap_timer *wrap_timer;
+
+		irql = kspin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL);
+		cur = RemoveTailList(&wrap_timer_list);
+		kspin_unlock_irql(&ntoskernel_lock, irql);
+		if (!cur)
+			break;
+		wrap_timer = container_of(cur, struct wrap_timer, list);
+		if (del_timer_sync(&wrap_timer->timer))
+			WARNING("Buggy Windows driver left timer %p running",
+				&wrap_timer->timer);
+		memset(wrap_timer, 0, sizeof(*wrap_timer));
+		wrap_kfree(wrap_timer);
+	}
+
 	if (mdl_cache) {
 		irql = kspin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL);
 		if (!IsListEmpty(&wrap_mdl_list)) {
@@ -165,31 +250,36 @@ void ntoskernel_exit(void)
 		kfree(header);
 	}
 	kspin_unlock_irql(&ntoskernel_lock, irql);
+
+#if defined(CONFIG_X86_64)
+	del_timer_sync(&shared_data_timer);
+#endif
 	return;
 }
 
-int ntoskernel_init_device(struct wrapper_dev *wd)
+#if defined(CONFIG_X86_64)
+static void update_user_shared_data_proc(unsigned long data)
 {
-	return 0;
-}
+	/* this function is called only for inprocomm2220 64-bit
+	 * driver */
 
-void ntoskernel_exit_device(struct wrapper_dev *wd)
-{
-	return;
-}
+	/* timer is scheduled every 10ms and the system timer is in
+	 * 100ns */
+	*((ULONG64 *)&kuser_shared_data.system_time) = ticks_1601();
+	*((ULONG64 *)&kuser_shared_data.interrupt_time) =
+		jiffies * TICKSPERSEC / HZ;
+	*((ULONG64 *)&kuser_shared_data.tick) = jiffies;
 
-u64 ticks_1601(void)
-{
-	u64 ticks;
-	ticks = wrap_ticks_to_epoch +
-		((u64)(jiffies - wrap_epoch) * TICKSPERSEC / HZ);
-	return ticks;
+	shared_data_timer.expires += 10 * HZ / 1000;
+	add_timer(&shared_data_timer);
 }
+#endif
 
 static int add_bus_driver(struct driver_object *drv_obj, const char *name)
 {
 	struct bus_driver *bus_driver;
 	int i;
+	KIRQL irql;
 
 	bus_driver = kmalloc(sizeof(*bus_driver), GFP_KERNEL);
 	if (!bus_driver) {
@@ -198,7 +288,9 @@ static int add_bus_driver(struct driver_object *drv_obj, const char *name)
 	}
 	memset(bus_driver, 0, sizeof(*bus_driver));
 	strncpy(bus_driver->name, name, sizeof(bus_driver->name));
+	irql = kspin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL);
 	InsertTailList(&bus_driver_list, &bus_driver->list);
+	kspin_unlock_irql(&ntoskernel_lock, irql);
 	bus_driver->drv_obj = drv_obj;
 	for (i = 0; i <= IRP_MJ_MAXIMUM_FUNCTION; i++)
 		drv_obj->major_func[i] = IopInvalidDeviceRequest;
@@ -215,22 +307,32 @@ static int add_bus_driver(struct driver_object *drv_obj, const char *name)
 static void del_bus_drivers(void)
 {
 	struct nt_list *ent;
+	KIRQL irql;
+
+	irql = kspin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL);
 	while ((ent = RemoveHeadList(&bus_driver_list))) {
 		struct bus_driver *bus_driver;
 		bus_driver = container_of(ent, struct bus_driver, list);
 		/* TODO: make sure all all drivers are shutdown/removed */
 		kfree(bus_driver);
 	}
+	kspin_unlock_irql(&ntoskernel_lock, irql);
 }
 
 struct driver_object *find_bus_driver(const char *name)
 {
 	struct bus_driver *bus_driver;
+	struct driver_object *drv_obj;
+	KIRQL irql;
+
+	irql = kspin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL);
+	drv_obj = NULL;
 	nt_list_for_each_entry(bus_driver, &bus_driver_list, list) {
 		if (strcmp(bus_driver->name, name) == 0)
-			return bus_driver->drv_obj;
+			drv_obj = bus_driver->drv_obj;
 	}
-	return NULL;
+	kspin_unlock_irql(&ntoskernel_lock, irql);
+	return drv_obj;
 }
 
 struct device_object *alloc_pdo(struct driver_object *drv_obj)
@@ -343,9 +445,9 @@ STDCALL struct nt_slist *WRAP_EXPORT(ExpInterlockedPushEntrySList)
 	KIRQL irql;
 
 	TRACEENTER5("head = %p", head);
-	irql = kspin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL);
+	irql = kspin_lock_irql(&inter_lock, DISPATCH_LEVEL);
 	ret = PushEntryList(head, entry);
-	kspin_unlock_irql(&ntoskernel_lock, irql);
+	kspin_unlock_irql(&inter_lock, irql);
 	DBGTRACE5("head = %p, ret = %p", head, ret);
 	return ret;
 }
@@ -372,9 +474,9 @@ STDCALL struct nt_slist *WRAP_EXPORT(ExpInterlockedPopEntrySList)
 	KIRQL irql;
 
 	TRACEENTER5("head = %p", head);
-	irql = kspin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL);
+	irql = kspin_lock_irql(&inter_lock, DISPATCH_LEVEL);
 	ret = PopEntryList(head);
-	kspin_unlock_irql(&ntoskernel_lock, irql);
+	kspin_unlock_irql(&inter_lock, irql);
 	DBGTRACE5("head = %p, ret = %p", head, ret);
 	return ret;
 }
@@ -401,7 +503,7 @@ STDCALL USHORT WRAP_EXPORT(ExQueryDepthSList)
 }
 
 /* should be called with kevent_lock held at DISPATCH_LEVEL */
-void initialize_dh(struct dispatch_header *dh, enum event_type type,
+static void initialize_dh(struct dispatch_header *dh, enum event_type type,
 		   int state, enum dh_type dh_type)
 {
 	memset(dh, 0, sizeof(*dh));
@@ -411,77 +513,200 @@ void initialize_dh(struct dispatch_header *dh, enum event_type type,
 	InitializeListHead(&dh->wait_blocks);
 }
 
-STDCALL void WRAP_EXPORT(KeInitializeTimer)
-	(struct ktimer *ktimer)
+static void timer_proc(unsigned long data)
 {
+	struct ktimer *ktimer = (struct ktimer *)data;
+	struct wrap_timer *wrap_timer;
+	struct kdpc *kdpc;
 	KIRQL irql;
 
+	wrap_timer = ktimer->wrap_timer;
+	TRACEENTER5("%p(%p), %lu", wrap_timer, ktimer, jiffies);
+	if (wrap_timer == NULL) {
+		WARNING("wrong timer: %p", ktimer);
+		return;
+	}
+
+#ifdef DEBUG_TIMER
+	BUG_ON(wrap_timer->wrap_timer_magic != WRAP_TIMER_MAGIC);
+	BUG_ON(ktimer->wrap_timer_magic != WRAP_TIMER_MAGIC);
+#endif
+	irql = kspin_lock_irql(&timer_lock, DISPATCH_LEVEL);
+	kdpc = ktimer->kdpc;
+	KeSetEvent((struct kevent *)ktimer, 0, FALSE);
+	/* some drivers (e.g., Prism1 USB) call with expires == 0
+	 * and in that case, if we schedule DPC to be called later,
+	 * the drivers crash - they seem to expect that the DPC be
+	 * called right away */
+	if (kdpc && kdpc->func) {
+		DBGTRACE5("calling kdpc %p (%p)", kdpc, kdpc->func);
+		LIN2WIN4(kdpc->func, kdpc, kdpc->ctx, kdpc->arg1, kdpc->arg2);
+	}
+
+	/* don't add the timer if aperiodic - see
+	 * wrapper_cancel_timer */
+	if (wrap_timer->repeat) {
+		wrap_timer->timer.expires += wrap_timer->repeat;
+		add_timer(&wrap_timer->timer);
+	}
+	kspin_unlock_irql(&timer_lock, irql);
+
+	TRACEEXIT5(return);
+}
+
+/* we don't initialize ktimer event's signal here; that is caller's
+ * responsibility */
+void wrap_init_timer(struct ktimer *ktimer, enum timer_type type,
+		     struct wrapper_dev *wd)
+{
+	struct wrap_timer *wrap_timer;
+	KIRQL irql;
+
+	/* TODO: if a timer is initialized more than once, we allocate
+	 * memory for wrap_timer more than once for the same ktimer,
+	 * wasting memory. We can check if ktimer->wrap_timer_magic is
+	 * set and not allocate, but it is not guaranteed always to be
+	 * safe */
 	TRACEENTER5("%p", ktimer);
-	irql = kspin_lock_irql(&kevent_lock, DISPATCH_LEVEL);
-	initialize_dh(&ktimer->dh, NotificationTimer, 0, DH_KTIMER);
+	/* we allocate memory for wrap_timer behind driver's back
+	 * and there is no NDIS/DDK function where this memory can be
+	 * freed, so we use wrap_kmalloc so it gets freed when driver
+	 * is unloaded */
+	wrap_timer = wrap_kmalloc(sizeof(*wrap_timer));
+	if (!wrap_timer) {
+		ERROR("couldn't allocate memory for timer");
+		return;
+	}
+
+	memset(wrap_timer, 0, sizeof(*wrap_timer));
+	init_timer(&wrap_timer->timer);
+	wrap_timer->timer.data = (unsigned long)ktimer;
+	wrap_timer->timer.function = &timer_proc;
+	wrap_timer->ktimer = ktimer;
+#ifdef DEBUG_TIMER
+	wrap_timer->wrap_timer_magic = WRAP_TIMER_MAGIC;
+#endif
+	initialize_dh(&ktimer->dh, type, 0, DH_KTIMER);
+	ktimer->wrap_timer = wrap_timer;
 	ktimer->kdpc = NULL;
-	kspin_unlock_irql(&kevent_lock, irql);
-	wrap_init_timer(ktimer, NULL);
+	ktimer->wrap_timer_magic = WRAP_TIMER_MAGIC;
+	if (wd) {
+		irql = kspin_lock_irql(&timer_lock, DISPATCH_LEVEL);
+		InsertTailList(&wd->wrap_timer_list, &wrap_timer->list);
+		kspin_unlock_irql(&timer_lock, irql);
+	} else {
+		irql = kspin_lock_irql(&timer_lock, DISPATCH_LEVEL);
+		InsertTailList(&wrap_timer_list, &wrap_timer->list);
+		kspin_unlock_irql(&timer_lock, irql);
+	}
+	DBGTRACE5("timer %p (%p)", wrap_timer, ktimer);
+	TRACEEXIT5(return);
 }
 
 STDCALL void WRAP_EXPORT(KeInitializeTimerEx)
 	(struct ktimer *ktimer, enum timer_type type)
 {
-	KIRQL irql;
-
 	TRACEENTER5("%p", ktimer);
-	irql = kspin_lock_irql(&kevent_lock, DISPATCH_LEVEL);
-	initialize_dh(&ktimer->dh, type, 0, DH_KTIMER);
-	ktimer->wrap_timer = NULL;
-	ktimer->kdpc = NULL;
-	kspin_unlock_irql(&kevent_lock, irql);
-	wrap_init_timer(ktimer, NULL);
+	wrap_init_timer(ktimer, type, NULL);
+}
+
+STDCALL void WRAP_EXPORT(KeInitializeTimer)
+	(struct ktimer *ktimer)
+{
+	TRACEENTER5("%p", ktimer);
+	wrap_init_timer(ktimer, NotificationTimer, NULL);
+}
+
+/* expires and repeat are in HZ */
+BOOLEAN wrap_set_timer(struct ktimer *ktimer, unsigned long expires_hz,
+		       unsigned long repeat_hz, struct kdpc *kdpc)
+{
+	BOOLEAN ret;
+	KIRQL irql;
+	struct wrap_timer *wrap_timer;
+
+	TRACEENTER4("%p, %lu, %lu, %p, %lu",
+		    ktimer, expires_hz, repeat_hz, kdpc, jiffies);
+
+	KeClearEvent((struct kevent *)ktimer);
+	wrap_timer = ktimer->wrap_timer;
+
+	irql = kspin_lock_irql(&timer_lock, DISPATCH_LEVEL);
+#ifdef DEBUG_TIMER
+	if (ktimer->wrap_timer_magic != WRAP_TIMER_MAGIC) {
+		WARNING("Buggy Windows timer didn't initialize timer %p",
+			ktimer);
+		kspin_unlock_irql(&timer_lock, irql);
+		return FALSE;
+	}
+	if (wrap_timer->wrap_timer_magic != WRAP_TIMER_MAGIC) {
+		WARNING("timer %p is not initialized (%lx)?",
+			wrap_timer, wrap_timer->wrap_timer_magic);
+		wrap_timer->wrap_timer_magic = WRAP_TIMER_MAGIC;
+	}
+#endif
+	wrap_timer->repeat = repeat_hz;
+	if (kdpc)
+		ktimer->kdpc = kdpc;
+	ret = mod_timer(&wrap_timer->timer, jiffies + expires_hz);
+	kspin_unlock_irql(&timer_lock, irql);
+	TRACEEXIT5(return ret);
 }
 
 STDCALL BOOLEAN WRAP_EXPORT(KeSetTimerEx)
 	(struct ktimer *ktimer, LARGE_INTEGER duetime_ticks, LONG period_ms,
 	 struct kdpc *kdpc)
 {
-	unsigned long expires;
-	unsigned long repeat;
+	unsigned long expires_hz, repeat_hz;
 
-	TRACEENTER5("%p, %Ld, %u, %p",
-		    ktimer, duetime_ticks, period_ms, kdpc);
-
-	expires = SYSTEM_TIME_TO_HZ(duetime_ticks);
-	KeClearEvent((struct kevent *)ktimer);
-	repeat = MSEC_TO_HZ(period_ms) ;
-	ktimer->kdpc = kdpc;
-	if (kdpc)
-		kdpc->type = KDPC_TYPE_KERNEL;
-	return wrap_set_timer(ktimer, expires, repeat, WRAP_TIMER_KERNEL);
+	DBGTRACE5("%p, %Ld, %d", ktimer, duetime_ticks, period_ms);
+	expires_hz = SYSTEM_TIME_TO_HZ(duetime_ticks);
+	repeat_hz = MSEC_TO_HZ(period_ms);
+	return wrap_set_timer(ktimer, expires_hz, repeat_hz, kdpc);
 }
 
 STDCALL BOOLEAN WRAP_EXPORT(KeSetTimer)
 	(struct ktimer *ktimer, LARGE_INTEGER duetime_ticks, struct kdpc *kdpc)
 {
-	unsigned long expires;
-
 	TRACEENTER5("%p, %Ld, %p", ktimer, duetime_ticks, kdpc);
-	expires = SYSTEM_TIME_TO_HZ(duetime_ticks);
-	KeClearEvent((struct kevent *)ktimer);
-	ktimer->kdpc = kdpc;
-	if (kdpc)
-		kdpc->type = KDPC_TYPE_KERNEL;
-	return wrap_set_timer(ktimer, expires, 0, WRAP_TIMER_KERNEL);
+	return KeSetTimerEx(ktimer, duetime_ticks, 0, kdpc);
 }
 
 STDCALL BOOLEAN WRAP_EXPORT(KeCancelTimer)
 	(struct ktimer *ktimer)
 {
 	BOOLEAN canceled;
+	KIRQL irql;
+	struct wrap_timer *wrap_timer;
 
 	TRACEENTER5("%p", ktimer);
-	wrap_cancel_timer(ktimer->wrap_timer, &canceled);
-	return canceled;
+	wrap_timer = ktimer->wrap_timer;
+	if (!wrap_timer) {
+		ERROR("invalid wrap_timer");
+		return TRUE;
+	}
+#ifdef DEBUG_TIMER
+	DBGTRACE5("canceling timer %p", wrap_timer);
+	BUG_ON(wrap_timer->wrap_timer_magic != WRAP_TIMER_MAGIC);
+#endif
+	/* del_timer_sync may not be called here, as this function can
+	 * be called at DISPATCH_LEVEL */
+	irql = kspin_lock_irql(&timer_lock, DISPATCH_LEVEL);
+	DBGTRACE5("deleting timer %p(%p)", wrap_timer, ktimer);
+	/* disable timer before deleting so it won't be re-armed after
+	 * deleting */
+	wrap_timer->repeat = 0;
+	if (del_timer(&wrap_timer->timer))
+		canceled = TRUE;
+	else
+		canceled = FALSE;
+	kspin_unlock_irql(&timer_lock, irql);
+	DBGTRACE5("canceled (%p): %d", wrap_timer, canceled);
+	TRACEEXIT5(return canceled);
 }
 
-void initialize_kdpc(struct kdpc *kdpc, void *func, void *ctx)
+STDCALL void WRAP_EXPORT(KeInitializeDpc)
+	(struct kdpc *kdpc, void *func, void *ctx)
 {
 	TRACEENTER3("%p, %p, %p", kdpc, func, ctx);
 	memset(kdpc, 0, sizeof(*kdpc));
@@ -489,13 +714,6 @@ void initialize_kdpc(struct kdpc *kdpc, void *func, void *ctx)
 	kdpc->func = func;
 	kdpc->ctx  = ctx;
 	InitializeListHead(&kdpc->list);
-	TRACEEXIT3(return);
-}
-
-STDCALL void WRAP_EXPORT(KeInitializeDpc)
-	(struct kdpc *kdpc, void *func, void *ctx)
-{
-	initialize_kdpc(kdpc, func, ctx);
 }
 
 static void kdpc_worker(void *data)
@@ -527,7 +745,7 @@ STDCALL void KeFlushQueuedDpcs(void)
 	kdpc_worker(NULL);
 }
 
-BOOLEAN insert_kdpc_work(struct kdpc *kdpc)
+static BOOLEAN insert_kdpc_work(struct kdpc *kdpc)
 {
 	KIRQL irql;
 	BOOLEAN ret;
@@ -648,6 +866,13 @@ STDCALL KIRQL WRAP_EXPORT(KeAcquireSpinLockRaiseToDpc)
 	return kspin_lock_irql(lock, DISPATCH_LEVEL);
 }
 
+STDCALL void WRAP_EXPORT(KeAcquireSpinLockdAtDpcLevel)
+        (KSPIN_LOCK *lock)
+{
+	TRACEENTER6("%p", lock);
+	kspin_lock(lock);
+}
+
 STDCALL void WRAP_EXPORT(KeReleaseSpinLockFromDpcLevel)
 	(KSPIN_LOCK *lock)
 {
@@ -662,10 +887,10 @@ _FASTCALL LONG WRAP_EXPORT(InterlockedDecrement)
 	KIRQL irql;
 
 	TRACEENTER5("");
-	irql = kspin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL);
+	irql = kspin_lock_irql(&inter_lock, DISPATCH_LEVEL);
 	(*val)--;
 	x = *val;
-	kspin_unlock_irql(&ntoskernel_lock, irql);
+	kspin_unlock_irql(&inter_lock, irql);
 	TRACEEXIT5(return x);
 }
 
@@ -676,10 +901,10 @@ _FASTCALL LONG WRAP_EXPORT(InterlockedIncrement)
 	KIRQL irql;
 
 	TRACEENTER5("");
-	irql = kspin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL);
+	irql = kspin_lock_irql(&inter_lock, DISPATCH_LEVEL);
 	(*val)++;
 	x = *val;
-	kspin_unlock_irql(&ntoskernel_lock, irql);
+	kspin_unlock_irql(&inter_lock, irql);
 	TRACEEXIT5(return x);
 }
 
@@ -690,10 +915,10 @@ _FASTCALL LONG WRAP_EXPORT(InterlockedExchange)
 	KIRQL irql;
 
 	TRACEENTER5("");
-	irql = kspin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL);
+	irql = kspin_lock_irql(&inter_lock, DISPATCH_LEVEL);
 	x = *target;
 	*target = val;
-	kspin_unlock_irql(&ntoskernel_lock, irql);
+	kspin_unlock_irql(&inter_lock, irql);
 	TRACEEXIT5(return x);
 }
 
@@ -704,11 +929,11 @@ _FASTCALL LONG WRAP_EXPORT(InterlockedCompareExchange)
 	KIRQL irql;
 
 	TRACEENTER5("");
-	irql = kspin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL);
+	irql = kspin_lock_irql(&inter_lock, DISPATCH_LEVEL);
 	x = *dest;
 	if (*dest == comperand)
 		*dest = xchg;
-	kspin_unlock_irql(&ntoskernel_lock, irql);
+	kspin_unlock_irql(&inter_lock, irql);
 	TRACEEXIT5(return x);
 }
 
@@ -718,30 +943,96 @@ _FASTCALL void WRAP_EXPORT(ExInterlockedAddLargeStatistic)
 	unsigned long flags;
 
 	TRACEENTER5("%p = %llu, n = %u", plint, *plint, n);
-	kspin_lock_irqsave(&ntoskernel_lock, flags);
+	kspin_lock_irqsave(&inter_lock, flags);
 	*plint += n;
-	kspin_unlock_irqrestore(&ntoskernel_lock, flags);
+	kspin_unlock_irqrestore(&inter_lock, flags);
 }
 
+/* We need to keep track of whether memory is allocated with kmalloc
+ * or vmalloc so we can free with kfree or vfree later. So we allocate
+ * a bit more memory and store the tag there. This tag is inspected
+ * while freeing memory. */
 STDCALL void *WRAP_EXPORT(ExAllocatePoolWithTag)
 	(enum pool_type pool_type, SIZE_T size, ULONG tag)
 {
-	void *ret;
+	void *addr;
+	UINT total;
+	wrap_alloc_tag_t wrap_tag;
 
-	TRACEENTER1("pool_type: %d, size: %lu, tag: %u", pool_type,
+	TRACEENTER4("pool_type: %d, size: %lu, tag: %u", pool_type,
 		    size, tag);
 
-	if (current_irql() < DISPATCH_LEVEL)
-		ret = kmalloc(size, GFP_KERNEL);
-	else
-		ret = kmalloc(size, GFP_ATOMIC);
-	return ret;
+	total = size + sizeof(wrap_tag);
+	if (total <= KMALLOC_THRESHOLD) {
+		if (current_irql() < DISPATCH_LEVEL)
+			addr = kmalloc(total, GFP_KERNEL);
+		else
+			addr = kmalloc(total, GFP_ATOMIC);
+		wrap_tag = WRAP_KMALLOC_TAG;
+	} else {
+		if (current_irql() == DISPATCH_LEVEL)
+			ERROR("Windows driver allocating too big a block"
+			      " at DISPATCH_LEVEL: %d", total);
+		addr = vmalloc(total);
+		wrap_tag = WRAP_VMALLOC_TAG;
+	}
+	if (addr) {
+		*(typeof(wrap_tag) *)addr = wrap_tag;
+		addr += sizeof(wrap_tag);
+		DBGTRACE4("addr: %p, tag: %lx, size: %lu",
+			  addr, wrap_tag, size);
+	} else
+		WARNING("couldn't allocate memory: %lu", size);
+	TRACEEXIT4(return addr);
 }
 
 STDCALL void WRAP_EXPORT(ExFreePool)
-	(void *p)
+	(void *addr)
 {
-	kfree(p);
+	wrap_alloc_tag_t wrap_tag;
+	struct ndis_work_entry *ndis_work_entry;
+	struct ndis_free_mem_work_item *free_mem;
+
+	DBGTRACE4("addr: %p", addr);
+	addr -= sizeof(wrap_tag);
+	wrap_tag = *(typeof(wrap_tag) *)addr;
+	DBGTRACE4("tag: %lx", wrap_tag);
+	if (wrap_tag == WRAP_KMALLOC_TAG) {
+		kfree(addr);
+		return;
+	} else if (wrap_tag == WRAP_VMALLOC_TAG) {
+		if (!in_interrupt()) {
+			vfree(addr);
+			return;
+		}
+		/* Centrino 2200 driver calls this function when in
+		 * ad-hoc mode in interrupt context when length >
+		 * KMALLOC_THRESHOLD, which implies that vfree is
+		 * called in interrupt context, which is not
+		 * correct. So we use worker for it */
+		/* Instead of using yet another worker, use ndis_work
+		 * for this, although ntos layer using ndis functions
+		 * is counter-intuitive */
+		ndis_work_entry = kmalloc(sizeof(*ndis_work_entry),
+					  GFP_ATOMIC);
+		BUG_ON(!ndis_work_entry);
+
+		ndis_work_entry->type = NDIS_FREE_MEM_WORK_ITEM;
+		free_mem = &ndis_work_entry->entry.free_mem_work_item;
+		free_mem->addr = addr;
+
+		kspin_lock(&ndis_work_list_lock);
+		InsertTailList(&ndis_work_list, &ndis_work_entry->list);
+		kspin_unlock(&ndis_work_list_lock);
+		schedule_work(&ndis_work);
+		return;
+	} else {
+		ERROR("wrong tag: %lu (%p)", wrap_tag, addr);
+		/* releasing memory here is dangerous, but it will
+		 * catch errors and prevent leaks */
+		kfree(addr);
+		return;
+	}
 }
 
 WRAP_FUNC_PTR_DECL(ExAllocatePoolWithTag)
@@ -752,10 +1043,9 @@ STDCALL void WRAP_EXPORT(ExInitializeNPagedLookasideList)
 	 LOOKASIDE_ALLOC_FUNC *alloc_func, LOOKASIDE_FREE_FUNC *free_func,
 	 ULONG flags, SIZE_T size, ULONG tag, USHORT depth)
 {
-	TRACEENTER3("lookaside: %p, size: %lu, flags: %u,"
-		    " head: %p, alloc: %p, free: %p",
-		    lookaside, size, flags, lookaside->head.list.next,
-		    alloc_func, free_func);
+	TRACEENTER3("lookaside: %p, size: %lu, flags: %u, head: %p, "
+		    "alloc: %p, free: %p", lookaside, size, flags,
+		    lookaside->head.list.next, alloc_func, free_func);
 
 	memset(lookaside, 0, sizeof(*lookaside));
 
@@ -967,13 +1257,15 @@ STDCALL NTSTATUS WRAP_EXPORT(KeWaitForMultipleObjects)
 	struct task_struct *task;
 
 	task = get_current();
+	EVENTENTER("task: %p, count = %d, reason = %u, "
+		   "waitmode = %u, alertable = %u, timeout = %p", task,
+		   count, wait_reason, wait_mode, alertable, timeout);
+
 	kthread = KeGetCurrentThread();
+	EVENTTRACE("thread: %p", kthread);
 	assert(kthread != NULL);
 	if (kthread == NULL)
 		return STATUS_RESOURCES;
-	EVENTENTER("task: %p, thread: %p, count = %d, reason = %u, "
-		   "waitmode = %u, alertable = %u, timeout = %p", task,
-		   kthread, count, wait_reason, wait_mode, alertable, timeout);
 
 	if (count > MAX_WAIT_OBJECTS)
 		EVENTEXIT(return STATUS_INVALID_PARAMETER);
@@ -1140,6 +1432,7 @@ STDCALL void WRAP_EXPORT(KeInitializeEvent)
 	KIRQL irql;
 
 	EVENTENTER("event = %p, type = %d, state = %d", kevent, type, state);
+//	dump_bytes(__FUNCTION__, __builtin_return_address(0), 20);
 	irql = kspin_lock_irql(&kevent_lock, DISPATCH_LEVEL);
 	initialize_dh(&kevent->dh, type, state, DH_KEVENT);
 	kspin_unlock_irql(&kevent_lock, irql);
@@ -1354,23 +1647,25 @@ STDCALL struct kthread *WRAP_EXPORT(KeGetCurrentThread)
 	struct kthread *ret;
 	struct common_object_header *header;
 
-	DBGTRACE3("task: %p", task);
+	DBGTRACE5("task: %p", task);
 	ret = NULL;
 	irql = kspin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL);
 	nt_list_for_each_entry(header, &object_list, list) {
 		struct kthread *kthread;
-		DBGTRACE3("header: %p, type: %d", header, header->type);
+		DBGTRACE5("header: %p, type: %d", header, header->type);
 		if (header->type != OBJECT_TYPE_KTHREAD)
 			continue;
 		kthread = HEADER_TO_OBJECT(header);
-		DBGTRACE3("kthread: %p, task: %p", kthread, kthread->task);
+		DBGTRACE5("kthread: %p, task: %p", kthread, kthread->task);
 		if (kthread->task == task) {
 			ret = kthread;
 			break;
 		}
 	}
 	kspin_unlock_irql(&ntoskernel_lock, irql);
-	DBGTRACE3("current thread = %p", ret);
+	if (ret == NULL)
+		DBGTRACE1("couldn't find thread for task %p", task);
+	DBGTRACE5("current thread = %p", ret);
 	return ret;
 }
 
@@ -1440,8 +1735,7 @@ struct kthread *wrap_create_thread(struct task_struct *task)
 		init_waitqueue_head(&kthread->event_wq);
 		InitializeListHead(&kthread->irps);
 		irql = kspin_lock_irql(&kevent_lock, DISPATCH_LEVEL);
-		initialize_dh(&kthread->dh, NotificationEvent,
-			      0, DH_KTHREAD);
+		initialize_dh(&kthread->dh, NotificationEvent, 0, DH_KTHREAD);
 		kspin_unlock_irql(&kevent_lock, irql);
 		kthread->dh.size = sizeof(*kthread);
 
@@ -1458,7 +1752,7 @@ void wrap_remove_thread(struct kthread *kthread)
 	struct nt_list *ent;
 
 	if (kthread) {
-		DBGTRACE2("terminating thread: %p, task: %p, pid: %d",
+		DBGTRACE1("terminating thread: %p, task: %p, pid: %d",
 			  kthread, kthread->task, kthread->task->pid);
 		/* TODO: make sure waitqueue is empty and destroy it */
 		irql = kspin_lock_irql(&kthread->lock, DISPATCH_LEVEL);
@@ -1625,7 +1919,14 @@ struct mdl *allocate_init_mdl(void *virt, ULONG length)
 	KIRQL irql;
 
 	if (mdl_size <= CACHE_MDL_SIZE) {
-		wrap_mdl = kmem_cache_alloc(mdl_cache, GFP_ATOMIC);
+		unsigned int alloc_flags;
+
+		if (current_irql() < DISPATCH_LEVEL)
+			alloc_flags = GFP_KERNEL;
+		else
+			alloc_flags = GFP_ATOMIC;
+		
+		wrap_mdl = kmem_cache_alloc(mdl_cache, alloc_flags);
 		if (!wrap_mdl)
 			return NULL;
 		irql = kspin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL);
@@ -1830,6 +2131,7 @@ STDCALL NTSTATUS WRAP_EXPORT(ZwCreateFile)
 	struct ndis_bin_file *file;
 	KIRQL irql;
 
+	TRACEENTER2("");
 	ansi.buf = kmalloc(MAX_STR_LEN, GFP_KERNEL);
 	if (!ansi.buf) {
 		return STATUS_INSUFFICIENT_RESOURCES;
@@ -1970,7 +2272,8 @@ STDCALL NTSTATUS WRAP_EXPORT(WmiQueryTraceInformation)
 STDCALL unsigned int WRAP_EXPORT(IoWMIRegistrationControl)
 	(struct device_object *dev_obj, ULONG action)
 {
-	TRACEENTER2("");
+	TRACEENTER2("%p, %d", dev_obj, action);
+
 	TRACEEXIT2(return STATUS_SUCCESS);
 }
 

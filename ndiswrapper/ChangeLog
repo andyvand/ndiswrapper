@@ -1,12 +1,27 @@
-Version 1.3 2005-XX-XX
+Version 1.4 2005-10-06
 ======================
-* WPA2 support added
-* Implemented most of IO manager, PnP manager and Obj manager
+* WPA2 support added.
+* Implemented most of IO manager, PnP manager and Obj manager.
 * No need to update utils everytime ndiswrapper is updated but only when utils
-  interface changes
-* Many fixes in USB layer - USB devices should work with HIGHMEM,
-  suspend/resume support for USB devices added
-* Bug fixes
+  interface changes.
+* USB layer has been rewritten with many fixes; e.g., USB devices no
+  longer disconnect unexpectedly.
+* New devices supported: sis162, sis163, ZyDas 1211, Linksys WUSB11v4
+  (with Ali chipset). These are USB devices.
+* Unplugging USB devices without removing ndiswrapper module
+  supported.
+* USB devices work with PREEMPT enabled.
+* Separate workqueue is used in 2.6 kernels; this should prevent
+  locking up keyboard etc. in case of kernel crash.
+* Support for new kernels added.
+* Many bug fixes.
+* Added support for Inprocomm IPN2220 with 64-bit.
+* Added support for RNDIS USB devices (tested with U.S. Robotics
+  USR5420).
+* Issue with unloading module with some drirvers (e.g., sis and
+  Inprocomm ipn2220) fixed.
+* Issue with WPA with sis162u, sis163u and ZyDas zd1211 fixed.
+* Initialization failure with WUSB54v1 fixed.
 
 Version 1.2 2005-06-10
 ======================

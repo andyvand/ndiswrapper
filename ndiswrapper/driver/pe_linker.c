@@ -39,7 +39,9 @@ struct pe_exports {
 
 static struct pe_exports pe_exports[40];
 static int num_pe_exports;
+#if defined(CONFIG_X86_64)
 extern struct kuser_shared_data kuser_shared_data;
+#endif
 
 #define RVA2VA(image, rva, type) (type)(ULONG_PTR)((void *)image + rva)
 #define CHECK_SZ(a,b) { if (sizeof(a) != b) {				\
@@ -499,6 +501,7 @@ static int fix_pe_image(struct pe_image *pe)
 	return 0;
 }
 
+#if defined(CONFIG_X86_64)
 void fix_user_shared_data_addr(char *driver, unsigned long length)
 {
 	unsigned long i, n, max_addr, *addr;
@@ -513,6 +516,7 @@ void fix_user_shared_data_addr(char *driver, unsigned long length)
 		}
 	}
 }
+#endif
 
 int load_pe_images(struct pe_image *pe_image, int n)
 {
@@ -574,7 +578,7 @@ int load_pe_images(struct pe_image *pe_image, int n)
 			DBGTRACE1("fixup imports failed");
 			return -EINVAL;
 		}
-#if defined(CONFIG_X86_64) && defined(INPROCOMM_AMD64)
+#if defined(CONFIG_X86_64)
 		INFO("fixing KI_USER_SHARED_DATA address in the driver");
 		fix_user_shared_data_addr(pe_image[i].image, pe_image[i].size);
 #endif

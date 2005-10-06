@@ -6,7 +6,7 @@ Build-Depends: debhelper (>> 4.0.0)
 Standards-Version: 3.6.0
 
 Package: ndiswrapper-source
-Provides: ndiswrapper-source-#NDISVERS#
+Provides: ndiswrapper-source-#DRIVER_VERSION#
 Architecture: i386
 Description: User space tools for ndiswrapper
  Some wireless network cards don't have native Linux drivers. NdisWrapper

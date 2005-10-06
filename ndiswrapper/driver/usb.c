@@ -46,6 +46,40 @@
 #define USB_CTRL_SET_TIMEOUT 5000
 #endif
 
+static int inline wrap_cancel_urb(struct urb *urb)
+{
+	int ret;
+	ret = usb_unlink_urb(urb);
+	if (ret != -EINPROGRESS) {
+		WARNING("unlink failed: %d", ret);
+		return ret;
+	} else
+		return 0;
+}
+
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,0)
+/* TODO: are these correct? */
+#define URB_NO_TRANSFER_DMA_MAP 0x0004
+#define URB_NO_SETUP_DMA_MAP 0x0004
+static void *usb_buffer_alloc(struct usb_device *udev, size_t size,
+			      unsigned mem_flags, dma_addr_t *dma)
+{
+	return kmalloc(size, mem_flags);
+}
+
+static void usb_buffer_free(struct usb_device *udev, size_t size, void *addr,
+			    dma_addr_t dma)
+{
+	kfree(addr);
+}
+
+static void usb_init_urb(struct urb *urb)
+{
+	memset(urb, 0, sizeof(*urb));
+}
+
+#endif
+
 extern KSPIN_LOCK irp_cancel_lock;
 
 /* TODO: using a worker instead of tasklet is probably preferable,
@@ -74,68 +108,37 @@ void usb_exit(void)
 
 int usb_init_device(struct wrapper_dev *wd)
 {
-	int i, j;
-	struct wrap_urb *wrap_urb;
-
-	for (i = 0; i < MAX_URBS; i++) {
-		wrap_urb = &wd->dev.usb.wrap_urbs[i];
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
-		wrap_urb->urb = usb_alloc_urb(0, GFP_KERNEL);
-#else
-		wrap_urb->urb = usb_alloc_urb(0);
-#endif
-		if (!wrap_urb->urb) {
-			WARNING("couldn't allocate urb");
-			for (j = 0; j < i; j++) {
-				usb_free_urb(wd->dev.usb.wrap_urbs[j].urb);
-				wd->dev.usb.wrap_urbs[j].state = URB_INVALID;
-			}
-			return -ENOMEM;
-		}
-		wrap_urb->urb->context = wrap_urb;
-		wrap_urb->state = URB_FREE;
-	}
+	InitializeListHead(&wd->dev.usb.wrap_urb_list);
+	wd->dev.usb.num_alloc_urbs = 0;
 	return 0;
 }
 
 void usb_exit_device(struct wrapper_dev *wd)
 {
-	int i;
+	struct nt_list *ent;
 	struct wrap_urb *wrap_urb;
 	KIRQL irql;
 
-	IoAcquireCancelSpinLock(&irql);
-	for (i = 0; i < MAX_URBS; i++) {
-		wrap_urb = &wd->dev.usb.wrap_urbs[i];
-		/* TODO: kill urb? */
-		if (wrap_urb->state != URB_FREE) {
+	while (1) {
+		IoAcquireCancelSpinLock(&irql);
+		ent = RemoveHeadList(&wd->dev.usb.wrap_urb_list);
+		IoReleaseCancelSpinLock(irql);
+		if (!ent)
+			break;
+		wrap_urb = container_of(ent, struct wrap_urb, list);
+		if (wrap_urb->state == URB_SUBMITTED) {
 			WARNING("Windows driver %s didn't free urb: %p",
 				wd->driver->name, wrap_urb->urb);
-			usb_kill_urb(wrap_urb->urb);
+			/* TODO: we should call usb_kill_urb, but 2.4
+			 * kernels don't have it */
+			wrap_cancel_urb(wrap_urb->urb);
 		}
 		usb_free_urb(wrap_urb->urb);
-		wrap_urb->state = URB_INVALID;
+		kfree(wrap_urb);
 	}
-	IoReleaseCancelSpinLock(irql);
+	wd->dev.usb.num_alloc_urbs = 0;
 	return;
 }
-
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,0)
-/* TODO: are these correct? */
-#define URB_NO_TRANSFER_DMA_MAP 0x0004
-#define URB_NO_SETUP_DMA_MAP 0x0004
-static void *usb_buffer_alloc(struct usb_device *udev, size_t size,
-			      unsigned mem_flags, dma_addr_t *dma)
-{
-	return kmalloc(size, mem_flags);
-}
-
-static void usb_buffer_free(struct usb_device *udev, size_t size, void *addr,
-			    dma_addr_t dma)
-{
-	kfree(addr);
-}
-#endif
 
 /* for a given Linux urb status code, return corresponding NT urb status */
 static USBD_STATUS wrap_urb_status(int urb_status)
@@ -190,11 +193,13 @@ static void wrap_free_urb(struct urb *urb)
 {
 	struct irp *irp;
 	struct wrap_urb *wrap_urb;
+	struct wrapper_dev *wd;
 
 	USBTRACE("freeing urb: %p", urb);
 	wrap_urb = urb->context;
 	irp = wrap_urb->irp;
 	IoAcquireCancelSpinLock(&irp->cancel_irql);
+	wd = irp->wd;
 	irp->cancel_routine = NULL;
 	irp->wrap_urb = NULL;
 	if (urb->transfer_buffer &&
@@ -205,110 +210,101 @@ static void wrap_free_urb(struct urb *urb)
 				urb->transfer_buffer_length, 
 				urb->transfer_buffer, urb->transfer_dma);
 	}
-	if (urb->setup_packet &&
-	    (wrap_urb->alloc_flags & URB_NO_SETUP_DMA_MAP))
+	if (urb->setup_packet)
 		kfree(urb->setup_packet);
-	wrap_urb->state = URB_FREE;
-	wrap_urb->alloc_flags = 0;
-	wrap_urb->irp = NULL;
-	usb_init_urb(urb);
+	if (wd->dev.usb.num_alloc_urbs > MAX_ALLOCATED_URBS) {
+		RemoveEntryList(&wrap_urb->list);
+		wd->dev.usb.num_alloc_urbs--;
+		usb_free_urb(urb);
+		kfree(wrap_urb);
+	} else {
+		wrap_urb->state = URB_FREE;
+		wrap_urb->alloc_flags = 0;
+		usb_init_urb(urb);
+		wrap_urb->irp = NULL;
+	}
+	if (wd->dev.usb.num_alloc_urbs < 0)
+		WARNING("num_allocated_urbs: %d",
+			wd->dev.usb.num_alloc_urbs);
 	IoReleaseCancelSpinLock(irp->cancel_irql);
 	return;
 }
 
 void wrap_suspend_urbs(struct wrapper_dev *wd)
 {
-	int i, ret;
-	unsigned long flags;
-	struct wrap_urb *wrap_urb;
-
-	kspin_lock_irqsave(&irp_cancel_lock, flags);
-	for (i = 0; i < MAX_URBS; i++) {
-		wrap_urb = &wd->dev.usb.wrap_urbs[i];
-		if (wrap_urb->state != URB_SUBMITTED)
-			continue;
-		wrap_urb->state = URB_SUSPEND;
-		WARNING("Windows driver %s didn't cancel urb: %p",
-			wd->driver->name, wrap_urb->urb);
-		ret = usb_unlink_urb(wrap_urb->urb);
-		if (ret != -EINPROGRESS && ret != 0)
-			WARNING("unlink failed with %d", ret);
-	}
-	kspin_unlock_irqrestore(&irp_cancel_lock, flags);
+	/* TODO: do we need to cancel urbs? */
 }
 
 void wrap_resume_urbs(struct wrapper_dev *wd)
 {
-	int i, ret;
-	struct wrap_urb *wrap_urb;
-	unsigned int alloc_flags;
-
-	if (current_irql() < DISPATCH_LEVEL)
-		alloc_flags = GFP_KERNEL;
-	else
-		alloc_flags = GFP_ATOMIC;
-	for (i = 0; i < MAX_URBS; i++) {
-		wrap_urb = &wd->dev.usb.wrap_urbs[i];
-		if (wrap_urb->state != URB_SUSPEND)
-			continue;
-		wrap_urb->state = URB_SUBMITTED;
-		WARNING("Windows driver %s didn't cancel urb: %p",
-			wd->driver->name, wrap_urb->urb);
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
-		ret = usb_submit_urb(wrap_urb->urb, alloc_flags);
-#else
-		ret = usb_submit_urb(wrap_urb->urb);
-#endif
-		if (ret) {
-			WARNING("submit failed with %d", ret);
-			wrap_free_urb(wrap_urb->urb);
-		}
-	}
+	/* TODO: do we need to resubmit urbs? */
 }
 
-static struct urb *wrap_alloc_urb(struct usb_device *udev, struct irp *irp,
-				  unsigned int pipe, void *buf,
-				  unsigned int buf_len)
+static struct urb *wrap_alloc_urb(struct irp *irp, unsigned int pipe,
+				  void *buf, unsigned int buf_len)
 {
 	struct urb *urb;
 	unsigned int alloc_flags;
 	struct wrap_urb *wrap_urb;
-	int i;
 	struct wrapper_dev *wd;
 
-	wd = irp->wd;
-	IoAcquireCancelSpinLock(&irp->cancel_irql);
-	for (i = 0; i < MAX_URBS; i++) {
-		wrap_urb = &wd->dev.usb.wrap_urbs[i];
-		if (wrap_urb->state == URB_FREE)
-			break;
-	}
-	if (i == MAX_URBS)
-		urb = NULL;
-	else {
-		urb = wrap_urb->urb;
-		urb->context = wrap_urb;
-		wrap_urb->irp = irp;
-		wrap_urb->state = URB_ALLOCATED;
-		irp->wrap_urb = wrap_urb;
-		irp->cancel_routine = wrap_cancel_irp;
-	}
-	IoReleaseCancelSpinLock(irp->cancel_irql);
-	if (!urb) {
-		WARNING("couldn't allocate urb");
-		return NULL;
-	}
-	USBTRACE("allocated urb: %p", urb);
 	if (current_irql() < DISPATCH_LEVEL)
 		alloc_flags = GFP_KERNEL;
 	else
 		alloc_flags = GFP_ATOMIC;
+	wd = irp->wd;
+	IoAcquireCancelSpinLock(&irp->cancel_irql);
+	urb = NULL;
+	nt_list_for_each_entry(wrap_urb, &wd->dev.usb.wrap_urb_list, list) {
+		if (wrap_urb->state == URB_FREE) {
+			wrap_urb->state = URB_ALLOCATED;
+			urb = wrap_urb->urb;
+			break;
+		}
+	}
+
+	if (!urb) {
+		IoReleaseCancelSpinLock(irp->cancel_irql);
+		wrap_urb = kmalloc(sizeof(*wrap_urb), alloc_flags);
+		if (!wrap_urb) {
+			WARNING("couldn't allocate memory");
+			return NULL;
+		}
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
+		urb = usb_alloc_urb(0, alloc_flags);
+#else
+		urb = usb_alloc_urb(0);
+#endif
+		if (!urb) {
+			WARNING("couldn't allocate urb");
+			kfree(wrap_urb);
+		}
+#if defined(URB_ASYNC_UNLINK)
+		urb->transfer_flags |= URB_ASYNC_UNLINK;
+#endif
+		IoAcquireCancelSpinLock(&irp->cancel_irql);
+		memset(wrap_urb, 0, sizeof(*wrap_urb));
+		wrap_urb->urb = urb;
+		wrap_urb->state = URB_ALLOCATED;
+		InsertTailList(&wd->dev.usb.wrap_urb_list, &wrap_urb->list);
+		wd->dev.usb.num_alloc_urbs++;
+	}
+
+	urb->context = wrap_urb;
+	wrap_urb->irp = irp;
+	wrap_urb->state = URB_ALLOCATED;
+	wrap_urb->pipe = pipe;
+	irp->wrap_urb = wrap_urb;
+	irp->cancel_routine = wrap_cancel_irp;
+	IoReleaseCancelSpinLock(irp->cancel_irql);
+	USBTRACE("allocated urb: %p", urb);
 	if (buf_len && buf) {
 		if (virt_addr_valid(buf))
 			urb->transfer_buffer = buf;
 		else {
 			urb->transfer_buffer =
-				usb_buffer_alloc(udev, buf_len, alloc_flags,
+				usb_buffer_alloc(irp->wd->dev.usb.udev,
+						 buf_len, alloc_flags,
 						 &urb->transfer_dma);
 			if (!urb->transfer_buffer) {
 				WARNING("couldn't allocate dma buf");
@@ -407,6 +403,7 @@ static void wrap_urb_complete(struct urb *urb)
 	 * resubmitted */
 }
 
+/* one worker for all devices */
 static void irp_complete_worker(unsigned long data)
 {
 	struct irp *irp;
@@ -488,9 +485,9 @@ static void irp_complete_worker(unsigned long data)
 			break;
 		case -ENOENT:
 		case -ECONNRESET:
+			/* irp canceled */
 			if (irp->wrap_urb->state == URB_SUSPEND)
 				continue;
-			/* irp canceled */
 			NT_URB_STATUS(nt_urb) = USBD_STATUS_CANCELLED;
 			irp->io_status.status = STATUS_CANCELLED;
 			irp->io_status.status_info = 0;
@@ -514,25 +511,29 @@ static STDCALL void wrap_cancel_irp(struct device_object *dev_obj,
 				    struct irp *irp)
 {
 	struct urb *urb;
-	enum urb_state prev_state;
 
 	/* NB: this function is called holding Cancel spinlock */
 	USBENTER("irp: %p", irp);
 	urb = irp->wrap_urb->urb;
 	USBTRACE("canceling urb %p", urb);
 
-	prev_state = irp->wrap_urb->state;
-	irp->wrap_urb->state = URB_CANCELED;
-	IoReleaseCancelSpinLock(irp->cancel_irql);
-	if (prev_state == URB_SUBMITTED) {
-		if (usb_unlink_urb(urb) != -EINPROGRESS)
-			WARNING("unlinking urb %p returns %d",
-				urb, urb->status);
+	if (irp->wrap_urb->state == URB_SUBMITTED &&
+	    wrap_cancel_urb(urb) == 0) {
 		USBTRACE("urb %p canceled", urb);
+		irp->wrap_urb->state = URB_CANCELED;
 		/* this IRP will be returned in urb's completion function */
-	} else
-		ERROR("urb %p in wrong state: %d", urb, prev_state);
-
+		IoReleaseCancelSpinLock(irp->cancel_irql);
+	} else {
+		union nt_urb *nt_urb;
+		nt_urb = URB_FROM_IRP(irp);
+		ERROR("urb %p not canceld: %d", urb, irp->wrap_urb->state);
+		NT_URB_STATUS(nt_urb) = USBD_STATUS_REQUEST_FAILED;
+		irp->io_status.status = STATUS_INVALID_PARAMETER;
+		irp->io_status.status_info = 0;
+		IoReleaseCancelSpinLock(irp->cancel_irql);
+		wrap_free_urb(urb);
+		IoCompleteRequest(irp, IO_NO_INCREMENT);
+	}
 }
 
 static USBD_STATUS wrap_bulk_or_intr_trans(struct irp *irp)
@@ -571,7 +572,7 @@ static USBD_STATUS wrap_bulk_or_intr_trans(struct irp *irp)
 			MmGetMdlVirtualAddress(bulk_int_tx->mdl);
 	}
 
-	urb = wrap_alloc_urb(udev, irp, pipe, bulk_int_tx->transfer_buffer,
+	urb = wrap_alloc_urb(irp, pipe, bulk_int_tx->transfer_buffer,
 			     bulk_int_tx->transfer_buffer_length);
 	if (!urb) {
 		ERROR("couldn't allocate urb");
@@ -683,7 +684,7 @@ static USBD_STATUS wrap_vendor_or_class_req(struct irp *irp)
 		USBTRACE("pipe: %u, dir out", pipe);
 	}
 
-	urb = wrap_alloc_urb(udev, irp, pipe, vc_req->transfer_buffer,
+	urb = wrap_alloc_urb(irp, pipe, vc_req->transfer_buffer,
 			     vc_req->transfer_buffer_length);
 	if (!urb) {
 		ERROR("couldn't allocate urb");
@@ -720,22 +721,80 @@ static USBD_STATUS wrap_vendor_or_class_req(struct irp *irp)
 
 static USBD_STATUS wrap_reset_pipe(struct usb_device *udev, struct irp *irp)
 {
-	unsigned int pipe;
+	unsigned int pipe1, pipe2;
 	int ret;
 	union nt_urb *nt_urb;
 	usbd_pipe_handle pipe_handle;
+	enum pipe_type pipe_type;
 
 	USBTRACE("irp = %p", irp);
 	nt_urb = URB_FROM_IRP(irp);
+
 	pipe_handle = nt_urb->pipe_req.pipe_handle;
+	pipe_type = pipe_handle->bmAttributes & USB_ENDPOINT_XFERTYPE_MASK;
 	/* TODO: not clear if both directions should be cleared? */
-	pipe = usb_rcvctrlpipe(udev, pipe_handle->bEndpointAddress);
-	ret = usb_clear_halt(udev, pipe);
-	if (!ret) {
-		pipe = usb_sndctrlpipe(udev, pipe_handle->bEndpointAddress);
-		ret = usb_clear_halt(udev, pipe);
+	if (pipe_type == USB_ENDPOINT_XFER_BULK) {
+		pipe1 = usb_rcvbulkpipe(udev, pipe_handle->bEndpointAddress);
+		pipe2 = usb_sndbulkpipe(udev, pipe_handle->bEndpointAddress);
+	} else if (pipe_type == USB_ENDPOINT_XFER_INT) {
+		pipe1 = usb_rcvintpipe(udev, pipe_handle->bEndpointAddress);
+		/* outoing interrupt pipes shouldn't be reset */
+		pipe2 = pipe1;
+	} else if (pipe_type == USB_ENDPOINT_XFER_CONTROL) {
+		pipe1 = usb_rcvctrlpipe(udev, pipe_handle->bEndpointAddress);
+		pipe2 = usb_sndctrlpipe(udev, pipe_handle->bEndpointAddress);
+	} else {
+		WARNING("pipe type %d not handled", pipe_type);
+		return USBD_STATUS_SUCCESS;
 	}
-	return wrap_urb_status(ret);
+	ret = usb_clear_halt(udev, pipe1);
+	if (ret)
+		WARNING("resetting pipe %d failed: %d", pipe_type, ret);
+	if (pipe2 != pipe1) {
+		ret = usb_clear_halt(udev, pipe2);
+		if (ret)
+			WARNING("resetting pipe %d failed: %d",
+				pipe_type, ret);
+	}
+	return USBD_STATUS_SUCCESS;
+}
+
+static USBD_STATUS wrap_abort_pipe(struct usb_device *udev, struct irp *irp)
+{
+	union nt_urb *nt_urb;
+	usbd_pipe_handle pipe_handle;
+	unsigned long flags;
+	struct urb *urb;
+	struct wrap_urb *wrap_urb;
+	struct wrapper_dev *wd;
+
+	USBENTER("irp = %p", irp);
+	wd = irp->wd;
+	nt_urb = URB_FROM_IRP(irp);
+	pipe_handle = nt_urb->pipe_req.pipe_handle;
+
+	nt_urb = URB_FROM_IRP(irp);
+	while (1) {
+		kspin_lock_irqsave(&irp_cancel_lock, flags);
+		urb = NULL;
+		nt_list_for_each_entry(wrap_urb, &wd->dev.usb.wrap_urb_list,
+				       list) {
+			if (wrap_urb->state == URB_SUBMITTED &&
+			    (usb_pipeendpoint(wrap_urb->pipe) ==
+			     pipe_handle->bEndpointAddress)) {
+				wrap_urb->state = URB_CANCELED;
+				urb = wrap_urb->urb;
+				break;
+			}
+		}
+		kspin_unlock_irqrestore(&irp_cancel_lock, flags);
+		if (urb) {
+			wrap_cancel_urb(urb);
+			USBTRACE("canceled urb: %p", urb);
+		} else
+			break;
+	}
+	USBEXIT(return USBD_STATUS_SUCCESS);
 }
 
 static USBD_STATUS wrap_select_configuration(struct wrapper_dev *wd,
@@ -863,7 +922,7 @@ static USBD_STATUS wrap_get_descriptor(struct wrapper_dev *wd,
 					 ctrl_req->transfer_buffer_length);
 	}
 	if (ret < 0) {
-		WARNING("failed with %d", ret);
+		WARNING("request %d failed with %d", ctrl_req->desc_type, ret);
 		ctrl_req->transfer_buffer_length = 0;
 		return USBD_STATUS_REQUEST_FAILED;
 	} else {
@@ -886,8 +945,7 @@ static USBD_STATUS wrap_process_nt_urb(struct irp *irp)
 	udev = wd->dev.usb.udev;
 	nt_urb = URB_FROM_IRP(irp);
 	USBENTER("nt_urb = %p, irp = %p, length = %d, function = %x",
-		      nt_urb, irp, nt_urb->header.length,
-		      nt_urb->header.function);
+		 nt_urb, irp, nt_urb->header.length, nt_urb->header.function);
 
 	DUMP_IRP(irp);
 	switch (nt_urb->header.function) {
@@ -913,15 +971,24 @@ static USBD_STATUS wrap_process_nt_urb(struct irp *irp)
 		/* rest are synchronous */
 	case URB_FUNCTION_SELECT_CONFIGURATION:
 		status = wrap_select_configuration(wd, nt_urb, irp);
+		NT_URB_STATUS(nt_urb) = status;
 		break;
 
 	case URB_FUNCTION_GET_DESCRIPTOR_FROM_DEVICE:
 		status = wrap_get_descriptor(wd, nt_urb, irp);
+		NT_URB_STATUS(nt_urb) = status;
 		break;
 
 	case URB_FUNCTION_SYNC_RESET_PIPE_AND_CLEAR_STALL:
 		status = wrap_reset_pipe(udev, irp);
+		NT_URB_STATUS(nt_urb) = status;
 		break;
+
+	case URB_FUNCTION_ABORT_PIPE:
+		status = wrap_abort_pipe(udev, irp);
+		NT_URB_STATUS(nt_urb) = status;
+		break;
+
 	default:
 		ERROR("function %x not implemented", nt_urb->header.function);
 		status = NT_URB_STATUS(nt_urb) = USBD_STATUS_NOT_SUPPORTED;
@@ -935,16 +1002,32 @@ static USBD_STATUS wrap_reset_port(struct irp *irp)
 {
 	int ret;
 	struct wrapper_dev *wd;
-	union nt_urb *nt_urb;
 
 	wd = irp->wd;
 	USBENTER("%p, %p", wd, wd->dev.usb.udev);
 
-	nt_urb = URB_FROM_IRP(irp);
 	ret = usb_reset_device(wd->dev.usb.udev);
 	if (ret < 0)
 		WARNING("reset failed: %d", ret);
-	return wrap_urb_status(ret);
+	return USBD_STATUS_SUCCESS;
+}
+
+static USBD_STATUS wrap_get_port_status(struct irp *irp)
+{
+	struct wrapper_dev *wd;
+	ULONG *status;
+	enum usb_device_state state;
+
+	wd = irp->wd;
+	USBENTER("%p, %p", wd, wd->dev.usb.udev);
+	status = IoGetCurrentIrpStackLocation(irp)->params.others.arg1;
+	state = wd->dev.usb.udev->state;
+	if (state & USB_STATE_ATTACHED)
+		*status |= USBD_PORT_CONNECTED;
+	if (state & USB_STATE_CONFIGURED)
+		*status |= USBD_PORT_ENABLED;
+//	irp->io_status.status_info = 0;
+	return USBD_STATUS_SUCCESS;
 }
 
 NTSTATUS wrap_submit_irp(struct device_object *pdo, struct irp *irp)
@@ -952,14 +1035,11 @@ NTSTATUS wrap_submit_irp(struct device_object *pdo, struct irp *irp)
 	struct io_stack_location *irp_sl;
 	struct wrapper_dev *wd;
 	USBD_STATUS status;
-	union nt_urb *nt_urb;
 
 	irp_sl = IoGetCurrentIrpStackLocation(irp);
 	wd = pdo->reserved;
 
 	if (unlikely(wd->intf == NULL)) {
-		nt_urb = URB_FROM_IRP(irp);
-		NT_URB_STATUS(nt_urb) = USBD_STATUS_DEVICE_GONE;
 		irp->io_status.status = STATUS_DEVICE_REMOVED;
 		irp->io_status.status_info = 0;
 		return irp->io_status.status;
@@ -973,6 +1053,9 @@ NTSTATUS wrap_submit_irp(struct device_object *pdo, struct irp *irp)
 	case IOCTL_INTERNAL_USB_RESET_PORT:
 		status = wrap_reset_port(irp);
 		break;
+	case IOCTL_INTERNAL_USB_GET_PORT_STATUS:
+		status = wrap_get_port_status(irp);
+		break;
 	default:
  		ERROR("ioctl %08X NOT IMPLEMENTED", irp_sl->params.ioctl.code);
 		status = USBD_STATUS_NOT_SUPPORTED;
@@ -982,8 +1065,6 @@ NTSTATUS wrap_submit_irp(struct device_object *pdo, struct irp *irp)
 	USBTRACE("status: %08X", status);
 	if (status == USBD_STATUS_PENDING)
 		return STATUS_PENDING;
-	nt_urb = URB_FROM_IRP(irp);
-	NT_URB_STATUS(nt_urb) = status;
 	irp->io_status.status = nt_urb_irp_status(status);
 	if (status != USBD_STATUS_SUCCESS)
 		irp->io_status.status_info = 0;
