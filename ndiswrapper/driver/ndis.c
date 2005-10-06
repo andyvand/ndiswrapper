@@ -681,12 +681,13 @@ STDCALL ULONG WRAP_EXPORT(NdisReadPciSlotInformation)
 	 ULONG offset, char *buf, ULONG len)
 {
 	struct wrapper_dev *wd = nmb->wd;
-	int i;
+	ULONG i;
 	TRACEENTER3("%d", len);
 	for (i = 0; i < len; i++)
-		pci_read_config_byte(wd->dev.pci, offset+i, &buf[i]);
-
-	TRACEEXIT3(return len);
+		if (pci_read_config_byte(wd->dev.pci, offset+i, &buf[i]) !=
+		    PCIBIOS_SUCCESSFUL)
+			break;
+	TRACEEXIT3(return i);
 }
 
 STDCALL ULONG WRAP_EXPORT(NdisWritePciSlotInformation)
@@ -694,12 +695,13 @@ STDCALL ULONG WRAP_EXPORT(NdisWritePciSlotInformation)
 	 ULONG offset, char *buf, ULONG len)
 {
 	struct wrapper_dev *wd = nmb->wd;
-	int i;
+	ULONG i;
 	TRACEENTER3("%d", len);
 	for (i = 0; i < len; i++)
-		pci_write_config_byte(wd->dev.pci, offset+i, buf[i]);
-
-	TRACEEXIT3(return len);
+		if (pci_write_config_byte(wd->dev.pci, offset+i, buf[i]) !=
+		    PCIBIOS_SUCCESSFUL)
+			break;
+	TRACEEXIT3(return i);
 }
 
 STDCALL void WRAP_EXPORT(NdisMQueryAdapterResources)
@@ -842,10 +844,6 @@ STDCALL void WRAP_EXPORT(NdisReleaseSpinLock)
 	(struct ndis_spinlock *lock)
 {
 	TRACEENTER6("lock %p", lock);
-	if (!lock) {
-		ERROR("invalid lock");
-		return;
-	}
 	kspin_unlock_irql(&lock->klock, lock->irql);
 	TRACEEXIT6(return);
 }
@@ -1525,21 +1523,22 @@ STDCALL void WRAP_EXPORT(NdisMDeregisterAdapterShutdownHandler)
 static void ndis_irq_bh(void *data)
 {
 	struct ndis_irq *ndis_irq = (struct ndis_irq *)data;
-	struct wrapper_dev *wd = ndis_irq->wd;
+	struct wrapper_dev *wd;
 	struct miniport_char *miniport;
 	KIRQL irql;
 
 	/* Dpcs run at DISPATCH_LEVEL */
-	irql = raise_irql(DISPATCH_LEVEL);
 	if (ndis_irq->enabled) {
+		irql = raise_irql(DISPATCH_LEVEL);
+		wd = ndis_irq->wd;
 		miniport = &wd->driver->miniport;
 		LIN2WIN1(miniport->handle_interrupt,
 			 wd->nmb->adapter_ctx);
 		if (miniport->enable_interrupts)
 			LIN2WIN1(miniport->enable_interrupts,
 				 wd->nmb->adapter_ctx);
+		lower_irql(irql);
 	}
-	lower_irql(irql);
 }
 
 /* Top half of the irq handler */
