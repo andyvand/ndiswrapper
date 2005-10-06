@@ -6,7 +6,7 @@ Build-Depends: debhelper (>> 4.0.0)
 Standards-Version: 3.6.0
 
 Package: ndiswrapper-utils
-Provides: ndiswrapper-utils-#NDISVERS#
+Provides: ndiswrapper-utils-#UTILS_VERSION#
 Depends: ${shlibs:Depends}, ${misc:Depends}, ${perl:Depends}, debhelper
 Architecture: i386
 Description: User space tools for ndiswrapper

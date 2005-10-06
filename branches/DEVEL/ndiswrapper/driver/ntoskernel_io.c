@@ -279,6 +279,7 @@ STDCALL struct irp *WRAP_EXPORT(IoBuildAsynchronousFsdRequest)
 	struct irp *irp;
 	struct io_stack_location *irp_sl;
 
+	IOENTER("%p", dev_obj);
 	irp = IoAllocateIrp(dev_obj->stack_size, FALSE);
 	if (irp == NULL)
 		return NULL;
@@ -509,12 +510,9 @@ pdoDispatchInternalDeviceControl(struct device_object *pdo,
 		 * it is safe in this case */
 		status = wrap_submit_urb(irp);
 	}
-	if (status == STATUS_PENDING)
-		return status;
-	else {
+	if (status != STATUS_PENDING)
 		IoCompleteRequest(irp, IO_NO_INCREMENT);
-		return status;
-	}
+	IOEXIT(return status);
 #else
 	do {
 		union nt_urb *nt_urb;
@@ -811,7 +809,6 @@ void io_worker(void *data)
 			break;
 		io_workitem_entry = container_of(cur, struct io_workitem_entry,
 						 list);
-		kspin_unlock_irql(&io_workitem_list_lock, irql);
 		io_workitem = io_workitem_entry->io_workitem;
 		LIN2WIN2(io_workitem->worker_routine, io_workitem->dev_obj,
 			 io_workitem->context);
@@ -944,7 +941,7 @@ STDCALL NTSTATUS WRAP_EXPORT(IoCreateDevice)
 {
 	struct device_object *dev;
 
-	IOENTER("%p, %u", drv_obj, dev_ext_length);
+	IOENTER("%p, %u, %p", drv_obj, dev_ext_length, dev_name);
 	dev = ALLOCATE_OBJECT(struct device_object, GFP_KERNEL,
 			      OBJECT_TYPE_DEVICE);
 	if (!dev)
@@ -954,7 +951,8 @@ STDCALL NTSTATUS WRAP_EXPORT(IoCreateDevice)
 	dev->drv_obj = drv_obj;
 	dev->flags = 0;
 	if (dev_ext_length) {
-		dev->dev_ext = kmalloc(dev_ext_length, GFP_KERNEL);
+		dev->dev_ext = ExAllocatePoolWithTag(NonPagedPool,
+						     dev_ext_length, 0);
 		if (!dev->dev_ext) {
 			ObDereferenceObject(dev);
 			IOEXIT(return STATUS_INSUFFICIENT_RESOURCES);
@@ -972,10 +970,12 @@ STDCALL NTSTATUS WRAP_EXPORT(IoCreateDevice)
 	dev->io_timer = NULL;
 	KeInitializeEvent(&dev->lock, SynchronizationEvent, TRUE);
 	dev->vpb = NULL;
-	dev->dev_obj_ext = kmalloc(sizeof(*(dev->dev_obj_ext)), GFP_KERNEL);
+	dev->dev_obj_ext = ExAllocatePoolWithTag(NonPagedPool,
+						 sizeof(*(dev->dev_obj_ext)),
+						 0);
 	if (!dev->dev_obj_ext) {
 		if (dev->dev_ext)
-			kfree(dev->dev_ext);
+			ExFreePool(dev->dev_ext);
 		ObDereferenceObject(dev);
 		IOEXIT(return STATUS_INSUFFICIENT_RESOURCES);
 	}
@@ -1000,8 +1000,10 @@ STDCALL void WRAP_EXPORT(IoDeleteDevice)
 	IOENTER("%p", dev);
 	if (dev == NULL)
 		IOEXIT(return);
+	if (dev->dev_ext)
+		ExFreePool(dev->dev_ext);
 	if (dev->dev_obj_ext)
-		kfree(dev->dev_obj_ext);
+		ExFreePool(dev->dev_obj_ext);
 
 	prev = NULL;
 #if 0
@@ -1120,15 +1122,18 @@ STDCALL NTSTATUS WRAP_EXPORT(PoRequestPowerIrp)
 }
 
 STDCALL NTSTATUS WRAP_EXPORT(IoRegisterDeviceInterface)
-	(struct device_object *pdo, void *guid_class,
+	(struct device_object *pdo, struct guid *guid_class,
 	 struct unicode_string *reference, struct unicode_string *link)
 {
+	TRACEENTER1("pdo: %p, ref: %p, link: %p", pdo, reference, link);
+	
 	return STATUS_SUCCESS;
 }
 
 STDCALL NTSTATUS WRAP_EXPORT(IoSetDeviceInterfaceState)
-	(struct unicode_string *unicode, BOOLEAN enable)
+	(struct unicode_string *link, BOOLEAN enable)
 {
+	TRACEENTER1("link: %p, enable: %d", link, enable);
 	return STATUS_SUCCESS;
 }
 

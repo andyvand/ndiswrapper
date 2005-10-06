@@ -1,6 +1,9 @@
 #!/usr/bin/perl
 
 #/*
+#*  Copyright (C) 2005 Pontus Fuchs, Giridhar Pemmasani
+#*
+#*
 #*  This program is free software; you can redistribute it and/or modify
 #*  it under the terms of the GNU General Public License as published by
 #*  the Free Software Foundation; either version 2 of the License, or
@@ -22,7 +25,7 @@ my %strings;
 my %version;
 my $driver_name;
 my $confdir = "/etc/ndiswrapper";
-my $hotplug_conf = "modules.ndiswrapper";
+my $modhotplugconf = "$confdir" . "/modalias";
 my $instdir;
 my %fuzzlist;
 my $bustype;
@@ -41,6 +44,23 @@ if(@ARGV < 1) {
 	exit();
 }
 
+my $modconf;
+if (`uname -r` =~ /(\d+)\.(\d+)\.(\d+)/) {
+    if ($2 > 4) {
+	if (-d "/etc/modprobe.d") {
+	    $modconf = "/etc/modprobe.d/ndiswrapper" 
+	} else {
+	    $modconf = "/etc/modprobe.conf" 
+	}
+    } else {
+	if(-d "/etc/modutils") {
+	    $modconf = "/etc/modutils/ndiswrapper";
+	} else {
+	    $modconf = "/etc/modules.conf";
+	}
+    }
+}
+
 my $res;
 if($ARGV[0] eq "-i" and @ARGV == 2) {
     $res = install($ARGV[1]);
@@ -51,9 +71,9 @@ if($ARGV[0] eq "-i" and @ARGV == 2) {
 } elsif($ARGV[0] eq "-l" and @ARGV == 1) {
     $res = list();
 } elsif($ARGV[0] eq "-m" and @ARGV == 1) {
-    $res = modconf();
-} elsif($ARGV[0] eq "-hotplug" and @ARGV == 1) {
-    $res = hotplug_conf();
+    $res = modalias();
+#} elsif($ARGV[0] eq "-hotplug" and @ARGV == 1) {
+#    $res = modhotplug();
 } else {
     usage();
     exit();
@@ -69,7 +89,7 @@ sub usage {
 	"-e driver         Remove 'driver'\n" .
 	"-l                List installed drivers\n" .
 	"-m                Write configuration for modprobe\n" .
-	"-hotplug          (Re)Generate hotplug information\n" .
+#	"-hotplug          (Re)Generate hotplug information\n" .
 	"\n\nwhere 'devid' is either PCIID or USBID of the form XXXX:XXXX\n";
 }
 
@@ -162,17 +182,27 @@ sub devid_driver {
     return;
 }
 
-sub hotplug_conf {
-    my $vendor;
-    my $device;
-    my $subvendor;
-    my $subdevice;
-    if (!open(CONF, ">$confdir/$hotplug_conf")) {
-	print "Unable to create file hotplug modules configuration file";
+sub modhotplug {
+    my $vendor, $device, $subvendor, $subdevice, $bustype, $busid;
+    my $line, $ok, $alias;
+
+    $alias = 0;
+    open(MODPROBE, "modprobe -c|");
+    while ($line = <MODPROBE>) {
+	if ($line =~ /^include\s+$modhotplugconf/) {
+	    $alias = 1;
+	}
+    }
+
+    if ($alias eq 0) {
+	printf stdout "Adding \"include $modhotplugconf\" to $modconf\n";
+	system("echo \"include $modhotplugconf\" >> $modconf");
+    }
+    if (!open(CONF, ">$modhotplugconf")) {
+	print "Unable to create hotplug modules configuration file " .
+	  "$modhotplugconf\n";
 	return -1;
     }
-    printf CONF "# pci module         vendor     device     subvendor" .
-      "  subdevice  class      class_mask driver_data";
 
     open(LS, "ls -1 $confdir|");
     while (my $driver = <LS>) {
@@ -182,21 +212,32 @@ sub hotplug_conf {
 	    open(LS2, "ls -1 $confdir/$driver/ |");
 	    while (my $file = <LS2>) {
 		chomp ($file);
+		my $line = $file;
 		if ($file =~ s/.conf//) {
-		    $file = lc($file);
-		    if ($file =~ /(.{4}):(.{4}):(.{4}):(.{4})/) {
-			$vendor = "0x0000$1";
-			$device = "0x0000$2";
-			$subvendor = "0x0000$3";
-			$subdevice = "0x0000$4";
-		    } elsif($file =~ /(.{4}):(.{4})/) {
-			$vendor = "0x0000$1";
-			$device = "0x0000$2";
-			$subvendor = "0xffffffff";
-			$subdevice = "0xffffffff";
+		    if ($file =~ /(.{4}):(.{4}):(.{4}):(.{4})\.([05])/) {
+			$vendor = "0000$1";
+			$device = "0000$2";
+			$subvendor = "0000$3";
+			$subdevice = "0000$4";
+			$busid = "$5";
+		    } elsif($file =~ /(.{4}):(.{4})\.([05])/) {
+			$vendor = "0000$1";
+			$device = "0000$2";
+			$subvendor = "*";
+			$subdevice = "*";
+			$busid = "$3";
 		    }
-		    printf CONF "ndiswrapper    $vendor $device " .
-		      "$subvendor $subdevice 0x00000000 0x00000000 0x0\n";
+		    if ($busid eq "0") {
+			$bustype = "usb";
+		    } elsif ($busid eq "5") {
+			$bustype = "pci";
+		    } else {
+			print stderr "wrong bustype ($busid) for " .
+			  "configuration file $line - ignoring it\n";
+			next;
+		    }
+		    printf CONF "alias %s:v%sd%ssv%ssd%sbc*sc*i* ndiswrapper\n",
+		      $bustype, $vendor, $device, $subvendor, $subdevice;
 		}
 	    }
 	    close(LS2);
@@ -205,6 +246,9 @@ sub hotplug_conf {
 
     close(CONF);
     close(LS);
+    if (-x "/sbin/update-modules") {
+	system("/sbin/update-modules");
+    }
     return 0;
 }
 
@@ -238,36 +282,20 @@ sub list {
     close(LS);	
 }
 
-sub modconf {
+sub modalias {
     my $alias = 0;
-    my $err = 0;
 
-    my @modprobe = ("/sbin/modprobe", "/usr/sbin/modprobe", "modprobe");
-    my $ok = 0;
-    for (my $i = 0; $i < @modprobe; $i++) {
-	if (open(MODPROBE, "$modprobe[$i] -c|")) {
-	    $ok = 1;
-	    $i = @modprobe;
-	}
-    }
-    if (!$ok) {
-	return -1;
-    }
-
+    open(MODPROBE, "modprobe -c|");
     while (my $line = <MODPROBE>) {
 	if ($line =~ /^alias\s.+\sndiswrapper/) {
 	    print "modprobe config already contains alias directive\n\n";
 	    $alias = 1;
 	} elsif ($line =~ /^install\s.*ndiswrapper/) {
-	    print "You should not need an install directive in " .
-	      "module config file.\n";
-	    modconf_err($line);
-	    $err = 1;
+	    printf stderr "module configuration contains directive $line;" .
+	      "you should delete that";
 	} elsif ($line =~ /^post-install\s+ndiswrapper/) {
-	    print "You should not need a post-install directive in " .
-	      "module config file.\n";
-	    modconf_err($line);
-	    $err = 1;
+	    printf stderr "module configuration contains directive $line;" .
+	      "you should delete that";
 	}
     }
     close(MODPROBE);
@@ -276,38 +304,11 @@ sub modconf {
 	return;
     }
 
-    my $v =  `uname -r`;	
-    $v =~ /(\d+)\.(\d+)\.(\d+)/;
-    my $major = $1;
-    my $minor = $2;
-    my $rev = $3;	
-    my $modconf;
-    if ($minor > 4) {
-	if (-d "/etc/modprobe.d") {
-	    $modconf = "/etc/modprobe.d/ndiswrapper" 
-	} else {
-	    $modconf = "/etc/modprobe.conf" 
-	}
-    } else {
-	if(-d "/etc/modutils") {
-	    $modconf = "/etc/modutils/ndiswrapper";
-	} else {
-	    $modconf = "/etc/modules.conf";
-	}
-    }
-
     print "Adding \"alias wlan0 ndiswrapper\" to $modconf\n";
     system("echo \"alias wlan0 ndiswrapper\" >>$modconf");
     if (-x "/sbin/update-modules") {
 	system("/sbin/update-modules");
     }
-}
-
-sub modconf_err {
-    my $line = shift;
-    print "Please remove the line saying:\n\n";
-    print "$line\n";
-    print "unless you are 100% sure of what you are doing.\n";			
 }
 
 sub getPresentCards {
@@ -423,8 +424,8 @@ sub processPCIFuzz {
     for (my $i = 0; $i < @devs; $i++) {
 	my $dev = $devs[$i];
 	if ($dev ne $fuzzlist{$dev}) {
-	    my $src = $confdir/$driver_name/$fuzzlist{$dev}.$bustype.conf;
-	    my $dst = $confdir/$driver_name/$dev.$bustype.conf;
+	    my $src = "$confdir/$driver_name/$fuzzlist{$dev}.$bustype.conf";
+	    my $dst = "$confdir/$driver_name/$dev.$bustype.conf";
 	    `ln -s $src $dst`;
 	}
     }
@@ -571,14 +572,26 @@ sub parseDevice {
     my $vendor = shift;
     my $subvendor = shift;
     my $subdevice = shift;
+    my $dev;
 
-    my $dev = getSection("$device_sect.$flavour");
+    # for RNDIS INF file (for USR5420), vendor section names device
+    # section as RNDIS.NT.5.1, but copyfiles section is RNDIS.NT, so
+    # first strip flavour from device_sect and then look for matching
+    # section
+
+    if ($device_sect eq "RNDIS.NT.5.1") {
+	$dev = getSection("RNDIS.NT");
+    }
+    if (!dev) {
+	$dev = getSection("$device_sect.$flavour");
+    }
     if (!$dev) {
 	$dev = getSection("$device_sect.NT");
     }
     if (!$dev) {
 	$dev = getSection("$device_sect.NTx86");
     }
+
     if (!$dev) {
 	$dev = getSection("$device_sect");
     }
@@ -587,7 +600,7 @@ sub parseDevice {
 	return -1;
     }
     # print "$device:$vendor:$subvendor:$subdevice  $flavour\n";
-    my @copyfiles;
+    my @copy_files;
     my $addreg;
     my @lines = split("\n", $dev->{data});
 
@@ -599,7 +612,7 @@ sub parseDevice {
 		$addreg = $val;
 	    }
 	    if (lc($key) eq "copyfiles") {
-		push @copyfiles, $val;
+		push @copy_files, $val;
 	    }
 	}
     }		
@@ -640,10 +653,10 @@ sub parseDevice {
 	my $reg = trim($addregs[$i]);
 	addReg($reg);
     }
-    for (my $i = 0; $i < @copyfiles; $i++) {
-	my @copy_sec = split(",", $copyfiles[i]);
-	for(my $j = 0; $j < @copyfiles; $j++) {
-	    my $file = trim($copyfiles[$j]);
+    for (my $i = 0; $i < @copy_files; $i++) {
+	my @copy_sec = split(",", $copy_files[i]);
+	for (my $j = 0; $j < @copy_sec; $j++) {
+	    my $file = trim($copy_sec[$j]);
 	    copyfiles($file);
 	}
     }

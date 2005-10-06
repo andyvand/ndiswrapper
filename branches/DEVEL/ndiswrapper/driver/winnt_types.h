@@ -102,9 +102,6 @@
 #define FASTCALL_ARGS_3(arg1,arg2,arg3) arg1, arg2, arg3
 
 #define KI_USER_SHARED_DATA 0xfffff78000000000
-#define SHARED_INTERRUPT_TIME (((char *)&kuser_shared_data + 0x8))
-#define SHARED_SYSTEM_TIME (((char *)&kuser_shared_data + 0x14))
-#define SHARED_TICK_COUNT (((char *)&kuser_shared_data + 0x320))
 
 #else 
 
@@ -198,8 +195,6 @@ struct kdpc;
 typedef STDCALL void (*DPC)(struct kdpc *kdpc, void *ctx, void *arg1,
 			    void *arg2);
 
-enum kdpc_type { KDPC_TYPE_KERNEL = 1, KDPC_TYPE_NDIS };
-
 struct kdpc {
 	SHORT type;
 	/* number is used to represent if the dpc is queued or not */
@@ -278,10 +273,8 @@ struct mdl {
 		(mdl)->next = NULL;					\
 		(mdl)->size = MmSizeOfMdl(baseva, length);		\
 		(mdl)->flags = 0;					\
-		(mdl)->startva = (void *)((ULONG_PTR)baseva &		\
-					  ~(PAGE_SIZE - 1));		\
-		(mdl)->byteoffset = (ULONG)((ULONG_PTR)baseva &		\
-					    (PAGE_SIZE - 1));		\
+		(mdl)->startva = baseva;				\
+		(mdl)->byteoffset = 0;					\
 		(mdl)->bytecount = length;				\
 	}
 
@@ -623,10 +616,12 @@ enum urb_state {
 	URB_COMPLETED, URB_FREE, URB_SUSPEND };
 
 struct wrap_urb {
+	struct nt_list list;
 	enum urb_state state;
 	unsigned int alloc_flags;
 	struct urb *urb;
 	struct irp *irp;
+	unsigned int pipe;
 };
 
 struct irp {

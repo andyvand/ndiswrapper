@@ -1,5 +1,6 @@
-DISTFILES=Makefile control.modules control.utils copyright dirs.utils docs \
-	README.Debian rules changelog.template control.source postinst.modules
+DISTFILES=Makefile changelog.modules changelog.source changelog.utils \
+			control.modules control.source control.utils copyright \
+			dirs.utils docs postinst.modules README.Debian rules
 
 dist:
 	@for file in $(DISTFILES); do \

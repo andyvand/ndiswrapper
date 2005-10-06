@@ -152,28 +152,27 @@ static int ndiswrapper_add_pci_device(struct pci_dev *pdev,
 	driver = ndiswrapper_load_driver(device);
 	if (!driver) {
 		res = -ENODEV;
-		goto out_nodev;
+		goto err_nodev;
 	}
 
 	dev = ndis_init_netdev(&wd, device, driver);
 	if (!dev) {
 		ERROR("couldn't initialize network device");
 		res = -ENOMEM;
-		goto out_nodev;
+		goto err_nodev;
 	}
-	device->wd = wd;
 	DBGTRACE1("");
 	/* first create pdo */
 	drv_obj = find_bus_driver("PCI");
 	if (!drv_obj)
-		goto out_start;
+		goto err_start;
 	wd->dev.dev_type = NDIS_PCI_BUS;
 	wd->dev.pci = pdev;
 	DBGTRACE1("");
 	pdo = alloc_pdo(drv_obj);
 	if (!pdo) {
 		res = -ENODEV;
-		goto out_start;
+		goto err_start;
 	}
 	pdo->reserved = wd;
 	wd->nmb->pdo = pdo;
@@ -183,7 +182,7 @@ static int ndiswrapper_add_pci_device(struct pci_dev *pdev,
 	res = driver->drv_obj->drv_ext->add_device_func(driver->drv_obj,
 							pdo);
 	if (res != STATUS_SUCCESS)
-		goto out_start;
+		goto err_start;
 	DBGTRACE1("fdo: %p", wd->nmb->fdo);
 
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
@@ -195,13 +194,13 @@ static int ndiswrapper_add_pci_device(struct pci_dev *pdev,
 	res = pci_enable_device(pdev);
 	if (res) {
 		ERROR("couldn't enable PCI device: %08x", res);
-		goto out_enable;
+		goto err_enable;
 	}
 
 	res = pci_request_regions(pdev, DRIVER_NAME);
 	if (res) {
 		ERROR("couldn't request PCI regions: %08x", res);
-		goto out_regions;
+		goto err_regions;
 	}
 
 	res = pci_set_power_state(pdev, PCI_D0);
@@ -221,26 +220,28 @@ static int ndiswrapper_add_pci_device(struct pci_dev *pdev,
 		ERROR("Windows driver couldn't initialize the device (%08X)",
 		      res);
 		res = -EINVAL;
-		goto out_start;
+		goto err_start;
 	}
 
 	if (setup_device(wd->net_dev)) {
 		ERROR("couldn't setup network device");
 		res = -EINVAL;
-		goto out_setup;
+		goto err_setup;
 	}
 	atomic_inc(&driver->users);
+	device->wd = wd;
+	wd->ndis_device = device;
 	TRACEEXIT1(return 0);
 
-out_setup:
+err_setup:
 	ndiswrapper_stop_device(wd);
-out_start:
+err_start:
 	pci_release_regions(pdev);
-out_regions:
+err_regions:
 	pci_disable_device(pdev);
-out_enable:
+err_enable:
 	free_netdev(dev);
-out_nodev:
+err_nodev:
 	TRACEEXIT1(return res);
 }
 
@@ -261,6 +262,8 @@ static void __devexit ndiswrapper_remove_pci_device(struct pci_dev *pdev)
 		TRACEEXIT1(return);
 
 	atomic_dec(&wd->driver->users);
+	if (wd->ndis_device)
+		wd->ndis_device->wd = NULL;
 	ndiswrapper_remove_device(wd);
 
 	pci_release_regions(pdev);
@@ -286,34 +289,40 @@ static void *ndiswrapper_add_usb_device(struct usb_device *udev,
 	struct device_object *pdo;
 	struct driver_object *drv_obj;
 
-	TRACEENTER1("vendor: %04x, product: %04x",
-		    usb_id->idVendor, usb_id->idProduct);
+	TRACEENTER1("vendor: %04x, product: %04x, intf: %p, %p",
+		    usb_id->idVendor, usb_id->idProduct, intf, usb_id);
 
 	device = &ndis_devices[usb_id->driver_info];
+	/* RNDIS devices have two interfaces, so prevent from
+	 * initializing the device again, if it has already been
+	 * initialized */
+	if (device->wd) {
+		DBGTRACE1("device is already loaded");
+		TRACEEXIT1(return 0);
+	}
+
 	driver = ndiswrapper_load_driver(device);
 	if (!driver) {
 		res = -ENODEV;
-		goto out_nodev;
+		goto err_nodev;
 	}
 	dev = ndis_init_netdev(&wd, device, driver);
 	if (!dev) {
 		ERROR("couldn't initialize network device");
 		res = -ENOMEM;
-		goto out_nodev;
+		goto err_nodev;
 	}
-
-	device->wd = wd;
 
 	/* first create pdo */
 	drv_obj = find_bus_driver("USB");
 	if (!drv_obj)
-		goto out_start;
+		goto err_start;
 	wd->dev.dev_type = NDIS_USB_BUS;
 	DBGTRACE1("");
 	pdo = alloc_pdo(drv_obj);
 	if (!pdo) {
 		res = -ENODEV;
-		goto out_start;
+		goto err_start;
 	}
 	pdo->reserved = wd;
 	wd->nmb->pdo = pdo;
@@ -323,7 +332,7 @@ static void *ndiswrapper_add_usb_device(struct usb_device *udev,
 	res = driver->drv_obj->drv_ext->add_device_func(driver->drv_obj,
 							pdo);
 	if (res != STATUS_SUCCESS)
-		goto out_start;
+		goto err_start;
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
 	SET_NETDEV_DEV(dev, &intf->dev);
 
@@ -342,16 +351,18 @@ static void *ndiswrapper_add_usb_device(struct usb_device *udev,
 		ERROR("Windows driver couldn't initialize the device (%08X)",
 			res);
 		res = -EINVAL;
-		goto out_start;
+		goto err_start;
 	}
 
 	if (setup_device(wd->net_dev)) {
 		ERROR("couldn't setup network device");
 		res = -EINVAL;
-		goto out_setup;
+		goto err_setup;
 	}
 
 	atomic_inc(&driver->users);
+	device->wd = wd;
+	wd->ndis_device = device;
 
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
 	TRACEEXIT1(return 0);
@@ -359,11 +370,12 @@ static void *ndiswrapper_add_usb_device(struct usb_device *udev,
 	TRACEEXIT1(return wd);
 #endif
 
-out_setup:
+err_setup:
+	device->wd = NULL;
 	ndiswrapper_stop_device(wd);
-out_start:
+err_start:
 	free_netdev(dev);
-out_nodev:
+err_nodev:
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
 	TRACEEXIT1(return res);
 #else
@@ -391,6 +403,8 @@ ndiswrapper_remove_usb_device(struct usb_interface *intf)
 	wd->intf = NULL;
 	usb_set_intfdata(intf, NULL);
 	atomic_dec(&wd->driver->users);
+	if (wd->ndis_device)
+		wd->ndis_device->wd = NULL;
 	ndiswrapper_remove_device(wd);
 	debug = 0;
 }
@@ -408,6 +422,8 @@ ndiswrapper_remove_usb_device(struct usb_device *udev, void *ptr)
 		miniport_surprise_remove(wd);
 	wd->intf = NULL;
 	atomic_dec(&wd->driver->users);
+	if (wd->ndis_device)
+		wd->ndis_device->wd = NULL;
 	ndiswrapper_remove_device(wd);
 }
 #endif
