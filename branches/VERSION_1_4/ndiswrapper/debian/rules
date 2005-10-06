@@ -1,0 +1,195 @@
+#!/usr/bin/make -f
+# -*- makefile -*-
+
+# Created by Giridhar Pemmasani <pgiri@users.sourceforge.net> for ndiswrapper
+
+# top-level targets:
+# binary-modules creates ndiswrapper module
+# binary-utils creates ndiswrapper utilities
+# source creates ndiswrapper source (for both module and utils)
+# clean removes files generated
+
+# Uncomment this to turn on verbose mode.
+#export DH_VERBOSE=1
+
+# This has to be exported to make some magic below work.
+export DH_OPTIONS
+
+KVERS ?= $(shell uname -r)
+KSRC ?= /lib/modules/$(KVERS)/build
+kplevel := $(shell echo $(KVERS) | sed 's/[^\.]*\.\([^\.]*\)\..*/\1/')
+MODDIR = ..
+
+NDISSRC = $(shell pwd)
+MAINT = Giridhar Pemmasani
+MAINTEMAIL = pgiri@users.sourceforge.net
+DRIVERSRC = $(NDISSRC)/driver
+UTILSSRC = $(NDISSRC)/utils
+
+-include $(NDISSRC)/version
+
+kdist_image:
+	$(MAKE) $(MFLAGS) -f debian/rules binary-modules
+	$(MAKE) $(MFLAGS) -f debian/rules clean
+
+# the kdist_clean target is called by make-kpkg modules_clean. It is
+# responsible for cleaning up any changes that have been made by the
+# other kdist_commands (except for the .deb files created).
+kdist_clean: clean-modules
+	$(MAKE) $(MFLAGS) -f debian/rules clean
+
+### end  KERNEL SETUP
+
+common-prolog:
+	dh_testdir
+	dh_testroot
+	dh_installchangelogs ChangeLog
+	dh_installdocs
+	dh_installexamples
+#	dh_installmenu
+	dh_installdebconf	
+#	dh_installlogrotate	
+#	dh_installemacsen
+#	dh_installpam
+#	dh_installmime
+#	dh_installinit
+#	dh_installcron
+#	dh_installinfo
+
+common-epilog:
+	dh_install
+	dh_link
+	dh_strip
+	dh_compress 
+	dh_fixperms
+	dh_perl
+#	dh_python
+	dh_makeshlibs
+	dh_installdeb
+	dh_shlibdeps
+	dh_gencontrol
+	dh_md5sums
+
+check-perms:
+	dh_testdir
+	dh_testroot
+
+build-modules-prep:
+	sed -e 's/#KVERS#/$(KVERS)/g' \
+		-e 's/#DRIVER_VERSION#/$(DRIVER_VERSION)/g' \
+		-e 's/#UTILS_VERSION#/$(UTILS_VERSION)/g' \
+		-e 's/#DATE#/'"`date --rfc-822`"'/g' \
+		-e 's/#MAINT#/$(MAINT) <$(MAINTEMAIL)>/g' \
+		debian/changelog.modules > debian/changelog
+	sed -e 's/#KVERS#/$(KVERS)/' \
+		-e 's/#DRIVER_VERSION#/$(DRIVER_VERSION)/' \
+		-e 's/#UTILS_VERSION#/$(UTILS_VERSION)/' \
+		debian/control.modules > debian/control
+	sed -e 's/#KVERS#/$(KVERS)/' debian/postinst.modules > debian/postinst
+
+	if [ $(kplevel) == 4 ];then \
+		module=ndiswrapper.o; \
+	else \
+		module=ndiswrapper.ko; \
+	fi; \
+	echo "driver/$$module /lib/modules/$(KVERS)/misc" \
+		> debian/ndiswrapper-modules-$(KVERS).install
+
+build-modules:
+	dh_installdirs lib/modules/$(KVERS)/misc
+	$(MAKE) -C $(DRIVERSRC)
+
+binary-modules: build-modules-prep common-prolog build-modules common-epilog
+	dh_builddeb --destdir=$(MODDIR)
+	dh_clean
+	-rm -f debian/postinst debian/ndiswrapper-modules-$(KVERS).install
+
+clean-modules: build-modules-prep
+	echo "$(NDISSRC)"
+	-$(MAKE) -C $(DRIVERSRC) distclean
+	-rm -f debian/ndiswrapper-modules-$(KVERS).install debian/postinst
+	dh_clean
+
+build-utils-prep:
+	sed -e 's/-#KVERS#//g' \
+		-e 's/#DRIVER_VERSION#/$(DRIVER_VERSION)/g' \
+		-e 's/#UTILS_VERSION#/$(UTILS_VERSION)/g' \
+		-e 's/#DATE#/'"`date --rfc-822`"'/g' \
+		-e 's/#MAINT#/$(MAINT) <$(MAINTEMAIL)>/g' \
+		debian/changelog.utils > debian/changelog
+	sed -e 's/#DRIVER_VERSION#/$(DRIVER_VERSION)/' \
+		-e 's/#UTILS_VERSION#/$(UTILS_VERSION)/' \
+		-e 's/#MAINT#/$(MAINT) <$(MAINTEMAIL)>/g' \
+		debian/control.utils > debian/control
+	echo "utils/loadndisdriver /sbin" > debian/ndiswrapper-utils.install
+	echo "utils/ndiswrapper /usr/sbin" >> debian/ndiswrapper-utils.install
+	echo "utils/ndiswrapper-buginfo /usr/sbin" >> \
+		debian/ndiswrapper-utils.install
+	cp debian/dirs.utils debian/dirs
+
+build-utils:
+	export DH_OPTIONS='-i'
+	dh_installman ndiswrapper.8
+	$(MAKE) -C utils
+
+binary-utils: build-utils-prep common-prolog build-utils common-epilog
+	dh_builddeb --destdir=$(MODDIR)
+	dh_clean
+
+clean-utils: build-utils-prep
+	-$(MAKE) -C $(UTILSSRC) clean
+	-rm -f debian/ndiswrapper-utils.install
+	dh_clean
+
+build-source-prep:
+	sed -e 's/-#KVERS#//g' \
+		-e 's/#DRIVER_VERSION#/$(DRIVER_VERSION)/g' \
+		-e 's/#UTILS_VERSION#/$(UTILS_VERSION)/g' \
+		-e 's/#DATE#/'"`date --rfc-822`"'/g' \
+		-e 's/#MAINT#/$(MAINT) <$(MAINTEMAIL)>/g' \
+		debian/changelog.modules > debian/changelog
+	sed -e 's/#DRIVER_VERSION#/$(DRIVER_VERSION)/' \
+		-e 's/#UTILS_VERSION#/$(UTILS_VERSION)/' \
+		-e 's/#MAINT#/$(MAINT) <$(MAINTEMAIL)>/g' \
+		debian/control.source > debian/control
+	echo "ndiswrapper-source.tar.gz /usr/src" \
+		> debian/ndiswrapper-source.install
+
+build-source:
+	dh_installdirs usr/src/modules/ndiswrapper
+	mkdir -p modules/ndiswrapper/debian
+	mkdir -p modules/ndiswrapper/driver
+	mkdir -p modules/ndiswrapper/utils
+	$(MAKE) -C $(DRIVERSRC) distdir=../modules/ndiswrapper/driver dist
+	$(MAKE) -C $(UTILSSRC) distdir=../modules/ndiswrapper/utils dist
+	cp version ChangeLog ndiswrapper.8 modules/ndiswrapper
+	cp -a debian/rules debian/changelog.source \
+		debian/rules debian/changelog.modules \
+		debian/rules debian/changelog.utils \
+		debian/control.modules debian/changelog debian/control.utils \
+		debian/dirs.utils debian/postinst.modules \
+			modules/ndiswrapper/debian
+	tar zcvf ndiswrapper-source.tar.gz modules
+	-rm -rf modules
+
+clean-source:
+	-rm -rf modules debian/ndiswrapper-source
+	-rm -f debian/ndiswrapper-source.install ndiswrapper-source.tar.gz
+	dh_clean
+
+source: build-source-prep common-prolog build-source common-epilog
+	dh_builddeb --destdir=$(MODDIR)
+	dh_clean
+
+clean: clean-modules clean-utils clean-source
+	dh_clean
+	-rm -f debian/changelog debian/control debian/dirs debian/postinst
+
+binary:
+	$(MAKE) -f debian/rules binary-utils
+	$(MAKE) -f debian/rules binary-modules
+
+.PHONY: binary binary-modules binary-utils build-utils build-utils-prep \
+	common-epilog common-prolog clean-utils clean-modules check-perms \
+	clean build-modules build-modules-prep source build-source-prep \
+	build-source clean-source
