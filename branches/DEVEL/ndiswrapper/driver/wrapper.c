@@ -88,7 +88,7 @@ static int inline ndis_wait_pending_completion(struct wrapper_dev *wd)
 	 * completion routine, but some drivers (e.g., ZyDas) don't
 	 * call back, so timeout is used; TODO: find out why drivers
 	 * don't call completion function */
-#if 1
+#if 0
 	if (wait_event_interruptible_timeout(wd->ndis_comm_wq,
 					     (wd->ndis_comm_done == 1),
 					     4 * HZ) <= 0)
