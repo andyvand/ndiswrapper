@@ -348,6 +348,16 @@ struct device_object *alloc_pdo(struct driver_object *drv_obj)
 	return pdo;
 }
 
+void free_pdo(struct device_object *pdo)
+{
+	struct device_object *fdo;
+
+	fdo = IoGetAttachedDevice(pdo);
+	if (fdo)
+		IoDeleteDevice(fdo);
+	IoDeleteDevice(pdo);
+}
+
 _FASTCALL struct nt_list *WRAP_EXPORT(ExfInterlockedInsertHeadList)
 	(FASTCALL_DECL_3(struct nt_list *head, struct nt_list *entry,
 			 KSPIN_LOCK *lock))
@@ -1287,12 +1297,10 @@ STDCALL NTSTATUS WRAP_EXPORT(KeWaitForMultipleObjects)
 			dh = object[i];
 			EVENTTRACE("%p: event %p state: %d",
 				   task, dh, dh->signal_state);
-			if (!check_reset_signaled_state(dh, kthread, 0))
-				wait_count++;
-		}
-		if (wait_count) {
-			kspin_unlock_irql(&kevent_lock, irql);
-			EVENTEXIT(return STATUS_TIMEOUT);
+			if (!check_reset_signaled_state(dh, kthread, 0)) {
+				kspin_unlock_irql(&kevent_lock, irql);
+				EVENTEXIT(return STATUS_TIMEOUT);
+			}
 		}
 	}
 	/* get the list of objects the thread (task) needs to wait on
@@ -2266,14 +2274,6 @@ STDCALL NTSTATUS WRAP_EXPORT(WmiQueryTraceInformation)
 	 ULONG *req_length, void *buf)
 {
 	TRACEENTER2("");
-	TRACEEXIT2(return STATUS_SUCCESS);
-}
-
-STDCALL unsigned int WRAP_EXPORT(IoWMIRegistrationControl)
-	(struct device_object *dev_obj, ULONG action)
-{
-	TRACEENTER2("%p, %d", dev_obj, action);
-
 	TRACEEXIT2(return STATUS_SUCCESS);
 }
 

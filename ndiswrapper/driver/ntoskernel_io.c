@@ -476,7 +476,6 @@ _FASTCALL void WRAP_EXPORT(IofCompleteRequest)
 	}
 	if (irp->flags & IRP_DEALLOCATE_BUFFER)
 		ExFreePool(irp->associated_irp.system_buffer);
-
 	IoFreeIrp(irp);
 	IOEXIT(return);
 }
@@ -610,8 +609,7 @@ STDCALL NTSTATUS pdoDispatchPnp(struct device_object *pdo,
 		break;
 	case IRP_MN_REMOVE_DEVICE:
 		miniport_halt(wd);
-//		IoDeleteDevice(wd->nmb->fdo);
-//		IoDeleteDevice(wd->nmb->pdo);
+//		free_pdo(wd->nmb->pdo);
 		irp->io_status.status = STATUS_SUCCESS;
 		break;
 	default:
@@ -681,8 +679,7 @@ STDCALL NTSTATUS fdoDispatchPnp(struct device_object *fdo,
 		/*
 		IoSkipCurrentIrpStackLocation(irp);
 		IoCallDriver(wd->nmb->pdo, irp);
-		IoDetachDevice(wd->nmb->pdo);
-		IoDeleteDevice(fdo);
+		free_pdo(wd->nmb->pdo);
 		*/
 		break;
 	case IRP_MN_START_DEVICE:
@@ -946,7 +943,6 @@ STDCALL NTSTATUS WRAP_EXPORT(IoCreateDevice)
 			      OBJECT_TYPE_DEVICE);
 	if (!dev)
 		IOEXIT(return STATUS_INSUFFICIENT_RESOURCES);
-	memset(dev, 0, sizeof(*dev));
 	dev->type = dev_type;
 	dev->drv_obj = drv_obj;
 	dev->flags = 0;
@@ -995,8 +991,6 @@ STDCALL NTSTATUS WRAP_EXPORT(IoCreateDevice)
 STDCALL void WRAP_EXPORT(IoDeleteDevice)
 	(struct device_object *dev)
 {
-	struct device_object *prev;
-
 	IOENTER("%p", dev);
 	if (dev == NULL)
 		IOEXIT(return);
@@ -1004,19 +998,22 @@ STDCALL void WRAP_EXPORT(IoDeleteDevice)
 		ExFreePool(dev->dev_ext);
 	if (dev->dev_obj_ext)
 		ExFreePool(dev->dev_obj_ext);
+	IOTRACE("drv_obj: %p", dev->drv_obj);
+	if (dev->drv_obj) {
+		struct device_object *prev;
 
-	prev = NULL;
-#if 0
-	if (dev->drv_obj)
 		prev = dev->drv_obj->dev_obj;
-	if (prev == dev)
-		dev->drv_obj->dev_obj = dev->next;
-	else {
-		while (prev->next != dev)
-			prev = prev->next;
-		prev->next = dev->next;
-	}
+		IOTRACE("dev_obj: %p", prev);
+#if 0
+		if (prev == dev)
+			dev->drv_obj->dev_obj = dev->next;
+		else {
+			while (prev->next != dev)
+				prev = prev->next;
+			prev->next = dev->next;
+		}
 #endif
+	}
 	ObDereferenceObject(dev);
 	IOEXIT(return);
 }
@@ -1057,7 +1054,7 @@ STDCALL struct device_object *WRAP_EXPORT(IoAttachDeviceToDeviceStack)
 	KIRQL irql;
 
 	IOENTER("%p, %p", src, tgt);
-	dst = IoGetAttachedDeviceReference(tgt);
+	dst = IoGetAttachedDevice(tgt);
 	IOTRACE("stack_size: %d -> %d", dst->stack_size, src->stack_size);
 	IOTRACE("%p", dst);
 	irql = kspin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL);
@@ -1125,9 +1122,13 @@ STDCALL NTSTATUS WRAP_EXPORT(IoRegisterDeviceInterface)
 	(struct device_object *pdo, struct guid *guid_class,
 	 struct unicode_string *reference, struct unicode_string *link)
 {
+	struct ansi_string ansi;
+
+	/* check if pdo is valid */
+	ansi.buf = "ndis";
+	ansi.buflen = ansi.len = strlen(ansi.buf);
 	TRACEENTER1("pdo: %p, ref: %p, link: %p", pdo, reference, link);
-	
-	return STATUS_SUCCESS;
+	return RtlAnsiStringToUnicodeString(reference, &ansi, TRUE);
 }
 
 STDCALL NTSTATUS WRAP_EXPORT(IoSetDeviceInterfaceState)
@@ -1135,6 +1136,83 @@ STDCALL NTSTATUS WRAP_EXPORT(IoSetDeviceInterfaceState)
 {
 	TRACEENTER1("link: %p, enable: %d", link, enable);
 	return STATUS_SUCCESS;
+}
+
+STDCALL NTSTATUS WRAP_EXPORT(IoOpenDeviceRegistryKey)
+	(struct device_object *pdo, ULONG type, ACCESS_MASK mask,
+	 void **handle)
+{
+	struct wrapper_dev *wd;
+
+	TRACEENTER1("pdo: %p", pdo);
+	wd = pdo->reserved;
+	*handle = wd->nmb;
+	return STATUS_SUCCESS;
+}
+
+STDCALL NTSTATUS WRAP_EXPORT(ZwQueryValueKey)
+	(void *handle, struct unicode_string *name,
+	 enum key_value_information_class class, void *info,
+	 ULONG length, ULONG *res_length)
+{
+	NDIS_STATUS status;
+	struct ndis_config_param *param;
+
+	NdisReadConfiguration(&status, &param, handle, name,
+			      NDIS_CONFIG_PARAM_STRING);
+	if (status == NDIS_STATUS_SUCCESS) {
+		*res_length = param->data.ustring.buflen;
+		if (length < param->data.ustring.buflen) {
+			RtlCopyMemory(info, param->data.ustring.buf,
+				      *res_length);
+			return STATUS_SUCCESS;
+		} else
+			return STATUS_BUFFER_TOO_SMALL;
+	} else
+		return STATUS_INVALID_PARAMETER;
+}
+
+STDCALL unsigned int WRAP_EXPORT(IoWMIRegistrationControl)
+	(struct device_object *dev_obj, ULONG action)
+{
+	struct irp *irp;
+	struct io_stack_location *irp_sl;
+
+	TRACEENTER2("%p, %d", dev_obj, action);
+
+	switch (action) {
+	case WMIREG_ACTION_REGISTER:
+		irp = IoAllocateIrp(dev_obj->stack_size, FALSE);
+		if (!irp) {
+			ERROR("couldn't allocate irp");
+			return STATUS_INSUFFICIENT_RESOURCES;
+		}
+		irp_sl = IoGetNextIrpStackLocation(irp);
+		irp_sl->params.wmi.provider_id = (ULONG_PTR)dev_obj;
+		irp_sl->params.wmi.data_path = (void *)WMIREGISTER;
+		irp_sl->params.wmi.buf = kmalloc(512, GFP_KERNEL);
+		if (!irp_sl->params.wmi.buf) {
+			IoFreeIrp(irp);
+			return STATUS_INSUFFICIENT_RESOURCES;
+		}
+		irp_sl->params.wmi.buf_len = 512;
+		IoCallDriver(dev_obj, irp);
+		INFO("");
+		break;
+	case WMIREG_ACTION_DEREGISTER:
+		INFO("");
+		break;
+	case WMIREG_ACTION_REREGISTER:
+		INFO("");
+		break;
+	case WMIREG_ACTION_UPDATE_GUIDS:
+		ERROR("not implemented");
+		break;
+	default:
+		ERROR("not implemented");
+		break;
+	}
+	TRACEEXIT2(return STATUS_SUCCESS);
 }
 
 STDCALL void WRAP_EXPORT(IoCreateSymbolicLink)(void){UNIMPL();}

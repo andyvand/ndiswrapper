@@ -140,7 +140,6 @@ static int ndiswrapper_add_pci_device(struct pci_dev *pdev,
 	struct net_device *dev;
 	struct device_object *pdo;
 	struct driver_object *drv_obj;
-	NTSTATUS status;
 
 	TRACEENTER1("ent: %p", ent);
 
@@ -148,31 +147,27 @@ static int ndiswrapper_add_pci_device(struct pci_dev *pdev,
 		  pdev->subsystem_vendor, pdev->subsystem_device);
 
 	device = &ndis_devices[ent->driver_data];
-
 	driver = ndiswrapper_load_driver(device);
-	if (!driver) {
-		res = -ENODEV;
-		goto err_nodev;
-	}
+	if (!driver)
+		return -ENODEV;
 
 	dev = ndis_init_netdev(&wd, device, driver);
 	if (!dev) {
 		ERROR("couldn't initialize network device");
-		res = -ENOMEM;
-		goto err_nodev;
+		return -ENOMEM;
 	}
 	DBGTRACE1("");
 	/* first create pdo */
 	drv_obj = find_bus_driver("PCI");
 	if (!drv_obj)
-		goto err_start;
+		goto err_bus_driver;
 	wd->dev.dev_type = NDIS_PCI_BUS;
 	wd->dev.pci = pdev;
 	DBGTRACE1("");
 	pdo = alloc_pdo(drv_obj);
 	if (!pdo) {
 		res = -ENODEV;
-		goto err_start;
+		goto err_bus_driver;
 	}
 	pdo->reserved = wd;
 	wd->nmb->pdo = pdo;
@@ -182,7 +177,7 @@ static int ndiswrapper_add_pci_device(struct pci_dev *pdev,
 	res = driver->drv_obj->drv_ext->add_device_func(driver->drv_obj,
 							pdo);
 	if (res != STATUS_SUCCESS)
-		goto err_start;
+		goto err_bus_driver;
 	DBGTRACE1("fdo: %p", wd->nmb->fdo);
 
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
@@ -215,33 +210,22 @@ static int ndiswrapper_add_pci_device(struct pci_dev *pdev,
 				"may not work with more than 1GB RAM");
 	}
 #endif
-	status = ndiswrapper_start_device(wd);
-	if (status) {
-		ERROR("Windows driver couldn't initialize the device (%08X)",
-		      res);
-		res = -EINVAL;
-		goto err_start;
-	}
-
-	if (setup_device(wd->net_dev)) {
+	if (setup_device(wd)) {
 		ERROR("couldn't setup network device");
 		res = -EINVAL;
-		goto err_setup;
+		goto err_regions;
 	}
 	atomic_inc(&driver->users);
 	device->wd = wd;
 	wd->ndis_device = device;
 	TRACEEXIT1(return 0);
 
-err_setup:
-	ndiswrapper_stop_device(wd);
-err_start:
-	pci_release_regions(pdev);
 err_regions:
-	pci_disable_device(pdev);
+	pci_release_regions(pdev);
 err_enable:
+	pci_disable_device(pdev);
+err_bus_driver:
 	free_netdev(dev);
-err_nodev:
 	TRACEEXIT1(return res);
 }
 
@@ -302,27 +286,24 @@ static void *ndiswrapper_add_usb_device(struct usb_device *udev,
 	}
 
 	driver = ndiswrapper_load_driver(device);
-	if (!driver) {
-		res = -ENODEV;
-		goto err_nodev;
-	}
+	if (!driver)
+		return -ENODEV;
 	dev = ndis_init_netdev(&wd, device, driver);
 	if (!dev) {
 		ERROR("couldn't initialize network device");
-		res = -ENOMEM;
-		goto err_nodev;
+		return -ENOMEM;
 	}
 
 	/* first create pdo */
 	drv_obj = find_bus_driver("USB");
 	if (!drv_obj)
-		goto err_start;
+		goto err_net_dev;
 	wd->dev.dev_type = NDIS_USB_BUS;
 	DBGTRACE1("");
 	pdo = alloc_pdo(drv_obj);
 	if (!pdo) {
 		res = -ENODEV;
-		goto err_start;
+		goto err_net_dev;
 	}
 	pdo->reserved = wd;
 	wd->nmb->pdo = pdo;
@@ -332,7 +313,7 @@ static void *ndiswrapper_add_usb_device(struct usb_device *udev,
 	res = driver->drv_obj->drv_ext->add_device_func(driver->drv_obj,
 							pdo);
 	if (res != STATUS_SUCCESS)
-		goto err_start;
+		goto err_pdo;
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
 	SET_NETDEV_DEV(dev, &intf->dev);
 
@@ -346,18 +327,10 @@ static void *ndiswrapper_add_usb_device(struct usb_device *udev,
 
 	TRACEENTER1("calling ndis init routine");
 
-	res = ndiswrapper_start_device(wd);
-	if (res) {
-		ERROR("Windows driver couldn't initialize the device (%08X)",
-			res);
-		res = -EINVAL;
-		goto err_start;
-	}
-
-	if (setup_device(wd->net_dev)) {
+	if (setup_device(wd)) {
 		ERROR("couldn't setup network device");
 		res = -EINVAL;
-		goto err_setup;
+		goto err_add_dev;
 	}
 
 	atomic_inc(&driver->users);
@@ -370,12 +343,13 @@ static void *ndiswrapper_add_usb_device(struct usb_device *udev,
 	TRACEEXIT1(return wd);
 #endif
 
-err_setup:
-	device->wd = NULL;
-	ndiswrapper_stop_device(wd);
-err_start:
+err_add_dev:
+	DeleteDevice(pdo);
+err_pdo:
+	free_pdo(pdo);
+err_net_dev:
 	free_netdev(dev);
-err_nodev:
+	device->wd = NULL;
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
 	TRACEEXIT1(return res);
 #else

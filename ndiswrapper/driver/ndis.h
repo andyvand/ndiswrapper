@@ -157,11 +157,12 @@ struct ndis_packet {
 };
 
 struct ndis_packet_pool {
-	int max_descr;
-	int num_allocated_descr;
+	UINT max_descr;
+	UINT num_allocated_descr;
+	UINT num_used_descr;
 	struct ndis_packet *free_descr;
 	KSPIN_LOCK lock;
-	int proto_rsvd_length;
+	UINT proto_rsvd_length;
 	struct nt_list list;
 };
 
@@ -525,7 +526,7 @@ enum ndis_attributes {
 
 enum hw_status {
 	HW_NORMAL, HW_SUSPENDED, HW_HALTED, HW_RMMOD, HW_AVAILABLE,
-	HW_REMOVED,
+	HW_INITIALIZED,
 };
 
 struct encr_info {
@@ -956,6 +957,11 @@ STDCALL void NdisWriteConfiguration(NDIS_STATUS *status,
 				    struct ndis_miniport_block *nmb,
 				    struct unicode_string *key,
 				    struct ndis_config_param *val);
+
+STDCALL void NdisReadConfiguration
+	(NDIS_STATUS *status, struct ndis_config_param **dest,
+	 struct ndis_miniport_block *nmb, struct unicode_string *key,
+	 enum ndis_config_param_type type);
 
 void *get_sp(void);
 int ndis_init(void);
