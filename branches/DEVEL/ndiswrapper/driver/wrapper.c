@@ -288,6 +288,10 @@ NDIS_STATUS miniport_init(struct wrapper_dev *wd)
 		ERROR("initialization function is not setup correctly");
 		return -EINVAL;
 	}
+	if (test_bit(HW_INITIALIZED, &wd->hw_status)) {
+		ERROR("device %p already initialized!", wd);
+		return -EINVAL;
+	}
 	res = ntoskernel_init_device(wd);
 	if (res)
 		return res;
@@ -310,6 +314,7 @@ NDIS_STATUS miniport_init(struct wrapper_dev *wd)
 	if (res)
 		goto err_miniport_init;
 
+	set_bit(HW_INITIALIZED, &wd->hw_status);
 	/* Wait a little to let card power up otherwise ifup might fail after
 	   boot; USB devices seem to need long delays */
 	set_current_state(TASK_INTERRUPTIBLE);
@@ -327,92 +332,13 @@ NDIS_STATUS miniport_init(struct wrapper_dev *wd)
 
 err_miniport_init:
 #ifdef CONFIG_USB
-	usb_exit_device(wd);
+	if (wd->dev.dev_type == NDIS_USB_BUS)
+		usb_exit_device(wd);
 #endif
 err_usb:
 	misc_funcs_exit_device(wd);
  err_misc_funcs:
 	ntoskernel_exit_device(wd);
-	return res;
-}
-
-NTSTATUS ndiswrapper_start_device(struct wrapper_dev *wd)
-{
-	NTSTATUS status;
-	struct kthread *kthread;
-
-	kthread = wrap_create_thread(get_current());
-	if (!kthread) {
-		ERROR("couldn't allocate thread object");
-		return STATUS_INSUFFICIENT_RESOURCES;
-	}
-	status = miniport_init(wd);
-	wrap_remove_thread(kthread);
-	TRACEEXIT1(return status);
-}
-
-struct irp *allocate_power_irp(struct device_object *dev,
-			       enum device_power_state new_state)
-{
-	struct irp *irp;
-	struct io_stack_location *stack;
-
-	irp = IoAllocateIrp(dev->stack_size, FALSE);
-	DBGTRACE1("stack size: %d, irp = %p", dev->stack_size, irp);
-	DBGTRACE1("drv_obj: %p", dev->drv_obj);
-	stack = IoGetNextIrpStackLocation(irp);
-	stack->major_fn = IRP_MJ_POWER;
-	stack->minor_fn = IRP_MN_SET_POWER;
-	stack->params.power.type = DevicePowerState;
-	stack->params.power.state.device_state = new_state;
-	irp->io_status.status = STATUS_NOT_SUPPORTED;
-	return irp;
-}
-
-NDIS_STATUS miniport_set_pm_state(struct wrapper_dev *wd,
-				  enum ndis_pm_state pm_state)
-{
-	NDIS_STATUS res;
-	struct miniport_char *miniport;
-
-	res = NDIS_STATUS_SUCCESS;
-	if (pm_state != NdisDeviceStateD0) {
-		enum ndis_pm_state ps;
-		ps = pm_state;
-		res = miniport_query_int(wd, OID_PNP_QUERY_POWER, &ps);
-		DBGTRACE2("query_power returns %08X", res);
-	}
-	if (res == NDIS_STATUS_SUCCESS)
-		res = miniport_set_int(wd, OID_PNP_SET_POWER, pm_state);
-	DBGTRACE2("set_power returns %08X", res);
-#if 0
-	if (res != NDIS_STATUS_SUCCESS) {
-		struct device_object *fdo;
-		struct irp *irp;
-
-		fdo = wd->nmb->fdo;
-		DBGTRACE1("fdo: %p", fdo);
-		irp = allocate_power_irp(fdo, pm_state);
-		res = PoCallDriver(fdo, irp);
-		DBGTRACE1("res = %d", res);
-	}
-#endif
-	miniport = &wd->driver->miniport;
-
-	/* According NDIS, pnp_event_notify should be called whenever power
-	 * is set to D0
-	 * Only NDIS 5.1 drivers are required to supply this function; some
-	 * drivers don't seem to support it (at least Orinoco)
-	 */
-	if (res == NDIS_STATUS_SUCCESS && pm_state == NdisDeviceStateD0 &&
-	    miniport->pnp_event_notify) {
-		ULONG pnp_info;
-		pnp_info = NdisPowerProfileAcOnLine;
-		DBGTRACE2("calling pnp_event_notify");
-		LIN2WIN4(miniport->pnp_event_notify, wd->nmb->adapter_ctx,
-			 NdisDevicePnPEventPowerProfileChanged,
-			 &pnp_info, (ULONG)sizeof(pnp_info));
-	}
 	return res;
 }
 
@@ -424,6 +350,11 @@ void miniport_halt(struct wrapper_dev *wd)
 	struct miniport_char *miniport = &wd->driver->miniport;
 	struct kthread *kthread;
 
+	TRACEENTER1("%p", wd);
+	if (!test_bit(HW_INITIALIZED, &wd->hw_status)) {
+		WARNING("device %p is not initialized - not halting", wd);
+		TRACEEXIT1(return);
+	}
 	kthread = wrap_create_thread(get_current());
 	if (kthread == NULL)
 		WARNING("couldn't create system thread for task: %p",
@@ -432,6 +363,7 @@ void miniport_halt(struct wrapper_dev *wd)
 
 	DBGTRACE2("task: %p, pid: %d", get_current(), get_current()->pid);
 	LIN2WIN1(miniport->miniport_halt, wd->nmb->adapter_ctx);
+	clear_bit(HW_INITIALIZED, &wd->hw_status);
 	ndis_exit_device(wd);
 
 	if (kthread)
@@ -450,22 +382,40 @@ void miniport_halt(struct wrapper_dev *wd)
 	TRACEEXIT1(return);
 }
 
-void ndiswrapper_stop_device(struct wrapper_dev *wd)
+NDIS_STATUS miniport_set_pm_state(struct wrapper_dev *wd,
+				  enum ndis_pm_state pm_state)
 {
-#if 0
-	struct irp *irp;
-	struct io_stack_location *irp_sl;
+	NDIS_STATUS res;
+	struct miniport_char *miniport;
 
-	irp = IoAllocateIrp(wd->nmb->fdo->stack_size, FALSE);
-	irp_sl = IoGetNextIrpStackLocation(irp);
-	DBGTRACE1("irp = %p, stack = %p", irp, irp_sl);
-	irp_sl->major_fn = IRP_MJ_PNP;
-	irp_sl->minor_fn = IRP_MN_STOP_DEVICE;
-	irp->io_status.status = STATUS_NOT_SUPPORTED;
-	IoCallDriver(wd->nmb->fdo, irp);
-#else
-	miniport_halt(wd);
-#endif
+	res = NDIS_STATUS_SUCCESS;
+	if (pm_state != NdisDeviceStateD0) {
+		enum ndis_pm_state ps;
+		ps = pm_state;
+		res = miniport_query_int(wd, OID_PNP_QUERY_POWER, &ps);
+		DBGTRACE2("query_power returns %08X", res);
+	}
+	if (res != NDIS_STATUS_SUCCESS)
+		WARNING("device may not support power management");
+	res = miniport_set_int(wd, OID_PNP_SET_POWER, pm_state);
+	DBGTRACE2("set_power returns %08X", res);
+	miniport = &wd->driver->miniport;
+
+	/* According NDIS, pnp_event_notify should be called whenever power
+	 * is set to D0
+	 * Only NDIS 5.1 drivers are required to supply this function; some
+	 * drivers don't seem to support it (at least Orinoco)
+	 */
+	if (res == NDIS_STATUS_SUCCESS && pm_state == NdisDeviceStateD0 &&
+	    miniport->pnp_event_notify) {
+		ULONG pnp_info;
+		pnp_info = NdisPowerProfileAcOnLine;
+		DBGTRACE2("calling pnp_event_notify");
+		LIN2WIN4(miniport->pnp_event_notify, wd->nmb->adapter_ctx,
+			 NdisDevicePnPEventPowerProfileChanged,
+			 &pnp_info, (ULONG)sizeof(pnp_info));
+	}
+	return res;
 }
 
 NDIS_STATUS miniport_surprise_remove(struct wrapper_dev *wd)
@@ -559,7 +509,7 @@ static int set_packet_filter(struct wrapper_dev *wd, ULONG packet_filter)
 	res = miniport_set_info(wd, OID_GEN_CURRENT_PACKET_FILTER,
 				&filter, sizeof(filter));
 	if (res) {
-		WARNING("couldn't set packet filter: %08X", res);
+		DBGTRACE1("couldn't set packet filter: %08X", res);
 		TRACEEXIT3(return res);
 	}
 	TRACEEXIT3(return 0);
@@ -645,9 +595,11 @@ static void set_multicast_list(struct wrapper_dev *wd)
 	struct net_device *net_dev;
 	ULONG packet_filter;
 	NDIS_STATUS res = 0;
-	int i, size, max_size;
-	struct dev_mc_list *mclist;
-	char *ndis_mclist;
+
+	net_dev = wd->net_dev;
+	if (!(net_dev->mc_count > 0 ||
+	      net_dev->flags & IFF_ALLMULTI))
+		TRACEEXIT3(return);
 
 	res = get_packet_filter(wd, &packet_filter);
 	if (res) {
@@ -655,46 +607,12 @@ static void set_multicast_list(struct wrapper_dev *wd)
 		TRACEEXIT3(return);
 	}
 
-	net_dev = wd->net_dev;
-	if (net_dev->mc_count == 0 && !(net_dev->flags & IFF_ALLMULTI))
-		TRACEEXIT3(return);
-	if (net_dev->mc_count > 0) {
-		res = miniport_query_int(wd, OID_802_3_MAXIMUM_LIST_SIZE,
-					 &max_size);
-		if (res)
-			max_size = 0;
-	}
-	ndis_mclist = NULL;
-	if (max_size) {
-		ndis_mclist = kmalloc(max_size * ETH_ALEN, GFP_KERNEL);
-		if (!ndis_mclist) {
-			WARNING("couldn't allocate memory");
-			max_size = 0;
-		}
-	}
-	if (ndis_mclist) {
-		for (i = size = 0, mclist = net_dev->mc_list;
-		     mclist && i < net_dev->mc_count && size < max_size;
-		     i++, mclist = mclist->next) {
-			memcpy(ndis_mclist, mclist->dmi_addr, ETH_ALEN);
-			ndis_mclist += ETH_ALEN;
-			size += ETH_ALEN;
-		}
-		DBGTRACE1("entries: %d, size: %d", i, size);
-		res = miniport_set_info(wd, OID_802_3_MULTICAST_LIST,
-					ndis_mclist, size);
-		if (res)
-			ERROR("couldn't set multicast list (%08X)", res);
-		else
-			packet_filter |= NDIS_PACKET_TYPE_MULTICAST;
-		kfree(ndis_mclist);
-	}
-	if (net_dev->mc_count > max_size || (net_dev->flags & IFF_ALLMULTI))
-		packet_filter |= NDIS_PACKET_TYPE_ALL_MULTICAST;
+	packet_filter |= NDIS_PACKET_TYPE_MULTICAST;
+	packet_filter |= NDIS_PACKET_TYPE_ALL_MULTICAST;
 	DBGTRACE2("packet filter: %08x", packet_filter);
 	res = set_packet_filter(wd, packet_filter);
 	if (res)
-		ERROR("couldn't set packet filter (%08X)", res);
+		DBGTRACE1("couldn't set packet filter (%08X)", res);
 
 	TRACEEXIT2(return);
 }
@@ -710,16 +628,8 @@ allocate_send_packet(struct wrapper_dev *wd, ndis_buffer *buffer)
 	if (status != NDIS_STATUS_SUCCESS)
 		return NULL;
 
-	/*
-	  packet->private.nr_pages = NDIS_BUFFER_TO_SPAN_PAGES(buffer);
-	  packet->private.len = MmGetMdlByteCount(buffer);
-	  packet->private.count = 1;
-	  packet->private.valid_counts = TRUE;
-	*/
 	packet->private.buffer_head = buffer;
 	packet->private.buffer_tail = buffer;
-//	packet->private.flags = NDIS_PROTOCOL_ID_TCP_IP;
-
 	wrap_ndis_packet = packet->wrap_ndis_packet;
 	if (wd->use_sg_dma) {
 		wrap_ndis_packet->ndis_sg_element.address =
@@ -736,7 +646,6 @@ allocate_send_packet(struct wrapper_dev *wd, ndis_buffer *buffer)
 		wrap_ndis_packet->extension.info[ScatterGatherListPacketInfo] =
 			&wrap_ndis_packet->ndis_sg_list;
 	}
-
 	return packet;
 }
 
@@ -934,6 +843,41 @@ static int start_xmit(struct sk_buff *skb, struct net_device *dev)
 	return 0;
 }
 
+static NTSTATUS ndiswrapper_start_device(struct wrapper_dev *wd)
+{
+	NTSTATUS status;
+	struct kthread *kthread;
+
+	kthread = wrap_create_thread(get_current());
+	if (!kthread) {
+		ERROR("couldn't allocate thread object");
+		return STATUS_INSUFFICIENT_RESOURCES;
+	}
+	status = miniport_init(wd);
+	if (status != NDIS_STATUS_SUCCESS) {
+		WARNING("couldn't initialize device: %08X", status);
+		return status;
+	}
+	wrap_remove_thread(kthread);
+	hangcheck_add(wd);
+	stats_timer_add(wd);
+	TRACEEXIT1(return NDIS_STATUS_SUCCESS);
+}
+
+static void ndiswrapper_stop_device(struct wrapper_dev *wd)
+{
+	hangcheck_del(wd);
+	stats_timer_del(wd);
+	miniport_halt(wd);
+}
+
+int ndis_reinit(struct wrapper_dev *wd)
+{
+	ndiswrapper_stop_device(wd);
+	ndiswrapper_start_device(wd);
+	return 0;
+}
+
 int ndiswrapper_suspend_device(struct wrapper_dev *wd,
 			       enum ndis_pm_state pm_state)
 {
@@ -1075,9 +1019,7 @@ void ndiswrapper_remove_device(struct wrapper_dev *wd)
 
 	ndis_close(wd->net_dev);
 	netif_carrier_off(wd->net_dev);
-
-	stats_timer_del(wd);
-	hangcheck_del(wd);
+	ndiswrapper_procfs_remove_iface(wd);
 
 	/* flush_scheduled_work here causes crash with 2.4 kernels */
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
@@ -1102,9 +1044,9 @@ void ndiswrapper_remove_device(struct wrapper_dev *wd)
 	ndiswrapper_stop_device(wd);
 	DBGTRACE1("stopped; irql: %d", current_irql());
 
-	ndiswrapper_procfs_remove_iface(wd);
 	IoDeleteDevice(wd->nmb->fdo);
 	IoDeleteDevice(wd->nmb->pdo);
+//	free_pdo(wd->nmb->pdo);
 	if (wd->xmit_array)
 		kfree(wd->xmit_array);
 	printk(KERN_INFO "%s: device %s removed\n", DRIVER_NAME,
@@ -1186,17 +1128,6 @@ static void link_status_handler(struct wrapper_dev *wd)
 		TRACEEXIT2(return);
 	}
 
-	/* we need 28 extra bytes for the format strings */
-	if ((ndis_assoc_info->req_ie_length +
-	     ndis_assoc_info->resp_ie_length + 28) > IW_CUSTOM_MAX) {
-		WARNING("information element is too long! (%u,%u),"
-			"association information dropped",
-			ndis_assoc_info->req_ie_length,
-			ndis_assoc_info->resp_ie_length);
-		kfree(assoc_info);
-		TRACEEXIT2(return);
-	}
-
 	/*
 	 * TODO: backwards compatibility would require that IWEVCUSTOM
 	 * is sent even if WIRELESS_EXT > 17. This version does not do
@@ -1214,6 +1145,17 @@ static void link_status_handler(struct wrapper_dev *wd)
 			    ((char *) ndis_assoc_info) +
 			    ndis_assoc_info->offset_resp_ies);
 #else
+	/* we need 28 extra bytes for the format strings */
+	if ((ndis_assoc_info->req_ie_length +
+	     ndis_assoc_info->resp_ie_length + 28) > IW_CUSTOM_MAX) {
+		WARNING("information element is too long! (%u,%u),"
+			"association information dropped",
+			ndis_assoc_info->req_ie_length,
+			ndis_assoc_info->resp_ie_length);
+		kfree(assoc_info);
+		TRACEEXIT2(return);
+	}
+
 	wpa_assoc_info = kmalloc(IW_CUSTOM_MAX, GFP_KERNEL);
 	if (!wpa_assoc_info) {
 		ERROR("couldn't allocate memory");
@@ -1526,13 +1468,6 @@ void check_capa(struct wrapper_dev *wd)
 	TRACEEXIT1(return);
 }
 
-int ndis_reinit(struct wrapper_dev *wd)
-{
-	ndiswrapper_stop_device(wd);
-	ndiswrapper_start_device(wd);
-	return 0;
-}
-
 static int ndis_set_mac_addr(struct net_device *dev, void *p)
 {
 	struct wrapper_dev *wd = netdev_priv(dev);
@@ -1610,12 +1545,19 @@ static void show_supported_oids(struct wrapper_dev *wd)
 	TRACEEXIT1(return);
 }
 
-int setup_device(struct net_device *dev)
+int setup_device(struct wrapper_dev *wd)
 {
-	struct wrapper_dev *wd = netdev_priv(dev);
+	struct net_device *dev = wd->net_dev;
 	NDIS_STATUS res;
 	mac_address mac;
 	char buf[256];
+
+	res = ndiswrapper_start_device(wd);
+	if (res) {
+		ERROR("Windows driver couldn't initialize the device (%08X)",
+		      res);
+		return -EINVAL;
+	}
 
 	show_supported_oids(wd);
 	if (strlen(if_name) > (IFNAMSIZ-1)) {
@@ -1740,8 +1682,6 @@ int setup_device(struct net_device *dev)
 	set_encr_mode(wd, Ndis802_11EncryptionDisabled);
 	set_privacy_filter(wd, Ndis802_11PrivFilterAcceptAll);
 
-	hangcheck_add(wd);
-	stats_timer_add(wd);
 	ndiswrapper_procfs_add_iface(wd);
 
 	return 0;

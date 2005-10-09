@@ -443,6 +443,7 @@ int ntoskernel_init_device(struct wrapper_dev *wd);
 void ntoskernel_exit_device(struct wrapper_dev *wd);
 struct driver_object *find_bus_driver(const char *name);
 struct device_object *alloc_pdo(struct driver_object *drv_obj);
+void free_pdo(struct device_object *drv_obj);
 
 STDCALL void *ExAllocatePoolWithTag(enum pool_type pool_type, SIZE_T size,
 				    ULONG tag);
@@ -489,6 +490,7 @@ STDCALL NTSTATUS IoCreateDevice(struct driver_object *driver,
 				struct device_object **dev_obj);
 STDCALL void IoDeleteDevice(struct device_object *dev);
 STDCALL void IoDetachDevice(struct device_object *topdev);
+STDCALL struct device_object *IoGetAttachedDevice(struct device_object *dev);
 STDCALL NTSTATUS
 IoAllocateDriverObjectExtension(struct driver_object *drv_obj,
 				void *client_id, ULONG extlen, void **ext);
@@ -501,6 +503,8 @@ STDCALL void KeInitializeEvent(struct kevent *kevent, enum event_type type,
 void free_custom_ext(struct driver_extension *drv_obj_ext);
 STDCALL NTSTATUS AddDevice(struct driver_object *drv_obj,
 			   struct device_object *pdo);
+void DeleteDevice(struct device_object *pdo);
+
 driver_dispatch_t IopInvalidDeviceRequest;
 driver_dispatch_t IopPassIrpDown;
 driver_dispatch_t pdoDispatchInternalDeviceControl;
@@ -565,6 +569,7 @@ STDCALL LONG RtlCompareUnicodeString
 	 BOOLEAN case_insensitive);
 STDCALL void RtlCopyUnicodeString
 	(struct unicode_string *dst, struct unicode_string *src);
+NOREGPARM SIZE_T _win_wcslen(const wchar_t *s);
 
 void *wrap_kmalloc(size_t size);
 void wrap_kfree(void *ptr);

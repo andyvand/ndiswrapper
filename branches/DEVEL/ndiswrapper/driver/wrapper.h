@@ -44,11 +44,9 @@ int ndiswrapper_resume_pci(struct pci_dev *pdev);
 int ndiswrapper_suspend_usb(struct usb_interface *intf, pm_message_t state);
 int ndiswrapper_resume_usb(struct usb_interface *intf);
 
-NTSTATUS ndiswrapper_start_device(struct wrapper_dev *wd);
-void ndiswrapper_stop_device(struct wrapper_dev *wd);
 void ndiswrapper_remove_device(struct wrapper_dev *wd);
 int ndis_reinit(struct wrapper_dev *wd);
-int setup_device(struct net_device *dev);
+int setup_device(struct wrapper_dev *wd);
 
 void check_capa(struct wrapper_dev *wd);
 

@@ -1182,6 +1182,7 @@ STDCALL void WRAP_EXPORT(NdisAllocatePacketPoolEx)
 	kspin_lock_init(&pool->lock);
 	pool->max_descr = num_descr;
 	pool->num_allocated_descr = 0;
+	pool->num_used_descr = 0;
 	pool->free_descr = NULL;
 	pool->proto_rsvd_length = proto_rsvd_length;
 	*pool_handle = pool;
@@ -1219,6 +1220,8 @@ STDCALL void WRAP_EXPORT(NdisFreePacketPool)
 		cur = wrap_ndis_packet->next;
 		kfree(prev);
 	}
+	pool->num_allocated_descr = 0;
+	pool->num_used_descr = 0;
 	kspin_unlock_irql(&pool->lock, irql);
 	kfree(pool);
 	TRACEEXIT3(return);
@@ -1232,7 +1235,7 @@ STDCALL UINT WRAP_EXPORT(NdisPacketPoolUsage)
 
 	TRACEENTER4("");
 	irql = kspin_lock_irql(&pool->lock, DISPATCH_LEVEL);
-	i = pool->num_allocated_descr;
+	i = pool->num_used_descr;
 	kspin_unlock_irql(&pool->lock, irql);
 	TRACEEXIT4(return i);
 }
@@ -1259,9 +1262,9 @@ STDCALL void WRAP_EXPORT(NdisAllocatePacket)
 		sizeof(struct wrap_ndis_packet);
 	ndis_packet = NULL;
 	irql = kspin_lock_irql(&pool->lock, DISPATCH_LEVEL);
-	if (pool->num_allocated_descr > pool->max_descr)
+	if (pool->num_used_descr >= pool->max_descr)
 		DBGTRACE2("pool %p is full: %d(%d)", pool,
-			  pool->num_allocated_descr, pool->max_descr);
+			  pool->num_used_descr, pool->max_descr);
 	if (pool->free_descr) {
 		ndis_packet = pool->free_descr;
 		wrap_ndis_packet =
@@ -1287,6 +1290,7 @@ STDCALL void WRAP_EXPORT(NdisAllocatePacket)
 		irql = kspin_lock_irql(&pool->lock, DISPATCH_LEVEL);
 		pool->num_allocated_descr++;
 	}
+	pool->num_used_descr++;
 	memset(ndis_packet, 0, packet_length);
 	ndis_packet->wrap_ndis_packet = wrap_ndis_packet;
 	ndis_packet->private.oob_offset =
@@ -1333,6 +1337,7 @@ STDCALL void WRAP_EXPORT(NdisFreePacket)
 		descr->wrap_ndis_packet->next = pool->free_descr;
 		pool->free_descr = descr;
 	}
+	pool->num_used_descr--;
 	kspin_unlock_irql(&pool->lock, irql);
 	TRACEEXIT3(return);
 }
@@ -1821,9 +1826,9 @@ NdisMIndicateReceivePacket(struct ndis_miniport_block *nmb,
 			WARNING("empty packet ignored");
 			continue;
 		}
-
+		/* TODO: we assume a packet has exactly one buffer,
+		 * although at other places we don't */
 		buffer = packet->private.buffer_head;
-
 		skb = dev_alloc_skb(MmGetMdlByteCount(buffer));
 		if (skb) {
 			skb->dev = wd->net_dev;
@@ -2731,3 +2736,11 @@ STDCALL NTSTATUS AddDevice(struct driver_object *drv_obj,
 	TRACEEXIT2(return STATUS_SUCCESS);
 }
 
+void DeleteDevice(struct device_object *pdo)
+{
+	struct wrapper_dev *wd;
+
+	wd = pdo->reserved;
+	IoDeleteDevice(wd->nmb->fdo);
+	return;
+}
