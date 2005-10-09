@@ -690,6 +690,13 @@ STDCALL ULONG WRAP_EXPORT(NdisReadPciSlotInformation)
 	TRACEEXIT3(return i);
 }
 
+STDCALL ULONG WRAP_EXPORT(NdisImmediateReadPciSlotInformation)
+	(struct ndis_miniport_block *nmb, ULONG slot,
+	 ULONG offset, char *buf, ULONG len)
+{
+	return NdisReadPciSlotInformation(nmb, slot, offset, buf, len);
+}
+
 STDCALL ULONG WRAP_EXPORT(NdisWritePciSlotInformation)
 	(struct ndis_miniport_block *nmb, ULONG slot,
 	 ULONG offset, char *buf, ULONG len)
@@ -702,6 +709,30 @@ STDCALL ULONG WRAP_EXPORT(NdisWritePciSlotInformation)
 		    PCIBIOS_SUCCESSFUL)
 			break;
 	TRACEEXIT3(return i);
+}
+
+STDCALL void WRAP_EXPORT(NdisReadPortUchar)
+	(struct ndis_miniport_block *nmb, ULONG port, char *data)
+{
+	*data = READ_PORT_UCHAR(port);
+}
+
+STDCALL void WRAP_EXPORT(NdisImmediateReadPortUchar)
+	(struct ndis_miniport_block *nmb, ULONG port, char *data)
+{
+	*data = READ_PORT_UCHAR(port);
+}
+
+STDCALL void WRAP_EXPORT(NdisWritePortUchar)
+	(struct ndis_miniport_block *nmb, ULONG port, char data)
+{
+	WRITE_PORT_UCHAR(port, data);
+}
+
+STDCALL void WRAP_EXPORT(NdisImmediateWritePortUchar)
+	(struct ndis_miniport_block *nmb, ULONG port, char data)
+{
+	WRITE_PORT_UCHAR(port, data);
 }
 
 STDCALL void WRAP_EXPORT(NdisMQueryAdapterResources)

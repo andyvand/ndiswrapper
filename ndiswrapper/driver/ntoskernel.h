@@ -445,6 +445,9 @@ struct driver_object *find_bus_driver(const char *name);
 struct device_object *alloc_pdo(struct driver_object *drv_obj);
 void free_pdo(struct device_object *drv_obj);
 
+STDCALL void WRITE_PORT_UCHAR(ULONG_PTR port, UCHAR value);
+STDCALL UCHAR READ_PORT_UCHAR(ULONG_PTR port);
+
 STDCALL void *ExAllocatePoolWithTag(enum pool_type pool_type, SIZE_T size,
 				    ULONG tag);
 STDCALL void ExFreePool(void *p);

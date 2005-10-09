@@ -514,7 +514,7 @@ STDCALL USHORT WRAP_EXPORT(ExQueryDepthSList)
 
 /* should be called with kevent_lock held at DISPATCH_LEVEL */
 static void initialize_dh(struct dispatch_header *dh, enum event_type type,
-		   int state, enum dh_type dh_type)
+			  int state, enum dh_type dh_type)
 {
 	memset(dh, 0, sizeof(*dh));
 	dh->type = type;
@@ -1069,12 +1069,12 @@ STDCALL void WRAP_EXPORT(ExInitializeNPagedLookasideList)
 		lookaside->alloc_func = alloc_func;
 	else
 		lookaside->alloc_func = (LOOKASIDE_ALLOC_FUNC *)
-		  WRAP_FUNC_PTR(ExAllocatePoolWithTag);
+			WRAP_FUNC_PTR(ExAllocatePoolWithTag);
 	if (free_func)
 		lookaside->free_func = free_func;
 	else
 		lookaside->free_func = (LOOKASIDE_FREE_FUNC *)
-		  WRAP_FUNC_PTR(ExFreePool);
+			WRAP_FUNC_PTR(ExFreePool);
 
 #ifndef X86_64
 	DBGTRACE3("lock: %p", &lookaside->obsolete);
