@@ -1038,9 +1038,12 @@ STDCALL void WRAP_EXPORT(ExFreePool)
 		return;
 	} else {
 		ERROR("wrong tag: %lu (%p)", wrap_tag, addr);
-		/* releasing memory here is dangerous, but it will
-		 * catch errors and prevent leaks */
-		kfree(addr);
+		/* either this addr was not allocated with
+		 * ExAllocatePoolWithTag or this addr was corrupted;
+		 * releasing memory here is dangerous, but it will
+		 * catch errors and prevent leaks; for now assume this
+		 * addr was allocated with kmalloc */
+		kfree(addr + sizeof(wrap_tag));
 		return;
 	}
 }
@@ -1114,7 +1117,7 @@ STDCALL NTSTATUS WRAP_EXPORT(ExCreateCallback)
 		}
 	}
 	kspin_unlock_irql(&ntoskernel_lock, irql);
-	obj = kmalloc(sizeof(*obj), GFP_KERNEL);
+	obj = ExAllocatePoolWithTag(NonPagedPool, sizeof(*obj), 0);
 	if (!obj)
 		TRACEEXIT2(return STATUS_INSUFFICIENT_RESOURCES);
 	InitializeListHead(&obj->callback_funcs);
@@ -1140,7 +1143,7 @@ STDCALL void *WRAP_EXPORT(ExRegisterCallback)
 		TRACEEXIT2(return NULL);
 	}
 	kspin_unlock_irql(&ntoskernel_lock, irql);
-	callback = kmalloc(sizeof(*callback), GFP_KERNEL);
+	callback = ExAllocatePoolWithTag(NonPagedPool, sizeof(*callback), 0);
 	if (!callback) {
 		ERROR("couldn't allocate memory");
 		return NULL;

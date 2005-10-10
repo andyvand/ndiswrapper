@@ -922,7 +922,7 @@ STDCALL NDIS_STATUS WRAP_EXPORT(NdisMAllocateMapRegisters)
 
 	wd->map_count = basemap;
 	wd->map_dma_addr = kmalloc(basemap * sizeof(dma_addr_t),
-				       GFP_KERNEL);
+				   GFP_KERNEL);
 	if (!wd->map_dma_addr)
 		TRACEEXIT2(return NDIS_STATUS_RESOURCES);
 	memset(wd->map_dma_addr, 0, basemap * sizeof(dma_addr_t));
@@ -2166,13 +2166,18 @@ NdisMSetInformationComplete(struct ndis_miniport_block *nmb,
 STDCALL void WRAP_EXPORT(NdisMSleep)
 	(ULONG us)
 {
-	unsigned long delay;
-
 	TRACEENTER4("%p: us: %u", get_current(), us);
-	delay = USEC_TO_HZ(us);
-	set_current_state(TASK_INTERRUPTIBLE);
-	schedule_timeout(delay);
-	DBGTRACE4("%p: woke up", get_current());
+	/* in case somehow we end up here with DISPATH_LEVEL */
+	if (current_irql() >= DISPATCH_LEVEL) {
+		ERROR("irql >= DISPATCH_LEVEL");
+		udelay(us);
+	} else {
+		unsigned long delay;
+		delay = USEC_TO_HZ(us);
+		set_current_state(TASK_INTERRUPTIBLE);
+		schedule_timeout(delay);
+	}
+	DBGTRACE4("%p: done", get_current());
 	TRACEEXIT4(return);
 }
 
@@ -2381,8 +2386,7 @@ static void ndis_worker(void *data)
 		case NDIS_FREE_MEM_WORK_ITEM:
 			free_mem = &ndis_work_entry->entry.free_mem_work_item;
 			DBGTRACE3("freeing memory at %p", free_mem->addr);
-			if (free_mem->addr)
-				vfree(free_mem->addr);
+			vfree(free_mem->addr);
 			break;
 
 		case NDIS_RETURN_PACKET_WORK_ITEM:
