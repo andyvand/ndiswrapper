@@ -960,7 +960,7 @@ STDCALL void WRAP_EXPORT(NdisMAllocateSharedMemory)
 	if (!v) {
 		ERROR("failed to allocate DMA coherent memory; "
 		      "Windows driver requested %d bytes of "
-		      "%scached memory\n", size, cached ? "" : "un-");
+		      "%scached memory", size, cached ? "" : "un-");
 	}
 
 	*virt = v;
@@ -1682,7 +1682,7 @@ STDCALL BOOLEAN WRAP_EXPORT(NdisMSynchronizeWithInterrupt)
 	unsigned char (*sync_func)(void *ctx) STDCALL;
 	unsigned long flags;
 
-	TRACEENTER6("%p %p %p\n", ndis_irq, func, ctx);
+	TRACEENTER6("%p %p %p", ndis_irq, func, ctx);
 
 	if (func == NULL || ctx == NULL)
 		TRACEEXIT6(return 0);
@@ -2419,7 +2419,6 @@ STDCALL NDIS_STATUS WRAP_EXPORT(NdisScheduleWorkItem)
 	KIRQL irql;
 
 	TRACEENTER3("%p", ndis_sched_work_item);
-	/* this function is called from irq_bh by realtek driver */
 	ndis_work_entry = kmalloc(sizeof(*ndis_work_entry), GFP_ATOMIC);
 	if (!ndis_work_entry)
 		BUG();
@@ -2620,7 +2619,6 @@ STDCALL void WRAP_EXPORT(NdisMStartBufferPhysicalMapping)
 	}
 
 	// map buffer
-	/* FIXME: do USB drivers call this? */
 	phy_addr_array[0].phy_addr =
 		PCI_DMA_MAP_SINGLE(wd->dev.pci,
 				   MmGetMdlVirtualAddress(buf),
@@ -2652,7 +2650,6 @@ STDCALL void WRAP_EXPORT(NdisMCompleteBufferPhysicalMapping)
 	}
 
 	// unmap buffer
-	/* FIXME: do USB drivers call this? */
 	PCI_DMA_UNMAP_SINGLE(wd->dev.pci,
 			     wd->map_dma_addr[phy_map_reg],
 			     MmGetMdlByteCount(buf), PCI_DMA_TODEVICE);

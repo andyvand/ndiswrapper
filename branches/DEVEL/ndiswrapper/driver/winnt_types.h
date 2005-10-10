@@ -821,7 +821,7 @@ enum nt_obj_type {
 
 enum common_object_type {
 	OBJECT_TYPE_NONE, OBJECT_TYPE_DEVICE, OBJECT_TYPE_DRIVER,
-	OBJECT_TYPE_KTHREAD, OBJECT_TYPE_FILE,
+	OBJECT_TYPE_KTHREAD, OBJECT_TYPE_FILE, OBJECT_TYPE_CALLBACK,
 };
 
 struct common_object_header {

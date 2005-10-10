@@ -1117,7 +1117,8 @@ STDCALL NTSTATUS WRAP_EXPORT(ExCreateCallback)
 		}
 	}
 	kspin_unlock_irql(&ntoskernel_lock, irql);
-	obj = ExAllocatePoolWithTag(NonPagedPool, sizeof(*obj), 0);
+	obj = ALLOCATE_OBJECT(struct callback_object, GFP_KERNEL,
+			      OBJECT_TYPE_CALLBACK);
 	if (!obj)
 		TRACEEXIT2(return STATUS_INSUFFICIENT_RESOURCES);
 	InitializeListHead(&obj->callback_funcs);
@@ -1143,7 +1144,7 @@ STDCALL void *WRAP_EXPORT(ExRegisterCallback)
 		TRACEEXIT2(return NULL);
 	}
 	kspin_unlock_irql(&ntoskernel_lock, irql);
-	callback = ExAllocatePoolWithTag(NonPagedPool, sizeof(*callback), 0);
+	callback = kmalloc(sizeof(*callback), GFP_KERNEL);
 	if (!callback) {
 		ERROR("couldn't allocate memory");
 		return NULL;
@@ -1170,6 +1171,7 @@ STDCALL void WRAP_EXPORT(ExUnregisterCallback)
 	irql = kspin_lock_irql(&object->lock, DISPATCH_LEVEL);
 	RemoveEntryList(&callback->list);
 	kspin_unlock_irql(&object->lock, irql);
+	kfree(callback);
 	return;
 }
 
@@ -1766,15 +1768,16 @@ void wrap_remove_thread(struct kthread *kthread)
 		DBGTRACE1("terminating thread: %p, task: %p, pid: %d",
 			  kthread, kthread->task, kthread->task->pid);
 		/* TODO: make sure waitqueue is empty and destroy it */
-		irql = kspin_lock_irql(&kthread->lock, DISPATCH_LEVEL);
-		while ((ent = RemoveHeadList(&kthread->irps))) {
+		while (1) {
 			struct irp *irp;
-
+			irql = kspin_lock_irql(&kthread->lock, DISPATCH_LEVEL);
+			ent = RemoveHeadList(&kthread->irps);
+			kspin_unlock_irql(&kthread->lock, irql);
+			if (!ent)
+				break;
 			irp = container_of(ent, struct irp, threads);
-			if (!irp->cancel)
-				IoCancelIrp(irp);
+			IoCancelIrp(irp);
 		}
-		kspin_unlock_irql(&kthread->lock, irql);
 		ObDereferenceObject(kthread);
 	} else
 		ERROR("couldn't find thread for task: %p", get_current());

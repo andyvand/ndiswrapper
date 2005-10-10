@@ -516,7 +516,6 @@ static STDCALL void wrap_cancel_irp(struct device_object *dev_obj,
 	USBENTER("irp: %p", irp);
 	urb = irp->wrap_urb->urb;
 	USBTRACE("canceling urb %p", urb);
-
 	if (irp->wrap_urb->state == URB_SUBMITTED &&
 	    wrap_cancel_urb(urb) == 0) {
 		USBTRACE("urb %p canceled", urb);
