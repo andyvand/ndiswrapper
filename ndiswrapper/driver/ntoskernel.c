@@ -240,22 +240,27 @@ void ntoskernel_exit(void)
 		}
 		kfree(object);
 	}
+	kspin_unlock_irql(&ntoskernel_lock, irql);
 
 	del_bus_drivers();
 
 	/* delete all objects */
-	while ((cur = RemoveHeadList(&object_list))) {
+	while (1) {
 		struct common_object_header *header;
+
+		irql = kspin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL);
+		cur = RemoveHeadList(&object_list);
+		kspin_unlock_irql(&ntoskernel_lock, irql);
+		if (!cur)
+			break;
 		header = container_of(cur, struct common_object_header, list);
-		DBGTRACE2("freeing header: %p", header);
 		kfree(header);
 	}
-	kspin_unlock_irql(&ntoskernel_lock, irql);
 
 #if defined(CONFIG_X86_64)
 	del_timer_sync(&shared_data_timer);
 #endif
-	return;
+	TRACEEXIT1(return);
 }
 
 #if defined(CONFIG_X86_64)
@@ -553,14 +558,14 @@ static void timer_proc(unsigned long data)
 		LIN2WIN4(kdpc->func, kdpc, kdpc->ctx, kdpc->arg1, kdpc->arg2);
 	}
 
-	irql = kspin_lock_irql(&wrap_timer->lock, DISPATCH_LEVEL);
+	irql = kspin_lock_irql(&timer_lock, DISPATCH_LEVEL);
 	/* don't add the timer if aperiodic - see
 	 * wrapper_cancel_timer */
 	if (wrap_timer->repeat) {
 		wrap_timer->timer.expires += wrap_timer->repeat;
 		add_timer(&wrap_timer->timer);
 	}
-	kspin_unlock_irql(&wrap_timer->lock, irql);
+	kspin_unlock_irql(&timer_lock, irql);
 
 	TRACEEXIT5(return);
 }
@@ -601,7 +606,6 @@ void wrap_init_timer(struct ktimer *ktimer, enum timer_type type,
 	ktimer->wrap_timer = wrap_timer;
 	ktimer->kdpc = NULL;
 	ktimer->wrap_timer_magic = WRAP_TIMER_MAGIC;
-	kspin_lock_init(&wrap_timer->lock);
 	if (wd) {
 		irql = kspin_lock_irql(&wd->timer_lock, DISPATCH_LEVEL);
 		InsertTailList(&wd->wrap_timer_list, &wrap_timer->list);
@@ -655,12 +659,12 @@ BOOLEAN wrap_set_timer(struct ktimer *ktimer, unsigned long expires_hz,
 		wrap_timer->wrap_timer_magic = WRAP_TIMER_MAGIC;
 	}
 #endif
-	irql = kspin_lock_irql(&wrap_timer->lock, DISPATCH_LEVEL);
+	irql = kspin_lock_irql(&timer_lock, DISPATCH_LEVEL);
 	if (kdpc)
 		ktimer->kdpc = kdpc;
 	wrap_timer->repeat = repeat_hz;
 	ret = mod_timer(&wrap_timer->timer, jiffies + expires_hz);
-	kspin_unlock_irql(&wrap_timer->lock, irql);
+	kspin_unlock_irql(&timer_lock, irql);
 	TRACEEXIT5(return ret);
 }
 
@@ -702,7 +706,7 @@ STDCALL BOOLEAN WRAP_EXPORT(KeCancelTimer)
 #endif
 	/* del_timer_sync may not be called here, as this function can
 	 * be called at DISPATCH_LEVEL */
-	irql = kspin_lock_irql(&wrap_timer->lock, DISPATCH_LEVEL);
+	irql = kspin_lock_irql(&timer_lock, DISPATCH_LEVEL);
 	DBGTRACE5("deleting timer %p(%p)", wrap_timer, ktimer);
 	/* disable timer before deleting so it won't be re-armed after
 	 * deleting */
@@ -711,7 +715,7 @@ STDCALL BOOLEAN WRAP_EXPORT(KeCancelTimer)
 		canceled = TRUE;
 	else
 		canceled = FALSE;
-	kspin_unlock_irql(&wrap_timer->lock, irql);
+	kspin_unlock_irql(&timer_lock, irql);
 	DBGTRACE5("canceled (%p): %d", wrap_timer, canceled);
 	TRACEEXIT5(return canceled);
 }

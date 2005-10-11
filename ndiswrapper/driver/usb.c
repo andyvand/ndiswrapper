@@ -103,7 +103,7 @@ int usb_init(void)
 void usb_exit(void)
 {
 	tasklet_kill(&irp_complete_work);
-	return;
+	TRACEEXIT1(return);
 }
 
 int usb_init_device(struct wrapper_dev *wd)
