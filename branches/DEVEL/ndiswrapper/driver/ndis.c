@@ -56,7 +56,7 @@ int ndis_init(void)
 void ndis_exit(void)
 {
 	/* TODO: free all packets in all pools */
-	return;
+	TRACEEXIT1(return);
 }
 
 /* ndis_exit_device is called for each handle */
