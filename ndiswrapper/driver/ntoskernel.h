@@ -408,6 +408,7 @@ struct wrap_timer {
 	struct nt_list list;
 	struct timer_list timer;
 	struct ktimer *ktimer;
+	KSPIN_LOCK lock;
 #ifdef DEBUG_TIMER
 	unsigned long wrap_timer_magic;
 #endif
@@ -676,6 +677,7 @@ static inline void lower_irql(KIRQL oldirql)
 #define KSPIN_LOCK_LOCKED 1
 
 #define kspin_lock_init(lock) *(lock) = KSPIN_LOCK_UNLOCKED
+#define CONFIG_SMP 1
 
 #ifdef CONFIG_SMP
 

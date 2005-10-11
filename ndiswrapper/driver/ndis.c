@@ -239,7 +239,7 @@ NOREGPARM void WRAP_EXPORT(NdisWriteErrorLogEntry)
 		ERROR("code: %u", code);
 	}
 	va_end(args);
-	return;
+	TRACEEXIT2(return);
 }
 
 STDCALL void WRAP_EXPORT(NdisOpenConfiguration)
@@ -1445,7 +1445,7 @@ STDCALL void WRAP_EXPORT(NdisMInitializeTimer)
 STDCALL void WRAP_EXPORT(NdisMSetPeriodicTimer)
 	(struct ndis_miniport_timer *timer, UINT period_ms)
 {
-	unsigned long expires = MSEC_TO_HZ(period_ms);
+	unsigned long expires = MSEC_TO_HZ(period_ms) + 1;
 
 	DBGTRACE4("%p, %u, %ld", timer, period_ms, expires);
 	wrap_set_timer(&timer->ktimer, expires, expires, &timer->kdpc);
@@ -1472,7 +1472,7 @@ STDCALL void WRAP_EXPORT(NdisInitializeTimer)
 STDCALL void WRAP_EXPORT(NdisSetTimer)
 	(struct ndis_timer *timer, UINT duetime_ms)
 {
-	unsigned long expires = MSEC_TO_HZ(duetime_ms);
+	unsigned long expires = MSEC_TO_HZ(duetime_ms) + 1;
 
 	DBGTRACE4("%p, %u, %ld", timer, duetime_ms, expires);
 	wrap_set_timer(&timer->ktimer, expires, 0, &timer->kdpc);
@@ -1638,6 +1638,7 @@ STDCALL NDIS_STATUS WRAP_EXPORT(NdisMRegisterInterrupt)
 		       DRIVER_NAME, vector);
 		TRACEEXIT1(return NDIS_STATUS_RESOURCES);
 	}
+	wd->ndis_irq = ndis_irq;
 	ndis_irq->enabled = 1;
 	printk(KERN_INFO "%s: using irq %d\n", DRIVER_NAME, vector);
 	TRACEEXIT1(return NDIS_STATUS_SUCCESS);
