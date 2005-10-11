@@ -497,8 +497,7 @@ enum ndis_status_type {
 	Ndis802_11StatusType_RadioState,
 };
 
-struct ndis_status_indication
-{
+struct ndis_status_indication {
 	enum ndis_status_type status_type;
 };
 
@@ -899,14 +898,12 @@ struct wrapper_dev {
 	struct ndis_buffer_pool *wrapper_buffer_pool;
 };
 
-struct ndis_pmkid_candidate
-{
+struct ndis_pmkid_candidate {
 	mac_address bssid;
 	unsigned long flags;
 };
 
-struct ndis_pmkid_candidate_list
-{
+struct ndis_pmkid_candidate_list {
 	unsigned long version;
 	unsigned long num_candidates;
 	struct ndis_pmkid_candidate candidates[1];

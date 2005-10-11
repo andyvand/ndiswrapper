@@ -2020,7 +2020,7 @@ EthRxIndicateHandler(struct ndis_miniport_block *nmb, void *rx_ctx,
 				memcpy(skb->data+header_size+look_ahead_size,
 				       MmGetMdlVirtualAddress(buffer),
 				       bytes_txed);
-				skb_size = header_size+look_ahead_size+
+				skb_size = header_size+look_ahead_size +
 					bytes_txed;
 				NdisFreePacket(packet);
 			}
@@ -2324,7 +2324,7 @@ NdisMResetComplete(struct ndis_miniport_block *nmb, NDIS_STATUS status,
 		    address_reset);
 
 	wd->ndis_comm_status = status;
-	wd->ndis_comm_done = 1;
+	wd->ndis_comm_done = 1 + address_reset;
 	wake_up(&wd->ndis_comm_wq);
 	TRACEEXIT3(return);
 }

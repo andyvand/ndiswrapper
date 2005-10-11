@@ -55,8 +55,10 @@ struct load_driver {
 	struct load_driver_file bin_files[MAX_NDIS_BIN_FILES];
 };
 
-#define NDIS_REGISTER_DEVICES	_IOW('N', 0, struct load_devices *)
-#define NDIS_LOAD_DRIVER	_IOW('N', 1, struct load_driver *)
+#define NDIS_REGISTER_DEVICES	_IOW(('N' + 'd' + 'i' + 'S'), 0,	\
+				     struct load_devices *)
+#define NDIS_LOAD_DRIVER	_IOW(('N' + 'd' + 'i' + 'S'), 1,	\
+				     struct load_driver *)
 
 int loader_init(void);
 void loader_exit(void);
