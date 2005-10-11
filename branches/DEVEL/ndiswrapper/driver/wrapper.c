@@ -91,20 +91,18 @@ static int inline ndis_wait_pending_completion(struct wrapper_dev *wd)
 	 * don't call completion function */
 #if 1
 	if (wait_event_interruptible_timeout(wd->ndis_comm_wq,
-					     (wd->ndis_comm_done == 1),
+					     (wd->ndis_comm_done > 0),
 					     2 * HZ) <= 0)
 #else
 	if (wait_event_interruptible(wd->ndis_comm_wq,
-				     (wd->ndis_comm_done == 1)))
+				     (wd->ndis_comm_done > 0)))
 #endif
 		return -1;
 	else
 		return 0;
 }
 
-/*
- * MiniportReset
- */
+/* MiniportReset */
 NDIS_STATUS miniport_reset(struct wrapper_dev *wd)
 {
 	KIRQL irql;
@@ -136,8 +134,10 @@ NDIS_STATUS miniport_reset(struct wrapper_dev *wd)
 		/* wait for NdisMResetComplete */
 		if (ndis_wait_pending_completion(wd))
 			res = NDIS_STATUS_FAILURE;
-		else
+		else {
 			res = wd->ndis_comm_status;
+			reset_address = wd->ndis_comm_done - 1;
+		}
 		DBGTRACE2("res = %08X, reset_status = %08X",
 			  res, reset_address);
 	}
@@ -156,11 +156,7 @@ NDIS_STATUS miniport_reset(struct wrapper_dev *wd)
 }
 
 
-/*
- * MiniportQueryInformation
- * Perform a sync query and deal with the possibility of an async operation.
- * This function must be called from process context as it will sleep.
- */
+/* MiniportQueryInformation */
 NDIS_STATUS miniport_query_info_needed(struct wrapper_dev *wd,
 				       ndis_oid oid, void *buf,
 				       ULONG bufsize, ULONG *needed)
@@ -210,11 +206,7 @@ NDIS_STATUS miniport_query_info(struct wrapper_dev *wd, ndis_oid oid,
 	return res;
 }
 
-/*
- * MiniportSetInformation
- * Perform a sync setinfo and deal with the possibility of an async operation.
- * This function must be called from process context as it will sleep.
- */
+/* MiniportSetInformation */
 NDIS_STATUS miniport_set_info(struct wrapper_dev *wd, ndis_oid oid,
 			      void *buf, ULONG bufsize)
 {
@@ -252,14 +244,12 @@ NDIS_STATUS miniport_set_info(struct wrapper_dev *wd, ndis_oid oid,
 	TRACEEXIT3(return res);
 }
 
-/* Make a query that has an int as the result. */
 NDIS_STATUS miniport_query_int(struct wrapper_dev *wd, ndis_oid oid,
 			       ULONG *data)
 {
 	return miniport_query_info(wd, oid, data, sizeof(ULONG));
 }
 
-/* Set an int */
 NDIS_STATUS miniport_set_int(struct wrapper_dev *wd, ndis_oid oid,
 			     ULONG data)
 {
@@ -267,9 +257,7 @@ NDIS_STATUS miniport_set_int(struct wrapper_dev *wd, ndis_oid oid,
 }
 
 
-/*
- * MiniportInitialize
- */
+/* MiniportInitialize */
 NDIS_STATUS miniport_init(struct wrapper_dev *wd)
 {
 	NDIS_STATUS status, res;
@@ -336,9 +324,7 @@ err_usb:
 	return res;
 }
 
-/*
- * MiniportHalt
- */
+/* MiniportHalt */
 void miniport_halt(struct wrapper_dev *wd)
 {
 	struct miniport_char *miniport = &wd->driver->miniport;
@@ -428,10 +414,10 @@ NDIS_STATUS miniport_surprise_remove(struct wrapper_dev *wd)
 			 NdisDevicePnPEventSurpriseRemoved, NULL, 0);
 		return NDIS_STATUS_SUCCESS;
 	} else {
-		WARNING("%s: Windows driver for device %s doesn't "
+		WARNING("%s: Windows driver %s doesn't "
 			"support MiniportPnpEventNotify for safely "
 			"removing the device", DRIVER_NAME,
-			wd->net_dev->name);
+			wd->driver->name);
 		return NDIS_STATUS_FAILURE;
 	}
 }
@@ -576,7 +562,7 @@ static int ndis_ioctl(struct net_device *dev, struct ifreq *rq, int cmd)
 }
 
 /*
- * This function is called fom BH context...no sleep!
+ * This function is called fom BH context
  */
 static void ndis_set_multicast_list(struct net_device *dev)
 {
