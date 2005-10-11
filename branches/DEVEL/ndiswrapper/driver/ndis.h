@@ -463,7 +463,7 @@ struct ndis_device {
 };
 
 struct ndis_wireless_stats {
-	LARGE_INTEGER length;
+	ULONG length;
 	LARGE_INTEGER tx_frag;
 	LARGE_INTEGER tx_multi_frag;
 	LARGE_INTEGER failed;
@@ -846,6 +846,7 @@ struct wrapper_dev {
 	wait_queue_head_t ndis_comm_wq;
 	int ndis_comm_done;
 	int ndis_comm_status;
+	ULONG packet_filter;
 
 	int serialized;
 	int use_sg_dma;
@@ -878,6 +879,7 @@ struct wrapper_dev {
 
 	/* list of initialized timers */
 	struct nt_list wrap_timer_list;
+	KSPIN_LOCK timer_lock;
 
 	struct proc_dir_entry *procfs_iface;
 

@@ -189,13 +189,13 @@ static int ndiswrapper_add_pci_device(struct pci_dev *pdev,
 	res = pci_enable_device(pdev);
 	if (res) {
 		ERROR("couldn't enable PCI device: %08x", res);
-		goto err_enable;
+		goto err_bus_driver;
 	}
 
 	res = pci_request_regions(pdev, DRIVER_NAME);
 	if (res) {
 		ERROR("couldn't request PCI regions: %08x", res);
-		goto err_regions;
+		goto err_enable;
 	}
 
 	res = pci_set_power_state(pdev, PCI_D0);
@@ -225,6 +225,7 @@ err_regions:
 err_enable:
 	pci_disable_device(pdev);
 err_bus_driver:
+	pci_set_drvdata(pdev, NULL);
 	free_netdev(dev);
 	TRACEEXIT1(return res);
 }

@@ -80,6 +80,7 @@ MODULE_VERSION(DRIVER_VERSION);
 #endif
 
 extern KSPIN_LOCK timer_lock;
+static int set_packet_filter(struct wrapper_dev *wd, ULONG packet_filter);
 
 static int inline ndis_wait_pending_completion(struct wrapper_dev *wd)
 {
@@ -88,10 +89,10 @@ static int inline ndis_wait_pending_completion(struct wrapper_dev *wd)
 	 * completion routine, but some drivers (e.g., ZyDas) don't
 	 * call back, so timeout is used; TODO: find out why drivers
 	 * don't call completion function */
-#if 0
+#if 1
 	if (wait_event_interruptible_timeout(wd->ndis_comm_wq,
 					     (wd->ndis_comm_done == 1),
-					     4 * HZ) <= 0)
+					     2 * HZ) <= 0)
 #else
 	if (wait_event_interruptible(wd->ndis_comm_wq,
 				     (wd->ndis_comm_done == 1)))
@@ -144,11 +145,10 @@ NDIS_STATUS miniport_reset(struct wrapper_dev *wd)
 		  res, reset_address);
 
 	if (res == NDIS_STATUS_SUCCESS && reset_address) {
-		/* NDIS says we should set lookahead size (?)
-		 * functional address (?) or multicast filter */
 		wd->nmb->cur_lookahead = cur_lookahead;
 		wd->nmb->max_lookahead = max_lookahead;
-//		ndis_set_rx_mode(wd->net_dev);
+		set_packet_filter(wd, wd->packet_filter);
+//		set_multicast_list(wd->net_dev);
 	}
 	up(&wd->ndis_comm_mutex);
 
@@ -254,15 +254,9 @@ NDIS_STATUS miniport_set_info(struct wrapper_dev *wd, ndis_oid oid,
 
 /* Make a query that has an int as the result. */
 NDIS_STATUS miniport_query_int(struct wrapper_dev *wd, ndis_oid oid,
-			       void *data)
+			       ULONG *data)
 {
-	NDIS_STATUS res;
-
-	res = miniport_query_info(wd, oid, data, sizeof(ULONG));
-	if (!res)
-		return 0;
-	*(int *)data = 0;
-	return res;
+	return miniport_query_info(wd, oid, data, sizeof(ULONG));
 }
 
 /* Set an int */
@@ -512,6 +506,7 @@ static int set_packet_filter(struct wrapper_dev *wd, ULONG packet_filter)
 		DBGTRACE1("couldn't set packet filter: %08X", res);
 		TRACEEXIT3(return res);
 	}
+	wd->packet_filter = packet_filter;
 	TRACEEXIT3(return 0);
 }
 
@@ -700,16 +695,11 @@ static int send_packets(struct wrapper_dev *wd, unsigned int start,
 		n = pending;
 
 	if (miniport->send_packets) {
-		unsigned int i;
+		int i;
 		/* copy packets from xmit ring to linear xmit array */
 		for (i = 0; i < n; i++) {
 			int j = (start + i) % XMIT_RING_SIZE;
 			wd->xmit_array[i] = wd->xmit_ring[j];
-		}
-		DBG_BLOCK() {
-			if (wd->nmb->flags)
-				WARNING("miniport is not ready: %08X",
-					wd->nmb->flags);
 		}
 		LIN2WIN3(miniport->send_packets, wd->nmb->adapter_ctx,
 			 wd->xmit_array, n);
@@ -1206,20 +1196,12 @@ static void update_wireless_stats(struct wrapper_dev *wd)
 	res = miniport_query_info(wd, OID_802_11_RSSI, &rssi, sizeof(rssi));
 	if (res == NDIS_STATUS_SUCCESS)
 		iw_stats->qual.level = rssi;
-	else {
-		WARNING("statistics disabled for %s", wd->net_dev->name);
-		wd->stats_enabled = FALSE;
-		TRACEEXIT2(return);
-	}
 
 	memset(&ndis_stats, 0, sizeof(ndis_stats));
 	res = miniport_query_info(wd, OID_802_11_STATISTICS,
 				  &ndis_stats, sizeof(ndis_stats));
-	if (res != NDIS_STATUS_SUCCESS) {
-		WARNING("statistics disabled for %s", wd->net_dev->name);
-		wd->stats_enabled = FALSE;
+	if (res != NDIS_STATUS_SUCCESS)
 		TRACEEXIT2(return);
-	}
 	iw_stats->discard.retries = (u32)ndis_stats.retry +
 		(u32)ndis_stats.multi_retry;
 	iw_stats->discard.misc = (u32)ndis_stats.fcs_err +

@@ -748,13 +748,6 @@ STDCALL NTSTATUS WRAP_EXPORT(IoConnectInterrupt)
 	IOEXIT(return STATUS_SUCCESS);
 }
 
-STDCALL void WRAP_EXPORT(PoStartNextPowerIrp)
-	(struct irp *irp)
-{
-	IOENTER("irp = %p", irp);
-	IOEXIT(return);
-}
-
 STDCALL void WRAP_EXPORT(IoDisconnectInterrupt)
 	(struct kinterrupt *interrupt)
 {
@@ -1112,10 +1105,34 @@ STDCALL NTSTATUS WRAP_EXPORT(PoCallDriver)
 STDCALL NTSTATUS WRAP_EXPORT(PoRequestPowerIrp)
 	(struct device_object *dev_obj, UCHAR minor_fn,
 	 union power_state power_state, void *completion_func,
-	 void *context, struct irp *irp)
+	 void *context, struct irp **pirp)
 {
-	UNIMPL();
-	return STATUS_SUCCESS;
+	struct irp *irp;
+	struct io_stack_location *stack;
+
+	DBGTRACE1("%p: stack size: %d", dev_obj, dev_obj->stack_size);
+	DBGTRACE1("drv_obj: %p", dev_obj->drv_obj);
+	irp = IoAllocateIrp(dev_obj->stack_size, FALSE);
+	if (!irp)
+		return STATUS_INSUFFICIENT_RESOURCES;
+	stack = IoGetNextIrpStackLocation(irp);
+	stack->major_fn = IRP_MJ_POWER;
+	stack->minor_fn = minor_fn;
+	if (minor_fn == IRP_MN_WAIT_WAKE)
+		stack->params.power.type = SystemPowerState;
+	else
+		stack->params.power.type = DevicePowerState;
+	stack->params.power.state = power_state;
+	irp->io_status.status = STATUS_NOT_SUPPORTED;
+	*pirp = irp;
+	return PoCallDriver(dev_obj, irp);
+}
+
+STDCALL void WRAP_EXPORT(PoStartNextPowerIrp)
+	(struct irp *irp)
+{
+	IOENTER("irp = %p", irp);
+	IOEXIT(return);
 }
 
 STDCALL NTSTATUS WRAP_EXPORT(IoRegisterDeviceInterface)
@@ -1128,7 +1145,7 @@ STDCALL NTSTATUS WRAP_EXPORT(IoRegisterDeviceInterface)
 	ansi.buf = "ndis";
 	ansi.buflen = ansi.len = strlen(ansi.buf);
 	TRACEENTER1("pdo: %p, ref: %p, link: %p", pdo, reference, link);
-	return RtlAnsiStringToUnicodeString(reference, &ansi, TRUE);
+	return RtlAnsiStringToUnicodeString(link, &ansi, TRUE);
 }
 
 STDCALL NTSTATUS WRAP_EXPORT(IoSetDeviceInterfaceState)

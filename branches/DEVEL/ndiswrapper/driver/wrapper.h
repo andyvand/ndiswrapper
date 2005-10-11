@@ -27,7 +27,7 @@ NDIS_STATUS miniport_query_info(struct wrapper_dev *wd, ndis_oid oid,
 NDIS_STATUS miniport_set_info(struct wrapper_dev *wd, ndis_oid oid,
 			      void *buf, ULONG bufsize);
 NDIS_STATUS miniport_query_int(struct wrapper_dev *wd, ndis_oid oid,
-			       void *data);
+			       ULONG *data);
 NDIS_STATUS miniport_set_int(struct wrapper_dev *wd, ndis_oid oid,
 			     ULONG data);
 NDIS_STATUS miniport_init(struct wrapper_dev *wd);
