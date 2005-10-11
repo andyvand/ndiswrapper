@@ -353,14 +353,7 @@ NTSTATUS wrap_submit_urb(struct irp *irp)
 		return status;
 	}
 	irp->wrap_urb->state = URB_SUBMITTED;
-	IoMarkIrpPending(irp);
-	NT_URB_STATUS(nt_urb) = USBD_STATUS_PENDING;
-	irp->io_status.status = STATUS_PENDING;
-	irp->io_status.status_info = 0;
-	irp->pending_returned = TRUE;
 	IoReleaseCancelSpinLock(irp->cancel_irql);
-	/* before we submit it, we mark it as pending since we can't
-	 * touch irp once its urb has been submitted */
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
 	ret = usb_submit_urb(urb, alloc_flags);
 #else
@@ -371,8 +364,6 @@ NTSTATUS wrap_submit_urb(struct irp *irp)
 		NT_URB_STATUS(nt_urb) = USBD_STATUS_REQUEST_FAILED;
 		irp->io_status.status = STATUS_NOT_SUPPORTED;
 		irp->io_status.status_info = 0;
-		IoUnmarkIrpPending(irp);
-		irp->pending_returned = FALSE;
 		return irp->io_status.status;
 	} else
 		return STATUS_PENDING;
@@ -430,8 +421,6 @@ static void irp_complete_worker(unsigned long data)
 		nt_urb = URB_FROM_IRP(irp);
 		USBTRACE("urb: %p, nt_urb: %p, status: %d",
 			 urb, nt_urb, (urb->status));
-		IoUnmarkIrpPending(irp);
-		irp->pending_returned = FALSE;
 		switch (urb->status) {
 		case 0:
 			/* succesfully transferred */
