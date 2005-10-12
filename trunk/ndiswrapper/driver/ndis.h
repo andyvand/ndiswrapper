@@ -157,11 +157,12 @@ struct ndis_packet {
 };
 
 struct ndis_packet_pool {
-	int max_descr;
-	int num_allocated_descr;
+	UINT max_descr;
+	UINT num_allocated_descr;
+	UINT num_used_descr;
 	struct ndis_packet *free_descr;
 	KSPIN_LOCK lock;
-	int proto_rsvd_length;
+	UINT proto_rsvd_length;
 	struct nt_list list;
 };
 
@@ -462,7 +463,7 @@ struct ndis_device {
 };
 
 struct ndis_wireless_stats {
-	LARGE_INTEGER length;
+	ULONG length;
 	LARGE_INTEGER tx_frag;
 	LARGE_INTEGER tx_multi_frag;
 	LARGE_INTEGER failed;
@@ -496,8 +497,7 @@ enum ndis_status_type {
 	Ndis802_11StatusType_RadioState,
 };
 
-struct ndis_status_indication
-{
+struct ndis_status_indication {
 	enum ndis_status_type status_type;
 };
 
@@ -525,7 +525,7 @@ enum ndis_attributes {
 
 enum hw_status {
 	HW_NORMAL, HW_SUSPENDED, HW_HALTED, HW_RMMOD, HW_AVAILABLE,
-	HW_REMOVED,
+	HW_INITIALIZED,
 };
 
 struct encr_info {
@@ -845,6 +845,7 @@ struct wrapper_dev {
 	wait_queue_head_t ndis_comm_wq;
 	int ndis_comm_done;
 	int ndis_comm_status;
+	ULONG packet_filter;
 
 	int serialized;
 	int use_sg_dma;
@@ -877,6 +878,7 @@ struct wrapper_dev {
 
 	/* list of initialized timers */
 	struct nt_list wrap_timer_list;
+	KSPIN_LOCK timer_lock;
 
 	struct proc_dir_entry *procfs_iface;
 
@@ -896,14 +898,12 @@ struct wrapper_dev {
 	struct ndis_buffer_pool *wrapper_buffer_pool;
 };
 
-struct ndis_pmkid_candidate
-{
+struct ndis_pmkid_candidate {
 	mac_address bssid;
 	unsigned long flags;
 };
 
-struct ndis_pmkid_candidate_list
-{
+struct ndis_pmkid_candidate_list {
 	unsigned long version;
 	unsigned long num_candidates;
 	struct ndis_pmkid_candidate candidates[1];
@@ -956,6 +956,11 @@ STDCALL void NdisWriteConfiguration(NDIS_STATUS *status,
 				    struct ndis_miniport_block *nmb,
 				    struct unicode_string *key,
 				    struct ndis_config_param *val);
+
+STDCALL void NdisReadConfiguration
+	(NDIS_STATUS *status, struct ndis_config_param **dest,
+	 struct ndis_miniport_block *nmb, struct unicode_string *key,
+	 enum ndis_config_param_type type);
 
 void *get_sp(void);
 int ndis_init(void);
