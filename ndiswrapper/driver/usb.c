@@ -103,7 +103,7 @@ int usb_init(void)
 void usb_exit(void)
 {
 	tasklet_kill(&irp_complete_work);
-	return;
+	TRACEEXIT1(return);
 }
 
 int usb_init_device(struct wrapper_dev *wd)
@@ -353,14 +353,7 @@ NTSTATUS wrap_submit_urb(struct irp *irp)
 		return status;
 	}
 	irp->wrap_urb->state = URB_SUBMITTED;
-	IoMarkIrpPending(irp);
-	NT_URB_STATUS(nt_urb) = USBD_STATUS_PENDING;
-	irp->io_status.status = STATUS_PENDING;
-	irp->io_status.status_info = 0;
-	irp->pending_returned = TRUE;
 	IoReleaseCancelSpinLock(irp->cancel_irql);
-	/* before we submit it, we mark it as pending since we can't
-	 * touch irp once its urb has been submitted */
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
 	ret = usb_submit_urb(urb, alloc_flags);
 #else
@@ -371,8 +364,6 @@ NTSTATUS wrap_submit_urb(struct irp *irp)
 		NT_URB_STATUS(nt_urb) = USBD_STATUS_REQUEST_FAILED;
 		irp->io_status.status = STATUS_NOT_SUPPORTED;
 		irp->io_status.status_info = 0;
-		IoUnmarkIrpPending(irp);
-		irp->pending_returned = FALSE;
 		return irp->io_status.status;
 	} else
 		return STATUS_PENDING;
@@ -430,8 +421,6 @@ static void irp_complete_worker(unsigned long data)
 		nt_urb = URB_FROM_IRP(irp);
 		USBTRACE("urb: %p, nt_urb: %p, status: %d",
 			 urb, nt_urb, (urb->status));
-		IoUnmarkIrpPending(irp);
-		irp->pending_returned = FALSE;
 		switch (urb->status) {
 		case 0:
 			/* succesfully transferred */
@@ -516,7 +505,6 @@ static STDCALL void wrap_cancel_irp(struct device_object *dev_obj,
 	USBENTER("irp: %p", irp);
 	urb = irp->wrap_urb->urb;
 	USBTRACE("canceling urb %p", urb);
-
 	if (irp->wrap_urb->state == URB_SUBMITTED &&
 	    wrap_cancel_urb(urb) == 0) {
 		USBTRACE("urb %p canceled", urb);
@@ -1016,7 +1004,6 @@ static USBD_STATUS wrap_get_port_status(struct irp *irp)
 {
 	struct wrapper_dev *wd;
 	ULONG *status;
-#if LINUX_VERSION_CODE > KERNEL_VERSION(2,6,0)
 	enum usb_device_state state;
 
 	wd = irp->wd;
@@ -1027,20 +1014,6 @@ static USBD_STATUS wrap_get_port_status(struct irp *irp)
 		*status |= USBD_PORT_CONNECTED;
 	if (state & USB_STATE_CONFIGURED)
 		*status |= USBD_PORT_ENABLED;
-#else
-	u16 data;
-	wd = irp->wd;
-	USBENTER("%p, %p", wd, wd->dev.usb.udev);
-	status = IoGetCurrentIrpStackLocation(irp)->params.others.arg1;
-        data = 0;
-        if (usb_get_status(wd->dev.usb.udev, USB_RECIP_DEVICE, 0, &data) < 0)
-                *status = 0;
-        else
-                *status = USBD_PORT_ENABLED | USBD_PORT_CONNECTED;
-//      irp->io_status.status_info = 0;
-	*status |= USBD_PORT_CONNECTED | USBD_PORT_ENABLED;
-#endif
-
 //	irp->io_status.status_info = 0;
 	return USBD_STATUS_SUCCESS;
 }

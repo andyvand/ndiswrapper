@@ -123,13 +123,17 @@ NOREGPARM INT WRAP_EXPORT(_win_sprintf)
 	va_start(args, format);
 	res = vsprintf(buf, format, args);
 	va_end(args);
+	DBGTRACE2("buf: %p", buf);
 	return res;
 }
 
 NOREGPARM INT WRAP_EXPORT(_win_vsprintf)
 	(char *str, const char *format, va_list ap)
 {
-	return vsprintf(str, format, ap);
+	INT i;
+	i = vsprintf(str, format, ap);
+	DBGTRACE2("str: %p", str);
+	TRACEEXIT2(return i);
 }
 
 NOREGPARM INT WRAP_EXPORT(_win_snprintf)
@@ -141,6 +145,7 @@ NOREGPARM INT WRAP_EXPORT(_win_snprintf)
 	va_start(args, format);
 	res = vsnprintf(buf, count, format, args);
 	va_end(args);
+	DBGTRACE2("buf: %p", buf);
 	return res;
 }
 
@@ -153,19 +158,26 @@ NOREGPARM INT WRAP_EXPORT(_win__snprintf)
 	va_start(args, format);
 	res = vsnprintf(buf, count, format, args);
 	va_end(args);
+	DBGTRACE2("buf: %p", buf);
 	return res;
 }
 
 NOREGPARM INT WRAP_EXPORT(_win_vsnprintf)
 	(char *str, SIZE_T size, const char *format, va_list ap)
 {
-	return vsnprintf(str, size, format, ap);
+	INT i;
+	i = vsnprintf(str, size, format, ap);
+	DBGTRACE2("str: %p", str);
+	TRACEEXIT2(return i);
 }
 
 NOREGPARM INT WRAP_EXPORT(_win__vsnprintf)
 	(char *str, SIZE_T size, const char *format, va_list ap)
 {
-	return vsnprintf(str, size, format, ap);
+	INT i;
+	i = vsnprintf(str, size, format, ap);
+	DBGTRACE2("str: %p", str);
+	TRACEEXIT2(return i);
 }
 
 NOREGPARM char *WRAP_EXPORT(_win_strncpy)
@@ -777,7 +789,7 @@ STDCALL NTSTATUS WRAP_EXPORT(RtlQueryRegistryValues)
 	unicode.buf = path;
 	unicode.len = unicode.buflen = _win_wcslen(path);
 	RtlUnicodeStringToAnsiString(&ansi, &unicode, FALSE);
-	TRACEENTER3("%d, %s, %p", relative, buf, tbl);
+	DBGTRACE2("%d, %s, %p", relative, buf, tbl);
 	TRACEEXIT3(return STATUS_SUCCESS);
 }
 
@@ -797,7 +809,7 @@ STDCALL NTSTATUS WRAP_EXPORT(RtlWriteRegistryValue)
 	unicode.buf = path;
 	unicode.len = unicode.buflen = _win_wcslen(path);
 	RtlUnicodeStringToAnsiString(&ansi, &unicode, FALSE);
-	TRACEENTER3("%d, %s", relative, buf);
+	DBGTRACE3("path: %s", buf);
 	unicode.buf = name;
 	unicode.len = unicode.buflen = _win_wcslen(name);
 	RtlUnicodeStringToAnsiString(&ansi, &unicode, FALSE);

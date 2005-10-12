@@ -56,7 +56,7 @@ int ndis_init(void)
 void ndis_exit(void)
 {
 	/* TODO: free all packets in all pools */
-	return;
+	TRACEEXIT1(return);
 }
 
 /* ndis_exit_device is called for each handle */
@@ -239,7 +239,7 @@ NOREGPARM void WRAP_EXPORT(NdisWriteErrorLogEntry)
 		ERROR("code: %u", code);
 	}
 	va_end(args);
-	return;
+	TRACEEXIT2(return);
 }
 
 STDCALL void WRAP_EXPORT(NdisOpenConfiguration)
@@ -681,12 +681,20 @@ STDCALL ULONG WRAP_EXPORT(NdisReadPciSlotInformation)
 	 ULONG offset, char *buf, ULONG len)
 {
 	struct wrapper_dev *wd = nmb->wd;
-	int i;
+	ULONG i;
 	TRACEENTER3("%d", len);
 	for (i = 0; i < len; i++)
-		pci_read_config_byte(wd->dev.pci, offset+i, &buf[i]);
+		if (pci_read_config_byte(wd->dev.pci, offset+i, &buf[i]) !=
+		    PCIBIOS_SUCCESSFUL)
+			break;
+	TRACEEXIT3(return i);
+}
 
-	TRACEEXIT3(return len);
+STDCALL ULONG WRAP_EXPORT(NdisImmediateReadPciSlotInformation)
+	(struct ndis_miniport_block *nmb, ULONG slot,
+	 ULONG offset, char *buf, ULONG len)
+{
+	return NdisReadPciSlotInformation(nmb, slot, offset, buf, len);
 }
 
 STDCALL ULONG WRAP_EXPORT(NdisWritePciSlotInformation)
@@ -694,12 +702,37 @@ STDCALL ULONG WRAP_EXPORT(NdisWritePciSlotInformation)
 	 ULONG offset, char *buf, ULONG len)
 {
 	struct wrapper_dev *wd = nmb->wd;
-	int i;
+	ULONG i;
 	TRACEENTER3("%d", len);
 	for (i = 0; i < len; i++)
-		pci_write_config_byte(wd->dev.pci, offset+i, buf[i]);
+		if (pci_write_config_byte(wd->dev.pci, offset+i, buf[i]) !=
+		    PCIBIOS_SUCCESSFUL)
+			break;
+	TRACEEXIT3(return i);
+}
 
-	TRACEEXIT3(return len);
+STDCALL void WRAP_EXPORT(NdisReadPortUchar)
+	(struct ndis_miniport_block *nmb, ULONG port, char *data)
+{
+	*data = READ_PORT_UCHAR(port);
+}
+
+STDCALL void WRAP_EXPORT(NdisImmediateReadPortUchar)
+	(struct ndis_miniport_block *nmb, ULONG port, char *data)
+{
+	*data = READ_PORT_UCHAR(port);
+}
+
+STDCALL void WRAP_EXPORT(NdisWritePortUchar)
+	(struct ndis_miniport_block *nmb, ULONG port, char data)
+{
+	WRITE_PORT_UCHAR(port, data);
+}
+
+STDCALL void WRAP_EXPORT(NdisImmediateWritePortUchar)
+	(struct ndis_miniport_block *nmb, ULONG port, char data)
+{
+	WRITE_PORT_UCHAR(port, data);
 }
 
 STDCALL void WRAP_EXPORT(NdisMQueryAdapterResources)
@@ -842,10 +875,6 @@ STDCALL void WRAP_EXPORT(NdisReleaseSpinLock)
 	(struct ndis_spinlock *lock)
 {
 	TRACEENTER6("lock %p", lock);
-	if (!lock) {
-		ERROR("invalid lock");
-		return;
-	}
 	kspin_unlock_irql(&lock->klock, lock->irql);
 	TRACEEXIT6(return);
 }
@@ -893,7 +922,7 @@ STDCALL NDIS_STATUS WRAP_EXPORT(NdisMAllocateMapRegisters)
 
 	wd->map_count = basemap;
 	wd->map_dma_addr = kmalloc(basemap * sizeof(dma_addr_t),
-				       GFP_KERNEL);
+				   GFP_KERNEL);
 	if (!wd->map_dma_addr)
 		TRACEEXIT2(return NDIS_STATUS_RESOURCES);
 	memset(wd->map_dma_addr, 0, basemap * sizeof(dma_addr_t));
@@ -931,7 +960,7 @@ STDCALL void WRAP_EXPORT(NdisMAllocateSharedMemory)
 	if (!v) {
 		ERROR("failed to allocate DMA coherent memory; "
 		      "Windows driver requested %d bytes of "
-		      "%scached memory\n", size, cached ? "" : "un-");
+		      "%scached memory", size, cached ? "" : "un-");
 	}
 
 	*virt = v;
@@ -1184,6 +1213,7 @@ STDCALL void WRAP_EXPORT(NdisAllocatePacketPoolEx)
 	kspin_lock_init(&pool->lock);
 	pool->max_descr = num_descr;
 	pool->num_allocated_descr = 0;
+	pool->num_used_descr = 0;
 	pool->free_descr = NULL;
 	pool->proto_rsvd_length = proto_rsvd_length;
 	*pool_handle = pool;
@@ -1221,6 +1251,8 @@ STDCALL void WRAP_EXPORT(NdisFreePacketPool)
 		cur = wrap_ndis_packet->next;
 		kfree(prev);
 	}
+	pool->num_allocated_descr = 0;
+	pool->num_used_descr = 0;
 	kspin_unlock_irql(&pool->lock, irql);
 	kfree(pool);
 	TRACEEXIT3(return);
@@ -1234,7 +1266,7 @@ STDCALL UINT WRAP_EXPORT(NdisPacketPoolUsage)
 
 	TRACEENTER4("");
 	irql = kspin_lock_irql(&pool->lock, DISPATCH_LEVEL);
-	i = pool->num_allocated_descr;
+	i = pool->num_used_descr;
 	kspin_unlock_irql(&pool->lock, irql);
 	TRACEEXIT4(return i);
 }
@@ -1261,9 +1293,9 @@ STDCALL void WRAP_EXPORT(NdisAllocatePacket)
 		sizeof(struct wrap_ndis_packet);
 	ndis_packet = NULL;
 	irql = kspin_lock_irql(&pool->lock, DISPATCH_LEVEL);
-	if (pool->num_allocated_descr > pool->max_descr)
+	if (pool->num_used_descr >= pool->max_descr)
 		DBGTRACE2("pool %p is full: %d(%d)", pool,
-			  pool->num_allocated_descr, pool->max_descr);
+			  pool->num_used_descr, pool->max_descr);
 	if (pool->free_descr) {
 		ndis_packet = pool->free_descr;
 		wrap_ndis_packet =
@@ -1289,6 +1321,7 @@ STDCALL void WRAP_EXPORT(NdisAllocatePacket)
 		irql = kspin_lock_irql(&pool->lock, DISPATCH_LEVEL);
 		pool->num_allocated_descr++;
 	}
+	pool->num_used_descr++;
 	memset(ndis_packet, 0, packet_length);
 	ndis_packet->wrap_ndis_packet = wrap_ndis_packet;
 	ndis_packet->private.oob_offset =
@@ -1335,6 +1368,7 @@ STDCALL void WRAP_EXPORT(NdisFreePacket)
 		descr->wrap_ndis_packet->next = pool->free_descr;
 		pool->free_descr = descr;
 	}
+	pool->num_used_descr--;
 	kspin_unlock_irql(&pool->lock, irql);
 	TRACEEXIT3(return);
 }
@@ -1400,20 +1434,22 @@ STDCALL void WRAP_EXPORT(NdisMInitializeTimer)
 {
 	TRACEENTER4("timer: %p, func: %p, ctx: %p, nmb: %p",
 		    &timer->ktimer, func, ctx, nmb);
+	/* DDK implements with KeInitializeTimer */
+	wrap_init_timer(&timer->ktimer, NotificationTimer, nmb->wd);
 	timer->func = func;
 	timer->ctx = ctx;
 	timer->nmb = nmb;
 	KeInitializeDpc(&timer->kdpc, func, ctx);
-	wrap_init_timer(&timer->ktimer, NotificationTimer, nmb->wd);
 	TRACEEXIT4(return);
 }
 
 STDCALL void WRAP_EXPORT(NdisMSetPeriodicTimer)
 	(struct ndis_miniport_timer *timer, UINT period_ms)
 {
-	unsigned long expires = MSEC_TO_HZ(period_ms);
+	unsigned long expires = MSEC_TO_HZ(period_ms) + 1;
 
 	DBGTRACE4("%p, %u, %ld", timer, period_ms, expires);
+	/* DDK implements with KeSetTimerEx */
 	wrap_set_timer(&timer->ktimer, expires, expires, &timer->kdpc);
 	TRACEEXIT4(return);
 }
@@ -1430,17 +1466,19 @@ STDCALL void WRAP_EXPORT(NdisInitializeTimer)
 	(struct ndis_timer *timer, void *func, void *ctx)
 {
 	TRACEENTER4("%p, %p, %p, %p", timer, func, ctx, &timer->ktimer);
-	KeInitializeDpc(&timer->kdpc, func, ctx);
 	KeInitializeTimer(&timer->ktimer);
+	KeInitializeDpc(&timer->kdpc, func, ctx);
 	TRACEEXIT4(return);
 }
 
 STDCALL void WRAP_EXPORT(NdisSetTimer)
 	(struct ndis_timer *timer, UINT duetime_ms)
 {
-	unsigned long expires = MSEC_TO_HZ(duetime_ms);
+	unsigned long expires = MSEC_TO_HZ(duetime_ms) + 1;
 
 	DBGTRACE4("%p, %u, %ld", timer, duetime_ms, expires);
+	/* DDK implements with NdisMSetTimer, which in turn is
+	 * implemented with KeSetTimer */
 	wrap_set_timer(&timer->ktimer, expires, 0, &timer->kdpc);
 	TRACEEXIT4(return);
 }
@@ -1525,21 +1563,22 @@ STDCALL void WRAP_EXPORT(NdisMDeregisterAdapterShutdownHandler)
 static void ndis_irq_bh(void *data)
 {
 	struct ndis_irq *ndis_irq = (struct ndis_irq *)data;
-	struct wrapper_dev *wd = ndis_irq->wd;
+	struct wrapper_dev *wd;
 	struct miniport_char *miniport;
 	KIRQL irql;
 
 	/* Dpcs run at DISPATCH_LEVEL */
-	irql = raise_irql(DISPATCH_LEVEL);
 	if (ndis_irq->enabled) {
+		irql = raise_irql(DISPATCH_LEVEL);
+		wd = ndis_irq->wd;
 		miniport = &wd->driver->miniport;
 		LIN2WIN1(miniport->handle_interrupt,
 			 wd->nmb->adapter_ctx);
 		if (miniport->enable_interrupts)
 			LIN2WIN1(miniport->enable_interrupts,
 				 wd->nmb->adapter_ctx);
+		lower_irql(irql);
 	}
-	lower_irql(irql);
 }
 
 /* Top half of the irq handler */
@@ -1603,6 +1642,7 @@ STDCALL NDIS_STATUS WRAP_EXPORT(NdisMRegisterInterrupt)
 		       DRIVER_NAME, vector);
 		TRACEEXIT1(return NDIS_STATUS_RESOURCES);
 	}
+	wd->ndis_irq = ndis_irq;
 	ndis_irq->enabled = 1;
 	printk(KERN_INFO "%s: using irq %d\n", DRIVER_NAME, vector);
 	TRACEEXIT1(return NDIS_STATUS_SUCCESS);
@@ -1647,7 +1687,7 @@ STDCALL BOOLEAN WRAP_EXPORT(NdisMSynchronizeWithInterrupt)
 	unsigned char (*sync_func)(void *ctx) STDCALL;
 	unsigned long flags;
 
-	TRACEENTER6("%p %p %p\n", ndis_irq, func, ctx);
+	TRACEENTER6("%p %p %p", ndis_irq, func, ctx);
 
 	if (func == NULL || ctx == NULL)
 		TRACEEXIT6(return 0);
@@ -1822,9 +1862,9 @@ NdisMIndicateReceivePacket(struct ndis_miniport_block *nmb,
 			WARNING("empty packet ignored");
 			continue;
 		}
-
+		/* TODO: we assume a packet has exactly one buffer,
+		 * although at other places we don't */
 		buffer = packet->private.buffer_head;
-
 		skb = dev_alloc_skb(MmGetMdlByteCount(buffer));
 		if (skb) {
 			skb->dev = wd->net_dev;
@@ -1984,7 +2024,7 @@ EthRxIndicateHandler(struct ndis_miniport_block *nmb, void *rx_ctx,
 				memcpy(skb->data+header_size+look_ahead_size,
 				       MmGetMdlVirtualAddress(buffer),
 				       bytes_txed);
-				skb_size = header_size+look_ahead_size+
+				skb_size = header_size+look_ahead_size +
 					bytes_txed;
 				NdisFreePacket(packet);
 			}
@@ -2131,13 +2171,18 @@ NdisMSetInformationComplete(struct ndis_miniport_block *nmb,
 STDCALL void WRAP_EXPORT(NdisMSleep)
 	(ULONG us)
 {
-	unsigned long delay;
-
 	TRACEENTER4("%p: us: %u", get_current(), us);
-	delay = USEC_TO_HZ(us);
-	set_current_state(TASK_INTERRUPTIBLE);
-	schedule_timeout(delay);
-	DBGTRACE4("%p: woke up", get_current());
+	/* in case somehow we end up here with DISPATH_LEVEL */
+	if (current_irql() >= DISPATCH_LEVEL) {
+		ERROR("irql >= DISPATCH_LEVEL");
+		udelay(us);
+	} else {
+		unsigned long delay;
+		delay = USEC_TO_HZ(us);
+		set_current_state(TASK_INTERRUPTIBLE);
+		schedule_timeout(delay);
+	}
+	DBGTRACE4("%p: done", get_current());
 	TRACEEXIT4(return);
 }
 
@@ -2283,7 +2328,7 @@ NdisMResetComplete(struct ndis_miniport_block *nmb, NDIS_STATUS status,
 		    address_reset);
 
 	wd->ndis_comm_status = status;
-	wd->ndis_comm_done = 1;
+	wd->ndis_comm_done = 1 + address_reset;
 	wake_up(&wd->ndis_comm_wq);
 	TRACEEXIT3(return);
 }
@@ -2346,8 +2391,7 @@ static void ndis_worker(void *data)
 		case NDIS_FREE_MEM_WORK_ITEM:
 			free_mem = &ndis_work_entry->entry.free_mem_work_item;
 			DBGTRACE3("freeing memory at %p", free_mem->addr);
-			if (free_mem->addr)
-				vfree(free_mem->addr);
+			vfree(free_mem->addr);
 			break;
 
 		case NDIS_RETURN_PACKET_WORK_ITEM:
@@ -2380,7 +2424,6 @@ STDCALL NDIS_STATUS WRAP_EXPORT(NdisScheduleWorkItem)
 	KIRQL irql;
 
 	TRACEENTER3("%p", ndis_sched_work_item);
-	/* this function is called from irq_bh by realtek driver */
 	ndis_work_entry = kmalloc(sizeof(*ndis_work_entry), GFP_ATOMIC);
 	if (!ndis_work_entry)
 		BUG();
@@ -2581,7 +2624,6 @@ STDCALL void WRAP_EXPORT(NdisMStartBufferPhysicalMapping)
 	}
 
 	// map buffer
-	/* FIXME: do USB drivers call this? */
 	phy_addr_array[0].phy_addr =
 		PCI_DMA_MAP_SINGLE(wd->dev.pci,
 				   MmGetMdlVirtualAddress(buf),
@@ -2613,7 +2655,6 @@ STDCALL void WRAP_EXPORT(NdisMCompleteBufferPhysicalMapping)
 	}
 
 	// unmap buffer
-	/* FIXME: do USB drivers call this? */
 	PCI_DMA_UNMAP_SINGLE(wd->dev.pci,
 			     wd->map_dma_addr[phy_map_reg],
 			     MmGetMdlByteCount(buf), PCI_DMA_TODEVICE);
@@ -2732,3 +2773,11 @@ STDCALL NTSTATUS AddDevice(struct driver_object *drv_obj,
 	TRACEEXIT2(return STATUS_SUCCESS);
 }
 
+void DeleteDevice(struct device_object *pdo)
+{
+	struct wrapper_dev *wd;
+
+	wd = pdo->reserved;
+	IoDeleteDevice(wd->nmb->fdo);
+	return;
+}

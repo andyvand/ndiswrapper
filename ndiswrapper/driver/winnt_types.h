@@ -65,6 +65,9 @@
 #define IRP_MN_SET_POWER		0x02
 #define IRP_MN_QUERY_POWER		0x03
 
+#define IRP_MN_REGINFO			0x08
+#define IRP_MN_REGINFO_EX		0x0b
+
 #define IRP_MN_START_DEVICE		0x00
 #define IRP_MN_QUERY_REMOVE_DEVICE	0x01
 #define IRP_MN_REMOVE_DEVICE		0x02
@@ -90,6 +93,13 @@
 
 #define IO_NO_INCREMENT			0
 
+#define WMIREG_ACTION_REGISTER		1
+#define WMIREG_ACTION_DEREGISTER	2
+#define WMIREG_ACTION_REREGISTER	3
+#define WMIREG_ACTION_UPDATE_GUIDS	4
+
+#define WMIREGISTER			0
+#define WMIUPDATE			1
 
 #ifdef CONFIG_X86_64
 #define STDCALL
@@ -540,6 +550,7 @@ struct io_stack_location {
 	UCHAR flags;
 	UCHAR control;
 	union {
+		/* NOTE: this union is not complete */
 		struct {
 			void *security_context;
 			ULONG options;
@@ -563,13 +574,18 @@ struct io_stack_location {
 			union power_state POINTER_ALIGNMENT state;
 			enum power_action POINTER_ALIGNMENT shutdown_type;
 		} power;
-		/* FIXME: this structure is not complete */
 		struct {
 			ULONG output_buf_len;
-			ULONG input_buf_len; /*align to pointer size*/
-			ULONG code; /*align to pointer size*/
+			ULONG POINTER_ALIGNMENT input_buf_len;
+			ULONG POINTER_ALIGNMENT code;
 			void *type3_input_buf;
 		} ioctl;
+		struct {
+			ULONG_PTR provider_id;
+			void *data_path;
+			ULONG buf_len;
+			void *buf;
+		} wmi;
 		struct {
 			void *arg1;
 			void *arg2;
@@ -734,9 +750,6 @@ struct irp {
 #define IoMarkIrpPending(irp)						\
 	(IoGetCurrentIrpStackLocation((irp))->control |= SL_PENDING_RETURNED)
 
-#define IoUnmarkIrpPending(irp)						\
-	(IoGetCurrentIrpStackLocation((irp))->control &= ~SL_PENDING_RETURNED)
-
 #define IRP_SL(irp, i) (((struct io_stack_location *)((irp) + 1)) + (i))
 #define IRP_DRIVER_CONTEXT(irp) (irp)->tail.overlay.driver_context
 #define IoIrpThread(irp) ((irp)->tail.overlay.thread)
@@ -763,6 +776,12 @@ struct wmilib_context {
 	void *set_wmi_data_item;
 	void *execute_wmi_method;
 	void *wmi_function_control;
+};
+
+enum key_value_information_class {
+	KeyValueBasicInformation, KeyValueFullInformation,
+	KeyValuePartialInformation, KeyValueFullInformationAlign64,
+	KeyValuePartialInformationAlign64
 };
 
 struct object_attr {
@@ -799,7 +818,7 @@ enum nt_obj_type {
 
 enum common_object_type {
 	OBJECT_TYPE_NONE, OBJECT_TYPE_DEVICE, OBJECT_TYPE_DRIVER,
-	OBJECT_TYPE_KTHREAD, OBJECT_TYPE_FILE,
+	OBJECT_TYPE_KTHREAD, OBJECT_TYPE_FILE, OBJECT_TYPE_CALLBACK,
 };
 
 struct common_object_header {

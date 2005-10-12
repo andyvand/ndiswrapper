@@ -27,7 +27,7 @@ NDIS_STATUS miniport_query_info(struct wrapper_dev *wd, ndis_oid oid,
 NDIS_STATUS miniport_set_info(struct wrapper_dev *wd, ndis_oid oid,
 			      void *buf, ULONG bufsize);
 NDIS_STATUS miniport_query_int(struct wrapper_dev *wd, ndis_oid oid,
-			       void *data);
+			       ULONG *data);
 NDIS_STATUS miniport_set_int(struct wrapper_dev *wd, ndis_oid oid,
 			     ULONG data);
 NDIS_STATUS miniport_init(struct wrapper_dev *wd);
@@ -44,11 +44,9 @@ int ndiswrapper_resume_pci(struct pci_dev *pdev);
 int ndiswrapper_suspend_usb(struct usb_interface *intf, pm_message_t state);
 int ndiswrapper_resume_usb(struct usb_interface *intf);
 
-NTSTATUS ndiswrapper_start_device(struct wrapper_dev *wd);
-void ndiswrapper_stop_device(struct wrapper_dev *wd);
 void ndiswrapper_remove_device(struct wrapper_dev *wd);
 int ndis_reinit(struct wrapper_dev *wd);
-int setup_device(struct net_device *dev);
+int setup_device(struct wrapper_dev *wd);
 
 void check_capa(struct wrapper_dev *wd);
 
