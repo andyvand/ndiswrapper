@@ -582,7 +582,7 @@ sub parseDevice {
     if ($device_sect eq "RNDIS.NT.5.1") {
 	$dev = getSection("RNDIS.NT");
     }
-    if (!dev) {
+    if (!$dev) {
 	$dev = getSection("$device_sect.$flavour");
     }
     if (!$dev) {
