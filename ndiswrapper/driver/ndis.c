@@ -1448,7 +1448,8 @@ STDCALL void WRAP_EXPORT(NdisMSetPeriodicTimer)
 	unsigned long expires = MSEC_TO_HZ(period_ms) + 1;
 
 	DBGTRACE4("%p, %u, %ld", timer, period_ms, expires);
-	wrap_set_timer(&timer->ktimer, expires, expires, &timer->kdpc);
+	wrap_set_timer(&timer->ktimer, expires, expires, &timer->kdpc,
+		       WRAP_TIMER_TYPE_NDIS);
 	TRACEEXIT4(return);
 }
 
@@ -1475,7 +1476,8 @@ STDCALL void WRAP_EXPORT(NdisSetTimer)
 	unsigned long expires = MSEC_TO_HZ(duetime_ms) + 1;
 
 	DBGTRACE4("%p, %u, %ld", timer, duetime_ms, expires);
-	wrap_set_timer(&timer->ktimer, expires, 0, &timer->kdpc);
+	wrap_set_timer(&timer->ktimer, expires, 0, &timer->kdpc,
+		       WRAP_TIMER_TYPE_NDIS);
 	TRACEEXIT4(return);
 }
 

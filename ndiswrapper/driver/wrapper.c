@@ -92,7 +92,7 @@ static int inline ndis_wait_pending_completion(struct wrapper_dev *wd)
 #if 1
 	if (wait_event_interruptible_timeout(wd->ndis_comm_wq,
 					     (wd->ndis_comm_done > 0),
-					     2 * HZ) <= 0)
+					     1 * HZ) <= 0)
 #else
 	if (wait_event_interruptible(wd->ndis_comm_wq,
 				     (wd->ndis_comm_done > 0)))
@@ -120,11 +120,10 @@ NDIS_STATUS miniport_reset(struct wrapper_dev *wd)
 	if (down_interruptible(&wd->ndis_comm_mutex))
 		TRACEEXIT3(return NDIS_STATUS_FAILURE);
 	miniport = &wd->driver->miniport;
-	wd->ndis_comm_status = NDIS_STATUS_PENDING;
-	wd->ndis_comm_done = 0;
 	cur_lookahead = wd->nmb->cur_lookahead;
 	max_lookahead = wd->nmb->max_lookahead;
 	irql = raise_irql(DISPATCH_LEVEL);
+	wd->ndis_comm_done = 0;
 	res = LIN2WIN2(miniport->reset, &reset_address,
 		       wd->nmb->adapter_ctx);
 	lower_irql(irql);
@@ -161,7 +160,7 @@ NDIS_STATUS miniport_query_info_needed(struct wrapper_dev *wd,
 				       ndis_oid oid, void *buf,
 				       ULONG bufsize, ULONG *needed)
 {
-	NDIS_STATUS res;
+	NDIS_STATUS res = 0;
 	ULONG written;
 	struct miniport_char *miniport = &wd->driver->miniport;
 	KIRQL irql;
@@ -173,9 +172,9 @@ NDIS_STATUS miniport_query_info_needed(struct wrapper_dev *wd,
 
 	if (down_interruptible(&wd->ndis_comm_mutex))
 		TRACEEXIT3(return NDIS_STATUS_FAILURE);
-	wd->ndis_comm_done = 0;
 	DBGTRACE2("query %p, oid: %08X", miniport->query, oid);
 	irql = raise_irql(DISPATCH_LEVEL);
+	wd->ndis_comm_done = 0;
 	res = LIN2WIN6(miniport->query, wd->nmb->adapter_ctx, oid, buf,
 		       bufsize, &written, needed);
 	lower_irql(irql);
@@ -210,7 +209,7 @@ NDIS_STATUS miniport_query_info(struct wrapper_dev *wd, ndis_oid oid,
 NDIS_STATUS miniport_set_info(struct wrapper_dev *wd, ndis_oid oid,
 			      void *buf, ULONG bufsize)
 {
-	NDIS_STATUS res;
+	NDIS_STATUS res = 0;
 	ULONG written, needed;
 	struct miniport_char *miniport = &wd->driver->miniport;
 	KIRQL irql;
@@ -222,15 +221,16 @@ NDIS_STATUS miniport_set_info(struct wrapper_dev *wd, ndis_oid oid,
 
 	if (down_interruptible(&wd->ndis_comm_mutex))
 		TRACEEXIT3(return NDIS_STATUS_FAILURE);
-	wd->ndis_comm_done = 0;
+	DBGTRACE2("query %p, oid: %08X", miniport->query, oid);
 	irql = raise_irql(DISPATCH_LEVEL);
-	res = LIN2WIN6(miniport->setinfo, wd->nmb->adapter_ctx, oid, buf,
-		       bufsize, &written, &needed);
+	wd->ndis_comm_done = 0;
+	res = LIN2WIN6(miniport->setinfo, wd->nmb->adapter_ctx, oid,
+		       buf, bufsize, &written, &needed);
 	lower_irql(irql);
-	DBGTRACE2("res: %08X, oid: %08X", res, oid);
 
+	DBGTRACE2("res: %08X, oid: %08X", res, oid);
 	if (res == NDIS_STATUS_PENDING) {
-		/* wait for NdisMSetInformationComplete */
+		/* wait for NdisMQueryInformationComplete */
 		if (ndis_wait_pending_completion(wd))
 			res = NDIS_STATUS_FAILURE;
 		else
@@ -238,6 +238,7 @@ NDIS_STATUS miniport_set_info(struct wrapper_dev *wd, ndis_oid oid,
 		DBGTRACE2("res: %08X", res);
 	}
 	up(&wd->ndis_comm_mutex);
+
 	if (res && needed)
 		DBGTRACE2("res: %08X, bufsize: %d, written: %d, needed: %d",
 			  res, bufsize, written, needed);
