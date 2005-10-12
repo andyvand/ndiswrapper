@@ -90,7 +90,7 @@ static void update_user_shared_data_proc(unsigned long data);
 #endif
 
 static int add_bus_driver(struct driver_object *drv_obj, const char *name);
-static BOOLEAN insert_kdpc_work(struct kdpc *kdpc);
+static BOOLEAN queue_kdpc(struct kdpc *kdpc);
 
 WRAP_EXPORT_MAP("KeTickCount", &jiffies);
 
@@ -548,23 +548,22 @@ static void timer_proc(unsigned long data)
 	BUG_ON(ktimer->wrap_timer_magic != WRAP_TIMER_MAGIC);
 #endif
 	kdpc = ktimer->kdpc;
-	KeSetEvent((struct kevent *)ktimer, 0, FALSE);
-	/* some drivers (e.g., Prism1 USB) call with expires == 0
-	 * and in that case, if we schedule DPC to be called later,
-	 * the drivers crash - they seem to expect that the DPC be
-	 * called right away */
+	if (wrap_timer->type == WRAP_TIMER_TYPE_KERNEL)
+		KeSetEvent((struct kevent *)ktimer, 0, FALSE);
 	if (kdpc && kdpc->func) {
-		DBGTRACE5("calling kdpc %p (%p)", kdpc, kdpc->func);
-		LIN2WIN4(kdpc->func, kdpc, kdpc->ctx, kdpc->arg1, kdpc->arg2);
+		DBGTRACE5("kdpc %p (%p)", kdpc, kdpc->func);
+		/* dpcs for kernel timers are queued and dpcs for NDIS
+		 * timers are executed when timer expires */
+		if (wrap_timer->type == WRAP_TIMER_TYPE_KERNEL)
+			queue_kdpc(kdpc);
+		else
+			LIN2WIN4(kdpc->func, kdpc, kdpc->ctx,
+				 kdpc->arg1, kdpc->arg2);
 	}
 
 	irql = kspin_lock_irql(&timer_lock, DISPATCH_LEVEL);
-	/* don't add the timer if aperiodic - see
-	 * wrapper_cancel_timer */
-	if (wrap_timer->repeat) {
-		wrap_timer->timer.expires += wrap_timer->repeat;
-		add_timer(&wrap_timer->timer);
-	}
+	if (wrap_timer->repeat)
+		mod_timer(&wrap_timer->timer, jiffies + wrap_timer->repeat);
 	kspin_unlock_irql(&timer_lock, irql);
 
 	TRACEEXIT5(return);
@@ -635,7 +634,8 @@ STDCALL void WRAP_EXPORT(KeInitializeTimer)
 
 /* expires and repeat are in HZ */
 BOOLEAN wrap_set_timer(struct ktimer *ktimer, unsigned long expires_hz,
-		       unsigned long repeat_hz, struct kdpc *kdpc)
+		       unsigned long repeat_hz, struct kdpc *kdpc,
+		       enum wrap_timer_type type)
 {
 	BOOLEAN ret;
 	KIRQL irql;
@@ -662,6 +662,7 @@ BOOLEAN wrap_set_timer(struct ktimer *ktimer, unsigned long expires_hz,
 	irql = kspin_lock_irql(&timer_lock, DISPATCH_LEVEL);
 	if (kdpc)
 		ktimer->kdpc = kdpc;
+	wrap_timer->type = type;
 	wrap_timer->repeat = repeat_hz;
 	ret = mod_timer(&wrap_timer->timer, jiffies + expires_hz);
 	kspin_unlock_irql(&timer_lock, irql);
@@ -677,7 +678,8 @@ STDCALL BOOLEAN WRAP_EXPORT(KeSetTimerEx)
 	DBGTRACE5("%p, %Ld, %d", ktimer, duetime_ticks, period_ms);
 	expires_hz = SYSTEM_TIME_TO_HZ(duetime_ticks) + 1;
 	repeat_hz = MSEC_TO_HZ(period_ms);
-	return wrap_set_timer(ktimer, expires_hz, repeat_hz, kdpc);
+	return wrap_set_timer(ktimer, expires_hz, repeat_hz, kdpc,
+			      WRAP_TIMER_TYPE_KERNEL);
 }
 
 STDCALL BOOLEAN WRAP_EXPORT(KeSetTimer)
@@ -737,22 +739,22 @@ static void kdpc_worker(void *data)
 	struct kdpc *kdpc;
 	KIRQL irql;
 
-	irql = raise_irql(DISPATCH_LEVEL);
 	while (1) {
-		kspin_lock(&kdpc_list_lock);
+		irql = kspin_lock_irql(&kdpc_list_lock, DISPATCH_LEVEL);
 		entry = RemoveHeadList(&kdpc_list);
 		if (!entry) {
-			kspin_unlock(&kdpc_list_lock);
+			kspin_unlock_irql(&kdpc_list_lock, irql);
 			break;
 		}
 		kdpc = container_of(entry, struct kdpc, list);
 		kdpc->number = 0;
-		kspin_unlock(&kdpc_list_lock);
+		kspin_unlock_irql(&kdpc_list_lock, irql);
 		DBGTRACE5("%p, %p, %p, %p, %p", kdpc, kdpc->func, kdpc->ctx,
 			  kdpc->arg1, kdpc->arg2);
+		irql = raise_irql(DISPATCH_LEVEL);
 		LIN2WIN4(kdpc->func, kdpc, kdpc->ctx, kdpc->arg1, kdpc->arg2);
+		lower_irql(irql);
 	}
-	lower_irql(irql);
 }
 
 STDCALL void KeFlushQueuedDpcs(void)
@@ -760,7 +762,7 @@ STDCALL void KeFlushQueuedDpcs(void)
 	kdpc_worker(NULL);
 }
 
-static BOOLEAN insert_kdpc_work(struct kdpc *kdpc)
+static BOOLEAN queue_kdpc(struct kdpc *kdpc)
 {
 	KIRQL irql;
 	BOOLEAN ret;
@@ -784,7 +786,7 @@ static BOOLEAN insert_kdpc_work(struct kdpc *kdpc)
 	TRACEEXIT5(return ret);
 }
 
-BOOLEAN remove_kdpc_work(struct kdpc *kdpc)
+BOOLEAN dequeue_kdpc(struct kdpc *kdpc)
 {
 	KIRQL irql;
 	BOOLEAN ret;
@@ -812,7 +814,7 @@ STDCALL BOOLEAN WRAP_EXPORT(KeInsertQueueDpc)
 	TRACEENTER5("%p, %p, %p", kdpc, arg1, arg2);
 	kdpc->arg1 = arg1;
 	kdpc->arg2 = arg2;
-	ret = insert_kdpc_work(kdpc);
+	ret = queue_kdpc(kdpc);
 	TRACEEXIT5(return ret);
 }
 
@@ -822,7 +824,7 @@ STDCALL BOOLEAN WRAP_EXPORT(KeRemoveQueueDpc)
 	BOOLEAN ret;
 
 	TRACEENTER3("%p", kdpc);
-	ret = remove_kdpc_work(kdpc);
+	ret = dequeue_kdpc(kdpc);
 	TRACEEXIT3(return ret);
 }
 

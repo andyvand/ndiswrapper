@@ -403,11 +403,14 @@ extern KSPIN_LOCK cancel_lock;
 
 //#define DEBUG_IRQL 1
 
+enum wrap_timer_type { WRAP_TIMER_TYPE_KERNEL = 1, WRAP_TIMER_TYPE_NDIS };
+
 struct wrap_timer {
 	long repeat;
 	struct nt_list list;
 	struct timer_list timer;
 	struct ktimer *ktimer;
+	enum wrap_timer_type type;
 #ifdef DEBUG_TIMER
 	unsigned long wrap_timer_magic;
 #endif
@@ -579,7 +582,8 @@ void wrap_kfree(void *ptr);
 void wrap_init_timer(struct ktimer *ktimer, enum timer_type type,
 		     struct wrapper_dev *wd);
 BOOLEAN wrap_set_timer(struct ktimer *ktimer, unsigned long expires_hz,
-		       unsigned long repeat_hz, struct kdpc *kdpc);
+		       unsigned long repeat_hz, struct kdpc *kdpc,
+		       enum wrap_timer_type type);
 
 STDCALL void KeInitializeTimer(struct ktimer *ktimer);
 STDCALL void KeInitializeTimerEx(struct ktimer *ktimer, enum timer_type type);
