@@ -43,9 +43,11 @@ static struct ndis_device *ndis_devices;
 static unsigned int num_ndis_devices;
 struct nt_list ndis_drivers;
 static struct pci_device_id *ndiswrapper_pci_devices;
-static struct usb_device_id *ndiswrapper_usb_devices;
 static struct pci_driver ndiswrapper_pci_driver;
+#if defined(CONFIG_USB)
+static struct usb_device_id *ndiswrapper_usb_devices;
 static struct usb_driver ndiswrapper_usb_driver;
+#endif
 
 extern int debug;
 
@@ -792,7 +794,9 @@ static int register_devices(struct load_devices *load_devices)
 
 	devices = NULL;
 	ndiswrapper_pci_devices = NULL;
+#if defined(CONFIG_USB)
 	ndiswrapper_usb_devices = NULL;
+#endif
 	ndis_devices = NULL;
 	devices = vmalloc(load_devices->count * sizeof(struct load_device));
 	if (!devices) {
@@ -828,6 +832,7 @@ static int register_devices(struct load_devices *load_devices)
 		       (num_pci + 1) * sizeof(struct pci_device_id));
 	}
 
+#if defined(CONFIG_USB)
 	if (num_usb > 0) {
 		ndiswrapper_usb_devices =
 			kmalloc((num_usb + 1) * sizeof(struct usb_device_id),
@@ -839,6 +844,7 @@ static int register_devices(struct load_devices *load_devices)
 		memset(ndiswrapper_usb_devices, 0,
 		       (num_usb + 1) * sizeof(struct usb_device_id));
 	}
+#endif
 
 	ndis_devices = vmalloc(num_ndis_devices * sizeof(*ndis_devices));
 	if (!ndis_devices) {
@@ -958,9 +964,11 @@ err:
 	if (ndis_devices)
 		vfree(ndis_devices);
 	ndis_devices = NULL;
+#if defined(CONFIG_USB)
 	if (ndiswrapper_usb_devices)
 		kfree(ndiswrapper_usb_devices);
 	ndiswrapper_usb_devices = NULL;
+#endif
 	if (ndiswrapper_pci_devices)
 		kfree(ndiswrapper_pci_devices);
 	ndiswrapper_pci_devices = NULL;
