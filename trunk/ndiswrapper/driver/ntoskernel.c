@@ -64,10 +64,10 @@ static struct driver_object pci_bus_driver;
 static struct driver_object usb_bus_driver;
 static void del_bus_drivers(void);
 
-struct work_struct io_work;
-struct nt_list io_workitem_list;
-KSPIN_LOCK io_workitem_list_lock;
-void io_worker(void *data);
+struct work_struct wrap_work_item_work;
+struct nt_list wrap_work_item_list;
+KSPIN_LOCK wrap_work_item_list_lock;
+void wrap_work_item_worker(void *data);
 
 KSPIN_LOCK irp_cancel_lock;
 
@@ -100,7 +100,7 @@ int ntoskernel_init(void)
 
 	kspin_lock_init(&kevent_lock);
 	kspin_lock_init(&ntoskernel_lock);
-	kspin_lock_init(&io_workitem_list_lock);
+	kspin_lock_init(&wrap_work_item_list_lock);
 	kspin_lock_init(&kdpc_list_lock);
 	kspin_lock_init(&irp_cancel_lock);
 	kspin_lock_init(&inter_lock);
@@ -109,9 +109,9 @@ int ntoskernel_init(void)
 	InitializeListHead(&callback_objects);
 	InitializeListHead(&bus_driver_list);
 	InitializeListHead(&object_list);
-	InitializeListHead(&io_workitem_list);
+	InitializeListHead(&wrap_work_item_list);
 	INIT_WORK(&kdpc_work, kdpc_worker, NULL);
-	INIT_WORK(&io_work, io_worker, NULL);
+	INIT_WORK(&wrap_work_item_work, wrap_work_item_worker, NULL);
 
 	kspin_lock_init(&timer_lock);
 	InitializeListHead(&wrap_timer_list);
@@ -817,6 +817,49 @@ STDCALL BOOLEAN WRAP_EXPORT(KeRemoveQueueDpc)
 	TRACEEXIT3(return ret);
 }
 
+void wrap_work_item_worker(void *data)
+{
+	struct wrap_work_item *wrap_work_item;
+	struct nt_list *cur;
+	void (*func)(void *arg1, void *ctx) STDCALL;
+	KIRQL irql;
+
+	while (1) {
+		irql = kspin_lock_irql(&wrap_work_item_list_lock,
+				       DISPATCH_LEVEL);
+		cur = RemoveHeadList(&wrap_work_item_list);
+		kspin_unlock_irql(&wrap_work_item_list_lock, irql);
+		if (!cur)
+			break;
+		wrap_work_item = container_of(cur, struct wrap_work_item,
+					      list);
+		func = wrap_work_item->func;
+		LIN2WIN2(func, wrap_work_item->arg1, wrap_work_item->arg2);
+		kfree(wrap_work_item);
+	}
+	return;
+}
+
+int schedule_wrap_work_item(void *func, void *arg1, void *arg2)
+{
+	struct wrap_work_item *wrap_work_item;
+	KIRQL irql;
+
+	wrap_work_item = kmalloc(sizeof(*wrap_work_item), GFP_ATOMIC);
+	if (!wrap_work_item) {
+		ERROR("couldn't allocate memory");
+		return -ENOMEM;
+	}
+	wrap_work_item->func = func;
+	wrap_work_item->arg1 = arg1;
+	wrap_work_item->arg2 = arg2;
+	irql = kspin_lock_irql(&wrap_work_item_list_lock, DISPATCH_LEVEL);
+	InsertTailList(&wrap_work_item_list, &wrap_work_item->list);
+	kspin_unlock_irql(&wrap_work_item_list_lock, irql);
+	schedule_work(&wrap_work_item_work);
+	return 0;
+}
+
 STDCALL void WRAP_EXPORT(KeInitializeSpinLock)
 	(KSPIN_LOCK *lock)
 {
@@ -992,12 +1035,15 @@ STDCALL void *WRAP_EXPORT(ExAllocatePoolWithTag)
 	TRACEEXIT4(return addr);
 }
 
+STDCALL void vfree_mem(void *addr, void *ctx)
+{
+	vfree(addr);
+}
+
 STDCALL void WRAP_EXPORT(ExFreePool)
 	(void *addr)
 {
 	wrap_alloc_tag_t wrap_tag;
-	struct ndis_work_entry *ndis_work_entry;
-	struct ndis_free_mem_work_item *free_mem;
 
 	DBGTRACE4("addr: %p", addr);
 	addr -= sizeof(wrap_tag);
@@ -1019,18 +1065,7 @@ STDCALL void WRAP_EXPORT(ExFreePool)
 		/* Instead of using yet another worker, use ndis_work
 		 * for this, although ntos layer using ndis functions
 		 * is counter-intuitive */
-		ndis_work_entry = kmalloc(sizeof(*ndis_work_entry),
-					  GFP_ATOMIC);
-		BUG_ON(!ndis_work_entry);
-
-		ndis_work_entry->type = NDIS_FREE_MEM_WORK_ITEM;
-		free_mem = &ndis_work_entry->entry.free_mem_work_item;
-		free_mem->addr = addr;
-
-		kspin_lock(&ndis_work_list_lock);
-		InsertTailList(&ndis_work_list, &ndis_work_entry->list);
-		kspin_unlock(&ndis_work_list_lock);
-		schedule_work(&ndis_work);
+		schedule_wrap_work_item(vfree_mem, addr, NULL);
 		return;
 	} else {
 		ERROR("wrong tag: %lu (%p)", wrap_tag, addr);

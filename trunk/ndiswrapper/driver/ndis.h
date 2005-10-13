@@ -250,7 +250,7 @@ struct miniport_char {
 	ndis_interrupt_handler handle_interrupt;
 
 	/* Start miniport driver */
-	NDIS_STATUS (*init)(NDIS_STATUS *status, UINT *medium_index,
+	NDIS_STATUS (*init)(NDIS_STATUS *error_status, UINT *medium_index,
 			    enum ndis_medium medium[], UINT medium_array_size,
 			    void *handle, void *conf_handle) STDCALL;
 
@@ -351,27 +351,16 @@ struct ndis_free_mem_work_item {
 	void *addr;
 };
 
-enum ndis_work_entry_type {
-	NDIS_SCHED_WORK_ITEM, NDIS_ALLOC_MEM_WORK_ITEM,
-	NDIS_FREE_MEM_WORK_ITEM, NDIS_RETURN_PACKET_WORK_ITEM,
-};
-
 struct ndis_work_item {
 	void *context;
 	void *routine;
 	UCHAR reserved[8 * sizeof(void *)];
 };
 
-struct ndis_work_entry {
-	struct nt_list list;
-	enum ndis_work_entry_type type;
-	struct wrapper_dev *wd;
-	union {
-		struct ndis_sched_work_item *sched_work_item;
-		struct ndis_alloc_mem_work_item alloc_mem_work_item;
-		struct ndis_free_mem_work_item free_mem_work_item;
-		struct ndis_packet *return_packet;
-	} entry;
+struct alloc_shared_mem {
+	void *ctx;
+	ULONG size;
+	BOOLEAN cached;
 };
 
 struct ndis_irq {
@@ -815,7 +804,6 @@ struct wrapper_dev {
 	struct ndis_miniport_block *nmb;
 	struct ndis_driver *driver;
 	struct phys_dev dev;
-	struct usb_interface *intf;
 	struct net_device *net_dev;
 	void *shutdown_ctx;
 

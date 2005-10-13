@@ -322,10 +322,10 @@ static void *ndiswrapper_add_usb_device(struct usb_device *udev,
 
 	wd->dev.usb.udev = interface_to_usbdev(intf);
 	usb_set_intfdata(intf, wd);
-	wd->intf = intf;
+	wd->dev.usb.intf = intf;
 #else
 	wd->dev.usb.udev = udev;
-	wd->intf = usb_ifnum_to_if(udev, ifnum);
+	wd->dev.usb.intf = usb_ifnum_to_if(udev, ifnum);
 #endif
 
 	TRACEENTER1("calling ndis init routine");
@@ -375,7 +375,7 @@ ndiswrapper_remove_usb_device(struct usb_interface *intf)
 
 	if (!test_bit(HW_RMMOD, &wd->hw_status))
 		miniport_surprise_remove(wd);
-	wd->intf = NULL;
+	wd->dev.usb.intf = NULL;
 	usb_set_intfdata(intf, NULL);
 	ndiswrapper_stop_device(wd);
 }
@@ -386,11 +386,11 @@ ndiswrapper_remove_usb_device(struct usb_device *udev, void *ptr)
 	struct wrapper_dev *wd = (struct wrapper_dev *)ptr;
 
 	TRACEENTER1("");
-	if (!wd || !wd->intf)
+	if (!wd || !wd->dev.usb.intf)
 		TRACEEXIT1(return);
 	if (!test_bit(HW_RMMOD, &wd->hw_status))
 		miniport_surprise_remove(wd);
-	wd->intf = NULL;
+	wd->dev.usb.intf = NULL;
 	atomic_dec(&wd->driver->users);
 	if (wd->ndis_device)
 		wd->ndis_device->wd = NULL;

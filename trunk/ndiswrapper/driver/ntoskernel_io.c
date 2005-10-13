@@ -22,10 +22,6 @@ extern KSPIN_LOCK ntoskernel_lock;
 extern KSPIN_LOCK irp_cancel_lock;
 extern struct nt_list object_list;
 
-extern struct work_struct io_work;
-extern struct nt_list io_workitem_list;
-extern KSPIN_LOCK io_workitem_list_lock;
-
 extern KSPIN_LOCK irp_cancel_lock;
 
 STDCALL void WRAP_EXPORT(IoAcquireCancelSpinLock)
@@ -779,30 +775,6 @@ STDCALL void WRAP_EXPORT(IoFreeMdl)
 	IOEXIT(return);
 }
 
-void io_worker(void *data)
-{
-	struct io_workitem_entry *io_workitem_entry;
-	struct io_workitem *io_workitem;
-	struct nt_list *cur;
-
-	while (1) {
-		KIRQL irql;
-
-		irql = kspin_lock_irql(&io_workitem_list_lock, DISPATCH_LEVEL);
-		cur = RemoveHeadList(&io_workitem_list);
-		kspin_unlock_irql(&io_workitem_list_lock, irql);
-		if (!cur)
-			break;
-		io_workitem_entry = container_of(cur, struct io_workitem_entry,
-						 list);
-		io_workitem = io_workitem_entry->io_workitem;
-		LIN2WIN2(io_workitem->worker_routine, io_workitem->dev_obj,
-			 io_workitem->context);
-		kfree(io_workitem_entry);
-	}
-	return;
-}
-
 STDCALL struct io_workitem *WRAP_EXPORT(IoAllocateWorkItem)
 	(struct device_object *dev_obj)
 {
@@ -827,39 +799,19 @@ STDCALL void WRAP_EXPORT(IoFreeWorkItem)
 STDCALL void WRAP_EXPORT(ExQueueWorkItem)
 	(struct io_workitem *io_workitem, enum work_queue_type queue_type)
 {
-	struct io_workitem_entry *io_workitem_entry;
-	KIRQL irql;
-
-	IOENTER("");
-	if (io_workitem == NULL) {
-		ERROR("io_work_item is NULL; item not queued");
-		return;
-	}
-
-	io_workitem_entry = kmalloc(sizeof(*io_workitem_entry), GFP_ATOMIC);
-	if (!io_workitem_entry) {
-		ERROR("couldn't allocate memory; item not queued");
-		return;
-	}
-
-	io_workitem->type = queue_type;
-	io_workitem_entry->io_workitem = io_workitem;
-
-	irql = kspin_lock_irql(&io_workitem_list_lock, DISPATCH_LEVEL);
-	InsertTailList(&io_workitem_list, &io_workitem_entry->list);
-	kspin_unlock_irql(&io_workitem_list_lock, irql);
-
-	schedule_work(&io_work);
+	IOENTER("%p", io_workitem);
+	schedule_wrap_work_item(io_workitem->worker_routine,
+				io_workitem->dev_obj, io_workitem->context);
 }
 
 STDCALL void WRAP_EXPORT(IoQueueWorkItem)
 	(struct io_workitem *io_workitem, void *func,
 	 enum work_queue_type queue_type, void *context)
 {
+	IOENTER("%p", io_workitem);
 	io_workitem->worker_routine = func;
 	io_workitem->context = context;
-
-	ExQueueWorkItem(io_workitem, queue_type);
+	schedule_wrap_work_item(func, io_workitem, context);
 	IOEXIT(return);
 }
 

@@ -420,6 +420,13 @@ struct wrap_timer {
 #endif
 };
 
+struct wrap_work_item {
+	struct nt_list list;
+	void *arg1;
+	void *arg2;
+	void *func;
+};
+
 typedef struct mdl ndis_buffer;
 
 #define MAX_ALLOCATED_URBS 15
@@ -429,6 +436,7 @@ struct phys_dev {
 	struct pci_dev *pci;
 	struct {
 		struct usb_device *udev;
+		struct usb_interface *intf;
 		int num_alloc_urbs;
 		struct nt_list wrap_urb_list;
 	} usb;
@@ -542,6 +550,8 @@ STDCALL NTSTATUS PoCallDriver(struct device_object *dev_obj, struct irp *irp);
 struct kthread *wrap_create_thread(struct task_struct *task);
 void wrap_remove_thread(struct kthread *kthread);
 u64 ticks_1601(void);
+
+int schedule_wrap_work_item(void *func, void *arg1, void *arg2);
 
 STDCALL KIRQL KeGetCurrentIrql(void);
 STDCALL void KeInitializeSpinLock(KSPIN_LOCK *lock);
