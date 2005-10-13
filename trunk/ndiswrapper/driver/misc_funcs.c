@@ -123,7 +123,7 @@ NOREGPARM INT WRAP_EXPORT(_win_sprintf)
 	va_start(args, format);
 	res = vsprintf(buf, format, args);
 	va_end(args);
-	DBGTRACE2("buf: %p", buf);
+	DBGTRACE2("buf: %p: %s", buf, buf);
 	return res;
 }
 
@@ -132,7 +132,7 @@ NOREGPARM INT WRAP_EXPORT(_win_vsprintf)
 {
 	INT i;
 	i = vsprintf(str, format, ap);
-	DBGTRACE2("str: %p", str);
+	DBGTRACE2("str: %p: %s", str, str);
 	TRACEEXIT2(return i);
 }
 
@@ -145,7 +145,7 @@ NOREGPARM INT WRAP_EXPORT(_win_snprintf)
 	va_start(args, format);
 	res = vsnprintf(buf, count, format, args);
 	va_end(args);
-	DBGTRACE2("buf: %p", buf);
+	DBGTRACE2("buf: %p: %s", buf, buf);
 	return res;
 }
 
@@ -158,7 +158,7 @@ NOREGPARM INT WRAP_EXPORT(_win__snprintf)
 	va_start(args, format);
 	res = vsnprintf(buf, count, format, args);
 	va_end(args);
-	DBGTRACE2("buf: %p", buf);
+	DBGTRACE2("buf: %p: %s", buf, buf);
 	return res;
 }
 
@@ -167,7 +167,7 @@ NOREGPARM INT WRAP_EXPORT(_win_vsnprintf)
 {
 	INT i;
 	i = vsnprintf(str, size, format, ap);
-	DBGTRACE2("str: %p", str);
+	DBGTRACE2("str: %p: %s", str, str);
 	TRACEEXIT2(return i);
 }
 
@@ -176,7 +176,7 @@ NOREGPARM INT WRAP_EXPORT(_win__vsnprintf)
 {
 	INT i;
 	i = vsnprintf(str, size, format, ap);
-	DBGTRACE2("str: %p", str);
+	DBGTRACE2("str: %p: %s", str, str);
 	TRACEEXIT2(return i);
 }
 

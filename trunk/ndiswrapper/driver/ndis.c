@@ -1636,7 +1636,7 @@ STDCALL NDIS_STATUS WRAP_EXPORT(NdisMRegisterInterrupt)
 	kspin_lock_init(&ndis_irq->lock);
 
 	INIT_WORK(&wd->irq_work, ndis_irq_bh, ndis_irq);
-	if (request_irq(vector, ndis_irq_th, shared? SA_SHIRQ : 0,
+	if (request_irq(vector, ndis_irq_th, req_isr? SA_SHIRQ : 0,
 			"ndiswrapper", ndis_irq)) {
 		printk(KERN_WARNING "%s: request for irq %d failed\n",
 		       DRIVER_NAME, vector);
@@ -1820,6 +1820,9 @@ NdisMIndicateStatus(struct ndis_miniport_block *nmb, NDIS_STATUS status,
 			else if (radio_status->radio_state ==
 				 Ndis802_11RadioStatusSoftwareOff)
 				INFO("radio is turned off by software");
+			break;
+		default:
+			WARNING("unknown indication: %x", si->status_type);
 			break;
 		}
 		break;
@@ -2178,7 +2181,7 @@ STDCALL void WRAP_EXPORT(NdisMSleep)
 		udelay(us);
 	} else {
 		unsigned long delay;
-		delay = USEC_TO_HZ(us);
+		delay = USEC_TO_HZ(us) + 1;
 		set_current_state(TASK_INTERRUPTIBLE);
 		schedule_timeout(delay);
 	}
@@ -2455,7 +2458,7 @@ STDCALL void WRAP_EXPORT(NdisUnchainBufferAtBack)
 	}
 	btail = packet->private.buffer_tail;
 	*buffer = btail;
-	packet->private.valid_counts = FALSE;
+//	packet->private.valid_counts = FALSE;
 	if (b == btail) {
 		/* one buffer in packet */
 		packet->private.buffer_head = NULL;
@@ -2481,7 +2484,7 @@ STDCALL void WRAP_EXPORT(NdisUnchainBufferAtFront)
 		TRACEEXIT3(return);
 	}
 
-	packet->private.valid_counts = FALSE;
+//	packet->private.valid_counts = FALSE;
 	*buffer = packet->private.buffer_head;
 	if (packet->private.buffer_head == packet->private.buffer_tail) {
 		/* one buffer in packet */

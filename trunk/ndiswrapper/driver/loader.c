@@ -151,7 +151,7 @@ static int ndiswrapper_add_pci_device(struct pci_dev *pdev,
 	if (!driver)
 		return -ENODEV;
 
-	dev = ndis_init_netdev(&wd, device, driver);
+	dev = init_netdev(&wd, device, driver);
 	if (!dev) {
 		ERROR("couldn't initialize network device");
 		return -ENOMEM;
@@ -210,8 +210,8 @@ static int ndiswrapper_add_pci_device(struct pci_dev *pdev,
 				"may not work with more than 1GB RAM");
 	}
 #endif
-	if (setup_device(wd)) {
-		ERROR("couldn't setup network device");
+	if (ndiswrapper_start_device(wd)) {
+		ERROR("couldn't start device");
 		res = -EINVAL;
 		goto err_regions;
 	}
@@ -245,15 +245,7 @@ static void __devexit ndiswrapper_remove_pci_device(struct pci_dev *pdev)
 
 	if (!wd)
 		TRACEEXIT1(return);
-
-	atomic_dec(&wd->driver->users);
-	if (wd->ndis_device)
-		wd->ndis_device->wd = NULL;
-	ndiswrapper_remove_device(wd);
-
-	pci_release_regions(pdev);
-	pci_disable_device(pdev);
-	pci_set_drvdata(pdev, NULL);
+	ndiswrapper_stop_device(wd);
 }
 
 #ifdef CONFIG_USB
@@ -289,7 +281,7 @@ static void *ndiswrapper_add_usb_device(struct usb_device *udev,
 	driver = ndiswrapper_load_driver(device);
 	if (!driver)
 		return -ENODEV;
-	dev = ndis_init_netdev(&wd, device, driver);
+	dev = init_netdev(&wd, device, driver);
 	if (!dev) {
 		ERROR("couldn't initialize network device");
 		return -ENOMEM;
@@ -328,8 +320,8 @@ static void *ndiswrapper_add_usb_device(struct usb_device *udev,
 
 	TRACEENTER1("calling ndis init routine");
 
-	if (setup_device(wd)) {
-		ERROR("couldn't setup network device");
+	if (ndiswrapper_start_device(wd)) {
+		ERROR("couldn't start device");
 		res = -EINVAL;
 		goto err_add_dev;
 	}
@@ -377,11 +369,7 @@ ndiswrapper_remove_usb_device(struct usb_interface *intf)
 		miniport_surprise_remove(wd);
 	wd->intf = NULL;
 	usb_set_intfdata(intf, NULL);
-	atomic_dec(&wd->driver->users);
-	if (wd->ndis_device)
-		wd->ndis_device->wd = NULL;
-	ndiswrapper_remove_device(wd);
-	debug = 0;
+	ndiswrapper_stop_device(wd);
 }
 #else
 static void
