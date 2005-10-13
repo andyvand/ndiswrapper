@@ -22,22 +22,27 @@ CFLAGS += $(shell [ -f $(KSRC)/include/linux/modversions.h ] && \
 		  echo -DEXPORT_SYMTAB -DMODVERSIONS \
 		  -include $(KSRC)/include/linux/modversions.h)
 
+# to produce debug trace, add option "DEBUG=<n>" where <n> is 1 to 6
 ifdef DEBUG
 CFLAGS += -DDEBUG=$(DEBUG) -g -DDEBUG_TIMER 
 endif
 
+# to debug timers, add option "TIMER_DEBUG=1 DEBUG=<n>"
 ifdef TIMER_DEBUG
 CFLAGS += -DTIMER_DEBUG
 endif
 
+# to debug event layer, add option "EVENT_DEBUG=1 DEBUG=<n>"
 ifdef EVENT_DEBUG
 CFLAGS += -DEVENT_DEBUG
 endif
 
+# to debug USB layer, add option "USB_DEBUG=1 DEBUG=<n>"
 ifdef USB_DEBUG
 CFLAGS += -DUSB_DEBUG
 endif
 
+# to debug I/O layer, add option "USB_DEBUG=1 DEBUG=<n>"
 ifdef IO_DEBUG
 CFLAGS += -DIO_DEBUG
 endif
@@ -52,6 +57,10 @@ all : prereq_check x86_64_stubs gen_exports default stack_check
 OBJS := hal.o iw_ndis.o loader.o misc_funcs.o ndis.o ntoskernel.o \
 		ntoskernel_io.o pe_linker.o proc.o wrapper.o
 
+# by default, USB layer is compiled in if USB support is in kernel;
+# to disable USB support in ndiswrapper even if USB support is in kenrel,
+# add option "NO_USB=1"
+
 ifdef NO_USB
 CFLAGS += -DNO_USB
 else
@@ -62,13 +71,6 @@ ifeq ($(CONFIG_USB),m)
 OBJS += usb.o
 endif
 endif
-
-#ifeq ($(CONFIG_DEBUG_SPINLOCK),y)
-#$(warning CONFIG_DEBUG_SPINLOCK conflicts with spinlocks used by \
-#  Windows driver. There is a workaround for it in ndiswrapper, but it \
-#  may not work correctly. Don't complain about kernel crashes until \
-#  CONFIG_DEBUG_SPINLOCK is disabled.)
-#endif
 
 divdi3.o: divdi3.c longlong.h
 
