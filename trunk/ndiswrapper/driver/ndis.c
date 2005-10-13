@@ -39,7 +39,6 @@ extern KSPIN_LOCK ntoskernel_lock;
 /* ndis_init is called once when module is loaded */
 int ndis_init(void)
 {
-	/* only one worker is used for all drivers */
 	return 0;
 }
 
