@@ -513,14 +513,14 @@ pdoDispatchInternalDeviceControl(struct device_object *pdo,
 		IoCompleteRequest(irp, IO_NO_INCREMENT);
 	IOEXIT(return status);
 #else
-	do {
+	{
 		union nt_urb *nt_urb;
 		status = irp->io_status.status = STATUS_NOT_IMPLEMENTED;
 		nt_urb = URB_FROM_IRP(irp);
 		NT_URB_STATUS(nt_urb) = USBD_STATUS_NOT_SUPPORTED;
 		IoCompleteRequest(irp, IO_NO_INCREMENT);
 		return status;
-	} while (0)
+	}
 #endif
 }
 

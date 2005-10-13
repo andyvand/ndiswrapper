@@ -326,7 +326,7 @@ static int procfs_write_settings(struct file *file, const char *buf,
 			return -EINVAL;
 		if (wd->ndis_device->bustype == NDIS_PCI_BUS)
 			ndiswrapper_suspend_pci(wd->dev.pci, PMSG_SUSPEND);
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
+#if defined(CONFIG_USB) && LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
 		else if (wd->ndis_device->bustype == NDIS_USB_BUS)
 			ndiswrapper_suspend_usb(wd->intf, PMSG_SUSPEND);
 #endif
@@ -335,7 +335,7 @@ static int procfs_write_settings(struct file *file, const char *buf,
 	} else if (!strcmp(setting, "resume")) {
 		if (wd->ndis_device->bustype == NDIS_PCI_BUS)
 			ndiswrapper_resume_pci(wd->dev.pci);
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
+#if defined(CONFIG_USB) && LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
 		else if (wd->ndis_device->bustype == NDIS_USB_BUS)
 			ndiswrapper_resume_usb(wd->intf);
 #endif

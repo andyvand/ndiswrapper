@@ -251,8 +251,7 @@ NDIS_STATUS miniport_query_int(struct wrapper_dev *wd, ndis_oid oid,
 	return miniport_query_info(wd, oid, data, sizeof(ULONG));
 }
 
-NDIS_STATUS miniport_set_int(struct wrapper_dev *wd, ndis_oid oid,
-			     ULONG data)
+NDIS_STATUS miniport_set_int(struct wrapper_dev *wd, ndis_oid oid, ULONG data)
 {
 	return miniport_set_info(wd, oid, &data, sizeof(data));
 }
@@ -268,7 +267,7 @@ NDIS_STATUS miniport_set_pm_state(struct wrapper_dev *wd,
 		enum ndis_pm_state ps;
 		ps = pm_state;
 		res = miniport_query_int(wd, OID_PNP_QUERY_POWER, &ps);
-		DBGTRACE2("query_power returns %08X", res);
+		DBGTRACE2("query_power to %d returns %08X", ps, res);
 	}
 	if (res != NDIS_STATUS_SUCCESS)
 		WARNING("device may not support power management");
@@ -298,20 +297,17 @@ NDIS_STATUS miniport_surprise_remove(struct wrapper_dev *wd)
 	struct miniport_char *miniport;
 
 	miniport = &wd->driver->miniport;
-	DBGTRACE1("%d, %p",
-		  test_bit(ATTR_SURPRISE_REMOVE, &wd->attributes),
+	DBGTRACE1("%d, %p", test_bit(ATTR_SURPRISE_REMOVE, &wd->attributes),
 		  miniport->pnp_event_notify);
 
 	if (miniport->pnp_event_notify) {
 		DBGTRACE1("calling surprise_removed");
-		LIN2WIN4(miniport->pnp_event_notify,
-			 wd->nmb->adapter_ctx,
+		LIN2WIN4(miniport->pnp_event_notify, wd->nmb->adapter_ctx,
 			 NdisDevicePnPEventSurpriseRemoved, NULL, 0);
 		return NDIS_STATUS_SUCCESS;
 	} else {
-		WARNING("%s: Windows driver %s doesn't "
-			"support MiniportPnpEventNotify for safely "
-			"removing the device", DRIVER_NAME,
+		WARNING("Windows driver %s doesn't support "
+			"MiniportPnpEventNotify for safe unplugging",
 			wd->driver->name);
 		return NDIS_STATUS_FAILURE;
 	}
@@ -904,8 +900,8 @@ int ndiswrapper_suspend_pci(struct pci_dev *pdev, pm_message_t state)
 	/* PM seems to be in constant flux and documentation is not
 	 * up-to-date on what is the correct way to suspend/resume, so
 	 * this needs to be tweaked for different kernel versions */
-//	pci_disable_device(pdev);
-//	ret = pci_set_power_state(pdev, pci_choose_state(pdev, state));
+	pci_disable_device(pdev);
+	ret = pci_set_power_state(pdev, pci_choose_state(pdev, state));
 
 	DBGTRACE2("%s: device suspended", wd->net_dev->name);
 	return 0;
@@ -921,8 +917,8 @@ int ndiswrapper_resume_pci(struct pci_dev *pdev)
 	wd = pci_get_drvdata(pdev);
 	if (!wd)
 		return -1;
-//	ret = pci_set_power_state(pdev, PCI_D0);
-//	ret = pci_enable_device(pdev);
+	ret = pci_set_power_state(pdev, PCI_D0);
+	ret = pci_enable_device(pdev);
 #if LINUX_VERSION_CODE > KERNEL_VERSION(2,6,9)
 	pci_restore_state(pdev);
 #else
