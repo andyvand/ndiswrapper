@@ -1646,7 +1646,6 @@ void ndiswrapper_stop_device(struct wrapper_dev *wd)
 	printk(KERN_INFO "%s: device %s removed\n", DRIVER_NAME,
 	       wd->net_dev->name);
 	unregister_netdev(wd->net_dev);
-	free_netdev(wd->net_dev);
 	if (wd->dev.dev_type == NDIS_PCI_BUS) {
 		struct pci_dev *pdev = wd->dev.pci;
 		pci_release_regions(pdev);
@@ -1656,6 +1655,7 @@ void ndiswrapper_stop_device(struct wrapper_dev *wd)
 	if (wd->ndis_device)
 		wd->ndis_device->wd = NULL;
 	atomic_dec(&wd->driver->users);
+	free_netdev(wd->net_dev);
 	TRACEEXIT1(return);
 }
 

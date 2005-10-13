@@ -67,7 +67,7 @@ static void del_bus_drivers(void);
 struct work_struct wrap_work_item_work;
 struct nt_list wrap_work_item_list;
 KSPIN_LOCK wrap_work_item_list_lock;
-void wrap_work_item_worker(void *data);
+static void wrap_work_item_worker(void *data);
 
 KSPIN_LOCK irp_cancel_lock;
 
@@ -817,7 +817,7 @@ STDCALL BOOLEAN WRAP_EXPORT(KeRemoveQueueDpc)
 	TRACEEXIT3(return ret);
 }
 
-void wrap_work_item_worker(void *data)
+static void wrap_work_item_worker(void *data)
 {
 	struct wrap_work_item *wrap_work_item;
 	struct nt_list *cur;
