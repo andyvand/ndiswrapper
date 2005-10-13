@@ -72,7 +72,7 @@ WRAP_MODULE_PARM_INT(debug, 0600);
 MODULE_PARM_DESC(debug, "debug level");
 
 MODULE_PARM_DESC(hangcheck_interval, "The interval, in seconds, for checking"
-		 " if driver is hung. (default: -1)");
+		 " if driver is hung. (default: 0)");
 
 MODULE_AUTHOR("ndiswrapper team <ndiswrapper-general@lists.sourceforge.net>");
 #ifdef MODULE_VERSION
@@ -90,9 +90,11 @@ static int inline ndis_wait_pending_completion(struct wrapper_dev *wd)
 	 * call back, so timeout is used; TODO: find out why drivers
 	 * don't call completion function */
 #if 1
+	/* setting PM state takes a long time, upto 2 seconds, for USB
+	 * devices */
 	if (wait_event_interruptible_timeout(wd->ndis_comm_wq,
 					     (wd->ndis_comm_done > 0),
-					     1 * HZ) <= 0)
+					     3 * HZ) <= 0)
 #else
 	if (wait_event_interruptible(wd->ndis_comm_wq,
 				     (wd->ndis_comm_done > 0)))
@@ -153,7 +155,6 @@ NDIS_STATUS miniport_reset(struct wrapper_dev *wd)
 
 	TRACEEXIT3(return res);
 }
-
 
 /* MiniportQueryInformation */
 NDIS_STATUS miniport_query_info_needed(struct wrapper_dev *wd,
@@ -1420,8 +1421,8 @@ static void show_supported_oids(struct wrapper_dev *wd)
 
 	res = miniport_query_info_needed(wd, OID_GEN_SUPPORTED_LIST, NULL, 0,
 					 &needed);
-	if (res != NDIS_STATUS_BUFFER_TOO_SHORT &&
-	    res != NDIS_STATUS_INVALID_LENGTH)
+	if (!(res == NDIS_STATUS_BUFFER_TOO_SHORT ||
+	      res == NDIS_STATUS_INVALID_LENGTH))
 		TRACEEXIT1(return);
 	oids = kmalloc(needed, GFP_KERNEL);
 	if (!oids) {

@@ -1037,7 +1037,7 @@ NTSTATUS wrap_submit_irp(struct device_object *pdo, struct irp *irp)
 	irp_sl = IoGetCurrentIrpStackLocation(irp);
 	wd = pdo->reserved;
 
-	if (unlikely(wd->intf == NULL)) {
+	if (unlikely(wd->dev.usb.intf == NULL)) {
 		irp->io_status.status = STATUS_DEVICE_REMOVED;
 		irp->io_status.status_info = 0;
 		return irp->io_status.status;

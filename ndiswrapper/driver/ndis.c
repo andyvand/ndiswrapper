@@ -36,19 +36,10 @@
 extern struct nt_list ndis_drivers;
 extern KSPIN_LOCK ntoskernel_lock;
 
-struct work_struct ndis_work;
-struct nt_list ndis_work_list;
-KSPIN_LOCK ndis_work_list_lock;
-static void ndis_worker(void *data);
-
 /* ndis_init is called once when module is loaded */
 int ndis_init(void)
 {
 	/* only one worker is used for all drivers */
-	INIT_WORK(&ndis_work, ndis_worker, NULL);
-	InitializeListHead(&ndis_work_list);
-	kspin_lock_init(&ndis_work_list_lock);
-
 	return 0;
 }
 
@@ -968,33 +959,45 @@ STDCALL void WRAP_EXPORT(NdisMAllocateSharedMemory)
 	DBGTRACE3("allocated shared memory: %p", v);
 }
 
+STDCALL void alloc_shared_memory_async(void *arg1, void *arg2)
+{
+	struct wrapper_dev *wd = arg1;
+	struct alloc_shared_mem *alloc_shared_mem = arg2;
+	struct miniport_char *miniport;
+	void *virt;
+	NDIS_PHY_ADDRESS phys;
+	KIRQL irql;
+
+	miniport = &wd->driver->miniport;
+	NdisMAllocateSharedMemory(wd->nmb, alloc_shared_mem->size,
+				  alloc_shared_mem->cached, &virt, &phys);
+	irql = raise_irql(DISPATCH_LEVEL);
+	LIN2WIN5(miniport->alloc_complete, wd->nmb, virt,
+		 &phys, alloc_shared_mem->size, alloc_shared_mem->ctx);
+	lower_irql(irql);
+	kfree(alloc_shared_mem);
+}
+
 STDCALL NDIS_STATUS WRAP_EXPORT(NdisMAllocateSharedMemoryAsync)
 	(struct ndis_miniport_block *nmb, ULONG size, BOOLEAN cached,
 	 void *ctx)
 {
 	struct wrapper_dev *wd = nmb->wd;
-	struct ndis_work_entry *ndis_work_entry;
-	struct ndis_alloc_mem_work_item *alloc_mem;
-	KIRQL irql;
+	struct alloc_shared_mem *alloc_shared_mem;
 
 	TRACEENTER3("wd: %p", wd);
-	ndis_work_entry = kmalloc(sizeof(*ndis_work_entry), GFP_ATOMIC);
-	if (!ndis_work_entry)
+	alloc_shared_mem = kmalloc(sizeof(*alloc_shared_mem), GFP_ATOMIC);
+	if (!alloc_shared_mem) {
+		WARNING("couldn't allocate memory");
 		return NDIS_STATUS_FAILURE;
+	}
 
-	ndis_work_entry->type = NDIS_ALLOC_MEM_WORK_ITEM;
-	ndis_work_entry->wd = wd;
-
-	alloc_mem = &ndis_work_entry->entry.alloc_mem_work_item;
-	alloc_mem->size = size;
-	alloc_mem->cached = cached;
-	alloc_mem->ctx = ctx;
-
-	irql = kspin_lock_irql(&ndis_work_list_lock, DISPATCH_LEVEL);
-	InsertTailList(&ndis_work_list, &ndis_work_entry->list);
-	kspin_unlock_irql(&ndis_work_list_lock, irql);
-
-	schedule_work(&ndis_work);
+	alloc_shared_mem->size = size;
+	alloc_shared_mem->cached = cached;
+	alloc_shared_mem->ctx = ctx;
+	if (schedule_wrap_work_item(alloc_shared_memory_async,
+				    wd, alloc_shared_mem))
+		TRACEEXIT3(return NDIS_STATUS_FAILURE);
 	TRACEEXIT3(return NDIS_STATUS_PENDING);
 }
 
@@ -1844,6 +1847,25 @@ STDCALL void NdisMIndicateStatusComplete(struct ndis_miniport_block *nmb)
 		schedule_work(&wd->xmit_work);
 }
 
+STDCALL void return_packet(void *arg, void *ctx)
+{
+	struct wrapper_dev *wd;
+	struct ndis_packet *packet;
+	struct miniport_char *miniport;
+	KIRQL irql;
+
+	wd = arg;
+	packet = ctx;
+	TRACEENTER3("%p, %p", wd, packet);
+	miniport = &wd->driver->miniport;
+	DBGTRACE3("returning packet %p", packet);
+	irql = raise_irql(DISPATCH_LEVEL);
+	LIN2WIN2(miniport->return_packet, wd->nmb->adapter_ctx, packet);
+	lower_irql(irql);
+	TRACEEXIT3(return);
+}
+
+
 /* called via function pointer */
 STDCALL void
 NdisMIndicateReceivePacket(struct ndis_miniport_block *nmb,
@@ -1854,8 +1876,6 @@ NdisMIndicateReceivePacket(struct ndis_miniport_block *nmb,
 	struct ndis_packet *packet;
 	struct sk_buff *skb;
 	int i;
-	struct ndis_work_entry *ndis_work_entry;
-	KIRQL irql;
 	struct wrap_ndis_packet *wrap_ndis_packet;
 
 	TRACEENTER3("");
@@ -1905,22 +1925,8 @@ NdisMIndicateReceivePacket(struct ndis_miniport_block *nmb,
 		 * MiniportReturnPacket from here is not correct - the
 		 * driver doesn't expect it (at least Centrino driver
 		 * crashes) */
-
-		ndis_work_entry = kmalloc(sizeof(*ndis_work_entry),
-					  GFP_ATOMIC);
-		if (!ndis_work_entry) {
-			ERROR("couldn't allocate memory");
-			continue;
-		}
-		ndis_work_entry->type = NDIS_RETURN_PACKET_WORK_ITEM;
-		ndis_work_entry->wd = wd;
-		ndis_work_entry->entry.return_packet = packet;
-
-		irql = kspin_lock_irql(&ndis_work_list_lock, DISPATCH_LEVEL);
-		InsertTailList(&ndis_work_list, &ndis_work_entry->list);
-		kspin_unlock_irql(&ndis_work_list_lock, irql);
+		schedule_wrap_work_item(return_packet, wd, packet);
 	}
-	schedule_work(&ndis_work);
 	TRACEEXIT3(return);
 }
 
@@ -2336,109 +2342,14 @@ NdisMResetComplete(struct ndis_miniport_block *nmb, NDIS_STATUS status,
 	TRACEEXIT3(return);
 }
 
-/* one worker for all drivers/handles */
-static void ndis_worker(void *data)
-{
-	struct ndis_work_entry *ndis_work_entry;
-	struct ndis_sched_work_item *sched_work_item;
-	struct ndis_alloc_mem_work_item *alloc_mem;
-	struct ndis_free_mem_work_item *free_mem;
-	struct ndis_packet *packet;
-	struct wrapper_dev *wd;
-	struct miniport_char *miniport;
-	void *virt;
-	NDIS_PHY_ADDRESS phys;
-	KIRQL irql;
-
-	TRACEENTER3("");
-
-	while (1) {
-		struct nt_list *cur;
-
-		irql = kspin_lock_irql(&ndis_work_list_lock, DISPATCH_LEVEL);
-		cur = RemoveHeadList(&ndis_work_list);
-		kspin_unlock_irql(&ndis_work_list_lock, irql);
-		if (!cur)
-			break;
-		ndis_work_entry = container_of(cur, struct ndis_work_entry,
-					       list);
-		switch (ndis_work_entry->type) {
-		case NDIS_SCHED_WORK_ITEM:
-			sched_work_item =
-				ndis_work_entry->entry.sched_work_item;
-			DBGTRACE3("calling work at %p with parameter %p",
-				  sched_work_item->func,
-				  sched_work_item->ctx);
-			LIN2WIN2(sched_work_item->func, sched_work_item,
-				 sched_work_item->ctx);
-			DBGTRACE3("done");
-			break;
-
-		case NDIS_ALLOC_MEM_WORK_ITEM:
-			alloc_mem =
-				&ndis_work_entry->entry.alloc_mem_work_item;
-			DBGTRACE3("allocating %scached memory of length %ld",
-				  alloc_mem->cached ? "" : "un-",
-				  alloc_mem->size);
-			wd = ndis_work_entry->wd;
-			miniport = &wd->driver->miniport;
-			NdisMAllocateSharedMemory(wd->nmb, alloc_mem->size,
-						  alloc_mem->cached,
-						  &virt, &phys);
-			irql = raise_irql(DISPATCH_LEVEL);
-			LIN2WIN5(miniport->alloc_complete, wd->nmb, virt,
-				 &phys, alloc_mem->size, alloc_mem->ctx);
-			lower_irql(irql);
-			break;
-
-		case NDIS_FREE_MEM_WORK_ITEM:
-			free_mem = &ndis_work_entry->entry.free_mem_work_item;
-			DBGTRACE3("freeing memory at %p", free_mem->addr);
-			vfree(free_mem->addr);
-			break;
-
-		case NDIS_RETURN_PACKET_WORK_ITEM:
-			packet = ndis_work_entry->entry.return_packet;
-			wd = ndis_work_entry->wd;
-			miniport = &wd->driver->miniport;
-			DBGTRACE3("returning packet %p", packet);
-			irql = raise_irql(DISPATCH_LEVEL);
-			LIN2WIN2(miniport->return_packet,
-				 wd->nmb->adapter_ctx, packet);
-			lower_irql(irql);
-			DBGTRACE3("done");
-			break;
-
-		default:
-			ERROR("unknown ndis work item: %d",
-			      ndis_work_entry->type);
-			break;
-		}
-		kfree(ndis_work_entry);
-		DBGTRACE3("");
-	}
-	TRACEEXIT3(return);
-}
-
 STDCALL NDIS_STATUS WRAP_EXPORT(NdisScheduleWorkItem)
 	(struct ndis_sched_work_item *ndis_sched_work_item)
 {
-	struct ndis_work_entry *ndis_work_entry;
-	KIRQL irql;
-
 	TRACEENTER3("%p", ndis_sched_work_item);
-	ndis_work_entry = kmalloc(sizeof(*ndis_work_entry), GFP_ATOMIC);
-	if (!ndis_work_entry)
-		BUG();
+	schedule_wrap_work_item(ndis_sched_work_item->func,
+				ndis_sched_work_item,
+				ndis_sched_work_item->ctx);
 
-	ndis_work_entry->type = NDIS_SCHED_WORK_ITEM;
-	ndis_work_entry->entry.sched_work_item = ndis_sched_work_item;
-
-	irql = kspin_lock_irql(&ndis_work_list_lock, DISPATCH_LEVEL);
-	InsertTailList(&ndis_work_list, &ndis_work_entry->list);
-	kspin_unlock_irql(&ndis_work_list_lock, irql);
-
-	schedule_work(&ndis_work);
 	TRACEEXIT3(return NDIS_STATUS_SUCCESS);
 }
 
