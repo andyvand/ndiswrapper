@@ -52,11 +52,15 @@ all : prereq_check x86_64_stubs gen_exports default stack_check
 OBJS := hal.o iw_ndis.o loader.o misc_funcs.o ndis.o ntoskernel.o \
 		ntoskernel_io.o pe_linker.o proc.o wrapper.o
 
+ifdef NO_USB
+CFLAGS += -DNO_USB
+else
 ifeq ($(CONFIG_USB),y)
 OBJS += usb.o
 endif
 ifeq ($(CONFIG_USB),m)
 OBJS += usb.o
+endif
 endif
 
 #ifeq ($(CONFIG_DEBUG_SPINLOCK),y)

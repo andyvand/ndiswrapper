@@ -1817,6 +1817,7 @@ STDCALL NTSTATUS WRAP_EXPORT(PsCreateSystemThread)
 		FREE_OBJECT(kthread);
 		TRACEEXIT2(return STATUS_FAILURE);
 	}
+	task = NULL;
 	DBGTRACE2("created task: %p (%d)", find_task_by_pid(pid), pid);
 #else
 	task = KTHREAD_RUN(kthread_trampoline, ctx, DRIVER_NAME);

@@ -48,6 +48,11 @@
 #include <linux/kthread.h>
 #endif
 
+#if defined(NO_USB)
+#undef CONFIG_USB
+#undef CONFIG_USB_MODULE
+#endif
+
 #if !defined(CONFIG_USB) && defined(CONFIG_USB_MODULE)
 #define CONFIG_USB 1
 #endif
@@ -194,6 +199,10 @@ typedef u32 pm_message_t;
 
 #ifndef PM_EVENT_SUSPEND
 #define PM_EVENT_SUSPEND 2
+#endif
+
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,9)
+#define pci_choose_state(dev, state) (state)
 #endif
 
 #if defined(CONFIG_SOFTWARE_SUSPEND2) || defined(CONFIG_SUSPEND2)
