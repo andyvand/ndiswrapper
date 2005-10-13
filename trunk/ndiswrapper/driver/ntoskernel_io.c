@@ -49,6 +49,7 @@ STDCALL NTSTATUS WRAP_EXPORT(IoGetDeviceProperty)
 	struct unicode_string unicode;
 	struct wrapper_dev *wd;
 	char buf[32];
+	int devnum = 1;
 
 	wd = pdo->reserved;
 
@@ -70,8 +71,7 @@ STDCALL NTSTATUS WRAP_EXPORT(IoGetDeviceProperty)
 
 	case DevicePropertyFriendlyName:
 		if (buffer_len > 0 && buffer) {
-			ansi.len = snprintf(buf, sizeof(buf), "%d",
-					    wd->dev.usb.udev->devnum);
+			ansi.len = snprintf(buf, sizeof(buf), "%d", devnum);
 			ansi.buf = buf;
 			ansi.len = strlen(ansi.buf);
 			if (ansi.len <= 0) {
@@ -91,8 +91,7 @@ STDCALL NTSTATUS WRAP_EXPORT(IoGetDeviceProperty)
 				IOEXIT(return STATUS_SUCCESS);
 			}
 		} else {
-			ansi.len = snprintf(buf, sizeof(buf), "%d",
-					    wd->dev.usb.udev->devnum);
+			ansi.len = snprintf(buf, sizeof(buf), "%d", devnum);
 			*result_len = 2 * (ansi.len + 1);
 			IOEXIT(return STATUS_BUFFER_TOO_SMALL);
 		}
@@ -514,10 +513,7 @@ pdoDispatchInternalDeviceControl(struct device_object *pdo,
 	IOEXIT(return status);
 #else
 	{
-		union nt_urb *nt_urb;
 		status = irp->io_status.status = STATUS_NOT_IMPLEMENTED;
-		nt_urb = URB_FROM_IRP(irp);
-		NT_URB_STATUS(nt_urb) = USBD_STATUS_NOT_SUPPORTED;
 		IoCompleteRequest(irp, IO_NO_INCREMENT);
 		return status;
 	}

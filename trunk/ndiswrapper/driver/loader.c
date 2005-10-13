@@ -919,8 +919,7 @@ static int register_devices(struct load_devices *load_devices)
 				  device->vendor, device->device);
 #endif
 		} else {
-			ERROR("system doesn't support bus type %d",
-			      device->bustype);
+			ERROR("bus type %d not supported", device->bustype);
 		}
 	}
 
