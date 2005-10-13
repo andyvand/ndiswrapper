@@ -595,11 +595,11 @@ STDCALL NTSTATUS pdoDispatchPnp(struct device_object *pdo,
 	IOTRACE("fn %d:%d, wd: %p", irp_sl->major_fn, irp_sl->minor_fn, wd);
 	switch (irp_sl->minor_fn) {
 	case IRP_MN_START_DEVICE:
-		irp->io_status.status = miniport_init(wd);
+//		irp->io_status.status = miniport_init(wd);
 		break;
 	case IRP_MN_STOP_DEVICE:
-		miniport_halt(wd);
-		irp->io_status.status = STATUS_SUCCESS;
+//		miniport_halt(wd);
+//		irp->io_status.status = STATUS_SUCCESS;
 		break;
 	case IRP_MN_QUERY_STOP_DEVICE:
 		irp->io_status.status = STATUS_SUCCESS;
@@ -608,7 +608,7 @@ STDCALL NTSTATUS pdoDispatchPnp(struct device_object *pdo,
 		irp->io_status.status = STATUS_SUCCESS;
 		break;
 	case IRP_MN_REMOVE_DEVICE:
-		miniport_halt(wd);
+//		miniport_halt(wd);
 //		free_pdo(wd->nmb->pdo);
 		irp->io_status.status = STATUS_SUCCESS;
 		break;

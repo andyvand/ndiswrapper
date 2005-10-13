@@ -257,112 +257,6 @@ NDIS_STATUS miniport_set_int(struct wrapper_dev *wd, ndis_oid oid,
 	return miniport_set_info(wd, oid, &data, sizeof(data));
 }
 
-
-/* MiniportInitialize */
-NDIS_STATUS miniport_init(struct wrapper_dev *wd)
-{
-	NDIS_STATUS status, res;
-	UINT medium_index;
-	UINT medium_array[] = {NdisMedium802_3};
-	struct miniport_char *miniport = &wd->driver->miniport;
-
-	TRACEENTER1("driver init routine is at %p", miniport->init);
-	if (miniport->init == NULL) {
-		ERROR("initialization function is not setup correctly");
-		return -EINVAL;
-	}
-	if (test_bit(HW_INITIALIZED, &wd->hw_status)) {
-		ERROR("device %p already initialized!", wd);
-		return -EINVAL;
-	}
-	res = ntoskernel_init_device(wd);
-	if (res)
-		return res;
-	res = misc_funcs_init_device(wd);
-	if (res)
-		goto err_misc_funcs;
-	if (wd->dev.dev_type == NDIS_USB_BUS) {
-#ifdef CONFIG_USB
-		res = usb_init_device(wd);
-#else
-		res = -EINVAL;
-#endif
-		if (res)
-			goto err_usb;
-	}
-	res = LIN2WIN6(miniport->init, &status, &medium_index, medium_array,
-		       sizeof(medium_array) / sizeof(medium_array[0]),
-		       wd->nmb, wd->nmb);
-	DBGTRACE1("init returns: %08X", res);
-	if (res)
-		goto err_miniport_init;
-
-	set_bit(HW_INITIALIZED, &wd->hw_status);
-	/* Wait a little to let card power up otherwise ifup might fail after
-	   boot; USB devices seem to need long delays */
-	set_current_state(TASK_INTERRUPTIBLE);
-	schedule_timeout(HZ);
-
-	/* do we need to reset the device? */
-//	res = miniport_reset(wd);
-#if 0
-	res = miniport_set_pm_state(wd, NdisDeviceStateD0);
-	if (res)
-		DBGTRACE1("setting power state to device %s returns %08X",
-			  wd->net_dev->name, res);
-#endif
-	TRACEEXIT1(return 0);
-
-err_miniport_init:
-#ifdef CONFIG_USB
-	if (wd->dev.dev_type == NDIS_USB_BUS)
-		usb_exit_device(wd);
-#endif
-err_usb:
-	misc_funcs_exit_device(wd);
- err_misc_funcs:
-	ntoskernel_exit_device(wd);
-	return res;
-}
-
-/* MiniportHalt */
-void miniport_halt(struct wrapper_dev *wd)
-{
-	struct miniport_char *miniport = &wd->driver->miniport;
-	struct kthread *kthread;
-
-	TRACEENTER1("%p", wd);
-	if (!test_bit(HW_INITIALIZED, &wd->hw_status)) {
-		WARNING("device %p is not initialized - not halting", wd);
-		TRACEEXIT1(return);
-	}
-	kthread = wrap_create_thread(get_current());
-	if (kthread == NULL)
-		WARNING("couldn't create system thread for task: %p",
-			get_current());
-	DBGTRACE1("driver halt is at %p", miniport->miniport_halt);
-
-	DBGTRACE2("task: %p, pid: %d", get_current(), get_current()->pid);
-	LIN2WIN1(miniport->miniport_halt, wd->nmb->adapter_ctx);
-	clear_bit(HW_INITIALIZED, &wd->hw_status);
-	ndis_exit_device(wd);
-
-	if (kthread)
-		wrap_remove_thread(kthread);
-	if (wd->wrapper_packet_pool)
-		NdisFreePacketPool(wd->wrapper_packet_pool);
-	if (wd->wrapper_buffer_pool)
-		NdisFreeBufferPool(wd->wrapper_buffer_pool);
-#ifdef CONFIG_USB
-	if (wd->dev.dev_type == NDIS_USB_BUS)
-		usb_exit_device(wd);
-#endif
-	misc_funcs_exit_device(wd);
-	ntoskernel_exit_device(wd);
-
-	TRACEEXIT1(return);
-}
-
 NDIS_STATUS miniport_set_pm_state(struct wrapper_dev *wd,
 				  enum ndis_pm_state pm_state)
 {
@@ -820,39 +714,123 @@ static int start_xmit(struct sk_buff *skb, struct net_device *dev)
 	return 0;
 }
 
-static NTSTATUS ndiswrapper_start_device(struct wrapper_dev *wd)
+static NDIS_STATUS miniport_init(struct wrapper_dev *wd)
 {
-	NTSTATUS status;
+	NDIS_STATUS error_status, res;
+	UINT medium_index;
+	UINT medium_array[] = {NdisMedium802_3};
+	struct miniport_char *miniport = &wd->driver->miniport;
 	struct kthread *kthread;
 
 	kthread = wrap_create_thread(get_current());
 	if (!kthread) {
 		ERROR("couldn't allocate thread object");
-		return STATUS_INSUFFICIENT_RESOURCES;
+		return NDIS_STATUS_FAILURE;
 	}
-	status = miniport_init(wd);
-	if (status != NDIS_STATUS_SUCCESS) {
-		WARNING("couldn't initialize device: %08X", status);
-		return status;
+
+
+	TRACEENTER1("driver init routine is at %p", miniport->init);
+	if (miniport->init == NULL) {
+		ERROR("initialization function is not setup correctly");
+		return NDIS_STATUS_FAILURE;
 	}
+	if (test_bit(HW_INITIALIZED, &wd->hw_status)) {
+		ERROR("device %p already initialized!", wd);
+		return NDIS_STATUS_FAILURE;
+	}
+	res = ntoskernel_init_device(wd);
+	if (res)
+		return NDIS_STATUS_FAILURE;
+	res = misc_funcs_init_device(wd);
+	if (res)
+		goto err_misc_funcs;
+	if (wd->dev.dev_type == NDIS_USB_BUS) {
+#ifdef CONFIG_USB
+		if (usb_init_device(wd))
+			goto err_usb;
+#else
+		goto err_usb;
+#endif
+	}
+	res = LIN2WIN6(miniport->init, &error_status,
+		       &medium_index, medium_array,
+		       sizeof(medium_array) / sizeof(medium_array[0]),
+		       wd->nmb, wd->nmb);
 	wrap_remove_thread(kthread);
+	DBGTRACE1("init returns: %08X", res);
+	if (res)
+		goto err_miniport_init;
+
+	set_bit(HW_INITIALIZED, &wd->hw_status);
+	/* Wait a little to let card power up otherwise ifup might
+	 * fail after boot; USB devices seem to need long delays */
+	set_current_state(TASK_INTERRUPTIBLE);
+	schedule_timeout(HZ);
+
+	/* do we need to reset the device? */
+//	res = miniport_reset(wd);
+#if 0
+	res = miniport_set_pm_state(wd, NdisDeviceStateD0);
+	if (res)
+		DBGTRACE1("setting power state to device %s returns %08X",
+			  wd->net_dev->name, res);
+#endif
 	hangcheck_add(wd);
 	stats_timer_add(wd);
 	TRACEEXIT1(return NDIS_STATUS_SUCCESS);
+
+err_miniport_init:
+#ifdef CONFIG_USB
+	if (wd->dev.dev_type == NDIS_USB_BUS)
+		usb_exit_device(wd);
+#endif
+err_usb:
+	misc_funcs_exit_device(wd);
+ err_misc_funcs:
+	ntoskernel_exit_device(wd);
+	WARNING("couldn't initialize device: %08X", res);
+	TRACEEXIT1(return NDIS_STATUS_FAILURE);
 }
 
-static void ndiswrapper_stop_device(struct wrapper_dev *wd)
+static void miniport_halt(struct wrapper_dev *wd)
 {
+	struct miniport_char *miniport = &wd->driver->miniport;
+	struct kthread *kthread;
+
+	TRACEENTER1("%p", wd);
 	hangcheck_del(wd);
 	stats_timer_del(wd);
-	miniport_halt(wd);
+	if (!test_bit(HW_INITIALIZED, &wd->hw_status)) {
+		WARNING("device %p is not initialized - not halting", wd);
+		TRACEEXIT1(return);
+	}
+	kthread = wrap_create_thread(get_current());
+	if (kthread == NULL)
+		WARNING("couldn't create system thread for task: %p",
+			get_current());
+	DBGTRACE1("driver halt is at %p", miniport->miniport_halt);
+
+	DBGTRACE2("task: %p, pid: %d", get_current(), get_current()->pid);
+	LIN2WIN1(miniport->miniport_halt, wd->nmb->adapter_ctx);
+	clear_bit(HW_INITIALIZED, &wd->hw_status);
+	ndis_exit_device(wd);
+
+	if (kthread)
+		wrap_remove_thread(kthread);
+#ifdef CONFIG_USB
+	if (wd->dev.dev_type == NDIS_USB_BUS)
+		usb_exit_device(wd);
+#endif
+	misc_funcs_exit_device(wd);
+	ntoskernel_exit_device(wd);
+
+	TRACEEXIT1(return);
 }
 
-int ndis_reinit(struct wrapper_dev *wd)
+NDIS_STATUS ndis_reinit(struct wrapper_dev *wd)
 {
-	ndiswrapper_stop_device(wd);
-	ndiswrapper_start_device(wd);
-	return 0;
+	miniport_halt(wd);
+	return miniport_init(wd);
 }
 
 int ndiswrapper_suspend_device(struct wrapper_dev *wd,
@@ -883,7 +861,7 @@ int ndiswrapper_suspend_device(struct wrapper_dev *wd,
 		set_bit(HW_SUSPENDED, &wd->hw_status);
 	else {
 		DBGTRACE2("no pm: halting the device");
-		ndiswrapper_stop_device(wd);
+		miniport_halt(wd);
 		set_bit(HW_HALTED, &wd->hw_status);
 	}
 	clear_bit(HW_AVAILABLE, &wd->hw_status);
@@ -954,7 +932,7 @@ int ndiswrapper_resume_pci(struct pci_dev *pdev)
 	return 0;
 }
 
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
+#if defined(CONFIG_USB) && LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
 int ndiswrapper_suspend_usb(struct usb_interface *intf, pm_message_t state)
 {
 	struct wrapper_dev *wd;
@@ -985,53 +963,6 @@ int ndiswrapper_resume_usb(struct usb_interface *intf)
 	return ret;
 }
 #endif
-
-void ndiswrapper_remove_device(struct wrapper_dev *wd)
-{
-	KIRQL irql;
-
-	DBGTRACE1("%s", wd->net_dev->name);
-
-	set_bit(SHUTDOWN, &wd->wrapper_work);
-
-	ndis_close(wd->net_dev);
-	netif_carrier_off(wd->net_dev);
-	ndiswrapper_procfs_remove_iface(wd);
-
-	/* flush_scheduled_work here causes crash with 2.4 kernels */
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
-	flush_scheduled_work();
-#endif
-	/* instead, throw away pending packets */
-	irql = kspin_lock_irql(&wd->xmit_lock, DISPATCH_LEVEL);
-	while (wd->xmit_ring_pending) {
-		struct ndis_packet *packet;
-
-		packet = wd->xmit_ring[wd->xmit_ring_start];
-		free_send_packet(wd, packet);
-		wd->xmit_ring_start =
-			(wd->xmit_ring_start + 1) % XMIT_RING_SIZE;
-		wd->xmit_ring_pending--;
-	}
-	kspin_unlock_irql(&wd->xmit_lock, irql);
-
-//	miniport_set_int(wd, OID_802_11_DISASSOCIATE, 0);
-
-	DBGTRACE1("stopping device; irql: %d", current_irql());
-	ndiswrapper_stop_device(wd);
-	DBGTRACE1("stopped; irql: %d", current_irql());
-
-	IoDeleteDevice(wd->nmb->fdo);
-	IoDeleteDevice(wd->nmb->pdo);
-//	free_pdo(wd->nmb->pdo);
-	if (wd->xmit_array)
-		kfree(wd->xmit_array);
-	printk(KERN_INFO "%s: device %s removed\n", DRIVER_NAME,
-	       wd->net_dev->name);
-	unregister_netdev(wd->net_dev);
-	free_netdev(wd->net_dev);
-	TRACEEXIT1(return);
-}
 
 static void link_status_handler(struct wrapper_dev *wd)
 {
@@ -1280,14 +1211,13 @@ static void wrapper_worker_proc(void *param)
 				WARNING("device %s may not have resumed "
 					"properly (%08X)", net_dev->name, res);
 		} else if (test_and_clear_bit(HW_HALTED, &wd->hw_status)) {
-			res = ndiswrapper_start_device(wd);
+			res = miniport_init(wd);
 			DBGTRACE2("res: %08X", res);
 			if (res) {
-				ERROR("device %s re-initialization failed "
+				ERROR("device %s re-initialization failed: "
 				      "(%08X)", net_dev->name, res);
-				/* TODO: should be halted? */
-				set_bit(SHUTDOWN, &wd->hw_status);
-				return;
+				ndiswrapper_stop_device(wd);
+				TRACEEXIT3(return);
 			} else
 				set_bit(HW_AVAILABLE, &wd->hw_status);
 		}
@@ -1514,14 +1444,14 @@ static void show_supported_oids(struct wrapper_dev *wd)
 	TRACEEXIT1(return);
 }
 
-int setup_device(struct wrapper_dev *wd)
+int ndiswrapper_start_device(struct wrapper_dev *wd)
 {
 	struct net_device *dev = wd->net_dev;
 	NDIS_STATUS res;
 	mac_address mac;
 	char buf[256];
 
-	res = ndiswrapper_start_device(wd);
+	res = miniport_init(wd);
 	if (res) {
 		ERROR("Windows driver couldn't initialize the device (%08X)",
 		      res);
@@ -1554,7 +1484,7 @@ int setup_device(struct wrapper_dev *wd)
 #if WIRELESS_EXT < 19
 	dev->get_wireless_stats = get_wireless_stats;
 #endif
-	dev->wireless_handlers	= (struct iw_handler_def *)&ndis_handler_def;
+	dev->wireless_handlers = (struct iw_handler_def *)&ndis_handler_def;
 	dev->set_multicast_list = ndis_set_multicast_list;
 	dev->set_mac_address = ndis_set_mac_addr;
 #ifdef HAVE_ETHTOOL
@@ -1669,9 +1599,72 @@ xmit_array_err:
 	return -ENOMEM;
 }
 
-struct net_device *ndis_init_netdev(struct wrapper_dev **pwd,
-				    struct ndis_device *device,
-				    struct ndis_driver *driver)
+void ndiswrapper_stop_device(struct wrapper_dev *wd)
+{
+	KIRQL irql;
+
+	DBGTRACE1("%s", wd->net_dev->name);
+
+	set_bit(SHUTDOWN, &wd->wrapper_work);
+
+	ndis_close(wd->net_dev);
+	netif_carrier_off(wd->net_dev);
+	ndiswrapper_procfs_remove_iface(wd);
+
+	/* flush_scheduled_work here causes crash with 2.4 kernels */
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
+	flush_scheduled_work();
+#endif
+	/* instead, throw away pending packets */
+	irql = kspin_lock_irql(&wd->xmit_lock, DISPATCH_LEVEL);
+	while (wd->xmit_ring_pending) {
+		struct ndis_packet *packet;
+
+		packet = wd->xmit_ring[wd->xmit_ring_start];
+		free_send_packet(wd, packet);
+		wd->xmit_ring_start =
+			(wd->xmit_ring_start + 1) % XMIT_RING_SIZE;
+		wd->xmit_ring_pending--;
+	}
+	kspin_unlock_irql(&wd->xmit_lock, irql);
+
+	DBGTRACE1("halting device; irql: %d", current_irql());
+	miniport_halt(wd);
+	DBGTRACE1("halted; irql: %d", current_irql());
+
+	if (wd->wrapper_packet_pool) {
+		NdisFreePacketPool(wd->wrapper_packet_pool);
+		wd->wrapper_packet_pool = NULL;
+	}
+	if (wd->wrapper_buffer_pool) {
+		NdisFreeBufferPool(wd->wrapper_buffer_pool);
+		wd->wrapper_buffer_pool = NULL;
+	}
+
+	IoDeleteDevice(wd->nmb->fdo);
+	IoDeleteDevice(wd->nmb->pdo);
+//	free_pdo(wd->nmb->pdo);
+	if (wd->xmit_array)
+		kfree(wd->xmit_array);
+	printk(KERN_INFO "%s: device %s removed\n", DRIVER_NAME,
+	       wd->net_dev->name);
+	unregister_netdev(wd->net_dev);
+	free_netdev(wd->net_dev);
+	if (wd->dev.dev_type == NDIS_PCI_BUS) {
+		struct pci_dev *pdev = wd->dev.pci;
+		pci_release_regions(pdev);
+		pci_disable_device(pdev);
+		pci_set_drvdata(pdev, NULL);
+	}
+	if (wd->ndis_device)
+		wd->ndis_device->wd = NULL;
+	atomic_dec(&wd->driver->users);
+	TRACEEXIT1(return);
+}
+
+struct net_device *init_netdev(struct wrapper_dev **pwd,
+			       struct ndis_device *device,
+			       struct ndis_driver *driver)
 {
 	struct net_device *dev;
 	struct wrapper_dev *wd;
