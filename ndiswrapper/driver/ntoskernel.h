@@ -31,13 +31,11 @@
 #include <linux/mm.h>
 #include <linux/random.h>
 #include <linux/ctype.h>
-#include <linux/usb.h>
 #include <linux/list.h>
 #include <linux/sched.h>
-
+#include <linux/usb.h>
 #include <linux/spinlock.h>
 #include <asm/mman.h>
-
 #include <linux/version.h>
 
 #include "winnt_types.h"

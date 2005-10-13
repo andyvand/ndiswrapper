@@ -1800,7 +1800,7 @@ static int priv_usb_reset(struct net_device *dev, struct iw_request_info *info,
 	TRACEENTER2("");
 	wd = netdev_priv(dev);
 	res = 0;
-#if LINUX_VERSION_CODE > KERNEL_VERSION(2,6,0)
+#if defined(CONFIG_USB) && LINUX_VERSION_CODE > KERNEL_VERSION(2,6,0)
 	res = usb_reset_configuration(wd->dev.usb.udev);
 	if (res) {
 		WARNING("reset returns %08X", res);
