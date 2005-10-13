@@ -282,11 +282,19 @@ static void *ndiswrapper_add_usb_device(struct usb_device *udev,
 
 	driver = ndiswrapper_load_driver(device);
 	if (!driver)
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
 		return -ENODEV;
+#else
+		return NULL;
+#endif
 	dev = init_netdev(&wd, device, driver);
 	if (!dev) {
 		ERROR("couldn't initialize network device");
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
 		return -ENOMEM;
+#else
+		return NULL;
+#endif
 	}
 
 	/* first create pdo */
@@ -360,9 +368,7 @@ ndiswrapper_remove_usb_device(struct usb_interface *intf)
 {
 	struct wrapper_dev *wd;
 
-//	debug = 3;
 	TRACEENTER1("");
-
 	wd = (struct wrapper_dev *)usb_get_intfdata(intf);
 	if (!wd)
 		TRACEEXIT1(return);
@@ -380,7 +386,6 @@ ndiswrapper_remove_usb_device(struct usb_device *udev, void *ptr)
 	struct wrapper_dev *wd = (struct wrapper_dev *)ptr;
 
 	TRACEENTER1("");
-
 	if (!wd || !wd->intf)
 		TRACEEXIT1(return);
 	if (!test_bit(HW_RMMOD, &wd->hw_status))
@@ -389,7 +394,7 @@ ndiswrapper_remove_usb_device(struct usb_device *udev, void *ptr)
 	atomic_dec(&wd->driver->users);
 	if (wd->ndis_device)
 		wd->ndis_device->wd = NULL;
-	ndiswrapper_remove_device(wd);
+	ndiswrapper_stop_device(wd);
 }
 #endif
 #endif /* CONFIG_USB */
