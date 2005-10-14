@@ -548,6 +548,7 @@ static void timer_proc(unsigned long data)
 	BUG_ON(ktimer->wrap_timer_magic != WRAP_TIMER_MAGIC);
 #endif
 	kdpc = ktimer->kdpc;
+	DBGTRACE5("setting event: %p", ktimer);
 	KeSetEvent((struct kevent *)ktimer, 0, FALSE);
 	if (kdpc && kdpc->func) {
 		DBGTRACE5("kdpc %p (%p)", kdpc, kdpc->func);
@@ -555,6 +556,7 @@ static void timer_proc(unsigned long data)
 			 kdpc->arg1, kdpc->arg2);
 	}
 
+	DBGTRACE5("getting spinlock...");
 	irql = kspin_lock_irql(&timer_lock, DISPATCH_LEVEL);
 	if (wrap_timer->repeat)
 		mod_timer(&wrap_timer->timer, jiffies + wrap_timer->repeat);
@@ -821,7 +823,7 @@ static void wrap_work_item_worker(void *data)
 {
 	struct wrap_work_item *wrap_work_item;
 	struct nt_list *cur;
-	void (*func)(void *arg1, void *ctx) STDCALL;
+	void (*func)(void *arg1, void *arg2) STDCALL;
 	KIRQL irql;
 
 	while (1) {
@@ -1124,10 +1126,10 @@ STDCALL void WRAP_EXPORT(ExDeleteNPagedLookasideList)
 	KIRQL irql;
 
 	TRACEENTER3("lookaside = %p", lookaside);
-	irql = kspin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL);
+	irql = raise_irql(DISPATCH_LEVEL);
 	while ((entry = ExpInterlockedPopEntrySList(&lookaside->head)))
 		ExFreePool(entry);
-	kspin_unlock_irql(&ntoskernel_lock, irql);
+	lower_irql(irql);
 	TRACEEXIT5(return);
 }
 

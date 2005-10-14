@@ -37,6 +37,12 @@
 #include <linux/spinlock.h>
 #include <asm/mman.h>
 #include <linux/version.h>
+#include <linux/etherdevice.h>
+#include <net/iw_handler.h>
+#include <linux/netdevice.h>
+#include <linux/ethtool.h>
+#include <linux/if_arp.h>
+#include <linux/rtnetlink.h>
 
 #include "winnt_types.h"
 #include "ndiswrapper.h"
@@ -689,42 +695,58 @@ static inline void lower_irql(KIRQL oldirql)
  * lock seems to be 0 (presumably in Windows value of unlocked
  * spinlock is 0).
  */
-#define KSPIN_LOCK_UNLOCKED 0
-#define KSPIN_LOCK_LOCKED 1
 
-#define kspin_lock_init(lock) *(lock) = KSPIN_LOCK_UNLOCKED
+//#ifndef CONFIG_DEBUG_SPINLOCK
+//#define CONFIG_DEBUG_SPINLOCK
+//#endif
+
+#define KSPIN_LOCK_UNLOCKED 0
+
+#if defined(CONFIG_DEBUG_SPINLOCK)
+#define KSPIN_LOCK_LOCKED ((ULONG_PTR)get_current())
+#else
+#define KSPIN_LOCK_LOCKED 1
+#endif
+
+#define kspin_lock_init(lock)			\
+	*(lock) = KSPIN_LOCK_UNLOCKED
 
 #ifdef CONFIG_SMP
 
-#ifdef __HAVE_ARCH_CMPXCHG
+#if defined(CONFIG_DEBUG_SPINLOCK)
+
+extern spinlock_t spinlock_kspin_lock;
+#define kspin_lock(lock)						\
+do {									\
+	while (1) {							\
+		spin_lock(&spinlock_kspin_lock);			\
+		if (*(lock) == KSPIN_LOCK_UNLOCKED)			\
+			break;						\
+		if (*(lock) == (ULONG_PTR)get_current())		\
+			ERROR("eeek: %p, %p", lock, get_current());	\
+		spin_unlock(&spinlock_kspin_lock);			\
+	}								\
+	*(lock) = KSPIN_LOCK_LOCKED;					\
+	spin_unlock(&spinlock_kspin_lock);				\
+} while (0)
+
+#else
 
 #define kspin_lock(lock)						\
 	while (cmpxchg(lock, KSPIN_LOCK_UNLOCKED, KSPIN_LOCK_LOCKED) != \
 	       KSPIN_LOCK_UNLOCKED)
 
-#else
+#endif // CONFIG_DEBUG_SPINLOCK
 
-extern spinlock_t spinlock_kspin_lock;
-#define kspin_lock(lock)				\
-do {							\
-	while (1) {					\
-		spin_lock(&spinlock_kspin_lock);	\
-		if (*(lock) == KSPIN_LOCK_UNLOCKED)	\
-			break;				\
-		spin_unlock(&spinlock_kspin_lock);	\
-	}						\
-	*(lock) = KSPIN_LOCK_LOCKED;			\
-	spin_unlock(&spinlock_kspin_lock);		\
-} while (0)
-
-#endif // __HAVE_ARCH_CMPXCHG
-
-#define kspin_unlock(lock) xchg(lock, KSPIN_LOCK_UNLOCKED)
+#define kspin_unlock(lock)			\
+	*(lock) = KSPIN_LOCK_UNLOCKED
 
 #else
 
-#define kspin_lock(lock) *(lock) = KSPIN_LOCK_LOCKED
-#define kspin_unlock(lock) *(lock) = KSPIN_LOCK_UNLOCKED
+#define kspin_lock(lock)			\
+	*(lock) = KSPIN_LOCK_LOCKED
+#define kspin_unlock(lock)			\
+	*(lock) = KSPIN_LOCK_UNLOCKED
 
 #endif // CONFIG_SMP
 
@@ -732,9 +754,6 @@ do {							\
 #define kspin_lock_irql(lock, newirql)					\
 ({									\
 	KIRQL _cur_irql_ = current_irql();				\
-	KSPIN_LOCK _val_ = *(lock);					\
-	if (_val_ > KSPIN_LOCK_LOCKED)					\
-		ERROR("illegal spinlock: %p(%lu)", lock, _val_);	\
 	if (_cur_irql_ < DISPATCH_LEVEL && newirql == DISPATCH_LEVEL) {	\
 		local_bh_disable();					\
 		preempt_disable();					\
@@ -747,9 +766,6 @@ do {							\
 #define kspin_unlock_irql(lock, oldirql)				\
 do {									\
 	KIRQL _cur_irql_ = current_irql();				\
-	KSPIN_LOCK _val_ = *(lock);					\
-	if (_val_ > KSPIN_LOCK_LOCKED)					\
-		ERROR("illegal spinlock: %p(%lu)", lock, _val_);	\
 	kspin_unlock(lock);						\
 	if (oldirql < DISPATCH_LEVEL && _cur_irql_ == DISPATCH_LEVEL) {	\
 		preempt_enable();					\
@@ -759,9 +775,6 @@ do {									\
 
 #define kspin_lock_irqsave(lock, flags)					\
 do {									\
-	KSPIN_LOCK _val_ = *(lock);					\
-	if (_val_ > KSPIN_LOCK_LOCKED)					\
-		ERROR("illegal spinlock: %p(%lu)", lock, _val_);	\
 	local_irq_save(flags);						\
 	preempt_disable();						\
 	kspin_lock(lock);						\
@@ -769,9 +782,6 @@ do {									\
 
 #define kspin_unlock_irqrestore(lock, flags)				\
 do {									\
-	KSPIN_LOCK _val_ = *(lock);					\
-	if (_val_ > KSPIN_LOCK_LOCKED)					\
-		ERROR("illegal spinlock: %p(%lu)", lock, _val_);	\
 	kspin_unlock(lock);						\
 	local_irq_restore(flags);					\
 	preempt_enable();						\
