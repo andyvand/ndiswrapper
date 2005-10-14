@@ -13,19 +13,6 @@
  *
  */
 
-#include <linux/module.h>
-#include <linux/pci.h>
-#include <linux/spinlock.h>
-#include <linux/timer.h>
-#include <linux/interrupt.h>
-#include <linux/netdevice.h>
-#include <linux/etherdevice.h>
-#include <linux/types.h>
-#include <linux/string.h>
-#include <linux/ctype.h>
-#include <linux/wireless.h>
-#include <net/iw_handler.h>
-
 #include "ndis.h"
 #include "iw_ndis.h"
 #include "wrapper.h"
@@ -386,7 +373,7 @@ STDCALL ULONG WRAP_EXPORT(NDIS_BUFFER_TO_SPAN_PAGES)
 	start = (ULONG_PTR)(MmGetMdlVirtualAddress(buffer));
 	n = SPAN_PAGES(start, MmGetMdlByteCount(buffer));
 	DBGTRACE4("pages = %u", n);
-	TRACEEXIT3(return n);
+	TRACEEXIT4(return n);
 }
 
 STDCALL void WRAP_EXPORT(NdisGetBufferPhysicalArraySize)
@@ -1053,7 +1040,7 @@ STDCALL void WRAP_EXPORT(NdisAllocateBuffer)
 	ndis_buffer *descr;
 	KIRQL irql;
 
-	TRACEENTER3("pool: %p, allocated: %d",
+	TRACEENTER4("pool: %p, allocated: %d",
 		    pool, pool->num_allocated_descr);
 	if (!pool) {
 		*status = NDIS_STATUS_FAILURE;
@@ -1061,7 +1048,7 @@ STDCALL void WRAP_EXPORT(NdisAllocateBuffer)
 	}
 	irql = kspin_lock_irql(&pool->lock, DISPATCH_LEVEL);
 	if (pool->num_allocated_descr > pool->max_descr)
-		DBGTRACE2("pool %p is full: %d(%d)", pool,
+		DBGTRACE4("pool %p is full: %d(%d)", pool,
 			  pool->num_allocated_descr, pool->max_descr);
 	if (pool->free_descr) {
 		typeof(descr->flags) flags;
@@ -1075,25 +1062,27 @@ STDCALL void WRAP_EXPORT(NdisAllocateBuffer)
 			descr->flags = MDL_CACHE_ALLOCATED;
 	} else {
 		kspin_unlock_irql(&pool->lock, irql);
+		DBGTRACE4("allocating mdl");
 		descr = allocate_init_mdl(virt, length);
-		irql = kspin_lock_irql(&pool->lock, DISPATCH_LEVEL);
-		if (descr)
-			pool->num_allocated_descr++;
-	}
-
-	if (descr) {
-		/* NdisFreeBuffer doesn't pass pool, so we store pool
-		 * in unused field 'process' */
-		descr->process = pool;
-		*status = NDIS_STATUS_SUCCESS;
-		DBGTRACE3("allocated buffer %p for %p, %d",
+		DBGTRACE4("mdl: %p", descr);
+		if (!descr) {
+			WARNING("couldn't allocate buffer");
+			*status = NDIS_STATUS_FAILURE;
+			TRACEEXIT4(return);
+		}
+		DBGTRACE4("allocated buffer %p for %p, %d",
 			  descr, virt, length);
-	} else
-		*status = NDIS_STATUS_FAILURE;
-
-	*buffer = descr;
+		irql = kspin_lock_irql(&pool->lock, DISPATCH_LEVEL);
+		pool->num_allocated_descr++;
+	}
+	/* NdisFreeBuffer doesn't pass pool, so we store pool
+	 * in unused field 'process' */
+	descr->process = pool;
 	kspin_unlock_irql(&pool->lock, irql);
-	TRACEEXIT3(return);
+	*buffer = descr;
+	*status = NDIS_STATUS_SUCCESS;
+	DBGTRACE4("buffer: %p", descr);
+	TRACEEXIT4(return);
 }
 
 STDCALL void WRAP_EXPORT(NdisFreeBuffer)
@@ -1102,22 +1091,27 @@ STDCALL void WRAP_EXPORT(NdisFreeBuffer)
 	struct ndis_buffer_pool *pool;
 	KIRQL irql;
 
-	TRACEENTER3("buffer: %p", descr);
+	TRACEENTER4("buffer: %p", descr);
 	pool = descr->process;
 	if (!pool) {
 		ERROR("pool for descriptor %p is invalid", descr);
-		TRACEEXIT3(return);
+		TRACEEXIT4(return);
 	}
 	irql = kspin_lock_irql(&pool->lock, DISPATCH_LEVEL);
 	if (pool->num_allocated_descr > MAX_ALLOCATED_NDIS_BUFFERS) {
+		/* NB NB NB: set mdl's 'process' field to NULL before
+		 * calling free_mdl; otherwise free_mdl calls
+		 * NdisFreeBuffer causing deadlock (for spinlock) */
 		pool->num_allocated_descr--;
+		descr->process = NULL;
+		kspin_unlock_irql(&pool->lock, irql);
 		free_mdl(descr);
 	} else {
 		descr->next = pool->free_descr;
 		pool->free_descr = descr;
+		kspin_unlock_irql(&pool->lock, irql);
 	}
-	kspin_unlock_irql(&pool->lock, irql);
-	TRACEEXIT3(return);
+	TRACEEXIT4(return);
 }
 
 STDCALL void WRAP_EXPORT(NdisFreeBufferPool)
@@ -1158,26 +1152,26 @@ STDCALL void WRAP_EXPORT(NdisAdjustBufferLength)
 STDCALL void WRAP_EXPORT(NdisQueryBuffer)
 	(ndis_buffer *buffer, void **virt, UINT *length)
 {
-	TRACEENTER3("buffer: %p", buffer);
+	TRACEENTER4("buffer: %p", buffer);
 	if (virt)
 		*virt = MmGetMdlVirtualAddress(buffer);
 	if (length)
 		*length = MmGetMdlByteCount(buffer);
 	DBGTRACE4("%p, %u",
 		  MmGetMdlVirtualAddress(buffer), MmGetMdlByteCount(buffer));
-	TRACEEXIT3(return);
+	TRACEEXIT4(return);
 }
 
 STDCALL void WRAP_EXPORT(NdisQueryBufferSafe)
 	(ndis_buffer *buffer, void **virt, UINT *length,
 	 enum mm_page_priority priority)
 {
-	TRACEENTER3("%p, %p, %p, %d", buffer, virt, length, priority);
+	TRACEENTER4("%p, %p, %p, %d", buffer, virt, length, priority);
 	if (virt)
 		*virt = MmGetMdlVirtualAddress(buffer);
 	if (length)
 		*length = MmGetMdlByteCount(buffer);
-	DBGTRACE3("%p, %u",
+	DBGTRACE4("%p, %u",
 		  MmGetMdlVirtualAddress(buffer), MmGetMdlByteCount(buffer));
 }
 
@@ -1283,10 +1277,10 @@ STDCALL void WRAP_EXPORT(NdisAllocatePacket)
 	unsigned int alloc_flags;
 	int packet_length;
 
-	TRACEENTER3("pool: %p", pool);
+	TRACEENTER4("pool: %p", pool);
 	if (!pool) {
 		*status = NDIS_STATUS_RESOURCES;
-		TRACEEXIT3(return);
+		TRACEEXIT4(return);
 	}
 	/* packet_length is couple of bytes more than what we need,
 	 * but that will give a small boundary between what miniport
@@ -1296,7 +1290,7 @@ STDCALL void WRAP_EXPORT(NdisAllocatePacket)
 	ndis_packet = NULL;
 	irql = kspin_lock_irql(&pool->lock, DISPATCH_LEVEL);
 	if (pool->num_used_descr >= pool->max_descr)
-		DBGTRACE2("pool %p is full: %d(%d)", pool,
+		DBGTRACE4("pool %p is full: %d(%d)", pool,
 			  pool->num_used_descr, pool->max_descr);
 	if (pool->free_descr) {
 		ndis_packet = pool->free_descr;
@@ -1336,8 +1330,8 @@ STDCALL void WRAP_EXPORT(NdisAllocatePacket)
 
 	*status = NDIS_STATUS_SUCCESS;
 	*packet = ndis_packet;
-	DBGTRACE3("packet: %p, pool: %p", ndis_packet, pool);
-	TRACEEXIT3(return);
+	DBGTRACE4("packet: %p, pool: %p", ndis_packet, pool);
+	TRACEEXIT4(return);
 }
 
 STDCALL void WRAP_EXPORT(NdisDprAllocatePacket)
@@ -1353,26 +1347,27 @@ STDCALL void WRAP_EXPORT(NdisFreePacket)
 	struct ndis_packet_pool *pool;
 	KIRQL irql;
 
-	TRACEENTER3("packet: %p, pool: %p", descr, descr->private.pool);
+	TRACEENTER4("packet: %p, pool: %p", descr, descr->private.pool);
 	pool = descr->private.pool;
 	if (!pool) {
 		ERROR("pool for descriptor %p is invalid", descr);
-		TRACEEXIT3(return);
+		TRACEEXIT4(return);
 	}
 		
 	irql = kspin_lock_irql(&pool->lock, DISPATCH_LEVEL);
+	pool->num_used_descr--;
 	if (pool->num_allocated_descr > MAX_ALLOCATED_NDIS_PACKETS) {
-		kfree(descr);
 		pool->num_allocated_descr--;
+		kspin_unlock_irql(&pool->lock, irql);
+		kfree(descr);
 	} else {
 		descr->private.buffer_head = NULL;
 		descr->private.valid_counts = FALSE;
 		descr->wrap_ndis_packet->next = pool->free_descr;
 		pool->free_descr = descr;
+		kspin_unlock_irql(&pool->lock, irql);
 	}
-	pool->num_used_descr--;
-	kspin_unlock_irql(&pool->lock, irql);
-	TRACEEXIT3(return);
+	TRACEEXIT4(return);
 }
 
 STDCALL void WRAP_EXPORT(NdisSend)
@@ -1840,28 +1835,27 @@ NdisMIndicateStatus(struct ndis_miniport_block *nmb, NDIS_STATUS status,
 STDCALL void NdisMIndicateStatusComplete(struct ndis_miniport_block *nmb)
 {
 	struct wrapper_dev *wd = nmb->wd;
-	TRACEENTER2("");
+	TRACEENTER4("");
 	schedule_work(&wd->wrapper_worker);
 	if (wd->send_ok)
 		schedule_work(&wd->xmit_work);
 }
 
-STDCALL void return_packet(void *arg, void *ctx)
+STDCALL void return_packet(void *arg1, void *arg2)
 {
 	struct wrapper_dev *wd;
 	struct ndis_packet *packet;
 	struct miniport_char *miniport;
 	KIRQL irql;
 
-	wd = arg;
-	packet = ctx;
-	TRACEENTER3("%p, %p", wd, packet);
+	wd = arg1;
+	packet = arg2;
+	TRACEENTER4("%p, %p", wd, packet);
 	miniport = &wd->driver->miniport;
-	DBGTRACE3("returning packet %p", packet);
 	irql = raise_irql(DISPATCH_LEVEL);
 	LIN2WIN2(miniport->return_packet, wd->nmb->adapter_ctx, packet);
 	lower_irql(irql);
-	TRACEEXIT3(return);
+	TRACEEXIT4(return);
 }
 
 

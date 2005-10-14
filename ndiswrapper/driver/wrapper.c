@@ -13,27 +13,6 @@
  *
  */
 
-#include <linux/init.h>
-#include <linux/module.h>
-#include <linux/kernel.h>
-#include <linux/vmalloc.h>
-#include <linux/kmod.h>
-
-#include <linux/types.h>
-#include <linux/fs.h>
-#include <linux/errno.h>
-#include <linux/miscdevice.h>
-#include <linux/pci.h>
-
-#include <linux/netdevice.h>
-#include <linux/etherdevice.h>
-#include <linux/ethtool.h>
-#include <linux/if_arp.h>
-#include <net/iw_handler.h>
-#include <linux/rtnetlink.h>
-#include <asm/scatterlist.h>
-#include <asm/uaccess.h>
-
 #include "wrapper.h"
 #include "iw_ndis.h"
 #include "loader.h"
