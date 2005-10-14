@@ -548,7 +548,6 @@ static void timer_proc(unsigned long data)
 	BUG_ON(ktimer->wrap_timer_magic != WRAP_TIMER_MAGIC);
 #endif
 	kdpc = ktimer->kdpc;
-	DBGTRACE5("setting event: %p", ktimer);
 	KeSetEvent((struct kevent *)ktimer, 0, FALSE);
 	if (kdpc && kdpc->func) {
 		DBGTRACE5("kdpc %p (%p)", kdpc, kdpc->func);
@@ -556,7 +555,6 @@ static void timer_proc(unsigned long data)
 			 kdpc->arg1, kdpc->arg2);
 	}
 
-	DBGTRACE5("getting spinlock...");
 	irql = kspin_lock_irql(&timer_lock, DISPATCH_LEVEL);
 	if (wrap_timer->repeat)
 		mod_timer(&wrap_timer->timer, jiffies + wrap_timer->repeat);
@@ -836,13 +834,18 @@ static void wrap_work_item_worker(void *data)
 		wrap_work_item = container_of(cur, struct wrap_work_item,
 					      list);
 		func = wrap_work_item->func;
-		LIN2WIN2(func, wrap_work_item->arg1, wrap_work_item->arg2);
+		if (wrap_work_item->win_func == TRUE)
+			LIN2WIN2(func, wrap_work_item->arg1,
+				 wrap_work_item->arg2);
+		else
+			func(wrap_work_item->arg1, wrap_work_item->arg2);
 		kfree(wrap_work_item);
 	}
 	return;
 }
 
-int schedule_wrap_work_item(void *func, void *arg1, void *arg2)
+int schedule_wrap_work_item(void *func, void *arg1, void *arg2,
+			    BOOLEAN win_func)
 {
 	struct wrap_work_item *wrap_work_item;
 	KIRQL irql;
@@ -855,6 +858,7 @@ int schedule_wrap_work_item(void *func, void *arg1, void *arg2)
 	wrap_work_item->func = func;
 	wrap_work_item->arg1 = arg1;
 	wrap_work_item->arg2 = arg2;
+	wrap_work_item->win_func = win_func;
 	irql = kspin_lock_irql(&wrap_work_item_list_lock, DISPATCH_LEVEL);
 	InsertTailList(&wrap_work_item_list, &wrap_work_item->list);
 	kspin_unlock_irql(&wrap_work_item_list_lock, irql);
@@ -1067,7 +1071,7 @@ STDCALL void WRAP_EXPORT(ExFreePool)
 		/* Instead of using yet another worker, use ndis_work
 		 * for this, although ntos layer using ndis functions
 		 * is counter-intuitive */
-		schedule_wrap_work_item(vfree_mem, addr, NULL);
+		schedule_wrap_work_item(vfree_mem, addr, NULL, FALSE);
 		return;
 	} else {
 		ERROR("wrong tag: %lu (%p)", wrap_tag, addr);
@@ -2016,7 +2020,6 @@ void free_mdl(struct mdl *mdl)
 	 * function. We set 'process' field in Ndis functions. */
 	if (!mdl)
 		return;
-
 	if (mdl->process)
 		NdisFreeBuffer(mdl);
 	else {

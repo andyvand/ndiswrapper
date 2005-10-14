@@ -801,7 +801,8 @@ STDCALL void WRAP_EXPORT(ExQueueWorkItem)
 {
 	IOENTER("%p", io_workitem);
 	schedule_wrap_work_item(io_workitem->worker_routine,
-				io_workitem->dev_obj, io_workitem->context);
+				io_workitem->dev_obj, io_workitem->context,
+				TRUE);
 }
 
 STDCALL void WRAP_EXPORT(IoQueueWorkItem)
@@ -811,7 +812,7 @@ STDCALL void WRAP_EXPORT(IoQueueWorkItem)
 	IOENTER("%p", io_workitem);
 	io_workitem->worker_routine = func;
 	io_workitem->context = context;
-	schedule_wrap_work_item(func, io_workitem, context);
+	schedule_wrap_work_item(func, io_workitem, context, TRUE);
 	IOEXIT(return);
 }
 

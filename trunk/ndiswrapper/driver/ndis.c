@@ -982,7 +982,7 @@ STDCALL NDIS_STATUS WRAP_EXPORT(NdisMAllocateSharedMemoryAsync)
 	alloc_shared_mem->cached = cached;
 	alloc_shared_mem->ctx = ctx;
 	if (schedule_wrap_work_item(alloc_shared_memory_async,
-				    wd, alloc_shared_mem))
+				    wd, alloc_shared_mem, FALSE))
 		TRACEEXIT3(return NDIS_STATUS_FAILURE);
 	TRACEEXIT3(return NDIS_STATUS_PENDING);
 }
@@ -1091,7 +1091,7 @@ STDCALL void WRAP_EXPORT(NdisFreeBuffer)
 	struct ndis_buffer_pool *pool;
 	KIRQL irql;
 
-	TRACEENTER4("buffer: %p", descr);
+	TRACEENTER4("descr: %p", descr);
 	pool = descr->process;
 	if (!pool) {
 		ERROR("pool for descriptor %p is invalid", descr);
@@ -1918,7 +1918,7 @@ NdisMIndicateReceivePacket(struct ndis_miniport_block *nmb,
 		 * MiniportReturnPacket from here is not correct - the
 		 * driver doesn't expect it (at least Centrino driver
 		 * crashes) */
-		schedule_wrap_work_item(return_packet, wd, packet);
+		schedule_wrap_work_item(return_packet, wd, packet, FALSE);
 	}
 	TRACEEXIT3(return);
 }
@@ -2341,7 +2341,7 @@ STDCALL NDIS_STATUS WRAP_EXPORT(NdisScheduleWorkItem)
 	TRACEENTER3("%p", ndis_sched_work_item);
 	schedule_wrap_work_item(ndis_sched_work_item->func,
 				ndis_sched_work_item,
-				ndis_sched_work_item->ctx);
+				ndis_sched_work_item->ctx, TRUE);
 
 	TRACEEXIT3(return NDIS_STATUS_SUCCESS);
 }
