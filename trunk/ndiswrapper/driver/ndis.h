@@ -976,7 +976,6 @@ int misc_funcs_init_device(struct wrapper_dev *wd);
 void misc_funcs_exit_device(struct wrapper_dev *wd);
 void misc_funcs_exit(void);
 
-void packet_recycler(void *param);
 int stricmp(const char *s1, const char *s2);
 void dump_bytes(const char *name, const u8 *from, int len);
 

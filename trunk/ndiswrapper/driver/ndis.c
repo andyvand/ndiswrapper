@@ -137,34 +137,40 @@ STDCALL NDIS_STATUS WRAP_EXPORT(NdisMRegisterMiniport)
 
 STDCALL NDIS_STATUS WRAP_EXPORT(NdisMRegisterDevice)
 	(struct driver_object *drv_obj, struct unicode_string *dev_name,
-	 struct unicode_string *sym_name, void **funcs,
+	 struct unicode_string *link, void **funcs,
 	 struct device_object **dev_obj, void **dev_obj_handle)
 {
-	NDIS_STATUS status;
+	NTSTATUS status;
 	struct device_object *tmp;
+	int i;
 
-	TRACEENTER1("drv_obj: %p", drv_obj);
-	status = IoCreateDevice(drv_obj, 0, dev_name,
-				FILE_DEVICE_UNKNOWN, 0, FALSE, &tmp);
+	TRACEENTER1("%p, %p, %p", drv_obj, dev_name, link);
+	status = IoCreateDevice(drv_obj, 0, dev_name, FILE_DEVICE_NETWORK, 0,
+				FALSE, &tmp);
 
-	if (status == STATUS_SUCCESS) {
-		int i;
-
-		*dev_obj = tmp;
-		*dev_obj_handle = *dev_obj;
-		for (i = 0; i <= IRP_MJ_MAXIMUM_FUNCTION; i++)
-			if (funcs[i]) {
-				drv_obj->major_func[i] = funcs[i];
-				DBGTRACE1("major function for 0x%x is at %p",
-					  i, funcs[i]);
-			}
+	if (status != STATUS_SUCCESS)
+		TRACEEXIT1(return status);
+	if (link)
+		status = IoCreateSymbolicLink(link, dev_name);
+	if (status != STATUS_SUCCESS) {
+		IoDeleteDevice(tmp);
+		TRACEEXIT1(return status);
 	}
-	TRACEEXIT1(return status);
+
+	*dev_obj = tmp;
+	*dev_obj_handle = *dev_obj;
+	for (i = 0; i <= IRP_MJ_MAXIMUM_FUNCTION; i++)
+		if (funcs[i]) {
+			drv_obj->major_func[i] = funcs[i];
+			DBGTRACE1("mj_fn for 0x%x is at %p", i, funcs[i]);
+		}
+	TRACEEXIT1(return NDIS_STATUS_SUCCESS);
 }
 
 STDCALL NDIS_STATUS WRAP_EXPORT(NdisMDeregisterDevice)
 	(struct device_object *dev_obj)
 {
+	TRACEENTER2("%p", dev_obj);
 	IoDeleteDevice(dev_obj);
 	return NDIS_STATUS_SUCCESS;
 }

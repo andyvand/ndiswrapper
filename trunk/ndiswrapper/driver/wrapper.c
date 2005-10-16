@@ -865,12 +865,14 @@ int ndiswrapper_suspend_pci(struct pci_dev *pdev, pm_message_t state)
 	int ret;
 
 	if (!pdev)
-		return -1;
+		TRACEEXIT1(return -1);
 	wd = pci_get_drvdata(pdev);
+	if (!wd)
+		TRACEEXIT2(return -1);
 	/* some drivers support only D3, so force it */
 	ret = ndiswrapper_suspend_device(wd, NdisDeviceStateD3);
 	if (ret)
-		return ret;
+		TRACEEXIT1(return ret);
 
 #if LINUX_VERSION_CODE > KERNEL_VERSION(2,6,9)
 	pci_save_state(pdev);
@@ -884,7 +886,7 @@ int ndiswrapper_suspend_pci(struct pci_dev *pdev, pm_message_t state)
 	ret = pci_set_power_state(pdev, pci_choose_state(pdev, state));
 
 	DBGTRACE2("%s: device suspended", wd->net_dev->name);
-	return 0;
+	TRACEEXIT2(return 0);
 }
 
 int ndiswrapper_resume_pci(struct pci_dev *pdev)
@@ -893,10 +895,10 @@ int ndiswrapper_resume_pci(struct pci_dev *pdev)
 	int ret;
 
 	if (!pdev)
-		return -1;
+		TRACEEXIT1(return -1);
 	wd = pci_get_drvdata(pdev);
 	if (!wd)
-		return -1;
+		TRACEEXIT1(return -1);
 	ret = pci_set_power_state(pdev, PCI_D0);
 	ret = pci_enable_device(pdev);
 #if LINUX_VERSION_CODE > KERNEL_VERSION(2,6,9)
@@ -905,7 +907,7 @@ int ndiswrapper_resume_pci(struct pci_dev *pdev)
 	pci_restore_state(pdev, wd->pci_state);
 #endif
 	ret = ndiswrapper_resume_device(wd);
-	return 0;
+	TRACEEXIT1(return 0);
 }
 
 #if defined(CONFIG_USB) && LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
@@ -915,6 +917,8 @@ int ndiswrapper_suspend_usb(struct usb_interface *intf, pm_message_t state)
 	int ret;
 
 	wd = usb_get_intfdata(intf);
+	if (!wd)
+		TRACEEXIT1(return -1);
 	/* some drivers support only D3, so force it */
 	ret = ndiswrapper_suspend_device(wd, NdisDeviceStateD3);
 	DBGTRACE2("ret = %d", ret);
@@ -924,7 +928,7 @@ int ndiswrapper_suspend_usb(struct usb_interface *intf, pm_message_t state)
 	 * irps? */
 	if (!ret)
 		intf->dev.power.power_state = state;
-	return ret;
+	TRACEEXIT1(return ret);
 }
 
 int ndiswrapper_resume_usb(struct usb_interface *intf)
@@ -933,10 +937,12 @@ int ndiswrapper_resume_usb(struct usb_interface *intf)
 	int ret;
 
 	wd = usb_get_intfdata(intf);
+	if (!wd)
+		TRACEEXIT1(return -1);
 	ret = ndiswrapper_resume_device(wd);
 	if (!ret)
 		intf->dev.power.power_state = PMSG_ON;
-	return ret;
+	TRACEEXIT1(return ret);
 }
 #endif
 
