@@ -852,41 +852,6 @@ struct common_object_header {
 #define HANDLE_TO_OBJECT(handle) HEADER_TO_OBJECT(handle)
 #define HANDLE_TO_HEADER(handle) (handle)
 
-extern struct nt_list object_list;
-extern KSPIN_LOCK ntoskernel_lock;
-#define ALLOCATE_OBJECT(size, flags, obj_type, obj_name)		\
-({									\
-	struct common_object_header *__hdr;				\
-	KIRQL __irql;							\
-	void *__body;							\
-	__hdr = kmalloc(OBJECT_SIZE(size), (flags));			\
-	memset(__hdr, 0, OBJECT_SIZE(size));				\
-	__hdr->type = obj_type;						\
-	__hdr->ref_count = 1;						\
-	__hdr->name = obj_name;						\
-	__irql = kspin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL);	\
-	if (obj_type == OBJECT_TYPE_KTHREAD)				\
-		InsertHeadList(&object_list, &__hdr->list);		\
-	else								\
-		InsertTailList(&object_list, &__hdr->list);		\
-	kspin_unlock_irql(&ntoskernel_lock, __irql);			\
-	__body = HEADER_TO_OBJECT(__hdr);				\
-	DBGTRACE3("allocated hdr: %p, body: %p", __hdr, __body);	\
-	__body;								\
-})
-
-#define FREE_OBJECT(object)						\
-do {									\
-	struct common_object_header *__hdr;				\
-	KIRQL __irql;							\
-	__hdr = OBJECT_TO_HEADER(object);				\
-	__irql = kspin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL);	\
-	RemoveEntryList(&__hdr->list);					\
-	kspin_unlock_irql(&ntoskernel_lock, __irql);			\
-	DBGTRACE3("freed hdr: %p, body: %p", __hdr, object);		\
-	kfree(__hdr);							\
-} while (0)
-
 enum work_queue_type {
 	CriticalWorkQueue, DelayedWorkQueue, HyperCriticalWorkQueue,
 	MaximumWorkQueue
