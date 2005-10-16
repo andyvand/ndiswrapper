@@ -513,6 +513,8 @@ STDCALL NTSTATUS IoCreateDevice(struct driver_object *driver,
 				DEVICE_TYPE dev_type,
 				ULONG dev_chars, BOOLEAN exclusive,
 				struct device_object **dev_obj);
+STDCALL NTSTATUS IoCreateSymbolicLink(struct unicode_string *link,
+				      struct unicode_string *dev_name);
 STDCALL void IoDeleteDevice(struct device_object *dev);
 STDCALL void IoDetachDevice(struct device_object *topdev);
 STDCALL struct device_object *IoGetAttachedDevice(struct device_object *dev);

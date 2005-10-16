@@ -1154,8 +1154,8 @@ STDCALL NTSTATUS WRAP_EXPORT(ExCreateCallback)
 		}
 	}
 	kspin_unlock_irql(&ntoskernel_lock, irql);
-	obj = ALLOCATE_OBJECT(struct callback_object, GFP_KERNEL,
-			      OBJECT_TYPE_CALLBACK);
+	obj = ALLOCATE_OBJECT(sizeof(struct callback_object), GFP_KERNEL,
+			      OBJECT_TYPE_CALLBACK, NULL);
 	if (!obj)
 		TRACEEXIT2(return STATUS_INSUFFICIENT_RESOURCES);
 	InitializeListHead(&obj->callback_funcs);
@@ -1773,8 +1773,8 @@ struct kthread *wrap_create_thread(struct task_struct *task)
 	struct kthread *kthread;
 	KIRQL irql;
 
-	kthread = ALLOCATE_OBJECT(struct kthread, GFP_KERNEL,
-				  OBJECT_TYPE_KTHREAD);
+	kthread = ALLOCATE_OBJECT(sizeof(struct kthread), GFP_KERNEL,
+				  OBJECT_TYPE_KTHREAD, NULL);
 	if (kthread) {
 		kthread->task = task;
 		if (task)
@@ -2192,7 +2192,7 @@ STDCALL NTSTATUS WRAP_EXPORT(ZwCreateFile)
 	ansi.buf[MAX_STR_LEN-1] = 0;
 	ansi.buflen = MAX_STR_LEN;
 
-	if (RtlUnicodeStringToAnsiString(&ansi, &obj_attr->name, 0)) {
+	if (RtlUnicodeStringToAnsiString(&ansi, obj_attr->name, 0)) {
 		RtlFreeAnsiString(&ansi);
 		return STATUS_INSUFFICIENT_RESOURCES;
 	}
@@ -2203,7 +2203,7 @@ STDCALL NTSTATUS WRAP_EXPORT(ZwCreateFile)
 		if (header->type != OBJECT_TYPE_FILE)
 			continue;
 		oa = HEADER_TO_OBJECT(header);
-		if (!RtlCompareUnicodeString(&oa->name, &obj_attr->name,
+		if (!RtlCompareUnicodeString(oa->name, obj_attr->name,
 					     FALSE)) {
 			*handle = header;
 			iosb->status = FILE_OPENED;
@@ -2212,14 +2212,8 @@ STDCALL NTSTATUS WRAP_EXPORT(ZwCreateFile)
 		}
 	}
 
-	oa = ALLOCATE_OBJECT(struct object_attr, GFP_ATOMIC, OBJECT_TYPE_FILE);
-	oa->name.buf = kmalloc(obj_attr->name.buflen, GFP_KERNEL);
-	oa->name.len = oa->name.buflen = obj_attr->name.buflen;
-	if (!oa->name.buf) {
-		kspin_unlock_irql(&ntoskernel_lock, irql);
-		return STATUS_INSUFFICIENT_RESOURCES;
-	}
-	RtlCopyUnicodeString(&oa->name, &obj_attr->name);
+	oa = ALLOCATE_OBJECT(sizeof(struct object_attr), GFP_ATOMIC,
+			     OBJECT_TYPE_FILE, obj_attr->name);
 	*handle = OBJECT_TO_HEADER(oa);
 	/* Loop through all drivers and all files to find the requested file */
 	nt_list_for_each_entry(driver, &ndis_drivers, list) {
@@ -2280,8 +2274,8 @@ STDCALL NTSTATUS WRAP_EXPORT(ZwQueryInformationFile)
 	switch (class) {
 	case FileNameInformation:
 		fni = info;
-		fni->length = attr->name.len;
-		memcpy(fni->name, attr->name.buf, attr->name.len);
+		fni->length = attr->name->len;
+		memcpy(fni->name, attr->name->buf, attr->name->len);
 		break;
 	default:
 		WARNING("type %d not implemented yet", class);

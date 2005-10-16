@@ -169,6 +169,9 @@ typedef ULONG_PTR SIZE_T;
 typedef ULONG_PTR KAFFINITY;
 typedef ULONG ACCESS_MASK;
 
+/* non-negative numbers indicate success */
+#define NT_SUCCESS(status)  ((NTSTATUS)(status) >= 0)
+
 struct ansi_string {
 	USHORT len;
 	USHORT buflen;
@@ -391,6 +394,14 @@ struct kthread {
 #define is_mutex_dh(dh)			((dh)->absolute == DH_KMUTEX)
 #define is_semaphore_dh(dh)		((dh)->absolute == DH_KSEMAPHORE)
 #define is_kthread_dh(dh)		((dh)->absolute == DH_KTHREAD)
+
+#define IO_TYPE_ADAPTER				1
+#define IO_TYPE_CONTROLLER			2
+#define IO_TYPE_DEVICE				3
+#define IO_TYPE_DRIVER				4
+#define IO_TYPE_FILE				5
+#define IO_TYPE_IRP				6
+#define IO_TYPE_DEVICE_OBJECT_EXTENSION		13
 
 struct irp;
 struct dev_obj_ext;
@@ -787,7 +798,7 @@ enum key_value_information_class {
 struct object_attr {
 	ULONG length;
 	void *root_dir;
-	struct unicode_string name;
+	struct unicode_string *name;
 	ULONG attr;
 	union {
 		void *security_descriptor;
@@ -825,7 +836,7 @@ struct common_object_header {
 	struct nt_list list;
 	enum common_object_type type;
 	int size;
-	struct unicode_string name;
+	struct unicode_string *name;
 	unsigned int ref_count;
 	BOOLEAN close_in_process;
 	BOOLEAN permanent;
@@ -834,8 +845,8 @@ struct common_object_header {
 #define OBJECT_TO_HEADER(object)					\
 	(struct common_object_header *)((void *)(object) -		\
 					sizeof(struct common_object_header))
-#define OBJECT_SIZE(object)					\
-	(sizeof(object) + sizeof(struct common_object_header))
+#define OBJECT_SIZE(size)				\
+	((size) + sizeof(struct common_object_header))
 #define HEADER_TO_OBJECT(hdr)					\
 	((void *)(hdr) + sizeof(struct common_object_header))
 #define HANDLE_TO_OBJECT(handle) HEADER_TO_OBJECT(handle)
@@ -843,15 +854,16 @@ struct common_object_header {
 
 extern struct nt_list object_list;
 extern KSPIN_LOCK ntoskernel_lock;
-#define ALLOCATE_OBJECT(object, flags, obj_type)			\
+#define ALLOCATE_OBJECT(size, flags, obj_type, obj_name)		\
 ({									\
 	struct common_object_header *__hdr;				\
 	KIRQL __irql;							\
 	void *__body;							\
-	__hdr = kmalloc(OBJECT_SIZE(object), (flags));			\
-	memset(__hdr, 0, OBJECT_SIZE(object));				\
+	__hdr = kmalloc(OBJECT_SIZE(size), (flags));			\
+	memset(__hdr, 0, OBJECT_SIZE(size));				\
 	__hdr->type = obj_type;						\
 	__hdr->ref_count = 1;						\
+	__hdr->name = obj_name;						\
 	__irql = kspin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL);	\
 	if (obj_type == OBJECT_TYPE_KTHREAD)				\
 		InsertHeadList(&object_list, &__hdr->list);		\
