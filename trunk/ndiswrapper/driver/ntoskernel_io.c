@@ -891,7 +891,7 @@ STDCALL NTSTATUS WRAP_EXPORT(IoCreateDevice)
 	}
 
 	size = sizeof(*dev) + dev_ext_length + sizeof(*dev_obj_ext);
-	dev = ALLOCATE_OBJECT(size, GFP_KERNEL, OBJECT_TYPE_DEVICE, dev_name);
+	dev = allocate_object(size, GFP_KERNEL, OBJECT_TYPE_DEVICE, dev_name);
 	if (!dev)
 		IOEXIT(return STATUS_INSUFFICIENT_RESOURCES);
 

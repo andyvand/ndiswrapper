@@ -463,6 +463,10 @@ int ntoskernel_init(void);
 void ntoskernel_exit(void);
 int ntoskernel_init_device(struct wrapper_dev *wd);
 void ntoskernel_exit_device(struct wrapper_dev *wd);
+void *allocate_object(ULONG size, ULONG flags, enum common_object_type type,
+		      struct unicode_string *name);
+void  free_object(void *object);
+
 struct driver_object *find_bus_driver(const char *name);
 struct device_object *alloc_pdo(struct driver_object *drv_obj);
 void free_pdo(struct device_object *drv_obj);

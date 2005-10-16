@@ -281,6 +281,43 @@ static void update_user_shared_data_proc(unsigned long data)
 }
 #endif
 
+extern struct nt_list object_list;
+extern KSPIN_LOCK ntoskernel_lock;
+
+void *allocate_object(ULONG size, ULONG flags, enum common_object_type type,
+		      struct unicode_string *name)
+{									
+	struct common_object_header *hdr;
+	KIRQL irql;
+	void *body;
+	hdr = kmalloc(OBJECT_SIZE(size), flags);
+	memset(hdr, 0, OBJECT_SIZE(size));
+	hdr->type = type;
+	hdr->ref_count = 1;
+	hdr->name = name;
+	irql = kspin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL);
+	if (type == OBJECT_TYPE_KTHREAD)
+		InsertHeadList(&object_list, &hdr->list);
+	else
+		InsertTailList(&object_list, &hdr->list);
+	kspin_unlock_irql(&ntoskernel_lock, irql);
+	body = HEADER_TO_OBJECT(hdr);
+	DBGTRACE3("allocated hdr: %p, body: %p", hdr, body);
+	return body;
+}
+
+void free_object(void *object)
+{									
+	struct common_object_header *hdr;
+	KIRQL irql;
+	hdr = OBJECT_TO_HEADER(object);
+	irql = kspin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL);
+	RemoveEntryList(&hdr->list);
+	kspin_unlock_irql(&ntoskernel_lock, irql);
+	DBGTRACE3("freed hdr: %p, body: %p", hdr, object);
+	kfree(hdr);
+}
+
 static int add_bus_driver(struct driver_object *drv_obj, const char *name)
 {
 	struct bus_driver *bus_driver;
@@ -1154,7 +1191,7 @@ STDCALL NTSTATUS WRAP_EXPORT(ExCreateCallback)
 		}
 	}
 	kspin_unlock_irql(&ntoskernel_lock, irql);
-	obj = ALLOCATE_OBJECT(sizeof(struct callback_object), GFP_KERNEL,
+	obj = allocate_object(sizeof(struct callback_object), GFP_KERNEL,
 			      OBJECT_TYPE_CALLBACK, NULL);
 	if (!obj)
 		TRACEEXIT2(return STATUS_INSUFFICIENT_RESOURCES);
@@ -1773,7 +1810,7 @@ struct kthread *wrap_create_thread(struct task_struct *task)
 	struct kthread *kthread;
 	KIRQL irql;
 
-	kthread = ALLOCATE_OBJECT(sizeof(struct kthread), GFP_KERNEL,
+	kthread = allocate_object(sizeof(struct kthread), GFP_KERNEL,
 				  OBJECT_TYPE_KTHREAD, NULL);
 	if (kthread) {
 		kthread->task = task;
@@ -1855,7 +1892,7 @@ STDCALL NTSTATUS WRAP_EXPORT(PsCreateSystemThread)
 	DBGTRACE2("pid = %d", pid);
 	if (pid < 0) {
 		kfree(ctx);
-		FREE_OBJECT(kthread);
+		free_object(kthread);
 		TRACEEXIT2(return STATUS_FAILURE);
 	}
 	task = NULL;
@@ -1864,7 +1901,7 @@ STDCALL NTSTATUS WRAP_EXPORT(PsCreateSystemThread)
 	task = KTHREAD_RUN(kthread_trampoline, ctx, DRIVER_NAME);
 	if (IS_ERR(task)) {
 		kfree(ctx);
-		FREE_OBJECT(kthread);
+		free_object(kthread);
 		TRACEEXIT2(return STATUS_FAILURE);
 	}
 	DBGTRACE2("created task: %p (%d)", task, task->pid);
@@ -2168,7 +2205,7 @@ _FASTCALL void WRAP_EXPORT(ObfDereferenceObject)
 	if (ref_count < 0)
 		ERROR("invalid object: %p (%d)", object, ref_count);
 	if (ref_count <= 0)
-		FREE_OBJECT(object);
+		free_object(object);
 }
 
 STDCALL NTSTATUS WRAP_EXPORT(ZwCreateFile)
@@ -2212,7 +2249,7 @@ STDCALL NTSTATUS WRAP_EXPORT(ZwCreateFile)
 		}
 	}
 
-	oa = ALLOCATE_OBJECT(sizeof(struct object_attr), GFP_ATOMIC,
+	oa = allocate_object(sizeof(struct object_attr), GFP_ATOMIC,
 			     OBJECT_TYPE_FILE, obj_attr->name);
 	*handle = OBJECT_TO_HEADER(oa);
 	/* Loop through all drivers and all files to find the requested file */
