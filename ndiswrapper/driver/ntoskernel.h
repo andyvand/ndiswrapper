@@ -463,7 +463,7 @@ int ntoskernel_init(void);
 void ntoskernel_exit(void);
 int ntoskernel_init_device(struct wrapper_dev *wd);
 void ntoskernel_exit_device(struct wrapper_dev *wd);
-void *allocate_object(ULONG size, ULONG flags, enum common_object_type type,
+void *allocate_object(ULONG size, enum common_object_type type,
 		      struct unicode_string *name);
 void  free_object(void *object);
 
@@ -931,7 +931,7 @@ extern int debug;
 			ERROR("assertion failed: %s", (#expr));		\
 	} while (0)
 #else
-#define assert(expr)
+#define assert(expr) do { } while (0)
 #endif
 
 #if defined(IO_DEBUG)

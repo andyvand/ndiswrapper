@@ -147,14 +147,11 @@ int ntoskernel_init_device(struct wrapper_dev *wd)
 	InitializeListHead(&wd->wrap_timer_list);
 	kspin_lock_init(&wd->timer_lock);
 #if defined(CONFIG_X86_64)
-	if(wd->ndis_device->vendor == 0x17fe &&
-	   wd->ndis_device->device == 0x2220) {
-		*((ULONG64 *)&kuser_shared_data.system_time) = ticks_1601();
-		shared_data_timer.data = (unsigned long)0;
-		/* don't use add_timer - to avoid creating more than
-		 * one timer */
-		mod_timer(&shared_data_timer, jiffies + 10 * HZ / 1000);
-	}
+	*((ULONG64 *)&kuser_shared_data.system_time) = ticks_1601();
+	shared_data_timer.data = (unsigned long)0;
+	/* don't use add_timer - to avoid creating more than one
+	 * timer */
+	mod_timer(&shared_data_timer, jiffies + 1);
 #endif
 	return 0;
 }
@@ -165,7 +162,7 @@ void ntoskernel_exit_device(struct wrapper_dev *wd)
 
 	KeFlushQueuedDpcs();
 
-	/* cancel any timers left by bugyy windows driver Also free
+	/* cancel any timers left by bugyy windows driver; also free
 	 * the memory for timers */
 	while (1) {
 		struct nt_list *ent;
@@ -266,17 +263,14 @@ void ntoskernel_exit(void)
 #if defined(CONFIG_X86_64)
 static void update_user_shared_data_proc(unsigned long data)
 {
-	/* this function is called only for inprocomm2220 64-bit
-	 * driver */
-
-	/* timer is scheduled every 10ms and the system timer is in
-	 * 100ns */
+	/* timer is supposed to be scheduled every 10ms, but bigger
+	 * intervals seem to work (tried upto 50ms) */
 	*((ULONG64 *)&kuser_shared_data.system_time) = ticks_1601();
 	*((ULONG64 *)&kuser_shared_data.interrupt_time) =
 		jiffies * TICKSPERSEC / HZ;
 	*((ULONG64 *)&kuser_shared_data.tick) = jiffies;
 
-	shared_data_timer.expires += 10 * HZ / 1000;
+	shared_data_timer.expires += 30 * HZ / 1000 + 1;
 	add_timer(&shared_data_timer);
 }
 #endif
@@ -284,13 +278,18 @@ static void update_user_shared_data_proc(unsigned long data)
 extern struct nt_list object_list;
 extern KSPIN_LOCK ntoskernel_lock;
 
-void *allocate_object(ULONG size, ULONG flags, enum common_object_type type,
+void *allocate_object(ULONG size, enum common_object_type type,
 		      struct unicode_string *name)
 {									
 	struct common_object_header *hdr;
 	KIRQL irql;
 	void *body;
-	hdr = kmalloc(OBJECT_SIZE(size), flags);
+
+	hdr = ExAllocatePoolWithTag(NonPagedPool, OBJECT_SIZE(size), 0);
+	if (!hdr) {
+		WARNING("couldn't allocate memory");
+		return NULL;
+	}
 	memset(hdr, 0, OBJECT_SIZE(size));
 	hdr->type = type;
 	hdr->ref_count = 1;
@@ -315,7 +314,7 @@ void free_object(void *object)
 	RemoveEntryList(&hdr->list);
 	kspin_unlock_irql(&ntoskernel_lock, irql);
 	DBGTRACE3("freed hdr: %p, body: %p", hdr, object);
-	kfree(hdr);
+	ExFreePool(hdr);
 }
 
 static int add_bus_driver(struct driver_object *drv_obj, const char *name)
@@ -691,7 +690,10 @@ BOOLEAN wrap_set_timer(struct ktimer *ktimer, unsigned long expires_hz,
 	if (kdpc)
 		ktimer->kdpc = kdpc;
 	wrap_timer->repeat = repeat_hz;
-	ret = mod_timer(&wrap_timer->timer, jiffies + expires_hz);
+	if (mod_timer(&wrap_timer->timer, jiffies + expires_hz))
+		ret = TRUE;
+	else
+		ret = FALSE;
 	kspin_unlock_irql(&timer_lock, irql);
 	TRACEEXIT5(return ret);
 }
@@ -1191,7 +1193,7 @@ STDCALL NTSTATUS WRAP_EXPORT(ExCreateCallback)
 		}
 	}
 	kspin_unlock_irql(&ntoskernel_lock, irql);
-	obj = allocate_object(sizeof(struct callback_object), GFP_KERNEL,
+	obj = allocate_object(sizeof(struct callback_object),
 			      OBJECT_TYPE_CALLBACK, NULL);
 	if (!obj)
 		TRACEEXIT2(return STATUS_INSUFFICIENT_RESOURCES);
@@ -1810,7 +1812,7 @@ struct kthread *wrap_create_thread(struct task_struct *task)
 	struct kthread *kthread;
 	KIRQL irql;
 
-	kthread = allocate_object(sizeof(struct kthread), GFP_KERNEL,
+	kthread = allocate_object(sizeof(struct kthread),
 				  OBJECT_TYPE_KTHREAD, NULL);
 	if (kthread) {
 		kthread->task = task;
@@ -2249,7 +2251,7 @@ STDCALL NTSTATUS WRAP_EXPORT(ZwCreateFile)
 		}
 	}
 
-	oa = allocate_object(sizeof(struct object_attr), GFP_ATOMIC,
+	oa = allocate_object(sizeof(struct object_attr),
 			     OBJECT_TYPE_FILE, obj_attr->name);
 	*handle = OBJECT_TO_HEADER(oa);
 	/* Loop through all drivers and all files to find the requested file */
