@@ -293,7 +293,7 @@ STDCALL void WRAP_EXPORT(NdisOpenFile)
 	ansi.buf[MAX_STR_LEN-1] = 0;
 	ansi.buflen = MAX_STR_LEN;
 
-	if (RtlUnicodeStringToAnsiString(&ansi, filename, 0)) {
+	if (RtlUnicodeStringToAnsiString(&ansi, filename, FALSE)) {
 		*status = NDIS_STATUS_RESOURCES;
 		RtlFreeAnsiString(&ansi);
 		TRACEEXIT2(return);
@@ -421,7 +421,7 @@ static int ndis_encode_setting(struct device_setting *setting,
 		if (param->data.ustring.buf)
 			RtlFreeUnicodeString(&param->data.ustring);
 		if (RtlAnsiStringToUnicodeString(&param->data.ustring,
-						 &ansi, 1))
+						 &ansi, TRUE))
 			TRACEEXIT1(return NDIS_STATUS_FAILURE);
 		break;
 	default:
@@ -452,7 +452,8 @@ static int ndis_decode_setting(struct device_setting *setting,
 	case NDIS_CONFIG_PARAM_STRING:
 		ansi.buf = setting->value;
 		ansi.buflen = MAX_STR_LEN;
-		if (RtlUnicodeStringToAnsiString(&ansi, &val->data.ustring, 0)
+		if (RtlUnicodeStringToAnsiString(&ansi, &val->data.ustring,
+						 FALSE)
 		    || ansi.len >= MAX_STR_LEN) {
 			TRACEEXIT1(return NDIS_STATUS_FAILURE);
 		}
@@ -481,7 +482,7 @@ STDCALL void WRAP_EXPORT(NdisReadConfiguration)
 
 	TRACEENTER2("nmb: %p", nmb);
 	wd = nmb->wd;
-	ret = RtlUnicodeStringToAnsiString(&ansi, key, 1);
+	ret = RtlUnicodeStringToAnsiString(&ansi, key, TRUE);
 	DBGTRACE3("rtl func returns: %d", ret);
 	if (ret) {
 		*dest = NULL;
@@ -524,7 +525,7 @@ STDCALL void WRAP_EXPORT(NdisWriteConfiguration)
 
 	TRACEENTER2("nmb: %p", nmb);
 	wd = nmb->wd;
-	if (RtlUnicodeStringToAnsiString(&ansi, key, 1)) {
+	if (RtlUnicodeStringToAnsiString(&ansi, key, TRUE)) {
 		*status = NDIS_STATUS_FAILURE;
 		TRACEEXIT2(return);
 	}
@@ -568,7 +569,7 @@ STDCALL void WRAP_EXPORT(NdisInitializeString)
 	TRACEENTER2("");
 	ansi.len = ansi.buflen = strlen(src);
 	ansi.buf = src;
-	if (RtlAnsiStringToUnicodeString(dest, &ansi, 1))
+	if (RtlAnsiStringToUnicodeString(dest, &ansi, TRUE))
 		DBGTRACE2("failed");
 	TRACEEXIT2(return);
 }
@@ -596,30 +597,30 @@ STDCALL void WRAP_EXPORT(NdisInitUnicodeString)
 STDCALL NDIS_STATUS WRAP_EXPORT(NdisAnsiStringToUnicodeString)
 	(struct unicode_string *dst, struct ansi_string *src)
 {
-	int dup;
+	BOOLEAN dup;
 
 	TRACEENTER2("");
 	if (dst == NULL || src == NULL)
 		TRACEEXIT2(return NDIS_STATUS_FAILURE);
 	if (dst->buf == NULL)
-		dup = 1;
+		dup = TRUE;
 	else
-		dup = 0;
+		dup = FALSE;
 	TRACEEXIT2(return RtlAnsiStringToUnicodeString(dst, src, dup));
 }
 
 STDCALL NDIS_STATUS WRAP_EXPORT(NdisUnicodeStringToAnsiString)
 	(struct ansi_string *dst, struct unicode_string *src)
 {
-	int dup;
+	BOOLEAN dup;
 
 	TRACEENTER2("");
 	if (dst == NULL || src == NULL)
 		TRACEEXIT2(return NDIS_STATUS_FAILURE);
 	if (dst->buf == NULL)
-		dup = 1;
+		dup = TRUE;
 	else
-		dup = 0;
+		dup = FALSE;
 	TRACEEXIT2(return RtlUnicodeStringToAnsiString(dst, src, dup));
 }
 
@@ -1300,8 +1301,7 @@ STDCALL void WRAP_EXPORT(NdisAllocatePacket)
 			  pool->num_used_descr, pool->max_descr);
 	if (pool->free_descr) {
 		ndis_packet = pool->free_descr;
-		wrap_ndis_packet =
-			ndis_packet->wrap_ndis_packet;
+		wrap_ndis_packet = ndis_packet->wrap_ndis_packet;
 		pool->free_descr = wrap_ndis_packet->next;
 	}
 	if (!ndis_packet) {
@@ -1316,18 +1316,16 @@ STDCALL void WRAP_EXPORT(NdisAllocatePacket)
 			*status = NDIS_STATUS_RESOURCES;
 			return;
 		}
-		wrap_ndis_packet =
-			(void *)ndis_packet + packet_length -
+		wrap_ndis_packet = (void *)ndis_packet + packet_length -
 			sizeof(struct wrap_ndis_packet);
-		DBGTRACE4("allocated packet: %p", ndis_packet);
+		DBGTRACE3("allocated packet: %p", ndis_packet);
 		irql = kspin_lock_irql(&pool->lock, DISPATCH_LEVEL);
 		pool->num_allocated_descr++;
 	}
 	pool->num_used_descr++;
 	memset(ndis_packet, 0, packet_length);
 	ndis_packet->wrap_ndis_packet = wrap_ndis_packet;
-	ndis_packet->private.oob_offset =
-		(void *)&wrap_ndis_packet->oob_data -
+	ndis_packet->private.oob_offset = (void *)&wrap_ndis_packet->oob_data -
 		(void *)ndis_packet;
 	wrap_ndis_packet->next = NULL;
 	ndis_packet->private.packet_flags = fPACKET_ALLOCATED_BY_NDIS;
@@ -1511,8 +1509,7 @@ STDCALL void WRAP_EXPORT(NdisReadNetworkAddress)
 
 	*len = 0;
 	*status = NDIS_STATUS_FAILURE;
-	if (RtlAnsiStringToUnicodeString(&key, &ansi, 1) !=
-	    NDIS_STATUS_SUCCESS)
+	if (RtlAnsiStringToUnicodeString(&key, &ansi, TRUE) != STATUS_SUCCESS)
 		TRACEEXIT1(return);
 
 	NdisReadConfiguration(status, &setting, nmb, &key,
@@ -2610,7 +2607,7 @@ STDCALL NDIS_STATUS WRAP_EXPORT(NdisMQueryAdapterInstanceName)
 	else
 		ansi_string.buf = "USB Ethernet Adapter";
 	ansi_string.buflen = ansi_string.len = strlen(ansi_string.buf);
-	if (RtlAnsiStringToUnicodeString(name, &ansi_string, 1))
+	if (RtlAnsiStringToUnicodeString(name, &ansi_string, TRUE))
 		TRACEEXIT2(return NDIS_STATUS_RESOURCES);
 	else
 		TRACEEXIT2(return NDIS_STATUS_SUCCESS);

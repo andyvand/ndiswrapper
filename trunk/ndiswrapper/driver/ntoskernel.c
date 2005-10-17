@@ -2231,7 +2231,7 @@ STDCALL NTSTATUS WRAP_EXPORT(ZwCreateFile)
 	ansi.buf[MAX_STR_LEN-1] = 0;
 	ansi.buflen = MAX_STR_LEN;
 
-	if (RtlUnicodeStringToAnsiString(&ansi, obj_attr->name, 0)) {
+	if (RtlUnicodeStringToAnsiString(&ansi, obj_attr->name, FALSE)) {
 		RtlFreeAnsiString(&ansi);
 		return STATUS_INSUFFICIENT_RESOURCES;
 	}
