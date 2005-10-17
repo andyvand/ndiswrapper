@@ -553,6 +553,8 @@ STDCALL NTSTATUS WRAP_EXPORT(RtlAnsiStringToUnicodeString)
 	char *s;
 
 	TRACEENTER2("dup: %d src: %s", dup, src->buf);
+	if (!(src->buf && src->buflen > 0))
+		TRACEEXIT2(return STATUS_SUCCESS);
 	if (dup) {
 		wchar_t *buf = kmalloc((src->buflen+1) * sizeof(wchar_t),
 				       GFP_KERNEL);
@@ -586,6 +588,8 @@ STDCALL NTSTATUS WRAP_EXPORT(RtlUnicodeStringToAnsiString)
 	TRACEENTER2("dup: %d src->len: %d src->buflen: %d, src->buf: %p,"
 		    "dst: %p", dup, src->len, src->buflen, src->buf, dst);
 
+	if (!(src->buf && src->buflen > 0))
+		TRACEEXIT2(return STATUS_SUCCESS);
 	if (dup) {
 		char *buf = kmalloc((src->buflen+1) / sizeof(wchar_t),
 				    GFP_KERNEL);
