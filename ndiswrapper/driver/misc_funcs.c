@@ -553,9 +553,9 @@ STDCALL NTSTATUS WRAP_EXPORT(RtlAnsiStringToUnicodeString)
 	char *s;
 
 	TRACEENTER2("dup: %d src: %s", dup, src->buf);
-	if (!(src->buf && src->buflen > 0))
+	if (!src->buf || src->buflen <= 0)
 		TRACEEXIT2(return STATUS_SUCCESS);
-	if (dup) {
+	if (dup == TRUE) {
 		wchar_t *buf = kmalloc((src->buflen+1) * sizeof(wchar_t),
 				       GFP_KERNEL);
 		if (!buf)
@@ -588,9 +588,9 @@ STDCALL NTSTATUS WRAP_EXPORT(RtlUnicodeStringToAnsiString)
 	TRACEENTER2("dup: %d src->len: %d src->buflen: %d, src->buf: %p,"
 		    "dst: %p", dup, src->len, src->buflen, src->buf, dst);
 
-	if (!(src->buf && src->buflen > 0))
+	if (!src->buf || src->buflen <= 0)
 		TRACEEXIT2(return STATUS_SUCCESS);
-	if (dup) {
+	if (dup == TRUE) {
 		char *buf = kmalloc((src->buflen+1) / sizeof(wchar_t),
 				    GFP_KERNEL);
 		if (!buf)
@@ -680,7 +680,7 @@ STDCALL NTSTATUS WRAP_EXPORT(RtlUnicodeStringToInteger)
 STDCALL NTSTATUS WRAP_EXPORT(RtlIntegerToUnicodeString)
 	(ULONG value, ULONG base, struct unicode_string *ustring)
 {
-	char string[sizeof(wchar_t) * 8 + 1];
+	char string[sizeof(wchar_t) * sizeof(ULONG) * 2 + 1];
 	struct ansi_string ansi;
 	int i;
 
@@ -783,17 +783,17 @@ STDCALL NTSTATUS WRAP_EXPORT(RtlQueryRegistryValues)
 {
 	struct ansi_string ansi;
 	struct unicode_string unicode;
-	char buf[32];
 
-	TRACEENTER3("%d, %p", relative, tbl);
+	TRACEENTER3("%x, %p", relative, tbl);
 	UNIMPL();
 
-	ansi.buf = buf;
-	ansi.buflen = sizeof(buf);
 	unicode.buf = path;
 	unicode.len = unicode.buflen = _win_wcslen(path);
-	RtlUnicodeStringToAnsiString(&ansi, &unicode, FALSE);
-	DBGTRACE2("%d, %s, %p", relative, buf, tbl);
+	if (RtlUnicodeStringToAnsiString(&ansi, &unicode, TRUE) ==
+	    STATUS_SUCCESS) {
+		DBGTRACE2("%s", buf);
+		RtlFreeAnsiString(&ansi);
+	}
 	TRACEEXIT3(return STATUS_SUCCESS);
 }
 
@@ -803,21 +803,24 @@ STDCALL NTSTATUS WRAP_EXPORT(RtlWriteRegistryValue)
 {
 	struct ansi_string ansi;
 	struct unicode_string unicode;
-	char buf[32];
 
 	TRACEENTER3("%d", relative);
 	UNIMPL();
 
-	ansi.buf = buf;
-	ansi.buflen = sizeof(buf);
 	unicode.buf = path;
 	unicode.len = unicode.buflen = _win_wcslen(path);
-	RtlUnicodeStringToAnsiString(&ansi, &unicode, FALSE);
-	DBGTRACE3("path: %s", buf);
+	if (RtlUnicodeStringToAnsiString(&ansi, &unicode, TRUE) ==
+	    STATUS_SUCCESS) {
+		DBGTRACE2("%s", buf);
+		RtlFreeAnsiString(&ansi);
+	}
 	unicode.buf = name;
 	unicode.len = unicode.buflen = _win_wcslen(name);
-	RtlUnicodeStringToAnsiString(&ansi, &unicode, FALSE);
-	DBGTRACE3("name: %s", buf);
+	if (RtlUnicodeStringToAnsiString(&ansi, &unicode, TRUE) ==
+	    STATUS_SUCCESS) {
+		DBGTRACE2("%s", buf);
+		RtlFreeAnsiString(&ansi);
+	}
 	TRACEEXIT5(return STATUS_SUCCESS);
 }
 

@@ -79,7 +79,8 @@ STDCALL NTSTATUS WRAP_EXPORT(IoGetDeviceProperty)
 			unicode.buflen = buffer_len;
 			IOTRACE("unicode.buflen = %d, ansi.len = %d",
 				unicode.buflen, ansi.len);
-			if (RtlAnsiStringToUnicodeString(&unicode, &ansi, 0)) {
+			if (RtlAnsiStringToUnicodeString(&unicode, &ansi,
+							 FALSE)) {
 				*result_len = 0;
 				IOEXIT(return STATUS_BUFFER_TOO_SMALL);
 			} else {
@@ -101,7 +102,8 @@ STDCALL NTSTATUS WRAP_EXPORT(IoGetDeviceProperty)
 		if (buffer_len > 0 && buffer) {
 			unicode.buf = buffer;
 			unicode.buflen = buffer_len;
-			if (RtlAnsiStringToUnicodeString(&unicode, &ansi, 0)) {
+			if (RtlAnsiStringToUnicodeString(&unicode, &ansi,
+							 FALSE)) {
 				*result_len = 0;
 				IOEXIT(return STATUS_BUFFER_TOO_SMALL);
 			} else {
@@ -884,7 +886,7 @@ STDCALL NTSTATUS WRAP_EXPORT(IoCreateDevice)
 	struct ansi_string ansi;
 
 	IOENTER("%p, %u, %p", drv_obj, dev_ext_length, dev_name);
-	if (dev_name && (RtlUnicodeStringToAnsiString(&ansi, dev_name, 1)
+	if (dev_name && (RtlUnicodeStringToAnsiString(&ansi, dev_name, TRUE)
 			 == STATUS_SUCCESS)) {
 		IOTRACE("dev_name: %s", ansi.buf);
 		RtlFreeAnsiString(&ansi);
@@ -934,12 +936,12 @@ STDCALL NTSTATUS WRAP_EXPORT(IoCreateUnprotectedSymbolicLink)
 	struct ansi_string ansi;
 
 	IOENTER("%p, %p", dev_name, link);
-	if (dev_name && (RtlUnicodeStringToAnsiString(&ansi, dev_name, 1) ==
+	if (dev_name && (RtlUnicodeStringToAnsiString(&ansi, dev_name, TRUE) ==
 			 STATUS_SUCCESS)) {
 		IOTRACE("dev_name: %s", ansi.buf);
 		RtlFreeAnsiString(&ansi);
 	}
-	if (link && (RtlUnicodeStringToAnsiString(&ansi, link, 1) ==
+	if (link && (RtlUnicodeStringToAnsiString(&ansi, link, TRUE) ==
 		     STATUS_SUCCESS)) {
 		IOTRACE("link: %s", ansi.buf);
 		RtlFreeAnsiString(&ansi);
@@ -960,7 +962,7 @@ STDCALL NTSTATUS WRAP_EXPORT(IoDeleteSymbolicLink)
 	struct ansi_string ansi;
 
 	IOENTER("%p", link);
-	if (link && (RtlUnicodeStringToAnsiString(&ansi, link, 1) ==
+	if (link && (RtlUnicodeStringToAnsiString(&ansi, link, TRUE) ==
 		     STATUS_SUCCESS)) {
 		IOTRACE("dev_name: %s", ansi.buf);
 		RtlFreeAnsiString(&ansi);
@@ -1054,16 +1056,16 @@ STDCALL void WRAP_EXPORT(IoDetachDevice)
 	if (!tail)
 		IOEXIT(return);
 	IOTRACE("tail:%p", tail);
-	
+
 	irql = kspin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL);
 	topdev->attached = tail->attached;
 	IOTRACE("tail->attached:%p", tail->attached);
-	ObDereferenceObject(topdev);
 
 	for (tail = topdev->attached; tail; tail = tail->attached)
 		tail->stack_size--;
 
 	kspin_unlock_irql(&ntoskernel_lock, irql);
+	ObDereferenceObject(topdev);
 	IOEXIT(return);
 }
 
