@@ -675,7 +675,7 @@ static int start_xmit(struct sk_buff *skb, struct net_device *dev)
 		return 1;
 	}
 	packet->wrap_ndis_packet->skb = skb;
-	irql = kspin_lock_irql(&wd->xmit_lock, DISPATCH_LEVEL);
+	kspin_lock(&wd->xmit_lock);
 	xmit_ring_next_slot =
 		(wd->xmit_ring_start +
 		 wd->xmit_ring_pending) % XMIT_RING_SIZE;
@@ -683,7 +683,7 @@ static int start_xmit(struct sk_buff *skb, struct net_device *dev)
 	wd->xmit_ring_pending++;
 	if (wd->xmit_ring_pending == XMIT_RING_SIZE)
 		netif_stop_queue(wd->net_dev);
-	kspin_unlock_irql(&wd->xmit_lock, irql);
+	kspin_unlock(&wd->xmit_lock);
 
 	schedule_work(&wd->xmit_work);
 
@@ -1593,11 +1593,7 @@ void ndiswrapper_stop_device(struct wrapper_dev *wd)
 	netif_carrier_off(wd->net_dev);
 	ndiswrapper_procfs_remove_iface(wd);
 
-	/* flush_scheduled_work here causes crash with 2.4 kernels */
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
-	flush_scheduled_work();
-#endif
-	/* instead, throw away pending packets */
+	/* throw away pending packets */
 	irql = kspin_lock_irql(&wd->xmit_lock, DISPATCH_LEVEL);
 	while (wd->xmit_ring_pending) {
 		struct ndis_packet *packet;
@@ -1609,6 +1605,10 @@ void ndiswrapper_stop_device(struct wrapper_dev *wd)
 		wd->xmit_ring_pending--;
 	}
 	kspin_unlock_irql(&wd->xmit_lock, irql);
+	/* flush_scheduled_work here causes crash with 2.4 kernels */
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
+	flush_scheduled_work();
+#endif
 
 	DBGTRACE1("halting device; irql: %d", current_irql());
 	miniport_halt(wd);

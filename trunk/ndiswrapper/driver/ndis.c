@@ -1565,11 +1565,11 @@ static void ndis_irq_bh(void *data)
 	struct ndis_irq *ndis_irq = (struct ndis_irq *)data;
 	struct wrapper_dev *wd;
 	struct miniport_char *miniport;
-	KIRQL irql;
+//	KIRQL irql;
 
 	/* Dpcs run at DISPATCH_LEVEL */
 	if (ndis_irq->enabled) {
-		irql = raise_irql(DISPATCH_LEVEL);
+//		irql = raise_irql(DISPATCH_LEVEL);
 		wd = ndis_irq->wd;
 		miniport = &wd->driver->miniport;
 		LIN2WIN1(miniport->handle_interrupt,
@@ -1577,7 +1577,7 @@ static void ndis_irq_bh(void *data)
 		if (miniport->enable_interrupts)
 			LIN2WIN1(miniport->enable_interrupts,
 				 wd->nmb->adapter_ctx);
-		lower_irql(irql);
+//		lower_irql(irql);
 	}
 }
 

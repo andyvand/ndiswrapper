@@ -219,7 +219,7 @@ NOREGPARM char *WRAP_EXPORT(_win_strncat)
 NOREGPARM INT WRAP_EXPORT(_win_wcscmp)
 	(const wchar_t *s1, const wchar_t *s2)
 {
-	while (*s1 && *s2 && *s1 == *s2) {
+	while (*s1 != L'\0' && *s1 == *s2) {
 		s1++;
 		s2++;
 	}
@@ -229,7 +229,7 @@ NOREGPARM INT WRAP_EXPORT(_win_wcscmp)
 NOREGPARM INT WRAP_EXPORT(_win_wcsicmp)
 	(const wchar_t *s1, const wchar_t *s2)
 {
-	while (*s1 && *s2 && tolower((char)*s1) == tolower((char)*s2)) {
+	while (*s1 != L'\0' && tolower((char)*s1) == tolower((char)*s2)) {
 		s1++;
 		s2++;
 	}
@@ -240,7 +240,7 @@ NOREGPARM SIZE_T WRAP_EXPORT(_win_wcslen)
 	(const wchar_t *s)
 {
 	SIZE_T i = 0;
-	while (s[i])
+	while (s[i] != L'\0')
 		i++;
 	return i;
 }
@@ -249,7 +249,7 @@ NOREGPARM wchar_t *WRAP_EXPORT(_win_wcsncpy)
 	(wchar_t *dest, const wchar_t *src, SIZE_T n)
 {
 	SIZE_T i = 0;
-	while (i < n && src[i]) {
+	while (i < n && src[i] != L'\0') {
 		dest[i] = src[i];
 		i++;
 	}
@@ -778,11 +778,12 @@ STDCALL void WRAP_EXPORT(RtlFreeAnsiString)
 }
 
 STDCALL NTSTATUS WRAP_EXPORT(RtlQueryRegistryValues)
-	(ULONG relative, wchar_t *path, void *tbl, void *context,
-	 void *env)
+	(ULONG relative, wchar_t *path, struct rtl_query_registry_table *tbl,
+	 void *context, void *env)
 {
 	struct ansi_string ansi;
 	struct unicode_string unicode;
+	NTSTATUS status, ret;
 
 	TRACEENTER3("%x, %p", relative, tbl);
 	UNIMPL();
@@ -791,10 +792,64 @@ STDCALL NTSTATUS WRAP_EXPORT(RtlQueryRegistryValues)
 	unicode.len = unicode.buflen = _win_wcslen(path);
 	if (RtlUnicodeStringToAnsiString(&ansi, &unicode, TRUE) ==
 	    STATUS_SUCCESS) {
-		DBGTRACE2("%s", buf);
+		DBGTRACE2("%s", ansi.buf);
 		RtlFreeAnsiString(&ansi);
 	}
-	TRACEEXIT3(return STATUS_SUCCESS);
+	ret = STATUS_SUCCESS;
+	for (; tbl->name; tbl++) {
+		unicode.buf = tbl->name;
+		unicode.len = unicode.buflen = _win_wcslen(tbl->name);
+		if (RtlUnicodeStringToAnsiString(&ansi, &unicode, TRUE) ==
+		    STATUS_SUCCESS) {
+			DBGTRACE2("name: %s", ansi.buf);
+			RtlFreeAnsiString(&ansi);
+		}
+		DBGTRACE2("flags: %08X", tbl->flags);
+		if (tbl->flags == RTL_QUERY_REGISTRY_DIRECT) {
+			DBGTRACE2("type: %08X", tbl->def_type);
+			if (tbl->def_type == REG_DWORD) {
+				/* Atheros USB driver needs this, but
+				 * don't know where and how to get its
+				 * value */
+				if (tbl->def_data) {
+					DBGTRACE2("def_data: %x",
+						  *(int *)tbl->def_data);
+					*(DWORD *)tbl->context =
+						*(DWORD *)tbl->def_data;
+				} else
+					*(DWORD *)tbl->context = 0x2345dbe;
+			}
+		} else {
+			void *data;
+			ULONG type, length;
+
+			if (!tbl->query_func) {
+				ERROR("oops: no query_func");
+				ret = STATUS_INVALID_PARAMETER;
+				break;
+			}
+			if (tbl->flags & RTL_QUERY_REGISTRY_NOVALUE) {
+				data = NULL;
+				type = REG_NONE;
+				length = 0;
+			} else {
+				data = tbl->def_data;
+				type = tbl->def_type;
+				length = tbl->def_length;;
+			}
+			DBGTRACE2("calling query_func: %p", tbl->query_func);
+			status = LIN2WIN6(tbl->query_func, tbl->name, type,
+					  data, length, context, env);
+			DBGTRACE2("status: %08X", status);
+			if (status) {
+				if (status == STATUS_BUFFER_TOO_SMALL)
+					ret = STATUS_BUFFER_TOO_SMALL;
+				else
+					TRACEEXIT2(return STATUS_INVALID_PARAMETER);
+			}
+		}
+	}
+	TRACEEXIT3(return ret);
 }
 
 STDCALL NTSTATUS WRAP_EXPORT(RtlWriteRegistryValue)
@@ -811,14 +866,14 @@ STDCALL NTSTATUS WRAP_EXPORT(RtlWriteRegistryValue)
 	unicode.len = unicode.buflen = _win_wcslen(path);
 	if (RtlUnicodeStringToAnsiString(&ansi, &unicode, TRUE) ==
 	    STATUS_SUCCESS) {
-		DBGTRACE2("%s", buf);
+		DBGTRACE2("%s", ansi.buf);
 		RtlFreeAnsiString(&ansi);
 	}
 	unicode.buf = name;
 	unicode.len = unicode.buflen = _win_wcslen(name);
 	if (RtlUnicodeStringToAnsiString(&ansi, &unicode, TRUE) ==
 	    STATUS_SUCCESS) {
-		DBGTRACE2("%s", buf);
+		DBGTRACE2("%s", ansi.buf);
 		RtlFreeAnsiString(&ansi);
 	}
 	TRACEEXIT5(return STATUS_SUCCESS);
