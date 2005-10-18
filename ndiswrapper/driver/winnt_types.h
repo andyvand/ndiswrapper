@@ -1079,6 +1079,45 @@ struct kuser_shared_data {
 	} tick;
 };
 
+#define REG_NONE			(0)
+#define REG_SZ				(1)
+#define REG_EXPAND_SZ			(2)
+#define REG_BINARY			(3)
+#define REG_DWORD			(4)
+
+#define RTL_REGISTRY_ABSOLUTE		0
+#define RTL_REGISTRY_SERVICES		1
+#define RTL_REGISTRY_CONTROL		2
+#define RTL_REGISTRY_WINDOWS_NT		3
+#define RTL_REGISTRY_DEVICEMAP		4
+#define RTL_REGISTRY_USER		5
+#define RTL_REGISTRY_MAXIMUM		6
+#define RTL_REGISTRY_HANDLE		0x40000000
+#define RTL_REGISTRY_OPTIONAL		0x80000000
+
+#define RTL_QUERY_REGISTRY_SUBKEY	0x00000001
+#define RTL_QUERY_REGISTRY_TOPKEY	0x00000002
+#define RTL_QUERY_REGISTRY_REQUIRED	0x00000004
+#define RTL_QUERY_REGISTRY_NOVALUE	0x00000008
+#define RTL_QUERY_REGISTRY_NOEXPAND	0x00000010
+#define RTL_QUERY_REGISTRY_DIRECT	0x00000020
+#define RTL_QUERY_REGISTRY_DELETE	0x00000040
+
+typedef NTSTATUS (*PRTL_QUERY_REGISTRY_ROUTINE)(wchar_t *name, ULONG type,
+						void *data, ULONG length,
+						void *context,
+						void *entry) STDCALL;
+
+struct rtl_query_registry_table {
+	PRTL_QUERY_REGISTRY_ROUTINE query_func;
+	ULONG flags;
+	wchar_t *name;
+	void *context;
+	ULONG def_type;
+	void *def_data;
+	ULONG def_length;
+};
+
 /* some of the functions below are slightly different from DDK's
  * implementation; e.g., Insert functions return appropriate
  * pointer */

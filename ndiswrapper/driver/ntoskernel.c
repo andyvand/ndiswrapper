@@ -275,9 +275,6 @@ static void update_user_shared_data_proc(unsigned long data)
 }
 #endif
 
-extern struct nt_list object_list;
-extern KSPIN_LOCK ntoskernel_lock;
-
 void *allocate_object(ULONG size, enum common_object_type type,
 		      struct unicode_string *name)
 {									
