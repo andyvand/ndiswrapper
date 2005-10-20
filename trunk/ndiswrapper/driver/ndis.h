@@ -377,8 +377,8 @@ struct ndis_irq {
 	struct kdpc intr_dpc;
 	struct wrapper_dev *wd;
 	UCHAR dpc_count;
-	/* unsigned char filler1 is used for enabled */
-	UCHAR enabled;
+	/* unsigned char filler1 is used for pending */
+	UCHAR pending;
 	struct kevent completed_event;
 	UCHAR shared;
 	UCHAR req_isr;
@@ -807,7 +807,7 @@ struct wrapper_dev {
 	struct net_device *net_dev;
 	void *shutdown_ctx;
 
-	struct work_struct irq_work;
+	struct tasklet_struct irq_tasklet;
 	struct ndis_irq *ndis_irq;
 	unsigned long mem_start;
 	unsigned long mem_end;
