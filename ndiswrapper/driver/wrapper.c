@@ -482,6 +482,7 @@ allocate_send_packet(struct wrapper_dev *wd, ndis_buffer *buffer)
 
 	packet->private.buffer_head = buffer;
 	packet->private.buffer_tail = buffer;
+
 	wrap_ndis_packet = packet->wrap_ndis_packet;
 	if (wd->use_sg_dma) {
 		wrap_ndis_packet->ndis_sg_element.address =
@@ -662,7 +663,6 @@ static int start_xmit(struct sk_buff *skb, struct net_device *dev)
 	ndis_buffer *buffer;
 	struct ndis_packet *packet;
 	unsigned int xmit_ring_next_slot;
-	KIRQL irql;
 	NDIS_STATUS res;
 
 	NdisAllocateBuffer(&res, &buffer, wd->wrapper_buffer_pool,
@@ -882,8 +882,8 @@ int ndiswrapper_suspend_pci(struct pci_dev *pdev, pm_message_t state)
 	/* PM seems to be in constant flux and documentation is not
 	 * up-to-date on what is the correct way to suspend/resume, so
 	 * this needs to be tweaked for different kernel versions */
-	pci_disable_device(pdev);
-	ret = pci_set_power_state(pdev, pci_choose_state(pdev, state));
+//	pci_disable_device(pdev);
+//	ret = pci_set_power_state(pdev, pci_choose_state(pdev, state));
 
 	DBGTRACE2("%s: device suspended", wd->net_dev->name);
 	TRACEEXIT2(return 0);
@@ -899,8 +899,8 @@ int ndiswrapper_resume_pci(struct pci_dev *pdev)
 	wd = pci_get_drvdata(pdev);
 	if (!wd)
 		TRACEEXIT1(return -1);
-	ret = pci_set_power_state(pdev, PCI_D0);
-	ret = pci_enable_device(pdev);
+//	ret = pci_set_power_state(pdev, PCI_D0);
+//	ret = pci_enable_device(pdev);
 #if LINUX_VERSION_CODE > KERNEL_VERSION(2,6,9)
 	pci_restore_state(pdev);
 #else

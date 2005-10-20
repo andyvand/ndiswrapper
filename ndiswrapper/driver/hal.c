@@ -62,19 +62,13 @@ STDCALL UCHAR WRAP_EXPORT(READ_PORT_UCHAR)
 STDCALL void WRAP_EXPORT(WRITE_PORT_BUFFER_USHORT)
 	(ULONG_PTR port, USHORT *buf, ULONG count)
 {
-	ULONG i;
-
-	for (i = 0 ; i < count ; i++)
-		outw(buf[i], port);
+	outsw(port, buf, count);
 }
 
 STDCALL void WRAP_EXPORT(READ_PORT_BUFFER_USHORT)
 	(ULONG_PTR port, USHORT *buf, ULONG count)
 {
-	ULONG i;
-
-	for (i = 0 ; i < count; i++)
-		buf[i] = inw(port);
+	insw(port, buf, count);
 }
 
 STDCALL void WRAP_EXPORT(WRITE_REGISTER_ULONG)

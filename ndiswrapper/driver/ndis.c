@@ -1560,24 +1560,20 @@ STDCALL void WRAP_EXPORT(NdisMDeregisterAdapterShutdownHandler)
 }
 
 /* bottom half of the irq handler */
-static void ndis_irq_bh(void *data)
+static void ndis_irq_bh(unsigned long data)
 {
 	struct ndis_irq *ndis_irq = (struct ndis_irq *)data;
 	struct wrapper_dev *wd;
 	struct miniport_char *miniport;
-//	KIRQL irql;
 
-	/* Dpcs run at DISPATCH_LEVEL */
-	if (ndis_irq->enabled) {
-//		irql = raise_irql(DISPATCH_LEVEL);
+	if (ndis_irq->pending) {
+		ndis_irq->pending = 0;
 		wd = ndis_irq->wd;
 		miniport = &wd->driver->miniport;
-		LIN2WIN1(miniport->handle_interrupt,
-			 wd->nmb->adapter_ctx);
+		LIN2WIN1(miniport->handle_interrupt, wd->nmb->adapter_ctx);
 		if (miniport->enable_interrupts)
 			LIN2WIN1(miniport->enable_interrupts,
 				 wd->nmb->adapter_ctx);
-//		lower_irql(irql);
 	}
 }
 
@@ -1608,8 +1604,10 @@ static irqreturn_t ndis_irq_th(int irq, void *data, struct pt_regs *pt_regs)
 	}
 	kspin_unlock_irqrestore(&ndis_irq->lock, flags);
 
-	if (recognized && handled)
-		schedule_work(&wd->irq_work);
+	if (recognized && handled) {
+		ndis_irq->pending++;
+		tasklet_schedule(&wd->irq_tasklet);
+	}
 
 	if (recognized)
 		return IRQ_HANDLED;
@@ -1635,7 +1633,7 @@ STDCALL NDIS_STATUS WRAP_EXPORT(NdisMRegisterInterrupt)
 	ndis_irq->shared = shared;
 	kspin_lock_init(&ndis_irq->lock);
 
-	INIT_WORK(&wd->irq_work, ndis_irq_bh, ndis_irq);
+	tasklet_init(&wd->irq_tasklet, ndis_irq_bh, (unsigned long)ndis_irq);
 	if (request_irq(vector, ndis_irq_th, req_isr? SA_SHIRQ : 0,
 			"ndiswrapper", ndis_irq)) {
 		printk(KERN_WARNING "%s: request for irq %d failed\n",
@@ -1643,7 +1641,7 @@ STDCALL NDIS_STATUS WRAP_EXPORT(NdisMRegisterInterrupt)
 		TRACEEXIT1(return NDIS_STATUS_RESOURCES);
 	}
 	wd->ndis_irq = ndis_irq;
-	ndis_irq->enabled = 1;
+	ndis_irq->pending = 0;
 	printk(KERN_INFO "%s: using irq %d\n", DRIVER_NAME, vector);
 	TRACEEXIT1(return NDIS_STATUS_SUCCESS);
 }
@@ -1661,21 +1659,10 @@ STDCALL void WRAP_EXPORT(NdisMDeregisterInterrupt)
 	if (!wd)
 		TRACEEXIT1(return);
 
-	ndis_irq->enabled = 0;
 	ndis_irq->wd = NULL;
-	/* flush irq_bh workqueue; calling it before enabled=0 will
-	 * crash since some drivers (Centrino at least) don't expect
-	 * irq hander to be called anymore */
-	/* cancel_delayed_work is probably better, but 2.4 kernels
-	 * don't have equivalent function
-	 */
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
-	flush_scheduled_work();
-#else
-	set_current_state(TASK_INTERRUPTIBLE);
-	schedule_timeout(HZ/10);
-#endif
+	ndis_irq->pending = 0;
 	free_irq(ndis_irq->irq.irq, ndis_irq);
+	tasklet_kill(&wd->irq_tasklet);
 	wd->ndis_irq = NULL;
 	TRACEEXIT1(return);
 }
@@ -1683,21 +1670,17 @@ STDCALL void WRAP_EXPORT(NdisMDeregisterInterrupt)
 STDCALL BOOLEAN WRAP_EXPORT(NdisMSynchronizeWithInterrupt)
 	(struct ndis_irq *ndis_irq, void *func, void *ctx)
 {
-	unsigned char ret;
-	unsigned char (*sync_func)(void *ctx) STDCALL;
+	BOOLEAN ret;
+	BOOLEAN (*sync_func)(void *ctx) STDCALL;
 	unsigned long flags;
 
-	TRACEENTER6("%p %p %p", ndis_irq, func, ctx);
-
-	if (func == NULL || ctx == NULL)
-		TRACEEXIT6(return 0);
+	TRACEENTER6("%p %p", func, ctx);
 
 	sync_func = func;
 	kspin_lock_irqsave(&ndis_irq->lock, flags);
 	ret = LIN2WIN1(sync_func, ctx);
 	kspin_unlock_irqrestore(&ndis_irq->lock, flags);
 
-	DBGTRACE6("sync_func returns %u", ret);
 	TRACEEXIT6(return ret);
 }
 
@@ -1885,6 +1868,7 @@ NdisMIndicateReceivePacket(struct ndis_miniport_block *nmb,
 		 * although at other places we don't */
 		buffer = packet->private.buffer_head;
 		skb = dev_alloc_skb(MmGetMdlByteCount(buffer));
+		DBGTRACE3("length: %d", MmGetMdlByteCount(buffer));
 		if (skb) {
 			skb->dev = wd->net_dev;
 			eth_copy_and_sum(skb, MmGetMdlVirtualAddress(buffer),
@@ -2017,6 +2001,8 @@ EthRxIndicateHandler(struct ndis_miniport_block *nmb, void *rx_ctx,
 			       nmb, rx_ctx, look_ahead_size,
 			       packet_size);
 		lower_irql(irql);
+		DBGTRACE3("%d, %d, %d", header_size, look_ahead_size,
+			  bytes_txed);
 		if (res == NDIS_STATUS_SUCCESS) {
 			ndis_buffer *buffer;
 			skb = dev_alloc_skb(header_size+look_ahead_size+
@@ -2355,8 +2341,6 @@ STDCALL void WRAP_EXPORT(NdisUnchainBufferAtBack)
 	ndis_buffer *b, *btail;
 
 	TRACEENTER3("%p", packet);
-	if (packet == NULL || buffer == NULL)
-		return;
 	b = packet->private.buffer_head;
 	if (!b) {
 		/* no buffer in packet */
@@ -2365,7 +2349,6 @@ STDCALL void WRAP_EXPORT(NdisUnchainBufferAtBack)
 	}
 	btail = packet->private.buffer_tail;
 	*buffer = btail;
-//	packet->private.valid_counts = FALSE;
 	if (b == btail) {
 		/* one buffer in packet */
 		packet->private.buffer_head = NULL;
@@ -2376,6 +2359,7 @@ STDCALL void WRAP_EXPORT(NdisUnchainBufferAtBack)
 		packet->private.buffer_tail = b;
 		b->next = NULL;
 	}
+	packet->private.valid_counts = FALSE;
 	TRACEEXIT3(return);
 }
 
@@ -2383,15 +2367,12 @@ STDCALL void WRAP_EXPORT(NdisUnchainBufferAtFront)
 	(struct ndis_packet *packet, ndis_buffer **buffer)
 {
 	TRACEENTER3("%p", packet);
-	if (buffer == NULL)
-		return;
-	if (packet == NULL) {
+	if (packet->private.buffer_head == NULL) {
 		/* no buffer in packet */
 		*buffer = NULL;
 		TRACEEXIT3(return);
 	}
 
-//	packet->private.valid_counts = FALSE;
 	*buffer = packet->private.buffer_head;
 	if (packet->private.buffer_head == packet->private.buffer_tail) {
 		/* one buffer in packet */
@@ -2400,6 +2381,7 @@ STDCALL void WRAP_EXPORT(NdisUnchainBufferAtFront)
 	} else
 		packet->private.buffer_head = (*buffer)->next;
 
+	packet->private.valid_counts = FALSE;
 	TRACEEXIT3(return);
 }
 
