@@ -248,7 +248,12 @@ STDCALL void WRAP_EXPORT(NdisOpenConfigurationKeyByName)
 	(NDIS_STATUS *status, void *handle,
 	 struct unicode_string *key, void **subkeyhandle)
 {
+	struct ansi_string ansi;
 	TRACEENTER2("");
+	if (RtlUnicodeStringToAnsiString(&ansi, key, TRUE) == STATUS_SUCCESS) {
+		DBGTRACE2("key: %s", ansi.buf);
+		RtlFreeAnsiString(&ansi);
+	}
 	*subkeyhandle = handle;
 	*status = NDIS_STATUS_SUCCESS;
 	TRACEEXIT2(return);
@@ -258,7 +263,7 @@ STDCALL void WRAP_EXPORT(NdisOpenConfigurationKeyByIndex)
 	(NDIS_STATUS *status, void *handle, ULONG index,
 	 struct unicode_string *key, void **subkeyhandle)
 {
-	TRACEENTER2("");
+	TRACEENTER2("index: %d", index);
 	*subkeyhandle = handle;
 	*status = NDIS_STATUS_SUCCESS;
 	TRACEEXIT2(return);
@@ -1633,6 +1638,7 @@ STDCALL NDIS_STATUS WRAP_EXPORT(NdisMRegisterInterrupt)
 	ndis_irq->shared = shared;
 	kspin_lock_init(&ndis_irq->lock);
 
+	ndis_irq->pending = 0;
 	tasklet_init(&wd->irq_tasklet, ndis_irq_bh, (unsigned long)ndis_irq);
 	if (request_irq(vector, ndis_irq_th, req_isr? SA_SHIRQ : 0,
 			"ndiswrapper", ndis_irq)) {
@@ -1641,7 +1647,6 @@ STDCALL NDIS_STATUS WRAP_EXPORT(NdisMRegisterInterrupt)
 		TRACEEXIT1(return NDIS_STATUS_RESOURCES);
 	}
 	wd->ndis_irq = ndis_irq;
-	ndis_irq->pending = 0;
 	printk(KERN_INFO "%s: using irq %d\n", DRIVER_NAME, vector);
 	TRACEEXIT1(return NDIS_STATUS_SUCCESS);
 }

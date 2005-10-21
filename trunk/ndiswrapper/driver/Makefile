@@ -59,10 +59,10 @@ OBJS := hal.o iw_ndis.o loader.o misc_funcs.o ndis.o ntoskernel.o \
 
 # by default, USB layer is compiled in if USB support is in kernel;
 # to disable USB support in ndiswrapper even if USB support is in kenrel,
-# add option "NO_USB=1"
+# add option "DISABLE_USB=1"
 
-ifdef NO_USB
-CFLAGS += -DNO_USB
+ifdef DISABLE_USB
+CFLAGS += -DDISABLE_USB
 else
 ifeq ($(CONFIG_USB),y)
 OBJS += usb.o

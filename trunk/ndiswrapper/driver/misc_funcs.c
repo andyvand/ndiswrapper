@@ -444,7 +444,7 @@ STDCALL LONG WRAP_EXPORT(RtlCompareString)
 	const char *p1, *p2;
 
 	TRACEENTER1("%s", "");
-	len = min(s1->len, s2->len);
+	len = min(s1->buflen, s2->buflen);
 	p1 = s1->buf;
 	p2 = s2->buf;
 
@@ -468,19 +468,48 @@ STDCALL LONG WRAP_EXPORT(RtlCompareUnicodeString)
 	const wchar_t *p1, *p2;
 
 	TRACEENTER1("%s", "");
-	len = min(s1->len, s2->len);
+
+#ifdef DEBUG
+	{
+		struct ansi_string ansi;
+		DBGTRACE2("%p, %p", s1, s2);
+		if (s1 && RtlUnicodeStringToAnsiString(&ansi, s1, TRUE) ==
+		    STATUS_SUCCESS) {
+			DBGTRACE2("s1: %s", ansi.buf);
+			RtlFreeAnsiString(&ansi);
+		}
+
+		if (s2 && RtlUnicodeStringToAnsiString(&ansi, s2, TRUE) ==
+		    STATUS_SUCCESS) {
+			DBGTRACE2("s2: %s", ansi.buf);
+			RtlFreeAnsiString(&ansi);
+		}
+	}
+#endif
+	if (!s1 || !s1->buf || !s1->buflen) {
+		if (!s2 || !s2->buf || !s2->buflen)
+			TRACEEXIT1(return 0);
+		else
+			TRACEEXIT1(return -1);
+	}
+	if (!s2 || !s2->buf || !s2->buflen)
+		TRACEEXIT1(return 1);
+	len = min(s1->buflen, s2->buflen);
 	p1 = s1->buf;
 	p2 = s2->buf;
 
+	DBGTRACE2("len: %d, %p, %p", len, p1, p2);
 	if (case_insensitive)
-		while (!ret && len--)
+		while (!ret && len-- && p1 && p2)
 			ret = toupper((u8)*p1++) - toupper((u8)*p2++);
 	else
-		while (!ret && len--)
+		while (!ret && len-- && p1 && p2)
 			ret = *p1++ - *p2++;
+
+	DBGTRACE2("len: %d, %p, %p", len, p1, p2);
 	if (!ret)
-		ret = s1->len - s2->len;
-	return ret;
+		ret = s1->buflen - s2->buflen;
+	TRACEEXIT2(return ret);
 }
 
 STDCALL BOOLEAN WRAP_EXPORT(RtlEqualString)
@@ -497,8 +526,12 @@ STDCALL BOOLEAN WRAP_EXPORT(RtlEqualUnicodeString)
 	(const struct unicode_string *s1, const struct unicode_string *s2,
 	 BOOLEAN case_insensitive)
 {
-	if (s1->len != s2->len)
-		return 0;
+	TRACEENTER2("s1: %p, s1->len: %d, s1->buflen: %d",
+		    s1, s1->len, s1->buflen);
+	TRACEENTER2("s2: %p, s2->len: %d, s2->buflen: %d",
+		    s2, s2->len, s2->buflen);
+	if (s1->buflen != s2->buflen)
+		return FALSE;
 	return !RtlCompareUnicodeString(s1, s2, case_insensitive);
 }
 
@@ -553,6 +586,10 @@ STDCALL NTSTATUS WRAP_EXPORT(RtlAnsiStringToUnicodeString)
 	char *s;
 
 	TRACEENTER2("dup: %d src: %s", dup, src->buf);
+
+	dst->buflen = 0;
+	if (dup)
+		dst->buf = NULL;
 	if (!src->buf || src->buflen <= 0)
 		TRACEEXIT2(return STATUS_SUCCESS);
 	if (dup == TRUE) {
@@ -561,12 +598,11 @@ STDCALL NTSTATUS WRAP_EXPORT(RtlAnsiStringToUnicodeString)
 		if (!buf)
 			TRACEEXIT1(return STATUS_FAILURE);
 		dst->buf = buf;
-		dst->buflen = (src->buflen+1) * sizeof(wchar_t);
+		dst->len = dst->buflen = (src->buflen+1) * sizeof(wchar_t);
 	}
 	else if (dst->buflen < (src->len+1) * sizeof(wchar_t))
 		TRACEEXIT1(return STATUS_FAILURE);
 
-	dst->len = src->len * sizeof(wchar_t);
 	d = dst->buf;
 	s = src->buf;
 	for(i = 0; i < src->len; i++)
@@ -579,7 +615,8 @@ STDCALL NTSTATUS WRAP_EXPORT(RtlAnsiStringToUnicodeString)
 }
 
 STDCALL NTSTATUS WRAP_EXPORT(RtlUnicodeStringToAnsiString)
-	(struct ansi_string *dst, struct unicode_string *src, BOOLEAN dup)
+	(struct ansi_string *dst, const struct unicode_string *src,
+	 BOOLEAN dup)
 {
 	int i;
 	wchar_t *s;
@@ -588,6 +625,9 @@ STDCALL NTSTATUS WRAP_EXPORT(RtlUnicodeStringToAnsiString)
 	TRACEENTER2("dup: %d src->len: %d src->buflen: %d, src->buf: %p,"
 		    "dst: %p", dup, src->len, src->buflen, src->buf, dst);
 
+	dst->buflen = 0;
+	if (dup)
+		dst->buf = NULL;
 	if (!src->buf || src->buflen <= 0)
 		TRACEEXIT2(return STATUS_SUCCESS);
 	if (dup == TRUE) {
@@ -596,11 +636,10 @@ STDCALL NTSTATUS WRAP_EXPORT(RtlUnicodeStringToAnsiString)
 		if (!buf)
 			return STATUS_FAILURE;
 		dst->buf = buf;
-		dst->buflen = (src->buflen+1) / sizeof(wchar_t);
+		dst->len = dst->buflen = (src->buflen+1) / sizeof(wchar_t);
 	} else if (dst->buflen < (src->len+1) / sizeof(wchar_t))
 		return STATUS_FAILURE;
 
-	dst->len = src->len / sizeof(wchar_t);
 	s = src->buf;
 	d = dst->buf;
 	for(i = 0; i < dst->len; i++)

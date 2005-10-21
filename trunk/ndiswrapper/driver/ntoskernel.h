@@ -52,7 +52,7 @@
 #include <linux/kthread.h>
 #endif
 
-#if defined(NO_USB)
+#if defined(DISABLE_USB)
 #undef CONFIG_USB
 #undef CONFIG_USB_MODULE
 #endif
@@ -586,9 +586,9 @@ IofCompleteRequest(FASTCALL_DECL_2(struct irp *irp, CHAR prio_boost));
 _FASTCALL void
 KefReleaseSpinLockFromDpcLevel(FASTCALL_DECL_1(KSPIN_LOCK *lock));
 STDCALL void RtlCopyMemory(void *dst, const void *src, SIZE_T length);
-STDCALL NTSTATUS RtlUnicodeStringToAnsiString(struct ansi_string *dst,
-					       struct unicode_string *src,
-					       BOOLEAN dup);
+STDCALL NTSTATUS RtlUnicodeStringToAnsiString(
+	struct ansi_string *dst, const struct unicode_string *src,
+	BOOLEAN dup);
 STDCALL NTSTATUS RtlAnsiStringToUnicodeString(struct unicode_string *dst,
 					       struct ansi_string *src,
 					       BOOLEAN dup);
