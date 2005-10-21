@@ -282,6 +282,7 @@ void *allocate_object(ULONG size, enum common_object_type type,
 	KIRQL irql;
 	void *body;
 
+	/* we pad header as prefix to body */
 	hdr = ExAllocatePoolWithTag(NonPagedPool, OBJECT_SIZE(size), 0);
 	if (!hdr) {
 		WARNING("couldn't allocate memory");
@@ -292,6 +293,8 @@ void *allocate_object(ULONG size, enum common_object_type type,
 	hdr->ref_count = 1;
 	hdr->name = name;
 	irql = kspin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL);
+	/* threads are looked up often (in KeWaitForXXx), so optimize
+	 * for fast lookups of threads */
 	if (type == OBJECT_TYPE_KTHREAD)
 		InsertHeadList(&object_list, &hdr->list);
 	else

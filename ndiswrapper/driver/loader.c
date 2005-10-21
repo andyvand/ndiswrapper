@@ -349,7 +349,7 @@ static void *ndiswrapper_add_usb_device(struct usb_device *udev,
 err_add_dev:
 	DeleteDevice(pdo);
 err_pdo:
-	free_pdo(pdo);
+	IoDeleteDevice(pdo);
 err_net_dev:
 	free_netdev(dev);
 	device->wd = NULL;

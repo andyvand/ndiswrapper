@@ -896,7 +896,6 @@ STDCALL NTSTATUS WRAP_EXPORT(IoCreateDevice)
 	dev = allocate_object(size, OBJECT_TYPE_DEVICE, dev_name);
 	if (!dev)
 		IOEXIT(return STATUS_INSUFFICIENT_RESOURCES);
-	IOTRACE("dev: %p", dev);
 	if (dev_ext_length)
 		dev->dev_ext = dev + 1;
 	else
@@ -925,7 +924,7 @@ STDCALL NTSTATUS WRAP_EXPORT(IoCreateDevice)
 	KeInitializeEvent(&dev->lock, SynchronizationEvent, TRUE);
 	dev->vpb = NULL;
 
-	IOTRACE("created device: %p", dev);
+	IOTRACE("dev: %p, ext: %p", dev, dev->dev_ext);
 	*newdev = dev;
 	IOEXIT(return STATUS_SUCCESS);
 }
@@ -984,7 +983,7 @@ STDCALL void WRAP_EXPORT(IoDeleteDevice)
 		IOTRACE("dev_obj: %p", prev);
 		if (prev == dev)
 			dev->drv_obj->dev_obj = dev->next;
-		else {
+		else if (prev) {
 			while (prev->next != dev)
 				prev = prev->next;
 			prev->next = dev->next;
@@ -1059,11 +1058,8 @@ STDCALL void WRAP_EXPORT(IoDetachDevice)
 
 	irql = kspin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL);
 	topdev->attached = tail->attached;
-	IOTRACE("tail->attached:%p", tail->attached);
-
 	for (tail = topdev->attached; tail; tail = tail->attached)
 		tail->stack_size--;
-
 	kspin_unlock_irql(&ntoskernel_lock, irql);
 	ObDereferenceObject(topdev);
 	IOEXIT(return);
