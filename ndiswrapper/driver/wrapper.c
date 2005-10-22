@@ -17,6 +17,9 @@
 #include "iw_ndis.h"
 #include "loader.h"
 
+#include <linux/module.h>
+#include <linux/kmod.h>
+
 static char *if_name = "wlan%d";
 int proc_uid, proc_gid;
 static int hangcheck_interval;
