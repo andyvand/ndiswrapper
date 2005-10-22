@@ -22,10 +22,6 @@ extern KSPIN_LOCK ntoskernel_lock;
 extern KSPIN_LOCK irp_cancel_lock;
 extern struct nt_list object_list;
 
-extern struct work_struct io_work;
-extern struct nt_list io_workitem_list;
-extern KSPIN_LOCK io_workitem_list_lock;
-
 extern KSPIN_LOCK irp_cancel_lock;
 
 STDCALL void WRAP_EXPORT(IoAcquireCancelSpinLock)
@@ -49,6 +45,7 @@ STDCALL NTSTATUS WRAP_EXPORT(IoGetDeviceProperty)
 	struct unicode_string unicode;
 	struct wrapper_dev *wd;
 	char buf[32];
+	int devnum = 1;
 
 	wd = pdo->reserved;
 
@@ -70,8 +67,7 @@ STDCALL NTSTATUS WRAP_EXPORT(IoGetDeviceProperty)
 
 	case DevicePropertyFriendlyName:
 		if (buffer_len > 0 && buffer) {
-			ansi.len = snprintf(buf, sizeof(buf), "%d",
-					    wd->dev.usb.udev->devnum);
+			ansi.len = snprintf(buf, sizeof(buf), "%d", devnum);
 			ansi.buf = buf;
 			ansi.len = strlen(ansi.buf);
 			if (ansi.len <= 0) {
@@ -83,7 +79,8 @@ STDCALL NTSTATUS WRAP_EXPORT(IoGetDeviceProperty)
 			unicode.buflen = buffer_len;
 			IOTRACE("unicode.buflen = %d, ansi.len = %d",
 				unicode.buflen, ansi.len);
-			if (RtlAnsiStringToUnicodeString(&unicode, &ansi, 0)) {
+			if (RtlAnsiStringToUnicodeString(&unicode, &ansi,
+							 FALSE)) {
 				*result_len = 0;
 				IOEXIT(return STATUS_BUFFER_TOO_SMALL);
 			} else {
@@ -91,8 +88,7 @@ STDCALL NTSTATUS WRAP_EXPORT(IoGetDeviceProperty)
 				IOEXIT(return STATUS_SUCCESS);
 			}
 		} else {
-			ansi.len = snprintf(buf, sizeof(buf), "%d",
-					    wd->dev.usb.udev->devnum);
+			ansi.len = snprintf(buf, sizeof(buf), "%d", devnum);
 			*result_len = 2 * (ansi.len + 1);
 			IOEXIT(return STATUS_BUFFER_TOO_SMALL);
 		}
@@ -106,7 +102,8 @@ STDCALL NTSTATUS WRAP_EXPORT(IoGetDeviceProperty)
 		if (buffer_len > 0 && buffer) {
 			unicode.buf = buffer;
 			unicode.buflen = buffer_len;
-			if (RtlAnsiStringToUnicodeString(&unicode, &ansi, 0)) {
+			if (RtlAnsiStringToUnicodeString(&unicode, &ansi,
+							 FALSE)) {
 				*result_len = 0;
 				IOEXIT(return STATUS_BUFFER_TOO_SMALL);
 			} else {
@@ -513,14 +510,11 @@ pdoDispatchInternalDeviceControl(struct device_object *pdo,
 		IoCompleteRequest(irp, IO_NO_INCREMENT);
 	IOEXIT(return status);
 #else
-	do {
-		union nt_urb *nt_urb;
+	{
 		status = irp->io_status.status = STATUS_NOT_IMPLEMENTED;
-		nt_urb = URB_FROM_IRP(irp);
-		NT_URB_STATUS(nt_urb) = USBD_STATUS_NOT_SUPPORTED;
 		IoCompleteRequest(irp, IO_NO_INCREMENT);
 		return status;
-	} while (0)
+	}
 #endif
 }
 
@@ -595,11 +589,11 @@ STDCALL NTSTATUS pdoDispatchPnp(struct device_object *pdo,
 	IOTRACE("fn %d:%d, wd: %p", irp_sl->major_fn, irp_sl->minor_fn, wd);
 	switch (irp_sl->minor_fn) {
 	case IRP_MN_START_DEVICE:
-		irp->io_status.status = miniport_init(wd);
+//		irp->io_status.status = miniport_init(wd);
 		break;
 	case IRP_MN_STOP_DEVICE:
-		miniport_halt(wd);
-		irp->io_status.status = STATUS_SUCCESS;
+//		miniport_halt(wd);
+//		irp->io_status.status = STATUS_SUCCESS;
 		break;
 	case IRP_MN_QUERY_STOP_DEVICE:
 		irp->io_status.status = STATUS_SUCCESS;
@@ -608,7 +602,7 @@ STDCALL NTSTATUS pdoDispatchPnp(struct device_object *pdo,
 		irp->io_status.status = STATUS_SUCCESS;
 		break;
 	case IRP_MN_REMOVE_DEVICE:
-		miniport_halt(wd);
+//		miniport_halt(wd);
 //		free_pdo(wd->nmb->pdo);
 		irp->io_status.status = STATUS_SUCCESS;
 		break;
@@ -783,30 +777,6 @@ STDCALL void WRAP_EXPORT(IoFreeMdl)
 	IOEXIT(return);
 }
 
-void io_worker(void *data)
-{
-	struct io_workitem_entry *io_workitem_entry;
-	struct io_workitem *io_workitem;
-	struct nt_list *cur;
-
-	while (1) {
-		KIRQL irql;
-
-		irql = kspin_lock_irql(&io_workitem_list_lock, DISPATCH_LEVEL);
-		cur = RemoveHeadList(&io_workitem_list);
-		kspin_unlock_irql(&io_workitem_list_lock, irql);
-		if (!cur)
-			break;
-		io_workitem_entry = container_of(cur, struct io_workitem_entry,
-						 list);
-		io_workitem = io_workitem_entry->io_workitem;
-		LIN2WIN2(io_workitem->worker_routine, io_workitem->dev_obj,
-			 io_workitem->context);
-		kfree(io_workitem_entry);
-	}
-	return;
-}
-
 STDCALL struct io_workitem *WRAP_EXPORT(IoAllocateWorkItem)
 	(struct device_object *dev_obj)
 {
@@ -831,39 +801,20 @@ STDCALL void WRAP_EXPORT(IoFreeWorkItem)
 STDCALL void WRAP_EXPORT(ExQueueWorkItem)
 	(struct io_workitem *io_workitem, enum work_queue_type queue_type)
 {
-	struct io_workitem_entry *io_workitem_entry;
-	KIRQL irql;
-
-	IOENTER("");
-	if (io_workitem == NULL) {
-		ERROR("io_work_item is NULL; item not queued");
-		return;
-	}
-
-	io_workitem_entry = kmalloc(sizeof(*io_workitem_entry), GFP_ATOMIC);
-	if (!io_workitem_entry) {
-		ERROR("couldn't allocate memory; item not queued");
-		return;
-	}
-
-	io_workitem->type = queue_type;
-	io_workitem_entry->io_workitem = io_workitem;
-
-	irql = kspin_lock_irql(&io_workitem_list_lock, DISPATCH_LEVEL);
-	InsertTailList(&io_workitem_list, &io_workitem_entry->list);
-	kspin_unlock_irql(&io_workitem_list_lock, irql);
-
-	schedule_work(&io_work);
+	IOENTER("%p", io_workitem);
+	schedule_wrap_work_item(io_workitem->worker_routine,
+				io_workitem->dev_obj, io_workitem->context,
+				TRUE);
 }
 
 STDCALL void WRAP_EXPORT(IoQueueWorkItem)
 	(struct io_workitem *io_workitem, void *func,
 	 enum work_queue_type queue_type, void *context)
 {
+	IOENTER("%p", io_workitem);
 	io_workitem->worker_routine = func;
 	io_workitem->context = context;
-
-	ExQueueWorkItem(io_workitem, queue_type);
+	schedule_wrap_work_item(func, io_workitem, context, TRUE);
 	IOEXIT(return);
 }
 
@@ -930,54 +881,91 @@ STDCALL NTSTATUS WRAP_EXPORT(IoCreateDevice)
 	 ULONG dev_chars, BOOLEAN exclusive, struct device_object **newdev)
 {
 	struct device_object *dev;
+	struct dev_obj_ext *dev_obj_ext;
+	int size;
+	struct ansi_string ansi;
 
 	IOENTER("%p, %u, %p", drv_obj, dev_ext_length, dev_name);
-	dev = ALLOCATE_OBJECT(struct device_object, GFP_KERNEL,
-			      OBJECT_TYPE_DEVICE);
+	if (dev_name && (RtlUnicodeStringToAnsiString(&ansi, dev_name, TRUE)
+			 == STATUS_SUCCESS)) {
+		IOTRACE("dev_name: %s", ansi.buf);
+		RtlFreeAnsiString(&ansi);
+	}
+
+	size = sizeof(*dev) + dev_ext_length + sizeof(*dev_obj_ext);
+	dev = allocate_object(size, OBJECT_TYPE_DEVICE, dev_name);
 	if (!dev)
 		IOEXIT(return STATUS_INSUFFICIENT_RESOURCES);
-	dev->type = dev_type;
-	dev->drv_obj = drv_obj;
-	dev->flags = 0;
-	if (dev_ext_length) {
-		dev->dev_ext = ExAllocatePoolWithTag(NonPagedPool,
-						     dev_ext_length, 0);
-		if (!dev->dev_ext) {
-			ObDereferenceObject(dev);
-			IOEXIT(return STATUS_INSUFFICIENT_RESOURCES);
-		}
-	} else
+	if (dev_ext_length)
+		dev->dev_ext = dev + 1;
+	else
 		dev->dev_ext = NULL;
+
+	dev_obj_ext = ((void *)(dev + 1)) + dev_ext_length;
+	dev_obj_ext->dev_obj = dev;
+	dev_obj_ext->size = 0;
+	dev_obj_ext->type = IO_TYPE_DEVICE;
+	dev->dev_obj_ext = dev_obj_ext;
+
+	dev->type = dev_type;
+	dev->flags = 0;
 	dev->size = sizeof(*dev) + dev_ext_length;
 	dev->ref_count = 1;
 	dev->attached = NULL;
-	dev->next = NULL;
-	dev->type = dev_type;
 	dev->stack_size = 1;
+
+	dev->drv_obj = drv_obj;
+	dev->next = drv_obj->dev_obj;
+	drv_obj->dev_obj = dev;
+
 	dev->align_req = 1;
 	dev->characteristics = dev_chars;
 	dev->io_timer = NULL;
 	KeInitializeEvent(&dev->lock, SynchronizationEvent, TRUE);
 	dev->vpb = NULL;
-	dev->dev_obj_ext = ExAllocatePoolWithTag(NonPagedPool,
-						 sizeof(*(dev->dev_obj_ext)),
-						 0);
-	if (!dev->dev_obj_ext) {
-		if (dev->dev_ext)
-			ExFreePool(dev->dev_ext);
-		ObDereferenceObject(dev);
-		IOEXIT(return STATUS_INSUFFICIENT_RESOURCES);
-	}
-	dev->dev_obj_ext->type = 0;
-	dev->dev_obj_ext->size = sizeof(*dev->dev_obj_ext);
-	dev->dev_obj_ext->dev_obj = dev;
-	drv_obj->dev_obj = dev;
-	if (drv_obj->dev_obj)
-		dev->next = drv_obj->dev_obj;
-	else
-		dev->next = NULL;
-	IOTRACE("%p", dev);
+
+	IOTRACE("dev: %p, ext: %p", dev, dev->dev_ext);
 	*newdev = dev;
+	IOEXIT(return STATUS_SUCCESS);
+}
+
+STDCALL NTSTATUS WRAP_EXPORT(IoCreateUnprotectedSymbolicLink)
+	(struct unicode_string *link, struct unicode_string *dev_name)
+{
+	struct ansi_string ansi;
+
+	IOENTER("%p, %p", dev_name, link);
+	if (dev_name && (RtlUnicodeStringToAnsiString(&ansi, dev_name, TRUE) ==
+			 STATUS_SUCCESS)) {
+		IOTRACE("dev_name: %s", ansi.buf);
+		RtlFreeAnsiString(&ansi);
+	}
+	if (link && (RtlUnicodeStringToAnsiString(&ansi, link, TRUE) ==
+		     STATUS_SUCCESS)) {
+		IOTRACE("link: %s", ansi.buf);
+		RtlFreeAnsiString(&ansi);
+	}
+	UNIMPL();
+	return STATUS_SUCCESS;
+}
+
+STDCALL NTSTATUS WRAP_EXPORT(IoCreateSymbolicLink)
+	(struct unicode_string *link, struct unicode_string *dev_name)
+{
+	return IoCreateUnprotectedSymbolicLink(link, dev_name);
+}
+
+STDCALL NTSTATUS WRAP_EXPORT(IoDeleteSymbolicLink)
+	(struct unicode_string *link)
+{
+	struct ansi_string ansi;
+
+	IOENTER("%p", link);
+	if (link && (RtlUnicodeStringToAnsiString(&ansi, link, TRUE) ==
+		     STATUS_SUCCESS)) {
+		IOTRACE("dev_name: %s", ansi.buf);
+		RtlFreeAnsiString(&ansi);
+	}
 	IOEXIT(return STATUS_SUCCESS);
 }
 
@@ -987,25 +975,19 @@ STDCALL void WRAP_EXPORT(IoDeleteDevice)
 	IOENTER("%p", dev);
 	if (dev == NULL)
 		IOEXIT(return);
-	if (dev->dev_ext)
-		ExFreePool(dev->dev_ext);
-	if (dev->dev_obj_ext)
-		ExFreePool(dev->dev_obj_ext);
 	IOTRACE("drv_obj: %p", dev->drv_obj);
 	if (dev->drv_obj) {
 		struct device_object *prev;
 
 		prev = dev->drv_obj->dev_obj;
 		IOTRACE("dev_obj: %p", prev);
-#if 0
 		if (prev == dev)
 			dev->drv_obj->dev_obj = dev->next;
-		else {
+		else if (prev) {
 			while (prev->next != dev)
 				prev = prev->next;
 			prev->next = dev->next;
 		}
-#endif
 	}
 	ObDereferenceObject(dev);
 	IOEXIT(return);
@@ -1073,16 +1055,13 @@ STDCALL void WRAP_EXPORT(IoDetachDevice)
 	if (!tail)
 		IOEXIT(return);
 	IOTRACE("tail:%p", tail);
-	
+
 	irql = kspin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL);
 	topdev->attached = tail->attached;
-	IOTRACE("tail->attached:%p", tail->attached);
-	ObDereferenceObject(topdev);
-
 	for (tail = topdev->attached; tail; tail = tail->attached)
 		tail->stack_size--;
-
 	kspin_unlock_irql(&ntoskernel_lock, irql);
+	ObDereferenceObject(topdev);
 	IOEXIT(return);
 }
 
@@ -1231,9 +1210,5 @@ STDCALL unsigned int WRAP_EXPORT(IoWMIRegistrationControl)
 	}
 	TRACEEXIT2(return STATUS_SUCCESS);
 }
-
-STDCALL void WRAP_EXPORT(IoCreateSymbolicLink)(void){UNIMPL();}
-STDCALL void WRAP_EXPORT(IoCreateUnprotectedSymbolicLink)(void){UNIMPL();}
-STDCALL void WRAP_EXPORT(IoDeleteSymbolicLink)(void){UNIMPL();}
 
 #include "ntoskernel_io_exports.h"

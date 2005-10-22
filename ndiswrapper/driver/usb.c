@@ -1004,17 +1004,27 @@ static USBD_STATUS wrap_get_port_status(struct irp *irp)
 {
 	struct wrapper_dev *wd;
 	ULONG *status;
-	enum usb_device_state state;
 
 	wd = irp->wd;
 	USBENTER("%p, %p", wd, wd->dev.usb.udev);
 	status = IoGetCurrentIrpStackLocation(irp)->params.others.arg1;
-	state = wd->dev.usb.udev->state;
-	if (state & USB_STATE_ATTACHED)
-		*status |= USBD_PORT_CONNECTED;
-	if (state & USB_STATE_CONFIGURED)
-		*status |= USBD_PORT_ENABLED;
-//	irp->io_status.status_info = 0;
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
+	{
+		enum usb_device_state state;
+		state = wd->dev.usb.udev->state;
+		if (state != USB_STATE_NOTATTACHED &&
+		    state != USB_STATE_SUSPENDED) {
+			*status |= USBD_PORT_CONNECTED;
+			if (state == USB_STATE_CONFIGURED)
+				*status |= USBD_PORT_ENABLED;
+		}
+	}
+#else
+	{
+		/* TODO: how to get current status? */
+		*status = USBD_PORT_CONNECTED | USBD_PORT_ENABLED;
+	}
+#endif
 	return USBD_STATUS_SUCCESS;
 }
 
@@ -1027,7 +1037,7 @@ NTSTATUS wrap_submit_irp(struct device_object *pdo, struct irp *irp)
 	irp_sl = IoGetCurrentIrpStackLocation(irp);
 	wd = pdo->reserved;
 
-	if (unlikely(wd->intf == NULL)) {
+	if (unlikely(wd->dev.usb.intf == NULL)) {
 		irp->io_status.status = STATUS_DEVICE_REMOVED;
 		irp->io_status.status_info = 0;
 		return irp->io_status.status;

@@ -1,3 +1,15 @@
+Version 1.5 2005-XX-XX
+======================
+* SMP issues fixed.
+* Zero-copy for sending packets implemented.
+* It is possible to compile ndiswrapper even if USB is not enabled in
+  kernel, without support for USB devices.
+* Even if USB is enabled in kernel, ndiswrapper can be compiled with
+  'make DISABLE_USB=1' to disable support for USB devices.
+* If a device doesn't resume properly (from suspend), de-initialize
+  device so it can be initialized later. This fixes issue with
+  suspend/resume with Marvell driver.
+
 Version 1.4 2005-10-06
 ======================
 * WPA2 support added.

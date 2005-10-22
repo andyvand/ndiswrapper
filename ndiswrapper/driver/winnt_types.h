@@ -169,6 +169,9 @@ typedef ULONG_PTR SIZE_T;
 typedef ULONG_PTR KAFFINITY;
 typedef ULONG ACCESS_MASK;
 
+/* non-negative numbers indicate success */
+#define NT_SUCCESS(status)  ((NTSTATUS)(status) >= 0)
+
 struct ansi_string {
 	USHORT len;
 	USHORT buflen;
@@ -391,6 +394,14 @@ struct kthread {
 #define is_mutex_dh(dh)			((dh)->absolute == DH_KMUTEX)
 #define is_semaphore_dh(dh)		((dh)->absolute == DH_KSEMAPHORE)
 #define is_kthread_dh(dh)		((dh)->absolute == DH_KTHREAD)
+
+#define IO_TYPE_ADAPTER				1
+#define IO_TYPE_CONTROLLER			2
+#define IO_TYPE_DEVICE				3
+#define IO_TYPE_DRIVER				4
+#define IO_TYPE_FILE				5
+#define IO_TYPE_IRP				6
+#define IO_TYPE_DEVICE_OBJECT_EXTENSION		13
 
 struct irp;
 struct dev_obj_ext;
@@ -787,7 +798,7 @@ enum key_value_information_class {
 struct object_attr {
 	ULONG length;
 	void *root_dir;
-	struct unicode_string name;
+	struct unicode_string *name;
 	ULONG attr;
 	union {
 		void *security_descriptor;
@@ -825,54 +836,21 @@ struct common_object_header {
 	struct nt_list list;
 	enum common_object_type type;
 	int size;
-	struct unicode_string name;
+	struct unicode_string *name;
 	unsigned int ref_count;
 	BOOLEAN close_in_process;
 	BOOLEAN permanent;
 };
 
-#define OBJECT_TO_HEADER(object) \
-	(struct common_object_header *)((void *)(object) - \
+#define OBJECT_TO_HEADER(object)					\
+	(struct common_object_header *)((void *)(object) -		\
 					sizeof(struct common_object_header))
-#define OBJECT_SIZE(object) \
-	(sizeof(object) + sizeof(struct common_object_header))
-#define HEADER_TO_OBJECT(hdr) \
+#define OBJECT_SIZE(size)				\
+	((size) + sizeof(struct common_object_header))
+#define HEADER_TO_OBJECT(hdr)					\
 	((void *)(hdr) + sizeof(struct common_object_header))
 #define HANDLE_TO_OBJECT(handle) HEADER_TO_OBJECT(handle)
 #define HANDLE_TO_HEADER(handle) (handle)
-
-extern struct nt_list object_list;
-extern KSPIN_LOCK ntoskernel_lock;
-#define ALLOCATE_OBJECT(object, flags, obj_type)			\
-	({								\
-		struct common_object_header *__hdr;			\
-		KIRQL __irql;						\
-		void *__body;						\
-		__hdr = kmalloc(OBJECT_SIZE(object), (flags));		\
-		memset(__hdr, 0, OBJECT_SIZE(object));			\
-		__hdr->type = obj_type;					\
-		__hdr->ref_count = 1;					\
-		__irql = kspin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL); \
-		if (obj_type == OBJECT_TYPE_KTHREAD)			\
-			InsertHeadList(&object_list, &__hdr->list);	\
-		else							\
-			InsertTailList(&object_list, &__hdr->list);	\
-		kspin_unlock_irql(&ntoskernel_lock, __irql);		\
-		__body = HEADER_TO_OBJECT(__hdr);			\
-		DBGTRACE3("allocated hdr: %p, body: %p", __hdr, __body); \
-		__body;							\
-	})
-#define FREE_OBJECT(object)						\
-	do {								\
-		struct common_object_header *__hdr;			\
-		KIRQL __irql;						\
-		__hdr = OBJECT_TO_HEADER(object);			\
-		__irql = kspin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL); \
-		RemoveEntryList(&__hdr->list);				\
-		kspin_unlock_irql(&ntoskernel_lock, __irql);		\
-		DBGTRACE3("freed hdr: %p, body: %p", __hdr, object);	\
-		kfree(__hdr);						\
-	} while (0)
 
 enum work_queue_type {
 	CriticalWorkQueue, DelayedWorkQueue, HyperCriticalWorkQueue,
@@ -1099,6 +1077,45 @@ struct kuser_shared_data {
 		volatile struct ksystem_time tick_count;
 		volatile ULONG64 tick_count_quad;
 	} tick;
+};
+
+#define REG_NONE			(0)
+#define REG_SZ				(1)
+#define REG_EXPAND_SZ			(2)
+#define REG_BINARY			(3)
+#define REG_DWORD			(4)
+
+#define RTL_REGISTRY_ABSOLUTE		0
+#define RTL_REGISTRY_SERVICES		1
+#define RTL_REGISTRY_CONTROL		2
+#define RTL_REGISTRY_WINDOWS_NT		3
+#define RTL_REGISTRY_DEVICEMAP		4
+#define RTL_REGISTRY_USER		5
+#define RTL_REGISTRY_MAXIMUM		6
+#define RTL_REGISTRY_HANDLE		0x40000000
+#define RTL_REGISTRY_OPTIONAL		0x80000000
+
+#define RTL_QUERY_REGISTRY_SUBKEY	0x00000001
+#define RTL_QUERY_REGISTRY_TOPKEY	0x00000002
+#define RTL_QUERY_REGISTRY_REQUIRED	0x00000004
+#define RTL_QUERY_REGISTRY_NOVALUE	0x00000008
+#define RTL_QUERY_REGISTRY_NOEXPAND	0x00000010
+#define RTL_QUERY_REGISTRY_DIRECT	0x00000020
+#define RTL_QUERY_REGISTRY_DELETE	0x00000040
+
+typedef NTSTATUS (*PRTL_QUERY_REGISTRY_ROUTINE)(wchar_t *name, ULONG type,
+						void *data, ULONG length,
+						void *context,
+						void *entry) STDCALL;
+
+struct rtl_query_registry_table {
+	PRTL_QUERY_REGISTRY_ROUTINE query_func;
+	ULONG flags;
+	wchar_t *name;
+	void *context;
+	ULONG def_type;
+	void *def_data;
+	ULONG def_length;
 };
 
 /* some of the functions below are slightly different from DDK's

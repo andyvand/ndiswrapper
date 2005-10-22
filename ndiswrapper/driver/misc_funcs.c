@@ -123,7 +123,7 @@ NOREGPARM INT WRAP_EXPORT(_win_sprintf)
 	va_start(args, format);
 	res = vsprintf(buf, format, args);
 	va_end(args);
-	DBGTRACE2("buf: %p", buf);
+	DBGTRACE2("buf: %p: %s", buf, buf);
 	return res;
 }
 
@@ -132,7 +132,7 @@ NOREGPARM INT WRAP_EXPORT(_win_vsprintf)
 {
 	INT i;
 	i = vsprintf(str, format, ap);
-	DBGTRACE2("str: %p", str);
+	DBGTRACE2("str: %p: %s", str, str);
 	TRACEEXIT2(return i);
 }
 
@@ -145,7 +145,7 @@ NOREGPARM INT WRAP_EXPORT(_win_snprintf)
 	va_start(args, format);
 	res = vsnprintf(buf, count, format, args);
 	va_end(args);
-	DBGTRACE2("buf: %p", buf);
+	DBGTRACE2("buf: %p: %s", buf, buf);
 	return res;
 }
 
@@ -158,7 +158,7 @@ NOREGPARM INT WRAP_EXPORT(_win__snprintf)
 	va_start(args, format);
 	res = vsnprintf(buf, count, format, args);
 	va_end(args);
-	DBGTRACE2("buf: %p", buf);
+	DBGTRACE2("buf: %p: %s", buf, buf);
 	return res;
 }
 
@@ -167,7 +167,7 @@ NOREGPARM INT WRAP_EXPORT(_win_vsnprintf)
 {
 	INT i;
 	i = vsnprintf(str, size, format, ap);
-	DBGTRACE2("str: %p", str);
+	DBGTRACE2("str: %p: %s", str, str);
 	TRACEEXIT2(return i);
 }
 
@@ -176,7 +176,7 @@ NOREGPARM INT WRAP_EXPORT(_win__vsnprintf)
 {
 	INT i;
 	i = vsnprintf(str, size, format, ap);
-	DBGTRACE2("str: %p", str);
+	DBGTRACE2("str: %p: %s", str, str);
 	TRACEEXIT2(return i);
 }
 
@@ -219,7 +219,7 @@ NOREGPARM char *WRAP_EXPORT(_win_strncat)
 NOREGPARM INT WRAP_EXPORT(_win_wcscmp)
 	(const wchar_t *s1, const wchar_t *s2)
 {
-	while (*s1 && *s2 && *s1 == *s2) {
+	while (*s1 != L'\0' && *s1 == *s2) {
 		s1++;
 		s2++;
 	}
@@ -229,7 +229,7 @@ NOREGPARM INT WRAP_EXPORT(_win_wcscmp)
 NOREGPARM INT WRAP_EXPORT(_win_wcsicmp)
 	(const wchar_t *s1, const wchar_t *s2)
 {
-	while (*s1 && *s2 && tolower((char)*s1) == tolower((char)*s2)) {
+	while (*s1 != L'\0' && tolower((char)*s1) == tolower((char)*s2)) {
 		s1++;
 		s2++;
 	}
@@ -240,7 +240,7 @@ NOREGPARM SIZE_T WRAP_EXPORT(_win_wcslen)
 	(const wchar_t *s)
 {
 	SIZE_T i = 0;
-	while (s[i])
+	while (s[i] != L'\0')
 		i++;
 	return i;
 }
@@ -249,7 +249,7 @@ NOREGPARM wchar_t *WRAP_EXPORT(_win_wcsncpy)
 	(wchar_t *dest, const wchar_t *src, SIZE_T n)
 {
 	SIZE_T i = 0;
-	while (i < n && src[i]) {
+	while (i < n && src[i] != L'\0') {
 		dest[i] = src[i];
 		i++;
 	}
@@ -444,7 +444,7 @@ STDCALL LONG WRAP_EXPORT(RtlCompareString)
 	const char *p1, *p2;
 
 	TRACEENTER1("%s", "");
-	len = min(s1->len, s2->len);
+	len = min(s1->buflen, s2->buflen);
 	p1 = s1->buf;
 	p2 = s2->buf;
 
@@ -468,19 +468,48 @@ STDCALL LONG WRAP_EXPORT(RtlCompareUnicodeString)
 	const wchar_t *p1, *p2;
 
 	TRACEENTER1("%s", "");
-	len = min(s1->len, s2->len);
+
+#ifdef DEBUG
+	{
+		struct ansi_string ansi;
+		DBGTRACE2("%p, %p", s1, s2);
+		if (s1 && RtlUnicodeStringToAnsiString(&ansi, s1, TRUE) ==
+		    STATUS_SUCCESS) {
+			DBGTRACE2("s1: %s", ansi.buf);
+			RtlFreeAnsiString(&ansi);
+		}
+
+		if (s2 && RtlUnicodeStringToAnsiString(&ansi, s2, TRUE) ==
+		    STATUS_SUCCESS) {
+			DBGTRACE2("s2: %s", ansi.buf);
+			RtlFreeAnsiString(&ansi);
+		}
+	}
+#endif
+	if (!s1 || !s1->buf || !s1->buflen) {
+		if (!s2 || !s2->buf || !s2->buflen)
+			TRACEEXIT1(return 0);
+		else
+			TRACEEXIT1(return -1);
+	}
+	if (!s2 || !s2->buf || !s2->buflen)
+		TRACEEXIT1(return 1);
+	len = min(s1->buflen, s2->buflen);
 	p1 = s1->buf;
 	p2 = s2->buf;
 
+	DBGTRACE2("len: %d, %p, %p", len, p1, p2);
 	if (case_insensitive)
-		while (!ret && len--)
+		while (!ret && len-- && p1 && p2)
 			ret = toupper((u8)*p1++) - toupper((u8)*p2++);
 	else
-		while (!ret && len--)
+		while (!ret && len-- && p1 && p2)
 			ret = *p1++ - *p2++;
+
+	DBGTRACE2("len: %d, %p, %p", len, p1, p2);
 	if (!ret)
-		ret = s1->len - s2->len;
-	return ret;
+		ret = s1->buflen - s2->buflen;
+	TRACEEXIT2(return ret);
 }
 
 STDCALL BOOLEAN WRAP_EXPORT(RtlEqualString)
@@ -497,8 +526,12 @@ STDCALL BOOLEAN WRAP_EXPORT(RtlEqualUnicodeString)
 	(const struct unicode_string *s1, const struct unicode_string *s2,
 	 BOOLEAN case_insensitive)
 {
-	if (s1->len != s2->len)
-		return 0;
+	TRACEENTER2("s1: %p, s1->len: %d, s1->buflen: %d",
+		    s1, s1->len, s1->buflen);
+	TRACEENTER2("s2: %p, s2->len: %d, s2->buflen: %d",
+		    s2, s2->len, s2->buflen);
+	if (s1->buflen != s2->buflen)
+		return FALSE;
 	return !RtlCompareUnicodeString(s1, s2, case_insensitive);
 }
 
@@ -553,18 +586,23 @@ STDCALL NTSTATUS WRAP_EXPORT(RtlAnsiStringToUnicodeString)
 	char *s;
 
 	TRACEENTER2("dup: %d src: %s", dup, src->buf);
-	if (dup) {
+
+	dst->buflen = 0;
+	if (dup)
+		dst->buf = NULL;
+	if (!src->buf || src->buflen <= 0)
+		TRACEEXIT2(return STATUS_SUCCESS);
+	if (dup == TRUE) {
 		wchar_t *buf = kmalloc((src->buflen+1) * sizeof(wchar_t),
 				       GFP_KERNEL);
 		if (!buf)
 			TRACEEXIT1(return STATUS_FAILURE);
 		dst->buf = buf;
-		dst->buflen = (src->buflen+1) * sizeof(wchar_t);
+		dst->len = dst->buflen = (src->buflen+1) * sizeof(wchar_t);
 	}
 	else if (dst->buflen < (src->len+1) * sizeof(wchar_t))
 		TRACEEXIT1(return STATUS_FAILURE);
 
-	dst->len = src->len * sizeof(wchar_t);
 	d = dst->buf;
 	s = src->buf;
 	for(i = 0; i < src->len; i++)
@@ -577,7 +615,8 @@ STDCALL NTSTATUS WRAP_EXPORT(RtlAnsiStringToUnicodeString)
 }
 
 STDCALL NTSTATUS WRAP_EXPORT(RtlUnicodeStringToAnsiString)
-	(struct ansi_string *dst, struct unicode_string *src, BOOLEAN dup)
+	(struct ansi_string *dst, const struct unicode_string *src,
+	 BOOLEAN dup)
 {
 	int i;
 	wchar_t *s;
@@ -586,17 +625,21 @@ STDCALL NTSTATUS WRAP_EXPORT(RtlUnicodeStringToAnsiString)
 	TRACEENTER2("dup: %d src->len: %d src->buflen: %d, src->buf: %p,"
 		    "dst: %p", dup, src->len, src->buflen, src->buf, dst);
 
-	if (dup) {
+	dst->buflen = 0;
+	if (dup)
+		dst->buf = NULL;
+	if (!src->buf || src->buflen <= 0)
+		TRACEEXIT2(return STATUS_SUCCESS);
+	if (dup == TRUE) {
 		char *buf = kmalloc((src->buflen+1) / sizeof(wchar_t),
 				    GFP_KERNEL);
 		if (!buf)
 			return STATUS_FAILURE;
 		dst->buf = buf;
-		dst->buflen = (src->buflen+1) / sizeof(wchar_t);
+		dst->len = dst->buflen = (src->buflen+1) / sizeof(wchar_t);
 	} else if (dst->buflen < (src->len+1) / sizeof(wchar_t))
 		return STATUS_FAILURE;
 
-	dst->len = src->len / sizeof(wchar_t);
 	s = src->buf;
 	d = dst->buf;
 	for(i = 0; i < dst->len; i++)
@@ -676,7 +719,7 @@ STDCALL NTSTATUS WRAP_EXPORT(RtlUnicodeStringToInteger)
 STDCALL NTSTATUS WRAP_EXPORT(RtlIntegerToUnicodeString)
 	(ULONG value, ULONG base, struct unicode_string *ustring)
 {
-	char string[sizeof(wchar_t) * 8 + 1];
+	char string[sizeof(wchar_t) * sizeof(ULONG) * 2 + 1];
 	struct ansi_string ansi;
 	int i;
 
@@ -774,23 +817,78 @@ STDCALL void WRAP_EXPORT(RtlFreeAnsiString)
 }
 
 STDCALL NTSTATUS WRAP_EXPORT(RtlQueryRegistryValues)
-	(ULONG relative, wchar_t *path, void *tbl, void *context,
-	 void *env)
+	(ULONG relative, wchar_t *path, struct rtl_query_registry_table *tbl,
+	 void *context, void *env)
 {
 	struct ansi_string ansi;
 	struct unicode_string unicode;
-	char buf[32];
+	NTSTATUS status, ret;
 
-	TRACEENTER3("%d, %p", relative, tbl);
+	TRACEENTER3("%x, %p", relative, tbl);
 	UNIMPL();
 
-	ansi.buf = buf;
-	ansi.buflen = sizeof(buf);
 	unicode.buf = path;
 	unicode.len = unicode.buflen = _win_wcslen(path);
-	RtlUnicodeStringToAnsiString(&ansi, &unicode, FALSE);
-	DBGTRACE2("%d, %s, %p", relative, buf, tbl);
-	TRACEEXIT3(return STATUS_SUCCESS);
+	if (RtlUnicodeStringToAnsiString(&ansi, &unicode, TRUE) ==
+	    STATUS_SUCCESS) {
+		DBGTRACE2("%s", ansi.buf);
+		RtlFreeAnsiString(&ansi);
+	}
+	ret = STATUS_SUCCESS;
+	for (; tbl->name; tbl++) {
+		unicode.buf = tbl->name;
+		unicode.len = unicode.buflen = _win_wcslen(tbl->name);
+		if (RtlUnicodeStringToAnsiString(&ansi, &unicode, TRUE) ==
+		    STATUS_SUCCESS) {
+			DBGTRACE2("name: %s", ansi.buf);
+			RtlFreeAnsiString(&ansi);
+		}
+		DBGTRACE2("flags: %08X", tbl->flags);
+		if (tbl->flags == RTL_QUERY_REGISTRY_DIRECT) {
+			DBGTRACE2("type: %08X", tbl->def_type);
+			if (tbl->def_type == REG_DWORD) {
+				/* Atheros USB driver needs this, but
+				 * don't know where and how to get its
+				 * value */
+				if (tbl->def_data) {
+					DBGTRACE2("def_data: %x",
+						  *(int *)tbl->def_data);
+					*(DWORD *)tbl->context =
+						*(DWORD *)tbl->def_data;
+				} else
+					*(DWORD *)tbl->context = 0x2345dbe;
+			}
+		} else {
+			void *data;
+			ULONG type, length;
+
+			if (!tbl->query_func) {
+				ERROR("oops: no query_func");
+				ret = STATUS_INVALID_PARAMETER;
+				break;
+			}
+			if (tbl->flags & RTL_QUERY_REGISTRY_NOVALUE) {
+				data = NULL;
+				type = REG_NONE;
+				length = 0;
+			} else {
+				data = tbl->def_data;
+				type = tbl->def_type;
+				length = tbl->def_length;;
+			}
+			DBGTRACE2("calling query_func: %p", tbl->query_func);
+			status = LIN2WIN6(tbl->query_func, tbl->name, type,
+					  data, length, context, env);
+			DBGTRACE2("status: %08X", status);
+			if (status) {
+				if (status == STATUS_BUFFER_TOO_SMALL)
+					ret = STATUS_BUFFER_TOO_SMALL;
+				else
+					TRACEEXIT2(return STATUS_INVALID_PARAMETER);
+			}
+		}
+	}
+	TRACEEXIT3(return ret);
 }
 
 STDCALL NTSTATUS WRAP_EXPORT(RtlWriteRegistryValue)
@@ -799,21 +897,24 @@ STDCALL NTSTATUS WRAP_EXPORT(RtlWriteRegistryValue)
 {
 	struct ansi_string ansi;
 	struct unicode_string unicode;
-	char buf[32];
 
 	TRACEENTER3("%d", relative);
 	UNIMPL();
 
-	ansi.buf = buf;
-	ansi.buflen = sizeof(buf);
 	unicode.buf = path;
 	unicode.len = unicode.buflen = _win_wcslen(path);
-	RtlUnicodeStringToAnsiString(&ansi, &unicode, FALSE);
-	DBGTRACE3("path: %s", buf);
+	if (RtlUnicodeStringToAnsiString(&ansi, &unicode, TRUE) ==
+	    STATUS_SUCCESS) {
+		DBGTRACE2("%s", ansi.buf);
+		RtlFreeAnsiString(&ansi);
+	}
 	unicode.buf = name;
 	unicode.len = unicode.buflen = _win_wcslen(name);
-	RtlUnicodeStringToAnsiString(&ansi, &unicode, FALSE);
-	DBGTRACE3("name: %s", buf);
+	if (RtlUnicodeStringToAnsiString(&ansi, &unicode, TRUE) ==
+	    STATUS_SUCCESS) {
+		DBGTRACE2("%s", ansi.buf);
+		RtlFreeAnsiString(&ansi);
+	}
 	TRACEEXIT5(return STATUS_SUCCESS);
 }
 
