@@ -2167,17 +2167,12 @@ NdisMSetInformationComplete(struct ndis_miniport_block *nmb,
 STDCALL void WRAP_EXPORT(NdisMSleep)
 	(ULONG us)
 {
+	unsigned long delay;
+
 	TRACEENTER4("%p: us: %u", get_current(), us);
-	/* in case somehow we end up here with DISPATH_LEVEL */
-	if (current_irql() >= DISPATCH_LEVEL) {
-		ERROR("irql >= DISPATCH_LEVEL");
-		udelay(us);
-	} else {
-		unsigned long delay;
-		delay = USEC_TO_HZ(us) + 1;
-		set_current_state(TASK_INTERRUPTIBLE);
-		schedule_timeout(delay);
-	}
+	delay = USEC_TO_HZ(us) + 1;
+	set_current_state(TASK_INTERRUPTIBLE);
+	schedule_timeout(delay);
 	DBGTRACE4("%p: done", get_current());
 	TRACEEXIT4(return);
 }
