@@ -16,7 +16,7 @@
 #ifndef _NTOSKERNEL_H_
 #define _NTOSKERNEL_H_
 
-#define UTILS_VERSION "1.4"
+#define UTILS_VERSION "1.5"
 
 #include <linux/types.h>
 #include <linux/timer.h>
@@ -31,14 +31,18 @@
 #include <linux/mm.h>
 #include <linux/random.h>
 #include <linux/ctype.h>
-#include <linux/usb.h>
 #include <linux/list.h>
 #include <linux/sched.h>
-
+#include <linux/usb.h>
 #include <linux/spinlock.h>
 #include <asm/mman.h>
-
 #include <linux/version.h>
+#include <linux/etherdevice.h>
+#include <net/iw_handler.h>
+#include <linux/netdevice.h>
+#include <linux/ethtool.h>
+#include <linux/if_arp.h>
+#include <linux/rtnetlink.h>
 
 #include "winnt_types.h"
 #include "ndiswrapper.h"
@@ -46,6 +50,11 @@
 
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,7)
 #include <linux/kthread.h>
+#endif
+
+#if defined(DISABLE_USB)
+#undef CONFIG_USB
+#undef CONFIG_USB_MODULE
 #endif
 
 #if !defined(CONFIG_USB) && defined(CONFIG_USB_MODULE)
@@ -194,6 +203,10 @@ typedef u32 pm_message_t;
 
 #ifndef PM_EVENT_SUSPEND
 #define PM_EVENT_SUSPEND 2
+#endif
+
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,9)
+#define pci_choose_state(dev, state) (state)
 #endif
 
 #if defined(CONFIG_SOFTWARE_SUSPEND2) || defined(CONFIG_SUSPEND2)
@@ -403,17 +416,22 @@ extern KSPIN_LOCK cancel_lock;
 
 //#define DEBUG_IRQL 1
 
-enum wrap_timer_type { WRAP_TIMER_TYPE_KERNEL = 1, WRAP_TIMER_TYPE_NDIS };
-
 struct wrap_timer {
 	long repeat;
 	struct nt_list list;
 	struct timer_list timer;
 	struct ktimer *ktimer;
-	enum wrap_timer_type type;
 #ifdef DEBUG_TIMER
 	unsigned long wrap_timer_magic;
 #endif
+};
+
+struct wrap_work_item {
+	struct nt_list list;
+	void *arg1;
+	void *arg2;
+	void *func;
+	BOOLEAN win_func;
 };
 
 typedef struct mdl ndis_buffer;
@@ -425,6 +443,7 @@ struct phys_dev {
 	struct pci_dev *pci;
 	struct {
 		struct usb_device *udev;
+		struct usb_interface *intf;
 		int num_alloc_urbs;
 		struct nt_list wrap_urb_list;
 	} usb;
@@ -444,6 +463,10 @@ int ntoskernel_init(void);
 void ntoskernel_exit(void);
 int ntoskernel_init_device(struct wrapper_dev *wd);
 void ntoskernel_exit_device(struct wrapper_dev *wd);
+void *allocate_object(ULONG size, enum common_object_type type,
+		      struct unicode_string *name);
+void  free_object(void *object);
+
 struct driver_object *find_bus_driver(const char *name);
 struct device_object *alloc_pdo(struct driver_object *drv_obj);
 void free_pdo(struct device_object *drv_obj);
@@ -494,6 +517,8 @@ STDCALL NTSTATUS IoCreateDevice(struct driver_object *driver,
 				DEVICE_TYPE dev_type,
 				ULONG dev_chars, BOOLEAN exclusive,
 				struct device_object **dev_obj);
+STDCALL NTSTATUS IoCreateSymbolicLink(struct unicode_string *link,
+				      struct unicode_string *dev_name);
 STDCALL void IoDeleteDevice(struct device_object *dev);
 STDCALL void IoDetachDevice(struct device_object *topdev);
 STDCALL struct device_object *IoGetAttachedDevice(struct device_object *dev);
@@ -539,6 +564,9 @@ struct kthread *wrap_create_thread(struct task_struct *task);
 void wrap_remove_thread(struct kthread *kthread);
 u64 ticks_1601(void);
 
+int schedule_wrap_work_item(void *func, void *arg1, void *arg2,
+			    BOOLEAN win_func);
+
 STDCALL KIRQL KeGetCurrentIrql(void);
 STDCALL void KeInitializeSpinLock(KSPIN_LOCK *lock);
 STDCALL void KeAcquireSpinLock(KSPIN_LOCK *lock, KIRQL *irql);
@@ -558,9 +586,9 @@ IofCompleteRequest(FASTCALL_DECL_2(struct irp *irp, CHAR prio_boost));
 _FASTCALL void
 KefReleaseSpinLockFromDpcLevel(FASTCALL_DECL_1(KSPIN_LOCK *lock));
 STDCALL void RtlCopyMemory(void *dst, const void *src, SIZE_T length);
-STDCALL NTSTATUS RtlUnicodeStringToAnsiString(struct ansi_string *dst,
-					       struct unicode_string *src,
-					       BOOLEAN dup);
+STDCALL NTSTATUS RtlUnicodeStringToAnsiString(
+	struct ansi_string *dst, const struct unicode_string *src,
+	BOOLEAN dup);
 STDCALL NTSTATUS RtlAnsiStringToUnicodeString(struct unicode_string *dst,
 					       struct ansi_string *src,
 					       BOOLEAN dup);
@@ -582,8 +610,7 @@ void wrap_kfree(void *ptr);
 void wrap_init_timer(struct ktimer *ktimer, enum timer_type type,
 		     struct wrapper_dev *wd);
 BOOLEAN wrap_set_timer(struct ktimer *ktimer, unsigned long expires_hz,
-		       unsigned long repeat_hz, struct kdpc *kdpc,
-		       enum wrap_timer_type type);
+		       unsigned long repeat_hz, struct kdpc *kdpc);
 
 STDCALL void KeInitializeTimer(struct ktimer *ktimer);
 STDCALL void KeInitializeTimerEx(struct ktimer *ktimer, enum timer_type type);
@@ -676,52 +703,77 @@ static inline void lower_irql(KIRQL oldirql)
  * lock seems to be 0 (presumably in Windows value of unlocked
  * spinlock is 0).
  */
-#define KSPIN_LOCK_UNLOCKED 0
-#define KSPIN_LOCK_LOCKED 1
 
-#define kspin_lock_init(lock) *(lock) = KSPIN_LOCK_UNLOCKED
+/* define CONFIG_DEBUG_SPINLOCK if a Windows driver is suspected of
+ * obtaining a lock while holding the same lock */
+
+//#ifndef CONFIG_DEBUG_SPINLOCK
+//#define CONFIG_DEBUG_SPINLOCK
+//#endif
+
+#undef CONFIG_DEBUG_SPINLOCK
+
+#define KSPIN_LOCK_UNLOCKED 0
+
+#if defined(CONFIG_DEBUG_SPINLOCK)
+#define KSPIN_LOCK_LOCKED ((ULONG_PTR)get_current())
+#else
+#define KSPIN_LOCK_LOCKED 1
+#endif
+
+#define kspin_lock_init(lock) do { *(lock) = KSPIN_LOCK_UNLOCKED; } while (0)
+#define kspin_unlock(lock) do { *(lock) = KSPIN_LOCK_UNLOCKED; } while (0)
 
 #ifdef CONFIG_SMP
 
-#ifdef __HAVE_ARCH_CMPXCHG
+#if defined(CONFIG_DEBUG_SPINLOCK)
+
+extern spinlock_t spinlock_kspin_lock;
+#define kspin_lock(lock)						\
+while (1) {								\
+	spin_lock(&spinlock_kspin_lock);				\
+	if (*(lock) == KSPIN_LOCK_UNLOCKED) {				\
+		*(lock) = (ULONG_PTR)get_current();			\
+		spin_unlock(&spinlock_kspin_lock);			\
+		break;							\
+	}								\
+	if (*(lock) == (ULONG_PTR)get_current()) {			\
+		ERROR("eeek: process %p already obtained lock %p",	\
+		      get_current(), lock);				\
+		spin_unlock(&spinlock_kspin_lock);			\
+		break;							\
+	}								\
+	spin_unlock(&spinlock_kspin_lock);				\
+}									\
+
+#else // DEBUG_SPINLOCK
 
 #define kspin_lock(lock)						\
 	while (cmpxchg(lock, KSPIN_LOCK_UNLOCKED, KSPIN_LOCK_LOCKED) != \
 	       KSPIN_LOCK_UNLOCKED)
 
+#endif // DEBUG_SPINLOCK
+
+#else // SMP
+
+#define kspin_lock(lock) do { *(lock) = KSPIN_LOCK_LOCKED; } while (0)
+
+#endif // SMP
+
+#if defined(CONFIG_DEBUG_SPINLOCK)
+#define CHECK_KSPIN_LOCKED(lock)					\
+	do {								\
+		if (*(lock) != KSPIN_LOCK_LOCKED)			\
+			ERROR("kspin_lock %p not locked!", (lock));	\
+	} while (0)
 #else
-
-extern spinlock_t spinlock_kspin_lock;
-#define kspin_lock(lock)				\
-do {							\
-	while (1) {					\
-		spin_lock(&spinlock_kspin_lock);	\
-		if (*(lock) == KSPIN_LOCK_UNLOCKED)	\
-			break;				\
-		spin_unlock(&spinlock_kspin_lock);	\
-	}						\
-	*(lock) = KSPIN_LOCK_LOCKED;			\
-	spin_unlock(&spinlock_kspin_lock);		\
-} while (0)
-
-#endif // __HAVE_ARCH_CMPXCHG
-
-#define kspin_unlock(lock) xchg(lock, KSPIN_LOCK_UNLOCKED)
-
-#else
-
-#define kspin_lock(lock) *(lock) = KSPIN_LOCK_LOCKED
-#define kspin_unlock(lock) *(lock) = KSPIN_LOCK_UNLOCKED
-
-#endif // CONFIG_SMP
+#define CHECK_KSPIN_LOCKED(lock) do { } while (0)
+#endif
 
 /* raise IRQL to given (higher) IRQL if necessary before locking */
 #define kspin_lock_irql(lock, newirql)					\
 ({									\
 	KIRQL _cur_irql_ = current_irql();				\
-	KSPIN_LOCK _val_ = *(lock);					\
-	if (_val_ > KSPIN_LOCK_LOCKED)					\
-		ERROR("illegal spinlock: %p(%lu)", lock, _val_);	\
 	if (_cur_irql_ < DISPATCH_LEVEL && newirql == DISPATCH_LEVEL) {	\
 		local_bh_disable();					\
 		preempt_disable();					\
@@ -734,9 +786,7 @@ do {							\
 #define kspin_unlock_irql(lock, oldirql)				\
 do {									\
 	KIRQL _cur_irql_ = current_irql();				\
-	KSPIN_LOCK _val_ = *(lock);					\
-	if (_val_ > KSPIN_LOCK_LOCKED)					\
-		ERROR("illegal spinlock: %p(%lu)", lock, _val_);	\
+	CHECK_KSPIN_LOCKED(lock);					\
 	kspin_unlock(lock);						\
 	if (oldirql < DISPATCH_LEVEL && _cur_irql_ == DISPATCH_LEVEL) {	\
 		preempt_enable();					\
@@ -746,9 +796,6 @@ do {									\
 
 #define kspin_lock_irqsave(lock, flags)					\
 do {									\
-	KSPIN_LOCK _val_ = *(lock);					\
-	if (_val_ > KSPIN_LOCK_LOCKED)					\
-		ERROR("illegal spinlock: %p(%lu)", lock, _val_);	\
 	local_irq_save(flags);						\
 	preempt_disable();						\
 	kspin_lock(lock);						\
@@ -756,9 +803,6 @@ do {									\
 
 #define kspin_unlock_irqrestore(lock, flags)				\
 do {									\
-	KSPIN_LOCK _val_ = *(lock);					\
-	if (_val_ > KSPIN_LOCK_LOCKED)					\
-		ERROR("illegal spinlock: %p(%lu)", lock, _val_);	\
 	kspin_unlock(lock);						\
 	local_irq_restore(flags);					\
 	preempt_enable();						\
@@ -887,7 +931,7 @@ extern int debug;
 			ERROR("assertion failed: %s", (#expr));		\
 	} while (0)
 #else
-#define assert(expr)
+#define assert(expr) do { } while (0)
 #endif
 
 #if defined(IO_DEBUG)

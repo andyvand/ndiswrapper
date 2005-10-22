@@ -13,39 +13,25 @@
  *
  */
 
-#include <linux/init.h>
-#include <linux/module.h>
-#include <linux/kernel.h>
-#include <linux/vmalloc.h>
-#include <linux/kmod.h>
-
-#include <linux/types.h>
-#include <linux/fs.h>
-#include <linux/errno.h>
-#include <linux/miscdevice.h>
-#include <linux/pci.h>
-
-#include <linux/netdevice.h>
-#include <linux/etherdevice.h>
-#include <linux/ethtool.h>
-#include <linux/if_arp.h>
-#include <net/iw_handler.h>
-#include <linux/rtnetlink.h>
-#include <asm/pgtable.h>
-#include <asm/uaccess.h>
-
 #include "ndis.h"
 #include "loader.h"
 #include "wrapper.h"
+
+#include <linux/module.h>
+#include <linux/kmod.h>
+#include <linux/miscdevice.h>
+#include <asm/uaccess.h>
 
 static KSPIN_LOCK loader_lock;
 static struct ndis_device *ndis_devices;
 static unsigned int num_ndis_devices;
 struct nt_list ndis_drivers;
 static struct pci_device_id *ndiswrapper_pci_devices;
-static struct usb_device_id *ndiswrapper_usb_devices;
 static struct pci_driver ndiswrapper_pci_driver;
+#if defined(CONFIG_USB)
+static struct usb_device_id *ndiswrapper_usb_devices;
 static struct usb_driver ndiswrapper_usb_driver;
+#endif
 
 extern int debug;
 
@@ -151,7 +137,7 @@ static int ndiswrapper_add_pci_device(struct pci_dev *pdev,
 	if (!driver)
 		return -ENODEV;
 
-	dev = ndis_init_netdev(&wd, device, driver);
+	dev = init_netdev(&wd, device, driver);
 	if (!dev) {
 		ERROR("couldn't initialize network device");
 		return -ENOMEM;
@@ -210,8 +196,8 @@ static int ndiswrapper_add_pci_device(struct pci_dev *pdev,
 				"may not work with more than 1GB RAM");
 	}
 #endif
-	if (setup_device(wd)) {
-		ERROR("couldn't setup network device");
+	if (ndiswrapper_start_device(wd)) {
+		ERROR("couldn't start device");
 		res = -EINVAL;
 		goto err_regions;
 	}
@@ -245,15 +231,7 @@ static void __devexit ndiswrapper_remove_pci_device(struct pci_dev *pdev)
 
 	if (!wd)
 		TRACEEXIT1(return);
-
-	atomic_dec(&wd->driver->users);
-	if (wd->ndis_device)
-		wd->ndis_device->wd = NULL;
-	ndiswrapper_remove_device(wd);
-
-	pci_release_regions(pdev);
-	pci_disable_device(pdev);
-	pci_set_drvdata(pdev, NULL);
+	ndiswrapper_stop_device(wd);
 }
 
 #ifdef CONFIG_USB
@@ -288,11 +266,19 @@ static void *ndiswrapper_add_usb_device(struct usb_device *udev,
 
 	driver = ndiswrapper_load_driver(device);
 	if (!driver)
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
 		return -ENODEV;
-	dev = ndis_init_netdev(&wd, device, driver);
+#else
+		return NULL;
+#endif
+	dev = init_netdev(&wd, device, driver);
 	if (!dev) {
 		ERROR("couldn't initialize network device");
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
 		return -ENOMEM;
+#else
+		return NULL;
+#endif
 	}
 
 	/* first create pdo */
@@ -320,16 +306,16 @@ static void *ndiswrapper_add_usb_device(struct usb_device *udev,
 
 	wd->dev.usb.udev = interface_to_usbdev(intf);
 	usb_set_intfdata(intf, wd);
-	wd->intf = intf;
+	wd->dev.usb.intf = intf;
 #else
 	wd->dev.usb.udev = udev;
-	wd->intf = usb_ifnum_to_if(udev, ifnum);
+	wd->dev.usb.intf = usb_ifnum_to_if(udev, ifnum);
 #endif
 
 	TRACEENTER1("calling ndis init routine");
 
-	if (setup_device(wd)) {
-		ERROR("couldn't setup network device");
+	if (ndiswrapper_start_device(wd)) {
+		ERROR("couldn't start device");
 		res = -EINVAL;
 		goto err_add_dev;
 	}
@@ -347,7 +333,7 @@ static void *ndiswrapper_add_usb_device(struct usb_device *udev,
 err_add_dev:
 	DeleteDevice(pdo);
 err_pdo:
-	free_pdo(pdo);
+	IoDeleteDevice(pdo);
 err_net_dev:
 	free_netdev(dev);
 	device->wd = NULL;
@@ -366,22 +352,16 @@ ndiswrapper_remove_usb_device(struct usb_interface *intf)
 {
 	struct wrapper_dev *wd;
 
-//	debug = 3;
 	TRACEENTER1("");
-
 	wd = (struct wrapper_dev *)usb_get_intfdata(intf);
 	if (!wd)
 		TRACEEXIT1(return);
 
 	if (!test_bit(HW_RMMOD, &wd->hw_status))
 		miniport_surprise_remove(wd);
-	wd->intf = NULL;
+	wd->dev.usb.intf = NULL;
 	usb_set_intfdata(intf, NULL);
-	atomic_dec(&wd->driver->users);
-	if (wd->ndis_device)
-		wd->ndis_device->wd = NULL;
-	ndiswrapper_remove_device(wd);
-	debug = 0;
+	ndiswrapper_stop_device(wd);
 }
 #else
 static void
@@ -390,16 +370,15 @@ ndiswrapper_remove_usb_device(struct usb_device *udev, void *ptr)
 	struct wrapper_dev *wd = (struct wrapper_dev *)ptr;
 
 	TRACEENTER1("");
-
-	if (!wd || !wd->intf)
+	if (!wd || !wd->dev.usb.intf)
 		TRACEEXIT1(return);
 	if (!test_bit(HW_RMMOD, &wd->hw_status))
 		miniport_surprise_remove(wd);
-	wd->intf = NULL;
+	wd->dev.usb.intf = NULL;
 	atomic_dec(&wd->driver->users);
 	if (wd->ndis_device)
 		wd->ndis_device->wd = NULL;
-	ndiswrapper_remove_device(wd);
+	ndiswrapper_stop_device(wd);
 }
 #endif
 #endif /* CONFIG_USB */
@@ -804,7 +783,9 @@ static int register_devices(struct load_devices *load_devices)
 
 	devices = NULL;
 	ndiswrapper_pci_devices = NULL;
+#if defined(CONFIG_USB)
 	ndiswrapper_usb_devices = NULL;
+#endif
 	ndis_devices = NULL;
 	devices = vmalloc(load_devices->count * sizeof(struct load_device));
 	if (!devices) {
@@ -840,6 +821,7 @@ static int register_devices(struct load_devices *load_devices)
 		       (num_pci + 1) * sizeof(struct pci_device_id));
 	}
 
+#if defined(CONFIG_USB)
 	if (num_usb > 0) {
 		ndiswrapper_usb_devices =
 			kmalloc((num_usb + 1) * sizeof(struct usb_device_id),
@@ -851,6 +833,7 @@ static int register_devices(struct load_devices *load_devices)
 		memset(ndiswrapper_usb_devices, 0,
 		       (num_usb + 1) * sizeof(struct usb_device_id));
 	}
+#endif
 
 	ndis_devices = vmalloc(num_ndis_devices * sizeof(*ndis_devices));
 	if (!ndis_devices) {
@@ -920,8 +903,7 @@ static int register_devices(struct load_devices *load_devices)
 				  device->vendor, device->device);
 #endif
 		} else {
-			ERROR("system doesn't support bus type %d",
-			      device->bustype);
+			ERROR("bus type %d not supported", device->bustype);
 		}
 	}
 
@@ -970,9 +952,11 @@ err:
 	if (ndis_devices)
 		vfree(ndis_devices);
 	ndis_devices = NULL;
+#if defined(CONFIG_USB)
 	if (ndiswrapper_usb_devices)
 		kfree(ndiswrapper_usb_devices);
 	ndiswrapper_usb_devices = NULL;
+#endif
 	if (ndiswrapper_pci_devices)
 		kfree(ndiswrapper_pci_devices);
 	ndiswrapper_pci_devices = NULL;
