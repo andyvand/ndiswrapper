@@ -328,13 +328,14 @@ struct dispatch_header {
 
 /* type of object a dh is associated with */
 enum dh_type {
-	DH_NONE, DH_KEVENT, DH_NT_TIMER, DH_KMUTEX, DH_KSEMAPHORE, DH_KTHREAD,
+	DH_NONE, DH_NT_EVENT, DH_NT_TIMER, DH_NT_MUTEX, DH_NT_SEMAPHORE,
+	DH_NT_THREAD,
 };
 
 /* objects that use dispatch_header have it as the first field, so
  * whenever we need to initialize dispatch_header, we can convert that
- * object into a kevent and access dispatch_header */
-struct kevent {
+ * object into a nt_event and access dispatch_header */
+struct nt_event {
 	struct dispatch_header dh;
 };
 
@@ -360,7 +361,7 @@ struct nt_timer {
 	};
 };
 
-struct kmutex {
+struct nt_mutex {
 	struct dispatch_header dh;
 	struct nt_list list;
 	void *owner_thread;
@@ -368,13 +369,13 @@ struct kmutex {
 	BOOLEAN apc_disable;
 };
 
-struct ksemaphore {
+struct nt_semaphore {
 	struct dispatch_header dh;
 	LONG limit;
 };
 
 #pragma pack(push,1)
-struct kthread {
+struct nt_thread {
 	struct dispatch_header dh;
 	/* the rest in Windows is a long structure; since this
 	 * structure is opaque to drivers, we just define what we
@@ -389,11 +390,11 @@ struct kthread {
 #pragma pack(pop)
 
 #define set_dh_type(dh, type)		((dh)->absolute = (type))
-#define is_kevent_dh(dh)		((dh)->absolute == DH_KVENT)
+#define is_nt_event_dh(dh)		((dh)->absolute == DH_KVENT)
 #define is_nt_timer_dh(dh)		((dh)->absolute == DH_NT_TIMER)
-#define is_mutex_dh(dh)			((dh)->absolute == DH_KMUTEX)
-#define is_semaphore_dh(dh)		((dh)->absolute == DH_KSEMAPHORE)
-#define is_kthread_dh(dh)		((dh)->absolute == DH_KTHREAD)
+#define is_mutex_dh(dh)			((dh)->absolute == DH_NT_MUTEX)
+#define is_semaphore_dh(dh)		((dh)->absolute == DH_NT_SEMAPHORE)
+#define is_nt_thread_dh(dh)		((dh)->absolute == DH_NT_THREAD)
 
 #define IO_TYPE_ADAPTER				1
 #define IO_TYPE_CONTROLLER			2
@@ -430,7 +431,7 @@ struct device_object {
 	struct kdpc dpc;
 	ULONG active_threads;
 	void *security_desc;
-	struct kevent lock;
+	struct nt_event lock;
 	USHORT sector_size;
 	USHORT spare1;
 	struct dev_obj_ext *dev_obj_ext;
@@ -512,8 +513,8 @@ struct file_object {
 	ULONG waiters;
 	ULONG busy;
 	void *last_lock;
-	struct kevent lock;
-	struct kevent event;
+	struct nt_event lock;
+	struct nt_event event;
 	void *completion_context;
 };
 
@@ -621,7 +622,7 @@ struct kapc {
 	CSHORT type;
 	CSHORT size;
 	ULONG spare0;
-	struct kthread *thread;
+	struct nt_thread *thread;
 	struct nt_list list;
 	void *kernele_routine;
 	void *rundown_routine;
@@ -682,7 +683,7 @@ struct irp {
 	UCHAR alloc_flags;
 
 	struct io_status_block *user_status;
-	struct kevent *user_event;
+	struct nt_event *user_event;
 
 	union {
 		struct {
@@ -836,7 +837,7 @@ enum nt_obj_type {
 
 enum common_object_type {
 	OBJECT_TYPE_NONE, OBJECT_TYPE_DEVICE, OBJECT_TYPE_DRIVER,
-	OBJECT_TYPE_KTHREAD, OBJECT_TYPE_FILE, OBJECT_TYPE_CALLBACK,
+	OBJECT_TYPE_NT_THREAD, OBJECT_TYPE_FILE, OBJECT_TYPE_CALLBACK,
 };
 
 struct common_object_header {
@@ -879,7 +880,7 @@ struct io_workitem_entry {
 
 struct wait_block {
 	struct nt_list list;
-	struct kthread *kthread;
+	struct nt_thread *thread;
 	void *object;
 	struct wait_block *next;
 	USHORT wait_key;
