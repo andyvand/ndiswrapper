@@ -16,7 +16,7 @@
 #ifndef _NTOSKERNEL_H_
 #define _NTOSKERNEL_H_
 
-#define UTILS_VERSION "1.4"
+#define UTILS_VERSION "1.5"
 
 #include <linux/types.h>
 #include <linux/timer.h>
@@ -810,8 +810,8 @@ do {									\
 #define kspin_unlock_irqrestore(lock, flags)				\
 do {									\
 	local_irq_restore(flags);					\
-	kspin_unlock(lock);						\
 	preempt_enable_no_resched();					\
+	kspin_unlock(lock);						\
 } while (0)
 
 static inline ULONG SPAN_PAGES(ULONG_PTR ptr, SIZE_T length)
