@@ -297,6 +297,7 @@ static struct urb *wrap_alloc_urb(struct irp *irp, unsigned int pipe,
 		if (!urb) {
 			WARNING("couldn't allocate urb");
 			kfree(wrap_urb);
+			return NULL;
 		}
 #if defined(URB_ASYNC_UNLINK)
 		urb->transfer_flags |= URB_ASYNC_UNLINK;
