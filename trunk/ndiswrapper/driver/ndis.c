@@ -2281,7 +2281,7 @@ STDCALL void WRAP_EXPORT(NdisInitializeEvent)
 	(struct ndis_event *ndis_event)
 {
 	TRACEENTER3("%p", ndis_event);
-	KeInitializeEvent(&ndis_event->kevent, NotificationEvent, 0);
+	KeInitializeEvent(&ndis_event->nt_event, NotificationEvent, 0);
 }
 
 STDCALL BOOLEAN WRAP_EXPORT(NdisWaitEvent)
@@ -2292,7 +2292,7 @@ STDCALL BOOLEAN WRAP_EXPORT(NdisWaitEvent)
 
 	TRACEENTER3("%p %u", ndis_event, ms);
 	ticks = -((LARGE_INTEGER)ms * TICKSPERMSEC);
-	res = KeWaitForSingleObject(&ndis_event->kevent, 0, 0, TRUE,
+	res = KeWaitForSingleObject(&ndis_event->nt_event, 0, 0, TRUE,
 				    ms == 0 ? NULL : &ticks);
 	if (res == STATUS_SUCCESS)
 		TRACEEXIT3(return TRUE);
@@ -2304,14 +2304,14 @@ STDCALL void WRAP_EXPORT(NdisSetEvent)
 	(struct ndis_event *ndis_event)
 {
 	TRACEENTER3("%p", ndis_event);
-	KeSetEvent(&ndis_event->kevent, 0, 0);
+	KeSetEvent(&ndis_event->nt_event, 0, 0);
 }
 
 STDCALL void WRAP_EXPORT(NdisResetEvent)
 	(struct ndis_event *ndis_event)
 {
 	TRACEENTER3("%p", ndis_event);
-	KeResetEvent(&ndis_event->kevent);
+	KeResetEvent(&ndis_event->nt_event);
 }
 
 /* called via function pointer */

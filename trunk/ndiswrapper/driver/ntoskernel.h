@@ -478,11 +478,12 @@ STDCALL void *ExAllocatePoolWithTag(enum pool_type pool_type, SIZE_T size,
 				    ULONG tag);
 STDCALL void ExFreePool(void *p);
 STDCALL ULONG MmSizeOfMdl(void *base, ULONG length);
-STDCALL void KeInitializeEvent(struct kevent *kevent,
+STDCALL void KeInitializeEvent(struct nt_event *nt_event,
 			       enum event_type type, BOOLEAN state);
-STDCALL LONG KeSetEvent(struct kevent *kevent, KPRIORITY incr, BOOLEAN wait);
-STDCALL LONG KeResetEvent(struct kevent *kevent);
-STDCALL void KeClearEvent(struct kevent *kevent);
+STDCALL LONG KeSetEvent(struct nt_event *nt_event, KPRIORITY incr,
+			BOOLEAN wait);
+STDCALL LONG KeResetEvent(struct nt_event *nt_event);
+STDCALL void KeClearEvent(struct nt_event *nt_event);
 STDCALL void KeInitializeDpc(struct kdpc *kdpc, void *func, void *ctx);
 STDCALL BOOLEAN KeInsertQueueDpc(struct kdpc *kdpc, void *arg1, void *arg2);
 STDCALL BOOLEAN KeRemoveQueueDpc(struct kdpc *kdpc);
@@ -529,7 +530,7 @@ STDCALL void *IoGetDriverObjectExtension(struct driver_object *drv,
 					 void *client_id);
 STDCALL struct device_object *IoAttachDeviceToDeviceStack
 	(struct device_object *src, struct device_object *dst);
-STDCALL void KeInitializeEvent(struct kevent *kevent, enum event_type type,
+STDCALL void KeInitializeEvent(struct nt_event *nt_event, enum event_type type,
 			       BOOLEAN state);
 void free_custom_ext(struct driver_extension *drv_obj_ext);
 STDCALL NTSTATUS AddDevice(struct driver_object *drv_obj,
@@ -552,7 +553,7 @@ _FASTCALL NTSTATUS IofCallDriver
 	(FASTCALL_DECL_2(struct device_object *dev_obj, struct irp *irp));
 STDCALL struct irp *WRAP_EXPORT(IoBuildSynchronousFsdRequest)
 	(ULONG major_func, struct device_object *dev_obj, void *buf,
-	 ULONG length, LARGE_INTEGER *offset, struct kevent *event,
+	 ULONG length, LARGE_INTEGER *offset, struct nt_event *event,
 	 struct io_status_block *status);
 STDCALL struct irp *WRAP_EXPORT(IoBuildAsynchronousFsdRequest)
 	(ULONG major_func, struct device_object *dev_obj, void *buf,
@@ -560,8 +561,8 @@ STDCALL struct irp *WRAP_EXPORT(IoBuildAsynchronousFsdRequest)
 	 struct io_status_block *status);
 STDCALL NTSTATUS PoCallDriver(struct device_object *dev_obj, struct irp *irp);
 
-struct kthread *wrap_create_thread(struct task_struct *task);
-void wrap_remove_thread(struct kthread *kthread);
+struct nt_thread *wrap_create_thread(struct task_struct *task);
+void wrap_remove_thread(struct nt_thread *thread);
 u64 ticks_1601(void);
 
 int schedule_wrap_work_item(void *func, void *arg1, void *arg2,
@@ -635,7 +636,7 @@ unsigned long lin_to_win6(void *func, unsigned long, unsigned long,
 			  unsigned long, unsigned long, unsigned long,
 			  unsigned long);
 
-STDCALL struct kthread *KeGetCurrentThread(void);
+STDCALL struct nt_thread *KeGetCurrentThread(void);
 STDCALL NTSTATUS
 ObReferenceObjectByHandle(void *handle, ACCESS_MASK desired_access,
 			  void *obj_type, KPROCESSOR_MODE access_mode,

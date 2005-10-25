@@ -699,10 +699,10 @@ static NDIS_STATUS miniport_init(struct wrapper_dev *wd)
 	UINT medium_index;
 	UINT medium_array[] = {NdisMedium802_3};
 	struct miniport_char *miniport = &wd->driver->miniport;
-	struct kthread *kthread;
+	struct nt_thread *thread;
 
-	kthread = wrap_create_thread(get_current());
-	if (!kthread) {
+	thread = wrap_create_thread(get_current());
+	if (!thread) {
 		ERROR("couldn't allocate thread object");
 		return NDIS_STATUS_FAILURE;
 	}
@@ -735,7 +735,7 @@ static NDIS_STATUS miniport_init(struct wrapper_dev *wd)
 		       &medium_index, medium_array,
 		       sizeof(medium_array) / sizeof(medium_array[0]),
 		       wd->nmb, wd->nmb);
-	wrap_remove_thread(kthread);
+	wrap_remove_thread(thread);
 	DBGTRACE1("init returns: %08X", res);
 	if (res)
 		goto err_miniport_init;
@@ -774,7 +774,7 @@ err_usb:
 static void miniport_halt(struct wrapper_dev *wd)
 {
 	struct miniport_char *miniport = &wd->driver->miniport;
-	struct kthread *kthread;
+	struct nt_thread *thread;
 
 	TRACEENTER1("%p", wd);
 	hangcheck_del(wd);
@@ -783,8 +783,8 @@ static void miniport_halt(struct wrapper_dev *wd)
 		WARNING("device %p is not initialized - not halting", wd);
 		TRACEEXIT1(return);
 	}
-	kthread = wrap_create_thread(get_current());
-	if (kthread == NULL)
+	thread = wrap_create_thread(get_current());
+	if (thread == NULL)
 		WARNING("couldn't create system thread for task: %p",
 			get_current());
 	DBGTRACE1("driver halt is at %p", miniport->miniport_halt);
@@ -794,8 +794,8 @@ static void miniport_halt(struct wrapper_dev *wd)
 	clear_bit(HW_INITIALIZED, &wd->hw_status);
 	ndis_exit_device(wd);
 
-	if (kthread)
-		wrap_remove_thread(kthread);
+	if (thread)
+		wrap_remove_thread(thread);
 #ifdef CONFIG_USB
 	if (wd->dev.dev_type == NDIS_USB_BUS)
 		usb_exit_device(wd);
@@ -1712,7 +1712,7 @@ struct net_device *init_netdev(struct wrapper_dev **pwd,
 }
 
 #ifdef USE_OWN_WORKQUEUE
-/* we need to get kthread for the task running ndiswrapper_wq, so
+/* we need to get thread for the task running ndiswrapper_wq, so
  * schedule a worker for it soon after initializing ndiswrapper_wq */
 
 static struct work_struct _ndiswrapper_wq_init;
@@ -1723,23 +1723,23 @@ static int _ndiswrapper_wq_init_state;
 static void _ndiswrapper_wq_init_worker(void *data)
 {
 	struct task_struct *task;
-	struct kthread *kthread;
+	struct nt_thread *thread;
 
 	task = get_current();
 	if (_ndiswrapper_wq_init_state == NDISWRAPPER_WQ_INIT) {
-		kthread = wrap_create_thread(task);
+		thread = wrap_create_thread(task);
 		DBGTRACE1("task: %p, pid: %d, thread: %p",
-			  task, task->pid, kthread);
-		if (!kthread) {
+			  task, task->pid, thread);
+		if (!thread) {
 			_ndiswrapper_wq_init_state = -1;
 			return;
 		}
 	} else {
-		kthread = KeGetCurrentThread();
-		if (kthread) {
+		thread = KeGetCurrentThread();
+		if (thread) {
 			DBGTRACE1("task: %p, pid: %d, thread: %p",
-				  task, task->pid, kthread);
-			wrap_remove_thread(kthread);
+				  task, task->pid, thread);
+			wrap_remove_thread(thread);
 		}
 	}
 	_ndiswrapper_wq_init_state = 0;
