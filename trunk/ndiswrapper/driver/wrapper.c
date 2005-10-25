@@ -1705,7 +1705,12 @@ struct net_device *init_netdev(struct wrapper_dev **pwd,
 	wd->infrastructure_mode = Ndis802_11Infrastructure;
 	INIT_WORK(&wd->wrapper_worker, wrapper_worker_proc, wd);
 	set_bit(HW_AVAILABLE, &wd->hw_status);
-	wd->stats_enabled = TRUE;
+	/* ZyDas driver doesn't call completion function when
+	 * querying for stats or rssi, so disable stats */
+	if (stricmp(wd->driver->name, "zd1211u") == 0)
+		wd->stats_enabled = FALSE;
+	else
+		wd->stats_enabled = TRUE;
 
 	*pwd = wd;
 	return dev;
