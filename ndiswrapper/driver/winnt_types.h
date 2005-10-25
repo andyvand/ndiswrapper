@@ -328,7 +328,7 @@ struct dispatch_header {
 
 /* type of object a dh is associated with */
 enum dh_type {
-	DH_NONE, DH_KEVENT, DH_KTIMER, DH_KMUTEX, DH_KSEMAPHORE, DH_KTHREAD,
+	DH_NONE, DH_KEVENT, DH_NT_TIMER, DH_KMUTEX, DH_KSEMAPHORE, DH_KTHREAD,
 };
 
 /* objects that use dispatch_header have it as the first field, so
@@ -342,11 +342,11 @@ struct wrap_timer;
 
 #define WRAP_TIMER_MAGIC 47697249
 
-struct ktimer {
+struct nt_timer {
 	struct dispatch_header dh;
 	/* We can't fit Linux timer in this structure. Instead of
-	 * padding the ktimer structure, we replace due_time field
-	 * with *wrap_timer and allocate memory for it when ktimer is
+	 * padding the nt_timer structure, we replace due_time field
+	 * with *wrap_timer and allocate memory for it when nt_timer is
 	 * initialized */
 	union {
 		ULONGLONG due_time;
@@ -390,7 +390,7 @@ struct kthread {
 
 #define set_dh_type(dh, type)		((dh)->absolute = (type))
 #define is_kevent_dh(dh)		((dh)->absolute == DH_KVENT)
-#define is_ktimer_dh(dh)		((dh)->absolute == DH_KTIMER)
+#define is_nt_timer_dh(dh)		((dh)->absolute == DH_NT_TIMER)
 #define is_mutex_dh(dh)			((dh)->absolute == DH_KMUTEX)
 #define is_semaphore_dh(dh)		((dh)->absolute == DH_KSEMAPHORE)
 #define is_kthread_dh(dh)		((dh)->absolute == DH_KTHREAD)
@@ -649,6 +649,13 @@ struct wrap_urb {
 	struct urb *urb;
 	struct irp *irp;
 	unsigned int pipe;
+#ifdef USB_DEBUG
+	unsigned int id;
+#endif
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,0)
+	typeof(((struct urb *)0)->status) urb_status;
+#endif
+
 };
 
 struct irp {

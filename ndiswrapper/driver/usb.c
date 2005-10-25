@@ -16,9 +16,17 @@
 #include "ndis.h"
 #include "usb.h"
 
-#define DUMP_URB(urb) USBTRACE("urb: %p, buf: %p, len: %d, pipe: %u",	\
-			       urb, urb->transfer_buffer,		\
-			       urb->transfer_buffer_length, urb->pipe)
+#ifdef USB_DEBUG
+static unsigned int urb_id = 0;
+#endif
+
+#define DUMP_WRAP_URB(wrap_urb, dir)					\
+	USBTRACE("urb %p (%d) %s: buf: %p, len: %d, pipe: %u",	\
+		 (wrap_urb)->urb, (wrap_urb)->id,			\
+		 (dir == 0) ? "going down" : "coming back",		\
+		 (wrap_urb)->urb->transfer_buffer,			\
+		 (wrap_urb)->urb->transfer_buffer_length,		\
+		 (wrap_urb)->urb->pipe)
 
 #define DUMP_BUFFER(buf, len)						\
 	while (debug >= 2) {						\
@@ -58,9 +66,11 @@ static int inline wrap_cancel_urb(struct urb *urb)
 }
 
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,0)
-/* TODO: are these correct? */
+
 #define URB_NO_TRANSFER_DMA_MAP 0x0004
 #define URB_NO_SETUP_DMA_MAP 0x0004
+#define URB_STATUS(wrap_urb) (wrap_urb->urb_status)
+
 static void *usb_buffer_alloc(struct usb_device *udev, size_t size,
 			      unsigned mem_flags, dma_addr_t *dma)
 {
@@ -77,6 +87,10 @@ static void usb_init_urb(struct urb *urb)
 {
 	memset(urb, 0, sizeof(*urb));
 }
+
+#else
+
+#define URB_STATUS(wrap_urb) (wrap_urb->urb->status)
 
 #endif
 
@@ -97,6 +111,9 @@ int usb_init(void)
 {
 	InitializeListHead(&irp_complete_list);
 	tasklet_init(&irp_complete_work, irp_complete_worker, 0);
+#ifdef USB_DEBUG
+	urb_id = 0;
+#endif
 	return 0;
 }
 
@@ -129,9 +146,12 @@ void usb_exit_device(struct wrapper_dev *wd)
 		if (wrap_urb->state == URB_SUBMITTED) {
 			WARNING("Windows driver %s didn't free urb: %p",
 				wd->driver->name, wrap_urb->urb);
-			/* TODO: we should call usb_kill_urb, but 2.4
-			 * kernels don't have it */
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,0)
 			wrap_cancel_urb(wrap_urb->urb);
+#else
+			usb_kill_urb(wrap_urb->urb);
+#endif
+			wrap_urb->state = URB_FREE;
 		}
 		usb_free_urb(wrap_urb->urb);
 		kfree(wrap_urb);
@@ -353,20 +373,25 @@ NTSTATUS wrap_submit_urb(struct irp *irp)
 		return status;
 	}
 	irp->wrap_urb->state = URB_SUBMITTED;
+#ifdef USB_DEBUG
+	irp->wrap_urb->id = urb_id++;
+#endif
 	IoReleaseCancelSpinLock(irp->cancel_irql);
+	DUMP_WRAP_URB(irp->wrap_urb, 0);
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
 	ret = usb_submit_urb(urb, alloc_flags);
 #else
 	ret = usb_submit_urb(urb);
 #endif
 	if (ret) {
+		USBTRACE("ret: %d", ret);
 		wrap_free_urb(urb);
 		NT_URB_STATUS(nt_urb) = USBD_STATUS_REQUEST_FAILED;
 		irp->io_status.status = STATUS_NOT_SUPPORTED;
 		irp->io_status.status_info = 0;
-		return irp->io_status.status;
+		USBEXIT(return irp->io_status.status);
 	} else
-		return STATUS_PENDING;
+		USBEXIT(return STATUS_PENDING);
 }
 
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
@@ -381,17 +406,25 @@ static void wrap_urb_complete(struct urb *urb)
 	wrap_urb = urb->context;
 	irp = wrap_urb->irp;
 	IoAcquireCancelSpinLock(&irp->cancel_irql);
+	DUMP_WRAP_URB(wrap_urb, 1);
 	irp->cancel_routine = NULL;
 	if (wrap_urb->state != URB_SUBMITTED &&
 	    wrap_urb->state != URB_CANCELED)
 		WARNING("urb %p in wrong state: %d", urb, wrap_urb->state);
 	wrap_urb->state = URB_COMPLETED;
+	/* To prevent 2.4 kernels from resubmiting interrupt URBs
+	 * (Windows driver also resubmits them); UHCI doesn't resubmit
+	 * URB if status == -ENOENT */
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,0)
+	if (usb_pipeint(urb->pipe)) {
+		wrap_urb->urb_status = urb->status;
+		urb->status = -ENOENT;
+	}
+#endif
 	InsertTailList(&irp_complete_list, &irp->complete_list);
 	IoReleaseCancelSpinLock(irp->cancel_irql);
 	USBTRACE("urb %p (irp: %p) completed", urb, irp);
 	tasklet_schedule(&irp_complete_work);
-	/* TODO: 2.6.14-rcX and newer need interrupt urb's be
-	 * resubmitted */
 }
 
 /* one worker for all devices */
@@ -402,6 +435,7 @@ static void irp_complete_worker(unsigned long data)
 	struct usbd_bulk_or_intr_transfer *bulk_int_tx;
 	struct usbd_vendor_or_class_request *vc_req;
 	union nt_urb *nt_urb;
+	struct wrap_urb *wrap_urb;
 	struct nt_list *ent;
 	KIRQL irql;
 
@@ -413,18 +447,19 @@ static void irp_complete_worker(unsigned long data)
 			break;
 		irp = container_of(ent, struct irp, complete_list);
 		DUMP_IRP(irp);
-		urb = irp->wrap_urb->urb;
-		DUMP_URB(urb);
-		if (irp->wrap_urb->state != URB_COMPLETED)
+		wrap_urb = irp->wrap_urb;
+		urb = wrap_urb->urb;
+		if (wrap_urb->state != URB_COMPLETED)
 			WARNING("urb %p in wrong state: %d",
-				urb, irp->wrap_urb->state);
+				urb, wrap_urb->state);
 		nt_urb = URB_FROM_IRP(irp);
 		USBTRACE("urb: %p, nt_urb: %p, status: %d",
-			 urb, nt_urb, (urb->status));
-		switch (urb->status) {
+			 urb, nt_urb, URB_STATUS(wrap_urb));
+		switch (URB_STATUS(wrap_urb)) {
 		case 0:
 			/* succesfully transferred */
-			NT_URB_STATUS(nt_urb) = wrap_urb_status(urb->status);
+			NT_URB_STATUS(nt_urb) =
+				wrap_urb_status(URB_STATUS(wrap_urb));
 			irp->io_status.status = STATUS_SUCCESS;
 			irp->io_status.status_info = urb->actual_length;
 
@@ -437,7 +472,7 @@ static void irp_complete_worker(unsigned long data)
 					urb->actual_length;
 				DUMP_BUFFER(urb->transfer_buffer,
 					    urb->actual_length);
-				if ((irp->wrap_urb->alloc_flags &
+				if ((wrap_urb->alloc_flags &
 				     URB_NO_TRANSFER_DMA_MAP) &&
 				    usb_pipein(urb->pipe))
 					memcpy(bulk_int_tx->transfer_buffer,
@@ -459,7 +494,7 @@ static void irp_complete_worker(unsigned long data)
 					    urb->actual_length);
 				DUMP_BUFFER(urb->setup_packet,
 					    sizeof(struct usb_ctrlrequest));
-				if ((irp->wrap_urb->alloc_flags &
+				if ((wrap_urb->alloc_flags &
 				     URB_NO_TRANSFER_DMA_MAP) &&
 				    usb_pipein(urb->pipe))
 					memcpy(vc_req->transfer_buffer,
@@ -475,7 +510,7 @@ static void irp_complete_worker(unsigned long data)
 		case -ENOENT:
 		case -ECONNRESET:
 			/* irp canceled */
-			if (irp->wrap_urb->state == URB_SUSPEND)
+			if (wrap_urb->state == URB_SUSPEND)
 				continue;
 			NT_URB_STATUS(nt_urb) = USBD_STATUS_CANCELLED;
 			irp->io_status.status = STATUS_CANCELLED;
@@ -483,11 +518,13 @@ static void irp_complete_worker(unsigned long data)
 			USBTRACE("irp %p canceled", irp);
 			break;
 		default:
-			NT_URB_STATUS(nt_urb) = wrap_urb_status(urb->status);
+			NT_URB_STATUS(nt_urb) =
+				wrap_urb_status(URB_STATUS(wrap_urb));
 			irp->io_status.status =
 				nt_urb_irp_status(NT_URB_STATUS(nt_urb));
 			irp->io_status.status_info = 0;
-			USBTRACE("irp: %p, status: %d", irp, urb->status);
+			USBTRACE("irp: %p, status: %d", irp,
+				 URB_STATUS(wrap_urb));
 			break;
 		}
 		wrap_free_urb(urb);
@@ -577,7 +614,7 @@ static USBD_STATUS wrap_bulk_or_intr_trans(struct irp *irp)
 		usb_fill_bulk_urb(urb, udev, pipe, urb->transfer_buffer,
 				  bulk_int_tx->transfer_buffer_length,
 				  wrap_urb_complete, urb->context);
-		USBTRACE("submitting urb %p on pipe %u",
+		USBTRACE("submitting bulk urb %p on pipe %u",
 			 urb, pipe_handle->bEndpointAddress);
 		status = USBD_STATUS_PENDING;
 		break;
@@ -586,8 +623,9 @@ static USBD_STATUS wrap_bulk_or_intr_trans(struct irp *irp)
 				 bulk_int_tx->transfer_buffer_length,
 				 wrap_urb_complete, urb->context,
 				 pipe_handle->bInterval);
-		USBTRACE("submitting urb %p on pipe %u",
-			 urb, pipe_handle->bEndpointAddress);
+		USBTRACE("submitting interrupt urb %p on pipe %u, intvl: %d",
+			 urb, pipe_handle->bEndpointAddress,
+			 pipe_handle->bInterval);
 		status = USBD_STATUS_PENDING;
 		break;
 	default:
@@ -726,7 +764,7 @@ static USBD_STATUS wrap_reset_pipe(struct usb_device *udev, struct irp *irp)
 		pipe2 = usb_sndbulkpipe(udev, pipe_handle->bEndpointAddress);
 	} else if (pipe_type == USB_ENDPOINT_XFER_INT) {
 		pipe1 = usb_rcvintpipe(udev, pipe_handle->bEndpointAddress);
-		/* outoing interrupt pipes shouldn't be reset */
+		/* no outgoing interrupt pipes */
 		pipe2 = pipe1;
 	} else if (pipe_type == USB_ENDPOINT_XFER_CONTROL) {
 		pipe1 = usb_rcvctrlpipe(udev, pipe_handle->bEndpointAddress);

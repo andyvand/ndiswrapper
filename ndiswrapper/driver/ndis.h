@@ -580,12 +580,12 @@ struct ndis_guid {
 };
 
 struct ndis_timer {
-	struct ktimer ktimer;
+	struct nt_timer nt_timer;
 	struct kdpc kdpc;
 };
 
 struct ndis_miniport_timer {
-	struct ktimer ktimer;
+	struct nt_timer nt_timer;
 	struct kdpc kdpc;
 	/* since kdpc already can store func, ctx, I don't know what
 	 * the following two fields are for */

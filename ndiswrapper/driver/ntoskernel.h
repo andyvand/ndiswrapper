@@ -420,7 +420,7 @@ struct wrap_timer {
 	long repeat;
 	struct nt_list list;
 	struct timer_list timer;
-	struct ktimer *ktimer;
+	struct nt_timer *nt_timer;
 #ifdef DEBUG_TIMER
 	unsigned long wrap_timer_magic;
 #endif
@@ -607,19 +607,20 @@ NOREGPARM SIZE_T _win_wcslen(const wchar_t *s);
 
 void *wrap_kmalloc(size_t size);
 void wrap_kfree(void *ptr);
-void wrap_init_timer(struct ktimer *ktimer, enum timer_type type,
+void wrap_init_timer(struct nt_timer *nt_timer, enum timer_type type,
 		     struct wrapper_dev *wd);
-BOOLEAN wrap_set_timer(struct ktimer *ktimer, unsigned long expires_hz,
+BOOLEAN wrap_set_timer(struct nt_timer *nt_timer, unsigned long expires_hz,
 		       unsigned long repeat_hz, struct kdpc *kdpc);
 
-STDCALL void KeInitializeTimer(struct ktimer *ktimer);
-STDCALL void KeInitializeTimerEx(struct ktimer *ktimer, enum timer_type type);
-STDCALL BOOLEAN KeSetTimerEx(struct ktimer *ktimer,
+STDCALL void KeInitializeTimer(struct nt_timer *nt_timer);
+STDCALL void KeInitializeTimerEx(struct nt_timer *nt_timer,
+				 enum timer_type type);
+STDCALL BOOLEAN KeSetTimerEx(struct nt_timer *nt_timer,
 			     LARGE_INTEGER duetime_ticks, LONG period_ms,
 			     struct kdpc *kdpc);
-STDCALL BOOLEAN KeSetTimer(struct ktimer *ktimer, LARGE_INTEGER duetime_ticks,
-			   struct kdpc *kdpc);
-STDCALL BOOLEAN KeCancelTimer(struct ktimer *ktimer);
+STDCALL BOOLEAN KeSetTimer(struct nt_timer *nt_timer,
+			   LARGE_INTEGER duetime_ticks, struct kdpc *kdpc);
+STDCALL BOOLEAN KeCancelTimer(struct nt_timer *nt_timer);
 STDCALL void KeInitializeDpc(struct kdpc *kdpc, void *func, void *ctx);
 
 unsigned long lin_to_win1(void *func, unsigned long);
