@@ -727,8 +727,7 @@ static inline void lower_irql(KIRQL oldirql)
 #define KSPIN_LOCK_LOCKED 1
 #endif
 
-#define kspin_lock_init(lock) do { *(lock) = KSPIN_LOCK_UNLOCKED; } while (0)
-#define kspin_unlock(lock) do { *(lock) = KSPIN_LOCK_UNLOCKED; } while (0)
+#define kspin_lock_init(lock) *(lock) = KSPIN_LOCK_UNLOCKED
 
 #ifdef CONFIG_SMP
 
@@ -752,17 +751,25 @@ while (1) {								\
 	spin_unlock(&spinlock_kspin_lock);				\
 }									\
 
+#define kspin_unlock(lock)						\
+	__asm__ __volatile__("movw $0,%0"				\
+			     :"=m" (*(lock)) : : "memory")
+
 #else // DEBUG_SPINLOCK
 
 #define kspin_lock(lock)						\
 	while (cmpxchg(lock, KSPIN_LOCK_UNLOCKED, KSPIN_LOCK_LOCKED) != \
 	       KSPIN_LOCK_UNLOCKED)
 
+#define kspin_unlock(lock)						\
+	__asm__ __volatile__("movb $0,%0"				\
+			     :"=m" (*(lock)) : : "memory")
 #endif // DEBUG_SPINLOCK
 
 #else // SMP
 
-#define kspin_lock(lock) do { *(lock) = KSPIN_LOCK_LOCKED; } while (0)
+#define kspin_lock(lock) *(lock) = KSPIN_LOCK_LOCKED
+#define kspin_unlock(lock) *(lock) = KSPIN_LOCK_UNLOCKED
 
 #endif // SMP
 
