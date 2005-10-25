@@ -67,8 +67,7 @@ static int inline wrap_cancel_urb(struct urb *urb)
 
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,0)
 
-#define URB_NO_TRANSFER_DMA_MAP 0x0004
-#define URB_NO_SETUP_DMA_MAP 0x0004
+#define URB_NO_TRANSFER_DMA_MAP		0x0004
 #define URB_STATUS(wrap_urb) (wrap_urb->urb_status)
 
 static void *usb_buffer_alloc(struct usb_device *udev, size_t size,

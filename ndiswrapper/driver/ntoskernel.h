@@ -789,11 +789,11 @@ while (1) {								\
 do {									\
 	KIRQL _cur_irql_ = current_irql();				\
 	CHECK_KSPIN_LOCKED(lock);					\
-	kspin_unlock(lock);						\
 	if (oldirql < DISPATCH_LEVEL && _cur_irql_ == DISPATCH_LEVEL) {	\
-		preempt_enable();					\
+		preempt_enable_no_resched();				\
 		local_bh_enable();					\
 	}								\
+	kspin_unlock(lock);						\
 } while (0)
 
 #define kspin_lock_irqsave(lock, flags)					\
@@ -805,9 +805,9 @@ do {									\
 
 #define kspin_unlock_irqrestore(lock, flags)				\
 do {									\
-	kspin_unlock(lock);						\
 	local_irq_restore(flags);					\
-	preempt_enable();						\
+	kspin_unlock(lock);						\
+	preempt_enable_no_resched();					\
 } while (0)
 
 static inline ULONG SPAN_PAGES(ULONG_PTR ptr, SIZE_T length)
