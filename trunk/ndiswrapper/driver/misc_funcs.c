@@ -1,3 +1,4 @@
+
 /*
  *  Copyright (C) 2003-2005 Pontus Fuchs, Giridhar Pemmasani
  *
@@ -469,6 +470,14 @@ STDCALL LONG WRAP_EXPORT(RtlCompareUnicodeString)
 
 	TRACEENTER1("%s", "");
 
+	if (!s1 || !s1->buf || !s1->buflen) {
+		if (!s2 || !s2->buf || !s2->buflen)
+			TRACEEXIT1(return 0);
+		else
+			TRACEEXIT1(return -1);
+	}
+	if (!s2 || !s2->buf || !s2->buflen)
+		TRACEEXIT1(return 1);
 #ifdef DEBUG
 	{
 		struct ansi_string ansi;
@@ -486,14 +495,6 @@ STDCALL LONG WRAP_EXPORT(RtlCompareUnicodeString)
 		}
 	}
 #endif
-	if (!s1 || !s1->buf || !s1->buflen) {
-		if (!s2 || !s2->buf || !s2->buflen)
-			TRACEEXIT1(return 0);
-		else
-			TRACEEXIT1(return -1);
-	}
-	if (!s2 || !s2->buf || !s2->buflen)
-		TRACEEXIT1(return 1);
 	len = min(s1->buflen, s2->buflen);
 	p1 = s1->buf;
 	p2 = s2->buf;
@@ -590,7 +591,7 @@ STDCALL NTSTATUS WRAP_EXPORT(RtlAnsiStringToUnicodeString)
 	dst->buflen = 0;
 	if (dup)
 		dst->buf = NULL;
-	if (!src->buf || src->buflen <= 0)
+	if (!src->buf || src->buflen <= 0 || src->len <= 0)
 		TRACEEXIT2(return STATUS_SUCCESS);
 	if (dup == TRUE) {
 		wchar_t *buf = kmalloc((src->buflen+1) * sizeof(wchar_t),
@@ -628,7 +629,7 @@ STDCALL NTSTATUS WRAP_EXPORT(RtlUnicodeStringToAnsiString)
 	dst->buflen = 0;
 	if (dup)
 		dst->buf = NULL;
-	if (!src->buf || src->buflen <= 0)
+	if (!src->buf || src->buflen <= 0 || src->len <= 0)
 		TRACEEXIT2(return STATUS_SUCCESS);
 	if (dup == TRUE) {
 		char *buf = kmalloc((src->buflen+1) / sizeof(wchar_t),
