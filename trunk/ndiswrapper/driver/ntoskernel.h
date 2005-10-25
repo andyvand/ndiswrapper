@@ -164,6 +164,10 @@ typedef task_queue workqueue;
 #define preempt_disable() do { } while (0)
 #endif
 
+#ifndef preempt_enable_no_resched
+#define preempt_enable_no_resched() preempt_enable()
+#endif
+
 #ifndef container_of
 #define container_of(ptr, type, member)					\
 ({									\
