@@ -30,8 +30,6 @@ int debug = DEBUG;
 int debug = 0;
 #endif
 
-/* used to implement Windows spinlocks */
-spinlock_t spinlock_kspin_lock;
 /* use own workqueue instead of shared one, to avoid depriving
  * others */
 struct workqueue_struct *ndiswrapper_wq;
@@ -1799,7 +1797,6 @@ static int __init wrapper_init(void)
 #endif
 		);
 
-	spin_lock_init(&spinlock_kspin_lock);
 	if (misc_funcs_init() || ntoskernel_init() || ndis_init()
 #ifdef CONFIG_USB
 	     || usb_init()
