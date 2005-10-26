@@ -717,7 +717,7 @@ static inline void lower_irql(KIRQL oldirql)
 //#define CONFIG_DEBUG_SPINLOCK
 //#endif
 
-//#undef CONFIG_DEBUG_SPINLOCK
+#undef CONFIG_DEBUG_SPINLOCK
 
 #ifdef CONFIG_DEBUG_SPINLOCK
 #define KSPIN_LOCK_LOCKED ((ULONG_PTR)get_current())
