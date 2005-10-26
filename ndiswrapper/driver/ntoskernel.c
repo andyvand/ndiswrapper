@@ -90,6 +90,7 @@ static void update_user_shared_data_proc(unsigned long data);
 #endif
 
 static int add_bus_driver(struct driver_object *drv_obj, const char *name);
+static void free_all_objects(void);
 static BOOLEAN queue_kdpc(struct kdpc *kdpc);
 
 WRAP_EXPORT_MAP("KeTickCount", &jiffies);
@@ -241,19 +242,7 @@ void ntoskernel_exit(void)
 
 	del_bus_drivers();
 
-	/* delete all objects */
-	while (1) {
-		struct common_object_header *header;
-
-		irql = kspin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL);
-		cur = RemoveHeadList(&object_list);
-		kspin_unlock_irql(&ntoskernel_lock, irql);
-		if (!cur)
-			break;
-		header = container_of(cur, struct common_object_header, list);
-		kfree(header);
-	}
-
+	free_all_objects();
 #if defined(CONFIG_X86_64)
 	del_timer_sync(&shared_data_timer);
 #endif
@@ -315,6 +304,24 @@ void free_object(void *object)
 	kspin_unlock_irql(&ntoskernel_lock, irql);
 	DBGTRACE3("freed hdr: %p, body: %p", hdr, object);
 	ExFreePool(hdr);
+}
+
+static void free_all_objects(void)
+{
+	struct common_object_header *hdr;
+	KIRQL irql;
+	struct nt_list *cur, *next;
+
+	TRACEENTER2("");
+	irql = kspin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL);
+	nt_list_for_each_safe(cur, next, &object_list) {
+		hdr = container_of(cur, struct common_object_header, list);
+		RemoveEntryList(&hdr->list);
+		DBGTRACE3("freeing hdr: %p", hdr);
+		ExFreePool(hdr);
+	}
+	kspin_unlock_irql(&ntoskernel_lock, irql);
+	TRACEEXIT2(return);
 }
 
 static int add_bus_driver(struct driver_object *drv_obj, const char *name)
