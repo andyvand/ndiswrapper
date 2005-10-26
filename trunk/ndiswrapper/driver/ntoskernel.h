@@ -717,71 +717,64 @@ static inline void lower_irql(KIRQL oldirql)
 //#define CONFIG_DEBUG_SPINLOCK
 //#endif
 
-#undef CONFIG_DEBUG_SPINLOCK
+//#undef CONFIG_DEBUG_SPINLOCK
 
-#define KSPIN_LOCK_UNLOCKED 0
-
-#if defined(CONFIG_DEBUG_SPINLOCK)
+#ifdef CONFIG_DEBUG_SPINLOCK
 #define KSPIN_LOCK_LOCKED ((ULONG_PTR)get_current())
 #else
 #define KSPIN_LOCK_LOCKED 1
 #endif
 
+#define KSPIN_LOCK_UNLOCKED 0
+
 #define kspin_lock_init(lock) *(lock) = KSPIN_LOCK_UNLOCKED
 
 #ifdef CONFIG_SMP
 
-#if defined(CONFIG_DEBUG_SPINLOCK)
-
-extern spinlock_t spinlock_kspin_lock;
-#define kspin_lock(lock)						\
-while (1) {								\
-	spin_lock(&spinlock_kspin_lock);				\
-	if (*(lock) == KSPIN_LOCK_UNLOCKED) {				\
-		*(lock) = (ULONG_PTR)get_current();			\
-		spin_unlock(&spinlock_kspin_lock);			\
-		break;							\
-	}								\
-	if (*(lock) == (ULONG_PTR)get_current()) {			\
-		ERROR("eeek: process %p already obtained lock %p",	\
-		      get_current(), lock);				\
-		spin_unlock(&spinlock_kspin_lock);			\
-		break;							\
-	}								\
-	spin_unlock(&spinlock_kspin_lock);				\
-}									\
-
-#define kspin_unlock(lock)						\
-	__asm__ __volatile__("movw $0,%0"				\
-			     :"=m" (*(lock)) : : "memory")
-
-#else // DEBUG_SPINLOCK
-
-#define kspin_lock(lock)						\
-	while (cmpxchg(lock, KSPIN_LOCK_UNLOCKED, KSPIN_LOCK_LOCKED) != \
+#define raw_kspin_lock(lock)						\
+	while (cmpxchg((lock), KSPIN_LOCK_UNLOCKED, KSPIN_LOCK_LOCKED) != \
 	       KSPIN_LOCK_UNLOCKED)
 
-#define kspin_unlock(lock)						\
+#ifdef CONFIG_DEBUG_SPINLOCK
+#define raw_kspin_unlock(lock)						\
+	__asm__ __volatile__("movw $0,%0"				\
+			     :"=m" (*(lock)) : : "memory")
+#else // DEBUG_SPINLOCK
+#define raw_kspin_unlock(lock)						\
 	__asm__ __volatile__("movb $0,%0"				\
 			     :"=m" (*(lock)) : : "memory")
 #endif // DEBUG_SPINLOCK
 
 #else // SMP
 
-#define kspin_lock(lock) *(lock) = KSPIN_LOCK_LOCKED
-#define kspin_unlock(lock) *(lock) = KSPIN_LOCK_UNLOCKED
+#define raw_kspin_lock(lock) *(lock) = KSPIN_LOCK_LOCKED
+#define raw_kspin_unlock(lock) *(lock) = KSPIN_LOCK_UNLOCKED
 
 #endif // SMP
 
-#if defined(CONFIG_DEBUG_SPINLOCK)
-#define CHECK_KSPIN_LOCKED(lock)					\
+#ifdef CONFIG_DEBUG_SPINLOCK
+
+#define kspin_lock(lock)						\
+	do {								\
+		if (*(lock) == KSPIN_LOCK_LOCKED)			\
+			ERROR("eeek: process %p already owns lock %p",	\
+			      get_current(), lock);			\
+		else							\
+			raw_kspin_lock(lock);				\
+	} while (0)
+#define kspin_unlock(lock)						\
 	do {								\
 		if (*(lock) != KSPIN_LOCK_LOCKED)			\
 			ERROR("kspin_lock %p not locked!", (lock));	\
+		raw_kspin_unlock(lock);					\
 	} while (0)
-#else
-#define CHECK_KSPIN_LOCKED(lock) do { } while (0)
-#endif
+
+#else // DEBUG_SPINLOCK
+
+#define kspin_lock(lock) raw_kspin_lock(lock)
+#define kspin_unlock(lock) raw_kspin_unlock(lock)
+
+#endif // DEBUG_SPINLOCK
 
 /* raise IRQL to given (higher) IRQL if necessary before locking */
 #define kspin_lock_irql(lock, newirql)					\
@@ -799,7 +792,6 @@ while (1) {								\
 #define kspin_unlock_irql(lock, oldirql)				\
 do {									\
 	KIRQL _cur_irql_ = current_irql();				\
-	CHECK_KSPIN_LOCKED(lock);					\
 	kspin_unlock(lock);						\
 	if (oldirql < DISPATCH_LEVEL && _cur_irql_ == DISPATCH_LEVEL) {	\
 		preempt_enable_no_resched();				\
