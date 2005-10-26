@@ -239,10 +239,6 @@ static void wrap_free_urb(struct urb *urb)
 	} else {
 		wrap_urb->state = URB_FREE;
 		wrap_urb->alloc_flags = 0;
-		usb_init_urb(urb);
-#ifdef USB_ASYNC_UNLINK
-		urb->transfer_flags |= USB_ASYNC_UNLINK;
-#endif
 		wrap_urb->irp = NULL;
 	}
 	if (wd->dev.usb.num_alloc_urbs < 0)
@@ -281,6 +277,7 @@ static struct urb *wrap_alloc_urb(struct irp *irp, unsigned int pipe,
 		if (wrap_urb->state == URB_FREE) {
 			wrap_urb->state = URB_ALLOCATED;
 			urb = wrap_urb->urb;
+			usb_init_urb(urb);
 			break;
 		}
 	}
@@ -302,9 +299,6 @@ static struct urb *wrap_alloc_urb(struct irp *irp, unsigned int pipe,
 			kfree(wrap_urb);
 			return NULL;
 		}
-#ifdef USB_ASYNC_UNLINK
-		urb->transfer_flags |= URB_ASYNC_UNLINK;
-#endif
 		IoAcquireCancelSpinLock(&irp->cancel_irql);
 		memset(wrap_urb, 0, sizeof(*wrap_urb));
 		wrap_urb->urb = urb;
@@ -313,6 +307,9 @@ static struct urb *wrap_alloc_urb(struct irp *irp, unsigned int pipe,
 		wd->dev.usb.num_alloc_urbs++;
 	}
 
+#ifdef USB_ASYNC_UNLINK
+	urb->transfer_flags |= URB_ASYNC_UNLINK;
+#endif
 	urb->context = wrap_urb;
 	wrap_urb->irp = irp;
 	wrap_urb->state = URB_ALLOCATED;
