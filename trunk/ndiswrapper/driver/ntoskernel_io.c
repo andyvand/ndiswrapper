@@ -946,13 +946,13 @@ STDCALL NTSTATUS WRAP_EXPORT(IoCreateUnprotectedSymbolicLink)
 		RtlFreeAnsiString(&ansi);
 	}
 	UNIMPL();
-	return STATUS_SUCCESS;
+	IOEXIT(return STATUS_SUCCESS);
 }
 
 STDCALL NTSTATUS WRAP_EXPORT(IoCreateSymbolicLink)
 	(struct unicode_string *link, struct unicode_string *dev_name)
 {
-	return IoCreateUnprotectedSymbolicLink(link, dev_name);
+	IOEXIT(return IoCreateUnprotectedSymbolicLink(link, dev_name));
 }
 
 STDCALL NTSTATUS WRAP_EXPORT(IoDeleteSymbolicLink)

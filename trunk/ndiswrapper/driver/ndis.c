@@ -491,7 +491,7 @@ STDCALL void WRAP_EXPORT(NdisReadConfiguration)
 	wd = nmb->wd;
 	ret = RtlUnicodeStringToAnsiString(&ansi, key, TRUE);
 	DBGTRACE3("rtl func returns: %d", ret);
-	if (ret) {
+	if (ret || ansi.buf == NULL) {
 		*dest = NULL;
 		*status = NDIS_STATUS_FAILURE;
 		RtlFreeAnsiString(&ansi);
@@ -500,10 +500,6 @@ STDCALL void WRAP_EXPORT(NdisReadConfiguration)
 	DBGTRACE3("wd: %p, string: %s", wd, ansi.buf);
 	keyname = ansi.buf;
 
-	if (keyname == NULL) {
-		*status = NDIS_STATUS_FAILURE;
-		TRACEEXIT2(return);
-	}
 	nt_list_for_each_entry(setting, &wd->ndis_device->settings, list) {
 		if (stricmp(keyname, setting->name) == 0) {
 			DBGTRACE2("setting found %s=%s",

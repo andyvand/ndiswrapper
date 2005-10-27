@@ -606,18 +606,17 @@ STDCALL NTSTATUS WRAP_EXPORT(RtlAnsiStringToUnicodeString)
 			TRACEEXIT1(return STATUS_FAILURE);
 		}
 		dst->buf = buf;
-		dst->buflen = dst->len = src->buflen * sizeof(wchar_t);
+		dst->len = (src->buflen + 1) * sizeof(wchar_t);
 	}
 	else if (dst->buflen < (src->len+1) * sizeof(wchar_t))
 		TRACEEXIT1(return STATUS_FAILURE);
 
 	d = dst->buf;
 	s = src->buf;
-	for(i = 0; i < src->len; i++)
+	dst->buflen = (src->buflen + 1) * sizeof(wchar_t);
+	for(i = 0; i < src->buflen; i++)
 		d[i] = s[i];
-
 	d[i] = 0;
-
 	DBGTRACE2("len = %d", dst->len);
 	TRACEEXIT2(return STATUS_SUCCESS);
 }
@@ -650,18 +649,16 @@ STDCALL NTSTATUS WRAP_EXPORT(RtlUnicodeStringToAnsiString)
 			TRACEEXIT1(return STATUS_FAILURE);
 		}
 		dst->buf = buf;
-		dst->buflen = dst->len = src->buflen / sizeof(wchar_t);
+		dst->len = (src->buflen + 1) / sizeof(wchar_t);
 	} else if (dst->buflen < (src->len+1) / sizeof(wchar_t))
 		return STATUS_FAILURE;
 
 	s = src->buf;
 	d = dst->buf;
-	for(i = 0; i < dst->len; i++)
+	dst->buflen = (src->buflen + 1) / sizeof(wchar_t);
+	for(i = 0; i < dst->buflen; i++)
 		d[i] = s[i];
-	d[i] = 0;
-	dst->buflen = src->buflen / sizeof(wchar_t);
-	DBGTRACE2("len = %d", dst->len);
-	DBGTRACE2("string: %s", dst->buf);
+	DBGTRACE2("string: %s, len: %d", dst->buf, dst->buflen);
 	TRACEEXIT2(return STATUS_SUCCESS);
 }
 
