@@ -1174,6 +1174,7 @@ STDCALL unsigned int WRAP_EXPORT(IoWMIRegistrationControl)
 	struct irp *irp;
 	struct io_stack_location *irp_sl;
 	const int buf_len = 512;
+	void *buf;
 
 	TRACEENTER2("%p, %d", dev_obj, action);
 
@@ -1187,13 +1188,15 @@ STDCALL unsigned int WRAP_EXPORT(IoWMIRegistrationControl)
 		irp_sl = IoGetNextIrpStackLocation(irp);
 		irp_sl->params.wmi.provider_id = (ULONG_PTR)dev_obj;
 		irp_sl->params.wmi.data_path = (void *)WMIREGISTER;
-		irp_sl->params.wmi.buf = kmalloc(buf_len, GFP_KERNEL);
-		if (!irp_sl->params.wmi.buf) {
+		buf = kmalloc(buf_len, GFP_KERNEL);
+		if (!buf) {
 			IoFreeIrp(irp);
 			return STATUS_INSUFFICIENT_RESOURCES;
 		}
 		irp_sl->params.wmi.buf_len = buf_len;
+		irp_sl->params.wmi.buf = buf;
 		IoCallDriver(dev_obj, irp);
+		kfree(buf);
 		break;
 	case WMIREG_ACTION_DEREGISTER:
 		INFO("");

@@ -378,6 +378,9 @@ NTSTATUS wrap_submit_urb(struct irp *irp)
 #endif
 	IoReleaseCancelSpinLock(irp->cancel_irql);
 	DUMP_WRAP_URB(irp->wrap_urb, 0);
+	irp->io_status.status = STATUS_PENDING;
+	irp->io_status.status_info = 0;
+	NT_URB_STATUS(nt_urb) = USBD_STATUS_PENDING;
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
 	ret = usb_submit_urb(urb, alloc_flags);
 #else
@@ -386,9 +389,9 @@ NTSTATUS wrap_submit_urb(struct irp *irp)
 	if (ret) {
 		USBTRACE("ret: %d", ret);
 		wrap_free_urb(urb);
-		NT_URB_STATUS(nt_urb) = USBD_STATUS_REQUEST_FAILED;
 		irp->io_status.status = STATUS_NOT_SUPPORTED;
 		irp->io_status.status_info = 0;
+		NT_URB_STATUS(nt_urb) = USBD_STATUS_REQUEST_FAILED;
 		USBEXIT(return irp->io_status.status);
 	} else
 		USBEXIT(return STATUS_PENDING);

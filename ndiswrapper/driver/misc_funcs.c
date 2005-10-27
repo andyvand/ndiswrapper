@@ -580,7 +580,8 @@ STDCALL NTSTATUS WRAP_EXPORT(RtlAppendUnicodeStringToString)
 }
 
 STDCALL NTSTATUS WRAP_EXPORT(RtlAnsiStringToUnicodeString)
-	(struct unicode_string *dst, struct ansi_string *src, BOOLEAN dup)
+	(struct unicode_string *dst, const struct ansi_string *src,
+	 BOOLEAN dup)
 {
 	int i;
 	wchar_t *d;
@@ -588,18 +589,24 @@ STDCALL NTSTATUS WRAP_EXPORT(RtlAnsiStringToUnicodeString)
 
 	TRACEENTER2("dup: %d src: %s", dup, src->buf);
 
-	dst->buflen = 0;
-	if (dup)
-		dst->buf = NULL;
-	if (!src->buf || src->buflen <= 0 || src->len <= 0)
+	if (!src->buf || src->buflen <= 0 || src->len <= 0) {
+		dst->buflen = 0;
+		if (dup)
+			dst->buf = NULL;
+		else
+			dst->buf[0] = 0;
 		TRACEEXIT2(return STATUS_SUCCESS);
+	}
 	if (dup == TRUE) {
 		wchar_t *buf = kmalloc((src->buflen+1) * sizeof(wchar_t),
 				       GFP_KERNEL);
-		if (!buf)
+		if (!buf) {
+			dst->buf = NULL;
+			dst->buflen = 0;
 			TRACEEXIT1(return STATUS_FAILURE);
+		}
 		dst->buf = buf;
-		dst->len = dst->buflen = (src->buflen+1) * sizeof(wchar_t);
+		dst->buflen = dst->len = src->buflen * sizeof(wchar_t);
 	}
 	else if (dst->buflen < (src->len+1) * sizeof(wchar_t))
 		TRACEEXIT1(return STATUS_FAILURE);
@@ -626,18 +633,24 @@ STDCALL NTSTATUS WRAP_EXPORT(RtlUnicodeStringToAnsiString)
 	TRACEENTER2("dup: %d src->len: %d src->buflen: %d, src->buf: %p,"
 		    "dst: %p", dup, src->len, src->buflen, src->buf, dst);
 
-	dst->buflen = 0;
-	if (dup)
-		dst->buf = NULL;
-	if (!src->buf || src->buflen <= 0 || src->len <= 0)
+	if (!src->buf || src->buflen <= 0 || src->len <= 0) {
+		dst->buflen = 0;
+		if (dup)
+			dst->buf = NULL;
+		else
+			dst->buf[0] = 0;
 		TRACEEXIT2(return STATUS_SUCCESS);
+	}
 	if (dup == TRUE) {
 		char *buf = kmalloc((src->buflen+1) / sizeof(wchar_t),
 				    GFP_KERNEL);
-		if (!buf)
-			return STATUS_FAILURE;
+		if (!buf) {
+			dst->buf = NULL;
+			dst->buflen = 0;
+			TRACEEXIT1(return STATUS_FAILURE);
+		}
 		dst->buf = buf;
-		dst->len = dst->buflen = (src->buflen+1) / sizeof(wchar_t);
+		dst->buflen = dst->len = src->buflen / sizeof(wchar_t);
 	} else if (dst->buflen < (src->len+1) / sizeof(wchar_t))
 		return STATUS_FAILURE;
 
@@ -646,7 +659,7 @@ STDCALL NTSTATUS WRAP_EXPORT(RtlUnicodeStringToAnsiString)
 	for(i = 0; i < dst->len; i++)
 		d[i] = s[i];
 	d[i] = 0;
-
+	dst->buflen = src->buflen / sizeof(wchar_t);
 	DBGTRACE2("len = %d", dst->len);
 	DBGTRACE2("string: %s", dst->buf);
 	TRACEEXIT2(return STATUS_SUCCESS);
