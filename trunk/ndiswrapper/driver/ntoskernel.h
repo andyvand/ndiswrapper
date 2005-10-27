@@ -591,11 +591,11 @@ IofCompleteRequest(FASTCALL_DECL_2(struct irp *irp, CHAR prio_boost));
 _FASTCALL void
 KefReleaseSpinLockFromDpcLevel(FASTCALL_DECL_1(KSPIN_LOCK *lock));
 STDCALL void RtlCopyMemory(void *dst, const void *src, SIZE_T length);
-STDCALL NTSTATUS RtlUnicodeStringToAnsiString(
-	struct ansi_string *dst, const struct unicode_string *src,
-	BOOLEAN dup);
+STDCALL NTSTATUS RtlUnicodeStringToAnsiString(struct ansi_string *dst,
+					      const struct unicode_string *src,
+					      BOOLEAN dup);
 STDCALL NTSTATUS RtlAnsiStringToUnicodeString(struct unicode_string *dst,
-					       struct ansi_string *src,
+					       const struct ansi_string *src,
 					       BOOLEAN dup);
 STDCALL void RtlInitAnsiString(struct ansi_string *dst, CHAR *src);
 STDCALL void RtlInitString(struct ansi_string *dst, CHAR *src);

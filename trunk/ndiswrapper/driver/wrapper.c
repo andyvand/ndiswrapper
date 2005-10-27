@@ -704,8 +704,6 @@ static NDIS_STATUS miniport_init(struct wrapper_dev *wd)
 		ERROR("couldn't allocate thread object");
 		return NDIS_STATUS_FAILURE;
 	}
-
-
 	TRACEENTER1("driver init routine is at %p", miniport->init);
 	if (miniport->init == NULL) {
 		ERROR("initialization function is not setup correctly");
@@ -1755,10 +1753,6 @@ static void module_cleanup(void)
 #ifdef CONFIG_USB
 	usb_exit();
 #endif
-	ndiswrapper_procfs_remove();
-	ndis_exit();
-	ntoskernel_exit();
-	misc_funcs_exit();
 #ifdef USE_OWN_WORKQUEUE
 	_ndiswrapper_wq_init_state = NDISWRAPPER_WQ_EXIT;
 	schedule_work(&_ndiswrapper_wq_init);
@@ -1768,6 +1762,10 @@ static void module_cleanup(void)
 	}
 	destroy_workqueue(ndiswrapper_wq);
 #endif
+	ndiswrapper_procfs_remove();
+	ndis_exit();
+	ntoskernel_exit();
+	misc_funcs_exit();
 }
 
 static int __init wrapper_init(void)

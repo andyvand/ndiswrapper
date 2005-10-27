@@ -161,8 +161,9 @@ void ntoskernel_exit_device(struct wrapper_dev *wd)
 {
 	KIRQL irql;
 
-	KeFlushQueuedDpcs();
+	TRACEENTER2("");
 
+	KeFlushQueuedDpcs();
 	/* cancel any timers left by bugyy windows driver; also free
 	 * the memory for timers */
 	while (1) {
@@ -175,13 +176,16 @@ void ntoskernel_exit_device(struct wrapper_dev *wd)
 		if (!ent)
 			break;
 		wrap_timer = container_of(ent, struct wrap_timer, list);
+		/* ktimer that this wrap_timer is associated to can't
+		 * be touched, as it may have been freed by the driver
+		 * already */
 		if (del_timer_sync(&wrap_timer->timer))
 			WARNING("Buggy Windows driver left timer %p running",
 				&wrap_timer->timer);
 		memset(wrap_timer, 0, sizeof(*wrap_timer));
 		wrap_kfree(wrap_timer);
 	}
-	return;
+	TRACEEXIT2(return);
 }
 
 void ntoskernel_exit(void)
@@ -189,13 +193,15 @@ void ntoskernel_exit(void)
 	struct nt_list *cur;
 	KIRQL irql;
 
+	TRACEENTER2("");
 	/* free kernel (Ke) timers */
+	DBGTRACE2("freeing timers");
 	while (1) {
 		struct wrap_timer *wrap_timer;
 
-		irql = kspin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL);
+		irql = kspin_lock_irql(&timer_lock, DISPATCH_LEVEL);
 		cur = RemoveTailList(&wrap_timer_list);
-		kspin_unlock_irql(&ntoskernel_lock, irql);
+		kspin_unlock_irql(&timer_lock, irql);
 		if (!cur)
 			break;
 		wrap_timer = container_of(cur, struct wrap_timer, list);
@@ -206,6 +212,7 @@ void ntoskernel_exit(void)
 		wrap_kfree(wrap_timer);
 	}
 
+	DBGTRACE2("freeing MDLs");
 	if (mdl_cache) {
 		irql = kspin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL);
 		if (!IsListEmpty(&wrap_mdl_list)) {
@@ -226,6 +233,8 @@ void ntoskernel_exit(void)
 		kmem_cache_destroy(mdl_cache);
 		mdl_cache = NULL;
 	}
+
+	DBGTRACE2("freeing callbacks");
 	irql = kspin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL);
 	while ((cur = RemoveHeadList(&callback_objects))) {
 		struct callback_object *object;
@@ -241,12 +250,11 @@ void ntoskernel_exit(void)
 	kspin_unlock_irql(&ntoskernel_lock, irql);
 
 	del_bus_drivers();
-
 	free_all_objects();
 #if defined(CONFIG_X86_64)
 	del_timer_sync(&shared_data_timer);
 #endif
-	TRACEEXIT1(return);
+	TRACEEXIT2(return);
 }
 
 #if defined(CONFIG_X86_64)
@@ -308,19 +316,24 @@ void free_object(void *object)
 
 static void free_all_objects(void)
 {
-	struct common_object_header *hdr;
+	struct nt_list *cur;
 	KIRQL irql;
-	struct nt_list *cur, *next;
 
-	TRACEENTER2("");
-	irql = kspin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL);
-	nt_list_for_each_safe(cur, next, &object_list) {
+	TRACEENTER2("freeing objects");
+	/* delete all objects */
+	while (1) {
+		struct common_object_header *hdr;
+
+		irql = kspin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL);
+		cur = RemoveHeadList(&object_list);
+		kspin_unlock_irql(&ntoskernel_lock, irql);
+		if (!cur)
+			break;
 		hdr = container_of(cur, struct common_object_header, list);
-		RemoveEntryList(&hdr->list);
-		DBGTRACE3("freeing hdr: %p", hdr);
+		WARNING("object %p type %d was not freed, freeing it now",
+			HEADER_TO_OBJECT(hdr), hdr->type);
 		ExFreePool(hdr);
 	}
-	kspin_unlock_irql(&ntoskernel_lock, irql);
 	TRACEEXIT2(return);
 }
 
