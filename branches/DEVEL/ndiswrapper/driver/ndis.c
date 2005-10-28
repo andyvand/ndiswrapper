@@ -253,7 +253,9 @@ STDCALL void WRAP_EXPORT(NdisOpenConfigurationKeyByName)
 	if (RtlUnicodeStringToAnsiString(&ansi, key, TRUE) == STATUS_SUCCESS) {
 		DBGTRACE2("key: %s", ansi.buf);
 		RtlFreeAnsiString(&ansi);
-	}
+	} else
+		DBGTRACE2("couldn't convert ustring %d, %d, %p",
+			  key->buflen, key->len, key->buf);
 	*subkeyhandle = handle;
 	*status = NDIS_STATUS_SUCCESS;
 	TRACEEXIT2(return);
@@ -263,7 +265,7 @@ STDCALL void WRAP_EXPORT(NdisOpenConfigurationKeyByIndex)
 	(NDIS_STATUS *status, void *handle, ULONG index,
 	 struct unicode_string *key, void **subkeyhandle)
 {
-	TRACEENTER2("index: %d", index);
+	TRACEENTER2("index: %u", index);
 	*subkeyhandle = handle;
 	*status = NDIS_STATUS_SUCCESS;
 	TRACEEXIT2(return);
@@ -489,7 +491,7 @@ STDCALL void WRAP_EXPORT(NdisReadConfiguration)
 	wd = nmb->wd;
 	ret = RtlUnicodeStringToAnsiString(&ansi, key, TRUE);
 	DBGTRACE3("rtl func returns: %d", ret);
-	if (ret) {
+	if (ret || ansi.buf == NULL) {
 		*dest = NULL;
 		*status = NDIS_STATUS_FAILURE;
 		RtlFreeAnsiString(&ansi);
@@ -1439,9 +1441,9 @@ STDCALL void WRAP_EXPORT(NdisMInitializeTimer)
 	 void *func, void *ctx)
 {
 	TRACEENTER4("timer: %p, func: %p, ctx: %p, nmb: %p",
-		    &timer->ktimer, func, ctx, nmb);
+		    &timer->nt_timer, func, ctx, nmb);
 	/* DDK implements with KeInitializeTimer */
-	wrap_init_timer(&timer->ktimer, NotificationTimer, nmb->wd);
+	wrap_init_timer(&timer->nt_timer, NotificationTimer, nmb->wd);
 	timer->func = func;
 	timer->ctx = ctx;
 	timer->nmb = nmb;
@@ -1456,7 +1458,7 @@ STDCALL void WRAP_EXPORT(NdisMSetPeriodicTimer)
 
 	DBGTRACE4("%p, %u, %ld", timer, period_ms, expires);
 	/* DDK implements with KeSetTimerEx */
-	wrap_set_timer(&timer->ktimer, expires, expires, &timer->kdpc);
+	wrap_set_timer(&timer->nt_timer, expires, expires, &timer->kdpc);
 	TRACEEXIT4(return);
 }
 
@@ -1464,15 +1466,15 @@ STDCALL void WRAP_EXPORT(NdisMCancelTimer)
 	(struct ndis_miniport_timer *timer, BOOLEAN *canceled)
 {
 	TRACEENTER4("%p", timer);
-	*canceled = KeCancelTimer(&timer->ktimer);
+	*canceled = KeCancelTimer(&timer->nt_timer);
 	TRACEEXIT4(return);
 }
 
 STDCALL void WRAP_EXPORT(NdisInitializeTimer)
 	(struct ndis_timer *timer, void *func, void *ctx)
 {
-	TRACEENTER4("%p, %p, %p, %p", timer, func, ctx, &timer->ktimer);
-	KeInitializeTimer(&timer->ktimer);
+	TRACEENTER4("%p, %p, %p, %p", timer, func, ctx, &timer->nt_timer);
+	KeInitializeTimer(&timer->nt_timer);
 	KeInitializeDpc(&timer->kdpc, func, ctx);
 	TRACEEXIT4(return);
 }
@@ -1485,7 +1487,7 @@ STDCALL void WRAP_EXPORT(NdisSetTimer)
 	DBGTRACE4("%p, %u, %ld", timer, duetime_ms, expires);
 	/* DDK implements with NdisMSetTimer, which in turn is
 	 * implemented with KeSetTimer */
-	wrap_set_timer(&timer->ktimer, expires, 0, &timer->kdpc);
+	wrap_set_timer(&timer->nt_timer, expires, 0, &timer->kdpc);
 	TRACEEXIT4(return);
 }
 
@@ -1493,7 +1495,7 @@ STDCALL void WRAP_EXPORT(NdisCancelTimer)
 	(struct ndis_timer *timer, BOOLEAN *canceled)
 {
 	TRACEENTER4("");
-	*canceled = KeCancelTimer(&timer->ktimer);
+	*canceled = KeCancelTimer(&timer->nt_timer);
 	TRACEEXIT4(return);
 }
 
@@ -2275,7 +2277,7 @@ STDCALL void WRAP_EXPORT(NdisInitializeEvent)
 	(struct ndis_event *ndis_event)
 {
 	TRACEENTER3("%p", ndis_event);
-	KeInitializeEvent(&ndis_event->kevent, NotificationEvent, 0);
+	KeInitializeEvent(&ndis_event->nt_event, NotificationEvent, 0);
 }
 
 STDCALL BOOLEAN WRAP_EXPORT(NdisWaitEvent)
@@ -2286,7 +2288,7 @@ STDCALL BOOLEAN WRAP_EXPORT(NdisWaitEvent)
 
 	TRACEENTER3("%p %u", ndis_event, ms);
 	ticks = -((LARGE_INTEGER)ms * TICKSPERMSEC);
-	res = KeWaitForSingleObject(&ndis_event->kevent, 0, 0, TRUE,
+	res = KeWaitForSingleObject(&ndis_event->nt_event, 0, 0, TRUE,
 				    ms == 0 ? NULL : &ticks);
 	if (res == STATUS_SUCCESS)
 		TRACEEXIT3(return TRUE);
@@ -2298,14 +2300,14 @@ STDCALL void WRAP_EXPORT(NdisSetEvent)
 	(struct ndis_event *ndis_event)
 {
 	TRACEENTER3("%p", ndis_event);
-	KeSetEvent(&ndis_event->kevent, 0, 0);
+	KeSetEvent(&ndis_event->nt_event, 0, 0);
 }
 
 STDCALL void WRAP_EXPORT(NdisResetEvent)
 	(struct ndis_event *ndis_event)
 {
 	TRACEENTER3("%p", ndis_event);
-	KeResetEvent(&ndis_event->kevent);
+	KeResetEvent(&ndis_event->nt_event);
 }
 
 /* called via function pointer */
