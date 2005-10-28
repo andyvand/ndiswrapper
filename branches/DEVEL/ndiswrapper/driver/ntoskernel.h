@@ -956,4 +956,10 @@ extern int debug;
 #define DUMP_IRP(__irp) do { } while (0)
 #endif
 
+#define sleep(nsec)					\
+	do {						\
+		set_current_state(TASK_INTERRUPTIBLE);	\
+		schedule_timeout(nsec * HZ);		\
+	} while (0)
+
 #endif // _NTOSKERNEL_H_

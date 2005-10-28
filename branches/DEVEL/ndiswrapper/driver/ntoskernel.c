@@ -2333,8 +2333,8 @@ STDCALL NTSTATUS WRAP_EXPORT(ZwQueryInformationFile)
 	switch (class) {
 	case FileNameInformation:
 		fni = info;
-		fni->length = attr->name->len;
-		memcpy(fni->name, attr->name->buf, attr->name->len);
+		fni->length = attr->name->maxlen;
+		memcpy(fni->name, attr->name->buf, attr->name->maxlen);
 		break;
 	default:
 		WARNING("type %d not implemented yet", class);
