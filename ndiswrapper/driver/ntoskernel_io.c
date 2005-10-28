@@ -226,34 +226,34 @@ STDCALL BOOLEAN WRAP_EXPORT(IoCancelIrp)
 
 STDCALL void IoQueueThreadIrp(struct irp *irp)
 {
-	struct kthread *kthread;
+	struct nt_thread *thread;
 	KIRQL irql;
 
-	kthread = KeGetCurrentThread();
-	if (!kthread) {
+	thread = KeGetCurrentThread();
+	if (!thread) {
 		WARNING("couldn't find thread for irp: %p, task: %p, pid: %d",
 			irp, get_current(), get_current()->pid);
 		IoIrpThread(irp) = NULL;
 		return;
 	}
-	IOTRACE("kthread: %p, task: %p", kthread, kthread->task);
-	irql = kspin_lock_irql(&kthread->lock, DISPATCH_LEVEL);
+	IOTRACE("thread: %p, task: %p", thread, thread->task);
+	irql = kspin_lock_irql(&thread->lock, DISPATCH_LEVEL);
 	irp->flags |= IRP_SYNCHRONOUS_API;
-	InsertTailList(&kthread->irps, &irp->threads);
-	IoIrpThread(irp) = kthread;
-	kspin_unlock_irql(&kthread->lock, irql);
+	InsertTailList(&thread->irps, &irp->threads);
+	IoIrpThread(irp) = thread;
+	kspin_unlock_irql(&thread->lock, irql);
 }
 
 STDCALL void IoDequeueThreadIrp(struct irp *irp)
 {
-	struct kthread *kthread;
+	struct nt_thread *thread;
 	KIRQL irql;
 
-	kthread = IoIrpThread(irp);
-	if (kthread) {
-		irql = kspin_lock_irql(&kthread->lock, DISPATCH_LEVEL);
+	thread = IoIrpThread(irp);
+	if (thread) {
+		irql = kspin_lock_irql(&thread->lock, DISPATCH_LEVEL);
 		RemoveEntryList(&irp->threads);
-		kspin_unlock_irql(&kthread->lock, irql);
+		kspin_unlock_irql(&thread->lock, irql);
 	}
 }
 
@@ -324,7 +324,7 @@ STDCALL struct irp *WRAP_EXPORT(IoBuildAsynchronousFsdRequest)
 
 STDCALL struct irp *WRAP_EXPORT(IoBuildSynchronousFsdRequest)
 	(ULONG major_fn, struct device_object *dev_obj, void *buf,
-	 ULONG length, LARGE_INTEGER *offset, struct kevent *event,
+	 ULONG length, LARGE_INTEGER *offset, struct nt_event *event,
 	 struct io_status_block *status)
 {
 	struct irp *irp;
@@ -342,7 +342,7 @@ STDCALL struct irp *WRAP_EXPORT(IoBuildDeviceIoControlRequest)
 	(ULONG ioctl, struct device_object *dev_obj,
 	 void *input_buf, ULONG input_buf_len, void *output_buf,
 	 ULONG output_buf_len, BOOLEAN internal_ioctl,
-	 struct kevent *event, struct io_status_block *io_status)
+	 struct nt_event *event, struct io_status_block *io_status)
 {
 	struct irp *irp;
 	struct io_stack_location *irp_sl;
@@ -946,13 +946,13 @@ STDCALL NTSTATUS WRAP_EXPORT(IoCreateUnprotectedSymbolicLink)
 		RtlFreeAnsiString(&ansi);
 	}
 	UNIMPL();
-	return STATUS_SUCCESS;
+	IOEXIT(return STATUS_SUCCESS);
 }
 
 STDCALL NTSTATUS WRAP_EXPORT(IoCreateSymbolicLink)
 	(struct unicode_string *link, struct unicode_string *dev_name)
 {
-	return IoCreateUnprotectedSymbolicLink(link, dev_name);
+	IOEXIT(return IoCreateUnprotectedSymbolicLink(link, dev_name));
 }
 
 STDCALL NTSTATUS WRAP_EXPORT(IoDeleteSymbolicLink)
@@ -1174,6 +1174,7 @@ STDCALL unsigned int WRAP_EXPORT(IoWMIRegistrationControl)
 	struct irp *irp;
 	struct io_stack_location *irp_sl;
 	const int buf_len = 512;
+	void *buf;
 
 	TRACEENTER2("%p, %d", dev_obj, action);
 
@@ -1187,13 +1188,15 @@ STDCALL unsigned int WRAP_EXPORT(IoWMIRegistrationControl)
 		irp_sl = IoGetNextIrpStackLocation(irp);
 		irp_sl->params.wmi.provider_id = (ULONG_PTR)dev_obj;
 		irp_sl->params.wmi.data_path = (void *)WMIREGISTER;
-		irp_sl->params.wmi.buf = kmalloc(buf_len, GFP_KERNEL);
-		if (!irp_sl->params.wmi.buf) {
+		buf = kmalloc(buf_len, GFP_KERNEL);
+		if (!buf) {
 			IoFreeIrp(irp);
 			return STATUS_INSUFFICIENT_RESOURCES;
 		}
 		irp_sl->params.wmi.buf_len = buf_len;
+		irp_sl->params.wmi.buf = buf;
 		IoCallDriver(dev_obj, irp);
+		kfree(buf);
 		break;
 	case WMIREG_ACTION_DEREGISTER:
 		INFO("");

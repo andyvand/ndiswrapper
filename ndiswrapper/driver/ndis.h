@@ -379,7 +379,7 @@ struct ndis_irq {
 	UCHAR dpc_count;
 	/* unsigned char filler1 is used for pending */
 	UCHAR pending;
-	struct kevent completed_event;
+	struct nt_event completed_event;
 	UCHAR shared;
 	UCHAR req_isr;
 };
@@ -580,12 +580,12 @@ struct ndis_guid {
 };
 
 struct ndis_timer {
-	struct ktimer ktimer;
+	struct nt_timer nt_timer;
 	struct kdpc kdpc;
 };
 
 struct ndis_miniport_timer {
-	struct ktimer ktimer;
+	struct nt_timer nt_timer;
 	struct kdpc kdpc;
 	/* since kdpc already can store func, ctx, I don't know what
 	 * the following two fields are for */
@@ -651,7 +651,7 @@ struct ndis_resource_list {
 #define MAX_NDIS_PCI_RESOURCES 20
 
 struct ndis_event {
-	struct kevent kevent;
+	struct nt_event nt_event;
 };
 
 struct ndis_bind_paths {
@@ -677,7 +677,7 @@ struct ndis_miniport_interrupt {
 	struct ndis_miniport_block *miniport;
 	UCHAR dpc_count;
 	BOOLEAN filler1;
-	struct kevent dpcs_completed_event;
+	struct nt_event dpcs_completed_event;
         BOOLEAN shared_interrupt;
 	BOOLEAN isr_requested;
 };
