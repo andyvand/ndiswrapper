@@ -508,12 +508,14 @@ STDCALL void WRAP_EXPORT(RtlCopyUnicodeString)
 {
 	TRACEENTER1("%s", "");
 	if (src) {
-		dst->buflen = min(src->buflen, dst->len);
+		dst->buflen = min(src->buflen, dst->maxlen);
 		memcpy(dst->buf, src->buf, dst->buflen);
-		if (dst->buflen < dst->len)
+		if (dst->buflen < dst->maxlen) {
 			dst->buf[dst->buflen / sizeof(wchar_t)] = 0;
+			dst->buflen -= sizeof(wchar_t);
+		}
 	} else
-		dst->len = 0;
+		dst->maxlen = 0;
 	TRACEEXIT1(return);
 }
 
@@ -524,12 +526,14 @@ STDCALL NTSTATUS WRAP_EXPORT(RtlAppendUnicodeToString)
 		int len;
 		for (len = 0; src[len]; len++)
 			;
-		if (dst->buflen + (len * sizeof(wchar_t)) > dst->len)
+		if (dst->buflen + (len * sizeof(wchar_t)) > dst->maxlen)
 			return STATUS_BUFFER_TOO_SMALL;
 		memcpy(&dst->buf[dst->buflen], src, len * sizeof(wchar_t));
 		dst->buflen += len * sizeof(wchar_t);
-		if (dst->len > dst->buflen)
+		if (dst->maxlen > dst->buflen) {
 			dst->buf[dst->buflen / sizeof(wchar_t)] = 0;
+			dst->buflen -= sizeof(wchar_t);
+		}
 	}
 	return STATUS_SUCCESS;
 }
@@ -537,13 +541,15 @@ STDCALL NTSTATUS WRAP_EXPORT(RtlAppendUnicodeToString)
 STDCALL NTSTATUS WRAP_EXPORT(RtlAppendUnicodeStringToString)
 	(struct unicode_string *dst, struct unicode_string *src)
 {
-	if (dst->len < src->buflen + dst->buflen)
+	if (dst->maxlen < src->buflen + dst->buflen)
 		return STATUS_BUFFER_TOO_SMALL;
 	if (src->buflen) {
 		memcpy(&dst->buf[dst->buflen], src->buf, src->buflen);
 		dst->buflen += src->buflen;
-		if (dst->len > dst->buflen)
+		if (dst->maxlen > dst->buflen) {
 			dst->buf[dst->buflen / sizeof(wchar_t)] = 0;
+			dst->buflen -= sizeof(wchar_t);
+		}
 	}
 	return STATUS_SUCCESS;
 }
@@ -553,18 +559,16 @@ STDCALL NTSTATUS WRAP_EXPORT(RtlAnsiStringToUnicodeString)
 	 BOOLEAN dup)
 {
 	int i;
-	wchar_t *d;
-	char *s;
 
-	TRACEENTER2("dup: %d src: len: %d buflen: %d, buf: %s,"
-		    "dst: %p", dup, src->len, src->buflen, src->buf, dst);
+	TRACEENTER2("dup: %d src: maxlen: %d buflen: %d, buf: %p,"
+		    "dst: %p", dup, src->maxlen, src->buflen, src->buf, dst);
 
-	if (!src->buf || src->buflen == 0 || src->len == 0) {
+	if (src->buf == NULL || src->buflen == 0 || src->maxlen == 0) {
 		dst->buflen = 0;
 		if (dup) {
 			dst->buf = NULL;
-			dst->len = 0;
-		} else
+			dst->maxlen = 0;
+		} else if (dst->maxlen >= sizeof(dst->buf[0]))
 			dst->buf[0] = 0;
 		TRACEEXIT2(return STATUS_SUCCESS);
 	}
@@ -572,20 +576,22 @@ STDCALL NTSTATUS WRAP_EXPORT(RtlAnsiStringToUnicodeString)
 		dst->buf = kmalloc((src->buflen + 1) * sizeof(wchar_t),
 				   GFP_KERNEL);
 		if (!dst->buf) {
-			dst->len = dst->buflen = 0;
+			dst->maxlen = dst->buflen = 0;
 			return STATUS_NO_MEMORY;
 		}
-		dst->len = (src->buflen + 1) * sizeof(wchar_t);
-	} else if (dst->len < (src->buflen * sizeof(wchar_t)))
+		dst->maxlen = (src->buflen + 1) * sizeof(wchar_t);
+	} else if (dst->maxlen < (src->buflen * sizeof(wchar_t)))
 		return STATUS_BUFFER_TOO_SMALL;
 
 	dst->buflen = src->buflen * sizeof(wchar_t);
-	d = dst->buf;
-	s = src->buf;
-	for (i = 0; i < src->buflen; i++)
-		d[i] = s[i];
-	if (dst->len > dst->buflen)
-		d[i] = 0;
+	DBGTRACE2("dst: buflen: %d, maxlen: %d, src: %s",
+		  dst->buflen, dst->maxlen, src->buf);
+	for(i = 0; i < src->buflen; i++)
+		dst->buf[i] = src->buf[i];
+	if (dst->maxlen > dst->buflen) {
+		dst->buf[dst->buflen] = 0;
+		dst->buflen -= sizeof(wchar_t);
+	}
 	TRACEEXIT2(return STATUS_SUCCESS);
 }
 
@@ -594,39 +600,40 @@ STDCALL NTSTATUS WRAP_EXPORT(RtlUnicodeStringToAnsiString)
 	 BOOLEAN dup)
 {
 	int i;
-	wchar_t *s;
-	char *d;
 
-	TRACEENTER2("dup: %d src: len: %d buflen: %d, buf: %p,"
-		    "dst: %p", dup, src->len, src->buflen, src->buf, dst);
+	TRACEENTER2("dup: %d src: maxlen: %d buflen: %d, buf: %p,"
+		    "dst: %p", dup, src->maxlen, src->buflen, src->buf, dst);
 
-	if (!src->buf || src->buflen == 0 || src->len == 0) {
+	if (src->buf == NULL || src->buflen == 0 || src->maxlen == 0) {
 		dst->buflen = 0;
 		if (dup) {
 			dst->buf = NULL;
-			dst->len = 0;
-		} else
+			dst->maxlen = 0;
+		} else if (dst->maxlen >= sizeof(dst->buf[0]))
 			dst->buf[0] = 0;
 		TRACEEXIT2(return STATUS_SUCCESS);
 	}
 	if (dup == TRUE) {
-		dst->buf = kmalloc(src->buflen / sizeof(wchar_t) + 1,
-				   GFP_KERNEL);
-		if (!dst->buf) {
-			dst->len = dst->buflen = 0;
+		char *buf = kmalloc(src->buflen / sizeof(wchar_t) + 1,
+				    GFP_KERNEL);
+		if (!buf) {
+			dst->maxlen = dst->buflen = 0;
 			return STATUS_NO_MEMORY;
 		}
-		dst->len = src->buflen / sizeof(wchar_t) + 1;
-	} else if (dst->len < (src->buflen / sizeof(wchar_t)))
+		dst->buf = buf;
+		dst->maxlen = src->buflen / sizeof(wchar_t) + 1;
+	} else if (dst->maxlen < src->buflen / sizeof(wchar_t))
 		return STATUS_BUFFER_TOO_SMALL;
 
 	dst->buflen = src->buflen / sizeof(wchar_t);
-	d = dst->buf;
-	s = src->buf;
-	for (i = 0; i < dst->buflen; i++)
-		d[i] = s[i];
-	if (dst->len > dst->buflen)
-		d[i] = 0;
+	DBGTRACE2("dst: buflen: %d, maxlen: %d", dst->buflen, dst->maxlen);
+	for(i = 0; i < dst->buflen; i++)
+		dst->buf[i] = src->buf[i];
+	if (dst->maxlen > dst->buflen) {
+		dst->buf[dst->buflen] = 0;
+		dst->buflen--;
+	}
+	DBGTRACE2("string: %s", dst->buf);
 	TRACEEXIT2(return STATUS_SUCCESS);
 }
 
@@ -724,7 +731,7 @@ STDCALL NTSTATUS WRAP_EXPORT(RtlIntegerToUnicodeString)
 		return STATUS_BUFFER_TOO_SMALL;
 
 	ansi.buf = string;
-	ansi.len = strlen(string);
+	ansi.maxlen = strlen(string);
 	ansi.buflen = sizeof(string);
 	return RtlAnsiStringToUnicodeString(ustring, &ansi, 0);
 }
@@ -736,7 +743,7 @@ STDCALL void WRAP_EXPORT(RtlInitUnicodeString)
 	if (dst == NULL)
 		TRACEEXIT1(return);
 	if (src == NULL) {
-		dst->len = dst->buflen = 0;
+		dst->maxlen = dst->buflen = 0;
 		dst->buf = NULL;
 	} else {
 		int i = 0;
@@ -744,7 +751,7 @@ STDCALL void WRAP_EXPORT(RtlInitUnicodeString)
 		while (src[i++])
 			;
 		dst->buf = (wchar_t *)src;
-		dst->buflen = dst->len = i * sizeof(wchar_t);
+		dst->buflen = dst->maxlen = i * sizeof(wchar_t);
 	}
 	TRACEEXIT1(return);
 }
@@ -756,7 +763,7 @@ STDCALL void WRAP_EXPORT(RtlInitAnsiString)
 	if (dst == NULL)
 		TRACEEXIT2(return);
 	if (src == NULL) {
-		dst->len = dst->buflen = 0;
+		dst->maxlen = dst->buflen = 0;
 		dst->buf = NULL;
 	} else {
 		int i = 0;
@@ -764,7 +771,7 @@ STDCALL void WRAP_EXPORT(RtlInitAnsiString)
 		while (src[i++])
 			;
 		dst->buf = src;
-		dst->buflen = dst->len = i;
+		dst->buflen = dst->maxlen = i;
 	}
 	TRACEEXIT2(return);
 }
@@ -784,7 +791,7 @@ STDCALL void WRAP_EXPORT(RtlFreeUnicodeString)
 		return;
 
 	kfree(string->buf);
-	string->buflen = string->len = 0;
+	string->buflen = string->maxlen = 0;
 	string->buf = NULL;
 	return;
 }
@@ -796,7 +803,7 @@ STDCALL void WRAP_EXPORT(RtlFreeAnsiString)
 		return;
 
 	kfree(string->buf);
-	string->buflen = string->len = 0;
+	string->buflen = string->maxlen = 0;
 	string->buf = NULL;
 	return;
 }
@@ -813,7 +820,7 @@ STDCALL NTSTATUS WRAP_EXPORT(RtlQueryRegistryValues)
 	UNIMPL();
 
 	unicode.buf = path;
-	unicode.len = unicode.buflen = _win_wcslen(path);
+	unicode.maxlen = unicode.buflen = _win_wcslen(path);
 	if (RtlUnicodeStringToAnsiString(&ansi, &unicode, TRUE) ==
 	    STATUS_SUCCESS) {
 		DBGTRACE2("%s", ansi.buf);
@@ -822,7 +829,7 @@ STDCALL NTSTATUS WRAP_EXPORT(RtlQueryRegistryValues)
 	ret = STATUS_SUCCESS;
 	for (; tbl->name; tbl++) {
 		unicode.buf = tbl->name;
-		unicode.len = unicode.buflen = _win_wcslen(tbl->name);
+		unicode.maxlen = unicode.buflen = _win_wcslen(tbl->name);
 		if (RtlUnicodeStringToAnsiString(&ansi, &unicode, TRUE) ==
 		    STATUS_SUCCESS) {
 			DBGTRACE2("name: %s", ansi.buf);
@@ -887,14 +894,14 @@ STDCALL NTSTATUS WRAP_EXPORT(RtlWriteRegistryValue)
 	UNIMPL();
 
 	unicode.buf = path;
-	unicode.len = unicode.buflen = _win_wcslen(path);
+	unicode.maxlen = unicode.buflen = _win_wcslen(path);
 	if (RtlUnicodeStringToAnsiString(&ansi, &unicode, TRUE) ==
 	    STATUS_SUCCESS) {
 		DBGTRACE2("%s", ansi.buf);
 		RtlFreeAnsiString(&ansi);
 	}
 	unicode.buf = name;
-	unicode.len = unicode.buflen = _win_wcslen(name);
+	unicode.maxlen = unicode.buflen = _win_wcslen(name);
 	if (RtlUnicodeStringToAnsiString(&ansi, &unicode, TRUE) ==
 	    STATUS_SUCCESS) {
 		DBGTRACE2("%s", ansi.buf);

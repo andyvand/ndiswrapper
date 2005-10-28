@@ -67,29 +67,28 @@ STDCALL NTSTATUS WRAP_EXPORT(IoGetDeviceProperty)
 
 	case DevicePropertyFriendlyName:
 		if (buffer_len > 0 && buffer) {
-			ansi.len = snprintf(buf, sizeof(buf), "%d", devnum);
-			ansi.buf = buf;
-			ansi.len = strlen(ansi.buf);
-			if (ansi.len <= 0) {
+			ansi.maxlen = snprintf(buf, sizeof(buf), "%d", devnum);
+			if (ansi.maxlen <= 0) {
 				*result_len = 0;
 				IOEXIT(return STATUS_BUFFER_TOO_SMALL);
 			}
-			ansi.buflen = ansi.len;
+			ansi.buf = buf;
+			ansi.buflen = ansi.maxlen;
 			unicode.buf = buffer;
 			unicode.buflen = buffer_len;
-			IOTRACE("unicode.buflen = %d, ansi.len = %d",
-				unicode.buflen, ansi.len);
+			IOTRACE("unicode.buflen = %d, ansi.maxlen = %d",
+				unicode.buflen, ansi.maxlen);
 			if (RtlAnsiStringToUnicodeString(&unicode, &ansi,
 							 FALSE)) {
 				*result_len = 0;
 				IOEXIT(return STATUS_BUFFER_TOO_SMALL);
 			} else {
-				*result_len = unicode.len;
+				*result_len = unicode.maxlen;
 				IOEXIT(return STATUS_SUCCESS);
 			}
 		} else {
-			ansi.len = snprintf(buf, sizeof(buf), "%d", devnum);
-			*result_len = 2 * (ansi.len + 1);
+			ansi.maxlen = snprintf(buf, sizeof(buf), "%d", devnum);
+			*result_len = 2 * (ansi.maxlen + 1);
 			IOEXIT(return STATUS_BUFFER_TOO_SMALL);
 		}
 		break;
@@ -97,8 +96,8 @@ STDCALL NTSTATUS WRAP_EXPORT(IoGetDeviceProperty)
 	case DevicePropertyDriverKeyName:
 //		ansi.buf = wd->driver->name;
 		ansi.buf = buf;
-		ansi.len = strlen(ansi.buf);
-		ansi.buflen = ansi.len;
+		ansi.maxlen = strlen(ansi.buf);
+		ansi.buflen = ansi.maxlen;
 		if (buffer_len > 0 && buffer) {
 			unicode.buf = buffer;
 			unicode.buflen = buffer_len;
@@ -107,7 +106,7 @@ STDCALL NTSTATUS WRAP_EXPORT(IoGetDeviceProperty)
 				*result_len = 0;
 				IOEXIT(return STATUS_BUFFER_TOO_SMALL);
 			} else {
-				*result_len = unicode.len;
+				*result_len = unicode.maxlen;
 				IOEXIT(return STATUS_SUCCESS);
 			}
 		} else {
@@ -1122,7 +1121,7 @@ STDCALL NTSTATUS WRAP_EXPORT(IoRegisterDeviceInterface)
 
 	/* check if pdo is valid */
 	ansi.buf = "ndis";
-	ansi.buflen = ansi.len = strlen(ansi.buf);
+	ansi.buflen = ansi.maxlen = strlen(ansi.buf);
 	TRACEENTER1("pdo: %p, ref: %p, link: %p", pdo, reference, link);
 	return RtlAnsiStringToUnicodeString(link, &ansi, TRUE);
 }

@@ -1372,12 +1372,12 @@ static int ndis_set_mac_addr(struct net_device *dev, void *p)
 		TRACEEXIT1(return -EINVAL);
 
 	ansi.buf = "mac_address";
-	ansi.buflen = ansi.len = strlen(ansi.buf);
+	ansi.buflen = ansi.maxlen = strlen(ansi.buf);
 	if (RtlAnsiStringToUnicodeString(&key, &ansi, 1))
 		TRACEEXIT1(return -EINVAL);
 
 	ansi.buf = mac_string;
-	ansi.buflen = ansi.len = sizeof(mac_string);
+	ansi.buflen = ansi.maxlen = sizeof(mac_string);
 	if (RtlAnsiStringToUnicodeString(&param.data.ustring, &ansi, 1) !=
 	    NDIS_STATUS_SUCCESS) {
 		RtlFreeUnicodeString(&key);

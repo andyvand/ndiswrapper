@@ -255,7 +255,7 @@ STDCALL void WRAP_EXPORT(NdisOpenConfigurationKeyByName)
 		RtlFreeAnsiString(&ansi);
 	} else
 		DBGTRACE2("couldn't convert ustring %d, %d, %p",
-			  key->buflen, key->len, key->buf);
+			  key->buflen, key->maxlen, key->buf);
 	*subkeyhandle = handle;
 	*status = NDIS_STATUS_SUCCESS;
 	TRACEEXIT2(return);
@@ -421,7 +421,7 @@ static int ndis_encode_setting(struct device_setting *setting,
 			  (ULONG)setting->config_param.data.intval);
 		break;
 	case NDIS_CONFIG_PARAM_STRING:
-		ansi.buflen = ansi.len = strlen(setting->value);
+		ansi.buflen = ansi.maxlen = strlen(setting->value);
 		ansi.buf = setting->value;
 		DBGTRACE2("setting value = %s", ansi.buf);
 		param = &setting->config_param;
@@ -461,12 +461,12 @@ static int ndis_decode_setting(struct device_setting *setting,
 		ansi.buflen = MAX_STR_LEN;
 		if (RtlUnicodeStringToAnsiString(&ansi, &val->data.ustring,
 						 FALSE)
-		    || ansi.len >= MAX_STR_LEN) {
+		    || ansi.maxlen >= MAX_STR_LEN) {
 			TRACEEXIT1(return NDIS_STATUS_FAILURE);
 		}
-		memcpy(setting->value, ansi.buf, ansi.len);
+		memcpy(setting->value, ansi.buf, ansi.maxlen);
 		DBGTRACE2("value = %s", setting->value);
-		setting->value[ansi.len] = 0;
+		setting->value[ansi.maxlen] = 0;
 		break;
 	default:
 		DBGTRACE2("unknown setting type: %d", val->type);
@@ -555,8 +555,8 @@ STDCALL void WRAP_EXPORT(NdisWriteConfiguration)
 		TRACEEXIT2(return);
 	}
 	memset(setting, 0, sizeof(*setting));
-	memcpy(setting->name, keyname, ansi.len);
-	setting->name[ansi.len] = 0;
+	memcpy(setting->name, keyname, ansi.maxlen);
+	setting->name[ansi.maxlen] = 0;
 	*status = ndis_decode_setting(setting, param);
 	if (*status == NDIS_STATUS_SUCCESS)
 		InsertTailList(&wd->ndis_device->settings, &setting->list);
@@ -574,7 +574,7 @@ STDCALL void WRAP_EXPORT(NdisInitializeString)
 	struct ansi_string ansi;
 
 	TRACEENTER2("");
-	ansi.len = ansi.buflen = strlen(src);
+	ansi.maxlen = ansi.buflen = strlen(src);
 	ansi.buf = src;
 	if (RtlAnsiStringToUnicodeString(dest, &ansi, TRUE))
 		DBGTRACE2("failed");
@@ -1512,7 +1512,7 @@ STDCALL void WRAP_EXPORT(NdisReadNetworkAddress)
 	TRACEENTER1("");
 	ansi.buf = "mac_address";
 	ansi.buflen = strlen(ansi.buf);
-	ansi.len = ansi.buflen;
+	ansi.maxlen = ansi.buflen;
 
 	*len = 0;
 	*status = NDIS_STATUS_FAILURE;
@@ -2590,7 +2590,7 @@ STDCALL NDIS_STATUS WRAP_EXPORT(NdisMQueryAdapterInstanceName)
 		ansi_string.buf = "PCI Ethernet Adapter";
 	else
 		ansi_string.buf = "USB Ethernet Adapter";
-	ansi_string.buflen = ansi_string.len = strlen(ansi_string.buf);
+	ansi_string.buflen = ansi_string.maxlen = strlen(ansi_string.buf);
 	if (RtlAnsiStringToUnicodeString(name, &ansi_string, TRUE))
 		TRACEEXIT2(return NDIS_STATUS_RESOURCES);
 	else
