@@ -173,14 +173,14 @@ typedef ULONG ACCESS_MASK;
 #define NT_SUCCESS(status)  ((NTSTATUS)(status) >= 0)
 
 struct ansi_string {
-	USHORT buflen;
-	USHORT maxlen;
+	USHORT length;
+	USHORT max_length;
 	char *buf;
 };
 
 struct unicode_string {
-	USHORT buflen;
-	USHORT maxlen;
+	USHORT length;
+	USHORT max_length;
 	wchar_t *buf;
 };
 
