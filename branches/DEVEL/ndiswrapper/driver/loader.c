@@ -715,7 +715,8 @@ static int load_ndis_driver(struct load_driver *load_driver)
 
 	TRACEENTER1("");
 	ansi_reg.buf = "/tmp";
-	ansi_reg.buflen = ansi_reg.maxlen = strlen(ansi_reg.buf);
+	ansi_reg.buflen = strlen(ansi_reg.buf);
+	ansi_reg.maxlen = ansi_reg.buflen + 1;
 	drv_obj = kmalloc(sizeof(*drv_obj), GFP_KERNEL);
 	if (!drv_obj) {
 		ERROR("couldn't allocate memory");

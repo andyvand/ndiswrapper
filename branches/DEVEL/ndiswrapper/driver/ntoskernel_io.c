@@ -67,15 +67,15 @@ STDCALL NTSTATUS WRAP_EXPORT(IoGetDeviceProperty)
 
 	case DevicePropertyFriendlyName:
 		if (buffer_len > 0 && buffer) {
-			ansi.maxlen = snprintf(buf, sizeof(buf), "%d", devnum);
-			if (ansi.maxlen <= 0) {
+			ansi.buflen = snprintf(buf, sizeof(buf), "%d", devnum);
+			if (ansi.buflen <= 0) {
 				*result_len = 0;
 				IOEXIT(return STATUS_BUFFER_TOO_SMALL);
 			}
 			ansi.buf = buf;
-			ansi.buflen = ansi.maxlen;
+			ansi.maxlen = ansi.buflen + 1;
 			unicode.buf = buffer;
-			unicode.buflen = buffer_len;
+			unicode.maxlen = buffer_len;
 			IOTRACE("unicode.buflen = %d, ansi.maxlen = %d",
 				unicode.buflen, ansi.maxlen);
 			if (RtlAnsiStringToUnicodeString(&unicode, &ansi,
@@ -96,8 +96,8 @@ STDCALL NTSTATUS WRAP_EXPORT(IoGetDeviceProperty)
 	case DevicePropertyDriverKeyName:
 //		ansi.buf = wd->driver->name;
 		ansi.buf = buf;
-		ansi.maxlen = strlen(ansi.buf);
-		ansi.buflen = ansi.maxlen;
+		ansi.buflen = strlen(ansi.buf);
+		ansi.maxlen = ansi.buflen + 1;
 		if (buffer_len > 0 && buffer) {
 			unicode.buf = buffer;
 			unicode.buflen = buffer_len;
@@ -1121,7 +1121,8 @@ STDCALL NTSTATUS WRAP_EXPORT(IoRegisterDeviceInterface)
 
 	/* check if pdo is valid */
 	ansi.buf = "ndis";
-	ansi.buflen = ansi.maxlen = strlen(ansi.buf);
+	ansi.buflen = strlen(ansi.buf);
+	ansi.maxlen = ansi.buflen + 1;
 	TRACEENTER1("pdo: %p, ref: %p, link: %p", pdo, reference, link);
 	return RtlAnsiStringToUnicodeString(link, &ansi, TRUE);
 }
