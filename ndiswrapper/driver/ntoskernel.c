@@ -2249,7 +2249,7 @@ STDCALL NTSTATUS WRAP_EXPORT(ZwCreateFile)
 		return STATUS_INSUFFICIENT_RESOURCES;
 	}
 	ansi.buf[MAX_STR_LEN-1] = 0;
-	ansi.buflen = MAX_STR_LEN;
+	ansi.maxlen = MAX_STR_LEN;
 
 	if (RtlUnicodeStringToAnsiString(&ansi, obj_attr->name, FALSE)) {
 		RtlFreeAnsiString(&ansi);
