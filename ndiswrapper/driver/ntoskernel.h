@@ -597,8 +597,8 @@ STDCALL NTSTATUS RtlUnicodeStringToAnsiString(struct ansi_string *dst,
 STDCALL NTSTATUS RtlAnsiStringToUnicodeString(struct unicode_string *dst,
 					       const struct ansi_string *src,
 					       BOOLEAN dup);
-STDCALL void RtlInitAnsiString(struct ansi_string *dst, CHAR *src);
-STDCALL void RtlInitString(struct ansi_string *dst, CHAR *src);
+STDCALL void RtlInitAnsiString(struct ansi_string *dst, const char *src);
+STDCALL void RtlInitString(struct ansi_string *dst, const char *src);
 STDCALL void RtlInitUnicodeString(struct unicode_string *dest,
 				  const wchar_t *src);
 STDCALL void RtlFreeUnicodeString(struct unicode_string *string);

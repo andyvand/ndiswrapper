@@ -399,7 +399,7 @@ STDCALL SIZE_T WRAP_EXPORT(RtlCompareMemory)
 	size_t i;
 	char *x, *y;
 
-	TRACEENTER1("%s", "");
+	TRACEENTER1("");
 
 	x = (char *)a;
 	y = (char *)b;
@@ -444,7 +444,7 @@ STDCALL LONG WRAP_EXPORT(RtlCompareString)
 	LONG ret = 0;
 	const char *p1, *p2;
 
-	TRACEENTER2("%s", "");
+	TRACEENTER2("");
 	len = min(s1->buflen, s2->buflen);
 	p1 = s1->buf;
 	p2 = s2->buf;
@@ -467,7 +467,7 @@ STDCALL LONG WRAP_EXPORT(RtlCompareUnicodeString)
 	LONG ret = 0;
 	const wchar_t *p1, *p2;
 
-	TRACEENTER2("%s", "");
+	TRACEENTER2("");
 
 	len = min(s1->buflen, s2->buflen) / sizeof(wchar_t);
 	p1 = s1->buf;
@@ -488,7 +488,7 @@ STDCALL BOOLEAN WRAP_EXPORT(RtlEqualString)
 	(const struct ansi_string *s1, const struct ansi_string *s2,
 	 BOOLEAN case_insensitive)
 {
-	TRACEENTER1("%s", "");
+	TRACEENTER1("");
 	if (s1->buflen != s2->buflen)
 		return FALSE;
 	return !RtlCompareString(s1, s2, case_insensitive);
@@ -506,7 +506,7 @@ STDCALL BOOLEAN WRAP_EXPORT(RtlEqualUnicodeString)
 STDCALL void WRAP_EXPORT(RtlCopyUnicodeString)
 	(struct unicode_string *dst, struct unicode_string *src)
 {
-	TRACEENTER1("%s", "");
+	TRACEENTER1("%p, %p", dst, src);
 	if (src) {
 		dst->buflen = min(src->buflen, dst->maxlen);
 		memcpy(dst->buf, src->buf, dst->buflen);
@@ -550,23 +550,23 @@ STDCALL NTSTATUS WRAP_EXPORT(RtlAppendUnicodeStringToString)
 
 STDCALL NTSTATUS WRAP_EXPORT(RtlAnsiStringToUnicodeString)
 	(struct unicode_string *dst, const struct ansi_string *src,
-	 BOOLEAN dup)
+	 BOOLEAN alloc)
 {
 	int i;
 
-	TRACEENTER2("dup: %d src: maxlen: %d buflen: %d, buf: %p,"
-		    "dst: %p", dup, src->maxlen, src->buflen, src->buf, dst);
+	TRACEENTER2("src: maxlen: %d buflen: %d, buf: %p, dst: %p, alloc: %d",
+		    src->maxlen, src->buflen, src->buf, dst, alloc);
 
 	if (src->buf == NULL || src->buflen == 0 || src->maxlen == 0) {
 		dst->buflen = 0;
-		if (dup) {
+		if (alloc) {
 			dst->buf = NULL;
 			dst->maxlen = 0;
 		} else if (dst->maxlen >= sizeof(dst->buf[0]))
 			dst->buf[0] = 0;
 		TRACEEXIT2(return STATUS_SUCCESS);
 	}
-	if (dup == TRUE) {
+	if (alloc == TRUE) {
 		dst->buf = kmalloc((src->buflen + 1) * sizeof(wchar_t),
 				   GFP_KERNEL);
 		if (!dst->buf) {
@@ -589,23 +589,23 @@ STDCALL NTSTATUS WRAP_EXPORT(RtlAnsiStringToUnicodeString)
 
 STDCALL NTSTATUS WRAP_EXPORT(RtlUnicodeStringToAnsiString)
 	(struct ansi_string *dst, const struct unicode_string *src,
-	 BOOLEAN dup)
+	 BOOLEAN alloc)
 {
 	int i;
 
-	TRACEENTER2("dup: %d src: maxlen: %d buflen: %d, buf: %p,"
-		    "dst: %p", dup, src->maxlen, src->buflen, src->buf, dst);
+	TRACEENTER2("src: maxlen: %d buflen: %d, buf: %p, dst: %p, alloc: %d",
+		    src->maxlen, src->buflen, src->buf, dst, alloc);
 
 	if (src->buf == NULL || src->buflen == 0 || src->maxlen == 0) {
 		dst->buflen = 0;
-		if (dup) {
+		if (alloc) {
 			dst->buf = NULL;
 			dst->maxlen = 0;
 		} else if (dst->maxlen >= sizeof(dst->buf[0]))
 			dst->buf[0] = 0;
 		TRACEEXIT2(return STATUS_SUCCESS);
 	}
-	if (dup == TRUE) {
+	if (alloc == TRUE) {
 		dst->buf = kmalloc((src->buflen / sizeof(wchar_t)) + 1,
 				    GFP_KERNEL);
 		if (!dst->buf) {
@@ -629,7 +629,7 @@ STDCALL NTSTATUS WRAP_EXPORT(RtlUnicodeStringToAnsiString)
 STDCALL NTSTATUS WRAP_EXPORT(RtlUnicodeStringToInteger)
 	(struct unicode_string *ustring, ULONG base, ULONG *value)
 {
-	int negsign;
+	int i, negsign;
 	wchar_t *str;
 
 	*value = 0;
@@ -637,31 +637,30 @@ STDCALL NTSTATUS WRAP_EXPORT(RtlUnicodeStringToInteger)
 		return STATUS_SUCCESS;
 
 	str = ustring->buf;
-
+	i = 0;
 	negsign = 0;
-	switch ((char)*str) {
+	switch ((char)str[i]) {
 	case '-':
 		negsign = 1;
 		/* fall through */
 	case '+':
-		str++;
+		i++;
 		break;
 	}
 		       
-	if (base == 0 &&
-	    ((void *)str - (void *)ustring->buf) < ustring->buflen) {
-		switch(tolower((char)*str)) {
+	if (base == 0 && i < ustring->buflen && str[i]) {
+		switch(tolower((char)str[i])) {
 		case 'x':
 			base = 16;
-			str++;
+			i++;
 			break;
 		case 'o':
 			base = 8;
-			str++;
+			i++;
 			break;
 		case 'b':
 			base = 2;
-			str++;
+			i++;
 			break;
 		default:
 			base = 10;
@@ -671,10 +670,9 @@ STDCALL NTSTATUS WRAP_EXPORT(RtlUnicodeStringToInteger)
 	if (!(base == 2 || base == 8 || base == 10 || base == 16))
 		return STATUS_INVALID_PARAMETER;
 
-	for (; ((void *)str - (void *)ustring->buf) < ustring->buflen;
-	     str++) {
+	for (; i < ustring->buflen && str[i]; i++) {
 		int r;
-		char c = tolower((char)*str);
+		char c = tolower((char)str[i]);
 
 		if (c >= '0' && c <= '9')
 			r = c - '0';
@@ -699,7 +697,7 @@ STDCALL NTSTATUS WRAP_EXPORT(RtlIntegerToUnicodeString)
 	struct ansi_string ansi;
 	int i;
 
-	TRACEENTER1("%s", "");
+	TRACEENTER2("%u, %u, %p", value, base, ustring);
 	if (base == 0)
 		base = 10;
 	if (!(base == 2 || base == 8 || base == 10 || base == 16))
@@ -728,7 +726,7 @@ STDCALL NTSTATUS WRAP_EXPORT(RtlIntegerToUnicodeString)
 STDCALL void WRAP_EXPORT(RtlInitUnicodeString)
 	(struct unicode_string *dst, const wchar_t *src)
 {
-	TRACEENTER1("%s", "");
+	TRACEENTER2("%p", dst);
 	if (dst == NULL)
 		TRACEEXIT1(return);
 	if (src == NULL) {
@@ -736,19 +734,19 @@ STDCALL void WRAP_EXPORT(RtlInitUnicodeString)
 		dst->buf = NULL;
 	} else {
 		int i = 0;
-		/* include terminating NULL in length */
-		while (src[i++])
-			;
+		while (src[i])
+			i++;
 		dst->buf = (wchar_t *)src;
-		dst->buflen = dst->maxlen = i * sizeof(wchar_t);
+		dst->buflen = i * sizeof(wchar_t);
+		dst->maxlen = (i + 1) * sizeof(wchar_t);
 	}
 	TRACEEXIT1(return);
 }
 
 STDCALL void WRAP_EXPORT(RtlInitAnsiString)
-	(struct ansi_string *dst, CHAR *src)
+	(struct ansi_string *dst, const char *src)
 {
-	TRACEENTER2("%s", "");
+	TRACEENTER2("%p", dst);
 	if (dst == NULL)
 		TRACEEXIT2(return);
 	if (src == NULL) {
@@ -756,19 +754,20 @@ STDCALL void WRAP_EXPORT(RtlInitAnsiString)
 		dst->buf = NULL;
 	} else {
 		int i = 0;
-		/* include terminating NULL in length */
-		while (src[i++])
-			;
-		dst->buf = src;
-		dst->buflen = dst->maxlen = i;
+		while (src[i])
+			i++;
+		dst->buf = (char *)src;
+		dst->buflen = i;
+		dst->maxlen = i + 1;
 	}
+
 	TRACEEXIT2(return);
 }
 
 STDCALL void WRAP_EXPORT(RtlInitString)
-	(struct ansi_string *dst, CHAR *src)
+	(struct ansi_string *dst, const char *src)
 {
-	TRACEENTER2("%s", "");
+	TRACEENTER2("%p", dst);
 	RtlInitAnsiString(dst, src);
 	TRACEEXIT2(return);
 }
@@ -776,10 +775,12 @@ STDCALL void WRAP_EXPORT(RtlInitString)
 STDCALL void WRAP_EXPORT(RtlFreeUnicodeString)
 	(struct unicode_string *string)
 {
-	if (string == NULL || string->buf == NULL)
+	TRACEENTER2("%p", string);
+	if (string == NULL)
 		return;
 
-	kfree(string->buf);
+	if (string->buf)
+		kfree(string->buf);
 	string->buflen = string->maxlen = 0;
 	string->buf = NULL;
 	return;
@@ -788,10 +789,11 @@ STDCALL void WRAP_EXPORT(RtlFreeUnicodeString)
 STDCALL void WRAP_EXPORT(RtlFreeAnsiString)
 	(struct ansi_string *string)
 {
-	if (string == NULL || string->buf == NULL)
+	TRACEENTER2("%p", string);
+	if (string == NULL)
 		return;
-
-	kfree(string->buf);
+	if (string->buf)
+		kfree(string->buf);
 	string->buflen = string->maxlen = 0;
 	string->buf = NULL;
 	return;
