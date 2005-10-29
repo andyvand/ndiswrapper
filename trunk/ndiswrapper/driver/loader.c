@@ -714,9 +714,6 @@ static int load_ndis_driver(struct load_driver *load_driver)
 	int i;
 
 	TRACEENTER1("");
-	ansi_reg.buf = "/tmp";
-	ansi_reg.buflen = strlen(ansi_reg.buf);
-	ansi_reg.maxlen = ansi_reg.buflen + 1;
 	drv_obj = kmalloc(sizeof(*drv_obj), GFP_KERNEL);
 	if (!drv_obj) {
 		ERROR("couldn't allocate memory");
@@ -748,6 +745,9 @@ static int load_ndis_driver(struct load_driver *load_driver)
 	memset(ndis_driver, 0, sizeof(*ndis_driver));
 	ndis_driver->bustype = -1;
 	ndis_driver->drv_obj = drv_obj;
+	ansi_reg.buf = "/tmp";
+	ansi_reg.length = strlen(ansi_reg.buf);
+	ansi_reg.max_length = ansi_reg.length + 1;
 	if (RtlAnsiStringToUnicodeString(&drv_obj->driver_name,
 					 &ansi_reg, 1) != STATUS_SUCCESS) {
 		ERROR("couldn't initialize registry path");

@@ -1993,24 +1993,31 @@ STDCALL BOOLEAN WRAP_EXPORT(KeSynchronizeExecution)
 	return ret;
 }
 
+/* Atheros card with pciid 168C:0014 calls this function with 0xf0000
+ * and 0xf6ef0 address, and then check for things that seem to be
+ * related to ACPI: "_SM_" and "_DMI_". This may be the hack they do
+ * to check if this card is installed in IBM thinkpads; we can
+ * probably get this device to work if we create a buffer with the
+ * strings as required by the driver and return virtual address for
+ * that address instead */
 STDCALL void *WRAP_EXPORT(MmMapIoSpace)
 	(PHYSICAL_ADDRESS phys_addr, SIZE_T size,
 	 enum memory_caching_type cache)
 {
 	void *virt;
-
-	if (cache)
+	TRACEENTER1("cache type: %d", cache);
+	if (cache == MmCached)
 		virt = ioremap(phys_addr, size);
 	else
 		virt = ioremap_nocache(phys_addr, size);
-	DBGTRACE3("%Lx, %lu, %d: %p", phys_addr, size, cache, virt);
+	DBGTRACE1("%Lx, %lu, %p", phys_addr, size, virt);
 	return virt;
 }
 
 STDCALL void WRAP_EXPORT(MmUnmapIoSpace)
 	(void *addr, SIZE_T size)
 {
-	TRACEENTER3("%p, %lu", addr, size);
+	TRACEENTER1("%p, %lu", addr, size);
 	iounmap(addr);
 	return;
 }
@@ -2249,7 +2256,7 @@ STDCALL NTSTATUS WRAP_EXPORT(ZwCreateFile)
 		return STATUS_INSUFFICIENT_RESOURCES;
 	}
 	ansi.buf[MAX_STR_LEN-1] = 0;
-	ansi.maxlen = MAX_STR_LEN;
+	ansi.max_length = MAX_STR_LEN;
 
 	if (RtlUnicodeStringToAnsiString(&ansi, obj_attr->name, FALSE)) {
 		RtlFreeAnsiString(&ansi);
@@ -2278,10 +2285,12 @@ STDCALL NTSTATUS WRAP_EXPORT(ZwCreateFile)
 	nt_list_for_each_entry(driver, &ndis_drivers, list) {
 		int i;
 		for (i = 0; i < driver->num_bin_files; i++) {
-			int n;
+			size_t n;
 			file = &driver->bin_files[i];
 			DBGTRACE2("considering %s", file->name);
-			n = min(strlen(file->name), strlen(ansi.buf));
+			n = min((size_t)ansi.length + 1,
+				(size_t)ansi.max_length);
+			n = min(strlen(file->name), n);
 			if (strnicmp(file->name, ansi.buf, n) == 0) {
 				oa->file = file;
 				iosb->status = FILE_OPENED;
@@ -2333,8 +2342,8 @@ STDCALL NTSTATUS WRAP_EXPORT(ZwQueryInformationFile)
 	switch (class) {
 	case FileNameInformation:
 		fni = info;
-		fni->length = attr->name->maxlen;
-		memcpy(fni->name, attr->name->buf, attr->name->maxlen);
+		fni->length = attr->name->max_length;
+		memcpy(fni->name, attr->name->buf, attr->name->max_length);
 		break;
 	default:
 		WARNING("type %d not implemented yet", class);
