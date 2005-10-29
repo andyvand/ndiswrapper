@@ -597,8 +597,8 @@ STDCALL NTSTATUS RtlUnicodeStringToAnsiString(struct ansi_string *dst,
 STDCALL NTSTATUS RtlAnsiStringToUnicodeString(struct unicode_string *dst,
 					       const struct ansi_string *src,
 					       BOOLEAN dup);
-STDCALL void RtlInitAnsiString(struct ansi_string *dst, CHAR *src);
-STDCALL void RtlInitString(struct ansi_string *dst, CHAR *src);
+STDCALL void RtlInitAnsiString(struct ansi_string *dst, const char *src);
+STDCALL void RtlInitString(struct ansi_string *dst, const char *src);
 STDCALL void RtlInitUnicodeString(struct unicode_string *dest,
 				  const wchar_t *src);
 STDCALL void RtlFreeUnicodeString(struct unicode_string *string);
@@ -955,5 +955,11 @@ extern int debug;
 #else
 #define DUMP_IRP(__irp) do { } while (0)
 #endif
+
+#define sleep(nsec)					\
+	do {						\
+		set_current_state(TASK_INTERRUPTIBLE);	\
+		schedule_timeout(nsec * HZ);		\
+	} while (0)
 
 #endif // _NTOSKERNEL_H_

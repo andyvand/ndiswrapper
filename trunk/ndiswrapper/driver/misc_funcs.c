@@ -399,7 +399,7 @@ STDCALL SIZE_T WRAP_EXPORT(RtlCompareMemory)
 	size_t i;
 	char *x, *y;
 
-	TRACEENTER1("%s", "");
+	TRACEENTER1("");
 
 	x = (char *)a;
 	y = (char *)b;
@@ -444,11 +444,10 @@ STDCALL LONG WRAP_EXPORT(RtlCompareString)
 	LONG ret = 0;
 	const char *p1, *p2;
 
-	TRACEENTER1("%s", "");
+	TRACEENTER2("");
 	len = min(s1->buflen, s2->buflen);
 	p1 = s1->buf;
 	p2 = s2->buf;
-
 	if (case_insensitive)
 		while (!ret && len--)
 			ret = toupper(*p1++) - toupper(*p2++);
@@ -456,8 +455,8 @@ STDCALL LONG WRAP_EXPORT(RtlCompareString)
 		while (!ret && len--)
 			ret = *p1++ - *p2++;
 	if (!ret)
-		ret = s1->len - s2->len;
-	return ret;
+		ret = s1->buflen - s2->buflen;
+	TRACEEXIT2(return ret);
 }
 
 STDCALL LONG WRAP_EXPORT(RtlCompareUnicodeString)
@@ -468,48 +467,20 @@ STDCALL LONG WRAP_EXPORT(RtlCompareUnicodeString)
 	LONG ret = 0;
 	const wchar_t *p1, *p2;
 
-	TRACEENTER1("%s", "");
+	TRACEENTER2("");
 
-	if (!s1 || !s1->buf || !s1->buflen) {
-		if (!s2 || !s2->buf || !s2->buflen)
-			TRACEEXIT1(return 0);
-		else
-			TRACEEXIT1(return -1);
-	}
-	if (!s2 || !s2->buf || !s2->buflen)
-		TRACEEXIT1(return 1);
-#ifdef DEBUG
-	{
-		struct ansi_string ansi;
-		DBGTRACE2("%p, %p", s1, s2);
-		if (s1 && RtlUnicodeStringToAnsiString(&ansi, s1, TRUE) ==
-		    STATUS_SUCCESS) {
-			DBGTRACE2("s1: %s", ansi.buf);
-			RtlFreeAnsiString(&ansi);
-		}
-
-		if (s2 && RtlUnicodeStringToAnsiString(&ansi, s2, TRUE) ==
-		    STATUS_SUCCESS) {
-			DBGTRACE2("s2: %s", ansi.buf);
-			RtlFreeAnsiString(&ansi);
-		}
-	}
-#endif
-	len = min(s1->buflen, s2->buflen);
+	len = min(s1->buflen, s2->buflen) / sizeof(wchar_t);
 	p1 = s1->buf;
 	p2 = s2->buf;
-
-	DBGTRACE2("len: %d, %p, %p", len, p1, p2);
 	if (case_insensitive)
-		while (!ret && len-- && p1 && p2)
+		while (!ret && len--)
 			ret = toupper((u8)*p1++) - toupper((u8)*p2++);
 	else
-		while (!ret && len-- && p1 && p2)
-			ret = *p1++ - *p2++;
-
-	DBGTRACE2("len: %d, %p, %p", len, p1, p2);
+		while (!ret && len--)
+			ret = (u8)*p1++ - (u8)*p2++;
 	if (!ret)
 		ret = s1->buflen - s2->buflen;
+	DBGTRACE2("len: %d, %p, %p", len, p1, p2);
 	TRACEEXIT2(return ret);
 }
 
@@ -517,9 +488,9 @@ STDCALL BOOLEAN WRAP_EXPORT(RtlEqualString)
 	(const struct ansi_string *s1, const struct ansi_string *s2,
 	 BOOLEAN case_insensitive)
 {
-	TRACEENTER1("%s", "");
-	if (s1->len != s2->len)
-		return 0;
+	TRACEENTER1("");
+	if (s1->buflen != s2->buflen)
+		return FALSE;
 	return !RtlCompareString(s1, s2, case_insensitive);
 }
 
@@ -527,10 +498,6 @@ STDCALL BOOLEAN WRAP_EXPORT(RtlEqualUnicodeString)
 	(const struct unicode_string *s1, const struct unicode_string *s2,
 	 BOOLEAN case_insensitive)
 {
-	TRACEENTER2("s1: %p, s1->len: %d, s1->buflen: %d",
-		    s1, s1->len, s1->buflen);
-	TRACEENTER2("s2: %p, s2->len: %d, s2->buflen: %d",
-		    s2, s2->len, s2->buflen);
 	if (s1->buflen != s2->buflen)
 		return FALSE;
 	return !RtlCompareUnicodeString(s1, s2, case_insensitive);
@@ -539,165 +506,161 @@ STDCALL BOOLEAN WRAP_EXPORT(RtlEqualUnicodeString)
 STDCALL void WRAP_EXPORT(RtlCopyUnicodeString)
 	(struct unicode_string *dst, struct unicode_string *src)
 {
-	TRACEENTER1("%s", "");
+	TRACEENTER1("%p, %p", dst, src);
 	if (src) {
-		unsigned int len = min(src->len, dst->buflen);
-		memcpy(dst->buf, src->buf, len);
-		dst->len = len;
-		/* append terminating '\0' if enough space */
-		if (len < dst->buflen)
-			dst->buf[len] = 0;
+		dst->buflen = min(src->buflen, dst->maxlen);
+		memcpy(dst->buf, src->buf, dst->buflen);
+		if (dst->buflen < dst->maxlen)
+			dst->buf[dst->buflen / sizeof(wchar_t)] = 0;
 	} else
-		dst->len = 0;
+		dst->maxlen = 0;
 	TRACEEXIT1(return);
 }
 
 STDCALL NTSTATUS WRAP_EXPORT(RtlAppendUnicodeToString)
 	(struct unicode_string *dst, wchar_t *src)
 {
-	int i;
-
-	for (i = 0; src[i] != 0 && dst->len + i < dst->buflen; i++)
-		dst->buf[dst->len + i] = src[i];
-	if (src[i] != 0)
-		return STATUS_BUFFER_TOO_SMALL;
-	dst->len += i;
+	if (src) {
+		int len;
+		for (len = 0; src[len]; len++)
+			;
+		if (dst->buflen + (len * sizeof(wchar_t)) > dst->maxlen)
+			return STATUS_BUFFER_TOO_SMALL;
+		memcpy(&dst->buf[dst->buflen], src, len * sizeof(wchar_t));
+		dst->buflen += len * sizeof(wchar_t);
+		if (dst->maxlen > dst->buflen)
+			dst->buf[dst->buflen / sizeof(wchar_t)] = 0;
+	}
 	return STATUS_SUCCESS;
 }
 
 STDCALL NTSTATUS WRAP_EXPORT(RtlAppendUnicodeStringToString)
 	(struct unicode_string *dst, struct unicode_string *src)
 {
-	int i;
-
-	if (dst->buflen < dst->len + src->len)
+	if (dst->maxlen < src->buflen + dst->buflen)
 		return STATUS_BUFFER_TOO_SMALL;
-
-	for (i = 0; i < src->len; i++)
-		dst->buf[dst->len + i] = src->buf[i];
-	dst->len += i;
-	return STATUS_SUCCESS;
+	if (src->buflen) {
+		memcpy(&dst->buf[dst->buflen], src->buf, src->buflen);
+		dst->buflen += src->buflen;
+		if (dst->maxlen > dst->buflen)
+			dst->buf[dst->buflen / sizeof(wchar_t)] = 0;
+	}
+	TRACEEXIT2(return STATUS_SUCCESS);
 }
 
 STDCALL NTSTATUS WRAP_EXPORT(RtlAnsiStringToUnicodeString)
 	(struct unicode_string *dst, const struct ansi_string *src,
-	 BOOLEAN dup)
+	 BOOLEAN alloc)
 {
 	int i;
-	wchar_t *d;
-	char *s;
 
-	TRACEENTER2("dup: %d src: %s", dup, src->buf);
+	TRACEENTER2("src: maxlen: %d buflen: %d, buf: %p, dst: %p, alloc: %d",
+		    src->maxlen, src->buflen, src->buf, dst, alloc);
 
-	if (!src->buf || src->buflen <= 0 || src->len <= 0) {
+	if (src->buf == NULL || src->buflen == 0 || src->maxlen == 0) {
 		dst->buflen = 0;
-		if (dup)
+		if (alloc) {
 			dst->buf = NULL;
-		else
+			dst->maxlen = 0;
+		} else if (dst->maxlen >= sizeof(dst->buf[0]))
 			dst->buf[0] = 0;
 		TRACEEXIT2(return STATUS_SUCCESS);
 	}
-	if (dup == TRUE) {
-		wchar_t *buf = kmalloc((src->buflen+1) * sizeof(wchar_t),
-				       GFP_KERNEL);
-		if (!buf) {
-			dst->buf = NULL;
-			dst->buflen = 0;
-			TRACEEXIT1(return STATUS_FAILURE);
+	if (alloc == TRUE) {
+		dst->buf = kmalloc((src->buflen + 1) * sizeof(wchar_t),
+				   GFP_KERNEL);
+		if (!dst->buf) {
+			dst->maxlen = dst->buflen = 0;
+			TRACEEXIT2(return STATUS_NO_MEMORY);
 		}
-		dst->buf = buf;
-		dst->len = (src->buflen + 1) * sizeof(wchar_t);
-	}
-	else if (dst->buflen < (src->len+1) * sizeof(wchar_t))
-		TRACEEXIT1(return STATUS_FAILURE);
+		dst->maxlen = (src->buflen + 1) * sizeof(wchar_t);
+	} else if (dst->maxlen < (src->buflen * sizeof(wchar_t)))
+		TRACEEXIT2(return STATUS_BUFFER_TOO_SMALL);
 
-	d = dst->buf;
-	s = src->buf;
-	dst->buflen = (src->buflen + 1) * sizeof(wchar_t);
+	dst->buflen = src->buflen * sizeof(wchar_t);
 	for(i = 0; i < src->buflen; i++)
-		d[i] = s[i];
-	d[i] = 0;
-	DBGTRACE2("len = %d", dst->len);
+		dst->buf[i] = src->buf[i];
+	if (dst->maxlen > dst->buflen)
+		dst->buf[dst->buflen] = 0;
+	DBGTRACE2("dst: buflen: %d, maxlen: %d, string: %s",
+		  dst->buflen, dst->maxlen, src->buf);
 	TRACEEXIT2(return STATUS_SUCCESS);
 }
 
 STDCALL NTSTATUS WRAP_EXPORT(RtlUnicodeStringToAnsiString)
 	(struct ansi_string *dst, const struct unicode_string *src,
-	 BOOLEAN dup)
+	 BOOLEAN alloc)
 {
 	int i;
-	wchar_t *s;
-	char *d;
 
-	TRACEENTER2("dup: %d src->len: %d src->buflen: %d, src->buf: %p,"
-		    "dst: %p", dup, src->len, src->buflen, src->buf, dst);
+	TRACEENTER2("src: maxlen: %d buflen: %d, buf: %p, dst: %p, alloc: %d",
+		    src->maxlen, src->buflen, src->buf, dst, alloc);
 
-	if (!src->buf || src->buflen <= 0 || src->len <= 0) {
+	if (src->buf == NULL || src->buflen == 0 || src->maxlen == 0) {
 		dst->buflen = 0;
-		if (dup)
+		if (alloc) {
 			dst->buf = NULL;
-		else
+			dst->maxlen = 0;
+		} else if (dst->maxlen >= sizeof(dst->buf[0]))
 			dst->buf[0] = 0;
 		TRACEEXIT2(return STATUS_SUCCESS);
 	}
-	if (dup == TRUE) {
-		char *buf = kmalloc((src->buflen+1) / sizeof(wchar_t),
+	if (alloc == TRUE) {
+		dst->buf = kmalloc((src->buflen / sizeof(wchar_t)) + 1,
 				    GFP_KERNEL);
-		if (!buf) {
-			dst->buf = NULL;
-			dst->buflen = 0;
-			TRACEEXIT1(return STATUS_FAILURE);
+		if (!dst->buf) {
+			dst->maxlen = dst->buflen = 0;
+			TRACEEXIT2(return STATUS_NO_MEMORY);
 		}
-		dst->buf = buf;
-		dst->len = (src->buflen + 1) / sizeof(wchar_t);
-	} else if (dst->buflen < (src->len+1) / sizeof(wchar_t))
-		return STATUS_FAILURE;
+		dst->maxlen = src->buflen / sizeof(wchar_t) + 1;
+	} else if (dst->maxlen < src->buflen / sizeof(wchar_t))
+		TRACEEXIT2(return STATUS_BUFFER_TOO_SMALL);
 
-	s = src->buf;
-	d = dst->buf;
-	dst->buflen = (src->buflen + 1) / sizeof(wchar_t);
+	dst->buflen = src->buflen / sizeof(wchar_t);
 	for(i = 0; i < dst->buflen; i++)
-		d[i] = s[i];
-	DBGTRACE2("string: %s, len: %d", dst->buf, dst->buflen);
+		dst->buf[i] = src->buf[i];
+	if (dst->maxlen > dst->buflen)
+		dst->buf[dst->buflen] = 0;
+	DBGTRACE2("dst: buflen: %d, maxlen: %d, string: %s",
+		  dst->buflen, dst->maxlen, dst->buf);
 	TRACEEXIT2(return STATUS_SUCCESS);
 }
 
 STDCALL NTSTATUS WRAP_EXPORT(RtlUnicodeStringToInteger)
 	(struct unicode_string *ustring, ULONG base, ULONG *value)
 {
-	int negsign;
+	int i, negsign;
 	wchar_t *str;
 
 	*value = 0;
-	if (ustring->buflen <= 0)
-		return STATUS_INVALID_PARAMETER;
+	if (ustring->buflen == 0)
+		return STATUS_SUCCESS;
 
 	str = ustring->buf;
-
+	i = 0;
 	negsign = 0;
-	switch ((char)*str) {
+	switch ((char)str[i]) {
 	case '-':
 		negsign = 1;
 		/* fall through */
 	case '+':
-		str++;
+		i++;
 		break;
 	}
 		       
-	if (base == 0 &&
-	    (void *)str < (void *)&ustring->buf[ustring->buflen]) {
-		switch(tolower((char)*str)) {
+	if (base == 0 && i < ustring->buflen && str[i]) {
+		switch(tolower((char)str[i])) {
 		case 'x':
 			base = 16;
-			str++;
+			i++;
 			break;
 		case 'o':
 			base = 8;
-			str++;
+			i++;
 			break;
 		case 'b':
 			base = 2;
-			str++;
+			i++;
 			break;
 		default:
 			base = 10;
@@ -707,9 +670,9 @@ STDCALL NTSTATUS WRAP_EXPORT(RtlUnicodeStringToInteger)
 	if (!(base == 2 || base == 8 || base == 10 || base == 16))
 		return STATUS_INVALID_PARAMETER;
 
-	for (; (void *)str < (void *)&ustring->buf[ustring->buflen]; str++) {
+	for (; i < ustring->buflen && str[i]; i++) {
 		int r;
-		char c = tolower((char)*str);
+		char c = tolower((char)str[i]);
 
 		if (c >= '0' && c <= '9')
 			r = c - '0';
@@ -730,11 +693,11 @@ STDCALL NTSTATUS WRAP_EXPORT(RtlUnicodeStringToInteger)
 STDCALL NTSTATUS WRAP_EXPORT(RtlIntegerToUnicodeString)
 	(ULONG value, ULONG base, struct unicode_string *ustring)
 {
-	char string[sizeof(wchar_t) * sizeof(ULONG) * 2 + 1];
+	char string[sizeof(wchar_t) * (sizeof(ULONG) * 2 + 1)];
 	struct ansi_string ansi;
 	int i;
 
-	TRACEENTER1("%s", "");
+	TRACEENTER2("%u, %u, %p", value, base, ustring);
 	if (base == 0)
 		base = 10;
 	if (!(base == 2 || base == 8 || base == 10 || base == 16))
@@ -755,50 +718,56 @@ STDCALL NTSTATUS WRAP_EXPORT(RtlIntegerToUnicodeString)
 		return STATUS_BUFFER_TOO_SMALL;
 
 	ansi.buf = string;
-	ansi.len = strlen(string);
+	ansi.maxlen = strlen(string);
 	ansi.buflen = sizeof(string);
 	return RtlAnsiStringToUnicodeString(ustring, &ansi, 0);
 }
 
 STDCALL void WRAP_EXPORT(RtlInitUnicodeString)
-	(struct unicode_string *dest, const wchar_t *src)
+	(struct unicode_string *dst, const wchar_t *src)
 {
-	TRACEENTER1("%s", "");
-	if (dest == NULL)
+	TRACEENTER2("%p", dst);
+	if (dst == NULL)
 		TRACEEXIT1(return);
 	if (src == NULL) {
-		dest->len = dest->buflen = 0;
-		dest->buf = NULL;
+		dst->maxlen = dst->buflen = 0;
+		dst->buf = NULL;
 	} else {
 		int i = 0;
 		while (src[i])
 			i++;
-		dest->buf = (wchar_t *)src;
-		dest->len = dest->buflen = i * 2;
+		dst->buf = (wchar_t *)src;
+		dst->buflen = i * sizeof(wchar_t);
+		dst->maxlen = (i + 1) * sizeof(wchar_t);
 	}
 	TRACEEXIT1(return);
 }
 
 STDCALL void WRAP_EXPORT(RtlInitAnsiString)
-	(struct ansi_string *dst, CHAR *src)
+	(struct ansi_string *dst, const char *src)
 {
-	TRACEENTER2("%s", "");
+	TRACEENTER2("%p", dst);
 	if (dst == NULL)
 		TRACEEXIT2(return);
 	if (src == NULL) {
-		dst->len = dst->buflen = 0;
+		dst->maxlen = dst->buflen = 0;
 		dst->buf = NULL;
-		TRACEEXIT2(return);
+	} else {
+		int i = 0;
+		while (src[i])
+			i++;
+		dst->buf = (char *)src;
+		dst->buflen = i;
+		dst->maxlen = i + 1;
 	}
-	dst->len = dst->buflen = strlen(src);
-	dst->buf = (char *)src;
+
 	TRACEEXIT2(return);
 }
 
 STDCALL void WRAP_EXPORT(RtlInitString)
-	(struct ansi_string *dst, CHAR *src)
+	(struct ansi_string *dst, const char *src)
 {
-	TRACEENTER2("%s", "");
+	TRACEENTER2("%p", dst);
 	RtlInitAnsiString(dst, src);
 	TRACEEXIT2(return);
 }
@@ -806,11 +775,13 @@ STDCALL void WRAP_EXPORT(RtlInitString)
 STDCALL void WRAP_EXPORT(RtlFreeUnicodeString)
 	(struct unicode_string *string)
 {
-	if (string == NULL || string->buf == NULL)
+	TRACEENTER2("%p", string);
+	if (string == NULL)
 		return;
 
-	kfree(string->buf);
-	string->buflen = string->len = 0;
+	if (string->buf)
+		kfree(string->buf);
+	string->buflen = string->maxlen = 0;
 	string->buf = NULL;
 	return;
 }
@@ -818,11 +789,12 @@ STDCALL void WRAP_EXPORT(RtlFreeUnicodeString)
 STDCALL void WRAP_EXPORT(RtlFreeAnsiString)
 	(struct ansi_string *string)
 {
-	if (string == NULL || string->buf == NULL)
+	TRACEENTER2("%p", string);
+	if (string == NULL)
 		return;
-
-	kfree(string->buf);
-	string->buflen = string->len = 0;
+	if (string->buf)
+		kfree(string->buf);
+	string->buflen = string->maxlen = 0;
 	string->buf = NULL;
 	return;
 }
@@ -839,7 +811,7 @@ STDCALL NTSTATUS WRAP_EXPORT(RtlQueryRegistryValues)
 	UNIMPL();
 
 	unicode.buf = path;
-	unicode.len = unicode.buflen = _win_wcslen(path);
+	unicode.maxlen = unicode.buflen = _win_wcslen(path);
 	if (RtlUnicodeStringToAnsiString(&ansi, &unicode, TRUE) ==
 	    STATUS_SUCCESS) {
 		DBGTRACE2("%s", ansi.buf);
@@ -848,7 +820,7 @@ STDCALL NTSTATUS WRAP_EXPORT(RtlQueryRegistryValues)
 	ret = STATUS_SUCCESS;
 	for (; tbl->name; tbl++) {
 		unicode.buf = tbl->name;
-		unicode.len = unicode.buflen = _win_wcslen(tbl->name);
+		unicode.maxlen = unicode.buflen = _win_wcslen(tbl->name);
 		if (RtlUnicodeStringToAnsiString(&ansi, &unicode, TRUE) ==
 		    STATUS_SUCCESS) {
 			DBGTRACE2("name: %s", ansi.buf);
@@ -913,14 +885,14 @@ STDCALL NTSTATUS WRAP_EXPORT(RtlWriteRegistryValue)
 	UNIMPL();
 
 	unicode.buf = path;
-	unicode.len = unicode.buflen = _win_wcslen(path);
+	unicode.maxlen = unicode.buflen = _win_wcslen(path);
 	if (RtlUnicodeStringToAnsiString(&ansi, &unicode, TRUE) ==
 	    STATUS_SUCCESS) {
 		DBGTRACE2("%s", ansi.buf);
 		RtlFreeAnsiString(&ansi);
 	}
 	unicode.buf = name;
-	unicode.len = unicode.buflen = _win_wcslen(name);
+	unicode.maxlen = unicode.buflen = _win_wcslen(name);
 	if (RtlUnicodeStringToAnsiString(&ansi, &unicode, TRUE) ==
 	    STATUS_SUCCESS) {
 		DBGTRACE2("%s", ansi.buf);

@@ -2249,7 +2249,7 @@ STDCALL NTSTATUS WRAP_EXPORT(ZwCreateFile)
 		return STATUS_INSUFFICIENT_RESOURCES;
 	}
 	ansi.buf[MAX_STR_LEN-1] = 0;
-	ansi.buflen = MAX_STR_LEN;
+	ansi.maxlen = MAX_STR_LEN;
 
 	if (RtlUnicodeStringToAnsiString(&ansi, obj_attr->name, FALSE)) {
 		RtlFreeAnsiString(&ansi);
@@ -2333,8 +2333,8 @@ STDCALL NTSTATUS WRAP_EXPORT(ZwQueryInformationFile)
 	switch (class) {
 	case FileNameInformation:
 		fni = info;
-		fni->length = attr->name->len;
-		memcpy(fni->name, attr->name->buf, attr->name->len);
+		fni->length = attr->name->maxlen;
+		memcpy(fni->name, attr->name->buf, attr->name->maxlen);
 		break;
 	default:
 		WARNING("type %d not implemented yet", class);
