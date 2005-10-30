@@ -150,7 +150,7 @@ typedef u64	ULONGULONG;
 typedef u64	ULONG64;
 
 typedef CHAR CCHAR;
-typedef SHORT wchar_t;
+typedef USHORT wchar_t;
 typedef SHORT CSHORT;
 typedef LONGLONG LARGE_INTEGER;
 
@@ -726,46 +726,51 @@ struct irp {
 	struct wrapper_dev *wd;
 };
 
-#define IoSizeOfIrp(stack_size) \
-	((USHORT)(sizeof(struct irp) + ((stack_size) *	\
+#define IoSizeOfIrp(stack_size)						\
+	((USHORT)(sizeof(struct irp) + ((stack_size) *			\
 					sizeof(struct io_stack_location))))
-#define IoGetCurrentIrpStackLocation(irp)				\
+#define IoGetCurrentIrpStackLocation(irp)		\
 	(irp)->tail.overlay.current_stack_location
 #define IoGetNextIrpStackLocation(irp)		\
 	(IoGetCurrentIrpStackLocation(irp) - 1)
 #define IoGetPreviousIrpStackLocation(irp)	\
 	(IoGetCurrentIrpStackLocation(irp) + 1)
+
 #define IoSetNextIrpStackLocation(IRP)				\
-	{							\
-		(IRP)->current_location--;			\
-		IoGetCurrentIrpStackLocation(IRP)--;		\
-	}
+do {								\
+	(IRP)->current_location--;				\
+	IoGetCurrentIrpStackLocation(IRP)--;			\
+} while (0)
+
 #define IoSkipCurrentIrpStackLocation(IRP) 			\
-	{							\
-		(IRP)->current_location++;			\
-		IoGetCurrentIrpStackLocation(IRP)++;		\
-	}
+do {								\
+	(IRP)->current_location++;				\
+	IoGetCurrentIrpStackLocation(IRP)++;			\
+} while (0)
+
 #define IoCopyCurrentIrpStackLocationToNext(IRP) 			\
-	{								\
-		struct io_stack_location *_irp_sl, *_next;		\
-		_irp_sl = IoGetCurrentIrpStackLocation(IRP);		\
-		_next = IoGetNextIrpStackLocation(IRP);			\
-		RtlCopyMemory(_next, _irp_sl,				\
-			      offsetof(struct io_stack_location,	\
-				       completion_routine));		\
-		_next->control = 0;					\
-	}
+do {									\
+	struct io_stack_location *_irp_sl, *_next;			\
+	_irp_sl = IoGetCurrentIrpStackLocation(IRP);			\
+	_next = IoGetNextIrpStackLocation(IRP);				\
+	RtlCopyMemory(_next, _irp_sl,					\
+		      offsetof(struct io_stack_location,		\
+			       completion_routine));			\
+	_next->control = 0;						\
+} while (0)
+
 #define IoSetCompletionRoutine(IRP, ROUTINE, CONTEXT, SUC, ERR, CANCEL) \
-	{								\
-		struct io_stack_location *__irp_sl;			\
-		__irp_sl = IoGetNextIrpStackLocation(IRP);		\
-		__irp_sl->completion_routine = (ROUTINE);		\
-		__irp_sl->context = (CONTEXT);				\
-		__irp_sl->control = 0;					\
-		if (SUC) { __irp_sl->control |= CALL_ON_SUCCESS; }	\
-		if (ERR) { __irp_sl->control |= CALL_ON_ERROR; }	\
-		if (CANCEL) { __irp_sl->control |= CALL_ON_CANCEL; }	\
-	}
+do {								\
+	struct io_stack_location *__irp_sl;				\
+	__irp_sl = IoGetNextIrpStackLocation(IRP);			\
+	__irp_sl->completion_routine = (ROUTINE);			\
+	__irp_sl->context = (CONTEXT);					\
+	__irp_sl->control = 0;						\
+	if (SUC) { __irp_sl->control |= CALL_ON_SUCCESS; }		\
+	if (ERR) { __irp_sl->control |= CALL_ON_ERROR; }		\
+	if (CANCEL) { __irp_sl->control |= CALL_ON_CANCEL; }		\
+} while (0)
+
 #define IoMarkIrpPending(irp)						\
 	(IoGetCurrentIrpStackLocation((irp))->control |= SL_PENDING_RETURNED)
 
