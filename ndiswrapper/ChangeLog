@@ -1,4 +1,4 @@
-Version 1.5 2005-XX-XX
+Version 1.5 2005-10-30
 ======================
 * SMP issues fixed.
 * Zero-copy for sending packets implemented.
