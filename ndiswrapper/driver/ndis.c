@@ -21,7 +21,7 @@
 #define MAX_ALLOCATED_NDIS_BUFFERS 40
 
 extern struct nt_list ndis_drivers;
-extern KSPIN_LOCK ntoskernel_lock;
+extern KSPIN_LOCK ntoskernel_lock, loader_lock;
 
 /* ndis_init is called once when module is loaded */
 int ndis_init(void)
@@ -560,9 +560,11 @@ STDCALL void WRAP_EXPORT(NdisWriteConfiguration)
 	memcpy(setting->name, keyname, ansi.length);
 	setting->name[ansi.length] = 0;
 	*status = ndis_decode_setting(setting, param);
-	if (*status == NDIS_STATUS_SUCCESS)
+	if (*status == NDIS_STATUS_SUCCESS) {
+		KIRQL irql = kspin_lock_irql(&loader_lock, DISPATCH_LEVEL);
 		InsertTailList(&wd->ndis_device->settings, &setting->list);
-	else
+		kspin_unlock_irql(&loader_lock, irql);
+	} else
 		kfree(setting);
 	RtlFreeAnsiString(&ansi);
 	TRACEEXIT2(return);

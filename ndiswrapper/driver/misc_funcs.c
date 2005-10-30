@@ -480,7 +480,7 @@ STDCALL LONG WRAP_EXPORT(RtlCompareUnicodeString)
 			ret = (u8)*p1++ - (u8)*p2++;
 	if (!ret)
 		ret = s1->length - s2->length;
-	DBGTRACE2("len: %d, %p, %p", len, p1, p2);
+	DBGTRACE2("len: %d, ret: %d", len, ret);
 	TRACEEXIT2(return ret);
 }
 
@@ -719,8 +719,8 @@ STDCALL NTSTATUS WRAP_EXPORT(RtlIntegerToUnicodeString)
 		return STATUS_BUFFER_TOO_SMALL;
 
 	ansi.buf = string;
-	ansi.max_length = strlen(string);
-	ansi.length = sizeof(string);
+	ansi.length = strlen(string);
+	ansi.max_length = sizeof(string);
 	return RtlAnsiStringToUnicodeString(ustring, &ansi, FALSE);
 }
 

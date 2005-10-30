@@ -22,7 +22,7 @@
 #include <linux/miscdevice.h>
 #include <asm/uaccess.h>
 
-static KSPIN_LOCK loader_lock;
+KSPIN_LOCK loader_lock;
 static struct ndis_device *ndis_devices;
 static unsigned int num_ndis_devices;
 struct nt_list ndis_drivers;
@@ -525,31 +525,30 @@ static int load_bin_files(struct ndis_driver *driver,
 static int load_settings(struct ndis_driver *ndis_driver,
 			 struct load_driver *load_driver)
 {
-	int i, found, nr_settings;
+	int i, nr_settings;
 	struct ndis_device *ndis_device;
 	KIRQL irql;
 
 	TRACEENTER1("");
 
-	found = 0;
+	ndis_device = NULL;
 	irql = kspin_lock_irql(&loader_lock, DISPATCH_LEVEL);
 	for (i = 0; i < num_ndis_devices; i++) {
 		if (strcmp(ndis_devices[i].conf_file_name,
 			   load_driver->conf_file_name) == 0) {
-			found = 1;
+			ndis_device = &ndis_devices[i];
 			break;
 		}
 	}
 	kspin_unlock_irql(&loader_lock, irql);
 
-	if (!found) {
+	if (!ndis_device) {
 		ERROR("conf file %s not found",
 		      ndis_devices[i].conf_file_name);
 		TRACEEXIT1(return -EINVAL);
 	}
 
 	nr_settings = 0;
-	ndis_device = &ndis_devices[i];
 	for (i = 0; i < load_driver->nr_settings; i++) {
 		struct load_device_setting *load_setting =
 			&load_driver->settings[i];
