@@ -721,7 +721,7 @@ STDCALL NTSTATUS WRAP_EXPORT(RtlIntegerToUnicodeString)
 	ansi.buf = string;
 	ansi.max_length = strlen(string);
 	ansi.length = sizeof(string);
-	return RtlAnsiStringToUnicodeString(ustring, &ansi, 0);
+	return RtlAnsiStringToUnicodeString(ustring, &ansi, FALSE);
 }
 
 STDCALL void WRAP_EXPORT(RtlInitUnicodeString)
@@ -812,7 +812,8 @@ STDCALL NTSTATUS WRAP_EXPORT(RtlQueryRegistryValues)
 	UNIMPL();
 
 	unicode.buf = path;
-	unicode.max_length = unicode.length = _win_wcslen(path);
+	unicode.length = _win_wcslen(path) * sizeof(wchar_t);
+	unicode.max_length = unicode.length + sizeof(wchar_t);
 	if (RtlUnicodeStringToAnsiString(&ansi, &unicode, TRUE) ==
 	    STATUS_SUCCESS) {
 		DBGTRACE2("%s", ansi.buf);
@@ -821,7 +822,8 @@ STDCALL NTSTATUS WRAP_EXPORT(RtlQueryRegistryValues)
 	ret = STATUS_SUCCESS;
 	for (; tbl->name; tbl++) {
 		unicode.buf = tbl->name;
-		unicode.max_length = unicode.length = _win_wcslen(tbl->name);
+		unicode.length = _win_wcslen(tbl->name) * sizeof(wchar_t);
+		unicode.max_length = unicode.length + sizeof(wchar_t);
 		if (RtlUnicodeStringToAnsiString(&ansi, &unicode, TRUE) ==
 		    STATUS_SUCCESS) {
 			DBGTRACE2("name: %s", ansi.buf);
@@ -886,14 +888,16 @@ STDCALL NTSTATUS WRAP_EXPORT(RtlWriteRegistryValue)
 	UNIMPL();
 
 	unicode.buf = path;
-	unicode.max_length = unicode.length = _win_wcslen(path);
+	unicode.length = _win_wcslen(path) * sizeof(wchar_t);
+	unicode.max_length = unicode.length + sizeof(wchar_t);
 	if (RtlUnicodeStringToAnsiString(&ansi, &unicode, TRUE) ==
 	    STATUS_SUCCESS) {
 		DBGTRACE2("%s", ansi.buf);
 		RtlFreeAnsiString(&ansi);
 	}
 	unicode.buf = name;
-	unicode.max_length = unicode.length = _win_wcslen(name);
+	unicode.length = _win_wcslen(name) * sizeof(wchar_t);
+	unicode.max_length = unicode.length + sizeof(wchar_t);
 	if (RtlUnicodeStringToAnsiString(&ansi, &unicode, TRUE) ==
 	    STATUS_SUCCESS) {
 		DBGTRACE2("%s", ansi.buf);
