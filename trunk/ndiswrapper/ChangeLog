@@ -10,6 +10,8 @@ Version 1.5 2005-XX-XX
   device so it can be initialized later. This fixes issue with
   suspend/resume with Marvell driver.
 * Issues with WUSB11v4 (Ali chipset) fixed.
+* Rtl string functions have been reimplemented.
+* Resume from suspend works with Marvell chipset 8335.
 
 Version 1.4 2005-10-06
 ======================
