@@ -18,7 +18,6 @@
 
 #ifdef USB_DEBUG
 static unsigned int urb_id = 0;
-#endif
 
 #define DUMP_WRAP_URB(wrap_urb, dir)					\
 	USBTRACE("urb %p (%d) %s: buf: %p, len: %d, pipe: %u",	\
@@ -43,6 +42,13 @@ static unsigned int urb_id = 0;
 		USBTRACE("%s", __msg);					\
 		break;							\
 	}
+
+#else
+
+#define DUMP_WRAP_URB(wrap_urb, dir) (void)0
+#define DUMP_BUFFER(buf, len) (void)0
+
+#endif
 
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,5)
 #define CUR_ALT_SETTING(intf) (intf)->cur_altsetting
@@ -299,8 +305,8 @@ static struct urb *wrap_alloc_urb(struct irp *irp, unsigned int pipe,
 			kfree(wrap_urb);
 			return NULL;
 		}
-		IoAcquireCancelSpinLock(&irp->cancel_irql);
 		memset(wrap_urb, 0, sizeof(*wrap_urb));
+		IoAcquireCancelSpinLock(&irp->cancel_irql);
 		wrap_urb->urb = urb;
 		wrap_urb->state = URB_ALLOCATED;
 		InsertTailList(&wd->dev.usb.wrap_urb_list, &wrap_urb->list);
@@ -319,7 +325,11 @@ static struct urb *wrap_alloc_urb(struct irp *irp, unsigned int pipe,
 	IoReleaseCancelSpinLock(irp->cancel_irql);
 	USBTRACE("allocated urb: %p", urb);
 	if (buf_len && buf) {
-		if (virt_addr_valid(buf))
+		if (
+#if defined(CONFIG_HIGHMEM) || defined(CONFIG_HIGHMEM4G)
+			0 &&
+#endif
+			virt_addr_valid(buf))
 			urb->transfer_buffer = buf;
 		else {
 			urb->transfer_buffer =
@@ -415,7 +425,7 @@ static void wrap_urb_complete(struct urb *urb)
 	    wrap_urb->state != URB_CANCELED)
 		WARNING("urb %p in wrong state: %d", urb, wrap_urb->state);
 	wrap_urb->state = URB_COMPLETED;
-	/* To prevent 2.4 kernels from resubmiting interrupt URBs
+	/* Prevent 2.4 kernels from resubmiting interrupt URBs
 	 * (Windows driver also resubmits them); UHCI doesn't resubmit
 	 * URB if status == -ENOENT */
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,0)
