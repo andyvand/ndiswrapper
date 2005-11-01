@@ -21,7 +21,7 @@
 #define MAX_ALLOCATED_NDIS_BUFFERS 40
 
 extern struct nt_list ndis_drivers;
-extern KSPIN_LOCK ntoskernel_lock;
+extern KSPIN_LOCK ntoskernel_lock, loader_lock;
 
 /* ndis_init is called once when module is loaded */
 int ndis_init(void)
@@ -255,7 +255,7 @@ STDCALL void WRAP_EXPORT(NdisOpenConfigurationKeyByName)
 		RtlFreeAnsiString(&ansi);
 	} else
 		DBGTRACE2("couldn't convert ustring %d, %d, %p",
-			  key->buflen, key->maxlen, key->buf);
+			  key->length, key->max_length, key->buf);
 	*subkeyhandle = handle;
 	*status = NDIS_STATUS_SUCCESS;
 	TRACEEXIT2(return);
@@ -298,10 +298,9 @@ STDCALL void WRAP_EXPORT(NdisOpenFile)
 		return;
 	}
 	ansi.buf[MAX_STR_LEN-1] = 0;
-	ansi.maxlen = MAX_STR_LEN;
+	ansi.max_length = MAX_STR_LEN;
 	if (RtlUnicodeStringToAnsiString(&ansi, filename, FALSE)) {
 		*status = NDIS_STATUS_RESOURCES;
-		RtlFreeAnsiString(&ansi);
 		TRACEEXIT2(return);
 	}
 	DBGTRACE2("Filename: %s", ansi.buf);
@@ -311,21 +310,21 @@ STDCALL void WRAP_EXPORT(NdisOpenFile)
 		int i;
 
 		for (i = 0; i < driver->num_bin_files; i++) {
-			int n;
+			size_t n;
 			file = &driver->bin_files[i];
 			DBGTRACE2("considering %s", file->name);
-			n = min(strlen(file->name), (size_t)ansi.buflen);
+			n = min((size_t)ansi.length + 1,
+				(size_t)ansi.max_length);
+			n = min(strlen(file->name), n);
 			if (strnicmp(file->name, ansi.buf, n) == 0) {
 				*filehandle = file;
 				*filelength = file->size;
 				*status = NDIS_STATUS_SUCCESS;
-				RtlFreeAnsiString(&ansi);
 				TRACEEXIT2(return);
 			}
 		}
 	}
 	*status = NDIS_STATUS_FILE_NOT_FOUND;
-	RtlFreeAnsiString(&ansi);
 	TRACEEXIT2(return);
 }
 
@@ -360,10 +359,10 @@ STDCALL void WRAP_EXPORT(NdisCloseFile)
 }
 
 STDCALL void WRAP_EXPORT(NdisGetSystemUpTime)
-	(ULONG *systemuptime)
+	(ULONG *ms)
 {
 	TRACEENTER5("");
-	*systemuptime = 1000 * jiffies / HZ;
+	*ms = 1000 * jiffies / HZ;
 	TRACEEXIT5(return);
 }
 
@@ -420,8 +419,8 @@ static int ndis_encode_setting(struct device_setting *setting,
 			  (ULONG)setting->config_param.data.intval);
 		break;
 	case NDIS_CONFIG_PARAM_STRING:
-		ansi.buflen = strlen(setting->value);
-		ansi.maxlen = ansi.buflen + 1;
+		ansi.length = strlen(setting->value);
+		ansi.max_length = ansi.length + 1;
 		ansi.buf = setting->value;
 		DBGTRACE2("setting value = %s", ansi.buf);
 		param = &setting->config_param;
@@ -458,15 +457,17 @@ static int ndis_decode_setting(struct device_setting *setting,
 		break;
 	case NDIS_CONFIG_PARAM_STRING:
 		ansi.buf = setting->value;
-		ansi.maxlen = MAX_STR_LEN;
+		ansi.max_length = MAX_STR_LEN;
 		if (RtlUnicodeStringToAnsiString(&ansi, &val->data.ustring,
 						 FALSE)
-		    || ansi.maxlen >= MAX_STR_LEN) {
+		    || ansi.max_length >= MAX_STR_LEN) {
 			TRACEEXIT1(return NDIS_STATUS_FAILURE);
 		}
-		memcpy(setting->value, ansi.buf, ansi.buflen);
+		if (ansi.length == ansi.max_length)
+			ansi.length--;
+		memcpy(setting->value, ansi.buf, ansi.length);
+		setting->value[ansi.length] = 0;
 		DBGTRACE2("value = %s", setting->value);
-		setting->value[ansi.buflen] = 0;
 		break;
 	default:
 		DBGTRACE2("unknown setting type: %d", val->type);
@@ -515,7 +516,6 @@ STDCALL void WRAP_EXPORT(NdisReadConfiguration)
 	}
 
 	DBGTRACE2("setting %s not found (type:%d)", keyname, type);
-
 	*status = NDIS_STATUS_FAILURE;
 	RtlFreeAnsiString(&ansi);
 	TRACEEXIT2(return);
@@ -555,15 +555,17 @@ STDCALL void WRAP_EXPORT(NdisWriteConfiguration)
 		TRACEEXIT2(return);
 	}
 	memset(setting, 0, sizeof(*setting));
-	memcpy(setting->name, keyname, ansi.maxlen);
-	setting->name[ansi.maxlen] = 0;
+	if (ansi.length == ansi.max_length)
+		ansi.length--;
+	memcpy(setting->name, keyname, ansi.length);
+	setting->name[ansi.length] = 0;
 	*status = ndis_decode_setting(setting, param);
-	if (*status == NDIS_STATUS_SUCCESS)
+	if (*status == NDIS_STATUS_SUCCESS) {
+		KIRQL irql = kspin_lock_irql(&loader_lock, DISPATCH_LEVEL);
 		InsertTailList(&wd->ndis_device->settings, &setting->list);
-	else {
-		kfree(setting->name);
+		kspin_unlock_irql(&loader_lock, irql);
+	} else
 		kfree(setting);
-	}
 	RtlFreeAnsiString(&ansi);
 	TRACEEXIT2(return);
 }
@@ -574,8 +576,8 @@ STDCALL void WRAP_EXPORT(NdisInitializeString)
 	struct ansi_string ansi;
 
 	TRACEENTER2("");
-	ansi.buflen = strlen(src);
-	ansi.maxlen = ansi.buflen + 1;
+	ansi.length = strlen(src);
+	ansi.max_length = ansi.length + 1;
 	ansi.buf = src;
 	if (RtlAnsiStringToUnicodeString(dest, &ansi, TRUE))
 		DBGTRACE2("failed");
@@ -605,31 +607,19 @@ STDCALL void WRAP_EXPORT(NdisInitUnicodeString)
 STDCALL NDIS_STATUS WRAP_EXPORT(NdisAnsiStringToUnicodeString)
 	(struct unicode_string *dst, struct ansi_string *src)
 {
-	BOOLEAN dup;
-
 	TRACEENTER2("");
 	if (dst == NULL || src == NULL)
 		TRACEEXIT2(return NDIS_STATUS_FAILURE);
-	if (dst->buf == NULL)
-		dup = TRUE;
-	else
-		dup = FALSE;
-	TRACEEXIT2(return RtlAnsiStringToUnicodeString(dst, src, dup));
+	TRACEEXIT2(return RtlAnsiStringToUnicodeString(dst, src, FALSE));
 }
 
 STDCALL NDIS_STATUS WRAP_EXPORT(NdisUnicodeStringToAnsiString)
 	(struct ansi_string *dst, struct unicode_string *src)
 {
-	BOOLEAN dup;
-
 	TRACEENTER2("");
 	if (dst == NULL || src == NULL)
 		TRACEEXIT2(return NDIS_STATUS_FAILURE);
-	if (dst->buf == NULL)
-		dup = TRUE;
-	else
-		dup = FALSE;
-	TRACEEXIT2(return RtlUnicodeStringToAnsiString(dst, src, dup));
+	TRACEEXIT2(return RtlUnicodeStringToAnsiString(dst, src, FALSE));
 }
 
 STDCALL void WRAP_EXPORT(NdisMSetAttributesEx)
@@ -817,24 +807,24 @@ STDCALL NDIS_STATUS WRAP_EXPORT(NdisMMapIoSpace)
 	struct wrapper_dev *wd = nmb->wd;
 
 	TRACEENTER2("%016llx, %d", phy_addr, len);
-	*virt = ioremap(phy_addr, len);
+	*virt = MmMapIoSpace(phy_addr, len, MmCached);
 	if (*virt == NULL) {
 		ERROR("ioremap failed");
 		TRACEEXIT2(return NDIS_STATUS_FAILURE);
 	}
 
 	wd->mem_start = phy_addr;
-	wd->mem_end = phy_addr + len -1;
+	wd->mem_end = phy_addr + len - 1;
 
 	DBGTRACE2("ioremap successful %p", *virt);
 	TRACEEXIT2(return NDIS_STATUS_SUCCESS);
 }
 
 STDCALL void WRAP_EXPORT(NdisMUnmapIoSpace)
-	(struct ndis_miniport_block *nmb, void *virtaddr, UINT len)
+	(struct ndis_miniport_block *nmb, void *virt, UINT len)
 {
-	TRACEENTER2("%p, %d", virtaddr, len);
-	iounmap(virtaddr);
+	TRACEENTER2("%p, %d", virt, len);
+	MmUnmapIoSpace(virt, len);
 	TRACEEXIT2(return);
 }
 
@@ -1512,8 +1502,8 @@ STDCALL void WRAP_EXPORT(NdisReadNetworkAddress)
 
 	TRACEENTER1("");
 	ansi.buf = "mac_address";
-	ansi.buflen = strlen(ansi.buf);
-	ansi.maxlen = ansi.buflen + 1;
+	ansi.length = strlen(ansi.buf);
+	ansi.max_length = ansi.length + 1;
 
 	*len = 0;
 	*status = NDIS_STATUS_FAILURE;
@@ -2591,8 +2581,8 @@ STDCALL NDIS_STATUS WRAP_EXPORT(NdisMQueryAdapterInstanceName)
 		ansi_string.buf = "PCI Ethernet Adapter";
 	else
 		ansi_string.buf = "USB Ethernet Adapter";
-	ansi_string.buflen = strlen(ansi_string.buf);
-	ansi_string.maxlen = ansi_string.buflen + 1;
+	ansi_string.length = strlen(ansi_string.buf);
+	ansi_string.max_length = ansi_string.length + 1;
 	if (RtlAnsiStringToUnicodeString(name, &ansi_string, TRUE))
 		TRACEEXIT2(return NDIS_STATUS_RESOURCES);
 	else

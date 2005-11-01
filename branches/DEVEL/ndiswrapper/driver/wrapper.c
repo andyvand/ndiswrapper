@@ -741,6 +741,7 @@ static NDIS_STATUS miniport_init(struct wrapper_dev *wd)
 	 * fail after boot; USB devices seem to need long delays */
 	set_current_state(TASK_INTERRUPTIBLE);
 	schedule_timeout(HZ);
+	set_bit(HW_AVAILABLE, &wd->hw_status);
 
 	/* do we need to reset the device? */
 //	res = miniport_reset(wd);
@@ -773,6 +774,7 @@ static void miniport_halt(struct wrapper_dev *wd)
 	struct nt_thread *thread;
 
 	TRACEENTER1("%p", wd);
+	clear_bit(HW_AVAILABLE, &wd->hw_status);
 	hangcheck_del(wd);
 	stats_timer_del(wd);
 	if (!test_bit(HW_INITIALIZED, &wd->hw_status)) {
@@ -829,7 +831,6 @@ int ndiswrapper_suspend_device(struct wrapper_dev *wd,
 	}
 	hangcheck_del(wd);
 	stats_timer_del(wd);
-
 	status = miniport_set_pm_state(wd, pm_state);
 	DBGTRACE2("suspending returns %08X", status);
 	if (status == NDIS_STATUS_SUCCESS)
@@ -1192,6 +1193,7 @@ static void wrapper_worker_proc(void *param)
 				WARNING("device %s may not have resumed "
 					"properly (%08X)", net_dev->name, res);
 		} else if (test_and_clear_bit(HW_HALTED, &wd->hw_status)) {
+			set_bit(HW_AVAILABLE, &wd->hw_status);
 			res = miniport_init(wd);
 			DBGTRACE2("res: %08X", res);
 			if (res) {
@@ -1199,8 +1201,7 @@ static void wrapper_worker_proc(void *param)
 				      "(%08X)", net_dev->name, res);
 				ndiswrapper_stop_device(wd);
 				TRACEEXIT3(return);
-			} else
-				set_bit(HW_AVAILABLE, &wd->hw_status);
+			}
 		}
 		hangcheck_add(wd);
 		stats_timer_add(wd);
@@ -1372,15 +1373,15 @@ static int ndis_set_mac_addr(struct net_device *dev, void *p)
 		TRACEEXIT1(return -EINVAL);
 
 	ansi.buf = "mac_address";
-	ansi.buflen = strlen(ansi.buf);
-	ansi.maxlen = ansi.buflen + 1;
-	if (RtlAnsiStringToUnicodeString(&key, &ansi, 1))
+	ansi.length = strlen(ansi.buf);
+	ansi.max_length = ansi.length + 1;
+	if (RtlAnsiStringToUnicodeString(&key, &ansi, TRUE))
 		TRACEEXIT1(return -EINVAL);
 
 	ansi.buf = mac_string;
-	ansi.buflen = strlen(mac_string);
-	ansi.maxlen = ansi.buflen + 1;
-	if (RtlAnsiStringToUnicodeString(&param.data.ustring, &ansi, 1) !=
+	ansi.length = strlen(mac_string);
+	ansi.max_length = ansi.length + 1;
+	if (RtlAnsiStringToUnicodeString(&param.data.ustring, &ansi, TRUE) !=
 	    NDIS_STATUS_SUCCESS) {
 		RtlFreeUnicodeString(&key);
 		TRACEEXIT1(return -EINVAL);

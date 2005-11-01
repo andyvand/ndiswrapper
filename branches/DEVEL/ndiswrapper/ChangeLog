@@ -1,4 +1,4 @@
-Version 1.5 2005-XX-XX
+Version 1.5 2005-10-30
 ======================
 * SMP issues fixed.
 * Zero-copy for sending packets implemented.
@@ -9,6 +9,9 @@ Version 1.5 2005-XX-XX
 * If a device doesn't resume properly (from suspend), de-initialize
   device so it can be initialized later. This fixes issue with
   suspend/resume with Marvell driver.
+* Issues with WUSB11v4 (Ali chipset) fixed.
+* Rtl string functions have been reimplemented.
+* Resume from suspend works with Marvell chipset 8335.
 
 Version 1.4 2005-10-06
 ======================
