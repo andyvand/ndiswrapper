@@ -260,6 +260,13 @@ union nt_urb {
 	struct usbd_pipe_request pipe_req;
 };
 
+#define USBDI_VERSION		0x00000500 // Windows XP
+
+struct usbd_version_info {
+	ULONG usbdi_version;
+	ULONG supported_usb_version;
+};
+
 #define NT_URB_STATUS(nt_urb) ((nt_urb)->header.status)
 
 NTSTATUS wrap_submit_irp(struct device_object *pdo, struct irp *irp);

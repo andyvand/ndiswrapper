@@ -67,28 +67,28 @@ STDCALL NTSTATUS WRAP_EXPORT(IoGetDeviceProperty)
 
 	case DevicePropertyFriendlyName:
 		if (buffer_len > 0 && buffer) {
-			ansi.buflen = snprintf(buf, sizeof(buf), "%d", devnum);
-			if (ansi.buflen <= 0) {
+			ansi.length = snprintf(buf, sizeof(buf), "%d", devnum);
+			if (ansi.length <= 0) {
 				*result_len = 0;
 				IOEXIT(return STATUS_BUFFER_TOO_SMALL);
 			}
 			ansi.buf = buf;
-			ansi.maxlen = ansi.buflen + 1;
+			ansi.max_length = ansi.length + 1;
 			unicode.buf = buffer;
-			unicode.maxlen = buffer_len;
-			IOTRACE("unicode.buflen = %d, ansi.maxlen = %d",
-				unicode.buflen, ansi.maxlen);
+			unicode.max_length = buffer_len;
+			IOTRACE("unicode.length = %d, ansi.max_length = %d",
+				unicode.length, ansi.max_length);
 			if (RtlAnsiStringToUnicodeString(&unicode, &ansi,
 							 FALSE)) {
 				*result_len = 0;
 				IOEXIT(return STATUS_BUFFER_TOO_SMALL);
 			} else {
-				*result_len = unicode.maxlen;
+				*result_len = unicode.max_length;
 				IOEXIT(return STATUS_SUCCESS);
 			}
 		} else {
-			ansi.maxlen = snprintf(buf, sizeof(buf), "%d", devnum);
-			*result_len = 2 * (ansi.maxlen + 1);
+			ansi.max_length = snprintf(buf, sizeof(buf), "%d", devnum);
+			*result_len = 2 * (ansi.max_length + 1);
 			IOEXIT(return STATUS_BUFFER_TOO_SMALL);
 		}
 		break;
@@ -96,17 +96,17 @@ STDCALL NTSTATUS WRAP_EXPORT(IoGetDeviceProperty)
 	case DevicePropertyDriverKeyName:
 //		ansi.buf = wd->driver->name;
 		ansi.buf = buf;
-		ansi.buflen = strlen(ansi.buf);
-		ansi.maxlen = ansi.buflen + 1;
+		ansi.length = strlen(ansi.buf);
+		ansi.max_length = ansi.length + 1;
 		if (buffer_len > 0 && buffer) {
 			unicode.buf = buffer;
-			unicode.buflen = buffer_len;
+			unicode.length = buffer_len;
 			if (RtlAnsiStringToUnicodeString(&unicode, &ansi,
 							 FALSE)) {
 				*result_len = 0;
 				IOEXIT(return STATUS_BUFFER_TOO_SMALL);
 			} else {
-				*result_len = unicode.maxlen;
+				*result_len = unicode.max_length;
 				IOEXIT(return STATUS_SUCCESS);
 			}
 		} else {
@@ -1113,6 +1113,29 @@ STDCALL void WRAP_EXPORT(PoStartNextPowerIrp)
 	IOEXIT(return);
 }
 
+STDCALL void WRAP_EXPORT(IoInitializeRemoveLockEx)
+	(struct io_remove_lock *lock, ULONG alloc_tag, ULONG max_locked_min,
+	 ULONG high_mark, ULONG lock_size)
+{
+	UNIMPL();
+}
+
+
+STDCALL NTSTATUS WRAP_EXPORT(IoAcquireRemoveLockEx)
+	(struct io_remove_lock lock, void *tag, char *file, ULONG line,
+	 ULONG lock_size)
+{
+	UNIMPL();
+	IOEXIT(return STATUS_SUCCESS);
+}
+
+STDCALL NTSTATUS WRAP_EXPORT(IoReleaseRemoveLockEx)
+	(struct io_remove_lock lock, void *tag, ULONG lock_size)
+{
+	UNIMPL();
+	IOEXIT(return STATUS_SUCCESS);
+}
+
 STDCALL NTSTATUS WRAP_EXPORT(IoRegisterDeviceInterface)
 	(struct device_object *pdo, struct guid *guid_class,
 	 struct unicode_string *reference, struct unicode_string *link)
@@ -1121,8 +1144,8 @@ STDCALL NTSTATUS WRAP_EXPORT(IoRegisterDeviceInterface)
 
 	/* check if pdo is valid */
 	ansi.buf = "ndis";
-	ansi.buflen = strlen(ansi.buf);
-	ansi.maxlen = ansi.buflen + 1;
+	ansi.length = strlen(ansi.buf);
+	ansi.max_length = ansi.length + 1;
 	TRACEENTER1("pdo: %p, ref: %p, link: %p", pdo, reference, link);
 	return RtlAnsiStringToUnicodeString(link, &ansi, TRUE);
 }
@@ -1146,6 +1169,29 @@ STDCALL NTSTATUS WRAP_EXPORT(IoOpenDeviceRegistryKey)
 	return STATUS_SUCCESS;
 }
 
+STDCALL NTSTATUS WRAP_EXPORT(ZwCreateKey)
+	(void **handle, ACCESS_MASK desired_access, struct object_attr *attr,
+	 ULONG title_index, struct unicode_string *class,
+	 ULONG create_options, ULONG *disposition)
+{
+	UNIMPL();
+	return STATUS_SUCCESS;
+}
+
+STDCALL NTSTATUS WRAP_EXPORT(ZwSetValueKey)
+	(void *handle, struct unicode_string *name, ULONG title_index,
+	 ULONG type, void *data, ULONG data_size)
+{
+	NDIS_STATUS status;
+	struct ndis_config_param param;
+
+	NdisWriteConfiguration(&status, handle, name, &param);
+	if (status == NDIS_STATUS_SUCCESS)
+		return STATUS_SUCCESS;
+	else
+		return STATUS_FAILURE;
+}
+
 STDCALL NTSTATUS WRAP_EXPORT(ZwQueryValueKey)
 	(void *handle, struct unicode_string *name,
 	 enum key_value_information_class class, void *info,
@@ -1157,8 +1203,8 @@ STDCALL NTSTATUS WRAP_EXPORT(ZwQueryValueKey)
 	NdisReadConfiguration(&status, &param, handle, name,
 			      NDIS_CONFIG_PARAM_STRING);
 	if (status == NDIS_STATUS_SUCCESS) {
-		*res_length = param->data.ustring.buflen;
-		if (length < param->data.ustring.buflen) {
+		*res_length = param->data.ustring.length;
+		if (length < param->data.ustring.length) {
 			RtlCopyMemory(info, param->data.ustring.buf,
 				      *res_length);
 			return STATUS_SUCCESS;
