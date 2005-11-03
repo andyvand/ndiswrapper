@@ -75,6 +75,8 @@
 #define IRP_MN_STOP_DEVICE		0x04
 #define IRP_MN_QUERY_STOP_DEVICE	0x05
 #define IRP_MN_CANCEL_STOP_DEVICE	0x06
+#define IRP_MN_QUERY_DEVICE_RELATIONS	0x07
+#define IRP_MN_QUERY_INTERFACE		0x08
 
 #define IRP_BUFFERED_IO			0x00000010
 #define IRP_DEALLOCATE_BUFFER		0x00000020
@@ -553,6 +555,21 @@ enum power_action {
 	PowerActionWarmEject,
 };
 
+struct guid {
+	unsigned long data1;
+	unsigned short data2;
+	unsigned short data3;
+	unsigned char data4[8];
+};
+
+struct nt_interface {
+	USHORT size;
+	USHORT version;
+	void *context;
+	void (*reference)(void *context) STDCALL;
+	void (*dereference)(void *context) STDCALL;
+};
+
 #ifndef CONFIG_X86_64
 #pragma pack(push,4)
 #endif
@@ -580,6 +597,13 @@ struct io_stack_location {
 			ULONG POINTER_ALIGNMENT key;
 			LARGE_INTEGER byte_offset;
 		} write;
+		struct {
+			const struct guid *intf_type;
+			USHORT size;
+			USHORT version;
+			struct nt_interface *intf;
+			void *int_data;
+		} query_intf;
 		struct {
 			ULONG sys_context;
 			enum power_state_type POINTER_ALIGNMENT type;
@@ -777,13 +801,6 @@ do {								\
 #define IRP_SL(irp, i) (((struct io_stack_location *)((irp) + 1)) + (i))
 #define IRP_DRIVER_CONTEXT(irp) (irp)->tail.overlay.driver_context
 #define IoIrpThread(irp) ((irp)->tail.overlay.thread)
-
-struct guid {
-	unsigned long data1;
-	unsigned short data2;
-	unsigned short data3;
-	unsigned char data4[8];
-};
 
 struct wmi_guid_reg_info {
 	struct guid *guid;

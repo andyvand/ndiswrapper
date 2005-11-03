@@ -2316,11 +2316,12 @@ STDCALL NTSTATUS WRAP_EXPORT(ZwReadFile)
 	ULONG count;
 	struct ndis_bin_file *file;
 
+	TRACEENTER2("");
 	oa = HANDLE_TO_OBJECT(handle);
 	file = oa->file;
 	count = max(file->size - (ULONG)(*byte_offset), length);
 	memcpy(buffer, file->data, file->size);
-	return STATUS_SUCCESS;
+	TRACEEXIT2(return STATUS_SUCCESS);
 }
 
 STDCALL NTSTATUS WRAP_EXPORT(ZwClose)
@@ -2328,7 +2329,7 @@ STDCALL NTSTATUS WRAP_EXPORT(ZwClose)
 {
 	void *object = HANDLE_TO_OBJECT(handle);
 	ObDereferenceObject(object);
-	return STATUS_SUCCESS;
+	TRACEEXIT2(return STATUS_SUCCESS);
 }
 
 STDCALL NTSTATUS WRAP_EXPORT(ZwQueryInformationFile)
@@ -2338,6 +2339,7 @@ STDCALL NTSTATUS WRAP_EXPORT(ZwQueryInformationFile)
 	struct object_attr *attr;
 	struct file_name_info *fni;
 
+	TRACEENTER2("");
 	attr = HANDLE_TO_OBJECT(handle);
 	switch (class) {
 	case FileNameInformation:
@@ -2347,9 +2349,9 @@ STDCALL NTSTATUS WRAP_EXPORT(ZwQueryInformationFile)
 		break;
 	default:
 		WARNING("type %d not implemented yet", class);
-		return STATUS_FAILURE;
+		TRACEEXIT2(return STATUS_FAILURE);
 	}
-	return STATUS_SUCCESS;
+	TRACEEXIT2(return STATUS_SUCCESS);
 }
 
 STDCALL NTSTATUS WRAP_EXPORT(WmiSystemControl)

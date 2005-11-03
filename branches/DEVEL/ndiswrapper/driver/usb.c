@@ -462,7 +462,8 @@ static void irp_complete_worker(unsigned long data)
 		DUMP_IRP(irp);
 		wrap_urb = irp->wrap_urb;
 		urb = wrap_urb->urb;
-		if (wrap_urb->state != URB_COMPLETED)
+		if (wrap_urb->state != URB_COMPLETED &&
+		    wrap_urb->state != URB_CANCELED)
 			WARNING("urb %p in wrong state: %d",
 				urb, wrap_urb->state);
 		nt_urb = URB_FROM_IRP(irp);
