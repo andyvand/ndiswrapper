@@ -738,6 +738,8 @@ static NDIS_STATUS miniport_init(struct wrapper_dev *wd)
 		irp_sl->minor_fn = IRP_MN_START_DEVICE;
 		irp->io_status.status = STATUS_NOT_SUPPORTED;
 		res = IoCallDriver(fdo, irp);
+		set_current_state(TASK_INTERRUPTIBLE);
+		schedule_timeout(3 * HZ);
 	} while (0);
 #endif
 	DBGTRACE1("res: %08X, driver init routine is at %p",

@@ -260,7 +260,26 @@ union nt_urb {
 	struct usbd_pipe_request pipe_req;
 };
 
-#define USBDI_VERSION		0x00000500 // Windows XP
+struct usb_bus_interface_usbdi_v1 {
+	USHORT size;
+	USHORT version;
+	void *bus_context;
+	void *intf_reference;
+	void *intf_dereference;
+	void *get_usbdi_version;
+	void *query_bus_time;
+	void *submit_iso_outurb;
+	void *query_bus_info;
+	void *is_dev_high_speed;
+	void *log_entry;
+};
+
+#define USBDI_VERSION				0x00000500 // Windows XP
+#define USB_HCD_CAPS_SUPPORTS_RT_THREADS	0x00000001
+#define USB_BUSIF_USBDI_VERSION_0		0x0000
+#define USB_BUSIF_USBDI_VERSION_1		0x0001
+#define USB_BUSIF_USBDI_VERSION_2		0x0002
+
 
 struct usbd_version_info {
 	ULONG usbdi_version;
@@ -273,5 +292,22 @@ NTSTATUS wrap_submit_irp(struct device_object *pdo, struct irp *irp);
 NTSTATUS wrap_submit_urb(struct irp *irp);
 void wrap_suspend_urbs(struct wrapper_dev *wd);
 void wrap_resume_urbs(struct wrapper_dev *wd);
+
+STDCALL void
+USBD_InterfaceGetUSBDIVersion(void *context,
+			      struct usbd_version_info *version_info,
+			      ULONG *hcd_capa);
+STDCALL BOOLEAN USBD_InterfaceIsDeviceHighSpeed(void *context);
+STDCALL void USBD_InterfaceReference(void *context);
+STDCALL void USBD_InterfaceDereference(void *context);
+STDCALL NTSTATUS USBD_InterfaceQueryBusTime(void *context, ULONG *frame);
+STDCALL NTSTATUS USBD_InterfaceSubmitIsoOutUrb(void *context,
+					       union nt_urb *nt_urb);
+STDCALL NTSTATUS
+USBD_InterfaceQueryBusInformation(void *context, ULONG level, void *buf,
+				  ULONG *buf_length, ULONG *buf_actual_length);
+STDCALL NTSTATUS
+USBD_InterfaceLogEntry(void *context, ULONG driver_tag, ULONG enum_tag,
+		       ULONG p1, ULONG p2);
 
 #endif /* USB_H */
