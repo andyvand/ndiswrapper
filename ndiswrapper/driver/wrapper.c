@@ -704,11 +704,7 @@ static NDIS_STATUS miniport_init(struct wrapper_dev *wd)
 		ERROR("couldn't allocate thread object");
 		return NDIS_STATUS_FAILURE;
 	}
-	TRACEENTER1("driver init routine is at %p", miniport->init);
-	if (miniport->init == NULL) {
-		ERROR("initialization function is not setup correctly");
-		return NDIS_STATUS_FAILURE;
-	}
+
 	if (test_bit(HW_INITIALIZED, &wd->hw_status)) {
 		ERROR("device %p already initialized!", wd);
 		return NDIS_STATUS_FAILURE;
@@ -727,11 +723,34 @@ static NDIS_STATUS miniport_init(struct wrapper_dev *wd)
 		goto err_usb;
 #endif
 	}
+#if 1
+	do {
+		struct device_object *fdo;
+		struct irp *irp;
+		struct io_stack_location *irp_sl;
+
+//		fdo = IoGetAttachedDevice(wd->nmb->pdo);
+		fdo = wd->nmb->fdo;
+		DBGTRACE1("fdo: %p", fdo);
+		irp = IoAllocateIrp(fdo->stack_size, FALSE);
+		irp_sl = IoGetNextIrpStackLocation(irp);
+		DBGTRACE1("irp = %p, stack = %p", irp, irp_sl);
+		irp_sl->major_fn = IRP_MJ_PNP;
+		irp_sl->minor_fn = IRP_MN_START_DEVICE;
+		irp->io_status.status = STATUS_NOT_SUPPORTED;
+		res = IoCallDriver(fdo, irp);
+	} while (0);
+#endif
+	DBGTRACE1("res: %08X, driver init routine is at %p",
+		  res, miniport->init);
+	if (miniport->init == NULL) {
+		ERROR("initialization function is not setup correctly");
+		return NDIS_STATUS_FAILURE;
+	}
 	res = LIN2WIN6(miniport->init, &error_status,
 		       &medium_index, medium_array,
 		       sizeof(medium_array) / sizeof(medium_array[0]),
 		       wd->nmb, wd->nmb);
-	wrap_remove_thread(thread);
 	DBGTRACE1("init returns: %08X", res);
 	if (res)
 		goto err_miniport_init;
@@ -753,6 +772,7 @@ static NDIS_STATUS miniport_init(struct wrapper_dev *wd)
 #endif
 	hangcheck_add(wd);
 	stats_timer_add(wd);
+	wrap_remove_thread(thread);
 	TRACEEXIT1(return NDIS_STATUS_SUCCESS);
 
 err_miniport_init:
@@ -765,6 +785,7 @@ err_usb:
  err_misc_funcs:
 	ntoskernel_exit_device(wd);
 	WARNING("couldn't initialize device: %08X", res);
+	wrap_remove_thread(thread);
 	TRACEEXIT1(return NDIS_STATUS_FAILURE);
 }
 

@@ -346,8 +346,9 @@ STDCALL struct irp *WRAP_EXPORT(IoBuildDeviceIoControlRequest)
 	struct irp *irp;
 	struct io_stack_location *irp_sl;
 
-	IOENTER("");
-
+	IOENTER("%p", dev_obj);
+	if (!dev_obj)
+		IOEXIT(return NULL);
 	irp = IoAllocateIrp(dev_obj->stack_size, FALSE);
 	if (irp) {
 		irp->user_status = io_status;
@@ -366,10 +367,10 @@ STDCALL struct irp *WRAP_EXPORT(IoBuildDeviceIoControlRequest)
 		irp_sl->flags = 0;
 		irp_sl->file_obj = NULL;
 		irp_sl->completion_routine = NULL;
+		IoQueueThreadIrp(irp);
 	}
 
 	IOTRACE("irp: %p", irp);
-	IoQueueThreadIrp(irp);
 	IOEXIT(return irp);
 }
 
@@ -584,34 +585,40 @@ STDCALL NTSTATUS pdoDispatchPnp(struct device_object *pdo,
 	NTSTATUS res;
 
 	irp_sl = IoGetCurrentIrpStackLocation(irp);
+	res = STATUS_SUCCESS;
 	wd = pdo->reserved;
 	IOTRACE("fn %d:%d, wd: %p", irp_sl->major_fn, irp_sl->minor_fn, wd);
 	switch (irp_sl->minor_fn) {
 	case IRP_MN_START_DEVICE:
-//		irp->io_status.status = miniport_init(wd);
+		res = STATUS_SUCCESS;
 		break;
 	case IRP_MN_STOP_DEVICE:
+		res = STATUS_SUCCESS;
 //		miniport_halt(wd);
 //		irp->io_status.status = STATUS_SUCCESS;
 		break;
 	case IRP_MN_QUERY_STOP_DEVICE:
-		irp->io_status.status = STATUS_SUCCESS;
+		res = STATUS_SUCCESS;
 		break;
 	case IRP_MN_QUERY_REMOVE_DEVICE:
-		irp->io_status.status = STATUS_SUCCESS;
+		res = STATUS_SUCCESS;
 		break;
 	case IRP_MN_REMOVE_DEVICE:
 //		miniport_halt(wd);
 //		free_pdo(wd->nmb->pdo);
-		irp->io_status.status = STATUS_SUCCESS;
+		res = STATUS_SUCCESS;
+		break;
+	case IRP_MN_QUERY_INTERFACE:
+		res = STATUS_SUCCESS;
 		break;
 	default:
 		WARNING("minor_fn: %d not implemented", irp_sl->minor_fn);
-		irp->io_status.status = STATUS_FAILURE;
+		res = STATUS_SUCCESS;
 		break;
 	}
-	irp->io_status.status_info = 0;
-	res = irp->io_status.status;
+	irp->io_status.status = res;
+	IOTRACE("res: %08X", res);
+//	irp->io_status.status_info = 0;
 	IoCompleteRequest(irp, IO_NO_INCREMENT);
 	return res;
 }
@@ -1064,14 +1071,16 @@ STDCALL void WRAP_EXPORT(IoDetachDevice)
 	IOEXIT(return);
 }
 
-STDCALL union power_state WRAP_EXPORT(PoSetPowerState)
+/* gcc will return unions and structs either through registers or in
+ * memory, so we can't return 'union power_state'; instead, we return
+ * 'enum device_power_state' (which is one of the fields in the
+ * union). With this gcc will honor STDCALL and return value
+ * appropriately */
+STDCALL enum device_power_state WRAP_EXPORT(PoSetPowerState)
 	(struct device_object *dev_obj, enum power_state_type type,
 	 union power_state state)
 {
-	union power_state ps;
-
-	ps.device_state = PowerDeviceD0;
-	return ps;
+	IOEXIT(return PowerDeviceD0);
 }
 
 STDCALL NTSTATUS WRAP_EXPORT(PoCallDriver)
