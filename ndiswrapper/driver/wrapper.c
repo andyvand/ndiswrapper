@@ -729,8 +729,7 @@ static NDIS_STATUS miniport_init(struct wrapper_dev *wd)
 		struct irp *irp;
 		struct io_stack_location *irp_sl;
 
-//		fdo = IoGetAttachedDevice(wd->nmb->pdo);
-		fdo = wd->nmb->fdo;
+		fdo = IoGetAttachedDevice(wd->nmb->pdo);
 		DBGTRACE1("fdo: %p", fdo);
 		irp = IoAllocateIrp(fdo->stack_size, FALSE);
 		irp_sl = IoGetNextIrpStackLocation(irp);
