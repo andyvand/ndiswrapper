@@ -843,6 +843,14 @@ struct file_name_info {
 	wchar_t *name;
 };
 
+struct file_std_info {
+	LARGE_INTEGER alloc_size;
+	LARGE_INTEGER eof;
+	ULONG num_links;
+	BOOLEAN delete_pending;
+	BOOLEAN dir;
+};
+
 enum file_info_class {
 	FileAlignmentInformation = 17,
 	FileAttributeTagInformation = 35,

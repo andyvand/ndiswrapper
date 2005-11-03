@@ -1275,4 +1275,64 @@ STDCALL void WRAP_EXPORT(USBD_GetUSBDIVersion)
 	USBEXIT(return);
 }
 
+STDCALL void
+USBD_InterfaceGetUSBDIVersion(void *context,
+			      struct usbd_version_info *version_info,
+			      ULONG *hcd_capa)
+{
+	USBD_GetUSBDIVersion(version_info);
+	*hcd_capa = USB_HCD_CAPS_SUPPORTS_RT_THREADS;
+	USBEXIT(return);
+}
+
+STDCALL BOOLEAN USBD_InterfaceIsDeviceHighSpeed(void *context)
+{
+	USBTRACE("%p", context);
+	/* TODO: implement it correctly */
+	USBEXIT(return FALSE);
+}
+
+STDCALL void USBD_InterfaceReference(void *context)
+{
+	USBTRACE("%p", context);
+}
+
+STDCALL void USBD_InterfaceDereference(void *context)
+{
+	USBTRACE("%p", context);
+}
+
+STDCALL NTSTATUS USBD_InterfaceQueryBusTime(void *context, ULONG *frame)
+{
+	/* TODO: get current frame */
+	*frame = 1;
+	UNIMPL();
+	USBEXIT(return STATUS_NOT_IMPLEMENTED);
+}
+
+STDCALL NTSTATUS USBD_InterfaceSubmitIsoOutUrb(void *context,
+					       union nt_urb *nt_urb)
+{
+	/* TODO: implement this */
+	UNIMPL();
+	USBEXIT(return STATUS_NOT_IMPLEMENTED);
+}
+
+STDCALL NTSTATUS
+USBD_InterfaceQueryBusInformation(void *context, ULONG level, void *buf,
+				  ULONG *buf_length, ULONG *buf_actual_length)
+{
+	/* TODO: implement this */
+	UNIMPL();
+	USBEXIT(return STATUS_NOT_IMPLEMENTED);
+}
+
+STDCALL NTSTATUS
+USBD_InterfaceLogEntry(void *context, ULONG driver_tag, ULONG enum_tag,
+		       ULONG p1, ULONG p2)
+{
+	ERROR("%p, %x, %x, %x, %x", context, driver_tag, enum_tag, p1, p2);
+	USBEXIT(return STATUS_SUCCESS);
+}
+
 #include "usb_exports.h"

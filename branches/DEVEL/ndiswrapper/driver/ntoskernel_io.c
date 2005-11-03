@@ -586,6 +586,7 @@ STDCALL NTSTATUS pdoDispatchPnp(struct device_object *pdo,
 	struct io_stack_location *irp_sl;
 	struct wrapper_dev *wd;
 	NTSTATUS res;
+	struct usb_bus_interface_usbdi_v1 *usb_intf;
 
 	irp_sl = IoGetCurrentIrpStackLocation(irp);
 	res = STATUS_SUCCESS;
@@ -616,6 +617,23 @@ STDCALL NTSTATUS pdoDispatchPnp(struct device_object *pdo,
 			irp_sl->params.query_intf.type->data1,
 			irp_sl->params.query_intf.size,
 			irp_sl->params.query_intf.version);
+		usb_intf = (struct usb_bus_interface_usbdi_v1 *)
+			irp_sl->params.query_intf.intf;
+		usb_intf->bus_context = wd;
+		usb_intf->intf_reference = USBD_InterfaceReference;
+		usb_intf->intf_dereference = USBD_InterfaceDereference;
+		usb_intf->get_usbdi_version = USBD_InterfaceGetUSBDIVersion;
+		usb_intf->query_bus_time = USBD_InterfaceQueryBusTime;
+		usb_intf->submit_iso_outurb = USBD_InterfaceSubmitIsoOutUrb;
+		usb_intf->query_bus_info = USBD_InterfaceQueryBusInformation;
+		if (irp_sl->params.query_intf.version >=
+		    USB_BUSIF_USBDI_VERSION_1)
+			usb_intf->is_dev_high_speed =
+				USBD_InterfaceIsDeviceHighSpeed;
+		if (irp_sl->params.query_intf.version >=
+		    USB_BUSIF_USBDI_VERSION_2)
+			usb_intf->log_entry =
+				USBD_InterfaceLogEntry;
 		res = STATUS_SUCCESS;
 		break;
 	default:
