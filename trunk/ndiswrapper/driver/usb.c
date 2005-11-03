@@ -1,5 +1,6 @@
 /*
  *  Copyright (C) 2004 Jan Kiszka
+ *  Copyright (C) 2005 Giridhar Pemmasani
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -462,7 +463,8 @@ static void irp_complete_worker(unsigned long data)
 		DUMP_IRP(irp);
 		wrap_urb = irp->wrap_urb;
 		urb = wrap_urb->urb;
-		if (wrap_urb->state != URB_COMPLETED)
+		if (wrap_urb->state != URB_COMPLETED &&
+		    wrap_urb->state != URB_CANCELED)
 			WARNING("urb %p in wrong state: %d",
 				urb, wrap_urb->state);
 		nt_urb = URB_FROM_IRP(irp);
@@ -1261,6 +1263,104 @@ WRAP_EXPORT(USBD_ParseConfigurationDescriptor)
 						   bInterfaceNumber,
 						   bAlternateSetting,
 						   -1, -1, -1);
+}
+
+STDCALL void WRAP_EXPORT(USBD_GetUSBDIVersion)
+	(struct usbd_version_info *version_info)
+{
+	/* this function is obsolete in Windows XP */
+	if (version_info) {
+		version_info->usbdi_version = USBDI_VERSION;
+		/* TODO: how do we get this correctly? */
+		version_info->supported_usb_version = 0x110; // 0x200
+	}
+	USBEXIT(return);
+}
+
+STDCALL void
+USBD_InterfaceGetUSBDIVersion(void *context,
+			      struct usbd_version_info *version_info,
+			      ULONG *hcd_capa)
+{
+	struct wrapper_dev *wd = context;
+
+	if (version_info) {
+		version_info->usbdi_version = USBDI_VERSION;
+		if (wd->dev.usb.udev->speed == USB_SPEED_HIGH)
+			version_info->supported_usb_version = 0x200;
+		else
+			version_info->supported_usb_version = 0x110;
+	}
+	*hcd_capa = USB_HCD_CAPS_SUPPORTS_RT_THREADS;
+	USBEXIT(return);
+}
+
+STDCALL BOOLEAN USBD_InterfaceIsDeviceHighSpeed(void *context)
+{
+	struct wrapper_dev *wd = context;
+
+	USBTRACE("wd: %p", wd);
+	if (wd->dev.usb.udev->speed == USB_SPEED_HIGH)
+		USBEXIT(return TRUE);
+	else
+		USBEXIT(return FALSE);
+}
+
+STDCALL void USBD_InterfaceReference(void *context)
+{
+	USBTRACE("%p", context);
+	UNIMPL();
+}
+
+STDCALL void USBD_InterfaceDereference(void *context)
+{
+	USBTRACE("%p", context);
+	UNIMPL();
+}
+
+STDCALL NTSTATUS USBD_InterfaceQueryBusTime(void *context, ULONG *frame)
+{
+	struct wrapper_dev *wd = context;
+
+	*frame = usb_get_current_frame_number(wd->dev.usb.udev);
+	USBEXIT(return STATUS_SUCCESS);
+}
+
+STDCALL NTSTATUS USBD_InterfaceSubmitIsoOutUrb(void *context,
+					       union nt_urb *nt_urb)
+{
+	/* TODO: implement this */
+	UNIMPL();
+	USBEXIT(return STATUS_NOT_IMPLEMENTED);
+}
+
+STDCALL NTSTATUS
+USBD_InterfaceQueryBusInformation(void *context, ULONG level, void *buf,
+				  ULONG *buf_length, ULONG *buf_actual_length)
+{
+	struct wrapper_dev *wd = context;
+	struct usb_bus_information_level *bus_info;
+	struct usb_bus *bus;
+
+	bus = wd->dev.usb.udev->bus;
+	bus_info = buf;
+#if 0
+	/* TODO: implement this */
+	bus_info->total_bandwidth = 0;
+	bus_info->consumed_bandwidth =
+		FRAME_LENGTH * bus->bandwidth_allocated / 1000000;
+#else
+	UNIMPL();
+#endif
+	USBEXIT(return STATUS_NOT_IMPLEMENTED);
+}
+
+STDCALL NTSTATUS
+USBD_InterfaceLogEntry(void *context, ULONG driver_tag, ULONG enum_tag,
+		       ULONG p1, ULONG p2)
+{
+	ERROR("%p, %x, %x, %x, %x", context, driver_tag, enum_tag, p1, p2);
+	USBEXIT(return STATUS_SUCCESS);
 }
 
 #include "usb_exports.h"
