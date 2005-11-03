@@ -276,9 +276,11 @@ STDCALL struct irp *WRAP_EXPORT(IoBuildAsynchronousFsdRequest)
 	struct io_stack_location *irp_sl;
 
 	IOENTER("%p", dev_obj);
+	if (!dev_obj)
+		IOEXIT(return NULL);
 	irp = IoAllocateIrp(dev_obj->stack_size, FALSE);
 	if (irp == NULL)
-		return NULL;
+		IOEXIT(return NULL);
 
 	irp_sl = IoGetNextIrpStackLocation(irp);
 	irp_sl->major_fn = major_fn;
@@ -346,8 +348,9 @@ STDCALL struct irp *WRAP_EXPORT(IoBuildDeviceIoControlRequest)
 	struct irp *irp;
 	struct io_stack_location *irp_sl;
 
-	IOENTER("");
-
+	IOENTER("%p", dev_obj);
+	if (!dev_obj)
+		IOEXIT(return NULL);
 	irp = IoAllocateIrp(dev_obj->stack_size, FALSE);
 	if (irp) {
 		irp->user_status = io_status;
@@ -366,10 +369,10 @@ STDCALL struct irp *WRAP_EXPORT(IoBuildDeviceIoControlRequest)
 		irp_sl->flags = 0;
 		irp_sl->file_obj = NULL;
 		irp_sl->completion_routine = NULL;
+		IoQueueThreadIrp(irp);
 	}
 
 	IOTRACE("irp: %p", irp);
-	IoQueueThreadIrp(irp);
 	IOEXIT(return irp);
 }
 
@@ -382,7 +385,8 @@ _FASTCALL NTSTATUS WRAP_EXPORT(IofCallDriver)
 	struct driver_object *drv_obj;
 
 	DUMP_IRP(irp);
-
+	if (!dev_obj)
+		IOEXIT(return STATUS_SUCCESS);
 	drv_obj = dev_obj->drv_obj;
 	IOTRACE("drv_obj: %p", drv_obj);
 	IoSetNextIrpStackLocation(irp);
@@ -582,36 +586,63 @@ STDCALL NTSTATUS pdoDispatchPnp(struct device_object *pdo,
 	struct io_stack_location *irp_sl;
 	struct wrapper_dev *wd;
 	NTSTATUS res;
+	struct usb_bus_interface_usbdi *usb_intf;
 
 	irp_sl = IoGetCurrentIrpStackLocation(irp);
+	res = STATUS_SUCCESS;
 	wd = pdo->reserved;
 	IOTRACE("fn %d:%d, wd: %p", irp_sl->major_fn, irp_sl->minor_fn, wd);
 	switch (irp_sl->minor_fn) {
 	case IRP_MN_START_DEVICE:
-//		irp->io_status.status = miniport_init(wd);
+		res = STATUS_SUCCESS;
 		break;
 	case IRP_MN_STOP_DEVICE:
+		res = STATUS_SUCCESS;
 //		miniport_halt(wd);
 //		irp->io_status.status = STATUS_SUCCESS;
 		break;
 	case IRP_MN_QUERY_STOP_DEVICE:
-		irp->io_status.status = STATUS_SUCCESS;
+		res = STATUS_SUCCESS;
 		break;
 	case IRP_MN_QUERY_REMOVE_DEVICE:
-		irp->io_status.status = STATUS_SUCCESS;
+		res = STATUS_SUCCESS;
 		break;
 	case IRP_MN_REMOVE_DEVICE:
 //		miniport_halt(wd);
 //		free_pdo(wd->nmb->pdo);
-		irp->io_status.status = STATUS_SUCCESS;
+		res = STATUS_SUCCESS;
+		break;
+	case IRP_MN_QUERY_INTERFACE:
+		IOTRACE("type: %x, size: %d, version: %d",
+			irp_sl->params.query_intf.type->data1,
+			irp_sl->params.query_intf.size,
+			irp_sl->params.query_intf.version);
+		usb_intf = (struct usb_bus_interface_usbdi *)
+			irp_sl->params.query_intf.intf;
+		usb_intf->bus_context = wd;
+		usb_intf->intf_reference = USBD_InterfaceReference;
+		usb_intf->intf_dereference = USBD_InterfaceDereference;
+		usb_intf->get_usbdi_version = USBD_InterfaceGetUSBDIVersion;
+		usb_intf->query_bus_time = USBD_InterfaceQueryBusTime;
+		usb_intf->submit_iso_outurb = USBD_InterfaceSubmitIsoOutUrb;
+		usb_intf->query_bus_info = USBD_InterfaceQueryBusInformation;
+		if (irp_sl->params.query_intf.version >=
+		    USB_BUSIF_USBDI_VERSION_1)
+			usb_intf->is_dev_high_speed =
+				USBD_InterfaceIsDeviceHighSpeed;
+		if (irp_sl->params.query_intf.version >=
+		    USB_BUSIF_USBDI_VERSION_2)
+			usb_intf->log_entry = USBD_InterfaceLogEntry;
+		res = STATUS_SUCCESS;
 		break;
 	default:
 		WARNING("minor_fn: %d not implemented", irp_sl->minor_fn);
-		irp->io_status.status = STATUS_FAILURE;
+		res = STATUS_SUCCESS;
 		break;
 	}
-	irp->io_status.status_info = 0;
-	res = irp->io_status.status;
+	irp->io_status.status = res;
+	IOTRACE("res: %08X", res);
+//	irp->io_status.status_info = 0;
 	IoCompleteRequest(irp, IO_NO_INCREMENT);
 	return res;
 }
@@ -1064,14 +1095,16 @@ STDCALL void WRAP_EXPORT(IoDetachDevice)
 	IOEXIT(return);
 }
 
-STDCALL union power_state WRAP_EXPORT(PoSetPowerState)
+/* gcc will return unions and structs either through registers or in
+ * memory, so we can't return 'union power_state'; instead, we return
+ * 'enum device_power_state' (which is one of the fields in the
+ * union). With this gcc will honor STDCALL and return value
+ * appropriately */
+STDCALL enum device_power_state WRAP_EXPORT(PoSetPowerState)
 	(struct device_object *dev_obj, enum power_state_type type,
 	 union power_state state)
 {
-	union power_state ps;
-
-	ps.device_state = PowerDeviceD0;
-	return ps;
+	IOEXIT(return PowerDeviceD0);
 }
 
 STDCALL NTSTATUS WRAP_EXPORT(PoCallDriver)
@@ -1113,6 +1146,29 @@ STDCALL void WRAP_EXPORT(PoStartNextPowerIrp)
 	IOEXIT(return);
 }
 
+STDCALL void WRAP_EXPORT(IoInitializeRemoveLockEx)
+	(struct io_remove_lock *lock, ULONG alloc_tag, ULONG max_locked_min,
+	 ULONG high_mark, ULONG lock_size)
+{
+	UNIMPL();
+}
+
+
+STDCALL NTSTATUS WRAP_EXPORT(IoAcquireRemoveLockEx)
+	(struct io_remove_lock lock, void *tag, char *file, ULONG line,
+	 ULONG lock_size)
+{
+	UNIMPL();
+	IOEXIT(return STATUS_SUCCESS);
+}
+
+STDCALL NTSTATUS WRAP_EXPORT(IoReleaseRemoveLockEx)
+	(struct io_remove_lock lock, void *tag, ULONG lock_size)
+{
+	UNIMPL();
+	IOEXIT(return STATUS_SUCCESS);
+}
+
 STDCALL NTSTATUS WRAP_EXPORT(IoRegisterDeviceInterface)
 	(struct device_object *pdo, struct guid *guid_class,
 	 struct unicode_string *reference, struct unicode_string *link)
@@ -1144,6 +1200,29 @@ STDCALL NTSTATUS WRAP_EXPORT(IoOpenDeviceRegistryKey)
 	wd = pdo->reserved;
 	*handle = wd->nmb;
 	return STATUS_SUCCESS;
+}
+
+STDCALL NTSTATUS WRAP_EXPORT(ZwCreateKey)
+	(void **handle, ACCESS_MASK desired_access, struct object_attr *attr,
+	 ULONG title_index, struct unicode_string *class,
+	 ULONG create_options, ULONG *disposition)
+{
+	UNIMPL();
+	return STATUS_SUCCESS;
+}
+
+STDCALL NTSTATUS WRAP_EXPORT(ZwSetValueKey)
+	(void *handle, struct unicode_string *name, ULONG title_index,
+	 ULONG type, void *data, ULONG data_size)
+{
+	NDIS_STATUS status;
+	struct ndis_config_param param;
+
+	NdisWriteConfiguration(&status, handle, name, &param);
+	if (status == NDIS_STATUS_SUCCESS)
+		return STATUS_SUCCESS;
+	else
+		return STATUS_FAILURE;
 }
 
 STDCALL NTSTATUS WRAP_EXPORT(ZwQueryValueKey)

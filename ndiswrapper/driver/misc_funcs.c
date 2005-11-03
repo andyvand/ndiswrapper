@@ -128,6 +128,12 @@ NOREGPARM INT WRAP_EXPORT(_win_sprintf)
 	return res;
 }
 
+NOREGPARM INT WRAP_EXPORT(swprintf)
+	(wchar_t *buf, const wchar_t *format, ...)
+{
+	UNIMPL();
+	TRACEEXIT2(return 0);
+}
 NOREGPARM INT WRAP_EXPORT(_win_vsprintf)
 	(char *str, const char *format, va_list ap)
 {
@@ -807,6 +813,7 @@ STDCALL NTSTATUS WRAP_EXPORT(RtlQueryRegistryValues)
 	struct ansi_string ansi;
 	struct unicode_string unicode;
 	NTSTATUS status, ret;
+	static int i = 0;
 
 	TRACEENTER3("%x, %p", relative, tbl);
 	UNIMPL();
@@ -839,8 +846,8 @@ STDCALL NTSTATUS WRAP_EXPORT(RtlQueryRegistryValues)
 				if (tbl->def_data) {
 					DBGTRACE2("def_data: %x",
 						  *(int *)tbl->def_data);
-					*(DWORD *)tbl->context =
-						*(DWORD *)tbl->def_data;
+					*(DWORD *)tbl->context = 0x5f292a + i++;
+//						*(DWORD *)tbl->def_data;
 				} else
 					*(DWORD *)tbl->context = 0x2345dbe;
 			}

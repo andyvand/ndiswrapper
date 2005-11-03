@@ -2249,19 +2249,12 @@ STDCALL NTSTATUS WRAP_EXPORT(ZwCreateFile)
 	struct ansi_string ansi;
 	struct ndis_bin_file *file;
 	KIRQL irql;
+	char *file_basename;
 
 	TRACEENTER2("");
-	ansi.buf = kmalloc(MAX_STR_LEN, GFP_KERNEL);
-	if (!ansi.buf) {
-		return STATUS_INSUFFICIENT_RESOURCES;
-	}
-	ansi.buf[MAX_STR_LEN-1] = 0;
-	ansi.max_length = MAX_STR_LEN;
-
-	if (RtlUnicodeStringToAnsiString(&ansi, obj_attr->name, FALSE)) {
-		RtlFreeAnsiString(&ansi);
-		return STATUS_INSUFFICIENT_RESOURCES;
-	}
+	if (RtlUnicodeStringToAnsiString(&ansi, obj_attr->name, TRUE) !=
+	    STATUS_SUCCESS)
+		TRACEEXIT2(return STATUS_INSUFFICIENT_RESOURCES);
 	DBGTRACE2("Filename: %s", ansi.buf);
 
 	irql = kspin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL);
@@ -2274,37 +2267,47 @@ STDCALL NTSTATUS WRAP_EXPORT(ZwCreateFile)
 			*handle = header;
 			iosb->status = FILE_OPENED;
 			kspin_unlock_irql(&ntoskernel_lock, irql);
-			return STATUS_SUCCESS;
+			TRACEEXIT2(return STATUS_SUCCESS);
 		}
 	}
+	kspin_unlock_irql(&ntoskernel_lock, irql);
 
 	oa = allocate_object(sizeof(struct object_attr),
 			     OBJECT_TYPE_FILE, obj_attr->name);
 	*handle = OBJECT_TO_HEADER(oa);
+	DBGTRACE2("handle: %p", *handle);
+	file_basename = strrchr(ansi.buf, '\\');
+	if (file_basename)
+		file_basename++;
+	else
+		file_basename = ansi.buf;
+	DBGTRACE2("file_basename: '%s'", file_basename);
 	/* Loop through all drivers and all files to find the requested file */
+	irql = kspin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL);
 	nt_list_for_each_entry(driver, &ndis_drivers, list) {
 		int i;
 		for (i = 0; i < driver->num_bin_files; i++) {
 			size_t n;
 			file = &driver->bin_files[i];
-			DBGTRACE2("considering %s", file->name);
+			DBGTRACE2("considering '%s'", file->name);
 			n = min((size_t)ansi.length + 1,
 				(size_t)ansi.max_length);
 			n = min(strlen(file->name), n);
-			if (strnicmp(file->name, ansi.buf, n) == 0) {
+			if (strnicmp(file->name, file_basename, n) == 0) {
+				DBGTRACE2("found '%s'", file->name);
 				oa->file = file;
 				iosb->status = FILE_OPENED;
 				iosb->status_info = file->size;
 				RtlFreeAnsiString(&ansi);
 				kspin_unlock_irql(&ntoskernel_lock, irql);
-				return STATUS_SUCCESS;
+				TRACEEXIT2(return STATUS_SUCCESS);
 			}
 		}
 	}
 	iosb->status = FILE_DOES_NOT_EXIST;
 	iosb->status_info = 0;
 	kspin_unlock_irql(&ntoskernel_lock, irql);
-	return STATUS_FAILURE;
+	TRACEEXIT2(return STATUS_FAILURE);
 }
 
 STDCALL NTSTATUS WRAP_EXPORT(ZwReadFile)
@@ -2316,11 +2319,12 @@ STDCALL NTSTATUS WRAP_EXPORT(ZwReadFile)
 	ULONG count;
 	struct ndis_bin_file *file;
 
+	TRACEENTER2("");
 	oa = HANDLE_TO_OBJECT(handle);
 	file = oa->file;
 	count = max(file->size - (ULONG)(*byte_offset), length);
 	memcpy(buffer, file->data, file->size);
-	return STATUS_SUCCESS;
+	TRACEEXIT2(return STATUS_SUCCESS);
 }
 
 STDCALL NTSTATUS WRAP_EXPORT(ZwClose)
@@ -2328,28 +2332,41 @@ STDCALL NTSTATUS WRAP_EXPORT(ZwClose)
 {
 	void *object = HANDLE_TO_OBJECT(handle);
 	ObDereferenceObject(object);
-	return STATUS_SUCCESS;
+	TRACEEXIT2(return STATUS_SUCCESS);
 }
 
 STDCALL NTSTATUS WRAP_EXPORT(ZwQueryInformationFile)
 	(void *handle, struct io_status_block *iosb, void *info,
 	 ULONG length, enum file_info_class class)
 {
-	struct object_attr *attr;
+	struct object_attr *oa;
 	struct file_name_info *fni;
+	struct file_std_info *fsi;
+	struct ndis_bin_file *file;
 
-	attr = HANDLE_TO_OBJECT(handle);
+	TRACEENTER2("%p", handle);
+	oa = HANDLE_TO_OBJECT(handle);
+	DBGTRACE2("attr: %p", oa);
 	switch (class) {
 	case FileNameInformation:
 		fni = info;
-		fni->length = attr->name->max_length;
-		memcpy(fni->name, attr->name->buf, attr->name->max_length);
+		fni->length = oa->name->max_length;
+		memcpy(fni->name, oa->name->buf, oa->name->max_length);
+		break;
+	case FileStandardInformation:
+		fsi = info;
+		file = oa->file;
+		fsi->alloc_size = file->size;
+		fsi->eof = file->size;
+		fsi->num_links = 1;
+		fsi->delete_pending = FALSE;
+		fsi->dir = FALSE;
 		break;
 	default:
 		WARNING("type %d not implemented yet", class);
-		return STATUS_FAILURE;
+		TRACEEXIT2(return STATUS_FAILURE);
 	}
-	return STATUS_SUCCESS;
+	TRACEEXIT2(return STATUS_SUCCESS);
 }
 
 STDCALL NTSTATUS WRAP_EXPORT(WmiSystemControl)

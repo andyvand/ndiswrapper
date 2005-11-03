@@ -292,14 +292,8 @@ STDCALL void WRAP_EXPORT(NdisOpenFile)
 		    status, filelength, *filelength,
 		    highest_address, filehandle, *filehandle);
 
-	ansi.buf = kmalloc(MAX_STR_LEN, GFP_KERNEL);
-	if (!ansi.buf) {
-		*status = NDIS_STATUS_RESOURCES;
-		return;
-	}
-	ansi.buf[MAX_STR_LEN-1] = 0;
-	ansi.max_length = MAX_STR_LEN;
-	if (RtlUnicodeStringToAnsiString(&ansi, filename, FALSE)) {
+	if (RtlUnicodeStringToAnsiString(&ansi, filename, TRUE) !=
+	    STATUS_SUCCESS) {
 		*status = NDIS_STATUS_RESOURCES;
 		TRACEEXIT2(return);
 	}
@@ -320,11 +314,13 @@ STDCALL void WRAP_EXPORT(NdisOpenFile)
 				*filehandle = file;
 				*filelength = file->size;
 				*status = NDIS_STATUS_SUCCESS;
+				RtlFreeAnsiString(&ansi);
 				TRACEEXIT2(return);
 			}
 		}
 	}
 	*status = NDIS_STATUS_FILE_NOT_FOUND;
+	RtlFreeAnsiString(&ansi);
 	TRACEEXIT2(return);
 }
 
@@ -359,10 +355,10 @@ STDCALL void WRAP_EXPORT(NdisCloseFile)
 }
 
 STDCALL void WRAP_EXPORT(NdisGetSystemUpTime)
-	(ULONG *systemuptime)
+	(ULONG *ms)
 {
 	TRACEENTER5("");
-	*systemuptime = 1000 * jiffies / HZ;
+	*ms = 1000 * jiffies / HZ;
 	TRACEEXIT5(return);
 }
 
