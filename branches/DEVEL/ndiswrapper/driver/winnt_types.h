@@ -556,10 +556,10 @@ enum power_action {
 };
 
 struct guid {
-	unsigned long data1;
-	unsigned short data2;
-	unsigned short data3;
-	unsigned char data4[8];
+	ULONG data1;
+	USHORT data2;
+	USHORT data3;
+	UCHAR data4[8];
 };
 
 struct nt_interface {
@@ -598,7 +598,7 @@ struct io_stack_location {
 			LARGE_INTEGER byte_offset;
 		} write;
 		struct {
-			const struct guid *intf_type;
+			const struct guid *type;
 			USHORT size;
 			USHORT version;
 			struct nt_interface *intf;

@@ -276,9 +276,11 @@ STDCALL struct irp *WRAP_EXPORT(IoBuildAsynchronousFsdRequest)
 	struct io_stack_location *irp_sl;
 
 	IOENTER("%p", dev_obj);
+	if (!dev_obj)
+		IOEXIT(return NULL);
 	irp = IoAllocateIrp(dev_obj->stack_size, FALSE);
 	if (irp == NULL)
-		return NULL;
+		IOEXIT(return NULL);
 
 	irp_sl = IoGetNextIrpStackLocation(irp);
 	irp_sl->major_fn = major_fn;
@@ -383,7 +385,8 @@ _FASTCALL NTSTATUS WRAP_EXPORT(IofCallDriver)
 	struct driver_object *drv_obj;
 
 	DUMP_IRP(irp);
-
+	if (!dev_obj)
+		IOEXIT(return STATUS_SUCCESS);
 	drv_obj = dev_obj->drv_obj;
 	IOTRACE("drv_obj: %p", drv_obj);
 	IoSetNextIrpStackLocation(irp);
@@ -609,6 +612,10 @@ STDCALL NTSTATUS pdoDispatchPnp(struct device_object *pdo,
 		res = STATUS_SUCCESS;
 		break;
 	case IRP_MN_QUERY_INTERFACE:
+		IOTRACE("type: %x, size: %d, version: %d",
+			irp_sl->params.query_intf.type->data1,
+			irp_sl->params.query_intf.size,
+			irp_sl->params.query_intf.version);
 		res = STATUS_SUCCESS;
 		break;
 	default:
