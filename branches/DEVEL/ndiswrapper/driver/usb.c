@@ -1287,9 +1287,13 @@ USBD_InterfaceGetUSBDIVersion(void *context,
 
 STDCALL BOOLEAN USBD_InterfaceIsDeviceHighSpeed(void *context)
 {
-	USBTRACE("%p", context);
+	struct wrapper_dev *wd = context;
+	USBTRACE("wd: %p", wd);
 	/* TODO: implement it correctly */
-	USBEXIT(return FALSE);
+	if (wd->dev.usb.udev->speed == USB_SPEED_HIGH)
+		USBEXIT(return TRUE);
+	else
+		USBEXIT(return FALSE);
 }
 
 STDCALL void USBD_InterfaceReference(void *context)
