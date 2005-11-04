@@ -261,28 +261,28 @@ union nt_urb {
 	struct usbd_pipe_request pipe_req;
 };
 
-struct usb_bus_interface_usbdi {
-	USHORT size;
-	USHORT version;
-	void *bus_context;
-	void *intf_reference;
-	void *intf_dereference;
-	void *get_usbdi_version;
-	void *query_bus_time;
-	void *submit_iso_outurb;
-	void *query_bus_info;
+struct usbd_bus_interface_usbdi {
+	USHORT Size;
+	USHORT Version;
+	void *Context;
+	void *InterfaceReference;
+	void *InterfaceDereference;
+	void *GetUSBDIVersion;
+	void *QueryBusTime;
+	void *SubmitIsoOutUrb;
+	void *QueryBusInformation;
 	/* version 1 and above have following field */
-	void *is_dev_high_speed;
+	void *IsDeviceHighSpeed;
 	/* version 2 (and above) have following field */
-	void *log_entry;
+	void *LogEntry;
 };
 
-struct usb_bus_information_level {
-	ULONG total_bandwidth;
-	ULONG consumed_bandwidth;
+struct usbd_bus_information_level {
+	ULONG TotalBandwidth;
+	ULONG ConsumedBandwidth;
 	/* level 1 and above have following fields */
-	ULONG controller_name_length;
-	wchar_t name[1];
+	ULONG ControllerNameLength;
+	wchar_t ControllerName[1];
 };
 
 #define USBDI_VERSION				0x00000500 // Windows XP

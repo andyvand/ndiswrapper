@@ -589,17 +589,29 @@ static USBD_STATUS wrap_bulk_or_intr_trans(struct irp *irp)
 	nt_urb = URB_FROM_IRP(irp);
 	udev = irp->wd->dev.usb.udev;
 	bulk_int_tx = &nt_urb->bulk_int_transfer;
-	USBTRACE("flags = %X, length = %u, buffer = %p",
-		  bulk_int_tx->transfer_flags,
-		  bulk_int_tx->transfer_buffer_length,
-		  bulk_int_tx->transfer_buffer);
-
-	DUMP_IRP(irp);
 	pipe_handle = bulk_int_tx->pipe_handle;
-	if (bulk_int_tx->transfer_flags & USBD_TRANSFER_DIRECTION_IN)
-		pipe = usb_rcvbulkpipe(udev, pipe_handle->bEndpointAddress);
-	else
-		pipe = usb_sndbulkpipe(udev, pipe_handle->bEndpointAddress);
+	USBTRACE("flags = %X, length = %u, buffer = %p, handle: %p",
+		 bulk_int_tx->transfer_flags,
+		 bulk_int_tx->transfer_buffer_length,
+		 bulk_int_tx->transfer_buffer, pipe_handle);
+
+	if (bulk_int_tx->transfer_flags & USBD_TRANSFER_DIRECTION_IN) {
+		if ((pipe_handle->bmAttributes & USB_ENDPOINT_XFERTYPE_MASK) ==
+		    USB_ENDPOINT_XFER_BULK)
+			pipe = usb_rcvbulkpipe(udev,
+					       pipe_handle->bEndpointAddress);
+		else
+			pipe = usb_rcvintpipe(udev,
+					      pipe_handle->bEndpointAddress);
+	} else {
+		if ((pipe_handle->bmAttributes & USB_ENDPOINT_XFERTYPE_MASK) ==
+		    USB_ENDPOINT_XFER_BULK)
+			pipe = usb_sndbulkpipe(udev,
+					       pipe_handle->bEndpointAddress);
+		else
+			pipe = usb_sndintpipe(udev,
+					      pipe_handle->bEndpointAddress);
+	}
 
 	if (unlikely(bulk_int_tx->transfer_buffer == NULL &&
 		     bulk_int_tx->transfer_buffer_length > 0)) {
@@ -612,6 +624,7 @@ static USBD_STATUS wrap_bulk_or_intr_trans(struct irp *irp)
 			MmGetMdlVirtualAddress(bulk_int_tx->mdl);
 	}
 
+	DUMP_IRP(irp);
 	urb = wrap_alloc_urb(irp, pipe, bulk_int_tx->transfer_buffer,
 			     bulk_int_tx->transfer_buffer_length);
 	if (!urb) {
@@ -624,16 +637,14 @@ static USBD_STATUS wrap_bulk_or_intr_trans(struct irp *irp)
 		urb->transfer_flags |= URB_SHORT_NOT_OK;
 	}
 
-	switch(usb_pipetype(pipe)) {
-	case USB_ENDPOINT_XFER_BULK:
+	if (usb_pipebulk(pipe)) {
 		usb_fill_bulk_urb(urb, udev, pipe, urb->transfer_buffer,
 				  bulk_int_tx->transfer_buffer_length,
 				  wrap_urb_complete, urb->context);
 		USBTRACE("submitting bulk urb %p on pipe %u",
 			 urb, pipe_handle->bEndpointAddress);
 		status = USBD_STATUS_PENDING;
-		break;
-	case USB_ENDPOINT_XFER_INT:
+	} else {
 		usb_fill_int_urb(urb, udev, pipe, urb->transfer_buffer,
 				 bulk_int_tx->transfer_buffer_length,
 				 wrap_urb_complete, urb->context,
@@ -642,11 +653,6 @@ static USBD_STATUS wrap_bulk_or_intr_trans(struct irp *irp)
 			 urb, pipe_handle->bEndpointAddress,
 			 pipe_handle->bInterval);
 		status = USBD_STATUS_PENDING;
-		break;
-	default:
-		ERROR("unknown pipe type: %u", pipe_handle->bEndpointAddress);
-		status = USBD_STATUS_NOT_SUPPORTED;
-		break;
 	}
 	USBEXIT(return status);
 }
@@ -925,12 +931,12 @@ static USBD_STATUS wrap_select_configuration(struct wrapper_dev *wd,
 			pipe->bInterval = ep->bInterval;
 			pipe->type =
 				ep->bmAttributes & USB_ENDPOINT_XFERTYPE_MASK;
-
 			pipe->handle = ep;
 			USBTRACE("%d: addr %X, type %d, pkt_sz %d, intv %d,"
-				 "handle %p", i, ep->bEndpointAddress,
-				 ep->bmAttributes, ep->wMaxPacketSize,
-				 ep->bInterval, pipe->handle);
+				 "type: %d, handle %p", i,
+				 ep->bEndpointAddress, ep->bmAttributes,
+				 ep->wMaxPacketSize, ep->bInterval,
+				 pipe->type, pipe->handle);
 		}
 	}
 	return USBD_STATUS_SUCCESS;
@@ -1346,9 +1352,9 @@ USBD_InterfaceQueryBusInformation(void *context, ULONG level, void *buf,
 	bus_info = buf;
 #if 0
 	/* TODO: implement this */
-	bus_info->total_bandwidth = 0;
-	bus_info->consumed_bandwidth =
-		FRAME_LENGTH * bus->bandwidth_allocated / 1000000;
+	bus_info->TotalBandwidth = 0;
+	bus_info->ConsumedBandwidth =
+		bus->bandwidth_allocated / 1000000;
 #else
 	UNIMPL();
 #endif

@@ -602,7 +602,7 @@ struct io_stack_location {
 			USHORT size;
 			USHORT version;
 			struct nt_interface *intf;
-			void *int_data;
+			void *intf_data;
 		} query_intf;
 		struct {
 			ULONG sys_context;
