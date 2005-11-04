@@ -738,13 +738,20 @@ static NDIS_STATUS miniport_init(struct wrapper_dev *wd)
 		irp_sl->minor_fn = IRP_MN_START_DEVICE;
 		irp->io_status.status = STATUS_NOT_SUPPORTED;
 		res = IoCallDriver(fdo, irp);
-		set_current_state(TASK_INTERRUPTIBLE);
-		schedule_timeout(3 * HZ);
 	} while (0);
 #endif
+	debug = 6;
 	DBGTRACE1("res: %08X, driver init routine is at %p",
 		  res, miniport->init);
 	if (miniport->init == NULL) {
+		struct device_object *fdo;
+		struct driver_object *drv_obj;
+
+		fdo = IoGetAttachedDevice(wd->nmb->pdo);
+		drv_obj = fdo->drv_obj;
+		DBGTRACE1("drv_obj: %p", drv_obj);
+		if (drv_obj)
+			drv_obj->driver_unload(drv_obj);
 		ERROR("initialization function is not setup correctly");
 		return NDIS_STATUS_FAILURE;
 	}

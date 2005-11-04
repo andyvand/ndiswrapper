@@ -585,66 +585,58 @@ STDCALL NTSTATUS pdoDispatchPnp(struct device_object *pdo,
 {
 	struct io_stack_location *irp_sl;
 	struct wrapper_dev *wd;
-	NTSTATUS res;
-	struct usb_bus_interface_usbdi *usb_intf;
+	NTSTATUS status;
+	struct usbd_bus_interface_usbdi *usb_intf;
 
 	irp_sl = IoGetCurrentIrpStackLocation(irp);
-	res = STATUS_SUCCESS;
 	wd = pdo->reserved;
 	IOTRACE("fn %d:%d, wd: %p", irp_sl->major_fn, irp_sl->minor_fn, wd);
 	switch (irp_sl->minor_fn) {
-	case IRP_MN_START_DEVICE:
-		res = STATUS_SUCCESS;
-		break;
+	case IRP_MN_START_DEVICE: /* fall through all these cases */
 	case IRP_MN_STOP_DEVICE:
-		res = STATUS_SUCCESS;
-//		miniport_halt(wd);
-//		irp->io_status.status = STATUS_SUCCESS;
-		break;
 	case IRP_MN_QUERY_STOP_DEVICE:
-		res = STATUS_SUCCESS;
-		break;
 	case IRP_MN_QUERY_REMOVE_DEVICE:
-		res = STATUS_SUCCESS;
-		break;
 	case IRP_MN_REMOVE_DEVICE:
-//		miniport_halt(wd);
-//		free_pdo(wd->nmb->pdo);
-		res = STATUS_SUCCESS;
+		status = STATUS_SUCCESS;
 		break;
 	case IRP_MN_QUERY_INTERFACE:
+		if (wd->dev.dev_type != NDIS_USB_BUS) {
+			status = STATUS_SUCCESS;
+			break;
+		}
 		IOTRACE("type: %x, size: %d, version: %d",
 			irp_sl->params.query_intf.type->data1,
 			irp_sl->params.query_intf.size,
 			irp_sl->params.query_intf.version);
-		usb_intf = (struct usb_bus_interface_usbdi *)
+		usb_intf = (struct usbd_bus_interface_usbdi *)
 			irp_sl->params.query_intf.intf;
-		usb_intf->bus_context = wd;
-		usb_intf->intf_reference = USBD_InterfaceReference;
-		usb_intf->intf_dereference = USBD_InterfaceDereference;
-		usb_intf->get_usbdi_version = USBD_InterfaceGetUSBDIVersion;
-		usb_intf->query_bus_time = USBD_InterfaceQueryBusTime;
-		usb_intf->submit_iso_outurb = USBD_InterfaceSubmitIsoOutUrb;
-		usb_intf->query_bus_info = USBD_InterfaceQueryBusInformation;
+		usb_intf->Context = wd;
+		usb_intf->InterfaceReference = USBD_InterfaceReference;
+		usb_intf->InterfaceDereference = USBD_InterfaceDereference;
+		usb_intf->GetUSBDIVersion = USBD_InterfaceGetUSBDIVersion;
+		usb_intf->QueryBusTime = USBD_InterfaceQueryBusTime;
+		usb_intf->SubmitIsoOutUrb = USBD_InterfaceSubmitIsoOutUrb;
+		usb_intf->QueryBusInformation =
+			USBD_InterfaceQueryBusInformation;
 		if (irp_sl->params.query_intf.version >=
 		    USB_BUSIF_USBDI_VERSION_1)
-			usb_intf->is_dev_high_speed =
+			usb_intf->IsDeviceHighSpeed =
 				USBD_InterfaceIsDeviceHighSpeed;
 		if (irp_sl->params.query_intf.version >=
 		    USB_BUSIF_USBDI_VERSION_2)
-			usb_intf->log_entry = USBD_InterfaceLogEntry;
-		res = STATUS_SUCCESS;
+			usb_intf->LogEntry = USBD_InterfaceLogEntry;
+		status = STATUS_SUCCESS;
 		break;
 	default:
 		WARNING("minor_fn: %d not implemented", irp_sl->minor_fn);
-		res = STATUS_SUCCESS;
+		status = STATUS_NOT_IMPLEMENTED;
 		break;
 	}
-	irp->io_status.status = res;
-	IOTRACE("res: %08X", res);
+	irp->io_status.status = status;
+	IOTRACE("res: %08X", status);
 //	irp->io_status.status_info = 0;
 	IoCompleteRequest(irp, IO_NO_INCREMENT);
-	return res;
+	return status;
 }
 
 STDCALL NTSTATUS pdoDispatchPower(struct device_object *pdo,
