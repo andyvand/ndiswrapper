@@ -242,11 +242,7 @@ NTSTATUS pnp_start_device(struct wrapper_dev *wd)
 	irp_sl->major_fn = IRP_MJ_PNP;
 	irp_sl->minor_fn = IRP_MN_START_DEVICE;
 	irp->io_status.status = STATUS_NOT_SUPPORTED;
-#if 0
 	status = IoCallDriver(fdo, irp);
-#else
-	status = STATUS_SUCCESS;
-#endif
 	if (status != STATUS_SUCCESS)
 		WARNING("Windows driver couldn't initialize the device (%08X)",
 			status);
@@ -268,20 +264,16 @@ NTSTATUS pnp_remove_device(struct wrapper_dev *wd)
 	irp_sl->major_fn = IRP_MJ_PNP;
 	irp_sl->minor_fn = IRP_MN_QUERY_REMOVE_DEVICE;
 	irp->io_status.status = STATUS_NOT_SUPPORTED;
-#if 0
 	status = IoCallDriver(fdo, irp);
-#else
-	status = STATUS_SUCCESS;
-#endif
 	if (status != STATUS_SUCCESS)
 		WARNING("status: %08X", status);
+	irp = IoAllocateIrp(fdo->stack_size, FALSE);
+	irp_sl = IoGetNextIrpStackLocation(irp);
+	DBGTRACE1("irp = %p, stack = %p", irp, irp_sl);
+	irp_sl->major_fn = IRP_MJ_PNP;
 	irp_sl->minor_fn = IRP_MN_REMOVE_DEVICE;
 	irp->io_status.status = STATUS_NOT_SUPPORTED;
-#if 0
 	status = IoCallDriver(fdo, irp);
-#else
-	status = STATUS_SUCCESS;
-#endif
 	if (status != STATUS_SUCCESS)
 		WARNING("status: %08X", status);
 	TRACEEXIT1(return status);
