@@ -44,7 +44,9 @@ int ndiswrapper_resume_usb(struct usb_interface *intf);
 
 NDIS_STATUS ndis_reinit(struct wrapper_dev *wd);
 int ndiswrapper_start_device(struct wrapper_dev *wd);
-void ndiswrapper_stop_device(struct wrapper_dev *wd);
+void ndiswrapper_remove_device(struct wrapper_dev *wd);
+NDIS_STATUS miniport_init(struct wrapper_dev *wd);
+void miniport_halt(struct wrapper_dev *wd);
 
 void check_capa(struct wrapper_dev *wd);
 

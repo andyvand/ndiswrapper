@@ -1951,7 +1951,7 @@ static int wpa_set_key(struct net_device *dev, struct iw_request_info *info,
 		    wpa_key.alg, wpa_key.key_index);
 	
 	if (wpa_key.alg == WPA_ALG_WEP) {
-		if (test_bit(Ndis802_11EncryptionDisabled, &wd->capa.encr))
+		if (!test_bit(Ndis802_11Encryption1Enabled, &wd->capa.encr))
 			TRACEEXIT2(return -1);
 
 		if (wpa_key.set_tx)

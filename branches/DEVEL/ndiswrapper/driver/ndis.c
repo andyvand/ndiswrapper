@@ -454,9 +454,9 @@ static int ndis_decode_setting(struct device_setting *setting,
 	case NDIS_CONFIG_PARAM_STRING:
 		ansi.buf = setting->value;
 		ansi.max_length = MAX_STR_LEN;
-		if (RtlUnicodeStringToAnsiString(&ansi, &val->data.ustring,
-						 FALSE)
-		    || ansi.max_length >= MAX_STR_LEN) {
+		if ((RtlUnicodeStringToAnsiString(&ansi, &val->data.ustring,
+						  FALSE) != STATUS_SUCCESS)
+		    || ansi.length >= MAX_STR_LEN) {
 			TRACEEXIT1(return NDIS_STATUS_FAILURE);
 		}
 		if (ansi.length == ansi.max_length)
@@ -1815,7 +1815,7 @@ NdisMIndicateStatus(struct ndis_miniport_block *nmb, NDIS_STATUS status,
 STDCALL void NdisMIndicateStatusComplete(struct ndis_miniport_block *nmb)
 {
 	struct wrapper_dev *wd = nmb->wd;
-	TRACEENTER4("");
+	TRACEENTER2("%p", wd);
 	schedule_work(&wd->wrapper_worker);
 	if (wd->send_ok)
 		schedule_work(&wd->xmit_work);
@@ -2563,7 +2563,7 @@ STDCALL void WRAP_EXPORT(NdisMRegisterUnloadHandler)
 	(struct driver_object *drv_obj, void *unload)
 {
 	if (drv_obj)
-		drv_obj->driver_unload = unload;
+		drv_obj->unload = unload;
 	return;
 }
 

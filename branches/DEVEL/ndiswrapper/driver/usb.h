@@ -1,5 +1,6 @@
 /*
  *  Copyright (C) 2004 Jan Kiszka
+ *  Copyright (C) 2005 Giridhar Pemmasani
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -87,6 +88,14 @@
 
 #define USBD_SHORT_TRANSFER_OK			\
 	(1 << USBD_SHORT_TRANSFER_OK_BIT)
+
+#define USBD_IS_BULK_PIPE(pipe_handle)					\
+	(((pipe_handle)->bmAttributes & USB_ENDPOINT_XFERTYPE_MASK) ==	\
+	 USB_ENDPOINT_XFER_BULK)
+
+#define USBD_IS_INT_PIPE(pipe_handle)					\
+	(((pipe_handle)->bmAttributes & USB_ENDPOINT_XFERTYPE_MASK) ==	\
+	 USB_ENDPOINT_XFER_INT)
 
 #define USBD_PORT_ENABLED			0x00000001
 #define USBD_PORT_CONNECTED			0x00000002
@@ -260,18 +269,28 @@ union nt_urb {
 	struct usbd_pipe_request pipe_req;
 };
 
-struct usb_bus_interface_usbdi_v1 {
-	USHORT size;
-	USHORT version;
-	void *bus_context;
-	void *intf_reference;
-	void *intf_dereference;
-	void *get_usbdi_version;
-	void *query_bus_time;
-	void *submit_iso_outurb;
-	void *query_bus_info;
-	void *is_dev_high_speed;
-	void *log_entry;
+struct usbd_bus_interface_usbdi {
+	USHORT Size;
+	USHORT Version;
+	void *Context;
+	void *InterfaceReference;
+	void *InterfaceDereference;
+	void *GetUSBDIVersion;
+	void *QueryBusTime;
+	void *SubmitIsoOutUrb;
+	void *QueryBusInformation;
+	/* version 1 and above have following field */
+	void *IsDeviceHighSpeed;
+	/* version 2 (and above) have following field */
+	void *LogEntry;
+};
+
+struct usbd_bus_information_level {
+	ULONG TotalBandwidth;
+	ULONG ConsumedBandwidth;
+	/* level 1 and above have following fields */
+	ULONG ControllerNameLength;
+	wchar_t ControllerName[1];
 };
 
 #define USBDI_VERSION				0x00000500 // Windows XP
