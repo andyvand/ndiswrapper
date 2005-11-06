@@ -16,6 +16,7 @@
 #include "ntoskernel.h"
 #include "ndis.h"
 #include "usb.h"
+#include "pnp.h"
 
 #define WRAP_KMALLOC_TAG 0x4b6d41
 #define WRAP_VMALLOC_TAG 0x766d9f

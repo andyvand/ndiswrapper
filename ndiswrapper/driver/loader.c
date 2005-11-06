@@ -16,6 +16,7 @@
 #include "ndis.h"
 #include "loader.h"
 #include "wrapper.h"
+#include "pnp.h"
 
 #include <linux/module.h>
 #include <linux/kmod.h>
@@ -201,9 +202,6 @@ static int ndiswrapper_add_pci_device(struct pci_dev *pdev,
 		res = -EINVAL;
 		goto err_regions;
 	}
-	atomic_inc(&driver->users);
-	device->wd = wd;
-	wd->ndis_device = device;
 	TRACEEXIT1(return 0);
 
 err_regions:
@@ -231,7 +229,7 @@ static void __devexit ndiswrapper_remove_pci_device(struct pci_dev *pdev)
 
 	if (!wd)
 		TRACEEXIT1(return);
-	ndiswrapper_stop_device(wd);
+	ndiswrapper_remove_device(wd);
 }
 
 #ifdef CONFIG_USB
@@ -320,10 +318,6 @@ static void *ndiswrapper_add_usb_device(struct usb_device *udev,
 		goto err_add_dev;
 	}
 
-	atomic_inc(&driver->users);
-	device->wd = wd;
-	wd->ndis_device = device;
-
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
 	TRACEEXIT1(return 0);
 #else
@@ -357,11 +351,11 @@ ndiswrapper_remove_usb_device(struct usb_interface *intf)
 	if (!wd)
 		TRACEEXIT1(return);
 
-	if (!test_bit(HW_RMMOD, &wd->hw_status))
-		miniport_surprise_remove(wd);
 	wd->dev.usb.intf = NULL;
 	usb_set_intfdata(intf, NULL);
-	ndiswrapper_stop_device(wd);
+	if (!test_bit(HW_RMMOD, &wd->hw_status))
+		miniport_surprise_remove(wd);
+	ndiswrapper_remove_device(wd);
 }
 #else
 static void
@@ -372,13 +366,10 @@ ndiswrapper_remove_usb_device(struct usb_device *udev, void *ptr)
 	TRACEENTER1("");
 	if (!wd || !wd->dev.usb.intf)
 		TRACEEXIT1(return);
+	wd->dev.usb.intf = NULL;
 	if (!test_bit(HW_RMMOD, &wd->hw_status))
 		miniport_surprise_remove(wd);
-	wd->dev.usb.intf = NULL;
-	atomic_dec(&wd->driver->users);
-	if (wd->ndis_device)
-		wd->ndis_device->wd = NULL;
-	ndiswrapper_stop_device(wd);
+	ndiswrapper_remove_device(wd);
 }
 #endif
 #endif /* CONFIG_USB */
@@ -631,7 +622,7 @@ static void unload_ndis_driver(struct ndis_driver *driver)
 		kfree(driver->bin_files);
 
 //	IoDetachDevice(drv_obj->dev_obj);
-	RtlFreeUnicodeString(&drv_obj->driver_name);
+	RtlFreeUnicodeString(&drv_obj->name);
 	/* this frees driver */
 	free_custom_ext(drv_obj->drv_ext);
 	kfree(drv_obj->drv_ext);
@@ -654,11 +645,11 @@ static int start_driver(struct ndis_driver *driver)
 		/* dlls are already started by loader */
 		if (driver->pe_images[i].type == IMAGE_FILE_EXECUTABLE_IMAGE) {
 			entry = driver->pe_images[i].entry;
-			drv_obj->driver_start = driver->pe_images[i].entry;
+			drv_obj->start = driver->pe_images[i].entry;
 			drv_obj->driver_size = driver->pe_images[i].size;
 			DBGTRACE1("entry: %p, %p, drv_obj: %p",
 				  entry, *entry, drv_obj);
-			res = LIN2WIN2(entry, drv_obj, &drv_obj->driver_name);
+			res = LIN2WIN2(entry, drv_obj, &drv_obj->name);
 			ret |= res;
 			DBGTRACE1("entry returns %08X", res);
 			DBGTRACE1("driver version: %d.%d",
@@ -669,7 +660,7 @@ static int start_driver(struct ndis_driver *driver)
 
 	if (ret) {
 		ERROR("driver initialization failed: %08X", ret);
-		RtlFreeUnicodeString(&drv_obj->driver_name);
+		RtlFreeUnicodeString(&drv_obj->name);
 		/* this frees ndis_driver */
 		free_custom_ext(drv_obj->drv_ext);
 		kfree(drv_obj->drv_ext);
@@ -739,7 +730,6 @@ static int load_ndis_driver(struct load_driver *load_driver)
 	DBGTRACE1("driver: %p", ndis_driver);
 	for (i = 0; i <= IRP_MJ_MAXIMUM_FUNCTION; i++)
 		drv_obj->major_func[i] = IopPassIrpDown;
-//	drv_obj->major_func[IRP_MJ_PNP] = fdoDispatchPnp;
 
 	memset(ndis_driver, 0, sizeof(*ndis_driver));
 	ndis_driver->bustype = -1;
@@ -747,8 +737,8 @@ static int load_ndis_driver(struct load_driver *load_driver)
 	ansi_reg.buf = "/tmp";
 	ansi_reg.length = strlen(ansi_reg.buf);
 	ansi_reg.max_length = ansi_reg.length + 1;
-	if (RtlAnsiStringToUnicodeString(&drv_obj->driver_name,
-					 &ansi_reg, 1) != STATUS_SUCCESS) {
+	if (RtlAnsiStringToUnicodeString(&drv_obj->name, &ansi_reg, 1) !=
+	    STATUS_SUCCESS) {
 		ERROR("couldn't initialize registry path");
 		free_custom_ext(drv_obj->drv_ext);
 		kfree(drv_obj->drv_ext);

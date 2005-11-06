@@ -463,16 +463,16 @@ struct driver_object {
 	CSHORT size;
 	struct device_object *dev_obj;
 	ULONG flags;
-	void *driver_start;
+	void *start;
 	ULONG driver_size;
-	void *driver_section;
+	void *section;
 	struct driver_extension *drv_ext;
-	struct unicode_string driver_name;
+	struct unicode_string name;
 	struct unicode_string *hardware_database;
 	void *fast_io_dispatch;
-	void *driver_init;
-	void *driver_start_io;
-	void (*driver_unload)(struct driver_object *driver) STDCALL;
+	void *init;
+	void *start_io;
+	void (*unload)(struct driver_object *driver) STDCALL;
 	driver_dispatch_t *major_func[IRP_MJ_MAXIMUM_FUNCTION + 1];
 };
 
@@ -602,7 +602,7 @@ struct io_stack_location {
 			USHORT size;
 			USHORT version;
 			struct nt_interface *intf;
-			void *int_data;
+			void *intf_data;
 		} query_intf;
 		struct {
 			ULONG sys_context;

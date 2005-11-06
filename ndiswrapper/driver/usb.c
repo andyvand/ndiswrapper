@@ -1,5 +1,6 @@
 /*
  *  Copyright (C) 2004 Jan Kiszka
+ *  Copyright (C) 2005 Giridhar Pemmasani
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -479,8 +480,8 @@ static void irp_complete_worker(unsigned long data)
 
 			/* from WDM examples, it seems we don't need
 			 * to update MDL's byte count if MDL is used */
-			switch (nt_urb->header.function) {
-			case URB_FUNCTION_BULK_OR_INTERRUPT_TRANSFER:
+			if (nt_urb->header.function ==
+			    URB_FUNCTION_BULK_OR_INTERRUPT_TRANSFER) {
 				bulk_int_tx = &nt_urb->bulk_int_transfer;
 				bulk_int_tx->transfer_buffer_length =
 					urb->actual_length;
@@ -492,15 +493,7 @@ static void irp_complete_worker(unsigned long data)
 					memcpy(bulk_int_tx->transfer_buffer,
 					       urb->transfer_buffer,
 					       urb->actual_length);
-				break;
-			case URB_FUNCTION_VENDOR_DEVICE:
-			case URB_FUNCTION_VENDOR_INTERFACE:
-			case URB_FUNCTION_VENDOR_ENDPOINT:
-			case URB_FUNCTION_VENDOR_OTHER:
-			case URB_FUNCTION_CLASS_DEVICE:
-			case URB_FUNCTION_CLASS_INTERFACE:
-			case URB_FUNCTION_CLASS_ENDPOINT:
-			case URB_FUNCTION_CLASS_OTHER:
+			} else {
 				vc_req = &nt_urb->vendor_class_request;
 				vc_req->transfer_buffer_length =
 					urb->actual_length;
@@ -514,18 +507,11 @@ static void irp_complete_worker(unsigned long data)
 					memcpy(vc_req->transfer_buffer,
 					       urb->transfer_buffer,
 					       urb->actual_length);
-				break;
-			default:
-				ERROR("nt_urb type: %d unknown",
-				      nt_urb->header.function);
-				break;
 			}
 			break;
 		case -ENOENT:
 		case -ECONNRESET:
 			/* irp canceled */
-			if (wrap_urb->state == URB_SUSPEND)
-				continue;
 			NT_URB_STATUS(nt_urb) = USBD_STATUS_CANCELLED;
 			irp->io_status.status = STATUS_CANCELLED;
 			irp->io_status.status_info = 0;
@@ -588,17 +574,27 @@ static USBD_STATUS wrap_bulk_or_intr_trans(struct irp *irp)
 	nt_urb = URB_FROM_IRP(irp);
 	udev = irp->wd->dev.usb.udev;
 	bulk_int_tx = &nt_urb->bulk_int_transfer;
-	USBTRACE("flags = %X, length = %u, buffer = %p",
-		  bulk_int_tx->transfer_flags,
-		  bulk_int_tx->transfer_buffer_length,
-		  bulk_int_tx->transfer_buffer);
-
-	DUMP_IRP(irp);
 	pipe_handle = bulk_int_tx->pipe_handle;
-	if (bulk_int_tx->transfer_flags & USBD_TRANSFER_DIRECTION_IN)
-		pipe = usb_rcvbulkpipe(udev, pipe_handle->bEndpointAddress);
-	else
-		pipe = usb_sndbulkpipe(udev, pipe_handle->bEndpointAddress);
+	USBTRACE("flags = %X, length = %u, buffer = %p, handle: %p",
+		 bulk_int_tx->transfer_flags,
+		 bulk_int_tx->transfer_buffer_length,
+		 bulk_int_tx->transfer_buffer, pipe_handle);
+
+	if (bulk_int_tx->transfer_flags & USBD_TRANSFER_DIRECTION_IN) {
+		if (USBD_IS_BULK_PIPE(pipe_handle))
+			pipe = usb_rcvbulkpipe(udev,
+					       pipe_handle->bEndpointAddress);
+		else
+			pipe = usb_rcvintpipe(udev,
+					      pipe_handle->bEndpointAddress);
+	} else {
+		if (USBD_IS_BULK_PIPE(pipe_handle))
+			pipe = usb_sndbulkpipe(udev,
+					       pipe_handle->bEndpointAddress);
+		else
+			pipe = usb_sndintpipe(udev,
+					      pipe_handle->bEndpointAddress);
+	}
 
 	if (unlikely(bulk_int_tx->transfer_buffer == NULL &&
 		     bulk_int_tx->transfer_buffer_length > 0)) {
@@ -611,6 +607,7 @@ static USBD_STATUS wrap_bulk_or_intr_trans(struct irp *irp)
 			MmGetMdlVirtualAddress(bulk_int_tx->mdl);
 	}
 
+	DUMP_IRP(irp);
 	urb = wrap_alloc_urb(irp, pipe, bulk_int_tx->transfer_buffer,
 			     bulk_int_tx->transfer_buffer_length);
 	if (!urb) {
@@ -622,17 +619,15 @@ static USBD_STATUS wrap_bulk_or_intr_trans(struct irp *irp)
 		USBTRACE("short not ok");
 		urb->transfer_flags |= URB_SHORT_NOT_OK;
 	}
-
-	switch(usb_pipetype(pipe)) {
-	case USB_ENDPOINT_XFER_BULK:
+	
+	if (usb_pipebulk(pipe)) {
 		usb_fill_bulk_urb(urb, udev, pipe, urb->transfer_buffer,
 				  bulk_int_tx->transfer_buffer_length,
 				  wrap_urb_complete, urb->context);
 		USBTRACE("submitting bulk urb %p on pipe %u",
 			 urb, pipe_handle->bEndpointAddress);
 		status = USBD_STATUS_PENDING;
-		break;
-	case USB_ENDPOINT_XFER_INT:
+	} else {
 		usb_fill_int_urb(urb, udev, pipe, urb->transfer_buffer,
 				 bulk_int_tx->transfer_buffer_length,
 				 wrap_urb_complete, urb->context,
@@ -641,11 +636,6 @@ static USBD_STATUS wrap_bulk_or_intr_trans(struct irp *irp)
 			 urb, pipe_handle->bEndpointAddress,
 			 pipe_handle->bInterval);
 		status = USBD_STATUS_PENDING;
-		break;
-	default:
-		ERROR("unknown pipe type: %u", pipe_handle->bEndpointAddress);
-		status = USBD_STATUS_NOT_SUPPORTED;
-		break;
 	}
 	USBEXIT(return status);
 }
@@ -924,12 +914,12 @@ static USBD_STATUS wrap_select_configuration(struct wrapper_dev *wd,
 			pipe->bInterval = ep->bInterval;
 			pipe->type =
 				ep->bmAttributes & USB_ENDPOINT_XFERTYPE_MASK;
-
 			pipe->handle = ep;
 			USBTRACE("%d: addr %X, type %d, pkt_sz %d, intv %d,"
-				 "handle %p", i, ep->bEndpointAddress,
-				 ep->bmAttributes, ep->wMaxPacketSize,
-				 ep->bInterval, pipe->handle);
+				 "type: %d, handle %p", i,
+				 ep->bEndpointAddress, ep->bmAttributes,
+				 ep->wMaxPacketSize, ep->bInterval,
+				 pipe->type, pipe->handle);
 		}
 	}
 	return USBD_STATUS_SUCCESS;
@@ -1267,9 +1257,10 @@ WRAP_EXPORT(USBD_ParseConfigurationDescriptor)
 STDCALL void WRAP_EXPORT(USBD_GetUSBDIVersion)
 	(struct usbd_version_info *version_info)
 {
+	/* this function is obsolete in Windows XP */
 	if (version_info) {
 		version_info->usbdi_version = USBDI_VERSION;
-		/* TODO: how do we get this? */
+		/* TODO: how do we get this correctly? */
 		version_info->supported_usb_version = 0x110; // 0x200
 	}
 	USBEXIT(return);
@@ -1280,7 +1271,15 @@ USBD_InterfaceGetUSBDIVersion(void *context,
 			      struct usbd_version_info *version_info,
 			      ULONG *hcd_capa)
 {
-	USBD_GetUSBDIVersion(version_info);
+	struct wrapper_dev *wd = context;
+
+	if (version_info) {
+		version_info->usbdi_version = USBDI_VERSION;
+		if (wd->dev.usb.udev->speed == USB_SPEED_HIGH)
+			version_info->supported_usb_version = 0x200;
+		else
+			version_info->supported_usb_version = 0x110;
+	}
 	*hcd_capa = USB_HCD_CAPS_SUPPORTS_RT_THREADS;
 	USBEXIT(return);
 }
@@ -1288,8 +1287,8 @@ USBD_InterfaceGetUSBDIVersion(void *context,
 STDCALL BOOLEAN USBD_InterfaceIsDeviceHighSpeed(void *context)
 {
 	struct wrapper_dev *wd = context;
+
 	USBTRACE("wd: %p", wd);
-	/* TODO: implement it correctly */
 	if (wd->dev.usb.udev->speed == USB_SPEED_HIGH)
 		USBEXIT(return TRUE);
 	else
@@ -1299,19 +1298,21 @@ STDCALL BOOLEAN USBD_InterfaceIsDeviceHighSpeed(void *context)
 STDCALL void USBD_InterfaceReference(void *context)
 {
 	USBTRACE("%p", context);
+	UNIMPL();
 }
 
 STDCALL void USBD_InterfaceDereference(void *context)
 {
 	USBTRACE("%p", context);
+	UNIMPL();
 }
 
 STDCALL NTSTATUS USBD_InterfaceQueryBusTime(void *context, ULONG *frame)
 {
-	/* TODO: get current frame */
-	*frame = 1;
-	UNIMPL();
-	USBEXIT(return STATUS_NOT_IMPLEMENTED);
+	struct wrapper_dev *wd = context;
+
+	*frame = usb_get_current_frame_number(wd->dev.usb.udev);
+	USBEXIT(return STATUS_SUCCESS);
 }
 
 STDCALL NTSTATUS USBD_InterfaceSubmitIsoOutUrb(void *context,
@@ -1326,8 +1327,20 @@ STDCALL NTSTATUS
 USBD_InterfaceQueryBusInformation(void *context, ULONG level, void *buf,
 				  ULONG *buf_length, ULONG *buf_actual_length)
 {
+	struct wrapper_dev *wd = context;
+	struct usb_bus_information_level *bus_info;
+	struct usb_bus *bus;
+
+	bus = wd->dev.usb.udev->bus;
+	bus_info = buf;
+#if 0
 	/* TODO: implement this */
+	bus_info->TotalBandwidth = 0;
+	bus_info->ConsumedBandwidth =
+		bus->bandwidth_allocated / 1000000;
+#else
 	UNIMPL();
+#endif
 	USBEXIT(return STATUS_NOT_IMPLEMENTED);
 }
 
