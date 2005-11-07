@@ -314,7 +314,7 @@ static struct urb *wrap_alloc_urb(struct irp *irp, unsigned int pipe,
 		wd->dev.usb.num_alloc_urbs++;
 	}
 
-#ifdef USB_ASYNC_UNLINK
+#ifdef URB_ASYNC_UNLINK
 	urb->transfer_flags |= URB_ASYNC_UNLINK;
 #endif
 	urb->context = wrap_urb;
