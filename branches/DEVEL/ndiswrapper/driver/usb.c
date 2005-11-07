@@ -314,7 +314,7 @@ static struct urb *wrap_alloc_urb(struct irp *irp, unsigned int pipe,
 		wd->dev.usb.num_alloc_urbs++;
 	}
 
-#ifdef USB_ASYNC_UNLINK
+#ifdef URB_ASYNC_UNLINK
 	urb->transfer_flags |= URB_ASYNC_UNLINK;
 #endif
 	urb->context = wrap_urb;
@@ -873,23 +873,26 @@ static USBD_STATUS wrap_select_configuration(struct wrapper_dev *wd,
 
 		USBTRACE("intf: %d, alt setting: %d",
 			 intf->bInterfaceNumber, intf->bAlternateSetting);
+#if 0
 		ret = usb_set_interface(udev, intf->bInterfaceNumber,
 					intf->bAlternateSetting);
 		if (ret < 0) {
 			ERROR("failed with %d", ret);
 			return wrap_urb_status(ret);
 		}
+#endif
 		usb_intf = usb_ifnum_to_if(udev, intf->bInterfaceNumber);
 		if (!usb_intf) {
 			ERROR("couldn't obtain ifnum");
 			return USBD_STATUS_REQUEST_FAILED;
 		}
-		USBTRACE("intf: %p, num ep: %d", intf, intf->bNumEndpoints);
+		USBTRACE("intf: %p, num ep: %d(%d)", intf, intf->bNumEndpoints,
+			 CUR_ALT_SETTING(usb_intf)->desc.bNumEndpoints);
 
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
 		for (i = 0; i < CUR_ALT_SETTING(usb_intf)->desc.bNumEndpoints;
 		     i++, pipe_num++) {
-			ep = &(CUR_ALT_SETTING(usb_intf)->endpoint + i)->desc;
+			ep = &(CUR_ALT_SETTING(usb_intf)->endpoint[i]).desc;
 #else
 		for (i = 0; i < CUR_ALT_SETTING(usb_intf).bNumEndpoints;
 		     i++, pipe_num++) {
@@ -940,7 +943,7 @@ static USBD_STATUS wrap_get_descriptor(struct wrapper_dev *wd,
 		 ctrl_req->transfer_buffer_length);
 
 	if (ctrl_req->desc_type == USB_DT_STRING) {
-		USBTRACE("langid: %d", ctrl_req->language_id);
+		USBTRACE("langid: %x", ctrl_req->language_id);
 		ret = usb_get_string(udev, ctrl_req->language_id,
 				     ctrl_req->index,
 				     ctrl_req->transfer_buffer,
@@ -1060,6 +1063,7 @@ static USBD_STATUS wrap_get_port_status(struct irp *irp)
 			if (state == USB_STATE_CONFIGURED)
 				*status |= USBD_PORT_ENABLED;
 		}
+		USBTRACE("state: %d, *status: %08X", state, *status);
 	}
 #else
 	{

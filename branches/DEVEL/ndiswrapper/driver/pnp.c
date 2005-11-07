@@ -258,6 +258,7 @@ NTSTATUS pnp_remove_device(struct wrapper_dev *wd)
 
 	fdo = IoGetAttachedDevice(wd->nmb->pdo);
 	DBGTRACE1("fdo: %p", fdo);
+
 	irp = IoAllocateIrp(fdo->stack_size, FALSE);
 	irp_sl = IoGetNextIrpStackLocation(irp);
 	DBGTRACE1("irp = %p, stack = %p", irp, irp_sl);
@@ -267,6 +268,7 @@ NTSTATUS pnp_remove_device(struct wrapper_dev *wd)
 	status = IoCallDriver(fdo, irp);
 	if (status != STATUS_SUCCESS)
 		WARNING("status: %08X", status);
+	/* for now we ignore query status */
 	irp = IoAllocateIrp(fdo->stack_size, FALSE);
 	irp_sl = IoGetNextIrpStackLocation(irp);
 	DBGTRACE1("irp = %p, stack = %p", irp, irp_sl);
