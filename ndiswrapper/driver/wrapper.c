@@ -736,8 +736,8 @@ NDIS_STATUS miniport_init(struct wrapper_dev *wd)
 	DBGTRACE1("res: %08X, driver init routine is at %p",
 		  res, miniport->init);
 	if (miniport->init == NULL) {
-		ERROR("initialization function is not setup correctly");
-		TRACEEXIT1(return NDIS_STATUS_FAILURE);
+		ERROR("assuming WDM (non-NDIS) driver");
+		goto wdm_init;
 	}
 	res = LIN2WIN6(miniport->init, &error_status,
 		       &medium_index, medium_array,
@@ -764,9 +764,10 @@ NDIS_STATUS miniport_init(struct wrapper_dev *wd)
 #endif
 	hangcheck_add(wd);
 	stats_timer_add(wd);
-	wrap_remove_thread(thread);
 	atomic_inc(&wd->driver->users);
 	wd->ndis_device->wd = wd;
+wdm_init:
+	wrap_remove_thread(thread);
 	TRACEEXIT1(return NDIS_STATUS_SUCCESS);
 
 err_miniport_init:
@@ -776,7 +777,7 @@ err_miniport_init:
 #endif
 err_usb:
 	misc_funcs_exit_device(wd);
- err_misc_funcs:
+err_misc_funcs:
 	ntoskernel_exit_device(wd);
 	WARNING("couldn't initialize device: %08X", res);
 	wrap_remove_thread(thread);
