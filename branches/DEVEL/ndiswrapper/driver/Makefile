@@ -54,8 +54,9 @@ CFLAGS += -DDRIVER_VERSION=\"${DRIVER_VERSION}\"
 
 all : prereq_check x86_64_stubs gen_exports default stack_check
 
-OBJS := hal.o iw_ndis.o loader.o misc_funcs.o ndis.o ntoskernel.o \
-		ntoskernel_io.o pe_linker.o pnp.o proc.o wrapper.o
+OBJS := hal.o iw_ndis.o loader.o misc_funcs.o ndis.o \
+	    ntoskernel.o ntoskernel_io.o pe_linker.o pnp.o proc.o \
+		wrapndis.o wrapper.o
 
 # by default, USB layer is compiled in if USB support is in kernel;
 # to disable USB support in ndiswrapper even if USB support is in kenrel,
@@ -83,6 +84,8 @@ loader.o: loader.c loader.h ndis.h wrapper.h
 misc_funcs.o: misc_funcs.c ndis.h
 
 ndis.o: ndis.c ndis.h iw_ndis.h wrapper.h
+
+wrapndis.o: wrapndis.c
 
 ntoskernel.o: ntoskernel.c ndis.h usb.h
 
@@ -167,7 +170,7 @@ endif
 
 gen_exports: ndis_exports.h hal_exports.h ntoskernel_exports.h \
 			 ntoskernel_io_exports.h misc_funcs_exports.h \
-			 usb_exports.h wrapper_exports.h
+			 usb_exports.h
 
 prereq_check:
 	@ if [ ! -f $(KSRC)/include/linux/version.h ]; then \

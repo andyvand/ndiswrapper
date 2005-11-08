@@ -15,7 +15,7 @@
 
 #include "ndis.h"
 #include "loader.h"
-#include "wrapper.h"
+#include "wrapndis.h"
 #include "pnp.h"
 
 #include <linux/module.h>
@@ -24,7 +24,7 @@
 #include <asm/uaccess.h>
 
 KSPIN_LOCK loader_lock;
-static struct ndis_device *ndis_devices;
+struct ndis_device *ndis_devices;
 static unsigned int num_ndis_devices;
 struct nt_list ndis_drivers;
 static struct pci_device_id *ndiswrapper_pci_devices;
@@ -35,344 +35,6 @@ static struct usb_driver ndiswrapper_usb_driver;
 #endif
 
 extern int debug;
-
-/* load driver for given device, if not already loaded */
-static struct ndis_driver *ndiswrapper_load_driver(struct ndis_device *device)
-{
-	int err, found;
-	struct ndis_driver *ndis_driver;
-	KIRQL irql;
-
-	TRACEENTER1("device: %04X:%04X:%04X:%04X", device->vendor,
-		    device->device, device->subvendor, device->subdevice);
-	found = 0;
-	ndis_driver = NULL;
-	irql = kspin_lock_irql(&loader_lock, DISPATCH_LEVEL);
-	nt_list_for_each_entry(ndis_driver, &ndis_drivers, list) {
-		if (strcmp(ndis_driver->name, device->driver_name) == 0) {
-			DBGTRACE1("driver %s already loaded",
-				  ndis_driver->name);
-			found = 1;
-			break;
-		}
-	}
-	kspin_unlock_irql(&loader_lock, irql);
-
-	if (found)
-		TRACEEXIT1(return ndis_driver);
-	else {
-		char *argv[] = {"loadndisdriver", 
-#if defined DEBUG && DEBUG >= 1
-				"1",
-#else
-				"0",
-#endif
-				UTILS_VERSION, device->driver_name,
-				device->conf_file_name, NULL};
-		char *env[] = {NULL};
-
-		DBGTRACE1("loading driver %s", device->driver_name);
-		err = call_usermodehelper("/sbin/loadndisdriver", argv, env
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
-					  , 1
-#endif
-			);
-
-		if (err) {
-			ERROR("loadndiswrapper failed (%d); check system log "
-			      "for messages from 'loadndisdriver'", err);
-			TRACEEXIT1(return NULL);
-		}
-
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,0)
-		/* wait for the driver to load and initialize */
-		set_current_state(TASK_INTERRUPTIBLE);
-		schedule_timeout(HZ);
-#endif
-		found = 0;
-		irql = kspin_lock_irql(&loader_lock, DISPATCH_LEVEL);
-		nt_list_for_each_entry(ndis_driver, &ndis_drivers, list) {
-			if (strcmp(ndis_driver->name,
-				   device->driver_name) == 0) {
-				found = 1;
-				break;
-			}
-		}
-		kspin_unlock_irql(&loader_lock, irql);
-
-		if (!found) {
-			ERROR("couldn't load driver '%s'",
-			      device->driver_name);
-			TRACEEXIT1(return NULL);
-		}
-
-		DBGTRACE1("driver %s is loaded", ndis_driver->name);
-	}
-	TRACEEXIT1(return ndis_driver);
-}
-
-/*
- * Called by PCI-subsystem for each PCI-card found.
- *
- * This function should not be marked __devinit because ndiswrapper
- * adds PCI_id's dynamically.
- */
-static int ndiswrapper_add_pci_device(struct pci_dev *pdev,
-				      const struct pci_device_id *ent)
-{
-	int res = 0;
-	struct ndis_device *device;
-	struct ndis_driver *driver;
-	struct wrapper_dev *wd;
-	struct net_device *dev;
-	struct device_object *pdo;
-	struct driver_object *drv_obj;
-
-	TRACEENTER1("ent: %p", ent);
-
-	DBGTRACE1("called for %04x:%04x:%04x:%04x", pdev->vendor, pdev->device,
-		  pdev->subsystem_vendor, pdev->subsystem_device);
-
-	device = &ndis_devices[ent->driver_data];
-	driver = ndiswrapper_load_driver(device);
-	if (!driver)
-		return -ENODEV;
-
-	dev = init_netdev(&wd, device, driver);
-	if (!dev) {
-		ERROR("couldn't initialize network device");
-		return -ENOMEM;
-	}
-	DBGTRACE1("");
-	/* first create pdo */
-	drv_obj = find_bus_driver("PCI");
-	if (!drv_obj)
-		goto err_bus_driver;
-	wd->dev.dev_type = NDIS_PCI_BUS;
-	wd->dev.pci = pdev;
-	DBGTRACE1("");
-	pdo = alloc_pdo(drv_obj);
-	if (!pdo) {
-		res = -ENODEV;
-		goto err_bus_driver;
-	}
-	pdo->reserved = wd;
-	wd->nmb->pdo = pdo;
-	DBGTRACE1("driver: %p", pdo->drv_obj);
-
-	/* this creates (empty) fdo */
-	res = driver->drv_obj->drv_ext->add_device_func(driver->drv_obj,
-							pdo);
-	if (res != STATUS_SUCCESS)
-		goto err_bus_driver;
-	DBGTRACE1("fdo: %p", wd->nmb->fdo);
-
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
-	SET_NETDEV_DEV(dev, &pdev->dev);
-#endif
-
-	DBGTRACE1("");
-	pci_set_drvdata(pdev, wd);
-	res = pci_enable_device(pdev);
-	if (res) {
-		ERROR("couldn't enable PCI device: %08x", res);
-		goto err_bus_driver;
-	}
-
-	res = pci_request_regions(pdev, DRIVER_NAME);
-	if (res) {
-		ERROR("couldn't request PCI regions: %08x", res);
-		goto err_enable;
-	}
-
-	res = pci_set_power_state(pdev, PCI_D0);
-
-#ifdef CONFIG_X86_64
-	/* 64-bit broadcom driver doesn't work if DMA is allocated
-	 * from over 1GB */
-	if (strcmp(device->driver_name, "netbc564") == 0) {
-		if (pci_set_dma_mask(pdev, 0x3fffffff) ||
-		    pci_set_consistent_dma_mask(pdev, 0x3fffffff))
-			WARNING("DMA mask couldn't be set; this driver "
-				"may not work with more than 1GB RAM");
-	}
-#endif
-	if (ndiswrapper_start_device(wd)) {
-		ERROR("couldn't start device");
-		res = -EINVAL;
-		goto err_regions;
-	}
-	TRACEEXIT1(return 0);
-
-err_regions:
-	pci_release_regions(pdev);
-err_enable:
-	pci_disable_device(pdev);
-err_bus_driver:
-	pci_set_drvdata(pdev, NULL);
-	free_netdev(dev);
-	TRACEEXIT1(return res);
-}
-
-/*
- * Remove one PCI-card.
- */
-static void __devexit ndiswrapper_remove_pci_device(struct pci_dev *pdev)
-{
-	struct wrapper_dev *wd;
-
-	TRACEENTER1("%p", pdev);
-
-	wd = (struct wrapper_dev *)pci_get_drvdata(pdev);
-
-	TRACEENTER1("%p", wd);
-
-	if (!wd)
-		TRACEEXIT1(return);
-	ndiswrapper_remove_device(wd);
-}
-
-#ifdef CONFIG_USB
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
-static int ndiswrapper_add_usb_device(struct usb_interface *intf,
-				      const struct usb_device_id *usb_id)
-#else
-static void *ndiswrapper_add_usb_device(struct usb_device *udev,
-					unsigned int ifnum,
-					const struct usb_device_id *usb_id)
-#endif
-{
-	int res = 0;
-	struct ndis_device *device;
-	struct ndis_driver *driver;
-	struct wrapper_dev *wd;
-	struct net_device *dev;
-	struct device_object *pdo;
-	struct driver_object *drv_obj;
-
-	TRACEENTER1("vendor: %04x, product: %04x, id: %p",
-		    usb_id->idVendor, usb_id->idProduct, usb_id);
-
-	device = &ndis_devices[usb_id->driver_info];
-	/* RNDIS devices have two interfaces, so prevent from
-	 * initializing the device again, if it has already been
-	 * initialized */
-	if (device->wd) {
-		DBGTRACE1("device is already loaded");
-		TRACEEXIT1(return 0);
-	}
-
-	driver = ndiswrapper_load_driver(device);
-	if (!driver)
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
-		return -ENODEV;
-#else
-		return NULL;
-#endif
-	dev = init_netdev(&wd, device, driver);
-	if (!dev) {
-		ERROR("couldn't initialize network device");
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
-		return -ENOMEM;
-#else
-		return NULL;
-#endif
-	}
-
-	/* first create pdo */
-	drv_obj = find_bus_driver("USB");
-	if (!drv_obj)
-		goto err_net_dev;
-	wd->dev.dev_type = NDIS_USB_BUS;
-	DBGTRACE1("");
-	pdo = alloc_pdo(drv_obj);
-	if (!pdo) {
-		res = -ENODEV;
-		goto err_net_dev;
-	}
-	pdo->reserved = wd;
-	wd->nmb->pdo = pdo;
-
-	DBGTRACE1("");
-	/* this creates (empty) fdo */
-	res = driver->drv_obj->drv_ext->add_device_func(driver->drv_obj,
-							pdo);
-	if (res != STATUS_SUCCESS)
-		goto err_pdo;
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
-	SET_NETDEV_DEV(dev, &intf->dev);
-
-	wd->dev.usb.udev = interface_to_usbdev(intf);
-	usb_set_intfdata(intf, wd);
-	wd->dev.usb.intf = intf;
-#else
-	wd->dev.usb.udev = udev;
-	wd->dev.usb.intf = usb_ifnum_to_if(udev, ifnum);
-#endif
-
-	TRACEENTER1("calling ndis init routine");
-
-	if (ndiswrapper_start_device(wd)) {
-		ERROR("couldn't start device");
-		res = -EINVAL;
-		goto err_add_dev;
-	}
-
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
-	TRACEEXIT1(return 0);
-#else
-	TRACEEXIT1(return wd);
-#endif
-
-err_add_dev:
-	DeleteDevice(pdo);
-err_pdo:
-	IoDeleteDevice(pdo);
-err_net_dev:
-	free_netdev(dev);
-	device->wd = NULL;
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
-	TRACEEXIT1(return res);
-#else
-	TRACEEXIT1(return NULL);
-#endif
-}
-#endif // CONFIG_USB
-
-#ifdef CONFIG_USB
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
-static void
-ndiswrapper_remove_usb_device(struct usb_interface *intf)
-{
-	struct wrapper_dev *wd;
-
-	TRACEENTER1("");
-	wd = (struct wrapper_dev *)usb_get_intfdata(intf);
-	if (!wd)
-		TRACEEXIT1(return);
-
-	wd->dev.usb.intf = NULL;
-	usb_set_intfdata(intf, NULL);
-	if (!test_bit(HW_RMMOD, &wd->hw_status))
-		miniport_surprise_remove(wd);
-	ndiswrapper_remove_device(wd);
-}
-#else
-static void
-ndiswrapper_remove_usb_device(struct usb_device *udev, void *ptr)
-{
-	struct wrapper_dev *wd = (struct wrapper_dev *)ptr;
-
-	TRACEENTER1("");
-	if (!wd || !wd->dev.usb.intf)
-		TRACEEXIT1(return);
-	wd->dev.usb.intf = NULL;
-	if (!test_bit(HW_RMMOD, &wd->hw_status))
-		miniport_surprise_remove(wd);
-	ndiswrapper_remove_device(wd);
-}
-#endif
-#endif /* CONFIG_USB */
 
 /* load the driver files from userspace. */
 static int load_sys_files(struct ndis_driver *driver,
@@ -718,7 +380,7 @@ static int load_ndis_driver(struct load_driver *load_driver)
 		TRACEEXIT1(return -ENOMEM);
 	}
 	memset(drv_obj->drv_ext, 0, sizeof(*(drv_obj->drv_ext)));
-	drv_obj->drv_ext->add_device_func = AddDevice;
+	drv_obj->drv_ext->add_device_func = NdisAddDevice;
 	InitializeListHead(&drv_obj->drv_ext->custom_ext);
 	DBGTRACE1("");
 	if (IoAllocateDriverObjectExtension(drv_obj,
@@ -902,11 +564,11 @@ static int register_devices(struct load_devices *load_devices)
 			       sizeof(ndiswrapper_pci_driver));
 		ndiswrapper_pci_driver.name = DRIVER_NAME;
 		ndiswrapper_pci_driver.id_table = ndiswrapper_pci_devices;
-		ndiswrapper_pci_driver.probe = ndiswrapper_add_pci_device;
+		ndiswrapper_pci_driver.probe = wrap_pnp_start_ndis_pci_device;
 		ndiswrapper_pci_driver.remove =
-			__devexit_p(ndiswrapper_remove_pci_device);
-		ndiswrapper_pci_driver.suspend = ndiswrapper_suspend_pci;
-		ndiswrapper_pci_driver.resume = ndiswrapper_resume_pci;
+			__devexit_p(wrap_pnp_remove_ndis_pci_device);
+		ndiswrapper_pci_driver.suspend = wrap_pnp_suspend_pci;
+		ndiswrapper_pci_driver.resume = wrap_pnp_resume_pci;
 		res = pci_register_driver(&ndiswrapper_pci_driver);
 		if (res < 0) {
 			ERROR("couldn't register ndiswrapper pci driver");
@@ -920,12 +582,12 @@ static int register_devices(struct load_devices *load_devices)
 		ndiswrapper_usb_driver.owner = THIS_MODULE;
 		ndiswrapper_usb_driver.name = DRIVER_NAME;
 		ndiswrapper_usb_driver.id_table = ndiswrapper_usb_devices;
-		ndiswrapper_usb_driver.probe = ndiswrapper_add_usb_device;
+		ndiswrapper_usb_driver.probe = wrap_pnp_start_ndis_usb_device;
 		ndiswrapper_usb_driver.disconnect =
-			ndiswrapper_remove_usb_device;
+			wrap_pnp_remove_ndis_usb_device;
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
-		ndiswrapper_usb_driver.suspend = ndiswrapper_suspend_usb;
-		ndiswrapper_usb_driver.resume = ndiswrapper_resume_usb;
+		ndiswrapper_usb_driver.suspend = wrap_pnp_suspend_usb;
+		ndiswrapper_usb_driver.resume = wrap_pnp_resume_usb;
 #endif
 		res = usb_register(&ndiswrapper_usb_driver);
 		if (res < 0) {
