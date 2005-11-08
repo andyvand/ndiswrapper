@@ -540,9 +540,6 @@ STDCALL struct device_object *IoAttachDeviceToDeviceStack
 STDCALL void KeInitializeEvent(struct nt_event *nt_event, enum event_type type,
 			       BOOLEAN state);
 void free_custom_ext(struct driver_extension *drv_obj_ext);
-STDCALL NTSTATUS AddDevice(struct driver_object *drv_obj,
-			   struct device_object *pdo);
-void DeleteDevice(struct device_object *pdo);
 
 STDCALL struct irp *IoAllocateIrp(char stack_size, BOOLEAN charge_quota);
 STDCALL void IoFreeIrp(struct irp *irp);

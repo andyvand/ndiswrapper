@@ -15,7 +15,8 @@
 
 #include "ndis.h"
 #include "iw_ndis.h"
-#include "wrapper.h"
+#include "wrapndis.h"
+#include "pnp.h"
 
 #define MAX_ALLOCATED_NDIS_PACKETS 20
 #define MAX_ALLOCATED_NDIS_BUFFERS 40
@@ -2616,50 +2617,3 @@ STDCALL void WRAP_EXPORT(NdisMCoDeactivateVcComplete)(void)
 }
 
 #include "ndis_exports.h"
-
-STDCALL NTSTATUS AddDevice(struct driver_object *drv_obj,
-			   struct device_object *pdo)
-{
-	struct device_object *fdo;
-	struct ndis_miniport_block *nmb;
-	NTSTATUS ret;
-	struct wrapper_dev *wd;
-
-	TRACEENTER2("%p, %p", drv_obj, pdo);
-	ret = IoCreateDevice(drv_obj, 0, NULL,
-			     FILE_DEVICE_UNKNOWN, 0, FALSE, &fdo);
-	if (ret != STATUS_SUCCESS)
-		TRACEEXIT2(return ret);
-	wd = pdo->reserved;
-	fdo->reserved = wd;
-	nmb = wd->nmb;
-	nmb->fdo = fdo;
-	DBGTRACE1("nmb: %p, pdo: %p, fdo: %p, attached: %p, next: %p",
-		  nmb, pdo, nmb->fdo, fdo->attached, fdo->next);
-	nmb->next_device = IoAttachDeviceToDeviceStack(fdo, pdo);
-	KeInitializeSpinLock(&nmb->lock);
-	nmb->rx_packet = WRAP_FUNC_PTR(NdisMIndicateReceivePacket);
-	nmb->send_complete = WRAP_FUNC_PTR(NdisMSendComplete);
-	nmb->send_resource_avail =
-		WRAP_FUNC_PTR(NdisMSendResourcesAvailable);
-	nmb->status = WRAP_FUNC_PTR(NdisMIndicateStatus);
-	nmb->status_complete = WRAP_FUNC_PTR(NdisMIndicateStatusComplete);
-	nmb->query_complete = WRAP_FUNC_PTR(NdisMQueryInformationComplete);
-	nmb->set_complete = WRAP_FUNC_PTR(NdisMSetInformationComplete);
-	nmb->reset_complete = WRAP_FUNC_PTR(NdisMResetComplete);
-	nmb->eth_rx_indicate = WRAP_FUNC_PTR(EthRxIndicateHandler);
-	nmb->eth_rx_complete = WRAP_FUNC_PTR(EthRxComplete);
-	nmb->td_complete = WRAP_FUNC_PTR(NdisMTransferDataComplete);
-	wd->driver->miniport.adapter_shutdown = NULL;
-
-	TRACEEXIT2(return STATUS_SUCCESS);
-}
-
-void DeleteDevice(struct device_object *pdo)
-{
-	struct wrapper_dev *wd;
-
-	wd = pdo->reserved;
-	IoDeleteDevice(wd->nmb->fdo);
-	return;
-}
