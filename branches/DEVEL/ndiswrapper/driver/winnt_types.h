@@ -570,6 +570,78 @@ struct nt_interface {
 	void (*dereference)(void *context) STDCALL;
 };
 
+enum interface_type {
+	InterfaceTypeUndefined = -1, Internal, Isa, Eisa, MicroChannel,
+	TurboChannel, PCIBus, VMEBus, NuBus, PCMCIABus, CBus, MPIBus,
+	MPSABus, ProcessorInternal, InternalPowerBus, PNPISABus,
+	PNPBus, MaximumInterfaceType,
+};
+
+#define MAX_RESOURCES 20
+
+#pragma pack(push,4)
+struct cm_partial_resource_descriptor {
+	UCHAR type;
+	UCHAR share;
+	USHORT flags;
+	union {
+		struct {
+			PHYSICAL_ADDRESS start;
+			ULONG length;
+		} generic;
+		struct {
+			PHYSICAL_ADDRESS start;
+			ULONG length;
+		} port;
+		struct {
+			ULONG level;
+			ULONG vector;
+			KAFFINITY affinity;
+		} interrupt;
+		struct {
+			PHYSICAL_ADDRESS start;
+			ULONG length;
+		} memory;
+		struct {
+			ULONG channel;
+			ULONG port;
+			ULONG reserved1;
+		} dma;
+		struct {
+			ULONG data[3];
+		} device_private;
+		struct {
+			ULONG start;
+			ULONG length;
+			ULONG reserved;
+		} bus_number;
+		struct {
+			ULONG data_size;
+			ULONG reserved1;
+			ULONG reserved2;
+		} device_specific_data;
+	} u;
+};
+#pragma pack(pop)
+
+struct cm_partial_resource_list {
+	USHORT version;
+	USHORT revision;
+	ULONG length;
+	struct cm_partial_resource_descriptor partial_descriptors[1];
+};
+
+struct cm_full_resource_descriptor {
+	enum interface_type interface_type;
+	ULONG bus_number;
+	struct cm_partial_resource_list partial_resource_list;
+};
+
+struct cm_resource_list {
+	ULONG count;
+	struct cm_full_resource_descriptor list[1];
+};
+
 #ifndef CONFIG_X86_64
 #pragma pack(push,4)
 #endif
@@ -610,6 +682,10 @@ struct io_stack_location {
 			union power_state POINTER_ALIGNMENT state;
 			enum power_action POINTER_ALIGNMENT shutdown_type;
 		} power;
+		struct {
+			struct cm_resource_list *allocated_resources;
+			struct cm_resource_list *allocated_resources_translated;
+		} start_device;
 		struct {
 			ULONG output_buf_len;
 			ULONG POINTER_ALIGNMENT input_buf_len;
