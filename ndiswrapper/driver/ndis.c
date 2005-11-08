@@ -43,9 +43,6 @@ void ndis_exit_device(struct wrapper_dev *wd)
 	/* TI driver doesn't call NdisMDeregisterInterrupt during halt! */
 	if (wd->ndis_irq)
 		NdisMDeregisterInterrupt(wd->ndis_irq);
-	if (wd->pci_resources)
-		vfree(wd->pci_resources);
-	wd->pci_resources = NULL;
 }
 
 /* Called from the driver entry. */
@@ -716,84 +713,29 @@ STDCALL void WRAP_EXPORT(NdisImmediateWritePortUchar)
 
 STDCALL void WRAP_EXPORT(NdisMQueryAdapterResources)
 	(NDIS_STATUS *status, struct ndis_miniport_block *nmb,
-	 struct ndis_resource_list *resource_list, UINT *size)
+	 NDIS_RESOURCE_LIST *resource_list, UINT *size)
 {
-	int i;
-	int len = 0;
 	struct wrapper_dev *wd = nmb->wd;
 	struct pci_dev *pci_dev = wd->dev.pci;
-	struct ndis_resource_entry *entry;
+	NDIS_RESOURCE_LIST *list;
 
+	list = &wd->resource_list->list->partial_resource_list;
 	TRACEENTER2("wd: %p. buf: %p, len: %d. IRQ:%d", wd,
 		    resource_list, *size, pci_dev->irq);
-	resource_list->version = 1;
-
-	/* Put all memory and port resources */
-	i = 0;
-	while (pci_resource_start(pci_dev, i)) {
-		entry = &resource_list->list[len++];
-		if (pci_resource_flags(pci_dev, i) & IORESOURCE_MEM) {
-			entry->type = 3;
-			entry->flags = 0;
-
-		} else if (pci_resource_flags(pci_dev, i) & IORESOURCE_IO) {
-			entry->type = 1;
-			entry->flags = 1;
-		}
-
-		entry->share = 0;
-		entry->u.generic.start =
-			(ULONG_PTR)pci_resource_start(pci_dev, i);
-		entry->u.generic.length = pci_resource_len(pci_dev, i);
-
-		i++;
-	}
-
-	/* Put IRQ resource */
-	entry = &resource_list->list[len++];
-	entry->type = 2;
-	entry->share = 0;
-	entry->flags = 0;
-	entry->u.interrupt.level = pci_dev->irq;
-	entry->u.interrupt.vector = pci_dev->irq;
-	entry->u.interrupt.affinity = -1;
-
-	resource_list->length = len;
-	*size = (char *) (&resource_list->list[len]) - (char *)resource_list;
-	*status = NDIS_STATUS_SUCCESS;
-
-	DBGTRACE2("resource list v%d.%d len %d, size=%d",
-		  resource_list->version, resource_list->revision,
-		  resource_list->length, *size);
-
-	for (i = 0; i < len; i++) {
-		DBGTRACE2("resource: %d: %Lx %d, %d",
-			  resource_list->list[i].type,
-			  resource_list->list[i].u.generic.start,
-			  resource_list->list[i].u.generic.length,
-			  resource_list->list[i].flags);
-	}
+	if (*size > list->length)
+		*size = list->length;
+	memcpy(resource_list, list, *size);
 	TRACEEXIT2(return);
 }
 
 STDCALL NDIS_STATUS WRAP_EXPORT(NdisMPciAssignResources)
 	(struct ndis_miniport_block *nmb, ULONG slot_number,
-	 struct ndis_resource_list **resources)
+	 NDIS_RESOURCE_LIST **resources)
 {
-	UINT size;
-	NDIS_STATUS status;
 	struct wrapper_dev *wd = nmb->wd;
 
 	TRACEENTER2("%p", wd);
-	size = sizeof(struct ndis_resource_list) +
-		sizeof(struct ndis_resource_entry) * MAX_NDIS_PCI_RESOURCES;
-	wd->pci_resources = vmalloc(size);
-	if (!wd->pci_resources) {
-		ERROR("couldn't allocate memory");
-		TRACEEXIT2(return NDIS_STATUS_SUCCESS);
-	}
-	NdisMQueryAdapterResources(&status, nmb, wd->pci_resources, &size);
-	*resources = wd->pci_resources;
+	*resources = &wd->resource_list->list->partial_resource_list;
 	TRACEEXIT2(return NDIS_STATUS_SUCCESS);
 }
 

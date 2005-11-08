@@ -1679,6 +1679,8 @@ void DeleteDevice(struct device_object *pdo)
 	}
 	pnp_remove_device(wd);
 
+	if (wd->resource_list)
+		vfree(wd->resource_list);
 	IoDeleteDevice(wd->nmb->fdo);
 	IoDeleteDevice(wd->nmb->pdo);
 

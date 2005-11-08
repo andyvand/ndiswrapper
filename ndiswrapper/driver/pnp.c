@@ -243,6 +243,10 @@ NTSTATUS pnp_start_device(struct wrapper_dev *wd)
 	irp = IoAllocateIrp(fdo->stack_size, FALSE);
 	irp_sl = IoGetNextIrpStackLocation(irp);
 	DBGTRACE1("irp = %p, stack = %p", irp, irp_sl);
+	irp_sl->params.start_device.allocated_resources =
+		wd->resource_list;
+	irp_sl->params.start_device.allocated_resources_translated =
+		wd->resource_list;
 	irp_sl->major_fn = IRP_MJ_PNP;
 	irp_sl->minor_fn = IRP_MN_START_DEVICE;
 	irp->io_status.status = STATUS_NOT_SUPPORTED;
@@ -369,13 +373,15 @@ static struct ndis_driver *load_driver(struct ndis_device *device)
 int wrap_pnp_start_ndis_pci_device(struct pci_dev *pdev,
 				   const struct pci_device_id *ent)
 {
-	int res = 0;
+	int i, len, size, res = 0;
 	struct ndis_device *device;
 	struct ndis_driver *driver;
 	struct wrapper_dev *wd;
 	struct net_device *dev;
 	struct device_object *pdo;
 	struct driver_object *drv_obj;
+	struct cm_partial_resource_descriptor *entry;
+	struct cm_partial_resource_list *resource_list;
 
 	TRACEENTER1("ent: %p", ent);
 
@@ -437,6 +443,60 @@ int wrap_pnp_start_ndis_pci_device(struct pci_dev *pdev,
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
 	SET_NETDEV_DEV(dev, &pdev->dev);
 #endif
+
+	size = sizeof(struct cm_resource_list) +
+		sizeof(struct cm_partial_resource_descriptor) * MAX_RESOURCES;
+	wd->resource_list = vmalloc(size);
+	if (!wd->resource_list) {
+		WARNING("couldn't allocate memory");
+		goto err_regions;
+	}
+	resource_list = &wd->resource_list->list->partial_resource_list;
+	resource_list->version = 1;
+	i = len = 0;
+	while (pci_resource_start(pdev, i)) {
+		entry = &resource_list->partial_descriptors[len++];
+		if (pci_resource_flags(pdev, i) & IORESOURCE_MEM) {
+			entry->type = 3;
+			entry->flags = 0;
+
+		} else if (pci_resource_flags(pdev, i) & IORESOURCE_IO) {
+			entry->type = 1;
+			entry->flags = 1;
+		}
+
+		entry->share = 0;
+		entry->u.generic.start =
+			(ULONG_PTR)pci_resource_start(pdev, i);
+		entry->u.generic.length = pci_resource_len(pdev, i);
+
+		i++;
+	}
+
+	/* Put IRQ resource */
+	entry = &resource_list->partial_descriptors[len++];
+	entry->type = 2;
+	entry->share = 0;
+	entry->flags = 0;
+	entry->u.interrupt.level = pdev->irq;
+	entry->u.interrupt.vector = pdev->irq;
+	entry->u.interrupt.affinity = -1;
+
+	resource_list->length = len;
+	size = (char *) (&resource_list->partial_descriptors[len]) -
+		(char *)resource_list;
+
+	DBGTRACE2("resource list v%d.%d len %d, size=%d",
+		  resource_list->version, resource_list->revision,
+		  resource_list->length, size);
+
+	for (i = 0; i < len; i++) {
+		DBGTRACE2("resource: %d: %Lx %d, %d",
+			  resource_list->partial_descriptors[i].type,
+			  resource_list->partial_descriptors[i].u.generic.start,
+			  resource_list->partial_descriptors[i].u.generic.length,
+			  resource_list->partial_descriptors[i].flags);
+	}
 	res = driver->drv_obj->drv_ext->add_device_func(driver->drv_obj,
 							pdo);
 	if (res != STATUS_SUCCESS)
