@@ -1634,7 +1634,7 @@ mac_err:
 	TRACEEXIT1(return STATUS_FAILURE);
 }
 
-void DeleteDevice(struct device_object *pdo)
+void NdisDeleteDevice(struct device_object *pdo)
 {
 	struct wrapper_dev *wd;
 	KIRQL irql;
@@ -1665,10 +1665,6 @@ void DeleteDevice(struct device_object *pdo)
 	flush_scheduled_work();
 #endif
 
-	DBGTRACE1("halting device; irql: %d", current_irql());
-	miniport_halt(wd);
-	DBGTRACE1("halted; irql: %d", current_irql());
-
 	if (wd->wrapper_packet_pool) {
 		NdisFreePacketPool(wd->wrapper_packet_pool);
 		wd->wrapper_packet_pool = NULL;
@@ -1677,6 +1673,7 @@ void DeleteDevice(struct device_object *pdo)
 		NdisFreeBufferPool(wd->wrapper_buffer_pool);
 		wd->wrapper_buffer_pool = NULL;
 	}
+
 	pnp_remove_device(wd);
 
 	if (wd->resource_list)
