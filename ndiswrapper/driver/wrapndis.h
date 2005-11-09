@@ -39,4 +39,4 @@ struct net_device *init_netdev(struct wrapper_dev **pwd,
 struct iw_statistics *get_wireless_stats(struct net_device *dev);
 STDCALL NTSTATUS NdisAddDevice(struct driver_object *drv_obj,
 			       struct device_object *pdo);
-void DeleteDevice(struct device_object *pdo);
+void NdisDeleteDevice(struct device_object *pdo);

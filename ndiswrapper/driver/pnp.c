@@ -243,9 +243,9 @@ NTSTATUS pnp_start_device(struct wrapper_dev *wd)
 	irp = IoAllocateIrp(fdo->stack_size, FALSE);
 	irp_sl = IoGetNextIrpStackLocation(irp);
 	DBGTRACE1("irp = %p, stack = %p", irp, irp_sl);
+	/* TODO: for now we use translated resources as raw resources */
 	irp_sl->params.start_device.allocated_resources =
 		wd->resource_list;
-	/* TODO: how to 'translate'? */
 	irp_sl->params.start_device.allocated_resources_translated =
 		wd->resource_list;
 	irp_sl->major_fn = IRP_MJ_PNP;
@@ -470,7 +470,7 @@ int wrap_pnp_start_ndis_pci_device(struct pci_dev *pdev,
 
 	for (i = 0; pci_resource_start(pdev, i); i++) {
 		entry = &partial_resource_list->partial_descriptors[i];
-		DBGTRACE2("flags: %08X", pci_resource_flags(pdev, i));
+		DBGTRACE2("flags: %lx", pci_resource_flags(pdev, i));
 		if (pci_resource_flags(pdev, i) & IORESOURCE_MEM) {
 			entry->type = CmResourceTypeMemory;
 			entry->flags = CM_RESOURCE_MEMORY_READ_WRITE;
@@ -531,7 +531,7 @@ void __devexit wrap_pnp_remove_ndis_pci_device(struct pci_dev *pdev)
 
 	if (!wd)
 		TRACEEXIT1(return);
-	pnp_remove_device(wd);
+	NdisDeleteDevice(wd->nmb->pdo);
 }
 
 #ifdef CONFIG_USB
@@ -627,7 +627,7 @@ void *wrap_pnp_start_ndis_usb_device(struct usb_device *udev,
 #endif
 
 err_add_dev:
-	DeleteDevice(pdo);
+	NdisDeleteDevice(pdo);
 err_pdo:
 	IoDeleteDevice(pdo);
 err_net_dev:
@@ -656,7 +656,7 @@ void wrap_pnp_remove_ndis_usb_device(struct usb_interface *intf)
 	usb_set_intfdata(intf, NULL);
 	if (!test_bit(HW_RMMOD, &wd->hw_status))
 		miniport_surprise_remove(wd);
-	pnp_remove_device(wd);
+	NdisDeleteDevice(wd->nmb->pdo);
 }
 #else
 void wrap_pnp_remove_ndis_usb_device(struct usb_device *udev, void *ptr)
@@ -669,7 +669,7 @@ void wrap_pnp_remove_ndis_usb_device(struct usb_device *udev, void *ptr)
 	wd->dev.usb.intf = NULL;
 	if (!test_bit(HW_RMMOD, &wd->hw_status))
 		miniport_surprise_remove(wd);
-	pnp_remove_device(wd);
+	NdisDeleteDevice(wd->nmb->pdo);
 }
 #endif
 #endif /* CONFIG_USB */
