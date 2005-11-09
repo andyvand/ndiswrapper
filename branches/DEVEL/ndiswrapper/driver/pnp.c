@@ -245,6 +245,7 @@ NTSTATUS pnp_start_device(struct wrapper_dev *wd)
 	DBGTRACE1("irp = %p, stack = %p", irp, irp_sl);
 	irp_sl->params.start_device.allocated_resources =
 		wd->resource_list;
+	/* TODO: how to 'translate'? */
 	irp_sl->params.start_device.allocated_resources_translated =
 		wd->resource_list;
 	irp_sl->major_fn = IRP_MJ_PNP;
@@ -373,7 +374,7 @@ static struct ndis_driver *load_driver(struct ndis_device *device)
 int wrap_pnp_start_ndis_pci_device(struct pci_dev *pdev,
 				   const struct pci_device_id *ent)
 {
-	int i, len, size, res = 0;
+	int i, res = 0;
 	struct ndis_device *device;
 	struct ndis_driver *driver;
 	struct wrapper_dev *wd;
@@ -381,7 +382,7 @@ int wrap_pnp_start_ndis_pci_device(struct pci_dev *pdev,
 	struct device_object *pdo;
 	struct driver_object *drv_obj;
 	struct cm_partial_resource_descriptor *entry;
-	struct cm_partial_resource_list *resource_list;
+	struct cm_partial_resource_list *partial_resource_list;
 
 	TRACEENTER1("ent: %p", ent);
 
@@ -444,59 +445,59 @@ int wrap_pnp_start_ndis_pci_device(struct pci_dev *pdev,
 	SET_NETDEV_DEV(dev, &pdev->dev);
 #endif
 
-	size = sizeof(struct cm_resource_list) +
-		sizeof(struct cm_partial_resource_descriptor) * MAX_RESOURCES;
-	wd->resource_list = vmalloc(size);
+	for (i = 0; pci_resource_start(pdev, i); i++)
+		;
+	DBGTRACE2("resources: %d", i);
+	/* space for extra entry for IRQ is already available */
+	wd->resource_list =
+		kmalloc(sizeof(struct cm_resource_list) +
+			sizeof(struct cm_partial_resource_descriptor) * i,
+			GFP_KERNEL);
 	if (!wd->resource_list) {
 		WARNING("couldn't allocate memory");
 		goto err_regions;
 	}
-	resource_list = &wd->resource_list->list->partial_resource_list;
-	resource_list->version = 1;
-	i = len = 0;
-	while (pci_resource_start(pdev, i)) {
-		entry = &resource_list->partial_descriptors[len++];
+	wd->resource_list->count = 1;
+	wd->resource_list->list[0].interface_type = PCIBus;
+	/* bus_number is not used by WDM drivers */
+	wd->resource_list->list[0].bus_number = pdev->bus->number;
+
+	partial_resource_list =
+		&wd->resource_list->list->partial_resource_list;
+	partial_resource_list->version = 1;
+	partial_resource_list->revision = 1;
+	partial_resource_list->count = i + 1;
+
+	for (i = 0; pci_resource_start(pdev, i); i++) {
+		entry = &partial_resource_list->partial_descriptors[i];
+		DBGTRACE2("flags: %08X", pci_resource_flags(pdev, i));
 		if (pci_resource_flags(pdev, i) & IORESOURCE_MEM) {
-			entry->type = 3;
-			entry->flags = 0;
-
+			entry->type = CmResourceTypeMemory;
+			entry->flags = CM_RESOURCE_MEMORY_READ_WRITE;
+			entry->share = CmResourceShareDeviceExclusive;
 		} else if (pci_resource_flags(pdev, i) & IORESOURCE_IO) {
-			entry->type = 1;
-			entry->flags = 1;
+			entry->type = CmResourceTypePort;
+			entry->flags = CM_RESOURCE_PORT_IO;
+			entry->share = CmResourceShareDeviceExclusive;
 		}
-
-		entry->share = 0;
 		entry->u.generic.start =
 			(ULONG_PTR)pci_resource_start(pdev, i);
 		entry->u.generic.length = pci_resource_len(pdev, i);
-
-		i++;
 	}
 
-	/* Put IRQ resource */
-	entry = &resource_list->partial_descriptors[len++];
-	entry->type = 2;
-	entry->share = 0;
-	entry->flags = 0;
-	entry->u.interrupt.level = pdev->irq;
+	/* put IRQ resource at the end */
+	entry = &partial_resource_list->partial_descriptors[i];
+	entry->type = CmResourceTypeInterrupt;
+	entry->flags = CM_RESOURCE_INTERRUPT_LEVEL_SENSITIVE;
+	/* we assume all devices use shared IRQ */
+	entry->share = CmResourceShareShared;
+	entry->u.interrupt.level = DISPATCH_LEVEL;
 	entry->u.interrupt.vector = pdev->irq;
 	entry->u.interrupt.affinity = -1;
 
-	resource_list->length = len;
-	size = (char *) (&resource_list->partial_descriptors[len]) -
-		(char *)resource_list;
+	DBGTRACE2("resource list count %d, irq: %d",
+		  partial_resource_list->count, pdev->irq);
 
-	DBGTRACE2("resource list v%d.%d len %d, size=%d",
-		  resource_list->version, resource_list->revision,
-		  resource_list->length, size);
-
-	for (i = 0; i < len; i++) {
-		DBGTRACE2("resource: %d: %Lx %d, %d",
-			  resource_list->partial_descriptors[i].type,
-			  resource_list->partial_descriptors[i].u.generic.start,
-			  resource_list->partial_descriptors[i].u.generic.length,
-			  resource_list->partial_descriptors[i].flags);
-	}
 	res = driver->drv_obj->drv_ext->add_device_func(driver->drv_obj,
 							pdo);
 	if (res != STATUS_SUCCESS)
