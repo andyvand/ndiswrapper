@@ -716,7 +716,6 @@ STDCALL void WRAP_EXPORT(NdisMQueryAdapterResources)
 	 NDIS_RESOURCE_LIST *resource_list, UINT *size)
 {
 	struct wrapper_dev *wd = nmb->wd;
-	struct pci_dev *pci_dev = wd->dev.pci;
 	NDIS_RESOURCE_LIST *list;
 	UINT resource_length;
 
@@ -726,7 +725,7 @@ STDCALL void WRAP_EXPORT(NdisMQueryAdapterResources)
 		sizeof(struct cm_partial_resource_descriptor) *
 		(list->count - 1);
 	DBGTRACE2("wd: %p. buf: %p, len: %d (%d) IRQ:%d", wd,
-		  resource_list, *size, resource_length, pci_dev->irq);
+		  resource_list, *size, resource_length, wd->dev.pci->irq);
 	if (*size == 0) {
 		*size = resource_length;
 		*status = NDIS_STATUS_BUFFER_TOO_SHORT;
