@@ -663,6 +663,7 @@ static void update_wireless_stats(struct wrapper_dev *wd)
 	struct ndis_wireless_stats ndis_stats;
 	NDIS_STATUS res;
 	ndis_rssi rssi;
+	unsigned long frag;
 
 	TRACEENTER2("");
 	if (wd->stats_enabled == FALSE || wd->link_status == 0)
@@ -676,19 +677,20 @@ static void update_wireless_stats(struct wrapper_dev *wd)
 				  &ndis_stats, sizeof(ndis_stats));
 	if (res != NDIS_STATUS_SUCCESS)
 		TRACEEXIT2(return);
-	iw_stats->discard.retries = (u32)ndis_stats.retry +
-		(u32)ndis_stats.multi_retry;
-	iw_stats->discard.misc = (u32)ndis_stats.fcs_err +
-		(u32)ndis_stats.rtss_fail +
-		(u32)ndis_stats.ack_fail +
-		(u32)ndis_stats.frame_dup;
+	iw_stats->discard.retries = (unsigned long)ndis_stats.retry +
+		(unsigned long)ndis_stats.multi_retry;
+	iw_stats->discard.misc = (unsigned long)ndis_stats.fcs_err +
+		(unsigned long)ndis_stats.rtss_fail +
+		(unsigned long)ndis_stats.ack_fail +
+		(unsigned long)ndis_stats.frame_dup;
 
-	if ((u32)ndis_stats.tx_frag)
-		iw_stats->qual.qual = 100 - 100 *
-			((u32)ndis_stats.retry +
-			 2 * (u32)ndis_stats.multi_retry +
-			 3 * (u32)ndis_stats.failed) /
-			(6 * (u32)ndis_stats.tx_frag);
+	frag = 6 * (unsigned long)ndis_stats.tx_frag;
+	if (frag)
+		iw_stats->qual.qual =
+			100 - 100 * (((unsigned long)ndis_stats.retry +
+				     2*(unsigned long)ndis_stats.multi_retry +
+				     3*(unsigned long)ndis_stats.failed) /
+				     frag);
 	else
 		iw_stats->qual.qual = 100;
 	TRACEEXIT2(return);
@@ -1063,8 +1065,6 @@ void miniport_halt(struct wrapper_dev *wd)
 {
 	struct miniport_char *miniport = &wd->driver->miniport;
 	struct nt_thread *thread;
-	struct driver_object *drv_obj;
-	struct device_object *fdo;
 
 	TRACEENTER1("%p", wd);
 	clear_bit(HW_AVAILABLE, &wd->hw_status);
@@ -1084,12 +1084,6 @@ void miniport_halt(struct wrapper_dev *wd)
 	LIN2WIN1(miniport->miniport_halt, wd->nmb->adapter_ctx);
 	clear_bit(HW_INITIALIZED, &wd->hw_status);
 
-	fdo = IoGetAttachedDevice(wd->nmb->pdo);
-	drv_obj = fdo->drv_obj;
-	DBGTRACE1("drv_obj: %p", drv_obj);
-	if (atomic_dec_and_test(&wd->driver->users) &&
-	    drv_obj && drv_obj->unload)
-		LIN2WIN1(drv_obj->unload, drv_obj);
 	wd->ndis_device->wd = NULL;
 	ndis_exit_device(wd);
 

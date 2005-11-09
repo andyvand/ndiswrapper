@@ -261,6 +261,7 @@ NTSTATUS pnp_start_device(struct wrapper_dev *wd)
 NTSTATUS pnp_remove_device(struct wrapper_dev *wd)
 {
 	struct device_object *fdo;
+	struct driver_object *drv_obj;
 	struct irp *irp;
 	struct io_stack_location *irp_sl;
 	NTSTATUS status;
@@ -287,6 +288,12 @@ NTSTATUS pnp_remove_device(struct wrapper_dev *wd)
 	status = IoCallDriver(fdo, irp);
 	if (status != STATUS_SUCCESS)
 		WARNING("status: %08X", status);
+
+	drv_obj = fdo->drv_obj;
+	DBGTRACE1("drv_obj: %p", drv_obj);
+	if (atomic_dec_and_test(&wd->driver->users) &&
+	    drv_obj && drv_obj->unload)
+		LIN2WIN1(drv_obj->unload, drv_obj);
 	TRACEEXIT1(return status);
 }
 
