@@ -577,6 +577,55 @@ enum interface_type {
 	PNPBus, MaximumInterfaceType,
 };
 
+#define CmResourceTypeNull		0
+#define CmResourceTypePort		1
+#define CmResourceTypeInterrupt		2
+#define CmResourceTypeMemory		3
+#define CmResourceTypeDma		4
+#define CmResourceTypeDeviceSpecific	5
+#define CmResourceTypeBusNumber		6
+#define CmResourceTypeMaximum		7
+
+#define CmResourceTypeNonArbitrated	128
+#define CmResourceTypeConfigData	128
+#define CmResourceTypeDevicePrivate	129
+#define CmResourceTypePcCardConfig	130
+#define CmResourceTypeMfCardConfig	131
+
+enum cm_share_disposition {
+	CmResourceShareUndetermined = 0, CmResourceShareDeviceExclusive,
+	CmResourceShareDriverExclusive, CmResourceShareShared
+};
+
+#define CM_RESOURCE_INTERRUPT_LEVEL_SENSITIVE	0
+#define CM_RESOURCE_INTERRUPT_LATCHED		1
+#define CM_RESOURCE_MEMORY_READ_WRITE		0x0000
+#define CM_RESOURCE_MEMORY_READ_ONLY		0x0001
+#define CM_RESOURCE_MEMORY_WRITE_ONLY		0x0002
+#define CM_RESOURCE_MEMORY_PREFETCHABLE		0x0004
+
+#define CM_RESOURCE_MEMORY_COMBINEDWRITE	0x0008
+#define CM_RESOURCE_MEMORY_24			0x0010
+#define CM_RESOURCE_MEMORY_CACHEABLE		0x0020
+
+#define CM_RESOURCE_PORT_MEMORY			0x0000
+#define CM_RESOURCE_PORT_IO			0x0001
+#define CM_RESOURCE_PORT_10_BIT_DECODE		0x0004
+#define CM_RESOURCE_PORT_12_BIT_DECODE		0x0008
+#define CM_RESOURCE_PORT_16_BIT_DECODE		0x0010
+#define CM_RESOURCE_PORT_POSITIVE_DECODE	0x0020
+#define CM_RESOURCE_PORT_PASSIVE_DECODE		0x0040
+#define CM_RESOURCE_PORT_WINDOW_DECODE		0x0080
+
+#define CM_RESOURCE_DMA_8			0x0000
+#define CM_RESOURCE_DMA_16			0x0001
+#define CM_RESOURCE_DMA_32			0x0002
+#define CM_RESOURCE_DMA_8_AND_16		0x0004
+#define CM_RESOURCE_DMA_BUS_MASTER		0x0008
+#define CM_RESOURCE_DMA_TYPE_A			0x0010
+#define CM_RESOURCE_DMA_TYPE_B			0x0020
+#define CM_RESOURCE_DMA_TYPE_F			0x0040
+
 #define MAX_RESOURCES 20
 
 #pragma pack(push,4)
@@ -627,7 +676,7 @@ struct cm_partial_resource_descriptor {
 struct cm_partial_resource_list {
 	USHORT version;
 	USHORT revision;
-	ULONG length;
+	ULONG count;
 	struct cm_partial_resource_descriptor partial_descriptors[1];
 };
 
