@@ -483,7 +483,7 @@ static int load_all_devices(int ioctl_device)
 		return -EINVAL;
 	}
 
-	devices = malloc(sizeof(*devices) * MAX_DEVICES);
+	devices = malloc(sizeof(*devices) * MAX_NDIS_DEVICES);
 	if (!devices) {
 		error("couldn't allocate memory");
 		return -EINVAL;
