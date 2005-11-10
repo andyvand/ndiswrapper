@@ -14,8 +14,8 @@
  *
  */
 
-#ifndef USB_H
-#define USB_H
+#ifndef _USB_H_
+#define _USB_H_
 
 #include "ntoskernel.h"
 
@@ -88,6 +88,14 @@
 
 #define USBD_SHORT_TRANSFER_OK			\
 	(1 << USBD_SHORT_TRANSFER_OK_BIT)
+
+#define USBD_IS_BULK_PIPE(pipe_handle)					\
+	(((pipe_handle)->bmAttributes & USB_ENDPOINT_XFERTYPE_MASK) ==	\
+	 USB_ENDPOINT_XFER_BULK)
+
+#define USBD_IS_INT_PIPE(pipe_handle)					\
+	(((pipe_handle)->bmAttributes & USB_ENDPOINT_XFERTYPE_MASK) ==	\
+	 USB_ENDPOINT_XFER_INT)
 
 #define USBD_PORT_ENABLED			0x00000001
 #define USBD_PORT_CONNECTED			0x00000002

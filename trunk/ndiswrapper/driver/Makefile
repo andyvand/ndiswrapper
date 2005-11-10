@@ -3,8 +3,8 @@
 DISTFILES=divdi3.c hal.c iw_ndis.c iw_ndis.h loader.c loader.h \
 		longlong.h Makefile misc_funcs.c ndis.c ndis.h \
 		ndiswrapper.h ntoskernel.c ntoskernel.h ntoskernel_io.c \
-		pe_linker.c pe_linker.h proc.c usb.c usb.h winnt_types.h \
-		wrapper.c wrapper.h x86_64_stubs.S
+		pe_linker.c pe_linker.h pnp.c pnp.h proc.c usb.c usb.h \
+		winnt_types.h wrapper.c wrapndis.h wrapndis.c x86_64_stubs.S
 
 KVERS ?= $(shell uname -r)
 KSRC  ?= /lib/modules/$(KVERS)/build
@@ -54,8 +54,9 @@ CFLAGS += -DDRIVER_VERSION=\"${DRIVER_VERSION}\"
 
 all : prereq_check x86_64_stubs gen_exports default stack_check
 
-OBJS := hal.o iw_ndis.o loader.o misc_funcs.o ndis.o ntoskernel.o \
-		ntoskernel_io.o pe_linker.o proc.o wrapper.o
+OBJS := hal.o iw_ndis.o loader.o misc_funcs.o ndis.o \
+	    ntoskernel.o ntoskernel_io.o pe_linker.o pnp.o proc.o \
+		wrapndis.o wrapper.o
 
 # by default, USB layer is compiled in if USB support is in kernel;
 # to disable USB support in ndiswrapper even if USB support is in kenrel,
@@ -76,13 +77,15 @@ divdi3.o: divdi3.c longlong.h
 
 hal.o: hal.c ntoskernel.h
 
-iw_ndis..o:	iw_ndis.c iw_ndis.h wrapper.h
+iw_ndis..o:	iw_ndis.c iw_ndis.h wrapndis.h
 
-loader.o: loader.c loader.h ndis.h wrapper.h
+loader.o: loader.c loader.h ndis.h wrapndis.h
 
 misc_funcs.o: misc_funcs.c ndis.h
 
-ndis.o: ndis.c ndis.h iw_ndis.h wrapper.h
+ndis.o: ndis.c ndis.h iw_ndis.h wrapndis.h
+
+wrapndis.o: wrapndis.c wrapndis.h
 
 ntoskernel.o: ntoskernel.c ndis.h usb.h
 
@@ -90,18 +93,20 @@ ntoskernel_io.o: ntoskernel_io.c ndis.h usb.h
 
 pe_linker.o: pe_linker.c
 
-proc.o: proc.c ndis.h iw_ndis.h wrapper.h
+pnp.o: pnp.c
+
+proc.o: proc.c ndis.h iw_ndis.h wrapndis.h
 
 usb.o: usb.c usb.h ndis.h
 
-wrapper.o: wrapper.c wrapper.h iw_ndis.h ntoskernel.h loader.h
+wrapper.o: wrapper.c wrapndsi.h iw_ndis.h ntoskernel.h loader.h
 
 iw_ndis.h: ndis.h
 loader.h: ndiswrapper.h
 ndis.h: ntoskernel.h
 ntoskernel.h: ndiswrapper.h winnt_types.h pe_linker.h
 usb.h: ntoskernel.h
-wrapper.h: ndis.h
+wrapndis.h: ndis.h
 
 hal_exports.h: hal.c
 misc_funcs_exports.h: misc_funcs.c
@@ -165,7 +170,7 @@ endif
 
 gen_exports: ndis_exports.h hal_exports.h ntoskernel_exports.h \
 			 ntoskernel_io_exports.h misc_funcs_exports.h \
-			 usb_exports.h wrapper_exports.h
+			 usb_exports.h
 
 prereq_check:
 	@ if [ ! -f $(KSRC)/include/linux/version.h ]; then \

@@ -480,8 +480,8 @@ static void irp_complete_worker(unsigned long data)
 
 			/* from WDM examples, it seems we don't need
 			 * to update MDL's byte count if MDL is used */
-			switch (nt_urb->header.function) {
-			case URB_FUNCTION_BULK_OR_INTERRUPT_TRANSFER:
+			if (nt_urb->header.function ==
+			    URB_FUNCTION_BULK_OR_INTERRUPT_TRANSFER) {
 				bulk_int_tx = &nt_urb->bulk_int_transfer;
 				bulk_int_tx->transfer_buffer_length =
 					urb->actual_length;
@@ -493,15 +493,7 @@ static void irp_complete_worker(unsigned long data)
 					memcpy(bulk_int_tx->transfer_buffer,
 					       urb->transfer_buffer,
 					       urb->actual_length);
-				break;
-			case URB_FUNCTION_VENDOR_DEVICE:
-			case URB_FUNCTION_VENDOR_INTERFACE:
-			case URB_FUNCTION_VENDOR_ENDPOINT:
-			case URB_FUNCTION_VENDOR_OTHER:
-			case URB_FUNCTION_CLASS_DEVICE:
-			case URB_FUNCTION_CLASS_INTERFACE:
-			case URB_FUNCTION_CLASS_ENDPOINT:
-			case URB_FUNCTION_CLASS_OTHER:
+			} else {
 				vc_req = &nt_urb->vendor_class_request;
 				vc_req->transfer_buffer_length =
 					urb->actual_length;
@@ -515,18 +507,11 @@ static void irp_complete_worker(unsigned long data)
 					memcpy(vc_req->transfer_buffer,
 					       urb->transfer_buffer,
 					       urb->actual_length);
-				break;
-			default:
-				ERROR("nt_urb type: %d unknown",
-				      nt_urb->header.function);
-				break;
 			}
 			break;
 		case -ENOENT:
 		case -ECONNRESET:
 			/* irp canceled */
-			if (wrap_urb->state == URB_SUSPEND)
-				continue;
 			NT_URB_STATUS(nt_urb) = USBD_STATUS_CANCELLED;
 			irp->io_status.status = STATUS_CANCELLED;
 			irp->io_status.status_info = 0;
@@ -596,16 +581,14 @@ static USBD_STATUS wrap_bulk_or_intr_trans(struct irp *irp)
 		 bulk_int_tx->transfer_buffer, pipe_handle);
 
 	if (bulk_int_tx->transfer_flags & USBD_TRANSFER_DIRECTION_IN) {
-		if ((pipe_handle->bmAttributes & USB_ENDPOINT_XFERTYPE_MASK) ==
-		    USB_ENDPOINT_XFER_BULK)
+		if (USBD_IS_BULK_PIPE(pipe_handle))
 			pipe = usb_rcvbulkpipe(udev,
 					       pipe_handle->bEndpointAddress);
 		else
 			pipe = usb_rcvintpipe(udev,
 					      pipe_handle->bEndpointAddress);
 	} else {
-		if ((pipe_handle->bmAttributes & USB_ENDPOINT_XFERTYPE_MASK) ==
-		    USB_ENDPOINT_XFER_BULK)
+		if (USBD_IS_BULK_PIPE(pipe_handle))
 			pipe = usb_sndbulkpipe(udev,
 					       pipe_handle->bEndpointAddress);
 		else
@@ -636,7 +619,7 @@ static USBD_STATUS wrap_bulk_or_intr_trans(struct irp *irp)
 		USBTRACE("short not ok");
 		urb->transfer_flags |= URB_SHORT_NOT_OK;
 	}
-
+	
 	if (usb_pipebulk(pipe)) {
 		usb_fill_bulk_urb(urb, udev, pipe, urb->transfer_buffer,
 				  bulk_int_tx->transfer_buffer_length,
@@ -890,23 +873,26 @@ static USBD_STATUS wrap_select_configuration(struct wrapper_dev *wd,
 
 		USBTRACE("intf: %d, alt setting: %d",
 			 intf->bInterfaceNumber, intf->bAlternateSetting);
+#if 0
 		ret = usb_set_interface(udev, intf->bInterfaceNumber,
 					intf->bAlternateSetting);
 		if (ret < 0) {
 			ERROR("failed with %d", ret);
 			return wrap_urb_status(ret);
 		}
+#endif
 		usb_intf = usb_ifnum_to_if(udev, intf->bInterfaceNumber);
 		if (!usb_intf) {
 			ERROR("couldn't obtain ifnum");
 			return USBD_STATUS_REQUEST_FAILED;
 		}
-		USBTRACE("intf: %p, num ep: %d", intf, intf->bNumEndpoints);
+		USBTRACE("intf: %p, num ep: %d(%d)", intf, intf->bNumEndpoints,
+			 CUR_ALT_SETTING(usb_intf)->desc.bNumEndpoints);
 
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
 		for (i = 0; i < CUR_ALT_SETTING(usb_intf)->desc.bNumEndpoints;
 		     i++, pipe_num++) {
-			ep = &(CUR_ALT_SETTING(usb_intf)->endpoint + i)->desc;
+			ep = &(CUR_ALT_SETTING(usb_intf)->endpoint[i]).desc;
 #else
 		for (i = 0; i < CUR_ALT_SETTING(usb_intf).bNumEndpoints;
 		     i++, pipe_num++) {
@@ -957,7 +943,7 @@ static USBD_STATUS wrap_get_descriptor(struct wrapper_dev *wd,
 		 ctrl_req->transfer_buffer_length);
 
 	if (ctrl_req->desc_type == USB_DT_STRING) {
-		USBTRACE("langid: %d", ctrl_req->language_id);
+		USBTRACE("langid: %x", ctrl_req->language_id);
 		ret = usb_get_string(udev, ctrl_req->language_id,
 				     ctrl_req->index,
 				     ctrl_req->transfer_buffer,
@@ -1077,6 +1063,7 @@ static USBD_STATUS wrap_get_port_status(struct irp *irp)
 			if (state == USB_STATE_CONFIGURED)
 				*status |= USBD_PORT_ENABLED;
 		}
+		USBTRACE("state: %d, *status: %08X", state, *status);
 	}
 #else
 	{

@@ -13,8 +13,8 @@
  *
  */
 
-#ifndef NDIS_H
-#define NDIS_H
+#ifndef _NDIS_H_
+#define _NDIS_H_
 
 #include "ntoskernel.h"
 
@@ -595,60 +595,7 @@ struct ndis_miniport_timer {
 	struct ndis_miniport_timer *next;
 };
 
-#pragma pack(push,4)
-struct ndis_resource_entry {
-	UCHAR type;
-	UCHAR share;
-	USHORT flags;
-	union {
-		struct {
-			PHYSICAL_ADDRESS start;
-			ULONG length;
-		} generic;
-		struct {
-			PHYSICAL_ADDRESS start;
-			ULONG length;
-		} port;
-		struct {
-			ULONG level;
-			ULONG vector;
-			KAFFINITY affinity;
-		} interrupt;
-		struct {
-			PHYSICAL_ADDRESS start;
-			ULONG length;
-		} memory;
-		struct {
-			ULONG channel;
-			ULONG port;
-			ULONG reserved1;
-		} dma;
-		struct {
-			ULONG data[3];
-		} device_private;
-		struct {
-			ULONG start;
-			ULONG length;
-			ULONG reserved;
-		} bus_number;
-		struct {
-			ULONG data_size;
-			ULONG reserved1;
-			ULONG reserved2;
-		} device_specific_data;
-	} u;
-};
-#pragma pack(pop)
-
-struct ndis_resource_list {
-	USHORT version;
-	USHORT revision;
-	ULONG length;
-	struct ndis_resource_entry list[0];
-};
-
-/* number of resources to be allocated by NdisMPciAssignResources */
-#define MAX_NDIS_PCI_RESOURCES 20
+typedef struct cm_partial_resource_list NDIS_RESOURCE_LIST;
 
 struct ndis_event {
 	struct nt_event nt_event;
@@ -874,8 +821,7 @@ struct wrapper_dev {
 	unsigned long wrapper_work;
 
 	unsigned long attributes;
-	struct ndis_resource_list *pci_resources;
-
+	struct cm_resource_list *resource_list;
 	int iw_auth_set;
 	int iw_auth_wpa_version;
 	int iw_auth_cipher_pairwise;

@@ -15,7 +15,8 @@
 
 #include "ndis.h"
 #include "iw_ndis.h"
-#include "wrapper.h"
+#include "wrapndis.h"
+#include "pnp.h"
 
 #define MAX_ALLOCATED_NDIS_PACKETS 20
 #define MAX_ALLOCATED_NDIS_BUFFERS 40
@@ -42,9 +43,6 @@ void ndis_exit_device(struct wrapper_dev *wd)
 	/* TI driver doesn't call NdisMDeregisterInterrupt during halt! */
 	if (wd->ndis_irq)
 		NdisMDeregisterInterrupt(wd->ndis_irq);
-	if (wd->pci_resources)
-		vfree(wd->pci_resources);
-	wd->pci_resources = NULL;
 }
 
 /* Called from the driver entry. */
@@ -454,9 +452,9 @@ static int ndis_decode_setting(struct device_setting *setting,
 	case NDIS_CONFIG_PARAM_STRING:
 		ansi.buf = setting->value;
 		ansi.max_length = MAX_STR_LEN;
-		if (RtlUnicodeStringToAnsiString(&ansi, &val->data.ustring,
-						 FALSE)
-		    || ansi.max_length >= MAX_STR_LEN) {
+		if ((RtlUnicodeStringToAnsiString(&ansi, &val->data.ustring,
+						  FALSE) != STATUS_SUCCESS)
+		    || ansi.length >= MAX_STR_LEN) {
 			TRACEEXIT1(return NDIS_STATUS_FAILURE);
 		}
 		if (ansi.length == ansi.max_length)
@@ -715,84 +713,39 @@ STDCALL void WRAP_EXPORT(NdisImmediateWritePortUchar)
 
 STDCALL void WRAP_EXPORT(NdisMQueryAdapterResources)
 	(NDIS_STATUS *status, struct ndis_miniport_block *nmb,
-	 struct ndis_resource_list *resource_list, UINT *size)
+	 NDIS_RESOURCE_LIST *resource_list, UINT *size)
 {
-	int i;
-	int len = 0;
 	struct wrapper_dev *wd = nmb->wd;
-	struct pci_dev *pci_dev = wd->dev.pci;
-	struct ndis_resource_entry *entry;
+	NDIS_RESOURCE_LIST *list;
+	UINT resource_length;
 
-	TRACEENTER2("wd: %p. buf: %p, len: %d. IRQ:%d", wd,
-		    resource_list, *size, pci_dev->irq);
-	resource_list->version = 1;
-
-	/* Put all memory and port resources */
-	i = 0;
-	while (pci_resource_start(pci_dev, i)) {
-		entry = &resource_list->list[len++];
-		if (pci_resource_flags(pci_dev, i) & IORESOURCE_MEM) {
-			entry->type = 3;
-			entry->flags = 0;
-
-		} else if (pci_resource_flags(pci_dev, i) & IORESOURCE_IO) {
-			entry->type = 1;
-			entry->flags = 1;
-		}
-
-		entry->share = 0;
-		entry->u.generic.start =
-			(ULONG_PTR)pci_resource_start(pci_dev, i);
-		entry->u.generic.length = pci_resource_len(pci_dev, i);
-
-		i++;
-	}
-
-	/* Put IRQ resource */
-	entry = &resource_list->list[len++];
-	entry->type = 2;
-	entry->share = 0;
-	entry->flags = 0;
-	entry->u.interrupt.level = pci_dev->irq;
-	entry->u.interrupt.vector = pci_dev->irq;
-	entry->u.interrupt.affinity = -1;
-
-	resource_list->length = len;
-	*size = (char *) (&resource_list->list[len]) - (char *)resource_list;
-	*status = NDIS_STATUS_SUCCESS;
-
-	DBGTRACE2("resource list v%d.%d len %d, size=%d",
-		  resource_list->version, resource_list->revision,
-		  resource_list->length, *size);
-
-	for (i = 0; i < len; i++) {
-		DBGTRACE2("resource: %d: %Lx %d, %d",
-			  resource_list->list[i].type,
-			  resource_list->list[i].u.generic.start,
-			  resource_list->list[i].u.generic.length,
-			  resource_list->list[i].flags);
+	list = &wd->resource_list->list->partial_resource_list;
+	resource_length =
+		sizeof(struct cm_partial_resource_list) +
+		sizeof(struct cm_partial_resource_descriptor) *
+		(list->count - 1);
+	DBGTRACE2("wd: %p. buf: %p, len: %d (%d) IRQ:%d", wd,
+		  resource_list, *size, resource_length, wd->dev.pci->irq);
+	if (*size == 0) {
+		*size = resource_length;
+		*status = NDIS_STATUS_BUFFER_TOO_SHORT;
+	} else {
+		if (*size > resource_length)
+			*size = resource_length;
+		memcpy(resource_list, list, *size);
+		*status = NDIS_STATUS_SUCCESS;
 	}
 	TRACEEXIT2(return);
 }
 
 STDCALL NDIS_STATUS WRAP_EXPORT(NdisMPciAssignResources)
 	(struct ndis_miniport_block *nmb, ULONG slot_number,
-	 struct ndis_resource_list **resources)
+	 NDIS_RESOURCE_LIST **resources)
 {
-	UINT size;
-	NDIS_STATUS status;
 	struct wrapper_dev *wd = nmb->wd;
 
 	TRACEENTER2("%p", wd);
-	size = sizeof(struct ndis_resource_list) +
-		sizeof(struct ndis_resource_entry) * MAX_NDIS_PCI_RESOURCES;
-	wd->pci_resources = vmalloc(size);
-	if (!wd->pci_resources) {
-		ERROR("couldn't allocate memory");
-		TRACEEXIT2(return NDIS_STATUS_SUCCESS);
-	}
-	NdisMQueryAdapterResources(&status, nmb, wd->pci_resources, &size);
-	*resources = wd->pci_resources;
+	*resources = &wd->resource_list->list->partial_resource_list;
 	TRACEEXIT2(return NDIS_STATUS_SUCCESS);
 }
 
@@ -1815,7 +1768,7 @@ NdisMIndicateStatus(struct ndis_miniport_block *nmb, NDIS_STATUS status,
 STDCALL void NdisMIndicateStatusComplete(struct ndis_miniport_block *nmb)
 {
 	struct wrapper_dev *wd = nmb->wd;
-	TRACEENTER4("");
+	TRACEENTER2("%p", wd);
 	schedule_work(&wd->wrapper_worker);
 	if (wd->send_ok)
 		schedule_work(&wd->xmit_work);
@@ -2563,7 +2516,7 @@ STDCALL void WRAP_EXPORT(NdisMRegisterUnloadHandler)
 	(struct driver_object *drv_obj, void *unload)
 {
 	if (drv_obj)
-		drv_obj->driver_unload = unload;
+		drv_obj->unload = unload;
 	return;
 }
 
@@ -2616,50 +2569,3 @@ STDCALL void WRAP_EXPORT(NdisMCoDeactivateVcComplete)(void)
 }
 
 #include "ndis_exports.h"
-
-STDCALL NTSTATUS AddDevice(struct driver_object *drv_obj,
-			   struct device_object *pdo)
-{
-	struct device_object *fdo;
-	struct ndis_miniport_block *nmb;
-	NTSTATUS ret;
-	struct wrapper_dev *wd;
-
-	TRACEENTER2("%p, %p", drv_obj, pdo);
-	ret = IoCreateDevice(drv_obj, 0, NULL,
-			     FILE_DEVICE_UNKNOWN, 0, FALSE, &fdo);
-	if (ret != STATUS_SUCCESS)
-		TRACEEXIT2(return ret);
-	wd = pdo->reserved;
-	fdo->reserved = wd;
-	nmb = wd->nmb;
-	nmb->fdo = fdo;
-	DBGTRACE1("nmb: %p, pdo: %p, fdo: %p, attached: %p, next: %p",
-		  nmb, pdo, nmb->fdo, fdo->attached, fdo->next);
-	nmb->next_device = IoAttachDeviceToDeviceStack(fdo, pdo);
-	KeInitializeSpinLock(&nmb->lock);
-	nmb->rx_packet = WRAP_FUNC_PTR(NdisMIndicateReceivePacket);
-	nmb->send_complete = WRAP_FUNC_PTR(NdisMSendComplete);
-	nmb->send_resource_avail =
-		WRAP_FUNC_PTR(NdisMSendResourcesAvailable);
-	nmb->status = WRAP_FUNC_PTR(NdisMIndicateStatus);
-	nmb->status_complete = WRAP_FUNC_PTR(NdisMIndicateStatusComplete);
-	nmb->query_complete = WRAP_FUNC_PTR(NdisMQueryInformationComplete);
-	nmb->set_complete = WRAP_FUNC_PTR(NdisMSetInformationComplete);
-	nmb->reset_complete = WRAP_FUNC_PTR(NdisMResetComplete);
-	nmb->eth_rx_indicate = WRAP_FUNC_PTR(EthRxIndicateHandler);
-	nmb->eth_rx_complete = WRAP_FUNC_PTR(EthRxComplete);
-	nmb->td_complete = WRAP_FUNC_PTR(NdisMTransferDataComplete);
-	wd->driver->miniport.adapter_shutdown = NULL;
-
-	TRACEEXIT2(return STATUS_SUCCESS);
-}
-
-void DeleteDevice(struct device_object *pdo)
-{
-	struct wrapper_dev *wd;
-
-	wd = pdo->reserved;
-	IoDeleteDevice(wd->nmb->fdo);
-	return;
-}

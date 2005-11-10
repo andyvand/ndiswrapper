@@ -13,8 +13,8 @@
  *
  */
 
-#ifndef WINNT_TYPES_H
-#define WINNT_TYPES_H
+#ifndef _WINNT_TYPES_H_
+#define _WINNT_TYPES_H_
 
 #define TRUE				1
 #define FALSE				0
@@ -463,16 +463,16 @@ struct driver_object {
 	CSHORT size;
 	struct device_object *dev_obj;
 	ULONG flags;
-	void *driver_start;
+	void *start;
 	ULONG driver_size;
-	void *driver_section;
+	void *section;
 	struct driver_extension *drv_ext;
-	struct unicode_string driver_name;
+	struct unicode_string name;
 	struct unicode_string *hardware_database;
 	void *fast_io_dispatch;
-	void *driver_init;
-	void *driver_start_io;
-	void (*driver_unload)(struct driver_object *driver) STDCALL;
+	void *init;
+	void *start_io;
+	void (*unload)(struct driver_object *driver) STDCALL;
 	driver_dispatch_t *major_func[IRP_MJ_MAXIMUM_FUNCTION + 1];
 };
 
@@ -570,6 +570,127 @@ struct nt_interface {
 	void (*dereference)(void *context) STDCALL;
 };
 
+enum interface_type {
+	InterfaceTypeUndefined = -1, Internal, Isa, Eisa, MicroChannel,
+	TurboChannel, PCIBus, VMEBus, NuBus, PCMCIABus, CBus, MPIBus,
+	MPSABus, ProcessorInternal, InternalPowerBus, PNPISABus,
+	PNPBus, MaximumInterfaceType,
+};
+
+#define CmResourceTypeNull		0
+#define CmResourceTypePort		1
+#define CmResourceTypeInterrupt		2
+#define CmResourceTypeMemory		3
+#define CmResourceTypeDma		4
+#define CmResourceTypeDeviceSpecific	5
+#define CmResourceTypeBusNumber		6
+#define CmResourceTypeMaximum		7
+
+#define CmResourceTypeNonArbitrated	128
+#define CmResourceTypeConfigData	128
+#define CmResourceTypeDevicePrivate	129
+#define CmResourceTypePcCardConfig	130
+#define CmResourceTypeMfCardConfig	131
+
+enum cm_share_disposition {
+	CmResourceShareUndetermined = 0, CmResourceShareDeviceExclusive,
+	CmResourceShareDriverExclusive, CmResourceShareShared
+};
+
+#define CM_RESOURCE_INTERRUPT_LEVEL_SENSITIVE	0
+#define CM_RESOURCE_INTERRUPT_LATCHED		1
+#define CM_RESOURCE_MEMORY_READ_WRITE		0x0000
+#define CM_RESOURCE_MEMORY_READ_ONLY		0x0001
+#define CM_RESOURCE_MEMORY_WRITE_ONLY		0x0002
+#define CM_RESOURCE_MEMORY_PREFETCHABLE		0x0004
+
+#define CM_RESOURCE_MEMORY_COMBINEDWRITE	0x0008
+#define CM_RESOURCE_MEMORY_24			0x0010
+#define CM_RESOURCE_MEMORY_CACHEABLE		0x0020
+
+#define CM_RESOURCE_PORT_MEMORY			0x0000
+#define CM_RESOURCE_PORT_IO			0x0001
+#define CM_RESOURCE_PORT_10_BIT_DECODE		0x0004
+#define CM_RESOURCE_PORT_12_BIT_DECODE		0x0008
+#define CM_RESOURCE_PORT_16_BIT_DECODE		0x0010
+#define CM_RESOURCE_PORT_POSITIVE_DECODE	0x0020
+#define CM_RESOURCE_PORT_PASSIVE_DECODE		0x0040
+#define CM_RESOURCE_PORT_WINDOW_DECODE		0x0080
+
+#define CM_RESOURCE_DMA_8			0x0000
+#define CM_RESOURCE_DMA_16			0x0001
+#define CM_RESOURCE_DMA_32			0x0002
+#define CM_RESOURCE_DMA_8_AND_16		0x0004
+#define CM_RESOURCE_DMA_BUS_MASTER		0x0008
+#define CM_RESOURCE_DMA_TYPE_A			0x0010
+#define CM_RESOURCE_DMA_TYPE_B			0x0020
+#define CM_RESOURCE_DMA_TYPE_F			0x0040
+
+#define MAX_RESOURCES 20
+
+#pragma pack(push,4)
+struct cm_partial_resource_descriptor {
+	UCHAR type;
+	UCHAR share;
+	USHORT flags;
+	union {
+		struct {
+			PHYSICAL_ADDRESS start;
+			ULONG length;
+		} generic;
+		struct {
+			PHYSICAL_ADDRESS start;
+			ULONG length;
+		} port;
+		struct {
+			ULONG level;
+			ULONG vector;
+			KAFFINITY affinity;
+		} interrupt;
+		struct {
+			PHYSICAL_ADDRESS start;
+			ULONG length;
+		} memory;
+		struct {
+			ULONG channel;
+			ULONG port;
+			ULONG reserved1;
+		} dma;
+		struct {
+			ULONG data[3];
+		} device_private;
+		struct {
+			ULONG start;
+			ULONG length;
+			ULONG reserved;
+		} bus_number;
+		struct {
+			ULONG data_size;
+			ULONG reserved1;
+			ULONG reserved2;
+		} device_specific_data;
+	} u;
+};
+#pragma pack(pop)
+
+struct cm_partial_resource_list {
+	USHORT version;
+	USHORT revision;
+	ULONG count;
+	struct cm_partial_resource_descriptor partial_descriptors[1];
+};
+
+struct cm_full_resource_descriptor {
+	enum interface_type interface_type;
+	ULONG bus_number;
+	struct cm_partial_resource_list partial_resource_list;
+};
+
+struct cm_resource_list {
+	ULONG count;
+	struct cm_full_resource_descriptor list[1];
+};
+
 #ifndef CONFIG_X86_64
 #pragma pack(push,4)
 #endif
@@ -610,6 +731,10 @@ struct io_stack_location {
 			union power_state POINTER_ALIGNMENT state;
 			enum power_action POINTER_ALIGNMENT shutdown_type;
 		} power;
+		struct {
+			struct cm_resource_list *allocated_resources;
+			struct cm_resource_list *allocated_resources_translated;
+		} start_device;
 		struct {
 			ULONG output_buf_len;
 			ULONG POINTER_ALIGNMENT input_buf_len;
