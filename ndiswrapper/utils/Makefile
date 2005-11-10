@@ -15,8 +15,19 @@ all: loadndisdriver
 loadndisdriver: $(OBJS) ../driver/wrapper.h
 	gcc -o loadndisdriver $(OBJS)
 	
+load_fw_ar5523: load_fw_ar5523.c
+	@if :; then \
+		USB_LIBS="$(shell libusb-config --libs)"; \
+		if [ -z "$$USB_LIBS" ]; then \
+			   echo "USB programming library is not installed"; \
+			   exit 1; \
+		fi; \
+		echo gcc -g -Wall -o $@ $< $$USB_LIBS; \
+		gcc -g -Wall -o $@ $< $$USB_LIBS; \
+	fi
+
 clean:
-	rm -f *~ *.o loadndisdriver
+	rm -f *~ *.o loadndisdriver load_fw_ar5523
 
 distclean: clean
 	rm -f .\#*
