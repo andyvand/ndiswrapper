@@ -27,7 +27,7 @@
 #include <asm/uaccess.h>
 
 #include "iw_ndis.h"
-#include "wrapper.h"
+#include "wrapndis.h"
 
 static int freq_chan[] = { 2412, 2417, 2422, 2427, 2432, 2437, 2442,
 			   2447, 2452, 2457, 2462, 2467, 2472, 2484 };
@@ -1951,7 +1951,7 @@ static int wpa_set_key(struct net_device *dev, struct iw_request_info *info,
 		    wpa_key.alg, wpa_key.key_index);
 	
 	if (wpa_key.alg == WPA_ALG_WEP) {
-		if (test_bit(Ndis802_11EncryptionDisabled, &wd->capa.encr))
+		if (!test_bit(Ndis802_11Encryption1Enabled, &wd->capa.encr))
 			TRACEEXIT2(return -1);
 
 		if (wpa_key.set_tx)
