@@ -603,11 +603,6 @@ void *wrap_pnp_start_ndis_usb_device(struct usb_device *udev,
 	wd->nmb->pdo = pdo;
 
 	DBGTRACE1("");
-	/* this creates (empty) fdo */
-	res = driver->drv_obj->drv_ext->add_device_func(driver->drv_obj,
-							pdo);
-	if (res != STATUS_SUCCESS)
-		goto err_pdo;
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
 	SET_NETDEV_DEV(dev, &intf->dev);
 
@@ -618,14 +613,11 @@ void *wrap_pnp_start_ndis_usb_device(struct usb_device *udev,
 	wd->dev.usb.udev = udev;
 	wd->dev.usb.intf = usb_ifnum_to_if(udev, ifnum);
 #endif
-
-	TRACEENTER1("calling ndis init routine");
-
-	if (pnp_start_device(wd) != STATUS_SUCCESS) {
-		ERROR("couldn't start device");
-		res = -EINVAL;
-		goto err_add_dev;
-	}
+	/* this creates (empty) fdo */
+	res = driver->drv_obj->drv_ext->add_device_func(driver->drv_obj,
+							pdo);
+	if (res != STATUS_SUCCESS)
+		goto err_pdo;
 
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
 	TRACEEXIT1(return 0);
@@ -633,8 +625,6 @@ void *wrap_pnp_start_ndis_usb_device(struct usb_device *udev,
 	TRACEEXIT1(return wd);
 #endif
 
-err_add_dev:
-	NdisDeleteDevice(pdo);
 err_pdo:
 	IoDeleteDevice(pdo);
 err_net_dev:
