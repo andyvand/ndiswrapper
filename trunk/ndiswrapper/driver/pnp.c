@@ -381,7 +381,7 @@ static struct ndis_driver *load_driver(struct ndis_device *device)
 int wrap_pnp_start_ndis_pci_device(struct pci_dev *pdev,
 				   const struct pci_device_id *ent)
 {
-	int i, res = 0;
+	int i, count, res = 0;
 	struct ndis_device *device;
 	struct ndis_driver *driver;
 	struct wrapper_dev *wd;
@@ -411,7 +411,7 @@ int wrap_pnp_start_ndis_pci_device(struct pci_dev *pdev,
 		goto err_bus_driver;
 	}
 
-	dev = init_netdev(&wd, device, driver);
+	dev = wrap_alloc_netdev(&wd, device, driver);
 	if (!dev) {
 		ERROR("couldn't initialize network device");
 		return -ENOMEM;
@@ -452,13 +452,15 @@ int wrap_pnp_start_ndis_pci_device(struct pci_dev *pdev,
 	SET_NETDEV_DEV(dev, &pdev->dev);
 #endif
 
-	for (i = 0; pci_resource_start(pdev, i); i++)
-		;
+	for (i = count = 0; pci_resource_start(pdev, i); i++)
+		if ((pci_resource_flags(pdev, i) & IORESOURCE_MEM) ||
+		    (pci_resource_flags(pdev, i) & IORESOURCE_IO))
+			count++;
 	DBGTRACE2("resources: %d", i);
 	/* space for extra entry for IRQ is already available */
 	wd->resource_list =
 		kmalloc(sizeof(struct cm_resource_list) +
-			sizeof(struct cm_partial_resource_descriptor) * i,
+			sizeof(struct cm_partial_resource_descriptor) * count,
 			GFP_KERNEL);
 	if (!wd->resource_list) {
 		WARNING("couldn't allocate memory");
@@ -473,10 +475,10 @@ int wrap_pnp_start_ndis_pci_device(struct pci_dev *pdev,
 		&wd->resource_list->list->partial_resource_list;
 	partial_resource_list->version = 1;
 	partial_resource_list->revision = 1;
-	partial_resource_list->count = i + 1;
+	partial_resource_list->count = count + 1;
 
-	for (i = 0; pci_resource_start(pdev, i); i++) {
-		entry = &partial_resource_list->partial_descriptors[i];
+	for (i = count = 0; pci_resource_start(pdev, i); i++) {
+		entry = &partial_resource_list->partial_descriptors[count];
 		DBGTRACE2("flags: %lx", pci_resource_flags(pdev, i));
 		if (pci_resource_flags(pdev, i) & IORESOURCE_MEM) {
 			entry->type = CmResourceTypeMemory;
@@ -486,14 +488,17 @@ int wrap_pnp_start_ndis_pci_device(struct pci_dev *pdev,
 			entry->type = CmResourceTypePort;
 			entry->flags = CM_RESOURCE_PORT_IO;
 			entry->share = CmResourceShareDeviceExclusive;
-		}
+		} else
+			continue;
+		/* TODO: Add other resource types? */
 		entry->u.generic.start =
 			(ULONG_PTR)pci_resource_start(pdev, i);
 		entry->u.generic.length = pci_resource_len(pdev, i);
+		count++;
 	}
 
 	/* put IRQ resource at the end */
-	entry = &partial_resource_list->partial_descriptors[i];
+	entry = &partial_resource_list->partial_descriptors[count++];
 	entry->type = CmResourceTypeInterrupt;
 	entry->flags = CM_RESOURCE_INTERRUPT_LEVEL_SENSITIVE;
 	/* we assume all devices use shared IRQ */
@@ -505,8 +510,7 @@ int wrap_pnp_start_ndis_pci_device(struct pci_dev *pdev,
 	DBGTRACE2("resource list count %d, irq: %d",
 		  partial_resource_list->count, pdev->irq);
 
-	res = driver->drv_obj->drv_ext->add_device_func(driver->drv_obj,
-							pdo);
+	res = driver->drv_obj->drv_ext->add_device_func(driver->drv_obj, pdo);
 	if (res != STATUS_SUCCESS)
 		goto err_regions;
 	DBGTRACE1("fdo: %p", wd->nmb->fdo);
@@ -578,7 +582,7 @@ void *wrap_pnp_start_ndis_usb_device(struct usb_device *udev,
 #else
 		return NULL;
 #endif
-	dev = init_netdev(&wd, device, driver);
+	dev = wrap_alloc_netdev(&wd, device, driver);
 	if (!dev) {
 		ERROR("couldn't initialize network device");
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
@@ -614,8 +618,7 @@ void *wrap_pnp_start_ndis_usb_device(struct usb_device *udev,
 	wd->dev.usb.intf = usb_ifnum_to_if(udev, ifnum);
 #endif
 	/* this creates (empty) fdo */
-	res = driver->drv_obj->drv_ext->add_device_func(driver->drv_obj,
-							pdo);
+	res = driver->drv_obj->drv_ext->add_device_func(driver->drv_obj, pdo);
 	if (res != STATUS_SUCCESS)
 		goto err_pdo;
 

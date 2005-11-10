@@ -686,8 +686,8 @@ static void update_wireless_stats(struct wrapper_dev *wd)
 	if (frag)
 		iw_stats->qual.qual =
 			100 - 100 * (((unsigned long)ndis_stats.retry +
-				     2*(unsigned long)ndis_stats.multi_retry +
-				     3*(unsigned long)ndis_stats.failed) /
+				      2*(unsigned long)ndis_stats.multi_retry +
+				      3*(unsigned long)ndis_stats.failed) /
 				     frag);
 	else
 		iw_stats->qual.qual = 100;
@@ -1369,9 +1369,9 @@ void check_capa(struct wrapper_dev *wd)
 	TRACEEXIT1(return);
 }
 
-struct net_device *init_netdev(struct wrapper_dev **pwd,
-			       struct ndis_device *device,
-			       struct ndis_driver *driver)
+struct net_device *wrap_alloc_netdev(struct wrapper_dev **pwd,
+				     struct ndis_device *device,
+				     struct ndis_driver *driver)
 {
 	struct net_device *dev;
 	struct wrapper_dev *wd;

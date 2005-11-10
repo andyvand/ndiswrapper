@@ -9,7 +9,7 @@ DISTFILES=divdi3.c hal.c iw_ndis.c iw_ndis.h loader.c loader.h \
 KVERS ?= $(shell uname -r)
 KSRC  ?= /lib/modules/$(KVERS)/build
 
-KPSUB := $(shell echo $(KVERS) |  sed -e 's/\([^\.]*\)\.\([^\.]*\)\..*/\1\2/')
+KPSUB := $(shell echo $(KVERS) | sed -e 's/\([^\.]*\)\.\([^\.]*\)\..*/\1\2/')
 
 DESTDIR =
 INST_DIR := $(DESTDIR)/lib/modules/$(KVERS)/misc
