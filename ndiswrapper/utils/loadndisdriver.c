@@ -42,22 +42,23 @@
 static const char *confdir = "/etc/ndiswrapper";
 static const char *ioctl_file = "/dev/ndiswrapper";
 static int debug;
+static int load_ar5523_fw(char *fw_file);
 
 #ifndef UTILS_VERSION
 #error Compile this file with 'make' in the 'utils' \
 	directory only
 #endif
 
-#define error(fmt, ...) do {					\
+#define ERROR(fmt, ...) do {					\
 		syslog(LOG_KERN | LOG_ERR, "%s: %s(%d): " fmt "\n",	\
 		       PROG_NAME, __FUNCTION__, __LINE__ , ## __VA_ARGS__); \
 	} while (0)
-#define info(fmt, ...) do {						\
+#define INFO(fmt, ...) do {						\
 		syslog(LOG_KERN | LOG_INFO, "%s: %s(%d): " fmt "\n",	\
 		       PROG_NAME, __FUNCTION__, __LINE__ , ## __VA_ARGS__); \
 	} while (0)
 
-#define dbg(fmt, ...) do { if (debug)					\
+#define DBG(fmt, ...) do { if (debug)					\
 		syslog(LOG_KERN | LOG_DEBUG, "%s: %s(%d): " fmt "\n", \
 		       PROG_NAME, __FUNCTION__, __LINE__ , ## __VA_ARGS__); \
 	} while (0)
@@ -74,12 +75,12 @@ static int load_file(char *filename, struct load_driver_file *driver_file)
 
 	fd = open(filename, O_RDONLY);
 	if (fd == -1) {
-		error("unable to open file: %s", strerror(errno));
+		ERROR("unable to open file: %s", strerror(errno));
 		return -EINVAL;
 	}
 
 	if (fstat(fd, &statbuf)) {
-		error("incorrect driver file '%s'", filename);
+		ERROR("incorrect driver file '%s'", filename);
 		close(fd);
 		return -EINVAL;
 	}
@@ -87,7 +88,7 @@ static int load_file(char *filename, struct load_driver_file *driver_file)
 
 	image = mmap(0, size, PROT_READ, MAP_PRIVATE, fd, 0);
 	if (image == MAP_FAILED) {
-		error("unable to mmap driver: %s", strerror(errno));
+		ERROR("unable to mmap driver: %s", strerror(errno));
 		close(fd);
 		return -EINVAL;
 	}
@@ -116,14 +117,14 @@ static int parse_setting_line(const char *setting_line, char *setting_name,
 		return 0;
 	if ((val = strchr(s, '|')) == NULL ||
 	    (end = strchr(s, '\n')) == NULL) {
-		error("invalid setting: %s", setting_line);
+		ERROR("invalid setting: %s", setting_line);
 		return -EINVAL;
 	}
 	for (i = 0; s != val && i < MAX_NDIS_SETTING_NAME_LEN; s++, i++)
 		setting_name[i] = *s;
 	setting_name[i] = 0;
 	if (*s != '|') {
-		error("invalid setting: %s", setting_line);
+		ERROR("invalid setting: %s", setting_line);
 		return -EINVAL;
 	}
 
@@ -131,14 +132,14 @@ static int parse_setting_line(const char *setting_line, char *setting_name,
 		setting_val[i] = *s;
 	setting_val[i] = 0;
 	if (*s != '\n') {
-		error("invalid setting: %s", setting_line);
+		ERROR("invalid setting: %s", setting_line);
 		return -EINVAL;
 	}
-	dbg("Found setting: name=%s, val=\"%s\"", setting_name, setting_val);
+	DBG("Found setting: name=%s, val=\"%s\"", setting_name, setting_val);
 
 	// setting_val can be empty, but not name
 	if (strlen(setting_name) == 0) {
-		error("invalid setting: \"%s\"", setting_line);
+		ERROR("invalid setting: \"%s\"", setting_line);
 		return -EINVAL;
 	}
 
@@ -157,7 +158,7 @@ static int read_conf_file(char *conf_file_name, struct load_driver *driver)
 	int i, vendor, device, subvendor, subdevice, dev_bustype, conf_bustype;
 
 	if (lstat(conf_file_name, &statbuf)) {
-		error("unable to open config file: %s", strerror(errno));
+		ERROR("unable to open config file: %s", strerror(errno));
 		return -EINVAL;
 	}
 
@@ -165,7 +166,7 @@ static int read_conf_file(char *conf_file_name, struct load_driver *driver)
 		i = sscanf(conf_file_name, "%04X:%04X.%d.conf",
 			   &vendor, &device, &dev_bustype);
 		if (i != 3) {
-			error("unable to parse conf file name %s (%d)",
+			ERROR("unable to parse conf file name %s (%d)",
 			      conf_file_name, i);
 			return -EINVAL;
 		}
@@ -174,7 +175,7 @@ static int read_conf_file(char *conf_file_name, struct load_driver *driver)
 			   &vendor, &device, &subvendor, &subdevice,
 			   &dev_bustype);
 		if (i != 5) {
-			error("unable to parse conf file name %s (%d)",
+			ERROR("unable to parse conf file name %s (%d)",
 			      conf_file_name, i);
 			return -EINVAL;
 		}
@@ -184,7 +185,7 @@ static int read_conf_file(char *conf_file_name, struct load_driver *driver)
 	driver->nr_settings = 0;
 
 	if ((config = fopen(conf_file_name, "r")) == NULL) {
-		error("unable to open config file: %s", strerror(errno));
+		ERROR("unable to open config file: %s", strerror(errno));
 		return -EINVAL;
 	}
 	while (fgets(setting_line, SETTING_LEN-1, config)) {
@@ -201,7 +202,7 @@ static int read_conf_file(char *conf_file_name, struct load_driver *driver)
 		if (strcmp(setting_name, "BusType") == 0) {
 			conf_bustype = strtol(setting_value, NULL, 10);
 			if (dev_bustype != conf_bustype) {
-				error("invalid bustype: %d(%d)",
+				ERROR("invalid bustype: %d(%d)",
 				      dev_bustype, conf_bustype);
 				return -EINVAL;
 			}
@@ -214,7 +215,7 @@ static int read_conf_file(char *conf_file_name, struct load_driver *driver)
 
 		nr_settings++;
 		if (nr_settings >= MAX_NDIS_SETTINGS) {
-			error("too many settings");
+			ERROR("too many settings");
 			return -EINVAL;
 		}
 				
@@ -223,7 +224,7 @@ static int read_conf_file(char *conf_file_name, struct load_driver *driver)
 	fclose(config);
 
 	if (conf_bustype == -1) {
-		error("coudn't find device type in settings");
+		ERROR("coudn't find device type in settings");
 		return -EINVAL;
 	}			
 
@@ -248,20 +249,25 @@ static int load_driver(int ioctl_device, char *driver_name,
 	nr_sys_files = 0;
 	nr_bin_files = 0;
 
-	dbg("loading driver %s", driver_name);
+	DBG("loading driver %s", driver_name);
 	if (chdir(confdir) || chdir(driver_name)) {
-		error("couldn't change to directory %s: %s",
+		ERROR("couldn't change to directory %s: %s",
 		      driver_name, strerror(errno));
 		return -EINVAL;
 	}
+	if (strcmp(driver_name, "athfmwdl") == 0) {
+		INFO("atfmwdl driver is not supported (yet); this is not "
+		     "required for using devices based on this driver either");
+		return 0;
+	}
 	if ((driver_dir = opendir(".")) == NULL) {
-		error("couldn't open driver directory %s: %s",
+		ERROR("couldn't open driver directory %s: %s",
 		      driver_name, strerror(errno));
 		return -EINVAL;
 	}
 		
 	if ((driver = malloc(sizeof(*driver))) == NULL) {
-		error("couldn't allocate memory for driver %s", driver_name);
+		ERROR("couldn't allocate memory for driver %s", driver_name);
 		goto err;
 	}
 	memset(driver, 0, sizeof(*driver));
@@ -269,7 +275,7 @@ static int load_driver(int ioctl_device, char *driver_name,
 
 	if (read_conf_file(conf_file_name, driver) ||
 	    driver->nr_settings == 0) {
-		error("couldn't read conf file %s for driver %s",
+		ERROR("couldn't read conf file %s for driver %s",
 		      conf_file_name, driver_name);
 		goto err;
 	}
@@ -283,7 +289,7 @@ static int load_driver(int ioctl_device, char *driver_name,
 
 		if (stat(dirent->d_name, &statbuf) ||
 		    !S_ISREG(statbuf.st_mode)) {
-			error("%s in %s is not a valid file: %s",
+			ERROR("%s in %s is not a valid file: %s",
 			      dirent->d_name, driver_name, strerror(errno));
 			continue;
 		}
@@ -299,7 +305,7 @@ static int load_driver(int ioctl_device, char *driver_name,
 		if (len > 4 && strcmp(&dirent->d_name[len-4], ".sys") == 0) {
 			if (load_file(dirent->d_name,
 				      &driver->sys_files[nr_sys_files])) {
-				error("couldn't load .sys file %s",
+				ERROR("couldn't load .sys file %s",
 				      dirent->d_name);
 				goto err;
 			} else
@@ -307,30 +313,39 @@ static int load_driver(int ioctl_device, char *driver_name,
 		} else if (len > 4 &&
 			   ((strcmp(&dirent->d_name[len-4], ".bin") == 0) ||
 			     (strcmp(&dirent->d_name[len-4], ".out") == 0))) {
+			if (strcmp(&dirent->d_name[len-10], "ar5523.bin") ==
+			    0) {
+				if (load_ar5523_fw(dirent->d_name)) {
+					ERROR("couldn't initialize ar5523 "
+					      "device");
+					goto err;
+				}
+				continue;
+			}
 			if (load_file(dirent->d_name,
 				      &driver->bin_files[nr_bin_files])) {
-				error("coudln't load .bin file %s",
+				ERROR("coudln't load .bin file %s",
 				      dirent->d_name);
 				goto err;
 			} else
 				nr_bin_files++;
 		} else
-			error("file %s is ignored", dirent->d_name);
+			ERROR("file %s is ignored", dirent->d_name);
 
 		if (nr_sys_files == MAX_PE_IMAGES) {
-			error("too many .sys files for driver %s",
+			ERROR("too many .sys files for driver %s",
 			      driver_name);
 			goto err;
 		}
 		if (nr_bin_files == MAX_NDIS_BIN_FILES) {
-			error("too many .bin files for driver %s",
+			ERROR("too many .bin files for driver %s",
 			      driver_name);
 			goto err;
 		}
 	}
 
 	if (nr_sys_files == 0) {
-		error("coudln't find valid drivers files for driver %s",
+		ERROR("coudln't find valid drivers files for driver %s",
 		      driver_name);
 		goto err;
 	}
@@ -343,7 +358,7 @@ static int load_driver(int ioctl_device, char *driver_name,
 		goto err;
 
 	closedir(driver_dir);
-	dbg("driver %s loaded", driver_name);
+	DBG("driver %s loaded", driver_name);
 	free(driver);
 	return 0;
 
@@ -354,7 +369,7 @@ err:
 		free(driver->sys_files[i].data);
 	for (i = 0; i < nr_bin_files; i++)
 		free(driver->bin_files[i].data);
-	error("couldn't load driver %s", driver_name);
+	ERROR("couldn't load driver %s", driver_name);
 	free(driver);
 	return -1;
 }
@@ -384,11 +399,11 @@ static int add_driver_devices(DIR *dir, char *driver_name,
 
 	n = from;
 	if (!dir || !driver_name) {
-		error("invalid driver");
+		ERROR("invalid driver");
 		return n;
 	}
 
-	dbg("adding devices for driver %s", driver_name);
+	DBG("adding devices for driver %s", driver_name);
 	while ((dirent = readdir(dir))) {
 		int len;
 
@@ -404,7 +419,7 @@ static int add_driver_devices(DIR *dir, char *driver_name,
 			struct load_device *device;
 
 			if (lstat(dirent->d_name, &statbuf)) {
-				error("unable to open config file: %s",
+				ERROR("unable to open config file: %s",
 				      strerror(errno));
 				continue;
 			}
@@ -427,18 +442,18 @@ static int add_driver_devices(DIR *dir, char *driver_name,
 					  &device->bustype) == 5) {
 				;
 			} else {
-				error("file %s is not valid - ignored",
+				ERROR("file %s is not valid - ignored",
 				      dirent->d_name);
 				continue;
 			}
 			if (device->bustype != NDIS_PCI_BUS &&
 			    device->bustype != NDIS_USB_BUS) {
-				error("incorrect bus type %d",
+				ERROR("incorrect bus type %d",
 				      device->bustype);
 				continue;
 			}
 			if (duplicate_device(device, n, devices))
-				dbg("device %04X:%04X is duplicate - ignored",
+				DBG("device %04X:%04X is duplicate - ignored",
 				    device->vendor, device->device);
 			else {
 				strncpy(device->driver_name, driver_name,
@@ -448,14 +463,14 @@ static int add_driver_devices(DIR *dir, char *driver_name,
 				strncat(device->conf_file_name, ".conf",
 					sizeof(device->conf_file_name) -
 					strlen(device->conf_file_name));
-				dbg("device %04X:%04X:%04X:%04X is added",
+				DBG("device %04X:%04X:%04X:%04X is added",
 				    device->vendor, device->device,
 				    device->subvendor, device->subdevice);
 				n++;
 			}
 		}
 	}
-	dbg("total number of devices added: %d", n);
+	DBG("total number of devices added: %d", n);
 	return n;
 }
 
@@ -473,19 +488,19 @@ static int load_all_devices(int ioctl_device)
 	struct load_devices load_devices;
 
 	if (chdir(confdir)) {
-		error("directory %s is not valid: %s",
+		ERROR("directory %s is not valid: %s",
 		      confdir, strerror(errno));
 		return -EINVAL;
 	}
 	if ((dir = opendir(confdir)) == NULL) {
-		error("directory %s is not valid: %s",
+		ERROR("directory %s is not valid: %s",
 		      confdir, strerror(errno));
 		return -EINVAL;
 	}
 
 	devices = malloc(sizeof(*devices) * MAX_NDIS_DEVICES);
 	if (!devices) {
-		error("couldn't allocate memory");
+		ERROR("couldn't allocate memory");
 		return -EINVAL;
 	}
 	loaded = 0;
@@ -499,12 +514,12 @@ static int load_all_devices(int ioctl_device)
 			continue;
 
 		if ((driver = opendir(dirent->d_name)) == NULL) {
-			error("directory %s is not valid: %s",
+			ERROR("directory %s is not valid: %s",
 			      dirent->d_name, strerror(errno));
 			continue;
 		}
 		if (chdir(dirent->d_name)) {
-			error("directory %s is not valid: %s",
+			ERROR("directory %s is not valid: %s",
 			      dirent->d_name, strerror(errno));
 			closedir(driver);
 			continue;
@@ -517,7 +532,7 @@ static int load_all_devices(int ioctl_device)
 	closedir(dir);
 
 	if (loaded == 0) {
-		error("no valid NDIS drives found in %s; you may need to"
+		ERROR("no valid NDIS drives found in %s; you may need to"
 		      " reinstall Windows drivers", confdir);
 		free(devices);
 		return -1;
@@ -529,7 +544,7 @@ static int load_all_devices(int ioctl_device)
 	free(devices);
 
 	if (res) {
-		error("couldn't load devices");
+		ERROR("couldn't load devices");
 		return -1;
 	}
 
@@ -564,14 +579,14 @@ static int get_ioctl_device()
 	fclose(proc_misc);
 
 	if (minor_dev == -1) {
-		error("couldn't find ndiswrapper in /proc/misc; "
+		ERROR("couldn't find ndiswrapper in /proc/misc; "
 		      "is ndiswrapper module loaded?");
 		return -1;
 	}
 
 	unlink(ioctl_file);
 	if (mknod(ioctl_file, S_IFCHR | 0600, 10 << 8 | minor_dev) == -1) {
-		error("couldn't create file %s: %s",
+		ERROR("couldn't create file %s: %s",
 		      ioctl_file, strerror(errno));
 		return -1;
 	}
@@ -580,7 +595,7 @@ static int get_ioctl_device()
 	unlink(ioctl_file);
 
 	if (fd == -1) {
-		error("couldn't open file %s: %s",
+		ERROR("couldn't open file %s: %s",
 		      ioctl_file, strerror(errno));
 		return -1;
 	}
@@ -606,7 +621,7 @@ int main(int argc, char *argv[0])
 	i = -1;
 	i = atoi(argv[1]);
 	if (i < 0) {
-		error("invalid debug value %d", i);
+		ERROR("invalid debug value %d", i);
 		res = 2;
 		goto out;
 	} else
@@ -614,13 +629,13 @@ int main(int argc, char *argv[0])
 
 	ioctl_device = get_ioctl_device();
 	if (ioctl_device == -1) {
-		error("unable to open ioctl device %s", ioctl_file);
+		ERROR("unable to open ioctl device %s", ioctl_file);
 		res = 5;
 		goto out;
 	}
 
 	if (atof(argv[2]) != atof(UTILS_VERSION)) {
-		error("version %s doesn't match driver version %s",
+		ERROR("version %s doesn't match driver version %s",
 		      UTILS_VERSION, argv[2]);
 		res = 6;
 		goto out;
@@ -634,7 +649,7 @@ int main(int argc, char *argv[0])
 	} else {
 		/* load specific driver and conf file */
 		if (argc != 5) {
-			error("incorrect usage of %s (%d)", argv[0], argc);
+			ERROR("incorrect usage of %s (%d)", argv[0], argc);
 			res = 11;
 			goto out;
 		}
@@ -647,3 +662,183 @@ out:
 	closelog();
 	return res;
 }
+
+#ifdef LIB_USB
+/* ndiswrapper can't load ar5523 firmware properly; for now, use the user
+ * space loader load_ar5523_fw below */
+
+/* This part of loader to load ar5523 firmware is
+ * Copyright (c) Laurent Goujon - 2005
+ * All rights reserved.
+ */
+
+#include <error.h>
+#include <unistd.h>
+#include <usb.h>
+#include <netinet/in.h>
+
+#define BLOCK_SIZE	0x0800
+
+struct {
+	int vendor_id;
+	int product_id;
+} ar5523_devices[] = {
+	/* Netgear WG111U */
+	{0x0846, 0x4301},
+	/* Netgear WG111T */
+	{0x1385, 0x4251},
+	/* D-Link DWL-G132 */
+	{0x2001, 0x3a03},
+	{-1, -1},
+};
+
+struct usb_cmd_t {
+	unsigned int cmd_type;
+	unsigned int size;
+	unsigned int total_size;
+	unsigned int remaining_size;
+	char padding[496];
+};
+
+static int load_usb_fw(char *filename, struct usb_device *dev)
+{
+	int num_blocks, total_size, remaining_size, res, i, fd;
+	struct usb_cmd_t cmd, answer;
+	struct stat firmware_stat;
+	char *buffer;
+	usb_dev_handle *handle;
+
+	buffer = malloc(BLOCK_SIZE);
+	if (!buffer) {
+		ERROR("couldn't allocate memory");
+		return -ENOMEM;
+	}
+	handle = usb_open(dev);
+	if (!handle) {
+		ERROR("couldn't open usb device");
+		return -EINVAL;
+	}
+	memset(buffer, 0, BLOCK_SIZE);
+	if (usb_set_configuration(handle, 1)) {
+		ERROR("error when setting configuration: %s", usb_strerror());
+		return -EINVAL;
+	}
+
+	if ((res = usb_claim_interface(handle, 0))) {
+		if (res == EBUSY)
+			ERROR("device is busy");
+		if (res == ENOMEM)
+			ERROR("couldn't allocate memory");
+		ERROR("error when claiming interface: %s", usb_strerror());
+		return -EINVAL;
+	}
+
+	fd = open(filename, O_RDONLY);
+	if (fd == -1) {
+		ERROR("couldn't open firmware file: %s", strerror(errno));
+		return -EINVAL;
+	}
+	if (fstat(fd, &firmware_stat) == -1) {
+		ERROR("error when opening firmware: %s", strerror(errno));
+		return -EINVAL;
+	}
+
+	cmd.cmd_type = htonl(0x10);
+	total_size = firmware_stat.st_size;
+	remaining_size = total_size;
+	cmd.total_size = htonl(total_size);
+	num_blocks =
+		total_size / BLOCK_SIZE + (total_size % BLOCK_SIZE ? 1 : 0);
+
+	for (i = 0; i < num_blocks; i++) {
+		ssize_t read_size = read(fd, buffer, BLOCK_SIZE);
+		remaining_size -= read_size;
+		cmd.size = htonl(read_size);
+		cmd.remaining_size = htonl(remaining_size);
+
+		res = usb_bulk_write(handle, 0x01, (char *)&cmd, sizeof(cmd),
+				     10000);
+		if (res < 0) {
+			ERROR("error when sending data: %s", usb_strerror());
+			return res;
+		}
+		res = usb_bulk_write(handle, 0x02, buffer, BLOCK_SIZE, 10000);
+		if (res < 0) {
+			ERROR("error when sending data: %s", usb_strerror());
+			return res;
+		}
+		res = usb_bulk_read(handle, 0x81, (char *)&answer,
+				    sizeof(answer), 10000);
+		if (res < 0) {
+			ERROR("error when sending data: %s", usb_strerror());
+			return res;
+		}
+	}
+	usb_release_interface(handle, 0);
+	usb_close(handle);
+	free(buffer);
+	return 0;
+}
+
+int load_ar5523_fw(char *fw_file)
+{
+	struct usb_bus *busses, *bus;
+	int max_devnum;
+	char *base_name;
+	
+	base_name = strrchr(fw_file, '/');
+	if (base_name)
+		base_name++;
+	else
+		base_name = fw_file;
+	if (strcmp(base_name, "ar5523.bin")) {
+		ERROR("file %s may not be valid firmware file; "
+		      "file name should end with \"ar5523.bin\"", fw_file);
+		return -EINVAL;
+	}
+	max_devnum = (sizeof(ar5523_devices) / sizeof(ar5523_devices[0])) - 1;
+
+	usb_init();
+	usb_find_busses();
+	usb_find_devices();
+
+	busses = usb_get_busses();
+	for(bus = busses; bus; bus = bus->next) {
+		struct usb_device *dev;
+		for(dev = bus->devices; dev; dev = dev->next) {
+			int j;
+			for (j = 0; j < max_devnum + 1; j++) {
+				if (dev->descriptor.idVendor ==
+				    ar5523_devices[j].vendor_id &&
+				    dev->descriptor.idProduct ==
+				    ar5523_devices[j].product_id) {
+					INFO("loading firmware for device "
+					     "0x%04X:0x%04X ...",
+					     ar5523_devices[j].vendor_id,
+					     ar5523_devices[j].product_id);
+					if (load_usb_fw(fw_file, dev)) {
+						INFO("failed");
+						return -EINVAL;
+					} else {
+						INFO("done");
+						return 0;
+					}
+				}
+			}
+		}
+	}
+	DBG("no ar5523 based device found");
+	return 0;
+}
+
+#else
+
+int load_ar5523_fw(char *fw_file)
+{
+	ERROR("user space USB programming library is required for loading "
+	      "firmware for ar5523 based devices; you can get this library "
+	      "(libusb) from http://www.linux-usb.org");
+	return -EINVAL;
+}
+
+#endif // LIB_USB
