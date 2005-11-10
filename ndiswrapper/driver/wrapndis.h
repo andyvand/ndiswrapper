@@ -49,9 +49,9 @@ void miniport_halt(struct wrapper_dev *wd);
 
 void check_capa(struct wrapper_dev *wd);
 
-struct net_device *init_netdev(struct wrapper_dev **pwd,
-			       struct ndis_device *device,
-			       struct ndis_driver *driver);
+struct net_device *wrap_alloc_netdev(struct wrapper_dev **pwd,
+				     struct ndis_device *device,
+				     struct ndis_driver *driver);
 
 struct iw_statistics *get_wireless_stats(struct net_device *dev);
 STDCALL NTSTATUS NdisAddDevice(struct driver_object *drv_obj,
