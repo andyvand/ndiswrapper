@@ -14,7 +14,7 @@ DISTFILES=Makefile ndiswrapper loadndisdriver.c $(FW_AR5523).c \
 
 all: loadndisdriver 
 
-loadndisdriver: $(OBJS) ../driver/wrapper.h
+loadndisdriver: $(OBJS)
 	gcc -o loadndisdriver $(OBJS)
 	
 $(FW_AR5523): $(FW_AR5523).c
