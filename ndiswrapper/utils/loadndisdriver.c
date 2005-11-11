@@ -503,7 +503,12 @@ static int load_all_devices(int ioctl_device)
 		if (stat(dirent->d_name, &statbuf) ||
 		    (!S_ISDIR(statbuf.st_mode)))
 			continue;
-
+		if (strcmp(dirent->d_name, "athfmwdl") == 0) {
+			ERROR("atfmwdl dirver is ignored - the firmware of "
+			      "this driver should be loaded with "
+			      "load_fw_ar5523");
+			continue;
+		}
 		if ((driver = opendir(dirent->d_name)) == NULL) {
 			ERROR("directory %s is not valid: %s",
 			      dirent->d_name, strerror(errno));
