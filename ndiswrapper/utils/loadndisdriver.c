@@ -351,9 +351,9 @@ err:
 	if (driver_dir)
 		closedir(driver_dir);
 	for (i = 0; i < nr_sys_files; i++)
-		free(driver->sys_files[i].data);
+		munmap(driver->sys_files[i].data, driver->sys_files[i].size);
 	for (i = 0; i < nr_bin_files; i++)
-		free(driver->bin_files[i].data);
+		munmap(driver->bin_files[i].data, driver->bin_files[i].size);
 	ERROR("couldn't load driver %s", driver_name);
 	free(driver);
 	return -1;
