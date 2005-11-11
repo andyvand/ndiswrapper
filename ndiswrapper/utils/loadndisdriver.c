@@ -42,7 +42,6 @@
 static const char *confdir = "/etc/ndiswrapper";
 static const char *ioctl_file = "/dev/ndiswrapper";
 static int debug;
-static int load_ar5523_fw(char *fw_file);
 
 #ifndef UTILS_VERSION
 #error Compile this file with 'make' in the 'utils' \
@@ -255,11 +254,6 @@ static int load_driver(int ioctl_device, char *driver_name,
 		      driver_name, strerror(errno));
 		return -EINVAL;
 	}
-	if (strcmp(driver_name, "athfmwdl") == 0) {
-		INFO("atfmwdl driver is not supported (yet); this is not "
-		     "required for using devices based on this driver either");
-		return 0;
-	}
 	if ((driver_dir = opendir(".")) == NULL) {
 		ERROR("couldn't open driver directory %s: %s",
 		      driver_name, strerror(errno));
@@ -313,15 +307,6 @@ static int load_driver(int ioctl_device, char *driver_name,
 		} else if (len > 4 &&
 			   ((strcmp(&dirent->d_name[len-4], ".bin") == 0) ||
 			     (strcmp(&dirent->d_name[len-4], ".out") == 0))) {
-			if (strcmp(&dirent->d_name[len-10], "ar5523.bin") ==
-			    0) {
-				if (load_ar5523_fw(dirent->d_name)) {
-					ERROR("couldn't initialize ar5523 "
-					      "device");
-					goto err;
-				}
-				continue;
-			}
 			if (load_file(dirent->d_name,
 				      &driver->bin_files[nr_bin_files])) {
 				ERROR("coudln't load .bin file %s",
@@ -663,182 +648,3 @@ out:
 	return res;
 }
 
-#ifdef LIB_USB
-/* ndiswrapper can't load ar5523 firmware properly; for now, use the user
- * space loader load_ar5523_fw below */
-
-/* This part of loader to load ar5523 firmware is
- * Copyright (c) Laurent Goujon - 2005
- * All rights reserved.
- */
-
-#include <error.h>
-#include <unistd.h>
-#include <usb.h>
-#include <netinet/in.h>
-
-#define BLOCK_SIZE	0x0800
-
-struct {
-	int vendor_id;
-	int product_id;
-} ar5523_devices[] = {
-	/* Netgear WG111U */
-	{0x0846, 0x4301},
-	/* Netgear WG111T */
-	{0x1385, 0x4251},
-	/* D-Link DWL-G132 */
-	{0x2001, 0x3a03},
-	{-1, -1},
-};
-
-struct usb_cmd_t {
-	unsigned int cmd_type;
-	unsigned int size;
-	unsigned int total_size;
-	unsigned int remaining_size;
-	char padding[496];
-};
-
-static int load_usb_fw(char *filename, struct usb_device *dev)
-{
-	int num_blocks, total_size, remaining_size, res, i, fd;
-	struct usb_cmd_t cmd, answer;
-	struct stat firmware_stat;
-	char *buffer;
-	usb_dev_handle *handle;
-
-	buffer = malloc(BLOCK_SIZE);
-	if (!buffer) {
-		ERROR("couldn't allocate memory");
-		return -ENOMEM;
-	}
-	handle = usb_open(dev);
-	if (!handle) {
-		ERROR("couldn't open usb device");
-		return -EINVAL;
-	}
-	memset(buffer, 0, BLOCK_SIZE);
-	if (usb_set_configuration(handle, 1)) {
-		ERROR("error when setting configuration: %s", usb_strerror());
-		return -EINVAL;
-	}
-
-	if ((res = usb_claim_interface(handle, 0))) {
-		if (res == EBUSY)
-			ERROR("device is busy");
-		if (res == ENOMEM)
-			ERROR("couldn't allocate memory");
-		ERROR("error when claiming interface: %s", usb_strerror());
-		return -EINVAL;
-	}
-
-	fd = open(filename, O_RDONLY);
-	if (fd == -1) {
-		ERROR("couldn't open firmware file: %s", strerror(errno));
-		return -EINVAL;
-	}
-	if (fstat(fd, &firmware_stat) == -1) {
-		ERROR("error when opening firmware: %s", strerror(errno));
-		return -EINVAL;
-	}
-
-	cmd.cmd_type = htonl(0x10);
-	total_size = firmware_stat.st_size;
-	remaining_size = total_size;
-	cmd.total_size = htonl(total_size);
-	num_blocks =
-		total_size / BLOCK_SIZE + (total_size % BLOCK_SIZE ? 1 : 0);
-
-	for (i = 0; i < num_blocks; i++) {
-		ssize_t read_size = read(fd, buffer, BLOCK_SIZE);
-		remaining_size -= read_size;
-		cmd.size = htonl(read_size);
-		cmd.remaining_size = htonl(remaining_size);
-
-		res = usb_bulk_write(handle, 0x01, (char *)&cmd, sizeof(cmd),
-				     10000);
-		if (res < 0) {
-			ERROR("error when sending data: %s", usb_strerror());
-			return res;
-		}
-		res = usb_bulk_write(handle, 0x02, buffer, BLOCK_SIZE, 10000);
-		if (res < 0) {
-			ERROR("error when sending data: %s", usb_strerror());
-			return res;
-		}
-		res = usb_bulk_read(handle, 0x81, (char *)&answer,
-				    sizeof(answer), 10000);
-		if (res < 0) {
-			ERROR("error when sending data: %s", usb_strerror());
-			return res;
-		}
-	}
-	usb_release_interface(handle, 0);
-	usb_close(handle);
-	free(buffer);
-	return 0;
-}
-
-int load_ar5523_fw(char *fw_file)
-{
-	struct usb_bus *busses, *bus;
-	int max_devnum;
-	char *base_name;
-	
-	base_name = strrchr(fw_file, '/');
-	if (base_name)
-		base_name++;
-	else
-		base_name = fw_file;
-	if (strcmp(base_name, "ar5523.bin")) {
-		ERROR("file %s may not be valid firmware file; "
-		      "file name should end with \"ar5523.bin\"", fw_file);
-		return -EINVAL;
-	}
-	max_devnum = (sizeof(ar5523_devices) / sizeof(ar5523_devices[0])) - 1;
-
-	usb_init();
-	usb_find_busses();
-	usb_find_devices();
-
-	busses = usb_get_busses();
-	for(bus = busses; bus; bus = bus->next) {
-		struct usb_device *dev;
-		for(dev = bus->devices; dev; dev = dev->next) {
-			int j;
-			for (j = 0; j < max_devnum + 1; j++) {
-				if (dev->descriptor.idVendor ==
-				    ar5523_devices[j].vendor_id &&
-				    dev->descriptor.idProduct ==
-				    ar5523_devices[j].product_id) {
-					INFO("loading firmware for device "
-					     "0x%04X:0x%04X ...",
-					     ar5523_devices[j].vendor_id,
-					     ar5523_devices[j].product_id);
-					if (load_usb_fw(fw_file, dev)) {
-						INFO("failed");
-						return -EINVAL;
-					} else {
-						INFO("done");
-						return 0;
-					}
-				}
-			}
-		}
-	}
-	DBG("no ar5523 based device found");
-	return 0;
-}
-
-#else
-
-int load_ar5523_fw(char *fw_file)
-{
-	ERROR("user space USB programming library is required for loading "
-	      "firmware for ar5523 based devices; you can get this library "
-	      "(libusb) from http://www.linux-usb.org");
-	return -EINVAL;
-}
-
-#endif // LIB_USB
