@@ -21,7 +21,9 @@ $(FW_AR5523): $(FW_AR5523).c
 	@if :; then \
 		USB_LIBS="$(shell libusb-config --libs)"; \
 		if [ -z "$$USB_LIBS" ]; then \
-			   echo "USB programming library is not installed"; \
+			   echo "USB programming library is not installed; it is needed";\
+			   echo "for compiling $(FW_AR5523). You can get this library"; \
+			   echo "at http://libusb.sourceforge.net"; \
 			   exit 1; \
 		fi; \
 		cmd="gcc -Wall -o $@ $< $$USB_LIBS"; \
