@@ -5,8 +5,6 @@ Version 1.6 2005-XX-XX
 * 'Divide by zero' error in update_wireless_stats is fixed.
 * Support for Atheros USB drivers added with the help of user space tool.
 
-Submission of URBs in USB layer 
-
 Version 1.5 2005-10-30
 ======================
 * SMP issues fixed.
