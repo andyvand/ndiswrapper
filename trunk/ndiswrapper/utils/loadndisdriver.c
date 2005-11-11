@@ -307,6 +307,12 @@ static int load_driver(int ioctl_device, char *driver_name,
 		} else if (len > 4 &&
 			   ((strcmp(&dirent->d_name[len-4], ".bin") == 0) ||
 			     (strcmp(&dirent->d_name[len-4], ".out") == 0))) {
+			if (strcmp(&dirent->d_name[len-10], "ar5523.bin") ==
+			    0) {
+				INFO("ar5523.bin is ignored - it should be "
+				     "loaded with load_fw_ar5523");
+				continue;
+			}
 			if (load_file(dirent->d_name,
 				      &driver->bin_files[nr_bin_files])) {
 				ERROR("coudln't load .bin file %s",
