@@ -13,8 +13,8 @@
  *
  */
 
-#ifndef NDIS_H
-#define NDIS_H
+#ifndef _NDIS_H_
+#define _NDIS_H_
 
 #include "ntoskernel.h"
 
@@ -895,6 +895,8 @@ STDCALL void NdisReadConfiguration
 	(NDIS_STATUS *status, struct ndis_config_param **dest,
 	 struct ndis_miniport_block *nmb, struct unicode_string *key,
 	 enum ndis_config_param_type type);
+
+void setup_nmb_func_ptrs(struct ndis_miniport_block *nmb);
 
 void *get_sp(void);
 int ndis_init(void);

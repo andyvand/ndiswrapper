@@ -326,19 +326,20 @@ static int procfs_write_settings(struct file *file, const char *buf,
 		if (i <= 0 || i > 3)
 			return -EINVAL;
 		if (wd->ndis_device->bustype == NDIS_PCI_BUS)
-			wrap_pnp_suspend_pci(wd->dev.pci, PMSG_SUSPEND);
+			wrap_pnp_suspend_ndis_pci(wd->dev.pci, PMSG_SUSPEND);
 #if defined(CONFIG_USB) && LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
 		else if (wd->ndis_device->bustype == NDIS_USB_BUS)
-			wrap_pnp_suspend_usb(wd->dev.usb.intf, PMSG_SUSPEND);
+			wrap_pnp_suspend_ndis_usb(wd->dev.usb.intf,
+						  PMSG_SUSPEND);
 #endif
 		else
 			return -EINVAL;
 	} else if (!strcmp(setting, "resume")) {
 		if (wd->ndis_device->bustype == NDIS_PCI_BUS)
-			wrap_pnp_resume_pci(wd->dev.pci);
+			wrap_pnp_resume_ndis_pci(wd->dev.pci);
 #if defined(CONFIG_USB) && LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
 		else if (wd->ndis_device->bustype == NDIS_USB_BUS)
-			wrap_pnp_resume_usb(wd->dev.usb.intf);
+			wrap_pnp_resume_ndis_usb(wd->dev.usb.intf);
 #endif
 		else
 			return -EINVAL;

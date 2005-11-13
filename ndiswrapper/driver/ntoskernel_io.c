@@ -15,7 +15,7 @@
 
 #include "ntoskernel.h"
 #include "ndis.h"
-#include "wrapper.h"
+#include "wrapndis.h"
 #include "usb.h"
 
 extern KSPIN_LOCK ntoskernel_lock;

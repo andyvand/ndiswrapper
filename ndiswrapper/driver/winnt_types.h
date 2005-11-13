@@ -13,8 +13,8 @@
  *
  */
 
-#ifndef WINNT_TYPES_H
-#define WINNT_TYPES_H
+#ifndef _WINNT_TYPES_H_
+#define _WINNT_TYPES_H_
 
 #define TRUE				1
 #define FALSE				0

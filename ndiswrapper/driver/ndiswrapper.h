@@ -13,8 +13,8 @@
  *
  */
 
-#ifndef NDISWRAPPER_H
-#define NDISWRAPPER_H
+#ifndef _NDISWRAPPER_H_
+#define _NDISWRAPPER_H_
 
 #define DRIVER_NAME "ndiswrapper"
 
