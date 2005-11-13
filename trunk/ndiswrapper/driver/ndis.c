@@ -2558,3 +2558,19 @@ STDCALL void WRAP_EXPORT(NdisMCoDeactivateVcComplete)(void)
 }
 
 #include "ndis_exports.h"
+
+void setup_nmb_func_ptrs(struct ndis_miniport_block *nmb)
+{
+	nmb->rx_packet = WRAP_FUNC_PTR(NdisMIndicateReceivePacket);
+	nmb->send_complete = WRAP_FUNC_PTR(NdisMSendComplete);
+	nmb->send_resource_avail = WRAP_FUNC_PTR(NdisMSendResourcesAvailable);
+	nmb->status = WRAP_FUNC_PTR(NdisMIndicateStatus);
+	nmb->status_complete = WRAP_FUNC_PTR(NdisMIndicateStatusComplete);
+	nmb->query_complete = WRAP_FUNC_PTR(NdisMQueryInformationComplete);
+	nmb->set_complete = WRAP_FUNC_PTR(NdisMSetInformationComplete);
+	nmb->reset_complete = WRAP_FUNC_PTR(NdisMResetComplete);
+	nmb->eth_rx_indicate = WRAP_FUNC_PTR(EthRxIndicateHandler);
+	nmb->eth_rx_complete = WRAP_FUNC_PTR(EthRxComplete);
+	nmb->td_complete = WRAP_FUNC_PTR(NdisMTransferDataComplete);
+}
+

@@ -28,6 +28,8 @@ driver_dispatch_t pdoDispatchPnp;
 driver_dispatch_t pdoDispatchPower;
 driver_dispatch_t IopPassIrpDownAndWait;
 
+NTSTATUS pnp_set_power_state(struct wrapper_dev *wd,
+			     enum device_power_state state);
 NTSTATUS pnp_start_device(struct wrapper_dev *wd);
 NTSTATUS pnp_remove_device(struct wrapper_dev *wd);
 
@@ -45,8 +47,6 @@ int wrap_pnp_suspend_pci(struct pci_dev *pdev, pm_message_t state);
 int wrap_pnp_start_ndis_usb_device(struct usb_interface *intf,
 				   const struct usb_device_id *usb_id);
 void wrap_pnp_remove_ndis_usb_device(struct usb_interface *intf);
-int wrap_pnp_suspend_usb(struct usb_interface *intf, pm_message_t state);
-int wrap_pnp_resume_usb(struct usb_interface *intf);
 #else
 void *wrap_pnp_start_usb_device(struct usb_device *udev, unsigned int ifnum,
 				const struct usb_device_id *usb_id);

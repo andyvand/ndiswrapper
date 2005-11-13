@@ -153,7 +153,7 @@ STDCALL NTSTATUS pdoDispatchPnp(struct device_object *pdo,
 		break;
 	case IRP_MN_QUERY_INTERFACE:
 		if (wd->dev.dev_type != NDIS_USB_BUS) {
-			status = STATUS_SUCCESS;
+			status = STATUS_NOT_IMPLEMENTED;
 			break;
 		}
 		IOTRACE("type: %x, size: %d, version: %d",
@@ -198,7 +198,8 @@ STDCALL NTSTATUS pdoDispatchPower(struct device_object *pdo,
 	struct wrapper_dev *wd;
 	enum device_power_state state;
 	struct pci_dev *pdev;
-	NTSTATUS res;
+	NTSTATUS status;
+	NDIS_STATUS ndis_status;
 
 	irp_sl = IoGetCurrentIrpStackLocation(irp);
 	wd = pdo->reserved;
@@ -207,28 +208,86 @@ STDCALL NTSTATUS pdoDispatchPower(struct device_object *pdo,
 	switch (irp_sl->minor_fn) {
 	case IRP_MN_SET_POWER:
 		state = irp_sl->params.power.state.device_state;
-		pdev = wd->dev.pci;
 		if (state == PowerDeviceD0) {
 			IOTRACE("resuming device %p", wd);
-			irp->io_status.status = STATUS_SUCCESS;
+			if (wd->dev.dev_type == NDIS_PCI_BUS) {
+				pdev = wd->dev.pci;
+#if LINUX_VERSION_CODE > KERNEL_VERSION(2,6,9)
+				pci_restore_state(pdev);
+#else
+				pci_restore_state(pdev, wd->pci_state);
+#endif
+			}
+			ndis_status = 
+				miniport_set_power_state(wd,
+							 NdisDeviceStateD0);
+			if (ndis_status == NDIS_STATUS_SUCCESS)
+				status = STATUS_SUCCESS;
+			else
+				status = STATUS_FAILURE;
 		} else {
 			IOTRACE("suspending device %p", wd);
-			irp->io_status.status = STATUS_SUCCESS;
+			ndis_status =
+				miniport_set_power_state(wd,
+							 NdisDeviceStateD3);
+			if (ndis_status == NDIS_STATUS_SUCCESS &&
+			    wd->dev.dev_type == NDIS_PCI_BUS) {
+				pdev = wd->dev.pci;
+#if LINUX_VERSION_CODE > KERNEL_VERSION(2,6,9)
+				pci_save_state(pdev);
+#else
+				pci_save_state(pdev, wd->pci_state);
+#endif
+				status = STATUS_SUCCESS;
+			} else
+				status = STATUS_FAILURE;
 		}
 		break;
 	case IRP_MN_QUERY_POWER:
-		irp->io_status.status = STATUS_SUCCESS;
+		status = STATUS_SUCCESS;
 		break;
 	default:
-		irp->io_status.status = STATUS_SUCCESS;
+		status = STATUS_SUCCESS;
 		ERROR("invalid power irp");
 		break;
 	}
-
 	irp->io_status.status_info = 0;
-	res = irp->io_status.status;
+	irp->io_status.status = status;
 	IoCompleteRequest(irp, IO_NO_INCREMENT);
-	return res;
+	return status;
+}
+
+NTSTATUS pnp_set_power_state(struct wrapper_dev *wd,
+			     enum device_power_state state)
+{
+	struct device_object *fdo;
+	struct irp *irp;
+	struct io_stack_location *irp_sl;
+	NTSTATUS status;
+
+	fdo = IoGetAttachedDevice(wd->nmb->pdo);
+	if (state > PowerDeviceD0) {
+		irp = IoAllocateIrp(fdo->stack_size, FALSE);
+		irp_sl = IoGetNextIrpStackLocation(irp);
+		DBGTRACE1("irp = %p, stack = %p", irp, irp_sl);
+		irp_sl->major_fn = IRP_MJ_POWER;
+		irp_sl->minor_fn = IRP_MN_QUERY_POWER;
+		irp_sl->params.power.state.device_state = state;
+		irp->io_status.status = STATUS_NOT_SUPPORTED;
+		status = IoCallDriver(fdo, irp);
+		if (status != STATUS_SUCCESS)
+			WARNING("query power returns %08X", status);
+	}
+	irp = IoAllocateIrp(fdo->stack_size, FALSE);
+	irp_sl = IoGetNextIrpStackLocation(irp);
+	DBGTRACE1("irp = %p, stack = %p", irp, irp_sl);
+	irp_sl->major_fn = IRP_MJ_POWER;
+	irp_sl->minor_fn = IRP_MN_SET_POWER;
+	irp_sl->params.power.state.device_state = state;
+	irp->io_status.status = STATUS_NOT_SUPPORTED;
+	status = IoCallDriver(fdo, irp);
+	WARNING("set power returns %08X", status);
+	TRACEEXIT1(return status);
 }
 
 NTSTATUS pnp_start_device(struct wrapper_dev *wd)
