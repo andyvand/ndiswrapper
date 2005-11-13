@@ -32,16 +32,19 @@ NDIS_STATUS miniport_query_int(struct wrapper_dev *wd, ndis_oid oid,
 NDIS_STATUS miniport_set_int(struct wrapper_dev *wd, ndis_oid oid,
 			     ULONG data);
 NDIS_STATUS miniport_surprise_remove(struct wrapper_dev *wd);
-NDIS_STATUS miniport_set_pm_state(struct wrapper_dev *wd,
+NDIS_STATUS miniport_set_power_state(struct wrapper_dev *wd,
 				     enum ndis_pm_state);
 void hangcheck_add(struct wrapper_dev *wd);
 void hangcheck_del(struct wrapper_dev *wd);
 void sendpacket_done(struct wrapper_dev *wd, struct ndis_packet *packet);
-int ndiswrapper_suspend_pci(struct pci_dev *pdev, pm_message_t state);
-int ndiswrapper_resume_pci(struct pci_dev *pdev);
 
-int ndiswrapper_suspend_usb(struct usb_interface *intf, pm_message_t state);
-int ndiswrapper_resume_usb(struct usb_interface *intf);
+int wrap_pnp_suspend_ndis_pci(struct pci_dev *pdev, pm_message_t state);
+int wrap_pnp_resume_ndis_pci(struct pci_dev *pdev);
+
+#if defined(CONFIG_USB) && LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
+int wrap_pnp_suspend_ndis_usb(struct usb_interface *intf, pm_message_t state);
+int wrap_pnp_resume_ndis_usb(struct usb_interface *intf);
+#endif
 
 NDIS_STATUS ndis_reinit(struct wrapper_dev *wd);
 NDIS_STATUS miniport_init(struct wrapper_dev *wd);

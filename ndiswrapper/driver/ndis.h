@@ -896,6 +896,8 @@ STDCALL void NdisReadConfiguration
 	 struct ndis_miniport_block *nmb, struct unicode_string *key,
 	 enum ndis_config_param_type type);
 
+void setup_nmb_func_ptrs(struct ndis_miniport_block *nmb);
+
 void *get_sp(void);
 int ndis_init(void);
 void ndis_exit_device(struct wrapper_dev *wd);
