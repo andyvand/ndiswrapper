@@ -759,7 +759,6 @@ static USBD_STATUS wrap_reset_pipe(struct usb_device *udev, struct irp *irp)
 
 	USBTRACE("irp = %p", irp);
 	nt_urb = URB_FROM_IRP(irp);
-
 	pipe_handle = nt_urb->pipe_req.pipe_handle;
 	pipe_type = pipe_handle->bmAttributes & USB_ENDPOINT_XFERTYPE_MASK;
 	/* TODO: not clear if both directions should be cleared? */
@@ -775,18 +774,20 @@ static USBD_STATUS wrap_reset_pipe(struct usb_device *udev, struct irp *irp)
 		pipe2 = usb_sndctrlpipe(udev, pipe_handle->bEndpointAddress);
 	} else {
 		WARNING("pipe type %d not handled", pipe_type);
-		return USBD_STATUS_SUCCESS;
+		return USBD_STATUS_INVALID_PIPE_HANDLE;
 	}
 	ret = usb_clear_halt(udev, pipe1);
-	if (ret)
+	if (ret) {
 		WARNING("resetting pipe %d failed: %d", pipe_type, ret);
+		return wrap_urb_status(ret);
+	}
 	if (pipe2 != pipe1) {
 		ret = usb_clear_halt(udev, pipe2);
 		if (ret)
 			WARNING("resetting pipe %d failed: %d",
 				pipe_type, ret);
 	}
-	return USBD_STATUS_SUCCESS;
+	return wrap_urb_status(ret);
 }
 
 static USBD_STATUS wrap_abort_pipe(struct usb_device *udev, struct irp *irp)
@@ -802,7 +803,8 @@ static USBD_STATUS wrap_abort_pipe(struct usb_device *udev, struct irp *irp)
 	wd = irp->wd;
 	nt_urb = URB_FROM_IRP(irp);
 	pipe_handle = nt_urb->pipe_req.pipe_handle;
-
+	if (wd->dev.usb.intf == NULL)
+		return USBD_STATUS_DEVICE_GONE;
 	nt_urb = URB_FROM_IRP(irp);
 	while (1) {
 		kspin_lock_irqsave(&irp_cancel_lock, flags);
@@ -957,7 +959,7 @@ static USBD_STATUS wrap_get_descriptor(struct wrapper_dev *wd,
 	if (ret < 0) {
 		WARNING("request %d failed with %d", ctrl_req->desc_type, ret);
 		ctrl_req->transfer_buffer_length = 0;
-		return USBD_STATUS_REQUEST_FAILED;
+		return wrap_urb_status(ret);
 	} else {
 		USBTRACE("ret: %08x", ret);
 		DUMP_BUFFER(ctrl_req->transfer_buffer, ret);
@@ -1038,11 +1040,12 @@ static USBD_STATUS wrap_reset_port(struct irp *irp)
 
 	wd = irp->wd;
 	USBENTER("%p, %p", wd, wd->dev.usb.udev);
-
+	if (wd->dev.usb.intf == NULL)
+		return USBD_STATUS_DEVICE_GONE;
 	ret = usb_reset_device(wd->dev.usb.udev);
 	if (ret < 0)
 		WARNING("reset failed: %d", ret);
-	return USBD_STATUS_SUCCESS;
+	return wrap_urb_status(ret);
 }
 
 static USBD_STATUS wrap_get_port_status(struct irp *irp)
