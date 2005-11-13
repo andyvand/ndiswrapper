@@ -14,8 +14,8 @@
  *
  */
 
-#ifndef USB_H
-#define USB_H
+#ifndef _USB_H_
+#define _USB_H_
 
 #include "ntoskernel.h"
 

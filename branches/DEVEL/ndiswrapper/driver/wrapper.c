@@ -13,7 +13,7 @@
  *
  */
 
-#include "wrapper.h"
+#include "ndis.h"
 #include "iw_ndis.h"
 #include "loader.h"
 #include "pnp.h"

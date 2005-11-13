@@ -13,8 +13,8 @@
  *
  */
 
-#ifndef LOADER_H
-#define LOADER_H
+#ifndef _LOADER_H_
+#define _LOADER_H_
 
 #include "ndiswrapper.h"
 

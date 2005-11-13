@@ -12,8 +12,9 @@
  *  GNU General Public License for more details.
  *
  */
-#ifndef IW_NDIS_H
-#define IW_NDIS_H
+
+#ifndef _IW_NDIS_H_
+#define _IW_NDIS_H_
 
 #include "ndis.h"
 

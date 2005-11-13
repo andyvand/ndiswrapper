@@ -66,29 +66,9 @@ STDCALL NDIS_STATUS WRAP_EXPORT(NdisMRegisterMiniport)
 	(struct driver_object *drv_obj,
 	 struct miniport_char *miniport_char, UINT char_len)
 {
-	int i, min_length;
+	int min_length;
 	void **func;
 	struct ndis_driver *driver;
-	char *miniport_funcs[] = {
-		"query",
-		"reconfig",
-		"reset",
-		"send",
-		"setinfo",
-		"tx_data",
-		"return_packet",
-		"send_packets",
-		"alloc_complete",
-		"co_create_vc",
-		"co_delete_vc",
-		"co_activate_vc",
-		"co_deactivate_vc",
-		"co_send_packets",
-		"co_request",
-		"cancel_send_packets",
-		"pnp_event_notify",
-		"adapter_shutdown",
-	};
 
 	min_length = ((char *)&miniport_char->co_create_vc) -
 		((char *)miniport_char);
@@ -122,14 +102,23 @@ STDCALL NDIS_STATUS WRAP_EXPORT(NdisMRegisterMiniport)
 	       char_len > sizeof(*miniport_char) ?
 	       sizeof(*miniport_char) : char_len);
 
-	i = 0;
-	func = (void **)&driver->miniport.query;
-	while (i < (sizeof(miniport_funcs) / sizeof(miniport_funcs[0]))) {
-		DBGTRACE2("miniport function '%s' is at %p",
-			  miniport_funcs[i], func[i]);
-		i++;
+	DBG_BLOCK() {
+		int i;
+		char *miniport_funcs[] = {
+			"query", "reconfig", "reset", "send", "setinfo",
+			"tx_data", "return_packet", "send_packets",
+			"alloc_complete", "co_create_vc", "co_delete_vc",
+			"co_activate_vc", "co_deactivate_vc",
+			"co_send_packets", "co_request",
+			"cancel_send_packets", "pnp_event_notify",
+			"adapter_shutdown",
+		};
+		func = (void **)&driver->miniport.query;
+		for (i = 0; i < (sizeof(miniport_funcs) /
+				 sizeof(miniport_funcs[0])); i++)
+			DBGTRACE2("miniport function '%s' is at %p",
+				  miniport_funcs[i], func[i]);
 	}
-
 	TRACEEXIT1(return NDIS_STATUS_SUCCESS);
 }
 
@@ -660,7 +649,7 @@ STDCALL ULONG WRAP_EXPORT(NdisReadPciSlotInformation)
 	ULONG i;
 	TRACEENTER3("%d", len);
 	for (i = 0; i < len; i++)
-		if (pci_read_config_byte(wd->dev.pci, offset+i, &buf[i]) !=
+		if (pci_read_config_byte(wd->dev.pci, offset + i, &buf[i]) !=
 		    PCIBIOS_SUCCESSFUL)
 			break;
 	TRACEEXIT3(return i);
@@ -681,7 +670,7 @@ STDCALL ULONG WRAP_EXPORT(NdisWritePciSlotInformation)
 	ULONG i;
 	TRACEENTER3("%d", len);
 	for (i = 0; i < len; i++)
-		if (pci_write_config_byte(wd->dev.pci, offset+i, buf[i]) !=
+		if (pci_write_config_byte(wd->dev.pci, offset + i, buf[i]) !=
 		    PCIBIOS_SUCCESSFUL)
 			break;
 	TRACEEXIT3(return i);
@@ -2569,3 +2558,19 @@ STDCALL void WRAP_EXPORT(NdisMCoDeactivateVcComplete)(void)
 }
 
 #include "ndis_exports.h"
+
+void setup_nmb_func_ptrs(struct ndis_miniport_block *nmb)
+{
+	nmb->rx_packet = WRAP_FUNC_PTR(NdisMIndicateReceivePacket);
+	nmb->send_complete = WRAP_FUNC_PTR(NdisMSendComplete);
+	nmb->send_resource_avail = WRAP_FUNC_PTR(NdisMSendResourcesAvailable);
+	nmb->status = WRAP_FUNC_PTR(NdisMIndicateStatus);
+	nmb->status_complete = WRAP_FUNC_PTR(NdisMIndicateStatusComplete);
+	nmb->query_complete = WRAP_FUNC_PTR(NdisMQueryInformationComplete);
+	nmb->set_complete = WRAP_FUNC_PTR(NdisMSetInformationComplete);
+	nmb->reset_complete = WRAP_FUNC_PTR(NdisMResetComplete);
+	nmb->eth_rx_indicate = WRAP_FUNC_PTR(EthRxIndicateHandler);
+	nmb->eth_rx_complete = WRAP_FUNC_PTR(EthRxComplete);
+	nmb->td_complete = WRAP_FUNC_PTR(NdisMTransferDataComplete);
+}
+
