@@ -26,18 +26,24 @@ driver_dispatch_t pdoDispatchInternalDeviceControl;
 driver_dispatch_t pdoDispatchDeviceControl;
 driver_dispatch_t pdoDispatchPnp;
 driver_dispatch_t pdoDispatchPower;
-driver_dispatch_t IopPassIrpDownAndWait;
+
+STDCALL NTSTATUS IrpStopCompletion(struct device_object *dev_obj,
+				   struct irp *irp, void *context);
+
+struct ndis_driver *load_driver(struct ndis_device *device);
+int start_pdo(struct device_object *pdo);
 
 NTSTATUS pnp_set_power_state(struct wrapper_dev *wd,
 			     enum device_power_state state);
 NTSTATUS pnp_start_device(struct wrapper_dev *wd);
+NTSTATUS pnp_stop_device(struct wrapper_dev *wd);
 NTSTATUS pnp_remove_device(struct wrapper_dev *wd);
 
 int wrap_pnp_start_ndis_pci_device(struct pci_dev *pdev,
 				   const struct pci_device_id *ent);
 void __devexit wrap_pnp_remove_ndis_pci_device(struct pci_dev *pdev);
 int wrap_pnp_suspend_device(struct wrapper_dev *wd,
-			    enum ndis_pm_state pm_state);
+			    enum ndis_power_state pm_state);
 int wrap_pnp_resume_device(struct wrapper_dev *wd);
 int wrap_pnp_resume_pci(struct pci_dev *pdev);
 int wrap_pnp_suspend_pci(struct pci_dev *pdev, pm_message_t state);

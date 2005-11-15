@@ -392,7 +392,8 @@ static int load_ndis_driver(struct load_driver *load_driver)
 	DBGTRACE1("driver: %p", ndis_driver);
 	for (i = 0; i <= IRP_MJ_MAXIMUM_FUNCTION; i++)
 		drv_obj->major_func[i] = IopPassIrpDown;
-
+	drv_obj->major_func[IRP_MJ_PNP] = NdisDispatchPnp;
+	drv_obj->major_func[IRP_MJ_POWER] = NdisDispatchPower;
 	memset(ndis_driver, 0, sizeof(*ndis_driver));
 	ndis_driver->bustype = -1;
 	ndis_driver->drv_obj = drv_obj;

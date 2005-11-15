@@ -417,7 +417,6 @@ _FASTCALL void WRAP_EXPORT(IofCompleteRequest)
 		ERROR("invalid irp: %p, STATUS_PENDING", irp);
 		return;
 	}
-
 	if (irp->current_location < 0) {
 		ERROR("invalid irp: %p, %d", irp, irp->current_location);
 		return;

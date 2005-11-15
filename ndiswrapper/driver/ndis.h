@@ -218,7 +218,7 @@ enum ndis_phys_medium {
 	NdisPhysicalMediumWirelessWan, NdisPhysicalMediumMax
 };
 
-enum ndis_pm_state {
+enum ndis_power_state {
 	NdisDeviceStateUnspecified = 0,
 	NdisDeviceStateD0, NdisDeviceStateD1, NdisDeviceStateD2,
 	NdisDeviceStateD3, NdisDeviceStateMaximum
@@ -431,7 +431,6 @@ struct ndis_driver {
 	struct pe_image pe_images[MAX_PE_IMAGES];
 	int num_bin_files;
 	struct ndis_bin_file *bin_files;
-	atomic_t users;
 	struct miniport_char miniport;
 };
 

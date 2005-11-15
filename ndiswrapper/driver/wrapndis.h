@@ -32,8 +32,6 @@ NDIS_STATUS miniport_query_int(struct wrapper_dev *wd, ndis_oid oid,
 NDIS_STATUS miniport_set_int(struct wrapper_dev *wd, ndis_oid oid,
 			     ULONG data);
 NDIS_STATUS miniport_surprise_remove(struct wrapper_dev *wd);
-NDIS_STATUS miniport_set_power_state(struct wrapper_dev *wd,
-				     enum ndis_pm_state);
 void hangcheck_add(struct wrapper_dev *wd);
 void hangcheck_del(struct wrapper_dev *wd);
 void sendpacket_done(struct wrapper_dev *wd, struct ndis_packet *packet);
@@ -52,6 +50,9 @@ void miniport_halt(struct wrapper_dev *wd);
 
 void check_capa(struct wrapper_dev *wd);
 
+driver_dispatch_t NdisDispatchPnp;
+driver_dispatch_t NdisDispatchPower;
+
 struct net_device *wrap_alloc_netdev(struct wrapper_dev **pwd,
 				     struct ndis_device *device,
 				     struct ndis_driver *driver);
@@ -59,6 +60,5 @@ struct net_device *wrap_alloc_netdev(struct wrapper_dev **pwd,
 struct iw_statistics *get_wireless_stats(struct net_device *dev);
 STDCALL NTSTATUS NdisAddDevice(struct driver_object *drv_obj,
 			       struct device_object *pdo);
-void NdisDeleteDevice(struct device_object *pdo);
 
 #endif
