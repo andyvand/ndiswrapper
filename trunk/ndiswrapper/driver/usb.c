@@ -102,10 +102,9 @@ static void usb_init_urb(struct urb *urb)
 
 extern KSPIN_LOCK irp_cancel_lock;
 
-/* TODO: using a worker instead of tasklet is probably preferable,
- * since we don't know if IoCompleteRequest can be called from atomic
- * context, but with ZyDas driver the worker never gets executed, even
- * though it gets scheduled */
+/* TODO: using a worker instead of tasklet is probably preferable, but
+ * with ZyDas driver the worker never gets executed, even though it
+ * gets scheduled */
 static struct tasklet_struct irp_complete_work;
 static struct nt_list irp_complete_list;
 
