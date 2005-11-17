@@ -283,7 +283,6 @@ static void unload_ndis_driver(struct ndis_driver *driver)
 	if (driver->bin_files)
 		kfree(driver->bin_files);
 
-//	IoDetachDevice(drv_obj->dev_obj);
 	RtlFreeUnicodeString(&drv_obj->name);
 	/* this frees driver */
 	free_custom_ext(drv_obj->drv_ext);
