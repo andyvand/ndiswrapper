@@ -325,25 +325,41 @@ void miniport_halt(struct wrapper_dev *wd)
 	TRACEEXIT1(return);
 }
 
-NDIS_STATUS miniport_surprise_remove(struct wrapper_dev *wd)
+NDIS_STATUS miniport_pnp_event(struct wrapper_dev *wd,
+			       enum ndis_device_pnp_event event)
 {
 	struct miniport_char *miniport;
 
 	miniport = &wd->driver->miniport;
-	DBGTRACE1("%d, %p", test_bit(ATTR_SURPRISE_REMOVE, &wd->attributes),
-		  miniport->pnp_event_notify);
-
-	if (miniport->pnp_event_notify) {
+	if (event == NdisDevicePnPEventSurpriseRemoved) {
+		DBGTRACE1("%d, %p",
+			  test_bit(ATTR_SURPRISE_REMOVE, &wd->attributes),
+			  miniport->pnp_event_notify);
+		if (!miniport->pnp_event_notify) {
+			WARNING("Windows driver %s doesn't support "
+				"MiniportPnpEventNotify for safe unplugging",
+				wd->driver->name);
+			return NDIS_STATUS_FAILURE;
+		}
 		DBGTRACE1("calling surprise_removed");
 		LIN2WIN4(miniport->pnp_event_notify, wd->nmb->adapter_ctx,
 			 NdisDevicePnPEventSurpriseRemoved, NULL, 0);
 		return NDIS_STATUS_SUCCESS;
-	} else {
-		WARNING("Windows driver %s doesn't support "
-			"MiniportPnpEventNotify for safe unplugging",
-			wd->driver->name);
-		return NDIS_STATUS_FAILURE;
 	}
+	if (event == NdisDevicePnPEventPowerProfileChanged) {
+		if (miniport->pnp_event_notify) {
+			ULONG pnp_info;
+			pnp_info = NdisPowerProfileAcOnLine;
+			DBGTRACE2("calling pnp_event_notify");
+			LIN2WIN4(miniport->pnp_event_notify,
+				 wd->nmb->adapter_ctx,
+				 NdisDevicePnPEventPowerProfileChanged,
+				 &pnp_info, (ULONG)sizeof(pnp_info));
+			return NDIS_STATUS_SUCCESS;
+		} else
+			return NDIS_STATUS_FAILURE;
+	}
+	return NDIS_STATUS_SUCCESS;
 }
 
 /*
@@ -1311,23 +1327,10 @@ static NDIS_STATUS miniport_set_power_state(struct wrapper_dev *wd,
 			status = miniport_set_int(wd, OID_PNP_SET_POWER,
 						  NdisDeviceStateD0);
 			DBGTRACE2("set_power returns %08X", status);
-			/* According NDIS, pnp_event_notify should be
-			 * called whenever power is set to D0 Only
-			 * NDIS 5.1 drivers are required to supply
-			 * this function; some drivers don't seem to
-			 * support it (at least Orinoco)
-			 */
 			miniport = &wd->driver->miniport;
-			if (status == NDIS_STATUS_SUCCESS &&
-			    miniport->pnp_event_notify) {
-				ULONG pnp_info;
-				pnp_info = NdisPowerProfileAcOnLine;
-				DBGTRACE2("calling pnp_event_notify");
-				LIN2WIN4(miniport->pnp_event_notify,
-					 wd->nmb->adapter_ctx,
-					 NdisDevicePnPEventPowerProfileChanged,
-					 &pnp_info, (ULONG)sizeof(pnp_info));
-			}
+			if (status == NDIS_STATUS_SUCCESS)
+				miniport_pnp_event(wd,
+				   NdisDevicePnPEventPowerProfileChanged);
 		}
 		TRACEEXIT1(return status);
 	} else {
@@ -1335,8 +1338,8 @@ static NDIS_STATUS miniport_set_power_state(struct wrapper_dev *wd,
 		if (status == NDIS_STATUS_SUCCESS)
 			set_bit(HW_SUSPENDED, &wd->hw_status);
 		else
-			WARNING("setting power state to %d failed: "
-				"%08X", state, status);
+			WARNING("setting power state to %d failed: %08X",
+				state, status);
 		if (status != NDIS_STATUS_SUCCESS) {
 			WARNING("device may not support power management");
 			DBGTRACE2("no pm: halting the device");
@@ -1348,7 +1351,7 @@ static NDIS_STATUS miniport_set_power_state(struct wrapper_dev *wd,
 	}
 }
 
-STDCALL NTSTATUS NdisDispatchPower(struct device_object *pdo,
+STDCALL NTSTATUS NdisDispatchPower(struct device_object *fdo,
 				   struct irp *irp)
 {
 	struct io_stack_location *irp_sl;
@@ -1358,9 +1361,9 @@ STDCALL NTSTATUS NdisDispatchPower(struct device_object *pdo,
 	NDIS_STATUS ndis_status;
 
 	irp_sl = IoGetCurrentIrpStackLocation(irp);
-	wd = pdo->reserved;
-	IOTRACE("pdo: %p, fn: %d:%d, wd: %p",
-		  pdo, irp_sl->major_fn, irp_sl->minor_fn, wd);
+	wd = fdo->reserved;
+	IOTRACE("fdo: %p, fn: %d:%d, wd: %p", fdo, irp_sl->major_fn,
+		irp_sl->minor_fn, wd);
 	if (irp_sl->params.power.state.device_state == PowerDeviceD0)
 		state = NdisDeviceStateD0;
 	else
@@ -1473,7 +1476,7 @@ STDCALL NTSTATUS NdisDispatchPnp(struct device_object *fdo,
 		IoCopyCurrentIrpStackLocationToNext(irp);
 		IoSetCompletionRoutine(irp, IrpStopCompletion, wd, TRUE,
 				       FALSE, FALSE);
-		status = IoCallDriver(wd->nmb->pdo, irp);
+		status = IoCallDriver(pdo, irp);
 		break;
 	default:
 		return IopPassIrpDown(pdo, irp);
@@ -1821,11 +1824,8 @@ void __devexit wrap_pnp_remove_ndis_pci_device(struct pci_dev *pdev)
 	struct wrapper_dev *wd;
 
 	TRACEENTER1("%p", pdev);
-
 	wd = (struct wrapper_dev *)pci_get_drvdata(pdev);
-
 	TRACEENTER1("%p", wd);
-
 	if (!wd)
 		TRACEEXIT1(return);
 	wrap_pnp_remove_ndis_device(wd);
@@ -1929,11 +1929,10 @@ void wrap_pnp_remove_ndis_usb_device(struct usb_interface *intf)
 	wd = (struct wrapper_dev *)usb_get_intfdata(intf);
 	if (!wd)
 		TRACEEXIT1(return);
-
 	wd->dev.usb.intf = NULL;
 	usb_set_intfdata(intf, NULL);
 	if (!test_bit(HW_RMMOD, &wd->hw_status))
-		miniport_surprise_remove(wd);
+		miniport_pnp_event(wd, NdisDevicePnPEventSurpriseRemoved);
 	wrap_pnp_remove_ndis_device(wd);
 	TRACEEXIT1(return);
 }
@@ -1947,7 +1946,7 @@ void wrap_pnp_remove_ndis_usb_device(struct usb_device *udev, void *ptr)
 		TRACEEXIT1(return);
 	wd->dev.usb.intf = NULL;
 	if (!test_bit(HW_RMMOD, &wd->hw_status))
-		miniport_surprise_remove(wd);
+		miniport_pnp_event(wd, NdisDevicePnPEventSurpriseRemoved);
 	wrap_pnp_remove_ndis_device(wd);
 	TRACEEXIT1(return);
 }

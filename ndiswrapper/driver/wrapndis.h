@@ -31,7 +31,8 @@ NDIS_STATUS miniport_query_int(struct wrapper_dev *wd, ndis_oid oid,
 			       ULONG *data);
 NDIS_STATUS miniport_set_int(struct wrapper_dev *wd, ndis_oid oid,
 			     ULONG data);
-NDIS_STATUS miniport_surprise_remove(struct wrapper_dev *wd);
+NDIS_STATUS miniport_pnp_event(struct wrapper_dev *wd, 
+			       enum ndis_device_pnp_event event);
 void hangcheck_add(struct wrapper_dev *wd);
 void hangcheck_del(struct wrapper_dev *wd);
 void sendpacket_done(struct wrapper_dev *wd, struct ndis_packet *packet);
