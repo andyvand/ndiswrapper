@@ -367,11 +367,7 @@ NTSTATUS pnp_start_device(struct wrapper_dev *wd)
 	irp->io_status.status = STATUS_NOT_SUPPORTED;
 	status = IoCallDriver(fdo, irp);
 	if (status == STATUS_SUCCESS)
-#if 0
 		fdo->drv_obj->drv_ext->count++;
-#else
-		(void)0;
-#endif
 	else
 		WARNING("Windows driver couldn't initialize the device (%08X)",
 			status);
@@ -418,6 +414,7 @@ NTSTATUS pnp_remove_device(struct wrapper_dev *wd)
 	NTSTATUS status;
 
 	fdo = IoGetAttachedDevice(wd->nmb->pdo);
+	drv_obj = fdo->drv_obj;
 	DBGTRACE1("fdo: %p", fdo);
 	irp = IoAllocateIrp(fdo->stack_size, FALSE);
 	irp_sl = IoGetNextIrpStackLocation(irp);
@@ -439,13 +436,11 @@ NTSTATUS pnp_remove_device(struct wrapper_dev *wd)
 	if (status != STATUS_SUCCESS)
 		WARNING("status: %08X", status);
 
-	drv_obj = fdo->drv_obj;
 	DBGTRACE1("drv_obj: %p", drv_obj);
-#if 0
+	/* we don't unload the driver itself, for now */
 	if (--drv_obj->drv_ext->count <= 0 &&
 	    drv_obj && drv_obj->unload)
 		LIN2WIN1(drv_obj->unload, drv_obj);
-#endif
 	TRACEEXIT1(return status);
 }
 
