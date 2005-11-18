@@ -109,7 +109,7 @@ int start_pdo(struct device_object *pdo)
 #ifdef CONFIG_X86_64
 	/* 64-bit broadcom driver doesn't work if DMA is allocated
 	 * from over 1GB */
-	if (strcmp(wd->device->driver_name, "netbc564") == 0) {
+	if (strcmp(wd->ndis_device->driver_name, "netbc564") == 0) {
 		if (pci_set_dma_mask(pdev, 0x3fffffff) ||
 		    pci_set_consistent_dma_mask(pdev, 0x3fffffff))
 			WARNING("DMA mask couldn't be set; this driver "
@@ -438,8 +438,7 @@ NTSTATUS pnp_remove_device(struct wrapper_dev *wd)
 
 	DBGTRACE1("drv_obj: %p", drv_obj);
 	/* we don't unload the driver itself, for now */
-	if (--drv_obj->drv_ext->count <= 0 &&
-	    drv_obj && drv_obj->unload)
+	if (--drv_obj->drv_ext->count <= 0 && drv_obj && drv_obj->unload)
 		LIN2WIN1(drv_obj->unload, drv_obj);
 	TRACEEXIT1(return status);
 }

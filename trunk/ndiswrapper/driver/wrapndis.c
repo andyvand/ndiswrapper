@@ -331,7 +331,8 @@ NDIS_STATUS miniport_pnp_event(struct wrapper_dev *wd,
 	struct miniport_char *miniport;
 
 	miniport = &wd->driver->miniport;
-	if (event == NdisDevicePnPEventSurpriseRemoved) {
+	switch (event) {
+	case NdisDevicePnPEventSurpriseRemoved:
 		DBGTRACE1("%d, %p",
 			  test_bit(ATTR_SURPRISE_REMOVE, &wd->attributes),
 			  miniport->pnp_event_notify);
@@ -345,8 +346,7 @@ NDIS_STATUS miniport_pnp_event(struct wrapper_dev *wd,
 		LIN2WIN4(miniport->pnp_event_notify, wd->nmb->adapter_ctx,
 			 NdisDevicePnPEventSurpriseRemoved, NULL, 0);
 		return NDIS_STATUS_SUCCESS;
-	}
-	if (event == NdisDevicePnPEventPowerProfileChanged) {
+	case NdisDevicePnPEventPowerProfileChanged:
 		if (miniport->pnp_event_notify) {
 			ULONG pnp_info;
 			pnp_info = NdisPowerProfileAcOnLine;
@@ -358,8 +358,10 @@ NDIS_STATUS miniport_pnp_event(struct wrapper_dev *wd,
 			return NDIS_STATUS_SUCCESS;
 		} else
 			return NDIS_STATUS_FAILURE;
+	default:
+		WARNING("event %d not yet implemented", event);
+		return NDIS_STATUS_SUCCESS;
 	}
-	return NDIS_STATUS_SUCCESS;
 }
 
 /*
