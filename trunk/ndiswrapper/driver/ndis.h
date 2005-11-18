@@ -151,7 +151,6 @@ struct ndis_packet {
 		} mac_reserved;
 	} u;
 	ULONG_PTR reserved[2];
-//	UCHAR protocol_reserved[PROTOCOL_RESERVED_SIZE_IN_PACKET];
 	UCHAR protocol_reserved[1];
 	struct wrap_ndis_packet *wrap_ndis_packet;
 };
@@ -481,8 +480,7 @@ struct ndis_wireless_stats {
 enum ndis_status_type {
 	Ndis802_11StatusType_Authentication,
 	Ndis802_11StatusType_PMKID_CandidateList = 2,
-	Ndis802_11StatusType_MediaStreamMode,
-	Ndis802_11StatusType_RadioState,
+	Ndis802_11StatusType_MediaStreamMode, Ndis802_11StatusType_RadioState,
 };
 
 struct ndis_status_indication {
@@ -498,6 +496,10 @@ struct ndis_radio_status_indication
 {
 	enum ndis_status_type status_type;
 	enum ndis_radio_status radio_state;
+};
+
+enum ndis_media_stream_mode {
+	Ndis802_11MediaStreamOff, Ndis802_11MediaStreamOn
 };
 
 enum wrapper_work {
@@ -1059,6 +1061,7 @@ int pdo_resume_pci(struct pci_dev *pdev);
 #define OID_802_11_REMOVE_KEY			0x0D01011E
 #define OID_802_11_ASSOCIATION_INFORMATION	0x0D01011F
 #define OID_802_11_TEST				0x0D010120
+#define OID_802_11_MEDIA_STREAM_MODE		0x0D010121
 #define OID_802_11_CAPABILITY			0x0D010122
 #define OID_802_11_PMKID			0x0D010123
 
