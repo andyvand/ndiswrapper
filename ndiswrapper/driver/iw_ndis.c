@@ -1874,25 +1874,22 @@ static int priv_media_stream_mode(struct net_device *dev,
 				  struct iw_request_info *info,
 				  union iwreq_data *wrqu, char *extra)
 {
-#if 0
 	struct wrapper_dev *wd = netdev_priv(dev);
 	NDIS_STATUS res;
 	int mode;
 
 	TRACEENTER2("");
 	if (wrqu->param.value > 0)
-		mode = Ndis802_11MediaStreamModeOn;
+		mode = Ndis802_11MediaStreamOn;
 	else
-		mode = Ndis802_11MediaStreamModeOff;
+		mode = Ndis802_11MediaStreamOff;
 	res = miniport_set_int(wd, OID_802_11_MEDIA_STREAM_MODE, mode);
-	if (res == NDIS_STATUS_FAILURE ||
-	    res == NDIS_STATUS_INVALID_OID)
+	if (res == NDIS_STATUS_FAILURE || res == NDIS_STATUS_INVALID_OID)
 		return -EOPNOTSUPP;
 	if (res) {
 		WARNING("oid failed (%08X)", res);
 		TRACEEXIT2(return -EINVAL);
 	}
-#endif
 	TRACEEXIT2(return 0);
 }
 

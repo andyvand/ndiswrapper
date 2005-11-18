@@ -24,6 +24,7 @@ extern struct nt_list ndis_drivers;
 
 extern char *if_name;
 extern int hangcheck_interval;
+extern const struct iw_handler_def ndis_handler_def;
 
 static int set_packet_filter(struct wrapper_dev *wd, ULONG packet_filter);
 static void stats_timer_add(struct wrapper_dev *wd);
@@ -253,11 +254,9 @@ NDIS_STATUS miniport_init(struct wrapper_dev *wd)
 
 	/* Wait a little to let card power up otherwise ifup might
 	 * fail after boot; USB devices seem to need long delays */
-//	set_current_state(TASK_INTERRUPTIBLE);
-//	schedule_timeout(HZ);
+	set_current_state(TASK_INTERRUPTIBLE);
+	schedule_timeout(HZ);
 
-	/* do we need to reset the device? */
-//	status = miniport_reset(wd);
 #if 0
 	status = miniport_set_pm_state(wd, NdisDeviceStateD0);
 	if (status)
@@ -329,6 +328,7 @@ NDIS_STATUS miniport_pnp_event(struct wrapper_dev *wd,
 			       enum ndis_device_pnp_event event)
 {
 	struct miniport_char *miniport;
+	ULONG pnp_info;
 
 	miniport = &wd->driver->miniport;
 	switch (event) {
@@ -347,17 +347,17 @@ NDIS_STATUS miniport_pnp_event(struct wrapper_dev *wd,
 			 NdisDevicePnPEventSurpriseRemoved, NULL, 0);
 		return NDIS_STATUS_SUCCESS;
 	case NdisDevicePnPEventPowerProfileChanged:
-		if (miniport->pnp_event_notify) {
-			ULONG pnp_info;
-			pnp_info = NdisPowerProfileAcOnLine;
-			DBGTRACE2("calling pnp_event_notify");
-			LIN2WIN4(miniport->pnp_event_notify,
-				 wd->nmb->adapter_ctx,
-				 NdisDevicePnPEventPowerProfileChanged,
-				 &pnp_info, (ULONG)sizeof(pnp_info));
-			return NDIS_STATUS_SUCCESS;
-		} else
+		if (!miniport->pnp_event_notify) {
+			DBGTRACE1("Windows driver %s doesn't support "
+				"MiniportPnpEventNotify", wd->driver->name);
 			return NDIS_STATUS_FAILURE;
+		}
+		pnp_info = NdisPowerProfileAcOnLine;
+		DBGTRACE2("calling pnp_event_notify");
+		LIN2WIN4(miniport->pnp_event_notify, wd->nmb->adapter_ctx,
+			 NdisDevicePnPEventPowerProfileChanged,
+			 &pnp_info, (ULONG)sizeof(pnp_info));
+		return NDIS_STATUS_SUCCESS;
 	default:
 		WARNING("event %d not yet implemented", event);
 		return NDIS_STATUS_SUCCESS;
@@ -589,7 +589,6 @@ static int send_packets(struct wrapper_dev *wd, unsigned int start,
 		packet = wd->xmit_ring[start];
 		res = LIN2WIN3(miniport->send, wd->nmb->adapter_ctx,
 			       packet, 0);
-
 		sent = 1;
 		switch (res) {
 		case NDIS_STATUS_SUCCESS:
@@ -1191,7 +1190,6 @@ void check_capa(struct wrapper_dev *wd)
 	const int buf_len = 512;
 
 	TRACEENTER1("%p", wd);
-
 	/* check if WEP is supported */
 	if (set_encr_mode(wd, Ndis802_11Encryption1Enabled) == 0 &&
 	    get_encr_mode(wd) == Ndis802_11Encryption1KeyAbsent)
@@ -1762,10 +1760,10 @@ static NTSTATUS wrap_pnp_remove_ndis_device(struct wrapper_dev *wd)
 }
 
 /*
- * Called by PCI-subsystem for each PCI-card found.
+ * called by PCI-subsystem for each PCI-card found.
  *
  * This function should not be marked __devinit because ndiswrapper
- * adds PCI_id's dynamically.
+ * adds PCI IDs dynamically.
  */
 int wrap_pnp_start_ndis_pci_device(struct pci_dev *pdev,
 				   const struct pci_device_id *ent)
@@ -1818,9 +1816,6 @@ err_pdo:
 	return -ENOMEM;
 }
 
-/*
- * Remove one PCI-card.
- */
 void __devexit wrap_pnp_remove_ndis_pci_device(struct pci_dev *pdev)
 {
 	struct wrapper_dev *wd;
