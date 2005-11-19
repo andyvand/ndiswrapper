@@ -84,7 +84,7 @@ STDCALL NTSTATUS IopInvalidDeviceRequest(struct device_object *dev_obj,
 
 int start_pdo(struct device_object *pdo)
 {
-	int ret, i, count;
+	int ret, i, count, resource_length;
 	struct wrapper_dev *wd;
 	struct pci_dev *pdev;
 	struct cm_partial_resource_descriptor *entry;
@@ -120,16 +120,16 @@ int start_pdo(struct device_object *pdo)
 		if ((pci_resource_flags(pdev, i) & IORESOURCE_MEM) ||
 		    (pci_resource_flags(pdev, i) & IORESOURCE_IO))
 			count++;
-	DBGTRACE2("resources: %d", i);
 	/* space for extra entry for IRQ is already available */
-	wd->resource_list =
-		kmalloc(sizeof(struct cm_resource_list) +
-			sizeof(struct cm_partial_resource_descriptor) * count,
-			GFP_KERNEL);
+	resource_length = sizeof(struct cm_partial_resource_list) +
+		sizeof(struct cm_partial_resource_descriptor) * count;
+	DBGTRACE2("resources: %d, %d", i, resource_length);
+	wd->resource_list = kmalloc(resource_length, GFP_KERNEL);
 	if (!wd->resource_list) {
 		WARNING("couldn't allocate memory");
 		goto err_regions;
 	}
+	memset(wd->resource_list, 0, resource_length);
 	wd->resource_list->count = 1;
 	wd->resource_list->list[0].interface_type = PCIBus;
 	/* bus_number is not used by WDM drivers */
@@ -167,7 +167,9 @@ int start_pdo(struct device_object *pdo)
 	entry->flags = CM_RESOURCE_INTERRUPT_LEVEL_SENSITIVE;
 	/* we assume all devices use shared IRQ */
 	entry->share = CmResourceShareShared;
-	entry->u.interrupt.level = DISPATCH_LEVEL;
+	/* 'level' should be DISPATCH_LEVEL, but some drivers, e.g.,
+	 * RTL8180L, use this also as vector, so set it to vector */
+	entry->u.interrupt.level = pdev->irq;
 	entry->u.interrupt.vector = pdev->irq;
 	entry->u.interrupt.affinity = -1;
 
