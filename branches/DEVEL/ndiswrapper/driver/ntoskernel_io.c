@@ -43,11 +43,8 @@ STDCALL NTSTATUS WRAP_EXPORT(IoGetDeviceProperty)
 {
 	struct ansi_string ansi;
 	struct unicode_string unicode;
-	struct wrapper_dev *wd;
 	char buf[32];
 	int devnum = 1;
-
-	wd = pdo->reserved;
 
 	IOENTER("dev_obj = %p, dev_property = %d, buffer_len = %u, "
 		"buffer = %p, result_len = %p", pdo, dev_property,
@@ -958,14 +955,11 @@ STDCALL NTSTATUS WRAP_EXPORT(IoSetDeviceInterfaceState)
 }
 
 STDCALL NTSTATUS WRAP_EXPORT(IoOpenDeviceRegistryKey)
-	(struct device_object *pdo, ULONG type, ACCESS_MASK mask,
+	(struct device_object *dev_obj, ULONG type, ACCESS_MASK mask,
 	 void **handle)
 {
-	struct wrap_device *wd;
-
-	TRACEENTER1("pdo: %p", pdo);
-	wd = pdo->reserved;
-	*handle = wd->ndis_device->nmb;
+	TRACEENTER1("dev_obj: %p", dev_obj);
+	*handle = dev_obj;
 	return STATUS_SUCCESS;
 }
 
@@ -983,7 +977,7 @@ STDCALL NTSTATUS WRAP_EXPORT(ZwSetValueKey)
 	 ULONG type, void *data, ULONG data_size)
 {
 	NDIS_STATUS status;
-	struct ndis_config_param param;
+	struct ndis_configuration_parameter param;
 
 	NdisWriteConfiguration(&status, handle, name, &param);
 	if (status == NDIS_STATUS_SUCCESS)
@@ -998,14 +992,14 @@ STDCALL NTSTATUS WRAP_EXPORT(ZwQueryValueKey)
 	 ULONG length, ULONG *res_length)
 {
 	NDIS_STATUS status;
-	struct ndis_config_param *param;
+	struct ndis_configuration_parameter *param;
 
 	NdisReadConfiguration(&status, &param, handle, name,
-			      NDIS_CONFIG_PARAM_STRING);
+			      NdisParameterString);
 	if (status == NDIS_STATUS_SUCCESS) {
-		*res_length = param->data.ustring.length;
-		if (length < param->data.ustring.length) {
-			RtlCopyMemory(info, param->data.ustring.buf,
+		*res_length = param->data.string.length;
+		if (length < param->data.string.length) {
+			RtlCopyMemory(info, param->data.string.buf,
 				      *res_length);
 			return STATUS_SUCCESS;
 		} else

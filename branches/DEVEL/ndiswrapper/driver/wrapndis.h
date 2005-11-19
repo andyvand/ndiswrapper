@@ -51,6 +51,7 @@ void check_capa(struct wrap_ndis_device *wnd);
 
 driver_dispatch_t NdisDispatchPnp;
 driver_dispatch_t NdisDispatchPower;
+driver_dispatch_t NdisDispatchDeviceControl;
 
 struct net_device *wrap_alloc_netdev(struct wrap_ndis_device **pwd,
 				     struct wrap_device *device);

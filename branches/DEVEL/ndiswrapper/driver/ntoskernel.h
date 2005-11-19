@@ -438,8 +438,6 @@ struct wrap_work_item {
 	BOOLEAN win_func;
 };
 
-typedef struct mdl ndis_buffer;
-
 #define MAX_ALLOCATED_URBS 15
 
 struct wrap_device_setting {
@@ -457,13 +455,14 @@ struct wrap_bin_file {
 struct wrap_driver {
 	struct nt_list list;
 	struct driver_object *drv_obj;
-	char name[MAX_SETTING_NAME_LEN];
+	char name[MAX_DRIVER_NAME_LEN];
 	char version[MAX_SETTING_VALUE_LEN];
 	int bustype;
 	unsigned int num_pe_images;
 	struct pe_image pe_images[MAX_PE_IMAGES];
 	int num_bin_files;
 	struct wrap_bin_file *bin_files;
+	struct wrap_device_setting *settings;
 	union {
 		struct wrap_ndis_driver *ndis_driver;
 	};
@@ -480,7 +479,10 @@ struct wrap_device {
 	int dev_type;
 	struct device_object *pdo;
 	union {
-		struct pci_dev *pci;
+		struct {
+			struct pci_dev *pdev;
+			u32 pci_state[16];
+		} pci;
 		struct {
 			struct usb_device *udev;
 			struct usb_interface *intf;
@@ -493,11 +495,10 @@ struct wrap_device {
 	int subvendor;
 	int subdevice;
 	struct wrap_driver *driver;
-	char driver_name[MAX_DRIVER_NAME_LEN];
 	char conf_file_name[MAX_DRIVER_NAME_LEN];
 	unsigned long hw_status;
 	union {
-		struct wrap_ndis_device *ndis_device;
+		struct wrap_ndis_device *wnd;
 	};
 	struct nt_list timer_list;
 	KSPIN_LOCK timer_lock;
@@ -562,7 +563,6 @@ STDCALL struct mdl *IoAllocateMdl(void *virt, ULONG length, BOOLEAN second_buf,
 				  BOOLEAN charge_quota, struct irp *irp);
 STDCALL void MmBuildMdlForNonPagedPool(struct mdl *mdl);
 STDCALL void IoFreeMdl(struct mdl *mdl);
-STDCALL void NdisFreeBuffer(ndis_buffer *buffer);
 _FASTCALL LONG InterlockedDecrement(FASTCALL_DECL_1(LONG volatile *val));
 _FASTCALL LONG InterlockedIncrement(FASTCALL_DECL_1(LONG volatile *val));
 _FASTCALL struct nt_list *
