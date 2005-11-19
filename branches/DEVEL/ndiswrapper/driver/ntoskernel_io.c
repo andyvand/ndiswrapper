@@ -417,7 +417,6 @@ _FASTCALL void WRAP_EXPORT(IofCompleteRequest)
 		ERROR("invalid irp: %p, STATUS_PENDING", irp);
 		return;
 	}
-
 	if (irp->current_location < 0) {
 		ERROR("invalid irp: %p, %d", irp, irp->current_location);
 		return;
@@ -962,11 +961,11 @@ STDCALL NTSTATUS WRAP_EXPORT(IoOpenDeviceRegistryKey)
 	(struct device_object *pdo, ULONG type, ACCESS_MASK mask,
 	 void **handle)
 {
-	struct wrapper_dev *wd;
+	struct wrap_device *wd;
 
 	TRACEENTER1("pdo: %p", pdo);
 	wd = pdo->reserved;
-	*handle = wd->nmb;
+	*handle = wd->ndis_device->nmb;
 	return STATUS_SUCCESS;
 }
 

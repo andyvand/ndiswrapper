@@ -872,7 +872,7 @@ struct irp {
 	/* ndiswrapper extension */
 	struct wrap_urb *wrap_urb;
 	struct nt_list complete_list;
-	struct wrapper_dev *wd;
+	struct wrap_device *wd;
 };
 
 #define IoSizeOfIrp(stack_size)						\
@@ -897,28 +897,31 @@ do {								\
 	IoGetCurrentIrpStackLocation(IRP)++;			\
 } while (0)
 
-#define IoCopyCurrentIrpStackLocationToNext(IRP) 			\
-do {									\
-	struct io_stack_location *_irp_sl, *_next;			\
-	_irp_sl = IoGetCurrentIrpStackLocation(IRP);			\
-	_next = IoGetNextIrpStackLocation(IRP);				\
-	RtlCopyMemory(_next, _irp_sl,					\
-		      offsetof(struct io_stack_location,		\
-			       completion_routine));			\
-	_next->control = 0;						\
-} while (0)
+static inline void
+IoCopyCurrentIrpStackLocationToNext(struct irp *irp)
+{
+	struct io_stack_location *next;
+	next = IoGetNextIrpStackLocation(irp);
+	memcpy(next, IoGetCurrentIrpStackLocation(irp),
+	       offsetof(struct io_stack_location, completion_routine));
+	next->control = 0;
+}
 
-#define IoSetCompletionRoutine(IRP, ROUTINE, CONTEXT, SUC, ERR, CANCEL) \
-do {								\
-	struct io_stack_location *__irp_sl;				\
-	__irp_sl = IoGetNextIrpStackLocation(IRP);			\
-	__irp_sl->completion_routine = (ROUTINE);			\
-	__irp_sl->context = (CONTEXT);					\
-	__irp_sl->control = 0;						\
-	if (SUC) { __irp_sl->control |= CALL_ON_SUCCESS; }		\
-	if (ERR) { __irp_sl->control |= CALL_ON_ERROR; }		\
-	if (CANCEL) { __irp_sl->control |= CALL_ON_CANCEL; }		\
-} while (0)
+static inline void
+IoSetCompletionRoutine(struct irp *irp, void *routine, void *context,
+		       BOOLEAN success, BOOLEAN error, BOOLEAN cancel)
+{
+	struct io_stack_location *irp_sl = IoGetNextIrpStackLocation(irp);
+	irp_sl->completion_routine = routine;
+	irp_sl->context = context;
+	irp_sl->control = 0;
+	if (success)
+		irp_sl->control |= CALL_ON_SUCCESS;
+	if (error)
+		irp_sl->control |= CALL_ON_ERROR;
+	if (cancel)
+		irp_sl->control |= CALL_ON_CANCEL;
+}
 
 #define IoMarkIrpPending(irp)						\
 	(IoGetCurrentIrpStackLocation((irp))->control |= SL_PENDING_RETURNED)

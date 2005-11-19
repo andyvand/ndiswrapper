@@ -442,34 +442,91 @@ typedef struct mdl ndis_buffer;
 
 #define MAX_ALLOCATED_URBS 15
 
-struct phys_dev {
-	int dev_type;
-	struct pci_dev *pci;
-	struct {
-		struct usb_device *udev;
-		struct usb_interface *intf;
-		int num_alloc_urbs;
-		struct nt_list wrap_urb_list;
-	} usb;
+struct wrap_device_setting {
+	struct nt_list list;
+	char name[MAX_SETTING_NAME_LEN];
+	char value[MAX_SETTING_VALUE_LEN];
 };
 
-struct wrapper_dev;
+struct wrap_bin_file {
+	char name[MAX_SETTING_NAME_LEN];
+	int size;
+	void *data;
+};
+
+struct wrap_driver {
+	struct nt_list list;
+	struct driver_object *drv_obj;
+	char name[MAX_SETTING_NAME_LEN];
+	char version[MAX_SETTING_VALUE_LEN];
+	int bustype;
+	unsigned int num_pe_images;
+	struct pe_image pe_images[MAX_PE_IMAGES];
+	int num_bin_files;
+	struct wrap_bin_file *bin_files;
+	union {
+		struct wrap_ndis_driver *ndis_driver;
+	};
+};
+
+enum hw_status {
+	HW_NORMAL, HW_SUSPENDED, HW_HALTED, HW_RMMOD, HW_AVAILABLE,
+	HW_INITIALIZED,
+};
+
+struct wrap_device {
+	struct nt_list settings;
+	int bus_type;
+	int dev_type;
+	struct device_object *pdo;
+	union {
+		struct pci_dev *pci;
+		struct {
+			struct usb_device *udev;
+			struct usb_interface *intf;
+			int num_alloc_urbs;
+			struct nt_list wrap_urb_list;
+		} usb;
+	};
+	int vendor;
+	int device;
+	int subvendor;
+	int subdevice;
+	struct wrap_driver *driver;
+	char driver_name[MAX_DRIVER_NAME_LEN];
+	char conf_file_name[MAX_DRIVER_NAME_LEN];
+	unsigned long hw_status;
+	union {
+		struct wrap_ndis_device *ndis_device;
+	};
+	struct nt_list timer_list;
+	KSPIN_LOCK timer_lock;
+	struct cm_resource_list *resource_list;
+	u32 pci_state[16];
+};
 
 #if LINUX_VERSION_CODE > KERNEL_VERSION(2,6,0)
 /* until issues with threads hogging cpu are resolved, we don't want
  * to use shared workqueue, lest the threads take keyboard etc down */
 #define USE_OWN_WORKQUEUE 1
-extern struct workqueue_struct *ndiswrapper_wq;
-#define schedule_work(work_struct) queue_work(ndiswrapper_wq, (work_struct))
+extern struct workqueue_struct *wrapper_wq;
+#define schedule_work(work_struct) queue_work(wrapper_wq, (work_struct))
 #endif
 
 int ntoskernel_init(void);
 void ntoskernel_exit(void);
-int ntoskernel_init_device(struct wrapper_dev *wd);
-void ntoskernel_exit_device(struct wrapper_dev *wd);
+int ntoskernel_init_device(struct wrap_device *wd);
+void ntoskernel_exit_device(struct wrap_device *wd);
 void *allocate_object(ULONG size, enum common_object_type type,
 		      struct unicode_string *name);
 void  free_object(void *object);
+
+int usb_init(void);
+void usb_exit(void);
+int usb_init_device(struct wrap_device *wd);
+void usb_exit_device(struct wrap_device *wd);
+void usb_cleanup(void);
+void usb_cancel_pending_urbs(void);
 
 struct driver_object *find_bus_driver(const char *name);
 struct device_object *alloc_pdo(struct driver_object *drv_obj);
@@ -604,7 +661,7 @@ NOREGPARM SIZE_T _win_wcslen(const wchar_t *s);
 void *wrap_kmalloc(size_t size);
 void wrap_kfree(void *ptr);
 void wrap_init_timer(struct nt_timer *nt_timer, enum timer_type type,
-		     struct wrapper_dev *wd);
+		     struct wrap_device *wd);
 BOOLEAN wrap_set_timer(struct nt_timer *nt_timer, unsigned long expires_hz,
 		       unsigned long repeat_hz, struct kdpc *kdpc);
 
