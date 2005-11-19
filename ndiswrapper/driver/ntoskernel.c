@@ -358,9 +358,8 @@ static int add_bus_driver(struct driver_object *drv_obj, const char *name)
 	for (i = 0; i <= IRP_MJ_MAXIMUM_FUNCTION; i++)
 		drv_obj->major_func[i] = IopInvalidDeviceRequest;
 	drv_obj->major_func[IRP_MJ_INTERNAL_DEVICE_CONTROL] =
-		pdoDispatchInternalDeviceControl;
-	drv_obj->major_func[IRP_MJ_DEVICE_CONTROL] =
 		pdoDispatchDeviceControl;
+	drv_obj->major_func[IRP_MJ_DEVICE_CONTROL] = pdoDispatchDeviceControl;
 	drv_obj->major_func[IRP_MJ_POWER] = pdoDispatchPower;
 	drv_obj->major_func[IRP_MJ_PNP] = pdoDispatchPnp;
 	DBGTRACE1("bus driver at %p", drv_obj);

@@ -60,6 +60,8 @@ struct ndis_phy_addr_unit {
 	UINT length;
 };
 
+typedef struct mdl ndis_buffer;
+
 struct ndis_buffer_pool {
 	int max_descr;
 	int num_allocated_descr;
@@ -388,19 +390,24 @@ struct ndis_binary_data {
 	void *buf;
 };
 
-enum ndis_config_param_type {
-	NDIS_CONFIG_PARAM_INT, NDIS_CONFIG_PARAM_HEXINT,
-	NDIS_CONFIG_PARAM_STRING, NDIS_CONFIG_PARAM_MULTISTRING,
-	NDIS_CONFIG_PARAM_BINARY, NDIS_CONFIG_PARAM_NONE,
+enum ndis_parameter_type {
+	NdisParameterInteger, NdisParameterHexInteger,
+	NdisParameterString, NdisParameterMultiString,
 };
 
-struct ndis_config_param {
-	enum ndis_config_param_type type;
+typedef struct unicode_string NDIS_STRING;
+
+struct ndis_configuration_parameter {
+	enum ndis_parameter_type type;
 	union {
-		ULONG intval;
-		struct unicode_string ustring;
-		struct ndis_binary_data binary_data;
+		ULONG integer;
+		NDIS_STRING string;
 	} data;
+};
+
+struct ndis_config_param_list {
+	struct nt_list list;
+	struct ndis_configuration_parameter param;
 };
 
 struct wrap_ndis_driver {
@@ -710,7 +717,7 @@ struct wrap_ndis_device {
 	struct wrap_device *wd;
 	struct net_device *net_dev;
 	void *shutdown_ctx;
-
+	struct nt_list config_params;
 	struct tasklet_struct irq_tasklet;
 	struct ndis_irq *ndis_irq;
 	unsigned long mem_start;
@@ -720,7 +727,6 @@ struct wrap_ndis_device {
 	struct iw_statistics wireless_stats;
 	BOOLEAN stats_enabled;
 	struct ndis_wireless_stats ndis_stats;
-	struct ndis_device *ndis_device;
 
 	struct work_struct xmit_work;
 	struct ndis_packet *xmit_ring[XMIT_RING_SIZE];
@@ -746,39 +752,23 @@ struct wrap_ndis_device {
 
 	int hangcheck_interval;
 	struct timer_list hangcheck_timer;
-
 	struct timer_list stats_timer;
-
 	unsigned long scan_timestamp;
-
 	unsigned char link_status;
 	struct encr_info encr_info;
 	char nick[IW_ESSID_MAX_SIZE+1];
-
-	u32 pci_state[16];
-	unsigned long hw_status;
-
 	struct ndis_essid essid;
-
 	struct auth_encr_capa capa;
 	enum authentication_mode auth_mode;
 	enum encryption_status encr_mode;
 	enum network_infrastructure infrastructure_mode;
 	int num_pmkids;
-
 	mac_address mac;
-
-	/* list of initialized timers */
-	struct nt_list wrap_timer_list;
-	KSPIN_LOCK timer_lock;
-
 	struct proc_dir_entry *procfs_iface;
 
-	struct work_struct wrapper_worker;
-	unsigned long wrapper_work;
-
+	struct work_struct wrap_ndis_worker;
+	unsigned long wrap_ndis_work;
 	unsigned long attributes;
-	struct cm_resource_list *resource_list;
 	int iw_auth_set;
 	int iw_auth_wpa_version;
 	int iw_auth_cipher_pairwise;
@@ -846,12 +836,12 @@ STDCALL void NdisMTransferDataComplete(struct ndis_miniport_block *nmb,
 STDCALL void NdisWriteConfiguration(NDIS_STATUS *status,
 				    struct ndis_miniport_block *nmb,
 				    struct unicode_string *key,
-				    struct ndis_config_param *val);
+				    struct ndis_configuration_parameter *param);
 
 STDCALL void NdisReadConfiguration
-	(NDIS_STATUS *status, struct ndis_config_param **dest,
+	(NDIS_STATUS *status, struct ndis_configuration_parameter **param,
 	 struct ndis_miniport_block *nmb, struct unicode_string *key,
-	 enum ndis_config_param_type type);
+	 enum ndis_parameter_type type);
 
 void setup_nmb_func_ptrs(struct ndis_miniport_block *nmb);
 

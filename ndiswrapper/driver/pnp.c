@@ -20,7 +20,7 @@
 extern KSPIN_LOCK loader_lock;
 extern struct nt_list ndis_drivers;
 
-STDCALL NTSTATUS pdoDispatchInternalDeviceControl(struct device_object *pdo,
+STDCALL NTSTATUS pdoDispatchDeviceControl(struct device_object *pdo,
 						  struct  irp *irp)
 {
 	struct io_stack_location *irp_sl;
@@ -52,18 +52,10 @@ STDCALL NTSTATUS pdoDispatchInternalDeviceControl(struct device_object *pdo,
 		IoCompleteRequest(irp, IO_NO_INCREMENT);
 	IOEXIT(return status);
 #else
-	{
-		status = irp->io_status.status = STATUS_NOT_IMPLEMENTED;
-		IoCompleteRequest(irp, IO_NO_INCREMENT);
-		return status;
-	}
+	status = irp->io_status.status = STATUS_NOT_IMPLEMENTED;
+	IoCompleteRequest(irp, IO_NO_INCREMENT);
+	return status;
 #endif
-}
-
-STDCALL NTSTATUS pdoDispatchDeviceControl(struct device_object *pdo,
-					  struct irp *irp)
-{
-	return pdoDispatchInternalDeviceControl(pdo, irp);
 }
 
 STDCALL NTSTATUS IopInvalidDeviceRequest(struct device_object *dev_obj,
@@ -93,7 +85,7 @@ int start_pdo(struct device_object *pdo)
 	wd = pdo->reserved;
 	if (wd->dev_type != NDIS_PCI_BUS)
 		return 0;
-	pdev = wd->pci;
+	pdev = wd->pci.pdev;
 	pci_set_drvdata(pdev, wd);
 	ret = pci_enable_device(pdev);
 	if (ret) {
@@ -226,9 +218,9 @@ STDCALL NTSTATUS pdoDispatchPnp(struct device_object *pdo, struct irp *irp)
 		status = STATUS_SUCCESS;
 		break;
 	case IRP_MN_REMOVE_DEVICE:
-		IoDeleteDevice(wd->ndis_device->nmb->pdo);
+		IoDeleteDevice(wd->wnd->nmb->pdo);
 		if (wd->dev_type == NDIS_PCI_BUS) {
-			struct pci_dev *pdev = wd->pci;
+			struct pci_dev *pdev = wd->pci.pdev;
 			pci_release_regions(pdev);
 			pci_disable_device(pdev);
 			pci_set_drvdata(pdev, NULL);
@@ -279,7 +271,7 @@ STDCALL NTSTATUS pdoDispatchPower(struct device_object *pdo,
 		if (state == PowerDeviceD0) {
 			IOTRACE("resuming device %p", wd);
 			if (wd->dev_type == NDIS_PCI_BUS) {
-				pdev = wd->pci;
+				pdev = wd->pci.pdev;
 #if LINUX_VERSION_CODE > KERNEL_VERSION(2,6,9)
 				pci_restore_state(pdev);
 #else
@@ -289,7 +281,7 @@ STDCALL NTSTATUS pdoDispatchPower(struct device_object *pdo,
 		} else {
 			IOTRACE("suspending device %p", wd);
 			if (wd->dev_type == NDIS_PCI_BUS) {
-				pdev = wd->pci;
+				pdev = wd->pci.pdev;
 #if LINUX_VERSION_CODE > KERNEL_VERSION(2,6,9)
 				pci_save_state(pdev);
 #else
