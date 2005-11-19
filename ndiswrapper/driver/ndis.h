@@ -151,7 +151,6 @@ struct ndis_packet {
 		} mac_reserved;
 	} u;
 	ULONG_PTR reserved[2];
-//	UCHAR protocol_reserved[PROTOCOL_RESERVED_SIZE_IN_PACKET];
 	UCHAR protocol_reserved[1];
 	struct wrap_ndis_packet *wrap_ndis_packet;
 };
@@ -218,7 +217,7 @@ enum ndis_phys_medium {
 	NdisPhysicalMediumWirelessWan, NdisPhysicalMediumMax
 };
 
-enum ndis_pm_state {
+enum ndis_power_state {
 	NdisDeviceStateUnspecified = 0,
 	NdisDeviceStateD0, NdisDeviceStateD1, NdisDeviceStateD2,
 	NdisDeviceStateD3, NdisDeviceStateMaximum
@@ -375,7 +374,7 @@ struct ndis_irq {
 	ndis_isr_handler isr;
 	void *dpc;
 	struct kdpc intr_dpc;
-	struct wrapper_dev *wd;
+	struct wrap_ndis_device *wnd;
 	UCHAR dpc_count;
 	/* unsigned char filler1 is used for pending */
 	UCHAR pending;
@@ -404,52 +403,13 @@ struct ndis_config_param {
 	} data;
 };
 
-struct device_setting {
-	struct nt_list list;
-	char name[MAX_NDIS_SETTING_NAME_LEN];
-	char value[MAX_NDIS_SETTING_VALUE_LEN];
-	struct ndis_config_param config_param;
-};
-
-struct ndis_bin_file {
-	char name[MAX_NDIS_SETTING_NAME_LEN];
-	int size;
-	void *data;
+struct wrap_ndis_driver {
+	struct miniport_char miniport;
 };
 
 /* IDs used to store extensions in driver_object's custom extension */
 #define CE_NDIS_DRIVER_CLIENT_ID 1
 #define CE_MINIPORT_CLIENT_ID 2
-
-struct ndis_driver {
-	struct nt_list list;
-	struct driver_object *drv_obj;
-	char name[MAX_NDIS_SETTING_NAME_LEN];
-	char version[MAX_NDIS_SETTING_VALUE_LEN];
-	int bustype;
-	unsigned int num_pe_images;
-	struct pe_image pe_images[MAX_PE_IMAGES];
-	int num_bin_files;
-	struct ndis_bin_file *bin_files;
-	atomic_t users;
-	struct miniport_char miniport;
-};
-
-struct wrapper_dev;
-
-struct ndis_device {
-	struct nt_list settings;
-	int bustype;
-	int vendor;
-	int device;
-	int subvendor;
-	int subdevice;
-
-	struct ndis_driver *ndis_driver;
-	char driver_name[MAX_DRIVER_NAME_LEN];
-	struct wrapper_dev *wd;
-	char conf_file_name[MAX_DRIVER_NAME_LEN];
-};
 
 struct ndis_wireless_stats {
 	ULONG length;
@@ -482,8 +442,7 @@ struct ndis_wireless_stats {
 enum ndis_status_type {
 	Ndis802_11StatusType_Authentication,
 	Ndis802_11StatusType_PMKID_CandidateList = 2,
-	Ndis802_11StatusType_MediaStreamMode,
-	Ndis802_11StatusType_RadioState,
+	Ndis802_11StatusType_MediaStreamMode, Ndis802_11StatusType_RadioState,
 };
 
 struct ndis_status_indication {
@@ -501,6 +460,10 @@ struct ndis_radio_status_indication
 	enum ndis_radio_status radio_state;
 };
 
+enum ndis_media_stream_mode {
+	Ndis802_11MediaStreamOff, Ndis802_11MediaStreamOn
+};
+
 enum wrapper_work {
 	LINK_STATUS_CHANGED, SET_INFRA_MODE, SET_ESSID, SET_MULTICAST_LIST,
 	COLLECT_STATS, SUSPEND_RESUME, HANGCHECK,
@@ -510,11 +473,6 @@ enum wrapper_work {
 
 enum ndis_attributes {
 	ATTR_SERIALIZED, ATTR_SURPRISE_REMOVE, ATTR_NO_HALT_ON_SUSPEND,
-};
-
-enum hw_status {
-	HW_NORMAL, HW_SUSPENDED, HW_HALTED, HW_RMMOD, HW_AVAILABLE,
-	HW_INITIALIZED,
 };
 
 struct encr_info {
@@ -744,13 +702,12 @@ struct ndis_miniport_block {
 	void *wan_rx;
 	void *wan_rx_complete;
 	/* ndiswrapper specific */
-	struct wrapper_dev *wd;
+	struct wrap_ndis_device *wnd;
 };
 
-struct wrapper_dev {
+struct wrap_ndis_device {
 	struct ndis_miniport_block *nmb;
-	struct ndis_driver *driver;
-	struct phys_dev dev;
+	struct wrap_device *wd;
 	struct net_device *net_dev;
 	void *shutdown_ctx;
 
@@ -900,28 +857,21 @@ void setup_nmb_func_ptrs(struct ndis_miniport_block *nmb);
 
 void *get_sp(void);
 int ndis_init(void);
-void ndis_exit_device(struct wrapper_dev *wd);
+void ndis_exit_device(struct wrap_ndis_device *wnd);
 void ndis_exit(void);
 void insert_ndis_kdpc_work(struct kdpc *kdpc);
 BOOLEAN remove_ndis_kdpc_work(struct kdpc *kdpc);
 
-int usb_init(void);
-void usb_exit(void);
-int usb_init_device(struct wrapper_dev *wd);
-void usb_exit_device(struct wrapper_dev *wd);
-void usb_cleanup(void);
-void usb_cancel_pending_urbs(void);
-
 int load_pe_images(struct pe_image[], int n);
 
 int ndiswrapper_procfs_init(void);
-int ndiswrapper_procfs_add_iface(struct wrapper_dev *wd);
-void ndiswrapper_procfs_remove_iface(struct wrapper_dev *wd);
+int ndiswrapper_procfs_add_iface(struct wrap_ndis_device *wnd);
+void ndiswrapper_procfs_remove_iface(struct wrap_ndis_device *wnd);
 void ndiswrapper_procfs_remove(void);
 
 int misc_funcs_init(void);
-int misc_funcs_init_device(struct wrapper_dev *wd);
-void misc_funcs_exit_device(struct wrapper_dev *wd);
+int misc_funcs_init_device(struct wrap_device *wd);
+void misc_funcs_exit_device(struct wrap_device *wd);
 void misc_funcs_exit(void);
 
 int stricmp(const char *s1, const char *s2);
@@ -1060,6 +1010,7 @@ int pdo_resume_pci(struct pci_dev *pdev);
 #define OID_802_11_REMOVE_KEY			0x0D01011E
 #define OID_802_11_ASSOCIATION_INFORMATION	0x0D01011F
 #define OID_802_11_TEST				0x0D010120
+#define OID_802_11_MEDIA_STREAM_MODE		0x0D010121
 #define OID_802_11_CAPABILITY			0x0D010122
 #define OID_802_11_PMKID			0x0D010123
 

@@ -33,7 +33,7 @@ int debug = 0;
 
 /* use own workqueue instead of shared one, to avoid depriving
  * others */
-struct workqueue_struct *ndiswrapper_wq;
+struct workqueue_struct *wrapper_wq;
 
 WRAP_MODULE_PARM_STRING(if_name, 0400);
 MODULE_PARM_DESC(if_name, "Network interface name or template "
@@ -62,61 +62,27 @@ MODULE_VERSION(DRIVER_VERSION);
 
 extern KSPIN_LOCK timer_lock;
 
-static void hangcheck_proc(unsigned long data)
-{
-	struct wrapper_dev *wd = (struct wrapper_dev *)data;
-
-	TRACEENTER3("");
-	if (wd->hangcheck_interval <= 0)
-		return;
-
-	set_bit(HANGCHECK, &wd->wrapper_work);
-	schedule_work(&wd->wrapper_worker);
-
-	wd->hangcheck_timer.expires += wd->hangcheck_interval;
-	add_timer(&wd->hangcheck_timer);
-
-	TRACEEXIT3(return);
-}
-
-void hangcheck_add(struct wrapper_dev *wd)
-{
-	if (!wd->driver->miniport.hangcheck || wd->hangcheck_interval <= 0)
-		return;
-	init_timer(&wd->hangcheck_timer);
-	wd->hangcheck_timer.data = (unsigned long)wd;
-	wd->hangcheck_timer.function = &hangcheck_proc;
-	wd->hangcheck_timer.expires = jiffies + wd->hangcheck_interval;
-	add_timer(&wd->hangcheck_timer);
-	return;
-}
-
-void hangcheck_del(struct wrapper_dev *wd)
-{
-	del_timer_sync(&wd->hangcheck_timer);
-}
-
 #ifdef USE_OWN_WORKQUEUE
 /* we need to get thread for the task running ndiswrapper_wq, so
  * schedule a worker for it soon after initializing ndiswrapper_wq */
 
-static struct work_struct _ndiswrapper_wq_init;
-static int _ndiswrapper_wq_init_state;
-#define NDISWRAPPER_WQ_INIT 1
-#define NDISWRAPPER_WQ_EXIT 2
+static struct work_struct _wrap_wq_init;
+static int _wrap_wq_init_state;
+#define WRAP_WQ_INIT 1
+#define WRAP_WQ_EXIT 2
 
-static void _ndiswrapper_wq_init_worker(void *data)
+static void _wrap_wq_init_worker(void *data)
 {
 	struct task_struct *task;
 	struct nt_thread *thread;
 
 	task = get_current();
-	if (_ndiswrapper_wq_init_state == NDISWRAPPER_WQ_INIT) {
+	if (_wrap_wq_init_state == WRAP_WQ_INIT) {
 		thread = wrap_create_thread(task);
 		DBGTRACE1("task: %p, pid: %d, thread: %p",
 			  task, task->pid, thread);
 		if (!thread) {
-			_ndiswrapper_wq_init_state = -1;
+			_wrap_wq_init_state = -1;
 			return;
 		}
 	} else {
@@ -127,7 +93,7 @@ static void _ndiswrapper_wq_init_worker(void *data)
 			wrap_remove_thread(thread);
 		}
 	}
-	_ndiswrapper_wq_init_state = 0;
+	_wrap_wq_init_state = 0;
 }
 #endif
 
@@ -138,15 +104,15 @@ static void module_cleanup(void)
 	usb_exit();
 #endif
 #ifdef USE_OWN_WORKQUEUE
-	_ndiswrapper_wq_init_state = NDISWRAPPER_WQ_EXIT;
-	schedule_work(&_ndiswrapper_wq_init);
-	while (_ndiswrapper_wq_init_state) {
+	_wrap_wq_init_state = WRAP_WQ_EXIT;
+	schedule_work(&_wrap_wq_init);
+	while (_wrap_wq_init_state) {
 		set_current_state(TASK_INTERRUPTIBLE);
 		schedule_timeout(4);
 	}
-	destroy_workqueue(ndiswrapper_wq);
+	destroy_workqueue(wrapper_wq);
 #endif
-	ndiswrapper_procfs_remove();
+//	ndiswrapper_procfs_remove();
 	ndis_exit();
 	ntoskernel_exit();
 	misc_funcs_exit();
@@ -186,18 +152,18 @@ static int __init wrapper_init(void)
 		)
 		goto err;
 #ifdef USE_OWN_WORKQUEUE
-	ndiswrapper_wq = create_singlethread_workqueue("ndiswrapwq");
-	INIT_WORK(&_ndiswrapper_wq_init, _ndiswrapper_wq_init_worker, 0);
-	_ndiswrapper_wq_init_state = NDISWRAPPER_WQ_INIT;
-	schedule_work(&_ndiswrapper_wq_init);
-	while (_ndiswrapper_wq_init_state > 0) {
+	wrapper_wq = create_singlethread_workqueue("wrapper_wq");
+	INIT_WORK(&_wrap_wq_init, _wrap_wq_init_worker, 0);
+	_wrap_wq_init_state = WRAP_WQ_INIT;
+	schedule_work(&_wrap_wq_init);
+	while (_wrap_wq_init_state > 0) {
 		set_current_state(TASK_INTERRUPTIBLE);
 		schedule_timeout(4);
 	}
-	if (_ndiswrapper_wq_init_state < 0)
+	if (_wrap_wq_init_state < 0)
 		goto err;
 #endif
-	ndiswrapper_procfs_init();
+//	ndiswrapper_procfs_init();
 	if (loader_init())
 		goto err;
 	DBGTRACE1("calling loadndisdriver");

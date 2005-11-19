@@ -72,7 +72,7 @@ static void wrap_work_item_worker(void *data);
 
 KSPIN_LOCK irp_cancel_lock;
 
-extern struct nt_list ndis_drivers;
+extern struct nt_list wrap_drivers;
 extern struct nt_list ndis_work_list;
 extern KSPIN_LOCK ndis_work_list_lock;
 extern struct work_struct ndis_work;
@@ -144,9 +144,9 @@ int ntoskernel_init(void)
 	return 0;
 }
 
-int ntoskernel_init_device(struct wrapper_dev *wd)
+int ntoskernel_init_device(struct wrap_device *wd)
 {
-	InitializeListHead(&wd->wrap_timer_list);
+	InitializeListHead(&wd->timer_list);
 	kspin_lock_init(&wd->timer_lock);
 #if defined(CONFIG_X86_64)
 	*((ULONG64 *)&kuser_shared_data.system_time) = ticks_1601();
@@ -158,7 +158,7 @@ int ntoskernel_init_device(struct wrapper_dev *wd)
 	return 0;
 }
 
-void ntoskernel_exit_device(struct wrapper_dev *wd)
+void ntoskernel_exit_device(struct wrap_device *wd)
 {
 	KIRQL irql;
 
@@ -172,7 +172,7 @@ void ntoskernel_exit_device(struct wrapper_dev *wd)
 		struct wrap_timer *wrap_timer;
 
 		irql = kspin_lock_irql(&timer_lock, DISPATCH_LEVEL);
-		ent = RemoveHeadList(&wd->wrap_timer_list);
+		ent = RemoveHeadList(&wd->timer_list);
 		kspin_unlock_irql(&timer_lock, irql);
 		if (!ent)
 			break;
@@ -621,7 +621,7 @@ static void timer_proc(unsigned long data)
 }
 
 void wrap_init_timer(struct nt_timer *nt_timer, enum timer_type type,
-		     struct wrapper_dev *wd)
+		     struct wrap_device *wd)
 {
 	struct wrap_timer *wrap_timer;
 	KIRQL irql;
@@ -656,7 +656,7 @@ void wrap_init_timer(struct nt_timer *nt_timer, enum timer_type type,
 	nt_timer->wrap_timer_magic = WRAP_TIMER_MAGIC;
 	if (wd) {
 		irql = kspin_lock_irql(&wd->timer_lock, DISPATCH_LEVEL);
-		InsertTailList(&wd->wrap_timer_list, &wrap_timer->list);
+		InsertTailList(&wd->timer_list, &wrap_timer->list);
 		kspin_unlock_irql(&wd->timer_lock, irql);
 	} else {
 		irql = kspin_lock_irql(&timer_lock, DISPATCH_LEVEL);
@@ -1066,8 +1066,8 @@ _FASTCALL void WRAP_EXPORT(ExInterlockedAddLargeStatistic)
 
 /* We need to keep track of whether memory is allocated with kmalloc
  * or vmalloc so we can free with kfree or vfree later. So we allocate
- * a bit more memory and store the tag there. This tag is inspected
- * while freeing memory. */
+ * extra memory for tag and store the tag there. This tag is used to
+ * decide how to free memory later. */
 STDCALL void *WRAP_EXPORT(ExAllocatePoolWithTag)
 	(enum pool_type pool_type, SIZE_T size, ULONG tag)
 {
@@ -1102,7 +1102,7 @@ STDCALL void *WRAP_EXPORT(ExAllocatePoolWithTag)
 	TRACEEXIT4(return addr);
 }
 
-STDCALL void vfree_mem(void *addr, void *ctx)
+STDCALL void wrap_vfree(void *addr, void *ctx)
 {
 	vfree(addr);
 }
@@ -1116,24 +1116,13 @@ STDCALL void WRAP_EXPORT(ExFreePool)
 	addr -= sizeof(wrap_tag);
 	wrap_tag = *(typeof(wrap_tag) *)addr;
 	DBGTRACE4("tag: %lx", wrap_tag);
-	if (wrap_tag == WRAP_KMALLOC_TAG) {
+	if (wrap_tag == WRAP_KMALLOC_TAG)
 		kfree(addr);
-		return;
-	} else if (wrap_tag == WRAP_VMALLOC_TAG) {
-		if (!in_interrupt()) {
+	else if (wrap_tag == WRAP_VMALLOC_TAG) {
+		if (in_interrupt())
+			schedule_wrap_work_item(wrap_vfree, addr, NULL, FALSE);
+		else
 			vfree(addr);
-			return;
-		}
-		/* Centrino 2200 driver calls this function when in
-		 * ad-hoc mode in interrupt context when length >
-		 * KMALLOC_THRESHOLD, which implies that vfree is
-		 * called in interrupt context, which is not
-		 * correct. So we use worker for it */
-		/* Instead of using yet another worker, use ndis_work
-		 * for this, although ntos layer using ndis functions
-		 * is counter-intuitive */
-		schedule_wrap_work_item(vfree_mem, addr, NULL, FALSE);
-		return;
 	} else {
 		ERROR("wrong tag: %lu (%p)", wrap_tag, addr);
 		/* either this addr was not allocated with
@@ -1142,8 +1131,8 @@ STDCALL void WRAP_EXPORT(ExFreePool)
 		 * catch errors and prevent leaks; for now assume this
 		 * addr was allocated with kmalloc */
 		kfree(addr + sizeof(wrap_tag));
-		return;
 	}
+	return;
 }
 
 WRAP_FUNC_PTR_DECL(ExAllocatePoolWithTag)
@@ -2245,10 +2234,10 @@ STDCALL NTSTATUS WRAP_EXPORT(ZwCreateFile)
 	 ULONG create_options, void *ea_buffer, ULONG ea_length)
 {
 	struct common_object_header *header;
-	struct ndis_driver *driver;
+	struct wrap_driver *driver;
 	struct object_attr *oa;
 	struct ansi_string ansi;
-	struct ndis_bin_file *file;
+	struct wrap_bin_file *file;
 	KIRQL irql;
 	char *file_basename;
 
@@ -2285,7 +2274,7 @@ STDCALL NTSTATUS WRAP_EXPORT(ZwCreateFile)
 	DBGTRACE2("file_basename: '%s'", file_basename);
 	/* Loop through all drivers and all files to find the requested file */
 	irql = kspin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL);
-	nt_list_for_each_entry(driver, &ndis_drivers, list) {
+	nt_list_for_each_entry(driver, &wrap_drivers, list) {
 		int i;
 		for (i = 0; i < driver->num_bin_files; i++) {
 			size_t n;
@@ -2318,7 +2307,7 @@ STDCALL NTSTATUS WRAP_EXPORT(ZwReadFile)
 {
 	struct object_attr *oa;
 	ULONG count;
-	struct ndis_bin_file *file;
+	struct wrap_bin_file *file;
 
 	TRACEENTER2("");
 	oa = HANDLE_TO_OBJECT(handle);
@@ -2343,7 +2332,7 @@ STDCALL NTSTATUS WRAP_EXPORT(ZwQueryInformationFile)
 	struct object_attr *oa;
 	struct file_name_info *fni;
 	struct file_std_info *fsi;
-	struct ndis_bin_file *file;
+	struct wrap_bin_file *file;
 
 	TRACEENTER2("%p", handle);
 	oa = HANDLE_TO_OBJECT(handle);

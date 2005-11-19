@@ -107,26 +107,19 @@ struct ndis_bssid_list {
 };
 
 enum ndis_priv_filter {
-	Ndis802_11PrivFilterAcceptAll,
-	Ndis802_11PrivFilter8021xWEP
+	Ndis802_11PrivFilterAcceptAll, Ndis802_11PrivFilter8021xWEP
 };
 
 enum network_type {
-	Ndis802_11FH,
-	Ndis802_11DS,
-	Ndis802_11OFDM5,
-	Ndis802_11OFDM24,
+	Ndis802_11FH, Ndis802_11DS, Ndis802_11OFDM5, Ndis802_11OFDM24,
 	/* MSDN site uses Ndis802_11Automode, which is not mentioned
 	 * in DDK, so add one and assign it to
 	 * Ndis802_11NetworkTypeMax */
-	Ndis802_11Automode,
-	Ndis802_11NetworkTypeMax = Ndis802_11Automode
+	Ndis802_11Automode, Ndis802_11NetworkTypeMax = Ndis802_11Automode
 };
 
 enum ndis_power {
-	NDIS_POWER_OFF = 0,
-	NDIS_POWER_MAX,
-	NDIS_POWER_MIN,
+	NDIS_POWER_OFF = 0, NDIS_POWER_MAX, NDIS_POWER_MIN,
 };
 
 struct ndis_auth_req {
@@ -146,27 +139,26 @@ struct ndis_pmkid {
 	struct ndis_bssid_info bssid_info[1];
 };
 
-int add_wep_key(struct wrapper_dev *wd, char *key, int key_len,
+int add_wep_key(struct wrap_ndis_device *wnd, char *key, int key_len,
 		int index);
-extern const struct iw_handler_def ndis_handler_def;
-
-int set_essid(struct wrapper_dev *wd, const char *ssid, int ssid_len);
-int set_infra_mode(struct wrapper_dev *wd,
+int set_essid(struct wrap_ndis_device *wnd, const char *ssid, int ssid_len);
+int set_infra_mode(struct wrap_ndis_device *wnd,
 		   enum network_infrastructure mode);
-int get_ap_address(struct wrapper_dev *wd, mac_address mac);
-int set_auth_mode(struct wrapper_dev *wd, int auth_mode);
-int set_encr_mode(struct wrapper_dev *wd, int encr_mode);
-int get_auth_mode(struct wrapper_dev *wd);
-int get_encr_mode(struct wrapper_dev *wd);
-int set_privacy_filter(struct wrapper_dev *wd, int flags);
-int set_scan(struct wrapper_dev *wd);
-
-/* WPA support */
+int get_ap_address(struct wrap_ndis_device *wnd, mac_address mac);
+int set_auth_mode(struct wrap_ndis_device *wnd, int auth_mode);
+int set_encr_mode(struct wrap_ndis_device *wnd, int encr_mode);
+int get_auth_mode(struct wrap_ndis_device *wnd);
+int get_encr_mode(struct wrap_ndis_device *wnd);
+int set_privacy_filter(struct wrap_ndis_device *wnd, int flags);
+int set_scan(struct wrap_ndis_device *wnd);
 
 #define PRIV_RESET	 		SIOCIWFIRSTPRIV+16
 #define PRIV_POWER_PROFILE	 	SIOCIWFIRSTPRIV+17
 #define PRIV_NETWORK_TYPE	 	SIOCIWFIRSTPRIV+18
 #define PRIV_USB_RESET	 		SIOCIWFIRSTPRIV+19
+#define PRIV_MEDIA_STREAM_MODE 		SIOCIWFIRSTPRIV+20
+
+/* WPA support */
 
 /* these have to match what is in wpa_supplicant */
 typedef enum { WPA_ALG_NONE, WPA_ALG_WEP, WPA_ALG_TKIP, WPA_ALG_CCMP } wpa_alg;

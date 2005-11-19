@@ -25,8 +25,8 @@ struct load_driver_file {
 };
 
 struct load_device_setting {
-	char name[MAX_NDIS_SETTING_NAME_LEN];
-	char value[MAX_NDIS_SETTING_VALUE_LEN];
+	char name[MAX_SETTING_NAME_LEN];
+	char value[MAX_SETTING_VALUE_LEN];
 };
 		
 struct load_device {
@@ -50,9 +50,9 @@ struct load_driver {
 	unsigned int nr_sys_files;
 	struct load_driver_file sys_files[MAX_PE_IMAGES];
 	unsigned int nr_settings;
-	struct load_device_setting settings[MAX_NDIS_SETTINGS];
+	struct load_device_setting settings[MAX_DEVICE_SETTINGS];
 	unsigned int nr_bin_files;
-	struct load_driver_file bin_files[MAX_NDIS_BIN_FILES];
+	struct load_driver_file bin_files[MAX_DRIVER_BIN_FILES];
 };
 
 #define NDIS_REGISTER_DEVICES	_IOW(('N' + 'd' + 'i' + 'S'), 0,	\
@@ -62,6 +62,7 @@ struct load_driver {
 
 int loader_init(void);
 void loader_exit(void);
+struct wrap_driver *load_wrap_driver(struct wrap_device *device);
 
 #endif /* LOADER_H */
 
