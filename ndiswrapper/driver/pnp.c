@@ -95,7 +95,7 @@ static STDCALL NTSTATUS pdoDispatchPnp(struct device_object *pdo,
 
 	irp_sl = IoGetCurrentIrpStackLocation(irp);
 	wd = pdo->reserved;
-	IOTRACE("fn %d:%d, wd: %p", irp_sl->major_fn, irp_sl->minor_fn, wd);
+	DBGTRACE2("fn %d:%d, wd: %p", irp_sl->major_fn, irp_sl->minor_fn, wd);
 	switch (irp_sl->minor_fn) {
 	case IRP_MN_START_DEVICE:
 		if (start_pdo(pdo)) {
@@ -109,10 +109,10 @@ static STDCALL NTSTATUS pdoDispatchPnp(struct device_object *pdo,
 			status = STATUS_NOT_IMPLEMENTED;
 			break;
 		}
-		IOTRACE("type: %x, size: %d, version: %d",
-			irp_sl->params.query_intf.type->data1,
-			irp_sl->params.query_intf.size,
-			irp_sl->params.query_intf.version);
+		DBGTRACE2("type: %x, size: %d, version: %d",
+			  irp_sl->params.query_intf.type->data1,
+			  irp_sl->params.query_intf.size,
+			  irp_sl->params.query_intf.version);
 		usb_intf = (struct usbd_bus_interface_usbdi *)
 			irp_sl->params.query_intf.intf;
 		usb_intf->Context = wd;
@@ -134,11 +134,20 @@ static STDCALL NTSTATUS pdoDispatchPnp(struct device_object *pdo,
 		break;
 	case IRP_MN_REMOVE_DEVICE:
 		IoDeleteDevice(wd->wnd->nmb->pdo);
+		/* USB configuration would be cleared in
+		 * usb_exit_device */
 		if (WRAP_BUS_TYPE(wd->dev_bus_type) == WRAP_PCI_BUS) {
 			struct pci_dev *pdev = wd->pci.pdev;
 			pci_release_regions(pdev);
 			pci_disable_device(pdev);
+			wd->pci.pdev = NULL;
 		}
+		wd->hw_status = 0;
+		wd->wnd = NULL;
+		if (wd->resource_list)
+			kfree(wd->resource_list);
+		wd->resource_list = NULL;
+		wd->pdo = NULL;
 		status = STATUS_SUCCESS;
 		break;
 	default:
@@ -146,7 +155,7 @@ static STDCALL NTSTATUS pdoDispatchPnp(struct device_object *pdo,
 		break;
 	}
 	irp->io_status.status = status;
-	IOTRACE("res: %08X", status);
+	DBGTRACE2("status: %08X", status);
 //	irp->io_status.status_info = 0;
 	IoCompleteRequest(irp, IO_NO_INCREMENT);
 	IOEXIT(return status);
@@ -163,13 +172,13 @@ static STDCALL NTSTATUS pdoDispatchPower(struct device_object *pdo,
 
 	irp_sl = IoGetCurrentIrpStackLocation(irp);
 	wd = pdo->reserved;
-	IOTRACE("pdo: %p, fn: %d:%d, wd: %p",
+	DBGTRACE2("pdo: %p, fn: %d:%d, wd: %p",
 		  pdo, irp_sl->major_fn, irp_sl->minor_fn, wd);
 	switch (irp_sl->minor_fn) {
 	case IRP_MN_SET_POWER:
 		state = irp_sl->params.power.state.device_state;
 		if (state == PowerDeviceD0) {
-			IOTRACE("resuming device %p", wd);
+			DBGTRACE2("resuming device %p", wd);
 			if (WRAP_BUS_TYPE(wd->dev_bus_type) == WRAP_PCI_BUS) {
 				pdev = wd->pci.pdev;
 #if LINUX_VERSION_CODE > KERNEL_VERSION(2,6,9)
@@ -179,7 +188,7 @@ static STDCALL NTSTATUS pdoDispatchPower(struct device_object *pdo,
 #endif
 			}
 		} else {
-			IOTRACE("suspending device %p", wd);
+			DBGTRACE2("suspending device %p", wd);
 			if (WRAP_BUS_TYPE(wd->dev_bus_type) == WRAP_PCI_BUS) {
 				pdev = wd->pci.pdev;
 #if LINUX_VERSION_CODE > KERNEL_VERSION(2,6,9)
@@ -208,13 +217,13 @@ static STDCALL NTSTATUS pdoDispatchPower(struct device_object *pdo,
 static struct device_object *alloc_pdo(struct driver_object *drv_obj)
 {
 	struct device_object *pdo;
-	NTSTATUS res ;
+	NTSTATUS status ;
 	int i;
 
-	res = IoCreateDevice(drv_obj, 0, NULL, FILE_DEVICE_UNKNOWN,
+	status = IoCreateDevice(drv_obj, 0, NULL, FILE_DEVICE_UNKNOWN,
 			     0, FALSE, &pdo);
-	DBGTRACE1("%p, %d, %p", drv_obj, res, pdo);
-	if (res != STATUS_SUCCESS)
+	DBGTRACE1("%p, %d, %p", drv_obj, status, pdo);
+	if (status != STATUS_SUCCESS)
 		return NULL;
 	for (i = 0; i <= IRP_MJ_MAXIMUM_FUNCTION; i++)
 		drv_obj->major_func[i] = IopInvalidDeviceRequest;
@@ -330,6 +339,8 @@ err_regions:
 	pci_release_regions(pdev);
 err_enable:
 	pci_disable_device(pdev);
+	wd->pci.pdev = NULL;
+	wd->pdo = NULL;
 	return -EINVAL;
 }
 

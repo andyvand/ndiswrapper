@@ -134,7 +134,7 @@ STDCALL NDIS_STATUS WRAP_EXPORT(NdisMRegisterMiniport)
 			"co_activate_vc", "co_deactivate_vc",
 			"co_send_packets", "co_request",
 			"cancel_send_packets", "pnp_event_notify",
-			"adapter_shutdown",
+			"shutdown",
 		};
 		func = (void **)&ndis_driver->miniport.query;
 		for (i = 0; i < (sizeof(miniport_funcs) /
@@ -1523,7 +1523,7 @@ STDCALL void WRAP_EXPORT(NdisMRegisterAdapterShutdownHandler)
 {
 	struct wrap_ndis_device *wnd = nmb->wnd;
 	TRACEENTER1("sp:%p", get_sp());
-	wnd->wd->driver->ndis_driver->miniport.adapter_shutdown = func;
+	wnd->wd->driver->ndis_driver->miniport.shutdown = func;
 	wnd->shutdown_ctx = ctx;
 }
 
@@ -1532,7 +1532,7 @@ STDCALL void WRAP_EXPORT(NdisMDeregisterAdapterShutdownHandler)
 {
 	struct wrap_ndis_device *wnd = nmb->wnd;
 	TRACEENTER1("sp:%p", get_sp());
-	wnd->wd->driver->ndis_driver->miniport.adapter_shutdown = NULL;
+	wnd->wd->driver->ndis_driver->miniport.shutdown = NULL;
 	wnd->shutdown_ctx = NULL;
 }
 
@@ -2600,7 +2600,7 @@ STDCALL void WRAP_EXPORT(NdisMCoDeactivateVcComplete)(void)
 
 #include "ndis_exports.h"
 
-void setup_nmb_func_ptrs(struct ndis_miniport_block *nmb)
+void init_nmb_functions(struct ndis_miniport_block *nmb)
 {
 	nmb->rx_packet = WRAP_FUNC_PTR(NdisMIndicateReceivePacket);
 	nmb->send_complete = WRAP_FUNC_PTR(NdisMSendComplete);

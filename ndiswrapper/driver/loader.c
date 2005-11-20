@@ -31,7 +31,7 @@ static struct pci_device_id *wrap_pci_devices;
 static struct pci_driver wrap_pci_driver;
 #if defined(CONFIG_USB)
 static struct usb_device_id *wrap_usb_devices;
-static struct usb_driver wrap_usb_driver;
+struct usb_driver wrap_usb_driver;
 #endif
 
 extern int debug;

@@ -307,7 +307,7 @@ struct miniport_char {
 	void (*cancel_send_packets)(void *ctx, void *id) STDCALL;
 	void (*pnp_event_notify)(void *ctx, enum ndis_device_pnp_event event,
 				 void *inf_buf, ULONG inf_buf_len) STDCALL;
-	void (*adapter_shutdown)(void *ctx) STDCALL;
+	void (*shutdown)(void *ctx) STDCALL;
 	void *reserved1;
 	void *reserved2;
 	void *reserved3;
@@ -834,7 +834,7 @@ STDCALL void NdisReadConfiguration
 	 struct ndis_miniport_block *nmb, struct unicode_string *key,
 	 enum ndis_parameter_type type);
 
-void setup_nmb_func_ptrs(struct ndis_miniport_block *nmb);
+void init_nmb_functions(struct ndis_miniport_block *nmb);
 
 void *get_sp(void);
 int ndis_init(void);

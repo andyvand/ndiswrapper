@@ -476,8 +476,18 @@ enum hw_status {
 };
 
 struct wrap_device {
-	struct nt_list settings;
 	int dev_bus_type;
+	int vendor;
+	int device;
+	int subvendor;
+	int subdevice;
+	struct wrap_driver *driver;
+	/* we need driver_name before driver is loaded */
+	char driver_name[MAX_DRIVER_NAME_LEN];
+	char conf_file_name[MAX_DRIVER_NAME_LEN];
+	struct nt_list settings;
+
+	/* rest should be initialized/cleared during init/remove */
 	struct device_object *pdo;
 	union {
 		struct {
@@ -491,14 +501,6 @@ struct wrap_device {
 			struct nt_list wrap_urb_list;
 		} usb;
 	};
-	int vendor;
-	int device;
-	int subvendor;
-	int subdevice;
-	struct wrap_driver *driver;
-	/* we need driver_name before driver is loaded */
-	char driver_name[MAX_DRIVER_NAME_LEN];
-	char conf_file_name[MAX_DRIVER_NAME_LEN];
 	unsigned long hw_status;
 	union {
 		struct wrap_ndis_device *wnd;
@@ -506,7 +508,6 @@ struct wrap_device {
 	struct nt_list timer_list;
 	KSPIN_LOCK timer_lock;
 	struct cm_resource_list *resource_list;
-	u32 pci_state[16];
 };
 
 #if LINUX_VERSION_CODE > KERNEL_VERSION(2,6,0)
