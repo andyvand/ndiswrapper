@@ -41,9 +41,12 @@ void ndis_exit(void)
 void ndis_exit_device(struct wrap_ndis_device *wnd)
 {
 	struct wrap_device_setting *setting;
+	KIRQL irql;
+
 	/* TI driver doesn't call NdisMDeregisterInterrupt during halt! */
 	if (wnd->ndis_irq)
 		NdisMDeregisterInterrupt(wnd->ndis_irq);
+	irql = kspin_lock_irql(&loader_lock, DISPATCH_LEVEL);
 	nt_list_for_each_entry(setting, &wnd->wd->settings, list) {
 		struct ndis_configuration_parameter *param;
 		param = setting->encoded;
@@ -51,8 +54,10 @@ void ndis_exit_device(struct wrap_ndis_device *wnd)
 			if (param->type == NdisParameterString)
 				RtlFreeUnicodeString(&param->data.string);
 			ExFreePool(param);
+			setting->encoded = NULL;
 		}
 	}
+	kspin_unlock_irql(&loader_lock, irql);
 }
 
 /* Called from the driver entry. */
@@ -221,7 +226,7 @@ NOREGPARM void WRAP_EXPORT(NdisWriteErrorLogEntry)
 
 	va_start(args, count);
 	ERROR("log: %08X, count: %d, return_address: %p",
-			error, count, __builtin_return_address(0));
+	      error, count, __builtin_return_address(0));
 	for (i = 0; i < count; i++) {
 		code = va_arg(args, ULONG);
 		ERROR("code: %u", code);
@@ -294,6 +299,7 @@ STDCALL void WRAP_EXPORT(NdisOpenFile)
 	struct ansi_string ansi;
 	struct wrap_driver *driver;
 	struct wrap_bin_file *file;
+	KIRQL irql;
 
 	TRACEENTER2("status = %p, filelength = %p, *filelength = %d, "
 		    "high = %llx, filehandle = %p, *filehandle = %p",
@@ -308,6 +314,7 @@ STDCALL void WRAP_EXPORT(NdisOpenFile)
 	DBGTRACE2("Filename: %s", ansi.buf);
 
 	/* Loop through all drivers and all files to find the requested file */
+	irql = kspin_lock_irql(&loader_lock, DISPATCH_LEVEL);
 	nt_list_for_each_entry(driver, &wrap_drivers, list) {
 		int i;
 
@@ -322,11 +329,13 @@ STDCALL void WRAP_EXPORT(NdisOpenFile)
 				*filehandle = file;
 				*filelength = file->size;
 				*status = NDIS_STATUS_SUCCESS;
+				kspin_unlock_irql(&loader_lock, irql);
 				RtlFreeAnsiString(&ansi);
 				TRACEEXIT2(return);
 			}
 		}
 	}
+	kspin_unlock_irql(&loader_lock, irql);
 	*status = NDIS_STATUS_FILE_NOT_FOUND;
 	RtlFreeAnsiString(&ansi);
 	TRACEEXIT2(return);
