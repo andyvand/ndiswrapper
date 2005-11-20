@@ -259,7 +259,7 @@ int start_pdo(struct device_object *pdo)
 #ifdef CONFIG_X86_64
 	/* 64-bit broadcom driver doesn't work if DMA is allocated
 	 * from over 1GB */
-	if (strcmp(wd->ndis_device->driver_name, "netbc564") == 0) {
+	if (strcmp(wd->driver->name, "netbc564") == 0) {
 		if (pci_set_dma_mask(pdev, 0x3fffffff) ||
 		    pci_set_consistent_dma_mask(pdev, 0x3fffffff))
 			WARNING("DMA mask couldn't be set; this driver "

@@ -751,8 +751,7 @@ STDCALL void WRAP_EXPORT(NdisMQueryAdapterResources)
 	UINT resource_length;
 
 	list = &wnd->wd->resource_list->list->partial_resource_list;
-	resource_length =
-		sizeof(struct cm_partial_resource_list) +
+	resource_length = sizeof(struct cm_partial_resource_list) +
 		sizeof(struct cm_partial_resource_descriptor) *
 		(list->count - 1);
 	DBGTRACE2("wnd: %p. buf: %p, len: %d (%d)", wnd,
@@ -794,7 +793,7 @@ STDCALL NDIS_STATUS WRAP_EXPORT(NdisMMapIoSpace)
 	}
 
 	wnd->mem_start = phy_addr;
-	wnd->mem_end = phy_addr + len - 1;
+	wnd->mem_end = phy_addr + len;
 
 	DBGTRACE2("ioremap successful %p", *virt);
 	TRACEEXIT2(return NDIS_STATUS_SUCCESS);
