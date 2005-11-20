@@ -40,15 +40,18 @@ void ndis_exit(void)
 /* ndis_exit_device is called for each handle */
 void ndis_exit_device(struct wrap_ndis_device *wnd)
 {
-	struct ndis_config_param_list *param_list;
+	struct wrap_device_setting *setting;
 	/* TI driver doesn't call NdisMDeregisterInterrupt during halt! */
 	if (wnd->ndis_irq)
 		NdisMDeregisterInterrupt(wnd->ndis_irq);
-
-	nt_list_for_each_entry(param_list, &wnd->config_params, list) {
-		if (param_list->param.type == NdisParameterString)
-			RtlFreeUnicodeString(&param_list->param.data.string);
-		ExFreePool(param_list);
+	nt_list_for_each_entry(setting, &wnd->wd->settings, list) {
+		struct ndis_configuration_parameter *param;
+		param = setting->encoded;
+		if (param) {
+			if (param->type == NdisParameterString)
+				RtlFreeUnicodeString(&param->data.string);
+			ExFreePool(param);
+		}
 	}
 }
 
@@ -388,36 +391,35 @@ STDCALL void WRAP_EXPORT(NdisGetBufferPhysicalArraySize)
 }
 
 static struct ndis_configuration_parameter *
-ndis_encode_setting(struct wrap_ndis_device *wnd,
-		    struct wrap_device_setting *setting,
+ndis_encode_setting(struct wrap_device_setting *setting,
 		    enum ndis_parameter_type type)
 {
 	struct ansi_string ansi;
-	struct ndis_config_param_list *param_list;
 	struct ndis_configuration_parameter *param;
-	KIRQL irql;
 
-	param_list = ExAllocatePoolWithTag(NonPagedPool,
-					   sizeof(*param_list), 0);
-	if (!param_list) {
+	param = setting->encoded;
+	if (param) {
+		if (param->type == type)
+			return param;
+		if (param->type == NdisParameterString)
+			RtlFreeUnicodeString(&param->data.string);
+		ExFreePool(param);
+		setting->encoded = NULL;
+	}
+	param = ExAllocatePoolWithTag(NonPagedPool, sizeof(*param), 0);
+	if (!param) {
 		ERROR("couldn't allocate memory");
 		return NULL;
 	}
-	irql = kspin_lock_irql(&loader_lock, DISPATCH_LEVEL);
-	InsertTailList(&param_list->list, &wnd->config_params);
-	kspin_unlock_irql(&loader_lock, irql);
-	param = &param_list->param;
 	param->type = type;
 	TRACEENTER2("type = %d", type);
 	switch(type) {
 	case NdisParameterInteger:
-		param->data.integer =
-			simple_strtol(setting->value, NULL, 0);
+		param->data.integer = simple_strtol(setting->value, NULL, 0);
 		DBGTRACE1("value = %u", (ULONG)param->data.integer);
 		break;
 	case NdisParameterHexInteger:
-		param->data.integer =
-			simple_strtol(setting->value, NULL, 16);
+		param->data.integer = simple_strtol(setting->value, NULL, 16);
 		DBGTRACE1("value = %u", (ULONG)param->data.integer);
 		break;
 	case NdisParameterString:
@@ -433,8 +435,10 @@ ndis_encode_setting(struct wrap_ndis_device *wnd,
 		break;
 	default:
 		ERROR("unknown type: %d", type);
+		ExFreePool(param);
 		return NULL;
 	}
+	setting->encoded = param;
 	return param;
 }
 
@@ -503,7 +507,7 @@ STDCALL void WRAP_EXPORT(NdisReadConfiguration)
 			DBGTRACE2("setting found %s=%s",
 				  keyname, setting->value);
 			kspin_unlock_irql(&loader_lock, irql);
-			*param = ndis_encode_setting(nmb->wnd, setting, type);
+			*param = ndis_encode_setting(setting, type);
 			if (*param)
 				*status = NDIS_STATUS_SUCCESS;
 			else

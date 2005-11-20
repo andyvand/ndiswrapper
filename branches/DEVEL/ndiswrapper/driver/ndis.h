@@ -405,18 +405,13 @@ struct ndis_configuration_parameter {
 	} data;
 };
 
-struct ndis_config_param_list {
-	struct nt_list list;
-	struct ndis_configuration_parameter param;
-};
-
 struct wrap_ndis_driver {
 	struct miniport_char miniport;
 };
 
 /* IDs used to store extensions in driver_object's custom extension */
-#define CE_NDIS_DRIVER_CLIENT_ID 1
-#define CE_MINIPORT_CLIENT_ID 2
+#define CE_NDIS_DRIVER_CLIENT_ID 10
+#define CE_MINIPORT_CLIENT_ID 11
 
 struct ndis_wireless_stats {
 	ULONG length;
@@ -717,7 +712,6 @@ struct wrap_ndis_device {
 	struct wrap_device *wd;
 	struct net_device *net_dev;
 	void *shutdown_ctx;
-	struct nt_list config_params;
 	struct tasklet_struct irq_tasklet;
 	struct ndis_irq *ndis_irq;
 	unsigned long mem_start;

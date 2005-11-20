@@ -82,9 +82,10 @@ int start_pdo(struct device_object *pdo)
 	struct cm_partial_resource_descriptor *entry;
 	struct cm_partial_resource_list *partial_resource_list;
 
+	TRACEENTER1("%p, %p", pdo, pdo->reserved);
 	wd = pdo->reserved;
 	if (wd->dev_type != NDIS_PCI_BUS)
-		return 0;
+		TRACEEXIT1(return 0);
 	pdev = wd->pci.pdev;
 	pci_set_drvdata(pdev, wd);
 	ret = pci_enable_device(pdev);
