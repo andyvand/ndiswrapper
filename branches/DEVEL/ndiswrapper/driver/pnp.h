@@ -22,14 +22,12 @@
 
 driver_dispatch_t IopInvalidDeviceRequest;
 driver_dispatch_t IopPassIrpDown;
-driver_dispatch_t pdoDispatchInternalDeviceControl;
-driver_dispatch_t pdoDispatchDeviceControl;
-driver_dispatch_t pdoDispatchPnp;
-driver_dispatch_t pdoDispatchPower;
 
 STDCALL NTSTATUS IrpStopCompletion(struct device_object *dev_obj,
 				   struct irp *irp, void *context);
 
+struct device_object *alloc_pdo(struct driver_object *drv_obj);
+void free_pdo(struct device_object *drv_obj);
 int start_pdo(struct device_object *pdo);
 
 NTSTATUS pnp_set_power_state(struct device_object *pdo,

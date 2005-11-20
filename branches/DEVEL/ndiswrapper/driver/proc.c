@@ -23,11 +23,11 @@
 
 #define MAX_PROC_STR_LEN 32
 
-static struct proc_dir_entry *ndiswrapper_procfs_entry;
+static struct proc_dir_entry *wrap_procfs_entry;
 extern int proc_uid, proc_gid;
 
-static int procfs_read_stats(char *page, char **start, off_t off,
-			     int count, int *eof, void *data)
+static int procfs_read_ndis_stats(char *page, char **start, off_t off,
+				  int count, int *eof, void *data)
 {
 	char *p = page;
 	struct wrap_ndis_device *wnd = (struct wrap_ndis_device *)data;
@@ -73,8 +73,8 @@ static int procfs_read_stats(char *page, char **start, off_t off,
 	return (p - page);
 }
 
-static int procfs_read_encr(char *page, char **start, off_t off,
-			    int count, int *eof, void *data)
+static int procfs_read_ndis_encr(char *page, char **start, off_t off,
+				 int count, int *eof, void *data)
 {
 	char *p = page;
 	struct wrap_ndis_device *wnd = (struct wrap_ndis_device *)data;
@@ -141,8 +141,8 @@ static int procfs_read_encr(char *page, char **start, off_t off,
 	return (p - page);
 }
 
-static int procfs_read_hw(char *page, char **start, off_t off,
-			  int count, int *eof, void *data)
+static int procfs_read_ndis_hw(char *page, char **start, off_t off,
+			       int count, int *eof, void *data)
 {
 	char *p = page;
 	struct wrap_ndis_device *wnd = (struct wrap_ndis_device *)data;
@@ -245,8 +245,8 @@ static int procfs_read_hw(char *page, char **start, off_t off,
 	return (p - page);
 }
 
-static int procfs_read_settings(char *page, char **start, off_t off,
-				int count, int *eof, void *data)
+static int procfs_read_ndis_settings(char *page, char **start, off_t off,
+				     int count, int *eof, void *data)
 {
 	char *p = page;
 	struct wrap_ndis_device *wnd = (struct wrap_ndis_device *)data;
@@ -267,8 +267,8 @@ static int procfs_read_settings(char *page, char **start, off_t off,
 	return (p - page);
 }
 
-static int procfs_write_settings(struct file *file, const char *buf,
-				 unsigned long count, void *data)
+static int procfs_write_ndis_settings(struct file *file, const char *buf,
+				      unsigned long count, void *data)
 {
 	struct wrap_ndis_device *wnd = (struct wrap_ndis_device *)data;
 	char setting[MAX_PROC_STR_LEN], *p;
@@ -484,16 +484,16 @@ static int procfs_write_settings(struct file *file, const char *buf,
 	return count;
 }
 
-int ndiswrapper_procfs_add_iface(struct wrap_ndis_device *wnd)
+int wrap_procfs_add_ndis_device(struct wrap_ndis_device *wnd)
 {
 	struct net_device *dev = wnd->net_dev;
 	struct proc_dir_entry *proc_iface, *procfs_entry;
 
 	wnd->procfs_iface = NULL;
-	if (ndiswrapper_procfs_entry == NULL)
+	if (wrap_procfs_entry == NULL)
 		return -ENOMEM;
 
-	proc_iface = proc_mkdir(dev->name, ndiswrapper_procfs_entry);
+	proc_iface = proc_mkdir(dev->name, wrap_procfs_entry);
 
 	wnd->procfs_iface = proc_iface;
 
@@ -513,7 +513,7 @@ int ndiswrapper_procfs_add_iface(struct wrap_ndis_device *wnd)
 		procfs_entry->uid = proc_uid;
 		procfs_entry->gid = proc_gid;
 		procfs_entry->data = wnd;
-		procfs_entry->read_proc = procfs_read_hw;
+		procfs_entry->read_proc = procfs_read_ndis_hw;
 	}
 
 	procfs_entry = create_proc_entry("stats", S_IFREG | S_IRUSR | S_IRGRP,
@@ -525,7 +525,7 @@ int ndiswrapper_procfs_add_iface(struct wrap_ndis_device *wnd)
 		procfs_entry->uid = proc_uid;
 		procfs_entry->gid = proc_gid;
 		procfs_entry->data = wnd;
-		procfs_entry->read_proc = procfs_read_stats;
+		procfs_entry->read_proc = procfs_read_ndis_stats;
 	}
 
 	procfs_entry = create_proc_entry("encr", S_IFREG | S_IRUSR | S_IRGRP,
@@ -537,7 +537,7 @@ int ndiswrapper_procfs_add_iface(struct wrap_ndis_device *wnd)
 		procfs_entry->uid = proc_uid;
 		procfs_entry->gid = proc_gid;
 		procfs_entry->data = wnd;
-		procfs_entry->read_proc = procfs_read_encr;
+		procfs_entry->read_proc = procfs_read_ndis_encr;
 	}
 
 	procfs_entry = create_proc_entry("settings", S_IFREG |
@@ -550,13 +550,13 @@ int ndiswrapper_procfs_add_iface(struct wrap_ndis_device *wnd)
 		procfs_entry->uid = proc_uid;
 		procfs_entry->gid = proc_gid;
 		procfs_entry->data = wnd;
-		procfs_entry->read_proc = procfs_read_settings;
-		procfs_entry->write_proc = procfs_write_settings;
+		procfs_entry->read_proc = procfs_read_ndis_settings;
+		procfs_entry->write_proc = procfs_write_ndis_settings;
 	}
 	return 0;
 }
 
-void ndiswrapper_procfs_remove_iface(struct wrap_ndis_device *wnd)
+void wrap_procfs_remove_ndis_device(struct wrap_ndis_device *wnd)
 {
 	struct net_device *dev = wnd->net_dev;
 	struct proc_dir_entry *procfs_iface = wnd->procfs_iface;
@@ -567,8 +567,8 @@ void ndiswrapper_procfs_remove_iface(struct wrap_ndis_device *wnd)
 	remove_proc_entry("stats", procfs_iface);
 	remove_proc_entry("encr", procfs_iface);
 	remove_proc_entry("settings", procfs_iface);
-	if (ndiswrapper_procfs_entry != NULL)
-		remove_proc_entry(dev->name, ndiswrapper_procfs_entry);
+	if (wrap_procfs_entry != NULL)
+		remove_proc_entry(dev->name, wrap_procfs_entry);
 	wnd->procfs_iface = NULL;
 }
 
@@ -581,9 +581,7 @@ static int procfs_read_debug(char *page, char **start, off_t off,
 		*eof = 1;
 		return 0;
 	}
-
 	p += sprintf(p, "%d\n", debug);
-
 	return (p - page);
 }
 
@@ -614,20 +612,20 @@ static int procfs_write_debug(struct file *file, const char *buf,
 	return count;
 }
 
-int ndiswrapper_procfs_init(void)
+int wrap_procfs_init(void)
 {
 	struct proc_dir_entry *procfs_entry;
 
-	ndiswrapper_procfs_entry = proc_mkdir(DRIVER_NAME, proc_net);
-	if (ndiswrapper_procfs_entry == NULL) {
+	wrap_procfs_entry = proc_mkdir(DRIVER_NAME, proc_net);
+	if (wrap_procfs_entry == NULL) {
 		ERROR("couldn't create procfs directory");
 		return -ENOMEM;
 	}
-	ndiswrapper_procfs_entry->uid = proc_uid;
-	ndiswrapper_procfs_entry->gid = proc_gid;
+	wrap_procfs_entry->uid = proc_uid;
+	wrap_procfs_entry->gid = proc_gid;
 
 	procfs_entry = create_proc_entry("debug", S_IFREG | S_IRUSR | S_IRGRP,
-					 ndiswrapper_procfs_entry);
+					 wrap_procfs_entry);
 	if (procfs_entry == NULL) {
 		ERROR("couldn't create proc entry for 'debug'");
 		return -ENOMEM;
@@ -637,14 +635,13 @@ int ndiswrapper_procfs_init(void)
 		procfs_entry->read_proc  = procfs_read_debug;
 		procfs_entry->write_proc = procfs_write_debug;
 	}
-
 	return 0;
 }
 
-void ndiswrapper_procfs_remove(void)
+void wrap_procfs_remove(void)
 {
-	if (ndiswrapper_procfs_entry == NULL)
+	if (wrap_procfs_entry == NULL)
 		return;
-	remove_proc_entry("debug", ndiswrapper_procfs_entry);
+	remove_proc_entry("debug", wrap_procfs_entry);
 	remove_proc_entry(DRIVER_NAME, proc_net);
 }

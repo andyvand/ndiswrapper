@@ -529,12 +529,20 @@ int usb_init(void);
 void usb_exit(void);
 int usb_init_device(struct wrap_device *wd);
 void usb_exit_device(struct wrap_device *wd);
-void usb_cleanup(void);
 void usb_cancel_pending_urbs(void);
 
+int misc_funcs_init(void);
+int misc_funcs_init_device(struct wrap_device *wd);
+void misc_funcs_exit_device(struct wrap_device *wd);
+void misc_funcs_exit(void);
+
+int wrap_procfs_init(void);
+void wrap_procfs_remove(void);
+
+int stricmp(const char *s1, const char *s2);
+void dump_bytes(const char *name, const u8 *from, int len);
+
 struct driver_object *find_bus_driver(const char *name);
-struct device_object *alloc_pdo(struct driver_object *drv_obj);
-void free_pdo(struct device_object *drv_obj);
 
 STDCALL void WRITE_PORT_UCHAR(ULONG_PTR port, UCHAR value);
 STDCALL UCHAR READ_PORT_UCHAR(ULONG_PTR port);
