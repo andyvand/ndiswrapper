@@ -103,7 +103,11 @@ static STDCALL NTSTATUS pdoDispatchPnp(struct device_object *pdo,
 	IOTRACE("fn %d:%d, wd: %p", irp_sl->major_fn, irp_sl->minor_fn, wd);
 	switch (irp_sl->minor_fn) {
 	case IRP_MN_START_DEVICE:
-		status = STATUS_SUCCESS;
+		if (start_pdo(pdo)) {
+			ERROR("couldn't start pdo");
+			status = STATUS_FAILURE;
+		} else
+			status = STATUS_SUCCESS;
 		break;
 	case IRP_MN_QUERY_INTERFACE:
 		if (WRAP_BUS_TYPE(wd->dev_bus_type) != WRAP_USB_BUS) {
@@ -496,11 +500,6 @@ static int wrap_pnp_start_device(struct wrap_device *wd)
 		return -ENOMEM;
 	wd->pdo = pdo;
 	pdo->reserved = wd;
-	if (start_pdo(pdo)) {
-		ERROR("couldn't start pdo");
-		free_pdo(pdo);
-		return -EINVAL;
-	}
 	if (WRAP_DEVICE_TYPE(wd->dev_bus_type) == NDIS_DEVICE) {
 		if (init_ndis_device(wd)) {
 			free_pdo(pdo);
