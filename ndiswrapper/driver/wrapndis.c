@@ -1101,7 +1101,9 @@ int suspend_ndis_device(struct wrap_ndis_device *wnd, pm_message_t state)
 	if (status == STATUS_SUCCESS)
 		TRACEEXIT2(return 0);
 	else {
-		/* TODO: should we restart interface, stats etc.? */
+		/* TODO: we don't know the current status of
+		 * driver/device; should we restart interface, stats
+		 * etc.? */
 		TRACEEXIT2(return -1);
 	}
 }
@@ -1687,7 +1689,7 @@ int init_ndis_device(struct wrap_device *wd)
 		return -ENOMEM;
 	}
 	driver->drv_obj->drv_ext->add_device = NdisAddDevice;
-	SET_MODULE_OWNER(dev);
+	SET_MODULE_OWNER(net_dev);
 	wnd = netdev_priv(net_dev);
 	DBGTRACE1("wnd: %p", wnd);
 
