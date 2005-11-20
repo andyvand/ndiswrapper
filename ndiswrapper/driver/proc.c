@@ -329,24 +329,29 @@ static int procfs_write_settings(struct file *file, const char *buf,
 		i = simple_strtol(p, NULL, 10);
 		if (i <= 0 || i > 3)
 			return -EINVAL;
-		if (wnd->wd->dev_type == NDIS_PCI_BUS)
-			wrap_pnp_suspend_ndis_pci(wnd->wd->pci.pdev,
-						  PMSG_SUSPEND);
-#if defined(CONFIG_USB) && LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
-		else if (wnd->wd->dev_type == NDIS_USB_BUS)
-			wrap_pnp_suspend_ndis_usb(wnd->wd->usb.intf,
-						  PMSG_SUSPEND);
-#endif
+		if (WRAP_BUS_TYPE(wnd->wd->dev_bus_type) == WRAP_PCI_BUS)
+			i = wrap_pnp_suspend_pci_device(wnd->wd->pci.pdev,
+							PMSG_SUSPEND);
 		else
+#if defined(CONFIG_USB) && LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
+			i = wrap_pnp_suspend_usb_device(wnd->wd->usb.intf,
+							PMSG_SUSPEND);
+#else
+		i = -1;
+#endif
+		if (i)
 			return -EINVAL;
 	} else if (!strcmp(setting, "resume")) {
-		if (wnd->wd->dev_type == NDIS_PCI_BUS)
-			wrap_pnp_resume_ndis_pci(wnd->wd->pci.pdev);
-#if defined(CONFIG_USB) && LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
-		else if (wnd->wd->dev_type == NDIS_USB_BUS)
-			wrap_pnp_resume_ndis_usb(wnd->wd->usb.intf);
-#endif
+		int i;
+		if (WRAP_BUS_TYPE(wnd->wd->dev_bus_type) == WRAP_PCI_BUS)
+			i = wrap_pnp_resume_pci_device(wnd->wd->pci.pdev);
 		else
+#if defined(CONFIG_USB) && LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
+			i = wrap_pnp_resume_usb_device(wnd->wd->usb.intf);
+#else
+		i = -1;
+#endif
+		if (i)
 			return -EINVAL;
 	} else if (!strcmp(setting, "reinit")) {
 		if (ndis_reinit(wnd))
@@ -475,40 +480,8 @@ static int procfs_write_settings(struct file *file, const char *buf,
 				  &antenna, sizeof(antenna));
 		if (res)
 			return -EINVAL;
-	} else {
-		int res = -1;
-		struct wrap_device_setting *dev_setting;
-
-		if (!p)
-			TRACEEXIT1(return -EINVAL);
-		p++;
-		DBGTRACE1("name='%s', value='%s'\n", setting, p);
-#if 0
-		list_for_each_entry(dev_setting, &wnd->wd->settings, list) {
-			struct ndis_configuration_parameter *param;
-			struct unicode_string *ustring;
-
-			param = &dev_setting->encoded;
-			if (!stricmp(dev_setting->name, setting)) {
-				if (strlen(p) > MAX_NDIS_SETTING_VALUE_LEN)
-					TRACEEXIT1(return -EINVAL);
-				memset(dev_setting->value, 0,
-				       MAX_NDIS_SETTING_VALUE_LEN);
-				memcpy(dev_setting->value, p, strlen(p));
-				ustring = &param->data.ustring;
-				if (param->type == NDIS_CONFIG_PARAM_STRING)
-					RtlFreeUnicodeString(ustring);
-				param->type = NDIS_CONFIG_PARAM_NONE;
-				res = 0;
-			}
-		}
-		if (res)
-			return -EINVAL;
-#endif
 	}
-
 	return count;
-
 }
 
 int ndiswrapper_procfs_add_iface(struct wrap_ndis_device *wnd)

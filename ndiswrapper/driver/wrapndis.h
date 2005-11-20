@@ -35,12 +35,15 @@ NDIS_STATUS miniport_pnp_event(struct wrap_ndis_device *wnd,
 			       enum ndis_device_pnp_event event);
 void sendpacket_done(struct wrap_ndis_device *wnd, struct ndis_packet *packet);
 
-int wrap_pnp_suspend_ndis_pci(struct pci_dev *pdev, pm_message_t state);
-int wrap_pnp_resume_ndis_pci(struct pci_dev *pdev);
+int wrap_start_ndis_device(struct wrap_device *wd);
+void wrap_remove_ndis_device(struct wrap_device *wd);
+
+int wrap_suspend_ndis_device(struct wrap_ndis_device *wnd, pm_message_t state);
+int wrap_resume_ndis_device(struct wrap_ndis_device *wnd);
 
 #if defined(CONFIG_USB) && LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
-int wrap_pnp_suspend_ndis_usb(struct usb_interface *intf, pm_message_t state);
-int wrap_pnp_resume_ndis_usb(struct usb_interface *intf);
+int wrap_suspend_ndis_usb(struct usb_interface *intf, pm_message_t state);
+int wrap_resume_ndis_usb(struct usb_interface *intf);
 #endif
 
 NDIS_STATUS ndis_reinit(struct wrap_ndis_device *wnd);

@@ -19,6 +19,7 @@
 
 extern KSPIN_LOCK loader_lock;
 extern struct nt_list ndis_drivers;
+extern struct wrap_device *wrap_devices;
 
 STDCALL NTSTATUS pdoDispatchDeviceControl(struct device_object *pdo,
 						  struct  irp *irp)
@@ -84,10 +85,9 @@ int start_pdo(struct device_object *pdo)
 
 	TRACEENTER1("%p, %p", pdo, pdo->reserved);
 	wd = pdo->reserved;
-	if (wd->dev_type != NDIS_PCI_BUS)
+	if (WRAP_BUS_TYPE(wd->dev_bus_type) != WRAP_PCI_BUS)
 		TRACEEXIT1(return 0);
 	pdev = wd->pci.pdev;
-	pci_set_drvdata(pdev, wd);
 	ret = pci_enable_device(pdev);
 	if (ret) {
 		ERROR("couldn't enable PCI device: %x", ret);
@@ -191,7 +191,7 @@ STDCALL NTSTATUS pdoDispatchPnp(struct device_object *pdo, struct irp *irp)
 		status = STATUS_SUCCESS;
 		break;
 	case IRP_MN_QUERY_INTERFACE:
-		if (wd->dev_type != NDIS_USB_BUS) {
+		if (WRAP_BUS_TYPE(wd->dev_bus_type) != WRAP_USB_BUS) {
 			status = STATUS_NOT_IMPLEMENTED;
 			break;
 		}
@@ -220,11 +220,10 @@ STDCALL NTSTATUS pdoDispatchPnp(struct device_object *pdo, struct irp *irp)
 		break;
 	case IRP_MN_REMOVE_DEVICE:
 		IoDeleteDevice(wd->wnd->nmb->pdo);
-		if (wd->dev_type == NDIS_PCI_BUS) {
+		if (WRAP_BUS_TYPE(wd->dev_bus_type) == WRAP_PCI_BUS) {
 			struct pci_dev *pdev = wd->pci.pdev;
 			pci_release_regions(pdev);
 			pci_disable_device(pdev);
-			pci_set_drvdata(pdev, NULL);
 		}
 		status = STATUS_SUCCESS;
 		break;
@@ -271,7 +270,7 @@ STDCALL NTSTATUS pdoDispatchPower(struct device_object *pdo,
 		state = irp_sl->params.power.state.device_state;
 		if (state == PowerDeviceD0) {
 			IOTRACE("resuming device %p", wd);
-			if (wd->dev_type == NDIS_PCI_BUS) {
+			if (WRAP_BUS_TYPE(wd->dev_bus_type) == WRAP_PCI_BUS) {
 				pdev = wd->pci.pdev;
 #if LINUX_VERSION_CODE > KERNEL_VERSION(2,6,9)
 				pci_restore_state(pdev);
@@ -281,7 +280,7 @@ STDCALL NTSTATUS pdoDispatchPower(struct device_object *pdo,
 			}
 		} else {
 			IOTRACE("suspending device %p", wd);
-			if (wd->dev_type == NDIS_PCI_BUS) {
+			if (WRAP_BUS_TYPE(wd->dev_bus_type) == WRAP_PCI_BUS) {
 				pdev = wd->pci.pdev;
 #if LINUX_VERSION_CODE > KERNEL_VERSION(2,6,9)
 				pci_save_state(pdev);
@@ -440,3 +439,147 @@ NTSTATUS pnp_remove_device(struct device_object *pdo)
 	TRACEEXIT1(return status);
 }
 
+/*
+ * called by PCI-subsystem for each PCI-card found.
+ *
+ * This function should not be marked __devinit because ndiswrapper
+ * adds PCI IDs dynamically.
+ */
+int wrap_pnp_start_pci_device(struct pci_dev *pdev,
+			      const struct pci_device_id *ent)
+{
+	struct wrap_device *wd;
+	TRACEENTER1("called for %04x:%04x:%04x:%04x", pdev->vendor,
+		    pdev->device, pdev->subsystem_vendor,
+		    pdev->subsystem_device);
+	wd = &wrap_devices[ent->driver_data];
+	pci_set_drvdata(pdev, wd);
+	if (WRAP_DEVICE_TYPE(wd->dev_bus_type) == NDIS_DEVICE) {
+		wd->pci.pdev = pdev;
+		return wrap_start_ndis_device(wd);
+	} else {
+		ERROR("device %d not supported", wd->dev_bus_type);
+		return -EINVAL;
+	}
+}
+
+void __devexit wrap_pnp_remove_pci_device(struct pci_dev *pdev)
+{
+	struct wrap_device *wd;
+
+	TRACEENTER1("%p", pdev);
+	wd = (struct wrap_device *)pci_get_drvdata(pdev);
+	TRACEENTER1("%p", wd);
+	if (!wd)
+		TRACEEXIT1(return);
+	if (WRAP_DEVICE_TYPE(wd->dev_bus_type) == NDIS_DEVICE)
+		wrap_remove_ndis_device(wd);
+	pci_set_drvdata(pdev, NULL);
+}
+
+int wrap_pnp_suspend_pci_device(struct pci_dev *pdev, pm_message_t state)
+{
+	struct wrap_device *wd;
+
+	wd = (struct wrap_device *)pci_get_drvdata(pdev);
+	if (WRAP_DEVICE_TYPE(wd->dev_bus_type) == NDIS_DEVICE)
+		return wrap_suspend_ndis_device(wd->wnd, state);
+	else {
+		ERROR("device %d not supported", wd->dev_bus_type);
+		return -1;
+	}
+}
+
+int wrap_pnp_resume_pci_device(struct pci_dev *pdev)
+{
+	struct wrap_device *wd;
+
+	wd = (struct wrap_device *)pci_get_drvdata(pdev);
+	if (WRAP_DEVICE_TYPE(wd->dev_bus_type) == NDIS_DEVICE)
+		return wrap_resume_ndis_device(wd->wnd);
+	else {
+		ERROR("device %d not supported", wd->dev_bus_type);
+		return -1;
+	}
+}
+
+#ifdef CONFIG_USB
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
+int wrap_pnp_start_usb_device(struct usb_interface *intf,
+			      const struct usb_device_id *usb_id)
+#else
+void *wrap_pnp_start_usb_device(struct usb_device *udev,
+				unsigned int ifnum,
+				const struct usb_device_id *usb_id)
+#endif
+{
+	struct wrap_device *wd;
+	wd = &wrap_devices[usb_id->driver_info];
+	if (WRAP_DEVICE_TYPE(wd->dev_bus_type) == NDIS_DEVICE) {
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
+		wd->usb.udev = interface_to_usbdev(intf);
+		usb_set_intfdata(intf, wd);
+		wd->usb.intf = intf;
+#else
+		wd->usb.udev = udev;
+		wd->usb.intf = usb_ifnum_to_if(udev, ifnum);
+#endif
+		return wrap_start_ndis_device(wd);
+	} else {
+		ERROR("device %d not supported", wd->dev_bus_type);
+		return -EINVAL;
+	}
+}
+
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
+void wrap_pnp_remove_usb_device(struct usb_interface *intf)
+{
+	struct wrap_device *wd;
+	TRACEENTER1("%p", intf);
+	wd = (struct wrap_device *)usb_get_intfdata(intf);
+	usb_set_intfdata(intf, NULL);
+#else
+void wrap_pnp_remove_usb_device(struct usb_device *udev, void *ptr)
+{
+	struct wrap_device *wd;
+	TRACEENTER1("%p", ptr);
+	wd = (struct wrap_device *)ptr;
+#endif
+	wd->usb.intf = NULL;
+	if (WRAP_DEVICE_TYPE(wd->dev_bus_type) == NDIS_DEVICE)
+		wrap_remove_ndis_device(wd);
+	else
+		ERROR("device %d not supported", wd->dev_bus_type);
+}
+
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
+int wrap_pnp_suspend_usb_device(struct usb_interface *intf, pm_message_t state)
+{
+	struct wrap_device *wd;
+	wd = usb_get_intfdata(intf);
+	if (!wd)
+		TRACEEXIT1(return -1);
+	if (WRAP_DEVICE_TYPE(wd->dev_bus_type) == NDIS_DEVICE)
+		return wrap_suspend_ndis_device(wd->wnd, state);
+	else {
+		ERROR("device %d not supported", wd->dev_bus_type);
+		return -1;
+	}
+}
+
+int wrap_pnp_resume_usb_device(struct usb_interface *intf)
+{
+	struct wrap_device *wd;
+	wd = usb_get_intfdata(intf);
+	if (!wd)
+		TRACEEXIT1(return -1);
+	if (WRAP_DEVICE_TYPE(wd->dev_bus_type) == NDIS_DEVICE)
+		return wrap_resume_ndis_device(wd->wnd);
+	else {
+		ERROR("device %d not supported", wd->dev_bus_type);
+		return -1;
+	}
+}
+#endif
+
+#endif // USB

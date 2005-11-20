@@ -38,20 +38,19 @@ NTSTATUS pnp_start_device(struct device_object *pdo);
 NTSTATUS pnp_stop_device(struct device_object *pdo);
 NTSTATUS pnp_remove_device(struct device_object *pdo);
 
-int wrap_pnp_start_ndis_pci_device(struct pci_dev *pdev,
-				   const struct pci_device_id *ent);
-void __devexit wrap_pnp_remove_ndis_pci_device(struct pci_dev *pdev);
-int wrap_pnp_suspend_device(struct device_object *pdo,
-			    enum ndis_power_state pm_state);
-int wrap_pnp_resume_device(struct device_object *pdo);
-int wrap_pnp_resume_pci(struct pci_dev *pdev);
-int wrap_pnp_suspend_pci(struct pci_dev *pdev, pm_message_t state);
-
+int wrap_pnp_start_pci_device(struct pci_dev *pdev,
+			      const struct pci_device_id *ent);
+void __devexit wrap_pnp_remove_pci_device(struct pci_dev *pdev);
+int wrap_pnp_suspend_pci_device(struct pci_dev *pdev, pm_message_t state);
+int wrap_pnp_resume_pci_device(struct pci_dev *pdev);
 #ifdef CONFIG_USB
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
-int wrap_pnp_start_ndis_usb_device(struct usb_interface *intf,
-				   const struct usb_device_id *usb_id);
-void wrap_pnp_remove_ndis_usb_device(struct usb_interface *intf);
+int wrap_pnp_start_usb_device(struct usb_interface *intf,
+			      const struct usb_device_id *usb_id);
+void wrap_pnp_remove_usb_device(struct usb_interface *intf);
+int wrap_pnp_suspend_usb_device(struct usb_interface *intf,
+				pm_message_t state);
+int wrap_pnp_resume_usb_device(struct usb_interface *intf);
 #else
 void *wrap_pnp_start_usb_device(struct usb_device *udev, unsigned int ifnum,
 				const struct usb_device_id *usb_id);

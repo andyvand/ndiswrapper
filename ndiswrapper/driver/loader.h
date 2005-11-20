@@ -30,7 +30,7 @@ struct load_device_setting {
 };
 		
 struct load_device {
-	int bustype;
+	int dev_bus_type;
 	int vendor;
 	int device;
 	int subvendor;
@@ -55,9 +55,9 @@ struct load_driver {
 	struct load_driver_file bin_files[MAX_DRIVER_BIN_FILES];
 };
 
-#define NDIS_REGISTER_DEVICES	_IOW(('N' + 'd' + 'i' + 'S'), 0,	\
+#define WRAP_REGISTER_DEVICES	_IOW(('N' + 'd' + 'i' + 'S'), 0,	\
 				     struct load_devices *)
-#define NDIS_LOAD_DRIVER	_IOW(('N' + 'd' + 'i' + 'S'), 1,	\
+#define WRAP_LOAD_DRIVER	_IOW(('N' + 'd' + 'i' + 'S'), 1,	\
 				     struct load_driver *)
 
 int loader_init(void);

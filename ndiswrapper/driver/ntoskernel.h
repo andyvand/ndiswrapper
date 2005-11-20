@@ -460,7 +460,6 @@ struct wrap_driver {
 	struct driver_object *drv_obj;
 	char name[MAX_DRIVER_NAME_LEN];
 	char version[MAX_SETTING_VALUE_LEN];
-	int bustype;
 	unsigned int num_pe_images;
 	struct pe_image pe_images[MAX_PE_IMAGES];
 	int num_bin_files;
@@ -478,8 +477,7 @@ enum hw_status {
 
 struct wrap_device {
 	struct nt_list settings;
-	int bus_type;
-	int dev_type;
+	int dev_bus_type;
 	struct device_object *pdo;
 	union {
 		struct {
