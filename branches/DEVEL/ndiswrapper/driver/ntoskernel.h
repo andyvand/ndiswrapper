@@ -16,7 +16,7 @@
 #ifndef _NTOSKERNEL_H_
 #define _NTOSKERNEL_H_
 
-#define UTILS_VERSION "1.5"
+#define UTILS_VERSION "1.6"
 
 #include <linux/types.h>
 #include <linux/timer.h>
@@ -461,7 +461,7 @@ struct wrap_driver {
 	char name[MAX_DRIVER_NAME_LEN];
 	char version[MAX_SETTING_VALUE_LEN];
 	unsigned int num_pe_images;
-	struct pe_image pe_images[MAX_PE_IMAGES];
+	struct pe_image pe_images[MAX_DRIVER_PE_IMAGES];
 	int num_bin_files;
 	struct wrap_bin_file *bin_files;
 	struct wrap_device_setting *settings;
