@@ -49,7 +49,7 @@ struct wrap_driver *load_wrap_driver(struct wrap_device *device)
 	wrap_driver = NULL;
 	irql = kspin_lock_irql(&loader_lock, DISPATCH_LEVEL);
 	nt_list_for_each_entry(wrap_driver, &wrap_drivers, list) {
-		if (strcmp(wrap_driver->name, device->driver->name) == 0) {
+		if (strcmp(wrap_driver->name, device->driver_name) == 0) {
 			DBGTRACE1("driver %s already loaded",
 				  wrap_driver->name);
 			found = 1;
@@ -67,17 +67,16 @@ struct wrap_driver *load_wrap_driver(struct wrap_device *device)
 #else
 				"0",
 #endif
-				UTILS_VERSION, device->driver->name,
+				UTILS_VERSION, device->driver_name,
 				device->conf_file_name, NULL};
 		char *env[] = {NULL};
 
-		DBGTRACE1("loading driver %s", device->driver->name);
+		DBGTRACE1("loading driver %s", device->driver_name);
 		err = call_usermodehelper("/sbin/loadndisdriver", argv, env
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
 					  , 1
 #endif
 			);
-
 		if (err) {
 			ERROR("loadndiswrapper failed (%d); check system log "
 			      "for messages from 'loadndisdriver'", err);
@@ -90,22 +89,21 @@ struct wrap_driver *load_wrap_driver(struct wrap_device *device)
 		schedule_timeout(HZ);
 #endif
 		found = 0;
+		DBGTRACE1("%s", device->driver_name);
 		irql = kspin_lock_irql(&loader_lock, DISPATCH_LEVEL);
 		nt_list_for_each_entry(wrap_driver, &wrap_drivers, list) {
-			if (strcmp(wrap_driver->name,
-				   device->driver->name) == 0) {
+			if (!strcmp(wrap_driver->name, device->driver_name)) {
+				device->driver = wrap_driver;
 				found = 1;
 				break;
 			}
 		}
 		kspin_unlock_irql(&loader_lock, irql);
-
 		if (!found) {
 			ERROR("couldn't load driver '%s'",
-			      device->driver->name);
+			      device->driver_name);
 			TRACEEXIT1(return NULL);
 		}
-
 		DBGTRACE1("driver %s is loaded", wrap_driver->name);
 	}
 	TRACEEXIT1(return wrap_driver);
@@ -121,7 +119,7 @@ static int load_sys_files(struct wrap_driver *driver,
 
 	DBGTRACE1("num_pe_images = %d", load_driver->nr_sys_files);
 	DBGTRACE1("loading driver: %s", load_driver->name);
-	memcpy(driver->name, load_driver->name, MAX_DRIVER_NAME_LEN);
+	strncpy(driver->name, load_driver->name, MAX_DRIVER_NAME_LEN);
 	DBGTRACE1("driver: %s", driver->name);
 	err = 0;
 	driver->num_pe_images = 0;
@@ -314,7 +312,7 @@ static void unload_wrap_device(struct wrap_device *device)
 	struct nt_list *cur;
 	TRACEENTER1("unloading device %p (%04X:%04X:%04X:%04X), driver %s",
 		    device, device->vendor, device->device, device->subvendor,
-		    device->subdevice, device->driver->name);
+		    device->subdevice, device->driver_name);
 
 	while ((cur = RemoveHeadList(&device->settings))) {
 		struct wrap_device_setting *setting;
@@ -350,7 +348,7 @@ static void unload_wrap_driver(struct wrap_driver *driver)
 
 	RtlFreeUnicodeString(&drv_obj->name);
 	/* this frees driver */
-	free_custom_ext(drv_obj->drv_ext);
+	free_custom_extensions(drv_obj->drv_ext);
 	kfree(drv_obj->drv_ext);
 	kfree(drv_obj);
 	TRACEEXIT1(return);
@@ -380,17 +378,15 @@ static int start_wrap_driver(struct wrap_driver *driver)
 			DBGTRACE1("entry returns %08X", res);
 			break;
 		}
-
 	if (ret) {
 		ERROR("driver initialization failed: %08X", ret);
 		RtlFreeUnicodeString(&drv_obj->name);
 		/* this frees ndis_driver */
-		free_custom_ext(drv_obj->drv_ext);
+		free_custom_extensions(drv_obj->drv_ext);
 		kfree(drv_obj->drv_ext);
 		kfree(drv_obj);
 		TRACEEXIT1(return -EINVAL);
 	}
-
 	TRACEEXIT1(return 0);
 }
 
@@ -403,7 +399,7 @@ static int add_wrap_driver(struct wrap_driver *driver)
 	KIRQL irql;
 	struct wrap_driver *tmp;
 
-	TRACEENTER1("%s", driver->name);
+	TRACEENTER1("name: %s", driver->name);
 	irql = kspin_lock_irql(&loader_lock, DISPATCH_LEVEL);
 	nt_list_for_each_entry(tmp, &wrap_drivers, list) {
 		if (strcmp(tmp->name, driver->name) == 0) {
@@ -414,7 +410,6 @@ static int add_wrap_driver(struct wrap_driver *driver)
 	}
 	InsertTailList(&wrap_drivers, &driver->list);
 	kspin_unlock_irql(&loader_lock, irql);
-
 	TRACEEXIT1(return 0);
 }
 
@@ -425,6 +420,7 @@ static int load_user_space_driver(struct load_driver *load_driver)
 	struct ansi_string ansi_reg;
 	struct wrap_driver *wrap_driver = NULL;
 	int i;
+	struct wrap_ndis_driver *ndis_driver;
 
 	TRACEENTER1("");
 	drv_obj = kmalloc(sizeof(*drv_obj), GFP_KERNEL);
@@ -445,12 +441,22 @@ static int load_user_space_driver(struct load_driver *load_driver)
 	InitializeListHead(&drv_obj->drv_ext->custom_ext);
 	DBGTRACE1("");
 	if (IoAllocateDriverObjectExtension(drv_obj,
-					    (void *)CE_NDIS_DRIVER_CLIENT_ID,
+					    (void *)CE_WRAP_DRIVER_CLIENT_ID,
 					    sizeof(*wrap_driver),
 					    (void **)&wrap_driver) !=
 	    STATUS_SUCCESS)
 		TRACEEXIT1(return NDIS_STATUS_RESOURCES);
 	DBGTRACE1("driver: %p", wrap_driver);
+	memset(wrap_driver, 0, sizeof(*wrap_driver));
+	wrap_driver->bustype = -1;
+	wrap_driver->drv_obj = drv_obj;
+	if (IoAllocateDriverObjectExtension(drv_obj,
+					    (void *)CE_NDIS_DRIVER_CLIENT_ID,
+					    sizeof(*ndis_driver),
+					    (void **)&ndis_driver) !=
+	    STATUS_SUCCESS)
+		TRACEEXIT1(return NDIS_STATUS_RESOURCES);
+	wrap_driver->ndis_driver = ndis_driver;
 	for (i = 0; i <= IRP_MJ_MAXIMUM_FUNCTION; i++)
 		drv_obj->major_func[i] = IopPassIrpDown;
 	drv_obj->major_func[IRP_MJ_PNP] = NdisDispatchPnp;
@@ -460,23 +466,19 @@ static int load_user_space_driver(struct load_driver *load_driver)
 	drv_obj->major_func[IRP_MJ_DEVICE_CONTROL] =
 		NdisDispatchDeviceControl;
 
-	memset(wrap_driver, 0, sizeof(*wrap_driver));
-	wrap_driver->bustype = -1;
-	wrap_driver->drv_obj = drv_obj;
-	strncpy(wrap_driver->name, load_driver->name,
-		sizeof(wrap_driver->name));
 	ansi_reg.buf = "/tmp";
 	ansi_reg.length = strlen(ansi_reg.buf);
 	ansi_reg.max_length = ansi_reg.length + 1;
 	if (RtlAnsiStringToUnicodeString(&drv_obj->name, &ansi_reg, 1) !=
 	    STATUS_SUCCESS) {
 		ERROR("couldn't initialize registry path");
-		free_custom_ext(drv_obj->drv_ext);
+		free_custom_extensions(drv_obj->drv_ext);
 		kfree(drv_obj->drv_ext);
 		kfree(drv_obj);
 		TRACEEXIT1(return -EINVAL);
 	}
-	DBGTRACE1("");
+	strncpy(wrap_driver->name, load_driver->name,
+		sizeof(wrap_driver->name));
 	if (load_sys_files(wrap_driver, load_driver) ||
 	    load_bin_files(wrap_driver, load_driver) ||
 	    load_settings(wrap_driver, load_driver) ||
@@ -569,8 +571,9 @@ static int register_devices(struct load_devices *load_devices)
 		struct wrap_device *wrap_device;
 
 		wrap_device = &wrap_devices[num_pci + num_usb];
-
 		InitializeListHead(&wrap_device->settings);
+		strncpy(wrap_device->driver_name, device->driver_name,
+			sizeof(wrap_device->driver_name));
 		memcpy(&wrap_device->conf_file_name, device->conf_file_name,
 		       sizeof(wrap_device->conf_file_name));
 		wrap_device->bus_type = device->bustype;

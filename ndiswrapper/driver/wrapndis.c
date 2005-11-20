@@ -31,8 +31,8 @@ static int set_packet_filter(struct wrap_ndis_device *wnd,
 			     ULONG packet_filter);
 static void stats_timer_add(struct wrap_ndis_device *wnd);
 static void stats_timer_del(struct wrap_ndis_device *wnd);
-static void hangcheck_add(struct wrap_ndis_device *wnd);
-static void hangcheck_del(struct wrap_ndis_device *wnd);
+void hangcheck_add(struct wrap_ndis_device *wnd);
+void hangcheck_del(struct wrap_ndis_device *wnd);
 static NTSTATUS wrap_pnp_remove_ndis_device(struct wrap_ndis_device *wnd);
 
 static int inline ndis_wait_pending_completion(struct wrap_ndis_device *wnd)
@@ -1006,7 +1006,7 @@ static void hangcheck_proc(unsigned long data)
 	TRACEEXIT3(return);
 }
 
-static void hangcheck_add(struct wrap_ndis_device *wnd)
+void hangcheck_add(struct wrap_ndis_device *wnd)
 {
 	if (!wnd->wd->driver->ndis_driver->miniport.hangcheck ||
 	    wnd->hangcheck_interval <= 0)
@@ -1019,7 +1019,7 @@ static void hangcheck_add(struct wrap_ndis_device *wnd)
 	return;
 }
 
-static void hangcheck_del(struct wrap_ndis_device *wnd)
+void hangcheck_del(struct wrap_ndis_device *wnd)
 {
 	del_timer_sync(&wnd->hangcheck_timer);
 }
@@ -1493,7 +1493,7 @@ STDCALL NTSTATUS NdisDispatchPnp(struct device_object *fdo,
 		set_bit(SHUTDOWN, &wnd->wrap_ndis_work);
 		ndis_close(wnd->net_dev);
 		netif_carrier_off(wnd->net_dev);
-//		ndiswrapper_procfs_remove_iface(wnd);
+		ndiswrapper_procfs_remove_iface(wnd);
 		/* throw away pending packets */
 		irql = kspin_lock_irql(&wnd->xmit_lock, DISPATCH_LEVEL);
 		while (wnd->xmit_ring_pending) {
@@ -1569,7 +1569,7 @@ struct net_device *wrap_alloc_netdev(struct wrap_ndis_device **pwnd,
 
 	KeInitializeSpinLock(&nmb->lock);
 	setup_nmb_func_ptrs(nmb);
-
+	DBGTRACE1("");
 	wnd->net_dev = dev;
 	wnd->ndis_irq = NULL;
 	kspin_lock_init(&wnd->xmit_lock);
@@ -1581,6 +1581,7 @@ struct net_device *wrap_alloc_netdev(struct wrap_ndis_device **pwnd,
 	INIT_WORK(&wnd->xmit_work, xmit_worker, wnd);
 	wnd->xmit_ring_start = 0;
 	wnd->xmit_ring_pending = 0;
+	DBGTRACE1("");
 	kspin_lock_init(&wnd->send_packet_done_lock);
 	wnd->encr_mode = Ndis802_11EncryptionDisabled;
 	wnd->auth_mode = Ndis802_11AuthModeOpen;
@@ -1601,14 +1602,15 @@ struct net_device *wrap_alloc_netdev(struct wrap_ndis_device **pwnd,
 	wnd->infrastructure_mode = Ndis802_11Infrastructure;
 	INIT_WORK(&wnd->wrap_ndis_worker, wrap_ndis_worker_proc, wnd);
 	set_bit(HW_AVAILABLE, &wnd->wd->hw_status);
-	wd->driver->ndis_driver->miniport.adapter_shutdown = NULL;
+	DBGTRACE1("");
+//	wd->driver->ndis_driver->miniport.adapter_shutdown = NULL;
+	DBGTRACE1("");
 	/* ZyDas driver doesn't call completion function when
 	 * querying for stats or rssi, so disable stats */
-	if (stricmp(wnd->wd->driver->name, "zd1211u") == 0)
+	if (stricmp(wd->driver->name, "zd1211u") == 0)
 		wnd->stats_enabled = FALSE;
 	else
 		wnd->stats_enabled = TRUE;
-
 	*pwnd = wnd;
 	TRACEEXIT1(return dev);
 }
@@ -1774,7 +1776,7 @@ STDCALL NTSTATUS NdisAddDevice(struct driver_object *drv_obj,
 	if (wnd->wd->dev_type == NDIS_USB_BUS)
 		SET_NETDEV_DEV(dev, &wnd->wd->usb.intf->dev);
 #endif
-//	ndiswrapper_procfs_add_iface(wnd);
+	ndiswrapper_procfs_add_iface(wnd);
 	TRACEEXIT1(return STATUS_SUCCESS);
 
 buffer_pool_err:
@@ -1837,6 +1839,8 @@ int wrap_pnp_start_ndis_pci_device(struct pci_dev *pdev,
 	driver = load_wrap_driver(device);
 	if (!driver)
 		return -ENODEV;
+	device->driver = driver;
+	DBGTRACE1("driver: %s, %s", device->driver_name, driver->name);
 	/* first create pdo */
 	drv_obj = find_bus_driver("PCI");
 	if (!drv_obj)
@@ -1847,6 +1851,7 @@ int wrap_pnp_start_ndis_pci_device(struct pci_dev *pdev,
 	device->pci.pdev = pdev;
 	device->pdo = pdo;
 	pdo->reserved = device;
+	device->dev_type = NDIS_PCI_BUS;
 	dev = wrap_alloc_netdev(&wnd, device);
 	if (!dev) {
 		ERROR("couldn't initialize network device");
@@ -1871,14 +1876,14 @@ err_pdo:
 
 void __devexit wrap_pnp_remove_ndis_pci_device(struct pci_dev *pdev)
 {
-	struct wrap_ndis_device *wnd;
+	struct wrap_device *wd;
 
 	TRACEENTER1("%p", pdev);
-	wnd = (struct wrap_ndis_device *)pci_get_drvdata(pdev);
-	TRACEENTER1("%p", wnd);
-	if (!wnd)
+	wd = (struct wrap_device *)pci_get_drvdata(pdev);
+	TRACEENTER1("%p", wd);
+	if (!wd)
 		TRACEEXIT1(return);
-	wrap_pnp_remove_ndis_device(wnd);
+	wrap_pnp_remove_ndis_device(wd->wnd);
 	TRACEEXIT1(return);
 }
 
@@ -1915,7 +1920,7 @@ void *wrap_pnp_start_ndis_usb_device(struct usb_device *udev,
 	drv_obj = find_bus_driver("USB");
 	if (!drv_obj)
 		goto err_driver;
-	wnd->wd->dev_type = NDIS_USB_BUS;
+	device->dev_type = NDIS_USB_BUS;
 	pdo = alloc_pdo(drv_obj);
 	if (!pdo)
 		goto err_driver;
@@ -1968,31 +1973,31 @@ err_driver:
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
 void wrap_pnp_remove_ndis_usb_device(struct usb_interface *intf)
 {
-	struct wrap_ndis_device *wnd;
+	struct wrap_device *wd;
 
 	TRACEENTER1("%p", intf);
-	wnd = (struct wrap_ndis_device *)usb_get_intfdata(intf);
-	if (!wnd || !wnd->wd)
+	wd = (struct wrap_device *)usb_get_intfdata(intf);
+	if (!wd || !wd->wnd)
 		TRACEEXIT1(return);
-	wnd->wd->usb.intf = NULL;
+	wd->usb.intf = NULL;
 	usb_set_intfdata(intf, NULL);
-	if (!test_bit(HW_RMMOD, &wnd->wd->hw_status))
-		miniport_pnp_event(wnd, NdisDevicePnPEventSurpriseRemoved);
-	wrap_pnp_remove_ndis_device(wnd);
+	if (!test_bit(HW_RMMOD, &wd->hw_status))
+		miniport_pnp_event(wd->wnd, NdisDevicePnPEventSurpriseRemoved);
+	wrap_pnp_remove_ndis_device(wd->wnd);
 	TRACEEXIT1(return);
 }
 #else
 void wrap_pnp_remove_ndis_usb_device(struct usb_device *udev, void *ptr)
 {
-	struct wrap_ndis_device *wnd = (struct wrap_ndis_device *)ptr;
+	struct wrap_device *wd = (struct wrap_device *)ptr;
 
 	TRACEENTER1("%p", udev);
-	if (!wnd || !wnd->wd || !wnd->wd->usb.intf)
+	if (!wd || !wd->wnd || !wd->usb.intf)
 		TRACEEXIT1(return);
-	wnd->wd->usb.intf = NULL;
-	if (!test_bit(HW_RMMOD, &wnd->wd->hw_status))
-		miniport_pnp_event(wnd, NdisDevicePnPEventSurpriseRemoved);
-	wrap_pnp_remove_ndis_device(wnd);
+	wd->usb.intf = NULL;
+	if (!test_bit(HW_RMMOD, &wd->hw_status))
+		miniport_pnp_event(wd->wnd, NdisDevicePnPEventSurpriseRemoved);
+	wrap_pnp_remove_ndis_device(wd->wnd);
 	TRACEEXIT1(return);
 }
 #endif

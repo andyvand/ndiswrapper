@@ -444,6 +444,7 @@ struct wrap_device_setting {
 	struct nt_list list;
 	char name[MAX_SETTING_NAME_LEN];
 	char value[MAX_SETTING_VALUE_LEN];
+	void *encoded;
 };
 
 struct wrap_bin_file {
@@ -451,6 +452,8 @@ struct wrap_bin_file {
 	int size;
 	void *data;
 };
+
+#define CE_WRAP_DRIVER_CLIENT_ID 1
 
 struct wrap_driver {
 	struct nt_list list;
@@ -495,6 +498,8 @@ struct wrap_device {
 	int subvendor;
 	int subdevice;
 	struct wrap_driver *driver;
+	/* we need driver_name before driver is loaded */
+	char driver_name[MAX_DRIVER_NAME_LEN];
 	char conf_file_name[MAX_DRIVER_NAME_LEN];
 	unsigned long hw_status;
 	union {
@@ -596,7 +601,7 @@ STDCALL struct device_object *IoAttachDeviceToDeviceStack
 	(struct device_object *src, struct device_object *dst);
 STDCALL void KeInitializeEvent(struct nt_event *nt_event, enum event_type type,
 			       BOOLEAN state);
-void free_custom_ext(struct driver_extension *drv_obj_ext);
+void free_custom_extensions(struct driver_extension *drv_obj_ext);
 
 STDCALL struct irp *IoAllocateIrp(char stack_size, BOOLEAN charge_quota);
 STDCALL void IoFreeIrp(struct irp *irp);

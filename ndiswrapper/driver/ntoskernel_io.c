@@ -656,7 +656,7 @@ STDCALL void *WRAP_EXPORT(IoGetDriverObjectExtension)
 	IOEXIT(return ret);
 }
 
-void free_custom_ext(struct driver_extension *drv_ext)
+void free_custom_extensions(struct driver_extension *drv_ext)
 {
 	struct nt_list *ent;
 	KIRQL irql;
