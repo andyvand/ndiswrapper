@@ -16,13 +16,44 @@
 #include "usb.h"
 #include "pnp.h"
 #include "wrapndis.h"
+#include "loader.h"
 
 extern KSPIN_LOCK loader_lock;
 extern struct nt_list ndis_drivers;
 extern struct wrap_device *wrap_devices;
 
-STDCALL NTSTATUS pdoDispatchDeviceControl(struct device_object *pdo,
-						  struct  irp *irp)
+STDCALL NTSTATUS IopPassIrpDown(struct device_object *dev_obj,
+				struct irp *irp)
+{
+	IoSkipCurrentIrpStackLocation(irp);
+	return IoCallDriver(dev_obj, irp);
+}
+
+STDCALL NTSTATUS IrpStopCompletion(struct device_object *dev_obj,
+				   struct irp *irp, void *context)
+{
+	IOENTER("dev_obj: %p, irp: %p, context: %p", dev_obj, irp, context);
+	IOEXIT(return STATUS_MORE_PROCESSING_REQUIRED);
+}
+
+STDCALL NTSTATUS IopInvalidDeviceRequest(struct device_object *dev_obj,
+					 struct irp *irp)
+{
+	struct io_stack_location *irp_sl;
+	NTSTATUS status;
+
+	irp_sl = IoGetCurrentIrpStackLocation(irp);
+	WARNING("IRP %d:%d not implemented",
+		irp_sl->major_fn, irp_sl->minor_fn);
+	irp->io_status.status = STATUS_NOT_IMPLEMENTED;
+	irp->io_status.status_info = 0;
+	status = irp->io_status.status;
+	IoCompleteRequest(irp, IO_NO_INCREMENT);
+	return status;
+}
+
+static STDCALL NTSTATUS pdoDispatchDeviceControl(struct device_object *pdo,
+						 struct  irp *irp)
 {
 	struct io_stack_location *irp_sl;
 	NTSTATUS status;
@@ -59,20 +90,146 @@ STDCALL NTSTATUS pdoDispatchDeviceControl(struct device_object *pdo,
 #endif
 }
 
-STDCALL NTSTATUS IopInvalidDeviceRequest(struct device_object *dev_obj,
+static STDCALL NTSTATUS pdoDispatchPnp(struct device_object *pdo,
+				       struct irp *irp)
+{
+	struct io_stack_location *irp_sl;
+	struct wrap_device *wd;
+	NTSTATUS status;
+	struct usbd_bus_interface_usbdi *usb_intf;
+
+	irp_sl = IoGetCurrentIrpStackLocation(irp);
+	wd = pdo->reserved;
+	IOTRACE("fn %d:%d, wd: %p", irp_sl->major_fn, irp_sl->minor_fn, wd);
+	switch (irp_sl->minor_fn) {
+	case IRP_MN_START_DEVICE:
+		status = STATUS_SUCCESS;
+		break;
+	case IRP_MN_QUERY_INTERFACE:
+		if (WRAP_BUS_TYPE(wd->dev_bus_type) != WRAP_USB_BUS) {
+			status = STATUS_NOT_IMPLEMENTED;
+			break;
+		}
+		IOTRACE("type: %x, size: %d, version: %d",
+			irp_sl->params.query_intf.type->data1,
+			irp_sl->params.query_intf.size,
+			irp_sl->params.query_intf.version);
+		usb_intf = (struct usbd_bus_interface_usbdi *)
+			irp_sl->params.query_intf.intf;
+		usb_intf->Context = wd;
+		usb_intf->InterfaceReference = USBD_InterfaceReference;
+		usb_intf->InterfaceDereference = USBD_InterfaceDereference;
+		usb_intf->GetUSBDIVersion = USBD_InterfaceGetUSBDIVersion;
+		usb_intf->QueryBusTime = USBD_InterfaceQueryBusTime;
+		usb_intf->SubmitIsoOutUrb = USBD_InterfaceSubmitIsoOutUrb;
+		usb_intf->QueryBusInformation =
+			USBD_InterfaceQueryBusInformation;
+		if (irp_sl->params.query_intf.version >=
+		    USB_BUSIF_USBDI_VERSION_1)
+			usb_intf->IsDeviceHighSpeed =
+				USBD_InterfaceIsDeviceHighSpeed;
+		if (irp_sl->params.query_intf.version >=
+		    USB_BUSIF_USBDI_VERSION_2)
+			usb_intf->LogEntry = USBD_InterfaceLogEntry;
+		status = STATUS_SUCCESS;
+		break;
+	case IRP_MN_REMOVE_DEVICE:
+		IoDeleteDevice(wd->wnd->nmb->pdo);
+		if (WRAP_BUS_TYPE(wd->dev_bus_type) == WRAP_PCI_BUS) {
+			struct pci_dev *pdev = wd->pci.pdev;
+			pci_release_regions(pdev);
+			pci_disable_device(pdev);
+		}
+		status = STATUS_SUCCESS;
+		break;
+	default:
+		status = STATUS_SUCCESS;
+		break;
+	}
+	irp->io_status.status = status;
+	IOTRACE("res: %08X", status);
+//	irp->io_status.status_info = 0;
+	IoCompleteRequest(irp, IO_NO_INCREMENT);
+	IOEXIT(return status);
+}
+
+static STDCALL NTSTATUS pdoDispatchPower(struct device_object *pdo,
 					 struct irp *irp)
 {
 	struct io_stack_location *irp_sl;
+	struct wrap_device *wd;
+	enum device_power_state state;
+	struct pci_dev *pdev;
 	NTSTATUS status;
 
 	irp_sl = IoGetCurrentIrpStackLocation(irp);
-	WARNING("IRP %d:%d not implemented",
-		irp_sl->major_fn, irp_sl->minor_fn);
-	irp->io_status.status = STATUS_NOT_IMPLEMENTED;
+	wd = pdo->reserved;
+	IOTRACE("pdo: %p, fn: %d:%d, wd: %p",
+		  pdo, irp_sl->major_fn, irp_sl->minor_fn, wd);
+	switch (irp_sl->minor_fn) {
+	case IRP_MN_SET_POWER:
+		state = irp_sl->params.power.state.device_state;
+		if (state == PowerDeviceD0) {
+			IOTRACE("resuming device %p", wd);
+			if (WRAP_BUS_TYPE(wd->dev_bus_type) == WRAP_PCI_BUS) {
+				pdev = wd->pci.pdev;
+#if LINUX_VERSION_CODE > KERNEL_VERSION(2,6,9)
+				pci_restore_state(pdev);
+#else
+				pci_restore_state(pdev, wd->pci_state);
+#endif
+			}
+		} else {
+			IOTRACE("suspending device %p", wd);
+			if (WRAP_BUS_TYPE(wd->dev_bus_type) == WRAP_PCI_BUS) {
+				pdev = wd->pci.pdev;
+#if LINUX_VERSION_CODE > KERNEL_VERSION(2,6,9)
+				pci_save_state(pdev);
+#else
+				pci_save_state(pdev, wd->pci_state);
+#endif
+			}
+		}
+		status = STATUS_SUCCESS;
+		break;
+	case IRP_MN_QUERY_POWER:
+		status = STATUS_SUCCESS;
+		break;
+	default:
+		status = STATUS_SUCCESS;
+		ERROR("invalid power irp");
+		break;
+	}
 	irp->io_status.status_info = 0;
-	status = irp->io_status.status;
+	irp->io_status.status = status;
 	IoCompleteRequest(irp, IO_NO_INCREMENT);
 	return status;
+}
+
+struct device_object *alloc_pdo(struct driver_object *drv_obj)
+{
+	struct device_object *pdo;
+	NTSTATUS res ;
+	int i;
+
+	res = IoCreateDevice(drv_obj, 0, NULL, FILE_DEVICE_UNKNOWN,
+			     0, FALSE, &pdo);
+	DBGTRACE1("%p, %d, %p", drv_obj, res, pdo);
+	if (res != STATUS_SUCCESS)
+		return NULL;
+	for (i = 0; i <= IRP_MJ_MAXIMUM_FUNCTION; i++)
+		drv_obj->major_func[i] = IopInvalidDeviceRequest;
+	drv_obj->major_func[IRP_MJ_INTERNAL_DEVICE_CONTROL] =
+		pdoDispatchDeviceControl;
+	drv_obj->major_func[IRP_MJ_DEVICE_CONTROL] = pdoDispatchDeviceControl;
+	drv_obj->major_func[IRP_MJ_POWER] = pdoDispatchPower;
+	drv_obj->major_func[IRP_MJ_PNP] = pdoDispatchPnp;
+	return pdo;
+}
+
+void free_pdo(struct device_object *pdo)
+{
+	IoDeleteDevice(pdo);
 }
 
 int start_pdo(struct device_object *pdo)
@@ -174,135 +331,6 @@ err_regions:
 err_enable:
 	pci_disable_device(pdev);
 	return -EINVAL;
-}
-
-STDCALL NTSTATUS pdoDispatchPnp(struct device_object *pdo, struct irp *irp)
-{
-	struct io_stack_location *irp_sl;
-	struct wrap_device *wd;
-	NTSTATUS status;
-	struct usbd_bus_interface_usbdi *usb_intf;
-
-	irp_sl = IoGetCurrentIrpStackLocation(irp);
-	wd = pdo->reserved;
-	IOTRACE("fn %d:%d, wd: %p", irp_sl->major_fn, irp_sl->minor_fn, wd);
-	switch (irp_sl->minor_fn) {
-	case IRP_MN_START_DEVICE:
-		status = STATUS_SUCCESS;
-		break;
-	case IRP_MN_QUERY_INTERFACE:
-		if (WRAP_BUS_TYPE(wd->dev_bus_type) != WRAP_USB_BUS) {
-			status = STATUS_NOT_IMPLEMENTED;
-			break;
-		}
-		IOTRACE("type: %x, size: %d, version: %d",
-			irp_sl->params.query_intf.type->data1,
-			irp_sl->params.query_intf.size,
-			irp_sl->params.query_intf.version);
-		usb_intf = (struct usbd_bus_interface_usbdi *)
-			irp_sl->params.query_intf.intf;
-		usb_intf->Context = wd;
-		usb_intf->InterfaceReference = USBD_InterfaceReference;
-		usb_intf->InterfaceDereference = USBD_InterfaceDereference;
-		usb_intf->GetUSBDIVersion = USBD_InterfaceGetUSBDIVersion;
-		usb_intf->QueryBusTime = USBD_InterfaceQueryBusTime;
-		usb_intf->SubmitIsoOutUrb = USBD_InterfaceSubmitIsoOutUrb;
-		usb_intf->QueryBusInformation =
-			USBD_InterfaceQueryBusInformation;
-		if (irp_sl->params.query_intf.version >=
-		    USB_BUSIF_USBDI_VERSION_1)
-			usb_intf->IsDeviceHighSpeed =
-				USBD_InterfaceIsDeviceHighSpeed;
-		if (irp_sl->params.query_intf.version >=
-		    USB_BUSIF_USBDI_VERSION_2)
-			usb_intf->LogEntry = USBD_InterfaceLogEntry;
-		status = STATUS_SUCCESS;
-		break;
-	case IRP_MN_REMOVE_DEVICE:
-		IoDeleteDevice(wd->wnd->nmb->pdo);
-		if (WRAP_BUS_TYPE(wd->dev_bus_type) == WRAP_PCI_BUS) {
-			struct pci_dev *pdev = wd->pci.pdev;
-			pci_release_regions(pdev);
-			pci_disable_device(pdev);
-		}
-		status = STATUS_SUCCESS;
-		break;
-	default:
-		status = STATUS_SUCCESS;
-		break;
-	}
-	irp->io_status.status = status;
-	IOTRACE("res: %08X", status);
-//	irp->io_status.status_info = 0;
-	IoCompleteRequest(irp, IO_NO_INCREMENT);
-	IOEXIT(return status);
-}
-
-STDCALL NTSTATUS IopPassIrpDown(struct device_object *dev_obj,
-				struct irp *irp)
-{
-	IoSkipCurrentIrpStackLocation(irp);
-	return IoCallDriver(dev_obj, irp);
-}
-
-STDCALL NTSTATUS IrpStopCompletion(struct device_object *dev_obj,
-				   struct irp *irp, void *context)
-{
-	IOENTER("dev_obj: %p, irp: %p, context: %p", dev_obj, irp, context);
-	IOEXIT(return STATUS_MORE_PROCESSING_REQUIRED);
-}
-
-STDCALL NTSTATUS pdoDispatchPower(struct device_object *pdo,
-				  struct irp *irp)
-{
-	struct io_stack_location *irp_sl;
-	struct wrap_device *wd;
-	enum device_power_state state;
-	struct pci_dev *pdev;
-	NTSTATUS status;
-
-	irp_sl = IoGetCurrentIrpStackLocation(irp);
-	wd = pdo->reserved;
-	IOTRACE("pdo: %p, fn: %d:%d, wd: %p",
-		  pdo, irp_sl->major_fn, irp_sl->minor_fn, wd);
-	switch (irp_sl->minor_fn) {
-	case IRP_MN_SET_POWER:
-		state = irp_sl->params.power.state.device_state;
-		if (state == PowerDeviceD0) {
-			IOTRACE("resuming device %p", wd);
-			if (WRAP_BUS_TYPE(wd->dev_bus_type) == WRAP_PCI_BUS) {
-				pdev = wd->pci.pdev;
-#if LINUX_VERSION_CODE > KERNEL_VERSION(2,6,9)
-				pci_restore_state(pdev);
-#else
-				pci_restore_state(pdev, wd->pci_state);
-#endif
-			}
-		} else {
-			IOTRACE("suspending device %p", wd);
-			if (WRAP_BUS_TYPE(wd->dev_bus_type) == WRAP_PCI_BUS) {
-				pdev = wd->pci.pdev;
-#if LINUX_VERSION_CODE > KERNEL_VERSION(2,6,9)
-				pci_save_state(pdev);
-#else
-				pci_save_state(pdev, wd->pci_state);
-#endif
-			}
-		}
-		status = STATUS_SUCCESS;
-		break;
-	case IRP_MN_QUERY_POWER:
-		status = STATUS_SUCCESS;
-		break;
-	default:
-		status = STATUS_SUCCESS;
-		ERROR("invalid power irp");
-		break;
-	}
-	irp->io_status.status_info = 0;
-	irp->io_status.status = status;
-	IoCompleteRequest(irp, IO_NO_INCREMENT);
-	return status;
 }
 
 NTSTATUS pnp_set_power_state(struct device_object *pdo,
@@ -439,28 +467,74 @@ NTSTATUS pnp_remove_device(struct device_object *pdo)
 	TRACEEXIT1(return status);
 }
 
+static int wrap_pnp_start_device(struct wrap_device *wd)
+{
+	struct wrap_driver *driver;
+	struct device_object *pdo;
+	struct driver_object *pdo_drv_obj;
+
+	if (((WRAP_BUS_TYPE(wd->dev_bus_type) != WRAP_PCI_BUS) &&
+	     (WRAP_BUS_TYPE(wd->dev_bus_type) != WRAP_USB_BUS)) ||
+	    (WRAP_DEVICE_TYPE(wd->dev_bus_type) != NDIS_DEVICE)) {
+		ERROR("device %d not supported", wd->dev_bus_type);
+		return -EINVAL;
+	}
+	driver = load_wrap_driver(wd);
+	if (!driver)
+		return -ENODEV;
+	wd->driver = driver;
+	DBGTRACE1("driver: %s, %s", wd->driver_name, driver->name);
+	/* first create pdo */
+	if (WRAP_BUS_TYPE(wd->dev_bus_type) == WRAP_PCI_BUS)
+		pdo_drv_obj = find_bus_driver("PCI");
+	else // if (WRAP_BUS_TYPE(wd->dev_bus_type) == WRAP_USB_BUS)
+		pdo_drv_obj = find_bus_driver("USB");
+	if (!pdo_drv_obj)
+		return -EINVAL;
+	pdo = alloc_pdo(pdo_drv_obj);
+	if (!pdo)
+		return -ENOMEM;
+	wd->pdo = pdo;
+	pdo->reserved = wd;
+	if (start_pdo(pdo)) {
+		ERROR("couldn't start pdo");
+		free_pdo(pdo);
+		return -EINVAL;
+	}
+	if (WRAP_DEVICE_TYPE(wd->dev_bus_type) == NDIS_DEVICE) {
+		if (init_ndis_device(wd)) {
+			free_pdo(pdo);
+			return -EINVAL;
+		}
+	}
+	if (driver->drv_obj->drv_ext->add_device(driver->drv_obj, pdo) !=
+	    STATUS_SUCCESS) {
+		free_pdo(pdo);
+		return -ENOMEM;
+	}
+	if (pnp_start_device(pdo) != STATUS_SUCCESS) {
+		pnp_remove_device(pdo);
+		return -EINVAL;
+	}
+	return 0;
+}
+
 /*
- * called by PCI-subsystem for each PCI-card found.
- *
- * This function should not be marked __devinit because ndiswrapper
- * adds PCI IDs dynamically.
+ * This function should not be marked __devinit because PCI IDs are
+ * added dynamically.
  */
 int wrap_pnp_start_pci_device(struct pci_dev *pdev,
 			      const struct pci_device_id *ent)
 {
 	struct wrap_device *wd;
+
 	TRACEENTER1("called for %04x:%04x:%04x:%04x", pdev->vendor,
 		    pdev->device, pdev->subsystem_vendor,
 		    pdev->subsystem_device);
 	wd = &wrap_devices[ent->driver_data];
 	pci_set_drvdata(pdev, wd);
-	if (WRAP_DEVICE_TYPE(wd->dev_bus_type) == NDIS_DEVICE) {
-		wd->pci.pdev = pdev;
-		return wrap_start_ndis_device(wd);
-	} else {
-		ERROR("device %d not supported", wd->dev_bus_type);
-		return -EINVAL;
-	}
+	wd->pci.pdev = pdev;
+	return wrap_pnp_start_device(wd);
 }
 
 void __devexit wrap_pnp_remove_pci_device(struct pci_dev *pdev)
@@ -473,7 +547,7 @@ void __devexit wrap_pnp_remove_pci_device(struct pci_dev *pdev)
 	if (!wd)
 		TRACEEXIT1(return);
 	if (WRAP_DEVICE_TYPE(wd->dev_bus_type) == NDIS_DEVICE)
-		wrap_remove_ndis_device(wd);
+		remove_ndis_device(wd);
 	pci_set_drvdata(pdev, NULL);
 }
 
@@ -483,7 +557,7 @@ int wrap_pnp_suspend_pci_device(struct pci_dev *pdev, pm_message_t state)
 
 	wd = (struct wrap_device *)pci_get_drvdata(pdev);
 	if (WRAP_DEVICE_TYPE(wd->dev_bus_type) == NDIS_DEVICE)
-		return wrap_suspend_ndis_device(wd->wnd, state);
+		return suspend_ndis_device(wd->wnd, state);
 	else {
 		ERROR("device %d not supported", wd->dev_bus_type);
 		return -1;
@@ -496,7 +570,7 @@ int wrap_pnp_resume_pci_device(struct pci_dev *pdev)
 
 	wd = (struct wrap_device *)pci_get_drvdata(pdev);
 	if (WRAP_DEVICE_TYPE(wd->dev_bus_type) == NDIS_DEVICE)
-		return wrap_resume_ndis_device(wd->wnd);
+		return resume_ndis_device(wd->wnd);
 	else {
 		ERROR("device %d not supported", wd->dev_bus_type);
 		return -1;
@@ -515,20 +589,15 @@ void *wrap_pnp_start_usb_device(struct usb_device *udev,
 {
 	struct wrap_device *wd;
 	wd = &wrap_devices[usb_id->driver_info];
-	if (WRAP_DEVICE_TYPE(wd->dev_bus_type) == NDIS_DEVICE) {
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
-		wd->usb.udev = interface_to_usbdev(intf);
-		usb_set_intfdata(intf, wd);
-		wd->usb.intf = intf;
+	wd->usb.udev = interface_to_usbdev(intf);
+	usb_set_intfdata(intf, wd);
+	wd->usb.intf = intf;
 #else
-		wd->usb.udev = udev;
-		wd->usb.intf = usb_ifnum_to_if(udev, ifnum);
+	wd->usb.udev = udev;
+	wd->usb.intf = usb_ifnum_to_if(udev, ifnum);
 #endif
-		return wrap_start_ndis_device(wd);
-	} else {
-		ERROR("device %d not supported", wd->dev_bus_type);
-		return -EINVAL;
-	}
+	return wrap_pnp_start_device(wd);
 }
 
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
@@ -547,7 +616,7 @@ void wrap_pnp_remove_usb_device(struct usb_device *udev, void *ptr)
 #endif
 	wd->usb.intf = NULL;
 	if (WRAP_DEVICE_TYPE(wd->dev_bus_type) == NDIS_DEVICE)
-		wrap_remove_ndis_device(wd);
+		remove_ndis_device(wd);
 	else
 		ERROR("device %d not supported", wd->dev_bus_type);
 }
@@ -560,7 +629,7 @@ int wrap_pnp_suspend_usb_device(struct usb_interface *intf, pm_message_t state)
 	if (!wd)
 		TRACEEXIT1(return -1);
 	if (WRAP_DEVICE_TYPE(wd->dev_bus_type) == NDIS_DEVICE)
-		return wrap_suspend_ndis_device(wd->wnd, state);
+		return suspend_ndis_device(wd->wnd, state);
 	else {
 		ERROR("device %d not supported", wd->dev_bus_type);
 		return -1;
@@ -574,7 +643,7 @@ int wrap_pnp_resume_usb_device(struct usb_interface *intf)
 	if (!wd)
 		TRACEEXIT1(return -1);
 	if (WRAP_DEVICE_TYPE(wd->dev_bus_type) == NDIS_DEVICE)
-		return wrap_resume_ndis_device(wd->wnd);
+		return resume_ndis_device(wd->wnd);
 	else {
 		ERROR("device %d not supported", wd->dev_bus_type);
 		return -1;

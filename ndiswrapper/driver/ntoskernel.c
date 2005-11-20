@@ -341,7 +341,6 @@ static void free_all_objects(void)
 static int add_bus_driver(struct driver_object *drv_obj, const char *name)
 {
 	struct bus_driver *bus_driver;
-	int i;
 	KIRQL irql;
 
 	bus_driver = kmalloc(sizeof(*bus_driver), GFP_KERNEL);
@@ -355,13 +354,6 @@ static int add_bus_driver(struct driver_object *drv_obj, const char *name)
 	InsertTailList(&bus_driver_list, &bus_driver->list);
 	kspin_unlock_irql(&ntoskernel_lock, irql);
 	bus_driver->drv_obj = drv_obj;
-	for (i = 0; i <= IRP_MJ_MAXIMUM_FUNCTION; i++)
-		drv_obj->major_func[i] = IopInvalidDeviceRequest;
-	drv_obj->major_func[IRP_MJ_INTERNAL_DEVICE_CONTROL] =
-		pdoDispatchDeviceControl;
-	drv_obj->major_func[IRP_MJ_DEVICE_CONTROL] = pdoDispatchDeviceControl;
-	drv_obj->major_func[IRP_MJ_POWER] = pdoDispatchPower;
-	drv_obj->major_func[IRP_MJ_PNP] = pdoDispatchPnp;
 	DBGTRACE1("bus driver at %p", drv_obj);
 	return STATUS_SUCCESS;
 }
@@ -395,29 +387,6 @@ struct driver_object *find_bus_driver(const char *name)
 	}
 	kspin_unlock_irql(&ntoskernel_lock, irql);
 	return drv_obj;
-}
-
-struct device_object *alloc_pdo(struct driver_object *drv_obj)
-{
-	struct device_object *pdo;
-	NTSTATUS res ;
-
-	res = IoCreateDevice(drv_obj, 0, NULL, FILE_DEVICE_UNKNOWN,
-			     0, FALSE, &pdo);
-	DBGTRACE1("%p, %d, %p", drv_obj, res, pdo);
-	if (res != STATUS_SUCCESS)
-		return NULL;
-	return pdo;
-}
-
-void free_pdo(struct device_object *pdo)
-{
-	struct device_object *fdo;
-
-	fdo = IoGetAttachedDevice(pdo);
-	if (fdo)
-		IoDeleteDevice(fdo);
-	IoDeleteDevice(pdo);
 }
 
 _FASTCALL struct nt_list *WRAP_EXPORT(ExfInterlockedInsertHeadList)

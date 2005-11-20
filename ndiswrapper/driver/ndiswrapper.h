@@ -34,8 +34,9 @@
 
 #define NDIS_DEVICE 0
 
-#define WRAP_BUS_TYPE(dev_bus_type) (dev_bus_type & 0x000F)
-#define WRAP_DEVICE_TYPE(dev_bus_type) (dev_bus_type & 0x00F0)
+#define WRAP_DEVICE_BUS_TYPE(dev, bus) ((dev) << 8 | (bus))
+#define WRAP_BUS_TYPE(dev_bus_type) (dev_bus_type & 0x000FF)
+#define WRAP_DEVICE_TYPE(dev_bus_type) (dev_bus_type & 0xFF00)
 
 #define MAX_DRIVER_NAME_LEN 32
 #define MAX_VERSION_STRING_LEN 64

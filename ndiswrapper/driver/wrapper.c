@@ -112,7 +112,7 @@ static void module_cleanup(void)
 	}
 	destroy_workqueue(wrapper_wq);
 #endif
-	ndiswrapper_procfs_remove();
+	wrap_procfs_remove();
 	ndis_exit();
 	ntoskernel_exit();
 	misc_funcs_exit();
@@ -130,7 +130,6 @@ static int __init wrapper_init(void)
 	char *env[] = {NULL};
 	int ret;
 
-//	debug = 2;
 	printk(KERN_INFO "%s version %s loaded (preempt=%s,smp=%s)\n",
 	       DRIVER_NAME, DRIVER_VERSION,
 #if defined CONFIG_PREEMPT
@@ -163,7 +162,7 @@ static int __init wrapper_init(void)
 	if (_wrap_wq_init_state < 0)
 		goto err;
 #endif
-	ndiswrapper_procfs_init();
+	wrap_procfs_init();
 	if (loader_init())
 		goto err;
 	DBGTRACE1("calling loadndisdriver");

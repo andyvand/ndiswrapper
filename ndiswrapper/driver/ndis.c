@@ -2205,7 +2205,7 @@ STDCALL NDIS_STATUS WRAP_EXPORT(NdisMInitializeScatterGatherDma)
 	if (dma_size != NDIS_DMA_64BITS)
 		ERROR("DMA size is not 64-bits");
 #endif
-	wnd->use_sg_dma = 1;
+	wnd->use_sg_dma = TRUE;
 	return NDIS_STATUS_SUCCESS;
 }
 

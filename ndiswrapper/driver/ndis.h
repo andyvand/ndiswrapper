@@ -738,8 +738,7 @@ struct wrap_ndis_device {
 	int ndis_comm_status;
 	ULONG packet_filter;
 
-	int serialized;
-	int use_sg_dma;
+	BOOLEAN use_sg_dma;
 	int map_count;
 	dma_addr_t *map_dma_addr;
 
@@ -818,19 +817,18 @@ STDCALL ULONG NDIS_BUFFER_TO_SPAN_PAGES(ndis_buffer *buffer);
 STDCALL BOOLEAN NdisWaitEvent(struct ndis_event *event, UINT timeout);
 STDCALL void NdisSetEvent(struct ndis_event *event);
 STDCALL void NdisMDeregisterInterrupt(struct ndis_irq *ndis_irq);
-STDCALL void EthRxIndicateHandler(struct ndis_miniport_block *nmb,
-				  void *rx_ctx, char *header1, char *header,
-				  UINT header_size, void *look_ahead,
-				  UINT look_ahead_size, UINT packet_size);
+STDCALL void EthRxIndicateHandler
+	(struct ndis_miniport_block *nmb, void *rx_ctx, char *header1,
+	 char *header, UINT header_size, void *look_ahead,
+	 UINT look_ahead_size, UINT packet_size);
 STDCALL void EthRxComplete(struct ndis_miniport_block *nmb);
-STDCALL void NdisMTransferDataComplete(struct ndis_miniport_block *nmb,
-				       struct ndis_packet *packet,
-				       NDIS_STATUS status, UINT bytes_txed);
-STDCALL void NdisWriteConfiguration(NDIS_STATUS *status,
-				    struct ndis_miniport_block *nmb,
-				    struct unicode_string *key,
-				    struct ndis_configuration_parameter *param);
-
+STDCALL void NdisMTransferDataComplete
+	(struct ndis_miniport_block *nmb,
+	 struct ndis_packet *packet, NDIS_STATUS status, UINT bytes_txed);
+STDCALL void NdisWriteConfiguration
+	(NDIS_STATUS *status, struct ndis_miniport_block *nmb,
+	 struct unicode_string *key,
+	 struct ndis_configuration_parameter *param);
 STDCALL void NdisReadConfiguration
 	(NDIS_STATUS *status, struct ndis_configuration_parameter **param,
 	 struct ndis_miniport_block *nmb, struct unicode_string *key,
@@ -847,21 +845,8 @@ BOOLEAN remove_ndis_kdpc_work(struct kdpc *kdpc);
 
 int load_pe_images(struct pe_image[], int n);
 
-int ndiswrapper_procfs_init(void);
-int ndiswrapper_procfs_add_iface(struct wrap_ndis_device *wnd);
-void ndiswrapper_procfs_remove_iface(struct wrap_ndis_device *wnd);
-void ndiswrapper_procfs_remove(void);
-
-int misc_funcs_init(void);
-int misc_funcs_init_device(struct wrap_device *wd);
-void misc_funcs_exit_device(struct wrap_device *wd);
-void misc_funcs_exit(void);
-
-int stricmp(const char *s1, const char *s2);
-void dump_bytes(const char *name, const u8 *from, int len);
-
-int pdo_suspend_pci(struct pci_dev *pdev, pm_message_t state);
-int pdo_resume_pci(struct pci_dev *pdev);
+int wrap_procfs_add_ndis_device(struct wrap_ndis_device *wnd);
+void wrap_procfs_remove_ndis_device(struct wrap_ndis_device *wnd);
 
 /* Required OIDs */
 #define OID_GEN_SUPPORTED_LIST			0x00010101
