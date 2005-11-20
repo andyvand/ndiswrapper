@@ -22,12 +22,7 @@ extern KSPIN_LOCK loader_lock;
 extern struct nt_list ndis_drivers;
 extern struct wrap_device *wrap_devices;
 
-STDCALL NTSTATUS IopPassIrpDown(struct device_object *dev_obj,
-				struct irp *irp)
-{
-	IoSkipCurrentIrpStackLocation(irp);
-	return IoCallDriver(dev_obj, irp);
-}
+static int start_pdo(struct device_object *pdo);
 
 STDCALL NTSTATUS IrpStopCompletion(struct device_object *dev_obj,
 				   struct irp *irp, void *context)
@@ -210,7 +205,7 @@ static STDCALL NTSTATUS pdoDispatchPower(struct device_object *pdo,
 	return status;
 }
 
-struct device_object *alloc_pdo(struct driver_object *drv_obj)
+static struct device_object *alloc_pdo(struct driver_object *drv_obj)
 {
 	struct device_object *pdo;
 	NTSTATUS res ;
@@ -231,12 +226,13 @@ struct device_object *alloc_pdo(struct driver_object *drv_obj)
 	return pdo;
 }
 
-void free_pdo(struct device_object *pdo)
+static void free_pdo(struct device_object *pdo)
 {
+	/* TODO: make sure upper drivers are removed */
 	IoDeleteDevice(pdo);
 }
 
-int start_pdo(struct device_object *pdo)
+static int start_pdo(struct device_object *pdo)
 {
 	int ret, i, count, resource_length;
 	struct wrap_device *wd;
@@ -395,7 +391,7 @@ NTSTATUS pnp_start_device(struct device_object *pdo)
 	irp->io_status.status = STATUS_NOT_SUPPORTED;
 	status = IoCallDriver(fdo, irp);
 	if (status == STATUS_SUCCESS)
-		fdo->drv_obj->drv_ext->count++;
+		pdo->drv_obj->drv_ext->count++;
 	else
 		WARNING("Windows driver couldn't initialize the device (%08X)",
 			status);
@@ -442,7 +438,7 @@ NTSTATUS pnp_remove_device(struct device_object *pdo)
 	NTSTATUS status;
 
 	fdo = IoGetAttachedDevice(pdo);
-	drv_obj = fdo->drv_obj;
+	drv_obj = pdo->drv_obj;
 	DBGTRACE1("fdo: %p", fdo);
 	irp = IoAllocateIrp(fdo->stack_size, FALSE);
 	irp_sl = IoGetNextIrpStackLocation(irp);
@@ -587,16 +583,35 @@ void *wrap_pnp_start_usb_device(struct usb_device *udev,
 #endif
 {
 	struct wrap_device *wd;
+	int ret;
 	wd = &wrap_devices[usb_id->driver_info];
+	if (wd->usb.intf) {
+		/* USB device may have multiple interfaces; initialize
+		 * a device only once */
+		DBGTRACE1("device already initialized: %p", wd->usb.intf);
+		ret = 0;
+	} else {
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
-	wd->usb.udev = interface_to_usbdev(intf);
-	usb_set_intfdata(intf, wd);
-	wd->usb.intf = intf;
+		wd->usb.udev = interface_to_usbdev(intf);
+		usb_set_intfdata(intf, wd);
+		wd->usb.intf = intf;
 #else
-	wd->usb.udev = udev;
-	wd->usb.intf = usb_ifnum_to_if(udev, ifnum);
+		wd->usb.udev = udev;
+		wd->usb.intf = usb_ifnum_to_if(udev, ifnum);
 #endif
-	return wrap_pnp_start_device(wd);
+		ret = wrap_pnp_start_device(wd);
+	}
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
+	if (ret)
+		return -EINVAL;
+	else
+		return 0;
+#else
+	if (ret)
+		return NULL;
+	else
+		return wd;
+#endif
 }
 
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
@@ -606,19 +621,29 @@ void wrap_pnp_remove_usb_device(struct usb_interface *intf)
 	TRACEENTER1("%p", intf);
 	wd = (struct wrap_device *)usb_get_intfdata(intf);
 	usb_set_intfdata(intf, NULL);
-#else
-void wrap_pnp_remove_usb_device(struct usb_device *udev, void *ptr)
-{
-	struct wrap_device *wd;
-	TRACEENTER1("%p", ptr);
-	wd = (struct wrap_device *)ptr;
-#endif
 	wd->usb.intf = NULL;
 	if (WRAP_DEVICE_TYPE(wd->dev_bus_type) == NDIS_DEVICE)
 		remove_ndis_device(wd);
 	else
 		ERROR("device %d not supported", wd->dev_bus_type);
 }
+#else
+
+extern struct usb_driver wrap_usb_driver;
+
+void wrap_pnp_remove_usb_device(struct usb_device *udev,
+				struct wrap_device *wd)
+{
+	TRACEENTER1("%p", wd);
+	struct usb_interface *intf = wd->usb.intf;
+	wd->usb.intf = NULL;
+	if (WRAP_DEVICE_TYPE(wd->dev_bus_type) == NDIS_DEVICE) {
+		remove_ndis_device(wd);
+		usb_driver_release_interface(&wrap_usb_driver, intf);
+	} else
+		ERROR("device %d not supported", wd->dev_bus_type);
+}
+#endif
 
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
 int wrap_pnp_suspend_usb_device(struct usb_interface *intf, pm_message_t state)

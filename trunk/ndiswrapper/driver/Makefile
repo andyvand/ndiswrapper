@@ -99,7 +99,7 @@ proc.o: proc.c ndis.h iw_ndis.h wrapndis.h
 
 usb.o: usb.c usb.h ndis.h
 
-wrapper.o: wrapper.c wrapndsi.h iw_ndis.h ntoskernel.h loader.h
+wrapper.o: wrapper.c wrapndis.h iw_ndis.h ntoskernel.h loader.h
 
 iw_ndis.h: ndis.h
 loader.h: ndiswrapper.h
