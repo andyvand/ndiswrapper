@@ -48,7 +48,7 @@ struct load_driver {
 	char name[MAX_DRIVER_NAME_LEN];
 	char conf_file_name[MAX_DRIVER_NAME_LEN];
 	unsigned int nr_sys_files;
-	struct load_driver_file sys_files[MAX_PE_IMAGES];
+	struct load_driver_file sys_files[MAX_DRIVER_PE_IMAGES];
 	unsigned int nr_settings;
 	struct load_device_setting settings[MAX_DEVICE_SETTINGS];
 	unsigned int nr_bin_files;
@@ -62,7 +62,10 @@ struct load_driver {
 
 int loader_init(void);
 void loader_exit(void);
+
+#ifdef __KERNEL__
 struct wrap_driver *load_wrap_driver(struct wrap_device *device);
+#endif
 
 #endif /* LOADER_H */
 
