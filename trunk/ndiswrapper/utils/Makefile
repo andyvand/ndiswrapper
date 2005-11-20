@@ -41,7 +41,7 @@ install: all
 	install -D -m 755 loadndisdriver $(sbindir)/loadndisdriver
 	install -D -m 755 ndiswrapper $(usrsbindir)/ndiswrapper
 	install -D -m 755 ndiswrapper-buginfo $(usrsbindir)/ndiswrapper-buginfo
-	if [ -x $(FW_AR5523) ]; then \
+	if [ -r $(FW_AR5523) ]; then \
 		install -D -m 755 $(FW_AR5523) $(usrsbindir)/$(FW_AR5523); \
 	fi
 	@echo

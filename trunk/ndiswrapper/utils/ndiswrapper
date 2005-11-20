@@ -19,6 +19,8 @@
 
 #use strict;
 use Fcntl ':mode';
+use File::Basename;
+use File::Copy;
 
 my @sections;
 my %strings;
@@ -97,8 +99,8 @@ sub install {
     my $inf = shift;
     $driver_name = lc($inf);
     $driver_name =~ s/\.inf//;
-    $driver_name = `basename $driver_name`;
-    $instdir = `dirname $inf`;
+    $driver_name = basename($driver_name);
+    $instdir = dirname($inf);
     chomp($instdir);
     chomp($driver_name);
 
@@ -106,10 +108,10 @@ sub install {
 	print "$driver_name is already installed. Use -e to remove it\n";
 	return -1;
     }
-    if (!opendir(DH, $confdir)) {
-	mkdir($confdir);
+    if (opendir(DH, $confdir)) {
+	closedir(DH);
     } else {
-	close(DH);
+	mkdir($confdir);
     }
 
     print "Installing $driver_name\n";
@@ -120,9 +122,10 @@ sub install {
     }
 
     loadinf($inf);
-    initStrings(); 
+    initStrings();
     parseVersion();
-    `cp -u $inf $confdir/$driver_name/$driver_name.inf`;	
+    copy("$inf", "$confdir/$driver_name/$driver_name.inf") or
+      die "couldn't copy $inf";
     processPCIFuzz();
 }
 
@@ -152,7 +155,7 @@ sub remove {
 	  "Use -l to list installed drivers\n";
 	return;
     }
-    `rm -rf $confdir/$name`;
+    system("rm -rf $confdir/$name");
 }
 
 sub devid_driver {
@@ -169,7 +172,7 @@ sub devid_driver {
     while (my $f = <LS>) {
 	chomp($f);
 	if ($f =~ /\.([05]).conf$/) {
-	    `ln -s $f $confdir/$driver/$devid.$1.conf`;
+	    symlink("$f", "$confdir/$driver/$devid.$1.conf");
 	    print "Driver '$driver' is used for '$devid'\n";
 	    $done = 1;
 	    last;
@@ -426,7 +429,7 @@ sub processPCIFuzz {
 	if ($dev ne $fuzzlist{$dev}) {
 	    my $src = "$confdir/$driver_name/$fuzzlist{$dev}.$bustype.conf";
 	    my $dst = "$confdir/$driver_name/$dev.$bustype.conf";
-	    `ln -s $src $dst`;
+	    symlink("$src", "$dst");
 	}
     }
 }
@@ -722,8 +725,8 @@ sub copy_file {
 	    $realname = "$dir/$realname";
 	}
 	if (!$nocopy) {
-	    `cp -u $instdir/$realname $confdir/$driver_name/$newname`;
-	    `chmod 644 $confdir/$driver_name/$newname`;
+	    copy("$instdir/$realname", "$confdir/$driver_name/$newname");
+	    chmod(0644, "$confdir/$driver_name/$newname");
 	}
     }
 }

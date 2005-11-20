@@ -309,8 +309,8 @@ struct usbd_version_info {
 
 NTSTATUS wrap_submit_irp(struct device_object *pdo, struct irp *irp);
 NTSTATUS wrap_submit_urb(struct irp *irp);
-void wrap_suspend_urbs(struct wrapper_dev *wd);
-void wrap_resume_urbs(struct wrapper_dev *wd);
+void wrap_suspend_urbs(struct wrap_device *wd);
+void wrap_resume_urbs(struct wrap_device *wd);
 
 STDCALL void
 USBD_InterfaceGetUSBDIVersion(void *context,

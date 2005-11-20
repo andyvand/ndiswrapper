@@ -35,7 +35,7 @@ static int freq_chan[] = { 2412, 2417, 2422, 2427, 2432, 2437, 2442,
 static const char *network_names[] = {"IEEE 802.11FH", "IEEE 802.11b",
 				      "IEEE 802.11a", "IEEE 802.11g", "Auto"};
 
-int set_essid(struct wrapper_dev *wd, const char *ssid, int ssid_len)
+int set_essid(struct wrap_ndis_device *wnd, const char *ssid, int ssid_len)
 {
 	NDIS_STATUS res;
 	struct ndis_essid req;
@@ -54,17 +54,17 @@ int set_essid(struct wrapper_dev *wd, const char *ssid, int ssid_len)
 		DBGTRACE2("ssid = '%s'", req.essid);
 	}
 	
-	res = miniport_set_info(wd, OID_802_11_SSID, &req, sizeof(req));
+	res = miniport_set_info(wnd, OID_802_11_SSID, &req, sizeof(req));
 	if (res == NDIS_STATUS_FAILURE)
 		return -ENOTSUPP;
 	if (res)
 		WARNING("setting essid failed (%08X)", res); 
 
-	memcpy(&wd->essid, &req, sizeof(req));
+	memcpy(&wnd->essid, &req, sizeof(req));
 	TRACEEXIT2(return 0);
 }
 
-static int set_assoc_params(struct wrapper_dev *wd)
+static int set_assoc_params(struct wrap_ndis_device *wnd)
 {
 #if WIRELESS_EXT > 17
 	int auth_mode, encr_mode, priv_mode;
@@ -73,25 +73,25 @@ static int set_assoc_params(struct wrapper_dev *wd)
 
 	DBGTRACE2("wpa_version=0x%x auth_alg=0x%x key_mgmt=0x%x "
 		  "cipher_pairwise=0x%x cipher_group=0x%x",
-		  wd->iw_auth_wpa_version, wd->iw_auth_80211_auth_alg,
-		  wd->iw_auth_key_mgmt, wd->iw_auth_cipher_pairwise,
-		  wd->iw_auth_cipher_group);
-	if (wd->iw_auth_wpa_version & IW_AUTH_WPA_VERSION_WPA2) {
+		  wnd->iw_auth_wpa_version, wnd->iw_auth_80211_auth_alg,
+		  wnd->iw_auth_key_mgmt, wnd->iw_auth_cipher_pairwise,
+		  wnd->iw_auth_cipher_group);
+	if (wnd->iw_auth_wpa_version & IW_AUTH_WPA_VERSION_WPA2) {
 		priv_mode = Ndis802_11PrivFilter8021xWEP;
-		if (wd->iw_auth_key_mgmt & IW_AUTH_KEY_MGMT_802_1X)
+		if (wnd->iw_auth_key_mgmt & IW_AUTH_KEY_MGMT_802_1X)
 			auth_mode = Ndis802_11AuthModeWPA2;
 		else
 			auth_mode = Ndis802_11AuthModeWPA2PSK;
-	} else if (wd->iw_auth_wpa_version & IW_AUTH_WPA_VERSION_WPA) {
+	} else if (wnd->iw_auth_wpa_version & IW_AUTH_WPA_VERSION_WPA) {
 		priv_mode = Ndis802_11PrivFilter8021xWEP;
-		if (wd->iw_auth_key_mgmt & IW_AUTH_KEY_MGMT_802_1X)
+		if (wnd->iw_auth_key_mgmt & IW_AUTH_KEY_MGMT_802_1X)
 			auth_mode = Ndis802_11AuthModeWPA;
-		else if (wd->iw_auth_key_mgmt & IW_AUTH_KEY_MGMT_PSK)
+		else if (wnd->iw_auth_key_mgmt & IW_AUTH_KEY_MGMT_PSK)
 			auth_mode = Ndis802_11AuthModeWPAPSK;
 		else
 			auth_mode = Ndis802_11AuthModeWPANone;
-	} else if (wd->iw_auth_80211_auth_alg & IW_AUTH_ALG_SHARED_KEY) {
-		if (wd->iw_auth_80211_auth_alg &
+	} else if (wnd->iw_auth_80211_auth_alg & IW_AUTH_ALG_SHARED_KEY) {
+		if (wnd->iw_auth_80211_auth_alg &
 		    IW_AUTH_ALG_OPEN_SYSTEM)
 			auth_mode = Ndis802_11AuthModeAutoSwitch;
 		else
@@ -99,16 +99,16 @@ static int set_assoc_params(struct wrapper_dev *wd)
 	} else
 		auth_mode = Ndis802_11AuthModeOpen;
 
-	if (wd->iw_auth_cipher_pairwise & IW_AUTH_CIPHER_CCMP)
+	if (wnd->iw_auth_cipher_pairwise & IW_AUTH_CIPHER_CCMP)
 		encr_mode = Ndis802_11Encryption3Enabled;
-	else if (wd->iw_auth_cipher_pairwise & IW_AUTH_CIPHER_TKIP)
+	else if (wnd->iw_auth_cipher_pairwise & IW_AUTH_CIPHER_TKIP)
 		encr_mode = Ndis802_11Encryption2Enabled;
-	else if (wd->iw_auth_cipher_pairwise &
+	else if (wnd->iw_auth_cipher_pairwise &
 		 (IW_AUTH_CIPHER_WEP40 | IW_AUTH_CIPHER_WEP104))
 		encr_mode = Ndis802_11Encryption1Enabled;
-	else if (wd->iw_auth_cipher_group & IW_AUTH_CIPHER_CCMP)
+	else if (wnd->iw_auth_cipher_group & IW_AUTH_CIPHER_CCMP)
 		encr_mode = Ndis802_11Encryption3Enabled;
-	else if (wd->iw_auth_cipher_group & IW_AUTH_CIPHER_TKIP)
+	else if (wnd->iw_auth_cipher_group & IW_AUTH_CIPHER_TKIP)
 		encr_mode = Ndis802_11Encryption2Enabled;
 	else
 		encr_mode = Ndis802_11EncryptionDisabled;
@@ -116,9 +116,9 @@ static int set_assoc_params(struct wrapper_dev *wd)
 	DBGTRACE2("priv_mode=%d auth_mode=%d encr_mode=%d",
 		  priv_mode, auth_mode, encr_mode);
 
-	set_privacy_filter(wd, priv_mode);
-	set_auth_mode(wd, auth_mode);
-	set_encr_mode(wd, encr_mode);
+	set_privacy_filter(wnd, priv_mode);
+	set_auth_mode(wnd, auth_mode);
+	set_encr_mode(wnd, encr_mode);
 #endif
 	return 0;
 }
@@ -127,7 +127,7 @@ static int set_assoc_params(struct wrapper_dev *wd)
 static int iw_set_essid(struct net_device *dev, struct iw_request_info *info,
 			union iwreq_data *wrqu, char *extra)
 {
-	struct wrapper_dev *wd = netdev_priv(dev);
+	struct wrap_ndis_device *wnd = netdev_priv(dev);
 	char ssid[IW_ESSID_MAX_SIZE];
 
 	TRACEENTER2("");
@@ -143,15 +143,15 @@ static int iw_set_essid(struct net_device *dev, struct iw_request_info *info,
 	if (wrqu->essid.length > IW_ESSID_MAX_SIZE)
 		TRACEEXIT2(return -EINVAL);
 
-	if (wd->iw_auth_set) {
-		int ret = set_assoc_params(wd);
-		wd->iw_auth_set = 0;
+	if (wnd->iw_auth_set) {
+		int ret = set_assoc_params(wnd);
+		wnd->iw_auth_set = 0;
 		if (ret < 0)
 			TRACEEXIT2(return ret);
 	}
 
 	memcpy(ssid, extra, wrqu->essid.length);
-	if (set_essid(wd, ssid, wrqu->essid.length))
+	if (set_essid(wnd, ssid, wrqu->essid.length))
 		TRACEEXIT2(return -EINVAL);
 
 	TRACEEXIT2(return 0);
@@ -160,13 +160,13 @@ static int iw_set_essid(struct net_device *dev, struct iw_request_info *info,
 static int iw_get_essid(struct net_device *dev, struct iw_request_info *info,
 			union iwreq_data *wrqu, char *extra)
 {
-	struct wrapper_dev *wd = netdev_priv(dev); 
+	struct wrap_ndis_device *wnd = netdev_priv(dev); 
 	NDIS_STATUS res;
 	struct ndis_essid req;
 
 	TRACEENTER2("");
 	memset(&req, 0, sizeof(req));
-	res = miniport_query_info(wd, OID_802_11_SSID, &req, sizeof(req));
+	res = miniport_query_info(wnd, OID_802_11_SSID, &req, sizeof(req));
 	if (res == NDIS_STATUS_FAILURE)
 		return -ENOTSUPP;
 		
@@ -183,14 +183,14 @@ static int iw_get_essid(struct net_device *dev, struct iw_request_info *info,
 	TRACEEXIT2(return 0);
 }
 
-int set_infra_mode(struct wrapper_dev *wd,
+int set_infra_mode(struct wrap_ndis_device *wnd,
 		   enum network_infrastructure mode)
 {
 	NDIS_STATUS res;
 	unsigned int i;
 
 	TRACEENTER2("");
-	res = miniport_set_int(wd, OID_802_11_INFRASTRUCTURE_MODE, mode);
+	res = miniport_set_int(wnd, OID_802_11_INFRASTRUCTURE_MODE, mode);
 	if (res == NDIS_STATUS_FAILURE)
 		return -EOPNOTSUPP;
 	if (res == NDIS_STATUS_INVALID_DATA) {
@@ -199,8 +199,8 @@ int set_infra_mode(struct wrapper_dev *wd,
 	}
 
 	for (i = 0; i < MAX_ENCR_KEYS; i++)
-		wd->encr_info.keys[i].length = 0;
-	wd->infrastructure_mode = mode;
+		wnd->encr_info.keys[i].length = 0;
+	wnd->infrastructure_mode = mode;
 	TRACEEXIT2(return 0);
 }
 
@@ -208,7 +208,7 @@ static int iw_set_infra_mode(struct net_device *dev,
 			     struct iw_request_info *info,
 			     union iwreq_data *wrqu, char *extra)
 {
-	struct wrapper_dev *wd = netdev_priv(dev);
+	struct wrap_ndis_device *wnd = netdev_priv(dev);
 	enum network_infrastructure ndis_mode;
 
 	TRACEENTER2("");
@@ -226,7 +226,7 @@ static int iw_set_infra_mode(struct net_device *dev,
 		TRACEEXIT2(return -EINVAL);
 	}
 	
-	if (set_infra_mode(wd, ndis_mode))
+	if (set_infra_mode(wnd, ndis_mode))
 		TRACEEXIT2(return -EINVAL);
 
 	TRACEEXIT2(return 0);
@@ -236,12 +236,12 @@ static int iw_get_infra_mode(struct net_device *dev,
 			     struct iw_request_info *info,
 			     union iwreq_data *wrqu, char *extra)
 {
-	struct wrapper_dev *wd = netdev_priv(dev); 
+	struct wrap_ndis_device *wnd = netdev_priv(dev); 
 	int ndis_mode, iw_mode;
 	NDIS_STATUS res;
 
 	TRACEENTER2("");
-	res = miniport_query_int(wd, OID_802_11_INFRASTRUCTURE_MODE,
+	res = miniport_query_int(wnd, OID_802_11_INFRASTRUCTURE_MODE,
 				 &ndis_mode);
 	if (res == NDIS_STATUS_FAILURE)
 		return -EOPNOTSUPP;
@@ -282,12 +282,12 @@ static int iw_get_network_type(struct net_device *dev,
 			       struct iw_request_info *info,
 			       union iwreq_data *wrqu, char *extra)
 {
-	struct wrapper_dev *wd = netdev_priv(dev);
+	struct wrap_ndis_device *wnd = netdev_priv(dev);
 	unsigned int network_type;
 	NDIS_STATUS res;
 	
 	TRACEENTER2("");
-	res = miniport_query_int(wd, OID_802_11_NETWORK_TYPE_IN_USE,
+	res = miniport_query_int(wnd, OID_802_11_NETWORK_TYPE_IN_USE,
 				 &network_type);
 	if (res == NDIS_STATUS_INVALID_DATA || res == NDIS_STATUS_FAILURE)
 		network_type = -1;
@@ -301,13 +301,13 @@ static int iw_get_network_type(struct net_device *dev,
 static int iw_get_freq(struct net_device *dev, struct iw_request_info *info,
 		       union iwreq_data *wrqu, char *extra)
 {
-	struct wrapper_dev *wd = netdev_priv(dev);
+	struct wrap_ndis_device *wnd = netdev_priv(dev);
 	NDIS_STATUS res;
 	struct ndis_configuration req;
 
 	TRACEENTER2("");
 	memset(&req, 0, sizeof(req));
-	res = miniport_query_info(wd, OID_802_11_CONFIGURATION,
+	res = miniport_query_info(wnd, OID_802_11_CONFIGURATION,
 				  &req, sizeof(req));
 	if (res == NDIS_STATUS_FAILURE)
 		return -EOPNOTSUPP;
@@ -338,13 +338,13 @@ static int iw_get_freq(struct net_device *dev, struct iw_request_info *info,
 static int iw_set_freq(struct net_device *dev, struct iw_request_info *info,
 		       union iwreq_data *wrqu, char *extra)
 {
-	struct wrapper_dev *wd = netdev_priv(dev);
+	struct wrap_ndis_device *wnd = netdev_priv(dev);
 	NDIS_STATUS res;
 	struct ndis_configuration req;
 
 	TRACEENTER2("");
 	memset(&req, 0, sizeof(req));
-	res = miniport_query_info(wd, OID_802_11_CONFIGURATION,
+	res = miniport_query_info(wnd, OID_802_11_CONFIGURATION,
 				  &req, sizeof(req));
 	if (res == NDIS_STATUS_FAILURE)
 		return -EOPNOTSUPP;
@@ -367,7 +367,7 @@ static int iw_set_freq(struct net_device *dev, struct iw_request_info *info,
 		req.ds_config /= 1000;
 		
 	}
-	res = miniport_set_info(wd, OID_802_11_CONFIGURATION, &req,
+	res = miniport_set_info(wnd, OID_802_11_CONFIGURATION, &req,
 				sizeof(req));
 	if (res == NDIS_STATUS_FAILURE)
 		return -EOPNOTSUPP;
@@ -382,12 +382,12 @@ static int iw_get_tx_power(struct net_device *dev,
 			   struct iw_request_info *info,
 			   union iwreq_data *wrqu, char *extra)
 {
-	struct wrapper_dev *wd = netdev_priv(dev); 
+	struct wrap_ndis_device *wnd = netdev_priv(dev); 
 	ndis_tx_power_level ndis_power;
 	NDIS_STATUS res;
 
 	TRACEENTER2("");
-	res = miniport_query_info(wd, OID_802_11_TX_POWER_LEVEL,
+	res = miniport_query_info(wnd, OID_802_11_TX_POWER_LEVEL,
 				  &ndis_power, sizeof(ndis_power));
 	if (res == NDIS_STATUS_FAILURE)
 		return -EOPNOTSUPP;
@@ -406,20 +406,20 @@ static int iw_set_tx_power(struct net_device *dev,
 			   struct iw_request_info *info,
 			   union iwreq_data *wrqu, char *extra)
 {
-	struct wrapper_dev *wd = netdev_priv(dev); 
+	struct wrap_ndis_device *wnd = netdev_priv(dev); 
 	ndis_tx_power_level ndis_power;
 	NDIS_STATUS res;
 
 	TRACEENTER2("");
 	if (wrqu->txpower.disabled) {
 		ndis_power = 0;
-		res = miniport_set_info(wd, OID_802_11_TX_POWER_LEVEL,
+		res = miniport_set_info(wnd, OID_802_11_TX_POWER_LEVEL,
 					&ndis_power, sizeof(ndis_power));
 		if (res == NDIS_STATUS_FAILURE)
 			return -EOPNOTSUPP;
 		if (res == NDIS_STATUS_INVALID_DATA)
 			return -EINVAL;
-		res = miniport_set_int(wd, OID_802_11_DISASSOCIATE, 0);
+		res = miniport_set_int(wnd, OID_802_11_DISASSOCIATE, 0);
 		if (res == NDIS_STATUS_FAILURE)
 			return -EOPNOTSUPP;
 		if (res)
@@ -442,7 +442,7 @@ static int iw_set_tx_power(struct net_device *dev,
 			}
 		}
 	}
-	res = miniport_set_info(wd, OID_802_11_TX_POWER_LEVEL,
+	res = miniport_set_info(wnd, OID_802_11_TX_POWER_LEVEL,
 				&ndis_power, sizeof(ndis_power));
 	if (res == NDIS_STATUS_FAILURE)
 		return -EOPNOTSUPP;
@@ -459,12 +459,12 @@ static int iw_set_tx_power(struct net_device *dev,
 static int iw_get_bitrate(struct net_device *dev, struct iw_request_info *info,
 			  union iwreq_data *wrqu, char *extra)
 {
-	struct wrapper_dev *wd = netdev_priv(dev); 
+	struct wrap_ndis_device *wnd = netdev_priv(dev); 
 	ULONG ndis_rate;
 	int res;
 
 	TRACEENTER2("");
-	res = miniport_query_info(wd, OID_GEN_LINK_SPEED,
+	res = miniport_query_info(wnd, OID_GEN_LINK_SPEED,
 				  &ndis_rate, sizeof(ndis_rate));
 	if (res == NDIS_STATUS_FAILURE)
 		return -ENOTSUPP;
@@ -480,7 +480,7 @@ static int iw_get_bitrate(struct net_device *dev, struct iw_request_info *info,
 static int iw_set_bitrate(struct net_device *dev, struct iw_request_info *info,
 			  union iwreq_data *wrqu, char *extra)
 {
-	struct wrapper_dev *wd = netdev_priv(dev); 
+	struct wrap_ndis_device *wnd = netdev_priv(dev); 
 	int i;
 	NDIS_STATUS res;
 	ndis_rates rates;
@@ -489,7 +489,7 @@ static int iw_set_bitrate(struct net_device *dev, struct iw_request_info *info,
 	if (wrqu->bitrate.fixed == 0)
 		TRACEEXIT2(return 0);
 
-	res = miniport_query_info(wd, OID_802_11_SUPPORTED_RATES,
+	res = miniport_query_info(wnd, OID_802_11_SUPPORTED_RATES,
 				  &rates, sizeof(rates));
 	if (res == NDIS_STATUS_FAILURE)
 		return -ENOTSUPP;
@@ -510,7 +510,7 @@ static int iw_set_bitrate(struct net_device *dev, struct iw_request_info *info,
 		}
 	}
 
-	res = miniport_query_info(wd, OID_802_11_DESIRED_RATES,
+	res = miniport_query_info(wnd, OID_802_11_DESIRED_RATES,
 				  &rates, sizeof(rates));
 	if (res == NDIS_STATUS_FAILURE)
 		return -ENOTSUPP;
@@ -535,12 +535,12 @@ static int iw_get_rts_threshold(struct net_device *dev,
 				struct iw_request_info *info,
 				union iwreq_data *wrqu, char *extra)
 {
-	struct wrapper_dev *wd = netdev_priv(dev);
+	struct wrap_ndis_device *wnd = netdev_priv(dev);
 	ndis_rts_threshold threshold;
 	NDIS_STATUS res;
 
 	TRACEENTER2("");
-	res = miniport_query_info(wd, OID_802_11_RTS_THRESHOLD,
+	res = miniport_query_info(wnd, OID_802_11_RTS_THRESHOLD,
 				  &threshold, sizeof(threshold));
 	if (res == NDIS_STATUS_FAILURE)
 		return -ENOTSUPP;
@@ -555,13 +555,13 @@ static int iw_set_rts_threshold(struct net_device *dev,
 				struct iw_request_info *info,
 				union iwreq_data *wrqu, char *extra)
 {
-	struct wrapper_dev *wd = netdev_priv(dev);
+	struct wrap_ndis_device *wnd = netdev_priv(dev);
 	ndis_rts_threshold threshold;
 	NDIS_STATUS res;
 
 	TRACEENTER2("");
 	threshold = wrqu->rts.value;
-	res = miniport_set_info(wd, OID_802_11_RTS_THRESHOLD,
+	res = miniport_set_info(wnd, OID_802_11_RTS_THRESHOLD,
 				&threshold, sizeof(threshold));
 	if (res == NDIS_STATUS_FAILURE)
 		return -EOPNOTSUPP;
@@ -577,12 +577,12 @@ static int iw_get_frag_threshold(struct net_device *dev,
 				 struct iw_request_info *info,
 				 union iwreq_data *wrqu, char *extra)
 {
-	struct wrapper_dev *wd = netdev_priv(dev); 
+	struct wrap_ndis_device *wnd = netdev_priv(dev); 
 	ndis_fragmentation_threshold frag_threshold;
 	NDIS_STATUS res;
 
 	TRACEENTER2("");
-	res = miniport_query_info(wd, OID_802_11_FRAGMENTATION_THRESHOLD,
+	res = miniport_query_info(wnd, OID_802_11_FRAGMENTATION_THRESHOLD,
 				  &frag_threshold, sizeof(frag_threshold));
 	if (res == NDIS_STATUS_FAILURE)
 		return -ENOTSUPP;
@@ -597,13 +597,13 @@ static int iw_set_frag_threshold(struct net_device *dev,
 				 struct iw_request_info *info,
 				 union iwreq_data *wrqu, char *extra)
 {
-	struct wrapper_dev *wd = netdev_priv(dev);
+	struct wrap_ndis_device *wnd = netdev_priv(dev);
 	ndis_rts_threshold threshold;
 	NDIS_STATUS res;
 
 	TRACEENTER2("");
 	threshold = wrqu->frag.value;
-	res = miniport_set_info(wd, OID_802_11_FRAGMENTATION_THRESHOLD,
+	res = miniport_set_info(wnd, OID_802_11_FRAGMENTATION_THRESHOLD,
 				&threshold, sizeof(threshold));
 	if (res == NDIS_STATUS_FAILURE)
 		return -EOPNOTSUPP;
@@ -615,15 +615,15 @@ static int iw_set_frag_threshold(struct net_device *dev,
 	return 0;
 }
 
-int get_ap_address(struct wrapper_dev *wd, mac_address ap_addr)
+int get_ap_address(struct wrap_ndis_device *wnd, mac_address ap_addr)
 {
 	NDIS_STATUS res;
 
 	TRACEENTER2("");
 	res = NDIS_STATUS_ADAPTER_NOT_READY;
 	/* this OID is valid only when associated */
-	if (wd->link_status)
-		res = miniport_query_info(wd, OID_802_11_BSSID, ap_addr,
+	if (wnd->link_status)
+		res = miniport_query_info(wnd, OID_802_11_BSSID, ap_addr,
 					  ETH_ALEN);
 	if (res == NDIS_STATUS_FAILURE)
 		return -ENOTSUPP;
@@ -638,11 +638,11 @@ static int iw_get_ap_address(struct net_device *dev,
 			     struct iw_request_info *info,
 			     union iwreq_data *wrqu, char *extra)
 {
-	struct wrapper_dev *wd = netdev_priv(dev);
+	struct wrap_ndis_device *wnd = netdev_priv(dev);
 	mac_address ap_addr;
 
 	TRACEENTER2("");
-	get_ap_address(wd, ap_addr);
+	get_ap_address(wnd, ap_addr);
 
 	memcpy(wrqu->ap_addr.sa_data, ap_addr, ETH_ALEN);
 	wrqu->ap_addr.sa_family = ARPHRD_ETHER;
@@ -653,14 +653,14 @@ static int iw_set_ap_address(struct net_device *dev,
 			     struct iw_request_info *info,
 			     union iwreq_data *wrqu, char *extra)
 {
-	struct wrapper_dev *wd = netdev_priv(dev); 
+	struct wrap_ndis_device *wnd = netdev_priv(dev); 
 	NDIS_STATUS res;
 	mac_address ap_addr;
 
 	TRACEENTER2("");
         memcpy(ap_addr, wrqu->ap_addr.sa_data, ETH_ALEN);
 	DBGTRACE2(MACSTR, MAC2STR(ap_addr));
-	res = miniport_set_info(wd, OID_802_11_BSSID, ap_addr, ETH_ALEN);
+	res = miniport_set_info(wnd, OID_802_11_BSSID, ap_addr, ETH_ALEN);
 
 	if (res == NDIS_STATUS_FAILURE)
 		return -EOPNOTSUPP;
@@ -672,12 +672,12 @@ static int iw_set_ap_address(struct net_device *dev,
         TRACEEXIT2(return 0);
 }
 
-int set_auth_mode(struct wrapper_dev *wd, int auth_mode)
+int set_auth_mode(struct wrap_ndis_device *wnd, int auth_mode)
 {
 	NDIS_STATUS res;
 
 	TRACEENTER2("%d", auth_mode);
-	res = miniport_set_int(wd, OID_802_11_AUTHENTICATION_MODE,
+	res = miniport_set_int(wnd, OID_802_11_AUTHENTICATION_MODE,
 			       auth_mode);
 	if (res == NDIS_STATUS_FAILURE)
 		return -EOPNOTSUPP;
@@ -685,43 +685,43 @@ int set_auth_mode(struct wrapper_dev *wd, int auth_mode)
 		WARNING("setting auth mode failed (%08X)", res);
 		TRACEEXIT2(return -EINVAL);
 	} else {
-		wd->auth_mode = auth_mode;
+		wnd->auth_mode = auth_mode;
 		TRACEEXIT2(return 0);
 	}
 }
 
-int get_auth_mode(struct wrapper_dev *wd)
+int get_auth_mode(struct wrap_ndis_device *wnd)
 {
 	int i;
 
 	TRACEENTER2("");
-	if (miniport_query_int(wd, OID_802_11_AUTHENTICATION_MODE, &i))
+	if (miniport_query_int(wnd, OID_802_11_AUTHENTICATION_MODE, &i))
 		TRACEEXIT2(return -EINVAL);
 	else
 		TRACEEXIT2(return i);
 }
 
-int set_encr_mode(struct wrapper_dev *wd, int encr_mode)
+int set_encr_mode(struct wrap_ndis_device *wnd, int encr_mode)
 {
 	NDIS_STATUS res;
 
 	TRACEENTER2("");
-	res = miniport_set_int(wd, OID_802_11_ENCRYPTION_STATUS,
+	res = miniport_set_int(wnd, OID_802_11_ENCRYPTION_STATUS,
 			       encr_mode);
 	if (res == NDIS_STATUS_INVALID_DATA)
 		TRACEEXIT2(return -EINVAL);
 	else {
-		wd->encr_mode = encr_mode;
+		wnd->encr_mode = encr_mode;
 		TRACEEXIT2(return 0);
 	}
 }
 
-int get_encr_mode(struct wrapper_dev *wd)
+int get_encr_mode(struct wrap_ndis_device *wnd)
 {
 	int i;
 
 	TRACEENTER2("");
-	if (miniport_query_int(wd, OID_802_11_ENCRYPTION_STATUS, &i))
+	if (miniport_query_int(wnd, OID_802_11_ENCRYPTION_STATUS, &i))
 		TRACEEXIT2(return -EINVAL);
 	else
 		TRACEEXIT2(return i);
@@ -730,12 +730,12 @@ int get_encr_mode(struct wrapper_dev *wd)
 static int iw_get_encr(struct net_device *dev, struct iw_request_info *info,
 		       union iwreq_data *wrqu, char *extra)
 {
-	struct wrapper_dev *wd = netdev_priv(dev);
+	struct wrap_ndis_device *wnd = netdev_priv(dev);
 	NDIS_STATUS res;
 	int index, status;
-	struct encr_info *encr_info = &wd->encr_info;
+	struct encr_info *encr_info = &wnd->encr_info;
 
-	TRACEENTER2("wd = %p", wd);
+	TRACEENTER2("wnd = %p", wnd);
 	wrqu->data.length = 0;
 	extra[0] = 0;
 
@@ -765,7 +765,7 @@ static int iw_get_encr(struct net_device *dev, struct iw_request_info *info,
 	}
 	
 	/* transmit key */
-	res = miniport_query_int(wd, OID_802_11_ENCRYPTION_STATUS,
+	res = miniport_query_int(wnd, OID_802_11_ENCRYPTION_STATUS,
 				 &status);
 	if (res == NDIS_STATUS_FAILURE)
 		return -ENOTSUPP;
@@ -790,7 +790,7 @@ static int iw_get_encr(struct net_device *dev, struct iw_request_info *info,
 			       encr_info->keys[index].length);
 		}
 	}
-	res = miniport_query_int(wd, OID_802_11_AUTHENTICATION_MODE,
+	res = miniport_query_int(wnd, OID_802_11_AUTHENTICATION_MODE,
 				 &status);
 	if (res == NDIS_STATUS_FAILURE)
 		return -ENOTSUPP;
@@ -810,7 +810,7 @@ static int iw_get_encr(struct net_device *dev, struct iw_request_info *info,
 }
 
 /* index must be 0 - N, as per NDIS  */
-int add_wep_key(struct wrapper_dev *wd, char *key, int key_len,
+int add_wep_key(struct wrap_ndis_device *wnd, char *key, int key_len,
 		int index)
 {
 	struct ndis_encr_key ndis_key;
@@ -829,15 +829,15 @@ int add_wep_key(struct wrapper_dev *wd, char *key, int key_len,
 	ndis_key.length = key_len;
 	memcpy(&ndis_key.key, key, key_len);
 	ndis_key.index = index;
-	if (index == wd->encr_info.tx_key_index)
+	if (index == wnd->encr_info.tx_key_index)
 		ndis_key.index |= (1 << 31);
 
-	if (index == wd->encr_info.tx_key_index) {
-		res = set_encr_mode(wd, Ndis802_11Encryption1Enabled);
+	if (index == wnd->encr_info.tx_key_index) {
+		res = set_encr_mode(wnd, Ndis802_11Encryption1Enabled);
 		if (res)
 			WARNING("encryption couldn't be enabled (%08X)", res);
 	}
-	res = miniport_set_info(wd, OID_802_11_ADD_WEP, &ndis_key,
+	res = miniport_set_info(wnd, OID_802_11_ADD_WEP, &ndis_key,
 				sizeof(ndis_key));
 	if (res == NDIS_STATUS_FAILURE)
 		return -EOPNOTSUPP;
@@ -849,8 +849,8 @@ int add_wep_key(struct wrapper_dev *wd, char *key, int key_len,
 		
 	/* Atheros driver messes up ndis_key during ADD_WEP, so
 	 * don't rely on that; instead use info in key and key_len */
-	wd->encr_info.keys[index].length = key_len;
-	memcpy(&wd->encr_info.keys[index].key, key, key_len);
+	wnd->encr_info.keys[index].length = key_len;
+	memcpy(&wnd->encr_info.keys[index].key, key, key_len);
 
 	TRACEEXIT2(return 0);
 }
@@ -858,10 +858,10 @@ int add_wep_key(struct wrapper_dev *wd, char *key, int key_len,
 static int iw_set_encr(struct net_device *dev, struct iw_request_info *info,
 		       union iwreq_data *wrqu, char *extra)
 {
-	struct wrapper_dev *wd = netdev_priv(dev);
+	struct wrap_ndis_device *wnd = netdev_priv(dev);
 	NDIS_STATUS res;
 	unsigned int index, key_len;
-	struct encr_info *encr_info = &wd->encr_info;
+	struct encr_info *encr_info = &wnd->encr_info;
 	unsigned char *key;
 	
 	TRACEENTER2("");
@@ -882,7 +882,7 @@ static int iw_set_encr(struct net_device *dev, struct iw_request_info *info,
 	/* remove key if disabled */
 	if (wrqu->data.flags & IW_ENCODE_DISABLED) {
 		ndis_key_index keyindex = index;
-		res = miniport_set_info(wd, OID_802_11_REMOVE_WEP,
+		res = miniport_set_info(wnd, OID_802_11_REMOVE_WEP,
 					&keyindex, sizeof(keyindex));
 		if (res == NDIS_STATUS_FAILURE)
 			return -EOPNOTSUPP;
@@ -895,7 +895,7 @@ static int iw_set_encr(struct net_device *dev, struct iw_request_info *info,
 		
 		/* if it is transmit key, disable encryption */
 		if (index == encr_info->tx_key_index) {
-			res = set_encr_mode(wd, Ndis802_11EncryptionDisabled);
+			res = set_encr_mode(wnd, Ndis802_11EncryptionDisabled);
 			if (res)
 				WARNING("changing encr status failed (%08X)",
 					res);
@@ -905,9 +905,9 @@ static int iw_set_encr(struct net_device *dev, struct iw_request_info *info,
 
 	/* global encryption state (for all keys) */
 	if (wrqu->data.flags & IW_ENCODE_OPEN)
-		res = set_auth_mode(wd, Ndis802_11AuthModeOpen);
+		res = set_auth_mode(wnd, Ndis802_11AuthModeOpen);
 	else // if (wrqu->data.flags & IW_ENCODE_RESTRICTED)
-		res = set_auth_mode(wd, Ndis802_11AuthModeShared);
+		res = set_auth_mode(wnd, Ndis802_11AuthModeShared);
 	if (res) {
 		WARNING("setting authentication mode failed (%08X)", res);
 		TRACEEXIT2(return -EINVAL);
@@ -928,7 +928,7 @@ static int iw_set_encr(struct net_device *dev, struct iw_request_info *info,
 		encr_info->tx_key_index = index;
 	}
 
-	if (add_wep_key(wd, key, key_len, index))
+	if (add_wep_key(wnd, key, key_len, index))
 		TRACEEXIT2(return -EINVAL);
 
 	if (index == encr_info->tx_key_index) {
@@ -946,13 +946,13 @@ static int iw_set_encr(struct net_device *dev, struct iw_request_info *info,
 					i = index + 1;
 				else
 					i = index - 1;
-				if (add_wep_key(wd, key, key_len, i))
+				if (add_wep_key(wnd, key, key_len, i))
 					WARNING("couldn't add broadcast key"
 						" at %d", i);
 			}
 		}
 		/* ndis drivers want essid to be set after setting encr */
-		set_essid(wd, wd->essid.essid, wd->essid.length);
+		set_essid(wnd, wnd->essid.essid, wnd->essid.length);
 	}
 	TRACEEXIT2(return 0);
 }
@@ -960,22 +960,22 @@ static int iw_set_encr(struct net_device *dev, struct iw_request_info *info,
 static int iw_set_nick(struct net_device *dev, struct iw_request_info *info,
 		       union iwreq_data *wrqu, char *extra)
 {
-	struct wrapper_dev *wd = netdev_priv(dev);
+	struct wrap_ndis_device *wnd = netdev_priv(dev);
 	
 	if (wrqu->data.length > IW_ESSID_MAX_SIZE)
 		return -EINVAL;
-	memcpy(wd->nick, extra, wrqu->data.length);
-	wd->nick[IW_ESSID_MAX_SIZE] = 0;
+	memcpy(wnd->nick, extra, wrqu->data.length);
+	wnd->nick[IW_ESSID_MAX_SIZE] = 0;
 	return 0;
 }
 
 static int iw_get_nick(struct net_device *dev, struct iw_request_info *info,
 		       union iwreq_data *wrqu, char *extra)
 {
-	struct wrapper_dev *wd = netdev_priv(dev);
+	struct wrap_ndis_device *wnd = netdev_priv(dev);
 	
-	memcpy(extra, wd->nick, IW_ESSID_MAX_SIZE+1);
-	wrqu->data.length = strlen(wd->nick);
+	memcpy(extra, wnd->nick, IW_ESSID_MAX_SIZE+1);
+	wrqu->data.length = strlen(wnd->nick);
 	return 0;
 }
 
@@ -1157,12 +1157,12 @@ static char *ndis_translate_scan(struct net_device *dev, char *event,
 	TRACEEXIT2(return event);
 }
 
-int set_scan(struct wrapper_dev *wd)
+int set_scan(struct wrap_ndis_device *wnd)
 {
 	NDIS_STATUS res;
 
 	TRACEENTER2("");
-	res = miniport_set_int(wd, OID_802_11_BSSID_LIST_SCAN, 0);
+	res = miniport_set_int(wnd, OID_802_11_BSSID_LIST_SCAN, 0);
 	if (res == NDIS_STATUS_FAILURE)
 		return -EOPNOTSUPP;
 	if (res == NDIS_STATUS_NOT_SUPPORTED ||
@@ -1170,7 +1170,7 @@ int set_scan(struct wrapper_dev *wd)
 		WARNING("scanning failed (%08X)", res);
 		TRACEEXIT2(return -EOPNOTSUPP);
 	} else {
-		wd->scan_timestamp = jiffies;
+		wnd->scan_timestamp = jiffies;
 		TRACEEXIT2(return 0);
 	}
 }
@@ -1178,15 +1178,15 @@ int set_scan(struct wrapper_dev *wd)
 static int iw_set_scan(struct net_device *dev, struct iw_request_info *info,
 		       union iwreq_data *wrqu, char *extra)
 {
-	struct wrapper_dev *wd = netdev_priv(dev);
+	struct wrap_ndis_device *wnd = netdev_priv(dev);
 	
-	return set_scan(wd);
+	return set_scan(wnd);
 }
 
 static int iw_get_scan(struct net_device *dev, struct iw_request_info *info,
 		       union iwreq_data *wrqu, char *extra)
 {
- 	struct wrapper_dev *wd = netdev_priv(dev);
+ 	struct wrap_ndis_device *wnd = netdev_priv(dev);
 	unsigned int i, list_len, needed;
 	NDIS_STATUS res;
 	struct ndis_bssid_list *bssid_list;
@@ -1194,7 +1194,7 @@ static int iw_get_scan(struct net_device *dev, struct iw_request_info *info,
 	struct ndis_ssid_item *cur_item ;
 
 	TRACEENTER2("");
-	if (time_before(jiffies, wd->scan_timestamp + 3 * HZ))
+	if (time_before(jiffies, wnd->scan_timestamp + 3 * HZ))
 		return -EAGAIN;
 	
 	/* try with space for a few scan items */
@@ -1209,7 +1209,7 @@ static int iw_get_scan(struct net_device *dev, struct iw_request_info *info,
 	memset(bssid_list, 0, list_len);
 
 	needed = 0;
-	res = miniport_query_info_needed(wd, OID_802_11_BSSID_LIST,
+	res = miniport_query_info_needed(wnd, OID_802_11_BSSID_LIST,
 					 bssid_list, list_len, &needed);
 	if (needed > 0 || res == NDIS_STATUS_INVALID_LENGTH ||
 	    res == NDIS_STATUS_BUFFER_TOO_SHORT) {
@@ -1223,7 +1223,7 @@ static int iw_get_scan(struct net_device *dev, struct iw_request_info *info,
 		}
 		memset(bssid_list, 0, list_len);
 
-		res = miniport_query_info(wd, OID_802_11_BSSID_LIST,
+		res = miniport_query_info(wnd, OID_802_11_BSSID_LIST,
 					  bssid_list, list_len);
 	}
 
@@ -1252,7 +1252,7 @@ static int iw_set_power_mode(struct net_device *dev,
 			     struct iw_request_info *info,
 			     union iwreq_data *wrqu, char *extra)
 {
-	struct wrapper_dev *wd = netdev_priv(dev);
+	struct wrap_ndis_device *wnd = netdev_priv(dev);
 	NDIS_STATUS res;
 	ULONG power_mode;
 
@@ -1264,7 +1264,7 @@ static int iw_set_power_mode(struct net_device *dev,
 	else // if (wrqu->power.flags & IW_POWER_MAX)
 		power_mode = NDIS_POWER_MAX;
 
-	res = miniport_set_info(wd, OID_802_11_POWER_MODE,
+	res = miniport_set_info(wnd, OID_802_11_POWER_MODE,
 				&power_mode, sizeof(power_mode));
 	if (res == NDIS_STATUS_FAILURE)
 		return -EOPNOTSUPP;
@@ -1280,12 +1280,12 @@ static int iw_get_power_mode(struct net_device *dev,
 			     struct iw_request_info *info,
 			     union iwreq_data *wrqu, char *extra)
 {
-	struct wrapper_dev *wd = netdev_priv(dev);
+	struct wrap_ndis_device *wnd = netdev_priv(dev);
 	NDIS_STATUS res;
 	ULONG power_mode;
 
 	TRACEENTER2("");
-	res = miniport_query_info(wd, OID_802_11_POWER_MODE,
+	res = miniport_query_info(wnd, OID_802_11_POWER_MODE,
 				  &power_mode, sizeof(power_mode));
 	if (res == NDIS_STATUS_FAILURE)
 		return -ENOTSUPP;
@@ -1314,12 +1314,12 @@ static int iw_get_sensitivity(struct net_device *dev,
 			      struct iw_request_info *info,
 			      union iwreq_data *wrqu, char *extra)
 {
-	struct wrapper_dev *wd = netdev_priv(dev);
+	struct wrap_ndis_device *wnd = netdev_priv(dev);
 	NDIS_STATUS res;
 	ndis_rssi rssi_trigger;
 
 	TRACEENTER2("");
-	res = miniport_query_info(wd, OID_802_11_RSSI_TRIGGER,
+	res = miniport_query_info(wnd, OID_802_11_RSSI_TRIGGER,
 				  &rssi_trigger, sizeof(rssi_trigger));
 	if (res)
 		return -EOPNOTSUPP;
@@ -1333,7 +1333,7 @@ static int iw_set_sensitivity(struct net_device *dev,
 			      struct iw_request_info *info,
 			      union iwreq_data *wrqu, char *extra)
 {
-	struct wrapper_dev *wd = netdev_priv(dev);
+	struct wrap_ndis_device *wnd = netdev_priv(dev);
 	NDIS_STATUS res;
 	ndis_rssi rssi_trigger;
 
@@ -1342,7 +1342,7 @@ static int iw_set_sensitivity(struct net_device *dev,
 		rssi_trigger = 0;
 	else
 		rssi_trigger = wrqu->param.value;
-	res = miniport_set_info(wd, OID_802_11_RSSI_TRIGGER,
+	res = miniport_set_info(wnd, OID_802_11_RSSI_TRIGGER,
 				&rssi_trigger, sizeof(rssi_trigger));
 	if (res == NDIS_STATUS_FAILURE)
 		return -EOPNOTSUPP;
@@ -1355,8 +1355,8 @@ static int iw_get_ndis_stats(struct net_device *dev,
 			     struct iw_request_info *info,
 			     union iwreq_data *wrqu, char *extra)
 {
-	struct wrapper_dev *wd = netdev_priv(dev);
-	struct iw_statistics *stats = &wd->wireless_stats;
+	struct wrap_ndis_device *wnd = netdev_priv(dev);
+	struct iw_statistics *stats = &wnd->wireless_stats;
 	memcpy(&wrqu->qual, &stats->qual, sizeof(stats->qual));
 	return 0;
 }
@@ -1366,7 +1366,7 @@ static int iw_get_range(struct net_device *dev, struct iw_request_info *info,
 {
 	struct iw_range *range = (struct iw_range *)extra;
 	struct iw_point *data = &wrqu->data;
-	struct wrapper_dev *wd = netdev_priv(dev);
+	struct wrap_ndis_device *wnd = netdev_priv(dev);
 	unsigned int i;
 	NDIS_STATUS res;
 	ndis_rates rates;
@@ -1379,7 +1379,7 @@ static int iw_get_range(struct net_device *dev, struct iw_request_info *info,
 	range->txpower_capa = IW_TXPOW_MWATT;
 	range->num_txpower = 0;
 
-	res = miniport_query_info(wd, OID_802_11_TX_POWER_LEVEL,
+	res = miniport_query_info(wnd, OID_802_11_TX_POWER_LEVEL,
 				 &tx_power, sizeof(tx_power));
 	if (!res) {
 		range->num_txpower = 1;
@@ -1407,7 +1407,7 @@ static int iw_get_range(struct net_device *dev, struct iw_request_info *info,
 	range->encoding_size[1] = 13;
 
 	range->num_bitrates = 0;
-	res = miniport_query_info(wd, OID_802_11_SUPPORTED_RATES,
+	res = miniport_query_info(wnd, OID_802_11_SUPPORTED_RATES,
 				  &rates, sizeof(rates));
 	if (res)
 		WARNING("getting bit rates failed: %08X", res);
@@ -1455,15 +1455,15 @@ static int iw_get_range(struct net_device *dev, struct iw_request_info *info,
 	/* TODO: should determine WPA/WPA2 support in check_capa(). */
 	range->enc_capa = 0;
 
-	if (test_bit(Ndis802_11Encryption2Enabled, &wd->capa.encr))
+	if (test_bit(Ndis802_11Encryption2Enabled, &wnd->capa.encr))
 		range->enc_capa |= IW_ENC_CAPA_CIPHER_TKIP;
-	if (test_bit(Ndis802_11Encryption3Enabled, &wd->capa.encr))
+	if (test_bit(Ndis802_11Encryption3Enabled, &wnd->capa.encr))
 		range->enc_capa |= IW_ENC_CAPA_CIPHER_CCMP;
 
-	if (test_bit(Ndis802_11AuthModeWPA, &wd->capa.encr))
+	if (test_bit(Ndis802_11AuthModeWPA, &wnd->capa.encr))
 		range->enc_capa |= IW_ENC_CAPA_WPA;
-	if (test_bit(Ndis802_11AuthModeWPA2, &wd->capa.encr) ||
-	    test_bit(Ndis802_11AuthModeWPA2PSK, &wd->capa.encr))
+	if (test_bit(Ndis802_11AuthModeWPA2, &wnd->capa.encr) ||
+	    test_bit(Ndis802_11AuthModeWPA2PSK, &wnd->capa.encr))
 		range->enc_capa |= IW_ENC_CAPA_WPA2;
 #endif /* WIRELESS_EXT > 17 */
 
@@ -1511,25 +1511,25 @@ static int iw_set_auth(struct net_device *dev,
 		       struct iw_request_info *info,
 		       union iwreq_data *wrqu, char *extra)
 {
-	struct wrapper_dev *wd = netdev_priv(dev);
+	struct wrap_ndis_device *wnd = netdev_priv(dev);
 	DBGTRACE2("index=%d value=%d", wrqu->param.flags & IW_AUTH_INDEX,
 		  wrqu->param.value);
-	wd->iw_auth_set = 1;
+	wnd->iw_auth_set = 1;
 	switch (wrqu->param.flags & IW_AUTH_INDEX) {
 	case IW_AUTH_WPA_VERSION:
-		wd->iw_auth_wpa_version = wrqu->param.value;
+		wnd->iw_auth_wpa_version = wrqu->param.value;
 		break;
 	case IW_AUTH_CIPHER_PAIRWISE:
-		wd->iw_auth_cipher_pairwise = wrqu->param.value;
+		wnd->iw_auth_cipher_pairwise = wrqu->param.value;
 		break;
 	case IW_AUTH_CIPHER_GROUP:
-		wd->iw_auth_cipher_group = wrqu->param.value;
+		wnd->iw_auth_cipher_group = wrqu->param.value;
 		break;
 	case IW_AUTH_KEY_MGMT:
-		wd->iw_auth_key_mgmt = wrqu->param.value;
+		wnd->iw_auth_key_mgmt = wrqu->param.value;
 		break;
 	case IW_AUTH_80211_AUTH_ALG:
-		wd->iw_auth_80211_auth_alg = wrqu->param.value;
+		wnd->iw_auth_80211_auth_alg = wrqu->param.value;
 		break;
 	case IW_AUTH_TKIP_COUNTERMEASURES:
 	case IW_AUTH_DROP_UNENCRYPTED:
@@ -1548,24 +1548,24 @@ static int iw_get_auth(struct net_device *dev,
 		       struct iw_request_info *info,
 		       union iwreq_data *wrqu, char *extra)
 {
-	struct wrapper_dev *wd = netdev_priv(dev);
+	struct wrap_ndis_device *wnd = netdev_priv(dev);
 
 	TRACEENTER2("index=%d", wrqu->param.flags & IW_AUTH_INDEX);
 	switch (wrqu->param.flags & IW_AUTH_INDEX) {
 	case IW_AUTH_WPA_VERSION:
-		wrqu->param.value = wd->iw_auth_wpa_version;
+		wrqu->param.value = wnd->iw_auth_wpa_version;
 		break;
 	case IW_AUTH_CIPHER_PAIRWISE:
-		wrqu->param.value = wd->iw_auth_cipher_pairwise;
+		wrqu->param.value = wnd->iw_auth_cipher_pairwise;
 		break;
 	case IW_AUTH_CIPHER_GROUP:
-		wrqu->param.value = wd->iw_auth_cipher_group;
+		wrqu->param.value = wnd->iw_auth_cipher_group;
 		break;
 	case IW_AUTH_KEY_MGMT:
-		wrqu->param.value = wd->iw_auth_key_mgmt;
+		wrqu->param.value = wnd->iw_auth_key_mgmt;
 		break;
 	case IW_AUTH_80211_AUTH_ALG:
-		wrqu->param.value = wd->iw_auth_80211_auth_alg;
+		wrqu->param.value = wnd->iw_auth_80211_auth_alg;
 		break;
 	default:
 		return -EOPNOTSUPP;
@@ -1578,7 +1578,7 @@ static int iw_set_encodeext(struct net_device *dev,
 			    union iwreq_data *wrqu, char *extra)
 {
 	struct iw_encode_ext *ext = (struct iw_encode_ext *) extra;
-	struct wrapper_dev *wd = netdev_priv(dev);
+	struct wrap_ndis_device *wnd = netdev_priv(dev);
 	struct ndis_add_key ndis_key;
 	int i, keyidx;
 	NDIS_STATUS res;
@@ -1589,19 +1589,19 @@ static int iw_set_encodeext(struct net_device *dev,
 	if (keyidx > 0)
 		keyidx--;
 	else
-		keyidx = wd->encr_info.tx_key_index;
+		keyidx = wnd->encr_info.tx_key_index;
 
 	if (keyidx < 0 || keyidx >= MAX_ENCR_KEYS)
 		return -EINVAL;
 
 	if (ext->alg == IW_ENCODE_ALG_WEP) {
-		if (test_bit(Ndis802_11EncryptionDisabled, &wd->capa.encr))
+		if (test_bit(Ndis802_11EncryptionDisabled, &wnd->capa.encr))
 			TRACEEXIT2(return -1);
 
 		if (ext->ext_flags & IW_ENCODE_EXT_SET_TX_KEY)
-			wd->encr_info.tx_key_index = keyidx;
+			wnd->encr_info.tx_key_index = keyidx;
 
-		if (add_wep_key(wd, ext->key, ext->key_len, keyidx))
+		if (add_wep_key(wnd, ext->key, ext->key_len, keyidx))
 			TRACEEXIT2(return -1);
 		else
 			TRACEEXIT2(return 0);
@@ -1627,14 +1627,14 @@ static int iw_set_encodeext(struct net_device *dev,
 
 	addr = ext->addr.sa_data;
 	DBGTRACE2("infra_mode = %d, addr = " MACSTR,
-		  wd->infrastructure_mode, MAC2STR(addr));
+		  wnd->infrastructure_mode, MAC2STR(addr));
 
 	if (memcmp(addr, "\xff\xff\xff\xff\xff\xff", ETH_ALEN) == 0) {
 		/* group key */
-		if (wd->infrastructure_mode == Ndis802_11IBSS)
+		if (wnd->infrastructure_mode == Ndis802_11IBSS)
 			memset(ndis_key.bssid, 0xff, ETH_ALEN);
 		else
-			get_ap_address(wd, ndis_key.bssid);
+			get_ap_address(wnd, ndis_key.bssid);
 	} else {
 		/* pairwise key */
 		ndis_key.index |= (1 << 30);
@@ -1660,11 +1660,11 @@ static int iw_set_encodeext(struct net_device *dev,
 		/* TI driver crashes kernel if OID_802_11_REMOVE_KEY is
 		 * called; other drivers seem to not require it, so
 		 * for now, don't remove the key from driver */
-		wd->encr_info.keys[keyidx].length = 0;
-		memset(&wd->encr_info.keys[keyidx].key, 0, ext->key_len);
+		wnd->encr_info.keys[keyidx].length = 0;
+		memset(&wnd->encr_info.keys[keyidx].key, 0, ext->key_len);
 		DBGTRACE2("key %d removed", keyidx);
 	} else {
-		res = miniport_set_info(wd, OID_802_11_ADD_KEY,
+		res = miniport_set_info(wnd, OID_802_11_ADD_KEY,
 					&ndis_key, sizeof(ndis_key));
 		if (res == NDIS_STATUS_FAILURE)
 			return -EOPNOTSUPP;
@@ -1673,11 +1673,11 @@ static int iw_set_encodeext(struct net_device *dev,
 				  res, ndis_key.struct_size);
 			TRACEEXIT2(return -1);
 		}
-		wd->encr_info.keys[keyidx].length = ext->key_len;
-		memcpy(&wd->encr_info.keys[keyidx].key,
+		wnd->encr_info.keys[keyidx].length = ext->key_len;
+		memcpy(&wnd->encr_info.keys[keyidx].key,
 		       &ndis_key.key, ext->key_len);
 		if (ext->ext_flags & IW_ENCODE_EXT_SET_TX_KEY)
-			wd->encr_info.tx_key_index = keyidx;
+			wnd->encr_info.tx_key_index = keyidx;
 		DBGTRACE2("key %d added", keyidx);
 	}
 
@@ -1701,7 +1701,7 @@ static int iw_set_pmksa(struct net_device *dev,
 	struct iw_pmksa *pmksa = (struct iw_pmksa *) extra;
 	struct ndis_pmkid pmkid;
 	NDIS_STATUS res;
-	struct wrapper_dev *wd = netdev_priv(dev);
+	struct wrap_ndis_device *wnd = netdev_priv(dev);
 
 	/* TODO: must keep local list of PMKIDs since NDIS drivers
 	 * expect that all PMKID entries are included whenever a new
@@ -1709,7 +1709,7 @@ static int iw_set_pmksa(struct net_device *dev,
 
 	TRACEENTER2("");
 
-	if (wd->auth_mode != Ndis802_11AuthModeWPA2)
+	if (wnd->auth_mode != Ndis802_11AuthModeWPA2)
 		return -EOPNOTSUPP;
 
 	memset(&pmkid, 0, sizeof(pmkid));
@@ -1722,7 +1722,7 @@ static int iw_set_pmksa(struct net_device *dev,
 	pmkid.length = 8 + pmkid.bssid_info_count *
 		sizeof(struct ndis_bssid_info);
 
-	res = miniport_set_info(wd, OID_802_11_PMKID, &pmkid,
+	res = miniport_set_info(wnd, OID_802_11_PMKID, &pmkid,
 				sizeof(pmkid));
 	if (res == NDIS_STATUS_FAILURE)
 		return -EOPNOTSUPP;
@@ -1795,13 +1795,13 @@ static int priv_usb_reset(struct net_device *dev, struct iw_request_info *info,
 			  union iwreq_data *wrqu, char *extra)
 {
 	int res;
-	struct wrapper_dev *wd;
+	struct wrap_ndis_device *wnd;
 
 	TRACEENTER2("");
-	wd = netdev_priv(dev);
+	wnd = netdev_priv(dev);
 	res = 0;
 #if defined(CONFIG_USB) && LINUX_VERSION_CODE > KERNEL_VERSION(2,6,0)
-	res = usb_reset_configuration(wd->dev.usb.udev);
+	res = usb_reset_configuration(wnd->wd->usb.udev);
 	if (res) {
 		WARNING("reset returns %08X", res);
 		return -EOPNOTSUPP;
@@ -1814,12 +1814,12 @@ static int priv_power_profile(struct net_device *dev,
 			      struct iw_request_info *info,
 			      union iwreq_data *wrqu, char *extra)
 {
-	struct wrapper_dev *wd = netdev_priv(dev);
+	struct wrap_ndis_device *wnd = netdev_priv(dev);
 	struct miniport_char *miniport;
 	ULONG profile_inf;
 
 	TRACEENTER2("");
-	miniport = &wd->driver->miniport;
+	miniport = &wnd->wd->driver->ndis_driver->miniport;
 	if (!miniport->pnp_event_notify)
 		TRACEEXIT2(return -EOPNOTSUPP);
 
@@ -1829,7 +1829,7 @@ static int priv_power_profile(struct net_device *dev,
 	else
 		profile_inf = NdisPowerProfileBattery;
 	
-	miniport->pnp_event_notify(wd->nmb->adapter_ctx,
+	miniport->pnp_event_notify(wnd->nmb->adapter_ctx,
 				   NdisDevicePnPEventPowerProfileChanged,
 				   &profile_inf, sizeof(profile_inf));
 	TRACEEXIT2(return 0);
@@ -1839,7 +1839,7 @@ static int priv_network_type(struct net_device *dev,
 			     struct iw_request_info *info,
 			     union iwreq_data *wrqu, char *extra)
 {
-	struct wrapper_dev *wd = netdev_priv(dev);
+	struct wrap_ndis_device *wnd = netdev_priv(dev);
 	enum network_type network_type;
 	NDIS_STATUS res;
 	char type;
@@ -1857,7 +1857,7 @@ static int priv_network_type(struct net_device *dev,
 	else
 		network_type = Ndis802_11Automode;
 
-	res = miniport_set_int(wd, OID_802_11_NETWORK_TYPE_IN_USE,
+	res = miniport_set_int(wnd, OID_802_11_NETWORK_TYPE_IN_USE,
 			       network_type);
 	if (res == NDIS_STATUS_FAILURE)
 		return -EOPNOTSUPP;
@@ -1874,7 +1874,7 @@ static int priv_media_stream_mode(struct net_device *dev,
 				  struct iw_request_info *info,
 				  union iwreq_data *wrqu, char *extra)
 {
-	struct wrapper_dev *wd = netdev_priv(dev);
+	struct wrap_ndis_device *wnd = netdev_priv(dev);
 	NDIS_STATUS res;
 	int mode;
 
@@ -1883,7 +1883,7 @@ static int priv_media_stream_mode(struct net_device *dev,
 		mode = Ndis802_11MediaStreamOn;
 	else
 		mode = Ndis802_11MediaStreamOff;
-	res = miniport_set_int(wd, OID_802_11_MEDIA_STREAM_MODE, mode);
+	res = miniport_set_int(wnd, OID_802_11_MEDIA_STREAM_MODE, mode);
 	if (res == NDIS_STATUS_FAILURE || res == NDIS_STATUS_INVALID_OID)
 		return -EOPNOTSUPP;
 	if (res) {
@@ -1898,12 +1898,12 @@ static int priv_media_stream_mode(struct net_device *dev,
 static int wpa_init(struct net_device *dev, struct iw_request_info *info,
 		    union iwreq_data *wrqu, char *extra)
 {
-	struct wrapper_dev *wd = netdev_priv(dev);
+	struct wrap_ndis_device *wnd = netdev_priv(dev);
 
 	TRACEENTER2("");
-	if (test_bit(Ndis802_11Encryption2Enabled, &wd->capa.encr) ||
-	    test_bit(Ndis802_11Encryption3Enabled, &wd->capa.encr)) {
-		if (set_infra_mode(wd, Ndis802_11Infrastructure))
+	if (test_bit(Ndis802_11Encryption2Enabled, &wnd->capa.encr) ||
+	    test_bit(Ndis802_11Encryption3Enabled, &wnd->capa.encr)) {
+		if (set_infra_mode(wnd, Ndis802_11Infrastructure))
 			WARNING("couldn't enable infrastructure/managed mode");
 		TRACEEXIT2(return 0);
 	} else {
@@ -1922,13 +1922,13 @@ static int wpa_deinit(struct net_device *dev, struct iw_request_info *info,
 static int wpa_set_wpa(struct net_device *dev, struct iw_request_info *info,
 		       union iwreq_data *wrqu, char *extra)
 {
-	struct wrapper_dev *wd = netdev_priv(dev);
+	struct wrap_ndis_device *wnd = netdev_priv(dev);
 	
-	TRACEENTER2("flags = %d,  wd->capa.encr = %ld",
-		    wrqu->data.flags, wd->capa.encr);
+	TRACEENTER2("flags = %d,  wnd->capa.encr = %ld",
+		    wrqu->data.flags, wnd->capa.encr);
 	if (wrqu->data.flags) {
-		if (test_bit(Ndis802_11Encryption2Enabled, &wd->capa.encr) ||
-		    test_bit(Ndis802_11Encryption3Enabled, &wd->capa.encr))
+		if (test_bit(Ndis802_11Encryption2Enabled, &wnd->capa.encr) ||
+		    test_bit(Ndis802_11Encryption3Enabled, &wnd->capa.encr))
 			TRACEEXIT2(return 0);
 		else {
 			WARNING("driver is not WPA capable");
@@ -1941,7 +1941,7 @@ static int wpa_set_wpa(struct net_device *dev, struct iw_request_info *info,
 static int wpa_set_key(struct net_device *dev, struct iw_request_info *info,
 		       union iwreq_data *wrqu, char *extra)
 {
-	struct wrapper_dev *wd = netdev_priv(dev);
+	struct wrap_ndis_device *wnd = netdev_priv(dev);
 	struct ndis_add_key ndis_key;
 	struct wpa_key wpa_key;
 	int i, size;
@@ -1970,11 +1970,11 @@ static int wpa_set_key(struct net_device *dev, struct iw_request_info *info,
 		    wpa_key.alg, wpa_key.key_index);
 	
 	if (wpa_key.alg == WPA_ALG_WEP) {
-		if (!test_bit(Ndis802_11Encryption1Enabled, &wd->capa.encr))
+		if (!test_bit(Ndis802_11Encryption1Enabled, &wnd->capa.encr))
 			TRACEEXIT2(return -1);
 		if (wpa_key.set_tx)
-			wd->encr_info.tx_key_index = wpa_key.key_index;
-		if (add_wep_key(wd, key, wpa_key.key_len,
+			wnd->encr_info.tx_key_index = wpa_key.key_index;
+		if (add_wep_key(wnd, key, wpa_key.key_len,
 				wpa_key.key_index))
 			TRACEEXIT2(return -1);
 		else
@@ -2003,14 +2003,14 @@ static int wpa_set_key(struct net_device *dev, struct iw_request_info *info,
 		ndis_key.index |= 1 << 29;
 	}
 	DBGTRACE2("infra_mode = %d, key.addr = %p, addr = " MACSTR,
-		  wd->infrastructure_mode, wpa_key.addr, MAC2STR(addr));
+		  wnd->infrastructure_mode, wpa_key.addr, MAC2STR(addr));
 	if (wpa_key.addr == NULL ||
 	    memcmp(addr, "\xff\xff\xff\xff\xff\xff", ETH_ALEN) == 0) {
 		/* group key */
-		if (wd->infrastructure_mode == Ndis802_11IBSS)
+		if (wnd->infrastructure_mode == Ndis802_11IBSS)
 			memset(ndis_key.bssid, 0xff, ETH_ALEN);
 		else
-			get_ap_address(wd, ndis_key.bssid);
+			get_ap_address(wnd, ndis_key.bssid);
 	} else {
 		/* pairwise key */
 		ndis_key.index |= (1 << 30);
@@ -2032,12 +2032,12 @@ static int wpa_set_key(struct net_device *dev, struct iw_request_info *info,
 		/* TI driver crashes kernel if OID_802_11_REMOVE_KEY is
 		 * called; other drivers seem to not require it, so
 		 * for now, don't remove the key from drvier */
-		wd->encr_info.keys[wpa_key.key_index].length = 0;
-		memset(&wd->encr_info.keys[wpa_key.key_index].key, 0,
+		wnd->encr_info.keys[wpa_key.key_index].length = 0;
+		memset(&wnd->encr_info.keys[wpa_key.key_index].key, 0,
 		       wpa_key.key_len);
 		DBGTRACE2("key %d removed", wpa_key.key_index);
 	} else {
-		res = miniport_set_info(wd, OID_802_11_ADD_KEY,
+		res = miniport_set_info(wnd, OID_802_11_ADD_KEY,
 					&ndis_key, sizeof(ndis_key));
 		if (res == NDIS_STATUS_FAILURE)
 			return -EOPNOTSUPP;
@@ -2046,12 +2046,12 @@ static int wpa_set_key(struct net_device *dev, struct iw_request_info *info,
 				  res, ndis_key.struct_size);
 			TRACEEXIT2(return -1);
 		}
-		wd->encr_info.keys[wpa_key.key_index].length = 
+		wnd->encr_info.keys[wpa_key.key_index].length = 
 			wpa_key.key_len;
-		memcpy(&wd->encr_info.keys[wpa_key.key_index].key,
+		memcpy(&wnd->encr_info.keys[wpa_key.key_index].key,
 		       &ndis_key.key, wpa_key.key_len);
 		if (wpa_key.set_tx)
-			wd->encr_info.tx_key_index = wpa_key.key_index;
+			wnd->encr_info.tx_key_index = wpa_key.key_index;
 		DBGTRACE2("key %d added", wpa_key.key_index);
 	}
 	TRACEEXIT2(return 0);
@@ -2061,7 +2061,7 @@ static int wpa_disassociate(struct net_device *dev,
 			    struct iw_request_info *info,
 			    union iwreq_data *wrqu, char *extra)
 {
-	struct wrapper_dev *wd = netdev_priv(dev);
+	struct wrap_ndis_device *wnd = netdev_priv(dev);
 	unsigned char buf[NDIS_ESSID_MAX_SIZE];
 	int i;
 	
@@ -2069,14 +2069,14 @@ static int wpa_disassociate(struct net_device *dev,
 	get_random_bytes(buf, sizeof(buf));
 	for (i = 0; i < sizeof(buf); i++)
 		buf[i] = 'a' + (buf[i] % 26);
-	set_essid(wd, buf, sizeof(buf));
+	set_essid(wnd, buf, sizeof(buf));
 	TRACEEXIT2(return 0);
 }
 
 static int wpa_associate(struct net_device *dev, struct iw_request_info *info,
 			 union iwreq_data *wrqu, char *extra)
 {
-	struct wrapper_dev *wd = netdev_priv(dev);
+	struct wrap_ndis_device *wnd = netdev_priv(dev);
 	struct wpa_assoc_info wpa_assoc_info;
 	char ssid[NDIS_ESSID_MAX_SIZE];
 	int auth_mode, encr_mode, priv_mode, size;
@@ -2104,9 +2104,9 @@ static int wpa_associate(struct net_device *dev, struct iw_request_info *info,
 	 * ignore this request */
 	/*
 	if (wpa_assoc_info.mode == IEEE80211_MODE_IBSS)
-		set_infra_mode(wd, Ndis802_11IBSS);
+		set_infra_mode(wnd, Ndis802_11IBSS);
 	else
-		set_infra_mode(wd, Ndis802_11Infrastructure);
+		set_infra_mode(wnd, Ndis802_11Infrastructure);
 	*/
 
 	DBGTRACE2("key_mgmt_suite = %d, pairwise_suite = %d, group_suite= %d",
@@ -2160,9 +2160,9 @@ static int wpa_associate(struct net_device *dev, struct iw_request_info *info,
 		encr_mode = Ndis802_11EncryptionDisabled;
 	};
 
-	set_privacy_filter(wd, priv_mode);
-	set_auth_mode(wd, auth_mode);
-	set_encr_mode(wd, encr_mode);
+	set_privacy_filter(wnd, priv_mode);
+	set_auth_mode(wnd, auth_mode);
+	set_encr_mode(wnd, encr_mode);
 
 #if 0
 	/* set channel */
@@ -2178,7 +2178,7 @@ static int wpa_associate(struct net_device *dev, struct iw_request_info *info,
 	}
 #endif
 	/* set ssid */
-	if (set_essid(wd, ssid, wpa_assoc_info.ssid_len))
+	if (set_essid(wnd, ssid, wpa_assoc_info.ssid_len))
 		TRACEEXIT2(return -1);
 
 	TRACEEXIT2(return 0);
@@ -2203,13 +2203,13 @@ static int wpa_deauthenticate(struct net_device *dev,
 	TRACEEXIT2(return ret);
 }
 
-int set_privacy_filter(struct wrapper_dev *wd, int flags)
+int set_privacy_filter(struct wrap_ndis_device *wnd, int flags)
 {
 	NDIS_STATUS res;
 
 	TRACEENTER2("filter: %d", flags);
 	TRACEEXIT2(return 0);
-	res = miniport_set_int(wd, OID_802_11_PRIVACY_FILTER, flags);
+	res = miniport_set_int(wnd, OID_802_11_PRIVACY_FILTER, flags);
 	if (res == NDIS_STATUS_FAILURE)
 		return -EOPNOTSUPP;
 	if (res == NDIS_STATUS_INVALID_DATA) {
@@ -2224,7 +2224,7 @@ static int wpa_set_privacy_filter(struct net_device *dev,
 				  struct iw_request_info *info,
 				  union iwreq_data *wrqu, char *extra)
 {
-	struct wrapper_dev *wd = netdev_priv(dev);
+	struct wrap_ndis_device *wnd = netdev_priv(dev);
 	int flags;
 
 	TRACEENTER2("filter: %d", wrqu->param.value);
@@ -2232,7 +2232,7 @@ static int wpa_set_privacy_filter(struct net_device *dev,
 		flags = Ndis802_11PrivFilter8021xWEP;
 	else
 		flags = Ndis802_11PrivFilterAcceptAll;
-	if (set_privacy_filter(wd, flags))
+	if (set_privacy_filter(wnd, flags))
 		TRACEEXIT2(return -1);
 	TRACEEXIT2(return 0);
 }
@@ -2241,7 +2241,7 @@ static int wpa_set_auth_alg(struct net_device *dev,
 			    struct iw_request_info *info,
 			    union iwreq_data *wrqu, char *extra)
 {
-	struct wrapper_dev *wd = netdev_priv(dev);
+	struct wrap_ndis_device *wnd = netdev_priv(dev);
 	int mode;
 	
 	TRACEENTER2("");
@@ -2254,7 +2254,7 @@ static int wpa_set_auth_alg(struct net_device *dev,
 
 	DBGTRACE2("%d", mode);
 
-	if (set_auth_mode(wd, mode))
+	if (set_auth_mode(wnd, mode))
 		TRACEEXIT2(return -1);
 	TRACEEXIT2(return 0);
 }
