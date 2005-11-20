@@ -1622,8 +1622,6 @@ static NDIS_STATUS ndis_remove_device(struct wrap_ndis_device *wnd)
 		NdisFreeBufferPool(wnd->wrapper_buffer_pool);
 		wnd->wrapper_buffer_pool = NULL;
 	}
-	if (wnd->wd->resource_list)
-		kfree(wnd->wd->resource_list);
 	IoDeleteDevice(wnd->nmb->fdo);
 	if (wnd->xmit_array)
 		kfree(wnd->xmit_array);
@@ -1705,8 +1703,7 @@ int init_ndis_device(struct wrap_device *wd)
 	nmb->filterdbs.arc_db = nmb;
 
 	KeInitializeSpinLock(&nmb->lock);
-	setup_nmb_func_ptrs(nmb);
-	DBGTRACE1("");
+	init_nmb_functions(nmb);
 	wnd->net_dev = net_dev;
 	wnd->ndis_irq = NULL;
 	kspin_lock_init(&wnd->xmit_lock);
@@ -1738,7 +1735,7 @@ int init_ndis_device(struct wrap_device *wd)
 	wnd->infrastructure_mode = Ndis802_11Infrastructure;
 	INIT_WORK(&wnd->wrap_ndis_worker, wrap_ndis_worker_proc, wnd);
 	set_bit(HW_AVAILABLE, &wnd->wd->hw_status);
-//	wd->driver->ndis_driver->miniport.adapter_shutdown = NULL;
+	wd->driver->ndis_driver->miniport.shutdown = NULL;
 	/* ZyDas driver doesn't call completion function when
 	 * querying for stats or rssi, so disable stats */
 	if (stricmp(wd->driver->name, "zd1211u") == 0)
