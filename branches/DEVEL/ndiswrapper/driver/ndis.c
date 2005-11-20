@@ -78,7 +78,8 @@ STDCALL NDIS_STATUS WRAP_EXPORT(NdisMRegisterMiniport)
 {
 	int min_length;
 	void **func;
-	struct wrap_ndis_driver *driver;
+	struct wrap_driver *wrap_driver;
+	struct wrap_ndis_driver *ndis_driver;
 
 	min_length = ((char *)&miniport_char->co_create_vc) -
 		((char *)miniport_char);
@@ -100,14 +101,22 @@ STDCALL NDIS_STATUS WRAP_EXPORT(NdisMRegisterMiniport)
 		  miniport_char->minor_version);
 	DBGTRACE1("Len: %08x:%u", char_len, (u32)sizeof(struct miniport_char));
 
-	driver = IoGetDriverObjectExtension(drv_obj,
-					    (void *)CE_NDIS_DRIVER_CLIENT_ID);
-	TRACEENTER1("driver: %p", driver);
-	if (!driver) {
-		ERROR("couldn't find ndis_driver - bug in %s?", DRIVER_NAME);
-		TRACEEXIT1(return -EINVAL);
+	wrap_driver =
+		IoGetDriverObjectExtension(drv_obj,
+					   (void *)CE_WRAP_DRIVER_CLIENT_ID);
+	if (!wrap_driver) {
+		ERROR("couldn't get wrap_driver");
+		TRACEEXIT1(return NDIS_STATUS_RESOURCES);
 	}
-	memcpy(&driver->miniport, miniport_char,
+	if (IoAllocateDriverObjectExtension(drv_obj,
+					    (void *)CE_NDIS_DRIVER_CLIENT_ID,
+					    sizeof(*ndis_driver),
+					    (void **)&ndis_driver) !=
+	    STATUS_SUCCESS)
+		TRACEEXIT1(return NDIS_STATUS_RESOURCES);
+	wrap_driver->ndis_driver = ndis_driver;
+	TRACEENTER1("ndis_driver: %p", ndis_driver);
+	memcpy(&ndis_driver->miniport, miniport_char,
 	       char_len > sizeof(*miniport_char) ?
 	       sizeof(*miniport_char) : char_len);
 
@@ -122,7 +131,7 @@ STDCALL NDIS_STATUS WRAP_EXPORT(NdisMRegisterMiniport)
 			"cancel_send_packets", "pnp_event_notify",
 			"adapter_shutdown",
 		};
-		func = (void **)&driver->miniport.query;
+		func = (void **)&ndis_driver->miniport.query;
 		for (i = 0; i < (sizeof(miniport_funcs) /
 				 sizeof(miniport_funcs[0])); i++)
 			DBGTRACE2("miniport function '%s' is at %p",
@@ -2539,7 +2548,7 @@ STDCALL NDIS_STATUS WRAP_EXPORT(NdisMQueryAdapterInstanceName)
 	struct wrap_ndis_device *wnd = nmb->wnd;
 	struct ansi_string ansi_string;
 
-	if (wnd->wd->bus_type == NDIS_PCI_BUS)
+	if (WRAP_BUS_TYPE(wnd->wd->dev_bus_type) == WRAP_PCI_BUS)
 		ansi_string.buf = "PCI Ethernet Adapter";
 	else
 		ansi_string.buf = "USB Ethernet Adapter";

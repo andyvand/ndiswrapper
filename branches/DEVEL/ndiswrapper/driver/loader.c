@@ -419,8 +419,6 @@ static int load_user_space_driver(struct load_driver *load_driver)
 	struct driver_object *drv_obj;
 	struct ansi_string ansi_reg;
 	struct wrap_driver *wrap_driver = NULL;
-	int i;
-	struct wrap_ndis_driver *ndis_driver;
 
 	TRACEENTER1("");
 	drv_obj = kmalloc(sizeof(*drv_obj), GFP_KERNEL);
@@ -437,7 +435,6 @@ static int load_user_space_driver(struct load_driver *load_driver)
 		TRACEEXIT1(return -ENOMEM);
 	}
 	memset(drv_obj->drv_ext, 0, sizeof(*(drv_obj->drv_ext)));
-	drv_obj->drv_ext->add_device_func = NdisAddDevice;
 	InitializeListHead(&drv_obj->drv_ext->custom_ext);
 	DBGTRACE1("");
 	if (IoAllocateDriverObjectExtension(drv_obj,
@@ -445,27 +442,10 @@ static int load_user_space_driver(struct load_driver *load_driver)
 					    sizeof(*wrap_driver),
 					    (void **)&wrap_driver) !=
 	    STATUS_SUCCESS)
-		TRACEEXIT1(return NDIS_STATUS_RESOURCES);
+		TRACEEXIT1(return -ENOMEM);
 	DBGTRACE1("driver: %p", wrap_driver);
 	memset(wrap_driver, 0, sizeof(*wrap_driver));
-	wrap_driver->bustype = -1;
 	wrap_driver->drv_obj = drv_obj;
-	if (IoAllocateDriverObjectExtension(drv_obj,
-					    (void *)CE_NDIS_DRIVER_CLIENT_ID,
-					    sizeof(*ndis_driver),
-					    (void **)&ndis_driver) !=
-	    STATUS_SUCCESS)
-		TRACEEXIT1(return NDIS_STATUS_RESOURCES);
-	wrap_driver->ndis_driver = ndis_driver;
-	for (i = 0; i <= IRP_MJ_MAXIMUM_FUNCTION; i++)
-		drv_obj->major_func[i] = IopPassIrpDown;
-	drv_obj->major_func[IRP_MJ_PNP] = NdisDispatchPnp;
-	drv_obj->major_func[IRP_MJ_POWER] = NdisDispatchPower;
-	drv_obj->major_func[IRP_MJ_INTERNAL_DEVICE_CONTROL] =
-		NdisDispatchDeviceControl;
-	drv_obj->major_func[IRP_MJ_DEVICE_CONTROL] =
-		NdisDispatchDeviceControl;
-
 	ansi_reg.buf = "/tmp";
 	ansi_reg.length = strlen(ansi_reg.buf);
 	ansi_reg.max_length = ansi_reg.length + 1;
@@ -524,13 +504,14 @@ static int register_devices(struct load_devices *load_devices)
 
 	num_pci = num_usb = 0;
 	for (i = 0; i < load_devices->count; i++)
-		if (devices[i].bustype == NDIS_PCI_BUS)
+		if (WRAP_BUS_TYPE(devices[i].dev_bus_type) == WRAP_PCI_BUS)
 			num_pci++;
-		else if (devices[i].bustype == NDIS_USB_BUS)
+		else if (WRAP_BUS_TYPE(devices[i].dev_bus_type) ==
+			 WRAP_USB_BUS)
 			num_usb++;
 		else
 			WARNING("bus type %d is not valid",
-				devices[i].bustype);
+				devices[i].dev_bus_type);
 	num_wrap_devices = num_pci + num_usb;
 	if (num_pci > 0) {
 		wrap_pci_devices =
@@ -576,14 +557,14 @@ static int register_devices(struct load_devices *load_devices)
 			sizeof(wrap_device->driver_name));
 		memcpy(&wrap_device->conf_file_name, device->conf_file_name,
 		       sizeof(wrap_device->conf_file_name));
-		wrap_device->bus_type = device->bustype;
+		wrap_device->dev_bus_type = device->dev_bus_type;
 
 		wrap_device->vendor = device->vendor;
 		wrap_device->device = device->device;
 		wrap_device->subvendor = device->subvendor;
 		wrap_device->subdevice = device->subdevice;
 
-		if (device->bustype == NDIS_PCI_BUS) {
+		if (WRAP_BUS_TYPE(device->dev_bus_type) == WRAP_PCI_BUS) {
 			wrap_pci_devices[num_pci].vendor = device->vendor;
 			wrap_pci_devices[num_pci].device = device->device;
 			if (device->subvendor == DEV_ANY_ID)
@@ -608,7 +589,8 @@ static int register_devices(struct load_devices *load_devices)
 				  device->vendor, device->device,
 				  device->subvendor, device->subdevice);
 #ifdef CONFIG_USB
-		} else if (device->bustype == NDIS_USB_BUS) {
+		} else if (WRAP_BUS_TYPE(device->dev_bus_type) ==
+			   WRAP_USB_BUS) {
 			wrap_usb_devices[num_usb].idVendor = device->vendor;
 			wrap_usb_devices[num_usb].idProduct = device->device;
 			wrap_usb_devices[num_usb].match_flags =
@@ -621,7 +603,7 @@ static int register_devices(struct load_devices *load_devices)
 				  device->vendor, device->device);
 #endif
 		} else {
-			ERROR("bus type %d not supported", device->bustype);
+			ERROR("type %d not supported", device->dev_bus_type);
 		}
 	}
 
@@ -629,11 +611,11 @@ static int register_devices(struct load_devices *load_devices)
 		memset(&wrap_pci_driver, 0, sizeof(wrap_pci_driver));
 		wrap_pci_driver.name = DRIVER_NAME;
 		wrap_pci_driver.id_table = wrap_pci_devices;
-		wrap_pci_driver.probe = wrap_pnp_start_ndis_pci_device;
+		wrap_pci_driver.probe = wrap_pnp_start_pci_device;
 		wrap_pci_driver.remove =
-			__devexit_p(wrap_pnp_remove_ndis_pci_device);
-		wrap_pci_driver.suspend = wrap_pnp_suspend_ndis_pci;
-		wrap_pci_driver.resume = wrap_pnp_resume_ndis_pci;
+			__devexit_p(wrap_pnp_remove_pci_device);
+		wrap_pci_driver.suspend = wrap_pnp_suspend_pci_device;
+		wrap_pci_driver.resume = wrap_pnp_resume_pci_device;
 		res = pci_register_driver(&wrap_pci_driver);
 		if (res < 0) {
 			ERROR("couldn't register pci driver");
@@ -646,11 +628,11 @@ static int register_devices(struct load_devices *load_devices)
 		wrap_usb_driver.owner = THIS_MODULE;
 		wrap_usb_driver.name = DRIVER_NAME;
 		wrap_usb_driver.id_table = wrap_usb_devices;
-		wrap_usb_driver.probe = wrap_pnp_start_ndis_usb_device;
-		wrap_usb_driver.disconnect = wrap_pnp_remove_ndis_usb_device;
+		wrap_usb_driver.probe = wrap_pnp_start_usb_device;
+		wrap_usb_driver.disconnect = wrap_pnp_remove_usb_device;
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
-		wrap_usb_driver.suspend = wrap_pnp_suspend_ndis_usb;
-		wrap_usb_driver.resume = wrap_pnp_resume_ndis_usb;
+		wrap_usb_driver.suspend = wrap_pnp_suspend_usb_device;
+		wrap_usb_driver.resume = wrap_pnp_resume_usb_device;
 #endif
 		res = usb_register(&wrap_usb_driver);
 		if (res < 0) {
@@ -688,12 +670,12 @@ static int wrapper_ioctl(struct inode *inode, struct file *file,
 	int res;
 
 	TRACEENTER1("cmd: %u (%lu, %lu)", cmd,
-		    (unsigned long)NDIS_REGISTER_DEVICES,
-		    (unsigned long)NDIS_LOAD_DRIVER);
+		    (unsigned long)WRAP_REGISTER_DEVICES,
+		    (unsigned long)WRAP_LOAD_DRIVER);
 
 	res = 0;
 	switch (cmd) {
-	case NDIS_REGISTER_DEVICES:
+	case WRAP_REGISTER_DEVICES:
 		DBGTRACE1("adding devices at %p", (void *)arg);
 		res = copy_from_user(&devices, (void *)arg, sizeof(devices));
 		if (!res)
@@ -702,7 +684,7 @@ static int wrapper_ioctl(struct inode *inode, struct file *file,
 			TRACEEXIT1(return -EINVAL);
 		TRACEEXIT1(return 0);
 		break;
-	case NDIS_LOAD_DRIVER:
+	case WRAP_LOAD_DRIVER:
 		DBGTRACE1("loading driver at %p", (void *)arg);
 		load_driver = vmalloc(sizeof(*load_driver));
 		if (!load_driver)

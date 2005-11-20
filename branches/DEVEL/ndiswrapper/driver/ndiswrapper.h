@@ -29,8 +29,13 @@
 #define MAX_WPA_IE_LEN 64
 #define MAX_STR_LEN 512
 
-#define NDIS_PCI_BUS 5
-#define NDIS_USB_BUS 0
+#define WRAP_PCI_BUS 5
+#define WRAP_USB_BUS 0
+
+#define NDIS_DEVICE 0
+
+#define WRAP_BUS_TYPE(dev_bus_type) (dev_bus_type & 0x000F)
+#define WRAP_DEVICE_TYPE(dev_bus_type) (dev_bus_type & 0x00F0)
 
 #define MAX_DRIVER_NAME_LEN 32
 #define MAX_VERSION_STRING_LEN 64

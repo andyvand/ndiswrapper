@@ -411,7 +411,6 @@ struct wrap_ndis_driver {
 
 /* IDs used to store extensions in driver_object's custom extension */
 #define CE_NDIS_DRIVER_CLIENT_ID 10
-#define CE_MINIPORT_CLIENT_ID 11
 
 struct ndis_wireless_stats {
 	ULONG length;

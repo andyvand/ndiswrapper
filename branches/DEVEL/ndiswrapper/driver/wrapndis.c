@@ -238,7 +238,7 @@ NDIS_STATUS miniport_init(struct wrap_ndis_device *wnd)
 	status = misc_funcs_init_device(wnd->wd);
 	if (status)
 		goto err_misc_funcs;
-	if (wnd->wd->dev_type == NDIS_USB_BUS) {
+	if (WRAP_BUS_TYPE(wnd->wd->dev_bus_type) == WRAP_USB_BUS) {
 #ifdef CONFIG_USB
 		if (usb_init_device(wnd->wd))
 			goto err_usb;
@@ -281,7 +281,7 @@ wdm_init:
 
 err_init:
 #ifdef CONFIG_USB
-	if (wnd->wd->dev_type == NDIS_USB_BUS)
+	if (WRAP_BUS_TYPE(wnd->wd->dev_bus_type) == WRAP_USB_BUS)
 		usb_exit_device(wnd->wd);
 #endif
 err_usb:
@@ -322,7 +322,7 @@ void miniport_halt(struct wrap_ndis_device *wnd)
 	if (thread)
 		wrap_remove_thread(thread);
 #ifdef CONFIG_USB
-	if (wnd->wd->dev_type == NDIS_USB_BUS)
+	if (WRAP_BUS_TYPE(wnd->wd->dev_bus_type) == WRAP_USB_BUS)
 		usb_exit_device(wnd->wd);
 #endif
 	misc_funcs_exit_device(wnd->wd);
@@ -1080,16 +1080,12 @@ static void wrap_ndis_worker_proc(void *param)
 	TRACEEXIT3(return);
 }
 
-int wrap_pnp_suspend_ndis(struct wrap_ndis_device *wnd,
-			  enum device_power_state state)
+int wrap_suspend_ndis_device(struct wrap_ndis_device *wnd, pm_message_t state)
 {
 	NTSTATUS status;
-	if (!wnd)
-		return -1;
 	if (test_bit(HW_SUSPENDED, &wnd->wd->hw_status) ||
 	    test_bit(HW_HALTED, &wnd->wd->hw_status))
 		return -1;
-
 	DBGTRACE2("irql: %d", current_irql());
 	netif_poll_disable(wnd->net_dev);
 	if (netif_running(wnd->net_dev)) {
@@ -1098,7 +1094,8 @@ int wrap_pnp_suspend_ndis(struct wrap_ndis_device *wnd,
 	}
 	hangcheck_del(wnd);
 	stats_timer_del(wnd);
-	status = pnp_set_power_state(wnd->wd->pdo, state);
+	/* not all device support other than D3, so force it */
+	status = pnp_set_power_state(wnd->wd->pdo, PowerDeviceD3);
 	DBGTRACE2("suspending returns %08X", status);
 	if (status == STATUS_SUCCESS)
 		TRACEEXIT2(return 0);
@@ -1108,7 +1105,7 @@ int wrap_pnp_suspend_ndis(struct wrap_ndis_device *wnd,
 	}
 }
 
-NTSTATUS wrap_pnp_resume_ndis(struct wrap_ndis_device *wnd)
+int wrap_resume_ndis_device(struct wrap_ndis_device *wnd)
 {
 	NTSTATUS status;
 	struct net_device *net_dev = wnd->net_dev;
@@ -1131,82 +1128,6 @@ NTSTATUS wrap_pnp_resume_ndis(struct wrap_ndis_device *wnd)
 	DBGTRACE2("%s: device resumed", net_dev->name);
 	TRACEEXIT2(return STATUS_SUCCESS);
 }
-
-int wrap_pnp_suspend_ndis_pci(struct pci_dev *pdev, pm_message_t state)
-{
-	struct wrap_ndis_device *wnd;
-	NDIS_STATUS status;
-
-	if (!pdev)
-		TRACEEXIT1(return -1);
-	wnd = pci_get_drvdata(pdev);
-	if (!wnd)
-		TRACEEXIT2(return -1);
-
-	/* some drivers support only D3, so force it */
-	status = wrap_pnp_suspend_ndis(wnd, PowerDeviceD3);
-	if (status == NDIS_STATUS_SUCCESS)
-		TRACEEXIT1(return 0);
-	else
-		TRACEEXIT1(return -1);
-}
-
-int wrap_pnp_resume_ndis_pci(struct pci_dev *pdev)
-{
-	struct wrap_ndis_device *wnd;
-	NDIS_STATUS status;
-
-	if (!pdev)
-		TRACEEXIT1(return -1);
-	wnd = pci_get_drvdata(pdev);
-	if (!wnd)
-		TRACEEXIT1(return -1);
-	status = wrap_pnp_resume_ndis(wnd);
-	if (status == NDIS_STATUS_SUCCESS)
-		TRACEEXIT1(return 0);
-	else
-		TRACEEXIT1(return -1);
-}
-
-#if defined(CONFIG_USB) && LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
-int wrap_pnp_suspend_ndis_usb(struct usb_interface *intf, pm_message_t state)
-{
-	struct wrap_ndis_device *wnd;
-	NDIS_STATUS status;
-
-	wnd = usb_get_intfdata(intf);
-	if (!wnd)
-		TRACEEXIT1(return -1);
-	/* some drivers support only D3, so force it */
-	status = wrap_pnp_suspend_ndis(wnd, PowerDeviceD3);
-	DBGTRACE2("ret = %d", status);
-	/* TODO: suspend seems to work fine and resume also works if
-	 * resumed from command line, but resuming from S3 crashes
-	 * kernel. Should we kill any pending urbs? what about
-	 * irps? */
-	if (status == NDIS_STATUS_SUCCESS) {
-		intf->dev.power.power_state = state;
-		TRACEEXIT1(return 0);
-	} else
-		TRACEEXIT1(return -1);
-}
-
-int wrap_pnp_resume_ndis_usb(struct usb_interface *intf)
-{
-	struct wrap_ndis_device *wnd;
-	NDIS_STATUS status;
-
-	wnd = usb_get_intfdata(intf);
-	if (!wnd)
-		TRACEEXIT1(return -1);
-	status = wrap_pnp_resume_ndis(wnd);
-	if (status == NDIS_STATUS_SUCCESS) {
-		intf->dev.power.power_state = PMSG_ON;
-		TRACEEXIT1(return 0);
-	} else
-		TRACEEXIT1(return -1);
-}
-#endif
 
 struct iw_statistics *get_wireless_stats(struct net_device *dev)
 {
@@ -1626,6 +1547,7 @@ STDCALL NTSTATUS NdisAddDevice(struct driver_object *drv_obj,
 	struct net_device *dev;
 	NDIS_STATUS ndis_status;
 	mac_address mac;
+	int i;
 	char buf[256];
 
 	TRACEENTER2("%p, %p", drv_obj, pdo);
@@ -1641,6 +1563,15 @@ STDCALL NTSTATUS NdisAddDevice(struct driver_object *drv_obj,
 	DBGTRACE1("nmb: %p, pdo: %p, fdo: %p, attached: %p, next: %p",
 		  nmb, pdo, fdo, fdo->attached, fdo->next);
 	nmb->next_device = IoAttachDeviceToDeviceStack(fdo, pdo);
+
+	for (i = 0; i <= IRP_MJ_MAXIMUM_FUNCTION; i++)
+		drv_obj->major_func[i] = IopPassIrpDown;
+	drv_obj->major_func[IRP_MJ_PNP] = NdisDispatchPnp;
+	drv_obj->major_func[IRP_MJ_POWER] = NdisDispatchPower;
+	drv_obj->major_func[IRP_MJ_INTERNAL_DEVICE_CONTROL] =
+		NdisDispatchDeviceControl;
+	drv_obj->major_func[IRP_MJ_DEVICE_CONTROL] =
+		NdisDispatchDeviceControl;
 
 	status = pnp_start_device(pdo);
 	DBGTRACE1("status: %08X", status);
@@ -1771,9 +1702,9 @@ STDCALL NTSTATUS NdisAddDevice(struct driver_object *drv_obj,
 	set_privacy_filter(wnd, Ndis802_11PrivFilterAcceptAll);
 
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
-	if (wnd->wd->dev_type == NDIS_PCI_BUS)
+	if (WRAP_BUS_TYPE(wnd->wd->dev_bus_type) == WRAP_PCI_BUS)
 		SET_NETDEV_DEV(dev, &wnd->wd->pci.pdev->dev);
-	if (wnd->wd->dev_type == NDIS_USB_BUS)
+	if (WRAP_BUS_TYPE(wnd->wd->dev_bus_type) == WRAP_USB_BUS)
 		SET_NETDEV_DEV(dev, &wnd->wd->usb.intf->dev);
 #endif
 	ndiswrapper_procfs_add_iface(wnd);
@@ -1814,51 +1745,37 @@ static NTSTATUS wrap_pnp_remove_ndis_device(struct wrap_ndis_device *wnd)
 	TRACEEXIT1(return STATUS_SUCCESS);
 }
 
-/*
- * called by PCI-subsystem for each PCI-card found.
- *
- * This function should not be marked __devinit because ndiswrapper
- * adds PCI IDs dynamically.
- */
-int wrap_pnp_start_ndis_pci_device(struct pci_dev *pdev,
-				   const struct pci_device_id *ent)
+int wrap_start_ndis_device(struct wrap_device *wd)
 {
 	int res = 0;
-	struct wrap_device *device;
 	struct wrap_driver *driver;
 	struct wrap_ndis_device *wnd;
 	struct net_device *dev;
 	struct device_object *pdo;
-	struct driver_object *drv_obj;
+	struct driver_object *pdo_drv_obj;
 
-	TRACEENTER1("ent: %p", ent);
-
-	DBGTRACE1("called for %04x:%04x:%04x:%04x", pdev->vendor, pdev->device,
-		  pdev->subsystem_vendor, pdev->subsystem_device);
-	device = &wrap_devices[ent->driver_data];
-	driver = load_wrap_driver(device);
+	TRACEENTER1("wd: %p", wd);
+	driver = load_wrap_driver(wd);
 	if (!driver)
 		return -ENODEV;
-	device->driver = driver;
-	DBGTRACE1("driver: %s, %s", device->driver_name, driver->name);
+	driver->drv_obj->drv_ext->add_device_func = NdisAddDevice;
+	wd->driver = driver;
+	DBGTRACE1("driver: %s, %s", wd->driver_name, driver->name);
 	/* first create pdo */
-	drv_obj = find_bus_driver("PCI");
-	if (!drv_obj)
+	pdo_drv_obj = find_bus_driver("PCI");
+	if (!pdo_drv_obj)
 		return -EINVAL;
-	pdo = alloc_pdo(drv_obj);
+	pdo = alloc_pdo(pdo_drv_obj);
 	if (!pdo)
 		return -ENOMEM;
-	device->pci.pdev = pdev;
-	device->pdo = pdo;
-	pdo->reserved = device;
-	device->dev_type = NDIS_PCI_BUS;
-	dev = wrap_alloc_netdev(&wnd, device);
+	wd->pdo = pdo;
+	pdo->reserved = wd;
+	dev = wrap_alloc_netdev(&wnd, wd);
 	if (!dev) {
 		ERROR("couldn't initialize network device");
 		goto err_pdo;
 	}
 	wnd->nmb->pdo = pdo;
-	DBGTRACE1("driver: %p", pdo->drv_obj);
 	if (start_pdo(pdo)) {
 		ERROR("couldn't start pdo");
 		goto err_netdev;
@@ -1874,131 +1791,14 @@ err_pdo:
 	return -ENOMEM;
 }
 
-void __devexit wrap_pnp_remove_ndis_pci_device(struct pci_dev *pdev)
+void wrap_remove_ndis_device(struct wrap_device *wd)
 {
-	struct wrap_device *wd;
-
-	TRACEENTER1("%p", pdev);
-	wd = (struct wrap_device *)pci_get_drvdata(pdev);
 	TRACEENTER1("%p", wd);
 	if (!wd)
 		TRACEEXIT1(return);
-	wrap_pnp_remove_ndis_device(wd->wnd);
-	TRACEEXIT1(return);
-}
-
-#ifdef CONFIG_USB
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
-int wrap_pnp_start_ndis_usb_device(struct usb_interface *intf,
-				   const struct usb_device_id *usb_id)
-#else
-void *wrap_pnp_start_ndis_usb_device(struct usb_device *udev,
-				     unsigned int ifnum,
-				     const struct usb_device_id *usb_id)
-#endif
-{
-	int res = 0;
-	struct wrap_device *device;
-	struct wrap_driver *driver;
-	struct wrap_ndis_device *wnd;
-	struct net_device *dev;
-	struct device_object *pdo;
-	struct driver_object *drv_obj;
-
-	TRACEENTER1("vendor: %04x, product: %04x, id: %p",
-		    usb_id->idVendor, usb_id->idProduct, usb_id);
-
-	device = &wrap_devices[usb_id->driver_info];
-	/* RNDIS devices have two interfaces, so prevent from
-	 * initializing the device again, if it has already been
-	 * initialized */
-
-	driver = load_wrap_driver(device);
-	if (!driver)
-		goto err_driver;
-	/* first create pdo */
-	drv_obj = find_bus_driver("USB");
-	if (!drv_obj)
-		goto err_driver;
-	device->dev_type = NDIS_USB_BUS;
-	pdo = alloc_pdo(drv_obj);
-	if (!pdo)
-		goto err_driver;
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
-	device->usb.udev = interface_to_usbdev(intf);
-	usb_set_intfdata(intf, device);
-	device->usb.intf = intf;
-#else
-	device->usb.udev = udev;
-	device->usb.intf = usb_ifnum_to_if(udev, ifnum);
-#endif
-	device->pdo = pdo;
-	pdo->reserved = device;
-	dev = wrap_alloc_netdev(&wnd, device);
-	if (!dev) {
-		ERROR("couldn't initialize network device");
-		goto err_pdo;
-	}
-	wnd->nmb->pdo = pdo;
-
-	DBGTRACE1("driver: %p", pdo->drv_obj);
-	if (start_pdo(pdo)) {
-		ERROR("couldn't start pdo");
-		goto err_netdev;
-	}
-	res = driver->drv_obj->drv_ext->add_device_func(driver->drv_obj, pdo);
-	if (res != STATUS_SUCCESS)
-		goto err_netdev;
-
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
-	TRACEEXIT1(return 0);
-#else
-	TRACEEXIT1(return wnd);
-#endif
-
-err_netdev:
-	free_netdev(dev);
-err_pdo:
-	free_pdo(pdo);
-err_driver:
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
-	TRACEEXIT1(return -ENOMEM);
-#else
-	TRACEEXIT1(return NULL);
-#endif
-}
-#endif // CONFIG_USB
-
-#ifdef CONFIG_USB
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
-void wrap_pnp_remove_ndis_usb_device(struct usb_interface *intf)
-{
-	struct wrap_device *wd;
-
-	TRACEENTER1("%p", intf);
-	wd = (struct wrap_device *)usb_get_intfdata(intf);
-	if (!wd || !wd->wnd)
-		TRACEEXIT1(return);
-	wd->usb.intf = NULL;
-	usb_set_intfdata(intf, NULL);
 	if (!test_bit(HW_RMMOD, &wd->hw_status))
 		miniport_pnp_event(wd->wnd, NdisDevicePnPEventSurpriseRemoved);
 	wrap_pnp_remove_ndis_device(wd->wnd);
 	TRACEEXIT1(return);
 }
-#else
-void wrap_pnp_remove_ndis_usb_device(struct usb_device *udev, void *ptr)
-{
-	struct wrap_device *wd = (struct wrap_device *)ptr;
 
-	TRACEENTER1("%p", udev);
-	if (!wd || !wd->wnd || !wd->usb.intf)
-		TRACEEXIT1(return);
-	wd->usb.intf = NULL;
-	if (!test_bit(HW_RMMOD, &wd->hw_status))
-		miniport_pnp_event(wd->wnd, NdisDevicePnPEventSurpriseRemoved);
-	wrap_pnp_remove_ndis_device(wd->wnd);
-	TRACEEXIT1(return);
-}
-#endif
-#endif /* CONFIG_USB */
