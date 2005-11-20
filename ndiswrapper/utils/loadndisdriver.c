@@ -37,7 +37,7 @@
 
 #define PROG_NAME "loadndisdriver"
 
-#define SETTING_LEN (MAX_NDIS_SETTING_NAME_LEN+MAX_NDIS_SETTING_VALUE_LEN + 2)
+#define SETTING_LEN (MAX_SETTING_NAME_LEN + MAX_SETTING_VALUE_LEN + 2)
 
 static const char *confdir = "/etc/ndiswrapper";
 static const char *ioctl_file = "/dev/ndiswrapper";
@@ -119,7 +119,7 @@ static int parse_setting_line(const char *setting_line, char *setting_name,
 		ERROR("invalid setting: %s", setting_line);
 		return -EINVAL;
 	}
-	for (i = 0; s != val && i < MAX_NDIS_SETTING_NAME_LEN; s++, i++)
+	for (i = 0; s != val && i < MAX_SETTING_NAME_LEN; s++, i++)
 		setting_name[i] = *s;
 	setting_name[i] = 0;
 	if (*s != '|') {
@@ -127,7 +127,7 @@ static int parse_setting_line(const char *setting_line, char *setting_name,
 		return -EINVAL;
 	}
 
-	for (i = 0, s++; s != end && i < MAX_NDIS_SETTING_VALUE_LEN ; s++, i++)
+	for (i = 0, s++; s != end && i < MAX_SETTING_VALUE_LEN ; s++, i++)
 		setting_val[i] = *s;
 	setting_val[i] = 0;
 	if (*s != '\n') {
@@ -151,8 +151,8 @@ static int read_conf_file(char *conf_file_name, struct load_driver *driver)
 	char setting_line[SETTING_LEN];
 	struct stat statbuf;
 	FILE *config;
-	char setting_name[MAX_NDIS_SETTING_NAME_LEN];
-	char setting_value[MAX_NDIS_SETTING_VALUE_LEN];
+	char setting_name[MAX_SETTING_NAME_LEN];
+	char setting_value[MAX_SETTING_VALUE_LEN];
 	int ret, nr_settings;
 	int i, vendor, device, subvendor, subdevice, dev_bustype, conf_bustype;
 
@@ -207,13 +207,11 @@ static int read_conf_file(char *conf_file_name, struct load_driver *driver)
 			}
 		}
 		setting = &driver->settings[nr_settings];
-		strncpy(setting->name, setting_name,
-			MAX_NDIS_SETTING_NAME_LEN);
-		strncpy(setting->value, setting_value,
-			MAX_NDIS_SETTING_VALUE_LEN);
+		strncpy(setting->name, setting_name, MAX_SETTING_NAME_LEN);
+		strncpy(setting->value, setting_value, MAX_SETTING_VALUE_LEN);
 
 		nr_settings++;
-		if (nr_settings >= MAX_NDIS_SETTINGS) {
+		if (nr_settings >= MAX_DEVICE_SETTINGS) {
 			ERROR("too many settings");
 			return -EINVAL;
 		}
@@ -307,12 +305,14 @@ static int load_driver(int ioctl_device, char *driver_name,
 		} else if (len > 4 &&
 			   ((strcmp(&dirent->d_name[len-4], ".bin") == 0) ||
 			     (strcmp(&dirent->d_name[len-4], ".out") == 0))) {
+			/**
 			if (strcmp(&dirent->d_name[len-10], "ar5523.bin") ==
 			    0) {
 				INFO("ar5523.bin is ignored - it should be "
 				     "loaded with load_fw_ar5523");
 				continue;
 			}
+			*/
 			if (load_file(dirent->d_name,
 				      &driver->bin_files[nr_bin_files])) {
 				ERROR("coudln't load .bin file %s",
@@ -323,12 +323,12 @@ static int load_driver(int ioctl_device, char *driver_name,
 		} else
 			ERROR("file %s is ignored", dirent->d_name);
 
-		if (nr_sys_files == MAX_PE_IMAGES) {
+		if (nr_sys_files == MAX_DRIVER_PE_IMAGES) {
 			ERROR("too many .sys files for driver %s",
 			      driver_name);
 			goto err;
 		}
-		if (nr_bin_files == MAX_NDIS_BIN_FILES) {
+		if (nr_bin_files == MAX_DRIVER_BIN_FILES) {
 			ERROR("too many .bin files for driver %s",
 			      driver_name);
 			goto err;
@@ -344,10 +344,8 @@ static int load_driver(int ioctl_device, char *driver_name,
 	driver->nr_bin_files = nr_bin_files;
 	strncpy(driver->conf_file_name, conf_file_name,
 		sizeof(driver->conf_file_name));
-
-	if (ioctl(ioctl_device, NDIS_LOAD_DRIVER, driver))
+	if (ioctl(ioctl_device, WRAP_LOAD_DRIVER, driver))
 		goto err;
-
 	closedir(driver_dir);
 	DBG("driver %s loaded", driver_name);
 	free(driver);
@@ -420,27 +418,22 @@ static int add_driver_devices(DIR *dir, char *driver_name,
 			s[strlen(s)-5] = 0;
 
 			device = &devices[n];
-			if (strlen(s) == 11 &&
-			    sscanf(s, "%04x:%04x.%1d", &device->vendor,
-				   &device->device, &device->bustype) == 3) {
+			if (strlen(s) >= 11 &&
+			    sscanf(s, "%04x:%04x.%x", &device->vendor,
+				   &device->device, &device->dev_bus_type) ==
+			    3) {
 				device->subvendor = DEV_ANY_ID;
 				device->subdevice = DEV_ANY_ID;
-			} else if (strlen(s) == 21 &&
-				   sscanf(s, "%04x:%04x:%04x:%04x.%1d",
+			} else if (strlen(s) >= 21 &&
+				   sscanf(s, "%04x:%04x:%04x:%04x.%x",
 					  &device->vendor, &device->device,
 					  &device->subvendor,
 					  &device->subdevice,
-					  &device->bustype) == 5) {
+					  &device->dev_bus_type) == 5) {
 				;
 			} else {
 				ERROR("file %s is not valid - ignored",
 				      dirent->d_name);
-				continue;
-			}
-			if (device->bustype != NDIS_PCI_BUS &&
-			    device->bustype != NDIS_USB_BUS) {
-				ERROR("incorrect bus type %d",
-				      device->bustype);
 				continue;
 			}
 			if (duplicate_device(device, n, devices))
@@ -489,7 +482,7 @@ static int load_all_devices(int ioctl_device)
 		return -EINVAL;
 	}
 
-	devices = malloc(sizeof(*devices) * MAX_NDIS_DEVICES);
+	devices = malloc(sizeof(*devices) * MAX_WRAP_DEVICES);
 	if (!devices) {
 		ERROR("couldn't allocate memory");
 		return -EINVAL;
@@ -528,7 +521,7 @@ static int load_all_devices(int ioctl_device)
 	closedir(dir);
 
 	if (loaded == 0) {
-		ERROR("no valid NDIS drives found in %s; you may need to"
+		ERROR("no valid drives found in %s; you may need to"
 		      " reinstall Windows drivers", confdir);
 		free(devices);
 		return -1;
@@ -536,7 +529,7 @@ static int load_all_devices(int ioctl_device)
 	load_devices.count = loaded;
 	load_devices.devices = devices;
 
-	res = ioctl(ioctl_device, NDIS_REGISTER_DEVICES, &load_devices);
+	res = ioctl(ioctl_device, WRAP_REGISTER_DEVICES, &load_devices);
 	free(devices);
 
 	if (res) {
@@ -548,7 +541,7 @@ static int load_all_devices(int ioctl_device)
 }
 
 /*
-  * we need a device to use ioctl to communicate with ndiswrapper module
+  * we need a device to use ioctl to communicate with wrapper module
   * we create a device in /dev instead of /tmp as some distributions don't
   * allow creation of devices in /tmp
   */
@@ -558,7 +551,7 @@ static int get_ioctl_device()
 	char line[64];
 	FILE *proc_misc;
 
-	/* get minor device number used by ndiswrapper driver */
+	/* get minor device number used by wrapper driver */
 	proc_misc = fopen("/proc/misc", "r");
 	if (!proc_misc)
 		return -1;
@@ -575,8 +568,8 @@ static int get_ioctl_device()
 	fclose(proc_misc);
 
 	if (minor_dev == -1) {
-		ERROR("couldn't find ndiswrapper in /proc/misc; "
-		      "is ndiswrapper module loaded?");
+		ERROR("couldn't find wrapper in /proc/misc; "
+		      "is module loaded?");
 		return -1;
 	}
 
