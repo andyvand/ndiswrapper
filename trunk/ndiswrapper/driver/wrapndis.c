@@ -1399,7 +1399,12 @@ STDCALL NTSTATUS NdisDispatchPnp(struct device_object *fdo,
 		irp_sl->major_fn, irp_sl->minor_fn, wnd, fdo, pdo);
 	switch (irp_sl->minor_fn) {
 	case IRP_MN_START_DEVICE:
-		/* pdo has already been started */
+		IoCopyCurrentIrpStackLocationToNext(irp);
+		IoSetCompletionRoutine(irp, IrpStopCompletion, wnd, TRUE,
+				       FALSE, FALSE);
+		status = IoCallDriver(pdo, irp);
+		if (status != STATUS_SUCCESS)
+			break;
 		if (ndis_start_device(wnd) == NDIS_STATUS_SUCCESS)
 			status = STATUS_SUCCESS;
 		else
@@ -1416,11 +1421,7 @@ STDCALL NTSTATUS NdisDispatchPnp(struct device_object *fdo,
 			status = STATUS_FAILURE;
 			break;
 		}
-		IoCopyCurrentIrpStackLocationToNext(irp);
-		IoSetCompletionRoutine(irp, IrpStopCompletion, wnd, TRUE,
-				       FALSE, FALSE);
-		status = IoCallDriver(pdo, irp);
-		break;
+		return IopPassIrpDown(pdo, irp);
 	default:
 		return IopPassIrpDown(pdo, irp);
 	}
