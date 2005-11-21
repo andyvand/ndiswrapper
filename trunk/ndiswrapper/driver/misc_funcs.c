@@ -34,17 +34,6 @@ int misc_funcs_init(void)
 	return 0;
 }
 
-int misc_funcs_init_device(struct wrap_device *wd)
-{
-	return 0;
-}
-
-/* called when a handle is being removed */
-void misc_funcs_exit_device(struct wrap_device *wd)
-{
-	return;
-}
-
 /* called when module is being removed */
 void misc_funcs_exit(void)
 {

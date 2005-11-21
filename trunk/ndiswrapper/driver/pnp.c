@@ -133,15 +133,16 @@ static STDCALL NTSTATUS pdoDispatchPnp(struct device_object *pdo,
 		status = STATUS_SUCCESS;
 		break;
 	case IRP_MN_REMOVE_DEVICE:
-		IoDeleteDevice(wd->wnd->nmb->pdo);
-		/* USB configuration would be cleared in
-		 * usb_exit_device */
+		ntoskernel_exit_device(wd);
 		if (WRAP_BUS_TYPE(wd->dev_bus_type) == WRAP_PCI_BUS) {
 			struct pci_dev *pdev = wd->pci.pdev;
 			pci_release_regions(pdev);
 			pci_disable_device(pdev);
 			wd->pci.pdev = NULL;
+		} else if (WRAP_BUS_TYPE(wd->dev_bus_type) == WRAP_USB_BUS) {
+			usb_exit_device(wd);
 		}
+		IoDeleteDevice(wd->wnd->nmb->pdo);
 		wd->hw_status = 0;
 		wd->wnd = NULL;
 		if (wd->resource_list)
@@ -256,6 +257,17 @@ static int start_pdo(struct device_object *pdo)
 
 	TRACEENTER1("%p, %p", pdo, pdo->reserved);
 	wd = pdo->reserved;
+	if (ntoskernel_init_device(wd))
+		TRACEEXIT(return -EINVAL);
+	if (WRAP_BUS_TYPE(wd->dev_bus_type) == WRAP_USB_BUS) {
+#ifdef CONFIG_USB
+		if (usb_init_device(wd)) {
+			ntoskernel_exit_device(wd);
+			TRACEEXIT1(return -EINVAL);
+		}
+#endif
+		TRACEEXIT1(return 0);
+	}
 	if (WRAP_BUS_TYPE(wd->dev_bus_type) != WRAP_PCI_BUS)
 		TRACEEXIT1(return 0);
 	pdev = wd->pci.pdev;

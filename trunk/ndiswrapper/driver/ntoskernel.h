@@ -533,8 +533,6 @@ void usb_exit_device(struct wrap_device *wd);
 void usb_cancel_pending_urbs(void);
 
 int misc_funcs_init(void);
-int misc_funcs_init_device(struct wrap_device *wd);
-void misc_funcs_exit_device(struct wrap_device *wd);
 void misc_funcs_exit(void);
 
 int wrap_procfs_init(void);
