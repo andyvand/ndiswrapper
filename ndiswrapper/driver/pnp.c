@@ -139,6 +139,7 @@ static STDCALL NTSTATUS pdoDispatchPnp(struct device_object *pdo,
 			pci_release_regions(pdev);
 			pci_disable_device(pdev);
 			wd->pci.pdev = NULL;
+			pci_set_drvdata(pdev, NULL);
 		} else if (WRAP_BUS_TYPE(wd->dev_bus_type) == WRAP_USB_BUS) {
 			usb_exit_device(wd);
 		}
@@ -271,6 +272,7 @@ static int start_pdo(struct device_object *pdo)
 	if (WRAP_BUS_TYPE(wd->dev_bus_type) != WRAP_PCI_BUS)
 		TRACEEXIT1(return 0);
 	pdev = wd->pci.pdev;
+	pci_set_drvdata(pdev, wd);
 	ret = pci_enable_device(pdev);
 	if (ret) {
 		ERROR("couldn't enable PCI device: %x", ret);
@@ -292,11 +294,14 @@ static int start_pdo(struct device_object *pdo)
 				"may not work with more than 1GB RAM");
 	}
 #endif
+	/* IRQ resource entry is retrieved from pdev, instead of
+	 * pci_resource macros */
 	for (i = count = 0; pci_resource_start(pdev, i); i++)
 		if ((pci_resource_flags(pdev, i) & IORESOURCE_MEM) ||
 		    (pci_resource_flags(pdev, i) & IORESOURCE_IO))
 			count++;
-	/* space for extra entry for IRQ is already available */
+	/* space for one extra entry for IRQ is already in
+	 * cm_partial_resource_list */
 	resource_length = sizeof(struct cm_partial_resource_list) +
 		sizeof(struct cm_partial_resource_descriptor) * count;
 	DBGTRACE2("resources: %d, %d", i, resource_length);
@@ -328,6 +333,31 @@ static int start_pdo(struct device_object *pdo)
 			entry->type = CmResourceTypePort;
 			entry->flags = CM_RESOURCE_PORT_IO;
 			entry->share = CmResourceShareDeviceExclusive;
+#if 0
+		} else if (pci_resource_flags(pdev, i) & IORESOURCE_DMA) {
+			/* it looks like no driver uses this resource */
+			typeof(pci_resource_flags(pdev, 0)) flags;
+			entry->type = CmResourceTypeDma;
+			flags = pci_resource_flags(pdev, i);
+			if (flags & IORESOURCE_DMA_TYPEA)
+				entry->flags |= CM_RESOURCE_DMA_TYPE_A;
+			else if (flags & IORESOURCE_DMA_TYPEB)
+				entry->flags |= CM_RESOURCE_DMA_TYPE_B;
+			else if (flags & IORESOURCE_DMA_TYPEF)
+				entry->flags |= CM_RESOURCE_DMA_TYPE_F;
+			if (flags & IORESOURCE_DMA_8BIT)
+				entry->flags |= CM_RESOURCE_DMA_8;
+			else if (flags & IORESOURCE_DMA_16BIT)
+				entry->flags |= CM_RESOURCE_DMA_16;
+			/* what about 32bit DMA? */
+			else if (flags & IORESOURCE_DMA_8AND16BIT)
+				entry->flags |= CM_RESOURCE_DMA_8_AND_16;
+			if (flags & IORESOURCE_DMA_MASTER)
+				entry->flags |= CM_RESOURCE_DMA_BUS_MASTER;
+			entry->u.dma.channel = pci_resource_start(pdev, i);
+			/* how to get port? */
+			entry->u.dma.port = 1;
+#endif
 		} else
 			continue;
 		/* TODO: Add other resource types? */
@@ -555,7 +585,6 @@ int wrap_pnp_start_pci_device(struct pci_dev *pdev,
 		    pdev->device, pdev->subsystem_vendor,
 		    pdev->subsystem_device);
 	wd = &wrap_devices[ent->driver_data];
-	pci_set_drvdata(pdev, wd);
 	wd->pci.pdev = pdev;
 	return wrap_pnp_start_device(wd);
 }
@@ -571,7 +600,6 @@ void __devexit wrap_pnp_remove_pci_device(struct pci_dev *pdev)
 		TRACEEXIT1(return);
 	if (WRAP_DEVICE_TYPE(wd->dev_bus_type) == NDIS_DEVICE)
 		remove_ndis_device(wd);
-	pci_set_drvdata(pdev, NULL);
 }
 
 int wrap_pnp_suspend_pci_device(struct pci_dev *pdev, pm_message_t state)
@@ -613,9 +641,9 @@ void *wrap_pnp_start_usb_device(struct usb_device *udev,
 	struct wrap_device *wd;
 	int ret;
 	wd = &wrap_devices[usb_id->driver_info];
+	/* USB device may have multiple interfaces; initialize a
+	  device only once */
 	if (wd->usb.intf) {
-		/* USB device may have multiple interfaces; initialize
-		 * a device only once */
 		DBGTRACE1("device already initialized: %p", wd->usb.intf);
 		ret = 0;
 	} else {
