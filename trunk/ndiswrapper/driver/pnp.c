@@ -237,7 +237,12 @@ static struct device_object *alloc_pdo(struct driver_object *drv_obj)
 
 static void free_pdo(struct device_object *pdo)
 {
+	struct device_object *fdo;
+
 	/* TODO: make sure upper drivers are removed */
+	fdo = IoGetAttachedDevice(pdo);
+	if (fdo != NULL && fdo != pdo)
+		WARNING("pdo %p has attached device: %p", pdo, fdo);
 	IoDeleteDevice(pdo);
 }
 
@@ -402,7 +407,7 @@ NTSTATUS pnp_start_device(struct device_object *pdo)
 	irp->io_status.status = STATUS_NOT_SUPPORTED;
 	status = IoCallDriver(fdo, irp);
 	if (status == STATUS_SUCCESS)
-		pdo->drv_obj->drv_ext->count++;
+		fdo->drv_obj->drv_ext->count++;
 	else
 		WARNING("Windows driver couldn't initialize the device (%08X)",
 			status);
@@ -449,7 +454,7 @@ NTSTATUS pnp_remove_device(struct device_object *pdo)
 	NTSTATUS status;
 
 	fdo = IoGetAttachedDevice(pdo);
-	drv_obj = pdo->drv_obj;
+	drv_obj = fdo->drv_obj;
 	DBGTRACE1("fdo: %p", fdo);
 	irp = IoAllocateIrp(fdo->stack_size, FALSE);
 	irp_sl = IoGetNextIrpStackLocation(irp);
