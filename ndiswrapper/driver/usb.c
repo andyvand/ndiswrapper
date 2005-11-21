@@ -162,6 +162,8 @@ void usb_exit_device(struct wrap_device *wd)
 		kfree(wrap_urb);
 	}
 	wd->usb.num_alloc_urbs = 0;
+	wd->usb.udev = NULL;
+	wd->usb.intf = NULL;
 	return;
 }
 
@@ -944,10 +946,9 @@ static USBD_STATUS wrap_get_descriptor(struct wrap_device *wd,
 
 	if (ctrl_req->desc_type == USB_DT_STRING) {
 		USBTRACE("langid: %x", ctrl_req->language_id);
-		ret = usb_get_string(udev, ctrl_req->language_id,
-				     ctrl_req->index,
-				     ctrl_req->transfer_buffer,
-				     ctrl_req->transfer_buffer_length);
+		ret = usb_string(udev, ctrl_req->index,
+				 ctrl_req->transfer_buffer,
+				 ctrl_req->transfer_buffer_length);
 	} else {
 		ret = usb_get_descriptor(udev, ctrl_req->desc_type,
 					 ctrl_req->index,

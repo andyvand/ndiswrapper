@@ -223,43 +223,31 @@ NDIS_STATUS miniport_init(struct wrap_ndis_device *wnd)
 	struct nt_thread *thread;
 
 	TRACEENTER1("irql: %d", current_irql());
-	thread = wrap_create_thread(get_current());
-	miniport = &wnd->wd->driver->ndis_driver->miniport;
-	if (!thread) {
-		ERROR("couldn't allocate thread object");
-		return NDIS_STATUS_FAILURE;
-	}
 	if (test_bit(HW_INITIALIZED, &wnd->wd->hw_status)) {
 		ERROR("device %p already initialized!", wnd);
 		return NDIS_STATUS_FAILURE;
 	}
-	status = ntoskernel_init_device(wnd->wd);
-	if (status)
-		return NDIS_STATUS_FAILURE;
-	status = misc_funcs_init_device(wnd->wd);
-	if (status)
-		goto err_misc_funcs;
-	if (WRAP_BUS_TYPE(wnd->wd->dev_bus_type) == WRAP_USB_BUS) {
-#ifdef CONFIG_USB
-		if (usb_init_device(wnd->wd))
-			goto err_usb;
-#else
-		goto err_usb;
-#endif
-	}
-	DBGTRACE1("status: %08X, driver init routine is at %p",
-		  status, miniport->init);
+	
+	miniport = &wnd->wd->driver->ndis_driver->miniport;
 	if (miniport->init == NULL) {
 		ERROR("assuming WDM (non-NDIS) driver");
-		goto wdm_init;
+		TRACEEXIT1(return NDIS_STATUS_SUCCESS);
+	}
+	thread = wrap_create_thread(get_current());
+	if (!thread) {
+		ERROR("couldn't allocate thread object");
+		TRACEEXIT1(return NDIS_STATUS_FAILURE);
 	}
 	status = LIN2WIN6(miniport->init, &error_status,
 			  &medium_index, medium_array,
 			  sizeof(medium_array) / sizeof(medium_array[0]),
 			  wnd->nmb, wnd->nmb);
 	DBGTRACE1("init returns: %08X, irql: %d", status, current_irql());
-	if (status != NDIS_STATUS_SUCCESS)
-		goto err_init;
+	if (status != NDIS_STATUS_SUCCESS) {
+		WARNING("couldn't initialize device: %08X", status);
+		wrap_remove_thread(thread);
+		TRACEEXIT1(return NDIS_STATUS_FAILURE);
+	}
 
 	/* Wait a little to let card power up otherwise ifup might
 	 * fail after boot; USB devices seem to need long delays */
@@ -276,22 +264,8 @@ NDIS_STATUS miniport_init(struct wrap_ndis_device *wnd)
 	set_bit(HW_AVAILABLE, &wnd->wd->hw_status);
 	hangcheck_add(wnd);
 	stats_timer_add(wnd);
-wdm_init:
 	wrap_remove_thread(thread);
 	TRACEEXIT1(return NDIS_STATUS_SUCCESS);
-
-err_init:
-#ifdef CONFIG_USB
-	if (WRAP_BUS_TYPE(wnd->wd->dev_bus_type) == WRAP_USB_BUS)
-		usb_exit_device(wnd->wd);
-#endif
-err_usb:
-	misc_funcs_exit_device(wnd->wd);
-err_misc_funcs:
-	ntoskernel_exit_device(wnd->wd);
-	WARNING("couldn't initialize device: %08X", status);
-	wrap_remove_thread(thread);
-	TRACEEXIT1(return NDIS_STATUS_FAILURE);
 }
 
 void miniport_halt(struct wrap_ndis_device *wnd)
@@ -322,13 +296,6 @@ void miniport_halt(struct wrap_ndis_device *wnd)
 
 	if (thread)
 		wrap_remove_thread(thread);
-#ifdef CONFIG_USB
-	if (WRAP_BUS_TYPE(wnd->wd->dev_bus_type) == WRAP_USB_BUS)
-		usb_exit_device(wnd->wd);
-#endif
-	misc_funcs_exit_device(wnd->wd);
-	ntoskernel_exit_device(wnd->wd);
-
 	TRACEEXIT1(return);
 }
 
