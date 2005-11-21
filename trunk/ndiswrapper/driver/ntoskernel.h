@@ -476,6 +476,7 @@ enum hw_status {
 };
 
 struct wrap_device {
+	/* first part is (de)initialized once by loader */
 	int dev_bus_type;
 	int vendor;
 	int device;
@@ -487,7 +488,8 @@ struct wrap_device {
 	char conf_file_name[MAX_DRIVER_NAME_LEN];
 	struct nt_list settings;
 
-	/* rest should be initialized/cleared during init/remove */
+	/* rest should be (de)initialized during every
+	 * (de)initialization */
 	struct device_object *pdo;
 	union {
 		struct {

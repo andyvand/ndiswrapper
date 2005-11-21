@@ -803,8 +803,6 @@ static USBD_STATUS wrap_abort_pipe(struct usb_device *udev, struct irp *irp)
 	wd = irp->wd;
 	nt_urb = URB_FROM_IRP(irp);
 	pipe_handle = nt_urb->pipe_req.pipe_handle;
-	if (wd->usb.intf == NULL)
-		return USBD_STATUS_DEVICE_GONE;
 	nt_urb = URB_FROM_IRP(irp);
 	while (1) {
 		kspin_lock_irqsave(&irp_cancel_lock, flags);
@@ -826,7 +824,10 @@ static USBD_STATUS wrap_abort_pipe(struct usb_device *udev, struct irp *irp)
 		} else
 			break;
 	}
-	USBEXIT(return USBD_STATUS_SUCCESS);
+	if (wd->usb.intf == NULL)
+		USBEXIT(return USBD_STATUS_DEVICE_GONE);
+	else
+		USBEXIT(return USBD_STATUS_SUCCESS);
 }
 
 static USBD_STATUS wrap_select_configuration(struct wrap_device *wd,
@@ -1039,8 +1040,6 @@ static USBD_STATUS wrap_reset_port(struct irp *irp)
 
 	wd = irp->wd;
 	USBENTER("%p, %p", wd, wd->usb.udev);
-	if (wd->usb.intf == NULL)
-		return USBD_STATUS_DEVICE_GONE;
 	ret = usb_reset_device(wd->usb.udev);
 	if (ret < 0)
 		WARNING("reset failed: %d", ret);
@@ -1084,14 +1083,8 @@ NTSTATUS wrap_submit_irp(struct device_object *pdo, struct irp *irp)
 
 	irp_sl = IoGetCurrentIrpStackLocation(irp);
 	wd = pdo->reserved;
-
-	if (unlikely(wd->usb.intf == NULL)) {
-		irp->io_status.status = STATUS_DEVICE_REMOVED;
-		irp->io_status.status_info = 0;
-		return irp->io_status.status;
-	}
-
 	irp->wd = wd;
+
 	switch (irp_sl->params.ioctl.code) {
 	case IOCTL_INTERNAL_USB_SUBMIT_URB:
 		status = wrap_process_nt_urb(irp);
