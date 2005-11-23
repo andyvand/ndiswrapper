@@ -1536,9 +1536,9 @@ static NDIS_STATUS ndis_start_device(struct wrap_ndis_device *wnd)
 	set_privacy_filter(wnd, Ndis802_11PrivFilterAcceptAll);
 
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
-	if (WRAP_BUS_TYPE(wnd->wd->dev_bus_type) == WRAP_PCI_BUS)
+	if (wrap_is_pci_bus(wnd->wd->dev_bus_type))
 		SET_NETDEV_DEV(net_dev, &wnd->wd->pci.pdev->dev);
-	if (WRAP_BUS_TYPE(wnd->wd->dev_bus_type) == WRAP_USB_BUS)
+	if (wrap_is_usb_bus(wnd->wd->dev_bus_type))
 		SET_NETDEV_DEV(net_dev, &wnd->wd->usb.intf->dev);
 #endif
 	wrap_procfs_add_ndis_device(wnd);

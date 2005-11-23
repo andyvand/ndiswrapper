@@ -49,7 +49,7 @@ static int debug;
 #endif
 
 #define ERROR(fmt, ...) do {					\
-		syslog(LOG_KERN | LOG_ERR, "%s: %s(%d): " fmt "\n",	\
+		syslog(LOG_KERN | LOG_INFO, "%s: %s(%d): " fmt "\n",	\
 		       PROG_NAME, __FUNCTION__, __LINE__ , ## __VA_ARGS__); \
 	} while (0)
 #define INFO(fmt, ...) do {						\
@@ -58,7 +58,7 @@ static int debug;
 	} while (0)
 
 #define DBG(fmt, ...) do { if (debug)					\
-		syslog(LOG_KERN | LOG_DEBUG, "%s: %s(%d): " fmt "\n", \
+		syslog(LOG_KERN | LOG_INFO, "%s: %s(%d): " fmt "\n", \
 		       PROG_NAME, __FUNCTION__, __LINE__ , ## __VA_ARGS__); \
 	} while (0)
 
@@ -162,13 +162,13 @@ static int read_conf_file(char *conf_file_name, struct load_driver *driver)
 		return -EINVAL;
 	}
 
-	if (sscanf(conf_file_name, "%04X:%04X.%d.conf",
+	if (sscanf(conf_file_name, "%04X:%04X.%X.conf",
 		   &vendor, &device, &dev_bus_type) == 3) {
-		DBG("dev_bus_type: %d", dev_bus_type);
-	} else if (sscanf(conf_file_name, "%04X:%04X:%04X:%04X.%d.conf",
+		DBG("dev_bus_type: %X", dev_bus_type);
+	} else if (sscanf(conf_file_name, "%04X:%04X:%04X:%04X.%X.conf",
 			  &vendor, &device, &subvendor, &subdevice,
 			  &dev_bus_type) == 5) {
-		DBG("dev_bus_type: %d", dev_bus_type);
+		DBG("dev_bus_type: %X", dev_bus_type);
 	} else {
 		ERROR("unable to parse conf file name %s (%d)",
 		      conf_file_name, i);
@@ -196,7 +196,7 @@ static int read_conf_file(char *conf_file_name, struct load_driver *driver)
 		if (strcmp(setting_name, "BusType") == 0) {
 			conf_bus_type = strtol(setting_value, NULL, 10);
 			if (dev_bus_type != conf_bus_type) {
-				ERROR("invalid bustype: %d(%d)",
+				ERROR("invalid bustype: %X(%X)",
 				      dev_bus_type, conf_bus_type);
 				return -EINVAL;
 			}
@@ -376,12 +376,12 @@ static int duplicate_device(struct load_device *device, int n,
 
 /* add all devices (based on conf files) for a given driver */
 static int add_driver_devices(DIR *dir, char *driver_name,
-			      int from, struct load_device devices[])
+			      struct load_device devices[])
 {
 	struct dirent *dirent;
 	int n;
 
-	n = from;
+	n = 0;
 	if (!dir || !driver_name) {
 		ERROR("invalid driver");
 		return n;
@@ -413,14 +413,14 @@ static int add_driver_devices(DIR *dir, char *driver_name,
 
 			device = &devices[n];
 			if (strlen(s) >= 11 &&
-			    sscanf(s, "%04x:%04x.%d", &device->vendor,
+			    sscanf(s, "%04x:%04x.%X", &device->vendor,
 				   &device->device, &device->dev_bus_type) ==
 			    3) {
-				DBG("dev_bus_type: %d", device->dev_bus_type);
+				DBG("dev_bus_type: %X", device->dev_bus_type);
 				device->subvendor = DEV_ANY_ID;
 				device->subdevice = DEV_ANY_ID;
 			} else if (strlen(s) >= 21 &&
-				   sscanf(s, "%04x:%04x:%04x:%04x.%d",
+				   sscanf(s, "%04x:%04x:%04x:%04x.%X",
 					  &device->vendor, &device->device,
 					  &device->subvendor,
 					  &device->subdevice,
@@ -449,7 +449,7 @@ static int add_driver_devices(DIR *dir, char *driver_name,
 			}
 		}
 	}
-	DBG("total number of devices added: %d", n);
+	DBG("number of devices in %s: %d", driver_name, n);
 	return n;
 }
 
@@ -508,8 +508,8 @@ static int load_all_devices(int ioctl_device)
 			closedir(driver);
 			continue;
 		}
-		loaded = add_driver_devices(driver, dirent->d_name,
-					    loaded, devices);
+		loaded += add_driver_devices(driver, dirent->d_name,
+					    &devices[loaded]);
 		chdir("..");
 		closedir(driver);
 	}
@@ -525,13 +525,14 @@ static int load_all_devices(int ioctl_device)
 	load_devices.devices = devices;
 
 	res = ioctl(ioctl_device, WRAP_REGISTER_DEVICES, &load_devices);
+	DBG("res: %d", res);
 	free(devices);
 
 	if (res) {
 		ERROR("couldn't load devices");
 		return -1;
 	}
-
+	DBG("number of devices loaded: %d", loaded);
 	return 0;
 }
 
