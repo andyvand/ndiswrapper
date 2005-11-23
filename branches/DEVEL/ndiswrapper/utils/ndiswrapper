@@ -22,15 +22,18 @@ use Fcntl ':mode';
 use File::Basename;
 use File::Copy;
 
+my $PCI_BUS = 5;
+my $USB_BUS = 15;
+
 my @sections;
 my %strings;
 my %version;
 my $driver_name;
 my $confdir = "/etc/ndiswrapper";
-my $modhotplugconf = "$confdir" . "/modalias";
 my $instdir;
 my %fuzzlist;
-my $bustype;
+my $bustype = 0;
+my $classguid;
 
 #Blacklist of files not to install.
 my @copy_blacklist;
@@ -74,8 +77,6 @@ if($ARGV[0] eq "-i" and @ARGV == 2) {
     $res = list();
 } elsif($ARGV[0] eq "-m" and @ARGV == 1) {
     $res = modalias();
-#} elsif($ARGV[0] eq "-hotplug" and @ARGV == 1) {
-#    $res = modhotplug();
 } else {
     usage();
     exit();
@@ -91,7 +92,6 @@ sub usage {
 	"-e driver         Remove 'driver'\n" .
 	"-l                List installed drivers\n" .
 	"-m                Write configuration for modprobe\n" .
-#	"-hotplug          (Re)Generate hotplug information\n" .
 	"\n\nwhere 'devid' is either PCIID or USBID of the form XXXX:XXXX\n";
 }
 
@@ -171,7 +171,7 @@ sub devid_driver {
     open(LS, "ls -1 $confdir/$driver/ |");
     while (my $f = <LS>) {
 	chomp($f);
-	if ($f =~ /\.([05]).conf$/) {
+	if ($f =~ /\.([0-9]+).conf$/) {
 	    symlink("$f", "$confdir/$driver/$devid.$1.conf");
 	    print "Driver '$driver' is used for '$devid'\n";
 	    $done = 1;
@@ -183,76 +183,6 @@ sub devid_driver {
 	print "Driver '$driver' is not installed properly!\n";
     }
     return;
-}
-
-sub modhotplug {
-    my $vendor, $device, $subvendor, $subdevice, $bustype, $busid;
-    my $line, $ok, $alias;
-
-    $alias = 0;
-    open(MODPROBE, "modprobe -c|");
-    while ($line = <MODPROBE>) {
-	if ($line =~ /^include\s+$modhotplugconf/) {
-	    $alias = 1;
-	}
-    }
-
-    if ($alias eq 0) {
-	printf stdout "Adding \"include $modhotplugconf\" to $modconf\n";
-	system("echo \"include $modhotplugconf\" >> $modconf");
-    }
-    if (!open(CONF, ">$modhotplugconf")) {
-	print "Unable to create hotplug modules configuration file " .
-	  "$modhotplugconf\n";
-	return -1;
-    }
-
-    open(LS, "ls -1 $confdir|");
-    while (my $driver = <LS>) {
-	chomp($driver);
-	my $mode = (stat("$confdir/$driver"))[2];
-	if (S_ISDIR($mode)) {
-	    open(LS2, "ls -1 $confdir/$driver/ |");
-	    while (my $file = <LS2>) {
-		chomp ($file);
-		my $line = $file;
-		if ($file =~ s/.conf//) {
-		    if ($file =~ /(.{4}):(.{4}):(.{4}):(.{4})\.([05])/) {
-			$vendor = "0000$1";
-			$device = "0000$2";
-			$subvendor = "0000$3";
-			$subdevice = "0000$4";
-			$busid = "$5";
-		    } elsif($file =~ /(.{4}):(.{4})\.([05])/) {
-			$vendor = "0000$1";
-			$device = "0000$2";
-			$subvendor = "*";
-			$subdevice = "*";
-			$busid = "$3";
-		    }
-		    if ($busid eq "0") {
-			$bustype = "usb";
-		    } elsif ($busid eq "5") {
-			$bustype = "pci";
-		    } else {
-			print stderr "wrong bustype ($busid) for " .
-			  "configuration file $line - ignoring it\n";
-			next;
-		    }
-		    printf CONF "alias %s:v%sd%ssv%ssd%sbc*sc*i* ndiswrapper\n",
-		      $bustype, $vendor, $device, $subvendor, $subdevice;
-		}
-	    }
-	    close(LS2);
-	}
-    }
-
-    close(CONF);
-    close(LS);
-    if (-x "/sbin/update-modules") {
-	system("/sbin/update-modules");
-    }
-    return 0;
 }
 
 sub list {
@@ -471,6 +401,10 @@ sub parseVersion {
 	    $val =~ s/"(.+)"/$1/; 
 	    $version{$key} = $val;
 	}
+	if ($key eq "ClassGUID") {
+	    $val =~ s/\{(.+)\}/$1/; 
+	    $classguid = lc($val);
+	}
     }
     parseManu();
 }
@@ -555,8 +489,11 @@ sub parseVendor {
 	    ($section, $id) = split(",", $val);
 	    $section = trim($section);
 	    $id = trim($id);
-	    my $vendor, $device, $subvendor, $subdevice;
-	    ($bustype, $vendor, $device, $subvendor, $subdevice) = parseID($id);
+	    my $bt, $vendor, $device, $subvendor, $subdevice;
+	    ($bt, $vendor, $device, $subvendor, $subdevice) = parseID($id);
+	    if ($bustype == 0) {
+		$bustype = $bt;
+	    }
 	    if ($vendor) {
 		parseDevice($flavour, $section, $vendor, $device,
 			    $subvendor, $subdevice);
@@ -617,6 +554,9 @@ sub parseDevice {
 	    if (lc($key) eq "copyfiles") {
 		push @copy_files, $val;
 	    }
+	    if (lc($key) eq "bustype") {
+		$bustype = $val;
+	    }
 	}
     }		
 
@@ -626,7 +566,7 @@ sub parseDevice {
     }
 
     $filename .= ".$bustype.conf";
-    if ($bustype == 5) {
+    if ($bustype == $PCI_BUS) {
 	addPCIFuzzEntry($device, $vendor, $subvendor, $subdevice);
     }
 
@@ -642,8 +582,9 @@ sub parseDevice {
     printf CONF "NdisVersion|0x50001\n";
     printf CONF "Environment|1\n";
     printf CONF "BusType|$bustype\n";
+    printf CONF "class_guid|$classguid\n";
     printf CONF "mac_address|XX:XX:XX:XX:XX:XX\n";
-    printf CONF "ndis_version|$providerstring,$ver\n\n";
+    printf CONF "driver_version|$providerstring,$ver\n\n";
     close(CONF);
 
     if (!open(CONF, "|sort|uniq >>$confdir/$driver_name/$filename")) {
@@ -856,11 +797,11 @@ sub substStr {
 sub parseID {
     my $s = uc(shift);
     if ($s =~ /PCI\\VEN_(\w+)&DEV_(\w+)&SUBSYS_(\w{4})(\S{4})/) {
-	return (5, $1, $2, $4, $3);
+	return ($PCI_BUS, $1, $2, $4, $3);
     } elsif ($s =~ /PCI\\VEN_(\w+)&DEV_(\w+)/) {
-	return (5, $1, $2);
+	return ($PCI_BUS, $1, $2);
     } elsif ($s =~ /USB\\VID_(\w+)&PID_(\w+)/) {
-	return (0, $1, $2);
+	return ($USB_BUS, $1, $2);
     }
 }
 

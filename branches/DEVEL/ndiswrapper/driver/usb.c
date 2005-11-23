@@ -132,7 +132,7 @@ int usb_init_device(struct wrap_device *wd)
 {
 	InitializeListHead(&wd->usb.wrap_urb_list);
 	wd->usb.num_alloc_urbs = 0;
-	return 0;
+	USBEXIT(return 0);
 }
 
 void usb_exit_device(struct wrap_device *wd)
@@ -162,6 +162,8 @@ void usb_exit_device(struct wrap_device *wd)
 		kfree(wrap_urb);
 	}
 	wd->usb.num_alloc_urbs = 0;
+	wd->usb.udev = NULL;
+	wd->usb.intf = NULL;
 	return;
 }
 
@@ -271,11 +273,13 @@ static struct urb *wrap_alloc_urb(struct irp *irp, unsigned int pipe,
 	struct wrap_urb *wrap_urb;
 	struct wrap_device *wd;
 
+	USBENTER("irp: %p", irp);
 	if (current_irql() < DISPATCH_LEVEL)
 		alloc_flags = GFP_KERNEL;
 	else
 		alloc_flags = GFP_ATOMIC;
 	wd = irp->wd;
+	USBTRACE("wd: %p (%d)", wd, wd->usb.num_alloc_urbs);
 	IoAcquireCancelSpinLock(&irp->cancel_irql);
 	urb = NULL;
 	nt_list_for_each_entry(wrap_urb, &wd->usb.wrap_urb_list, list) {
@@ -286,7 +290,7 @@ static struct urb *wrap_alloc_urb(struct irp *irp, unsigned int pipe,
 			break;
 		}
 	}
-
+	USBTRACE("urb: %p", urb);
 	if (!urb) {
 		IoReleaseCancelSpinLock(irp->cancel_irql);
 		wrap_urb = kmalloc(sizeof(*wrap_urb), alloc_flags);
@@ -312,6 +316,7 @@ static struct urb *wrap_alloc_urb(struct irp *irp, unsigned int pipe,
 		wd->usb.num_alloc_urbs++;
 	}
 
+	USBTRACE("urb: %p", urb);
 #ifdef URB_ASYNC_UNLINK
 	urb->transfer_flags |= URB_ASYNC_UNLINK;
 #endif
@@ -801,8 +806,6 @@ static USBD_STATUS wrap_abort_pipe(struct usb_device *udev, struct irp *irp)
 	wd = irp->wd;
 	nt_urb = URB_FROM_IRP(irp);
 	pipe_handle = nt_urb->pipe_req.pipe_handle;
-	if (wd->usb.intf == NULL)
-		return USBD_STATUS_DEVICE_GONE;
 	nt_urb = URB_FROM_IRP(irp);
 	while (1) {
 		kspin_lock_irqsave(&irp_cancel_lock, flags);
@@ -824,7 +827,10 @@ static USBD_STATUS wrap_abort_pipe(struct usb_device *udev, struct irp *irp)
 		} else
 			break;
 	}
-	USBEXIT(return USBD_STATUS_SUCCESS);
+	if (wd->usb.intf == NULL)
+		USBEXIT(return USBD_STATUS_DEVICE_GONE);
+	else
+		USBEXIT(return USBD_STATUS_SUCCESS);
 }
 
 static USBD_STATUS wrap_select_configuration(struct wrap_device *wd,
@@ -944,10 +950,9 @@ static USBD_STATUS wrap_get_descriptor(struct wrap_device *wd,
 
 	if (ctrl_req->desc_type == USB_DT_STRING) {
 		USBTRACE("langid: %x", ctrl_req->language_id);
-		ret = usb_get_string(udev, ctrl_req->language_id,
-				     ctrl_req->index,
-				     ctrl_req->transfer_buffer,
-				     ctrl_req->transfer_buffer_length);
+		ret = usb_string(udev, ctrl_req->index,
+				 ctrl_req->transfer_buffer,
+				 ctrl_req->transfer_buffer_length);
 	} else {
 		ret = usb_get_descriptor(udev, ctrl_req->desc_type,
 					 ctrl_req->index,
@@ -1038,8 +1043,6 @@ static USBD_STATUS wrap_reset_port(struct irp *irp)
 
 	wd = irp->wd;
 	USBENTER("%p, %p", wd, wd->usb.udev);
-	if (wd->usb.intf == NULL)
-		return USBD_STATUS_DEVICE_GONE;
 	ret = usb_reset_device(wd->usb.udev);
 	if (ret < 0)
 		WARNING("reset failed: %d", ret);
@@ -1075,6 +1078,18 @@ static USBD_STATUS wrap_get_port_status(struct irp *irp)
 	return USBD_STATUS_SUCCESS;
 }
 
+static USBD_STATUS wrap_submit_idle_notification(struct irp *irp)
+{
+	struct io_stack_location *irp_sl;
+	struct usbd_idle_callback *idle_callback;
+
+	/* TODO: register suspend function */
+	irp_sl = IoGetCurrentIrpStackLocation(irp);
+	idle_callback = irp_sl->params.ioctl.type3_input_buf;
+	USBTRACE("suspend function: %p", idle_callback->callback);
+	return USBD_STATUS_SUCCESS;
+}
+
 NTSTATUS wrap_submit_irp(struct device_object *pdo, struct irp *irp)
 {
 	struct io_stack_location *irp_sl;
@@ -1083,14 +1098,8 @@ NTSTATUS wrap_submit_irp(struct device_object *pdo, struct irp *irp)
 
 	irp_sl = IoGetCurrentIrpStackLocation(irp);
 	wd = pdo->reserved;
-
-	if (unlikely(wd->usb.intf == NULL)) {
-		irp->io_status.status = STATUS_DEVICE_REMOVED;
-		irp->io_status.status_info = 0;
-		return irp->io_status.status;
-	}
-
 	irp->wd = wd;
+
 	switch (irp_sl->params.ioctl.code) {
 	case IOCTL_INTERNAL_USB_SUBMIT_URB:
 		status = wrap_process_nt_urb(irp);
@@ -1100,6 +1109,9 @@ NTSTATUS wrap_submit_irp(struct device_object *pdo, struct irp *irp)
 		break;
 	case IOCTL_INTERNAL_USB_GET_PORT_STATUS:
 		status = wrap_get_port_status(irp);
+		break;
+	case IOCTL_INTERNAL_USB_SUBMIT_IDLE_NOTIFICATION:
+		status = wrap_submit_idle_notification(irp);
 		break;
 	default:
  		ERROR("ioctl %08X NOT IMPLEMENTED", irp_sl->params.ioctl.code);

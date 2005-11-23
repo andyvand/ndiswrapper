@@ -154,30 +154,25 @@ static int read_conf_file(char *conf_file_name, struct load_driver *driver)
 	char setting_name[MAX_SETTING_NAME_LEN];
 	char setting_value[MAX_SETTING_VALUE_LEN];
 	int ret, nr_settings;
-	int i, vendor, device, subvendor, subdevice, dev_bustype, conf_bustype;
+	int i, vendor, device, subvendor, subdevice, dev_bus_type,
+		conf_bus_type;
 
 	if (lstat(conf_file_name, &statbuf)) {
 		ERROR("unable to open config file: %s", strerror(errno));
 		return -EINVAL;
 	}
 
-	if (strlen(conf_file_name) == 16) {
-		i = sscanf(conf_file_name, "%04X:%04X.%d.conf",
-			   &vendor, &device, &dev_bustype);
-		if (i != 3) {
-			ERROR("unable to parse conf file name %s (%d)",
-			      conf_file_name, i);
-			return -EINVAL;
-		}
+	if (sscanf(conf_file_name, "%04X:%04X.%d.conf",
+		   &vendor, &device, &dev_bus_type) == 3) {
+		DBG("dev_bus_type: %d", dev_bus_type);
+	} else if (sscanf(conf_file_name, "%04X:%04X:%04X:%04X.%d.conf",
+			  &vendor, &device, &subvendor, &subdevice,
+			  &dev_bus_type) == 5) {
+		DBG("dev_bus_type: %d", dev_bus_type);
 	} else {
-		i = sscanf(conf_file_name, "%04X:%04X:%04X:%04X.%d.conf",
-			   &vendor, &device, &subvendor, &subdevice,
-			   &dev_bustype);
-		if (i != 5) {
-			ERROR("unable to parse conf file name %s (%d)",
-			      conf_file_name, i);
-			return -EINVAL;
-		}
+		ERROR("unable to parse conf file name %s (%d)",
+		      conf_file_name, i);
+		return -EINVAL;
 	}
 
 	nr_settings = 0;
@@ -199,10 +194,10 @@ static int read_conf_file(char *conf_file_name, struct load_driver *driver)
 			return -EINVAL;
 
 		if (strcmp(setting_name, "BusType") == 0) {
-			conf_bustype = strtol(setting_value, NULL, 10);
-			if (dev_bustype != conf_bustype) {
+			conf_bus_type = strtol(setting_value, NULL, 10);
+			if (dev_bus_type != conf_bus_type) {
 				ERROR("invalid bustype: %d(%d)",
-				      dev_bustype, conf_bustype);
+				      dev_bus_type, conf_bus_type);
 				return -EINVAL;
 			}
 		}
@@ -220,7 +215,7 @@ static int read_conf_file(char *conf_file_name, struct load_driver *driver)
 
 	fclose(config);
 
-	if (conf_bustype == -1) {
+	if (conf_bus_type == -1) {
 		ERROR("coudn't find device type in settings");
 		return -EINVAL;
 	}			
@@ -305,7 +300,7 @@ static int load_driver(int ioctl_device, char *driver_name,
 		} else if (len > 4 &&
 			   ((strcmp(&dirent->d_name[len-4], ".bin") == 0) ||
 			     (strcmp(&dirent->d_name[len-4], ".out") == 0))) {
-			/**
+			/*
 			if (strcmp(&dirent->d_name[len-10], "ar5523.bin") ==
 			    0) {
 				INFO("ar5523.bin is ignored - it should be "
@@ -401,8 +396,7 @@ static int add_driver_devices(DIR *dir, char *driver_name,
 			continue;
 
 		len = strlen(dirent->d_name);
-		if (len > 5 &&
-			   strcmp(&dirent->d_name[len-5], ".conf") == 0) {
+		if (len > 5 && strcmp(&dirent->d_name[len-5], ".conf") == 0) {
 			struct stat statbuf;
 			char *s;
 			struct load_device *device;
@@ -419,13 +413,14 @@ static int add_driver_devices(DIR *dir, char *driver_name,
 
 			device = &devices[n];
 			if (strlen(s) >= 11 &&
-			    sscanf(s, "%04x:%04x.%x", &device->vendor,
+			    sscanf(s, "%04x:%04x.%d", &device->vendor,
 				   &device->device, &device->dev_bus_type) ==
 			    3) {
+				DBG("dev_bus_type: %d", device->dev_bus_type);
 				device->subvendor = DEV_ANY_ID;
 				device->subdevice = DEV_ANY_ID;
 			} else if (strlen(s) >= 21 &&
-				   sscanf(s, "%04x:%04x:%04x:%04x.%x",
+				   sscanf(s, "%04x:%04x:%04x:%04x.%d",
 					  &device->vendor, &device->device,
 					  &device->subvendor,
 					  &device->subdevice,
@@ -601,6 +596,8 @@ int main(int argc, char *argv[0])
 	int i, ioctl_device, res;
 
 	openlog(PROG_NAME, LOG_PERROR | LOG_CONS, LOG_KERN | LOG_DEBUG);
+
+	DBG("argc: %d", argc);
 
 	if (argc < 4) {
 		res = 1;
