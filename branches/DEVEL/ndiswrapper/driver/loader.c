@@ -315,7 +315,7 @@ static int load_settings(struct wrap_driver *wrap_driver,
 			memcpy(wrap_driver->version, setting->value,
 			       sizeof(wrap_driver->version));
 		else if (strcmp(setting->name, "BusType") == 0 &&
-		    (sscanf(setting->value, "%d", &data1) == 1)) {
+		    (sscanf(setting->value, "%X", &data1) == 1)) {
 			int dev_type = WRAP_DEVICE_TYPE(wd->dev_bus_type);
 			wd->dev_bus_type =
 				WRAP_DEVICE_BUS_TYPE(dev_type, data1);
@@ -544,16 +544,14 @@ static int register_devices(struct load_devices *load_devices)
 
 	num_pci = num_usb = 0;
 	for (i = 0; i < load_devices->count; i++)
-		if (WRAP_BUS_TYPE(devices[i].dev_bus_type) == WRAP_PCI_BUS)
+		if (wrap_is_pci_bus(devices[i].dev_bus_type))
 			num_pci++;
-		else if ((WRAP_BUS_TYPE(devices[i].dev_bus_type) ==
-			  WRAP_USB_BUS) ||
-			 (WRAP_BUS_TYPE(devices[i].dev_bus_type) ==
-			  WRAP_USB_BUS_OLD))
+		else if (wrap_is_usb_bus(devices[i].dev_bus_type))
 			num_usb++;
 		else
-			WARNING("bus type %d for %s is not valid",
+			WARNING("bus type %d (%d) for %s is not valid",
 				devices[i].dev_bus_type,
+				WRAP_BUS_TYPE(devices[i].dev_bus_type),
 				devices[i].conf_file_name);
 	num_wrap_devices = num_pci + num_usb;
 	if (num_pci > 0) {
@@ -607,7 +605,7 @@ static int register_devices(struct load_devices *load_devices)
 		wrap_device->subvendor = device->subvendor;
 		wrap_device->subdevice = device->subdevice;
 
-		if (WRAP_BUS_TYPE(device->dev_bus_type) == WRAP_PCI_BUS) {
+		if (wrap_is_pci_bus(device->dev_bus_type)) {
 			wrap_pci_devices[num_pci].vendor = device->vendor;
 			wrap_pci_devices[num_pci].device = device->device;
 			if (device->subvendor == DEV_ANY_ID)
@@ -626,29 +624,27 @@ static int register_devices(struct load_devices *load_devices)
 			wrap_pci_devices[num_pci].class_mask = 0;
 			wrap_pci_devices[num_pci].driver_data =
 				num_pci + num_usb;
-			num_pci++;
-			DBGTRACE1("pci device %d added", num_pci);
-			DBGTRACE1("adding %04x:%04x:%04x:%04x to pci idtable",
+			DBGTRACE1("adding %04x:%04x:%04x:%04x (%s) to pci: %d",
 				  device->vendor, device->device,
-				  device->subvendor, device->subdevice);
+				  device->subvendor, device->subdevice,
+				  device->driver_name, num_pci);
+			num_pci++;
 #ifdef CONFIG_USB
-		} else if ((WRAP_BUS_TYPE(device->dev_bus_type) ==
-			    WRAP_USB_BUS) ||
-			   (WRAP_BUS_TYPE(device->dev_bus_type) ==
-			    WRAP_USB_BUS_OLD)) {
+		} else if (wrap_is_usb_bus(device->dev_bus_type)) {
 			wrap_usb_devices[num_usb].idVendor = device->vendor;
 			wrap_usb_devices[num_usb].idProduct = device->device;
 			wrap_usb_devices[num_usb].match_flags =
 				USB_DEVICE_ID_MATCH_DEVICE;
 			wrap_usb_devices[num_usb].driver_info =
 				num_pci + num_usb;
+			DBGTRACE1("adding %04x:%04x (%s) to usb: %d",
+				  device->vendor, device->device,
+				  device->driver_name, num_usb);
 			num_usb++;
-			DBGTRACE1("usb device %d added", num_usb);
-			DBGTRACE1("adding %04x:%04x to usb idtable",
-				  device->vendor, device->device);
 #endif
 		} else {
-			ERROR("type %d not supported", device->dev_bus_type);
+			ERROR("type %d not supported: %s",
+			      device->dev_bus_type, device->conf_file_name);
 		}
 	}
 

@@ -22,8 +22,9 @@ use Fcntl ':mode';
 use File::Basename;
 use File::Copy;
 
-my $PCI_BUS = 5;
-my $USB_BUS = 15;
+my $WRAP_PCI_BUS = 5;
+my $WRAP_PCMCIA_BUS = 8;
+my $WRAP_USB_BUS = 15;
 
 my @sections;
 my %strings;
@@ -565,8 +566,9 @@ sub parseDevice {
 	$filename .= ":$subvendor:$subdevice"
     }
 
-    $filename .= ".$bustype.conf";
-    if ($bustype == $PCI_BUS) {
+    my $bt = sprintf("%X", $bustype);
+    $filename .= ".$bt.conf";
+    if ($bustype == $WRAP_PCI_BUS) {
 	addPCIFuzzEntry($device, $vendor, $subvendor, $subdevice);
     }
 
@@ -797,11 +799,11 @@ sub substStr {
 sub parseID {
     my $s = uc(shift);
     if ($s =~ /PCI\\VEN_(\w+)&DEV_(\w+)&SUBSYS_(\w{4})(\S{4})/) {
-	return ($PCI_BUS, $1, $2, $4, $3);
+	return ($WRAP_PCI_BUS, $1, $2, $4, $3);
     } elsif ($s =~ /PCI\\VEN_(\w+)&DEV_(\w+)/) {
-	return ($PCI_BUS, $1, $2);
+	return ($WRAP_PCI_BUS, $1, $2);
     } elsif ($s =~ /USB\\VID_(\w+)&PID_(\w+)/) {
-	return ($USB_BUS, $1, $2);
+	return ($WRAP_USB_BUS, $1, $2);
     }
 }
 
@@ -899,7 +901,7 @@ sub loadinf {
 
 	$s =~ s/\s*$//;	#Remove trailing whitespace and \r
 	$s .= "\n";
-	if ($s =~ /^\[(.+)\]\s*/) {
+	if ($s =~ /^\[(.+)\]$/) {
 	    $sections[$i++] = $section;		
 	    my %new_section;
 	    $section = \%new_section;

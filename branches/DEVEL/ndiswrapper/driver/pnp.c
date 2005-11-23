@@ -105,7 +105,7 @@ static STDCALL NTSTATUS pdoDispatchPnp(struct device_object *pdo,
 			status = STATUS_SUCCESS;
 		break;
 	case IRP_MN_QUERY_INTERFACE:
-		if (WRAP_BUS_TYPE(wd->dev_bus_type) != WRAP_USB_BUS) {
+		if (wrap_is_usb_bus(wd->dev_bus_type)) {
 			status = STATUS_NOT_IMPLEMENTED;
 			break;
 		}
@@ -134,13 +134,13 @@ static STDCALL NTSTATUS pdoDispatchPnp(struct device_object *pdo,
 		break;
 	case IRP_MN_REMOVE_DEVICE:
 		ntoskernel_exit_device(wd);
-		if (WRAP_BUS_TYPE(wd->dev_bus_type) == WRAP_PCI_BUS) {
+		if (wrap_is_pci_bus(wd->dev_bus_type)) {
 			struct pci_dev *pdev = wd->pci.pdev;
 			pci_release_regions(pdev);
 			pci_disable_device(pdev);
 			wd->pci.pdev = NULL;
 			pci_set_drvdata(pdev, NULL);
-		} else if (WRAP_BUS_TYPE(wd->dev_bus_type) == WRAP_USB_BUS) {
+		} else if (wrap_is_usb_bus(wd->dev_bus_type)) {
 			usb_exit_device(wd);
 		}
 		IoDeleteDevice(wd->wnd->nmb->pdo);
@@ -181,7 +181,7 @@ static STDCALL NTSTATUS pdoDispatchPower(struct device_object *pdo,
 		state = irp_sl->params.power.state.device_state;
 		if (state == PowerDeviceD0) {
 			DBGTRACE2("resuming device %p", wd);
-			if (WRAP_BUS_TYPE(wd->dev_bus_type) == WRAP_PCI_BUS) {
+			if (wrap_is_pci_bus(wd->dev_bus_type)) {
 				pdev = wd->pci.pdev;
 #if LINUX_VERSION_CODE > KERNEL_VERSION(2,6,9)
 				pci_restore_state(pdev);
@@ -191,7 +191,7 @@ static STDCALL NTSTATUS pdoDispatchPower(struct device_object *pdo,
 			}
 		} else {
 			DBGTRACE2("suspending device %p", wd);
-			if (WRAP_BUS_TYPE(wd->dev_bus_type) == WRAP_PCI_BUS) {
+			if (wrap_is_pci_bus(wd->dev_bus_type)) {
 				pdev = wd->pci.pdev;
 #if LINUX_VERSION_CODE > KERNEL_VERSION(2,6,9)
 				pci_save_state(pdev);
@@ -261,7 +261,7 @@ static int start_pdo(struct device_object *pdo)
 	if (ntoskernel_init_device(wd))
 		TRACEEXIT1(return -EINVAL);
 	DBGTRACE1("%d, %d", WRAP_BUS_TYPE(wd->dev_bus_type), WRAP_USB_BUS);
-	if (WRAP_BUS_TYPE(wd->dev_bus_type) == WRAP_USB_BUS) {
+	if (wrap_is_usb_bus(wd->dev_bus_type)) {
 #ifdef CONFIG_USB
 		if (usb_init_device(wd)) {
 			ntoskernel_exit_device(wd);
@@ -270,7 +270,7 @@ static int start_pdo(struct device_object *pdo)
 #endif
 		TRACEEXIT1(return 0);
 	}
-	if (WRAP_BUS_TYPE(wd->dev_bus_type) != WRAP_PCI_BUS)
+	if (!wrap_is_pci_bus(wd->dev_bus_type))
 		TRACEEXIT1(return 0);
 	pdev = wd->pci.pdev;
 	pci_set_drvdata(pdev, wd);
@@ -582,8 +582,8 @@ static int wrap_pnp_start_device(struct wrap_device *wd)
 
 	TRACEENTER1("wd: %p", wd);
 
-	if (!((WRAP_BUS_TYPE(wd->dev_bus_type) == WRAP_PCI_BUS) ||
-	      (WRAP_BUS_TYPE(wd->dev_bus_type) == WRAP_USB_BUS))) {
+	if (!((wrap_is_pci_bus(wd->dev_bus_type)) ||
+	      (wrap_is_usb_bus(wd->dev_bus_type)))) {
 		ERROR("bus type %d (%d) not supported",
 		      WRAP_BUS_TYPE(wd->dev_bus_type), wd->dev_bus_type);
 		TRACEEXIT1(return -EINVAL);
@@ -604,9 +604,9 @@ static int wrap_pnp_start_device(struct wrap_device *wd)
 		  WRAP_DEVICE_TYPE(wd->dev_bus_type),
 		  WRAP_BUS_TYPE(wd->dev_bus_type), wd->dev_bus_type);
 	/* first create pdo */
-	if (WRAP_BUS_TYPE(wd->dev_bus_type) == WRAP_PCI_BUS)
+	if (wrap_is_pci_bus(wd->dev_bus_type))
 		pdo_drv_obj = find_bus_driver("PCI");
-	else // if (WRAP_BUS_TYPE(wd->dev_bus_type) == WRAP_USB_BUS)
+	else // if (wrap_is_usb_bus(wd->dev_bus_type))
 		pdo_drv_obj = find_bus_driver("USB");
 	if (!pdo_drv_obj)
 		return -EINVAL;
