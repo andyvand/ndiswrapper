@@ -41,9 +41,12 @@ void ndis_exit(void)
 void ndis_exit_device(struct wrap_ndis_device *wnd)
 {
 	struct wrap_device_setting *setting;
+	KIRQL irql;
+
 	/* TI driver doesn't call NdisMDeregisterInterrupt during halt! */
 	if (wnd->ndis_irq)
 		NdisMDeregisterInterrupt(wnd->ndis_irq);
+	irql = kspin_lock_irql(&loader_lock, DISPATCH_LEVEL);
 	nt_list_for_each_entry(setting, &wnd->wd->settings, list) {
 		struct ndis_configuration_parameter *param;
 		param = setting->encoded;
@@ -51,8 +54,10 @@ void ndis_exit_device(struct wrap_ndis_device *wnd)
 			if (param->type == NdisParameterString)
 				RtlFreeUnicodeString(&param->data.string);
 			ExFreePool(param);
+			setting->encoded = NULL;
 		}
 	}
+	kspin_unlock_irql(&loader_lock, irql);
 }
 
 /* Called from the driver entry. */
@@ -129,7 +134,7 @@ STDCALL NDIS_STATUS WRAP_EXPORT(NdisMRegisterMiniport)
 			"co_activate_vc", "co_deactivate_vc",
 			"co_send_packets", "co_request",
 			"cancel_send_packets", "pnp_event_notify",
-			"adapter_shutdown",
+			"shutdown",
 		};
 		func = (void **)&ndis_driver->miniport.query;
 		for (i = 0; i < (sizeof(miniport_funcs) /
@@ -221,7 +226,7 @@ NOREGPARM void WRAP_EXPORT(NdisWriteErrorLogEntry)
 
 	va_start(args, count);
 	ERROR("log: %08X, count: %d, return_address: %p",
-			error, count, __builtin_return_address(0));
+	      error, count, __builtin_return_address(0));
 	for (i = 0; i < count; i++) {
 		code = va_arg(args, ULONG);
 		ERROR("code: %u", code);
@@ -294,6 +299,7 @@ STDCALL void WRAP_EXPORT(NdisOpenFile)
 	struct ansi_string ansi;
 	struct wrap_driver *driver;
 	struct wrap_bin_file *file;
+	KIRQL irql;
 
 	TRACEENTER2("status = %p, filelength = %p, *filelength = %d, "
 		    "high = %llx, filehandle = %p, *filehandle = %p",
@@ -308,6 +314,7 @@ STDCALL void WRAP_EXPORT(NdisOpenFile)
 	DBGTRACE2("Filename: %s", ansi.buf);
 
 	/* Loop through all drivers and all files to find the requested file */
+	irql = kspin_lock_irql(&loader_lock, DISPATCH_LEVEL);
 	nt_list_for_each_entry(driver, &wrap_drivers, list) {
 		int i;
 
@@ -322,11 +329,13 @@ STDCALL void WRAP_EXPORT(NdisOpenFile)
 				*filehandle = file;
 				*filelength = file->size;
 				*status = NDIS_STATUS_SUCCESS;
+				kspin_unlock_irql(&loader_lock, irql);
 				RtlFreeAnsiString(&ansi);
 				TRACEEXIT2(return);
 			}
 		}
 	}
+	kspin_unlock_irql(&loader_lock, irql);
 	*status = NDIS_STATUS_FILE_NOT_FOUND;
 	RtlFreeAnsiString(&ansi);
 	TRACEEXIT2(return);
@@ -742,8 +751,7 @@ STDCALL void WRAP_EXPORT(NdisMQueryAdapterResources)
 	UINT resource_length;
 
 	list = &wnd->wd->resource_list->list->partial_resource_list;
-	resource_length =
-		sizeof(struct cm_partial_resource_list) +
+	resource_length = sizeof(struct cm_partial_resource_list) +
 		sizeof(struct cm_partial_resource_descriptor) *
 		(list->count - 1);
 	DBGTRACE2("wnd: %p. buf: %p, len: %d (%d)", wnd,
@@ -785,7 +793,7 @@ STDCALL NDIS_STATUS WRAP_EXPORT(NdisMMapIoSpace)
 	}
 
 	wnd->mem_start = phy_addr;
-	wnd->mem_end = phy_addr + len - 1;
+	wnd->mem_end = phy_addr + len;
 
 	DBGTRACE2("ioremap successful %p", *virt);
 	TRACEEXIT2(return NDIS_STATUS_SUCCESS);
@@ -1515,7 +1523,7 @@ STDCALL void WRAP_EXPORT(NdisMRegisterAdapterShutdownHandler)
 {
 	struct wrap_ndis_device *wnd = nmb->wnd;
 	TRACEENTER1("sp:%p", get_sp());
-	wnd->wd->driver->ndis_driver->miniport.adapter_shutdown = func;
+	wnd->wd->driver->ndis_driver->miniport.shutdown = func;
 	wnd->shutdown_ctx = ctx;
 }
 
@@ -1524,7 +1532,7 @@ STDCALL void WRAP_EXPORT(NdisMDeregisterAdapterShutdownHandler)
 {
 	struct wrap_ndis_device *wnd = nmb->wnd;
 	TRACEENTER1("sp:%p", get_sp());
-	wnd->wd->driver->ndis_driver->miniport.adapter_shutdown = NULL;
+	wnd->wd->driver->ndis_driver->miniport.shutdown = NULL;
 	wnd->shutdown_ctx = NULL;
 }
 
@@ -2592,7 +2600,7 @@ STDCALL void WRAP_EXPORT(NdisMCoDeactivateVcComplete)(void)
 
 #include "ndis_exports.h"
 
-void setup_nmb_func_ptrs(struct ndis_miniport_block *nmb)
+void init_nmb_functions(struct ndis_miniport_block *nmb)
 {
 	nmb->rx_packet = WRAP_FUNC_PTR(NdisMIndicateReceivePacket);
 	nmb->send_complete = WRAP_FUNC_PTR(NdisMSendComplete);

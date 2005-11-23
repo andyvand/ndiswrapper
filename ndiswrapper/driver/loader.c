@@ -23,6 +23,14 @@
 #include <linux/miscdevice.h>
 #include <asm/uaccess.h>
 
+/* the indices used here must match macros WRAP_NDIS_DEVICE etc. */
+static struct guid class_guids[] = {
+	/* Network */
+	{0x4d36e972, 0xe325, 0x11ce, },
+	/* USB WDM */
+	{0x36fc9e60, 0xc465, 0x11cf, },
+};
+
 KSPIN_LOCK loader_lock;
 struct wrap_device *wrap_devices;
 static unsigned int num_wrap_devices;
@@ -31,10 +39,20 @@ static struct pci_device_id *wrap_pci_devices;
 static struct pci_driver wrap_pci_driver;
 #if defined(CONFIG_USB)
 static struct usb_device_id *wrap_usb_devices;
-static struct usb_driver wrap_usb_driver;
+struct usb_driver wrap_usb_driver;
 #endif
 
 extern int debug;
+
+int wrap_device_type(int data1)
+{
+	int i;
+	for (i = 0; i < sizeof(class_guids) / sizeof(class_guids[0]); i++)
+		if (data1 == class_guids[i].data1)
+			return i;
+	ERROR("unknown device: 0x%x\n", data1);
+	return -1;
+}
 
 /* load driver for given device, if not already loaded */
 struct wrap_driver *load_wrap_driver(struct wrap_device *device)
@@ -274,10 +292,12 @@ static int load_settings(struct wrap_driver *wrap_driver,
 	}
 
 	nr_settings = 0;
+	wd->dev_bus_type = 0;
 	for (i = 0; i < load_driver->nr_settings; i++) {
 		struct load_device_setting *load_setting =
 			&load_driver->settings[i];
 		struct wrap_device_setting *setting;
+		ULONG data1;
 
 		setting = kmalloc(sizeof(*setting), GFP_KERNEL);
 		if (!setting) {
@@ -289,11 +309,31 @@ static int load_settings(struct wrap_driver *wrap_driver,
 		       MAX_SETTING_NAME_LEN);
 		memcpy(setting->value, load_setting->value,
 		       MAX_SETTING_VALUE_LEN);
-		DBGTRACE2("copied setting %s", load_setting->name);
+		DBGTRACE2("setting %s=%s", setting->name, setting->value);
 
 		if (strcmp(setting->name, "driver_version") == 0)
 			memcpy(wrap_driver->version, setting->value,
 			       sizeof(wrap_driver->version));
+		else if (strcmp(setting->name, "BusType") == 0 &&
+		    (sscanf(setting->value, "%d", &data1) == 1)) {
+			int dev_type = WRAP_DEVICE_TYPE(wd->dev_bus_type);
+			wd->dev_bus_type =
+				WRAP_DEVICE_BUS_TYPE(dev_type, data1);
+			DBGTRACE2("data1: %x, dev type: %x, new: %x\n",
+				  data1, dev_type, wd->dev_bus_type);
+		} else if (strcmp(setting->name, "class_guid") == 0 &&
+			   (sscanf(setting->value, "%x", &data1) == 1)) {
+			int bus_type = WRAP_BUS_TYPE(wd->dev_bus_type);
+			int dev_type = wrap_device_type(data1);
+			DBGTRACE2("old: %x", wd->dev_bus_type);
+			if (dev_type > 0)
+				wd->dev_bus_type =
+					WRAP_DEVICE_BUS_TYPE(dev_type,
+							     bus_type);
+			DBGTRACE2("data1: %x, dev type: %x, bus type: %x, "
+				  "new: %x\n",
+				  data1, dev_type, bus_type, wd->dev_bus_type);
+		}
 		irql = kspin_lock_irql(&loader_lock, DISPATCH_LEVEL);
 		InsertTailList(&wd->settings, &setting->list);
 		kspin_unlock_irql(&loader_lock, irql);
@@ -506,12 +546,15 @@ static int register_devices(struct load_devices *load_devices)
 	for (i = 0; i < load_devices->count; i++)
 		if (WRAP_BUS_TYPE(devices[i].dev_bus_type) == WRAP_PCI_BUS)
 			num_pci++;
-		else if (WRAP_BUS_TYPE(devices[i].dev_bus_type) ==
-			 WRAP_USB_BUS)
+		else if ((WRAP_BUS_TYPE(devices[i].dev_bus_type) ==
+			  WRAP_USB_BUS) ||
+			 (WRAP_BUS_TYPE(devices[i].dev_bus_type) ==
+			  WRAP_USB_BUS_OLD))
 			num_usb++;
 		else
-			WARNING("bus type %d is not valid",
-				devices[i].dev_bus_type);
+			WARNING("bus type %d for %s is not valid",
+				devices[i].dev_bus_type,
+				devices[i].conf_file_name);
 	num_wrap_devices = num_pci + num_usb;
 	if (num_pci > 0) {
 		wrap_pci_devices =
@@ -589,8 +632,10 @@ static int register_devices(struct load_devices *load_devices)
 				  device->vendor, device->device,
 				  device->subvendor, device->subdevice);
 #ifdef CONFIG_USB
-		} else if (WRAP_BUS_TYPE(device->dev_bus_type) ==
-			   WRAP_USB_BUS) {
+		} else if ((WRAP_BUS_TYPE(device->dev_bus_type) ==
+			    WRAP_USB_BUS) ||
+			   (WRAP_BUS_TYPE(device->dev_bus_type) ==
+			    WRAP_USB_BUS_OLD)) {
 			wrap_usb_devices[num_usb].idVendor = device->vendor;
 			wrap_usb_devices[num_usb].idProduct = device->device;
 			wrap_usb_devices[num_usb].match_flags =

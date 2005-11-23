@@ -476,8 +476,20 @@ enum hw_status {
 };
 
 struct wrap_device {
-	struct nt_list settings;
+	/* first part is (de)initialized once by loader */
 	int dev_bus_type;
+	int vendor;
+	int device;
+	int subvendor;
+	int subdevice;
+	struct wrap_driver *driver;
+	/* we need driver_name before driver is loaded */
+	char driver_name[MAX_DRIVER_NAME_LEN];
+	char conf_file_name[MAX_DRIVER_NAME_LEN];
+	struct nt_list settings;
+
+	/* rest should be (de)initialized during every
+	 * (de)initialization */
 	struct device_object *pdo;
 	union {
 		struct {
@@ -491,14 +503,6 @@ struct wrap_device {
 			struct nt_list wrap_urb_list;
 		} usb;
 	};
-	int vendor;
-	int device;
-	int subvendor;
-	int subdevice;
-	struct wrap_driver *driver;
-	/* we need driver_name before driver is loaded */
-	char driver_name[MAX_DRIVER_NAME_LEN];
-	char conf_file_name[MAX_DRIVER_NAME_LEN];
 	unsigned long hw_status;
 	union {
 		struct wrap_ndis_device *wnd;
@@ -506,7 +510,6 @@ struct wrap_device {
 	struct nt_list timer_list;
 	KSPIN_LOCK timer_lock;
 	struct cm_resource_list *resource_list;
-	u32 pci_state[16];
 };
 
 #if LINUX_VERSION_CODE > KERNEL_VERSION(2,6,0)
@@ -532,8 +535,6 @@ void usb_exit_device(struct wrap_device *wd);
 void usb_cancel_pending_urbs(void);
 
 int misc_funcs_init(void);
-int misc_funcs_init_device(struct wrap_device *wd);
-void misc_funcs_exit_device(struct wrap_device *wd);
 void misc_funcs_exit(void);
 
 int wrap_procfs_init(void);
@@ -939,7 +940,6 @@ extern int debug;
 #define DBGTRACE6(fmt, ...) DBGTRACE(6, fmt , ## __VA_ARGS__)
 #endif
 
-#define TRACEENTER(fmt, ...) DBGTRACE("Enter " fmt , ## __VA_ARGS__)
 #define TRACEENTER1(fmt, ...) DBGTRACE1("Enter " fmt , ## __VA_ARGS__)
 #define TRACEENTER2(fmt, ...) DBGTRACE2("Enter " fmt , ## __VA_ARGS__)
 #define TRACEENTER3(fmt, ...) DBGTRACE3("Enter " fmt , ## __VA_ARGS__)
@@ -947,7 +947,6 @@ extern int debug;
 #define TRACEENTER5(fmt, ...) DBGTRACE5("Enter " fmt , ## __VA_ARGS__)
 #define TRACEENTER6(fmt, ...) DBGTRACE6("Enter " fmt , ## __VA_ARGS__)
 
-#define TRACEEXIT(stmt) do { DBGTRACE("Exit"); stmt; } while(0)
 #define TRACEEXIT1(stmt) do { DBGTRACE1("Exit"); stmt; } while(0)
 #define TRACEEXIT2(stmt) do { DBGTRACE2("Exit"); stmt; } while(0)
 #define TRACEEXIT3(stmt) do { DBGTRACE3("Exit"); stmt; } while(0)

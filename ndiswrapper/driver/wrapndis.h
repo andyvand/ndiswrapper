@@ -36,7 +36,7 @@ NDIS_STATUS miniport_pnp_event(struct wrap_ndis_device *wnd,
 void sendpacket_done(struct wrap_ndis_device *wnd, struct ndis_packet *packet);
 
 int init_ndis_device(struct wrap_device *wd);
-void remove_ndis_device(struct wrap_device *wd);
+void remove_ndis_device(struct wrap_ndis_device *wnd);
 
 int suspend_ndis_device(struct wrap_ndis_device *wnd, pm_message_t state);
 int resume_ndis_device(struct wrap_ndis_device *wnd);
