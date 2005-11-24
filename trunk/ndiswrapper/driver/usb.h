@@ -19,9 +19,11 @@
 
 #include "ntoskernel.h"
 
-#define IOCTL_INTERNAL_USB_SUBMIT_URB	0x00220003
-#define IOCTL_INTERNAL_USB_RESET_PORT	0x00220007
-#define IOCTL_INTERNAL_USB_GET_PORT_STATUS	0x00220013
+#define IOCTL_INTERNAL_USB_SUBMIT_URB			0x00220003
+#define IOCTL_INTERNAL_USB_RESET_PORT			0x00220007
+#define IOCTL_INTERNAL_USB_GET_PORT_STATUS		0x00220013
+#define IOCTL_INTERNAL_USB_CYCLE_PORT			0x0022001F
+#define IOCTL_INTERNAL_USB_SUBMIT_IDLE_NOTIFICATION	0x00220027
 
 #define URB_FUNCTION_SELECT_CONFIGURATION            0x0000
 #define URB_FUNCTION_SELECT_INTERFACE                0x0001
@@ -303,6 +305,11 @@ struct usbd_bus_information_level {
 struct usbd_version_info {
 	ULONG usbdi_version;
 	ULONG supported_usb_version;
+};
+
+struct usbd_idle_callback {
+	void *callback;
+	void *context;
 };
 
 #define NT_URB_STATUS(nt_urb) ((nt_urb)->header.status)

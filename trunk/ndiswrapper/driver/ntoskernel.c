@@ -73,10 +73,6 @@ static void wrap_work_item_worker(void *data);
 KSPIN_LOCK irp_cancel_lock;
 
 extern struct nt_list wrap_drivers;
-extern struct nt_list ndis_work_list;
-extern KSPIN_LOCK ndis_work_list_lock;
-extern struct work_struct ndis_work;
-
 static struct nt_list wrap_timer_list;
 KSPIN_LOCK timer_lock;
 
@@ -129,7 +125,7 @@ int ntoskernel_init(void)
 		ntoskernel_exit();
 		return -ENOMEM;
 	}
-	mdl_cache = kmem_cache_create("ndis_mdl", sizeof(struct wrap_mdl),
+	mdl_cache = kmem_cache_create("wrap_mdl", sizeof(struct wrap_mdl),
 				      0, 0, NULL, NULL);
 	if (!mdl_cache) {
 		ERROR("couldn't allocate MDL cache");
@@ -863,11 +859,18 @@ static void wrap_work_item_worker(void *data)
 		wrap_work_item = container_of(cur, struct wrap_work_item,
 					      list);
 		func = wrap_work_item->func;
-		if (wrap_work_item->win_func == TRUE)
-			LIN2WIN2(func, wrap_work_item->arg1,
-				 wrap_work_item->arg2);
-		else
-			func(wrap_work_item->arg1, wrap_work_item->arg2);
+		if (func) {
+			DBGTRACE4("%p, %p, %p", func, wrap_work_item->arg1,
+				  wrap_work_item->arg2);
+			if (wrap_work_item->win_func == TRUE)
+				LIN2WIN2(func, wrap_work_item->arg1,
+					 wrap_work_item->arg2);
+			else
+				func(wrap_work_item->arg1,
+				     wrap_work_item->arg2);
+		} else
+			ERROR("func is NULL");
+		DBGTRACE4("");
 		kfree(wrap_work_item);
 	}
 	return;
@@ -2244,6 +2247,7 @@ STDCALL NTSTATUS WRAP_EXPORT(ZwCreateFile)
 	irql = kspin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL);
 	nt_list_for_each_entry(driver, &wrap_drivers, list) {
 		int i;
+		DBGTRACE2("driver: %s", driver->name);
 		for (i = 0; i < driver->num_bin_files; i++) {
 			size_t n;
 			file = &driver->bin_files[i];
@@ -2275,13 +2279,23 @@ STDCALL NTSTATUS WRAP_EXPORT(ZwReadFile)
 {
 	struct object_attr *oa;
 	ULONG count;
+	size_t offset;
 	struct wrap_bin_file *file;
 
-	TRACEENTER2("");
 	oa = HANDLE_TO_OBJECT(handle);
 	file = oa->file;
-	count = max(file->size - (ULONG)(*byte_offset), length);
-	memcpy(buffer, file->data, file->size);
+	DBGTRACE2("file: %s (%d)", file->name, file->size);
+	if (byte_offset)
+		offset = *byte_offset;
+	else
+		offset = 0;
+	count = file->size - offset;
+	if (count > length)
+		count = length;
+	DBGTRACE2("count: %u, offset: %u, length: %u", count, offset, length);
+	memcpy(buffer, ((void *)file->data) + offset, count);
+	iosb->status = STATUS_SUCCESS;
+	iosb->status_info = count;
 	TRACEEXIT2(return STATUS_SUCCESS);
 }
 

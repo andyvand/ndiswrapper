@@ -228,11 +228,12 @@ NDIS_STATUS miniport_init(struct wrap_ndis_device *wnd)
 		return NDIS_STATUS_FAILURE;
 	}
 	
-	miniport = &wnd->wd->driver->ndis_driver->miniport;
-	if (miniport->init == NULL) {
+	if (!wnd->wd->driver->ndis_driver ||
+	    !wnd->wd->driver->ndis_driver->miniport.init) {
 		ERROR("assuming WDM (non-NDIS) driver");
 		TRACEEXIT1(return NDIS_STATUS_SUCCESS);
 	}
+	miniport = &wnd->wd->driver->ndis_driver->miniport;
 	thread = wrap_create_thread(get_current());
 	if (!thread) {
 		ERROR("couldn't allocate thread object");
@@ -1063,7 +1064,7 @@ int suspend_ndis_device(struct wrap_ndis_device *wnd, pm_message_t state)
 	hangcheck_del(wnd);
 	stats_timer_del(wnd);
 	/* not all device support other than D3, so force it */
-	status = pnp_set_power_state(wnd->wd->pdo, PowerDeviceD3);
+	status = pnp_set_power_state(wnd->wd, PowerDeviceD3);
 	DBGTRACE2("suspending returns %08X", status);
 	if (status == STATUS_SUCCESS)
 		TRACEEXIT2(return 0);
@@ -1080,7 +1081,7 @@ int resume_ndis_device(struct wrap_ndis_device *wnd)
 	NTSTATUS status;
 	struct net_device *net_dev = wnd->net_dev;
 
-	status = pnp_set_power_state(wnd->wd->pdo, PowerDeviceD0);
+	status = pnp_set_power_state(wnd->wd, PowerDeviceD0);
 	if (status != STATUS_SUCCESS) {
 		WARNING("resuming device %s failed: %08x",
 			net_dev->name, status);
@@ -1527,6 +1528,7 @@ static NDIS_STATUS ndis_start_device(struct wrap_ndis_device *wnd)
 	DBGTRACE1("pool: %p", wnd->wrapper_buffer_pool);
 	miniport_set_int(wnd, OID_802_11_NETWORK_TYPE_IN_USE,
 			 Ndis802_11Automode);
+	miniport_set_int(wnd, OID_802_11_POWER_MODE, NDIS_POWER_OFF);
 	/* check_capa changes auth_mode and encr_mode, so set them again */
 	set_scan(wnd);
 	set_infra_mode(wnd, Ndis802_11Infrastructure);
@@ -1535,9 +1537,9 @@ static NDIS_STATUS ndis_start_device(struct wrap_ndis_device *wnd)
 	set_privacy_filter(wnd, Ndis802_11PrivFilterAcceptAll);
 
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
-	if (WRAP_BUS_TYPE(wnd->wd->dev_bus_type) == WRAP_PCI_BUS)
+	if (wrap_is_pci_bus(wnd->wd->dev_bus_type))
 		SET_NETDEV_DEV(net_dev, &wnd->wd->pci.pdev->dev);
-	if (WRAP_BUS_TYPE(wnd->wd->dev_bus_type) == WRAP_USB_BUS)
+	if (wrap_is_usb_bus(wnd->wd->dev_bus_type))
 		SET_NETDEV_DEV(net_dev, &wnd->wd->usb.intf->dev);
 #endif
 	wrap_procfs_add_ndis_device(wnd);
@@ -1553,7 +1555,7 @@ packet_pool_err:
 	kfree(wnd->xmit_array);
 	wnd->xmit_array = NULL;
 err_start:
-	remove_ndis_device(wd);
+	remove_ndis_device(wnd);
 	TRACEEXIT1(return NDIS_STATUS_FAILURE);
 }
 
@@ -1702,7 +1704,8 @@ int init_ndis_device(struct wrap_device *wd)
 	wnd->infrastructure_mode = Ndis802_11Infrastructure;
 	INIT_WORK(&wnd->wrap_ndis_worker, wrap_ndis_worker_proc, wnd);
 	set_bit(HW_AVAILABLE, &wnd->wd->hw_status);
-	wd->driver->ndis_driver->miniport.shutdown = NULL;
+	if (wd->driver->ndis_driver)
+		wd->driver->ndis_driver->miniport.shutdown = NULL;
 	/* ZyDas driver doesn't call completion function when
 	 * querying for stats or rssi, so disable stats */
 	if (stricmp(wd->driver->name, "zd1211u") == 0)
@@ -1712,29 +1715,16 @@ int init_ndis_device(struct wrap_device *wd)
 	TRACEEXIT1(return 0);
 }
 
-void remove_ndis_device(struct wrap_device *wd)
+void remove_ndis_device(struct wrap_ndis_device *wnd)
 {
-	struct wrap_ndis_device *wnd;
 	NTSTATUS status;
 
-	TRACEENTER1("%p", wd);
-	if (!wd || !wd->wnd)
+	TRACEENTER1("%p", wnd);
+	if (!wnd || !wnd->wd)
 		TRACEEXIT1(return);
-	wnd = wd->wnd;
-	if (!test_bit(HW_RMMOD, &wd->hw_status))
+	if (!test_bit(HW_RMMOD, &wnd->wd->hw_status))
 		miniport_pnp_event(wnd, NdisDevicePnPEventSurpriseRemoved);
-	status = pnp_stop_device(wd->pdo);
-	if (status != STATUS_SUCCESS) {
-		WARNING("couldn't stop deice %s (%08X)",
-			wnd->net_dev->name, status);
-		TRACEEXIT2(return);
-	}
-	status = pnp_remove_device(wnd->wd->pdo);
-	if (status != STATUS_SUCCESS) {
-		WARNING("couldn't stop deice %s (%08X)",
-			wnd->net_dev->name, status);
-		/* ignore status? */
-	}
+	status = pnp_stop_remove_device(wnd->wd);
 	free_netdev(wnd->net_dev);
 	TRACEEXIT1(return);
 }
