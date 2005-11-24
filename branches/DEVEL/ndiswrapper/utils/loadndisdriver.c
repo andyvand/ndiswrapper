@@ -375,13 +375,13 @@ static int duplicate_device(struct load_device *device, int n,
 }
 
 /* add all devices (based on conf files) for a given driver */
-static int add_driver_devices(DIR *dir, char *driver_name,
+static int add_driver_devices(DIR *dir, char *driver_name, int from,
 			      struct load_device devices[])
 {
 	struct dirent *dirent;
 	int n;
 
-	n = 0;
+	n = from;
 	if (!dir || !driver_name) {
 		ERROR("invalid driver");
 		return n;
@@ -391,6 +391,11 @@ static int add_driver_devices(DIR *dir, char *driver_name,
 	while ((dirent = readdir(dir))) {
 		int len;
 
+		if (n >= MAX_WRAP_DEVICES) {
+			ERROR("too many devices; increase MAX_WRAP_DEVICES "
+			      "in ndiswrapper.h and recompile");
+			break;
+		}
 		if (strcmp(dirent->d_name, ".") == 0 ||
 		    strcmp(dirent->d_name, "..") == 0)
 			continue;
@@ -449,7 +454,7 @@ static int add_driver_devices(DIR *dir, char *driver_name,
 			}
 		}
 	}
-	DBG("number of devices in %s: %d", driver_name, n);
+	DBG("number of devices in %s: %d", driver_name, n - from);
 	return n;
 }
 
@@ -508,8 +513,8 @@ static int load_all_devices(int ioctl_device)
 			closedir(driver);
 			continue;
 		}
-		loaded += add_driver_devices(driver, dirent->d_name,
-					    &devices[loaded]);
+		loaded = add_driver_devices(driver, dirent->d_name, loaded,
+					    devices);
 		chdir("..");
 		closedir(driver);
 	}
