@@ -32,6 +32,8 @@
 #define WRAP_PCI_BUS 5
 #define WRAP_PCMCIA_BUS 8
 #define WRAP_USB_BUS_OLD 0
+/* documentation at msdn says 15 is PNP bus, but inf files from all
+ * vendors say 15 is USB; which is correct? */
 #define WRAP_USB_BUS 15
 
 /* NDIS device must be 0, for compatability with old versions of

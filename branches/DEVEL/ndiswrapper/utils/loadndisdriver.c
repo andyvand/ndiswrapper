@@ -154,8 +154,7 @@ static int read_conf_file(char *conf_file_name, struct load_driver *driver)
 	char setting_name[MAX_SETTING_NAME_LEN];
 	char setting_value[MAX_SETTING_VALUE_LEN];
 	int ret, nr_settings;
-	int i, vendor, device, subvendor, subdevice, dev_bus_type,
-		conf_bus_type;
+	int i, vendor, device, subvendor, subdevice, bus_type;
 
 	if (lstat(conf_file_name, &statbuf)) {
 		ERROR("unable to open config file: %s", strerror(errno));
@@ -163,12 +162,12 @@ static int read_conf_file(char *conf_file_name, struct load_driver *driver)
 	}
 
 	if (sscanf(conf_file_name, "%04X:%04X.%X.conf",
-		   &vendor, &device, &dev_bus_type) == 3) {
-		DBG("dev_bus_type: %X", dev_bus_type);
+		   &vendor, &device, &bus_type) == 3) {
+		DBG("bus_type: %X", bus_type);
 	} else if (sscanf(conf_file_name, "%04X:%04X:%04X:%04X.%X.conf",
 			  &vendor, &device, &subvendor, &subdevice,
-			  &dev_bus_type) == 5) {
-		DBG("dev_bus_type: %X", dev_bus_type);
+			  &bus_type) == 5) {
+		DBG("bus_type: %X", bus_type);
 	} else {
 		ERROR("unable to parse conf file name %s (%d)",
 		      conf_file_name, i);
@@ -193,14 +192,6 @@ static int read_conf_file(char *conf_file_name, struct load_driver *driver)
 		if (ret < 0)
 			return -EINVAL;
 
-		if (strcmp(setting_name, "BusType") == 0) {
-			conf_bus_type = strtol(setting_value, NULL, 10);
-			if (dev_bus_type != conf_bus_type) {
-				ERROR("invalid bustype: %X(%X)",
-				      dev_bus_type, conf_bus_type);
-				return -EINVAL;
-			}
-		}
 		setting = &driver->settings[nr_settings];
 		strncpy(setting->name, setting_name, MAX_SETTING_NAME_LEN);
 		strncpy(setting->value, setting_value, MAX_SETTING_VALUE_LEN);
@@ -214,11 +205,6 @@ static int read_conf_file(char *conf_file_name, struct load_driver *driver)
 	}
 
 	fclose(config);
-
-	if (conf_bus_type == -1) {
-		ERROR("coudn't find device type in settings");
-		return -EINVAL;
-	}			
 
 	driver->nr_settings = nr_settings;
 	return 0;
@@ -419,9 +405,9 @@ static int add_driver_devices(DIR *dir, char *driver_name, int from,
 			device = &devices[n];
 			if (strlen(s) >= 11 &&
 			    sscanf(s, "%04x:%04x.%X", &device->vendor,
-				   &device->device, &device->dev_bus_type) ==
+				   &device->device, &device->bus_type) ==
 			    3) {
-				DBG("dev_bus_type: %X", device->dev_bus_type);
+				DBG("bus_type: %X", device->bus_type);
 				device->subvendor = DEV_ANY_ID;
 				device->subdevice = DEV_ANY_ID;
 			} else if (strlen(s) >= 21 &&
@@ -429,7 +415,7 @@ static int add_driver_devices(DIR *dir, char *driver_name, int from,
 					  &device->vendor, &device->device,
 					  &device->subvendor,
 					  &device->subdevice,
-					  &device->dev_bus_type) == 5) {
+					  &device->bus_type) == 5) {
 				;
 			} else {
 				ERROR("file %s is not valid - ignored",
