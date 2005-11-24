@@ -48,19 +48,14 @@ static int debug;
 	directory only
 #endif
 
-#define ERROR(fmt, ...) do {					\
-		syslog(LOG_KERN | LOG_INFO, "%s: %s(%d): " fmt "\n",	\
-		       PROG_NAME, __FUNCTION__, __LINE__ , ## __VA_ARGS__); \
-	} while (0)
-#define INFO(fmt, ...) do {						\
-		syslog(LOG_KERN | LOG_INFO, "%s: %s(%d): " fmt "\n",	\
-		       PROG_NAME, __FUNCTION__, __LINE__ , ## __VA_ARGS__); \
-	} while (0)
+#define LOG_MSG(where, fmt, ...)					\
+	syslog(LOG_KERN | (where), "%s: %s(%d): " fmt "\n",		\
+	       PROG_NAME, __FUNCTION__, __LINE__ , ## __VA_ARGS__)
+#define ERROR(fmt, ...) LOG_MSG(LOG_INFO, fmt, ## __VA_ARGS__)
+#define INFO(fmt, ...) LOG_MSG(LOG_INFO, fmt, ## __VA_ARGS__)
+#define DBG(fmt, ...) LOG_MSG(LOG_INFO, fmt, ## __VA_ARGS__)
+#define WARN(fmt, ...) LOG_MSG(LOG_INFO, fmt, ## __VA_ARGS__)
 
-#define DBG(fmt, ...) do { if (debug)					\
-		syslog(LOG_KERN | LOG_INFO, "%s: %s(%d): " fmt "\n", \
-		       PROG_NAME, __FUNCTION__, __LINE__ , ## __VA_ARGS__); \
-	} while (0)
 
 /* load .sys or .bin file */
 static int load_file(char *filename, struct load_driver_file *driver_file)
@@ -287,8 +282,8 @@ static int load_driver(int ioctl_device, char *driver_name,
 			   ((strcmp(&dirent->d_name[len-4], ".bin") == 0) ||
 			     (strcmp(&dirent->d_name[len-4], ".out") == 0))) {
 			if (!strcmp(&dirent->d_name[len-10], "ar5523.bin")) {
-				WARNING("ar5523.bin is ignored - it should be "
-					"loaded with load_fw_ar5523");
+				WARN("ar5523.bin is ignored - it should be "
+				     "loaded with load_fw_ar5523");
 				continue;
 			}
 			if (load_file(dirent->d_name,
