@@ -682,7 +682,8 @@ int set_auth_mode(struct wrap_ndis_device *wnd, int auth_mode)
 	if (res == NDIS_STATUS_FAILURE)
 		return -EOPNOTSUPP;
 	if (res == NDIS_STATUS_INVALID_DATA) {
-		WARNING("setting auth mode failed (%08X)", res);
+		WARNING("setting auth mode to %d failed (%08X)",
+			auth_mode, res);
 		TRACEEXIT2(return -EINVAL);
 	} else {
 		wnd->auth_mode = auth_mode;
@@ -1460,10 +1461,10 @@ static int iw_get_range(struct net_device *dev, struct iw_request_info *info,
 	if (test_bit(Ndis802_11Encryption3Enabled, &wnd->capa.encr))
 		range->enc_capa |= IW_ENC_CAPA_CIPHER_CCMP;
 
-	if (test_bit(Ndis802_11AuthModeWPA, &wnd->capa.encr))
+	if (test_bit(Ndis802_11AuthModeWPA, &wnd->capa.auth))
 		range->enc_capa |= IW_ENC_CAPA_WPA;
-	if (test_bit(Ndis802_11AuthModeWPA2, &wnd->capa.encr) ||
-	    test_bit(Ndis802_11AuthModeWPA2PSK, &wnd->capa.encr))
+	if (test_bit(Ndis802_11AuthModeWPA2, &wnd->capa.auth) ||
+	    test_bit(Ndis802_11AuthModeWPA2PSK, &wnd->capa.auth))
 		range->enc_capa |= IW_ENC_CAPA_WPA2;
 #endif /* WIRELESS_EXT > 17 */
 
@@ -2102,12 +2103,11 @@ static int wpa_associate(struct net_device *dev, struct iw_request_info *info,
 
 	/* setting the mode here clears the keys set earlier, so
 	 * ignore this request */
-	/*
+
 	if (wpa_assoc_info.mode == IEEE80211_MODE_IBSS)
 		set_infra_mode(wnd, Ndis802_11IBSS);
 	else
 		set_infra_mode(wnd, Ndis802_11Infrastructure);
-	*/
 
 	DBGTRACE2("key_mgmt_suite = %d, pairwise_suite = %d, group_suite= %d",
 		  wpa_assoc_info.key_mgmt_suite,

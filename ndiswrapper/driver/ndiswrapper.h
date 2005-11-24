@@ -30,13 +30,27 @@
 #define MAX_STR_LEN 512
 
 #define WRAP_PCI_BUS 5
-#define WRAP_USB_BUS 0
+#define WRAP_PCMCIA_BUS 8
+#define WRAP_USB_BUS_OLD 0
+/* documentation at msdn says 15 is PNP bus, but inf files from all
+ * vendors say 15 is USB; which is correct? */
+#define WRAP_USB_BUS 15
 
-#define NDIS_DEVICE 0
+/* NDIS device must be 0, for compatability with old versions of
+ * ndiswrapper where device type for NDIS drivers is 0 */
+#define WRAP_NDIS_DEVICE 0
+#define WRAP_USB_DEVICE 1
 
 #define WRAP_DEVICE_BUS_TYPE(dev, bus) ((dev) << 8 | (bus))
-#define WRAP_BUS_TYPE(dev_bus_type) (dev_bus_type & 0x000FF)
-#define WRAP_DEVICE_TYPE(dev_bus_type) (dev_bus_type & 0xFF00)
+#define WRAP_BUS_TYPE(dev_bus_type) ((dev_bus_type) & 0x000FF)
+#define WRAP_DEVICE_TYPE(dev_bus_type) ((dev_bus_type) >> 8)
+
+#define wrap_is_pci_bus(dev_bus_type)				\
+	(WRAP_BUS_TYPE(dev_bus_type) == WRAP_PCI_BUS ||		\
+	 WRAP_BUS_TYPE(dev_bus_type) == WRAP_PCMCIA_BUS)
+#define wrap_is_usb_bus(dev_bus_type)				\
+	(WRAP_BUS_TYPE(dev_bus_type) == WRAP_USB_BUS ||		\
+	 WRAP_BUS_TYPE(dev_bus_type) == WRAP_USB_BUS_OLD)
 
 #define MAX_DRIVER_NAME_LEN 32
 #define MAX_VERSION_STRING_LEN 64

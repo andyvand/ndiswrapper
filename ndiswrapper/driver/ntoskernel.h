@@ -940,7 +940,6 @@ extern int debug;
 #define DBGTRACE6(fmt, ...) DBGTRACE(6, fmt , ## __VA_ARGS__)
 #endif
 
-#define TRACEENTER(fmt, ...) DBGTRACE("Enter " fmt , ## __VA_ARGS__)
 #define TRACEENTER1(fmt, ...) DBGTRACE1("Enter " fmt , ## __VA_ARGS__)
 #define TRACEENTER2(fmt, ...) DBGTRACE2("Enter " fmt , ## __VA_ARGS__)
 #define TRACEENTER3(fmt, ...) DBGTRACE3("Enter " fmt , ## __VA_ARGS__)
@@ -948,7 +947,6 @@ extern int debug;
 #define TRACEENTER5(fmt, ...) DBGTRACE5("Enter " fmt , ## __VA_ARGS__)
 #define TRACEENTER6(fmt, ...) DBGTRACE6("Enter " fmt , ## __VA_ARGS__)
 
-#define TRACEEXIT(stmt) do { DBGTRACE("Exit"); stmt; } while(0)
 #define TRACEEXIT1(stmt) do { DBGTRACE1("Exit"); stmt; } while(0)
 #define TRACEEXIT2(stmt) do { DBGTRACE2("Exit"); stmt; } while(0)
 #define TRACEEXIT3(stmt) do { DBGTRACE3("Exit"); stmt; } while(0)

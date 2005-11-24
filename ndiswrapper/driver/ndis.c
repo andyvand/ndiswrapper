@@ -1141,8 +1141,7 @@ STDCALL void WRAP_EXPORT(NdisQueryBuffer)
 		*virt = MmGetMdlVirtualAddress(buffer);
 	if (length)
 		*length = MmGetMdlByteCount(buffer);
-	DBGTRACE4("%p, %u",
-		  MmGetMdlVirtualAddress(buffer), MmGetMdlByteCount(buffer));
+	DBGTRACE4("%p, %u", *virt, *length);
 	TRACEEXIT4(return);
 }
 
@@ -1155,8 +1154,7 @@ STDCALL void WRAP_EXPORT(NdisQueryBufferSafe)
 		*virt = MmGetMdlVirtualAddress(buffer);
 	if (length)
 		*length = MmGetMdlByteCount(buffer);
-	DBGTRACE4("%p, %u",
-		  MmGetMdlVirtualAddress(buffer), MmGetMdlByteCount(buffer));
+	DBGTRACE4("%p, %u", *virt, *length);
 }
 
 STDCALL void *WRAP_EXPORT(NdisBufferVirtualAddress)
@@ -2556,7 +2554,7 @@ STDCALL NDIS_STATUS WRAP_EXPORT(NdisMQueryAdapterInstanceName)
 	struct wrap_ndis_device *wnd = nmb->wnd;
 	struct ansi_string ansi_string;
 
-	if (WRAP_BUS_TYPE(wnd->wd->dev_bus_type) == WRAP_PCI_BUS)
+	if (wrap_is_pci_bus(wnd->wd->dev_bus_type))
 		ansi_string.buf = "PCI Ethernet Adapter";
 	else
 		ansi_string.buf = "USB Ethernet Adapter";

@@ -84,7 +84,8 @@ STDCALL NTSTATUS WRAP_EXPORT(IoGetDeviceProperty)
 				IOEXIT(return STATUS_SUCCESS);
 			}
 		} else {
-			ansi.max_length = snprintf(buf, sizeof(buf), "%d", devnum);
+			ansi.max_length =
+				snprintf(buf, sizeof(buf), "%d", devnum);
 			*result_len = 2 * (ansi.max_length + 1);
 			IOEXIT(return STATUS_BUFFER_TOO_SMALL);
 		}
@@ -580,7 +581,6 @@ STDCALL struct io_workitem *WRAP_EXPORT(IoAllocateWorkItem)
 	io_workitem = kmalloc(sizeof(*io_workitem), GFP_ATOMIC);
 	if (!io_workitem)
 		IOEXIT(return NULL);
-
 	io_workitem->dev_obj = dev_obj;
 	IOEXIT(return io_workitem);
 }
@@ -605,10 +605,10 @@ STDCALL void WRAP_EXPORT(IoQueueWorkItem)
 	(struct io_workitem *io_workitem, void *func,
 	 enum work_queue_type queue_type, void *context)
 {
-	IOENTER("%p", io_workitem);
+	IOENTER("%p, %p", io_workitem, io_workitem->dev_obj);
 	io_workitem->worker_routine = func;
 	io_workitem->context = context;
-	schedule_wrap_work_item(func, io_workitem, context, TRUE);
+	schedule_wrap_work_item(func, io_workitem->dev_obj, context, TRUE);
 	IOEXIT(return);
 }
 
