@@ -23,6 +23,13 @@
 #include <linux/miscdevice.h>
 #include <asm/uaccess.h>
 
+/*
+  Network adapter: ClassGuid = {4d36e972-e325-11ce-bfc1-08002be10318}
+  Network client: ClassGuid = {4d36e973-e325-11ce-bfc1-08002be10318}
+  PCMCIA adapter: ClassGuid = {4d36e977-e325-11ce-bfc1-08002be10318}
+  USB: ClassGuid = {36fc9e60-c465-11cf-8056-444553540000}
+*/
+
 /* the indices used here must match macros WRAP_NDIS_DEVICE etc. */
 static struct guid class_guids[] = {
 	/* Network */
@@ -292,7 +299,6 @@ static int load_settings(struct wrap_driver *wrap_driver,
 	}
 
 	nr_settings = 0;
-	wd->dev_bus_type = 0;
 	for (i = 0; i < load_driver->nr_settings; i++) {
 		struct load_device_setting *load_setting =
 			&load_driver->settings[i];
@@ -314,14 +320,7 @@ static int load_settings(struct wrap_driver *wrap_driver,
 		if (strcmp(setting->name, "driver_version") == 0)
 			memcpy(wrap_driver->version, setting->value,
 			       sizeof(wrap_driver->version));
-		else if (strcmp(setting->name, "BusType") == 0 &&
-		    (sscanf(setting->value, "%X", &data1) == 1)) {
-			int dev_type = WRAP_DEVICE_TYPE(wd->dev_bus_type);
-			wd->dev_bus_type =
-				WRAP_DEVICE_BUS_TYPE(dev_type, data1);
-			DBGTRACE2("data1: %x, dev type: %x, new: %x\n",
-				  data1, dev_type, wd->dev_bus_type);
-		} else if (strcmp(setting->name, "class_guid") == 0 &&
+		else if (strcmp(setting->name, "class_guid") == 0 &&
 			   (sscanf(setting->value, "%x", &data1) == 1)) {
 			int bus_type = WRAP_BUS_TYPE(wd->dev_bus_type);
 			int dev_type = wrap_device_type(data1);
@@ -544,14 +543,14 @@ static int register_devices(struct load_devices *load_devices)
 
 	num_pci = num_usb = 0;
 	for (i = 0; i < load_devices->count; i++)
-		if (wrap_is_pci_bus(devices[i].dev_bus_type))
+		if (wrap_is_pci_bus(devices[i].bus_type))
 			num_pci++;
-		else if (wrap_is_usb_bus(devices[i].dev_bus_type))
+		else if (wrap_is_usb_bus(devices[i].bus_type))
 			num_usb++;
 		else
 			WARNING("bus type %d (%d) for %s is not valid",
-				devices[i].dev_bus_type,
-				WRAP_BUS_TYPE(devices[i].dev_bus_type),
+				devices[i].bus_type,
+				WRAP_BUS_TYPE(devices[i].bus_type),
 				devices[i].conf_file_name);
 	num_wrap_devices = num_pci + num_usb;
 	if (num_pci > 0) {
@@ -590,22 +589,23 @@ static int register_devices(struct load_devices *load_devices)
 	num_usb = num_pci = 0;
 	for (i = 0; i < load_devices->count; i++) {
 		struct load_device *device = &devices[i];
-		struct wrap_device *wrap_device;
+		struct wrap_device *wd;
 
-		wrap_device = &wrap_devices[num_pci + num_usb];
-		InitializeListHead(&wrap_device->settings);
-		strncpy(wrap_device->driver_name, device->driver_name,
-			sizeof(wrap_device->driver_name));
-		memcpy(&wrap_device->conf_file_name, device->conf_file_name,
-		       sizeof(wrap_device->conf_file_name));
-		wrap_device->dev_bus_type = device->dev_bus_type;
+		wd = &wrap_devices[num_pci + num_usb];
+		InitializeListHead(&wd->settings);
+		strncpy(wd->driver_name, device->driver_name,
+			sizeof(wd->driver_name));
+		memcpy(&wd->conf_file_name, device->conf_file_name,
+		       sizeof(wd->conf_file_name));
+		wd->dev_bus_type =
+			WRAP_DEVICE_BUS_TYPE(0, device->bus_type);
 
-		wrap_device->vendor = device->vendor;
-		wrap_device->device = device->device;
-		wrap_device->subvendor = device->subvendor;
-		wrap_device->subdevice = device->subdevice;
+		wd->vendor = device->vendor;
+		wd->device = device->device;
+		wd->subvendor = device->subvendor;
+		wd->subdevice = device->subdevice;
 
-		if (wrap_is_pci_bus(device->dev_bus_type)) {
+		if (wrap_is_pci_bus(device->bus_type)) {
 			wrap_pci_devices[num_pci].vendor = device->vendor;
 			wrap_pci_devices[num_pci].device = device->device;
 			if (device->subvendor == DEV_ANY_ID)
@@ -630,7 +630,7 @@ static int register_devices(struct load_devices *load_devices)
 				  device->driver_name, num_pci);
 			num_pci++;
 #ifdef CONFIG_USB
-		} else if (wrap_is_usb_bus(device->dev_bus_type)) {
+		} else if (wrap_is_usb_bus(device->bus_type)) {
 			wrap_usb_devices[num_usb].idVendor = device->vendor;
 			wrap_usb_devices[num_usb].idProduct = device->device;
 			wrap_usb_devices[num_usb].match_flags =
@@ -644,7 +644,7 @@ static int register_devices(struct load_devices *load_devices)
 #endif
 		} else {
 			ERROR("type %d not supported: %s",
-			      device->dev_bus_type, device->conf_file_name);
+			      device->bus_type, device->conf_file_name);
 		}
 	}
 
