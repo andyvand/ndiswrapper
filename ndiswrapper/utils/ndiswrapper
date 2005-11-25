@@ -1,4 +1,4 @@
-#!/usr/bin/perl
+#!/usr/bin/perl -d
 
 #/*
 #*  Copyright (C) 2005 Pontus Fuchs, Giridhar Pemmasani
@@ -635,14 +635,17 @@ sub copyfiles {
 	my $line = $lines[$i];
 	$line = trim($line);
 
-	last if (!$line);
 	last if ($line =~ /^\[/);
 	my @files = split(",", $line);
 	for (my $j = 0; $j < @files; $j++) {
 	    my $file = $files[$j];
-	    copy_file($file);
+	    $file = trim($file);
+	    if ($file and length($file) > 0) {
+		copy_file($file);
+	    }
 	}
     }
+    return 0;
 }
 
 sub copy_file {
