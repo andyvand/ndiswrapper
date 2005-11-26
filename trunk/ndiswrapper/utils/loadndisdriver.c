@@ -474,10 +474,11 @@ static int load_all_devices(int ioctl_device)
 		if (stat(dirent->d_name, &statbuf) ||
 		    (!S_ISDIR(statbuf.st_mode)))
 			continue;
-		if (strcmp(dirent->d_name, "athfmwdl") == 0) {
-			ERROR("atfmwdl dirver is ignored - the firmware of "
+		if ((strcmp(dirent->d_name, "athfmwdl") == 0) ||
+		    (strcmp(dirent->d_name, "athwpn") == 0)) {
+			ERROR("%s dirver is ignored - the firmware of "
 			      "this driver should be loaded with "
-			      "load_fw_ar5523");
+			      "load_fw_ar5523", dirent->d_name);
 			continue;
 		}
 		if ((driver = opendir(dirent->d_name)) == NULL) {
