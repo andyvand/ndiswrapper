@@ -1,4 +1,4 @@
-#!/usr/bin/perl -d
+#!/usr/bin/perl
 
 #/*
 #*  Copyright (C) 2005 Pontus Fuchs, Giridhar Pemmasani
@@ -775,7 +775,7 @@ sub addReg {
 		$gotParam = 1;
 	    }
 
-	    if ($gotParam and $param ne "") {
+	    if ($gotParam and $param ne "" and $param ne "BusType") {
 		my $s = "$param|$val";
 		if ($param_fixlist{"$s"}) {
 		    my $sOld = $s;
@@ -904,10 +904,9 @@ sub loadinf {
 	$s =~ s/\xff\xfe//;
 	$s =~ s/\0//g;
 
-	$s = remComment($s);
 	$s =~ s/\s*$//;	#Remove trailing whitespace and \r
 	$s .= "\n";
-	if ($s =~ /^\[(.+)\]$/) {
+	if ($s =~ /^\[(.+)\]/) {
 	    $sections[$i++] = $section;		
 	    my %new_section;
 	    $section = \%new_section;
