@@ -31,6 +31,7 @@
 #include <syslog.h>
 #include <stdlib.h>
 
+#include <linux/major.h>
 #include <linux/ioctl.h>
 
 #include "../driver/loader.h"
@@ -55,7 +56,6 @@ static int debug;
 #define INFO(fmt, ...) LOG_MSG(LOG_INFO, fmt, ## __VA_ARGS__)
 #define DBG(fmt, ...) LOG_MSG(LOG_INFO, fmt, ## __VA_ARGS__)
 #define WARN(fmt, ...) LOG_MSG(LOG_INFO, fmt, ## __VA_ARGS__)
-
 
 /* load .sys or .bin file */
 static int load_file(char *filename, struct load_driver_file *driver_file)
@@ -538,7 +538,7 @@ static int get_ioctl_device()
 	minor_dev = -1;
 	while (fgets(line, sizeof(line), proc_misc)) {
 		if (strstr(line, DRIVER_NAME)) {
-			long i = strtol(line, 0, 10);
+			long i = strtol(line, NULL, 10);
 			if (i != LONG_MAX && i != LONG_MIN) {
 				minor_dev = i;
 				break;
@@ -554,7 +554,8 @@ static int get_ioctl_device()
 	}
 
 	unlink(ioctl_file);
-	if (mknod(ioctl_file, S_IFCHR | 0600, 10 << 8 | minor_dev) == -1) {
+	if (mknod(ioctl_file, S_IFCHR | 0600, MISC_MAJOR << 8 | minor_dev) ==
+	    -1) {
 		ERROR("couldn't create file %s: %s",
 		      ioctl_file, strerror(errno));
 		return -1;

@@ -721,9 +721,6 @@ static int wrapper_ioctl(struct inode *inode, struct file *file,
 		res = copy_from_user(&devices, (void *)arg, sizeof(devices));
 		if (!res)
 			res = register_devices(&devices);
-		if (res)
-			TRACEEXIT1(return -EINVAL);
-		TRACEEXIT1(return 0);
 		break;
 	case WRAP_LOAD_DRIVER:
 		DBGTRACE1("loading driver at %p", (void *)arg);
@@ -735,18 +732,16 @@ static int wrapper_ioctl(struct inode *inode, struct file *file,
 		if (!res)
 			res = load_user_space_driver(load_driver);
 		vfree(load_driver);
-		if (res)
-			TRACEEXIT1(return -EINVAL);
-		else
-			TRACEEXIT1(return 0);
 		break;
 	default:
 		ERROR("Unknown ioctl %u", cmd);
-		TRACEEXIT1(return -EINVAL);
+		res = -EINVAL;
 		break;
 	}
-
-	TRACEEXIT1(return 0);
+	if (res)
+		TRACEEXIT1(return -EINVAL);
+	else
+		TRACEEXIT1(return 0);
 }
 
 static int wrapper_ioctl_release(struct inode *inode, struct file *file)

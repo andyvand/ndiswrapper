@@ -545,8 +545,9 @@ sub parseDevice {
     my @lines = split("\n", $dev->{data});
 
     for (my $i = 0; $i < @lines; $i++) {
-	my $line = trim($lines[$i]);
+	my $line = $lines[$i];
 	$line =~ s/^;\s*//;
+	$line = trim(remComment($line));
 	(my $key, my $val) = getKeyVal($line, "=");
 	if ($key) {
 	    if (lc($key) eq "addreg") {
