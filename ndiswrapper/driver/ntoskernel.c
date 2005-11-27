@@ -2233,8 +2233,8 @@ STDCALL NTSTATUS WRAP_EXPORT(ZwCreateFile)
 	}
 	kspin_unlock_irql(&ntoskernel_lock, irql);
 
-	oa = allocate_object(sizeof(struct object_attr),
-			     OBJECT_TYPE_FILE, obj_attr->name);
+	oa = allocate_object(sizeof(struct object_attr), OBJECT_TYPE_FILE,
+			     obj_attr->name);
 	*handle = OBJECT_TO_HEADER(oa);
 	DBGTRACE2("handle: %p", *handle);
 	file_basename = strrchr(ansi.buf, '\\');
@@ -2289,9 +2289,7 @@ STDCALL NTSTATUS WRAP_EXPORT(ZwReadFile)
 		offset = *byte_offset;
 	else
 		offset = 0;
-	count = file->size - offset;
-	if (count > length)
-		count = length;
+	count = min(length, file->size - offset);
 	DBGTRACE2("count: %u, offset: %u, length: %u", count, offset, length);
 	memcpy(buffer, ((void *)file->data) + offset, count);
 	iosb->status = STATUS_SUCCESS;
