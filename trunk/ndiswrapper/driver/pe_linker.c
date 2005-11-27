@@ -15,17 +15,14 @@
 
 #ifdef TEST_LOADER
 
-#include <stdio.h>
-#include <stdint.h>
-#include <string.h>
-#include <linux/types.h>
-#include <asm/errno.h>
-#include <asm/pgtable.h>
+#include "usr_linker.h"
 
 #else
 
 #include <linux/types.h>
 #include <asm/errno.h>
+
+//#define DEBUGLINKER 2
 
 #include "ntoskernel.h"
 
@@ -72,13 +69,7 @@ static const char *image_directory_name[] = {
 #define DBGLINKER(fmt, ...) do { } while (0)
 #endif
 
-#ifdef TEST_LOADER
-#define WRAP_EXPORT_FUNC char *
-static WRAP_EXPORT_FUNC get_export(char *name)
-{
-	return name;
-}
-#else
+#ifndef TEST_LOADER
 extern struct wrap_export ntoskernel_exports[], ntoskernel_io_exports[],
        ndis_exports[], misc_funcs_exports[], hal_exports[];
 #ifdef CONFIG_USB
@@ -244,16 +235,14 @@ static int import(void *image, IMAGE_IMPORT_DESCRIPTOR *dirent, char *dll)
 		}
 
 		adr = get_export(symname);
-		if (adr != NULL)
-			DBGLINKER("found symbol: %s:%s, rva = %Lu",
-				  dll, symname, (uint64_t)address_tbl[i]);
 		if (adr == NULL) {
-			ERROR("unknown symbol: %s:%s", dll, symname);
+			ERROR("unknown symbol: %s:'%s'", dll, symname);
 			ret = -1;
+		} else {
+			DBGLINKER("found symbol: %s:%s: addr: %p, rva = %Lu",
+				  dll, symname, adr, (uint64_t)address_tbl[i]);
+			address_tbl[i] = (ULONG_PTR)adr;
 		}
-		DBGLINKER("importing rva: %p, %p: %s : %s",
-			  (void *)(address_tbl[i]), adr, dll, symname);
-		address_tbl[i] = (ULONG_PTR)adr;
 	}
 	return ret;
 }

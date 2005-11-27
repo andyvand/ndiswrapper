@@ -718,6 +718,7 @@ void *wrap_pnp_start_usb_device(struct usb_device *udev,
 #endif
 		ret = wrap_pnp_start_device(wd);
 	}
+	DBGTRACE2("ret: %d", ret);
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
 	if (ret)
 		return -EINVAL;
@@ -737,6 +738,8 @@ void wrap_pnp_remove_usb_device(struct usb_interface *intf)
 	struct wrap_device *wd;
 	TRACEENTER1("%p", intf);
 	wd = (struct wrap_device *)usb_get_intfdata(intf);
+	if (wd == NULL)
+		TRACEEXIT1(return);
 	usb_set_intfdata(intf, NULL);
 	wd->usb.intf = NULL;
 	if (WRAP_DEVICE_TYPE(wd->dev_bus_type) == WRAP_NDIS_DEVICE)
@@ -753,6 +756,8 @@ void wrap_pnp_remove_usb_device(struct usb_device *udev,
 {
 	TRACEENTER1("%p", wd);
 	struct usb_interface *intf = wd->usb.intf;
+	if (wd == NULL)
+		TRACEEXIT1(return);
 	wd->usb.intf = NULL;
 	if (WRAP_DEVICE_TYPE(wd->dev_bus_type) == WRAP_NDIS_DEVICE) {
 		remove_ndis_device(wd->wnd);
