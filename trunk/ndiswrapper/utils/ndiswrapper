@@ -21,6 +21,7 @@
 use Fcntl ':mode';
 use File::Basename;
 use File::Copy;
+use File::Path;
 
 my $WRAP_PCI_BUS = 5;
 my $WRAP_PCMCIA_BUS = 8;
@@ -158,7 +159,7 @@ sub remove {
 	  "Use -l to list installed drivers\n";
 	return;
     }
-    system("rm -rf $confdir/$name");
+    rmtree("$confdir/$name", 0, 1);
 }
 
 sub devid_driver {
@@ -174,7 +175,7 @@ sub devid_driver {
     open(LS, "ls -1 $confdir/$driver/ |");
     while (my $f = <LS>) {
 	chomp($f);
-	if ($f =~ /\.([0-9]+).conf$/) {
+	if ($f =~ /\.([0-9A-F]+).conf$/) {
 	    symlink("$f", "$confdir/$driver/$devid.$1.conf");
 	    print "Driver '$driver' is used for '$devid'\n";
 	    $done = 1;
