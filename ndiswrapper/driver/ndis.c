@@ -1660,9 +1660,9 @@ STDCALL BOOLEAN WRAP_EXPORT(NdisMSynchronizeWithInterrupt)
 }
 
 /* called via function pointer */
-STDCALL void
-NdisMIndicateStatus(struct ndis_miniport_block *nmb, NDIS_STATUS status,
-		    void *buf, UINT len)
+STDCALL void WRAP_EXPORT(NdisMIndicateStatus)
+	(struct ndis_miniport_block *nmb, NDIS_STATUS status,
+	 void *buf, UINT len)
 {
 	struct wrap_ndis_device *wnd = nmb->wnd;
 	struct ndis_status_indication *si;
@@ -1793,7 +1793,8 @@ NdisMIndicateStatus(struct ndis_miniport_block *nmb, NDIS_STATUS status,
 }
 
 /* called via function pointer */
-STDCALL void NdisMIndicateStatusComplete(struct ndis_miniport_block *nmb)
+STDCALL void WRAP_EXPORT(NdisMIndicateStatusComplete)
+	(struct ndis_miniport_block *nmb)
 {
 	struct wrap_ndis_device *wnd = nmb->wnd;
 	TRACEENTER2("%p", wnd);
