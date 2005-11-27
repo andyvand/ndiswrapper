@@ -41,8 +41,10 @@ struct {
 	int product_id;
 } devices[] = {
 	/* D-Link DWL-G132 */
+	{0x2001, 0x3a01},
 	{0x2001, 0x3a03},
 	/* Netgear WG111U */
+	{0x0cde, 0x0013},
 	{0x0846, 0x4301},
 	/* Netgear WG111T */
 	{0x1385, 0x4251},
@@ -50,7 +52,6 @@ struct {
 	{0x1385, 0x5f01},
 	/* Trendnet TEW-444UB/504UB */
 	{0x157e, 0x3206},
-	/* Trendnet TEW-444UB/504UB */
 	{0x157e, 0x3007},
 	/* end */
 	{-1, -1},

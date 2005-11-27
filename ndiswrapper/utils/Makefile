@@ -12,7 +12,7 @@ CFLAGS = -Wall -DUTILS_VERSION=\"$(UTILS_VERSION)\"
 DISTFILES=Makefile ndiswrapper loadndisdriver.c $(FW_AR5523).c \
 				   ndiswrapper-buginfo
 
-all: loadndisdriver 
+all: loadndisdriver
 
 loadndisdriver: loadndisdriver.c
 	$(CC) $(CFLAGS) -o $@ $<
@@ -21,14 +21,15 @@ $(FW_AR5523): $(FW_AR5523).c
 	@if :; then \
 		USB_LIBS="$(shell libusb-config --libs)"; \
 		if [ -z "$$USB_LIBS" ]; then \
-			   echo "USB programming library is not installed; it is needed";\
-			   echo "for compiling $(FW_AR5523). You can get this library"; \
-			   echo "at http://libusb.sourceforge.net"; \
-			   exit 1; \
+			   echo "** USB programming library is not installed; "\
+			        "it is needed for compiling $(FW_AR5523). You can"\
+					"get this library at http://libusb.sourceforge.net. "\
+					"$(FW_AR5523) is required for loading firmware for "\
+					"Atheros USB driver."; \
 		fi; \
 		cmd="gcc -Wall -o $@ $< $$USB_LIBS"; \
 		echo "$$cmd"; \
-		$$cmd; \
+		$$cmd ; \
 	fi
 
 clean:
