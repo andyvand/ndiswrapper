@@ -371,7 +371,8 @@ static int add_driver_devices(DIR *dir, char *driver_name, int from,
 
 		if (n >= MAX_WRAP_DEVICES) {
 			ERROR("too many devices; increase MAX_WRAP_DEVICES "
-			      "in ndiswrapper.h and recompile");
+			      "in ndiswrapper.h and recompile or remove "
+			      "unnecessary .conf files under '%s'", confdir);
 			break;
 		}
 		if (strcmp(dirent->d_name, ".") == 0 ||
@@ -397,8 +398,7 @@ static int add_driver_devices(DIR *dir, char *driver_name, int from,
 			device = &devices[n];
 			if (strlen(s) >= 11 &&
 			    sscanf(s, "%04x:%04x.%X", &device->vendor,
-				   &device->device, &device->bus_type) ==
-			    3) {
+				   &device->device, &device->bus_type) == 3) {
 				DBG("bus_type: %X", device->bus_type);
 				device->subvendor = DEV_ANY_ID;
 				device->subdevice = DEV_ANY_ID;
@@ -408,7 +408,7 @@ static int add_driver_devices(DIR *dir, char *driver_name, int from,
 					  &device->subvendor,
 					  &device->subdevice,
 					  &device->bus_type) == 5) {
-				;
+				DBG("bus_type: %X", device->bus_type);
 			} else {
 				ERROR("file %s is not valid - ignored",
 				      dirent->d_name);
@@ -466,7 +466,7 @@ static int load_all_devices(int ioctl_device)
 		return -EINVAL;
 	}
 	loaded = 0;
-	while((dirent = readdir(dir))) {
+	while ((dirent = readdir(dir))) {
 		if (strcmp(dirent->d_name, ".") == 0 ||
 		    strcmp(dirent->d_name, "..") == 0)
 			continue;

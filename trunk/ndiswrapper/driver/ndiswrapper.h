@@ -48,8 +48,10 @@
 
 #define wrap_is_pci_bus(dev_bus_type)				\
 	(WRAP_BUS_TYPE(dev_bus_type) == WRAP_PCI_BUS)
+/* earlier versions of ndiswrapper used 0 as USB_BUS */
 #define wrap_is_usb_bus(dev_bus_type)				\
-	(WRAP_BUS_TYPE(dev_bus_type) == WRAP_USB_BUS)
+	(WRAP_BUS_TYPE(dev_bus_type) == WRAP_USB_BUS ||		\
+	 WRAP_BUS_TYPE(dev_bus_type) == 0)
 
 #define MAX_DRIVER_NAME_LEN 32
 #define MAX_VERSION_STRING_LEN 64

@@ -1078,23 +1078,12 @@ static USBD_STATUS wrap_get_port_status(struct irp *irp)
 	return USBD_STATUS_SUCCESS;
 }
 
-static USBD_STATUS wrap_submit_idle_notification(struct irp *irp)
-{
-	struct io_stack_location *irp_sl;
-	struct usbd_idle_callback *idle_callback;
-
-	/* TODO: register suspend function */
-	irp_sl = IoGetCurrentIrpStackLocation(irp);
-	idle_callback = irp_sl->params.ioctl.type3_input_buf;
-	USBTRACE("suspend function: %p", idle_callback->callback);
-	return USBD_STATUS_SUCCESS;
-}
-
 NTSTATUS wrap_submit_irp(struct device_object *pdo, struct irp *irp)
 {
 	struct io_stack_location *irp_sl;
 	struct wrap_device *wd;
 	USBD_STATUS status;
+	struct usbd_idle_callback *idle_callback;
 
 	irp_sl = IoGetCurrentIrpStackLocation(irp);
 	wd = pdo->reserved;
@@ -1111,7 +1100,9 @@ NTSTATUS wrap_submit_irp(struct device_object *pdo, struct irp *irp)
 		status = wrap_get_port_status(irp);
 		break;
 	case IOCTL_INTERNAL_USB_SUBMIT_IDLE_NOTIFICATION:
-		status = wrap_submit_idle_notification(irp);
+		idle_callback = irp_sl->params.ioctl.type3_input_buf;
+		USBTRACE("suspend function: %p", idle_callback->callback);
+		status = USBD_STATUS_NOT_SUPPORTED;
 		break;
 	default:
  		ERROR("ioctl %08X NOT IMPLEMENTED", irp_sl->params.ioctl.code);
