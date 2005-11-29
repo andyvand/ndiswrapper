@@ -1,28 +1,16 @@
-/* This program is provided under the following conditions
+/*
+ *  Copyright (C) 2005 Laurent Goujon, Giridhar Pemmasani
  *
- * Copyright (c) Laurent Goujon - 2005
- * All rights reserved.
+ *  This program is free software; you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation; either version 2 of the License, or
+ *  (at your option) any later version.
  *
- * Redistribution and use in source and binary forms, with or without
- * modification, are permitted provided that the following conditions
- * are met:
- * 1. Redistributions of source code must retain the above copyright
- *    notice, this list of conditions and the following disclaimer.
- * 2. Redistributions in binary form must reproduce the above copyright
- *    notice, this list of conditions and the following disclaimer in the
- *    documentation and/or other materials provided with the distribution.
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
  *
- * THIS SOFTWARE IS PROVIDED BY THE AUTHOR ``AS IS'' AND
- * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
- * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
- * ARE DISCLAIMED.  IN NO EVENT SHALL THE REGENTS OR CONTRIBUTORS BE LIABLE
- * FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
- * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
- * OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
- * HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
- * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
- * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
- * SUCH DAMAGE.
  */
 
 #include <stdio.h>
@@ -90,8 +78,6 @@ struct read_cmd {
 	char padding[492];
 };
 
-char buffer[BUFFER_SIZE];
-
 static int load_fw_ar5523(char *filename, usb_dev_handle *handle)
 {
 	int remaining_size, res, fd;
@@ -99,6 +85,7 @@ static int load_fw_ar5523(char *filename, usb_dev_handle *handle)
 	struct read_cmd read_cmd;
 	struct stat fw_stat;
 	ssize_t read_size;
+	char buffer[BUFFER_SIZE];
 
 	fd = open(filename, O_RDONLY);
 	if (fd == -1) {
@@ -110,6 +97,7 @@ static int load_fw_ar5523(char *filename, usb_dev_handle *handle)
 		return -EINVAL;
 	}
 
+	memset(buffer, 0, sizeof(buffer));
 	memset(&write_cmd, 0, sizeof(write_cmd));
 	memset(&read_cmd, 0, sizeof(read_cmd));
 
@@ -117,7 +105,7 @@ static int load_fw_ar5523(char *filename, usb_dev_handle *handle)
 	remaining_size = fw_stat.st_size;
 	write_cmd.total_size = htonl(remaining_size);
 
-	while ((read_size = read(fd, buffer, BUFFER_SIZE)) > 0) {
+	while ((read_size = read(fd, buffer, sizeof(buffer))) > 0) {
 		remaining_size -= read_size;
 		write_cmd.size = htonl(read_size);
 		write_cmd.remaining_size = htonl(remaining_size);
