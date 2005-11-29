@@ -895,8 +895,7 @@ static USBD_STATUS wrap_select_configuration(struct wrap_device *wd,
 			ERROR("couldn't obtain ifnum");
 			return USBD_STATUS_REQUEST_FAILED;
 		}
-		USBTRACE("intf: %p, num ep: %d(%d)", intf, intf->bNumEndpoints,
-			 CUR_ALT_SETTING(usb_intf)->desc.bNumEndpoints);
+		USBTRACE("intf: %p, num ep: %d", intf, intf->bNumEndpoints);
 
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
 		for (i = 0; i < CUR_ALT_SETTING(usb_intf)->desc.bNumEndpoints;
@@ -941,10 +940,8 @@ static int wrap_usb_get_string(struct usb_device *udev, unsigned short langid,
 			       unsigned char index, void *buf, int size)
 {
 	int i, ret;
-	/* TODO: can we use usb_string instead, and convert returned
-	 * string to Unicode? */
-	/* if langid is 0, we should return array of langauges
-	 * supported in buf */
+	/* if langid is 0, return array of langauges supported in
+	 * buf */
 	for (i = 0; i < 3; i++) {
 		ret = usb_control_msg(udev, usb_rcvctrlpipe(udev, 0),
 				      USB_REQ_GET_DESCRIPTOR, USB_DIR_IN,

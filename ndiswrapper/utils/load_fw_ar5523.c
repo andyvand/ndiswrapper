@@ -29,7 +29,7 @@
 #define EP3		0x81
 
 #define BUFFER_SIZE	0x0800
-#define WRITE_CMD	htonl(0x10)
+#define WRITE_CMD	0x10
 #define BULK_TIMEOUT	5000
 
 #define ERROR(fmt, ...)							\
@@ -105,7 +105,7 @@ static int load_fw_ar5523(char *filename, usb_dev_handle *handle)
 	memset(&write_cmd, 0, sizeof(write_cmd));
 	memset(&read_cmd, 0, sizeof(read_cmd));
 
-	write_cmd.code = WRITE_CMD;
+	write_cmd.code = htonl(WRITE_CMD);
 	remaining_size = fw_stat.st_size;
 	write_cmd.total_size = htonl(remaining_size);
 
@@ -159,7 +159,7 @@ int main(int argc, char *argv[])
 	struct usb_device *dev;
 	int res;
 	
-	if (argc < 2 || (argc != 2 && argc != 4)) {
+	if (argc != 2 && argc != 4) {
 		ERROR("usage: %s <firmware file> [<vendor ID> <product ID>]",
 		      argv[0]);
 		return -1;

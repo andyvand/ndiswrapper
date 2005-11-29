@@ -494,7 +494,9 @@ struct wrap_device {
 	union {
 		struct {
 			struct pci_dev *pdev;
+#if LINUX_VERSION_CODE <= KERNEL_VERSION(2,6,9)
 			u32 pci_state[16];
+#endif
 		} pci;
 		struct {
 			struct usb_device *udev;

@@ -7,29 +7,31 @@ usrsbindir = $(DESTDIR)/usr/sbin
 FW_AR5523 = load_fw_ar5523
 
 CC = gcc
-CFLAGS = -Wall -DUTILS_VERSION=\"$(UTILS_VERSION)\" 
+CFLAGS = -g -Wall -DUTILS_VERSION=\"$(UTILS_VERSION)\" 
 
 DISTFILES=Makefile ndiswrapper loadndisdriver.c $(FW_AR5523).c \
-				   ndiswrapper-buginfo
+	   ndiswrapper-buginfo
 
-all: loadndisdriver
+all: loadndisdriver $(FW_AR5523)
 
 loadndisdriver: loadndisdriver.c
 	$(CC) $(CFLAGS) -o $@ $<
-	
+
 $(FW_AR5523): $(FW_AR5523).c
 	@if :; then \
 		USB_LIBS="$(shell libusb-config --libs)"; \
+		USB_LIBS=""; \
 		if [ -z "$$USB_LIBS" ]; then \
-			   echo "** USB programming library is not installed; "\
-			        "it is needed for compiling $(FW_AR5523). You can"\
-					"get this library at http://libusb.sourceforge.net. "\
-					"$(FW_AR5523) is required for loading firmware for "\
-					"Atheros USB driver."; \
+			echo "** USB programming library \"libusb\" is not" \
+			     "installed. It is needed for compiling $(FW_AR5523)," \
+			     "which is required for loading firmware for" \
+			     "Atheros USB driver. \"libusb\" can be downloaded" \
+			     "from http://libusb.sourceforge.net."; \
+		else \
+			cmd="$(CC) $(CFLAGS) -o $@ $< $$USB_LIBS"; \
+			echo "$$cmd"; \
+			$$cmd ; \
 		fi; \
-		cmd="$(CC) $(CFLAGS) -o $@ $< $$USB_LIBS"; \
-		echo "$$cmd"; \
-		$$cmd ; \
 	fi
 
 clean:
@@ -47,8 +49,8 @@ install: all
 	fi
 	@echo
 	@echo "NOTE: Windows driver configuration file format has changed since" \
-		  "1.0-rc2. You must re-install Windows drivers if they were" \
-		  "installed before."
+	      "1.0-rc2. You must re-install Windows drivers if they were" \
+	      "installed before."
 
 dist:
 	@for file in $(DISTFILES); do \
