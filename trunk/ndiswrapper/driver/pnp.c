@@ -168,7 +168,7 @@ static STDCALL NTSTATUS pdoDispatchPower(struct device_object *pdo,
 {
 	struct io_stack_location *irp_sl;
 	struct wrap_device *wd;
-	enum device_power_state state;
+	union power_state power_state;
 	struct pci_dev *pdev;
 	NTSTATUS status;
 
@@ -177,9 +177,17 @@ static STDCALL NTSTATUS pdoDispatchPower(struct device_object *pdo,
 	DBGTRACE2("pdo: %p, fn: %d:%d, wd: %p",
 		  pdo, irp_sl->major_fn, irp_sl->minor_fn, wd);
 	switch (irp_sl->minor_fn) {
+	case IRP_MN_WAIT_WAKE:
+		/* TODO: this is not complete/correct */
+		DBGTRACE2("state: %d, completion: %p",
+			  irp_sl->params.power.state.system_state,
+			  irp_sl->completion_routine);
+		IoMarkIrpPending(irp);
+		status = STATUS_PENDING;
+		break;
 	case IRP_MN_SET_POWER:
-		state = irp_sl->params.power.state.device_state;
-		if (state == PowerDeviceD0) {
+		power_state = irp_sl->params.power.state;
+		if (power_state.device_state == PowerDeviceD0) {
 			DBGTRACE2("resuming device %p", wd);
 			if (wrap_is_pci_bus(wd->dev_bus_type)) {
 				pdev = wd->pci.pdev;
@@ -210,7 +218,7 @@ static STDCALL NTSTATUS pdoDispatchPower(struct device_object *pdo,
 		ERROR("invalid power irp");
 		break;
 	}
-	irp->io_status.status_info = 0;
+//	irp->io_status.status_info = 0;
 	irp->io_status.status = status;
 	IoCompleteRequest(irp, IO_NO_INCREMENT);
 	return status;

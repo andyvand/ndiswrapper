@@ -27,7 +27,7 @@ $(FW_AR5523): $(FW_AR5523).c
 					"$(FW_AR5523) is required for loading firmware for "\
 					"Atheros USB driver."; \
 		fi; \
-		cmd="gcc -Wall -o $@ $< $$USB_LIBS"; \
+		cmd="$(CC) $(CFLAGS) -o $@ $< $$USB_LIBS"; \
 		echo "$$cmd"; \
 		$$cmd ; \
 	fi

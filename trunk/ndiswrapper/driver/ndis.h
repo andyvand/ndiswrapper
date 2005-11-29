@@ -338,7 +338,7 @@ struct ndis_rw_lock {
 
 struct ndis_sched_work_item {
 	void *ctx;
-	void (*func)(struct ndis_sched_work_item *, void *ctx) STDCALL;
+	WRAP_WORK_FUNC func;
 	UCHAR reserved[8 * sizeof(void *)];
 };
 

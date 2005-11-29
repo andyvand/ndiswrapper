@@ -26,7 +26,6 @@
  */
 
 #include <stdio.h>
-#include <error.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <sys/types.h>
@@ -35,6 +34,21 @@
 #include <unistd.h>
 #include <usb.h>
 #include <netinet/in.h>
+
+/* ar5523 has 3 endpoints: 0x01, 0x02 and 0x81 */
+#define EP1		0x01
+#define EP2		0x02
+#define EP3		0x81
+
+#define BUFFER_SIZE	0x0800
+#define WRITE_CMD	htonl(0x10)
+#define BULK_TIMEOUT	5000
+
+#define ERROR(fmt, ...)							\
+	fprintf(stderr, "%s(%d): " fmt "\n",				\
+		__FUNCTION__, __LINE__ , ## __VA_ARGS__)
+
+#define INFO(fmt, ...) fprintf(stdout, fmt "\n" , ## __VA_ARGS__)
 
 struct {
 	int vendor_id;
@@ -57,65 +71,34 @@ struct {
 	{-1, -1},
 };
 
-#define BLOCK_SIZE	0x0800
-#define BULK_TIMEOUT	5000
-/* ar5523 has 3 endpoints: 0x01, 0x02 and 0x81 */
-#define EP1		0x01
-#define EP2		0x02
-#define EP3		0x81
-
-#define PROG_NAME "load_ar5523"
-#define ERROR(fmt, ...) do {						\
-		fprintf(stderr, "%s: %s(%d): " fmt "\n",		\
-			PROG_NAME, __FUNCTION__, __LINE__ , ## __VA_ARGS__); \
-	} while (0)
-#define INFO(fmt, ...) do {						\
-		fprintf(stdout, "%s: %s(%d): " fmt "\n",		\
-			PROG_NAME, __FUNCTION__, __LINE__ , ## __VA_ARGS__); \
-	} while (0)
-
-struct cmd_t {
-	unsigned int cmd_type;
-	unsigned int size;
-	unsigned int total_size;
-	unsigned int remaining_size;
+/* these structures should be 512 bytes */
+struct write_cmd {
+	uint32_t cmd_code;
+	uint32_t size;
+	uint32_t total_size;
+	uint32_t remaining_size;
 	char padding[496];
 };
 
-static int load_ar5523_fw(char *filename, struct usb_device *dev)
+struct read_cmd {
+	/* code seems to be either 0x14 or 0x20 */
+	uint32_t cmd_code;
+	uint32_t size;
+	uint32_t total_size;
+	uint32_t remaining_size;
+	uint32_t total_size2;
+	char padding[492];
+};
+
+char buffer[BUFFER_SIZE];
+
+static int load_fw_ar5523(char *filename, usb_dev_handle *handle)
 {
-	int total_size, remaining_size, res, fd;
-	struct cmd_t cmd;
-	struct cmd_t answer;
+	int remaining_size, res, fd;
+	struct write_cmd write_cmd;
+	struct read_cmd read_cmd;
 	struct stat firmware_stat;
-	char *buffer;
-	usb_dev_handle *handle;
 	ssize_t read_size;
-
-	buffer = malloc(BLOCK_SIZE);
-	if (!buffer) {
-		ERROR("couldn't allocate memory");
-		return -ENOMEM;
-	}
-	handle = usb_open(dev);
-	if (!handle) {
-		ERROR("couldn't open usb device");
-		return -EINVAL;
-	}
-	memset(buffer, 0, BLOCK_SIZE);
-	if (usb_set_configuration(handle, 1)) {
-		ERROR("error when setting configuration: %s", usb_strerror());
-		return -EINVAL;
-	}
-
-	if ((res = usb_claim_interface(handle, 0))) {
-		if (res == EBUSY)
-			ERROR("device is busy");
-		if (res == ENOMEM)
-			ERROR("couldn't allocate memory");
-		ERROR("error when claiming interface: %s", usb_strerror());
-		return -EINVAL;
-	}
 
 	fd = open(filename, O_RDONLY);
 	if (fd == -1) {
@@ -123,47 +106,49 @@ static int load_ar5523_fw(char *filename, struct usb_device *dev)
 		return -EINVAL;
 	}
 	if (fstat(fd, &firmware_stat) == -1) {
-		ERROR("error when opening firmware: %s", strerror(errno));
+		ERROR("couldn't stat firmware file: %s", strerror(errno));
 		return -EINVAL;
 	}
 
-	cmd.cmd_type = htonl(0x10);
-	total_size = firmware_stat.st_size;
-	remaining_size = total_size;
-	cmd.total_size = htonl(total_size);
+	memset(&write_cmd, 0, sizeof(write_cmd));
+	memset(&read_cmd, 0, sizeof(read_cmd));
 
-	while ((read_size = read(fd, buffer, BLOCK_SIZE)) > 0) {
+	write_cmd.cmd_code = WRITE_CMD;
+	remaining_size = firmware_stat.st_size;
+	write_cmd.total_size = htonl(remaining_size);
+
+	while ((read_size = read(fd, buffer, BUFFER_SIZE)) > 0) {
 		remaining_size -= read_size;
-		cmd.size = htonl(read_size);
-		cmd.remaining_size = htonl(remaining_size);
+		write_cmd.size = htonl(read_size);
+		write_cmd.remaining_size = htonl(remaining_size);
 
-		res = usb_bulk_write(handle, EP1, (char *)&cmd, sizeof(cmd),
-				     BULK_TIMEOUT);
+		res = usb_bulk_write(handle, EP1, (char *)&write_cmd,
+				     sizeof(write_cmd), BULK_TIMEOUT);
 		if (res < 0) {
-			ERROR("error writing data: %s", usb_strerror());
+			ERROR("couldn't write data: %s", usb_strerror());
 			return res;
 		}
-		res = usb_bulk_write(handle, EP2, buffer, BLOCK_SIZE,
+		res = usb_bulk_write(handle, EP2, buffer, read_size,
 				     BULK_TIMEOUT);
 		if (res < 0) {
-			ERROR("error writing data: %s", usb_strerror());
+			ERROR("couldn't write data: %s", usb_strerror());
 			return res;
 		}
-		res = usb_bulk_read(handle, EP3, (char *)&answer,
-				    sizeof(answer), BULK_TIMEOUT);
-		if (res < 0) {
-			ERROR("error reading data: %s", usb_strerror());
-			return res;
+		res = usb_bulk_read(handle, EP3, (char *)&read_cmd,
+				    sizeof(read_cmd), BULK_TIMEOUT);
+		if (res < 0 || read_cmd.size != write_cmd.size ||
+		    read_cmd.total_size != write_cmd.total_size ||
+		    read_cmd.remaining_size != write_cmd.remaining_size) {
+			ERROR("couldn't read data: %s", usb_strerror());
+			return -EINVAL;
 		}
 	}
 	if (remaining_size > 0) {
-		ERROR("couldn't load firmware completely - %d bytes left",
+		ERROR("couldn't write all data - %d bytes left",
 		      remaining_size);
 		return -EINVAL;
 	}
-	usb_release_interface(handle, 0);
-	usb_close(handle);
-	free(buffer);
+	close(fd);
 	return 0;
 }
 
@@ -172,10 +157,13 @@ int main(int argc, char *argv[])
 	struct usb_bus *busses, *bus;
 	int max_devnum;
 	char *fw_file, *base_name;
+	usb_dev_handle *handle;
+	struct usb_device *dev;
+	int res;
 	
 	if (argc < 2) {
 		ERROR("usage: %s <firmware file> [<vendor ID> [<product ID>]]",
-		      PROG_NAME);
+		      argv[0]);
 		return -1;
 	}
 	fw_file = argv[1];
@@ -189,11 +177,11 @@ int main(int argc, char *argv[])
 		      "file name should end with \"ar5523.bin\"", fw_file);
 		return -2;
 	}
-	max_devnum = (sizeof(devices) / sizeof(devices[0])) - 1;
+	max_devnum = sizeof(devices) / sizeof(devices[0]);
 	if (argc > 2)
-		devices[max_devnum].vendor_id = strtol(argv[2], NULL, 0);
+		devices[max_devnum - 1].vendor_id = strtol(argv[2], NULL, 0);
 	if (argc > 3)
-		devices[max_devnum].product_id = strtol(argv[3], NULL, 0);
+		devices[max_devnum - 1].product_id = strtol(argv[3], NULL, 0);
 
 	usb_init();
 	usb_find_busses();
@@ -201,29 +189,43 @@ int main(int argc, char *argv[])
 
 	busses = usb_get_busses();
 	for (bus = busses; bus; bus = bus->next) {
-		struct usb_device *dev;
 		for (dev = bus->devices; dev; dev = dev->next) {
 			int j;
-			for (j = 0; j < max_devnum + 1; j++) {
+			for (j = 0; j < max_devnum; j++) {
 				if (dev->descriptor.idVendor ==
 				    devices[j].vendor_id &&
 				    dev->descriptor.idProduct ==
-				    devices[j].product_id) {
-					INFO("loading firmware for device "
-					     "0x%04X:0x%04X ... ",
-					     devices[j].vendor_id,
-					     devices[j].product_id);
-					if (load_ar5523_fw(fw_file, dev)) {
-						INFO("failed");
-						return -EINVAL;
-					} else {
-						INFO("done");
-						return 0;
-					}
-				}
+				    devices[j].product_id)
+					goto found;
 			}
 		}
 	}
-	ERROR("no valid device found");
-	return -1;
+	ERROR("no valid device found; if you are sure you have Atheros USB"
+	      "based device, UNPLUG AND REPLUG THE DEVICE, run '%s' again "
+	      "with vendor and product ids, which can be obtained with "
+	      "'lsusb' command", argv[0]);
+	return -EINVAL;
+
+found:
+	handle = usb_open(dev);
+	if (!handle) {
+		ERROR("couldn't open usb device");
+		return -EINVAL;
+	}
+	if ((res = usb_set_configuration(handle, 1)) ||
+	    (res = usb_claim_interface(handle, 0)))
+		ERROR("couldn't set configuration: %s", usb_strerror());
+	else {
+		INFO("loading firmware for device 0x%04X:0x%04X ... ",
+		     dev->descriptor.idVendor, dev->descriptor.idProduct);
+
+		if ((res = load_fw_ar5523(fw_file, handle)) == 0)
+			INFO("done");
+		else
+			INFO("failed");
+		usb_release_interface(handle, 0);
+	}
+
+	usb_close(handle);
+	return res;
 }
