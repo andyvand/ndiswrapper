@@ -85,19 +85,23 @@ static int load_fw_ar5523(char *filename, usb_dev_handle *handle)
 	struct read_cmd read_cmd;
 	struct stat fw_stat;
 	ssize_t read_size;
-	char buffer[BUFFER_SIZE];
+	char *buffer;
 
+	buffer = calloc(1, BUFFER_SIZE);
+	if (!buffer) {
+		ERROR("coudln't allocate memory");
+		return -ENOMEM;
+	}
 	fd = open(filename, O_RDONLY);
 	if (fd == -1) {
 		ERROR("couldn't open firmware file: %s", strerror(errno));
-		return -EINVAL;
+		goto err;
 	}
 	if (fstat(fd, &fw_stat) == -1) {
 		ERROR("couldn't stat firmware file: %s", strerror(errno));
-		return -EINVAL;
+		goto err;
 	}
 
-	memset(buffer, 0, sizeof(buffer));
 	memset(&write_cmd, 0, sizeof(write_cmd));
 	memset(&read_cmd, 0, sizeof(read_cmd));
 
@@ -105,7 +109,7 @@ static int load_fw_ar5523(char *filename, usb_dev_handle *handle)
 	remaining_size = fw_stat.st_size;
 	write_cmd.total_size = htonl(remaining_size);
 
-	while ((read_size = read(fd, buffer, sizeof(buffer))) > 0) {
+	while ((read_size = read(fd, buffer, BUFFER_SIZE)) > 0) {
 		remaining_size -= read_size;
 		write_cmd.size = htonl(read_size);
 		write_cmd.remaining_size = htonl(remaining_size);
@@ -114,13 +118,13 @@ static int load_fw_ar5523(char *filename, usb_dev_handle *handle)
 				     sizeof(write_cmd), BULK_TIMEOUT);
 		if (res < 0) {
 			ERROR("couldn't write data: %s", usb_strerror());
-			return res;
+			goto err;
 		}
 		res = usb_bulk_write(handle, EP2, buffer, read_size,
 				     BULK_TIMEOUT);
 		if (res < 0) {
 			ERROR("couldn't write data: %s", usb_strerror());
-			return res;
+			goto err;
 		}
 		res = usb_bulk_read(handle, EP3, (char *)&read_cmd,
 				    sizeof(read_cmd), BULK_TIMEOUT);
@@ -128,16 +132,22 @@ static int load_fw_ar5523(char *filename, usb_dev_handle *handle)
 		    read_cmd.total_size != write_cmd.total_size ||
 		    read_cmd.remaining_size != write_cmd.remaining_size) {
 			ERROR("couldn't read data: %s", usb_strerror());
-			return -EINVAL;
+			goto err;
 		}
 	}
 	if (remaining_size > 0) {
 		ERROR("couldn't write all data - %d bytes left",
 		      remaining_size);
-		return -EINVAL;
+		goto err;
 	}
+	free(buffer);
 	close(fd);
 	return 0;
+err:
+	free(buffer);
+	if (fd > 0)
+		close(fd);
+	return -EINVAL;
 }
 
 int main(int argc, char *argv[])
@@ -149,7 +159,7 @@ int main(int argc, char *argv[])
 	struct usb_device *dev;
 	int res;
 	
-	if (argc < 2) {
+	if (argc < 2 || (argc != 2 && argc != 4)) {
 		ERROR("usage: %s <firmware file> [<vendor ID> <product ID>]",
 		      argv[0]);
 		return -1;
@@ -166,9 +176,9 @@ int main(int argc, char *argv[])
 		return -2;
 	}
 	max_devnum = sizeof(devices) / sizeof(devices[0]);
-	if (argc > 3) {
-		devices[max_devnum - 1].vendor_id = strtol(argv[2], NULL, 0);
-		devices[max_devnum - 1].product_id = strtol(argv[3], NULL, 0);
+	if (argc == 4) {
+		devices[max_devnum - 1].vendor_id = strtol(argv[2], NULL, 16);
+		devices[max_devnum - 1].product_id = strtol(argv[3], NULL, 16);
 	}
 
 	usb_init();
