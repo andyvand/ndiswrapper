@@ -194,7 +194,7 @@ static STDCALL NTSTATUS pdoDispatchPower(struct device_object *pdo,
 #if LINUX_VERSION_CODE > KERNEL_VERSION(2,6,9)
 				pci_restore_state(pdev);
 #else
-				pci_restore_state(pdev, wd->pci_state);
+				pci_restore_state(pdev, wd->pci.pci_state);
 #endif
 			}
 		} else {
@@ -204,7 +204,7 @@ static STDCALL NTSTATUS pdoDispatchPower(struct device_object *pdo,
 #if LINUX_VERSION_CODE > KERNEL_VERSION(2,6,9)
 				pci_save_state(pdev);
 #else
-				pci_save_state(pdev, wd->pci_state);
+				pci_save_state(pdev, wd->pci.pci_state);
 #endif
 			}
 		}
