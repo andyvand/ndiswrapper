@@ -73,7 +73,7 @@ struct {
 
 /* these structures should be 512 bytes */
 struct write_cmd {
-	uint32_t cmd_code;
+	uint32_t code;
 	uint32_t size;
 	uint32_t total_size;
 	uint32_t remaining_size;
@@ -82,7 +82,7 @@ struct write_cmd {
 
 struct read_cmd {
 	/* code seems to be either 0x14 or 0x20 */
-	uint32_t cmd_code;
+	uint32_t code;
 	uint32_t size;
 	uint32_t total_size;
 	uint32_t remaining_size;
@@ -97,7 +97,7 @@ static int load_fw_ar5523(char *filename, usb_dev_handle *handle)
 	int remaining_size, res, fd;
 	struct write_cmd write_cmd;
 	struct read_cmd read_cmd;
-	struct stat firmware_stat;
+	struct stat fw_stat;
 	ssize_t read_size;
 
 	fd = open(filename, O_RDONLY);
@@ -105,7 +105,7 @@ static int load_fw_ar5523(char *filename, usb_dev_handle *handle)
 		ERROR("couldn't open firmware file: %s", strerror(errno));
 		return -EINVAL;
 	}
-	if (fstat(fd, &firmware_stat) == -1) {
+	if (fstat(fd, &fw_stat) == -1) {
 		ERROR("couldn't stat firmware file: %s", strerror(errno));
 		return -EINVAL;
 	}
@@ -113,8 +113,8 @@ static int load_fw_ar5523(char *filename, usb_dev_handle *handle)
 	memset(&write_cmd, 0, sizeof(write_cmd));
 	memset(&read_cmd, 0, sizeof(read_cmd));
 
-	write_cmd.cmd_code = WRITE_CMD;
-	remaining_size = firmware_stat.st_size;
+	write_cmd.code = WRITE_CMD;
+	remaining_size = fw_stat.st_size;
 	write_cmd.total_size = htonl(remaining_size);
 
 	while ((read_size = read(fd, buffer, BUFFER_SIZE)) > 0) {
@@ -162,7 +162,7 @@ int main(int argc, char *argv[])
 	int res;
 	
 	if (argc < 2) {
-		ERROR("usage: %s <firmware file> [<vendor ID> [<product ID>]]",
+		ERROR("usage: %s <firmware file> [<vendor ID> <product ID>]",
 		      argv[0]);
 		return -1;
 	}
@@ -178,10 +178,10 @@ int main(int argc, char *argv[])
 		return -2;
 	}
 	max_devnum = sizeof(devices) / sizeof(devices[0]);
-	if (argc > 2)
+	if (argc > 3) {
 		devices[max_devnum - 1].vendor_id = strtol(argv[2], NULL, 0);
-	if (argc > 3)
 		devices[max_devnum - 1].product_id = strtol(argv[3], NULL, 0);
+	}
 
 	usb_init();
 	usb_find_busses();
@@ -204,13 +204,13 @@ int main(int argc, char *argv[])
 	      "based device, UNPLUG AND REPLUG THE DEVICE, run '%s' again "
 	      "with vendor and product ids, which can be obtained with "
 	      "'lsusb' command", argv[0]);
-	return -EINVAL;
+	return -3;
 
 found:
 	handle = usb_open(dev);
 	if (!handle) {
 		ERROR("couldn't open usb device");
-		return -EINVAL;
+		return -4;
 	}
 	if ((res = usb_set_configuration(handle, 1)) ||
 	    (res = usb_claim_interface(handle, 0)))
@@ -227,5 +227,8 @@ found:
 	}
 
 	usb_close(handle);
-	return res;
+	if (res)
+		return -5;
+	else
+		return 0;
 }
