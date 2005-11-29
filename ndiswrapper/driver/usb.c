@@ -196,6 +196,8 @@ static USBD_STATUS wrap_urb_status(int urb_status)
 		return USBD_STATUS_DEVICE_GONE;
 	case -ENOMEM:
 		return USBD_STATUS_NO_MEMORY;
+	case -EINVAL:
+		return USBD_STATUS_REQUEST_FAILED;
 	default:
 		return USBD_STATUS_NOT_SUPPORTED;
 	}
@@ -283,7 +285,6 @@ static struct urb *wrap_alloc_urb(struct irp *irp, unsigned int pipe,
 	else
 		alloc_flags = GFP_ATOMIC;
 	wd = irp->wd;
-	USBTRACE("wd: %p (%d)", wd, wd->usb.num_alloc_urbs);
 	IoAcquireCancelSpinLock(&irp->cancel_irql);
 	urb = NULL;
 	nt_list_for_each_entry(wrap_urb, &wd->usb.wrap_urb_list, list) {
@@ -294,7 +295,6 @@ static struct urb *wrap_alloc_urb(struct irp *irp, unsigned int pipe,
 			break;
 		}
 	}
-	USBTRACE("urb: %p", urb);
 	if (!urb) {
 		IoReleaseCancelSpinLock(irp->cancel_irql);
 		wrap_urb = kmalloc(sizeof(*wrap_urb), alloc_flags);
@@ -320,7 +320,6 @@ static struct urb *wrap_alloc_urb(struct irp *irp, unsigned int pipe,
 		wd->usb.num_alloc_urbs++;
 	}
 
-	USBTRACE("urb: %p", urb);
 #ifdef URB_ASYNC_UNLINK
 	urb->transfer_flags |= URB_ASYNC_UNLINK;
 #endif
@@ -631,7 +630,7 @@ static USBD_STATUS wrap_bulk_or_intr_trans(struct irp *irp)
 		usb_fill_bulk_urb(urb, udev, pipe, urb->transfer_buffer,
 				  bulk_int_tx->transfer_buffer_length,
 				  wrap_urb_complete, urb->context);
-		USBTRACE("submitting bulk urb %p on pipe %u",
+		USBTRACE("submitting bulk urb %p on ep %u",
 			 urb, pipe_handle->bEndpointAddress);
 		status = USBD_STATUS_PENDING;
 	} else {
@@ -639,7 +638,7 @@ static USBD_STATUS wrap_bulk_or_intr_trans(struct irp *irp)
 				 bulk_int_tx->transfer_buffer_length,
 				 wrap_urb_complete, urb->context,
 				 pipe_handle->bInterval);
-		USBTRACE("submitting interrupt urb %p on pipe %u, intvl: %d",
+		USBTRACE("submitting interrupt urb %p on ep %u, intvl: %d",
 			 urb, pipe_handle->bEndpointAddress,
 			 pipe_handle->bInterval);
 		status = USBD_STATUS_PENDING;

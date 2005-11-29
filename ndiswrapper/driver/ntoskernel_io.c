@@ -883,21 +883,22 @@ STDCALL NTSTATUS WRAP_EXPORT(PoRequestPowerIrp)
 	 void *context, struct irp **pirp)
 {
 	struct irp *irp;
-	struct io_stack_location *stack;
+	struct io_stack_location *irp_sl;
 
 	DBGTRACE1("%p: stack size: %d", dev_obj, dev_obj->stack_size);
 	DBGTRACE1("drv_obj: %p", dev_obj->drv_obj);
 	irp = IoAllocateIrp(dev_obj->stack_size, FALSE);
 	if (!irp)
 		return STATUS_INSUFFICIENT_RESOURCES;
-	stack = IoGetNextIrpStackLocation(irp);
-	stack->major_fn = IRP_MJ_POWER;
-	stack->minor_fn = minor_fn;
+	irp_sl = IoGetNextIrpStackLocation(irp);
+	irp_sl->major_fn = IRP_MJ_POWER;
+	irp_sl->minor_fn = minor_fn;
 	if (minor_fn == IRP_MN_WAIT_WAKE)
-		stack->params.power.type = SystemPowerState;
+		irp_sl->params.power.type = SystemPowerState;
 	else
-		stack->params.power.type = DevicePowerState;
-	stack->params.power.state = power_state;
+		irp_sl->params.power.type = DevicePowerState;
+	irp_sl->params.power.state = power_state;
+	irp_sl->completion_routine = completion_func;
 	irp->io_status.status = STATUS_NOT_SUPPORTED;
 	*pirp = irp;
 	return PoCallDriver(dev_obj, irp);

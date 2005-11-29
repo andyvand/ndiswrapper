@@ -629,7 +629,7 @@ struct nt_thread *wrap_create_thread(struct task_struct *task);
 void wrap_remove_thread(struct nt_thread *thread);
 u64 ticks_1601(void);
 
-int schedule_wrap_work_item(void *func, void *arg1, void *arg2,
+int schedule_wrap_work_item(WRAP_WORK_FUNC func, void *arg1, void *arg2,
 			    BOOLEAN win_func);
 
 STDCALL KIRQL KeGetCurrentIrql(void);

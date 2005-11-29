@@ -805,7 +805,6 @@ struct wrap_urb {
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,0)
 	typeof(((struct urb *)0)->status) urb_status;
 #endif
-
 };
 
 struct irp {
@@ -1024,11 +1023,12 @@ enum work_queue_type {
 	MaximumWorkQueue
 };
 
+typedef STDCALL void (*WRAP_WORK_FUNC)(void *arg1, void *arg2);
+
 struct io_workitem {
 	enum work_queue_type type;
 	struct device_object *dev_obj;
-	void (*worker_routine)(struct device_object *dev_obj,
-			       void *context) STDCALL;
+	WRAP_WORK_FUNC worker_routine;
 	void *context;
 };
 
