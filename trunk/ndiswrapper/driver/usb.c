@@ -61,6 +61,10 @@ static unsigned int urb_id = 0;
 #define USB_CTRL_SET_TIMEOUT 5000
 #endif
 
+#ifndef USB_CTRL_GET_TIMEOUT
+#define USB_CTRL_GET_TIMEOUT 5000
+#endif
+
 static int inline wrap_cancel_urb(struct urb *urb)
 {
 	int ret;
@@ -934,6 +938,25 @@ static USBD_STATUS wrap_select_configuration(struct wrap_device *wd,
 	return USBD_STATUS_SUCCESS;
 }
 
+static int wrap_usb_get_string(struct usb_device *udev, unsigned short langid,
+			       unsigned char index, void *buf, int size)
+{
+	int i, ret;
+	/* TODO: can we use usb_string instead, and convert returned
+	 * string to Unicode? */
+	/* if langid is 0, we should return array of langauges
+	 * supported in buf */
+	for (i = 0; i < 3; i++) {
+		ret = usb_control_msg(udev, usb_rcvctrlpipe(udev, 0),
+				      USB_REQ_GET_DESCRIPTOR, USB_DIR_IN,
+				      (USB_DT_STRING << 8) + index, langid,
+				      buf, size, USB_CTRL_GET_TIMEOUT);
+		if (ret > 0 || ret == -EPIPE)
+			break;
+	}
+	return ret;
+}
+
 static USBD_STATUS wrap_get_descriptor(struct wrap_device *wd,
 				       union nt_urb *nt_urb, struct irp *irp)
 {
@@ -950,9 +973,10 @@ static USBD_STATUS wrap_get_descriptor(struct wrap_device *wd,
 
 	if (ctrl_req->desc_type == USB_DT_STRING) {
 		USBTRACE("langid: %x", ctrl_req->language_id);
-		ret = usb_string(udev, ctrl_req->index,
-				 ctrl_req->transfer_buffer,
-				 ctrl_req->transfer_buffer_length);
+		ret = wrap_usb_get_string(udev, ctrl_req->language_id,
+					  ctrl_req->index,
+					  ctrl_req->transfer_buffer,
+					  ctrl_req->transfer_buffer_length);
 	} else {
 		ret = usb_get_descriptor(udev, ctrl_req->desc_type,
 					 ctrl_req->index,
