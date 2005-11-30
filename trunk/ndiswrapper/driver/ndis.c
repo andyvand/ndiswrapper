@@ -1780,12 +1780,13 @@ STDCALL void WRAP_EXPORT(NdisMIndicateStatus)
 				INFO("radio is turned off by software");
 			break;
 		default:
-			WARNING("unknown indication: %x", si->status_type);
+			/* is this RSSI indication? */
+			DBGTRACE2("unknown indication: %x", si->status_type);
 			break;
 		}
 		break;
 	default:
-		WARNING("status %08X not handled", status);
+		WARNING("unknown status: %08X", status);
 		break;
 	}
 
