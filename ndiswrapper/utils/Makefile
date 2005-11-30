@@ -20,7 +20,6 @@ loadndisdriver: loadndisdriver.c
 $(FW_AR5523): $(FW_AR5523).c
 	@if :; then \
 		USB_LIBS="$(shell libusb-config --libs)"; \
-		USB_LIBS=""; \
 		if [ -z "$$USB_LIBS" ]; then \
 			echo "** USB programming library \"libusb\" is not" \
 			     "installed. It is needed for compiling $(FW_AR5523)," \
