@@ -38,9 +38,11 @@ static unsigned int urb_id = 0;
 		      (usb_pipeout(urb->pipe) && dir == USB_DIR_OUT)))	\
 			break;						\
 		t = msg;						\
-		t += sprintf("%d: ", urb->actual_length);		\
-		for (i = 0; i < len && t < &msg[sizeof(msg) - 4]; i++)	\
-			t += sprintf(t, "%02X ", (((UCHAR *)buf)[i]));	\
+		t += sprintf(t, "%d: ", (urb)->actual_length);		\
+		for (i = 0; i < urb->actual_length &&			\
+			     t < &msg[sizeof(msg) - 4]; i++)		\
+			t += sprintf(t, "%02X ",			\
+				     ((char *)urb->transfer_buffer)[i]); \
 		USBTRACE("%s", msg);					\
 		break;							\
 	}
