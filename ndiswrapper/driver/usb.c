@@ -1108,6 +1108,7 @@ NTSTATUS wrap_submit_irp(struct device_object *pdo, struct irp *irp)
 	union nt_urb *nt_urb;
 
 	irp_sl = IoGetCurrentIrpStackLocation(irp);
+	wd = NULL;
 	if (pdo) {
 		wd = pdo->reserved;
 		irp->wd = wd;
