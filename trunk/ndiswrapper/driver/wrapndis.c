@@ -1725,6 +1725,7 @@ void remove_ndis_device(struct wrap_ndis_device *wnd)
 	if (!test_bit(HW_RMMOD, &wnd->wd->hw_status))
 		miniport_pnp_event(wnd, NdisDevicePnPEventSurpriseRemoved);
 	status = pnp_stop_remove_device(wnd->wd);
+	IoDetachDevice(wnd->nmb->pdo);
 	free_netdev(wnd->net_dev);
 	TRACEEXIT1(return);
 }
