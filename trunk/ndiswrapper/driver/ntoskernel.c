@@ -1330,9 +1330,9 @@ STDCALL NTSTATUS WRAP_EXPORT(KeWaitForMultipleObjects)
 	struct task_struct *task;
 
 	task = get_current();
-	EVENTENTER("task: %p, count = %d, reason = %u, "
-		   "waitmode = %u, alertable = %u, timeout = %p", task,
-		   count, wait_reason, wait_mode, alertable, timeout);
+	EVENTENTER("task: %p, count = %d, type: %d, reason = %u, "
+		   "waitmode = %u, alertable = %u, timeout = %p", task, count,
+		   wait_type, wait_reason, wait_mode, alertable, timeout);
 
 	thread = KeGetCurrentThread();
 	EVENTTRACE("thread: %p", thread);
@@ -1353,19 +1353,26 @@ STDCALL NTSTATUS WRAP_EXPORT(KeWaitForMultipleObjects)
 	/* TODO: should we allow threads to wait in non-alertable state? */
 	alertable = TRUE;
 	irql = kspin_lock_irql(&nt_event_lock, DISPATCH_LEVEL);
-	/* if *timeout == 0, we first check if the wait can be
-	 * satisfied or not, without grabbing the objects */
-	if (timeout && *timeout == 0) {
-		for (i = wait_count = 0; i < count; i++) {
-			dh = object[i];
-			EVENTTRACE("%p: event %p state: %d",
-				   task, dh, dh->signal_state);
-			if (!check_reset_signaled_state(dh, thread, 0)) {
+	/* first check if the wait can be satisfied or not, without
+	 * grabbing the objects */
+	for (i = wait_count = 0; i < count; i++) {
+		dh = object[i];
+		EVENTTRACE("%p: event %p state: %d",
+			   task, dh, dh->signal_state);
+		if (check_reset_signaled_state(dh, thread, 0)) {
+			if (wait_type == WaitAny) {
+				check_reset_signaled_state(dh, thread, 1);
 				kspin_unlock_irql(&nt_event_lock, irql);
-				EVENTEXIT(return STATUS_TIMEOUT);
+				EVENTEXIT(return STATUS_SUCCESS);
 			}
-		}
+		} else
+			wait_count++;
 	}
+	if (timeout && *timeout == 0 && wait_count) {
+		kspin_unlock_irql(&nt_event_lock, irql);
+		EVENTEXIT(return STATUS_TIMEOUT);
+	}
+
 	/* get the list of objects the thread (task) needs to wait on
 	 * and add the thread on the wait list for each such object */
 	/* if *timeout == 0, this step will grab the objects */
@@ -1381,6 +1388,7 @@ STDCALL NTSTATUS WRAP_EXPORT(KeWaitForMultipleObjects)
 			wb[i].thread = NULL;
 			wb[i].object = NULL;
 		} else {
+			assert(timeout == NULL || *timeout > 0);
 			wb[i].thread = thread;
 			wb[i].object = dh;
 			InsertTailList(&dh->wait_blocks, &wb[i].list);
@@ -1392,15 +1400,12 @@ STDCALL NTSTATUS WRAP_EXPORT(KeWaitForMultipleObjects)
 		kspin_unlock_irql(&nt_event_lock, irql);
 		EVENTEXIT(return STATUS_SUCCESS);
 	}
+
+	assert(timeout == NULL || *timeout > 0);
+
 	if (timeout == NULL)
 		wait_jiffies = 0;
-	else if (*timeout == 0) {
-		/* we should've grabbed all the objects, else it
-		 * should've timed out already */
-		ERROR("%p: objects still needed: %d", task, wait_count);
-		kspin_unlock_irql(&nt_event_lock, irql);
-		EVENTEXIT(return STATUS_TIMEOUT);
-	} else
+	else
 		wait_jiffies = SYSTEM_TIME_TO_HZ(*timeout) + 1;
 
 	EVENTTRACE("%p: sleeping for %ld", task, wait_jiffies);
@@ -1493,7 +1498,7 @@ STDCALL NTSTATUS WRAP_EXPORT(KeWaitForSingleObject)
 	(void *object, KWAIT_REASON wait_reason, KPROCESSOR_MODE wait_mode,
 	 BOOLEAN alertable, LARGE_INTEGER *timeout)
 {
-	return KeWaitForMultipleObjects(1, &object, WaitAll, wait_reason,
+	return KeWaitForMultipleObjects(1, &object, WaitAny, wait_reason,
 					wait_mode, alertable, timeout, NULL);
 }
 
