@@ -281,11 +281,6 @@ static int load_driver(int ioctl_device, char *driver_name,
 		} else if (len > 4 &&
 			   ((strcmp(&dirent->d_name[len-4], ".bin") == 0) ||
 			     (strcmp(&dirent->d_name[len-4], ".out") == 0))) {
-			if (!strcmp(&dirent->d_name[len-10], "ar5523.bin")) {
-				WARN("ar5523.bin is ignored - it should be "
-				     "loaded with load_fw_ar5523");
-				continue;
-			}
 			if (load_file(dirent->d_name,
 				      &driver->bin_files[nr_bin_files])) {
 				ERROR("coudln't load .bin file %s",
@@ -474,13 +469,6 @@ static int load_all_devices(int ioctl_device)
 		if (stat(dirent->d_name, &statbuf) ||
 		    (!S_ISDIR(statbuf.st_mode)))
 			continue;
-		if ((strcmp(dirent->d_name, "athfmwdl") == 0) ||
-		    (strcmp(dirent->d_name, "athwpn") == 0)) {
-			ERROR("%s dirver is ignored - the firmware of "
-			      "this driver should be loaded with "
-			      "load_fw_ar5523", dirent->d_name);
-			continue;
-		}
 		if ((driver = opendir(dirent->d_name)) == NULL) {
 			ERROR("directory %s is not valid: %s",
 			      dirent->d_name, strerror(errno));
