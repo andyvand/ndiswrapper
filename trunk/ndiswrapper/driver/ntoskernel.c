@@ -1336,9 +1336,8 @@ STDCALL NTSTATUS WRAP_EXPORT(KeWaitForMultipleObjects)
 
 	thread = KeGetCurrentThread();
 	EVENTTRACE("thread: %p", thread);
-	assert(thread != NULL);
 	if (thread == NULL)
-		return STATUS_RESOURCES;
+		EVENTEXIT(return STATUS_RESOURCES);
 
 	if (count > MAX_WAIT_OBJECTS)
 		EVENTEXIT(return STATUS_INVALID_PARAMETER);
@@ -1354,18 +1353,21 @@ STDCALL NTSTATUS WRAP_EXPORT(KeWaitForMultipleObjects)
 	alertable = TRUE;
 	irql = kspin_lock_irql(&nt_event_lock, DISPATCH_LEVEL);
 	/* first check if the wait can be satisfied or not, without
-	 * grabbing the objects */
+	 * grabbing the objects, except in the case of WaitAny */
 	for (i = wait_count = 0; i < count; i++) {
 		dh = object[i];
 		EVENTTRACE("%p: event %p state: %d",
 			   task, dh, dh->signal_state);
-		if (check_reset_signaled_state(dh, thread, 0)) {
-			if (wait_type == WaitAny) {
-				check_reset_signaled_state(dh, thread, 1);
+		if (wait_type == WaitAny) {
+			if (check_reset_signaled_state(dh, thread, 1)) {
 				kspin_unlock_irql(&nt_event_lock, irql);
-				EVENTEXIT(return STATUS_SUCCESS);
-			}
-		} else
+				if (count > 1)
+					EVENTEXIT(return STATUS_WAIT_0 + i);
+				else
+					EVENTEXIT(return STATUS_SUCCESS);
+			} else
+				wait_count++;
+		} else if (!check_reset_signaled_state(dh, thread, 0))
 			wait_count++;
 	}
 	if (timeout && *timeout == 0 && wait_count) {
@@ -1388,7 +1390,7 @@ STDCALL NTSTATUS WRAP_EXPORT(KeWaitForMultipleObjects)
 			wb[i].thread = NULL;
 			wb[i].object = NULL;
 		} else {
-			assert(timeout == NULL || *timeout > 0);
+			assert(timeout == NULL || *timeout != 0);
 			wb[i].thread = thread;
 			wb[i].object = dh;
 			InsertTailList(&dh->wait_blocks, &wb[i].list);
@@ -1396,20 +1398,17 @@ STDCALL NTSTATUS WRAP_EXPORT(KeWaitForMultipleObjects)
 			EVENTTRACE("%p: waiting on event %p", task, dh);
 		}
 	}
-	if (wait_count == 0) {
-		kspin_unlock_irql(&nt_event_lock, irql);
+	kspin_unlock_irql(&nt_event_lock, irql);
+
+	if (wait_count == 0)
 		EVENTEXIT(return STATUS_SUCCESS);
-	}
 
-	assert(timeout == NULL || *timeout > 0);
-
+	assert(timeout == NULL || *timeout != 0);
 	if (timeout == NULL)
 		wait_jiffies = 0;
 	else
 		wait_jiffies = SYSTEM_TIME_TO_HZ(*timeout) + 1;
-
 	EVENTTRACE("%p: sleeping for %ld", task, wait_jiffies);
-	kspin_unlock_irql(&nt_event_lock, irql);
 
 	while (wait_count) {
 		if (wait_jiffies) {
@@ -1472,7 +1471,10 @@ STDCALL NTSTATUS WRAP_EXPORT(KeWaitForMultipleObjects)
 					if (wb[j].thread && wb[j].object)
 						RemoveEntryList(&wb[j].list);
 				kspin_unlock_irql(&nt_event_lock, irql);
-				EVENTEXIT(return STATUS_WAIT_0 + i);
+				if (count > 1)
+					EVENTEXIT(return STATUS_WAIT_0 + i);
+				else
+					EVENTEXIT(return STATUS_SUCCESS);
 			}
 		}
 		if (wait_count == 0) {
