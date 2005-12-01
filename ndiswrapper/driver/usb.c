@@ -21,12 +21,12 @@
 static unsigned int urb_id = 0;
 
 #define DUMP_WRAP_URB(wrap_urb, dir)					\
-	USBTRACE("urb %p (%d) %s: buf: %p, len: %d, ep: 0x%x",	\
+	USBTRACE("urb %p (%d) %s: buf: %p, len: %d, pipe: 0x%x",	\
 		 (wrap_urb)->urb, (wrap_urb)->id,			\
 		 (dir == USB_DIR_OUT) ? "going down" : "coming back",	\
 		 (wrap_urb)->urb->transfer_buffer,			\
 		 (wrap_urb)->urb->transfer_buffer_length,		\
-		 usb_pipeendpoint((wrap_urb)->urb->pipe))
+		 (wrap_urb)->urb->pipe)
 
 #define DUMP_URB_BUFFER(urb, dir)					\
 	while (debug >= 2) {						\
@@ -43,6 +43,7 @@ static unsigned int urb_id = 0;
 			     t < &msg[sizeof(msg) - 4]; i++)		\
 			t += sprintf(t, "%02X ",			\
 				     ((char *)urb->transfer_buffer)[i]); \
+		*t = 0;							\
 		USBTRACE("%s", msg);					\
 		break;							\
 	}
@@ -630,16 +631,17 @@ static USBD_STATUS wrap_bulk_or_intr_trans(struct irp *irp)
 		usb_fill_bulk_urb(urb, udev, pipe, urb->transfer_buffer,
 				  bulk_int_tx->transfer_buffer_length,
 				  wrap_urb_complete, urb->context);
-		USBTRACE("submitting bulk urb %p on ep 0x%x",
-			 urb, pipe_handle->bEndpointAddress);
+		USBTRACE("submitting bulk urb %p on pipe 0x%x (ep 0x%x)",
+			 urb, urb->pipe, pipe_handle->bEndpointAddress);
 		status = USBD_STATUS_PENDING;
 	} else {
 		usb_fill_int_urb(urb, udev, pipe, urb->transfer_buffer,
 				 bulk_int_tx->transfer_buffer_length,
 				 wrap_urb_complete, urb->context,
 				 pipe_handle->bInterval);
-		USBTRACE("submitting interrupt urb %p on ep 0x%x, intvl: %d",
-			 urb, pipe_handle->bEndpointAddress,
+		USBTRACE("submitting interrupt urb %p on pipe 0x%x (ep 0x%x), "
+			 "intvl: %d", urb, urb->pipe,
+			 pipe_handle->bEndpointAddress,
 			 pipe_handle->bInterval);
 		status = USBD_STATUS_PENDING;
 	}
@@ -895,7 +897,7 @@ static USBD_STATUS wrap_select_configuration(struct wrap_device *wd,
 			ERROR("couldn't obtain ifnum");
 			return USBD_STATUS_REQUEST_FAILED;
 		}
-		USBTRACE("intf: %p, num ep: 0x%x", intf, intf->bNumEndpoints);
+		USBTRACE("intf: %p, num ep: %d", intf, intf->bNumEndpoints);
 
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
 		for (i = 0; i < CUR_ALT_SETTING(usb_intf)->desc.bNumEndpoints;

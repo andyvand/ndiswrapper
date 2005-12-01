@@ -1536,12 +1536,6 @@ static NDIS_STATUS ndis_start_device(struct wrap_ndis_device *wnd)
 	set_encr_mode(wnd, Ndis802_11EncryptionDisabled);
 	set_privacy_filter(wnd, Ndis802_11PrivFilterAcceptAll);
 
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
-	if (wrap_is_pci_bus(wnd->wd->dev_bus_type))
-		SET_NETDEV_DEV(net_dev, &wnd->wd->pci.pdev->dev);
-	if (wrap_is_usb_bus(wnd->wd->dev_bus_type))
-		SET_NETDEV_DEV(net_dev, &wnd->wd->usb.intf->dev);
-#endif
 	wrap_procfs_add_ndis_device(wnd);
 	TRACEEXIT1(return NDIS_STATUS_SUCCESS);
 
@@ -1656,7 +1650,13 @@ int init_ndis_device(struct wrap_device *wd)
 		return -ENOMEM;
 	}
 	driver->drv_obj->drv_ext->add_device = NdisAddDevice;
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
 	SET_MODULE_OWNER(net_dev);
+	if (wrap_is_pci_bus(wd->dev_bus_type))
+		SET_NETDEV_DEV(net_dev, &wd->pci.pdev->dev);
+	if (wrap_is_usb_bus(wd->dev_bus_type))
+		SET_NETDEV_DEV(net_dev, &wd->usb.intf->dev);
+#endif
 	wnd = netdev_priv(net_dev);
 	DBGTRACE1("wnd: %p", wnd);
 
