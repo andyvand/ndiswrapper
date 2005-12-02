@@ -1002,7 +1002,7 @@ struct common_object_header {
 	struct nt_list list;
 	enum common_object_type type;
 	int size;
-	struct unicode_string *name;
+	char *name;
 	unsigned int ref_count;
 	BOOLEAN close_in_process;
 	BOOLEAN permanent;

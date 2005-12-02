@@ -151,6 +151,7 @@ static STDCALL NTSTATUS pdoDispatchPnp(struct device_object *pdo,
 		if (wd->resource_list)
 			kfree(wd->resource_list);
 		wd->resource_list = NULL;
+		IoDeleteDevice(pdo);
 		status = STATUS_SUCCESS;
 		break;
 	default:
@@ -515,14 +516,12 @@ NTSTATUS pnp_stop_device(struct wrap_device *wd)
 NTSTATUS pnp_remove_device(struct wrap_device *wd)
 {
 	struct device_object *pdo, *fdo;
-	struct driver_object *drv_obj;
 	struct irp *irp;
 	struct io_stack_location *irp_sl;
 	NTSTATUS status;
 
 	pdo = wd->pdo;
 	fdo = IoGetAttachedDevice(pdo);
-	drv_obj = fdo->drv_obj;
 	DBGTRACE1("fdo: %p", fdo);
 	irp = IoAllocateIrp(fdo->stack_size, FALSE);
 	irp_sl = IoGetNextIrpStackLocation(irp);
@@ -544,10 +543,6 @@ NTSTATUS pnp_remove_device(struct wrap_device *wd)
 	if (status != STATUS_SUCCESS)
 		WARNING("status: %08X", status);
 
-	DBGTRACE1("drv_obj: %p", drv_obj);
-	/* we don't unload the driver itself, for now */
-	if (--drv_obj->drv_ext->count <= 0 && drv_obj->unload)
-		LIN2WIN1(drv_obj->unload, drv_obj);
 	TRACEEXIT1(return status);
 }
 

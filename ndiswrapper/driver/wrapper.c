@@ -120,13 +120,13 @@ static void module_cleanup(void)
 
 static int __init wrapper_init(void)
 {
-	char *argv[] = {"loadndisdriver", 
+	char *argv[] = {"loadndisdriver", WRAP_CMD_LOAD_DEVICES,
 #if defined(DEBUG) && DEBUG >= 1
 			"1"
 #else
 			"0"
 #endif
-			, UTILS_VERSION, "-a", 0};
+			, UTILS_VERSION, NULL};
 	char *env[] = {NULL};
 	int ret;
 

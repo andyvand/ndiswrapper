@@ -26,7 +26,7 @@ install: all
 	install -D -m 755 ndiswrapper-buginfo $(usrsbindir)/ndiswrapper-buginfo
 	@echo
 	@echo "NOTE: Windows driver configuration file format has changed since" \
-	      "1.0-rc2. You must re-install Windows drivers if they were" \
+	      "1.5. You must re-install Windows drivers if they were" \
 	      "installed before."
 
 dist:

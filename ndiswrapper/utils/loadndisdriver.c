@@ -62,7 +62,7 @@ static int load_file(char *filename, struct load_driver_file *driver_file)
 {
 	int fd;
 	size_t size;
-	void * image = NULL;
+	void *image = NULL;
 	struct stat statbuf;
 
 	char *file_basename = basename(filename);
@@ -205,6 +205,35 @@ static int read_conf_file(char *conf_file_name, struct load_driver *driver)
 	return 0;
 }
 
+static int load_bin_file(int ioctl_device, char *driver_name,
+			 char *file_name)
+{
+	struct load_driver_file driver_file;
+	char lc_file_name[MAX_DRIVER_NAME_LEN];
+	int i;
+
+	DBG("loading driver %s", driver_name);
+	for (i = 0; file_name[i] && i < sizeof(lc_file_name); i++)
+		lc_file_name[i] = tolower(file_name[i]);
+	lc_file_name[i] = 0;
+	if (chdir(confdir) || chdir(driver_name)) {
+		ERROR("couldn't change to directory %s: %s",
+		      driver_name, strerror(errno));
+		return -EINVAL;
+	}
+	if (load_file(lc_file_name, &driver_file)) {
+		ERROR("couldn't open file %s", file_name);
+		return -EINVAL;
+	}
+	strncpy(driver_file.driver_name, driver_name,
+		sizeof(driver_file.driver_name));
+	if (ioctl(ioctl_device, WRAP_IOCTL_LOAD_BIN_FILE, &driver_file)) {
+		ERROR("couldn't upload bin file: %s", file_name);
+		return -EINVAL;
+	}
+	return 0;
+}
+
 /*
  * open a windows driver and pass it to the kernel module.
  * returns 0: on success, -1 on error
@@ -281,13 +310,13 @@ static int load_driver(int ioctl_device, char *driver_name,
 		} else if (len > 4 &&
 			   ((strcmp(&dirent->d_name[len-4], ".bin") == 0) ||
 			     (strcmp(&dirent->d_name[len-4], ".out") == 0))) {
-			if (load_file(dirent->d_name,
-				      &driver->bin_files[nr_bin_files])) {
-				ERROR("coudln't load .bin file %s",
-				      dirent->d_name);
-				goto err;
-			} else
-				nr_bin_files++;
+			strcpy(driver->bin_files[nr_bin_files].name,
+			       dirent->d_name);
+			strcpy(driver->bin_files[nr_bin_files].driver_name,
+			       driver_name);
+			driver->bin_files[nr_bin_files].size = 0;
+			driver->bin_files[nr_bin_files].data = NULL;
+			nr_bin_files++;
 		} else
 			ERROR("file %s is ignored", dirent->d_name);
 
@@ -312,7 +341,7 @@ static int load_driver(int ioctl_device, char *driver_name,
 	driver->nr_bin_files = nr_bin_files;
 	strncpy(driver->conf_file_name, conf_file_name,
 		sizeof(driver->conf_file_name));
-	if (ioctl(ioctl_device, WRAP_LOAD_DRIVER, driver))
+	if (ioctl(ioctl_device, WRAP_IOCTL_LOAD_DRIVER, driver))
 		goto err;
 	closedir(driver_dir);
 	DBG("driver %s loaded", driver_name);
@@ -496,7 +525,7 @@ static int load_all_devices(int ioctl_device)
 	load_devices.count = loaded;
 	load_devices.devices = devices;
 
-	res = ioctl(ioctl_device, WRAP_REGISTER_DEVICES, &load_devices);
+	res = ioctl(ioctl_device, WRAP_IOCTL_REGISTER_DEVICES, &load_devices);
 	DBG("res: %d", res);
 	free(devices);
 
@@ -568,6 +597,7 @@ static int get_ioctl_device()
 int main(int argc, char *argv[0])
 {
 	int i, ioctl_device, res;
+	char *cmd;
 
 	openlog(PROG_NAME, LOG_PERROR | LOG_CONS, LOG_KERN | LOG_DEBUG);
 
@@ -578,8 +608,9 @@ int main(int argc, char *argv[0])
 		goto out;
 	}
 
+	cmd = argv[1];
 	i = -1;
-	i = atoi(argv[1]);
+	i = atoi(argv[2]);
 	if (i < 0) {
 		ERROR("invalid debug value %d", i);
 		res = 2;
@@ -594,28 +625,35 @@ int main(int argc, char *argv[0])
 		goto out;
 	}
 
-	if (atof(argv[2]) != atof(UTILS_VERSION)) {
+	if (atof(argv[3]) != atof(UTILS_VERSION)) {
 		ERROR("version %s doesn't match driver version %s",
-		      UTILS_VERSION, argv[2]);
+		      UTILS_VERSION, argv[3]);
 		res = 6;
 		goto out;
 	}
 
-	if (strcmp(argv[3], "-a") == 0) {
+	if (strcmp(cmd, WRAP_CMD_LOAD_DEVICES) == 0) {
 		if (load_all_devices(ioctl_device))
 			res = 7;
 		else
 			res = 0;
-	} else {
+	} else if (strcmp(cmd, WRAP_CMD_LOAD_DRIVER) == 0) {
 		/* load specific driver and conf file */
-		if (argc != 5) {
+		if (argc != 6) {
 			ERROR("incorrect usage of %s (%d)", argv[0], argc);
 			res = 11;
 			goto out;
 		}
-		res = load_driver(ioctl_device, argv[3], argv[4]);
+		res = load_driver(ioctl_device, argv[4], argv[5]);
+	} else if (strcmp(cmd, WRAP_CMD_LOAD_BIN_FILE) == 0) {
+		/* load specific driver and conf file */
+		if (argc != 6) {
+			ERROR("incorrect usage of %s (%d)", argv[0], argc);
+			res = 12;
+			goto out;
+		}
+		res = load_bin_file(ioctl_device, argv[4], argv[5]);
 	}
-
 out:
 	if (ioctl_device != -1)
 		close(ioctl_device);

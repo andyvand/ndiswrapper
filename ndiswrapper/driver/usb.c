@@ -1108,12 +1108,9 @@ NTSTATUS wrap_submit_irp(struct device_object *pdo, struct irp *irp)
 	union nt_urb *nt_urb;
 
 	irp_sl = IoGetCurrentIrpStackLocation(irp);
-	wd = NULL;
-	if (pdo) {
-		wd = pdo->reserved;
-		irp->wd = wd;
-	}
-	if (pdo == NULL || wd == NULL || wd->usb.intf == NULL) {
+	wd = pdo->reserved;
+	irp->wd = wd;
+	if (unlikely(wd->usb.intf == NULL)) {
 		nt_urb = URB_FROM_IRP(irp);
 		status = NT_URB_STATUS(nt_urb) = USBD_STATUS_DEVICE_GONE;
 		irp->io_status.status = STATUS_DEVICE_REMOVED;

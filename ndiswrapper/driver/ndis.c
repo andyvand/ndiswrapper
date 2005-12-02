@@ -17,6 +17,7 @@
 #include "iw_ndis.h"
 #include "wrapndis.h"
 #include "pnp.h"
+#include "loader.h"
 
 #define MAX_ALLOCATED_NDIS_PACKETS 20
 #define MAX_ALLOCATED_NDIS_BUFFERS 40
@@ -170,7 +171,7 @@ STDCALL NDIS_STATUS WRAP_EXPORT(NdisMRegisterDevice)
 	*dev_obj = tmp;
 	*dev_obj_handle = *dev_obj;
 	for (i = 0; i <= IRP_MJ_MAXIMUM_FUNCTION; i++)
-		if (funcs[i]) {
+		if (funcs[i] && i != IRP_MJ_PNP && i != IRP_MJ_POWER) {
 			drv_obj->major_func[i] = funcs[i];
 			DBGTRACE1("mj_fn for 0x%x is at %p", i, funcs[i]);
 		}
@@ -297,9 +298,7 @@ STDCALL void WRAP_EXPORT(NdisOpenFile)
 	 NDIS_PHY_ADDRESS highest_address)
 {
 	struct ansi_string ansi;
-	struct wrap_driver *driver;
-	struct wrap_bin_file *file;
-	KIRQL irql;
+	struct wrap_bin_file *bin_file;
 
 	TRACEENTER2("status = %p, filelength = %p, *filelength = %d, "
 		    "high = %llx, filehandle = %p, *filehandle = %p",
@@ -313,30 +312,14 @@ STDCALL void WRAP_EXPORT(NdisOpenFile)
 	}
 	DBGTRACE2("Filename: %s", ansi.buf);
 
-	/* Loop through all drivers and all files to find the requested file */
-	irql = kspin_lock_irql(&loader_lock, DISPATCH_LEVEL);
-	nt_list_for_each_entry(driver, &wrap_drivers, list) {
-		int i;
+	bin_file = get_bin_file(ansi.buf);
+	if (bin_file) {
+		*filehandle = bin_file;
+		*filelength = bin_file->size;
+		*status = NDIS_STATUS_SUCCESS;
+	} else
+		*status = NDIS_STATUS_FILE_NOT_FOUND;
 
-		for (i = 0; i < driver->num_bin_files; i++) {
-			size_t n;
-			file = &driver->bin_files[i];
-			DBGTRACE2("considering %s", file->name);
-			n = min((size_t)ansi.length + 1,
-				(size_t)ansi.max_length);
-			n = min(strlen(file->name), n);
-			if (strnicmp(file->name, ansi.buf, n) == 0) {
-				*filehandle = file;
-				*filelength = file->size;
-				*status = NDIS_STATUS_SUCCESS;
-				kspin_unlock_irql(&loader_lock, irql);
-				RtlFreeAnsiString(&ansi);
-				TRACEEXIT2(return);
-			}
-		}
-	}
-	kspin_unlock_irql(&loader_lock, irql);
-	*status = NDIS_STATUS_FILE_NOT_FOUND;
 	RtlFreeAnsiString(&ansi);
 	TRACEEXIT2(return);
 }
@@ -368,6 +351,7 @@ STDCALL void WRAP_EXPORT(NdisCloseFile)
 	(struct wrap_bin_file *filehandle)
 {
 	TRACEENTER2("handle: %p", filehandle);
+	free_bin_file(filehandle);
 	TRACEEXIT2(return);
 }
 
