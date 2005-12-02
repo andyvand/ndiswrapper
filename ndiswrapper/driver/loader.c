@@ -227,8 +227,10 @@ struct wrap_bin_file *get_bin_file(char *bin_file_name)
 {
 	int i = 0;
 	struct wrap_driver *driver, *cur;
+	KIRQL irql;
 
 	driver = NULL;
+	irql = kspin_lock_irql(&loader_lock, DISPATCH_LEVEL);
 	nt_list_for_each_entry(cur, &wrap_drivers, list) {
 		for (i = 0; i < cur->num_bin_files; i++)
 			if (!stricmp(cur->bin_files[i].name, bin_file_name)) {
@@ -236,6 +238,7 @@ struct wrap_bin_file *get_bin_file(char *bin_file_name)
 				break;
 			}
 	}
+	kspin_unlock_irql(&loader_lock, irql);
 	if (driver == NULL) {
 		ERROR("coudln't find bin file '%s'", bin_file_name);
 		return NULL;
@@ -267,9 +270,9 @@ struct wrap_bin_file *get_bin_file(char *bin_file_name)
 		}
 		DBGTRACE2("bin file: %s/%s",
 			  wrap_bin_file.driver_name, wrap_bin_file.name);
-		if (stricmp(driver->bin_files[i].name,
-			    wrap_bin_file.name)) {
-			ERROR("invalid bin file: %s, %s",
+		if (stricmp(driver->bin_files[i].name, wrap_bin_file.name) ||
+		    strcmp(driver->name, wrap_bin_file.driver_name)) {
+			ERROR("invalid bin file: %s/%s",
 			      wrap_bin_file.driver_name, wrap_bin_file.name);
 			free_bin_file(&wrap_bin_file);
 			TRACEEXIT2(return NULL);
@@ -282,9 +285,9 @@ struct wrap_bin_file *get_bin_file(char *bin_file_name)
 
 static int add_bin_file(struct load_driver_file *driver_file)
 {
-	memcpy(&wrap_bin_file.name, driver_file->name,
+	memcpy(wrap_bin_file.name, driver_file->name,
 	       sizeof(wrap_bin_file.name));
-	memcpy(&wrap_bin_file.driver_name, driver_file->driver_name,
+	memcpy(wrap_bin_file.driver_name, driver_file->driver_name,
 	       sizeof(wrap_bin_file.driver_name));
 	wrap_bin_file.size = driver_file->size;
 	wrap_bin_file.data = vmalloc(wrap_bin_file.size);
@@ -302,6 +305,7 @@ static int add_bin_file(struct load_driver_file *driver_file)
 
 void free_bin_file(struct wrap_bin_file *bin_file)
 {
+	DBGTRACE2("unloading %s", bin_file->name);
 	if (bin_file->data)
 		vfree(bin_file->data);
 	bin_file->data = NULL;

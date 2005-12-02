@@ -394,7 +394,7 @@ _FASTCALL NTSTATUS WRAP_EXPORT(IofCallDriver)
 	major_func = drv_obj->major_func[irp_sl->major_fn];
 	IOTRACE("major_func: %p, dev_obj: %p", major_func, dev_obj);
 	if (major_func)
-		res = major_func(dev_obj, irp);
+		res = (*major_func)(dev_obj, irp);
 	else {
 		ERROR("major_function %d is not implemented",
 		      irp_sl->major_fn);

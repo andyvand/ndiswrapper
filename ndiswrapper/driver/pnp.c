@@ -18,7 +18,6 @@
 #include "wrapndis.h"
 #include "loader.h"
 
-extern KSPIN_LOCK loader_lock;
 extern struct nt_list ndis_drivers;
 extern struct wrap_device *wrap_devices;
 
