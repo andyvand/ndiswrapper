@@ -392,9 +392,9 @@ _FASTCALL NTSTATUS WRAP_EXPORT(IofCallDriver)
 
 	irp_sl->dev_obj = dev_obj;
 	major_func = drv_obj->major_func[irp_sl->major_fn];
-	IOTRACE("major_func: %p", major_func);
+	IOTRACE("major_func: %p, dev_obj: %p", major_func, dev_obj);
 	if (major_func)
-		res = (*major_func)(dev_obj, irp);
+		res = major_func(dev_obj, irp);
 	else {
 		ERROR("major_function %d is not implemented",
 		      irp_sl->major_fn);
@@ -687,7 +687,7 @@ STDCALL NTSTATUS WRAP_EXPORT(IoCreateDevice)
 	}
 
 	size = sizeof(*dev) + dev_ext_length + sizeof(*dev_obj_ext);
-	dev = allocate_object(size, OBJECT_TYPE_DEVICE, dev_name);
+	dev = allocate_object(size, OBJECT_TYPE_DEVICE, ansi.buf);
 	if (!dev)
 		IOEXIT(return STATUS_INSUFFICIENT_RESOURCES);
 	if (dev_ext_length)
@@ -812,7 +812,7 @@ STDCALL struct device_object *WRAP_EXPORT(IoGetAttachedDeviceReference)
 	if (!dev)
 		IOEXIT(return NULL);
 	d = IoGetAttachedDevice(dev);
-	ObReferenceObject(d);
+	d->ref_count++;
 	IOEXIT(return d);
 }
 
@@ -831,6 +831,7 @@ STDCALL struct device_object *WRAP_EXPORT(IoAttachDeviceToDeviceStack)
 		dst->attached = src;
 	src->attached = NULL;
 	src->stack_size = dst->stack_size + 1;
+//	src->ref_count++;
 	kspin_unlock_irql(&ntoskernel_lock, irql);
 	IOTRACE("stack_size: %d -> %d", dst->stack_size, src->stack_size);
 	IOEXIT(return dst);
@@ -848,14 +849,31 @@ STDCALL void WRAP_EXPORT(IoDetachDevice)
 	tail = topdev->attached;
 	if (!tail)
 		IOEXIT(return);
-	IOTRACE("tail:%p", tail);
+	IOTRACE("tail: %p", tail);
 
 	irql = kspin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL);
 	topdev->attached = tail->attached;
-	for (tail = topdev->attached; tail; tail = tail->attached)
+	IOTRACE("attached:%p", topdev->attached);
+	for ( ; tail; tail = tail->attached) {
+		IOTRACE("tail:%p", tail);
 		tail->stack_size--;
+		tail->ref_count--;
+		IOTRACE("ref_count: %d, drv_obj: %p",
+			tail->ref_count, tail->drv_obj);
+		if (tail->ref_count < 1 && tail->drv_obj) {
+			struct driver_object *drv_obj;
+			drv_obj = tail->drv_obj;
+			IOTRACE("ref: %d, driver: %p", tail->ref_count,
+				drv_obj);
+			kspin_unlock_irql(&ntoskernel_lock, irql);
+			if (drv_obj && drv_obj->unload)
+				LIN2WIN1(drv_obj->unload, drv_obj);
+			/* we don't unload the driver itself, for now */
+			irql = kspin_lock_irql(&ntoskernel_lock,
+					       DISPATCH_LEVEL);
+		}
+	}
 	kspin_unlock_irql(&ntoskernel_lock, irql);
-	ObDereferenceObject(topdev);
 	IOEXIT(return);
 }
 

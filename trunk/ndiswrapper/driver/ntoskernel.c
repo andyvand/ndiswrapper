@@ -17,6 +17,7 @@
 #include "ndis.h"
 #include "usb.h"
 #include "pnp.h"
+#include "loader.h"
 
 #define WRAP_KMALLOC_TAG 0x4b6d41
 #define WRAP_VMALLOC_TAG 0x766d9f
@@ -37,12 +38,6 @@ struct wrap_mdl {
 	char mdl[CACHE_MDL_SIZE];
 };
 
-struct bus_driver {
-	struct nt_list list;
-	char name[MAX_DRIVER_NAME_LEN];
-	struct driver_object *drv_obj;
-};
-
 /* everything here is for all drivers/devices - not per driver/device */
 static KSPIN_LOCK nt_event_lock;
 KSPIN_LOCK ntoskernel_lock;
@@ -60,9 +55,16 @@ static struct nt_list callback_objects;
 
 struct nt_list object_list;
 
+struct bus_driver {
+	struct nt_list list;
+	char name[MAX_DRIVER_NAME_LEN];
+	struct driver_object *drv_obj;
+};
+
+struct driver_object pci_driver;
+struct driver_object usb_driver;
+
 static struct nt_list bus_driver_list;
-static struct driver_object pci_bus_driver;
-static struct driver_object usb_bus_driver;
 static void del_bus_drivers(void);
 
 struct work_struct wrap_work_item_work;
@@ -86,7 +88,7 @@ struct kuser_shared_data kuser_shared_data;
 static void update_user_shared_data_proc(unsigned long data);
 #endif
 
-static int add_bus_driver(struct driver_object *drv_obj, const char *name);
+static int add_bus_driver(struct driver_object *driver, const char *name);
 static void free_all_objects(void);
 static BOOLEAN queue_kdpc(struct kdpc *kdpc);
 
@@ -120,8 +122,8 @@ int ntoskernel_init(void)
 	wrap_ticks_to_boot -= jiffies * TICKSPERSEC / HZ;
 	wrap_ticks_to_boot += TICKS_1601_TO_1970;
 
-	if (add_bus_driver(&pci_bus_driver, "PCI") ||
-	    add_bus_driver(&usb_bus_driver, "USB")) {
+	if (add_bus_driver(&pci_driver, "PCI") ||
+	    add_bus_driver(&usb_driver, "USB")) {
 		ntoskernel_exit();
 		return -ENOMEM;
 	}
@@ -245,7 +247,7 @@ void ntoskernel_exit(void)
 		kfree(object);
 	}
 	kspin_unlock_irql(&ntoskernel_lock, irql);
-
+	DBGTRACE2("deleting bus drivers");
 	del_bus_drivers();
 	free_all_objects();
 #if defined(CONFIG_X86_64)
@@ -269,8 +271,7 @@ static void update_user_shared_data_proc(unsigned long data)
 }
 #endif
 
-void *allocate_object(ULONG size, enum common_object_type type,
-		      struct unicode_string *name)
+void *allocate_object(ULONG size, enum common_object_type type, char *name)
 {									
 	struct common_object_header *hdr;
 	KIRQL irql;
@@ -2212,10 +2213,9 @@ STDCALL NTSTATUS WRAP_EXPORT(ZwCreateFile)
 	 ULONG create_options, void *ea_buffer, ULONG ea_length)
 {
 	struct common_object_header *header;
-	struct wrap_driver *driver;
 	struct object_attr *oa;
 	struct ansi_string ansi;
-	struct wrap_bin_file *file;
+	struct wrap_bin_file *bin_file;
 	KIRQL irql;
 	char *file_basename;
 
@@ -2232,8 +2232,10 @@ STDCALL NTSTATUS WRAP_EXPORT(ZwCreateFile)
 		oa = HEADER_TO_OBJECT(header);
 		if (!RtlCompareUnicodeString(oa->name, obj_attr->name,
 					     FALSE)) {
+			bin_file = oa->file;
 			*handle = header;
 			iosb->status = FILE_OPENED;
+			iosb->status_info = bin_file->size;
 			kspin_unlock_irql(&ntoskernel_lock, irql);
 			TRACEEXIT2(return STATUS_SUCCESS);
 		}
@@ -2241,7 +2243,13 @@ STDCALL NTSTATUS WRAP_EXPORT(ZwCreateFile)
 	kspin_unlock_irql(&ntoskernel_lock, irql);
 
 	oa = allocate_object(sizeof(struct object_attr), OBJECT_TYPE_FILE,
-			     obj_attr->name);
+			     ansi.buf);
+	if (!oa) {
+		iosb->status = FILE_DOES_NOT_EXIST;
+		iosb->status_info = 0;
+		RtlFreeAnsiString(&ansi);
+		TRACEEXIT2(return STATUS_FAILURE);
+	}
 	*handle = OBJECT_TO_HEADER(oa);
 	DBGTRACE2("handle: %p", *handle);
 	file_basename = strrchr(ansi.buf, '\\');
@@ -2250,33 +2258,19 @@ STDCALL NTSTATUS WRAP_EXPORT(ZwCreateFile)
 	else
 		file_basename = ansi.buf;
 	DBGTRACE2("file_basename: '%s'", file_basename);
-	/* Loop through all drivers and all files to find the requested file */
-	irql = kspin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL);
-	nt_list_for_each_entry(driver, &wrap_drivers, list) {
-		int i;
-		DBGTRACE2("driver: %s", driver->name);
-		for (i = 0; i < driver->num_bin_files; i++) {
-			size_t n;
-			file = &driver->bin_files[i];
-			DBGTRACE2("considering '%s'", file->name);
-			n = min((size_t)ansi.length + 1,
-				(size_t)ansi.max_length);
-			n = min(strlen(file->name), n);
-			if (strnicmp(file->name, file_basename, n) == 0) {
-				DBGTRACE2("found '%s'", file->name);
-				oa->file = file;
-				iosb->status = FILE_OPENED;
-				iosb->status_info = file->size;
-				RtlFreeAnsiString(&ansi);
-				kspin_unlock_irql(&ntoskernel_lock, irql);
-				TRACEEXIT2(return STATUS_SUCCESS);
-			}
-		}
+	bin_file = get_bin_file(file_basename);
+	if (bin_file) {
+		oa->file = bin_file;
+		iosb->status = FILE_OPENED;
+		iosb->status_info = bin_file->size;
+		RtlFreeAnsiString(&ansi);
+		TRACEEXIT2(return STATUS_SUCCESS);
+	} else {
+		iosb->status = FILE_DOES_NOT_EXIST;
+		iosb->status_info = 0;
+		RtlFreeAnsiString(&ansi);
+		TRACEEXIT2(return STATUS_FAILURE);
 	}
-	iosb->status = FILE_DOES_NOT_EXIST;
-	iosb->status_info = 0;
-	kspin_unlock_irql(&ntoskernel_lock, irql);
-	TRACEEXIT2(return STATUS_FAILURE);
 }
 
 STDCALL NTSTATUS WRAP_EXPORT(ZwReadFile)
@@ -2307,8 +2301,13 @@ STDCALL NTSTATUS WRAP_EXPORT(ZwReadFile)
 STDCALL NTSTATUS WRAP_EXPORT(ZwClose)
 	(void *handle)
 {
-	void *object = HANDLE_TO_OBJECT(handle);
-	ObDereferenceObject(object);
+	struct object_attr *oa;
+	struct wrap_bin_file *bin_file;
+
+	oa = HANDLE_TO_OBJECT(handle);
+	bin_file = oa->file;
+	free_bin_file(bin_file);
+	ObDereferenceObject(oa);
 	TRACEEXIT2(return STATUS_SUCCESS);
 }
 

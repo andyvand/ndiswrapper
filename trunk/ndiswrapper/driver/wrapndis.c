@@ -1362,6 +1362,7 @@ STDCALL NTSTATUS NdisDispatchPnp(struct device_object *fdo,
 	struct device_object *pdo;
 	NTSTATUS status;
 
+	IOENTER("fdo: %p, irp: %p", fdo, irp);
 	irp_sl = IoGetCurrentIrpStackLocation(irp);
 	wnd = fdo->reserved;
 	pdo = wnd->nmb->pdo;
@@ -1585,6 +1586,7 @@ static NDIS_STATUS ndis_remove_device(struct wrap_ndis_device *wnd)
 		NdisFreeBufferPool(wnd->wrapper_buffer_pool);
 		wnd->wrapper_buffer_pool = NULL;
 	}
+	IoDetachDevice(wnd->nmb->pdo);
 	IoDeleteDevice(wnd->nmb->fdo);
 	if (wnd->xmit_array)
 		kfree(wnd->xmit_array);
@@ -1618,9 +1620,9 @@ STDCALL NTSTATUS NdisAddDevice(struct driver_object *drv_obj,
 	fdo->reserved = wnd;
 	nmb = wnd->nmb;
 	nmb->fdo = fdo;
-	DBGTRACE1("nmb: %p, pdo: %p, fdo: %p, attached: %p, next: %p",
-		  nmb, pdo, fdo, fdo->attached, fdo->next);
 	nmb->next_device = IoAttachDeviceToDeviceStack(fdo, pdo);
+	DBGTRACE1("nmb: %p, pdo: %p, fdo: %p, attached: %p, next: %p",
+		  nmb, pdo, fdo, fdo->attached, nmb->next_device);
 
 	for (i = 0; i <= IRP_MJ_MAXIMUM_FUNCTION; i++)
 		drv_obj->major_func[i] = IopPassIrpDown;
@@ -1725,7 +1727,6 @@ void remove_ndis_device(struct wrap_ndis_device *wnd)
 	if (!test_bit(HW_RMMOD, &wnd->wd->hw_status))
 		miniport_pnp_event(wnd, NdisDevicePnPEventSurpriseRemoved);
 	status = pnp_stop_remove_device(wnd->wd);
-	IoDetachDevice(wnd->nmb->pdo);
 	free_netdev(wnd->net_dev);
 	TRACEEXIT1(return);
 }

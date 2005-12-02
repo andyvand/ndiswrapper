@@ -16,7 +16,7 @@
 #ifndef _NTOSKERNEL_H_
 #define _NTOSKERNEL_H_
 
-#define UTILS_VERSION "1.6"
+#define UTILS_VERSION "1.7"
 
 #include <linux/types.h>
 #include <linux/timer.h>
@@ -448,7 +448,8 @@ struct wrap_device_setting {
 };
 
 struct wrap_bin_file {
-	char name[MAX_SETTING_NAME_LEN];
+	char driver_name[MAX_DRIVER_NAME_LEN];
+	char name[MAX_DRIVER_NAME_LEN];
 	int size;
 	void *data;
 };
@@ -526,8 +527,7 @@ int ntoskernel_init(void);
 void ntoskernel_exit(void);
 int ntoskernel_init_device(struct wrap_device *wd);
 void ntoskernel_exit_device(struct wrap_device *wd);
-void *allocate_object(ULONG size, enum common_object_type type,
-		      struct unicode_string *name);
+void *allocate_object(ULONG size, enum common_object_type type, char *name);
 void  free_object(void *object);
 
 int usb_init(void);
