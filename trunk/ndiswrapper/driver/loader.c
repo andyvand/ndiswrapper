@@ -240,7 +240,7 @@ struct wrap_bin_file *get_bin_file(char *bin_file_name)
 	}
 	kspin_unlock_irql(&loader_lock, irql);
 	if (driver == NULL) {
-		ERROR("coudln't find bin file '%s'", bin_file_name);
+		DBGTRACE1("coudln't find bin file '%s'", bin_file_name);
 		return NULL;
 	}
 	

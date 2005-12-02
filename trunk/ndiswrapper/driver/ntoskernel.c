@@ -110,6 +110,7 @@ int ntoskernel_init(void)
 	InitializeListHead(&bus_driver_list);
 	InitializeListHead(&object_list);
 	InitializeListHead(&wrap_work_item_list);
+
 	INIT_WORK(&kdpc_work, kdpc_worker, NULL);
 	INIT_WORK(&wrap_work_item_work, wrap_work_item_worker, NULL);
 
@@ -247,7 +248,7 @@ void ntoskernel_exit(void)
 		kfree(object);
 	}
 	kspin_unlock_irql(&ntoskernel_lock, irql);
-	DBGTRACE2("deleting bus drivers");
+
 	del_bus_drivers();
 	free_all_objects();
 #if defined(CONFIG_X86_64)
@@ -560,11 +561,6 @@ static void timer_proc(unsigned long data)
 
 	wrap_timer = nt_timer->wrap_timer;
 	TRACEENTER5("%p(%p), %lu", wrap_timer, nt_timer, jiffies);
-	if (wrap_timer == NULL) {
-		WARNING("wrong timer: %p", nt_timer);
-		return;
-	}
-
 #ifdef DEBUG_TIMER
 	BUG_ON(wrap_timer->wrap_timer_magic != WRAP_TIMER_MAGIC);
 	BUG_ON(nt_timer->wrap_timer_magic != WRAP_TIMER_MAGIC);
@@ -860,18 +856,13 @@ static void wrap_work_item_worker(void *data)
 		wrap_work_item = container_of(cur, struct wrap_work_item,
 					      list);
 		func = wrap_work_item->func;
-		if (func) {
-			DBGTRACE4("%p, %p, %p", func, wrap_work_item->arg1,
-				  wrap_work_item->arg2);
-			if (wrap_work_item->win_func == TRUE)
-				LIN2WIN2(func, wrap_work_item->arg1,
-					 wrap_work_item->arg2);
-			else
-				func(wrap_work_item->arg1,
-				     wrap_work_item->arg2);
-		} else
-			ERROR("func is NULL");
-		DBGTRACE4("");
+		DBGTRACE4("%p, %p, %p", func, wrap_work_item->arg1,
+			  wrap_work_item->arg2);
+		if (wrap_work_item->win_func == TRUE)
+			LIN2WIN2(func, wrap_work_item->arg1,
+				 wrap_work_item->arg2);
+		else
+			func(wrap_work_item->arg1, wrap_work_item->arg2);
 		kfree(wrap_work_item);
 	}
 	return;
@@ -1036,41 +1027,25 @@ _FASTCALL void WRAP_EXPORT(ExInterlockedAddLargeStatistic)
 	kspin_unlock_irqrestore(&inter_lock, flags);
 }
 
-/* We need to keep track of whether memory is allocated with kmalloc
- * or vmalloc so we can free with kfree or vfree later. So we allocate
- * extra memory for tag and store the tag there. This tag is used to
- * decide how to free memory later. */
 STDCALL void *WRAP_EXPORT(ExAllocatePoolWithTag)
 	(enum pool_type pool_type, SIZE_T size, ULONG tag)
 {
 	void *addr;
-	UINT total;
-	wrap_alloc_tag_t wrap_tag;
 
 	TRACEENTER4("pool_type: %d, size: %lu, tag: %u", pool_type,
 		    size, tag);
 
-	total = size + sizeof(wrap_tag);
-	if (total <= KMALLOC_THRESHOLD) {
+	if (size <= KMALLOC_THRESHOLD) {
 		if (current_irql() < DISPATCH_LEVEL)
-			addr = kmalloc(total, GFP_KERNEL);
+			addr = kmalloc(size, GFP_KERNEL);
 		else
-			addr = kmalloc(total, GFP_ATOMIC);
-		wrap_tag = WRAP_KMALLOC_TAG;
+			addr = kmalloc(size, GFP_ATOMIC);
 	} else {
-		if (current_irql() == DISPATCH_LEVEL)
+		if (current_irql() > PASSIVE_LEVEL)
 			ERROR("Windows driver allocating too big a block"
-			      " at DISPATCH_LEVEL: %d", total);
-		addr = vmalloc(total);
-		wrap_tag = WRAP_VMALLOC_TAG;
+			      " at DISPATCH_LEVEL: %ld", size);
+		addr = vmalloc(size);
 	}
-	if (addr) {
-		*(typeof(wrap_tag) *)addr = wrap_tag;
-		addr += sizeof(wrap_tag);
-		DBGTRACE4("addr: %p, tag: %lx, size: %lu",
-			  addr, wrap_tag, size);
-	} else
-		WARNING("couldn't allocate memory: %lu", size);
 	TRACEEXIT4(return addr);
 }
 
@@ -1082,27 +1057,15 @@ STDCALL void wrap_vfree(void *addr, void *ctx)
 STDCALL void WRAP_EXPORT(ExFreePool)
 	(void *addr)
 {
-	wrap_alloc_tag_t wrap_tag;
-
 	DBGTRACE4("addr: %p", addr);
-	addr -= sizeof(wrap_tag);
-	wrap_tag = *(typeof(wrap_tag) *)addr;
-	DBGTRACE4("tag: %lx", wrap_tag);
-	if (wrap_tag == WRAP_KMALLOC_TAG)
+	if ((unsigned long)addr < VMALLOC_START ||
+	    (unsigned long)addr >= VMALLOC_END)
 		kfree(addr);
-	else if (wrap_tag == WRAP_VMALLOC_TAG) {
+	else {
 		if (in_interrupt())
 			schedule_wrap_work_item(wrap_vfree, addr, NULL, FALSE);
 		else
 			vfree(addr);
-	} else {
-		ERROR("wrong tag: %lu (%p)", wrap_tag, addr);
-		/* either this addr was not allocated with
-		 * ExAllocatePoolWithTag or this addr was corrupted;
-		 * releasing memory here is dangerous, but it will
-		 * catch errors and prevent leaks; for now assume this
-		 * addr was allocated with kmalloc */
-		kfree(addr + sizeof(wrap_tag));
 	}
 	return;
 }
