@@ -546,12 +546,14 @@ NTSTATUS pnp_remove_device(struct wrap_device *wd)
 	if (status != STATUS_SUCCESS)
 		WARNING("status: %08X", status);
 	
-	/* TODO: should we use count above, or through driver's Object
+	/* TODO: should we use count in drv_ext or driver's Object
 	 * header reference count to keep count of devices associated
 	 * with a driver? */
 	if (status == STATUS_SUCCESS)
 		fdo_drv_obj->drv_ext->count--;
 	DBGTRACE1("count: %d", fdo_drv_obj->drv_ext->count);
+	if (fdo->drv_obj->drv_ext->count < 0)
+		WARNING("wrong count: %d", fdo_drv_obj->drv_ext->count);
 	if (fdo_drv_obj->drv_ext->count == 0) {
 		struct wrap_driver *wrap_driver;
 		DBGTRACE1("unloading driver: %p", fdo_drv_obj);
@@ -678,8 +680,7 @@ void __devexit wrap_pnp_remove_pci_device(struct pci_dev *pdev)
 	TRACEENTER1("%p", wd);
 	if (!wd)
 		TRACEEXIT1(return);
-	if (WRAP_DEVICE_TYPE(wd->dev_bus_type) == WRAP_NDIS_DEVICE)
-		remove_ndis_device(wd->wnd);
+	pnp_stop_remove_device(wd);
 }
 
 int wrap_pnp_suspend_pci_device(struct pci_dev *pdev, pm_message_t state)
@@ -687,12 +688,7 @@ int wrap_pnp_suspend_pci_device(struct pci_dev *pdev, pm_message_t state)
 	struct wrap_device *wd;
 
 	wd = (struct wrap_device *)pci_get_drvdata(pdev);
-	if (WRAP_DEVICE_TYPE(wd->dev_bus_type) == WRAP_NDIS_DEVICE)
-		return suspend_ndis_device(wd->wnd, state);
-	else {
-		ERROR("device %d not supported", wd->dev_bus_type);
-		return -1;
-	}
+	return pnp_set_power_state(wd, PowerDeviceD3);
 }
 
 int wrap_pnp_resume_pci_device(struct pci_dev *pdev)
@@ -700,12 +696,7 @@ int wrap_pnp_resume_pci_device(struct pci_dev *pdev)
 	struct wrap_device *wd;
 
 	wd = (struct wrap_device *)pci_get_drvdata(pdev);
-	if (WRAP_DEVICE_TYPE(wd->dev_bus_type) == WRAP_NDIS_DEVICE)
-		return resume_ndis_device(wd->wnd);
-	else {
-		ERROR("device %d not supported", wd->dev_bus_type);
-		return -1;
-	}
+	return pnp_set_power_state(wd, PowerDeviceD0);
 }
 
 #ifdef CONFIG_USB
@@ -764,13 +755,7 @@ void wrap_pnp_remove_usb_device(struct usb_interface *intf)
 	pdo = wd->pdo;
 	usb_set_intfdata(intf, NULL);
 	wd->usb.intf = NULL;
-	if (WRAP_DEVICE_TYPE(wd->dev_bus_type) == WRAP_NDIS_DEVICE)
-		remove_ndis_device(wd->wnd);
-	else {
-		NTSTATUS status;
-		DBGTRACE2("removing device: type %d", wd->dev_bus_type);
-		status = pnp_stop_remove_device(wd);
-	}
+	pnp_stop_remove_device(wd);
 }
 #else
 
@@ -789,14 +774,8 @@ void wrap_pnp_remove_usb_device(struct usb_device *udev,
 	pdo = wd->pdo;
 	intf = wd->usb.intf;
 	wd->usb.intf = NULL;
-	if (WRAP_DEVICE_TYPE(wd->dev_bus_type) == WRAP_NDIS_DEVICE) {
-		remove_ndis_device(wd->wnd);
-		usb_driver_release_interface(&wrap_usb_driver, intf);
-	} else {
-		NTSTATUS status;
-		DBGTRACE2("removing device: type %d", wd->dev_bus_type);
-		status = pnp_stop_remove_device(wd);
-	}
+	pnp_stop_remove_device(wd);
+//	usb_driver_release_interface(&wrap_usb_driver, intf);
 }
 #endif
 
@@ -810,12 +789,7 @@ int wrap_pnp_suspend_usb_device(struct usb_interface *intf, pm_message_t state)
 	if (!wd)
 		TRACEEXIT1(return -1);
 	pdo = wd->pdo;
-	if (WRAP_DEVICE_TYPE(wd->dev_bus_type) == WRAP_NDIS_DEVICE)
-		return suspend_ndis_device(wd->wnd, state);
-	else {
-		ERROR("device %d not supported", wd->dev_bus_type);
-		return -1;
-	}
+	return pnp_set_power_state(wd, PowerDeviceD3);
 }
 
 int wrap_pnp_resume_usb_device(struct usb_interface *intf)
@@ -824,12 +798,7 @@ int wrap_pnp_resume_usb_device(struct usb_interface *intf)
 	wd = usb_get_intfdata(intf);
 	if (!wd)
 		TRACEEXIT1(return -1);
-	if (WRAP_DEVICE_TYPE(wd->dev_bus_type) == WRAP_NDIS_DEVICE)
-		return resume_ndis_device(wd->wnd);
-	else {
-		ERROR("device %d not supported", wd->dev_bus_type);
-		return -1;
-	}
+	return pnp_set_power_state(wd, PowerDeviceD0);
 }
 #endif
 

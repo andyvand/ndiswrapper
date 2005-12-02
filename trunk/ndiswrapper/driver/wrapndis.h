@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2005 Giridhar Pemmasani
+ *  Copyright (C) 2003-2005 Pontus Fuchs, Giridhar Pemmasani
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -36,10 +36,6 @@ NDIS_STATUS miniport_pnp_event(struct wrap_ndis_device *wnd,
 void sendpacket_done(struct wrap_ndis_device *wnd, struct ndis_packet *packet);
 
 int init_ndis_device(struct wrap_device *wd);
-void remove_ndis_device(struct wrap_ndis_device *wnd);
-
-int suspend_ndis_device(struct wrap_ndis_device *wnd, pm_message_t state);
-int resume_ndis_device(struct wrap_ndis_device *wnd);
 
 NDIS_STATUS ndis_reinit(struct wrap_ndis_device *wnd);
 NDIS_STATUS miniport_init(struct wrap_ndis_device *wnd);
