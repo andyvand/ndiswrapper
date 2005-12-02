@@ -471,12 +471,12 @@ NTSTATUS pnp_start_device(struct wrap_device *wd)
 	irp_sl->minor_fn = IRP_MN_START_DEVICE;
 	irp->io_status.status = STATUS_NOT_SUPPORTED;
 	status = IoCallDriver(fdo, irp);
-	if (status == STATUS_SUCCESS) {
+	if (status == STATUS_SUCCESS)
 		fdo->drv_obj->drv_ext->count++;
-		ObReferenceObject(fdo->drv_obj);
-	} else
+	else
 		WARNING("Windows driver couldn't initialize the device (%08X)",
 			status);
+	DBGTRACE1("count: %d", fdo->drv_obj->drv_ext->count);
 	if (thread)
 		wrap_remove_thread(thread);
 	TRACEEXIT1(return status);
@@ -552,7 +552,7 @@ NTSTATUS pnp_remove_device(struct wrap_device *wd)
 	if (status == STATUS_SUCCESS)
 		fdo_drv_obj->drv_ext->count--;
 	DBGTRACE1("count: %d", fdo_drv_obj->drv_ext->count);
-	if (fdo_drv_obj->drv_ext->count < 1) {
+	if (fdo_drv_obj->drv_ext->count == 0) {
 		struct wrap_driver *wrap_driver;
 		DBGTRACE1("unloading driver: %p", fdo_drv_obj);
 		if (fdo_drv_obj->unload)
@@ -566,6 +566,7 @@ NTSTATUS pnp_remove_device(struct wrap_device *wd)
 			kspin_unlock(&loader_lock);
 		} else
 			ERROR("couldn't get wrap_driver");
+		ObDereferenceObject(fdo_drv_obj);
 	}
 	TRACEEXIT1(return status);
 }
