@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2005 Giridhar Pemmasani
+ *  Copyright (C) 2003-2005 Pontus Fuchs, Giridhar Pemmasani
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -1049,57 +1049,6 @@ static void wrap_ndis_worker_proc(void *param)
 	TRACEEXIT3(return);
 }
 
-int suspend_ndis_device(struct wrap_ndis_device *wnd, pm_message_t state)
-{
-	NTSTATUS status;
-	if (test_bit(HW_SUSPENDED, &wnd->wd->hw_status) ||
-	    test_bit(HW_HALTED, &wnd->wd->hw_status))
-		return -1;
-	DBGTRACE2("irql: %d", current_irql());
-	netif_poll_disable(wnd->net_dev);
-	if (netif_running(wnd->net_dev)) {
-		netif_tx_disable(wnd->net_dev);
-		netif_device_detach(wnd->net_dev);
-	}
-	hangcheck_del(wnd);
-	stats_timer_del(wnd);
-	/* not all device support other than D3, so force it */
-	status = pnp_set_power_state(wnd->wd, PowerDeviceD3);
-	DBGTRACE2("suspending returns %08X", status);
-	if (status == STATUS_SUCCESS)
-		TRACEEXIT2(return 0);
-	else {
-		/* TODO: we don't know the current status of
-		 * driver/device; should we restart interface, stats
-		 * etc.? */
-		TRACEEXIT2(return -1);
-	}
-}
-
-int resume_ndis_device(struct wrap_ndis_device *wnd)
-{
-	NTSTATUS status;
-	struct net_device *net_dev = wnd->net_dev;
-
-	status = pnp_set_power_state(wnd->wd, PowerDeviceD0);
-	if (status != STATUS_SUCCESS) {
-		WARNING("resuming device %s failed: %08x",
-			net_dev->name, status);
-		TRACEEXIT2(return status);
-	}
-	hangcheck_add(wnd);
-	stats_timer_add(wnd);
-	set_scan(wnd);
-	set_bit(SET_ESSID, &wnd->wrap_ndis_work);
-	if (netif_running(net_dev)) {
-		netif_device_attach(net_dev);
-		netif_wake_queue(net_dev);
-	}
-	netif_poll_enable(net_dev);
-	DBGTRACE2("%s: device resumed", net_dev->name);
-	TRACEEXIT2(return STATUS_SUCCESS);
-}
-
 struct iw_statistics *get_wireless_stats(struct net_device *dev)
 {
 	struct wrap_ndis_device *wnd = netdev_priv(dev);
@@ -1316,19 +1265,49 @@ STDCALL NTSTATUS NdisDispatchPower(struct device_object *fdo,
 		state = NdisDeviceStateD3;
 	switch (irp_sl->minor_fn) {
 	case IRP_MN_SET_POWER:
-		IoCopyCurrentIrpStackLocationToNext(irp);
-		IoSetCompletionRoutine(irp, IrpStopCompletion, wnd, TRUE,
-				       FALSE, FALSE);
-		status = IoCallDriver(wnd->nmb->pdo, irp);
-		if (status != STATUS_SUCCESS)
-			break;
-		ndis_status = miniport_set_power_state(wnd, state);
-		DBGTRACE2("set_power to state %d returns %08X",
-			  state, ndis_status);
-		if (ndis_status == NDIS_STATUS_SUCCESS)
-			status = STATUS_SUCCESS;
-		else
-			status = STATUS_FAILURE;
+		if (state == NdisDeviceStateD0) {
+			IoCopyCurrentIrpStackLocationToNext(irp);
+			IoSetCompletionRoutine(irp, IrpStopCompletion, wnd,
+					       TRUE, FALSE, FALSE);
+			status = IoCallDriver(wnd->nmb->pdo, irp);
+			if (status != STATUS_SUCCESS)
+				return status;
+			ndis_status = miniport_set_power_state(wnd, state);
+			if (ndis_status != NDIS_STATUS_SUCCESS)
+				WARNING("setting power to %d failed: %08X",
+					state, ndis_status);
+			hangcheck_add(wnd);
+			stats_timer_add(wnd);
+			set_scan(wnd);
+			set_bit(SET_ESSID, &wnd->wrap_ndis_work);
+			if (netif_running(wnd->net_dev)) {
+				netif_device_attach(wnd->net_dev);
+				netif_wake_queue(wnd->net_dev);
+			}
+			netif_poll_enable(wnd->net_dev);
+			DBGTRACE2("%s: device resumed", wnd->net_dev->name);
+			TRACEEXIT2(return STATUS_SUCCESS);
+		} else {
+			if (test_bit(HW_SUSPENDED, &wnd->wd->hw_status) ||
+			    test_bit(HW_HALTED, &wnd->wd->hw_status))
+				return STATUS_FAILURE;
+			DBGTRACE2("irql: %d", current_irql());
+			netif_poll_disable(wnd->net_dev);
+			if (netif_running(wnd->net_dev)) {
+				netif_tx_disable(wnd->net_dev);
+				netif_device_detach(wnd->net_dev);
+			}
+			hangcheck_del(wnd);
+			stats_timer_del(wnd);
+			ndis_status = miniport_set_power_state(wnd, state);
+			/* TODO: we need to send the IRP back with
+			 * error so that pdo can restart device */
+			if (ndis_status != NDIS_STATUS_SUCCESS)
+				WARNING("setting power to %d failed: %08X",
+					state, ndis_status);
+			return IopPassIrpDown(wnd->nmb->pdo, irp);
+		}
+		status = STATUS_SUCCESS;
 		break;
 	case IRP_MN_QUERY_POWER:
 		ndis_status = miniport_query_int(wnd, OID_PNP_QUERY_POWER,
@@ -1388,10 +1367,12 @@ STDCALL NTSTATUS NdisDispatchPnp(struct device_object *fdo,
 		return IopPassIrpDown(pdo, irp);
 	case IRP_MN_REMOVE_DEVICE:
 		DBGTRACE1("%s", wnd->net_dev->name);
+		miniport_pnp_event(wnd, NdisDevicePnPEventSurpriseRemoved);
 		if (ndis_remove_device(wnd) != NDIS_STATUS_SUCCESS) {
 			status = STATUS_FAILURE;
 			break;
 		}
+		free_netdev(wnd->net_dev);
 		return IopPassIrpDown(pdo, irp);
 	default:
 		return IopPassIrpDown(pdo, irp);
@@ -1550,7 +1531,7 @@ packet_pool_err:
 	kfree(wnd->xmit_array);
 	wnd->xmit_array = NULL;
 err_start:
-	remove_ndis_device(wnd);
+	ndis_remove_device(wnd);
 	TRACEEXIT1(return NDIS_STATUS_FAILURE);
 }
 
@@ -1586,7 +1567,7 @@ static NDIS_STATUS ndis_remove_device(struct wrap_ndis_device *wnd)
 		NdisFreeBufferPool(wnd->wrapper_buffer_pool);
 		wnd->wrapper_buffer_pool = NULL;
 	}
-	IoDetachDevice(wnd->nmb->pdo);
+	IoDetachDevice(wnd->nmb->next_device);
 	IoDeleteDevice(wnd->nmb->fdo);
 	if (wnd->xmit_array)
 		kfree(wnd->xmit_array);
@@ -1716,18 +1697,3 @@ int init_ndis_device(struct wrap_device *wd)
 		wnd->stats_enabled = TRUE;
 	TRACEEXIT1(return 0);
 }
-
-void remove_ndis_device(struct wrap_ndis_device *wnd)
-{
-	NTSTATUS status;
-
-	TRACEENTER1("%p", wnd);
-	if (!wnd || !wnd->wd)
-		TRACEEXIT1(return);
-	if (!test_bit(HW_RMMOD, &wnd->wd->hw_status))
-		miniport_pnp_event(wnd, NdisDevicePnPEventSurpriseRemoved);
-	status = pnp_stop_remove_device(wnd->wd);
-	free_netdev(wnd->net_dev);
-	TRACEEXIT1(return);
-}
-
