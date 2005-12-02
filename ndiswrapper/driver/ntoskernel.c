@@ -19,10 +19,6 @@
 #include "pnp.h"
 #include "loader.h"
 
-#define WRAP_KMALLOC_TAG 0x4b6d41
-#define WRAP_VMALLOC_TAG 0x766d9f
-typedef unsigned long wrap_alloc_tag_t;
-
 /* MDLs describe a range of virtual address with an array of physical
  * pages right after the header. For different ranges of virtual
  * addresses, the number of entries of physical pages may be different
@@ -58,11 +54,8 @@ struct nt_list object_list;
 struct bus_driver {
 	struct nt_list list;
 	char name[MAX_DRIVER_NAME_LEN];
-	struct driver_object *drv_obj;
+	struct driver_object drv_obj;
 };
-
-struct driver_object pci_driver;
-struct driver_object usb_driver;
 
 static struct nt_list bus_driver_list;
 static void del_bus_drivers(void);
@@ -74,6 +67,7 @@ static void wrap_work_item_worker(void *data);
 
 KSPIN_LOCK irp_cancel_lock;
 
+extern KSPIN_LOCK loader_lock;
 extern struct nt_list wrap_drivers;
 static struct nt_list wrap_timer_list;
 KSPIN_LOCK timer_lock;
@@ -88,7 +82,7 @@ struct kuser_shared_data kuser_shared_data;
 static void update_user_shared_data_proc(unsigned long data);
 #endif
 
-static int add_bus_driver(struct driver_object *driver, const char *name);
+static int add_bus_driver(const char *name);
 static void free_all_objects(void);
 static BOOLEAN queue_kdpc(struct kdpc *kdpc);
 
@@ -123,8 +117,11 @@ int ntoskernel_init(void)
 	wrap_ticks_to_boot -= jiffies * TICKSPERSEC / HZ;
 	wrap_ticks_to_boot += TICKS_1601_TO_1970;
 
-	if (add_bus_driver(&pci_driver, "PCI") ||
-	    add_bus_driver(&usb_driver, "USB")) {
+	if (add_bus_driver("PCI")
+#ifdef CONFIG_USB
+	    || add_bus_driver("USB")
+#endif
+		) {
 		ntoskernel_exit();
 		return -ENOMEM;
 	}
@@ -336,7 +333,7 @@ static void free_all_objects(void)
 	TRACEEXIT2(return);
 }
 
-static int add_bus_driver(struct driver_object *drv_obj, const char *name)
+static int add_bus_driver(const char *name)
 {
 	struct bus_driver *bus_driver;
 	KIRQL irql;
@@ -351,8 +348,7 @@ static int add_bus_driver(struct driver_object *drv_obj, const char *name)
 	irql = kspin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL);
 	InsertTailList(&bus_driver_list, &bus_driver->list);
 	kspin_unlock_irql(&ntoskernel_lock, irql);
-	bus_driver->drv_obj = drv_obj;
-	DBGTRACE1("bus driver at %p", drv_obj);
+	DBGTRACE1("bus driver %s is at %p", name, &bus_driver->drv_obj);
 	return STATUS_SUCCESS;
 }
 
@@ -381,7 +377,7 @@ struct driver_object *find_bus_driver(const char *name)
 	drv_obj = NULL;
 	nt_list_for_each_entry(bus_driver, &bus_driver_list, list) {
 		if (strcmp(bus_driver->name, name) == 0)
-			drv_obj = bus_driver->drv_obj;
+			drv_obj = &bus_driver->drv_obj;
 	}
 	kspin_unlock_irql(&ntoskernel_lock, irql);
 	return drv_obj;
@@ -1043,7 +1039,7 @@ STDCALL void *WRAP_EXPORT(ExAllocatePoolWithTag)
 	} else {
 		if (current_irql() > PASSIVE_LEVEL)
 			ERROR("Windows driver allocating too big a block"
-			      " at DISPATCH_LEVEL: %ld", size);
+			      " in atomic context: %ld", size);
 		addr = vmalloc(size);
 	}
 	TRACEEXIT4(return addr);
@@ -1322,16 +1318,15 @@ STDCALL NTSTATUS WRAP_EXPORT(KeWaitForMultipleObjects)
 		dh = object[i];
 		EVENTTRACE("%p: event %p state: %d",
 			   task, dh, dh->signal_state);
-		if (wait_type == WaitAny) {
-			if (check_reset_signaled_state(dh, thread, 1)) {
+		if (check_reset_signaled_state(dh, thread, wait_type)) {
+			if (wait_type == WaitAny) {
 				kspin_unlock_irql(&nt_event_lock, irql);
 				if (count > 1)
 					EVENTEXIT(return STATUS_WAIT_0 + i);
 				else
 					EVENTEXIT(return STATUS_SUCCESS);
-			} else
-				wait_count++;
-		} else if (!check_reset_signaled_state(dh, thread, 0))
+			}
+		} else
 			wait_count++;
 	}
 	if (timeout && *timeout == 0 && wait_count) {
@@ -2165,8 +2160,9 @@ _FASTCALL void WRAP_EXPORT(ObfDereferenceObject)
 	kspin_unlock_irql(&ntoskernel_lock, irql);
 	if (ref_count < 0)
 		ERROR("invalid object: %p (%d)", object, ref_count);
-	if (ref_count <= 0)
+	if (ref_count <= 0) {
 		free_object(object);
+	}
 }
 
 STDCALL NTSTATUS WRAP_EXPORT(ZwCreateFile)

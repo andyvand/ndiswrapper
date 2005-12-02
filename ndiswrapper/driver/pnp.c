@@ -18,6 +18,7 @@
 #include "wrapndis.h"
 #include "loader.h"
 
+extern KSPIN_LOCK loader_lock;
 extern struct nt_list ndis_drivers;
 extern struct wrap_device *wrap_devices;
 
@@ -470,9 +471,10 @@ NTSTATUS pnp_start_device(struct wrap_device *wd)
 	irp_sl->minor_fn = IRP_MN_START_DEVICE;
 	irp->io_status.status = STATUS_NOT_SUPPORTED;
 	status = IoCallDriver(fdo, irp);
-	if (status == STATUS_SUCCESS)
+	if (status == STATUS_SUCCESS) {
 		fdo->drv_obj->drv_ext->count++;
-	else
+		ObReferenceObject(fdo->drv_obj);
+	} else
 		WARNING("Windows driver couldn't initialize the device (%08X)",
 			status);
 	if (thread)
@@ -515,12 +517,14 @@ NTSTATUS pnp_stop_device(struct wrap_device *wd)
 NTSTATUS pnp_remove_device(struct wrap_device *wd)
 {
 	struct device_object *pdo, *fdo;
+	struct driver_object *fdo_drv_obj;
 	struct irp *irp;
 	struct io_stack_location *irp_sl;
 	NTSTATUS status;
 
 	pdo = wd->pdo;
 	fdo = IoGetAttachedDevice(pdo);
+	fdo_drv_obj = fdo->drv_obj;
 	DBGTRACE1("fdo: %p", fdo);
 	irp = IoAllocateIrp(fdo->stack_size, FALSE);
 	irp_sl = IoGetNextIrpStackLocation(irp);
@@ -541,7 +545,28 @@ NTSTATUS pnp_remove_device(struct wrap_device *wd)
 	status = IoCallDriver(fdo, irp);
 	if (status != STATUS_SUCCESS)
 		WARNING("status: %08X", status);
-
+	
+	/* TODO: should we use count above, or through driver's Object
+	 * header reference count to keep count of devices associated
+	 * with a driver? */
+	if (status == STATUS_SUCCESS)
+		fdo_drv_obj->drv_ext->count--;
+	DBGTRACE1("count: %d", fdo_drv_obj->drv_ext->count);
+	if (fdo_drv_obj->drv_ext->count < 1) {
+		struct wrap_driver *wrap_driver;
+		DBGTRACE1("unloading driver: %p", fdo_drv_obj);
+		if (fdo_drv_obj->unload)
+			LIN2WIN1(fdo_drv_obj->unload, fdo_drv_obj);
+		wrap_driver =
+			IoGetDriverObjectExtension(fdo_drv_obj,
+					   (void *)CE_WRAP_DRIVER_CLIENT_ID);
+		if (wrap_driver) {
+			kspin_lock(&loader_lock);
+			unload_wrap_driver(wrap_driver);
+			kspin_unlock(&loader_lock);
+		} else
+			ERROR("couldn't get wrap_driver");
+	}
 	TRACEEXIT1(return status);
 }
 

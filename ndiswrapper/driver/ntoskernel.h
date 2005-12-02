@@ -465,7 +465,7 @@ struct wrap_driver {
 	struct pe_image pe_images[MAX_DRIVER_PE_IMAGES];
 	int num_bin_files;
 	struct wrap_bin_file *bin_files;
-	struct wrap_device_setting *settings;
+	struct nt_list wrap_devices;
 	union {
 		struct wrap_ndis_driver *ndis_driver;
 	};
@@ -477,6 +477,7 @@ enum hw_status {
 };
 
 struct wrap_device {
+	struct nt_list list;
 	/* first part is (de)initialized once by loader */
 	int dev_bus_type;
 	int vendor;

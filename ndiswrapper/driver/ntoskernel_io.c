@@ -17,8 +17,10 @@
 #include "ndis.h"
 #include "wrapndis.h"
 #include "usb.h"
+#include "loader.h"
 
 extern KSPIN_LOCK ntoskernel_lock;
+extern KSPIN_LOCK loader_lock;
 extern KSPIN_LOCK irp_cancel_lock;
 extern struct nt_list object_list;
 
@@ -857,21 +859,6 @@ STDCALL void WRAP_EXPORT(IoDetachDevice)
 	for ( ; tail; tail = tail->attached) {
 		IOTRACE("tail:%p", tail);
 		tail->stack_size--;
-		tail->ref_count--;
-		IOTRACE("ref_count: %d, drv_obj: %p",
-			tail->ref_count, tail->drv_obj);
-		if (tail->ref_count < 1 && tail->drv_obj) {
-			struct driver_object *drv_obj;
-			drv_obj = tail->drv_obj;
-			IOTRACE("ref: %d, driver: %p", tail->ref_count,
-				drv_obj);
-			kspin_unlock_irql(&ntoskernel_lock, irql);
-			if (drv_obj && drv_obj->unload)
-				LIN2WIN1(drv_obj->unload, drv_obj);
-			/* we don't unload the driver itself, for now */
-			irql = kspin_lock_irql(&ntoskernel_lock,
-					       DISPATCH_LEVEL);
-		}
 	}
 	kspin_unlock_irql(&ntoskernel_lock, irql);
 	IOEXIT(return);

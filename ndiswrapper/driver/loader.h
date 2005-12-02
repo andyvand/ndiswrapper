@@ -74,6 +74,7 @@ void loader_exit(void);
 struct wrap_driver *load_wrap_driver(struct wrap_device *device);
 struct wrap_bin_file *get_bin_file(char *bin_file_name);
 void free_bin_file(struct wrap_bin_file *bin_file);
+void unload_wrap_driver(struct wrap_driver *driver);
 #endif
 
 #endif /* LOADER_H */
