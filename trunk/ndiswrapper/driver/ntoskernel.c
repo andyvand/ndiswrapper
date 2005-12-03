@@ -1318,6 +1318,7 @@ STDCALL NTSTATUS WRAP_EXPORT(KeWaitForMultipleObjects)
 		dh = object[i];
 		EVENTTRACE("%p: event %p state: %d",
 			   task, dh, dh->signal_state);
+		/* wait_type == 1 for WaitAny, 0 for WaitAll */
 		if (check_reset_signaled_state(dh, thread, wait_type)) {
 			if (wait_type == WaitAny) {
 				kspin_unlock_irql(&nt_event_lock, irql);
