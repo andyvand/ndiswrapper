@@ -220,7 +220,6 @@ NDIS_STATUS miniport_init(struct wrap_ndis_device *wnd)
 	UINT medium_index;
 	UINT medium_array[] = {NdisMedium802_3};
 	struct miniport_char *miniport;
-	struct nt_thread *thread;
 
 	TRACEENTER1("irql: %d", current_irql());
 	if (test_bit(HW_INITIALIZED, &wnd->wd->hw_status)) {
@@ -234,11 +233,6 @@ NDIS_STATUS miniport_init(struct wrap_ndis_device *wnd)
 		TRACEEXIT1(return NDIS_STATUS_SUCCESS);
 	}
 	miniport = &wnd->wd->driver->ndis_driver->miniport;
-	thread = wrap_create_thread(get_current());
-	if (!thread) {
-		ERROR("couldn't allocate thread object");
-		TRACEEXIT1(return NDIS_STATUS_FAILURE);
-	}
 	status = LIN2WIN6(miniport->init, &error_status,
 			  &medium_index, medium_array,
 			  sizeof(medium_array) / sizeof(medium_array[0]),
@@ -246,7 +240,6 @@ NDIS_STATUS miniport_init(struct wrap_ndis_device *wnd)
 	DBGTRACE1("init returns: %08X, irql: %d", status, current_irql());
 	if (status != NDIS_STATUS_SUCCESS) {
 		WARNING("couldn't initialize device: %08X", status);
-		wrap_remove_thread(thread);
 		TRACEEXIT1(return NDIS_STATUS_FAILURE);
 	}
 
@@ -265,14 +258,12 @@ NDIS_STATUS miniport_init(struct wrap_ndis_device *wnd)
 	set_bit(HW_AVAILABLE, &wnd->wd->hw_status);
 	hangcheck_add(wnd);
 	stats_timer_add(wnd);
-	wrap_remove_thread(thread);
 	TRACEEXIT1(return NDIS_STATUS_SUCCESS);
 }
 
 void miniport_halt(struct wrap_ndis_device *wnd)
 {
 	struct miniport_char *miniport;
-	struct nt_thread *thread;
 
 	TRACEENTER1("%p", wnd);
 	clear_bit(HW_AVAILABLE, &wnd->wd->hw_status);
@@ -282,10 +273,6 @@ void miniport_halt(struct wrap_ndis_device *wnd)
 		WARNING("device %p is not initialized - not halting", wnd);
 		TRACEEXIT1(return);
 	}
-	thread = wrap_create_thread(get_current());
-	if (thread == NULL)
-		WARNING("couldn't create system thread for task: %p",
-			get_current());
 	miniport = &wnd->wd->driver->ndis_driver->miniport;
 	DBGTRACE1("driver halt is at %p", miniport->miniport_halt);
 
@@ -293,10 +280,6 @@ void miniport_halt(struct wrap_ndis_device *wnd)
 	LIN2WIN1(miniport->miniport_halt, wnd->nmb->adapter_ctx);
 	clear_bit(HW_INITIALIZED, &wnd->wd->hw_status);
 
-	ndis_exit_device(wnd);
-
-	if (thread)
-		wrap_remove_thread(thread);
 	TRACEEXIT1(return);
 }
 
@@ -412,8 +395,9 @@ static int ndis_set_mac_addr(struct net_device *dev, void *p)
 		RtlFreeUnicodeString(&param.data.string);
 		TRACEEXIT1(return -EINVAL);
 	}
-	ndis_reinit(wnd);
-	memcpy(dev->dev_addr, addr->sa_data, dev->addr_len);
+	if (pnp_stop_device(wnd->wd) == STATUS_SUCCESS &&
+	    pnp_start_device(wnd->wd) == STATUS_SUCCESS)
+		memcpy(dev->dev_addr, addr->sa_data, dev->addr_len);
 	RtlFreeUnicodeString(&key);
 	RtlFreeUnicodeString(&param.data.string);
 	TRACEEXIT1(return 0);
@@ -1059,10 +1043,9 @@ struct iw_statistics *get_wireless_stats(struct net_device *dev)
 
 NDIS_STATUS ndis_reinit(struct wrap_ndis_device *wnd)
 {
-	miniport_halt(wnd);
-	return miniport_init(wnd);
+	pnp_stop_device(wnd->wd);
+	return pnp_start_device(wnd->wd);
 }
-
 
 /* check capabilites - mainly for WPA */
 void check_capa(struct wrap_ndis_device *wnd)
@@ -1203,6 +1186,7 @@ static NDIS_STATUS miniport_set_power_state(struct wrap_ndis_device *wnd,
 		status = STATUS_SUCCESS;
 		if (test_and_clear_bit(HW_HALTED, &wnd->wd->hw_status)) {
 			DBGTRACE2("starting device");
+			/* TODO: should we use pnp_start_device instead? */
 			if (miniport_init(wnd) != NDIS_STATUS_SUCCESS) {
 				WARNING("couldn't re-initialize device %s",
 					wnd->net_dev->name);
@@ -1229,6 +1213,7 @@ static NDIS_STATUS miniport_set_power_state(struct wrap_ndis_device *wnd,
 		if (status != NDIS_STATUS_SUCCESS) {
 			WARNING("device may not support power management");
 			DBGTRACE2("no pm: halting the device");
+			/* TODO: should we use pnp_stop_device instead? */
 			miniport_halt(wnd);
 			set_bit(HW_HALTED, &wnd->wd->hw_status);
 			status = STATUS_SUCCESS;
@@ -1369,12 +1354,10 @@ STDCALL NTSTATUS NdisDispatchPnp(struct device_object *fdo,
 		return IopPassIrpDown(pdo, irp);
 	case IRP_MN_REMOVE_DEVICE:
 		DBGTRACE1("%s", wnd->net_dev->name);
-		miniport_pnp_event(wnd, NdisDevicePnPEventSurpriseRemoved);
 		if (ndis_remove_device(wnd) != NDIS_STATUS_SUCCESS) {
 			status = STATUS_FAILURE;
 			break;
 		}
-		free_netdev(wnd->net_dev);
 		return IopPassIrpDown(pdo, irp);
 	default:
 		return IopPassIrpDown(pdo, irp);
@@ -1542,6 +1525,7 @@ static NDIS_STATUS ndis_remove_device(struct wrap_ndis_device *wnd)
 	KIRQL irql;
 
 	set_bit(SHUTDOWN, &wnd->wrap_ndis_work);
+	miniport_pnp_event(wnd, NdisDevicePnPEventSurpriseRemoved);
 	ndis_close(wnd->net_dev);
 	netif_carrier_off(wnd->net_dev);
 	wrap_procfs_remove_ndis_device(wnd);
@@ -1557,6 +1541,8 @@ static NDIS_STATUS ndis_remove_device(struct wrap_ndis_device *wnd)
 		wnd->xmit_ring_pending--;
 	}
 	kspin_unlock_irql(&wnd->xmit_lock, irql);
+	miniport_halt(wnd);
+	ndis_exit_device(wnd);
 	/* flush_scheduled_work here causes crash with 2.4 kernels */
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
 	flush_scheduled_work();
@@ -1576,6 +1562,7 @@ static NDIS_STATUS ndis_remove_device(struct wrap_ndis_device *wnd)
 	printk(KERN_INFO "%s: device %s removed\n", DRIVER_NAME,
 	       wnd->net_dev->name);
 	unregister_netdev(wnd->net_dev);
+	free_netdev(wnd->net_dev);
 	TRACEEXIT2(return NDIS_STATUS_SUCCESS);
 }
 
