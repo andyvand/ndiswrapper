@@ -160,12 +160,12 @@ STDCALL NDIS_STATUS WRAP_EXPORT(NdisMRegisterDevice)
 				FALSE, &tmp);
 
 	if (status != STATUS_SUCCESS)
-		TRACEEXIT1(return status);
+		TRACEEXIT1(return NDIS_STATUS_RESOURCES);
 	if (link)
 		status = IoCreateSymbolicLink(link, dev_name);
 	if (status != STATUS_SUCCESS) {
 		IoDeleteDevice(tmp);
-		TRACEEXIT1(return status);
+		TRACEEXIT1(return NDIS_STATUS_RESOURCES);
 	}
 
 	*dev_obj = tmp;

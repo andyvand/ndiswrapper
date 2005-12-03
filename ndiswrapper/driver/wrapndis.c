@@ -704,16 +704,18 @@ int ndis_open(struct net_device *dev)
 
 	TRACEENTER1("%p", wnd);
 	packet_filter = NDIS_PACKET_TYPE_DIRECTED | NDIS_PACKET_TYPE_BROADCAST;
-	/* first try with minimum required */
-	if (set_packet_filter(wnd, packet_filter))
-		DBGTRACE1("couldn't set packet filter %x", packet_filter);
-	else
-		DBGTRACE1("set packet filter");
 	/* add any dev specific filters */
 	if (dev->flags & IFF_PROMISC)
-		packet_filter |= NDIS_PACKET_TYPE_ALL_LOCAL;
-	if (set_packet_filter(wnd, packet_filter))
+		packet_filter |= NDIS_PACKET_TYPE_PROMISCUOUS |
+			NDIS_PACKET_TYPE_ALL_LOCAL;
+	if (set_packet_filter(wnd, packet_filter) && 
+	    packet_filter & NDIS_PACKET_TYPE_PROMISCUOUS) {
 		DBGTRACE1("couldn't add packet filter %x", packet_filter);
+		packet_filter &= ~NDIS_PACKET_TYPE_PROMISCUOUS;
+		if (set_packet_filter(wnd, packet_filter))
+			DBGTRACE1("couldn't add packet filter %x",
+				  packet_filter);
+	}
 	/* NDIS_PACKET_TYPE_PROMISCUOUS will not work with 802.11 */
 	netif_device_attach(dev);
 	netif_start_queue(dev);

@@ -746,13 +746,11 @@ void *wrap_pnp_start_usb_device(struct usb_device *udev,
 void wrap_pnp_remove_usb_device(struct usb_interface *intf)
 {
 	struct wrap_device *wd;
-	struct device_object *pdo;
 
 	TRACEENTER1("%p", intf);
 	wd = (struct wrap_device *)usb_get_intfdata(intf);
 	if (wd == NULL)
 		TRACEEXIT1(return);
-	pdo = wd->pdo;
 	usb_set_intfdata(intf, NULL);
 	wd->usb.intf = NULL;
 	pnp_stop_remove_device(wd);
@@ -765,13 +763,11 @@ void wrap_pnp_remove_usb_device(struct usb_device *udev,
 				struct wrap_device *wd)
 {
 	struct usb_interface *intf;
-	struct device_object *pdo;
 
 	TRACEENTER1("%p", wd);
 
 	if (wd == NULL)
 		TRACEEXIT1(return);
-	pdo = wd->pdo;
 	intf = wd->usb.intf;
 	wd->usb.intf = NULL;
 	pnp_stop_remove_device(wd);

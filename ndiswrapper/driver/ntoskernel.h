@@ -16,7 +16,7 @@
 #ifndef _NTOSKERNEL_H_
 #define _NTOSKERNEL_H_
 
-#define UTILS_VERSION "1.7"
+#define UTILS_VERSION "1.7rc1"
 
 #include <linux/types.h>
 #include <linux/timer.h>
