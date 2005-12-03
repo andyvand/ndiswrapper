@@ -34,9 +34,9 @@ STDCALL NTSTATUS IrpStopCompletion(struct device_object *dev_obj,
 
 NTSTATUS pnp_set_power_state(struct wrap_device *wd,
 			     enum device_power_state state);
+NTSTATUS pnp_start_device(struct wrap_device *wd);
 NTSTATUS pnp_stop_device(struct wrap_device *wd);
 NTSTATUS pnp_remove_device(struct wrap_device *wd);
-NTSTATUS pnp_stop_remove_device(struct wrap_device *wd);
 
 int wrap_pnp_start_pci_device(struct pci_dev *pdev,
 			      const struct pci_device_id *ent);

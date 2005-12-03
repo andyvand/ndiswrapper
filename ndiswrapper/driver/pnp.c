@@ -22,8 +22,6 @@ extern KSPIN_LOCK loader_lock;
 extern struct nt_list ndis_drivers;
 extern struct wrap_device *wrap_devices;
 
-static int start_pdo(struct device_object *pdo);
-
 STDCALL NTSTATUS IrpStopCompletion(struct device_object *dev_obj,
 				   struct irp *irp, void *context)
 {
@@ -98,11 +96,7 @@ static STDCALL NTSTATUS pdoDispatchPnp(struct device_object *pdo,
 	DBGTRACE2("fn %d:%d, wd: %p", irp_sl->major_fn, irp_sl->minor_fn, wd);
 	switch (irp_sl->minor_fn) {
 	case IRP_MN_START_DEVICE:
-		if (start_pdo(pdo)) {
-			ERROR("couldn't start pdo");
-			status = STATUS_FAILURE;
-		} else
-			status = STATUS_SUCCESS;
+		status = STATUS_SUCCESS;
 		break;
 	case IRP_MN_QUERY_INTERFACE:
 		if (!wrap_is_usb_bus(wd->dev_bus_type)) {
@@ -520,8 +514,15 @@ NTSTATUS pnp_remove_device(struct wrap_device *wd)
 	struct driver_object *fdo_drv_obj;
 	struct irp *irp;
 	struct io_stack_location *irp_sl;
+	struct nt_thread *thread;
 	NTSTATUS status;
 
+	if (KeGetCurrentThread() == NULL) {
+		thread = wrap_create_thread(get_current());
+		if (!thread)
+			WARNING("couldn't allocate thread object");
+	} else
+		thread = NULL;
 	pdo = wd->pdo;
 	fdo = IoGetAttachedDevice(pdo);
 	fdo_drv_obj = fdo->drv_obj;
@@ -570,29 +571,9 @@ NTSTATUS pnp_remove_device(struct wrap_device *wd)
 			ERROR("couldn't get wrap_driver");
 		ObDereferenceObject(fdo_drv_obj);
 	}
-	TRACEEXIT1(return status);
-}
-
-NTSTATUS pnp_stop_remove_device(struct wrap_device *wd)
-{
-	struct nt_thread *thread;
-	NTSTATUS status;
-
-	if (KeGetCurrentThread() == NULL) {
-		thread = wrap_create_thread(get_current());
-		if (!thread)
-			WARNING("couldn't allocate thread object");
-	} else
-		thread = NULL;
-	status = pnp_stop_device(wd);
-	if (status != STATUS_SUCCESS)
-		WARNING("couldn't stop deice: %08X", status);
-	status = pnp_remove_device(wd);
-	if (status != STATUS_SUCCESS)
-		WARNING("couldn't remove deice: %08X", status);
 	if (thread)
 		wrap_remove_thread(thread);
-	return status;
+	TRACEEXIT1(return status);
 }
 
 static int wrap_pnp_start_device(struct wrap_device *wd)
@@ -647,6 +628,10 @@ static int wrap_pnp_start_device(struct wrap_device *wd)
 		IoDeleteDevice(pdo);
 		return -ENOMEM;
 	}
+	if (start_pdo(wd->pdo)) {
+		IoDeleteDevice(pdo);
+		return -EINVAL;
+	}
 	if (pnp_start_device(wd) != STATUS_SUCCESS) {
 		pnp_remove_device(wd);
 		return -EINVAL;
@@ -680,7 +665,7 @@ void __devexit wrap_pnp_remove_pci_device(struct pci_dev *pdev)
 	TRACEENTER1("%p", wd);
 	if (!wd)
 		TRACEEXIT1(return);
-	pnp_stop_remove_device(wd);
+	pnp_remove_device(wd);
 }
 
 int wrap_pnp_suspend_pci_device(struct pci_dev *pdev, pm_message_t state)
@@ -753,7 +738,7 @@ void wrap_pnp_remove_usb_device(struct usb_interface *intf)
 		TRACEEXIT1(return);
 	usb_set_intfdata(intf, NULL);
 	wd->usb.intf = NULL;
-	pnp_stop_remove_device(wd);
+	pnp_remove_device(wd);
 }
 #else
 
@@ -770,7 +755,7 @@ void wrap_pnp_remove_usb_device(struct usb_device *udev,
 		TRACEEXIT1(return);
 	intf = wd->usb.intf;
 	wd->usb.intf = NULL;
-	pnp_stop_remove_device(wd);
+	pnp_remove_device(wd);
 //	usb_driver_release_interface(&wrap_usb_driver, intf);
 }
 #endif

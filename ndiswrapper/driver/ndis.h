@@ -711,7 +711,7 @@ struct wrap_ndis_device {
 	struct wrap_device *wd;
 	struct net_device *net_dev;
 	void *shutdown_ctx;
-	struct tasklet_struct irq_tasklet;
+	struct work_struct irq_work;
 	struct ndis_irq *ndis_irq;
 	unsigned long mem_start;
 	unsigned long mem_end;
