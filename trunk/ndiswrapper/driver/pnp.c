@@ -140,8 +140,6 @@ static STDCALL NTSTATUS pdoDispatchPnp(struct device_object *pdo,
 		} else if (wrap_is_usb_bus(wd->dev_bus_type)) {
 			usb_exit_device(wd);
 		}
-		wd->hw_status = 0;
-		wd->wnd = NULL;
 		if (wd->resource_list)
 			kfree(wd->resource_list);
 		wd->resource_list = NULL;
@@ -618,7 +616,7 @@ static int wrap_pnp_start_device(struct wrap_device *wd)
 	wd->pdo = pdo;
 	pdo->reserved = wd;
 	if (WRAP_DEVICE_TYPE(wd->dev_bus_type) == WRAP_NDIS_DEVICE) {
-		if (init_ndis_device(wd)) {
+		if (init_ndis_driver(driver->drv_obj)) {
 			IoDeleteDevice(pdo);
 			return -EINVAL;
 		}

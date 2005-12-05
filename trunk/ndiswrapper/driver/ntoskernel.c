@@ -2263,11 +2263,16 @@ STDCALL NTSTATUS WRAP_EXPORT(ZwClose)
 {
 	struct object_attr *oa;
 	struct wrap_bin_file *bin_file;
+	struct common_object_header *hdr;
 
-	oa = HANDLE_TO_OBJECT(handle);
-	bin_file = oa->file;
-	free_bin_file(bin_file);
-	ObDereferenceObject(oa);
+	hdr = handle;
+	if (hdr->type == OBJECT_TYPE_FILE) {
+		oa = HANDLE_TO_OBJECT(handle);
+		bin_file = oa->file;
+		free_bin_file(bin_file);
+		ObDereferenceObject(oa);
+	} else
+		WARNING("object type %d not implemented", hdr->type);
 	TRACEEXIT2(return STATUS_SUCCESS);
 }
 
@@ -2325,7 +2330,7 @@ NOREGPARM NTSTATUS WRAP_EXPORT(WmiTraceMessage)
 	(void *tracehandle, ULONG message_flags,
 	 void *message_guid, USHORT message_no, ...)
 {
-	TRACEENTER2("");
+	UNIMPL();
 	TRACEEXIT2(return STATUS_SUCCESS);
 }
 
@@ -2333,7 +2338,7 @@ STDCALL NTSTATUS WRAP_EXPORT(WmiQueryTraceInformation)
 	(enum trace_information_class trace_info_class, void *trace_info,
 	 ULONG *req_length, void *buf)
 {
-	TRACEENTER2("");
+	UNIMPL();
 	TRACEEXIT2(return STATUS_SUCCESS);
 }
 
@@ -2373,7 +2378,6 @@ STDCALL ULONG WRAP_EXPORT(ExSetTimerResolution)
 	/* yet another "innovation"! */
 	return time;
 }
-
 
 STDCALL void WRAP_EXPORT(DbgBreakPoint)(void){UNIMPL();}
 STDCALL void WRAP_EXPORT(_except_handler3)(void){UNIMPL();}
