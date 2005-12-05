@@ -710,6 +710,7 @@ struct wrap_ndis_device {
 	struct ndis_miniport_block *nmb;
 	struct wrap_device *wd;
 	struct net_device *net_dev;
+	unsigned long hw_status;
 	void *shutdown_ctx;
 	struct work_struct irq_work;
 	struct ndis_irq *ndis_irq;

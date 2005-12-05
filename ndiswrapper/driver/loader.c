@@ -881,8 +881,6 @@ void loader_exit(void)
 	TRACEENTER1("");
 	misc_deregister(&wrapper_misc);
 
-	for (i = 0; i < num_wrap_devices; i++)
-		set_bit(HW_RMMOD, &wrap_devices[i].hw_status);
 #ifdef CONFIG_USB
 	if (wrap_usb_devices) {
 		usb_deregister(&wrap_usb_driver);

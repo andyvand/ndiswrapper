@@ -507,7 +507,6 @@ struct wrap_device {
 			struct nt_list wrap_urb_list;
 		} usb;
 	};
-	unsigned long hw_status;
 	union {
 		struct wrap_ndis_device *wnd;
 	};

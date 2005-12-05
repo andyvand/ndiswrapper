@@ -293,7 +293,7 @@ STDCALL void WRAP_EXPORT(NdisCloseConfiguration)
 }
 
 STDCALL void WRAP_EXPORT(NdisOpenFile)
-	(NDIS_STATUS *status, struct wrap_bin_file **filehandle,
+	(NDIS_STATUS *status, struct wrap_bin_file **file,
 	 UINT *filelength, struct unicode_string *filename,
 	 NDIS_PHY_ADDRESS highest_address)
 {
@@ -301,9 +301,9 @@ STDCALL void WRAP_EXPORT(NdisOpenFile)
 	struct wrap_bin_file *bin_file;
 
 	TRACEENTER2("status = %p, filelength = %p, *filelength = %d, "
-		    "high = %llx, filehandle = %p, *filehandle = %p",
+		    "high = %llx, file = %p, *file = %p",
 		    status, filelength, *filelength,
-		    highest_address, filehandle, *filehandle);
+		    highest_address, file, *file);
 
 	if (RtlUnicodeStringToAnsiString(&ansi, filename, TRUE) !=
 	    STATUS_SUCCESS) {
@@ -314,7 +314,7 @@ STDCALL void WRAP_EXPORT(NdisOpenFile)
 
 	bin_file = get_bin_file(ansi.buf);
 	if (bin_file) {
-		*filehandle = bin_file;
+		*file = bin_file;
 		*filelength = bin_file->size;
 		*status = NDIS_STATUS_SUCCESS;
 	} else
@@ -325,33 +325,32 @@ STDCALL void WRAP_EXPORT(NdisOpenFile)
 }
 
 STDCALL void WRAP_EXPORT(NdisMapFile)
-	(NDIS_STATUS *status, void **mappedbuffer,
-	 struct wrap_bin_file *filehandle)
+	(NDIS_STATUS *status, void **mappedbuffer, struct wrap_bin_file *file)
 {
-	TRACEENTER2("handle: %p", filehandle);
+	TRACEENTER2("handle: %p", file);
 
-	if (!filehandle) {
+	if (!file) {
 		*status = NDIS_STATUS_ALREADY_MAPPED;
 		TRACEEXIT2(return);
 	}
 
 	*status = NDIS_STATUS_SUCCESS;
-	*mappedbuffer = filehandle->data;
+	*mappedbuffer = file->data;
 	TRACEEXIT2(return);
 }
 
 STDCALL void WRAP_EXPORT(NdisUnmapFile)
-	(struct wrap_bin_file *filehandle)
+	(struct wrap_bin_file *file)
 {
-	TRACEENTER2("handle: %p", filehandle);
+	TRACEENTER2("handle: %p", file);
 	TRACEEXIT2(return);
 }
 
 STDCALL void WRAP_EXPORT(NdisCloseFile)
-	(struct wrap_bin_file *filehandle)
+	(struct wrap_bin_file *file)
 {
-	TRACEENTER2("handle: %p", filehandle);
-	free_bin_file(filehandle);
+	TRACEENTER2("handle: %p", file);
+	free_bin_file(file);
 	TRACEEXIT2(return);
 }
 
