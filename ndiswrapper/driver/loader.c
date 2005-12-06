@@ -561,7 +561,7 @@ static int load_user_space_driver(struct load_driver *load_driver)
 	drv_obj->drv_ext = kmalloc(sizeof(*(drv_obj->drv_ext)), GFP_KERNEL);
 	if (!drv_obj->drv_ext) {
 		ERROR("couldn't allocate memory");
-		kfree(drv_obj);
+		ObDereferenceObject(drv_obj);
 		TRACEEXIT1(return -ENOMEM);
 	}
 	memset(drv_obj->drv_ext, 0, sizeof(*(drv_obj->drv_ext)));

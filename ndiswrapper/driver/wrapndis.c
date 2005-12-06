@@ -1580,7 +1580,6 @@ static STDCALL NTSTATUS NdisAddDevice(struct driver_object *drv_obj,
 		ERROR("interface name '%s' is too long", if_name);
 		return STATUS_INVALID_PARAMETER;
 	}
-	TRACEENTER1("wd: %p", wd);
 	net_dev = alloc_etherdev(sizeof(*wnd) + sizeof(*nmb));
 	if (!net_dev) {
 		ERROR("couldn't allocate device");
@@ -1608,6 +1607,7 @@ static STDCALL NTSTATUS NdisAddDevice(struct driver_object *drv_obj,
 	nmb->wnd = wnd;
 	wnd->nmb->pdo = pdo;
 	wd->wnd = wnd;
+	wnd->wd = wd;
 	nmb->filterdbs.eth_db = nmb;
 	nmb->filterdbs.tr_db = nmb;
 	nmb->filterdbs.fddi_db = nmb;
