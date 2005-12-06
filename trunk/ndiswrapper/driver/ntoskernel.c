@@ -2263,16 +2263,16 @@ STDCALL NTSTATUS WRAP_EXPORT(ZwClose)
 {
 	struct object_attr *oa;
 	struct wrap_bin_file *bin_file;
-	struct common_object_header *hdr;
+	struct common_object_header *coh;
 
-	hdr = handle;
-	if (hdr->type == OBJECT_TYPE_FILE) {
+	coh = handle;
+	if (coh->type == OBJECT_TYPE_FILE) {
 		oa = HANDLE_TO_OBJECT(handle);
 		bin_file = oa->file;
 		free_bin_file(bin_file);
 		ObDereferenceObject(oa);
 	} else
-		WARNING("object type %d not implemented", hdr->type);
+		WARNING("object type %d not implemented", coh->type);
 	TRACEEXIT2(return STATUS_SUCCESS);
 }
 
