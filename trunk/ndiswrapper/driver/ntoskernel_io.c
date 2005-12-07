@@ -978,6 +978,13 @@ STDCALL NTSTATUS WRAP_EXPORT(ZwCreateKey)
 	return STATUS_SUCCESS;
 }
 
+STDCALL NTSTATUS WRAP_EXPORT(ZwOpenKey)
+	(void **handle, ACCESS_MASK desired_access, struct object_attr *attr)
+{
+	UNIMPL();
+	return STATUS_SUCCESS;
+}
+
 STDCALL NTSTATUS WRAP_EXPORT(ZwSetValueKey)
 	(void *handle, struct unicode_string *name, ULONG title_index,
 	 ULONG type, void *data, ULONG data_size)
