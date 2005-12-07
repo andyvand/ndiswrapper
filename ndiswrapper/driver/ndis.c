@@ -1517,20 +1517,21 @@ STDCALL void WRAP_EXPORT(NdisMDeregisterAdapterShutdownHandler)
 	wnd->shutdown_ctx = NULL;
 }
 
-static void ndis_irq_worker(void *data)
+static void ndis_irq_bh(unsigned long data)
 {
-	struct ndis_irq *ndis_irq = data;
+	struct ndis_irq *ndis_irq = (struct ndis_irq *)data;
 	struct wrap_ndis_device *wnd;
 	struct miniport_char *miniport;
-	KIRQL irql;
 
-	wnd = ndis_irq->wnd;
-	miniport = &wnd->wd->driver->ndis_driver->miniport;
-	irql = raise_irql(DISPATCH_LEVEL);
-	LIN2WIN1(miniport->handle_interrupt, wnd->nmb->adapter_ctx);
-	if (miniport->enable_interrupts)
-		LIN2WIN1(miniport->enable_interrupts, wnd->nmb->adapter_ctx);
-	lower_irql(irql);
+	if (ndis_irq->pending) {
+		ndis_irq->pending = 0;
+		wnd = ndis_irq->wnd;
+		miniport = &wnd->wd->driver->ndis_driver->miniport;
+		LIN2WIN1(miniport->handle_interrupt, wnd->nmb->adapter_ctx);
+		if (miniport->enable_interrupts)
+			LIN2WIN1(miniport->enable_interrupts,
+				 wnd->nmb->adapter_ctx);
+	}
 }
 
 static irqreturn_t ndis_isr(int irq, void *data, struct pt_regs *pt_regs)
@@ -1541,8 +1542,6 @@ static irqreturn_t ndis_isr(int irq, void *data, struct pt_regs *pt_regs)
 	struct miniport_char *miniport;
 	unsigned long flags;
 
-	if (!ndis_irq->wnd)
-		return IRQ_NONE;
 	wnd = ndis_irq->wnd;
 	miniport = &wnd->wd->driver->ndis_driver->miniport;
 	/* this spinlock should be shared with NdisMSynchronizeWithInterrupt
@@ -1560,8 +1559,10 @@ static irqreturn_t ndis_isr(int irq, void *data, struct pt_regs *pt_regs)
 	kspin_unlock_irqrestore(&ndis_irq->lock, flags);
 
 	if (recognized) {
-		if (handled)
-			schedule_work(&wnd->irq_work);
+		if (handled) {
+			ndis_irq->pending++;
+			tasklet_schedule(&wnd->irq_tasklet);
+		}
 		return IRQ_HANDLED;
 	}
 	return IRQ_NONE;
@@ -1586,7 +1587,7 @@ STDCALL NDIS_STATUS WRAP_EXPORT(NdisMRegisterInterrupt)
 	kspin_lock_init(&ndis_irq->lock);
 
 	ndis_irq->pending = 0;
-	INIT_WORK(&wnd->irq_work, ndis_irq_worker, ndis_irq);
+	tasklet_init(&wnd->irq_tasklet, ndis_irq_bh, (unsigned long)ndis_irq);
 	if (request_irq(vector, ndis_isr, req_isr ? SA_SHIRQ : 0,
 			"ndiswrapper", ndis_irq)) {
 		printk(KERN_WARNING "%s: request for irq %d failed\n",
@@ -1612,8 +1613,8 @@ STDCALL void WRAP_EXPORT(NdisMDeregisterInterrupt)
 		TRACEEXIT1(return);
 
 	free_irq(ndis_irq->irq.irq, ndis_irq);
+	tasklet_kill(&wnd->irq_tasklet);
 	ndis_irq->wnd = NULL;
-	flush_scheduled_work();
 	wnd->ndis_irq = NULL;
 	TRACEEXIT1(return);
 }
