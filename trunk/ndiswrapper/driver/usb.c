@@ -838,13 +838,55 @@ static USBD_STATUS wrap_abort_pipe(struct usb_device *udev, struct irp *irp)
 		USBEXIT(return USBD_STATUS_SUCCESS);
 }
 
+static void set_intf_pipe_info(struct usb_interface *usb_intf,
+			       struct usbd_interface_information *intf)
+{
+	int i, pipe_num;
+	struct usb_endpoint_descriptor *ep;
+	struct usbd_pipe_information *pipe;
+
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
+	for (i = 0; i < CUR_ALT_SETTING(usb_intf)->desc.bNumEndpoints;
+	     i++, pipe_num++) {
+		ep = &(CUR_ALT_SETTING(usb_intf)->endpoint[i]).desc;
+#else
+	for (i = 0; i < CUR_ALT_SETTING(usb_intf).bNumEndpoints;
+	     i++, pipe_num++) {
+		ep = &((CUR_ALT_SETTING(usb_intf)).endpoint[i]);
+#endif
+		if (i >= intf->bNumEndpoints) {
+			ERROR("intf %p has only %d endpoints, "
+			      "ignoring endpoints above %d",
+			      intf, intf->bNumEndpoints, i);
+			break;
+		}
+		pipe = &intf->pipes[i];
+
+		if (pipe->flags & USBD_PF_CHANGE_MAX_PACKET)
+			WARNING("pkt_sz: %d: %d", pipe->wMaxPacketSize,
+				pipe->max_tx_size);
+		USBTRACE("driver wants max_tx_size to %d",
+			 pipe->max_tx_size);
+
+		pipe->wMaxPacketSize = ep->wMaxPacketSize;
+		pipe->bEndpointAddress = ep->bEndpointAddress;
+		pipe->bInterval = ep->bInterval;
+		pipe->type =
+			ep->bmAttributes & USB_ENDPOINT_XFERTYPE_MASK;
+		pipe->handle = ep;
+		USBTRACE("%d: ep 0x%x, type %d, pkt_sz %d, intv %d,"
+			 "type: %d, handle %p", i,
+			 ep->bEndpointAddress, ep->bmAttributes,
+			 ep->wMaxPacketSize, ep->bInterval,
+			 pipe->type, pipe->handle);
+	}
+}
+
 static USBD_STATUS wrap_select_configuration(struct wrap_device *wd,
 					     union nt_urb *nt_urb,
 					     struct irp *irp)
 {
-	struct usbd_pipe_information *pipe;
-	int i, n, ret, pipe_num;
-	struct usb_endpoint_descriptor *ep;
+	int n, ret;
 	struct usbd_select_configuration *sel_conf;
 	struct usb_device *udev;
 	struct usbd_interface_information *intf;
@@ -877,7 +919,6 @@ static USBD_STATUS wrap_select_configuration(struct wrap_device *wd,
 		return wrap_urb_status(ret);
 	}
 
-	pipe_num = 0;
 	intf = &sel_conf->intf;
 	for (n = 0; n < config->bNumInterfaces && intf->bLength > 0;
 	     n++, intf = (((void *)intf) + intf->bLength)) {
@@ -899,42 +940,40 @@ static USBD_STATUS wrap_select_configuration(struct wrap_device *wd,
 		}
 		USBTRACE("intf: %p, num ep: %d", intf, intf->bNumEndpoints);
 
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
-		for (i = 0; i < CUR_ALT_SETTING(usb_intf)->desc.bNumEndpoints;
-		     i++, pipe_num++) {
-			ep = &(CUR_ALT_SETTING(usb_intf)->endpoint[i]).desc;
-#else
-		for (i = 0; i < CUR_ALT_SETTING(usb_intf).bNumEndpoints;
-		     i++, pipe_num++) {
-			ep = &((CUR_ALT_SETTING(usb_intf)).endpoint[i]);
-#endif
-			if (i >= intf->bNumEndpoints) {
-				ERROR("intf %p has only %d endpoints, "
-				      "ignoring endpoints above %d",
-				      intf, intf->bNumEndpoints, i);
-				break;
-			}
-			pipe = &intf->pipes[i];
-
-			if (pipe->flags & USBD_PF_CHANGE_MAX_PACKET)
-				WARNING("pkt_sz: %d: %d", pipe->wMaxPacketSize,
-					pipe->max_tx_size);
-			USBTRACE("driver wants max_tx_size to %d",
-				 pipe->max_tx_size);
-
-			pipe->wMaxPacketSize = ep->wMaxPacketSize;
-			pipe->bEndpointAddress = ep->bEndpointAddress;
-			pipe->bInterval = ep->bInterval;
-			pipe->type =
-				ep->bmAttributes & USB_ENDPOINT_XFERTYPE_MASK;
-			pipe->handle = ep;
-			USBTRACE("%d: ep 0x%x, type %d, pkt_sz %d, intv %d,"
-				 "type: %d, handle %p", i,
-				 ep->bEndpointAddress, ep->bmAttributes,
-				 ep->wMaxPacketSize, ep->bInterval,
-				 pipe->type, pipe->handle);
-		}
+		set_intf_pipe_info(usb_intf, intf);
 	}
+	return USBD_STATUS_SUCCESS;
+}
+
+static USBD_STATUS wrap_select_interface(struct wrap_device *wd,
+					 union nt_urb *nt_urb,
+					 struct irp *irp)
+{
+	int ret;
+	struct usbd_select_interface *sel_intf;
+	struct usb_device *udev;
+	struct usbd_interface_information *intf;
+	struct usb_interface *usb_intf;
+
+	udev = wd->usb.udev;
+	sel_intf = &nt_urb->select_intf;
+	intf = &sel_intf->intf;
+
+	ret = usb_set_interface(udev, intf->bInterfaceNumber,
+				intf->bAlternateSetting);
+	if (ret < 0) {
+		ERROR("failed with %d", ret);
+		return wrap_urb_status(ret);
+	}
+	usb_intf = usb_ifnum_to_if(udev, intf->bInterfaceNumber);
+	if (!usb_intf) {
+		ERROR("couldn't get interface information");
+		return USBD_STATUS_REQUEST_FAILED;
+	}
+	wd->usb.intf = usb_intf;
+	USBTRACE("intf: %p, num ep: %d", intf, intf->bNumEndpoints);
+
+	set_intf_pipe_info(usb_intf, intf);
 	return USBD_STATUS_SUCCESS;
 }
 
@@ -1030,6 +1069,11 @@ static USBD_STATUS wrap_process_nt_urb(struct irp *irp)
 		/* rest are synchronous */
 	case URB_FUNCTION_SELECT_CONFIGURATION:
 		status = wrap_select_configuration(wd, nt_urb, irp);
+		NT_URB_STATUS(nt_urb) = status;
+		break;
+
+	case URB_FUNCTION_SELECT_INTERFACE:
+		status = wrap_select_interface(wd, nt_urb, irp);
 		NT_URB_STATUS(nt_urb) = status;
 		break;
 

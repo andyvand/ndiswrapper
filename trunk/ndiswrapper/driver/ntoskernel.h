@@ -16,11 +16,13 @@
 #ifndef _NTOSKERNEL_H_
 #define _NTOSKERNEL_H_
 
-#define UTILS_VERSION "1.7rc1"
+#define UTILS_VERSION "1.7"
 
 #include <linux/types.h>
 #include <linux/timer.h>
 #include <linux/time.h>
+#include <linux/module.h>
+#include <linux/kmod.h>
 
 #include <linux/netdevice.h>
 #include <linux/wireless.h>

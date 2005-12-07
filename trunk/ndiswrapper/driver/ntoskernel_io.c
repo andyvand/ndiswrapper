@@ -992,7 +992,8 @@ STDCALL NTSTATUS WRAP_EXPORT(ZwSetValueKey)
 	NDIS_STATUS status;
 	struct ndis_configuration_parameter param;
 
-	NdisWriteConfiguration(&status, handle, name, &param);
+	DBGTRACE2("");
+	status = NDIS_STATUS_SUCCESS;
 	if (status == NDIS_STATUS_SUCCESS)
 		return STATUS_SUCCESS;
 	else
@@ -1007,6 +1008,7 @@ STDCALL NTSTATUS WRAP_EXPORT(ZwQueryValueKey)
 	NDIS_STATUS status;
 	struct ndis_configuration_parameter *param;
 
+	return STATUS_INVALID_PARAMETER;
 	NdisReadConfiguration(&status, &param, handle, name,
 			      NdisParameterString);
 	if (status == NDIS_STATUS_SUCCESS) {

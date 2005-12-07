@@ -36,6 +36,11 @@ static struct guid class_guids[] = {
 	{0x4d36e972, 0xe325, 0x11ce, },
 	/* USB WDM */
 	{0x36fc9e60, 0xc465, 0x11cf, },
+	/* Bluetooth */
+	{0xe0cbf06c, 0xcd8b, 0x4647, },
+	/* ivtcorporatino.com's bluetooth device claims this is
+	 * bluetooth guid */
+	{0xf12d3cf8, 0xb11d, 0x457e, },
 };
 
 KSPIN_LOCK loader_lock;
