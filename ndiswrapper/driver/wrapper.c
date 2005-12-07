@@ -18,9 +18,6 @@
 #include "loader.h"
 #include "pnp.h"
 
-#include <linux/module.h>
-#include <linux/kmod.h>
-
 char *if_name = "wlan%d";
 int proc_uid, proc_gid;
 int hangcheck_interval;

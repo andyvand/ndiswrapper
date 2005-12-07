@@ -138,7 +138,9 @@ static STDCALL NTSTATUS pdoDispatchPnp(struct device_object *pdo,
 			wd->pci.pdev = NULL;
 			pci_set_drvdata(pdev, NULL);
 		} else if (wrap_is_usb_bus(wd->dev_bus_type)) {
+#ifdef CONFIG_USB
 			usb_exit_device(wd);
+#endif
 		}
 		if (wd->resource_list)
 			kfree(wd->resource_list);
@@ -590,7 +592,8 @@ static int wrap_pnp_start_device(struct wrap_device *wd)
 	}
 
 	if (!((WRAP_DEVICE_TYPE(wd->dev_bus_type) == WRAP_NDIS_DEVICE) ||
-	      (WRAP_DEVICE_TYPE(wd->dev_bus_type) == WRAP_USB_DEVICE))) {
+	      (WRAP_DEVICE_TYPE(wd->dev_bus_type) == WRAP_USB_DEVICE) ||
+	      (wrap_is_bluetooth_device(wd->dev_bus_type)))) {
 		ERROR("device type %d (%d) not supported",
 		      WRAP_DEVICE_TYPE(wd->dev_bus_type), wd->dev_bus_type);
 		TRACEEXIT1(return -EINVAL);
@@ -742,9 +745,9 @@ void wrap_pnp_remove_usb_device(struct usb_interface *intf)
 
 extern struct usb_driver wrap_usb_driver;
 
-void wrap_pnp_remove_usb_device(struct usb_device *udev,
-				struct wrap_device *wd)
+void wrap_pnp_remove_usb_device(struct usb_device *udev, void *ptr)
 {
+	struct wrap_device *wd = ptr;
 	struct usb_interface *intf;
 
 	TRACEENTER1("%p", wd);

@@ -42,6 +42,8 @@
  * ndiswrapper where device type for NDIS drivers is 0 */
 #define WRAP_NDIS_DEVICE 0
 #define WRAP_USB_DEVICE 1
+#define WRAP_BLUETOOTH_DEVICE1 2
+#define WRAP_BLUETOOTH_DEVICE2 3
 
 #define WRAP_DEVICE_BUS_TYPE(dev, bus) ((dev) << 8 | (bus))
 #define WRAP_BUS_TYPE(dev_bus_type) ((dev_bus_type) & 0x000FF)
@@ -53,6 +55,9 @@
 #define wrap_is_usb_bus(dev_bus_type)				\
 	(WRAP_BUS_TYPE(dev_bus_type) == WRAP_USB_BUS ||		\
 	 WRAP_BUS_TYPE(dev_bus_type) == 0)
+#define wrap_is_bluetooth_device(dev_bus_type)				\
+	(WRAP_DEVICE_TYPE(dev_bus_type) == WRAP_BLUETOOTH_DEVICE1 ||	\
+	 WRAP_DEVICE_TYPE(dev_bus_type) == WRAP_BLUETOOTH_DEVICE2)
 
 #define MAX_DRIVER_NAME_LEN 32
 #define MAX_VERSION_STRING_LEN 64

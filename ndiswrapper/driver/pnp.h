@@ -55,8 +55,7 @@ int wrap_pnp_resume_usb_device(struct usb_interface *intf);
 #else
 void *wrap_pnp_start_usb_device(struct usb_device *udev, unsigned int ifnum,
 				const struct usb_device_id *usb_id);
-void wrap_pnp_remove_usb_device(struct usb_device *udev,
-				struct wrap_device *wd);
+void wrap_pnp_remove_usb_device(struct usb_device *udev, void *ptr);
 #endif
 #endif
 

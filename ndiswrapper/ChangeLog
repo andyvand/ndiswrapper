@@ -1,3 +1,11 @@
+Version 1.7 2005-12-07
+======================
+* Support for Atheros USB drivers natively (without the need for
+  load_fw_ar5523 user space firmware layer introduced in 1.6 release) added.
+* Drivers and driver files are dynamically loaded and unloaded as and when
+  necessary; this should save memory.
+* Bug fixes / improvements.
+
 Version 1.6 2005-11-29
 ======================
 * Support for Highmem with USB devices added.
