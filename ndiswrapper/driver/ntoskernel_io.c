@@ -969,60 +969,6 @@ STDCALL NTSTATUS WRAP_EXPORT(IoOpenDeviceRegistryKey)
 	return STATUS_SUCCESS;
 }
 
-STDCALL NTSTATUS WRAP_EXPORT(ZwCreateKey)
-	(void **handle, ACCESS_MASK desired_access, struct object_attr *attr,
-	 ULONG title_index, struct unicode_string *class,
-	 ULONG create_options, ULONG *disposition)
-{
-	UNIMPL();
-	return STATUS_SUCCESS;
-}
-
-STDCALL NTSTATUS WRAP_EXPORT(ZwOpenKey)
-	(void **handle, ACCESS_MASK desired_access, struct object_attr *attr)
-{
-	UNIMPL();
-	return STATUS_SUCCESS;
-}
-
-STDCALL NTSTATUS WRAP_EXPORT(ZwSetValueKey)
-	(void *handle, struct unicode_string *name, ULONG title_index,
-	 ULONG type, void *data, ULONG data_size)
-{
-	NDIS_STATUS status;
-	struct ndis_configuration_parameter param;
-
-	DBGTRACE2("");
-	status = NDIS_STATUS_SUCCESS;
-	if (status == NDIS_STATUS_SUCCESS)
-		return STATUS_SUCCESS;
-	else
-		return STATUS_FAILURE;
-}
-
-STDCALL NTSTATUS WRAP_EXPORT(ZwQueryValueKey)
-	(void *handle, struct unicode_string *name,
-	 enum key_value_information_class class, void *info,
-	 ULONG length, ULONG *res_length)
-{
-	NDIS_STATUS status;
-	struct ndis_configuration_parameter *param;
-
-	return STATUS_INVALID_PARAMETER;
-	NdisReadConfiguration(&status, &param, handle, name,
-			      NdisParameterString);
-	if (status == NDIS_STATUS_SUCCESS) {
-		*res_length = param->data.string.length;
-		if (length < param->data.string.length) {
-			RtlCopyMemory(info, param->data.string.buf,
-				      *res_length);
-			return STATUS_SUCCESS;
-		} else
-			return STATUS_BUFFER_TOO_SMALL;
-	} else
-		return STATUS_INVALID_PARAMETER;
-}
-
 STDCALL unsigned int WRAP_EXPORT(IoWMIRegistrationControl)
 	(struct device_object *dev_obj, ULONG action)
 {

@@ -2266,6 +2266,10 @@ STDCALL NTSTATUS WRAP_EXPORT(ZwClose)
 	struct common_object_header *coh;
 
 	coh = handle;
+	if (coh == NULL) {
+		DBGTRACE1("");
+		TRACEEXIT2(return STATUS_SUCCESS);
+	}
 	if (coh->type == OBJECT_TYPE_FILE) {
 		oa = HANDLE_TO_OBJECT(handle);
 		bin_file = oa->file;
@@ -2308,6 +2312,62 @@ STDCALL NTSTATUS WRAP_EXPORT(ZwQueryInformationFile)
 		TRACEEXIT2(return STATUS_FAILURE);
 	}
 	TRACEEXIT2(return STATUS_SUCCESS);
+}
+
+STDCALL NTSTATUS WRAP_EXPORT(ZwCreateKey)
+	(void **handle, ACCESS_MASK desired_access, struct object_attr *attr,
+	 ULONG title_index, struct unicode_string *class,
+	 ULONG create_options, ULONG *disposition)
+{
+	struct ansi_string ansi;
+	if (RtlUnicodeStringToAnsiString(&ansi, attr->name, TRUE) ==
+	    STATUS_SUCCESS) {
+		DBGTRACE1("key: %s", ansi.buf);
+		RtlFreeAnsiString(&ansi);
+	}
+	*handle = NULL;
+	return STATUS_SUCCESS;
+}
+
+STDCALL NTSTATUS WRAP_EXPORT(ZwOpenKey)
+	(void **handle, ACCESS_MASK desired_access, struct object_attr *attr)
+{
+	struct ansi_string ansi;
+	if (RtlUnicodeStringToAnsiString(&ansi, attr->name, TRUE) ==
+	    STATUS_SUCCESS) {
+		DBGTRACE1("key: %s", ansi.buf);
+		RtlFreeAnsiString(&ansi);
+	}
+	*handle = NULL;
+	return STATUS_SUCCESS;
+}
+
+STDCALL NTSTATUS WRAP_EXPORT(ZwSetValueKey)
+	(void *handle, struct unicode_string *name, ULONG title_index,
+	 ULONG type, void *data, ULONG data_size)
+{
+	struct ansi_string ansi;
+	if (RtlUnicodeStringToAnsiString(&ansi, name, TRUE) ==
+	    STATUS_SUCCESS) {
+		DBGTRACE1("key: %s", ansi.buf);
+		RtlFreeAnsiString(&ansi);
+	}
+	return STATUS_SUCCESS;
+}
+
+STDCALL NTSTATUS WRAP_EXPORT(ZwQueryValueKey)
+	(void *handle, struct unicode_string *name,
+	 enum key_value_information_class class, void *info,
+	 ULONG length, ULONG *res_length)
+{
+	struct ansi_string ansi;
+	if (RtlUnicodeStringToAnsiString(&ansi, name, TRUE) ==
+	    STATUS_SUCCESS) {
+		DBGTRACE1("key: %s", ansi.buf);
+		RtlFreeAnsiString(&ansi);
+	}
+	UNIMPL();
+	return STATUS_INVALID_PARAMETER;
 }
 
 STDCALL NTSTATUS WRAP_EXPORT(WmiSystemControl)
