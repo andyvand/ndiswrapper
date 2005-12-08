@@ -54,7 +54,10 @@ static int debug;
 	       PROG_NAME, __FUNCTION__, __LINE__ , ## __VA_ARGS__)
 #define ERROR(fmt, ...) LOG_MSG(LOG_INFO, fmt, ## __VA_ARGS__)
 #define INFO(fmt, ...) LOG_MSG(LOG_INFO, fmt, ## __VA_ARGS__)
-#define DBG(fmt, ...) LOG_MSG(LOG_INFO, fmt, ## __VA_ARGS__)
+#define DBG(fmt, ...) do {					\
+		if (debug > 0)					\
+			LOG_MSG(LOG_INFO, fmt, ## __VA_ARGS__); \
+	} while (0)
 #define WARN(fmt, ...) LOG_MSG(LOG_INFO, fmt, ## __VA_ARGS__)
 
 /* load .sys or .bin file */
