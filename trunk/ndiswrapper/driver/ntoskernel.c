@@ -1038,8 +1038,8 @@ STDCALL void *WRAP_EXPORT(ExAllocatePoolWithTag)
 			addr = kmalloc(size, GFP_ATOMIC);
 	} else {
 		if (current_irql() > PASSIVE_LEVEL)
-			ERROR("Windows driver allocating too big a block"
-			      " in atomic context: %ld", size);
+			ERROR("Windows driver allocating %ld bytes in "
+			      "atomic context", size);
 		addr = vmalloc(size);
 	}
 	TRACEEXIT4(return addr);

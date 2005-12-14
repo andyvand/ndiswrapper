@@ -1596,7 +1596,7 @@ static int iw_set_encodeext(struct net_device *dev,
 		return -EINVAL;
 
 	if (ext->alg == IW_ENCODE_ALG_WEP) {
-		if (test_bit(Ndis802_11EncryptionDisabled, &wnd->capa.encr))
+		if (!test_bit(Ndis802_11Encryption1Enabled, &wnd->capa.encr))
 			TRACEEXIT2(return -1);
 
 		if (ext->ext_flags & IW_ENCODE_EXT_SET_TX_KEY)
