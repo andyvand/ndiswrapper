@@ -433,7 +433,7 @@ static struct ndis_packet *
 allocate_send_packet(struct wrap_ndis_device *wnd, ndis_buffer *buffer)
 {
 	struct ndis_packet *packet;
-	struct wrap_ndis_packet *wrap_ndis_packet;
+	struct ndis_packet_oob_data *oob_data;
 	NDIS_STATUS status;
 
 	NdisAllocatePacket(&status, &packet, wnd->wrapper_packet_pool);
@@ -443,21 +443,19 @@ allocate_send_packet(struct wrap_ndis_device *wnd, ndis_buffer *buffer)
 	packet->private.buffer_head = buffer;
 	packet->private.buffer_tail = buffer;
 
-	wrap_ndis_packet = packet->wrap_ndis_packet;
+	oob_data = NDIS_PACKET_OOB_DATA(packet);
 	if (wnd->use_sg_dma) {
-		wrap_ndis_packet->ndis_sg_element.address =
+		oob_data->ndis_sg_element.address =
 			PCI_DMA_MAP_SINGLE(wnd->wd->pci.pdev,
 					   MmGetMdlVirtualAddress(buffer),
 					   MmGetMdlByteCount(buffer),
 					   PCI_DMA_TODEVICE);
 
-		wrap_ndis_packet->ndis_sg_element.length =
-			MmGetMdlByteCount(buffer);
-		wrap_ndis_packet->ndis_sg_list.nent = 1;
-		wrap_ndis_packet->ndis_sg_list.elements =
-			&wrap_ndis_packet->ndis_sg_element;
-		wrap_ndis_packet->extension.info[ScatterGatherListPacketInfo] =
-			&wrap_ndis_packet->ndis_sg_list;
+		oob_data->ndis_sg_element.length = MmGetMdlByteCount(buffer);
+		oob_data->ndis_sg_list.nent = 1;
+		oob_data->ndis_sg_list.elements = &oob_data->ndis_sg_element;
+		oob_data->extension.info[ScatterGatherListPacketInfo] =
+			&oob_data->ndis_sg_list;
 	}
 	return packet;
 }
@@ -466,7 +464,7 @@ static void free_send_packet(struct wrap_ndis_device *wnd,
 			     struct ndis_packet *packet)
 {
 	ndis_buffer *buffer;
-	struct wrap_ndis_packet *wrap_ndis_packet;
+	struct ndis_packet_oob_data *oob_data;
 
 	TRACEENTER3("packet: %p", packet);
 	if (!packet) {
@@ -475,16 +473,16 @@ static void free_send_packet(struct wrap_ndis_device *wnd,
 	}
 
 	buffer = packet->private.buffer_head;
-	wrap_ndis_packet = packet->wrap_ndis_packet;
+	oob_data = NDIS_PACKET_OOB_DATA(packet);
 	if (wnd->use_sg_dma)
 		PCI_DMA_UNMAP_SINGLE(wnd->wd->pci.pdev,
-				     wrap_ndis_packet->ndis_sg_element.address,
-				     wrap_ndis_packet->ndis_sg_element.length,
+				     oob_data->ndis_sg_element.address,
+				     oob_data->ndis_sg_element.length,
 				     PCI_DMA_TODEVICE);
 
 	DBGTRACE3("freeing buffer %p", buffer);
 	NdisFreeBuffer(buffer);
-	dev_kfree_skb(wrap_ndis_packet->skb);
+	dev_kfree_skb(oob_data->skb);
 
 	DBGTRACE3("freeing packet %p", packet);
 	NdisFreePacket(packet);
@@ -503,7 +501,6 @@ static int send_packets(struct wrap_ndis_device *wnd, unsigned int start,
 	struct miniport_char *miniport;
 	unsigned int sent, n;
 	struct ndis_packet *packet;
-	struct wrap_ndis_packet *wrap_ndis_packet;
 
 	TRACEENTER3("start: %d, pending: %d", start, pending);
 	miniport = &wnd->wd->driver->ndis_driver->miniport;
@@ -524,9 +521,10 @@ static int send_packets(struct wrap_ndis_device *wnd, unsigned int start,
 		DBGTRACE3("sent");
 		if (test_bit(ATTR_SERIALIZED, &wnd->attributes)) {
 			for (sent = 0; sent < n && wnd->send_ok; sent++) {
+				struct ndis_packet_oob_data *oob_data;
 				packet = wnd->xmit_array[sent];
-				wrap_ndis_packet = packet->wrap_ndis_packet;
-				switch(wrap_ndis_packet->oob_data.status) {
+				oob_data = NDIS_PACKET_OOB_DATA(packet);
+				switch(oob_data->status) {
 				case NDIS_STATUS_SUCCESS:
 					sendpacket_done(wnd, packet);
 					break;
@@ -621,6 +619,7 @@ static int start_xmit(struct sk_buff *skb, struct net_device *dev)
 	struct wrap_ndis_device *wnd = netdev_priv(dev);
 	ndis_buffer *buffer;
 	struct ndis_packet *packet;
+	struct ndis_packet_oob_data *oob_data;
 	unsigned int xmit_ring_next_slot;
 	NDIS_STATUS res;
 
@@ -633,7 +632,8 @@ static int start_xmit(struct sk_buff *skb, struct net_device *dev)
 		NdisFreeBuffer(buffer);
 		return 1;
 	}
-	packet->wrap_ndis_packet->skb = skb;
+	oob_data = NDIS_PACKET_OOB_DATA(packet);
+	oob_data->skb = skb;
 	kspin_lock(&wnd->xmit_lock);
 	xmit_ring_next_slot = (wnd->xmit_ring_start +
 			       wnd->xmit_ring_pending) % XMIT_RING_SIZE;
