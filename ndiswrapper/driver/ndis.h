@@ -110,11 +110,8 @@ struct ndis_packet_oob_data {
 	UINT mediaspecific_size;
 	void *mediaspecific;
 	NDIS_STATUS status;
-};
 
-/* ndiswrapper specific info */
-struct wrap_ndis_packet {
-	struct ndis_packet_oob_data oob_data;
+	/* ndiswrapper specific info */
 	struct ndis_packet_extension extension;
 
 	struct ndis_packet *next;
@@ -154,8 +151,11 @@ struct ndis_packet {
 	} u;
 	ULONG_PTR reserved[2];
 	UCHAR protocol_reserved[1];
-	struct wrap_ndis_packet *wrap_ndis_packet;
 };
+
+#define NDIS_PACKET_OOB_DATA(packet)					\
+	(struct ndis_packet_oob_data *)(((void *)(packet)) +		\
+					(packet)->private.oob_offset)
 
 struct ndis_packet_pool {
 	UINT max_descr;
@@ -378,8 +378,8 @@ struct ndis_irq {
 	struct kdpc intr_dpc;
 	struct wrap_ndis_device *wnd;
 	UCHAR dpc_count;
-	/* unsigned char filler1 is used for pending */
-	UCHAR pending;
+	/* unsigned char filler1 is used for enabled */
+	UCHAR enabled;
 	struct nt_event completed_event;
 	UCHAR shared;
 	UCHAR req_isr;
