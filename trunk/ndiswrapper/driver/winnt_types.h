@@ -1293,6 +1293,16 @@ struct io_remove_lock {
 	struct nt_event remove_event;
 };
 
+enum device_relation_type {
+	BusRelations,
+	EjectionRelations,
+	PowerRelations,
+	RemovalRelations,
+	TargetDeviceRelation,
+	SingleBusRelations
+};
+
+
 /* some of the functions below are slightly different from DDK's
  * implementation; e.g., Insert functions return appropriate
  * pointer */
