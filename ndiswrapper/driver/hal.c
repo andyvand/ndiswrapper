@@ -71,6 +71,12 @@ STDCALL void WRAP_EXPORT(READ_PORT_BUFFER_USHORT)
 	insw(port, buf, count);
 }
 
+STDCALL USHORT WRAP_EXPORT(READ_REGISTER_USHORT)
+	(void *reg)
+{
+	return readw(reg);
+}
+
 STDCALL void WRAP_EXPORT(WRITE_REGISTER_ULONG)
 	(void *reg, UINT val)
 {

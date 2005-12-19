@@ -1015,4 +1015,18 @@ STDCALL unsigned int WRAP_EXPORT(IoWMIRegistrationControl)
 	TRACEEXIT2(return STATUS_SUCCESS);
 }
 
+STDCALL void WRAP_EXPORT(IoInvalidateDeviceRelations)
+	(struct device_object *dev_obj, enum device_relation_type type)
+{
+	INFO("%p, %d", dev_obj, type);
+	UNIMPL();
+}
+
+STDCALL void WRAP_EXPORT(IoInvalidateDeviceState)
+	(struct device_object *pdo)
+{
+	INFO("%p", pdo);
+	UNIMPL();
+}
+
 #include "ntoskernel_io_exports.h"

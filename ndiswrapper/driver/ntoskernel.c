@@ -88,6 +88,8 @@ static BOOLEAN queue_kdpc(struct kdpc *kdpc);
 
 WRAP_EXPORT_MAP("KeTickCount", &jiffies);
 
+WRAP_EXPORT_MAP("NlsMbCodePageTag", FALSE);
+
 int ntoskernel_init(void)
 {
 	struct timeval now;

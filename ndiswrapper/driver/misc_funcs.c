@@ -582,6 +582,12 @@ STDCALL NTSTATUS WRAP_EXPORT(RtlAnsiStringToUnicodeString)
 	TRACEEXIT2(return STATUS_SUCCESS);
 }
 
+STDCALL ULONG WRAP_EXPORT(RtlxAnsiStringToUnicodeSize)
+	(const struct ansi_string *string)
+{
+	return (string->length + 1) * sizeof(wchar_t);
+}
+
 STDCALL NTSTATUS WRAP_EXPORT(RtlUnicodeStringToAnsiString)
 	(struct ansi_string *dst, const struct unicode_string *src,
 	 BOOLEAN alloc)
