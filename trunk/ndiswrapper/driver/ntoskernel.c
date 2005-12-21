@@ -1068,6 +1068,12 @@ STDCALL void WRAP_EXPORT(ExFreePool)
 	return;
 }
 
+STDCALL void WRAP_EXPORT(ExFreePoolWithTag)
+	(void *addr, ULONG tag)
+{
+	ExFreePool(addr);
+}
+
 WRAP_FUNC_PTR_DECL(ExAllocatePoolWithTag)
 WRAP_FUNC_PTR_DECL(ExFreePool)
 
