@@ -81,6 +81,10 @@ if($ARGV[0] eq "-i" and @ARGV == 2) {
     $res = list();
 } elsif($ARGV[0] eq "-m" and @ARGV == 1) {
     $res = modalias();
+} elsif($ARGV[0] eq "-v" and @ARGV == 1) {
+    printf "utils "; system("/sbin/loadndisdriver -v");
+    printf "driver "; system("modinfo ndiswrapper | grep '^version'");
+    $res = 0;
 } else {
     usage();
     exit();
