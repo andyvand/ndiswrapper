@@ -606,6 +606,11 @@ int main(int argc, char *argv[0])
 
 	DBG("argc: %d", argc);
 
+	if (argc == 2 && (strncmp(argv[1], "-v", 2) == 0 ||
+			  strncmp(argv[1], "--v", 3) == 0)) {
+		printf("version: %s\n", UTILS_VERSION);
+		return 0;
+	}
 	if (argc < 4) {
 		res = 1;
 		goto out;
