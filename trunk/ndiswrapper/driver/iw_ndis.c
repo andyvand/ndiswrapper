@@ -53,7 +53,7 @@ int set_essid(struct wrap_ndis_device *wnd, const char *ssid, int ssid_len)
 		memcpy(&req.essid, ssid, req.length);
 		DBGTRACE2("ssid = '%s'", req.essid);
 	}
-	
+
 	res = miniport_set_info(wnd, OID_802_11_SSID, &req, sizeof(req));
 	if (res == NDIS_STATUS_FAILURE)
 		return -ENOTSUPP;

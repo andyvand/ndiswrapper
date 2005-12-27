@@ -470,7 +470,6 @@ NTSTATUS pnp_start_device(struct wrap_device *wd)
 	else
 		WARNING("Windows driver couldn't initialize the device (%08X)",
 			status);
-	DBGTRACE1("count: %d", fdo->drv_obj->drv_ext->count);
 	if (thread)
 		wrap_remove_thread(thread);
 	TRACEEXIT1(return status);
