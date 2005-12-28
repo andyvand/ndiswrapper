@@ -89,7 +89,10 @@ static STDCALL NTSTATUS pdoDispatchPnp(struct device_object *pdo,
 	struct io_stack_location *irp_sl;
 	struct wrap_device *wd;
 	NTSTATUS status;
+#ifdef CONFIG_USB
 	struct usbd_bus_interface_usbdi *usb_intf;
+#endif
+
 
 	irp_sl = IoGetCurrentIrpStackLocation(irp);
 	wd = pdo->reserved;
@@ -99,6 +102,7 @@ static STDCALL NTSTATUS pdoDispatchPnp(struct device_object *pdo,
 		status = STATUS_SUCCESS;
 		break;
 	case IRP_MN_QUERY_INTERFACE:
+#ifdef CONFIG_USB
 		if (!wrap_is_usb_bus(wd->dev_bus_type)) {
 			status = STATUS_NOT_IMPLEMENTED;
 			break;
@@ -125,6 +129,9 @@ static STDCALL NTSTATUS pdoDispatchPnp(struct device_object *pdo,
 		    USB_BUSIF_USBDI_VERSION_2)
 			usb_intf->LogEntry = USBD_InterfaceLogEntry;
 		status = STATUS_SUCCESS;
+#else
+		status = STATUS_NOT_IMPLEMENTED;
+#endif
 		break;
 	case IRP_MN_QUERY_REMOVE_DEVICE:
 		status = STATUS_SUCCESS;
