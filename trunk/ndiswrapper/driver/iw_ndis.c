@@ -817,7 +817,7 @@ int add_wep_key(struct wrap_ndis_device *wnd, char *key, int key_len,
 	struct ndis_encr_key ndis_key;
 	NDIS_STATUS res;
 
-	TRACEENTER2("key index: %d", index);
+	TRACEENTER2("key index: %d, length: %d", index, key_len);
 	if (key_len <= 0 || key_len > NDIS_ENCODING_TOKEN_MAX) {
 		WARNING("invalid key length (%d)", key_len);
 		TRACEEXIT2(return -EINVAL);
@@ -2080,7 +2080,7 @@ static int wpa_associate(struct net_device *dev, struct iw_request_info *info,
 	struct wrap_ndis_device *wnd = netdev_priv(dev);
 	struct wpa_assoc_info wpa_assoc_info;
 	char ssid[NDIS_ESSID_MAX_SIZE];
-	int auth_mode, encr_mode, priv_mode, size;
+	int infra_mode, auth_mode, encr_mode, priv_mode, size;
 	
 	TRACEENTER2("");
 	if (wrqu->data.length == 0)
@@ -2094,6 +2094,7 @@ static int wpa_associate(struct net_device *dev, struct iw_request_info *info,
 	}
 
 	memset(&wpa_assoc_info, 0, sizeof(wpa_assoc_info));
+	wpa_assoc_info.mode = Ndis802_11Infrastructure;
 
 	if (copy_from_user(&wpa_assoc_info, wrqu->data.pointer, size))
 		TRACEEXIT2(return -1);
@@ -2101,13 +2102,10 @@ static int wpa_associate(struct net_device *dev, struct iw_request_info *info,
 			   wpa_assoc_info.ssid_len))
 		TRACEEXIT2(return -1);
 
-	/* setting the mode here clears the keys set earlier, so
-	 * ignore this request */
-
 	if (wpa_assoc_info.mode == IEEE80211_MODE_IBSS)
-		set_infra_mode(wnd, Ndis802_11IBSS);
+		infra_mode = Ndis802_11IBSS;
 	else
-		set_infra_mode(wnd, Ndis802_11Infrastructure);
+		infra_mode = Ndis802_11Infrastructure;
 
 	DBGTRACE2("key_mgmt_suite = %d, pairwise_suite = %d, group_suite= %d",
 		  wpa_assoc_info.key_mgmt_suite,
@@ -2160,6 +2158,10 @@ static int wpa_associate(struct net_device *dev, struct iw_request_info *info,
 		encr_mode = Ndis802_11EncryptionDisabled;
 	};
 
+	/* setting the mode here clears the static wep keys set
+	 * earlier, so ignore this request */
+	/* TODO: should we reset the keys again instead? */
+//	set_infra_mode(wnd, infra_mode);
 	set_privacy_filter(wnd, priv_mode);
 	set_auth_mode(wnd, auth_mode);
 	set_encr_mode(wnd, encr_mode);
