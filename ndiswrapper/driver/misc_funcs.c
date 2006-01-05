@@ -725,6 +725,26 @@ STDCALL NTSTATUS WRAP_EXPORT(RtlIntegerToUnicodeString)
 	return RtlAnsiStringToUnicodeString(ustring, &ansi, FALSE);
 }
 
+STDCALL LARGE_INTEGER WRAP_EXPORT(RtlConvertUlongToLargeInteger)
+	(ULONG i)
+{
+	LARGE_INTEGER l = i;
+	return l;
+}
+
+_FASTCALL USHORT WRAP_EXPORT(RtlUShortByteSwap)
+	(USHORT src)
+{
+	return __swab16(src);
+}
+
+_FASTCALL ULONG WRAP_EXPORT(RtlUlongByteSwap)
+	(ULONG src)
+{
+	/* ULONG is 32 bits for both 32-bit and 64-bit architectures */
+	return __swab32(src);
+}
+
 STDCALL void WRAP_EXPORT(RtlInitUnicodeString)
 	(struct unicode_string *dst, const wchar_t *src)
 {
