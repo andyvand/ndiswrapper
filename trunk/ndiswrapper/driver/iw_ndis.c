@@ -838,6 +838,7 @@ int add_wep_key(struct wrap_ndis_device *wnd, char *key, int key_len,
 		if (res)
 			WARNING("encryption couldn't be enabled (%08X)", res);
 	}
+	DBGTRACE2("key %d: " MACSTR, index, MAC2STR(key));
 	res = miniport_set_info(wnd, OID_802_11_ADD_WEP, &ndis_key,
 				sizeof(ndis_key));
 	if (res == NDIS_STATUS_FAILURE)
@@ -2158,13 +2159,34 @@ static int wpa_associate(struct net_device *dev, struct iw_request_info *info,
 		encr_mode = Ndis802_11EncryptionDisabled;
 	};
 
-	/* setting the mode here clears the static wep keys set
-	 * earlier, so ignore this request */
-	/* TODO: should we reset the keys again instead? */
-//	set_infra_mode(wnd, infra_mode);
 	set_privacy_filter(wnd, priv_mode);
 	set_auth_mode(wnd, auth_mode);
 	set_encr_mode(wnd, encr_mode);
+	/* wpa_supplicant first sets the keys and then associates; but
+	 * NDIS drivers clear keys when infrastructure mode is set. So
+	 * for WEP mode, we save copy of current encryption
+	 * information, set the infrastructure mode, and set the keys
+	 * saved */
+	if (wnd->infrastructure_mode != infra_mode &&
+	    encr_mode == Ndis802_11Encryption1Enabled) {
+		typeof(wnd->encr_info) *encr_info;
+		int i;
+
+		encr_info = kmalloc(sizeof(*encr_info), GFP_KERNEL);
+		if (!encr_info) {
+			WARNING("couldn't allocate memory");
+			TRACEEXIT2(return -1);
+		}
+		memcpy(encr_info, &wnd->encr_info, sizeof(*encr_info));
+		set_infra_mode(wnd, infra_mode);
+		for (i = 0; i < MAX_ENCR_KEYS; i++) {
+			if (encr_info->keys[i].length > 0)
+				add_wep_key(wnd, encr_info->keys[i].key,
+					    encr_info->keys[i].length, i);
+		}
+		kfree(encr_info);
+	} else
+		set_infra_mode(wnd, infra_mode);
 
 #if 0
 	/* set channel */
@@ -2210,7 +2232,6 @@ int set_privacy_filter(struct wrap_ndis_device *wnd, int flags)
 	NDIS_STATUS res;
 
 	TRACEENTER2("filter: %d", flags);
-	TRACEEXIT2(return 0);
 	res = miniport_set_int(wnd, OID_802_11_PRIVACY_FILTER, flags);
 	if (res == NDIS_STATUS_FAILURE)
 		return -EOPNOTSUPP;
