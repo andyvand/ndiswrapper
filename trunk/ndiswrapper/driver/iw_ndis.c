@@ -2091,7 +2091,7 @@ static int wpa_associate(struct net_device *dev, struct iw_request_info *info,
 		size = (void *)&wpa_assoc_info.auth_alg - 
 			(void *)&wpa_assoc_info.bssid;
 	else
-		size = min(wrqu->data.length, sizeof(wpa_assoc_info));
+		size = min((size_t)wrqu->data.length, sizeof(wpa_assoc_info));
 
 	if (copy_from_user(&wpa_assoc_info, wrqu->data.pointer, size))
 		TRACEEXIT2(return -1);

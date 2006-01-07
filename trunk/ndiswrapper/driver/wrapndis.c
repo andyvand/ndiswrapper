@@ -1493,13 +1493,14 @@ static NDIS_STATUS ndis_start_device(struct wrap_ndis_device *wnd)
 	DBGTRACE1("pool: %p", wnd->wrapper_buffer_pool);
 	miniport_set_int(wnd, OID_802_11_NETWORK_TYPE_IN_USE,
 			 Ndis802_11Automode);
-	miniport_set_int(wnd, OID_802_11_POWER_MODE, NDIS_POWER_OFF);
+//	miniport_set_int(wnd, OID_802_11_POWER_MODE, NDIS_POWER_OFF);
 	/* check_capa changes auth_mode and encr_mode, so set them again */
-	set_scan(wnd);
 	set_infra_mode(wnd, Ndis802_11Infrastructure);
 	set_auth_mode(wnd, Ndis802_11AuthModeOpen);
 	set_encr_mode(wnd, Ndis802_11EncryptionDisabled);
+	set_scan(wnd);
 	set_privacy_filter(wnd, Ndis802_11PrivFilterAcceptAll);
+	set_essid(wnd, "", 0);
 
 	wrap_procfs_add_ndis_device(wnd);
 	TRACEEXIT1(return NDIS_STATUS_SUCCESS);
