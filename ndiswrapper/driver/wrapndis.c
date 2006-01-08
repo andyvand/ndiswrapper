@@ -293,15 +293,16 @@ static NDIS_STATUS miniport_pnp_event(struct wrap_ndis_device *wnd,
 		DBGTRACE1("%d, %p",
 			  test_bit(ATTR_SURPRISE_REMOVE, &wnd->attributes),
 			  miniport->pnp_event_notify);
-		if (!miniport->pnp_event_notify) {
-			WARNING("Windows driver %s doesn't support "
-				"MiniportPnpEventNotify for safe unplugging",
-				wnd->wd->driver->name);
-			return NDIS_STATUS_FAILURE;
-		}
-		DBGTRACE1("calling surprise_removed");
-		LIN2WIN4(miniport->pnp_event_notify, wnd->nmb->adapter_ctx,
-			 NdisDevicePnPEventSurpriseRemoved, NULL, 0);
+		if (test_bit(ATTR_SURPRISE_REMOVE, &wnd->attributes) &&
+		    miniport->pnp_event_notify) {
+			DBGTRACE1("calling surprise_removed");
+			LIN2WIN4(miniport->pnp_event_notify,
+				 wnd->nmb->adapter_ctx,
+				 NdisDevicePnPEventSurpriseRemoved, NULL, 0);
+		} else
+			DBGTRACE1("Windows driver %s doesn't support "
+				  "MiniportPnpEventNotify for safe unplugging",
+				  wnd->wd->driver->name);
 		return NDIS_STATUS_SUCCESS;
 	case NdisDevicePnPEventPowerProfileChanged:
 		if (!miniport->pnp_event_notify) {
