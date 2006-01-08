@@ -1,3 +1,12 @@
+Version 1.8 2005-XX-XX
+======================
+* Issue with WEP with wpa_supplicant fixed (keys must be saved and
+  restored).
+* Support for newer kernels added.
+* If USB support is not required, passing 'DISABLE_USB=1' option to
+  'make' will not include USB layer (introduced in version 1.5, but
+  broken in at least 1.7).
+
 Version 1.7 2005-12-07
 ======================
 * Support for Atheros USB drivers natively (without the need for

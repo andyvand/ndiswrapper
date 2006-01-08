@@ -2259,7 +2259,7 @@ STDCALL NTSTATUS WRAP_EXPORT(ZwReadFile)
 	else
 		offset = 0;
 	count = min((size_t)length, file->size - offset);
-	DBGTRACE2("count: %u, offset: %lu, length: %u", count, offset, length);
+	DBGTRACE2("count: %u, offset: %zu, length: %u", count, offset, length);
 	memcpy(buffer, ((void *)file->data) + offset, count);
 	iosb->status = STATUS_SUCCESS;
 	iosb->status_info = count;
