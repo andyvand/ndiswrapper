@@ -2158,31 +2158,34 @@ static int wpa_associate(struct net_device *dev, struct iw_request_info *info,
 	set_privacy_filter(wnd, priv_mode);
 	set_auth_mode(wnd, auth_mode);
 	set_encr_mode(wnd, encr_mode);
-	/* wpa_supplicant first sets the keys and then associates; but
-	 * NDIS drivers clear keys when infrastructure mode is set. So
-	 * for WEP mode, we save copy of current encryption
-	 * information, set the infrastructure mode, and set the keys
-	 * saved */
-	if (wnd->infrastructure_mode != infra_mode &&
-	    encr_mode == Ndis802_11Encryption1Enabled) {
-		typeof(wnd->encr_info) *encr_info;
-		int i;
+	if (wnd->infrastructure_mode != infra_mode) {
+		/* wpa_supplicant first sets the keys and then
+		 * associates; but NDIS drivers clear keys when
+		 * infrastructure mode is set. So for WEP mode, we
+		 * save copy of current encryption information, set
+		 * the infrastructure mode, and set the keys saved */
+		if (encr_mode == Ndis802_11Encryption1Enabled) {
+			typeof(wnd->encr_info) *encr_info;
+			int i;
 
-		encr_info = kmalloc(sizeof(*encr_info), GFP_KERNEL);
-		if (!encr_info) {
-			WARNING("couldn't allocate memory");
-			TRACEEXIT2(return -1);
-		}
-		memcpy(encr_info, &wnd->encr_info, sizeof(*encr_info));
-		set_infra_mode(wnd, infra_mode);
-		for (i = 0; i < MAX_ENCR_KEYS; i++) {
-			if (encr_info->keys[i].length > 0)
-				add_wep_key(wnd, encr_info->keys[i].key,
-					    encr_info->keys[i].length, i);
-		}
-		kfree(encr_info);
-	} else
-		set_infra_mode(wnd, infra_mode);
+			encr_info = kmalloc(sizeof(*encr_info), GFP_KERNEL);
+			if (!encr_info) {
+				WARNING("couldn't allocate memory");
+				TRACEEXIT2(return -1);
+			}
+			memcpy(encr_info, &wnd->encr_info, sizeof(*encr_info));
+			set_infra_mode(wnd, infra_mode);
+			for (i = 0; i < MAX_ENCR_KEYS; i++) {
+				if (encr_info->keys[i].length > 0)
+					add_wep_key(wnd,
+						    encr_info->keys[i].key,
+						    encr_info->keys[i].length,
+						    i);
+			}
+			kfree(encr_info);
+		} else
+			set_infra_mode(wnd, infra_mode);
+	}
 
 #if 0
 	/* set channel */

@@ -2258,8 +2258,8 @@ STDCALL NTSTATUS WRAP_EXPORT(ZwReadFile)
 		offset = *byte_offset;
 	else
 		offset = 0;
-	count = min(length, file->size - offset);
-	DBGTRACE2("count: %u, offset: %u, length: %u", count, offset, length);
+	count = min((size_t)length, file->size - offset);
+	DBGTRACE2("count: %u, offset: %lu, length: %u", count, offset, length);
 	memcpy(buffer, ((void *)file->data) + offset, count);
 	iosb->status = STATUS_SUCCESS;
 	iosb->status_info = count;
