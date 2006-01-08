@@ -766,7 +766,9 @@ static int register_devices(struct load_devices *load_devices)
 #ifdef CONFIG_USB
 	if (wrap_usb_devices) {
 		memset(&wrap_usb_driver, 0, sizeof(wrap_usb_driver));
+#if LINUX_VERSION_CODE <= KERNEL_VERSION(2,6,15)
 		wrap_usb_driver.owner = THIS_MODULE;
+#endif
 		wrap_usb_driver.name = DRIVER_NAME;
 		wrap_usb_driver.id_table = wrap_usb_devices;
 		wrap_usb_driver.probe = wrap_pnp_start_usb_device;
