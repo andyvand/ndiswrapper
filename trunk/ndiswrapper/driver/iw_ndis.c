@@ -1903,13 +1903,12 @@ static int wpa_init(struct net_device *dev, struct iw_request_info *info,
 	struct wrap_ndis_device *wnd = netdev_priv(dev);
 
 	TRACEENTER2("");
-	if (test_bit(Ndis802_11Encryption2Enabled, &wnd->capa.encr) ||
-	    test_bit(Ndis802_11Encryption3Enabled, &wnd->capa.encr)) {
-		if (set_infra_mode(wnd, Ndis802_11Infrastructure))
-			WARNING("couldn't enable infrastructure/managed mode");
+	if (test_bit(Ndis802_11Encryption1Enabled, &wnd->capa.encr) ||
+	    test_bit(Ndis802_11Encryption2Enabled, &wnd->capa.encr) ||
+	    test_bit(Ndis802_11Encryption3Enabled, &wnd->capa.encr))
 		TRACEEXIT2(return 0);
-	} else {
-		WARNING("driver is not WPA capable");
+	else {
+		WARNING("driver is not WEP/WPA capable");
 		TRACEEXIT2(return -1);
 	}
 }
@@ -2158,34 +2157,29 @@ static int wpa_associate(struct net_device *dev, struct iw_request_info *info,
 	set_privacy_filter(wnd, priv_mode);
 	set_auth_mode(wnd, auth_mode);
 	set_encr_mode(wnd, encr_mode);
-	if (wnd->infrastructure_mode != infra_mode) {
-		/* wpa_supplicant first sets the keys and then
-		 * associates; but NDIS drivers clear keys when
-		 * infrastructure mode is set. So for WEP mode, we
-		 * save copy of current encryption information, set
-		 * the infrastructure mode, and set the keys saved */
-		if (encr_mode == Ndis802_11Encryption1Enabled) {
-			typeof(wnd->encr_info) *encr_info;
-			int i;
+	/* For WEP mode, wpa_supplicant first sets the keys and then
+	   associates, but NDIS drivers clear keys when mode is
+	   set. So we save current encryption information, set the
+	   mode, and restore the keys saved */
+	if (encr_mode == Ndis802_11Encryption1Enabled) {
+		typeof(wnd->encr_info) *encr_info;
+		int i;
 
-			encr_info = kmalloc(sizeof(*encr_info), GFP_KERNEL);
-			if (!encr_info) {
-				WARNING("couldn't allocate memory");
-				TRACEEXIT2(return -1);
-			}
-			memcpy(encr_info, &wnd->encr_info, sizeof(*encr_info));
-			set_infra_mode(wnd, infra_mode);
-			for (i = 0; i < MAX_ENCR_KEYS; i++) {
-				if (encr_info->keys[i].length > 0)
-					add_wep_key(wnd,
-						    encr_info->keys[i].key,
-						    encr_info->keys[i].length,
-						    i);
-			}
-			kfree(encr_info);
-		} else
-			set_infra_mode(wnd, infra_mode);
-	}
+		encr_info = kmalloc(sizeof(*encr_info), GFP_KERNEL);
+		if (!encr_info) {
+			WARNING("couldn't allocate memory");
+			TRACEEXIT2(return -1);
+		}
+		memcpy(encr_info, &wnd->encr_info, sizeof(*encr_info));
+		set_infra_mode(wnd, infra_mode);
+		for (i = 0; i < MAX_ENCR_KEYS; i++) {
+			if (encr_info->keys[i].length > 0)
+				add_wep_key(wnd, encr_info->keys[i].key,
+					    encr_info->keys[i].length, i);
+		}
+		kfree(encr_info);
+	} else	
+		set_infra_mode(wnd, infra_mode);
 
 #if 0
 	/* set channel */

@@ -75,33 +75,32 @@
 typedef struct workqueue_struct *workqueue;
 #include <asm/dma-mapping.h>
 
-#define PCI_DMA_ALLOC_COHERENT(pci_dev,size,dma_handle) \
-	dma_alloc_coherent(&pci_dev->dev,size,dma_handle, \
-			   GFP_KERNEL | __GFP_REPEAT)
-#define PCI_DMA_FREE_COHERENT(pci_dev,size,cpu_addr,dma_handle) \
+#define PCI_DMA_ALLOC_COHERENT(pci_dev,size,dma_handle)			\
+	dma_alloc_coherent(&pci_dev->dev,size,dma_handle, GFP_KERNEL)
+#define PCI_DMA_FREE_COHERENT(pci_dev,size,cpu_addr,dma_handle)		\
 	dma_free_coherent(&pci_dev->dev,size,cpu_addr,dma_handle)
-#define PCI_DMA_MAP_SINGLE(pci_dev,addr,size,direction) \
+#define PCI_DMA_MAP_SINGLE(pci_dev,addr,size,direction)		\
 	dma_map_single(&pci_dev->dev,addr,size,direction)
-#define PCI_DMA_UNMAP_SINGLE(pci_dev,dma_handle,size,direction) \
+#define PCI_DMA_UNMAP_SINGLE(pci_dev,dma_handle,size,direction)		\
 	dma_unmap_single(&pci_dev->dev,dma_handle,size,direction)
-#define MAP_SG(pci_dev, sglist, nents, direction) \
+#define MAP_SG(pci_dev, sglist, nents, direction)		\
 	dma_map_sg(&pci_dev->dev, sglist, nents, direction)
-#define UNMAP_SG(pci_dev, sglist, nents, direction) \
+#define UNMAP_SG(pci_dev, sglist, nents, direction)		\
 	dma_unmap_sg(&pci_dev->dev, sglist, nents, direction)
 
 #else // linux version <= 2.5.41
 
-#define PCI_DMA_ALLOC_COHERENT(dev,size,dma_handle) \
+#define PCI_DMA_ALLOC_COHERENT(dev,size,dma_handle)	\
 	pci_alloc_consistent(dev,size,dma_handle)
-#define PCI_DMA_FREE_COHERENT(dev,size,cpu_addr,dma_handle) \
+#define PCI_DMA_FREE_COHERENT(dev,size,cpu_addr,dma_handle)	\
 	pci_free_consistent(dev,size,cpu_addr,dma_handle)
-#define PCI_DMA_MAP_SINGLE(dev,addr,size,direction) \
+#define PCI_DMA_MAP_SINGLE(dev,addr,size,direction)	\
 	pci_map_single(dev,addr,size,direction)
-#define PCI_DMA_UNMAP_SINGLE(dev,dma_handle,size,direction) \
+#define PCI_DMA_UNMAP_SINGLE(dev,dma_handle,size,direction)	\
 	pci_unmap_single(dev,dma_handle,size,direction)
-#define MAP_SG(dev, sglist, nents, direction) \
+#define MAP_SG(dev, sglist, nents, direction)		\
 	pci_map_sg(dev, sglist, nents, direction)
-#define UNMAP_SG(dev, sglist, nents, direction) \
+#define UNMAP_SG(dev, sglist, nents, direction)		\
 	pci_unmap_sg(dev, sglist, nents, direction)
 #include <linux/tqueue.h>
 #define work_struct tq_struct
