@@ -25,6 +25,7 @@ extern struct nt_list wrap_drivers;
 
 extern char *if_name;
 extern int hangcheck_interval;
+extern int disable_stats;
 extern const struct iw_handler_def ndis_handler_def;
 
 static int set_packet_filter(struct wrap_ndis_device *wnd,
@@ -357,15 +358,13 @@ static int ndis_set_mac_addr(struct net_device *dev, void *p)
 	struct ndis_configuration_parameter param;
 	struct unicode_string key;
 	struct ansi_string ansi;
-	unsigned int i;
 	NDIS_STATUS res;
 	unsigned char mac_string[3 * ETH_ALEN];
 	mac_address mac;
 
 	/* string <-> ansi <-> unicode conversion is driving me nuts */
 
-	for (i = 0; i < sizeof(mac); i++)
-		mac[i] = addr->sa_data[i];
+	memcpy(mac, addr->sa_data, sizeof(mac));
 	memset(mac_string, 0, sizeof(mac_string));
 	res = snprintf(mac_string, sizeof(mac_string), MACSTR,
 		       MAC2STR(mac));
@@ -408,6 +407,9 @@ static void show_supported_oids(struct wrap_ndis_device *wnd)
 	int i, n, needed;
 	ndis_oid *oids;
 
+#ifndef DEBUG
+	return;
+#endif
 	res = miniport_query_info_needed(wnd, OID_GEN_SUPPORTED_LIST, NULL, 0,
 					 &needed);
 	if (!(res == NDIS_STATUS_BUFFER_TOO_SHORT ||
@@ -585,7 +587,7 @@ static void xmit_worker(void *param)
 		wnd->xmit_ring_start =
 			(wnd->xmit_ring_start + n) % XMIT_RING_SIZE;
 		wnd->xmit_ring_pending -= n;
-		if (n > 0 && netif_queue_stopped(wnd->net_dev))
+		if (netif_queue_stopped(wnd->net_dev) && n > 0)
 			netif_wake_queue(wnd->net_dev);
 	}
 	kspin_unlock_irql(&wnd->xmit_lock, irql);
@@ -1652,7 +1654,8 @@ static STDCALL NTSTATUS NdisAddDevice(struct driver_object *drv_obj,
 		wd->driver->ndis_driver->miniport.shutdown = NULL;
 	/* ZyDas driver doesn't call completion function when
 	 * querying for stats or rssi, so disable stats */
-	if (stricmp(wd->driver->name, "zd1211u") == 0)
+	if (stricmp(wd->driver->name, "zd1211u") == 0 ||
+	    stricmp(wd->driver->name, "wusb11v4") == 0)
 		wnd->stats_enabled = FALSE;
 	else
 		wnd->stats_enabled = TRUE;
