@@ -1297,7 +1297,7 @@ STDCALL NTSTATUS WRAP_EXPORT(KeWaitForMultipleObjects)
 	struct nt_thread *thread;
 	struct task_struct *task;
 
-	task = get_current();
+	task = current;
 	EVENTENTER("task: %p, count = %d, type: %d, reason = %u, "
 		   "waitmode = %u, alertable = %u, timeout = %p", task, count,
 		   wait_type, wait_reason, wait_mode, alertable, timeout);
@@ -1617,7 +1617,7 @@ STDCALL NTSTATUS WRAP_EXPORT(KeDelayExecutionThread)
 
 	timeout = SYSTEM_TIME_TO_HZ(*interval) + 1;
 	EVENTTRACE("thread: %p, interval: %Ld, timeout: %ld",
-		    get_current(), *interval, timeout);
+		    current, *interval, timeout);
 	if (timeout <= 0)
 		EVENTEXIT(return STATUS_SUCCESS);
 
@@ -1628,7 +1628,7 @@ STDCALL NTSTATUS WRAP_EXPORT(KeDelayExecutionThread)
 		set_current_state(TASK_UNINTERRUPTIBLE);
 
 	res = schedule_timeout(timeout);
-	EVENTTRACE("thread: %p, res: %d", get_current(), res);
+	EVENTTRACE("thread: %p, res: %d", current, res);
 	if (res == 0)
 		EVENTEXIT(return STATUS_SUCCESS);
 	else
@@ -1689,7 +1689,7 @@ STDCALL struct nt_thread *WRAP_EXPORT(KeGetCurrentThread)
 	(void)
 {
 	KIRQL irql;
-	struct task_struct *task = get_current();
+	struct task_struct *task = current;
 	struct nt_thread *ret;
 	struct common_object_header *header;
 
@@ -1754,7 +1754,7 @@ static int thread_trampoline(void *data)
 	memcpy(&ctx, data, sizeof(ctx));
 	kfree(data);
 	thread = ctx.thread;
-	thread->task = get_current();
+	thread->task = current;
 	thread->pid = thread->task->pid;
 
 	DBGTRACE2("thread: %p, task: %p (%d)", thread, thread->task,
@@ -1812,7 +1812,7 @@ void wrap_remove_thread(struct nt_thread *thread)
 		}
 		ObDereferenceObject(thread);
 	} else
-		ERROR("couldn't find thread for task: %p", get_current());
+		ERROR("couldn't find thread for task: %p", current);
 	return;
 }
 
@@ -1883,7 +1883,7 @@ STDCALL NTSTATUS WRAP_EXPORT(PsTerminateSystemThread)
 		complete_and_exit(NULL, status);
 		ERROR("oops: %p, %d", thread->task, thread->pid);
 	} else
-		ERROR("couldn't find thread for task: %p", get_current);
+		ERROR("couldn't find thread for task: %p", current);
 	return STATUS_FAILURE;
 }
 
@@ -2032,7 +2032,7 @@ void free_mdl(struct mdl *mdl)
 				       DISPATCH_LEVEL);
 		RemoveEntryList(&wrap_mdl->list);
 		kspin_unlock_irql(&ntoskernel_lock, irql);
-		
+
 		if (mdl->flags & MDL_CACHE_ALLOCATED) {
 			DBGTRACE3("freeing mdl cache: %p (%hu)",
 				  wrap_mdl, mdl->flags);

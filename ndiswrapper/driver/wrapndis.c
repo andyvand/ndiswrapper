@@ -97,14 +97,13 @@ NDIS_STATUS miniport_reset(struct wrap_ndis_device *wnd)
 	}
 	DBGTRACE2("reset: res = %08X, reset status = %08X",
 		  res, reset_address);
-
+	up(&wnd->ndis_comm_mutex);
 	if (res == NDIS_STATUS_SUCCESS && reset_address) {
 		wnd->nmb->cur_lookahead = cur_lookahead;
 		wnd->nmb->max_lookahead = max_lookahead;
 		set_packet_filter(wnd, wnd->packet_filter);
 //		set_multicast_list(wnd->net_dev);
 	}
-	up(&wnd->ndis_comm_mutex);
 
 	TRACEEXIT3(return res);
 }
@@ -470,11 +469,6 @@ static void free_send_packet(struct wrap_ndis_device *wnd,
 	struct ndis_packet_oob_data *oob_data;
 
 	TRACEENTER3("packet: %p", packet);
-	if (!packet) {
-		ERROR("illegal packet from %p", wnd);
-		return;
-	}
-
 	buffer = packet->private.buffer_head;
 	oob_data = NDIS_PACKET_OOB_DATA(packet);
 	if (wnd->use_sg_dma)
@@ -600,14 +594,12 @@ static void xmit_worker(void *param)
  */
 void sendpacket_done(struct wrap_ndis_device *wnd, struct ndis_packet *packet)
 {
-	KIRQL irql;
-
 	TRACEENTER3("%p", packet);
-	irql = kspin_lock_irql(&wnd->send_packet_done_lock, DISPATCH_LEVEL);
+	kspin_lock(&wnd->send_packet_done_lock);
 	wnd->stats.tx_bytes += packet->private.len;
 	wnd->stats.tx_packets++;
 	free_send_packet(wnd, packet);
-	kspin_unlock_irql(&wnd->send_packet_done_lock, irql);
+	kspin_unlock(&wnd->send_packet_done_lock);
 	TRACEEXIT3(return);
 }
 
@@ -950,9 +942,6 @@ static void hangcheck_proc(unsigned long data)
 	struct wrap_ndis_device *wnd = (struct wrap_ndis_device *)data;
 
 	TRACEENTER3("");
-	if (wnd->hangcheck_interval <= 0)
-		return;
-
 	set_bit(HANGCHECK, &wnd->wrap_ndis_work);
 	schedule_work(&wnd->wrap_ndis_worker);
 
@@ -965,8 +954,10 @@ static void hangcheck_proc(unsigned long data)
 void hangcheck_add(struct wrap_ndis_device *wnd)
 {
 	if (!wnd->wd->driver->ndis_driver->miniport.hangcheck ||
-	    wnd->hangcheck_interval <= 0)
+	    hangcheck_interval < 0)
 		return;
+	if (hangcheck_interval > 0)
+		wnd->hangcheck_interval = hangcheck_interval * HZ;
 	init_timer(&wnd->hangcheck_timer);
 	wnd->hangcheck_timer.data = (unsigned long)wnd;
 	wnd->hangcheck_timer.function = &hangcheck_proc;
@@ -1639,7 +1630,6 @@ static STDCALL NTSTATUS NdisAddDevice(struct driver_object *drv_obj,
 	wnd->map_count = 0;
 	wnd->map_dma_addr = NULL;
 	wnd->nick[0] = 0;
-	wnd->hangcheck_interval = hangcheck_interval;
 	init_timer(&wnd->hangcheck_timer);
 	wnd->scan_timestamp = 0;
 	init_timer(&wnd->stats_timer);
@@ -1654,8 +1644,7 @@ static STDCALL NTSTATUS NdisAddDevice(struct driver_object *drv_obj,
 		wd->driver->ndis_driver->miniport.shutdown = NULL;
 	/* ZyDas driver doesn't call completion function when
 	 * querying for stats or rssi, so disable stats */
-	if (stricmp(wd->driver->name, "zd1211u") == 0 ||
-	    stricmp(wd->driver->name, "wusb11v4") == 0)
+	if (stricmp(wd->driver->name, "zd1211u") == 0)
 		wnd->stats_enabled = FALSE;
 	else
 		wnd->stats_enabled = TRUE;

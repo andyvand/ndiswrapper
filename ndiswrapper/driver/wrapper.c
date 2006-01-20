@@ -41,14 +41,14 @@ MODULE_PARM_DESC(proc_uid, "The uid of the files created in /proc "
 WRAP_MODULE_PARM_INT(proc_gid, 0600);
 MODULE_PARM_DESC(proc_gid, "The gid of the files created in /proc "
 		 "(default: 0).");
-WRAP_MODULE_PARM_INT(hangcheck_interval, 0600);
+WRAP_MODULE_PARM_INT(debug, 0600);
+MODULE_PARM_DESC(debug, "debug level");
+
 /* 0 - default value provided by NDIS driver,
  * positive value - force hangcheck interval to that many seconds
  * negative value - disable hangcheck
  */
-WRAP_MODULE_PARM_INT(debug, 0600);
-MODULE_PARM_DESC(debug, "debug level");
-
+WRAP_MODULE_PARM_INT(hangcheck_interval, 0600);
 MODULE_PARM_DESC(hangcheck_interval, "The interval, in seconds, for checking"
 		 " if driver is hung. (default: 0)");
 
@@ -73,7 +73,7 @@ static void _wrap_wq_init_worker(void *data)
 	struct task_struct *task;
 	struct nt_thread *thread;
 
-	task = get_current();
+	task = current;
 	if (_wrap_wq_init_state == WRAP_WQ_INIT) {
 		thread = wrap_create_thread(task);
 		DBGTRACE1("task: %p, pid: %d, thread: %p",
