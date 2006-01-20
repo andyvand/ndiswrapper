@@ -403,7 +403,7 @@ NTSTATUS pnp_set_power_state(struct wrap_device *wd,
 	struct nt_thread *thread;
 
 	if (KeGetCurrentThread() == NULL) {
-		thread = wrap_create_thread(get_current());
+		thread = wrap_create_thread(current);
 		if (!thread) {
 			ERROR("couldn't allocate thread object");
 			TRACEEXIT1(return STATUS_FAILURE);
@@ -452,7 +452,7 @@ NTSTATUS pnp_start_device(struct wrap_device *wd)
 	fdo = IoGetAttachedDevice(pdo);
 	DBGTRACE1("fdo: %p, irql: %d", fdo, current_irql());
 	if (KeGetCurrentThread() == NULL) {
-		thread = wrap_create_thread(get_current());
+		thread = wrap_create_thread(current);
 		if (!thread) {
 			ERROR("couldn't allocate thread object");
 			TRACEEXIT1(return STATUS_FAILURE);
@@ -524,7 +524,7 @@ NTSTATUS pnp_remove_device(struct wrap_device *wd)
 	NTSTATUS status;
 
 	if (KeGetCurrentThread() == NULL) {
-		thread = wrap_create_thread(get_current());
+		thread = wrap_create_thread(current);
 		if (!thread)
 			WARNING("couldn't allocate thread object");
 	} else

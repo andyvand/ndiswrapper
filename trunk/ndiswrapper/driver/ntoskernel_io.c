@@ -231,7 +231,7 @@ STDCALL void IoQueueThreadIrp(struct irp *irp)
 	thread = KeGetCurrentThread();
 	if (!thread) {
 		WARNING("couldn't find thread for irp: %p, task: %p, pid: %d",
-			irp, get_current(), get_current()->pid);
+			irp, current, current->pid);
 		IoIrpThread(irp) = NULL;
 		return;
 	}

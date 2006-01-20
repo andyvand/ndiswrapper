@@ -24,7 +24,7 @@
 #define MAX_PROC_STR_LEN 32
 
 static struct proc_dir_entry *wrap_procfs_entry;
-extern int proc_uid, proc_gid;
+extern int proc_uid, proc_gid, hangcheck_interval;
 
 static int procfs_read_ndis_stats(char *page, char **start, off_t off,
 				  int count, int *eof, void *data)
@@ -258,7 +258,8 @@ static int procfs_read_ndis_settings(char *page, char **start, off_t off,
 	}
 
 	p += sprintf(p, "hangcheck_interval=%d\n",
-		     (int)(wnd->hangcheck_interval / HZ));
+		     hangcheck_interval > 0 ?
+		     (int)(wnd->hangcheck_interval / HZ) : -1);
 
 	list_for_each_entry(setting, &wnd->wd->settings, list) {
 		p += sprintf(p, "%s=%s\n", setting->name, setting->value);
@@ -293,8 +294,8 @@ static int procfs_write_ndis_settings(struct file *file, const char *buf,
 			return -EINVAL;
 		p++;
 		i = simple_strtol(p, NULL, 10);
+		hangcheck_interval = i;
 		hangcheck_del(wnd);
-		wnd->hangcheck_interval = i * HZ;
 		hangcheck_add(wnd);
 	} else if (!strcmp(setting, "check_capa")) {
 		check_capa(wnd);

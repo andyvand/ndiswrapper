@@ -655,13 +655,10 @@ STDCALL void WRAP_EXPORT(NdisMSetAttributesEx)
 	if (attributes & NDIS_ATTRIBUTE_NO_HALT_ON_SUSPEND)
 		set_bit(ATTR_NO_HALT_ON_SUSPEND, &wnd->attributes);
 
-	if (wnd->hangcheck_interval >= 0) {
-		/* less than 3 seconds seem to be problematic */
-		if (hangcheck_interval > 2)
-			wnd->hangcheck_interval = 2 * hangcheck_interval * HZ;
-		else
-			wnd->hangcheck_interval = 4 * HZ;
-	}
+	if (hangcheck_interval > 0)
+		wnd->hangcheck_interval = 2 * hangcheck_interval * HZ;
+	else
+		wnd->hangcheck_interval = 2 * HZ;
 
 	TRACEEXIT2(return);
 }
@@ -1534,13 +1531,13 @@ static irqreturn_t ndis_isr(int irq, void *data, struct pt_regs *pt_regs)
 	struct ndis_irq *ndis_irq = (struct ndis_irq *)data;
 	struct wrap_ndis_device *wnd;
 	struct miniport_char *miniport;
-	unsigned long flags;
+//	unsigned long flags;
 
 	wnd = ndis_irq->wnd;
 	miniport = &wnd->wd->driver->ndis_driver->miniport;
 	/* this spinlock should be shared with NdisMSynchronizeWithInterrupt
 	 */
-	kspin_lock_irqsave(&ndis_irq->lock, flags);
+	kspin_lock(&ndis_irq->lock);
 	recognized = queue_handler = 0;
 	if (ndis_irq->req_isr)
 		LIN2WIN3(miniport->isr, &recognized, &queue_handler,
@@ -1550,7 +1547,7 @@ static irqreturn_t ndis_isr(int irq, void *data, struct pt_regs *pt_regs)
 		/* it is not shared interrupt, so handler must be called */
 		recognized = queue_handler = 1;
 	}
-	kspin_unlock_irqrestore(&ndis_irq->lock, flags);
+	kspin_unlock(&ndis_irq->lock);
 
 	if (recognized) {
 		if (queue_handler)
@@ -1618,14 +1615,14 @@ STDCALL BOOLEAN WRAP_EXPORT(NdisMSynchronizeWithInterrupt)
 {
 	BOOLEAN ret;
 	BOOLEAN (*sync_func)(void *ctx) STDCALL;
-	unsigned long flags;
+//	unsigned long flags;
 
 	TRACEENTER6("%p %p", func, ctx);
 
 	sync_func = func;
-	kspin_lock_irqsave(&ndis_irq->lock, flags);
+	kspin_lock(&ndis_irq->lock);
 	ret = LIN2WIN1(sync_func, ctx);
-	kspin_unlock_irqrestore(&ndis_irq->lock, flags);
+	kspin_unlock(&ndis_irq->lock);
 
 	TRACEEXIT6(return ret);
 }
