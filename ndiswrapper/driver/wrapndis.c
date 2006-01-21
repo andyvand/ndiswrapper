@@ -462,9 +462,10 @@ allocate_send_packet(struct wrap_ndis_device *wnd, ndis_buffer *buffer)
 	return packet;
 }
 
-static void free_send_packet(struct wrap_ndis_device *wnd,
-			     struct ndis_packet *packet)
+STDCALL void free_send_packet(void *arg1, void *arg2)
 {
+	struct wrap_ndis_device *wnd = arg1;
+	struct ndis_packet *packet = arg2;
 	ndis_buffer *buffer;
 	struct ndis_packet_oob_data *oob_data;
 
@@ -479,7 +480,7 @@ static void free_send_packet(struct wrap_ndis_device *wnd,
 
 	DBGTRACE3("freeing buffer %p", buffer);
 	NdisFreeBuffer(buffer);
-	dev_kfree_skb_any(oob_data->skb);
+	dev_kfree_skb(oob_data->skb);
 
 	DBGTRACE3("freeing packet %p", packet);
 	NdisFreePacket(packet);
@@ -532,7 +533,9 @@ static int send_packets(struct wrap_ndis_device *wnd, unsigned int start,
 					break;
 				case NDIS_STATUS_FAILURE:
 				default:
-					free_send_packet(wnd, packet);
+					schedule_wrap_work_item(
+						free_send_packet, wnd,
+						packet, FALSE);
 					break;
 				}
 			}
@@ -555,7 +558,8 @@ static int send_packets(struct wrap_ndis_device *wnd, unsigned int start,
 			sent = 0;
 			break;
 		case NDIS_STATUS_FAILURE:
-			free_send_packet(wnd, packet);
+			schedule_wrap_work_item(free_send_packet, wnd,
+						packet, FALSE);
 			break;
 		}
 	}
@@ -600,7 +604,10 @@ void sendpacket_done(struct wrap_ndis_device *wnd, struct ndis_packet *packet)
 	wnd->stats.tx_bytes += packet->private.len;
 	wnd->stats.tx_packets++;
 	nt_spin_unlock(&wnd->send_packet_done_lock);
-	free_send_packet(wnd, packet);
+	if (current_irql() < DISPATCH_LEVEL)
+		free_send_packet(wnd, packet);
+	else
+		schedule_wrap_work_item(free_send_packet, wnd,packet, FALSE);
 	TRACEEXIT3(return);
 }
 
