@@ -430,7 +430,12 @@ static void wrap_urb_complete(struct urb *urb)
 
 	wrap_urb = urb->context;
 	irp = wrap_urb->irp;
-	IoAcquireCancelSpinLock(&irp->cancel_irql);
+	/* we can't call Io(Acquire/Release)CancelSpinLock here as
+	 * those functions disable/enable bh's. Since
+	 * wrap_urb_complete is called with IRQs disabled, enabling
+	 * bh's is not correct. So we call non-bh version of
+	 * (un)locking of 'cancel spinlock' */
+	nt_spin_lock(&irp_cancel_lock);
 	DUMP_WRAP_URB(wrap_urb, USB_DIR_IN);
 	irp->cancel_routine = NULL;
 	if (wrap_urb->state != URB_SUBMITTED &&
@@ -447,7 +452,7 @@ static void wrap_urb_complete(struct urb *urb)
 	}
 #endif
 	InsertTailList(&irp_complete_list, &irp->complete_list);
-	IoReleaseCancelSpinLock(irp->cancel_irql);
+	nt_spin_unlock(&irp_cancel_lock);
 	USBTRACE("urb %p (irp: %p) completed", urb, irp);
 	tasklet_schedule(&irp_complete_work);
 }
