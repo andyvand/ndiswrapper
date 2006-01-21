@@ -479,7 +479,7 @@ static void free_send_packet(struct wrap_ndis_device *wnd,
 
 	DBGTRACE3("freeing buffer %p", buffer);
 	NdisFreeBuffer(buffer);
-	dev_kfree_skb(oob_data->skb);
+	dev_kfree_skb_any(oob_data->skb);
 
 	DBGTRACE3("freeing packet %p", packet);
 	NdisFreePacket(packet);
@@ -571,10 +571,12 @@ static void xmit_worker(void *param)
 
 	/* some drivers e.g., new RT2500 driver, crash if any packets
 	 * are sent when the card is not associated */
-	nt_spin_lock_bh(&wnd->xmit_lock);
 	while (wnd->send_ok) {
-		if (wnd->xmit_ring_pending == 0)
+		nt_spin_lock_bh(&wnd->xmit_lock);
+		if (wnd->xmit_ring_pending == 0) {
+			nt_spin_unlock_bh(&wnd->xmit_lock);
 			break;
+		}
 		n = send_packets(wnd, wnd->xmit_ring_start,
 				 wnd->xmit_ring_pending);
 		wnd->xmit_ring_start =
@@ -582,8 +584,8 @@ static void xmit_worker(void *param)
 		wnd->xmit_ring_pending -= n;
 		if (netif_queue_stopped(wnd->net_dev) && n > 0)
 			netif_wake_queue(wnd->net_dev);
+		nt_spin_unlock_bh(&wnd->xmit_lock);
 	}
-	nt_spin_unlock_bh(&wnd->xmit_lock);
 
 	TRACEEXIT3(return);
 }
@@ -597,8 +599,8 @@ void sendpacket_done(struct wrap_ndis_device *wnd, struct ndis_packet *packet)
 	nt_spin_lock(&wnd->send_packet_done_lock);
 	wnd->stats.tx_bytes += packet->private.len;
 	wnd->stats.tx_packets++;
-	free_send_packet(wnd, packet);
 	nt_spin_unlock(&wnd->send_packet_done_lock);
+	free_send_packet(wnd, packet);
 	TRACEEXIT3(return);
 }
 
