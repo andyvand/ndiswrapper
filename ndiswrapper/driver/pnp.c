@@ -18,7 +18,7 @@
 #include "wrapndis.h"
 #include "loader.h"
 
-extern KSPIN_LOCK loader_lock;
+extern NT_SPIN_LOCK loader_lock;
 extern struct nt_list ndis_drivers;
 extern struct wrap_device *wrap_devices;
 
@@ -570,9 +570,9 @@ NTSTATUS pnp_remove_device(struct wrap_device *wd)
 			IoGetDriverObjectExtension(fdo_drv_obj,
 					   (void *)CE_WRAP_DRIVER_CLIENT_ID);
 		if (wrap_driver) {
-			kspin_lock(&loader_lock);
+			nt_spin_lock(&loader_lock);
 			unload_wrap_driver(wrap_driver);
-			kspin_unlock(&loader_lock);
+			nt_spin_unlock(&loader_lock);
 		} else
 			ERROR("couldn't get wrap_driver");
 		ObDereferenceObject(fdo_drv_obj);

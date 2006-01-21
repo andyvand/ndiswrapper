@@ -416,10 +416,10 @@ struct pe_image {
 	IMAGE_OPTIONAL_HEADER *opt_hdr;
 };
 
-extern KSPIN_LOCK atomic_lock;
-extern KSPIN_LOCK cancel_lock;
+extern NT_SPIN_LOCK atomic_lock;
+extern NT_SPIN_LOCK cancel_lock;
 
-//#define DEBUG_IRQL 1
+#define DEBUG_IRQL 1
 
 struct wrap_timer {
 	long repeat;
@@ -512,7 +512,7 @@ struct wrap_device {
 		struct wrap_ndis_device *wnd;
 	};
 	struct nt_list timer_list;
-	KSPIN_LOCK timer_lock;
+	NT_SPIN_LOCK timer_lock;
 	struct cm_resource_list *resource_list;
 };
 
@@ -583,14 +583,14 @@ _FASTCALL LONG InterlockedIncrement(FASTCALL_DECL_1(LONG volatile *val));
 _FASTCALL struct nt_list *
 ExInterlockedInsertHeadList(FASTCALL_DECL_3(struct nt_list *head,
 					    struct nt_list *entry,
-					    KSPIN_LOCK *lock));
+					    NT_SPIN_LOCK *lock));
 _FASTCALL struct nt_list *
 ExInterlockedInsertTailList(FASTCALL_DECL_3(struct nt_list *head,
 					    struct nt_list *entry,
-					    KSPIN_LOCK *lock));
+					    NT_SPIN_LOCK *lock));
 _FASTCALL struct nt_list *
 ExInterlockedRemoveHeadList(FASTCALL_DECL_2(struct nt_list *head,
-					    KSPIN_LOCK *lock));
+					    NT_SPIN_LOCK *lock));
 STDCALL NTSTATUS IoCreateDevice(struct driver_object *driver,
 				ULONG dev_ext_length,
 				struct unicode_string *dev_name,
@@ -636,23 +636,23 @@ int schedule_wrap_work_item(WRAP_WORK_FUNC func, void *arg1, void *arg2,
 			    BOOLEAN win_func);
 
 STDCALL KIRQL KeGetCurrentIrql(void);
-STDCALL void KeInitializeSpinLock(KSPIN_LOCK *lock);
-STDCALL void KeAcquireSpinLock(KSPIN_LOCK *lock, KIRQL *irql);
-STDCALL void KeReleaseSpinLock(KSPIN_LOCK *lock, KIRQL oldirql);
-STDCALL KIRQL KeAcquireSpinLockRaiseToDpc(KSPIN_LOCK *lock);
+STDCALL void KeInitializeSpinLock(NT_SPIN_LOCK *lock);
+STDCALL void KeAcquireSpinLock(NT_SPIN_LOCK *lock, KIRQL *irql);
+STDCALL void KeReleaseSpinLock(NT_SPIN_LOCK *lock, KIRQL oldirql);
+STDCALL KIRQL KeAcquireSpinLockRaiseToDpc(NT_SPIN_LOCK *lock);
 
 STDCALL void IoAcquireCancelSpinLock(KIRQL *irql);
 STDCALL void IoReleaseCancelSpinLock(KIRQL irql);
 
 _FASTCALL KIRQL KfRaiseIrql(FASTCALL_DECL_1(KIRQL newirql));
 _FASTCALL void KfLowerIrql(FASTCALL_DECL_1(KIRQL oldirql));
-_FASTCALL KIRQL KfAcquireSpinLock(FASTCALL_DECL_1(KSPIN_LOCK *lock));
+_FASTCALL KIRQL KfAcquireSpinLock(FASTCALL_DECL_1(NT_SPIN_LOCK *lock));
 _FASTCALL void
-KfReleaseSpinLock(FASTCALL_DECL_2(KSPIN_LOCK *lock, KIRQL oldirql));
+KfReleaseSpinLock(FASTCALL_DECL_2(NT_SPIN_LOCK *lock, KIRQL oldirql));
 _FASTCALL void
 IofCompleteRequest(FASTCALL_DECL_2(struct irp *irp, CHAR prio_boost));
 _FASTCALL void
-KefReleaseSpinLockFromDpcLevel(FASTCALL_DECL_1(KSPIN_LOCK *lock));
+KefReleaseSpinLockFromDpcLevel(FASTCALL_DECL_1(NT_SPIN_LOCK *lock));
 STDCALL void RtlCopyMemory(void *dst, const void *src, SIZE_T length);
 STDCALL NTSTATUS RtlUnicodeStringToAnsiString(struct ansi_string *dst,
 					      const struct unicode_string *src,
@@ -746,20 +746,21 @@ static inline KIRQL current_irql(void)
 static inline KIRQL raise_irql(KIRQL newirql)
 {
 	KIRQL irql = current_irql();
-	if (irql < DISPATCH_LEVEL && newirql >= DISPATCH_LEVEL) {
-		local_bh_disable();
-		preempt_disable();
-	}
+	/* for now we only deal with PASSIVE_LEVEL and
+	 * DISPATCH_LEVEL */
+#ifdef DEBUG_IRQL
+	if (newirql != DISPATCH_LEVEL)
+		WARNING("invalid irql: %d", newirql);
+#endif
+	local_bh_disable();
+	preempt_disable();
 	return irql;
 }
 
 static inline void lower_irql(KIRQL oldirql)
 {
-	KIRQL irql = current_irql();
-	if (oldirql < DISPATCH_LEVEL && irql >= DISPATCH_LEVEL) {
-		preempt_enable();
-		local_bh_enable();
-	}
+	preempt_enable_no_resched();
+	local_bh_enable();
 }
 
 /* Windows spinlocks are of type ULONG_PTR which is not big enough to
@@ -783,97 +784,90 @@ static inline void lower_irql(KIRQL oldirql)
 #undef CONFIG_DEBUG_SPINLOCK
 
 #ifdef CONFIG_DEBUG_SPINLOCK
-#define KSPIN_LOCK_LOCKED ((ULONG_PTR)get_current())
+#define NT_SPIN_LOCK_LOCKED ((ULONG_PTR)get_current())
 #else
-#define KSPIN_LOCK_LOCKED 1
+#define NT_SPIN_LOCK_LOCKED 1
 #endif
 
-#define KSPIN_LOCK_UNLOCKED 0
+#define NT_SPIN_LOCK_UNLOCKED 0
 
-#define kspin_lock_init(lock) *(lock) = KSPIN_LOCK_UNLOCKED
+#define nt_spin_lock_init(lock) *(lock) = NT_SPIN_LOCK_UNLOCKED
 
 #ifdef CONFIG_SMP
 
-#define raw_kspin_lock(lock)						\
-	while (cmpxchg((lock), KSPIN_LOCK_UNLOCKED, KSPIN_LOCK_LOCKED) != \
-	       KSPIN_LOCK_UNLOCKED)
+#define raw_nt_spin_lock(lock)						\
+	while (cmpxchg((lock), NT_SPIN_LOCK_UNLOCKED, NT_SPIN_LOCK_LOCKED) != \
+	       NT_SPIN_LOCK_UNLOCKED)
 
 #ifdef CONFIG_DEBUG_SPINLOCK
-#define raw_kspin_unlock(lock)						\
+#define raw_nt_spin_unlock(lock)						\
 	__asm__ __volatile__("movw $0,%0"				\
 			     :"=m" (*(lock)) : : "memory")
 #else // DEBUG_SPINLOCK
-#define raw_kspin_unlock(lock)						\
+#define raw_nt_spin_unlock(lock)						\
 	__asm__ __volatile__("movb $0,%0"				\
 			     :"=m" (*(lock)) : : "memory")
 #endif // DEBUG_SPINLOCK
 
 #else // SMP
 
-#define raw_kspin_lock(lock) *(lock) = KSPIN_LOCK_LOCKED
-#define raw_kspin_unlock(lock) *(lock) = KSPIN_LOCK_UNLOCKED
+#define raw_nt_spin_lock(lock) *(lock) = NT_SPIN_LOCK_LOCKED
+#define raw_nt_spin_unlock(lock) *(lock) = NT_SPIN_LOCK_UNLOCKED
 
 #endif // SMP
 
 #ifdef CONFIG_DEBUG_SPINLOCK
 
-#define kspin_lock(lock)						\
+#define nt_spin_lock(lock)						\
 	do {								\
-		if (*(lock) == KSPIN_LOCK_LOCKED)			\
+		if (*(lock) == NT_SPIN_LOCK_LOCKED)			\
 			ERROR("eeek: process %p already owns lock %p",	\
 			      get_current(), lock);			\
 		else							\
-			raw_kspin_lock(lock);				\
+			raw_nt_spin_lock(lock);				\
 	} while (0)
-#define kspin_unlock(lock)						\
+#define nt_spin_unlock(lock)						\
 	do {								\
-		if (*(lock) != KSPIN_LOCK_LOCKED)			\
-			ERROR("kspin_lock %p not locked!", (lock));	\
-		raw_kspin_unlock(lock);					\
+		if (*(lock) != NT_SPIN_LOCK_LOCKED)			\
+			ERROR("nt_spin_lock %p not locked!", (lock));	\
+		raw_nt_spin_unlock(lock);				\
 	} while (0)
 
 #else // DEBUG_SPINLOCK
 
-#define kspin_lock(lock) raw_kspin_lock(lock)
-#define kspin_unlock(lock) raw_kspin_unlock(lock)
+#define nt_spin_lock(lock) raw_nt_spin_lock(lock)
+#define nt_spin_unlock(lock) raw_nt_spin_unlock(lock)
 
 #endif // DEBUG_SPINLOCK
 
 /* raise IRQL to given (higher) IRQL if necessary before locking */
-#define kspin_lock_irql(lock, newirql)					\
+#define nt_spin_lock_bh(lock)						\
 ({									\
-	KIRQL _cur_irql_ = current_irql();				\
-	if (_cur_irql_ < DISPATCH_LEVEL && newirql == DISPATCH_LEVEL) {	\
-		local_bh_disable();					\
-		preempt_disable();					\
-	}								\
-	kspin_lock(lock);						\
-	_cur_irql_;							\
+	local_bh_disable();						\
+	preempt_disable();						\
+	nt_spin_lock(lock);						\
 })
 
 /* lower IRQL to given (lower) IRQL if necessary after unlocking */
-#define kspin_unlock_irql(lock, oldirql)				\
+#define nt_spin_unlock_bh(lock)						\
 do {									\
-	KIRQL _cur_irql_ = current_irql();				\
-	kspin_unlock(lock);						\
-	if (oldirql < DISPATCH_LEVEL && _cur_irql_ == DISPATCH_LEVEL) {	\
-		preempt_enable_no_resched();				\
-		local_bh_enable();					\
-	}								\
+	preempt_enable_no_resched();					\
+	local_bh_enable();						\
+	nt_spin_unlock(lock);						\
 } while (0)
 
-#define kspin_lock_irqsave(lock, flags)					\
+#define nt_spin_lock_irqsave(lock, flags)				\
 do {									\
 	local_irq_save(flags);						\
 	preempt_disable();						\
-	kspin_lock(lock);						\
+	nt_spin_lock(lock);						\
 } while (0)
 
-#define kspin_unlock_irqrestore(lock, flags)				\
+#define nt_spin_unlock_irqrestore(lock, flags)				\
 do {									\
-	kspin_unlock(lock);						\
+	nt_spin_unlock(lock);						\
+	preempt_enable_no_resched();					\
 	local_irq_restore(flags);					\
-	preempt_enable();						\
 } while (0)
 
 static inline ULONG SPAN_PAGES(ULONG_PTR ptr, SIZE_T length)

@@ -57,8 +57,6 @@ MODULE_AUTHOR("ndiswrapper team <ndiswrapper-general@lists.sourceforge.net>");
 MODULE_VERSION(DRIVER_VERSION);
 #endif
 
-extern KSPIN_LOCK timer_lock;
-
 #ifdef USE_OWN_WORKQUEUE
 /* we need to get thread for the task running ndiswrapper_wq, so
  * schedule a worker for it soon after initializing ndiswrapper_wq */

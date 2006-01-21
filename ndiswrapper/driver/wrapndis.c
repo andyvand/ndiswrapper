@@ -19,7 +19,7 @@
 #include "loader.h"
 #include "wrapndis.h"
 
-extern KSPIN_LOCK loader_lock;
+extern NT_SPIN_LOCK loader_lock;
 extern struct wrap_device *wrap_devices;
 extern struct nt_list wrap_drivers;
 
@@ -60,12 +60,12 @@ static inline int ndis_wait_pending_completion(struct wrap_ndis_device *wnd)
 /* MiniportReset */
 NDIS_STATUS miniport_reset(struct wrap_ndis_device *wnd)
 {
-	KIRQL irql;
 	NDIS_STATUS res = 0;
 	struct miniport_char *miniport;
 	UINT cur_lookahead;
 	UINT max_lookahead;
 	BOOLEAN reset_address;
+	KIRQL irql;
 
 	TRACEENTER2("wnd: %p", wnd);
 
@@ -566,13 +566,12 @@ static void xmit_worker(void *param)
 {
 	struct wrap_ndis_device *wnd = (struct wrap_ndis_device *)param;
 	int n;
-	KIRQL irql;
 
 	TRACEENTER3("send_ok %d", wnd->send_ok);
 
 	/* some drivers e.g., new RT2500 driver, crash if any packets
 	 * are sent when the card is not associated */
-	irql = kspin_lock_irql(&wnd->xmit_lock, DISPATCH_LEVEL);
+	nt_spin_lock_bh(&wnd->xmit_lock);
 	while (wnd->send_ok) {
 		if (wnd->xmit_ring_pending == 0)
 			break;
@@ -584,7 +583,7 @@ static void xmit_worker(void *param)
 		if (netif_queue_stopped(wnd->net_dev) && n > 0)
 			netif_wake_queue(wnd->net_dev);
 	}
-	kspin_unlock_irql(&wnd->xmit_lock, irql);
+	nt_spin_unlock_bh(&wnd->xmit_lock);
 
 	TRACEEXIT3(return);
 }
@@ -595,11 +594,11 @@ static void xmit_worker(void *param)
 void sendpacket_done(struct wrap_ndis_device *wnd, struct ndis_packet *packet)
 {
 	TRACEENTER3("%p", packet);
-	kspin_lock(&wnd->send_packet_done_lock);
+	nt_spin_lock(&wnd->send_packet_done_lock);
 	wnd->stats.tx_bytes += packet->private.len;
 	wnd->stats.tx_packets++;
 	free_send_packet(wnd, packet);
-	kspin_unlock(&wnd->send_packet_done_lock);
+	nt_spin_unlock(&wnd->send_packet_done_lock);
 	TRACEEXIT3(return);
 }
 
@@ -629,14 +628,14 @@ static int start_xmit(struct sk_buff *skb, struct net_device *dev)
 	}
 	oob_data = NDIS_PACKET_OOB_DATA(packet);
 	oob_data->skb = skb;
-	kspin_lock(&wnd->xmit_lock);
+	nt_spin_lock(&wnd->xmit_lock);
 	xmit_ring_next_slot = (wnd->xmit_ring_start +
 			       wnd->xmit_ring_pending) % XMIT_RING_SIZE;
 	wnd->xmit_ring[xmit_ring_next_slot] = packet;
 	wnd->xmit_ring_pending++;
 	if (wnd->xmit_ring_pending == XMIT_RING_SIZE)
 		netif_stop_queue(wnd->net_dev);
-	kspin_unlock(&wnd->xmit_lock);
+	nt_spin_unlock(&wnd->xmit_lock);
 
 	schedule_work(&wnd->xmit_work);
 
@@ -1515,7 +1514,6 @@ err_start:
 
 static NDIS_STATUS ndis_remove_device(struct wrap_ndis_device *wnd)
 {
-	KIRQL irql;
 
 	set_bit(SHUTDOWN, &wnd->wrap_ndis_work);
 	miniport_pnp_event(wnd, NdisDevicePnPEventSurpriseRemoved);
@@ -1523,7 +1521,7 @@ static NDIS_STATUS ndis_remove_device(struct wrap_ndis_device *wnd)
 	netif_carrier_off(wnd->net_dev);
 	wrap_procfs_remove_ndis_device(wnd);
 	/* throw away pending packets */
-	irql = kspin_lock_irql(&wnd->xmit_lock, DISPATCH_LEVEL);
+	nt_spin_lock_bh(&wnd->xmit_lock);
 	while (wnd->xmit_ring_pending) {
 		struct ndis_packet *packet;
 
@@ -1533,7 +1531,7 @@ static NDIS_STATUS ndis_remove_device(struct wrap_ndis_device *wnd)
 			(wnd->xmit_ring_start + 1) % XMIT_RING_SIZE;
 		wnd->xmit_ring_pending--;
 	}
-	kspin_unlock_irql(&wnd->xmit_lock, irql);
+	nt_spin_unlock_bh(&wnd->xmit_lock);
 	miniport_halt(wnd);
 	ndis_exit_device(wnd);
 	/* flush_scheduled_work here causes crash with 2.4 kernels */
@@ -1612,7 +1610,7 @@ static STDCALL NTSTATUS NdisAddDevice(struct driver_object *drv_obj,
 	init_nmb_functions(nmb);
 	wnd->net_dev = net_dev;
 	wnd->ndis_irq = NULL;
-	kspin_lock_init(&wnd->xmit_lock);
+	nt_spin_lock_init(&wnd->xmit_lock);
 	init_MUTEX(&wnd->ndis_comm_mutex);
 	init_waitqueue_head(&wnd->ndis_comm_wq);
 	wnd->ndis_comm_done = 0;
@@ -1621,7 +1619,7 @@ static STDCALL NTSTATUS NdisAddDevice(struct driver_object *drv_obj,
 	INIT_WORK(&wnd->xmit_work, xmit_worker, wnd);
 	wnd->xmit_ring_start = 0;
 	wnd->xmit_ring_pending = 0;
-	kspin_lock_init(&wnd->send_packet_done_lock);
+	nt_spin_lock_init(&wnd->send_packet_done_lock);
 	wnd->encr_mode = Ndis802_11EncryptionDisabled;
 	wnd->auth_mode = Ndis802_11AuthModeOpen;
 	wnd->capa.encr = 0;

@@ -108,7 +108,7 @@ static void usb_init_urb(struct urb *urb)
 
 #endif
 
-extern KSPIN_LOCK irp_cancel_lock;
+extern NT_SPIN_LOCK irp_cancel_lock;
 
 /* TODO: using a worker instead of tasklet is probably preferable, but
  * with ZyDas driver the worker never gets executed, even though it
@@ -802,7 +802,6 @@ static USBD_STATUS wrap_abort_pipe(struct usb_device *udev, struct irp *irp)
 {
 	union nt_urb *nt_urb;
 	usbd_pipe_handle pipe_handle;
-	unsigned long flags;
 	struct urb *urb;
 	struct wrap_urb *wrap_urb;
 	struct wrap_device *wd;
@@ -813,7 +812,7 @@ static USBD_STATUS wrap_abort_pipe(struct usb_device *udev, struct irp *irp)
 	pipe_handle = nt_urb->pipe_req.pipe_handle;
 	nt_urb = URB_FROM_IRP(irp);
 	while (1) {
-		kspin_lock_irqsave(&irp_cancel_lock, flags);
+		nt_spin_lock_bh(&irp_cancel_lock);
 		urb = NULL;
 		nt_list_for_each_entry(wrap_urb, &wd->usb.wrap_urb_list,
 				       list) {
@@ -825,7 +824,7 @@ static USBD_STATUS wrap_abort_pipe(struct usb_device *udev, struct irp *irp)
 				break;
 			}
 		}
-		kspin_unlock_irqrestore(&irp_cancel_lock, flags);
+		nt_spin_unlock_bh(&irp_cancel_lock);
 		if (urb) {
 			wrap_cancel_urb(urb);
 			USBTRACE("canceled urb: %p", urb);
