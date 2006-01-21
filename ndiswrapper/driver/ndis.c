@@ -885,7 +885,6 @@ STDCALL void WRAP_EXPORT(NdisMAllocateSharedMemory)
 	 BOOLEAN cached, void **virt, NDIS_PHY_ADDRESS *phys)
 {
 	dma_addr_t p;
-	void *v;
 	struct wrap_device *wd = nmb->wnd->wd;
 
 	TRACEENTER3("map count: %d, size: %u, cached: %d",
@@ -894,16 +893,14 @@ STDCALL void WRAP_EXPORT(NdisMAllocateSharedMemory)
 //	if (wnd->map_dma_addr == NULL)
 //		ERROR("%s: DMA map address is not set!\n", __FUNCTION__);
 	/* FIXME: do USB drivers call this? */
-	v = PCI_DMA_ALLOC_COHERENT(wd->pci.pdev, size, &p);
-	if (!v) {
+	*virt = PCI_DMA_ALLOC_COHERENT(wd->pci.pdev, size, &p);
+	if (!*virt) {
 		ERROR("failed to allocate DMA coherent memory; "
 		      "Windows driver requested %d bytes of "
 		      "%scached memory", size, cached ? "" : "un-");
 	}
-
-	*virt = v;
 	*phys = p;
-	DBGTRACE3("allocated shared memory: %p", v);
+	DBGTRACE3("allocated shared memory: %p", *virt);
 }
 
 STDCALL void alloc_shared_memory_async(void *arg1, void *arg2)
