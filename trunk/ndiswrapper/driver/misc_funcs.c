@@ -281,6 +281,12 @@ NOREGPARM char *WRAP_EXPORT(_win_strchr)
 	return strchr(s, c);
 }
 
+NOREGPARM char *WRAP_EXPORT(_win_strrchr)
+	(const char *s, int c)
+{
+	return strrchr(s, c);
+}
+
 NOREGPARM void *WRAP_EXPORT(_win_memmove)
 	(void *to, void *from, SIZE_T count)
 {

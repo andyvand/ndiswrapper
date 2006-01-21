@@ -1883,6 +1883,25 @@ STDCALL BOOLEAN WRAP_EXPORT(KeSynchronizeExecution)
 	return ret;
 }
 
+STDCALL void * WRAP_EXPORT(MmAllocateContiguousMemorySpecifyCache)
+	(SIZE_T size, PHYSICAL_ADDRESS lowest, PHYSICAL_ADDRESS highest,
+	 PHYSICAL_ADDRESS boundary, enum memory_caching_type cache_type)
+{
+	return ExAllocatePoolWithTag(NonPagedPool, size, 0);
+}
+
+STDCALL void WRAP_EXPORT(MmFreeContiguousMemorySpecifyCache)
+	(void *base, SIZE_T size, enum memory_caching_type cache_type)
+{
+	ExFreePool(base);
+}
+
+STDCALL PHYSICAL_ADDRESS WRAP_EXPORT(MmGetPhysicalAddress)
+	(void *base)
+{
+	return virt_to_phys(base);
+}
+
 /* Atheros card with pciid 168C:0014 calls this function with 0xf0000
  * and 0xf6ef0 address, and then check for things that seem to be
  * related to ACPI: "_SM_" and "_DMI_". This may be the hack they do
