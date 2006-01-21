@@ -205,7 +205,7 @@ struct nt_list {
 	struct nt_list *prev;
 };
 
-typedef ULONG_PTR KSPIN_LOCK;
+typedef ULONG_PTR NT_SPIN_LOCK;
 
 struct kdpc;
 typedef STDCALL void (*DPC)(struct kdpc *kdpc, void *ctx, void *arg1,
@@ -222,7 +222,7 @@ struct kdpc {
 	void *ctx;
 	void *arg1;
 	void *arg2;
-	KSPIN_LOCK *lock;
+	NT_SPIN_LOCK *lock;
 };
 
 enum pool_type {
@@ -304,7 +304,7 @@ struct kdevice_queue {
 	USHORT type;
 	USHORT size;
 	struct nt_list list;
-	KSPIN_LOCK lock;
+	NT_SPIN_LOCK lock;
 	BOOLEAN busy;
 };
 
@@ -386,7 +386,7 @@ struct nt_thread {
 	int pid;
 	struct task_struct *task;
 	struct nt_list irps;
-	KSPIN_LOCK lock;
+	NT_SPIN_LOCK lock;
 	wait_queue_head_t event_wq;
 	int event_wait_done;
 };
@@ -1109,7 +1109,7 @@ struct npaged_lookaside_list {
 	} u3;
 	ULONG pad[2];
 #ifndef X86_64
-	KSPIN_LOCK obsolete;
+	NT_SPIN_LOCK obsolete;
 #endif
 };
 
@@ -1141,8 +1141,8 @@ typedef BOOLEAN (*PKSYNCHRONIZE_ROUTINE)(void *context) STDCALL;
 struct kinterrupt {
 	ULONG vector;
 	KAFFINITY processor_enable_mask;
-	KSPIN_LOCK lock;
-	KSPIN_LOCK *actual_lock;
+	NT_SPIN_LOCK lock;
+	NT_SPIN_LOCK *actual_lock;
 	BOOLEAN shareable;
 	BOOLEAN floating_save;
 	CHAR processor_number;
@@ -1185,7 +1185,7 @@ struct callback_func {
 };
 
 struct callback_object {
-	KSPIN_LOCK lock;
+	NT_SPIN_LOCK lock;
 	struct nt_list list;
 	struct nt_list callback_funcs;
 	BOOLEAN allow_multiple_callbacks;

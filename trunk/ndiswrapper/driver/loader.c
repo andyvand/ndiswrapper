@@ -43,7 +43,7 @@ static struct guid class_guids[] = {
 	{0xf12d3cf8, 0xb11d, 0x457e, },
 };
 
-KSPIN_LOCK loader_lock;
+NT_SPIN_LOCK loader_lock;
 struct wrap_device *wrap_devices;
 static unsigned int num_wrap_devices;
 struct nt_list wrap_drivers;
@@ -73,13 +73,12 @@ struct wrap_driver *load_wrap_driver(struct wrap_device *wd)
 {
 	int err, found;
 	struct wrap_driver *wrap_driver;
-	KIRQL irql;
 
 	TRACEENTER1("device: %04X:%04X:%04X:%04X", wd->vendor, wd->device,
 		    wd->subvendor, wd->subdevice);
 	found = 0;
 	wrap_driver = NULL;
-	irql = kspin_lock_irql(&loader_lock, DISPATCH_LEVEL);
+	nt_spin_lock(&loader_lock);
 	nt_list_for_each_entry(wrap_driver, &wrap_drivers, list) {
 		if (strcmp(wrap_driver->name, wd->driver_name) == 0) {
 			DBGTRACE1("driver %s already loaded",
@@ -88,7 +87,7 @@ struct wrap_driver *load_wrap_driver(struct wrap_device *wd)
 			break;
 		}
 	}
-	kspin_unlock_irql(&loader_lock, irql);
+	nt_spin_unlock(&loader_lock);
 
 	if (!found) {
 		char *argv[] = {"loadndisdriver", WRAP_CMD_LOAD_DRIVER,
@@ -120,7 +119,7 @@ struct wrap_driver *load_wrap_driver(struct wrap_device *wd)
 #endif
 		found = 0;
 		DBGTRACE1("%s", wd->driver_name);
-		irql = kspin_lock_irql(&loader_lock, DISPATCH_LEVEL);
+		nt_spin_lock(&loader_lock);
 		nt_list_for_each_entry(wrap_driver, &wrap_drivers, list) {
 			if (!strcmp(wrap_driver->name, wd->driver_name)) {
 				wd->driver = wrap_driver;
@@ -128,7 +127,7 @@ struct wrap_driver *load_wrap_driver(struct wrap_device *wd)
 				break;
 			}
 		}
-		kspin_unlock_irql(&loader_lock, irql);
+		nt_spin_unlock(&loader_lock);
 		if (!found) {
 			ERROR("couldn't load driver '%s'", wd->driver_name);
 			TRACEEXIT1(return NULL);
@@ -136,9 +135,9 @@ struct wrap_driver *load_wrap_driver(struct wrap_device *wd)
 		DBGTRACE1("driver %s is loaded", wrap_driver->name);
 	}
 
-	irql = kspin_lock_irql(&loader_lock, DISPATCH_LEVEL);
+	nt_spin_lock(&loader_lock);
 	InsertTailList(&wrap_driver->wrap_devices, &wd->list);
-	kspin_unlock_irql(&loader_lock, irql);
+	nt_spin_unlock(&loader_lock);
 	TRACEEXIT1(return wrap_driver);
 }
 
@@ -233,10 +232,9 @@ struct wrap_bin_file *get_bin_file(char *bin_file_name)
 {
 	int i = 0;
 	struct wrap_driver *driver, *cur;
-	KIRQL irql;
 
 	driver = NULL;
-	irql = kspin_lock_irql(&loader_lock, DISPATCH_LEVEL);
+	nt_spin_lock(&loader_lock);
 	nt_list_for_each_entry(cur, &wrap_drivers, list) {
 		for (i = 0; i < cur->num_bin_files; i++)
 			if (!stricmp(cur->bin_files[i].name, bin_file_name)) {
@@ -244,7 +242,7 @@ struct wrap_bin_file *get_bin_file(char *bin_file_name)
 				break;
 			}
 	}
-	kspin_unlock_irql(&loader_lock, irql);
+	nt_spin_unlock(&loader_lock);
 	if (driver == NULL) {
 		DBGTRACE1("coudln't find bin file '%s'", bin_file_name);
 		return NULL;
@@ -364,12 +362,11 @@ static int load_settings(struct wrap_driver *wrap_driver,
 {
 	int i, nr_settings;
 	struct wrap_device *wd;
-	KIRQL irql;
 
 	TRACEENTER1("");
 
 	wd = NULL;
-	irql = kspin_lock_irql(&loader_lock, DISPATCH_LEVEL);
+	nt_spin_lock(&loader_lock);
 	for (i = 0; i < num_wrap_devices; i++) {
 		if (strcmp(wrap_devices[i].conf_file_name,
 			   load_driver->conf_file_name) == 0) {
@@ -377,7 +374,7 @@ static int load_settings(struct wrap_driver *wrap_driver,
 			break;
 		}
 	}
-	kspin_unlock_irql(&loader_lock, irql);
+	nt_spin_unlock(&loader_lock);
 	if (!wd) {
 		ERROR("conf file %s not found",
 		      wrap_devices[i].conf_file_name);
@@ -419,9 +416,9 @@ static int load_settings(struct wrap_driver *wrap_driver,
 				  "new: %x\n",
 				  data1, dev_type, bus_type, wd->dev_bus_type);
 		}
-		irql = kspin_lock_irql(&loader_lock, DISPATCH_LEVEL);
+		nt_spin_lock(&loader_lock);
 		InsertTailList(&wd->settings, &setting->list);
-		kspin_unlock_irql(&loader_lock, irql);
+		nt_spin_unlock(&loader_lock);
 		nr_settings++;
 	}
 	/* it is not a fatal error if some settings couldn't be loaded */
@@ -531,20 +528,19 @@ static int start_wrap_driver(struct wrap_driver *driver)
  */
 static int add_wrap_driver(struct wrap_driver *driver)
 {
-	KIRQL irql;
 	struct wrap_driver *tmp;
 
 	TRACEENTER1("name: %s", driver->name);
-	irql = kspin_lock_irql(&loader_lock, DISPATCH_LEVEL);
+	nt_spin_lock(&loader_lock);
 	nt_list_for_each_entry(tmp, &wrap_drivers, list) {
 		if (strcmp(tmp->name, driver->name) == 0) {
-			kspin_unlock_irql(&loader_lock, irql);
+			nt_spin_unlock(&loader_lock);
 			ERROR("cannot add duplicate driver");
 			TRACEEXIT1(return -EBUSY);
 		}
 	}
 	InsertTailList(&wrap_drivers, &driver->list);
-	kspin_unlock_irql(&loader_lock, irql);
+	nt_spin_unlock(&loader_lock);
 	TRACEEXIT1(return 0);
 }
 
@@ -872,7 +868,7 @@ int loader_init(void)
 	int err;
 
 	InitializeListHead(&wrap_drivers);
-	kspin_lock_init(&loader_lock);
+	nt_spin_lock_init(&loader_lock);
 	if ((err = misc_register(&wrapper_misc)) < 0 ) {
 		ERROR("couldn't register module (%d)", err);
 		TRACEEXIT1(return err);
@@ -900,7 +896,7 @@ void loader_exit(void)
 		kfree(wrap_pci_devices);
 		wrap_pci_devices = NULL;
 	}
-	kspin_lock(&loader_lock);
+	nt_spin_lock(&loader_lock);
 	if (wrap_devices) {
 		for (i = 0; i < num_wrap_devices; i++)
 			unload_wrap_device(&wrap_devices[i]);
@@ -915,6 +911,6 @@ void loader_exit(void)
 		driver = container_of(cur, struct wrap_driver, list);
 		unload_wrap_driver(driver);
 	}
-	kspin_unlock(&loader_lock);
+	nt_spin_unlock(&loader_lock);
 	TRACEEXIT1(return);
 }

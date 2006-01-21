@@ -25,30 +25,29 @@
 #include "ndis.h"
 
 static struct nt_list wrap_allocs;
-static KSPIN_LOCK wrap_allocs_lock;
+static NT_SPIN_LOCK wrap_allocs_lock;
 
 int misc_funcs_init(void)
 {
 	InitializeListHead(&wrap_allocs);
-	kspin_lock_init(&wrap_allocs_lock);
+	nt_spin_lock_init(&wrap_allocs_lock);
 	return 0;
 }
 
 /* called when module is being removed */
 void misc_funcs_exit(void)
 {
-	KIRQL irql;
 	struct nt_list *ent;
 
 	/* free all pointers on the allocated list */
-	irql = kspin_lock_irql(&wrap_allocs_lock, DISPATCH_LEVEL);
+	nt_spin_lock(&wrap_allocs_lock);
 	while ((ent = RemoveHeadList(&wrap_allocs))) {
 		struct wrap_alloc *alloc;
 		alloc = container_of(ent, struct wrap_alloc, list);
 		kfree(alloc->ptr);
 		kfree(alloc);
 	}
-	kspin_unlock_irql(&wrap_allocs_lock, irql);
+	nt_spin_unlock(&wrap_allocs_lock);
 	TRACEEXIT4(return);
 }
 
@@ -61,7 +60,6 @@ void misc_funcs_exit(void)
 void *wrap_kmalloc(size_t size)
 {
 	struct wrap_alloc *alloc;
-	KIRQL irql;
 	unsigned int alloc_flags;
 
 	TRACEENTER4("size = %lu", (unsigned long)size);
@@ -78,9 +76,9 @@ void *wrap_kmalloc(size_t size)
 		kfree(alloc);
 		return NULL;
 	}
-	irql = kspin_lock_irql(&wrap_allocs_lock, DISPATCH_LEVEL);
+	nt_spin_lock(&wrap_allocs_lock);
 	InsertTailList(&wrap_allocs, &alloc->list);
-	kspin_unlock_irql(&wrap_allocs_lock, irql);
+	nt_spin_unlock(&wrap_allocs_lock);
 	DBGTRACE4("%p, %p", alloc, alloc->ptr);
 	TRACEEXIT4(return alloc->ptr);
 }
@@ -89,10 +87,9 @@ void *wrap_kmalloc(size_t size)
 void wrap_kfree(void *ptr)
 {
 	struct wrap_alloc *alloc;
-	KIRQL irql;
 
 	TRACEENTER4("%p", ptr);
-	irql = kspin_lock_irql(&wrap_allocs_lock, DISPATCH_LEVEL);
+	nt_spin_lock(&wrap_allocs_lock);
 	nt_list_for_each_entry(alloc, &wrap_allocs, list) {
 		if (alloc->ptr == ptr) {
 			RemoveEntryList(&alloc->list);
@@ -101,7 +98,7 @@ void wrap_kfree(void *ptr)
 			break;
 		}
 	}
-	kspin_unlock_irql(&wrap_allocs_lock, irql);
+	nt_spin_unlock(&wrap_allocs_lock);
 	TRACEEXIT4(return);
 }
 
