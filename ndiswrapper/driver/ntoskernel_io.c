@@ -417,7 +417,7 @@ _FASTCALL void WRAP_EXPORT(IofCompleteRequest)
 	while (irp->current_location <= (irp->stack_count + 1)) {
 		struct device_object *dev_obj;
 
-		if (irp_sl->current_location & SL_PENDING_RETURNED)
+		if (irp_sl->control & SL_PENDING_RETURNED)
 			irp->pending_returned = TRUE;
 
 		if (irp->current_location <= irp->stack_count)

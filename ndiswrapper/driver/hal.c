@@ -140,7 +140,7 @@ _FASTCALL KIRQL WRAP_EXPORT(KfAcquireSpinLock)
 _FASTCALL void WRAP_EXPORT(KfReleaseSpinLock)
 	(FASTCALL_DECL_2(NT_SPIN_LOCK *lock, KIRQL oldirql))
 {
-	TRACEENTER5("lock = %p, irql = %d", lock, newirql);
+	TRACEENTER5("lock = %p, irql = %d", lock, oldirql);
 	lower_irql(oldirql);
 	TRACEEXIT5(return);
 }
