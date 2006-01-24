@@ -593,8 +593,10 @@ static void xmit_worker(void *param)
 /*
  * Free and unmap packet created in xmit
  */
-void sendpacket_done(struct wrap_ndis_device *wnd, struct ndis_packet *packet)
+void sendpacket_done(struct wrap_ndis_device *wnd,
+		     struct ndis_packet *packet)
 {
+
 	TRACEENTER3("%p", packet);
 	nt_spin_lock(&wnd->send_packet_done_lock);
 	wnd->stats.tx_bytes += packet->private.len;
