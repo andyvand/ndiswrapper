@@ -489,10 +489,9 @@ static void irp_complete_worker(unsigned long data)
 		switch (URB_STATUS(wrap_urb)) {
 		case 0:
 			/* succesfully transferred */
-			NT_URB_STATUS(nt_urb) =
-				wrap_urb_status(URB_STATUS(wrap_urb));
 			irp->io_status.status = STATUS_SUCCESS;
 			irp->io_status.status_info = urb->actual_length;
+			NT_URB_STATUS(nt_urb) = USBD_STATUS_SUCCESS;
 
 			/* from WDM examples, it seems we don't need
 			 * to update MDL's byte count if MDL is used */

@@ -1857,8 +1857,10 @@ NdisMSendComplete(struct ndis_miniport_block *nmb, struct ndis_packet *packet,
 	/* In case a serialized driver has requested a pause by returning
 	 * NDIS_STATUS_RESOURCES we need to give the send-code a kick again.
 	 */
-	wnd->send_ok = 1;
-	schedule_work(&wnd->xmit_work);
+	if (wnd->send_ok == 0){ 
+		wnd->send_ok = 1;
+		schedule_work(&wnd->xmit_work);
+	}
 	TRACEEXIT3(return);
 }
 

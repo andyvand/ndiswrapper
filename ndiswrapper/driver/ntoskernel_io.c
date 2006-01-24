@@ -145,20 +145,20 @@ STDCALL BOOLEAN WRAP_EXPORT(IoIs32bitProcess)
 STDCALL void WRAP_EXPORT(IoInitializeIrp)
 	(struct irp *irp, USHORT size, CCHAR stack_size)
 {
-	IOENTER("irp = %p, stack_size = %d", irp, stack_size);
+	IOENTER("irp: %p, stack_size: %d", irp, stack_size);
 
 	memset(irp, 0, size);
 	irp->size = size;
 	irp->stack_count = stack_size;
 	irp->current_location = stack_size + 1;
-	IoGetCurrentIrpStackLocation(irp) = IRP_SL(irp, (stack_size + 1));
+	IoGetCurrentIrpStackLocation(irp) = IRP_SL(irp, stack_size);
 	IOEXIT(return);
 }
 
 STDCALL void WRAP_EXPORT(IoReuseIrp)
 	(struct irp *irp, NTSTATUS status)
 {
-	IOENTER("irp = %p, status = %d", irp, status);
+	IOENTER("irp: %p, status: %d", irp, status);
 	if (irp) {
 		UCHAR alloc_flags;
 
@@ -176,23 +176,14 @@ STDCALL struct irp *WRAP_EXPORT(IoAllocateIrp)
 	struct irp *irp;
 	int irp_size;
 
-	IOENTER("stack_size = %d, charge_quota = %d",
-		stack_size, charge_quota);
+	IOENTER("stack_size: %d, charge_quota: %d", stack_size, charge_quota);
 
-	irp_size = IoSizeOfIrp(stack_size + 1);
+	irp_size = IoSizeOfIrp(stack_size);
 	irp = kmalloc(irp_size, GFP_ATOMIC);
 	if (irp) {
 		IOTRACE("allocated irp %p", irp);
 		IoInitializeIrp(irp, irp_size, stack_size);
 	}
-#if 0
-	DBG_BLOCK() {
-		int i;
-		for (i = 0; i < stack_size; i++)
-			INFO("stack %d at %p", i, IRP_SL(irp, i));
-	}
-#endif
-
 	IOEXIT(return irp);
 }
 
@@ -383,15 +374,12 @@ _FASTCALL NTSTATUS WRAP_EXPORT(IofCallDriver)
 	driver_dispatch_t *major_func;
 	struct driver_object *drv_obj;
 
-	DUMP_IRP(irp);
-	if (!dev_obj)
-		IOEXIT(return STATUS_SUCCESS);
-	drv_obj = dev_obj->drv_obj;
-	IOTRACE("drv_obj: %p", drv_obj);
 	IoSetNextIrpStackLocation(irp);
+	DUMP_IRP(irp);
 	irp_sl = IoGetCurrentIrpStackLocation(irp);
-
+	drv_obj = dev_obj->drv_obj;
 	irp_sl->dev_obj = dev_obj;
+	IOTRACE("drv_obj: %p", drv_obj);
 	major_func = drv_obj->major_func[irp_sl->major_fn];
 	IOTRACE("major_func: %p, dev_obj: %p", major_func, dev_obj);
 	if (major_func)
@@ -411,6 +399,7 @@ _FASTCALL void WRAP_EXPORT(IofCompleteRequest)
 	struct io_stack_location *irp_sl;
 	struct mdl *mdl;
 
+#ifdef IO_DEBUG
 	DUMP_IRP(irp);
 	if (irp->io_status.status == STATUS_PENDING) {
 		ERROR("invalid irp: %p, STATUS_PENDING", irp);
@@ -420,6 +409,7 @@ _FASTCALL void WRAP_EXPORT(IofCompleteRequest)
 		ERROR("invalid irp: %p, %d", irp, irp->current_location);
 		return;
 	}
+#endif
 
 	irp_sl = IoGetCurrentIrpStackLocation(irp);
 	IoSkipCurrentIrpStackLocation(irp);
@@ -427,7 +417,7 @@ _FASTCALL void WRAP_EXPORT(IofCompleteRequest)
 	while (irp->current_location <= (irp->stack_count + 1)) {
 		struct device_object *dev_obj;
 
-		if (irp_sl->control & SL_PENDING_RETURNED)
+		if (irp_sl->current_location & SL_PENDING_RETURNED)
 			irp->pending_returned = TRUE;
 
 		if (irp->current_location <= irp->stack_count)
