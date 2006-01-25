@@ -463,6 +463,7 @@ static void irp_complete_worker(unsigned long data)
 	struct irp *irp;
 	struct urb *urb;
 	struct usbd_bulk_or_intr_transfer *bulk_int_tx;
+	struct usbd_vendor_or_class_request *vc_req;
 	union nt_urb *nt_urb;
 	struct wrap_urb *wrap_urb;
 	struct nt_list *ent;
@@ -494,16 +495,30 @@ static void irp_complete_worker(unsigned long data)
 
 			/* from WDM examples, it seems we don't need
 			 * to update MDL's byte count if MDL is used */
-			bulk_int_tx = &nt_urb->bulk_int_transfer;
-			bulk_int_tx->transfer_buffer_length =
-				urb->actual_length;
-			DUMP_URB_BUFFER(urb, USB_DIR_IN);
-			if ((wrap_urb->alloc_flags &
-			     URB_NO_TRANSFER_DMA_MAP) &&
-			    usb_pipein(urb->pipe))
-				memcpy(bulk_int_tx->transfer_buffer,
-				       urb->transfer_buffer,
-				       urb->actual_length);
+			if (nt_urb->header.function ==
+			    URB_FUNCTION_BULK_OR_INTERRUPT_TRANSFER) {
+				bulk_int_tx = &nt_urb->bulk_int_transfer;
+				bulk_int_tx->transfer_buffer_length =
+					urb->actual_length;
+				DUMP_URB_BUFFER(urb, USB_DIR_IN);
+				if ((wrap_urb->alloc_flags &
+				     URB_NO_TRANSFER_DMA_MAP) &&
+				    usb_pipein(urb->pipe))
+					memcpy(bulk_int_tx->transfer_buffer,
+					       urb->transfer_buffer,
+					       urb->actual_length);
+			} else {
+				vc_req = &nt_urb->vendor_class_request;
+				vc_req->transfer_buffer_length =
+					urb->actual_length;
+				DUMP_URB_BUFFER(urb, USB_DIR_IN);
+				if ((wrap_urb->alloc_flags &
+				     URB_NO_TRANSFER_DMA_MAP) &&
+				    usb_pipein(urb->pipe))
+					memcpy(vc_req->transfer_buffer,
+					       urb->transfer_buffer,
+					       urb->actual_length);
+			}
 			break;
 		case -ENOENT:
 		case -ECONNRESET:
@@ -709,12 +724,48 @@ static USBD_STATUS wrap_vendor_or_class_req(struct irp *irp)
 		req_type |= USB_DIR_OUT;
 		USBTRACE("pipe: %u, dir out", pipe);
 	}
+	if (current_irql() < DISPATCH_LEVEL) {
+		ret = usb_control_msg(udev, pipe, vc_req->request, req_type,
+				      vc_req->value, vc_req->index,
+				      vc_req->transfer_buffer,
+				      vc_req->transfer_buffer_length, 0);
+		status = wrap_urb_status(ret);
+	} else {
+		struct urb *urb;
+		struct usb_ctrlrequest *dr;
+		urb = wrap_alloc_urb(irp, pipe, vc_req->transfer_buffer,
+				     vc_req->transfer_buffer_length);
+		if (!urb) {
+			ERROR("couldn't allocate urb");
+			return USBD_STATUS_NO_MEMORY;
+		}
 
-	ret = usb_control_msg(udev, pipe, vc_req->request, req_type,
-			      vc_req->value, vc_req->index,
-			      vc_req->transfer_buffer,
-			      vc_req->transfer_buffer_length, 0);
-	status = wrap_urb_status(ret);
+		if (usb_pipein(pipe) &&
+		    (!(vc_req->transfer_flags & USBD_SHORT_TRANSFER_OK))) {
+			USBTRACE("short not ok");
+			urb->transfer_flags |= URB_SHORT_NOT_OK;
+		}
+
+		dr = kmalloc(sizeof(*dr), GFP_ATOMIC);
+		if (!dr) {
+			ERROR("couldn't allocate memory");
+			wrap_free_urb(urb);
+			return USBD_STATUS_NO_MEMORY;
+		}
+		memset(dr, 0, sizeof(*dr));
+		dr->bRequestType = req_type;
+		dr->bRequest = vc_req->request;
+		dr->wValue = cpu_to_le16(vc_req->value);
+		dr->wIndex = cpu_to_le16(vc_req->index);
+		dr->wLength = cpu_to_le16(vc_req->transfer_buffer_length);
+
+		usb_fill_control_urb(urb, udev, pipe, (unsigned char *)dr,
+				     urb->transfer_buffer,
+				     vc_req->transfer_buffer_length,
+				     wrap_urb_complete, urb->context);
+		
+		status = USBD_STATUS_PENDING;
+	}
 	USBTRACE("status: %08X(%d)", status, ret);
 	USBEXIT(return status);
 }
