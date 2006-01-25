@@ -1167,6 +1167,7 @@ STDCALL void WRAP_EXPORT(NdisAllocatePacketPoolEx)
 	pool->proto_rsvd_length = proto_rsvd_length;
 	*pool_handle = pool;
 	*status = NDIS_STATUS_SUCCESS;
+	DBGTRACE3("pool: %p", pool);
 	TRACEEXIT3(return);
 }
 
@@ -1183,8 +1184,7 @@ STDCALL void WRAP_EXPORT(NdisAllocatePacketPool)
 STDCALL void WRAP_EXPORT(NdisFreePacketPool)
 	(struct ndis_packet_pool *pool)
 {
-	struct ndis_packet *packet;
-	struct ndis_packet_oob_data *oob_data;
+	struct ndis_packet *packet, *next;
 
 	TRACEENTER3("pool: %p", pool);
 	if (!pool) {
@@ -1194,13 +1194,15 @@ STDCALL void WRAP_EXPORT(NdisFreePacketPool)
 	nt_spin_lock_bh(&pool->lock);
 	packet = pool->free_descr;
 	while (packet) {
-		oob_data = NDIS_PACKET_OOB_DATA(packet);
+		next = (NDIS_PACKET_OOB_DATA(packet))->next;
 		kfree(packet);
-		packet = oob_data->next;
+		packet = next;
 	}
 	pool->num_allocated_descr = 0;
 	pool->num_used_descr = 0;
+	pool->free_descr = NULL;
 	nt_spin_unlock_bh(&pool->lock);
+	DBGTRACE3("pool: %p", pool);
 	kfree(pool);
 	TRACEEXIT3(return);
 }
@@ -1243,8 +1245,7 @@ STDCALL void WRAP_EXPORT(NdisAllocatePacket)
 		ndis_packet = pool->free_descr;
 		oob_data = NDIS_PACKET_OOB_DATA(ndis_packet);
 		pool->free_descr = oob_data->next;
-	}
-	if (!ndis_packet) {
+	} else {
 		nt_spin_unlock_bh(&pool->lock);
 		if (current_irql() < DISPATCH_LEVEL)
 			alloc_flags = GFP_KERNEL;
@@ -1286,13 +1287,12 @@ STDCALL void WRAP_EXPORT(NdisFreePacket)
 {
 	struct ndis_packet_pool *pool;
 
-	TRACEENTER4("packet: %p, pool: %p", descr, descr->private.pool);
+	TRACEENTER3("packet: %p, pool: %p", descr, descr->private.pool);
 	pool = descr->private.pool;
 	if (!pool) {
 		ERROR("pool for descriptor %p is invalid", descr);
 		TRACEEXIT4(return);
 	}
-		
 	nt_spin_lock_bh(&pool->lock);
 	pool->num_used_descr--;
 	if (pool->num_allocated_descr > MAX_ALLOCATED_NDIS_PACKETS) {

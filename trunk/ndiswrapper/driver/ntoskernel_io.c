@@ -151,7 +151,7 @@ STDCALL void WRAP_EXPORT(IoInitializeIrp)
 	irp->size = size;
 	irp->stack_count = stack_size;
 	irp->current_location = stack_size + 1;
-	IoGetCurrentIrpStackLocation(irp) = IRP_SL(irp, stack_size);
+	IoGetCurrentIrpStackLocation(irp) = IRP_SL(irp, (stack_size + 1));
 	IOEXIT(return);
 }
 
@@ -178,7 +178,7 @@ STDCALL struct irp *WRAP_EXPORT(IoAllocateIrp)
 
 	IOENTER("stack_size: %d, charge_quota: %d", stack_size, charge_quota);
 
-	irp_size = IoSizeOfIrp(stack_size);
+	irp_size = IoSizeOfIrp(stack_size + 1);
 	irp = kmalloc(irp_size, GFP_ATOMIC);
 	if (irp) {
 		IOTRACE("allocated irp %p", irp);
@@ -410,8 +410,11 @@ _FASTCALL void WRAP_EXPORT(IofCompleteRequest)
 		return;
 	}
 #endif
-
 	irp_sl = IoGetCurrentIrpStackLocation(irp);
+	/* completion routines expect current stack location to match
+	 * with what was set through IoSetCompletionRoutine, which
+	 * sets completion routine at next (higher) location, so we
+	 * skip current location and continue past stack size */
 	IoSkipCurrentIrpStackLocation(irp);
 
 	while (irp->current_location <= (irp->stack_count + 1)) {
