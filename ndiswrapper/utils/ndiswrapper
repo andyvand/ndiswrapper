@@ -216,7 +216,7 @@ sub list {
 	}
     }
     if ($s) {
-	print "Installed ndis drivers:\n$s";
+	print "Installed drivers:\n$s";
     } else {
 	print "No drivers installed\n$s";
     }

@@ -1887,18 +1887,25 @@ STDCALL void * WRAP_EXPORT(MmAllocateContiguousMemorySpecifyCache)
 	(SIZE_T size, PHYSICAL_ADDRESS lowest, PHYSICAL_ADDRESS highest,
 	 PHYSICAL_ADDRESS boundary, enum memory_caching_type cache_type)
 {
-	return ExAllocatePoolWithTag(NonPagedPool, size, 0);
+	void *addr;
+	DBGTRACE2("%lu, %Lu, %lu, %lu, %d", size, lowest, highest, boundary,
+		  cache_type);
+	addr = ExAllocatePoolWithTag(NonPagedPool, size, 0);
+	DBGTRACE2("%p", addr);
+	return addr;
 }
 
 STDCALL void WRAP_EXPORT(MmFreeContiguousMemorySpecifyCache)
 	(void *base, SIZE_T size, enum memory_caching_type cache_type)
 {
+	DBGTRACE2("%p", base);
 	ExFreePool(base);
 }
 
 STDCALL PHYSICAL_ADDRESS WRAP_EXPORT(MmGetPhysicalAddress)
 	(void *base)
 {
+	DBGTRACE2("%p", base);
 	return virt_to_phys(base);
 }
 

@@ -725,12 +725,14 @@ static USBD_STATUS wrap_vendor_or_class_req(struct irp *irp)
 		USBTRACE("pipe: %u, dir out", pipe);
 	}
 	if (current_irql() < DISPATCH_LEVEL) {
+		/* synchronous submission */
 		ret = usb_control_msg(udev, pipe, vc_req->request, req_type,
 				      vc_req->value, vc_req->index,
 				      vc_req->transfer_buffer,
 				      vc_req->transfer_buffer_length, 0);
 		status = wrap_urb_status(ret);
 	} else {
+		/* asynchronous submission */
 		struct urb *urb;
 		struct usb_ctrlrequest *dr;
 		urb = wrap_alloc_urb(irp, pipe, vc_req->transfer_buffer,
@@ -763,7 +765,6 @@ static USBD_STATUS wrap_vendor_or_class_req(struct irp *irp)
 				     urb->transfer_buffer,
 				     vc_req->transfer_buffer_length,
 				     wrap_urb_complete, urb->context);
-		
 		status = USBD_STATUS_PENDING;
 	}
 	USBTRACE("status: %08X(%d)", status, ret);
@@ -1147,10 +1148,8 @@ static USBD_STATUS wrap_get_port_status(struct irp *irp)
 		USBTRACE("state: %d, *status: %08X", state, *status);
 	}
 #else
-	{
-		/* TODO: how to get current status? */
-		*status = USBD_PORT_CONNECTED | USBD_PORT_ENABLED;
-	}
+	/* TODO: how to get current status? */
+	*status = USBD_PORT_CONNECTED | USBD_PORT_ENABLED;
 #endif
 	return USBD_STATUS_SUCCESS;
 }
@@ -1425,14 +1424,7 @@ USBD_InterfaceQueryBusInformation(void *context, ULONG level, void *buf,
 
 	bus = wd->usb.udev->bus;
 	bus_info = buf;
-#if 0
-	/* TODO: implement this */
-	bus_info->TotalBandwidth = 0;
-	bus_info->ConsumedBandwidth =
-		bus->bandwidth_allocated / 1000000;
-#else
 	UNIMPL();
-#endif
 	USBEXIT(return STATUS_NOT_IMPLEMENTED);
 }
 
