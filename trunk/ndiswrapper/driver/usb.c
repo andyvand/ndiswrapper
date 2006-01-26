@@ -731,7 +731,7 @@ static USBD_STATUS wrap_vendor_or_class_req(struct irp *irp)
 				      vc_req->transfer_buffer,
 				      vc_req->transfer_buffer_length, 0);
 		USBTRACE("ret: %d", ret);
-		if (ret <= 0)
+		if (ret < 0)
 			status = USBD_STATUS_REQUEST_FAILED;
 		else {
 			vc_req->transfer_buffer_length = ret;
@@ -922,7 +922,7 @@ static USBD_STATUS wrap_select_configuration(struct wrap_device *wd,
 				      USB_REQ_SET_CONFIGURATION, 0,
 				      0, 0, NULL, 0, USB_CTRL_SET_TIMEOUT);
 		USBTRACE("ret: %d", ret);
-		if (ret <= 0)
+		if (ret < 0)
 			return USBD_STATUS_REQUEST_FAILED;
 		else
 			return USBD_STATUS_SUCCESS;
@@ -938,7 +938,7 @@ static USBD_STATUS wrap_select_configuration(struct wrap_device *wd,
 			      config->bConfigurationValue, 0,
 			      NULL, 0, USB_CTRL_SET_TIMEOUT);
 	USBTRACE("ret: %d", ret);
-	if (ret <= 0) {
+	if (ret < 0) {
 		ERROR("ret: %d", ret);
 		return USBD_STATUS_REQUEST_FAILED;
 	}
