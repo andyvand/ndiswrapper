@@ -730,7 +730,13 @@ static USBD_STATUS wrap_vendor_or_class_req(struct irp *irp)
 				      vc_req->value, vc_req->index,
 				      vc_req->transfer_buffer,
 				      vc_req->transfer_buffer_length, 0);
-		status = wrap_urb_status(ret);
+		USBTRACE("ret: %d", ret);
+		if (ret <= 0)
+			status = USBD_STATUS_REQUEST_FAILED;
+		else {
+			vc_req->transfer_buffer_length = ret;
+			status = USBD_STATUS_SUCCESS;
+		}
 	} else {
 		/* asynchronous submission */
 		struct urb *urb;
@@ -767,7 +773,7 @@ static USBD_STATUS wrap_vendor_or_class_req(struct irp *irp)
 				     wrap_urb_complete, urb->context);
 		status = USBD_STATUS_PENDING;
 	}
-	USBTRACE("status: %08X(%d)", status, ret);
+	USBTRACE("status: %08X", status);
 	USBEXIT(return status);
 }
 
@@ -915,7 +921,11 @@ static USBD_STATUS wrap_select_configuration(struct wrap_device *wd,
 		ret = usb_control_msg(udev, usb_sndctrlpipe(udev, 0),
 				      USB_REQ_SET_CONFIGURATION, 0,
 				      0, 0, NULL, 0, USB_CTRL_SET_TIMEOUT);
-		return wrap_urb_status(ret);
+		USBTRACE("ret: %d", ret);
+		if (ret <= 0)
+			return USBD_STATUS_REQUEST_FAILED;
+		else
+			return USBD_STATUS_SUCCESS;
 	}
 
 	USBTRACE("conf: %d, type: %d, length: %d, numif: %d, attr: %08x",
@@ -927,9 +937,10 @@ static USBD_STATUS wrap_select_configuration(struct wrap_device *wd,
 			      USB_REQ_SET_CONFIGURATION, 0,
 			      config->bConfigurationValue, 0,
 			      NULL, 0, USB_CTRL_SET_TIMEOUT);
-	if (ret < 0) {
+	USBTRACE("ret: %d", ret);
+	if (ret <= 0) {
 		ERROR("ret: %d", ret);
-		return wrap_urb_status(ret);
+		return USBD_STATUS_REQUEST_FAILED;
 	}
 
 	intf = &sel_conf->intf;

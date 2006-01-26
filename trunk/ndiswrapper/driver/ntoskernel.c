@@ -1888,7 +1888,7 @@ STDCALL void * WRAP_EXPORT(MmAllocateContiguousMemorySpecifyCache)
 	 PHYSICAL_ADDRESS boundary, enum memory_caching_type cache_type)
 {
 	void *addr;
-	DBGTRACE2("%lu, %Lu, %lu, %lu, %d", size, lowest, highest, boundary,
+	DBGTRACE2("%lu, %Lu, %Lu, %Lu, %d", size, lowest, highest, boundary,
 		  cache_type);
 	addr = ExAllocatePoolWithTag(NonPagedPool, size, 0);
 	DBGTRACE2("%p", addr);
