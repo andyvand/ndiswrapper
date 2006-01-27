@@ -430,12 +430,7 @@ static void wrap_urb_complete(struct urb *urb)
 
 	wrap_urb = urb->context;
 	irp = wrap_urb->irp;
-	/* we can't call Io(Acquire/Release)CancelSpinLock here as
-	 * those functions disable/enable bh's. Since
-	 * wrap_urb_complete is called with IRQs disabled, enabling
-	 * bh's is not correct. So we call non-bh version of
-	 * (un)locking of 'cancel spinlock' */
-	nt_spin_lock(&irp_cancel_lock);
+	IoAcquireCancelSpinLock(&irp->cancel_irql);
 	DUMP_WRAP_URB(wrap_urb, USB_DIR_IN);
 	irp->cancel_routine = NULL;
 	if (wrap_urb->state != URB_SUBMITTED &&
@@ -452,7 +447,7 @@ static void wrap_urb_complete(struct urb *urb)
 	}
 #endif
 	InsertTailList(&irp_complete_list, &irp->complete_list);
-	nt_spin_unlock(&irp_cancel_lock);
+	IoReleaseCancelSpinLock(irp->cancel_irql);
 	USBTRACE("urb %p (irp: %p) completed", urb, irp);
 	tasklet_schedule(&irp_complete_work);
 }
@@ -732,7 +727,7 @@ static USBD_STATUS wrap_vendor_or_class_req(struct irp *irp)
 				      vc_req->transfer_buffer_length, 0);
 		USBTRACE("ret: %d", ret);
 		if (ret < 0)
-			status = USBD_STATUS_REQUEST_FAILED;
+			status = wrap_urb_status(ret);
 		else {
 			vc_req->transfer_buffer_length = ret;
 			status = USBD_STATUS_SUCCESS;
@@ -825,6 +820,7 @@ static USBD_STATUS wrap_abort_pipe(struct usb_device *udev, struct irp *irp)
 	struct urb *urb;
 	struct wrap_urb *wrap_urb;
 	struct wrap_device *wd;
+	KIRQL irql;
 
 	USBENTER("irp = %p", irp);
 	wd = irp->wd;
@@ -832,7 +828,7 @@ static USBD_STATUS wrap_abort_pipe(struct usb_device *udev, struct irp *irp)
 	pipe_handle = nt_urb->pipe_req.pipe_handle;
 	nt_urb = URB_FROM_IRP(irp);
 	while (1) {
-		nt_spin_lock_bh(&irp_cancel_lock);
+		irql = nt_spin_lock_irql(&irp_cancel_lock, DISPATCH_LEVEL);
 		urb = NULL;
 		nt_list_for_each_entry(wrap_urb, &wd->usb.wrap_urb_list,
 				       list) {
@@ -844,7 +840,7 @@ static USBD_STATUS wrap_abort_pipe(struct usb_device *udev, struct irp *irp)
 				break;
 			}
 		}
-		nt_spin_unlock_bh(&irp_cancel_lock);
+		nt_spin_unlock_irql(&irp_cancel_lock, irql);
 		if (urb) {
 			wrap_cancel_urb(urb);
 			USBTRACE("canceled urb: %p", urb);
@@ -890,13 +886,11 @@ static void set_intf_pipe_info(struct usb_interface *usb_intf,
 		pipe->wMaxPacketSize = ep->wMaxPacketSize;
 		pipe->bEndpointAddress = ep->bEndpointAddress;
 		pipe->bInterval = ep->bInterval;
-		pipe->type =
-			ep->bmAttributes & USB_ENDPOINT_XFERTYPE_MASK;
+		pipe->type = ep->bmAttributes & USB_ENDPOINT_XFERTYPE_MASK;
 		pipe->handle = ep;
 		USBTRACE("%d: ep 0x%x, type %d, pkt_sz %d, intv %d,"
-			 "type: %d, handle %p", i,
-			 ep->bEndpointAddress, ep->bmAttributes,
-			 ep->wMaxPacketSize, ep->bInterval,
+			 "type: %d, handle %p", i, ep->bEndpointAddress,
+			 ep->bmAttributes, ep->wMaxPacketSize, ep->bInterval,
 			 pipe->type, pipe->handle);
 	}
 }
@@ -923,7 +917,7 @@ static USBD_STATUS wrap_select_configuration(struct wrap_device *wd,
 				      0, 0, NULL, 0, USB_CTRL_SET_TIMEOUT);
 		USBTRACE("ret: %d", ret);
 		if (ret < 0)
-			return USBD_STATUS_REQUEST_FAILED;
+			return wrap_urb_status(ret);
 		else
 			return USBD_STATUS_SUCCESS;
 	}
@@ -940,7 +934,7 @@ static USBD_STATUS wrap_select_configuration(struct wrap_device *wd,
 	USBTRACE("ret: %d", ret);
 	if (ret < 0) {
 		ERROR("ret: %d", ret);
-		return USBD_STATUS_REQUEST_FAILED;
+		return wrap_urb_status(ret);
 	}
 
 	intf = &sel_conf->intf;

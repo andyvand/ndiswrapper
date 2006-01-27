@@ -566,15 +566,16 @@ static void xmit_worker(void *param)
 {
 	struct wrap_ndis_device *wnd = (struct wrap_ndis_device *)param;
 	int n;
+	KIRQL irql;
 
 	TRACEENTER3("send_ok %d", wnd->send_ok);
 
 	/* some drivers e.g., new RT2500 driver, crash if any packets
 	 * are sent when the card is not associated */
 	while (wnd->send_ok) {
-		nt_spin_lock_bh(&wnd->xmit_lock);
+		irql = nt_spin_lock_irql(&wnd->xmit_lock, DISPATCH_LEVEL);
 		if (wnd->xmit_ring_pending == 0) {
-			nt_spin_unlock_bh(&wnd->xmit_lock);
+			nt_spin_unlock_irql(&wnd->xmit_lock, irql);
 			break;
 		}
 		n = send_packets(wnd, wnd->xmit_ring_start,
@@ -584,7 +585,7 @@ static void xmit_worker(void *param)
 		wnd->xmit_ring_pending -= n;
 		if (netif_queue_stopped(wnd->net_dev) && n > 0)
 			netif_wake_queue(wnd->net_dev);
-		nt_spin_unlock_bh(&wnd->xmit_lock);
+		nt_spin_unlock_irql(&wnd->xmit_lock, irql);
 	}
 
 	TRACEEXIT3(return);
@@ -1518,6 +1519,7 @@ err_start:
 
 static NDIS_STATUS ndis_remove_device(struct wrap_ndis_device *wnd)
 {
+	KIRQL irql;
 
 	set_bit(SHUTDOWN, &wnd->wrap_ndis_work);
 	miniport_pnp_event(wnd, NdisDevicePnPEventSurpriseRemoved);
@@ -1525,7 +1527,7 @@ static NDIS_STATUS ndis_remove_device(struct wrap_ndis_device *wnd)
 	netif_carrier_off(wnd->net_dev);
 	wrap_procfs_remove_ndis_device(wnd);
 	/* throw away pending packets */
-	nt_spin_lock_bh(&wnd->xmit_lock);
+	irql = nt_spin_lock_irql(&wnd->xmit_lock, DISPATCH_LEVEL);
 	while (wnd->xmit_ring_pending) {
 		struct ndis_packet *packet;
 
@@ -1535,7 +1537,7 @@ static NDIS_STATUS ndis_remove_device(struct wrap_ndis_device *wnd)
 			(wnd->xmit_ring_start + 1) % XMIT_RING_SIZE;
 		wnd->xmit_ring_pending--;
 	}
-	nt_spin_unlock_bh(&wnd->xmit_lock);
+	nt_spin_unlock_irql(&wnd->xmit_lock, irql);
 	miniport_halt(wnd);
 	ndis_exit_device(wnd);
 	/* flush_scheduled_work here causes crash with 2.4 kernels */

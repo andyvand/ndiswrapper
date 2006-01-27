@@ -128,21 +128,15 @@ _FASTCALL void WRAP_EXPORT(KfLowerIrql)
 _FASTCALL KIRQL WRAP_EXPORT(KfAcquireSpinLock)
 	(FASTCALL_DECL_1(NT_SPIN_LOCK *lock))
 {
-	KIRQL irql;
-
 	TRACEENTER5("lock = %p", lock);
-	/* these routines just raise/lower irql, but not
-	 * acquire/release spinlock */
-	irql = raise_irql(DISPATCH_LEVEL);
-	TRACEEXIT5(return irql);
+	return nt_spin_lock_irql(lock, DISPATCH_LEVEL);
 }
 
 _FASTCALL void WRAP_EXPORT(KfReleaseSpinLock)
 	(FASTCALL_DECL_2(NT_SPIN_LOCK *lock, KIRQL oldirql))
 {
 	TRACEENTER5("lock = %p, irql = %d", lock, oldirql);
-	lower_irql(oldirql);
-	TRACEEXIT5(return);
+	nt_spin_unlock_irql(lock, oldirql);
 }
 
 _FASTCALL void WRAP_EXPORT(KefAcquireSpinLockAtDpcLevel)
