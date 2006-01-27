@@ -29,14 +29,15 @@ extern NT_SPIN_LOCK irp_cancel_lock;
 STDCALL void WRAP_EXPORT(IoAcquireCancelSpinLock)
 	(KIRQL *irql)
 {
-	*irql = current_irql();
-	nt_spin_lock_bh(&irp_cancel_lock);
+	*irql = raise_irql(DISPATCH_LEVEL);
+	nt_spin_lock(&irp_cancel_lock);
 }
 
 STDCALL void WRAP_EXPORT(IoReleaseCancelSpinLock)
 	(KIRQL irql)
 {
-	nt_spin_unlock_bh(&irp_cancel_lock);
+	lower_irql(irql);
+	nt_spin_unlock(&irp_cancel_lock);
 }
 
 STDCALL NTSTATUS WRAP_EXPORT(IoGetDeviceProperty)
@@ -218,6 +219,7 @@ STDCALL BOOLEAN WRAP_EXPORT(IoCancelIrp)
 STDCALL void IoQueueThreadIrp(struct irp *irp)
 {
 	struct nt_thread *thread;
+	KIRQL irql;
 
 	thread = KeGetCurrentThread();
 	if (!thread) {
@@ -227,22 +229,23 @@ STDCALL void IoQueueThreadIrp(struct irp *irp)
 		return;
 	}
 	IOTRACE("thread: %p, task: %p", thread, thread->task);
-	nt_spin_lock_bh(&thread->lock);
+	irql = nt_spin_lock_irql(&thread->lock, DISPATCH_LEVEL);
 	irp->flags |= IRP_SYNCHRONOUS_API;
 	InsertTailList(&thread->irps, &irp->threads);
 	IoIrpThread(irp) = thread;
-	nt_spin_unlock_bh(&thread->lock);
+	nt_spin_unlock_irql(&thread->lock, irql);
 }
 
 STDCALL void IoDequeueThreadIrp(struct irp *irp)
 {
 	struct nt_thread *thread;
+	KIRQL irql;
 
 	thread = IoIrpThread(irp);
 	if (thread) {
-		nt_spin_lock_bh(&thread->lock);
+		irql = nt_spin_lock_irql(&thread->lock, DISPATCH_LEVEL);
 		RemoveEntryList(&irp->threads);
-		nt_spin_unlock_bh(&thread->lock);
+		nt_spin_unlock_irql(&thread->lock, irql);
 	}
 }
 
@@ -476,19 +479,20 @@ static irqreturn_t io_irq_th(int irq, void *data, struct pt_regs *pt_regs)
 	struct kinterrupt *interrupt = (struct kinterrupt *)data;
 	NT_SPIN_LOCK *spinlock;
 	BOOLEAN ret;
+	KIRQL irql = PASSIVE_LEVEL;
 
 	if (interrupt->actual_lock)
 		spinlock = interrupt->actual_lock;
 	else
 		spinlock = &interrupt->lock;
 	if (interrupt->synch_irql >= DISPATCH_LEVEL)
-		nt_spin_lock_bh(spinlock);
+		irql = nt_spin_lock_irql(spinlock, DISPATCH_LEVEL);
 	else
 		nt_spin_lock(spinlock);
 	ret = interrupt->service_routine(interrupt,
 					 interrupt->service_context);
 	if (interrupt->synch_irql >= DISPATCH_LEVEL)
-		nt_spin_unlock_bh(spinlock);
+		nt_spin_unlock_irql(spinlock, irql);
 	else
 		nt_spin_unlock(spinlock);
 
@@ -610,6 +614,7 @@ STDCALL NTSTATUS WRAP_EXPORT(IoAllocateDriverObjectExtension)
 	 void **ext)
 {
 	struct custom_ext *ce;
+	KIRQL irql;
 
 	IOENTER("%p, %p", drv_obj, client_id);
 	ce = kmalloc(sizeof(*ce) + extlen, GFP_ATOMIC);
@@ -618,9 +623,9 @@ STDCALL NTSTATUS WRAP_EXPORT(IoAllocateDriverObjectExtension)
 
 	IOTRACE("custom_ext: %p", ce);
 	ce->client_id = client_id;
-	nt_spin_lock_bh(&ntoskernel_lock);
+	irql = nt_spin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL);
 	InsertTailList(&drv_obj->drv_ext->custom_ext, &ce->list);
-	nt_spin_unlock_bh(&ntoskernel_lock);
+	nt_spin_unlock_irql(&ntoskernel_lock, irql);
 
 	*ext = (void *)ce + sizeof(*ce);
 	IOTRACE("ext: %p", *ext);
@@ -632,17 +637,18 @@ STDCALL void *WRAP_EXPORT(IoGetDriverObjectExtension)
 {
 	struct custom_ext *ce;
 	void *ret;
+	KIRQL irql;
 
 	IOENTER("drv_obj: %p, client_id: %p", drv_obj, client_id);
 	ret = NULL;
-	nt_spin_lock_bh(&ntoskernel_lock);
+	irql = nt_spin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL);
 	nt_list_for_each_entry(ce, &drv_obj->drv_ext->custom_ext, list) {
 		if (ce->client_id == client_id) {
 			ret = (void *)ce + sizeof(*ce);
 			break;
 		}
 	}
-	nt_spin_unlock_bh(&ntoskernel_lock);
+	nt_spin_unlock_irql(&ntoskernel_lock, irql);
 	IOENTER("ret: %p", ret);
 	IOEXIT(return ret);
 }
@@ -650,12 +656,13 @@ STDCALL void *WRAP_EXPORT(IoGetDriverObjectExtension)
 void free_custom_extensions(struct driver_extension *drv_ext)
 {
 	struct nt_list *ent;
+	KIRQL irql;
 
 	IOENTER("%p", drv_ext);
-	nt_spin_lock_bh(&ntoskernel_lock);
+	irql = nt_spin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL);
 	while ((ent = RemoveHeadList(&drv_ext->custom_ext)))
 		kfree(ent);
-	nt_spin_unlock_bh(&ntoskernel_lock);
+	nt_spin_unlock_irql(&ntoskernel_lock, irql);
 	IOEXIT(return);
 }
 
@@ -781,14 +788,15 @@ STDCALL struct device_object *WRAP_EXPORT(IoGetAttachedDevice)
 	(struct device_object *dev)
 {
 	struct device_object *d;
+	KIRQL irql;
 
 	IOENTER("%p", dev);
 	if (!dev)
 		IOEXIT(return NULL);
-	nt_spin_lock_bh(&ntoskernel_lock);
+	irql = nt_spin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL);
 	for (d = dev; d->attached; d = d->attached)
 		;
-	nt_spin_unlock_bh(&ntoskernel_lock);
+	nt_spin_unlock_irql(&ntoskernel_lock, irql);
 	IOEXIT(return d);
 }
 
@@ -809,18 +817,19 @@ STDCALL struct device_object *WRAP_EXPORT(IoAttachDeviceToDeviceStack)
 	(struct device_object *src, struct device_object *tgt)
 {
 	struct device_object *dst;
+	KIRQL irql;
 
 	IOENTER("%p, %p", src, tgt);
 	dst = IoGetAttachedDevice(tgt);
 	IOTRACE("stack_size: %d -> %d", dst->stack_size, src->stack_size);
 	IOTRACE("%p", dst);
-	nt_spin_lock_bh(&ntoskernel_lock);
+	irql = nt_spin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL);
 	if (dst)
 		dst->attached = src;
 	src->attached = NULL;
 	src->stack_size = dst->stack_size + 1;
 //	src->ref_count++;
-	nt_spin_unlock_bh(&ntoskernel_lock);
+	nt_spin_unlock_irql(&ntoskernel_lock, irql);
 	IOTRACE("stack_size: %d -> %d", dst->stack_size, src->stack_size);
 	IOEXIT(return dst);
 }
@@ -829,6 +838,7 @@ STDCALL void WRAP_EXPORT(IoDetachDevice)
 	(struct device_object *topdev)
 {
 	struct device_object *tail;
+	KIRQL irql;
 
 	IOENTER("%p", topdev);
 	if (!topdev)
@@ -838,14 +848,14 @@ STDCALL void WRAP_EXPORT(IoDetachDevice)
 		IOEXIT(return);
 	IOTRACE("tail: %p", tail);
 
-	nt_spin_lock_bh(&ntoskernel_lock);
+	irql = nt_spin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL);
 	topdev->attached = tail->attached;
 	IOTRACE("attached:%p", topdev->attached);
 	for ( ; tail; tail = tail->attached) {
 		IOTRACE("tail:%p", tail);
 		tail->stack_size--;
 	}
-	nt_spin_unlock_bh(&ntoskernel_lock);
+	nt_spin_unlock_irql(&ntoskernel_lock, irql);
 	IOEXIT(return);
 }
 

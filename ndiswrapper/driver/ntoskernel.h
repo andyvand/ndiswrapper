@@ -752,15 +752,19 @@ static inline KIRQL raise_irql(KIRQL newirql)
 	if (newirql != DISPATCH_LEVEL)
 		WARNING("invalid irql: %d", newirql);
 #endif
-	local_bh_disable();
-	preempt_disable();
+	if (irql < DISPATCH_LEVEL) {
+		local_bh_disable();
+		preempt_disable();
+	}
 	return irql;
 }
 
 static inline void lower_irql(KIRQL oldirql)
 {
-	preempt_enable_no_resched();
-	local_bh_enable();
+	if (oldirql < DISPATCH_LEVEL) {
+		preempt_enable_no_resched();
+		local_bh_enable();
+	}
 }
 
 /* Windows spinlocks are of type ULONG_PTR which is not big enough to
@@ -841,20 +845,19 @@ static inline void lower_irql(KIRQL oldirql)
 #endif // DEBUG_SPINLOCK
 
 /* raise IRQL to given (higher) IRQL if necessary before locking */
-#define nt_spin_lock_bh(lock)						\
-({									\
-	local_bh_disable();						\
-	preempt_disable();						\
-	nt_spin_lock(lock);						\
-})
+static inline KIRQL nt_spin_lock_irql(NT_SPIN_LOCK *lock, KIRQL newirql)
+{
+	KIRQL oldirql = raise_irql(newirql);
+	nt_spin_lock(lock);
+	return oldirql;
+}
 
 /* lower IRQL to given (lower) IRQL if necessary after unlocking */
-#define nt_spin_unlock_bh(lock)						\
-do {									\
-	preempt_enable_no_resched();					\
-	local_bh_enable();						\
-	nt_spin_unlock(lock);						\
-} while (0)
+static inline void nt_spin_unlock_irql(NT_SPIN_LOCK *lock, KIRQL oldirql)
+{
+	nt_spin_unlock(lock);
+	lower_irql(oldirql);
+}
 
 #define nt_spin_lock_irqsave(lock, flags)				\
 do {									\
