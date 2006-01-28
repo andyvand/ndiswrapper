@@ -855,22 +855,22 @@ static inline KIRQL nt_spin_lock_irql(NT_SPIN_LOCK *lock, KIRQL newirql)
 /* lower IRQL to given (lower) IRQL if necessary after unlocking */
 static inline void nt_spin_unlock_irql(NT_SPIN_LOCK *lock, KIRQL oldirql)
 {
-	nt_spin_unlock(lock);
 	lower_irql(oldirql);
+	nt_spin_unlock(lock);
 }
 
-#define nt_spin_lock_irqsave(lock, flags)				\
+#define nt_spin_lock_irq(lock)						\
 do {									\
-	local_irq_save(flags);						\
+	local_irq_disable();						\
 	preempt_disable();						\
 	nt_spin_lock(lock);						\
 } while (0)
 
-#define nt_spin_unlock_irqrestore(lock, flags)				\
+#define nt_spin_unlock_irq(lock)					\
 do {									\
 	nt_spin_unlock(lock);						\
 	preempt_enable_no_resched();					\
-	local_irq_restore(flags);					\
+	local_irq_enable();						\
 } while (0)
 
 static inline ULONG SPAN_PAGES(ULONG_PTR ptr, SIZE_T length)
