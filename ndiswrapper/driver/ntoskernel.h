@@ -128,7 +128,8 @@ typedef task_queue workqueue;
 
 #ifndef in_atomic
 #ifdef CONFIG_PREEMPT
-#define in_atomic() ((preempt_get_count() & ~PREEMPT_ACTIVE) != kernel_locked())
+#define in_atomic()						\
+	((preempt_get_count() & ~PREEMPT_ACTIVE) != kernel_locked())
 #else
 #define in_atomic() (in_interrupt())
 #endif // CONFIG_PREEMPT
@@ -752,7 +753,7 @@ static inline KIRQL raise_irql(KIRQL newirql)
 	if (newirql != DISPATCH_LEVEL)
 		WARNING("invalid irql: %d", newirql);
 #endif
-	if (irql < DISPATCH_LEVEL) {
+	if (irql < DISPATCH_LEVEL && newirql == DISPATCH_LEVEL) {
 		local_bh_disable();
 		preempt_disable();
 	}
@@ -761,7 +762,7 @@ static inline KIRQL raise_irql(KIRQL newirql)
 
 static inline void lower_irql(KIRQL oldirql)
 {
-	if (oldirql < DISPATCH_LEVEL) {
+	if (oldirql < DISPATCH_LEVEL && current_irql() == DISPATCH_LEVEL) {
 		preempt_enable_no_resched();
 		local_bh_enable();
 	}
