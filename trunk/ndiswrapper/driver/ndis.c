@@ -1112,9 +1112,8 @@ STDCALL void WRAP_EXPORT(NdisQueryBuffer)
 {
 	TRACEENTER4("buffer: %p", buffer);
 	if (virt)
-		*virt = MmGetMdlVirtualAddress(buffer);
-	if (length)
-		*length = MmGetMdlByteCount(buffer);
+		*virt = MmGetSystemAddressForMdl(buffer);
+	*length = MmGetMdlByteCount(buffer);
 	DBGTRACE4("%p, %u", *virt, *length);
 	TRACEEXIT4(return);
 }
@@ -1125,9 +1124,8 @@ STDCALL void WRAP_EXPORT(NdisQueryBufferSafe)
 {
 	TRACEENTER4("%p, %p, %p, %d", buffer, virt, length, priority);
 	if (virt)
-		*virt = MmGetMdlVirtualAddress(buffer);
-	if (length)
-		*length = MmGetMdlByteCount(buffer);
+		*virt = MmGetSystemAddressForMdl(buffer);
+	*length = MmGetMdlByteCount(buffer);
 	DBGTRACE4("%p, %u", *virt, *length);
 }
 
@@ -1135,7 +1133,7 @@ STDCALL void *WRAP_EXPORT(NdisBufferVirtualAddress)
 	(ndis_buffer *buffer)
 {
 	TRACEENTER3("%p", buffer);
-	return MmGetMdlVirtualAddress(buffer);
+	return MmGetSystemAddressForMdl(buffer);
 }
 
 STDCALL ULONG WRAP_EXPORT(NdisBufferLength)

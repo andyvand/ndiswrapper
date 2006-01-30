@@ -1036,6 +1036,7 @@ STDCALL void *WRAP_EXPORT(ExAllocatePoolWithTag)
 			      "atomic context", size);
 		addr = vmalloc(size);
 	}
+	DBGTRACE4("addr: %p", addr);
 	TRACEEXIT4(return addr);
 }
 

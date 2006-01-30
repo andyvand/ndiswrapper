@@ -281,17 +281,24 @@ struct mdl {
 
 #define MmGetMdlBaseVa(mdl) ((mdl)->startva)
 #define MmGetMdlByteCount(mdl) ((mdl)->bytecount)
-#define MmGetMdlVirtualAddress(mdl) ((void *)((char *)(mdl)->startva +	\
-					      (mdl)->byteoffset))
+#define MmGetMdlVirtualAddress(mdl) ((mdl)->startva +	\
+				     (mdl)->byteoffset)
 #define MmGetMdlByteOffset(mdl) ((mdl)->byteoffset)
 #define MmGetSystemAddressForMdl(mdl) ((mdl)->mappedsystemva)
+/* here addresses are always mapped, so set mappedsystemva,
+ too. Hence, mappedsystemva = startva + baseoffset and for an mdl,
+ MmGetSystemAddressForMdl == MmGetMdlVirtualAddress */
 #define MmInitializeMdl(mdl, baseva, length) {				\
 		(mdl)->next = NULL;					\
 		(mdl)->size = MmSizeOfMdl(baseva, length);		\
-		(mdl)->flags = 0;					\
-		(mdl)->startva = baseva;				\
-		(mdl)->byteoffset = 0;					\
+		(mdl)->flags = (MDL_SOURCE_IS_NONPAGED_POOL |		\
+				MDL_MAPPED_TO_SYSTEM_VA |		\
+				MDL_PAGES_LOCKED |			\
+				MDL_ALLOCATED_FIXED_SIZE);		\
+		(mdl)->startva = (void *)((ULONG)baseva & ~(PAGE_SIZE - 1)); \
+		(mdl)->byteoffset = (ULONG)baseva & (PAGE_SIZE - 1);	\
 		(mdl)->bytecount = length;				\
+		(mdl)->mappedsystemva = baseva;				\
 	}
 
 struct kdevice_queue_entry {
