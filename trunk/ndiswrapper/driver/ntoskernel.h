@@ -895,7 +895,7 @@ static inline ULONG SPAN_PAGES(ULONG_PTR ptr, SIZE_T length)
 #define DBGTRACE6(fmt, ...) do { } while (0)
 
 /* for a block of code */
-#define DBG_BLOCK() while (0)
+#define DBG_BLOCK(level) while (0)
 
 extern int debug;
 
@@ -908,7 +908,7 @@ extern int debug;
 			       __LINE__ , ## __VA_ARGS__);		\
 	} while (0)
 #undef DBG_BLOCK
-#define DBG_BLOCK()
+#define DBG_BLOCK(level) if (debug >= level)
 #endif
 
 #if defined(DEBUG) && DEBUG >= 1

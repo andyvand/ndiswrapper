@@ -125,7 +125,7 @@ STDCALL NDIS_STATUS WRAP_EXPORT(NdisMRegisterMiniport)
 	       char_len > sizeof(*miniport_char) ?
 	       sizeof(*miniport_char) : char_len);
 
-	DBG_BLOCK() {
+	DBG_BLOCK(2) {
 		int i;
 		char *miniport_funcs[] = {
 			"query", "reconfig", "reset", "send", "setinfo",
@@ -416,21 +416,19 @@ ndis_encode_setting(struct wrap_device_setting *setting,
 	switch(type) {
 	case NdisParameterInteger:
 		param->data.integer = simple_strtol(setting->value, NULL, 0);
-		DBGTRACE1("value = %u", (ULONG)param->data.integer);
+		DBGTRACE2("value = %u", (ULONG)param->data.integer);
 		break;
 	case NdisParameterHexInteger:
 		param->data.integer = simple_strtol(setting->value, NULL, 16);
-		DBGTRACE1("value = %u", (ULONG)param->data.integer);
+		DBGTRACE2("value = %u", (ULONG)param->data.integer);
 		break;
 	case NdisParameterString:
-		ansi.length = strlen(setting->value);
-		ansi.max_length = ansi.length + 1;
-		ansi.buf = setting->value;
-		DBGTRACE2("setting value = %s", ansi.buf);
+		RtlInitAnsiString(&ansi, setting->value);
+		DBGTRACE2("setting value = '%s'", ansi.buf);
 		if (RtlAnsiStringToUnicodeString(&param->data.string,
 						 &ansi, TRUE)) {
 			ExFreePool(param);
-			TRACEEXIT1(return NULL);
+			TRACEEXIT2(return NULL);
 		}
 		break;
 	default:
@@ -439,7 +437,7 @@ ndis_encode_setting(struct wrap_device_setting *setting,
 		return NULL;
 	}
 	setting->encoded = param;
-	return param;
+	TRACEEXIT2(return param);
 }
 
 static int ndis_decode_setting(struct wrap_device_setting *setting,
@@ -447,6 +445,7 @@ static int ndis_decode_setting(struct wrap_device_setting *setting,
 {
 	struct ansi_string ansi;
 
+	TRACEENTER2("%p, %p", setting, param);
 	switch(param->type) {
 	case NdisParameterInteger:
 		snprintf(setting->value, sizeof(u32), "%u",
@@ -502,7 +501,7 @@ STDCALL void WRAP_EXPORT(NdisReadConfiguration)
 
 	nt_spin_lock(&loader_lock);
 	nt_list_for_each_entry(setting, &nmb->wnd->wd->settings, list) {
-		if (stricmp(keyname, setting->name) == 0) {
+		if (strnicmp(keyname, setting->name, ansi.length) == 0) {
 			DBGTRACE2("setting found %s=%s",
 				  keyname, setting->value);
 			nt_spin_unlock(&loader_lock);
@@ -542,7 +541,7 @@ STDCALL void WRAP_EXPORT(NdisWriteConfiguration)
 
 	nt_spin_lock(&loader_lock);
 	nt_list_for_each_entry(setting, &nmb->wnd->wd->settings, list) {
-		if (strcmp(keyname, setting->name) == 0) {
+		if (strnicmp(keyname, setting->name, ansi.length) == 0) {
 			nt_spin_unlock(&loader_lock);
 			if (ndis_decode_setting(setting, param))
 				*status = NDIS_STATUS_FAILURE;
@@ -581,9 +580,7 @@ STDCALL void WRAP_EXPORT(NdisInitializeString)
 	struct ansi_string ansi;
 
 	TRACEENTER2("");
-	ansi.length = strlen(src);
-	ansi.max_length = ansi.length + 1;
-	ansi.buf = src;
+	RtlInitAnsiString(&ansi, src);
 	if (RtlAnsiStringToUnicodeString(dest, &ansi, TRUE))
 		DBGTRACE2("failed");
 	TRACEEXIT2(return);
@@ -1448,10 +1445,7 @@ STDCALL void WRAP_EXPORT(NdisReadNetworkAddress)
 	int ret;
 
 	TRACEENTER1("");
-	ansi.buf = "mac_address";
-	ansi.length = strlen(ansi.buf);
-	ansi.max_length = ansi.length + 1;
-
+	RtlInitAnsiString(&ansi, "mac_address");
 	*len = 0;
 	*status = NDIS_STATUS_FAILURE;
 	if (RtlAnsiStringToUnicodeString(&key, &ansi, TRUE) != STATUS_SUCCESS)
@@ -1804,7 +1798,11 @@ NdisMIndicateReceivePacket(struct ndis_miniport_block *nmb,
 		 * although at other places we don't */
 		buffer = packet->private.buffer_head;
 		skb = dev_alloc_skb(MmGetMdlByteCount(buffer));
-		DBGTRACE3("length: %d", MmGetMdlByteCount(buffer));
+		DBG_BLOCK(2) {
+			INFO("length: %d", MmGetMdlByteCount(buffer));
+			dump_bytes("packet: ", MmGetMdlVirtualAddress(buffer),
+				   MmGetMdlByteCount(buffer));
+		}
 		if (skb) {
 			skb->dev = wnd->net_dev;
 			eth_copy_and_sum(skb, MmGetMdlVirtualAddress(buffer),
@@ -2512,15 +2510,14 @@ STDCALL NDIS_STATUS WRAP_EXPORT(NdisMQueryAdapterInstanceName)
 	(struct unicode_string *name, struct ndis_miniport_block *nmb)
 {
 	struct wrap_ndis_device *wnd = nmb->wnd;
-	struct ansi_string ansi_string;
+	struct ansi_string ansi;
 
 	if (wrap_is_pci_bus(wnd->wd->dev_bus_type))
-		ansi_string.buf = "PCI Ethernet Adapter";
+		RtlInitAnsiString(&ansi, "PCI Ethernet Adapter");
 	else
-		ansi_string.buf = "USB Ethernet Adapter";
-	ansi_string.length = strlen(ansi_string.buf);
-	ansi_string.max_length = ansi_string.length + 1;
-	if (RtlAnsiStringToUnicodeString(name, &ansi_string, TRUE))
+		RtlInitAnsiString(&ansi, "USB Ethernet Adapter");
+
+	if (RtlAnsiStringToUnicodeString(name, &ansi, TRUE))
 		TRACEEXIT2(return NDIS_STATUS_RESOURCES);
 	else
 		TRACEEXIT2(return NDIS_STATUS_SUCCESS);

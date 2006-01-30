@@ -468,9 +468,10 @@ void unload_wrap_driver(struct wrap_driver *driver)
 		if (driver->bin_files[i].data)
 			vfree(driver->bin_files[i].data);
 	}
+	DBGTRACE2("");
 	if (driver->bin_files)
 		kfree(driver->bin_files);
-
+	DBGTRACE2("");
 	RtlFreeUnicodeString(&drv_obj->name);
 	nt_list_for_each_safe(cur, next, &driver->wrap_devices) {
 		struct wrap_device *wd;
@@ -579,9 +580,7 @@ static int load_user_space_driver(struct load_driver *load_driver)
 	InitializeListHead(&wrap_driver->list);
 	InitializeListHead(&wrap_driver->wrap_devices);
 	wrap_driver->drv_obj = drv_obj;
-	ansi_reg.buf = "/tmp";
-	ansi_reg.length = strlen(ansi_reg.buf);
-	ansi_reg.max_length = ansi_reg.length + 1;
+	RtlInitAnsiString(&ansi_reg, "/tmp");
 	if (RtlAnsiStringToUnicodeString(&drv_obj->name, &ansi_reg, TRUE) !=
 	    STATUS_SUCCESS) {
 		ERROR("couldn't initialize registry path");

@@ -558,31 +558,34 @@ STDCALL NTSTATUS WRAP_EXPORT(RtlAnsiStringToUnicodeString)
 	if (src->buf == NULL || src->length == 0 || src->max_length == 0) {
 		dst->length = 0;
 		if (alloc) {
-			dst->buf = NULL;
-			dst->max_length = 0;
-		} else if (dst->max_length >= sizeof(dst->buf[0]))
+			i = sizeof(dst->buf[0]);
+			dst->buf = ExAllocatePoolWithTag(NonPagedPool, i, 0);
+			if (!dst->buf)
+				TRACEEXIT2(return STATUS_NO_MEMORY);
+			dst->max_length = i;
+		}
+		if (dst->max_length >= sizeof(dst->buf[0]))
 			dst->buf[0] = 0;
 		TRACEEXIT2(return STATUS_SUCCESS);
 	}
 	if (alloc == TRUE) {
-		dst->max_length = (src->length + 1) * sizeof(wchar_t);
-		dst->buf = ExAllocatePoolWithTag(NonPagedPool,
-						 dst->max_length, 0);
+		i = (src->length + 1) * sizeof(wchar_t);
+		dst->buf = ExAllocatePoolWithTag(NonPagedPool, i, 0);
 		if (!dst->buf) {
 			dst->max_length = dst->length = 0;
 			TRACEEXIT2(return STATUS_NO_MEMORY);
 		}
-		memset(dst->buf, 0, dst->max_length);
+		dst->max_length = i;
 	} else if (dst->max_length < (src->length * sizeof(wchar_t)))
 		TRACEEXIT2(return STATUS_BUFFER_TOO_SMALL);
 
 	dst->length = src->length * sizeof(wchar_t);
-	for(i = 0; i < src->length; i++)
+	for (i = 0; i < src->length; i++)
 		dst->buf[i] = src->buf[i];
-	if (dst->max_length > dst->length)
-		dst->buf[dst->length / sizeof(wchar_t)] = 0;
-	DBGTRACE2("dst: length: %d, max_length: %d, string: %s (%p)",
-		  dst->length, dst->max_length, src->buf, src->buf);
+	if (i * sizeof(wchar_t) < dst->max_length)
+		dst->buf[i] = 0;
+	DBGTRACE2("dst: length: %d, max_length: %d, string: %p",
+		  dst->length, dst->max_length, src->buf);
 	TRACEEXIT2(return STATUS_SUCCESS);
 }
 
@@ -604,28 +607,34 @@ STDCALL NTSTATUS WRAP_EXPORT(RtlUnicodeStringToAnsiString)
 	if (src->buf == NULL || src->max_length <= 0 || src->length <= 0) {
 		dst->length = 0;
 		if (alloc == TRUE) {
-			dst->max_length = 0;
-			dst->buf = NULL;
-		} else if (dst->max_length >= sizeof(dst->buf[0]))
+			i = sizeof(dst->buf[0]);
+			dst->buf = ExAllocatePoolWithTag(NonPagedPool, i, 0);
+			if (!dst->buf)
+				TRACEEXIT2(return STATUS_NO_MEMORY);
+			dst->max_length = i;
+		}
+		if (dst->max_length >= sizeof(dst->buf[0]))
 			dst->buf[0] = 0;
 		TRACEEXIT2(return STATUS_SUCCESS);
 	}
 	if (alloc == TRUE) {
-		dst->max_length = src->max_length / sizeof(wchar_t) + 1;
-		dst->buf = ExAllocatePoolWithTag(NonPagedPool,
-						 dst->max_length, 0);
+		i = src->length / sizeof(wchar_t) + 1;
+		dst->buf = ExAllocatePoolWithTag(NonPagedPool, i, 0);
 		if (!dst->buf) {
 			dst->max_length = dst->length = 0;
-			TRACEEXIT1(return STATUS_FAILURE);
+			TRACEEXIT1(return STATUS_NO_MEMORY);
 		}
-		memset(dst->buf, 0, dst->max_length);
+		dst->max_length = i;
 	} else if (dst->max_length < (src->length / sizeof(wchar_t)))
 		return STATUS_FAILURE;
 
 	dst->length = src->length / sizeof(wchar_t);
-	for(i = 0; i < dst->max_length; i++)
+	for (i = 0; i < dst->length; i++)
 		dst->buf[i] = src->buf[i];
-	DBGTRACE2("string: %s, len: %d", dst->buf, dst->max_length);
+	if (i < dst->max_length)
+		dst->buf[i] = 0;
+	DBGTRACE2("string: %p, len: %d(%d)", dst->buf, dst->length,
+		  dst->max_length);
 	TRACEEXIT2(return STATUS_SUCCESS);
 }
 
@@ -696,7 +705,7 @@ STDCALL NTSTATUS WRAP_EXPORT(RtlUnicodeStringToInteger)
 STDCALL NTSTATUS WRAP_EXPORT(RtlIntegerToUnicodeString)
 	(ULONG value, ULONG base, struct unicode_string *ustring)
 {
-	char string[sizeof(wchar_t) * (sizeof(ULONG) * 2 + 1)];
+	char buf[(sizeof(ULONG) * 2) + 1];
 	struct ansi_string ansi;
 	int i;
 
@@ -705,24 +714,17 @@ STDCALL NTSTATUS WRAP_EXPORT(RtlIntegerToUnicodeString)
 		base = 10;
 	if (!(base == 2 || base == 8 || base == 10 || base == 16))
 		return STATUS_INVALID_PARAMETER;
-	for (i = 0; value && i < sizeof(string); i++) {
+	for (i = 0; value && i < sizeof(buf) - 1; i++) {
 		int r;
 		r = value % base;
 		value /= base;
 		if (r < 10)
-			string[i] = r + '0';
+			buf[i] = r + '0';
 		else
-			string[i] = r + 'a' - 10;
+			buf[i] = r + 'a' - 10;
 	}
-
-	if (i < sizeof(string))
-		string[i] = 0;
-	else
-		return STATUS_BUFFER_TOO_SMALL;
-
-	ansi.buf = string;
-	ansi.length = strlen(string);
-	ansi.max_length = sizeof(string);
+	buf[i] = 0;
+	RtlInitAnsiString(&ansi, buf);
 	return RtlAnsiStringToUnicodeString(ustring, &ansi, FALSE);
 }
 
@@ -985,22 +987,23 @@ void dump_stack(void)
 		printk(KERN_DEBUG "sp[%d] = %p\n", i, (void *)sp[i]);
 }
 
-void dump_bytes(const char *name, const u8 *from, int len)
+void dump_bytes(const char *ctx, const u8 *from, int len)
 {
 	int i, j;
-	u8 code[100];
+	u8 *buf;
 
-	memset(code, 0, sizeof(code));
-	for (i = j = 0; i < len; i++, j += 3) {
-		if (j+3 > sizeof(code)) {
-			ERROR("not enough space: %u > %u", j+3,
-			      (unsigned int)sizeof(code));
-			break;
-		} else
-			sprintf(&code[j], "%02x ", from[i]);
+	buf = kmalloc(len * 3 + 1, current_irql() < DISPATCH_LEVEL ?
+		      GFP_KERNEL : GFP_ATOMIC);
+	if (!buf) {
+		ERROR("couldn't allocate memory");
+		return;
 	}
-	code[sizeof(code)-1] = 0;
-	printk(KERN_DEBUG "%s: %p: %s\n", name, from, code);
+	for (i = j = 0; i < len; i++, j += 3) {
+		sprintf(&buf[j], "%02x ", from[i]);
+	}
+	buf[j] = 0;
+	printk(KERN_DEBUG "%s: %p: %s\n", ctx, from, buf);
+	kfree(buf);
 }
 
 #include "misc_funcs_exports.h"
