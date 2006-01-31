@@ -272,7 +272,7 @@ static void update_user_shared_data_proc(unsigned long data)
 #endif
 
 void *allocate_object(ULONG size, enum common_object_type type, char *name)
-{									
+{
 	struct common_object_header *hdr;
 	void *body;
 	KIRQL irql;
@@ -301,7 +301,7 @@ void *allocate_object(ULONG size, enum common_object_type type, char *name)
 }
 
 void free_object(void *object)
-{									
+{
 	struct common_object_header *hdr;
 	KIRQL irql;
 
@@ -2000,7 +2000,7 @@ struct mdl *allocate_init_mdl(void *virt, ULONG length)
 			alloc_flags = GFP_KERNEL;
 		else
 			alloc_flags = GFP_ATOMIC;
-		
+
 		wrap_mdl = kmem_cache_alloc(mdl_cache, alloc_flags);
 		if (!wrap_mdl)
 			return NULL;

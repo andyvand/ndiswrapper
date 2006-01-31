@@ -244,7 +244,7 @@ static void wrap_free_urb(struct urb *urb)
 		USBTRACE("freeing DMA buffer for URB: %p %p",
 			 urb, urb->transfer_buffer);
 		usb_buffer_free(irp->wd->usb.udev,
-				urb->transfer_buffer_length, 
+				urb->transfer_buffer_length,
 				urb->transfer_buffer, urb->transfer_dma);
 	}
 	if (urb->setup_packet)

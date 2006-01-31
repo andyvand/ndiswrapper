@@ -1,4 +1,3 @@
-
 /*
  *  Copyright (C) 2003-2005 Pontus Fuchs, Giridhar Pemmasani
  *
@@ -182,7 +181,7 @@ NOREGPARM char *WRAP_EXPORT(_win_strncpy)
 NOREGPARM SIZE_T WRAP_EXPORT(_win_strlen)
 	(const char *s)
 {
-       return strlen(s);
+	return strlen(s);
 }
 
 NOREGPARM INT WRAP_EXPORT(_win_strncmp)
@@ -554,20 +553,6 @@ STDCALL NTSTATUS WRAP_EXPORT(RtlAnsiStringToUnicodeString)
 
 	TRACEENTER2("src: length: %d max: %d, buf: %p, dst: %p, alloc: %d",
 		    src->length, src->max_length, src->buf, dst, alloc);
-
-	if (src->buf == NULL || src->length == 0 || src->max_length == 0) {
-		dst->length = 0;
-		if (alloc) {
-			i = sizeof(dst->buf[0]);
-			dst->buf = ExAllocatePoolWithTag(NonPagedPool, i, 0);
-			if (!dst->buf)
-				TRACEEXIT2(return STATUS_NO_MEMORY);
-			dst->max_length = i;
-		}
-		if (dst->max_length >= sizeof(dst->buf[0]))
-			dst->buf[0] = 0;
-		TRACEEXIT2(return STATUS_SUCCESS);
-	}
 	if (alloc == TRUE) {
 		i = (src->length + 1) * sizeof(wchar_t);
 		dst->buf = ExAllocatePoolWithTag(NonPagedPool, i, 0);
@@ -603,20 +588,6 @@ STDCALL NTSTATUS WRAP_EXPORT(RtlUnicodeStringToAnsiString)
 
 	TRACEENTER2("src: length: %d max: %d, buf: %p, dst: %p, alloc: %d",
 		    src->length, src->max_length, src->buf, dst, alloc);
-
-	if (src->buf == NULL || src->max_length <= 0 || src->length <= 0) {
-		dst->length = 0;
-		if (alloc == TRUE) {
-			i = sizeof(dst->buf[0]);
-			dst->buf = ExAllocatePoolWithTag(NonPagedPool, i, 0);
-			if (!dst->buf)
-				TRACEEXIT2(return STATUS_NO_MEMORY);
-			dst->max_length = i;
-		}
-		if (dst->max_length >= sizeof(dst->buf[0]))
-			dst->buf[0] = 0;
-		TRACEEXIT2(return STATUS_SUCCESS);
-	}
 	if (alloc == TRUE) {
 		i = src->length / sizeof(wchar_t) + 1;
 		dst->buf = ExAllocatePoolWithTag(NonPagedPool, i, 0);
@@ -659,7 +630,7 @@ STDCALL NTSTATUS WRAP_EXPORT(RtlUnicodeStringToInteger)
 		i++;
 		break;
 	}
-		       
+
 	if (base == 0 && i < ustring->length && str[i]) {
 		switch(tolower((char)str[i])) {
 		case 'x':

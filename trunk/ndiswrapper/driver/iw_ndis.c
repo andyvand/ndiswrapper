@@ -58,7 +58,7 @@ int set_essid(struct wrap_ndis_device *wnd, const char *ssid, int ssid_len)
 	if (res == NDIS_STATUS_FAILURE)
 		return -ENOTSUPP;
 	if (res)
-		WARNING("setting essid failed (%08X)", res); 
+		WARNING("setting essid failed (%08X)", res);
 
 	memcpy(&wnd->essid, &req, sizeof(req));
 	TRACEEXIT2(return 0);
@@ -160,7 +160,7 @@ static int iw_set_essid(struct net_device *dev, struct iw_request_info *info,
 static int iw_get_essid(struct net_device *dev, struct iw_request_info *info,
 			union iwreq_data *wrqu, char *extra)
 {
-	struct wrap_ndis_device *wnd = netdev_priv(dev); 
+	struct wrap_ndis_device *wnd = netdev_priv(dev);
 	NDIS_STATUS res;
 	struct ndis_essid req;
 
@@ -194,7 +194,7 @@ int set_infra_mode(struct wrap_ndis_device *wnd,
 	if (res == NDIS_STATUS_FAILURE)
 		return -EOPNOTSUPP;
 	if (res == NDIS_STATUS_INVALID_DATA) {
-		WARNING("setting operating mode failed (%08X)", res); 
+		WARNING("setting operating mode failed (%08X)", res);
 		TRACEEXIT2(return -EINVAL);
 	}
 
@@ -236,7 +236,7 @@ static int iw_get_infra_mode(struct net_device *dev,
 			     struct iw_request_info *info,
 			     union iwreq_data *wrqu, char *extra)
 {
-	struct wrap_ndis_device *wnd = netdev_priv(dev); 
+	struct wrap_ndis_device *wnd = netdev_priv(dev);
 	int ndis_mode, iw_mode;
 	NDIS_STATUS res;
 
@@ -274,7 +274,7 @@ static const char *network_type_to_name(int net_type)
 	    net_type < (sizeof(network_names)/sizeof(network_names[0])))
 		return network_names[net_type];
 	else
-		return network_names[sizeof(network_names) / 
+		return network_names[sizeof(network_names) /
 				     sizeof(network_names[0]) - 1];
 }
 
@@ -382,7 +382,7 @@ static int iw_get_tx_power(struct net_device *dev,
 			   struct iw_request_info *info,
 			   union iwreq_data *wrqu, char *extra)
 {
-	struct wrap_ndis_device *wnd = netdev_priv(dev); 
+	struct wrap_ndis_device *wnd = netdev_priv(dev);
 	ndis_tx_power_level ndis_power;
 	NDIS_STATUS res;
 
@@ -406,7 +406,7 @@ static int iw_set_tx_power(struct net_device *dev,
 			   struct iw_request_info *info,
 			   union iwreq_data *wrqu, char *extra)
 {
-	struct wrap_ndis_device *wnd = netdev_priv(dev); 
+	struct wrap_ndis_device *wnd = netdev_priv(dev);
 	ndis_tx_power_level ndis_power;
 	NDIS_STATUS res;
 
@@ -459,7 +459,7 @@ static int iw_set_tx_power(struct net_device *dev,
 static int iw_get_bitrate(struct net_device *dev, struct iw_request_info *info,
 			  union iwreq_data *wrqu, char *extra)
 {
-	struct wrap_ndis_device *wnd = netdev_priv(dev); 
+	struct wrap_ndis_device *wnd = netdev_priv(dev);
 	ULONG ndis_rate;
 	int res;
 
@@ -480,7 +480,7 @@ static int iw_get_bitrate(struct net_device *dev, struct iw_request_info *info,
 static int iw_set_bitrate(struct net_device *dev, struct iw_request_info *info,
 			  union iwreq_data *wrqu, char *extra)
 {
-	struct wrap_ndis_device *wnd = netdev_priv(dev); 
+	struct wrap_ndis_device *wnd = netdev_priv(dev);
 	int i;
 	NDIS_STATUS res;
 	ndis_rates rates;
@@ -577,7 +577,7 @@ static int iw_get_frag_threshold(struct net_device *dev,
 				 struct iw_request_info *info,
 				 union iwreq_data *wrqu, char *extra)
 {
-	struct wrap_ndis_device *wnd = netdev_priv(dev); 
+	struct wrap_ndis_device *wnd = netdev_priv(dev);
 	ndis_fragmentation_threshold frag_threshold;
 	NDIS_STATUS res;
 
@@ -653,7 +653,7 @@ static int iw_set_ap_address(struct net_device *dev,
 			     struct iw_request_info *info,
 			     union iwreq_data *wrqu, char *extra)
 {
-	struct wrap_ndis_device *wnd = netdev_priv(dev); 
+	struct wrap_ndis_device *wnd = netdev_priv(dev);
 	NDIS_STATUS res;
 	mac_address ap_addr;
 
@@ -2047,7 +2047,7 @@ static int wpa_set_key(struct net_device *dev, struct iw_request_info *info,
 				  res, ndis_key.struct_size);
 			TRACEEXIT2(return -1);
 		}
-		wnd->encr_info.keys[wpa_key.key_index].length = 
+		wnd->encr_info.keys[wpa_key.key_index].length =
 			wpa_key.key_len;
 		memcpy(&wnd->encr_info.keys[wpa_key.key_index].key,
 		       &ndis_key.key, wpa_key.key_len);
@@ -2087,7 +2087,7 @@ static int wpa_associate(struct net_device *dev, struct iw_request_info *info,
 	wpa_assoc_info.mode = IEEE80211_MODE_INFRA;
 
 	if (wrqu->data.length == 0)
-		size = (void *)&wpa_assoc_info.auth_alg - 
+		size = (void *)&wpa_assoc_info.auth_alg -
 			(void *)&wpa_assoc_info.bssid;
 	else
 		size = min((size_t)wrqu->data.length, sizeof(wpa_assoc_info));
