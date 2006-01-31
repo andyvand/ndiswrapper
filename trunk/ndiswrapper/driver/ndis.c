@@ -2416,6 +2416,17 @@ STDCALL void WRAP_EXPORT(NdisCopyFromPacketToPacket)
 	return;
 }
 
+STDCALL void WRAP_EXPORT(NdisIMCopySendPerPacketInfo)
+	(struct ndis_packet *dst, struct ndis_packet *src)
+{
+	struct ndis_packet_oob_data *dst_oob, *src_oob;
+	dst_oob = NDIS_PACKET_OOB_DATA(dst);
+	src_oob = NDIS_PACKET_OOB_DATA(src);
+	memcpy(&dst_oob->extension, &src_oob->extension,
+	       sizeof(dst_oob->extension));
+	return;
+}
+
 STDCALL void WRAP_EXPORT(NdisMStartBufferPhysicalMapping)
 	(struct ndis_miniport_block *nmb, ndis_buffer *buf,
 	 ULONG phy_map_reg, BOOLEAN write_to_dev,

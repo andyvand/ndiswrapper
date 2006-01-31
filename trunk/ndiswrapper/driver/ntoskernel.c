@@ -1664,7 +1664,7 @@ STDCALL void WRAP_EXPORT(KeQuerySystemTime)
 	return;
 }
 
-STDCALL void WRAP_EXPORT(KeQUeryTickCount)
+STDCALL void WRAP_EXPORT(KeQueryTickCount)
 	(LARGE_INTEGER *j)
 {
 	*j = jiffies;
