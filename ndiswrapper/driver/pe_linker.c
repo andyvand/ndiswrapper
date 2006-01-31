@@ -331,7 +331,7 @@ static int fixup_reloc(void *image, IMAGE_NT_HEADERS *nt_hdr)
 
 	opt_hdr = &nt_hdr->OptionalHeader;
 	base = opt_hdr->ImageBase;
-	base_reloc_data_dir = 
+	base_reloc_data_dir =
 		&opt_hdr->DataDirectory[IMAGE_DIRECTORY_ENTRY_BASERELOC];
 	if (base_reloc_data_dir->Size == 0)
 		return 0;
@@ -339,7 +339,7 @@ static int fixup_reloc(void *image, IMAGE_NT_HEADERS *nt_hdr)
 	fixup_block = RVA2VA(image, base_reloc_data_dir->VirtualAddress,
 			     IMAGE_BASE_RELOCATION *);
 	DBGLINKER("fixup_block=%p, image=%p", fixup_block, image);
-	DBGLINKER("fixup_block info: %x %d", 
+	DBGLINKER("fixup_block info: %x %d",
 		  fixup_block->VirtualAddress, fixup_block->SizeOfBlock);
 
 	while (fixup_block->SizeOfBlock) {
@@ -576,7 +576,7 @@ int load_pe_images(struct pe_image *pe_image, int n)
 		pe->entry =
 			RVA2VA(pe->image,
 			       pe->opt_hdr->AddressOfEntryPoint, void *);
-		DBGTRACE1("entry is at %p, rva at %08X", pe->entry, 
+		DBGTRACE1("entry is at %p, rva at %08X", pe->entry,
 			  pe->opt_hdr->AddressOfEntryPoint);
 	}
 

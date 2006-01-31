@@ -116,7 +116,7 @@
 
 #define KI_USER_SHARED_DATA 0xfffff78000000000
 
-#else 
+#else
 
 #define STDCALL __attribute__((__stdcall__, regparm(0)))
 #define _FASTCALL __attribute__((__stdcall__)) __attribute__((regparm (3)))

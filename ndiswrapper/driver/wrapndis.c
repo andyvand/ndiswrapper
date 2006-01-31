@@ -693,7 +693,7 @@ static int ndis_open(struct net_device *dev)
 	if (dev->flags & IFF_PROMISC)
 		packet_filter |= NDIS_PACKET_TYPE_PROMISCUOUS |
 			NDIS_PACKET_TYPE_ALL_LOCAL;
-	if (set_packet_filter(wnd, packet_filter) && 
+	if (set_packet_filter(wnd, packet_filter) &&
 	    packet_filter & NDIS_PACKET_TYPE_PROMISCUOUS) {
 		DBGTRACE1("couldn't add packet filter %x", packet_filter);
 		packet_filter &= ~NDIS_PACKET_TYPE_PROMISCUOUS;

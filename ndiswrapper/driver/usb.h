@@ -73,7 +73,7 @@
 #define URB_FUNCTION_RESERVE_0X002D                  0x002D
 #define URB_FUNCTION_RESERVE_0X002E                  0x002E
 #define URB_FUNCTION_RESERVE_0X002F                  0x002F
-// USB 2.0 calls start at 0x0030         
+// USB 2.0 calls start at 0x0030
 #define URB_FUNCTION_SYNC_RESET_PIPE                 0x0030
 #define URB_FUNCTION_SYNC_CLEAR_STALL                0x0031
 
