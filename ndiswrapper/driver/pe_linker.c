@@ -323,7 +323,7 @@ static int fixup_imports(void *image, IMAGE_NT_HEADERS *nt_hdr)
 
 static int fixup_reloc(void *image, IMAGE_NT_HEADERS *nt_hdr)
 {
-        ULONG_PTR base;
+	ULONG_PTR base;
 	ULONG_PTR size;
 	IMAGE_BASE_RELOCATION *fixup_block;
 	IMAGE_DATA_DIRECTORY *base_reloc_data_dir;
@@ -532,7 +532,7 @@ int load_pe_images(struct pe_image *pe_image, int n)
 
 		if (pe->size < sizeof(IMAGE_DOS_HEADER)) {
 			DBGTRACE1("image too small: %d", pe->size);
- 			return -EINVAL;
+			return -EINVAL;
 		}
 
 		pe->nt_hdr =
