@@ -631,7 +631,7 @@ int get_ap_address(struct wrap_ndis_device *wnd, mac_address ap_addr)
 		memset(ap_addr, 0x0, ETH_ALEN);
 
 	DBGTRACE2(MACSTR, MAC2STR(ap_addr));
-        TRACEEXIT2(return 0);
+	TRACEEXIT2(return 0);
 }
 
 static int iw_get_ap_address(struct net_device *dev,
@@ -658,7 +658,7 @@ static int iw_set_ap_address(struct net_device *dev,
 	mac_address ap_addr;
 
 	TRACEENTER2("");
-        memcpy(ap_addr, wrqu->ap_addr.sa_data, ETH_ALEN);
+	memcpy(ap_addr, wrqu->ap_addr.sa_data, ETH_ALEN);
 	DBGTRACE2(MACSTR, MAC2STR(ap_addr));
 	res = miniport_set_info(wnd, OID_802_11_BSSID, ap_addr, ETH_ALEN);
 
@@ -669,7 +669,7 @@ static int iw_set_ap_address(struct net_device *dev,
 		TRACEEXIT2(return -EINVAL);
 	}
 
-        TRACEEXIT2(return 0);
+	TRACEEXIT2(return 0);
 }
 
 int set_auth_mode(struct wrap_ndis_device *wnd, int auth_mode)
@@ -1188,7 +1188,7 @@ static int iw_set_scan(struct net_device *dev, struct iw_request_info *info,
 static int iw_get_scan(struct net_device *dev, struct iw_request_info *info,
 		       union iwreq_data *wrqu, char *extra)
 {
- 	struct wrap_ndis_device *wnd = netdev_priv(dev);
+	struct wrap_ndis_device *wnd = netdev_priv(dev);
 	unsigned int i, list_len, needed;
 	NDIS_STATUS res;
 	struct ndis_bssid_list *bssid_list;

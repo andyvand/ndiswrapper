@@ -943,7 +943,7 @@ STDCALL void WRAP_EXPORT(KeLowerIrql)
 }
 
 STDCALL KIRQL WRAP_EXPORT(KeAcquireSpinLockRaiseToDpc)
-        (NT_SPIN_LOCK *lock)
+	(NT_SPIN_LOCK *lock)
 {
 	TRACEENTER6("%p", lock);
 	return nt_spin_lock_irql(lock, DISPATCH_LEVEL);

@@ -1193,7 +1193,7 @@ NTSTATUS wrap_submit_irp(struct device_object *pdo, struct irp *irp)
 		status = USBD_STATUS_NOT_SUPPORTED;
 		break;
 	default:
- 		ERROR("ioctl %08X NOT IMPLEMENTED", irp_sl->params.ioctl.code);
+		ERROR("ioctl %08X NOT IMPLEMENTED", irp_sl->params.ioctl.code);
 		status = USBD_STATUS_NOT_SUPPORTED;
 		break;
 	}

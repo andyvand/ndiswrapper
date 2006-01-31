@@ -653,7 +653,7 @@ STDCALL NTSTATUS WRAP_EXPORT(RtlUnicodeStringToInteger)
 	if (!(base == 2 || base == 8 || base == 10 || base == 16))
 		return STATUS_INVALID_PARAMETER;
 
-	for (; i < ustring->length && str[i]; i++) {
+	for ( ; i < ustring->length && str[i]; i++) {
 		int r;
 		char c = tolower((char)str[i]);
 
@@ -676,16 +676,14 @@ STDCALL NTSTATUS WRAP_EXPORT(RtlUnicodeStringToInteger)
 STDCALL NTSTATUS WRAP_EXPORT(RtlIntegerToUnicodeString)
 	(ULONG value, ULONG base, struct unicode_string *ustring)
 {
-	char buf[(sizeof(ULONG) * 2) + 1];
-	struct ansi_string ansi;
+	wchar_t *buf = ustring->buf;
 	int i;
 
-	TRACEENTER2("%u, %u, %p", value, base, ustring);
 	if (base == 0)
 		base = 10;
 	if (!(base == 2 || base == 8 || base == 10 || base == 16))
 		return STATUS_INVALID_PARAMETER;
-	for (i = 0; value && i < sizeof(buf) - 1; i++) {
+	for (i = 0; value && i * sizeof(wchar_t) < ustring->max_length; i++) {
 		int r;
 		r = value % base;
 		value /= base;
@@ -694,16 +692,17 @@ STDCALL NTSTATUS WRAP_EXPORT(RtlIntegerToUnicodeString)
 		else
 			buf[i] = r + 'a' - 10;
 	}
-	buf[i] = 0;
-	RtlInitAnsiString(&ansi, buf);
-	return RtlAnsiStringToUnicodeString(ustring, &ansi, FALSE);
+	if (value)
+		return STATUS_BUFFER_OVERFLOW;
+	ustring->length = i * sizeof(wchar_t);
+	return STATUS_SUCCESS;
 }
 
 STDCALL LARGE_INTEGER WRAP_EXPORT(RtlConvertUlongToLargeInteger)
-	(ULONG i)
+	(ULONG ul)
 {
-	LARGE_INTEGER l = i;
-	return l;
+	LARGE_INTEGER li = ul;
+	return li;
 }
 
 _FASTCALL USHORT WRAP_EXPORT(RtlUShortByteSwap)
@@ -772,7 +771,6 @@ STDCALL void WRAP_EXPORT(RtlFreeUnicodeString)
 	TRACEENTER2("%p", string);
 	if (string == NULL)
 		return;
-
 	if (string->buf)
 		ExFreePool(string->buf);
 	string->length = string->max_length = 0;
@@ -805,9 +803,7 @@ STDCALL NTSTATUS WRAP_EXPORT(RtlQueryRegistryValues)
 	TRACEENTER3("%x, %p", relative, tbl);
 	UNIMPL();
 
-	unicode.buf = path;
-	unicode.length = _win_wcslen(path) * sizeof(wchar_t);
-	unicode.max_length = unicode.length + sizeof(wchar_t);
+	RtlInitUnicodeString(&unicode, path);
 	if (RtlUnicodeStringToAnsiString(&ansi, &unicode, TRUE) ==
 	    STATUS_SUCCESS) {
 		DBGTRACE2("%s", ansi.buf);
@@ -815,9 +811,7 @@ STDCALL NTSTATUS WRAP_EXPORT(RtlQueryRegistryValues)
 	}
 	ret = STATUS_SUCCESS;
 	for (; tbl->name; tbl++) {
-		unicode.buf = tbl->name;
-		unicode.length = _win_wcslen(tbl->name) * sizeof(wchar_t);
-		unicode.max_length = unicode.length + sizeof(wchar_t);
+		RtlInitUnicodeString(&unicode, tbl->name);
 		if (RtlUnicodeStringToAnsiString(&ansi, &unicode, TRUE) ==
 		    STATUS_SUCCESS) {
 			DBGTRACE2("name: %s", ansi.buf);
@@ -881,17 +875,13 @@ STDCALL NTSTATUS WRAP_EXPORT(RtlWriteRegistryValue)
 	TRACEENTER3("%d", relative);
 	UNIMPL();
 
-	unicode.buf = path;
-	unicode.length = _win_wcslen(path) * sizeof(wchar_t);
-	unicode.max_length = unicode.length + sizeof(wchar_t);
+	RtlInitUnicodeString(&unicode, path);
 	if (RtlUnicodeStringToAnsiString(&ansi, &unicode, TRUE) ==
 	    STATUS_SUCCESS) {
 		DBGTRACE2("%s", ansi.buf);
 		RtlFreeAnsiString(&ansi);
 	}
-	unicode.buf = name;
-	unicode.length = _win_wcslen(name) * sizeof(wchar_t);
-	unicode.max_length = unicode.length + sizeof(wchar_t);
+	RtlInitUnicodeString(&unicode, name);
 	if (RtlUnicodeStringToAnsiString(&ansi, &unicode, TRUE) ==
 	    STATUS_SUCCESS) {
 		DBGTRACE2("%s", ansi.buf);
