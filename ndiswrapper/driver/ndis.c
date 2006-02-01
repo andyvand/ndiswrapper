@@ -1600,15 +1600,13 @@ STDCALL BOOLEAN WRAP_EXPORT(NdisMSynchronizeWithInterrupt)
 {
 	BOOLEAN ret;
 	BOOLEAN (*sync_func)(void *ctx) STDCALL;
-	KIRQL irql;
+	unsigned long flags;
 
 	TRACEENTER6("%p %p", func, ctx);
 	sync_func = func;
-	irql = raise_irql(DISPATCH_LEVEL);
-	nt_spin_lock(&ndis_irq->lock);
+	nt_spin_lock_irqsave(&ndis_irq->lock, flags);
 	ret = LIN2WIN1(sync_func, ctx);
-	nt_spin_unlock(&ndis_irq->lock);
-	lower_irql(irql);
+	nt_spin_unlock_irqrestore(&ndis_irq->lock, flags);
 	TRACEEXIT6(return ret);
 }
 
@@ -1739,7 +1737,7 @@ STDCALL void WRAP_EXPORT(NdisMIndicateStatus)
 		}
 		break;
 	default:
-		WARNING("unknown status: %08X", status);
+		DBGTRACE4("unknown status: %08X", status);
 		break;
 	}
 

@@ -1009,12 +1009,13 @@ _FASTCALL LONG WRAP_EXPORT(InterlockedCompareExchange)
 _FASTCALL void WRAP_EXPORT(ExInterlockedAddLargeStatistic)
 	(FASTCALL_DECL_2(LARGE_INTEGER *plint, ULONG n))
 {
+	unsigned long flags;
 	TRACEENTER5("%p = %llu, n = %u", plint, *plint, n);
 	/* not sure if we should disable irqs on all processors or
 	 * only local */
-	nt_spin_lock_irq(&inter_lock);
+	nt_spin_lock_irqsave(&inter_lock, flags);
 	*plint += n;
-	nt_spin_unlock_irq(&inter_lock);
+	nt_spin_unlock_irqrestore(&inter_lock, flags);
 }
 
 STDCALL void *WRAP_EXPORT(ExAllocatePoolWithTag)
