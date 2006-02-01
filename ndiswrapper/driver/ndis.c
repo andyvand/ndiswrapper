@@ -20,7 +20,7 @@
 #include "loader.h"
 
 #define MAX_ALLOCATED_NDIS_PACKETS 20
-#define MAX_ALLOCATED_NDIS_BUFFERS 40
+#define MAX_ALLOCATED_NDIS_BUFFERS 20
 
 extern struct nt_list wrap_drivers;
 extern NT_SPIN_LOCK ntoskernel_lock, loader_lock;
