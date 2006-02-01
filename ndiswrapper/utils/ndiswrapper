@@ -83,7 +83,7 @@ if($ARGV[0] eq "-i" and @ARGV == 2) {
     $res = modalias();
 } elsif($ARGV[0] eq "-v" and @ARGV == 1) {
     printf "utils "; system("/sbin/loadndisdriver -v");
-    printf "driver "; system("modinfo ndiswrapper | grep '^version'");
+    printf "driver "; system("modinfo ndiswrapper | grep -E '^version|^vermagic'");
     $res = 0;
 } else {
     usage();
