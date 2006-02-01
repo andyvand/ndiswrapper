@@ -909,12 +909,12 @@ extern int debug;
 
 #if defined DEBUG
 #undef DBGTRACE
-#define DBGTRACE(level, fmt, ...) do {					\
-		if (debug >= level)					\
-			printk(KERN_INFO "%s (%s:%d): " fmt "\n",	\
-			       DRIVER_NAME, __FUNCTION__,		\
-			       __LINE__ , ## __VA_ARGS__);		\
-	} while (0)
+#define DBGTRACE(level, fmt, ...)				       \
+do {								       \
+	if (debug >= level)					       \
+		printk(KERN_INFO "%s (%s:%d): " fmt "\n", DRIVER_NAME, \
+		       __FUNCTION__, __LINE__ , ## __VA_ARGS__);       \
+} while (0)
 #undef DBG_BLOCK
 #define DBG_BLOCK(level) if (debug >= level)
 #endif

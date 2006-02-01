@@ -22,6 +22,9 @@ CFLAGS += $(shell [ -f $(KSRC)/include/linux/modversions.h ] && \
 		  echo -DEXPORT_SYMTAB -DMODVERSIONS \
 		  -include $(KSRC)/include/linux/modversions.h)
 
+CFLAGS += $(shell grep -q 'struct module \*owner;' \
+		  $(KSRC)/include/linux/usb.h && echo -DUSB_DRIVER_OWNER)
+
 # to produce debug trace, add option "DEBUG=<n>" where <n> is 1 to 6
 ifdef DEBUG
 CFLAGS += -DDEBUG=$(DEBUG) -g -DDEBUG_TIMER 
