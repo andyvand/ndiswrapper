@@ -158,17 +158,19 @@ static int check_nt_hdr(IMAGE_NT_HEADERS *nt_hdr)
 #endif
 
 	/* Validate the image for the current architecture. */
-	if (nt_hdr->FileHeader.Machine !=
 #ifdef CONFIG_X86_64
-	    IMAGE_FILE_MACHINE_AMD64
-#else
-	    IMAGE_FILE_MACHINE_I386
-#endif
-		) {
-		ERROR("driver is not for current architecture "
+	if (nt_hdr->FileHeader.Machine != IMAGE_FILE_MACHINE_AMD64) {
+		ERROR("Windows driver is not 64-bit;"
 		      " (PE signature is %04X)", nt_hdr->FileHeader.Machine);
 		return -EINVAL;
 	}
+#else
+	if (nt_hdr->FileHeader.Machine != IMAGE_FILE_MACHINE_I386) {
+		ERROR("Windows driver is not 32-bit;"
+		      " (PE signature is %04X)", nt_hdr->FileHeader.Machine);
+		return -EINVAL;
+	}
+#endif
 
 	/* Must have attributes */
 #ifdef CONFIG_X86_64

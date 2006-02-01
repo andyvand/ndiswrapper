@@ -149,10 +149,9 @@ void usb_exit_device(struct wrap_device *wd)
 	struct wrap_urb *wrap_urb;
 	KIRQL irql;
 
+	IoAcquireCancelSpinLock(&irql);
 	while (1) {
-		IoAcquireCancelSpinLock(&irql);
 		ent = RemoveHeadList(&wd->usb.wrap_urb_list);
-		IoReleaseCancelSpinLock(irql);
 		if (!ent)
 			break;
 		wrap_urb = container_of(ent, struct wrap_urb, list);
@@ -172,6 +171,7 @@ void usb_exit_device(struct wrap_device *wd)
 	wd->usb.num_alloc_urbs = 0;
 	wd->usb.udev = NULL;
 	wd->usb.intf = NULL;
+	IoReleaseCancelSpinLock(irql);
 	return;
 }
 

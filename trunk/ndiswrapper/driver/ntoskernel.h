@@ -751,7 +751,7 @@ static inline KIRQL raise_irql(KIRQL newirql)
 	 * DISPATCH_LEVEL */
 #ifdef DEBUG_IRQL
 	if (newirql != DISPATCH_LEVEL)
-		WARNING("invalid irql: %d", newirql);
+		ERROR("invalid irql: %d", newirql);
 #endif
 	if (irql < DISPATCH_LEVEL && newirql == DISPATCH_LEVEL) {
 		local_bh_disable();
@@ -762,7 +762,7 @@ static inline KIRQL raise_irql(KIRQL newirql)
 
 static inline void lower_irql(KIRQL oldirql)
 {
-	if (oldirql < DISPATCH_LEVEL && current_irql() == DISPATCH_LEVEL) {
+	if (oldirql < DISPATCH_LEVEL) {
 		preempt_enable_no_resched();
 		local_bh_enable();
 	}
@@ -856,22 +856,30 @@ static inline KIRQL nt_spin_lock_irql(NT_SPIN_LOCK *lock, KIRQL newirql)
 /* lower IRQL to given (lower) IRQL if necessary after unlocking */
 static inline void nt_spin_unlock_irql(NT_SPIN_LOCK *lock, KIRQL oldirql)
 {
-	lower_irql(oldirql);
 	nt_spin_unlock(lock);
+	lower_irql(oldirql);
 }
 
-#define nt_spin_lock_irq(lock)						\
+#ifdef CONFIG_PREEMPT_RT
+#define save_local_irq(flags) raw_local_irq_save(flags)
+#define restore_local_irq(flags) raw_local_irq_restore(flags)
+#else
+#define save_local_irq(flags) local_irq_save(flags)
+#define restore_local_irq(flags) local_irq_restore(flags)
+#endif
+
+#define nt_spin_lock_irqsave(lock, flags)				\
 do {									\
-	local_irq_disable();						\
+	save_local_irq(flags);						\
 	preempt_disable();						\
 	nt_spin_lock(lock);						\
 } while (0)
 
-#define nt_spin_unlock_irq(lock)					\
+#define nt_spin_unlock_irqrestore(lock, flags)				\
 do {									\
 	nt_spin_unlock(lock);						\
+	restore_local_irq(flags);					\
 	preempt_enable_no_resched();					\
-	local_irq_enable();						\
 } while (0)
 
 static inline ULONG SPAN_PAGES(ULONG_PTR ptr, SIZE_T length)
