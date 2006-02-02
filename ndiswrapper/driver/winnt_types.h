@@ -287,6 +287,7 @@ struct mdl {
 				     (mdl)->byteoffset)
 #define MmGetMdlByteOffset(mdl) ((mdl)->byteoffset)
 #define MmGetSystemAddressForMdl(mdl) ((mdl)->mappedsystemva)
+#define MmGetSystemAddressForMdlSafe(mdl, priority) ((mdl)->mappedsystemva)
 /* here addresses are always mapped, so set mappedsystemva,
  too. Hence, mappedsystemva = startva + baseoffset and for an mdl,
  MmGetSystemAddressForMdl == MmGetMdlVirtualAddress */
@@ -300,7 +301,6 @@ struct mdl {
 		(mdl)->startva = (void *)((ULONG)baseva & ~(PAGE_SIZE - 1)); \
 		(mdl)->byteoffset = (ULONG)baseva & (PAGE_SIZE - 1);	\
 		(mdl)->bytecount = length;				\
-		(mdl)->mappedsystemva = baseva;				\
 	}
 
 struct kdevice_queue_entry {
