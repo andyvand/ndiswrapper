@@ -2349,11 +2349,11 @@ STDCALL void WRAP_EXPORT(NdisMSleep)
 {
 	unsigned long delay;
 
-	TRACEENTER4("%p: us: %u", get_current(), us);
+	TRACEENTER4("%p: us: %u", current, us);
 	delay = USEC_TO_HZ(us) + 1;
 	set_current_state(TASK_INTERRUPTIBLE);
 	schedule_timeout(delay);
-	DBGTRACE4("%p: done", get_current());
+	DBGTRACE4("%p: done", current);
 	TRACEEXIT4(return);
 }
 

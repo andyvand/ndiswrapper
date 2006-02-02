@@ -274,7 +274,7 @@ static void miniport_halt(struct wrap_ndis_device *wnd)
 	miniport = &wnd->wd->driver->ndis_driver->miniport;
 	DBGTRACE1("driver halt is at %p", miniport->miniport_halt);
 
-	DBGTRACE2("task: %p, pid: %d", get_current(), get_current()->pid);
+	DBGTRACE2("task: %p, pid: %d", current, current->pid);
 	LIN2WIN1(miniport->miniport_halt, wnd->nmb->adapter_ctx);
 	clear_bit(HW_INITIALIZED, &wnd->hw_status);
 
