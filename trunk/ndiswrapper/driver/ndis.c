@@ -1803,7 +1803,6 @@ NdisMIndicateReceivePacket(struct ndis_miniport_block *nmb,
 		skb = dev_alloc_skb(total_length);
 		if (skb) {
 			skb->dev = wnd->net_dev;
-			buffer = packet->private.buffer_head;
 			while (buffer) {
 				virt = MmGetSystemAddressForMdl(buffer);
 				length = MmGetMdlByteCount(buffer);
