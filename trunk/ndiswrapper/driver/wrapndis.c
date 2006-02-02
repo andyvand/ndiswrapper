@@ -631,10 +631,6 @@ static int start_xmit(struct sk_buff *skb, struct net_device *dev)
 		NdisFreeBuffer(buffer);
 		return 1;
 	}
-	DBG_BLOCK(2) {
-		INFO("length: %d", skb->len);
-		dump_bytes("packet:", skb->data, skb->len);
-	}
 	oob_data = NDIS_PACKET_OOB_DATA(packet);
 	oob_data->skb = skb;
 	nt_spin_lock(&wnd->xmit_lock);

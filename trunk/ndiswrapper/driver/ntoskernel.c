@@ -2029,7 +2029,6 @@ struct mdl *allocate_init_mdl(void *virt, ULONG length)
 		memset(mdl, 0, mdl_size);
 		MmInitializeMdl(mdl, virt, length);
 	}
-	MmBuildMdlForNonPagedPool(mdl);
 	return mdl;
 }
 
@@ -2088,7 +2087,8 @@ STDCALL void *WRAP_EXPORT(MmMapLockedPages)
 	(struct mdl *mdl, KPROCESSOR_MODE access_mode)
 {
 	mdl->flags |= MDL_MAPPED_TO_SYSTEM_VA;
-	return MmGetMdlVirtualAddress(mdl);
+	mdl->mappedsystemva = MmGetMdlVirtualAddress(mdl);
+	return mdl->mappedsystemva;
 }
 
 STDCALL void *WRAP_EXPORT(MmMapLockedPagesSpecifyCache)
@@ -2102,6 +2102,7 @@ STDCALL void *WRAP_EXPORT(MmMapLockedPagesSpecifyCache)
 STDCALL void WRAP_EXPORT(MmUnmapLockedPages)
 	(void *base, struct mdl *mdl)
 {
+	mdl->mappedsystemva = NULL;
 	mdl->flags &= ~MDL_MAPPED_TO_SYSTEM_VA;
 	return;
 }

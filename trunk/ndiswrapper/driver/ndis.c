@@ -25,6 +25,11 @@
 extern struct nt_list wrap_drivers;
 extern NT_SPIN_LOCK ntoskernel_lock, loader_lock;
 
+STDCALL void NdisGetFirstBufferFromPacketSafe
+	(struct ndis_packet *packet, ndis_buffer **first_buffer,
+	 void **first_buffer_va, UINT *first_buffer_length,
+	 UINT *total_buffer_length, enum mm_page_priority priority);
+
 /* ndis_init is called once when module is loaded */
 int ndis_init(void)
 {
@@ -1012,7 +1017,6 @@ STDCALL void WRAP_EXPORT(NdisAllocateBuffer)
 		flags = descr->flags;
 		memset(descr, 0, sizeof(*descr));
 		MmInitializeMdl(descr, virt, length);
-		MmBuildMdlForNonPagedPool(descr);
 		if (flags & MDL_CACHE_ALLOCATED)
 			descr->flags = MDL_CACHE_ALLOCATED;
 	} else {
@@ -1030,6 +1034,7 @@ STDCALL void WRAP_EXPORT(NdisAllocateBuffer)
 		irql = nt_spin_lock_irql(&pool->lock, DISPATCH_LEVEL);
 		pool->num_allocated_descr++;
 	}
+	MmBuildMdlForNonPagedPool(descr);
 	/* NdisFreeBuffer doesn't pass pool, so we store pool
 	 * in unused field 'process' */
 	descr->process = pool;
@@ -1097,11 +1102,8 @@ STDCALL void WRAP_EXPORT(NdisFreeBufferPool)
 STDCALL void WRAP_EXPORT(NdisAdjustBufferLength)
 	(ndis_buffer *buffer, UINT length)
 {
-	TRACEENTER4("%p", buffer);
-	if (buffer)
-		buffer->bytecount = length;
-	else
-		ERROR("invalid buffer");
+	TRACEENTER4("%p, %d", buffer, length);
+	buffer->bytecount = length;
 }
 
 STDCALL void WRAP_EXPORT(NdisQueryBuffer)
@@ -1121,7 +1123,7 @@ STDCALL void WRAP_EXPORT(NdisQueryBufferSafe)
 {
 	TRACEENTER4("%p, %p, %p, %d", buffer, virt, length, priority);
 	if (virt)
-		*virt = MmGetSystemAddressForMdl(buffer);
+		*virt = MmGetSystemAddressForMdlSafe(buffer, priority);
 	*length = MmGetMdlByteCount(buffer);
 	DBGTRACE4("%p, %u", *virt, *length);
 }
@@ -1782,36 +1784,40 @@ NdisMIndicateReceivePacket(struct ndis_miniport_block *nmb,
 	ndis_buffer *buffer;
 	struct ndis_packet *packet;
 	struct sk_buff *skb;
-	int i;
+	int i, length, total_length;
 	struct ndis_packet_oob_data *oob_data;
+	void *virt;
 
-	TRACEENTER3("");
+	TRACEENTER3("%d", nr_packets);
 	for (i = 0; i < nr_packets; i++) {
 		packet = packets[i];
 		if (!packet) {
 			WARNING("empty packet ignored");
 			continue;
 		}
-		/* TODO: we assume a packet has exactly one buffer,
-		 * although at other places we don't */
-		buffer = packet->private.buffer_head;
-		skb = dev_alloc_skb(MmGetMdlByteCount(buffer));
-		DBG_BLOCK(2) {
-			INFO("length: %d", MmGetMdlByteCount(buffer));
-			dump_bytes("packet: ", MmGetMdlVirtualAddress(buffer),
-				   MmGetMdlByteCount(buffer));
-		}
+		/* get total number of bytes in packet */
+		NdisGetFirstBufferFromPacketSafe(packet, &buffer,
+						 &virt, &length, &total_length,
+						 NormalPagePriority);
+		DBGTRACE3("%d, %d", length, total_length);
+		skb = dev_alloc_skb(total_length);
 		if (skb) {
 			skb->dev = wnd->net_dev;
-			eth_copy_and_sum(skb, MmGetMdlVirtualAddress(buffer),
-					 MmGetMdlByteCount(buffer), 0);
-			skb_put(skb, MmGetMdlByteCount(buffer));
+			buffer = packet->private.buffer_head;
+			while (buffer) {
+				virt = MmGetSystemAddressForMdl(buffer);
+				length = MmGetMdlByteCount(buffer);
+				memcpy(skb_put(skb, length), virt, length);
+				buffer = buffer->next;
+			}
 			skb->protocol = eth_type_trans(skb, wnd->net_dev);
-			wnd->stats.rx_bytes += MmGetMdlByteCount(buffer);
+			wnd->stats.rx_bytes += total_length;
 			wnd->stats.rx_packets++;
 			netif_rx(skb);
-		} else
+		} else {
+			WARNING("couldn't allocate skb; packet dropped");
 			wnd->stats.rx_dropped++;
+		}
 
 		oob_data = NDIS_PACKET_OOB_DATA(packet);
 		/* serialized drivers check the status upon return
@@ -1940,11 +1946,14 @@ EthRxIndicateHandler(struct ndis_miniport_block *nmb, void *rx_ctx,
 			skb = dev_alloc_skb(header_size+look_ahead_size+
 					    bytes_txed);
 			if (skb) {
-				memcpy(skb->data, header, header_size);
-				memcpy(skb->data+header_size, look_ahead,
-				       look_ahead_size);
+				memcpy(skb_put(skb, header_size), header,
+				       header_size);
+				memcpy(skb_put(skb, look_ahead_size), 
+				       look_ahead, look_ahead_size);
+				/* TODO: packet may have more than one
+				 * buffer */
 				buffer = packet->private.buffer_head;
-				memcpy(skb->data+header_size+look_ahead_size,
+				memcpy(skb_put(skb, bytes_txed),
 				       MmGetMdlVirtualAddress(buffer),
 				       bytes_txed);
 				skb_size = header_size+look_ahead_size +
@@ -1968,6 +1977,7 @@ EthRxIndicateHandler(struct ndis_miniport_block *nmb, void *rx_ctx,
 			       look_ahead_size);
 			oob_data->look_ahead_size = look_ahead_size;
 		} else {
+			WARNING("packet dropped: %08X", res);
 			NdisFreePacket(packet);
 			wnd->stats.rx_dropped++;
 			TRACEEXIT3(return);
@@ -1976,20 +1986,22 @@ EthRxIndicateHandler(struct ndis_miniport_block *nmb, void *rx_ctx,
 		skb_size = header_size + packet_size;
 		skb = dev_alloc_skb(skb_size);
 		if (skb) {
-			memcpy(skb->data, header, header_size);
-			memcpy(skb->data+header_size, look_ahead, packet_size);
+			memcpy(skb_put(skb, header_size), header, header_size);
+			memcpy(skb_put(skb, packet_size), look_ahead,
+			       packet_size);
 		}
 	}
 
 	if (skb && skb_size > 0) {
 		skb->dev = wnd->net_dev;
-		skb_put(skb, skb_size);
 		skb->protocol = eth_type_trans(skb, wnd->net_dev);
 		wnd->stats.rx_bytes += skb_size;
 		wnd->stats.rx_packets++;
 		netif_rx(skb);
-	} else
+	} else {
+		WARNING("packet dropped");
 		wnd->stats.rx_dropped++;
+	}
 
 	TRACEEXIT3(return);
 }
@@ -2321,7 +2333,7 @@ STDCALL void WRAP_EXPORT(NdisGetFirstBufferFromPacketSafe)
 	TRACEENTER3("%p(%p)", packet, b);
 	*first_buffer = b;
 	if (b) {
-		*first_buffer_va = MmGetMdlVirtualAddress(b);
+		*first_buffer_va = MmGetSystemAddressForMdlSafe(b, priority);
 		*first_buffer_length = *total_buffer_length =
 			MmGetMdlByteCount(b);
 		for (b = b->next; b != NULL; b = b->next)

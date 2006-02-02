@@ -639,10 +639,8 @@ static int wrap_pnp_start_device(struct wrap_device *wd)
 		IoDeleteDevice(pdo);
 		return -EINVAL;
 	}
-	if (pnp_start_device(wd) != STATUS_SUCCESS) {
-		pnp_remove_device(wd);
+	if (pnp_start_device(wd) != STATUS_SUCCESS)
 		return -EINVAL;
-	}
 	return 0;
 }
 
