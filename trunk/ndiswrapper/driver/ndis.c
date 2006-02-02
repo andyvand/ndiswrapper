@@ -25,11 +25,6 @@
 extern struct nt_list wrap_drivers;
 extern NT_SPIN_LOCK ntoskernel_lock, loader_lock;
 
-STDCALL void NdisGetFirstBufferFromPacketSafe
-	(struct ndis_packet *packet, ndis_buffer **first_buffer,
-	 void **first_buffer_va, UINT *first_buffer_length,
-	 UINT *total_buffer_length, enum mm_page_priority priority);
-
 /* ndis_init is called once when module is loaded */
 int ndis_init(void)
 {
@@ -1142,6 +1137,168 @@ STDCALL ULONG WRAP_EXPORT(NdisBufferLength)
 	return MmGetMdlByteCount(buffer);
 }
 
+STDCALL void WRAP_EXPORT(NdisQueryBufferOffset)
+	(ndis_buffer *buffer, UINT *offset, UINT *length)
+{
+	TRACEENTER3("%p", buffer);
+	*offset = MmGetMdlByteOffset(buffer);
+	*length = MmGetMdlByteCount(buffer);
+	DBGTRACE3("%d, %d", *offset, *length);
+}
+
+STDCALL void WRAP_EXPORT(NdisUnchainBufferAtBack)
+	(struct ndis_packet *packet, ndis_buffer **buffer)
+{
+	ndis_buffer *b, *btail;
+
+	TRACEENTER3("%p", packet);
+	b = packet->private.buffer_head;
+	if (!b) {
+		/* no buffer in packet */
+		*buffer = NULL;
+		TRACEEXIT3(return);
+	}
+	btail = packet->private.buffer_tail;
+	*buffer = btail;
+	if (b == btail) {
+		/* one buffer in packet */
+		packet->private.buffer_head = NULL;
+		packet->private.buffer_tail = NULL;
+	} else {
+		while (b->next != btail)
+			b = b->next;
+		packet->private.buffer_tail = b;
+		b->next = NULL;
+	}
+	packet->private.valid_counts = FALSE;
+	TRACEEXIT3(return);
+}
+
+STDCALL void WRAP_EXPORT(NdisUnchainBufferAtFront)
+	(struct ndis_packet *packet, ndis_buffer **buffer)
+{
+	TRACEENTER3("%p", packet);
+	if (packet->private.buffer_head == NULL) {
+		/* no buffer in packet */
+		*buffer = NULL;
+		TRACEEXIT3(return);
+	}
+
+	*buffer = packet->private.buffer_head;
+	if (packet->private.buffer_head == packet->private.buffer_tail) {
+		/* one buffer in packet */
+		packet->private.buffer_head = NULL;
+		packet->private.buffer_tail = NULL;
+	} else
+		packet->private.buffer_head = (*buffer)->next;
+
+	packet->private.valid_counts = FALSE;
+	TRACEEXIT3(return);
+}
+
+STDCALL void WRAP_EXPORT(NdisGetFirstBufferFromPacketSafe)
+	(struct ndis_packet *packet, ndis_buffer **first_buffer,
+	 void **first_buffer_va, UINT *first_buffer_length,
+	 UINT *total_buffer_length, enum mm_page_priority priority)
+{
+	ndis_buffer *b = packet->private.buffer_head;
+
+	TRACEENTER3("%p(%p)", packet, b);
+	*first_buffer = b;
+	if (b) {
+		*first_buffer_va = MmGetSystemAddressForMdlSafe(b, priority);
+		*first_buffer_length = *total_buffer_length =
+			MmGetMdlByteCount(b);
+		for (b = b->next; b != NULL; b = b->next)
+			*total_buffer_length += MmGetMdlByteCount(b);
+	} else {
+		*first_buffer_va = NULL;
+		*first_buffer_length = 0;
+		*total_buffer_length = 0;
+	}
+	DBGTRACE3("%p, %d, %d", *first_buffer_va, *first_buffer_length,
+		  *total_buffer_length);
+	TRACEEXIT3(return);
+}
+
+STDCALL void WRAP_EXPORT(NdisGetFirstBufferFromPacket)
+	(struct ndis_packet *packet, ndis_buffer **first_buffer,
+	 void **first_buffer_va, UINT *first_buffer_length,
+	 UINT *total_buffer_length, enum mm_page_priority priority)
+{
+	NdisGetFirstBufferFromPacketSafe(packet, first_buffer,
+					 first_buffer_va, first_buffer_length,
+					 total_buffer_length,
+					 NormalPagePriority);
+}
+
+STDCALL void WRAP_EXPORT(NdisMStartBufferPhysicalMapping)
+	(struct ndis_miniport_block *nmb, ndis_buffer *buf,
+	 ULONG phy_map_reg, BOOLEAN write_to_dev,
+	 struct ndis_phy_addr_unit *phy_addr_array, UINT *array_size)
+{
+	struct wrap_ndis_device *wnd = nmb->wnd;
+	TRACEENTER3("phy_map_reg: %u", phy_map_reg);
+
+	if (!write_to_dev) {
+		ERROR( "dma from device not supported (%d)", write_to_dev);
+		*array_size = 0;
+		return;
+	}
+
+	if (phy_map_reg > wnd->map_count) {
+		ERROR("map_register too big (%u > %u)",
+		      phy_map_reg, wnd->map_count);
+		*array_size = 0;
+		return;
+	}
+
+	if (wnd->map_dma_addr[phy_map_reg] != 0) {
+//		ERROR("map register already used (%lu)", phy_map_reg);
+		*array_size = 1;
+		return;
+	}
+
+	// map buffer
+	phy_addr_array[0].phy_addr =
+		PCI_DMA_MAP_SINGLE(wnd->wd->pci.pdev,
+				   MmGetMdlVirtualAddress(buf),
+				   MmGetMdlByteCount(buf), PCI_DMA_TODEVICE);
+	phy_addr_array[0].length = MmGetMdlByteCount(buf);
+
+	*array_size = 1;
+
+	// save mapping index
+	wnd->map_dma_addr[phy_map_reg] = phy_addr_array[0].phy_addr;
+}
+
+STDCALL void WRAP_EXPORT(NdisMCompleteBufferPhysicalMapping)
+	(struct ndis_miniport_block *nmb, ndis_buffer *buf,
+	 ULONG phy_map_reg)
+{
+	struct wrap_ndis_device *wnd = nmb->wnd;
+	TRACEENTER3("%p %u (%u)", wnd, phy_map_reg, wnd->map_count);
+
+	if (phy_map_reg > wnd->map_count) {
+		ERROR("map_register too big (%u > %u)",
+		      phy_map_reg, wnd->map_count);
+		return;
+	}
+
+	if (wnd->map_dma_addr[phy_map_reg] == 0) {
+//		ERROR("map register not used (%lu)", phy_map_reg);
+		return;
+	}
+
+	// unmap buffer
+	PCI_DMA_UNMAP_SINGLE(wnd->wd->pci.pdev,
+			     wnd->map_dma_addr[phy_map_reg],
+			     MmGetMdlByteCount(buf), PCI_DMA_TODEVICE);
+
+	// clear mapping index
+	wnd->map_dma_addr[phy_map_reg] = 0;
+}
+
 STDCALL void WRAP_EXPORT(NdisAllocatePacketPoolEx)
 	(NDIS_STATUS *status, struct ndis_packet_pool **pool_handle,
 	 UINT num_descr, UINT overflowsize, UINT proto_rsvd_length)
@@ -1313,6 +1470,85 @@ STDCALL void WRAP_EXPORT(NdisFreePacket)
 		nt_spin_unlock_irql(&pool->lock, irql);
 	}
 	TRACEEXIT4(return);
+}
+
+STDCALL void WRAP_EXPORT(NdisCopyFromPacketToPacketSafe)
+	(struct ndis_packet *dst, UINT dst_offset, UINT num_to_copy,
+	 struct ndis_packet *src, UINT src_offset, UINT *num_copied,
+	 enum mm_page_priority priority)
+{
+	UINT dst_left, src_left, left, done;
+	ndis_buffer *dst_buf;
+	ndis_buffer *src_buf;
+
+	TRACEENTER4("");
+	if (!dst || !src) {
+		*num_copied = 0;
+		TRACEEXIT4(return);
+	}
+
+	dst_buf = dst->private.buffer_head;
+	src_buf = src->private.buffer_head;
+
+	if (!dst_buf || !src_buf) {
+		*num_copied = 0;
+		TRACEEXIT4(return);
+	}
+	dst_left = MmGetMdlByteCount(dst_buf) - dst_offset;
+	src_left = MmGetMdlByteCount(src_buf) - src_offset;
+
+	left = min(src_left, dst_left);
+	left = min(left, num_to_copy);
+	memcpy(MmGetSystemAddressForMdlSafe(dst_buf, priority) + dst_offset,
+	       MmGetSystemAddressForMdlSafe(src_buf, priority) + src_offset,
+	       left);
+
+	done = num_to_copy - left;
+	while (done > 0) {
+		if (left == dst_left) {
+			dst_buf = dst_buf->next;
+			if (!dst_buf)
+				break;
+			dst_left = MmGetMdlByteCount(dst_buf);
+		} else
+			dst_left -= left;
+		if (left == src_left) {
+			src_buf = src_buf->next;
+			if (!src_buf)
+				break;
+			src_left = MmGetMdlByteCount(src_buf);
+		} else
+			src_left -= left;
+
+		left = min(src_left, dst_left);
+		left = min(left, done);
+		memcpy(MmGetSystemAddressForMdlSafe(dst_buf, priority),
+		       MmGetSystemAddressForMdlSafe(src_buf, priority), left);
+		done -= left;
+	}
+	*num_copied = num_to_copy - done;
+	TRACEEXIT4(return);
+}
+
+STDCALL void WRAP_EXPORT(NdisCopyFromPacketToPacket)
+	(struct ndis_packet *dst, UINT dst_offset, UINT num_to_copy,
+	 struct ndis_packet *src, UINT src_offset, UINT *num_copied)
+{
+	NdisCopyFromPacketToPacketSafe(dst, dst_offset, num_to_copy,
+				       src, src_offset, num_copied,
+				       NormalPagePriority);
+	return;
+}
+
+STDCALL void WRAP_EXPORT(NdisIMCopySendPerPacketInfo)
+	(struct ndis_packet *dst, struct ndis_packet *src)
+{
+	struct ndis_packet_oob_data *dst_oob, *src_oob;
+	dst_oob = NDIS_PACKET_OOB_DATA(dst);
+	src_oob = NDIS_PACKET_OOB_DATA(src);
+	memcpy(&dst_oob->extension, &src_oob->extension,
+	       sizeof(dst_oob->extension));
+	return;
 }
 
 STDCALL void WRAP_EXPORT(NdisSend)
@@ -1796,8 +2032,8 @@ NdisMIndicateReceivePacket(struct ndis_miniport_block *nmb,
 			continue;
 		}
 		/* get total number of bytes in packet */
-		NdisGetFirstBufferFromPacketSafe(packet, &buffer,
-						 &virt, &length, &total_length,
+		NdisGetFirstBufferFromPacketSafe(packet, &buffer, &virt,
+						 &length, &total_length,
 						 NormalPagePriority);
 		DBGTRACE3("%d, %d", length, total_length);
 		skb = dev_alloc_skb(total_length);
@@ -1949,12 +2185,14 @@ EthRxIndicateHandler(struct ndis_miniport_block *nmb, void *rx_ctx,
 				       header_size);
 				memcpy(skb_put(skb, look_ahead_size), 
 				       look_ahead, look_ahead_size);
-				/* TODO: packet may have more than one
-				 * buffer */
 				buffer = packet->private.buffer_head;
-				memcpy(skb_put(skb, bytes_txed),
-				       MmGetMdlVirtualAddress(buffer),
-				       bytes_txed);
+				while (buffer) {
+					int length = MmGetMdlByteCount(buffer);
+					memcpy(skb_put(skb, length),
+					       MmGetSystemAddressForMdl(buffer),
+					       length);
+					buffer = buffer->next;
+				}
 				skb_size = header_size+look_ahead_size +
 					bytes_txed;
 				NdisFreePacket(packet);
@@ -2015,6 +2253,7 @@ NdisMTransferDataComplete(struct ndis_miniport_block *nmb,
 	struct sk_buff *skb;
 	unsigned int skb_size;
 	struct ndis_packet_oob_data *oob_data;
+	ndis_buffer *buffer;
 
 	TRACEENTER3("wnd = %p, packet = %p, bytes_txed = %d",
 		    wnd, packet, bytes_txed);
@@ -2037,13 +2276,17 @@ NdisMTransferDataComplete(struct ndis_miniport_block *nmb,
 	}
 
 	skb->dev = wnd->net_dev;
-	memcpy(skb->data, oob_data->header, sizeof(oob_data->header));
-	memcpy(skb->data + sizeof(oob_data->header), oob_data->look_ahead,
+	memcpy(skb_put(skb, sizeof(oob_data->header)),
+	       oob_data->header, sizeof(oob_data->header));
+	memcpy(skb_put(skb, oob_data->look_ahead_size), oob_data->look_ahead,
 	       oob_data->look_ahead_size);
-	memcpy(skb->data + sizeof(oob_data->header) +
-	       oob_data->look_ahead_size,
-	       MmGetMdlVirtualAddress(packet->private.buffer_head),
-	       bytes_txed);
+	buffer = packet->private.buffer_head;
+	while (buffer) {
+		int length = MmGetMdlByteCount(buffer);
+		memcpy(skb_put(skb, length),
+		       MmGetSystemAddressForMdl(buffer), length);
+		buffer = buffer->next;
+	}
 	kfree(oob_data->look_ahead);
 	NdisFreePacket(packet);
 	skb_put(skb, skb_size);
@@ -2193,15 +2436,6 @@ STDCALL ULONG WRAP_EXPORT(NdisMGetDmaAlignment)
 #endif
 }
 
-STDCALL void WRAP_EXPORT(NdisQueryBufferOffset)
-	(ndis_buffer *buffer, UINT *offset, UINT *length)
-{
-	TRACEENTER3("%p", buffer);
-	*offset = MmGetMdlByteOffset(buffer);
-	*length = MmGetMdlByteCount(buffer);
-	DBGTRACE3("%d, %d", *offset, *length);
-}
-
 STDCALL CHAR WRAP_EXPORT(NdisSystemProcessorCount)
 	(void)
 {
@@ -2270,237 +2504,6 @@ STDCALL NDIS_STATUS WRAP_EXPORT(NdisScheduleWorkItem)
 				ndis_sched_work_item->ctx, TRUE);
 
 	TRACEEXIT3(return NDIS_STATUS_SUCCESS);
-}
-
-STDCALL void WRAP_EXPORT(NdisUnchainBufferAtBack)
-	(struct ndis_packet *packet, ndis_buffer **buffer)
-{
-	ndis_buffer *b, *btail;
-
-	TRACEENTER3("%p", packet);
-	b = packet->private.buffer_head;
-	if (!b) {
-		/* no buffer in packet */
-		*buffer = NULL;
-		TRACEEXIT3(return);
-	}
-	btail = packet->private.buffer_tail;
-	*buffer = btail;
-	if (b == btail) {
-		/* one buffer in packet */
-		packet->private.buffer_head = NULL;
-		packet->private.buffer_tail = NULL;
-	} else {
-		while (b->next != btail)
-			b = b->next;
-		packet->private.buffer_tail = b;
-		b->next = NULL;
-	}
-	packet->private.valid_counts = FALSE;
-	TRACEEXIT3(return);
-}
-
-STDCALL void WRAP_EXPORT(NdisUnchainBufferAtFront)
-	(struct ndis_packet *packet, ndis_buffer **buffer)
-{
-	TRACEENTER3("%p", packet);
-	if (packet->private.buffer_head == NULL) {
-		/* no buffer in packet */
-		*buffer = NULL;
-		TRACEEXIT3(return);
-	}
-
-	*buffer = packet->private.buffer_head;
-	if (packet->private.buffer_head == packet->private.buffer_tail) {
-		/* one buffer in packet */
-		packet->private.buffer_head = NULL;
-		packet->private.buffer_tail = NULL;
-	} else
-		packet->private.buffer_head = (*buffer)->next;
-
-	packet->private.valid_counts = FALSE;
-	TRACEEXIT3(return);
-}
-
-STDCALL void WRAP_EXPORT(NdisGetFirstBufferFromPacketSafe)
-	(struct ndis_packet *packet, ndis_buffer **first_buffer,
-	 void **first_buffer_va, UINT *first_buffer_length,
-	 UINT *total_buffer_length, enum mm_page_priority priority)
-{
-	ndis_buffer *b = packet->private.buffer_head;
-
-	TRACEENTER3("%p(%p)", packet, b);
-	*first_buffer = b;
-	if (b) {
-		*first_buffer_va = MmGetSystemAddressForMdlSafe(b, priority);
-		*first_buffer_length = *total_buffer_length =
-			MmGetMdlByteCount(b);
-		for (b = b->next; b != NULL; b = b->next)
-			*total_buffer_length += MmGetMdlByteCount(b);
-	} else {
-		*first_buffer_va = NULL;
-		*first_buffer_length = 0;
-		*total_buffer_length = 0;
-	}
-	DBGTRACE3("%p, %d, %d", *first_buffer_va, *first_buffer_length,
-		  *total_buffer_length);
-	TRACEEXIT3(return);
-}
-
-STDCALL void WRAP_EXPORT(NdisGetFirstBufferFromPacket)
-	(struct ndis_packet *packet, ndis_buffer **first_buffer,
-	 void **first_buffer_va, UINT *first_buffer_length,
-	 UINT *total_buffer_length, enum mm_page_priority priority)
-{
-	NdisGetFirstBufferFromPacketSafe(packet, first_buffer,
-					 first_buffer_va, first_buffer_length,
-					 total_buffer_length,
-					 NormalPagePriority);
-}
-
-STDCALL void WRAP_EXPORT(NdisCopyFromPacketToPacketSafe)
-	(struct ndis_packet *dst, UINT dst_offset, UINT num_to_copy,
-	 struct ndis_packet *src, UINT src_offset, UINT *num_copied,
-	 enum mm_page_priority priority)
-{
-	UINT dst_left, src_left, left, done;
-	ndis_buffer *dst_buf;
-	ndis_buffer *src_buf;
-
-	TRACEENTER4("");
-	if (!dst || !src) {
-		*num_copied = 0;
-		TRACEEXIT4(return);
-	}
-
-	dst_buf = dst->private.buffer_head;
-	src_buf = src->private.buffer_head;
-
-	if (!dst_buf || !src_buf) {
-		*num_copied = 0;
-		TRACEEXIT4(return);
-	}
-	dst_left = MmGetMdlByteCount(dst_buf) - dst_offset;
-	src_left = MmGetMdlByteCount(src_buf) - src_offset;
-
-	left = min(src_left, dst_left);
-	left = min(left, num_to_copy);
-	memcpy(MmGetMdlVirtualAddress(dst_buf) + dst_offset,
-	       MmGetMdlVirtualAddress(src_buf) + src_offset, left);
-
-	done = num_to_copy - left;
-	while (done > 0) {
-		if (left == dst_left) {
-			dst_buf = dst_buf->next;
-			if (!dst_buf)
-				break;
-			dst_left = MmGetMdlByteCount(dst_buf);
-		} else
-			dst_left -= left;
-		if (left == src_left) {
-			src_buf = src_buf->next;
-			if (!src_buf)
-				break;
-			src_left = MmGetMdlByteCount(src_buf);
-		} else
-			src_left -= left;
-
-		left = min(src_left, dst_left);
-		left = min(left, done);
-		memcpy(MmGetMdlVirtualAddress(dst_buf),
-		       MmGetMdlVirtualAddress(src_buf), left);
-		done -= left;
-	}
-	*num_copied = num_to_copy - done;
-	TRACEEXIT4(return);
-}
-
-STDCALL void WRAP_EXPORT(NdisCopyFromPacketToPacket)
-	(struct ndis_packet *dst, UINT dst_offset, UINT num_to_copy,
-	 struct ndis_packet *src, UINT src_offset, UINT *num_copied)
-{
-	NdisCopyFromPacketToPacketSafe(dst, dst_offset, num_to_copy,
-				       src, src_offset, num_copied,
-				       NormalPagePriority);
-	return;
-}
-
-STDCALL void WRAP_EXPORT(NdisIMCopySendPerPacketInfo)
-	(struct ndis_packet *dst, struct ndis_packet *src)
-{
-	struct ndis_packet_oob_data *dst_oob, *src_oob;
-	dst_oob = NDIS_PACKET_OOB_DATA(dst);
-	src_oob = NDIS_PACKET_OOB_DATA(src);
-	memcpy(&dst_oob->extension, &src_oob->extension,
-	       sizeof(dst_oob->extension));
-	return;
-}
-
-STDCALL void WRAP_EXPORT(NdisMStartBufferPhysicalMapping)
-	(struct ndis_miniport_block *nmb, ndis_buffer *buf,
-	 ULONG phy_map_reg, BOOLEAN write_to_dev,
-	 struct ndis_phy_addr_unit *phy_addr_array, UINT *array_size)
-{
-	struct wrap_ndis_device *wnd = nmb->wnd;
-	TRACEENTER3("phy_map_reg: %u", phy_map_reg);
-
-	if (!write_to_dev) {
-		ERROR( "dma from device not supported (%d)", write_to_dev);
-		*array_size = 0;
-		return;
-	}
-
-	if (phy_map_reg > wnd->map_count) {
-		ERROR("map_register too big (%u > %u)",
-		      phy_map_reg, wnd->map_count);
-		*array_size = 0;
-		return;
-	}
-
-	if (wnd->map_dma_addr[phy_map_reg] != 0) {
-//		ERROR("map register already used (%lu)", phy_map_reg);
-		*array_size = 1;
-		return;
-	}
-
-	// map buffer
-	phy_addr_array[0].phy_addr =
-		PCI_DMA_MAP_SINGLE(wnd->wd->pci.pdev,
-				   MmGetMdlVirtualAddress(buf),
-				   MmGetMdlByteCount(buf), PCI_DMA_TODEVICE);
-	phy_addr_array[0].length = MmGetMdlByteCount(buf);
-
-	*array_size = 1;
-
-	// save mapping index
-	wnd->map_dma_addr[phy_map_reg] = phy_addr_array[0].phy_addr;
-}
-
-STDCALL void WRAP_EXPORT(NdisMCompleteBufferPhysicalMapping)
-	(struct ndis_miniport_block *nmb, ndis_buffer *buf,
-	 ULONG phy_map_reg)
-{
-	struct wrap_ndis_device *wnd = nmb->wnd;
-	TRACEENTER3("%p %u (%u)", wnd, phy_map_reg, wnd->map_count);
-
-	if (phy_map_reg > wnd->map_count) {
-		ERROR("map_register too big (%u > %u)",
-		      phy_map_reg, wnd->map_count);
-		return;
-	}
-
-	if (wnd->map_dma_addr[phy_map_reg] == 0) {
-//		ERROR("map register not used (%lu)", phy_map_reg);
-		return;
-	}
-
-	// unmap buffer
-	PCI_DMA_UNMAP_SINGLE(wnd->wd->pci.pdev,
-			     wnd->map_dma_addr[phy_map_reg],
-			     MmGetMdlByteCount(buf), PCI_DMA_TODEVICE);
-
-	// clear mapping index
-	wnd->map_dma_addr[phy_map_reg] = 0;
 }
 
 STDCALL void WRAP_EXPORT(NdisMGetDeviceProperty)

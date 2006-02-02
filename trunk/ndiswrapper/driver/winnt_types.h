@@ -288,9 +288,6 @@ struct mdl {
 #define MmGetMdlByteOffset(mdl) ((mdl)->byteoffset)
 #define MmGetSystemAddressForMdl(mdl) ((mdl)->mappedsystemva)
 #define MmGetSystemAddressForMdlSafe(mdl, priority) ((mdl)->mappedsystemva)
-/* here addresses are always mapped, so set mappedsystemva,
- too. Hence, mappedsystemva = startva + baseoffset and for an mdl,
- MmGetSystemAddressForMdl == MmGetMdlVirtualAddress */
 #define MmInitializeMdl(mdl, baseva, length) {				\
 		(mdl)->next = NULL;					\
 		(mdl)->size = MmSizeOfMdl(baseva, length);		\
