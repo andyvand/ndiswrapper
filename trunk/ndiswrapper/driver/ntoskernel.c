@@ -28,7 +28,8 @@
  * requests an MDL for a bigger region, we allocate it with kmalloc;
  * otherwise, we allocate from the pool */
 #define CACHE_MDL_PAGES 2
-#define CACHE_MDL_SIZE (sizeof(struct mdl) + (sizeof(ULONG) * CACHE_MDL_PAGES))
+#define CACHE_MDL_SIZE (sizeof(struct mdl) + \
+			(sizeof(PFN_NUMBER) * CACHE_MDL_PAGES))
 struct wrap_mdl {
 	struct nt_list list;
 	char mdl[CACHE_MDL_SIZE];
@@ -2079,7 +2080,17 @@ STDCALL void WRAP_EXPORT(MmBuildMdlForNonPagedPool)
 	(struct mdl *mdl)
 {
 	mdl->flags |= MDL_SOURCE_IS_NONPAGED_POOL;
-	mdl->mappedsystemva = MmGetMdlVirtualAddress(mdl);
+	MmGetSystemAddressForMdl(mdl) = MmGetMdlVirtualAddress(mdl);
+	/*
+	PFN_NUMBER *mdl_pages;
+	int i, n;
+	n = SPAN_PAGES((ULONG_PTR)MmGetSystemAddressForMdl(mdl),
+		       MmGetMdlByteCount(mdl));
+	mdl_pages = MmGetMdlPfnArray(mdl);
+	for (i = 0; i < n; i++)
+		*(mdl_pages++) = (PFN_NUMBER)MmGetSystemAddressForMdl(mdl) +
+			i * PAGE_SIZE;
+	*/
 	return;
 }
 
@@ -2087,7 +2098,6 @@ STDCALL void *WRAP_EXPORT(MmMapLockedPages)
 	(struct mdl *mdl, KPROCESSOR_MODE access_mode)
 {
 	mdl->flags |= MDL_MAPPED_TO_SYSTEM_VA;
-	mdl->mappedsystemva = MmGetMdlVirtualAddress(mdl);
 	return mdl->mappedsystemva;
 }
 
@@ -2102,7 +2112,6 @@ STDCALL void *WRAP_EXPORT(MmMapLockedPagesSpecifyCache)
 STDCALL void WRAP_EXPORT(MmUnmapLockedPages)
 	(void *base, struct mdl *mdl)
 {
-	mdl->mappedsystemva = NULL;
 	mdl->flags &= ~MDL_MAPPED_TO_SYSTEM_VA;
 	return;
 }

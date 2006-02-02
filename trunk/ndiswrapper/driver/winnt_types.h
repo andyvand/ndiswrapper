@@ -174,6 +174,8 @@ typedef ULONG_PTR SIZE_T;
 typedef ULONG_PTR KAFFINITY;
 typedef ULONG ACCESS_MASK;
 
+typedef unsigned long PFN_NUMBER;
+
 /* non-negative numbers indicate success */
 #define NT_SUCCESS(status)  ((NTSTATUS)(status) >= 0)
 
@@ -288,15 +290,14 @@ struct mdl {
 #define MmGetMdlByteOffset(mdl) ((mdl)->byteoffset)
 #define MmGetSystemAddressForMdl(mdl) ((mdl)->mappedsystemva)
 #define MmGetSystemAddressForMdlSafe(mdl, priority) ((mdl)->mappedsystemva)
+#define MmGetMdlPfnArray(mdl) ((PFN_NUMBER *)(mdl + 1))
 #define MmInitializeMdl(mdl, baseva, length) {				\
 		(mdl)->next = NULL;					\
 		(mdl)->size = MmSizeOfMdl(baseva, length);		\
-		(mdl)->flags = (MDL_SOURCE_IS_NONPAGED_POOL |		\
-				MDL_MAPPED_TO_SYSTEM_VA |		\
-				MDL_PAGES_LOCKED |			\
-				MDL_ALLOCATED_FIXED_SIZE);		\
-		(mdl)->startva = (void *)((ULONG)baseva & ~(PAGE_SIZE - 1)); \
-		(mdl)->byteoffset = (ULONG)baseva & (PAGE_SIZE - 1);	\
+		(mdl)->flags = 0;					\
+ 		(mdl)->startva =					\
+			(void *)((unsigned long)baseva & PAGE_MASK);	\
+ 		(mdl)->byteoffset = (ULONG)offset_in_page(baseva);	\
 		(mdl)->bytecount = length;				\
 	}
 
