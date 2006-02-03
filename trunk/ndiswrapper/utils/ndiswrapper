@@ -350,9 +350,9 @@ sub installStatus {
     if ($sys eq 0 || $inf eq 0 || $conf eq 0) {
 	$ret = "invalid driver!";
     } else {
-	$ret = "\tdriver present " if $conf eq 1;
-	$ret = "\tdriver present, hardware present " if $conf eq 2;
-	$ret = "\tdriver present, hardware present " if $conf eq 3;
+	$ret = "\tdriver installed " if $conf eq 1;
+	$ret = "\tdriver installed, hardware present " if $conf eq 2;
+	$ret = "\tdriver installed, hardware present " if $conf eq 3;
     }
     return $ret;
 }
