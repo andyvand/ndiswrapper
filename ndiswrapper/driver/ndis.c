@@ -841,7 +841,7 @@ STDCALL void WRAP_EXPORT(NdisInitializeReadWriteLock)
 
 STDCALL NDIS_STATUS WRAP_EXPORT(NdisMAllocateMapRegisters)
 	(struct ndis_miniport_block *nmb, UINT dmachan,
-	 NDIS_DMA_SIZE dmasize, ULONG basemap, ULONG size)
+	 NDIS_DMA_SIZE dmasize, ULONG basemap, ULONG max_buf_size)
 {
 	struct wrap_ndis_device *wnd = nmb->wnd;
 	TRACEENTER2("%d %d %d %d", dmachan, dmasize, basemap, size);
@@ -849,18 +849,23 @@ STDCALL NDIS_STATUS WRAP_EXPORT(NdisMAllocateMapRegisters)
 //	if (basemap > 64)
 //		return NDIS_STATUS_RESOURCES;
 
-	if (wnd->map_count > 0) {
+	/* TODO: should we allocate max_buf_size % PAGE_SIZE + 1
+	 * entries for each map? */
+	if (max_buf_size > PAGE_SIZE)
+		WARNING("buffer size too big: %u", max_buf_size);
+
+	if (wnd->dma_map_count > 0) {
 		DBGTRACE2("%s: map registers already allocated: %u",
-			  wnd->net_dev->name, wnd->map_count);
+			  wnd->net_dev->name, wnd->dma_map_count);
 		TRACEEXIT2(return NDIS_STATUS_RESOURCES);
 	}
 
-	wnd->map_count = basemap;
-	wnd->map_dma_addr = kmalloc(basemap * sizeof(dma_addr_t),
+	wnd->dma_map_count = basemap;
+	wnd->dma_map_addr = kmalloc(basemap * sizeof(dma_addr_t),
 				   GFP_KERNEL);
-	if (!wnd->map_dma_addr)
+	if (!wnd->dma_map_addr)
 		TRACEEXIT2(return NDIS_STATUS_RESOURCES);
-	memset(wnd->map_dma_addr, 0, basemap * sizeof(dma_addr_t));
+	memset(wnd->dma_map_addr, 0, basemap * sizeof(dma_addr_t));
 
 	TRACEEXIT2(return NDIS_STATUS_SUCCESS);
 }
@@ -871,9 +876,9 @@ STDCALL void WRAP_EXPORT(NdisMFreeMapRegisters)
 	struct wrap_ndis_device *wnd = nmb->wnd;
 	TRACEENTER2("wnd: %p", wnd);
 
-	if (wnd->map_dma_addr != NULL)
-		kfree(wnd->map_dma_addr);
-	wnd->map_count = 0;
+	if (wnd->dma_map_addr != NULL)
+		kfree(wnd->dma_map_addr);
+	wnd->dma_map_count = 0;
 	TRACEEXIT2(return);
 }
 
@@ -885,11 +890,8 @@ STDCALL void WRAP_EXPORT(NdisMAllocateSharedMemory)
 	struct wrap_device *wd = nmb->wnd->wd;
 
 	TRACEENTER3("map count: %d, size: %u, cached: %d",
-		    nmb->wnd->map_count, size, cached);
+		    nmb->wnd->dma_map_count, size, cached);
 
-//	if (wnd->map_dma_addr == NULL)
-//		ERROR("%s: DMA map address is not set!\n", __FUNCTION__);
-	/* FIXME: do USB drivers call this? */
 	*virt = PCI_DMA_ALLOC_COHERENT(wd->pci.pdev, size, &p);
 	if (!*virt) {
 		ERROR("failed to allocate DMA coherent memory; "
@@ -1209,7 +1211,7 @@ STDCALL void WRAP_EXPORT(NdisGetFirstBufferFromPacketSafe)
 		*first_buffer_va = MmGetSystemAddressForMdlSafe(b, priority);
 		*first_buffer_length = *total_buffer_length =
 			MmGetMdlByteCount(b);
-		for (b = b->next; b != NULL; b = b->next)
+		for (b = b->next; b; b = b->next)
 			*total_buffer_length += MmGetMdlByteCount(b);
 	} else {
 		*first_buffer_va = NULL;
@@ -1234,11 +1236,11 @@ STDCALL void WRAP_EXPORT(NdisGetFirstBufferFromPacket)
 
 STDCALL void WRAP_EXPORT(NdisMStartBufferPhysicalMapping)
 	(struct ndis_miniport_block *nmb, ndis_buffer *buf,
-	 ULONG phy_map_reg, BOOLEAN write_to_dev,
+	 ULONG map_index, BOOLEAN write_to_dev,
 	 struct ndis_phy_addr_unit *phy_addr_array, UINT *array_size)
 {
 	struct wrap_ndis_device *wnd = nmb->wnd;
-	TRACEENTER3("phy_map_reg: %u", phy_map_reg);
+	TRACEENTER3("map_index: %u", map_index);
 
 	if (!write_to_dev) {
 		ERROR( "dma from device not supported (%d)", write_to_dev);
@@ -1246,15 +1248,14 @@ STDCALL void WRAP_EXPORT(NdisMStartBufferPhysicalMapping)
 		return;
 	}
 
-	if (phy_map_reg > wnd->map_count) {
-		ERROR("map_register too big (%u > %u)",
-		      phy_map_reg, wnd->map_count);
+	if (map_index >= wnd->dma_map_count) {
+		ERROR("map_register too big (%u >= %u)",
+		      map_index, wnd->dma_map_count);
 		*array_size = 0;
 		return;
 	}
 
-	if (wnd->map_dma_addr[phy_map_reg] != 0) {
-//		ERROR("map register already used (%lu)", phy_map_reg);
+	if (wnd->dma_map_addr[map_index] != 0) {
 		*array_size = 1;
 		return;
 	}
@@ -1262,41 +1263,40 @@ STDCALL void WRAP_EXPORT(NdisMStartBufferPhysicalMapping)
 	// map buffer
 	phy_addr_array[0].phy_addr =
 		PCI_DMA_MAP_SINGLE(wnd->wd->pci.pdev,
-				   MmGetMdlVirtualAddress(buf),
+				   MmGetSystemAddressForMdl(buf),
 				   MmGetMdlByteCount(buf), PCI_DMA_TODEVICE);
 	phy_addr_array[0].length = MmGetMdlByteCount(buf);
 
 	*array_size = 1;
 
-	// save mapping index
-	wnd->map_dma_addr[phy_map_reg] = phy_addr_array[0].phy_addr;
+	// save map address
+	wnd->dma_map_addr[map_index] = phy_addr_array[0].phy_addr;
 }
 
 STDCALL void WRAP_EXPORT(NdisMCompleteBufferPhysicalMapping)
-	(struct ndis_miniport_block *nmb, ndis_buffer *buf,
-	 ULONG phy_map_reg)
+	(struct ndis_miniport_block *nmb, ndis_buffer *buf, ULONG map_index)
 {
 	struct wrap_ndis_device *wnd = nmb->wnd;
-	TRACEENTER3("%p %u (%u)", wnd, phy_map_reg, wnd->map_count);
+	TRACEENTER3("%p %u (%u)", wnd, map_index, wnd->dma_map_count);
 
-	if (phy_map_reg > wnd->map_count) {
-		ERROR("map_register too big (%u > %u)",
-		      phy_map_reg, wnd->map_count);
+	if (map_index >= wnd->dma_map_count) {
+		ERROR("map_register too big (%u >= %u)",
+		      map_index, wnd->dma_map_count);
 		return;
 	}
 
-	if (wnd->map_dma_addr[phy_map_reg] == 0) {
-//		ERROR("map register not used (%lu)", phy_map_reg);
+	if (wnd->dma_map_addr[map_index] == 0) {
+//		ERROR("map register not used (%lu)", map_index);
 		return;
 	}
 
 	// unmap buffer
 	PCI_DMA_UNMAP_SINGLE(wnd->wd->pci.pdev,
-			     wnd->map_dma_addr[phy_map_reg],
+			     wnd->dma_map_addr[map_index],
 			     MmGetMdlByteCount(buf), PCI_DMA_TODEVICE);
 
-	// clear mapping index
-	wnd->map_dma_addr[phy_map_reg] = 0;
+	// clear map address
+	wnd->dma_map_addr[map_index] = 0;
 }
 
 STDCALL void WRAP_EXPORT(NdisAllocatePacketPoolEx)
@@ -1620,7 +1620,6 @@ STDCALL void WRAP_EXPORT(NdisMInitializeTimer)
 {
 	TRACEENTER4("timer: %p, func: %p, ctx: %p, nmb: %p",
 		    &timer->nt_timer, func, ctx, nmb);
-	/* DDK implements with KeInitializeTimer */
 	wrap_init_timer(&timer->nt_timer, NotificationTimer, nmb->wnd->wd);
 	timer->func = func;
 	timer->ctx = ctx;
@@ -1635,7 +1634,6 @@ STDCALL void WRAP_EXPORT(NdisMSetPeriodicTimer)
 	unsigned long expires = MSEC_TO_HZ(period_ms) + 1;
 
 	DBGTRACE4("%p, %u, %ld", timer, period_ms, expires);
-	/* DDK implements with KeSetTimerEx */
 	wrap_set_timer(&timer->nt_timer, expires, expires, &timer->kdpc);
 	TRACEEXIT4(return);
 }
@@ -1663,8 +1661,6 @@ STDCALL void WRAP_EXPORT(NdisSetTimer)
 	unsigned long expires = MSEC_TO_HZ(duetime_ms) + 1;
 
 	DBGTRACE4("%p, %u, %ld", timer, duetime_ms, expires);
-	/* DDK implements with NdisMSetTimer, which in turn is
-	 * implemented with KeSetTimer */
 	wrap_set_timer(&timer->nt_timer, expires, 0, &timer->kdpc);
 	TRACEEXIT4(return);
 }
@@ -2210,6 +2206,7 @@ EthRxIndicateHandler(struct ndis_miniport_block *nmb, void *rx_ctx,
 						       GFP_ATOMIC);
 			if (!oob_data->look_ahead) {
 				NdisFreePacket(packet);
+				ERROR("packet dropped");
 				wnd->stats.rx_dropped++;
 				TRACEEXIT3(return);
 			}
@@ -2241,7 +2238,7 @@ EthRxIndicateHandler(struct ndis_miniport_block *nmb, void *rx_ctx,
 		wnd->stats.rx_packets++;
 		netif_rx(skb);
 	} else {
-		WARNING("packet dropped");
+		ERROR("couldn't allocate skb; packet dropped");
 		wnd->stats.rx_dropped++;
 	}
 
@@ -2276,6 +2273,7 @@ NdisMTransferDataComplete(struct ndis_miniport_block *nmb,
 	if (!skb) {
 		kfree(oob_data->look_ahead);
 		NdisFreePacket(packet);
+		ERROR("couldn't allocate skb; packet dropped");
 		wnd->stats.rx_dropped++;
 		TRACEEXIT3(return);
 	}
