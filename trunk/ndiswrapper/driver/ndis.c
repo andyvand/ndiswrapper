@@ -1477,7 +1477,7 @@ STDCALL void WRAP_EXPORT(NdisCopyFromPacketToPacketSafe)
 	 struct ndis_packet *src, UINT src_offset, UINT *num_copied,
 	 enum mm_page_priority priority)
 {
-	UINT dst_left, src_left, left, done;
+	UINT dst_n, src_n, n, left;
 	ndis_buffer *dst_buf;
 	ndis_buffer *src_buf;
 
@@ -1494,39 +1494,44 @@ STDCALL void WRAP_EXPORT(NdisCopyFromPacketToPacketSafe)
 		*num_copied = 0;
 		TRACEEXIT4(return);
 	}
-	dst_left = MmGetMdlByteCount(dst_buf) - dst_offset;
-	src_left = MmGetMdlByteCount(src_buf) - src_offset;
+	dst_n = MmGetMdlByteCount(dst_buf) - dst_offset;
+	src_n = MmGetMdlByteCount(src_buf) - src_offset;
 
-	left = min(src_left, dst_left);
-	left = min(left, num_to_copy);
-	memcpy(MmGetSystemAddressForMdlSafe(dst_buf, priority) + dst_offset,
-	       MmGetSystemAddressForMdlSafe(src_buf, priority) + src_offset,
-	       left);
+	n = min(src_n, dst_n);
+	n = min(n, num_to_copy);
+	memcpy(MmGetSystemAddressForMdl(dst_buf) + dst_offset,
+	       MmGetSystemAddressForMdl(src_buf) + src_offset,
+	       n);
 
-	done = num_to_copy - left;
-	while (done > 0) {
-		if (left == dst_left) {
+	left = num_to_copy - n;
+	while (left > 0) {
+		src_offset += n;
+		dst_offset += n;
+		dst_n -= n;
+		src_n -= n;
+		if (dst_n == 0) {
 			dst_buf = dst_buf->next;
 			if (!dst_buf)
 				break;
-			dst_left = MmGetMdlByteCount(dst_buf);
-		} else
-			dst_left -= left;
-		if (left == src_left) {
+			dst_n = MmGetMdlByteCount(dst_buf);
+			dst_offset = 0;
+		}
+		if (src_n == 0) {
 			src_buf = src_buf->next;
 			if (!src_buf)
 				break;
-			src_left = MmGetMdlByteCount(src_buf);
-		} else
-			src_left -= left;
+			src_n = MmGetMdlByteCount(src_buf);
+			src_offset = 0;
+		}
 
-		left = min(src_left, dst_left);
-		left = min(left, done);
-		memcpy(MmGetSystemAddressForMdlSafe(dst_buf, priority),
-		       MmGetSystemAddressForMdlSafe(src_buf, priority), left);
-		done -= left;
+		n = min(src_n, dst_n);
+		n = min(n, left);
+		memcpy(MmGetSystemAddressForMdl(dst_buf) + dst_offset,
+		       MmGetSystemAddressForMdl(src_buf) + src_offset,
+		       n);
+		left -= n;
 	}
-	*num_copied = num_to_copy - done;
+	*num_copied = num_to_copy - left;
 	TRACEEXIT4(return);
 }
 
