@@ -789,7 +789,7 @@ static inline void lower_irql(KIRQL oldirql)
 #undef CONFIG_DEBUG_SPINLOCK
 
 #ifdef CONFIG_DEBUG_SPINLOCK
-#define NT_SPIN_LOCK_LOCKED ((ULONG_PTR)get_current())
+#define NT_SPIN_LOCK_LOCKED ((ULONG_PTR)current)
 #else
 #define NT_SPIN_LOCK_LOCKED 1
 #endif
@@ -805,11 +805,11 @@ static inline void lower_irql(KIRQL oldirql)
 	       NT_SPIN_LOCK_UNLOCKED)
 
 #ifdef CONFIG_DEBUG_SPINLOCK
-#define raw_nt_spin_unlock(lock)						\
+#define raw_nt_spin_unlock(lock)					\
 	__asm__ __volatile__("movw $0,%0"				\
 			     :"=m" (*(lock)) : : "memory")
 #else // DEBUG_SPINLOCK
-#define raw_nt_spin_unlock(lock)						\
+#define raw_nt_spin_unlock(lock)					\
 	__asm__ __volatile__("movb $0,%0"				\
 			     :"=m" (*(lock)) : : "memory")
 #endif // DEBUG_SPINLOCK

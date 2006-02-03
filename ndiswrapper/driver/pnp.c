@@ -93,7 +93,6 @@ static STDCALL NTSTATUS pdoDispatchPnp(struct device_object *pdo,
 	struct usbd_bus_interface_usbdi *usb_intf;
 #endif
 
-
 	irp_sl = IoGetCurrentIrpStackLocation(irp);
 	wd = pdo->reserved;
 	DBGTRACE2("fn %d:%d, wd: %p", irp_sl->major_fn, irp_sl->minor_fn, wd);
