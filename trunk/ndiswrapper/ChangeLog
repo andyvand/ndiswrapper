@@ -1,10 +1,9 @@
-Version 1.8 2006-XX-XX
+Version 1.9 2006-02-03
 ======================
-* Support for TNETW1450 (TI's USB chipset) provided. Tested with AVM
-  FRITZ!WLAN device (by a user).
-* Support for real-time preempt (RT) patch. Tested with AR5211 driver.
+* Added support for real-time preempt (RT) patch.
+* Added support for TNETW1450 (TI's USB chipset).
 * Added support for latest Windows Broadcom driver.
-* Added support for Airgo Networks Pre-N driver.
+* Added support for Airgo Networks MIMO Pre-N driver.
 * Added support for Intel PRO/Wireless 3945ABG driver; this driver needs 16KB
   stacks in kernel.
 * Bug fixes.
