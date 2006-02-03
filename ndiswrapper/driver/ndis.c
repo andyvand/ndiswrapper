@@ -365,19 +365,13 @@ STDCALL void WRAP_EXPORT(NdisGetSystemUpTime)
 STDCALL ULONG WRAP_EXPORT(NDIS_BUFFER_TO_SPAN_PAGES)
 	(ndis_buffer *buffer)
 {
-	ULONG_PTR start;
 	ULONG n;
 
-	TRACEENTER4("");
-
-	if (buffer == NULL)
-		return 0;
-
+	TRACEENTER4("%p", buffer);
 	if (MmGetMdlByteCount(buffer) == 0)
 		return 1;
-
-	start = (ULONG_PTR)(MmGetMdlVirtualAddress(buffer));
-	n = SPAN_PAGES(start, MmGetMdlByteCount(buffer));
+	n = SPAN_PAGES(MmGetMdlVirtualAddress(buffer),
+		       MmGetMdlByteCount(buffer));
 	DBGTRACE4("pages = %u", n);
 	TRACEEXIT4(return n);
 }

@@ -1985,7 +1985,7 @@ STDCALL ULONG WRAP_EXPORT(MmSizeOfMdl)
 	(void *base, ULONG length)
 {
 	return sizeof(struct mdl) +
-		(sizeof(PFN_NUMBER) * SPAN_PAGES((ULONG_PTR)base, length));
+		(sizeof(PFN_NUMBER) * SPAN_PAGES(base, length));
 }
 
 struct mdl *allocate_init_mdl(void *virt, ULONG length)
@@ -2084,8 +2084,7 @@ STDCALL void WRAP_EXPORT(MmBuildMdlForNonPagedPool)
 
 	mdl->flags |= MDL_SOURCE_IS_NONPAGED_POOL;
 	MmGetSystemAddressForMdl(mdl) = MmGetMdlVirtualAddress(mdl);
-	n = SPAN_PAGES((ULONG_PTR)MmGetSystemAddressForMdl(mdl),
-		       MmGetMdlByteCount(mdl));
+	n = SPAN_PAGES(MmGetSystemAddressForMdl(mdl), MmGetMdlByteCount(mdl));
 	mdl_pages = MmGetMdlPfnArray(mdl);
 	/* the buffer is allocated in one chunk, so pages must be
 	 * consecutive */

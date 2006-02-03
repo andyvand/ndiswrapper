@@ -882,7 +882,7 @@ do {									\
 	preempt_enable_no_resched();					\
 } while (0)
 
-static inline ULONG SPAN_PAGES(ULONG_PTR ptr, SIZE_T length)
+static inline ULONG SPAN_PAGES(void *ptr, SIZE_T length)
 {
 	ULONG n;
 
