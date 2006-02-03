@@ -1984,8 +1984,8 @@ STDCALL void WRAP_EXPORT(MmUnmapIoSpace)
 STDCALL ULONG WRAP_EXPORT(MmSizeOfMdl)
 	(void *base, ULONG length)
 {
-	return (sizeof(struct mdl) +
-		SPAN_PAGES((ULONG_PTR)base, length) * sizeof(ULONG));
+	return sizeof(struct mdl) +
+		(sizeof(PFN_NUMBER) * SPAN_PAGES((ULONG_PTR)base, length));
 }
 
 struct mdl *allocate_init_mdl(void *virt, ULONG length)
@@ -2079,18 +2079,19 @@ STDCALL void WRAP_EXPORT(IoBuildPartialMdl)
 STDCALL void WRAP_EXPORT(MmBuildMdlForNonPagedPool)
 	(struct mdl *mdl)
 {
+	PFN_NUMBER *mdl_pages, start_pfn;
+	int i, n;
+
 	mdl->flags |= MDL_SOURCE_IS_NONPAGED_POOL;
 	MmGetSystemAddressForMdl(mdl) = MmGetMdlVirtualAddress(mdl);
-	/*
-	PFN_NUMBER *mdl_pages;
-	int i, n;
 	n = SPAN_PAGES((ULONG_PTR)MmGetSystemAddressForMdl(mdl),
 		       MmGetMdlByteCount(mdl));
 	mdl_pages = MmGetMdlPfnArray(mdl);
+	/* the buffer is allocated in one chunk, so pages must be
+	 * consecutive */
+	start_pfn = page_to_pfn(virt_to_page(MmGetSystemAddressForMdl(mdl)));
 	for (i = 0; i < n; i++)
-		*(mdl_pages++) = (PFN_NUMBER)MmGetSystemAddressForMdl(mdl) +
-			i * PAGE_SIZE;
-	*/
+		mdl_pages[i] =  start_pfn + i * PAGE_SIZE;
 	return;
 }
 

@@ -174,7 +174,7 @@ typedef ULONG_PTR SIZE_T;
 typedef ULONG_PTR KAFFINITY;
 typedef ULONG ACCESS_MASK;
 
-typedef unsigned long PFN_NUMBER;
+typedef ULONG_PTR PFN_NUMBER;
 
 /* non-negative numbers indicate success */
 #define NT_SUCCESS(status)  ((NTSTATUS)(status) >= 0)
