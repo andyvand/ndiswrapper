@@ -325,12 +325,14 @@ static int start_pdo(struct device_object *pdo)
 
 	for (i = count = 0; pci_resource_start(pdev, i); i++) {
 		entry = &partial_resource_list->partial_descriptors[count];
-		DBGTRACE2("flags: %lx", pci_resource_flags(pdev, i));
+		DBGTRACE2("%d", count);
 		if (pci_resource_flags(pdev, i) & IORESOURCE_MEM) {
+			INFO("%d", count);
 			entry->type = CmResourceTypeMemory;
 			entry->flags = CM_RESOURCE_MEMORY_READ_WRITE;
 			entry->share = CmResourceShareDeviceExclusive;
 		} else if (pci_resource_flags(pdev, i) & IORESOURCE_IO) {
+			INFO("%d", count);
 			entry->type = CmResourceTypePort;
 			entry->flags = CM_RESOURCE_PORT_IO;
 			entry->share = CmResourceShareDeviceExclusive;
@@ -376,7 +378,7 @@ static int start_pdo(struct device_object *pdo)
 	entry->share = CmResourceShareShared;
 	/* 'level' should be DISPATCH_LEVEL, but some drivers, e.g.,
 	 * RTL8180L, use this also as vector, so set it to vector */
-	entry->u.interrupt.level = DISPATCH_LEVEL;
+	entry->u.interrupt.level = pdev->irq;
 	entry->u.interrupt.vector = pdev->irq;
 	entry->u.interrupt.affinity = -1;
 

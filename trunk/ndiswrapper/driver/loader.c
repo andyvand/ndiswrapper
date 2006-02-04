@@ -449,7 +449,6 @@ void unload_wrap_driver(struct wrap_driver *driver)
 {
 	int i;
 	struct driver_object *drv_obj;
-	struct nt_list *cur, *next;
 
 	TRACEENTER1("unloading driver: %s (%p)", driver->name, driver);
 	RemoveEntryList(&driver->list);
@@ -468,16 +467,9 @@ void unload_wrap_driver(struct wrap_driver *driver)
 		if (driver->bin_files[i].data)
 			vfree(driver->bin_files[i].data);
 	}
-	DBGTRACE2("");
 	if (driver->bin_files)
 		kfree(driver->bin_files);
-	DBGTRACE2("");
 	RtlFreeUnicodeString(&drv_obj->name);
-	nt_list_for_each_safe(cur, next, &driver->wrap_devices) {
-		struct wrap_device *wd;
-		wd = container_of(cur, struct wrap_device, list);
-		RemoveEntryList(&wd->list);
-	}
 	/* this frees driver */
 	free_custom_extensions(drv_obj->drv_ext);
 	kfree(drv_obj->drv_ext);
