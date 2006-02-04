@@ -529,9 +529,9 @@ struct file_object {
 };
 
 #ifdef CONFIG_X86_64
-#define POINTER_ALIGNMENT
-#else
 #define POINTER_ALIGNMENT __attribute__((aligned(8)))
+#else
+#define POINTER_ALIGNMENT
 #endif
 
 enum system_power_state {
