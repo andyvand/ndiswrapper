@@ -134,7 +134,6 @@ struct wrap_driver *load_wrap_driver(struct wrap_device *wd)
 		}
 		DBGTRACE1("driver %s is loaded", wrap_driver->name);
 	}
-
 	nt_spin_lock(&loader_lock);
 	InsertTailList(&wrap_driver->wrap_devices, &wd->list);
 	nt_spin_unlock(&loader_lock);
@@ -441,7 +440,7 @@ static void unload_wrap_device(struct wrap_device *wd)
 		setting = container_of(cur, struct wrap_device_setting, list);
 		kfree(setting);
 	}
-	InitializeListHead(&wd->list);
+	RemoveEntryList(&wd->list);
 	TRACEEXIT1(return);
 }
 
