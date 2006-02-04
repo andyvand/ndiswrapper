@@ -719,7 +719,7 @@ STDCALL void WRAP_EXPORT(NdisMQueryAdapterResources)
 	UINT resource_length;
 
 	list = &wnd->wd->resource_list->list->partial_resource_list;
-	resource_length = sizeof(struct cm_partial_resource_list) +
+	resource_length = sizeof(struct cm_resource_list) +
 		sizeof(struct cm_partial_resource_descriptor) *
 		(list->count - 1);
 	DBGTRACE2("wnd: %p. buf: %p, len: %d (%d)", wnd,
@@ -838,7 +838,7 @@ STDCALL NDIS_STATUS WRAP_EXPORT(NdisMAllocateMapRegisters)
 	 NDIS_DMA_SIZE dmasize, ULONG basemap, ULONG max_buf_size)
 {
 	struct wrap_ndis_device *wnd = nmb->wnd;
-	TRACEENTER2("%d %d %d %d", dmachan, dmasize, basemap, size);
+	TRACEENTER2("%d %d %d %d", dmachan, dmasize, basemap, max_buf_size);
 
 //	if (basemap > 64)
 //		return NDIS_STATUS_RESOURCES;

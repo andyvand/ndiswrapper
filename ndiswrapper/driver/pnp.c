@@ -303,9 +303,9 @@ static int start_pdo(struct device_object *pdo)
 			count++;
 	/* space for entry for IRQ is already in
 	 * cm_partial_resource_list */
-	resources_size = sizeof(struct cm_partial_resource_list) +
+	resources_size = sizeof(struct cm_resource_list) +
 		sizeof(struct cm_partial_resource_descriptor) * count;
-	DBGTRACE2("resources: %d, %d", i, resources_size);
+	DBGTRACE2("resources: %d, %d", count, resources_size);
 	wd->resource_list = kmalloc(resources_size, GFP_KERNEL);
 	if (!wd->resource_list) {
 		WARNING("couldn't allocate memory");
@@ -376,7 +376,7 @@ static int start_pdo(struct device_object *pdo)
 	entry->share = CmResourceShareShared;
 	/* 'level' should be DISPATCH_LEVEL, but some drivers, e.g.,
 	 * RTL8180L, use this also as vector, so set it to vector */
-	entry->u.interrupt.level = pdev->irq;
+	entry->u.interrupt.level = DISPATCH_LEVEL;
 	entry->u.interrupt.vector = pdev->irq;
 	entry->u.interrupt.affinity = -1;
 
