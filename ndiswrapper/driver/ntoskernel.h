@@ -479,6 +479,7 @@ enum hw_status {
 };
 
 struct wrap_device {
+	/* this list is used to link to driver's wrap_devices */
 	struct nt_list list;
 	/* first part is (de)initialized once by loader */
 	int dev_bus_type;
