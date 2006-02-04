@@ -719,11 +719,14 @@ STDCALL void WRAP_EXPORT(NdisMQueryAdapterResources)
 	UINT resource_length;
 
 	list = &wnd->wd->resource_list->list->partial_resource_list;
-	resource_length = sizeof(struct cm_resource_list) +
+	resource_length = sizeof(struct cm_partial_resource_list) +
 		sizeof(struct cm_partial_resource_descriptor) *
 		(list->count - 1);
-	DBGTRACE2("wnd: %p. buf: %p, len: %d (%d)", wnd,
-		  resource_list, *size, resource_length);
+	DBGTRACE2("wnd: %p. buf: %p, len: %d (%d), %p %d %d", wnd,
+		  resource_list, *size, resource_length,
+		  &list->partial_descriptors[list->count-1],
+		  list->partial_descriptors[list->count-1].u.interrupt.level,
+		  list->partial_descriptors[list->count-1].u.interrupt.vector);
 	if (*size == 0) {
 		*size = resource_length;
 		*status = NDIS_STATUS_BUFFER_TOO_SHORT;
@@ -1781,9 +1784,8 @@ STDCALL NDIS_STATUS WRAP_EXPORT(NdisMRegisterInterrupt)
 	 BOOLEAN shared, enum kinterrupt_mode mode)
 {
 	struct wrap_ndis_device *wnd = nmb->wnd;
-	TRACEENTER1("%p, vector:%d, level:%d, req_isr:%d, shared:%d, "
-		    "mode:%d sp:%p", ndis_irq, vector, level, req_isr,
-		    shared, mode, get_sp());
+	TRACEENTER1("%p, vector:%d, level:%d, req_isr:%d, shared:%d, mode:%d",
+		    ndis_irq, vector, level, req_isr, shared, mode);
 
 	ndis_irq->irq.irq = vector;
 	ndis_irq->wnd = wnd;
