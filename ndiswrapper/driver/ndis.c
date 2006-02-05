@@ -1719,7 +1719,7 @@ STDCALL void WRAP_EXPORT(NdisMRegisterAdapterShutdownHandler)
 	(struct ndis_miniport_block *nmb, void *ctx, void *func)
 {
 	struct wrap_ndis_device *wnd = nmb->wnd;
-	TRACEENTER1("sp:%p", get_sp());
+	TRACEENTER1("%p", func);
 	wnd->wd->driver->ndis_driver->miniport.shutdown = func;
 	wnd->shutdown_ctx = ctx;
 }
@@ -1728,7 +1728,6 @@ STDCALL void WRAP_EXPORT(NdisMDeregisterAdapterShutdownHandler)
 	(struct ndis_miniport_block *nmb)
 {
 	struct wrap_ndis_device *wnd = nmb->wnd;
-	TRACEENTER1("sp:%p", get_sp());
 	wnd->wd->driver->ndis_driver->miniport.shutdown = NULL;
 	wnd->shutdown_ctx = NULL;
 }
