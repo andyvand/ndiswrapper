@@ -21,6 +21,8 @@
 
 #define PASSIVE_LEVEL			0
 #define DISPATCH_LEVEL			2
+#define DEVICE_LEVEL			(DISPATCH_LEVEL + 1)
+#define HIGH_LEVEL			31
 
 #define STATUS_WAIT_0			0
 #define STATUS_SUCCESS                  0
@@ -43,6 +45,8 @@
 #define STATUS_CANCELLED                0xC0000120
 #define STATUS_DEVICE_REMOVED		0xC00002B6
 
+#define STATUS_BUFFER_OVERFLOW		0x80000005
+
 #define SL_PENDING_RETURNED		0x01
 #define CALL_ON_CANCEL			0x20
 #define CALL_ON_SUCCESS			0x40
@@ -57,6 +61,7 @@
 #define IRP_MJ_DEVICE_CONTROL		0x0E
 #define IRP_MJ_INTERNAL_DEVICE_CONTROL	0x0F
 #define IRP_MJ_POWER			0x16
+#define IRP_MJ_SYSTEM_CONTROL		0x0E
 #define IRP_MJ_PNP			0x1b
 #define IRP_MJ_MAXIMUM_FUNCTION		0x1b
 
@@ -115,7 +120,7 @@
 
 #define KI_USER_SHARED_DATA 0xfffff78000000000
 
-#else 
+#else
 
 #define STDCALL __attribute__((__stdcall__, regparm(0)))
 #define _FASTCALL __attribute__((__stdcall__)) __attribute__((regparm (3)))
@@ -171,6 +176,8 @@ typedef ULONG_PTR SIZE_T;
 typedef ULONG_PTR KAFFINITY;
 typedef ULONG ACCESS_MASK;
 
+typedef ULONG_PTR PFN_NUMBER;
+
 /* non-negative numbers indicate success */
 #define NT_SUCCESS(status)  ((NTSTATUS)(status) >= 0)
 
@@ -204,7 +211,7 @@ struct nt_list {
 	struct nt_list *prev;
 };
 
-typedef ULONG_PTR KSPIN_LOCK;
+typedef ULONG_PTR NT_SPIN_LOCK;
 
 struct kdpc;
 typedef STDCALL void (*DPC)(struct kdpc *kdpc, void *ctx, void *arg1,
@@ -221,7 +228,7 @@ struct kdpc {
 	void *ctx;
 	void *arg1;
 	void *arg2;
-	KSPIN_LOCK *lock;
+	NT_SPIN_LOCK *lock;
 };
 
 enum pool_type {
@@ -280,16 +287,19 @@ struct mdl {
 
 #define MmGetMdlBaseVa(mdl) ((mdl)->startva)
 #define MmGetMdlByteCount(mdl) ((mdl)->bytecount)
-#define MmGetMdlVirtualAddress(mdl) ((void *)((char *)(mdl)->startva +	\
-					      (mdl)->byteoffset))
+#define MmGetMdlVirtualAddress(mdl) ((mdl)->startva +	\
+				     (mdl)->byteoffset)
 #define MmGetMdlByteOffset(mdl) ((mdl)->byteoffset)
 #define MmGetSystemAddressForMdl(mdl) ((mdl)->mappedsystemva)
+#define MmGetSystemAddressForMdlSafe(mdl, priority) ((mdl)->mappedsystemva)
+#define MmGetMdlPfnArray(mdl) ((PFN_NUMBER *)(mdl + 1))
 #define MmInitializeMdl(mdl, baseva, length) {				\
 		(mdl)->next = NULL;					\
 		(mdl)->size = MmSizeOfMdl(baseva, length);		\
 		(mdl)->flags = 0;					\
-		(mdl)->startva = baseva;				\
-		(mdl)->byteoffset = 0;					\
+ 		(mdl)->startva =					\
+			(void *)((unsigned long)baseva & PAGE_MASK);	\
+ 		(mdl)->byteoffset = (ULONG)offset_in_page(baseva);	\
 		(mdl)->bytecount = length;				\
 	}
 
@@ -303,7 +313,7 @@ struct kdevice_queue {
 	USHORT type;
 	USHORT size;
 	struct nt_list list;
-	KSPIN_LOCK lock;
+	NT_SPIN_LOCK lock;
 	BOOLEAN busy;
 };
 
@@ -385,7 +395,7 @@ struct nt_thread {
 	int pid;
 	struct task_struct *task;
 	struct nt_list irps;
-	KSPIN_LOCK lock;
+	NT_SPIN_LOCK lock;
 	wait_queue_head_t event_wq;
 	int event_wait_done;
 };
@@ -521,9 +531,9 @@ struct file_object {
 };
 
 #ifdef CONFIG_X86_64
-#define POINTER_ALIGNMENT
-#else
 #define POINTER_ALIGNMENT __attribute__((aligned(8)))
+#else
+#define POINTER_ALIGNMENT
 #endif
 
 enum system_power_state {
@@ -805,7 +815,6 @@ struct wrap_urb {
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,0)
 	typeof(((struct urb *)0)->status) urb_status;
 #endif
-
 };
 
 struct irp {
@@ -1003,7 +1012,7 @@ struct common_object_header {
 	struct nt_list list;
 	enum common_object_type type;
 	int size;
-	struct unicode_string *name;
+	char *name;
 	unsigned int ref_count;
 	BOOLEAN close_in_process;
 	BOOLEAN permanent;
@@ -1024,11 +1033,12 @@ enum work_queue_type {
 	MaximumWorkQueue
 };
 
+typedef STDCALL void (*WRAP_WORK_FUNC)(void *arg1, void *arg2);
+
 struct io_workitem {
 	enum work_queue_type type;
 	struct device_object *dev_obj;
-	void (*worker_routine)(struct device_object *dev_obj,
-			       void *context) STDCALL;
+	WRAP_WORK_FUNC worker_routine;
 	void *context;
 };
 
@@ -1108,7 +1118,7 @@ struct npaged_lookaside_list {
 	} u3;
 	ULONG pad[2];
 #ifndef X86_64
-	KSPIN_LOCK obsolete;
+	NT_SPIN_LOCK obsolete;
 #endif
 };
 
@@ -1140,8 +1150,8 @@ typedef BOOLEAN (*PKSYNCHRONIZE_ROUTINE)(void *context) STDCALL;
 struct kinterrupt {
 	ULONG vector;
 	KAFFINITY processor_enable_mask;
-	KSPIN_LOCK lock;
-	KSPIN_LOCK *actual_lock;
+	NT_SPIN_LOCK lock;
+	NT_SPIN_LOCK *actual_lock;
 	BOOLEAN shareable;
 	BOOLEAN floating_save;
 	CHAR processor_number;
@@ -1184,7 +1194,7 @@ struct callback_func {
 };
 
 struct callback_object {
-	KSPIN_LOCK lock;
+	NT_SPIN_LOCK lock;
 	struct nt_list list;
 	struct nt_list callback_funcs;
 	BOOLEAN allow_multiple_callbacks;
@@ -1291,6 +1301,16 @@ struct io_remove_lock {
 	LONG io_count;
 	struct nt_event remove_event;
 };
+
+enum device_relation_type {
+	BusRelations,
+	EjectionRelations,
+	PowerRelations,
+	RemovalRelations,
+	TargetDeviceRelation,
+	SingleBusRelations
+};
+
 
 /* some of the functions below are slightly different from DDK's
  * implementation; e.g., Insert functions return appropriate

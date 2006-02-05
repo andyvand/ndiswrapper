@@ -73,7 +73,7 @@
 #define URB_FUNCTION_RESERVE_0X002D                  0x002D
 #define URB_FUNCTION_RESERVE_0X002E                  0x002E
 #define URB_FUNCTION_RESERVE_0X002F                  0x002F
-// USB 2.0 calls start at 0x0030         
+// USB 2.0 calls start at 0x0030
 #define URB_FUNCTION_SYNC_RESET_PIPE                 0x0030
 #define URB_FUNCTION_SYNC_CLEAR_STALL                0x0031
 
@@ -185,6 +185,12 @@ struct nt_urb_header {
 	ULONG usbd_flags;
 };
 
+struct usbd_select_interface {
+	struct nt_urb_header header;
+	void *handle;
+	struct usbd_interface_information intf;
+};	
+
 struct usbd_select_configuration {
 	struct nt_urb_header header;
 	struct usb_config_descriptor *config;
@@ -263,6 +269,7 @@ struct usbd_isochronous_transfer {
 
 union nt_urb {
 	struct nt_urb_header header;
+	struct usbd_select_interface select_intf;
 	struct usbd_select_configuration select_conf;
 	struct usbd_bulk_or_intr_transfer bulk_int_transfer;
 	struct usbd_control_descriptor_request control_request;

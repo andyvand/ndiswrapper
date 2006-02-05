@@ -17,23 +17,36 @@
 #include "ndis.h"
 #include "wrapndis.h"
 #include "usb.h"
+#include "loader.h"
 
-extern KSPIN_LOCK ntoskernel_lock;
-extern KSPIN_LOCK irp_cancel_lock;
+extern NT_SPIN_LOCK ntoskernel_lock;
+extern NT_SPIN_LOCK loader_lock;
+extern NT_SPIN_LOCK irp_cancel_lock;
 extern struct nt_list object_list;
 
-extern KSPIN_LOCK irp_cancel_lock;
+extern NT_SPIN_LOCK irp_cancel_lock;
 
+static unsigned long irp_cancel_irq_flags;
+
+/* urb completion callback, wrap_urb_complete is called from
+ * interrupt. There, we use Io(Acquire/Release)CancelSpinLock. To
+ * prevent deadlocks, we need to use nt_spin_lock_irqsave and
+ * nt_spin_unlock_irqrestore; KIRQL is not big enough to hold irq
+ * flags */
 STDCALL void WRAP_EXPORT(IoAcquireCancelSpinLock)
 	(KIRQL *irql)
 {
-	*irql = kspin_lock_irql(&irp_cancel_lock, DISPATCH_LEVEL);
+//	nt_spin_lock_irqsave(&irp_cancel_lock, irp_cancel_irq_flags);
+	*irql = nt_spin_lock_irql(&irp_cancel_lock, DEVICE_LEVEL);
+//	INFO("irql: %d(%d)", *irql, current_irql());
 }
 
 STDCALL void WRAP_EXPORT(IoReleaseCancelSpinLock)
 	(KIRQL irql)
 {
-	kspin_unlock_irql(&irp_cancel_lock, irql);
+//	nt_spin_unlock_irqrestore(&irp_cancel_lock, irp_cancel_irq_flags);
+//	INFO("irql: %d(%d)", irql, current_irql());
+	nt_spin_unlock_irql(&irp_cancel_lock, irql);
 }
 
 STDCALL NTSTATUS WRAP_EXPORT(IoGetDeviceProperty)
@@ -142,7 +155,7 @@ STDCALL BOOLEAN WRAP_EXPORT(IoIs32bitProcess)
 STDCALL void WRAP_EXPORT(IoInitializeIrp)
 	(struct irp *irp, USHORT size, CCHAR stack_size)
 {
-	IOENTER("irp = %p, stack_size = %d", irp, stack_size);
+	IOENTER("irp: %p, stack_size: %d", irp, stack_size);
 
 	memset(irp, 0, size);
 	irp->size = size;
@@ -155,7 +168,7 @@ STDCALL void WRAP_EXPORT(IoInitializeIrp)
 STDCALL void WRAP_EXPORT(IoReuseIrp)
 	(struct irp *irp, NTSTATUS status)
 {
-	IOENTER("irp = %p, status = %d", irp, status);
+	IOENTER("irp: %p, status: %d", irp, status);
 	if (irp) {
 		UCHAR alloc_flags;
 
@@ -173,8 +186,7 @@ STDCALL struct irp *WRAP_EXPORT(IoAllocateIrp)
 	struct irp *irp;
 	int irp_size;
 
-	IOENTER("stack_size = %d, charge_quota = %d",
-		stack_size, charge_quota);
+	IOENTER("stack_size: %d, charge_quota: %d", stack_size, charge_quota);
 
 	irp_size = IoSizeOfIrp(stack_size + 1);
 	irp = kmalloc(irp_size, GFP_ATOMIC);
@@ -182,14 +194,6 @@ STDCALL struct irp *WRAP_EXPORT(IoAllocateIrp)
 		IOTRACE("allocated irp %p", irp);
 		IoInitializeIrp(irp, irp_size, stack_size);
 	}
-#if 0
-	DBG_BLOCK() {
-		int i;
-		for (i = 0; i < stack_size; i++)
-			INFO("stack %d at %p", i, IRP_SL(irp, i));
-	}
-#endif
-
 	IOEXIT(return irp);
 }
 
@@ -229,16 +233,16 @@ STDCALL void IoQueueThreadIrp(struct irp *irp)
 	thread = KeGetCurrentThread();
 	if (!thread) {
 		WARNING("couldn't find thread for irp: %p, task: %p, pid: %d",
-			irp, get_current(), get_current()->pid);
+			irp, current, current->pid);
 		IoIrpThread(irp) = NULL;
 		return;
 	}
 	IOTRACE("thread: %p, task: %p", thread, thread->task);
-	irql = kspin_lock_irql(&thread->lock, DISPATCH_LEVEL);
+	irql = nt_spin_lock_irql(&thread->lock, DISPATCH_LEVEL);
 	irp->flags |= IRP_SYNCHRONOUS_API;
 	InsertTailList(&thread->irps, &irp->threads);
 	IoIrpThread(irp) = thread;
-	kspin_unlock_irql(&thread->lock, irql);
+	nt_spin_unlock_irql(&thread->lock, irql);
 }
 
 STDCALL void IoDequeueThreadIrp(struct irp *irp)
@@ -248,9 +252,9 @@ STDCALL void IoDequeueThreadIrp(struct irp *irp)
 
 	thread = IoIrpThread(irp);
 	if (thread) {
-		irql = kspin_lock_irql(&thread->lock, DISPATCH_LEVEL);
+		irql = nt_spin_lock_irql(&thread->lock, DISPATCH_LEVEL);
 		RemoveEntryList(&irp->threads);
-		kspin_unlock_irql(&thread->lock, irql);
+		nt_spin_unlock_irql(&thread->lock, irql);
 	}
 }
 
@@ -382,17 +386,14 @@ _FASTCALL NTSTATUS WRAP_EXPORT(IofCallDriver)
 	driver_dispatch_t *major_func;
 	struct driver_object *drv_obj;
 
-	DUMP_IRP(irp);
-	if (!dev_obj)
-		IOEXIT(return STATUS_SUCCESS);
-	drv_obj = dev_obj->drv_obj;
-	IOTRACE("drv_obj: %p", drv_obj);
 	IoSetNextIrpStackLocation(irp);
+	DUMP_IRP(irp);
 	irp_sl = IoGetCurrentIrpStackLocation(irp);
-
+	drv_obj = dev_obj->drv_obj;
 	irp_sl->dev_obj = dev_obj;
+	IOTRACE("drv_obj: %p", drv_obj);
 	major_func = drv_obj->major_func[irp_sl->major_fn];
-	IOTRACE("major_func: %p", major_func);
+	IOTRACE("major_func: %p, dev_obj: %p", major_func, dev_obj);
 	if (major_func)
 		res = (*major_func)(dev_obj, irp);
 	else {
@@ -410,6 +411,7 @@ _FASTCALL void WRAP_EXPORT(IofCompleteRequest)
 	struct io_stack_location *irp_sl;
 	struct mdl *mdl;
 
+#ifdef IO_DEBUG
 	DUMP_IRP(irp);
 	if (irp->io_status.status == STATUS_PENDING) {
 		ERROR("invalid irp: %p, STATUS_PENDING", irp);
@@ -419,8 +421,12 @@ _FASTCALL void WRAP_EXPORT(IofCompleteRequest)
 		ERROR("invalid irp: %p, %d", irp, irp->current_location);
 		return;
 	}
-
+#endif
 	irp_sl = IoGetCurrentIrpStackLocation(irp);
+	/* completion routines expect current stack location to match
+	 * with what was set through IoSetCompletionRoutine, which
+	 * sets completion routine at next (higher) location, so we
+	 * skip current location and continue past stack size */
 	IoSkipCurrentIrpStackLocation(irp);
 
 	while (irp->current_location <= (irp->stack_count + 1)) {
@@ -480,7 +486,7 @@ _FASTCALL void WRAP_EXPORT(IofCompleteRequest)
 static irqreturn_t io_irq_th(int irq, void *data, struct pt_regs *pt_regs)
 {
 	struct kinterrupt *interrupt = (struct kinterrupt *)data;
-	KSPIN_LOCK *spinlock;
+	NT_SPIN_LOCK *spinlock;
 	BOOLEAN ret;
 	KIRQL irql = PASSIVE_LEVEL;
 
@@ -489,15 +495,15 @@ static irqreturn_t io_irq_th(int irq, void *data, struct pt_regs *pt_regs)
 	else
 		spinlock = &interrupt->lock;
 	if (interrupt->synch_irql >= DISPATCH_LEVEL)
-		irql = kspin_lock_irql(spinlock, DISPATCH_LEVEL);
+		irql = nt_spin_lock_irql(spinlock, DISPATCH_LEVEL);
 	else
-		kspin_lock(spinlock);
+		nt_spin_lock(spinlock);
 	ret = interrupt->service_routine(interrupt,
 					 interrupt->service_context);
 	if (interrupt->synch_irql >= DISPATCH_LEVEL)
-		kspin_unlock_irql(spinlock, irql);
+		nt_spin_unlock_irql(spinlock, irql);
 	else
-		kspin_unlock(spinlock);
+		nt_spin_unlock(spinlock);
 
 	if (ret == TRUE)
 		return IRQ_HANDLED;
@@ -507,7 +513,7 @@ static irqreturn_t io_irq_th(int irq, void *data, struct pt_regs *pt_regs)
 
 STDCALL NTSTATUS WRAP_EXPORT(IoConnectInterrupt)
 	(struct kinterrupt *interrupt, PKSERVICE_ROUTINE service_routine,
-	 void *service_context, KSPIN_LOCK *lock, ULONG vector,
+	 void *service_context, NT_SPIN_LOCK *lock, ULONG vector,
 	 KIRQL irql, KIRQL synch_irql, enum kinterrupt_mode interrupt_mode,
 	 BOOLEAN shareable, KAFFINITY processor_enable_mask,
 	 BOOLEAN floating_save)
@@ -516,7 +522,7 @@ STDCALL NTSTATUS WRAP_EXPORT(IoConnectInterrupt)
 
 	interrupt->vector = vector;
 	interrupt->processor_enable_mask = processor_enable_mask;
-	kspin_lock_init(&interrupt->lock);
+	nt_spin_lock_init(&interrupt->lock);
 	interrupt->actual_lock = lock;
 	interrupt->shareable = shareable;
 	interrupt->floating_save = floating_save;
@@ -626,9 +632,9 @@ STDCALL NTSTATUS WRAP_EXPORT(IoAllocateDriverObjectExtension)
 
 	IOTRACE("custom_ext: %p", ce);
 	ce->client_id = client_id;
-	irql = kspin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL);
+	irql = nt_spin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL);
 	InsertTailList(&drv_obj->drv_ext->custom_ext, &ce->list);
-	kspin_unlock_irql(&ntoskernel_lock, irql);
+	nt_spin_unlock_irql(&ntoskernel_lock, irql);
 
 	*ext = (void *)ce + sizeof(*ce);
 	IOTRACE("ext: %p", *ext);
@@ -644,14 +650,14 @@ STDCALL void *WRAP_EXPORT(IoGetDriverObjectExtension)
 
 	IOENTER("drv_obj: %p, client_id: %p", drv_obj, client_id);
 	ret = NULL;
-	irql = kspin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL);
+	irql = nt_spin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL);
 	nt_list_for_each_entry(ce, &drv_obj->drv_ext->custom_ext, list) {
 		if (ce->client_id == client_id) {
 			ret = (void *)ce + sizeof(*ce);
 			break;
 		}
 	}
-	kspin_unlock_irql(&ntoskernel_lock, irql);
+	nt_spin_unlock_irql(&ntoskernel_lock, irql);
 	IOENTER("ret: %p", ret);
 	IOEXIT(return ret);
 }
@@ -662,10 +668,10 @@ void free_custom_extensions(struct driver_extension *drv_ext)
 	KIRQL irql;
 
 	IOENTER("%p", drv_ext);
-	irql = kspin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL);
+	irql = nt_spin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL);
 	while ((ent = RemoveHeadList(&drv_ext->custom_ext)))
 		kfree(ent);
-	kspin_unlock_irql(&ntoskernel_lock, irql);
+	nt_spin_unlock_irql(&ntoskernel_lock, irql);
 	IOEXIT(return);
 }
 
@@ -687,7 +693,7 @@ STDCALL NTSTATUS WRAP_EXPORT(IoCreateDevice)
 	}
 
 	size = sizeof(*dev) + dev_ext_length + sizeof(*dev_obj_ext);
-	dev = allocate_object(size, OBJECT_TYPE_DEVICE, dev_name);
+	dev = allocate_object(size, OBJECT_TYPE_DEVICE, ansi.buf);
 	if (!dev)
 		IOEXIT(return STATUS_INSUFFICIENT_RESOURCES);
 	if (dev_ext_length)
@@ -796,10 +802,10 @@ STDCALL struct device_object *WRAP_EXPORT(IoGetAttachedDevice)
 	IOENTER("%p", dev);
 	if (!dev)
 		IOEXIT(return NULL);
-	irql = kspin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL);
+	irql = nt_spin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL);
 	for (d = dev; d->attached; d = d->attached)
 		;
-	kspin_unlock_irql(&ntoskernel_lock, irql);
+	nt_spin_unlock_irql(&ntoskernel_lock, irql);
 	IOEXIT(return d);
 }
 
@@ -812,7 +818,7 @@ STDCALL struct device_object *WRAP_EXPORT(IoGetAttachedDeviceReference)
 	if (!dev)
 		IOEXIT(return NULL);
 	d = IoGetAttachedDevice(dev);
-	ObReferenceObject(d);
+	d->ref_count++;
 	IOEXIT(return d);
 }
 
@@ -826,12 +832,13 @@ STDCALL struct device_object *WRAP_EXPORT(IoAttachDeviceToDeviceStack)
 	dst = IoGetAttachedDevice(tgt);
 	IOTRACE("stack_size: %d -> %d", dst->stack_size, src->stack_size);
 	IOTRACE("%p", dst);
-	irql = kspin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL);
+	irql = nt_spin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL);
 	if (dst)
 		dst->attached = src;
 	src->attached = NULL;
 	src->stack_size = dst->stack_size + 1;
-	kspin_unlock_irql(&ntoskernel_lock, irql);
+//	src->ref_count++;
+	nt_spin_unlock_irql(&ntoskernel_lock, irql);
 	IOTRACE("stack_size: %d -> %d", dst->stack_size, src->stack_size);
 	IOEXIT(return dst);
 }
@@ -848,14 +855,16 @@ STDCALL void WRAP_EXPORT(IoDetachDevice)
 	tail = topdev->attached;
 	if (!tail)
 		IOEXIT(return);
-	IOTRACE("tail:%p", tail);
+	IOTRACE("tail: %p", tail);
 
-	irql = kspin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL);
+	irql = nt_spin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL);
 	topdev->attached = tail->attached;
-	for (tail = topdev->attached; tail; tail = tail->attached)
+	IOTRACE("attached:%p", topdev->attached);
+	for ( ; tail; tail = tail->attached) {
+		IOTRACE("tail:%p", tail);
 		tail->stack_size--;
-	kspin_unlock_irql(&ntoskernel_lock, irql);
-	ObDereferenceObject(topdev);
+	}
+	nt_spin_unlock_irql(&ntoskernel_lock, irql);
 	IOEXIT(return);
 }
 
@@ -883,21 +892,22 @@ STDCALL NTSTATUS WRAP_EXPORT(PoRequestPowerIrp)
 	 void *context, struct irp **pirp)
 {
 	struct irp *irp;
-	struct io_stack_location *stack;
+	struct io_stack_location *irp_sl;
 
 	DBGTRACE1("%p: stack size: %d", dev_obj, dev_obj->stack_size);
 	DBGTRACE1("drv_obj: %p", dev_obj->drv_obj);
 	irp = IoAllocateIrp(dev_obj->stack_size, FALSE);
 	if (!irp)
 		return STATUS_INSUFFICIENT_RESOURCES;
-	stack = IoGetNextIrpStackLocation(irp);
-	stack->major_fn = IRP_MJ_POWER;
-	stack->minor_fn = minor_fn;
+	irp_sl = IoGetNextIrpStackLocation(irp);
+	irp_sl->major_fn = IRP_MJ_POWER;
+	irp_sl->minor_fn = minor_fn;
 	if (minor_fn == IRP_MN_WAIT_WAKE)
-		stack->params.power.type = SystemPowerState;
+		irp_sl->params.power.type = SystemPowerState;
 	else
-		stack->params.power.type = DevicePowerState;
-	stack->params.power.state = power_state;
+		irp_sl->params.power.type = DevicePowerState;
+	irp_sl->params.power.state = power_state;
+	irp_sl->completion_routine = completion_func;
 	irp->io_status.status = STATUS_NOT_SUPPORTED;
 	*pirp = irp;
 	return PoCallDriver(dev_obj, irp);
@@ -963,51 +973,6 @@ STDCALL NTSTATUS WRAP_EXPORT(IoOpenDeviceRegistryKey)
 	return STATUS_SUCCESS;
 }
 
-STDCALL NTSTATUS WRAP_EXPORT(ZwCreateKey)
-	(void **handle, ACCESS_MASK desired_access, struct object_attr *attr,
-	 ULONG title_index, struct unicode_string *class,
-	 ULONG create_options, ULONG *disposition)
-{
-	UNIMPL();
-	return STATUS_SUCCESS;
-}
-
-STDCALL NTSTATUS WRAP_EXPORT(ZwSetValueKey)
-	(void *handle, struct unicode_string *name, ULONG title_index,
-	 ULONG type, void *data, ULONG data_size)
-{
-	NDIS_STATUS status;
-	struct ndis_configuration_parameter param;
-
-	NdisWriteConfiguration(&status, handle, name, &param);
-	if (status == NDIS_STATUS_SUCCESS)
-		return STATUS_SUCCESS;
-	else
-		return STATUS_FAILURE;
-}
-
-STDCALL NTSTATUS WRAP_EXPORT(ZwQueryValueKey)
-	(void *handle, struct unicode_string *name,
-	 enum key_value_information_class class, void *info,
-	 ULONG length, ULONG *res_length)
-{
-	NDIS_STATUS status;
-	struct ndis_configuration_parameter *param;
-
-	NdisReadConfiguration(&status, &param, handle, name,
-			      NdisParameterString);
-	if (status == NDIS_STATUS_SUCCESS) {
-		*res_length = param->data.string.length;
-		if (length < param->data.string.length) {
-			RtlCopyMemory(info, param->data.string.buf,
-				      *res_length);
-			return STATUS_SUCCESS;
-		} else
-			return STATUS_BUFFER_TOO_SMALL;
-	} else
-		return STATUS_INVALID_PARAMETER;
-}
-
 STDCALL unsigned int WRAP_EXPORT(IoWMIRegistrationControl)
 	(struct device_object *dev_obj, ULONG action)
 {
@@ -1052,6 +1017,20 @@ STDCALL unsigned int WRAP_EXPORT(IoWMIRegistrationControl)
 		break;
 	}
 	TRACEEXIT2(return STATUS_SUCCESS);
+}
+
+STDCALL void WRAP_EXPORT(IoInvalidateDeviceRelations)
+	(struct device_object *dev_obj, enum device_relation_type type)
+{
+	INFO("%p, %d", dev_obj, type);
+	UNIMPL();
+}
+
+STDCALL void WRAP_EXPORT(IoInvalidateDeviceState)
+	(struct device_object *pdo)
+{
+	INFO("%p", pdo);
+	UNIMPL();
 }
 
 #include "ntoskernel_io_exports.h"
