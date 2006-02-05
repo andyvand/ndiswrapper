@@ -745,7 +745,7 @@ STDCALL NDIS_STATUS WRAP_EXPORT(NdisMPciAssignResources)
 {
 	struct wrap_ndis_device *wnd = nmb->wnd;
 
-	TRACEENTER2("%p", wnd);
+	TRACEENTER2("%p, %p", wnd, wnd->wd->resource_list);
 	*resources = &wnd->wd->resource_list->list->partial_resource_list;
 	TRACEEXIT2(return NDIS_STATUS_SUCCESS);
 }

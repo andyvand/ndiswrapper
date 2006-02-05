@@ -92,7 +92,6 @@ static STDCALL NTSTATUS pdoDispatchPnp(struct device_object *pdo,
 #ifdef CONFIG_USB
 	struct usbd_bus_interface_usbdi *usb_intf;
 #endif
-
 	irp_sl = IoGetCurrentIrpStackLocation(irp);
 	wd = pdo->reserved;
 	DBGTRACE2("fn %d:%d, wd: %p", irp_sl->major_fn, irp_sl->minor_fn, wd);
@@ -327,12 +326,10 @@ static int start_pdo(struct device_object *pdo)
 		entry = &partial_resource_list->partial_descriptors[count];
 		DBGTRACE2("%d", count);
 		if (pci_resource_flags(pdev, i) & IORESOURCE_MEM) {
-			INFO("%d", count);
 			entry->type = CmResourceTypeMemory;
 			entry->flags = CM_RESOURCE_MEMORY_READ_WRITE;
 			entry->share = CmResourceShareDeviceExclusive;
 		} else if (pci_resource_flags(pdev, i) & IORESOURCE_IO) {
-			INFO("%d", count);
 			entry->type = CmResourceTypePort;
 			entry->flags = CM_RESOURCE_PORT_IO;
 			entry->share = CmResourceShareDeviceExclusive;
