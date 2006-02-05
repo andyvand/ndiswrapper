@@ -19,6 +19,7 @@
 #include "ndiswrapper.h"
 
 struct load_driver_file {
+	char driver_name[MAX_DRIVER_NAME_LEN];
 	char name[MAX_DRIVER_NAME_LEN];
 	size_t size;
 	void *data;
@@ -55,16 +56,25 @@ struct load_driver {
 	struct load_driver_file bin_files[MAX_DRIVER_BIN_FILES];
 };
 
-#define WRAP_REGISTER_DEVICES	_IOW(('N' + 'd' + 'i' + 'S'), 0,	\
-				     struct load_devices *)
-#define WRAP_LOAD_DRIVER	_IOW(('N' + 'd' + 'i' + 'S'), 1,	\
-				     struct load_driver *)
+#define WRAP_IOCTL_REGISTER_DEVICES _IOW(('N' + 'd' + 'i' + 'S'), 0,	\
+					 struct load_devices *)
+#define WRAP_IOCTL_LOAD_DRIVER _IOW(('N' + 'd' + 'i' + 'S'), 1,	\
+				    struct load_driver *)
+#define WRAP_IOCTL_LOAD_BIN_FILE _IOW(('N' + 'd' + 'i' + 'S'), 2,	\
+				      struct load_driver_file *)
+
+#define WRAP_CMD_LOAD_DEVICES "load_devices"
+#define WRAP_CMD_LOAD_DRIVER "load_driver"
+#define WRAP_CMD_LOAD_BIN_FILE "load_bin_file"
 
 int loader_init(void);
 void loader_exit(void);
 
 #ifdef __KERNEL__
 struct wrap_driver *load_wrap_driver(struct wrap_device *device);
+struct wrap_bin_file *get_bin_file(char *bin_file_name);
+void free_bin_file(struct wrap_bin_file *bin_file);
+void unload_wrap_driver(struct wrap_driver *driver);
 #endif
 
 #endif /* LOADER_H */

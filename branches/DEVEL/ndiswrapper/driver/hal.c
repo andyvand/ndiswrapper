@@ -71,6 +71,12 @@ STDCALL void WRAP_EXPORT(READ_PORT_BUFFER_USHORT)
 	insw(port, buf, count);
 }
 
+STDCALL USHORT WRAP_EXPORT(READ_REGISTER_USHORT)
+	(void *reg)
+{
+	return readw(reg);
+}
+
 STDCALL void WRAP_EXPORT(WRITE_REGISTER_ULONG)
 	(void *reg, UINT val)
 {
@@ -120,44 +126,40 @@ _FASTCALL void WRAP_EXPORT(KfLowerIrql)
 }
 
 _FASTCALL KIRQL WRAP_EXPORT(KfAcquireSpinLock)
-	(FASTCALL_DECL_1(KSPIN_LOCK *lock))
+	(FASTCALL_DECL_1(NT_SPIN_LOCK *lock))
 {
-	KIRQL oldirql;
-
 	TRACEENTER5("lock = %p", lock);
-	oldirql = kspin_lock_irql(lock, DISPATCH_LEVEL);
-	TRACEEXIT5(return oldirql);
+	return nt_spin_lock_irql(lock, DISPATCH_LEVEL);
 }
 
 _FASTCALL void WRAP_EXPORT(KfReleaseSpinLock)
-	(FASTCALL_DECL_2(KSPIN_LOCK *lock, KIRQL newirql))
+	(FASTCALL_DECL_2(NT_SPIN_LOCK *lock, KIRQL oldirql))
 {
-	TRACEENTER5("lock = %p, irql = %d", lock, newirql);
-	kspin_unlock_irql(lock, newirql);
-	TRACEEXIT5(return);
+	TRACEENTER5("lock = %p, irql = %d", lock, oldirql);
+	nt_spin_unlock_irql(lock, oldirql);
 }
 
 _FASTCALL void WRAP_EXPORT(KefAcquireSpinLockAtDpcLevel)
-	(FASTCALL_DECL_1(KSPIN_LOCK *lock))
+	(FASTCALL_DECL_1(NT_SPIN_LOCK *lock))
 {
 	TRACEENTER5("lock = %p", lock);
 #ifdef DEBUG_IRQL
 	if (current_irql() != DISPATCH_LEVEL)
 		ERROR("irql != DISPATCH_LEVEL");
 #endif
-	kspin_lock(lock);
+	nt_spin_lock(lock);
 	TRACEEXIT5(return);
 }
 
 _FASTCALL void WRAP_EXPORT(KefReleaseSpinLockFromDpcLevel)
-	(FASTCALL_DECL_1(KSPIN_LOCK *lock))
+	(FASTCALL_DECL_1(NT_SPIN_LOCK *lock))
 {
 	TRACEENTER5("lock = %p", lock);
 #ifdef DEBUG_IRQL
 	if (current_irql() != DISPATCH_LEVEL)
 		ERROR("irql != DISPATCH_LEVEL");
 #endif
-	kspin_unlock(lock);
+	nt_spin_unlock(lock);
 	TRACEEXIT5(return);
 }
 

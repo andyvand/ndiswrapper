@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2005 Giridhar Pemmasani
+ *  Copyright (C) 2003-2005 Pontus Fuchs, Giridhar Pemmasani
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -19,24 +19,23 @@
 #include "loader.h"
 #include "wrapndis.h"
 
-extern KSPIN_LOCK loader_lock;
+extern NT_SPIN_LOCK loader_lock;
 extern struct wrap_device *wrap_devices;
 extern struct nt_list wrap_drivers;
 
 extern char *if_name;
 extern int hangcheck_interval;
+extern int disable_stats;
 extern const struct iw_handler_def ndis_handler_def;
 
 static int set_packet_filter(struct wrap_ndis_device *wnd,
 			     ULONG packet_filter);
 static void stats_timer_add(struct wrap_ndis_device *wnd);
 static void stats_timer_del(struct wrap_ndis_device *wnd);
-void hangcheck_add(struct wrap_ndis_device *wnd);
-void hangcheck_del(struct wrap_ndis_device *wnd);
 static NDIS_STATUS ndis_start_device(struct wrap_ndis_device *wnd);
 static NDIS_STATUS ndis_remove_device(struct wrap_ndis_device *wnd);
 
-static int inline ndis_wait_pending_completion(struct wrap_ndis_device *wnd)
+static inline int ndis_wait_pending_completion(struct wrap_ndis_device *wnd)
 {
 	/* wait for NdisMXXComplete to be called*/
 	/* As per spec, we should wait until miniport calls back
@@ -61,16 +60,16 @@ static int inline ndis_wait_pending_completion(struct wrap_ndis_device *wnd)
 /* MiniportReset */
 NDIS_STATUS miniport_reset(struct wrap_ndis_device *wnd)
 {
-	KIRQL irql;
 	NDIS_STATUS res = 0;
 	struct miniport_char *miniport;
 	UINT cur_lookahead;
 	UINT max_lookahead;
 	BOOLEAN reset_address;
+	KIRQL irql;
 
 	TRACEENTER2("wnd: %p", wnd);
 
-	if (!test_bit(HW_AVAILABLE, &wnd->wd->hw_status))
+	if (!test_bit(HW_AVAILABLE, &wnd->hw_status))
 		TRACEEXIT1(return NDIS_STATUS_FAILURE);
 
 	if (down_interruptible(&wnd->ndis_comm_mutex))
@@ -98,14 +97,13 @@ NDIS_STATUS miniport_reset(struct wrap_ndis_device *wnd)
 	}
 	DBGTRACE2("reset: res = %08X, reset status = %08X",
 		  res, reset_address);
-
+	up(&wnd->ndis_comm_mutex);
 	if (res == NDIS_STATUS_SUCCESS && reset_address) {
 		wnd->nmb->cur_lookahead = cur_lookahead;
 		wnd->nmb->max_lookahead = max_lookahead;
 		set_packet_filter(wnd, wnd->packet_filter);
 //		set_multicast_list(wnd->net_dev);
 	}
-	up(&wnd->ndis_comm_mutex);
 
 	TRACEEXIT3(return res);
 }
@@ -122,7 +120,7 @@ NDIS_STATUS miniport_query_info_needed(struct wrap_ndis_device *wnd,
 
 	DBGTRACE2("oid: %08X", oid);
 
-	if (!test_bit(HW_AVAILABLE, &wnd->wd->hw_status))
+	if (!test_bit(HW_AVAILABLE, &wnd->hw_status))
 		TRACEEXIT1(return NDIS_STATUS_FAILURE);
 
 	if (down_interruptible(&wnd->ndis_comm_mutex))
@@ -172,7 +170,7 @@ NDIS_STATUS miniport_set_info(struct wrap_ndis_device *wnd, ndis_oid oid,
 
 	DBGTRACE2("oid: %08X", oid);
 
-	if (!test_bit(HW_AVAILABLE, &wnd->wd->hw_status))
+	if (!test_bit(HW_AVAILABLE, &wnd->hw_status))
 		TRACEEXIT1(return NDIS_STATUS_FAILURE);
 
 	if (down_interruptible(&wnd->ndis_comm_mutex))
@@ -214,16 +212,15 @@ NDIS_STATUS miniport_set_int(struct wrap_ndis_device *wnd, ndis_oid oid,
 	return miniport_set_info(wnd, oid, &data, sizeof(data));
 }
 
-NDIS_STATUS miniport_init(struct wrap_ndis_device *wnd)
+static NDIS_STATUS miniport_init(struct wrap_ndis_device *wnd)
 {
 	NDIS_STATUS error_status, status;
 	UINT medium_index;
 	UINT medium_array[] = {NdisMedium802_3};
 	struct miniport_char *miniport;
-	struct nt_thread *thread;
 
 	TRACEENTER1("irql: %d", current_irql());
-	if (test_bit(HW_INITIALIZED, &wnd->wd->hw_status)) {
+	if (test_bit(HW_INITIALIZED, &wnd->hw_status)) {
 		ERROR("device %p already initialized!", wnd);
 		return NDIS_STATUS_FAILURE;
 	}
@@ -234,11 +231,6 @@ NDIS_STATUS miniport_init(struct wrap_ndis_device *wnd)
 		TRACEEXIT1(return NDIS_STATUS_SUCCESS);
 	}
 	miniport = &wnd->wd->driver->ndis_driver->miniport;
-	thread = wrap_create_thread(get_current());
-	if (!thread) {
-		ERROR("couldn't allocate thread object");
-		TRACEEXIT1(return NDIS_STATUS_FAILURE);
-	}
 	status = LIN2WIN6(miniport->init, &error_status,
 			  &medium_index, medium_array,
 			  sizeof(medium_array) / sizeof(medium_array[0]),
@@ -246,7 +238,6 @@ NDIS_STATUS miniport_init(struct wrap_ndis_device *wnd)
 	DBGTRACE1("init returns: %08X, irql: %d", status, current_irql());
 	if (status != NDIS_STATUS_SUCCESS) {
 		WARNING("couldn't initialize device: %08X", status);
-		wrap_remove_thread(thread);
 		TRACEEXIT1(return NDIS_STATUS_FAILURE);
 	}
 
@@ -261,47 +252,43 @@ NDIS_STATUS miniport_init(struct wrap_ndis_device *wnd)
 		DBGTRACE1("setting power state to device %s returns %08X",
 			  wnd->net_dev->name, status);
 #endif
-	set_bit(HW_INITIALIZED, &wnd->wd->hw_status);
-	set_bit(HW_AVAILABLE, &wnd->wd->hw_status);
+	set_bit(HW_INITIALIZED, &wnd->hw_status);
+	set_bit(HW_AVAILABLE, &wnd->hw_status);
 	hangcheck_add(wnd);
 	stats_timer_add(wnd);
-	wrap_remove_thread(thread);
 	TRACEEXIT1(return NDIS_STATUS_SUCCESS);
 }
 
-void miniport_halt(struct wrap_ndis_device *wnd)
+static void miniport_halt(struct wrap_ndis_device *wnd)
 {
 	struct miniport_char *miniport;
-	struct nt_thread *thread;
 
 	TRACEENTER1("%p", wnd);
-	clear_bit(HW_AVAILABLE, &wnd->wd->hw_status);
+	clear_bit(HW_AVAILABLE, &wnd->hw_status);
 	hangcheck_del(wnd);
 	stats_timer_del(wnd);
-	if (!test_bit(HW_INITIALIZED, &wnd->wd->hw_status)) {
+	if (!test_bit(HW_INITIALIZED, &wnd->hw_status)) {
 		WARNING("device %p is not initialized - not halting", wnd);
 		TRACEEXIT1(return);
 	}
-	thread = wrap_create_thread(get_current());
-	if (thread == NULL)
-		WARNING("couldn't create system thread for task: %p",
-			get_current());
 	miniport = &wnd->wd->driver->ndis_driver->miniport;
 	DBGTRACE1("driver halt is at %p", miniport->miniport_halt);
 
-	DBGTRACE2("task: %p, pid: %d", get_current(), get_current()->pid);
+	DBGTRACE2("task: %p, pid: %d", current, current->pid);
+#if 0
+	/* Marvell driver doesn't disable interrupts before calling
+	 * NdisMDeregisterInterrupt, so shut it up before halting */
+	if (wnd->wd->vendor == 0x11ab && miniport->shutdown)
+		LIN2WIN1(miniport->shutdown, wnd->shutdown_ctx);
+#endif
 	LIN2WIN1(miniport->miniport_halt, wnd->nmb->adapter_ctx);
-	clear_bit(HW_INITIALIZED, &wnd->wd->hw_status);
+	clear_bit(HW_INITIALIZED, &wnd->hw_status);
 
-	ndis_exit_device(wnd);
-
-	if (thread)
-		wrap_remove_thread(thread);
 	TRACEEXIT1(return);
 }
 
-NDIS_STATUS miniport_pnp_event(struct wrap_ndis_device *wnd,
-			       enum ndis_device_pnp_event event)
+static NDIS_STATUS miniport_pnp_event(struct wrap_ndis_device *wnd,
+				      enum ndis_device_pnp_event event)
 {
 	struct miniport_char *miniport;
 	ULONG pnp_info;
@@ -312,20 +299,21 @@ NDIS_STATUS miniport_pnp_event(struct wrap_ndis_device *wnd,
 		DBGTRACE1("%d, %p",
 			  test_bit(ATTR_SURPRISE_REMOVE, &wnd->attributes),
 			  miniport->pnp_event_notify);
-		if (!miniport->pnp_event_notify) {
-			WARNING("Windows driver %s doesn't support "
-				"MiniportPnpEventNotify for safe unplugging",
-				wnd->wd->driver->name);
-			return NDIS_STATUS_FAILURE;
-		}
-		DBGTRACE1("calling surprise_removed");
-		LIN2WIN4(miniport->pnp_event_notify, wnd->nmb->adapter_ctx,
-			 NdisDevicePnPEventSurpriseRemoved, NULL, 0);
+		if (test_bit(ATTR_SURPRISE_REMOVE, &wnd->attributes) &&
+		    miniport->pnp_event_notify) {
+			DBGTRACE1("calling surprise_removed");
+			LIN2WIN4(miniport->pnp_event_notify,
+				 wnd->nmb->adapter_ctx,
+				 NdisDevicePnPEventSurpriseRemoved, NULL, 0);
+		} else
+			DBGTRACE1("Windows driver %s doesn't support "
+				  "MiniportPnpEventNotify for safe unplugging",
+				  wnd->wd->driver->name);
 		return NDIS_STATUS_SUCCESS;
 	case NdisDevicePnPEventPowerProfileChanged:
 		if (!miniport->pnp_event_notify) {
 			DBGTRACE1("Windows driver %s doesn't support "
-				"MiniportPnpEventNotify",
+				  "MiniportPnpEventNotify",
 				  wnd->wd->driver->name);
 			return NDIS_STATUS_FAILURE;
 		}
@@ -375,15 +363,13 @@ static int ndis_set_mac_addr(struct net_device *dev, void *p)
 	struct ndis_configuration_parameter param;
 	struct unicode_string key;
 	struct ansi_string ansi;
-	unsigned int i;
 	NDIS_STATUS res;
 	unsigned char mac_string[3 * ETH_ALEN];
 	mac_address mac;
 
 	/* string <-> ansi <-> unicode conversion is driving me nuts */
 
-	for (i = 0; i < sizeof(mac); i++)
-		mac[i] = addr->sa_data[i];
+	memcpy(mac, addr->sa_data, sizeof(mac));
 	memset(mac_string, 0, sizeof(mac_string));
 	res = snprintf(mac_string, sizeof(mac_string), MACSTR,
 		       MAC2STR(mac));
@@ -412,8 +398,9 @@ static int ndis_set_mac_addr(struct net_device *dev, void *p)
 		RtlFreeUnicodeString(&param.data.string);
 		TRACEEXIT1(return -EINVAL);
 	}
-	ndis_reinit(wnd);
-	memcpy(dev->dev_addr, addr->sa_data, dev->addr_len);
+	if (pnp_stop_device(wnd->wd) == STATUS_SUCCESS &&
+	    pnp_start_device(wnd->wd) == STATUS_SUCCESS)
+		memcpy(dev->dev_addr, addr->sa_data, dev->addr_len);
 	RtlFreeUnicodeString(&key);
 	RtlFreeUnicodeString(&param.data.string);
 	TRACEEXIT1(return 0);
@@ -425,6 +412,9 @@ static void show_supported_oids(struct wrap_ndis_device *wnd)
 	int i, n, needed;
 	ndis_oid *oids;
 
+#ifndef DEBUG
+	return;
+#endif
 	res = miniport_query_info_needed(wnd, OID_GEN_SUPPORTED_LIST, NULL, 0,
 					 &needed);
 	if (!(res == NDIS_STATUS_BUFFER_TOO_SHORT ||
@@ -451,7 +441,7 @@ static struct ndis_packet *
 allocate_send_packet(struct wrap_ndis_device *wnd, ndis_buffer *buffer)
 {
 	struct ndis_packet *packet;
-	struct wrap_ndis_packet *wrap_ndis_packet;
+	struct ndis_packet_oob_data *oob_data;
 	NDIS_STATUS status;
 
 	NdisAllocatePacket(&status, &packet, wnd->wrapper_packet_pool);
@@ -461,21 +451,19 @@ allocate_send_packet(struct wrap_ndis_device *wnd, ndis_buffer *buffer)
 	packet->private.buffer_head = buffer;
 	packet->private.buffer_tail = buffer;
 
-	wrap_ndis_packet = packet->wrap_ndis_packet;
+	oob_data = NDIS_PACKET_OOB_DATA(packet);
 	if (wnd->use_sg_dma) {
-		wrap_ndis_packet->ndis_sg_element.address =
+		oob_data->ndis_sg_element.address =
 			PCI_DMA_MAP_SINGLE(wnd->wd->pci.pdev,
 					   MmGetMdlVirtualAddress(buffer),
 					   MmGetMdlByteCount(buffer),
 					   PCI_DMA_TODEVICE);
 
-		wrap_ndis_packet->ndis_sg_element.length =
-			MmGetMdlByteCount(buffer);
-		wrap_ndis_packet->ndis_sg_list.nent = 1;
-		wrap_ndis_packet->ndis_sg_list.elements =
-			&wrap_ndis_packet->ndis_sg_element;
-		wrap_ndis_packet->extension.info[ScatterGatherListPacketInfo] =
-			&wrap_ndis_packet->ndis_sg_list;
+		oob_data->ndis_sg_element.length = MmGetMdlByteCount(buffer);
+		oob_data->ndis_sg_list.nent = 1;
+		oob_data->ndis_sg_list.elements = &oob_data->ndis_sg_element;
+		oob_data->extension.info[ScatterGatherListPacketInfo] =
+			&oob_data->ndis_sg_list;
 	}
 	return packet;
 }
@@ -484,25 +472,20 @@ static void free_send_packet(struct wrap_ndis_device *wnd,
 			     struct ndis_packet *packet)
 {
 	ndis_buffer *buffer;
-	struct wrap_ndis_packet *wrap_ndis_packet;
+	struct ndis_packet_oob_data *oob_data;
 
 	TRACEENTER3("packet: %p", packet);
-	if (!packet) {
-		ERROR("illegal packet from %p", wnd);
-		return;
-	}
-
 	buffer = packet->private.buffer_head;
-	wrap_ndis_packet = packet->wrap_ndis_packet;
+	oob_data = NDIS_PACKET_OOB_DATA(packet);
 	if (wnd->use_sg_dma)
 		PCI_DMA_UNMAP_SINGLE(wnd->wd->pci.pdev,
-				     wrap_ndis_packet->ndis_sg_element.address,
-				     wrap_ndis_packet->ndis_sg_element.length,
+				     oob_data->ndis_sg_element.address,
+				     oob_data->ndis_sg_element.length,
 				     PCI_DMA_TODEVICE);
 
 	DBGTRACE3("freeing buffer %p", buffer);
 	NdisFreeBuffer(buffer);
-	dev_kfree_skb(wrap_ndis_packet->skb);
+	dev_kfree_skb_any(oob_data->skb);
 
 	DBGTRACE3("freeing packet %p", packet);
 	NdisFreePacket(packet);
@@ -521,7 +504,6 @@ static int send_packets(struct wrap_ndis_device *wnd, unsigned int start,
 	struct miniport_char *miniport;
 	unsigned int sent, n;
 	struct ndis_packet *packet;
-	struct wrap_ndis_packet *wrap_ndis_packet;
 
 	TRACEENTER3("start: %d, pending: %d", start, pending);
 	miniport = &wnd->wd->driver->ndis_driver->miniport;
@@ -542,9 +524,10 @@ static int send_packets(struct wrap_ndis_device *wnd, unsigned int start,
 		DBGTRACE3("sent");
 		if (test_bit(ATTR_SERIALIZED, &wnd->attributes)) {
 			for (sent = 0; sent < n && wnd->send_ok; sent++) {
+				struct ndis_packet_oob_data *oob_data;
 				packet = wnd->xmit_array[sent];
-				wrap_ndis_packet = packet->wrap_ndis_packet;
-				switch(wrap_ndis_packet->oob_data.status) {
+				oob_data = NDIS_PACKET_OOB_DATA(packet);
+				switch(oob_data->status) {
 				case NDIS_STATUS_SUCCESS:
 					sendpacket_done(wnd, packet);
 					break;
@@ -595,19 +578,21 @@ static void xmit_worker(void *param)
 
 	/* some drivers e.g., new RT2500 driver, crash if any packets
 	 * are sent when the card is not associated */
-	irql = kspin_lock_irql(&wnd->xmit_lock, DISPATCH_LEVEL);
 	while (wnd->send_ok) {
-		if (wnd->xmit_ring_pending == 0)
+		irql = nt_spin_lock_irql(&wnd->xmit_lock, DISPATCH_LEVEL);
+		if (wnd->xmit_ring_pending == 0) {
+			nt_spin_unlock_irql(&wnd->xmit_lock, irql);
 			break;
+		}
 		n = send_packets(wnd, wnd->xmit_ring_start,
 				 wnd->xmit_ring_pending);
 		wnd->xmit_ring_start =
 			(wnd->xmit_ring_start + n) % XMIT_RING_SIZE;
 		wnd->xmit_ring_pending -= n;
-		if (n > 0 && netif_queue_stopped(wnd->net_dev))
+		if (netif_queue_stopped(wnd->net_dev) && n > 0)
 			netif_wake_queue(wnd->net_dev);
+		nt_spin_unlock_irql(&wnd->xmit_lock, irql);
 	}
-	kspin_unlock_irql(&wnd->xmit_lock, irql);
 
 	TRACEEXIT3(return);
 }
@@ -615,16 +600,16 @@ static void xmit_worker(void *param)
 /*
  * Free and unmap packet created in xmit
  */
-void sendpacket_done(struct wrap_ndis_device *wnd, struct ndis_packet *packet)
+void sendpacket_done(struct wrap_ndis_device *wnd,
+		     struct ndis_packet *packet)
 {
-	KIRQL irql;
 
 	TRACEENTER3("%p", packet);
-	irql = kspin_lock_irql(&wnd->send_packet_done_lock, DISPATCH_LEVEL);
+	nt_spin_lock(&wnd->send_packet_done_lock);
 	wnd->stats.tx_bytes += packet->private.len;
 	wnd->stats.tx_packets++;
+	nt_spin_unlock(&wnd->send_packet_done_lock);
 	free_send_packet(wnd, packet);
-	kspin_unlock_irql(&wnd->send_packet_done_lock, irql);
 	TRACEEXIT3(return);
 }
 
@@ -639,6 +624,7 @@ static int start_xmit(struct sk_buff *skb, struct net_device *dev)
 	struct wrap_ndis_device *wnd = netdev_priv(dev);
 	ndis_buffer *buffer;
 	struct ndis_packet *packet;
+	struct ndis_packet_oob_data *oob_data;
 	unsigned int xmit_ring_next_slot;
 	NDIS_STATUS res;
 
@@ -651,16 +637,16 @@ static int start_xmit(struct sk_buff *skb, struct net_device *dev)
 		NdisFreeBuffer(buffer);
 		return 1;
 	}
-	packet->wrap_ndis_packet->skb = skb;
-	kspin_lock(&wnd->xmit_lock);
-	xmit_ring_next_slot =
-		(wnd->xmit_ring_start +
-		 wnd->xmit_ring_pending) % XMIT_RING_SIZE;
+	oob_data = NDIS_PACKET_OOB_DATA(packet);
+	oob_data->skb = skb;
+	nt_spin_lock(&wnd->xmit_lock);
+	xmit_ring_next_slot = (wnd->xmit_ring_start +
+			       wnd->xmit_ring_pending) % XMIT_RING_SIZE;
 	wnd->xmit_ring[xmit_ring_next_slot] = packet;
 	wnd->xmit_ring_pending++;
 	if (wnd->xmit_ring_pending == XMIT_RING_SIZE)
 		netif_stop_queue(wnd->net_dev);
-	kspin_unlock(&wnd->xmit_lock);
+	nt_spin_unlock(&wnd->xmit_lock);
 
 	schedule_work(&wnd->xmit_work);
 
@@ -683,7 +669,8 @@ static int set_packet_filter(struct wrap_ndis_device *wnd, ULONG packet_filter)
 	TRACEEXIT3(return 0);
 }
 
-static int get_packet_filter(struct wrap_ndis_device *wnd, ULONG *packet_filter)
+static int get_packet_filter(struct wrap_ndis_device *wnd,
+			     ULONG *packet_filter)
 {
 	NDIS_STATUS res;
 
@@ -697,23 +684,25 @@ static int get_packet_filter(struct wrap_ndis_device *wnd, ULONG *packet_filter)
 	TRACEEXIT3(return 0);
 }
 
-int ndis_open(struct net_device *dev)
+static int ndis_open(struct net_device *dev)
 {
 	ULONG packet_filter;
 	struct wrap_ndis_device *wnd = netdev_priv(dev);
 
 	TRACEENTER1("%p", wnd);
 	packet_filter = NDIS_PACKET_TYPE_DIRECTED | NDIS_PACKET_TYPE_BROADCAST;
-	/* first try with minimum required */
-	if (set_packet_filter(wnd, packet_filter))
-		DBGTRACE1("couldn't set packet filter %x", packet_filter);
-	else
-		DBGTRACE1("set packet filter");
 	/* add any dev specific filters */
 	if (dev->flags & IFF_PROMISC)
-		packet_filter |= NDIS_PACKET_TYPE_ALL_LOCAL;
-	if (set_packet_filter(wnd, packet_filter))
+		packet_filter |= NDIS_PACKET_TYPE_PROMISCUOUS |
+			NDIS_PACKET_TYPE_ALL_LOCAL;
+	if (set_packet_filter(wnd, packet_filter) &&
+	    packet_filter & NDIS_PACKET_TYPE_PROMISCUOUS) {
 		DBGTRACE1("couldn't add packet filter %x", packet_filter);
+		packet_filter &= ~NDIS_PACKET_TYPE_PROMISCUOUS;
+		if (set_packet_filter(wnd, packet_filter))
+			DBGTRACE1("couldn't add packet filter %x",
+				  packet_filter);
+	}
 	/* NDIS_PACKET_TYPE_PROMISCUOUS will not work with 802.11 */
 	netif_device_attach(dev);
 	netif_start_queue(dev);
@@ -963,9 +952,6 @@ static void hangcheck_proc(unsigned long data)
 	struct wrap_ndis_device *wnd = (struct wrap_ndis_device *)data;
 
 	TRACEENTER3("");
-	if (wnd->hangcheck_interval <= 0)
-		return;
-
 	set_bit(HANGCHECK, &wnd->wrap_ndis_work);
 	schedule_work(&wnd->wrap_ndis_worker);
 
@@ -978,8 +964,10 @@ static void hangcheck_proc(unsigned long data)
 void hangcheck_add(struct wrap_ndis_device *wnd)
 {
 	if (!wnd->wd->driver->ndis_driver->miniport.hangcheck ||
-	    wnd->hangcheck_interval <= 0)
+	    hangcheck_interval < 0)
 		return;
+	if (hangcheck_interval > 0)
+		wnd->hangcheck_interval = hangcheck_interval * HZ;
 	init_timer(&wnd->hangcheck_timer);
 	wnd->hangcheck_timer.data = (unsigned long)wnd;
 	wnd->hangcheck_timer.function = &hangcheck_proc;
@@ -1013,7 +1001,7 @@ static void wrap_ndis_worker_proc(void *param)
 	DBGTRACE2("%lu", wnd->wrap_ndis_work);
 
 	if (test_bit(SHUTDOWN, &wnd->wrap_ndis_work) ||
-	    !test_bit(HW_INITIALIZED, &wnd->wd->hw_status))
+	    !test_bit(HW_INITIALIZED, &wnd->hw_status))
 		TRACEEXIT3(return);
 
 	if (test_and_clear_bit(SET_INFRA_MODE, &wnd->wrap_ndis_work))
@@ -1049,57 +1037,6 @@ static void wrap_ndis_worker_proc(void *param)
 	TRACEEXIT3(return);
 }
 
-int suspend_ndis_device(struct wrap_ndis_device *wnd, pm_message_t state)
-{
-	NTSTATUS status;
-	if (test_bit(HW_SUSPENDED, &wnd->wd->hw_status) ||
-	    test_bit(HW_HALTED, &wnd->wd->hw_status))
-		return -1;
-	DBGTRACE2("irql: %d", current_irql());
-	netif_poll_disable(wnd->net_dev);
-	if (netif_running(wnd->net_dev)) {
-		netif_tx_disable(wnd->net_dev);
-		netif_device_detach(wnd->net_dev);
-	}
-	hangcheck_del(wnd);
-	stats_timer_del(wnd);
-	/* not all device support other than D3, so force it */
-	status = pnp_set_power_state(wnd->wd, PowerDeviceD3);
-	DBGTRACE2("suspending returns %08X", status);
-	if (status == STATUS_SUCCESS)
-		TRACEEXIT2(return 0);
-	else {
-		/* TODO: we don't know the current status of
-		 * driver/device; should we restart interface, stats
-		 * etc.? */
-		TRACEEXIT2(return -1);
-	}
-}
-
-int resume_ndis_device(struct wrap_ndis_device *wnd)
-{
-	NTSTATUS status;
-	struct net_device *net_dev = wnd->net_dev;
-
-	status = pnp_set_power_state(wnd->wd, PowerDeviceD0);
-	if (status != STATUS_SUCCESS) {
-		WARNING("resuming device %s failed: %08x",
-			net_dev->name, status);
-		TRACEEXIT2(return status);
-	}
-	hangcheck_add(wnd);
-	stats_timer_add(wnd);
-	set_scan(wnd);
-	set_bit(SET_ESSID, &wnd->wrap_ndis_work);
-	if (netif_running(net_dev)) {
-		netif_device_attach(net_dev);
-		netif_wake_queue(net_dev);
-	}
-	netif_poll_enable(net_dev);
-	DBGTRACE2("%s: device resumed", net_dev->name);
-	TRACEEXIT2(return STATUS_SUCCESS);
-}
-
 struct iw_statistics *get_wireless_stats(struct net_device *dev)
 {
 	struct wrap_ndis_device *wnd = netdev_priv(dev);
@@ -1108,10 +1045,9 @@ struct iw_statistics *get_wireless_stats(struct net_device *dev)
 
 NDIS_STATUS ndis_reinit(struct wrap_ndis_device *wnd)
 {
-	miniport_halt(wnd);
-	return miniport_init(wnd);
+	pnp_stop_device(wnd->wd);
+	return pnp_start_device(wnd->wd);
 }
-
 
 /* check capabilites - mainly for WPA */
 void check_capa(struct wrap_ndis_device *wnd)
@@ -1250,15 +1186,16 @@ static NDIS_STATUS miniport_set_power_state(struct wrap_ndis_device *wnd,
 	TRACEENTER2("state: %d", state);
 	if (state == NdisDeviceStateD0) {
 		status = STATUS_SUCCESS;
-		if (test_and_clear_bit(HW_HALTED, &wnd->wd->hw_status)) {
+		if (test_and_clear_bit(HW_HALTED, &wnd->hw_status)) {
 			DBGTRACE2("starting device");
+			/* TODO: should we use pnp_start_device instead? */
 			if (miniport_init(wnd) != NDIS_STATUS_SUCCESS) {
 				WARNING("couldn't re-initialize device %s",
 					wnd->net_dev->name);
 				TRACEEXIT2(return NDIS_STATUS_FAILURE);
 			}
 		}
-		if (test_and_clear_bit(HW_SUSPENDED, &wnd->wd->hw_status)) {
+		if (test_and_clear_bit(HW_SUSPENDED, &wnd->hw_status)) {
 			status = miniport_set_int(wnd, OID_PNP_SET_POWER,
 						  NdisDeviceStateD0);
 			DBGTRACE2("set_power returns %08X", status);
@@ -1271,15 +1208,16 @@ static NDIS_STATUS miniport_set_power_state(struct wrap_ndis_device *wnd,
 	} else {
 		status = miniport_set_int(wnd, OID_PNP_SET_POWER, state);
 		if (status == NDIS_STATUS_SUCCESS)
-			set_bit(HW_SUSPENDED, &wnd->wd->hw_status);
+			set_bit(HW_SUSPENDED, &wnd->hw_status);
 		else
 			WARNING("setting power state to %d failed: %08X",
 				state, status);
 		if (status != NDIS_STATUS_SUCCESS) {
 			WARNING("device may not support power management");
 			DBGTRACE2("no pm: halting the device");
+			/* TODO: should we use pnp_stop_device instead? */
 			miniport_halt(wnd);
-			set_bit(HW_HALTED, &wnd->wd->hw_status);
+			set_bit(HW_HALTED, &wnd->hw_status);
 			status = STATUS_SUCCESS;
 		}
 		TRACEEXIT1(return status);
@@ -1316,19 +1254,49 @@ STDCALL NTSTATUS NdisDispatchPower(struct device_object *fdo,
 		state = NdisDeviceStateD3;
 	switch (irp_sl->minor_fn) {
 	case IRP_MN_SET_POWER:
-		IoCopyCurrentIrpStackLocationToNext(irp);
-		IoSetCompletionRoutine(irp, IrpStopCompletion, wnd, TRUE,
-				       FALSE, FALSE);
-		status = IoCallDriver(wnd->nmb->pdo, irp);
-		if (status != STATUS_SUCCESS)
-			break;
-		ndis_status = miniport_set_power_state(wnd, state);
-		DBGTRACE2("set_power to state %d returns %08X",
-			  state, ndis_status);
-		if (ndis_status == NDIS_STATUS_SUCCESS)
-			status = STATUS_SUCCESS;
-		else
-			status = STATUS_FAILURE;
+		if (state == NdisDeviceStateD0) {
+			IoCopyCurrentIrpStackLocationToNext(irp);
+			IoSetCompletionRoutine(irp, IrpStopCompletion, wnd,
+					       TRUE, FALSE, FALSE);
+			status = IoCallDriver(wnd->nmb->pdo, irp);
+			if (status != STATUS_SUCCESS)
+				return status;
+			ndis_status = miniport_set_power_state(wnd, state);
+			if (ndis_status != NDIS_STATUS_SUCCESS)
+				WARNING("setting power to %d failed: %08X",
+					state, ndis_status);
+			hangcheck_add(wnd);
+			stats_timer_add(wnd);
+			set_scan(wnd);
+			set_bit(SET_ESSID, &wnd->wrap_ndis_work);
+			if (netif_running(wnd->net_dev)) {
+				netif_device_attach(wnd->net_dev);
+				netif_wake_queue(wnd->net_dev);
+			}
+			netif_poll_enable(wnd->net_dev);
+			DBGTRACE2("%s: device resumed", wnd->net_dev->name);
+			TRACEEXIT2(return STATUS_SUCCESS);
+		} else {
+			if (test_bit(HW_SUSPENDED, &wnd->hw_status) ||
+			    test_bit(HW_HALTED, &wnd->hw_status))
+				return STATUS_FAILURE;
+			DBGTRACE2("irql: %d", current_irql());
+			netif_poll_disable(wnd->net_dev);
+			if (netif_running(wnd->net_dev)) {
+				netif_tx_disable(wnd->net_dev);
+				netif_device_detach(wnd->net_dev);
+			}
+			hangcheck_del(wnd);
+			stats_timer_del(wnd);
+			ndis_status = miniport_set_power_state(wnd, state);
+			/* TODO: we need to send the IRP back with
+			 * error so that pdo can restart device */
+			if (ndis_status != NDIS_STATUS_SUCCESS)
+				WARNING("setting power to %d failed: %08X",
+					state, ndis_status);
+			return IopPassIrpDown(wnd->nmb->pdo, irp);
+		}
+		status = STATUS_SUCCESS;
 		break;
 	case IRP_MN_QUERY_POWER:
 		ndis_status = miniport_query_int(wnd, OID_PNP_QUERY_POWER,
@@ -1362,6 +1330,7 @@ STDCALL NTSTATUS NdisDispatchPnp(struct device_object *fdo,
 	struct device_object *pdo;
 	NTSTATUS status;
 
+	IOENTER("fdo: %p, irp: %p", fdo, irp);
 	irp_sl = IoGetCurrentIrpStackLocation(irp);
 	wnd = fdo->reserved;
 	pdo = wnd->nmb->pdo;
@@ -1528,20 +1497,15 @@ static NDIS_STATUS ndis_start_device(struct wrap_ndis_device *wnd)
 	DBGTRACE1("pool: %p", wnd->wrapper_buffer_pool);
 	miniport_set_int(wnd, OID_802_11_NETWORK_TYPE_IN_USE,
 			 Ndis802_11Automode);
-	miniport_set_int(wnd, OID_802_11_POWER_MODE, NDIS_POWER_OFF);
+//	miniport_set_int(wnd, OID_802_11_POWER_MODE, NDIS_POWER_OFF);
 	/* check_capa changes auth_mode and encr_mode, so set them again */
-	set_scan(wnd);
 	set_infra_mode(wnd, Ndis802_11Infrastructure);
 	set_auth_mode(wnd, Ndis802_11AuthModeOpen);
 	set_encr_mode(wnd, Ndis802_11EncryptionDisabled);
+	set_scan(wnd);
 	set_privacy_filter(wnd, Ndis802_11PrivFilterAcceptAll);
+	set_essid(wnd, "", 0);
 
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
-	if (wrap_is_pci_bus(wnd->wd->dev_bus_type))
-		SET_NETDEV_DEV(net_dev, &wnd->wd->pci.pdev->dev);
-	if (wrap_is_usb_bus(wnd->wd->dev_bus_type))
-		SET_NETDEV_DEV(net_dev, &wnd->wd->usb.intf->dev);
-#endif
 	wrap_procfs_add_ndis_device(wnd);
 	TRACEEXIT1(return NDIS_STATUS_SUCCESS);
 
@@ -1555,7 +1519,7 @@ packet_pool_err:
 	kfree(wnd->xmit_array);
 	wnd->xmit_array = NULL;
 err_start:
-	remove_ndis_device(wnd);
+	ndis_remove_device(wnd);
 	TRACEEXIT1(return NDIS_STATUS_FAILURE);
 }
 
@@ -1564,11 +1528,12 @@ static NDIS_STATUS ndis_remove_device(struct wrap_ndis_device *wnd)
 	KIRQL irql;
 
 	set_bit(SHUTDOWN, &wnd->wrap_ndis_work);
+	miniport_pnp_event(wnd, NdisDevicePnPEventSurpriseRemoved);
 	ndis_close(wnd->net_dev);
 	netif_carrier_off(wnd->net_dev);
 	wrap_procfs_remove_ndis_device(wnd);
 	/* throw away pending packets */
-	irql = kspin_lock_irql(&wnd->xmit_lock, DISPATCH_LEVEL);
+	irql = nt_spin_lock_irql(&wnd->xmit_lock, DISPATCH_LEVEL);
 	while (wnd->xmit_ring_pending) {
 		struct ndis_packet *packet;
 
@@ -1578,7 +1543,9 @@ static NDIS_STATUS ndis_remove_device(struct wrap_ndis_device *wnd)
 			(wnd->xmit_ring_start + 1) % XMIT_RING_SIZE;
 		wnd->xmit_ring_pending--;
 	}
-	kspin_unlock_irql(&wnd->xmit_lock, irql);
+	nt_spin_unlock_irql(&wnd->xmit_lock, irql);
+	miniport_halt(wnd);
+	ndis_exit_device(wnd);
 	/* flush_scheduled_work here causes crash with 2.4 kernels */
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
 	flush_scheduled_work();
@@ -1591,22 +1558,25 @@ static NDIS_STATUS ndis_remove_device(struct wrap_ndis_device *wnd)
 		NdisFreeBufferPool(wnd->wrapper_buffer_pool);
 		wnd->wrapper_buffer_pool = NULL;
 	}
+	IoDetachDevice(wnd->nmb->next_device);
 	IoDeleteDevice(wnd->nmb->fdo);
 	if (wnd->xmit_array)
 		kfree(wnd->xmit_array);
 	printk(KERN_INFO "%s: device %s removed\n", DRIVER_NAME,
 	       wnd->net_dev->name);
 	unregister_netdev(wnd->net_dev);
+	free_netdev(wnd->net_dev);
 	TRACEEXIT2(return NDIS_STATUS_SUCCESS);
 }
 
-STDCALL NTSTATUS NdisAddDevice(struct driver_object *drv_obj,
-			       struct device_object *pdo)
+static STDCALL NTSTATUS NdisAddDevice(struct driver_object *drv_obj,
+				      struct device_object *pdo)
 {
 	struct device_object *fdo;
 	struct ndis_miniport_block *nmb;
 	NTSTATUS status;
 	struct wrap_ndis_device *wnd;
+	struct net_device *net_dev;
 	struct wrap_device *wd;
 	int i;
 
@@ -1615,18 +1585,86 @@ STDCALL NTSTATUS NdisAddDevice(struct driver_object *drv_obj,
 		ERROR("interface name '%s' is too long", if_name);
 		return STATUS_INVALID_PARAMETER;
 	}
+	net_dev = alloc_etherdev(sizeof(*wnd) + sizeof(*nmb));
+	if (!net_dev) {
+		ERROR("couldn't allocate device");
+		return STATUS_RESOURCES;
+	}
+	wd = pdo->reserved;
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
+	SET_MODULE_OWNER(net_dev);
+	if (wrap_is_pci_bus(wd->dev_bus_type))
+		SET_NETDEV_DEV(net_dev, &wd->pci.pdev->dev);
+	if (wrap_is_usb_bus(wd->dev_bus_type))
+		SET_NETDEV_DEV(net_dev, &wd->usb.intf->dev);
+#endif
 	status = IoCreateDevice(drv_obj, 0, NULL, FILE_DEVICE_UNKNOWN, 0,
 				FALSE, &fdo);
-	if (status != STATUS_SUCCESS)
+	if (status != STATUS_SUCCESS) {
+		free_netdev(net_dev);
 		TRACEEXIT2(return status);
-	wd = pdo->reserved;
-	wnd = wd->wnd;
+	}
+	wnd = netdev_priv(net_dev);
+	DBGTRACE1("wnd: %p", wnd);
+
+	nmb = ((void *)wnd) + sizeof(*wnd);
+	wnd->nmb = nmb;
+	nmb->wnd = wnd;
+	wnd->nmb->pdo = pdo;
+	wd->wnd = wnd;
+	wnd->wd = wd;
+	nmb->filterdbs.eth_db = nmb;
+	nmb->filterdbs.tr_db = nmb;
+	nmb->filterdbs.fddi_db = nmb;
+	nmb->filterdbs.arc_db = nmb;
+
+	KeInitializeSpinLock(&nmb->lock);
+	init_nmb_functions(nmb);
+	wnd->net_dev = net_dev;
+	wnd->ndis_irq = NULL;
+	nt_spin_lock_init(&wnd->xmit_lock);
+	init_MUTEX(&wnd->ndis_comm_mutex);
+	init_waitqueue_head(&wnd->ndis_comm_wq);
+	wnd->ndis_comm_done = 0;
+	/* don't send packets until the card is associated */
+	wnd->send_ok = 0;
+	INIT_WORK(&wnd->xmit_work, xmit_worker, wnd);
+	wnd->xmit_ring_start = 0;
+	wnd->xmit_ring_pending = 0;
+	nt_spin_lock_init(&wnd->send_packet_done_lock);
+	wnd->encr_mode = Ndis802_11EncryptionDisabled;
+	wnd->auth_mode = Ndis802_11AuthModeOpen;
+	wnd->capa.encr = 0;
+	wnd->capa.auth = 0;
+	wnd->attributes = 0;
+	wnd->dma_map_count = 0;
+	wnd->dma_map_addr = NULL;
+	wnd->nick[0] = 0;
+	init_timer(&wnd->hangcheck_timer);
+	wnd->scan_timestamp = 0;
+	init_timer(&wnd->stats_timer);
+	wnd->wrap_ndis_work = 0;
+	memset(&wnd->essid, 0, sizeof(wnd->essid));
+	memset(&wnd->encr_info, 0, sizeof(wnd->encr_info));
+	wnd->infrastructure_mode = Ndis802_11Infrastructure;
+	INIT_WORK(&wnd->wrap_ndis_worker, wrap_ndis_worker_proc, wnd);
+	wnd->hw_status = 0;
+	set_bit(HW_AVAILABLE, &wnd->hw_status);
+	if (wd->driver->ndis_driver)
+		wd->driver->ndis_driver->miniport.shutdown = NULL;
+	/* ZyDas driver doesn't call completion function when
+	 * querying for stats or rssi, so disable stats */
+	if (stricmp(wd->driver->name, "zd1211u") == 0)
+		wnd->stats_enabled = FALSE;
+	else
+		wnd->stats_enabled = TRUE;
+
 	fdo->reserved = wnd;
 	nmb = wnd->nmb;
 	nmb->fdo = fdo;
-	DBGTRACE1("nmb: %p, pdo: %p, fdo: %p, attached: %p, next: %p",
-		  nmb, pdo, fdo, fdo->attached, fdo->next);
 	nmb->next_device = IoAttachDeviceToDeviceStack(fdo, pdo);
+	DBGTRACE1("nmb: %p, pdo: %p, fdo: %p, attached: %p, next: %p",
+		  nmb, pdo, fdo, fdo->attached, nmb->next_device);
 
 	for (i = 0; i <= IRP_MJ_MAXIMUM_FUNCTION; i++)
 		drv_obj->major_func[i] = IopPassIrpDown;
@@ -1639,93 +1677,8 @@ STDCALL NTSTATUS NdisAddDevice(struct driver_object *drv_obj,
 	TRACEEXIT2(return STATUS_SUCCESS);
 }
 
-int init_ndis_device(struct wrap_device *wd)
+int init_ndis_driver(struct driver_object *drv_obj)
 {
-	struct wrap_driver *driver;
-	struct wrap_ndis_device *wnd;
-	struct device_object *pdo;
-	struct net_device *net_dev;
-	struct ndis_miniport_block *nmb;
-
-	TRACEENTER1("wd: %p", wd);
-	driver = wd->driver;
-	pdo = wd->pdo;
-	net_dev = alloc_etherdev(sizeof(*wnd) + sizeof(*nmb));
-	if (!net_dev) {
-		ERROR("couldn't allocate device");
-		return -ENOMEM;
-	}
-	driver->drv_obj->drv_ext->add_device = NdisAddDevice;
-	SET_MODULE_OWNER(net_dev);
-	wnd = netdev_priv(net_dev);
-	DBGTRACE1("wnd: %p", wnd);
-
-	nmb = ((void *)wnd) + sizeof(*wnd);
-	wnd->nmb = nmb;
-	nmb->wnd = wnd;
-	wnd->wd = wd;
-	wd->wnd = wnd;
-	wnd->nmb->pdo = pdo;
-	nmb->filterdbs.eth_db = nmb;
-	nmb->filterdbs.tr_db = nmb;
-	nmb->filterdbs.fddi_db = nmb;
-	nmb->filterdbs.arc_db = nmb;
-
-	KeInitializeSpinLock(&nmb->lock);
-	init_nmb_functions(nmb);
-	wnd->net_dev = net_dev;
-	wnd->ndis_irq = NULL;
-	kspin_lock_init(&wnd->xmit_lock);
-	init_MUTEX(&wnd->ndis_comm_mutex);
-	init_waitqueue_head(&wnd->ndis_comm_wq);
-	wnd->ndis_comm_done = 0;
-	/* don't send packets until the card is associated */
-	wnd->send_ok = 0;
-	INIT_WORK(&wnd->xmit_work, xmit_worker, wnd);
-	wnd->xmit_ring_start = 0;
-	wnd->xmit_ring_pending = 0;
-	kspin_lock_init(&wnd->send_packet_done_lock);
-	wnd->encr_mode = Ndis802_11EncryptionDisabled;
-	wnd->auth_mode = Ndis802_11AuthModeOpen;
-	wnd->capa.encr = 0;
-	wnd->capa.auth = 0;
-	wnd->attributes = 0;
-	wnd->map_count = 0;
-	wnd->map_dma_addr = NULL;
-	wnd->nick[0] = 0;
-	wnd->hangcheck_interval = hangcheck_interval;
-	init_timer(&wnd->hangcheck_timer);
-	wnd->scan_timestamp = 0;
-	init_timer(&wnd->stats_timer);
-	wnd->wd->hw_status = 0;
-	wnd->wrap_ndis_work = 0;
-	memset(&wnd->essid, 0, sizeof(wnd->essid));
-	memset(&wnd->encr_info, 0, sizeof(wnd->encr_info));
-	wnd->infrastructure_mode = Ndis802_11Infrastructure;
-	INIT_WORK(&wnd->wrap_ndis_worker, wrap_ndis_worker_proc, wnd);
-	set_bit(HW_AVAILABLE, &wnd->wd->hw_status);
-	if (wd->driver->ndis_driver)
-		wd->driver->ndis_driver->miniport.shutdown = NULL;
-	/* ZyDas driver doesn't call completion function when
-	 * querying for stats or rssi, so disable stats */
-	if (stricmp(wd->driver->name, "zd1211u") == 0)
-		wnd->stats_enabled = FALSE;
-	else
-		wnd->stats_enabled = TRUE;
-	TRACEEXIT1(return 0);
+	drv_obj->drv_ext->add_device = NdisAddDevice;
+	return 0;
 }
-
-void remove_ndis_device(struct wrap_ndis_device *wnd)
-{
-	NTSTATUS status;
-
-	TRACEENTER1("%p", wnd);
-	if (!wnd || !wnd->wd)
-		TRACEEXIT1(return);
-	if (!test_bit(HW_RMMOD, &wnd->wd->hw_status))
-		miniport_pnp_event(wnd, NdisDevicePnPEventSurpriseRemoved);
-	status = pnp_stop_remove_device(wnd->wd);
-	free_netdev(wnd->net_dev);
-	TRACEEXIT1(return);
-}
-

@@ -18,9 +18,6 @@
 #include "loader.h"
 #include "pnp.h"
 
-#include <linux/module.h>
-#include <linux/kmod.h>
-
 char *if_name = "wlan%d";
 int proc_uid, proc_gid;
 int hangcheck_interval;
@@ -44,14 +41,14 @@ MODULE_PARM_DESC(proc_uid, "The uid of the files created in /proc "
 WRAP_MODULE_PARM_INT(proc_gid, 0600);
 MODULE_PARM_DESC(proc_gid, "The gid of the files created in /proc "
 		 "(default: 0).");
-WRAP_MODULE_PARM_INT(hangcheck_interval, 0600);
+WRAP_MODULE_PARM_INT(debug, 0600);
+MODULE_PARM_DESC(debug, "debug level");
+
 /* 0 - default value provided by NDIS driver,
  * positive value - force hangcheck interval to that many seconds
  * negative value - disable hangcheck
  */
-WRAP_MODULE_PARM_INT(debug, 0600);
-MODULE_PARM_DESC(debug, "debug level");
-
+WRAP_MODULE_PARM_INT(hangcheck_interval, 0600);
 MODULE_PARM_DESC(hangcheck_interval, "The interval, in seconds, for checking"
 		 " if driver is hung. (default: 0)");
 
@@ -59,8 +56,6 @@ MODULE_AUTHOR("ndiswrapper team <ndiswrapper-general@lists.sourceforge.net>");
 #ifdef MODULE_VERSION
 MODULE_VERSION(DRIVER_VERSION);
 #endif
-
-extern KSPIN_LOCK timer_lock;
 
 #ifdef USE_OWN_WORKQUEUE
 /* we need to get thread for the task running ndiswrapper_wq, so
@@ -76,7 +71,7 @@ static void _wrap_wq_init_worker(void *data)
 	struct task_struct *task;
 	struct nt_thread *thread;
 
-	task = get_current();
+	task = current;
 	if (_wrap_wq_init_state == WRAP_WQ_INIT) {
 		thread = wrap_create_thread(task);
 		DBGTRACE1("task: %p, pid: %d, thread: %p",
@@ -120,13 +115,13 @@ static void module_cleanup(void)
 
 static int __init wrapper_init(void)
 {
-	char *argv[] = {"loadndisdriver", 
+	char *argv[] = {"loadndisdriver", WRAP_CMD_LOAD_DEVICES,
 #if defined(DEBUG) && DEBUG >= 1
 			"1"
 #else
 			"0"
 #endif
-			, UTILS_VERSION, "-a", 0};
+			, UTILS_VERSION, NULL};
 	char *env[] = {NULL};
 	int ret;
 

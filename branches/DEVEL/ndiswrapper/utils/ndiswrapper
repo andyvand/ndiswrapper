@@ -21,6 +21,7 @@
 use Fcntl ':mode';
 use File::Basename;
 use File::Copy;
+use File::Path;
 
 my $WRAP_PCI_BUS = 5;
 my $WRAP_PCMCIA_BUS = 8;
@@ -80,6 +81,10 @@ if($ARGV[0] eq "-i" and @ARGV == 2) {
     $res = list();
 } elsif($ARGV[0] eq "-m" and @ARGV == 1) {
     $res = modalias();
+} elsif($ARGV[0] eq "-v" and @ARGV == 1) {
+    printf "utils "; system("/sbin/loadndisdriver -v");
+    printf "driver "; system("modinfo ndiswrapper | grep -E '^version|^vermagic'");
+    $res = 0;
 } else {
     usage();
     exit();
@@ -158,7 +163,7 @@ sub remove {
 	  "Use -l to list installed drivers\n";
 	return;
     }
-    system("rm -rf $confdir/$name");
+    rmtree("$confdir/$name", 0, 1);
 }
 
 sub devid_driver {
@@ -174,7 +179,7 @@ sub devid_driver {
     open(LS, "ls -1 $confdir/$driver/ |");
     while (my $f = <LS>) {
 	chomp($f);
-	if ($f =~ /\.([0-9]+).conf$/) {
+	if ($f =~ /\.([0-9A-F]+).conf$/) {
 	    symlink("$f", "$confdir/$driver/$devid.$1.conf");
 	    print "Driver '$driver' is used for '$devid'\n";
 	    $done = 1;
@@ -211,7 +216,7 @@ sub list {
 	}
     }
     if ($s) {
-	print "Installed ndis drivers:\n$s";
+	print "Installed drivers:\n$s";
     } else {
 	print "No drivers installed\n$s";
     }
@@ -345,9 +350,9 @@ sub installStatus {
     if ($sys eq 0 || $inf eq 0 || $conf eq 0) {
 	$ret = "invalid driver!";
     } else {
-	$ret = "\tdriver present " if $conf eq 1;
-	$ret = "\tdriver present, hardware present " if $conf eq 2;
-	$ret = "\tdriver present, hardware present " if $conf eq 3;
+	$ret = "\tdriver installed " if $conf eq 1;
+	$ret = "\tdriver installed, hardware present " if $conf eq 2;
+	$ret = "\tdriver installed, hardware present " if $conf eq 3;
     }
     return $ret;
 }
@@ -545,16 +550,16 @@ sub parseDevice {
     my @lines = split("\n", $dev->{data});
 
     for (my $i = 0; $i < @lines; $i++) {
-	my $line = remComment($lines[$i]);
+	my $line = $lines[$i];
+	$line =~ s/^;\s*//;
+	$line = trim(remComment($line));
 	(my $key, my $val) = getKeyVal($line, "=");
 	if ($key) {
 	    if (lc($key) eq "addreg") {
 		$addreg = $val;
-	    }
-	    if (lc($key) eq "copyfiles") {
+	    } elsif (lc($key) eq "copyfiles") {
 		push @copy_files, $val;
-	    }
-	    if ($key eq "BusType") {
+	    } elsif ($key eq "BusType") {
 		$strings{$key} = $val;
 	    }
 	}
@@ -635,14 +640,17 @@ sub copyfiles {
 	my $line = $lines[$i];
 	$line = trim($line);
 
-	last if (!$line);
 	last if ($line =~ /^\[/);
 	my @files = split(",", $line);
 	for (my $j = 0; $j < @files; $j++) {
 	    my $file = $files[$j];
-	    copy_file($file);
+	    $file = trim($file);
+	    if ($file and length($file) > 0) {
+		copy_file($file);
+	    }
 	}
     }
+    return 0;
 }
 
 sub copy_file {
@@ -772,7 +780,7 @@ sub addReg {
 		$gotParam = 1;
 	    }
 
-	    if ($gotParam and $param ne "") {
+	    if ($gotParam and $param ne "" and $param ne "BusType") {
 		my $s = "$param|$val";
 		if ($param_fixlist{"$s"}) {
 		    my $sOld = $s;
@@ -901,10 +909,9 @@ sub loadinf {
 	$s =~ s/\xff\xfe//;
 	$s =~ s/\0//g;
 
-	$s = remComment($s);
 	$s =~ s/\s*$//;	#Remove trailing whitespace and \r
 	$s .= "\n";
-	if ($s =~ /^\[(.+)\]$/) {
+	if ($s =~ /^\[(.+)\]/) {
 	    $sections[$i++] = $section;		
 	    my %new_section;
 	    $section = \%new_section;

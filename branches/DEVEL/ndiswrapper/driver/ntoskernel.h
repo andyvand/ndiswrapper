@@ -16,11 +16,13 @@
 #ifndef _NTOSKERNEL_H_
 #define _NTOSKERNEL_H_
 
-#define UTILS_VERSION "1.6"
+#define UTILS_VERSION "1.7"
 
 #include <linux/types.h>
 #include <linux/timer.h>
 #include <linux/time.h>
+#include <linux/module.h>
+#include <linux/kmod.h>
 
 #include <linux/netdevice.h>
 #include <linux/wireless.h>
@@ -73,33 +75,32 @@
 typedef struct workqueue_struct *workqueue;
 #include <asm/dma-mapping.h>
 
-#define PCI_DMA_ALLOC_COHERENT(pci_dev,size,dma_handle) \
-	dma_alloc_coherent(&pci_dev->dev,size,dma_handle, \
-			   GFP_KERNEL | __GFP_REPEAT | GFP_DMA)
-#define PCI_DMA_FREE_COHERENT(pci_dev,size,cpu_addr,dma_handle) \
+#define PCI_DMA_ALLOC_COHERENT(pci_dev,size,dma_handle)			\
+	dma_alloc_coherent(&pci_dev->dev,size,dma_handle, GFP_KERNEL)
+#define PCI_DMA_FREE_COHERENT(pci_dev,size,cpu_addr,dma_handle)		\
 	dma_free_coherent(&pci_dev->dev,size,cpu_addr,dma_handle)
-#define PCI_DMA_MAP_SINGLE(pci_dev,addr,size,direction) \
+#define PCI_DMA_MAP_SINGLE(pci_dev,addr,size,direction)		\
 	dma_map_single(&pci_dev->dev,addr,size,direction)
-#define PCI_DMA_UNMAP_SINGLE(pci_dev,dma_handle,size,direction) \
+#define PCI_DMA_UNMAP_SINGLE(pci_dev,dma_handle,size,direction)		\
 	dma_unmap_single(&pci_dev->dev,dma_handle,size,direction)
-#define MAP_SG(pci_dev, sglist, nents, direction) \
+#define MAP_SG(pci_dev, sglist, nents, direction)		\
 	dma_map_sg(&pci_dev->dev, sglist, nents, direction)
-#define UNMAP_SG(pci_dev, sglist, nents, direction) \
+#define UNMAP_SG(pci_dev, sglist, nents, direction)		\
 	dma_unmap_sg(&pci_dev->dev, sglist, nents, direction)
 
 #else // linux version <= 2.5.41
 
-#define PCI_DMA_ALLOC_COHERENT(dev,size,dma_handle) \
+#define PCI_DMA_ALLOC_COHERENT(dev,size,dma_handle)	\
 	pci_alloc_consistent(dev,size,dma_handle)
-#define PCI_DMA_FREE_COHERENT(dev,size,cpu_addr,dma_handle) \
+#define PCI_DMA_FREE_COHERENT(dev,size,cpu_addr,dma_handle)	\
 	pci_free_consistent(dev,size,cpu_addr,dma_handle)
-#define PCI_DMA_MAP_SINGLE(dev,addr,size,direction) \
+#define PCI_DMA_MAP_SINGLE(dev,addr,size,direction)	\
 	pci_map_single(dev,addr,size,direction)
-#define PCI_DMA_UNMAP_SINGLE(dev,dma_handle,size,direction) \
+#define PCI_DMA_UNMAP_SINGLE(dev,dma_handle,size,direction)	\
 	pci_unmap_single(dev,dma_handle,size,direction)
-#define MAP_SG(dev, sglist, nents, direction) \
+#define MAP_SG(dev, sglist, nents, direction)		\
 	pci_map_sg(dev, sglist, nents, direction)
-#define UNMAP_SG(dev, sglist, nents, direction) \
+#define UNMAP_SG(dev, sglist, nents, direction)		\
 	pci_unmap_sg(dev, sglist, nents, direction)
 #include <linux/tqueue.h>
 #define work_struct tq_struct
@@ -127,7 +128,8 @@ typedef task_queue workqueue;
 
 #ifndef in_atomic
 #ifdef CONFIG_PREEMPT
-#define in_atomic() ((preempt_get_count() & ~PREEMPT_ACTIVE) != kernel_locked())
+#define in_atomic()						\
+	((preempt_get_count() & ~PREEMPT_ACTIVE) != kernel_locked())
 #else
 #define in_atomic() (in_interrupt())
 #endif // CONFIG_PREEMPT
@@ -415,10 +417,10 @@ struct pe_image {
 	IMAGE_OPTIONAL_HEADER *opt_hdr;
 };
 
-extern KSPIN_LOCK atomic_lock;
-extern KSPIN_LOCK cancel_lock;
+extern NT_SPIN_LOCK atomic_lock;
+extern NT_SPIN_LOCK cancel_lock;
 
-//#define DEBUG_IRQL 1
+#define DEBUG_IRQL 1
 
 struct wrap_timer {
 	long repeat;
@@ -448,7 +450,8 @@ struct wrap_device_setting {
 };
 
 struct wrap_bin_file {
-	char name[MAX_SETTING_NAME_LEN];
+	char driver_name[MAX_DRIVER_NAME_LEN];
+	char name[MAX_DRIVER_NAME_LEN];
 	int size;
 	void *data;
 };
@@ -464,7 +467,7 @@ struct wrap_driver {
 	struct pe_image pe_images[MAX_DRIVER_PE_IMAGES];
 	int num_bin_files;
 	struct wrap_bin_file *bin_files;
-	struct wrap_device_setting *settings;
+	struct nt_list wrap_devices;
 	union {
 		struct wrap_ndis_driver *ndis_driver;
 	};
@@ -476,6 +479,8 @@ enum hw_status {
 };
 
 struct wrap_device {
+	/* this list is used to link to driver's wrap_devices */
+	struct nt_list list;
 	/* first part is (de)initialized once by loader */
 	int dev_bus_type;
 	int vendor;
@@ -494,7 +499,9 @@ struct wrap_device {
 	union {
 		struct {
 			struct pci_dev *pdev;
+#if LINUX_VERSION_CODE <= KERNEL_VERSION(2,6,9)
 			u32 pci_state[16];
+#endif
 		} pci;
 		struct {
 			struct usb_device *udev;
@@ -503,12 +510,11 @@ struct wrap_device {
 			struct nt_list wrap_urb_list;
 		} usb;
 	};
-	unsigned long hw_status;
 	union {
 		struct wrap_ndis_device *wnd;
 	};
 	struct nt_list timer_list;
-	KSPIN_LOCK timer_lock;
+	NT_SPIN_LOCK timer_lock;
 	struct cm_resource_list *resource_list;
 };
 
@@ -524,8 +530,7 @@ int ntoskernel_init(void);
 void ntoskernel_exit(void);
 int ntoskernel_init_device(struct wrap_device *wd);
 void ntoskernel_exit_device(struct wrap_device *wd);
-void *allocate_object(ULONG size, enum common_object_type type,
-		      struct unicode_string *name);
+void *allocate_object(ULONG size, enum common_object_type type, char *name);
 void  free_object(void *object);
 
 int usb_init(void);
@@ -580,14 +585,14 @@ _FASTCALL LONG InterlockedIncrement(FASTCALL_DECL_1(LONG volatile *val));
 _FASTCALL struct nt_list *
 ExInterlockedInsertHeadList(FASTCALL_DECL_3(struct nt_list *head,
 					    struct nt_list *entry,
-					    KSPIN_LOCK *lock));
+					    NT_SPIN_LOCK *lock));
 _FASTCALL struct nt_list *
 ExInterlockedInsertTailList(FASTCALL_DECL_3(struct nt_list *head,
 					    struct nt_list *entry,
-					    KSPIN_LOCK *lock));
+					    NT_SPIN_LOCK *lock));
 _FASTCALL struct nt_list *
 ExInterlockedRemoveHeadList(FASTCALL_DECL_2(struct nt_list *head,
-					    KSPIN_LOCK *lock));
+					    NT_SPIN_LOCK *lock));
 STDCALL NTSTATUS IoCreateDevice(struct driver_object *driver,
 				ULONG dev_ext_length,
 				struct unicode_string *dev_name,
@@ -629,27 +634,27 @@ struct nt_thread *wrap_create_thread(struct task_struct *task);
 void wrap_remove_thread(struct nt_thread *thread);
 u64 ticks_1601(void);
 
-int schedule_wrap_work_item(void *func, void *arg1, void *arg2,
+int schedule_wrap_work_item(WRAP_WORK_FUNC func, void *arg1, void *arg2,
 			    BOOLEAN win_func);
 
 STDCALL KIRQL KeGetCurrentIrql(void);
-STDCALL void KeInitializeSpinLock(KSPIN_LOCK *lock);
-STDCALL void KeAcquireSpinLock(KSPIN_LOCK *lock, KIRQL *irql);
-STDCALL void KeReleaseSpinLock(KSPIN_LOCK *lock, KIRQL oldirql);
-STDCALL KIRQL KeAcquireSpinLockRaiseToDpc(KSPIN_LOCK *lock);
+STDCALL void KeInitializeSpinLock(NT_SPIN_LOCK *lock);
+STDCALL void KeAcquireSpinLock(NT_SPIN_LOCK *lock, KIRQL *irql);
+STDCALL void KeReleaseSpinLock(NT_SPIN_LOCK *lock, KIRQL oldirql);
+STDCALL KIRQL KeAcquireSpinLockRaiseToDpc(NT_SPIN_LOCK *lock);
 
 STDCALL void IoAcquireCancelSpinLock(KIRQL *irql);
 STDCALL void IoReleaseCancelSpinLock(KIRQL irql);
 
 _FASTCALL KIRQL KfRaiseIrql(FASTCALL_DECL_1(KIRQL newirql));
 _FASTCALL void KfLowerIrql(FASTCALL_DECL_1(KIRQL oldirql));
-_FASTCALL KIRQL KfAcquireSpinLock(FASTCALL_DECL_1(KSPIN_LOCK *lock));
+_FASTCALL KIRQL KfAcquireSpinLock(FASTCALL_DECL_1(NT_SPIN_LOCK *lock));
 _FASTCALL void
-KfReleaseSpinLock(FASTCALL_DECL_2(KSPIN_LOCK *lock, KIRQL oldirql));
+KfReleaseSpinLock(FASTCALL_DECL_2(NT_SPIN_LOCK *lock, KIRQL oldirql));
 _FASTCALL void
 IofCompleteRequest(FASTCALL_DECL_2(struct irp *irp, CHAR prio_boost));
 _FASTCALL void
-KefReleaseSpinLockFromDpcLevel(FASTCALL_DECL_1(KSPIN_LOCK *lock));
+KefReleaseSpinLockFromDpcLevel(FASTCALL_DECL_1(NT_SPIN_LOCK *lock));
 STDCALL void RtlCopyMemory(void *dst, const void *src, SIZE_T length);
 STDCALL NTSTATUS RtlUnicodeStringToAnsiString(struct ansi_string *dst,
 					      const struct unicode_string *src,
@@ -734,16 +739,26 @@ void adjust_user_shared_data_addr(char *driver, unsigned long length);
 
 static inline KIRQL current_irql(void)
 {
-	if (in_atomic() || irqs_disabled())
+	if (in_irq() || irqs_disabled())
+		return DEVICE_LEVEL;
+	if (in_atomic())
 		return DISPATCH_LEVEL;
-	else
-		return PASSIVE_LEVEL;
+	return PASSIVE_LEVEL;
 }
 
 static inline KIRQL raise_irql(KIRQL newirql)
 {
 	KIRQL irql = current_irql();
-	if (irql < DISPATCH_LEVEL && newirql >= DISPATCH_LEVEL) {
+	/* for now we only deal with PASSIVE_LEVEL and
+	 * DISPATCH_LEVEL */
+#ifdef DEBUG_IRQL
+	if (newirql != DISPATCH_LEVEL && newirql != DEVICE_LEVEL)
+		ERROR("invalid irql: %d", newirql);
+#endif
+	if (irql <= DISPATCH_LEVEL && newirql > DISPATCH_LEVEL) {
+		local_irq_disable();
+		preempt_disable();
+	} else if (irql < DISPATCH_LEVEL && newirql == DISPATCH_LEVEL) {
 		local_bh_disable();
 		preempt_disable();
 	}
@@ -753,9 +768,12 @@ static inline KIRQL raise_irql(KIRQL newirql)
 static inline void lower_irql(KIRQL oldirql)
 {
 	KIRQL irql = current_irql();
-	if (oldirql < DISPATCH_LEVEL && irql >= DISPATCH_LEVEL) {
-		preempt_enable();
+	if (irql > DISPATCH_LEVEL && oldirql <= DISPATCH_LEVEL) {
+		local_irq_enable();
+		preempt_enable_no_resched();
+	} else if (irql == DISPATCH_LEVEL && oldirql < DISPATCH_LEVEL) {
 		local_bh_enable();
+		preempt_enable_no_resched();
 	}
 }
 
@@ -780,100 +798,101 @@ static inline void lower_irql(KIRQL oldirql)
 #undef CONFIG_DEBUG_SPINLOCK
 
 #ifdef CONFIG_DEBUG_SPINLOCK
-#define KSPIN_LOCK_LOCKED ((ULONG_PTR)get_current())
+#define NT_SPIN_LOCK_LOCKED ((ULONG_PTR)current)
 #else
-#define KSPIN_LOCK_LOCKED 1
+#define NT_SPIN_LOCK_LOCKED 1
 #endif
 
-#define KSPIN_LOCK_UNLOCKED 0
+#define NT_SPIN_LOCK_UNLOCKED 0
 
-#define kspin_lock_init(lock) *(lock) = KSPIN_LOCK_UNLOCKED
+#define nt_spin_lock_init(lock) *(lock) = NT_SPIN_LOCK_UNLOCKED
 
 #ifdef CONFIG_SMP
 
-#define raw_kspin_lock(lock)						\
-	while (cmpxchg((lock), KSPIN_LOCK_UNLOCKED, KSPIN_LOCK_LOCKED) != \
-	       KSPIN_LOCK_UNLOCKED)
+#define raw_nt_spin_lock(lock)						\
+	while (cmpxchg((lock), NT_SPIN_LOCK_UNLOCKED, NT_SPIN_LOCK_LOCKED) != \
+	       NT_SPIN_LOCK_UNLOCKED)
 
 #ifdef CONFIG_DEBUG_SPINLOCK
-#define raw_kspin_unlock(lock)						\
+#define raw_nt_spin_unlock(lock)					\
 	__asm__ __volatile__("movw $0,%0"				\
 			     :"=m" (*(lock)) : : "memory")
 #else // DEBUG_SPINLOCK
-#define raw_kspin_unlock(lock)						\
+#define raw_nt_spin_unlock(lock)					\
 	__asm__ __volatile__("movb $0,%0"				\
 			     :"=m" (*(lock)) : : "memory")
 #endif // DEBUG_SPINLOCK
 
 #else // SMP
 
-#define raw_kspin_lock(lock) *(lock) = KSPIN_LOCK_LOCKED
-#define raw_kspin_unlock(lock) *(lock) = KSPIN_LOCK_UNLOCKED
+#define raw_nt_spin_lock(lock) *(lock) = NT_SPIN_LOCK_LOCKED
+#define raw_nt_spin_unlock(lock) *(lock) = NT_SPIN_LOCK_UNLOCKED
 
 #endif // SMP
 
 #ifdef CONFIG_DEBUG_SPINLOCK
 
-#define kspin_lock(lock)						\
+#define nt_spin_lock(lock)						\
 	do {								\
-		if (*(lock) == KSPIN_LOCK_LOCKED)			\
+		if (*(lock) == NT_SPIN_LOCK_LOCKED)			\
 			ERROR("eeek: process %p already owns lock %p",	\
-			      get_current(), lock);			\
+			      current, lock);				\
 		else							\
-			raw_kspin_lock(lock);				\
+			raw_nt_spin_lock(lock);				\
 	} while (0)
-#define kspin_unlock(lock)						\
+#define nt_spin_unlock(lock)						\
 	do {								\
-		if (*(lock) != KSPIN_LOCK_LOCKED)			\
-			ERROR("kspin_lock %p not locked!", (lock));	\
-		raw_kspin_unlock(lock);					\
+		if (*(lock) != NT_SPIN_LOCK_LOCKED)			\
+			ERROR("nt_spin_lock %p not locked!", (lock));	\
+		else							\
+			raw_nt_spin_unlock(lock);			\
 	} while (0)
 
 #else // DEBUG_SPINLOCK
 
-#define kspin_lock(lock) raw_kspin_lock(lock)
-#define kspin_unlock(lock) raw_kspin_unlock(lock)
+#define nt_spin_lock(lock) raw_nt_spin_lock(lock)
+#define nt_spin_unlock(lock) raw_nt_spin_unlock(lock)
 
 #endif // DEBUG_SPINLOCK
 
 /* raise IRQL to given (higher) IRQL if necessary before locking */
-#define kspin_lock_irql(lock, newirql)					\
-({									\
-	KIRQL _cur_irql_ = current_irql();				\
-	if (_cur_irql_ < DISPATCH_LEVEL && newirql == DISPATCH_LEVEL) {	\
-		local_bh_disable();					\
-		preempt_disable();					\
-	}								\
-	kspin_lock(lock);						\
-	_cur_irql_;							\
-})
+static inline KIRQL nt_spin_lock_irql(NT_SPIN_LOCK *lock, KIRQL newirql)
+{
+	KIRQL oldirql = raise_irql(newirql);
+	nt_spin_lock(lock);
+	return oldirql;
+}
 
 /* lower IRQL to given (lower) IRQL if necessary after unlocking */
-#define kspin_unlock_irql(lock, oldirql)				\
-do {									\
-	KIRQL _cur_irql_ = current_irql();				\
-	kspin_unlock(lock);						\
-	if (oldirql < DISPATCH_LEVEL && _cur_irql_ == DISPATCH_LEVEL) {	\
-		preempt_enable_no_resched();				\
-		local_bh_enable();					\
-	}								\
-} while (0)
+static inline void nt_spin_unlock_irql(NT_SPIN_LOCK *lock, KIRQL oldirql)
+{
+	nt_spin_unlock(lock);
+	lower_irql(oldirql);
+}
 
-#define kspin_lock_irqsave(lock, flags)					\
+#ifdef CONFIG_PREEMPT_RT
+#define save_local_irq(flags) raw_local_irq_save(flags)
+#define restore_local_irq(flags) raw_local_irq_restore(flags)
+#else
+#define save_local_irq(flags) local_irq_save(flags)
+#define restore_local_irq(flags) local_irq_restore(flags)
+#endif
+
+#define nt_spin_lock_irqsave(lock, flags)				\
 do {									\
-	local_irq_save(flags);						\
+	save_local_irq(flags);						\
 	preempt_disable();						\
-	kspin_lock(lock);						\
+	nt_spin_lock(lock);						\
 } while (0)
 
-#define kspin_unlock_irqrestore(lock, flags)				\
+#define nt_spin_unlock_irqrestore(lock, flags)				\
 do {									\
-	kspin_unlock(lock);						\
-	local_irq_restore(flags);					\
-	preempt_enable();						\
+	nt_spin_unlock(lock);						\
+	restore_local_irq(flags);					\
+	preempt_enable_no_resched();					\
 } while (0)
 
-static inline ULONG SPAN_PAGES(ULONG_PTR ptr, SIZE_T length)
+static inline ULONG SPAN_PAGES(void *ptr, SIZE_T length)
 {
 	ULONG n;
 
@@ -894,20 +913,20 @@ static inline ULONG SPAN_PAGES(ULONG_PTR ptr, SIZE_T length)
 #define DBGTRACE6(fmt, ...) do { } while (0)
 
 /* for a block of code */
-#define DBG_BLOCK() while (0)
+#define DBG_BLOCK(level) while (0)
 
 extern int debug;
 
 #if defined DEBUG
 #undef DBGTRACE
-#define DBGTRACE(level, fmt, ...) do {					\
-		if (debug >= level)					\
-			printk(KERN_INFO "%s (%s:%d): " fmt "\n",	\
-			       DRIVER_NAME, __FUNCTION__,		\
-			       __LINE__ , ## __VA_ARGS__);		\
-	} while (0)
+#define DBGTRACE(level, fmt, ...)				       \
+do {								       \
+	if (debug >= level)					       \
+		printk(KERN_INFO "%s (%s:%d): " fmt "\n", DRIVER_NAME, \
+		       __FUNCTION__, __LINE__ , ## __VA_ARGS__);       \
+} while (0)
 #undef DBG_BLOCK
-#define DBG_BLOCK()
+#define DBG_BLOCK(level) if (debug >= level)
 #endif
 
 #if defined(DEBUG) && DEBUG >= 1

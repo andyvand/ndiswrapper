@@ -66,7 +66,7 @@ struct ndis_buffer_pool {
 	int max_descr;
 	int num_allocated_descr;
 	ndis_buffer *free_descr;
-	KSPIN_LOCK lock;
+	NT_SPIN_LOCK lock;
 };
 
 #define fPACKET_WRAPPER_RESERVED		0x3F
@@ -110,11 +110,8 @@ struct ndis_packet_oob_data {
 	UINT mediaspecific_size;
 	void *mediaspecific;
 	NDIS_STATUS status;
-};
 
-/* ndiswrapper specific info */
-struct wrap_ndis_packet {
-	struct ndis_packet_oob_data oob_data;
+	/* ndiswrapper specific info */
 	struct ndis_packet_extension extension;
 
 	struct ndis_packet *next;
@@ -154,15 +151,18 @@ struct ndis_packet {
 	} u;
 	ULONG_PTR reserved[2];
 	UCHAR protocol_reserved[1];
-	struct wrap_ndis_packet *wrap_ndis_packet;
 };
+
+#define NDIS_PACKET_OOB_DATA(packet)					\
+	(struct ndis_packet_oob_data *)(((void *)(packet)) +		\
+					(packet)->private.oob_offset)
 
 struct ndis_packet_pool {
 	UINT max_descr;
 	UINT num_allocated_descr;
 	UINT num_used_descr;
 	struct ndis_packet *free_descr;
-	KSPIN_LOCK lock;
+	NT_SPIN_LOCK lock;
 	UINT proto_rsvd_length;
 	struct nt_list list;
 };
@@ -316,7 +316,7 @@ struct miniport_char {
 };
 
 struct ndis_spinlock {
-	KSPIN_LOCK klock;
+	NT_SPIN_LOCK klock;
 	KIRQL irql;
 };
 
@@ -328,7 +328,7 @@ union ndis_rw_lock_refcount {
 struct ndis_rw_lock {
 	union {
 		struct {
-			KSPIN_LOCK klock;
+			NT_SPIN_LOCK klock;
 			void *context;
 		} s;
 		UCHAR reserved[16];
@@ -338,7 +338,7 @@ struct ndis_rw_lock {
 
 struct ndis_sched_work_item {
 	void *ctx;
-	void (*func)(struct ndis_sched_work_item *, void *ctx) STDCALL;
+	WRAP_WORK_FUNC func;
 	UCHAR reserved[8 * sizeof(void *)];
 };
 
@@ -371,15 +371,15 @@ struct ndis_irq {
 		unsigned int irq;
 	} irq;
 	/* Taken by ISR, DisableInterrupt and SynchronizeWithInterrupt */
-	KSPIN_LOCK lock;
+	NT_SPIN_LOCK lock;
 	void *id;
 	ndis_isr_handler isr;
 	void *dpc;
 	struct kdpc intr_dpc;
 	struct wrap_ndis_device *wnd;
 	UCHAR dpc_count;
-	/* unsigned char filler1 is used for pending */
-	UCHAR pending;
+	/* unsigned char filler1 is used for enabled */
+	UCHAR enabled;
 	struct nt_event completed_event;
 	UCHAR shared;
 	UCHAR req_isr;
@@ -566,7 +566,7 @@ struct ndis_bind_paths {
 };
 
 struct ndis_reference {
-	KSPIN_LOCK lock;
+	NT_SPIN_LOCK lock;
 	USHORT ref_count;
 	BOOLEAN closing;
 };
@@ -575,7 +575,7 @@ struct ndis_miniport_block;
 
 struct ndis_miniport_interrupt {
 	void *object;
-	KSPIN_LOCK dpc_count_lock;
+	NT_SPIN_LOCK dpc_count_lock;
 	void *reserved;
 	ndis_isr_handler irq_th;
 	ndis_interrupt_handler irq_bh;
@@ -628,7 +628,7 @@ struct ndis_miniport_block {
 	UCHAR lock_acquired;
 	UCHAR pmode_opens;
 	UCHAR assigned_cpu;
-	KSPIN_LOCK lock;
+	NT_SPIN_LOCK lock;
 	enum ndis_request_type *mediarequest;
 	struct ndis_miniport_interrupt *interrupt;
 	ULONG flags;
@@ -710,6 +710,7 @@ struct wrap_ndis_device {
 	struct ndis_miniport_block *nmb;
 	struct wrap_device *wd;
 	struct net_device *net_dev;
+	unsigned long hw_status;
 	void *shutdown_ctx;
 	struct tasklet_struct irq_tasklet;
 	struct ndis_irq *ndis_irq;
@@ -727,10 +728,10 @@ struct wrap_ndis_device {
 	unsigned int xmit_ring_start;
 	unsigned int xmit_ring_pending;
 	unsigned int max_send_packets;
-	KSPIN_LOCK xmit_lock;
+	NT_SPIN_LOCK xmit_lock;
 
 	unsigned char send_ok;
-	KSPIN_LOCK send_packet_done_lock;
+	NT_SPIN_LOCK send_packet_done_lock;
 
 	struct semaphore ndis_comm_mutex;
 	wait_queue_head_t ndis_comm_wq;
@@ -739,8 +740,8 @@ struct wrap_ndis_device {
 	ULONG packet_filter;
 
 	BOOLEAN use_sg_dma;
-	int map_count;
-	dma_addr_t *map_dma_addr;
+	int dma_map_count;
+	dma_addr_t *dma_map_addr;
 
 	int hangcheck_interval;
 	struct timer_list hangcheck_timer;

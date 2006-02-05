@@ -15,17 +15,14 @@
 
 #ifdef TEST_LOADER
 
-#include <stdio.h>
-#include <stdint.h>
-#include <string.h>
-#include <linux/types.h>
-#include <asm/errno.h>
-#include <asm/pgtable.h>
+#include "usr_linker.h"
 
 #else
 
 #include <linux/types.h>
 #include <asm/errno.h>
+
+//#define DEBUGLINKER 2
 
 #include "ntoskernel.h"
 
@@ -72,13 +69,7 @@ static const char *image_directory_name[] = {
 #define DBGLINKER(fmt, ...) do { } while (0)
 #endif
 
-#ifdef TEST_LOADER
-#define WRAP_EXPORT_FUNC char *
-static WRAP_EXPORT_FUNC get_export(char *name)
-{
-	return name;
-}
-#else
+#ifndef TEST_LOADER
 extern struct wrap_export ntoskernel_exports[], ntoskernel_io_exports[],
        ndis_exports[], misc_funcs_exports[], hal_exports[];
 #ifdef CONFIG_USB
@@ -167,17 +158,19 @@ static int check_nt_hdr(IMAGE_NT_HEADERS *nt_hdr)
 #endif
 
 	/* Validate the image for the current architecture. */
-	if (nt_hdr->FileHeader.Machine !=
 #ifdef CONFIG_X86_64
-	    IMAGE_FILE_MACHINE_AMD64
-#else
-	    IMAGE_FILE_MACHINE_I386
-#endif
-		) {
-		ERROR("driver is not for current architecture "
+	if (nt_hdr->FileHeader.Machine != IMAGE_FILE_MACHINE_AMD64) {
+		ERROR("Windows driver is not 64-bit;"
 		      " (PE signature is %04X)", nt_hdr->FileHeader.Machine);
 		return -EINVAL;
 	}
+#else
+	if (nt_hdr->FileHeader.Machine != IMAGE_FILE_MACHINE_I386) {
+		ERROR("Windows driver is not 32-bit;"
+		      " (PE signature is %04X)", nt_hdr->FileHeader.Machine);
+		return -EINVAL;
+	}
+#endif
 
 	/* Must have attributes */
 #ifdef CONFIG_X86_64
@@ -244,16 +237,14 @@ static int import(void *image, IMAGE_IMPORT_DESCRIPTOR *dirent, char *dll)
 		}
 
 		adr = get_export(symname);
-		if (adr != NULL)
-			DBGLINKER("found symbol: %s:%s, rva = %Lu",
-				  dll, symname, (uint64_t)address_tbl[i]);
 		if (adr == NULL) {
-			ERROR("unknown symbol: %s:%s", dll, symname);
+			ERROR("unknown symbol: %s:'%s'", dll, symname);
 			ret = -1;
+		} else {
+			DBGLINKER("found symbol: %s:%s: addr: %p, rva = %Lu",
+				  dll, symname, adr, (uint64_t)address_tbl[i]);
+			address_tbl[i] = (ULONG_PTR)adr;
 		}
-		DBGLINKER("importing rva: %p, %p: %s : %s",
-			  (void *)(address_tbl[i]), adr, dll, symname);
-		address_tbl[i] = (ULONG_PTR)adr;
 	}
 	return ret;
 }
@@ -334,7 +325,7 @@ static int fixup_imports(void *image, IMAGE_NT_HEADERS *nt_hdr)
 
 static int fixup_reloc(void *image, IMAGE_NT_HEADERS *nt_hdr)
 {
-        ULONG_PTR base;
+	ULONG_PTR base;
 	ULONG_PTR size;
 	IMAGE_BASE_RELOCATION *fixup_block;
 	IMAGE_DATA_DIRECTORY *base_reloc_data_dir;
@@ -342,7 +333,7 @@ static int fixup_reloc(void *image, IMAGE_NT_HEADERS *nt_hdr)
 
 	opt_hdr = &nt_hdr->OptionalHeader;
 	base = opt_hdr->ImageBase;
-	base_reloc_data_dir = 
+	base_reloc_data_dir =
 		&opt_hdr->DataDirectory[IMAGE_DIRECTORY_ENTRY_BASERELOC];
 	if (base_reloc_data_dir->Size == 0)
 		return 0;
@@ -350,7 +341,7 @@ static int fixup_reloc(void *image, IMAGE_NT_HEADERS *nt_hdr)
 	fixup_block = RVA2VA(image, base_reloc_data_dir->VirtualAddress,
 			     IMAGE_BASE_RELOCATION *);
 	DBGLINKER("fixup_block=%p, image=%p", fixup_block, image);
-	DBGLINKER("fixup_block info: %x %d", 
+	DBGLINKER("fixup_block info: %x %d",
 		  fixup_block->VirtualAddress, fixup_block->SizeOfBlock);
 
 	while (fixup_block->SizeOfBlock) {
@@ -543,7 +534,7 @@ int load_pe_images(struct pe_image *pe_image, int n)
 
 		if (pe->size < sizeof(IMAGE_DOS_HEADER)) {
 			DBGTRACE1("image too small: %d", pe->size);
- 			return -EINVAL;
+			return -EINVAL;
 		}
 
 		pe->nt_hdr =
@@ -587,7 +578,7 @@ int load_pe_images(struct pe_image *pe_image, int n)
 		pe->entry =
 			RVA2VA(pe->image,
 			       pe->opt_hdr->AddressOfEntryPoint, void *);
-		DBGTRACE1("entry is at %p, rva at %08X", pe->entry, 
+		DBGTRACE1("entry is at %p, rva at %08X", pe->entry,
 			  pe->opt_hdr->AddressOfEntryPoint);
 	}
 
