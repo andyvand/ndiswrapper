@@ -26,18 +26,23 @@ extern struct nt_list object_list;
 
 extern NT_SPIN_LOCK irp_cancel_lock;
 
+static unsigned long irp_cancel_irq_flags;
+
+/* urb completion callback, wrap_urb_complete is called from
+ * interrupt. There, we use Io(Acquire/Release)CancelSpinLock. To
+ * prevent deadlocks, we need to use nt_spin_lock_irqsave and
+ * nt_spin_unlock_irqrestore; KIRQL is not big enough to hold irq
+ * flags */
 STDCALL void WRAP_EXPORT(IoAcquireCancelSpinLock)
 	(KIRQL *irql)
 {
-	*irql = raise_irql(DISPATCH_LEVEL);
-	nt_spin_lock(&irp_cancel_lock);
+	nt_spin_lock_irqsave(&irp_cancel_lock, irp_cancel_irq_flags);
 }
 
 STDCALL void WRAP_EXPORT(IoReleaseCancelSpinLock)
 	(KIRQL irql)
 {
-	lower_irql(irql);
-	nt_spin_unlock(&irp_cancel_lock);
+	nt_spin_unlock_irqrestore(&irp_cancel_lock, irp_cancel_irq_flags);
 }
 
 STDCALL NTSTATUS WRAP_EXPORT(IoGetDeviceProperty)

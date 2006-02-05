@@ -239,6 +239,7 @@ static void wrap_free_urb(struct urb *urb)
 	wd = irp->wd;
 	irp->cancel_routine = NULL;
 	irp->wrap_urb = NULL;
+	IoReleaseCancelSpinLock(irp->cancel_irql);
 	if (urb->transfer_buffer &&
 	    (wrap_urb->alloc_flags & URB_NO_TRANSFER_DMA_MAP)) {
 		USBTRACE("freeing DMA buffer for URB: %p %p",
@@ -250,8 +251,10 @@ static void wrap_free_urb(struct urb *urb)
 	if (urb->setup_packet)
 		kfree(urb->setup_packet);
 	if (wd->usb.num_alloc_urbs > MAX_ALLOCATED_URBS) {
+		IoAcquireCancelSpinLock(&irp->cancel_irql);
 		RemoveEntryList(&wrap_urb->list);
 		wd->usb.num_alloc_urbs--;
+		IoReleaseCancelSpinLock(irp->cancel_irql);
 		usb_free_urb(urb);
 		kfree(wrap_urb);
 	} else {
@@ -261,7 +264,6 @@ static void wrap_free_urb(struct urb *urb)
 	}
 	if (wd->usb.num_alloc_urbs < 0)
 		WARNING("num_allocated_urbs: %d", wd->usb.num_alloc_urbs);
-	IoReleaseCancelSpinLock(irp->cancel_irql);
 	return;
 }
 
@@ -448,8 +450,8 @@ static void wrap_urb_complete(struct urb *urb)
 #endif
 	InsertTailList(&irp_complete_list, &irp->complete_list);
 	IoReleaseCancelSpinLock(irp->cancel_irql);
-	USBTRACE("urb %p (irp: %p) completed", urb, irp);
 	tasklet_schedule(&irp_complete_work);
+	USBTRACE("urb %p (irp: %p) completed", urb, irp);
 }
 
 /* one worker for all devices */

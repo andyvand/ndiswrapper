@@ -828,7 +828,7 @@ static inline void lower_irql(KIRQL oldirql)
 	do {								\
 		if (*(lock) == NT_SPIN_LOCK_LOCKED)			\
 			ERROR("eeek: process %p already owns lock %p",	\
-			      get_current(), lock);			\
+			      current, lock);				\
 		else							\
 			raw_nt_spin_lock(lock);				\
 	} while (0)
@@ -836,7 +836,8 @@ static inline void lower_irql(KIRQL oldirql)
 	do {								\
 		if (*(lock) != NT_SPIN_LOCK_LOCKED)			\
 			ERROR("nt_spin_lock %p not locked!", (lock));	\
-		raw_nt_spin_unlock(lock);				\
+		else							\
+			raw_nt_spin_unlock(lock);			\
 	} while (0)
 
 #else // DEBUG_SPINLOCK

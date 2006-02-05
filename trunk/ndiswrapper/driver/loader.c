@@ -441,16 +441,18 @@ static void unload_wrap_device(struct wrap_device *wd)
 		kfree(setting);
 	}
 	RemoveEntryList(&wd->list);
+	InitializeListHead(&wd->list);
 	TRACEEXIT1(return);
 }
 
+/* this function is called while holding load_lock spinlock */
 void unload_wrap_driver(struct wrap_driver *driver)
 {
 	int i;
 	struct driver_object *drv_obj;
+	struct wrap_device *wd;
 
 	TRACEENTER1("unloading driver: %s (%p)", driver->name, driver);
-	RemoveEntryList(&driver->list);
 	DBGTRACE1("freeing %d images", driver->num_pe_images);
 	drv_obj = driver->drv_obj;
 	for (i = 0; i < driver->num_pe_images; i++)
@@ -469,6 +471,11 @@ void unload_wrap_driver(struct wrap_driver *driver)
 	if (driver->bin_files)
 		kfree(driver->bin_files);
 	RtlFreeUnicodeString(&drv_obj->name);
+	RemoveEntryList(&driver->list);
+	nt_list_for_each_entry(wd, &driver->wrap_devices, list) {
+		RemoveEntryList(&wd->list);
+		InitializeListHead(&wd->list);
+	}
 	/* this frees driver */
 	free_custom_extensions(drv_obj->drv_ext);
 	kfree(drv_obj->drv_ext);

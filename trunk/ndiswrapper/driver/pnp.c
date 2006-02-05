@@ -376,8 +376,10 @@ static int start_pdo(struct device_object *pdo)
 	entry->flags = CM_RESOURCE_INTERRUPT_LEVEL_SENSITIVE;
 	/* we assume all devices use shared IRQ */
 	entry->share = CmResourceShareShared;
-	/* 'level' should be DISPATCH_LEVEL, but some drivers, e.g.,
-	 * RTL8180L, use this also as vector, so set it to vector */
+	/* as per documentation, interrupt level should be DIRQL, but
+	 * examples from DDK as well some drivers, such as AR5211,
+	 * RT8180L use interrupt level as interrupt vector also in
+	 * NdisMRegisterInterrupt */
 	entry->u.interrupt.level = pdev->irq;
 	entry->u.interrupt.vector = pdev->irq;
 	entry->u.interrupt.affinity = -1;
