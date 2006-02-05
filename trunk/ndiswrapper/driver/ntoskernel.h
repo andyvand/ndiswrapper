@@ -751,8 +751,8 @@ static inline KIRQL raise_irql(KIRQL newirql)
 	/* for now we only deal with PASSIVE_LEVEL and
 	 * DISPATCH_LEVEL */
 #ifdef DEBUG_IRQL
-	if (newirql != DISPATCH_LEVEL)
-		ERROR("invalid irql: %d", newirql);
+	if (irql > newirql)
+		ERROR("invalid irql: %d > %d", irql, newirql);
 #endif
 	if (irql < DISPATCH_LEVEL && newirql == DISPATCH_LEVEL) {
 		local_bh_disable();

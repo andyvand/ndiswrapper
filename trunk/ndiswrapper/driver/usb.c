@@ -657,7 +657,6 @@ static USBD_STATUS wrap_vendor_or_class_req(struct irp *irp)
 	struct usb_device *udev;
 	union nt_urb *nt_urb;
 	USBD_STATUS status;
-	int ret;
 
 	nt_urb = URB_FROM_IRP(irp);
 	udev = irp->wd->usb.udev;
@@ -721,7 +720,13 @@ static USBD_STATUS wrap_vendor_or_class_req(struct irp *irp)
 		req_type |= USB_DIR_OUT;
 		USBTRACE("pipe: %u, dir out", pipe);
 	}
+#ifdef TI1450
+	/* TI 1450 chipset initially sends a vendor/class request
+	 * without setting event to wait for URB to complete; so we
+	 * need to submit URB synchronously so driver doesn't wait for
+	 * completion */
 	if (current_irql() < DISPATCH_LEVEL) {
+		int ret;
 		/* synchronous submission */
 		ret = usb_control_msg(udev, pipe, vc_req->request, req_type,
 				      vc_req->value, vc_req->index,
@@ -734,7 +739,9 @@ static USBD_STATUS wrap_vendor_or_class_req(struct irp *irp)
 			vc_req->transfer_buffer_length = ret;
 			status = USBD_STATUS_SUCCESS;
 		}
-	} else {
+	} else
+#endif
+	{
 		/* asynchronous submission */
 		struct urb *urb;
 		struct usb_ctrlrequest *dr;
