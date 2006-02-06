@@ -273,14 +273,6 @@ static void miniport_halt(struct wrap_ndis_device *wnd)
 	}
 	miniport = &wnd->wd->driver->ndis_driver->miniport;
 	DBGTRACE1("driver halt is at %p", miniport->miniport_halt);
-
-	DBGTRACE2("task: %p, pid: %d", current, current->pid);
-#if 0
-	/* Marvell driver doesn't disable interrupts before calling
-	 * NdisMDeregisterInterrupt, so shut it up before halting */
-	if (wnd->wd->vendor == 0x11ab && miniport->shutdown)
-		LIN2WIN1(miniport->shutdown, wnd->shutdown_ctx);
-#endif
 	LIN2WIN1(miniport->miniport_halt, wnd->nmb->adapter_ctx);
 	clear_bit(HW_INITIALIZED, &wnd->hw_status);
 

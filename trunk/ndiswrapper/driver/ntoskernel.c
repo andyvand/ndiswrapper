@@ -27,7 +27,7 @@
  * maximum range used by a driver is CACHE_MDL_PAGES; if a driver
  * requests an MDL for a bigger region, we allocate it with kmalloc;
  * otherwise, we allocate from the pool */
-#define CACHE_MDL_PAGES 2
+#define CACHE_MDL_PAGES 3
 #define CACHE_MDL_SIZE (sizeof(struct mdl) + \
 			(sizeof(PFN_NUMBER) * CACHE_MDL_PAGES))
 struct wrap_mdl {
@@ -2079,18 +2079,18 @@ STDCALL void WRAP_EXPORT(IoBuildPartialMdl)
 STDCALL void WRAP_EXPORT(MmBuildMdlForNonPagedPool)
 	(struct mdl *mdl)
 {
+	mdl->flags |= MDL_SOURCE_IS_NONPAGED_POOL;
+	MmGetSystemAddressForMdl(mdl) = MmGetMdlVirtualAddress(mdl);
+#if 0
 	PFN_NUMBER *mdl_pages, start_pfn;
 	int i, n;
 
-	mdl->flags |= MDL_SOURCE_IS_NONPAGED_POOL;
-	MmGetSystemAddressForMdl(mdl) = MmGetMdlVirtualAddress(mdl);
 	n = SPAN_PAGES(MmGetSystemAddressForMdl(mdl), MmGetMdlByteCount(mdl));
 	mdl_pages = MmGetMdlPfnArray(mdl);
-	/* the buffer is allocated in one chunk, so pages must be
-	 * consecutive */
 	start_pfn = page_to_pfn(virt_to_page(MmGetSystemAddressForMdl(mdl)));
 	for (i = 0; i < n; i++)
 		mdl_pages[i] =  start_pfn + i * PAGE_SIZE;
+#endif
 	return;
 }
 

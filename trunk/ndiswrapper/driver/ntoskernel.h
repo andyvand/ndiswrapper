@@ -479,8 +479,6 @@ enum hw_status {
 };
 
 struct wrap_device {
-	/* this list is used to link to driver's wrap_devices */
-	struct nt_list list;
 	/* first part is (de)initialized once by loader */
 	int dev_bus_type;
 	int vendor;
@@ -739,20 +737,19 @@ void adjust_user_shared_data_addr(char *driver, unsigned long length);
 
 static inline KIRQL current_irql(void)
 {
-	if (in_atomic() || irqs_disabled())
+	if (in_irq() || irqs_disabled())
+		return DEVICE_LEVEL;
+	if (in_atomic())
 		return DISPATCH_LEVEL;
-	else
-		return PASSIVE_LEVEL;
+	return PASSIVE_LEVEL;
 }
 
 static inline KIRQL raise_irql(KIRQL newirql)
 {
 	KIRQL irql = current_irql();
-	/* for now we only deal with PASSIVE_LEVEL and
-	 * DISPATCH_LEVEL */
 #ifdef DEBUG_IRQL
-	if (irql > newirql)
-		ERROR("invalid irql: %d > %d", irql, newirql);
+	if (newirql < irql)
+		ERROR("invalid irql: %d < %d", newirql, irql);
 #endif
 	if (irql < DISPATCH_LEVEL && newirql == DISPATCH_LEVEL) {
 		local_bh_disable();
@@ -763,7 +760,12 @@ static inline KIRQL raise_irql(KIRQL newirql)
 
 static inline void lower_irql(KIRQL oldirql)
 {
-	if (oldirql < DISPATCH_LEVEL) {
+	KIRQL irql = current_irql();
+#ifdef DEBUG_IRQL
+	if (irql < oldirql)
+		ERROR("invalid irql: %d < %d", irql, oldirql);
+#endif
+	if (oldirql < DISPATCH_LEVEL && irql == DISPATCH_LEVEL) {
 		preempt_enable_no_resched();
 		local_bh_enable();
 	}
