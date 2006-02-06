@@ -21,6 +21,7 @@
 
 #define PASSIVE_LEVEL			0
 #define DISPATCH_LEVEL			2
+#define DEVICE_LEVEL			(DISPATCH_LEVEL + 1)
 
 #define STATUS_WAIT_0			0
 #define STATUS_SUCCESS                  0
