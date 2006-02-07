@@ -25,6 +25,8 @@ extern struct wrap_device *wrap_devices;
 STDCALL NTSTATUS IrpStopCompletion(struct device_object *dev_obj,
 				   struct irp *irp, void *context)
 {
+	WIN2LIN3();
+
 	IOENTER("dev_obj: %p, irp: %p, context: %p", dev_obj, irp, context);
 	IOEXIT(return STATUS_MORE_PROCESSING_REQUIRED);
 }
@@ -34,6 +36,8 @@ STDCALL NTSTATUS IopInvalidDeviceRequest(struct device_object *dev_obj,
 {
 	struct io_stack_location *irp_sl;
 	NTSTATUS status;
+
+	WIN2LIN2();
 
 	irp_sl = IoGetCurrentIrpStackLocation(irp);
 	WARNING("IRP %d:%d not implemented",
@@ -50,6 +54,8 @@ static STDCALL NTSTATUS pdoDispatchDeviceControl(struct device_object *pdo,
 {
 	struct io_stack_location *irp_sl;
 	NTSTATUS status;
+
+	WIN2LIN2();
 
 	DUMP_IRP(irp);
 
@@ -92,6 +98,9 @@ static STDCALL NTSTATUS pdoDispatchPnp(struct device_object *pdo,
 #ifdef CONFIG_USB
 	struct usbd_bus_interface_usbdi *usb_intf;
 #endif
+
+	WIN2LIN2();
+
 	irp_sl = IoGetCurrentIrpStackLocation(irp);
 	wd = pdo->reserved;
 	DBGTRACE2("fn %d:%d, wd: %p", irp_sl->major_fn, irp_sl->minor_fn, wd);
@@ -173,6 +182,8 @@ static STDCALL NTSTATUS pdoDispatchPower(struct device_object *pdo,
 	union power_state power_state;
 	struct pci_dev *pdev;
 	NTSTATUS status;
+
+	WIN2LIN2();
 
 	irp_sl = IoGetCurrentIrpStackLocation(irp);
 	wd = pdo->reserved;

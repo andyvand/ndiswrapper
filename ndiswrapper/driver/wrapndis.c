@@ -1220,6 +1220,9 @@ STDCALL NTSTATUS NdisDispatchDeviceControl(struct device_object *fdo,
 					   struct irp *irp)
 {
 	struct wrap_ndis_device *wnd;
+
+	WIN2LIN2();
+
 	DBGTRACE3("fdo: %p", fdo);
 	/* for now, we don't have anything intresting here, so pass it
 	 * down to bus driver */
@@ -1235,6 +1238,8 @@ STDCALL NTSTATUS NdisDispatchPower(struct device_object *fdo,
 	enum ndis_power_state state;
 	NTSTATUS status;
 	NDIS_STATUS ndis_status;
+
+	WIN2LIN2();
 
 	irp_sl = IoGetCurrentIrpStackLocation(irp);
 	wnd = fdo->reserved;
@@ -1321,6 +1326,8 @@ STDCALL NTSTATUS NdisDispatchPnp(struct device_object *fdo,
 	struct wrap_ndis_device *wnd;
 	struct device_object *pdo;
 	NTSTATUS status;
+
+	WIN2LIN2();
 
 	IOENTER("fdo: %p, irp: %p", fdo, irp);
 	irp_sl = IoGetCurrentIrpStackLocation(irp);

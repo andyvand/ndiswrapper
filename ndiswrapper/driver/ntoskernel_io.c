@@ -156,8 +156,8 @@ STDCALL void WRAP_EXPORT(IoInitializeIrp)
 	memset(irp, 0, size);
 	irp->size = size;
 	irp->stack_count = stack_size;
-	irp->current_location = stack_size + 1;
-	IoGetCurrentIrpStackLocation(irp) = IRP_SL(irp, (stack_size + 1));
+	irp->current_location = stack_size;
+	IoGetCurrentIrpStackLocation(irp) = IRP_SL(irp, (stack_size));
 	IOEXIT(return);
 }
 
@@ -184,7 +184,7 @@ STDCALL struct irp *WRAP_EXPORT(IoAllocateIrp)
 
 	IOENTER("stack_size: %d, charge_quota: %d", stack_size, charge_quota);
 
-	irp_size = IoSizeOfIrp(stack_size + 1);
+	irp_size = IoSizeOfIrp(stack_size);
 	irp = kmalloc(irp_size, GFP_ATOMIC);
 	if (irp) {
 		IOTRACE("allocated irp %p", irp);
@@ -390,8 +390,9 @@ _FASTCALL NTSTATUS WRAP_EXPORT(IofCallDriver)
 	IOTRACE("drv_obj: %p", drv_obj);
 	major_func = drv_obj->major_func[irp_sl->major_fn];
 	IOTRACE("major_func: %p, dev_obj: %p", major_func, dev_obj);
+	/* TODO: Linux functions must be called natively */
 	if (major_func)
-		res = (*major_func)(dev_obj, irp);
+		res = LIN2WIN2(major_func, dev_obj, irp);
 	else {
 		ERROR("major_function %d is not implemented",
 		      irp_sl->major_fn);
@@ -406,6 +407,7 @@ _FASTCALL void WRAP_EXPORT(IofCompleteRequest)
 	NTSTATUS res;
 	struct io_stack_location *irp_sl;
 	struct mdl *mdl;
+	int i;
 
 #ifdef IO_DEBUG
 	DUMP_IRP(irp);
@@ -418,24 +420,18 @@ _FASTCALL void WRAP_EXPORT(IofCompleteRequest)
 		return;
 	}
 #endif
-	irp_sl = IoGetCurrentIrpStackLocation(irp);
-	/* completion routines expect current stack location to match
-	 * with what was set through IoSetCompletionRoutine, which
-	 * sets completion routine at next (higher) location, so we
-	 * skip current location and continue past stack size */
-	IoSkipCurrentIrpStackLocation(irp);
-
-	while (irp->current_location <= (irp->stack_count + 1)) {
+	if (IoGetCurrentIrpStackLocation(irp)->control & SL_PENDING_RETURNED)
+		irp->pending_returned = TRUE;
+	for (i = irp->current_location; i < irp->stack_count; i++) {
 		struct device_object *dev_obj;
 
-		if (irp_sl->control & SL_PENDING_RETURNED)
-			irp->pending_returned = TRUE;
-
-		if (irp->current_location <= irp->stack_count)
+		if (irp->current_location < (irp->stack_count - 1)) {
+			IoSkipCurrentIrpStackLocation(irp);
 			dev_obj = IoGetCurrentIrpStackLocation(irp)->dev_obj;
-		else
+		} else
 			dev_obj = NULL;
 
+		irp_sl = IRP_SL(irp, i);
 		if (irp_sl->completion_routine &&
 		    ((irp->io_status.status == STATUS_SUCCESS &&
 		       irp_sl->control & CALL_ON_SUCCESS) ||
@@ -449,13 +445,10 @@ _FASTCALL void WRAP_EXPORT(IofCompleteRequest)
 			if (res == STATUS_MORE_PROCESSING_REQUIRED)
 				IOEXIT(return);
 			IOTRACE("completion routine returned");
-		} else {
-			if (irp->current_location <= irp->stack_count &&
-			    irp->pending_returned)
-				IoMarkIrpPending(irp);
 		}
-		IoSkipCurrentIrpStackLocation(irp);
-		irp_sl++;
+		if (IoGetCurrentIrpStackLocation(irp)->control &
+		    SL_PENDING_RETURNED)
+			irp->pending_returned = TRUE;
 	}
 
 	if (irp->user_status) {
@@ -490,12 +483,13 @@ static irqreturn_t io_irq_th(int irq, void *data, struct pt_regs *pt_regs)
 		spinlock = interrupt->actual_lock;
 	else
 		spinlock = &interrupt->lock;
+	/* TODO: should we use nt_spin_lock_irqsave? */
 	if (interrupt->synch_irql >= DISPATCH_LEVEL)
 		irql = nt_spin_lock_irql(spinlock, DISPATCH_LEVEL);
 	else
 		nt_spin_lock(spinlock);
-	ret = interrupt->service_routine(interrupt,
-					 interrupt->service_context);
+	ret = LIN2WIN2(interrupt->service_routine, interrupt,
+		       interrupt->service_context);
 	if (interrupt->synch_irql >= DISPATCH_LEVEL)
 		nt_spin_unlock_irql(spinlock, irql);
 	else
@@ -741,7 +735,7 @@ STDCALL NTSTATUS WRAP_EXPORT(IoCreateUnprotectedSymbolicLink)
 		IOTRACE("link: %s", ansi.buf);
 		RtlFreeAnsiString(&ansi);
 	}
-	UNIMPL();
+//	UNIMPL();
 	IOEXIT(return STATUS_SUCCESS);
 }
 
