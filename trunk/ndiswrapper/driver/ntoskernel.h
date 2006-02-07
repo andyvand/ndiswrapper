@@ -244,6 +244,21 @@ typedef u32 pm_message_t;
 	lin_to_win6(func, (unsigned long)arg1, (unsigned long)arg2,	\
 		    (unsigned long)arg3, (unsigned long)arg4,		\
 		    (unsigned long)arg5, (unsigned long)arg6)
+
+/* NOTE: these macros assume function arguments are quads and
+ * arguments are not touched in any way before calling these macros */
+#define WIN2LIN2() __asm__ __volatile__("\tmov %rcx, %rdi\n"		\
+					"\tmov %rdx, %rsi\n"		\
+					"\tmovq %rdi, -8(%rbp)\n"	\
+					"\tmovq %rsi, -16(%rbp)\n")
+
+#define WIN2LIN3() __asm__ __volatile__("\tmov %rcx, %rdi\n"		\
+					"\tmov %rdx, %rsi\n"		\
+					"\tmov %r8, %rdx\n"		\
+					"\tmovq %rdi, -8(%rbp)\n"	\
+					"\tmovq %rsi, -16(%rbp)\n"	\
+					"\tmovq %rdx, -24(%rbp)\n")
+
 #else
 #define LIN2WIN1(func, arg1) func(arg1)
 #define LIN2WIN2(func, arg1, arg2) func(arg1, arg2)
@@ -253,6 +268,8 @@ typedef u32 pm_message_t;
 	func(arg1, arg2, arg3, arg4, arg5)
 #define LIN2WIN6(func, arg1, arg2, arg3, arg4, arg5, arg6)	\
 	func(arg1, arg2, arg3, arg4, arg5, arg6)
+#define WIN2LIN2() do { } while (0)
+#define WIN2LIN3() do { } while (0)
 #endif
 
 #ifndef __wait_event_interruptible_timeout
@@ -703,6 +720,7 @@ unsigned long lin_to_win6(void *func, unsigned long, unsigned long,
 			  unsigned long, unsigned long, unsigned long,
 			  unsigned long);
 
+
 STDCALL struct nt_thread *KeGetCurrentThread(void);
 STDCALL NTSTATUS
 ObReferenceObjectByHandle(void *handle, ACCESS_MASK desired_access,
@@ -744,13 +762,9 @@ static inline KIRQL current_irql(void)
 	return PASSIVE_LEVEL;
 }
 
-static inline KIRQL raise_irql(KIRQL newirql)
+static inline KIRAL raise_irql(KIRQL newirql)
 {
 	KIRQL irql = current_irql();
-#ifdef DEBUG_IRQL
-	if (newirql < irql)
-		ERROR("invalid irql: %d < %d", newirql, irql);
-#endif
 	if (irql < DISPATCH_LEVEL && newirql == DISPATCH_LEVEL) {
 		local_bh_disable();
 		preempt_disable();
@@ -763,9 +777,9 @@ static inline void lower_irql(KIRQL oldirql)
 	KIRQL irql = current_irql();
 #ifdef DEBUG_IRQL
 	if (irql < oldirql)
-		ERROR("invalid irql: %d < %d", irql, oldirql);
+		ERROR("invalid irql: %d < %d", _irql, oldirql);
 #endif
-	if (oldirql < DISPATCH_LEVEL && irql == DISPATCH_LEVEL) {
+	if (irql == DISPATCH_LEVEL && oldirql < DISPATCH_LEVEL) {
 		preempt_enable_no_resched();
 		local_bh_enable();
 	}
@@ -827,20 +841,20 @@ static inline void lower_irql(KIRQL oldirql)
 #ifdef CONFIG_DEBUG_SPINLOCK
 
 #define nt_spin_lock(lock)						\
-	do {								\
-		if (*(lock) == NT_SPIN_LOCK_LOCKED)			\
-			ERROR("eeek: process %p already owns lock %p",	\
-			      current, lock);				\
-		else							\
-			raw_nt_spin_lock(lock);				\
-	} while (0)
+do {									\
+	if (*(lock) == NT_SPIN_LOCK_LOCKED)				\
+		ERROR("eeek: process %p already owns lock %p",		\
+		      current, lock);					\
+	else								\
+		raw_nt_spin_lock(lock);					\
+} while (0)
 #define nt_spin_unlock(lock)						\
-	do {								\
-		if (*(lock) != NT_SPIN_LOCK_LOCKED)			\
-			ERROR("nt_spin_lock %p not locked!", (lock));	\
-		else							\
-			raw_nt_spin_unlock(lock);			\
-	} while (0)
+do {									\
+	if (*(lock) != NT_SPIN_LOCK_LOCKED)				\
+		ERROR("nt_spin_lock %p not locked!", (lock));		\
+	else								\
+		raw_nt_spin_unlock(lock);				\
+} while (0)
 
 #else // DEBUG_SPINLOCK
 
@@ -858,7 +872,7 @@ static inline KIRQL nt_spin_lock_irql(NT_SPIN_LOCK *lock, KIRQL newirql)
 }
 
 /* lower IRQL to given (lower) IRQL if necessary after unlocking */
-static inline void nt_spin_unlock_irql(NT_SPIN_LOCK *lock, KIRQL oldirql)
+static inilne void nt_spin_unlock_irql(NT_SPIN_LOCK *lock, KIRQL oldirql)
 {
 	nt_spin_unlock(lock);
 	lower_irql(oldirql);

@@ -27,6 +27,7 @@
  * maximum range used by a driver is CACHE_MDL_PAGES; if a driver
  * requests an MDL for a bigger region, we allocate it with kmalloc;
  * otherwise, we allocate from the pool */
+
 #define CACHE_MDL_PAGES 3
 #define CACHE_MDL_SIZE (sizeof(struct mdl) + \
 			(sizeof(PFN_NUMBER) * CACHE_MDL_PAGES))
@@ -854,8 +855,6 @@ static void wrap_work_item_worker(void *data)
 		wrap_work_item = container_of(cur, struct wrap_work_item,
 					      list);
 		func = wrap_work_item->func;
-		DBGTRACE4("%p, %p, %p", func, wrap_work_item->arg1,
-			  wrap_work_item->arg2);
 		if (wrap_work_item->win_func == TRUE)
 			LIN2WIN2(func, wrap_work_item->arg1,
 				 wrap_work_item->arg2);
@@ -1984,8 +1983,8 @@ STDCALL void WRAP_EXPORT(MmUnmapIoSpace)
 STDCALL ULONG WRAP_EXPORT(MmSizeOfMdl)
 	(void *base, ULONG length)
 {
-	return sizeof(struct mdl) +
-		(sizeof(PFN_NUMBER) * SPAN_PAGES(base, length));
+	return (sizeof(struct mdl) +
+		(sizeof(PFN_NUMBER) * SPAN_PAGES(base, length)));
 }
 
 struct mdl *allocate_init_mdl(void *virt, ULONG length)
@@ -2086,6 +2085,9 @@ STDCALL void WRAP_EXPORT(MmBuildMdlForNonPagedPool)
 	int i, n;
 
 	n = SPAN_PAGES(MmGetSystemAddressForMdl(mdl), MmGetMdlByteCount(mdl));
+	if (n > CACHE_MDL_PAGES)
+		WARNING("%p, %d, %d", MmGetSystemAddressForMdl(mdl),
+			MmGetMdlByteCount(mdl), n);
 	mdl_pages = MmGetMdlPfnArray(mdl);
 	start_pfn = page_to_pfn(virt_to_page(MmGetSystemAddressForMdl(mdl)));
 	for (i = 0; i < n; i++)
