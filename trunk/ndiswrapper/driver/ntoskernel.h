@@ -762,7 +762,7 @@ static inline KIRQL current_irql(void)
 	return PASSIVE_LEVEL;
 }
 
-static inline KIRAL raise_irql(KIRQL newirql)
+static inline KIRQL raise_irql(KIRQL newirql)
 {
 	KIRQL irql = current_irql();
 	if (irql < DISPATCH_LEVEL && newirql == DISPATCH_LEVEL) {
@@ -777,7 +777,7 @@ static inline void lower_irql(KIRQL oldirql)
 	KIRQL irql = current_irql();
 #ifdef DEBUG_IRQL
 	if (irql < oldirql)
-		ERROR("invalid irql: %d < %d", _irql, oldirql);
+		ERROR("invalid irql: %d < %d", irql, oldirql);
 #endif
 	if (irql == DISPATCH_LEVEL && oldirql < DISPATCH_LEVEL) {
 		preempt_enable_no_resched();
@@ -872,7 +872,7 @@ static inline KIRQL nt_spin_lock_irql(NT_SPIN_LOCK *lock, KIRQL newirql)
 }
 
 /* lower IRQL to given (lower) IRQL if necessary after unlocking */
-static inilne void nt_spin_unlock_irql(NT_SPIN_LOCK *lock, KIRQL oldirql)
+static inline void nt_spin_unlock_irql(NT_SPIN_LOCK *lock, KIRQL oldirql)
 {
 	nt_spin_unlock(lock);
 	lower_irql(oldirql);
