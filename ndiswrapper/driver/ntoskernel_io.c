@@ -157,7 +157,7 @@ STDCALL void WRAP_EXPORT(IoInitializeIrp)
 	irp->size = size;
 	irp->stack_count = stack_size;
 	irp->current_location = stack_size;
-	IoGetCurrentIrpStackLocation(irp) = IRP_SL(irp, (stack_size));
+	IoGetCurrentIrpStackLocation(irp) = IRP_SL(irp, stack_size);
 	IOEXIT(return);
 }
 
@@ -407,7 +407,6 @@ _FASTCALL void WRAP_EXPORT(IofCompleteRequest)
 	NTSTATUS res;
 	struct io_stack_location *irp_sl;
 	struct mdl *mdl;
-	int i;
 
 #ifdef IO_DEBUG
 	DUMP_IRP(irp);
@@ -420,18 +419,19 @@ _FASTCALL void WRAP_EXPORT(IofCompleteRequest)
 		return;
 	}
 #endif
-	if (IoGetCurrentIrpStackLocation(irp)->control & SL_PENDING_RETURNED)
-		irp->pending_returned = TRUE;
-	for (i = irp->current_location; i < irp->stack_count; i++) {
+	irp_sl = IoGetCurrentIrpStackLocation(irp);
+	IoSkipCurrentIrpStackLocation(irp);
+
+	for ( ; irp->current_location <= irp->stack_count; irp_sl++) {
 		struct device_object *dev_obj;
 
-		if (irp->current_location < (irp->stack_count - 1)) {
-			IoSkipCurrentIrpStackLocation(irp);
+		if (irp_sl->control & SL_PENDING_RETURNED)
+			irp->pending_returned = TRUE;
+		if (irp->current_location < irp->stack_count)
 			dev_obj = IoGetCurrentIrpStackLocation(irp)->dev_obj;
-		} else
+		else
 			dev_obj = NULL;
 
-		irp_sl = IRP_SL(irp, i);
 		if (irp_sl->completion_routine &&
 		    ((irp->io_status.status == STATUS_SUCCESS &&
 		       irp_sl->control & CALL_ON_SUCCESS) ||
@@ -445,10 +445,12 @@ _FASTCALL void WRAP_EXPORT(IofCompleteRequest)
 			if (res == STATUS_MORE_PROCESSING_REQUIRED)
 				IOEXIT(return);
 			IOTRACE("completion routine returned");
+		} else {
+			if (irp->current_location < irp->stack_count &&
+			    irp->pending_returned)
+				IoMarkIrpPending(irp);
 		}
-		if (IoGetCurrentIrpStackLocation(irp)->control &
-		    SL_PENDING_RETURNED)
-			irp->pending_returned = TRUE;
+		IoSkipCurrentIrpStackLocation(irp);
 	}
 
 	if (irp->user_status) {
