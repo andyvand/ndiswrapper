@@ -421,12 +421,22 @@ _FASTCALL void WRAP_EXPORT(IofCompleteRequest)
 #endif
 	for (irp_sl = IoGetCurrentIrpStackLocation(irp);
 	     irp->current_location < irp->stack_count; irp_sl++) {
+		struct device_object *dev_obj;
+
 		if (irp_sl->control & SL_PENDING_RETURNED)
 			irp->pending_returned = TRUE;
 
-		/* current_location must be same as when driver called
-		 * IoSetCompletionRoutine, so we increment it */
+		/* current_location and dev_obj must be same as when
+		 * driver called IoSetCompletionRoutine, which sets
+		 * completion routine at next (lower) location, which
+		 * is what we are going to call below; so we set
+		 * current_location and dev_obj for the previous
+		 * (higher) location */
 		IoSkipCurrentIrpStackLocation(irp);
+		if (irp->current_location < irp->stack_count)
+			dev_obj = IoGetCurrentIrpStackLocation(irp)->dev_obj;
+		else
+			dev_obj = NULL;
 
 		if (irp_sl->completion_routine &&
 		    ((irp->io_status.status == STATUS_SUCCESS &&
@@ -437,7 +447,7 @@ _FASTCALL void WRAP_EXPORT(IofCompleteRequest)
 			IOTRACE("calling completion_routine at: %p",
 				irp_sl->completion_routine);
 			res = LIN2WIN3(irp_sl->completion_routine,
-				       irp_sl->dev_obj, irp, irp_sl->context);
+				       dev_obj, irp, irp_sl->context);
 			if (res == STATUS_MORE_PROCESSING_REQUIRED)
 				IOEXIT(return);
 			IOTRACE("completion routine returned");
