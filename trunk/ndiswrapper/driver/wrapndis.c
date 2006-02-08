@@ -1216,30 +1216,33 @@ static NDIS_STATUS miniport_set_power_state(struct wrap_ndis_device *wnd,
 	}
 }
 
-STDCALL NTSTATUS NdisDispatchDeviceControl(struct device_object *fdo,
-					   struct irp *irp)
+static NTSTATUS _NdisDispatchDeviceControl(struct device_object *fdo,
+					  struct irp *irp)
 {
 	struct wrap_ndis_device *wnd;
-
-	WIN2LIN2();
 
 	DBGTRACE3("fdo: %p", fdo);
 	/* for now, we don't have anything intresting here, so pass it
 	 * down to bus driver */
 	wnd = fdo->reserved;
-	return IopPassIrpDown(wnd->nmb->pdo, irp);
+	return LIN2WIN2(winIopPassIrpDown, wnd->nmb->pdo, irp);
 }
 
-STDCALL NTSTATUS NdisDispatchPower(struct device_object *fdo,
-				   struct irp *irp)
+STDCALL NTSTATUS winNdisDispatchDeviceControl(struct device_object *fdo,
+					      struct irp *irp)
+{
+	unsigned long ret;
+	WIN2LIN2(_NdisDispatchDeviceControl, fdo, irp, ret);
+	return ret;
+}
+
+NTSTATUS _NdisDispatchPower(struct device_object *fdo, struct irp *irp)
 {
 	struct io_stack_location *irp_sl;
 	struct wrap_ndis_device *wnd;
 	enum ndis_power_state state;
 	NTSTATUS status;
 	NDIS_STATUS ndis_status;
-
-	WIN2LIN2();
 
 	irp_sl = IoGetCurrentIrpStackLocation(irp);
 	wnd = fdo->reserved;
@@ -1253,11 +1256,11 @@ STDCALL NTSTATUS NdisDispatchPower(struct device_object *fdo,
 	case IRP_MN_SET_POWER:
 		if (state == NdisDeviceStateD0) {
 			IoCopyCurrentIrpStackLocationToNext(irp);
-			IoSetCompletionRoutine(irp, IrpStopCompletion, wnd,
+			IoSetCompletionRoutine(irp, winIrpStopCompletion, wnd,
 					       TRUE, FALSE, FALSE);
 			status = IoCallDriver(wnd->nmb->pdo, irp);
 			if (status != STATUS_SUCCESS)
-				return status;
+				break;
 			ndis_status = miniport_set_power_state(wnd, state);
 			if (ndis_status != NDIS_STATUS_SUCCESS)
 				WARNING("setting power to %d failed: %08X",
@@ -1291,7 +1294,7 @@ STDCALL NTSTATUS NdisDispatchPower(struct device_object *fdo,
 			if (ndis_status != NDIS_STATUS_SUCCESS)
 				WARNING("setting power to %d failed: %08X",
 					state, ndis_status);
-			return IopPassIrpDown(wnd->nmb->pdo, irp);
+			return LIN2WIN2(winIopPassIrpDown, wnd->nmb->pdo, irp);
 		}
 		status = STATUS_SUCCESS;
 		break;
@@ -1311,7 +1314,7 @@ STDCALL NTSTATUS NdisDispatchPower(struct device_object *fdo,
 		status = STATUS_NOT_SUPPORTED;
 		break;
 	default:
-		return IopPassIrpDown(wnd->nmb->pdo, irp);
+		return LIN2WIN2(winIopPassIrpDown, wnd->nmb->pdo, irp);
 	}
 	irp->io_status.status_info = 0;
 	irp->io_status.status = status;
@@ -1319,15 +1322,20 @@ STDCALL NTSTATUS NdisDispatchPower(struct device_object *fdo,
 	return status;
 }
 
-STDCALL NTSTATUS NdisDispatchPnp(struct device_object *fdo,
-				 struct irp *irp)
+STDCALL NTSTATUS winNdisDispatchPower(struct device_object *fdo,
+				      struct irp *irp)
+{
+	unsigned long ret;
+	WIN2LIN2(_NdisDispatchPower, fdo, irp, ret);
+	return ret;
+}
+
+NTSTATUS _NdisDispatchPnp(struct device_object *fdo, struct irp *irp)
 {
 	struct io_stack_location *irp_sl;
 	struct wrap_ndis_device *wnd;
 	struct device_object *pdo;
 	NTSTATUS status;
-
-	WIN2LIN2();
 
 	IOENTER("fdo: %p, irp: %p", fdo, irp);
 	irp_sl = IoGetCurrentIrpStackLocation(irp);
@@ -1338,7 +1346,7 @@ STDCALL NTSTATUS NdisDispatchPnp(struct device_object *fdo,
 	switch (irp_sl->minor_fn) {
 	case IRP_MN_START_DEVICE:
 		IoCopyCurrentIrpStackLocationToNext(irp);
-		IoSetCompletionRoutine(irp, IrpStopCompletion, wnd, TRUE,
+		IoSetCompletionRoutine(irp, winIrpStopCompletion, wnd, TRUE,
 				       FALSE, FALSE);
 		status = IoCallDriver(pdo, irp);
 		if (status != STATUS_SUCCESS)
@@ -1349,24 +1357,32 @@ STDCALL NTSTATUS NdisDispatchPnp(struct device_object *fdo,
 			status = STATUS_FAILURE;
 		break;
 	case IRP_MN_QUERY_STOP_DEVICE:
-		return IopPassIrpDown(pdo, irp);
+		return LIN2WIN2(winIopPassIrpDown, pdo, irp);
 	case IRP_MN_STOP_DEVICE:
 		miniport_halt(wnd);
-		return IopPassIrpDown(pdo, irp);
+		return LIN2WIN2(winIopPassIrpDown, pdo, irp);
 	case IRP_MN_REMOVE_DEVICE:
 		DBGTRACE1("%s", wnd->net_dev->name);
 		if (ndis_remove_device(wnd) != NDIS_STATUS_SUCCESS) {
 			status = STATUS_FAILURE;
 			break;
 		}
-		return IopPassIrpDown(pdo, irp);
+		return LIN2WIN2(winIopPassIrpDown, pdo, irp);
 	default:
-		return IopPassIrpDown(pdo, irp);
+		return LIN2WIN2(winIopPassIrpDown, pdo, irp);
 	}
 	irp->io_status.status = status;
 	IOTRACE("res: %08X", status);
 	IoCompleteRequest(irp, IO_NO_INCREMENT);
 	return status;
+}
+
+STDCALL NTSTATUS winNdisDispatchPnp(struct device_object *fdo,
+				      struct irp *irp)
+{
+	unsigned long ret;
+	WIN2LIN2(_NdisDispatchPnp, fdo, irp, ret);
+	return ret;
 }
 
 static NDIS_STATUS ndis_start_device(struct wrap_ndis_device *wnd)
@@ -1666,13 +1682,13 @@ static STDCALL NTSTATUS NdisAddDevice(struct driver_object *drv_obj,
 		  nmb, pdo, fdo, fdo->attached, nmb->next_device);
 
 	for (i = 0; i <= IRP_MJ_MAXIMUM_FUNCTION; i++)
-		drv_obj->major_func[i] = IopPassIrpDown;
-	drv_obj->major_func[IRP_MJ_PNP] = NdisDispatchPnp;
-	drv_obj->major_func[IRP_MJ_POWER] = NdisDispatchPower;
+		drv_obj->major_func[i] = winIopPassIrpDown;
+	drv_obj->major_func[IRP_MJ_PNP] = winNdisDispatchPnp;
+	drv_obj->major_func[IRP_MJ_POWER] = winNdisDispatchPower;
 	drv_obj->major_func[IRP_MJ_INTERNAL_DEVICE_CONTROL] =
-		NdisDispatchDeviceControl;
+		winNdisDispatchDeviceControl;
 	drv_obj->major_func[IRP_MJ_DEVICE_CONTROL] =
-		NdisDispatchDeviceControl;
+		winNdisDispatchDeviceControl;
 	TRACEEXIT2(return STATUS_SUCCESS);
 }
 

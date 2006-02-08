@@ -20,17 +20,11 @@
 #include "ndis.h"
 #include "wrapndis.h"
 
-driver_dispatch_t IopInvalidDeviceRequest;
+driver_dispatch_t winIopInvalidDeviceRequest;
+driver_dispatch_t winIopPassIrpDown;
 
-static inline STDCALL NTSTATUS IopPassIrpDown(struct device_object *dev_obj,
-					      struct irp *irp)
-{
-	IoSkipCurrentIrpStackLocation(irp);
-	return IoCallDriver(dev_obj, irp);
-}
-
-STDCALL NTSTATUS IrpStopCompletion(struct device_object *dev_obj,
-				   struct irp *irp, void *context);
+STDCALL NTSTATUS winIrpStopCompletion(struct device_object *dev_obj,
+				      struct irp *irp, void *context);
 
 NTSTATUS pnp_set_power_state(struct wrap_device *wd,
 			     enum device_power_state state);
