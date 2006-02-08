@@ -39,9 +39,9 @@ void check_capa(struct wrap_ndis_device *wnd);
 void hangcheck_add(struct wrap_ndis_device *wnd);
 void hangcheck_del(struct wrap_ndis_device *wnd);
 
-driver_dispatch_t NdisDispatchPnp;
-driver_dispatch_t NdisDispatchPower;
-driver_dispatch_t NdisDispatchDeviceControl;
+driver_dispatch_t winNdisDispatchPnp;
+driver_dispatch_t winNdisDispatchPower;
+driver_dispatch_t winNdisDispatchDeviceControl;
 
 struct iw_statistics *get_wireless_stats(struct net_device *dev);
 

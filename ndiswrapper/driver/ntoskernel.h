@@ -247,17 +247,22 @@ typedef u32 pm_message_t;
 
 /* NOTE: these macros assume function arguments are quads and
  * arguments are not touched in any way before calling these macros */
-#define WIN2LIN2() __asm__ __volatile__("\tmov %rcx, %rdi\n"		\
-					"\tmov %rdx, %rsi\n"		\
-					"\tmovq %rdi, -8(%rbp)\n"	\
-					"\tmovq %rsi, -16(%rbp)\n")
+#define WIN2LIN2(func, arg1, arg2, ret)			\
+	do {						\
+		__asm__("mov %rcx, %rdi");		\
+		__asm__("mov %rdx, %rsi");		\
+		__asm__("call *%0" : : "r"(func));	\
+		__asm__("mov %%rax, %0" : "=r"(ret));	\
+	} while (0)
 
-#define WIN2LIN3() __asm__ __volatile__("\tmov %rcx, %rdi\n"		\
-					"\tmov %rdx, %rsi\n"		\
-					"\tmov %r8, %rdx\n"		\
-					"\tmovq %rdi, -8(%rbp)\n"	\
-					"\tmovq %rsi, -16(%rbp)\n"	\
-					"\tmovq %rdx, -24(%rbp)\n")
+#define WIN2LIN3(func, arg1, arg2, arg3, ret)		\
+	do {						\
+		__asm__("mov %rcx, %rdi");		\
+		__asm__("mov %rdx, %rsi");		\
+		__asm__("mov %r8, %rdx");		\
+		__asm__("call *%0" : : "r"(func));	\
+		__asm__("mov %%rax, %0" : "=r"(ret));	\
+	} while (0)
 
 #else
 #define LIN2WIN1(func, arg1) func(arg1)
@@ -268,8 +273,14 @@ typedef u32 pm_message_t;
 	func(arg1, arg2, arg3, arg4, arg5)
 #define LIN2WIN6(func, arg1, arg2, arg3, arg4, arg5, arg6)	\
 	func(arg1, arg2, arg3, arg4, arg5, arg6)
-#define WIN2LIN2() do { } while (0)
-#define WIN2LIN3() do { } while (0)
+#define WIN2LIN2(func, arg1, arg2, ret)		\
+	do {					\
+		ret = func(arg1, arg2);		\
+	} while (0)
+#define WIN2LIN3(func, arg1, arg2, arg3, ret)	\
+	do {					\
+		ret = func(arg1, arg2, arg3);	\
+	} while (0)
 #endif
 
 #ifndef __wait_event_interruptible_timeout

@@ -22,22 +22,41 @@ extern NT_SPIN_LOCK loader_lock;
 extern struct nt_list ndis_drivers;
 extern struct wrap_device *wrap_devices;
 
-STDCALL NTSTATUS IrpStopCompletion(struct device_object *dev_obj,
+static NTSTATUS _IrpStopCompletion(struct device_object *dev_obj,
 				   struct irp *irp, void *context)
 {
-	WIN2LIN3();
-
 	IOENTER("dev_obj: %p, irp: %p, context: %p", dev_obj, irp, context);
 	IOEXIT(return STATUS_MORE_PROCESSING_REQUIRED);
 }
 
-STDCALL NTSTATUS IopInvalidDeviceRequest(struct device_object *dev_obj,
-					 struct irp *irp)
+STDCALL NTSTATUS winIrpStopCompletion(struct device_object *dev_obj,
+				      struct irp *irp, void *context)
+{
+	unsigned long ret;
+	WIN2LIN3(_IrpStopCompletion, dev_obj, irp, context, ret);
+	return ret;
+}
+
+static NTSTATUS _IopPassIrpDown(struct device_object *dev_obj,
+			       struct irp *irp)
+{
+	IoSkipCurrentIrpStackLocation(irp);
+	return IoCallDriver(dev_obj, irp);
+}
+
+STDCALL NTSTATUS winIopPassIrpDown(struct device_object *dev_obj,
+				   struct irp *irp)
+{
+	unsigned long ret;
+	WIN2LIN2(_IopPassIrpDown, dev_obj, irp, ret);
+	return ret;
+}
+
+static NTSTATUS _IopInvalidDeviceRequest(struct device_object *dev_obj,
+					struct irp *irp)
 {
 	struct io_stack_location *irp_sl;
 	NTSTATUS status;
-
-	WIN2LIN2();
 
 	irp_sl = IoGetCurrentIrpStackLocation(irp);
 	WARNING("IRP %d:%d not implemented",
@@ -49,13 +68,19 @@ STDCALL NTSTATUS IopInvalidDeviceRequest(struct device_object *dev_obj,
 	return status;
 }
 
-static STDCALL NTSTATUS pdoDispatchDeviceControl(struct device_object *pdo,
-						 struct  irp *irp)
+STDCALL NTSTATUS winIopInvalidDeviceRequest(struct device_object *dev_obj,
+					    struct irp *irp)
+{
+	unsigned long ret;
+	WIN2LIN2(_IopInvalidDeviceRequest, dev_obj, irp, ret);
+	return ret;
+}
+
+static NTSTATUS _pdoDispatchDeviceControl(struct device_object *pdo,
+					 struct  irp *irp)
 {
 	struct io_stack_location *irp_sl;
 	NTSTATUS status;
-
-	WIN2LIN2();
 
 	DUMP_IRP(irp);
 
@@ -89,8 +114,16 @@ static STDCALL NTSTATUS pdoDispatchDeviceControl(struct device_object *pdo,
 #endif
 }
 
-static STDCALL NTSTATUS pdoDispatchPnp(struct device_object *pdo,
-				       struct irp *irp)
+STDCALL NTSTATUS winpdoDispatchDeviceControl(struct device_object *pdo,
+					     struct  irp *irp)
+{
+	unsigned long ret;
+	WIN2LIN2(_pdoDispatchDeviceControl, pdo, irp, ret);
+	return ret;
+}
+
+static NTSTATUS _pdoDispatchPnp(struct device_object *pdo,
+			       struct irp *irp)
 {
 	struct io_stack_location *irp_sl;
 	struct wrap_device *wd;
@@ -98,8 +131,6 @@ static STDCALL NTSTATUS pdoDispatchPnp(struct device_object *pdo,
 #ifdef CONFIG_USB
 	struct usbd_bus_interface_usbdi *usb_intf;
 #endif
-
-	WIN2LIN2();
 
 	irp_sl = IoGetCurrentIrpStackLocation(irp);
 	wd = pdo->reserved;
@@ -174,16 +205,22 @@ static STDCALL NTSTATUS pdoDispatchPnp(struct device_object *pdo,
 	IOEXIT(return status);
 }
 
-static STDCALL NTSTATUS pdoDispatchPower(struct device_object *pdo,
-					 struct irp *irp)
+static STDCALL NTSTATUS winpdoDispatchPnp(struct device_object *pdo,
+					  struct irp *irp)
+{
+	unsigned long ret;
+	WIN2LIN2(_pdoDispatchPnp, pdo, irp, ret);
+	return ret;
+}
+
+static NTSTATUS _pdoDispatchPower(struct device_object *pdo,
+				 struct irp *irp)
 {
 	struct io_stack_location *irp_sl;
 	struct wrap_device *wd;
 	union power_state power_state;
 	struct pci_dev *pdev;
 	NTSTATUS status;
-
-	WIN2LIN2();
 
 	irp_sl = IoGetCurrentIrpStackLocation(irp);
 	wd = pdo->reserved;
@@ -237,6 +274,15 @@ static STDCALL NTSTATUS pdoDispatchPower(struct device_object *pdo,
 	return status;
 }
 
+
+static STDCALL NTSTATUS winpdoDispatchPower(struct device_object *pdo,
+					    struct irp *irp)
+{
+	unsigned long ret;
+	WIN2LIN2(_pdoDispatchPower, pdo, irp, ret);
+	return ret;
+}
+
 static struct device_object *alloc_pdo(struct driver_object *drv_obj)
 {
 	struct device_object *pdo;
@@ -249,12 +295,13 @@ static struct device_object *alloc_pdo(struct driver_object *drv_obj)
 	if (status != STATUS_SUCCESS)
 		return NULL;
 	for (i = 0; i <= IRP_MJ_MAXIMUM_FUNCTION; i++)
-		drv_obj->major_func[i] = IopInvalidDeviceRequest;
+		drv_obj->major_func[i] = winIopInvalidDeviceRequest;
 	drv_obj->major_func[IRP_MJ_INTERNAL_DEVICE_CONTROL] =
-		pdoDispatchDeviceControl;
-	drv_obj->major_func[IRP_MJ_DEVICE_CONTROL] = pdoDispatchDeviceControl;
-	drv_obj->major_func[IRP_MJ_POWER] = pdoDispatchPower;
-	drv_obj->major_func[IRP_MJ_PNP] = pdoDispatchPnp;
+		winpdoDispatchDeviceControl;
+	drv_obj->major_func[IRP_MJ_DEVICE_CONTROL] =
+		winpdoDispatchDeviceControl;
+	drv_obj->major_func[IRP_MJ_POWER] = winpdoDispatchPower;
+	drv_obj->major_func[IRP_MJ_PNP] = winpdoDispatchPnp;
 	return pdo;
 }
 
