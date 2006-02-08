@@ -419,18 +419,14 @@ _FASTCALL void WRAP_EXPORT(IofCompleteRequest)
 		return;
 	}
 #endif
-	irp_sl = IoGetCurrentIrpStackLocation(irp);
-	IoSkipCurrentIrpStackLocation(irp);
-
-	for ( ; irp->current_location <= irp->stack_count; irp_sl++) {
-		struct device_object *dev_obj;
-
+	for (irp_sl = IoGetCurrentIrpStackLocation(irp);
+	     irp->current_location < irp->stack_count; irp_sl++) {
 		if (irp_sl->control & SL_PENDING_RETURNED)
 			irp->pending_returned = TRUE;
-		if (irp->current_location < irp->stack_count)
-			dev_obj = IoGetCurrentIrpStackLocation(irp)->dev_obj;
-		else
-			dev_obj = NULL;
+
+		/* current_location must be same as when driver called
+		 * IoSetCompletionRoutine, so we increment it */
+		IoSkipCurrentIrpStackLocation(irp);
 
 		if (irp_sl->completion_routine &&
 		    ((irp->io_status.status == STATUS_SUCCESS &&
@@ -440,17 +436,12 @@ _FASTCALL void WRAP_EXPORT(IofCompleteRequest)
 		      (irp->cancel && (irp_sl->control & CALL_ON_CANCEL)))) {
 			IOTRACE("calling completion_routine at: %p",
 				irp_sl->completion_routine);
-			res = LIN2WIN3(irp_sl->completion_routine, dev_obj,
-				       irp, irp_sl->context);
+			res = LIN2WIN3(irp_sl->completion_routine,
+				       irp_sl->dev_obj, irp, irp_sl->context);
 			if (res == STATUS_MORE_PROCESSING_REQUIRED)
 				IOEXIT(return);
 			IOTRACE("completion routine returned");
-		} else {
-			if (irp->current_location < irp->stack_count &&
-			    irp->pending_returned)
-				IoMarkIrpPending(irp);
 		}
-		IoSkipCurrentIrpStackLocation(irp);
 	}
 
 	if (irp->user_status) {

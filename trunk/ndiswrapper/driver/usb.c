@@ -1176,16 +1176,16 @@ NTSTATUS wrap_submit_irp(struct device_object *pdo, struct irp *irp)
 	struct usbd_idle_callback *idle_callback;
 	union nt_urb *nt_urb;
 
-	irp_sl = IoGetCurrentIrpStackLocation(irp);
+	USBTRACE("%p, %p", pdo, irp);
 	wd = pdo->reserved;
 	irp->wd = wd;
 	if (unlikely(wd->usb.intf == NULL)) {
 		nt_urb = URB_FROM_IRP(irp);
-		status = NT_URB_STATUS(nt_urb) = USBD_STATUS_DEVICE_GONE;
 		irp->io_status.status = STATUS_DEVICE_REMOVED;
-		USBEXIT(return status);
+		USBEXIT(return irp->io_status.status);
 	}
 
+	irp_sl = IoGetCurrentIrpStackLocation(irp);
 	switch (irp_sl->params.ioctl.code) {
 	case IOCTL_INTERNAL_USB_SUBMIT_URB:
 		status = wrap_process_nt_urb(irp);
