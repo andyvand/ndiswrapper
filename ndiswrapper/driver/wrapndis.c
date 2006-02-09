@@ -42,7 +42,7 @@ static inline int ndis_wait_pending_completion(struct wrap_ndis_device *wnd)
 	 * completion routine, but some drivers (e.g., ZyDas) don't
 	 * call back, so timeout is used; TODO: find out why drivers
 	 * don't call completion function */
-#if 1
+#if 0
 	/* setting PM state takes a long time, upto 2 seconds, for USB
 	 * devices */
 	if ((wait_event_interruptible_timeout(wnd->ndis_comm_wq,
