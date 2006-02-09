@@ -52,12 +52,6 @@ ifdef IO_DEBUG
 CFLAGS += -DIO_DEBUG
 endif
 
-# TI 1450 USB chipset requires a hack (for now), which causes issues
-# with other USB chipsets
-ifdef TI1450
-CFLAGS += -DTI1450
-endif
-
 CFLAGS += -DDRIVER_VERSION=\"${DRIVER_VERSION}\"
 
 .PHONY: prereq_check gen_exports clean dist_clean \

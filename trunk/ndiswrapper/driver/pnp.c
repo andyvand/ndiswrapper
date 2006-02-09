@@ -102,6 +102,7 @@ static NTSTATUS _pdoDispatchDeviceControl(struct device_object *pdo,
 		 * irp when STAUS_PENDING is returned, this irp hasn't
 		 * been submitted to usb yet (and not completed), so
 		 * it is safe in this case */
+		IoMarkIrpPending(irp);
 		status = wrap_submit_urb(irp);
 	}
 	if (status != STATUS_PENDING)
