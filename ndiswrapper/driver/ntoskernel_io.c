@@ -491,17 +491,10 @@ static irqreturn_t io_irq_th(int irq, void *data, struct pt_regs *pt_regs)
 		spinlock = interrupt->actual_lock;
 	else
 		spinlock = &interrupt->lock;
-	/* TODO: should we use nt_spin_lock_irqsave? */
-	if (interrupt->synch_irql >= DISPATCH_LEVEL)
-		irql = nt_spin_lock_irql(spinlock, DISPATCH_LEVEL);
-	else
-		nt_spin_lock(spinlock);
+	nt_spin_lock(spinlock);
 	ret = LIN2WIN2(interrupt->service_routine, interrupt,
 		       interrupt->service_context);
-	if (interrupt->synch_irql >= DISPATCH_LEVEL)
-		nt_spin_unlock_irql(spinlock, irql);
-	else
-		nt_spin_unlock(spinlock);
+	nt_spin_unlock(spinlock);
 
 	if (ret == TRUE)
 		return IRQ_HANDLED;
@@ -527,11 +520,7 @@ STDCALL NTSTATUS WRAP_EXPORT(IoConnectInterrupt)
 	interrupt->service_routine = service_routine;
 	interrupt->service_context = service_context;
 	InitializeListHead(&interrupt->list);
-	interrupt->irql = irql;
-	if (synch_irql > DISPATCH_LEVEL)
-		interrupt->synch_irql = DISPATCH_LEVEL;
-	else
-		interrupt->synch_irql = synch_irql;
+	interrupt->synch_irql = synch_irql;
 	interrupt->interrupt_mode = interrupt_mode;
 	if (request_irq(vector, io_irq_th, shareable ? SA_SHIRQ : 0,
 			"io_irq", interrupt)) {

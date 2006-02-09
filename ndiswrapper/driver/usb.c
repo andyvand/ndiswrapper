@@ -657,6 +657,8 @@ static USBD_STATUS wrap_vendor_or_class_req(struct irp *irp)
 	struct usb_device *udev;
 	union nt_urb *nt_urb;
 	USBD_STATUS status;
+	struct urb *urb;
+	struct usb_ctrlrequest *dr;
 
 	nt_urb = URB_FROM_IRP(irp);
 	udev = irp->wd->usb.udev;
@@ -720,63 +722,37 @@ static USBD_STATUS wrap_vendor_or_class_req(struct irp *irp)
 		req_type |= USB_DIR_OUT;
 		USBTRACE("pipe: %u, dir out", pipe);
 	}
-#ifdef TI1450
-	/* TI 1450 chipset initially sends a vendor/class request
-	 * without setting event to wait for URB to complete; so we
-	 * need to submit URB synchronously so driver doesn't wait for
-	 * completion */
-	if (current_irql() < DISPATCH_LEVEL) {
-		int ret;
-		/* synchronous submission */
-		ret = usb_control_msg(udev, pipe, vc_req->request, req_type,
-				      vc_req->value, vc_req->index,
-				      vc_req->transfer_buffer,
-				      vc_req->transfer_buffer_length, 0);
-		USBTRACE("ret: %d", ret);
-		if (ret < 0)
-			status = wrap_urb_status(ret);
-		else {
-			vc_req->transfer_buffer_length = ret;
-			status = USBD_STATUS_SUCCESS;
-		}
-	} else
-#endif
-	{
-		/* asynchronous submission */
-		struct urb *urb;
-		struct usb_ctrlrequest *dr;
-		urb = wrap_alloc_urb(irp, pipe, vc_req->transfer_buffer,
-				     vc_req->transfer_buffer_length);
-		if (!urb) {
-			ERROR("couldn't allocate urb");
-			return USBD_STATUS_NO_MEMORY;
-		}
-
-		if (usb_pipein(pipe) &&
-		    (!(vc_req->transfer_flags & USBD_SHORT_TRANSFER_OK))) {
-			USBTRACE("short not ok");
-			urb->transfer_flags |= URB_SHORT_NOT_OK;
-		}
-
-		dr = kmalloc(sizeof(*dr), GFP_ATOMIC);
-		if (!dr) {
-			ERROR("couldn't allocate memory");
-			wrap_free_urb(urb);
-			return USBD_STATUS_NO_MEMORY;
-		}
-		memset(dr, 0, sizeof(*dr));
-		dr->bRequestType = req_type;
-		dr->bRequest = vc_req->request;
-		dr->wValue = cpu_to_le16(vc_req->value);
-		dr->wIndex = cpu_to_le16(vc_req->index);
-		dr->wLength = cpu_to_le16(vc_req->transfer_buffer_length);
-
-		usb_fill_control_urb(urb, udev, pipe, (unsigned char *)dr,
-				     urb->transfer_buffer,
-				     vc_req->transfer_buffer_length,
-				     wrap_urb_complete, urb->context);
-		status = USBD_STATUS_PENDING;
+	urb = wrap_alloc_urb(irp, pipe, vc_req->transfer_buffer,
+			     vc_req->transfer_buffer_length);
+	if (!urb) {
+		ERROR("couldn't allocate urb");
+		return USBD_STATUS_NO_MEMORY;
 	}
+
+	if (usb_pipein(pipe) &&
+	    (!(vc_req->transfer_flags & USBD_SHORT_TRANSFER_OK))) {
+		USBTRACE("short not ok");
+		urb->transfer_flags |= URB_SHORT_NOT_OK;
+	}
+
+	dr = kmalloc(sizeof(*dr), GFP_ATOMIC);
+	if (!dr) {
+		ERROR("couldn't allocate memory");
+		wrap_free_urb(urb);
+		return USBD_STATUS_NO_MEMORY;
+	}
+	memset(dr, 0, sizeof(*dr));
+	dr->bRequestType = req_type;
+	dr->bRequest = vc_req->request;
+	dr->wValue = cpu_to_le16(vc_req->value);
+	dr->wIndex = cpu_to_le16(vc_req->index);
+	dr->wLength = cpu_to_le16(vc_req->transfer_buffer_length);
+
+	usb_fill_control_urb(urb, udev, pipe, (unsigned char *)dr,
+			     urb->transfer_buffer,
+			     vc_req->transfer_buffer_length,
+			     wrap_urb_complete, urb->context);
+	status = USBD_STATUS_PENDING;
 	USBTRACE("status: %08X", status);
 	USBEXIT(return status);
 }
