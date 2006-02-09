@@ -45,12 +45,12 @@ static inline int ndis_wait_pending_completion(struct wrap_ndis_device *wnd)
 #if 1
 	/* setting PM state takes a long time, upto 2 seconds, for USB
 	 * devices */
-	if (wait_event_interruptible_timeout(wnd->ndis_comm_wq,
-					     (wnd->ndis_comm_done > 0),
-					     3 * HZ) <= 0)
+	if ((wait_event_interruptible_timeout(wnd->ndis_comm_wq,
+					      (wnd->ndis_comm_done > 0),
+					      3 * HZ) <= 0))
 #else
-	if (wait_event_interruptible(wnd->ndis_comm_wq,
-				     (wnd->ndis_comm_done > 0)))
+	if ((wait_event_interruptible(wnd->ndis_comm_wq,
+				      (wnd->ndis_comm_done > 0))))
 #endif
 		return -1;
 	else

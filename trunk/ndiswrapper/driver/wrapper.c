@@ -100,7 +100,7 @@ static void module_cleanup(void)
 #endif
 #ifdef USE_OWN_WORKQUEUE
 	_wrap_wq_init_state = WRAP_WQ_EXIT;
-	schedule_work(&_wrap_wq_init);
+	schedule_wrap_work(&_wrap_wq_init);
 	while (_wrap_wq_init_state) {
 		set_current_state(TASK_INTERRUPTIBLE);
 		schedule_timeout(4);
@@ -149,7 +149,7 @@ static int __init wrapper_init(void)
 	wrapper_wq = create_singlethread_workqueue("wrapper_wq");
 	INIT_WORK(&_wrap_wq_init, _wrap_wq_init_worker, 0);
 	_wrap_wq_init_state = WRAP_WQ_INIT;
-	schedule_work(&_wrap_wq_init);
+	schedule_wrap_work(&_wrap_wq_init);
 	while (_wrap_wq_init_state > 0) {
 		set_current_state(TASK_INTERRUPTIBLE);
 		schedule_timeout(4);

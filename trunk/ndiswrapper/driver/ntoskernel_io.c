@@ -433,6 +433,7 @@ _FASTCALL void WRAP_EXPORT(IofCompleteRequest)
 		 * current_location and dev_obj for the previous
 		 * (higher) location */
 		IoSkipCurrentIrpStackLocation(irp);
+
 		if (irp->current_location < irp->stack_count)
 			dev_obj = IoGetCurrentIrpStackLocation(irp)->dev_obj;
 		else

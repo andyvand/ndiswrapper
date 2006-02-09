@@ -792,7 +792,7 @@ static BOOLEAN queue_kdpc(struct kdpc *kdpc)
 	}
 	nt_spin_unlock_irql(&kdpc_list_lock, irql);
 	if (ret == TRUE)
-		schedule_work(&kdpc_work);
+		schedule_wrap_work(&kdpc_work);
 	TRACEEXIT5(return ret);
 }
 
@@ -883,7 +883,7 @@ int schedule_wrap_work_item(WRAP_WORK_FUNC func, void *arg1, void *arg2,
 	irql = nt_spin_lock_irql(&wrap_work_item_list_lock, DISPATCH_LEVEL);
 	InsertTailList(&wrap_work_item_list, &wrap_work_item->list);
 	nt_spin_unlock_irql(&wrap_work_item_list_lock, irql);
-	schedule_work(&wrap_work_item_work);
+	schedule_wrap_work(&wrap_work_item_work);
 	return 0;
 }
 
