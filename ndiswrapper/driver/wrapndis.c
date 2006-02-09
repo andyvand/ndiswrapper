@@ -1659,12 +1659,7 @@ static STDCALL NTSTATUS NdisAddDevice(struct driver_object *drv_obj,
 	set_bit(HW_AVAILABLE, &wnd->hw_status);
 	if (wd->driver->ndis_driver)
 		wd->driver->ndis_driver->miniport.shutdown = NULL;
-	/* ZyDas driver doesn't call completion function when
-	 * querying for stats or rssi, so disable stats */
-	if (stricmp(wd->driver->name, "zd1211u") == 0)
-		wnd->stats_enabled = FALSE;
-	else
-		wnd->stats_enabled = TRUE;
+	wnd->stats_enabled = TRUE;
 
 	fdo->reserved = wnd;
 	nmb = wnd->nmb;
