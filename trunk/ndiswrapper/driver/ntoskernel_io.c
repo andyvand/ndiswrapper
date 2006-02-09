@@ -183,6 +183,8 @@ STDCALL struct irp *WRAP_EXPORT(IoAllocateIrp)
 	int irp_size;
 
 	IOENTER("stack_size: %d, charge_quota: %d", stack_size, charge_quota);
+	if (stack_size < 1)
+		stack_size = 1;
 
 	irp_size = IoSizeOfIrp(stack_size);
 	irp = kmalloc(irp_size, GFP_ATOMIC);

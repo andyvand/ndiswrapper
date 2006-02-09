@@ -61,7 +61,7 @@ static NTSTATUS _IopInvalidDeviceRequest(struct device_object *dev_obj,
 	irp_sl = IoGetCurrentIrpStackLocation(irp);
 	WARNING("IRP %d:%d not implemented",
 		irp_sl->major_fn, irp_sl->minor_fn);
-	irp->io_status.status = STATUS_NOT_IMPLEMENTED;
+	irp->io_status.status = STATUS_SUCCESS;
 	irp->io_status.status_info = 0;
 	status = irp->io_status.status;
 	IoCompleteRequest(irp, IO_NO_INCREMENT);
