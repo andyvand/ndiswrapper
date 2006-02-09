@@ -1984,9 +1984,9 @@ STDCALL void WRAP_EXPORT(NdisMIndicateStatusComplete)
 {
 	struct wrap_ndis_device *wnd = nmb->wnd;
 	TRACEENTER2("%p", wnd);
-	schedule_work(&wnd->wrap_ndis_worker);
+	schedule_ndis_work(&wnd->wrap_ndis_worker);
 	if (wnd->send_ok)
-		schedule_work(&wnd->xmit_work);
+		schedule_ndis_work(&wnd->xmit_work);
 }
 
 STDCALL void return_packet(void *arg1, void *arg2)
@@ -2100,7 +2100,7 @@ NdisMSendComplete(struct ndis_miniport_block *nmb, struct ndis_packet *packet,
 	 */
 	if (wnd->send_ok == 0) {
 		wnd->send_ok = 1;
-		schedule_work(&wnd->xmit_work);
+		schedule_ndis_work(&wnd->xmit_work);
 	}
 	TRACEEXIT3(return);
 }
@@ -2124,7 +2124,7 @@ NdisMSendResourcesAvailable(struct ndis_miniport_block *nmb)
 	   so wait for a while before sending the packet again */
 	mdelay(5);
 	wnd->send_ok = 1;
-	schedule_work(&wnd->xmit_work);
+	schedule_ndis_work(&wnd->xmit_work);
 	TRACEEXIT3(return);
 }
 
