@@ -417,6 +417,11 @@ _FASTCALL void WRAP_EXPORT(IofCompleteRequest)
 			if (res == STATUS_MORE_PROCESSING_REQUIRED)
 				IOEXIT(return);
 			IOTRACE("completion routine returned");
+		} else {
+			/* propagate pending status to next irp_sl */
+			if (irp->current_location <= irp->stack_count &&
+			    irp->pending_returned == TRUE)
+				IoMarkIrpPending(irp);
 		}
 	}
 
