@@ -189,7 +189,7 @@ struct usbd_select_interface {
 	struct nt_urb_header header;
 	void *handle;
 	struct usbd_interface_information intf;
-};	
+};
 
 struct usbd_select_configuration {
 	struct nt_urb_header header;

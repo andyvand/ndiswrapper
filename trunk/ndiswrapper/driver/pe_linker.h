@@ -1,4 +1,4 @@
-/* 
+/*
  * This file is an excerpt of winnt.h from WINE, which bears the 
 following copyright:
  *

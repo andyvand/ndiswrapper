@@ -2179,7 +2179,7 @@ EthRxIndicateHandler(struct ndis_miniport_block *nmb, void *rx_ctx,
 			if (skb) {
 				memcpy(skb_put(skb, header_size), header,
 				       header_size);
-				memcpy(skb_put(skb, look_ahead_size), 
+				memcpy(skb_put(skb, look_ahead_size),
 				       look_ahead, look_ahead_size);
 				buffer = packet->private.buffer_head;
 				while (buffer) {

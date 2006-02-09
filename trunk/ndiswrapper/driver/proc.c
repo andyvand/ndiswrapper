@@ -372,8 +372,8 @@ static int procfs_write_ndis_settings(struct file *file, const char *buf,
 			  minor_fn, dev);
 		if (n != 3)
 			return -EINVAL;
-		irp = IoAllocateIrp(dev->stack_size, FALSE);
-		DBGTRACE1("stack size: %d, irp = %p", dev->stack_size, irp);
+		irp = IoAllocateIrp(dev->stack_count, FALSE);
+		DBGTRACE1("count: %d, irp = %p", dev->stack_count, irp);
 		DBGTRACE1("drv_obj: %p", dev->drv_obj);
 		irp_sl = IoGetNextIrpStackLocation(irp);
 		irp_sl->major_fn = major_fn;
@@ -404,7 +404,7 @@ static int procfs_write_ndis_settings(struct file *file, const char *buf,
 			profile_inf = NdisPowerProfileAcOnLine;
 		else
 			profile_inf = NdisPowerProfileBattery;
-		
+
 		miniport->pnp_event_notify(wnd->nmb->adapter_ctx,
 					   NdisDevicePnPEventPowerProfileChanged,
 					   &profile_inf, sizeof(profile_inf));

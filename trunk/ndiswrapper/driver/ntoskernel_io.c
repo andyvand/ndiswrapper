@@ -149,15 +149,17 @@ STDCALL BOOLEAN WRAP_EXPORT(IoIs32bitProcess)
 }
 
 STDCALL void WRAP_EXPORT(IoInitializeIrp)
-	(struct irp *irp, USHORT size, CCHAR stack_size)
+	(struct irp *irp, USHORT size, CCHAR stack_count)
 {
-	IOENTER("irp: %p, stack_size: %d", irp, stack_size);
+	IOENTER("irp: %p, stack_count: %d", irp, stack_count);
 
 	memset(irp, 0, size);
 	irp->size = size;
-	irp->stack_count = stack_size;
-	irp->current_location = stack_size;
-	IoGetCurrentIrpStackLocation(irp) = IRP_SL(irp, stack_size);
+	irp->stack_count = stack_count;
+	/* IoAllocateIrp allocates space for one more than requested
+	 * stack_count */
+	irp->current_location = stack_count + 1;
+	IoGetCurrentIrpStackLocation(irp) = IRP_SL(irp, stack_count + 1);
 	IOEXIT(return);
 }
 
@@ -177,20 +179,20 @@ STDCALL void WRAP_EXPORT(IoReuseIrp)
 }
 
 STDCALL struct irp *WRAP_EXPORT(IoAllocateIrp)
-	(char stack_size, BOOLEAN charge_quota)
+	(char stack_count, BOOLEAN charge_quota)
 {
 	struct irp *irp;
 	int irp_size;
 
-	IOENTER("stack_size: %d, charge_quota: %d", stack_size, charge_quota);
-	if (stack_size < 1)
-		stack_size = 1;
-
-	irp_size = IoSizeOfIrp(stack_size);
+	IOENTER("count: %d, quota: %d", stack_count, charge_quota);
+	/* driver need not allocate stack location for itself, but we
+	 * need to allocate space for it so that driver can set major
+	 * function etc. even if stack_count is 0 */
+	irp_size = IoSizeOfIrp(stack_count + 1);
 	irp = kmalloc(irp_size, GFP_ATOMIC);
 	if (irp) {
 		IOTRACE("allocated irp %p", irp);
-		IoInitializeIrp(irp, irp_size, stack_size);
+		IoInitializeIrp(irp, irp_size, stack_count);
 	}
 	IOEXIT(return irp);
 }
@@ -278,7 +280,7 @@ STDCALL struct irp *WRAP_EXPORT(IoBuildAsynchronousFsdRequest)
 	IOENTER("%p", dev_obj);
 	if (!dev_obj)
 		IOEXIT(return NULL);
-	irp = IoAllocateIrp(dev_obj->stack_size, FALSE);
+	irp = IoAllocateIrp(dev_obj->stack_count, FALSE);
 	if (irp == NULL)
 		IOEXIT(return NULL);
 
@@ -351,7 +353,7 @@ STDCALL struct irp *WRAP_EXPORT(IoBuildDeviceIoControlRequest)
 	IOENTER("%p", dev_obj);
 	if (!dev_obj)
 		IOEXIT(return NULL);
-	irp = IoAllocateIrp(dev_obj->stack_size, FALSE);
+	irp = IoAllocateIrp(dev_obj->stack_count, FALSE);
 	if (irp) {
 		irp->user_status = io_status;
 		irp->user_event = event;
@@ -422,7 +424,7 @@ _FASTCALL void WRAP_EXPORT(IofCompleteRequest)
 	}
 #endif
 	for (irp_sl = IoGetCurrentIrpStackLocation(irp);
-	     irp->current_location < irp->stack_count; irp_sl++) {
+	     irp->current_location <= irp->stack_count; irp_sl++) {
 		struct device_object *dev_obj;
 
 		if (irp_sl->control & SL_PENDING_RETURNED)
@@ -436,7 +438,7 @@ _FASTCALL void WRAP_EXPORT(IofCompleteRequest)
 		 * (higher) location */
 		IoSkipCurrentIrpStackLocation(irp);
 
-		if (irp->current_location < irp->stack_count)
+		if (irp->current_location <= irp->stack_count)
 			dev_obj = IoGetCurrentIrpStackLocation(irp)->dev_obj;
 		else
 			dev_obj = NULL;
@@ -708,7 +710,7 @@ STDCALL NTSTATUS WRAP_EXPORT(IoCreateDevice)
 	dev->size = sizeof(*dev) + dev_ext_length;
 	dev->ref_count = 1;
 	dev->attached = NULL;
-	dev->stack_size = 1;
+	dev->stack_count = 1;
 
 	dev->drv_obj = drv_obj;
 	dev->next = drv_obj->dev_obj;
@@ -826,16 +828,16 @@ STDCALL struct device_object *WRAP_EXPORT(IoAttachDeviceToDeviceStack)
 
 	IOENTER("%p, %p", src, tgt);
 	dst = IoGetAttachedDevice(tgt);
-	IOTRACE("stack_size: %d -> %d", dst->stack_size, src->stack_size);
+	IOTRACE("stack_count: %d -> %d", dst->stack_count, src->stack_count);
 	IOTRACE("%p", dst);
 	irql = nt_spin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL);
 	if (dst)
 		dst->attached = src;
 	src->attached = NULL;
-	src->stack_size = dst->stack_size + 1;
+	src->stack_count = dst->stack_count + 1;
 //	src->ref_count++;
 	nt_spin_unlock_irql(&ntoskernel_lock, irql);
-	IOTRACE("stack_size: %d -> %d", dst->stack_size, src->stack_size);
+	IOTRACE("stack_count: %d -> %d", dst->stack_count, src->stack_count);
 	IOEXIT(return dst);
 }
 
@@ -858,7 +860,7 @@ STDCALL void WRAP_EXPORT(IoDetachDevice)
 	IOTRACE("attached:%p", topdev->attached);
 	for ( ; tail; tail = tail->attached) {
 		IOTRACE("tail:%p", tail);
-		tail->stack_size--;
+		tail->stack_count--;
 	}
 	nt_spin_unlock_irql(&ntoskernel_lock, irql);
 	IOEXIT(return);
@@ -890,9 +892,9 @@ STDCALL NTSTATUS WRAP_EXPORT(PoRequestPowerIrp)
 	struct irp *irp;
 	struct io_stack_location *irp_sl;
 
-	DBGTRACE1("%p: stack size: %d", dev_obj, dev_obj->stack_size);
+	DBGTRACE1("%p: stack size: %d", dev_obj, dev_obj->stack_count);
 	DBGTRACE1("drv_obj: %p", dev_obj->drv_obj);
-	irp = IoAllocateIrp(dev_obj->stack_size, FALSE);
+	irp = IoAllocateIrp(dev_obj->stack_count, FALSE);
 	if (!irp)
 		return STATUS_INSUFFICIENT_RESOURCES;
 	irp_sl = IoGetNextIrpStackLocation(irp);
@@ -981,7 +983,7 @@ STDCALL unsigned int WRAP_EXPORT(IoWMIRegistrationControl)
 
 	switch (action) {
 	case WMIREG_ACTION_REGISTER:
-		irp = IoAllocateIrp(dev_obj->stack_size, FALSE);
+		irp = IoAllocateIrp(dev_obj->stack_count, FALSE);
 		if (!irp) {
 			ERROR("couldn't allocate irp");
 			return STATUS_INSUFFICIENT_RESOURCES;
