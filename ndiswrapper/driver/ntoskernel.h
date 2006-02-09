@@ -550,8 +550,11 @@ struct wrap_device {
 #define USE_OWN_WORKQUEUE 1
 extern struct workqueue_struct *wrapper_wq;
 #define schedule_wrap_work(work_struct) queue_work(wrapper_wq, (work_struct))
+extern struct workqueue_struct *ndis_wq;
+#define schedule_ndis_work(work_struct) queue_work(ndis_wq, (work_struct))
 #else
 #define schedule_wrap_work(work_struct) schedule_work(work_struct)
+#define schedule_ndis_work(work_struct) schedule_work(work_struct)
 #endif
 
 int ntoskernel_init(void);

@@ -345,7 +345,7 @@ static void ndis_set_multicast_list(struct net_device *dev)
 {
 	struct wrap_ndis_device *wnd = netdev_priv(dev);
 	set_bit(SET_MULTICAST_LIST, &wnd->wrap_ndis_work);
-	schedule_work(&wnd->wrap_ndis_worker);
+	schedule_ndis_work(&wnd->wrap_ndis_worker);
 }
 
 static int ndis_set_mac_addr(struct net_device *dev, void *p)
@@ -640,7 +640,7 @@ static int start_xmit(struct sk_buff *skb, struct net_device *dev)
 		netif_stop_queue(wnd->net_dev);
 	nt_spin_unlock(&wnd->xmit_lock);
 
-	schedule_work(&wnd->xmit_work);
+	schedule_ndis_work(&wnd->xmit_work);
 
 	return 0;
 }
@@ -807,7 +807,7 @@ static void link_status_handler(struct wrap_ndis_device *wnd)
 			}
 
 			set_bit(SET_ESSID, &wnd->wrap_ndis_work);
-			schedule_work(&wnd->wrap_ndis_worker);
+			schedule_ndis_work(&wnd->wrap_ndis_worker);
 			TRACEEXIT2(return);
 		}
 		/* TODO: not clear if NDIS says keys should
@@ -920,7 +920,7 @@ static void stats_proc(unsigned long data)
 	struct wrap_ndis_device *wnd = (struct wrap_ndis_device *)data;
 
 	set_bit(COLLECT_STATS, &wnd->wrap_ndis_work);
-	schedule_work(&wnd->wrap_ndis_worker);
+	schedule_ndis_work(&wnd->wrap_ndis_worker);
 	wnd->stats_timer.expires += 10 * HZ;
 	add_timer(&wnd->stats_timer);
 }
@@ -945,7 +945,7 @@ static void hangcheck_proc(unsigned long data)
 
 	TRACEENTER3("");
 	set_bit(HANGCHECK, &wnd->wrap_ndis_work);
-	schedule_work(&wnd->wrap_ndis_worker);
+	schedule_ndis_work(&wnd->wrap_ndis_worker);
 
 	wnd->hangcheck_timer.expires += wnd->hangcheck_interval;
 	add_timer(&wnd->hangcheck_timer);

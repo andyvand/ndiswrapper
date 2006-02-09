@@ -30,7 +30,7 @@ int debug = 0;
 
 /* use own workqueue instead of shared one, to avoid depriving
  * others */
-struct workqueue_struct *wrapper_wq;
+struct workqueue_struct *wrapper_wq, *ndis_wq;
 
 WRAP_MODULE_PARM_STRING(if_name, 0400);
 MODULE_PARM_DESC(if_name, "Network interface name or template "
@@ -61,23 +61,25 @@ MODULE_VERSION(DRIVER_VERSION);
 /* we need to get thread for the task running ndiswrapper_wq, so
  * schedule a worker for it soon after initializing ndiswrapper_wq */
 
-static struct work_struct _wrap_wq_init;
-static int _wrap_wq_init_state;
-#define WRAP_WQ_INIT 1
-#define WRAP_WQ_EXIT 2
+#define WQ_STATE_DONE 0
+#define WQ_STATE_INIT 1
+#define WQ_STATE_EXIT 2
+int wrap_wq_state, ndis_wq_state;
+struct work_struct wrap_wq_init, ndis_wq_init;
 
-static void _wrap_wq_init_worker(void *data)
+static void wq_init_worker(void *data)
 {
 	struct task_struct *task;
 	struct nt_thread *thread;
+	int *state = data;
 
 	task = current;
-	if (_wrap_wq_init_state == WRAP_WQ_INIT) {
+	if (*state == WQ_STATE_INIT) {
 		thread = wrap_create_thread(task);
 		DBGTRACE1("task: %p, pid: %d, thread: %p",
 			  task, task->pid, thread);
 		if (!thread) {
-			_wrap_wq_init_state = -1;
+			*state = -1;
 			return;
 		}
 	} else {
@@ -88,7 +90,7 @@ static void _wrap_wq_init_worker(void *data)
 			wrap_remove_thread(thread);
 		}
 	}
-	_wrap_wq_init_state = 0;
+	*state = 0;
 }
 #endif
 
@@ -99,13 +101,22 @@ static void module_cleanup(void)
 	usb_exit();
 #endif
 #ifdef USE_OWN_WORKQUEUE
-	_wrap_wq_init_state = WRAP_WQ_EXIT;
-	schedule_wrap_work(&_wrap_wq_init);
-	while (_wrap_wq_init_state) {
+	wrap_wq_state = WQ_STATE_EXIT;
+	schedule_wrap_work(&wrap_wq_init);
+	while (wrap_wq_state) {
 		set_current_state(TASK_INTERRUPTIBLE);
 		schedule_timeout(4);
 	}
 	destroy_workqueue(wrapper_wq);
+
+	ndis_wq_state = WQ_STATE_EXIT;
+	schedule_ndis_work(&ndis_wq_init);
+	while (ndis_wq_state) {
+		set_current_state(TASK_INTERRUPTIBLE);
+		schedule_timeout(4);
+	}
+	destroy_workqueue(ndis_wq);
+
 #endif
 	wrap_procfs_remove();
 	ndis_exit();
@@ -147,14 +158,25 @@ static int __init wrapper_init(void)
 		goto err;
 #ifdef USE_OWN_WORKQUEUE
 	wrapper_wq = create_singlethread_workqueue("wrapper_wq");
-	INIT_WORK(&_wrap_wq_init, _wrap_wq_init_worker, 0);
-	_wrap_wq_init_state = WRAP_WQ_INIT;
-	schedule_wrap_work(&_wrap_wq_init);
-	while (_wrap_wq_init_state > 0) {
+	INIT_WORK(&wrap_wq_init, wq_init_worker, &wrap_wq_state);
+	wrap_wq_state = WQ_STATE_INIT;
+	schedule_wrap_work(&wrap_wq_init);
+	while (wrap_wq_state == WQ_STATE_INIT) {
 		set_current_state(TASK_INTERRUPTIBLE);
 		schedule_timeout(4);
 	}
-	if (_wrap_wq_init_state < 0)
+	if (wrap_wq_state < 0)
+		goto err;
+
+	ndis_wq = create_singlethread_workqueue("ndis_wq");
+	INIT_WORK(&ndis_wq_init, wq_init_worker, &ndis_wq_state);
+	ndis_wq_state = WQ_STATE_INIT;
+	schedule_ndis_work(&ndis_wq_init);
+	while (ndis_wq_state == WQ_STATE_INIT) {
+		set_current_state(TASK_INTERRUPTIBLE);
+		schedule_timeout(4);
+	}
+	if (ndis_wq_state < 0)
 		goto err;
 #endif
 	wrap_procfs_init();
