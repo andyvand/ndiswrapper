@@ -64,8 +64,8 @@ MODULE_VERSION(DRIVER_VERSION);
 #define WQ_STATE_DONE 0
 #define WQ_STATE_INIT 1
 #define WQ_STATE_EXIT 2
-int wrap_wq_state, ndis_wq_state;
-struct work_struct wrap_wq_init, ndis_wq_init;
+static int wrap_wq_state, ndis_wq_state;
+static struct work_struct wrap_wq_init, ndis_wq_init;
 
 static void wq_init_worker(void *data)
 {
@@ -163,7 +163,7 @@ static int __init wrapper_init(void)
 	schedule_wrap_work(&wrap_wq_init);
 	while (wrap_wq_state == WQ_STATE_INIT) {
 		set_current_state(TASK_INTERRUPTIBLE);
-		schedule_timeout(4);
+		schedule_timeout(1);
 	}
 	if (wrap_wq_state < 0)
 		goto err;
@@ -174,7 +174,7 @@ static int __init wrapper_init(void)
 	schedule_ndis_work(&ndis_wq_init);
 	while (ndis_wq_state == WQ_STATE_INIT) {
 		set_current_state(TASK_INTERRUPTIBLE);
-		schedule_timeout(4);
+		schedule_timeout(1);
 	}
 	if (ndis_wq_state < 0)
 		goto err;
