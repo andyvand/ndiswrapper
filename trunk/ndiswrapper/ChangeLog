@@ -1,3 +1,9 @@
+Version 1.10 2006-XX-XX
+======================
+* Added support for 64-bit USB drivers. Not tested with any driver,
+  though.
+* Bug fixes.
+
 Version 1.9 2006-02-03
 ======================
 * Added support for real-time preempt (RT) patch.

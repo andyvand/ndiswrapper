@@ -646,7 +646,7 @@ STDCALL void KeInitializeEvent(struct nt_event *nt_event, enum event_type type,
 			       BOOLEAN state);
 void free_custom_extensions(struct driver_extension *drv_obj_ext);
 
-STDCALL struct irp *IoAllocateIrp(char stack_size, BOOLEAN charge_quota);
+STDCALL struct irp *IoAllocateIrp(char stack_count, BOOLEAN charge_quota);
 STDCALL void IoFreeIrp(struct irp *irp);
 STDCALL BOOLEAN IoCancelIrp(struct irp *irp);
 _FASTCALL NTSTATUS IofCallDriver
