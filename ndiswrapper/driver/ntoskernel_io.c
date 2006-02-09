@@ -52,76 +52,37 @@ STDCALL NTSTATUS WRAP_EXPORT(IoGetDeviceProperty)
 {
 	struct ansi_string ansi;
 	struct unicode_string unicode;
-	char buf[32];
-	int devnum = 1;
+	struct wrap_device *wd;
+	ULONG need;
 
 	IOENTER("dev_obj = %p, dev_property = %d, buffer_len = %u, "
 		"buffer = %p, result_len = %p", pdo, dev_property,
 		buffer_len, buffer, result_len);
 
+	wd = pdo->reserved;
 	switch (dev_property) {
 	case DevicePropertyDeviceDescription:
-		if (buffer_len > 0 && buffer) {
-			*result_len = sizeof(int);
-			memset(buffer, 0xFF, *result_len);
-			IOEXIT(return STATUS_SUCCESS);
-		} else {
-			*result_len = sizeof(int);
-			IOEXIT(return STATUS_SUCCESS);
-		}
-		break;
-
 	case DevicePropertyFriendlyName:
-		if (buffer_len > 0 && buffer) {
-			ansi.length = snprintf(buf, sizeof(buf), "%d", devnum);
-			if (ansi.length <= 0) {
-				*result_len = 0;
-				IOEXIT(return STATUS_BUFFER_TOO_SMALL);
-			}
-			ansi.buf = buf;
-			ansi.max_length = ansi.length + 1;
-			unicode.buf = buffer;
-			unicode.max_length = buffer_len;
-			IOTRACE("unicode.length = %d, ansi.max_length = %d",
-				unicode.length, ansi.max_length);
-			if (RtlAnsiStringToUnicodeString(&unicode, &ansi,
-							 FALSE)) {
-				*result_len = 0;
-				IOEXIT(return STATUS_BUFFER_TOO_SMALL);
-			} else {
-				*result_len = unicode.max_length;
-				IOEXIT(return STATUS_SUCCESS);
-			}
-		} else {
-			ansi.max_length =
-				snprintf(buf, sizeof(buf), "%d", devnum);
-			*result_len = 2 * (ansi.max_length + 1);
+	case DevicePropertyDriverKeyName:
+		need = sizeof(wchar_t) * (strlen("PCI device") + 5);
+		if (buffer_len < need) {
+			*result_len = need;
 			IOEXIT(return STATUS_BUFFER_TOO_SMALL);
 		}
-		break;
-
-	case DevicePropertyDriverKeyName:
-//		ansi.buf = wd->driver->name;
-		ansi.buf = buf;
-		ansi.length = strlen(ansi.buf);
-		ansi.max_length = ansi.length + 1;
-		if (buffer_len > 0 && buffer) {
-			unicode.buf = buffer;
-			unicode.length = buffer_len;
-			if (RtlAnsiStringToUnicodeString(&unicode, &ansi,
-							 FALSE)) {
-				*result_len = 0;
-				IOEXIT(return STATUS_BUFFER_TOO_SMALL);
-			} else {
-				*result_len = unicode.max_length;
-				IOEXIT(return STATUS_SUCCESS);
-			}
-		} else {
-				*result_len = 2 * (strlen(buf) + 1);
-				IOEXIT(return STATUS_SUCCESS);
+		if (wrap_is_pci_bus(wd->dev_bus_type))
+			RtlInitAnsiString(&ansi, "PCI device");
+		else // if (wrap_is_usb_bus(wd->dev_bus_type))
+			RtlInitAnsiString(&ansi, "USB device");
+		unicode.max_length = buffer_len;
+		unicode.buf = buffer;
+		if (RtlAnsiStringToUnicodeString(&unicode, &ansi,
+						 FALSE) != STATUS_SUCCESS) {
+			*result_len = need;
+			IOEXIT(return STATUS_BUFFER_TOO_SMALL);
 		}
-		break;
+		IOEXIT(return STATUS_SUCCESS);
 	default:
+		WARNING("%d not implemented", dev_property);
 		IOEXIT(return STATUS_INVALID_PARAMETER_2);
 	}
 }
@@ -449,8 +410,8 @@ _FASTCALL void WRAP_EXPORT(IofCompleteRequest)
 		      (irp->io_status.status != STATUS_SUCCESS &&
 		       irp_sl->control & CALL_ON_ERROR) ||
 		      (irp->cancel && (irp_sl->control & CALL_ON_CANCEL)))) {
-			IOTRACE("calling completion_routine at: %p",
-				irp_sl->completion_routine);
+			IOTRACE("calling completion_routine at: %p, %p",
+				irp_sl->completion_routine, irp_sl->context);
 			res = LIN2WIN3(irp_sl->completion_routine,
 				       dev_obj, irp, irp_sl->context);
 			if (res == STATUS_MORE_PROCESSING_REQUIRED)
@@ -485,7 +446,6 @@ static irqreturn_t io_irq_th(int irq, void *data, struct pt_regs *pt_regs)
 	struct kinterrupt *interrupt = (struct kinterrupt *)data;
 	NT_SPIN_LOCK *spinlock;
 	BOOLEAN ret;
-	KIRQL irql = PASSIVE_LEVEL;
 
 	if (interrupt->actual_lock)
 		spinlock = interrupt->actual_lock;
