@@ -1576,7 +1576,7 @@ STDCALL void WRAP_EXPORT(NdisSend)
 			*status = oob_data->status;
 			switch (*status) {
 			case NDIS_STATUS_SUCCESS:
-				sendpacket_done(wnd, packet);
+				send_packet_done(wnd, packet, *status);
 				break;
 			case NDIS_STATUS_PENDING:
 				break;
@@ -1585,6 +1585,7 @@ STDCALL void WRAP_EXPORT(NdisSend)
 				break;
 			case NDIS_STATUS_FAILURE:
 			default:
+				send_packet_done(wnd, packet, *status);
 				break;
 			}
 		} else {
@@ -1597,7 +1598,7 @@ STDCALL void WRAP_EXPORT(NdisSend)
 		lower_irql(irql);
 		switch (*status) {
 		case NDIS_STATUS_SUCCESS:
-			sendpacket_done(wnd, packet);
+			send_packet_done(wnd, packet, *status);
 			break;
 		case NDIS_STATUS_PENDING:
 			break;
@@ -1605,6 +1606,8 @@ STDCALL void WRAP_EXPORT(NdisSend)
 			wnd->send_ok = 0;
 			break;
 		case NDIS_STATUS_FAILURE:
+		default:
+			send_packet_done(wnd, packet, *status);
 			break;
 		}
 	}
@@ -2094,7 +2097,7 @@ NdisMSendComplete(struct ndis_miniport_block *nmb, struct ndis_packet *packet,
 {
 	struct wrap_ndis_device *wnd = nmb->wnd;
 	TRACEENTER3("%p, %08x", packet, status);
-	sendpacket_done(wnd, packet);
+	send_packet_done(wnd, packet, status);
 	/* In case a serialized driver has requested a pause by returning
 	 * NDIS_STATUS_RESOURCES we need to give the send-code a kick again.
 	 */

@@ -90,7 +90,7 @@ static void wq_init_worker(void *data)
 			wrap_remove_thread(thread);
 		}
 	}
-	*state = 0;
+	*state = WQ_STATE_DONE;
 }
 #endif
 
@@ -165,7 +165,7 @@ static int __init wrapper_init(void)
 		set_current_state(TASK_INTERRUPTIBLE);
 		schedule_timeout(1);
 	}
-	if (wrap_wq_state < 0)
+	if (wrap_wq_state != WQ_STATE_DONE)
 		goto err;
 
 	ndis_wq = create_singlethread_workqueue("ndis_wq");
@@ -176,7 +176,7 @@ static int __init wrapper_init(void)
 		set_current_state(TASK_INTERRUPTIBLE);
 		schedule_timeout(1);
 	}
-	if (ndis_wq_state < 0)
+	if (ndis_wq_state != WQ_STATE_DONE)
 		goto err;
 #endif
 	wrap_procfs_init();

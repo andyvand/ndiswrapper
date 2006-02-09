@@ -35,23 +35,10 @@ static void stats_timer_del(struct wrap_ndis_device *wnd);
 static NDIS_STATUS ndis_start_device(struct wrap_ndis_device *wnd);
 static NDIS_STATUS ndis_remove_device(struct wrap_ndis_device *wnd);
 
-static inline int ndis_wait_pending_completion(struct wrap_ndis_device *wnd)
+static inline int ndis_wait_comm_completion(struct wrap_ndis_device *wnd)
 {
-	/* wait for NdisMXXComplete to be called*/
-	/* As per spec, we should wait until miniport calls back
-	 * completion routine, but some drivers (e.g., ZyDas) don't
-	 * call back, so timeout is used; TODO: find out why drivers
-	 * don't call completion function */
-#if 0
-	/* setting PM state takes a long time, upto 2 seconds, for USB
-	 * devices */
-	if ((wait_event_interruptible_timeout(wnd->ndis_comm_wq,
-					      (wnd->ndis_comm_done > 0),
-					      3 * HZ) <= 0))
-#else
 	if ((wait_event_interruptible(wnd->ndis_comm_wq,
 				      (wnd->ndis_comm_done > 0))))
-#endif
 		return -1;
 	else
 		return 0;
@@ -86,7 +73,7 @@ NDIS_STATUS miniport_reset(struct wrap_ndis_device *wnd)
 	DBGTRACE2("res = %08X, reset_status = %08X", res, reset_address);
 	if (res == NDIS_STATUS_PENDING) {
 		/* wait for NdisMResetComplete */
-		if (ndis_wait_pending_completion(wnd))
+		if (ndis_wait_comm_completion(wnd))
 			res = NDIS_STATUS_FAILURE;
 		else {
 			res = wnd->ndis_comm_status;
@@ -136,7 +123,7 @@ NDIS_STATUS miniport_query_info_needed(struct wrap_ndis_device *wnd,
 	DBGTRACE2("res: %08X, oid: %08X", res, oid);
 	if (res == NDIS_STATUS_PENDING) {
 		/* wait for NdisMQueryInformationComplete */
-		if (ndis_wait_pending_completion(wnd))
+		if (ndis_wait_comm_completion(wnd))
 			res = NDIS_STATUS_FAILURE;
 		else
 			res = wnd->ndis_comm_status;
@@ -186,7 +173,7 @@ NDIS_STATUS miniport_set_info(struct wrap_ndis_device *wnd, ndis_oid oid,
 	DBGTRACE2("res: %08X, oid: %08X", res, oid);
 	if (res == NDIS_STATUS_PENDING) {
 		/* wait for NdisMQueryInformationComplete */
-		if (ndis_wait_pending_completion(wnd))
+		if (ndis_wait_comm_completion(wnd))
 			res = NDIS_STATUS_FAILURE;
 		else
 			res = wnd->ndis_comm_status;
@@ -513,7 +500,7 @@ static int send_packets(struct wrap_ndis_device *wnd, unsigned int start,
 		}
 		LIN2WIN3(miniport->send_packets, wnd->nmb->adapter_ctx,
 			 wnd->xmit_array, n);
-		DBGTRACE3("sent");
+		sent = n;
 		if (test_bit(ATTR_SERIALIZED, &wnd->attributes)) {
 			for (sent = 0; sent < n && wnd->send_ok; sent++) {
 				struct ndis_packet_oob_data *oob_data;
@@ -521,7 +508,8 @@ static int send_packets(struct wrap_ndis_device *wnd, unsigned int start,
 				oob_data = NDIS_PACKET_OOB_DATA(packet);
 				switch(oob_data->status) {
 				case NDIS_STATUS_SUCCESS:
-					sendpacket_done(wnd, packet);
+					send_packet_done(wnd, packet,
+							 oob_data->status);
 					break;
 				case NDIS_STATUS_PENDING:
 					break;
@@ -530,13 +518,13 @@ static int send_packets(struct wrap_ndis_device *wnd, unsigned int start,
 					break;
 				case NDIS_STATUS_FAILURE:
 				default:
-					free_send_packet(wnd, packet);
+					send_packet_done(wnd, packet,
+							 oob_data->status);
 					break;
 				}
 			}
-		} else {
-			sent = n;
 		}
+		DBGTRACE3("sent: %d(%d)", sent, n);
 	} else {
 		packet = wnd->xmit_ring[start];
 		res = LIN2WIN3(miniport->send, wnd->nmb->adapter_ctx,
@@ -544,7 +532,7 @@ static int send_packets(struct wrap_ndis_device *wnd, unsigned int start,
 		sent = 1;
 		switch (res) {
 		case NDIS_STATUS_SUCCESS:
-			sendpacket_done(wnd, packet);
+			send_packet_done(wnd, packet, res);
 			break;
 		case NDIS_STATUS_PENDING:
 			break;
@@ -553,7 +541,7 @@ static int send_packets(struct wrap_ndis_device *wnd, unsigned int start,
 			sent = 0;
 			break;
 		case NDIS_STATUS_FAILURE:
-			free_send_packet(wnd, packet);
+			send_packet_done(wnd, packet, res);
 			break;
 		}
 	}
@@ -581,9 +569,9 @@ static void xmit_worker(void *param)
 		wnd->xmit_ring_start =
 			(wnd->xmit_ring_start + n) % XMIT_RING_SIZE;
 		wnd->xmit_ring_pending -= n;
+		nt_spin_unlock_irql(&wnd->xmit_lock, irql);
 		if (netif_queue_stopped(wnd->net_dev) && n > 0)
 			netif_wake_queue(wnd->net_dev);
-		nt_spin_unlock_irql(&wnd->xmit_lock, irql);
 	}
 
 	TRACEEXIT3(return);
@@ -592,14 +580,18 @@ static void xmit_worker(void *param)
 /*
  * Free and unmap packet created in xmit
  */
-void sendpacket_done(struct wrap_ndis_device *wnd,
-		     struct ndis_packet *packet)
+void send_packet_done(struct wrap_ndis_device *wnd, struct ndis_packet *packet,
+		      NDIS_STATUS status)
 {
-
-	TRACEENTER3("%p", packet);
+	TRACEENTER3("%p, %08X", packet, status);
 	nt_spin_lock(&wnd->send_packet_done_lock);
-	wnd->stats.tx_bytes += packet->private.len;
-	wnd->stats.tx_packets++;
+	if (status == NDIS_STATUS_SUCCESS) {
+		wnd->stats.tx_bytes += packet->private.len;
+		wnd->stats.tx_packets++;
+	} else {
+		WARNING("packet dropped: %08X", status);
+		wnd->stats.tx_dropped++;
+	}
 	nt_spin_unlock(&wnd->send_packet_done_lock);
 	free_send_packet(wnd, packet);
 	TRACEEXIT3(return);
