@@ -432,7 +432,7 @@ struct device_object {
 	ULONG characteristics;
 	void *vpb;
 	void *dev_ext;
-	CCHAR stack_size;
+	CCHAR stack_count;
 	union {
 		struct nt_list queue_list;
 		struct wait_context_block wcb;
@@ -883,8 +883,8 @@ struct irp {
 	struct wrap_device *wd;
 };
 
-#define IoSizeOfIrp(stack_size)						\
-	((USHORT)(sizeof(struct irp) + ((stack_size) *			\
+#define IoSizeOfIrp(stack_count)					\
+	((USHORT)(sizeof(struct irp) + ((stack_count) *			\
 					sizeof(struct io_stack_location))))
 #define IoGetCurrentIrpStackLocation(irp)		\
 	(irp)->tail.overlay.current_stack_location
