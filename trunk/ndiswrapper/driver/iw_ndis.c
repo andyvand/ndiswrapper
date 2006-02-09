@@ -388,7 +388,7 @@ static int iw_get_tx_power(struct net_device *dev,
 	TRACEENTER2("");
 	res = miniport_query_info(wnd, OID_802_11_TX_POWER_LEVEL,
 				  &ndis_power, sizeof(ndis_power));
-	if (res == NDIS_STATUS_FAILURE)
+	if (res == NDIS_STATUS_FAILURE || ndis_power == 0)
 		return -EOPNOTSUPP;
 	/* Centrino driver returns NDIS_STATUS_INVALID_OID (why?) */
 	if (res == NDIS_STATUS_NOT_SUPPORTED || res == NDIS_STATUS_INVALID_OID)
