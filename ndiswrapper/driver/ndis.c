@@ -2494,14 +2494,12 @@ NdisMResetComplete(struct ndis_miniport_block *nmb, NDIS_STATUS status,
 }
 
 STDCALL NDIS_STATUS WRAP_EXPORT(NdisScheduleWorkItem)
-	(struct ndis_sched_work_item *ndis_sched_work_item)
+	(struct ndis_work_item *ndis_work_item)
 {
-	TRACEENTER3("%p", ndis_sched_work_item);
-	schedule_wrap_work_item(ndis_sched_work_item->func,
-				ndis_sched_work_item,
-				ndis_sched_work_item->ctx, TRUE);
-
-	TRACEEXIT3(return NDIS_STATUS_SUCCESS);
+	TRACEENTER2("%p", ndis_work_item);
+	schedule_wrap_work_item(ndis_work_item->func, ndis_work_item,
+				ndis_work_item->ctx, TRUE);
+	TRACEEXIT2(return NDIS_STATUS_SUCCESS);
 }
 
 STDCALL void WRAP_EXPORT(NdisMGetDeviceProperty)

@@ -549,7 +549,9 @@ struct wrap_device {
  * to use shared workqueue, lest the threads take keyboard etc down */
 #define USE_OWN_WORKQUEUE 1
 extern struct workqueue_struct *wrapper_wq;
-#define schedule_work(work_struct) queue_work(wrapper_wq, (work_struct))
+#define schedule_wrap_work(work_struct) queue_work(wrapper_wq, (work_struct))
+#else
+#define schedule_wrap_work(work_struct) schedule_work(work_struct)
 #endif
 
 int ntoskernel_init(void);

@@ -336,25 +336,14 @@ struct ndis_rw_lock {
 	union ndis_rw_lock_refcount ref_count[MAXIMUM_PROCESSORS];
 };
 
-struct ndis_sched_work_item {
-	void *ctx;
-	WRAP_WORK_FUNC func;
-	UCHAR reserved[8 * sizeof(void *)];
-};
-
-struct ndis_alloc_mem_work_item {
-	unsigned long size;
-	char cached;
-	void *ctx;
-};
-
-struct ndis_free_mem_work_item {
-	void *addr;
-};
+struct ndis_work_item;
+typedef void (*NDIS_PROC)(struct ndis_work_item *, void *) STDCALL;
 
 struct ndis_work_item {
-	void *context;
-	void *routine;
+	void *ctx;
+	/* this should be NDIS_PROC, but we masquerade it as
+	 * WRAP_WORK_FUNC so we can use wrap_worker */
+	WRAP_WORK_FUNC func;
 	UCHAR reserved[8 * sizeof(void *)];
 };
 
