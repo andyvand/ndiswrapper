@@ -224,7 +224,7 @@ static NDIS_STATUS miniport_init(struct wrap_ndis_device *wnd)
 		ERROR("device %p already initialized!", wnd);
 		return NDIS_STATUS_FAILURE;
 	}
-	
+
 	if (!wnd->wd->driver->ndis_driver ||
 	    !wnd->wd->driver->ndis_driver->miniport.init) {
 		ERROR("assuming WDM (non-NDIS) driver");

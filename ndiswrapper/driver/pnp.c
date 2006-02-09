@@ -470,7 +470,7 @@ NTSTATUS pnp_set_power_state(struct wrap_device *wd,
 	pdo = wd->pdo;
 	fdo = IoGetAttachedDevice(pdo);
 	if (state > PowerDeviceD0) {
-		irp = IoAllocateIrp(fdo->stack_size, FALSE);
+		irp = IoAllocateIrp(fdo->stack_count, FALSE);
 		irp_sl = IoGetNextIrpStackLocation(irp);
 		DBGTRACE2("irp = %p, stack = %p", irp, irp_sl);
 		irp_sl->major_fn = IRP_MJ_POWER;
@@ -481,7 +481,7 @@ NTSTATUS pnp_set_power_state(struct wrap_device *wd,
 		if (status != STATUS_SUCCESS)
 			WARNING("query power returns %08X", status);
 	}
-	irp = IoAllocateIrp(fdo->stack_size, FALSE);
+	irp = IoAllocateIrp(fdo->stack_count, FALSE);
 	irp_sl = IoGetNextIrpStackLocation(irp);
 	DBGTRACE2("irp = %p, stack = %p", irp, irp_sl);
 	irp_sl->major_fn = IRP_MJ_POWER;
@@ -516,7 +516,7 @@ NTSTATUS pnp_start_device(struct wrap_device *wd)
 		}
 	} else
 		thread = NULL;
-	irp = IoAllocateIrp(fdo->stack_size, FALSE);
+	irp = IoAllocateIrp(fdo->stack_count, FALSE);
 	irp_sl = IoGetNextIrpStackLocation(irp);
 	DBGTRACE1("irp = %p, stack = %p", irp, irp_sl);
 	/* TODO: for now we use same resources for both translated
@@ -549,7 +549,7 @@ NTSTATUS pnp_stop_device(struct wrap_device *wd)
 	pdo = wd->pdo;
 	fdo = IoGetAttachedDevice(pdo);
 	DBGTRACE1("fdo: %p", fdo);
-	irp = IoAllocateIrp(fdo->stack_size, FALSE);
+	irp = IoAllocateIrp(fdo->stack_count, FALSE);
 	irp_sl = IoGetNextIrpStackLocation(irp);
 	DBGTRACE1("irp = %p, stack = %p", irp, irp_sl);
 	irp_sl->major_fn = IRP_MJ_PNP;
@@ -559,7 +559,7 @@ NTSTATUS pnp_stop_device(struct wrap_device *wd)
 	if (status != STATUS_SUCCESS)
 		WARNING("status: %08X", status);
 	/* for now we ignore query status */
-	irp = IoAllocateIrp(fdo->stack_size, FALSE);
+	irp = IoAllocateIrp(fdo->stack_count, FALSE);
 	irp_sl = IoGetNextIrpStackLocation(irp);
 	DBGTRACE1("irp = %p, stack = %p", irp, irp_sl);
 	irp_sl->major_fn = IRP_MJ_PNP;
@@ -590,7 +590,7 @@ NTSTATUS pnp_remove_device(struct wrap_device *wd)
 	fdo = IoGetAttachedDevice(pdo);
 	fdo_drv_obj = fdo->drv_obj;
 	DBGTRACE1("fdo: %p", fdo);
-	irp = IoAllocateIrp(fdo->stack_size, FALSE);
+	irp = IoAllocateIrp(fdo->stack_count, FALSE);
 	irp_sl = IoGetNextIrpStackLocation(irp);
 	DBGTRACE1("irp = %p, stack = %p", irp, irp_sl);
 	irp_sl->major_fn = IRP_MJ_PNP;
@@ -600,7 +600,7 @@ NTSTATUS pnp_remove_device(struct wrap_device *wd)
 	if (status != STATUS_SUCCESS)
 		WARNING("status: %08X", status);
 	/* for now we ignore query status */
-	irp = IoAllocateIrp(fdo->stack_size, FALSE);
+	irp = IoAllocateIrp(fdo->stack_count, FALSE);
 	irp_sl = IoGetNextIrpStackLocation(irp);
 	DBGTRACE1("irp = %p, stack = %p", irp, irp_sl);
 	irp_sl->major_fn = IRP_MJ_PNP;
@@ -609,7 +609,7 @@ NTSTATUS pnp_remove_device(struct wrap_device *wd)
 	status = IoCallDriver(fdo, irp);
 	if (status != STATUS_SUCCESS)
 		WARNING("status: %08X", status);
-	
+
 	/* TODO: should we use count in drv_ext or driver's Object
 	 * header reference count to keep count of devices associated
 	 * with a driver? */
@@ -664,7 +664,7 @@ static int wrap_pnp_start_device(struct wrap_device *wd)
 	driver = load_wrap_driver(wd);
 	if (!driver)
 		return -ENODEV;
-	
+
 	wd->driver = driver;
 	DBGTRACE1("dev type: %d, bus type: %d, %d",
 		  WRAP_DEVICE_TYPE(wd->dev_bus_type),

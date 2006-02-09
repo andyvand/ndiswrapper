@@ -243,7 +243,7 @@ struct wrap_bin_file *get_bin_file(char *bin_file_name)
 		DBGTRACE1("coudln't find bin file '%s'", bin_file_name);
 		return NULL;
 	}
-	
+
 	if (!driver->bin_files[i].data) {
 		char *argv[] = {"loadndisdriver", WRAP_CMD_LOAD_BIN_FILE,
 #if defined DEBUG && DEBUG >= 1
@@ -470,7 +470,7 @@ void unload_wrap_driver(struct wrap_driver *driver)
 	free_custom_extensions(drv_obj->drv_ext);
 	kfree(drv_obj->drv_ext);
 	DBGTRACE1("drv_obj: %p", drv_obj);
-		
+
 	TRACEEXIT1(return);
 }
 
