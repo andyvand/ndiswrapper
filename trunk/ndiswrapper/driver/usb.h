@@ -322,7 +322,7 @@ struct usbd_idle_callback {
 #define NT_URB_STATUS(nt_urb) ((nt_urb)->header.status)
 
 NTSTATUS wrap_submit_irp(struct device_object *pdo, struct irp *irp);
-NTSTATUS wrap_submit_urb(struct irp *irp);
+//NTSTATUS wrap_submit_urb(struct irp *irp);
 void wrap_suspend_urbs(struct wrap_device *wd);
 void wrap_resume_urbs(struct wrap_device *wd);
 

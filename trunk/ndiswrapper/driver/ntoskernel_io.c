@@ -161,7 +161,7 @@ STDCALL struct irp *WRAP_EXPORT(IoAllocateIrp)
 STDCALL BOOLEAN WRAP_EXPORT(IoCancelIrp)
 	(struct irp *irp)
 {
-	void (*cancel_routine)(struct device_object *, struct irp *) STDCALL;
+	typeof(irp->cancel_routine) cancel_routine;
 
 	/* NB: this function may be called at DISPATCH_LEVEL */
 	IOENTER("irp = %p", irp);
@@ -178,7 +178,7 @@ STDCALL BOOLEAN WRAP_EXPORT(IoCancelIrp)
 
 		irp_sl = IoGetCurrentIrpStackLocation(irp);
 		/* cancel_routine will release the spin lock */
-		cancel_routine(irp_sl->dev_obj, irp);
+		LIN2WIN2(cancel_routine, irp_sl->dev_obj, irp);
 		IOEXIT(return TRUE);
 	} else {
 		IoReleaseCancelSpinLock(irp->cancel_irql);
@@ -343,7 +343,7 @@ _FASTCALL NTSTATUS WRAP_EXPORT(IofCallDriver)
 	(FASTCALL_DECL_2(struct device_object *dev_obj, struct irp *irp))
 {
 	struct io_stack_location *irp_sl;
-	NTSTATUS res;
+	NTSTATUS status;
 	driver_dispatch_t *major_func;
 	struct driver_object *drv_obj;
 
@@ -357,19 +357,19 @@ _FASTCALL NTSTATUS WRAP_EXPORT(IofCallDriver)
 	IOTRACE("major_func: %p, dev_obj: %p", major_func, dev_obj);
 	/* TODO: Linux functions must be called natively */
 	if (major_func)
-		res = LIN2WIN2(major_func, dev_obj, irp);
+		status = LIN2WIN2(major_func, dev_obj, irp);
 	else {
 		ERROR("major_function %d is not implemented",
 		      irp_sl->major_fn);
-		res = STATUS_NOT_SUPPORTED;
+		status = STATUS_NOT_SUPPORTED;
 	}
-	IOEXIT(return res);
+	IOEXIT(return status);
 }
 
 _FASTCALL void WRAP_EXPORT(IofCompleteRequest)
 	(FASTCALL_DECL_2(struct irp *irp, CHAR prio_boost))
 {
-	NTSTATUS res;
+	NTSTATUS status;
 	struct io_stack_location *irp_sl;
 	struct mdl *mdl;
 
@@ -412,9 +412,9 @@ _FASTCALL void WRAP_EXPORT(IofCompleteRequest)
 		      (irp->cancel && (irp_sl->control & CALL_ON_CANCEL)))) {
 			IOTRACE("calling completion_routine at: %p, %p",
 				irp_sl->completion_routine, irp_sl->context);
-			res = LIN2WIN3(irp_sl->completion_routine,
-				       dev_obj, irp, irp_sl->context);
-			if (res == STATUS_MORE_PROCESSING_REQUIRED)
+			status = LIN2WIN3(irp_sl->completion_routine,
+					  dev_obj, irp, irp_sl->context);
+			if (status == STATUS_MORE_PROCESSING_REQUIRED)
 				IOEXIT(return);
 			IOTRACE("completion routine returned");
 		} else {

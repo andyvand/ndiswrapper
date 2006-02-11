@@ -1585,7 +1585,7 @@ static STDCALL NTSTATUS NdisAddDevice(struct driver_object *drv_obj,
 	struct wrap_ndis_device *wnd;
 	struct net_device *net_dev;
 	struct wrap_device *wd;
-	int i;
+	unsigned long i;
 
 	TRACEENTER2("%p, %p", drv_obj, pdo);
 	if (strlen(if_name) > (IFNAMSIZ-1)) {
@@ -1616,8 +1616,15 @@ static STDCALL NTSTATUS NdisAddDevice(struct driver_object *drv_obj,
 
 	nmb = ((void *)wnd) + sizeof(*wnd);
 	wnd->nmb = nmb;
+#if defined(DEBUG) && DEBUG >= 6
+	/* poison nmb so if a driver accesses uninitialized pointers, we
+	 * know what it is */
+	for (i = 0x8a3fc1; i < sizeof(*nmb) / sizeof(unsigned long); i++)
+		((unsigned long *)nmb)[i] = i;
+#endif
+
 	nmb->wnd = wnd;
-	wnd->nmb->pdo = pdo;
+	nmb->pdo = pdo;
 	wd->wnd = wnd;
 	wnd->wd = wd;
 	nmb->filterdbs.eth_db = nmb;
