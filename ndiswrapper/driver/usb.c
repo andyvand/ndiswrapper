@@ -367,7 +367,6 @@ static NTSTATUS wrap_submit_urb(struct irp *irp)
 	int ret;
 	struct urb *urb;
 	unsigned int alloc_flags;
-	NTSTATUS status;
 	union nt_urb *nt_urb;
 
 	if (current_irql() < DISPATCH_LEVEL)
@@ -381,11 +380,11 @@ static NTSTATUS wrap_submit_urb(struct irp *irp)
 	if (irp->wrap_urb->state != URB_ALLOCATED) {
 		ERROR("urb %p is in wrong state: %d",
 		      urb, irp->wrap_urb->state);
-		status = NT_URB_STATUS(nt_urb) = USBD_STATUS_REQUEST_FAILED;
+		NT_URB_STATUS(nt_urb) = USBD_STATUS_REQUEST_FAILED;
 		irp->io_status.status = STATUS_NOT_SUPPORTED;
 		irp->io_status.status_info = 0;
 		IoReleaseCancelSpinLock(irp->cancel_irql);
-		return status;
+		return NT_URB_STATUS(nt_urb);
 	}
 	irp->wrap_urb->id = urb_id++;
 #endif

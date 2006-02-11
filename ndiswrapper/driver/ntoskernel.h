@@ -63,8 +63,8 @@
 #define CONFIG_USB 1
 #endif
 
-#define addr_offset(drvr) (__builtin_return_address(0) - \
-			     (drvr)->drv_obj->driver_start)
+#define addr_offset(drvr) (__builtin_return_address(0) -	\
+			   (drvr)->drv_obj->driver_start)
 
 /* Workqueue / task queue backwards compatibility stuff */
 #if LINUX_VERSION_CODE > KERNEL_VERSION(2,5,41)
