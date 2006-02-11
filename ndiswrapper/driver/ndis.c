@@ -2015,7 +2015,7 @@ STDCALL void
 NdisMIndicateReceivePacket(struct ndis_miniport_block *nmb,
 			   struct ndis_packet **packets, UINT nr_packets)
 {
-	struct wrap_ndis_device *wnd = nmb->wnd;
+	struct wrap_ndis_device *wnd;
 	ndis_buffer *buffer;
 	struct ndis_packet *packet;
 	struct sk_buff *skb;
@@ -2023,7 +2023,8 @@ NdisMIndicateReceivePacket(struct ndis_miniport_block *nmb,
 	struct ndis_packet_oob_data *oob_data;
 	void *virt;
 
-	TRACEENTER3("%d", nr_packets);
+	TRACEENTER3("%p, %d", nmb, nr_packets);
+	wnd = nmb->wnd;
 	for (i = 0; i < nr_packets; i++) {
 		packet = packets[i];
 		if (!packet) {
@@ -2590,5 +2591,20 @@ void init_nmb_functions(struct ndis_miniport_block *nmb)
 	nmb->eth_rx_indicate = WRAP_FUNC_PTR(EthRxIndicateHandler);
 	nmb->eth_rx_complete = WRAP_FUNC_PTR(EthRxComplete);
 	nmb->td_complete = WRAP_FUNC_PTR(NdisMTransferDataComplete);
+
+	/* TODO: setup pointers to
+
+	   NdisMWanSendComplete
+	   NdisMWanIndicateReceive
+	   NdisMWanIndicateReceiveComplete
+	   
+	   NdisMTrIndicateReceive
+	   NdisMTrIndicateReceiveComplete
+
+	   NdisMFddiIndicateReceive
+	   NdisMFddiIndicateReceiveComplete
+	   NdisMArcIndicateReceive
+	   NdisMArcIndicateReceiveComplete
+	 */
 }
 

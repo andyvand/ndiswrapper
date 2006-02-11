@@ -774,7 +774,7 @@ struct io_stack_location {
 #endif
 
 #define URB_FROM_IRP(irp)					\
-	(IoGetCurrentIrpStackLocation(irp)->params.others.arg1)
+	(union nt_urb *)(IoGetCurrentIrpStackLocation(irp)->params.others.arg1)
 
 struct kapc {
 	CSHORT type;
@@ -933,6 +933,8 @@ IoSetCompletionRoutine(struct irp *irp, void *routine, void *context,
 
 #define IoMarkIrpPending(irp)						\
 	(IoGetCurrentIrpStackLocation((irp))->control |= SL_PENDING_RETURNED)
+#define IoUnmarkIrpPending(irp)						\
+	(IoGetCurrentIrpStackLocation((irp))->control &= ~SL_PENDING_RETURNED)
 
 #define IRP_SL(irp, i) (((struct io_stack_location *)((irp) + 1)) + (i))
 #define IRP_DRIVER_CONTEXT(irp) (irp)->tail.overlay.driver_context

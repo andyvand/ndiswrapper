@@ -226,62 +226,106 @@ typedef u32 pm_message_t;
 #endif
 
 #ifdef CONFIG_X86_64
-#define LIN2WIN1(func, arg1)			\
-	lin_to_win1(func, (unsigned long)arg1)
+#define LIN2WIN1(func, arg1)						\
+({									\
+	DBGTRACE6("calling %p", func);					\
+	lin_to_win1(func, (unsigned long)arg1);				\
+})
 #define LIN2WIN2(func, arg1, arg2)					\
-	lin_to_win2(func, (unsigned long)arg1, (unsigned long)arg2)
+({									\
+	DBGTRACE6("calling %p", func);					\
+	lin_to_win2(func, (unsigned long)arg1, (unsigned long)arg2);	\
+})
 #define LIN2WIN3(func, arg1, arg2, arg3)				\
+({									\
+	DBGTRACE6("calling %p", func);					\
 	lin_to_win3(func, (unsigned long)arg1, (unsigned long)arg2,	\
-		    (unsigned long)arg3)
+		    (unsigned long)arg3);				\
+})
 #define LIN2WIN4(func, arg1, arg2, arg3, arg4)				\
+({									\
+	DBGTRACE6("calling %p", func);					\
 	lin_to_win4(func, (unsigned long)arg1, (unsigned long)arg2,	\
-		    (unsigned long)arg3, (unsigned long)arg4)
+		    (unsigned long)arg3, (unsigned long)arg4);		\
+})
 #define LIN2WIN5(func, arg1, arg2, arg3, arg4, arg5)			\
+({									\
+	DBGTRACE6("calling %p", func);					\
 	lin_to_win5(func, (unsigned long)arg1, (unsigned long)arg2,	\
 		    (unsigned long)arg3, (unsigned long)arg4,		\
-		    (unsigned long)arg5)
+		    (unsigned long)arg5);				\
+})
 #define LIN2WIN6(func, arg1, arg2, arg3, arg4, arg5, arg6)		\
+({									\
+	DBGTRACE6("calling %p", func);					\
 	lin_to_win6(func, (unsigned long)arg1, (unsigned long)arg2,	\
 		    (unsigned long)arg3, (unsigned long)arg4,		\
-		    (unsigned long)arg5, (unsigned long)arg6)
+		    (unsigned long)arg5, (unsigned long)arg6);		\
+})
 
 /* NOTE: these macros assume function arguments are quads and
  * arguments are not touched in any way before calling these macros */
 #define WIN2LIN2(func, arg1, arg2, ret)			\
-	do {						\
-		__asm__("mov %rcx, %rdi");		\
-		__asm__("mov %rdx, %rsi");		\
-		__asm__("call *%0" : : "r"(func));	\
-		__asm__("mov %%rax, %0" : "=r"(ret));	\
-	} while (0)
+do {							\
+	__asm__("mov %rcx, %rdi");			\
+	__asm__("mov %rdx, %rsi");			\
+	__asm__("call *%0" : : "r"(func));		\
+	__asm__("mov %%rax, %0" : "=r"(ret));		\
+} while (0)
 
 #define WIN2LIN3(func, arg1, arg2, arg3, ret)		\
-	do {						\
-		__asm__("mov %rcx, %rdi");		\
-		__asm__("mov %rdx, %rsi");		\
-		__asm__("mov %r8, %rdx");		\
-		__asm__("call *%0" : : "r"(func));	\
-		__asm__("mov %%rax, %0" : "=r"(ret));	\
-	} while (0)
+do {							\
+	__asm__("mov %rcx, %rdi");			\
+	__asm__("mov %rdx, %rsi");			\
+	__asm__("mov %r8, %rdx");			\
+	__asm__("call *%0" : : "r"(func));		\
+	__asm__("mov %%rax, %0" : "=r"(ret));		\
+} while (0)
 
-#else
-#define LIN2WIN1(func, arg1) func(arg1)
-#define LIN2WIN2(func, arg1, arg2) func(arg1, arg2)
-#define LIN2WIN3(func, arg1, arg2, arg3) func(arg1, arg2, arg3)
-#define LIN2WIN4(func, arg1, arg2, arg3, arg4) func(arg1, arg2, arg3, arg4)
-#define LIN2WIN5(func, arg1, arg2, arg3, arg4, arg5)	\
-	func(arg1, arg2, arg3, arg4, arg5)
-#define LIN2WIN6(func, arg1, arg2, arg3, arg4, arg5, arg6)	\
-	func(arg1, arg2, arg3, arg4, arg5, arg6)
+#else // CONFIG_X86_64
+
+#define LIN2WIN1(func, arg1)						\
+({									\
+	DBGTRACE6("calling %p", func);					\
+	func(arg1);							\
+})
+#define LIN2WIN2(func, arg1, arg2)					\
+({									\
+	DBGTRACE6("calling %p", func);					\
+	func(arg1, arg2);						\
+})
+#define LIN2WIN3(func, arg1, arg2, arg3)				\
+({									\
+	DBGTRACE6("calling %p", func);					\
+	func(arg1, arg2, arg3);						\
+})
+#define LIN2WIN4(func, arg1, arg2, arg3, arg4)				\
+({									\
+	DBGTRACE6("calling %p", func);					\
+	func(arg1, arg2, arg3, arg4);					\
+})
+#define LIN2WIN5(func, arg1, arg2, arg3, arg4, arg5)			\
+({									\
+	DBGTRACE6("calling %p", func);					\
+	func(arg1, arg2, arg3, arg4, arg5);				\
+})
+#define LIN2WIN6(func, arg1, arg2, arg3, arg4, arg5, arg6)		\
+({									\
+	DBGTRACE6("calling %p", func);					\
+	func(arg1, arg2, arg3, arg4, arg5, arg6);			\
+})
+
 #define WIN2LIN2(func, arg1, arg2, ret)		\
-	do {					\
-		ret = func(arg1, arg2);		\
-	} while (0)
+do {						\
+	ret = func(arg1, arg2);			\
+} while (0)
+
 #define WIN2LIN3(func, arg1, arg2, arg3, ret)	\
-	do {					\
-		ret = func(arg1, arg2, arg3);	\
-	} while (0)
-#endif
+do {						\
+	ret = func(arg1, arg2, arg3);		\
+} while (0)
+
+#endif // CONFIG_X86_64
 
 #ifndef __wait_event_interruptible_timeout
 #define __wait_event_interruptible_timeout(wq, condition, ret)		\
@@ -1031,35 +1075,35 @@ do {								       \
 #endif
 
 #if defined DEBUG
-#define assert(expr) do {						\
-		if (!(expr))						\
-			ERROR("assertion failed: %s", (#expr));		\
-	} while (0)
+#define assert(expr)							\
+do {									\
+	if (!(expr))							\
+		ERROR("assertion failed: %s", (#expr));			\
+} while (0)
 #else
 #define assert(expr) do { } while (0)
 #endif
 
 #if defined(IO_DEBUG)
 #define DUMP_IRP(__irp)							\
-	do {								\
-		struct io_stack_location *_irp_sl;			\
-		_irp_sl = IoGetCurrentIrpStackLocation(__irp);		\
-		IOTRACE("irp: %p, stack size: %d, cl: %d, sl: %p, "	\
-			"dev_obj: %p, mj_fn: %d, minor_fn: %d, "	\
-			"nt_urb: %p, event: %p",			\
-			__irp, __irp->stack_count, (__irp)->current_location, \
-			_irp_sl, _irp_sl->dev_obj, _irp_sl->major_fn,	\
-			_irp_sl->minor_fn, URB_FROM_IRP(__irp),		\
-			(__irp)->user_event);				\
-	} while (0)
+do {									\
+	struct io_stack_location *_irp_sl;				\
+	_irp_sl = IoGetCurrentIrpStackLocation(__irp);			\
+	IOTRACE("irp: %p, stack size: %d, cl: %d, sl: %p, dev_obj: %p, " \
+		"mj_fn: %d, minor_fn: %d, nt_urb: %p, event: %p",	\
+		__irp, __irp->stack_count, (__irp)->current_location,	\
+		_irp_sl, _irp_sl->dev_obj, _irp_sl->major_fn,		\
+		_irp_sl->minor_fn, URB_FROM_IRP(__irp),			\
+		(__irp)->user_event);					\
+} while (0)
 #else
 #define DUMP_IRP(__irp) do { } while (0)
 #endif
 
 #define sleep(nsec)					\
-	do {						\
-		set_current_state(TASK_INTERRUPTIBLE);	\
-		schedule_timeout(nsec * HZ);		\
-	} while (0)
+do {							\
+	set_current_state(TASK_INTERRUPTIBLE);		\
+	schedule_timeout(nsec * HZ);			\
+} while (0)
 
 #endif // _NTOSKERNEL_H_

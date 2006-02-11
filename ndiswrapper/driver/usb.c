@@ -118,8 +118,8 @@ extern NT_SPIN_LOCK irp_cancel_lock;
 static struct tasklet_struct irp_complete_work;
 static struct nt_list irp_complete_list;
 
-static STDCALL void wrap_cancel_irp(struct device_object *dev_obj,
-				    struct irp *irp);
+static STDCALL void win_wrap_cancel_irp(struct device_object *dev_obj,
+					struct irp *irp);
 static void irp_complete_worker(unsigned long data);
 
 int usb_init(void)
@@ -256,8 +256,6 @@ static void wrap_free_urb(struct urb *urb)
 		wrap_urb->alloc_flags = 0;
 		wrap_urb->irp = NULL;
 	}
-	if (wd->usb.num_alloc_urbs < 0)
-		WARNING("num_allocated_urbs: %d", wd->usb.num_alloc_urbs);
 	return;
 }
 
@@ -327,7 +325,7 @@ static struct urb *wrap_alloc_urb(struct irp *irp, unsigned int pipe,
 	wrap_urb->irp = irp;
 	wrap_urb->pipe = pipe;
 	irp->wrap_urb = wrap_urb;
-	irp->cancel_routine = wrap_cancel_irp;
+	irp->cancel_routine = win_wrap_cancel_irp;
 	IoReleaseCancelSpinLock(irp->cancel_irql);
 	USBTRACE("allocated urb: %p", urb);
 	if (buf_len && buf) {
@@ -364,7 +362,7 @@ static struct urb *wrap_alloc_urb(struct irp *irp, unsigned int pipe,
 	return urb;
 }
 
-NTSTATUS wrap_submit_urb(struct irp *irp)
+static NTSTATUS wrap_submit_urb(struct irp *irp)
 {
 	int ret;
 	struct urb *urb;
@@ -379,6 +377,7 @@ NTSTATUS wrap_submit_urb(struct irp *irp)
 	IoAcquireCancelSpinLock(&irp->cancel_irql);
 	urb = irp->wrap_urb->urb;
 	nt_urb = URB_FROM_IRP(irp);
+#ifdef USB_DEBUG
 	if (irp->wrap_urb->state != URB_ALLOCATED) {
 		ERROR("urb %p is in wrong state: %d",
 		      urb, irp->wrap_urb->state);
@@ -388,15 +387,15 @@ NTSTATUS wrap_submit_urb(struct irp *irp)
 		IoReleaseCancelSpinLock(irp->cancel_irql);
 		return status;
 	}
-	irp->wrap_urb->state = URB_SUBMITTED;
-#ifdef USB_DEBUG
 	irp->wrap_urb->id = urb_id++;
 #endif
+	irp->wrap_urb->state = URB_SUBMITTED;
 	IoReleaseCancelSpinLock(irp->cancel_irql);
 	DUMP_WRAP_URB(irp->wrap_urb, USB_DIR_OUT);
 	irp->io_status.status = STATUS_PENDING;
 	irp->io_status.status_info = 0;
 	NT_URB_STATUS(nt_urb) = USBD_STATUS_PENDING;
+	IoMarkIrpPending(irp);
 	DUMP_URB_BUFFER(urb, USB_DIR_OUT);
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
 	ret = usb_submit_urb(urb, alloc_flags);
@@ -408,6 +407,8 @@ NTSTATUS wrap_submit_urb(struct irp *irp)
 		wrap_free_urb(urb);
 		irp->io_status.status = STATUS_NOT_SUPPORTED;
 		irp->io_status.status_info = 0;
+		/* we assume that IRP was not in pending state before */
+		IoUnmarkIrpPending(irp);
 		NT_URB_STATUS(nt_urb) = USBD_STATUS_REQUEST_FAILED;
 		USBEXIT(return irp->io_status.status);
 	} else
@@ -540,8 +541,9 @@ static void irp_complete_worker(unsigned long data)
 	return;
 }
 
-static STDCALL void wrap_cancel_irp(struct device_object *dev_obj,
-				    struct irp *irp)
+/* this function is called only from win_wrap_cancel_irp */
+static int _wrap_cancel_irp(struct device_object *dev_obj,
+			    struct irp *irp)
 {
 	struct urb *urb;
 
@@ -565,6 +567,17 @@ static STDCALL void wrap_cancel_irp(struct device_object *dev_obj,
 		wrap_free_urb(urb);
 		IoCompleteRequest(irp, IO_NO_INCREMENT);
 	}
+	return 0;
+}
+
+/* this function is called as Windows function (with arguments in Rcx,
+ * Rdx), but the functionality is in _wrap_cancel_irp, so we shuffle
+ * arguments back correctly and call _wrap_cancel_irp */
+static STDCALL void win_wrap_cancel_irp(struct device_object *dev_obj,
+					struct irp *irp)
+{
+	unsigned long ret;
+	WIN2LIN2(_wrap_cancel_irp, dev_obj, irp, ret);
 }
 
 static USBD_STATUS wrap_bulk_or_intr_trans(struct irp *irp)
@@ -1173,12 +1186,18 @@ NTSTATUS wrap_submit_irp(struct device_object *pdo, struct irp *irp)
 	}
 
 	USBTRACE("status: %08X", status);
-	if (status == USBD_STATUS_PENDING)
-		return STATUS_PENDING;
-	irp->io_status.status = nt_urb_irp_status(status);
-	if (status != USBD_STATUS_SUCCESS)
-		irp->io_status.status_info = 0;
-	USBEXIT(return irp->io_status.status);
+	if (status == USBD_STATUS_PENDING) {
+		/* although as per DDK, we are not supposed to touch
+		 * irp when STAUS_PENDING is returned, this irp hasn't
+		 * been submitted to usb yet (and not completed), so
+		 * it is safe in this case. */
+		return wrap_submit_urb(irp);
+	} else {
+		irp->io_status.status = nt_urb_irp_status(status);
+		if (status != USBD_STATUS_SUCCESS)
+			irp->io_status.status_info = 0;
+		USBEXIT(return irp->io_status.status);
+	}
 }
 
 /* TODO: The example on msdn in reference section suggests that second

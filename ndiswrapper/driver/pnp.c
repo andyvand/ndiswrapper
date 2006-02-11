@@ -22,6 +22,10 @@ extern NT_SPIN_LOCK loader_lock;
 extern struct nt_list ndis_drivers;
 extern struct wrap_device *wrap_devices;
 
+/* IRP functions are called as Windows functions (with arguments in
+ * Rcx, Rdx etc), but the real functions are implemented in Linux, so
+ * we shuffle arguments back correctly and call corresponding Linux
+ * functions */
 static NTSTATUS _IrpStopCompletion(struct device_object *dev_obj,
 				   struct irp *irp, void *context)
 {
@@ -97,21 +101,13 @@ static NTSTATUS _pdoDispatchDeviceControl(struct device_object *pdo,
 #ifdef CONFIG_USB
 	status = wrap_submit_irp(pdo, irp);
 	IOTRACE("status: %08X", status);
-	if (status == STATUS_PENDING) {
-		/* although as per DDK, we are not supposed to touch
-		 * irp when STAUS_PENDING is returned, this irp hasn't
-		 * been submitted to usb yet (and not completed), so
-		 * it is safe in this case */
-		IoMarkIrpPending(irp);
-		status = wrap_submit_urb(irp);
-	}
 	if (status != STATUS_PENDING)
 		IoCompleteRequest(irp, IO_NO_INCREMENT);
 	IOEXIT(return status);
 #else
 	status = irp->io_status.status = STATUS_NOT_IMPLEMENTED;
 	IoCompleteRequest(irp, IO_NO_INCREMENT);
-	return status;
+	IOEXIT(return status);
 #endif
 }
 
