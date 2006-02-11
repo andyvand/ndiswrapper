@@ -1619,8 +1619,8 @@ static STDCALL NTSTATUS NdisAddDevice(struct driver_object *drv_obj,
 #if defined(DEBUG) && DEBUG >= 6
 	/* poison nmb so if a driver accesses uninitialized pointers, we
 	 * know what it is */
-	for (i = 0x8a3fc1; i < sizeof(*nmb) / sizeof(unsigned long); i++)
-		((unsigned long *)nmb)[i] = i;
+	for (i = 0; i < sizeof(*nmb) / sizeof(unsigned long); i++)
+		((unsigned long *)nmb)[i] = i + 0x8a3fc1;
 #endif
 
 	nmb->wnd = wnd;
