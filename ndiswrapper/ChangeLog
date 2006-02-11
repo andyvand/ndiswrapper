@@ -1,4 +1,4 @@
-Version 1.10 2006-XX-XX
+Version 1.10 2006-02-11
 ======================
 * Added support for 64-bit USB drivers. Not tested with any driver,
   though.
