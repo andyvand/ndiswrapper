@@ -634,6 +634,9 @@ STDCALL ULONG MmSizeOfMdl(void *base, ULONG length);
 STDCALL void *MmMapIoSpace(PHYSICAL_ADDRESS phys_addr, SIZE_T size,
 			   enum memory_caching_type cache);
 STDCALL void MmUnmapIoSpace(void *addr, SIZE_T size);
+STDCALL void MmProbeAndLockPages(struct mdl *mdl, KPROCESSOR_MODE access_mode,
+	 enum lock_operation operation);
+STDCALL void MmUnlockPages(struct mdl *mdl);
 STDCALL void KeInitializeEvent(struct nt_event *nt_event,
 			       enum event_type type, BOOLEAN state);
 STDCALL LONG KeSetEvent(struct nt_event *nt_event, KPRIORITY incr,

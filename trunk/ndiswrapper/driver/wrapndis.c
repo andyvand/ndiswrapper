@@ -231,7 +231,7 @@ static NDIS_STATUS miniport_init(struct wrap_ndis_device *wnd)
 	/* Wait a little to let card power up otherwise ifup might
 	 * fail after boot; USB devices seem to need long delays */
 	set_current_state(TASK_INTERRUPTIBLE);
-	schedule_timeout(HZ);
+	schedule_timeout(1 * HZ);
 
 #if 0
 	status = miniport_set_pm_state(wnd, NdisDeviceStateD0);

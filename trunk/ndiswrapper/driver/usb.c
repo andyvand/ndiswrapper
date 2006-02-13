@@ -556,15 +556,8 @@ static int _wrap_cancel_irp(struct device_object *dev_obj,
 		/* this IRP will be returned in urb's completion function */
 		IoReleaseCancelSpinLock(irp->cancel_irql);
 	} else {
-		union nt_urb *nt_urb;
-		nt_urb = URB_FROM_IRP(irp);
 		ERROR("urb %p not canceld: %d", urb, irp->wrap_urb->state);
-		NT_URB_STATUS(nt_urb) = USBD_STATUS_REQUEST_FAILED;
-		irp->io_status.status = STATUS_INVALID_PARAMETER;
-		irp->io_status.status_info = 0;
 		IoReleaseCancelSpinLock(irp->cancel_irql);
-		wrap_free_urb(urb);
-		IoCompleteRequest(irp, IO_NO_INCREMENT);
 	}
 	return 0;
 }
@@ -616,13 +609,16 @@ static USBD_STATUS wrap_bulk_or_intr_trans(struct irp *irp)
 
 	if (unlikely(bulk_int_tx->transfer_buffer == NULL &&
 		     bulk_int_tx->transfer_buffer_length > 0)) {
+		USBTRACE("mdl: %p, %d",
+			 MmGetSystemAddressForMdl(bulk_int_tx->mdl),
+			 MmGetMdlByteCount(bulk_int_tx->mdl));
 		if (MmGetMdlByteCount(bulk_int_tx->mdl) !=
 		    bulk_int_tx->transfer_buffer_length)
 			WARNING("mdl size %d != %d",
 				MmGetMdlByteCount(bulk_int_tx->mdl),
 				bulk_int_tx->transfer_buffer_length);
 		bulk_int_tx->transfer_buffer =
-			MmGetMdlVirtualAddress(bulk_int_tx->mdl);
+			MmGetSystemAddressForMdl(bulk_int_tx->mdl);
 	}
 
 	DUMP_IRP(irp);
@@ -715,12 +711,16 @@ static USBD_STATUS wrap_vendor_or_class_req(struct irp *irp)
 
 	if (unlikely(vc_req->transfer_buffer == NULL &&
 		     vc_req->transfer_buffer_length > 0)) {
+		USBTRACE("mdl: %p, %d",
+			 MmGetSystemAddressForMdl(vc_req->mdl),
+			 MmGetMdlByteCount(vc_req->mdl));
 		if (MmGetMdlByteCount(vc_req->mdl) !=
 		    vc_req->transfer_buffer_length)
 			WARNING("mdl size %d != %d",
 				MmGetMdlByteCount(vc_req->mdl),
 				vc_req->transfer_buffer_length);
-		vc_req->transfer_buffer = MmGetMdlVirtualAddress(vc_req->mdl);
+		vc_req->transfer_buffer =
+			MmGetSystemAddressForMdl(vc_req->mdl);
 	}
 
 	if (vc_req->transfer_flags & USBD_TRANSFER_DIRECTION_IN) {

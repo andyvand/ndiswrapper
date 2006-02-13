@@ -276,8 +276,8 @@ STDCALL void WRAP_EXPORT(NdisOpenConfigurationKeyByIndex)
 	 struct unicode_string *key, void **subkeyhandle)
 {
 	TRACEENTER2("index: %u", index);
-	*subkeyhandle = handle;
-	*status = NDIS_STATUS_SUCCESS;
+//	*subkeyhandle = handle;
+	*status = NDIS_STATUS_FAILURE;
 	TRACEEXIT2(return);
 }
 
