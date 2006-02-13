@@ -84,6 +84,7 @@
 
 #define IRP_BUFFERED_IO			0x00000010
 #define IRP_DEALLOCATE_BUFFER		0x00000020
+#define IRP_INPUT_OPERATION		0x00000040
 
 #define IRP_DEFFER_IO_COMPLETION	0x00000800
 
@@ -257,6 +258,12 @@ enum lock_operation {
 	IoReadAccess, IoWriteAccess, IoModifyAccess
 };
 
+enum mode {
+	KernelMode,
+	UserMode,
+	MaximumMode
+};
+
 struct mdl {
 	struct mdl* next;
 	CSHORT size;
@@ -292,15 +299,18 @@ struct mdl {
 #define MmGetSystemAddressForMdl(mdl) ((mdl)->mappedsystemva)
 #define MmGetSystemAddressForMdlSafe(mdl, priority) ((mdl)->mappedsystemva)
 #define MmGetMdlPfnArray(mdl) ((PFN_NUMBER *)(mdl + 1))
-#define MmInitializeMdl(mdl, baseva, length) {				\
-		(mdl)->next = NULL;					\
-		(mdl)->size = MmSizeOfMdl(baseva, length);		\
-		(mdl)->flags = 0;					\
- 		(mdl)->startva =					\
-			(void *)((unsigned long)baseva & PAGE_MASK);	\
- 		(mdl)->byteoffset = (ULONG)offset_in_page(baseva);	\
-		(mdl)->bytecount = length;				\
-	}
+#define MmInitializeMdl(mdl, baseva, length)				\
+do {									\
+	(mdl)->next = NULL;						\
+	(mdl)->size = MmSizeOfMdl(baseva, length);			\
+	(mdl)->flags = 0;						\
+	(mdl)->startva =						\
+		(void *)((unsigned long)baseva & PAGE_MASK);		\
+	(mdl)->byteoffset = (ULONG)offset_in_page(baseva);		\
+	(mdl)->bytecount = length;					\
+	DBGTRACE4("%p %p %p %d %d", (mdl), baseva, (mdl)->startva,	\
+		  (mdl)->byteoffset, length);				\
+} while (0)
 
 struct kdevice_queue_entry {
 	struct nt_list list;

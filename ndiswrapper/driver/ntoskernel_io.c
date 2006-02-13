@@ -262,6 +262,9 @@ STDCALL struct irp *WRAP_EXPORT(IoBuildAsynchronousFsdRequest)
 			IoFreeIrp(irp);
 			return NULL;
 		}
+		MmProbeAndLockPages(irp->mdl, KernelMode,
+				    major_fn == IRP_MJ_WRITE ?
+				    IoReadAccess : IoWriteAccess);
 	} else if (dev_obj->flags & DO_BUFFERED_IO) {
 		IOTRACE("irp %p with DO_BUFFERED_IO", irp);
 		irp->associated_irp.system_buffer =
@@ -270,10 +273,14 @@ STDCALL struct irp *WRAP_EXPORT(IoBuildAsynchronousFsdRequest)
 			IoFreeIrp(irp);
 			return NULL;
 		}
-		irp->flags |= IRP_ASSOCIATED_IRP;
-		memcpy(irp->associated_irp.system_buffer, buffer, length);
-		irp->user_status = status;
-		irp->user_buf = buffer;
+		irp->flags = IRP_BUFFERED_IO | IRP_DEALLOCATE_BUFFER;
+		if (major_fn == IRP_MJ_WRITE)
+			memcpy(irp->associated_irp.system_buffer, buffer,
+			       length);
+		else {
+			irp->flags |= IRP_INPUT_OPERATION;
+			irp->user_buf = buffer;
+		}
 	}
 	if (major_fn == IRP_MJ_READ) {
 		irp_sl->params.read.length = length;
@@ -434,10 +441,12 @@ _FASTCALL void WRAP_EXPORT(IofCompleteRequest)
 		IOTRACE("setting event %p", irp->user_event);
 		KeSetEvent(irp->user_event, prio_boost, FALSE);
 	}
+	IOTRACE("%p", irp->mdl);
 
 	IOTRACE("freeing irp %p", irp);
 	while ((mdl = irp->mdl)) {
 		irp->mdl = mdl->next;
+		MmUnlockPages(mdl);
 		IoFreeMdl(mdl);
 	}
 	if (irp->flags & IRP_DEALLOCATE_BUFFER)
