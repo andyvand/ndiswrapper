@@ -232,8 +232,7 @@ STDCALL void WRAP_EXPORT(IoFreeIrp)
 
 STDCALL struct irp *WRAP_EXPORT(IoBuildAsynchronousFsdRequest)
 	(ULONG major_fn, struct device_object *dev_obj, void *buffer,
-	 ULONG length, LARGE_INTEGER *offset,
-	 struct io_status_block *status)
+	 ULONG length, LARGE_INTEGER *offset, struct io_status_block *status)
 {
 	struct irp *irp;
 	struct io_stack_location *irp_sl;
@@ -256,7 +255,6 @@ STDCALL struct irp *WRAP_EXPORT(IoBuildAsynchronousFsdRequest)
 	irp_sl->completion_routine = NULL;
 
 	if (dev_obj->flags & DO_DIRECT_IO) {
-		IOTRACE("irp %p with DO_DIRECT_IO", irp);
 		irp->mdl = IoAllocateMdl(buffer, length, FALSE, FALSE, irp);
 		if (irp->mdl == NULL) {
 			IoFreeIrp(irp);
@@ -265,22 +263,12 @@ STDCALL struct irp *WRAP_EXPORT(IoBuildAsynchronousFsdRequest)
 		MmProbeAndLockPages(irp->mdl, KernelMode,
 				    major_fn == IRP_MJ_WRITE ?
 				    IoReadAccess : IoWriteAccess);
+		IOTRACE("mdl: %p", irp->mdl);
 	} else if (dev_obj->flags & DO_BUFFERED_IO) {
-		IOTRACE("irp %p with DO_BUFFERED_IO", irp);
-		irp->associated_irp.system_buffer =
-			ExAllocatePoolWithTag(NonPagedPool, length, 0);
-		if (irp->associated_irp.system_buffer == NULL) {
-			IoFreeIrp(irp);
-			return NULL;
-		}
-		irp->flags = IRP_BUFFERED_IO | IRP_DEALLOCATE_BUFFER;
-		if (major_fn == IRP_MJ_WRITE)
-			memcpy(irp->associated_irp.system_buffer, buffer,
-			       length);
-		else {
-			irp->flags |= IRP_INPUT_OPERATION;
-			irp->user_buf = buffer;
-		}
+		irp->associated_irp.system_buffer = buffer;
+		irp->flags = IRP_BUFFERED_IO;
+		irp->mdl = NULL;
+		IOTRACE("buffer: %p", buffer);
 	}
 	if (major_fn == IRP_MJ_READ) {
 		irp_sl->params.read.length = length;
@@ -444,13 +432,16 @@ _FASTCALL void WRAP_EXPORT(IofCompleteRequest)
 	IOTRACE("%p", irp->mdl);
 
 	IOTRACE("freeing irp %p", irp);
-	while ((mdl = irp->mdl)) {
-		irp->mdl = mdl->next;
-		MmUnlockPages(mdl);
-		IoFreeMdl(mdl);
-	}
-	if (irp->flags & IRP_DEALLOCATE_BUFFER)
+	if (irp->associated_irp.system_buffer &&
+	    (irp->flags & IRP_DEALLOCATE_BUFFER))
 		ExFreePool(irp->associated_irp.system_buffer);
+	else {
+		while ((mdl = irp->mdl)) {
+			irp->mdl = mdl->next;
+			MmUnlockPages(mdl);
+			IoFreeMdl(mdl);
+		}
+	}
 	IoFreeIrp(irp);
 	IOEXIT(return);
 }
