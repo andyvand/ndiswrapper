@@ -836,12 +836,13 @@ static inline KIRQL raise_irql(KIRQL newirql)
 
 static inline void lower_irql(KIRQL oldirql)
 {
-	KIRQL irql = current_irql();
 #ifdef DEBUG_IRQL
+	KIRQL irql = current_irql();
 	if (irql < oldirql)
 		ERROR("invalid irql: %d < %d", irql, oldirql);
 #endif
-	if (irql == DISPATCH_LEVEL && oldirql < DISPATCH_LEVEL) {
+//	if (irql == DISPATCH_LEVEL && oldirql < DISPATCH_LEVEL) {
+	if (oldirql < DISPATCH_LEVEL) {
 		preempt_enable_no_resched();
 		local_bh_enable();
 	}
