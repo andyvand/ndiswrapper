@@ -1,3 +1,10 @@
+Version 1.11 2006-XX-XX
+======================
+* Added support for newer RNDIS (USB) cards (e.g., USR5421, F5D7051uk,
+  WRT54GS, all based on Broadcom chip). These support WPA2, whereas
+  older RNDIS cards support only WPA.
+* Kernel crash when removing USB cards fixed.
+
 Version 1.10 2006-02-11
 ======================
 * Added support for 64-bit USB drivers. Not tested with any driver,
