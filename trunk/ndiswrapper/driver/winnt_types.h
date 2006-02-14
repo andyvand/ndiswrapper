@@ -47,9 +47,9 @@
 #define STATUS_BUFFER_OVERFLOW		0x80000005
 
 #define SL_PENDING_RETURNED		0x01
-#define CALL_ON_CANCEL			0x20
-#define CALL_ON_SUCCESS			0x40
-#define CALL_ON_ERROR			0x80
+#define SL_INVOKE_ON_CANCEL		0x20
+#define SL_INVOKE_ON_SUCCESS		0x40
+#define SL_INVOKE_ON_ERROR		0x80
 
 #define IRP_MJ_CREATE			0x00
 #define IRP_MJ_CREATE_NAMED_PIPE	0x01
@@ -814,6 +814,7 @@ enum urb_state {
 struct wrap_urb {
 	struct nt_list list;
 	enum urb_state state;
+	struct nt_list complete_list;
 	unsigned int alloc_flags;
 	struct urb *urb;
 	struct irp *irp;
@@ -889,7 +890,6 @@ struct irp {
 
 	/* ndiswrapper extension */
 	struct wrap_urb *wrap_urb;
-	struct nt_list complete_list;
 	struct wrap_device *wd;
 };
 
@@ -934,11 +934,11 @@ IoSetCompletionRoutine(struct irp *irp, void *routine, void *context,
 	irp_sl->context = context;
 	irp_sl->control = 0;
 	if (success)
-		irp_sl->control |= CALL_ON_SUCCESS;
+		irp_sl->control |= SL_INVOKE_ON_SUCCESS;
 	if (error)
-		irp_sl->control |= CALL_ON_ERROR;
+		irp_sl->control |= SL_INVOKE_ON_ERROR;
 	if (cancel)
-		irp_sl->control |= CALL_ON_CANCEL;
+		irp_sl->control |= SL_INVOKE_ON_CANCEL;
 }
 
 #define IoMarkIrpPending(irp)						\

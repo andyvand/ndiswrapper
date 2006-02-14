@@ -21,11 +21,9 @@
 
 extern NT_SPIN_LOCK ntoskernel_lock;
 extern NT_SPIN_LOCK loader_lock;
-extern NT_SPIN_LOCK irp_cancel_lock;
 extern struct nt_list object_list;
 
 extern NT_SPIN_LOCK irp_cancel_lock;
-
 static unsigned long irp_cancel_irq_flags;
 
 /* urb completion callback, wrap_urb_complete is called from
@@ -37,12 +35,14 @@ STDCALL void WRAP_EXPORT(IoAcquireCancelSpinLock)
 	(KIRQL *irql)
 {
 	nt_spin_lock_irqsave(&irp_cancel_lock, irp_cancel_irq_flags);
+//	*irql = nt_spin_lock_irql(&irp_cancel_lock, DISPATCH_LEVEL);
 }
 
 STDCALL void WRAP_EXPORT(IoReleaseCancelSpinLock)
 	(KIRQL irql)
 {
 	nt_spin_unlock_irqrestore(&irp_cancel_lock, irp_cancel_irq_flags);
+//	nt_spin_unlock_irql(&irp_cancel_lock, irql);
 }
 
 STDCALL NTSTATUS WRAP_EXPORT(IoGetDeviceProperty)
@@ -181,6 +181,7 @@ STDCALL BOOLEAN WRAP_EXPORT(IoCancelIrp)
 		LIN2WIN2(cancel_routine, irp_sl->dev_obj, irp);
 		IOEXIT(return TRUE);
 	} else {
+		IOTRACE("irp %p not canceled", irp);
 		IoReleaseCancelSpinLock(irp->cancel_irql);
 		IOEXIT(return FALSE);
 	}
@@ -401,10 +402,11 @@ _FASTCALL void WRAP_EXPORT(IofCompleteRequest)
 
 		if (irp_sl->completion_routine &&
 		    ((irp->io_status.status == STATUS_SUCCESS &&
-		       irp_sl->control & CALL_ON_SUCCESS) ||
+		       irp_sl->control & SL_INVOKE_ON_SUCCESS) ||
 		      (irp->io_status.status != STATUS_SUCCESS &&
-		       irp_sl->control & CALL_ON_ERROR) ||
-		      (irp->cancel && (irp_sl->control & CALL_ON_CANCEL)))) {
+		       irp_sl->control & SL_INVOKE_ON_ERROR) ||
+		      (irp->cancel == TRUE &&
+		       irp_sl->control & SL_INVOKE_ON_CANCEL))) {
 			IOTRACE("calling completion_routine at: %p, %p",
 				irp_sl->completion_routine, irp_sl->context);
 			status = LIN2WIN3(irp_sl->completion_routine,
