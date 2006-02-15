@@ -398,7 +398,7 @@ static int fixup_reloc(void *image, IMAGE_NT_HEADERS *nt_hdr)
 		fixup_block = (IMAGE_BASE_RELOCATION *)
 			((void *)fixup_block + fixup_block->SizeOfBlock);
 	};
-	DBGLINKER("done relocating all");	
+	DBGLINKER("done relocating all");
 
 	return 0;
 }

@@ -29,7 +29,7 @@ struct load_device_setting {
 	char name[MAX_SETTING_NAME_LEN];
 	char value[MAX_SETTING_VALUE_LEN];
 };
-		
+
 struct load_device {
 	int bus_type;
 	int vendor;

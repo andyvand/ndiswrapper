@@ -22,15 +22,42 @@ extern NT_SPIN_LOCK loader_lock;
 extern struct nt_list ndis_drivers;
 extern struct wrap_device *wrap_devices;
 
-STDCALL NTSTATUS IrpStopCompletion(struct device_object *dev_obj,
+/* IRP functions are called as Windows functions (with arguments in
+ * Rcx, Rdx etc), but the real functions are implemented in Linux, so
+ * we shuffle arguments back correctly and call corresponding Linux
+ * functions */
+static NTSTATUS _IrpStopCompletion(struct device_object *dev_obj,
 				   struct irp *irp, void *context)
 {
 	IOENTER("dev_obj: %p, irp: %p, context: %p", dev_obj, irp, context);
 	IOEXIT(return STATUS_MORE_PROCESSING_REQUIRED);
 }
 
-STDCALL NTSTATUS IopInvalidDeviceRequest(struct device_object *dev_obj,
-					 struct irp *irp)
+STDCALL NTSTATUS winIrpStopCompletion(struct device_object *dev_obj,
+				      struct irp *irp, void *context)
+{
+	unsigned long ret;
+	WIN2LIN3(_IrpStopCompletion, dev_obj, irp, context, ret);
+	return ret;
+}
+
+static NTSTATUS _IopPassIrpDown(struct device_object *dev_obj,
+			       struct irp *irp)
+{
+	IoSkipCurrentIrpStackLocation(irp);
+	return IoCallDriver(dev_obj, irp);
+}
+
+STDCALL NTSTATUS winIopPassIrpDown(struct device_object *dev_obj,
+				   struct irp *irp)
+{
+	unsigned long ret;
+	WIN2LIN2(_IopPassIrpDown, dev_obj, irp, ret);
+	return ret;
+}
+
+static NTSTATUS _IopInvalidDeviceRequest(struct device_object *dev_obj,
+					struct irp *irp)
 {
 	struct io_stack_location *irp_sl;
 	NTSTATUS status;
@@ -38,15 +65,23 @@ STDCALL NTSTATUS IopInvalidDeviceRequest(struct device_object *dev_obj,
 	irp_sl = IoGetCurrentIrpStackLocation(irp);
 	WARNING("IRP %d:%d not implemented",
 		irp_sl->major_fn, irp_sl->minor_fn);
-	irp->io_status.status = STATUS_NOT_IMPLEMENTED;
+	irp->io_status.status = STATUS_SUCCESS;
 	irp->io_status.status_info = 0;
 	status = irp->io_status.status;
 	IoCompleteRequest(irp, IO_NO_INCREMENT);
 	return status;
 }
 
-static STDCALL NTSTATUS pdoDispatchDeviceControl(struct device_object *pdo,
-						 struct  irp *irp)
+STDCALL NTSTATUS winIopInvalidDeviceRequest(struct device_object *dev_obj,
+					    struct irp *irp)
+{
+	unsigned long ret;
+	WIN2LIN2(_IopInvalidDeviceRequest, dev_obj, irp, ret);
+	return ret;
+}
+
+static NTSTATUS _pdoDispatchDeviceControl(struct device_object *pdo,
+					 struct  irp *irp)
 {
 	struct io_stack_location *irp_sl;
 	NTSTATUS status;
@@ -66,25 +101,26 @@ static STDCALL NTSTATUS pdoDispatchDeviceControl(struct device_object *pdo,
 #ifdef CONFIG_USB
 	status = wrap_submit_irp(pdo, irp);
 	IOTRACE("status: %08X", status);
-	if (status == STATUS_PENDING) {
-		/* although as per DDK, we are not supposed to touch
-		 * irp when STAUS_PENDING is returned, this irp hasn't
-		 * been submitted to usb yet (and not completed), so
-		 * it is safe in this case */
-		status = wrap_submit_urb(irp);
-	}
 	if (status != STATUS_PENDING)
 		IoCompleteRequest(irp, IO_NO_INCREMENT);
 	IOEXIT(return status);
 #else
 	status = irp->io_status.status = STATUS_NOT_IMPLEMENTED;
 	IoCompleteRequest(irp, IO_NO_INCREMENT);
-	return status;
+	IOEXIT(return status);
 #endif
 }
 
-static STDCALL NTSTATUS pdoDispatchPnp(struct device_object *pdo,
-				       struct irp *irp)
+STDCALL NTSTATUS winpdoDispatchDeviceControl(struct device_object *pdo,
+					     struct  irp *irp)
+{
+	unsigned long ret;
+	WIN2LIN2(_pdoDispatchDeviceControl, pdo, irp, ret);
+	return ret;
+}
+
+static NTSTATUS _pdoDispatchPnp(struct device_object *pdo,
+			       struct irp *irp)
 {
 	struct io_stack_location *irp_sl;
 	struct wrap_device *wd;
@@ -92,7 +128,6 @@ static STDCALL NTSTATUS pdoDispatchPnp(struct device_object *pdo,
 #ifdef CONFIG_USB
 	struct usbd_bus_interface_usbdi *usb_intf;
 #endif
-
 	irp_sl = IoGetCurrentIrpStackLocation(irp);
 	wd = pdo->reserved;
 	DBGTRACE2("fn %d:%d, wd: %p", irp_sl->major_fn, irp_sl->minor_fn, wd);
@@ -166,8 +201,16 @@ static STDCALL NTSTATUS pdoDispatchPnp(struct device_object *pdo,
 	IOEXIT(return status);
 }
 
-static STDCALL NTSTATUS pdoDispatchPower(struct device_object *pdo,
-					 struct irp *irp)
+static STDCALL NTSTATUS winpdoDispatchPnp(struct device_object *pdo,
+					  struct irp *irp)
+{
+	unsigned long ret;
+	WIN2LIN2(_pdoDispatchPnp, pdo, irp, ret);
+	return ret;
+}
+
+static NTSTATUS _pdoDispatchPower(struct device_object *pdo,
+				 struct irp *irp)
 {
 	struct io_stack_location *irp_sl;
 	struct wrap_device *wd;
@@ -227,6 +270,15 @@ static STDCALL NTSTATUS pdoDispatchPower(struct device_object *pdo,
 	return status;
 }
 
+
+static STDCALL NTSTATUS winpdoDispatchPower(struct device_object *pdo,
+					    struct irp *irp)
+{
+	unsigned long ret;
+	WIN2LIN2(_pdoDispatchPower, pdo, irp, ret);
+	return ret;
+}
+
 static struct device_object *alloc_pdo(struct driver_object *drv_obj)
 {
 	struct device_object *pdo;
@@ -239,12 +291,13 @@ static struct device_object *alloc_pdo(struct driver_object *drv_obj)
 	if (status != STATUS_SUCCESS)
 		return NULL;
 	for (i = 0; i <= IRP_MJ_MAXIMUM_FUNCTION; i++)
-		drv_obj->major_func[i] = IopInvalidDeviceRequest;
+		drv_obj->major_func[i] = winIopInvalidDeviceRequest;
 	drv_obj->major_func[IRP_MJ_INTERNAL_DEVICE_CONTROL] =
-		pdoDispatchDeviceControl;
-	drv_obj->major_func[IRP_MJ_DEVICE_CONTROL] = pdoDispatchDeviceControl;
-	drv_obj->major_func[IRP_MJ_POWER] = pdoDispatchPower;
-	drv_obj->major_func[IRP_MJ_PNP] = pdoDispatchPnp;
+		winpdoDispatchDeviceControl;
+	drv_obj->major_func[IRP_MJ_DEVICE_CONTROL] =
+		winpdoDispatchDeviceControl;
+	drv_obj->major_func[IRP_MJ_POWER] = winpdoDispatchPower;
+	drv_obj->major_func[IRP_MJ_PNP] = winpdoDispatchPnp;
 	return pdo;
 }
 
@@ -327,12 +380,10 @@ static int start_pdo(struct device_object *pdo)
 		entry = &partial_resource_list->partial_descriptors[count];
 		DBGTRACE2("%d", count);
 		if (pci_resource_flags(pdev, i) & IORESOURCE_MEM) {
-			INFO("%d", count);
 			entry->type = CmResourceTypeMemory;
 			entry->flags = CM_RESOURCE_MEMORY_READ_WRITE;
 			entry->share = CmResourceShareDeviceExclusive;
 		} else if (pci_resource_flags(pdev, i) & IORESOURCE_IO) {
-			INFO("%d", count);
 			entry->type = CmResourceTypePort;
 			entry->flags = CM_RESOURCE_PORT_IO;
 			entry->share = CmResourceShareDeviceExclusive;
@@ -416,7 +467,7 @@ NTSTATUS pnp_set_power_state(struct wrap_device *wd,
 	pdo = wd->pdo;
 	fdo = IoGetAttachedDevice(pdo);
 	if (state > PowerDeviceD0) {
-		irp = IoAllocateIrp(fdo->stack_size, FALSE);
+		irp = IoAllocateIrp(fdo->stack_count, FALSE);
 		irp_sl = IoGetNextIrpStackLocation(irp);
 		DBGTRACE2("irp = %p, stack = %p", irp, irp_sl);
 		irp_sl->major_fn = IRP_MJ_POWER;
@@ -427,7 +478,7 @@ NTSTATUS pnp_set_power_state(struct wrap_device *wd,
 		if (status != STATUS_SUCCESS)
 			WARNING("query power returns %08X", status);
 	}
-	irp = IoAllocateIrp(fdo->stack_size, FALSE);
+	irp = IoAllocateIrp(fdo->stack_count, FALSE);
 	irp_sl = IoGetNextIrpStackLocation(irp);
 	DBGTRACE2("irp = %p, stack = %p", irp, irp_sl);
 	irp_sl->major_fn = IRP_MJ_POWER;
@@ -462,7 +513,7 @@ NTSTATUS pnp_start_device(struct wrap_device *wd)
 		}
 	} else
 		thread = NULL;
-	irp = IoAllocateIrp(fdo->stack_size, FALSE);
+	irp = IoAllocateIrp(fdo->stack_count, FALSE);
 	irp_sl = IoGetNextIrpStackLocation(irp);
 	DBGTRACE1("irp = %p, stack = %p", irp, irp_sl);
 	/* TODO: for now we use same resources for both translated
@@ -495,7 +546,7 @@ NTSTATUS pnp_stop_device(struct wrap_device *wd)
 	pdo = wd->pdo;
 	fdo = IoGetAttachedDevice(pdo);
 	DBGTRACE1("fdo: %p", fdo);
-	irp = IoAllocateIrp(fdo->stack_size, FALSE);
+	irp = IoAllocateIrp(fdo->stack_count, FALSE);
 	irp_sl = IoGetNextIrpStackLocation(irp);
 	DBGTRACE1("irp = %p, stack = %p", irp, irp_sl);
 	irp_sl->major_fn = IRP_MJ_PNP;
@@ -505,7 +556,7 @@ NTSTATUS pnp_stop_device(struct wrap_device *wd)
 	if (status != STATUS_SUCCESS)
 		WARNING("status: %08X", status);
 	/* for now we ignore query status */
-	irp = IoAllocateIrp(fdo->stack_size, FALSE);
+	irp = IoAllocateIrp(fdo->stack_count, FALSE);
 	irp_sl = IoGetNextIrpStackLocation(irp);
 	DBGTRACE1("irp = %p, stack = %p", irp, irp_sl);
 	irp_sl->major_fn = IRP_MJ_PNP;
@@ -536,7 +587,7 @@ NTSTATUS pnp_remove_device(struct wrap_device *wd)
 	fdo = IoGetAttachedDevice(pdo);
 	fdo_drv_obj = fdo->drv_obj;
 	DBGTRACE1("fdo: %p", fdo);
-	irp = IoAllocateIrp(fdo->stack_size, FALSE);
+	irp = IoAllocateIrp(fdo->stack_count, FALSE);
 	irp_sl = IoGetNextIrpStackLocation(irp);
 	DBGTRACE1("irp = %p, stack = %p", irp, irp_sl);
 	irp_sl->major_fn = IRP_MJ_PNP;
@@ -546,7 +597,7 @@ NTSTATUS pnp_remove_device(struct wrap_device *wd)
 	if (status != STATUS_SUCCESS)
 		WARNING("status: %08X", status);
 	/* for now we ignore query status */
-	irp = IoAllocateIrp(fdo->stack_size, FALSE);
+	irp = IoAllocateIrp(fdo->stack_count, FALSE);
 	irp_sl = IoGetNextIrpStackLocation(irp);
 	DBGTRACE1("irp = %p, stack = %p", irp, irp_sl);
 	irp_sl->major_fn = IRP_MJ_PNP;
@@ -555,7 +606,7 @@ NTSTATUS pnp_remove_device(struct wrap_device *wd)
 	status = IoCallDriver(fdo, irp);
 	if (status != STATUS_SUCCESS)
 		WARNING("status: %08X", status);
-	
+
 	/* TODO: should we use count in drv_ext or driver's Object
 	 * header reference count to keep count of devices associated
 	 * with a driver? */
@@ -610,7 +661,7 @@ static int wrap_pnp_start_device(struct wrap_device *wd)
 	driver = load_wrap_driver(wd);
 	if (!driver)
 		return -ENODEV;
-	
+
 	wd->driver = driver;
 	DBGTRACE1("dev type: %d, bus type: %d, %d",
 		  WRAP_DEVICE_TYPE(wd->dev_bus_type),

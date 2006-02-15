@@ -134,9 +134,6 @@ struct wrap_driver *load_wrap_driver(struct wrap_device *wd)
 		}
 		DBGTRACE1("driver %s is loaded", wrap_driver->name);
 	}
-	nt_spin_lock(&loader_lock);
-	InsertTailList(&wrap_driver->wrap_devices, &wd->list);
-	nt_spin_unlock(&loader_lock);
 	TRACEEXIT1(return wrap_driver);
 }
 
@@ -246,7 +243,7 @@ struct wrap_bin_file *get_bin_file(char *bin_file_name)
 		DBGTRACE1("coudln't find bin file '%s'", bin_file_name);
 		return NULL;
 	}
-	
+
 	if (!driver->bin_files[i].data) {
 		char *argv[] = {"loadndisdriver", WRAP_CMD_LOAD_BIN_FILE,
 #if defined DEBUG && DEBUG >= 1
@@ -440,8 +437,6 @@ static void unload_wrap_device(struct wrap_device *wd)
 		setting = container_of(cur, struct wrap_device_setting, list);
 		kfree(setting);
 	}
-	RemoveEntryList(&wd->list);
-	InitializeListHead(&wd->list);
 	TRACEEXIT1(return);
 }
 
@@ -450,7 +445,6 @@ void unload_wrap_driver(struct wrap_driver *driver)
 {
 	int i;
 	struct driver_object *drv_obj;
-	struct wrap_device *wd;
 
 	TRACEENTER1("unloading driver: %s (%p)", driver->name, driver);
 	DBGTRACE1("freeing %d images", driver->num_pe_images);
@@ -472,15 +466,11 @@ void unload_wrap_driver(struct wrap_driver *driver)
 		kfree(driver->bin_files);
 	RtlFreeUnicodeString(&drv_obj->name);
 	RemoveEntryList(&driver->list);
-	nt_list_for_each_entry(wd, &driver->wrap_devices, list) {
-		RemoveEntryList(&wd->list);
-		InitializeListHead(&wd->list);
-	}
 	/* this frees driver */
 	free_custom_extensions(drv_obj->drv_ext);
 	kfree(drv_obj->drv_ext);
 	DBGTRACE1("drv_obj: %p", drv_obj);
-		
+
 	TRACEEXIT1(return);
 }
 
@@ -684,7 +674,6 @@ static int register_devices(struct load_devices *load_devices)
 		struct wrap_device *wd;
 
 		wd = &wrap_devices[num_pci + num_usb];
-		InitializeListHead(&wd->list);
 		InitializeListHead(&wd->settings);
 		strncpy(wd->driver_name, device->driver_name,
 			sizeof(wd->driver_name));
