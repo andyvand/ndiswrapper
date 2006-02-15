@@ -189,7 +189,7 @@ struct usbd_select_interface {
 	struct nt_urb_header header;
 	void *handle;
 	struct usbd_interface_information intf;
-};	
+};
 
 struct usbd_select_configuration {
 	struct nt_urb_header header;
@@ -322,7 +322,7 @@ struct usbd_idle_callback {
 #define NT_URB_STATUS(nt_urb) ((nt_urb)->header.status)
 
 NTSTATUS wrap_submit_irp(struct device_object *pdo, struct irp *irp);
-NTSTATUS wrap_submit_urb(struct irp *irp);
+//NTSTATUS wrap_submit_urb(struct irp *irp);
 void wrap_suspend_urbs(struct wrap_device *wd);
 void wrap_resume_urbs(struct wrap_device *wd);
 

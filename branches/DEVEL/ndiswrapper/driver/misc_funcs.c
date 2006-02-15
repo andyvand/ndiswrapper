@@ -967,4 +967,22 @@ void dump_bytes(const char *ctx, const u8 *from, int len)
 	kfree(buf);
 }
 
+#ifdef X86_64
+asm("\t.text\n"
+    "\t.globl _win2lin_3\n"
+    "_win2lin_3:\n"
+    "\tmov %rcx, %rdi\n"
+    "\tmov %rdx, %rsi\n"
+    "\tcall *%r8\n"
+    "\tret\n");
+#else
+int _win2lin_3(unsigned long arg1, unsigned long arg2, void *arg3)
+{
+	NTSTATUS (*f)(unsigned long, unsigned long) STDCALL;
+	f = arg3;
+	return f(arg1, arg2);
+}
+#endif
+
+
 #include "misc_funcs_exports.h"

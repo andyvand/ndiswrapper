@@ -276,8 +276,8 @@ STDCALL void WRAP_EXPORT(NdisOpenConfigurationKeyByIndex)
 	 struct unicode_string *key, void **subkeyhandle)
 {
 	TRACEENTER2("index: %u", index);
-	*subkeyhandle = handle;
-	*status = NDIS_STATUS_SUCCESS;
+//	*subkeyhandle = handle;
+	*status = NDIS_STATUS_FAILURE;
 	TRACEEXIT2(return);
 }
 
@@ -745,7 +745,7 @@ STDCALL NDIS_STATUS WRAP_EXPORT(NdisMPciAssignResources)
 {
 	struct wrap_ndis_device *wnd = nmb->wnd;
 
-	TRACEENTER2("%p", wnd);
+	TRACEENTER2("%p, %p", wnd, wnd->wd->resource_list);
 	*resources = &wnd->wd->resource_list->list->partial_resource_list;
 	TRACEEXIT2(return NDIS_STATUS_SUCCESS);
 }
@@ -842,6 +842,9 @@ STDCALL NDIS_STATUS WRAP_EXPORT(NdisMAllocateMapRegisters)
 {
 	struct wrap_ndis_device *wnd = nmb->wnd;
 	TRACEENTER2("%d %d %d %d", dmachan, dmasize, basemap, max_buf_size);
+
+	if (max_buf_size > PAGE_SIZE)
+		WARNING("buffer size too big: %d", max_buf_size);
 
 //	if (basemap > 64)
 //		return NDIS_STATUS_RESOURCES;
@@ -1107,7 +1110,7 @@ STDCALL void WRAP_EXPORT(NdisQueryBuffer)
 	if (virt)
 		*virt = MmGetSystemAddressForMdl(buffer);
 	*length = MmGetMdlByteCount(buffer);
-	DBGTRACE4("%p, %u", *virt, *length);
+	DBGTRACE4("%u", *length);
 	TRACEEXIT4(return);
 }
 
@@ -1117,9 +1120,10 @@ STDCALL void WRAP_EXPORT(NdisQueryBufferSafe)
 {
 	TRACEENTER4("%p, %p, %p, %d", buffer, virt, length, priority);
 	if (virt)
-		*virt = MmGetSystemAddressForMdlSafe(buffer, priority);
+		*virt = MmGetSystemAddressForMdl(buffer);
 	*length = MmGetMdlByteCount(buffer);
-	DBGTRACE4("%p, %u", *virt, *length);
+	DBGTRACE4("%u", *length);
+	TRACEEXIT4(return);
 }
 
 STDCALL void *WRAP_EXPORT(NdisBufferVirtualAddress)
@@ -1576,7 +1580,7 @@ STDCALL void WRAP_EXPORT(NdisSend)
 			*status = oob_data->status;
 			switch (*status) {
 			case NDIS_STATUS_SUCCESS:
-				sendpacket_done(wnd, packet);
+				send_packet_done(wnd, packet, *status);
 				break;
 			case NDIS_STATUS_PENDING:
 				break;
@@ -1585,6 +1589,7 @@ STDCALL void WRAP_EXPORT(NdisSend)
 				break;
 			case NDIS_STATUS_FAILURE:
 			default:
+				send_packet_done(wnd, packet, *status);
 				break;
 			}
 		} else {
@@ -1597,7 +1602,7 @@ STDCALL void WRAP_EXPORT(NdisSend)
 		lower_irql(irql);
 		switch (*status) {
 		case NDIS_STATUS_SUCCESS:
-			sendpacket_done(wnd, packet);
+			send_packet_done(wnd, packet, *status);
 			break;
 		case NDIS_STATUS_PENDING:
 			break;
@@ -1605,6 +1610,8 @@ STDCALL void WRAP_EXPORT(NdisSend)
 			wnd->send_ok = 0;
 			break;
 		case NDIS_STATUS_FAILURE:
+		default:
+			send_packet_done(wnd, packet, *status);
 			break;
 		}
 	}
@@ -1984,9 +1991,9 @@ STDCALL void WRAP_EXPORT(NdisMIndicateStatusComplete)
 {
 	struct wrap_ndis_device *wnd = nmb->wnd;
 	TRACEENTER2("%p", wnd);
-	schedule_work(&wnd->wrap_ndis_worker);
+	schedule_ndis_work(&wnd->wrap_ndis_worker);
 	if (wnd->send_ok)
-		schedule_work(&wnd->xmit_work);
+		schedule_ndis_work(&wnd->xmit_work);
 }
 
 STDCALL void return_packet(void *arg1, void *arg2)
@@ -2012,7 +2019,7 @@ STDCALL void
 NdisMIndicateReceivePacket(struct ndis_miniport_block *nmb,
 			   struct ndis_packet **packets, UINT nr_packets)
 {
-	struct wrap_ndis_device *wnd = nmb->wnd;
+	struct wrap_ndis_device *wnd;
 	ndis_buffer *buffer;
 	struct ndis_packet *packet;
 	struct sk_buff *skb;
@@ -2020,7 +2027,8 @@ NdisMIndicateReceivePacket(struct ndis_miniport_block *nmb,
 	struct ndis_packet_oob_data *oob_data;
 	void *virt;
 
-	TRACEENTER3("%d", nr_packets);
+	TRACEENTER3("%p, %d", nmb, nr_packets);
+	wnd = nmb->wnd;
 	for (i = 0; i < nr_packets; i++) {
 		packet = packets[i];
 		if (!packet) {
@@ -2094,13 +2102,13 @@ NdisMSendComplete(struct ndis_miniport_block *nmb, struct ndis_packet *packet,
 {
 	struct wrap_ndis_device *wnd = nmb->wnd;
 	TRACEENTER3("%p, %08x", packet, status);
-	sendpacket_done(wnd, packet);
+	send_packet_done(wnd, packet, status);
 	/* In case a serialized driver has requested a pause by returning
 	 * NDIS_STATUS_RESOURCES we need to give the send-code a kick again.
 	 */
 	if (wnd->send_ok == 0) {
 		wnd->send_ok = 1;
-		schedule_work(&wnd->xmit_work);
+		schedule_ndis_work(&wnd->xmit_work);
 	}
 	TRACEEXIT3(return);
 }
@@ -2124,7 +2132,7 @@ NdisMSendResourcesAvailable(struct ndis_miniport_block *nmb)
 	   so wait for a while before sending the packet again */
 	mdelay(5);
 	wnd->send_ok = 1;
-	schedule_work(&wnd->xmit_work);
+	schedule_ndis_work(&wnd->xmit_work);
 	TRACEEXIT3(return);
 }
 
@@ -2179,7 +2187,7 @@ EthRxIndicateHandler(struct ndis_miniport_block *nmb, void *rx_ctx,
 			if (skb) {
 				memcpy(skb_put(skb, header_size), header,
 				       header_size);
-				memcpy(skb_put(skb, look_ahead_size), 
+				memcpy(skb_put(skb, look_ahead_size),
 				       look_ahead, look_ahead_size);
 				buffer = packet->private.buffer_head;
 				while (buffer) {
@@ -2411,10 +2419,10 @@ STDCALL struct nt_list *WRAP_EXPORT(NdisInterlockedRemoveHeadList)
 }
 
 STDCALL NDIS_STATUS WRAP_EXPORT(NdisMInitializeScatterGatherDma)
-	(struct ndis_miniport_block *nmb, UCHAR dma_size, ULONG max_phy_map)
+	(struct ndis_miniport_block *nmb, BOOLEAN dma_size, ULONG max_phy_map)
 {
 	struct wrap_ndis_device *wnd = nmb->wnd;
-	TRACEENTER2("dma_size=%d, maxtransfer=%u", dma_size, max_phy_map);
+	INFO("dma_size=%d, maxtransfer=%u", dma_size, max_phy_map);
 #ifdef CONFIG_X86_64
 	if (dma_size != NDIS_DMA_64BITS)
 		ERROR("DMA size is not 64-bits");
@@ -2494,14 +2502,12 @@ NdisMResetComplete(struct ndis_miniport_block *nmb, NDIS_STATUS status,
 }
 
 STDCALL NDIS_STATUS WRAP_EXPORT(NdisScheduleWorkItem)
-	(struct ndis_sched_work_item *ndis_sched_work_item)
+	(struct ndis_work_item *ndis_work_item)
 {
-	TRACEENTER3("%p", ndis_sched_work_item);
-	schedule_wrap_work_item(ndis_sched_work_item->func,
-				ndis_sched_work_item,
-				ndis_sched_work_item->ctx, TRUE);
-
-	TRACEEXIT3(return NDIS_STATUS_SUCCESS);
+	TRACEENTER2("%p", ndis_work_item);
+	schedule_wrap_work_item(ndis_work_item->func, ndis_work_item,
+				ndis_work_item->ctx, TRUE);
+	TRACEEXIT2(return NDIS_STATUS_SUCCESS);
 }
 
 STDCALL void WRAP_EXPORT(NdisMGetDeviceProperty)
@@ -2589,5 +2595,20 @@ void init_nmb_functions(struct ndis_miniport_block *nmb)
 	nmb->eth_rx_indicate = WRAP_FUNC_PTR(EthRxIndicateHandler);
 	nmb->eth_rx_complete = WRAP_FUNC_PTR(EthRxComplete);
 	nmb->td_complete = WRAP_FUNC_PTR(NdisMTransferDataComplete);
+
+	/* TODO: setup pointers to
+
+	   NdisMWanSendComplete
+	   NdisMWanIndicateReceive
+	   NdisMWanIndicateReceiveComplete
+	   
+	   NdisMTrIndicateReceive
+	   NdisMTrIndicateReceiveComplete
+
+	   NdisMFddiIndicateReceive
+	   NdisMFddiIndicateReceiveComplete
+	   NdisMArcIndicateReceive
+	   NdisMArcIndicateReceiveComplete
+	 */
 }
 

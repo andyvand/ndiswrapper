@@ -27,7 +27,8 @@
  * maximum range used by a driver is CACHE_MDL_PAGES; if a driver
  * requests an MDL for a bigger region, we allocate it with kmalloc;
  * otherwise, we allocate from the pool */
-#define CACHE_MDL_PAGES 2
+
+#define CACHE_MDL_PAGES 3
 #define CACHE_MDL_SIZE (sizeof(struct mdl) + \
 			(sizeof(PFN_NUMBER) * CACHE_MDL_PAGES))
 struct wrap_mdl {
@@ -791,7 +792,7 @@ static BOOLEAN queue_kdpc(struct kdpc *kdpc)
 	}
 	nt_spin_unlock_irql(&kdpc_list_lock, irql);
 	if (ret == TRUE)
-		schedule_work(&kdpc_work);
+		schedule_wrap_work(&kdpc_work);
 	TRACEEXIT5(return ret);
 }
 
@@ -854,8 +855,6 @@ static void wrap_work_item_worker(void *data)
 		wrap_work_item = container_of(cur, struct wrap_work_item,
 					      list);
 		func = wrap_work_item->func;
-		DBGTRACE4("%p, %p, %p", func, wrap_work_item->arg1,
-			  wrap_work_item->arg2);
 		if (wrap_work_item->win_func == TRUE)
 			LIN2WIN2(func, wrap_work_item->arg1,
 				 wrap_work_item->arg2);
@@ -884,7 +883,7 @@ int schedule_wrap_work_item(WRAP_WORK_FUNC func, void *arg1, void *arg2,
 	irql = nt_spin_lock_irql(&wrap_work_item_list_lock, DISPATCH_LEVEL);
 	InsertTailList(&wrap_work_item_list, &wrap_work_item->list);
 	nt_spin_unlock_irql(&wrap_work_item_list_lock, irql);
-	schedule_work(&wrap_work_item_work);
+	schedule_wrap_work(&wrap_work_item_work);
 	return 0;
 }
 
@@ -1038,7 +1037,7 @@ STDCALL void *WRAP_EXPORT(ExAllocatePoolWithTag)
 			      "atomic context", size);
 		addr = vmalloc(size);
 	}
-	DBGTRACE4("addr: %p", addr);
+	DBGTRACE4("addr: %p, %lu", addr, size);
 	TRACEEXIT4(return addr);
 }
 
@@ -1984,8 +1983,8 @@ STDCALL void WRAP_EXPORT(MmUnmapIoSpace)
 STDCALL ULONG WRAP_EXPORT(MmSizeOfMdl)
 	(void *base, ULONG length)
 {
-	return sizeof(struct mdl) +
-		(sizeof(PFN_NUMBER) * SPAN_PAGES(base, length));
+	return (sizeof(struct mdl) +
+		(sizeof(PFN_NUMBER) * SPAN_PAGES(base, length)));
 }
 
 struct mdl *allocate_init_mdl(void *virt, ULONG length)
@@ -2010,7 +2009,8 @@ struct mdl *allocate_init_mdl(void *virt, ULONG length)
 		InsertHeadList(&wrap_mdl_list, &wrap_mdl->list);
 		nt_spin_unlock_irql(&ntoskernel_lock, irql);
 		mdl = (struct mdl *)wrap_mdl->mdl;
-		DBGTRACE3("allocated mdl cache: %p(%p)", wrap_mdl, mdl);
+		DBGTRACE3("allocated mdl cache: %p(%p), %p(%d)",
+			  wrap_mdl, mdl, virt, length);
 		memset(mdl, 0, CACHE_MDL_SIZE);
 		MmInitializeMdl(mdl, virt, length);
 		/* mark the MDL as allocated from cache pool so when
@@ -2023,7 +2023,8 @@ struct mdl *allocate_init_mdl(void *virt, ULONG length)
 		if (!wrap_mdl)
 			return NULL;
 		mdl = (struct mdl *)wrap_mdl->mdl;
-		DBGTRACE3("allocated mdl: %p (%p)", wrap_mdl, mdl);
+		DBGTRACE3("allocated mdl cache: %p(%p), %p(%d)",
+			  wrap_mdl, mdl, virt, length);
 		irql = nt_spin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL);
 		InsertHeadList(&wrap_mdl_list, &wrap_mdl->list);
 		nt_spin_unlock_irql(&ntoskernel_lock, irql);
@@ -2055,12 +2056,12 @@ void free_mdl(struct mdl *mdl)
 		nt_spin_unlock_irql(&ntoskernel_lock, irql);
 
 		if (mdl->flags & MDL_CACHE_ALLOCATED) {
-			DBGTRACE3("freeing mdl cache: %p (%hu)",
-				  wrap_mdl, mdl->flags);
+			DBGTRACE3("freeing mdl cache: %p, %p, %p",
+				  wrap_mdl, mdl, mdl->mappedsystemva);
 			kmem_cache_free(mdl_cache, wrap_mdl);
 		} else {
-			DBGTRACE3("freeing mdl: %p (%hu)",
-				  wrap_mdl, mdl->flags);
+			DBGTRACE3("freeing mdl: %p, %p, %p",
+				  wrap_mdl, mdl, mdl->mappedsystemva);
 			kfree(wrap_mdl);
 		}
 	}
@@ -2079,18 +2080,28 @@ STDCALL void WRAP_EXPORT(IoBuildPartialMdl)
 STDCALL void WRAP_EXPORT(MmBuildMdlForNonPagedPool)
 	(struct mdl *mdl)
 {
-	PFN_NUMBER *mdl_pages, start_pfn;
-	int i, n;
-
+	TRACEENTER4("%p", mdl);
 	mdl->flags |= MDL_SOURCE_IS_NONPAGED_POOL;
 	MmGetSystemAddressForMdl(mdl) = MmGetMdlVirtualAddress(mdl);
+	DBGTRACE4("%p, %p, %p, %d, %d", mdl, mdl->mappedsystemva, mdl->startva,
+		  mdl->byteoffset, mdl->bytecount);
+#if 0
+	{
+	PFN_NUMBER *mdl_pages;
+	int i, n;
+	void *start;
+
 	n = SPAN_PAGES(MmGetSystemAddressForMdl(mdl), MmGetMdlByteCount(mdl));
+	if (n > CACHE_MDL_PAGES)
+		WARNING("%p, %d, %d", MmGetSystemAddressForMdl(mdl),
+			MmGetMdlByteCount(mdl), n);
 	mdl_pages = MmGetMdlPfnArray(mdl);
-	/* the buffer is allocated in one chunk, so pages must be
-	 * consecutive */
-	start_pfn = page_to_pfn(virt_to_page(MmGetSystemAddressForMdl(mdl)));
+	start = MmGetSystemAddressForMdl(mdl);
 	for (i = 0; i < n; i++)
-		mdl_pages[i] =  start_pfn + i * PAGE_SIZE;
+		mdl_pages[i] =
+			page_to_pfn(virt_to_page(start + i * PAGE_SIZE));
+	}
+#endif
 	return;
 }
 

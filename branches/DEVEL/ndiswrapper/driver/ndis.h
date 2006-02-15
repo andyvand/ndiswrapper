@@ -119,11 +119,6 @@ struct ndis_packet_oob_data {
 	unsigned int sg_ents;
 	struct ndis_sg_list ndis_sg_list;
 	struct ndis_sg_element *ndis_sg_elements;
-	/* RTL8180L overshoots past ndis_eg_elements (during
-	 * MiniportSendPackets) and overwrites what is below, if SG
-	 * DMA is used, so don't use ndis_sg_element in that
-	 * case. This structure is used only when SG is disabled */
-	struct ndis_sg_element ndis_sg_element;
 
 	unsigned char header[ETH_HLEN];
 	unsigned char *look_ahead;
@@ -336,25 +331,14 @@ struct ndis_rw_lock {
 	union ndis_rw_lock_refcount ref_count[MAXIMUM_PROCESSORS];
 };
 
-struct ndis_sched_work_item {
-	void *ctx;
-	WRAP_WORK_FUNC func;
-	UCHAR reserved[8 * sizeof(void *)];
-};
-
-struct ndis_alloc_mem_work_item {
-	unsigned long size;
-	char cached;
-	void *ctx;
-};
-
-struct ndis_free_mem_work_item {
-	void *addr;
-};
+struct ndis_work_item;
+typedef void (*NDIS_PROC)(struct ndis_work_item *, void *) STDCALL;
 
 struct ndis_work_item {
-	void *context;
-	void *routine;
+	void *ctx;
+	/* this should be NDIS_PROC, but we masquerade it as
+	 * WRAP_WORK_FUNC so we can use wrap_worker */
+	WRAP_WORK_FUNC func;
 	UCHAR reserved[8 * sizeof(void *)];
 };
 

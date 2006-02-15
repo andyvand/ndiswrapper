@@ -21,31 +21,19 @@
 
 extern NT_SPIN_LOCK ntoskernel_lock;
 extern NT_SPIN_LOCK loader_lock;
-extern NT_SPIN_LOCK irp_cancel_lock;
 extern struct nt_list object_list;
 
 extern NT_SPIN_LOCK irp_cancel_lock;
 
-static unsigned long irp_cancel_irq_flags;
-
-/* urb completion callback, wrap_urb_complete is called from
- * interrupt. There, we use Io(Acquire/Release)CancelSpinLock. To
- * prevent deadlocks, we need to use nt_spin_lock_irqsave and
- * nt_spin_unlock_irqrestore; KIRQL is not big enough to hold irq
- * flags */
 STDCALL void WRAP_EXPORT(IoAcquireCancelSpinLock)
 	(KIRQL *irql)
 {
-//	nt_spin_lock_irqsave(&irp_cancel_lock, irp_cancel_irq_flags);
-	*irql = nt_spin_lock_irql(&irp_cancel_lock, DEVICE_LEVEL);
-//	INFO("irql: %d(%d)", *irql, current_irql());
+	*irql = nt_spin_lock_irql(&irp_cancel_lock, DISPATCH_LEVEL);
 }
 
 STDCALL void WRAP_EXPORT(IoReleaseCancelSpinLock)
 	(KIRQL irql)
 {
-//	nt_spin_unlock_irqrestore(&irp_cancel_lock, irp_cancel_irq_flags);
-//	INFO("irql: %d(%d)", irql, current_irql());
 	nt_spin_unlock_irql(&irp_cancel_lock, irql);
 }
 
@@ -56,76 +44,37 @@ STDCALL NTSTATUS WRAP_EXPORT(IoGetDeviceProperty)
 {
 	struct ansi_string ansi;
 	struct unicode_string unicode;
-	char buf[32];
-	int devnum = 1;
+	struct wrap_device *wd;
+	ULONG need;
 
 	IOENTER("dev_obj = %p, dev_property = %d, buffer_len = %u, "
 		"buffer = %p, result_len = %p", pdo, dev_property,
 		buffer_len, buffer, result_len);
 
+	wd = pdo->reserved;
 	switch (dev_property) {
 	case DevicePropertyDeviceDescription:
-		if (buffer_len > 0 && buffer) {
-			*result_len = sizeof(int);
-			memset(buffer, 0xFF, *result_len);
-			IOEXIT(return STATUS_SUCCESS);
-		} else {
-			*result_len = sizeof(int);
-			IOEXIT(return STATUS_SUCCESS);
-		}
-		break;
-
 	case DevicePropertyFriendlyName:
-		if (buffer_len > 0 && buffer) {
-			ansi.length = snprintf(buf, sizeof(buf), "%d", devnum);
-			if (ansi.length <= 0) {
-				*result_len = 0;
-				IOEXIT(return STATUS_BUFFER_TOO_SMALL);
-			}
-			ansi.buf = buf;
-			ansi.max_length = ansi.length + 1;
-			unicode.buf = buffer;
-			unicode.max_length = buffer_len;
-			IOTRACE("unicode.length = %d, ansi.max_length = %d",
-				unicode.length, ansi.max_length);
-			if (RtlAnsiStringToUnicodeString(&unicode, &ansi,
-							 FALSE)) {
-				*result_len = 0;
-				IOEXIT(return STATUS_BUFFER_TOO_SMALL);
-			} else {
-				*result_len = unicode.max_length;
-				IOEXIT(return STATUS_SUCCESS);
-			}
-		} else {
-			ansi.max_length =
-				snprintf(buf, sizeof(buf), "%d", devnum);
-			*result_len = 2 * (ansi.max_length + 1);
+	case DevicePropertyDriverKeyName:
+		need = sizeof(wchar_t) * (strlen("PCI device") + 5);
+		if (buffer_len < need) {
+			*result_len = need;
 			IOEXIT(return STATUS_BUFFER_TOO_SMALL);
 		}
-		break;
-
-	case DevicePropertyDriverKeyName:
-//		ansi.buf = wd->driver->name;
-		ansi.buf = buf;
-		ansi.length = strlen(ansi.buf);
-		ansi.max_length = ansi.length + 1;
-		if (buffer_len > 0 && buffer) {
-			unicode.buf = buffer;
-			unicode.length = buffer_len;
-			if (RtlAnsiStringToUnicodeString(&unicode, &ansi,
-							 FALSE)) {
-				*result_len = 0;
-				IOEXIT(return STATUS_BUFFER_TOO_SMALL);
-			} else {
-				*result_len = unicode.max_length;
-				IOEXIT(return STATUS_SUCCESS);
-			}
-		} else {
-				*result_len = 2 * (strlen(buf) + 1);
-				IOEXIT(return STATUS_SUCCESS);
+		if (wrap_is_pci_bus(wd->dev_bus_type))
+			RtlInitAnsiString(&ansi, "PCI device");
+		else // if (wrap_is_usb_bus(wd->dev_bus_type))
+			RtlInitAnsiString(&ansi, "USB device");
+		unicode.max_length = buffer_len;
+		unicode.buf = buffer;
+		if (RtlAnsiStringToUnicodeString(&unicode, &ansi,
+						 FALSE) != STATUS_SUCCESS) {
+			*result_len = need;
+			IOEXIT(return STATUS_BUFFER_TOO_SMALL);
 		}
-		break;
+		IOEXIT(return STATUS_SUCCESS);
 	default:
+		WARNING("%d not implemented", dev_property);
 		IOEXIT(return STATUS_INVALID_PARAMETER_2);
 	}
 }
@@ -153,15 +102,17 @@ STDCALL BOOLEAN WRAP_EXPORT(IoIs32bitProcess)
 }
 
 STDCALL void WRAP_EXPORT(IoInitializeIrp)
-	(struct irp *irp, USHORT size, CCHAR stack_size)
+	(struct irp *irp, USHORT size, CCHAR stack_count)
 {
-	IOENTER("irp: %p, stack_size: %d", irp, stack_size);
+	IOENTER("irp: %p, stack_count: %d", irp, stack_count);
 
 	memset(irp, 0, size);
 	irp->size = size;
-	irp->stack_count = stack_size;
-	irp->current_location = stack_size + 1;
-	IoGetCurrentIrpStackLocation(irp) = IRP_SL(irp, (stack_size + 1));
+	irp->stack_count = stack_count;
+	/* IoAllocateIrp allocates space for one more than requested
+	 * stack_count */
+	irp->current_location = stack_count + 1;
+	IoGetCurrentIrpStackLocation(irp) = IRP_SL(irp, stack_count + 1);
 	IOEXIT(return);
 }
 
@@ -181,18 +132,20 @@ STDCALL void WRAP_EXPORT(IoReuseIrp)
 }
 
 STDCALL struct irp *WRAP_EXPORT(IoAllocateIrp)
-	(char stack_size, BOOLEAN charge_quota)
+	(char stack_count, BOOLEAN charge_quota)
 {
 	struct irp *irp;
 	int irp_size;
 
-	IOENTER("stack_size: %d, charge_quota: %d", stack_size, charge_quota);
-
-	irp_size = IoSizeOfIrp(stack_size + 1);
+	IOENTER("count: %d, quota: %d", stack_count, charge_quota);
+	/* driver need not allocate stack location for itself, but we
+	 * need to allocate space for it so that driver can set major
+	 * function etc. even if stack_count is 0 */
+	irp_size = IoSizeOfIrp(stack_count + 1);
 	irp = kmalloc(irp_size, GFP_ATOMIC);
 	if (irp) {
 		IOTRACE("allocated irp %p", irp);
-		IoInitializeIrp(irp, irp_size, stack_size);
+		IoInitializeIrp(irp, irp_size, stack_count);
 	}
 	IOEXIT(return irp);
 }
@@ -200,7 +153,7 @@ STDCALL struct irp *WRAP_EXPORT(IoAllocateIrp)
 STDCALL BOOLEAN WRAP_EXPORT(IoCancelIrp)
 	(struct irp *irp)
 {
-	void (*cancel_routine)(struct device_object *, struct irp *) STDCALL;
+	typeof(irp->cancel_routine) cancel_routine;
 
 	/* NB: this function may be called at DISPATCH_LEVEL */
 	IOENTER("irp = %p", irp);
@@ -210,6 +163,7 @@ STDCALL BOOLEAN WRAP_EXPORT(IoCancelIrp)
 	DUMP_IRP(irp);
 	IoAcquireCancelSpinLock(&irp->cancel_irql);
 	cancel_routine = irp->cancel_routine;
+	IOTRACE("%p", cancel_routine);
 	irp->cancel_routine = NULL;
 	irp->cancel = TRUE;
 	if (cancel_routine) {
@@ -217,9 +171,10 @@ STDCALL BOOLEAN WRAP_EXPORT(IoCancelIrp)
 
 		irp_sl = IoGetCurrentIrpStackLocation(irp);
 		/* cancel_routine will release the spin lock */
-		cancel_routine(irp_sl->dev_obj, irp);
+		LIN2WIN2(cancel_routine, irp_sl->dev_obj, irp);
 		IOEXIT(return TRUE);
 	} else {
+		IOTRACE("irp %p not canceled", irp);
 		IoReleaseCancelSpinLock(irp->cancel_irql);
 		IOEXIT(return FALSE);
 	}
@@ -271,8 +226,7 @@ STDCALL void WRAP_EXPORT(IoFreeIrp)
 
 STDCALL struct irp *WRAP_EXPORT(IoBuildAsynchronousFsdRequest)
 	(ULONG major_fn, struct device_object *dev_obj, void *buffer,
-	 ULONG length, LARGE_INTEGER *offset,
-	 struct io_status_block *status)
+	 ULONG length, LARGE_INTEGER *offset, struct io_status_block *status)
 {
 	struct irp *irp;
 	struct io_stack_location *irp_sl;
@@ -280,7 +234,7 @@ STDCALL struct irp *WRAP_EXPORT(IoBuildAsynchronousFsdRequest)
 	IOENTER("%p", dev_obj);
 	if (!dev_obj)
 		IOEXIT(return NULL);
-	irp = IoAllocateIrp(dev_obj->stack_size, FALSE);
+	irp = IoAllocateIrp(dev_obj->stack_count, FALSE);
 	if (irp == NULL)
 		IOEXIT(return NULL);
 
@@ -295,24 +249,20 @@ STDCALL struct irp *WRAP_EXPORT(IoBuildAsynchronousFsdRequest)
 	irp_sl->completion_routine = NULL;
 
 	if (dev_obj->flags & DO_DIRECT_IO) {
-		IOTRACE("irp %p with DO_DIRECT_IO", irp);
 		irp->mdl = IoAllocateMdl(buffer, length, FALSE, FALSE, irp);
 		if (irp->mdl == NULL) {
 			IoFreeIrp(irp);
 			return NULL;
 		}
+		MmProbeAndLockPages(irp->mdl, KernelMode,
+				    major_fn == IRP_MJ_WRITE ?
+				    IoReadAccess : IoWriteAccess);
+		IOTRACE("mdl: %p", irp->mdl);
 	} else if (dev_obj->flags & DO_BUFFERED_IO) {
-		IOTRACE("irp %p with DO_BUFFERED_IO", irp);
-		irp->associated_irp.system_buffer =
-			ExAllocatePoolWithTag(NonPagedPool, length, 0);
-		if (irp->associated_irp.system_buffer == NULL) {
-			IoFreeIrp(irp);
-			return NULL;
-		}
-		irp->flags |= IRP_ASSOCIATED_IRP;
-		memcpy(irp->associated_irp.system_buffer, buffer, length);
-		irp->user_status = status;
-		irp->user_buf = buffer;
+		irp->associated_irp.system_buffer = buffer;
+		irp->flags = IRP_BUFFERED_IO;
+		irp->mdl = NULL;
+		IOTRACE("buffer: %p", buffer);
 	}
 	if (major_fn == IRP_MJ_READ) {
 		irp_sl->params.read.length = length;
@@ -353,7 +303,7 @@ STDCALL struct irp *WRAP_EXPORT(IoBuildDeviceIoControlRequest)
 	IOENTER("%p", dev_obj);
 	if (!dev_obj)
 		IOEXIT(return NULL);
-	irp = IoAllocateIrp(dev_obj->stack_size, FALSE);
+	irp = IoAllocateIrp(dev_obj->stack_count, FALSE);
 	if (irp) {
 		irp->user_status = io_status;
 		irp->user_event = event;
@@ -382,7 +332,7 @@ _FASTCALL NTSTATUS WRAP_EXPORT(IofCallDriver)
 	(FASTCALL_DECL_2(struct device_object *dev_obj, struct irp *irp))
 {
 	struct io_stack_location *irp_sl;
-	NTSTATUS res;
+	NTSTATUS status;
 	driver_dispatch_t *major_func;
 	struct driver_object *drv_obj;
 
@@ -394,20 +344,21 @@ _FASTCALL NTSTATUS WRAP_EXPORT(IofCallDriver)
 	IOTRACE("drv_obj: %p", drv_obj);
 	major_func = drv_obj->major_func[irp_sl->major_fn];
 	IOTRACE("major_func: %p, dev_obj: %p", major_func, dev_obj);
+	/* TODO: Linux functions must be called natively */
 	if (major_func)
-		res = (*major_func)(dev_obj, irp);
+		status = LIN2WIN2(major_func, dev_obj, irp);
 	else {
 		ERROR("major_function %d is not implemented",
 		      irp_sl->major_fn);
-		res = STATUS_NOT_SUPPORTED;
+		status = STATUS_NOT_SUPPORTED;
 	}
-	IOEXIT(return res);
+	IOEXIT(return status);
 }
 
 _FASTCALL void WRAP_EXPORT(IofCompleteRequest)
 	(FASTCALL_DECL_2(struct irp *irp, CHAR prio_boost))
 {
-	NTSTATUS res;
+	NTSTATUS status;
 	struct io_stack_location *irp_sl;
 	struct mdl *mdl;
 
@@ -422,18 +373,20 @@ _FASTCALL void WRAP_EXPORT(IofCompleteRequest)
 		return;
 	}
 #endif
-	irp_sl = IoGetCurrentIrpStackLocation(irp);
-	/* completion routines expect current stack location to match
-	 * with what was set through IoSetCompletionRoutine, which
-	 * sets completion routine at next (higher) location, so we
-	 * skip current location and continue past stack size */
-	IoSkipCurrentIrpStackLocation(irp);
-
-	while (irp->current_location <= (irp->stack_count + 1)) {
+	for (irp_sl = IoGetCurrentIrpStackLocation(irp);
+	     irp->current_location <= irp->stack_count; irp_sl++) {
 		struct device_object *dev_obj;
 
 		if (irp_sl->control & SL_PENDING_RETURNED)
 			irp->pending_returned = TRUE;
+
+		/* current_location and dev_obj must be same as when
+		 * driver called IoSetCompletionRoutine, which sets
+		 * completion routine at next (lower) location, which
+		 * is what we are going to call below; so we set
+		 * current_location and dev_obj for the previous
+		 * (higher) location */
+		IoSkipCurrentIrpStackLocation(irp);
 
 		if (irp->current_location <= irp->stack_count)
 			dev_obj = IoGetCurrentIrpStackLocation(irp)->dev_obj;
@@ -442,24 +395,24 @@ _FASTCALL void WRAP_EXPORT(IofCompleteRequest)
 
 		if (irp_sl->completion_routine &&
 		    ((irp->io_status.status == STATUS_SUCCESS &&
-		       irp_sl->control & CALL_ON_SUCCESS) ||
+		       irp_sl->control & SL_INVOKE_ON_SUCCESS) ||
 		      (irp->io_status.status != STATUS_SUCCESS &&
-		       irp_sl->control & CALL_ON_ERROR) ||
-		      (irp->cancel && (irp_sl->control & CALL_ON_CANCEL)))) {
-			IOTRACE("calling completion_routine at: %p",
-				irp_sl->completion_routine);
-			res = LIN2WIN3(irp_sl->completion_routine, dev_obj,
-				       irp, irp_sl->context);
-			if (res == STATUS_MORE_PROCESSING_REQUIRED)
+		       irp_sl->control & SL_INVOKE_ON_ERROR) ||
+		      (irp->cancel == TRUE &&
+		       irp_sl->control & SL_INVOKE_ON_CANCEL))) {
+			IOTRACE("calling completion_routine at: %p, %p",
+				irp_sl->completion_routine, irp_sl->context);
+			status = LIN2WIN3(irp_sl->completion_routine,
+					  dev_obj, irp, irp_sl->context);
+			if (status == STATUS_MORE_PROCESSING_REQUIRED)
 				IOEXIT(return);
 			IOTRACE("completion routine returned");
 		} else {
+			/* propagate pending status to next irp_sl */
 			if (irp->current_location <= irp->stack_count &&
-			    irp->pending_returned)
+			    irp->pending_returned == TRUE)
 				IoMarkIrpPending(irp);
 		}
-		IoSkipCurrentIrpStackLocation(irp);
-		irp_sl++;
 	}
 
 	if (irp->user_status) {
@@ -471,14 +424,19 @@ _FASTCALL void WRAP_EXPORT(IofCompleteRequest)
 		IOTRACE("setting event %p", irp->user_event);
 		KeSetEvent(irp->user_event, prio_boost, FALSE);
 	}
+	IOTRACE("%p", irp->mdl);
 
 	IOTRACE("freeing irp %p", irp);
-	while ((mdl = irp->mdl)) {
-		irp->mdl = mdl->next;
-		IoFreeMdl(mdl);
-	}
-	if (irp->flags & IRP_DEALLOCATE_BUFFER)
+	if (irp->associated_irp.system_buffer &&
+	    (irp->flags & IRP_DEALLOCATE_BUFFER))
 		ExFreePool(irp->associated_irp.system_buffer);
+	else {
+		while ((mdl = irp->mdl)) {
+			irp->mdl = mdl->next;
+			MmUnlockPages(mdl);
+			IoFreeMdl(mdl);
+		}
+	}
 	IoFreeIrp(irp);
 	IOEXIT(return);
 }
@@ -488,22 +446,15 @@ static irqreturn_t io_irq_th(int irq, void *data, struct pt_regs *pt_regs)
 	struct kinterrupt *interrupt = (struct kinterrupt *)data;
 	NT_SPIN_LOCK *spinlock;
 	BOOLEAN ret;
-	KIRQL irql = PASSIVE_LEVEL;
 
 	if (interrupt->actual_lock)
 		spinlock = interrupt->actual_lock;
 	else
 		spinlock = &interrupt->lock;
-	if (interrupt->synch_irql >= DISPATCH_LEVEL)
-		irql = nt_spin_lock_irql(spinlock, DISPATCH_LEVEL);
-	else
-		nt_spin_lock(spinlock);
-	ret = interrupt->service_routine(interrupt,
-					 interrupt->service_context);
-	if (interrupt->synch_irql >= DISPATCH_LEVEL)
-		nt_spin_unlock_irql(spinlock, irql);
-	else
-		nt_spin_unlock(spinlock);
+	nt_spin_lock(spinlock);
+	ret = LIN2WIN2(interrupt->service_routine, interrupt,
+		       interrupt->service_context);
+	nt_spin_unlock(spinlock);
 
 	if (ret == TRUE)
 		return IRQ_HANDLED;
@@ -529,11 +480,7 @@ STDCALL NTSTATUS WRAP_EXPORT(IoConnectInterrupt)
 	interrupt->service_routine = service_routine;
 	interrupt->service_context = service_context;
 	InitializeListHead(&interrupt->list);
-	interrupt->irql = irql;
-	if (synch_irql > DISPATCH_LEVEL)
-		interrupt->synch_irql = DISPATCH_LEVEL;
-	else
-		interrupt->synch_irql = synch_irql;
+	interrupt->synch_irql = synch_irql;
 	interrupt->interrupt_mode = interrupt_mode;
 	if (request_irq(vector, io_irq_th, shareable ? SA_SHIRQ : 0,
 			"io_irq", interrupt)) {
@@ -712,7 +659,7 @@ STDCALL NTSTATUS WRAP_EXPORT(IoCreateDevice)
 	dev->size = sizeof(*dev) + dev_ext_length;
 	dev->ref_count = 1;
 	dev->attached = NULL;
-	dev->stack_size = 1;
+	dev->stack_count = 1;
 
 	dev->drv_obj = drv_obj;
 	dev->next = drv_obj->dev_obj;
@@ -745,7 +692,7 @@ STDCALL NTSTATUS WRAP_EXPORT(IoCreateUnprotectedSymbolicLink)
 		IOTRACE("link: %s", ansi.buf);
 		RtlFreeAnsiString(&ansi);
 	}
-	UNIMPL();
+//	UNIMPL();
 	IOEXIT(return STATUS_SUCCESS);
 }
 
@@ -830,16 +777,16 @@ STDCALL struct device_object *WRAP_EXPORT(IoAttachDeviceToDeviceStack)
 
 	IOENTER("%p, %p", src, tgt);
 	dst = IoGetAttachedDevice(tgt);
-	IOTRACE("stack_size: %d -> %d", dst->stack_size, src->stack_size);
+	IOTRACE("stack_count: %d -> %d", dst->stack_count, src->stack_count);
 	IOTRACE("%p", dst);
 	irql = nt_spin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL);
 	if (dst)
 		dst->attached = src;
 	src->attached = NULL;
-	src->stack_size = dst->stack_size + 1;
+	src->stack_count = dst->stack_count + 1;
 //	src->ref_count++;
 	nt_spin_unlock_irql(&ntoskernel_lock, irql);
-	IOTRACE("stack_size: %d -> %d", dst->stack_size, src->stack_size);
+	IOTRACE("stack_count: %d -> %d", dst->stack_count, src->stack_count);
 	IOEXIT(return dst);
 }
 
@@ -862,7 +809,7 @@ STDCALL void WRAP_EXPORT(IoDetachDevice)
 	IOTRACE("attached:%p", topdev->attached);
 	for ( ; tail; tail = tail->attached) {
 		IOTRACE("tail:%p", tail);
-		tail->stack_size--;
+		tail->stack_count--;
 	}
 	nt_spin_unlock_irql(&ntoskernel_lock, irql);
 	IOEXIT(return);
@@ -894,9 +841,9 @@ STDCALL NTSTATUS WRAP_EXPORT(PoRequestPowerIrp)
 	struct irp *irp;
 	struct io_stack_location *irp_sl;
 
-	DBGTRACE1("%p: stack size: %d", dev_obj, dev_obj->stack_size);
+	DBGTRACE1("%p: stack size: %d", dev_obj, dev_obj->stack_count);
 	DBGTRACE1("drv_obj: %p", dev_obj->drv_obj);
-	irp = IoAllocateIrp(dev_obj->stack_size, FALSE);
+	irp = IoAllocateIrp(dev_obj->stack_count, FALSE);
 	if (!irp)
 		return STATUS_INSUFFICIENT_RESOURCES;
 	irp_sl = IoGetNextIrpStackLocation(irp);
@@ -985,7 +932,7 @@ STDCALL unsigned int WRAP_EXPORT(IoWMIRegistrationControl)
 
 	switch (action) {
 	case WMIREG_ACTION_REGISTER:
-		irp = IoAllocateIrp(dev_obj->stack_size, FALSE);
+		irp = IoAllocateIrp(dev_obj->stack_count, FALSE);
 		if (!irp) {
 			ERROR("couldn't allocate irp");
 			return STATUS_INSUFFICIENT_RESOURCES;

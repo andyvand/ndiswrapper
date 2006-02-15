@@ -63,8 +63,8 @@
 #define CONFIG_USB 1
 #endif
 
-#define addr_offset(drvr) (__builtin_return_address(0) - \
-			     (drvr)->drv_obj->driver_start)
+#define addr_offset(drvr) (__builtin_return_address(0) -	\
+			   (drvr)->drv_obj->driver_start)
 
 /* Workqueue / task queue backwards compatibility stuff */
 #if LINUX_VERSION_CODE > KERNEL_VERSION(2,5,41)
@@ -226,34 +226,106 @@ typedef u32 pm_message_t;
 #endif
 
 #ifdef CONFIG_X86_64
-#define LIN2WIN1(func, arg1)			\
-	lin_to_win1(func, (unsigned long)arg1)
+#define LIN2WIN1(func, arg1)						\
+({									\
+	DBGTRACE6("calling %p", func);					\
+	lin_to_win1(func, (unsigned long)arg1);				\
+})
 #define LIN2WIN2(func, arg1, arg2)					\
-	lin_to_win2(func, (unsigned long)arg1, (unsigned long)arg2)
+({									\
+	DBGTRACE6("calling %p", func);					\
+	lin_to_win2(func, (unsigned long)arg1, (unsigned long)arg2);	\
+})
 #define LIN2WIN3(func, arg1, arg2, arg3)				\
+({									\
+	DBGTRACE6("calling %p", func);					\
 	lin_to_win3(func, (unsigned long)arg1, (unsigned long)arg2,	\
-		    (unsigned long)arg3)
+		    (unsigned long)arg3);				\
+})
 #define LIN2WIN4(func, arg1, arg2, arg3, arg4)				\
+({									\
+	DBGTRACE6("calling %p", func);					\
 	lin_to_win4(func, (unsigned long)arg1, (unsigned long)arg2,	\
-		    (unsigned long)arg3, (unsigned long)arg4)
+		    (unsigned long)arg3, (unsigned long)arg4);		\
+})
 #define LIN2WIN5(func, arg1, arg2, arg3, arg4, arg5)			\
+({									\
+	DBGTRACE6("calling %p", func);					\
 	lin_to_win5(func, (unsigned long)arg1, (unsigned long)arg2,	\
 		    (unsigned long)arg3, (unsigned long)arg4,		\
-		    (unsigned long)arg5)
+		    (unsigned long)arg5);				\
+})
 #define LIN2WIN6(func, arg1, arg2, arg3, arg4, arg5, arg6)		\
+({									\
+	DBGTRACE6("calling %p", func);					\
 	lin_to_win6(func, (unsigned long)arg1, (unsigned long)arg2,	\
 		    (unsigned long)arg3, (unsigned long)arg4,		\
-		    (unsigned long)arg5, (unsigned long)arg6)
-#else
-#define LIN2WIN1(func, arg1) func(arg1)
-#define LIN2WIN2(func, arg1, arg2) func(arg1, arg2)
-#define LIN2WIN3(func, arg1, arg2, arg3) func(arg1, arg2, arg3)
-#define LIN2WIN4(func, arg1, arg2, arg3, arg4) func(arg1, arg2, arg3, arg4)
-#define LIN2WIN5(func, arg1, arg2, arg3, arg4, arg5)	\
-	func(arg1, arg2, arg3, arg4, arg5)
-#define LIN2WIN6(func, arg1, arg2, arg3, arg4, arg5, arg6)	\
-	func(arg1, arg2, arg3, arg4, arg5, arg6)
-#endif
+		    (unsigned long)arg5, (unsigned long)arg6);		\
+})
+
+/* NOTE: these macros assume function arguments are quads and
+ * arguments are not touched in any way before calling these macros */
+#define WIN2LIN2(func, arg1, arg2, ret)			\
+do {							\
+	__asm__("mov %rcx, %rdi");			\
+	__asm__("mov %rdx, %rsi");			\
+	__asm__("call *%0" : : "r"(func));		\
+	__asm__("mov %%rax, %0" : "=r"(ret));		\
+} while (0)
+
+#define WIN2LIN3(func, arg1, arg2, arg3, ret)		\
+do {							\
+	__asm__("mov %rcx, %rdi");			\
+	__asm__("mov %rdx, %rsi");			\
+	__asm__("mov %r8, %rdx");			\
+	__asm__("call *%0" : : "r"(func));		\
+	__asm__("mov %%rax, %0" : "=r"(ret));		\
+} while (0)
+
+#else // CONFIG_X86_64
+
+#define LIN2WIN1(func, arg1)						\
+({									\
+	DBGTRACE6("calling %p", func);					\
+	func(arg1);							\
+})
+#define LIN2WIN2(func, arg1, arg2)					\
+({									\
+	DBGTRACE6("calling %p", func);					\
+	func(arg1, arg2);						\
+})
+#define LIN2WIN3(func, arg1, arg2, arg3)				\
+({									\
+	DBGTRACE6("calling %p", func);					\
+	func(arg1, arg2, arg3);						\
+})
+#define LIN2WIN4(func, arg1, arg2, arg3, arg4)				\
+({									\
+	DBGTRACE6("calling %p", func);					\
+	func(arg1, arg2, arg3, arg4);					\
+})
+#define LIN2WIN5(func, arg1, arg2, arg3, arg4, arg5)			\
+({									\
+	DBGTRACE6("calling %p", func);					\
+	func(arg1, arg2, arg3, arg4, arg5);				\
+})
+#define LIN2WIN6(func, arg1, arg2, arg3, arg4, arg5, arg6)		\
+({									\
+	DBGTRACE6("calling %p", func);					\
+	func(arg1, arg2, arg3, arg4, arg5, arg6);			\
+})
+
+#define WIN2LIN2(func, arg1, arg2, ret)		\
+do {						\
+	ret = func(arg1, arg2);			\
+} while (0)
+
+#define WIN2LIN3(func, arg1, arg2, arg3, ret)	\
+do {						\
+	ret = func(arg1, arg2, arg3);		\
+} while (0)
+
+#endif // CONFIG_X86_64
 
 #ifndef __wait_event_interruptible_timeout
 #define __wait_event_interruptible_timeout(wq, condition, ret)		\
@@ -479,8 +551,6 @@ enum hw_status {
 };
 
 struct wrap_device {
-	/* this list is used to link to driver's wrap_devices */
-	struct nt_list list;
 	/* first part is (de)initialized once by loader */
 	int dev_bus_type;
 	int vendor;
@@ -522,8 +592,12 @@ struct wrap_device {
 /* until issues with threads hogging cpu are resolved, we don't want
  * to use shared workqueue, lest the threads take keyboard etc down */
 #define USE_OWN_WORKQUEUE 1
-extern struct workqueue_struct *wrapper_wq;
-#define schedule_work(work_struct) queue_work(wrapper_wq, (work_struct))
+extern struct workqueue_struct *wrapper_wq, *ndis_wq;
+#define schedule_wrap_work(work_struct) queue_work(wrapper_wq, (work_struct))
+#define schedule_ndis_work(work_struct) queue_work(ndis_wq, (work_struct))
+#else
+#define schedule_wrap_work(work_struct) schedule_work(work_struct)
+#define schedule_ndis_work(work_struct) schedule_work(work_struct)
 #endif
 
 int ntoskernel_init(void);
@@ -560,6 +634,9 @@ STDCALL ULONG MmSizeOfMdl(void *base, ULONG length);
 STDCALL void *MmMapIoSpace(PHYSICAL_ADDRESS phys_addr, SIZE_T size,
 			   enum memory_caching_type cache);
 STDCALL void MmUnmapIoSpace(void *addr, SIZE_T size);
+STDCALL void MmProbeAndLockPages(struct mdl *mdl, KPROCESSOR_MODE access_mode,
+	 enum lock_operation operation);
+STDCALL void MmUnlockPages(struct mdl *mdl);
 STDCALL void KeInitializeEvent(struct nt_event *nt_event,
 			       enum event_type type, BOOLEAN state);
 STDCALL LONG KeSetEvent(struct nt_event *nt_event, KPRIORITY incr,
@@ -615,7 +692,7 @@ STDCALL void KeInitializeEvent(struct nt_event *nt_event, enum event_type type,
 			       BOOLEAN state);
 void free_custom_extensions(struct driver_extension *drv_obj_ext);
 
-STDCALL struct irp *IoAllocateIrp(char stack_size, BOOLEAN charge_quota);
+STDCALL struct irp *IoAllocateIrp(char stack_count, BOOLEAN charge_quota);
 STDCALL void IoFreeIrp(struct irp *irp);
 STDCALL BOOLEAN IoCancelIrp(struct irp *irp);
 _FASTCALL NTSTATUS IofCallDriver
@@ -705,6 +782,7 @@ unsigned long lin_to_win6(void *func, unsigned long, unsigned long,
 			  unsigned long, unsigned long, unsigned long,
 			  unsigned long);
 
+
 STDCALL struct nt_thread *KeGetCurrentThread(void);
 STDCALL NTSTATUS
 ObReferenceObjectByHandle(void *handle, ACCESS_MASK desired_access,
@@ -749,16 +827,7 @@ static inline KIRQL current_irql(void)
 static inline KIRQL raise_irql(KIRQL newirql)
 {
 	KIRQL irql = current_irql();
-	/* for now we only deal with PASSIVE_LEVEL and
-	 * DISPATCH_LEVEL */
-#ifdef DEBUG_IRQL
-	if (newirql != DISPATCH_LEVEL && newirql != DEVICE_LEVEL)
-		ERROR("invalid irql: %d", newirql);
-#endif
-	if (irql <= DISPATCH_LEVEL && newirql > DISPATCH_LEVEL) {
-		local_irq_disable();
-		preempt_disable();
-	} else if (irql < DISPATCH_LEVEL && newirql == DISPATCH_LEVEL) {
+	if (irql < DISPATCH_LEVEL && newirql == DISPATCH_LEVEL) {
 		local_bh_disable();
 		preempt_disable();
 	}
@@ -767,13 +836,15 @@ static inline KIRQL raise_irql(KIRQL newirql)
 
 static inline void lower_irql(KIRQL oldirql)
 {
+#ifdef DEBUG_IRQL
 	KIRQL irql = current_irql();
-	if (irql > DISPATCH_LEVEL && oldirql <= DISPATCH_LEVEL) {
-		local_irq_enable();
+	if (irql < oldirql)
+		ERROR("invalid irql: %d < %d", irql, oldirql);
+#endif
+//	if (irql == DISPATCH_LEVEL && oldirql < DISPATCH_LEVEL) {
+	if (oldirql < DISPATCH_LEVEL) {
 		preempt_enable_no_resched();
-	} else if (irql == DISPATCH_LEVEL && oldirql < DISPATCH_LEVEL) {
 		local_bh_enable();
-		preempt_enable_no_resched();
 	}
 }
 
@@ -833,20 +904,20 @@ static inline void lower_irql(KIRQL oldirql)
 #ifdef CONFIG_DEBUG_SPINLOCK
 
 #define nt_spin_lock(lock)						\
-	do {								\
-		if (*(lock) == NT_SPIN_LOCK_LOCKED)			\
-			ERROR("eeek: process %p already owns lock %p",	\
-			      current, lock);				\
-		else							\
-			raw_nt_spin_lock(lock);				\
-	} while (0)
+do {									\
+	if (*(lock) == NT_SPIN_LOCK_LOCKED)				\
+		ERROR("eeek: process %p already owns lock %p",		\
+		      current, lock);					\
+	else								\
+		raw_nt_spin_lock(lock);					\
+} while (0)
 #define nt_spin_unlock(lock)						\
-	do {								\
-		if (*(lock) != NT_SPIN_LOCK_LOCKED)			\
-			ERROR("nt_spin_lock %p not locked!", (lock));	\
-		else							\
-			raw_nt_spin_unlock(lock);			\
-	} while (0)
+do {									\
+	if (*(lock) != NT_SPIN_LOCK_LOCKED)				\
+		ERROR("nt_spin_lock %p not locked!", (lock));		\
+	else								\
+		raw_nt_spin_unlock(lock);				\
+} while (0)
 
 #else // DEBUG_SPINLOCK
 
@@ -1008,35 +1079,35 @@ do {								       \
 #endif
 
 #if defined DEBUG
-#define assert(expr) do {						\
-		if (!(expr))						\
-			ERROR("assertion failed: %s", (#expr));		\
-	} while (0)
+#define assert(expr)							\
+do {									\
+	if (!(expr))							\
+		ERROR("assertion failed: %s", (#expr));			\
+} while (0)
 #else
 #define assert(expr) do { } while (0)
 #endif
 
 #if defined(IO_DEBUG)
 #define DUMP_IRP(__irp)							\
-	do {								\
-		struct io_stack_location *_irp_sl;			\
-		_irp_sl = IoGetCurrentIrpStackLocation(__irp);		\
-		IOTRACE("irp: %p, stack size: %d, cl: %d, sl: %p, "	\
-			"dev_obj: %p, mj_fn: %d, minor_fn: %d, "	\
-			"nt_urb: %p, event: %p",			\
-			__irp, __irp->stack_count, (__irp)->current_location, \
-			_irp_sl, _irp_sl->dev_obj, _irp_sl->major_fn,	\
-			_irp_sl->minor_fn, URB_FROM_IRP(__irp),		\
-			(__irp)->user_event);				\
-	} while (0)
+do {									\
+	struct io_stack_location *_irp_sl;				\
+	_irp_sl = IoGetCurrentIrpStackLocation(__irp);			\
+	IOTRACE("irp: %p, stack size: %d, cl: %d, sl: %p, dev_obj: %p, " \
+		"mj_fn: %d, minor_fn: %d, nt_urb: %p, event: %p",	\
+		__irp, __irp->stack_count, (__irp)->current_location,	\
+		_irp_sl, _irp_sl->dev_obj, _irp_sl->major_fn,		\
+		_irp_sl->minor_fn, URB_FROM_IRP(__irp),			\
+		(__irp)->user_event);					\
+} while (0)
 #else
 #define DUMP_IRP(__irp) do { } while (0)
 #endif
 
 #define sleep(nsec)					\
-	do {						\
-		set_current_state(TASK_INTERRUPTIBLE);	\
-		schedule_timeout(nsec * HZ);		\
-	} while (0)
+do {							\
+	set_current_state(TASK_INTERRUPTIBLE);		\
+	schedule_timeout(nsec * HZ);			\
+} while (0)
 
 #endif // _NTOSKERNEL_H_

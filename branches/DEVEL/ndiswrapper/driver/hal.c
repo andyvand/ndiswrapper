@@ -116,7 +116,7 @@ _FASTCALL KIRQL WRAP_EXPORT(KfRaiseIrql)
 	irql = raise_irql(newirql);
 	TRACEEXIT5(return irql);
 }
-	
+
 _FASTCALL void WRAP_EXPORT(KfLowerIrql)
 	(FASTCALL_DECL_1(KIRQL oldirql))
 {
