@@ -75,6 +75,28 @@ struct ndis_buffer_pool {
 
 #define PROTOCOL_RESERVED_SIZE_IN_PACKET (4 * sizeof(void *))
 
+struct ndis_tcp_ip_checksum_packet_info {
+	union {
+		struct {
+			ULONG v4:1;
+			ULONG v6:1;
+			ULONG tcp:1;
+			ULONG udp:1;
+			ULONG ip:1;
+		} tx;
+		struct {
+			ULONG tcp_failed:1;
+			ULONG udp_failed:1;
+			ULONG ip_failed:1;
+			ULONG tcp_succeeded:1;
+			ULONG udp_succeeded:1;
+			ULONG ip_succeeded:1;
+			ULONG loopback:1;
+		} rx;
+		ULONG value;
+	};
+};
+
 enum ndis_per_packet_info {
 	TcpIpChecksumPacketInfo, IpSecPacketInfo, TcpLargeSendPacketInfo,
 	ClassificationHandlePacketInfo, NdisReserved,
@@ -111,9 +133,11 @@ struct ndis_packet_oob_data {
 	void *mediaspecific;
 	NDIS_STATUS status;
 
-	/* ndiswrapper specific info */
+	/* ndiswrapper specific info; packet extension must be right
+	 * below Windows OOB data */
 	struct ndis_packet_extension extension;
 
+	struct ndis_tcp_ip_checksum_packet_info csum_info;
 	struct ndis_packet *next;
 	struct scatterlist *sg_list;
 	unsigned int sg_ents;
