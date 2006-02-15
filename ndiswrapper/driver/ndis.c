@@ -2026,6 +2026,7 @@ NdisMIndicateReceivePacket(struct ndis_miniport_block *nmb,
 	int i, length, total_length;
 	struct ndis_packet_oob_data *oob_data;
 	void *virt;
+	struct ndis_tcp_ip_checksum_packet_info *csum_info;
 
 	TRACEENTER3("%p, %d", nmb, nr_packets);
 	wnd = nmb->wnd;
@@ -2059,6 +2060,11 @@ NdisMIndicateReceivePacket(struct ndis_miniport_block *nmb,
 		}
 
 		oob_data = NDIS_PACKET_OOB_DATA(packet);
+		csum_info = (typeof(csum_info))
+			&oob_data->extension.info[TcpIpChecksumPacketInfo];
+		if (csum_info)
+			DBGTRACE3("%x, %x", csum_info->rx.ip_succeeded,
+				  csum_info->value);
 		/* serialized drivers check the status upon return
 		 * from this function */
 		if (test_bit(ATTR_SERIALIZED, &wnd->attributes)) {

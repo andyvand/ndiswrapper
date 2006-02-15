@@ -441,6 +441,12 @@ allocate_send_packet(struct wrap_ndis_device *wnd, struct sk_buff *skb)
 	if (wnd->use_sg_dma) {
 		int i, n;
 		struct ndis_sg_element *ents;
+		oob_data->csum_info.value = 0;
+		oob_data->csum_info.tx.v4 = 1;
+		oob_data->csum_info.tx.ip = 1;
+//		oob_data->csum_info.tx.tcp = 1;
+		oob_data->extension.info[TcpIpChecksumPacketInfo] =
+			&oob_data->csum_info;
 		n = skb_shinfo(skb)->nr_frags + 1;
 		if (n == 1) {
 			ents = &oob_data->ndis_sg_element;
@@ -1469,13 +1475,13 @@ static NDIS_STATUS ndis_start_device(struct wrap_ndis_device *wnd)
 		net_dev->irq = wnd->ndis_irq->irq.irq;
 	net_dev->mem_start = wnd->mem_start;
 	net_dev->mem_end = wnd->mem_end;
+	if (wnd->use_sg_dma) {
+		DBGTRACE2("sg dma enabled");
+		net_dev->features |= NETIF_F_SG | NETIF_F_IP_CSUM;
+	}
 	if (register_netdev(net_dev)) {
 		ERROR("cannot register net device %s", net_dev->name);
 		goto err_start;
-	}
-	if (wnd->use_sg_dma) {
-		DBGTRACE2("sg dma enabled");
-		net_dev->features |= NETIF_F_SG;
 	}
 	memset(buf, 0, sizeof(buf));
 	ndis_status = miniport_query_info(wnd, OID_GEN_VENDOR_DESCRIPTION,
