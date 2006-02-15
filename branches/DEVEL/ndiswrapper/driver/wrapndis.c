@@ -436,6 +436,7 @@ allocate_send_packet(struct wrap_ndis_device *wnd, struct sk_buff *skb)
 		NdisFreePacket(packet);
 		return NULL;
 	}
+	buffer->next = NULL;
 	packet->private.buffer_head = buffer;
 	if (wnd->use_sg_dma) {
 		int i, n;
@@ -445,7 +446,7 @@ allocate_send_packet(struct wrap_ndis_device *wnd, struct sk_buff *skb)
 			ents = &oob_data->ndis_sg_element;
 			oob_data->ndis_sg_elements = NULL;
 		} else {
-			ents = kmalloc(sizeof(*ents), n);
+			ents = kmalloc(sizeof(*ents) * n, GFP_ATOMIC);
 			if (!ents) {
 				NdisFreePacket(packet);
 				NdisFreeBuffer(buffer);
@@ -457,7 +458,6 @@ allocate_send_packet(struct wrap_ndis_device *wnd, struct sk_buff *skb)
 			PCI_DMA_MAP_SINGLE(wnd->wd->pci.pdev,
 					   skb->data, ents[0].length,
 					   PCI_DMA_TODEVICE);
-		buffer->next = NULL;
 		for (i = 1; i < n; i++) {
 			skb_frag_t *frag = &skb_shinfo(skb)->frags[i];
 			void *frag_addr = (void *)page_address(frag->page) +
