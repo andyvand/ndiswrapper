@@ -422,36 +422,42 @@ allocate_send_packet(struct wrap_ndis_device *wnd, struct sk_buff *skb)
 	struct ndis_packet *packet;
 	struct ndis_packet_oob_data *oob_data;
 	NDIS_STATUS status;
+	ndis_buffer *buffer;
 
-	debug = 4;
 	NdisAllocatePacket(&status, &packet, wnd->wrapper_packet_pool);
 	if (status != NDIS_STATUS_SUCCESS)
 		return NULL;
 
 	oob_data = NDIS_PACKET_OOB_DATA(packet);
 	oob_data->skb = skb;
+	NdisAllocateBuffer(&status, &buffer, wnd->wrapper_buffer_pool,
+			   skb->data, skb_headlen(skb));
+	if (status != NDIS_STATUS_SUCCESS) {
+		NdisFreePacket(packet);
+		return NULL;
+	}
+	packet->private.buffer_head = buffer;
 	if (wnd->use_sg_dma) {
 		int i, n;
 		struct ndis_sg_element *ents;
-		ndis_buffer *buffer;
 		n = skb_shinfo(skb)->nr_frags + 1;
-		ents = kmalloc(sizeof(*ents), n);
-		if (!ents) {
-			NdisFreePacket(packet);
-			return NULL;
+		if (n == 1) {
+			ents = &oob_data->ndis_sg_element;
+			oob_data->ndis_sg_elements = NULL;
+		} else {
+			ents = kmalloc(sizeof(*ents), n);
+			if (!ents) {
+				NdisFreePacket(packet);
+				NdisFreeBuffer(buffer);
+				return NULL;
+			}
 		}
 		ents[0].length = skb_headlen(skb);
 		ents[0].address =
 			PCI_DMA_MAP_SINGLE(wnd->wd->pci.pdev,
 					   skb->data, ents[0].length,
 					   PCI_DMA_TODEVICE);
-		NdisAllocateBuffer(&status, &buffer, wnd->wrapper_buffer_pool,
-				   skb->data, skb_headlen(skb));
-		/* TODO: handle error */
-		if (status != NDIS_STATUS_SUCCESS)
-			ERROR("couldn't allocate buffer: %08X", status);
 		buffer->next = NULL;
-		packet->private.buffer_head = buffer;
 		for (i = 1; i < n; i++) {
 			skb_frag_t *frag = &skb_shinfo(skb)->frags[i];
 			void *frag_addr = (void *)page_address(frag->page) +
@@ -463,7 +469,7 @@ allocate_send_packet(struct wrap_ndis_device *wnd, struct sk_buff *skb)
 						   PCI_DMA_TODEVICE);
 			NdisAllocateBuffer(&status, &buffer->next,
 					   wnd->wrapper_buffer_pool,
-					   phys_to_virt((unsigned long)frag_addr),
+					   phys_to_virt(ents[i].address),
 					   frag->size);
 			/* TODO: handle error */
 			if (status != NDIS_STATUS_SUCCESS)
@@ -472,23 +478,14 @@ allocate_send_packet(struct wrap_ndis_device *wnd, struct sk_buff *skb)
 			buffer = buffer->next;
 			buffer->next = NULL;
 		}
-		packet->private.buffer_tail = buffer;
-		DBGTRACE4("n: %d", n);
+		if (n > 1)
+			INFO("n: %d", n);
 		oob_data->ndis_sg_list.nent = n;
 		oob_data->ndis_sg_list.elements = ents;
 		oob_data->extension.info[ScatterGatherListPacketInfo] =
 			&oob_data->ndis_sg_list;
-	} else {
-		ndis_buffer *buffer;
-		NdisAllocateBuffer(&status, &buffer, wnd->wrapper_buffer_pool,
-				   skb->data, skb->len);
-		if (status != NDIS_STATUS_SUCCESS) {
-			NdisFreePacket(packet);
-			return NULL;
-		}
-		packet->private.buffer_head = buffer;
-		packet->private.buffer_tail = buffer;
 	}
+	packet->private.buffer_tail = buffer;
 
 	return packet;
 }
@@ -511,7 +508,8 @@ static void free_send_packet(struct wrap_ndis_device *wnd,
 					     ents[i].address, ents[i].length,
 					     PCI_DMA_TODEVICE);
 		}
-		kfree(oob_data->ndis_sg_elements);
+		if (oob_data->ndis_sg_elements)
+			kfree(oob_data->ndis_sg_elements);
 	}
 	for (buffer = packet->private.buffer_head; buffer; buffer = next) {
 		next = buffer->next;
