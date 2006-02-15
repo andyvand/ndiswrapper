@@ -119,6 +119,7 @@ struct ndis_packet_oob_data {
 	unsigned int sg_ents;
 	struct ndis_sg_list ndis_sg_list;
 	struct ndis_sg_element *ndis_sg_elements;
+	struct ndis_sg_element ndis_sg_element;
 
 	unsigned char header[ETH_HLEN];
 	unsigned char *look_ahead;
