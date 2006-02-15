@@ -2422,7 +2422,7 @@ STDCALL NDIS_STATUS WRAP_EXPORT(NdisMInitializeScatterGatherDma)
 	(struct ndis_miniport_block *nmb, BOOLEAN dma_size, ULONG max_phy_map)
 {
 	struct wrap_ndis_device *wnd = nmb->wnd;
-	INFO("dma_size=%d, maxtransfer=%u", dma_size, max_phy_map);
+	TRACEENTER2("dma_size=%d, maxtransfer=%u", dma_size, max_phy_map);
 #ifdef CONFIG_X86_64
 	if (dma_size != NDIS_DMA_64BITS)
 		ERROR("DMA size is not 64-bits");
