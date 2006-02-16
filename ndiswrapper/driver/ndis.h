@@ -97,6 +97,64 @@ struct ndis_tcp_ip_checksum_packet_info {
 	};
 };
 
+enum ndis_task {
+	TcpIpChecksumNdisTask, IpSecNdisTask, TcpLargeSendNdisTask, MaxNdisTask
+};
+
+enum ndis_encapsulation_format {
+	UNSPECIFIED_Encapsulation, NULL_Encapsulation,
+	IEEE_802_3_Encapsulation, IEEE_802_5_Encapsulation,
+	LLC_SNAP_ROUTED_Encapsulation, LLC_SNAP_BRIDGED_Encapsulation
+};
+
+#define NDIS_TASK_OFFLOAD_VERSION 1
+
+struct ndis_task_offload_header {
+	ULONG version;
+	ULONG size;
+	ULONG reserved;
+	UCHAR offset_first_task;
+	enum ndis_encapsulation_format encapsulation_format;
+};
+
+struct ndis_task_offload {
+	ULONG version;
+	ULONG size;
+	enum ndis_task task;
+	ULONG offset_next_task;
+	ULONG task_buf_length;
+	UCHAR task_buf[1];
+};
+
+struct ndis_task_tcp_ip_checksum {
+	struct {
+		ULONG ip_supported:1;
+		ULONG tcp_supported:1;
+		ULONG tcp_csum:1;
+		ULONG udp_csum:1;
+		ULONG ip_csum:1;
+	} v4_tx;
+	struct {
+		ULONG ip_supported:1;
+		ULONG tcp_supported:1;
+		ULONG tcp_csum:1;
+		ULONG udp_csum:1;
+		ULONG ip_csum:1;
+	} v4_rx;
+	struct {
+		ULONG ip_supported:1;
+		ULONG tcp_supported:1;
+		ULONG tcp_csum:1;
+		ULONG udp_csum:1;
+	} v6_tx;
+	struct {
+		ULONG ip_supported:1;
+		ULONG tcp_supported:1;
+		ULONG tcp_csum:1;
+		ULONG udp_csum:1;
+	} v6_rx;
+};
+
 enum ndis_per_packet_info {
 	TcpIpChecksumPacketInfo, IpSecPacketInfo, TcpLargeSendPacketInfo,
 	ClassificationHandlePacketInfo, NdisReserved,
@@ -137,7 +195,6 @@ struct ndis_packet_oob_data {
 	 * below Windows OOB data */
 	struct ndis_packet_extension extension;
 
-	struct ndis_tcp_ip_checksum_packet_info csum_info;
 	struct ndis_packet *next;
 	struct scatterlist *sg_list;
 	unsigned int sg_ents;
@@ -731,16 +788,16 @@ struct wrap_ndis_device {
 	BOOLEAN stats_enabled;
 	struct ndis_wireless_stats ndis_stats;
 
-	struct work_struct xmit_work;
-	struct ndis_packet *xmit_ring[XMIT_RING_SIZE];
-	struct ndis_packet **xmit_array;
-	unsigned int xmit_ring_start;
-	unsigned int xmit_ring_pending;
-	unsigned int max_send_packets;
-	NT_SPIN_LOCK xmit_lock;
+	struct work_struct tx_work;
+	struct ndis_packet *tx_ring[TX_RING_SIZE];
+	struct ndis_packet **tx_array;
+	unsigned int tx_ring_start;
+	unsigned int tx_ring_pending;
+	unsigned int max_tx_packets;
+	NT_SPIN_LOCK tx_lock;
+	NT_SPIN_LOCK tx_stats_lock;
 
-	unsigned char send_ok;
-	NT_SPIN_LOCK send_packet_done_lock;
+	unsigned char tx_ok;
 
 	struct semaphore ndis_comm_mutex;
 	wait_queue_head_t ndis_comm_wq;
@@ -777,8 +834,8 @@ struct wrap_ndis_device {
 	int iw_auth_cipher_group;
 	int iw_auth_key_mgmt;
 	int iw_auth_80211_auth_alg;
-	struct ndis_packet_pool *wrapper_packet_pool;
-	struct ndis_buffer_pool *wrapper_buffer_pool;
+	struct ndis_packet_pool *tx_packet_pool;
+	struct ndis_buffer_pool *tx_buffer_pool;
 };
 
 struct ndis_pmkid_candidate {
@@ -1141,5 +1198,7 @@ void wrap_procfs_remove_ndis_device(struct wrap_ndis_device *wnd);
 
 #define NDIS_FLAGS_PROTOCOL_ID_MASK		0x0000000F
 #define NDIS_PROTOCOL_ID_TCP_IP			0x02
+
+#define OID_TCP_TASK_OFFLOAD			0xFC010201
 
 #endif /* NDIS_H */
