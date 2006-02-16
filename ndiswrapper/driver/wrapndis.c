@@ -417,28 +417,34 @@ static void show_supported_oids(struct wrap_ndis_device *wnd)
 }
 
 static struct ndis_packet *
-allocate_send_packet(struct wrap_ndis_device *wnd, ndis_buffer *buffer)
+allocate_send_packet(struct wrap_ndis_device *wnd, struct sk_buff *skb)
 {
 	struct ndis_packet *packet;
+	ndis_buffer *buffer;
 	struct ndis_packet_oob_data *oob_data;
 	NDIS_STATUS status;
 
 	NdisAllocatePacket(&status, &packet, wnd->wrapper_packet_pool);
 	if (status != NDIS_STATUS_SUCCESS)
 		return NULL;
-
+	NdisAllocateBuffer(&status, &buffer, wnd->wrapper_buffer_pool,
+			   skb->data, skb->len);
+	if (status != NDIS_STATUS_SUCCESS) {
+		NdisFreePacket(packet);
+		return NULL;
+	}
 	packet->private.buffer_head = buffer;
 	packet->private.buffer_tail = buffer;
 
 	oob_data = NDIS_PACKET_OOB_DATA(packet);
+	oob_data->skb = skb;
 	if (wnd->use_sg_dma) {
 		oob_data->ndis_sg_element.address =
 			PCI_DMA_MAP_SINGLE(wnd->wd->pci.pdev,
-					   MmGetMdlVirtualAddress(buffer),
-					   MmGetMdlByteCount(buffer),
+					   skb->data, skb->len,
 					   PCI_DMA_TODEVICE);
 
-		oob_data->ndis_sg_element.length = MmGetMdlByteCount(buffer);
+		oob_data->ndis_sg_element.length = skb->len;
 		oob_data->ndis_sg_list.nent = 1;
 		oob_data->ndis_sg_list.elements = &oob_data->ndis_sg_element;
 		oob_data->extension.info[ScatterGatherListPacketInfo] =
@@ -606,23 +612,14 @@ void send_packet_done(struct wrap_ndis_device *wnd, struct ndis_packet *packet,
 static int start_xmit(struct sk_buff *skb, struct net_device *dev)
 {
 	struct wrap_ndis_device *wnd = netdev_priv(dev);
-	ndis_buffer *buffer;
 	struct ndis_packet *packet;
-	struct ndis_packet_oob_data *oob_data;
 	unsigned int xmit_ring_next_slot;
-	NDIS_STATUS res;
 
-	NdisAllocateBuffer(&res, &buffer, wnd->wrapper_buffer_pool,
-			   skb->data, skb->len);
-	if (res != NDIS_STATUS_SUCCESS)
-		return 1;
-	packet = allocate_send_packet(wnd, buffer);
+	packet = allocate_send_packet(wnd, skb);
 	if (!packet) {
-		NdisFreeBuffer(buffer);
+		WARNING("couldn't allocate packet");
 		return 1;
 	}
-	oob_data = NDIS_PACKET_OOB_DATA(packet);
-	oob_data->skb = skb;
 	nt_spin_lock(&wnd->xmit_lock);
 	xmit_ring_next_slot = (wnd->xmit_ring_start +
 			       wnd->xmit_ring_pending) % XMIT_RING_SIZE;

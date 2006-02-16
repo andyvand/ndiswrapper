@@ -1037,7 +1037,7 @@ STDCALL void *WRAP_EXPORT(ExAllocatePoolWithTag)
 			      "atomic context", size);
 		addr = vmalloc(size);
 	}
-	DBGTRACE4("addr: %p, %u", addr, size);
+	DBGTRACE4("addr: %p, %lu", addr, size);
 	TRACEEXIT4(return addr);
 }
 
@@ -1211,41 +1211,40 @@ STDCALL void WRAP_EXPORT(ExNotifyCallback)
 }
 
 /* check and set signaled state; should be called with nt_event_lock held */
-/* @reset indicates if the event should be reset to not-signaled state
+/* @grab indicates if the event should be put in not-signaled state
  * - note that a semaphore may stay in signaled state for multiple
- * 'resets' if the count is > 1 */
-static int inline check_reset_signaled_state(void *object,
-					     struct nt_thread *thread,
-					     int reset)
+ * 'grabs' if the count is > 1 */
+static int inline check_grab_signaled_state(void *object,
+					    struct nt_thread *thread, int grab)
 {
 	struct dispatch_header *dh;
-	struct nt_mutex *nt_mutex;
 
 	dh = object;
-	nt_mutex = container_of(object, struct nt_mutex, dh);
-
 	if (is_mutex_dh(dh)) {
+		struct nt_mutex *nt_mutex;
 		/* either no thread owns the mutex or this thread owns
 		 * it */
+		nt_mutex = container_of(object, struct nt_mutex, dh);
 		if (nt_mutex->owner_thread == NULL ||
 		    nt_mutex->owner_thread == thread) {
+			assert(dh->signal_state <= 0);
 			assert(nt_mutex->owner_thread == NULL &&
-			       dh->signal_state == 1);
-			if (reset) {
+			       dh->signal_state == 0);
+			if (grab) {
 				dh->signal_state--;
 				nt_mutex->owner_thread = thread;
 			}
-			return 1;
+			EVENTEXIT(return 1);
 		}
 	} else if (dh->signal_state > 0) {
-		/* if resetting, decrement signal_state for
+		/* if grab, decrement signal_state for
 		 * synchronization or semaphore objects */
-		if (reset && (dh->type == SynchronizationEvent ||
+		if (grab && (dh->type == SynchronizationEvent ||
 			      is_semaphore_dh(dh)))
 			dh->signal_state--;
-		return 1;
+		EVENTEXIT(return 1);
 	}
-	return 0;
+	EVENTEXIT(return 0);
 }
 
 /* this function should be called holding nt_event_lock spinlock at
@@ -1259,7 +1258,7 @@ static void wakeup_threads(struct dispatch_header *dh)
 		EVENTTRACE("wait block: %p, thread: %p", wb, wb->thread);
 		assert(wb->thread != NULL && wb->object == dh);
 		if (wb->thread &&
-		    check_reset_signaled_state(dh, wb->thread, 0)) {
+		    check_grab_signaled_state(dh, wb->thread, 0)) {
 			EVENTTRACE("waking up task: %p", wb->thread->task);
 			wb->thread->event_wait_done = 1;
 			wake_up(&wb->thread->event_wq);
@@ -1321,7 +1320,7 @@ STDCALL NTSTATUS WRAP_EXPORT(KeWaitForMultipleObjects)
 		EVENTTRACE("%p: event %p state: %d",
 			   task, dh, dh->signal_state);
 		/* wait_type == 1 for WaitAny, 0 for WaitAll */
-		if (check_reset_signaled_state(dh, thread, wait_type)) {
+		if (check_grab_signaled_state(dh, thread, wait_type)) {
 			if (wait_type == WaitAny) {
 				nt_spin_unlock_irql(&nt_event_lock, irql);
 				if (count > 1)
@@ -1345,7 +1344,7 @@ STDCALL NTSTATUS WRAP_EXPORT(KeWaitForMultipleObjects)
 		dh = object[i];
 		EVENTTRACE("%p: event %p state: %d",
 			   task, dh, dh->signal_state);
-		if (check_reset_signaled_state(dh, thread, 1)) {
+		if (check_grab_signaled_state(dh, thread, 1)) {
 			EVENTTRACE("%p: event %p already signaled: %d",
 				   task, dh, dh->signal_state);
 			/* mark that we are not waiting on this object */
@@ -1422,7 +1421,7 @@ STDCALL NTSTATUS WRAP_EXPORT(KeWaitForMultipleObjects)
 			if (!wb[i].thread)
 				continue;
 			dh = object[i];
-			if (!check_reset_signaled_state(dh, thread, 1))
+			if (!check_grab_signaled_state(dh, thread, 1))
 				continue;
 			RemoveEntryList(&wb[i].list);
 			wait_count--;
@@ -1527,19 +1526,19 @@ STDCALL LONG WRAP_EXPORT(KeResetEvent)
 }
 
 STDCALL void WRAP_EXPORT(KeInitializeMutex)
-	(struct nt_mutex *mutex, BOOLEAN wait)
+	(struct nt_mutex *mutex, ULONG level)
 {
 	KIRQL irql;
 
 	EVENTENTER("%p", mutex);
 	irql = nt_spin_lock_irql(&nt_event_lock, DISPATCH_LEVEL);
-	initialize_dh(&mutex->dh, SynchronizationEvent, 1, DH_NT_MUTEX);
-	nt_spin_unlock_irql(&nt_event_lock, irql);
+	initialize_dh(&mutex->dh, NotificationEvent, 0, DH_NT_MUTEX);
 	mutex->dh.size = sizeof(*mutex);
 	InitializeListHead(&mutex->list);
 	mutex->abandoned = FALSE;
 	mutex->apc_disable = 1;
 	mutex->owner_thread = NULL;
+	nt_spin_unlock_irql(&nt_event_lock, irql);
 	EVENTEXIT(return);
 }
 
@@ -1548,17 +1547,23 @@ STDCALL LONG WRAP_EXPORT(KeReleaseMutex)
 {
 	LONG ret;
 	KIRQL irql;
+	struct nt_thread *thread;
 
-	EVENTENTER("%p", mutex);
+	EVENTENTER("%p, %d, %p, %p", mutex, wait, current, thread);
 	if (wait == TRUE)
 		WARNING("wait: %d", wait);
+	thread = KeGetCurrentThread();
 	irql = nt_spin_lock_irql(&nt_event_lock, DISPATCH_LEVEL);
-	ret = mutex->dh.signal_state++;
-	if (mutex->dh.signal_state > 0) {
-		mutex->owner_thread = NULL;
-		wakeup_threads(&mutex->dh);
-	}
+	if (mutex->owner_thread == thread && mutex->dh.signal_state < 0) {
+		ret = ++(mutex->dh.signal_state);
+		if (ret == 0) {
+			mutex->owner_thread = NULL;
+			wakeup_threads(&mutex->dh);
+		}
+	} else
+		ret = STATUS_MUTANT_NOT_OWNED;
 	nt_spin_unlock_irql(&nt_event_lock, irql);
+	EVENTTRACE("ret: %08X", ret);
 	EVENTEXIT(return ret);
 }
 

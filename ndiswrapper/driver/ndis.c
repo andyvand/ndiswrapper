@@ -843,6 +843,9 @@ STDCALL NDIS_STATUS WRAP_EXPORT(NdisMAllocateMapRegisters)
 	struct wrap_ndis_device *wnd = nmb->wnd;
 	TRACEENTER2("%d %d %d %d", dmachan, dmasize, basemap, max_buf_size);
 
+	if (max_buf_size > PAGE_SIZE)
+	    WARNING("buffer size too big: %d", max_buf_size);
+
 //	if (basemap > 64)
 //		return NDIS_STATUS_RESOURCES;
 
@@ -2415,7 +2418,7 @@ STDCALL struct nt_list *WRAP_EXPORT(NdisInterlockedRemoveHeadList)
 }
 
 STDCALL NDIS_STATUS WRAP_EXPORT(NdisMInitializeScatterGatherDma)
-	(struct ndis_miniport_block *nmb, UCHAR dma_size, ULONG max_phy_map)
+	(struct ndis_miniport_block *nmb, BOOLEAN dma_size, ULONG max_phy_map)
 {
 	struct wrap_ndis_device *wnd = nmb->wnd;
 	TRACEENTER2("dma_size=%d, maxtransfer=%u", dma_size, max_phy_map);
