@@ -1580,16 +1580,16 @@ STDCALL void WRAP_EXPORT(NdisSend)
 			*status = oob_data->status;
 			switch (*status) {
 			case NDIS_STATUS_SUCCESS:
-				send_packet_done(wnd, packet, *status);
+				free_tx_packet(wnd, packet, *status);
 				break;
 			case NDIS_STATUS_PENDING:
 				break;
 			case NDIS_STATUS_RESOURCES:
-				wnd->send_ok = 0;
+				wnd->tx_ok = 0;
 				break;
 			case NDIS_STATUS_FAILURE:
 			default:
-				send_packet_done(wnd, packet, *status);
+				free_tx_packet(wnd, packet, *status);
 				break;
 			}
 		} else {
@@ -1602,16 +1602,16 @@ STDCALL void WRAP_EXPORT(NdisSend)
 		lower_irql(irql);
 		switch (*status) {
 		case NDIS_STATUS_SUCCESS:
-			send_packet_done(wnd, packet, *status);
+			free_tx_packet(wnd, packet, *status);
 			break;
 		case NDIS_STATUS_PENDING:
 			break;
 		case NDIS_STATUS_RESOURCES:
-			wnd->send_ok = 0;
+			wnd->tx_ok = 0;
 			break;
 		case NDIS_STATUS_FAILURE:
 		default:
-			send_packet_done(wnd, packet, *status);
+			free_tx_packet(wnd, packet, *status);
 			break;
 		}
 	}
@@ -1869,7 +1869,7 @@ STDCALL void WRAP_EXPORT(NdisMIndicateStatus)
 			set_bit(LINK_STATUS_CHANGED, &wnd->wrap_ndis_work);
 		}
 		wnd->link_status = 0;
-		wnd->send_ok = 0;
+		wnd->tx_ok = 0;
 		break;
 	case NDIS_STATUS_MEDIA_CONNECT:
 		if (wnd->link_status != 1) {
@@ -1877,7 +1877,7 @@ STDCALL void WRAP_EXPORT(NdisMIndicateStatus)
 			set_bit(LINK_STATUS_CHANGED, &wnd->wrap_ndis_work);
 		}
 		wnd->link_status = 1;
-		wnd->send_ok = 1;
+		wnd->tx_ok = 1;
 		break;
 	case NDIS_STATUS_MEDIA_SPECIFIC_INDICATION:
 		if (!buf)
@@ -1992,8 +1992,8 @@ STDCALL void WRAP_EXPORT(NdisMIndicateStatusComplete)
 	struct wrap_ndis_device *wnd = nmb->wnd;
 	TRACEENTER2("%p", wnd);
 	schedule_ndis_work(&wnd->wrap_ndis_worker);
-	if (wnd->send_ok)
-		schedule_ndis_work(&wnd->xmit_work);
+	if (wnd->tx_ok)
+		schedule_ndis_work(&wnd->tx_work);
 }
 
 STDCALL void return_packet(void *arg1, void *arg2)
@@ -2063,8 +2063,8 @@ NdisMIndicateReceivePacket(struct ndis_miniport_block *nmb,
 		csum_info = (typeof(csum_info))
 			&oob_data->extension.info[TcpIpChecksumPacketInfo];
 		if (csum_info)
-			DBGTRACE3("%x, %x", csum_info->rx.ip_succeeded,
-				  csum_info->value);
+			INFO("%x, %x, %x", csum_info->rx.ip_succeeded,
+			     csum_info->rx.udp_succeeded, csum_info->value);
 		/* serialized drivers check the status upon return
 		 * from this function */
 		if (test_bit(ATTR_SERIALIZED, &wnd->attributes)) {
@@ -2108,13 +2108,13 @@ NdisMSendComplete(struct ndis_miniport_block *nmb, struct ndis_packet *packet,
 {
 	struct wrap_ndis_device *wnd = nmb->wnd;
 	TRACEENTER3("%p, %08x", packet, status);
-	send_packet_done(wnd, packet, status);
+	free_tx_packet(wnd, packet, status);
 	/* In case a serialized driver has requested a pause by returning
 	 * NDIS_STATUS_RESOURCES we need to give the send-code a kick again.
 	 */
-	if (wnd->send_ok == 0) {
-		wnd->send_ok = 1;
-		schedule_ndis_work(&wnd->xmit_work);
+	if (wnd->tx_ok == 0) {
+		wnd->tx_ok = 1;
+		schedule_ndis_work(&wnd->tx_work);
 	}
 	TRACEEXIT3(return);
 }
@@ -2137,8 +2137,8 @@ NdisMSendResourcesAvailable(struct ndis_miniport_block *nmb)
 	/* sending packets immediately seem to result in NDIS_STATUS_FAILURE,
 	   so wait for a while before sending the packet again */
 	mdelay(5);
-	wnd->send_ok = 1;
-	schedule_ndis_work(&wnd->xmit_work);
+	wnd->tx_ok = 1;
+	schedule_ndis_work(&wnd->tx_work);
 	TRACEEXIT3(return);
 }
 
@@ -2172,7 +2172,7 @@ EthRxIndicateHandler(struct ndis_miniport_block *nmb, void *rx_ctx,
 		unsigned int bytes_txed;
 		NDIS_STATUS res;
 
-		NdisAllocatePacket(&res, &packet, wnd->wrapper_packet_pool);
+		NdisAllocatePacket(&res, &packet, wnd->tx_packet_pool);
 		if (res != NDIS_STATUS_SUCCESS) {
 			wnd->stats.rx_dropped++;
 			TRACEEXIT3(return);

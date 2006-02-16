@@ -31,8 +31,8 @@ NDIS_STATUS miniport_query_int(struct wrap_ndis_device *wnd, ndis_oid oid,
 			       ULONG *data);
 NDIS_STATUS miniport_set_int(struct wrap_ndis_device *wnd, ndis_oid oid,
 			     ULONG data);
-void send_packet_done(struct wrap_ndis_device *wnd, struct ndis_packet *packet,
-		      NDIS_STATUS status);
+void free_tx_packet(struct wrap_ndis_device *wnd, struct ndis_packet *packet,
+		    NDIS_STATUS status);
 int init_ndis_driver(struct driver_object *drv_obj);
 NDIS_STATUS ndis_reinit(struct wrap_ndis_device *wnd);
 
