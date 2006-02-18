@@ -421,11 +421,14 @@ static void wrap_urb_complete(struct urb *urb)
 	    wrap_urb->state == URB_CANCELED) {
 		wrap_urb->state = URB_COMPLETED;
 		/* Prevent 2.4 kernels from resubmiting interrupt URBs
-		 * (Windows driver also resubmits them); UHCI doesn't
-		 * resubmit URB if status == -ENOENT */
+		 * (Windows driver also resubmits them); UHCI/OHCI
+		 * don't resubmit if URB interval is 0 and EHCI
+		 * doesn't resubmit if urb->status is
+		 * -ENOENT/-ECONNRESET */
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,0)
+		URB_STATUS(wrap_urb) = urb->status;
 		if (usb_pipeint(urb->pipe)) {
-			wrap_urb->urb_status = urb->status;
+			urb->interval = 0;
 			urb->status = -ENOENT;
 		}
 #endif
