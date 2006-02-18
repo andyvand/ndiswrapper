@@ -459,9 +459,9 @@ static void wrap_urb_complete_worker(unsigned long data)
 		if (!ent)
 			break;
 		wrap_urb = container_of(ent, struct wrap_urb, complete_list);
-		DUMP_IRP(irp);
 		urb = wrap_urb->urb;
 		irp = wrap_urb->irp;
+		DUMP_IRP(irp);
 		nt_urb = URB_FROM_IRP(irp);
 		if (wrap_urb->state != URB_COMPLETED)
 			WARNING("urb %p in wrong state: %d",

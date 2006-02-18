@@ -711,16 +711,16 @@ struct wrap_ndis_device {
 	BOOLEAN stats_enabled;
 	struct ndis_wireless_stats ndis_stats;
 
-	struct work_struct xmit_work;
-	struct ndis_packet *xmit_ring[XMIT_RING_SIZE];
-	struct ndis_packet **xmit_array;
-	unsigned int xmit_ring_start;
-	unsigned int xmit_ring_pending;
-	unsigned int max_send_packets;
-	NT_SPIN_LOCK xmit_lock;
+	struct work_struct tx_work;
+	struct ndis_packet *tx_ring[TX_RING_SIZE];
+	struct ndis_packet **tx_array;
+	unsigned int tx_ring_start;
+	unsigned int tx_ring_pending;
+	NT_SPIN_LOCK tx_ring_lock;
+	unsigned int max_tx_packets;
 
-	unsigned char send_ok;
-	NT_SPIN_LOCK send_packet_done_lock;
+	unsigned char tx_ok;
+	NT_SPIN_LOCK tx_stats_lock;
 
 	struct semaphore ndis_comm_mutex;
 	wait_queue_head_t ndis_comm_wq;
@@ -757,8 +757,8 @@ struct wrap_ndis_device {
 	int iw_auth_cipher_group;
 	int iw_auth_key_mgmt;
 	int iw_auth_80211_auth_alg;
-	struct ndis_packet_pool *wrapper_packet_pool;
-	struct ndis_buffer_pool *wrapper_buffer_pool;
+	struct ndis_packet_pool *tx_packet_pool;
+	struct ndis_buffer_pool *tx_buffer_pool;
 };
 
 struct ndis_pmkid_candidate {

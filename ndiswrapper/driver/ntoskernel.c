@@ -37,7 +37,7 @@ struct wrap_mdl {
 };
 
 /* everything here is for all drivers/devices - not per driver/device */
-static NT_SPIN_LOCK nt_event_lock;
+static NT_SPIN_LOCK dispatcher_lock;
 NT_SPIN_LOCK ntoskernel_lock;
 static kmem_cache_t *mdl_cache;
 static struct nt_list wrap_mdl_list;
@@ -96,7 +96,7 @@ int ntoskernel_init(void)
 {
 	struct timeval now;
 
-	nt_spin_lock_init(&nt_event_lock);
+	nt_spin_lock_init(&dispatcher_lock);
 	nt_spin_lock_init(&ntoskernel_lock);
 	nt_spin_lock_init(&wrap_work_item_list_lock);
 	nt_spin_lock_init(&kdpc_list_lock);
@@ -542,7 +542,7 @@ STDCALL USHORT WRAP_EXPORT(ExQueryDepthSList)
 	return head->list.depth;
 }
 
-/* should be called with nt_event_lock held at DISPATCH_LEVEL */
+/* should be called with dispatcher_lock held at DISPATCH_LEVEL */
 static void initialize_dh(struct dispatch_header *dh, enum event_type type,
 			  int state, enum dh_type dh_type)
 {
@@ -1210,21 +1210,20 @@ STDCALL void WRAP_EXPORT(ExNotifyCallback)
 	return;
 }
 
-/* check and set signaled state; should be called with nt_event_lock held */
+/* check and set signaled state; should be called with dispatcher_lock held */
 /* @grab indicates if the event should be put in not-signaled state
  * - note that a semaphore may stay in signaled state for multiple
  * 'grabs' if the count is > 1 */
-static int inline check_grab_signaled_state(void *object,
-					    struct nt_thread *thread, int grab)
+static int check_grab_signaled_state(struct dispatch_header *dh,
+				     struct nt_thread *thread, int grab)
 {
-	struct dispatch_header *dh;
-
-	dh = object;
+	EVENTTRACE("%p, %p, %d, %d", dh, thread, grab, dh->signal_state);
 	if (is_mutex_dh(dh)) {
 		struct nt_mutex *nt_mutex;
 		/* either no thread owns the mutex or this thread owns
 		 * it */
-		nt_mutex = container_of(object, struct nt_mutex, dh);
+		nt_mutex = container_of(dh, struct nt_mutex, dh);
+		EVENTTRACE("%p, %p", nt_mutex, nt_mutex->owner_thread);
 		if (nt_mutex->owner_thread == NULL ||
 		    nt_mutex->owner_thread == thread) {
 			assert(dh->signal_state <= 0);
@@ -1247,7 +1246,7 @@ static int inline check_grab_signaled_state(void *object,
 	EVENTEXIT(return 0);
 }
 
-/* this function should be called holding nt_event_lock spinlock at
+/* this function should be called holding dispatcher_lock spinlock at
  * DISPATCH_LEVEL */
 static void wakeup_threads(struct dispatch_header *dh)
 {
@@ -1312,7 +1311,7 @@ STDCALL NTSTATUS WRAP_EXPORT(KeWaitForMultipleObjects)
 
 	/* TODO: should we allow threads to wait in non-alertable state? */
 	alertable = TRUE;
-	irql = nt_spin_lock_irql(&nt_event_lock, DISPATCH_LEVEL);
+	irql = nt_spin_lock_irql(&dispatcher_lock, DISPATCH_LEVEL);
 	/* first check if the wait can be satisfied or not, without
 	 * grabbing the objects, except in the case of WaitAny */
 	for (i = wait_count = 0; i < count; i++) {
@@ -1322,7 +1321,7 @@ STDCALL NTSTATUS WRAP_EXPORT(KeWaitForMultipleObjects)
 		/* wait_type == 1 for WaitAny, 0 for WaitAll */
 		if (check_grab_signaled_state(dh, thread, wait_type)) {
 			if (wait_type == WaitAny) {
-				nt_spin_unlock_irql(&nt_event_lock, irql);
+				nt_spin_unlock_irql(&dispatcher_lock, irql);
 				if (count > 1)
 					EVENTEXIT(return STATUS_WAIT_0 + i);
 				else
@@ -1332,7 +1331,7 @@ STDCALL NTSTATUS WRAP_EXPORT(KeWaitForMultipleObjects)
 			wait_count++;
 	}
 	if (timeout && *timeout == 0 && wait_count) {
-		nt_spin_unlock_irql(&nt_event_lock, irql);
+		nt_spin_unlock_irql(&dispatcher_lock, irql);
 		EVENTEXIT(return STATUS_TIMEOUT);
 	}
 
@@ -1359,7 +1358,7 @@ STDCALL NTSTATUS WRAP_EXPORT(KeWaitForMultipleObjects)
 			EVENTTRACE("%p: waiting on event %p", task, dh);
 		}
 	}
-	nt_spin_unlock_irql(&nt_event_lock, irql);
+	nt_spin_unlock_irql(&dispatcher_lock, irql);
 
 	if (wait_count == 0)
 		EVENTEXIT(return STATUS_SUCCESS);
@@ -1393,7 +1392,7 @@ STDCALL NTSTATUS WRAP_EXPORT(KeWaitForMultipleObjects)
 			/* mark that it didn't timeout */
 			res = 1;
 		}
-		irql = nt_spin_lock_irql(&nt_event_lock, DISPATCH_LEVEL);
+		irql = nt_spin_lock_irql(&dispatcher_lock, DISPATCH_LEVEL);
 		thread->event_wait_done = 0;
 		if (signal_pending(current))
 			res = -ERESTARTSYS;
@@ -1410,7 +1409,7 @@ STDCALL NTSTATUS WRAP_EXPORT(KeWaitForMultipleObjects)
 				wb[i].thread = NULL;
 				wb[i].object = NULL;
 			}
-			nt_spin_unlock_irql(&nt_event_lock, irql);
+			nt_spin_unlock_irql(&dispatcher_lock, irql);
 			if (res < 0)
 				EVENTEXIT(return STATUS_ALERTED);
 			else
@@ -1431,7 +1430,7 @@ STDCALL NTSTATUS WRAP_EXPORT(KeWaitForMultipleObjects)
 				for (j = i; j < count; j++)
 					if (wb[j].thread && wb[j].object)
 						RemoveEntryList(&wb[j].list);
-				nt_spin_unlock_irql(&nt_event_lock, irql);
+				nt_spin_unlock_irql(&dispatcher_lock, irql);
 				if (count > 1)
 					EVENTEXIT(return STATUS_WAIT_0 + i);
 				else
@@ -1439,7 +1438,7 @@ STDCALL NTSTATUS WRAP_EXPORT(KeWaitForMultipleObjects)
 			}
 		}
 		if (wait_count == 0) {
-			nt_spin_unlock_irql(&nt_event_lock, irql);
+			nt_spin_unlock_irql(&dispatcher_lock, irql);
 			EVENTEXIT(return STATUS_SUCCESS);
 		}
 		/* this thread is still waiting for more objects, so
@@ -1450,7 +1449,7 @@ STDCALL NTSTATUS WRAP_EXPORT(KeWaitForMultipleObjects)
 			wait_jiffies = res;
 		else
 			wait_jiffies = 0;
-		nt_spin_unlock_irql(&nt_event_lock, irql);
+		nt_spin_unlock_irql(&dispatcher_lock, irql);
 	}
 	/* this should never reach, but compiler wants return value */
 	ERROR("%p: wait_jiffies: %ld", task, wait_jiffies);
@@ -1472,9 +1471,9 @@ STDCALL void WRAP_EXPORT(KeInitializeEvent)
 
 	EVENTENTER("event = %p, type = %d, state = %d", nt_event, type, state);
 //	dump_bytes(__FUNCTION__, __builtin_return_address(0), 20);
-	irql = nt_spin_lock_irql(&nt_event_lock, DISPATCH_LEVEL);
+	irql = nt_spin_lock_irql(&dispatcher_lock, DISPATCH_LEVEL);
 	initialize_dh(&nt_event->dh, type, state, DH_NT_EVENT);
-	nt_spin_unlock_irql(&nt_event_lock, irql);
+	nt_spin_unlock_irql(&dispatcher_lock, irql);
 	EVENTEXIT(return);
 }
 
@@ -1489,11 +1488,12 @@ STDCALL LONG WRAP_EXPORT(KeSetEvent)
 	if (wait == TRUE)
 		WARNING("wait = %d, not yet implemented", wait);
 
-	irql = nt_spin_lock_irql(&nt_event_lock, DISPATCH_LEVEL);
+	irql = nt_spin_lock_irql(&dispatcher_lock, DISPATCH_LEVEL);
 	old_state = nt_event->dh.signal_state;
 	nt_event->dh.signal_state = 1;
-	wakeup_threads(&nt_event->dh);
-	nt_spin_unlock_irql(&nt_event_lock, irql);
+	if (old_state == 0)
+		wakeup_threads(&nt_event->dh);
+	nt_spin_unlock_irql(&dispatcher_lock, irql);
 	EVENTEXIT(return old_state);
 }
 
@@ -1503,9 +1503,9 @@ STDCALL void WRAP_EXPORT(KeClearEvent)
 	KIRQL irql;
 
 	EVENTENTER("event = %p", nt_event);
-	irql = nt_spin_lock_irql(&nt_event_lock, DISPATCH_LEVEL);
+	irql = nt_spin_lock_irql(&dispatcher_lock, DISPATCH_LEVEL);
 	nt_event->dh.signal_state = 0;
-	nt_spin_unlock_irql(&nt_event_lock, irql);
+	nt_spin_unlock_irql(&dispatcher_lock, irql);
 	EVENTEXIT(return);
 }
 
@@ -1517,10 +1517,10 @@ STDCALL LONG WRAP_EXPORT(KeResetEvent)
 
 	EVENTENTER("event = %p", nt_event);
 
-	irql = nt_spin_lock_irql(&nt_event_lock, DISPATCH_LEVEL);
+	irql = nt_spin_lock_irql(&dispatcher_lock, DISPATCH_LEVEL);
 	old_state = nt_event->dh.signal_state;
 	nt_event->dh.signal_state = 0;
-	nt_spin_unlock_irql(&nt_event_lock, irql);
+	nt_spin_unlock_irql(&dispatcher_lock, irql);
 
 	EVENTEXIT(return old_state);
 }
@@ -1531,14 +1531,14 @@ STDCALL void WRAP_EXPORT(KeInitializeMutex)
 	KIRQL irql;
 
 	EVENTENTER("%p", mutex);
-	irql = nt_spin_lock_irql(&nt_event_lock, DISPATCH_LEVEL);
+	irql = nt_spin_lock_irql(&dispatcher_lock, DISPATCH_LEVEL);
 	initialize_dh(&mutex->dh, NotificationEvent, 0, DH_NT_MUTEX);
 	mutex->dh.size = sizeof(*mutex);
 	InitializeListHead(&mutex->list);
 	mutex->abandoned = FALSE;
 	mutex->apc_disable = 1;
 	mutex->owner_thread = NULL;
-	nt_spin_unlock_irql(&nt_event_lock, irql);
+	nt_spin_unlock_irql(&dispatcher_lock, irql);
 	EVENTEXIT(return);
 }
 
@@ -1549,12 +1549,14 @@ STDCALL LONG WRAP_EXPORT(KeReleaseMutex)
 	KIRQL irql;
 	struct nt_thread *thread;
 
-	EVENTENTER("%p, %d, %p, %p", mutex, wait, current, thread);
+	EVENTENTER("%p, %d, %p", mutex, wait, current);
 	if (wait == TRUE)
 		WARNING("wait: %d", wait);
 	thread = KeGetCurrentThread();
-	irql = nt_spin_lock_irql(&nt_event_lock, DISPATCH_LEVEL);
-	if (mutex->owner_thread == thread && mutex->dh.signal_state < 0) {
+	irql = nt_spin_lock_irql(&dispatcher_lock, DISPATCH_LEVEL);
+	EVENTTRACE("%p, %p, %d", thread, mutex->owner_thread,
+		   mutex->dh.signal_state);
+	if ((mutex->owner_thread == thread) && (mutex->dh.signal_state < 0)) {
 		ret = ++(mutex->dh.signal_state);
 		if (ret == 0) {
 			mutex->owner_thread = NULL;
@@ -1562,7 +1564,7 @@ STDCALL LONG WRAP_EXPORT(KeReleaseMutex)
 		}
 	} else
 		ret = STATUS_MUTANT_NOT_OWNED;
-	nt_spin_unlock_irql(&nt_event_lock, irql);
+	nt_spin_unlock_irql(&dispatcher_lock, irql);
 	EVENTTRACE("ret: %08X", ret);
 	EVENTEXIT(return ret);
 }
@@ -1576,10 +1578,10 @@ STDCALL void WRAP_EXPORT(KeInitializeSemaphore)
 	/* if limit > 1, we need to satisfy as many waits (until count
 	 * becomes 0); so we keep decrementing count everytime a wait
 	 * is satisified */
-	irql = nt_spin_lock_irql(&nt_event_lock, DISPATCH_LEVEL);
+	irql = nt_spin_lock_irql(&dispatcher_lock, DISPATCH_LEVEL);
 	initialize_dh(&semaphore->dh, NotificationEvent, count,
 		      DH_NT_SEMAPHORE);
-	nt_spin_unlock_irql(&nt_event_lock, irql);
+	nt_spin_unlock_irql(&dispatcher_lock, irql);
 	semaphore->dh.size = sizeof(*semaphore);
 	semaphore->limit = limit;
 	EVENTEXIT(return);
@@ -1593,7 +1595,7 @@ STDCALL LONG WRAP_EXPORT(KeReleaseSemaphore)
 	KIRQL irql;
 
 	EVENTENTER("%p", semaphore);
-	irql = nt_spin_lock_irql(&nt_event_lock, DISPATCH_LEVEL);
+	irql = nt_spin_lock_irql(&dispatcher_lock, DISPATCH_LEVEL);
 	ret = semaphore->dh.signal_state;
 	assert(ret >= 0);
 	if (semaphore->dh.signal_state + adjustment <= semaphore->limit)
@@ -1601,7 +1603,7 @@ STDCALL LONG WRAP_EXPORT(KeReleaseSemaphore)
 	/* else raise exception */
 	if (semaphore->dh.signal_state > 0)
 		wakeup_threads(&semaphore->dh);
-	nt_spin_unlock_irql(&nt_event_lock, irql);
+	nt_spin_unlock_irql(&dispatcher_lock, irql);
 	EVENTEXIT(return ret);
 }
 
@@ -1778,9 +1780,9 @@ struct nt_thread *wrap_create_thread(struct task_struct *task)
 		nt_spin_lock_init(&thread->lock);
 		init_waitqueue_head(&thread->event_wq);
 		InitializeListHead(&thread->irps);
-		irql = nt_spin_lock_irql(&nt_event_lock, DISPATCH_LEVEL);
+		irql = nt_spin_lock_irql(&dispatcher_lock, DISPATCH_LEVEL);
 		initialize_dh(&thread->dh, NotificationEvent, 0, DH_NT_THREAD);
-		nt_spin_unlock_irql(&nt_event_lock, irql);
+		nt_spin_unlock_irql(&dispatcher_lock, irql);
 		thread->dh.size = sizeof(*thread);
 
 		DBGTRACE1("thread: %p, task: %p, pid: %d",
