@@ -1797,25 +1797,24 @@ void wrap_remove_thread(struct nt_thread *thread)
 	struct nt_list *ent;
 	KIRQL irql;
 
-	if (thread) {
-		DBGTRACE1("terminating thread: %p, task: %p, pid: %d",
-			  thread, thread->task, thread->task->pid);
-		/* TODO: make sure waitqueue is empty and destroy it */
-		while (1) {
-			struct irp *irp;
-			irql = nt_spin_lock_irql(&thread->lock,
-						 DISPATCH_LEVEL);
-			ent = RemoveHeadList(&thread->irps);
-			nt_spin_unlock_irql(&thread->lock, irql);
-			if (!ent)
-				break;
-			irp = container_of(ent, struct irp, threads);
-			IoCancelIrp(irp);
-		}
-		ObDereferenceObject(thread);
-	} else
+	if (!thread) {
 		ERROR("couldn't find thread for task: %p", current);
-	return;
+		return;
+	}
+	DBGTRACE1("terminating thread: %p, task: %p, pid: %d",
+		  thread, thread->task, thread->task->pid);
+	/* TODO: make sure waitqueue is empty and destroy it */
+	while (1) {
+		struct irp *irp;
+		irql = nt_spin_lock_irql(&thread->lock, DISPATCH_LEVEL);
+		ent = RemoveHeadList(&thread->irps);
+		nt_spin_unlock_irql(&thread->lock, irql);
+		if (!ent)
+			break;
+		irp = container_of(ent, struct irp, threads);
+		IoCancelIrp(irp);
+	}
+	ObDereferenceObject(thread);
 }
 
 STDCALL NTSTATUS WRAP_EXPORT(PsCreateSystemThread)
