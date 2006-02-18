@@ -149,7 +149,7 @@ int set_auth_mode(struct wrap_ndis_device *wnd, int auth_mode);
 int set_encr_mode(struct wrap_ndis_device *wnd, int encr_mode);
 int get_auth_mode(struct wrap_ndis_device *wnd);
 int get_encr_mode(struct wrap_ndis_device *wnd);
-int set_privacy_filter(struct wrap_ndis_device *wnd, int flags);
+int set_priv_filter(struct wrap_ndis_device *wnd, int flags);
 int set_scan(struct wrap_ndis_device *wnd);
 
 #define PRIV_RESET	 		SIOCIWFIRSTPRIV+16
@@ -201,6 +201,31 @@ struct wpa_assoc_info {
 	int mode;
 };
 
+struct wpa_driver_capa {
+#define WPA_DRIVER_CAPA_KEY_MGMT_WPA        0x00000001
+#define WPA_DRIVER_CAPA_KEY_MGMT_WPA2       0x00000002
+#define WPA_DRIVER_CAPA_KEY_MGMT_WPA_PSK    0x00000004
+#define WPA_DRIVER_CAPA_KEY_MGMT_WPA2_PSK   0x00000008
+#define WPA_DRIVER_CAPA_KEY_MGMT_WPA_NONE   0x00000010
+	unsigned int key_mgmt;
+
+#define WPA_DRIVER_CAPA_ENC_WEP40   0x00000001
+#define WPA_DRIVER_CAPA_ENC_WEP104  0x00000002
+#define WPA_DRIVER_CAPA_ENC_TKIP    0x00000004
+#define WPA_DRIVER_CAPA_ENC_CCMP    0x00000008
+	unsigned int enc;
+
+#define WPA_DRIVER_AUTH_OPEN        0x00000001
+#define WPA_DRIVER_AUTH_SHARED      0x00000002
+#define WPA_DRIVER_AUTH_LEAP        0x00000004
+	unsigned int auth;
+
+/* Driver generated WPA/RSN IE */
+#define WPA_DRIVER_FLAGS_DRIVER_IE  0x00000001
+#define WPA_DRIVER_FLAGS_SET_KEYS_AFTER_ASSOC 0x00000002
+	unsigned int flags;
+};
+
 #define WPA_SET_WPA 			SIOCIWFIRSTPRIV+1
 #define WPA_SET_KEY 			SIOCIWFIRSTPRIV+2
 #define WPA_ASSOCIATE		 	SIOCIWFIRSTPRIV+3
@@ -211,5 +236,6 @@ struct wpa_assoc_info {
 #define WPA_SET_AUTH_ALG	 	SIOCIWFIRSTPRIV+8
 #define WPA_INIT			SIOCIWFIRSTPRIV+9
 #define WPA_DEINIT			SIOCIWFIRSTPRIV+10
+#define WPA_GET_CAPA			SIOCIWFIRSTPRIV+11
 
 #endif // IW_NDIS_H

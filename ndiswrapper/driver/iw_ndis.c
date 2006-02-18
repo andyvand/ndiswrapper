@@ -116,7 +116,7 @@ static int set_assoc_params(struct wrap_ndis_device *wnd)
 	DBGTRACE2("priv_mode=%d auth_mode=%d encr_mode=%d",
 		  priv_mode, auth_mode, encr_mode);
 
-	set_privacy_filter(wnd, priv_mode);
+	set_priv_filter(wnd, priv_mode);
 	set_auth_mode(wnd, auth_mode);
 	set_encr_mode(wnd, encr_mode);
 #endif
@@ -2150,10 +2150,6 @@ static int wpa_associate(struct net_device *dev, struct iw_request_info *info,
 	default:
 		encr_mode = Ndis802_11EncryptionDisabled;
 	};
-
-	set_privacy_filter(wnd, priv_mode);
-	set_auth_mode(wnd, auth_mode);
-	set_encr_mode(wnd, encr_mode);
 	/* For WEP mode, wpa_supplicant first sets the keys and then
 	   associates, but NDIS drivers clear keys when mode is
 	   set. So we save current encryption information, set the
@@ -2177,6 +2173,9 @@ static int wpa_associate(struct net_device *dev, struct iw_request_info *info,
 		kfree(encr_info);
 	} else
 		set_infra_mode(wnd, infra_mode);
+	set_priv_filter(wnd, priv_mode);
+	set_auth_mode(wnd, auth_mode);
+	set_encr_mode(wnd, encr_mode);
 
 #if 0
 	/* set channel */
@@ -2217,7 +2216,7 @@ static int wpa_deauthenticate(struct net_device *dev,
 	TRACEEXIT2(return ret);
 }
 
-int set_privacy_filter(struct wrap_ndis_device *wnd, int flags)
+int set_priv_filter(struct wrap_ndis_device *wnd, int flags)
 {
 	NDIS_STATUS res;
 
@@ -2233,7 +2232,7 @@ int set_privacy_filter(struct wrap_ndis_device *wnd, int flags)
 	TRACEEXIT2(return 0);
 }
 
-static int wpa_set_privacy_filter(struct net_device *dev,
+static int wpa_set_priv_filter(struct net_device *dev,
 				  struct iw_request_info *info,
 				  union iwreq_data *wrqu, char *extra)
 {
@@ -2245,7 +2244,7 @@ static int wpa_set_privacy_filter(struct net_device *dev,
 		flags = Ndis802_11PrivFilter8021xWEP;
 	else
 		flags = Ndis802_11PrivFilterAcceptAll;
-	if (set_privacy_filter(wnd, flags))
+	if (set_priv_filter(wnd, flags))
 		TRACEEXIT2(return -1);
 	TRACEEXIT2(return 0);
 }
@@ -2272,19 +2271,48 @@ static int wpa_set_auth_alg(struct net_device *dev,
 	TRACEEXIT2(return 0);
 }
 
+static int wpa_get_capa(struct net_device *dev, struct iw_request_info *info,
+			union iwreq_data *wrqu, char *extra)
+{
+	struct wrap_ndis_device *wnd = netdev_priv(dev);
+	struct wpa_driver_capa *drv_capa;
+
+	TRACEENTER2("%p", wnd);
+	drv_capa = wrqu->data.pointer;
+	if (!drv_capa)
+		TRACEEXIT2(return -1);
+	drv_capa->key_mgmt = 0;
+	if (test_bit(Ndis802_11AuthModeWPA, &wnd->capa.auth))
+		drv_capa->key_mgmt |= WPA_DRIVER_CAPA_KEY_MGMT_WPA;
+	if (test_bit(Ndis802_11AuthModeWPAPSK, &wnd->capa.auth))
+		drv_capa->key_mgmt |= WPA_DRIVER_CAPA_KEY_MGMT_WPA_PSK;
+	if (test_bit(Ndis802_11AuthModeWPA2, &wnd->capa.auth))
+		drv_capa->key_mgmt |= WPA_DRIVER_CAPA_KEY_MGMT_WPA2;
+	if (test_bit(Ndis802_11AuthModeWPA2PSK, &wnd->capa.auth))
+		drv_capa->key_mgmt |= WPA_DRIVER_CAPA_KEY_MGMT_WPA2_PSK;
+	if (test_bit(Ndis802_11AuthModeWPANone, &wnd->capa.auth))
+		drv_capa->key_mgmt |= WPA_DRIVER_CAPA_KEY_MGMT_WPA_NONE;
+
+	drv_capa->enc = 0;
+	if (test_bit(Ndis802_11Encryption1Enabled, &wnd->capa.encr))
+		drv_capa->enc |= WPA_DRIVER_CAPA_ENC_WEP40 |
+			WPA_DRIVER_CAPA_ENC_WEP104;
+	if (test_bit(Ndis802_11Encryption2Enabled, &wnd->capa.encr))
+		drv_capa->enc |= WPA_DRIVER_CAPA_ENC_TKIP;
+	if (test_bit(Ndis802_11Encryption3Enabled, &wnd->capa.encr))
+		drv_capa->enc |= WPA_DRIVER_CAPA_ENC_CCMP;
+
+	/* TODO: how to check if LEAP is supported? */
+	drv_capa->auth = WPA_DRIVER_AUTH_OPEN | WPA_DRIVER_AUTH_SHARED;
+
+	drv_capa->flags = WPA_DRIVER_FLAGS_DRIVER_IE |
+		WPA_DRIVER_FLAGS_SET_KEYS_AFTER_ASSOC;
+	TRACEEXIT2(return 0);
+}
+
 static const struct iw_priv_args priv_args[] = {
-	{WPA_SET_WPA, IW_PRIV_TYPE_INT | IW_PRIV_SIZE_FIXED | 1, 0, "setwpa"},
-	{WPA_SET_KEY, IW_PRIV_TYPE_INT | IW_PRIV_SIZE_FIXED | 1, 0, "setkey"},
-	{WPA_ASSOCIATE, IW_PRIV_TYPE_INT | IW_PRIV_SIZE_FIXED | 1, 0,
-	 "associate"},
-	{WPA_DISASSOCIATE, IW_PRIV_TYPE_INT | IW_PRIV_SIZE_FIXED | 1, 0,
-	 "disassociate"},
 	{WPA_DROP_UNENCRYPTED, IW_PRIV_TYPE_INT | IW_PRIV_SIZE_FIXED | 1, 0,
-	 "drop_unencrypted"},
-	{WPA_SET_COUNTERMEASURES, IW_PRIV_TYPE_INT | IW_PRIV_SIZE_FIXED | 1, 0,
-	 "countermeasures"},
-	{WPA_DEAUTHENTICATE, IW_PRIV_TYPE_INT | IW_PRIV_SIZE_FIXED | 1, 0,
-	 "deauthenticate"},
+	 "set_priv_filter"},
 	{WPA_SET_AUTH_ALG, IW_PRIV_TYPE_INT | IW_PRIV_SIZE_FIXED | 1, 0,
 	 "auth_alg"},
 
@@ -2303,12 +2331,13 @@ static const iw_handler priv_handler[] = {
 	[WPA_SET_KEY 		- SIOCIWFIRSTPRIV] = wpa_set_key,
 	[WPA_ASSOCIATE 		- SIOCIWFIRSTPRIV] = wpa_associate,
 	[WPA_DISASSOCIATE 	- SIOCIWFIRSTPRIV] = wpa_disassociate,
-	[WPA_DROP_UNENCRYPTED 	- SIOCIWFIRSTPRIV] = wpa_set_privacy_filter,
+	[WPA_DROP_UNENCRYPTED 	- SIOCIWFIRSTPRIV] = wpa_set_priv_filter,
 	[WPA_SET_COUNTERMEASURES- SIOCIWFIRSTPRIV] = wpa_set_countermeasures,
 	[WPA_DEAUTHENTICATE 	- SIOCIWFIRSTPRIV] = wpa_deauthenticate,
 	[WPA_SET_AUTH_ALG 	- SIOCIWFIRSTPRIV] = wpa_set_auth_alg,
 	[WPA_INIT 		- SIOCIWFIRSTPRIV] = wpa_init,
 	[WPA_DEINIT 		- SIOCIWFIRSTPRIV] = wpa_deinit,
+	[WPA_GET_CAPA 		- SIOCIWFIRSTPRIV] = wpa_get_capa,
 
 	[PRIV_RESET 		- SIOCIWFIRSTPRIV] = priv_reset,
 	[PRIV_POWER_PROFILE 	- SIOCIWFIRSTPRIV] = priv_power_profile,

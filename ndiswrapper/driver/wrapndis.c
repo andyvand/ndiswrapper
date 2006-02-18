@@ -1495,7 +1495,7 @@ static NDIS_STATUS ndis_start_device(struct wrap_ndis_device *wnd)
 	set_auth_mode(wnd, Ndis802_11AuthModeOpen);
 	set_encr_mode(wnd, Ndis802_11EncryptionDisabled);
 	set_scan(wnd);
-	set_privacy_filter(wnd, Ndis802_11PrivFilterAcceptAll);
+	set_priv_filter(wnd, Ndis802_11PrivFilterAcceptAll);
 	set_essid(wnd, "", 0);
 
 	wrap_procfs_add_ndis_device(wnd);
