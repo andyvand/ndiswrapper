@@ -266,7 +266,7 @@ enum mode {
 };
 
 struct mdl {
-	struct mdl* next;
+	struct mdl *next;
 	CSHORT size;
 	CSHORT flags;
 	void *process;
