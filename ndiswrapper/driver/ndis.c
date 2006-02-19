@@ -1049,6 +1049,10 @@ STDCALL void WRAP_EXPORT(NdisFreeBuffer)
 	KIRQL irql;
 
 	TRACEENTER4("descr: %p", descr);
+	if (!descr) {
+		ERROR("buffer is NULL");
+		TRACEEXIT4(return);
+	}
 	pool = descr->process;
 	if (!pool) {
 		ERROR("pool for descriptor %p is invalid", descr);

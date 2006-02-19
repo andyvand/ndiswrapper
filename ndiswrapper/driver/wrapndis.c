@@ -416,8 +416,8 @@ static void show_supported_oids(struct wrap_ndis_device *wnd)
 	TRACEEXIT1(return);
 }
 
-static struct ndis_packet *
-allocate_tx_packet(struct wrap_ndis_device *wnd, struct sk_buff *skb)
+static struct ndis_packet *allocate_tx_packet(struct wrap_ndis_device *wnd,
+					      struct sk_buff *skb)
 {
 	struct ndis_packet *packet;
 	ndis_buffer *buffer;
@@ -458,9 +458,10 @@ void free_tx_packet(struct wrap_ndis_device *wnd, struct ndis_packet *packet,
 {
 	ndis_buffer *buffer;
 	struct ndis_packet_oob_data *oob_data;
+	KIRQL irql;
 
 	TRACEENTER3("%p, %08X", packet, status);
-	nt_spin_lock(&wnd->tx_stats_lock);
+	irql = nt_spin_lock_irql(&wnd->tx_stats_lock, DISPATCH_LEVEL);
 	if (status == NDIS_STATUS_SUCCESS) {
 		wnd->stats.tx_bytes += packet->private.len;
 		wnd->stats.tx_packets++;
@@ -468,8 +469,7 @@ void free_tx_packet(struct wrap_ndis_device *wnd, struct ndis_packet *packet,
 		WARNING("packet dropped: %08X", status);
 		wnd->stats.tx_dropped++;
 	}
-	nt_spin_unlock(&wnd->tx_stats_lock);
-	buffer = packet->private.buffer_head;
+	nt_spin_unlock_irql(&wnd->tx_stats_lock, irql);
 	oob_data = NDIS_PACKET_OOB_DATA(packet);
 	if (wnd->use_sg_dma)
 		PCI_DMA_UNMAP_SINGLE(wnd->wd->pci.pdev,
@@ -477,6 +477,7 @@ void free_tx_packet(struct wrap_ndis_device *wnd, struct ndis_packet *packet,
 				     oob_data->ndis_sg_element.length,
 				     PCI_DMA_TODEVICE);
 
+	buffer = packet->private.buffer_head;
 	DBGTRACE3("freeing buffer %p", buffer);
 	NdisFreeBuffer(buffer);
 	dev_kfree_skb_any(oob_data->skb);
@@ -521,7 +522,7 @@ static int tx_ndis_packets(struct wrap_ndis_device *wnd, unsigned int start,
 				struct ndis_packet_oob_data *oob_data;
 				packet = wnd->tx_array[sent];
 				oob_data = NDIS_PACKET_OOB_DATA(packet);
-				switch(oob_data->status) {
+				switch (oob_data->status) {
 				case NDIS_STATUS_SUCCESS:
 					free_tx_packet(wnd, packet,
 						       oob_data->status);
@@ -530,11 +531,24 @@ static int tx_ndis_packets(struct wrap_ndis_device *wnd, unsigned int start,
 					break;
 				case NDIS_STATUS_RESOURCES:
 					wnd->tx_ok = 0;
+					/* resubmit this packet and
+					 * the rest when resources
+					 * become available */
+					sent--;
 					break;
 				case NDIS_STATUS_FAILURE:
-				default:
+					WARNING("packet %p dropped", packet);
 					free_tx_packet(wnd, packet,
 						       oob_data->status);
+					break;
+				default:
+					ERROR("packet %p: unknown status %08X",
+					      packet, oob_data->status);
+					/* RT2500 driver seems to
+					 * break with SMP - it frees
+					 * the buffer and packet by
+					 * the time control comes
+					 * here, so don't free it */
 					break;
 				}
 			}
