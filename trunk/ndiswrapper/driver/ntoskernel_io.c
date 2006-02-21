@@ -896,11 +896,11 @@ STDCALL NTSTATUS WRAP_EXPORT(IoRegisterDeviceInterface)
 {
 	struct ansi_string ansi;
 
-	/* check if pdo is valid */
-	ansi.buf = "ndis";
-	ansi.length = strlen(ansi.buf);
-	ansi.max_length = ansi.length + 1;
-	TRACEENTER1("pdo: %p, ref: %p, link: %p", pdo, reference, link);
+	/* TODO: check if pdo is valid */
+	RtlInitAnsiString(&ansi, "ndis");
+	TRACEENTER1("pdo: %p, ref: %p, link: %p, %x, %x, %x",
+		    pdo, reference, link, guid_class->data1,
+		    guid_class->data2, guid_class->data3);
 	return RtlAnsiStringToUnicodeString(link, &ansi, TRUE);
 }
 

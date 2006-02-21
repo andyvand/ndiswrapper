@@ -215,7 +215,7 @@ static NDIS_STATUS miniport_init(struct wrap_ndis_device *wnd)
 	if (!wnd->wd->driver->ndis_driver ||
 	    !wnd->wd->driver->ndis_driver->miniport.init) {
 		ERROR("assuming WDM (non-NDIS) driver");
-		TRACEEXIT1(return NDIS_STATUS_SUCCESS);
+		TRACEEXIT1(return NDIS_STATUS_NOT_RECOGNIZED);
 	}
 	miniport = &wnd->wd->driver->ndis_driver->miniport;
 	status = LIN2WIN6(miniport->init, &error_status,
@@ -416,8 +416,8 @@ static void show_supported_oids(struct wrap_ndis_device *wnd)
 	TRACEEXIT1(return);
 }
 
-static struct ndis_packet *allocate_tx_packet(struct wrap_ndis_device *wnd,
-					      struct sk_buff *skb)
+static struct ndis_packet *alloc_tx_packet(struct wrap_ndis_device *wnd,
+					   struct sk_buff *skb)
 {
 	struct ndis_packet *packet;
 	ndis_buffer *buffer;
@@ -515,6 +515,7 @@ static int tx_ndis_packets(struct wrap_ndis_device *wnd, unsigned int start,
 			wnd->tx_array[i] = wnd->tx_ring[j];
 		}
 		LIN2WIN3(miniport->send_packets, wnd->nmb->adapter_ctx,
+
 			 wnd->tx_array, n);
 		sent = n;
 		if (test_bit(ATTR_SERIALIZED, &wnd->attributes)) {
@@ -557,7 +558,7 @@ static int tx_ndis_packets(struct wrap_ndis_device *wnd, unsigned int start,
 	} else {
 		packet = wnd->tx_ring[start];
 		res = LIN2WIN3(miniport->send, wnd->nmb->adapter_ctx,
-			       packet, 0);
+			       packet, packet->private.flags);
 		sent = 1;
 		switch (res) {
 		case NDIS_STATUS_SUCCESS:
@@ -617,7 +618,7 @@ static int tx_skbuff(struct sk_buff *skb, struct net_device *dev)
 	struct ndis_packet *packet;
 	unsigned int tx_ring_next_slot;
 
-	packet = allocate_tx_packet(wnd, skb);
+	packet = alloc_tx_packet(wnd, skb);
 	if (!packet) {
 		WARNING("couldn't allocate packet");
 		return 1;
@@ -1384,8 +1385,11 @@ static NDIS_STATUS ndis_start_device(struct wrap_ndis_device *wnd)
 	mac_address mac;
 	char buf[256];
 
-	if (miniport_init(wnd) != NDIS_STATUS_SUCCESS)
-		return NDIS_STATUS_FAILURE;
+	ndis_status = miniport_init(wnd);
+	if (ndis_status == NDIS_STATUS_NOT_RECOGNIZED)
+		TRACEEXIT1(return NDIS_STATUS_SUCCESS);
+	if (ndis_status != NDIS_STATUS_SUCCESS)
+		TRACEEXIT1(return NDIS_STATUS_FAILURE);
 	/* NB: tx_array is used to recognize if device is being
 	 * started for the first time or being re-started */
 	if (wnd->tx_array)
@@ -1506,10 +1510,10 @@ static NDIS_STATUS ndis_start_device(struct wrap_ndis_device *wnd)
 //	miniport_set_int(wnd, OID_802_11_POWER_MODE, NDIS_POWER_OFF);
 	/* check_capa changes auth_mode and encr_mode, so set them again */
 	set_infra_mode(wnd, Ndis802_11Infrastructure);
-	set_auth_mode(wnd, Ndis802_11AuthModeOpen);
-	set_encr_mode(wnd, Ndis802_11EncryptionDisabled);
 	set_scan(wnd);
 	set_priv_filter(wnd, Ndis802_11PrivFilterAcceptAll);
+	set_auth_mode(wnd, Ndis802_11AuthModeOpen);
+	set_encr_mode(wnd, Ndis802_11EncryptionDisabled);
 	set_essid(wnd, "", 0);
 
 	wrap_procfs_add_ndis_device(wnd);
@@ -1544,7 +1548,7 @@ static NDIS_STATUS ndis_remove_device(struct wrap_ndis_device *wnd)
 		struct ndis_packet *packet;
 
 		packet = wnd->tx_ring[wnd->tx_ring_start];
-		free_tx_packet(wnd, packet, NDIS_STATUS_FAILURE);
+		free_tx_packet(wnd, packet, NDIS_STATUS_CLOSING);
 		wnd->tx_ring_start = (wnd->tx_ring_start + 1) % TX_RING_SIZE;
 		wnd->tx_ring_pending--;
 	}
