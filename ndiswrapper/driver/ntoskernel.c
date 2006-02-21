@@ -2235,7 +2235,7 @@ STDCALL NTSTATUS WRAP_EXPORT(ZwCreateFile)
 	char *file_basename;
 	KIRQL irql;
 
-	TRACEENTER2("");
+	TRACEENTER2("%p", *handle);
 	if (RtlUnicodeStringToAnsiString(&ansi, obj_attr->name, TRUE) !=
 	    STATUS_SUCCESS)
 		TRACEEXIT2(return STATUS_INSUFFICIENT_RESOURCES);
@@ -2299,6 +2299,7 @@ STDCALL NTSTATUS WRAP_EXPORT(ZwReadFile)
 	size_t offset;
 	struct wrap_bin_file *file;
 
+	DBGTRACE2("%p", handle);
 	oa = HANDLE_TO_OBJECT(handle);
 	file = oa->file;
 	DBGTRACE2("file: %s (%d)", file->name, file->size);
@@ -2321,6 +2322,7 @@ STDCALL NTSTATUS WRAP_EXPORT(ZwClose)
 	struct wrap_bin_file *bin_file;
 	struct common_object_header *coh;
 
+	DBGTRACE2("%p", handle);
 	coh = handle;
 	if (coh == NULL) {
 		DBGTRACE1("");
