@@ -110,21 +110,18 @@ static void usb_init_urb(struct urb *urb)
 
 #endif
 
-/* TODO: using a worker instead of tasklet is probably preferable, but
- * with ZyDas driver the worker never gets executed, even though it
- * gets scheduled */
-static struct tasklet_struct wrap_urb_complete_work;
+static struct work_struct wrap_urb_complete_work;
 static struct nt_list wrap_urb_complete_list;
 static NT_SPIN_LOCK wrap_urb_complete_list_lock;
 static STDCALL void win_wrap_cancel_irp(struct device_object *dev_obj,
 					struct irp *irp);
-static void wrap_urb_complete_worker(unsigned long data);
+static void wrap_urb_complete_worker(void *dummy);
 
 int usb_init(void)
 {
 	InitializeListHead(&wrap_urb_complete_list);
 	nt_spin_lock_init(&wrap_urb_complete_list_lock);
-	tasklet_init(&wrap_urb_complete_work, wrap_urb_complete_worker, 0);
+	INIT_WORK(&wrap_urb_complete_work, wrap_urb_complete_worker, NULL);
 #ifdef USB_DEBUG
 	urb_id = 0;
 #endif
@@ -133,7 +130,9 @@ int usb_init(void)
 
 void usb_exit(void)
 {
-	tasklet_kill(&wrap_urb_complete_work);
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
+	cancel_delayed_work(&wrap_urb_complete_work);
+#endif
 	TRACEEXIT1(return);
 }
 
@@ -436,7 +435,8 @@ static void wrap_urb_complete(struct urb *urb)
 		InsertTailList(&wrap_urb_complete_list,
 			       &wrap_urb->complete_list);
 		nt_spin_unlock(&wrap_urb_complete_list_lock);
-		tasklet_schedule(&wrap_urb_complete_work);
+		schedule_wrap_work(&wrap_urb_complete_work);
+		USBTRACE("scheduled worker for urb %p", urb);
 	} else {
 		WARNING("urb %p in wrong state: %d", urb, wrap_urb->state);
 	}
@@ -444,7 +444,7 @@ static void wrap_urb_complete(struct urb *urb)
 }
 
 /* one worker for all devices */
-static void wrap_urb_complete_worker(unsigned long data)
+static void wrap_urb_complete_worker(void *dummy)
 {
 	struct irp *irp;
 	struct urb *urb;
@@ -455,6 +455,7 @@ static void wrap_urb_complete_worker(unsigned long data)
 	struct nt_list *ent;
 	unsigned long flags;
 
+	USBENTER("");
 	while (1) {
 		nt_spin_lock_irqsave(&wrap_urb_complete_list_lock, flags);
 		ent = RemoveHeadList(&wrap_urb_complete_list);
@@ -526,7 +527,7 @@ static void wrap_urb_complete_worker(unsigned long data)
 		wrap_free_urb(urb);
 		IoCompleteRequest(irp, IO_NO_INCREMENT);
 	}
-	return;
+	USBEXIT(return);
 }
 
 /* this function is called only from win_wrap_cancel_irp */
@@ -645,7 +646,7 @@ static USBD_STATUS wrap_bulk_or_intr_trans(struct irp *irp)
 
 static USBD_STATUS wrap_vendor_or_class_req(struct irp *irp)
 {
-	char req_type;
+	__u8 req_type;
 	unsigned int pipe;
 	struct usbd_vendor_or_class_request *vc_req;
 	struct usb_device *udev;
@@ -663,6 +664,7 @@ static USBD_STATUS wrap_vendor_or_class_req(struct irp *irp)
 		 vc_req->transfer_flags, vc_req->transfer_buffer,
 		 vc_req->transfer_buffer_length);
 
+	USBTRACE("%x", nt_urb->header.function);
 	switch (nt_urb->header.function) {
 	case URB_FUNCTION_VENDOR_DEVICE:
 		req_type = USB_TYPE_VENDOR | USB_RECIP_DEVICE;
@@ -714,11 +716,11 @@ static USBD_STATUS wrap_vendor_or_class_req(struct irp *irp)
 	if (vc_req->transfer_flags & USBD_TRANSFER_DIRECTION_IN) {
 		pipe = usb_rcvctrlpipe(udev, 0);
 		req_type |= USB_DIR_IN;
-		USBTRACE("pipe: %u, dir in", pipe);
+		USBTRACE("pipe: %x, dir in", pipe);
 	} else {
 		pipe = usb_sndctrlpipe(udev, 0);
 		req_type |= USB_DIR_OUT;
-		USBTRACE("pipe: %u, dir out", pipe);
+		USBTRACE("pipe: %x, dir out", pipe);
 	}
 	urb = wrap_alloc_urb(irp, pipe, vc_req->transfer_buffer,
 			     vc_req->transfer_buffer_length);
@@ -743,12 +745,12 @@ static USBD_STATUS wrap_vendor_or_class_req(struct irp *irp)
 	dr->bRequestType = req_type;
 	dr->bRequest = vc_req->request;
 	dr->wValue = cpu_to_le16(vc_req->value);
-	dr->wIndex = cpu_to_le16(vc_req->index);
-	dr->wLength = cpu_to_le16(vc_req->transfer_buffer_length);
+	dr->wIndex = cpu_to_le16((u16)vc_req->index);
+	dr->wLength = cpu_to_le16((u16)urb->transfer_buffer_length);
 
 	usb_fill_control_urb(urb, udev, pipe, (unsigned char *)dr,
 			     urb->transfer_buffer,
-			     vc_req->transfer_buffer_length,
+			     urb->transfer_buffer_length,
 			     wrap_urb_complete, urb->context);
 	status = wrap_submit_urb(irp);
 	USBTRACE("status: %08X", status);
