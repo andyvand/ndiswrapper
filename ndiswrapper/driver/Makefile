@@ -36,6 +36,9 @@ CFLAGS += $(shell if grep -q 'struct module \*owner;' \
 		  fi)
 endif
 
+# returns of structs and unions in registers when possible, like Windows 
+CFLAGS += -freg-struct-return
+
 # to produce debug trace, add option "DEBUG=<n>" where <n> is 1 to 6
 ifdef DEBUG
 CFLAGS += -DDEBUG=$(DEBUG) -g -DDEBUG_TIMER 
