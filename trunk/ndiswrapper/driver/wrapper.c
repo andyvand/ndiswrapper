@@ -136,8 +136,13 @@ static int __init wrapper_init(void)
 	char *env[] = {NULL};
 	int ret;
 
-	printk(KERN_INFO "%s version %s loaded (preempt=%s,smp=%s)\n",
+	printk(KERN_INFO "%s version %s loaded (%spreempt=%s,smp=%s)\n",
 	       DRIVER_NAME, DRIVER_VERSION,
+#ifdef DEBUG
+	       UTS_RELEASE ",",
+#else
+	       "",
+#endif
 #if defined CONFIG_PREEMPT
 	       "yes",
 #else
@@ -152,7 +157,7 @@ static int __init wrapper_init(void)
 
 	if (misc_funcs_init() || ntoskernel_init() || ndis_init()
 #ifdef CONFIG_USB
-	     || usb_init()
+	    || usb_init()
 #endif
 		)
 		goto err;

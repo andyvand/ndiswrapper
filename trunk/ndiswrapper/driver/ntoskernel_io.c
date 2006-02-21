@@ -815,16 +815,13 @@ STDCALL void WRAP_EXPORT(IoDetachDevice)
 	IOEXIT(return);
 }
 
-/* gcc will return unions and structs either through registers or in
- * memory, so we can't return 'union power_state'; instead, we return
- * 'enum device_power_state' (which is one of the fields in the
- * union). With this gcc will honor STDCALL and return value
- * appropriately */
-STDCALL enum device_power_state WRAP_EXPORT(PoSetPowerState)
+/* NOTE: Make sure to compile with -freg-struct-return, so gcc will
+ * return union in register, like Windows */
+STDCALL union power_state WRAP_EXPORT(PoSetPowerState)
 	(struct device_object *dev_obj, enum power_state_type type,
 	 union power_state state)
 {
-	IOEXIT(return PowerDeviceD0);
+	IOEXIT(return state);
 }
 
 STDCALL NTSTATUS WRAP_EXPORT(PoCallDriver)
