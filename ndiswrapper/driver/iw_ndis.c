@@ -2278,7 +2278,7 @@ static int wpa_get_capa(struct net_device *dev, struct iw_request_info *info,
 	struct wpa_driver_capa *drv_capa;
 
 	TRACEENTER2("%p", wnd);
-	drv_capa = wrqu->data.pointer;
+	drv_capa = (struct wpa_driver_capa *)wrqu->data.pointer;
 	if (!drv_capa)
 		TRACEEXIT2(return -1);
 	drv_capa->key_mgmt = 0;

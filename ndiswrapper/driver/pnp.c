@@ -684,6 +684,7 @@ static int wrap_pnp_start_device(struct wrap_device *wd)
 			return -EINVAL;
 		}
 	}
+	DBGTRACE1("%p", driver->drv_obj->drv_ext->add_device);
 	if (driver->drv_obj->drv_ext->add_device(driver->drv_obj, pdo) !=
 	    STATUS_SUCCESS) {
 		IoDeleteDevice(pdo);
@@ -756,6 +757,12 @@ void *wrap_pnp_start_usb_device(struct usb_device *udev,
 	struct wrap_device *wd;
 	int ret;
 	wd = &wrap_devices[usb_id->driver_info];
+	DBGTRACE1("%04x, %04x, %x, %x, %x, %x, %x, %x, %x, %p",
+		  usb_id->idVendor, usb_id->idProduct,
+		  usb_id->bDeviceClass, usb_id->bDeviceSubClass,
+		  usb_id->bDeviceProtocol, usb_id->bInterfaceClass,
+		  usb_id->bDeviceProtocol, usb_id->bInterfaceClass,
+		  usb_id->bInterfaceSubClass, wd->usb.intf);
 	/* USB device may have multiple interfaces; initialize a
 	  device only once */
 	if (wd->usb.intf) {

@@ -7,23 +7,23 @@ DISTFILES=divdi3.c hal.c iw_ndis.c iw_ndis.h loader.c loader.h \
 		winnt_types.h wrapper.c wrapndis.h wrapndis.c x86_64_stubs.S
 
 KVERS ?= $(shell uname -r)
-KSRC  ?= /lib/modules/$(KVERS)/source
-KBUILD  ?= /lib/modules/$(KVERS)/build
+KSRC  ?= /lib/modules/$(KVERS)/build
+
+# distros use different paths for kernel include files
+KINC ?= $(shell if [ -f $(KSRC)/include/linux/module.h ]; then \
+			echo $(KSRC)/include; \
+		 else \
+		 	 echo /lib/moduels/$(KVERS)/source/include; \
+		 fi)
 
 KPSUB := $(shell echo $(KVERS) | sed -e 's/\([^\.]*\)\.\([^\.]*\)\..*/\1\2/')
-
-KINC ?= $(shell if [ -f $(KBUILD)/include/linux/module.h ]; then \
-			echo $(KBUILD)/include; \
-		 else \
-		 	 echo $(KSRC)/include; \
-		 fi)
 
 DESTDIR =
 INST_DIR := $(DESTDIR)/lib/modules/$(KVERS)/misc
 
 SRC_DIR=$(shell pwd)
 
--include $(KBUILD)/.config
+-include $(KSRC)/.config
 
 CFLAGS += $(shell [ -f $(KINC)/linux/modversions.h ] && \
 		  echo -DEXPORT_SYMTAB -DMODVERSIONS \
@@ -192,8 +192,8 @@ endif
 
 prereq_check:
 	@ if [ ! -f $(KINC)/linux/version.h ]; then \
-		echo "Can't find kernel sources in $(KINC);"; \
-		echo "  give the path to kernel sources with KINC=<path>\
+		echo "Can't find kernel sources in $(KSRC);"; \
+		echo "  give the path to kernel sources with KSRC=<path>\
 		       argument to make";\
 		exit 1;\
 	  fi
@@ -231,8 +231,8 @@ endif
 
 stack_check:
 	  @ if [ "x$(CONFIG_X86_64)" = "x" -a $(KPSUB) -eq 26 ]; then \
-		   if grep -q CONFIG_4KSTACKS $(KBUILD)/.config; then \
-			  if grep -q "CONFIG_4KSTACKS=y" $(KBUILD)/.config; then \
+		   if grep -q CONFIG_4KSTACKS $(KSRC)/.config; then \
+			  if grep -q "CONFIG_4KSTACKS=y" $(KSRC)/.config; then \
 				echo; echo; \
 			  	echo "*** WARNING: "\
 					 "Kernel is compiled with 4K stack size option"\
