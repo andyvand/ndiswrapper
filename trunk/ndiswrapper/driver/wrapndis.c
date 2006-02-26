@@ -440,10 +440,8 @@ static struct ndis_packet *alloc_tx_packet(struct wrap_ndis_device *wnd,
 	oob_data->skb = skb;
 	if (wnd->use_sg_dma) {
 		oob_data->ndis_sg_element.address =
-			PCI_DMA_MAP_SINGLE(wnd->wd->pci.pdev,
-					   skb->data, skb->len,
-					   PCI_DMA_TODEVICE);
-
+			PCI_DMA_MAP_SINGLE(wnd->wd->pci.pdev, skb->data,
+					   skb->len, PCI_DMA_TODEVICE);
 		oob_data->ndis_sg_element.length = skb->len;
 		oob_data->ndis_sg_list.nent = 1;
 		oob_data->ndis_sg_list.elements = &oob_data->ndis_sg_element;
@@ -476,12 +474,10 @@ void free_tx_packet(struct wrap_ndis_device *wnd, struct ndis_packet *packet,
 				     oob_data->ndis_sg_element.address,
 				     oob_data->ndis_sg_element.length,
 				     PCI_DMA_TODEVICE);
-
 	buffer = packet->private.buffer_head;
 	DBGTRACE3("freeing buffer %p", buffer);
 	NdisFreeBuffer(buffer);
 	dev_kfree_skb_any(oob_data->skb);
-
 	DBGTRACE3("freeing packet %p", packet);
 	NdisFreePacket(packet);
 	TRACEEXIT3(return);
@@ -515,7 +511,6 @@ static int tx_ndis_packets(struct wrap_ndis_device *wnd, unsigned int start,
 			wnd->tx_array[i] = wnd->tx_ring[j];
 		}
 		LIN2WIN3(miniport->send_packets, wnd->nmb->adapter_ctx,
-
 			 wnd->tx_array, n);
 		sent = n;
 		if (test_bit(ATTR_SERIALIZED, &wnd->attributes)) {
@@ -785,38 +780,11 @@ static void link_status_handler(struct wrap_ndis_device *wnd)
 
 	TRACEENTER2("link status: %d", wnd->link_status);
 	if (wnd->link_status == 0) {
-#if 0
-		unsigned int i;
-		struct encr_info *encr_info = &wnd->encr_info;
-
-		if (wnd->encr_mode == Ndis802_11Encryption1Enabled ||
-		    wnd->infrastructure_mode == Ndis802_11IBSS) {
-			for (i = 0; i < MAX_ENCR_KEYS; i++) {
-				if (encr_info->keys[i].length == 0)
-					continue;
-				add_wep_key(wnd, encr_info->keys[i].key,
-					    encr_info->keys[i].length, i);
-			}
-
-			set_bit(SET_ESSID, &wnd->wrap_ndis_work);
-			schedule_ndis_work(&wnd->wrap_ndis_worker);
-			TRACEEXIT2(return);
-		}
-		/* TODO: not clear if NDIS says keys should
-		 * be cleared here */
-		for (i = 0; i < MAX_ENCR_KEYS; i++)
-			wnd->encr_info.keys[i].length = 0;
-#endif
-
 		memset(&wrqu, 0, sizeof(wrqu));
 		wrqu.ap_addr.sa_family = ARPHRD_ETHER;
 		wireless_send_event(wnd->net_dev, SIOCGIWAP, &wrqu, NULL);
 		TRACEEXIT2(return);
 	}
-
-	if (!(test_bit(Ndis802_11Encryption2Enabled, &wnd->capa.encr) ||
-	      test_bit(Ndis802_11Encryption3Enabled, &wnd->capa.encr)))
-		TRACEEXIT2(return);
 
 	assoc_info = kmalloc(assoc_size, GFP_KERNEL);
 	if (!assoc_info) {
@@ -826,14 +794,6 @@ static void link_status_handler(struct wrap_ndis_device *wnd)
 	memset(assoc_info, 0, assoc_size);
 
 	ndis_assoc_info = (struct ndis_assoc_info *)assoc_info;
-#if 0
-	ndis_assoc_info->length = sizeof(*ndis_assoc_info);
-	ndis_assoc_info->offset_req_ies = sizeof(*ndis_assoc_info);
-	ndis_assoc_info->req_ie_length = IW_CUSTOM_MAX / 2;
-	ndis_assoc_info->offset_resp_ies = sizeof(*ndis_assoc_info) +
-		ndis_assoc_info->req_ie_length;
-	ndis_assoc_info->resp_ie_length = IW_CUSTOM_MAX / 2;
-#endif
 	res = miniport_query_info(wnd, OID_802_11_ASSOCIATION_INFORMATION,
 				  assoc_info, assoc_size);
 	if (res) {
@@ -1228,7 +1188,7 @@ STDCALL NTSTATUS winNdisDispatchDeviceControl(struct device_object *fdo,
 	return ret;
 }
 
-NTSTATUS _NdisDispatchPower(struct device_object *fdo, struct irp *irp)
+static NTSTATUS _NdisDispatchPower(struct device_object *fdo, struct irp *irp)
 {
 	struct io_stack_location *irp_sl;
 	struct wrap_ndis_device *wnd;
@@ -1322,7 +1282,7 @@ STDCALL NTSTATUS winNdisDispatchPower(struct device_object *fdo,
 	return ret;
 }
 
-NTSTATUS _NdisDispatchPnp(struct device_object *fdo, struct irp *irp)
+static NTSTATUS _NdisDispatchPnp(struct device_object *fdo, struct irp *irp)
 {
 	struct io_stack_location *irp_sl;
 	struct wrap_ndis_device *wnd;

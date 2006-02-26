@@ -361,19 +361,36 @@ STDCALL void WRAP_EXPORT(NdisGetSystemUpTime)
 	TRACEEXIT5(return);
 }
 
-/* called as macro */
 STDCALL ULONG WRAP_EXPORT(NDIS_BUFFER_TO_SPAN_PAGES)
 	(ndis_buffer *buffer)
 {
-	ULONG n;
+	ULONG n, length;
 
-	TRACEENTER4("%p", buffer);
+	if (buffer == NULL)
+		return 0;
 	if (MmGetMdlByteCount(buffer) == 0)
 		return 1;
-	n = SPAN_PAGES(MmGetMdlVirtualAddress(buffer),
-		       MmGetMdlByteCount(buffer));
-	DBGTRACE4("pages = %u", n);
-	TRACEEXIT4(return n);
+	length = MmGetMdlByteCount(buffer);
+#ifdef VT6655
+	if (1) {
+		ULONG_PTR start, end;
+		unsigned long ptr;
+
+		/* VIA VT6655 works with this bogus computation, but
+		 * not with correct computation with SPAN_PAGES */
+		ptr = (unsigned long)MmGetMdlVirtualAddress(buffer);
+
+		start = ptr & (PAGE_SIZE - 1);
+		end = (ptr + length + PAGE_SIZE - 1) & PAGE_MASK;
+		n = (end - start) / PAGE_SIZE;
+
+		DBGTRACE4("buffer: %p, ptr: %p, length: %d, n: %u",
+			  buffer, (void *)ptr, length, n);
+	}
+#else
+	n = SPAN_PAGES(MmGetMdlVirtualAddress(buffer), length);
+#endif
+	TRACEEXIT3(return n);
 }
 
 STDCALL void WRAP_EXPORT(NdisGetBufferPhysicalArraySize)
@@ -894,12 +911,11 @@ STDCALL void WRAP_EXPORT(NdisMAllocateSharedMemory)
 
 	*virt = PCI_DMA_ALLOC_COHERENT(wd->pci.pdev, size, &p);
 	if (!*virt) {
-		ERROR("failed to allocate DMA coherent memory; "
-		      "Windows driver requested %d bytes of "
-		      "%scached memory", size, cached ? "" : "un-");
+		ERROR("couldn't allocate %d bytes of %scached DMA memory",
+		      size, cached ? "" : "un-");
 	}
 	*phys = p;
-	DBGTRACE3("allocated shared memory: %p", *virt);
+	TRACEEXIT3(return);
 }
 
 STDCALL void alloc_shared_memory_async(void *arg1, void *arg2)
@@ -950,7 +966,6 @@ STDCALL void WRAP_EXPORT(NdisMFreeSharedMemory)
 {
 	struct wrap_device *wd = nmb->wnd->wd;
 	TRACEENTER3("");
-	/* FIXME: do USB drivers call this? */
 	PCI_DMA_FREE_COHERENT(wd->pci.pdev, size, virt, addr);
 	TRACEEXIT3(return);
 }
@@ -1851,6 +1866,7 @@ STDCALL BOOLEAN WRAP_EXPORT(NdisMSynchronizeWithInterrupt)
 	nt_spin_lock_irqsave(&ndis_irq->lock, flags);
 	ret = LIN2WIN1(sync_func, ctx);
 	nt_spin_unlock_irqrestore(&ndis_irq->lock, flags);
+	DBGTRACE6("ret: %d", ret);
 	TRACEEXIT6(return ret);
 }
 

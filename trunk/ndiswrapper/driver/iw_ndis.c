@@ -418,7 +418,8 @@ static int iw_set_tx_power(struct net_device *dev,
 			return -EOPNOTSUPP;
 		if (res == NDIS_STATUS_INVALID_DATA)
 			return -EINVAL;
-		res = miniport_set_int(wnd, OID_802_11_DISASSOCIATE, 0);
+		res = miniport_set_info(wnd, OID_802_11_DISASSOCIATE,
+					NULL, 0);
 		if (res == NDIS_STATUS_FAILURE)
 			return -EOPNOTSUPP;
 		if (res)

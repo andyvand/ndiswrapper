@@ -1041,8 +1041,9 @@ static USBD_STATUS wrap_process_nt_urb(struct irp *irp)
 
 	DUMP_IRP(irp);
 	switch (nt_urb->header.function) {
-		/* bulk/int urbs are submitted asynchronously later by
-		 * pdoDispatchDeviceControl */
+		/* bulk/int and vencor/class urbs are submitted to
+		 * Linux USB core; if the call is sucessful, urb's
+		 * completion worker will return IRP later */
 	case URB_FUNCTION_BULK_OR_INTERRUPT_TRANSFER:
 		USBTRACE("submitting bulk/int irp: %p", irp);
 		status = wrap_bulk_or_intr_trans(irp);
@@ -1175,9 +1176,11 @@ NTSTATUS wrap_submit_irp(struct device_object *pdo, struct irp *irp)
 	}
 
 	USBTRACE("status: %08X", status);
-	if (status == USBD_STATUS_PENDING)
+	if (status == USBD_STATUS_PENDING) {
+		/* don't touch this IRP - it may have been already
+		 * completed/returned */
 		return STATUS_PENDING;
-	else {
+	} else {
 		irp->io_status.status = nt_urb_irp_status(status);
 		if (status != USBD_STATUS_SUCCESS)
 			irp->io_status.status_info = 0;
