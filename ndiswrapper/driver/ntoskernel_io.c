@@ -235,8 +235,10 @@ STDCALL struct irp *WRAP_EXPORT(IoBuildAsynchronousFsdRequest)
 	if (!dev_obj)
 		IOEXIT(return NULL);
 	irp = IoAllocateIrp(dev_obj->stack_count, FALSE);
-	if (irp == NULL)
+	if (irp == NULL) {
+		WARNING("couldn't allocate irp");
 		IOEXIT(return NULL);
+	}
 
 	irp_sl = IoGetNextIrpStackLocation(irp);
 	irp_sl->major_fn = major_fn;
@@ -304,25 +306,27 @@ STDCALL struct irp *WRAP_EXPORT(IoBuildDeviceIoControlRequest)
 	if (!dev_obj)
 		IOEXIT(return NULL);
 	irp = IoAllocateIrp(dev_obj->stack_count, FALSE);
-	if (irp) {
-		irp->user_status = io_status;
-		irp->user_event = event;
-		irp->user_buf = output_buf;
-		irp->associated_irp.system_buffer = input_buf;
-
-		irp_sl = IoGetNextIrpStackLocation(irp);
-		irp_sl->params.ioctl.code = ioctl;
-		irp_sl->params.ioctl.input_buf_len = input_buf_len;
-		irp_sl->params.ioctl.output_buf_len = output_buf_len;
-		irp_sl->dev_obj = dev_obj;
-		irp_sl->major_fn = (internal_ioctl) ?
-			IRP_MJ_INTERNAL_DEVICE_CONTROL : IRP_MJ_DEVICE_CONTROL;
-		irp_sl->minor_fn = 0;
-		irp_sl->flags = 0;
-		irp_sl->file_obj = NULL;
-		irp_sl->completion_routine = NULL;
-		IoQueueThreadIrp(irp);
+	if (irp == NULL) {
+		WARNING("couldn't allocate irp");
+		return NULL;
 	}
+	irp->user_status = io_status;
+	irp->user_event = event;
+	irp->user_buf = output_buf;
+	irp->associated_irp.system_buffer = input_buf;
+
+	irp_sl = IoGetNextIrpStackLocation(irp);
+	irp_sl->params.ioctl.code = ioctl;
+	irp_sl->params.ioctl.input_buf_len = input_buf_len;
+	irp_sl->params.ioctl.output_buf_len = output_buf_len;
+	irp_sl->dev_obj = dev_obj;
+	irp_sl->major_fn = (internal_ioctl) ?
+		IRP_MJ_INTERNAL_DEVICE_CONTROL : IRP_MJ_DEVICE_CONTROL;
+	irp_sl->minor_fn = 0;
+	irp_sl->flags = 0;
+	irp_sl->file_obj = NULL;
+	irp_sl->completion_routine = NULL;
+	IoQueueThreadIrp(irp);
 
 	IOTRACE("irp: %p", irp);
 	IOEXIT(return irp);
@@ -917,49 +921,10 @@ STDCALL NTSTATUS WRAP_EXPORT(IoOpenDeviceRegistryKey)
 	return STATUS_SUCCESS;
 }
 
-STDCALL unsigned int WRAP_EXPORT(IoWMIRegistrationControl)
+STDCALL NTSTATUS WRAP_EXPORT(IoWMIRegistrationControl)
 	(struct device_object *dev_obj, ULONG action)
 {
-	struct irp *irp;
-	struct io_stack_location *irp_sl;
-	const int buf_len = 512;
-	void *buf;
-
 	TRACEENTER2("%p, %d", dev_obj, action);
-
-	switch (action) {
-	case WMIREG_ACTION_REGISTER:
-		irp = IoAllocateIrp(dev_obj->stack_count, FALSE);
-		if (!irp) {
-			ERROR("couldn't allocate irp");
-			return STATUS_INSUFFICIENT_RESOURCES;
-		}
-		irp_sl = IoGetNextIrpStackLocation(irp);
-		irp_sl->params.wmi.provider_id = (ULONG_PTR)dev_obj;
-		irp_sl->params.wmi.data_path = (void *)WMIREGISTER;
-		buf = kmalloc(buf_len, GFP_KERNEL);
-		if (!buf) {
-			IoFreeIrp(irp);
-			return STATUS_INSUFFICIENT_RESOURCES;
-		}
-		irp_sl->params.wmi.buf_len = buf_len;
-		irp_sl->params.wmi.buf = buf;
-		IoCallDriver(dev_obj, irp);
-		kfree(buf);
-		break;
-	case WMIREG_ACTION_DEREGISTER:
-		INFO("");
-		break;
-	case WMIREG_ACTION_REREGISTER:
-		INFO("");
-		break;
-	case WMIREG_ACTION_UPDATE_GUIDS:
-		ERROR("not implemented");
-		break;
-	default:
-		ERROR("not implemented");
-		break;
-	}
 	TRACEEXIT2(return STATUS_SUCCESS);
 }
 

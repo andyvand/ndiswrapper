@@ -1312,8 +1312,13 @@ STDCALL NTSTATUS WRAP_EXPORT(KeWaitForMultipleObjects)
 	/* TODO: should we allow threads to wait in non-alertable state? */
 	alertable = TRUE;
 	irql = nt_spin_lock_irql(&dispatcher_lock, DISPATCH_LEVEL);
-	/* first check if the wait can be satisfied or not, without
-	 * grabbing the objects, except in the case of WaitAny */
+	/* In the case of WaitAny, if an object can be grabbed (object
+	 * is in signaled state), grab and return. In the case of
+	 * WaitAll, we have to first make sure all objects can be
+	 * grabbed. If any/some of them can't be grabbed, either we
+	 * return STATUS_TIMEOUT or wait for them, depending on how to
+	 * satisfy wait. If all of them can be grabbed, we will grab
+	 * them in the next loop below */
 	for (i = wait_count = 0; i < count; i++) {
 		dh = object[i];
 		EVENTTRACE("%p: event %p state: %d",
