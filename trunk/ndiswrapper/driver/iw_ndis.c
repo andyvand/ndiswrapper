@@ -625,13 +625,11 @@ int get_ap_address(struct wrap_ndis_device *wnd, mac_address ap_addr)
 	if (wnd->link_status)
 		res = miniport_query_info(wnd, OID_802_11_BSSID, ap_addr,
 					  ETH_ALEN);
-	if (res == NDIS_STATUS_FAILURE)
-		return -ENOTSUPP;
-	if (res == NDIS_STATUS_ADAPTER_NOT_READY)
-		memset(ap_addr, 0x0, ETH_ALEN);
-
 	DBGTRACE2(MACSTR, MAC2STR(ap_addr));
-	TRACEEXIT2(return 0);
+	if (res == NDIS_STATUS_SUCCESS)
+		TRACEEXIT2(return 0);
+	memset(ap_addr, 0x0, ETH_ALEN);
+	TRACEEXIT2(return -ENOTSUPP);
 }
 
 static int iw_get_ap_address(struct net_device *dev,
@@ -2151,10 +2149,11 @@ static int wpa_associate(struct net_device *dev, struct iw_request_info *info,
 	default:
 		encr_mode = Ndis802_11EncryptionDisabled;
 	};
+
 	/* For WEP mode, wpa_supplicant first sets the keys and then
-	   associates, but NDIS drivers clear keys when mode is
-	   set. So we save current encryption information, set the
-	   mode, and restore the keys saved */
+	 * associates, but NDIS drivers clear keys when mode is
+	 * set. So we save current encryption information, set the
+	 * mode, and restore the keys saved */
 	if (encr_mode == Ndis802_11Encryption1Enabled) {
 		typeof(wnd->encr_info) *encr_info;
 		int i;
