@@ -1220,7 +1220,6 @@ static NTSTATUS _NdisDispatchPower(struct device_object *fdo, struct irp *irp)
 			hangcheck_add(wnd);
 			stats_timer_add(wnd);
 			set_scan(wnd);
-			set_bit(SET_ESSID, &wnd->wrap_ndis_work);
 			if (netif_running(wnd->net_dev)) {
 				netif_device_attach(wnd->net_dev);
 				netif_wake_queue(wnd->net_dev);
