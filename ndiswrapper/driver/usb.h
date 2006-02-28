@@ -126,7 +126,9 @@ typedef LONG USBD_STATUS;
 #define USBD_STATUS_XACT_ERROR			0xC0000011
 #define USBD_STATUS_BABBLE_DETECTED		0xC0000012
 #define USBD_STATUS_DATA_BUFFER_ERROR		0xC0000013
+
 #define USBD_STATUS_NOT_SUPPORTED		0xC0000E00
+#define USBD_STATUS_BUFFER_TOO_SMALL		0xC0003000
 #define USBD_STATUS_DEVICE_GONE			0xC0007000
 
 #define USBD_STATUS_NO_MEMORY			0x80000100
@@ -144,10 +146,10 @@ struct urb_hcd_area {
 	void *reserved8[8];
 };
 
-enum pipe_type {ptControl = USB_ENDPOINT_XFER_CONTROL,
-		ptIsoc = USB_ENDPOINT_XFER_ISOC,
-		ptBulk = USB_ENDPOINT_XFER_BULK,
-		ptInt = USB_ENDPOINT_XFER_INT};
+enum pipe_type {UsbdPipeTypeControl = USB_ENDPOINT_XFER_CONTROL,
+		UsbdPipeTypeIsochronous = USB_ENDPOINT_XFER_ISOC,
+		UsbdPipeTypeBulk = USB_ENDPOINT_XFER_BULK,
+		UsbdPipeTypeInterrupt = USB_ENDPOINT_XFER_INT};
 
 struct usbd_pipe_information {
 	USHORT wMaxPacketSize;
@@ -322,7 +324,6 @@ struct usbd_idle_callback {
 #define NT_URB_STATUS(nt_urb) ((nt_urb)->header.status)
 
 NTSTATUS wrap_submit_irp(struct device_object *pdo, struct irp *irp);
-//NTSTATUS wrap_submit_urb(struct irp *irp);
 void wrap_suspend_urbs(struct wrap_device *wd);
 void wrap_resume_urbs(struct wrap_device *wd);
 

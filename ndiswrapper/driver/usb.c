@@ -475,12 +475,7 @@ static void wrap_urb_complete_worker(void *dummy)
 		switch (URB_STATUS(wrap_urb)) {
 		case 0:
 			/* succesfully transferred */
-			irp->io_status.status = STATUS_SUCCESS;
 			irp->io_status.status_info = urb->actual_length;
-			NT_URB_STATUS(nt_urb) = USBD_STATUS_SUCCESS;
-
-			/* from WDM examples, it seems we don't need
-			 * to update MDL's byte count if MDL is used */
 			if (nt_urb->header.function ==
 			    URB_FUNCTION_BULK_OR_INTERRUPT_TRANSFER) {
 				bulk_int_tx = &nt_urb->bulk_int_transfer;
@@ -509,21 +504,18 @@ static void wrap_urb_complete_worker(void *dummy)
 		case -ENOENT:
 		case -ECONNRESET:
 			/* urb canceled */
-			NT_URB_STATUS(nt_urb) = USBD_STATUS_CANCELLED;
-			irp->io_status.status = STATUS_CANCELLED;
 			irp->io_status.status_info = 0;
 			USBTRACE("urb %p canceled", urb);
 			break;
 		default:
-			NT_URB_STATUS(nt_urb) =
-				wrap_urb_status(URB_STATUS(wrap_urb));
-			irp->io_status.status =
-				nt_urb_irp_status(NT_URB_STATUS(nt_urb));
 			irp->io_status.status_info = 0;
 			USBTRACE("irp: %p, status: %d", irp,
 				 URB_STATUS(wrap_urb));
 			break;
 		}
+		NT_URB_STATUS(nt_urb) = wrap_urb_status(URB_STATUS(wrap_urb));
+		irp->io_status.status =
+			nt_urb_irp_status(NT_URB_STATUS(nt_urb));
 		wrap_free_urb(urb);
 		IoCompleteRequest(irp, IO_NO_INCREMENT);
 	}
@@ -594,20 +586,6 @@ static USBD_STATUS wrap_bulk_or_intr_trans(struct irp *irp)
 			ERROR("invalid urb: %x", bulk_int_tx->transfer_flags);
 #endif
 		pipe = usb_rcvintpipe(udev, pipe_handle->bEndpointAddress);
-	}
-
-	if (unlikely(bulk_int_tx->transfer_buffer == NULL &&
-		     bulk_int_tx->transfer_buffer_length > 0)) {
-		USBTRACE("mdl: %p, %d",
-			 MmGetSystemAddressForMdl(bulk_int_tx->mdl),
-			 MmGetMdlByteCount(bulk_int_tx->mdl));
-		if (MmGetMdlByteCount(bulk_int_tx->mdl) !=
-		    bulk_int_tx->transfer_buffer_length)
-			WARNING("mdl size %d != %d",
-				MmGetMdlByteCount(bulk_int_tx->mdl),
-				bulk_int_tx->transfer_buffer_length);
-		bulk_int_tx->transfer_buffer =
-			MmGetSystemAddressForMdl(bulk_int_tx->mdl);
 	}
 
 	DUMP_IRP(irp);
@@ -699,20 +677,6 @@ static USBD_STATUS wrap_vendor_or_class_req(struct irp *irp)
 	req_type |= vc_req->reserved_bits;
 	USBTRACE("req type: %08x", req_type);
 
-	if (unlikely(vc_req->transfer_buffer == NULL &&
-		     vc_req->transfer_buffer_length > 0)) {
-		USBTRACE("mdl: %p, %d",
-			 MmGetSystemAddressForMdl(vc_req->mdl),
-			 MmGetMdlByteCount(vc_req->mdl));
-		if (MmGetMdlByteCount(vc_req->mdl) !=
-		    vc_req->transfer_buffer_length)
-			WARNING("mdl size %d != %d",
-				MmGetMdlByteCount(vc_req->mdl),
-				vc_req->transfer_buffer_length);
-		vc_req->transfer_buffer =
-			MmGetSystemAddressForMdl(vc_req->mdl);
-	}
-
 	if (vc_req->transfer_flags & USBD_TRANSFER_DIRECTION_IN) {
 		pipe = usb_rcvctrlpipe(udev, 0);
 		req_type |= USB_DIR_IN;
@@ -781,19 +745,19 @@ static USBD_STATUS wrap_reset_pipe(struct usb_device *udev, struct irp *irp)
 		pipe1 = usb_rcvctrlpipe(udev, pipe_handle->bEndpointAddress);
 		pipe2 = usb_sndctrlpipe(udev, pipe_handle->bEndpointAddress);
 	} else {
-		WARNING("pipe type %d not handled", pipe_type);
+		WARNING("invalid pipe type %d", pipe_type);
 		return USBD_STATUS_INVALID_PIPE_HANDLE;
 	}
 	ret = usb_clear_halt(udev, pipe1);
 	if (ret) {
-		WARNING("resetting pipe %d failed: %d", pipe_type, ret);
+		USBTRACE("resetting pipe %d failed: %d", pipe_type, ret);
 		return wrap_urb_status(ret);
 	}
 	if (pipe2 != pipe1) {
 		ret = usb_clear_halt(udev, pipe2);
 		if (ret)
-			WARNING("resetting pipe %d failed: %d",
-				pipe_type, ret);
+			USBTRACE("resetting pipe %d failed: %d",
+				 pipe_type, ret);
 	}
 	return wrap_urb_status(ret);
 }
@@ -829,7 +793,8 @@ static USBD_STATUS wrap_abort_pipe(struct usb_device *udev, struct irp *irp)
 		USBEXIT(return USBD_STATUS_SUCCESS);
 }
 
-static void set_intf_pipe_info(struct usb_interface *usb_intf,
+static void set_intf_pipe_info(struct wrap_device *wd,
+			       struct usb_interface *usb_intf,
 			       struct usbd_interface_information *intf)
 {
 	int i, pipe_num;
@@ -854,20 +819,28 @@ static void set_intf_pipe_info(struct usb_interface *usb_intf,
 		pipe = &intf->pipes[i];
 
 		if (pipe->flags & USBD_PF_CHANGE_MAX_PACKET)
-			WARNING("pkt_sz: %d: %d", pipe->wMaxPacketSize,
-				pipe->max_tx_size);
+			USBTRACE("pkt_sz: %d: %d", pipe->wMaxPacketSize,
+				 pipe->max_tx_size);
 		USBTRACE("driver wants max_tx_size to %d",
 			 pipe->max_tx_size);
 
 		pipe->wMaxPacketSize = ep->wMaxPacketSize;
 		pipe->bEndpointAddress = ep->bEndpointAddress;
-		pipe->bInterval = ep->bInterval;
+		if (pipe->type == USB_ENDPOINT_XFER_INT) {
+			if (wd->usb.udev->speed == USB_SPEED_HIGH) {
+				u8 i, interval = ep->bInterval;
+				for (i = 0; interval; i++)
+					interval /= 2;
+				pipe->bInterval = i;
+			} else
+				pipe->bInterval = ep->bInterval;
+		}
 		pipe->type = ep->bmAttributes & USB_ENDPOINT_XFERTYPE_MASK;
 		pipe->handle = ep;
-		USBTRACE("%d: ep 0x%x, type %d, pkt_sz %d, intv %d,"
+		USBTRACE("%d: ep 0x%x, type %d, pkt_sz %d, intv %d (%d),"
 			 "type: %d, handle %p", i, ep->bEndpointAddress,
 			 ep->bmAttributes, ep->wMaxPacketSize, ep->bInterval,
-			 pipe->type, pipe->handle);
+			 pipe->bInterval, pipe->type, pipe->handle);
 	}
 }
 
@@ -934,7 +907,7 @@ static USBD_STATUS wrap_select_configuration(struct wrap_device *wd,
 		}
 		USBTRACE("intf: %p, num ep: %d", intf, intf->bNumEndpoints);
 
-		set_intf_pipe_info(usb_intf, intf);
+		set_intf_pipe_info(wd, usb_intf, intf);
 	}
 	return USBD_STATUS_SUCCESS;
 }
@@ -967,7 +940,7 @@ static USBD_STATUS wrap_select_interface(struct wrap_device *wd,
 	wd->usb.intf = usb_intf;
 	USBTRACE("intf: %p, num ep: %d", intf, intf->bNumEndpoints);
 
-	set_intf_pipe_info(usb_intf, intf);
+	set_intf_pipe_info(wd, usb_intf, intf);
 	return USBD_STATUS_SUCCESS;
 }
 
@@ -1105,7 +1078,7 @@ static USBD_STATUS wrap_reset_port(struct irp *irp)
 	USBENTER("%p, %p", wd, wd->usb.udev);
 	ret = usb_reset_device(wd->usb.udev);
 	if (ret < 0)
-		WARNING("reset failed: %d", ret);
+		USBTRACE("reset failed: %d", ret);
 	return wrap_urb_status(ret);
 }
 
