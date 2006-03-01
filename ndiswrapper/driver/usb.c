@@ -321,37 +321,33 @@ static struct urb *wrap_alloc_urb(struct irp *irp, unsigned int pipe,
 	irp->cancel_routine = win_wrap_cancel_irp;
 	IoReleaseCancelSpinLock(irp->cancel_irql);
 	USBTRACE("allocated urb: %p", urb);
-	if (buf_len && buf) {
-		if (
-#if defined(CONFIG_HIGHMEM) || defined(CONFIG_HIGHMEM4G)
-			0 &&
-#endif
-			virt_addr_valid(buf))
-			urb->transfer_buffer = buf;
-		else {
-			urb->transfer_buffer =
-				usb_buffer_alloc(wd->usb.udev,
-						 buf_len, alloc_flags,
-						 &urb->transfer_dma);
-			if (!urb->transfer_buffer) {
-				WARNING("couldn't allocate dma buf");
-				IoAcquireCancelSpinLock(&irp->cancel_irql);
-				wrap_urb->state = URB_FREE;
-				wrap_urb->irp = NULL;
-				irp->wrap_urb = NULL;
-				IoReleaseCancelSpinLock(irp->cancel_irql);
-				return NULL;
-			}
-			urb->transfer_flags |= URB_NO_TRANSFER_DMA_MAP;
-			wrap_urb->alloc_flags |= URB_NO_TRANSFER_DMA_MAP;
-			if (usb_pipeout(pipe))
-				memcpy(urb->transfer_buffer, buf, buf_len);
-			USBTRACE("DMA buffer for urb %p is %p",
-				 urb, urb->transfer_buffer);
-		}
-	} else
-		urb->transfer_buffer = NULL;
+
 	urb->transfer_buffer_length = buf_len;
+	if (buf_len && buf && (
+#if defined(CONFIG_HIGHMEM) || defined(CONFIG_HIGHMEM4G)
+		    1 ||
+#endif
+		    !virt_addr_valid(buf))) {
+		urb->transfer_buffer = usb_buffer_alloc(wd->usb.udev,
+							buf_len, alloc_flags,
+							&urb->transfer_dma);
+		if (!urb->transfer_buffer) {
+			WARNING("couldn't allocate dma buf");
+			IoAcquireCancelSpinLock(&irp->cancel_irql);
+			wrap_urb->state = URB_FREE;
+			wrap_urb->irp = NULL;
+			irp->wrap_urb = NULL;
+			IoReleaseCancelSpinLock(irp->cancel_irql);
+			return NULL;
+		}
+		urb->transfer_flags |= URB_NO_TRANSFER_DMA_MAP;
+		wrap_urb->alloc_flags |= URB_NO_TRANSFER_DMA_MAP;
+		if (usb_pipeout(pipe))
+			memcpy(urb->transfer_buffer, buf, buf_len);
+		USBTRACE("DMA buffer for urb %p is %p",
+			 urb, urb->transfer_buffer);
+	} else
+		urb->transfer_buffer = buf;
 	return urb;
 }
 
@@ -508,9 +504,9 @@ static void wrap_urb_complete_worker(void *dummy)
 			USBTRACE("urb %p canceled", urb);
 			break;
 		default:
+			USBTRACE("irp: %p, urb: %p, status: %d",
+				 irp, urb, URB_STATUS(wrap_urb));
 			irp->io_status.status_info = 0;
-			USBTRACE("irp: %p, status: %d", irp,
-				 URB_STATUS(wrap_urb));
 			break;
 		}
 		NT_URB_STATUS(nt_urb) = wrap_urb_status(URB_STATUS(wrap_urb));
@@ -600,13 +596,29 @@ static USBD_STATUS wrap_bulk_or_intr_trans(struct irp *irp)
 		USBTRACE("short not ok");
 		urb->transfer_flags |= URB_SHORT_NOT_OK;
 	}
-
 	if (usb_pipebulk(pipe)) {
 		usb_fill_bulk_urb(urb, udev, pipe, urb->transfer_buffer,
 				  bulk_int_tx->transfer_buffer_length,
 				  wrap_urb_complete, urb->context);
 		USBTRACE("submitting bulk urb %p on pipe 0x%x (ep 0x%x)",
 			 urb, urb->pipe, pipe_handle->bEndpointAddress);
+#ifdef USB_DEBUG
+		/* Windows drivers for broken devices (e.g., Netgear
+		 * WG111 version 1) submit zero-length URBs
+		 * separately, but Linux ehci driver wants
+		 * URB_ZERO_PACKET be set for the previous URB (which
+		 * is of size multiple of wMaxPacketsize); we can't
+		 * handle it */
+		if (usb_pipeout(pipe) &&
+		    (urb->transfer_buffer_length == 0)) {
+			WARNING ("%p %p, %d, %p, %p, %d", irp, urb,
+				 irp->wrap_urb->id,
+				 bulk_int_tx->transfer_buffer,
+				 urb->transfer_buffer,
+				 pipe_handle->bEndpointAddress);
+//			urb->transfer_flags |= URB_ZERO_PACKET;
+		}
+#endif
 	} else {
 		usb_fill_int_urb(urb, udev, pipe, urb->transfer_buffer,
 				 bulk_int_tx->transfer_buffer_length,
