@@ -371,25 +371,7 @@ STDCALL ULONG WRAP_EXPORT(NDIS_BUFFER_TO_SPAN_PAGES)
 	if (MmGetMdlByteCount(buffer) == 0)
 		return 1;
 	length = MmGetMdlByteCount(buffer);
-#ifdef VT6655
-	if (1) {
-		ULONG_PTR start, end;
-		unsigned long ptr;
-
-		/* VIA VT6655 works with this bogus computation, but
-		 * not with correct computation with SPAN_PAGES */
-		ptr = (unsigned long)MmGetMdlVirtualAddress(buffer);
-
-		start = ptr & (PAGE_SIZE - 1);
-		end = (ptr + length + PAGE_SIZE - 1) & PAGE_MASK;
-		n = (end - start) / PAGE_SIZE;
-
-		DBGTRACE4("buffer: %p, ptr: %p, length: %d, n: %u",
-			  buffer, (void *)ptr, length, n);
-	}
-#else
 	n = SPAN_PAGES(MmGetMdlVirtualAddress(buffer), length);
-#endif
 	TRACEEXIT3(return n);
 }
 
@@ -903,18 +885,18 @@ STDCALL void WRAP_EXPORT(NdisMAllocateSharedMemory)
 	(struct ndis_miniport_block *nmb, ULONG size,
 	 BOOLEAN cached, void **virt, NDIS_PHY_ADDRESS *phys)
 {
-	dma_addr_t p;
+	dma_addr_t dma_addr;
 	struct wrap_device *wd = nmb->wnd->wd;
 
 	TRACEENTER3("map count: %d, size: %u, cached: %d",
 		    nmb->wnd->dma_map_count, size, cached);
 
-	*virt = PCI_DMA_ALLOC_COHERENT(wd->pci.pdev, size, &p);
+	*virt = PCI_DMA_ALLOC_COHERENT(wd->pci.pdev, size, &dma_addr);
 	if (!*virt) {
 		ERROR("couldn't allocate %d bytes of %scached DMA memory",
 		      size, cached ? "" : "un-");
 	}
-	*phys = p;
+	*phys = dma_addr;
 	TRACEEXIT3(return);
 }
 
@@ -1093,7 +1075,7 @@ STDCALL void WRAP_EXPORT(NdisFreeBuffer)
 STDCALL void WRAP_EXPORT(NdisFreeBufferPool)
 	(struct ndis_buffer_pool *pool)
 {
-	ndis_buffer *cur, *prev;
+	ndis_buffer *cur, *next;
 	KIRQL irql;
 
 	DBGTRACE3("pool: %p", pool);
@@ -1104,10 +1086,10 @@ STDCALL void WRAP_EXPORT(NdisFreeBufferPool)
 	irql = nt_spin_lock_irql(&pool->lock, DISPATCH_LEVEL);
 	cur = pool->free_descr;
 	while (cur) {
-		prev = cur;
-		cur = cur->next;
-		prev->process = NULL;
-		free_mdl(prev);
+		next = cur->next;
+		cur->process = NULL;
+		free_mdl(cur);
+		cur = next;
 	}
 	nt_spin_unlock_irql(&pool->lock, irql);
 	kfree(pool);
@@ -1141,7 +1123,7 @@ STDCALL void WRAP_EXPORT(NdisQueryBufferSafe)
 	if (virt)
 		*virt = MmGetSystemAddressForMdlSafe(buffer, priority);
 	*length = MmGetMdlByteCount(buffer);
-	DBGTRACE4("%p, %u", *virt, *length);
+	DBGTRACE4("%u", *length);
 }
 
 STDCALL void *WRAP_EXPORT(NdisBufferVirtualAddress)
@@ -2147,9 +2129,6 @@ NdisMSendResourcesAvailable(struct ndis_miniport_block *nmb)
 {
 	struct wrap_ndis_device *wnd = nmb->wnd;
 	TRACEENTER3("");
-	/* sending packets immediately seem to result in NDIS_STATUS_FAILURE,
-	   so wait for a while before sending the packet again */
-	mdelay(5);
 	wnd->tx_ok = 1;
 	schedule_ndis_work(&wnd->tx_work);
 	TRACEEXIT3(return);
