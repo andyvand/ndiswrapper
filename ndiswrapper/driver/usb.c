@@ -415,10 +415,9 @@ static void wrap_urb_complete(struct urb *urb)
 	if (wrap_urb->state == URB_SUBMITTED ||
 	    wrap_urb->state == URB_CANCELED) {
 		wrap_urb->state = URB_COMPLETED;
-		/* Prevent 2.4 kernels from resubmiting interrupt URBs
-		 * (Windows driver also resubmits them); UHCI/OHCI
-		 * don't resubmit if URB interval is 0 and EHCI
-		 * doesn't resubmit if urb->status is
+		/* Prevent 2.4 kernels from resubmiting interrupt
+		 * URBs.  UHCI/OHCI don't resubmit if URB interval is
+		 * 0 and EHCI doesn't resubmit if urb->status is
 		 * -ENOENT/-ECONNRESET */
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,0)
 		URB_STATUS(wrap_urb) = urb->status;
@@ -1131,13 +1130,6 @@ NTSTATUS wrap_submit_irp(struct device_object *pdo, struct irp *irp)
 	USBTRACE("%p, %p", pdo, irp);
 	wd = pdo->reserved;
 	irp->wd = wd;
-#if 0
-	if (unlikely(wd->usb.intf == NULL)) {
-		irp->io_status.status = STATUS_DEVICE_REMOVED;
-		USBEXIT(return irp->io_status.status);
-	}
-#endif
-
 	irp_sl = IoGetCurrentIrpStackLocation(irp);
 	switch (irp_sl->params.ioctl.code) {
 	case IOCTL_INTERNAL_USB_SUBMIT_URB:
