@@ -42,8 +42,6 @@ NT_SPIN_LOCK ntoskernel_lock;
 static kmem_cache_t *mdl_cache;
 static struct nt_list wrap_mdl_list;
 
-static NT_SPIN_LOCK inter_lock;
-
 struct work_struct kdpc_work;
 static struct nt_list kdpc_list;
 static NT_SPIN_LOCK kdpc_list_lock;
@@ -101,7 +99,6 @@ int ntoskernel_init(void)
 	nt_spin_lock_init(&wrap_work_item_list_lock);
 	nt_spin_lock_init(&kdpc_list_lock);
 	nt_spin_lock_init(&irp_cancel_lock);
-	nt_spin_lock_init(&inter_lock);
 	InitializeListHead(&wrap_mdl_list);
 	InitializeListHead(&kdpc_list);
 	InitializeListHead(&callback_objects);
@@ -393,12 +390,12 @@ _FASTCALL struct nt_list *WRAP_EXPORT(ExfInterlockedInsertHeadList)
 			 NT_SPIN_LOCK *lock))
 {
 	struct nt_list *first;
-	KIRQL irql;
+	unsigned long flags;
 
 	TRACEENTER5("head = %p, entry = %p", head, entry);
-	irql = nt_spin_lock_irql(lock, DISPATCH_LEVEL);
+	nt_spin_lock_irqsave(lock, flags);
 	first = InsertHeadList(head, entry);
-	nt_spin_unlock_irql(lock, irql);
+	nt_spin_unlock_irqrestore(lock, flags);
 	DBGTRACE5("head = %p, old = %p", head, first);
 	return first;
 }
@@ -417,12 +414,12 @@ _FASTCALL struct nt_list *WRAP_EXPORT(ExfInterlockedInsertTailList)
 			 NT_SPIN_LOCK *lock))
 {
 	struct nt_list *last;
-	KIRQL irql;
+	unsigned long flags;
 
 	TRACEENTER5("head = %p, entry = %p", head, entry);
-	irql = nt_spin_lock_irql(lock, DISPATCH_LEVEL);
+	nt_spin_lock_irqsave(lock, flags);
 	last = InsertTailList(head, entry);
-	nt_spin_unlock_irql(lock, irql);
+	nt_spin_unlock_irqrestore(lock, flags);
 	DBGTRACE5("head = %p, old = %p", head, last);
 	return last;
 }
@@ -478,61 +475,140 @@ _FASTCALL struct nt_list *WRAP_EXPORT(ExInterlockedRemoveTailList)
 	return ExfInterlockedRemoveTailList(FASTCALL_ARGS_2(head, lock));
 }
 
-STDCALL struct nt_slist *WRAP_EXPORT(ExpInterlockedPushEntrySList)
-	(union nt_slist_head *head, struct nt_slist *entry)
+_FASTCALL struct nt_slist *WRAP_EXPORT(ExInterlockedPushEntrySList)
+	(FASTCALL_DECL_3(union nt_slist_head *head, struct nt_slist *entry,
+			 NT_SPIN_LOCK *lock))
 {
 	struct nt_slist *ret;
 	KIRQL irql;
 
 	TRACEENTER5("head = %p", head);
-	irql = nt_spin_lock_irql(&inter_lock, DISPATCH_LEVEL);
+	irql = nt_spin_lock_irql(lock, DISPATCH_LEVEL);
 	ret = PushEntryList(head, entry);
-	nt_spin_unlock_irql(&inter_lock, irql);
+	nt_spin_unlock_irql(lock, irql);
 	DBGTRACE5("head = %p, ret = %p", head, ret);
 	return ret;
 }
 
-_FASTCALL struct nt_slist *WRAP_EXPORT(ExInterlockedPushEntrySList)
-	(FASTCALL_DECL_3(union nt_slist_head *head, struct nt_slist *entry,
-			 NT_SPIN_LOCK *lock))
+STDCALL struct nt_slist *WRAP_EXPORT(ExpInterlockedPushEntrySList)
+	(union nt_slist_head *head, struct nt_slist *entry)
 {
-	TRACEENTER5("%p", head);
-	return ExpInterlockedPushEntrySList(head, entry);
+	return ExInterlockedPushEntrySList(FASTCALL_ARGS_3(head, entry,
+							   &ntoskernel_lock));
 }
 
 _FASTCALL struct nt_slist *WRAP_EXPORT(InterlockedPushEntrySList)
 	(FASTCALL_DECL_2(union nt_slist_head *head, struct nt_slist *entry))
 {
 	TRACEENTER5("%p", head);
-	return ExpInterlockedPushEntrySList(head, entry);
-}
-
-STDCALL struct nt_slist *WRAP_EXPORT(ExpInterlockedPopEntrySList)
-	(union nt_slist_head *head)
-{
-	struct nt_slist *ret;
-	KIRQL irql;
-
-	TRACEENTER5("head = %p", head);
-	irql = nt_spin_lock_irql(&inter_lock, DISPATCH_LEVEL);
-	ret = PopEntryList(head);
-	nt_spin_unlock_irql(&inter_lock, irql);
-	DBGTRACE5("head = %p, ret = %p", head, ret);
-	return ret;
+	return ExInterlockedPushEntrySList(FASTCALL_ARGS_3(head, entry,
+							   &ntoskernel_lock));
 }
 
 _FASTCALL struct nt_slist *WRAP_EXPORT(ExInterlockedPopEntrySList)
 	(FASTCALL_DECL_2(union nt_slist_head *head, NT_SPIN_LOCK *lock))
 {
-	TRACEENTER5("%p", head);
-	return ExpInterlockedPopEntrySList(head);
+	struct nt_slist *ret;
+	KIRQL irql;
+
+	TRACEENTER5("head = %p", head);
+	irql = nt_spin_lock_irql(lock, DISPATCH_LEVEL);
+	ret = PopEntryList(head);
+	nt_spin_unlock_irql(lock, irql);
+	DBGTRACE5("head = %p, ret = %p", head, ret);
+	return ret;
+}
+
+STDCALL struct nt_slist *WRAP_EXPORT(ExpInterlockedPopEntrySList)
+	(union nt_slist_head *head)
+{
+	return ExInterlockedPopEntrySList(FASTCALL_ARGS_2(head,
+							  &ntoskernel_lock));
 }
 
 _FASTCALL struct nt_slist *WRAP_EXPORT(InterlockedPopEntrySList)
 	(FASTCALL_DECL_1(union nt_slist_head *head))
 {
 	TRACEENTER5("%p", head);
-	return ExpInterlockedPopEntrySList(head);
+	return ExInterlockedPopEntrySList(FASTCALL_ARGS_2(head,
+							  &ntoskernel_lock));
+}
+
+_FASTCALL LONG WRAP_EXPORT(InterlockedIncrement)
+	(FASTCALL_DECL_1(LONG volatile *val))
+{
+	LONG ret;
+
+	TRACEENTER5("");
+	__asm__ __volatile__("movl $1, %%eax\n"
+#ifdef CONFIG_X86_64
+			     LOCK_PREFIX "xaddl %%eax, (%%rcx)\n"
+#else
+			     LOCK_PREFIX "xaddl %%eax, (%%ecx)\n"
+#endif
+			     "incl %%eax\n"
+			     : "=a" (ret) : "c" (val));
+	TRACEEXIT5(return ret);
+}
+
+_FASTCALL LONG WRAP_EXPORT(InterlockedDecrement)
+	(FASTCALL_DECL_1(LONG volatile *val))
+{
+	LONG ret;
+
+	TRACEENTER5("");
+	__asm__ __volatile__("movl $-1, %%eax\n"
+#ifdef CONFIG_X86_64
+			     LOCK_PREFIX "xaddl %%eax, (%%rcx)\n"
+#else
+			     LOCK_PREFIX "xaddl %%eax, (%%ecx)\n"
+#endif
+			     "decl %%eax\n"
+			     : "=a" (ret) : "c" (val));
+	TRACEEXIT5(return ret);
+}
+
+_FASTCALL LONG WRAP_EXPORT(InterlockedExchange)
+	(FASTCALL_DECL_2(LONG volatile *target, LONG val))
+{
+	LONG ret;
+	TRACEENTER5("");
+	ret = xchg(target, val);
+	TRACEEXIT5(return ret);
+}
+
+_FASTCALL LONG WRAP_EXPORT(InterlockedCompareExchange)
+	(FASTCALL_DECL_3(LONG volatile *dest, LONG xchg, LONG comperand))
+{
+	LONG ret;
+
+	TRACEENTER5("");
+	ret = cmpxchg(dest, comperand, xchg);
+	TRACEEXIT5(return ret);
+}
+
+_FASTCALL void WRAP_EXPORT(ExInterlockedAddLargeStatistic)
+	(FASTCALL_DECL_2(LARGE_INTEGER volatile *plint, ULONG n))
+{
+	unsigned long flags;
+	save_local_irq(flags);
+#ifdef CONFIG_X86_64
+	__asm__ __volatile__(LOCK_PREFIX "addq %%rsi, (%%rdi)\n"
+			     : "=D" (plint) : "0" (plint), "S" (n));
+#else
+	__asm__ __volatile__("movl (%1), %%eax\n"
+			     "movl 4(%1), %%edx\n"
+			     "1: movl %0, %%ebx\n"
+			     "   xorl %%ecx, %%ecx\n"
+			     "   addl %%eax, %%ebx\n"
+			     "   adcl %%edx, %%ecx\n"
+			         LOCK_PREFIX "cmpxchg8b (%1)\n"
+			     "   jnz 1b"
+			     :
+			     : "m" (n), "r" (plint)
+			     : "eax", "ebx", "ecx", "edx", "cc", "memory");
+#endif
+	restore_local_irq(flags);
 }
 
 STDCALL USHORT WRAP_EXPORT(ExQueryDepthSList)
@@ -947,75 +1023,6 @@ STDCALL KIRQL WRAP_EXPORT(KeAcquireSpinLockRaiseToDpc)
 {
 	TRACEENTER6("%p", lock);
 	return nt_spin_lock_irql(lock, DISPATCH_LEVEL);
-}
-
-_FASTCALL LONG WRAP_EXPORT(InterlockedDecrement)
-	(FASTCALL_DECL_1(LONG volatile *val))
-{
-	LONG x;
-	KIRQL irql;
-
-	TRACEENTER5("");
-	irql = nt_spin_lock_irql(&inter_lock, DISPATCH_LEVEL);
-	(*val)--;
-	x = *val;
-	nt_spin_unlock_irql(&inter_lock, irql);
-	TRACEEXIT5(return x);
-}
-
-_FASTCALL LONG WRAP_EXPORT(InterlockedIncrement)
-	(FASTCALL_DECL_1(LONG volatile *val))
-{
-	LONG x;
-	KIRQL irql;
-
-	TRACEENTER5("");
-	irql = nt_spin_lock_irql(&inter_lock, DISPATCH_LEVEL);
-	(*val)++;
-	x = *val;
-	nt_spin_unlock_irql(&inter_lock, irql);
-	TRACEEXIT5(return x);
-}
-
-_FASTCALL LONG WRAP_EXPORT(InterlockedExchange)
-	(FASTCALL_DECL_2(LONG volatile *target, LONG val))
-{
-	LONG x;
-	KIRQL irql;
-
-	TRACEENTER5("");
-	irql = nt_spin_lock_irql(&inter_lock, DISPATCH_LEVEL);
-	x = *target;
-	*target = val;
-	nt_spin_unlock_irql(&inter_lock, irql);
-	TRACEEXIT5(return x);
-}
-
-_FASTCALL LONG WRAP_EXPORT(InterlockedCompareExchange)
-	(FASTCALL_DECL_3(LONG volatile *dest, LONG xchg, LONG comperand))
-{
-	LONG x;
-	KIRQL irql;
-
-	TRACEENTER5("");
-	irql = nt_spin_lock_irql(&inter_lock, DISPATCH_LEVEL);
-	x = *dest;
-	if (*dest == comperand)
-		*dest = xchg;
-	nt_spin_unlock_irql(&inter_lock, irql);
-	TRACEEXIT5(return x);
-}
-
-_FASTCALL void WRAP_EXPORT(ExInterlockedAddLargeStatistic)
-	(FASTCALL_DECL_2(LARGE_INTEGER *plint, ULONG n))
-{
-	unsigned long flags;
-	TRACEENTER5("%p = %llu, n = %u", plint, *plint, n);
-	/* not sure if we should disable irqs on all processors or
-	 * only local */
-	nt_spin_lock_irqsave(&inter_lock, flags);
-	*plint += n;
-	nt_spin_unlock_irqrestore(&inter_lock, flags);
 }
 
 STDCALL void *WRAP_EXPORT(ExAllocatePoolWithTag)

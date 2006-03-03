@@ -601,23 +601,6 @@ static USBD_STATUS wrap_bulk_or_intr_trans(struct irp *irp)
 				  wrap_urb_complete, urb->context);
 		USBTRACE("submitting bulk urb %p on pipe 0x%x (ep 0x%x)",
 			 urb, urb->pipe, pipe_handle->bEndpointAddress);
-#ifdef USB_DEBUG
-		/* Windows drivers for broken devices (e.g., Netgear
-		 * WG111 version 1) submit zero-length URBs
-		 * separately, but Linux ehci driver wants
-		 * URB_ZERO_PACKET be set for the previous URB (which
-		 * is of size multiple of wMaxPacketsize); we can't
-		 * handle it */
-		if (usb_pipeout(pipe) &&
-		    (urb->transfer_buffer_length == 0)) {
-			WARNING ("%p %p, %d, %p, %p, %d", irp, urb,
-				 irp->wrap_urb->id,
-				 bulk_int_tx->transfer_buffer,
-				 urb->transfer_buffer,
-				 pipe_handle->bEndpointAddress);
-//			urb->transfer_flags |= URB_ZERO_PACKET;
-		}
-#endif
 	} else {
 		usb_fill_int_urb(urb, udev, pipe, urb->transfer_buffer,
 				 bulk_int_tx->transfer_buffer_length,
