@@ -437,12 +437,12 @@ _FASTCALL struct nt_list *WRAP_EXPORT(ExfInterlockedRemoveHeadList)
 	(FASTCALL_DECL_2(struct nt_list *head, NT_SPIN_LOCK *lock))
 {
 	struct nt_list *ret;
-	KIRQL irql;
+	unsigned long flags;
 
 	TRACEENTER5("head = %p", head);
-	irql = nt_spin_lock_irql(lock, DISPATCH_LEVEL);
+	nt_spin_lock_irqsave(lock, flags);
 	ret = RemoveHeadList(head);
-	nt_spin_unlock_irql(lock, irql);
+	nt_spin_unlock_irqrestore(lock, flags);
 	DBGTRACE5("head = %p, ret = %p", head, ret);
 	return ret;
 }
@@ -458,12 +458,12 @@ _FASTCALL struct nt_list *WRAP_EXPORT(ExfInterlockedRemoveTailList)
 	(FASTCALL_DECL_2(struct nt_list *head, NT_SPIN_LOCK *lock))
 {
 	struct nt_list *ret;
-	KIRQL irql;
+	unsigned long flags;
 
 	TRACEENTER5("head = %p", head);
-	irql = nt_spin_lock_irql(lock, DISPATCH_LEVEL);
+	nt_spin_lock_irqsave(lock, flags);
 	ret = RemoveTailList(head);
-	nt_spin_unlock_irql(lock, irql);
+	nt_spin_unlock_irqrestore(lock, flags);
 	DBGTRACE5("head = %p, ret = %p", head, ret);
 	return ret;
 }
@@ -534,20 +534,29 @@ _FASTCALL struct nt_slist *WRAP_EXPORT(InterlockedPopEntrySList)
 							  &ntoskernel_lock));
 }
 
+STDCALL USHORT WRAP_EXPORT(ExQueryDepthSList)
+	(union nt_slist_head *head)
+{
+	TRACEENTER5("%p", head);
+	return head->list.depth;
+}
+
 _FASTCALL LONG WRAP_EXPORT(InterlockedIncrement)
 	(FASTCALL_DECL_1(LONG volatile *val))
 {
 	LONG ret;
 
 	TRACEENTER5("");
-	__asm__ __volatile__("movl $1, %%eax\n"
+	__asm__ __volatile__("movl $1, %%eax\n\t"
 #ifdef CONFIG_X86_64
-			     LOCK_PREFIX "xaddl %%eax, (%%rcx)\n"
+			     LOCK_PREFIX "xaddl %%eax, (%%rcx)\n\t"
 #else
-			     LOCK_PREFIX "xaddl %%eax, (%%ecx)\n"
+			     LOCK_PREFIX "xaddl %%eax, (%%ecx)\n\t"
 #endif
-			     "incl %%eax\n"
-			     : "=a" (ret) : "c" (val));
+			     "incl %%eax\n\t"
+			     : "=a" (ret)
+			     : "c" (val)
+			     : "memory");
 	TRACEEXIT5(return ret);
 }
 
@@ -557,14 +566,16 @@ _FASTCALL LONG WRAP_EXPORT(InterlockedDecrement)
 	LONG ret;
 
 	TRACEENTER5("");
-	__asm__ __volatile__("movl $-1, %%eax\n"
+	__asm__ __volatile__("movl $-1, %%eax\n\t"
 #ifdef CONFIG_X86_64
-			     LOCK_PREFIX "xaddl %%eax, (%%rcx)\n"
+			     LOCK_PREFIX "xaddl %%eax, (%%rcx)\n\t"
 #else
-			     LOCK_PREFIX "xaddl %%eax, (%%ecx)\n"
+			     LOCK_PREFIX "xaddl %%eax, (%%ecx)\n\t"
 #endif
-			     "decl %%eax\n"
-			     : "=a" (ret) : "c" (val));
+			     "decl %%eax\n\t"
+			     : "=a" (ret)
+			     : "c" (val)
+			     : "memory");
 	TRACEEXIT5(return ret);
 }
 
@@ -593,29 +604,22 @@ _FASTCALL void WRAP_EXPORT(ExInterlockedAddLargeStatistic)
 	unsigned long flags;
 	save_local_irq(flags);
 #ifdef CONFIG_X86_64
-	__asm__ __volatile__(LOCK_PREFIX "addq %%rsi, (%%rdi)\n"
+	__asm__ __volatile__(LOCK_PREFIX "addq %%rsi, (%%rdi)\n\t"
 			     : "=D" (plint) : "0" (plint), "S" (n));
 #else
-	__asm__ __volatile__("movl (%1), %%eax\n"
-			     "movl 4(%1), %%edx\n"
-			     "1: movl %0, %%ebx\n"
-			     "   xorl %%ecx, %%ecx\n"
-			     "   addl %%eax, %%ebx\n"
-			     "   adcl %%edx, %%ecx\n"
-			         LOCK_PREFIX "cmpxchg8b (%1)\n"
-			     "   jnz 1b"
+	__asm__ __volatile__("movl (%1), %%eax\n\t"
+			     "movl 4(%1), %%edx\n\t"
+			     "1: movl %0, %%ebx\n\t"
+			     "   xorl %%ecx, %%ecx\n\t"
+			     "   addl %%eax, %%ebx\n\t"
+			     "   adcl %%edx, %%ecx\n\t"
+			         LOCK_PREFIX "cmpxchg8b (%1)\n\t"
+			     "   jnz 1b\n\t"
 			     :
 			     : "m" (n), "r" (plint)
 			     : "eax", "ebx", "ecx", "edx", "cc", "memory");
 #endif
 	restore_local_irq(flags);
-}
-
-STDCALL USHORT WRAP_EXPORT(ExQueryDepthSList)
-	(union nt_slist_head *head)
-{
-	TRACEENTER5("%p", head);
-	return head->list.depth;
 }
 
 /* should be called with dispatcher_lock held at DISPATCH_LEVEL */

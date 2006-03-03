@@ -267,19 +267,23 @@ typedef u32 pm_message_t;
  * arguments are not touched in any way before calling these macros */
 #define WIN2LIN2(func, arg1, arg2, ret)					\
 do {									\
-	__asm__ __volatile__("mov %%rcx, %%rdi\n"			\
-			     "mov %%rdx, %%rsi\n"			\
-			     "call *%%rax\n"				\
-			     : "=a" (ret) : "a" (func));		\
+	__asm__ __volatile__("mov %%rcx, %%rdi\n\t"			\
+			     "mov %%rdx, %%rsi\n\t"			\
+			     "call " #func "\n\t"			\
+			     : "=a" (ret)				\
+			     :						\
+			     : "%rdi", "%rsi");				\
 } while (0)
 
 #define WIN2LIN3(func, arg1, arg2, arg3, ret)				\
 do {									\
-	__asm__ __volatile__("mov %%rcx, %%rdi\n"			\
-			     "mov %%rdx, %%rsi\n"			\
-			     "mov %%r8, %%rdx\n"			\
-			     "call *%%rax\n"				\
-			     : "=a" (ret) : "a" (func));		\
+	__asm__ __volatile__("mov %%rcx, %%rdi\n\t"			\
+			     "mov %%rdx, %%rsi\n\t"			\
+			     "mov %%r8, %%rdx\n\t"			\
+			     "call " #func "\n\t"			\
+			     : "=a" (ret)				\
+			     :						\
+			     : "%rdi", "%rsi", "%rdx");			\
 } while (0)
 
 #else // CONFIG_X86_64
