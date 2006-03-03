@@ -408,9 +408,9 @@ _FASTCALL void WRAP_EXPORT(IofCompleteRequest)
 				irp_sl->completion_routine, irp_sl->context);
 			status = LIN2WIN3(irp_sl->completion_routine,
 					  dev_obj, irp, irp_sl->context);
+			IOTRACE("status: %08X", status);
 			if (status == STATUS_MORE_PROCESSING_REQUIRED)
 				IOEXIT(return);
-			IOTRACE("completion routine returned");
 		} else {
 			/* propagate pending status to next irp_sl */
 			if (irp->current_location <= irp->stack_count &&
@@ -428,7 +428,6 @@ _FASTCALL void WRAP_EXPORT(IofCompleteRequest)
 		IOTRACE("setting event %p", irp->user_event);
 		KeSetEvent(irp->user_event, prio_boost, FALSE);
 	}
-	IOTRACE("%p", irp->mdl);
 
 	IOTRACE("freeing irp %p", irp);
 	if (irp->associated_irp.system_buffer &&

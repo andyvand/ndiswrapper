@@ -265,21 +265,21 @@ typedef u32 pm_message_t;
 
 /* NOTE: these macros assume function arguments are quads and
  * arguments are not touched in any way before calling these macros */
-#define WIN2LIN2(func, arg1, arg2, ret)			\
-do {							\
-	__asm__("mov %rcx, %rdi");			\
-	__asm__("mov %rdx, %rsi");			\
-	__asm__("call *%0" : : "r"(func));		\
-	__asm__("mov %%rax, %0" : "=r"(ret));		\
+#define WIN2LIN2(func, arg1, arg2, ret)					\
+do {									\
+	__asm__ __volatile__("mov %%rcx, %%rdi\n"			\
+			     "mov %%rdx, %%rsi\n"			\
+			     "call *%%rax\n"				\
+			     : "=a" (ret) : "a" (func));		\
 } while (0)
 
-#define WIN2LIN3(func, arg1, arg2, arg3, ret)		\
-do {							\
-	__asm__("mov %rcx, %rdi");			\
-	__asm__("mov %rdx, %rsi");			\
-	__asm__("mov %r8, %rdx");			\
-	__asm__("call *%0" : : "r"(func));		\
-	__asm__("mov %%rax, %0" : "=r"(ret));		\
+#define WIN2LIN3(func, arg1, arg2, arg3, ret)				\
+do {									\
+	__asm__ __volatile__("mov %%rcx, %%rdi\n"			\
+			     "mov %%rdx, %%rsi\n"			\
+			     "mov %%r8, %%rdx\n"			\
+			     "call *%%rax\n"				\
+			     : "=a" (ret) : "a" (func));		\
 } while (0)
 
 #else // CONFIG_X86_64
