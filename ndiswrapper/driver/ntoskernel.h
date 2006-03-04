@@ -269,9 +269,9 @@ typedef u32 pm_message_t;
 do {									\
 	__asm__ __volatile__("mov %%rcx, %%rdi\n\t"			\
 			     "mov %%rdx, %%rsi\n\t"			\
-			     "call " #func "\n\t"			\
+			     "call *%1\n\t"				\
 			     : "=a" (ret)				\
-			     :						\
+			     : "r" (func)				\
 			     : "%rdi", "%rsi");				\
 } while (0)
 
@@ -280,9 +280,9 @@ do {									\
 	__asm__ __volatile__("mov %%rcx, %%rdi\n\t"			\
 			     "mov %%rdx, %%rsi\n\t"			\
 			     "mov %%r8, %%rdx\n\t"			\
-			     "call " #func "\n\t"			\
+			     "call *%1\n\t"				\
 			     : "=a" (ret)				\
-			     :						\
+			     : "r" (func)				\
 			     : "%rdi", "%rsi", "%rdx");			\
 } while (0)
 
