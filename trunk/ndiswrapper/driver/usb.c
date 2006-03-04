@@ -517,7 +517,8 @@ static void wrap_urb_complete_worker(void *dummy)
 	USBEXIT(return);
 }
 
-/* this function is called only from win_wrap_cancel_irp */
+/* called as Windows function, so call WIN2LIN2 before accessing
+ * arguments */
 static STDCALL void wrap_cancel_irp(struct device_object *dev_obj,
 				    struct irp *irp)
 {
