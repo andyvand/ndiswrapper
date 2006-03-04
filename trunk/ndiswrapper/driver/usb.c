@@ -982,7 +982,7 @@ static USBD_STATUS wrap_get_descriptor(struct wrap_device *wd,
 					 ctrl_req->transfer_buffer_length);
 	}
 	if (ret < 0) {
-		WARNING("request %d failed with %d", ctrl_req->desc_type, ret);
+		USBTRACE("request %d failed: %d", ctrl_req->desc_type, ret);
 		ctrl_req->transfer_buffer_length = 0;
 		return wrap_urb_status(ret);
 	} else {

@@ -480,12 +480,9 @@ _FASTCALL struct nt_slist *WRAP_EXPORT(ExInterlockedPushEntrySList)
 			 NT_SPIN_LOCK *lock))
 {
 	struct nt_slist *ret;
-	KIRQL irql;
 
 	TRACEENTER5("head = %p", head);
-	irql = nt_spin_lock_irql(lock, DISPATCH_LEVEL);
 	ret = PushEntryList(head, entry);
-	nt_spin_unlock_irql(lock, irql);
 	DBGTRACE5("head = %p, ret = %p", head, ret);
 	return ret;
 }
@@ -509,12 +506,9 @@ _FASTCALL struct nt_slist *WRAP_EXPORT(ExInterlockedPopEntrySList)
 	(FASTCALL_DECL_2(union nt_slist_head *head, NT_SPIN_LOCK *lock))
 {
 	struct nt_slist *ret;
-	KIRQL irql;
 
 	TRACEENTER5("head = %p", head);
-	irql = nt_spin_lock_irql(lock, DISPATCH_LEVEL);
 	ret = PopEntryList(head);
-	nt_spin_unlock_irql(lock, irql);
 	DBGTRACE5("head = %p, ret = %p", head, ret);
 	return ret;
 }
@@ -538,7 +532,7 @@ STDCALL USHORT WRAP_EXPORT(ExQueryDepthSList)
 	(union nt_slist_head *head)
 {
 	TRACEENTER5("%p", head);
-	return head->list.depth;
+	return head->depth;
 }
 
 _FASTCALL LONG WRAP_EXPORT(InterlockedIncrement)
@@ -1089,7 +1083,7 @@ STDCALL void WRAP_EXPORT(ExInitializeNPagedLookasideList)
 {
 	TRACEENTER3("lookaside: %p, size: %lu, flags: %u, head: %p, "
 		    "alloc: %p, free: %p", lookaside, size, flags,
-		    lookaside->head.list.next, alloc_func, free_func);
+		    lookaside->head.next, alloc_func, free_func);
 
 	memset(lookaside, 0, sizeof(*lookaside));
 

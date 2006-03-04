@@ -204,7 +204,7 @@ union nt_slist_head {
 		struct nt_slist *next;
 		USHORT depth;
 		USHORT sequence;
-	} list;
+	};
 };
 
 struct nt_list {
@@ -1424,28 +1424,42 @@ static inline struct nt_list *InsertTailList(struct nt_list *head,
 	for (pos = (head)->next, n = pos->next; pos != (head); \
 	     pos = n, n = pos->next)
 
+/* routines below update slist atomically - no need for spinlocks;
+ * however, 'next' and 'depth' fields are updated independently, so
+ * there is a chance that when ExQueryDepthSList is called, depth may
+ * not be correct, but ExQueryDepthSList doesn't use spinlock */
+
 static inline struct nt_slist *
-PushEntryList(union nt_slist_head *head, struct nt_slist *entry)
+PushEntryList(union nt_slist_head volatile *head, struct nt_slist *entry)
 {
 	struct nt_slist *oldhead;
+	typeof(head->depth) olddepth, newdepth;
 
-	oldhead = head->list.next;
-	entry->next = head->list.next;
-	head->list.next = entry;
-	head->list.depth++;
-	head->list.sequence++;
+	do {
+		entry->next = oldhead = head->next;
+	} while (cmpxchg(&head->next, oldhead, entry) != oldhead);
+	do {
+		olddepth = head->depth;
+		newdepth = olddepth + 1;
+	} while (cmpxchg(&head->depth, olddepth, newdepth) != olddepth);
 	return oldhead;
 }
 
 static inline struct nt_slist *PopEntryList(union nt_slist_head *head)
 {
 	struct nt_slist *first;
+	typeof(head->depth) olddepth, newdepth;
 
-	first = head->list.next;
+	do {
+		first = head->next;
+	} while (first &&
+		 cmpxchg(&head->next, first, first->next) != first);
 	if (first) {
-		head->list.next = first->next;
-		head->list.depth--;
-		head->list.sequence++;
+		do {
+			olddepth = head->depth;
+			newdepth = olddepth - 1;
+		} while (cmpxchg(&head->depth, olddepth, newdepth) !=
+			 olddepth);
 	}
 	return first;
 }
