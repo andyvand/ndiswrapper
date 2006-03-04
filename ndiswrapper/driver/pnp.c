@@ -25,7 +25,8 @@ extern struct wrap_device *wrap_devices;
 /* IRP functions are called as Windows functions. For 64-bit, this
  * means arguments are in rcx, rdx etc., but Linux functions expect
  * them in rdi, rsi etc. So we need to put arguments back correctly
- * before touching arguments */
+ * before touching arguments. We also assume that all arguments are
+ * pointers (or register width). */
 
 /* called as Windows function, so call WIN2LIN3 before accessing
  * arguments */
