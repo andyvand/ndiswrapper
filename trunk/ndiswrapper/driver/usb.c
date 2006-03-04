@@ -113,8 +113,8 @@ static void usb_init_urb(struct urb *urb)
 static struct work_struct wrap_urb_complete_work;
 static struct nt_list wrap_urb_complete_list;
 static NT_SPIN_LOCK wrap_urb_complete_list_lock;
-static STDCALL void win_wrap_cancel_irp(struct device_object *dev_obj,
-					struct irp *irp);
+static STDCALL void wrap_cancel_irp(struct device_object *dev_obj,
+				    struct irp *irp);
 static void wrap_urb_complete_worker(void *dummy);
 
 int usb_init(void)
@@ -318,7 +318,7 @@ static struct urb *wrap_alloc_urb(struct irp *irp, unsigned int pipe,
 	wrap_urb->irp = irp;
 	wrap_urb->pipe = pipe;
 	irp->wrap_urb = wrap_urb;
-	irp->cancel_routine = win_wrap_cancel_irp;
+	irp->cancel_routine = wrap_cancel_irp;
 	IoReleaseCancelSpinLock(irp->cancel_irql);
 	USBTRACE("allocated urb: %p", urb);
 
@@ -518,10 +518,12 @@ static void wrap_urb_complete_worker(void *dummy)
 }
 
 /* this function is called only from win_wrap_cancel_irp */
-static int _wrap_cancel_irp(struct device_object *dev_obj,
-			    struct irp *irp)
+static STDCALL void wrap_cancel_irp(struct device_object *dev_obj,
+				    struct irp *irp)
 {
 	struct urb *urb;
+
+	WIN2LIN2(dev_obj, irp);
 
 	/* NB: this function is called holding Cancel spinlock */
 	USBENTER("irp: %p", irp);
@@ -534,18 +536,7 @@ static int _wrap_cancel_irp(struct device_object *dev_obj,
 	} else
 		ERROR("urb %p not canceld: %d", urb, irp->wrap_urb->state);
 	IoReleaseCancelSpinLock(irp->cancel_irql);
-	return 0;
-}
-
-/* This function is called as Windows function. In 64-bit, arguments
- * are in Rcx, Rdx in 64-bit, but the functionality is in Linux
- * function _wrap_cancel_irp, so we shuffle arguments back correctly
- * and call _wrap_cancel_irp */
-static STDCALL void win_wrap_cancel_irp(struct device_object *dev_obj,
-					struct irp *irp)
-{
-	unsigned long ret;
-	WIN2LIN2(_wrap_cancel_irp, dev_obj, irp, ret);
+	return;
 }
 
 static USBD_STATUS wrap_bulk_or_intr_trans(struct irp *irp)
