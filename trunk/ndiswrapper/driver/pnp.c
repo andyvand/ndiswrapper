@@ -78,7 +78,7 @@ STDCALL NTSTATUS pdoDispatchDeviceControl(struct device_object *pdo,
 	struct io_stack_location *irp_sl;
 	NTSTATUS status;
 
-	WIN2LIN2(dev_obj, irp);
+	WIN2LIN2(pdo, irp);
 
 	DUMP_IRP(irp);
 
@@ -117,7 +117,7 @@ STDCALL NTSTATUS pdoDispatchPnp(struct device_object *pdo,
 	struct usbd_bus_interface_usbdi *usb_intf;
 #endif
 
-	WIN2LIN2(dev_obj, irp);
+	WIN2LIN2(pdo, irp);
 
 	irp_sl = IoGetCurrentIrpStackLocation(irp);
 	wd = pdo->reserved;
@@ -202,7 +202,7 @@ STDCALL NTSTATUS pdoDispatchPower(struct device_object *pdo,
 	struct pci_dev *pdev;
 	NTSTATUS status;
 
-	WIN2LIN2(dev_obj, irp);
+	WIN2LIN2(pdo, irp);
 
 	irp_sl = IoGetCurrentIrpStackLocation(irp);
 	wd = pdo->reserved;
