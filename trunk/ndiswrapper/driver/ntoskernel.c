@@ -476,63 +476,81 @@ _FASTCALL struct nt_list *WRAP_EXPORT(ExInterlockedRemoveTailList)
 }
 
 _FASTCALL struct nt_slist *WRAP_EXPORT(ExInterlockedPushEntrySList)
-	(FASTCALL_DECL_3(union nt_slist_head *head, struct nt_slist *entry,
+	(FASTCALL_DECL_3(nt_slist_header *head, struct nt_slist *entry,
 			 NT_SPIN_LOCK *lock))
 {
 	struct nt_slist *ret;
 
 	TRACEENTER5("head = %p", head);
-	ret = PushEntryList(head, entry);
+	ret = PushEntrySList(head, entry, lock);
 	DBGTRACE5("head = %p, ret = %p", head, ret);
 	return ret;
 }
 
 STDCALL struct nt_slist *WRAP_EXPORT(ExpInterlockedPushEntrySList)
-	(union nt_slist_head *head, struct nt_slist *entry)
-{
-	return ExInterlockedPushEntrySList(FASTCALL_ARGS_3(head, entry,
-							   &ntoskernel_lock));
-}
-
-_FASTCALL struct nt_slist *WRAP_EXPORT(InterlockedPushEntrySList)
-	(FASTCALL_DECL_2(union nt_slist_head *head, struct nt_slist *entry))
-{
-	TRACEENTER5("%p", head);
-	return ExInterlockedPushEntrySList(FASTCALL_ARGS_3(head, entry,
-							   &ntoskernel_lock));
-}
-
-_FASTCALL struct nt_slist *WRAP_EXPORT(ExInterlockedPopEntrySList)
-	(FASTCALL_DECL_2(union nt_slist_head *head, NT_SPIN_LOCK *lock))
+	(nt_slist_header *head, struct nt_slist *entry)
 {
 	struct nt_slist *ret;
 
 	TRACEENTER5("head = %p", head);
-	ret = PopEntryList(head);
+	ret = PushEntrySList(head, entry, &ntoskernel_lock);
+	DBGTRACE5("head = %p, ret = %p", head, ret);
+	return ret;
+}
+
+_FASTCALL struct nt_slist *WRAP_EXPORT(InterlockedPushEntrySList)
+	(FASTCALL_DECL_2(nt_slist_header *head, struct nt_slist *entry))
+{
+	struct nt_slist *ret;
+
+	TRACEENTER5("head = %p", head);
+	ret = PushEntrySList(head, entry, &ntoskernel_lock);
+	DBGTRACE5("head = %p, ret = %p", head, ret);
+	return ret;
+}
+
+_FASTCALL struct nt_slist *WRAP_EXPORT(ExInterlockedPopEntrySList)
+	(FASTCALL_DECL_2(nt_slist_header *head, NT_SPIN_LOCK *lock))
+{
+	struct nt_slist *ret;
+
+	TRACEENTER5("head = %p", head);
+	ret = PopEntrySList(head, lock);
 	DBGTRACE5("head = %p, ret = %p", head, ret);
 	return ret;
 }
 
 STDCALL struct nt_slist *WRAP_EXPORT(ExpInterlockedPopEntrySList)
-	(union nt_slist_head *head)
+	(nt_slist_header *head)
 {
-	return ExInterlockedPopEntrySList(FASTCALL_ARGS_2(head,
-							  &ntoskernel_lock));
+	struct nt_slist *ret;
+
+	TRACEENTER5("head = %p", head);
+	ret = PopEntrySList(head, &ntoskernel_lock);
+	DBGTRACE5("head = %p, ret = %p", head, ret);
+	return ret;
 }
 
 _FASTCALL struct nt_slist *WRAP_EXPORT(InterlockedPopEntrySList)
-	(FASTCALL_DECL_1(union nt_slist_head *head))
+	(FASTCALL_DECL_1(nt_slist_header *head))
 {
-	TRACEENTER5("%p", head);
-	return ExInterlockedPopEntrySList(FASTCALL_ARGS_2(head,
-							  &ntoskernel_lock));
+	struct nt_slist *ret;
+
+	TRACEENTER5("head = %p", head);
+	ret = PopEntrySList(head, &ntoskernel_lock);
+	DBGTRACE5("head = %p, ret = %p", head, ret);
+	return ret;
 }
 
 STDCALL USHORT WRAP_EXPORT(ExQueryDepthSList)
-	(union nt_slist_head *head)
+	(nt_slist_header *head)
 {
 	TRACEENTER5("%p", head);
+#ifdef CONFIG_X86_64
+	return head->align & 0xffff;
+#else
 	return head->depth;
+#endif
 }
 
 _FASTCALL LONG WRAP_EXPORT(InterlockedIncrement)
@@ -601,16 +619,16 @@ _FASTCALL void WRAP_EXPORT(ExInterlockedAddLargeStatistic)
 	__asm__ __volatile__(LOCK_PREFIX "addq %%rsi, (%%rdi)\n\t"
 			     : "=D" (plint) : "0" (plint), "S" (n));
 #else
-	__asm__ __volatile__("movl (%1), %%eax\n\t"
-			     "movl 4(%1), %%edx\n\t"
-			     "1: movl %0, %%ebx\n\t"
+	__asm__ __volatile__("movl (%0), %%eax\n\t"
+			     "movl 4(%0), %%edx\n\t"
+			     "1: movl %1, %%ebx\n\t"
 			     "   xorl %%ecx, %%ecx\n\t"
 			     "   addl %%eax, %%ebx\n\t"
 			     "   adcl %%edx, %%ecx\n\t"
-			         LOCK_PREFIX "cmpxchg8b (%1)\n\t"
+			         LOCK_PREFIX "cmpxchg8b (%0)\n\t"
 			     "   jnz 1b\n\t"
-			     :
-			     : "m" (n), "r" (plint)
+			     : "+r" (plint)
+			     : "m" (n)
 			     : "eax", "ebx", "ecx", "edx", "cc", "memory");
 #endif
 	restore_local_irq(flags);

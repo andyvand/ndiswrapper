@@ -965,6 +965,98 @@ static inline ULONG SPAN_PAGES(void *ptr, SIZE_T length)
 	return n;
 }
 
+#ifdef CONFIG_X86_64
+/* it is not clear how nt_slist_header is used to store pointer to
+ * slists and depth; here we assume 'align' field is used to store
+ * depth and 'region' field is used to store slist pointers */
+
+/* TODO: can these be implemented without using spinlock? */
+
+static inline struct nt_slist *PushEntrySList(nt_slist_header *head,
+					      struct nt_slist *entry,
+					      NT_SPIN_LOCK *lock)
+{
+	KIRQL irql = nt_spin_lock_irql(lock, DISPATCH_LEVEL);
+	entry->next = (struct nt_slist *)head->region;
+	head->region = (ULONGLONG)entry;
+	head->align = (head->align & 0x0000ffff) |
+		((head->align & 0xffff) + 1);
+	nt_spin_unlock_irql(lock, irql);
+	return entry->next;
+}
+
+static inline struct nt_slist *PopEntrySList(nt_slist_header *head,
+					     NT_SPIN_LOCK *lock)
+{
+	struct nt_slist *entry;
+	KIRQL irql = nt_spin_lock_irql(lock, DISPATCH_LEVEL);
+	entry = (struct nt_slist *)head->region;
+	if (entry)
+		head->region = (ULONGLONG)entry->next;
+	head->align = (head->align & 0x0000ffff) |
+		((head->align & 0xffff) - 1);
+	nt_spin_unlock_irql(lock, irql);
+	return entry;
+}
+
+#else
+
+static inline unsigned long long cmpxchg8b(volatile void *ptr,
+					   unsigned long long old,
+					   unsigned long long new)
+{
+	unsigned long long prev;
+
+	__asm__ __volatile__("mov %3, %%eax\n"
+			     "mov %4, %%edx\n"
+			     "mov %5, %%ebx\n"
+			     "mov %6, %%ecx\n"
+			     "cmpxchg8b (%0)\n"
+			     "mov %%eax, %1\n"
+			     "mov %%edx, %2\n"
+			     : "+r" (ptr),
+			       "=m" (ll_low(prev)), "=m" (ll_high(prev))
+			     : "m" (ll_low(old)), "m" (ll_high(old)),
+			       "m" (ll_low(new)), "m" (ll_high(new))
+			     : "eax", "ebx", "ecx", "edx");
+	return prev;
+}
+
+/* slist routines below update slist atomically - no need for
+ * spinlocks */
+
+static inline struct nt_slist *PushEntrySList(nt_slist_header *head,
+					      struct nt_slist *entry,
+					      NT_SPIN_LOCK *lock)
+{
+	unsigned long long old, new;
+	do {
+		old = head->align;
+		entry->next = (struct nt_slist *)ll_low(old);
+		ll_low(new) = (int)entry;
+		ll_high(new) = ll_high(old) + 1;
+	} while (cmpxchg8b(&head->next, old, new) != old);
+	return entry->next;
+}
+
+static inline struct nt_slist *PopEntrySList(nt_slist_header *head,
+					     NT_SPIN_LOCK *lock)
+{
+	struct nt_slist *entry;
+	unsigned long long old, new;
+	do {
+		old = head->align;
+		entry = (struct nt_slist *)ll_low(old);
+		if (!entry)
+			break;
+		ll_low(new) = (int)entry->next;
+		ll_high(new) = ll_high(old) - 1;
+	} while (cmpxchg8b(&head->next, old, new) != old);
+	return entry;
+}
+
+#endif
+
 /* DEBUG macros */
 
 #define DBGTRACE(fmt, ...) do { } while (0)

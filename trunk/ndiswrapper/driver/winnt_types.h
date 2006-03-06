@@ -198,6 +198,13 @@ struct nt_slist {
 	struct nt_slist *next;
 };
 
+#ifdef CONFIG_X86_64
+struct nt_slist_head {
+	ULONGLONG align;
+	ULONGLONG region;
+} __attribute__((aligned(16)));
+typedef struct nt_slist_head nt_slist_header;
+#else
 union nt_slist_head {
 	ULONGLONG align;
 	struct {
@@ -206,6 +213,8 @@ union nt_slist_head {
 		USHORT sequence;
 	};
 };
+typedef union nt_slist_head nt_slist_header;
+#endif
 
 struct nt_list {
 	struct nt_list *next;
@@ -1101,7 +1110,7 @@ typedef STDCALL void *LOOKASIDE_ALLOC_FUNC(enum pool_type pool_type,
 typedef STDCALL void LOOKASIDE_FREE_FUNC(void *);
 
 struct npaged_lookaside_list {
-	union nt_slist_head head;
+	nt_slist_header head;
 	USHORT depth;
 	USHORT maxdepth;
 	ULONG totalallocs;
@@ -1423,46 +1432,6 @@ static inline struct nt_list *InsertTailList(struct nt_list *head,
 #define nt_list_for_each_safe(pos, n, head)		       \
 	for (pos = (head)->next, n = pos->next; pos != (head); \
 	     pos = n, n = pos->next)
-
-/* routines below update slist atomically - no need for spinlocks;
- * however, 'next' and 'depth' fields are updated independently, so
- * there is a chance that when ExQueryDepthSList is called, depth may
- * not be correct, but ExQueryDepthSList doesn't use spinlock */
-
-static inline struct nt_slist *
-PushEntryList(union nt_slist_head volatile *head, struct nt_slist *entry)
-{
-	struct nt_slist *oldhead;
-	typeof(head->depth) olddepth, newdepth;
-
-	do {
-		entry->next = oldhead = head->next;
-	} while (cmpxchg(&head->next, oldhead, entry) != oldhead);
-	do {
-		olddepth = head->depth;
-		newdepth = olddepth + 1;
-	} while (cmpxchg(&head->depth, olddepth, newdepth) != olddepth);
-	return oldhead;
-}
-
-static inline struct nt_slist *PopEntryList(union nt_slist_head *head)
-{
-	struct nt_slist *first;
-	typeof(head->depth) olddepth, newdepth;
-
-	do {
-		first = head->next;
-	} while (first &&
-		 cmpxchg(&head->next, first, first->next) != first);
-	if (first) {
-		do {
-			olddepth = head->depth;
-			newdepth = olddepth - 1;
-		} while (cmpxchg(&head->depth, olddepth, newdepth) !=
-			 olddepth);
-	}
-	return first;
-}
 
 /* device object flags */
 #define DO_VERIFY_VOLUME		0x00000002
