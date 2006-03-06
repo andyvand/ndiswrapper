@@ -1007,12 +1007,12 @@ static inline unsigned long long cmpxchg8b(volatile void *ptr,
 {
 	unsigned long long prev;
 
-	__asm__ __volatile__("cmpxchg8b (%0)\n"
+	__asm__ __volatile__(LOCK_PREFIX "cmpxchg8b (%0)\n"
 			     : "+r" (ptr),
 			       "=a" (ll_low(prev)), "=d" (ll_high(prev))
 			     : "a" (ll_low(old)), "d" (ll_high(old)),
 			       "b" (ll_low(new)), "c" (ll_high(new))
-			     : "memory");
+			     : "cc", "memory");
 	return prev;
 }
 
@@ -1030,7 +1030,7 @@ static inline struct nt_slist *PushEntrySList(nt_slist_header *head,
 		new.next = entry;
 		new.depth = old.depth + 1;
 	} while (cmpxchg8b(&head->align, old.align, new.align) != old.align);
-	return entry->next;
+	return old.next;
 }
 
 static inline struct nt_slist *PopEntrySList(nt_slist_header *head,
