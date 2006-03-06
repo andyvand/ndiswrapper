@@ -1007,18 +1007,12 @@ static inline unsigned long long cmpxchg8b(volatile void *ptr,
 {
 	unsigned long long prev;
 
-	__asm__ __volatile__("mov %3, %%eax\n"
-			     "mov %4, %%edx\n"
-			     "mov %5, %%ebx\n"
-			     "mov %6, %%ecx\n"
-			     "cmpxchg8b (%0)\n"
-			     "mov %%eax, %1\n"
-			     "mov %%edx, %2\n"
+	__asm__ __volatile__("cmpxchg8b (%0)\n"
 			     : "+r" (ptr),
-			       "=m" (ll_low(prev)), "=m" (ll_high(prev))
-			     : "m" (ll_low(old)), "m" (ll_high(old)),
-			       "m" (ll_low(new)), "m" (ll_high(new))
-			     : "eax", "ebx", "ecx", "edx");
+			       "=a" (ll_low(prev)), "=d" (ll_high(prev))
+			     : "a" (ll_low(old)), "d" (ll_high(old)),
+			       "b" (ll_low(new)), "c" (ll_high(new))
+			     : "memory");
 	return prev;
 }
 
@@ -1029,13 +1023,13 @@ static inline struct nt_slist *PushEntrySList(nt_slist_header *head,
 					      struct nt_slist *entry,
 					      NT_SPIN_LOCK *lock)
 {
-	unsigned long long old, new;
+	nt_slist_header old, new;
 	do {
-		old = head->align;
-		entry->next = (struct nt_slist *)ll_low(old);
-		ll_low(new) = (int)entry;
-		ll_high(new) = ll_high(old) + 1;
-	} while (cmpxchg8b(&head->next, old, new) != old);
+		old.align = head->align;
+		entry->next = old.next;
+		new.next = entry;
+		new.depth = old.depth + 1;
+	} while (cmpxchg8b(&head->align, old.align, new.align) != old.align);
 	return entry->next;
 }
 
@@ -1043,15 +1037,15 @@ static inline struct nt_slist *PopEntrySList(nt_slist_header *head,
 					     NT_SPIN_LOCK *lock)
 {
 	struct nt_slist *entry;
-	unsigned long long old, new;
+	nt_slist_header old, new;
 	do {
-		old = head->align;
-		entry = (struct nt_slist *)ll_low(old);
+		old.align = head->align;
+		entry = old.next;
 		if (!entry)
 			break;
-		ll_low(new) = (int)entry->next;
-		ll_high(new) = ll_high(old) - 1;
-	} while (cmpxchg8b(&head->next, old, new) != old);
+		new.next = entry->next;
+		new.depth = old.depth - 1;
+	} while (cmpxchg8b(&head->align, old.align, new.align) != old.align);
 	return entry;
 }
 
