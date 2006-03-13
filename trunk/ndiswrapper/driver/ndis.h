@@ -716,7 +716,7 @@ struct wrap_ndis_device {
 	struct ndis_packet **tx_array;
 	unsigned int tx_ring_start;
 	unsigned int tx_ring_pending;
-	NT_SPIN_LOCK tx_ring_lock;
+	struct semaphore tx_ring_mutex;
 	unsigned int max_tx_packets;
 
 	unsigned char tx_ok;
