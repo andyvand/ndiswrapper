@@ -764,11 +764,11 @@ BOOLEAN wrap_set_timer(struct nt_timer *nt_timer, unsigned long expires_hz,
 	if (kdpc)
 		nt_timer->kdpc = kdpc;
 	wrap_timer->repeat = repeat_hz;
+	nt_spin_unlock_irql(&timer_lock, irql);
 	if (mod_timer(&wrap_timer->timer, jiffies + expires_hz))
 		ret = TRUE;
 	else
 		ret = FALSE;
-	nt_spin_unlock_irql(&timer_lock, irql);
 	TRACEEXIT5(return ret);
 }
 

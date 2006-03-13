@@ -535,7 +535,8 @@ static STDCALL void wrap_cancel_irp(struct device_object *dev_obj,
 		USBTRACE("urb %p canceled", urb);
 		/* this IRP will be returned in urb's completion function */
 	} else
-		ERROR("urb %p not canceld: %d", urb, irp->wrap_urb->state);
+		ERROR("urb %p can't be canceld: %d",
+		      urb, irp->wrap_urb->state);
 	IoReleaseCancelSpinLock(irp->cancel_irql);
 	return;
 }

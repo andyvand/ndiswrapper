@@ -477,24 +477,22 @@ void free_tx_packet(struct wrap_ndis_device *wnd, struct ndis_packet *packet,
 	buffer = packet->private.buffer_head;
 	DBGTRACE3("freeing buffer %p", buffer);
 	NdisFreeBuffer(buffer);
-	dev_kfree_skb_any(oob_data->skb);
+	if (oob_data->skb)
+		dev_kfree_skb_any(oob_data->skb);
 	DBGTRACE3("freeing packet %p", packet);
 	NdisFreePacket(packet);
 	TRACEEXIT3(return);
 }
 
-/*
- * MiniportSend and MiniportSendPackets
- * this function is called with lock held in DISPATCH_LEVEL, so no need
- * to raise irql to DISPATCH_LEVEL during MiniportSend(Packets)
-*/
-static int tx_ndis_packets(struct wrap_ndis_device *wnd, unsigned int start,
-			   unsigned int pending)
+/* MiniportSend and MiniportSendPackets */
+static int miniport_tx_packets(struct wrap_ndis_device *wnd,
+			       unsigned int start, unsigned int pending)
 {
 	NDIS_STATUS res;
 	struct miniport_char *miniport;
 	unsigned int sent, n;
 	struct ndis_packet *packet;
+	KIRQL irql;
 
 	TRACEENTER3("start: %d, pending: %d", start, pending);
 	miniport = &wnd->wd->driver->ndis_driver->miniport;
@@ -510,10 +508,11 @@ static int tx_ndis_packets(struct wrap_ndis_device *wnd, unsigned int start,
 			int j = (start + i) % TX_RING_SIZE;
 			wnd->tx_array[i] = wnd->tx_ring[j];
 		}
-		LIN2WIN3(miniport->send_packets, wnd->nmb->adapter_ctx,
-			 wnd->tx_array, n);
-		sent = n;
 		if (test_bit(ATTR_SERIALIZED, &wnd->attributes)) {
+			irql = raise_irql(DISPATCH_LEVEL);
+			LIN2WIN3(miniport->send_packets, wnd->nmb->adapter_ctx,
+				 wnd->tx_array, n);
+			lower_irql(irql);
 			for (sent = 0; sent < n && wnd->tx_ok; sent++) {
 				struct ndis_packet_oob_data *oob_data;
 				packet = wnd->tx_array[sent];
@@ -526,10 +525,13 @@ static int tx_ndis_packets(struct wrap_ndis_device *wnd, unsigned int start,
 				case NDIS_STATUS_PENDING:
 					break;
 				case NDIS_STATUS_RESOURCES:
+					DBGTRACE2("%d, %d", wnd->tx_ring_start,
+						  wnd->tx_ring_pending);
 					wnd->tx_ok = 0;
 					/* resubmit this packet and
 					 * the rest when resources
 					 * become available */
+					netif_stop_queue(wnd->net_dev);
 					sent--;
 					break;
 				case NDIS_STATUS_FAILURE:
@@ -548,12 +550,22 @@ static int tx_ndis_packets(struct wrap_ndis_device *wnd, unsigned int start,
 					break;
 				}
 			}
+		} else {
+			LIN2WIN3(miniport->send_packets, wnd->nmb->adapter_ctx,
+				 wnd->tx_array, n);
+			sent = n;
 		}
 		DBGTRACE3("sent: %d(%d)", sent, n);
 	} else {
 		packet = wnd->tx_ring[start];
-		res = LIN2WIN3(miniport->send, wnd->nmb->adapter_ctx,
-			       packet, packet->private.flags);
+		if (test_bit(ATTR_SERIALIZED, &wnd->attributes)) {
+			irql = raise_irql(DISPATCH_LEVEL);
+			res = LIN2WIN3(miniport->send, wnd->nmb->adapter_ctx,
+				       packet, packet->private.flags);
+			lower_irql(irql);
+		} else
+			res = LIN2WIN3(miniport->send, wnd->nmb->adapter_ctx,
+				       packet, packet->private.flags);
 		sent = 1;
 		switch (res) {
 		case NDIS_STATUS_SUCCESS:
@@ -577,55 +589,70 @@ static void tx_worker(void *param)
 {
 	struct wrap_ndis_device *wnd = (struct wrap_ndis_device *)param;
 	int n;
-	KIRQL irql;
 
 	TRACEENTER3("tx_ok %d", wnd->tx_ok);
 
 	/* some drivers e.g., new RT2500 driver, crash if any packets
 	 * are sent when the card is not associated */
+
+	/* we can use cmpxchg to update tx_ring_start, but we need to
+	 * send packets in given order, so serialize (even for
+	 * deserialized drivers) with mutex */
+
 	while (wnd->tx_ok) {
-		irql = nt_spin_lock_irql(&wnd->tx_ring_lock, DISPATCH_LEVEL);
+		unsigned int pending, new_pending;
+		if (down_interruptible(&wnd->tx_ring_mutex))
+			return;
 		if (wnd->tx_ring_pending == 0) {
-			nt_spin_unlock_irql(&wnd->tx_ring_lock, irql);
+			up(&wnd->tx_ring_mutex);
 			break;
 		}
-		n = tx_ndis_packets(wnd, wnd->tx_ring_start,
-				    wnd->tx_ring_pending);
+		n = miniport_tx_packets(wnd, wnd->tx_ring_start,
+					wnd->tx_ring_pending);
 		wnd->tx_ring_start = (wnd->tx_ring_start + n) % TX_RING_SIZE;
-		wnd->tx_ring_pending -= n;
-		nt_spin_unlock_irql(&wnd->tx_ring_lock, irql);
+		do {
+			pending = wnd->tx_ring_pending;
+			new_pending = pending - n;
+		} while (cmpxchg(&wnd->tx_ring_pending, pending,
+				 new_pending) != pending);
+		up(&wnd->tx_ring_mutex);
 		if (netif_queue_stopped(wnd->net_dev) && n > 0)
 			netif_wake_queue(wnd->net_dev);
 	}
-
 	TRACEEXIT3(return);
 }
 
-/*
- * This function is called in BH disabled context and ndis drivers
- * must have their send-functions called from sleepeable context so we
- * just queue the packets up here and schedule a workqueue to run
- * later.
- */
 static int tx_skbuff(struct sk_buff *skb, struct net_device *dev)
 {
 	struct wrap_ndis_device *wnd = netdev_priv(dev);
 	struct ndis_packet *packet;
-	unsigned int tx_ring_next_slot;
+	unsigned int free_slot, pending, next_pending;
 
 	packet = alloc_tx_packet(wnd, skb);
 	if (!packet) {
 		WARNING("couldn't allocate packet");
 		return 1;
 	}
-	nt_spin_lock(&wnd->tx_ring_lock);
-	tx_ring_next_slot =
-		(wnd->tx_ring_start + wnd->tx_ring_pending) % TX_RING_SIZE;
-	wnd->tx_ring[tx_ring_next_slot] = packet;
-	wnd->tx_ring_pending++;
-	if (wnd->tx_ring_pending == TX_RING_SIZE)
+	do {
+		pending = wnd->tx_ring_pending;
+		next_pending = pending + 1;
+		free_slot = (wnd->tx_ring_start + pending) % TX_RING_SIZE;
+#if 0
+		if (unlikely(free_slot == wnd->tx_ring_start &&
+			     netif_queue_stopped(wnd->net_dev))) {
+			struct ndis_packet_oob_data *oob_data;
+			oob_data = NDIS_PACKET_OOB_DATA(packet);
+			oob_data->skb = NULL;
+			WARNING("packet %p dropped", packet);
+			free_tx_packet(wnd, packet, NDIS_STATUS_FAILURE);
+			return 1;
+		}
+#endif
+		wnd->tx_ring[free_slot] = packet;
+	} while (cmpxchg(&wnd->tx_ring_pending, pending,
+			 next_pending) != pending);
+	if (next_pending == TX_RING_SIZE)
 		netif_stop_queue(wnd->net_dev);
-	nt_spin_unlock(&wnd->tx_ring_lock);
 
 	schedule_ndis_work(&wnd->tx_work);
 
@@ -1482,15 +1509,13 @@ err_start:
 
 static NDIS_STATUS ndis_remove_device(struct wrap_ndis_device *wnd)
 {
-	KIRQL irql;
-
 	set_bit(SHUTDOWN, &wnd->wrap_ndis_work);
 	miniport_pnp_event(wnd, NdisDevicePnPEventSurpriseRemoved);
 	ndis_close(wnd->net_dev);
 	netif_carrier_off(wnd->net_dev);
 	wrap_procfs_remove_ndis_device(wnd);
 	/* throw away pending packets */
-	irql = nt_spin_lock_irql(&wnd->tx_ring_lock, DISPATCH_LEVEL);
+	down_interruptible(&wnd->tx_ring_mutex);
 	while (wnd->tx_ring_pending) {
 		struct ndis_packet *packet;
 
@@ -1499,7 +1524,7 @@ static NDIS_STATUS ndis_remove_device(struct wrap_ndis_device *wnd)
 		wnd->tx_ring_start = (wnd->tx_ring_start + 1) % TX_RING_SIZE;
 		wnd->tx_ring_pending--;
 	}
-	nt_spin_unlock_irql(&wnd->tx_ring_lock, irql);
+	up(&wnd->tx_ring_mutex);
 	miniport_halt(wnd);
 	ndis_exit_device(wnd);
 	/* flush_scheduled_work here causes crash with 2.4 kernels */
@@ -1585,7 +1610,7 @@ static STDCALL NTSTATUS NdisAddDevice(struct driver_object *drv_obj,
 	init_nmb_functions(nmb);
 	wnd->net_dev = net_dev;
 	wnd->ndis_irq = NULL;
-	nt_spin_lock_init(&wnd->tx_ring_lock);
+	init_MUTEX(&wnd->tx_ring_mutex);
 	nt_spin_lock_init(&wnd->tx_stats_lock);
 	init_MUTEX(&wnd->ndis_comm_mutex);
 	init_waitqueue_head(&wnd->ndis_comm_wq);
