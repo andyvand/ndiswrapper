@@ -1101,7 +1101,7 @@ STDCALL void WRAP_EXPORT(ExInitializeNPagedLookasideList)
 {
 	TRACEENTER3("lookaside: %p, size: %lu, flags: %u, head: %p, "
 		    "alloc: %p, free: %p", lookaside, size, flags,
-		    lookaside->head.next, alloc_func, free_func);
+		    lookaside, alloc_func, free_func);
 
 	memset(lookaside, 0, sizeof(*lookaside));
 

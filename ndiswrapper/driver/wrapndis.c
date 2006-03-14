@@ -488,6 +488,9 @@ void free_tx_packet(struct wrap_ndis_device *wnd, struct ndis_packet *packet,
 }
 
 /* MiniportSend and MiniportSendPackets */
+/* this function is called holding tx_ring_mutex, so safe to read
+ * tx_ring_start (tx_ring_end is not updated in tx_worker or here, so
+ * safe to read tx_ring_end, too) without lock */
 static int miniport_tx_packets(struct wrap_ndis_device *wnd)
 {
 	NDIS_STATUS res;
@@ -504,8 +507,10 @@ static int miniport_tx_packets(struct wrap_ndis_device *wnd)
 	n = end - start;
 	if (n < 0)
 		n += TX_RING_SIZE;
-	else if (n == 0)
+	else if (n == 0) {
+		assert(wnd->is_tx_ring_full == 1);
 		n = TX_RING_SIZE - 1;
+	}
 	if (unlikely(n > wnd->max_tx_packets))
 		n = wnd->max_tx_packets;
 	DBGTRACE3("%d, %d, %d", n, start, end);
@@ -550,10 +555,10 @@ static int miniport_tx_packets(struct wrap_ndis_device *wnd)
 					ERROR("packet %p: unknown status %08X",
 					      packet, oob_data->status);
 					/* RT2500 driver seems to
-					 * break with SMP - it frees
-					 * the buffer and packet by
-					 * the time control comes
-					 * here, so don't free it */
+					 * corrupt packets with SMP
+					 * and by the time control
+					 * comes here, the buffer and
+					 * packet are already freed */
 					break;
 				}
 			}
@@ -617,15 +622,16 @@ static void tx_worker(void *param)
 			break;
 		}
 		n = miniport_tx_packets(wnd);
-		wnd->tx_ring_start = (wnd->tx_ring_start + n) % TX_RING_SIZE;
+		if (n > 0) {
+			wnd->tx_ring_start =
+				(wnd->tx_ring_start + n) % TX_RING_SIZE;
+			wnd->is_tx_ring_full = 0;
+			if (netif_queue_stopped(wnd->net_dev))
+				netif_wake_queue(wnd->net_dev);
+		}
 		up(&wnd->tx_ring_mutex);
 		DBGTRACE3("%d, %d, %d", n, wnd->tx_ring_start,
 			  wnd->tx_ring_end);
-		if (n > 0) {
-			wnd->is_tx_ring_full = 0;
-			if (netif_queue_stopped(wnd->net_dev) && n > 0)
-				netif_wake_queue(wnd->net_dev);
-		}
 	}
 	TRACEEXIT3(return);
 }
