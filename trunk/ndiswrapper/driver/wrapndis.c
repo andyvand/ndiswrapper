@@ -606,13 +606,13 @@ static void tx_worker(void *param)
 	 * send packets in given order, so serialize (even for
 	 * deserialized drivers) with mutex */
 
-	while (wnd->tx_ok) {
+	while (1) {
 		if (down_interruptible(&wnd->tx_ring_mutex))
 			break;
-		/* end == start if either ring is empty, or full, in
-		 * which case queue is stopped */
-		if (wnd->tx_ring_end == wnd->tx_ring_start &&
-		    !netif_queue_stopped(wnd->net_dev)) {
+		/* end == start if either ring is empty or full; in
+		 * the latter case is_tx_ring_full is set */
+		if ((wnd->tx_ring_end == wnd->tx_ring_start &&
+		     !wnd->is_tx_ring_full) || !wnd->tx_ok) {
 			up(&wnd->tx_ring_mutex);
 			break;
 		}
@@ -621,8 +621,11 @@ static void tx_worker(void *param)
 		up(&wnd->tx_ring_mutex);
 		DBGTRACE3("%d, %d, %d", n, wnd->tx_ring_start,
 			  wnd->tx_ring_end);
-		if (netif_queue_stopped(wnd->net_dev) && n > 0)
-			netif_wake_queue(wnd->net_dev);
+		if (n > 0) {
+			wnd->is_tx_ring_full = 0;
+			if (netif_queue_stopped(wnd->net_dev) && n > 0)
+				netif_wake_queue(wnd->net_dev);
+		}
 	}
 	TRACEEXIT3(return);
 }
@@ -643,8 +646,10 @@ static int tx_skbuff(struct sk_buff *skb, struct net_device *dev)
 	wnd->tx_ring[wnd->tx_ring_end++] = packet;
 	if (wnd->tx_ring_end == TX_RING_SIZE)
 		wnd->tx_ring_end = 0;
-	if (wnd->tx_ring_end == wnd->tx_ring_start)
+	if (wnd->tx_ring_end == wnd->tx_ring_start) {
+		wnd->is_tx_ring_full = 1;
 		netif_stop_queue(wnd->net_dev);
+	}
 	DBGTRACE3("%d, %d", wnd->tx_ring_start, wnd->tx_ring_end);
 	schedule_ndis_work(&wnd->tx_work);
 	return NETDEV_TX_OK;
@@ -1509,7 +1514,7 @@ static NDIS_STATUS ndis_remove_device(struct wrap_ndis_device *wnd)
 	tx_pending = wnd->tx_ring_end - wnd->tx_ring_start;
 	if (tx_pending < 0)
 		tx_pending += TX_RING_SIZE;
-	else if (tx_pending == 0 && netif_queue_stopped(wnd->net_dev))
+	else if (tx_pending == 0 && wnd->is_tx_ring_full)
 		tx_pending = TX_RING_SIZE - 1;
 	/* throw away pending packets */
 	while (tx_pending > 0) {
@@ -1520,6 +1525,7 @@ static NDIS_STATUS ndis_remove_device(struct wrap_ndis_device *wnd)
 		wnd->tx_ring_start = (wnd->tx_ring_start + 1) % TX_RING_SIZE;
 		tx_pending--;
 	}
+	wnd->is_tx_ring_full = 0;
 	up(&wnd->tx_ring_mutex);
 	miniport_pnp_event(wnd, NdisDevicePnPEventSurpriseRemoved);
 	wrap_procfs_remove_ndis_device(wnd);
@@ -1618,6 +1624,7 @@ static STDCALL NTSTATUS NdisAddDevice(struct driver_object *drv_obj,
 	INIT_WORK(&wnd->tx_work, tx_worker, wnd);
 	wnd->tx_ring_start = 0;
 	wnd->tx_ring_end = 0;
+	wnd->is_tx_ring_full = 0;
 	nt_spin_lock_init(&wnd->tx_stats_lock);
 	wnd->encr_mode = Ndis802_11EncryptionDisabled;
 	wnd->auth_mode = Ndis802_11AuthModeOpen;
