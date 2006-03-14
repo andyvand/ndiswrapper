@@ -1001,7 +1001,7 @@ static USBD_STATUS wrap_process_nt_urb(struct irp *irp)
 
 	DUMP_IRP(irp);
 	switch (nt_urb->header.function) {
-		/* bulk/int and vencor/class urbs are submitted to
+		/* bulk/int and vendor/class urbs are submitted to
 		 * Linux USB core; if the call is sucessful, urb's
 		 * completion worker will return IRP later */
 	case URB_FUNCTION_BULK_OR_INTERRUPT_TRANSFER:
