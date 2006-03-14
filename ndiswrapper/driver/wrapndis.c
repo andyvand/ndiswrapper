@@ -199,6 +199,7 @@ NDIS_STATUS miniport_set_int(struct wrap_ndis_device *wnd, ndis_oid oid,
 	return miniport_set_info(wnd, oid, &data, sizeof(data));
 }
 
+/* MiniportInitialize */
 static NDIS_STATUS miniport_init(struct wrap_ndis_device *wnd)
 {
 	NDIS_STATUS error_status, status;
@@ -246,6 +247,7 @@ static NDIS_STATUS miniport_init(struct wrap_ndis_device *wnd)
 	TRACEEXIT1(return NDIS_STATUS_SUCCESS);
 }
 
+/* MiniportHalt */
 static void miniport_halt(struct wrap_ndis_device *wnd)
 {
 	struct miniport_char *miniport;
@@ -266,6 +268,7 @@ static void miniport_halt(struct wrap_ndis_device *wnd)
 	TRACEEXIT1(return);
 }
 
+/* MiniportPnPEventNotify */
 static NDIS_STATUS miniport_pnp_event(struct wrap_ndis_device *wnd,
 				      enum ndis_device_pnp_event event)
 {
@@ -485,22 +488,27 @@ void free_tx_packet(struct wrap_ndis_device *wnd, struct ndis_packet *packet,
 }
 
 /* MiniportSend and MiniportSendPackets */
-static int miniport_tx_packets(struct wrap_ndis_device *wnd,
-			       unsigned int start, unsigned int pending)
+static int miniport_tx_packets(struct wrap_ndis_device *wnd)
 {
 	NDIS_STATUS res;
 	struct miniport_char *miniport;
-	unsigned int sent, n;
+	int n, sent, start, end;
 	struct ndis_packet *packet;
 	KIRQL irql;
 
-	TRACEENTER3("start: %d, pending: %d", start, pending);
 	miniport = &wnd->wd->driver->ndis_driver->miniport;
-	if (pending > wnd->max_tx_packets)
+	start = wnd->tx_ring_start;
+	end = wnd->tx_ring_end;
+	/* end == start when ring is full: (TX_RING_SIZE - 1) number
+	 * of packets are pending */
+	n = end - start;
+	if (n < 0)
+		n += TX_RING_SIZE;
+	else if (n == 0)
+		n = TX_RING_SIZE - 1;
+	if (unlikely(n > wnd->max_tx_packets))
 		n = wnd->max_tx_packets;
-	else
-		n = pending;
-
+	DBGTRACE3("%d, %d, %d", n, start, end);
 	if (miniport->send_packets) {
 		int i;
 		/* copy packets from tx ring to linear tx array */
@@ -525,8 +533,7 @@ static int miniport_tx_packets(struct wrap_ndis_device *wnd,
 				case NDIS_STATUS_PENDING:
 					break;
 				case NDIS_STATUS_RESOURCES:
-					DBGTRACE2("%d, %d", wnd->tx_ring_start,
-						  wnd->tx_ring_pending);
+					DBGTRACE3("%d, %d", start, end);
 					wnd->tx_ok = 0;
 					/* resubmit this packet and
 					 * the rest when resources
@@ -600,22 +607,20 @@ static void tx_worker(void *param)
 	 * deserialized drivers) with mutex */
 
 	while (wnd->tx_ok) {
-		unsigned int pending, new_pending;
 		if (down_interruptible(&wnd->tx_ring_mutex))
-			return;
-		if (wnd->tx_ring_pending == 0) {
+			break;
+		/* end == start if either ring is empty, or full, in
+		 * which case queue is stopped */
+		if (wnd->tx_ring_end == wnd->tx_ring_start &&
+		    !netif_queue_stopped(wnd->net_dev)) {
 			up(&wnd->tx_ring_mutex);
 			break;
 		}
-		n = miniport_tx_packets(wnd, wnd->tx_ring_start,
-					wnd->tx_ring_pending);
+		n = miniport_tx_packets(wnd);
 		wnd->tx_ring_start = (wnd->tx_ring_start + n) % TX_RING_SIZE;
-		do {
-			pending = wnd->tx_ring_pending;
-			new_pending = pending - n;
-		} while (cmpxchg(&wnd->tx_ring_pending, pending,
-				 new_pending) != pending);
 		up(&wnd->tx_ring_mutex);
+		DBGTRACE3("%d, %d, %d", n, wnd->tx_ring_start,
+			  wnd->tx_ring_end);
 		if (netif_queue_stopped(wnd->net_dev) && n > 0)
 			netif_wake_queue(wnd->net_dev);
 	}
@@ -626,37 +631,23 @@ static int tx_skbuff(struct sk_buff *skb, struct net_device *dev)
 {
 	struct wrap_ndis_device *wnd = netdev_priv(dev);
 	struct ndis_packet *packet;
-	unsigned int free_slot, pending, next_pending;
 
 	packet = alloc_tx_packet(wnd, skb);
 	if (!packet) {
 		WARNING("couldn't allocate packet");
-		return 1;
+		return NETDEV_TX_BUSY;
 	}
-	do {
-		pending = wnd->tx_ring_pending;
-		next_pending = pending + 1;
-		free_slot = (wnd->tx_ring_start + pending) % TX_RING_SIZE;
-#if 0
-		if (unlikely(free_slot == wnd->tx_ring_start &&
-			     netif_queue_stopped(wnd->net_dev))) {
-			struct ndis_packet_oob_data *oob_data;
-			oob_data = NDIS_PACKET_OOB_DATA(packet);
-			oob_data->skb = NULL;
-			WARNING("packet %p dropped", packet);
-			free_tx_packet(wnd, packet, NDIS_STATUS_FAILURE);
-			return 1;
-		}
-#endif
-		wnd->tx_ring[free_slot] = packet;
-	} while (cmpxchg(&wnd->tx_ring_pending, pending,
-			 next_pending) != pending);
-	if (next_pending == TX_RING_SIZE)
+	/* no need for lock here - already called holding
+	 * net_dev->xmit_lock and tx_ring_end is not updated
+	 * elsewhere */
+	wnd->tx_ring[wnd->tx_ring_end++] = packet;
+	if (wnd->tx_ring_end == TX_RING_SIZE)
+		wnd->tx_ring_end = 0;
+	if (wnd->tx_ring_end == wnd->tx_ring_start)
 		netif_stop_queue(wnd->net_dev);
-
+	DBGTRACE3("%d, %d", wnd->tx_ring_start, wnd->tx_ring_end);
 	schedule_ndis_work(&wnd->tx_work);
-
-	return 0;
+	return NETDEV_TX_OK;
 }
 
 static int set_packet_filter(struct wrap_ndis_device *wnd, ULONG packet_filter)
@@ -701,6 +692,7 @@ static int ndis_open(struct net_device *dev)
 	if (dev->flags & IFF_PROMISC)
 		packet_filter |= NDIS_PACKET_TYPE_PROMISCUOUS |
 			NDIS_PACKET_TYPE_ALL_LOCAL;
+	/* NDIS_PACKET_TYPE_PROMISCUOUS may not work with 802.11 */
 	if (set_packet_filter(wnd, packet_filter) &&
 	    packet_filter & NDIS_PACKET_TYPE_PROMISCUOUS) {
 		DBGTRACE1("couldn't add packet filter %x", packet_filter);
@@ -709,7 +701,6 @@ static int ndis_open(struct net_device *dev)
 			DBGTRACE1("couldn't add packet filter %x",
 				  packet_filter);
 	}
-	/* NDIS_PACKET_TYPE_PROMISCUOUS will not work with 802.11 */
 	netif_device_attach(dev);
 	netif_start_queue(dev);
 	return 0;
@@ -1509,22 +1500,29 @@ err_start:
 
 static NDIS_STATUS ndis_remove_device(struct wrap_ndis_device *wnd)
 {
+	int tx_pending;
 	set_bit(SHUTDOWN, &wnd->wrap_ndis_work);
-	miniport_pnp_event(wnd, NdisDevicePnPEventSurpriseRemoved);
+	wnd->tx_ok = 0;
 	ndis_close(wnd->net_dev);
 	netif_carrier_off(wnd->net_dev);
-	wrap_procfs_remove_ndis_device(wnd);
-	/* throw away pending packets */
 	down_interruptible(&wnd->tx_ring_mutex);
-	while (wnd->tx_ring_pending) {
+	tx_pending = wnd->tx_ring_end - wnd->tx_ring_start;
+	if (tx_pending < 0)
+		tx_pending += TX_RING_SIZE;
+	else if (tx_pending == 0 && netif_queue_stopped(wnd->net_dev))
+		tx_pending = TX_RING_SIZE - 1;
+	/* throw away pending packets */
+	while (tx_pending > 0) {
 		struct ndis_packet *packet;
 
 		packet = wnd->tx_ring[wnd->tx_ring_start];
 		free_tx_packet(wnd, packet, NDIS_STATUS_CLOSING);
 		wnd->tx_ring_start = (wnd->tx_ring_start + 1) % TX_RING_SIZE;
-		wnd->tx_ring_pending--;
+		tx_pending--;
 	}
 	up(&wnd->tx_ring_mutex);
+	miniport_pnp_event(wnd, NdisDevicePnPEventSurpriseRemoved);
+	wrap_procfs_remove_ndis_device(wnd);
 	miniport_halt(wnd);
 	ndis_exit_device(wnd);
 	/* flush_scheduled_work here causes crash with 2.4 kernels */
@@ -1619,7 +1617,7 @@ static STDCALL NTSTATUS NdisAddDevice(struct driver_object *drv_obj,
 	wnd->tx_ok = 0;
 	INIT_WORK(&wnd->tx_work, tx_worker, wnd);
 	wnd->tx_ring_start = 0;
-	wnd->tx_ring_pending = 0;
+	wnd->tx_ring_end = 0;
 	nt_spin_lock_init(&wnd->tx_stats_lock);
 	wnd->encr_mode = Ndis802_11EncryptionDisabled;
 	wnd->auth_mode = Ndis802_11AuthModeOpen;

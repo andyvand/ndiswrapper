@@ -2109,7 +2109,7 @@ NdisMSendComplete(struct ndis_miniport_block *nmb, struct ndis_packet *packet,
 	 */
 	if (wnd->tx_ok == 0) {
 		wnd->tx_ok = 1;
-		DBGTRACE2("%d, %d", wnd->tx_ring_start, wnd->tx_ring_pending);
+		DBGTRACE3("%d, %d", wnd->tx_ring_start, wnd->tx_ring_end);
 		schedule_ndis_work(&wnd->tx_work);
 	}
 	TRACEEXIT3(return);
@@ -2130,7 +2130,7 @@ NdisMSendResourcesAvailable(struct ndis_miniport_block *nmb)
 {
 	struct wrap_ndis_device *wnd = nmb->wnd;
 	TRACEENTER3("");
-	DBGTRACE2("%d, %d", wnd->tx_ring_start, wnd->tx_ring_pending);
+	DBGTRACE3("%d, %d", wnd->tx_ring_start, wnd->tx_ring_end);
 	wnd->tx_ok = 1;
 	schedule_ndis_work(&wnd->tx_work);
 	TRACEEXIT3(return);
