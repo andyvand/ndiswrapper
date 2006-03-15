@@ -404,6 +404,18 @@ do {									\
 #define WRAP_MODULE_PARM_STRING(name, perm) MODULE_PARM(name, "s")
 #endif
 
+#ifndef LOCK_PREFIX
+#ifdef LOCK
+#define LOCK_PREFIX LOCK
+#else
+#ifdef CONFIG_SMP
+#define LOCK_PREFIX "lock ; "
+#else
+#define LOCK_PREFIX ""
+#endif
+#endif
+#endif
+
 /* this ugly hack is to handle RH kernels; I don't know any better,
  * but this has to be fixed soon */
 #ifndef rt_task
