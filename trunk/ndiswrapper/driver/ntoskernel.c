@@ -934,7 +934,7 @@ static void wrap_work_item_worker(void *data)
 {
 	struct wrap_work_item *wrap_work_item;
 	struct nt_list *cur;
-	void (*func)(void *arg1, void *arg2) STDCALL;
+	typeof(wrap_work_item->func) func;
 	KIRQL irql;
 
 	while (1) {
@@ -2279,7 +2279,7 @@ STDCALL NTSTATUS WRAP_EXPORT(ZwCreateFile)
 			bin_file = oa->file;
 			*handle = header;
 			iosb->status = FILE_OPENED;
-			iosb->status_info = bin_file->size;
+			iosb->info = bin_file->size;
 			nt_spin_unlock_irql(&ntoskernel_lock, irql);
 			TRACEEXIT2(return STATUS_SUCCESS);
 		}
@@ -2290,7 +2290,7 @@ STDCALL NTSTATUS WRAP_EXPORT(ZwCreateFile)
 			     ansi.buf);
 	if (!oa) {
 		iosb->status = FILE_DOES_NOT_EXIST;
-		iosb->status_info = 0;
+		iosb->info = 0;
 		RtlFreeAnsiString(&ansi);
 		TRACEEXIT2(return STATUS_FAILURE);
 	}
@@ -2306,12 +2306,12 @@ STDCALL NTSTATUS WRAP_EXPORT(ZwCreateFile)
 	if (bin_file) {
 		oa->file = bin_file;
 		iosb->status = FILE_OPENED;
-		iosb->status_info = bin_file->size;
+		iosb->info = bin_file->size;
 		RtlFreeAnsiString(&ansi);
 		TRACEEXIT2(return STATUS_SUCCESS);
 	} else {
 		iosb->status = FILE_DOES_NOT_EXIST;
-		iosb->status_info = 0;
+		iosb->info = 0;
 		RtlFreeAnsiString(&ansi);
 		TRACEEXIT2(return STATUS_FAILURE);
 	}
@@ -2339,7 +2339,7 @@ STDCALL NTSTATUS WRAP_EXPORT(ZwReadFile)
 	DBGTRACE2("count: %u, offset: %zu, length: %u", count, offset, length);
 	memcpy(buffer, ((void *)file->data) + offset, count);
 	iosb->status = STATUS_SUCCESS;
-	iosb->status_info = count;
+	iosb->info = count;
 	TRACEEXIT2(return STATUS_SUCCESS);
 }
 

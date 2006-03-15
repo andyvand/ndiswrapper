@@ -379,7 +379,7 @@ static USBD_STATUS wrap_submit_urb(struct irp *irp)
 	IoReleaseCancelSpinLock(irp->cancel_irql);
 	DUMP_WRAP_URB(irp->wrap_urb, USB_DIR_OUT);
 	irp->io_status.status = STATUS_PENDING;
-	irp->io_status.status_info = 0;
+	irp->io_status.info = 0;
 	NT_URB_STATUS(nt_urb) = USBD_STATUS_PENDING;
 	IoMarkIrpPending(irp);
 	DUMP_URB_BUFFER(urb, USB_DIR_OUT);
@@ -470,7 +470,7 @@ static void wrap_urb_complete_worker(void *dummy)
 		switch (URB_STATUS(wrap_urb)) {
 		case 0:
 			/* succesfully transferred */
-			irp->io_status.status_info = urb->actual_length;
+			irp->io_status.info = urb->actual_length;
 			if (nt_urb->header.function ==
 			    URB_FUNCTION_BULK_OR_INTERRUPT_TRANSFER) {
 				bulk_int_tx = &nt_urb->bulk_int_transfer;
@@ -499,13 +499,13 @@ static void wrap_urb_complete_worker(void *dummy)
 		case -ENOENT:
 		case -ECONNRESET:
 			/* urb canceled */
-			irp->io_status.status_info = 0;
+			irp->io_status.info = 0;
 			USBTRACE("urb %p canceled", urb);
 			break;
 		default:
 			USBTRACE("irp: %p, urb: %p, status: %d",
 				 irp, urb, URB_STATUS(wrap_urb));
-			irp->io_status.status_info = 0;
+			irp->io_status.info = 0;
 			break;
 		}
 		NT_URB_STATUS(nt_urb) = wrap_urb_status(URB_STATUS(wrap_urb));
@@ -981,7 +981,7 @@ static USBD_STATUS wrap_get_descriptor(struct wrap_device *wd,
 	} else {
 		USBTRACE("ret: %08x", ret);
 		ctrl_req->transfer_buffer_length = ret;
-		irp->io_status.status_info = ret;
+		irp->io_status.info = ret;
 		return USBD_STATUS_SUCCESS;
 	}
 }
@@ -1107,7 +1107,7 @@ NTSTATUS wrap_submit_irp(struct device_object *pdo, struct irp *irp)
 	wd = pdo->reserved;
 	irp->wd = wd;
 	irp_sl = IoGetCurrentIrpStackLocation(irp);
-	switch (irp_sl->params.ioctl.code) {
+	switch (irp_sl->params.dev_ioctl.code) {
 	case IOCTL_INTERNAL_USB_SUBMIT_URB:
 		status = wrap_process_nt_urb(irp);
 		break;
@@ -1118,12 +1118,13 @@ NTSTATUS wrap_submit_irp(struct device_object *pdo, struct irp *irp)
 		status = wrap_get_port_status(irp);
 		break;
 	case IOCTL_INTERNAL_USB_SUBMIT_IDLE_NOTIFICATION:
-		idle_callback = irp_sl->params.ioctl.type3_input_buf;
+		idle_callback = irp_sl->params.dev_ioctl.type3_input_buf;
 		USBTRACE("suspend function: %p", idle_callback->callback);
 		status = USBD_STATUS_NOT_SUPPORTED;
 		break;
 	default:
-		ERROR("ioctl %08X NOT IMPLEMENTED", irp_sl->params.ioctl.code);
+		ERROR("ioctl %08X NOT IMPLEMENTED",
+		      irp_sl->params.dev_ioctl.code);
 		status = USBD_STATUS_NOT_SUPPORTED;
 		break;
 	}
@@ -1136,7 +1137,7 @@ NTSTATUS wrap_submit_irp(struct device_object *pdo, struct irp *irp)
 	} else {
 		irp->io_status.status = nt_urb_irp_status(status);
 		if (status != USBD_STATUS_SUCCESS)
-			irp->io_status.status_info = 0;
+			irp->io_status.info = 0;
 		USBEXIT(return irp->io_status.status);
 	}
 }
