@@ -316,9 +316,9 @@ STDCALL struct irp *WRAP_EXPORT(IoBuildDeviceIoControlRequest)
 	irp->associated_irp.system_buffer = input_buf;
 
 	irp_sl = IoGetNextIrpStackLocation(irp);
-	irp_sl->params.ioctl.code = ioctl;
-	irp_sl->params.ioctl.input_buf_len = input_buf_len;
-	irp_sl->params.ioctl.output_buf_len = output_buf_len;
+	irp_sl->params.dev_ioctl.code = ioctl;
+	irp_sl->params.dev_ioctl.input_buf_len = input_buf_len;
+	irp_sl->params.dev_ioctl.output_buf_len = output_buf_len;
 	irp_sl->dev_obj = dev_obj;
 	irp_sl->major_fn = (internal_ioctl) ?
 		IRP_MJ_INTERNAL_DEVICE_CONTROL : IRP_MJ_DEVICE_CONTROL;
@@ -421,7 +421,7 @@ _FASTCALL void WRAP_EXPORT(IofCompleteRequest)
 
 	if (irp->user_status) {
 		irp->user_status->status = irp->io_status.status;
-		irp->user_status->status_info = irp->io_status.status_info;
+		irp->user_status->info = irp->io_status.info;
 	}
 
 	if (irp->user_event) {

@@ -64,7 +64,7 @@ STDCALL NTSTATUS IopInvalidDeviceRequest(struct device_object *dev_obj,
 	WARNING("IRP %d:%d not implemented",
 		irp_sl->major_fn, irp_sl->minor_fn);
 	irp->io_status.status = STATUS_SUCCESS;
-	irp->io_status.status_info = 0;
+	irp->io_status.info = 0;
 	status = irp->io_status.status;
 	IoCompleteRequest(irp, IO_NO_INCREMENT);
 	return status;
@@ -87,7 +87,7 @@ STDCALL NTSTATUS pdoDispatchDeviceControl(struct device_object *pdo,
 		ERROR("invalid irp: %p, %d, %d", irp, irp->current_location,
 		      irp->stack_count);
 		irp->io_status.status = STATUS_FAILURE;
-		irp->io_status.status_info = 0;
+		irp->io_status.info = 0;
 		IOEXIT(return STATUS_FAILURE);
 	}
 	irp_sl = IoGetCurrentIrpStackLocation(irp);

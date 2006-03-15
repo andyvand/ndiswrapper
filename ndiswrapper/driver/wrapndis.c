@@ -604,9 +604,6 @@ static void tx_worker(void *param)
 
 	TRACEENTER3("tx_ok %d", wnd->tx_ok);
 
-	/* some drivers e.g., new RT2500 driver, crash if any packets
-	 * are sent when the card is not associated */
-
 	/* we can use cmpxchg to update tx_ring_start, but we need to
 	 * send packets in given order, so serialize (even for
 	 * deserialized drivers) with mutex */
@@ -1296,7 +1293,7 @@ STDCALL NTSTATUS NdisDispatchPower(struct device_object *fdo, struct irp *irp)
 	default:
 		return LIN2WIN2(IopPassIrpDown, wnd->nmb->pdo, irp);
 	}
-	irp->io_status.status_info = 0;
+	irp->io_status.info = 0;
 	irp->io_status.status = status;
 	IoCompleteRequest(irp, IO_NO_INCREMENT);
 	return status;
@@ -1516,12 +1513,18 @@ static NDIS_STATUS ndis_remove_device(struct wrap_ndis_device *wnd)
 	wnd->tx_ok = 0;
 	ndis_close(wnd->net_dev);
 	netif_carrier_off(wnd->net_dev);
+	/* In 2.4 kernels, this function is called in atomic context,
+	 * so we can't/don't need to wait on mutex. */
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
+	cancel_delayed_work(&wnd->wrap_ndis_worker);
 	down_interruptible(&wnd->tx_ring_mutex);
+#endif
 	tx_pending = wnd->tx_ring_end - wnd->tx_ring_start;
 	if (tx_pending < 0)
 		tx_pending += TX_RING_SIZE;
 	else if (tx_pending == 0 && wnd->is_tx_ring_full)
 		tx_pending = TX_RING_SIZE - 1;
+	wnd->is_tx_ring_full = 0;
 	/* throw away pending packets */
 	while (tx_pending > 0) {
 		struct ndis_packet *packet;
@@ -1531,16 +1534,14 @@ static NDIS_STATUS ndis_remove_device(struct wrap_ndis_device *wnd)
 		wnd->tx_ring_start = (wnd->tx_ring_start + 1) % TX_RING_SIZE;
 		tx_pending--;
 	}
-	wnd->is_tx_ring_full = 0;
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
 	up(&wnd->tx_ring_mutex);
+#endif
 	miniport_pnp_event(wnd, NdisDevicePnPEventSurpriseRemoved);
 	wrap_procfs_remove_ndis_device(wnd);
 	miniport_halt(wnd);
 	ndis_exit_device(wnd);
-	/* flush_scheduled_work here causes crash with 2.4 kernels */
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
-	flush_scheduled_work();
-#endif
+
 	if (wnd->tx_packet_pool) {
 		NdisFreePacketPool(wnd->tx_packet_pool);
 		wnd->tx_packet_pool = NULL;

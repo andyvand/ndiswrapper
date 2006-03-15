@@ -480,8 +480,7 @@ static int start_wrap_driver(struct wrap_driver *driver)
 	int i;
 	NTSTATUS ret, res;
 	struct driver_object *drv_obj;
-	UINT (*entry)(struct driver_object *obj,
-		      struct unicode_string *path) STDCALL;
+	typeof(driver->pe_images[0].entry) entry;
 
 	TRACEENTER1("%s", driver->name);
 	drv_obj = driver->drv_obj;

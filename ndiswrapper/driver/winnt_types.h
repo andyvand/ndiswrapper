@@ -178,6 +178,7 @@ typedef ULONG_PTR KAFFINITY;
 typedef ULONG ACCESS_MASK;
 
 typedef ULONG_PTR PFN_NUMBER;
+typedef ULONG SECURITY_INFORMATION;
 
 /* non-negative numbers indicate success */
 #define NT_SUCCESS(status)  ((NTSTATUS)(status) >= 0)
@@ -474,7 +475,7 @@ struct dev_obj_ext {
 
 struct io_status_block {
 	NTSTATUS status;
-	ULONG status_info;
+	ULONG info;
 };
 
 #define DEVICE_TYPE ULONG
@@ -547,10 +548,12 @@ struct file_object {
 };
 
 #ifdef CONFIG_X86_64
-#define POINTER_ALIGNMENT __attribute__((aligned(8)))
+#define POINTER_ALIGN __attribute__((aligned(8)))
 #else
-#define POINTER_ALIGNMENT
+#define POINTER_ALIGN
 #endif
+
+#define CACHE_ALIGN __attribute__((aligned(128)))
 
 enum system_power_state {
 	PowerSystemUnspecified = 0,
@@ -717,6 +720,44 @@ struct cm_resource_list {
 	struct cm_full_resource_descriptor list[1];
 };
 
+enum file_info_class {
+	FileDirectoryInformation = 1,
+	FileBasicInformation = 4,
+	FileStandardInformation = 5,
+	FileNameInformation = 9,
+	FilePositionInformation = 14,
+	FileAlignmentInformation = 17,
+	FileNetworkOpenInformation = 34,
+	FileAttributeTagInformation = 35,
+	FileMaximumInformation = 41,
+};
+
+enum fs_info_class {
+	FileFsVolumeInformation = 1,
+	/* ... */
+	FileFsMaximumInformation = 9,
+};
+
+enum device_relation_type {
+	BusRelations, EjectionRelations, PowerRelations, RemovalRelations,
+	TargetDeviceRelation, SingleBusRelations,
+};
+
+enum bus_query_id_type {
+	BusQueryDeviceID = 0, BusQueryHardwareIDs = 1,
+	BusQueryCompatibleIDs = 2, BusQueryInstanceID = 3,
+	BusQueryDeviceSerialNumber = 4,
+};
+
+enum device_text_type {
+	DeviceTextDescription = 0, DeviceTextLocationInformation = 1,
+};
+
+enum device_usage_notification_type {
+	DeviceUsageTypeUndefined, DeviceUsageTypePaging,
+	DeviceUsageTypeHibernation, DevbiceUsageTypeDumpFile,
+};
+
 #ifndef CONFIG_X86_64
 #pragma pack(push,4)
 #endif
@@ -726,24 +767,72 @@ struct io_stack_location {
 	UCHAR flags;
 	UCHAR control;
 	union {
-		/* NOTE: this union is not complete */
 		struct {
 			void *security_context;
 			ULONG options;
-			USHORT POINTER_ALIGNMENT file_attributes;
+			USHORT POINTER_ALIGN file_attributes;
 			USHORT share_access;
-			ULONG POINTER_ALIGNMENT ea_length;
+			ULONG POINTER_ALIGN ea_length;
 		} create;
 		struct {
 			ULONG length;
-			ULONG POINTER_ALIGNMENT key;
+			ULONG POINTER_ALIGN key;
 			LARGE_INTEGER byte_offset;
 		} read;
 		struct {
 			ULONG length;
-			ULONG POINTER_ALIGNMENT key;
+			ULONG POINTER_ALIGN key;
 			LARGE_INTEGER byte_offset;
 		} write;
+		struct {
+			ULONG length;
+			enum file_info_class POINTER_ALIGN file_info_class;
+		} query_file;
+		struct {
+			ULONG length;
+			enum file_info_class POINTER_ALIGN file_info_class;
+			struct file_object *file_object;
+			union {
+				struct {
+					BOOLEAN replace_if_exists;
+					BOOLEAN advance_only;
+				};
+				ULONG cluster_count;
+				void *delete_handle;
+			};
+		} set_file;
+		struct {
+			ULONG length;
+			enum fs_info_class POINTER_ALIGN fs_info_class;
+		} query_volume;
+		struct {
+			ULONG output_buf_len;
+			ULONG POINTER_ALIGN input_buf_len;
+			ULONG POINTER_ALIGN code;
+			void *type3_input_buf;
+		} dev_ioctl;
+		struct {
+			SECURITY_INFORMATION security_info;
+			ULONG POINTER_ALIGN length;
+		} query_security;
+		struct {
+			SECURITY_INFORMATION security_info;
+			void *security_descriptor;
+		} set_security;
+		struct {
+			void *vpb;
+			struct device_object *device_object;
+		} mount_volume;
+		struct {
+			void *vpb;
+			struct device_object *device_object;
+		} verify_volume;
+		struct {
+			void *srb;
+		} scsi;
+		struct {
+			enum device_relation_type type;
+		} query_device_relations;
 		struct {
 			const struct guid *type;
 			USHORT size;
@@ -752,21 +841,48 @@ struct io_stack_location {
 			void *intf_data;
 		} query_intf;
 		struct {
+			void *capabilities;
+		} device_capabilities;
+		struct {
+			void *io_resource_requirement_list;
+		} filter_resource_requirements;
+		struct {
+			ULONG which_space;
+			void *buffer;
+			ULONG offset;
+			ULONG POINTER_ALIGN length;
+		} read_write_config;
+		struct {
+			BOOLEAN lock;
+		} set_lock;
+		struct {
+			enum bus_query_id_type id_type;
+		} query_id;
+		struct {
+			enum device_text_type device_text_type;
+			ULONG POINTER_ALIGN locale_id;
+		} query_device_text;
+		struct {
+			BOOLEAN in_path;
+			BOOLEAN reserved[3];
+			enum device_usage_notification_type POINTER_ALIGN type;
+		} usage_notification;
+		struct {
+			enum system_power_state power_state;
+		} wait_wake;
+		struct {
+			void *power_sequence;
+		} power_sequence;
+		struct {
 			ULONG sys_context;
-			enum power_state_type POINTER_ALIGNMENT type;
-			union power_state POINTER_ALIGNMENT state;
-			enum power_action POINTER_ALIGNMENT shutdown_type;
+			enum power_state_type POINTER_ALIGN type;
+			union power_state POINTER_ALIGN state;
+			enum power_action POINTER_ALIGN shutdown_type;
 		} power;
 		struct {
 			struct cm_resource_list *allocated_resources;
 			struct cm_resource_list *allocated_resources_translated;
 		} start_device;
-		struct {
-			ULONG output_buf_len;
-			ULONG POINTER_ALIGNMENT input_buf_len;
-			ULONG POINTER_ALIGNMENT code;
-			void *type3_input_buf;
-		} ioctl;
 		struct {
 			ULONG_PTR provider_id;
 			void *data_path;
@@ -841,6 +957,7 @@ struct irp {
 	ULONG flags;
 	union {
 		struct irp *master_irp;
+		LONG irp_count;
 		void *system_buffer;
 	} associated_irp;
 
@@ -1006,16 +1123,6 @@ struct file_std_info {
 	BOOLEAN dir;
 };
 
-enum file_info_class {
-	FileAlignmentInformation = 17,
-	FileAttributeTagInformation = 35,
-	FileBasicInformation = 4,
-	FileNameInformation = 9,
-	FileNetworkOpenInformation = 34,
-	FilePositionInformation = 14,
-	FileStandardInformation = 5,
-};
-
 enum nt_obj_type {
 	NT_OBJ_EVENT = 10, NT_OBJ_MUTEX, NT_OBJ_THREAD, NT_OBJ_TIMER,
 	NT_OBJ_SEMAPHORE,
@@ -1135,10 +1242,14 @@ struct npaged_lookaside_list {
 		ULONG lastallochits;
 	} u3;
 	ULONG pad[2];
-#ifndef X86_64
+#ifndef CONFIG_X86_64
 	NT_SPIN_LOCK obsolete;
 #endif
-};
+}
+#ifdef CONFIG_X86_64
+CACHE_ALIGN
+#endif
+;
 
 enum device_registry_property {
 	DevicePropertyDeviceDescription, DevicePropertyHardwareID,
@@ -1319,16 +1430,6 @@ struct io_remove_lock {
 	LONG io_count;
 	struct nt_event remove_event;
 };
-
-enum device_relation_type {
-	BusRelations,
-	EjectionRelations,
-	PowerRelations,
-	RemovalRelations,
-	TargetDeviceRelation,
-	SingleBusRelations
-};
-
 
 /* some of the functions below are slightly different from DDK's
  * implementation; e.g., Insert functions return appropriate

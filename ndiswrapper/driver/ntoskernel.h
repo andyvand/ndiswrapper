@@ -472,7 +472,7 @@ struct wrap_alloc {
 
 struct pe_image {
 	char name[MAX_DRIVER_NAME_LEN];
-	void *entry;
+	UINT (*entry)(struct driver_object *, struct unicode_string *) STDCALL;
 	void *image;
 	int size;
 	int type;
@@ -500,7 +500,7 @@ struct wrap_work_item {
 	struct nt_list list;
 	void *arg1;
 	void *arg2;
-	void *func;
+	void (*func)(void *arg1, void *arg2) STDCALL;
 	BOOLEAN win_func;
 };
 
