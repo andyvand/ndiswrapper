@@ -1122,7 +1122,7 @@ STDCALL void WRAP_EXPORT(ExInitializeNPagedLookasideList)
 		lookaside->free_func = (LOOKASIDE_FREE_FUNC *)
 			WRAP_FUNC_PTR(ExFreePool);
 
-#ifndef X86_64
+#ifndef CONFIG_X86_64
 	DBGTRACE3("lock: %p", &lookaside->obsolete);
 	nt_spin_lock_init(&lookaside->obsolete);
 #endif

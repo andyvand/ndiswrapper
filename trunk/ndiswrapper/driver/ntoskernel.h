@@ -544,9 +544,7 @@ struct wrap_driver {
 	int num_bin_files;
 	struct wrap_bin_file *bin_files;
 	struct nt_list wrap_devices;
-	union {
-		struct wrap_ndis_driver *ndis_driver;
-	};
+	struct wrap_ndis_driver *ndis_driver;
 };
 
 enum hw_status {
@@ -567,8 +565,8 @@ struct wrap_device {
 	char conf_file_name[MAX_DRIVER_NAME_LEN];
 	struct nt_list settings;
 
-	/* rest should be (de)initialized during every
-	 * (de)initialization */
+	/* rest should be (de)initialized when a device is
+	 * (un)plugged */
 	struct device_object *pdo;
 	union {
 		struct {
@@ -584,9 +582,7 @@ struct wrap_device {
 			struct nt_list wrap_urb_list;
 		} usb;
 	};
-	union {
-		struct wrap_ndis_device *wnd;
-	};
+	struct wrap_ndis_device *wnd;
 	struct nt_list timer_list;
 	NT_SPIN_LOCK timer_lock;
 	struct cm_resource_list *resource_list;
@@ -856,79 +852,52 @@ static inline void lower_irql(KIRQL oldirql)
  * store Linux spinlocks; so we implement Windows spinlocks using
  * ULONG_PTR space with our own functions/macros */
 
-/* the reason for value of unlocked spinlock to be 0, instead of 1
- * (which is what linux spinlocks use), is that some drivers don't
- * first call to initialize spinlock; in those case, the value of the
- * lock seems to be 0 (presumably in Windows value of unlocked
- * spinlock is 0).
- */
+#define NT_SPIN_LOCK_LOCKED 0
+#define NT_SPIN_LOCK_UNLOCKED 1
 
-/* define CONFIG_DEBUG_SPINLOCK if a Windows driver is suspected of
- * obtaining a lock while holding the same lock */
-
-//#ifndef CONFIG_DEBUG_SPINLOCK
-//#define CONFIG_DEBUG_SPINLOCK
-//#endif
-
-#undef CONFIG_DEBUG_SPINLOCK
-
-#ifdef CONFIG_DEBUG_SPINLOCK
-#define NT_SPIN_LOCK_LOCKED ((ULONG_PTR)current)
-#else
-#define NT_SPIN_LOCK_LOCKED 1
-#endif
-
-#define NT_SPIN_LOCK_UNLOCKED 0
-
-#define nt_spin_lock_init(lock) *(lock) = NT_SPIN_LOCK_UNLOCKED
+static inline void  nt_spin_lock_init(volatile NT_SPIN_LOCK *lock)
+{
+	*lock = NT_SPIN_LOCK_UNLOCKED;
+}
 
 #ifdef CONFIG_SMP
+/* Linux kernel implements raw spinlocks in X86_64 differently from
+ * X86; as of now I understand following should work for both - if
+ * not, implement two versions */
+static inline void raw_nt_spin_lock(volatile NT_SPIN_LOCK *lock)
+{
+	__asm__ __volatile__(
+		"\n1:\t"
+		"lock ; decb %0\n\t"
+		"jns 3f\n"
+		"2:\t"
+		"rep;nop\n\t"
+		"cmpb $0, %0\n\t"
+		"jle 2b\n\t"
+		"jmp 1b\n"
+		"3:\n\t"
+		: "=m" (*lock) : : "memory");
+}
 
-#define raw_nt_spin_lock(lock)						\
-	while (cmpxchg((lock), NT_SPIN_LOCK_UNLOCKED, NT_SPIN_LOCK_LOCKED) != \
-	       NT_SPIN_LOCK_UNLOCKED)
+static inline void raw_nt_spin_unlock(volatile NT_SPIN_LOCK *lock)
+{
+	__asm__ __volatile__(
+		"movb $1, %0"
+		: "=m" (*lock) : : "memory");
+}
 
-#ifdef CONFIG_DEBUG_SPINLOCK
-#define raw_nt_spin_unlock(lock)					\
-	__asm__ __volatile__("movw $0,%0"				\
-			     :"=m" (*(lock)) : : "memory")
-#else // DEBUG_SPINLOCK
-#define raw_nt_spin_unlock(lock)					\
-	__asm__ __volatile__("movb $0,%0"				\
-			     :"=m" (*(lock)) : : "memory")
-#endif // DEBUG_SPINLOCK
+#else
 
-#else // SMP
+#define raw_nt_spin_lock(lock)				\
+	do { *(lock) = NT_SPIN_LOCK_LOCKED; } while (0)
 
-#define raw_nt_spin_lock(lock) *(lock) = NT_SPIN_LOCK_LOCKED
-#define raw_nt_spin_unlock(lock) *(lock) = NT_SPIN_LOCK_UNLOCKED
+#define raw_nt_spin_unlock(lock)				\
+	do { *(lock) = NT_SPIN_LOCK_UNLOCKED; } while (0)
 
-#endif // SMP
-
-#ifdef CONFIG_DEBUG_SPINLOCK
-
-#define nt_spin_lock(lock)						\
-do {									\
-	if (*(lock) == NT_SPIN_LOCK_LOCKED)				\
-		ERROR("eeek: process %p already owns lock %p",		\
-		      current, lock);					\
-	else								\
-		raw_nt_spin_lock(lock);					\
-} while (0)
-#define nt_spin_unlock(lock)						\
-do {									\
-	if (*(lock) != NT_SPIN_LOCK_LOCKED)				\
-		ERROR("nt_spin_lock %p not locked!", (lock));		\
-	else								\
-		raw_nt_spin_unlock(lock);				\
-} while (0)
-
-#else // DEBUG_SPINLOCK
+#endif
 
 #define nt_spin_lock(lock) raw_nt_spin_lock(lock)
 #define nt_spin_unlock(lock) raw_nt_spin_unlock(lock)
-
-#endif // DEBUG_SPINLOCK
 
 /* raise IRQL to given (higher) IRQL if necessary before locking */
 static inline KIRQL nt_spin_lock_irql(NT_SPIN_LOCK *lock, KIRQL newirql)
