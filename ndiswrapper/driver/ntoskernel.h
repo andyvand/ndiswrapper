@@ -852,8 +852,8 @@ static inline void lower_irql(KIRQL oldirql)
  * store Linux spinlocks; so we implement Windows spinlocks using
  * ULONG_PTR space with our own functions/macros */
 
-#define NT_SPIN_LOCK_LOCKED 0
-#define NT_SPIN_LOCK_UNLOCKED 1
+#define NT_SPIN_LOCK_UNLOCKED 0
+#define NT_SPIN_LOCK_LOCKED 1
 
 static inline void  nt_spin_lock_init(volatile NT_SPIN_LOCK *lock)
 {
@@ -864,40 +864,37 @@ static inline void  nt_spin_lock_init(volatile NT_SPIN_LOCK *lock)
 /* Linux kernel implements raw spinlocks in X86_64 differently from
  * X86; as of now I understand following should work for both - if
  * not, implement two versions */
-static inline void raw_nt_spin_lock(volatile NT_SPIN_LOCK *lock)
+static inline void nt_spin_lock(volatile NT_SPIN_LOCK *lock)
 {
 	__asm__ __volatile__(
 		"\n1:\t"
-		"lock ; decb %0\n\t"
-		"jns 3f\n"
+		"movl $0, %%eax\n\t"
+		"movl $1, %%edx\n\t"
+		"lock; cmpxchgl %%edx, %0\n\t"
+		"jz 3f\n"
 		"2:\t"
 		"rep;nop\n\t"
-		"cmpb $0, %0\n\t"
-		"jle 2b\n\t"
+		"cmpl $0, %0\n\t"
+		"jne 2b\n\t"
 		"jmp 1b\n"
 		"3:\n\t"
-		: "=m" (*lock) : : "memory");
+		: "=m" (*lock) : : "eax", "edx", "memory");
 }
 
-static inline void raw_nt_spin_unlock(volatile NT_SPIN_LOCK *lock)
+static inline void nt_spin_unlock(volatile NT_SPIN_LOCK *lock)
 {
 	__asm__ __volatile__(
-		"movb $1, %0"
+		"movl $0, %0"
 		: "=m" (*lock) : : "memory");
 }
 
-#else
+#else // CONFIG_SMP
 
-#define raw_nt_spin_lock(lock)				\
-	do { *(lock) = NT_SPIN_LOCK_LOCKED; } while (0)
+#define nt_spin_lock(lock) do { } while (0)
 
-#define raw_nt_spin_unlock(lock)				\
-	do { *(lock) = NT_SPIN_LOCK_UNLOCKED; } while (0)
+#define nt_spin_unlock(lock)  do { } while (0)
 
-#endif
-
-#define nt_spin_lock(lock) raw_nt_spin_lock(lock)
-#define nt_spin_unlock(lock) raw_nt_spin_unlock(lock)
+#endif // CONFIG_SMP
 
 /* raise IRQL to given (higher) IRQL if necessary before locking */
 static inline KIRQL nt_spin_lock_irql(NT_SPIN_LOCK *lock, KIRQL newirql)
