@@ -852,6 +852,10 @@ static inline void lower_irql(KIRQL oldirql)
  * store Linux spinlocks; so we implement Windows spinlocks using
  * ULONG_PTR space with our own functions/macros */
 
+/* Windows seems to use 0 for unlocked state of spinlock - if Linux
+ * convention of 1 for unlocked state is used, at least prism54 driver
+ * crashes */
+
 #define NT_SPIN_LOCK_UNLOCKED 0
 #define NT_SPIN_LOCK_LOCKED 1
 
@@ -868,17 +872,17 @@ static inline void nt_spin_lock(volatile NT_SPIN_LOCK *lock)
 {
 	__asm__ __volatile__(
 		"\n1:\t"
-		"lock; cmpxchgl %1, %0\n\t"
-		"jz 3f\n"
+		"lock; incl %0\n\t"
+		"cmpl %1, %0\n\t"
+		"je 3f\n"
 		"2:\t"
 		"rep;nop\n\t"
-		"cmpl %3, %0\n\t"
+		"cmpl %2, %0\n\t"
 		"jne 2b\n\t"
 		"jmp 1b\n"
 		"3:\n\t"
 		: "=m" (*lock)
-		: "r" (NT_SPIN_LOCK_LOCKED), "a" (NT_SPIN_LOCK_UNLOCKED),
-		  "i" (NT_SPIN_LOCK_UNLOCKED)
+		: "i" (NT_SPIN_LOCK_LOCKED), "i" (NT_SPIN_LOCK_UNLOCKED)
 		: "memory");
 }
 
