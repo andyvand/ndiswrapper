@@ -868,24 +868,23 @@ static inline void nt_spin_lock(volatile NT_SPIN_LOCK *lock)
 {
 	__asm__ __volatile__(
 		"\n1:\t"
-		"movl $0, %%eax\n\t"
-		"movl $1, %%edx\n\t"
-		"lock; cmpxchgl %%edx, %0\n\t"
+		"lock; cmpxchgl %1, %0\n\t"
 		"jz 3f\n"
 		"2:\t"
 		"rep;nop\n\t"
-		"cmpl $0, %0\n\t"
+		"cmpl %3, %0\n\t"
 		"jne 2b\n\t"
 		"jmp 1b\n"
 		"3:\n\t"
-		: "=m" (*lock) : : "eax", "edx", "memory");
+		: "=m" (*lock)
+		: "r" (NT_SPIN_LOCK_LOCKED), "a" (NT_SPIN_LOCK_UNLOCKED),
+		  "i" (NT_SPIN_LOCK_UNLOCKED)
+		: "memory");
 }
 
 static inline void nt_spin_unlock(volatile NT_SPIN_LOCK *lock)
 {
-	__asm__ __volatile__(
-		"movl $0, %0"
-		: "=m" (*lock) : : "memory");
+	*lock = NT_SPIN_LOCK_UNLOCKED;
 }
 
 #else // CONFIG_SMP
