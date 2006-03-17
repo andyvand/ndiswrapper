@@ -857,7 +857,6 @@ static inline void lower_irql(KIRQL oldirql)
  * crashes */
 
 #define NT_SPIN_LOCK_UNLOCKED 0
-#define NT_SPIN_LOCK_LOCKED 1
 
 static inline void  nt_spin_lock_init(volatile NT_SPIN_LOCK *lock)
 {
@@ -872,6 +871,35 @@ static inline void nt_spin_lock(volatile NT_SPIN_LOCK *lock)
 {
 	__asm__ __volatile__(
 		"\n1:\t"
+		"lock; cmpxchgl %2, %0\n\t"
+		"jz 3f\n"
+		"2:\t"
+		"rep;nop\n\t"
+		"cmpl %3, %0\n\t"
+		"jne 2b\n\t"
+		"jmp 1b\n"
+		"3:\n\t"
+		: "=m" (*lock)
+		: "a" (NT_SPIN_LOCK_UNLOCKED), "r" (NT_SPIN_LOCK_UNLOCKED + 1),
+		  "i" (NT_SPIN_LOCK_UNLOCKED)
+		: "memory");
+#if 0
+	__asm__ __volatile__(
+		"\n1:\t"
+		"lock; xaddl %1, %0\n\t"
+		"cmpl %2, %1\n\t"
+		"je 3f\n"
+		"2:\t"
+		"rep;nop\n\t"
+		"cmpl %2, %0\n\t"
+		"jne 2b\n\t"
+		"jmp 1b\n"
+		"3:\n\t"
+		: "=m" (*lock)
+		: "r" (1), "i" (NT_SPIN_LOCK_UNLOCKED)
+		: "memory");
+	__asm__ __volatile__(
+		"\n1:\t"
 		"lock; incl %0\n\t"
 		"cmpl %1, %0\n\t"
 		"je 3f\n"
@@ -882,8 +910,9 @@ static inline void nt_spin_lock(volatile NT_SPIN_LOCK *lock)
 		"jmp 1b\n"
 		"3:\n\t"
 		: "=m" (*lock)
-		: "i" (NT_SPIN_LOCK_LOCKED), "i" (NT_SPIN_LOCK_UNLOCKED)
+		: "i" (NT_SPIN_LOCK_UNLOCKED + 1), "i" (NT_SPIN_LOCK_UNLOCKED)
 		: "memory");
+#endif
 }
 
 static inline void nt_spin_unlock(volatile NT_SPIN_LOCK *lock)
