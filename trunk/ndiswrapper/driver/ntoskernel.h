@@ -871,17 +871,17 @@ static inline void nt_spin_lock(volatile NT_SPIN_LOCK *lock)
 {
 	__asm__ __volatile__(
 		"\n1:\t"
-		"lock; cmpxchgl %2, %0\n\t"
-		"jz 3f\n"
+		"lock; incl %0\n\t"
+		"cmpl %1, %0\n\t"
+		"je 3f\n"
 		"2:\t"
 		"rep;nop\n\t"
-		"cmpl %3, %0\n\t"
+		"cmpl %2, %0\n\t"
 		"jne 2b\n\t"
 		"jmp 1b\n"
 		"3:\n\t"
 		: "=m" (*lock)
-		: "a" (NT_SPIN_LOCK_UNLOCKED), "r" (NT_SPIN_LOCK_UNLOCKED + 1),
-		  "i" (NT_SPIN_LOCK_UNLOCKED)
+		: "i" (NT_SPIN_LOCK_UNLOCKED + 1), "i" (NT_SPIN_LOCK_UNLOCKED)
 		: "memory");
 #if 0
 	__asm__ __volatile__(
@@ -900,17 +900,17 @@ static inline void nt_spin_lock(volatile NT_SPIN_LOCK *lock)
 		: "memory");
 	__asm__ __volatile__(
 		"\n1:\t"
-		"lock; incl %0\n\t"
-		"cmpl %1, %0\n\t"
-		"je 3f\n"
+		"lock; cmpxchgl %2, %0\n\t"
+		"jz 3f\n"
 		"2:\t"
 		"rep;nop\n\t"
-		"cmpl %2, %0\n\t"
+		"cmpl %3, %0\n\t"
 		"jne 2b\n\t"
 		"jmp 1b\n"
 		"3:\n\t"
 		: "=m" (*lock)
-		: "i" (NT_SPIN_LOCK_UNLOCKED + 1), "i" (NT_SPIN_LOCK_UNLOCKED)
+		: "a" (NT_SPIN_LOCK_UNLOCKED), "r" (NT_SPIN_LOCK_UNLOCKED + 1),
+		  "i" (NT_SPIN_LOCK_UNLOCKED)
 		: "memory");
 #endif
 }

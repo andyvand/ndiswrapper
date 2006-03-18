@@ -802,7 +802,7 @@ STDCALL BOOLEAN WRAP_EXPORT(KeCancelTimer)
 	wrap_timer = nt_timer->wrap_timer;
 	if (!wrap_timer) {
 		ERROR("invalid wrap_timer");
-		return TRUE;
+		return FALSE;
 	}
 #ifdef DEBUG_TIMER
 	DBGTRACE5("canceling timer %p", wrap_timer);
@@ -1249,9 +1249,9 @@ static int check_grab_signaled_state(struct dispatch_header *dh,
 		EVENTTRACE("%p, %p", nt_mutex, nt_mutex->owner_thread);
 		if (nt_mutex->owner_thread == NULL ||
 		    nt_mutex->owner_thread == thread) {
-			assert(dh->signal_state <= 0);
+			assert(dh->signal_state <= 1);
 			assert(nt_mutex->owner_thread == NULL &&
-			       dh->signal_state == 0);
+			       dh->signal_state == 1);
 			if (grab) {
 				dh->signal_state--;
 				nt_mutex->owner_thread = thread;
@@ -1517,10 +1517,10 @@ STDCALL LONG WRAP_EXPORT(KeSetEvent)
 		WARNING("wait = %d, not yet implemented", wait);
 
 	irql = nt_spin_lock_irql(&dispatcher_lock, DISPATCH_LEVEL);
-	old_state = nt_event->dh.signal_state;
-	nt_event->dh.signal_state = 1;
-	if (old_state == 0)
+	if ((old_state = nt_event->dh.signal_state) == 0) {
+		nt_event->dh.signal_state = 1;
 		wakeup_threads(&nt_event->dh);
+	}
 	nt_spin_unlock_irql(&dispatcher_lock, irql);
 	EVENTEXIT(return old_state);
 }
@@ -1549,7 +1549,7 @@ STDCALL LONG WRAP_EXPORT(KeResetEvent)
 	old_state = nt_event->dh.signal_state;
 	nt_event->dh.signal_state = 0;
 	nt_spin_unlock_irql(&dispatcher_lock, irql);
-
+	EVENTTRACE("old state: %d", old_state);
 	EVENTEXIT(return old_state);
 }
 
@@ -1560,7 +1560,7 @@ STDCALL void WRAP_EXPORT(KeInitializeMutex)
 
 	EVENTENTER("%p", mutex);
 	irql = nt_spin_lock_irql(&dispatcher_lock, DISPATCH_LEVEL);
-	initialize_dh(&mutex->dh, NotificationEvent, 0, DH_NT_MUTEX);
+	initialize_dh(&mutex->dh, NotificationEvent, 1, DH_NT_MUTEX);
 	mutex->dh.size = sizeof(*mutex);
 	InitializeListHead(&mutex->list);
 	mutex->abandoned = FALSE;
@@ -1584,9 +1584,8 @@ STDCALL LONG WRAP_EXPORT(KeReleaseMutex)
 	irql = nt_spin_lock_irql(&dispatcher_lock, DISPATCH_LEVEL);
 	EVENTTRACE("%p, %p, %d", thread, mutex->owner_thread,
 		   mutex->dh.signal_state);
-	if ((mutex->owner_thread == thread) && (mutex->dh.signal_state < 0)) {
-		ret = ++(mutex->dh.signal_state);
-		if (ret == 0) {
+	if ((mutex->owner_thread == thread) && (mutex->dh.signal_state <= 0)) {
+		if ((ret = mutex->dh.signal_state++) == 0) {
 			mutex->owner_thread = NULL;
 			wakeup_threads(&mutex->dh);
 		}

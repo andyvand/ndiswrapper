@@ -150,7 +150,7 @@ typedef u16	WORD;
 typedef s32	INT;
 typedef u32	UINT;
 typedef u32	DWORD;
-typedef u32	LONG;
+typedef s32	LONG;
 typedef u32	ULONG;
 typedef s64	LONGLONG;
 typedef u64	ULONGLONG;
