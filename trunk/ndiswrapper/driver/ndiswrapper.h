@@ -69,6 +69,8 @@
 #define MAX_DEVICE_SETTINGS 512
 #define MAX_WRAP_DEVICES 128
 
+#define MAX_ALLOCATED_URBS 15
+
 #define DEV_ANY_ID -1
 
 #define MAC2STR(a) (a)[0], (a)[1], (a)[2], (a)[3], (a)[4], (a)[5]

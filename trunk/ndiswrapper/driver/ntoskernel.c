@@ -1588,32 +1588,23 @@ STDCALL LONG WRAP_EXPORT(KeSetEvent)
 	(struct nt_event *nt_event, KPRIORITY incr, BOOLEAN wait)
 {
 	LONG old_state;
-	KIRQL irql;
 
 	EVENTENTER("event = %p, type = %d, wait = %d",
 		   nt_event, nt_event->dh.type, wait);
 	if (wait == TRUE)
 		WARNING("wait = %d, not yet implemented", wait);
 
-	irql = nt_spin_lock_irql(&dispatcher_lock, DISPATCH_LEVEL);
-	old_state = nt_event->dh.signal_state;
-//	if (old_state == 0) {
-		nt_event->dh.signal_state = 1;
+	old_state = xchg(&nt_event->dh.signal_state, 1);
+	if (old_state == 0)
 		wakeup_threads(&nt_event->dh);
-//	}
-	nt_spin_unlock_irql(&dispatcher_lock, irql);
 	EVENTEXIT(return old_state);
 }
 
 STDCALL void WRAP_EXPORT(KeClearEvent)
 	(struct nt_event *nt_event)
 {
-	KIRQL irql;
-
 	EVENTENTER("event = %p", nt_event);
-	irql = nt_spin_lock_irql(&dispatcher_lock, DISPATCH_LEVEL);
-	nt_event->dh.signal_state = 0;
-	nt_spin_unlock_irql(&dispatcher_lock, irql);
+	xchg(&nt_event->dh.signal_state, 0);
 	EVENTEXIT(return);
 }
 
@@ -1621,14 +1612,10 @@ STDCALL LONG WRAP_EXPORT(KeResetEvent)
 	(struct nt_event *nt_event)
 {
 	LONG old_state;
-	KIRQL irql;
 
 	EVENTENTER("event = %p", nt_event);
 
-	irql = nt_spin_lock_irql(&dispatcher_lock, DISPATCH_LEVEL);
-	old_state = nt_event->dh.signal_state;
-	nt_event->dh.signal_state = 0;
-	nt_spin_unlock_irql(&dispatcher_lock, irql);
+	old_state = xchg(&nt_event->dh.signal_state, 0);
 	EVENTTRACE("old state: %d", old_state);
 	EVENTEXIT(return old_state);
 }
@@ -1867,8 +1854,8 @@ static struct nt_thread *wrap_create_thread(struct task_struct *task)
 		InitializeListHead(&thread->irps);
 		irql = nt_spin_lock_irql(&dispatcher_lock, DISPATCH_LEVEL);
 		initialize_dh(&thread->dh, NotificationEvent, 0, DH_NT_THREAD);
-		nt_spin_unlock_irql(&dispatcher_lock, irql);
 		thread->dh.size = sizeof(*thread);
+		nt_spin_unlock_irql(&dispatcher_lock, irql);
 
 		DBGTRACE1("thread: %p, task: %p, pid: %d",
 			  thread, thread->task, thread->pid);
@@ -1926,7 +1913,7 @@ struct nt_thread *get_current_nt_thread(void)
 	}
 	nt_spin_unlock_irql(&ntoskernel_lock, irql);
 	if (ret == NULL)
-		DBGTRACE1("couldn't find thread for task %p", task);
+		WARNING("couldn't find thread for task %p", task);
 	DBGTRACE5("current thread = %p", ret);
 	return ret;
 }

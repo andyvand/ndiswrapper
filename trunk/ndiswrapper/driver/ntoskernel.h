@@ -516,8 +516,6 @@ struct ntos_work_item {
 	BOOLEAN win_func;
 };
 
-#define MAX_ALLOCATED_URBS 15
-
 struct wrap_device_setting {
 	struct nt_list list;
 	char name[MAX_SETTING_NAME_LEN];
