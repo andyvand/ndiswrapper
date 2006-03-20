@@ -431,16 +431,7 @@ NTSTATUS pnp_set_power_state(struct wrap_device *wd,
 	struct irp *irp;
 	struct io_stack_location *irp_sl;
 	NTSTATUS status;
-	struct nt_thread *thread;
 
-	if (KeGetCurrentThread() == NULL) {
-		thread = wrap_create_thread(current);
-		if (!thread) {
-			ERROR("couldn't allocate thread object");
-			TRACEEXIT1(return STATUS_FAILURE);
-		}
-	} else
-		thread = NULL;
 	pdo = wd->pdo;
 	fdo = IoGetAttachedDevice(pdo);
 	if (state > PowerDeviceD0) {
@@ -465,8 +456,6 @@ NTSTATUS pnp_set_power_state(struct wrap_device *wd,
 	status = IoCallDriver(fdo, irp);
 	if (status != STATUS_SUCCESS)
 		WARNING("set power returns %08X", status);
-	if (thread)
-		wrap_remove_thread(thread);
 	TRACEEXIT1(return status);
 }
 
@@ -477,19 +466,10 @@ NTSTATUS pnp_start_device(struct wrap_device *wd)
 	struct irp *irp;
 	struct io_stack_location *irp_sl;
 	NTSTATUS status;
-	struct nt_thread *thread;
 
 	pdo = wd->pdo;
 	fdo = IoGetAttachedDevice(pdo);
 	DBGTRACE1("fdo: %p, irql: %d", fdo, current_irql());
-	if (KeGetCurrentThread() == NULL) {
-		thread = wrap_create_thread(current);
-		if (!thread) {
-			ERROR("couldn't allocate thread object");
-			TRACEEXIT1(return STATUS_FAILURE);
-		}
-	} else
-		thread = NULL;
 	irp = IoAllocateIrp(fdo->stack_count, FALSE);
 	irp_sl = IoGetNextIrpStackLocation(irp);
 	DBGTRACE1("irp = %p, stack = %p", irp, irp_sl);
@@ -508,8 +488,6 @@ NTSTATUS pnp_start_device(struct wrap_device *wd)
 	else
 		WARNING("Windows driver couldn't initialize the device (%08X)",
 			status);
-	if (thread)
-		wrap_remove_thread(thread);
 	TRACEEXIT1(return status);
 }
 
@@ -551,15 +529,8 @@ NTSTATUS pnp_remove_device(struct wrap_device *wd)
 	struct driver_object *fdo_drv_obj;
 	struct irp *irp;
 	struct io_stack_location *irp_sl;
-	struct nt_thread *thread;
 	NTSTATUS status;
 
-	if (KeGetCurrentThread() == NULL) {
-		thread = wrap_create_thread(current);
-		if (!thread)
-			WARNING("couldn't allocate thread object");
-	} else
-		thread = NULL;
 	pdo = wd->pdo;
 	fdo = IoGetAttachedDevice(pdo);
 	fdo_drv_obj = fdo->drv_obj;
@@ -608,8 +579,6 @@ NTSTATUS pnp_remove_device(struct wrap_device *wd)
 			ERROR("couldn't get wrap_driver");
 		ObDereferenceObject(fdo_drv_obj);
 	}
-	if (thread)
-		wrap_remove_thread(thread);
 	TRACEEXIT1(return status);
 }
 

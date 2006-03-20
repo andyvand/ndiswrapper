@@ -25,16 +25,28 @@
 extern struct nt_list wrap_drivers;
 extern NT_SPIN_LOCK ntoskernel_lock, loader_lock;
 
+struct workqueue_struct *ndis_wq;
+static void ndis_worker(void *dummy);
+static struct work_struct ndis_work;
+static struct nt_list ndis_worker_list;
+static NT_SPIN_LOCK ndis_work_list_lock;
+
 /* ndis_init is called once when module is loaded */
 int ndis_init(void)
 {
+	ndis_wq = create_singlethread_workqueue("ndis_wq");
+
+	InitializeListHead(&ndis_worker_list);
+	nt_spin_lock_init(&ndis_work_list_lock);
+	INIT_WORK(&ndis_work, ndis_worker, NULL);
+
 	return 0;
 }
 
 /* ndis_exit is called once when module is removed */
 void ndis_exit(void)
 {
-	/* TODO: free all packets in all pools */
+	destroy_workqueue(ndis_wq);
 	TRACEEXIT1(return);
 }
 
@@ -563,6 +575,7 @@ STDCALL void WRAP_EXPORT(NdisWriteConfiguration)
 		}
 	} else
 		*status = NDIS_STATUS_RESOURCES;
+
 	RtlFreeAnsiString(&ansi);
 	TRACEEXIT2(return);
 }
@@ -602,19 +615,29 @@ STDCALL void WRAP_EXPORT(NdisInitUnicodeString)
 STDCALL NDIS_STATUS WRAP_EXPORT(NdisAnsiStringToUnicodeString)
 	(struct unicode_string *dst, struct ansi_string *src)
 {
+	BOOLEAN alloc;
 	TRACEENTER2("");
 	if (dst == NULL || src == NULL)
 		TRACEEXIT2(return NDIS_STATUS_FAILURE);
-	TRACEEXIT2(return RtlAnsiStringToUnicodeString(dst, src, FALSE));
+	if (dst->buf == NULL)
+		alloc = TRUE;
+	else
+		alloc = FALSE;
+	TRACEEXIT2(return RtlAnsiStringToUnicodeString(dst, src, alloc));
 }
 
 STDCALL NDIS_STATUS WRAP_EXPORT(NdisUnicodeStringToAnsiString)
 	(struct ansi_string *dst, struct unicode_string *src)
 {
+	BOOLEAN alloc;
 	TRACEENTER2("");
 	if (dst == NULL || src == NULL)
 		TRACEEXIT2(return NDIS_STATUS_FAILURE);
-	TRACEEXIT2(return RtlUnicodeStringToAnsiString(dst, src, FALSE));
+	if (dst->buf == NULL)
+		alloc = TRUE;
+	else
+		alloc = FALSE;
+	TRACEEXIT2(return RtlUnicodeStringToAnsiString(dst, src, alloc));
 }
 
 STDCALL void WRAP_EXPORT(NdisMSetAttributesEx)
@@ -900,6 +923,33 @@ STDCALL void WRAP_EXPORT(NdisMAllocateSharedMemory)
 	TRACEEXIT3(return);
 }
 
+static void ndis_worker(void *dummy)
+{
+	KIRQL irql;
+	struct ndis_work_entry *ndis_work_entry;
+	struct nt_list *ent;
+	struct ndis_work_item *ndis_work_item;
+
+	WORKENTER("");
+	while (1) {
+		irql = nt_spin_lock_irql(&ndis_work_list_lock, DISPATCH_LEVEL);
+		ent = RemoveHeadList(&ndis_worker_list);
+		nt_spin_unlock_irql(&ndis_work_list_lock, irql);
+		if (!ent)
+			break;
+		ndis_work_entry = container_of(ent, struct ndis_work_entry,
+					       list);
+		ndis_work_item = ndis_work_entry->ndis_work_item;
+		WORKTRACE("%p: calling work at %p with %p", ndis_work_item,
+			  ndis_work_item->func, ndis_work_item->ctx);
+		LIN2WIN2(ndis_work_item->func, ndis_work_item,
+			 ndis_work_item->ctx);
+		WORKTRACE("%p done", ndis_work_item);
+		kfree(ndis_work_entry);
+	}
+	WORKEXIT(return);
+}
+
 STDCALL void alloc_shared_memory_async(void *arg1, void *arg2)
 {
 	struct wrap_ndis_device *wnd = arg1;
@@ -936,7 +986,7 @@ STDCALL NDIS_STATUS WRAP_EXPORT(NdisMAllocateSharedMemoryAsync)
 	alloc_shared_mem->size = size;
 	alloc_shared_mem->cached = cached;
 	alloc_shared_mem->ctx = ctx;
-	if (schedule_wrap_work_item(alloc_shared_memory_async,
+	if (schedule_ntos_work_item(alloc_shared_memory_async,
 				    wnd, alloc_shared_mem, FALSE))
 		TRACEEXIT3(return NDIS_STATUS_FAILURE);
 	TRACEEXIT3(return NDIS_STATUS_PENDING);
@@ -1992,9 +2042,9 @@ STDCALL void WRAP_EXPORT(NdisMIndicateStatusComplete)
 {
 	struct wrap_ndis_device *wnd = nmb->wnd;
 	TRACEENTER2("%p", wnd);
-	schedule_ndis_work(&wnd->wrap_ndis_worker);
+	schedule_wrap_work(&wnd->wrap_ndis_worker);
 	if (wnd->tx_ok)
-		schedule_ndis_work(&wnd->tx_work);
+		schedule_wrap_work(&wnd->tx_work);
 }
 
 STDCALL void return_packet(void *arg1, void *arg2)
@@ -2082,7 +2132,7 @@ NdisMIndicateReceivePacket(struct ndis_miniport_block *nmb,
 		 * MiniportReturnPacket from here is not correct - the
 		 * driver doesn't expect it (at least Centrino driver
 		 * crashes) */
-		schedule_wrap_work_item(return_packet, wnd, packet, FALSE);
+		schedule_ntos_work_item(return_packet, wnd, packet, FALSE);
 	}
 	TRACEEXIT3(return);
 }
@@ -2110,7 +2160,7 @@ NdisMSendComplete(struct ndis_miniport_block *nmb, struct ndis_packet *packet,
 	if (wnd->tx_ok == 0) {
 		wnd->tx_ok = 1;
 		DBGTRACE3("%d, %d", wnd->tx_ring_start, wnd->tx_ring_end);
-		schedule_ndis_work(&wnd->tx_work);
+		schedule_wrap_work(&wnd->tx_work);
 	}
 	TRACEEXIT3(return);
 }
@@ -2132,7 +2182,7 @@ NdisMSendResourcesAvailable(struct ndis_miniport_block *nmb)
 	TRACEENTER3("");
 	DBGTRACE3("%d, %d", wnd->tx_ring_start, wnd->tx_ring_end);
 	wnd->tx_ok = 1;
-	schedule_ndis_work(&wnd->tx_work);
+	schedule_wrap_work(&wnd->tx_work);
 	TRACEEXIT3(return);
 }
 
@@ -2356,7 +2406,7 @@ STDCALL void WRAP_EXPORT(NdisMSleep)
 	unsigned long delay;
 
 	TRACEENTER4("%p: us: %u", current, us);
-	delay = USEC_TO_HZ(us) + 1;
+	delay = USEC_TO_HZ(us);
 	set_current_state(TASK_INTERRUPTIBLE);
 	schedule_timeout(delay);
 	DBGTRACE4("%p: done", current);
@@ -2504,10 +2554,24 @@ NdisMResetComplete(struct ndis_miniport_block *nmb, NDIS_STATUS status,
 STDCALL NDIS_STATUS WRAP_EXPORT(NdisScheduleWorkItem)
 	(struct ndis_work_item *ndis_work_item)
 {
-	TRACEENTER2("%p", ndis_work_item);
-	schedule_wrap_work_item(ndis_work_item->func, ndis_work_item,
-				ndis_work_item->ctx, TRUE);
-	TRACEEXIT2(return NDIS_STATUS_SUCCESS);
+	struct ndis_work_entry *ndis_work_entry;
+	KIRQL irql;
+
+	TRACEENTER3("%p", ndis_work_item);
+	ndis_work_entry = kmalloc(sizeof(*ndis_work_entry), GFP_ATOMIC);
+	if (!ndis_work_entry)
+		BUG();
+
+	ndis_work_entry->ndis_work_item = ndis_work_item;
+
+	irql = nt_spin_lock_irql(&ndis_work_list_lock, DISPATCH_LEVEL);
+	InsertTailList(&ndis_worker_list, &ndis_work_entry->list);
+	nt_spin_unlock_irql(&ndis_work_list_lock, irql);
+
+	WORKTRACE("scheduling %p", ndis_work_item);
+	schedule_ndis_work(&ndis_work);
+	TRACEEXIT3(return NDIS_STATUS_SUCCESS);
+
 }
 
 STDCALL void WRAP_EXPORT(NdisMGetDeviceProperty)

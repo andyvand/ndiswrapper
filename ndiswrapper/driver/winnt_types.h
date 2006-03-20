@@ -344,6 +344,15 @@ struct wait_context_block {
 	void *buffer_chaining_dpc;
 };
 
+struct wait_block {
+	struct nt_list list;
+	struct task_struct *thread;
+	void *object;
+	void *event_wait;
+	USHORT wait_key;
+	USHORT wait_type;
+};
+
 struct dispatch_header {
 	UCHAR type;
 	/* 'absolute' field is used by ndiswrapper differently - to
@@ -393,7 +402,7 @@ struct nt_timer {
 struct nt_mutex {
 	struct dispatch_header dh;
 	struct nt_list list;
-	void *owner_thread;
+	struct task_struct *owner_thread;
 	BOOLEAN abandoned;
 	BOOLEAN apc_disable;
 };
@@ -413,13 +422,11 @@ struct nt_thread {
 	struct task_struct *task;
 	struct nt_list irps;
 	NT_SPIN_LOCK lock;
-	wait_queue_head_t event_wq;
-	int event_wait_done;
 };
 #pragma pack(pop)
 
 #define set_dh_type(dh, type)		((dh)->absolute = (type))
-#define is_nt_event_dh(dh)		((dh)->absolute == DH_KVENT)
+#define is_nt_event_dh(dh)		((dh)->absolute == DH_NT_VENT)
 #define is_nt_timer_dh(dh)		((dh)->absolute == DH_NT_TIMER)
 #define is_mutex_dh(dh)			((dh)->absolute == DH_NT_MUTEX)
 #define is_semaphore_dh(dh)		((dh)->absolute == DH_NT_SEMAPHORE)
@@ -1158,27 +1165,18 @@ enum work_queue_type {
 	MaximumWorkQueue
 };
 
-typedef STDCALL void (*WRAP_WORK_FUNC)(void *arg1, void *arg2);
+typedef STDCALL void (*NTOS_WORK_FUNC)(void *arg1, void *arg2);
 
 struct io_workitem {
 	enum work_queue_type type;
 	struct device_object *dev_obj;
-	WRAP_WORK_FUNC worker_routine;
+	NTOS_WORK_FUNC worker_routine;
 	void *context;
 };
 
 struct io_workitem_entry {
 	struct nt_list list;
 	struct io_workitem *io_workitem;
-};
-
-struct wait_block {
-	struct nt_list list;
-	struct nt_thread *thread;
-	void *object;
-	struct wait_block *next;
-	USHORT wait_key;
-	USHORT wait_type;
 };
 
 enum event_type {

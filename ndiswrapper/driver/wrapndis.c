@@ -127,7 +127,7 @@ NDIS_STATUS miniport_query_info_needed(struct wrap_ndis_device *wnd,
 			res = NDIS_STATUS_FAILURE;
 		else
 			res = wnd->ndis_comm_status;
-		DBGTRACE2("res: %08X", res);
+		DBGTRACE2("res: %08X, oid: %08X", res, oid);
 	}
 	up(&wnd->ndis_comm_mutex);
 	if (res && needed)
@@ -177,7 +177,7 @@ NDIS_STATUS miniport_set_info(struct wrap_ndis_device *wnd, ndis_oid oid,
 			res = NDIS_STATUS_FAILURE;
 		else
 			res = wnd->ndis_comm_status;
-		DBGTRACE2("res: %08X", res);
+		DBGTRACE2("res: %08X, oid: %08X", res, oid);
 	}
 	up(&wnd->ndis_comm_mutex);
 
@@ -224,6 +224,7 @@ static NDIS_STATUS miniport_init(struct wrap_ndis_device *wnd)
 			  sizeof(medium_array) / sizeof(medium_array[0]),
 			  wnd->nmb, wnd->nmb);
 	DBGTRACE1("init returns: %08X, irql: %d", status, current_irql());
+//	debug = 0;
 	if (status != NDIS_STATUS_SUCCESS) {
 		WARNING("couldn't initialize device: %08X", status);
 		TRACEEXIT1(return NDIS_STATUS_FAILURE);
@@ -335,7 +336,7 @@ static void ndis_set_multicast_list(struct net_device *dev)
 {
 	struct wrap_ndis_device *wnd = netdev_priv(dev);
 	set_bit(SET_MULTICAST_LIST, &wnd->wrap_ndis_work);
-	schedule_ndis_work(&wnd->wrap_ndis_worker);
+	schedule_wrap_work(&wnd->wrap_ndis_worker);
 }
 
 static int ndis_set_mac_addr(struct net_device *dev, void *p)
@@ -654,7 +655,7 @@ static int tx_skbuff(struct sk_buff *skb, struct net_device *dev)
 		netif_stop_queue(wnd->net_dev);
 	}
 	DBGTRACE3("%d, %d", wnd->tx_ring_start, wnd->tx_ring_end);
-	schedule_ndis_work(&wnd->tx_work);
+	schedule_wrap_work(&wnd->tx_work);
 	return NETDEV_TX_OK;
 }
 
@@ -898,7 +899,7 @@ static void stats_proc(unsigned long data)
 	struct wrap_ndis_device *wnd = (struct wrap_ndis_device *)data;
 
 	set_bit(COLLECT_STATS, &wnd->wrap_ndis_work);
-	schedule_ndis_work(&wnd->wrap_ndis_worker);
+	schedule_wrap_work(&wnd->wrap_ndis_worker);
 	wnd->stats_timer.expires += 10 * HZ;
 	add_timer(&wnd->stats_timer);
 }
@@ -923,7 +924,7 @@ static void hangcheck_proc(unsigned long data)
 
 	TRACEENTER3("");
 	set_bit(HANGCHECK, &wnd->wrap_ndis_work);
-	schedule_ndis_work(&wnd->wrap_ndis_worker);
+	schedule_wrap_work(&wnd->wrap_ndis_worker);
 
 	wnd->hangcheck_timer.expires += wnd->hangcheck_interval;
 	add_timer(&wnd->hangcheck_timer);

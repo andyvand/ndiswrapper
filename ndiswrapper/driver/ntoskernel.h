@@ -440,7 +440,7 @@ do {									\
  * clock, otherwise from year 1601 */
 #define SYSTEM_TIME_TO_HZ(sys_time)					\
 	((((sys_time) <= 0) ? (((u64)HZ * (-(sys_time))) / TICKSPERSEC) : \
-	  (((u64)HZ * ((sys_time) - ticks_1601())) / TICKSPERSEC)))
+	  (((s64)HZ * ((sys_time) - ticks_1601())) / TICKSPERSEC)))
 
 #define MSEC_TO_HZ(ms) ((ms) * HZ / 1000)
 #define USEC_TO_HZ(ms) ((us) * HZ / 1000000)
@@ -508,7 +508,7 @@ struct wrap_timer {
 #endif
 };
 
-struct wrap_work_item {
+struct ntos_work_item {
 	struct nt_list list;
 	void *arg1;
 	void *arg2;
@@ -592,12 +592,12 @@ struct wrap_device {
 /* until issues with threads hogging cpu are resolved, we don't want
  * to use shared workqueue, lest the threads take keyboard etc down */
 #define USE_OWN_WORKQUEUE 1
-extern struct workqueue_struct *wrapper_wq, *ndis_wq;
-#define schedule_wrap_work(work_struct) queue_work(wrapper_wq, (work_struct))
+extern struct workqueue_struct *ndis_wq, *wrap_wq;
 #define schedule_ndis_work(work_struct) queue_work(ndis_wq, (work_struct))
+#define schedule_wrap_work(work_struct) queue_work(wrap_wq, (work_struct))
 #else
-#define schedule_wrap_work(work_struct) schedule_work(work_struct)
 #define schedule_ndis_work(work_struct) schedule_work(work_struct)
+#define schedule_wrap_work(work_struct) schedule_work(work_struct)
 #endif
 
 int ntoskernel_init(void);
@@ -707,11 +707,10 @@ STDCALL struct irp *WRAP_EXPORT(IoBuildAsynchronousFsdRequest)
 	 struct io_status_block *status);
 STDCALL NTSTATUS PoCallDriver(struct device_object *dev_obj, struct irp *irp);
 
-struct nt_thread *wrap_create_thread(struct task_struct *task);
-void wrap_remove_thread(struct nt_thread *thread);
+struct nt_thread *get_current_nt_thread(void);
 u64 ticks_1601(void);
 
-int schedule_wrap_work_item(WRAP_WORK_FUNC func, void *arg1, void *arg2,
+int schedule_ntos_work_item(NTOS_WORK_FUNC func, void *arg1, void *arg2,
 			    BOOLEAN win_func);
 
 STDCALL KIRQL KeGetCurrentIrql(void);
@@ -783,7 +782,7 @@ unsigned long lin_to_win6(void *func, unsigned long, unsigned long,
 			  unsigned long);
 
 
-STDCALL struct nt_thread *KeGetCurrentThread(void);
+STDCALL struct task_struct *KeGetCurrentThread(void);
 STDCALL NTSTATUS
 ObReferenceObjectByHandle(void *handle, ACCESS_MASK desired_access,
 			  void *obj_type, KPROCESSOR_MODE access_mode,
@@ -1165,6 +1164,16 @@ do {								       \
 #define IOTRACE(fmt, ...)
 #define IOENTER(fmt, ...)
 #define IOEXIT(stmt) stmt
+#endif
+
+#if defined(WORK_DEBUG)
+#define WORKTRACE DBGTRACE1
+#define WORKENTER TRACEENTER1
+#define WORKEXIT TRACEEXIT1
+#else
+#define WORKTRACE(fmt, ...)
+#define WORKENTER(fmt, ...)
+#define WORKEXIT(stmt) stmt
 #endif
 
 #if defined DEBUG

@@ -430,7 +430,7 @@ static void wrap_urb_complete(struct urb *urb)
 		InsertTailList(&wrap_urb_complete_list,
 			       &wrap_urb->complete_list);
 		nt_spin_unlock(&wrap_urb_complete_list_lock);
-		schedule_wrap_work(&wrap_urb_complete_work);
+		schedule_work(&wrap_urb_complete_work);
 		USBTRACE("scheduled worker for urb %p", urb);
 	} else {
 		WARNING("urb %p in wrong state: %d", urb, wrap_urb->state);

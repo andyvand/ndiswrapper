@@ -342,8 +342,8 @@ typedef void (*NDIS_PROC)(struct ndis_work_item *, void *) STDCALL;
 struct ndis_work_item {
 	void *ctx;
 	/* this should be NDIS_PROC, but we masquerade it as
-	 * WRAP_WORK_FUNC so we can use wrap_worker */
-	WRAP_WORK_FUNC func;
+	 * NTOS_WORK_FUNC so we can use wrap_worker */
+	NTOS_WORK_FUNC func;
 	UCHAR reserved[8 * sizeof(void *)];
 };
 
@@ -351,6 +351,11 @@ struct alloc_shared_mem {
 	void *ctx;
 	ULONG size;
 	BOOLEAN cached;
+};
+
+struct ndis_work_entry {
+	struct nt_list list;
+	struct ndis_work_item *ndis_work_item;
 };
 
 struct ndis_irq {

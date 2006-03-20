@@ -554,23 +554,23 @@ STDCALL NTSTATUS WRAP_EXPORT(RtlAnsiStringToUnicodeString)
 	TRACEENTER2("src: length: %d max: %d, buf: %p, dst: %p, alloc: %d",
 		    src->length, src->max_length, src->buf, dst, alloc);
 	if (alloc == TRUE) {
-		i = (src->length + 1) * sizeof(wchar_t);
+		i = (src->max_length + 1) * sizeof(wchar_t);
 		dst->buf = ExAllocatePoolWithTag(NonPagedPool, i, 0);
 		if (!dst->buf) {
 			dst->max_length = dst->length = 0;
 			TRACEEXIT2(return STATUS_NO_MEMORY);
 		}
 		dst->max_length = i;
-	} else if (dst->max_length < (src->length * sizeof(wchar_t)))
+	} else if (dst->max_length < (src->max_length * sizeof(wchar_t)))
 		TRACEEXIT2(return STATUS_BUFFER_TOO_SMALL);
 
-	dst->length = src->length * sizeof(wchar_t);
-	for (i = 0; i < src->length; i++)
+	for (i = 0; i < src->max_length && src->buf[i]; i++)
 		dst->buf[i] = src->buf[i];
 	if (i * sizeof(wchar_t) < dst->max_length)
-		dst->buf[i] = 0;
-	DBGTRACE2("dst: length: %d, max_length: %d, string: %p",
-		  dst->length, dst->max_length, src->buf);
+		dst->buf[i++] = 0;
+	dst->length = i * sizeof(wchar_t);
+	DBGTRACE2("dst: length: %d, max_length: %d, buf: %p, string: %p",
+		  dst->length, dst->max_length, dst->buf, src->buf);
 	TRACEEXIT2(return STATUS_SUCCESS);
 }
 
@@ -588,22 +588,27 @@ STDCALL NTSTATUS WRAP_EXPORT(RtlUnicodeStringToAnsiString)
 
 	TRACEENTER2("src: length: %d max: %d, buf: %p, dst: %p, alloc: %d",
 		    src->length, src->max_length, src->buf, dst, alloc);
+
+	DBGTRACE2("%d, %p, %d, %d", dst->max_length, dst->buf, dst->length,
+		  src->length / sizeof(wchar_t));
+
 	if (alloc == TRUE) {
-		i = src->length / sizeof(wchar_t) + 1;
+		i = src->max_length / sizeof(wchar_t) + 1;
 		dst->buf = ExAllocatePoolWithTag(NonPagedPool, i, 0);
 		if (!dst->buf) {
 			dst->max_length = dst->length = 0;
 			TRACEEXIT1(return STATUS_NO_MEMORY);
 		}
 		dst->max_length = i;
-	} else if (dst->max_length < (src->length / sizeof(wchar_t)))
-		return STATUS_FAILURE;
+	} else if (dst->max_length < (src->max_length / sizeof(wchar_t)))
+		TRACEEXIT1(return STATUS_BUFFER_TOO_SMALL);
 
-	dst->length = src->length / sizeof(wchar_t);
-	for (i = 0; i < dst->length; i++)
+	dst->length = src->max_length / sizeof(wchar_t);
+	for (i = 0; i < dst->length && src->buf[i]; i++)
 		dst->buf[i] = src->buf[i];
 	if (i < dst->max_length)
-		dst->buf[i] = 0;
+		dst->buf[i++] = 0;
+	dst->length = i;
 	DBGTRACE2("string: %p, len: %d(%d)", dst->buf, dst->length,
 		  dst->max_length);
 	TRACEEXIT2(return STATUS_SUCCESS);
