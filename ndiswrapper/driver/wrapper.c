@@ -53,9 +53,13 @@ MODULE_PARM_DESC(hangcheck_interval, "The interval, in seconds, for checking"
 		 " if driver is hung. (default: 0)");
 
 MODULE_AUTHOR("ndiswrapper team <ndiswrapper-general@lists.sourceforge.net>");
+#ifdef MODULE_DESCRIPTION
+MODULE_DESCRIPTION("NDIS wrapper driver");
+#endif
 #ifdef MODULE_VERSION
 MODULE_VERSION(DRIVER_VERSION);
 #endif
+MODULE_LICENSE("GPL");
 
 static void module_cleanup(void)
 {
@@ -144,4 +148,3 @@ static void __exit wrapper_exit(void)
 module_init(wrapper_init);
 module_exit(wrapper_exit);
 
-MODULE_LICENSE("GPL");
