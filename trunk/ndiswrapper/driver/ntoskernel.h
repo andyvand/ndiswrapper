@@ -788,7 +788,6 @@ ObReferenceObjectByHandle(void *handle, ACCESS_MASK desired_access,
 
 _FASTCALL LONG ObfReferenceObject(FASTCALL_DECL_1(void *object));
 _FASTCALL void ObfDereferenceObject(FASTCALL_DECL_1(void *object));
-STDCALL NTSTATUS ZwClose(void *object);
 #define ObReferenceObject(object)			\
 	ObfReferenceObject(FASTCALL_ARGS_1(object))
 #define ObDereferenceObject(object)			\

@@ -1731,15 +1731,15 @@ STDCALL NTSTATUS WRAP_EXPORT(KeDelayExecutionThread)
 }
 
 STDCALL KPRIORITY WRAP_EXPORT(KeQueryPriorityThread)
-	(struct nt_thread *thread)
+	(struct task_struct *task)
 {
 	KPRIORITY prio;
 
-	EVENTENTER("thread: %p, task: %p", thread, thread->task);
+	EVENTENTER("task: %p", task);
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,0)
 	prio = 1;
 #else
-	if (rt_task(thread->task))
+	if (rt_task(task))
 		prio = LOW_REALTIME_PRIORITY;
 	else
 		prio = MAXIMUM_PRIORITY;
@@ -1790,25 +1790,25 @@ STDCALL struct task_struct *WRAP_EXPORT(KeGetCurrentThread)
 }
 
 STDCALL KPRIORITY WRAP_EXPORT(KeSetPriorityThread)
-	(struct nt_thread *thread, KPRIORITY priority)
+	(struct task_struct *task, KPRIORITY priority)
 {
 	KPRIORITY old_prio;
 
-	TRACEENTER3("thread: %p, priority = %u", thread, priority);
+	TRACEENTER3("task: %p, priority = %u", task, priority);
 
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,0)
 	/* FIXME: is there a way to set kernel thread prio on 2.4? */
 	old_prio = LOW_PRIORITY;
 #else
-	if (rt_task(thread->task))
+	if (rt_task(task))
 		old_prio = LOW_REALTIME_PRIORITY;
 	else
 		old_prio = MAXIMUM_PRIORITY;
 #if 0
 	if (priority == LOW_REALTIME_PRIORITY)
-		set_user_nice(thread->task, -20);
+		set_user_nice(task, -20);
 	else
-		set_user_nice(thread->task, 10);
+		set_user_nice(task, 10);
 #endif
 #endif
 	return old_prio;
@@ -1948,7 +1948,7 @@ STDCALL NTSTATUS WRAP_EXPORT(PsCreateSystemThread)
 
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,7)
 	pid = kernel_thread(thread_trampoline, ctx,
-		CLONE_FS | CLONE_FILES | CLONE_SIGHAND);
+			    CLONE_FS | CLONE_FILES | CLONE_SIGHAND);
 	DBGTRACE2("pid = %d", pid);
 	if (pid < 0) {
 		kfree(ctx);
@@ -1966,7 +1966,7 @@ STDCALL NTSTATUS WRAP_EXPORT(PsCreateSystemThread)
 	}
 	DBGTRACE2("created task: %p (%d)", task, task->pid);
 #endif
-	*phandle = thread;
+	*phandle = OBJECT_TO_HEADER(thread);
 	DBGTRACE2("created thread: %p", thread);
 	TRACEEXIT2(return STATUS_SUCCESS);
 }
@@ -2396,12 +2396,18 @@ STDCALL NTSTATUS WRAP_EXPORT(ZwReadFile)
 	 ULONG length, LARGE_INTEGER *byte_offset, ULONG *key)
 {
 	struct object_attr *oa;
+	struct common_object_header *coh;
 	ULONG count;
 	size_t offset;
 	struct wrap_bin_file *file;
 
 	DBGTRACE2("%p", handle);
-	oa = HANDLE_TO_OBJECT(handle);
+	coh = handle;
+	if (coh->type != OBJECT_TYPE_FILE) {
+		ERROR("handle %p is not for a file: %d", handle, coh->type);
+		TRACEEXIT2(return STATUS_FAILURE);
+	}
+	oa = HANDLE_TO_OBJECT(coh);
 	file = oa->file;
 	DBGTRACE2("file: %s (%d)", file->name, file->size);
 	if (byte_offset)
@@ -2420,22 +2426,24 @@ STDCALL NTSTATUS WRAP_EXPORT(ZwClose)
 	(void *handle)
 {
 	struct object_attr *oa;
-	struct wrap_bin_file *bin_file;
 	struct common_object_header *coh;
+	struct wrap_bin_file *bin_file;
 
 	DBGTRACE2("%p", handle);
-	coh = handle;
-	if (coh == NULL) {
+	if (handle == NULL) {
 		DBGTRACE1("");
 		TRACEEXIT2(return STATUS_SUCCESS);
 	}
+	coh = handle;
+	oa = HANDLE_TO_OBJECT(handle);
 	if (coh->type == OBJECT_TYPE_FILE) {
-		oa = HANDLE_TO_OBJECT(handle);
 		bin_file = oa->file;
 		free_bin_file(bin_file);
 		ObDereferenceObject(oa);
-	} else
-		WARNING("object type %d not implemented", coh->type);
+	} else if (coh->type == OBJECT_TYPE_NT_THREAD)
+		DBGTRACE1("thread: %p", handle);
+	else
+		WARNING("closing handle %p not implemented", handle);
 	TRACEEXIT2(return STATUS_SUCCESS);
 }
 
