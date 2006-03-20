@@ -56,20 +56,20 @@ STDCALL NTSTATUS WRAP_EXPORT(IoGetDeviceProperty)
 	case DevicePropertyDeviceDescription:
 	case DevicePropertyFriendlyName:
 	case DevicePropertyDriverKeyName:
-		need = sizeof(wchar_t) * (strlen("PCI device") + 5);
+		if (wrap_is_pci_bus(wd->dev_bus_type))
+			RtlInitAnsiString(&ansi, "PCI");
+		else // if (wrap_is_usb_bus(wd->dev_bus_type))
+			RtlInitAnsiString(&ansi, "USB");
+		need = sizeof(wchar_t) * (ansi.max_length + 1);
 		if (buffer_len < need) {
 			*result_len = need;
 			IOEXIT(return STATUS_BUFFER_TOO_SMALL);
 		}
-		if (wrap_is_pci_bus(wd->dev_bus_type))
-			RtlInitAnsiString(&ansi, "PCI device");
-		else // if (wrap_is_usb_bus(wd->dev_bus_type))
-			RtlInitAnsiString(&ansi, "USB device");
 		unicode.max_length = buffer_len;
 		unicode.buf = buffer;
 		if (RtlAnsiStringToUnicodeString(&unicode, &ansi,
 						 FALSE) != STATUS_SUCCESS) {
-			*result_len = need;
+			*result_len = unicode.length;
 			IOEXIT(return STATUS_BUFFER_TOO_SMALL);
 		}
 		IOEXIT(return STATUS_SUCCESS);
@@ -185,19 +185,16 @@ STDCALL void IoQueueThreadIrp(struct irp *irp)
 	struct nt_thread *thread;
 	KIRQL irql;
 
-	thread = KeGetCurrentThread();
-	if (!thread) {
-		WARNING("couldn't find thread for irp: %p, task: %p, pid: %d",
-			irp, current, current->pid);
+	thread = get_current_nt_thread();
+	if (thread) {
+		IOTRACE("thread: %p, task: %p", thread, thread->task);
+		irql = nt_spin_lock_irql(&thread->lock, DISPATCH_LEVEL);
+		irp->flags |= IRP_SYNCHRONOUS_API;
+		InsertTailList(&thread->irps, &irp->threads);
+		IoIrpThread(irp) = thread;
+		nt_spin_unlock_irql(&thread->lock, irql);
+	} else
 		IoIrpThread(irp) = NULL;
-		return;
-	}
-	IOTRACE("thread: %p, task: %p", thread, thread->task);
-	irql = nt_spin_lock_irql(&thread->lock, DISPATCH_LEVEL);
-	irp->flags |= IRP_SYNCHRONOUS_API;
-	InsertTailList(&thread->irps, &irp->threads);
-	IoIrpThread(irp) = thread;
-	nt_spin_unlock_irql(&thread->lock, irql);
 }
 
 STDCALL void IoDequeueThreadIrp(struct irp *irp)
@@ -548,15 +545,6 @@ STDCALL void WRAP_EXPORT(IoFreeWorkItem)
 	IOEXIT(return);
 }
 
-STDCALL void WRAP_EXPORT(ExQueueWorkItem)
-	(struct io_workitem *io_workitem, enum work_queue_type queue_type)
-{
-	IOENTER("%p", io_workitem);
-	schedule_wrap_work_item(io_workitem->worker_routine,
-				io_workitem->dev_obj, io_workitem->context,
-				TRUE);
-}
-
 STDCALL void WRAP_EXPORT(IoQueueWorkItem)
 	(struct io_workitem *io_workitem, void *func,
 	 enum work_queue_type queue_type, void *context)
@@ -564,8 +552,17 @@ STDCALL void WRAP_EXPORT(IoQueueWorkItem)
 	IOENTER("%p, %p", io_workitem, io_workitem->dev_obj);
 	io_workitem->worker_routine = func;
 	io_workitem->context = context;
-	schedule_wrap_work_item(func, io_workitem->dev_obj, context, TRUE);
+	schedule_ntos_work_item(func, io_workitem->dev_obj, context, TRUE);
 	IOEXIT(return);
+}
+
+STDCALL void WRAP_EXPORT(ExQueueWorkItem)
+	(struct io_workitem *io_workitem, enum work_queue_type queue_type)
+{
+	IOENTER("%p", io_workitem);
+	schedule_ntos_work_item(io_workitem->worker_routine,
+				io_workitem->dev_obj, io_workitem->context,
+				TRUE);
 }
 
 STDCALL NTSTATUS WRAP_EXPORT(IoAllocateDriverObjectExtension)
