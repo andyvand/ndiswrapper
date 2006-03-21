@@ -119,8 +119,6 @@ int ntoskernel_init(void)
 	INIT_WORK(&kdpc_work, kdpc_worker, NULL);
 	INIT_WORK(&ntos_work_item_work, ntos_work_item_worker, NULL);
 
-//	init_waitqueue_head(&dispatcher_event_wq);
-
 	nt_spin_lock_init(&timer_lock);
 	InitializeListHead(&wrap_timer_list);
 
@@ -1353,9 +1351,11 @@ static struct thread_event_wait *get_thread_event_wait(void)
 static void put_thread_event_wait(struct thread_event_wait *thread_event_wait)
 {
 	EVENTENTER("%p, %p", thread_event_wait, current);
-	if (thread_event_wait->task != current)
-		ERROR("argh, task %p should be %p",
-		      current, thread_event_wait->task);
+	DBG_BLOCK(1) {
+		if (thread_event_wait->task != current)
+			ERROR("argh, task %p should be %p",
+			      current, thread_event_wait->task);
+	}
 	thread_event_wait->next = thread_event_wait_pool;
 	thread_event_wait_pool = thread_event_wait;
 	thread_event_wait->done = 0;
@@ -1517,13 +1517,16 @@ STDCALL NTSTATUS WRAP_EXPORT(KeWaitForMultipleObjects)
 				continue;
 			EVENTTRACE("object: %p, %p", object[i], wb[i].object);
 			if (!wb[i].object) {
-				ERROR("argh, not woken for %p", object[i]);
+				EVENTTRACE("not woken for %p", object[i]);
 				continue;
 			}
-			if (wb[i].object != object[i]) {
-				ERROR("argh, event not woken up? %p, %p",
-				      wb[i].object, object[i]);
-				continue;
+			DBG_BLOCK(1) {
+				if (wb[i].object != object[i]) {
+					ERROR("argh, event not signalled? "
+					      "%p, %p", wb[i].object,
+					      object[i]);
+					continue;
+				}
 			}
 			wb[i].object = NULL;
 			wb[i].thread = NULL;
@@ -1958,7 +1961,7 @@ STDCALL NTSTATUS WRAP_EXPORT(PsCreateSystemThread)
 	task = NULL;
 	DBGTRACE2("created task: %p (%d)", find_task_by_pid(pid), pid);
 #else
-	task = KTHREAD_RUN(thread_trampoline, ctx, DRIVER_NAME);
+	task = KTHREAD_RUN(thread_trampoline, ctx, "windisdrvr");
 	if (IS_ERR(task)) {
 		kfree(ctx);
 		free_object(thread);
@@ -2455,8 +2458,14 @@ STDCALL NTSTATUS WRAP_EXPORT(ZwQueryInformationFile)
 	struct file_name_info *fni;
 	struct file_std_info *fsi;
 	struct wrap_bin_file *file;
+	struct common_object_header *coh;
 
 	TRACEENTER2("%p", handle);
+	coh = handle;
+	if (coh->type != OBJECT_TYPE_FILE) {
+		ERROR("handle %p is not for a file: %d", handle, coh->type);
+		TRACEEXIT2(return STATUS_FAILURE);
+	}
 	oa = HANDLE_TO_OBJECT(handle);
 	DBGTRACE2("attr: %p", oa);
 	switch (class) {

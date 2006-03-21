@@ -590,7 +590,7 @@ struct wrap_device {
 /* until issues with threads hogging cpu are resolved, we don't want
  * to use shared workqueue, lest the threads take keyboard etc down */
 #define USE_OWN_WORKQUEUE 1
-extern struct workqueue_struct *ndis_wq, *wrap_wq;
+extern struct workqueue_struct *wrap_wq;
 #define schedule_ndis_work(work_struct) queue_work(ndis_wq, (work_struct))
 #define schedule_wrap_work(work_struct) queue_work(wrap_wq, (work_struct))
 #else

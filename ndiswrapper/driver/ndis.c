@@ -25,7 +25,7 @@
 extern struct nt_list wrap_drivers;
 extern NT_SPIN_LOCK ntoskernel_lock, loader_lock;
 
-struct workqueue_struct *ndis_wq;
+static struct workqueue_struct *ndis_wq;
 static void ndis_worker(void *dummy);
 static struct work_struct ndis_work;
 static struct nt_list ndis_worker_list;
