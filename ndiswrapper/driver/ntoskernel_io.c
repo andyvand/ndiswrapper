@@ -473,7 +473,7 @@ STDCALL NTSTATUS WRAP_EXPORT(IoConnectInterrupt)
 
 	interrupt->vector = vector;
 	interrupt->processor_enable_mask = processor_enable_mask;
-	nt_spin_lock_init(&interrupt->lock);
+//	nt_spin_lock_init(&interrupt->lock);
 	interrupt->actual_lock = lock;
 	interrupt->shareable = shareable;
 	interrupt->floating_save = floating_save;

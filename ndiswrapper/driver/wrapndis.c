@@ -224,7 +224,6 @@ static NDIS_STATUS miniport_init(struct wrap_ndis_device *wnd)
 			  sizeof(medium_array) / sizeof(medium_array[0]),
 			  wnd->nmb, wnd->nmb);
 	DBGTRACE1("init returns: %08X, irql: %d", status, current_irql());
-//	debug = 0;
 	if (status != NDIS_STATUS_SUCCESS) {
 		WARNING("couldn't initialize device: %08X", status);
 		TRACEEXIT1(return NDIS_STATUS_FAILURE);

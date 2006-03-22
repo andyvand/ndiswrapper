@@ -1161,9 +1161,9 @@ STDCALL void WRAP_EXPORT(ExDeleteNPagedLookasideList)
 	TRACEENTER3("lookaside = %p", lookaside);
 	irql = raise_irql(DISPATCH_LEVEL);
 	while ((entry = ExpInterlockedPopEntrySList(&lookaside->head)))
-		ExFreePool(entry);
+		lookaside->free_func(entry);
 	lower_irql(irql);
-	TRACEEXIT5(return);
+	TRACEEXIT3(return);
 }
 
 STDCALL NTSTATUS WRAP_EXPORT(ExCreateCallback)
@@ -1301,7 +1301,7 @@ static void wakeup_threads(struct dispatch_header *dh)
 
 	nt_list_for_each_safe(cur, next, &dh->wait_blocks) {
 		wb = container_of(cur, struct wait_block, list);
-		EVENTTRACE("wait block: %p, thread: %p", wb, wb->thread);
+		EVENTTRACE("%p: wait block: %p, thread: %p", dh, wb, wb->thread);
 		assert(wb->thread != NULL);
 		assert(wb->object == NULL);
 		if (wb->thread &&
@@ -1345,6 +1345,7 @@ static struct thread_event_wait *get_thread_event_wait(void)
 	thread_event_wait->task = current;
 	EVENTTRACE("%p, %p, %p", thread_event_wait, current,
 		   thread_event_wait_pool);
+	thread_event_wait->done = 0;
 	return thread_event_wait;
 }
 
@@ -1453,11 +1454,10 @@ STDCALL NTSTATUS WRAP_EXPORT(KeWaitForMultipleObjects)
 			assert(timeout == NULL || *timeout != 0);
 			assert(event_wait != NULL);
 			wb[i].thread = thread;
-			InsertTailList(&dh->wait_blocks, &wb[i].list);
 			EVENTTRACE("%p: need to wait on event %p", thread, dh);
+			InsertTailList(&dh->wait_blocks, &wb[i].list);
 		}
 	}
-	event_wait->done = 0;
 	nt_spin_unlock_irql(&dispatcher_lock, irql);
 	if (wait_count == 0) {
 		assert(event_wait == NULL);
@@ -1500,8 +1500,8 @@ STDCALL NTSTATUS WRAP_EXPORT(KeWaitForMultipleObjects)
 			for (i = 0; i < count; i++) {
 				if (!wb[i].thread)
 					continue;
-				EVENTTRACE("%p: timedout, deq'ing %p",
-					   thread, wb[i].object);
+				EVENTTRACE("%p: timedout, deq'ing %p (%p)",
+					   thread, object[i], wb[i].object);
 				RemoveEntryList(&wb[i].list);
 			}
 			put_thread_event_wait(event_wait);
@@ -1580,7 +1580,6 @@ STDCALL void WRAP_EXPORT(KeInitializeEvent)
 	KIRQL irql;
 
 	EVENTENTER("event = %p, type = %d, state = %d", nt_event, type, state);
-//	dump_bytes(__FUNCTION__, __builtin_return_address(0), 20);
 	irql = nt_spin_lock_irql(&dispatcher_lock, DISPATCH_LEVEL);
 	initialize_dh(&nt_event->dh, type, state, DH_NT_EVENT);
 	nt_spin_unlock_irql(&dispatcher_lock, irql);
@@ -1591,15 +1590,18 @@ STDCALL LONG WRAP_EXPORT(KeSetEvent)
 	(struct nt_event *nt_event, KPRIORITY incr, BOOLEAN wait)
 {
 	LONG old_state;
+	KIRQL irql;
 
 	EVENTENTER("event = %p, type = %d, wait = %d",
 		   nt_event, nt_event->dh.type, wait);
 	if (wait == TRUE)
 		WARNING("wait = %d, not yet implemented", wait);
-
-	old_state = xchg(&nt_event->dh.signal_state, 1);
+	irql = nt_spin_lock_irql(&dispatcher_lock, DISPATCH_LEVEL);
+	old_state = nt_event->dh.signal_state;
+	nt_event->dh.signal_state = 1;
 	if (old_state == 0)
 		wakeup_threads(&nt_event->dh);
+	nt_spin_unlock_irql(&dispatcher_lock, irql);
 	EVENTEXIT(return old_state);
 }
 
@@ -1614,11 +1616,15 @@ STDCALL void WRAP_EXPORT(KeClearEvent)
 STDCALL LONG WRAP_EXPORT(KeResetEvent)
 	(struct nt_event *nt_event)
 {
+	KIRQL irql;
 	LONG old_state;
 
 	EVENTENTER("event = %p", nt_event);
 
-	old_state = xchg(&nt_event->dh.signal_state, 0);
+	irql = nt_spin_lock_irql(&dispatcher_lock, DISPATCH_LEVEL);
+	old_state = nt_event->dh.signal_state;
+	nt_event->dh.signal_state = 0;
+	nt_spin_unlock_irql(&dispatcher_lock, irql);
 	EVENTTRACE("old state: %d", old_state);
 	EVENTEXIT(return old_state);
 }
@@ -1841,7 +1847,7 @@ static int thread_trampoline(void *data)
 	return 0;
 }
 
-static struct nt_thread *wrap_create_thread(struct task_struct *task)
+static struct nt_thread *create_nt_thread(struct task_struct *task)
 {
 	struct nt_thread *thread;
 	KIRQL irql;
@@ -1860,14 +1866,14 @@ static struct nt_thread *wrap_create_thread(struct task_struct *task)
 		thread->dh.size = sizeof(*thread);
 		nt_spin_unlock_irql(&dispatcher_lock, irql);
 
-		DBGTRACE1("thread: %p, task: %p, pid: %d",
+		DBGTRACE2("thread: %p, task: %p, pid: %d",
 			  thread, thread->task, thread->pid);
 	} else
 		ERROR("couldn't allocate thread object");
 	return thread;
 }
 
-static void wrap_remove_thread(struct nt_thread *thread)
+static void remove_nt_thread(struct nt_thread *thread)
 {
 	struct nt_list *ent;
 	KIRQL irql;
@@ -1904,11 +1910,11 @@ struct nt_thread *get_current_nt_thread(void)
 	irql = nt_spin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL);
 	nt_list_for_each_entry(header, &object_list, list) {
 		struct nt_thread *thread;
-//		DBGTRACE5("header: %p, type: %d", header, header->type);
+		DBGTRACE5("header: %p, type: %d", header, header->type);
 		if (header->type != OBJECT_TYPE_NT_THREAD)
 			continue;
 		thread = HEADER_TO_OBJECT(header);
-//		DBGTRACE5("thread: %p, task: %p", thread, thread->task);
+		DBGTRACE5("thread: %p, task: %p", thread, thread->task);
 		if (thread->task == task) {
 			ret = thread;
 			break;
@@ -1942,7 +1948,7 @@ STDCALL NTSTATUS WRAP_EXPORT(PsCreateSystemThread)
 		TRACEEXIT2(return STATUS_RESOURCES);
 	ctx->start_routine = start_routine;
 	ctx->context = context;
-	thread = wrap_create_thread(NULL);
+	thread = create_nt_thread(NULL);
 	if (!thread) {
 		kfree(ctx);
 		TRACEEXIT2(return STATUS_RESOURCES);
@@ -1970,7 +1976,7 @@ STDCALL NTSTATUS WRAP_EXPORT(PsCreateSystemThread)
 	DBGTRACE2("created task: %p (%d)", task, task->pid);
 #endif
 	*phandle = OBJECT_TO_HEADER(thread);
-	DBGTRACE2("created thread: %p", thread);
+	DBGTRACE2("created thread: %p, %p", thread, *phandle);
 	TRACEEXIT2(return STATUS_SUCCESS);
 }
 
@@ -1979,12 +1985,13 @@ STDCALL NTSTATUS WRAP_EXPORT(PsTerminateSystemThread)
 {
 	struct nt_thread *thread;
 
+	DBGTRACE2("%p, %08X", current, status);
 	thread = get_current_nt_thread();
 	if (thread) {
 		DBGTRACE2("setting event for thread: %p", thread);
 		KeSetEvent((struct nt_event *)&thread->dh, 0, FALSE);
 		DBGTRACE2("set event for thread: %p", thread);
-		wrap_remove_thread(thread);
+		remove_nt_thread(thread);
 		complete_and_exit(NULL, status);
 		ERROR("oops: %p, %d", thread->task, thread->pid);
 	} else
@@ -2016,26 +2023,19 @@ STDCALL BOOLEAN WRAP_EXPORT(KeSynchronizeExecution)
 {
 	NT_SPIN_LOCK *spinlock;
 	BOOLEAN ret;
-	KIRQL irql;
+	unsigned long flags;
 
 	if (interrupt->actual_lock)
 		spinlock = interrupt->actual_lock;
 	else
 		spinlock = &interrupt->lock;
-	irql = interrupt->synch_irql;
-	if (irql == DISPATCH_LEVEL)
-		irql = nt_spin_lock_irql(spinlock, DISPATCH_LEVEL);
-	else
-		nt_spin_lock(spinlock);
+	nt_spin_lock_irqsave(spinlock, flags);
 	ret = synch_routine(synch_context);
-	if (irql == DISPATCH_LEVEL)
-		nt_spin_unlock_irql(spinlock, irql);
-	else
-		nt_spin_unlock(spinlock);
+	nt_spin_unlock_irqrestore(spinlock, flags);
 	return ret;
 }
 
-STDCALL void * WRAP_EXPORT(MmAllocateContiguousMemorySpecifyCache)
+STDCALL void *WRAP_EXPORT(MmAllocateContiguousMemorySpecifyCache)
 	(SIZE_T size, PHYSICAL_ADDRESS lowest, PHYSICAL_ADDRESS highest,
 	 PHYSICAL_ADDRESS boundary, enum memory_caching_type cache_type)
 {
@@ -2280,11 +2280,13 @@ STDCALL NTSTATUS WRAP_EXPORT(ObReferenceObjectByHandle)
 	struct common_object_header *hdr;
 	KIRQL irql;
 
+	DBGTRACE2("%p", handle);
 	irql = nt_spin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL);
 	hdr = HANDLE_TO_HEADER(handle);
 	hdr->ref_count++;
 	*object = HEADER_TO_OBJECT(hdr);
 	nt_spin_unlock_irql(&ntoskernel_lock, irql);
+	DBGTRACE2("%p, %p, %d, %p", hdr, object, hdr->ref_count, *object);
 	return STATUS_SUCCESS;
 }
 
@@ -2301,6 +2303,7 @@ _FASTCALL LONG WRAP_EXPORT(ObfReferenceObject)
 	irql = nt_spin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL);
 	hdr = OBJECT_TO_HEADER(object);
 	ret = ++hdr->ref_count;
+	DBGTRACE2("%p, %d, %p", hdr, hdr->ref_count, object);
 	nt_spin_unlock_irql(&ntoskernel_lock, irql);
 	return ret;
 }
@@ -2318,6 +2321,7 @@ _FASTCALL void WRAP_EXPORT(ObfDereferenceObject)
 	DBGTRACE2("hdr: %p", hdr);
 	hdr->ref_count--;
 	ref_count = hdr->ref_count;
+	DBGTRACE2("object: %p, %d", object, ref_count);
 	nt_spin_unlock_irql(&ntoskernel_lock, irql);
 	if (ref_count < 0)
 		ERROR("invalid object: %p (%d)", object, ref_count);
@@ -2443,8 +2447,9 @@ STDCALL NTSTATUS WRAP_EXPORT(ZwClose)
 		bin_file = oa->file;
 		free_bin_file(bin_file);
 		ObDereferenceObject(oa);
-	} else if (coh->type == OBJECT_TYPE_NT_THREAD)
+	} else if (coh->type == OBJECT_TYPE_NT_THREAD) {
 		DBGTRACE1("thread: %p", handle);
+	}
 	else
 		WARNING("closing handle %p not implemented", handle);
 	TRACEEXIT2(return STATUS_SUCCESS);

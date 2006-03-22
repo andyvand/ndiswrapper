@@ -412,7 +412,7 @@ struct nt_semaphore {
 	LONG limit;
 };
 
-#pragma pack(push,1)
+//#pragma pack(push,1)
 struct nt_thread {
 	struct dispatch_header dh;
 	/* the rest in Windows is a long structure; since this
@@ -423,7 +423,7 @@ struct nt_thread {
 	struct nt_list irps;
 	NT_SPIN_LOCK lock;
 };
-#pragma pack(pop)
+//#pragma pack(pop)
 
 #define set_dh_type(dh, type)		((dh)->absolute = (type))
 #define is_nt_event_dh(dh)		((dh)->absolute == DH_NT_VENT)
@@ -1143,9 +1143,9 @@ enum common_object_type {
 struct common_object_header {
 	struct nt_list list;
 	enum common_object_type type;
-	int size;
+	UINT size;
 	char *name;
-	unsigned int ref_count;
+	UINT ref_count;
 	BOOLEAN close_in_process;
 	BOOLEAN permanent;
 };
