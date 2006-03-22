@@ -1161,7 +1161,7 @@ STDCALL void WRAP_EXPORT(ExDeleteNPagedLookasideList)
 	TRACEENTER3("lookaside = %p", lookaside);
 	irql = raise_irql(DISPATCH_LEVEL);
 	while ((entry = ExpInterlockedPopEntrySList(&lookaside->head)))
-		lookaside->free_func(entry);
+		LIN2WIN1(lookaside->free_func, entry);
 	lower_irql(irql);
 	TRACEEXIT3(return);
 }
