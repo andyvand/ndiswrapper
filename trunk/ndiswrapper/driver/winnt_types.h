@@ -353,10 +353,8 @@ struct wait_block {
 	USHORT wait_type;
 };
 
-struct dispatch_header {
+struct dispatcher_header {
 	UCHAR type;
-	/* 'absolute' field is used by ndiswrapper differently - to
-	 * store type of object this header is associated with */
 	UCHAR absolute;
 	UCHAR size;
 	UCHAR inserted;
@@ -364,17 +362,33 @@ struct dispatch_header {
 	struct nt_list wait_blocks;
 };
 
-/* type of object a dh is associated with */
-enum dh_type {
-	DH_NONE, DH_NT_EVENT, DH_NT_TIMER, DH_NT_MUTEX, DH_NT_SEMAPHORE,
-	DH_NT_THREAD,
+enum event_type {
+	NotificationEvent,
+	SynchronizationEvent,
 };
 
-/* objects that use dispatch_header have it as the first field, so
- * whenever we need to initialize dispatch_header, we can convert that
- * object into a nt_event and access dispatch_header */
+enum timer_type {
+	NotificationTimer = NotificationEvent,
+	SynchronizationTimer = SynchronizationEvent,
+};
+
+enum dh_type {
+	NotificationObject = NotificationEvent,
+	SynchronizationObject = SynchronizationEvent,
+	MutexObject,
+	SemaphoreObject,
+	ThreadObject,
+};
+
+enum wait_type {
+	WaitAll, WaitAny
+};
+
+/* objects that use dispatcher_header have it as the first field, so
+ * whenever we need to initialize dispatcher_header, we can convert
+ * that object into a nt_event and access dispatcher_header */
 struct nt_event {
-	struct dispatch_header dh;
+	struct dispatcher_header dh;
 };
 
 struct wrap_timer;
@@ -382,7 +396,7 @@ struct wrap_timer;
 #define WRAP_TIMER_MAGIC 47697249
 
 struct nt_timer {
-	struct dispatch_header dh;
+	struct dispatcher_header dh;
 	/* We can't fit Linux timer in this structure. Instead of
 	 * padding the nt_timer structure, we replace due_time field
 	 * with *wrap_timer and allocate memory for it when nt_timer is
@@ -400,7 +414,7 @@ struct nt_timer {
 };
 
 struct nt_mutex {
-	struct dispatch_header dh;
+	struct dispatcher_header dh;
 	struct nt_list list;
 	struct task_struct *owner_thread;
 	BOOLEAN abandoned;
@@ -408,13 +422,13 @@ struct nt_mutex {
 };
 
 struct nt_semaphore {
-	struct dispatch_header dh;
+	struct dispatcher_header dh;
 	LONG limit;
 };
 
 //#pragma pack(push,1)
 struct nt_thread {
-	struct dispatch_header dh;
+	struct dispatcher_header dh;
 	/* the rest in Windows is a long structure; since this
 	 * structure is opaque to drivers, we just define what we
 	 * need */
@@ -425,12 +439,10 @@ struct nt_thread {
 };
 //#pragma pack(pop)
 
-#define set_dh_type(dh, type)		((dh)->absolute = (type))
-#define is_nt_event_dh(dh)		((dh)->absolute == DH_NT_VENT)
-#define is_nt_timer_dh(dh)		((dh)->absolute == DH_NT_TIMER)
-#define is_mutex_dh(dh)			((dh)->absolute == DH_NT_MUTEX)
-#define is_semaphore_dh(dh)		((dh)->absolute == DH_NT_SEMAPHORE)
-#define is_nt_thread_dh(dh)		((dh)->absolute == DH_NT_THREAD)
+#define set_dh_type(dh, type)		((dh)->type = (type))
+#define is_mutex_dh(dh)			((dh)->type == MutexObject)
+#define is_semaphore_dh(dh)		((dh)->type == SemaphoreObject)
+#define is_nt_thread_dh(dh)		((dh)->type == ThreadObject)
 
 #define IO_TYPE_ADAPTER				1
 #define IO_TYPE_CONTROLLER			2
@@ -1177,18 +1189,6 @@ struct io_workitem {
 struct io_workitem_entry {
 	struct nt_list list;
 	struct io_workitem *io_workitem;
-};
-
-enum event_type {
-	NotificationEvent, SynchronizationEvent
-};
-
-enum timer_type {
-	NotificationTimer, SynchronizationTimer
-};
-
-enum wait_type {
-	WaitAll, WaitAny
 };
 
 enum mm_page_priority {
