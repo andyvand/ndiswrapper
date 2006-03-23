@@ -806,7 +806,7 @@ STDCALL NTSTATUS WRAP_EXPORT(RtlQueryRegistryValues)
 	static int i = 0;
 
 	TRACEENTER3("%x, %p", relative, tbl);
-	UNIMPL();
+//	UNIMPL();
 
 	RtlInitUnicodeString(&unicode, path);
 	if (RtlUnicodeStringToAnsiString(&ansi, &unicode, TRUE) ==

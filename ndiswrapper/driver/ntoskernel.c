@@ -258,7 +258,7 @@ void ntoskernel_exit(void)
 		kfree(object);
 	}
 
-	DBGTRACE2("freeing thread event wqs");
+	DBGTRACE2("freeing thread event pool");
 	while (thread_event_wait_pool) {
 		struct thread_event_wait *next;
 		next = thread_event_wait_pool->next;
@@ -1305,7 +1305,8 @@ static void wakeup_threads(struct dispatch_header *dh)
 
 	nt_list_for_each_safe(cur, next, &dh->wait_blocks) {
 		wb = container_of(cur, struct wait_block, list);
-		EVENTTRACE("%p: wait block: %p, thread: %p", dh, wb, wb->thread);
+		EVENTTRACE("%p: wait block: %p, thread: %p",
+			   dh, wb, wb->thread);
 		assert(wb->thread != NULL);
 		assert(wb->object == NULL);
 		if (wb->thread &&
@@ -1327,8 +1328,7 @@ static void wakeup_threads(struct dispatch_header *dh)
 
 /* We need workqueue to implement KeWaitFor routines
  * below. (get/put)_thread_event_wait give/take back a workqueue. Both
- * these are called holding dispatcher spinlock, so no need for
- * locking here */
+ * these are called holding dispatcher spinlock, so no locking here */
 static struct thread_event_wait *get_thread_event_wait(void)
 {
 	struct thread_event_wait *thread_event_wait;
@@ -2593,7 +2593,7 @@ NOREGPARM ULONG WRAP_EXPORT(DbgPrint)
 {
 #ifdef DEBUG
 	va_list args;
-	static char buf[1024];
+	static char buf[100];
 
 	va_start(args, format);
 	vsnprintf(buf, sizeof(buf), format, args);
