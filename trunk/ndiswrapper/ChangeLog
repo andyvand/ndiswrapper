@@ -4,6 +4,8 @@ Version 1.11 2006-XX-XX
   WUSB54GSv2, all based on Broadcom chip). These support WPA2, whereas
   older RNDIS cards support only WPA.
 * Kernel crash when removing USB cards fixed.
+* Fixed performance issues with SMP.
+* Added support for AMD Am1772.
 
 Version 1.10 2006-02-11
 ======================
