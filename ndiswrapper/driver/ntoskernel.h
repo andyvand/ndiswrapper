@@ -416,6 +416,14 @@ do {									\
 #endif
 #endif
 
+#ifndef NETDEV_TX_OK
+#define NETDEV_TX_OK 0
+#endif
+
+#ifndef NETDEV_TX_BUSY
+#define NETDEV_TX_BUSY 1
+#endif
+
 /* this ugly hack is to handle RH kernels; I don't know any better,
  * but this has to be fixed soon */
 #ifndef rt_task
