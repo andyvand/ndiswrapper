@@ -34,8 +34,11 @@ static NT_SPIN_LOCK ndis_work_list_lock;
 /* ndis_init is called once when module is loaded */
 int ndis_init(void)
 {
+#ifdef USE_OWN_WORKQUEUE
 	ndis_wq = create_singlethread_workqueue("ndis_wq");
-
+#else
+	ndis_wq = NULL;
+#endif
 	InitializeListHead(&ndis_worker_list);
 	nt_spin_lock_init(&ndis_work_list_lock);
 	INIT_WORK(&ndis_work, ndis_worker, NULL);
@@ -46,7 +49,9 @@ int ndis_init(void)
 /* ndis_exit is called once when module is removed */
 void ndis_exit(void)
 {
+#ifdef USE_OWN_WORKQUEUE
 	destroy_workqueue(ndis_wq);
+#endif
 	TRACEEXIT1(return);
 }
 
