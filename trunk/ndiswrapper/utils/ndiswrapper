@@ -32,6 +32,7 @@ my %strings;
 my %version;
 my $driver_name;
 my $confdir = "/etc/ndiswrapper";
+my $udevconf = "/etc/ndiswrapper/ndiswrapper";
 my $instdir;
 my %fuzzlist;
 # bustype is either PCI or USB, whereas BusType used in INF file can
@@ -62,7 +63,7 @@ if (`uname -r` =~ /(\d+)\.(\d+)\.(\d+)/) {
 	    $modconf = "/etc/modprobe.conf" 
 	}
     } else {
-	if(-d "/etc/modutils") {
+	if (-d "/etc/modutils") {
 	    $modconf = "/etc/modutils/ndiswrapper";
 	} else {
 	    $modconf = "/etc/modules.conf";
@@ -85,6 +86,8 @@ if($ARGV[0] eq "-i" and @ARGV == 2) {
     printf "utils "; system("/sbin/loadndisdriver -v");
     printf "driver "; system("modinfo ndiswrapper | grep -E '^version|^vermagic'");
     $res = 0;
+} elsif($ARGV[0] eq "-udev" and @ARGV == 1) {
+    $res = genudev();
 } else {
     usage();
     exit();
@@ -100,6 +103,7 @@ sub usage {
 	"-e driver         Remove 'driver'\n" .
 	"-l                List installed drivers\n" .
 	"-m                Write configuration for modprobe\n" .
+	"-udev             Write configuration for udev\n" .
 	"\n\nwhere 'devid' is either PCIID or USBID of the form XXXX:XXXX\n";
 }
 
@@ -191,6 +195,67 @@ sub devid_driver {
 	print "Driver '$driver' is not installed properly!\n";
     }
     return;
+}
+
+sub genudev {
+    my $vendor, $device, $subvendor, $subdevice, $bustype, $busid;
+    my $line;
+
+    open(MODPROBE, "modprobe -c|");
+
+    if (!open(CONF, ">$udevconf")) {
+	print "Unable to create hotplug modules configuration file " .
+	  "$udevconf\n";
+	return -1;
+    }
+
+    open(LS, "ls -1 $confdir|");
+    while (my $driver = <LS>) {
+	chomp($driver);
+	my $mode = (stat("$confdir/$driver"))[2];
+	if (S_ISDIR($mode)) {
+	    open(LS2, "ls -1 $confdir/$driver/ |");
+	    while (my $file = <LS2>) {
+		chomp ($file);
+		my $line = $file;
+		if ($file =~ s/.conf//) {
+		    if ($file =~ /(.{4}):(.{4}):(.{4}):(.{4})\.([05F])/) {
+			$vendor = $1;
+			$device = $2;
+			$subvendor = "0000$3";
+			$subdevice = "0000$4";
+			$busid = "$5";
+		    } elsif($file =~ /(.{4}):(.{4})\.([05F])/) {
+			$vendor = $1;
+			$device = $2;
+			$subvendor = "*";
+			$subdevice = "*";
+			$busid = "$3";
+		    }
+		    if ($busid eq "0" or $busid eq "F") {
+			printf CONF "alias usb:v%sp%sd*dc*dsc*dp*ic*isc*ip*",
+			  $vendor, $device;
+		    } elsif ($busid eq "5") {
+			printf CONF "alias pci:v0000%sd0000%ssv%ssd%sbc*sc*i*",
+			  $vendor, $device, $subvendor, $subdevice;
+		    } else {
+			print stderr "wrong bustype ($busid) for " .
+			  "configuration file $line - ignoring it\n";
+			next;
+		    }
+		    printf CONF " ndiswrapper\n";
+		}
+	    }
+	    close(LS2);
+	}
+    }
+
+    close(CONF);
+    close(LS);
+    if (-x "/sbin/update-modules") {
+	system("/sbin/update-modules");
+    }
+    return 0;
 }
 
 sub list {
