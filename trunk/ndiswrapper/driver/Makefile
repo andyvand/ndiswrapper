@@ -7,12 +7,17 @@ DISTFILES=divdi3.c hal.c iw_ndis.c iw_ndis.h loader.c loader.h \
 		winnt_types.h wrapper.c wrapndis.h wrapndis.c x86_64_stubs.S
 
 KVERS ?= $(shell uname -r)
-KSRC  ?= /lib/modules/$(KVERS)/source
-KBUILD  ?= /lib/modules/$(KVERS)/build
+KPSUB := $(shell echo $(KVERS) | sed -e 's/\([^\.]*\)\.\([^\.]*\)\..*/\1\2/')
 
 # distros use different paths for kernel include files
 
-KPSUB := $(shell echo $(KVERS) | sed -e 's/\([^\.]*\)\.\([^\.]*\)\..*/\1\2/')
+KBUILD  ?= /lib/modules/$(KVERS)/build
+KSRC ?= $(shell if \
+	[ -f /lib/modules/$(KVERS)/source/include/linux/kernel.h ]; then \
+		echo /lib/modules/$(KVERS)/source ; \
+	else \
+		echo $(KBUILD); \
+	fi)
 
 DESTDIR =
 INST_DIR := $(DESTDIR)/lib/modules/$(KVERS)/misc
