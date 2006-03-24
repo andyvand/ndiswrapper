@@ -32,7 +32,7 @@ my %strings;
 my %version;
 my $driver_name;
 my $confdir = "/etc/ndiswrapper";
-my $udevconf = "/etc/ndiswrapper/ndiswrapper";
+my $modaliasconf = "/etc/modprobe.d/ndiswrapper";
 my $instdir;
 my %fuzzlist;
 # bustype is either PCI or USB, whereas BusType used in INF file can
@@ -86,8 +86,8 @@ if($ARGV[0] eq "-i" and @ARGV == 2) {
     printf "utils "; system("/sbin/loadndisdriver -v");
     printf "driver "; system("modinfo ndiswrapper | grep -E '^version|^vermagic'");
     $res = 0;
-} elsif($ARGV[0] eq "-udev" and @ARGV == 1) {
-    $res = genudev();
+} elsif($ARGV[0] eq "-a" and @ARGV == 1) {
+    $res = genmodalias();
 } else {
     usage();
     exit();
@@ -103,7 +103,7 @@ sub usage {
 	"-e driver         Remove 'driver'\n" .
 	"-l                List installed drivers\n" .
 	"-m                Write configuration for modprobe\n" .
-	"-udev             Write configuration for udev\n" .
+	"-a                Write module alias configuration file\n" .
 	"\n\nwhere 'devid' is either PCIID or USBID of the form XXXX:XXXX\n";
 }
 
@@ -197,15 +197,12 @@ sub devid_driver {
     return;
 }
 
-sub genudev {
+sub genmodalias {
     my $vendor, $device, $subvendor, $subdevice, $bustype, $busid;
     my $line;
 
-    open(MODPROBE, "modprobe -c|");
-
-    if (!open(CONF, ">$udevconf")) {
-	print "Unable to create hotplug modules configuration file " .
-	  "$udevconf\n";
+    if (!open(CONF, "| sort >$modaliasconf")) {
+	print "Unable to create modules alias file $modaliasconf\n";
 	return -1;
     }
 
