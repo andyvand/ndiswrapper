@@ -11,11 +11,6 @@ KSRC  ?= /lib/modules/$(KVERS)/source
 KBUILD  ?= /lib/modules/$(KVERS)/build
 
 # distros use different paths for kernel include files
-KINC ?= $(shell if [ -f $(KBUILD)/include/linux/module.h ]; then \
-			echo $(KBUILD)/include; \
-		 else \
-		 	 echo $(KSRC)/include; \
-		 fi)
 
 KPSUB := $(shell echo $(KVERS) | sed -e 's/\([^\.]*\)\.\([^\.]*\)\..*/\1\2/')
 
@@ -26,13 +21,13 @@ SRC_DIR=$(shell pwd)
 
 -include $(KBUILD)/.config
 
-CFLAGS += $(shell [ -f $(KINC)/linux/modversions.h ] && \
+CFLAGS += $(shell [ -f $(KSRC)/include/linux/modversions.h ] && \
 		  echo -DEXPORT_SYMTAB -DMODVERSIONS \
-		  -include $(KINC)/linux/modversions.h)
+		  -include $(KSRC)/include/linux/modversions.h)
 
 ifndef DISABLE_USB
 CFLAGS += $(shell if grep -q 'struct module \*owner;' \
-		   $(KINC)/linux/usb.h ; then \
+		   $(KSRC)/include/linux/usb.h ; then \
 			echo -DUSB_DRIVER_OWNER; \
 		  fi)
 endif
@@ -199,12 +194,18 @@ gen_exports: ndis_exports.h hal_exports.h ntoskernel_exports.h \
 endif
 
 prereq_check:
-	@ if [ ! -f $(KINC)/linux/version.h ]; then \
-		echo "Can't find kernel sources in $(KBUILD);"; \
-		echo "  give the path to kernel sources with KBUILD=<path>\
-		       argument to make";\
+	@ if [ ! -f $(KBUILD)/include/linux/version.h ]; then \
+		echo "Can't find kernel build files in $(KBUILD);"; \
+		echo "  give the path to kernel build directory with " ; \
+		echo "  KBUILD=<path> argument to make";\
 		exit 1;\
 	  fi
+	@ if [ ! -f $(KSRC)/include/linux/kernel.h ]; then \
+		echo "Can't find kernel source files in $(KSRC);"; \
+		echo "  give the path to kernel sources directory with " ; \
+		echo "  KSRC=<path> argument to make";\
+		exit 1;\
+	fi
 
 clean:
 	rm -rf $(MODULE) ndiswrapper.o $(OBJS) usb.o x86_64_stubs.o \
@@ -215,7 +216,7 @@ distclean: clean
 
 ifeq ($(KPSUB),24)
 MODULE := ndiswrapper.o
-CFLAGS  += -DLINUX -D__KERNEL__ -DMODULE -I$(KINC) \
+CFLAGS  += -DLINUX -D__KERNEL__ -DMODULE -I$(KSRC) \
 		  -Wall -Wstrict-prototypes -fomit-frame-pointer    \
 		  -fno-strict-aliasing -pipe -O2
 
