@@ -104,6 +104,7 @@ sub usage {
 	"-l                List installed drivers\n" .
 	"-m                Write configuration for modprobe\n" .
 	"-a                Write module alias configuration file\n" .
+	"-v                Report version information\n" .
 	"\n\nwhere 'devid' is either PCIID or USBID of the form XXXX:XXXX\n";
 }
 
