@@ -32,7 +32,6 @@ my %strings;
 my %version;
 my $driver_name;
 my $confdir = "/etc/ndiswrapper";
-my $modaliasconf = "/etc/modprobe.d/ndiswrapper";
 my $instdir;
 my %fuzzlist;
 # bustype is either PCI or USB, whereas BusType used in INF file can
@@ -202,6 +201,14 @@ sub genmodalias {
     my $vendor, $device, $subvendor, $subdevice, $bustype, $busid;
     my $line;
 
+    my $modaliasconf;
+    if (-d "/etc/modprobe.d") {
+	$modaliasconf = "/etc/modprobe.d/ndiswrapper";
+    } elsif (-d "/etc/modules.d") {
+	$modaliasconf = "/etc/modules.d/ndiswrapper";
+    } else {
+	$modaliasconf = "/etc/ndiswrapper/ndiswrapper";
+    }
     if (!open(CONF, "| sort >$modaliasconf")) {
 	print "Unable to create modules alias file $modaliasconf\n";
 	return -1;
@@ -253,6 +260,8 @@ sub genmodalias {
     if (-x "/sbin/update-modules") {
 	system("/sbin/update-modules");
     }
+    print "Module alias information is stored in $modaliasconf;\n";
+    print "copy it to where udev expects it and configure udev.\n";
     return 0;
 }
 
