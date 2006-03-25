@@ -69,7 +69,8 @@ static void module_cleanup(void)
 #endif
 
 #ifdef USE_OWN_WORKQUEUE
-	destroy_workqueue(wrap_wq);
+	if (wrap_wq)
+		destroy_workqueue(wrap_wq);
 #endif
 	wrap_procfs_remove();
 	ndis_exit();
