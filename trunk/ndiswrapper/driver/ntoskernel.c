@@ -1398,13 +1398,13 @@ STDCALL NTSTATUS WRAP_EXPORT(KeWaitForMultipleObjects)
 	/* TODO: should we allow threads to wait in non-alertable state? */
 	alertable = TRUE;
 	irql = nt_spin_lock_irql(&dispatcher_lock, DISPATCH_LEVEL);
-	/* In the case of WaitAny, if an object can be grabbed (object
-	 * is in signaled state), grab and return. In the case of
-	 * WaitAll, we have to first make sure all objects can be
-	 * grabbed. If any/some of them can't be grabbed, either we
-	 * return STATUS_TIMEOUT or wait for them, depending on how to
-	 * satisfy wait. If all of them can be grabbed, we will grab
-	 * them in the next loop below */
+	/* If *timeout == 0: In the case of WaitAny, if an object can
+	 * be grabbed (object is in signaled state), grab and
+	 * return. In the case of WaitAll, we have to first make sure
+	 * all objects can be grabbed. If any/some of them can't be
+	 * grabbed, either we return STATUS_TIMEOUT or wait for them,
+	 * depending on how to satisfy wait. If all of them can be
+	 * grabbed, we will grab them in the next loop below */
 
 	for (i = wait_count = 0; i < count; i++) {
 		dh = object[i];
@@ -1603,9 +1603,12 @@ STDCALL LONG WRAP_EXPORT(KeSetEvent)
 	nt_event->dh.signal_state = 1;
 	if (old_state == 0)
 		wakeup_threads(&nt_event->dh);
-	/* Am1772 driver expects synchronization event to wake up any
-	 * pending threads, but if there are none, the event should be
-	 * reset. DDK is not clear about this. */
+	/* Synchronization objects are auto-reset - they don't stay
+	 * signalled. The DDK says they are reset after waking up one
+	 * thread. However, it is not clear if they should be reset if
+	 * there are no threads waiting. Am1772 driver expects that
+	 * they are reset (and not stay signalled) if no thread is
+	 * waiting */
 	if (nt_event->dh.type == SynchronizationObject)
 		nt_event->dh.signal_state = 0;
 	nt_spin_unlock_irql(&dispatcher_lock, irql);
