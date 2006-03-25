@@ -1016,6 +1016,11 @@ static inline struct nt_slist *PopEntrySList(nt_slist_header *head,
 
 #else
 
+#ifndef ll_low
+#define ll_low(x) *(((unsigned int *)&(x)) + 0)
+#define ll_high(x) *(((unsigned int *)&(x)) + 1)
+#endif
+
 static inline unsigned long long cmpxchg8b(volatile void *ptr,
 					   unsigned long long old,
 					   unsigned long long new)
