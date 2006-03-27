@@ -1923,6 +1923,7 @@ STDCALL void WRAP_EXPORT(NdisMIndicateStatus)
 		if (wnd->link_status != 0) {
 			wnd->link_status = 0;
 			set_bit(LINK_STATUS_CHANGED, &wnd->wrap_ndis_work);
+			schedule_wrap_work(&wnd->wrap_ndis_worker);
 		}
 		wnd->link_status = 0;
 		wnd->tx_ok = 0;
@@ -1931,6 +1932,7 @@ STDCALL void WRAP_EXPORT(NdisMIndicateStatus)
 		if (wnd->link_status != 1) {
 			wnd->link_status = 1;
 			set_bit(LINK_STATUS_CHANGED, &wnd->wrap_ndis_work);
+			schedule_wrap_work(&wnd->wrap_ndis_worker);
 		}
 		wnd->link_status = 1;
 		wnd->tx_ok = 1;

@@ -2193,7 +2193,7 @@ static int wpa_associate(struct net_device *dev, struct iw_request_info *info,
 	/* set ssid */
 	if (set_essid(wnd, ssid, wpa_assoc_info.ssid_len))
 		TRACEEXIT2(return -1);
-
+//	sleep_hz(HZ / 4);
 	TRACEEXIT2(return 0);
 }
 
