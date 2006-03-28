@@ -1356,7 +1356,7 @@ static NDIS_STATUS ndis_start_device(struct wrap_ndis_device *wnd)
 	struct net_device *net_dev;
 	NDIS_STATUS ndis_status;
 	mac_address mac;
-	char buf[256];
+	char buf[64];
 
 	ndis_status = miniport_init(wnd);
 	if (ndis_status == NDIS_STATUS_NOT_RECOGNIZED)
@@ -1382,6 +1382,8 @@ static NDIS_STATUS ndis_start_device(struct wrap_ndis_device *wnd)
 	}
 	DBGTRACE1("mac:" MACSTR, MAC2STR(mac));
 	memcpy(&net_dev->dev_addr, mac, ETH_ALEN);
+
+	check_capa(wnd);
 
 	net_dev->open = ndis_open;
 	net_dev->hard_start_xmit = tx_skbuff;
@@ -1413,11 +1415,11 @@ static NDIS_STATUS ndis_start_device(struct wrap_ndis_device *wnd)
 	if (ndis_status == NDIS_STATUS_SUCCESS)
 		printk(KERN_INFO "%s: vendor: '%s'\n", net_dev->name, buf);
 
-	printk(KERN_INFO "%s: %s ethernet device " MACSTR " using driver %s,"
+	printk(KERN_INFO "%s: %s ethernet device " MACSTR " using %sdriver %s,"
 	       " %s\n", net_dev->name, DRIVER_NAME, MAC2STR(net_dev->dev_addr),
+	       test_bit(ATTR_SERIALIZZED, &wnd->attributes) ? "serialized " : "",
 	       wnd->wd->driver->name, wnd->wd->conf_file_name);
 
-	check_capa(wnd);
 	DBGTRACE1("capbilities = %ld", wnd->capa.encr);
 	printk(KERN_INFO "%s: encryption modes supported: %s%s%s%s%s%s%s\n",
 	       net_dev->name,
