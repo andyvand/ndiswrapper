@@ -1919,23 +1919,21 @@ STDCALL void WRAP_EXPORT(NdisMIndicateStatus)
 
 	TRACEENTER2("status=0x%x len=%d", status, len);
 	switch (status) {
-	case  NDIS_STATUS_MEDIA_DISCONNECT:
+	case NDIS_STATUS_MEDIA_DISCONNECT:
 		if (wnd->link_status != 0) {
 			wnd->link_status = 0;
+			wnd->tx_ok = 0;
 			set_bit(LINK_STATUS_CHANGED, &wnd->wrap_ndis_work);
 			schedule_wrap_work(&wnd->wrap_ndis_worker);
 		}
-		wnd->link_status = 0;
-		wnd->tx_ok = 0;
 		break;
 	case NDIS_STATUS_MEDIA_CONNECT:
 		if (wnd->link_status != 1) {
 			wnd->link_status = 1;
+			wnd->tx_ok = 1;
 			set_bit(LINK_STATUS_CHANGED, &wnd->wrap_ndis_work);
 			schedule_wrap_work(&wnd->wrap_ndis_worker);
 		}
-		wnd->link_status = 1;
-		wnd->tx_ok = 1;
 		break;
 	case NDIS_STATUS_MEDIA_SPECIFIC_INDICATION:
 		if (!buf)
