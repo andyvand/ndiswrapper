@@ -221,7 +221,7 @@ distclean: clean
 
 ifeq ($(KPSUB),24)
 MODULE := ndiswrapper.o
-CFLAGS  += -DLINUX -D__KERNEL__ -DMODULE -I$(KSRC) \
+CFLAGS  += -DLINUX -D__KERNEL__ -DMODULE -I$(KSRC)/include \
 		  -Wall -Wstrict-prototypes -fomit-frame-pointer    \
 		  -fno-strict-aliasing -pipe -O2
 
