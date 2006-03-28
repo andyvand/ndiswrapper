@@ -2143,8 +2143,10 @@ static int wpa_associate(struct net_device *dev, struct iw_request_info *info,
 	case CIPHER_NONE:
 		if (wpa_assoc_info.group_suite == CIPHER_CCMP)
 			encr_mode = Ndis802_11Encryption3Enabled;
-		else
+		else if (wpa_assoc_info.group_suite == CIPHER_TKIP)
 			encr_mode = Ndis802_11Encryption2Enabled;
+		else
+			encr_mode = Ndis802_11EncryptionDisabled;
 		break;
 	default:
 		encr_mode = Ndis802_11EncryptionDisabled;

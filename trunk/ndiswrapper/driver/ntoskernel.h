@@ -1212,10 +1212,10 @@ do {									\
 #define DUMP_IRP(__irp) do { } while (0)
 #endif
 
-#define sleep_sec(n)					\
+#define sleep_hz(n)					\
 do {							\
 	set_current_state(TASK_INTERRUPTIBLE);		\
-	schedule_timeout(n * HZ);			\
+	schedule_timeout(n);				\
 } while (0)
 
 #endif // _NTOSKERNEL_H_
