@@ -73,37 +73,53 @@ struct ndis_assoc_info {
 	ULONG offset_resp_ies;
 };
 
-struct packed ndis_configuration {
+struct ndis_configuration_fh {
+	ULONG length;
+	ULONG hop_pattern;
+	ULONG hop_set;
+	ULONG dwell_time;
+};
+
+struct ndis_configuration {
 	ULONG length;
 	ULONG beacon_period;
 	ULONG atim_window;
 	ULONG ds_config;
-	struct ndis_configuration_fh {
-		ULONG length;
-		ULONG hop_pattern;
-		ULONG hop_set;
-		ULONG dwell_time;
-	} fh_config;
+	struct ndis_configuration_fh fh_config;
 };
 
-struct ndis_ssid_item {
+struct ndis_wlan_bssid {
 	ULONG length;
 	mac_address mac;
 	UCHAR reserved[2];
 	struct ndis_essid ssid;
 	ULONG privacy;
-	LONG rssi;
+	ndis_rssi rssi;
 	UINT net_type;
 	struct ndis_configuration config;
 	UINT mode;
 	ndis_rates rates;
+};
+
+struct ndis_wlan_bssid_ex {
+	ULONG length;
+	mac_address mac;
+	UCHAR reserved[2];
+	struct ndis_essid ssid;
+	ULONG privacy;
+	ndis_rssi rssi;
+	UINT net_type;
+	struct ndis_configuration config;
+	UINT mode;
+	ndis_rates_ex rates_ex;
 	ULONG ie_length;
 	UCHAR ies[1];
 };
 
+/* we use bssid_list as bssid_list_ex also */
 struct ndis_bssid_list {
 	ULONG num_items;
-	struct ndis_ssid_item items[1];
+	struct ndis_wlan_bssid bssid[1];
 };
 
 enum ndis_priv_filter {
