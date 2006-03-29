@@ -481,16 +481,22 @@ static int iw_set_bitrate(struct net_device *dev, struct iw_request_info *info,
 			  union iwreq_data *wrqu, char *extra)
 {
 	struct wrap_ndis_device *wnd = netdev_priv(dev);
-	int i;
+	int i, n;
 	NDIS_STATUS res;
-	ndis_rates rates;
+	ndis_rates_ex rates_ex;
 
 	TRACEENTER2("");
 	if (wrqu->bitrate.fixed == 0)
 		TRACEEXIT2(return 0);
 
 	res = miniport_query_info(wnd, OID_802_11_SUPPORTED_RATES,
-				  &rates, sizeof(rates));
+				  &rates_ex, sizeof(ndis_rates_ex));
+	if (res) {
+		res = miniport_query_info(wnd, OID_802_11_SUPPORTED_RATES,
+					  &rates_ex, sizeof(ndis_rates));
+		n = NDIS_MAX_RATES;
+	} else
+		n = NDIS_MAX_RATES_EX;
 	if (res == NDIS_STATUS_FAILURE)
 		return -ENOTSUPP;
 
@@ -500,18 +506,22 @@ static int iw_set_bitrate(struct net_device *dev, struct iw_request_info *info,
 		TRACEEXIT2(return 0);
 	}
 
-	for (i = 0 ; i < NDIS_MAX_RATES_EX ; i++) {
-		if (rates[i] & 0x80)
+	for (i = 0 ; i < n ; i++) {
+		if (rates_ex[i] & 0x80)
 			continue;
-		if ((rates[i] & 0x7f) * 500000 > wrqu->bitrate.value) {
+		if ((rates_ex[i] & 0x7f) * 500000 > wrqu->bitrate.value) {
 			DBGTRACE2("setting rate %d to 0",
-				  (rates[i] & 0x7f) * 500000);
-			rates[i] = 0;
+				  (rates_ex[i] & 0x7f) * 500000);
+			rates_ex[i] = 0;
 		}
 	}
 
-	res = miniport_query_info(wnd, OID_802_11_DESIRED_RATES,
-				  &rates, sizeof(rates));
+	if (n == NDIS_MAX_RATES_EX)
+		res = miniport_set_info(wnd, OID_802_11_DESIRED_RATES,
+					&rates_ex, sizeof(ndis_rates_ex));
+	else
+		res = miniport_set_info(wnd, OID_802_11_DESIRED_RATES,
+					&rates_ex, sizeof(ndis_rates));
 	if (res == NDIS_STATUS_FAILURE)
 		return -ENOTSUPP;
 
@@ -1370,9 +1380,9 @@ static int iw_get_range(struct net_device *dev, struct iw_request_info *info,
 	struct iw_range *range = (struct iw_range *)extra;
 	struct iw_point *data = &wrqu->data;
 	struct wrap_ndis_device *wnd = netdev_priv(dev);
-	unsigned int i;
+	unsigned int i, n;
 	NDIS_STATUS res;
-	ndis_rates rates;
+	ndis_rates_ex rates_ex;
 	ndis_tx_power_level tx_power;
 
 	TRACEENTER2("");
@@ -1411,17 +1421,22 @@ static int iw_get_range(struct net_device *dev, struct iw_request_info *info,
 
 	range->num_bitrates = 0;
 	res = miniport_query_info(wnd, OID_802_11_SUPPORTED_RATES,
-				  &rates, sizeof(rates));
+				  &rates_ex, sizeof(ndis_rates_ex));
+	if (res) {
+		res = miniport_query_info(wnd, OID_802_11_SUPPORTED_RATES,
+					  &rates_ex, sizeof(ndis_rates));
+		n = NDIS_MAX_RATES;
+	} else
+		n = NDIS_MAX_RATES_EX;
 	if (res)
 		WARNING("getting bit rates failed: %08X", res);
 	else {
-		for (i = 0 ; i < NDIS_MAX_RATES_EX &&
-			     range->num_bitrates < IW_MAX_BITRATES ; i++)
-			if (rates[i] & 0x80)
+		for (i = 0; i < n && range->num_bitrates < IW_MAX_BITRATES; i++)
+			if (rates_ex[i] & 0x80)
 				continue;
-			else if (rates[i] & 0x7f) {
+			else if (rates_ex[i] & 0x7f) {
 				range->bitrate[range->num_bitrates] =
-					(rates[i] & 0x7f) * 500000;
+					(rates_ex[i] & 0x7f) * 500000;
 				range->num_bitrates++;
 			}
 	}
