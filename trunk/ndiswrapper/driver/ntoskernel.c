@@ -1541,10 +1541,7 @@ STDCALL NTSTATUS WRAP_EXPORT(KeWaitForMultipleObjects)
 						RemoveEntryList(&wb[j].list);
 				put_thread_event_wait(event_wait);
 				nt_spin_unlock_irql(&dispatcher_lock, irql);
-				if (count > 1)
-					EVENTEXIT(return STATUS_WAIT_0 + i);
-				else
-					EVENTEXIT(return STATUS_SUCCESS);
+				EVENTEXIT(return STATUS_WAIT_0 + i);
 			}
 		}
 		if (wait_count == 0) {

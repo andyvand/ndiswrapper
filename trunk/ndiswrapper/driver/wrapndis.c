@@ -1417,7 +1417,7 @@ static NDIS_STATUS ndis_start_device(struct wrap_ndis_device *wnd)
 
 	printk(KERN_INFO "%s: %s ethernet device " MACSTR " using %sdriver %s,"
 	       " %s\n", net_dev->name, DRIVER_NAME, MAC2STR(net_dev->dev_addr),
-	       test_bit(ATTR_SERIALIZZED, &wnd->attributes) ? "serialized " : "",
+	       test_bit(ATTR_SERIALIZED, &wnd->attributes) ? "serialized " : "",
 	       wnd->wd->driver->name, wnd->wd->conf_file_name);
 
 	DBGTRACE1("capbilities = %ld", wnd->capa.encr);
