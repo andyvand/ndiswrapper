@@ -2285,10 +2285,34 @@ static int wpa_set_auth_alg(struct net_device *dev,
 		mode = Ndis802_11AuthModeOpen;
 	else
 		TRACEEXIT2(return -1);
-
 	DBGTRACE2("%d", mode);
-
 	if (set_auth_mode(wnd, mode))
+		TRACEEXIT2(return -1);
+	TRACEEXIT2(return 0);
+}
+
+static int wpa_set_auth_mode(struct net_device *dev,
+			     struct iw_request_info *info,
+			     union iwreq_data *wrqu, char *extra)
+{
+	struct wrap_ndis_device *wnd = netdev_priv(dev);
+
+	DBGTRACE2("%d", wrqu->param.value);
+
+	if (set_auth_mode(wnd, wrqu->param.value))
+		TRACEEXIT2(return -1);
+	TRACEEXIT2(return 0);
+}
+
+static int wpa_set_encr_mode(struct net_device *dev,
+			     struct iw_request_info *info,
+			     union iwreq_data *wrqu, char *extra)
+{
+	struct wrap_ndis_device *wnd = netdev_priv(dev);
+
+	DBGTRACE2("%d", wrqu->param.value);
+
+	if (set_encr_mode(wnd, wrqu->param.value))
 		TRACEEXIT2(return -1);
 	TRACEEXIT2(return 0);
 }
@@ -2337,6 +2361,10 @@ static const struct iw_priv_args priv_args[] = {
 	 "set_priv_filter"},
 	{WPA_SET_AUTH_ALG, IW_PRIV_TYPE_INT | IW_PRIV_SIZE_FIXED | 1, 0,
 	 "auth_alg"},
+	{WPA_SET_ENCR_MODE, IW_PRIV_TYPE_INT | IW_PRIV_SIZE_FIXED | 1, 0,
+	 "encr_mode"},
+	{WPA_SET_AUTH_MODE, IW_PRIV_TYPE_INT | IW_PRIV_SIZE_FIXED | 1, 0,
+	 "auth_mode"},
 
 	{PRIV_RESET, 0, 0, "ndis_reset"},
 	{PRIV_POWER_PROFILE, IW_PRIV_TYPE_INT | IW_PRIV_SIZE_FIXED | 1, 0,
@@ -2360,6 +2388,8 @@ static const iw_handler priv_handler[] = {
 	[WPA_INIT 		- SIOCIWFIRSTPRIV] = wpa_init,
 	[WPA_DEINIT 		- SIOCIWFIRSTPRIV] = wpa_deinit,
 	[WPA_GET_CAPA 		- SIOCIWFIRSTPRIV] = wpa_get_capa,
+	[WPA_SET_ENCR_MODE 	- SIOCIWFIRSTPRIV] = wpa_set_encr_mode,
+	[WPA_SET_AUTH_MODE 	- SIOCIWFIRSTPRIV] = wpa_set_auth_mode,
 
 	[PRIV_RESET 		- SIOCIWFIRSTPRIV] = priv_reset,
 	[PRIV_POWER_PROFILE 	- SIOCIWFIRSTPRIV] = priv_power_profile,
