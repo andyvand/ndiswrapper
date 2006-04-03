@@ -109,15 +109,15 @@ static int __init wrapper_init(void)
 #endif
 		);
 
+#ifdef USE_OWN_WORKQUEUE
+	wrap_wq = create_singlethread_workqueue("wrap_wq");
+#endif
 	if (misc_funcs_init() || ntoskernel_init() || ndis_init()
 #ifdef CONFIG_USB
 	    || usb_init()
 #endif
 		)
 		goto err;
-#ifdef USE_OWN_WORKQUEUE
-	wrap_wq = create_singlethread_workqueue("wrap_wq");
-#endif
 	wrap_procfs_init();
 	if (loader_init())
 		goto err;

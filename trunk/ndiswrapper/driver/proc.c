@@ -123,7 +123,7 @@ static int procfs_read_ndis_encr(char *page, char **start, off_t off,
 			p += sprintf(p, "off");
 		p += sprintf(p, "\n");
 
-		p += sprintf(p, "status=%d\n", encr_status);
+		p += sprintf(p, "encr_mode=%d\n", encr_status);
 		p += sprintf(p, "auth_mode=%d\n", auth_mode);
 	}
 

@@ -228,6 +228,8 @@ STDCALL NTSTATUS pdoDispatchPower(struct device_object *pdo,
 #else
 				pci_restore_state(pdev, wd->pci.pci_state);
 #endif
+			} else { // usb device
+				wrap_resume_urbs(wd);
 			}
 		} else {
 			DBGTRACE2("suspending device %p", wd);
@@ -238,6 +240,8 @@ STDCALL NTSTATUS pdoDispatchPower(struct device_object *pdo,
 #else
 				pci_save_state(pdev, wd->pci.pci_state);
 #endif
+			} else { // usb device
+				wrap_suspend_urbs(wd);
 			}
 		}
 		status = STATUS_SUCCESS;
@@ -709,6 +713,18 @@ void *wrap_pnp_start_usb_device(struct usb_device *udev,
 		  usb_id->bDeviceProtocol, usb_id->bInterfaceClass,
 		  usb_id->bDeviceProtocol, usb_id->bInterfaceClass,
 		  usb_id->bInterfaceSubClass, wd->usb.intf);
+
+	/* TI 4150 needs a full reset */
+	if (usb_id->idVendor == 0x057c && usb_id->idProduct == 0x5601) {
+		if (xchg(&wd->usb.reset, 1) == 0) {
+			usb_set_intfdata(intf, NULL);
+			ret = usb_reset_device(interface_to_usbdev(intf));
+			if (ret) {
+				WARNING("reset failed: %d", ret);
+				return ret;
+			}
+		}
+	}
 	/* USB device may have multiple interfaces; initialize a
 	  device only once */
 	if (wd->usb.intf) {
@@ -782,7 +798,12 @@ int wrap_pnp_suspend_usb_device(struct usb_interface *intf, pm_message_t state)
 	if (!wd)
 		TRACEEXIT1(return -1);
 	pdo = wd->pdo;
-	return pnp_set_power_state(wd, PowerDeviceD3);
+	if (pnp_set_power_state(wd, PowerDeviceD3))
+		return -1;
+	else {
+		intf->dev.power.power_state.event = state.event;
+		return 0;
+	}
 }
 
 int wrap_pnp_resume_usb_device(struct usb_interface *intf)
@@ -791,7 +812,12 @@ int wrap_pnp_resume_usb_device(struct usb_interface *intf)
 	wd = usb_get_intfdata(intf);
 	if (!wd)
 		TRACEEXIT1(return -1);
-	return pnp_set_power_state(wd, PowerDeviceD0);
+	if (pnp_set_power_state(wd, PowerDeviceD0))
+		return -1;
+	else {
+		intf->dev.power.power_state.event = PM_EVENT_ON;
+		return 0;
+	}
 }
 #endif
 

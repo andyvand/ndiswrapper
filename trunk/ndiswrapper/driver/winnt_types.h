@@ -493,9 +493,19 @@ struct dev_obj_ext {
 };
 
 struct io_status_block {
+	union {
+		NTSTATUS status;
+		void *pointer;
+	};
+	ULONG_PTR info;
+};
+
+#ifdef CONFIG_X86_64
+struct io_status_block32 {
 	NTSTATUS status;
 	ULONG info;
 };
+#endif
 
 #define DEVICE_TYPE ULONG
 

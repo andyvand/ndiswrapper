@@ -802,8 +802,7 @@ static void link_status_handler(struct wrap_ndis_device *wnd)
 	unsigned char *assoc_info;
 	union iwreq_data wrqu;
 	NDIS_STATUS res;
-	const int assoc_size = sizeof(*ndis_assoc_info) + IW_CUSTOM_MAX;
-
+	const int assoc_size = sizeof(*ndis_assoc_info) + IW_CUSTOM_MAX + 32;
 	TRACEENTER2("link status: %d", wnd->link_status);
 	if (wnd->link_status == 0) {
 		memset(&wrqu, 0, sizeof(wrqu));
@@ -1454,7 +1453,6 @@ static NDIS_STATUS ndis_start_device(struct wrap_ndis_device *wnd)
 		 * below */
 		wnd->max_tx_packets = TX_RING_SIZE;
 	}
-
 	DBGTRACE1("maximum send packets: %d", wnd->max_tx_packets);
 	wnd->tx_array =
 		kmalloc(sizeof(struct ndis_packet *) * wnd->max_tx_packets,
@@ -1482,7 +1480,7 @@ static NDIS_STATUS ndis_start_device(struct wrap_ndis_device *wnd)
 	DBGTRACE1("pool: %p", wnd->tx_buffer_pool);
 	miniport_set_int(wnd, OID_802_11_NETWORK_TYPE_IN_USE,
 			 Ndis802_11Automode);
-//	miniport_set_int(wnd, OID_802_11_POWER_MODE, NDIS_POWER_OFF);
+	miniport_set_int(wnd, OID_802_11_POWER_MODE, NDIS_POWER_OFF);
 	/* check_capa changes auth_mode and encr_mode, so set them again */
 	set_infra_mode(wnd, Ndis802_11Infrastructure);
 	set_scan(wnd);
