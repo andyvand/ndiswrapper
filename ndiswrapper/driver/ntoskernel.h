@@ -586,6 +586,7 @@ struct wrap_device {
 			struct usb_interface *intf;
 			int num_alloc_urbs;
 			struct nt_list wrap_urb_list;
+			u8 reset;
 		} usb;
 	};
 	struct wrap_ndis_device *wnd;
@@ -605,6 +606,20 @@ extern struct workqueue_struct *wrap_wq;
 #define schedule_ndis_work(work_struct) schedule_work(work_struct)
 #define schedule_wrap_work(work_struct) schedule_work(work_struct)
 #endif
+
+/* Normally workqueue for ntos is not required, as worker entries in
+ * it are not supposed to wait; however, it helps to have separate
+ * workqueue so keyboard etc. work when kernel crashes */
+
+//#define USE_OWN_NTOS_WORKQUEUE 1
+
+#ifdef USE_OWN_NTOS_WORKQUEUE
+extern struct workqueue_struct *ntos_wq;
+#define schedule_ntos_work(work_struct) queue_work(ntos_wq, (work_struct))
+#else
+#define schedule_ntos_work(work_struct) schedule_work(work_struct)
+#endif
+
 
 int ntoskernel_init(void);
 void ntoskernel_exit(void);

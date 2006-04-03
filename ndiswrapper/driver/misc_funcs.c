@@ -545,70 +545,82 @@ STDCALL NTSTATUS WRAP_EXPORT(RtlAppendUnicodeStringToString)
 	TRACEEXIT2(return STATUS_SUCCESS);
 }
 
+STDCALL ULONG WRAP_EXPORT(RtlxAnsiStringToUnicodeSize)
+	(const struct ansi_string *string)
+{
+	int i;
+
+	for (i = 0; i < string->max_length && string->buf[i]; i++)
+		;
+	return (i * sizeof(wchar_t));
+}
+
+STDCALL ULONG WRAP_EXPORT(RtlxUnicodeStringToAnsiSize)
+	(const struct unicode_string *string)
+{
+	int i;
+
+	for (i = 0; i < string->max_length && string->buf[i]; i++)
+		;
+	return i;
+}
+
 STDCALL NTSTATUS WRAP_EXPORT(RtlAnsiStringToUnicodeString)
 	(struct unicode_string *dst, const struct ansi_string *src,
 	 BOOLEAN alloc)
 {
-	int i;
+	int i, n;
 
-	TRACEENTER2("src: length: %d max: %d, buf: %p, dst: %p, alloc: %d",
-		    src->length, src->max_length, src->buf, dst, alloc);
+	n = RtlxAnsiStringToUnicodeSize(src);
+	DBGTRACE2("%d, %d, %d, %d, %p", n, dst->max_length, src->length,
+		  src->max_length, src->buf);
 	if (alloc == TRUE) {
-		i = (src->max_length + 1) * sizeof(wchar_t);
-		dst->buf = ExAllocatePoolWithTag(NonPagedPool, i, 0);
+		dst->max_length = n + sizeof(dst->buf[0]);
+		dst->buf = ExAllocatePoolWithTag(NonPagedPool,
+						 dst->max_length, 0);
 		if (!dst->buf) {
 			dst->max_length = dst->length = 0;
 			TRACEEXIT2(return STATUS_NO_MEMORY);
 		}
-		dst->max_length = i;
-	} else if (dst->max_length < (src->max_length * sizeof(wchar_t)))
+	} else if (dst->max_length < n)
 		TRACEEXIT2(return STATUS_BUFFER_TOO_SMALL);
 
-	for (i = 0; i < src->max_length && src->buf[i]; i++)
+	dst->length = n;
+	n /= sizeof(wchar_t);
+	for (i = 0; i < n; i++)
 		dst->buf[i] = src->buf[i];
 	if (i * sizeof(wchar_t) < dst->max_length)
-		dst->buf[i++] = 0;
-	dst->length = i * sizeof(wchar_t);
-	DBGTRACE2("dst: length: %d, max_length: %d, buf: %p, string: %p",
-		  dst->length, dst->max_length, dst->buf, src->buf);
+		dst->buf[i] = 0;
+	DBGTRACE2("dst: length: %d, max_length: %d, string: %p",
+		  dst->length, dst->max_length, src->buf);
 	TRACEEXIT2(return STATUS_SUCCESS);
-}
-
-STDCALL ULONG WRAP_EXPORT(RtlxAnsiStringToUnicodeSize)
-	(const struct ansi_string *string)
-{
-	return (string->length + 1) * sizeof(wchar_t);
 }
 
 STDCALL NTSTATUS WRAP_EXPORT(RtlUnicodeStringToAnsiString)
 	(struct ansi_string *dst, const struct unicode_string *src,
 	 BOOLEAN alloc)
 {
-	int i;
+	int i, n;
 
-	TRACEENTER2("src: length: %d max: %d, buf: %p, dst: %p, alloc: %d",
-		    src->length, src->max_length, src->buf, dst, alloc);
-
-	DBGTRACE2("%d, %p, %d, %d", dst->max_length, dst->buf, dst->length,
-		  src->length / sizeof(wchar_t));
-
+	n = RtlxUnicodeStringToAnsiSize(src);
+	DBGTRACE2("%d, %d, %d, %d, %p", n, dst->max_length, src->length,
+		  src->max_length, src->buf);
 	if (alloc == TRUE) {
-		i = src->max_length / sizeof(wchar_t) + 1;
-		dst->buf = ExAllocatePoolWithTag(NonPagedPool, i, 0);
+		dst->max_length = n + sizeof(dst->buf[0]);
+		dst->buf = ExAllocatePoolWithTag(NonPagedPool,
+						 dst->max_length, 0);
 		if (!dst->buf) {
 			dst->max_length = dst->length = 0;
 			TRACEEXIT1(return STATUS_NO_MEMORY);
 		}
-		dst->max_length = i;
-	} else if (dst->max_length < (src->max_length / sizeof(wchar_t)))
-		TRACEEXIT1(return STATUS_BUFFER_TOO_SMALL);
+	} else if (dst->max_length < n)
+		TRACEEXIT2(return STATUS_BUFFER_TOO_SMALL);
 
-	dst->length = src->max_length / sizeof(wchar_t);
-	for (i = 0; i < dst->length && src->buf[i]; i++)
+	dst->length = n;
+	for (i = 0; i < n; i++)
 		dst->buf[i] = src->buf[i];
 	if (i < dst->max_length)
-		dst->buf[i++] = 0;
-	dst->length = i;
+		dst->buf[i] = 0;
 	DBGTRACE2("string: %p, len: %d(%d)", dst->buf, dst->length,
 		  dst->max_length);
 	TRACEEXIT2(return STATUS_SUCCESS);
@@ -737,7 +749,8 @@ STDCALL void WRAP_EXPORT(RtlInitUnicodeString)
 		while (src[i])
 			i++;
 		dst->buf = (wchar_t *)src;
-		dst->length = dst->max_length = i * sizeof(wchar_t);
+		dst->length = i * sizeof(wchar_t);
+		dst->max_length = (i + 1) * sizeof(wchar_t);
 	}
 	TRACEEXIT1(return);
 }
@@ -756,7 +769,8 @@ STDCALL void WRAP_EXPORT(RtlInitAnsiString)
 		while (src[i])
 			i++;
 		dst->buf = (char *)src;
-		dst->length = dst->max_length = i;
+		dst->length = i;
+		dst->max_length = i + 1;
 	}
 	DBGTRACE2("%p", dst->buf);
 	TRACEEXIT2(return);

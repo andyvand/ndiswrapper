@@ -255,11 +255,13 @@ static void wrap_free_urb(struct urb *urb)
 void wrap_suspend_urbs(struct wrap_device *wd)
 {
 	/* TODO: do we need to cancel urbs? */
+	USBTRACE("%p", wd);
 }
 
 void wrap_resume_urbs(struct wrap_device *wd)
 {
 	/* TODO: do we need to resubmit urbs? */
+	USBTRACE("%p", wd);
 }
 
 static struct urb *wrap_alloc_urb(struct irp *irp, unsigned int pipe,
@@ -710,17 +712,19 @@ static USBD_STATUS wrap_vendor_or_class_req(struct irp *irp)
 
 static USBD_STATUS wrap_reset_pipe(struct usb_device *udev, struct irp *irp)
 {
-	unsigned int pipe1, pipe2;
 	int ret;
 	union nt_urb *nt_urb;
 	usbd_pipe_handle pipe_handle;
+	unsigned int ep;
+	unsigned int pipe1, pipe2;
 	enum pipe_type pipe_type;
 
-	USBTRACE("irp = %p", irp);
 	nt_urb = URB_FROM_IRP(irp);
 	pipe_handle = nt_urb->pipe_req.pipe_handle;
-	pipe_type = pipe_handle->bmAttributes & USB_ENDPOINT_XFERTYPE_MASK;
+	ep = pipe_handle->bEndpointAddress;
+	USBTRACE("irp: %p, ep: 0x%x", irp, ep);
 	/* TODO: not clear if both directions should be cleared? */
+	pipe_type = pipe_handle->bmAttributes & USB_ENDPOINT_XFERTYPE_MASK;
 	if (pipe_type == USB_ENDPOINT_XFER_BULK) {
 		pipe1 = usb_rcvbulkpipe(udev, pipe_handle->bEndpointAddress);
 		pipe2 = usb_sndbulkpipe(udev, pipe_handle->bEndpointAddress);
@@ -728,9 +732,11 @@ static USBD_STATUS wrap_reset_pipe(struct usb_device *udev, struct irp *irp)
 		pipe1 = usb_rcvintpipe(udev, pipe_handle->bEndpointAddress);
 		/* no outgoing interrupt pipes */
 		pipe2 = pipe1;
+#if 0
 	} else if (pipe_type == USB_ENDPOINT_XFER_CONTROL) {
 		pipe1 = usb_rcvctrlpipe(udev, pipe_handle->bEndpointAddress);
 		pipe2 = usb_sndctrlpipe(udev, pipe_handle->bEndpointAddress);
+#endif
 	} else {
 		WARNING("invalid pipe type %d", pipe_type);
 		return USBD_STATUS_INVALID_PIPE_HANDLE;
@@ -1058,14 +1064,22 @@ static USBD_STATUS wrap_process_nt_urb(struct irp *irp)
 
 static USBD_STATUS wrap_reset_port(struct irp *irp)
 {
-	int ret;
+	int ret, lock;
 	struct wrap_device *wd;
 
 	wd = irp->wd;
 	USBENTER("%p, %p", wd, wd->usb.udev);
+	lock = usb_lock_device_for_reset(wd->usb.udev, wd->usb.intf);
+	if (lock < 0) {
+		WARNING("locking failed: %d", lock);
+		return wrap_urb_status(lock);
+	}
 	ret = usb_reset_device(wd->usb.udev);
 	if (ret < 0)
 		USBTRACE("reset failed: %d", ret);
+	/* TODO: should reconfigure? */
+	if (lock)
+		usb_unlock_device(wd->usb.udev);
 	return wrap_urb_status(ret);
 }
 

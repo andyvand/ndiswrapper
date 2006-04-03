@@ -39,13 +39,14 @@ struct wrap_mdl {
 struct thread_event_wait {
 	wait_queue_head_t wq_head;
 	BOOLEAN done;
+#ifdef EVENT_DEBUG
 	struct task_struct *task;
+#endif
 	struct thread_event_wait *next;
 };
 
 /* everything here is for all drivers/devices - not per driver/device */
 static NT_SPIN_LOCK dispatcher_lock;
-//static wait_queue_head_t dispatcher_event_wq;
 static struct thread_event_wait *thread_event_wait_pool;
 
 NT_SPIN_LOCK ntoskernel_lock;
@@ -100,6 +101,10 @@ WRAP_EXPORT_MAP("KeTickCount", &jiffies);
 
 WRAP_EXPORT_MAP("NlsMbCodePageTag", FALSE);
 
+#ifdef USE_OWN_NTOS_WORKQUEUE
+struct workqueue_struct *ntos_wq;
+#endif
+
 int ntoskernel_init(void)
 {
 	struct timeval now;
@@ -128,6 +133,10 @@ int ntoskernel_init(void)
 	wrap_ticks_to_boot += now.tv_usec * 10;
 	wrap_ticks_to_boot -= jiffies * TICKSPERSEC / HZ;
 	wrap_ticks_to_boot += TICKS_1601_TO_1970;
+
+#ifdef USE_OWN_NTOS_WORKQUEUE
+	ntos_wq = create_singlethread_workqueue("ntos_wq");
+#endif
 
 	if (add_bus_driver("PCI")
 #ifdef CONFIG_USB
@@ -271,6 +280,10 @@ void ntoskernel_exit(void)
 	free_all_objects();
 #if defined(CONFIG_X86_64)
 	del_timer_sync(&shared_data_timer);
+#endif
+#ifdef USE_OWN_NTOS_WORKQUEUE
+	if (ntos_wq)
+		destroy_workqueue(ntos_wq);
 #endif
 	TRACEEXIT2(return);
 }
@@ -903,7 +916,7 @@ static BOOLEAN queue_kdpc(struct kdpc *kdpc)
 	}
 	nt_spin_unlock_irql(&kdpc_list_lock, irql);
 	if (ret == TRUE)
-		schedule_work(&kdpc_work);
+		schedule_ntos_work(&kdpc_work);
 	TRACEEXIT5(return ret);
 }
 
@@ -966,8 +979,8 @@ static void ntos_work_item_worker(void *data)
 		ntos_work_item = container_of(cur, struct ntos_work_item,
 					      list);
 		func = ntos_work_item->func;
-		WORKTRACE("executing %p, %p, %p", func, ntos_work_item->arg1,
-			  ntos_work_item->arg2);
+		WORKTRACE("%p: executing %p, %p, %p", current, func,
+			  ntos_work_item->arg1, ntos_work_item->arg2);
 		if (ntos_work_item->win_func == TRUE)
 			LIN2WIN2(func, ntos_work_item->arg1,
 				 ntos_work_item->arg2);
@@ -997,7 +1010,7 @@ int schedule_ntos_work_item(NTOS_WORK_FUNC func, void *arg1, void *arg2,
 	irql = nt_spin_lock_irql(&ntos_work_item_list_lock, DISPATCH_LEVEL);
 	InsertTailList(&ntos_work_item_list, &ntos_work_item->list);
 	nt_spin_unlock_irql(&ntos_work_item_list_lock, irql);
-	schedule_work(&ntos_work_item_work);
+	schedule_ntos_work(&ntos_work_item_work);
 	WORKEXIT(return 0);
 }
 
@@ -1160,7 +1173,8 @@ STDCALL void WRAP_EXPORT(ExDeleteNPagedLookasideList)
 	TRACEENTER3("lookaside = %p", lookaside);
 	irql = raise_irql(DISPATCH_LEVEL);
 	while ((entry = ExpInterlockedPopEntrySList(&lookaside->head))) {
-		if (lookaside->free_func == WRAP_FUNC_PTR(ExFreePool))
+		if (lookaside->free_func == (LOOKASIDE_FREE_FUNC *)
+		    WRAP_FUNC_PTR(ExFreePool))
 			ExFreePool(entry);
 		else
 			LIN2WIN1(lookaside->free_func, entry);
@@ -1344,7 +1358,9 @@ static struct thread_event_wait *get_thread_event_wait(void)
 		EVENTTRACE("allocated wq: %p", thread_event_wait);
 		init_waitqueue_head(&thread_event_wait->wq_head);
 	}
+#ifdef EVENT_DEBUG
 	thread_event_wait->task = current;
+#endif
 	EVENTTRACE("%p, %p, %p", thread_event_wait, current,
 		   thread_event_wait_pool);
 	thread_event_wait->done = 0;
@@ -1354,15 +1370,15 @@ static struct thread_event_wait *get_thread_event_wait(void)
 static void put_thread_event_wait(struct thread_event_wait *thread_event_wait)
 {
 	EVENTENTER("%p, %p", thread_event_wait, current);
-	DBG_BLOCK(1) {
-		if (thread_event_wait->task != current)
-			ERROR("argh, task %p should be %p",
-			      current, thread_event_wait->task);
-	}
+#ifdef EVENT_DEBUG
+	if (thread_event_wait->task != current)
+		ERROR("argh, task %p should be %p",
+		      current, thread_event_wait->task);
+	thread_event_wait->task = NULL;
+#endif
 	thread_event_wait->next = thread_event_wait_pool;
 	thread_event_wait_pool = thread_event_wait;
 	thread_event_wait->done = 0;
-	thread_event_wait->task = NULL;
 }
 
 STDCALL NTSTATUS WRAP_EXPORT(KeWaitForMultipleObjects)
@@ -1493,9 +1509,11 @@ STDCALL NTSTATUS WRAP_EXPORT(KeWaitForMultipleObjects)
 			res = -ERESTARTSYS;
 		EVENTTRACE("%p woke up on %p, res = %d, done: %d", thread,
 			   event_wait, res, event_wait->done);
+#ifdef EVENT_DEBUG
 		if (event_wait->task != current)
 			ERROR("%p: argh, task %p should be %p", event_wait,
 			      event_wait->task, current);
+#endif
 //		assert(res < 0 && alertable);
 		if (res <= 0) {
 			/* timed out or interrupted; remove from wait list */
@@ -1928,7 +1946,8 @@ struct nt_thread *get_current_nt_thread(void)
 	}
 	nt_spin_unlock_irql(&ntoskernel_lock, irql);
 	if (ret == NULL)
-		WARNING("couldn't find thread for task %p", task);
+		DBGTRACE3("couldn't find thread for task %p, %d",
+			  task, current->pid);
 	DBGTRACE5("current thread = %p", ret);
 	return ret;
 }
