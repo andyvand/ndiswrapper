@@ -1,4 +1,17 @@
-Version 1.11 2006-XX-XX
+Version 1.12 2006-XX-XX
+======================
+* Sis163 USB driver with version 1.11 failed to associate reliably. This is
+  fixed.
+* TI 1450 USB driver failed to initialize card if module is reloaded. This is
+  fixed.
+* WPA with TKIP with TI ACX100 driver now works with 'ap_scan=2' in
+  wpa_supplicant's configuration file. Driver for D-Link DWL-650+ has support
+  for WPA with TKIP.
+* Added support for non-encrypted networks with wpa_supplicant.
+* Am1772 with WPA and TKIP authenticates reliably now.
+* Compilation issue with 2.4 kernels fixed.
+
+Version 1.11 2006-03-25
 ======================
 * Added support for newer RNDIS (USB) cards (e.g., USR5421, F5D7051uk,
   WUSB54GSv2, all based on Broadcom chip). These support WPA2, whereas
