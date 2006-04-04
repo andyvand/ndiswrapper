@@ -1,4 +1,4 @@
-Version 1.12 2006-XX-XX
+Version 1.12 2006-04-04
 ======================
 * Sis163 USB driver with version 1.11 failed to associate reliably. This is
   fixed.
@@ -6,10 +6,15 @@ Version 1.12 2006-XX-XX
   fixed.
 * WPA with TKIP with TI ACX100 driver now works with 'ap_scan=2' in
   wpa_supplicant's configuration file. Driver for D-Link DWL-650+ has support
-  for WPA with TKIP.
+  for WPA with TKIP for this chipset.
 * Added support for non-encrypted networks with wpa_supplicant.
 * Am1772 with WPA and TKIP authenticates reliably now.
 * Compilation issue with 2.4 kernels fixed.
+* Added support for WEP with wpa_supplicant through 'wext' driver
+  interface. There is no need for 'ndiswrapper' interface with wpa_supplicant
+  anymore.
+* Fixed an issue with 64-bit USB drivers. No 64-bit USB driver is known to
+  work, though.
 
 Version 1.11 2006-03-25
 ======================
