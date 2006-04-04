@@ -1158,10 +1158,11 @@ static NDIS_STATUS miniport_set_power_state(struct wrap_ndis_device *wnd,
 		if (test_and_clear_bit(HW_HALTED, &wnd->hw_status)) {
 			DBGTRACE2("starting device");
 			/* TODO: should we use pnp_start_device instead? */
-			if (miniport_init(wnd) != NDIS_STATUS_SUCCESS) {
+			status = miniport_init(wnd);
+			if (status != NDIS_STATUS_SUCCESS) {
 				WARNING("couldn't re-initialize device %s",
 					wnd->net_dev->name);
-				TRACEEXIT2(return NDIS_STATUS_FAILURE);
+				TRACEEXIT2(return status);
 			}
 		}
 		if (test_and_clear_bit(HW_SUSPENDED, &wnd->hw_status)) {
@@ -1361,7 +1362,7 @@ static NDIS_STATUS ndis_start_device(struct wrap_ndis_device *wnd)
 	if (ndis_status == NDIS_STATUS_NOT_RECOGNIZED)
 		TRACEEXIT1(return NDIS_STATUS_SUCCESS);
 	if (ndis_status != NDIS_STATUS_SUCCESS)
-		TRACEEXIT1(return NDIS_STATUS_FAILURE);
+		TRACEEXIT1(return ndis_status);
 	/* NB: tx_array is used to recognize if device is being
 	 * started for the first time or being re-started */
 	if (wnd->tx_array)
