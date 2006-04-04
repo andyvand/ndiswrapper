@@ -847,10 +847,9 @@ int add_wep_key(struct wrap_ndis_device *wnd, char *key, int key_len,
 	ndis_key.length = key_len;
 	memcpy(&ndis_key.key, key, key_len);
 	ndis_key.index = index;
-	if (index == wnd->encr_info.tx_key_index)
-		ndis_key.index |= (1 << 31);
 
 	if (index == wnd->encr_info.tx_key_index) {
+		ndis_key.index |= (1 << 31);
 		res = set_encr_mode(wnd, Ndis802_11Encryption1Enabled);
 		if (res)
 			WARNING("encryption couldn't be enabled (%08X)", res);
@@ -871,6 +870,54 @@ int add_wep_key(struct wrap_ndis_device *wnd, char *key, int key_len,
 	wnd->encr_info.keys[index].length = key_len;
 	memcpy(&wnd->encr_info.keys[index].key, key, key_len);
 
+	TRACEEXIT2(return 0);
+}
+
+/* remove_key is for both wep and wpa */
+static int remove_key(struct wrap_ndis_device *wnd, int index,
+		      mac_address bssid)
+{
+	NDIS_STATUS res;
+	if (wnd->encr_info.keys[index].length == 0)
+		TRACEEXIT2(return 0);
+	wnd->encr_info.keys[index].length = 0;
+	memset(&wnd->encr_info.keys[index].key, 0,
+	       sizeof(wnd->encr_info.keys[index].length));
+	/* TI driver crashes kernel if OID_802_11_REMOVE_KEY is
+	 * called; other drivers seem to not require it, so for now,
+	 * don't remove the key from driver */
+	if (wnd->encr_mode == Ndis802_11Encryption2Enabled ||
+	    wnd->encr_mode == Ndis802_11Encryption2Enabled) {
+		struct ndis_remove_key remove_key;
+		remove_key.struct_size = sizeof(remove_key);
+		remove_key.index = index;
+		/* pairwise key */
+		if (memcmp(bssid, "\xff\xff\xff\xff\xff\xff", ETH_ALEN) != 0)
+			remove_key.index |= (1 << 30);
+		memcpy(remove_key.bssid, bssid, sizeof(remove_key.bssid));
+		if (miniport_set_info(wnd, OID_802_11_REMOVE_KEY,
+				      (char *)&remove_key, sizeof(remove_key)))
+			TRACEEXIT2(return -EINVAL);
+	} else {
+		ndis_key_index keyindex = index;
+		res = miniport_set_info(wnd, OID_802_11_REMOVE_WEP,
+					&keyindex, sizeof(keyindex));
+		if (res == NDIS_STATUS_FAILURE)
+			TRACEEXIT2(return -EOPNOTSUPP);
+		if (res == NDIS_STATUS_INVALID_DATA) {
+			WARNING("removing encryption key %d failed (%08X)",
+				keyindex, res);
+			TRACEEXIT2(return -EINVAL);
+		}
+	}
+	/* if it is transmit key, disable encryption */
+	if (index == wnd->encr_info.tx_key_index) {
+		res = set_encr_mode(wnd, Ndis802_11EncryptionDisabled);
+		if (res)
+			WARNING("changing encr status failed (%08X)",
+				res);
+	}
+	DBGTRACE2("key %d removed", index);
 	TRACEEXIT2(return 0);
 }
 
@@ -900,26 +947,10 @@ static int iw_set_encr(struct net_device *dev, struct iw_request_info *info,
 
 	/* remove key if disabled */
 	if (wrqu->data.flags & IW_ENCODE_DISABLED) {
-		ndis_key_index keyindex = index;
-		res = miniport_set_info(wnd, OID_802_11_REMOVE_WEP,
-					&keyindex, sizeof(keyindex));
-		if (res == NDIS_STATUS_FAILURE)
-			return -EOPNOTSUPP;
-		if (res == NDIS_STATUS_INVALID_DATA) {
-			WARNING("removing encryption key %d failed (%08X)",
-				index, res);
+		if (remove_key(wnd, index, NULL))
 			TRACEEXIT2(return -EINVAL);
-		}
-		encr_info->keys[index].length = 0;
-
-		/* if it is transmit key, disable encryption */
-		if (index == encr_info->tx_key_index) {
-			res = set_encr_mode(wnd, Ndis802_11EncryptionDisabled);
-			if (res)
-				WARNING("changing encr status failed (%08X)",
-					res);
-		}
-		TRACEEXIT2(return 0);
+		else
+			TRACEEXIT2(return 0);
 	}
 
 	/* global encryption state (for all keys) */
@@ -1639,6 +1670,9 @@ static int iw_set_encodeext(struct net_device *dev,
 		else
 			TRACEEXIT2(return 0);
 	}
+	if ((wrqu->encoding.flags & IW_ENCODE_DISABLED) ||
+	    ext.alg == IW_ENCODE_ALG_NONE || ext.key_len == 0)
+		TRACEEXIT2(return remove_key(wnd, keyidx, ndis_key.bssid));
 
 	if (ext.key_len > sizeof(ndis_key.key)) {
 		DBGTRACE2("incorrect key length (%u)", ext.key_len);
@@ -1688,31 +1722,21 @@ static int iw_set_encodeext(struct net_device *dev,
 	} else
 		memcpy(ndis_key.key, key, ext.key_len);
 
-	if ((wrqu->encoding.flags & IW_ENCODE_DISABLED) ||
-	    ext.alg == IW_ENCODE_ALG_NONE || ext.key_len == 0) {
-		/* TI driver crashes kernel if OID_802_11_REMOVE_KEY is
-		 * called; other drivers seem to not require it, so
-		 * for now, don't remove the key from driver */
-		wnd->encr_info.keys[keyidx].length = 0;
-		memset(&wnd->encr_info.keys[keyidx].key, 0, ext.key_len);
-		DBGTRACE2("key %d removed", keyidx);
-	} else {
-		res = miniport_set_info(wnd, OID_802_11_ADD_KEY,
-					&ndis_key, sizeof(ndis_key));
-		if (res == NDIS_STATUS_FAILURE)
-			return -EOPNOTSUPP;
-		if (res == NDIS_STATUS_INVALID_DATA) {
-			DBGTRACE2("adding key failed (%08X), %u",
-				  res, ndis_key.struct_size);
-			TRACEEXIT2(return -1);
-		}
-		wnd->encr_info.keys[keyidx].length = ext.key_len;
-		memcpy(&wnd->encr_info.keys[keyidx].key,
-		       &ndis_key.key, ext.key_len);
-		if (ext.ext_flags & IW_ENCODE_EXT_SET_TX_KEY)
-			wnd->encr_info.tx_key_index = keyidx;
-		DBGTRACE2("key %d added", keyidx);
+	res = miniport_set_info(wnd, OID_802_11_ADD_KEY,
+				&ndis_key, sizeof(ndis_key));
+	if (res == NDIS_STATUS_FAILURE)
+		return -EOPNOTSUPP;
+	if (res == NDIS_STATUS_INVALID_DATA) {
+		DBGTRACE2("adding key failed (%08X), %u",
+			  res, ndis_key.struct_size);
+		TRACEEXIT2(return -1);
 	}
+	wnd->encr_info.keys[keyidx].length = ext.key_len;
+	memcpy(&wnd->encr_info.keys[keyidx].key,
+	       &ndis_key.key, ext.key_len);
+	if (ext.ext_flags & IW_ENCODE_EXT_SET_TX_KEY)
+		wnd->encr_info.tx_key_index = keyidx;
+	DBGTRACE2("key %d added", keyidx);
 
 	TRACEEXIT2(return 0);
 }
