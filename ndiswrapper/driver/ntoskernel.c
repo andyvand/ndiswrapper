@@ -612,7 +612,7 @@ _FASTCALL LONG WRAP_EXPORT(InterlockedDecrement)
 	TRACEENTER5("");
 	__asm__ __volatile__(
 		"\n"
-		LOCK_PREFIX "xadd %0, %1\n\t"
+		LOCK_PREFIX "xadd %0, %2\n\t"
 		"dec %0\n\t"
 		: "=r" (ret)
 		: "0" (-1), "m" (*val)
