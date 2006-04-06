@@ -266,7 +266,9 @@ void ntoskernel_exit(void)
 		}
 		kfree(object);
 	}
+	nt_spin_unlock_irql(&ntoskernel_lock, irql);
 
+	irql = nt_spin_lock_irql(&dispatcher_lock, DISPATCH_LEVEL);
 	DBGTRACE2("freeing thread event pool");
 	while (thread_event_wait_pool) {
 		struct thread_event_wait *next;
