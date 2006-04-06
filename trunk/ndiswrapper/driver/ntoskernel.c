@@ -593,11 +593,11 @@ _FASTCALL LONG WRAP_EXPORT(InterlockedIncrement)
 {
 	LONG ret;
 
-	TRACEENTER5("");
+	TRACEENTER5("%p, %d", val, *val);
 	__asm__ __volatile__(
 		"\n"
-		LOCK_PREFIX "xadd %0, %2\n\t"
-		"inc %0\n\t"
+		LOCK_PREFIX "xadd %1, %2\n\t"
+		"inc %1\n\t"
 		: "=r" (ret)
 		: "0" (1), "m" (*val)
 		: "memory");
@@ -609,11 +609,11 @@ _FASTCALL LONG WRAP_EXPORT(InterlockedDecrement)
 {
 	LONG ret;
 
-	TRACEENTER5("");
+	TRACEENTER5("%p, %d", val, *val);
 	__asm__ __volatile__(
 		"\n"
-		LOCK_PREFIX "xadd %0, %2\n\t"
-		"dec %0\n\t"
+		LOCK_PREFIX "xadd %1, %2\n\t"
+		"dec %1\n\t"
 		: "=r" (ret)
 		: "0" (-1), "m" (*val)
 		: "memory");
