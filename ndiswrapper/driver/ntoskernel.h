@@ -196,9 +196,9 @@ typedef task_queue workqueue;
 #define PMSG_SUSPEND PM_SUSPEND
 #define PSMG_ON PM_ON
 #else
-typedef u32 pm_message_t;
-#define PMSG_SUSPEND 3
-#define PMSG_ON 0
+typedef struct pm_message { int event; } pm_message_t;
+#define PMSG_SUSPEND ((struct pm_message) { .event = 2, })
+#define PMSG_ON ((struct pm_message) { .event = 0, })
 #endif
 #endif
 
@@ -876,6 +876,7 @@ static inline void lower_irql(KIRQL oldirql)
  * crashes */
 
 #define NT_SPIN_LOCK_UNLOCKED 0
+#define NT_SPIN_LOCK_LOCKED 1
 
 static inline void  nt_spin_lock_init(volatile NT_SPIN_LOCK *lock)
 {
@@ -886,32 +887,33 @@ static inline void  nt_spin_lock_init(volatile NT_SPIN_LOCK *lock)
 /* Linux kernel implements raw spinlocks in X86_64 differently from
  * X86; as of now I understand following should work for both - if
  * not, implement two versions */
-static inline void nt_spin_lock(volatile NT_SPIN_LOCK *lock)
-{
+#if 0
+/* various spinlock implementations */
 	__asm__ __volatile__(
-		"\n1:\t"
-		"lock; incl %0\n\t"
-		"cmpl %1, %0\n\t"
-		"je 3f\n"
+		"\n"
+		"1:\t"
+		"  lock; incl %0\n\t"
+		"  cmpl %1, %0\n\t"
+		"  je 3f\n"
 		"2:\t"
-		"rep;nop\n\t"
-		"cmpl %2, %0\n\t"
-		"jne 2b\n\t"
-		"jmp 1b\n"
+		"  rep; nop\n\t"
+		"  cmpl %2, %0\n\t"
+		"  jne 2b\n\t"
+		"  jmp 1b\n"
 		"3:\n\t"
 		: "=m" (*lock)
 		: "i" (NT_SPIN_LOCK_UNLOCKED + 1), "i" (NT_SPIN_LOCK_UNLOCKED)
 		: "memory");
-#if 0
 	__asm__ __volatile__(
 		"\n1:\t"
 		"lock; xaddl %1, %0\n\t"
 		"cmpl %2, %1\n\t"
 		"je 3f\n"
 		"2:\t"
-		"rep;nop\n\t"
+		"rep; nop\n\t"
 		"cmpl %2, %0\n\t"
 		"jne 2b\n\t"
+		"mov $1, %1\n\t"
 		"jmp 1b\n"
 		"3:\n\t"
 		: "=m" (*lock)
@@ -922,7 +924,7 @@ static inline void nt_spin_lock(volatile NT_SPIN_LOCK *lock)
 		"lock; cmpxchgl %2, %0\n\t"
 		"jz 3f\n"
 		"2:\t"
-		"rep;nop\n\t"
+		"rep; nop\n\t"
 		"cmpl %3, %0\n\t"
 		"jne 2b\n\t"
 		"jmp 1b\n"
@@ -932,6 +934,23 @@ static inline void nt_spin_lock(volatile NT_SPIN_LOCK *lock)
 		  "i" (NT_SPIN_LOCK_UNLOCKED)
 		: "memory");
 #endif
+static inline void nt_spin_lock(volatile NT_SPIN_LOCK *lock)
+{
+	__asm__ __volatile__(
+		"\n"
+		"1:\t"
+		"  xchgl %1, %0\n\t"
+		"  cmpl %2, %1\n\t"
+		"  je 3f\n"
+		"2:\t"
+		"  rep; nop\n\t"
+		"  cmpl %2, %0\n\t"
+		"  jne 2b\n\t"
+		"  jmp 1b\n"
+		"3:\n\t"
+		: "=m" (*lock)
+		: "r" (NT_SPIN_LOCK_LOCKED), "i" (NT_SPIN_LOCK_UNLOCKED)
+		: "memory");
 }
 
 static inline void nt_spin_unlock(volatile NT_SPIN_LOCK *lock)
@@ -981,7 +1000,7 @@ do {									\
 do {									\
 	nt_spin_unlock(lock);						\
 	restore_local_irq(flags);					\
-	preempt_enable_no_resched();					\
+	preempt_enable();						\
 } while (0)
 
 static inline ULONG SPAN_PAGES(void *ptr, SIZE_T length)
@@ -1040,12 +1059,14 @@ static inline u64 cmpxchg8b(volatile void *ptr, u64 old, u64 new)
 {
 	u64 prev;
 
-	__asm__ __volatile__(LOCK_PREFIX "cmpxchg8b (%0)\n"
-			     : "+r" (ptr),
-			       "=a" (ll_low(prev)), "=d" (ll_high(prev))
-			     : "a" (ll_low(old)), "d" (ll_high(old)),
-			       "b" (ll_low(new)), "c" (ll_high(new))
-			     : "cc", "memory");
+	__asm__ __volatile__(
+		"\n"
+		LOCK_PREFIX "cmpxchg8b (%0)\n"
+		: "+r" (ptr),
+		  "=a" (ll_low(prev)), "=d" (ll_high(prev))
+		: "a" (ll_low(old)), "d" (ll_high(old)),
+		  "b" (ll_low(new)), "c" (ll_high(new))
+		: "cc", "memory");
 	return prev;
 }
 

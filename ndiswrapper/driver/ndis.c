@@ -808,8 +808,7 @@ STDCALL void WRAP_EXPORT(NdisMUnmapIoSpace)
 STDCALL void WRAP_EXPORT(NdisAllocateSpinLock)
 	(struct ndis_spinlock *lock)
 {
-	TRACEENTER4("lock %p", lock);
-
+	DBGTRACE4("lock %p, %lu", lock, lock->klock);
 	KeInitializeSpinLock(&lock->klock);
 	lock->irql = PASSIVE_LEVEL;
 	TRACEEXIT4(return);
@@ -818,14 +817,14 @@ STDCALL void WRAP_EXPORT(NdisAllocateSpinLock)
 STDCALL void WRAP_EXPORT(NdisFreeSpinLock)
 	(struct ndis_spinlock *lock)
 {
-	TRACEENTER4("lock %p", lock);
+	DBGTRACE4("lock %p, %lu", lock, lock->klock);
 	TRACEEXIT4(return);
 }
 
 STDCALL void WRAP_EXPORT(NdisAcquireSpinLock)
 	(struct ndis_spinlock *lock)
 {
-	TRACEENTER6("lock %p", lock);
+	DBGTRACE6("lock %p, %lu", lock, lock->klock);
 	lock->irql = nt_spin_lock_irql(&lock->klock, DISPATCH_LEVEL);
 	TRACEEXIT6(return);
 }
@@ -833,7 +832,7 @@ STDCALL void WRAP_EXPORT(NdisAcquireSpinLock)
 STDCALL void WRAP_EXPORT(NdisReleaseSpinLock)
 	(struct ndis_spinlock *lock)
 {
-	TRACEENTER6("lock %p", lock);
+	DBGTRACE6("lock %p, %lu", lock, lock->klock);
 	nt_spin_unlock_irql(&lock->klock, lock->irql);
 	TRACEEXIT6(return);
 }

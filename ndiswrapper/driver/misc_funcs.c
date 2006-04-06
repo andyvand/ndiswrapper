@@ -240,14 +240,48 @@ NOREGPARM SIZE_T WRAP_EXPORT(_win_wcslen)
 NOREGPARM wchar_t *WRAP_EXPORT(_win_wcsncpy)
 	(wchar_t *dest, const wchar_t *src, SIZE_T n)
 {
-	SIZE_T i = 0;
-	while (i < n && src[i] != L'\0') {
+	SIZE_T i;
+	for (i = 0; i < n && src[i] != L'\0'; i++)
 		dest[i] = src[i];
-		i++;
-	}
 	if (i < n)
 		dest[i] = 0;
 	return dest;
+}
+
+NOREGPARM wchar_t *WRAP_EXPORT(_win_wcscpy)
+	(wchar_t *dest, const wchar_t *src)
+{
+	SIZE_T i;
+	for (i = 0; src[i] != L'\0'; i++)
+		dest[i] = src[i];
+	dest[i] = src[i];
+	return dest;
+}
+
+NOREGPARM wchar_t *WRAP_EXPORT(_win_wcscat)
+	(wchar_t *dest, const wchar_t *src)
+{
+	SIZE_T i;
+	wchar_t *destend;
+	for (i = 0; dest[i] != L'\0'; i++)
+		;
+	destend = &dest[i];
+	for (i = 0; src[i] != L'\0'; i++)
+		destend[i] = src[i];
+	destend[i] = L'\0';
+	return dest;
+}
+
+NOREGPARM INT WRAP_EXPORT(_win_towupper)
+	(wchar_t c)
+{
+	return toupper(c);
+}
+
+NOREGPARM INT WRAP_EXPORT(_win_towlower)
+	(wchar_t c)
+{
+	return tolower(c);
 }
 
 NOREGPARM INT WRAP_EXPORT(_win_tolower)

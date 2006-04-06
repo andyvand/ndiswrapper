@@ -592,16 +592,13 @@ _FASTCALL LONG WRAP_EXPORT(InterlockedIncrement)
 	LONG ret;
 
 	TRACEENTER5("");
-	__asm__ __volatile__("movl $1, %%eax\n\t"
-#ifdef CONFIG_X86_64
-			     LOCK_PREFIX "xaddl %%eax, (%%rcx)\n\t"
-#else
-			     LOCK_PREFIX "xaddl %%eax, (%%ecx)\n\t"
-#endif
-			     "incl %%eax\n\t"
-			     : "=a" (ret)
-			     : "c" (val)
-			     : "memory");
+	__asm__ __volatile__(
+		"\n"
+		LOCK_PREFIX "xadd %0, %2\n\t"
+		"inc %0\n\t"
+		: "=r" (ret)
+		: "0" (1), "m" (*val)
+		: "memory");
 	TRACEEXIT5(return ret);
 }
 
@@ -611,16 +608,13 @@ _FASTCALL LONG WRAP_EXPORT(InterlockedDecrement)
 	LONG ret;
 
 	TRACEENTER5("");
-	__asm__ __volatile__("movl $-1, %%eax\n\t"
-#ifdef CONFIG_X86_64
-			     LOCK_PREFIX "xaddl %%eax, (%%rcx)\n\t"
-#else
-			     LOCK_PREFIX "xaddl %%eax, (%%ecx)\n\t"
-#endif
-			     "decl %%eax\n\t"
-			     : "=a" (ret)
-			     : "c" (val)
-			     : "memory");
+	__asm__ __volatile__(
+		"\n"
+		LOCK_PREFIX "xadd %0, %1\n\t"
+		"dec %0\n\t"
+		: "=r" (ret)
+		: "0" (-1), "m" (*val)
+		: "memory");
 	TRACEEXIT5(return ret);
 }
 
@@ -649,20 +643,25 @@ _FASTCALL void WRAP_EXPORT(ExInterlockedAddLargeStatistic)
 	unsigned long flags;
 	save_local_irq(flags);
 #ifdef CONFIG_X86_64
-	__asm__ __volatile__(LOCK_PREFIX "addq %%rsi, (%%rdi)\n\t"
-			     : "=D" (plint) : "0" (plint), "S" (n));
+	__asm__ __volatile__(
+		"\n"
+		LOCK_PREFIX "addq %0, %1\n\t"
+		:
+		: "r" (n), "m" (*plint)
+		: "memory");
 #else
-	__asm__ __volatile__("movl (%0), %%eax\n\t"
-			     "movl 4(%0), %%edx\n\t"
-			     "1: movl %1, %%ebx\n\t"
-			     "   xorl %%ecx, %%ecx\n\t"
-			     "   addl %%eax, %%ebx\n\t"
-			     "   adcl %%edx, %%ecx\n\t"
-			         LOCK_PREFIX "cmpxchg8b (%0)\n\t"
-			     "   jnz 1b\n\t"
-			     : "+r" (plint)
-			     : "m" (n)
-			     : "eax", "ebx", "ecx", "edx", "cc", "memory");
+	__asm__ __volatile__(
+		"\n"
+		"1:\t"
+		"   movl %1, %%ebx\n\t"
+		"   movl %%edx, %%ecx\n\t"
+		"   addl %%eax, %%ebx\n\t"
+		"   adcl $0, %%ecx\n\t"
+		    LOCK_PREFIX "cmpxchg8b (%0)\n\t"
+		"   jnz 1b\n\t"
+		: "+r" (plint)
+		: "m" (n), "a" (ll_low(*plint)), "d" (ll_high(*plint))
+		: "ebx", "ecx", "cc", "memory");
 #endif
 	restore_local_irq(flags);
 }
