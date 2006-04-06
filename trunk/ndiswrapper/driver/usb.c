@@ -1089,22 +1089,26 @@ static USBD_STATUS wrap_process_nt_urb(struct irp *irp)
 
 static USBD_STATUS wrap_reset_port(struct irp *irp)
 {
-	int ret, lock;
+	int ret, lock = 0;
 	struct wrap_device *wd;
 
 	wd = irp->wd;
 	USBENTER("%p, %p", wd, wd->usb.udev);
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,10)
 	lock = usb_lock_device_for_reset(wd->usb.udev, wd->usb.intf);
 	if (lock < 0) {
 		WARNING("locking failed: %d", lock);
 		return wrap_urb_status(lock);
 	}
+#endif
 	ret = usb_reset_device(wd->usb.udev);
 	if (ret < 0)
 		USBTRACE("reset failed: %d", ret);
 	/* TODO: should reconfigure? */
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,10)
 	if (lock)
 		usb_unlock_device(wd->usb.udev);
+#endif
 	return wrap_urb_status(ret);
 }
 
