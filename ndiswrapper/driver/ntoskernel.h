@@ -196,9 +196,9 @@ typedef task_queue workqueue;
 #define PMSG_SUSPEND PM_SUSPEND
 #define PSMG_ON PM_ON
 #else
-typedef struct pm_message { int event; } pm_message_t;
-#define PMSG_SUSPEND ((struct pm_message) { .event = 2, })
-#define PMSG_ON ((struct pm_message) { .event = 0, })
+typedef u32 pm_message_t;
+#define PMSG_SUSPEND 2
+#define PMSG_ON 0
 #endif
 #endif
 
@@ -888,22 +888,7 @@ static inline void  nt_spin_lock_init(volatile NT_SPIN_LOCK *lock)
  * X86; as of now I understand following should work for both - if
  * not, implement two versions */
 #if 0
-/* various spinlock implementations */
-	__asm__ __volatile__(
-		"\n"
-		"1:\t"
-		"  lock; incl %0\n\t"
-		"  cmpl %1, %0\n\t"
-		"  je 3f\n"
-		"2:\t"
-		"  rep; nop\n\t"
-		"  cmpl %2, %0\n\t"
-		"  jne 2b\n\t"
-		"  jmp 1b\n"
-		"3:\n\t"
-		: "=m" (*lock)
-		: "i" (NT_SPIN_LOCK_UNLOCKED + 1), "i" (NT_SPIN_LOCK_UNLOCKED)
-		: "memory");
+/* other spinlock implementations */
 	__asm__ __volatile__(
 		"\n1:\t"
 		"lock; xaddl %1, %0\n\t"
@@ -918,20 +903,6 @@ static inline void  nt_spin_lock_init(volatile NT_SPIN_LOCK *lock)
 		"3:\n\t"
 		: "=m" (*lock)
 		: "r" (1), "i" (NT_SPIN_LOCK_UNLOCKED)
-		: "memory");
-	__asm__ __volatile__(
-		"\n1:\t"
-		"lock; cmpxchgl %2, %0\n\t"
-		"jz 3f\n"
-		"2:\t"
-		"rep; nop\n\t"
-		"cmpl %3, %0\n\t"
-		"jne 2b\n\t"
-		"jmp 1b\n"
-		"3:\n\t"
-		: "=m" (*lock)
-		: "a" (NT_SPIN_LOCK_UNLOCKED), "r" (NT_SPIN_LOCK_UNLOCKED + 1),
-		  "i" (NT_SPIN_LOCK_UNLOCKED)
 		: "memory");
 #endif
 static inline void nt_spin_lock(volatile NT_SPIN_LOCK *lock)

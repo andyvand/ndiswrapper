@@ -647,7 +647,7 @@ _FASTCALL void WRAP_EXPORT(ExInterlockedAddLargeStatistic)
 #ifdef CONFIG_X86_64
 	__asm__ __volatile__(
 		"\n"
-		LOCK_PREFIX "addq %0, %1\n\t"
+		LOCK_PREFIX "add %0, %1\n\t"
 		:
 		: "r" (n), "m" (*plint)
 		: "memory");
