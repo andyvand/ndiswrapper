@@ -801,7 +801,7 @@ int wrap_pnp_suspend_usb_device(struct usb_interface *intf, pm_message_t state)
 	if (pnp_set_power_state(wd, PowerDeviceD3))
 		return -1;
 	else {
-		intf->dev.power.power_state.event = state.event;
+//		intf->dev.power.power_state.event = state.event;
 		return 0;
 	}
 }
@@ -815,7 +815,7 @@ int wrap_pnp_resume_usb_device(struct usb_interface *intf)
 	if (pnp_set_power_state(wd, PowerDeviceD0))
 		return -1;
 	else {
-		intf->dev.power.power_state.event = PM_EVENT_ON;
+//		intf->dev.power.power_state.event = PM_EVENT_ON;
 		return 0;
 	}
 }

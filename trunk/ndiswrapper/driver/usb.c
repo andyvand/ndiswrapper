@@ -110,18 +110,31 @@ static void usb_init_urb(struct urb *urb)
 
 #endif
 
-static struct work_struct wrap_urb_complete_work;
 static struct nt_list wrap_urb_complete_list;
 static NT_SPIN_LOCK wrap_urb_complete_list_lock;
 static STDCALL void wrap_cancel_irp(struct device_object *dev_obj,
 				    struct irp *irp);
+
+/* use tasklet instead worker to process completed urbs */
+//#define USB_TASKLET 1
+
+#ifdef USB_TASKLET
+static struct tasklet_struct wrap_urb_complete_work;
+static void wrap_urb_complete_worker(unsigned long dummy);
+#else
+static struct work_struct wrap_urb_complete_work;
 static void wrap_urb_complete_worker(void *dummy);
+#endif
 
 int usb_init(void)
 {
 	InitializeListHead(&wrap_urb_complete_list);
 	nt_spin_lock_init(&wrap_urb_complete_list_lock);
+#ifdef USB_TASKLET
+	tasklet_init(&wrap_urb_complete_work, wrap_urb_complete_worker, 0);
+#else
 	INIT_WORK(&wrap_urb_complete_work, wrap_urb_complete_worker, NULL);
+#endif
 #ifdef USB_DEBUG
 	urb_id = 0;
 #endif
@@ -130,8 +143,12 @@ int usb_init(void)
 
 void usb_exit(void)
 {
+#ifdef USB_TASKLET
+	tasklet_kill(&wrap_urb_complete_work);
+#else
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
 	cancel_delayed_work(&wrap_urb_complete_work);
+#endif
 #endif
 	TRACEEXIT1(return);
 }
@@ -432,7 +449,11 @@ static void wrap_urb_complete(struct urb *urb)
 		InsertTailList(&wrap_urb_complete_list,
 			       &wrap_urb->complete_list);
 		nt_spin_unlock(&wrap_urb_complete_list_lock);
+#ifdef USB_TASKLET
+		tasklet_schedule(&wrap_urb_complete_work);
+#else
 		schedule_work(&wrap_urb_complete_work);
+#endif
 		USBTRACE("scheduled worker for urb %p", urb);
 	} else {
 		WARNING("urb %p in wrong state: %d", urb, wrap_urb->state);
@@ -441,7 +462,11 @@ static void wrap_urb_complete(struct urb *urb)
 }
 
 /* one worker for all devices */
+#ifdef USB_TASKLET
+static void wrap_urb_complete_worker(unsigned long dummy)
+#else
 static void wrap_urb_complete_worker(void *dummy)
+#endif
 {
 	struct irp *irp;
 	struct urb *urb;
