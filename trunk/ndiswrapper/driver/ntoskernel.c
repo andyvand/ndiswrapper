@@ -105,6 +105,21 @@ WRAP_EXPORT_MAP("NlsMbCodePageTag", FALSE);
 struct workqueue_struct *ntos_wq;
 #endif
 
+/* Atheros driver allocates 200336 bytes in atomic context when
+ * initializing. To satisfy this request, we allocate 200KB block
+ * before driver initialization function is called and give this block
+ * to driver instead of allocating. */
+
+#define ATHEROS_VMALLOC_BLOCK_SIZE (200 * 1024)
+struct vmalloc_block {
+	void *addr;
+	BOOLEAN in_use;
+	struct vmalloc_block *next;
+};
+static struct vmalloc_block *vmalloc_blocks;
+
+static STDCALL void wrap_vfree(void *addr, void *ctx);
+
 int ntoskernel_init(void)
 {
 	struct timeval now;
@@ -158,6 +173,7 @@ int ntoskernel_init(void)
 	init_timer(&shared_data_timer);
 	shared_data_timer.function = &update_user_shared_data_proc;
 #endif
+	vmalloc_blocks = NULL;
 	return 0;
 }
 
@@ -172,6 +188,28 @@ int ntoskernel_init_device(struct wrap_device *wd)
 	 * timer */
 	mod_timer(&shared_data_timer, jiffies + 1);
 #endif
+	if (wd->vendor == 0x168c) {
+		struct vmalloc_block *vm_block;
+		vm_block = kmalloc(sizeof(*vm_block), GFP_KERNEL);
+		if (!vm_block)
+			WARNING("couldn't allocate memory");
+		else {
+			vm_block->addr = vmalloc(ATHEROS_VMALLOC_BLOCK_SIZE);
+			if (!vm_block->addr) {
+				WARNING("couldn't allocate memory");
+				kfree(vm_block);
+			} else {
+				KIRQL irql;
+				DBGTRACE1("block: %p", vm_block->addr);
+				vm_block->in_use = FALSE;
+				irql = nt_spin_lock_irql(&ntoskernel_lock,
+							 DISPATCH_LEVEL);
+				vm_block->next = vmalloc_blocks;
+				vmalloc_blocks = vm_block;
+				nt_spin_unlock_irql(&ntoskernel_lock, irql);
+			}
+		}
+	}
 	return 0;
 }
 
@@ -203,7 +241,33 @@ void ntoskernel_exit_device(struct wrap_device *wd)
 		memset(wrap_timer, 0, sizeof(*wrap_timer));
 		wrap_kfree(wrap_timer);
 	}
-
+	if (wd->vendor == 0x168c) {
+		struct vmalloc_block *cur_vm_block, *prev_vm_block;
+		/* release one vm block that is free - since all
+		 * blocks are of same size, it doesn't matter which */
+		irql = nt_spin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL);
+		prev_vm_block = cur_vm_block = vmalloc_blocks;
+		while (cur_vm_block) {
+			DBGTRACE1("%p, %d", cur_vm_block, cur_vm_block->in_use);
+			if (cur_vm_block->in_use == FALSE) {
+				if (cur_vm_block == vmalloc_blocks)
+					vmalloc_blocks = vmalloc_blocks->next;
+				else
+					prev_vm_block->next =
+						cur_vm_block->next;
+				DBGTRACE1("%p, %p", cur_vm_block,
+					  vmalloc_blocks);
+				schedule_ntos_work_item(wrap_vfree,
+							cur_vm_block->addr,
+							NULL, FALSE);
+				kfree(cur_vm_block);
+				break;
+			}
+			prev_vm_block = cur_vm_block;
+			cur_vm_block = cur_vm_block->next;
+		}
+		nt_spin_unlock_irql(&ntoskernel_lock, irql);
+	}
 	TRACEEXIT2(return);
 }
 
@@ -287,6 +351,8 @@ void ntoskernel_exit(void)
 	if (ntos_wq)
 		destroy_workqueue(ntos_wq);
 #endif
+	if (vmalloc_blocks)
+		ERROR("vmalloc blocks leaking!");
 	TRACEEXIT2(return);
 }
 
@@ -1091,16 +1157,38 @@ STDCALL void *WRAP_EXPORT(ExAllocatePoolWithTag)
 		else
 			addr = kmalloc(size, GFP_ATOMIC);
 	} else {
-		if (current_irql() > PASSIVE_LEVEL)
-			ERROR("Windows driver allocating %ld bytes in "
-			      "atomic context", size);
-		addr = vmalloc(size);
+		addr = NULL;
+		if (current_irql() > PASSIVE_LEVEL &&
+		    size <= ATHEROS_VMALLOC_BLOCK_SIZE) {
+			KIRQL irql;
+			struct vmalloc_block *vm_block;
+			irql = nt_spin_lock_irql(&ntoskernel_lock,
+						 DISPATCH_LEVEL);
+			vm_block = vmalloc_blocks;
+			while (vm_block) {
+				if (vm_block->in_use == FALSE) {
+					vm_block->in_use = TRUE;
+					addr = vm_block->addr;
+					DBGTRACE1("using block %p, %lu",
+						  vm_block->addr, size);
+					break;
+				}
+				vm_block = vm_block->next;
+			}
+			nt_spin_unlock_irql(&ntoskernel_lock, irql);
+		}
+		if (!addr) {
+			if (current_irql() > PASSIVE_LEVEL)
+				WARNING("Windows driver allocating %lu bytes "
+					"in atomic context", size);
+			addr = vmalloc(size);
+		}
 	}
 	DBGTRACE4("addr: %p, %lu", addr, size);
 	TRACEEXIT4(return addr);
 }
 
-STDCALL void wrap_vfree(void *addr, void *ctx)
+static STDCALL void wrap_vfree(void *addr, void *ctx)
 {
 	vfree(addr);
 }
@@ -1113,10 +1201,26 @@ STDCALL void WRAP_EXPORT(ExFreePool)
 	    (unsigned long)addr >= VMALLOC_END)
 		kfree(addr);
 	else {
-		if (in_interrupt())
-			schedule_ntos_work_item(wrap_vfree, addr, NULL, FALSE);
-		else
-			vfree(addr);
+		KIRQL irql;
+		struct vmalloc_block *vm_block;
+		irql = nt_spin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL);
+		vm_block = vmalloc_blocks;
+		while (vm_block) {
+			if (vm_block->addr == addr) {
+				DBGTRACE1("freeing to block: %p", addr);
+				vm_block->in_use = FALSE;
+				break;
+			}
+			vm_block = vm_block->next;
+		}
+		nt_spin_unlock_irql(&ntoskernel_lock, irql);
+		if (!vm_block) {
+			if (in_interrupt())
+				schedule_ntos_work_item(wrap_vfree, addr,
+							NULL, FALSE);
+			else
+				vfree(addr);
+		}
 	}
 	return;
 }
