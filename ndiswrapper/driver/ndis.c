@@ -2033,11 +2033,11 @@ STDCALL void WRAP_EXPORT(NdisMIndicateStatus)
 		}
 		break;
 	default:
-		DBGTRACE4("unknown status: %08X", status);
+		DBGTRACE2("unknown status: %08X", status);
 		break;
 	}
 
-	TRACEEXIT1(return);
+	TRACEEXIT2(return);
 }
 
 /* called via function pointer */
