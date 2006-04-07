@@ -188,6 +188,9 @@ int ntoskernel_init_device(struct wrap_device *wd)
 	 * timer */
 	mod_timer(&shared_data_timer, jiffies + 1);
 #endif
+	/* if it is Atheros, allocate 200KB block and put it on a list
+	 * so this block can be given to driver when it requires it in
+	 * atomic context */
 	if (wd->vendor == 0x168c) {
 		struct vmalloc_block *vm_block;
 		vm_block = kmalloc(sizeof(*vm_block), GFP_KERNEL);
@@ -200,7 +203,6 @@ int ntoskernel_init_device(struct wrap_device *wd)
 				kfree(vm_block);
 			} else {
 				KIRQL irql;
-				DBGTRACE1("block: %p", vm_block->addr);
 				vm_block->in_use = FALSE;
 				irql = nt_spin_lock_irql(&ntoskernel_lock,
 							 DISPATCH_LEVEL);
@@ -248,15 +250,12 @@ void ntoskernel_exit_device(struct wrap_device *wd)
 		irql = nt_spin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL);
 		prev_vm_block = cur_vm_block = vmalloc_blocks;
 		while (cur_vm_block) {
-			DBGTRACE1("%p, %d", cur_vm_block, cur_vm_block->in_use);
 			if (cur_vm_block->in_use == FALSE) {
 				if (cur_vm_block == vmalloc_blocks)
 					vmalloc_blocks = vmalloc_blocks->next;
 				else
 					prev_vm_block->next =
 						cur_vm_block->next;
-				DBGTRACE1("%p, %p", cur_vm_block,
-					  vmalloc_blocks);
 				schedule_ntos_work_item(wrap_vfree,
 							cur_vm_block->addr,
 							NULL, FALSE);
@@ -1169,8 +1168,6 @@ STDCALL void *WRAP_EXPORT(ExAllocatePoolWithTag)
 				if (vm_block->in_use == FALSE) {
 					vm_block->in_use = TRUE;
 					addr = vm_block->addr;
-					DBGTRACE1("using block %p, %lu",
-						  vm_block->addr, size);
 					break;
 				}
 				vm_block = vm_block->next;
@@ -1207,7 +1204,6 @@ STDCALL void WRAP_EXPORT(ExFreePool)
 		vm_block = vmalloc_blocks;
 		while (vm_block) {
 			if (vm_block->addr == addr) {
-				DBGTRACE1("freeing to block: %p", addr);
 				vm_block->in_use = FALSE;
 				break;
 			}
@@ -1746,15 +1742,17 @@ STDCALL void WRAP_EXPORT(KeClearEvent)
 STDCALL LONG WRAP_EXPORT(KeResetEvent)
 	(struct nt_event *nt_event)
 {
-	KIRQL irql;
 	LONG old_state;
-
+#if 1
+	KIRQL irql;
 	EVENTENTER("event = %p", nt_event);
-
 	irql = nt_spin_lock_irql(&dispatcher_lock, DISPATCH_LEVEL);
 	old_state = nt_event->dh.signal_state;
 	nt_event->dh.signal_state = 0;
 	nt_spin_unlock_irql(&dispatcher_lock, irql);
+#else
+	old_state = xchg(&nt_event->dh.signal_state, 0);
+#endif
 	EVENTTRACE("old state: %d", old_state);
 	EVENTEXIT(return old_state);
 }
