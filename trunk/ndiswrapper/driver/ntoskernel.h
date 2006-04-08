@@ -595,9 +595,11 @@ struct wrap_device {
 	struct cm_resource_list *resource_list;
 };
 
+/* Some drivers use worker entries to complete functions called from
+ * within worker threads. So we should have separate workqueues to
+ * make sure worker entries run properly */
+
 #if LINUX_VERSION_CODE > KERNEL_VERSION(2,6,0)
-/* until issues with threads hogging cpu are resolved, we don't want
- * to use shared workqueue, lest the threads take keyboard etc down */
 #define USE_OWN_WORKQUEUE 1
 extern struct workqueue_struct *wrap_wq;
 #define schedule_ndis_work(work_struct) queue_work(ndis_wq, (work_struct))
@@ -890,16 +892,17 @@ static inline void  nt_spin_lock_init(volatile NT_SPIN_LOCK *lock)
 #if 0
 /* other spinlock implementations */
 	__asm__ __volatile__(
-		"\n1:\t"
-		"lock; xaddl %1, %0\n\t"
-		"cmpl %2, %1\n\t"
-		"je 3f\n"
+		"\n"
+		"1:\t"
+		"  lock; xaddl %1, %0\n\t"
+		"  cmpl %2, %1\n\t"
+		"  je 3f\n"
 		"2:\t"
-		"rep; nop\n\t"
-		"cmpl %2, %0\n\t"
-		"jne 2b\n\t"
-		"mov $1, %1\n\t"
-		"jmp 1b\n"
+		"  rep; nop\n\t"
+		"  cmpl %2, %0\n\t"
+		"  jne 2b\n\t"
+		"  mov $1, %1\n\t"
+		"  jmp 1b\n"
 		"3:\n\t"
 		: "=m" (*lock)
 		: "r" (1), "i" (NT_SPIN_LOCK_UNLOCKED)
