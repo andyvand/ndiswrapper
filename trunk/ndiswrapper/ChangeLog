@@ -1,11 +1,11 @@
-Version 1.13 2006-XX-XX
-======================
+Version 1.13 2006-04-08
+=======================
 * Compilation issues with older kernels fixed.
 * SMP issues fixed; Netgear WG111 USB (Prism54 chipset) works with SMP.
 * Association to open networks (without encryption) is supported with 'wext'
   driver interface with wpa_supplicant.
-* Workaround is provided for Atheros driver so large blocks allocated
-  by this driver in atomic context succeed.
+* Workaround is provided for Atheros driver so large block of memory
+  allocated by this driver in atomic context succeed.
 
 Version 1.12 2006-04-04
 ======================
