@@ -715,14 +715,17 @@ void *wrap_pnp_start_usb_device(struct usb_device *udev,
 		  usb_id->bInterfaceSubClass, wd->usb.intf);
 
 	/* TI 4150 needs a full reset */
-	if (usb_id->idVendor == 0x057c && usb_id->idProduct == 0x5601) {
-		if (xchg(&wd->usb.reset, 1) == 0) {
-			usb_set_intfdata(intf, NULL);
-			ret = usb_reset_device(interface_to_usbdev(intf));
-			if (ret) {
-				WARNING("reset failed: %d", ret);
-				return ret;
-			}
+	if (usb_id->idVendor == 0x057c && usb_id->idProduct == 0x5601 &&
+	    (xchg(&wd->usb.reset, 1) == 0)) {
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
+		usb_set_intfdata(intf, NULL);
+		ret = usb_reset_device(interface_to_usbdev(intf));
+#else
+		ret = usb_reset_device(udev);
+#endif
+		if (ret) {
+			WARNING("reset failed: %d", ret);
+			goto out;
 		}
 	}
 	/* USB device may have multiple interfaces; initialize a
@@ -741,6 +744,8 @@ void *wrap_pnp_start_usb_device(struct usb_device *udev,
 #endif
 		ret = wrap_pnp_start_device(wd);
 	}
+
+out:
 	DBGTRACE2("ret: %d", ret);
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
 	if (ret)
