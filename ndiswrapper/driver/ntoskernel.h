@@ -907,6 +907,11 @@ static inline void  nt_spin_lock_init(volatile NT_SPIN_LOCK *lock)
 		: "=m" (*lock)
 		: "r" (1), "i" (NT_SPIN_LOCK_UNLOCKED)
 		: "memory");
+	while (xchg(lock, NT_SPIN_LOCK_LOCKED) != NT_SPIN_LOCK_UNLOCKED) {
+		do {
+			cpu_relax();
+		} while (*lock != NT_SPIN_LOCK_UNLOCKED);
+	}
 #endif
 static inline void nt_spin_lock(volatile NT_SPIN_LOCK *lock)
 {
