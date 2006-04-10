@@ -229,7 +229,9 @@ STDCALL NTSTATUS pdoDispatchPower(struct device_object *pdo,
 				pci_restore_state(pdev, wd->pci.pci_state);
 #endif
 			} else { // usb device
+#ifdef CONFIG_USB
 				wrap_resume_urbs(wd);
+#endif
 			}
 		} else {
 			DBGTRACE2("suspending device %p", wd);
@@ -241,7 +243,9 @@ STDCALL NTSTATUS pdoDispatchPower(struct device_object *pdo,
 				pci_save_state(pdev, wd->pci.pci_state);
 #endif
 			} else { // usb device
+#ifdef CONFIG_USB
 				wrap_suspend_urbs(wd);
+#endif
 			}
 		}
 		status = STATUS_SUCCESS;
