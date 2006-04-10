@@ -348,7 +348,7 @@ struct wait_block {
 	struct nt_list list;
 	struct task_struct *thread;
 	void *object;
-	void *event_wait;
+	void *thread_wait;
 	USHORT wait_key;
 	USHORT wait_type;
 };
