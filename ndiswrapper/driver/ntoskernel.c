@@ -38,7 +38,7 @@ struct wrap_mdl {
 
 struct thread_event_wait {
 	wait_queue_head_t wq_head;
-	atomic_t done;
+	BOOLEAN done;
 #ifdef EVENT_DEBUG
 	struct task_struct *task;
 #endif
@@ -1429,7 +1429,7 @@ static void wakeup_threads(struct dispatcher_header *dh)
 				   wb->thread, dh);
 			RemoveEntryList(&wb->list);
 			wb->object = dh;
-			atomic_set(&thread_wait->done, 1);
+			thread_wait->done = 1;
 			wake_up(&thread_wait->wq_head);
 			if (dh->type == SynchronizationObject)
 				break;
@@ -1464,7 +1464,7 @@ static inline struct thread_event_wait *get_thread_event_wait(void)
 #endif
 	EVENTTRACE("%p, %p, %p", thread_event_wait, current,
 		   thread_event_wait_pool);
-	atomic_set(&thread_event_wait->done, 0);
+	thread_event_wait->done = 0;
 	return thread_event_wait;
 }
 
@@ -1479,7 +1479,7 @@ static void put_thread_event_wait(struct thread_event_wait *thread_event_wait)
 #endif
 	thread_event_wait->next = thread_event_wait_pool;
 	thread_event_wait_pool = thread_event_wait;
-	atomic_set(&thread_event_wait->done, 0);
+	thread_event_wait->done = 0;
 }
 
 STDCALL NTSTATUS WRAP_EXPORT(KeWaitForMultipleObjects)
@@ -1595,16 +1595,15 @@ STDCALL NTSTATUS WRAP_EXPORT(KeWaitForMultipleObjects)
 	while (wait_count) {
 		if (wait_jiffies) {
 			res = wait_event_interruptible_timeout(
-				thread_wait->wq_head,
-				atomic_dec_and_test(&thread_wait->done),
+				thread_wait->wq_head, (thread_wait->done == 1),
 				wait_jiffies);
 		} else {
 			wait_event_interruptible(
-				thread_wait->wq_head,
-				atomic_dec_and_test(&thread_wait->done));
+				thread_wait->wq_head,(thread_wait->done == 1));
 			/* mark that it didn't timeout */
 			res = 1;
 		}
+		thread_wait->done = 0;
 		irql = nt_spin_lock_irql(&dispatcher_lock, DISPATCH_LEVEL);
 		if (signal_pending(current))
 			res = -ERESTARTSYS;
