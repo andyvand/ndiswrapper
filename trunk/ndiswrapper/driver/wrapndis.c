@@ -732,6 +732,7 @@ static void update_wireless_stats(struct wrap_ndis_device *wnd)
 	unsigned long frag;
 
 	TRACEENTER2("%p", wnd);
+//	set_scan(wnd);
 	if (wnd->stats_enabled == FALSE || wnd->link_status == 0) {
 		memset(iw_stats, 0, sizeof(*iw_stats));
 		TRACEEXIT2(return);
