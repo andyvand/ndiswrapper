@@ -62,7 +62,7 @@ if (`uname -r` =~ /(\d+)\.(\d+)\.(\d+)/) {
 	    $modconf = "/etc/modprobe.conf" 
 	}
     } else {
-	if(-d "/etc/modutils") {
+	if (-d "/etc/modutils") {
 	    $modconf = "/etc/modutils/ndiswrapper";
 	} else {
 	    $modconf = "/etc/modules.conf";
@@ -85,6 +85,8 @@ if($ARGV[0] eq "-i" and @ARGV == 2) {
     printf "utils "; system("/sbin/loadndisdriver -v");
     printf "driver "; system("modinfo ndiswrapper | grep -E '^version|^vermagic'");
     $res = 0;
+} elsif($ARGV[0] eq "-a" and @ARGV == 1) {
+    $res = genmodalias();
 } else {
     usage();
     exit();
@@ -100,6 +102,8 @@ sub usage {
 	"-e driver         Remove 'driver'\n" .
 	"-l                List installed drivers\n" .
 	"-m                Write configuration for modprobe\n" .
+	"-a                Write module alias configuration file\n" .
+	"-v                Report version information\n" .
 	"\n\nwhere 'devid' is either PCIID or USBID of the form XXXX:XXXX\n";
 }
 
@@ -191,6 +195,74 @@ sub devid_driver {
 	print "Driver '$driver' is not installed properly!\n";
     }
     return;
+}
+
+sub genmodalias {
+    my $vendor, $device, $subvendor, $subdevice, $bustype, $busid;
+    my $line;
+
+    my $modaliasconf;
+    if (-d "/etc/modprobe.d") {
+	$modaliasconf = "/etc/modprobe.d/ndiswrapper";
+    } elsif (-d "/etc/modules.d") {
+	$modaliasconf = "/etc/modules.d/ndiswrapper";
+    } else {
+	$modaliasconf = "/etc/ndiswrapper/ndiswrapper";
+    }
+    if (!open(CONF, "| sort >$modaliasconf")) {
+	print "Unable to create modules alias file $modaliasconf\n";
+	return -1;
+    }
+
+    open(LS, "ls -1 $confdir|");
+    while (my $driver = <LS>) {
+	chomp($driver);
+	my $mode = (stat("$confdir/$driver"))[2];
+	if (S_ISDIR($mode)) {
+	    open(LS2, "ls -1 $confdir/$driver/ |");
+	    while (my $file = <LS2>) {
+		chomp ($file);
+		my $line = $file;
+		if ($file =~ s/.conf//) {
+		    if ($file =~ /(.{4}):(.{4}):(.{4}):(.{4})\.([05F])/) {
+			$vendor = $1;
+			$device = $2;
+			$subvendor = "0000$3";
+			$subdevice = "0000$4";
+			$busid = "$5";
+		    } elsif($file =~ /(.{4}):(.{4})\.([05F])/) {
+			$vendor = $1;
+			$device = $2;
+			$subvendor = "*";
+			$subdevice = "*";
+			$busid = "$3";
+		    }
+		    if ($busid eq "0" or $busid eq "F") {
+			printf CONF "alias usb:v%sp%sd*dc*dsc*dp*ic*isc*ip*",
+			  $vendor, $device;
+		    } elsif ($busid eq "5") {
+			printf CONF "alias pci:v0000%sd0000%ssv%ssd%sbc*sc*i*",
+			  $vendor, $device, $subvendor, $subdevice;
+		    } else {
+			print stderr "wrong bustype ($busid) for " .
+			  "configuration file $line - ignoring it\n";
+			next;
+		    }
+		    printf CONF " ndiswrapper\n";
+		}
+	    }
+	    close(LS2);
+	}
+    }
+
+    close(CONF);
+    close(LS);
+    if (-x "/sbin/update-modules") {
+	system("/sbin/update-modules");
+    }
+    print "Module alias information is stored in $modaliasconf;\n";
+    print "copy it to where udev expects it and configure udev.\n";
+    return 0;
 }
 
 sub list {

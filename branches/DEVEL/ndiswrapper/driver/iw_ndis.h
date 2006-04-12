@@ -73,37 +73,53 @@ struct ndis_assoc_info {
 	ULONG offset_resp_ies;
 };
 
-struct packed ndis_configuration {
+struct ndis_configuration_fh {
+	ULONG length;
+	ULONG hop_pattern;
+	ULONG hop_set;
+	ULONG dwell_time;
+};
+
+struct ndis_configuration {
 	ULONG length;
 	ULONG beacon_period;
 	ULONG atim_window;
 	ULONG ds_config;
-	struct ndis_configuration_fh {
-		ULONG length;
-		ULONG hop_pattern;
-		ULONG hop_set;
-		ULONG dwell_time;
-	} fh_config;
+	struct ndis_configuration_fh fh_config;
 };
 
-struct ndis_ssid_item {
+struct ndis_wlan_bssid {
 	ULONG length;
 	mac_address mac;
 	UCHAR reserved[2];
 	struct ndis_essid ssid;
 	ULONG privacy;
-	LONG rssi;
+	ndis_rssi rssi;
 	UINT net_type;
 	struct ndis_configuration config;
 	UINT mode;
 	ndis_rates rates;
+};
+
+struct ndis_wlan_bssid_ex {
+	ULONG length;
+	mac_address mac;
+	UCHAR reserved[2];
+	struct ndis_essid ssid;
+	ULONG privacy;
+	ndis_rssi rssi;
+	UINT net_type;
+	struct ndis_configuration config;
+	UINT mode;
+	ndis_rates_ex rates_ex;
 	ULONG ie_length;
 	UCHAR ies[1];
 };
 
+/* we use bssid_list as bssid_list_ex also */
 struct ndis_bssid_list {
 	ULONG num_items;
-	struct ndis_ssid_item items[1];
+	struct ndis_wlan_bssid bssid[1];
 };
 
 enum ndis_priv_filter {
@@ -149,7 +165,7 @@ int set_auth_mode(struct wrap_ndis_device *wnd, int auth_mode);
 int set_encr_mode(struct wrap_ndis_device *wnd, int encr_mode);
 int get_auth_mode(struct wrap_ndis_device *wnd);
 int get_encr_mode(struct wrap_ndis_device *wnd);
-int set_privacy_filter(struct wrap_ndis_device *wnd, int flags);
+int set_priv_filter(struct wrap_ndis_device *wnd, int flags);
 int set_scan(struct wrap_ndis_device *wnd);
 
 #define PRIV_RESET	 		SIOCIWFIRSTPRIV+16
@@ -157,6 +173,8 @@ int set_scan(struct wrap_ndis_device *wnd);
 #define PRIV_NETWORK_TYPE	 	SIOCIWFIRSTPRIV+18
 #define PRIV_USB_RESET	 		SIOCIWFIRSTPRIV+19
 #define PRIV_MEDIA_STREAM_MODE 		SIOCIWFIRSTPRIV+20
+#define PRIV_SET_ENCR_MODE		SIOCIWFIRSTPRIV+21
+#define PRIV_SET_AUTH_MODE		SIOCIWFIRSTPRIV+22
 
 /* WPA support */
 
@@ -201,6 +219,31 @@ struct wpa_assoc_info {
 	int mode;
 };
 
+struct wpa_driver_capa {
+#define WPA_DRIVER_CAPA_KEY_MGMT_WPA        0x00000001
+#define WPA_DRIVER_CAPA_KEY_MGMT_WPA2       0x00000002
+#define WPA_DRIVER_CAPA_KEY_MGMT_WPA_PSK    0x00000004
+#define WPA_DRIVER_CAPA_KEY_MGMT_WPA2_PSK   0x00000008
+#define WPA_DRIVER_CAPA_KEY_MGMT_WPA_NONE   0x00000010
+	unsigned int key_mgmt;
+
+#define WPA_DRIVER_CAPA_ENC_WEP40   0x00000001
+#define WPA_DRIVER_CAPA_ENC_WEP104  0x00000002
+#define WPA_DRIVER_CAPA_ENC_TKIP    0x00000004
+#define WPA_DRIVER_CAPA_ENC_CCMP    0x00000008
+	unsigned int enc;
+
+#define WPA_DRIVER_AUTH_OPEN        0x00000001
+#define WPA_DRIVER_AUTH_SHARED      0x00000002
+#define WPA_DRIVER_AUTH_LEAP        0x00000004
+	unsigned int auth;
+
+/* Driver generated WPA/RSN IE */
+#define WPA_DRIVER_FLAGS_DRIVER_IE  0x00000001
+#define WPA_DRIVER_FLAGS_SET_KEYS_AFTER_ASSOC 0x00000002
+	unsigned int flags;
+};
+
 #define WPA_SET_WPA 			SIOCIWFIRSTPRIV+1
 #define WPA_SET_KEY 			SIOCIWFIRSTPRIV+2
 #define WPA_ASSOCIATE		 	SIOCIWFIRSTPRIV+3
@@ -211,5 +254,6 @@ struct wpa_assoc_info {
 #define WPA_SET_AUTH_ALG	 	SIOCIWFIRSTPRIV+8
 #define WPA_INIT			SIOCIWFIRSTPRIV+9
 #define WPA_DEINIT			SIOCIWFIRSTPRIV+10
+#define WPA_GET_CAPA			SIOCIWFIRSTPRIV+11
 
 #endif // IW_NDIS_H
