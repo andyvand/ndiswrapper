@@ -56,20 +56,20 @@ STDCALL NTSTATUS WRAP_EXPORT(IoGetDeviceProperty)
 	case DevicePropertyDeviceDescription:
 	case DevicePropertyFriendlyName:
 	case DevicePropertyDriverKeyName:
-		need = sizeof(wchar_t) * (strlen("PCI device") + 5);
+		if (wrap_is_pci_bus(wd->dev_bus_type))
+			RtlInitAnsiString(&ansi, "PCI");
+		else // if (wrap_is_usb_bus(wd->dev_bus_type))
+			RtlInitAnsiString(&ansi, "USB");
+		need = sizeof(wchar_t) * (ansi.max_length + 1);
 		if (buffer_len < need) {
 			*result_len = need;
 			IOEXIT(return STATUS_BUFFER_TOO_SMALL);
 		}
-		if (wrap_is_pci_bus(wd->dev_bus_type))
-			RtlInitAnsiString(&ansi, "PCI device");
-		else // if (wrap_is_usb_bus(wd->dev_bus_type))
-			RtlInitAnsiString(&ansi, "USB device");
 		unicode.max_length = buffer_len;
 		unicode.buf = buffer;
 		if (RtlAnsiStringToUnicodeString(&unicode, &ansi,
 						 FALSE) != STATUS_SUCCESS) {
-			*result_len = need;
+			*result_len = unicode.length;
 			IOEXIT(return STATUS_BUFFER_TOO_SMALL);
 		}
 		IOEXIT(return STATUS_SUCCESS);
@@ -185,19 +185,16 @@ STDCALL void IoQueueThreadIrp(struct irp *irp)
 	struct nt_thread *thread;
 	KIRQL irql;
 
-	thread = KeGetCurrentThread();
-	if (!thread) {
-		WARNING("couldn't find thread for irp: %p, task: %p, pid: %d",
-			irp, current, current->pid);
+	thread = get_current_nt_thread();
+	if (thread) {
+		IOTRACE("thread: %p, task: %p", thread, thread->task);
+		irql = nt_spin_lock_irql(&thread->lock, DISPATCH_LEVEL);
+		irp->flags |= IRP_SYNCHRONOUS_API;
+		InsertTailList(&thread->irps, &irp->threads);
+		IoIrpThread(irp) = thread;
+		nt_spin_unlock_irql(&thread->lock, irql);
+	} else
 		IoIrpThread(irp) = NULL;
-		return;
-	}
-	IOTRACE("thread: %p, task: %p", thread, thread->task);
-	irql = nt_spin_lock_irql(&thread->lock, DISPATCH_LEVEL);
-	irp->flags |= IRP_SYNCHRONOUS_API;
-	InsertTailList(&thread->irps, &irp->threads);
-	IoIrpThread(irp) = thread;
-	nt_spin_unlock_irql(&thread->lock, irql);
 }
 
 STDCALL void IoDequeueThreadIrp(struct irp *irp)
@@ -235,8 +232,10 @@ STDCALL struct irp *WRAP_EXPORT(IoBuildAsynchronousFsdRequest)
 	if (!dev_obj)
 		IOEXIT(return NULL);
 	irp = IoAllocateIrp(dev_obj->stack_count, FALSE);
-	if (irp == NULL)
+	if (irp == NULL) {
+		WARNING("couldn't allocate irp");
 		IOEXIT(return NULL);
+	}
 
 	irp_sl = IoGetNextIrpStackLocation(irp);
 	irp_sl->major_fn = major_fn;
@@ -304,25 +303,27 @@ STDCALL struct irp *WRAP_EXPORT(IoBuildDeviceIoControlRequest)
 	if (!dev_obj)
 		IOEXIT(return NULL);
 	irp = IoAllocateIrp(dev_obj->stack_count, FALSE);
-	if (irp) {
-		irp->user_status = io_status;
-		irp->user_event = event;
-		irp->user_buf = output_buf;
-		irp->associated_irp.system_buffer = input_buf;
-
-		irp_sl = IoGetNextIrpStackLocation(irp);
-		irp_sl->params.ioctl.code = ioctl;
-		irp_sl->params.ioctl.input_buf_len = input_buf_len;
-		irp_sl->params.ioctl.output_buf_len = output_buf_len;
-		irp_sl->dev_obj = dev_obj;
-		irp_sl->major_fn = (internal_ioctl) ?
-			IRP_MJ_INTERNAL_DEVICE_CONTROL : IRP_MJ_DEVICE_CONTROL;
-		irp_sl->minor_fn = 0;
-		irp_sl->flags = 0;
-		irp_sl->file_obj = NULL;
-		irp_sl->completion_routine = NULL;
-		IoQueueThreadIrp(irp);
+	if (irp == NULL) {
+		WARNING("couldn't allocate irp");
+		return NULL;
 	}
+	irp->user_status = io_status;
+	irp->user_event = event;
+	irp->user_buf = output_buf;
+	irp->associated_irp.system_buffer = input_buf;
+
+	irp_sl = IoGetNextIrpStackLocation(irp);
+	irp_sl->params.dev_ioctl.code = ioctl;
+	irp_sl->params.dev_ioctl.input_buf_len = input_buf_len;
+	irp_sl->params.dev_ioctl.output_buf_len = output_buf_len;
+	irp_sl->dev_obj = dev_obj;
+	irp_sl->major_fn = (internal_ioctl) ?
+		IRP_MJ_INTERNAL_DEVICE_CONTROL : IRP_MJ_DEVICE_CONTROL;
+	irp_sl->minor_fn = 0;
+	irp_sl->flags = 0;
+	irp_sl->file_obj = NULL;
+	irp_sl->completion_routine = NULL;
+	IoQueueThreadIrp(irp);
 
 	IOTRACE("irp: %p", irp);
 	IOEXIT(return irp);
@@ -404,9 +405,9 @@ _FASTCALL void WRAP_EXPORT(IofCompleteRequest)
 				irp_sl->completion_routine, irp_sl->context);
 			status = LIN2WIN3(irp_sl->completion_routine,
 					  dev_obj, irp, irp_sl->context);
+			IOTRACE("status: %08X", status);
 			if (status == STATUS_MORE_PROCESSING_REQUIRED)
 				IOEXIT(return);
-			IOTRACE("completion routine returned");
 		} else {
 			/* propagate pending status to next irp_sl */
 			if (irp->current_location <= irp->stack_count &&
@@ -417,14 +418,13 @@ _FASTCALL void WRAP_EXPORT(IofCompleteRequest)
 
 	if (irp->user_status) {
 		irp->user_status->status = irp->io_status.status;
-		irp->user_status->status_info = irp->io_status.status_info;
+		irp->user_status->info = irp->io_status.info;
 	}
 
 	if (irp->user_event) {
 		IOTRACE("setting event %p", irp->user_event);
 		KeSetEvent(irp->user_event, prio_boost, FALSE);
 	}
-	IOTRACE("%p", irp->mdl);
 
 	IOTRACE("freeing irp %p", irp);
 	if (irp->associated_irp.system_buffer &&
@@ -473,7 +473,7 @@ STDCALL NTSTATUS WRAP_EXPORT(IoConnectInterrupt)
 
 	interrupt->vector = vector;
 	interrupt->processor_enable_mask = processor_enable_mask;
-	nt_spin_lock_init(&interrupt->lock);
+//	nt_spin_lock_init(&interrupt->lock);
 	interrupt->actual_lock = lock;
 	interrupt->shareable = shareable;
 	interrupt->floating_save = floating_save;
@@ -545,15 +545,6 @@ STDCALL void WRAP_EXPORT(IoFreeWorkItem)
 	IOEXIT(return);
 }
 
-STDCALL void WRAP_EXPORT(ExQueueWorkItem)
-	(struct io_workitem *io_workitem, enum work_queue_type queue_type)
-{
-	IOENTER("%p", io_workitem);
-	schedule_wrap_work_item(io_workitem->worker_routine,
-				io_workitem->dev_obj, io_workitem->context,
-				TRUE);
-}
-
 STDCALL void WRAP_EXPORT(IoQueueWorkItem)
 	(struct io_workitem *io_workitem, void *func,
 	 enum work_queue_type queue_type, void *context)
@@ -561,8 +552,17 @@ STDCALL void WRAP_EXPORT(IoQueueWorkItem)
 	IOENTER("%p, %p", io_workitem, io_workitem->dev_obj);
 	io_workitem->worker_routine = func;
 	io_workitem->context = context;
-	schedule_wrap_work_item(func, io_workitem->dev_obj, context, TRUE);
+	schedule_ntos_work_item(func, io_workitem->dev_obj, context, TRUE);
 	IOEXIT(return);
+}
+
+STDCALL void WRAP_EXPORT(ExQueueWorkItem)
+	(struct io_workitem *io_workitem, enum work_queue_type queue_type)
+{
+	IOENTER("%p", io_workitem);
+	schedule_ntos_work_item(io_workitem->worker_routine,
+				io_workitem->dev_obj, io_workitem->context,
+				TRUE);
 }
 
 STDCALL NTSTATUS WRAP_EXPORT(IoAllocateDriverObjectExtension)
@@ -815,16 +815,13 @@ STDCALL void WRAP_EXPORT(IoDetachDevice)
 	IOEXIT(return);
 }
 
-/* gcc will return unions and structs either through registers or in
- * memory, so we can't return 'union power_state'; instead, we return
- * 'enum device_power_state' (which is one of the fields in the
- * union). With this gcc will honor STDCALL and return value
- * appropriately */
-STDCALL enum device_power_state WRAP_EXPORT(PoSetPowerState)
+/* NOTE: Make sure to compile with -freg-struct-return, so gcc will
+ * return union in register, like Windows */
+STDCALL union power_state WRAP_EXPORT(PoSetPowerState)
 	(struct device_object *dev_obj, enum power_state_type type,
 	 union power_state state)
 {
-	IOEXIT(return PowerDeviceD0);
+	IOEXIT(return state);
 }
 
 STDCALL NTSTATUS WRAP_EXPORT(PoCallDriver)
@@ -896,11 +893,11 @@ STDCALL NTSTATUS WRAP_EXPORT(IoRegisterDeviceInterface)
 {
 	struct ansi_string ansi;
 
-	/* check if pdo is valid */
-	ansi.buf = "ndis";
-	ansi.length = strlen(ansi.buf);
-	ansi.max_length = ansi.length + 1;
-	TRACEENTER1("pdo: %p, ref: %p, link: %p", pdo, reference, link);
+	/* TODO: check if pdo is valid */
+	RtlInitAnsiString(&ansi, "ndis");
+	TRACEENTER1("pdo: %p, ref: %p, link: %p, %x, %x, %x",
+		    pdo, reference, link, guid_class->data1,
+		    guid_class->data2, guid_class->data3);
 	return RtlAnsiStringToUnicodeString(link, &ansi, TRUE);
 }
 
@@ -920,49 +917,10 @@ STDCALL NTSTATUS WRAP_EXPORT(IoOpenDeviceRegistryKey)
 	return STATUS_SUCCESS;
 }
 
-STDCALL unsigned int WRAP_EXPORT(IoWMIRegistrationControl)
+STDCALL NTSTATUS WRAP_EXPORT(IoWMIRegistrationControl)
 	(struct device_object *dev_obj, ULONG action)
 {
-	struct irp *irp;
-	struct io_stack_location *irp_sl;
-	const int buf_len = 512;
-	void *buf;
-
 	TRACEENTER2("%p, %d", dev_obj, action);
-
-	switch (action) {
-	case WMIREG_ACTION_REGISTER:
-		irp = IoAllocateIrp(dev_obj->stack_count, FALSE);
-		if (!irp) {
-			ERROR("couldn't allocate irp");
-			return STATUS_INSUFFICIENT_RESOURCES;
-		}
-		irp_sl = IoGetNextIrpStackLocation(irp);
-		irp_sl->params.wmi.provider_id = (ULONG_PTR)dev_obj;
-		irp_sl->params.wmi.data_path = (void *)WMIREGISTER;
-		buf = kmalloc(buf_len, GFP_KERNEL);
-		if (!buf) {
-			IoFreeIrp(irp);
-			return STATUS_INSUFFICIENT_RESOURCES;
-		}
-		irp_sl->params.wmi.buf_len = buf_len;
-		irp_sl->params.wmi.buf = buf;
-		IoCallDriver(dev_obj, irp);
-		kfree(buf);
-		break;
-	case WMIREG_ACTION_DEREGISTER:
-		INFO("");
-		break;
-	case WMIREG_ACTION_REREGISTER:
-		INFO("");
-		break;
-	case WMIREG_ACTION_UPDATE_GUIDS:
-		ERROR("not implemented");
-		break;
-	default:
-		ERROR("not implemented");
-		break;
-	}
 	TRACEEXIT2(return STATUS_SUCCESS);
 }
 

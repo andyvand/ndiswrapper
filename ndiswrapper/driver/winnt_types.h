@@ -35,6 +35,7 @@
 #define STATUS_MORE_PROCESSING_REQUIRED 0xC0000016
 #define STATUS_ACCESS_DENIED            0xC0000022
 #define STATUS_BUFFER_TOO_SMALL         0xC0000023
+#define STATUS_MUTANT_NOT_OWNED		0xC0000046
 #define STATUS_RESOURCES                0xC000009A
 #define STATUS_DELETE_PENDING		0xC0000056
 #define STATUS_INSUFFICIENT_RESOURCES	0xC000009A
@@ -149,7 +150,7 @@ typedef u16	WORD;
 typedef s32	INT;
 typedef u32	UINT;
 typedef u32	DWORD;
-typedef u32	LONG;
+typedef s32	LONG;
 typedef u32	ULONG;
 typedef s64	LONGLONG;
 typedef u64	ULONGLONG;
@@ -177,6 +178,7 @@ typedef ULONG_PTR KAFFINITY;
 typedef ULONG ACCESS_MASK;
 
 typedef ULONG_PTR PFN_NUMBER;
+typedef ULONG SECURITY_INFORMATION;
 
 /* non-negative numbers indicate success */
 #define NT_SUCCESS(status)  ((NTSTATUS)(status) >= 0)
@@ -197,14 +199,23 @@ struct nt_slist {
 	struct nt_slist *next;
 };
 
+#ifdef CONFIG_X86_64
+struct nt_slist_head {
+	ULONGLONG align;
+	ULONGLONG region;
+} __attribute__((aligned(16)));
+typedef struct nt_slist_head nt_slist_header;
+#else
 union nt_slist_head {
 	ULONGLONG align;
 	struct {
 		struct nt_slist *next;
 		USHORT depth;
 		USHORT sequence;
-	} list;
+	};
 };
+typedef union nt_slist_head nt_slist_header;
+#endif
 
 struct nt_list {
 	struct nt_list *next;
@@ -265,7 +276,7 @@ enum mode {
 };
 
 struct mdl {
-	struct mdl* next;
+	struct mdl *next;
 	CSHORT size;
 	CSHORT flags;
 	void *process;
@@ -291,10 +302,8 @@ struct mdl {
 #define MDL_ALLOCATED_MUST_SUCCEED	0x4000
 #define MDL_CACHE_ALLOCATED		0x8000
 
-#define MmGetMdlBaseVa(mdl) ((mdl)->startva)
 #define MmGetMdlByteCount(mdl) ((mdl)->bytecount)
-#define MmGetMdlVirtualAddress(mdl) ((mdl)->startva +	\
-				     (mdl)->byteoffset)
+#define MmGetMdlVirtualAddress(mdl) ((mdl)->startva)
 #define MmGetMdlByteOffset(mdl) ((mdl)->byteoffset)
 #define MmGetSystemAddressForMdl(mdl) ((mdl)->mappedsystemva)
 #define MmGetSystemAddressForMdlSafe(mdl, priority) ((mdl)->mappedsystemva)
@@ -304,8 +313,7 @@ do {									\
 	(mdl)->next = NULL;						\
 	(mdl)->size = MmSizeOfMdl(baseva, length);			\
 	(mdl)->flags = 0;						\
-	(mdl)->startva =						\
-		(void *)((unsigned long)baseva & PAGE_MASK);		\
+	(mdl)->startva = baseva;					\
 	(mdl)->byteoffset = (ULONG)offset_in_page(baseva);		\
 	(mdl)->bytecount = length;					\
 	DBGTRACE4("%p %p %p %d %d", (mdl), baseva, (mdl)->startva,	\
@@ -336,10 +344,17 @@ struct wait_context_block {
 	void *buffer_chaining_dpc;
 };
 
-struct dispatch_header {
+struct wait_block {
+	struct nt_list list;
+	struct task_struct *thread;
+	void *object;
+	void *thread_wait;
+	USHORT wait_key;
+	USHORT wait_type;
+};
+
+struct dispatcher_header {
 	UCHAR type;
-	/* 'absolute' field is used by ndiswrapper differently - to
-	 * store type of object this header is associated with */
 	UCHAR absolute;
 	UCHAR size;
 	UCHAR inserted;
@@ -347,17 +362,33 @@ struct dispatch_header {
 	struct nt_list wait_blocks;
 };
 
-/* type of object a dh is associated with */
-enum dh_type {
-	DH_NONE, DH_NT_EVENT, DH_NT_TIMER, DH_NT_MUTEX, DH_NT_SEMAPHORE,
-	DH_NT_THREAD,
+enum event_type {
+	NotificationEvent,
+	SynchronizationEvent,
 };
 
-/* objects that use dispatch_header have it as the first field, so
- * whenever we need to initialize dispatch_header, we can convert that
- * object into a nt_event and access dispatch_header */
+enum timer_type {
+	NotificationTimer = NotificationEvent,
+	SynchronizationTimer = SynchronizationEvent,
+};
+
+enum dh_type {
+	NotificationObject = NotificationEvent,
+	SynchronizationObject = SynchronizationEvent,
+	MutexObject,
+	SemaphoreObject,
+	ThreadObject,
+};
+
+enum wait_type {
+	WaitAll, WaitAny
+};
+
+/* objects that use dispatcher_header have it as the first field, so
+ * whenever we need to initialize dispatcher_header, we can convert
+ * that object into a nt_event and access dispatcher_header */
 struct nt_event {
-	struct dispatch_header dh;
+	struct dispatcher_header dh;
 };
 
 struct wrap_timer;
@@ -365,7 +396,7 @@ struct wrap_timer;
 #define WRAP_TIMER_MAGIC 47697249
 
 struct nt_timer {
-	struct dispatch_header dh;
+	struct dispatcher_header dh;
 	/* We can't fit Linux timer in this structure. Instead of
 	 * padding the nt_timer structure, we replace due_time field
 	 * with *wrap_timer and allocate memory for it when nt_timer is
@@ -383,21 +414,21 @@ struct nt_timer {
 };
 
 struct nt_mutex {
-	struct dispatch_header dh;
+	struct dispatcher_header dh;
 	struct nt_list list;
-	void *owner_thread;
+	struct task_struct *owner_thread;
 	BOOLEAN abandoned;
 	BOOLEAN apc_disable;
 };
 
 struct nt_semaphore {
-	struct dispatch_header dh;
+	struct dispatcher_header dh;
 	LONG limit;
 };
 
-#pragma pack(push,1)
+//#pragma pack(push,1)
 struct nt_thread {
-	struct dispatch_header dh;
+	struct dispatcher_header dh;
 	/* the rest in Windows is a long structure; since this
 	 * structure is opaque to drivers, we just define what we
 	 * need */
@@ -405,17 +436,13 @@ struct nt_thread {
 	struct task_struct *task;
 	struct nt_list irps;
 	NT_SPIN_LOCK lock;
-	wait_queue_head_t event_wq;
-	int event_wait_done;
 };
-#pragma pack(pop)
+//#pragma pack(pop)
 
-#define set_dh_type(dh, type)		((dh)->absolute = (type))
-#define is_nt_event_dh(dh)		((dh)->absolute == DH_KVENT)
-#define is_nt_timer_dh(dh)		((dh)->absolute == DH_NT_TIMER)
-#define is_mutex_dh(dh)			((dh)->absolute == DH_NT_MUTEX)
-#define is_semaphore_dh(dh)		((dh)->absolute == DH_NT_SEMAPHORE)
-#define is_nt_thread_dh(dh)		((dh)->absolute == DH_NT_THREAD)
+#define set_dh_type(dh, type)		((dh)->type = (type))
+#define is_mutex_dh(dh)			((dh)->type == MutexObject)
+#define is_semaphore_dh(dh)		((dh)->type == SemaphoreObject)
+#define is_nt_thread_dh(dh)		((dh)->type == ThreadObject)
 
 #define IO_TYPE_ADAPTER				1
 #define IO_TYPE_CONTROLLER			2
@@ -466,9 +493,19 @@ struct dev_obj_ext {
 };
 
 struct io_status_block {
-	NTSTATUS status;
-	ULONG status_info;
+	union {
+		NTSTATUS status;
+		void *pointer;
+	};
+	ULONG_PTR info;
 };
+
+#ifdef CONFIG_X86_64
+struct io_status_block32 {
+	NTSTATUS status;
+	ULONG info;
+};
+#endif
 
 #define DEVICE_TYPE ULONG
 
@@ -540,10 +577,12 @@ struct file_object {
 };
 
 #ifdef CONFIG_X86_64
-#define POINTER_ALIGNMENT __attribute__((aligned(8)))
+#define POINTER_ALIGN __attribute__((aligned(8)))
 #else
-#define POINTER_ALIGNMENT
+#define POINTER_ALIGN
 #endif
+
+#define CACHE_ALIGN __attribute__((aligned(128)))
 
 enum system_power_state {
 	PowerSystemUnspecified = 0,
@@ -710,6 +749,44 @@ struct cm_resource_list {
 	struct cm_full_resource_descriptor list[1];
 };
 
+enum file_info_class {
+	FileDirectoryInformation = 1,
+	FileBasicInformation = 4,
+	FileStandardInformation = 5,
+	FileNameInformation = 9,
+	FilePositionInformation = 14,
+	FileAlignmentInformation = 17,
+	FileNetworkOpenInformation = 34,
+	FileAttributeTagInformation = 35,
+	FileMaximumInformation = 41,
+};
+
+enum fs_info_class {
+	FileFsVolumeInformation = 1,
+	/* ... */
+	FileFsMaximumInformation = 9,
+};
+
+enum device_relation_type {
+	BusRelations, EjectionRelations, PowerRelations, RemovalRelations,
+	TargetDeviceRelation, SingleBusRelations,
+};
+
+enum bus_query_id_type {
+	BusQueryDeviceID = 0, BusQueryHardwareIDs = 1,
+	BusQueryCompatibleIDs = 2, BusQueryInstanceID = 3,
+	BusQueryDeviceSerialNumber = 4,
+};
+
+enum device_text_type {
+	DeviceTextDescription = 0, DeviceTextLocationInformation = 1,
+};
+
+enum device_usage_notification_type {
+	DeviceUsageTypeUndefined, DeviceUsageTypePaging,
+	DeviceUsageTypeHibernation, DevbiceUsageTypeDumpFile,
+};
+
 #ifndef CONFIG_X86_64
 #pragma pack(push,4)
 #endif
@@ -719,24 +796,72 @@ struct io_stack_location {
 	UCHAR flags;
 	UCHAR control;
 	union {
-		/* NOTE: this union is not complete */
 		struct {
 			void *security_context;
 			ULONG options;
-			USHORT POINTER_ALIGNMENT file_attributes;
+			USHORT POINTER_ALIGN file_attributes;
 			USHORT share_access;
-			ULONG POINTER_ALIGNMENT ea_length;
+			ULONG POINTER_ALIGN ea_length;
 		} create;
 		struct {
 			ULONG length;
-			ULONG POINTER_ALIGNMENT key;
+			ULONG POINTER_ALIGN key;
 			LARGE_INTEGER byte_offset;
 		} read;
 		struct {
 			ULONG length;
-			ULONG POINTER_ALIGNMENT key;
+			ULONG POINTER_ALIGN key;
 			LARGE_INTEGER byte_offset;
 		} write;
+		struct {
+			ULONG length;
+			enum file_info_class POINTER_ALIGN file_info_class;
+		} query_file;
+		struct {
+			ULONG length;
+			enum file_info_class POINTER_ALIGN file_info_class;
+			struct file_object *file_object;
+			union {
+				struct {
+					BOOLEAN replace_if_exists;
+					BOOLEAN advance_only;
+				};
+				ULONG cluster_count;
+				void *delete_handle;
+			};
+		} set_file;
+		struct {
+			ULONG length;
+			enum fs_info_class POINTER_ALIGN fs_info_class;
+		} query_volume;
+		struct {
+			ULONG output_buf_len;
+			ULONG POINTER_ALIGN input_buf_len;
+			ULONG POINTER_ALIGN code;
+			void *type3_input_buf;
+		} dev_ioctl;
+		struct {
+			SECURITY_INFORMATION security_info;
+			ULONG POINTER_ALIGN length;
+		} query_security;
+		struct {
+			SECURITY_INFORMATION security_info;
+			void *security_descriptor;
+		} set_security;
+		struct {
+			void *vpb;
+			struct device_object *device_object;
+		} mount_volume;
+		struct {
+			void *vpb;
+			struct device_object *device_object;
+		} verify_volume;
+		struct {
+			void *srb;
+		} scsi;
+		struct {
+			enum device_relation_type type;
+		} query_device_relations;
 		struct {
 			const struct guid *type;
 			USHORT size;
@@ -745,21 +870,48 @@ struct io_stack_location {
 			void *intf_data;
 		} query_intf;
 		struct {
+			void *capabilities;
+		} device_capabilities;
+		struct {
+			void *io_resource_requirement_list;
+		} filter_resource_requirements;
+		struct {
+			ULONG which_space;
+			void *buffer;
+			ULONG offset;
+			ULONG POINTER_ALIGN length;
+		} read_write_config;
+		struct {
+			BOOLEAN lock;
+		} set_lock;
+		struct {
+			enum bus_query_id_type id_type;
+		} query_id;
+		struct {
+			enum device_text_type device_text_type;
+			ULONG POINTER_ALIGN locale_id;
+		} query_device_text;
+		struct {
+			BOOLEAN in_path;
+			BOOLEAN reserved[3];
+			enum device_usage_notification_type POINTER_ALIGN type;
+		} usage_notification;
+		struct {
+			enum system_power_state power_state;
+		} wait_wake;
+		struct {
+			void *power_sequence;
+		} power_sequence;
+		struct {
 			ULONG sys_context;
-			enum power_state_type POINTER_ALIGNMENT type;
-			union power_state POINTER_ALIGNMENT state;
-			enum power_action POINTER_ALIGNMENT shutdown_type;
+			enum power_state_type POINTER_ALIGN type;
+			union power_state POINTER_ALIGN state;
+			enum power_action POINTER_ALIGN shutdown_type;
 		} power;
 		struct {
 			struct cm_resource_list *allocated_resources;
 			struct cm_resource_list *allocated_resources_translated;
 		} start_device;
-		struct {
-			ULONG output_buf_len;
-			ULONG POINTER_ALIGNMENT input_buf_len;
-			ULONG POINTER_ALIGNMENT code;
-			void *type3_input_buf;
-		} ioctl;
 		struct {
 			ULONG_PTR provider_id;
 			void *data_path;
@@ -834,6 +986,7 @@ struct irp {
 	ULONG flags;
 	union {
 		struct irp *master_irp;
+		LONG irp_count;
 		void *system_buffer;
 	} associated_irp;
 
@@ -999,16 +1152,6 @@ struct file_std_info {
 	BOOLEAN dir;
 };
 
-enum file_info_class {
-	FileAlignmentInformation = 17,
-	FileAttributeTagInformation = 35,
-	FileBasicInformation = 4,
-	FileNameInformation = 9,
-	FileNetworkOpenInformation = 34,
-	FilePositionInformation = 14,
-	FileStandardInformation = 5,
-};
-
 enum nt_obj_type {
 	NT_OBJ_EVENT = 10, NT_OBJ_MUTEX, NT_OBJ_THREAD, NT_OBJ_TIMER,
 	NT_OBJ_SEMAPHORE,
@@ -1022,9 +1165,9 @@ enum common_object_type {
 struct common_object_header {
 	struct nt_list list;
 	enum common_object_type type;
-	int size;
+	UINT size;
 	char *name;
-	unsigned int ref_count;
+	UINT ref_count;
 	BOOLEAN close_in_process;
 	BOOLEAN permanent;
 };
@@ -1044,39 +1187,18 @@ enum work_queue_type {
 	MaximumWorkQueue
 };
 
-typedef STDCALL void (*WRAP_WORK_FUNC)(void *arg1, void *arg2);
+typedef STDCALL void (*NTOS_WORK_FUNC)(void *arg1, void *arg2);
 
 struct io_workitem {
 	enum work_queue_type type;
 	struct device_object *dev_obj;
-	WRAP_WORK_FUNC worker_routine;
+	NTOS_WORK_FUNC worker_routine;
 	void *context;
 };
 
 struct io_workitem_entry {
 	struct nt_list list;
 	struct io_workitem *io_workitem;
-};
-
-struct wait_block {
-	struct nt_list list;
-	struct nt_thread *thread;
-	void *object;
-	struct wait_block *next;
-	USHORT wait_key;
-	USHORT wait_type;
-};
-
-enum event_type {
-	NotificationEvent, SynchronizationEvent
-};
-
-enum timer_type {
-	NotificationTimer, SynchronizationTimer
-};
-
-enum wait_type {
-	WaitAll, WaitAny
 };
 
 enum mm_page_priority {
@@ -1103,7 +1225,7 @@ typedef STDCALL void *LOOKASIDE_ALLOC_FUNC(enum pool_type pool_type,
 typedef STDCALL void LOOKASIDE_FREE_FUNC(void *);
 
 struct npaged_lookaside_list {
-	union nt_slist_head head;
+	nt_slist_header head;
 	USHORT depth;
 	USHORT maxdepth;
 	ULONG totalallocs;
@@ -1128,10 +1250,14 @@ struct npaged_lookaside_list {
 		ULONG lastallochits;
 	} u3;
 	ULONG pad[2];
-#ifndef X86_64
+#ifndef CONFIG_X86_64
 	NT_SPIN_LOCK obsolete;
 #endif
-};
+}
+#ifdef CONFIG_X86_64
+CACHE_ALIGN
+#endif
+;
 
 enum device_registry_property {
 	DevicePropertyDeviceDescription, DevicePropertyHardwareID,
@@ -1313,16 +1439,6 @@ struct io_remove_lock {
 	struct nt_event remove_event;
 };
 
-enum device_relation_type {
-	BusRelations,
-	EjectionRelations,
-	PowerRelations,
-	RemovalRelations,
-	TargetDeviceRelation,
-	SingleBusRelations
-};
-
-
 /* some of the functions below are slightly different from DDK's
  * implementation; e.g., Insert functions return appropriate
  * pointer */
@@ -1425,32 +1541,6 @@ static inline struct nt_list *InsertTailList(struct nt_list *head,
 #define nt_list_for_each_safe(pos, n, head)		       \
 	for (pos = (head)->next, n = pos->next; pos != (head); \
 	     pos = n, n = pos->next)
-
-static inline struct nt_slist *
-PushEntryList(union nt_slist_head *head, struct nt_slist *entry)
-{
-	struct nt_slist *oldhead;
-
-	oldhead = head->list.next;
-	entry->next = head->list.next;
-	head->list.next = entry;
-	head->list.depth++;
-	head->list.sequence++;
-	return oldhead;
-}
-
-static inline struct nt_slist *PopEntryList(union nt_slist_head *head)
-{
-	struct nt_slist *first;
-
-	first = head->list.next;
-	if (first) {
-		head->list.next = first->next;
-		head->list.depth--;
-		head->list.sequence++;
-	}
-	return first;
-}
 
 /* device object flags */
 #define DO_VERIFY_VOLUME		0x00000002

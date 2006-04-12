@@ -34,7 +34,8 @@ typedef LONG ndis_rssi;
 typedef ULONG ndis_key_index;
 typedef ULONG ndis_tx_power_level;
 typedef ULONGULONG ndis_key_rsc;
-typedef UCHAR ndis_rates[NDIS_MAX_RATES_EX];
+typedef UCHAR ndis_rates[NDIS_MAX_RATES];
+typedef UCHAR ndis_rates_ex[NDIS_MAX_RATES_EX];
 typedef UCHAR mac_address[ETH_ALEN];
 typedef ULONG ndis_fragmentation_threshold;
 typedef ULONG ndis_rts_threshold;
@@ -69,6 +70,13 @@ struct ndis_buffer_pool {
 	NT_SPIN_LOCK lock;
 };
 
+#define NDIS_PROTOCOL_ID_DEFAULT	0x00
+#define NDIS_PROTOCOL_ID_TCP_IP		0x02
+#define NDIS_PROTOCOL_ID_IPX		0x06
+#define NDIS_PROTOCOL_ID_NBF		0x07
+#define NDIS_PROTOCOL_ID_MAX		0x0F
+#define NDIS_PROTOCOL_ID_MASK		0x0F
+
 #define fPACKET_WRAPPER_RESERVED		0x3F
 #define fPACKET_CONTAINS_MEDIA_SPECIFIC_INFO	0x40
 #define fPACKET_ALLOCATED_BY_NDIS		0x80
@@ -101,7 +109,7 @@ enum ndis_task {
 	TcpIpChecksumNdisTask, IpSecNdisTask, TcpLargeSendNdisTask, MaxNdisTask
 };
 
-enum ndis_encapsulation_format {
+enum ndis_encapsulation {
 	UNSPECIFIED_Encapsulation, NULL_Encapsulation,
 	IEEE_802_3_Encapsulation, IEEE_802_5_Encapsulation,
 	LLC_SNAP_ROUTED_Encapsulation, LLC_SNAP_BRIDGED_Encapsulation
@@ -109,12 +117,21 @@ enum ndis_encapsulation_format {
 
 #define NDIS_TASK_OFFLOAD_VERSION 1
 
+struct ndis_encapsulation_format {
+	enum ndis_encapsulation format;
+	struct {
+		ULONG fixed_header_size:1;
+		ULONG reserved:31;
+	} flags;
+	ULONG header_size;
+};
+
 struct ndis_task_offload_header {
 	ULONG version;
 	ULONG size;
 	ULONG reserved;
 	UCHAR offset_first_task;
-	enum ndis_encapsulation_format encapsulation_format;
+	struct ndis_encapsulation_format encapsulation_format;
 };
 
 struct ndis_task_offload {
@@ -126,33 +143,26 @@ struct ndis_task_offload {
 	UCHAR task_buf[1];
 };
 
+struct v4_checksum {
+	ULONG ip_supported:1;
+	ULONG tcp_supported:1;
+	ULONG tcp_csum:1;
+	ULONG udp_csum:1;
+	ULONG ip_csum:1;
+};
+
+struct v6_checksum {
+	ULONG ip_supported:1;
+	ULONG tcp_supported:1;
+	ULONG tcp_csum:1;
+	ULONG udp_csum:1;
+};
+
 struct ndis_task_tcp_ip_checksum {
-	struct {
-		ULONG ip_supported:1;
-		ULONG tcp_supported:1;
-		ULONG tcp_csum:1;
-		ULONG udp_csum:1;
-		ULONG ip_csum:1;
-	} v4_tx;
-	struct {
-		ULONG ip_supported:1;
-		ULONG tcp_supported:1;
-		ULONG tcp_csum:1;
-		ULONG udp_csum:1;
-		ULONG ip_csum:1;
-	} v4_rx;
-	struct {
-		ULONG ip_supported:1;
-		ULONG tcp_supported:1;
-		ULONG tcp_csum:1;
-		ULONG udp_csum:1;
-	} v6_tx;
-	struct {
-		ULONG ip_supported:1;
-		ULONG tcp_supported:1;
-		ULONG tcp_csum:1;
-		ULONG udp_csum:1;
-	} v6_rx;
+	struct v4_checksum v4_tx;
+	struct v4_checksum v4_rx;
+	struct v6_checksum v6_tx;
+	struct v6_checksum v6_rx;
 };
 
 enum ndis_per_packet_info {
@@ -191,8 +201,7 @@ struct ndis_packet_oob_data {
 	void *mediaspecific;
 	NDIS_STATUS status;
 
-	/* ndiswrapper specific info; packet extension must be right
-	 * below Windows OOB data */
+	/* ndiswrapper specific info */
 	struct ndis_packet_extension extension;
 
 	struct ndis_packet *next;
@@ -200,6 +209,10 @@ struct ndis_packet_oob_data {
 	unsigned int sg_ents;
 	struct ndis_sg_list ndis_sg_list;
 	struct ndis_sg_element *ndis_sg_elements;
+	/* RTL8180L overshoots past ndis_eg_elements (during
+	 * MiniportSendPackets) and overwrites what is below, if SG
+	 * DMA is used, so don't use ndis_sg_element in that
+	 * case. This structure is used only when SG is disabled */
 	struct ndis_sg_element ndis_sg_element;
 
 	unsigned char header[ETH_HLEN];
@@ -419,8 +432,8 @@ typedef void (*NDIS_PROC)(struct ndis_work_item *, void *) STDCALL;
 struct ndis_work_item {
 	void *ctx;
 	/* this should be NDIS_PROC, but we masquerade it as
-	 * WRAP_WORK_FUNC so we can use wrap_worker */
-	WRAP_WORK_FUNC func;
+	 * NTOS_WORK_FUNC so we can use wrap_worker */
+	NTOS_WORK_FUNC func;
 	UCHAR reserved[8 * sizeof(void *)];
 };
 
@@ -428,6 +441,11 @@ struct alloc_shared_mem {
 	void *ctx;
 	ULONG size;
 	BOOLEAN cached;
+};
+
+struct ndis_work_entry {
+	struct nt_list list;
+	struct ndis_work_item *ndis_work_item;
 };
 
 struct ndis_irq {
@@ -768,6 +786,9 @@ struct ndis_miniport_block {
 	void *wan_tx_complete;
 	void *wan_rx;
 	void *wan_rx_complete;
+	/* ZyDas driver seems to corrupt memory without barrier below
+	 * - free_netdev results in slab error */
+	char barrier[10];
 	/* ndiswrapper specific */
 	struct wrap_ndis_device *wnd;
 };
@@ -792,12 +813,13 @@ struct wrap_ndis_device {
 	struct ndis_packet *tx_ring[TX_RING_SIZE];
 	struct ndis_packet **tx_array;
 	unsigned int tx_ring_start;
-	unsigned int tx_ring_pending;
+	unsigned int tx_ring_end;
+	unsigned char is_tx_ring_full;
+	struct semaphore tx_ring_mutex;
 	unsigned int max_tx_packets;
-	NT_SPIN_LOCK tx_lock;
-	NT_SPIN_LOCK tx_stats_lock;
 
 	unsigned char tx_ok;
+	NT_SPIN_LOCK tx_stats_lock;
 
 	struct semaphore ndis_comm_mutex;
 	wait_queue_head_t ndis_comm_wq;
@@ -836,6 +858,9 @@ struct wrap_ndis_device {
 	int iw_auth_80211_auth_alg;
 	struct ndis_packet_pool *tx_packet_pool;
 	struct ndis_buffer_pool *tx_buffer_pool;
+	int multicast_size;
+	struct v4_checksum rx_csum;
+	struct ndis_tcp_ip_checksum_packet_info tx_csum_info;
 };
 
 struct ndis_pmkid_candidate {

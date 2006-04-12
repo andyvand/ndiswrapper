@@ -1,3 +1,45 @@
+Version 1.13 2006-04-08
+=======================
+* Compilation issues with older kernels fixed.
+* SMP issues fixed; Netgear WG111 USB (Prism54 chipset) works with SMP.
+* Association to open networks (without encryption) is supported with 'wext'
+  driver interface with wpa_supplicant.
+* Workaround is provided for Atheros driver so large block of memory
+  allocated by this driver in atomic context succeed.
+
+Version 1.12 2006-04-04
+======================
+* Sis163 USB driver with version 1.11 failed to associate reliably. This is
+  fixed.
+* TI 1450 USB driver failed to initialize card if module is reloaded. This is
+  fixed.
+* WPA with TKIP with TI ACX100 driver now works with 'ap_scan=2' in
+  wpa_supplicant's configuration file. Driver for D-Link DWL-650+ has support
+  for WPA with TKIP for this chipset.
+* Added support for non-encrypted networks with wpa_supplicant.
+* Am1772 with WPA and TKIP authenticates reliably now.
+* Compilation issue with 2.4 kernels fixed.
+* Added support for WEP with wpa_supplicant through 'wext' driver
+  interface. There is no need for 'ndiswrapper' interface with wpa_supplicant
+  anymore.
+* Fixed an issue with 64-bit USB drivers. No 64-bit USB driver is known to
+  work, though.
+
+Version 1.11 2006-03-25
+======================
+* Added support for newer RNDIS (USB) cards (e.g., USR5421, F5D7051uk,
+  WUSB54GSv2, all based on Broadcom chip). These support WPA2, whereas
+  older RNDIS cards support only WPA.
+* Kernel crash when removing USB cards fixed.
+* Fixed performance issues with SMP.
+* Added support for AMD Am1772.
+
+Version 1.10 2006-02-11
+======================
+* Added support for 64-bit USB drivers. Not tested with any driver,
+  though.
+* Bug fixes.
+
 Version 1.9 2006-02-03
 ======================
 * Added support for real-time preempt (RT) patch.

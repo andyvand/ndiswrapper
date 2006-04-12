@@ -22,69 +22,63 @@ extern NT_SPIN_LOCK loader_lock;
 extern struct nt_list ndis_drivers;
 extern struct wrap_device *wrap_devices;
 
-/* IRP functions are called as Windows functions (with arguments in
- * Rcx, Rdx etc), but the real functions are implemented in Linux, so
- * we shuffle arguments back correctly and call corresponding Linux
- * functions */
-static NTSTATUS _IrpStopCompletion(struct device_object *dev_obj,
+/* IRP functions are called as Windows functions. For 64-bit, this
+ * means arguments are in rcx, rdx etc., but Linux functions expect
+ * them in rdi, rsi etc. So we need to put arguments back correctly
+ * before touching arguments. We also assume that all arguments are
+ * pointers (or register width). */
+
+/* called as Windows function, so call WIN2LIN3 before accessing
+ * arguments */
+STDCALL NTSTATUS IrpStopCompletion(struct device_object *dev_obj,
 				   struct irp *irp, void *context)
 {
+	WIN2LIN3(dev_obj, irp, context);
+
 	IOENTER("dev_obj: %p, irp: %p, context: %p", dev_obj, irp, context);
 	IOEXIT(return STATUS_MORE_PROCESSING_REQUIRED);
 }
 
-STDCALL NTSTATUS winIrpStopCompletion(struct device_object *dev_obj,
-				      struct irp *irp, void *context)
+/* called as Windows function, so call WIN2LIN2 before accessing
+ * arguments */
+STDCALL NTSTATUS IopPassIrpDown(struct device_object *dev_obj,
+				struct irp *irp)
 {
-	unsigned long ret;
-	WIN2LIN3(_IrpStopCompletion, dev_obj, irp, context, ret);
-	return ret;
-}
+	WIN2LIN2(dev_obj, irp);
 
-static NTSTATUS _IopPassIrpDown(struct device_object *dev_obj,
-			       struct irp *irp)
-{
 	IoSkipCurrentIrpStackLocation(irp);
 	return IoCallDriver(dev_obj, irp);
 }
 
-STDCALL NTSTATUS winIopPassIrpDown(struct device_object *dev_obj,
-				   struct irp *irp)
-{
-	unsigned long ret;
-	WIN2LIN2(_IopPassIrpDown, dev_obj, irp, ret);
-	return ret;
-}
-
-static NTSTATUS _IopInvalidDeviceRequest(struct device_object *dev_obj,
-					struct irp *irp)
+/* called as Windows function, so call WIN2LIN2 before accessing
+ * arguments */
+STDCALL NTSTATUS IopInvalidDeviceRequest(struct device_object *dev_obj,
+					 struct irp *irp)
 {
 	struct io_stack_location *irp_sl;
 	NTSTATUS status;
+
+	WIN2LIN2(dev_obj, irp);
 
 	irp_sl = IoGetCurrentIrpStackLocation(irp);
 	WARNING("IRP %d:%d not implemented",
 		irp_sl->major_fn, irp_sl->minor_fn);
 	irp->io_status.status = STATUS_SUCCESS;
-	irp->io_status.status_info = 0;
+	irp->io_status.info = 0;
 	status = irp->io_status.status;
 	IoCompleteRequest(irp, IO_NO_INCREMENT);
 	return status;
 }
 
-STDCALL NTSTATUS winIopInvalidDeviceRequest(struct device_object *dev_obj,
-					    struct irp *irp)
-{
-	unsigned long ret;
-	WIN2LIN2(_IopInvalidDeviceRequest, dev_obj, irp, ret);
-	return ret;
-}
-
-static NTSTATUS _pdoDispatchDeviceControl(struct device_object *pdo,
-					 struct  irp *irp)
+/* called as Windows function, so call WIN2LIN2 before accessing
+ * arguments */
+STDCALL NTSTATUS pdoDispatchDeviceControl(struct device_object *pdo,
+					  struct  irp *irp)
 {
 	struct io_stack_location *irp_sl;
 	NTSTATUS status;
+
+	WIN2LIN2(pdo, irp);
 
 	DUMP_IRP(irp);
 
@@ -93,7 +87,7 @@ static NTSTATUS _pdoDispatchDeviceControl(struct device_object *pdo,
 		ERROR("invalid irp: %p, %d, %d", irp, irp->current_location,
 		      irp->stack_count);
 		irp->io_status.status = STATUS_FAILURE;
-		irp->io_status.status_info = 0;
+		irp->io_status.info = 0;
 		IOEXIT(return STATUS_FAILURE);
 	}
 	irp_sl = IoGetCurrentIrpStackLocation(irp);
@@ -111,16 +105,10 @@ static NTSTATUS _pdoDispatchDeviceControl(struct device_object *pdo,
 #endif
 }
 
-STDCALL NTSTATUS winpdoDispatchDeviceControl(struct device_object *pdo,
-					     struct  irp *irp)
-{
-	unsigned long ret;
-	WIN2LIN2(_pdoDispatchDeviceControl, pdo, irp, ret);
-	return ret;
-}
-
-static NTSTATUS _pdoDispatchPnp(struct device_object *pdo,
-			       struct irp *irp)
+/* called as Windows function, so call WIN2LIN2 before accessing
+ * arguments */
+STDCALL NTSTATUS pdoDispatchPnp(struct device_object *pdo,
+				struct irp *irp)
 {
 	struct io_stack_location *irp_sl;
 	struct wrap_device *wd;
@@ -128,6 +116,9 @@ static NTSTATUS _pdoDispatchPnp(struct device_object *pdo,
 #ifdef CONFIG_USB
 	struct usbd_bus_interface_usbdi *usb_intf;
 #endif
+
+	WIN2LIN2(pdo, irp);
+
 	irp_sl = IoGetCurrentIrpStackLocation(irp);
 	wd = pdo->reserved;
 	DBGTRACE2("fn %d:%d, wd: %p", irp_sl->major_fn, irp_sl->minor_fn, wd);
@@ -201,22 +192,17 @@ static NTSTATUS _pdoDispatchPnp(struct device_object *pdo,
 	IOEXIT(return status);
 }
 
-static STDCALL NTSTATUS winpdoDispatchPnp(struct device_object *pdo,
-					  struct irp *irp)
-{
-	unsigned long ret;
-	WIN2LIN2(_pdoDispatchPnp, pdo, irp, ret);
-	return ret;
-}
-
-static NTSTATUS _pdoDispatchPower(struct device_object *pdo,
-				 struct irp *irp)
+/* called as Windows function */
+STDCALL NTSTATUS pdoDispatchPower(struct device_object *pdo,
+				  struct irp *irp)
 {
 	struct io_stack_location *irp_sl;
 	struct wrap_device *wd;
 	union power_state power_state;
 	struct pci_dev *pdev;
 	NTSTATUS status;
+
+	WIN2LIN2(pdo, irp);
 
 	irp_sl = IoGetCurrentIrpStackLocation(irp);
 	wd = pdo->reserved;
@@ -242,6 +228,10 @@ static NTSTATUS _pdoDispatchPower(struct device_object *pdo,
 #else
 				pci_restore_state(pdev, wd->pci.pci_state);
 #endif
+			} else { // usb device
+#ifdef CONFIG_USB
+				wrap_resume_urbs(wd);
+#endif
 			}
 		} else {
 			DBGTRACE2("suspending device %p", wd);
@@ -251,6 +241,10 @@ static NTSTATUS _pdoDispatchPower(struct device_object *pdo,
 				pci_save_state(pdev);
 #else
 				pci_save_state(pdev, wd->pci.pci_state);
+#endif
+			} else { // usb device
+#ifdef CONFIG_USB
+				wrap_suspend_urbs(wd);
 #endif
 			}
 		}
@@ -270,15 +264,6 @@ static NTSTATUS _pdoDispatchPower(struct device_object *pdo,
 	return status;
 }
 
-
-static STDCALL NTSTATUS winpdoDispatchPower(struct device_object *pdo,
-					    struct irp *irp)
-{
-	unsigned long ret;
-	WIN2LIN2(_pdoDispatchPower, pdo, irp, ret);
-	return ret;
-}
-
 static struct device_object *alloc_pdo(struct driver_object *drv_obj)
 {
 	struct device_object *pdo;
@@ -291,13 +276,13 @@ static struct device_object *alloc_pdo(struct driver_object *drv_obj)
 	if (status != STATUS_SUCCESS)
 		return NULL;
 	for (i = 0; i <= IRP_MJ_MAXIMUM_FUNCTION; i++)
-		drv_obj->major_func[i] = winIopInvalidDeviceRequest;
+		drv_obj->major_func[i] = IopInvalidDeviceRequest;
 	drv_obj->major_func[IRP_MJ_INTERNAL_DEVICE_CONTROL] =
-		winpdoDispatchDeviceControl;
+		pdoDispatchDeviceControl;
 	drv_obj->major_func[IRP_MJ_DEVICE_CONTROL] =
-		winpdoDispatchDeviceControl;
-	drv_obj->major_func[IRP_MJ_POWER] = winpdoDispatchPower;
-	drv_obj->major_func[IRP_MJ_PNP] = winpdoDispatchPnp;
+		pdoDispatchDeviceControl;
+	drv_obj->major_func[IRP_MJ_POWER] = pdoDispatchPower;
+	drv_obj->major_func[IRP_MJ_PNP] = pdoDispatchPnp;
 	return pdo;
 }
 
@@ -341,10 +326,10 @@ static int start_pdo(struct device_object *pdo)
 #ifdef CONFIG_X86_64
 	/* 64-bit broadcom driver doesn't work if DMA is allocated
 	 * from over 1GB */
-	if (strcmp(wd->driver->name, "netbc564") == 0) {
+	if (wd->vendor == 0x14e4) {
 		if (pci_set_dma_mask(pdev, 0x3fffffff) ||
 		    pci_set_consistent_dma_mask(pdev, 0x3fffffff))
-			WARNING("DMA mask couldn't be set; this driver "
+			WARNING("couldn't set DMA mask; this driver "
 				"may not work with more than 1GB RAM");
 	}
 #endif
@@ -454,16 +439,7 @@ NTSTATUS pnp_set_power_state(struct wrap_device *wd,
 	struct irp *irp;
 	struct io_stack_location *irp_sl;
 	NTSTATUS status;
-	struct nt_thread *thread;
 
-	if (KeGetCurrentThread() == NULL) {
-		thread = wrap_create_thread(current);
-		if (!thread) {
-			ERROR("couldn't allocate thread object");
-			TRACEEXIT1(return STATUS_FAILURE);
-		}
-	} else
-		thread = NULL;
 	pdo = wd->pdo;
 	fdo = IoGetAttachedDevice(pdo);
 	if (state > PowerDeviceD0) {
@@ -488,8 +464,6 @@ NTSTATUS pnp_set_power_state(struct wrap_device *wd,
 	status = IoCallDriver(fdo, irp);
 	if (status != STATUS_SUCCESS)
 		WARNING("set power returns %08X", status);
-	if (thread)
-		wrap_remove_thread(thread);
 	TRACEEXIT1(return status);
 }
 
@@ -500,19 +474,10 @@ NTSTATUS pnp_start_device(struct wrap_device *wd)
 	struct irp *irp;
 	struct io_stack_location *irp_sl;
 	NTSTATUS status;
-	struct nt_thread *thread;
 
 	pdo = wd->pdo;
 	fdo = IoGetAttachedDevice(pdo);
 	DBGTRACE1("fdo: %p, irql: %d", fdo, current_irql());
-	if (KeGetCurrentThread() == NULL) {
-		thread = wrap_create_thread(current);
-		if (!thread) {
-			ERROR("couldn't allocate thread object");
-			TRACEEXIT1(return STATUS_FAILURE);
-		}
-	} else
-		thread = NULL;
 	irp = IoAllocateIrp(fdo->stack_count, FALSE);
 	irp_sl = IoGetNextIrpStackLocation(irp);
 	DBGTRACE1("irp = %p, stack = %p", irp, irp_sl);
@@ -531,8 +496,6 @@ NTSTATUS pnp_start_device(struct wrap_device *wd)
 	else
 		WARNING("Windows driver couldn't initialize the device (%08X)",
 			status);
-	if (thread)
-		wrap_remove_thread(thread);
 	TRACEEXIT1(return status);
 }
 
@@ -574,15 +537,8 @@ NTSTATUS pnp_remove_device(struct wrap_device *wd)
 	struct driver_object *fdo_drv_obj;
 	struct irp *irp;
 	struct io_stack_location *irp_sl;
-	struct nt_thread *thread;
 	NTSTATUS status;
 
-	if (KeGetCurrentThread() == NULL) {
-		thread = wrap_create_thread(current);
-		if (!thread)
-			WARNING("couldn't allocate thread object");
-	} else
-		thread = NULL;
 	pdo = wd->pdo;
 	fdo = IoGetAttachedDevice(pdo);
 	fdo_drv_obj = fdo->drv_obj;
@@ -631,8 +587,6 @@ NTSTATUS pnp_remove_device(struct wrap_device *wd)
 			ERROR("couldn't get wrap_driver");
 		ObDereferenceObject(fdo_drv_obj);
 	}
-	if (thread)
-		wrap_remove_thread(thread);
 	TRACEEXIT1(return status);
 }
 
@@ -684,6 +638,7 @@ static int wrap_pnp_start_device(struct wrap_device *wd)
 			return -EINVAL;
 		}
 	}
+	DBGTRACE1("%p", driver->drv_obj->drv_ext->add_device);
 	if (driver->drv_obj->drv_ext->add_device(driver->drv_obj, pdo) !=
 	    STATUS_SUCCESS) {
 		IoDeleteDevice(pdo);
@@ -756,6 +711,27 @@ void *wrap_pnp_start_usb_device(struct usb_device *udev,
 	struct wrap_device *wd;
 	int ret;
 	wd = &wrap_devices[usb_id->driver_info];
+	DBGTRACE1("%04x, %04x, %x, %x, %x, %x, %x, %x, %x, %p",
+		  usb_id->idVendor, usb_id->idProduct,
+		  usb_id->bDeviceClass, usb_id->bDeviceSubClass,
+		  usb_id->bDeviceProtocol, usb_id->bInterfaceClass,
+		  usb_id->bDeviceProtocol, usb_id->bInterfaceClass,
+		  usb_id->bInterfaceSubClass, wd->usb.intf);
+
+	/* TI 4150 needs a full reset */
+	if (usb_id->idVendor == 0x057c && usb_id->idProduct == 0x5601 &&
+	    (xchg(&wd->usb.reset, 1) == 0)) {
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
+		usb_set_intfdata(intf, NULL);
+		ret = usb_reset_device(interface_to_usbdev(intf));
+#else
+		ret = usb_reset_device(udev);
+#endif
+		if (ret) {
+			WARNING("reset failed: %d", ret);
+			goto out;
+		}
+	}
 	/* USB device may have multiple interfaces; initialize a
 	  device only once */
 	if (wd->usb.intf) {
@@ -772,6 +748,8 @@ void *wrap_pnp_start_usb_device(struct usb_device *udev,
 #endif
 		ret = wrap_pnp_start_device(wd);
 	}
+
+out:
 	DBGTRACE2("ret: %d", ret);
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
 	if (ret)
@@ -829,7 +807,12 @@ int wrap_pnp_suspend_usb_device(struct usb_interface *intf, pm_message_t state)
 	if (!wd)
 		TRACEEXIT1(return -1);
 	pdo = wd->pdo;
-	return pnp_set_power_state(wd, PowerDeviceD3);
+	if (pnp_set_power_state(wd, PowerDeviceD3))
+		return -1;
+	else {
+//		intf->dev.power.power_state.event = state.event;
+		return 0;
+	}
 }
 
 int wrap_pnp_resume_usb_device(struct usb_interface *intf)
@@ -838,7 +821,12 @@ int wrap_pnp_resume_usb_device(struct usb_interface *intf)
 	wd = usb_get_intfdata(intf);
 	if (!wd)
 		TRACEEXIT1(return -1);
-	return pnp_set_power_state(wd, PowerDeviceD0);
+	if (pnp_set_power_state(wd, PowerDeviceD0))
+		return -1;
+	else {
+//		intf->dev.power.power_state.event = PM_EVENT_ON;
+		return 0;
+	}
 }
 #endif
 

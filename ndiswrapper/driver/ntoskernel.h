@@ -16,7 +16,7 @@
 #ifndef _NTOSKERNEL_H_
 #define _NTOSKERNEL_H_
 
-#define UTILS_VERSION "1.7"
+#define UTILS_VERSION "1.8"
 
 #include <linux/types.h>
 #include <linux/timer.h>
@@ -197,7 +197,7 @@ typedef task_queue workqueue;
 #define PSMG_ON PM_ON
 #else
 typedef u32 pm_message_t;
-#define PMSG_SUSPEND 3
+#define PMSG_SUSPEND 2
 #define PMSG_ON 0
 #endif
 #endif
@@ -265,21 +265,19 @@ typedef u32 pm_message_t;
 
 /* NOTE: these macros assume function arguments are quads and
  * arguments are not touched in any way before calling these macros */
-#define WIN2LIN2(func, arg1, arg2, ret)			\
-do {							\
-	__asm__("mov %rcx, %rdi");			\
-	__asm__("mov %rdx, %rsi");			\
-	__asm__("call *%0" : : "r"(func));		\
-	__asm__("mov %%rax, %0" : "=r"(ret));		\
+#define WIN2LIN2(arg1, arg2)						\
+do {									\
+	__asm__ __volatile__("mov %%rcx, %0\n\t"			\
+			     "mov %%rdx, %1\n\t"			\
+			     : "=m" (arg1), "=m" (arg2));		\
 } while (0)
 
-#define WIN2LIN3(func, arg1, arg2, arg3, ret)		\
-do {							\
-	__asm__("mov %rcx, %rdi");			\
-	__asm__("mov %rdx, %rsi");			\
-	__asm__("mov %r8, %rdx");			\
-	__asm__("call *%0" : : "r"(func));		\
-	__asm__("mov %%rax, %0" : "=r"(ret));		\
+#define WIN2LIN3(arg1, arg2, arg3)					\
+do {									\
+	__asm__ __volatile__("mov %%rcx, %0\n\t"			\
+			     "mov %%rdx, %1\n\t"			\
+			     "mov %%r8, %2\n\t"				\
+			     : "=m" (arg1), "=m" (arg2), "=m" (arg3));	\
 } while (0)
 
 #else // CONFIG_X86_64
@@ -315,15 +313,9 @@ do {							\
 	func(arg1, arg2, arg3, arg4, arg5, arg6);			\
 })
 
-#define WIN2LIN2(func, arg1, arg2, ret)		\
-do {						\
-	ret = func(arg1, arg2);			\
-} while (0)
+#define WIN2LIN2(arg1, arg2) do { } while (0)
 
-#define WIN2LIN3(func, arg1, arg2, arg3, ret)	\
-do {						\
-	ret = func(arg1, arg2, arg3);		\
-} while (0)
+#define WIN2LIN3(arg1, arg2, arg3) do { } while (0)
 
 #endif // CONFIG_X86_64
 
@@ -412,6 +404,26 @@ do {									\
 #define WRAP_MODULE_PARM_STRING(name, perm) MODULE_PARM(name, "s")
 #endif
 
+#ifndef LOCK_PREFIX
+#ifdef LOCK
+#define LOCK_PREFIX LOCK
+#else
+#ifdef CONFIG_SMP
+#define LOCK_PREFIX "lock ; "
+#else
+#define LOCK_PREFIX ""
+#endif
+#endif
+#endif
+
+#ifndef NETDEV_TX_OK
+#define NETDEV_TX_OK 0
+#endif
+
+#ifndef NETDEV_TX_BUSY
+#define NETDEV_TX_BUSY 1
+#endif
+
 /* this ugly hack is to handle RH kernels; I don't know any better,
  * but this has to be fixed soon */
 #ifndef rt_task
@@ -436,7 +448,7 @@ do {									\
  * clock, otherwise from year 1601 */
 #define SYSTEM_TIME_TO_HZ(sys_time)					\
 	((((sys_time) <= 0) ? (((u64)HZ * (-(sys_time))) / TICKSPERSEC) : \
-	  (((u64)HZ * ((sys_time) - ticks_1601())) / TICKSPERSEC)))
+	  (((s64)HZ * ((sys_time) - ticks_1601())) / TICKSPERSEC)))
 
 #define MSEC_TO_HZ(ms) ((ms) * HZ / 1000)
 #define USEC_TO_HZ(ms) ((us) * HZ / 1000000)
@@ -480,7 +492,7 @@ struct wrap_alloc {
 
 struct pe_image {
 	char name[MAX_DRIVER_NAME_LEN];
-	void *entry;
+	UINT (*entry)(struct driver_object *, struct unicode_string *) STDCALL;
 	void *image;
 	int size;
 	int type;
@@ -504,15 +516,13 @@ struct wrap_timer {
 #endif
 };
 
-struct wrap_work_item {
+struct ntos_work_item {
 	struct nt_list list;
 	void *arg1;
 	void *arg2;
-	void *func;
+	void (*func)(void *arg1, void *arg2) STDCALL;
 	BOOLEAN win_func;
 };
-
-#define MAX_ALLOCATED_URBS 15
 
 struct wrap_device_setting {
 	struct nt_list list;
@@ -540,9 +550,7 @@ struct wrap_driver {
 	int num_bin_files;
 	struct wrap_bin_file *bin_files;
 	struct nt_list wrap_devices;
-	union {
-		struct wrap_ndis_driver *ndis_driver;
-	};
+	struct wrap_ndis_driver *ndis_driver;
 };
 
 enum hw_status {
@@ -563,8 +571,8 @@ struct wrap_device {
 	char conf_file_name[MAX_DRIVER_NAME_LEN];
 	struct nt_list settings;
 
-	/* rest should be (de)initialized during every
-	 * (de)initialization */
+	/* rest should be (de)initialized when a device is
+	 * (un)plugged */
 	struct device_object *pdo;
 	union {
 		struct {
@@ -578,27 +586,42 @@ struct wrap_device {
 			struct usb_interface *intf;
 			int num_alloc_urbs;
 			struct nt_list wrap_urb_list;
+			u8 reset;
 		} usb;
 	};
-	union {
-		struct wrap_ndis_device *wnd;
-	};
+	struct wrap_ndis_device *wnd;
 	struct nt_list timer_list;
 	NT_SPIN_LOCK timer_lock;
 	struct cm_resource_list *resource_list;
 };
 
+/* Some drivers use worker entries to complete functions called from
+ * within worker threads. So we should have separate workqueues to
+ * make sure worker entries run properly */
+
 #if LINUX_VERSION_CODE > KERNEL_VERSION(2,6,0)
-/* until issues with threads hogging cpu are resolved, we don't want
- * to use shared workqueue, lest the threads take keyboard etc down */
 #define USE_OWN_WORKQUEUE 1
-extern struct workqueue_struct *wrapper_wq, *ndis_wq;
-#define schedule_wrap_work(work_struct) queue_work(wrapper_wq, (work_struct))
+extern struct workqueue_struct *wrap_wq;
 #define schedule_ndis_work(work_struct) queue_work(ndis_wq, (work_struct))
+#define schedule_wrap_work(work_struct) queue_work(wrap_wq, (work_struct))
 #else
-#define schedule_wrap_work(work_struct) schedule_work(work_struct)
 #define schedule_ndis_work(work_struct) schedule_work(work_struct)
+#define schedule_wrap_work(work_struct) schedule_work(work_struct)
 #endif
+
+/* Normally workqueue for ntos is not required, as worker entries in
+ * it are not supposed to wait; however, it helps to have separate
+ * workqueue so keyboard etc. work when kernel crashes */
+
+//#define USE_OWN_NTOS_WORKQUEUE 1
+
+#ifdef USE_OWN_NTOS_WORKQUEUE
+extern struct workqueue_struct *ntos_wq;
+#define schedule_ntos_work(work_struct) queue_work(ntos_wq, (work_struct))
+#else
+#define schedule_ntos_work(work_struct) schedule_work(work_struct)
+#endif
+
 
 int ntoskernel_init(void);
 void ntoskernel_exit(void);
@@ -707,11 +730,10 @@ STDCALL struct irp *WRAP_EXPORT(IoBuildAsynchronousFsdRequest)
 	 struct io_status_block *status);
 STDCALL NTSTATUS PoCallDriver(struct device_object *dev_obj, struct irp *irp);
 
-struct nt_thread *wrap_create_thread(struct task_struct *task);
-void wrap_remove_thread(struct nt_thread *thread);
+struct nt_thread *get_current_nt_thread(void);
 u64 ticks_1601(void);
 
-int schedule_wrap_work_item(WRAP_WORK_FUNC func, void *arg1, void *arg2,
+int schedule_ntos_work_item(NTOS_WORK_FUNC func, void *arg1, void *arg2,
 			    BOOLEAN win_func);
 
 STDCALL KIRQL KeGetCurrentIrql(void);
@@ -783,7 +805,7 @@ unsigned long lin_to_win6(void *func, unsigned long, unsigned long,
 			  unsigned long);
 
 
-STDCALL struct nt_thread *KeGetCurrentThread(void);
+STDCALL struct task_struct *KeGetCurrentThread(void);
 STDCALL NTSTATUS
 ObReferenceObjectByHandle(void *handle, ACCESS_MASK desired_access,
 			  void *obj_type, KPROCESSOR_MODE access_mode,
@@ -791,7 +813,6 @@ ObReferenceObjectByHandle(void *handle, ACCESS_MASK desired_access,
 
 _FASTCALL LONG ObfReferenceObject(FASTCALL_DECL_1(void *object));
 _FASTCALL void ObfDereferenceObject(FASTCALL_DECL_1(void *object));
-STDCALL NTSTATUS ZwClose(void *object);
 #define ObReferenceObject(object)			\
 	ObfReferenceObject(FASTCALL_ARGS_1(object))
 #define ObDereferenceObject(object)			\
@@ -852,79 +873,77 @@ static inline void lower_irql(KIRQL oldirql)
  * store Linux spinlocks; so we implement Windows spinlocks using
  * ULONG_PTR space with our own functions/macros */
 
-/* the reason for value of unlocked spinlock to be 0, instead of 1
- * (which is what linux spinlocks use), is that some drivers don't
- * first call to initialize spinlock; in those case, the value of the
- * lock seems to be 0 (presumably in Windows value of unlocked
- * spinlock is 0).
- */
-
-/* define CONFIG_DEBUG_SPINLOCK if a Windows driver is suspected of
- * obtaining a lock while holding the same lock */
-
-//#ifndef CONFIG_DEBUG_SPINLOCK
-//#define CONFIG_DEBUG_SPINLOCK
-//#endif
-
-#undef CONFIG_DEBUG_SPINLOCK
-
-#ifdef CONFIG_DEBUG_SPINLOCK
-#define NT_SPIN_LOCK_LOCKED ((ULONG_PTR)current)
-#else
-#define NT_SPIN_LOCK_LOCKED 1
-#endif
+/* Windows seems to use 0 for unlocked state of spinlock - if Linux
+ * convention of 1 for unlocked state is used, at least prism54 driver
+ * crashes */
 
 #define NT_SPIN_LOCK_UNLOCKED 0
+#define NT_SPIN_LOCK_LOCKED 1
 
-#define nt_spin_lock_init(lock) *(lock) = NT_SPIN_LOCK_UNLOCKED
+static inline void  nt_spin_lock_init(volatile NT_SPIN_LOCK *lock)
+{
+	*lock = NT_SPIN_LOCK_UNLOCKED;
+}
 
 #ifdef CONFIG_SMP
+/* Linux kernel implements raw spinlocks in X86_64 differently from
+ * X86; as of now I understand following should work for both - if
+ * not, implement two versions */
+#if 0
+/* other spinlock implementations */
+	__asm__ __volatile__(
+		"\n"
+		"1:\t"
+		"  lock; xaddl %1, %0\n\t"
+		"  cmpl %2, %1\n\t"
+		"  je 3f\n"
+		"2:\t"
+		"  rep; nop\n\t"
+		"  cmpl %2, %0\n\t"
+		"  jne 2b\n\t"
+		"  mov $1, %1\n\t"
+		"  jmp 1b\n"
+		"3:\n\t"
+		: "=m" (*lock)
+		: "r" (1), "i" (NT_SPIN_LOCK_UNLOCKED)
+		: "memory");
+	while (xchg(lock, NT_SPIN_LOCK_LOCKED) != NT_SPIN_LOCK_UNLOCKED) {
+		do {
+			cpu_relax();
+		} while (*lock != NT_SPIN_LOCK_UNLOCKED);
+	}
+#endif
+static inline void nt_spin_lock(volatile NT_SPIN_LOCK *lock)
+{
+	__asm__ __volatile__(
+		"\n"
+		"1:\t"
+		"  xchgl %1, %0\n\t"
+		"  cmpl %2, %1\n\t"
+		"  je 3f\n"
+		"2:\t"
+		"  rep; nop\n\t"
+		"  cmpl %2, %0\n\t"
+		"  jne 2b\n\t"
+		"  jmp 1b\n"
+		"3:\n\t"
+		: "=m" (*lock)
+		: "r" (NT_SPIN_LOCK_LOCKED), "i" (NT_SPIN_LOCK_UNLOCKED)
+		: "memory");
+}
 
-#define raw_nt_spin_lock(lock)						\
-	while (cmpxchg((lock), NT_SPIN_LOCK_UNLOCKED, NT_SPIN_LOCK_LOCKED) != \
-	       NT_SPIN_LOCK_UNLOCKED)
+static inline void nt_spin_unlock(volatile NT_SPIN_LOCK *lock)
+{
+	*lock = NT_SPIN_LOCK_UNLOCKED;
+}
 
-#ifdef CONFIG_DEBUG_SPINLOCK
-#define raw_nt_spin_unlock(lock)					\
-	__asm__ __volatile__("movw $0,%0"				\
-			     :"=m" (*(lock)) : : "memory")
-#else // DEBUG_SPINLOCK
-#define raw_nt_spin_unlock(lock)					\
-	__asm__ __volatile__("movb $0,%0"				\
-			     :"=m" (*(lock)) : : "memory")
-#endif // DEBUG_SPINLOCK
+#else // CONFIG_SMP
 
-#else // SMP
+#define nt_spin_lock(lock) do { } while (0)
 
-#define raw_nt_spin_lock(lock) *(lock) = NT_SPIN_LOCK_LOCKED
-#define raw_nt_spin_unlock(lock) *(lock) = NT_SPIN_LOCK_UNLOCKED
+#define nt_spin_unlock(lock)  do { } while (0)
 
-#endif // SMP
-
-#ifdef CONFIG_DEBUG_SPINLOCK
-
-#define nt_spin_lock(lock)						\
-do {									\
-	if (*(lock) == NT_SPIN_LOCK_LOCKED)				\
-		ERROR("eeek: process %p already owns lock %p",		\
-		      current, lock);					\
-	else								\
-		raw_nt_spin_lock(lock);					\
-} while (0)
-#define nt_spin_unlock(lock)						\
-do {									\
-	if (*(lock) != NT_SPIN_LOCK_LOCKED)				\
-		ERROR("nt_spin_lock %p not locked!", (lock));		\
-	else								\
-		raw_nt_spin_unlock(lock);				\
-} while (0)
-
-#else // DEBUG_SPINLOCK
-
-#define nt_spin_lock(lock) raw_nt_spin_lock(lock)
-#define nt_spin_unlock(lock) raw_nt_spin_unlock(lock)
-
-#endif // DEBUG_SPINLOCK
+#endif // CONFIG_SMP
 
 /* raise IRQL to given (higher) IRQL if necessary before locking */
 static inline KIRQL nt_spin_lock_irql(NT_SPIN_LOCK *lock, KIRQL newirql)
@@ -960,18 +979,110 @@ do {									\
 do {									\
 	nt_spin_unlock(lock);						\
 	restore_local_irq(flags);					\
-	preempt_enable_no_resched();					\
+	preempt_enable();						\
 } while (0)
 
 static inline ULONG SPAN_PAGES(void *ptr, SIZE_T length)
 {
 	ULONG n;
 
-	n = (((ULONG_PTR)ptr & (PAGE_SIZE - 1)) +
+	n = ((((ULONG_PTR)ptr) & (PAGE_SIZE - 1)) +
 	     length + (PAGE_SIZE - 1)) >> PAGE_SHIFT;
 
 	return n;
 }
+
+#ifdef CONFIG_X86_64
+/* it is not clear how nt_slist_header is used to store pointer to
+ * slists and depth; here we assume 'align' field is used to store
+ * depth and 'region' field is used to store slist pointers */
+
+/* TODO: can these be implemented without using spinlock? */
+
+static inline struct nt_slist *PushEntrySList(nt_slist_header *head,
+					      struct nt_slist *entry,
+					      NT_SPIN_LOCK *lock)
+{
+	KIRQL irql = nt_spin_lock_irql(lock, DISPATCH_LEVEL);
+	entry->next = (struct nt_slist *)head->region;
+	head->region = (ULONGLONG)entry;
+	head->align = (head->align & 0x0000ffff) |
+		((head->align & 0xffff) + 1);
+	nt_spin_unlock_irql(lock, irql);
+	return entry->next;
+}
+
+static inline struct nt_slist *PopEntrySList(nt_slist_header *head,
+					     NT_SPIN_LOCK *lock)
+{
+	struct nt_slist *entry;
+	KIRQL irql = nt_spin_lock_irql(lock, DISPATCH_LEVEL);
+	entry = (struct nt_slist *)head->region;
+	if (entry) {
+		head->region = (ULONGLONG)entry->next;
+		head->align = (head->align & 0x0000ffff) |
+			((head->align & 0xffff) - 1);
+	}
+	nt_spin_unlock_irql(lock, irql);
+	return entry;
+}
+
+#else
+
+#ifndef ll_low
+#define ll_low(x) *(((u32 *)&(x)) + 0)
+#define ll_high(x) *(((u32 *)&(x)) + 1)
+#endif
+
+static inline u64 cmpxchg8b(volatile void *ptr, u64 old, u64 new)
+{
+	u64 prev;
+
+	__asm__ __volatile__(
+		"\n"
+		LOCK_PREFIX "cmpxchg8b (%0)\n"
+		: "+r" (ptr),
+		  "=a" (ll_low(prev)), "=d" (ll_high(prev))
+		: "a" (ll_low(old)), "d" (ll_high(old)),
+		  "b" (ll_low(new)), "c" (ll_high(new))
+		: "cc", "memory");
+	return prev;
+}
+
+/* slist routines below update slist atomically - no need for
+ * spinlocks */
+
+static inline struct nt_slist *PushEntrySList(nt_slist_header *head,
+					      struct nt_slist *entry,
+					      NT_SPIN_LOCK *lock)
+{
+	nt_slist_header old, new;
+	do {
+		old.align = head->align;
+		entry->next = old.next;
+		new.next = entry;
+		new.depth = old.depth + 1;
+	} while (cmpxchg8b(&head->align, old.align, new.align) != old.align);
+	return old.next;
+}
+
+static inline struct nt_slist *PopEntrySList(nt_slist_header *head,
+					     NT_SPIN_LOCK *lock)
+{
+	struct nt_slist *entry;
+	nt_slist_header old, new;
+	do {
+		old.align = head->align;
+		entry = old.next;
+		if (!entry)
+			break;
+		new.next = entry->next;
+		new.depth = old.depth - 1;
+	} while (cmpxchg8b(&head->align, old.align, new.align) != old.align);
+	return entry;
+}
+
+#endif
 
 /* DEBUG macros */
 
@@ -1078,6 +1189,16 @@ do {								       \
 #define IOEXIT(stmt) stmt
 #endif
 
+#if defined(WORK_DEBUG)
+#define WORKTRACE DBGTRACE1
+#define WORKENTER TRACEENTER1
+#define WORKEXIT TRACEEXIT1
+#else
+#define WORKTRACE(fmt, ...)
+#define WORKENTER(fmt, ...)
+#define WORKEXIT(stmt) stmt
+#endif
+
 #if defined DEBUG
 #define assert(expr)							\
 do {									\
@@ -1104,10 +1225,10 @@ do {									\
 #define DUMP_IRP(__irp) do { } while (0)
 #endif
 
-#define sleep(nsec)					\
+#define sleep_hz(n)					\
 do {							\
 	set_current_state(TASK_INTERRUPTIBLE);		\
-	schedule_timeout(nsec * HZ);			\
+	schedule_timeout(n);				\
 } while (0)
 
 #endif // _NTOSKERNEL_H_

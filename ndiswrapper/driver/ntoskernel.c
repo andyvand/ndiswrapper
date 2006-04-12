@@ -36,13 +36,22 @@ struct wrap_mdl {
 	char mdl[CACHE_MDL_SIZE];
 };
 
+struct thread_event_wait {
+	wait_queue_head_t wq_head;
+	BOOLEAN done;
+#ifdef EVENT_DEBUG
+	struct task_struct *task;
+#endif
+	struct thread_event_wait *next;
+};
+
 /* everything here is for all drivers/devices - not per driver/device */
-static NT_SPIN_LOCK nt_event_lock;
+static NT_SPIN_LOCK dispatcher_lock;
+static struct thread_event_wait *thread_event_wait_pool;
+
 NT_SPIN_LOCK ntoskernel_lock;
 static kmem_cache_t *mdl_cache;
 static struct nt_list wrap_mdl_list;
-
-static NT_SPIN_LOCK inter_lock;
 
 struct work_struct kdpc_work;
 static struct nt_list kdpc_list;
@@ -62,10 +71,10 @@ struct bus_driver {
 static struct nt_list bus_driver_list;
 static void del_bus_drivers(void);
 
-struct work_struct wrap_work_item_work;
-struct nt_list wrap_work_item_list;
-NT_SPIN_LOCK wrap_work_item_list_lock;
-static void wrap_work_item_worker(void *data);
+static struct work_struct ntos_work_item_work;
+static struct nt_list ntos_work_item_list;
+static NT_SPIN_LOCK ntos_work_item_list_lock;
+static void ntos_work_item_worker(void *data);
 
 NT_SPIN_LOCK irp_cancel_lock;
 
@@ -92,34 +101,57 @@ WRAP_EXPORT_MAP("KeTickCount", &jiffies);
 
 WRAP_EXPORT_MAP("NlsMbCodePageTag", FALSE);
 
+#ifdef USE_OWN_NTOS_WORKQUEUE
+struct workqueue_struct *ntos_wq;
+#endif
+
+/* Atheros driver allocates 200336 bytes in atomic context when
+ * initializing. To satisfy this request, we allocate 200KB block
+ * before driver initialization function is called and give this block
+ * to driver instead of allocating. */
+
+#define ATHEROS_VMALLOC_BLOCK_SIZE (200 * 1024)
+struct vmalloc_block {
+	void *addr;
+	BOOLEAN in_use;
+	struct vmalloc_block *next;
+};
+static struct vmalloc_block *vmalloc_blocks;
+
+static STDCALL void wrap_vfree(void *addr, void *ctx);
+
 int ntoskernel_init(void)
 {
 	struct timeval now;
 
-	nt_spin_lock_init(&nt_event_lock);
+	nt_spin_lock_init(&dispatcher_lock);
 	nt_spin_lock_init(&ntoskernel_lock);
-	nt_spin_lock_init(&wrap_work_item_list_lock);
+	nt_spin_lock_init(&ntos_work_item_list_lock);
 	nt_spin_lock_init(&kdpc_list_lock);
 	nt_spin_lock_init(&irp_cancel_lock);
-	nt_spin_lock_init(&inter_lock);
 	InitializeListHead(&wrap_mdl_list);
 	InitializeListHead(&kdpc_list);
 	InitializeListHead(&callback_objects);
 	InitializeListHead(&bus_driver_list);
 	InitializeListHead(&object_list);
-	InitializeListHead(&wrap_work_item_list);
+	InitializeListHead(&ntos_work_item_list);
 
 	INIT_WORK(&kdpc_work, kdpc_worker, NULL);
-	INIT_WORK(&wrap_work_item_work, wrap_work_item_worker, NULL);
+	INIT_WORK(&ntos_work_item_work, ntos_work_item_worker, NULL);
 
 	nt_spin_lock_init(&timer_lock);
 	InitializeListHead(&wrap_timer_list);
 
+	thread_event_wait_pool = NULL;
 	do_gettimeofday(&now);
 	wrap_ticks_to_boot = (u64)now.tv_sec * TICKSPERSEC;
 	wrap_ticks_to_boot += now.tv_usec * 10;
 	wrap_ticks_to_boot -= jiffies * TICKSPERSEC / HZ;
 	wrap_ticks_to_boot += TICKS_1601_TO_1970;
+
+#ifdef USE_OWN_NTOS_WORKQUEUE
+	ntos_wq = create_singlethread_workqueue("ntos_wq");
+#endif
 
 	if (add_bus_driver("PCI")
 #ifdef CONFIG_USB
@@ -141,6 +173,7 @@ int ntoskernel_init(void)
 	init_timer(&shared_data_timer);
 	shared_data_timer.function = &update_user_shared_data_proc;
 #endif
+	vmalloc_blocks = NULL;
 	return 0;
 }
 
@@ -155,11 +188,37 @@ int ntoskernel_init_device(struct wrap_device *wd)
 	 * timer */
 	mod_timer(&shared_data_timer, jiffies + 1);
 #endif
+	/* if it is Atheros, allocate 200KB block and put it on a list
+	 * so this block can be given to driver when it requires it in
+	 * atomic context */
+	if (wd->vendor == 0x168c) {
+		struct vmalloc_block *vm_block;
+		vm_block = kmalloc(sizeof(*vm_block), GFP_KERNEL);
+		if (!vm_block)
+			WARNING("couldn't allocate memory");
+		else {
+			vm_block->addr = vmalloc(ATHEROS_VMALLOC_BLOCK_SIZE);
+			if (!vm_block->addr) {
+				WARNING("couldn't allocate memory");
+				kfree(vm_block);
+			} else {
+				KIRQL irql;
+				vm_block->in_use = FALSE;
+				irql = nt_spin_lock_irql(&ntoskernel_lock,
+							 DISPATCH_LEVEL);
+				vm_block->next = vmalloc_blocks;
+				vmalloc_blocks = vm_block;
+				nt_spin_unlock_irql(&ntoskernel_lock, irql);
+			}
+		}
+	}
 	return 0;
 }
 
 void ntoskernel_exit_device(struct wrap_device *wd)
 {
+	struct nt_list *ent;
+	KIRQL irql;
 
 	TRACEENTER2("");
 
@@ -167,9 +226,7 @@ void ntoskernel_exit_device(struct wrap_device *wd)
 	/* cancel any timers left by bugyy windows driver; also free
 	 * the memory for timers */
 	while (1) {
-		struct nt_list *ent;
 		struct wrap_timer *wrap_timer;
-		KIRQL irql;
 
 		irql = nt_spin_lock_irql(&timer_lock, DISPATCH_LEVEL);
 		ent = RemoveHeadList(&wd->timer_list);
@@ -185,6 +242,30 @@ void ntoskernel_exit_device(struct wrap_device *wd)
 				&wrap_timer->timer);
 		memset(wrap_timer, 0, sizeof(*wrap_timer));
 		wrap_kfree(wrap_timer);
+	}
+	if (wd->vendor == 0x168c) {
+		struct vmalloc_block *cur_vm_block, *prev_vm_block;
+		/* release one vm block that is free - since all
+		 * blocks are of same size, it doesn't matter which */
+		irql = nt_spin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL);
+		prev_vm_block = cur_vm_block = vmalloc_blocks;
+		while (cur_vm_block) {
+			if (cur_vm_block->in_use == FALSE) {
+				if (cur_vm_block == vmalloc_blocks)
+					vmalloc_blocks = vmalloc_blocks->next;
+				else
+					prev_vm_block->next =
+						cur_vm_block->next;
+				schedule_ntos_work_item(wrap_vfree,
+							cur_vm_block->addr,
+							NULL, FALSE);
+				kfree(cur_vm_block);
+				break;
+			}
+			prev_vm_block = cur_vm_block;
+			cur_vm_block = cur_vm_block->next;
+		}
+		nt_spin_unlock_irql(&ntoskernel_lock, irql);
 	}
 	TRACEEXIT2(return);
 }
@@ -250,11 +331,27 @@ void ntoskernel_exit(void)
 	}
 	nt_spin_unlock_irql(&ntoskernel_lock, irql);
 
+	irql = nt_spin_lock_irql(&dispatcher_lock, DISPATCH_LEVEL);
+	DBGTRACE2("freeing thread event pool");
+	while (thread_event_wait_pool) {
+		struct thread_event_wait *next;
+		next = thread_event_wait_pool->next;
+		kfree(thread_event_wait_pool);
+		thread_event_wait_pool = next;
+	}
+	nt_spin_unlock_irql(&dispatcher_lock, irql);
+
 	del_bus_drivers();
 	free_all_objects();
 #if defined(CONFIG_X86_64)
 	del_timer_sync(&shared_data_timer);
 #endif
+#ifdef USE_OWN_NTOS_WORKQUEUE
+	if (ntos_wq)
+		destroy_workqueue(ntos_wq);
+#endif
+	if (vmalloc_blocks)
+		ERROR("vmalloc blocks leaking!");
 	TRACEEXIT2(return);
 }
 
@@ -393,12 +490,12 @@ _FASTCALL struct nt_list *WRAP_EXPORT(ExfInterlockedInsertHeadList)
 			 NT_SPIN_LOCK *lock))
 {
 	struct nt_list *first;
-	KIRQL irql;
+	unsigned long flags;
 
 	TRACEENTER5("head = %p, entry = %p", head, entry);
-	irql = nt_spin_lock_irql(lock, DISPATCH_LEVEL);
+	nt_spin_lock_irqsave(lock, flags);
 	first = InsertHeadList(head, entry);
-	nt_spin_unlock_irql(lock, irql);
+	nt_spin_unlock_irqrestore(lock, flags);
 	DBGTRACE5("head = %p, old = %p", head, first);
 	return first;
 }
@@ -417,12 +514,12 @@ _FASTCALL struct nt_list *WRAP_EXPORT(ExfInterlockedInsertTailList)
 			 NT_SPIN_LOCK *lock))
 {
 	struct nt_list *last;
-	KIRQL irql;
+	unsigned long flags;
 
 	TRACEENTER5("head = %p, entry = %p", head, entry);
-	irql = nt_spin_lock_irql(lock, DISPATCH_LEVEL);
+	nt_spin_lock_irqsave(lock, flags);
 	last = InsertTailList(head, entry);
-	nt_spin_unlock_irql(lock, irql);
+	nt_spin_unlock_irqrestore(lock, flags);
 	DBGTRACE5("head = %p, old = %p", head, last);
 	return last;
 }
@@ -440,12 +537,12 @@ _FASTCALL struct nt_list *WRAP_EXPORT(ExfInterlockedRemoveHeadList)
 	(FASTCALL_DECL_2(struct nt_list *head, NT_SPIN_LOCK *lock))
 {
 	struct nt_list *ret;
-	KIRQL irql;
+	unsigned long flags;
 
 	TRACEENTER5("head = %p", head);
-	irql = nt_spin_lock_irql(lock, DISPATCH_LEVEL);
+	nt_spin_lock_irqsave(lock, flags);
 	ret = RemoveHeadList(head);
-	nt_spin_unlock_irql(lock, irql);
+	nt_spin_unlock_irqrestore(lock, flags);
 	DBGTRACE5("head = %p, ret = %p", head, ret);
 	return ret;
 }
@@ -461,12 +558,12 @@ _FASTCALL struct nt_list *WRAP_EXPORT(ExfInterlockedRemoveTailList)
 	(FASTCALL_DECL_2(struct nt_list *head, NT_SPIN_LOCK *lock))
 {
 	struct nt_list *ret;
-	KIRQL irql;
+	unsigned long flags;
 
 	TRACEENTER5("head = %p", head);
-	irql = nt_spin_lock_irql(lock, DISPATCH_LEVEL);
+	nt_spin_lock_irqsave(lock, flags);
 	ret = RemoveTailList(head);
-	nt_spin_unlock_irql(lock, irql);
+	nt_spin_unlock_irqrestore(lock, flags);
 	DBGTRACE5("head = %p, ret = %p", head, ret);
 	return ret;
 }
@@ -478,78 +575,171 @@ _FASTCALL struct nt_list *WRAP_EXPORT(ExInterlockedRemoveTailList)
 	return ExfInterlockedRemoveTailList(FASTCALL_ARGS_2(head, lock));
 }
 
-STDCALL struct nt_slist *WRAP_EXPORT(ExpInterlockedPushEntrySList)
-	(union nt_slist_head *head, struct nt_slist *entry)
+_FASTCALL struct nt_slist *WRAP_EXPORT(ExInterlockedPushEntrySList)
+	(FASTCALL_DECL_3(nt_slist_header *head, struct nt_slist *entry,
+			 NT_SPIN_LOCK *lock))
 {
 	struct nt_slist *ret;
-	KIRQL irql;
 
 	TRACEENTER5("head = %p", head);
-	irql = nt_spin_lock_irql(&inter_lock, DISPATCH_LEVEL);
-	ret = PushEntryList(head, entry);
-	nt_spin_unlock_irql(&inter_lock, irql);
+	ret = PushEntrySList(head, entry, lock);
 	DBGTRACE5("head = %p, ret = %p", head, ret);
 	return ret;
 }
 
-_FASTCALL struct nt_slist *WRAP_EXPORT(ExInterlockedPushEntrySList)
-	(FASTCALL_DECL_3(union nt_slist_head *head, struct nt_slist *entry,
-			 NT_SPIN_LOCK *lock))
+STDCALL struct nt_slist *WRAP_EXPORT(ExpInterlockedPushEntrySList)
+	(nt_slist_header *head, struct nt_slist *entry)
 {
-	TRACEENTER5("%p", head);
-	return ExpInterlockedPushEntrySList(head, entry);
+	struct nt_slist *ret;
+
+	TRACEENTER5("head = %p", head);
+	ret = PushEntrySList(head, entry, &ntoskernel_lock);
+	DBGTRACE5("head = %p, ret = %p", head, ret);
+	return ret;
 }
 
 _FASTCALL struct nt_slist *WRAP_EXPORT(InterlockedPushEntrySList)
-	(FASTCALL_DECL_2(union nt_slist_head *head, struct nt_slist *entry))
-{
-	TRACEENTER5("%p", head);
-	return ExpInterlockedPushEntrySList(head, entry);
-}
-
-STDCALL struct nt_slist *WRAP_EXPORT(ExpInterlockedPopEntrySList)
-	(union nt_slist_head *head)
+	(FASTCALL_DECL_2(nt_slist_header *head, struct nt_slist *entry))
 {
 	struct nt_slist *ret;
-	KIRQL irql;
 
 	TRACEENTER5("head = %p", head);
-	irql = nt_spin_lock_irql(&inter_lock, DISPATCH_LEVEL);
-	ret = PopEntryList(head);
-	nt_spin_unlock_irql(&inter_lock, irql);
+	ret = PushEntrySList(head, entry, &ntoskernel_lock);
 	DBGTRACE5("head = %p, ret = %p", head, ret);
 	return ret;
 }
 
 _FASTCALL struct nt_slist *WRAP_EXPORT(ExInterlockedPopEntrySList)
-	(FASTCALL_DECL_2(union nt_slist_head *head, NT_SPIN_LOCK *lock))
+	(FASTCALL_DECL_2(nt_slist_header *head, NT_SPIN_LOCK *lock))
 {
-	TRACEENTER5("%p", head);
-	return ExpInterlockedPopEntrySList(head);
+	struct nt_slist *ret;
+
+	TRACEENTER5("head = %p", head);
+	ret = PopEntrySList(head, lock);
+	DBGTRACE5("head = %p, ret = %p", head, ret);
+	return ret;
+}
+
+STDCALL struct nt_slist *WRAP_EXPORT(ExpInterlockedPopEntrySList)
+	(nt_slist_header *head)
+{
+	struct nt_slist *ret;
+
+	TRACEENTER5("head = %p", head);
+	ret = PopEntrySList(head, &ntoskernel_lock);
+	DBGTRACE5("head = %p, ret = %p", head, ret);
+	return ret;
 }
 
 _FASTCALL struct nt_slist *WRAP_EXPORT(InterlockedPopEntrySList)
-	(FASTCALL_DECL_1(union nt_slist_head *head))
+	(FASTCALL_DECL_1(nt_slist_header *head))
 {
-	TRACEENTER5("%p", head);
-	return ExpInterlockedPopEntrySList(head);
+	struct nt_slist *ret;
+
+	TRACEENTER5("head = %p", head);
+	ret = PopEntrySList(head, &ntoskernel_lock);
+	DBGTRACE5("head = %p, ret = %p", head, ret);
+	return ret;
 }
 
 STDCALL USHORT WRAP_EXPORT(ExQueryDepthSList)
-	(union nt_slist_head *head)
+	(nt_slist_header *head)
 {
 	TRACEENTER5("%p", head);
-	return head->list.depth;
+#ifdef CONFIG_X86_64
+	return head->align & 0xffff;
+#else
+	return head->depth;
+#endif
 }
 
-/* should be called with nt_event_lock held at DISPATCH_LEVEL */
-static void initialize_dh(struct dispatch_header *dh, enum event_type type,
-			  int state, enum dh_type dh_type)
+_FASTCALL LONG WRAP_EXPORT(InterlockedIncrement)
+	(FASTCALL_DECL_1(LONG volatile *val))
+{
+	LONG ret;
+
+	TRACEENTER5("%p, %d", val, *val);
+	__asm__ __volatile__(
+		"\n"
+		LOCK_PREFIX "xadd %1, %2\n\t"
+		"inc %1\n\t"
+		: "=r" (ret)
+		: "0" (1), "m" (*val)
+		: "memory");
+	TRACEEXIT5(return ret);
+}
+
+_FASTCALL LONG WRAP_EXPORT(InterlockedDecrement)
+	(FASTCALL_DECL_1(LONG volatile *val))
+{
+	LONG ret;
+
+	TRACEENTER5("%p, %d", val, *val);
+	__asm__ __volatile__(
+		"\n"
+		LOCK_PREFIX "xadd %1, %2\n\t"
+		"dec %1\n\t"
+		: "=r" (ret)
+		: "0" (-1), "m" (*val)
+		: "memory");
+	TRACEEXIT5(return ret);
+}
+
+_FASTCALL LONG WRAP_EXPORT(InterlockedExchange)
+	(FASTCALL_DECL_2(LONG volatile *target, LONG val))
+{
+	LONG ret;
+	TRACEENTER5("");
+	ret = xchg(target, val);
+	TRACEEXIT5(return ret);
+}
+
+_FASTCALL LONG WRAP_EXPORT(InterlockedCompareExchange)
+	(FASTCALL_DECL_3(LONG volatile *dest, LONG xchg, LONG comperand))
+{
+	LONG ret;
+
+	TRACEENTER5("");
+	ret = cmpxchg(dest, comperand, xchg);
+	TRACEEXIT5(return ret);
+}
+
+_FASTCALL void WRAP_EXPORT(ExInterlockedAddLargeStatistic)
+	(FASTCALL_DECL_2(LARGE_INTEGER volatile *plint, ULONG n))
+{
+	unsigned long flags;
+	save_local_irq(flags);
+#ifdef CONFIG_X86_64
+	__asm__ __volatile__(
+		"\n"
+		LOCK_PREFIX "add %0, %1\n\t"
+		:
+		: "r" (n), "m" (*plint)
+		: "memory");
+#else
+	__asm__ __volatile__(
+		"\n"
+		"1:\t"
+		"   movl %1, %%ebx\n\t"
+		"   movl %%edx, %%ecx\n\t"
+		"   addl %%eax, %%ebx\n\t"
+		"   adcl $0, %%ecx\n\t"
+		    LOCK_PREFIX "cmpxchg8b (%0)\n\t"
+		"   jnz 1b\n\t"
+		: "+r" (plint)
+		: "m" (n), "a" (ll_low(*plint)), "d" (ll_high(*plint))
+		: "ebx", "ecx", "cc", "memory");
+#endif
+	restore_local_irq(flags);
+}
+
+/* should be called with dispatcher_lock held at DISPATCH_LEVEL */
+static void initialize_dh(struct dispatcher_header *dh, enum dh_type type,
+			  int state)
 {
 	memset(dh, 0, sizeof(*dh));
-	dh->type = type;
+	set_dh_type(dh, type);
 	dh->signal_state = state;
-	set_dh_type(dh, dh_type);
 	InitializeListHead(&dh->wait_blocks);
 }
 
@@ -613,7 +803,7 @@ void wrap_init_timer(struct nt_timer *nt_timer, enum timer_type type,
 #endif
 	nt_timer->wrap_timer = wrap_timer;
 	nt_timer->kdpc = NULL;
-	initialize_dh(&nt_timer->dh, type, 0, DH_NT_TIMER);
+	initialize_dh(&nt_timer->dh, type, 0);
 	nt_timer->wrap_timer_magic = WRAP_TIMER_MAGIC;
 	if (wd) {
 		irql = nt_spin_lock_irql(&wd->timer_lock, DISPATCH_LEVEL);
@@ -672,11 +862,11 @@ BOOLEAN wrap_set_timer(struct nt_timer *nt_timer, unsigned long expires_hz,
 	if (kdpc)
 		nt_timer->kdpc = kdpc;
 	wrap_timer->repeat = repeat_hz;
+	nt_spin_unlock_irql(&timer_lock, irql);
 	if (mod_timer(&wrap_timer->timer, jiffies + expires_hz))
 		ret = TRUE;
 	else
 		ret = FALSE;
-	nt_spin_unlock_irql(&timer_lock, irql);
 	TRACEEXIT5(return ret);
 }
 
@@ -792,7 +982,7 @@ static BOOLEAN queue_kdpc(struct kdpc *kdpc)
 	}
 	nt_spin_unlock_irql(&kdpc_list_lock, irql);
 	if (ret == TRUE)
-		schedule_wrap_work(&kdpc_work);
+		schedule_ntos_work(&kdpc_work);
 	TRACEEXIT5(return ret);
 }
 
@@ -838,53 +1028,56 @@ STDCALL BOOLEAN WRAP_EXPORT(KeRemoveQueueDpc)
 	TRACEEXIT3(return ret);
 }
 
-static void wrap_work_item_worker(void *data)
+static void ntos_work_item_worker(void *data)
 {
-	struct wrap_work_item *wrap_work_item;
+	struct ntos_work_item *ntos_work_item;
 	struct nt_list *cur;
-	void (*func)(void *arg1, void *arg2) STDCALL;
+	typeof(ntos_work_item->func) func;
 	KIRQL irql;
 
 	while (1) {
-		irql = nt_spin_lock_irql(&wrap_work_item_list_lock,
+		irql = nt_spin_lock_irql(&ntos_work_item_list_lock,
 					 DISPATCH_LEVEL);
-		cur = RemoveHeadList(&wrap_work_item_list);
-		nt_spin_unlock_irql(&wrap_work_item_list_lock, irql);
+		cur = RemoveHeadList(&ntos_work_item_list);
+		nt_spin_unlock_irql(&ntos_work_item_list_lock, irql);
 		if (!cur)
 			break;
-		wrap_work_item = container_of(cur, struct wrap_work_item,
+		ntos_work_item = container_of(cur, struct ntos_work_item,
 					      list);
-		func = wrap_work_item->func;
-		if (wrap_work_item->win_func == TRUE)
-			LIN2WIN2(func, wrap_work_item->arg1,
-				 wrap_work_item->arg2);
+		func = ntos_work_item->func;
+		WORKTRACE("%p: executing %p, %p, %p", current, func,
+			  ntos_work_item->arg1, ntos_work_item->arg2);
+		if (ntos_work_item->win_func == TRUE)
+			LIN2WIN2(func, ntos_work_item->arg1,
+				 ntos_work_item->arg2);
 		else
-			func(wrap_work_item->arg1, wrap_work_item->arg2);
-		kfree(wrap_work_item);
+			func(ntos_work_item->arg1, ntos_work_item->arg2);
+		kfree(ntos_work_item);
 	}
 	return;
 }
 
-int schedule_wrap_work_item(WRAP_WORK_FUNC func, void *arg1, void *arg2,
+int schedule_ntos_work_item(NTOS_WORK_FUNC func, void *arg1, void *arg2,
 			    BOOLEAN win_func)
 {
-	struct wrap_work_item *wrap_work_item;
+	struct ntos_work_item *ntos_work_item;
 	KIRQL irql;
 
-	wrap_work_item = kmalloc(sizeof(*wrap_work_item), GFP_ATOMIC);
-	if (!wrap_work_item) {
+	WORKENTER("adding work: %p, %p, %p", func, arg1, arg2);
+	ntos_work_item = kmalloc(sizeof(*ntos_work_item), GFP_ATOMIC);
+	if (!ntos_work_item) {
 		ERROR("couldn't allocate memory");
 		return -ENOMEM;
 	}
-	wrap_work_item->func = func;
-	wrap_work_item->arg1 = arg1;
-	wrap_work_item->arg2 = arg2;
-	wrap_work_item->win_func = win_func;
-	irql = nt_spin_lock_irql(&wrap_work_item_list_lock, DISPATCH_LEVEL);
-	InsertTailList(&wrap_work_item_list, &wrap_work_item->list);
-	nt_spin_unlock_irql(&wrap_work_item_list_lock, irql);
-	schedule_wrap_work(&wrap_work_item_work);
-	return 0;
+	ntos_work_item->func = func;
+	ntos_work_item->arg1 = arg1;
+	ntos_work_item->arg2 = arg2;
+	ntos_work_item->win_func = win_func;
+	irql = nt_spin_lock_irql(&ntos_work_item_list_lock, DISPATCH_LEVEL);
+	InsertTailList(&ntos_work_item_list, &ntos_work_item->list);
+	nt_spin_unlock_irql(&ntos_work_item_list_lock, irql);
+	schedule_ntos_work(&ntos_work_item_work);
+	WORKEXIT(return 0);
 }
 
 STDCALL void WRAP_EXPORT(KeInitializeSpinLock)
@@ -949,75 +1142,6 @@ STDCALL KIRQL WRAP_EXPORT(KeAcquireSpinLockRaiseToDpc)
 	return nt_spin_lock_irql(lock, DISPATCH_LEVEL);
 }
 
-_FASTCALL LONG WRAP_EXPORT(InterlockedDecrement)
-	(FASTCALL_DECL_1(LONG volatile *val))
-{
-	LONG x;
-	KIRQL irql;
-
-	TRACEENTER5("");
-	irql = nt_spin_lock_irql(&inter_lock, DISPATCH_LEVEL);
-	(*val)--;
-	x = *val;
-	nt_spin_unlock_irql(&inter_lock, irql);
-	TRACEEXIT5(return x);
-}
-
-_FASTCALL LONG WRAP_EXPORT(InterlockedIncrement)
-	(FASTCALL_DECL_1(LONG volatile *val))
-{
-	LONG x;
-	KIRQL irql;
-
-	TRACEENTER5("");
-	irql = nt_spin_lock_irql(&inter_lock, DISPATCH_LEVEL);
-	(*val)++;
-	x = *val;
-	nt_spin_unlock_irql(&inter_lock, irql);
-	TRACEEXIT5(return x);
-}
-
-_FASTCALL LONG WRAP_EXPORT(InterlockedExchange)
-	(FASTCALL_DECL_2(LONG volatile *target, LONG val))
-{
-	LONG x;
-	KIRQL irql;
-
-	TRACEENTER5("");
-	irql = nt_spin_lock_irql(&inter_lock, DISPATCH_LEVEL);
-	x = *target;
-	*target = val;
-	nt_spin_unlock_irql(&inter_lock, irql);
-	TRACEEXIT5(return x);
-}
-
-_FASTCALL LONG WRAP_EXPORT(InterlockedCompareExchange)
-	(FASTCALL_DECL_3(LONG volatile *dest, LONG xchg, LONG comperand))
-{
-	LONG x;
-	KIRQL irql;
-
-	TRACEENTER5("");
-	irql = nt_spin_lock_irql(&inter_lock, DISPATCH_LEVEL);
-	x = *dest;
-	if (*dest == comperand)
-		*dest = xchg;
-	nt_spin_unlock_irql(&inter_lock, irql);
-	TRACEEXIT5(return x);
-}
-
-_FASTCALL void WRAP_EXPORT(ExInterlockedAddLargeStatistic)
-	(FASTCALL_DECL_2(LARGE_INTEGER *plint, ULONG n))
-{
-	unsigned long flags;
-	TRACEENTER5("%p = %llu, n = %u", plint, *plint, n);
-	/* not sure if we should disable irqs on all processors or
-	 * only local */
-	nt_spin_lock_irqsave(&inter_lock, flags);
-	*plint += n;
-	nt_spin_unlock_irqrestore(&inter_lock, flags);
-}
-
 STDCALL void *WRAP_EXPORT(ExAllocatePoolWithTag)
 	(enum pool_type pool_type, SIZE_T size, ULONG tag)
 {
@@ -1032,16 +1156,36 @@ STDCALL void *WRAP_EXPORT(ExAllocatePoolWithTag)
 		else
 			addr = kmalloc(size, GFP_ATOMIC);
 	} else {
-		if (current_irql() > PASSIVE_LEVEL)
-			ERROR("Windows driver allocating %ld bytes in "
-			      "atomic context", size);
-		addr = vmalloc(size);
+		addr = NULL;
+		if (current_irql() > PASSIVE_LEVEL &&
+		    size <= ATHEROS_VMALLOC_BLOCK_SIZE) {
+			KIRQL irql;
+			struct vmalloc_block *vm_block;
+			irql = nt_spin_lock_irql(&ntoskernel_lock,
+						 DISPATCH_LEVEL);
+			vm_block = vmalloc_blocks;
+			while (vm_block) {
+				if (vm_block->in_use == FALSE) {
+					vm_block->in_use = TRUE;
+					addr = vm_block->addr;
+					break;
+				}
+				vm_block = vm_block->next;
+			}
+			nt_spin_unlock_irql(&ntoskernel_lock, irql);
+		}
+		if (!addr) {
+			if (current_irql() > PASSIVE_LEVEL)
+				WARNING("Windows driver allocating %lu bytes "
+					"in atomic context", size);
+			addr = vmalloc(size);
+		}
 	}
 	DBGTRACE4("addr: %p, %lu", addr, size);
 	TRACEEXIT4(return addr);
 }
 
-STDCALL void wrap_vfree(void *addr, void *ctx)
+static STDCALL void wrap_vfree(void *addr, void *ctx)
 {
 	vfree(addr);
 }
@@ -1054,10 +1198,25 @@ STDCALL void WRAP_EXPORT(ExFreePool)
 	    (unsigned long)addr >= VMALLOC_END)
 		kfree(addr);
 	else {
-		if (in_interrupt())
-			schedule_wrap_work_item(wrap_vfree, addr, NULL, FALSE);
-		else
-			vfree(addr);
+		KIRQL irql;
+		struct vmalloc_block *vm_block;
+		irql = nt_spin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL);
+		vm_block = vmalloc_blocks;
+		while (vm_block) {
+			if (vm_block->addr == addr) {
+				vm_block->in_use = FALSE;
+				break;
+			}
+			vm_block = vm_block->next;
+		}
+		nt_spin_unlock_irql(&ntoskernel_lock, irql);
+		if (!vm_block) {
+			if (in_interrupt())
+				schedule_ntos_work_item(wrap_vfree, addr,
+							NULL, FALSE);
+			else
+				vfree(addr);
+		}
 	}
 	return;
 }
@@ -1078,7 +1237,7 @@ STDCALL void WRAP_EXPORT(ExInitializeNPagedLookasideList)
 {
 	TRACEENTER3("lookaside: %p, size: %lu, flags: %u, head: %p, "
 		    "alloc: %p, free: %p", lookaside, size, flags,
-		    lookaside->head.list.next, alloc_func, free_func);
+		    lookaside, alloc_func, free_func);
 
 	memset(lookaside, 0, sizeof(*lookaside));
 
@@ -1099,7 +1258,7 @@ STDCALL void WRAP_EXPORT(ExInitializeNPagedLookasideList)
 		lookaside->free_func = (LOOKASIDE_FREE_FUNC *)
 			WRAP_FUNC_PTR(ExFreePool);
 
-#ifndef X86_64
+#ifndef CONFIG_X86_64
 	DBGTRACE3("lock: %p", &lookaside->obsolete);
 	nt_spin_lock_init(&lookaside->obsolete);
 #endif
@@ -1114,10 +1273,15 @@ STDCALL void WRAP_EXPORT(ExDeleteNPagedLookasideList)
 
 	TRACEENTER3("lookaside = %p", lookaside);
 	irql = raise_irql(DISPATCH_LEVEL);
-	while ((entry = ExpInterlockedPopEntrySList(&lookaside->head)))
-		ExFreePool(entry);
+	while ((entry = ExpInterlockedPopEntrySList(&lookaside->head))) {
+		if (lookaside->free_func == (LOOKASIDE_FREE_FUNC *)
+		    WRAP_FUNC_PTR(ExFreePool))
+			ExFreePool(entry);
+		else
+			LIN2WIN1(lookaside->free_func, entry);
+	}
 	lower_irql(irql);
-	TRACEEXIT5(return);
+	TRACEEXIT3(return);
 }
 
 STDCALL NTSTATUS WRAP_EXPORT(ExCreateCallback)
@@ -1210,71 +1374,112 @@ STDCALL void WRAP_EXPORT(ExNotifyCallback)
 	return;
 }
 
-/* check and set signaled state; should be called with nt_event_lock held */
-/* @reset indicates if the event should be reset to not-signaled state
+/* check and set signaled state; should be called with dispatcher_lock held */
+/* @grab indicates if the event should be put in not-signaled state
  * - note that a semaphore may stay in signaled state for multiple
- * 'resets' if the count is > 1 */
-static int inline check_reset_signaled_state(void *object,
-					     struct nt_thread *thread,
-					     int reset)
+ * 'grabs' if the count is > 1 */
+static int check_grab_signaled_state(struct dispatcher_header *dh,
+				     struct task_struct *thread, int grab)
 {
-	struct dispatch_header *dh;
-	struct nt_mutex *nt_mutex;
-
-	dh = object;
-	nt_mutex = container_of(object, struct nt_mutex, dh);
-
+	EVENTTRACE("%p, %p, %d, %d", dh, thread, grab, dh->signal_state);
 	if (is_mutex_dh(dh)) {
+		struct nt_mutex *nt_mutex;
 		/* either no thread owns the mutex or this thread owns
 		 * it */
-		if (nt_mutex->owner_thread == NULL ||
-		    nt_mutex->owner_thread == thread) {
-			assert(nt_mutex->owner_thread == NULL &&
-			       dh->signal_state == 1);
-			if (reset) {
+		nt_mutex = container_of(dh, struct nt_mutex, dh);
+		EVENTTRACE("%p, %p", nt_mutex, nt_mutex->owner_thread);
+		assert(dh->signal_state <= 1);
+		assert(nt_mutex->owner_thread == NULL &&
+		       dh->signal_state == 1);
+		if (dh->signal_state > 0 || nt_mutex->owner_thread == thread) {
+			if (grab) {
 				dh->signal_state--;
 				nt_mutex->owner_thread = thread;
 			}
-			return 1;
+			EVENTEXIT(return 1);
 		}
 	} else if (dh->signal_state > 0) {
-		/* if resetting, decrement signal_state for
+		/* if grab, decrement signal_state for
 		 * synchronization or semaphore objects */
-		if (reset && (dh->type == SynchronizationEvent ||
-			      is_semaphore_dh(dh)))
+		if (grab && (dh->type == SynchronizationObject ||
+			     is_semaphore_dh(dh)))
 			dh->signal_state--;
-		return 1;
+		EVENTEXIT(return 1);
 	}
-	return 0;
+	EVENTEXIT(return 0);
 }
 
-/* this function should be called holding nt_event_lock spinlock at
+/* this function should be called holding dispatcher_lock spinlock at
  * DISPATCH_LEVEL */
-static void wakeup_threads(struct dispatch_header *dh)
+static void wakeup_threads(struct dispatcher_header *dh)
 {
-	struct wait_block *wb;
+	struct nt_list *cur, *next;
+	struct wait_block *wb = NULL;
 
-	EVENTENTER("dh: %p", dh);
-	nt_list_for_each_entry(wb, &dh->wait_blocks, list) {
-		EVENTTRACE("wait block: %p, thread: %p", wb, wb->thread);
-		assert(wb->thread != NULL && wb->object == dh);
+	nt_list_for_each_safe(cur, next, &dh->wait_blocks) {
+		wb = container_of(cur, struct wait_block, list);
+		EVENTTRACE("%p: wait block: %p, thread: %p",
+			   dh, wb, wb->thread);
+		assert(wb->thread != NULL);
+		assert(wb->object == NULL);
 		if (wb->thread &&
-		    check_reset_signaled_state(dh, wb->thread, 0)) {
-			EVENTTRACE("waking up task: %p", wb->thread->task);
-			wb->thread->event_wait_done = 1;
-			wake_up(&wb->thread->event_wq);
-#if 0
-			/* DDK says only one thread will be woken up,
-			 * but we let each waking thread to check if
-			 * the object is in signaled state anyway */
-			if (dh->type == SynchronizationEvent)
+		    check_grab_signaled_state(dh, wb->thread, 1)) {
+			struct thread_event_wait *thread_wait = wb->thread_wait;
+			EVENTTRACE("%p: waking up task %p for %p", thread_wait,
+				   wb->thread, dh);
+			RemoveEntryList(&wb->list);
+			wb->object = dh;
+			thread_wait->done = 1;
+			wake_up(&thread_wait->wq_head);
+			if (dh->type == SynchronizationObject)
 				break;
-#endif
 		} else
-			EVENTTRACE("not waking up task: %p",
-				   wb->thread->task);
+			EVENTTRACE("not waking up task: %p", wb->thread);
 	}
 	EVENTEXIT(return);
+}
+
+/* We need workqueue to implement KeWaitFor routines
+ * below. (get/put)_thread_event_wait give/take back a workqueue. Both
+ * these are called holding dispatcher spinlock, so no locking here */
+static inline struct thread_event_wait *get_thread_event_wait(void)
+{
+	struct thread_event_wait *thread_event_wait;
+
+	if (thread_event_wait_pool) {
+		thread_event_wait = thread_event_wait_pool;
+		thread_event_wait_pool = thread_event_wait_pool->next;
+	} else {
+		thread_event_wait = kmalloc(sizeof(*thread_event_wait),
+					    GFP_ATOMIC);
+		if (!thread_event_wait) {
+			WARNING("couldn't allocate memory");
+			return NULL;
+		}
+		EVENTTRACE("allocated wq: %p", thread_event_wait);
+		init_waitqueue_head(&thread_event_wait->wq_head);
+	}
+#ifdef EVENT_DEBUG
+	thread_event_wait->task = current;
+#endif
+	EVENTTRACE("%p, %p, %p", thread_event_wait, current,
+		   thread_event_wait_pool);
+	thread_event_wait->done = 0;
+	return thread_event_wait;
+}
+
+static void put_thread_event_wait(struct thread_event_wait *thread_event_wait)
+{
+	EVENTENTER("%p, %p", thread_event_wait, current);
+#ifdef EVENT_DEBUG
+	if (thread_event_wait->task != current)
+		ERROR("argh, task %p should be %p",
+		      current, thread_event_wait->task);
+	thread_event_wait->task = NULL;
+#endif
+	thread_event_wait->next = thread_event_wait_pool;
+	thread_event_wait_pool = thread_event_wait;
+	thread_event_wait->done = 0;
 }
 
 STDCALL NTSTATUS WRAP_EXPORT(KeWaitForMultipleObjects)
@@ -1286,20 +1491,16 @@ STDCALL NTSTATUS WRAP_EXPORT(KeWaitForMultipleObjects)
 	int i, res = 0, wait_count;
 	long wait_jiffies = 0;
 	struct wait_block *wb, wb_array[THREAD_WAIT_OBJECTS];
-	struct dispatch_header *dh;
-	struct nt_thread *thread;
-	struct task_struct *task;
+	struct dispatcher_header *dh;
+	struct task_struct *thread;
+	struct thread_event_wait *thread_wait;
 	KIRQL irql;
 
-	task = current;
-	EVENTENTER("task: %p, count = %d, type: %d, reason = %u, "
-		   "waitmode = %u, alertable = %u, timeout = %p", task, count,
-		   wait_type, wait_reason, wait_mode, alertable, timeout);
-
-	thread = KeGetCurrentThread();
-	EVENTTRACE("thread: %p", thread);
-	if (thread == NULL)
-		EVENTEXIT(return STATUS_RESOURCES);
+	thread = current;
+	EVENTTRACE("thread: %p count = %d, type: %d, reason = %u, "
+		   "waitmode = %u, alertable = %u, timeout = %p", thread,
+		   count, wait_type, wait_reason, wait_mode, alertable,
+		   timeout);
 
 	if (count > MAX_WAIT_OBJECTS)
 		EVENTEXIT(return STATUS_INVALID_PARAMETER);
@@ -1313,105 +1514,118 @@ STDCALL NTSTATUS WRAP_EXPORT(KeWaitForMultipleObjects)
 
 	/* TODO: should we allow threads to wait in non-alertable state? */
 	alertable = TRUE;
-	irql = nt_spin_lock_irql(&nt_event_lock, DISPATCH_LEVEL);
-	/* first check if the wait can be satisfied or not, without
-	 * grabbing the objects, except in the case of WaitAny */
+	irql = nt_spin_lock_irql(&dispatcher_lock, DISPATCH_LEVEL);
+	/* If *timeout == 0: In the case of WaitAny, if an object can
+	 * be grabbed (object is in signaled state), grab and
+	 * return. In the case of WaitAll, we have to first make sure
+	 * all objects can be grabbed. If any/some of them can't be
+	 * grabbed, either we return STATUS_TIMEOUT or wait for them,
+	 * depending on how to satisfy wait. If all of them can be
+	 * grabbed, we will grab them in the next loop below */
+
 	for (i = wait_count = 0; i < count; i++) {
 		dh = object[i];
 		EVENTTRACE("%p: event %p state: %d",
-			   task, dh, dh->signal_state);
+			   thread, dh, dh->signal_state);
 		/* wait_type == 1 for WaitAny, 0 for WaitAll */
-		if (check_reset_signaled_state(dh, thread, wait_type)) {
+		if (check_grab_signaled_state(dh, thread, wait_type)) {
 			if (wait_type == WaitAny) {
-				nt_spin_unlock_irql(&nt_event_lock, irql);
+				nt_spin_unlock_irql(&dispatcher_lock, irql);
 				if (count > 1)
 					EVENTEXIT(return STATUS_WAIT_0 + i);
 				else
 					EVENTEXIT(return STATUS_SUCCESS);
 			}
-		} else
-			wait_count++;
-	}
-	if (timeout && *timeout == 0 && wait_count) {
-		nt_spin_unlock_irql(&nt_event_lock, irql);
-		EVENTEXIT(return STATUS_TIMEOUT);
-	}
-
-	/* get the list of objects the thread (task) needs to wait on
-	 * and add the thread on the wait list for each such object */
-	/* if *timeout == 0, this step will grab the objects */
-	thread->event_wait_done = 0;
-	for (i = wait_count = 0; i < count; i++) {
-		dh = object[i];
-		EVENTTRACE("%p: event %p state: %d",
-			   task, dh, dh->signal_state);
-		if (check_reset_signaled_state(dh, thread, 1)) {
-			EVENTTRACE("%p: event %p already signaled: %d",
-				   task, dh, dh->signal_state);
-			/* mark that we are not waiting on this object */
-			wb[i].thread = NULL;
-			wb[i].object = NULL;
 		} else {
-			assert(timeout == NULL || *timeout != 0);
-			wb[i].thread = thread;
-			wb[i].object = dh;
-			InsertTailList(&dh->wait_blocks, &wb[i].list);
+			EVENTTRACE("%p: wait for %p", thread, dh);
 			wait_count++;
-			EVENTTRACE("%p: waiting on event %p", task, dh);
 		}
 	}
-	nt_spin_unlock_irql(&nt_event_lock, irql);
 
-	if (wait_count == 0)
+	if (wait_count) {
+		if (timeout && *timeout == 0) {
+			nt_spin_unlock_irql(&dispatcher_lock, irql);
+			EVENTEXIT(return STATUS_TIMEOUT);
+		}
+		thread_wait = get_thread_event_wait();
+		if (!thread_wait) {
+			nt_spin_unlock_irql(&dispatcher_lock, irql);
+			EVENTEXIT(return STATUS_RESOURCES);
+		}
+	} else
+		thread_wait = NULL;
+
+	/* get the list of objects the thread needs to wait on and add
+	 * the thread on the wait list for each such object */
+	/* if *timeout == 0, this step will grab all the objects */
+	for (i = 0; i < count; i++) {
+		dh = object[i];
+		EVENTTRACE("%p: event %p state: %d",
+			   thread, dh, dh->signal_state);
+		wb[i].object = NULL;
+		wb[i].thread_wait = thread_wait;
+		if (check_grab_signaled_state(dh, thread, 1)) {
+			EVENTTRACE("%p: event %p already signaled: %d",
+				   thread, dh, dh->signal_state);
+			/* mark that we are not waiting on this object */
+			wb[i].thread = NULL;
+		} else {
+			assert(timeout == NULL || *timeout != 0);
+			assert(thread_wait != NULL);
+			wb[i].thread = thread;
+			EVENTTRACE("%p: need to wait on event %p", thread, dh);
+			InsertTailList(&dh->wait_blocks, &wb[i].list);
+		}
+	}
+	nt_spin_unlock_irql(&dispatcher_lock, irql);
+	if (wait_count == 0) {
+		assert(thread_wait == NULL);
 		EVENTEXIT(return STATUS_SUCCESS);
+	}
+	assert(thread_wait);
 
 	assert(timeout == NULL || *timeout != 0);
 	if (timeout == NULL)
 		wait_jiffies = 0;
 	else
 		wait_jiffies = SYSTEM_TIME_TO_HZ(*timeout) + 1;
-	EVENTTRACE("%p: sleeping for %ld", task, wait_jiffies);
+	EVENTTRACE("%p: sleeping for %ld on %p",
+		   thread, wait_jiffies, thread_wait);
 
 	while (wait_count) {
 		if (wait_jiffies) {
-			if (alertable)
-				res = wait_event_interruptible_timeout(
-					thread->event_wq,
-					(thread->event_wait_done == 1),
-					wait_jiffies);
-			else
-				res = wait_event_timeout(
-					thread->event_wq,
-					(thread->event_wait_done == 1),
-					wait_jiffies);
+			res = wait_event_interruptible_timeout(
+				thread_wait->wq_head, (thread_wait->done == 1),
+				wait_jiffies);
 		} else {
-			if (alertable)
-				wait_event_interruptible(thread->event_wq,
-					   (thread->event_wait_done == 1));
-			else
-				wait_event(thread->event_wq,
-					   (thread->event_wait_done == 1));
+			wait_event_interruptible(
+				thread_wait->wq_head,(thread_wait->done == 1));
 			/* mark that it didn't timeout */
 			res = 1;
 		}
-		irql = nt_spin_lock_irql(&nt_event_lock, DISPATCH_LEVEL);
-		thread->event_wait_done = 0;
+		thread_wait->done = 0;
+		irql = nt_spin_lock_irql(&dispatcher_lock, DISPATCH_LEVEL);
 		if (signal_pending(current))
 			res = -ERESTARTSYS;
-		EVENTTRACE("%p: woke up, res = %d", task, res);
+		EVENTTRACE("%p woke up on %p, res = %d, done: %d", thread,
+			   thread_wait, res, thread_wait->done);
+#ifdef EVENT_DEBUG
+		if (thread_wait->task != current)
+			ERROR("%p: argh, task %p should be %p", thread_wait,
+			      thread_wait->task, current);
+#endif
 //		assert(res < 0 && alertable);
 		if (res <= 0) {
 			/* timed out or interrupted; remove from wait list */
 			for (i = 0; i < count; i++) {
 				if (!wb[i].thread)
 					continue;
-				EVENTTRACE("%p: timedout, deq'ing %p",
-					   task, wb[i].object);
+				EVENTTRACE("%p: timedout, deq'ing %p (%p)",
+					   thread, object[i], wb[i].object);
 				RemoveEntryList(&wb[i].list);
-				wb[i].thread = NULL;
-				wb[i].object = NULL;
 			}
-			nt_spin_unlock_irql(&nt_event_lock, irql);
+			put_thread_event_wait(thread_wait);
+			nt_spin_unlock_irql(&dispatcher_lock, irql);
 			if (res < 0)
 				EVENTEXIT(return STATUS_ALERTED);
 			else
@@ -1421,26 +1635,36 @@ STDCALL NTSTATUS WRAP_EXPORT(KeWaitForMultipleObjects)
 		for (i = 0; wait_count && i < count; i++) {
 			if (!wb[i].thread)
 				continue;
-			dh = object[i];
-			if (!check_reset_signaled_state(dh, thread, 1))
+			EVENTTRACE("object: %p, %p", object[i], wb[i].object);
+			if (!wb[i].object) {
+				EVENTTRACE("not woken for %p", object[i]);
 				continue;
-			RemoveEntryList(&wb[i].list);
+			}
+			DBG_BLOCK(1) {
+				if (wb[i].object != object[i]) {
+					ERROR("argh, event not signalled? "
+					      "%p, %p", wb[i].object,
+					      object[i]);
+					continue;
+				}
+			}
+			wb[i].object = NULL;
+			wb[i].thread = NULL;
 			wait_count--;
 			if (wait_type == WaitAny) {
 				int j;
 				/* done; remove from rest of wait list */
 				for (j = i; j < count; j++)
-					if (wb[j].thread && wb[j].object)
+					if (wb[j].thread)
 						RemoveEntryList(&wb[j].list);
-				nt_spin_unlock_irql(&nt_event_lock, irql);
-				if (count > 1)
-					EVENTEXIT(return STATUS_WAIT_0 + i);
-				else
-					EVENTEXIT(return STATUS_SUCCESS);
+				put_thread_event_wait(thread_wait);
+				nt_spin_unlock_irql(&dispatcher_lock, irql);
+				EVENTEXIT(return STATUS_WAIT_0 + i);
 			}
 		}
 		if (wait_count == 0) {
-			nt_spin_unlock_irql(&nt_event_lock, irql);
+			put_thread_event_wait(thread_wait);
+			nt_spin_unlock_irql(&dispatcher_lock, irql);
 			EVENTEXIT(return STATUS_SUCCESS);
 		}
 		/* this thread is still waiting for more objects, so
@@ -1451,10 +1675,10 @@ STDCALL NTSTATUS WRAP_EXPORT(KeWaitForMultipleObjects)
 			wait_jiffies = res;
 		else
 			wait_jiffies = 0;
-		nt_spin_unlock_irql(&nt_event_lock, irql);
+		nt_spin_unlock_irql(&dispatcher_lock, irql);
 	}
 	/* this should never reach, but compiler wants return value */
-	ERROR("%p: wait_jiffies: %ld", task, wait_jiffies);
+	ERROR("%p: wait_jiffies: %ld", thread, wait_jiffies);
 	EVENTEXIT(return STATUS_SUCCESS);
 }
 
@@ -1472,10 +1696,9 @@ STDCALL void WRAP_EXPORT(KeInitializeEvent)
 	KIRQL irql;
 
 	EVENTENTER("event = %p, type = %d, state = %d", nt_event, type, state);
-//	dump_bytes(__FUNCTION__, __builtin_return_address(0), 20);
-	irql = nt_spin_lock_irql(&nt_event_lock, DISPATCH_LEVEL);
-	initialize_dh(&nt_event->dh, type, state, DH_NT_EVENT);
-	nt_spin_unlock_irql(&nt_event_lock, irql);
+	irql = nt_spin_lock_irql(&dispatcher_lock, DISPATCH_LEVEL);
+	initialize_dh(&nt_event->dh, type, state);
+	nt_spin_unlock_irql(&dispatcher_lock, irql);
 	EVENTEXIT(return);
 }
 
@@ -1489,24 +1712,28 @@ STDCALL LONG WRAP_EXPORT(KeSetEvent)
 		   nt_event, nt_event->dh.type, wait);
 	if (wait == TRUE)
 		WARNING("wait = %d, not yet implemented", wait);
-
-	irql = nt_spin_lock_irql(&nt_event_lock, DISPATCH_LEVEL);
+	irql = nt_spin_lock_irql(&dispatcher_lock, DISPATCH_LEVEL);
 	old_state = nt_event->dh.signal_state;
 	nt_event->dh.signal_state = 1;
-	wakeup_threads(&nt_event->dh);
-	nt_spin_unlock_irql(&nt_event_lock, irql);
+	if (old_state == 0)
+		wakeup_threads(&nt_event->dh);
+	/* Synchronization objects are auto-reset - they don't stay
+	 * signalled. The DDK says they are reset after waking up one
+	 * thread. However, it is not clear if they should be reset if
+	 * there are no threads waiting. Am1772 driver expects that
+	 * they are reset (and not stay signalled) if no thread is
+	 * waiting */
+	if (nt_event->dh.type == SynchronizationObject)
+		nt_event->dh.signal_state = 0;
+	nt_spin_unlock_irql(&dispatcher_lock, irql);
 	EVENTEXIT(return old_state);
 }
 
 STDCALL void WRAP_EXPORT(KeClearEvent)
 	(struct nt_event *nt_event)
 {
-	KIRQL irql;
-
 	EVENTENTER("event = %p", nt_event);
-	irql = nt_spin_lock_irql(&nt_event_lock, DISPATCH_LEVEL);
-	nt_event->dh.signal_state = 0;
-	nt_spin_unlock_irql(&nt_event_lock, irql);
+	xchg(&nt_event->dh.signal_state, 0);
 	EVENTEXIT(return);
 }
 
@@ -1514,32 +1741,34 @@ STDCALL LONG WRAP_EXPORT(KeResetEvent)
 	(struct nt_event *nt_event)
 {
 	LONG old_state;
+#if 1
 	KIRQL irql;
-
 	EVENTENTER("event = %p", nt_event);
-
-	irql = nt_spin_lock_irql(&nt_event_lock, DISPATCH_LEVEL);
+	irql = nt_spin_lock_irql(&dispatcher_lock, DISPATCH_LEVEL);
 	old_state = nt_event->dh.signal_state;
 	nt_event->dh.signal_state = 0;
-	nt_spin_unlock_irql(&nt_event_lock, irql);
-
+	nt_spin_unlock_irql(&dispatcher_lock, irql);
+#else
+	old_state = xchg(&nt_event->dh.signal_state, 0);
+#endif
+	EVENTTRACE("old state: %d", old_state);
 	EVENTEXIT(return old_state);
 }
 
 STDCALL void WRAP_EXPORT(KeInitializeMutex)
-	(struct nt_mutex *mutex, BOOLEAN wait)
+	(struct nt_mutex *mutex, ULONG level)
 {
 	KIRQL irql;
 
 	EVENTENTER("%p", mutex);
-	irql = nt_spin_lock_irql(&nt_event_lock, DISPATCH_LEVEL);
-	initialize_dh(&mutex->dh, SynchronizationEvent, 1, DH_NT_MUTEX);
-	nt_spin_unlock_irql(&nt_event_lock, irql);
+	irql = nt_spin_lock_irql(&dispatcher_lock, DISPATCH_LEVEL);
+	initialize_dh(&mutex->dh, MutexObject, 1);
 	mutex->dh.size = sizeof(*mutex);
 	InitializeListHead(&mutex->list);
 	mutex->abandoned = FALSE;
 	mutex->apc_disable = 1;
 	mutex->owner_thread = NULL;
+	nt_spin_unlock_irql(&dispatcher_lock, irql);
 	EVENTEXIT(return);
 }
 
@@ -1548,17 +1777,24 @@ STDCALL LONG WRAP_EXPORT(KeReleaseMutex)
 {
 	LONG ret;
 	KIRQL irql;
+	struct task_struct *thread;
 
-	EVENTENTER("%p", mutex);
+	EVENTENTER("%p, %d, %p", mutex, wait, current);
 	if (wait == TRUE)
 		WARNING("wait: %d", wait);
-	irql = nt_spin_lock_irql(&nt_event_lock, DISPATCH_LEVEL);
-	ret = mutex->dh.signal_state++;
-	if (mutex->dh.signal_state > 0) {
-		mutex->owner_thread = NULL;
-		wakeup_threads(&mutex->dh);
-	}
-	nt_spin_unlock_irql(&nt_event_lock, irql);
+	thread = current;
+	irql = nt_spin_lock_irql(&dispatcher_lock, DISPATCH_LEVEL);
+	EVENTTRACE("%p, %p, %d", thread, mutex->owner_thread,
+		   mutex->dh.signal_state);
+	if ((mutex->owner_thread == thread) && (mutex->dh.signal_state <= 0)) {
+		if ((ret = mutex->dh.signal_state++) == 0) {
+			mutex->owner_thread = NULL;
+			wakeup_threads(&mutex->dh);
+		}
+	} else
+		ret = STATUS_MUTANT_NOT_OWNED;
+	nt_spin_unlock_irql(&dispatcher_lock, irql);
+	EVENTTRACE("ret: %08X", ret);
 	EVENTEXIT(return ret);
 }
 
@@ -1571,10 +1807,9 @@ STDCALL void WRAP_EXPORT(KeInitializeSemaphore)
 	/* if limit > 1, we need to satisfy as many waits (until count
 	 * becomes 0); so we keep decrementing count everytime a wait
 	 * is satisified */
-	irql = nt_spin_lock_irql(&nt_event_lock, DISPATCH_LEVEL);
-	initialize_dh(&semaphore->dh, NotificationEvent, count,
-		      DH_NT_SEMAPHORE);
-	nt_spin_unlock_irql(&nt_event_lock, irql);
+	irql = nt_spin_lock_irql(&dispatcher_lock, DISPATCH_LEVEL);
+	initialize_dh(&semaphore->dh, SemaphoreObject, count);
+	nt_spin_unlock_irql(&dispatcher_lock, irql);
 	semaphore->dh.size = sizeof(*semaphore);
 	semaphore->limit = limit;
 	EVENTEXIT(return);
@@ -1588,7 +1823,7 @@ STDCALL LONG WRAP_EXPORT(KeReleaseSemaphore)
 	KIRQL irql;
 
 	EVENTENTER("%p", semaphore);
-	irql = nt_spin_lock_irql(&nt_event_lock, DISPATCH_LEVEL);
+	irql = nt_spin_lock_irql(&dispatcher_lock, DISPATCH_LEVEL);
 	ret = semaphore->dh.signal_state;
 	assert(ret >= 0);
 	if (semaphore->dh.signal_state + adjustment <= semaphore->limit)
@@ -1596,7 +1831,7 @@ STDCALL LONG WRAP_EXPORT(KeReleaseSemaphore)
 	/* else raise exception */
 	if (semaphore->dh.signal_state > 0)
 		wakeup_threads(&semaphore->dh);
-	nt_spin_unlock_irql(&nt_event_lock, irql);
+	nt_spin_unlock_irql(&dispatcher_lock, irql);
 	EVENTEXIT(return ret);
 }
 
@@ -1630,15 +1865,15 @@ STDCALL NTSTATUS WRAP_EXPORT(KeDelayExecutionThread)
 }
 
 STDCALL KPRIORITY WRAP_EXPORT(KeQueryPriorityThread)
-	(struct nt_thread *thread)
+	(struct task_struct *task)
 {
 	KPRIORITY prio;
 
-	EVENTENTER("thread: %p, task: %p", thread, thread->task);
+	EVENTENTER("task: %p", task);
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,0)
 	prio = 1;
 #else
-	if (rt_task(thread->task))
+	if (rt_task(task))
 		prio = LOW_REALTIME_PRIORITY;
 	else
 		prio = MAXIMUM_PRIORITY;
@@ -1679,56 +1914,35 @@ STDCALL LARGE_INTEGER WRAP_EXPORT(KeQueryPerformanceCounter)
 	return jiffies;
 }
 
-STDCALL struct nt_thread *WRAP_EXPORT(KeGetCurrentThread)
+STDCALL struct task_struct *WRAP_EXPORT(KeGetCurrentThread)
 	(void)
 {
 	struct task_struct *task = current;
-	struct nt_thread *ret;
-	struct common_object_header *header;
-	KIRQL irql;
 
 	DBGTRACE5("task: %p", task);
-	ret = NULL;
-	irql = nt_spin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL);
-	nt_list_for_each_entry(header, &object_list, list) {
-		struct nt_thread *thread;
-		DBGTRACE5("header: %p, type: %d", header, header->type);
-		if (header->type != OBJECT_TYPE_NT_THREAD)
-			continue;
-		thread = HEADER_TO_OBJECT(header);
-		DBGTRACE5("thread: %p, task: %p", thread, thread->task);
-		if (thread->task == task) {
-			ret = thread;
-			break;
-		}
-	}
-	nt_spin_unlock_irql(&ntoskernel_lock, irql);
-	if (ret == NULL)
-		DBGTRACE1("couldn't find thread for task %p", task);
-	DBGTRACE5("current thread = %p", ret);
-	return ret;
+	return task;
 }
 
 STDCALL KPRIORITY WRAP_EXPORT(KeSetPriorityThread)
-	(struct nt_thread *thread, KPRIORITY priority)
+	(struct task_struct *task, KPRIORITY priority)
 {
 	KPRIORITY old_prio;
 
-	TRACEENTER3("thread: %p, priority = %u", thread, priority);
+	TRACEENTER3("task: %p, priority = %u", task, priority);
 
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,0)
 	/* FIXME: is there a way to set kernel thread prio on 2.4? */
 	old_prio = LOW_PRIORITY;
 #else
-	if (rt_task(thread->task))
+	if (rt_task(task))
 		old_prio = LOW_REALTIME_PRIORITY;
 	else
 		old_prio = MAXIMUM_PRIORITY;
 #if 0
 	if (priority == LOW_REALTIME_PRIORITY)
-		set_user_nice(thread->task, -20);
+		set_user_nice(task, -20);
 	else
-		set_user_nice(thread->task, 10);
+		set_user_nice(task, 10);
 #endif
 #endif
 	return old_prio;
@@ -1758,7 +1972,7 @@ static int thread_trampoline(void *data)
 	return 0;
 }
 
-struct nt_thread *wrap_create_thread(struct task_struct *task)
+static struct nt_thread *create_nt_thread(struct task_struct *task)
 {
 	struct nt_thread *thread;
 	KIRQL irql;
@@ -1771,44 +1985,72 @@ struct nt_thread *wrap_create_thread(struct task_struct *task)
 		else
 			thread->pid = 0;
 		nt_spin_lock_init(&thread->lock);
-		init_waitqueue_head(&thread->event_wq);
 		InitializeListHead(&thread->irps);
-		irql = nt_spin_lock_irql(&nt_event_lock, DISPATCH_LEVEL);
-		initialize_dh(&thread->dh, NotificationEvent, 0, DH_NT_THREAD);
-		nt_spin_unlock_irql(&nt_event_lock, irql);
+		irql = nt_spin_lock_irql(&dispatcher_lock, DISPATCH_LEVEL);
+		initialize_dh(&thread->dh, ThreadObject, 0);
 		thread->dh.size = sizeof(*thread);
+		nt_spin_unlock_irql(&dispatcher_lock, irql);
 
-		DBGTRACE1("thread: %p, task: %p, pid: %d",
+		DBGTRACE2("thread: %p, task: %p, pid: %d",
 			  thread, thread->task, thread->pid);
 	} else
 		ERROR("couldn't allocate thread object");
 	return thread;
 }
 
-void wrap_remove_thread(struct nt_thread *thread)
+static void remove_nt_thread(struct nt_thread *thread)
 {
 	struct nt_list *ent;
 	KIRQL irql;
 
-	if (thread) {
-		DBGTRACE1("terminating thread: %p, task: %p, pid: %d",
-			  thread, thread->task, thread->task->pid);
-		/* TODO: make sure waitqueue is empty and destroy it */
-		while (1) {
-			struct irp *irp;
-			irql = nt_spin_lock_irql(&thread->lock,
-						 DISPATCH_LEVEL);
-			ent = RemoveHeadList(&thread->irps);
-			nt_spin_unlock_irql(&thread->lock, irql);
-			if (!ent)
-				break;
-			irp = container_of(ent, struct irp, threads);
-			IoCancelIrp(irp);
-		}
-		ObDereferenceObject(thread);
-	} else
+	if (!thread) {
 		ERROR("couldn't find thread for task: %p", current);
-	return;
+		return;
+	}
+	DBGTRACE1("terminating thread: %p, task: %p, pid: %d",
+		  thread, thread->task, thread->task->pid);
+	/* TODO: make sure waitqueue is empty and destroy it */
+	while (1) {
+		struct irp *irp;
+		irql = nt_spin_lock_irql(&thread->lock, DISPATCH_LEVEL);
+		ent = RemoveHeadList(&thread->irps);
+		nt_spin_unlock_irql(&thread->lock, irql);
+		if (!ent)
+			break;
+		irp = container_of(ent, struct irp, threads);
+		IoCancelIrp(irp);
+	}
+	ObDereferenceObject(thread);
+}
+
+struct nt_thread *get_current_nt_thread(void)
+{
+	struct task_struct *task = current;
+	struct nt_thread *ret;
+	struct common_object_header *header;
+	KIRQL irql;
+
+	DBGTRACE5("task: %p", task);
+	ret = NULL;
+	irql = nt_spin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL);
+	nt_list_for_each_entry(header, &object_list, list) {
+		struct nt_thread *thread;
+		DBGTRACE5("header: %p, type: %d", header, header->type);
+		if (header->type != OBJECT_TYPE_NT_THREAD)
+			continue;
+		thread = HEADER_TO_OBJECT(header);
+		DBGTRACE5("thread: %p, task: %p", thread, thread->task);
+		if (thread->task == task) {
+			ret = thread;
+			break;
+		}
+	}
+	nt_spin_unlock_irql(&ntoskernel_lock, irql);
+	if (ret == NULL)
+		DBGTRACE3("couldn't find thread for task %p, %d",
+			  task, current->pid);
+	DBGTRACE5("current thread = %p", ret);
+	return ret;
 }
 
 STDCALL NTSTATUS WRAP_EXPORT(PsCreateSystemThread)
@@ -1832,7 +2074,7 @@ STDCALL NTSTATUS WRAP_EXPORT(PsCreateSystemThread)
 		TRACEEXIT2(return STATUS_RESOURCES);
 	ctx->start_routine = start_routine;
 	ctx->context = context;
-	thread = wrap_create_thread(NULL);
+	thread = create_nt_thread(NULL);
 	if (!thread) {
 		kfree(ctx);
 		TRACEEXIT2(return STATUS_RESOURCES);
@@ -1841,7 +2083,7 @@ STDCALL NTSTATUS WRAP_EXPORT(PsCreateSystemThread)
 
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,7)
 	pid = kernel_thread(thread_trampoline, ctx,
-		CLONE_FS | CLONE_FILES | CLONE_SIGHAND);
+			    CLONE_FS | CLONE_FILES | CLONE_SIGHAND);
 	DBGTRACE2("pid = %d", pid);
 	if (pid < 0) {
 		kfree(ctx);
@@ -1851,7 +2093,7 @@ STDCALL NTSTATUS WRAP_EXPORT(PsCreateSystemThread)
 	task = NULL;
 	DBGTRACE2("created task: %p (%d)", find_task_by_pid(pid), pid);
 #else
-	task = KTHREAD_RUN(thread_trampoline, ctx, DRIVER_NAME);
+	task = KTHREAD_RUN(thread_trampoline, ctx, "windisdrvr");
 	if (IS_ERR(task)) {
 		kfree(ctx);
 		free_object(thread);
@@ -1859,8 +2101,8 @@ STDCALL NTSTATUS WRAP_EXPORT(PsCreateSystemThread)
 	}
 	DBGTRACE2("created task: %p (%d)", task, task->pid);
 #endif
-	*phandle = thread;
-	DBGTRACE2("created thread: %p", thread);
+	*phandle = OBJECT_TO_HEADER(thread);
+	DBGTRACE2("created thread: %p, %p", thread, *phandle);
 	TRACEEXIT2(return STATUS_SUCCESS);
 }
 
@@ -1869,12 +2111,13 @@ STDCALL NTSTATUS WRAP_EXPORT(PsTerminateSystemThread)
 {
 	struct nt_thread *thread;
 
-	thread = KeGetCurrentThread();
+	DBGTRACE2("%p, %08X", current, status);
+	thread = get_current_nt_thread();
 	if (thread) {
 		DBGTRACE2("setting event for thread: %p", thread);
 		KeSetEvent((struct nt_event *)&thread->dh, 0, FALSE);
 		DBGTRACE2("set event for thread: %p", thread);
-		wrap_remove_thread(thread);
+		remove_nt_thread(thread);
 		complete_and_exit(NULL, status);
 		ERROR("oops: %p, %d", thread->task, thread->pid);
 	} else
@@ -1906,26 +2149,19 @@ STDCALL BOOLEAN WRAP_EXPORT(KeSynchronizeExecution)
 {
 	NT_SPIN_LOCK *spinlock;
 	BOOLEAN ret;
-	KIRQL irql;
+	unsigned long flags;
 
 	if (interrupt->actual_lock)
 		spinlock = interrupt->actual_lock;
 	else
 		spinlock = &interrupt->lock;
-	irql = interrupt->synch_irql;
-	if (irql == DISPATCH_LEVEL)
-		irql = nt_spin_lock_irql(spinlock, DISPATCH_LEVEL);
-	else
-		nt_spin_lock(spinlock);
+	nt_spin_lock_irqsave(spinlock, flags);
 	ret = synch_routine(synch_context);
-	if (irql == DISPATCH_LEVEL)
-		nt_spin_unlock_irql(spinlock, irql);
-	else
-		nt_spin_unlock(spinlock);
+	nt_spin_unlock_irqrestore(spinlock, flags);
 	return ret;
 }
 
-STDCALL void * WRAP_EXPORT(MmAllocateContiguousMemorySpecifyCache)
+STDCALL void *WRAP_EXPORT(MmAllocateContiguousMemorySpecifyCache)
 	(SIZE_T size, PHYSICAL_ADDRESS lowest, PHYSICAL_ADDRESS highest,
 	 PHYSICAL_ADDRESS boundary, enum memory_caching_type cache_type)
 {
@@ -2170,11 +2406,13 @@ STDCALL NTSTATUS WRAP_EXPORT(ObReferenceObjectByHandle)
 	struct common_object_header *hdr;
 	KIRQL irql;
 
+	DBGTRACE2("%p", handle);
 	irql = nt_spin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL);
 	hdr = HANDLE_TO_HEADER(handle);
 	hdr->ref_count++;
 	*object = HEADER_TO_OBJECT(hdr);
 	nt_spin_unlock_irql(&ntoskernel_lock, irql);
+	DBGTRACE2("%p, %p, %d, %p", hdr, object, hdr->ref_count, *object);
 	return STATUS_SUCCESS;
 }
 
@@ -2191,6 +2429,7 @@ _FASTCALL LONG WRAP_EXPORT(ObfReferenceObject)
 	irql = nt_spin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL);
 	hdr = OBJECT_TO_HEADER(object);
 	ret = ++hdr->ref_count;
+	DBGTRACE2("%p, %d, %p", hdr, hdr->ref_count, object);
 	nt_spin_unlock_irql(&ntoskernel_lock, irql);
 	return ret;
 }
@@ -2208,6 +2447,7 @@ _FASTCALL void WRAP_EXPORT(ObfDereferenceObject)
 	DBGTRACE2("hdr: %p", hdr);
 	hdr->ref_count--;
 	ref_count = hdr->ref_count;
+	DBGTRACE2("object: %p, %d", object, ref_count);
 	nt_spin_unlock_irql(&ntoskernel_lock, irql);
 	if (ref_count < 0)
 		ERROR("invalid object: %p (%d)", object, ref_count);
@@ -2229,7 +2469,7 @@ STDCALL NTSTATUS WRAP_EXPORT(ZwCreateFile)
 	char *file_basename;
 	KIRQL irql;
 
-	TRACEENTER2("");
+	TRACEENTER2("%p", *handle);
 	if (RtlUnicodeStringToAnsiString(&ansi, obj_attr->name, TRUE) !=
 	    STATUS_SUCCESS)
 		TRACEEXIT2(return STATUS_INSUFFICIENT_RESOURCES);
@@ -2245,7 +2485,7 @@ STDCALL NTSTATUS WRAP_EXPORT(ZwCreateFile)
 			bin_file = oa->file;
 			*handle = header;
 			iosb->status = FILE_OPENED;
-			iosb->status_info = bin_file->size;
+			iosb->info = bin_file->size;
 			nt_spin_unlock_irql(&ntoskernel_lock, irql);
 			TRACEEXIT2(return STATUS_SUCCESS);
 		}
@@ -2256,7 +2496,7 @@ STDCALL NTSTATUS WRAP_EXPORT(ZwCreateFile)
 			     ansi.buf);
 	if (!oa) {
 		iosb->status = FILE_DOES_NOT_EXIST;
-		iosb->status_info = 0;
+		iosb->info = 0;
 		RtlFreeAnsiString(&ansi);
 		TRACEEXIT2(return STATUS_FAILURE);
 	}
@@ -2272,12 +2512,12 @@ STDCALL NTSTATUS WRAP_EXPORT(ZwCreateFile)
 	if (bin_file) {
 		oa->file = bin_file;
 		iosb->status = FILE_OPENED;
-		iosb->status_info = bin_file->size;
+		iosb->info = bin_file->size;
 		RtlFreeAnsiString(&ansi);
 		TRACEEXIT2(return STATUS_SUCCESS);
 	} else {
 		iosb->status = FILE_DOES_NOT_EXIST;
-		iosb->status_info = 0;
+		iosb->info = 0;
 		RtlFreeAnsiString(&ansi);
 		TRACEEXIT2(return STATUS_FAILURE);
 	}
@@ -2289,11 +2529,18 @@ STDCALL NTSTATUS WRAP_EXPORT(ZwReadFile)
 	 ULONG length, LARGE_INTEGER *byte_offset, ULONG *key)
 {
 	struct object_attr *oa;
+	struct common_object_header *coh;
 	ULONG count;
 	size_t offset;
 	struct wrap_bin_file *file;
 
-	oa = HANDLE_TO_OBJECT(handle);
+	DBGTRACE2("%p", handle);
+	coh = handle;
+	if (coh->type != OBJECT_TYPE_FILE) {
+		ERROR("handle %p is not for a file: %d", handle, coh->type);
+		TRACEEXIT2(return STATUS_FAILURE);
+	}
+	oa = HANDLE_TO_OBJECT(coh);
 	file = oa->file;
 	DBGTRACE2("file: %s (%d)", file->name, file->size);
 	if (byte_offset)
@@ -2304,7 +2551,7 @@ STDCALL NTSTATUS WRAP_EXPORT(ZwReadFile)
 	DBGTRACE2("count: %u, offset: %zu, length: %u", count, offset, length);
 	memcpy(buffer, ((void *)file->data) + offset, count);
 	iosb->status = STATUS_SUCCESS;
-	iosb->status_info = count;
+	iosb->info = count;
 	TRACEEXIT2(return STATUS_SUCCESS);
 }
 
@@ -2312,21 +2559,25 @@ STDCALL NTSTATUS WRAP_EXPORT(ZwClose)
 	(void *handle)
 {
 	struct object_attr *oa;
-	struct wrap_bin_file *bin_file;
 	struct common_object_header *coh;
+	struct wrap_bin_file *bin_file;
 
-	coh = handle;
-	if (coh == NULL) {
+	DBGTRACE2("%p", handle);
+	if (handle == NULL) {
 		DBGTRACE1("");
 		TRACEEXIT2(return STATUS_SUCCESS);
 	}
+	coh = handle;
+	oa = HANDLE_TO_OBJECT(handle);
 	if (coh->type == OBJECT_TYPE_FILE) {
-		oa = HANDLE_TO_OBJECT(handle);
 		bin_file = oa->file;
 		free_bin_file(bin_file);
 		ObDereferenceObject(oa);
-	} else
-		WARNING("object type %d not implemented", coh->type);
+	} else if (coh->type == OBJECT_TYPE_NT_THREAD) {
+		DBGTRACE1("thread: %p", handle);
+	}
+	else
+		WARNING("closing handle %p not implemented", handle);
 	TRACEEXIT2(return STATUS_SUCCESS);
 }
 
@@ -2338,8 +2589,14 @@ STDCALL NTSTATUS WRAP_EXPORT(ZwQueryInformationFile)
 	struct file_name_info *fni;
 	struct file_std_info *fsi;
 	struct wrap_bin_file *file;
+	struct common_object_header *coh;
 
 	TRACEENTER2("%p", handle);
+	coh = handle;
+	if (coh->type != OBJECT_TYPE_FILE) {
+		ERROR("handle %p is not for a file: %d", handle, coh->type);
+		TRACEEXIT2(return STATUS_FAILURE);
+	}
 	oa = HANDLE_TO_OBJECT(handle);
 	DBGTRACE2("attr: %p", oa);
 	switch (class) {
@@ -2458,7 +2715,7 @@ NOREGPARM ULONG WRAP_EXPORT(DbgPrint)
 {
 #ifdef DEBUG
 	va_list args;
-	static char buf[1024];
+	static char buf[100];
 
 	va_start(args, format);
 	vsnprintf(buf, sizeof(buf), format, args);
