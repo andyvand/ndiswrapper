@@ -919,10 +919,9 @@ STDCALL void WRAP_EXPORT(NdisMAllocateSharedMemory)
 		    nmb->wnd->dma_map_count, size, cached);
 
 	*virt = PCI_DMA_ALLOC_COHERENT(wd->pci.pdev, size, &dma_addr);
-	if (!*virt) {
+	if (!*virt)
 		ERROR("couldn't allocate %d bytes of %scached DMA memory",
 		      size, cached ? "" : "un-");
-	}
 	*phys = dma_addr;
 	TRACEEXIT3(return);
 }
@@ -1922,7 +1921,6 @@ STDCALL void WRAP_EXPORT(NdisMIndicateStatus)
 	case NDIS_STATUS_MEDIA_DISCONNECT:
 		if (wnd->link_status != 0) {
 			wnd->link_status = 0;
-			wnd->tx_ok = 0;
 			set_bit(LINK_STATUS_CHANGED, &wnd->wrap_ndis_work);
 			schedule_wrap_work(&wnd->wrap_ndis_worker);
 		}
@@ -1930,7 +1928,6 @@ STDCALL void WRAP_EXPORT(NdisMIndicateStatus)
 	case NDIS_STATUS_MEDIA_CONNECT:
 		if (wnd->link_status != 1) {
 			wnd->link_status = 1;
-			wnd->tx_ok = 1;
 			set_bit(LINK_STATUS_CHANGED, &wnd->wrap_ndis_work);
 			schedule_wrap_work(&wnd->wrap_ndis_worker);
 		}
