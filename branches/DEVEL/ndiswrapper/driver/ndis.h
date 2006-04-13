@@ -118,7 +118,7 @@ enum ndis_encapsulation {
 #define NDIS_TASK_OFFLOAD_VERSION 1
 
 struct ndis_encapsulation_format {
-	enum ndis_encapsulation format;
+	enum ndis_encapsulation encapsulation;
 	struct {
 		ULONG fixed_header_size:1;
 		ULONG reserved:31;
@@ -130,7 +130,7 @@ struct ndis_task_offload_header {
 	ULONG version;
 	ULONG size;
 	ULONG reserved;
-	UCHAR offset_first_task;
+	ULONG offset_first_task;
 	struct ndis_encapsulation_format encapsulation_format;
 };
 
@@ -144,11 +144,17 @@ struct ndis_task_offload {
 };
 
 struct v4_checksum {
-	ULONG ip_supported:1;
-	ULONG tcp_supported:1;
-	ULONG tcp_csum:1;
-	ULONG udp_csum:1;
-	ULONG ip_csum:1;
+	union {
+		struct {
+			ULONG ip_supported:1;
+			ULONG tcp_supported:1;
+			ULONG tcp_csum:1;
+			ULONG udp_csum:1;
+			ULONG ip_csum:1;
+		};
+		ULONG value;
+	};
+
 };
 
 struct v6_checksum {
@@ -301,7 +307,7 @@ enum ndis_medium {
 	NdisMedium1394, NdisMediumMax
 };
 
-enum ndis_phys_medium {
+enum ndis_physical_medium {
 	NdisPhysicalMediumUnspecified, NdisPhysicalMediumWirelessLan,
 	NdisPhysicalMediumCableModem, NdisPhysicalMediumPhoneLine,
 	NdisPhysicalMediumPowerLine, NdisPhysicalMediumDSL,
@@ -693,6 +699,8 @@ struct auth_encr_capa {
 	unsigned long encr;
 };
 
+enum driver_type { DRIVER_WIRELESS, DRIVER_ETHERNET, };
+
 /*
  * This struct contains function pointers that the drivers references
  * directly via macros, so it's important that they are at the correct
@@ -861,6 +869,7 @@ struct wrap_ndis_device {
 	int multicast_size;
 	struct v4_checksum rx_csum;
 	struct ndis_tcp_ip_checksum_packet_info tx_csum_info;
+	enum ndis_physical_medium physical_medium;
 };
 
 struct ndis_pmkid_candidate {
