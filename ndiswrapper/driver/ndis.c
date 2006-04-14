@@ -389,6 +389,8 @@ STDCALL ULONG WRAP_EXPORT(NDIS_BUFFER_TO_SPAN_PAGES)
 		return 1;
 	length = MmGetMdlByteCount(buffer);
 	n = SPAN_PAGES(MmGetMdlVirtualAddress(buffer), length);
+	DBGTRACE4("%p, %p, %d, %d", buffer->startva, buffer->mappedsystemva,
+		  length, n);
 	TRACEEXIT3(return n);
 }
 
@@ -675,6 +677,8 @@ STDCALL void WRAP_EXPORT(NdisMSetAttributesEx)
 	else
 		wnd->hangcheck_interval = 2 * HZ;
 
+	DBGTRACE2("eth_rx_indicate: %p, eth_rx_complete: %p",
+		  nmb->eth_rx_indicate, nmb->eth_rx_complete);
 	TRACEEXIT2(return);
 }
 
@@ -1480,7 +1484,8 @@ STDCALL void WRAP_EXPORT(NdisAllocatePacket)
 	ndis_packet->private.oob_offset = packet_length -
 		sizeof(struct ndis_packet_oob_data);
 	ndis_packet->private.packet_flags =
-		fPACKET_ALLOCATED_BY_NDIS | NDIS_PROTOCOL_ID_TCP_IP;
+		fPACKET_ALLOCATED_BY_NDIS;
+//		fPACKET_ALLOCATED_BY_NDIS | NDIS_PROTOCOL_ID_TCP_IP;
 	ndis_packet->private.pool = pool;
 	nt_spin_unlock_irql(&pool->lock, irql);
 
@@ -1803,8 +1808,7 @@ static void ndis_irq_handler(unsigned long data)
 	miniport = &wnd->wd->driver->ndis_driver->miniport;
 	LIN2WIN1(miniport->handle_interrupt, wnd->nmb->adapter_ctx);
 	if (miniport->enable_interrupts)
-		LIN2WIN1(miniport->enable_interrupts,
-			 wnd->nmb->adapter_ctx);
+		LIN2WIN1(miniport->enable_interrupts, wnd->nmb->adapter_ctx);
 }
 
 static irqreturn_t ndis_isr(int irq, void *data, struct pt_regs *pt_regs)

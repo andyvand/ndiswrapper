@@ -454,9 +454,11 @@ static struct ndis_packet *alloc_tx_packet(struct wrap_ndis_device *wnd,
 		oob_data->extension.info[ScatterGatherListPacketInfo] =
 			&oob_data->ndis_sg_list;
 	}
+#if 0
 	if (wnd->tx_csum_info.value)
 		oob_data->extension.info[TcpIpChecksumPacketInfo] =
 			&wnd->tx_csum_info;
+#endif
 	return packet;
 }
 
@@ -1801,6 +1803,7 @@ static STDCALL NTSTATUS NdisAddDevice(struct driver_object *drv_obj,
 	if (wd->driver->ndis_driver)
 		wd->driver->ndis_driver->miniport.shutdown = NULL;
 	wnd->stats_enabled = TRUE;
+	wnd->rx_csum.value = 0;
 
 	fdo->reserved = wnd;
 	nmb = wnd->nmb;

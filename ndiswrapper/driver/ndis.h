@@ -779,10 +779,10 @@ struct ndis_miniport_block {
 	void *send_pkts;
 	void *deferred_send;
 	void *eth_rx_indicate;
-	void *txrx_indicate;
+	void *tr_rx_indicate;
 	void *fddi_rx_indicate;
 	void *eth_rx_complete;
-	void *txrx_complete;
+	void *tr_rx_complete;
 	void *fddi_rx_complete;
 
 	void *status;
