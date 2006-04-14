@@ -302,8 +302,11 @@ struct mdl {
 #define MDL_ALLOCATED_MUST_SUCCEED	0x4000
 #define MDL_CACHE_ALLOCATED		0x8000
 
+#define page_start(ptr) ((void *)((ULONG_PTR)(ptr) & ~(PAGE_SIZE - 1)))
+#define byte_offset(ptr) ((ULONG)((ULONG_PTR)(ptr) & (PAGE_SIZE - 1)))
+
 #define MmGetMdlByteCount(mdl) ((mdl)->bytecount)
-#define MmGetMdlVirtualAddress(mdl) ((mdl)->startva)
+#define MmGetMdlVirtualAddress(mdl) ((mdl)->startva + (mdl)->byteoffset)
 #define MmGetMdlByteOffset(mdl) ((mdl)->byteoffset)
 #define MmGetSystemAddressForMdl(mdl) ((mdl)->mappedsystemva)
 #define MmGetSystemAddressForMdlSafe(mdl, priority) ((mdl)->mappedsystemva)
@@ -313,9 +316,10 @@ do {									\
 	(mdl)->next = NULL;						\
 	(mdl)->size = MmSizeOfMdl(baseva, length);			\
 	(mdl)->flags = 0;						\
-	(mdl)->startva = baseva;					\
-	(mdl)->byteoffset = (ULONG)offset_in_page(baseva);		\
+	(mdl)->startva = page_start(baseva);				\
+	(mdl)->byteoffset = byte_offset(baseva);			\
 	(mdl)->bytecount = length;					\
+	(mdl)->mappedsystemva = baseva;					\
 	DBGTRACE4("%p %p %p %d %d", (mdl), baseva, (mdl)->startva,	\
 		  (mdl)->byteoffset, length);				\
 } while (0)

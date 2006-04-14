@@ -2245,7 +2245,7 @@ struct mdl *allocate_init_mdl(void *virt, ULONG length)
 		InsertHeadList(&wrap_mdl_list, &wrap_mdl->list);
 		nt_spin_unlock_irql(&ntoskernel_lock, irql);
 		mdl = (struct mdl *)wrap_mdl->mdl;
-		DBGTRACE3("allocated mdl cache: %p(%p), %p(%d)",
+		DBGTRACE3("allocated mdl from cache: %p(%p), %p(%d)",
 			  wrap_mdl, mdl, virt, length);
 		memset(mdl, 0, CACHE_MDL_SIZE);
 		MmInitializeMdl(mdl, virt, length);
@@ -2259,7 +2259,7 @@ struct mdl *allocate_init_mdl(void *virt, ULONG length)
 		if (!wrap_mdl)
 			return NULL;
 		mdl = (struct mdl *)wrap_mdl->mdl;
-		DBGTRACE3("allocated mdl cache: %p(%p), %p(%d)",
+		DBGTRACE3("allocated mdl from memory: %p(%p), %p(%d)",
 			  wrap_mdl, mdl, virt, length);
 		irql = nt_spin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL);
 		InsertHeadList(&wrap_mdl_list, &wrap_mdl->list);
@@ -2318,25 +2318,22 @@ STDCALL void WRAP_EXPORT(MmBuildMdlForNonPagedPool)
 {
 	TRACEENTER4("%p", mdl);
 	mdl->flags |= MDL_SOURCE_IS_NONPAGED_POOL;
-	MmGetSystemAddressForMdl(mdl) = MmGetMdlVirtualAddress(mdl);
 	DBGTRACE4("%p, %p, %p, %d, %d", mdl, mdl->mappedsystemva, mdl->startva,
 		  mdl->byteoffset, mdl->bytecount);
-#if 0
-	{
-	PFN_NUMBER *mdl_pages;
-	int i, n;
-	void *start;
+#if 1
+	do {
+		PFN_NUMBER *mdl_pages;
+		int i, n;
 
-	n = SPAN_PAGES(MmGetSystemAddressForMdl(mdl), MmGetMdlByteCount(mdl));
-	if (n > CACHE_MDL_PAGES)
-		WARNING("%p, %d, %d", MmGetSystemAddressForMdl(mdl),
-			MmGetMdlByteCount(mdl), n);
-	mdl_pages = MmGetMdlPfnArray(mdl);
-	start = MmGetSystemAddressForMdl(mdl);
-	for (i = 0; i < n; i++)
-		mdl_pages[i] =
-			page_to_pfn(virt_to_page(start + i * PAGE_SIZE));
-	}
+		n = SPAN_PAGES(MmGetSystemAddressForMdl(mdl),
+			       MmGetMdlByteCount(mdl));
+		if (n > CACHE_MDL_PAGES)
+			WARNING("%p, %d, %d", MmGetSystemAddressForMdl(mdl),
+				MmGetMdlByteCount(mdl), n);
+		mdl_pages = MmGetMdlPfnArray(mdl);
+		for (i = 0; i < n; i++)
+			mdl_pages[i] = (ULONG_PTR)mdl->startva + (i * PAGE_SIZE);
+	} while (0);
 #endif
 	return;
 }
@@ -2345,6 +2342,7 @@ STDCALL void *WRAP_EXPORT(MmMapLockedPages)
 	(struct mdl *mdl, KPROCESSOR_MODE access_mode)
 {
 	mdl->flags |= MDL_MAPPED_TO_SYSTEM_VA;
+	/* already mapped */
 	return mdl->mappedsystemva;
 }
 
