@@ -785,8 +785,7 @@ static void set_multicast_list(struct wrap_ndis_device *wnd)
 
 	TRACEEXIT2(return);
 	net_dev = wnd->net_dev;
-
-	get_packet_filter(wnd, &packet_filter);
+	packet_filter = wnd->packet_filter;
 
 	if (net_dev->flags & IFF_ALLMULTI)
 		packet_filter |= NDIS_PACKET_TYPE_ALL_MULTICAST;
@@ -1598,8 +1597,8 @@ static NDIS_STATUS ndis_start_device(struct wrap_ndis_device *wnd)
 		goto buffer_pool_err;
 	}
 	DBGTRACE1("pool: %p", wnd->tx_buffer_pool);
-	miniport_set_int(wnd, OID_802_11_POWER_MODE, NDIS_POWER_OFF);
 	if (wnd->physical_medium == NdisPhysicalMediumWirelessLan) {
+		miniport_set_int(wnd, OID_802_11_POWER_MODE, NDIS_POWER_OFF);
 		miniport_set_int(wnd, OID_802_11_NETWORK_TYPE_IN_USE,
 				 Ndis802_11Automode);
 		get_encryption_capa(wnd);

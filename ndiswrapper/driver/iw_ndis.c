@@ -91,8 +91,7 @@ static int set_assoc_params(struct wrap_ndis_device *wnd)
 		else
 			auth_mode = Ndis802_11AuthModeWPANone;
 	} else if (wnd->iw_auth_80211_auth_alg & IW_AUTH_ALG_SHARED_KEY) {
-		if (wnd->iw_auth_80211_auth_alg &
-		    IW_AUTH_ALG_OPEN_SYSTEM)
+		if (wnd->iw_auth_80211_auth_alg & IW_AUTH_ALG_OPEN_SYSTEM)
 			auth_mode = Ndis802_11AuthModeAutoSwitch;
 		else
 			auth_mode = Ndis802_11AuthModeShared;
