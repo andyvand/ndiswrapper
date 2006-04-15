@@ -230,8 +230,10 @@ typedef STDCALL void (*DPC)(struct kdpc *kdpc, void *ctx, void *arg1,
 
 struct kdpc {
 	SHORT type;
-	/* number is used to represent if the dpc is queued or not */
-	UCHAR number;
+	/* we don't implement kdpc executing on a specific processor;
+	 * until then number is used to represent if the dpc is queued
+	 * or not */
+	UCHAR nr_cpu;
 	UCHAR importance;
 	struct nt_list list;
 
@@ -270,9 +272,7 @@ enum lock_operation {
 };
 
 enum mode {
-	KernelMode,
-	UserMode,
-	MaximumMode
+	KernelMode, UserMode, MaximumMode
 };
 
 struct mdl {
