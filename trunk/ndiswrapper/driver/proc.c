@@ -273,6 +273,8 @@ static int procfs_write_ndis_settings(struct file *file, const char *buf,
 {
 	struct wrap_ndis_device *wnd = (struct wrap_ndis_device *)data;
 	char setting[MAX_PROC_STR_LEN], *p;
+	unsigned int i;
+	NTSTATUS res;
 
 	if (count > MAX_PROC_STR_LEN)
 		return -EINVAL;
@@ -288,8 +290,6 @@ static int procfs_write_ndis_settings(struct file *file, const char *buf,
 		*p = 0;
 
 	if (!strcmp(setting, "hangcheck_interval")) {
-		int i;
-
 		if (!p)
 			return -EINVAL;
 		p++;
@@ -297,8 +297,8 @@ static int procfs_write_ndis_settings(struct file *file, const char *buf,
 		hangcheck_interval = i;
 		hangcheck_del(wnd);
 		hangcheck_add(wnd);
-	} else if (!strcmp(setting, "check_capa")) {
-		check_capa(wnd);
+	} else if (!strcmp(setting, "get_encryption_capa")) {
+		get_encryption_capa(wnd);
 		printk(KERN_INFO
 		       "%s: encryption modes supported: %s%s%s%s%s%s%s\n",
 		       wnd->net_dev->name,
@@ -322,8 +322,6 @@ static int procfs_write_ndis_settings(struct file *file, const char *buf,
 		       test_bit(Ndis802_11AuthModeWPA2PSK, &wnd->capa.auth) ?
 		       ", WPA2PSK" : "");
 	} else if (!strcmp(setting, "suspend")) {
-		int i;
-
 		if (!p)
 			return -EINVAL;
 		p++;
@@ -343,7 +341,6 @@ static int procfs_write_ndis_settings(struct file *file, const char *buf,
 		if (i)
 			return -EINVAL;
 	} else if (!strcmp(setting, "resume")) {
-		int i;
 		if (wrap_is_pci_bus(wnd->wd->dev_bus_type))
 			i = wrap_pnp_resume_pci_device(wnd->wd->pci.pdev);
 		else
@@ -361,7 +358,6 @@ static int procfs_write_ndis_settings(struct file *file, const char *buf,
 	} else if (!strcmp(setting, "irp")) {
 		struct irp *irp;
 		struct io_stack_location *irp_sl;
-		NTSTATUS status;
 		int major_fn, minor_fn, n;
 		struct device_object *dev;
 		if (!p)
@@ -379,12 +375,11 @@ static int procfs_write_ndis_settings(struct file *file, const char *buf,
 		irp_sl->major_fn = major_fn;
 		irp_sl->minor_fn = minor_fn;
 		irp->io_status.status = STATUS_NOT_SUPPORTED;
-		status = 0;
-		status = IoCallDriver(dev, irp);
-		DBGTRACE1("status = %d", status);
+		res = 0;
+		res = IoCallDriver(dev, irp);
+		DBGTRACE1("status = %d", res);
 #endif
 	} else if (!strcmp(setting, "power_profile")) {
-		int i;
 		struct miniport_char *miniport;
 		ULONG profile_inf;
 
@@ -409,8 +404,6 @@ static int procfs_write_ndis_settings(struct file *file, const char *buf,
 					   NdisDevicePnPEventPowerProfileChanged,
 					   &profile_inf, sizeof(profile_inf));
 	} else if (!strcmp(setting, "auth_mode")) {
-		int i;
-
 		if (!p)
 			return -EINVAL;
 		p++;
@@ -421,8 +414,6 @@ static int procfs_write_ndis_settings(struct file *file, const char *buf,
 		if (set_auth_mode(wnd, i))
 			return -EINVAL;
 	} else if (!strcmp(setting, "encr_mode")) {
-		int i;
-
 		if (!p)
 			return -EINVAL;
 		p++;
@@ -433,8 +424,6 @@ static int procfs_write_ndis_settings(struct file *file, const char *buf,
 		if (set_encr_mode(wnd, i))
 			return -EINVAL;
 	} else if (!strcmp(setting, "stats_enabled")) {
-		int i;
-
 		if (!p)
 			return -EINVAL;
 		p++;
@@ -445,8 +434,6 @@ static int procfs_write_ndis_settings(struct file *file, const char *buf,
 			wnd->stats_enabled = FALSE;
 	} else if (!strcmp(setting, "tx_antenna")) {
 		ndis_antenna antenna;
-		unsigned int i;
-		NTSTATUS res;
 
 		if (!p)
 			return -EINVAL;
@@ -464,8 +451,6 @@ static int procfs_write_ndis_settings(struct file *file, const char *buf,
 			return -EINVAL;
 	} else if (!strcmp(setting, "rx_antenna")) {
 		ndis_antenna antenna;
-		unsigned int i;
-		NTSTATUS res;
 
 		if (!p)
 			return -EINVAL;
@@ -481,6 +466,9 @@ static int procfs_write_ndis_settings(struct file *file, const char *buf,
 				  &antenna, sizeof(antenna));
 		if (res)
 			return -EINVAL;
+	} else if (!strcmp(setting, "reset")) {
+		res = miniport_reset(wnd);
+		DBGTRACE2("%08X", res);
 	}
 	return count;
 }

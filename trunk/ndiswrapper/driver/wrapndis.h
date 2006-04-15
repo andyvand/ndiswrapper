@@ -36,7 +36,7 @@ void free_tx_packet(struct wrap_ndis_device *wnd, struct ndis_packet *packet,
 int init_ndis_driver(struct driver_object *drv_obj);
 NDIS_STATUS ndis_reinit(struct wrap_ndis_device *wnd);
 
-void check_capa(struct wrap_ndis_device *wnd);
+void get_encryption_capa(struct wrap_ndis_device *wnd);
 void hangcheck_add(struct wrap_ndis_device *wnd);
 void hangcheck_del(struct wrap_ndis_device *wnd);
 

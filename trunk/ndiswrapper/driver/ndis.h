@@ -70,11 +70,106 @@ struct ndis_buffer_pool {
 	NT_SPIN_LOCK lock;
 };
 
+#define NDIS_PROTOCOL_ID_DEFAULT	0x00
+#define NDIS_PROTOCOL_ID_TCP_IP		0x02
+#define NDIS_PROTOCOL_ID_IPX		0x06
+#define NDIS_PROTOCOL_ID_NBF		0x07
+#define NDIS_PROTOCOL_ID_MAX		0x0F
+#define NDIS_PROTOCOL_ID_MASK		0x0F
+
 #define fPACKET_WRAPPER_RESERVED		0x3F
 #define fPACKET_CONTAINS_MEDIA_SPECIFIC_INFO	0x40
 #define fPACKET_ALLOCATED_BY_NDIS		0x80
 
 #define PROTOCOL_RESERVED_SIZE_IN_PACKET (4 * sizeof(void *))
+
+struct ndis_tcp_ip_checksum_packet_info {
+	union {
+		struct {
+			ULONG v4:1;
+			ULONG v6:1;
+			ULONG tcp:1;
+			ULONG udp:1;
+			ULONG ip:1;
+		} tx;
+		struct {
+			ULONG tcp_failed:1;
+			ULONG udp_failed:1;
+			ULONG ip_failed:1;
+			ULONG tcp_succeeded:1;
+			ULONG udp_succeeded:1;
+			ULONG ip_succeeded:1;
+			ULONG loopback:1;
+		} rx;
+		ULONG value;
+	};
+};
+
+enum ndis_task {
+	TcpIpChecksumNdisTask, IpSecNdisTask, TcpLargeSendNdisTask, MaxNdisTask
+};
+
+enum ndis_encapsulation {
+	UNSPECIFIED_Encapsulation, NULL_Encapsulation,
+	IEEE_802_3_Encapsulation, IEEE_802_5_Encapsulation,
+	LLC_SNAP_ROUTED_Encapsulation, LLC_SNAP_BRIDGED_Encapsulation
+};
+
+#define NDIS_TASK_OFFLOAD_VERSION 1
+
+struct ndis_encapsulation_format {
+	enum ndis_encapsulation encapsulation;
+	struct {
+		ULONG fixed_header_size:1;
+		ULONG reserved:31;
+	} flags;
+	ULONG header_size;
+};
+
+struct ndis_task_offload_header {
+	ULONG version;
+	ULONG size;
+	ULONG reserved;
+	ULONG offset_first_task;
+	struct ndis_encapsulation_format encapsulation_format;
+};
+
+struct ndis_task_offload {
+	ULONG version;
+	ULONG size;
+	enum ndis_task task;
+	ULONG offset_next_task;
+	ULONG task_buf_length;
+	UCHAR task_buf[1];
+};
+
+struct v4_checksum {
+	union {
+		struct {
+			ULONG ip_supported:1;
+			ULONG tcp_supported:1;
+			ULONG tcp_csum:1;
+			ULONG udp_csum:1;
+			ULONG ip_csum:1;
+		};
+		ULONG value;
+	};
+
+};
+
+struct v6_checksum {
+	ULONG ip_supported:1;
+	ULONG tcp_supported:1;
+	ULONG tcp_csum:1;
+	ULONG udp_csum:1;
+};
+
+struct ndis_task_tcp_ip_checksum {
+	struct v4_checksum v4_tx;
+	struct v4_checksum v4_rx;
+	struct v6_checksum v6_tx;
+	struct v6_checksum v6_rx;
+};
 
 enum ndis_per_packet_info {
 	TcpIpChecksumPacketInfo, IpSecPacketInfo, TcpLargeSendPacketInfo,
@@ -212,7 +307,7 @@ enum ndis_medium {
 	NdisMedium1394, NdisMediumMax
 };
 
-enum ndis_phys_medium {
+enum ndis_physical_medium {
 	NdisPhysicalMediumUnspecified, NdisPhysicalMediumWirelessLan,
 	NdisPhysicalMediumCableModem, NdisPhysicalMediumPhoneLine,
 	NdisPhysicalMediumPowerLine, NdisPhysicalMediumDSL,
@@ -604,6 +699,8 @@ struct auth_encr_capa {
 	unsigned long encr;
 };
 
+enum driver_type { DRIVER_WIRELESS, DRIVER_ETHERNET, };
+
 /*
  * This struct contains function pointers that the drivers references
  * directly via macros, so it's important that they are at the correct
@@ -682,10 +779,10 @@ struct ndis_miniport_block {
 	void *send_pkts;
 	void *deferred_send;
 	void *eth_rx_indicate;
-	void *txrx_indicate;
+	void *tr_rx_indicate;
 	void *fddi_rx_indicate;
 	void *eth_rx_complete;
-	void *txrx_complete;
+	void *tr_rx_complete;
 	void *fddi_rx_complete;
 
 	void *status;
@@ -769,6 +866,10 @@ struct wrap_ndis_device {
 	int iw_auth_80211_auth_alg;
 	struct ndis_packet_pool *tx_packet_pool;
 	struct ndis_buffer_pool *tx_buffer_pool;
+	int multicast_size;
+	struct v4_checksum rx_csum;
+	struct ndis_tcp_ip_checksum_packet_info tx_csum_info;
+	enum ndis_physical_medium physical_medium;
 };
 
 struct ndis_pmkid_candidate {
@@ -1131,5 +1232,7 @@ void wrap_procfs_remove_ndis_device(struct wrap_ndis_device *wnd);
 
 #define NDIS_FLAGS_PROTOCOL_ID_MASK		0x0000000F
 #define NDIS_PROTOCOL_ID_TCP_IP			0x02
+
+#define OID_TCP_TASK_OFFLOAD			0xFC010201
 
 #endif /* NDIS_H */

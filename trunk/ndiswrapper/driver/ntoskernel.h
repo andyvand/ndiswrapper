@@ -986,8 +986,8 @@ static inline ULONG SPAN_PAGES(void *ptr, SIZE_T length)
 {
 	ULONG n;
 
-	n = ((((ULONG_PTR)ptr) & (PAGE_SIZE - 1)) +
-	     length + (PAGE_SIZE - 1)) >> PAGE_SHIFT;
+	n = ((((ULONG_PTR)ptr) & (PAGE_SIZE - 1)) + length + (PAGE_SIZE - 1))
+		>> PAGE_SHIFT;
 
 	return n;
 }
