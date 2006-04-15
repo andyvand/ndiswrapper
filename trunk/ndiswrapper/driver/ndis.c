@@ -677,8 +677,6 @@ STDCALL void WRAP_EXPORT(NdisMSetAttributesEx)
 	else
 		wnd->hangcheck_interval = 2 * HZ;
 
-	DBGTRACE2("eth_rx_indicate: %p, eth_rx_complete: %p",
-		  nmb->eth_rx_indicate, nmb->eth_rx_complete);
 	TRACEEXIT2(return);
 }
 
@@ -2285,6 +2283,7 @@ EthRxIndicateHandler(struct ndis_miniport_block *nmb, void *rx_ctx,
 			memcpy(oob_data->look_ahead, look_ahead,
 			       look_ahead_size);
 			oob_data->look_ahead_size = look_ahead_size;
+			TRACEEXIT3(return);
 		} else {
 			WARNING("packet dropped: %08X", res);
 			NdisFreePacket(packet);
@@ -2301,7 +2300,7 @@ EthRxIndicateHandler(struct ndis_miniport_block *nmb, void *rx_ctx,
 		}
 	}
 
-	if (skb && skb_size > 0) {
+	if (skb) {
 		skb->dev = wnd->net_dev;
 		skb->protocol = eth_type_trans(skb, wnd->net_dev);
 		wnd->stats.rx_bytes += skb_size;
@@ -2363,15 +2362,13 @@ NdisMTransferDataComplete(struct ndis_miniport_block *nmb,
 	}
 	kfree(oob_data->look_ahead);
 	NdisFreePacket(packet);
-	skb_put(skb, skb_size);
 	skb->protocol = eth_type_trans(skb, wnd->net_dev);
 	wnd->stats.rx_bytes += skb_size;
 	wnd->stats.rx_packets++;
 	rx_csum_info =
 		oob_data->extension.info[TcpIpChecksumPacketInfo];
 	if (wnd->rx_csum.ip_csum && rx_csum_info &&
-	    (rx_csum_info->rx.tcp_succeeded ||
-	     rx_csum_info->rx.ip_succeeded ||
+	    (rx_csum_info->rx.tcp_succeeded || rx_csum_info->rx.ip_succeeded ||
 	     rx_csum_info->rx.udp_succeeded)) {
 		skb->ip_summed = CHECKSUM_HW;
 		skb->csum = rx_csum_info->value;
@@ -2571,7 +2568,6 @@ NdisMResetComplete(struct ndis_miniport_block *nmb, NDIS_STATUS status,
 
 	TRACEENTER3("status: %08X, reset status: %u", status,
 		    address_reset);
-
 	wnd->ndis_comm_status = status;
 	wnd->ndis_comm_done = 1 + address_reset;
 	wake_up(&wnd->ndis_comm_wq);
@@ -2588,13 +2584,10 @@ STDCALL NDIS_STATUS WRAP_EXPORT(NdisScheduleWorkItem)
 	ndis_work_entry = kmalloc(sizeof(*ndis_work_entry), GFP_ATOMIC);
 	if (!ndis_work_entry)
 		BUG();
-
 	ndis_work_entry->ndis_work_item = ndis_work_item;
-
 	irql = nt_spin_lock_irql(&ndis_work_list_lock, DISPATCH_LEVEL);
 	InsertTailList(&ndis_worker_list, &ndis_work_entry->list);
 	nt_spin_unlock_irql(&ndis_work_list_lock, irql);
-
 	WORKTRACE("scheduling %p", ndis_work_item);
 	schedule_ndis_work(&ndis_work);
 	TRACEEXIT3(return NDIS_STATUS_SUCCESS);
