@@ -1217,18 +1217,13 @@ int set_scan(struct wrap_ndis_device *wnd)
 	NDIS_STATUS res;
 
 	TRACEENTER2("");
-	if (time_before(wnd->scan_timestamp + 6 * HZ, jiffies)) {
-		DBGTRACE2("scanning at %lu", jiffies);
-		res = miniport_set_int(wnd, OID_802_11_BSSID_LIST_SCAN, 0);
-		if (res == NDIS_STATUS_FAILURE)
-			return -EOPNOTSUPP;
-		if (res == NDIS_STATUS_NOT_SUPPORTED ||
-		    res == NDIS_STATUS_INVALID_DATA) {
-			WARNING("scanning failed (%08X)", res);
-			TRACEEXIT2(return -EOPNOTSUPP);
-		} else
-			wnd->scan_timestamp = jiffies;
-	}
+	DBGTRACE2("scanning at %lu", jiffies);
+	res = miniport_set_int(wnd, OID_802_11_BSSID_LIST_SCAN, 0);
+	if (res) {
+		WARNING("scanning failed (%08X)", res);
+		TRACEEXIT2(return -EOPNOTSUPP);
+	} else
+		wnd->scan_timestamp = jiffies;
 	TRACEEXIT2(return 0);
 }
 
@@ -1250,7 +1245,7 @@ static int iw_get_scan(struct net_device *dev, struct iw_request_info *info,
 	struct ndis_wlan_bssid *cur_item ;
 
 	TRACEENTER2("");
-	if (time_before(jiffies, wnd->scan_timestamp + 2 * HZ))
+	if (time_before(jiffies, wnd->scan_timestamp + 3 * HZ))
 		return -EAGAIN;
 	/* try with space for a few scan items */
 	list_len = sizeof(ULONG) + sizeof(struct ndis_wlan_bssid_ex) * 8;

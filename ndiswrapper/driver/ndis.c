@@ -1085,6 +1085,8 @@ STDCALL void WRAP_EXPORT(NdisAllocateBuffer)
 		irql = nt_spin_lock_irql(&pool->lock, DISPATCH_LEVEL);
 		pool->num_allocated_descr++;
 	}
+//	descr->flags |= MDL_PAGES_LOCKED | MDL_MAPPED_TO_SYSTEM_VA;
+//	descr->flags |= MDL_SOURCE_IS_NONPAGED_POOL | MDL_ALLOCATED_FIXED_SIZE;
 	MmBuildMdlForNonPagedPool(descr);
 	/* NdisFreeBuffer doesn't pass pool, so we store pool
 	 * in unused field 'process' */
