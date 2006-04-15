@@ -49,6 +49,10 @@ uninstall:
 		echo "removing $(shell which ndiswrapper)"; \
 		/bin/rm -f $(shell which ndiswrapper); \
 	fi
+	@if [ "x$(shell which ndiswrapper-buginfo)" != "x" ]; then \
+		echo "removing $(shell which ndiswrapper-buginfo)"; \
+		/bin/rm -f $(shell which ndiswrapper-buginfo); \
+	fi
 	@for module in $(shell find /lib/modules/$(KVERS) \
 			-name "ndiswrapper*"); do \
 		echo "removing $$module"; \
