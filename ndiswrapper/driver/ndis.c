@@ -389,6 +389,8 @@ STDCALL ULONG WRAP_EXPORT(NDIS_BUFFER_TO_SPAN_PAGES)
 		return 1;
 	length = MmGetMdlByteCount(buffer);
 	n = SPAN_PAGES(MmGetMdlVirtualAddress(buffer), length);
+	DBGTRACE4("%p, %p, %d, %d", buffer->startva, buffer->mappedsystemva,
+		  length, n);
 	TRACEEXIT3(return n);
 }
 
@@ -675,6 +677,8 @@ STDCALL void WRAP_EXPORT(NdisMSetAttributesEx)
 	else
 		wnd->hangcheck_interval = 2 * HZ;
 
+	DBGTRACE2("eth_rx_indicate: %p, eth_rx_complete: %p",
+		  nmb->eth_rx_indicate, nmb->eth_rx_complete);
 	TRACEEXIT2(return);
 }
 
@@ -919,10 +923,9 @@ STDCALL void WRAP_EXPORT(NdisMAllocateSharedMemory)
 		    nmb->wnd->dma_map_count, size, cached);
 
 	*virt = PCI_DMA_ALLOC_COHERENT(wd->pci.pdev, size, &dma_addr);
-	if (!*virt) {
+	if (!*virt)
 		ERROR("couldn't allocate %d bytes of %scached DMA memory",
 		      size, cached ? "" : "un-");
-	}
 	*phys = dma_addr;
 	TRACEEXIT3(return);
 }
@@ -1082,6 +1085,8 @@ STDCALL void WRAP_EXPORT(NdisAllocateBuffer)
 		irql = nt_spin_lock_irql(&pool->lock, DISPATCH_LEVEL);
 		pool->num_allocated_descr++;
 	}
+//	descr->flags |= MDL_PAGES_LOCKED | MDL_MAPPED_TO_SYSTEM_VA;
+//	descr->flags |= MDL_SOURCE_IS_NONPAGED_POOL | MDL_ALLOCATED_FIXED_SIZE;
 	MmBuildMdlForNonPagedPool(descr);
 	/* NdisFreeBuffer doesn't pass pool, so we store pool
 	 * in unused field 'process' */
@@ -1480,7 +1485,9 @@ STDCALL void WRAP_EXPORT(NdisAllocatePacket)
 	memset(ndis_packet, 0, packet_length);
 	ndis_packet->private.oob_offset = packet_length -
 		sizeof(struct ndis_packet_oob_data);
-	ndis_packet->private.packet_flags = fPACKET_ALLOCATED_BY_NDIS;
+	ndis_packet->private.packet_flags =
+		fPACKET_ALLOCATED_BY_NDIS;
+//		fPACKET_ALLOCATED_BY_NDIS | NDIS_PROTOCOL_ID_TCP_IP;
 	ndis_packet->private.pool = pool;
 	nt_spin_unlock_irql(&pool->lock, irql);
 
@@ -1803,8 +1810,7 @@ static void ndis_irq_handler(unsigned long data)
 	miniport = &wnd->wd->driver->ndis_driver->miniport;
 	LIN2WIN1(miniport->handle_interrupt, wnd->nmb->adapter_ctx);
 	if (miniport->enable_interrupts)
-		LIN2WIN1(miniport->enable_interrupts,
-			 wnd->nmb->adapter_ctx);
+		LIN2WIN1(miniport->enable_interrupts, wnd->nmb->adapter_ctx);
 }
 
 static irqreturn_t ndis_isr(int irq, void *data, struct pt_regs *pt_regs)
@@ -1921,7 +1927,6 @@ STDCALL void WRAP_EXPORT(NdisMIndicateStatus)
 	case NDIS_STATUS_MEDIA_DISCONNECT:
 		if (wnd->link_status != 0) {
 			wnd->link_status = 0;
-			wnd->tx_ok = 0;
 			set_bit(LINK_STATUS_CHANGED, &wnd->wrap_ndis_work);
 			schedule_wrap_work(&wnd->wrap_ndis_worker);
 		}
@@ -1929,7 +1934,6 @@ STDCALL void WRAP_EXPORT(NdisMIndicateStatus)
 	case NDIS_STATUS_MEDIA_CONNECT:
 		if (wnd->link_status != 1) {
 			wnd->link_status = 1;
-			wnd->tx_ok = 1;
 			set_bit(LINK_STATUS_CHANGED, &wnd->wrap_ndis_work);
 			schedule_wrap_work(&wnd->wrap_ndis_worker);
 		}
@@ -2081,6 +2085,7 @@ NdisMIndicateReceivePacket(struct ndis_miniport_block *nmb,
 	int i, length, total_length;
 	struct ndis_packet_oob_data *oob_data;
 	void *virt;
+	struct ndis_tcp_ip_checksum_packet_info *rx_csum_info;
 
 	TRACEENTER3("%p, %d", nmb, nr_packets);
 	wnd = nmb->wnd;
@@ -2095,6 +2100,7 @@ NdisMIndicateReceivePacket(struct ndis_miniport_block *nmb,
 						 &length, &total_length,
 						 NormalPagePriority);
 		DBGTRACE3("%d, %d", length, total_length);
+		oob_data = NDIS_PACKET_OOB_DATA(packet);
 		skb = dev_alloc_skb(total_length);
 		if (skb) {
 			skb->dev = wnd->net_dev;
@@ -2107,13 +2113,21 @@ NdisMIndicateReceivePacket(struct ndis_miniport_block *nmb,
 			skb->protocol = eth_type_trans(skb, wnd->net_dev);
 			wnd->stats.rx_bytes += total_length;
 			wnd->stats.rx_packets++;
+			rx_csum_info =
+				oob_data->extension.info[TcpIpChecksumPacketInfo];
+			if (wnd->rx_csum.ip_csum && rx_csum_info &&
+			    (rx_csum_info->rx.tcp_succeeded ||
+			     rx_csum_info->rx.ip_succeeded ||
+			     rx_csum_info->rx.udp_succeeded)) {
+				skb->ip_summed = CHECKSUM_HW;
+				skb->csum = rx_csum_info->value;
+			}
 			netif_rx(skb);
 		} else {
 			WARNING("couldn't allocate skb; packet dropped");
 			wnd->stats.rx_dropped++;
 		}
 
-		oob_data = NDIS_PACKET_OOB_DATA(packet);
 		/* serialized drivers check the status upon return
 		 * from this function */
 		if (test_bit(ATTR_SERIALIZED, &wnd->attributes)) {
@@ -2201,6 +2215,7 @@ EthRxIndicateHandler(struct ndis_miniport_block *nmb, void *rx_ctx,
 	struct wrap_ndis_device *wnd;
 	unsigned int skb_size = 0;
 	KIRQL irql;
+	struct ndis_packet_oob_data *oob_data;
 
 	TRACEENTER3("nmb = %p, rx_ctx = %p, buf = %p, size = %d, "
 		    "buf = %p, size = %d, packet = %d",
@@ -2225,7 +2240,7 @@ EthRxIndicateHandler(struct ndis_miniport_block *nmb, void *rx_ctx,
 			wnd->stats.rx_dropped++;
 			TRACEEXIT3(return);
 		}
-
+		oob_data = NDIS_PACKET_OOB_DATA(packet);
 		miniport = &wnd->wd->driver->ndis_driver->miniport;
 		irql = raise_irql(DISPATCH_LEVEL);
 		res = LIN2WIN6(miniport->tx_data, packet, &bytes_txed,
@@ -2236,7 +2251,7 @@ EthRxIndicateHandler(struct ndis_miniport_block *nmb, void *rx_ctx,
 			  bytes_txed);
 		if (res == NDIS_STATUS_SUCCESS) {
 			ndis_buffer *buffer;
-			skb = dev_alloc_skb(header_size+look_ahead_size+
+			skb = dev_alloc_skb(header_size + look_ahead_size +
 					    bytes_txed);
 			if (skb) {
 				memcpy(skb_put(skb, header_size), header,
@@ -2256,9 +2271,7 @@ EthRxIndicateHandler(struct ndis_miniport_block *nmb, void *rx_ctx,
 				NdisFreePacket(packet);
 			}
 		} else if (res == NDIS_STATUS_PENDING) {
-			struct ndis_packet_oob_data *oob_data;
 			/* driver will call td_complete */
-			oob_data = NDIS_PACKET_OOB_DATA(packet);
 			oob_data->look_ahead = kmalloc(look_ahead_size,
 						       GFP_ATOMIC);
 			if (!oob_data->look_ahead) {
@@ -2313,6 +2326,7 @@ NdisMTransferDataComplete(struct ndis_miniport_block *nmb,
 	unsigned int skb_size;
 	struct ndis_packet_oob_data *oob_data;
 	ndis_buffer *buffer;
+	struct ndis_tcp_ip_checksum_packet_info *rx_csum_info;
 
 	TRACEENTER3("wnd = %p, packet = %p, bytes_txed = %d",
 		    wnd, packet, bytes_txed);
@@ -2353,6 +2367,15 @@ NdisMTransferDataComplete(struct ndis_miniport_block *nmb,
 	skb->protocol = eth_type_trans(skb, wnd->net_dev);
 	wnd->stats.rx_bytes += skb_size;
 	wnd->stats.rx_packets++;
+	rx_csum_info =
+		oob_data->extension.info[TcpIpChecksumPacketInfo];
+	if (wnd->rx_csum.ip_csum && rx_csum_info &&
+	    (rx_csum_info->rx.tcp_succeeded ||
+	     rx_csum_info->rx.ip_succeeded ||
+	     rx_csum_info->rx.udp_succeeded)) {
+		skb->ip_summed = CHECKSUM_HW;
+		skb->csum = rx_csum_info->value;
+	}
 	netif_rx(skb);
 }
 

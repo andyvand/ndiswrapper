@@ -96,6 +96,7 @@ static void update_user_shared_data_proc(unsigned long data);
 static int add_bus_driver(const char *name);
 static void free_all_objects(void);
 static BOOLEAN queue_kdpc(struct kdpc *kdpc);
+BOOLEAN dequeue_kdpc(struct kdpc *kdpc);
 
 WRAP_EXPORT_MAP("KeTickCount", &jiffies);
 
@@ -755,18 +756,18 @@ static void timer_proc(unsigned long data)
 	BUG_ON(wrap_timer->wrap_timer_magic != WRAP_TIMER_MAGIC);
 	BUG_ON(nt_timer->wrap_timer_magic != WRAP_TIMER_MAGIC);
 #endif
-	kdpc = nt_timer->kdpc;
 	KeSetEvent((struct nt_event *)nt_timer, 0, FALSE);
-	if (kdpc && kdpc->func) {
-		DBGTRACE5("kdpc %p (%p)", kdpc, kdpc->func);
-		LIN2WIN4(kdpc->func, kdpc, kdpc->ctx,
-			 kdpc->arg1, kdpc->arg2);
-	}
+
+	kdpc = nt_timer->kdpc;
+	if (kdpc && kdpc->func)
+//		queue_kdpc(kdpc);
+		LIN2WIN4(kdpc->func, kdpc, kdpc->ctx, kdpc->arg1, kdpc->arg2);
 
 	nt_spin_lock(&timer_lock);
 	if (wrap_timer->repeat)
 		mod_timer(&wrap_timer->timer, jiffies + wrap_timer->repeat);
 	nt_spin_unlock(&timer_lock);
+
 
 	TRACEEXIT5(return);
 }
@@ -927,7 +928,7 @@ STDCALL void WRAP_EXPORT(KeInitializeDpc)
 {
 	TRACEENTER3("%p, %p, %p", kdpc, func, ctx);
 	memset(kdpc, 0, sizeof(*kdpc));
-	kdpc->number = 0;
+	kdpc->nr_cpu = FALSE;
 	kdpc->func = func;
 	kdpc->ctx  = ctx;
 	InitializeListHead(&kdpc->list);
@@ -947,7 +948,7 @@ static void kdpc_worker(void *data)
 			break;
 		}
 		kdpc = container_of(entry, struct kdpc, list);
-		kdpc->number = 0;
+		kdpc->nr_cpu = FALSE;
 		nt_spin_unlock_irql(&kdpc_list_lock, irql);
 		DBGTRACE5("%p, %p, %p, %p, %p", kdpc, kdpc->func, kdpc->ctx,
 			  kdpc->arg1, kdpc->arg2);
@@ -971,18 +972,16 @@ static BOOLEAN queue_kdpc(struct kdpc *kdpc)
 	if (!kdpc)
 		return FALSE;
 	irql = nt_spin_lock_irql(&kdpc_list_lock, DISPATCH_LEVEL);
-	if (kdpc->number) {
-		if (kdpc->number != 1)
-			ERROR("kdpc->number: %d", kdpc->number);
+	if (kdpc->nr_cpu) {
+		if (kdpc->nr_cpu != TRUE)
+			ERROR("kdpc->nr_cpu: %d", kdpc->nr_cpu);
 		ret = FALSE;
 	} else {
-		kdpc->number = 1;
+		ret = kdpc->nr_cpu = TRUE;
 		InsertTailList(&kdpc_list, &kdpc->list);
-		ret = TRUE;
+		schedule_ntos_work(&kdpc_work);
 	}
 	nt_spin_unlock_irql(&kdpc_list_lock, irql);
-	if (ret == TRUE)
-		schedule_ntos_work(&kdpc_work);
 	TRACEEXIT5(return ret);
 }
 
@@ -991,14 +990,15 @@ BOOLEAN dequeue_kdpc(struct kdpc *kdpc)
 	BOOLEAN ret;
 	KIRQL irql;
 
+	TRACEENTER5("%p", kdpc);
 	if (!kdpc)
 		return FALSE;
 	irql = nt_spin_lock_irql(&kdpc_list_lock, DISPATCH_LEVEL);
-	if (kdpc->number) {
-		if (kdpc->number != 1)
-			ERROR("kdpc->number: %d", kdpc->number);
+	if (kdpc->nr_cpu) {
+		if (kdpc->nr_cpu != TRUE)
+			ERROR("kdpc->nr_cpu: %d", kdpc->nr_cpu);
+		kdpc->nr_cpu = FALSE;
 		RemoveEntryList(&kdpc->list);
-		kdpc->number = 0;
 		ret = TRUE;
 	} else
 		ret = FALSE;
@@ -1717,6 +1717,7 @@ STDCALL LONG WRAP_EXPORT(KeSetEvent)
 	nt_event->dh.signal_state = 1;
 	if (old_state == 0)
 		wakeup_threads(&nt_event->dh);
+#if 0
 	/* Synchronization objects are auto-reset - they don't stay
 	 * signalled. The DDK says they are reset after waking up one
 	 * thread. However, it is not clear if they should be reset if
@@ -1725,6 +1726,7 @@ STDCALL LONG WRAP_EXPORT(KeSetEvent)
 	 * waiting */
 	if (nt_event->dh.type == SynchronizationObject)
 		nt_event->dh.signal_state = 0;
+#endif
 	nt_spin_unlock_irql(&dispatcher_lock, irql);
 	EVENTEXIT(return old_state);
 }
@@ -2245,7 +2247,7 @@ struct mdl *allocate_init_mdl(void *virt, ULONG length)
 		InsertHeadList(&wrap_mdl_list, &wrap_mdl->list);
 		nt_spin_unlock_irql(&ntoskernel_lock, irql);
 		mdl = (struct mdl *)wrap_mdl->mdl;
-		DBGTRACE3("allocated mdl cache: %p(%p), %p(%d)",
+		DBGTRACE3("allocated mdl from cache: %p(%p), %p(%d)",
 			  wrap_mdl, mdl, virt, length);
 		memset(mdl, 0, CACHE_MDL_SIZE);
 		MmInitializeMdl(mdl, virt, length);
@@ -2259,7 +2261,7 @@ struct mdl *allocate_init_mdl(void *virt, ULONG length)
 		if (!wrap_mdl)
 			return NULL;
 		mdl = (struct mdl *)wrap_mdl->mdl;
-		DBGTRACE3("allocated mdl cache: %p(%p), %p(%d)",
+		DBGTRACE3("allocated mdl from memory: %p(%p), %p(%d)",
 			  wrap_mdl, mdl, virt, length);
 		irql = nt_spin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL);
 		InsertHeadList(&wrap_mdl_list, &wrap_mdl->list);
@@ -2308,6 +2310,7 @@ STDCALL void WRAP_EXPORT(IoBuildPartialMdl)
 	(struct mdl *source, struct mdl *target, void *virt, ULONG length)
 {
 	MmInitializeMdl(target, virt, length);
+	target->flags |= MDL_PARTIAL;
 }
 
 /* FIXME: We don't update MDL to physical page mapping, since in Linux
@@ -2317,26 +2320,25 @@ STDCALL void WRAP_EXPORT(MmBuildMdlForNonPagedPool)
 	(struct mdl *mdl)
 {
 	TRACEENTER4("%p", mdl);
+	/* already mapped */
+//	mdl->mappedsystemva = MmGetMdlVirtualAddress(mdl);
 	mdl->flags |= MDL_SOURCE_IS_NONPAGED_POOL;
-	MmGetSystemAddressForMdl(mdl) = MmGetMdlVirtualAddress(mdl);
 	DBGTRACE4("%p, %p, %p, %d, %d", mdl, mdl->mappedsystemva, mdl->startva,
 		  mdl->byteoffset, mdl->bytecount);
-#if 0
-	{
-	PFN_NUMBER *mdl_pages;
-	int i, n;
-	void *start;
+#if 1
+	do {
+		PFN_NUMBER *mdl_pages;
+		int i, n;
 
-	n = SPAN_PAGES(MmGetSystemAddressForMdl(mdl), MmGetMdlByteCount(mdl));
-	if (n > CACHE_MDL_PAGES)
-		WARNING("%p, %d, %d", MmGetSystemAddressForMdl(mdl),
-			MmGetMdlByteCount(mdl), n);
-	mdl_pages = MmGetMdlPfnArray(mdl);
-	start = MmGetSystemAddressForMdl(mdl);
-	for (i = 0; i < n; i++)
-		mdl_pages[i] =
-			page_to_pfn(virt_to_page(start + i * PAGE_SIZE));
-	}
+		n = SPAN_PAGES(MmGetSystemAddressForMdl(mdl),
+			       MmGetMdlByteCount(mdl));
+		if (n > CACHE_MDL_PAGES)
+			WARNING("%p, %d, %d", MmGetSystemAddressForMdl(mdl),
+				MmGetMdlByteCount(mdl), n);
+		mdl_pages = MmGetMdlPfnArray(mdl);
+		for (i = 0; i < n; i++)
+			mdl_pages[i] = (ULONG_PTR)mdl->startva + (i * PAGE_SIZE);
+	} while (0);
 #endif
 	return;
 }
@@ -2344,7 +2346,12 @@ STDCALL void WRAP_EXPORT(MmBuildMdlForNonPagedPool)
 STDCALL void *WRAP_EXPORT(MmMapLockedPages)
 	(struct mdl *mdl, KPROCESSOR_MODE access_mode)
 {
+	/* already mapped */
+//	mdl->mappedsystemva = MmGetMdlVirtualAddress(mdl);
 	mdl->flags |= MDL_MAPPED_TO_SYSTEM_VA;
+	/* what is the need for MDL_PARTIAL_HAS_BEEN_MAPPED? */
+	if (mdl->flags & MDL_PARTIAL)
+		mdl->flags |= MDL_PARTIAL_HAS_BEEN_MAPPED;
 	return mdl->mappedsystemva;
 }
 
@@ -2367,6 +2374,7 @@ STDCALL void WRAP_EXPORT(MmProbeAndLockPages)
 	(struct mdl *mdl, KPROCESSOR_MODE access_mode,
 	 enum lock_operation operation)
 {
+	/* already locked */
 	mdl->flags |= MDL_PAGES_LOCKED;
 	return;
 }
