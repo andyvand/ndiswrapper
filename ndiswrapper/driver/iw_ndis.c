@@ -1461,14 +1461,14 @@ static int iw_get_range(struct net_device *dev, struct iw_request_info *info,
 	range->encoding_size[1] = 13;
 
 	range->num_bitrates = 0;
+	n = NDIS_MAX_RATES_EX;
 	res = miniport_query_info(wnd, OID_802_11_SUPPORTED_RATES,
 				  &rates_ex, sizeof(ndis_rates_ex));
 	if (res) {
 		res = miniport_query_info(wnd, OID_802_11_SUPPORTED_RATES,
 					  &rates_ex, sizeof(ndis_rates));
 		n = NDIS_MAX_RATES;
-	} else
-		n = NDIS_MAX_RATES_EX;
+	}
 	if (res)
 		WARNING("getting bit rates failed: %08X", res);
 	else {
@@ -1524,6 +1524,7 @@ static int iw_get_range(struct net_device *dev, struct iw_request_info *info,
 	if (test_bit(Ndis802_11AuthModeWPA2, &wnd->capa.auth) ||
 	    test_bit(Ndis802_11AuthModeWPA2PSK, &wnd->capa.auth))
 		range->enc_capa |= IW_ENC_CAPA_WPA2;
+
 #endif /* WIRELESS_EXT > 17 */
 
 	return 0;
@@ -1538,10 +1539,16 @@ static int iw_set_mlme(struct net_device *dev, struct iw_request_info *info,
 		       union iwreq_data *wrqu, char *extra)
 {
 	struct iw_mlme *mlme = (struct iw_mlme *)extra;
+	struct wrap_ndis_device *wnd = netdev_priv(dev);
 
 	TRACEENTER2("");
 	switch (mlme->cmd) {
 	case IW_MLME_DEAUTH:
+		wpa_disassociate(dev, info, wrqu, extra);
+		set_priv_filter(wnd, Ndis802_11PrivFilterAcceptAll);
+		set_auth_mode(wnd, Ndis802_11AuthModeOpen);
+		set_encr_mode(wnd, Ndis802_11EncryptionDisabled);
+		return 0;
 	case IW_MLME_DISASSOC:
 		DBGTRACE2("cmd=%d reason_code=%d",
 			  mlme->cmd, mlme->reason_code);
@@ -1780,8 +1787,7 @@ static int iw_set_pmksa(struct net_device *dev,
 	pmkid.length = 8 + pmkid.bssid_info_count *
 		sizeof(struct ndis_bssid_info);
 
-	res = miniport_set_info(wnd, OID_802_11_PMKID, &pmkid,
-				sizeof(pmkid));
+	res = miniport_set_info(wnd, OID_802_11_PMKID, &pmkid, sizeof(pmkid));
 	if (res == NDIS_STATUS_FAILURE)
 		return -EOPNOTSUPP;
 	DBGTRACE2("OID_802_11_PMKID -> %d", res);
@@ -2280,10 +2286,14 @@ static int wpa_deauthenticate(struct net_device *dev,
 			      struct iw_request_info *info,
 			      union iwreq_data *wrqu, char *extra)
 {
+	struct wrap_ndis_device *wnd = netdev_priv(dev);
 	int ret;
 
 	TRACEENTER2("");
 	ret = wpa_disassociate(dev, info, wrqu, extra);
+	set_priv_filter(wnd, Ndis802_11PrivFilterAcceptAll);
+	set_auth_mode(wnd, Ndis802_11AuthModeOpen);
+	set_encr_mode(wnd, Ndis802_11EncryptionDisabled);
 	TRACEEXIT2(return ret);
 }
 

@@ -154,6 +154,7 @@ static int procfs_read_ndis_hw(char *page, char **start, off_t off,
 	ndis_rts_threshold rts_threshold;
 	ndis_fragmentation_threshold frag_threshold;
 	ndis_antenna antenna;
+	ULONG packet_filter;
 
 	if (off != 0) {
 		*eof = 1;
@@ -236,6 +237,14 @@ static int procfs_read_ndis_hw(char *page, char **start, off_t off,
 		     test_bit(Ndis802_11AuthModeWPA2PSK, &wnd->capa.auth) ?
 		     ", WPA2PSK" : "");
 
+	res = miniport_query_int(wnd, OID_GEN_CURRENT_PACKET_FILTER,
+				 &packet_filter);
+	if (!res) {
+		if (packet_filter != wnd->packet_filter)
+			WARNING("wrong packet_filter? 0x%08x, 0x%08x\n",
+				packet_filter, wnd->packet_filter);
+		p += sprintf(p, "packet_filter: 0x%08x\n", packet_filter);
+	}
 	if (p - page > count) {
 		WARNING("wrote %lu bytes (limit is %u)",
 			(unsigned long)(p - page), count);
@@ -469,6 +478,14 @@ static int procfs_write_ndis_settings(struct file *file, const char *buf,
 	} else if (!strcmp(setting, "reset")) {
 		res = miniport_reset(wnd);
 		DBGTRACE2("%08X", res);
+	} else if (!strcmp(setting, "packet_filter")) {
+		if (!p)
+			return -EINVAL;
+		p++;
+		i = simple_strtol(p, NULL, 10);
+		res = miniport_set_int(wnd, OID_GEN_CURRENT_PACKET_FILTER, i);
+		if (res)
+			WARNING("setting packet_filter failed: %08X", res);
 	}
 	return count;
 }
