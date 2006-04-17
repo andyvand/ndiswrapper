@@ -116,7 +116,7 @@ static STDCALL void wrap_cancel_irp(struct device_object *dev_obj,
 				    struct irp *irp);
 
 /* use tasklet instead worker to process completed urbs */
-//#define USB_TASKLET 1
+#define USB_TASKLET 1
 
 #ifdef USB_TASKLET
 static struct tasklet_struct wrap_urb_complete_work;
