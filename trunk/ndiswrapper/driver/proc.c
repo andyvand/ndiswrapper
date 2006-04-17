@@ -103,30 +103,25 @@ static int procfs_read_ndis_encr(char *page, char **start, off_t off,
 		essid.essid[essid.length] = '\0';
 		p += sprintf(p, "essid=%s\n", essid.essid);
 	}
-
 	res = miniport_query_int(wnd, OID_802_11_ENCRYPTION_STATUS,
 				 &encr_status);
-	res |= miniport_query_int(wnd, OID_802_11_AUTHENTICATION_MODE,
-				  &auth_mode);
-
 	if (!res) {
-		int t = wnd->encr_info.tx_key_index;
+		typeof(&wnd->encr_info.keys[0]) tx_key;
 		p += sprintf(p, "tx_key=%u\n", wnd->encr_info.tx_key_index);
 		p += sprintf(p, "key=");
-		if (wnd->encr_info.keys[t].length > 0)
-			for (i = 0; i < NDIS_ENCODING_TOKEN_MAX &&
-				     i < wnd->encr_info.keys[t].length;
-			     i++)
-				p += sprintf(p, "%2.2X",
-					     wnd->encr_info.keys[t].key[i]);
+		tx_key = &wnd->encr_info.keys[wnd->encr_info.tx_key_index];
+		if (tx_key->length > 0)
+			for (i = 0; i < tx_key->length; i++)
+				p += sprintf(p, "%2.2X", tx_key->key[i]);
 		else
 			p += sprintf(p, "off");
 		p += sprintf(p, "\n");
-
 		p += sprintf(p, "encr_mode=%d\n", encr_status);
-		p += sprintf(p, "auth_mode=%d\n", auth_mode);
 	}
-
+	res = miniport_query_int(wnd, OID_802_11_AUTHENTICATION_MODE,
+				  &auth_mode);
+	if (!res)
+		p += sprintf(p, "auth_mode=%d\n", auth_mode);
 	res = miniport_query_int(wnd, OID_802_11_INFRASTRUCTURE_MODE,
 				 &infra_mode);
 	p += sprintf(p, "mode=%s\n", (infra_mode == Ndis802_11IBSS) ?

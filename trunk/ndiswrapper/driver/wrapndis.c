@@ -1650,6 +1650,7 @@ err_start:
 static NDIS_STATUS ndis_remove_device(struct wrap_ndis_device *wnd)
 {
 	int tx_pending;
+
 	set_bit(SHUTDOWN, &wnd->wrap_ndis_work);
 	wnd->tx_ok = 0;
 	ndis_close(wnd->net_dev);
