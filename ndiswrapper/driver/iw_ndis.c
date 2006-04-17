@@ -694,8 +694,7 @@ int set_auth_mode(struct wrap_ndis_device *wnd, int auth_mode)
 	NDIS_STATUS res;
 
 	TRACEENTER2("%d", auth_mode);
-	res = miniport_set_int(wnd, OID_802_11_AUTHENTICATION_MODE,
-			       auth_mode);
+	res = miniport_set_int(wnd, OID_802_11_AUTHENTICATION_MODE, auth_mode);
 	if (res == NDIS_STATUS_FAILURE)
 		return -EOPNOTSUPP;
 	if (res == NDIS_STATUS_INVALID_DATA) {
@@ -890,17 +889,22 @@ static int remove_key(struct wrap_ndis_device *wnd, int index,
 		struct ndis_remove_key remove_key;
 		remove_key.struct_size = sizeof(remove_key);
 		remove_key.index = index;
-		/* pairwise key */
-		if (memcmp(bssid, "\xff\xff\xff\xff\xff\xff", ETH_ALEN) != 0)
-			remove_key.index |= (1 << 30);
-		memcpy(remove_key.bssid, bssid, sizeof(remove_key.bssid));
+		if (bssid) {
+			/* pairwise key */
+			if (memcmp(bssid, "\xff\xff\xff\xff\xff\xff",
+				   ETH_ALEN) != 0)
+				remove_key.index |= (1 << 30);
+			memcpy(remove_key.bssid, bssid,
+			       sizeof(remove_key.bssid));
+		} else
+			memset(remove_key.bssid, 0xff,
+			       sizeof(remove_key.bssid));
 		if (miniport_set_info(wnd, OID_802_11_REMOVE_KEY,
 				      (char *)&remove_key, sizeof(remove_key)))
 			TRACEEXIT2(return -EINVAL);
 	} else {
 		ndis_key_index keyindex = index;
-		res = miniport_set_info(wnd, OID_802_11_REMOVE_WEP,
-					&keyindex, sizeof(keyindex));
+		res = miniport_set_int(wnd, OID_802_11_REMOVE_WEP, keyindex);
 		if (res == NDIS_STATUS_FAILURE)
 			TRACEEXIT2(return -EOPNOTSUPP);
 		if (res == NDIS_STATUS_INVALID_DATA) {
@@ -1216,18 +1220,13 @@ int set_scan(struct wrap_ndis_device *wnd)
 	NDIS_STATUS res;
 
 	TRACEENTER2("");
-	if (time_before(wnd->scan_timestamp + 6 * HZ, jiffies)) {
-		DBGTRACE2("scanning at %lu", jiffies);
-		res = miniport_set_int(wnd, OID_802_11_BSSID_LIST_SCAN, 0);
-		if (res == NDIS_STATUS_FAILURE)
-			return -EOPNOTSUPP;
-		if (res == NDIS_STATUS_NOT_SUPPORTED ||
-		    res == NDIS_STATUS_INVALID_DATA) {
-			WARNING("scanning failed (%08X)", res);
-			TRACEEXIT2(return -EOPNOTSUPP);
-		} else
-			wnd->scan_timestamp = jiffies;
+	res = miniport_set_info(wnd, OID_802_11_BSSID_LIST_SCAN, NULL, 0);
+	if (res == NDIS_STATUS_FAILURE || res == NDIS_STATUS_NOT_SUPPORTED ||
+	    res == NDIS_STATUS_INVALID_DATA) {
+		WARNING("scanning failed (%08X)", res);
+		TRACEEXIT2(return -EOPNOTSUPP);
 	}
+	wnd->scan_timestamp = jiffies;
 	TRACEEXIT2(return 0);
 }
 
@@ -1534,21 +1533,19 @@ static int iw_get_range(struct net_device *dev, struct iw_request_info *info,
 static int wpa_disassociate(struct net_device *dev,
 			    struct iw_request_info *info,
 			    union iwreq_data *wrqu, char *extra);
+static int wpa_deauthenticate(struct net_device *dev,
+			      struct iw_request_info *info,
+			      union iwreq_data *wrqu, char *extra);
 
 static int iw_set_mlme(struct net_device *dev, struct iw_request_info *info,
 		       union iwreq_data *wrqu, char *extra)
 {
 	struct iw_mlme *mlme = (struct iw_mlme *)extra;
-	struct wrap_ndis_device *wnd = netdev_priv(dev);
 
 	TRACEENTER2("");
 	switch (mlme->cmd) {
 	case IW_MLME_DEAUTH:
-		wpa_disassociate(dev, info, wrqu, extra);
-		set_priv_filter(wnd, Ndis802_11PrivFilterAcceptAll);
-		set_auth_mode(wnd, Ndis802_11AuthModeOpen);
-		set_encr_mode(wnd, Ndis802_11EncryptionDisabled);
-		return 0;
+		return wpa_deauthenticate(dev, info, wrqu, extra);
 	case IW_MLME_DISASSOC:
 		DBGTRACE2("cmd=%d reason_code=%d",
 			  mlme->cmd, mlme->reason_code);
@@ -1597,9 +1594,9 @@ static int iw_set_auth(struct net_device *dev,
 	case IW_AUTH_80211_AUTH_ALG:
 		wnd->iw_auth_80211_auth_alg = wrqu->param.value;
 		break;
+	case IW_AUTH_WPA_ENABLED:
 	case IW_AUTH_TKIP_COUNTERMEASURES:
 	case IW_AUTH_DROP_UNENCRYPTED:
-	case IW_AUTH_WPA_ENABLED:
 	case IW_AUTH_RX_UNENCRYPTED_EAPOL:
 	case IW_AUTH_PRIVACY_INVOKED:
 		/* TODO */
@@ -2152,10 +2149,10 @@ static int wpa_disassociate(struct net_device *dev,
 			    union iwreq_data *wrqu, char *extra)
 {
 	struct wrap_ndis_device *wnd = netdev_priv(dev);
-	unsigned char buf[NDIS_ESSID_MAX_SIZE];
+	u8 buf[NDIS_ESSID_MAX_SIZE];
 	int i;
 
-	TRACEENTER2("");
+	miniport_set_info(wnd, OID_802_11_DISASSOCIATE, NULL, 0);
 	get_random_bytes(buf, sizeof(buf));
 	for (i = 0; i < sizeof(buf); i++)
 		buf[i] = 'a' + (buf[i] % 26);
