@@ -740,6 +740,31 @@ STDCALL void WRAP_EXPORT(IoDeleteDevice)
 	IOEXIT(return);
 }
 
+STDCALL void WRAP_EXPORT(IoDetachDevice)
+	(struct device_object *topdev)
+{
+	struct device_object *tail;
+	KIRQL irql;
+
+	IOENTER("%p", topdev);
+	if (!topdev)
+		IOEXIT(return);
+	tail = topdev->attached;
+	if (!tail)
+		IOEXIT(return);
+	IOTRACE("tail: %p", tail);
+
+	irql = nt_spin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL);
+	topdev->attached = tail->attached;
+	IOTRACE("attached:%p", topdev->attached);
+	for ( ; tail; tail = tail->attached) {
+		IOTRACE("tail:%p", tail);
+		tail->stack_count--;
+	}
+	nt_spin_unlock_irql(&ntoskernel_lock, irql);
+	IOEXIT(return);
+}
+
 STDCALL struct device_object *WRAP_EXPORT(IoGetAttachedDevice)
 	(struct device_object *dev)
 {
@@ -790,30 +815,6 @@ STDCALL struct device_object *WRAP_EXPORT(IoAttachDeviceToDeviceStack)
 	IOEXIT(return dst);
 }
 
-STDCALL void WRAP_EXPORT(IoDetachDevice)
-	(struct device_object *topdev)
-{
-	struct device_object *tail;
-	KIRQL irql;
-
-	IOENTER("%p", topdev);
-	if (!topdev)
-		IOEXIT(return);
-	tail = topdev->attached;
-	if (!tail)
-		IOEXIT(return);
-	IOTRACE("tail: %p", tail);
-
-	irql = nt_spin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL);
-	topdev->attached = tail->attached;
-	IOTRACE("attached:%p", topdev->attached);
-	for ( ; tail; tail = tail->attached) {
-		IOTRACE("tail:%p", tail);
-		tail->stack_count--;
-	}
-	nt_spin_unlock_irql(&ntoskernel_lock, irql);
-	IOEXIT(return);
-}
 
 /* NOTE: Make sure to compile with -freg-struct-return, so gcc will
  * return union in register, like Windows */

@@ -2241,9 +2241,8 @@ EthRxIndicateHandler(struct ndis_miniport_block *nmb, void *rx_ctx,
 		oob_data = NDIS_PACKET_OOB_DATA(packet);
 		miniport = &wnd->wd->driver->ndis_driver->miniport;
 		irql = raise_irql(DISPATCH_LEVEL);
-		res = LIN2WIN6(miniport->tx_data, packet, &bytes_txed,
-			       nmb, rx_ctx, look_ahead_size,
-			       packet_size);
+		res = LIN2WIN6(miniport->tx_data, packet, &bytes_txed, nmb,
+			       rx_ctx, look_ahead_size, packet_size);
 		lower_irql(irql);
 		DBGTRACE3("%d, %d, %d", header_size, look_ahead_size,
 			  bytes_txed);
@@ -2349,8 +2348,8 @@ NdisMTransferDataComplete(struct ndis_miniport_block *nmb,
 	}
 
 	skb->dev = wnd->net_dev;
-	memcpy(skb_put(skb, sizeof(oob_data->header)),
-	       oob_data->header, sizeof(oob_data->header));
+	memcpy(skb_put(skb, sizeof(oob_data->header)), oob_data->header,
+	       sizeof(oob_data->header));
 	memcpy(skb_put(skb, oob_data->look_ahead_size), oob_data->look_ahead,
 	       oob_data->look_ahead_size);
 	buffer = packet->private.buffer_head;
@@ -2365,8 +2364,7 @@ NdisMTransferDataComplete(struct ndis_miniport_block *nmb,
 	skb->protocol = eth_type_trans(skb, wnd->net_dev);
 	wnd->stats.rx_bytes += skb_size;
 	wnd->stats.rx_packets++;
-	rx_csum_info =
-		oob_data->extension.info[TcpIpChecksumPacketInfo];
+	rx_csum_info = oob_data->extension.info[TcpIpChecksumPacketInfo];
 	if (wnd->rx_csum.ip_csum && rx_csum_info &&
 	    (rx_csum_info->rx.tcp_succeeded || rx_csum_info->rx.ip_succeeded ||
 	     rx_csum_info->rx.udp_succeeded)) {

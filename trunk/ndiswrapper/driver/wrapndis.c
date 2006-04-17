@@ -36,6 +36,7 @@ static NDIS_STATUS ndis_start_device(struct wrap_ndis_device *wnd);
 static NDIS_STATUS ndis_remove_device(struct wrap_ndis_device *wnd);
 static NDIS_STATUS miniport_set_power_state(struct wrap_ndis_device *wnd,
 					    enum ndis_power_state state);
+static void set_multicast_list(struct wrap_ndis_device *wnd);
 
 static inline int ndis_wait_comm_completion(struct wrap_ndis_device *wnd)
 {
@@ -51,8 +52,7 @@ NDIS_STATUS miniport_reset(struct wrap_ndis_device *wnd)
 {
 	NDIS_STATUS res = 0;
 	struct miniport_char *miniport;
-	UINT cur_lookahead;
-	UINT max_lookahead;
+	UINT cur_lookahead, max_lookahead;
 	BOOLEAN reset_address;
 	KIRQL irql;
 
@@ -91,7 +91,7 @@ NDIS_STATUS miniport_reset(struct wrap_ndis_device *wnd)
 		wnd->nmb->cur_lookahead = cur_lookahead;
 		wnd->nmb->max_lookahead = max_lookahead;
 		set_packet_filter(wnd, wnd->packet_filter);
-//		set_multicast_list(wnd->net_dev);
+		set_multicast_list(wnd);
 	}
 
 	TRACEEXIT3(return res);
@@ -655,12 +655,11 @@ static int set_packet_filter(struct wrap_ndis_device *wnd, ULONG packet_filter)
 	NDIS_STATUS res;
 
 	while (1) {
-		DBGTRACE2("%x", packet_filter);
 		res = miniport_set_int(wnd, OID_GEN_CURRENT_PACKET_FILTER,
 				       packet_filter);
 		if (res == NDIS_STATUS_SUCCESS)
 			break;
-		DBGTRACE2("couldn't add packet filter 0x%08x", packet_filter);
+		DBGTRACE2("couldn't set filter 0x%08x", packet_filter);
 		/* NDIS_PACKET_TYPE_PROMISCUOUS may not work with 802.11 */
 		if (packet_filter & NDIS_PACKET_TYPE_PROMISCUOUS) {
 			packet_filter &= ~NDIS_PACKET_TYPE_PROMISCUOUS;
@@ -683,12 +682,12 @@ static int set_packet_filter(struct wrap_ndis_device *wnd, ULONG packet_filter)
 			packet_filter &= ~NDIS_PACKET_TYPE_ALL_MULTICAST;
 			continue;
 		}
+		break;
 	}
 
 	wnd->packet_filter = packet_filter;
 	res = miniport_query_int(wnd, OID_GEN_CURRENT_PACKET_FILTER,
 				 &packet_filter);
-	DBGTRACE2("%x", packet_filter);
 	if (packet_filter != wnd->packet_filter) {
 		WARNING("filter not set: 0x%08x, 0x%08x",
 			packet_filter, wnd->packet_filter);
@@ -700,27 +699,6 @@ static int set_packet_filter(struct wrap_ndis_device *wnd, ULONG packet_filter)
 		TRACEEXIT3(return -1);
 }
 
-#if 0
-static int get_packet_filter(struct wrap_ndis_device *wnd,
-			     ULONG *packet_filter)
-{
-	NDIS_STATUS res;
-
-	TRACEENTER3("%p", wnd);
-	res = miniport_query_info(wnd, OID_GEN_CURRENT_PACKET_FILTER,
-				  packet_filter, sizeof(*packet_filter));
-	if (res) {
-		DBGTRACE1("couldn't get packet filter: %08X", res);
-		*packet_filter = wnd->packet_filter;
-	} else if (wnd->packet_filter != *packet_filter) {
-		DBGTRACE1("packet filter changed? %08X / %08X", *packet_filter,
-			  wnd->packet_filter);
-//		wnd->packet_filter = *packet_filter;
-	}
-	TRACEEXIT3(return 0);
-}
-#endif
-
 static int ndis_open(struct net_device *dev)
 {
 	ULONG packet_filter;
@@ -730,7 +708,7 @@ static int ndis_open(struct net_device *dev)
 	packet_filter = NDIS_PACKET_TYPE_DIRECTED | NDIS_PACKET_TYPE_BROADCAST |
 		NDIS_PACKET_TYPE_ALL_FUNCTIONAL;
 	if (set_packet_filter(wnd, packet_filter)) {
-		WARNING("couldn't set packet_filter");
+		WARNING("couldn't set packet filter");
 		return -ENODEV;
 	}
 	packet_filter = wnd->packet_filter;
@@ -797,7 +775,6 @@ static void update_wireless_stats(struct wrap_ndis_device *wnd)
 	unsigned long frag;
 
 	TRACEENTER2("%p", wnd);
-//	set_scan(wnd);
 	if (wnd->stats_enabled == FALSE || wnd->link_status == 0) {
 		memset(iw_stats, 0, sizeof(*iw_stats));
 		TRACEEXIT2(return);
@@ -1057,12 +1034,6 @@ static void wrap_ndis_worker_proc(void *param)
 	if (test_bit(SHUTDOWN, &wnd->wrap_ndis_work) ||
 	    !test_bit(HW_INITIALIZED, &wnd->hw_status))
 		TRACEEXIT3(return);
-
-	if (test_and_clear_bit(SET_INFRA_MODE, &wnd->wrap_ndis_work))
-		set_infra_mode(wnd, wnd->infrastructure_mode);
-
-	if (test_and_clear_bit(SET_ESSID, &wnd->wrap_ndis_work))
-		set_essid(wnd, wnd->essid.essid, wnd->essid.length);
 
 	if (test_and_clear_bit(SET_MULTICAST_LIST, &wnd->wrap_ndis_work))
 		set_multicast_list(wnd);
@@ -1380,7 +1351,6 @@ STDCALL NTSTATUS NdisDispatchPnp(struct device_object *fdo, struct irp *irp)
 	return status;
 }
 
-
 static int set_task_offload(struct wrap_ndis_device *wnd, void *buf,
 			    const int buf_size)
 {
@@ -1403,15 +1373,13 @@ static int set_task_offload(struct wrap_ndis_device *wnd, void *buf,
 		TRACEEXIT1(return -1);
 	if (task_offload_header->offset_first_task == 0)
 		TRACEEXIT1(return -1);
-	task_offload = (typeof(task_offload))
-		((void *)task_offload_header +
-		 task_offload_header->offset_first_task);
+	task_offload = ((void *)task_offload_header +
+			task_offload_header->offset_first_task);
 	while (1) {
 		DBGTRACE1("%d, %d", task_offload->version, task_offload->task);
 		switch(task_offload->task) {
 		case TcpIpChecksumNdisTask:
-			task_tcp_ip_csum =
-				(void *)task_offload->task_buf;
+			task_tcp_ip_csum = (void *)task_offload->task_buf;
 			break;
 		default:
 			DBGTRACE1("%d", task_offload->task);
@@ -1419,8 +1387,8 @@ static int set_task_offload(struct wrap_ndis_device *wnd, void *buf,
 		}
 		if (task_offload->offset_next_task == 0)
 			break;
-		task_offload =
-			(void *)task_offload + task_offload->offset_next_task;
+		task_offload = (void *)task_offload +
+			task_offload->offset_next_task;
 	}
 	if (!task_tcp_ip_csum)
 		TRACEEXIT1(return -1);
@@ -1440,8 +1408,7 @@ static int set_task_offload(struct wrap_ndis_device *wnd, void *buf,
 	status = miniport_set_info(wnd, OID_TCP_TASK_OFFLOAD,
 				   task_offload_header,
 				   sizeof(*task_offload_header) +
-				   sizeof(*task_offload) + 
-				   sizeof(csum));
+				   sizeof(*task_offload) + sizeof(csum));
 	DBGTRACE1("%08X", status);
 	if (status != NDIS_STATUS_SUCCESS)
 		TRACEEXIT2(return -1);

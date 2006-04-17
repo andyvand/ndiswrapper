@@ -177,7 +177,6 @@ STDCALL NTSTATUS pdoDispatchPnp(struct device_object *pdo,
 		if (wd->resource_list)
 			kfree(wd->resource_list);
 		wd->resource_list = NULL;
-		IoDeleteDevice(pdo);
 		status = STATUS_SUCCESS;
 		break;
 	default:
@@ -587,6 +586,7 @@ NTSTATUS pnp_remove_device(struct wrap_device *wd)
 			ERROR("couldn't get wrap_driver");
 		ObDereferenceObject(fdo_drv_obj);
 	}
+	IoDeleteDevice(pdo);
 	TRACEEXIT1(return status);
 }
 
