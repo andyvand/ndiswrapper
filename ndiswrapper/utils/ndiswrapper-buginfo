@@ -73,7 +73,7 @@ newblock
 log "installed drivers:"
 log_cmd 'ls -lR /etc/ndiswrapper'
 
-while(true); do
+while :; do
     echo "Is it okay to shutdown 'wlan0' interface and reload the module?"
     echo "If loading the module crashes kernel, then say N here"
     echo -n "Reload ndiswrapper module? [N/y]:"
@@ -89,10 +89,13 @@ while(true); do
 	    log "Reloading ndiswrapper..."
 	    if [ $FULL -eq 1 ]; then
 		log_cmd 'ifconfig wlan0 down;  rmmod ndiswrapper;
-			modprobe ndiswrapper; dmesg |tail -n 100'
+			 modprobe ndiswrapper;
+			 dmesg | grep ndiswrapper | tail -n 500'
 	    else
 		log_cmd 'ifconfig wlan0 down;  rmmod ndiswrapper;
-			modprobe ndiswrapper; dmesg | tail -n 10'
+			 modprobe ndiswrapper;
+			 dmesg | grep ndiswrapper | tail -n 50'
+
 	    fi
 	    break
 	    ;;
@@ -100,9 +103,9 @@ while(true); do
 	    log "Not reloading ndiswrapper..."
 	    log ""
 	    if [ $FULL -eq 1 ]; then
-		log_cmd 'dmesg | tail -n 100'
+		log_cmd 'dmesg | grep ndiswrapper | tail -n 100'
 	    else
-		log_cmd 'dmesg | tail -n 10'
+		log_cmd 'dmesg | grep ndiswrapper | tail -n 10'
 	    fi
 	    break
 	    ;;

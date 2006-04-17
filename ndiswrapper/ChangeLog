@@ -1,3 +1,13 @@
+Version 1.14 2006-04-17
+=======================
+* Added support for Xpeed X400 ADSL adapter.
+* Only wireless devices will be registered as wireless devices to
+  kernel; others (e.g., X400 ADSL) will be registered as network
+  devices, by default, with wlan%d.
+* Issues with multicasting fixed.
+* Issues with ZyDas ZD1211 fixed (broken since 1.9 or so).
+* Fixed memory corruption issues, discovered with CONFIG_DEBUG_SLAB.
+
 Version 1.13 2006-04-08
 =======================
 * Compilation issues with older kernels fixed.
