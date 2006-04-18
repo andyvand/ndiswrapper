@@ -754,7 +754,18 @@ struct iw_statistics *get_wireless_stats(struct net_device *dev)
 	return &wnd->wireless_stats;
 }
 
-#ifdef HAVE_ETHTOOL
+#if defined(HAVE_ETHTOOL)
+static void ndis_get_drvinfo(struct net_device *dev,
+			     struct ethtool_drvinfo *info)
+{
+	struct wrap_ndis_device *wnd = netdev_priv(dev);
+	strcpy(info->driver, DRIVER_NAME);
+	strcpy(info->version, DRIVER_VERSION);
+	if (wrap_is_pci_bus(wnd->wd->dev_bus_type))
+		strcpy(info->bus_info, pci_name(wnd->wd->pci.pdev));
+	return;
+}
+
 static u32 ndis_get_link(struct net_device *dev)
 {
 	struct wrap_ndis_device *wnd = netdev_priv(dev);
@@ -762,6 +773,7 @@ static u32 ndis_get_link(struct net_device *dev)
 }
 
 static struct ethtool_ops ndis_ethtool_ops = {
+	.get_drvinfo		= ndis_get_drvinfo,
 	.get_link		= ndis_get_link,
 };
 #endif
@@ -1519,7 +1531,7 @@ static NDIS_STATUS ndis_start_device(struct wrap_ndis_device *wnd)
 		wnd->tx_ok = 1;
 	net_dev->set_multicast_list = ndis_set_multicast_list;
 	net_dev->set_mac_address = ndis_set_mac_addr;
-#ifdef HAVE_ETHTOOL
+#if defined(HAVE_ETHTOOL)
 	net_dev->ethtool_ops = &ndis_ethtool_ops;
 #endif
 	if (wnd->ndis_irq)
