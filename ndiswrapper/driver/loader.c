@@ -372,8 +372,7 @@ static int load_settings(struct wrap_driver *wrap_driver,
 	}
 	nt_spin_unlock(&loader_lock);
 	if (!wd) {
-		ERROR("conf file %s not found",
-		      wrap_devices[i].conf_file_name);
+		ERROR("conf file %s not found", wrap_devices[i].conf_file_name);
 		TRACEEXIT1(return -EINVAL);
 	}
 
@@ -409,8 +408,8 @@ static int load_settings(struct wrap_driver *wrap_driver,
 					WRAP_DEVICE_BUS_TYPE(dev_type,
 							     bus_type);
 			DBGTRACE2("data1: %x, dev type: %x, bus type: %x, "
-				  "new: %x\n",
-				  data1, dev_type, bus_type, wd->dev_bus_type);
+				  "new: %x\n", data1, dev_type, bus_type,
+				  wd->dev_bus_type);
 		}
 		nt_spin_lock(&loader_lock);
 		InsertTailList(&wd->settings, &setting->list);

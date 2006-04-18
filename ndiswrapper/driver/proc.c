@@ -583,6 +583,15 @@ static int procfs_read_debug(char *page, char **start, off_t off,
 		return 0;
 	}
 	p += sprintf(p, "%d\n", debug);
+#ifdef ALLOC_INFO
+	do {
+		enum alloc_type type;
+
+		for (type = 0; type < ALLOC_TYPE_MAX; type++)
+			p += sprintf(p, "allocation size in %d: %d\n",
+				     type, alloc_size(type));
+	} while (0)
+#endif
 	return (p - page);
 }
 

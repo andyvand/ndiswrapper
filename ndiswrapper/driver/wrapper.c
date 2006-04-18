@@ -76,6 +76,7 @@ static void module_cleanup(void)
 	ndis_exit();
 	ntoskernel_exit();
 	misc_funcs_exit();
+	wrapmem_exit();
 }
 
 static int __init wrapper_init(void)
@@ -90,6 +91,7 @@ static int __init wrapper_init(void)
 	char *env[] = {NULL};
 	int ret;
 
+	wrapmem_init();
 	printk(KERN_INFO "%s version %s loaded (%spreempt=%s,smp=%s)\n",
 	       DRIVER_NAME, DRIVER_VERSION,
 #ifdef DEBUG

@@ -23,81 +23,14 @@
 
 #include "ndis.h"
 
-static struct nt_list wrap_allocs;
-static NT_SPIN_LOCK wrap_allocs_lock;
-
 int misc_funcs_init(void)
 {
-	InitializeListHead(&wrap_allocs);
-	nt_spin_lock_init(&wrap_allocs_lock);
 	return 0;
 }
 
 /* called when module is being removed */
 void misc_funcs_exit(void)
 {
-	struct nt_list *ent;
-
-	/* free all pointers on the allocated list */
-	nt_spin_lock(&wrap_allocs_lock);
-	while ((ent = RemoveHeadList(&wrap_allocs))) {
-		struct wrap_alloc *alloc;
-		alloc = container_of(ent, struct wrap_alloc, list);
-		kfree(alloc->ptr);
-		kfree(alloc);
-	}
-	nt_spin_unlock(&wrap_allocs_lock);
-	TRACEEXIT4(return);
-}
-
-/* allocate memory with given flags and add it to list of allocated pointers;
- * if a driver doesn't free this memory for any reason (buggy driver or we
- * allocate space behind driver's back since we need more space than
- * corresponding Windows structure provides etc.), this gets freed
- * automatically during module unloading
- */
-void *wrap_kmalloc(size_t size)
-{
-	struct wrap_alloc *alloc;
-	unsigned int alloc_flags;
-
-	TRACEENTER4("size = %lu", (unsigned long)size);
-
-	if (current_irql() < DISPATCH_LEVEL)
-		alloc_flags = GFP_KERNEL;
-	else
-		alloc_flags = GFP_ATOMIC;
-	alloc = kmalloc(sizeof(*alloc), alloc_flags);
-	if (!alloc)
-		return NULL;
-	alloc->ptr = kmalloc(size, alloc_flags);
-	if (!alloc->ptr) {
-		kfree(alloc);
-		return NULL;
-	}
-	nt_spin_lock(&wrap_allocs_lock);
-	InsertTailList(&wrap_allocs, &alloc->list);
-	nt_spin_unlock(&wrap_allocs_lock);
-	DBGTRACE4("%p, %p", alloc, alloc->ptr);
-	TRACEEXIT4(return alloc->ptr);
-}
-
-/* free pointer and remove from list of allocated pointers */
-void wrap_kfree(void *ptr)
-{
-	struct wrap_alloc *alloc;
-
-	TRACEENTER4("%p", ptr);
-	nt_spin_lock(&wrap_allocs_lock);
-	nt_list_for_each_entry(alloc, &wrap_allocs, list) {
-		if (alloc->ptr == ptr) {
-			RemoveEntryList(&alloc->list);
-			kfree(alloc->ptr);
-			kfree(alloc);
-			break;
-		}
-	}
-	nt_spin_unlock(&wrap_allocs_lock);
 	TRACEEXIT4(return);
 }
 

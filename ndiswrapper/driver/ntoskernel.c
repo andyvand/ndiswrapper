@@ -119,7 +119,7 @@ struct vmalloc_block {
 };
 static struct vmalloc_block *vmalloc_blocks;
 
-static STDCALL void wrap_vfree(void *addr, void *ctx);
+static STDCALL void vfree_callback(void *addr, void *ctx);
 
 int ntoskernel_init(void)
 {
@@ -242,7 +242,7 @@ void ntoskernel_exit_device(struct wrap_device *wd)
 			WARNING("Buggy Windows driver left timer %p running",
 				&wrap_timer->timer);
 		memset(wrap_timer, 0, sizeof(*wrap_timer));
-		wrap_kfree(wrap_timer);
+		slack_kfree(wrap_timer);
 	}
 	if (wd->vendor == 0x168c) {
 		struct vmalloc_block *cur_vm_block, *prev_vm_block;
@@ -257,7 +257,7 @@ void ntoskernel_exit_device(struct wrap_device *wd)
 				else
 					prev_vm_block->next =
 						cur_vm_block->next;
-				schedule_ntos_work_item(wrap_vfree,
+				schedule_ntos_work_item(vfree_callback,
 							cur_vm_block->addr,
 							NULL, FALSE);
 				kfree(cur_vm_block);
@@ -292,7 +292,7 @@ void ntoskernel_exit(void)
 			WARNING("Buggy Windows driver left timer %p running",
 				&wrap_timer->timer);
 		memset(wrap_timer, 0, sizeof(*wrap_timer));
-		wrap_kfree(wrap_timer);
+		slack_kfree(wrap_timer);
 	}
 
 	DBGTRACE2("freeing MDLs");
@@ -784,11 +784,11 @@ void wrap_init_timer(struct nt_timer *nt_timer, enum timer_type type,
 	 * set and not allocate, but it is not guaranteed always to be
 	 * safe */
 	TRACEENTER5("%p", nt_timer);
-	/* we allocate memory for wrap_timer behind driver's back
-	 * and there is no NDIS/DDK function where this memory can be
-	 * freed, so we use wrap_kmalloc so it gets freed when driver
+	/* we allocate memory for wrap_timer behind driver's back and
+	 * there is no NDIS/DDK function where this memory can be
+	 * freed, so we use slack_kmalloc so it gets freed when driver
 	 * is unloaded */
-	wrap_timer = wrap_kmalloc(sizeof(*wrap_timer));
+	wrap_timer = slack_kmalloc(sizeof(*wrap_timer));
 	if (!wrap_timer) {
 		ERROR("couldn't allocate memory for timer");
 		return;
@@ -1185,7 +1185,7 @@ STDCALL void *WRAP_EXPORT(ExAllocatePoolWithTag)
 	TRACEEXIT4(return addr);
 }
 
-static STDCALL void wrap_vfree(void *addr, void *ctx)
+static STDCALL void vfree_callback(void *addr, void *ctx)
 {
 	vfree(addr);
 }
@@ -1212,7 +1212,7 @@ STDCALL void WRAP_EXPORT(ExFreePool)
 		nt_spin_unlock_irql(&ntoskernel_lock, irql);
 		if (!vm_block) {
 			if (in_interrupt())
-				schedule_ntos_work_item(wrap_vfree, addr,
+				schedule_ntos_work_item(vfree_callback, addr,
 							NULL, FALSE);
 			else
 				vfree(addr);
