@@ -1714,6 +1714,7 @@ static int ndis_remove_device(struct wrap_ndis_device *wnd)
 	       wnd->net_dev->name);
 	unregister_netdev(wnd->net_dev);
 	free_netdev(wnd->net_dev);
+	wrapmem_info();
 	TRACEEXIT2(return 0);
 }
 

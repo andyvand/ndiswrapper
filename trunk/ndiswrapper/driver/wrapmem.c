@@ -27,7 +27,6 @@ int wrapmem_init(void)
 
 void wrapmem_exit(void)
 {
-	enum alloc_type type;
 	struct nt_list *ent;
 
 	/* free all pointers on the slack list */
@@ -38,14 +37,18 @@ void wrapmem_exit(void)
 		kfree(info);
 	}
 	nt_spin_unlock(&alloc_lock);
+	wrapmem_info();
+	return;
+}
 
-	type = 0;
+void wrapmem_info(void)
+{
 #ifdef ALLOC_INFO
+	enum alloc_type type;
 	for (type = 0; type < ALLOC_TYPE_MAX; type++)
 		printk(KERN_DEBUG "%s: total size of allocations in %d: %d\n",
 		       DRIVER_NAME, type, atomic_read(&allocs[type]));
 #endif
-	return;
 }
 
 /* allocate memory with given flags and add it to list of allocated pointers;

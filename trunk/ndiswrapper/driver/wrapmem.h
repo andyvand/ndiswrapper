@@ -6,7 +6,7 @@
  * information in KERN_DEBUG when ndiswrapper module is unloaded,
  * which indicates if memory is being leaked */
 
-//#define ALLOC_INFO 1
+#define ALLOC_INFO 1
 #ifdef DEBUG
 #define ALLOC_INFO 1
 #endif
@@ -18,6 +18,7 @@ int wrapmem_init(void);
 void wrapmem_exit(void);
 void *slack_kmalloc(size_t size);
 void slack_kfree(void *ptr);
+void wrapmem_info(void);
 
 #ifdef ALLOC_INFO
 void *wrap_kmalloc(size_t size, gfp_t flags);
