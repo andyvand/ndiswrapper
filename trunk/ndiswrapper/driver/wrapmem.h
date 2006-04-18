@@ -1,12 +1,15 @@
 #ifndef _WRAPMEM_H_
 
-/* uncomment following line to get information about memory used by
+/* define ALLOC_INFO below to get information about memory used by
  * both ndiswrapper and Windows driver by reading
  * /proc/net/ndiswrapper/debug; this will also show allocation
  * information in KERN_DEBUG when ndiswrapper module is unloaded,
  * which indicates if memory is being leaked */
 
+//#define ALLOC_INFO 1
+#ifdef DEBUG
 #define ALLOC_INFO 1
+#endif
 
 enum alloc_type { ALLOC_TYPE_ATOMIC, ALLOC_TYPE_NON_ATOMIC,
 		  ALLOC_TYPE_VMALLOC, ALLOC_TYPE_MAX };
