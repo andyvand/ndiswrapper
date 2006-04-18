@@ -394,10 +394,6 @@ do {									\
 #define irqreturn_t void
 #endif
 
-#ifndef free_netdev
-#define free_netdev kfree
-#endif
-
 #if LINUX_VERSION_CODE > KERNEL_VERSION(2,6,9)
 #define WRAP_MODULE_PARM_INT(name, perm) module_param(name, int, perm)
 #define WRAP_MODULE_PARM_STRING(name, perm) module_param(name, charp, perm)

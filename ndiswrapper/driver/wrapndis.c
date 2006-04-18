@@ -33,7 +33,7 @@ static int set_packet_filter(struct wrap_ndis_device *wnd,
 static void add_stats_timer(struct wrap_ndis_device *wnd);
 static void del_stats_timer(struct wrap_ndis_device *wnd);
 static NDIS_STATUS ndis_start_device(struct wrap_ndis_device *wnd);
-static NDIS_STATUS ndis_remove_device(struct wrap_ndis_device *wnd);
+static int ndis_remove_device(struct wrap_ndis_device *wnd);
 static NDIS_STATUS miniport_set_power_state(struct wrap_ndis_device *wnd,
 					    enum ndis_power_state state);
 static void set_multicast_list(struct wrap_ndis_device *wnd);
@@ -1337,7 +1337,7 @@ STDCALL NTSTATUS NdisDispatchPnp(struct device_object *fdo, struct irp *irp)
 		return LIN2WIN2(IopPassIrpDown, pdo, irp);
 	case IRP_MN_REMOVE_DEVICE:
 		DBGTRACE1("%s", wnd->net_dev->name);
-		if (ndis_remove_device(wnd) != NDIS_STATUS_SUCCESS) {
+		if (ndis_remove_device(wnd)) {
 			status = STATUS_FAILURE;
 			break;
 		}
@@ -1649,7 +1649,7 @@ err_start:
 	TRACEEXIT1(return NDIS_STATUS_FAILURE);
 }
 
-static NDIS_STATUS ndis_remove_device(struct wrap_ndis_device *wnd)
+static int ndis_remove_device(struct wrap_ndis_device *wnd)
 {
 	int tx_pending;
 
@@ -1701,8 +1701,8 @@ static NDIS_STATUS ndis_remove_device(struct wrap_ndis_device *wnd)
 	printk(KERN_INFO "%s: device %s removed\n", DRIVER_NAME,
 	       wnd->net_dev->name);
 	unregister_netdev(wnd->net_dev);
-	wrap_free_netdev(wnd->net_dev);
-	TRACEEXIT2(return NDIS_STATUS_SUCCESS);
+	free_netdev(wnd->net_dev);
+	TRACEEXIT2(return 0);
 }
 
 static STDCALL NTSTATUS NdisAddDevice(struct driver_object *drv_obj,
@@ -1721,7 +1721,7 @@ static STDCALL NTSTATUS NdisAddDevice(struct driver_object *drv_obj,
 		ERROR("interface name '%s' is too long", if_name);
 		return STATUS_INVALID_PARAMETER;
 	}
-	net_dev = wrap_alloc_etherdev(sizeof(*wnd) + sizeof(*nmb));
+	net_dev = alloc_etherdev(sizeof(*wnd) + sizeof(*nmb));
 	if (!net_dev) {
 		ERROR("couldn't allocate device");
 		return STATUS_RESOURCES;
@@ -1770,7 +1770,6 @@ static STDCALL NTSTATUS NdisAddDevice(struct driver_object *drv_obj,
 	init_MUTEX(&wnd->ndis_comm_mutex);
 	init_waitqueue_head(&wnd->ndis_comm_wq);
 	wnd->ndis_comm_done = 0;
-	/* don't send packets until the card is associated */
 	wnd->tx_ok = 0;
 	INIT_WORK(&wnd->tx_work, tx_worker, wnd);
 	wnd->tx_ring_start = 0;

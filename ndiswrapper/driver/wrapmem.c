@@ -27,37 +27,25 @@ int wrapmem_init(void)
 
 void wrapmem_exit(void)
 {
+	enum alloc_type type;
 	struct nt_list *ent;
 
 	/* free all pointers on the slack list */
 	nt_spin_lock(&alloc_lock);
 	while ((ent = RemoveHeadList(&slack_allocs))) {
-		struct slack_alloc_info *alloc;
-		alloc = container_of(ent, struct slack_alloc_info, list);
-		kfree(alloc);
+		struct slack_alloc_info *info;
+		info = container_of(ent, struct slack_alloc_info, list);
+		kfree(info);
 	}
 	nt_spin_unlock(&alloc_lock);
 
+	type = 0;
 #ifdef ALLOC_INFO
-	do {
-		enum alloc_type type;
-
-		for (type = 0; type < ALLOC_TYPE_MAX; type++)
-			printk(KERN_DEBUG "%s: allocation size in %d: %d\n",
-			       DRIVER_NAME, type, atomic_read(&allocs[type]));
-	} while (0)
+	for (type = 0; type < ALLOC_TYPE_MAX; type++)
+		printk(KERN_DEBUG "%s: total size of allocations in %d: %d\n",
+		       DRIVER_NAME, type, atomic_read(&allocs[type]));
 #endif
 	return;
-}
-
-struct net_device *wrap_alloc_etherdev(int sizeof_priv)
-{
-	return alloc_etherdev(sizeof_priv);
-}
-
-void wrap_free_netdev(struct net_device *dev)
-{
-	free_netdev(dev);
 }
 
 /* allocate memory with given flags and add it to list of allocated pointers;
@@ -107,45 +95,51 @@ void slack_kfree(void *ptr)
 #ifdef ALLOC_INFO
 void *wrap_kmalloc(size_t size, gfp_t flags)
 {
-	size_t n = size + sizeof(struct alloc_info);
-	struct alloc_info *alloc_info = kmalloc(n, flags);
-	if (alloc_info) {
+	struct alloc_info *info;
+	size_t n;
+	n = size + sizeof(*info);
+	info = kmalloc(n, flags);
+	if (info) {
 		if (flags & GFP_ATOMIC)
-			alloc_info->type = ALLOC_TYPE_ATOMIC;
+			info->type = ALLOC_TYPE_ATOMIC;
 		else
-			alloc_info->type = ALLOC_TYPE_NON_ATOMIC;
-		alloc_info->size = size;
-		atomic_add(size, &allocs[alloc_info->type]);
-		return (alloc_info + 1);
+			info->type = ALLOC_TYPE_NON_ATOMIC;
+		info->size = size;
+		atomic_add(size, &allocs[info->type]);
+		return (info + 1);
 	} else
 		return NULL;
 }
 
 void wrap_kfree(const void *ptr)
 {
-	struct alloc_info *alloc_info = (void *)ptr - sizeof(*alloc_info);
-	atomic_sub(alloc_info->size, &allocs[alloc_info->type]);
-	kfree(alloc_info);
+	struct alloc_info *info;
+	info = (void *)ptr - sizeof(*info);
+	atomic_sub(info->size, &allocs[info->type]);
+	kfree(info);
 }
 
 void *wrap_vmalloc(unsigned long size)
 {
-	size_t n = size + sizeof(struct alloc_info);
-	struct alloc_info *alloc_info = vmalloc(n);
-	if (alloc_info) {
-		alloc_info->type = ALLOC_TYPE_VMALLOC;
-		alloc_info->size = size;
-		atomic_add(size, &allocs[alloc_info->type]);
-		return (alloc_info + 1);
+	struct alloc_info *info;
+	size_t n;
+	n = size + sizeof(*info);
+	info = vmalloc(n);
+	if (info) {
+		info->type = ALLOC_TYPE_VMALLOC;
+		info->size = size;
+		atomic_add(size, &allocs[info->type]);
+		return (info + 1);
 	} else
 		return NULL;
 }
 
 void wrap_vfree(void *ptr)
 {
-	struct alloc_info *alloc_info = ptr - sizeof(*alloc_info);
-	atomic_sub(alloc_info->size, &allocs[alloc_info->type]);
-	vfree(alloc_info);
+	struct alloc_info *info;
+	info = ptr - sizeof(*info);
+	atomic_sub(info->size, &allocs[info->type]);
+	vfree(info);
 }
 
 int alloc_size(enum alloc_type type)
