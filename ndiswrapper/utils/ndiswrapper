@@ -214,11 +214,6 @@ sub genmoddevconf {
     } else {
 	$moddevconf = "/etc/ndiswrapper/ndiswrapper";
     }
-    if ($mode == 0) {
-	$moddevconf = $moddevconf . ".alias";
-    } else {
-	$moddevconf = $moddevconf . ".install";
-    }
 
     if (!open(CONF, "| sort >$moddevconf")) {
 	print "Unable to create modules alias file $moddevconf\n";
@@ -275,7 +270,7 @@ sub genmoddevconf {
     close(CONF);
     close(LS);
 
-    print "Module configuration information is stored in $modaliasconf;\n";
+    print "Module configuration information is stored in $moddevconf;\n";
     return 0;
 }
 
