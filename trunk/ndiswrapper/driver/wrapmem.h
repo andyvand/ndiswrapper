@@ -6,7 +6,7 @@
  * information in KERN_DEBUG when ndiswrapper module is unloaded,
  * which indicates if memory is being leaked */
 
-//#define ALLOC_INFO 1
+#define ALLOC_INFO 1
 
 enum alloc_type { ALLOC_TYPE_ATOMIC, ALLOC_TYPE_NON_ATOMIC,
 		  ALLOC_TYPE_VMALLOC, ALLOC_TYPE_MAX };
@@ -15,8 +15,6 @@ int wrapmem_init(void);
 void wrapmem_exit(void);
 void *slack_kmalloc(size_t size);
 void slack_kfree(void *ptr);
-struct net_device *wrap_alloc_etherdev(int sizeof_priv);
-void wrap_free_netdev(struct net_device *dev);
 
 #ifdef ALLOC_INFO
 void *wrap_kmalloc(size_t size, gfp_t flags);
