@@ -194,8 +194,7 @@ static int procfs_read_ndis_hw(char *page, char **start, off_t off,
 	res = miniport_query_int(wnd, OID_802_11_POWER_MODE, &power_mode);
 	if (!res)
 		p += sprintf(p, "power_mode=%s\n",
-			     (power_mode == NDIS_POWER_OFF) ?
-			     "always_on" :
+			     (power_mode == NDIS_POWER_OFF) ? "always_on" :
 			     (power_mode == NDIS_POWER_MAX) ?
 			     "max_savings" : "min_savings");
 
@@ -301,30 +300,6 @@ static int procfs_write_ndis_settings(struct file *file, const char *buf,
 		hangcheck_interval = i;
 		hangcheck_del(wnd);
 		hangcheck_add(wnd);
-	} else if (!strcmp(setting, "get_encryption_capa")) {
-		get_encryption_capa(wnd);
-		printk(KERN_INFO
-		       "%s: encryption modes supported: %s%s%s%s%s%s%s\n",
-		       wnd->net_dev->name,
-		       test_bit(Ndis802_11Encryption1Enabled,
-				&wnd->capa.encr) ?
-		       "WEP" : "none",
-
-		       test_bit(Ndis802_11Encryption2Enabled,
-				&wnd->capa.encr) ?
-		       "; TKIP with WPA" : "",
-		       test_bit(Ndis802_11AuthModeWPA2, &wnd->capa.auth) ?
-		       ", WPA2" : "",
-		       test_bit(Ndis802_11AuthModeWPA2PSK, &wnd->capa.auth) ?
-		       ", WPA2PSK" : "",
-
-		       test_bit(Ndis802_11Encryption3Enabled,
-				&wnd->capa.encr) ?
-		       "; AES/CCMP with WPA" : "",
-		       test_bit(Ndis802_11AuthModeWPA2, &wnd->capa.auth) ?
-		       ", WPA2" : "",
-		       test_bit(Ndis802_11AuthModeWPA2PSK, &wnd->capa.auth) ?
-		       ", WPA2PSK" : "");
 	} else if (!strcmp(setting, "suspend")) {
 		if (!p)
 			return -EINVAL;
@@ -355,78 +330,6 @@ static int procfs_write_ndis_settings(struct file *file, const char *buf,
 #endif
 		if (i)
 			return -EINVAL;
-	} else if (!strcmp(setting, "reinit")) {
-		if (ndis_reinit(wnd))
-			return -EINVAL;
-#ifdef USB_DEBUG
-	} else if (!strcmp(setting, "irp")) {
-		struct irp *irp;
-		struct io_stack_location *irp_sl;
-		int major_fn, minor_fn, n;
-		struct device_object *dev;
-		if (!p)
-			return -EINVAL;
-		p++;
-		n = sscanf(p, "%d,%d,%x", &major_fn, &minor_fn, (int *)&dev);
-		DBGTRACE1("n = %d, mj = %d, mn = %d, dev = %p", n, major_fn,
-			  minor_fn, dev);
-		if (n != 3)
-			return -EINVAL;
-		irp = IoAllocateIrp(dev->stack_count, FALSE);
-		DBGTRACE1("count: %d, irp = %p", dev->stack_count, irp);
-		DBGTRACE1("drv_obj: %p", dev->drv_obj);
-		irp_sl = IoGetNextIrpStackLocation(irp);
-		irp_sl->major_fn = major_fn;
-		irp_sl->minor_fn = minor_fn;
-		irp->io_status.status = STATUS_NOT_SUPPORTED;
-		res = 0;
-		res = IoCallDriver(dev, irp);
-		DBGTRACE1("status = %d", res);
-#endif
-	} else if (!strcmp(setting, "power_profile")) {
-		struct miniport_char *miniport;
-		ULONG profile_inf;
-
-		if (!p)
-			return -EINVAL;
-		p++;
-		i = simple_strtol(p, NULL, 10);
-		if (i < 0 || i > 1)
-			return -EINVAL;
-
-		miniport = &wnd->wd->driver->ndis_driver->miniport;
-		if (!miniport->pnp_event_notify)
-			return -EFAULT;
-
-		/* 1 for AC and 0 for Battery */
-		if (i)
-			profile_inf = NdisPowerProfileAcOnLine;
-		else
-			profile_inf = NdisPowerProfileBattery;
-
-		miniport->pnp_event_notify(wnd->nmb->adapter_ctx,
-					   NdisDevicePnPEventPowerProfileChanged,
-					   &profile_inf, sizeof(profile_inf));
-	} else if (!strcmp(setting, "auth_mode")) {
-		if (!p)
-			return -EINVAL;
-		p++;
-		i = simple_strtol(p, NULL, 10);
-		if (i <= 0 || i > 5)
-			return -EINVAL;
-
-		if (set_auth_mode(wnd, i))
-			return -EINVAL;
-	} else if (!strcmp(setting, "encr_mode")) {
-		if (!p)
-			return -EINVAL;
-		p++;
-		i = simple_strtol(p, NULL, 10);
-		if (i <= 0 || i > 7)
-			return -EINVAL;
-
-		if (set_encr_mode(wnd, i))
-			return -EINVAL;
 	} else if (!strcmp(setting, "stats_enabled")) {
 		if (!p)
 			return -EINVAL;
@@ -436,43 +339,6 @@ static int procfs_write_ndis_settings(struct file *file, const char *buf,
 			wnd->stats_enabled = TRUE;
 		else
 			wnd->stats_enabled = FALSE;
-	} else if (!strcmp(setting, "tx_antenna")) {
-		ndis_antenna antenna;
-
-		if (!p)
-			return -EINVAL;
-		p++;
-		i = simple_strtol(p, NULL, 16);
-		res = miniport_query_info(wnd, OID_802_11_NUMBER_OF_ANTENNAS,
-					  &antenna, sizeof(antenna));
-		if (res)
-			return -EINVAL;
-		if (i >= -1 && i < antenna)
-			antenna = i;
-		res = miniport_set_info(wnd, OID_802_11_TX_ANTENNA_SELECTED,
-				  &antenna, sizeof(antenna));
-		if (res)
-			return -EINVAL;
-	} else if (!strcmp(setting, "rx_antenna")) {
-		ndis_antenna antenna;
-
-		if (!p)
-			return -EINVAL;
-		p++;
-		i = simple_strtol(p, NULL, 16);
-		res = miniport_query_info(wnd, OID_802_11_NUMBER_OF_ANTENNAS,
-					  &antenna, sizeof(antenna));
-		if (res)
-			return -EINVAL;
-		if (i >= -1 && i < antenna)
-			antenna = i;
-		res = miniport_set_info(wnd, OID_802_11_RX_ANTENNA_SELECTED,
-				  &antenna, sizeof(antenna));
-		if (res)
-			return -EINVAL;
-	} else if (!strcmp(setting, "reset")) {
-		res = miniport_reset(wnd);
-		DBGTRACE2("%08X", res);
 	} else if (!strcmp(setting, "packet_filter")) {
 		if (!p)
 			return -EINVAL;
@@ -587,7 +453,7 @@ static int procfs_read_debug(char *page, char **start, off_t off,
 	type = 0;
 #ifdef ALLOC_INFO
 	for (type = 0; type < ALLOC_TYPE_MAX; type++)
-		p += sprintf(p, "allocation size in %d: %d\n",
+		p += sprintf(p, "total size of allocations in %d: %d\n",
 			     type, alloc_size(type));
 #endif
 	return (p - page);

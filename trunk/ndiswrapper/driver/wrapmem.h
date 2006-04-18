@@ -1,3 +1,18 @@
+/*
+ *  Copyright (C) 2006 Giridhar Pemmasani
+ *
+ *  This program is free software; you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation; either version 2 of the License, or
+ *  (at your option) any later version.
+ *
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
+ *
+ */
+
 #ifndef _WRAPMEM_H_
 
 /* define ALLOC_INFO below to get information about memory used by
@@ -12,7 +27,7 @@
 #endif
 
 enum alloc_type { ALLOC_TYPE_ATOMIC, ALLOC_TYPE_NON_ATOMIC,
-		  ALLOC_TYPE_VMALLOC, ALLOC_TYPE_MAX };
+		  ALLOC_TYPE_VMALLOC, ALLOC_TYPE_SLACK, ALLOC_TYPE_MAX };
 
 int wrapmem_init(void);
 void wrapmem_exit(void);
