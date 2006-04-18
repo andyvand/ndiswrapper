@@ -1528,7 +1528,9 @@ static NDIS_STATUS ndis_start_device(struct wrap_ndis_device *wnd)
 	net_dev->mem_end = wnd->mem_end;
 	ndis_status = miniport_query_int(wnd, OID_802_3_MAXIMUM_LIST_SIZE,
 					 &wnd->multicast_size);
-	if (ndis_status == NDIS_STATUS_SUCCESS && wnd->multicast_size > 0)
+	if (ndis_status != NDIS_STATUS_SUCCESS || wnd->multicast_size < 0)
+		wnd->multicast_size = 0;
+	if (wnd->multicast_size > 0)
 		net_dev->flags |= IFF_MULTICAST;
 	else
 		net_dev->flags &= ~IFF_MULTICAST;
@@ -1699,7 +1701,7 @@ static NDIS_STATUS ndis_remove_device(struct wrap_ndis_device *wnd)
 	printk(KERN_INFO "%s: device %s removed\n", DRIVER_NAME,
 	       wnd->net_dev->name);
 	unregister_netdev(wnd->net_dev);
-	free_netdev(wnd->net_dev);
+	wrap_free_netdev(wnd->net_dev);
 	TRACEEXIT2(return NDIS_STATUS_SUCCESS);
 }
 
@@ -1719,7 +1721,7 @@ static STDCALL NTSTATUS NdisAddDevice(struct driver_object *drv_obj,
 		ERROR("interface name '%s' is too long", if_name);
 		return STATUS_INVALID_PARAMETER;
 	}
-	net_dev = alloc_etherdev(sizeof(*wnd) + sizeof(*nmb));
+	net_dev = wrap_alloc_etherdev(sizeof(*wnd) + sizeof(*nmb));
 	if (!net_dev) {
 		ERROR("couldn't allocate device");
 		return STATUS_RESOURCES;

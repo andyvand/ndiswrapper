@@ -78,7 +78,7 @@ all : prereq_check x86_64_stubs gen_exports default stack_check
 
 OBJS := hal.o iw_ndis.o loader.o misc_funcs.o ndis.o \
 	    ntoskernel.o ntoskernel_io.o pe_linker.o pnp.o proc.o \
-		wrapndis.o wrapper.o
+		wrapmem.o wrapndis.o wrapper.o
 
 # by default, USB layer is compiled in if USB support is in kernel;
 # to disable USB support in ndiswrapper even if USB support is in kenrel,
@@ -126,7 +126,7 @@ wrapper.o: wrapper.c wrapndis.h iw_ndis.h ntoskernel.h loader.h
 iw_ndis.h: ndis.h
 loader.h: ndiswrapper.h
 ndis.h: ntoskernel.h
-ntoskernel.h: ndiswrapper.h winnt_types.h pe_linker.h
+ntoskernel.h: ndiswrapper.h winnt_types.h pe_linker.h wrapmem.h
 usb.h: ntoskernel.h
 wrapndis.h: ndis.h
 

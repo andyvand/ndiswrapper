@@ -66,6 +66,8 @@
 #define addr_offset(drvr) (__builtin_return_address(0) -	\
 			   (drvr)->drv_obj->driver_start)
 
+#include "wrapmem.h"
+
 /* Workqueue / task queue backwards compatibility stuff */
 #if LINUX_VERSION_CODE > KERNEL_VERSION(2,5,41)
 #include <linux/workqueue.h>
@@ -485,11 +487,6 @@ struct wrap_export {
 #define POOL_TAG(A, B, C, D)					\
 	((ULONG)((A) + ((B) << 8) + ((C) << 16) + ((D) << 24)))
 
-struct wrap_alloc {
-	struct nt_list list;
-	void *ptr;
-};
-
 struct pe_image {
 	char name[MAX_DRIVER_NAME_LEN];
 	UINT (*entry)(struct driver_object *, struct unicode_string *) STDCALL;
@@ -774,8 +771,6 @@ STDCALL void RtlCopyUnicodeString
 	(struct unicode_string *dst, struct unicode_string *src);
 NOREGPARM SIZE_T _win_wcslen(const wchar_t *s);
 
-void *wrap_kmalloc(size_t size);
-void wrap_kfree(void *ptr);
 void wrap_init_timer(struct nt_timer *nt_timer, enum timer_type type,
 		     struct wrap_device *wd);
 BOOLEAN wrap_set_timer(struct nt_timer *nt_timer, unsigned long expires_hz,

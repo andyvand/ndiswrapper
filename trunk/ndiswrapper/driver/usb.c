@@ -1265,9 +1265,9 @@ WRAP_EXPORT(USBD_ParseConfigurationDescriptorEx)
 	struct usb_interface_descriptor *intf;
 
 	USBENTER("config = %p, start = %p, ifnum = %d, alt_setting = %d,"
-		      " class = %d, subclass = %d, proto = %d", config, start,
-		      bInterfaceNumber, bAlternateSetting,
-		      bInterfaceClass, bInterfaceSubClass, bInterfaceProtocol);
+		 " class = %d, subclass = %d, proto = %d", config, start,
+		 bInterfaceNumber, bAlternateSetting, bInterfaceClass,
+		 bInterfaceSubClass, bInterfaceProtocol);
 
 	for (pos = start; pos < ((void *)config + config->wTotalLength);
 	     pos += intf->bLength) {
