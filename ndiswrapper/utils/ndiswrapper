@@ -83,10 +83,13 @@ if($ARGV[0] eq "-i" and @ARGV == 2) {
     $res = modalias();
 } elsif($ARGV[0] eq "-v" and @ARGV == 1) {
     printf "utils "; system("/sbin/loadndisdriver -v");
-    printf "driver "; system("modinfo ndiswrapper | grep -E '^version|^vermagic'");
+    printf "driver ";
+    system("modinfo ndiswrapper | grep -E '^version|^vermagic'");
     $res = 0;
-} elsif($ARGV[0] eq "-a" and @ARGV == 1) {
-    $res = genmodalias();
+} elsif($ARGV[0] eq "-da" and @ARGV == 1) {
+    $res = genmoddevconf(0);
+} elsif($ARGV[0] eq "-di" and @ARGV == 1) {
+    $res = genmoddevconf(1);
 } else {
     usage();
     exit();
@@ -102,7 +105,8 @@ sub usage {
 	"-e driver         Remove 'driver'\n" .
 	"-l                List installed drivers\n" .
 	"-m                Write configuration for modprobe\n" .
-	"-a                Write module alias configuration file\n" .
+	"-da               Write module alias configuration for all devices\n" .
+	"-di               Write module install configuration for all devices\n" .
 	"-v                Report version information\n" .
 	"\n\nwhere 'devid' is either PCIID or USBID of the form XXXX:XXXX\n";
 }
@@ -144,15 +148,15 @@ sub install {
 sub isInstalled {
     my $installed;
     my $name = shift;
-    my $mode = (stat("$confdir"))[2];
-    if (!S_ISDIR($mode)) {
+    my $stat = (stat("$confdir"))[2];
+    if (!S_ISDIR($stat)) {
 	return 0;
     }
     open(LS, "ls -1 $confdir|");
     while(my $f = <LS>) {
 	chomp($f);
-	$mode = (stat("$confdir/$f"))[2];
-	if (S_ISDIR($mode) and $name eq $f) {
+	$stat = (stat("$confdir/$f"))[2];
+	if (S_ISDIR($stat) and $name eq $f) {
 	    $installed = 1;
 	}
     }
@@ -197,28 +201,34 @@ sub devid_driver {
     return;
 }
 
-sub genmodalias {
+sub genmoddevconf {
+    my $mode = shift;
     my $vendor, $device, $subvendor, $subdevice, $bustype, $busid;
     my $line;
 
-    my $modaliasconf;
+    my $moddevconf;
     if (-d "/etc/modprobe.d") {
-	$modaliasconf = "/etc/modprobe.d/ndiswrapper";
+	$moddevconf = "/etc/modprobe.d/ndiswrapper";
     } elsif (-d "/etc/modules.d") {
-	$modaliasconf = "/etc/modules.d/ndiswrapper";
+	$moddevconf = "/etc/modules.d/ndiswrapper";
     } else {
-	$modaliasconf = "/etc/ndiswrapper/ndiswrapper";
+	$moddevconf = "/etc/ndiswrapper/ndiswrapper";
     }
-    if (!open(CONF, "| sort >$modaliasconf")) {
-	print "Unable to create modules alias file $modaliasconf\n";
-	return -1;
+    if ($mode == 0) {
+	$moddevconf = $moddevconf . ".alias";
+    } else {
+	$moddevconf = $moddevconf . ".install";
     }
 
+    if (!open(CONF, "| sort >$moddevconf")) {
+	print "Unable to create modules alias file $moddevconf\n";
+	return -1;
+    }
     open(LS, "ls -1 $confdir|");
     while (my $driver = <LS>) {
 	chomp($driver);
-	my $mode = (stat("$confdir/$driver"))[2];
-	if (S_ISDIR($mode)) {
+	my $stat = (stat("$confdir/$driver"))[2];
+	if (S_ISDIR($stat)) {
 	    open(LS2, "ls -1 $confdir/$driver/ |");
 	    while (my $file = <LS2>) {
 		chomp ($file);
@@ -237,18 +247,25 @@ sub genmodalias {
 			$subdevice = "*";
 			$busid = "$3";
 		    }
+		    my $devstring;
 		    if ($busid eq "0" or $busid eq "F") {
-			printf CONF "alias usb:v%sp%sd*dc*dsc*dp*ic*isc*ip*",
-			  $vendor, $device;
+			$devstring = sprintf("usb:v%sp%sd*dc*dsc*dp*ic*isc*ip*",
+					     $vendor, $device);
 		    } elsif ($busid eq "5") {
-			printf CONF "alias pci:v0000%sd0000%ssv%ssd%sbc*sc*i*",
-			  $vendor, $device, $subvendor, $subdevice;
+			$devstring = sprintf("pci:v0000%sd0000%ssv%ssd%sbc*sc*i*",
+					     $vendor, $device, $subvendor,
+					     $subdevice);
 		    } else {
 			print stderr "wrong bustype ($busid) for " .
 			  "configuration file $line - ignoring it\n";
 			next;
 		    }
-		    printf CONF " ndiswrapper\n";
+		    if ($mode == 0) {
+			printf CONF "alias %s ndiswrapper\n", $devstring;
+		    } else {
+			printf CONF "install %s /sbin/modprobe ndiswrapper\n",
+			  $devstring;
+		    }
 		}
 	    }
 	    close(LS2);
@@ -257,11 +274,8 @@ sub genmodalias {
 
     close(CONF);
     close(LS);
-    if (-x "/sbin/update-modules") {
-	system("/sbin/update-modules");
-    }
-    print "Module alias information is stored in $modaliasconf;\n";
-    print "copy it to where udev expects it and configure udev.\n";
+
+    print "Module configuration information is stored in $modaliasconf;\n";
     return 0;
 }
 
@@ -274,16 +288,16 @@ sub list {
 	  "Unable to see if hardware is present.\n";
     }
 
-    my $mode = (stat("$confdir"))[2];
-    if (!S_ISDIR($mode)) {
+    my $stat = (stat("$confdir"))[2];
+    if (!S_ISDIR($stat)) {
 	print "No drivers installed\n$s";
 	return;
     }
     open(LS, "ls -1 $confdir|");
     while (my $f = <LS>) {
 	chomp($f);
-	my $mode = (stat("$confdir/$f"))[2];
-	if (S_ISDIR($mode)) {
+	my $stat = (stat("$confdir/$f"))[2];
+	if (S_ISDIR($stat)) {
 	    $s .= "$f\t".installStatus($cards, $f)."\n";
 	}
     }
@@ -405,8 +419,8 @@ sub installStatus {
 	    for (my $i = 0; $$cards[$i]; $i++) {
 		if ($$cards[$i]->{vendor} == $1 and
 		    $$cards[$i]->{device} == $2) {
-		    my $mode = (lstat("$confdir/$driver/$device"))[2];
-		    if (S_ISLNK($mode)) {
+		    my $stat = (lstat("$confdir/$driver/$device"))[2];
+		    if (S_ISLNK($stat)) {
 			$conf = 2;
 		    } else {
 			$conf = 3;
@@ -486,13 +500,13 @@ sub parseVersion {
 	    $classguid = lc($val);
 	}
     }
-    parseManu();
+    parseMfr();
 }
 
 #
 # Parse the [Manufacturer] section.
 #
-sub parseManu {
+sub parseMfr {
     #Examples:
     #Vendor
     #Vendor,ME,NT,NT.5.1
