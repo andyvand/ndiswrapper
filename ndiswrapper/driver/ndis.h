@@ -793,9 +793,6 @@ struct ndis_miniport_block {
 	void *wan_tx_complete;
 	void *wan_rx;
 	void *wan_rx_complete;
-	/* ZyDas and Atheros USB drivers corrupt memory without barrier below
-	 * - free_netdev results in slab error */
-//	char barrier[20];
 	/* ndiswrapper specific */
 	struct wrap_ndis_device *wnd;
 };

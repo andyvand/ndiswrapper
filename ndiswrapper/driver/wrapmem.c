@@ -1,3 +1,18 @@
+/*
+ *  Copyright (C) 2006 Giridhar Pemmasani
+ *
+ *  This program is free software; you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation; either version 2 of the License, or
+ *  (at your option) any later version.
+ *
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
+ *
+ */
+
 #define _WRAPMEM_C_
 
 #include "ntoskernel.h"
@@ -7,11 +22,12 @@ static NT_SPIN_LOCK alloc_lock;
 
 struct slack_alloc_info {
 	struct nt_list list;
+	size_t size;
 };
 
 struct alloc_info {
-	size_t size;
 	enum alloc_type type;
+	size_t size;
 };
 
 #ifdef ALLOC_INFO
@@ -34,6 +50,7 @@ void wrapmem_exit(void)
 	while ((ent = RemoveHeadList(&slack_allocs))) {
 		struct slack_alloc_info *info;
 		info = container_of(ent, struct slack_alloc_info, list);
+		atomic_sub(info->size, &allocs[ALLOC_TYPE_SLACK]);
 		kfree(info);
 	}
 	nt_spin_unlock(&alloc_lock);
@@ -73,10 +90,12 @@ void *slack_kmalloc(size_t size)
 	info = kmalloc(n, flags);
 	if (!info)
 		return NULL;
+	info->size = size;
 	ptr = info + 1;
 	nt_spin_lock(&alloc_lock);
 	InsertTailList(&slack_allocs, &info->list);
 	nt_spin_unlock(&alloc_lock);
+	atomic_add(size, &allocs[ALLOC_TYPE_SLACK]);
 	DBGTRACE4("%p, %p", info, ptr);
 	TRACEEXIT4(return ptr);
 }
@@ -91,6 +110,7 @@ void slack_kfree(void *ptr)
 	nt_spin_lock(&alloc_lock);
 	RemoveEntryList(&info->list);
 	nt_spin_unlock(&alloc_lock);
+	atomic_sub(info->size, &allocs[ALLOC_TYPE_SLACK]);
 	kfree(info);
 	TRACEEXIT4(return);
 }
@@ -102,16 +122,15 @@ void *wrap_kmalloc(size_t size, gfp_t flags)
 	size_t n;
 	n = size + sizeof(*info);
 	info = kmalloc(n, flags);
-	if (info) {
-		if (flags & GFP_ATOMIC)
-			info->type = ALLOC_TYPE_ATOMIC;
-		else
-			info->type = ALLOC_TYPE_NON_ATOMIC;
-		info->size = size;
-		atomic_add(size, &allocs[info->type]);
-		return (info + 1);
-	} else
+	if (!info)
 		return NULL;
+	if (flags & GFP_ATOMIC)
+		info->type = ALLOC_TYPE_ATOMIC;
+	else
+		info->type = ALLOC_TYPE_NON_ATOMIC;
+	info->size = size;
+	atomic_add(size, &allocs[info->type]);
+	return (info + 1);
 }
 
 void wrap_kfree(const void *ptr)
@@ -128,13 +147,12 @@ void *wrap_vmalloc(unsigned long size)
 	size_t n;
 	n = size + sizeof(*info);
 	info = vmalloc(n);
-	if (info) {
-		info->type = ALLOC_TYPE_VMALLOC;
-		info->size = size;
-		atomic_add(size, &allocs[info->type]);
-		return (info + 1);
-	} else
+	if (!info)
 		return NULL;
+	info->type = ALLOC_TYPE_VMALLOC;
+	info->size = size;
+	atomic_add(size, &allocs[info->type]);
+	return (info + 1);
 }
 
 void wrap_vfree(void *ptr)
