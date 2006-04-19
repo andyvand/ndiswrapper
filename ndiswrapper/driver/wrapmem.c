@@ -116,7 +116,7 @@ void slack_kfree(void *ptr)
 }
 
 #ifdef ALLOC_INFO
-void *wrap_kmalloc(size_t size, gfp_t flags)
+void *wrap_kmalloc(size_t size, unsigned flags)
 {
 	struct alloc_info *info;
 	size_t n;
@@ -147,6 +147,20 @@ void *wrap_vmalloc(unsigned long size)
 	size_t n;
 	n = size + sizeof(*info);
 	info = vmalloc(n);
+	if (!info)
+		return NULL;
+	info->type = ALLOC_TYPE_VMALLOC;
+	info->size = size;
+	atomic_add(size, &allocs[info->type]);
+	return (info + 1);
+}
+
+void *wrap__vmalloc(unsigned long size, unsigned int gfp_mask, pgprot_t prot)
+{
+	struct alloc_info *info;
+	size_t n;
+	n = size + sizeof(*info);
+	info = __vmalloc(n, gfp_mask, prot);
 	if (!info)
 		return NULL;
 	info->type = ALLOC_TYPE_VMALLOC;

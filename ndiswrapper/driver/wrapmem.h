@@ -36,16 +36,23 @@ void slack_kfree(void *ptr);
 void wrapmem_info(void);
 
 #ifdef ALLOC_INFO
-void *wrap_kmalloc(size_t size, gfp_t flags);
+void *wrap_kmalloc(size_t size, unsigned int flags);
 void wrap_kfree(const void *ptr);
 void *wrap_vmalloc(unsigned long size);
+void *wrap__vmalloc(unsigned long size, unsigned int flags, pgprot_t prot);
 void wrap_vfree(void *ptr);
 int alloc_size(enum alloc_type type);
 
 #ifndef _WRAPMEM_C_
+#undef kmalloc
+#undef kfree
+#undef vmalloc
+#undef vfree
+#undef __vmalloc
 #define kmalloc(size, flags) wrap_kmalloc(size, flags)
 #define kfree(ptr) wrap_kfree(ptr)
 #define vmalloc(size) wrap_vmalloc(size)
+#define __vmalloc(size, flags, prot) wrap__vmalloc(size, flags, prot)
 #define vfree(ptr) wrap_vfree(ptr)
 #endif
 #endif
