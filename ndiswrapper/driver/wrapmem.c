@@ -68,8 +68,8 @@ void wrapmem_info(void)
 #endif
 }
 
-/* allocate memory with given flags and add it to list of allocated pointers;
- * if a driver doesn't free this memory for any reason (buggy driver or we
+/* allocate memory and add it to list of allocated pointers; if a
+ * driver doesn't free this memory for any reason (buggy driver or we
  * allocate space behind driver's back since we need more space than
  * corresponding Windows structure provides etc.), this gets freed
  * automatically when module is unloaded
