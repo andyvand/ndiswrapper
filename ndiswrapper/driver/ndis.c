@@ -992,7 +992,7 @@ STDCALL NDIS_STATUS WRAP_EXPORT(NdisMAllocateSharedMemoryAsync)
 	alloc_shared_mem->cached = cached;
 	alloc_shared_mem->ctx = ctx;
 	if (schedule_ntos_work_item(alloc_shared_memory_async,
-				    wnd, alloc_shared_mem, FALSE))
+				    wnd, alloc_shared_mem, WORKER_FUNC_LINUX))
 		TRACEEXIT3(return NDIS_STATUS_FAILURE);
 	TRACEEXIT3(return NDIS_STATUS_PENDING);
 }
@@ -2148,7 +2148,8 @@ NdisMIndicateReceivePacket(struct ndis_miniport_block *nmb,
 		 * MiniportReturnPacket from here is not correct - the
 		 * driver doesn't expect it (at least Centrino driver
 		 * crashes) */
-		schedule_ntos_work_item(return_packet, wnd, packet, FALSE);
+		schedule_ntos_work_item(return_packet, wnd, packet,
+					WORKER_FUNC_LINUX);
 	}
 	TRACEEXIT3(return);
 }
