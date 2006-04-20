@@ -552,7 +552,8 @@ STDCALL void WRAP_EXPORT(IoQueueWorkItem)
 	IOENTER("%p, %p", io_workitem, io_workitem->dev_obj);
 	io_workitem->worker_routine = func;
 	io_workitem->context = context;
-	schedule_ntos_work_item(func, io_workitem->dev_obj, context, TRUE);
+	schedule_ntos_work_item(func, io_workitem->dev_obj, context,
+				WORKER_FUNC_WIN);
 	IOEXIT(return);
 }
 
@@ -562,7 +563,7 @@ STDCALL void WRAP_EXPORT(ExQueueWorkItem)
 	IOENTER("%p", io_workitem);
 	schedule_ntos_work_item(io_workitem->worker_routine,
 				io_workitem->dev_obj, io_workitem->context,
-				TRUE);
+				WORKER_FUNC_WIN);
 }
 
 STDCALL NTSTATUS WRAP_EXPORT(IoAllocateDriverObjectExtension)

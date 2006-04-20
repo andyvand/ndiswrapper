@@ -428,7 +428,7 @@ do {									\
 #define rt_task(p) ((p)->prio < MAX_RT_PRIO)
 #endif
 
-#define KMALLOC_THRESHOLD 131072
+#define KMALLOC_THRESHOLD 130000
 
 /* TICK is 100ns */
 #define TICKSPERSEC		10000000LL
@@ -509,12 +509,14 @@ struct wrap_timer {
 #endif
 };
 
+enum worker_func_type { WORKER_FUNC_LINUX, WORKER_FUNC_WIN };
+
 struct ntos_work_item {
 	struct nt_list list;
 	void *arg1;
 	void *arg2;
 	void (*func)(void *arg1, void *arg2) STDCALL;
-	BOOLEAN win_func;
+	enum worker_func_type func_type;
 };
 
 struct wrap_device_setting {
@@ -643,8 +645,14 @@ struct driver_object *find_bus_driver(const char *name);
 STDCALL void WRITE_PORT_UCHAR(ULONG_PTR port, UCHAR value);
 STDCALL UCHAR READ_PORT_UCHAR(ULONG_PTR port);
 
+#undef ExAllocatePoolWithTag
 STDCALL void *ExAllocatePoolWithTag(enum pool_type pool_type, SIZE_T size,
 				    ULONG tag);
+#ifdef ALLOC_DEBUG
+#define ExAllocatePoolWithTag(pool_type, size, tag)			\
+	wrap_ExAllocatePoolWithTag(pool_type, size, tag, __FILE__, __LINE__)
+#endif
+
 STDCALL void ExFreePool(void *p);
 STDCALL ULONG MmSizeOfMdl(void *base, ULONG length);
 STDCALL void *MmMapIoSpace(PHYSICAL_ADDRESS phys_addr, SIZE_T size,
@@ -727,7 +735,7 @@ struct nt_thread *get_current_nt_thread(void);
 u64 ticks_1601(void);
 
 int schedule_ntos_work_item(NTOS_WORK_FUNC func, void *arg1, void *arg2,
-			    BOOLEAN win_func);
+			    enum worker_func_type func_type);
 
 STDCALL KIRQL KeGetCurrentIrql(void);
 STDCALL void KeInitializeSpinLock(NT_SPIN_LOCK *lock);

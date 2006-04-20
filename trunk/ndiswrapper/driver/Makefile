@@ -69,6 +69,14 @@ ifdef WORK_DEBUG
 CFLAGS += -DWORK_DEBUG
 endif
 
+ifdef ALLOC_INFO
+CFLAGS += -DALLOC_INFO
+endif
+
+ifdef ALLOC_DEBUG
+CFLAGS += -DALLOC_DEBUG
+endif
+
 CFLAGS += -DDRIVER_VERSION=\"${DRIVER_VERSION}\"
 
 .PHONY: prereq_check gen_exports clean dist_clean \

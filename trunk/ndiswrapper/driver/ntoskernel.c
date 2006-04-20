@@ -106,8 +106,6 @@ WRAP_EXPORT_MAP("NlsMbCodePageTag", FALSE);
 struct workqueue_struct *ntos_wq;
 #endif
 
-static STDCALL void vfree_callback(void *addr, void *ctx);
-
 int ntoskernel_init(void)
 {
 	struct timeval now;
@@ -983,7 +981,7 @@ static void ntos_work_item_worker(void *data)
 		func = ntos_work_item->func;
 		WORKTRACE("%p: executing %p, %p, %p", current, func,
 			  ntos_work_item->arg1, ntos_work_item->arg2);
-		if (ntos_work_item->win_func == TRUE)
+		if (ntos_work_item->func_type == WORKER_FUNC_WIN)
 			LIN2WIN2(func, ntos_work_item->arg1,
 				 ntos_work_item->arg2);
 		else
@@ -994,7 +992,7 @@ static void ntos_work_item_worker(void *data)
 }
 
 int schedule_ntos_work_item(NTOS_WORK_FUNC func, void *arg1, void *arg2,
-			    BOOLEAN win_func)
+			    enum worker_func_type func_type)
 {
 	struct ntos_work_item *ntos_work_item;
 	KIRQL irql;
@@ -1008,7 +1006,7 @@ int schedule_ntos_work_item(NTOS_WORK_FUNC func, void *arg1, void *arg2,
 	ntos_work_item->func = func;
 	ntos_work_item->arg1 = arg1;
 	ntos_work_item->arg2 = arg2;
-	ntos_work_item->win_func = win_func;
+	ntos_work_item->func_type = func_type;
 	irql = nt_spin_lock_irql(&ntos_work_item_list_lock, DISPATCH_LEVEL);
 	InsertTailList(&ntos_work_item_list, &ntos_work_item->list);
 	nt_spin_unlock_irql(&ntos_work_item_list_lock, irql);
@@ -1078,6 +1076,8 @@ STDCALL KIRQL WRAP_EXPORT(KeAcquireSpinLockRaiseToDpc)
 	return nt_spin_lock_irql(lock, DISPATCH_LEVEL);
 }
 
+#undef ExAllocatePoolWithTag
+
 STDCALL void *WRAP_EXPORT(ExAllocatePoolWithTag)
 	(enum pool_type pool_type, SIZE_T size, ULONG tag)
 {
@@ -1102,7 +1102,7 @@ STDCALL void *WRAP_EXPORT(ExAllocatePoolWithTag)
 	TRACEEXIT4(return addr);
 }
 
-static STDCALL void vfree_callback(void *addr, void *ctx)
+static STDCALL void vfree_nonatomic(void *addr, void *ctx)
 {
 	vfree(addr);
 }
@@ -1116,7 +1116,7 @@ STDCALL void WRAP_EXPORT(ExFreePool)
 		kfree(addr);
 	else {
 		if (in_interrupt())
-			schedule_ntos_work_item(vfree_callback, addr,
+			schedule_ntos_work_item(vfree_nonatomic, addr,
 						NULL, FALSE);
 		else
 			vfree(addr);
@@ -1186,6 +1186,11 @@ STDCALL void WRAP_EXPORT(ExDeleteNPagedLookasideList)
 	lower_irql(irql);
 	TRACEEXIT3(return);
 }
+
+#ifdef ALLOC_DEBUG
+#define ExAllocatePoolWithTag(pool_type, size, tag)			\
+	wrap_ExAllocatePoolWithTag(pool_type, size, tag, __FILE__, __LINE__)
+#endif
 
 STDCALL NTSTATUS WRAP_EXPORT(ExCreateCallback)
 	(struct callback_object **object, struct object_attributes *attributes,

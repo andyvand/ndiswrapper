@@ -22,9 +22,7 @@
  * which indicates if memory is being leaked */
 
 #define ALLOC_INFO 1
-#ifdef DEBUG
-#define ALLOC_INFO 1
-#endif
+//#define ALLOC_DEBUG 1
 
 enum alloc_type { ALLOC_TYPE_ATOMIC, ALLOC_TYPE_NON_ATOMIC,
 		  ALLOC_TYPE_VMALLOC, ALLOC_TYPE_SLACK, ALLOC_TYPE_MAX };
@@ -36,24 +34,34 @@ void slack_kfree(void *ptr);
 void wrapmem_info(void);
 
 #ifdef ALLOC_INFO
-void *wrap_kmalloc(size_t size, unsigned int flags);
+void *wrap_kmalloc(size_t size, unsigned int flags, const char *file, int line);
 void wrap_kfree(const void *ptr);
-void *wrap_vmalloc(unsigned long size);
-void *wrap__vmalloc(unsigned long size, unsigned int flags, pgprot_t prot);
+void *wrap_vmalloc(unsigned long size, const char *file, int line);
+void *wrap__vmalloc(unsigned long size, unsigned int flags, pgprot_t prot,
+		    const char *file, int line);
 void wrap_vfree(void *ptr);
+void *wrap_ExAllocatePoolWithTag(enum pool_type pool_type, SIZE_T size,
+				 ULONG tag, const char *file, int line);
 int alloc_size(enum alloc_type type);
 
 #ifndef _WRAPMEM_C_
 #undef kmalloc
 #undef kfree
 #undef vmalloc
-#undef vfree
 #undef __vmalloc
-#define kmalloc(size, flags) wrap_kmalloc(size, flags)
+#undef vfree
+#define kmalloc(size, flags)				\
+	wrap_kmalloc(size, flags, __FILE__, __LINE__)
+#define vmalloc(size)				\
+	wrap_vmalloc(size, __FILE__, __LINE__)
+#define __vmalloc(size, flags, prot)				\
+	wrap__vmalloc(size, flags, prot, __FILE__, __LINE__)
 #define kfree(ptr) wrap_kfree(ptr)
-#define vmalloc(size) wrap_vmalloc(size)
-#define __vmalloc(size, flags, prot) wrap__vmalloc(size, flags, prot)
 #define vfree(ptr) wrap_vfree(ptr)
+#ifdef ALLOC_DEBUG
+#define ExAllocatePoolWithTag(pool_type, size, tag)			\
+	wrap_ExAllocatePoolWithTag(pool_type, size, tag, __FILE__, __LINE__)
+#endif
 #endif
 #endif
 

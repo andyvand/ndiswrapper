@@ -28,14 +28,22 @@ struct slack_alloc_info {
 struct alloc_info {
 	enum alloc_type type;
 	size_t size;
+#ifdef ALLOC_DEBUG
+	struct nt_list list;
+	const char *file;
+	int line;
+#endif
 };
 
+struct nt_list allocs;
+
 #ifdef ALLOC_INFO
-static atomic_t allocs[ALLOC_TYPE_MAX];
+static atomic_t alloc_sizes[ALLOC_TYPE_MAX];
 #endif
 
 int wrapmem_init(void)
 {
+	InitializeListHead(&allocs);
 	InitializeListHead(&slack_allocs);
 	nt_spin_lock_init(&alloc_lock);
 	return 0;
@@ -50,11 +58,32 @@ void wrapmem_exit(void)
 	while ((ent = RemoveHeadList(&slack_allocs))) {
 		struct slack_alloc_info *info;
 		info = container_of(ent, struct slack_alloc_info, list);
-		atomic_sub(info->size, &allocs[ALLOC_TYPE_SLACK]);
+		atomic_sub(info->size, &alloc_sizes[ALLOC_TYPE_SLACK]);
 		kfree(info);
 	}
 	nt_spin_unlock(&alloc_lock);
 	wrapmem_info();
+
+#ifdef ALLOC_DEBUG
+	nt_spin_lock(&alloc_lock);
+	while ((ent = RemoveHeadList(&allocs))) {
+		struct alloc_info *info;
+		info = container_of(ent, struct alloc_info, list);
+		atomic_sub(info->size, &alloc_sizes[ALLOC_TYPE_SLACK]);
+		WARNING("memory in %d of size %d allocated at %s(%d) leaking; "
+			"freeing it now", info->type, info->size,
+			info->file, info->line);
+		if (info->type == ALLOC_TYPE_ATOMIC ||
+		    info->type == ALLOC_TYPE_NON_ATOMIC)
+			kfree(info);
+		else if (info->type == ALLOC_TYPE_VMALLOC)
+			vfree(info);
+		else
+			WARNING("invalid type: %d; not freed", info->type);
+
+	}
+	nt_spin_unlock(&alloc_lock);
+#endif
 	return;
 }
 
@@ -64,7 +93,8 @@ void wrapmem_info(void)
 	enum alloc_type type;
 	for (type = 0; type < ALLOC_TYPE_MAX; type++)
 		printk(KERN_DEBUG "%s: total size of allocations in %d: %d\n",
-		       DRIVER_NAME, type, atomic_read(&allocs[type]));
+		       DRIVER_NAME, type, atomic_read(&alloc_sizes[type]));
+	
 #endif
 }
 
@@ -95,7 +125,7 @@ void *slack_kmalloc(size_t size)
 	nt_spin_lock(&alloc_lock);
 	InsertTailList(&slack_allocs, &info->list);
 	nt_spin_unlock(&alloc_lock);
-	atomic_add(size, &allocs[ALLOC_TYPE_SLACK]);
+	atomic_add(size, &alloc_sizes[ALLOC_TYPE_SLACK]);
 	DBGTRACE4("%p, %p", info, ptr);
 	TRACEEXIT4(return ptr);
 }
@@ -110,13 +140,13 @@ void slack_kfree(void *ptr)
 	nt_spin_lock(&alloc_lock);
 	RemoveEntryList(&info->list);
 	nt_spin_unlock(&alloc_lock);
-	atomic_sub(info->size, &allocs[ALLOC_TYPE_SLACK]);
+	atomic_sub(info->size, &alloc_sizes[ALLOC_TYPE_SLACK]);
 	kfree(info);
 	TRACEEXIT4(return);
 }
 
 #ifdef ALLOC_INFO
-void *wrap_kmalloc(size_t size, unsigned flags)
+void *wrap_kmalloc(size_t size, unsigned flags, const char *file, int line)
 {
 	struct alloc_info *info;
 	size_t n;
@@ -129,7 +159,14 @@ void *wrap_kmalloc(size_t size, unsigned flags)
 	else
 		info->type = ALLOC_TYPE_NON_ATOMIC;
 	info->size = size;
-	atomic_add(size, &allocs[info->type]);
+	atomic_add(size, &alloc_sizes[info->type]);
+#ifdef ALLOC_DEBUG
+	info->file = file;
+	info->line = line;
+	nt_spin_lock(&alloc_lock);
+	InsertTailList(&allocs, &info->list);
+	nt_spin_unlock(&alloc_lock);
+#endif
 	return (info + 1);
 }
 
@@ -137,11 +174,19 @@ void wrap_kfree(const void *ptr)
 {
 	struct alloc_info *info;
 	info = (void *)ptr - sizeof(*info);
-	atomic_sub(info->size, &allocs[info->type]);
+	atomic_sub(info->size, &alloc_sizes[info->type]);
+#ifdef ALLOC_DEBUG
+	nt_spin_lock(&alloc_lock);
+	RemoveEntryList(&info->list);
+	nt_spin_unlock(&alloc_lock);
+	if (!(info->type == ALLOC_TYPE_ATOMIC ||
+	      info->type == ALLOC_TYPE_NON_ATOMIC))
+		WARNING("invliad type: %d, memory not freed", info->type);
+#endif
 	kfree(info);
 }
 
-void *wrap_vmalloc(unsigned long size)
+void *wrap_vmalloc(unsigned long size, const char *file, int line)
 {
 	struct alloc_info *info;
 	size_t n;
@@ -151,11 +196,19 @@ void *wrap_vmalloc(unsigned long size)
 		return NULL;
 	info->type = ALLOC_TYPE_VMALLOC;
 	info->size = size;
-	atomic_add(size, &allocs[info->type]);
+	atomic_add(size, &alloc_sizes[info->type]);
+#ifdef ALLOC_DEBUG
+	info->file = file;
+	info->line = line;
+	nt_spin_lock(&alloc_lock);
+	InsertTailList(&allocs, &info->list);
+	nt_spin_unlock(&alloc_lock);
+#endif
 	return (info + 1);
 }
 
-void *wrap__vmalloc(unsigned long size, unsigned int gfp_mask, pgprot_t prot)
+void *wrap__vmalloc(unsigned long size, unsigned int gfp_mask, pgprot_t prot,
+		    const char *file, int line)
 {
 	struct alloc_info *info;
 	size_t n;
@@ -165,7 +218,14 @@ void *wrap__vmalloc(unsigned long size, unsigned int gfp_mask, pgprot_t prot)
 		return NULL;
 	info->type = ALLOC_TYPE_VMALLOC;
 	info->size = size;
-	atomic_add(size, &allocs[info->type]);
+	atomic_add(size, &alloc_sizes[info->type]);
+#ifdef ALLOC_DEBUG
+	info->file = file;
+	info->line = line;
+	nt_spin_lock(&alloc_lock);
+	InsertTailList(&allocs, &info->list);
+	nt_spin_unlock(&alloc_lock);
+#endif
 	return (info + 1);
 }
 
@@ -173,14 +233,46 @@ void wrap_vfree(void *ptr)
 {
 	struct alloc_info *info;
 	info = ptr - sizeof(*info);
-	atomic_sub(info->size, &allocs[info->type]);
+	atomic_sub(info->size, &alloc_sizes[info->type]);
+#ifdef ALLOC_DEBUG
+	nt_spin_lock(&alloc_lock);
+	RemoveEntryList(&info->list);
+	nt_spin_unlock(&alloc_lock);
+	if (!(info->type == ALLOC_TYPE_VMALLOC))
+		WARNING("invliad type: %d, memory not freed", info->type);
+#endif
 	vfree(info);
 }
+
+#ifdef ALLOC_DEBUG
+void *wrap_ExAllocatePoolWithTag(enum pool_type pool_type, SIZE_T size,
+				 ULONG tag, const char *file, int line)
+{
+	void *addr;
+
+	TRACEENTER4("pool_type: %d, size: %lu, tag: %u", pool_type,
+		    size, tag);
+
+	if (size <= KMALLOC_THRESHOLD) {
+		if (current_irql() < DISPATCH_LEVEL)
+			addr = wrap_kmalloc(size, GFP_KERNEL, file, line);
+		else
+			addr = wrap_kmalloc(size, GFP_ATOMIC, file, line);
+	} else {
+		if (current_irql() < DISPATCH_LEVEL)
+			addr = wrap_vmalloc(size, file, line);
+		else
+			addr = wrap__vmalloc(size, GFP_ATOMIC | __GFP_HIGHMEM,
+					     PAGE_KERNEL, file, line);
+	}
+	TRACEEXIT4(return addr);
+}
+#endif
 
 int alloc_size(enum alloc_type type)
 {
 	if (type >= 0 && type < ALLOC_TYPE_MAX)
-		return atomic_read(&allocs[type]);
+		return atomic_read(&alloc_sizes[type]);
 	else
 		return -EINVAL;
 }
