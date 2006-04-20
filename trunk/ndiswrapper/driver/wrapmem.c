@@ -51,6 +51,7 @@ int wrapmem_init(void)
 
 void wrapmem_exit(void)
 {
+	enum alloc_type type;
 	struct nt_list *ent;
 
 	/* free all pointers on the slack list */
@@ -62,7 +63,15 @@ void wrapmem_exit(void)
 		kfree(info);
 	}
 	nt_spin_unlock(&alloc_lock);
-	wrapmem_info();
+	type = 0;
+#ifdef ALLOC_INFO
+	for (type = 0; type < ALLOC_TYPE_MAX; type++) {
+		int n = atomic_read(&alloc_sizes[type]);
+		if (n)
+			printk(KERN_DEBUG "%s: %d bytes of allocations in %d "
+			       "leaking\n", DRIVER_NAME, n, type);
+	}	
+#endif
 
 #ifdef ALLOC_DEBUG
 	nt_spin_lock(&alloc_lock);
