@@ -35,7 +35,7 @@ void wrapmem_info(void);
 
 #ifdef ALLOC_INFO
 void *wrap_kmalloc(size_t size, unsigned int flags, const char *file, int line);
-void wrap_kfree(const void *ptr);
+void wrap_kfree(void *ptr);
 void *wrap_vmalloc(unsigned long size, const char *file, int line);
 void *wrap__vmalloc(unsigned long size, unsigned int flags, pgprot_t prot,
 		    const char *file, int line);

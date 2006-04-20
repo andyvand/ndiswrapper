@@ -4,7 +4,8 @@ DISTFILES=divdi3.c hal.c iw_ndis.c iw_ndis.h loader.c loader.h \
 		longlong.h Makefile misc_funcs.c ndis.c ndis.h \
 		ndiswrapper.h ntoskernel.c ntoskernel.h ntoskernel_io.c \
 		pe_linker.c pe_linker.h pnp.c pnp.h proc.c usb.c usb.h \
-		winnt_types.h wrapper.c wrapndis.h wrapndis.c x86_64_stubs.S
+		winnt_types.h wrapmem.h wrapmem.c wrapper.c \
+		wrapndis.h wrapndis.c x86_64_stubs.S
 
 KVERS ?= $(shell uname -r)
 KPSUB := $(shell echo $(KVERS) | sed -e 's/\([^\.]*\)\.\([^\.]*\)\..*/\1\2/')

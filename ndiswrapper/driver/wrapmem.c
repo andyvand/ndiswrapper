@@ -17,9 +17,6 @@
 
 #include "ntoskernel.h"
 
-static struct nt_list slack_allocs;
-static NT_SPIN_LOCK alloc_lock;
-
 struct slack_alloc_info {
 	struct nt_list list;
 	size_t size;
@@ -35,7 +32,9 @@ struct alloc_info {
 #endif
 };
 
-struct nt_list allocs;
+static struct nt_list allocs;
+static struct nt_list slack_allocs;
+static NT_SPIN_LOCK alloc_lock;
 
 #ifdef ALLOC_INFO
 static atomic_t alloc_sizes[ALLOC_TYPE_MAX];
@@ -68,8 +67,8 @@ void wrapmem_exit(void)
 	for (type = 0; type < ALLOC_TYPE_MAX; type++) {
 		int n = atomic_read(&alloc_sizes[type]);
 		if (n)
-			printk(KERN_DEBUG "%s: %d bytes of allocations in %d "
-			       "leaking\n", DRIVER_NAME, n, type);
+			WARNING("%d bytes of allocations in %d leaking",
+				n, type);
 	}	
 #endif
 
@@ -101,8 +100,8 @@ void wrapmem_info(void)
 #ifdef ALLOC_INFO
 	enum alloc_type type;
 	for (type = 0; type < ALLOC_TYPE_MAX; type++)
-		printk(KERN_DEBUG "%s: total size of allocations in %d: %d\n",
-		       DRIVER_NAME, type, atomic_read(&alloc_sizes[type]));
+		INFO("total size of allocations in %d: %d",
+		       type, atomic_read(&alloc_sizes[type]));
 	
 #endif
 }
@@ -179,20 +178,21 @@ void *wrap_kmalloc(size_t size, unsigned flags, const char *file, int line)
 	return (info + 1);
 }
 
-void wrap_kfree(const void *ptr)
+void wrap_kfree(void *ptr)
 {
 	struct alloc_info *info;
-	info = (void *)ptr - sizeof(*info);
+	info = ptr - sizeof(*info);
 	atomic_sub(info->size, &alloc_sizes[info->type]);
 #ifdef ALLOC_DEBUG
 	nt_spin_lock(&alloc_lock);
 	RemoveEntryList(&info->list);
 	nt_spin_unlock(&alloc_lock);
-	if (!(info->type == ALLOC_TYPE_ATOMIC ||
-	      info->type == ALLOC_TYPE_NON_ATOMIC))
-		WARNING("invliad type: %d, memory not freed", info->type);
 #endif
-	kfree(info);
+	if (info->type == ALLOC_TYPE_ATOMIC ||
+	    info->type == ALLOC_TYPE_NON_ATOMIC)
+		kfree(info);
+	else
+		WARNING("invliad type: %d, memory not freed", info->type);
 }
 
 void *wrap_vmalloc(unsigned long size, const char *file, int line)
@@ -247,10 +247,11 @@ void wrap_vfree(void *ptr)
 	nt_spin_lock(&alloc_lock);
 	RemoveEntryList(&info->list);
 	nt_spin_unlock(&alloc_lock);
-	if (!(info->type == ALLOC_TYPE_VMALLOC))
-		WARNING("invliad type: %d, memory not freed", info->type);
 #endif
-	vfree(info);
+	if (info->type == ALLOC_TYPE_VMALLOC)
+		vfree(info);
+	else
+		WARNING("invliad type: %d, memory not freed", info->type);
 }
 
 #ifdef ALLOC_DEBUG
