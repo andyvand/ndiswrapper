@@ -270,7 +270,7 @@ sub genmoddevconf {
     close(CONF);
     close(LS);
 
-    print "Module configuration information is stored in $moddevconf;\n";
+    print "Module configuration information is stored in $moddevconf\n";
     return 0;
 }
 

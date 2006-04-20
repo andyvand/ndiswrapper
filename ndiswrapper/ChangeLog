@@ -1,3 +1,11 @@
+Version 1.15 2006-XX-XX
+=======================
+* Yet another bug with removing module fixed.
+* Memory allocation tracking support added; this should help find any
+  memory leaks.
+* Proper fix for drivers (Atheros PCI and USB drivers) allocating
+  large chunk of memory in atomic context.
+
 Version 1.14 2006-04-17
 =======================
 * Added support for Xpeed X400 ADSL adapter.
