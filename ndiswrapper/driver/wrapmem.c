@@ -29,6 +29,9 @@ struct alloc_info {
 	struct nt_list list;
 	const char *file;
 	int line;
+#if ALLOC_DEBUG > 1
+	ULONG tag;
+#endif
 #endif
 };
 
@@ -78,9 +81,16 @@ void wrapmem_exit(void)
 		struct alloc_info *info;
 		info = container_of(ent, struct alloc_info, list);
 		atomic_sub(info->size, &alloc_sizes[ALLOC_TYPE_SLACK]);
-		WARNING("memory in %d of size %d allocated at %s(%d)"
+		WARNING("memory in %d of size %d allocated at %s(%d) "
+#if ALLOC_DEBUG > 1
+			"tag %d "
+#endif
 			"leaking; freeing it now", info->type, info->size,
-			info->file, info->line);
+			info->file, info->line
+#if ALLOC_DEBUG > 1
+			, info->tag
+#endif
+			);
 		if (info->type == ALLOC_TYPE_ATOMIC ||
 		    info->type == ALLOC_TYPE_NON_ATOMIC)
 			kfree(info);
@@ -171,6 +181,9 @@ void *wrap_kmalloc(size_t size, unsigned flags, const char *file, int line)
 #ifdef ALLOC_DEBUG
 	info->file = file;
 	info->line = line;
+#if ALLOC_DEBUG > 1
+	info->tag = 0;
+#endif
 	nt_spin_lock(&alloc_lock);
 	InsertTailList(&allocs, &info->list);
 	nt_spin_unlock(&alloc_lock);
@@ -208,6 +221,9 @@ void *wrap_vmalloc(unsigned long size, const char *file, int line)
 #ifdef ALLOC_DEBUG
 	info->file = file;
 	info->line = line;
+#if ALLOC_DEBUG > 1
+	info->tag = 0;
+#endif
 	nt_spin_lock(&alloc_lock);
 	InsertTailList(&allocs, &info->list);
 	nt_spin_unlock(&alloc_lock);
@@ -230,6 +246,9 @@ void *wrap__vmalloc(unsigned long size, unsigned int gfp_mask, pgprot_t prot,
 #ifdef ALLOC_DEBUG
 	info->file = file;
 	info->line = line;
+#if ALLOC_DEBUG > 1
+	info->tag = 0;
+#endif
 	nt_spin_lock(&alloc_lock);
 	InsertTailList(&allocs, &info->list);
 	nt_spin_unlock(&alloc_lock);
@@ -257,6 +276,7 @@ void *wrap_ExAllocatePoolWithTag(enum pool_type pool_type, SIZE_T size,
 				 ULONG tag, const char *file, int line)
 {
 	void *addr;
+	__unused struct alloc_info *info;
 
 	TRACEENTER4("pool_type: %d, size: %lu, tag: %u", pool_type,
 		    size, tag);
@@ -273,6 +293,10 @@ void *wrap_ExAllocatePoolWithTag(enum pool_type pool_type, SIZE_T size,
 			addr = wrap__vmalloc(size, GFP_ATOMIC | __GFP_HIGHMEM,
 					     PAGE_KERNEL, file, line);
 	}
+#if ALLOC_DEBUG > 1
+	info = addr - sizeof(*info);
+	info->tag = tag;
+#endif
 	TRACEEXIT4(return addr);
 }
 #endif

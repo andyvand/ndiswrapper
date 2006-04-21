@@ -1984,6 +1984,8 @@ STDCALL void WRAP_EXPORT(NdisMIndicateStatus)
 				  "num_cand %ld",
 				  cand->version, cand->num_candidates);
 			for (i = 0; i < cand->num_candidates; i++) {
+				struct iw_pmkid_cand pcand __unused;
+				union iwreq_data wrqu __unused;
 				struct ndis_pmkid_candidate *c =
 					&cand->candidates[i];
 				if ((u8 *)(c + 1) > end) {
@@ -1994,24 +1996,16 @@ STDCALL void WRAP_EXPORT(NdisMIndicateStatus)
 				DBGTRACE2("%ld: " MACSTR " 0x%lx",
 					  i, MAC2STR(c->bssid), c->flags);
 #if WIRELESS_EXT > 17
-				{
-					struct iw_pmkid_cand pcand;
-					union iwreq_data wrqu;
-					memset(&pcand, 0, sizeof(pcand));
-					if (c->flags & 0x01)
-						pcand.flags |=
-							IW_PMKID_CAND_PREAUTH;
-					pcand.index = i;
-					memcpy(pcand.bssid.sa_data, c->bssid,
-					       ETH_ALEN);
+				memset(&pcand, 0, sizeof(pcand));
+				if (c->flags & 0x01)
+					pcand.flags |= IW_PMKID_CAND_PREAUTH;
+				pcand.index = i;
+				memcpy(pcand.bssid.sa_data, c->bssid, ETH_ALEN);
 
-					memset(&wrqu, 0, sizeof(wrqu));
-					wrqu.data.length = sizeof(pcand);
-					wireless_send_event(wnd->net_dev,
-							    IWEVPMKIDCAND,
-							    &wrqu,
-							    (u8 *)&pcand);
-				}
+				memset(&wrqu, 0, sizeof(wrqu));
+				wrqu.data.length = sizeof(pcand);
+				wireless_send_event(wnd->net_dev, IWEVPMKIDCAND,
+						    &wrqu, (u8 *)&pcand);
 #endif
 			}
 			break;

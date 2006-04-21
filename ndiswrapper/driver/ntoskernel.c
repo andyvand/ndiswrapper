@@ -1625,16 +1625,6 @@ STDCALL LONG WRAP_EXPORT(KeSetEvent)
 	nt_event->dh.signal_state = 1;
 	if (old_state == 0)
 		wakeup_threads(&nt_event->dh);
-#if 0
-	/* Synchronization objects are auto-reset - they don't stay
-	 * signalled. The DDK says they are reset after waking up one
-	 * thread. However, it is not clear if they should be reset if
-	 * there are no threads waiting. Am1772 driver expects that
-	 * they are reset (and not stay signalled) if no thread is
-	 * waiting */
-	if (nt_event->dh.type == SynchronizationObject)
-		nt_event->dh.signal_state = 0;
-#endif
 	nt_spin_unlock_irql(&dispatcher_lock, irql);
 	EVENTEXIT(return old_state);
 }
@@ -1651,16 +1641,7 @@ STDCALL LONG WRAP_EXPORT(KeResetEvent)
 	(struct nt_event *nt_event)
 {
 	LONG old_state;
-#if 1
-	KIRQL irql;
-	EVENTENTER("event = %p", nt_event);
-	irql = nt_spin_lock_irql(&dispatcher_lock, DISPATCH_LEVEL);
-	old_state = nt_event->dh.signal_state;
-	nt_event->dh.signal_state = 0;
-	nt_spin_unlock_irql(&dispatcher_lock, irql);
-#else
 	old_state = xchg(&nt_event->dh.signal_state, 0);
-#endif
 	EVENTTRACE("old state: %d", old_state);
 	EVENTEXIT(return old_state);
 }
@@ -2227,27 +2208,21 @@ STDCALL void WRAP_EXPORT(IoBuildPartialMdl)
 STDCALL void WRAP_EXPORT(MmBuildMdlForNonPagedPool)
 	(struct mdl *mdl)
 {
+	PFN_NUMBER *mdl_pages;
+	int i, n;
 	TRACEENTER4("%p", mdl);
 	/* already mapped */
 //	mdl->mappedsystemva = MmGetMdlVirtualAddress(mdl);
 	mdl->flags |= MDL_SOURCE_IS_NONPAGED_POOL;
 	DBGTRACE4("%p, %p, %p, %d, %d", mdl, mdl->mappedsystemva, mdl->startva,
 		  mdl->byteoffset, mdl->bytecount);
-#if 1
-	do {
-		PFN_NUMBER *mdl_pages;
-		int i, n;
-
-		n = SPAN_PAGES(MmGetSystemAddressForMdl(mdl),
-			       MmGetMdlByteCount(mdl));
-		if (n > CACHE_MDL_PAGES)
-			WARNING("%p, %d, %d", MmGetSystemAddressForMdl(mdl),
-				MmGetMdlByteCount(mdl), n);
-		mdl_pages = MmGetMdlPfnArray(mdl);
-		for (i = 0; i < n; i++)
-			mdl_pages[i] = (ULONG_PTR)mdl->startva + (i * PAGE_SIZE);
-	} while (0);
-#endif
+	n = SPAN_PAGES(MmGetSystemAddressForMdl(mdl), MmGetMdlByteCount(mdl));
+	if (n > CACHE_MDL_PAGES)
+		WARNING("%p, %d, %d", MmGetSystemAddressForMdl(mdl),
+			MmGetMdlByteCount(mdl), n);
+	mdl_pages = MmGetMdlPfnArray(mdl);
+	for (i = 0; i < n; i++)
+		mdl_pages[i] = (ULONG_PTR)mdl->startva + (i * PAGE_SIZE);
 	return;
 }
 
