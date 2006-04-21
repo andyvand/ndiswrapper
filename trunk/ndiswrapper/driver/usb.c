@@ -21,12 +21,12 @@
 static unsigned int urb_id = 0;
 
 #define DUMP_WRAP_URB(wrap_urb, dir)					\
-	USBTRACE("urb %p (%d) %s: buf: %p, len: %d, pipe: 0x%x",	\
+	USBTRACE("urb %p (%d) %s: buf: %p, len: %d, pipe: 0x%x, %d",	\
 		 (wrap_urb)->urb, (wrap_urb)->id,			\
 		 (dir == USB_DIR_OUT) ? "going down" : "coming back",	\
 		 (wrap_urb)->urb->transfer_buffer,			\
 		 (wrap_urb)->urb->transfer_buffer_length,		\
-		 (wrap_urb)->urb->pipe)
+		 (wrap_urb)->urb->pipe, (wrap_urb)->urb->status)
 
 #define DUMP_URB_BUFFER(urb, dir)					\
 	while (debug >= 2) {						\
@@ -402,6 +402,7 @@ static USBD_STATUS wrap_submit_urb(struct irp *irp)
 	NT_URB_STATUS(nt_urb) = USBD_STATUS_PENDING;
 	IoMarkIrpPending(irp);
 	DUMP_URB_BUFFER(urb, USB_DIR_OUT);
+	USBTRACE("%p", urb);
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
 	ret = usb_submit_urb(urb, alloc_flags);
 #else
@@ -412,7 +413,7 @@ static USBD_STATUS wrap_submit_urb(struct irp *irp)
 		wrap_free_urb(urb);
 		/* we assume that IRP was not in pending state before */
 		IoUnmarkIrpPending(irp);
-		NT_URB_STATUS(nt_urb) = USBD_STATUS_REQUEST_FAILED;
+		NT_URB_STATUS(nt_urb) = wrap_urb_status(ret);
 		USBEXIT(return NT_URB_STATUS(nt_urb));
 	} else
 		USBEXIT(return USBD_STATUS_PENDING);
@@ -1148,6 +1149,8 @@ NTSTATUS wrap_submit_irp(struct device_object *pdo, struct irp *irp)
 
 	USBTRACE("%p, %p", pdo, irp);
 	wd = pdo->reserved;
+	if (wd->usb.intf == NULL)
+		USBEXIT(return STATUS_DEVICE_REMOVED);
 	irp->wd = wd;
 	irp_sl = IoGetCurrentIrpStackLocation(irp);
 	switch (irp_sl->params.dev_ioctl.code) {

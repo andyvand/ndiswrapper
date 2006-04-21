@@ -78,8 +78,8 @@ void wrapmem_exit(void)
 		struct alloc_info *info;
 		info = container_of(ent, struct alloc_info, list);
 		atomic_sub(info->size, &alloc_sizes[ALLOC_TYPE_SLACK]);
-		WARNING("memory in %d of size %d allocated at %s(%d) leaking; "
-			"freeing it now", info->type, info->size,
+		WARNING("memory in %d of size %d allocated at %s(%d)"
+			"leaking; freeing it now", info->type, info->size,
 			info->file, info->line);
 		if (info->type == ALLOC_TYPE_ATOMIC ||
 		    info->type == ALLOC_TYPE_NON_ATOMIC)
