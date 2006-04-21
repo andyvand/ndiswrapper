@@ -759,10 +759,16 @@ static void ndis_get_drvinfo(struct net_device *dev,
 			     struct ethtool_drvinfo *info)
 {
 	struct wrap_ndis_device *wnd = netdev_priv(dev);
-	strcpy(info->driver, DRIVER_NAME);
-	strcpy(info->version, DRIVER_VERSION);
+	strncpy(info->driver, DRIVER_NAME, sizeof(info->driver));
+	strncpy(info->version, DRIVER_VERSION, sizeof(info->version));
+	strncpy(info->fw_version, wnd->wd->driver->version,
+		sizeof(info->fw_version));
 	if (wrap_is_pci_bus(wnd->wd->dev_bus_type))
-		strcpy(info->bus_info, pci_name(wnd->wd->pci.pdev));
+		strncpy(info->bus_info, pci_name(wnd->wd->pci.pdev),
+			sizeof(info->bus_info));
+	else
+		usb_make_path(wnd->wd->usb.udev, info->bus_info,
+			      sizeof(info->bus_info));
 	return;
 }
 

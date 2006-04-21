@@ -187,12 +187,11 @@ void wrap_kfree(void *ptr)
 	nt_spin_lock(&alloc_lock);
 	RemoveEntryList(&info->list);
 	nt_spin_unlock(&alloc_lock);
+	if (!(info->type == ALLOC_TYPE_ATOMIC ||
+	      info->type == ALLOC_TYPE_NON_ATOMIC))
+		WARNING("invliad type: %d", info->type);
 #endif
-	if (info->type == ALLOC_TYPE_ATOMIC ||
-	    info->type == ALLOC_TYPE_NON_ATOMIC)
-		kfree(info);
-	else
-		WARNING("invliad type: %d, memory not freed", info->type);
+	kfree(info);
 }
 
 void *wrap_vmalloc(unsigned long size, const char *file, int line)
@@ -247,11 +246,10 @@ void wrap_vfree(void *ptr)
 	nt_spin_lock(&alloc_lock);
 	RemoveEntryList(&info->list);
 	nt_spin_unlock(&alloc_lock);
+	if (info->type != ALLOC_TYPE_VMALLOC)
+		WARNING("invliad type: %d", info->type);
 #endif
-	if (info->type == ALLOC_TYPE_VMALLOC)
-		vfree(info);
-	else
-		WARNING("invliad type: %d, memory not freed", info->type);
+	vfree(info);
 }
 
 #ifdef ALLOC_DEBUG
