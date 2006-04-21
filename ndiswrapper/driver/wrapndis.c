@@ -1271,7 +1271,8 @@ STDCALL NTSTATUS NdisDispatchPower(struct device_object *fdo, struct irp *irp)
 			}
 			netif_poll_enable(wnd->net_dev);
 			DBGTRACE2("%s: device resumed", wnd->net_dev->name);
-			TRACEEXIT2(return STATUS_SUCCESS);
+			status = STATUS_SUCCESS;
+			break;
 		} else {
 			if (test_bit(HW_SUSPENDED, &wnd->hw_status) ||
 			    test_bit(HW_HALTED, &wnd->hw_status))
