@@ -288,7 +288,6 @@ static NDIS_STATUS miniport_init(struct wrap_ndis_device *wnd)
 	set_bit(HW_INITIALIZED, &wnd->hw_status);
 	set_bit(HW_AVAILABLE, &wnd->hw_status);
 	hangcheck_add(wnd);
-	add_stats_timer(wnd);
 	TRACEEXIT1(return NDIS_STATUS_SUCCESS);
 }
 
@@ -1644,6 +1643,7 @@ static NDIS_STATUS ndis_start_device(struct wrap_ndis_device *wnd)
 	}
 	kfree(buf);
 	wrap_procfs_add_ndis_device(wnd);
+	add_stats_timer(wnd);
 	TRACEEXIT1(return NDIS_STATUS_SUCCESS);
 
 buffer_pool_err:
