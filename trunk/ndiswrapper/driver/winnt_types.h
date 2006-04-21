@@ -138,6 +138,7 @@
 
 #define NOREGPARM __attribute__((regparm(0)))
 #define packed __attribute__((packed))
+#define __unused __attribute((unused))
 
 typedef u8	BOOLEAN;
 typedef u8	BYTE;
