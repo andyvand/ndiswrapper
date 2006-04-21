@@ -279,6 +279,7 @@ stack_check:
 install: prereq_check x86_64_stubs gen_exports default stack_check
 	mkdir -p $(INST_DIR)
 	install -m 0644 $(MODULE) $(INST_DIR)
+	-@/bin/rm -rf $(SRC_DIR)/.tmp_versions
 	-/sbin/depmod -a $(KVERS)
 
 dist:
