@@ -344,6 +344,7 @@ static NDIS_STATUS miniport_set_power_state(struct wrap_ndis_device *wnd,
 		TRACEEXIT1(return status);
 	} else {
 		status = miniport_set_int(wnd, OID_PNP_SET_POWER, state);
+		DBGTRACE2("set_power returns %08x", status);
 		if (status == NDIS_STATUS_SUCCESS)
 			set_bit(HW_SUSPENDED, &wnd->hw_status);
 		else

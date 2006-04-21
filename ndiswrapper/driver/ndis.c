@@ -59,7 +59,7 @@ void ndis_exit(void)
 void ndis_exit_device(struct wrap_ndis_device *wnd)
 {
 	struct wrap_device_setting *setting;
-
+	DBGTRACE2("%p", wnd);
 	/* TI driver doesn't call NdisMDeregisterInterrupt during halt! */
 	if (wnd->ndis_irq)
 		NdisMDeregisterInterrupt(wnd->ndis_irq);
