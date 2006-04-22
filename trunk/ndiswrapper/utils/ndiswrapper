@@ -34,6 +34,7 @@ my $driver_name;
 my $confdir = "/etc/ndiswrapper";
 my $instdir;
 my %fuzzlist;
+my %buslist;
 # bustype is either PCI or USB, whereas BusType used in INF file can
 # be different
 my $bus;
@@ -446,8 +447,9 @@ sub processPCIFuzz {
     for (my $i = 0; $i < @devs; $i++) {
 	my $dev = $devs[$i];
 	if ($dev ne $fuzzlist{$dev}) {
-	    my $src = "$confdir/$driver_name/$fuzzlist{$dev}.$bus.conf";
-	    my $dst = "$confdir/$driver_name/$dev.$bus.conf";
+	    my $bt = $buslist{$dev};
+	    my $src = "$confdir/$driver_name/$fuzzlist{$dev}.$bt.conf";
+	    my $dst = "$confdir/$driver_name/$dev.$bt.conf";
 	    symlink("$src", "$dst");
 	}
     }
@@ -461,6 +463,7 @@ sub addPCIFuzzEntry {
     my $device = shift;
     my $subvendor = shift;
     my $subdevice = shift;
+    my $bus = shift;
 
     my $s = "$vendor:$device";
 
@@ -470,6 +473,7 @@ sub addPCIFuzzEntry {
 	    $s2 .= ":$subvendor:$subdevice";
 	}
 	$fuzzlist{$s} = $s2;
+	$buslist{$s} = $bus;
     }
 }
 
@@ -523,7 +527,7 @@ sub parseMfr {
 
 	if ($val) {
 	    my $section;
-	    my @flavours = split(",", $val);
+	    my @flavours = map { stripquotes(trim($_)) } split(",", $val);
 	    my $flavour = "";
 	    if(@flavours == 1) {
 		#Vendor
@@ -531,7 +535,7 @@ sub parseMfr {
 	    } else {
 		#Vendor,flavour1, flavour2 etc;
 		for (my $i = 1; $i < @flavours; $i++) {
-		    my $flav = trim($flavours[$i]);
+		    my $flav = $flavours[$i];
 		    $flav =~ s/\s*(\S+)\s*/$1/;
 		    if (uc($flav) eq "NT.5.1") {
 			#This is the best (XP)
@@ -546,7 +550,7 @@ sub parseMfr {
 		}
 	    }
 	    my $res = parseVendor($flavour, $section);
-	    if (!$res) {
+	    if ($res) {
 		return $res;
 	    }
 	}
@@ -577,7 +581,7 @@ sub parseVendor {
 	    my $id;
 	    ($section, $id) = split(",", $val);
 	    $section = trim($section);
-	    $id = trim($id);
+	    $id = substStr(trim($id));
 	    my $bt, $vendor, $device, $subvendor, $subdevice;
 	    ($bus, $vendor, $device, $subvendor, $subdevice) = parseID($id);
 	    if ($vendor) {
@@ -654,7 +658,7 @@ sub parseDevice {
     my $bt = sprintf("%X", $bus);
     $filename .= ".$bt.conf";
     if ($bus == $WRAP_PCI_BUS || $bus == $WRAP_PCMCIA_BUS) {
-	addPCIFuzzEntry($device, $vendor, $subvendor, $subdevice);
+	addPCIFuzzEntry($device, $vendor, $subvendor, $subdevice, $bt);
     }
 
     if (!open(CONF, ">$confdir/$driver_name/$filename")) {
