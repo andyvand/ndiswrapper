@@ -1984,8 +1984,10 @@ STDCALL void WRAP_EXPORT(NdisMIndicateStatus)
 				  "num_cand %ld",
 				  cand->version, cand->num_candidates);
 			for (i = 0; i < cand->num_candidates; i++) {
-				struct iw_pmkid_cand pcand __unused;
-				union iwreq_data wrqu __unused;
+#if WIRELESS_EXT > 17
+				struct iw_pmkid_cand pcand;
+				union iwreq_data wrqu;
+#endif
 				struct ndis_pmkid_candidate *c =
 					&cand->candidates[i];
 				if ((u8 *)(c + 1) > end) {
