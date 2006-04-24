@@ -22,51 +22,32 @@ extern NT_SPIN_LOCK loader_lock;
 extern struct nt_list ndis_drivers;
 extern struct wrap_device *wrap_devices;
 
-/* IRP functions are called as Windows functions. For 64-bit, this
- * means arguments are in rcx, rdx etc., but Linux functions expect
- * them in rdi, rsi etc. So we need to put arguments back correctly
- * before touching arguments. We also assume that all arguments are
- * pointers (or register width). */
-
-/* called as Windows function, so call WIN2LIN3 before accessing
- * arguments */
-STDCALL NTSTATUS IrpStopCompletion(struct device_object *dev_obj,
-				   struct irp *irp, void *context)
+STDCALL NTSTATUS IoSendIrpTopDev(struct device_object *dev_obj, ULONG major_fn,
+				 ULONG minor_fn, struct io_stack_location *sl)
 {
-	WIN2LIN3(dev_obj, irp, context);
-
-	IOENTER("dev_obj: %p, irp: %p, context: %p", dev_obj, irp, context);
-	IOEXIT(return STATUS_MORE_PROCESSING_REQUIRED);
-}
-
-/* called as Windows function, so call WIN2LIN2 before accessing
- * arguments */
-STDCALL NTSTATUS IopPassIrpDown(struct device_object *dev_obj,
-				struct irp *irp)
-{
-	WIN2LIN2(dev_obj, irp);
-
-	IoSkipCurrentIrpStackLocation(irp);
-	return IoCallDriver(dev_obj, irp);
-}
-
-/* called as Windows function, so call WIN2LIN2 before accessing
- * arguments */
-STDCALL NTSTATUS IopInvalidDeviceRequest(struct device_object *dev_obj,
-					 struct irp *irp)
-{
-	struct io_stack_location *irp_sl;
 	NTSTATUS status;
+	struct nt_event event;
+	struct irp *irp;
+	struct io_stack_location *irp_sl;
+	struct device_object *top_dev = IoGetAttachedDeviceReference(dev_obj);
 
-	WIN2LIN2(dev_obj, irp);
-
-	irp_sl = IoGetCurrentIrpStackLocation(irp);
-	WARNING("IRP %d:%d not implemented",
-		irp_sl->major_fn, irp_sl->minor_fn);
-	irp->io_status.status = STATUS_SUCCESS;
+	KeInitializeEvent(&event, NotificationEvent, FALSE);
+	irp = IoBuildSynchronousFsdRequest(IRP_MJ_PNP, top_dev, NULL, 0, NULL,
+					   &event, NULL);
+	irp->io_status.status = STATUS_NOT_IMPLEMENTED;
 	irp->io_status.info = 0;
-	status = irp->io_status.status;
-	IoCompleteRequest(irp, IO_NO_INCREMENT);
+	irp_sl = IoGetNextIrpStackLocation(irp);
+	if (sl)
+		memcpy(irp_sl, sl, sizeof(*irp_sl));
+	irp_sl->major_fn = major_fn;
+	irp_sl->minor_fn = minor_fn;
+	status = IoCallDriver(top_dev, irp);
+	if (status == STATUS_PENDING) {
+		KeWaitForSingleObject(&event, Executive, KernelMode,
+				      FALSE, NULL);
+		status = irp->io_status.status;
+	}
+	ObDereferenceObject(top_dev);
 	return status;
 }
 
@@ -124,6 +105,9 @@ STDCALL NTSTATUS pdoDispatchPnp(struct device_object *pdo,
 	DBGTRACE2("fn %d:%d, wd: %p", irp_sl->major_fn, irp_sl->minor_fn, wd);
 	switch (irp_sl->minor_fn) {
 	case IRP_MN_START_DEVICE:
+	case IRP_MN_QUERY_STOP_DEVICE:
+	case IRP_MN_STOP_DEVICE:
+	case IRP_MN_QUERY_REMOVE_DEVICE:
 		status = STATUS_SUCCESS;
 		break;
 	case IRP_MN_QUERY_INTERFACE:
@@ -157,9 +141,6 @@ STDCALL NTSTATUS pdoDispatchPnp(struct device_object *pdo,
 #else
 		status = STATUS_NOT_IMPLEMENTED;
 #endif
-		break;
-	case IRP_MN_QUERY_REMOVE_DEVICE:
-		status = STATUS_SUCCESS;
 		break;
 	case IRP_MN_REMOVE_DEVICE:
 		ntoskernel_exit_device(wd);
@@ -275,7 +256,7 @@ static struct device_object *alloc_pdo(struct driver_object *drv_obj)
 	if (status != STATUS_SUCCESS)
 		return NULL;
 	for (i = 0; i <= IRP_MJ_MAXIMUM_FUNCTION; i++)
-		drv_obj->major_func[i] = IopInvalidDeviceRequest;
+		drv_obj->major_func[i] = IoInvalidDeviceRequest;
 	drv_obj->major_func[IRP_MJ_INTERNAL_DEVICE_CONTROL] =
 		pdoDispatchDeviceControl;
 	drv_obj->major_func[IRP_MJ_DEVICE_CONTROL] =
@@ -434,33 +415,22 @@ err_enable:
 NTSTATUS pnp_set_power_state(struct wrap_device *wd,
 			     enum device_power_state state)
 {
-	struct device_object *pdo, *fdo;
-	struct irp *irp;
-	struct io_stack_location *irp_sl;
 	NTSTATUS status;
+	struct device_object *pdo;
+	struct io_stack_location irp_sl;
 
 	pdo = wd->pdo;
-	fdo = IoGetAttachedDevice(pdo);
+	IOTRACE("%p, %p", pdo, IoGetAttachedDevice(pdo));
+	memset(&irp_sl, 0, sizeof(irp_sl));
+	irp_sl.params.power.state.device_state = state;
 	if (state > PowerDeviceD0) {
-		irp = IoAllocateIrp(fdo->stack_count, FALSE);
-		irp_sl = IoGetNextIrpStackLocation(irp);
-		DBGTRACE2("irp = %p, stack = %p", irp, irp_sl);
-		irp_sl->major_fn = IRP_MJ_POWER;
-		irp_sl->minor_fn = IRP_MN_QUERY_POWER;
-		irp_sl->params.power.state.device_state = state;
-		irp->io_status.status = STATUS_NOT_SUPPORTED;
-		status = IoCallDriver(fdo, irp);
+		irp_sl.params.power.state.device_state = state;
+		status = IoSendIrpTopDev(pdo, IRP_MJ_POWER, IRP_MN_QUERY_POWER,
+					 &irp_sl);
 		if (status != STATUS_SUCCESS)
 			WARNING("query power returns %08X", status);
 	}
-	irp = IoAllocateIrp(fdo->stack_count, FALSE);
-	irp_sl = IoGetNextIrpStackLocation(irp);
-	DBGTRACE2("irp = %p, stack = %p", irp, irp_sl);
-	irp_sl->major_fn = IRP_MJ_POWER;
-	irp_sl->minor_fn = IRP_MN_SET_POWER;
-	irp_sl->params.power.state.device_state = state;
-	irp->io_status.status = STATUS_NOT_SUPPORTED;
-	status = IoCallDriver(fdo, irp);
+	status = IoSendIrpTopDev(pdo, IRP_MJ_POWER, IRP_MN_SET_POWER, &irp_sl);
 	if (status != STATUS_SUCCESS)
 		WARNING("set power returns %08X", status);
 	TRACEEXIT1(return status);
@@ -470,26 +440,19 @@ NTSTATUS pnp_start_device(struct wrap_device *wd)
 {
 	struct device_object *fdo;
 	struct device_object *pdo;
-	struct irp *irp;
-	struct io_stack_location *irp_sl;
+	struct io_stack_location irp_sl;
 	NTSTATUS status;
 
 	pdo = wd->pdo;
-	fdo = IoGetAttachedDevice(pdo);
-	DBGTRACE1("fdo: %p, irql: %d", fdo, current_irql());
-	irp = IoAllocateIrp(fdo->stack_count, FALSE);
-	irp_sl = IoGetNextIrpStackLocation(irp);
-	DBGTRACE1("irp = %p, stack = %p", irp, irp_sl);
 	/* TODO: for now we use same resources for both translated
 	 * resources and raw resources */
-	irp_sl->params.start_device.allocated_resources =
+	memset(&irp_sl, 0, sizeof(irp_sl));
+	irp_sl.params.start_device.allocated_resources =
 		wd->resource_list;
-	irp_sl->params.start_device.allocated_resources_translated =
+	irp_sl.params.start_device.allocated_resources_translated =
 		wd->resource_list;
-	irp_sl->major_fn = IRP_MJ_PNP;
-	irp_sl->minor_fn = IRP_MN_START_DEVICE;
-	irp->io_status.status = STATUS_NOT_SUPPORTED;
-	status = IoCallDriver(fdo, irp);
+	status = IoSendIrpTopDev(pdo, IRP_MJ_PNP, IRP_MN_START_DEVICE, &irp_sl);
+	fdo = IoGetAttachedDevice(pdo);
 	if (status == STATUS_SUCCESS)
 		fdo->drv_obj->drv_ext->count++;
 	else
@@ -500,31 +463,18 @@ NTSTATUS pnp_start_device(struct wrap_device *wd)
 
 NTSTATUS pnp_stop_device(struct wrap_device *wd)
 {
-	struct device_object *pdo, *fdo;
-	struct irp *irp;
-	struct io_stack_location *irp_sl;
+	struct device_object *pdo;
 	NTSTATUS status;
 
 	pdo = wd->pdo;
-	fdo = IoGetAttachedDevice(pdo);
-	DBGTRACE1("fdo: %p", fdo);
-	irp = IoAllocateIrp(fdo->stack_count, FALSE);
-	irp_sl = IoGetNextIrpStackLocation(irp);
-	DBGTRACE1("irp = %p, stack = %p", irp, irp_sl);
-	irp_sl->major_fn = IRP_MJ_PNP;
-	irp_sl->minor_fn = IRP_MN_QUERY_STOP_DEVICE;
-	irp->io_status.status = STATUS_NOT_SUPPORTED;
-	status = IoCallDriver(fdo, irp);
+	status = IoSendIrpTopDev(pdo, IRP_MJ_PNP, IRP_MN_QUERY_STOP_DEVICE,
+				 NULL);
 	if (status != STATUS_SUCCESS)
 		WARNING("status: %08X", status);
 	/* for now we ignore query status */
-	irp = IoAllocateIrp(fdo->stack_count, FALSE);
-	irp_sl = IoGetNextIrpStackLocation(irp);
-	DBGTRACE1("irp = %p, stack = %p", irp, irp_sl);
-	irp_sl->major_fn = IRP_MJ_PNP;
-	irp_sl->minor_fn = IRP_MN_STOP_DEVICE;
-	irp->io_status.status = STATUS_NOT_SUPPORTED;
-	status = IoCallDriver(fdo, irp);
+	status = IoSendIrpTopDev(pdo, IRP_MJ_PNP, IRP_MN_STOP_DEVICE, NULL);
+	if (status != STATUS_SUCCESS)
+		WARNING("status: %08X", status);
 	if (status != STATUS_SUCCESS)
 		WARNING("status: %08X", status);
 	TRACEEXIT2(return status);
@@ -532,60 +482,21 @@ NTSTATUS pnp_stop_device(struct wrap_device *wd)
 
 NTSTATUS pnp_remove_device(struct wrap_device *wd)
 {
-	struct device_object *pdo, *fdo;
-	struct driver_object *fdo_drv_obj;
-	struct irp *irp;
-	struct io_stack_location *irp_sl;
+	struct device_object *pdo;
 	NTSTATUS status;
 
 	pdo = wd->pdo;
-	fdo = IoGetAttachedDevice(pdo);
-	fdo_drv_obj = fdo->drv_obj;
-	DBGTRACE1("fdo: %p", fdo);
-	irp = IoAllocateIrp(fdo->stack_count, FALSE);
-	irp_sl = IoGetNextIrpStackLocation(irp);
-	DBGTRACE1("irp = %p, stack = %p", irp, irp_sl);
-	irp_sl->major_fn = IRP_MJ_PNP;
-	irp_sl->minor_fn = IRP_MN_QUERY_REMOVE_DEVICE;
-	irp->io_status.status = STATUS_NOT_SUPPORTED;
-	status = IoCallDriver(fdo, irp);
-	if (status != STATUS_SUCCESS)
-		WARNING("status: %08X", status);
-	/* for now we ignore query status */
-	irp = IoAllocateIrp(fdo->stack_count, FALSE);
-	irp_sl = IoGetNextIrpStackLocation(irp);
-	DBGTRACE1("irp = %p, stack = %p", irp, irp_sl);
-	irp_sl->major_fn = IRP_MJ_PNP;
-	irp_sl->minor_fn = IRP_MN_REMOVE_DEVICE;
-	irp->io_status.status = STATUS_NOT_SUPPORTED;
-	status = IoCallDriver(fdo, irp);
+	status = IoSendIrpTopDev(pdo, IRP_MJ_PNP, IRP_MN_QUERY_REMOVE_DEVICE,
+				 NULL);
 	if (status != STATUS_SUCCESS)
 		WARNING("status: %08X", status);
 
+	status = IoSendIrpTopDev(pdo, IRP_MJ_PNP, IRP_MN_REMOVE_DEVICE, NULL);
+	if (status != STATUS_SUCCESS)
+		WARNING("status: %08X", status);
 	/* TODO: should we use count in drv_ext or driver's Object
 	 * header reference count to keep count of devices associated
 	 * with a driver? */
-	if (status == STATUS_SUCCESS)
-		fdo_drv_obj->drv_ext->count--;
-	DBGTRACE1("count: %d", fdo_drv_obj->drv_ext->count);
-	if (fdo->drv_obj->drv_ext->count < 0)
-		WARNING("wrong count: %d", fdo_drv_obj->drv_ext->count);
-	if (fdo_drv_obj->drv_ext->count == 0) {
-		struct wrap_driver *wrap_driver;
-		DBGTRACE1("unloading driver: %p", fdo_drv_obj);
-		if (fdo_drv_obj->unload)
-			LIN2WIN1(fdo_drv_obj->unload, fdo_drv_obj);
-		wrap_driver =
-			IoGetDriverObjectExtension(fdo_drv_obj,
-					   (void *)CE_WRAP_DRIVER_CLIENT_ID);
-		if (wrap_driver) {
-			nt_spin_lock(&loader_lock);
-			unload_wrap_driver(wrap_driver);
-			nt_spin_unlock(&loader_lock);
-		} else
-			ERROR("couldn't get wrap_driver");
-		ObDereferenceObject(fdo_drv_obj);
-	}
 	IoDeleteDevice(pdo);
 	TRACEEXIT1(return status);
 }

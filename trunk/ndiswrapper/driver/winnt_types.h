@@ -495,6 +495,7 @@ struct dev_obj_ext {
 	CSHORT type;
 	CSHORT size;
 	struct device_object *dev_obj;
+	struct device_object *attached_to;
 };
 
 struct io_status_block {
