@@ -158,6 +158,7 @@ STDCALL NTSTATUS pdoDispatchPnp(struct device_object *pdo,
 		if (wd->resource_list)
 			kfree(wd->resource_list);
 		wd->resource_list = NULL;
+		IoDeleteDevice(pdo);
 		status = STATUS_SUCCESS;
 		break;
 	default:
@@ -497,7 +498,6 @@ NTSTATUS pnp_remove_device(struct wrap_device *wd)
 	/* TODO: should we use count in drv_ext or driver's Object
 	 * header reference count to keep count of devices associated
 	 * with a driver? */
-	IoDeleteDevice(pdo);
 	TRACEEXIT1(return status);
 }
 

@@ -1284,13 +1284,11 @@ STDCALL NTSTATUS NdisDispatchPower(struct device_object *fdo, struct irp *irp)
 			hangcheck_del(wnd);
 			del_stats_timer(wnd);
 			ndis_status = miniport_set_power_state(wnd, state);
-			/* TODO: we need to send the IRP back with
-			 * error so that pdo can restart device */
+			/* TODO: handle error case */
 			if (ndis_status != NDIS_STATUS_SUCCESS)
 				WARNING("setting power to %d failed: %08X",
 					state, ndis_status);
-			status = STATUS_SUCCESS;
-			status = LIN2WIN2(IoPassIrpDown, wnd->nmb->pdo, irp);
+			status = LIN2WIN2(IoAsyncForwardIrp, wnd->nmb->pdo, irp);
 		}
 		break;
 	case IRP_MN_QUERY_POWER:
