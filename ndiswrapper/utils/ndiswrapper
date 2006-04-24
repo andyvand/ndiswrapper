@@ -531,7 +531,7 @@ sub parseMfr {
 	    my $flavour = "";
 	    if(@flavours == 1) {
 		#Vendor
-		$section = $val;				
+		$section = $flavours[0];				
 	    } else {
 		#Vendor,flavour1, flavour2 etc;
 		for (my $i = 1; $i < @flavours; $i++) {
