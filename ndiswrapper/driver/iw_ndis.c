@@ -1113,8 +1113,7 @@ static char *ndis_translate_scan(struct net_device *dev, char *event,
 		iwe.u.data.flags = IW_ENCODE_ENABLED | IW_ENCODE_NOKEY;
 	iwe.u.data.length = 0;
 	iwe.len = IW_EV_POINT_LEN;
-	event = iwe_stream_add_point(event, end_buf, &iwe,
-				     bssid->ssid.essid);
+	event = iwe_stream_add_point(event, end_buf, &iwe, bssid->ssid.essid);
 
 	/* add rate */
 	memset(&iwe, 0, sizeof(iwe));
@@ -1153,19 +1152,7 @@ static char *ndis_translate_scan(struct net_device *dev, char *event,
 	if (bssid->length > sizeof(*bssid)) {
 		unsigned char *iep = (unsigned char *)bssid_ex->ies +
 			sizeof(struct ndis_fixed_ies);
-		unsigned char *end = iep + bssid_ex->ie_length;
-	/*
-	 * TODO: backwards compatibility would require that IWEVCUSTOM
-	 * is send even if WIRELESS_EXT > 17. This version does not do
-	 * this in order to allow wpa_supplicant to be tested with
-	 * WE-18.
-	 */
-#if 0
-		memset(&iwe, 0, sizeof(iwe));
-		iwe.cmd = IWEVGENIE;
-		iwe.u.data.length = bssid_ex->ie_length;
-		event = iwe_stream_add_point(event, end_buf, &iwe, iep);
-#endif
+		__unused unsigned char *end = iep + bssid_ex->ie_length;
 
 		while (iep + 1 < end && iep + 2 + iep[1] <= end) {
 			unsigned char ielen = 2 + iep[1];
@@ -1174,6 +1161,17 @@ static char *ndis_translate_scan(struct net_device *dev, char *event,
 				iep += ielen;
 				continue;
 			}
+#if WIRELESS_EXT > 17
+			if ((iep[0] == WLAN_EID_GENERIC && iep[1] >= 4 &&
+			     memcmp(iep + 2, "\x00\x50\xf2\x01", 4) == 0) ||
+			    iep[0] == RSN_INFO_ELEM) {
+				memset(&iwe, 0, sizeof(iwe));
+				iwe.cmd = IWEVGENIE;
+				iwe.u.data.length = ielen;
+				event = iwe_stream_add_point(event, end_buf,
+							     &iwe, iep);
+			}
+#else
 
 			if (iep[0] == WLAN_EID_GENERIC && iep[1] >= 4 &&
 			    memcmp(iep + 2, "\x00\x50\xf2\x01", 4) == 0) {
@@ -1206,11 +1204,10 @@ static char *ndis_translate_scan(struct net_device *dev, char *event,
 				event = iwe_stream_add_point(event, end_buf,
 							     &iwe, buf);
 			}
-
+#endif
 			iep += ielen;
 		}
 	}
-
 	DBGTRACE2("event = %p, current_val = %p", event, current_val);
 	TRACEEXIT2(return event);
 }

@@ -705,9 +705,12 @@ STDCALL NTSTATUS IoCreateSymbolicLink(struct unicode_string *link,
 STDCALL void IoDeleteDevice(struct device_object *dev);
 STDCALL void IoDetachDevice(struct device_object *topdev);
 STDCALL struct device_object *IoGetAttachedDevice(struct device_object *dev);
+STDCALL struct device_object *
+	IoGetAttachedDeviceReference(struct device_object *dev);
 STDCALL NTSTATUS
-IoAllocateDriverObjectExtension(struct driver_object *drv_obj,
-				void *client_id, ULONG extlen, void **ext);
+	IoAllocateDriverObjectExtension(struct driver_object *drv_obj,
+					void *client_id, ULONG extlen,
+					void **ext);
 STDCALL void *IoGetDriverObjectExtension(struct driver_object *drv,
 					 void *client_id);
 STDCALL struct device_object *IoAttachDeviceToDeviceStack
@@ -721,15 +724,29 @@ STDCALL void IoFreeIrp(struct irp *irp);
 STDCALL BOOLEAN IoCancelIrp(struct irp *irp);
 _FASTCALL NTSTATUS IofCallDriver
 	(FASTCALL_DECL_2(struct device_object *dev_obj, struct irp *irp));
-STDCALL struct irp *WRAP_EXPORT(IoBuildSynchronousFsdRequest)
-	(ULONG major_func, struct device_object *dev_obj, void *buf,
-	 ULONG length, LARGE_INTEGER *offset, struct nt_event *event,
-	 struct io_status_block *status);
-STDCALL struct irp *WRAP_EXPORT(IoBuildAsynchronousFsdRequest)
-	(ULONG major_func, struct device_object *dev_obj, void *buf,
-	 ULONG length, LARGE_INTEGER *offset,
-	 struct io_status_block *status);
+STDCALL struct irp *
+	IoBuildSynchronousFsdRequest(ULONG major_func,
+				     struct device_object *dev_obj, void *buf,
+				     ULONG length, LARGE_INTEGER *offset,
+				     struct nt_event *event,
+				     struct io_status_block *status);
+STDCALL struct irp *
+	IoBuildAsynchronousFsdRequest(ULONG major_func,
+				      struct device_object *dev_obj, void *buf,
+				      ULONG length, LARGE_INTEGER *offset,
+				      struct io_status_block *status);
 STDCALL NTSTATUS PoCallDriver(struct device_object *dev_obj, struct irp *irp);
+
+driver_dispatch_t IopInvalidDeviceRequest;
+
+STDCALL NTSTATUS IoPassIrpDown(struct device_object *dev_obj,
+			       struct irp *irp);
+STDCALL NTSTATUS IoSyncForwardIrp(struct device_object *dev_obj,
+				  struct irp *irp);
+STDCALL NTSTATUS IoAsyncForwardIrp(struct device_object *dev_obj,
+				   struct irp *irp);
+STDCALL NTSTATUS IoInvalidDeviceRequest(struct device_object *dev_obj,
+					struct irp *irp);
 
 struct nt_thread *get_current_nt_thread(void);
 u64 ticks_1601(void);
@@ -831,9 +848,9 @@ _FASTCALL void ObfDereferenceObject(FASTCALL_DECL_1(void *object));
 void adjust_user_shared_data_addr(char *driver, unsigned long length);
 
 #define IoCompleteRequest(irp, prio)			\
-	IofCompleteRequest(FASTCALL_ARGS_2(irp, prio));
+	IofCompleteRequest(FASTCALL_ARGS_2(irp, prio))
 #define IoCallDriver(dev, irp)				\
-	IofCallDriver(FASTCALL_ARGS_2(dev, irp));
+	IofCallDriver(FASTCALL_ARGS_2(dev, irp))
 
 static inline KIRQL current_irql(void)
 {

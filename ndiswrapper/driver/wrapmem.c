@@ -83,7 +83,7 @@ void wrapmem_exit(void)
 		atomic_sub(info->size, &alloc_sizes[ALLOC_TYPE_SLACK]);
 		WARNING("memory in %d of size %d allocated at %s(%d) "
 #if ALLOC_DEBUG > 1
-			"tag 0x%08X "
+			"with tag 0x%08X "
 #endif
 			"leaking; freeing it now", info->type, info->size,
 			info->file, info->line

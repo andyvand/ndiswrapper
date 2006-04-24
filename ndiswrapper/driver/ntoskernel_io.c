@@ -223,7 +223,8 @@ STDCALL void WRAP_EXPORT(IoFreeIrp)
 
 STDCALL struct irp *WRAP_EXPORT(IoBuildAsynchronousFsdRequest)
 	(ULONG major_fn, struct device_object *dev_obj, void *buffer,
-	 ULONG length, LARGE_INTEGER *offset, struct io_status_block *status)
+	 ULONG length, LARGE_INTEGER *offset,
+	 struct io_status_block *user_status)
 {
 	struct irp *irp;
 	struct io_stack_location *irp_sl;
@@ -270,6 +271,7 @@ STDCALL struct irp *WRAP_EXPORT(IoBuildAsynchronousFsdRequest)
 		irp_sl->params.write.length = length;
 		irp_sl->params.write.byte_offset = *offset;
 	}
+	irp->user_status = user_status;
 	IOTRACE("irp: %p", irp);
 	return irp;
 }
@@ -277,12 +279,12 @@ STDCALL struct irp *WRAP_EXPORT(IoBuildAsynchronousFsdRequest)
 STDCALL struct irp *WRAP_EXPORT(IoBuildSynchronousFsdRequest)
 	(ULONG major_fn, struct device_object *dev_obj, void *buf,
 	 ULONG length, LARGE_INTEGER *offset, struct nt_event *event,
-	 struct io_status_block *status)
+	 struct io_status_block *user_status)
 {
 	struct irp *irp;
 
 	irp = IoBuildAsynchronousFsdRequest(major_fn, dev_obj, buf, length,
-					    offset, status);
+					    offset, user_status);
 	if (irp == NULL)
 		return NULL;
 	irp->user_event = event;
@@ -439,6 +441,93 @@ _FASTCALL void WRAP_EXPORT(IofCompleteRequest)
 	}
 	IoFreeIrp(irp);
 	IOEXIT(return);
+}
+
+/* IRP functions are called as Windows functions. For 64-bit, this
+ * means arguments are in rcx, rdx etc., but Linux functions expect
+ * them in rdi, rsi etc. So we need to put arguments back correctly
+ * before touching arguments. We also assume that all arguments are
+ * pointers (or register width). */
+
+STDCALL NTSTATUS IoPassIrpDown(struct device_object *dev_obj,
+			       struct irp *irp)
+{
+	WIN2LIN2(dev_obj, irp);
+
+	IoSkipCurrentIrpStackLocation(irp);
+	IOEXIT(return IoCallDriver(dev_obj, irp));
+}
+
+
+/* called as Windows function, so call WIN2LIN3 before accessing
+ * arguments */
+STDCALL NTSTATUS IoIrpSyncComplete(struct device_object *dev_obj,
+				   struct irp *irp, void *context)
+{
+	WIN2LIN3(dev_obj, irp, context);
+
+	if (irp->pending_returned == TRUE)
+		KeSetEvent(context, IO_NO_INCREMENT, FALSE);
+	IOEXIT(return STATUS_MORE_PROCESSING_REQUIRED);
+}
+
+/* called as Windows function, so call WIN2LIN2 before accessing
+ * arguments */
+STDCALL NTSTATUS IoSyncForwardIrp(struct device_object *dev_obj,
+				  struct irp *irp)
+{
+	struct nt_event event;
+	NTSTATUS status;
+
+	WIN2LIN2(dev_obj, irp);
+
+	IoCopyCurrentIrpStackLocationToNext(irp);
+	KeInitializeEvent(&event, SynchronizationEvent, FALSE);
+	IoSetCompletionRoutine(irp, IoIrpSyncComplete, &event,
+			       TRUE, TRUE, TRUE);
+	status = IoCallDriver(dev_obj, irp);
+	IOTRACE("%08X", status);
+	if (status == STATUS_PENDING) {
+		KeWaitForSingleObject(&event, Executive, KernelMode, FALSE,
+				      NULL);
+		status = irp->io_status.status;
+	}
+	IOTRACE("%08X", status);
+	IOEXIT(return status);
+}
+
+/* called as Windows function, so call WIN2LIN2 before accessing
+ * arguments */
+STDCALL NTSTATUS IoAsyncForwardIrp(struct device_object *dev_obj,
+				   struct irp *irp)
+{
+	NTSTATUS status;
+
+	WIN2LIN2(dev_obj, irp);
+
+	IoCopyCurrentIrpStackLocationToNext(irp);
+	status = IoCallDriver(dev_obj, irp);
+	IOEXIT(return status);
+}
+
+/* called as Windows function, so call WIN2LIN2 before accessing
+ * arguments */
+STDCALL NTSTATUS IoInvalidDeviceRequest(struct device_object *dev_obj,
+					struct irp *irp)
+{
+	struct io_stack_location *irp_sl;
+	NTSTATUS status;
+
+	WIN2LIN2(dev_obj, irp);
+
+	irp_sl = IoGetCurrentIrpStackLocation(irp);
+	WARNING("IRP %d:%d not implemented",
+		irp_sl->major_fn, irp_sl->minor_fn);
+	irp->io_status.status = STATUS_SUCCESS;
+	irp->io_status.info = 0;
+	status = irp->io_status.status;
+	IoCompleteRequest(irp, IO_NO_INCREMENT);
+	IOEXIT(return status);
 }
 
 static irqreturn_t io_irq_th(int irq, void *data, struct pt_regs *pt_regs)
@@ -769,51 +858,55 @@ STDCALL void WRAP_EXPORT(IoDetachDevice)
 STDCALL struct device_object *WRAP_EXPORT(IoGetAttachedDevice)
 	(struct device_object *dev)
 {
-	struct device_object *d;
+	struct device_object *top_dev;
 	KIRQL irql;
 
 	IOENTER("%p", dev);
 	if (!dev)
 		IOEXIT(return NULL);
 	irql = nt_spin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL);
-	for (d = dev; d->attached; d = d->attached)
-		;
+	top_dev = dev;
+	while (top_dev->attached)
+		top_dev = top_dev->attached;
 	nt_spin_unlock_irql(&ntoskernel_lock, irql);
-	IOEXIT(return d);
+	IOEXIT(return top_dev);
 }
 
 STDCALL struct device_object *WRAP_EXPORT(IoGetAttachedDeviceReference)
 	(struct device_object *dev)
 {
-	struct device_object *d;
+	struct device_object *top_dev;
 
 	IOENTER("%p", dev);
 	if (!dev)
 		IOEXIT(return NULL);
-	d = IoGetAttachedDevice(dev);
-	d->ref_count++;
-	IOEXIT(return d);
+	top_dev = IoGetAttachedDevice(dev);
+	ObReferenceObject(top_dev);
+	IOEXIT(return top_dev);
 }
 
 STDCALL struct device_object *WRAP_EXPORT(IoAttachDeviceToDeviceStack)
 	(struct device_object *src, struct device_object *tgt)
 {
-	struct device_object *dst;
+	struct device_object *attached;
+	struct dev_obj_ext *src_dev_ext;
+
 	KIRQL irql;
 
 	IOENTER("%p, %p", src, tgt);
-	dst = IoGetAttachedDevice(tgt);
-	IOTRACE("stack_count: %d -> %d", dst->stack_count, src->stack_count);
-	IOTRACE("%p", dst);
+	attached = IoGetAttachedDevice(tgt);
+	IOTRACE("%p", attached);
+	src_dev_ext = src->dev_obj_ext;
 	irql = nt_spin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL);
-	if (dst)
-		dst->attached = src;
+	if (attached)
+		attached->attached = src;
 	src->attached = NULL;
-	src->stack_count = dst->stack_count + 1;
-//	src->ref_count++;
+	src->stack_count = attached->stack_count + 1;
+	src_dev_ext->attached_to = attached;
 	nt_spin_unlock_irql(&ntoskernel_lock, irql);
-	IOTRACE("stack_count: %d -> %d", dst->stack_count, src->stack_count);
-	IOEXIT(return dst);
+	IOTRACE("stack_count: %d -> %d", attached->stack_count,
+		src->stack_count);
+	IOEXIT(return attached);
 }
 
 
