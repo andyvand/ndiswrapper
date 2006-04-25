@@ -487,7 +487,7 @@ NTSTATUS pnp_remove_device(struct wrap_device *wd)
 	NTSTATUS status;
 
 	pdo = wd->pdo;
-	fdo = pdo->attached;
+	fdo = IoGetAttachedDevice(pdo);
 	fdo_drv_obj = fdo->drv_obj;
 	DBGTRACE2("%p, %p, %p", pdo, fdo, fdo_drv_obj);
 	status = IoSendIrpTopDev(pdo, IRP_MJ_PNP, IRP_MN_QUERY_REMOVE_DEVICE,
