@@ -1320,7 +1320,6 @@ STDCALL NTSTATUS NdisDispatchPnp(struct device_object *fdo, struct irp *irp)
 	struct io_stack_location *irp_sl;
 	struct wrap_ndis_device *wnd;
 	struct device_object *pdo;
-	struct driver_object *drv_obj;
 	NTSTATUS status;
 
 	WIN2LIN2(fdo, irp);
@@ -1358,30 +1357,8 @@ STDCALL NTSTATUS NdisDispatchPnp(struct device_object *fdo, struct irp *irp)
 		}
 		/* wnd is not valid anymore */
 		status = LIN2WIN2(IoAsyncForwardIrp, pdo, irp);
-		drv_obj = fdo->drv_obj;
 		IoDetachDevice(fdo);
 		IoDeleteDevice(fdo);
-		if (status == STATUS_SUCCESS)
-			drv_obj->drv_ext->count--;
-		DBGTRACE1("count: %d", drv_obj->drv_ext->count);
-		if (fdo->drv_obj->drv_ext->count < 0)
-			WARNING("wrong count: %d", drv_obj->drv_ext->count);
-		if (drv_obj->drv_ext->count == 0) {
-			struct wrap_driver *wrap_driver;
-			DBGTRACE1("unloading driver: %p", drv_obj);
-			if (drv_obj->unload)
-				LIN2WIN1(drv_obj->unload, drv_obj);
-			wrap_driver =
-				IoGetDriverObjectExtension(drv_obj,
-					   (void *)CE_WRAP_DRIVER_CLIENT_ID);
-			if (wrap_driver) {
-				nt_spin_lock(&loader_lock);
-				unload_wrap_driver(wrap_driver);
-				nt_spin_unlock(&loader_lock);
-			} else
-				ERROR("couldn't get wrap_driver");
-			ObDereferenceObject(drv_obj);
-		}
 		break;
 	default:
 		status = LIN2WIN2(IoAsyncForwardIrp, pdo, irp);
