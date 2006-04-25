@@ -561,10 +561,6 @@ enum wrapper_work {
 	SHUTDOWN
 };
 
-enum ndis_attributes {
-	ATTR_SERIALIZED, ATTR_SURPRISE_REMOVE, ATTR_NO_HALT_ON_SUSPEND,
-};
-
 struct encr_info {
 	struct encr_key {
 		ULONG length;
@@ -853,7 +849,7 @@ struct wrap_ndis_device {
 
 	struct work_struct wrap_ndis_worker;
 	unsigned long wrap_ndis_work;
-	unsigned long attributes;
+	UINT attributes;
 	int iw_auth_set;
 	int iw_auth_wpa_version;
 	int iw_auth_cipher_pairwise;
