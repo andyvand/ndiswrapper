@@ -5,6 +5,10 @@ Version 1.15 2006-XX-XX
   memory leaks.
 * Proper fix for drivers (Atheros PCI and USB drivers) allocating
   large chunk of memory in atomic context.
+* Fix for crash when module is removed with new Atheros USB driver,
+  which supports WPA2 and has no firmware driver (athfmwdl).
+* Memory leaks plugged.
+* Wireless statistics are enabled (inadvertantly disabled in version 1.14).
 
 Version 1.14 2006-04-17
 =======================
