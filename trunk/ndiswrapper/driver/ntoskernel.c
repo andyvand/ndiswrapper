@@ -1855,6 +1855,9 @@ static int thread_trampoline(void *data)
 	thread = ctx.thread;
 	thread->task = current;
 	thread->pid = thread->task->pid;
+#ifdef PF_NOFREEZE
+	current->flags |= PF_NOFREEZE;
+#endif
 
 	DBGTRACE2("thread: %p, task: %p (%d)", thread, thread->task,
 		  thread->pid);

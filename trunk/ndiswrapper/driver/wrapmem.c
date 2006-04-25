@@ -70,8 +70,7 @@ void wrapmem_exit(void)
 	for (type = 0; type < ALLOC_TYPE_MAX; type++) {
 		int n = atomic_read(&alloc_sizes[type]);
 		if (n)
-			WARNING("%d bytes of allocations in %d leaking",
-				n, type);
+			WARNING("%d bytes of memory in %d leaking", n, type);
 	}	
 #endif
 

@@ -17,9 +17,10 @@
 
 /* define ALLOC_INFO below to get information about memory used by
  * both ndiswrapper and Windows driver by reading
- * /proc/net/ndiswrapper/debug; this will also show allocation
- * information in KERN_DEBUG when ndiswrapper module is unloaded,
- * which indicates if memory is being leaked */
+ * /proc/net/ndiswrapper/debug; this will also show memory leaks
+ * (memory allocated but not freed) when ndiswrapper module is
+ * unloaded. To identify leaks, define ALLOC_DEBUG, which will show
+ * individual allocations that are not being freed */
 
 #define ALLOC_INFO 1
 //#define ALLOC_DEBUG 1
