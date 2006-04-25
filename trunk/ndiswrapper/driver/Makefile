@@ -66,14 +66,18 @@ ifdef IO_DEBUG
 CFLAGS += -DIO_DEBUG
 endif
 
+# to debug worker threads
 ifdef WORK_DEBUG
 CFLAGS += -DWORK_DEBUG
 endif
 
+# if ALLOC_INFO is defined, memory leak information is printed (see wrapmem.c)
 ifdef ALLOC_INFO
 CFLAGS += -DALLOC_INFO
 endif
 
+#if ALLOC_DEBUG=1, details about individual allocations leaking is printed
+#if ALLOC_DEBUG=2, tags in ExAllocatePoolWithTag leaking printed
 ifdef ALLOC_DEBUG
 CFLAGS += -DALLOC_DEBUG=$(ALLOC_DEBUG)
 endif

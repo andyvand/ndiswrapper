@@ -2468,7 +2468,7 @@ STDCALL NTSTATUS WRAP_EXPORT(ZwClose)
 		DBGTRACE1("thread: %p", handle);
 	}
 	else
-		WARNING("closing handle %d not implemented", coh->type);
+		WARNING("closing handle %p not implemented", handle);
 	TRACEEXIT2(return STATUS_SUCCESS);
 }
 

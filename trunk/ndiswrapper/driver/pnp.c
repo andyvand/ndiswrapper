@@ -158,7 +158,6 @@ STDCALL NTSTATUS pdoDispatchPnp(struct device_object *pdo,
 		if (wd->resource_list)
 			kfree(wd->resource_list);
 		wd->resource_list = NULL;
-		IoDeleteDevice(pdo);
 		status = STATUS_SUCCESS;
 		break;
 	default:
@@ -483,10 +482,14 @@ NTSTATUS pnp_stop_device(struct wrap_device *wd)
 
 NTSTATUS pnp_remove_device(struct wrap_device *wd)
 {
-	struct device_object *pdo;
+	struct device_object *pdo, *fdo;
+	struct driver_object *fdo_drv_obj;
 	NTSTATUS status;
 
 	pdo = wd->pdo;
+	fdo = pdo->attached;
+	fdo_drv_obj = fdo->drv_obj;
+	DBGTRACE2("%p, %p, %p", pdo, fdo, fdo_drv_obj);
 	status = IoSendIrpTopDev(pdo, IRP_MJ_PNP, IRP_MN_QUERY_REMOVE_DEVICE,
 				 NULL);
 	if (status != STATUS_SUCCESS)
@@ -498,6 +501,28 @@ NTSTATUS pnp_remove_device(struct wrap_device *wd)
 	/* TODO: should we use count in drv_ext or driver's Object
 	 * header reference count to keep count of devices associated
 	 * with a driver? */
+	if (status == STATUS_SUCCESS)
+		fdo_drv_obj->drv_ext->count--;
+	DBGTRACE1("count: %d", fdo_drv_obj->drv_ext->count);
+	if (fdo_drv_obj->drv_ext->count < 0)
+		WARNING("wrong count: %d", fdo_drv_obj->drv_ext->count);
+	if (fdo_drv_obj->drv_ext->count == 0) {
+		struct wrap_driver *wrap_driver;
+		DBGTRACE1("unloading driver: %p", fdo_drv_obj);
+		wrap_driver =
+			IoGetDriverObjectExtension(fdo_drv_obj,
+					   (void *)CE_WRAP_DRIVER_CLIENT_ID);
+		if (fdo_drv_obj->unload)
+			LIN2WIN1(fdo_drv_obj->unload, fdo_drv_obj);
+		if (wrap_driver) {
+			nt_spin_lock(&loader_lock);
+			unload_wrap_driver(wrap_driver);
+			nt_spin_unlock(&loader_lock);
+		} else
+			ERROR("couldn't get wrap_driver");
+		ObDereferenceObject(fdo_drv_obj);
+	}
+	IoDeleteDevice(pdo);
 	TRACEEXIT1(return status);
 }
 
