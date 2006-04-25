@@ -211,10 +211,10 @@ static NDIS_STATUS miniport_pnp_event(struct wrap_ndis_device *wnd,
 	miniport = &wnd->wd->driver->ndis_driver->miniport;
 	switch (event) {
 	case NdisDevicePnPEventSurpriseRemoved:
-		DBGTRACE1("%d, %p",
-			  test_bit(ATTR_SURPRISE_REMOVE, &wnd->attributes),
+		DBGTRACE1("%u, %p",
+			  (wnd->attributes & NDIS_ATTRIBUTE_SURPRISE_REMOVE_OK),
 			  miniport->pnp_event_notify);
-		if (test_bit(ATTR_SURPRISE_REMOVE, &wnd->attributes) &&
+		if ((wnd->attributes & NDIS_ATTRIBUTE_SURPRISE_REMOVE_OK) &&
 		    miniport->pnp_event_notify) {
 			DBGTRACE1("calling surprise_removed");
 			LIN2WIN4(miniport->pnp_event_notify,
@@ -318,11 +318,11 @@ static NDIS_STATUS miniport_set_power_state(struct wrap_ndis_device *wnd,
 	NDIS_STATUS status;
 	struct miniport_char *miniport;
 
-	TRACEENTER2("state: %d", state);
+	DBGTRACE1("state: %d", state);
 	if (state == NdisDeviceStateD0) {
 		status = STATUS_SUCCESS;
 		if (test_and_clear_bit(HW_HALTED, &wnd->hw_status)) {
-			DBGTRACE2("starting device");
+			DBGTRACE1("starting device");
 			/* TODO: should we use pnp_start_device instead? */
 			status = miniport_init(wnd);
 			if (status != NDIS_STATUS_SUCCESS) {
@@ -330,6 +330,8 @@ static NDIS_STATUS miniport_set_power_state(struct wrap_ndis_device *wnd,
 					wnd->net_dev->name);
 				TRACEEXIT2(return status);
 			}
+			set_packet_filter(wnd, wnd->packet_filter);
+			set_multicast_list(wnd);
 		}
 		if (test_and_clear_bit(HW_SUSPENDED, &wnd->hw_status)) {
 			status = miniport_set_int(wnd, OID_PNP_SET_POWER,
@@ -342,16 +344,19 @@ static NDIS_STATUS miniport_set_power_state(struct wrap_ndis_device *wnd,
 		}
 		TRACEEXIT1(return status);
 	} else {
-		status = miniport_set_int(wnd, OID_PNP_SET_POWER, state);
-		DBGTRACE2("set_power returns %08x", status);
-		if (status == NDIS_STATUS_SUCCESS)
-			set_bit(HW_SUSPENDED, &wnd->hw_status);
-		else
-			WARNING("setting power state to %d failed: %08X",
-				state, status);
+		status = NDIS_STATUS_NOT_SUPPORTED;
+		if (wnd->attributes & NDIS_ATTRIBUTE_NO_HALT_ON_SUSPEND) {
+			status = miniport_set_int(wnd, OID_PNP_SET_POWER, state);
+			DBGTRACE2("set_power returns %08x", status);
+			if (status == NDIS_STATUS_SUCCESS)
+				set_bit(HW_SUSPENDED, &wnd->hw_status);
+			else
+				WARNING("setting power state to %d failed: %08X",
+					state, status);
+		}
 		if (status != NDIS_STATUS_SUCCESS) {
-			WARNING("device may not support power management");
-			DBGTRACE2("no pm: halting the device");
+			WARNING("%s does not support power management; "
+				"halting the device", wnd->net_dev->name);
 			/* TODO: should we use pnp_stop_device instead? */
 			miniport_halt(wnd);
 			set_bit(HW_HALTED, &wnd->hw_status);
@@ -459,7 +464,7 @@ void free_tx_packet(struct wrap_ndis_device *wnd, struct ndis_packet *packet,
 		wnd->stats.tx_bytes += packet->private.len;
 		wnd->stats.tx_packets++;
 	} else {
-		WARNING("packet dropped: %08X", status);
+		DBGTRACE1("packet dropped: %08X", status);
 		wnd->stats.tx_dropped++;
 	}
 	nt_spin_unlock_irql(&wnd->tx_stats_lock, irql);
@@ -513,7 +518,7 @@ static int miniport_tx_packets(struct wrap_ndis_device *wnd)
 			int j = (start + i) % TX_RING_SIZE;
 			wnd->tx_array[i] = wnd->tx_ring[j];
 		}
-		if (test_bit(ATTR_SERIALIZED, &wnd->attributes)) {
+		if (!(wnd->attributes & NDIS_ATTRIBUTE_DESERIALIZE)) {
 			irql = raise_irql(DISPATCH_LEVEL);
 			LIN2WIN3(miniport->send_packets, wnd->nmb->adapter_ctx,
 				 wnd->tx_array, n);
@@ -562,7 +567,7 @@ static int miniport_tx_packets(struct wrap_ndis_device *wnd)
 		DBGTRACE3("sent: %d(%d)", sent, n);
 	} else {
 		packet = wnd->tx_ring[start];
-		if (test_bit(ATTR_SERIALIZED, &wnd->attributes)) {
+		if (!(wnd->attributes & NDIS_ATTRIBUTE_DESERIALIZE)) {
 			irql = raise_irql(DISPATCH_LEVEL);
 			res = LIN2WIN3(miniport->send, wnd->nmb->adapter_ctx,
 				       packet, packet->private.flags);
@@ -1572,10 +1577,15 @@ static NDIS_STATUS ndis_start_device(struct wrap_ndis_device *wnd)
 
 	printk(KERN_INFO "%s: %s ethernet device " MACSTR " using %sdriver %s,"
 	       " %s\n", net_dev->name, DRIVER_NAME, MAC2STR(net_dev->dev_addr),
-	       test_bit(ATTR_SERIALIZED, &wnd->attributes) ? "serialized " : "",
+	       wnd->attributes & NDIS_ATTRIBUTE_DESERIALIZE ? "" : "serialized ",
 	       wnd->wd->driver->name, wnd->wd->conf_file_name);
 
-	if (test_bit(ATTR_SERIALIZED, &wnd->attributes)) {
+	if (wnd->attributes & NDIS_ATTRIBUTE_DESERIALIZE) {
+		/* deserialized drivers don't have a limit, but we
+		 * keep max at TX_RING_SIZE to allocate tx_array
+		 * below */
+		wnd->max_tx_packets = TX_RING_SIZE;
+	} else {
 		ndis_status =
 			miniport_query_int(wnd, OID_GEN_MAXIMUM_SEND_PACKETS,
 					   &wnd->max_tx_packets);
@@ -1583,11 +1593,6 @@ static NDIS_STATUS ndis_start_device(struct wrap_ndis_device *wnd)
 			wnd->max_tx_packets = 1;
 		if (wnd->max_tx_packets > TX_RING_SIZE)
 			wnd->max_tx_packets = TX_RING_SIZE;
-	} else {
-		/* deserialized drivers don't have a limit, but we
-		 * keep max at TX_RING_SIZE to allocate tx_array
-		 * below */
-		wnd->max_tx_packets = TX_RING_SIZE;
 	}
 	DBGTRACE1("maximum send packets: %d", wnd->max_tx_packets);
 	wnd->tx_array =

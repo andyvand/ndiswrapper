@@ -692,9 +692,10 @@ void *wrap_pnp_start_usb_device(struct usb_device *udev,
 out:
 	DBGTRACE2("ret: %d", ret);
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
-	if (ret)
+	if (ret) {
+		wd->usb.intf = NULL;
 		return -EINVAL;
-	else
+	} else
 		return 0;
 #else
 	if (ret)
@@ -749,8 +750,7 @@ int wrap_pnp_suspend_usb_device(struct usb_interface *intf, pm_message_t state)
 	pdo = wd->pdo;
 	if (pnp_set_power_state(wd, PowerDeviceD3))
 		return -1;
-	else
-		return 0;
+	return 0;
 }
 
 int wrap_pnp_resume_usb_device(struct usb_interface *intf)
@@ -761,8 +761,7 @@ int wrap_pnp_resume_usb_device(struct usb_interface *intf)
 		TRACEEXIT1(return -1);
 	if (pnp_set_power_state(wd, PowerDeviceD0))
 		return -1;
-	else
-		return 0;
+	return 0;
 }
 #endif
 

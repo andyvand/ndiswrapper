@@ -661,16 +661,7 @@ STDCALL void WRAP_EXPORT(NdisMSetAttributesEx)
 	if (attributes & NDIS_ATTRIBUTE_BUS_MASTER)
 		pci_set_master(wnd->wd->pci.pdev);
 
-	if (!(attributes & NDIS_ATTRIBUTE_DESERIALIZE)) {
-		DBGTRACE2("serialized driver");
-		set_bit(ATTR_SERIALIZED, &wnd->attributes);
-	}
-
-	if (attributes & NDIS_ATTRIBUTE_SURPRISE_REMOVE_OK)
-		set_bit(ATTR_SURPRISE_REMOVE, &wnd->attributes);
-
-	if (attributes & NDIS_ATTRIBUTE_NO_HALT_ON_SUSPEND)
-		set_bit(ATTR_NO_HALT_ON_SUSPEND, &wnd->attributes);
+	wnd->attributes = attributes;
 
 	if (hangcheck_interval > 0)
 		wnd->hangcheck_interval = 2 * hangcheck_interval * HZ;
@@ -1633,7 +1624,7 @@ STDCALL void WRAP_EXPORT(NdisSend)
 		LIN2WIN3(miniport->send_packets, wnd->nmb->adapter_ctx,
 			 packets, 1);
 		lower_irql(irql);
-		if (test_bit(ATTR_SERIALIZED, &wnd->attributes)) {
+		if (!(wnd->attributes & NDIS_ATTRIBUTE_DESERIALIZE)) {
 			struct ndis_packet_oob_data *oob_data;
 			oob_data = NDIS_PACKET_OOB_DATA(packet);
 			*status = oob_data->status;
@@ -2124,7 +2115,7 @@ NdisMIndicateReceivePacket(struct ndis_miniport_block *nmb,
 
 		/* serialized drivers check the status upon return
 		 * from this function */
-		if (test_bit(ATTR_SERIALIZED, &wnd->attributes)) {
+		if (!(wnd->attributes & NDIS_ATTRIBUTE_DESERIALIZE)) {
 			oob_data->status = NDIS_STATUS_SUCCESS;
 			continue;
 		}
