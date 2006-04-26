@@ -1238,62 +1238,48 @@ static int iw_get_scan(struct net_device *dev, struct iw_request_info *info,
 		       union iwreq_data *wrqu, char *extra)
 {
 	struct wrap_ndis_device *wnd = netdev_priv(dev);
-	unsigned int i, list_len, needed;
+	unsigned int i, list_len;
 	NDIS_STATUS res;
-	struct ndis_bssid_list *bssid_list;
+	struct ndis_bssid_list *bssid_list = NULL;
 	char *event = extra;
 	struct ndis_wlan_bssid *cur_item ;
 
 	TRACEENTER2("");
-	if (time_before(jiffies, wnd->scan_timestamp + 2 * HZ))
+	if (time_before(jiffies, wnd->scan_timestamp + 3 * HZ))
 		return -EAGAIN;
-	/* try with space for a few scan items */
-	list_len = sizeof(ULONG) + sizeof(struct ndis_wlan_bssid_ex) * 8;
-	bssid_list = kmalloc(list_len, GFP_KERNEL);
-	if (!bssid_list) {
-		ERROR("couldn't allocate memory");
-		return -ENOMEM;
-	}
-	/* some drivers don't set bssid_list->num_items to 0 if
-	   OID_802_11_BSSID_LIST returns no items (prism54 driver, e.g.,) */
-	memset(bssid_list, 0, list_len);
-
-	needed = 0;
+	/* get the space required */
+	list_len = 0;
 	res = miniport_query_info_needed(wnd, OID_802_11_BSSID_LIST,
-					 bssid_list, list_len, &needed);
-	if (needed > 0 || res == NDIS_STATUS_INVALID_LENGTH ||
+					 NULL, 0, &list_len);
+	DBGTRACE2("%08X, %d", res, list_len);
+	if (res == NDIS_STATUS_INVALID_LENGTH ||
 	    res == NDIS_STATUS_BUFFER_TOO_SHORT) {
-		/* now try with required space */
-		kfree(bssid_list);
-		list_len = needed;
 		bssid_list = kmalloc(list_len, GFP_KERNEL);
 		if (!bssid_list) {
 			ERROR("couldn't allocate memory");
 			return -ENOMEM;
 		}
 		memset(bssid_list, 0, list_len);
-
 		res = miniport_query_info(wnd, OID_802_11_BSSID_LIST,
 					  bssid_list, list_len);
-	}
-
-	if (res == NDIS_STATUS_INVALID_DATA || res == NDIS_STATUS_FAILURE) {
+		DBGTRACE2("%08X", res);
+	} else
+		TRACEEXIT2(return -EOPNOTSUPP);
+	if (res) {
 		WARNING("getting BSSID list failed (%08X)", res);
 		kfree(bssid_list);
 		TRACEEXIT2(return -EOPNOTSUPP);
 	}
-
-	for (i = 0, cur_item = &bssid_list->bssid[0] ;
-	     i < bssid_list->num_items ; i++) {
-		event = ndis_translate_scan(dev, event,
-					    extra + IW_SCAN_MAX_DATA,
+	DBGTRACE2("%d", bssid_list->num_items);
+	cur_item = &bssid_list->bssid[0];
+	for (i = 0; i < bssid_list->num_items; i++) {
+		event = ndis_translate_scan(dev, event, extra + IW_SCAN_MAX_DATA,
 					    cur_item);
 		cur_item = (struct ndis_wlan_bssid *)((char *)cur_item +
 						      cur_item->length);
 	}
 	wrqu->data.length = event - extra;
 	wrqu->data.flags = 0;
-
 	kfree(bssid_list);
 	TRACEEXIT2(return 0);
 }

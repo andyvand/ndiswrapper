@@ -415,15 +415,13 @@ ndis_encode_setting(struct wrap_device_setting *setting,
 			return param;
 		if (param->type == NdisParameterString)
 			RtlFreeUnicodeString(&param->data.string);
-		ExFreePool(param);
 		setting->encoded = NULL;
-	}
-	param = ExAllocatePoolWithTag(NonPagedPool, sizeof(*param), 0);
+	} else
+		param = ExAllocatePoolWithTag(NonPagedPool, sizeof(*param), 0);
 	if (!param) {
 		ERROR("couldn't allocate memory");
 		return NULL;
 	}
-	param->type = type;
 	TRACEENTER2("type = %d", type);
 	switch(type) {
 	case NdisParameterInteger:
@@ -448,6 +446,7 @@ ndis_encode_setting(struct wrap_device_setting *setting,
 		ExFreePool(param);
 		return NULL;
 	}
+	param->type = type;
 	setting->encoded = param;
 	TRACEEXIT2(return param);
 }
@@ -460,13 +459,11 @@ static int ndis_decode_setting(struct wrap_device_setting *setting,
 	TRACEENTER2("%p, %p", setting, param);
 	switch(param->type) {
 	case NdisParameterInteger:
-		snprintf(setting->value, sizeof(u32), "%u",
-			 param->data.integer);
+		snprintf(setting->value, sizeof(u32), "%u", param->data.integer);
 		setting->value[sizeof(ULONG)] = 0;
 		break;
 	case NdisParameterHexInteger:
-		snprintf(setting->value, sizeof(u32), "%x",
-			 param->data.integer);
+		snprintf(setting->value, sizeof(u32), "%x", param->data.integer);
 		setting->value[sizeof(ULONG)] = 0;
 		break;
 	case NdisParameterString:
