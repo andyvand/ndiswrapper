@@ -276,6 +276,7 @@ static int start_pdo(struct device_object *pdo)
 
 	TRACEENTER1("%p, %p", pdo, pdo->reserved);
 	wd = pdo->reserved;
+	wd->surprise_removed = TRUE;
 	if (ntoskernel_init_device(wd))
 		TRACEEXIT1(return -EINVAL);
 	DBGTRACE1("%d, %d", WRAP_BUS_TYPE(wd->dev_bus_type), WRAP_USB_BUS);
@@ -651,13 +652,12 @@ void *wrap_pnp_start_usb_device(struct usb_device *udev,
 	struct wrap_device *wd;
 	int ret;
 	wd = &wrap_devices[usb_id->driver_info];
-	DBGTRACE1("%04x, %04x, %x, %x, %x, %x, %x, %x, %x, %p",
-		  usb_id->idVendor, usb_id->idProduct,
-		  usb_id->bDeviceClass, usb_id->bDeviceSubClass,
-		  usb_id->bDeviceProtocol, usb_id->bInterfaceClass,
-		  usb_id->bDeviceProtocol, usb_id->bInterfaceClass,
-		  usb_id->bInterfaceSubClass, wd->usb.intf);
-
+	TRACEENTER1("%04x, %04x, %x, %x, %x, %x, %x, %x, %x, %p",
+		    usb_id->idVendor, usb_id->idProduct,
+		    usb_id->bDeviceClass, usb_id->bDeviceSubClass,
+		    usb_id->bDeviceProtocol, usb_id->bInterfaceClass,
+		    usb_id->bDeviceProtocol, usb_id->bInterfaceClass,
+		    usb_id->bInterfaceSubClass, wd->usb.intf);
 	/* TI 4150 needs a full reset */
 	if (usb_id->idVendor == 0x057c && usb_id->idProduct == 0x5601 &&
 	    (xchg(&wd->usb.reset, 1) == 0)) {
@@ -676,6 +676,7 @@ void *wrap_pnp_start_usb_device(struct usb_device *udev,
 	  device only once */
 	if (wd->usb.intf) {
 		DBGTRACE1("device already initialized: %p", wd->usb.intf);
+		usb_set_intfdata(intf, NULL);
 		ret = 0;
 	} else {
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
@@ -694,7 +695,7 @@ out:
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
 	if (ret) {
 		wd->usb.intf = NULL;
-		return -EINVAL;
+		TRACEEXIT1(return -EINVAL);
 	} else
 		return 0;
 #else
@@ -710,8 +711,8 @@ void wrap_pnp_remove_usb_device(struct usb_interface *intf)
 {
 	struct wrap_device *wd;
 
-	TRACEENTER1("%p", intf);
 	wd = (struct wrap_device *)usb_get_intfdata(intf);
+	TRACEENTER1("%p, %p", intf, wd);
 	if (wd == NULL)
 		TRACEEXIT1(return);
 	usb_set_intfdata(intf, NULL);
@@ -727,8 +728,7 @@ void wrap_pnp_remove_usb_device(struct usb_device *udev, void *ptr)
 	struct wrap_device *wd = ptr;
 	struct usb_interface *intf;
 
-	TRACEENTER1("%p", wd);
-
+	TRACEENTER1("%p, %p", intf, wd);
 	if (wd == NULL)
 		TRACEEXIT1(return);
 	intf = wd->usb.intf;
@@ -745,9 +745,11 @@ int wrap_pnp_suspend_usb_device(struct usb_interface *intf, pm_message_t state)
 	struct device_object *pdo;
 
 	wd = usb_get_intfdata(intf);
+	TRACEENTER1("%p, %p", intf, wd);
 	if (!wd)
-		TRACEEXIT1(return -1);
+		TRACEEXIT1(return 0);
 	pdo = wd->pdo;
+	debug = 2;
 	if (pnp_set_power_state(wd, PowerDeviceD3))
 		return -1;
 	return 0;
@@ -757,10 +759,12 @@ int wrap_pnp_resume_usb_device(struct usb_interface *intf)
 {
 	struct wrap_device *wd;
 	wd = usb_get_intfdata(intf);
+	TRACEENTER1("%p, %p", intf, wd);
 	if (!wd)
-		TRACEEXIT1(return -1);
+		TRACEEXIT1(return 0);
 	if (pnp_set_power_state(wd, PowerDeviceD0))
 		return -1;
+	debug = 0;
 	return 0;
 }
 #endif

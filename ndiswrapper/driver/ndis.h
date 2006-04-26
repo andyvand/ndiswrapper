@@ -325,6 +325,21 @@ enum ndis_power_profile {
 	NdisPowerProfileBattery, NdisPowerProfileAcOnLine
 };
 
+struct ndis_pm_wakeup_capabilities {
+	enum ndis_power_state min_magic_packet_wakeup;
+	enum ndis_power_state min_pattern_wakeup;
+	enum ndis_power_state min_link_change_wakeup;
+};
+
+#define NDIS_DEVICE_WAKE_UP_ENABLE			0x00000001
+#define NDIS_DEVICE_WAKE_ON_PATTERN_MATCH_ENABLE	0x00000002
+#define NDIS_DEVICE_WAKE_ON_MAGIC_PACKET_ENABLE		0x00000004
+
+struct ndis_pnp_capabilities {
+	ULONG flags;
+	struct ndis_pm_wakeup_capabilities wakeup_capa;
+};
+
 typedef void (*ndis_isr_handler)(unsigned int *taken, unsigned int *callme,
 				 void *ctx) STDCALL;
 typedef void (*ndis_interrupt_handler)(void *ctx) STDCALL;

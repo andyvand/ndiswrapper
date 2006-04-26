@@ -588,6 +588,7 @@ struct wrap_device {
 	struct nt_list timer_list;
 	NT_SPIN_LOCK timer_lock;
 	struct cm_resource_list *resource_list;
+	BOOLEAN surprise_removed;
 };
 
 /* Some drivers use worker entries to complete functions called from
