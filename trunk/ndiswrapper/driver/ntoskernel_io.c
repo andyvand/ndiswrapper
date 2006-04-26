@@ -168,8 +168,8 @@ STDCALL BOOLEAN WRAP_EXPORT(IoCancelIrp)
 	irp->cancel = TRUE;
 	if (cancel_routine) {
 		struct io_stack_location *irp_sl;
-
 		irp_sl = IoGetCurrentIrpStackLocation(irp);
+		IOTRACE("%p, %p", irp_sl, irp_sl->dev_obj);
 		/* cancel_routine will release the spin lock */
 		LIN2WIN2(cancel_routine, irp_sl->dev_obj, irp);
 		IOEXIT(return TRUE);

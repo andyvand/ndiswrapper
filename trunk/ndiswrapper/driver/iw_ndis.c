@@ -1238,7 +1238,7 @@ static int iw_get_scan(struct net_device *dev, struct iw_request_info *info,
 		       union iwreq_data *wrqu, char *extra)
 {
 	struct wrap_ndis_device *wnd = netdev_priv(dev);
-	unsigned int i, list_len;
+	unsigned int i, list_len, needed;
 	NDIS_STATUS res;
 	struct ndis_bssid_list *bssid_list = NULL;
 	char *event = extra;
@@ -1247,24 +1247,35 @@ static int iw_get_scan(struct net_device *dev, struct iw_request_info *info,
 	TRACEENTER2("");
 	if (time_before(jiffies, wnd->scan_timestamp + 3 * HZ))
 		return -EAGAIN;
-	/* get the space required */
-	list_len = 0;
+	/* try with space for a few scan items */
+	list_len = sizeof(ULONG) + sizeof(struct ndis_wlan_bssid_ex) * 8;
+	bssid_list = kmalloc(list_len, GFP_KERNEL);
+	if (!bssid_list) {
+		ERROR("couldn't allocate memory");
+		return -ENOMEM;
+	}
+	/* some drivers don't set bssid_list->num_items to 0 if
+	   OID_802_11_BSSID_LIST returns no items (prism54 driver, e.g.,) */
+	memset(bssid_list, 0, list_len);
+
+	needed = 0;
 	res = miniport_query_info_needed(wnd, OID_802_11_BSSID_LIST,
-					 NULL, 0, &list_len);
-	DBGTRACE2("%08X, %d", res, list_len);
+					 bssid_list, list_len, &needed);
 	if (res == NDIS_STATUS_INVALID_LENGTH ||
 	    res == NDIS_STATUS_BUFFER_TOO_SHORT) {
+		/* now try with required space */
+		kfree(bssid_list);
+		list_len = needed;
 		bssid_list = kmalloc(list_len, GFP_KERNEL);
 		if (!bssid_list) {
 			ERROR("couldn't allocate memory");
 			return -ENOMEM;
 		}
 		memset(bssid_list, 0, list_len);
+
 		res = miniport_query_info(wnd, OID_802_11_BSSID_LIST,
 					  bssid_list, list_len);
-		DBGTRACE2("%08X", res);
-	} else
-		TRACEEXIT2(return -EOPNOTSUPP);
+	}
 	if (res) {
 		WARNING("getting BSSID list failed (%08X)", res);
 		kfree(bssid_list);

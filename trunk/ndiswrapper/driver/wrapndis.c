@@ -206,9 +206,11 @@ static NDIS_STATUS miniport_pnp_event(struct wrap_ndis_device *wnd,
 				      enum ndis_device_pnp_event event)
 {
 	struct miniport_char *miniport;
-	ULONG pnp_info;
+	enum ndis_power_profile power_profile;
 
+	TRACEENTER1("%p, %d", wnd, event);
 	miniport = &wnd->wd->driver->ndis_driver->miniport;
+	DBGTRACE1("%p", miniport);
 	switch (event) {
 	case NdisDevicePnPEventSurpriseRemoved:
 		DBGTRACE1("%u, %p",
@@ -232,11 +234,11 @@ static NDIS_STATUS miniport_pnp_event(struct wrap_ndis_device *wnd,
 				  wnd->wd->driver->name);
 			return NDIS_STATUS_FAILURE;
 		}
-		pnp_info = NdisPowerProfileAcOnLine;
+		power_profile = NdisPowerProfileAcOnLine;
 		DBGTRACE2("calling pnp_event_notify");
 		LIN2WIN4(miniport->pnp_event_notify, wnd->nmb->adapter_ctx,
 			 NdisDevicePnPEventPowerProfileChanged,
-			 &pnp_info, (ULONG)sizeof(pnp_info));
+			 &power_profile, (ULONG)sizeof(power_profile));
 		return NDIS_STATUS_SUCCESS;
 	default:
 		WARNING("event %d not yet implemented", event);
@@ -251,6 +253,7 @@ static NDIS_STATUS miniport_init(struct wrap_ndis_device *wnd)
 	UINT medium_index;
 	UINT medium_array[] = {NdisMedium802_3};
 	struct miniport_char *miniport;
+	struct ndis_pnp_capabilities pnp_capa;
 
 	TRACEENTER1("irql: %d", current_irql());
 	if (test_bit(HW_INITIALIZED, &wnd->hw_status)) {
@@ -287,6 +290,10 @@ static NDIS_STATUS miniport_init(struct wrap_ndis_device *wnd)
 #endif
 	set_bit(HW_INITIALIZED, &wnd->hw_status);
 	set_bit(HW_AVAILABLE, &wnd->hw_status);
+	status = miniport_query_info(wnd, OID_PNP_CAPABILITIES,
+				     &pnp_capa, sizeof(pnp_capa));
+	if (status != NDIS_STATUS_SUCCESS)
+		wnd->attributes &= ~NDIS_ATTRIBUTE_NO_HALT_ON_SUSPEND;
 	hangcheck_add(wnd);
 	TRACEEXIT1(return NDIS_STATUS_SUCCESS);
 }
@@ -1703,7 +1710,8 @@ static int ndis_remove_device(struct wrap_ndis_device *wnd)
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
 	up(&wnd->tx_ring_mutex);
 #endif
-	miniport_pnp_event(wnd, NdisDevicePnPEventSurpriseRemoved);
+	if (wnd->wd->surprise_removed == TRUE)
+		miniport_pnp_event(wnd, NdisDevicePnPEventSurpriseRemoved);
 	wrap_procfs_remove_ndis_device(wnd);
 	miniport_halt(wnd);
 	ndis_exit_device(wnd);
