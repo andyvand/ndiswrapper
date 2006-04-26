@@ -615,9 +615,8 @@ void __devexit wrap_pnp_remove_pci_device(struct pci_dev *pdev)
 {
 	struct wrap_device *wd;
 
-	TRACEENTER1("%p", pdev);
 	wd = (struct wrap_device *)pci_get_drvdata(pdev);
-	TRACEENTER1("%p", wd);
+	TRACEENTER1("%p, %p", pdev, wd);
 	if (!wd)
 		TRACEEXIT1(return);
 	pnp_remove_device(wd);
@@ -672,12 +671,13 @@ void *wrap_pnp_start_usb_device(struct usb_device *udev,
 			goto out;
 		}
 	}
-	/* USB device may have multiple interfaces; initialize a
-	  device only once */
+	/* USB device (e.g., RNDIS) may have multiple interfaces;
+	  initialize one interface only (is there a way to know which
+	  of these interfaces is for network?) */
 	if (wd->usb.intf) {
 		DBGTRACE1("device already initialized: %p", wd->usb.intf);
 		usb_set_intfdata(intf, NULL);
-		ret = 0;
+		TRACEEXIT1(return -EINVAL);
 	} else {
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
 		wd->usb.udev = interface_to_usbdev(intf);
@@ -749,7 +749,6 @@ int wrap_pnp_suspend_usb_device(struct usb_interface *intf, pm_message_t state)
 	if (!wd)
 		TRACEEXIT1(return 0);
 	pdo = wd->pdo;
-	debug = 2;
 	if (pnp_set_power_state(wd, PowerDeviceD3))
 		return -1;
 	return 0;
@@ -764,7 +763,6 @@ int wrap_pnp_resume_usb_device(struct usb_interface *intf)
 		TRACEEXIT1(return 0);
 	if (pnp_set_power_state(wd, PowerDeviceD0))
 		return -1;
-	debug = 0;
 	return 0;
 }
 #endif

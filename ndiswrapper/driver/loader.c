@@ -869,10 +869,8 @@ void loader_exit(void)
 	misc_deregister(&wrapper_misc);
 
 	nt_spin_lock(&loader_lock);
-	if (wrap_devices) {
-		for (i = 0; i < num_wrap_devices; i++)
-			wrap_devices[i].surprise_removed = FALSE;
-	}
+	for (i = 0; i < num_wrap_devices; i++)
+		wrap_devices[i].surprise_removed = FALSE;
 	nt_spin_unlock(&loader_lock);
 #ifdef CONFIG_USB
 	if (wrap_usb_devices) {
