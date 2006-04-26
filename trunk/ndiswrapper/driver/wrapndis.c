@@ -209,8 +209,11 @@ static NDIS_STATUS miniport_pnp_event(struct wrap_ndis_device *wnd,
 	enum ndis_power_profile power_profile;
 
 	TRACEENTER1("%p, %d", wnd, event);
+	/* RNDIS driver doesn't like to be notified if device is not
+	 * in initialized state */
+	if (!test_bit(HW_INITIALIZED, &wnd->hw_status))
+		TRACEEXIT1(return NDIS_STATUS_SUCCESS);
 	miniport = &wnd->wd->driver->ndis_driver->miniport;
-	DBGTRACE1("%p", miniport);
 	switch (event) {
 	case NdisDevicePnPEventSurpriseRemoved:
 		DBGTRACE1("%u, %p",
@@ -331,14 +334,20 @@ static NDIS_STATUS miniport_set_power_state(struct wrap_ndis_device *wnd,
 		if (test_and_clear_bit(HW_HALTED, &wnd->hw_status)) {
 			DBGTRACE1("starting device");
 			/* TODO: should we use pnp_start_device instead? */
-			status = miniport_init(wnd);
-			if (status != NDIS_STATUS_SUCCESS) {
-				WARNING("couldn't re-initialize device %s",
-					wnd->net_dev->name);
-				TRACEEXIT2(return status);
+			/* USB devices will be restarted by USB driver */
+			if (wrap_is_usb_bus(wnd->wd->dev_bus_type))
+				status = NDIS_STATUS_SUCCESS;
+			else {
+				status = miniport_init(wnd);
+				if (status == NDIS_STATUS_SUCCESS) {
+					set_packet_filter(wnd,
+							  wnd->packet_filter);
+					set_multicast_list(wnd);
+				} else
+					WARNING("couldn't re-initialize device "
+						"%s", wnd->net_dev->name);
 			}
-			set_packet_filter(wnd, wnd->packet_filter);
-			set_multicast_list(wnd);
+			TRACEEXIT2(return status);
 		}
 		if (test_and_clear_bit(HW_SUSPENDED, &wnd->hw_status)) {
 			status = miniport_set_int(wnd, OID_PNP_SET_POWER,

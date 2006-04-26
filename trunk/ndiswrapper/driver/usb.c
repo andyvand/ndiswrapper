@@ -126,6 +126,8 @@ static struct work_struct wrap_urb_complete_work;
 static void wrap_urb_complete_worker(void *dummy);
 #endif
 
+static void wrap_free_urb(struct urb *urb);
+
 int usb_init(void)
 {
 	InitializeListHead(&wrap_urb_complete_list);
@@ -167,19 +169,22 @@ void usb_exit_device(struct wrap_device *wd)
 	KIRQL irql;
 
 	USBENTER("%d", wd->usb.num_alloc_urbs);
-	IoAcquireCancelSpinLock(&irql);
-	while ((ent = RemoveHeadList(&wd->usb.wrap_urb_list))) {
+	while (1) {
+		IoAcquireCancelSpinLock(&irql);
+		ent = RemoveHeadList(&wd->usb.wrap_urb_list);
+		IoReleaseCancelSpinLock(irql);
+		if (!ent)
+			break;
 		wrap_urb = container_of(ent, struct wrap_urb, list);
 		if (wrap_urb->state == URB_SUBMITTED) {
 			WARNING("Windows driver %s didn't free urb: %p",
 				wd->driver->name, wrap_urb->urb);
-			wrap_cancel_urb(wrap_urb);
-		} else {
-			usb_free_urb(wrap_urb->urb);
-			kfree(wrap_urb);
+			usb_kill_urb(wrap_urb->urb);
 		}
+		usb_free_urb(wrap_urb->urb);
+		kfree(wrap_urb);
 	}
-	IoReleaseCancelSpinLock(irql);
+	wd->usb.num_alloc_urbs = 0;
 	USBEXIT(return);
 }
 
@@ -272,13 +277,13 @@ static void wrap_free_urb(struct urb *urb)
 void wrap_suspend_urbs(struct wrap_device *wd)
 {
 	/* TODO: do we need to cancel urbs? */
-	USBTRACE("%p", wd);
+	USBTRACE("%p, %d", wd, wd->usb.num_alloc_urbs);
 }
 
 void wrap_resume_urbs(struct wrap_device *wd)
 {
 	/* TODO: do we need to resubmit urbs? */
-	USBTRACE("%p", wd);
+	USBTRACE("%p, %d", wd, wd->usb.num_alloc_urbs);
 }
 
 static struct urb *wrap_alloc_urb(struct irp *irp, unsigned int pipe,
