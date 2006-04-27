@@ -281,7 +281,7 @@ void *wrap_ExAllocatePoolWithTag(enum pool_type pool_type, SIZE_T size,
 				 ULONG tag, const char *file, int line)
 {
 	void *addr;
-	__unused struct alloc_info *info;
+	no_warn_unused struct alloc_info *info;
 
 	TRACEENTER4("pool_type: %d, size: %lu, tag: %u", pool_type,
 		    size, tag);

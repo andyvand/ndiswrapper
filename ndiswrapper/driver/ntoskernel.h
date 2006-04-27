@@ -46,29 +46,16 @@
 #include <linux/if_arp.h>
 #include <linux/rtnetlink.h>
 
-#include "winnt_types.h"
-#include "ndiswrapper.h"
-#include "pe_linker.h"
-
-#define DEBUG_IRQL 1
-
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,7)
 #include <linux/kthread.h>
 #endif
-
-#if defined(DISABLE_USB)
-#undef CONFIG_USB
-#undef CONFIG_USB_MODULE
+/* Interrupt backwards compatibility stuff */
+#include <linux/interrupt.h>
+#ifndef IRQ_HANDLED
+#define IRQ_HANDLED
+#define IRQ_NONE
+#define irqreturn_t void
 #endif
-
-#if !defined(CONFIG_USB) && defined(CONFIG_USB_MODULE)
-#define CONFIG_USB 1
-#endif
-
-#define addr_offset(drvr) (__builtin_return_address(0) -	\
-			   (drvr)->drv_obj->driver_start)
-
-#include "wrapmem.h"
 
 /* Workqueue / task queue backwards compatibility stuff */
 #if LINUX_VERSION_CODE > KERNEL_VERSION(2,5,41)
@@ -143,19 +130,28 @@ typedef task_queue workqueue;
 
 #endif // LINUX_VERSION_CODE
 
+#include "winnt_types.h"
+#include "ndiswrapper.h"
+#include "pe_linker.h"
+#include "wrapmem.h"
+
+#define DEBUG_IRQL 1
+
+#if defined(DISABLE_USB)
+#undef CONFIG_USB
+#undef CONFIG_USB_MODULE
+#endif
+
+#if !defined(CONFIG_USB) && defined(CONFIG_USB_MODULE)
+#define CONFIG_USB 1
+#endif
+
+#define addr_offset(drvr) (__builtin_return_address(0) -	\
+			   (drvr)->drv_obj->driver_start)
+
 #ifndef offset_in_page
 #define offset_in_page(p) ((unsigned long)(p) & ~PAGE_MASK)
 #endif
-
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,10)
-#include <linux/scatterlist.h>
-#else
-#define sg_init_one(sg, addr, len) do {				 \
-		(sg)->page = virt_to_page(addr);		 \
-		(sg)->offset = offset_in_page(addr);		 \
-		(sg)->length = len;				 \
-	} while (0)
-#endif // KERNEL_VERSION(2,6,9)
 
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,4,23)
 #define HAVE_ETHTOOL 1
@@ -386,14 +382,6 @@ do {									\
 		__wait_event_timeout(wq, condition, __ret);		\
 	 __ret;								\
 })
-#endif
-
-/* Interrupt backwards compatibility stuff */
-#include <linux/interrupt.h>
-#ifndef IRQ_HANDLED
-#define IRQ_HANDLED
-#define IRQ_NONE
-#define irqreturn_t void
 #endif
 
 #if LINUX_VERSION_CODE > KERNEL_VERSION(2,6,9)
@@ -681,16 +669,16 @@ wstdcall struct mdl *IoAllocateMdl
 	 struct irp *irp);
 wstdcall void MmBuildMdlForNonPagedPool(struct mdl *mdl);
 wstdcall void IoFreeMdl(struct mdl *mdl);
-wfastcall LONG InterlockedDecrement(wfastcall_decl_1(LONG volatile *val));
-wfastcall LONG InterlockedIncrement(wfastcall_decl_1(LONG volatile *val));
+wfastcall LONG InterlockedDecrement(wfastcall_args_1(LONG volatile *val));
+wfastcall LONG InterlockedIncrement(wfastcall_args_1(LONG volatile *val));
 wfastcall struct nt_list *ExInterlockedInsertHeadList
-	(wfastcall_decl_3(struct nt_list *head, struct nt_list *entry,
+	(wfastcall_args_3(struct nt_list *head, struct nt_list *entry,
 			 NT_SPIN_LOCK *lock));
 wfastcall struct nt_list *ExInterlockedInsertTailList
-	(wfastcall_decl_3(struct nt_list *head, struct nt_list *entry,
+	(wfastcall_args_3(struct nt_list *head, struct nt_list *entry,
 			 NT_SPIN_LOCK *lock));
 wfastcall struct nt_list *ExInterlockedRemoveHeadList
-	(wfastcall_decl_2(struct nt_list *head, NT_SPIN_LOCK *lock));
+	(wfastcall_args_2(struct nt_list *head, NT_SPIN_LOCK *lock));
 wstdcall NTSTATUS IoCreateDevice
 	(struct driver_object *driver, ULONG dev_ext_length,
 	 struct unicode_string *dev_name, DEVICE_TYPE dev_type,
@@ -716,7 +704,7 @@ wstdcall struct irp *IoAllocateIrp(char stack_count, BOOLEAN charge_quota);
 wstdcall void IoFreeIrp(struct irp *irp);
 wstdcall BOOLEAN IoCancelIrp(struct irp *irp);
 wfastcall NTSTATUS IofCallDriver
-	(wfastcall_decl_2(struct device_object *dev_obj, struct irp *irp));
+	(wfastcall_args_2(struct device_object *dev_obj, struct irp *irp));
 wstdcall struct irp *IoBuildSynchronousFsdRequest
 	(ULONG major_func, struct device_object *dev_obj, void *buf,
 	 ULONG length, LARGE_INTEGER *offset, struct nt_event *event,
@@ -750,15 +738,15 @@ wstdcall KIRQL KeAcquireSpinLockRaiseToDpc(NT_SPIN_LOCK *lock);
 wstdcall void IoAcquireCancelSpinLock(KIRQL *irql);
 wstdcall void IoReleaseCancelSpinLock(KIRQL irql);
 
-wfastcall KIRQL KfRaiseIrql(wfastcall_decl_1(KIRQL newirql));
-wfastcall void KfLowerIrql(wfastcall_decl_1(KIRQL oldirql));
-wfastcall KIRQL KfAcquireSpinLock(wfastcall_decl_1(NT_SPIN_LOCK *lock));
+wfastcall KIRQL KfRaiseIrql(wfastcall_args_1(KIRQL newirql));
+wfastcall void KfLowerIrql(wfastcall_args_1(KIRQL oldirql));
+wfastcall KIRQL KfAcquireSpinLock(wfastcall_args_1(NT_SPIN_LOCK *lock));
 wfastcall void KfReleaseSpinLock
-	(wfastcall_decl_2(NT_SPIN_LOCK *lock, KIRQL oldirql));
+	(wfastcall_args_2(NT_SPIN_LOCK *lock, KIRQL oldirql));
 wfastcall void IofCompleteRequest
-	(wfastcall_decl_2(struct irp *irp, CHAR prio_boost));
+	(wfastcall_args_2(struct irp *irp, CHAR prio_boost));
 wfastcall void KefReleaseSpinLockFromDpcLevel
-	(wfastcall_decl_1(NT_SPIN_LOCK *lock));
+	(wfastcall_args_1(NT_SPIN_LOCK *lock));
 wstdcall void RtlCopyMemory(void *dst, const void *src, SIZE_T length);
 wstdcall NTSTATUS RtlUnicodeStringToAnsiString
 	(struct ansi_string *dst, const struct unicode_string *src, BOOLEAN dup);
@@ -775,7 +763,7 @@ wstdcall LONG RtlCompareUnicodeString
 	 BOOLEAN case_insensitive);
 wstdcall void RtlCopyUnicodeString
 	(struct unicode_string *dst, struct unicode_string *src);
-NOREGPARM SIZE_T _win_wcslen(const wchar_t *s);
+noregparm SIZE_T _win_wcslen(const wchar_t *s);
 
 void wrap_init_timer(struct nt_timer *nt_timer, enum timer_type type,
 		     struct wrap_device *wd);
@@ -810,13 +798,13 @@ wstdcall struct task_struct *KeGetCurrentThread(void);
 wstdcall NTSTATUS ObReferenceObjectByHandle
 	(void *handle, ACCESS_MASK desired_access, void *obj_type,
 	 KPROCESSOR_MODE access_mode, void **object, void *handle_info);
-wfastcall LONG ObfReferenceObject(wfastcall_decl_1(void *object));
-wfastcall void ObfDereferenceObject(wfastcall_decl_1(void *object));
+wfastcall LONG ObfReferenceObject(wfastcall_args_1(void *object));
+wfastcall void ObfDereferenceObject(wfastcall_args_1(void *object));
 
 #define ObReferenceObject(object)			\
-	ObfReferenceObject(wfastcall_args_1(object))
+	wfastcall_1(ObfReferenceObject, object)
 #define ObDereferenceObject(object)			\
-	ObfDereferenceObject(wfastcall_args_1(object))
+	wfastcall_1(ObfDereferenceObject, object)
 
 #define MSG(level, fmt, ...)				\
 	printk(level "ndiswrapper (%s:%d): " fmt "\n",	\
@@ -832,8 +820,8 @@ wfastcall void ObfDereferenceObject(wfastcall_decl_1(void *object));
 void adjust_user_shared_data_addr(char *driver, unsigned long length);
 
 #define IoCompleteRequest(irp, prio)			\
-	IofCompleteRequest(wfastcall_args_2(irp, prio))
-#define IoCallDriver(dev, irp) IofCallDriver(wfastcall_args_2(dev, irp))
+	wfastcall_2(IofCompleteRequest, irp, prio)
+#define IoCallDriver(dev, irp) wfastcall_2(IofCallDriver, dev, irp)
 
 static inline KIRQL current_irql(void)
 {

@@ -814,12 +814,11 @@ static int iw_get_encr(struct net_device *dev, struct iw_request_info *info,
 		WARNING("getting authentication mode failed (%08X)", res);
 		TRACEEXIT2(return -EOPNOTSUPP);
 	}
-
 	if (status == Ndis802_11AuthModeOpen)
 		wrqu->data.flags |= IW_ENCODE_OPEN;
-	else if (status == Ndis802_11AuthModeShared)
-		wrqu->data.flags |= IW_ENCODE_RESTRICTED;
 	else if (status == Ndis802_11AuthModeAutoSwitch)
+		wrqu->data.flags |= IW_ENCODE_RESTRICTED;
+	else // Ndis802_11AuthModeAutoSwitch, Ndis802_11AuthModeWPA etc.
 		wrqu->data.flags |= IW_ENCODE_RESTRICTED;
 
 	TRACEEXIT2(return 0);
@@ -924,8 +923,8 @@ static int remove_key(struct wrap_ndis_device *wnd, int index,
 	TRACEEXIT2(return 0);
 }
 
-static int iw_set_encr(struct net_device *dev, struct iw_request_info *info,
-		       union iwreq_data *wrqu, char *extra)
+static int iw_set_wep(struct net_device *dev, struct iw_request_info *info,
+		      union iwreq_data *wrqu, char *extra)
 {
 	struct wrap_ndis_device *wnd = netdev_priv(dev);
 	NDIS_STATUS res;
@@ -1152,7 +1151,7 @@ static char *ndis_translate_scan(struct net_device *dev, char *event,
 	if (bssid->length > sizeof(*bssid)) {
 		unsigned char *iep = (unsigned char *)bssid_ex->ies +
 			sizeof(struct ndis_fixed_ies);
-		__unused unsigned char *end = iep + bssid_ex->ie_length;
+		no_warn_unused unsigned char *end = iep + bssid_ex->ie_length;
 
 		while (iep + 1 < end && iep + 2 + iep[1] <= end) {
 			unsigned char ielen = 2 + iep[1];
@@ -1807,7 +1806,7 @@ static const iw_handler	ndis_handler[] = {
 	[SIOCSIWFRAG	- SIOCIWFIRST] = iw_set_frag_threshold,
 	[SIOCGIWAP	- SIOCIWFIRST] = iw_get_ap_address,
 	[SIOCSIWAP	- SIOCIWFIRST] = iw_set_ap_address,
-	[SIOCSIWENCODE	- SIOCIWFIRST] = iw_set_encr,
+	[SIOCSIWENCODE	- SIOCIWFIRST] = iw_set_wep,
 	[SIOCGIWENCODE	- SIOCIWFIRST] = iw_get_encr,
 	[SIOCSIWSCAN	- SIOCIWFIRST] = iw_set_scan,
 	[SIOCGIWSCAN	- SIOCIWFIRST] = iw_get_scan,

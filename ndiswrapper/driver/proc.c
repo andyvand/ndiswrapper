@@ -261,7 +261,7 @@ static int procfs_read_ndis_settings(char *page, char **start, off_t off,
 	}
 
 	p += sprintf(p, "hangcheck_interval=%d\n",
-		     hangcheck_interval > 0 ?
+		     hangcheck_interval == 0 ?
 		     (int)(wnd->hangcheck_interval / HZ) : -1);
 
 	list_for_each_entry(setting, &wnd->wd->settings, list) {

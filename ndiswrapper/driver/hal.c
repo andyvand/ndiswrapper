@@ -120,7 +120,7 @@ wstdcall KIRQL WRAP_EXPORT(KeGetCurrentIrql)
 }
 
 wfastcall KIRQL WRAP_EXPORT(KfRaiseIrql)
-	(wfastcall_decl_1(KIRQL newirql))
+	(wfastcall_args_1(KIRQL newirql))
 {
 	KIRQL irql;
 
@@ -130,7 +130,7 @@ wfastcall KIRQL WRAP_EXPORT(KfRaiseIrql)
 }
 
 wfastcall void WRAP_EXPORT(KfLowerIrql)
-	(wfastcall_decl_1(KIRQL oldirql))
+	(wfastcall_args_1(KIRQL oldirql))
 {
 	TRACEENTER5("irql = %d", oldirql);
 	lower_irql(oldirql);
@@ -138,21 +138,21 @@ wfastcall void WRAP_EXPORT(KfLowerIrql)
 }
 
 wfastcall KIRQL WRAP_EXPORT(KfAcquireSpinLock)
-	(wfastcall_decl_1(NT_SPIN_LOCK *lock))
+	(wfastcall_args_1(NT_SPIN_LOCK *lock))
 {
 	TRACEENTER5("lock = %p", lock);
 	return nt_spin_lock_irql(lock, DISPATCH_LEVEL);
 }
 
 wfastcall void WRAP_EXPORT(KfReleaseSpinLock)
-	(wfastcall_decl_2(NT_SPIN_LOCK *lock, KIRQL oldirql))
+	(wfastcall_args_2(NT_SPIN_LOCK *lock, KIRQL oldirql))
 {
 	TRACEENTER5("lock = %p, irql = %d", lock, oldirql);
 	nt_spin_unlock_irql(lock, oldirql);
 }
 
 wfastcall void WRAP_EXPORT(KefAcquireSpinLockAtDpcLevel)
-	(wfastcall_decl_1(NT_SPIN_LOCK *lock))
+	(wfastcall_args_1(NT_SPIN_LOCK *lock))
 {
 	TRACEENTER5("lock = %p", lock);
 #ifdef DEBUG_IRQL
@@ -164,7 +164,7 @@ wfastcall void WRAP_EXPORT(KefAcquireSpinLockAtDpcLevel)
 }
 
 wfastcall void WRAP_EXPORT(KefReleaseSpinLockFromDpcLevel)
-	(wfastcall_decl_1(NT_SPIN_LOCK *lock))
+	(wfastcall_args_1(NT_SPIN_LOCK *lock))
 {
 	TRACEENTER5("lock = %p", lock);
 #ifdef DEBUG_IRQL
