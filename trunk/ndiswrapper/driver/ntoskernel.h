@@ -186,7 +186,9 @@ typedef task_queue workqueue;
 #define SET_NETDEV_DEV(net,pdev) do { } while (0)
 #endif
 
-#endif // LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
+#define usb_set_intfdata(intf, data) do { } while (0)
+
+#endif // LINUX_VERSION_CODE < KERNEL_VERSION(2,6,0)
 
 #ifndef PMSG_SUSPEND
 #ifdef PM_SUSPEND
