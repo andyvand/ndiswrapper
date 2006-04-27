@@ -291,43 +291,43 @@ NOREGPARM int WRAP_EXPORT(_win_atoi)
 	return i;
 }
 
-STDCALL int WRAP_EXPORT(_win_isprint)
+wstdcall int WRAP_EXPORT(_win_isprint)
 	(int c)
 {
 	return isprint(c);
 }
 
-STDCALL s64 WRAP_EXPORT(_alldiv)
+wstdcall s64 WRAP_EXPORT(_alldiv)
 	(s64 a, s64 b)
 {
 	return (a / b);
 }
 
-STDCALL u64 WRAP_EXPORT(_aulldiv)
+wstdcall u64 WRAP_EXPORT(_aulldiv)
 	(u64 a, u64 b)
 {
 	return (a / b);
 }
 
-STDCALL s64 WRAP_EXPORT(_allmul)
+wstdcall s64 WRAP_EXPORT(_allmul)
 	(s64 a, s64 b)
 {
 	return (a * b);
 }
 
-STDCALL u64 WRAP_EXPORT(_aullmul)
+wstdcall u64 WRAP_EXPORT(_aullmul)
 	(u64 a, u64 b)
 {
 	return (a * b);
 }
 
-STDCALL s64 WRAP_EXPORT(_allrem)
+wstdcall s64 WRAP_EXPORT(_allrem)
 	(s64 a, s64 b)
 {
 	return (a % b);
 }
 
-STDCALL u64 WRAP_EXPORT(_aullrem)
+wstdcall u64 WRAP_EXPORT(_aullrem)
 	(u64 a, u64 b)
 {
 	return (a % b);
@@ -357,7 +357,7 @@ __attribute__ ((regparm(3))) u64 WRAP_EXPORT(_aullshr)
 	return (a >> b);
 }
 
-STDCALL SIZE_T WRAP_EXPORT(RtlCompareMemory)
+wstdcall SIZE_T WRAP_EXPORT(RtlCompareMemory)
 	(const void *a, const void *b, SIZE_T len)
 {
 	size_t i;
@@ -382,25 +382,25 @@ STDCALL SIZE_T WRAP_EXPORT(RtlCompareMemory)
 	return i;
 }
 
-STDCALL void WRAP_EXPORT(RtlCopyMemory)
+wstdcall void WRAP_EXPORT(RtlCopyMemory)
 	(void *dst, const void *src, SIZE_T length)
 {
 	memcpy(dst, src, length);
 }
 
-STDCALL void WRAP_EXPORT(RtlZeroMemory)
+wstdcall void WRAP_EXPORT(RtlZeroMemory)
 	(void *dst, SIZE_T length)
 {
 	memset(dst, 0, length);
 }
 
-STDCALL void WRAP_EXPORT(RtlSecureZeroMemory)
+wstdcall void WRAP_EXPORT(RtlSecureZeroMemory)
 	(void *dst, SIZE_T length)
 {
 	memset(dst, 0, length);
 }
 
-STDCALL LONG WRAP_EXPORT(RtlCompareString)
+wstdcall LONG WRAP_EXPORT(RtlCompareString)
 	(const struct ansi_string *s1, const struct ansi_string *s2,
 	 BOOLEAN case_insensitive)
 {
@@ -423,7 +423,7 @@ STDCALL LONG WRAP_EXPORT(RtlCompareString)
 	TRACEEXIT2(return ret);
 }
 
-STDCALL LONG WRAP_EXPORT(RtlCompareUnicodeString)
+wstdcall LONG WRAP_EXPORT(RtlCompareUnicodeString)
 	(const struct unicode_string *s1, const struct unicode_string *s2,
 	 BOOLEAN case_insensitive)
 {
@@ -448,7 +448,7 @@ STDCALL LONG WRAP_EXPORT(RtlCompareUnicodeString)
 	TRACEEXIT2(return ret);
 }
 
-STDCALL BOOLEAN WRAP_EXPORT(RtlEqualString)
+wstdcall BOOLEAN WRAP_EXPORT(RtlEqualString)
 	(const struct ansi_string *s1, const struct ansi_string *s2,
 	 BOOLEAN case_insensitive)
 {
@@ -458,7 +458,7 @@ STDCALL BOOLEAN WRAP_EXPORT(RtlEqualString)
 	return !RtlCompareString(s1, s2, case_insensitive);
 }
 
-STDCALL BOOLEAN WRAP_EXPORT(RtlEqualUnicodeString)
+wstdcall BOOLEAN WRAP_EXPORT(RtlEqualUnicodeString)
 	(const struct unicode_string *s1, const struct unicode_string *s2,
 	 BOOLEAN case_insensitive)
 {
@@ -467,7 +467,7 @@ STDCALL BOOLEAN WRAP_EXPORT(RtlEqualUnicodeString)
 	return !RtlCompareUnicodeString(s1, s2, case_insensitive);
 }
 
-STDCALL void WRAP_EXPORT(RtlCopyUnicodeString)
+wstdcall void WRAP_EXPORT(RtlCopyUnicodeString)
 	(struct unicode_string *dst, struct unicode_string *src)
 {
 	TRACEENTER1("%p, %p", dst, src);
@@ -481,7 +481,7 @@ STDCALL void WRAP_EXPORT(RtlCopyUnicodeString)
 	TRACEEXIT1(return);
 }
 
-STDCALL NTSTATUS WRAP_EXPORT(RtlAppendUnicodeToString)
+wstdcall NTSTATUS WRAP_EXPORT(RtlAppendUnicodeToString)
 	(struct unicode_string *dst, wchar_t *src)
 {
 	if (src) {
@@ -498,7 +498,7 @@ STDCALL NTSTATUS WRAP_EXPORT(RtlAppendUnicodeToString)
 	return STATUS_SUCCESS;
 }
 
-STDCALL NTSTATUS WRAP_EXPORT(RtlAppendUnicodeStringToString)
+wstdcall NTSTATUS WRAP_EXPORT(RtlAppendUnicodeStringToString)
 	(struct unicode_string *dst, struct unicode_string *src)
 {
 	if (dst->max_length < src->length + dst->length)
@@ -512,7 +512,7 @@ STDCALL NTSTATUS WRAP_EXPORT(RtlAppendUnicodeStringToString)
 	TRACEEXIT2(return STATUS_SUCCESS);
 }
 
-STDCALL ULONG WRAP_EXPORT(RtlxAnsiStringToUnicodeSize)
+wstdcall ULONG WRAP_EXPORT(RtlxAnsiStringToUnicodeSize)
 	(const struct ansi_string *string)
 {
 	int i;
@@ -522,7 +522,7 @@ STDCALL ULONG WRAP_EXPORT(RtlxAnsiStringToUnicodeSize)
 	return (i * sizeof(wchar_t));
 }
 
-STDCALL ULONG WRAP_EXPORT(RtlxUnicodeStringToAnsiSize)
+wstdcall ULONG WRAP_EXPORT(RtlxUnicodeStringToAnsiSize)
 	(const struct unicode_string *string)
 {
 	int i;
@@ -532,7 +532,7 @@ STDCALL ULONG WRAP_EXPORT(RtlxUnicodeStringToAnsiSize)
 	return i;
 }
 
-STDCALL NTSTATUS WRAP_EXPORT(RtlAnsiStringToUnicodeString)
+wstdcall NTSTATUS WRAP_EXPORT(RtlAnsiStringToUnicodeString)
 	(struct unicode_string *dst, const struct ansi_string *src,
 	 BOOLEAN alloc)
 {
@@ -563,7 +563,7 @@ STDCALL NTSTATUS WRAP_EXPORT(RtlAnsiStringToUnicodeString)
 	TRACEEXIT2(return STATUS_SUCCESS);
 }
 
-STDCALL NTSTATUS WRAP_EXPORT(RtlUnicodeStringToAnsiString)
+wstdcall NTSTATUS WRAP_EXPORT(RtlUnicodeStringToAnsiString)
 	(struct ansi_string *dst, const struct unicode_string *src,
 	 BOOLEAN alloc)
 {
@@ -593,7 +593,7 @@ STDCALL NTSTATUS WRAP_EXPORT(RtlUnicodeStringToAnsiString)
 	TRACEEXIT2(return STATUS_SUCCESS);
 }
 
-STDCALL NTSTATUS WRAP_EXPORT(RtlUnicodeStringToInteger)
+wstdcall NTSTATUS WRAP_EXPORT(RtlUnicodeStringToInteger)
 	(struct unicode_string *ustring, ULONG base, ULONG *value)
 {
 	int i, negsign;
@@ -657,7 +657,7 @@ STDCALL NTSTATUS WRAP_EXPORT(RtlUnicodeStringToInteger)
 	return STATUS_SUCCESS;
 }
 
-STDCALL NTSTATUS WRAP_EXPORT(RtlIntegerToUnicodeString)
+wstdcall NTSTATUS WRAP_EXPORT(RtlIntegerToUnicodeString)
 	(ULONG value, ULONG base, struct unicode_string *ustring)
 {
 	wchar_t *buf = ustring->buf;
@@ -682,27 +682,27 @@ STDCALL NTSTATUS WRAP_EXPORT(RtlIntegerToUnicodeString)
 	return STATUS_SUCCESS;
 }
 
-STDCALL LARGE_INTEGER WRAP_EXPORT(RtlConvertUlongToLargeInteger)
+wstdcall LARGE_INTEGER WRAP_EXPORT(RtlConvertUlongToLargeInteger)
 	(ULONG ul)
 {
 	LARGE_INTEGER li = ul;
 	return li;
 }
 
-_FASTCALL USHORT WRAP_EXPORT(RtlUShortByteSwap)
+wfastcall USHORT WRAP_EXPORT(RtlUShortByteSwap)
 	(USHORT src)
 {
 	return __swab16(src);
 }
 
-_FASTCALL ULONG WRAP_EXPORT(RtlUlongByteSwap)
+wfastcall ULONG WRAP_EXPORT(RtlUlongByteSwap)
 	(ULONG src)
 {
 	/* ULONG is 32 bits for both 32-bit and 64-bit architectures */
 	return __swab32(src);
 }
 
-STDCALL void WRAP_EXPORT(RtlInitUnicodeString)
+wstdcall void WRAP_EXPORT(RtlInitUnicodeString)
 	(struct unicode_string *dst, const wchar_t *src)
 {
 	TRACEENTER2("%p", dst);
@@ -722,7 +722,7 @@ STDCALL void WRAP_EXPORT(RtlInitUnicodeString)
 	TRACEEXIT1(return);
 }
 
-STDCALL void WRAP_EXPORT(RtlInitAnsiString)
+wstdcall void WRAP_EXPORT(RtlInitAnsiString)
 	(struct ansi_string *dst, const char *src)
 {
 	TRACEENTER2("%p", dst);
@@ -743,7 +743,7 @@ STDCALL void WRAP_EXPORT(RtlInitAnsiString)
 	TRACEEXIT2(return);
 }
 
-STDCALL void WRAP_EXPORT(RtlInitString)
+wstdcall void WRAP_EXPORT(RtlInitString)
 	(struct ansi_string *dst, const char *src)
 {
 	TRACEENTER2("%p", dst);
@@ -751,7 +751,7 @@ STDCALL void WRAP_EXPORT(RtlInitString)
 	TRACEEXIT2(return);
 }
 
-STDCALL void WRAP_EXPORT(RtlFreeUnicodeString)
+wstdcall void WRAP_EXPORT(RtlFreeUnicodeString)
 	(struct unicode_string *string)
 {
 	TRACEENTER2("%p", string);
@@ -764,7 +764,7 @@ STDCALL void WRAP_EXPORT(RtlFreeUnicodeString)
 	return;
 }
 
-STDCALL void WRAP_EXPORT(RtlFreeAnsiString)
+wstdcall void WRAP_EXPORT(RtlFreeAnsiString)
 	(struct ansi_string *string)
 {
 	TRACEENTER2("%p", string);
@@ -777,7 +777,7 @@ STDCALL void WRAP_EXPORT(RtlFreeAnsiString)
 	return;
 }
 
-STDCALL NTSTATUS WRAP_EXPORT(RtlQueryRegistryValues)
+wstdcall NTSTATUS WRAP_EXPORT(RtlQueryRegistryValues)
 	(ULONG relative, wchar_t *path, struct rtl_query_registry_table *tbl,
 	 void *context, void *env)
 {
@@ -851,7 +851,7 @@ STDCALL NTSTATUS WRAP_EXPORT(RtlQueryRegistryValues)
 	TRACEEXIT3(return ret);
 }
 
-STDCALL NTSTATUS WRAP_EXPORT(RtlWriteRegistryValue)
+wstdcall NTSTATUS WRAP_EXPORT(RtlWriteRegistryValue)
 	(ULONG relative, wchar_t *path, wchar_t *name, ULONG type,
 	 void *data, ULONG length)
 {
@@ -876,13 +876,13 @@ STDCALL NTSTATUS WRAP_EXPORT(RtlWriteRegistryValue)
 	TRACEEXIT5(return STATUS_SUCCESS);
 }
 
-STDCALL NTSTATUS WRAP_EXPORT(RtlDeleteRegistryValue)
+wstdcall NTSTATUS WRAP_EXPORT(RtlDeleteRegistryValue)
 	(ULONG relative, wchar_t *path, wchar_t *name)
 {
 	return STATUS_SUCCESS;
 }
 
-STDCALL void WRAP_EXPORT(RtlAssert)
+wstdcall void WRAP_EXPORT(RtlAssert)
 	(char *failed_assertion, char *file_name, ULONG line_num,
 	 char *message)
 {
@@ -891,7 +891,7 @@ STDCALL void WRAP_EXPORT(RtlAssert)
 	return;
 }
 
-STDCALL int WRAP_EXPORT(rand)
+wstdcall int WRAP_EXPORT(rand)
 	(void)
 {
 	char buf[6];

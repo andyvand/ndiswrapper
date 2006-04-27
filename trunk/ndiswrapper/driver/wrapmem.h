@@ -22,7 +22,7 @@
  * unloaded. To identify leaks, define ALLOC_DEBUG, which will show
  * individual allocations that are not being freed */
 
-//#define ALLOC_INFO 1
+#define ALLOC_INFO 1
 //#define ALLOC_DEBUG 1
 
 #ifdef ALLOC_DEBUG

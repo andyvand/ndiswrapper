@@ -112,7 +112,7 @@ static void usb_init_urb(struct urb *urb)
 
 static struct nt_list wrap_urb_complete_list;
 static NT_SPIN_LOCK wrap_urb_complete_list_lock;
-static STDCALL void wrap_cancel_irp(struct device_object *dev_obj,
+static wstdcall void wrap_cancel_irp(struct device_object *dev_obj,
 				    struct irp *irp);
 
 /* use tasklet instead worker to process completed urbs */
@@ -552,7 +552,7 @@ static void wrap_urb_complete_worker(void *dummy)
 
 /* called as Windows function, so call WIN2LIN2 before accessing
  * arguments */
-static STDCALL void wrap_cancel_irp(struct device_object *dev_obj,
+static wstdcall void wrap_cancel_irp(struct device_object *dev_obj,
 				    struct irp *irp)
 {
 	struct urb *urb;
@@ -1198,7 +1198,7 @@ NTSTATUS wrap_submit_irp(struct device_object *pdo, struct irp *irp)
  * description and examples elsewhere suggest that it should be
  * usbd_interface_list_entry structre. Which is correct? */
 
-STDCALL union nt_urb *WRAP_EXPORT(USBD_CreateConfigurationRequestEx)
+wstdcall union nt_urb *WRAP_EXPORT(USBD_CreateConfigurationRequestEx)
 	(struct usb_config_descriptor *config,
 	 struct usbd_interface_list_entry *intf_list)
 {
@@ -1263,7 +1263,7 @@ STDCALL union nt_urb *WRAP_EXPORT(USBD_CreateConfigurationRequestEx)
 
 WRAP_EXPORT_MAP("_USBD_CreateConfigurationRequestEx@8",	USBD_CreateConfigurationRequestEx);
 
-STDCALL struct usb_interface_descriptor *
+wstdcall struct usb_interface_descriptor *
 WRAP_EXPORT(USBD_ParseConfigurationDescriptorEx)
 	(struct usb_config_descriptor *config, void *start,
 	 LONG bInterfaceNumber, LONG bAlternateSetting, LONG bInterfaceClass,
@@ -1302,7 +1302,7 @@ WRAP_EXPORT(USBD_ParseConfigurationDescriptorEx)
 
 WRAP_EXPORT_MAP("_USBD_ParseConfigurationDescriptorEx@28", USBD_ParseConfigurationDescriptorEx);
 
-STDCALL union nt_urb *WRAP_EXPORT(USBD_CreateConfigurationRequest)
+wstdcall union nt_urb *WRAP_EXPORT(USBD_CreateConfigurationRequest)
 	(struct usb_config_descriptor *config, USHORT *size)
 {
 	union nt_urb *nt_urb;
@@ -1325,7 +1325,7 @@ STDCALL union nt_urb *WRAP_EXPORT(USBD_CreateConfigurationRequest)
 	USBEXIT(return nt_urb);
 }
 
-STDCALL struct usb_interface_descriptor *
+wstdcall struct usb_interface_descriptor *
 WRAP_EXPORT(USBD_ParseConfigurationDescriptor)
 	(struct usb_config_descriptor *config, UCHAR bInterfaceNumber,
 	 UCHAR bAlternateSetting)
@@ -1336,7 +1336,7 @@ WRAP_EXPORT(USBD_ParseConfigurationDescriptor)
 						   -1, -1, -1);
 }
 
-STDCALL void WRAP_EXPORT(USBD_GetUSBDIVersion)
+wstdcall void WRAP_EXPORT(USBD_GetUSBDIVersion)
 	(struct usbd_version_info *version_info)
 {
 	/* this function is obsolete in Windows XP */
@@ -1348,7 +1348,7 @@ STDCALL void WRAP_EXPORT(USBD_GetUSBDIVersion)
 	USBEXIT(return);
 }
 
-STDCALL void
+wstdcall void
 USBD_InterfaceGetUSBDIVersion(void *context,
 			      struct usbd_version_info *version_info,
 			      ULONG *hcd_capa)
@@ -1366,7 +1366,7 @@ USBD_InterfaceGetUSBDIVersion(void *context,
 	USBEXIT(return);
 }
 
-STDCALL BOOLEAN USBD_InterfaceIsDeviceHighSpeed(void *context)
+wstdcall BOOLEAN USBD_InterfaceIsDeviceHighSpeed(void *context)
 {
 	struct wrap_device *wd = context;
 
@@ -1377,19 +1377,19 @@ STDCALL BOOLEAN USBD_InterfaceIsDeviceHighSpeed(void *context)
 		USBEXIT(return FALSE);
 }
 
-STDCALL void USBD_InterfaceReference(void *context)
+wstdcall void USBD_InterfaceReference(void *context)
 {
 	USBTRACE("%p", context);
 	UNIMPL();
 }
 
-STDCALL void USBD_InterfaceDereference(void *context)
+wstdcall void USBD_InterfaceDereference(void *context)
 {
 	USBTRACE("%p", context);
 	UNIMPL();
 }
 
-STDCALL NTSTATUS USBD_InterfaceQueryBusTime(void *context, ULONG *frame)
+wstdcall NTSTATUS USBD_InterfaceQueryBusTime(void *context, ULONG *frame)
 {
 	struct wrap_device *wd = context;
 
@@ -1397,7 +1397,7 @@ STDCALL NTSTATUS USBD_InterfaceQueryBusTime(void *context, ULONG *frame)
 	USBEXIT(return STATUS_SUCCESS);
 }
 
-STDCALL NTSTATUS USBD_InterfaceSubmitIsoOutUrb(void *context,
+wstdcall NTSTATUS USBD_InterfaceSubmitIsoOutUrb(void *context,
 					       union nt_urb *nt_urb)
 {
 	/* TODO: implement this */
@@ -1405,7 +1405,7 @@ STDCALL NTSTATUS USBD_InterfaceSubmitIsoOutUrb(void *context,
 	USBEXIT(return STATUS_NOT_IMPLEMENTED);
 }
 
-STDCALL NTSTATUS
+wstdcall NTSTATUS
 USBD_InterfaceQueryBusInformation(void *context, ULONG level, void *buf,
 				  ULONG *buf_length, ULONG *buf_actual_length)
 {
@@ -1419,7 +1419,7 @@ USBD_InterfaceQueryBusInformation(void *context, ULONG level, void *buf,
 	USBEXIT(return STATUS_NOT_IMPLEMENTED);
 }
 
-STDCALL NTSTATUS
+wstdcall NTSTATUS
 USBD_InterfaceLogEntry(void *context, ULONG driver_tag, ULONG enum_tag,
 		       ULONG p1, ULONG p2)
 {

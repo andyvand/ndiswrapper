@@ -50,6 +50,8 @@
 #include "ndiswrapper.h"
 #include "pe_linker.h"
 
+#define DEBUG_IRQL 1
+
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,7)
 #include <linux/kthread.h>
 #endif
@@ -485,7 +487,7 @@ struct wrap_export {
 
 struct pe_image {
 	char name[MAX_DRIVER_NAME_LEN];
-	UINT (*entry)(struct driver_object *, struct unicode_string *) STDCALL;
+	UINT (*entry)(struct driver_object *, struct unicode_string *) wstdcall;
 	void *image;
 	int size;
 	int type;
@@ -496,8 +498,6 @@ struct pe_image {
 
 extern NT_SPIN_LOCK atomic_lock;
 extern NT_SPIN_LOCK cancel_lock;
-
-#define DEBUG_IRQL 1
 
 struct wrap_timer {
 	long repeat;
@@ -515,7 +515,7 @@ struct ntos_work_item {
 	struct nt_list list;
 	void *arg1;
 	void *arg2;
-	void (*func)(void *arg1, void *arg2) STDCALL;
+	void (*func)(void *arg1, void *arg2) wstdcall;
 	enum worker_func_type func_type;
 };
 
@@ -618,7 +618,6 @@ extern struct workqueue_struct *ntos_wq;
 #define schedule_ntos_work(work_struct) schedule_work(work_struct)
 #endif
 
-
 int ntoskernel_init(void);
 void ntoskernel_exit(void);
 int ntoskernel_init_device(struct wrap_device *wd);
@@ -643,111 +642,98 @@ void dump_bytes(const char *name, const u8 *from, int len);
 
 struct driver_object *find_bus_driver(const char *name);
 
-STDCALL void WRITE_PORT_UCHAR(ULONG_PTR port, UCHAR value);
-STDCALL UCHAR READ_PORT_UCHAR(ULONG_PTR port);
+wstdcall void WRITE_PORT_UCHAR(ULONG_PTR port, UCHAR value);
+wstdcall UCHAR READ_PORT_UCHAR(ULONG_PTR port);
 
 #undef ExAllocatePoolWithTag
-STDCALL void *ExAllocatePoolWithTag(enum pool_type pool_type, SIZE_T size,
+wstdcall void *ExAllocatePoolWithTag(enum pool_type pool_type, SIZE_T size,
 				    ULONG tag);
 #ifdef ALLOC_DEBUG
 #define ExAllocatePoolWithTag(pool_type, size, tag)			\
 	wrap_ExAllocatePoolWithTag(pool_type, size, tag, __FILE__, __LINE__)
 #endif
 
-STDCALL void ExFreePool(void *p);
-STDCALL ULONG MmSizeOfMdl(void *base, ULONG length);
-STDCALL void *MmMapIoSpace(PHYSICAL_ADDRESS phys_addr, SIZE_T size,
+wstdcall void ExFreePool(void *p);
+wstdcall ULONG MmSizeOfMdl(void *base, ULONG length);
+wstdcall void *MmMapIoSpace(PHYSICAL_ADDRESS phys_addr, SIZE_T size,
 			   enum memory_caching_type cache);
-STDCALL void MmUnmapIoSpace(void *addr, SIZE_T size);
-STDCALL void MmProbeAndLockPages(struct mdl *mdl, KPROCESSOR_MODE access_mode,
+wstdcall void MmUnmapIoSpace(void *addr, SIZE_T size);
+wstdcall void MmProbeAndLockPages(struct mdl *mdl, KPROCESSOR_MODE access_mode,
 	 enum lock_operation operation);
-STDCALL void MmUnlockPages(struct mdl *mdl);
-STDCALL void KeInitializeEvent(struct nt_event *nt_event,
+wstdcall void MmUnlockPages(struct mdl *mdl);
+wstdcall void KeInitializeEvent(struct nt_event *nt_event,
 			       enum event_type type, BOOLEAN state);
-STDCALL LONG KeSetEvent(struct nt_event *nt_event, KPRIORITY incr,
+wstdcall LONG KeSetEvent(struct nt_event *nt_event, KPRIORITY incr,
 			BOOLEAN wait);
-STDCALL LONG KeResetEvent(struct nt_event *nt_event);
-STDCALL void KeClearEvent(struct nt_event *nt_event);
-STDCALL void KeInitializeDpc(struct kdpc *kdpc, void *func, void *ctx);
-STDCALL BOOLEAN KeInsertQueueDpc(struct kdpc *kdpc, void *arg1, void *arg2);
-STDCALL BOOLEAN KeRemoveQueueDpc(struct kdpc *kdpc);
-STDCALL void KeFlushQueuedDpcs(void);
-STDCALL NTSTATUS KeWaitForSingleObject(void *object, KWAIT_REASON reason,
-				       KPROCESSOR_MODE waitmode,
-				       BOOLEAN alertable,
-				       LARGE_INTEGER *timeout);
+wstdcall LONG KeResetEvent(struct nt_event *nt_event);
+wstdcall void KeClearEvent(struct nt_event *nt_event);
+wstdcall void KeInitializeDpc(struct kdpc *kdpc, void *func, void *ctx);
+wstdcall BOOLEAN KeInsertQueueDpc(struct kdpc *kdpc, void *arg1, void *arg2);
+wstdcall BOOLEAN KeRemoveQueueDpc(struct kdpc *kdpc);
+wstdcall void KeFlushQueuedDpcs(void);
+wstdcall NTSTATUS KeWaitForSingleObject
+	(void *object, KWAIT_REASON reason, KPROCESSOR_MODE waitmode,
+	 BOOLEAN alertable, LARGE_INTEGER *timeout);
 struct mdl *allocate_init_mdl(void *virt, ULONG length);
 void free_mdl(struct mdl *mdl);
-STDCALL struct mdl *IoAllocateMdl(void *virt, ULONG length, BOOLEAN second_buf,
-				  BOOLEAN charge_quota, struct irp *irp);
-STDCALL void MmBuildMdlForNonPagedPool(struct mdl *mdl);
-STDCALL void IoFreeMdl(struct mdl *mdl);
-_FASTCALL LONG InterlockedDecrement(FASTCALL_DECL_1(LONG volatile *val));
-_FASTCALL LONG InterlockedIncrement(FASTCALL_DECL_1(LONG volatile *val));
-_FASTCALL struct nt_list *
-ExInterlockedInsertHeadList(FASTCALL_DECL_3(struct nt_list *head,
-					    struct nt_list *entry,
-					    NT_SPIN_LOCK *lock));
-_FASTCALL struct nt_list *
-ExInterlockedInsertTailList(FASTCALL_DECL_3(struct nt_list *head,
-					    struct nt_list *entry,
-					    NT_SPIN_LOCK *lock));
-_FASTCALL struct nt_list *
-ExInterlockedRemoveHeadList(FASTCALL_DECL_2(struct nt_list *head,
-					    NT_SPIN_LOCK *lock));
-STDCALL NTSTATUS IoCreateDevice(struct driver_object *driver,
-				ULONG dev_ext_length,
-				struct unicode_string *dev_name,
-				DEVICE_TYPE dev_type,
-				ULONG dev_chars, BOOLEAN exclusive,
-				struct device_object **dev_obj);
-STDCALL NTSTATUS IoCreateSymbolicLink(struct unicode_string *link,
-				      struct unicode_string *dev_name);
-STDCALL void IoDeleteDevice(struct device_object *dev);
-STDCALL void IoDetachDevice(struct device_object *topdev);
-STDCALL struct device_object *IoGetAttachedDevice(struct device_object *dev);
-STDCALL struct device_object *
-	IoGetAttachedDeviceReference(struct device_object *dev);
-STDCALL NTSTATUS
-	IoAllocateDriverObjectExtension(struct driver_object *drv_obj,
-					void *client_id, ULONG extlen,
-					void **ext);
-STDCALL void *IoGetDriverObjectExtension(struct driver_object *drv,
-					 void *client_id);
-STDCALL struct device_object *IoAttachDeviceToDeviceStack
+wstdcall struct mdl *IoAllocateMdl
+	(void *virt, ULONG length, BOOLEAN second_buf, BOOLEAN charge_quota,
+	 struct irp *irp);
+wstdcall void MmBuildMdlForNonPagedPool(struct mdl *mdl);
+wstdcall void IoFreeMdl(struct mdl *mdl);
+wfastcall LONG InterlockedDecrement(wfastcall_decl_1(LONG volatile *val));
+wfastcall LONG InterlockedIncrement(wfastcall_decl_1(LONG volatile *val));
+wfastcall struct nt_list *ExInterlockedInsertHeadList
+	(wfastcall_decl_3(struct nt_list *head, struct nt_list *entry,
+			 NT_SPIN_LOCK *lock));
+wfastcall struct nt_list *ExInterlockedInsertTailList
+	(wfastcall_decl_3(struct nt_list *head, struct nt_list *entry,
+			 NT_SPIN_LOCK *lock));
+wfastcall struct nt_list *ExInterlockedRemoveHeadList
+	(wfastcall_decl_2(struct nt_list *head, NT_SPIN_LOCK *lock));
+wstdcall NTSTATUS IoCreateDevice
+	(struct driver_object *driver, ULONG dev_ext_length,
+	 struct unicode_string *dev_name, DEVICE_TYPE dev_type,
+	 ULONG dev_chars, BOOLEAN exclusive, struct device_object **dev_obj);
+wstdcall NTSTATUS IoCreateSymbolicLink
+	(struct unicode_string *link, struct unicode_string *dev_name);
+wstdcall void IoDeleteDevice(struct device_object *dev);
+wstdcall void IoDetachDevice(struct device_object *topdev);
+wstdcall struct device_object *IoGetAttachedDevice(struct device_object *dev);
+wstdcall struct device_object *IoGetAttachedDeviceReference
+	(struct device_object *dev);
+wstdcall NTSTATUS IoAllocateDriverObjectExtension
+	(struct driver_object *drv_obj, void *client_id, ULONG extlen,
+	 void **ext);
+wstdcall void *IoGetDriverObjectExtension
+	(struct driver_object *drv, void *client_id);
+wstdcall struct device_object *IoAttachDeviceToDeviceStack
 	(struct device_object *src, struct device_object *dst);
-STDCALL void KeInitializeEvent(struct nt_event *nt_event, enum event_type type,
-			       BOOLEAN state);
+wstdcall void KeInitializeEvent
+	(struct nt_event *nt_event, enum event_type type, BOOLEAN state);
 void free_custom_extensions(struct driver_extension *drv_obj_ext);
+wstdcall struct irp *IoAllocateIrp(char stack_count, BOOLEAN charge_quota);
+wstdcall void IoFreeIrp(struct irp *irp);
+wstdcall BOOLEAN IoCancelIrp(struct irp *irp);
+wfastcall NTSTATUS IofCallDriver
+	(wfastcall_decl_2(struct device_object *dev_obj, struct irp *irp));
+wstdcall struct irp *IoBuildSynchronousFsdRequest
+	(ULONG major_func, struct device_object *dev_obj, void *buf,
+	 ULONG length, LARGE_INTEGER *offset, struct nt_event *event,
+	 struct io_status_block *status);
+wstdcall struct irp *IoBuildAsynchronousFsdRequest
+	(ULONG major_func,struct device_object *dev_obj, void *buf,
+	 ULONG length, LARGE_INTEGER *offset, struct io_status_block *status);
+wstdcall NTSTATUS PoCallDriver(struct device_object *dev_obj, struct irp *irp);
 
-STDCALL struct irp *IoAllocateIrp(char stack_count, BOOLEAN charge_quota);
-STDCALL void IoFreeIrp(struct irp *irp);
-STDCALL BOOLEAN IoCancelIrp(struct irp *irp);
-_FASTCALL NTSTATUS IofCallDriver
-	(FASTCALL_DECL_2(struct device_object *dev_obj, struct irp *irp));
-STDCALL struct irp *
-	IoBuildSynchronousFsdRequest(ULONG major_func,
-				     struct device_object *dev_obj, void *buf,
-				     ULONG length, LARGE_INTEGER *offset,
-				     struct nt_event *event,
-				     struct io_status_block *status);
-STDCALL struct irp *
-	IoBuildAsynchronousFsdRequest(ULONG major_func,
-				      struct device_object *dev_obj, void *buf,
-				      ULONG length, LARGE_INTEGER *offset,
-				      struct io_status_block *status);
-STDCALL NTSTATUS PoCallDriver(struct device_object *dev_obj, struct irp *irp);
-
-driver_dispatch_t IopInvalidDeviceRequest;
-
-STDCALL NTSTATUS IoPassIrpDown(struct device_object *dev_obj,
-			       struct irp *irp);
-STDCALL NTSTATUS IoSyncForwardIrp(struct device_object *dev_obj,
-				  struct irp *irp);
-STDCALL NTSTATUS IoAsyncForwardIrp(struct device_object *dev_obj,
-				   struct irp *irp);
-STDCALL NTSTATUS IoInvalidDeviceRequest(struct device_object *dev_obj,
-					struct irp *irp);
+wstdcall NTSTATUS IoPassIrpDown
+	(struct device_object *dev_obj, struct irp *irp);
+wstdcall NTSTATUS IoSyncForwardIrp
+	(struct device_object *dev_obj, struct irp *irp);
+wstdcall NTSTATUS IoAsyncForwardIrp
+	(struct device_object *dev_obj, struct irp *irp);
+wstdcall NTSTATUS IoInvalidDeviceRequest
+	(struct device_object *dev_obj, struct irp *irp);
 
 struct nt_thread *get_current_nt_thread(void);
 u64 ticks_1601(void);
@@ -755,41 +741,39 @@ u64 ticks_1601(void);
 int schedule_ntos_work_item(NTOS_WORK_FUNC func, void *arg1, void *arg2,
 			    enum worker_func_type func_type);
 
-STDCALL KIRQL KeGetCurrentIrql(void);
-STDCALL void KeInitializeSpinLock(NT_SPIN_LOCK *lock);
-STDCALL void KeAcquireSpinLock(NT_SPIN_LOCK *lock, KIRQL *irql);
-STDCALL void KeReleaseSpinLock(NT_SPIN_LOCK *lock, KIRQL oldirql);
-STDCALL KIRQL KeAcquireSpinLockRaiseToDpc(NT_SPIN_LOCK *lock);
+wstdcall KIRQL KeGetCurrentIrql(void);
+wstdcall void KeInitializeSpinLock(NT_SPIN_LOCK *lock);
+wstdcall void KeAcquireSpinLock(NT_SPIN_LOCK *lock, KIRQL *irql);
+wstdcall void KeReleaseSpinLock(NT_SPIN_LOCK *lock, KIRQL oldirql);
+wstdcall KIRQL KeAcquireSpinLockRaiseToDpc(NT_SPIN_LOCK *lock);
 
-STDCALL void IoAcquireCancelSpinLock(KIRQL *irql);
-STDCALL void IoReleaseCancelSpinLock(KIRQL irql);
+wstdcall void IoAcquireCancelSpinLock(KIRQL *irql);
+wstdcall void IoReleaseCancelSpinLock(KIRQL irql);
 
-_FASTCALL KIRQL KfRaiseIrql(FASTCALL_DECL_1(KIRQL newirql));
-_FASTCALL void KfLowerIrql(FASTCALL_DECL_1(KIRQL oldirql));
-_FASTCALL KIRQL KfAcquireSpinLock(FASTCALL_DECL_1(NT_SPIN_LOCK *lock));
-_FASTCALL void
-KfReleaseSpinLock(FASTCALL_DECL_2(NT_SPIN_LOCK *lock, KIRQL oldirql));
-_FASTCALL void
-IofCompleteRequest(FASTCALL_DECL_2(struct irp *irp, CHAR prio_boost));
-_FASTCALL void
-KefReleaseSpinLockFromDpcLevel(FASTCALL_DECL_1(NT_SPIN_LOCK *lock));
-STDCALL void RtlCopyMemory(void *dst, const void *src, SIZE_T length);
-STDCALL NTSTATUS RtlUnicodeStringToAnsiString(struct ansi_string *dst,
-					      const struct unicode_string *src,
-					      BOOLEAN dup);
-STDCALL NTSTATUS RtlAnsiStringToUnicodeString(struct unicode_string *dst,
-					       const struct ansi_string *src,
-					       BOOLEAN dup);
-STDCALL void RtlInitAnsiString(struct ansi_string *dst, const char *src);
-STDCALL void RtlInitString(struct ansi_string *dst, const char *src);
-STDCALL void RtlInitUnicodeString(struct unicode_string *dest,
-				  const wchar_t *src);
-STDCALL void RtlFreeUnicodeString(struct unicode_string *string);
-STDCALL void RtlFreeAnsiString(struct ansi_string *string);
-STDCALL LONG RtlCompareUnicodeString
+wfastcall KIRQL KfRaiseIrql(wfastcall_decl_1(KIRQL newirql));
+wfastcall void KfLowerIrql(wfastcall_decl_1(KIRQL oldirql));
+wfastcall KIRQL KfAcquireSpinLock(wfastcall_decl_1(NT_SPIN_LOCK *lock));
+wfastcall void KfReleaseSpinLock
+	(wfastcall_decl_2(NT_SPIN_LOCK *lock, KIRQL oldirql));
+wfastcall void IofCompleteRequest
+	(wfastcall_decl_2(struct irp *irp, CHAR prio_boost));
+wfastcall void KefReleaseSpinLockFromDpcLevel
+	(wfastcall_decl_1(NT_SPIN_LOCK *lock));
+wstdcall void RtlCopyMemory(void *dst, const void *src, SIZE_T length);
+wstdcall NTSTATUS RtlUnicodeStringToAnsiString
+	(struct ansi_string *dst, const struct unicode_string *src, BOOLEAN dup);
+wstdcall NTSTATUS RtlAnsiStringToUnicodeString
+	(struct unicode_string *dst, const struct ansi_string *src, BOOLEAN dup);
+wstdcall void RtlInitAnsiString(struct ansi_string *dst, const char *src);
+wstdcall void RtlInitString(struct ansi_string *dst, const char *src);
+wstdcall void RtlInitUnicodeString
+	(struct unicode_string *dest, const wchar_t *src);
+wstdcall void RtlFreeUnicodeString(struct unicode_string *string);
+wstdcall void RtlFreeAnsiString(struct ansi_string *string);
+wstdcall LONG RtlCompareUnicodeString
 	(const struct unicode_string *s1, const struct unicode_string *s2,
 	 BOOLEAN case_insensitive);
-STDCALL void RtlCopyUnicodeString
+wstdcall void RtlCopyUnicodeString
 	(struct unicode_string *dst, struct unicode_string *src);
 NOREGPARM SIZE_T _win_wcslen(const wchar_t *s);
 
@@ -798,16 +782,17 @@ void wrap_init_timer(struct nt_timer *nt_timer, enum timer_type type,
 BOOLEAN wrap_set_timer(struct nt_timer *nt_timer, unsigned long expires_hz,
 		       unsigned long repeat_hz, struct kdpc *kdpc);
 
-STDCALL void KeInitializeTimer(struct nt_timer *nt_timer);
-STDCALL void KeInitializeTimerEx(struct nt_timer *nt_timer,
-				 enum timer_type type);
-STDCALL BOOLEAN KeSetTimerEx(struct nt_timer *nt_timer,
-			     LARGE_INTEGER duetime_ticks, LONG period_ms,
-			     struct kdpc *kdpc);
-STDCALL BOOLEAN KeSetTimer(struct nt_timer *nt_timer,
-			   LARGE_INTEGER duetime_ticks, struct kdpc *kdpc);
-STDCALL BOOLEAN KeCancelTimer(struct nt_timer *nt_timer);
-STDCALL void KeInitializeDpc(struct kdpc *kdpc, void *func, void *ctx);
+wstdcall void KeInitializeTimer(struct nt_timer *nt_timer);
+wstdcall void KeInitializeTimerEx
+	(struct nt_timer *nt_timer, enum timer_type type);
+wstdcall BOOLEAN KeSetTimerEx
+	(struct nt_timer *nt_timer, LARGE_INTEGER duetime_ticks, LONG period_ms,
+	 struct kdpc *kdpc);
+wstdcall BOOLEAN KeSetTimer
+	(struct nt_timer *nt_timer, LARGE_INTEGER duetime_ticks,
+	 struct kdpc *kdpc);
+wstdcall BOOLEAN KeCancelTimer(struct nt_timer *nt_timer);
+wstdcall void KeInitializeDpc(struct kdpc *kdpc, void *func, void *ctx);
 
 unsigned long lin_to_win1(void *func, unsigned long);
 unsigned long lin_to_win2(void *func, unsigned long, unsigned long);
@@ -821,19 +806,17 @@ unsigned long lin_to_win6(void *func, unsigned long, unsigned long,
 			  unsigned long, unsigned long, unsigned long,
 			  unsigned long);
 
+wstdcall struct task_struct *KeGetCurrentThread(void);
+wstdcall NTSTATUS ObReferenceObjectByHandle
+	(void *handle, ACCESS_MASK desired_access, void *obj_type,
+	 KPROCESSOR_MODE access_mode, void **object, void *handle_info);
+wfastcall LONG ObfReferenceObject(wfastcall_decl_1(void *object));
+wfastcall void ObfDereferenceObject(wfastcall_decl_1(void *object));
 
-STDCALL struct task_struct *KeGetCurrentThread(void);
-STDCALL NTSTATUS
-ObReferenceObjectByHandle(void *handle, ACCESS_MASK desired_access,
-			  void *obj_type, KPROCESSOR_MODE access_mode,
-			  void **object, void *handle_info);
-
-_FASTCALL LONG ObfReferenceObject(FASTCALL_DECL_1(void *object));
-_FASTCALL void ObfDereferenceObject(FASTCALL_DECL_1(void *object));
 #define ObReferenceObject(object)			\
-	ObfReferenceObject(FASTCALL_ARGS_1(object))
+	ObfReferenceObject(wfastcall_args_1(object))
 #define ObDereferenceObject(object)			\
-	ObfDereferenceObject(FASTCALL_ARGS_1(object))
+	ObfDereferenceObject(wfastcall_args_1(object))
 
 #define MSG(level, fmt, ...)				\
 	printk(level "ndiswrapper (%s:%d): " fmt "\n",	\
@@ -849,9 +832,8 @@ _FASTCALL void ObfDereferenceObject(FASTCALL_DECL_1(void *object));
 void adjust_user_shared_data_addr(char *driver, unsigned long length);
 
 #define IoCompleteRequest(irp, prio)			\
-	IofCompleteRequest(FASTCALL_ARGS_2(irp, prio))
-#define IoCallDriver(dev, irp)				\
-	IofCallDriver(FASTCALL_ARGS_2(dev, irp))
+	IofCompleteRequest(wfastcall_args_2(irp, prio))
+#define IoCallDriver(dev, irp) IofCallDriver(wfastcall_args_2(dev, irp))
 
 static inline KIRQL current_irql(void)
 {
@@ -906,30 +888,7 @@ static inline void  nt_spin_lock_init(volatile NT_SPIN_LOCK *lock)
 /* Linux kernel implements raw spinlocks in X86_64 differently from
  * X86; as of now I understand following should work for both - if
  * not, implement two versions */
-#if 0
-/* other spinlock implementations */
-	__asm__ __volatile__(
-		"\n"
-		"1:\t"
-		"  lock; xaddl %1, %0\n\t"
-		"  cmpl %2, %1\n\t"
-		"  je 3f\n"
-		"2:\t"
-		"  rep; nop\n\t"
-		"  cmpl %2, %0\n\t"
-		"  jne 2b\n\t"
-		"  mov $1, %1\n\t"
-		"  jmp 1b\n"
-		"3:\n\t"
-		: "=m" (*lock)
-		: "r" (1), "i" (NT_SPIN_LOCK_UNLOCKED)
-		: "memory");
-	while (xchg(lock, NT_SPIN_LOCK_LOCKED) != NT_SPIN_LOCK_UNLOCKED) {
-		do {
-			cpu_relax();
-		} while (*lock != NT_SPIN_LOCK_UNLOCKED);
-	}
-#endif
+
 static inline void nt_spin_lock(volatile NT_SPIN_LOCK *lock)
 {
 	__asm__ __volatile__(

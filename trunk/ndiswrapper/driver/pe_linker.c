@@ -589,7 +589,7 @@ int load_pe_images(struct pe_image *pe_image, int n)
 			struct unicode_string ustring;
 			char *buf = "0/0t0m0p00";
 			int (*dll_entry)(struct unicode_string *ustring)
-				STDCALL;
+				wstdcall;
 
 			memset(&ustring, 0, sizeof(ustring));
 			ustring.buf = (wchar_t *)buf;

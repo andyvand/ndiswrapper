@@ -110,27 +110,27 @@
 #define WMIUPDATE			1
 
 #ifdef CONFIG_X86_64
-#define STDCALL
-#define _FASTCALL
-#define FASTCALL_DECL_1(decl1) decl1
-#define FASTCALL_DECL_2(decl1,decl2) decl1, decl2
-#define FASTCALL_DECL_3(decl1,decl2,decl3) decl1, decl2, decl3
-#define FASTCALL_ARGS_1(arg1) arg1
-#define FASTCALL_ARGS_2(arg1,arg2) arg1, arg2
-#define FASTCALL_ARGS_3(arg1,arg2,arg3) arg1, arg2, arg3
+#define wstdcall
+#define wfastcall
+#define wfastcall_decl_1(decl1) decl1
+#define wfastcall_decl_2(decl1,decl2) decl1, decl2
+#define wfastcall_decl_3(decl1,decl2,decl3) decl1, decl2, decl3
+#define wfastcall_args_1(arg1) arg1
+#define wfastcall_args_2(arg1,arg2) arg1, arg2
+#define wfastcall_args_3(arg1,arg2,arg3) arg1, arg2, arg3
 
 #define KI_USER_SHARED_DATA 0xfffff78000000000
 
 #else
 
-#define STDCALL __attribute__((__stdcall__, regparm(0)))
-#define _FASTCALL __attribute__((__stdcall__)) __attribute__((regparm (3)))
-#define FASTCALL_DECL_1(decl1) int _dummy1_, int _dummy2_, decl1
-#define FASTCALL_DECL_2(decl1,decl2) int _dummy1_, decl2, decl1
-#define FASTCALL_DECL_3(decl1,decl2,decl3) int _dummy1_, decl2, decl1, decl3
-#define FASTCALL_ARGS_1(arg1) 0, 0, arg1
-#define FASTCALL_ARGS_2(arg1,arg2) 0, arg2, arg1
-#define FASTCALL_ARGS_3(arg1,arg2,arg3) 0, arg2, arg1, arg3
+#define wstdcall __attribute__((__stdcall__, regparm(0)))
+#define wfastcall __attribute__((__stdcall__)) __attribute__((regparm (3)))
+#define wfastcall_decl_1(decl1) int _dummy1_, int _dummy2_, decl1
+#define wfastcall_decl_2(decl1,decl2) int _dummy1_, decl2, decl1
+#define wfastcall_decl_3(decl1,decl2,decl3) int _dummy1_, decl2, decl1, decl3
+#define wfastcall_args_1(arg1) 0, 0, arg1
+#define wfastcall_args_2(arg1,arg2) 0, arg2, arg1
+#define wfastcall_args_3(arg1,arg2,arg3) 0, arg2, arg1, arg3
 
 #define KI_USER_SHARED_DATA 0xffdf0000
 
@@ -226,7 +226,7 @@ struct nt_list {
 typedef ULONG_PTR NT_SPIN_LOCK;
 
 struct kdpc;
-typedef STDCALL void (*DPC)(struct kdpc *kdpc, void *ctx, void *arg1,
+typedef wstdcall void (*DPC)(struct kdpc *kdpc, void *ctx, void *arg1,
 			    void *arg2);
 
 struct kdpc {
@@ -518,7 +518,7 @@ struct io_status_block32 {
 struct driver_extension;
 
 typedef NTSTATUS (driver_dispatch_t)(struct device_object *dev_obj,
-				     struct irp *irp) STDCALL;
+				     struct irp *irp) wstdcall;
 
 struct driver_object {
 	CSHORT type;
@@ -534,14 +534,14 @@ struct driver_object {
 	void *fast_io_dispatch;
 	void *init;
 	void *start_io;
-	void (*unload)(struct driver_object *driver) STDCALL;
+	void (*unload)(struct driver_object *driver) wstdcall;
 	driver_dispatch_t *major_func[IRP_MJ_MAXIMUM_FUNCTION + 1];
 };
 
 struct driver_extension {
 	struct driver_object *drv_obj;
 	NTSTATUS (*add_device)(struct driver_object *drv_obj,
-			       struct device_object *dev_obj) STDCALL;
+			       struct device_object *dev_obj) wstdcall;
 	ULONG count;
 	struct unicode_string service_key_name;
 	struct nt_list custom_ext;
@@ -630,8 +630,8 @@ struct nt_interface {
 	USHORT size;
 	USHORT version;
 	void *context;
-	void (*reference)(void *context) STDCALL;
-	void (*dereference)(void *context) STDCALL;
+	void (*reference)(void *context) wstdcall;
+	void (*dereference)(void *context) wstdcall;
 };
 
 enum interface_type {
@@ -934,7 +934,7 @@ struct io_stack_location {
 	struct device_object *dev_obj;
 	struct file_object *file_obj;
 	NTSTATUS (*completion_routine)(struct device_object *,
-				       struct irp *, void *) STDCALL;
+				       struct irp *, void *) wstdcall;
 	void *context;
 };
 #ifndef CONFIG_X86_64
@@ -1020,7 +1020,7 @@ struct irp {
 		LARGE_INTEGER alloc_size;
 	} overlay;
 
-	void (*cancel_routine)(struct device_object *, struct irp *) STDCALL;
+	void (*cancel_routine)(struct device_object *, struct irp *) wstdcall;
 	void *user_buf;
 
 	union {
@@ -1193,7 +1193,7 @@ enum work_queue_type {
 	MaximumWorkQueue
 };
 
-typedef STDCALL void (*NTOS_WORK_FUNC)(void *arg1, void *arg2);
+typedef wstdcall void (*NTOS_WORK_FUNC)(void *arg1, void *arg2);
 
 struct io_workitem {
 	enum work_queue_type type;
@@ -1226,9 +1226,9 @@ enum ntos_wait_reason {
 
 typedef enum ntos_wait_reason KWAIT_REASON;
 
-typedef STDCALL void *LOOKASIDE_ALLOC_FUNC(enum pool_type pool_type,
+typedef wstdcall void *LOOKASIDE_ALLOC_FUNC(enum pool_type pool_type,
 					   SIZE_T size, ULONG tag);
-typedef STDCALL void LOOKASIDE_FREE_FUNC(void *);
+typedef wstdcall void LOOKASIDE_FREE_FUNC(void *);
 
 struct npaged_lookaside_list {
 	nt_slist_header head;
@@ -1287,8 +1287,8 @@ enum trace_information_class {
 
 struct kinterrupt;
 typedef BOOLEAN (*PKSERVICE_ROUTINE)(struct kinterrupt *interrupt,
-				     void *context) STDCALL;
-typedef BOOLEAN (*PKSYNCHRONIZE_ROUTINE)(void *context) STDCALL;
+				     void *context) wstdcall;
+typedef BOOLEAN (*PKSYNCHRONIZE_ROUTINE)(void *context) wstdcall;
 
 struct kinterrupt {
 	ULONG vector;
@@ -1426,7 +1426,7 @@ struct kuser_shared_data {
 typedef NTSTATUS (*PRTL_QUERY_REGISTRY_ROUTINE)(wchar_t *name, ULONG type,
 						void *data, ULONG length,
 						void *context,
-						void *entry) STDCALL;
+						void *entry) wstdcall;
 
 struct rtl_query_registry_table {
 	PRTL_QUERY_REGISTRY_ROUTINE query_func;
