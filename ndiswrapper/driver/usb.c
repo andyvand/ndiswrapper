@@ -104,6 +104,11 @@ static void usb_init_urb(struct urb *urb)
 	memset(urb, 0, sizeof(*urb));
 }
 
+static void usb_kill_urb(struct urb *urb)
+{
+	usb_unlink_urb(urb);
+}
+
 #else
 
 #define URB_STATUS(wrap_urb) (wrap_urb->urb->status)
@@ -1095,7 +1100,7 @@ static USBD_STATUS wrap_process_nt_urb(struct irp *irp)
 
 static USBD_STATUS wrap_reset_port(struct irp *irp)
 {
-	int ret, lock = 0;
+	no_warn_unused int ret, lock = 0;
 	struct wrap_device *wd;
 
 	wd = irp->wd;
