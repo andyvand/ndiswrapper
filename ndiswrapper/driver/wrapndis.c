@@ -209,10 +209,6 @@ static NDIS_STATUS miniport_pnp_event(struct wrap_ndis_device *wnd,
 	enum ndis_power_profile power_profile;
 
 	TRACEENTER1("%p, %d", wnd, event);
-	/* RNDIS driver doesn't like to be notified if device is not
-	 * in initialized state */
-	if (!test_bit(HW_INITIALIZED, &wnd->hw_status))
-		TRACEEXIT1(return NDIS_STATUS_SUCCESS);
 	miniport = &wnd->wd->driver->ndis_driver->miniport;
 	switch (event) {
 	case NdisDevicePnPEventSurpriseRemoved:
@@ -314,6 +310,8 @@ static void miniport_halt(struct wrap_ndis_device *wnd)
 		WARNING("device %p is not initialized - not halting", wnd);
 		TRACEEXIT1(return);
 	}
+	if (wnd->wd->surprise_removed == TRUE)
+		miniport_pnp_event(wnd, NdisDevicePnPEventSurpriseRemoved);
 	miniport = &wnd->wd->driver->ndis_driver->miniport;
 	DBGTRACE1("driver halt is at %p", miniport->miniport_halt);
 	LIN2WIN1(miniport->miniport_halt, wnd->nmb->adapter_ctx);
@@ -1235,7 +1233,7 @@ void get_encryption_capa(struct wrap_ndis_device *wnd)
 
 /* called as Windows function, so call WIN2LIN2 before accessing
  * arguments */
-STDCALL NTSTATUS NdisDispatchDeviceControl(struct device_object *fdo,
+wstdcall NTSTATUS NdisDispatchDeviceControl(struct device_object *fdo,
 					   struct irp *irp)
 {
 	struct wrap_ndis_device *wnd;
@@ -1251,7 +1249,7 @@ STDCALL NTSTATUS NdisDispatchDeviceControl(struct device_object *fdo,
 
 /* called as Windows function, so call WIN2LIN2 before accessing
  * arguments */
-STDCALL NTSTATUS NdisDispatchPower(struct device_object *fdo, struct irp *irp)
+wstdcall NTSTATUS NdisDispatchPower(struct device_object *fdo, struct irp *irp)
 {
 	struct io_stack_location *irp_sl;
 	struct wrap_ndis_device *wnd;
@@ -1335,7 +1333,7 @@ STDCALL NTSTATUS NdisDispatchPower(struct device_object *fdo, struct irp *irp)
 
 /* called as Windows function, so call WIN2LIN2 before accessing
  * arguments */
-STDCALL NTSTATUS NdisDispatchPnp(struct device_object *fdo, struct irp *irp)
+wstdcall NTSTATUS NdisDispatchPnp(struct device_object *fdo, struct irp *irp)
 {
 	struct io_stack_location *irp_sl;
 	struct wrap_ndis_device *wnd;
@@ -1719,8 +1717,6 @@ static int ndis_remove_device(struct wrap_ndis_device *wnd)
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
 	up(&wnd->tx_ring_mutex);
 #endif
-	if (wnd->wd->surprise_removed == TRUE)
-		miniport_pnp_event(wnd, NdisDevicePnPEventSurpriseRemoved);
 	wrap_procfs_remove_ndis_device(wnd);
 	miniport_halt(wnd);
 	ndis_exit_device(wnd);
@@ -1742,7 +1738,7 @@ static int ndis_remove_device(struct wrap_ndis_device *wnd)
 	TRACEEXIT2(return 0);
 }
 
-static STDCALL NTSTATUS NdisAddDevice(struct driver_object *drv_obj,
+static wstdcall NTSTATUS NdisAddDevice(struct driver_object *drv_obj,
 				      struct device_object *pdo)
 {
 	struct device_object *fdo;

@@ -22,7 +22,7 @@ extern NT_SPIN_LOCK loader_lock;
 extern struct nt_list ndis_drivers;
 extern struct wrap_device *wrap_devices;
 
-STDCALL NTSTATUS IoSendIrpTopDev(struct device_object *dev_obj, ULONG major_fn,
+wstdcall NTSTATUS IoSendIrpTopDev(struct device_object *dev_obj, ULONG major_fn,
 				 ULONG minor_fn, struct io_stack_location *sl)
 {
 	NTSTATUS status;
@@ -53,7 +53,7 @@ STDCALL NTSTATUS IoSendIrpTopDev(struct device_object *dev_obj, ULONG major_fn,
 
 /* called as Windows function, so call WIN2LIN2 before accessing
  * arguments */
-STDCALL NTSTATUS pdoDispatchDeviceControl(struct device_object *pdo,
+wstdcall NTSTATUS pdoDispatchDeviceControl(struct device_object *pdo,
 					  struct  irp *irp)
 {
 	struct io_stack_location *irp_sl;
@@ -88,7 +88,7 @@ STDCALL NTSTATUS pdoDispatchDeviceControl(struct device_object *pdo,
 
 /* called as Windows function, so call WIN2LIN2 before accessing
  * arguments */
-STDCALL NTSTATUS pdoDispatchPnp(struct device_object *pdo,
+wstdcall NTSTATUS pdoDispatchPnp(struct device_object *pdo,
 				struct irp *irp)
 {
 	struct io_stack_location *irp_sl;
@@ -173,7 +173,7 @@ STDCALL NTSTATUS pdoDispatchPnp(struct device_object *pdo,
 }
 
 /* called as Windows function */
-STDCALL NTSTATUS pdoDispatchPower(struct device_object *pdo,
+wstdcall NTSTATUS pdoDispatchPower(struct device_object *pdo,
 				  struct irp *irp)
 {
 	struct io_stack_location *irp_sl;
@@ -734,7 +734,6 @@ void wrap_pnp_remove_usb_device(struct usb_device *udev, void *ptr)
 	intf = wd->usb.intf;
 	wd->usb.intf = NULL;
 	pnp_remove_device(wd);
-//	usb_driver_release_interface(&wrap_usb_driver, intf);
 }
 #endif
 
