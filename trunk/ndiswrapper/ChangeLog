@@ -1,14 +1,17 @@
-Version 1.15 2006-XX-XX
+Version 1.15 2006-04-26
 =======================
-* Yet another bug with removing module fixed.
 * Memory allocation tracking support added; this should help find any
-  memory leaks.
+  memory leaks (with ALLOC_INFO and ALLOC_DEBUG options to 'make').
 * Proper fix for drivers (Atheros PCI and USB drivers) allocating
   large chunk of memory in atomic context.
 * Fix for crash when module is removed with new Atheros USB driver,
   which supports WPA2 and has no firmware driver (athfmwdl).
 * Memory leaks plugged.
 * Wireless statistics are enabled (inadvertantly disabled in version 1.14).
+* Suspend/resume issues fixed - all devices, including USB devices,
+  should work with suspend/resume.
+* Plugging/unplugging/rmmod issues fixed; Marvell devices don't need
+  to be unplugged before removing module.
 
 Version 1.14 2006-04-17
 =======================

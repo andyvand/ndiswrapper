@@ -2155,8 +2155,9 @@ NdisMSendComplete(struct ndis_miniport_block *nmb, struct ndis_packet *packet,
 	struct wrap_ndis_device *wnd = nmb->wnd;
 	TRACEENTER3("%p, %08x", packet, status);
 	free_tx_packet(wnd, packet, status);
-	/* In case a serialized driver has requested a pause by returning
-	 * NDIS_STATUS_RESOURCES we need to give the send-code a kick again.
+	/* In case a serialized driver has earlier requested a pause
+	 * by returning NDIS_STATUS_RESOURCES during
+	 * MiniportSend(Packets), wakeup tx worker now.
 	 */
 	if (wnd->tx_ok == 0) {
 		wnd->tx_ok = 1;

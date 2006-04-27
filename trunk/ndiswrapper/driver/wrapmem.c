@@ -61,7 +61,9 @@ void wrapmem_exit(void)
 	while ((ent = RemoveHeadList(&slack_allocs))) {
 		struct slack_alloc_info *info;
 		info = container_of(ent, struct slack_alloc_info, list);
+#ifdef ALLOC_INFO
 		atomic_sub(info->size, &alloc_sizes[ALLOC_TYPE_SLACK]);
+#endif
 		kfree(info);
 	}
 	nt_spin_unlock(&alloc_lock);
@@ -142,7 +144,9 @@ void *slack_kmalloc(size_t size)
 	nt_spin_lock(&alloc_lock);
 	InsertTailList(&slack_allocs, &info->list);
 	nt_spin_unlock(&alloc_lock);
+#ifdef ALLOC_INFO
 	atomic_add(size, &alloc_sizes[ALLOC_TYPE_SLACK]);
+#endif
 	DBGTRACE4("%p, %p", info, ptr);
 	TRACEEXIT4(return ptr);
 }
@@ -157,7 +161,9 @@ void slack_kfree(void *ptr)
 	nt_spin_lock(&alloc_lock);
 	RemoveEntryList(&info->list);
 	nt_spin_unlock(&alloc_lock);
+#ifdef ALLOC_INFO
 	atomic_sub(info->size, &alloc_sizes[ALLOC_TYPE_SLACK]);
+#endif
 	kfree(info);
 	TRACEEXIT4(return);
 }
