@@ -332,7 +332,7 @@ wstdcall struct irp *WRAP_EXPORT(IoBuildDeviceIoControlRequest)
 }
 
 wfastcall NTSTATUS WRAP_EXPORT(IofCallDriver)
-	(wfastcall_args_2(struct device_object *dev_obj, struct irp *irp))
+	(struct device_object *dev_obj, struct irp *irp)
 {
 	struct io_stack_location *irp_sl;
 	NTSTATUS status;
@@ -359,7 +359,7 @@ wfastcall NTSTATUS WRAP_EXPORT(IofCallDriver)
 }
 
 wfastcall void WRAP_EXPORT(IofCompleteRequest)
-	(wfastcall_args_2(struct irp *irp, CHAR prio_boost))
+	(struct irp *irp, CHAR prio_boost)
 {
 	NTSTATUS status;
 	struct io_stack_location *irp_sl;

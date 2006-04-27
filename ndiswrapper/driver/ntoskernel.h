@@ -671,16 +671,14 @@ wstdcall struct mdl *IoAllocateMdl
 	 struct irp *irp);
 wstdcall void MmBuildMdlForNonPagedPool(struct mdl *mdl);
 wstdcall void IoFreeMdl(struct mdl *mdl);
-wfastcall LONG InterlockedDecrement(wfastcall_args_1(LONG volatile *val));
-wfastcall LONG InterlockedIncrement(wfastcall_args_1(LONG volatile *val));
+wfastcall LONG InterlockedDecrement(LONG volatile *val);
+wfastcall LONG InterlockedIncrement(LONG volatile *val);
 wfastcall struct nt_list *ExInterlockedInsertHeadList
-	(wfastcall_args_3(struct nt_list *head, struct nt_list *entry,
-			 NT_SPIN_LOCK *lock));
+	(struct nt_list *head, struct nt_list *entry, NT_SPIN_LOCK *lock);
 wfastcall struct nt_list *ExInterlockedInsertTailList
-	(wfastcall_args_3(struct nt_list *head, struct nt_list *entry,
-			 NT_SPIN_LOCK *lock));
+	(struct nt_list *head, struct nt_list *entry, NT_SPIN_LOCK *lock);
 wfastcall struct nt_list *ExInterlockedRemoveHeadList
-	(wfastcall_args_2(struct nt_list *head, NT_SPIN_LOCK *lock));
+	(struct nt_list *head, NT_SPIN_LOCK *lock);
 wstdcall NTSTATUS IoCreateDevice
 	(struct driver_object *driver, ULONG dev_ext_length,
 	 struct unicode_string *dev_name, DEVICE_TYPE dev_type,
@@ -706,7 +704,7 @@ wstdcall struct irp *IoAllocateIrp(char stack_count, BOOLEAN charge_quota);
 wstdcall void IoFreeIrp(struct irp *irp);
 wstdcall BOOLEAN IoCancelIrp(struct irp *irp);
 wfastcall NTSTATUS IofCallDriver
-	(wfastcall_args_2(struct device_object *dev_obj, struct irp *irp));
+	(struct device_object *dev_obj, struct irp *irp);
 wstdcall struct irp *IoBuildSynchronousFsdRequest
 	(ULONG major_func, struct device_object *dev_obj, void *buf,
 	 ULONG length, LARGE_INTEGER *offset, struct nt_event *event,
@@ -740,15 +738,12 @@ wstdcall KIRQL KeAcquireSpinLockRaiseToDpc(NT_SPIN_LOCK *lock);
 wstdcall void IoAcquireCancelSpinLock(KIRQL *irql);
 wstdcall void IoReleaseCancelSpinLock(KIRQL irql);
 
-wfastcall KIRQL KfRaiseIrql(wfastcall_args_1(KIRQL newirql));
-wfastcall void KfLowerIrql(wfastcall_args_1(KIRQL oldirql));
-wfastcall KIRQL KfAcquireSpinLock(wfastcall_args_1(NT_SPIN_LOCK *lock));
-wfastcall void KfReleaseSpinLock
-	(wfastcall_args_2(NT_SPIN_LOCK *lock, KIRQL oldirql));
-wfastcall void IofCompleteRequest
-	(wfastcall_args_2(struct irp *irp, CHAR prio_boost));
-wfastcall void KefReleaseSpinLockFromDpcLevel
-	(wfastcall_args_1(NT_SPIN_LOCK *lock));
+wfastcall KIRQL KfRaiseIrql(KIRQL newirql);
+wfastcall void KfLowerIrql(KIRQL oldirql);
+wfastcall KIRQL KfAcquireSpinLock(NT_SPIN_LOCK *lock);
+wfastcall void KfReleaseSpinLock(NT_SPIN_LOCK *lock, KIRQL oldirql);
+wfastcall void IofCompleteRequest(struct irp *irp, CHAR prio_boost);
+wfastcall void KefReleaseSpinLockFromDpcLevel(NT_SPIN_LOCK *lock);
 wstdcall void RtlCopyMemory(void *dst, const void *src, SIZE_T length);
 wstdcall NTSTATUS RtlUnicodeStringToAnsiString
 	(struct ansi_string *dst, const struct unicode_string *src, BOOLEAN dup);
@@ -800,13 +795,11 @@ wstdcall struct task_struct *KeGetCurrentThread(void);
 wstdcall NTSTATUS ObReferenceObjectByHandle
 	(void *handle, ACCESS_MASK desired_access, void *obj_type,
 	 KPROCESSOR_MODE access_mode, void **object, void *handle_info);
-wfastcall LONG ObfReferenceObject(wfastcall_args_1(void *object));
-wfastcall void ObfDereferenceObject(wfastcall_args_1(void *object));
+wfastcall LONG ObfReferenceObject(void *object);
+wfastcall void ObfDereferenceObject(void *object);
 
-#define ObReferenceObject(object)			\
-	wfastcall_1(ObfReferenceObject, object)
-#define ObDereferenceObject(object)			\
-	wfastcall_1(ObfDereferenceObject, object)
+#define ObReferenceObject(object) ObfReferenceObject(object)
+#define ObDereferenceObject(object) ObfDereferenceObject(object)
 
 #define MSG(level, fmt, ...)				\
 	printk(level "ndiswrapper (%s:%d): " fmt "\n",	\
@@ -821,9 +814,8 @@ wfastcall void ObfDereferenceObject(wfastcall_args_1(void *object));
 
 void adjust_user_shared_data_addr(char *driver, unsigned long length);
 
-#define IoCompleteRequest(irp, prio)			\
-	wfastcall_2(IofCompleteRequest, irp, prio)
-#define IoCallDriver(dev, irp) wfastcall_2(IofCallDriver, dev, irp)
+#define IoCompleteRequest(irp, prio) IofCompleteRequest(irp, prio)
+#define IoCallDriver(dev, irp) IofCallDriver(dev, irp)
 
 static inline KIRQL current_irql(void)
 {
