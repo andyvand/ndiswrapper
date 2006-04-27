@@ -112,33 +112,44 @@
 #ifdef CONFIG_X86_64
 #define wstdcall
 #define wfastcall
-#define wfastcall_decl_1(decl1) decl1
-#define wfastcall_decl_2(decl1,decl2) decl1, decl2
-#define wfastcall_decl_3(decl1,decl2,decl3) decl1, decl2, decl3
 #define wfastcall_args_1(arg1) arg1
-#define wfastcall_args_2(arg1,arg2) arg1, arg2
-#define wfastcall_args_3(arg1,arg2,arg3) arg1, arg2, arg3
+#define wfastcall_args_2(arg1, arg2) arg1, arg2
+#define wfastcall_args_3(arg1, arg2, arg3) arg1, arg2, arg3
+#define wfastcall_1(func, arg1) func(arg1)
+#define wfastcall_2(func, arg1, arg2) func(arg1, arg2)
+#define wfastcall_3(func, arg1, arg2, arg3) func(arg1, arg2, arg3)
 
 #define KI_USER_SHARED_DATA 0xfffff78000000000
 
 #else
 
 #define wstdcall __attribute__((__stdcall__, regparm(0)))
-#define wfastcall __attribute__((__stdcall__)) __attribute__((regparm (3)))
-#define wfastcall_decl_1(decl1) int _dummy1_, int _dummy2_, decl1
-#define wfastcall_decl_2(decl1,decl2) int _dummy1_, decl2, decl1
-#define wfastcall_decl_3(decl1,decl2,decl3) int _dummy1_, decl2, decl1, decl3
-#define wfastcall_args_1(arg1) 0, 0, arg1
-#define wfastcall_args_2(arg1,arg2) 0, arg2, arg1
-#define wfastcall_args_3(arg1,arg2,arg3) 0, arg2, arg1, arg3
+#if defined(__GNUC__) && ((__GNUC__ == 3 && __GNUC_MINOR__ > 3) || __GNUC__ > 3)
+#undef fastcall
+#define wfastcall __attribute__((fastcall))
+#define wfastcall_args_1(arg1) arg1
+#define wfastcall_args_2(arg1, arg2) arg1, arg2
+#define wfastcall_args_3(arg1, arg2, arg3) arg1, arg2, arg3
+#define wfastcall_1(func, arg1) func(arg1)
+#define wfastcall_2(func, arg1, arg2) func(arg1, arg2)
+#define wfastcall_3(func, arg1, arg2, arg3) func(arg1, arg2, arg3)
+#else
+#define wfastcall __attribute__((__stdcall__, regparm(3)))
+#define wfastcall_args_1(arg1) int _dummy1_, int _dummy2_, arg1
+#define wfastcall_args_2(arg1, arg2) int _dummy1_, arg2, arg1
+#define wfastcall_args_3(arg1, arg2, arg3) int _dummy1_, arg2, arg1, arg3
+#define wfastcall_1(func, arg1) func(0, 0, arg1)
+#define wfastcall_2(func, arg1, arg2) func(0, arg2, arg1)
+#define wfastcall_3(func, arg1, arg2, arg3) func(0, arg2, arg1, arg3)
+#endif
 
 #define KI_USER_SHARED_DATA 0xffdf0000
 
 #endif
 
-#define NOREGPARM __attribute__((regparm(0)))
+#define noregparm __attribute__((regparm(0)))
 #define packed __attribute__((packed))
-#define __unused __attribute((unused))
+#define no_warn_unused __attribute((unused))
 
 typedef u8	BOOLEAN;
 typedef u8	BYTE;

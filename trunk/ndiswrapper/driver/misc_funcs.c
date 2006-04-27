@@ -34,7 +34,7 @@ void misc_funcs_exit(void)
 	TRACEEXIT4(return);
 }
 
-NOREGPARM INT WRAP_EXPORT(_win_sprintf)
+noregparm INT WRAP_EXPORT(_win_sprintf)
 	(char *buf, const char *format, ...)
 {
 	va_list args;
@@ -46,13 +46,13 @@ NOREGPARM INT WRAP_EXPORT(_win_sprintf)
 	return res;
 }
 
-NOREGPARM INT WRAP_EXPORT(swprintf)
+noregparm INT WRAP_EXPORT(swprintf)
 	(wchar_t *buf, const wchar_t *format, ...)
 {
 	UNIMPL();
 	TRACEEXIT2(return 0);
 }
-NOREGPARM INT WRAP_EXPORT(_win_vsprintf)
+noregparm INT WRAP_EXPORT(_win_vsprintf)
 	(char *str, const char *format, va_list ap)
 {
 	INT i;
@@ -61,7 +61,7 @@ NOREGPARM INT WRAP_EXPORT(_win_vsprintf)
 	TRACEEXIT2(return i);
 }
 
-NOREGPARM INT WRAP_EXPORT(_win_snprintf)
+noregparm INT WRAP_EXPORT(_win_snprintf)
 	(char *buf, SIZE_T count, const char *format, ...)
 {
 	va_list args;
@@ -74,7 +74,7 @@ NOREGPARM INT WRAP_EXPORT(_win_snprintf)
 	return res;
 }
 
-NOREGPARM INT WRAP_EXPORT(_win__snprintf)
+noregparm INT WRAP_EXPORT(_win__snprintf)
 	(char *buf, SIZE_T count, const char *format, ...)
 {
 	va_list args;
@@ -87,7 +87,7 @@ NOREGPARM INT WRAP_EXPORT(_win__snprintf)
 	return res;
 }
 
-NOREGPARM INT WRAP_EXPORT(_win_vsnprintf)
+noregparm INT WRAP_EXPORT(_win_vsnprintf)
 	(char *str, SIZE_T size, const char *format, va_list ap)
 {
 	INT i;
@@ -96,7 +96,7 @@ NOREGPARM INT WRAP_EXPORT(_win_vsnprintf)
 	TRACEEXIT2(return i);
 }
 
-NOREGPARM INT WRAP_EXPORT(_win__vsnprintf)
+noregparm INT WRAP_EXPORT(_win__vsnprintf)
 	(char *str, SIZE_T size, const char *format, va_list ap)
 {
 	INT i;
@@ -105,43 +105,43 @@ NOREGPARM INT WRAP_EXPORT(_win__vsnprintf)
 	TRACEEXIT2(return i);
 }
 
-NOREGPARM char *WRAP_EXPORT(_win_strncpy)
+noregparm char *WRAP_EXPORT(_win_strncpy)
 	(char *dst, char *src, SIZE_T n)
 {
 	return strncpy(dst, src, n);
 }
 
-NOREGPARM SIZE_T WRAP_EXPORT(_win_strlen)
+noregparm SIZE_T WRAP_EXPORT(_win_strlen)
 	(const char *s)
 {
 	return strlen(s);
 }
 
-NOREGPARM INT WRAP_EXPORT(_win_strncmp)
+noregparm INT WRAP_EXPORT(_win_strncmp)
 	(const char *s1, const char *s2, SIZE_T n)
 {
 	return strncmp(s1, s2, n);
 }
 
-NOREGPARM INT WRAP_EXPORT(_win_strcmp)
+noregparm INT WRAP_EXPORT(_win_strcmp)
 	(const char *s1, const char *s2)
 {
 	return strcmp(s1, s2);
 }
 
-NOREGPARM INT WRAP_EXPORT(_win_stricmp)
+noregparm INT WRAP_EXPORT(_win_stricmp)
 	(const char *s1, const char *s2)
 {
 	return stricmp(s1, s2);
 }
 
-NOREGPARM char *WRAP_EXPORT(_win_strncat)
+noregparm char *WRAP_EXPORT(_win_strncat)
 	(char *dest, const char *src, SIZE_T n)
 {
 	return strncat(dest, src, n);
 }
 
-NOREGPARM INT WRAP_EXPORT(_win_wcscmp)
+noregparm INT WRAP_EXPORT(_win_wcscmp)
 	(const wchar_t *s1, const wchar_t *s2)
 {
 	while (*s1 != L'\0' && *s1 == *s2) {
@@ -151,7 +151,7 @@ NOREGPARM INT WRAP_EXPORT(_win_wcscmp)
 	return *s1 - *s2;
 }
 
-NOREGPARM INT WRAP_EXPORT(_win_wcsicmp)
+noregparm INT WRAP_EXPORT(_win_wcsicmp)
 	(const wchar_t *s1, const wchar_t *s2)
 {
 	while (*s1 != L'\0' && tolower((char)*s1) == tolower((char)*s2)) {
@@ -161,7 +161,7 @@ NOREGPARM INT WRAP_EXPORT(_win_wcsicmp)
 	return *s1 - *s2;
 }
 
-NOREGPARM SIZE_T WRAP_EXPORT(_win_wcslen)
+noregparm SIZE_T WRAP_EXPORT(_win_wcslen)
 	(const wchar_t *s)
 {
 	SIZE_T i = 0;
@@ -170,7 +170,7 @@ NOREGPARM SIZE_T WRAP_EXPORT(_win_wcslen)
 	return i;
 }
 
-NOREGPARM wchar_t *WRAP_EXPORT(_win_wcsncpy)
+noregparm wchar_t *WRAP_EXPORT(_win_wcsncpy)
 	(wchar_t *dest, const wchar_t *src, SIZE_T n)
 {
 	SIZE_T i;
@@ -181,7 +181,7 @@ NOREGPARM wchar_t *WRAP_EXPORT(_win_wcsncpy)
 	return dest;
 }
 
-NOREGPARM wchar_t *WRAP_EXPORT(_win_wcscpy)
+noregparm wchar_t *WRAP_EXPORT(_win_wcscpy)
 	(wchar_t *dest, const wchar_t *src)
 {
 	SIZE_T i;
@@ -191,7 +191,7 @@ NOREGPARM wchar_t *WRAP_EXPORT(_win_wcscpy)
 	return dest;
 }
 
-NOREGPARM wchar_t *WRAP_EXPORT(_win_wcscat)
+noregparm wchar_t *WRAP_EXPORT(_win_wcscat)
 	(wchar_t *dest, const wchar_t *src)
 {
 	SIZE_T i;
@@ -205,86 +205,86 @@ NOREGPARM wchar_t *WRAP_EXPORT(_win_wcscat)
 	return dest;
 }
 
-NOREGPARM INT WRAP_EXPORT(_win_towupper)
+noregparm INT WRAP_EXPORT(_win_towupper)
 	(wchar_t c)
 {
 	return toupper(c);
 }
 
-NOREGPARM INT WRAP_EXPORT(_win_towlower)
+noregparm INT WRAP_EXPORT(_win_towlower)
 	(wchar_t c)
 {
 	return tolower(c);
 }
 
-NOREGPARM INT WRAP_EXPORT(_win_tolower)
+noregparm INT WRAP_EXPORT(_win_tolower)
 	(INT c)
 {
 	return tolower(c);
 }
 
-NOREGPARM INT WRAP_EXPORT(_win_toupper)
+noregparm INT WRAP_EXPORT(_win_toupper)
 	(INT c)
 {
 	return toupper(c);
 }
 
-NOREGPARM void *WRAP_EXPORT(_win_strcpy)
+noregparm void *WRAP_EXPORT(_win_strcpy)
 	(void *to, const void *from)
 {
 	return strcpy(to, from);
 }
 
-NOREGPARM char *WRAP_EXPORT(_win_strstr)
+noregparm char *WRAP_EXPORT(_win_strstr)
 	(const char *s1, const char *s2)
 {
 	return strstr(s1, s2);
 }
 
-NOREGPARM char *WRAP_EXPORT(_win_strchr)
+noregparm char *WRAP_EXPORT(_win_strchr)
 	(const char *s, int c)
 {
 	return strchr(s, c);
 }
 
-NOREGPARM char *WRAP_EXPORT(_win_strrchr)
+noregparm char *WRAP_EXPORT(_win_strrchr)
 	(const char *s, int c)
 {
 	return strrchr(s, c);
 }
 
-NOREGPARM void *WRAP_EXPORT(_win_memmove)
+noregparm void *WRAP_EXPORT(_win_memmove)
 	(void *to, void *from, SIZE_T count)
 {
 	return memmove(to, from, count);
 }
 
-NOREGPARM void *WRAP_EXPORT(_win_memchr)
+noregparm void *WRAP_EXPORT(_win_memchr)
 	(const void *s, INT c, SIZE_T n)
 {
 	return memchr(s, c, n);
 }
 
 /* memcpy and memset are macros so we can't map them */
-NOREGPARM void *WRAP_EXPORT(_win_memcpy)
+noregparm void *WRAP_EXPORT(_win_memcpy)
 	(void *to, const void *from, SIZE_T n)
 {
 	return memcpy(to, from, n);
 }
 
-NOREGPARM void *WRAP_EXPORT(_win_memset)
+noregparm void *WRAP_EXPORT(_win_memset)
 	(void *s, char c, SIZE_T count)
 {
 	return memset(s, c, count);
 }
 
-NOREGPARM void WRAP_EXPORT(_win_srand)
+noregparm void WRAP_EXPORT(_win_srand)
 	(UINT seed)
 {
 	net_srandom(seed);
 }
 
-NOREGPARM int WRAP_EXPORT(_win_atoi)
+noregparm int WRAP_EXPORT(_win_atoi)
 	(const char *ptr)
 {
 	int i = simple_strtol(ptr, NULL, 10);

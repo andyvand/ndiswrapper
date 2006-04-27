@@ -234,7 +234,7 @@ wstdcall void WRAP_EXPORT(NdisFreeMemory)
 /*
  * This function should not be wstdcall because it's a variable args function.
  */
-NOREGPARM void WRAP_EXPORT(NdisWriteErrorLogEntry)
+noregparm void WRAP_EXPORT(NdisWriteErrorLogEntry)
 	(struct driver_object *drv_obj, ULONG error, ULONG count, ...)
 {
 	va_list args;
@@ -2444,36 +2444,36 @@ wstdcall void WRAP_EXPORT(NdisMDeregisterIoPortRange)
 wstdcall LONG WRAP_EXPORT(NdisInterlockedDecrement)
 	(LONG *val)
 {
-	return InterlockedDecrement(wfastcall_args_1(val));
+	return wfastcall_1(InterlockedDecrement, val);
 }
 
 wstdcall LONG WRAP_EXPORT(NdisInterlockedIncrement)
 	(LONG *val)
 {
-	return InterlockedIncrement(wfastcall_args_1(val));
+	return wfastcall_1(InterlockedIncrement, val);
 }
 
 wstdcall struct nt_list *WRAP_EXPORT(NdisInterlockedInsertHeadList)
 	(struct nt_list *head, struct nt_list *entry,
 	 struct ndis_spinlock *lock)
 {
-	return ExInterlockedInsertHeadList(wfastcall_args_3(head, entry,
-							   &lock->klock));
+	return wfastcall_3(ExInterlockedInsertHeadList, head, entry,
+				&lock->klock);
 }
 
 wstdcall struct nt_list *WRAP_EXPORT(NdisInterlockedInsertTailList)
 	(struct nt_list *head, struct nt_list *entry,
 	 struct ndis_spinlock *lock)
 {
-	return ExInterlockedInsertTailList(wfastcall_args_3(head, entry,
-							   &lock->klock));
+	return wfastcall_3(ExInterlockedInsertTailList, head, entry,
+				&lock->klock);
 }
 
 wstdcall struct nt_list *WRAP_EXPORT(NdisInterlockedRemoveHeadList)
 	(struct nt_list *head, struct ndis_spinlock *lock)
 {
-	return ExInterlockedRemoveHeadList(wfastcall_args_2(head,
-							   &lock->klock));
+	return wfastcall_2(ExInterlockedRemoveHeadList, head,
+				&lock->klock);
 }
 
 wstdcall NDIS_STATUS WRAP_EXPORT(NdisMInitializeScatterGatherDma)
