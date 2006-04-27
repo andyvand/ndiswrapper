@@ -421,8 +421,7 @@ struct driver_object *find_bus_driver(const char *name)
 }
 
 wfastcall struct nt_list *WRAP_EXPORT(ExfInterlockedInsertHeadList)
-	(wfastcall_args_3(struct nt_list *head, struct nt_list *entry,
-			  NT_SPIN_LOCK *lock))
+	(struct nt_list *head, struct nt_list *entry, NT_SPIN_LOCK *lock)
 {
 	struct nt_list *first;
 	unsigned long flags;
@@ -436,16 +435,14 @@ wfastcall struct nt_list *WRAP_EXPORT(ExfInterlockedInsertHeadList)
 }
 
 wfastcall struct nt_list *WRAP_EXPORT(ExInterlockedInsertHeadList)
-	(wfastcall_args_3(struct nt_list *head, struct nt_list *entry,
-			  NT_SPIN_LOCK *lock))
+	(struct nt_list *head, struct nt_list *entry, NT_SPIN_LOCK *lock)
 {
 	TRACEENTER5("%p", head);
-	return wfastcall_3(ExfInterlockedInsertHeadList, head, entry, lock);
+	return ExfInterlockedInsertHeadList(head, entry, lock);
 }
 
 wfastcall struct nt_list *WRAP_EXPORT(ExfInterlockedInsertTailList)
-	(wfastcall_args_3(struct nt_list *head, struct nt_list *entry,
-			  NT_SPIN_LOCK *lock))
+	(struct nt_list *head, struct nt_list *entry, NT_SPIN_LOCK *lock)
 {
 	struct nt_list *last;
 	unsigned long flags;
@@ -459,15 +456,14 @@ wfastcall struct nt_list *WRAP_EXPORT(ExfInterlockedInsertTailList)
 }
 
 wfastcall struct nt_list *WRAP_EXPORT(ExInterlockedInsertTailList)
-	(wfastcall_args_3(struct nt_list *head, struct nt_list *entry,
-			  NT_SPIN_LOCK *lock))
+	(struct nt_list *head, struct nt_list *entry, NT_SPIN_LOCK *lock)
 {
 	TRACEENTER5("%p", head);
-	return wfastcall_3(ExfInterlockedInsertTailList, head, entry, lock);
+	return ExfInterlockedInsertTailList(head, entry, lock);
 }
 
 wfastcall struct nt_list *WRAP_EXPORT(ExfInterlockedRemoveHeadList)
-	(wfastcall_args_2(struct nt_list *head, NT_SPIN_LOCK *lock))
+	(struct nt_list *head, NT_SPIN_LOCK *lock)
 {
 	struct nt_list *ret;
 	unsigned long flags;
@@ -481,14 +477,14 @@ wfastcall struct nt_list *WRAP_EXPORT(ExfInterlockedRemoveHeadList)
 }
 
 wfastcall struct nt_list *WRAP_EXPORT(ExInterlockedRemoveHeadList)
-	(wfastcall_args_2(struct nt_list *head, NT_SPIN_LOCK *lock))
+	(struct nt_list *head, NT_SPIN_LOCK *lock)
 {
 	TRACEENTER5("%p", head);
-	return wfastcall_2(ExfInterlockedRemoveHeadList, head, lock);
+	return ExfInterlockedRemoveHeadList(head, lock);
 }
 
 wfastcall struct nt_list *WRAP_EXPORT(ExfInterlockedRemoveTailList)
-	(wfastcall_args_2(struct nt_list *head, NT_SPIN_LOCK *lock))
+	(struct nt_list *head, NT_SPIN_LOCK *lock)
 {
 	struct nt_list *ret;
 	unsigned long flags;
@@ -502,15 +498,14 @@ wfastcall struct nt_list *WRAP_EXPORT(ExfInterlockedRemoveTailList)
 }
 
 wfastcall struct nt_list *WRAP_EXPORT(ExInterlockedRemoveTailList)
-	(wfastcall_args_2(struct nt_list *head, NT_SPIN_LOCK *lock))
+	(struct nt_list *head, NT_SPIN_LOCK *lock)
 {
 	TRACEENTER5("%p", head);
-	return wfastcall_2(ExfInterlockedRemoveTailList, head, lock);
+	return ExfInterlockedRemoveTailList(head, lock);
 }
 
 wfastcall struct nt_slist *WRAP_EXPORT(ExInterlockedPushEntrySList)
-	(wfastcall_args_3(nt_slist_header *head, struct nt_slist *entry,
-			  NT_SPIN_LOCK *lock))
+	(nt_slist_header *head, struct nt_slist *entry, NT_SPIN_LOCK *lock)
 {
 	struct nt_slist *ret;
 
@@ -532,7 +527,7 @@ wstdcall struct nt_slist *WRAP_EXPORT(ExpInterlockedPushEntrySList)
 }
 
 wfastcall struct nt_slist *WRAP_EXPORT(InterlockedPushEntrySList)
-	(wfastcall_args_2(nt_slist_header *head, struct nt_slist *entry))
+	(nt_slist_header *head, struct nt_slist *entry)
 {
 	struct nt_slist *ret;
 
@@ -543,7 +538,7 @@ wfastcall struct nt_slist *WRAP_EXPORT(InterlockedPushEntrySList)
 }
 
 wfastcall struct nt_slist *WRAP_EXPORT(ExInterlockedPopEntrySList)
-	(wfastcall_args_2(nt_slist_header *head, NT_SPIN_LOCK *lock))
+	(nt_slist_header *head, NT_SPIN_LOCK *lock)
 {
 	struct nt_slist *ret;
 
@@ -565,7 +560,7 @@ wstdcall struct nt_slist *WRAP_EXPORT(ExpInterlockedPopEntrySList)
 }
 
 wfastcall struct nt_slist *WRAP_EXPORT(InterlockedPopEntrySList)
-	(wfastcall_args_1(nt_slist_header *head))
+	(nt_slist_header *head)
 {
 	struct nt_slist *ret;
 
@@ -587,7 +582,7 @@ wstdcall USHORT WRAP_EXPORT(ExQueryDepthSList)
 }
 
 wfastcall LONG WRAP_EXPORT(InterlockedIncrement)
-	(wfastcall_args_1(LONG volatile *val))
+	(LONG volatile *val)
 {
 	LONG ret;
 
@@ -603,7 +598,7 @@ wfastcall LONG WRAP_EXPORT(InterlockedIncrement)
 }
 
 wfastcall LONG WRAP_EXPORT(InterlockedDecrement)
-	(wfastcall_args_1(LONG volatile *val))
+	(LONG volatile *val)
 {
 	LONG ret;
 
@@ -619,7 +614,7 @@ wfastcall LONG WRAP_EXPORT(InterlockedDecrement)
 }
 
 wfastcall LONG WRAP_EXPORT(InterlockedExchange)
-	(wfastcall_args_2(LONG volatile *target, LONG val))
+	(LONG volatile *target, LONG val)
 {
 	LONG ret;
 	TRACEENTER5("");
@@ -628,7 +623,7 @@ wfastcall LONG WRAP_EXPORT(InterlockedExchange)
 }
 
 wfastcall LONG WRAP_EXPORT(InterlockedCompareExchange)
-	(wfastcall_args_3(LONG volatile *dest, LONG xchg, LONG comperand))
+	(LONG volatile *dest, LONG xchg, LONG comperand)
 {
 	LONG ret;
 
@@ -638,7 +633,7 @@ wfastcall LONG WRAP_EXPORT(InterlockedCompareExchange)
 }
 
 wfastcall void WRAP_EXPORT(ExInterlockedAddLargeStatistic)
-	(wfastcall_args_2(LARGE_INTEGER volatile *plint, ULONG n))
+	(LARGE_INTEGER volatile *plint, ULONG n)
 {
 	unsigned long flags;
 	save_local_irq(flags);
@@ -2312,7 +2307,7 @@ wstdcall NTSTATUS WRAP_EXPORT(ObReferenceObjectByHandle)
  * after incrementing reference count, but according to #reactos
  * devels, it should be return value after incrementing */
 wfastcall LONG WRAP_EXPORT(ObfReferenceObject)
-	(wfastcall_args_1(void *object))
+	(void *object)
 {
 	struct common_object_header *hdr;
 	LONG ret;
@@ -2327,7 +2322,7 @@ wfastcall LONG WRAP_EXPORT(ObfReferenceObject)
 }
 
 wfastcall void WRAP_EXPORT(ObfDereferenceObject)
-	(wfastcall_args_1(void *object))
+	(void *object)
 {
 	struct common_object_header *hdr;
 	int ref_count;

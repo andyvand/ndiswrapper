@@ -2444,20 +2444,20 @@ wstdcall void WRAP_EXPORT(NdisMDeregisterIoPortRange)
 wstdcall LONG WRAP_EXPORT(NdisInterlockedDecrement)
 	(LONG *val)
 {
-	return wfastcall_1(InterlockedDecrement, val);
+	return InterlockedDecrement(val);
 }
 
 wstdcall LONG WRAP_EXPORT(NdisInterlockedIncrement)
 	(LONG *val)
 {
-	return wfastcall_1(InterlockedIncrement, val);
+	return InterlockedIncrement(val);
 }
 
 wstdcall struct nt_list *WRAP_EXPORT(NdisInterlockedInsertHeadList)
 	(struct nt_list *head, struct nt_list *entry,
 	 struct ndis_spinlock *lock)
 {
-	return wfastcall_3(ExInterlockedInsertHeadList, head, entry,
+	return ExInterlockedInsertHeadList(head, entry,
 				&lock->klock);
 }
 
@@ -2465,14 +2465,14 @@ wstdcall struct nt_list *WRAP_EXPORT(NdisInterlockedInsertTailList)
 	(struct nt_list *head, struct nt_list *entry,
 	 struct ndis_spinlock *lock)
 {
-	return wfastcall_3(ExInterlockedInsertTailList, head, entry,
+	return ExInterlockedInsertTailList(head, entry,
 				&lock->klock);
 }
 
 wstdcall struct nt_list *WRAP_EXPORT(NdisInterlockedRemoveHeadList)
 	(struct nt_list *head, struct ndis_spinlock *lock)
 {
-	return wfastcall_2(ExInterlockedRemoveHeadList, head,
+	return ExInterlockedRemoveHeadList(head,
 				&lock->klock);
 }
 
