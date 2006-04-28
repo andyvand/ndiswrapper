@@ -1078,7 +1078,6 @@ wstdcall void *WRAP_EXPORT(ExAllocatePoolWithTag)
 
 	TRACEENTER4("pool_type: %d, size: %lu, tag: %u", pool_type,
 		    size, tag);
-
 	if (size <= KMALLOC_THRESHOLD) {
 		if (current_irql() < DISPATCH_LEVEL)
 			addr = kmalloc(size, GFP_KERNEL);
@@ -2124,7 +2123,6 @@ struct mdl *allocate_init_mdl(void *virt, ULONG length)
 			alloc_flags = GFP_KERNEL;
 		else
 			alloc_flags = GFP_ATOMIC;
-
 		wrap_mdl = kmem_cache_alloc(mdl_cache, alloc_flags);
 		if (!wrap_mdl)
 			return NULL;
