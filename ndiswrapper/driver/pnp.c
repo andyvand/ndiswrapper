@@ -669,7 +669,7 @@ void *wrap_pnp_start_usb_device(struct usb_device *udev,
 	if (wd->usb.intf) {
 		DBGTRACE1("device already initialized: %p", wd->usb.intf);
 		usb_set_intfdata(intf, NULL);
-		TRACEEXIT1(return -EINVAL);
+		ret = -EINVAL;
 	} else {
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
 		wd->usb.udev = interface_to_usbdev(intf);

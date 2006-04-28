@@ -831,14 +831,14 @@ static int ndis_set_wol(struct net_device *dev, struct ethtool_wolinfo *wol)
 	if (!(wol->wolopts & WAKE_MAGIC))
 		return -EINVAL;
 	if (!(wnd->attributes & NDIS_ATTRIBUTE_NO_HALT_ON_SUSPEND))
-		return -EINVAL;
+		return -EOPNOTSUPP;
 	status = miniport_query_info(wnd, OID_PNP_CAPABILITIES,
 				     &pnp_capa, sizeof(pnp_capa));
 	if (status != NDIS_STATUS_SUCCESS)
-		return -EINVAL;
+		return -EOPNOTSUPP;
 	/* we always suspend to D3 */
 	if (pnp_capa.wakeup_capa.min_magic_packet_wakeup != NdisDeviceStateD3)
-		return -EINVAL;
+		return -EOPNOTSUPP;
 	/* no other options supported */
 	wnd->ndis_wolopts = NDIS_PNP_WAKE_UP_MAGIC_PACKET;
 	return 0;
