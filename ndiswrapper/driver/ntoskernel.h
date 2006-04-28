@@ -315,7 +315,7 @@ typedef u32 pm_message_t;
 #include "pe_linker.h"
 #include "wrapmem.h"
 
-#define DEBUG_IRQL 1
+//#define DEBUG_IRQL 1
 
 #if defined(DISABLE_USB)
 #undef CONFIG_USB
@@ -867,9 +867,6 @@ static inline void  nt_spin_lock_init(volatile NT_SPIN_LOCK *lock)
 }
 
 #ifdef CONFIG_SMP
-/* Linux kernel implements raw spinlocks in X86_64 differently from
- * X86; as of now I understand following should work for both - if
- * not, implement two versions */
 
 static inline void nt_spin_lock(volatile NT_SPIN_LOCK *lock)
 {
