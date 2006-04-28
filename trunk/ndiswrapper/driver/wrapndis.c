@@ -310,8 +310,6 @@ static void miniport_halt(struct wrap_ndis_device *wnd)
 		WARNING("device %p is not initialized - not halting", wnd);
 		TRACEEXIT1(return);
 	}
-	if (wnd->wd->surprise_removed == TRUE)
-		miniport_pnp_event(wnd, NdisDevicePnPEventSurpriseRemoved);
 	miniport = &wnd->wd->driver->ndis_driver->miniport;
 	DBGTRACE1("driver halt is at %p", miniport->miniport_halt);
 	LIN2WIN1(miniport->miniport_halt, wnd->nmb->adapter_ctx);
@@ -1369,6 +1367,9 @@ wstdcall NTSTATUS NdisDispatchPnp(struct device_object *fdo, struct irp *irp)
 		break;
 	case IRP_MN_REMOVE_DEVICE:
 		DBGTRACE1("%s", wnd->net_dev->name);
+		if (wnd->wd->surprise_removed == TRUE)
+			miniport_pnp_event(wnd,
+					   NdisDevicePnPEventSurpriseRemoved);
 		if (ndis_remove_device(wnd)) {
 			status = STATUS_FAILURE;
 			break;
