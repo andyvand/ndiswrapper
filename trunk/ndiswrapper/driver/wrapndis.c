@@ -209,6 +209,10 @@ static NDIS_STATUS miniport_pnp_event(struct wrap_ndis_device *wnd,
 	enum ndis_power_profile power_profile;
 
 	TRACEENTER1("%p, %d", wnd, event);
+	/* RNDIS driver doesn't like to be notified if device is
+	 * already halted */
+	if (!test_bit(HW_INITIALIZED, &wnd->hw_status))
+		TRACEEXIT1(return NDIS_STATUS_SUCCESS);
 	miniport = &wnd->wd->driver->ndis_driver->miniport;
 	switch (event) {
 	case NdisDevicePnPEventSurpriseRemoved:
@@ -346,8 +350,8 @@ static NDIS_STATUS miniport_set_power_state(struct wrap_ndis_device *wnd,
 			TRACEEXIT2(return status);
 		}
 		if (test_and_clear_bit(HW_SUSPENDED, &wnd->hw_status)) {
-			status = miniport_set_int(wnd, OID_PNP_SET_POWER,
-						  NdisDeviceStateD0);
+			status = miniport_set_info(wnd, OID_PNP_SET_POWER,
+						   &state, (ULONG)sizeof(state));
 			DBGTRACE2("set_power returns %08X", status);
 			miniport = &wnd->wd->driver->ndis_driver->miniport;
 			if (status == NDIS_STATUS_SUCCESS)
@@ -358,7 +362,8 @@ static NDIS_STATUS miniport_set_power_state(struct wrap_ndis_device *wnd,
 	} else {
 		status = NDIS_STATUS_NOT_SUPPORTED;
 		if (wnd->attributes & NDIS_ATTRIBUTE_NO_HALT_ON_SUSPEND) {
-			status = miniport_set_int(wnd, OID_PNP_SET_POWER, state);
+			status = miniport_set_info(wnd, OID_PNP_SET_POWER,
+						   &state, (ULONG)sizeof(state));
 			if (status == NDIS_STATUS_SUCCESS)
 				set_bit(HW_SUSPENDED, &wnd->hw_status);
 			else
@@ -1261,7 +1266,10 @@ wstdcall NTSTATUS NdisDispatchPower(struct device_object *fdo, struct irp *irp)
 	wnd = fdo->reserved;
 	IOTRACE("fdo: %p, fn: %d:%d, wnd: %p", fdo, irp_sl->major_fn,
 		irp_sl->minor_fn, wnd);
-	if (irp_sl->params.power.state.device_state == PowerDeviceD0)
+	if ((irp_sl->params.power.type == SystemPowerState &&
+	     irp_sl->params.power.state.system_state == PowerDeviceD0) ||
+	    (irp_sl->params.power.type == DevicePowerState &&
+	     irp_sl->params.power.state.device_state == PowerDeviceD0))
 		state = NdisDeviceStateD0;
 	else
 		state = NdisDeviceStateD3;
@@ -1308,14 +1316,19 @@ wstdcall NTSTATUS NdisDispatchPower(struct device_object *fdo, struct irp *irp)
 		}
 		break;
 	case IRP_MN_QUERY_POWER:
-		ndis_status = miniport_query_int(wnd, OID_PNP_QUERY_POWER,
-						 &state);
-		DBGTRACE2("query_power to state %d returns %08X",
-			  state, ndis_status);
-		if (ndis_status == NDIS_STATUS_SUCCESS)
-			status = LIN2WIN2(IoPassIrpDown, wnd->nmb->pdo, irp);
-		else
-			status = STATUS_FAILURE;
+		if (!(wnd->attributes & NDIS_ATTRIBUTE_NO_HALT_ON_SUSPEND)) {
+			ndis_status = miniport_query_info(wnd,
+							  OID_PNP_QUERY_POWER,
+							  &state, sizeof(state));
+			DBGTRACE2("query_power to state %d returns %08X",
+				  state, ndis_status);
+			if (ndis_status == NDIS_STATUS_SUCCESS)
+				irp->io_status.status = STATUS_SUCCESS;
+			else
+				irp->io_status.status = STATUS_FAILURE;
+		} else
+			irp->io_status.status = STATUS_FAILURE;
+		status = LIN2WIN2(IoPassIrpDown, wnd->nmb->pdo, irp);
 		break;
 	case IRP_MN_WAIT_WAKE:
 	case IRP_MN_POWER_SEQUENCE:

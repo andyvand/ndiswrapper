@@ -398,13 +398,12 @@ NTSTATUS pnp_set_power_state(struct wrap_device *wd,
 	pdo = wd->pdo;
 	IOTRACE("%p, %p", pdo, IoGetAttachedDevice(pdo));
 	memset(&irp_sl, 0, sizeof(irp_sl));
-	irp_sl.params.power.state.device_state = state;
+	irp_sl.params.power.type = SystemPowerState;
 	if (state > PowerDeviceD0) {
-		irp_sl.params.power.state.device_state = state;
 		status = IoSendIrpTopDev(pdo, IRP_MJ_POWER, IRP_MN_QUERY_POWER,
 					 &irp_sl);
 		if (status != STATUS_SUCCESS)
-			WARNING("query power returns %08X", status);
+			DBGTRACE1("query power returns %08X", status);
 	}
 	status = IoSendIrpTopDev(pdo, IRP_MJ_POWER, IRP_MN_SET_POWER, &irp_sl);
 	if (status != STATUS_SUCCESS)
