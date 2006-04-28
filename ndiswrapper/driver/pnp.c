@@ -169,7 +169,7 @@ err_enable:
 	TRACEEXIT1(return STATUS_FAILURE);
 }
 
-static void stop_pdo(struct device_object *pdo)
+static void remove_pdo(struct device_object *pdo)
 {
 	struct wrap_device *wd = pdo->reserved;
 
@@ -271,7 +271,7 @@ wstdcall NTSTATUS pdoDispatchPnp(struct device_object *pdo,
 		status = STATUS_SUCCESS;
 		break;
 	case IRP_MN_REMOVE_DEVICE:
-		stop_pdo(pdo);
+		remove_pdo(pdo);
 		status = STATUS_SUCCESS;
 		break;
 	case IRP_MN_QUERY_INTERFACE:

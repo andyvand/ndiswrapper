@@ -285,12 +285,6 @@ static NDIS_STATUS miniport_init(struct wrap_ndis_device *wnd)
 	set_current_state(TASK_INTERRUPTIBLE);
 	schedule_timeout(1 * HZ);
 
-#if 1
-	status = miniport_set_power_state(wnd, NdisDeviceStateD0);
-	if (status)
-		DBGTRACE1("setting power state to device %s returns %08X",
-			  wnd->net_dev->name, status);
-#endif
 	set_bit(HW_INITIALIZED, &wnd->hw_status);
 	set_bit(HW_AVAILABLE, &wnd->hw_status);
 	status = miniport_query_info(wnd, OID_PNP_CAPABILITIES,
@@ -326,42 +320,62 @@ static NDIS_STATUS miniport_set_power_state(struct wrap_ndis_device *wnd,
 					    enum ndis_power_state state)
 {
 	NDIS_STATUS status;
-	struct miniport_char *miniport;
 
 	DBGTRACE1("state: %d", state);
 	if (state == NdisDeviceStateD0) {
 		status = STATUS_SUCCESS;
 		if (test_and_clear_bit(HW_HALTED, &wnd->hw_status)) {
 			DBGTRACE1("starting device");
-			/* TODO: should we use pnp_start_device instead? */
-			/* USB devices will be restarted by USB driver */
+			/* sis163u driver crashes when resuming from
+			 * s3; USB devices will be restarted by USB
+			 * driver anyway, so for now just ignore  */
 			if (wrap_is_usb_bus(wnd->wd->dev_bus_type))
 				status = NDIS_STATUS_SUCCESS;
-			else {
+			else
 				status = miniport_init(wnd);
-				if (status == NDIS_STATUS_SUCCESS) {
-					set_packet_filter(wnd,
-							  wnd->packet_filter);
-					set_multicast_list(wnd);
-				} else
-					WARNING("couldn't re-initialize device "
-						"%s", wnd->net_dev->name);
-			}
-			TRACEEXIT2(return status);
-		}
-		if (test_and_clear_bit(HW_SUSPENDED, &wnd->hw_status)) {
+		} else if (test_and_clear_bit(HW_SUSPENDED, &wnd->hw_status)) {
 			status = miniport_set_info(wnd, OID_PNP_SET_POWER,
 						   &state, (ULONG)sizeof(state));
-			DBGTRACE2("set_power returns %08X", status);
-			miniport = &wnd->wd->driver->ndis_driver->miniport;
-			if (status == NDIS_STATUS_SUCCESS)
-				miniport_pnp_event(wnd,
-				   NdisDevicePnPEventPowerProfileChanged);
+			if (status != NDIS_STATUS_SUCCESS)
+				WARNING("%s: setting power to state %d failed? "
+					"%08X", wnd->net_dev->name, state,
+					status);
+			status = NDIS_STATUS_SUCCESS;
 		}
+		if (status == NDIS_STATUS_SUCCESS) {
+			set_packet_filter(wnd, wnd->packet_filter);
+			set_multicast_list(wnd);
+			hangcheck_add(wnd);
+			add_stats_timer(wnd);
+			set_scan(wnd);
+			if (netif_running(wnd->net_dev)) {
+				netif_device_attach(wnd->net_dev);
+				netif_wake_queue(wnd->net_dev);
+			}
+			netif_poll_enable(wnd->net_dev);
+		} else
+			WARNING("%s: couldn't set power to state %d; device not"
+				" resumed", wnd->net_dev->name, state);
 		TRACEEXIT1(return status);
 	} else {
 		status = NDIS_STATUS_NOT_SUPPORTED;
+		DBGTRACE2("irql: %d", current_irql());
+		netif_poll_disable(wnd->net_dev);
+		if (netif_running(wnd->net_dev)) {
+			netif_tx_disable(wnd->net_dev);
+			netif_device_detach(wnd->net_dev);
+		}
+		hangcheck_del(wnd);
+		del_stats_timer(wnd);
 		if (wnd->attributes & NDIS_ATTRIBUTE_NO_HALT_ON_SUSPEND) {
+			if (wnd->ndis_wolopts) {
+				status = miniport_set_int(wnd,
+							  OID_PNP_ENABLE_WAKE_UP,
+							  wnd->ndis_wolopts);
+				if (status != NDIS_STATUS_SUCCESS)
+					WARNING("%s: couldn't enable WOL: %08x",
+						wnd->net_dev->name, status);
+			}
 			status = miniport_set_info(wnd, OID_PNP_SET_POWER,
 						   &state, (ULONG)sizeof(state));
 			if (status == NDIS_STATUS_SUCCESS)
@@ -799,9 +813,42 @@ static u32 ndis_get_link(struct net_device *dev)
 	return wnd->link_status;
 }
 
+static void ndis_get_wol(struct net_device *dev, struct ethtool_wolinfo *wol)
+{
+	struct wrap_ndis_device *wnd = netdev_priv(dev);
+	if (wnd->ndis_wolopts & NDIS_PNP_WAKE_UP_MAGIC_PACKET)
+		wol->wolopts |= WAKE_MAGIC;
+	/* no other options supported */
+	return;
+}
+
+static int ndis_set_wol(struct net_device *dev, struct ethtool_wolinfo *wol)
+{
+	struct wrap_ndis_device *wnd = netdev_priv(dev);
+	struct ndis_pnp_capabilities pnp_capa;
+	NDIS_STATUS status;
+
+	if (!(wol->wolopts & WAKE_MAGIC))
+		return -EINVAL;
+	if (!(wnd->attributes & NDIS_ATTRIBUTE_NO_HALT_ON_SUSPEND))
+		return -EINVAL;
+	status = miniport_query_info(wnd, OID_PNP_CAPABILITIES,
+				     &pnp_capa, sizeof(pnp_capa));
+	if (status != NDIS_STATUS_SUCCESS)
+		return -EINVAL;
+	/* we always suspend to D3 */
+	if (pnp_capa.wakeup_capa.min_magic_packet_wakeup != NdisDeviceStateD3)
+		return -EINVAL;
+	/* no other options supported */
+	wnd->ndis_wolopts = NDIS_PNP_WAKE_UP_MAGIC_PACKET;
+	return 0;
+}
+
 static struct ethtool_ops ndis_ethtool_ops = {
 	.get_drvinfo		= ndis_get_drvinfo,
 	.get_link		= ndis_get_link,
+	.get_wol		= ndis_get_wol,
+	.set_wol		= ndis_set_wol,
 };
 #endif
 
@@ -1283,14 +1330,6 @@ wstdcall NTSTATUS NdisDispatchPower(struct device_object *fdo, struct irp *irp)
 			if (ndis_status != NDIS_STATUS_SUCCESS)
 				WARNING("setting power to %d failed: %08X",
 					state, ndis_status);
-			hangcheck_add(wnd);
-			add_stats_timer(wnd);
-			set_scan(wnd);
-			if (netif_running(wnd->net_dev)) {
-				netif_device_attach(wnd->net_dev);
-				netif_wake_queue(wnd->net_dev);
-			}
-			netif_poll_enable(wnd->net_dev);
 			DBGTRACE2("%s: device resumed", wnd->net_dev->name);
 			irp->io_status.status = status = STATUS_SUCCESS;
 			IoCompleteRequest(irp, IO_NO_INCREMENT);
@@ -1299,14 +1338,6 @@ wstdcall NTSTATUS NdisDispatchPower(struct device_object *fdo, struct irp *irp)
 			if (test_bit(HW_SUSPENDED, &wnd->hw_status) ||
 			    test_bit(HW_HALTED, &wnd->hw_status))
 				return STATUS_FAILURE;
-			DBGTRACE2("irql: %d", current_irql());
-			netif_poll_disable(wnd->net_dev);
-			if (netif_running(wnd->net_dev)) {
-				netif_tx_disable(wnd->net_dev);
-				netif_device_detach(wnd->net_dev);
-			}
-			hangcheck_del(wnd);
-			del_stats_timer(wnd);
 			ndis_status = miniport_set_power_state(wnd, state);
 			/* TODO: handle error case */
 			if (ndis_status != NDIS_STATUS_SUCCESS)
