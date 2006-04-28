@@ -331,9 +331,9 @@ struct ndis_pm_wakeup_capabilities {
 	enum ndis_power_state min_link_change_wakeup;
 };
 
-#define NDIS_DEVICE_WAKE_UP_ENABLE			0x00000001
-#define NDIS_DEVICE_WAKE_ON_PATTERN_MATCH_ENABLE	0x00000002
-#define NDIS_DEVICE_WAKE_ON_MAGIC_PACKET_ENABLE		0x00000004
+#define NDIS_PNP_WAKE_UP_MAGIC_PACKET			0x00000001
+#define NDIS_PNP_WAKE_UP_PATTERN_MATCH			0x00000002
+#define NDIS_PNP_WAKE_UP_LINK_CHANGE			0x00000004
 
 struct ndis_pnp_capabilities {
 	ULONG flags;
@@ -849,6 +849,7 @@ struct wrap_ndis_device {
 	struct v4_checksum rx_csum;
 	struct ndis_tcp_ip_checksum_packet_info tx_csum_info;
 	enum ndis_physical_medium physical_medium;
+	u32 ndis_wolopts;
 };
 
 struct ndis_pmkid_candidate {
