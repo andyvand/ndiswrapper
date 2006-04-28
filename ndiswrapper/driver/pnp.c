@@ -22,253 +22,9 @@ extern NT_SPIN_LOCK loader_lock;
 extern struct nt_list ndis_drivers;
 extern struct wrap_device *wrap_devices;
 
-wstdcall NTSTATUS IoSendIrpTopDev(struct device_object *dev_obj, ULONG major_fn,
-				 ULONG minor_fn, struct io_stack_location *sl)
+static NTSTATUS start_pdo(struct device_object *pdo)
 {
-	NTSTATUS status;
-	struct nt_event event;
-	struct irp *irp;
-	struct io_stack_location *irp_sl;
-	struct device_object *top_dev = IoGetAttachedDeviceReference(dev_obj);
-
-	KeInitializeEvent(&event, NotificationEvent, FALSE);
-	irp = IoBuildSynchronousFsdRequest(IRP_MJ_PNP, top_dev, NULL, 0, NULL,
-					   &event, NULL);
-	irp->io_status.status = STATUS_NOT_IMPLEMENTED;
-	irp->io_status.info = 0;
-	irp_sl = IoGetNextIrpStackLocation(irp);
-	if (sl)
-		memcpy(irp_sl, sl, sizeof(*irp_sl));
-	irp_sl->major_fn = major_fn;
-	irp_sl->minor_fn = minor_fn;
-	status = IoCallDriver(top_dev, irp);
-	if (status == STATUS_PENDING) {
-		KeWaitForSingleObject(&event, Executive, KernelMode,
-				      FALSE, NULL);
-		status = irp->io_status.status;
-	}
-	ObDereferenceObject(top_dev);
-	return status;
-}
-
-/* called as Windows function, so call WIN2LIN2 before accessing
- * arguments */
-wstdcall NTSTATUS pdoDispatchDeviceControl(struct device_object *pdo,
-					  struct  irp *irp)
-{
-	struct io_stack_location *irp_sl;
-	NTSTATUS status;
-
-	WIN2LIN2(pdo, irp);
-
-	DUMP_IRP(irp);
-
-	if (irp->current_location < 0 ||
-	    irp->current_location > irp->stack_count) {
-		ERROR("invalid irp: %p, %d, %d", irp, irp->current_location,
-		      irp->stack_count);
-		irp->io_status.status = STATUS_FAILURE;
-		irp->io_status.info = 0;
-		IOEXIT(return STATUS_FAILURE);
-	}
-	irp_sl = IoGetCurrentIrpStackLocation(irp);
-
-#ifdef CONFIG_USB
-	status = wrap_submit_irp(pdo, irp);
-	IOTRACE("status: %08X", status);
-	if (status != STATUS_PENDING)
-		IoCompleteRequest(irp, IO_NO_INCREMENT);
-	IOEXIT(return status);
-#else
-	status = irp->io_status.status = STATUS_NOT_IMPLEMENTED;
-	IoCompleteRequest(irp, IO_NO_INCREMENT);
-	IOEXIT(return status);
-#endif
-}
-
-/* called as Windows function, so call WIN2LIN2 before accessing
- * arguments */
-wstdcall NTSTATUS pdoDispatchPnp(struct device_object *pdo,
-				struct irp *irp)
-{
-	struct io_stack_location *irp_sl;
-	struct wrap_device *wd;
-	NTSTATUS status;
-#ifdef CONFIG_USB
-	struct usbd_bus_interface_usbdi *usb_intf;
-#endif
-
-	WIN2LIN2(pdo, irp);
-
-	irp_sl = IoGetCurrentIrpStackLocation(irp);
-	wd = pdo->reserved;
-	DBGTRACE2("fn %d:%d, wd: %p", irp_sl->major_fn, irp_sl->minor_fn, wd);
-	switch (irp_sl->minor_fn) {
-	case IRP_MN_START_DEVICE:
-	case IRP_MN_QUERY_STOP_DEVICE:
-	case IRP_MN_STOP_DEVICE:
-	case IRP_MN_QUERY_REMOVE_DEVICE:
-		status = STATUS_SUCCESS;
-		break;
-	case IRP_MN_QUERY_INTERFACE:
-#ifdef CONFIG_USB
-		if (!wrap_is_usb_bus(wd->dev_bus_type)) {
-			status = STATUS_NOT_IMPLEMENTED;
-			break;
-		}
-		DBGTRACE2("type: %x, size: %d, version: %d",
-			  irp_sl->params.query_intf.type->data1,
-			  irp_sl->params.query_intf.size,
-			  irp_sl->params.query_intf.version);
-		usb_intf = (struct usbd_bus_interface_usbdi *)
-			irp_sl->params.query_intf.intf;
-		usb_intf->Context = wd;
-		usb_intf->InterfaceReference = USBD_InterfaceReference;
-		usb_intf->InterfaceDereference = USBD_InterfaceDereference;
-		usb_intf->GetUSBDIVersion = USBD_InterfaceGetUSBDIVersion;
-		usb_intf->QueryBusTime = USBD_InterfaceQueryBusTime;
-		usb_intf->SubmitIsoOutUrb = USBD_InterfaceSubmitIsoOutUrb;
-		usb_intf->QueryBusInformation =
-			USBD_InterfaceQueryBusInformation;
-		if (irp_sl->params.query_intf.version >=
-		    USB_BUSIF_USBDI_VERSION_1)
-			usb_intf->IsDeviceHighSpeed =
-				USBD_InterfaceIsDeviceHighSpeed;
-		if (irp_sl->params.query_intf.version >=
-		    USB_BUSIF_USBDI_VERSION_2)
-			usb_intf->LogEntry = USBD_InterfaceLogEntry;
-		status = STATUS_SUCCESS;
-#else
-		status = STATUS_NOT_IMPLEMENTED;
-#endif
-		break;
-	case IRP_MN_REMOVE_DEVICE:
-		ntoskernel_exit_device(wd);
-		if (wrap_is_pci_bus(wd->dev_bus_type)) {
-			struct pci_dev *pdev = wd->pci.pdev;
-			pci_release_regions(pdev);
-			pci_disable_device(pdev);
-			wd->pci.pdev = NULL;
-			pci_set_drvdata(pdev, NULL);
-		} else if (wrap_is_usb_bus(wd->dev_bus_type)) {
-#ifdef CONFIG_USB
-			usb_exit_device(wd);
-#endif
-		}
-		if (wd->resource_list)
-			kfree(wd->resource_list);
-		wd->resource_list = NULL;
-		status = STATUS_SUCCESS;
-		break;
-	default:
-		DBGTRACE2("fn %d not implemented", irp_sl->minor_fn);
-		status = STATUS_SUCCESS;
-		break;
-	}
-	irp->io_status.status = status;
-	DBGTRACE2("status: %08X", status);
-//	irp->io_status.status_info = 0;
-	IoCompleteRequest(irp, IO_NO_INCREMENT);
-	IOEXIT(return status);
-}
-
-/* called as Windows function */
-wstdcall NTSTATUS pdoDispatchPower(struct device_object *pdo,
-				  struct irp *irp)
-{
-	struct io_stack_location *irp_sl;
-	struct wrap_device *wd;
-	union power_state power_state;
-	struct pci_dev *pdev;
-	NTSTATUS status;
-
-	WIN2LIN2(pdo, irp);
-
-	irp_sl = IoGetCurrentIrpStackLocation(irp);
-	wd = pdo->reserved;
-	DBGTRACE2("pdo: %p, fn: %d:%d, wd: %p",
-		  pdo, irp_sl->major_fn, irp_sl->minor_fn, wd);
-	switch (irp_sl->minor_fn) {
-	case IRP_MN_WAIT_WAKE:
-		/* TODO: this is not complete/correct */
-		DBGTRACE2("state: %d, completion: %p",
-			  irp_sl->params.power.state.system_state,
-			  irp_sl->completion_routine);
-		IoMarkIrpPending(irp);
-		status = STATUS_PENDING;
-		break;
-	case IRP_MN_SET_POWER:
-		power_state = irp_sl->params.power.state;
-		if (power_state.device_state == PowerDeviceD0) {
-			DBGTRACE2("resuming device %p", wd);
-			if (wrap_is_pci_bus(wd->dev_bus_type)) {
-				pdev = wd->pci.pdev;
-#if LINUX_VERSION_CODE > KERNEL_VERSION(2,6,9)
-				pci_restore_state(pdev);
-#else
-				pci_restore_state(pdev, wd->pci.pci_state);
-#endif
-			} else { // usb device
-#ifdef CONFIG_USB
-				wrap_resume_urbs(wd);
-#endif
-			}
-		} else {
-			DBGTRACE2("suspending device %p", wd);
-			if (wrap_is_pci_bus(wd->dev_bus_type)) {
-				pdev = wd->pci.pdev;
-#if LINUX_VERSION_CODE > KERNEL_VERSION(2,6,9)
-				pci_save_state(pdev);
-#else
-				pci_save_state(pdev, wd->pci.pci_state);
-#endif
-			} else { // usb device
-#ifdef CONFIG_USB
-				wrap_suspend_urbs(wd);
-#endif
-			}
-		}
-		status = STATUS_SUCCESS;
-		break;
-	case IRP_MN_QUERY_POWER:
-		status = STATUS_SUCCESS;
-		break;
-	default:
-		DBGTRACE2("fn %d not implemented", irp_sl->minor_fn);
-		status = STATUS_SUCCESS;
-		break;
-	}
-//	irp->io_status.status_info = 0;
-	irp->io_status.status = status;
-	IoCompleteRequest(irp, IO_NO_INCREMENT);
-	return status;
-}
-
-static struct device_object *alloc_pdo(struct driver_object *drv_obj)
-{
-	struct device_object *pdo;
-	NTSTATUS status ;
-	int i;
-
-	status = IoCreateDevice(drv_obj, 0, NULL, FILE_DEVICE_UNKNOWN,
-			     0, FALSE, &pdo);
-	DBGTRACE1("%p, %d, %p", drv_obj, status, pdo);
-	if (status != STATUS_SUCCESS)
-		return NULL;
-	for (i = 0; i <= IRP_MJ_MAXIMUM_FUNCTION; i++)
-		drv_obj->major_func[i] = IoInvalidDeviceRequest;
-	drv_obj->major_func[IRP_MJ_INTERNAL_DEVICE_CONTROL] =
-		pdoDispatchDeviceControl;
-	drv_obj->major_func[IRP_MJ_DEVICE_CONTROL] =
-		pdoDispatchDeviceControl;
-	drv_obj->major_func[IRP_MJ_POWER] = pdoDispatchPower;
-	drv_obj->major_func[IRP_MJ_PNP] = pdoDispatchPnp;
-	return pdo;
-}
-
-static int start_pdo(struct device_object *pdo)
-{
-	int ret, i, count, resources_size;
+	int i, ret, count, resources_size;
 	struct wrap_device *wd;
 	struct pci_dev *pdev;
 	struct cm_partial_resource_descriptor *entry;
@@ -278,25 +34,25 @@ static int start_pdo(struct device_object *pdo)
 	wd = pdo->reserved;
 	wd->surprise_removed = TRUE;
 	if (ntoskernel_init_device(wd))
-		TRACEEXIT1(return -EINVAL);
+		TRACEEXIT1(return STATUS_FAILURE);
 	DBGTRACE1("%d, %d", WRAP_BUS_TYPE(wd->dev_bus_type), WRAP_USB_BUS);
 	if (wrap_is_usb_bus(wd->dev_bus_type)) {
 #ifdef CONFIG_USB
 		if (usb_init_device(wd)) {
 			ntoskernel_exit_device(wd);
-			TRACEEXIT1(return -EINVAL);
+			TRACEEXIT1(return STATUS_FAILURE);
 		}
 #endif
-		TRACEEXIT1(return 0);
+		TRACEEXIT1(return STATUS_SUCCESS);
 	}
 	if (!wrap_is_pci_bus(wd->dev_bus_type))
-		TRACEEXIT1(return 0);
+		TRACEEXIT1(return STATUS_SUCCESS);
 	pdev = wd->pci.pdev;
 	pci_set_drvdata(pdev, wd);
 	ret = pci_enable_device(pdev);
 	if (ret) {
 		ERROR("couldn't enable PCI device: %x", ret);
-		return ret;
+		return STATUS_FAILURE;
 	}
 	ret = pci_request_regions(pdev, DRIVER_NAME);
 	if (ret) {
@@ -403,14 +159,233 @@ static int start_pdo(struct device_object *pdo)
 
 	DBGTRACE2("resource list count %d, irq: %d",
 		  partial_resource_list->count, pdev->irq);
-	return 0;
+	TRACEEXIT1(return STATUS_SUCCESS);
 err_regions:
 	pci_release_regions(pdev);
 err_enable:
 	pci_disable_device(pdev);
 	wd->pci.pdev = NULL;
 	wd->pdo = NULL;
-	return -EINVAL;
+	TRACEEXIT1(return STATUS_FAILURE);
+}
+
+static void stop_pdo(struct device_object *pdo)
+{
+	struct wrap_device *wd = pdo->reserved;
+
+	ntoskernel_exit_device(wd);
+	if (wrap_is_pci_bus(wd->dev_bus_type)) {
+		struct pci_dev *pdev = wd->pci.pdev;
+		pci_release_regions(pdev);
+		pci_disable_device(pdev);
+		wd->pci.pdev = NULL;
+		pci_set_drvdata(pdev, NULL);
+	} else if (wrap_is_usb_bus(wd->dev_bus_type)) {
+#ifdef CONFIG_USB
+		usb_exit_device(wd);
+#endif
+	}
+	if (wd->resource_list)
+		kfree(wd->resource_list);
+	wd->resource_list = NULL;
+	return;
+}
+
+wstdcall NTSTATUS IoSendIrpTopDev(struct device_object *dev_obj, ULONG major_fn,
+				 ULONG minor_fn, struct io_stack_location *sl)
+{
+	NTSTATUS status;
+	struct nt_event event;
+	struct irp *irp;
+	struct io_stack_location *irp_sl;
+	struct device_object *top_dev = IoGetAttachedDeviceReference(dev_obj);
+
+	KeInitializeEvent(&event, NotificationEvent, FALSE);
+	irp = IoBuildSynchronousFsdRequest(IRP_MJ_PNP, top_dev, NULL, 0, NULL,
+					   &event, NULL);
+	irp->io_status.status = STATUS_NOT_IMPLEMENTED;
+	irp->io_status.info = 0;
+	irp_sl = IoGetNextIrpStackLocation(irp);
+	if (sl)
+		memcpy(irp_sl, sl, sizeof(*irp_sl));
+	irp_sl->major_fn = major_fn;
+	irp_sl->minor_fn = minor_fn;
+	status = IoCallDriver(top_dev, irp);
+	if (status == STATUS_PENDING) {
+		KeWaitForSingleObject(&event, Executive, KernelMode,
+				      FALSE, NULL);
+		status = irp->io_status.status;
+	}
+	ObDereferenceObject(top_dev);
+	return status;
+}
+
+/* called as Windows function, so call WIN2LIN2 before accessing
+ * arguments */
+wstdcall NTSTATUS pdoDispatchDeviceControl(struct device_object *pdo,
+					  struct  irp *irp)
+{
+	struct io_stack_location *irp_sl;
+	NTSTATUS status;
+
+	WIN2LIN2(pdo, irp);
+
+	DUMP_IRP(irp);
+	irp_sl = IoGetCurrentIrpStackLocation(irp);
+#ifdef CONFIG_USB
+	status = wrap_submit_irp(pdo, irp);
+	IOTRACE("status: %08X", status);
+	if (status != STATUS_PENDING)
+		IoCompleteRequest(irp, IO_NO_INCREMENT);
+#else
+	status = irp->io_status.status = STATUS_NOT_IMPLEMENTED;
+	IoCompleteRequest(irp, IO_NO_INCREMENT);
+#endif
+	IOEXIT(return status);
+}
+
+/* called as Windows function, so call WIN2LIN2 before accessing
+ * arguments */
+wstdcall NTSTATUS pdoDispatchPnp(struct device_object *pdo,
+				struct irp *irp)
+{
+	struct io_stack_location *irp_sl;
+	struct wrap_device *wd;
+	NTSTATUS status;
+#ifdef CONFIG_USB
+	struct usbd_bus_interface_usbdi *usb_intf;
+#endif
+
+	WIN2LIN2(pdo, irp);
+
+	irp_sl = IoGetCurrentIrpStackLocation(irp);
+	wd = pdo->reserved;
+	DBGTRACE2("fn %d:%d, wd: %p", irp_sl->major_fn, irp_sl->minor_fn, wd);
+	switch (irp_sl->minor_fn) {
+	case IRP_MN_START_DEVICE:
+		status = start_pdo(pdo);
+		break;
+	case IRP_MN_QUERY_STOP_DEVICE:
+	case IRP_MN_STOP_DEVICE:
+	case IRP_MN_QUERY_REMOVE_DEVICE:
+		status = STATUS_SUCCESS;
+		break;
+	case IRP_MN_REMOVE_DEVICE:
+		stop_pdo(pdo);
+		status = STATUS_SUCCESS;
+		break;
+	case IRP_MN_QUERY_INTERFACE:
+#ifdef CONFIG_USB
+		if (!wrap_is_usb_bus(wd->dev_bus_type)) {
+			status = STATUS_NOT_IMPLEMENTED;
+			break;
+		}
+		DBGTRACE2("type: %x, size: %d, version: %d",
+			  irp_sl->params.query_intf.type->data1,
+			  irp_sl->params.query_intf.size,
+			  irp_sl->params.query_intf.version);
+		usb_intf = (struct usbd_bus_interface_usbdi *)
+			irp_sl->params.query_intf.intf;
+		usb_intf->Context = wd;
+		usb_intf->InterfaceReference = USBD_InterfaceReference;
+		usb_intf->InterfaceDereference = USBD_InterfaceDereference;
+		usb_intf->GetUSBDIVersion = USBD_InterfaceGetUSBDIVersion;
+		usb_intf->QueryBusTime = USBD_InterfaceQueryBusTime;
+		usb_intf->SubmitIsoOutUrb = USBD_InterfaceSubmitIsoOutUrb;
+		usb_intf->QueryBusInformation =
+			USBD_InterfaceQueryBusInformation;
+		if (irp_sl->params.query_intf.version >=
+		    USB_BUSIF_USBDI_VERSION_1)
+			usb_intf->IsDeviceHighSpeed =
+				USBD_InterfaceIsDeviceHighSpeed;
+		if (irp_sl->params.query_intf.version >=
+		    USB_BUSIF_USBDI_VERSION_2)
+			usb_intf->LogEntry = USBD_InterfaceLogEntry;
+		status = STATUS_SUCCESS;
+#else
+		status = STATUS_NOT_IMPLEMENTED;
+#endif
+		break;
+	default:
+		DBGTRACE2("fn %d not implemented", irp_sl->minor_fn);
+		status = STATUS_SUCCESS;
+		break;
+	}
+	irp->io_status.status = status;
+	DBGTRACE2("status: %08X", status);
+	IoCompleteRequest(irp, IO_NO_INCREMENT);
+	IOEXIT(return status);
+}
+
+/* called as Windows function */
+wstdcall NTSTATUS pdoDispatchPower(struct device_object *pdo,
+				  struct irp *irp)
+{
+	struct io_stack_location *irp_sl;
+	struct wrap_device *wd;
+	union power_state power_state;
+	struct pci_dev *pdev;
+	NTSTATUS status;
+
+	WIN2LIN2(pdo, irp);
+
+	irp_sl = IoGetCurrentIrpStackLocation(irp);
+	wd = pdo->reserved;
+	DBGTRACE2("pdo: %p, fn: %d:%d, wd: %p",
+		  pdo, irp_sl->major_fn, irp_sl->minor_fn, wd);
+	switch (irp_sl->minor_fn) {
+	case IRP_MN_WAIT_WAKE:
+		/* TODO: this is not complete/correct */
+		DBGTRACE2("state: %d, completion: %p",
+			  irp_sl->params.power.state.system_state,
+			  irp_sl->completion_routine);
+		IoMarkIrpPending(irp);
+		status = STATUS_PENDING;
+		break;
+	case IRP_MN_SET_POWER:
+		power_state = irp_sl->params.power.state;
+		if (power_state.device_state == PowerDeviceD0) {
+			DBGTRACE2("resuming device %p", wd);
+			if (wrap_is_pci_bus(wd->dev_bus_type)) {
+				pdev = wd->pci.pdev;
+#if LINUX_VERSION_CODE > KERNEL_VERSION(2,6,9)
+				pci_restore_state(pdev);
+#else
+				pci_restore_state(pdev, wd->pci.pci_state);
+#endif
+			} else { // usb device
+#ifdef CONFIG_USB
+				wrap_resume_urbs(wd);
+#endif
+			}
+		} else {
+			DBGTRACE2("suspending device %p", wd);
+			if (wrap_is_pci_bus(wd->dev_bus_type)) {
+				pdev = wd->pci.pdev;
+#if LINUX_VERSION_CODE > KERNEL_VERSION(2,6,9)
+				pci_save_state(pdev);
+#else
+				pci_save_state(pdev, wd->pci.pci_state);
+#endif
+			} else { // usb device
+#ifdef CONFIG_USB
+				wrap_suspend_urbs(wd);
+#endif
+			}
+		}
+		status = STATUS_SUCCESS;
+		break;
+	case IRP_MN_QUERY_POWER:
+		status = STATUS_SUCCESS;
+		break;
+	default:
+		DBGTRACE2("fn %d not implemented", irp_sl->minor_fn);
+		status = STATUS_SUCCESS;
+		break;
+	}
+	irp->io_status.status = status;
+	IoCompleteRequest(irp, IO_NO_INCREMENT);
+	return status;
 }
 
 NTSTATUS pnp_set_power_state(struct wrap_device *wd,
@@ -527,6 +502,28 @@ NTSTATUS pnp_remove_device(struct wrap_device *wd)
 	TRACEEXIT1(return status);
 }
 
+static struct device_object *alloc_pdo(struct driver_object *drv_obj)
+{
+	struct device_object *pdo;
+	NTSTATUS status ;
+	int i;
+
+	status = IoCreateDevice(drv_obj, 0, NULL, FILE_DEVICE_UNKNOWN,
+			     0, FALSE, &pdo);
+	DBGTRACE1("%p, %d, %p", drv_obj, status, pdo);
+	if (status != STATUS_SUCCESS)
+		return NULL;
+	for (i = 0; i <= IRP_MJ_MAXIMUM_FUNCTION; i++)
+		drv_obj->major_func[i] = IoInvalidDeviceRequest;
+	drv_obj->major_func[IRP_MJ_INTERNAL_DEVICE_CONTROL] =
+		pdoDispatchDeviceControl;
+	drv_obj->major_func[IRP_MJ_DEVICE_CONTROL] =
+		pdoDispatchDeviceControl;
+	drv_obj->major_func[IRP_MJ_POWER] = pdoDispatchPower;
+	drv_obj->major_func[IRP_MJ_PNP] = pdoDispatchPnp;
+	return pdo;
+}
+
 static int wrap_pnp_start_device(struct wrap_device *wd)
 {
 	struct wrap_driver *driver;
@@ -580,10 +577,6 @@ static int wrap_pnp_start_device(struct wrap_device *wd)
 	    STATUS_SUCCESS) {
 		IoDeleteDevice(pdo);
 		return -ENOMEM;
-	}
-	if (start_pdo(wd->pdo)) {
-		IoDeleteDevice(pdo);
-		return -EINVAL;
 	}
 	if (pnp_start_device(wd) != STATUS_SUCCESS) {
 		/* TODO: we need proper cleanup, to deallocate memory,

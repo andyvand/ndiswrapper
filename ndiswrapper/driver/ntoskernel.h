@@ -130,197 +130,6 @@ typedef task_queue workqueue;
 
 #endif // LINUX_VERSION_CODE
 
-#include "winnt_types.h"
-#include "ndiswrapper.h"
-#include "pe_linker.h"
-#include "wrapmem.h"
-
-#define DEBUG_IRQL 1
-
-#if defined(DISABLE_USB)
-#undef CONFIG_USB
-#undef CONFIG_USB_MODULE
-#endif
-
-#if !defined(CONFIG_USB) && defined(CONFIG_USB_MODULE)
-#define CONFIG_USB 1
-#endif
-
-#define addr_offset(drvr) (__builtin_return_address(0) -	\
-			   (drvr)->drv_obj->driver_start)
-
-#ifndef offset_in_page
-#define offset_in_page(p) ((unsigned long)(p) & ~PAGE_MASK)
-#endif
-
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,4,23)
-#define HAVE_ETHTOOL 1
-#endif
-
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,0)
-
-#ifndef preempt_enable
-#define preempt_enable()  do { } while (0)
-#endif
-#ifndef preempt_disable
-#define preempt_disable() do { } while (0)
-#endif
-
-#ifndef preempt_enable_no_resched
-#define preempt_enable_no_resched() preempt_enable()
-#endif
-
-#ifndef container_of
-#define container_of(ptr, type, member)					\
-({									\
-	const typeof( ((type *)0)->member ) *__mptr = (ptr);		\
-	(type *)( (char *)__mptr - offsetof(type,member) );		\
-})
-#endif
-
-#ifndef virt_addr_valid
-#define virt_addr_valid(addr) VALID_PAGE(virt_to_page(addr))
-#endif
-
-#ifndef SET_NETDEV_DEV
-#define SET_NETDEV_DEV(net,pdev) do { } while (0)
-#endif
-
-#define usb_set_intfdata(intf, data) do { } while (0)
-
-#endif // LINUX_VERSION_CODE < KERNEL_VERSION(2,6,0)
-
-#ifndef PMSG_SUSPEND
-#ifdef PM_SUSPEND
-/* this is not correct - the value of PM_SUSPEND is different from
- * PMSG_SUSPEND, but ndiswrapper doesn't care about the value when
- * suspending */
-#define PMSG_SUSPEND PM_SUSPEND
-#define PSMG_ON PM_ON
-#else
-typedef u32 pm_message_t;
-#define PMSG_SUSPEND 2
-#define PMSG_ON 0
-#endif
-#endif
-
-#ifndef PCI_D0
-#define PCI_D0 0
-#define PCI_D3hot 3
-#endif
-
-#ifndef PM_EVENT_SUSPEND
-#define PM_EVENT_SUSPEND 2
-#endif
-
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,9)
-#define pci_choose_state(dev, state) (state)
-#endif
-
-#if defined(CONFIG_SOFTWARE_SUSPEND2) || defined(CONFIG_SUSPEND2)
-#define KTHREAD_RUN(a,b,c) kthread_run(a,b,0,c)
-#else
-#define KTHREAD_RUN(a,b,c) kthread_run(a,b,c)
-#endif
-
-#if !defined(HAVE_NETDEV_PRIV)
-#define netdev_priv(dev)  ((dev)->priv)
-#endif
-
-#ifdef CONFIG_X86_64
-#define LIN2WIN1(func, arg1)						\
-({									\
-	DBGTRACE6("calling %p", func);					\
-	lin_to_win1(func, (unsigned long)arg1);				\
-})
-#define LIN2WIN2(func, arg1, arg2)					\
-({									\
-	DBGTRACE6("calling %p", func);					\
-	lin_to_win2(func, (unsigned long)arg1, (unsigned long)arg2);	\
-})
-#define LIN2WIN3(func, arg1, arg2, arg3)				\
-({									\
-	DBGTRACE6("calling %p", func);					\
-	lin_to_win3(func, (unsigned long)arg1, (unsigned long)arg2,	\
-		    (unsigned long)arg3);				\
-})
-#define LIN2WIN4(func, arg1, arg2, arg3, arg4)				\
-({									\
-	DBGTRACE6("calling %p", func);					\
-	lin_to_win4(func, (unsigned long)arg1, (unsigned long)arg2,	\
-		    (unsigned long)arg3, (unsigned long)arg4);		\
-})
-#define LIN2WIN5(func, arg1, arg2, arg3, arg4, arg5)			\
-({									\
-	DBGTRACE6("calling %p", func);					\
-	lin_to_win5(func, (unsigned long)arg1, (unsigned long)arg2,	\
-		    (unsigned long)arg3, (unsigned long)arg4,		\
-		    (unsigned long)arg5);				\
-})
-#define LIN2WIN6(func, arg1, arg2, arg3, arg4, arg5, arg6)		\
-({									\
-	DBGTRACE6("calling %p", func);					\
-	lin_to_win6(func, (unsigned long)arg1, (unsigned long)arg2,	\
-		    (unsigned long)arg3, (unsigned long)arg4,		\
-		    (unsigned long)arg5, (unsigned long)arg6);		\
-})
-
-/* NOTE: these macros assume function arguments are quads and
- * arguments are not touched in any way before calling these macros */
-#define WIN2LIN2(arg1, arg2)						\
-do {									\
-	__asm__ __volatile__("mov %%rcx, %0\n\t"			\
-			     "mov %%rdx, %1\n\t"			\
-			     : "=m" (arg1), "=m" (arg2));		\
-} while (0)
-
-#define WIN2LIN3(arg1, arg2, arg3)					\
-do {									\
-	__asm__ __volatile__("mov %%rcx, %0\n\t"			\
-			     "mov %%rdx, %1\n\t"			\
-			     "mov %%r8, %2\n\t"				\
-			     : "=m" (arg1), "=m" (arg2), "=m" (arg3));	\
-} while (0)
-
-#else // CONFIG_X86_64
-
-#define LIN2WIN1(func, arg1)						\
-({									\
-	DBGTRACE6("calling %p", func);					\
-	func(arg1);							\
-})
-#define LIN2WIN2(func, arg1, arg2)					\
-({									\
-	DBGTRACE6("calling %p", func);					\
-	func(arg1, arg2);						\
-})
-#define LIN2WIN3(func, arg1, arg2, arg3)				\
-({									\
-	DBGTRACE6("calling %p", func);					\
-	func(arg1, arg2, arg3);						\
-})
-#define LIN2WIN4(func, arg1, arg2, arg3, arg4)				\
-({									\
-	DBGTRACE6("calling %p", func);					\
-	func(arg1, arg2, arg3, arg4);					\
-})
-#define LIN2WIN5(func, arg1, arg2, arg3, arg4, arg5)			\
-({									\
-	DBGTRACE6("calling %p", func);					\
-	func(arg1, arg2, arg3, arg4, arg5);				\
-})
-#define LIN2WIN6(func, arg1, arg2, arg3, arg4, arg5, arg6)		\
-({									\
-	DBGTRACE6("calling %p", func);					\
-	func(arg1, arg2, arg3, arg4, arg5, arg6);			\
-})
-
-#define WIN2LIN2(arg1, arg2) do { } while (0)
-
-#define WIN2LIN3(arg1, arg2, arg3) do { } while (0)
-
-#endif // CONFIG_X86_64
-
 #ifndef __wait_event_interruptible_timeout
 #define __wait_event_interruptible_timeout(wq, condition, ret)		\
 do {									\
@@ -419,6 +228,197 @@ do {									\
 #ifndef rt_task
 #define rt_task(p) ((p)->prio < MAX_RT_PRIO)
 #endif
+
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,0)
+
+#ifndef preempt_enable
+#define preempt_enable()  do { } while (0)
+#endif
+#ifndef preempt_disable
+#define preempt_disable() do { } while (0)
+#endif
+
+#ifndef preempt_enable_no_resched
+#define preempt_enable_no_resched() preempt_enable()
+#endif
+
+#ifndef container_of
+#define container_of(ptr, type, member)					\
+({									\
+	const typeof( ((type *)0)->member ) *__mptr = (ptr);		\
+	(type *)( (char *)__mptr - offsetof(type,member) );		\
+})
+#endif
+
+#ifndef virt_addr_valid
+#define virt_addr_valid(addr) VALID_PAGE(virt_to_page(addr))
+#endif
+
+#ifndef SET_NETDEV_DEV
+#define SET_NETDEV_DEV(net,pdev) do { } while (0)
+#endif
+
+#define usb_set_intfdata(intf, data) do { } while (0)
+
+#endif // LINUX_VERSION_CODE < KERNEL_VERSION(2,6,0)
+
+#define addr_offset(drvr) (__builtin_return_address(0) -	\
+			   (drvr)->drv_obj->driver_start)
+
+#ifndef offset_in_page
+#define offset_in_page(p) ((unsigned long)(p) & ~PAGE_MASK)
+#endif
+
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,4,23)
+#define HAVE_ETHTOOL 1
+#endif
+
+#ifndef PMSG_SUSPEND
+#ifdef PM_SUSPEND
+/* this is not correct - the value of PM_SUSPEND is different from
+ * PMSG_SUSPEND, but ndiswrapper doesn't care about the value when
+ * suspending */
+#define PMSG_SUSPEND PM_SUSPEND
+#define PSMG_ON PM_ON
+#else
+typedef u32 pm_message_t;
+#define PMSG_SUSPEND 2
+#define PMSG_ON 0
+#endif
+#endif
+
+#ifndef PCI_D0
+#define PCI_D0 0
+#define PCI_D3hot 3
+#endif
+
+#ifndef PM_EVENT_SUSPEND
+#define PM_EVENT_SUSPEND 2
+#endif
+
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,9)
+#define pci_choose_state(dev, state) (state)
+#endif
+
+#if defined(CONFIG_SOFTWARE_SUSPEND2) || defined(CONFIG_SUSPEND2)
+#define KTHREAD_RUN(a,b,c) kthread_run(a,b,0,c)
+#else
+#define KTHREAD_RUN(a,b,c) kthread_run(a,b,c)
+#endif
+
+#if !defined(HAVE_NETDEV_PRIV)
+#define netdev_priv(dev)  ((dev)->priv)
+#endif
+
+#include "winnt_types.h"
+#include "ndiswrapper.h"
+#include "pe_linker.h"
+#include "wrapmem.h"
+
+#define DEBUG_IRQL 1
+
+#if defined(DISABLE_USB)
+#undef CONFIG_USB
+#undef CONFIG_USB_MODULE
+#endif
+
+#if !defined(CONFIG_USB) && defined(CONFIG_USB_MODULE)
+#define CONFIG_USB 1
+#endif
+
+#ifdef CONFIG_X86_64
+#define LIN2WIN1(func, arg1)						\
+({									\
+	DBGTRACE6("calling %p", func);					\
+	lin_to_win1(func, (unsigned long)arg1);				\
+})
+#define LIN2WIN2(func, arg1, arg2)					\
+({									\
+	DBGTRACE6("calling %p", func);					\
+	lin_to_win2(func, (unsigned long)arg1, (unsigned long)arg2);	\
+})
+#define LIN2WIN3(func, arg1, arg2, arg3)				\
+({									\
+	DBGTRACE6("calling %p", func);					\
+	lin_to_win3(func, (unsigned long)arg1, (unsigned long)arg2,	\
+		    (unsigned long)arg3);				\
+})
+#define LIN2WIN4(func, arg1, arg2, arg3, arg4)				\
+({									\
+	DBGTRACE6("calling %p", func);					\
+	lin_to_win4(func, (unsigned long)arg1, (unsigned long)arg2,	\
+		    (unsigned long)arg3, (unsigned long)arg4);		\
+})
+#define LIN2WIN5(func, arg1, arg2, arg3, arg4, arg5)			\
+({									\
+	DBGTRACE6("calling %p", func);					\
+	lin_to_win5(func, (unsigned long)arg1, (unsigned long)arg2,	\
+		    (unsigned long)arg3, (unsigned long)arg4,		\
+		    (unsigned long)arg5);				\
+})
+#define LIN2WIN6(func, arg1, arg2, arg3, arg4, arg5, arg6)		\
+({									\
+	DBGTRACE6("calling %p", func);					\
+	lin_to_win6(func, (unsigned long)arg1, (unsigned long)arg2,	\
+		    (unsigned long)arg3, (unsigned long)arg4,		\
+		    (unsigned long)arg5, (unsigned long)arg6);		\
+})
+
+/* NOTE: these macros assume function arguments are quads and
+ * arguments are not touched in any way before calling these macros */
+#define WIN2LIN2(arg1, arg2)						\
+do {									\
+	__asm__ __volatile__("mov %%rcx, %0\n\t"			\
+			     "mov %%rdx, %1\n\t"			\
+			     : "=m" (arg1), "=m" (arg2));		\
+} while (0)
+
+#define WIN2LIN3(arg1, arg2, arg3)					\
+do {									\
+	__asm__ __volatile__("mov %%rcx, %0\n\t"			\
+			     "mov %%rdx, %1\n\t"			\
+			     "mov %%r8, %2\n\t"				\
+			     : "=m" (arg1), "=m" (arg2), "=m" (arg3));	\
+} while (0)
+
+#else // CONFIG_X86_64
+
+#define LIN2WIN1(func, arg1)						\
+({									\
+	DBGTRACE6("calling %p", func);					\
+	func(arg1);							\
+})
+#define LIN2WIN2(func, arg1, arg2)					\
+({									\
+	DBGTRACE6("calling %p", func);					\
+	func(arg1, arg2);						\
+})
+#define LIN2WIN3(func, arg1, arg2, arg3)				\
+({									\
+	DBGTRACE6("calling %p", func);					\
+	func(arg1, arg2, arg3);						\
+})
+#define LIN2WIN4(func, arg1, arg2, arg3, arg4)				\
+({									\
+	DBGTRACE6("calling %p", func);					\
+	func(arg1, arg2, arg3, arg4);					\
+})
+#define LIN2WIN5(func, arg1, arg2, arg3, arg4, arg5)			\
+({									\
+	DBGTRACE6("calling %p", func);					\
+	func(arg1, arg2, arg3, arg4, arg5);				\
+})
+#define LIN2WIN6(func, arg1, arg2, arg3, arg4, arg5, arg6)		\
+({									\
+	DBGTRACE6("calling %p", func);					\
+	func(arg1, arg2, arg3, arg4, arg5, arg6);			\
+})
+
+#define WIN2LIN2(arg1, arg2) do { } while (0)
+
+#define WIN2LIN3(arg1, arg2, arg3) do { } while (0)
+
+#endif // CONFIG_X86_64
 
 #define KMALLOC_THRESHOLD 130000
 
