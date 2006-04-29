@@ -720,7 +720,7 @@ void wrap_pnp_remove_usb_device(struct usb_device *udev, void *ptr)
 	struct wrap_device *wd = ptr;
 	struct usb_interface *intf;
 
-	TRACEENTER1("%p, %p", intf, wd);
+	TRACEENTER1("%p, %p", udev, wd);
 	if (wd == NULL)
 		TRACEEXIT1(return);
 	intf = wd->usb.intf;
