@@ -19,90 +19,98 @@
 
 static int workqueue_thread(void *data)
 {
-	struct workqueue_struct *wq = data;
+	struct workqueue_struct *workq = data;
 	struct work_struct *work;
 
-	snprintf(current->comm, sizeof(current->comm), "%s", wq->name);
-	set_user_nice(current, -5);
+	lock_kernel();
+	strncpy(current->comm, workq->name, sizeof(current->comm));
+	current->comm[sizeof(current->comm) - 1] = 0;
 	daemonize();
+	unlock_kernel();
 	while (1) {
-		wait_event(wq->wq_head, wq->pending != 0);
-		spin_lock_bh(&wq->lock);
-		if (wq->pending-- < 0) {
-			spin_unlock_bh(&wq->lock);
+		if (wait_event_interruptible(workq->waitq_head,
+					     workq->pending != 0)) {
+			/* we don't want to terminate thread */
+			flush_signals(current);
+			continue;
+		}
+		spin_lock_bh(&workq->lock);
+		if (workq->pending-- < 0) {
+			spin_unlock_bh(&workq->lock);
 			break;
 		}
-		if (list_empty(&wq->work_list))
+		if (list_empty(&workq->work_list))
 			work = NULL;
 		else {
 			struct list_head *entry;
-			entry = wq->work_list.next;
+			entry = workq->work_list.next;
 			work = list_entry(entry, struct work_struct, list);
 			list_del_init(entry);
-			work->wq = NULL;
+			work->workq = NULL;
 		}
-		spin_unlock_bh(&wq->lock);
+		spin_unlock_bh(&workq->lock);
 		if (!work)
 			continue;
 		work->func(work->data);
 	}
-	WORKTRACE("%s exiting", wq->name);
-	wq->pid = 0;
+	WORKTRACE("%s exiting", workq->name);
+	workq->pid = 0;
 	return 0;
 }
 
-void queue_work(struct workqueue_struct *wq, struct work_struct *work)
+void queue_work(struct workqueue_struct *workq, struct work_struct *work)
 {
-	spin_lock_bh(&wq->lock);
-	if (!work->wq) {
-		work->wq = wq;
-		list_add_tail(&work->list, &wq->work_list);
-		wq->pending++;
-		wake_up(&wq->wq_head);
+	spin_lock_bh(&workq->lock);
+	if (!work->workq) {
+		work->workq = workq;
+		list_add_tail(&work->list, &workq->work_list);
+		workq->pending++;
+		wake_up_interruptible(&workq->waitq_head);
 	}
-	spin_unlock_bh(&wq->lock);
+	spin_unlock_bh(&workq->lock);
 }
 
 void cancel_delayed_work(struct work_struct *work)
 {
-	struct workqueue_struct *wq = work->wq;
-	if (wq) {
-		spin_lock_bh(&wq->lock);
+	struct workqueue_struct *workq = work->workq;
+	if (workq) {
+		spin_lock_bh(&workq->lock);
 		list_del(&work->list);
-		/* don't decrement wq->pending here, as wait_event
-		 * above checks without lock */
-		spin_unlock_bh(&wq->lock);
+		/* don't decrement workq->pending here; otherwise, it may
+		 * prematurely terminate the thread, as wait_event
+		 * above checks it without lock */
+		spin_unlock_bh(&workq->lock);
 	}
 }
 
 struct workqueue_struct *create_singlethread_workqueue(const char *name)
 {
-	struct workqueue_struct *wq = kmalloc(sizeof(*wq), GFP_KERNEL);
-	if (!wq) {
+	struct workqueue_struct *workq = kmalloc(sizeof(*workq), GFP_KERNEL);
+	if (!workq) {
 		WARNING("couldn't allocate memory");
 		return NULL;
 	}
-	memset(wq, 0, sizeof(*wq));
-	init_waitqueue_head(&wq->wq_head);
-	spin_lock_init(&wq->lock);
-	wq->name = name;
-	INIT_LIST_HEAD(&wq->work_list);
+	memset(workq, 0, sizeof(*workq));
+	init_waitqueue_head(&workq->waitq_head);
+	spin_lock_init(&workq->lock);
+	workq->name = name;
+	INIT_LIST_HEAD(&workq->work_list);
 	/* we don't need to wait for thread to start, so completion
 	 * not used */
-	wq->pid = kernel_thread(workqueue_thread, wq, 0);
-	if (wq->pid <= 0) {
-		kfree(wq);
+	workq->pid = kernel_thread(workqueue_thread, workq, 0);
+	if (workq->pid <= 0) {
+		kfree(workq);
 		WARNING("couldn't start thread %s", name);
 		return NULL;
 	}
-	return wq;
+	return workq;
 }
 
-void destroy_workqueue(struct workqueue_struct *wq)
+void destroy_workqueue(struct workqueue_struct *workq)
 {
-	wq->pending = -1;
-	wake_up(&wq->wq_head);
-	while (wq->pid)
+	workq->pending = -1;
+	wake_up_interruptible(&workq->waitq_head);
+	while (workq->pid)
 		schedule();
-	kfree(wq);
+	kfree(workq);
 }

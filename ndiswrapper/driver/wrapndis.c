@@ -778,8 +778,8 @@ static struct net_device_stats *ndis_get_stats(struct net_device *dev)
 static void ndis_set_multicast_list(struct net_device *dev)
 {
 	struct wrap_ndis_device *wnd = netdev_priv(dev);
-	set_bit(SET_MULTICAST_LIST, &wnd->wrap_ndis_work);
-	schedule_wrap_work(&wnd->wrap_ndis_worker);
+	set_bit(SET_MULTICAST_LIST, &wnd->wrap_ndis_pending_work);
+	schedule_wrap_work(&wnd->wrap_ndis_work);
 }
 
 /* this function is called fom BH context */
@@ -1054,8 +1054,8 @@ static void stats_timer_proc(unsigned long data)
 {
 	struct wrap_ndis_device *wnd = (struct wrap_ndis_device *)data;
 
-	set_bit(COLLECT_STATS, &wnd->wrap_ndis_work);
-	schedule_wrap_work(&wnd->wrap_ndis_worker);
+	set_bit(COLLECT_STATS, &wnd->wrap_ndis_pending_work);
+	schedule_wrap_work(&wnd->wrap_ndis_work);
 	wnd->stats_timer.expires += 10 * HZ;
 	add_timer(&wnd->stats_timer);
 }
@@ -1081,8 +1081,8 @@ static void hangcheck_proc(unsigned long data)
 	struct wrap_ndis_device *wnd = (struct wrap_ndis_device *)data;
 
 	TRACEENTER3("");
-	set_bit(HANGCHECK, &wnd->wrap_ndis_work);
-	schedule_wrap_work(&wnd->wrap_ndis_worker);
+	set_bit(HANGCHECK, &wnd->wrap_ndis_pending_work);
+	schedule_wrap_work(&wnd->wrap_ndis_work);
 
 	wnd->hangcheck_timer.expires += wnd->hangcheck_interval;
 	add_timer(&wnd->hangcheck_timer);
@@ -1111,26 +1111,27 @@ void hangcheck_del(struct wrap_ndis_device *wnd)
 }
 
 /* worker procedure to take care of setting/checking various states */
-static void wrap_ndis_worker_proc(void *param)
+static void wrap_ndis_worker(void *param)
 {
 	struct wrap_ndis_device *wnd = (struct wrap_ndis_device *)param;
 
-	DBGTRACE2("%lu", wnd->wrap_ndis_work);
+	DBGTRACE2("%lu", wnd->wrap_ndis_pending_work);
 
-	if (test_bit(SHUTDOWN, &wnd->wrap_ndis_work) ||
+	if (test_bit(SHUTDOWN, &wnd->wrap_ndis_pending_work) ||
 	    !test_bit(HW_INITIALIZED, &wnd->hw_status))
 		TRACEEXIT3(return);
 
-	if (test_and_clear_bit(SET_MULTICAST_LIST, &wnd->wrap_ndis_work))
+	if (test_and_clear_bit(SET_MULTICAST_LIST, &wnd->wrap_ndis_pending_work))
 		set_multicast_list(wnd);
 
-	if (test_and_clear_bit(COLLECT_STATS, &wnd->wrap_ndis_work))
+	if (test_and_clear_bit(COLLECT_STATS, &wnd->wrap_ndis_pending_work))
 		update_wireless_stats(wnd);
 
-	if (test_and_clear_bit(LINK_STATUS_CHANGED, &wnd->wrap_ndis_work))
+	if (test_and_clear_bit(LINK_STATUS_CHANGED,
+			       &wnd->wrap_ndis_pending_work))
 		link_status_handler(wnd);
 
-	if (test_and_clear_bit(HANGCHECK, &wnd->wrap_ndis_work)) {
+	if (test_and_clear_bit(HANGCHECK, &wnd->wrap_ndis_pending_work)) {
 		NDIS_STATUS res;
 		struct miniport_char *miniport;
 		KIRQL irql;
@@ -1734,11 +1735,11 @@ static int ndis_remove_device(struct wrap_ndis_device *wnd)
 {
 	int tx_pending;
 
-	set_bit(SHUTDOWN, &wnd->wrap_ndis_work);
+	set_bit(SHUTDOWN, &wnd->wrap_ndis_pending_work);
 	wnd->tx_ok = 0;
 	ndis_close(wnd->net_dev);
 	netif_carrier_off(wnd->net_dev);
-	cancel_delayed_work(&wnd->wrap_ndis_worker);
+	cancel_delayed_work(&wnd->wrap_ndis_work);
 	/* In 2.4 kernels, this function is called in atomic context,
 	 * so we can't (don't need to?) wait on mutex. */
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
@@ -1865,11 +1866,11 @@ static wstdcall NTSTATUS NdisAddDevice(struct driver_object *drv_obj,
 	init_timer(&wnd->hangcheck_timer);
 	wnd->scan_timestamp = 0;
 	init_timer(&wnd->stats_timer);
-	wnd->wrap_ndis_work = 0;
+	wnd->wrap_ndis_pending_work = 0;
 	memset(&wnd->essid, 0, sizeof(wnd->essid));
 	memset(&wnd->encr_info, 0, sizeof(wnd->encr_info));
 	wnd->infrastructure_mode = Ndis802_11Infrastructure;
-	INIT_WORK(&wnd->wrap_ndis_worker, wrap_ndis_worker_proc, wnd);
+	INIT_WORK(&wnd->wrap_ndis_work, wrap_ndis_worker, wnd);
 	wnd->hw_status = 0;
 	set_bit(HW_AVAILABLE, &wnd->hw_status);
 	if (wd->driver->ndis_driver)

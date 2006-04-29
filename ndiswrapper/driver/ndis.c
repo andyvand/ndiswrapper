@@ -1913,15 +1913,17 @@ wstdcall void WRAP_EXPORT(NdisMIndicateStatus)
 	case NDIS_STATUS_MEDIA_DISCONNECT:
 		if (wnd->link_status != 0) {
 			wnd->link_status = 0;
-			set_bit(LINK_STATUS_CHANGED, &wnd->wrap_ndis_work);
-			schedule_wrap_work(&wnd->wrap_ndis_worker);
+			set_bit(LINK_STATUS_CHANGED,
+				&wnd->wrap_ndis_pending_work);
+			schedule_wrap_work(&wnd->wrap_ndis_work);
 		}
 		break;
 	case NDIS_STATUS_MEDIA_CONNECT:
 		if (wnd->link_status != 1) {
 			wnd->link_status = 1;
-			set_bit(LINK_STATUS_CHANGED, &wnd->wrap_ndis_work);
-			schedule_wrap_work(&wnd->wrap_ndis_worker);
+			set_bit(LINK_STATUS_CHANGED,
+				&wnd->wrap_ndis_pending_work);
+			schedule_wrap_work(&wnd->wrap_ndis_work);
 		}
 		break;
 	case NDIS_STATUS_MEDIA_SPECIFIC_INDICATION:
@@ -2032,7 +2034,7 @@ wstdcall void WRAP_EXPORT(NdisMIndicateStatusComplete)
 {
 	struct wrap_ndis_device *wnd = nmb->wnd;
 	TRACEENTER2("%p", wnd);
-	schedule_wrap_work(&wnd->wrap_ndis_worker);
+	schedule_wrap_work(&wnd->wrap_ndis_work);
 	if (wnd->tx_ok)
 		schedule_wrap_work(&wnd->tx_work);
 }

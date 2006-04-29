@@ -97,7 +97,7 @@ typedef struct workqueue_struct *workqueue;
 /* 2.4 kernels don't have workqueues, but we need them */
 struct workqueue_struct {
 	spinlock_t lock;
-	wait_queue_head_t wq_head;
+	wait_queue_head_t waitq_head;
 	/* how many work_structs pending? */
 	int pending;
 	const char *name;
@@ -111,14 +111,14 @@ struct work_struct {
 	void (*func)(void *data);
 	void *data;
 	/* whether/on which workqueue scheduled */
-	struct workqueue_struct *wq;
+	struct workqueue_struct *workq;
 };	
 
 #define INIT_WORK(work_struct, worker_func, worker_data)	\
 	do {							\
 		(work_struct)->func = worker_func;		\
 		(work_struct)->data = worker_data;		\
-		(work_struct)->wq = NULL;			\
+		(work_struct)->workq = NULL;			\
 	} while (0)
 
 struct workqueue_struct *create_singlethread_workqueue(const char *name);
