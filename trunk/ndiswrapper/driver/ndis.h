@@ -834,8 +834,8 @@ struct wrap_ndis_device {
 	mac_address mac;
 	struct proc_dir_entry *procfs_iface;
 
-	struct work_struct wrap_ndis_worker;
-	unsigned long wrap_ndis_work;
+	struct work_struct wrap_ndis_work;
+	unsigned long wrap_ndis_pending_work;
 	UINT attributes;
 	int iw_auth_set;
 	int iw_auth_wpa_version;

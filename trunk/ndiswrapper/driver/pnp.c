@@ -580,7 +580,7 @@ static int wrap_pnp_start_device(struct wrap_device *wd)
 	if (pnp_start_device(wd) != STATUS_SUCCESS) {
 		/* TODO: we need proper cleanup, to deallocate memory,
 		 * for example */
-//		pnp_remove_device(wd);
+		pnp_remove_device(wd);
 		return -EINVAL;
 	}
 	return 0;
