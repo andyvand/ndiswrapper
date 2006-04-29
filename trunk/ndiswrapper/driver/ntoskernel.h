@@ -118,7 +118,7 @@ struct work_struct {
 	do {							\
 		(work_struct)->func = worker_func;		\
 		(work_struct)->data = worker_data;		\
-		(work_struct)->pending = 0;			\
+		(work_struct)->scheduled = 0;			\
 	} while (0)
 
 struct workqueue_struct *create_singlethread_workqueue(const char *name);

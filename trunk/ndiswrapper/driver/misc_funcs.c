@@ -542,6 +542,11 @@ wstdcall NTSTATUS WRAP_EXPORT(RtlAnsiStringToUnicodeString)
 	DBGTRACE2("%d, %d, %d, %d, %p", n, dst->max_length, src->length,
 		  src->max_length, src->buf);
 	if (alloc == TRUE) {
+		if (n == 0) {
+			dst->length = dst->max_length = 0;
+			dst->buf = NULL;
+			TRACEEXIT2(return STATUS_SUCCESS);
+		}
 		dst->max_length = n + sizeof(dst->buf[0]);
 		dst->buf = ExAllocatePoolWithTag(NonPagedPool,
 						 dst->max_length, 0);
@@ -573,6 +578,11 @@ wstdcall NTSTATUS WRAP_EXPORT(RtlUnicodeStringToAnsiString)
 	DBGTRACE2("%d, %d, %d, %d, %p", n, dst->max_length, src->length,
 		  src->max_length, src->buf);
 	if (alloc == TRUE) {
+		if (n == 0) {
+			dst->length = dst->max_length = 0;
+			dst->buf = NULL;
+			TRACEEXIT2(return STATUS_SUCCESS);
+		}
 		dst->max_length = n + sizeof(dst->buf[0]);
 		dst->buf = ExAllocatePoolWithTag(NonPagedPool,
 						 dst->max_length, 0);

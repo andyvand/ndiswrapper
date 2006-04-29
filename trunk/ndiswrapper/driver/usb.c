@@ -452,8 +452,8 @@ static void wrap_urb_complete(struct urb *urb)
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,0)
 		URB_STATUS(wrap_urb) = urb->status;
 		if (usb_pipeint(urb->pipe)) {
-			urb->interval = 0;
 			urb->status = -ENOENT;
+			urb->interval = 0;
 		}
 #endif
 		nt_spin_lock(&wrap_urb_complete_list_lock);
