@@ -25,9 +25,7 @@ static int workqueue_thread(void *data)
 	snprintf(current->comm, sizeof(current->comm), "%s", wq->name);
 	daemonize();
 	while (1) {
-		if (wait_event_interruptible(wq->wq_head,
-					     atomic_read(&wq->pending) != 0))
-			break;
+		wait_event(wq->wq_head, atomic_read(&wq->pending));
 		if (atomic_read(&wq->pending) < 0)
 			break;
 		atomic_dec(&wq->pending);
@@ -54,17 +52,13 @@ static int workqueue_thread(void *data)
 void queue_work(struct workqueue_struct *wq, struct work_struct *work_struct)
 {
 	int scheduled;
-	if (!wq->pid) {
-		WARNING("workqueue %s killed?", wq->name);
-		return;
-	}
 	spin_lock_bh(&wq->lock);
 	if (!(scheduled = work_struct->scheduled++))
 		list_add_tail(&work_struct->list, &wq->work_list);
 	spin_unlock_bh(&wq->lock);
 	if (!scheduled) {
 		atomic_inc(&wq->pending);
-		wake_up_interruptible(&wq->wq_head);
+		wake_up(&wq->wq_head);
 	}
 }
 
@@ -94,7 +88,7 @@ struct workqueue_struct *create_singlethread_workqueue(const char *name)
 void destroy_workqueue(struct workqueue_struct *wq)
 {
 	atomic_set(&wq->pending, -1);
-	wake_up_interruptible(&wq->wq_head);
+	wake_up(&wq->wq_head);
 	while (wq->pid)
 		schedule();
 	kfree(wq);
