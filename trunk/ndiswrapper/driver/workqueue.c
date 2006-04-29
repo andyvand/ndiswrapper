@@ -22,6 +22,9 @@ static int workqueue_thread(void *data)
 	struct workqueue_struct *wq = data;
 	struct work_struct *ws;
 
+	/* this seems to set task name, but still 'ps -a' shows parent
+	 * name */
+	snprintf(current->comm, sizeof(current->comm), "%s", wq->name);
 	while (1) {
 		if (wait_event_interruptible(wq->wq_head,
 					     atomic_read(&wq->pending) != 0))
@@ -62,8 +65,9 @@ struct workqueue_struct *create_singlethread_workqueue(const char *name)
 	spin_lock_init(&wq->lock);
 	wq->name = name;
 	INIT_LIST_HEAD(&wq->work_list);
+	/* we don't need to wait for thread to start, so completion
+	 * not used */
 	wq->pid = kernel_thread(workqueue_thread, wq, 0);
-	/* TODO: how to set the name of task (thread)? */
 	if (wq->pid < 0) {
 		kfree(wq);
 		WARNING("couldn't start thread %s", name);

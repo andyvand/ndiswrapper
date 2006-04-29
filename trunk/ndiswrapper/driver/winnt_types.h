@@ -112,12 +112,6 @@
 #ifdef CONFIG_X86_64
 #define wstdcall
 #define wfastcall
-#define arg1) arg1
-#define arg1, arg2) arg1, arg2
-#define arg1, arg2, arg3) arg1, arg2, arg3
-#define func(arg1) func(arg1)
-#define func(arg1, arg2) func(arg1, arg2)
-#define func(arg1, arg2, arg3) func(arg1, arg2, arg3)
 
 #define KI_USER_SHARED_DATA 0xfffff78000000000
 
