@@ -153,9 +153,7 @@ void usb_exit(void)
 #ifdef USB_TASKLET
 	tasklet_kill(&wrap_urb_complete_work);
 #else
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
 	cancel_delayed_work(&wrap_urb_complete_work);
-#endif
 #endif
 	TRACEEXIT1(return);
 }
