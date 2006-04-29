@@ -1738,10 +1738,10 @@ static int ndis_remove_device(struct wrap_ndis_device *wnd)
 	wnd->tx_ok = 0;
 	ndis_close(wnd->net_dev);
 	netif_carrier_off(wnd->net_dev);
-	/* In 2.4 kernels, this function is called in atomic context,
-	 * so we can't/don't need to wait on mutex. */
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
 	cancel_delayed_work(&wnd->wrap_ndis_worker);
+	/* In 2.4 kernels, this function is called in atomic context,
+	 * so we can't (don't need to?) wait on mutex. */
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
 	down_interruptible(&wnd->tx_ring_mutex);
 #endif
 	tx_pending = wnd->tx_ring_end - wnd->tx_ring_start;

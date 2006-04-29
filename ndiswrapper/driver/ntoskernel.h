@@ -99,7 +99,7 @@ struct workqueue_struct {
 	spinlock_t lock;
 	wait_queue_head_t wq_head;
 	/* how many work_structs pending? */
-	atomic_t pending;
+	int pending;
 	const char *name;
 	int pid;
 	/* list of work_structs pending */
@@ -110,20 +110,21 @@ struct work_struct {
 	struct list_head list;
 	void (*func)(void *data);
 	void *data;
-	/* how many times scheduled but not yet executed */
-	u8 scheduled;
+	/* whether/on which workqueue scheduled */
+	struct workqueue_struct *wq;
 };	
 
 #define INIT_WORK(work_struct, worker_func, worker_data)	\
 	do {							\
 		(work_struct)->func = worker_func;		\
 		(work_struct)->data = worker_data;		\
-		(work_struct)->scheduled = 0;			\
+		(work_struct)->wq = NULL;			\
 	} while (0)
 
 struct workqueue_struct *create_singlethread_workqueue(const char *name);
 void destroy_workqueue(struct workqueue_struct *wq);
 void queue_work(struct workqueue_struct *wq, struct work_struct *work_struct);
+void cancel_delayed_work(struct work_struct *work_struct);
 
 #include <linux/smp_lock.h>
 

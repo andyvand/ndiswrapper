@@ -20,45 +20,58 @@
 static int workqueue_thread(void *data)
 {
 	struct workqueue_struct *wq = data;
-	struct work_struct *ws;
+	struct work_struct *work;
 
 	snprintf(current->comm, sizeof(current->comm), "%s", wq->name);
+	set_user_nice(current, -5);
 	daemonize();
 	while (1) {
-		wait_event(wq->wq_head, atomic_read(&wq->pending));
-		if (atomic_read(&wq->pending) < 0)
-			break;
-		atomic_dec(&wq->pending);
+		wait_event(wq->wq_head, wq->pending != 0);
 		spin_lock_bh(&wq->lock);
+		if (wq->pending-- < 0) {
+			spin_unlock_bh(&wq->lock);
+			break;
+		}
 		if (list_empty(&wq->work_list))
-			ws = NULL;
+			work = NULL;
 		else {
 			struct list_head *entry;
 			entry = wq->work_list.next;
-			ws = list_entry(entry, struct work_struct, list);
-			list_del(entry);
-			ws->scheduled = 0;
+			work = list_entry(entry, struct work_struct, list);
+			list_del_init(entry);
+			work->wq = NULL;
 		}
 		spin_unlock_bh(&wq->lock);
-		if (!ws)
+		if (!work)
 			continue;
-		ws->func(ws->data);
+		work->func(work->data);
 	}
 	WORKTRACE("%s exiting", wq->name);
 	wq->pid = 0;
 	return 0;
 }
 
-void queue_work(struct workqueue_struct *wq, struct work_struct *work_struct)
+void queue_work(struct workqueue_struct *wq, struct work_struct *work)
 {
-	int scheduled;
 	spin_lock_bh(&wq->lock);
-	if (!(scheduled = work_struct->scheduled++))
-		list_add_tail(&work_struct->list, &wq->work_list);
-	spin_unlock_bh(&wq->lock);
-	if (!scheduled) {
-		atomic_inc(&wq->pending);
+	if (!work->wq) {
+		work->wq = wq;
+		list_add_tail(&work->list, &wq->work_list);
+		wq->pending++;
 		wake_up(&wq->wq_head);
+	}
+	spin_unlock_bh(&wq->lock);
+}
+
+void cancel_delayed_work(struct work_struct *work)
+{
+	struct workqueue_struct *wq = work->wq;
+	if (wq) {
+		spin_lock_bh(&wq->lock);
+		list_del(&work->list);
+		/* don't decrement wq->pending here, as wait_event
+		 * above checks without lock */
+		spin_unlock_bh(&wq->lock);
 	}
 }
 
@@ -77,7 +90,7 @@ struct workqueue_struct *create_singlethread_workqueue(const char *name)
 	/* we don't need to wait for thread to start, so completion
 	 * not used */
 	wq->pid = kernel_thread(workqueue_thread, wq, 0);
-	if (wq->pid < 0) {
+	if (wq->pid <= 0) {
 		kfree(wq);
 		WARNING("couldn't start thread %s", name);
 		return NULL;
@@ -87,7 +100,7 @@ struct workqueue_struct *create_singlethread_workqueue(const char *name)
 
 void destroy_workqueue(struct workqueue_struct *wq)
 {
-	atomic_set(&wq->pending, -1);
+	wq->pending = -1;
 	wake_up(&wq->wq_head);
 	while (wq->pid)
 		schedule();
