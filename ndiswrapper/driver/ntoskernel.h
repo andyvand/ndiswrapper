@@ -147,8 +147,6 @@ void queue_work(struct workqueue_struct *wq, struct work_struct *work_struct);
 #endif // CONFIG_PREEMPT
 #endif // in_atomic
 
-#define __GFP_NOWARN 0
-
 #endif // LINUX_VERSION_CODE
 
 #ifndef __wait_event_interruptible_timeout
