@@ -22,9 +22,8 @@ static int workqueue_thread(void *data)
 	struct workqueue_struct *wq = data;
 	struct work_struct *ws;
 
-	/* this seems to set task name, but still 'ps -a' shows parent
-	 * name */
 	snprintf(current->comm, sizeof(current->comm), "%s", wq->name);
+	daemonize();
 	while (1) {
 		if (wait_event_interruptible(wq->wq_head,
 					     atomic_read(&wq->pending) != 0))
@@ -47,10 +46,26 @@ static int workqueue_thread(void *data)
 			continue;
 		ws->func(ws->data);
 	}
-	/* wakeup destroy_workqueue */
-	atomic_set(&wq->pending, 1);
-	wake_up_interruptible(&wq->wq_head);
+	WORKTRACE("%s exiting", wq->name);
+	wq->pid = 0;
 	return 0;
+}
+
+void queue_work(struct workqueue_struct *wq, struct work_struct *work_struct)
+{
+	int scheduled;
+	if (!wq->pid) {
+		WARNING("workqueue %s killed?", wq->name);
+		return;
+	}
+	spin_lock_bh(&wq->lock);
+	if (!(scheduled = work_struct->scheduled++))
+		list_add_tail(&work_struct->list, &wq->work_list);
+	spin_unlock_bh(&wq->lock);
+	if (!scheduled) {
+		atomic_inc(&wq->pending);
+		wake_up_interruptible(&wq->wq_head);
+	}
 }
 
 struct workqueue_struct *create_singlethread_workqueue(const char *name)
@@ -80,20 +95,7 @@ void destroy_workqueue(struct workqueue_struct *wq)
 {
 	atomic_set(&wq->pending, -1);
 	wake_up_interruptible(&wq->wq_head);
-	/* wait for thread to finish before freeing memory */
-	wait_event_interruptible(wq->wq_head, atomic_read(&wq->pending) > 0);
+	while (wq->pid)
+		schedule();
 	kfree(wq);
-}
-
-void queue_work(struct workqueue_struct *wq, struct work_struct *work_struct)
-{
-	int prev;
-	spin_lock_bh(&wq->lock);
-	if (!(prev = work_struct->scheduled++))
-		list_add_tail(&work_struct->list, &wq->work_list);
-	spin_unlock_bh(&wq->lock);
-	if (!prev) {
-		atomic_inc(&wq->pending);
-		wake_up_interruptible(&wq->wq_head);
-	}
 }
