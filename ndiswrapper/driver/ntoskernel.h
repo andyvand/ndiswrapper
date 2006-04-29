@@ -93,18 +93,38 @@ typedef struct workqueue_struct *workqueue;
 	pci_map_sg(dev, sglist, nents, direction)
 #define UNMAP_SG(dev, sglist, nents, direction)		\
 	pci_unmap_sg(dev, sglist, nents, direction)
-#include <linux/tqueue.h>
-#define work_struct tq_struct
-#define INIT_WORK INIT_TQUEUE
-#define DECLARE_WORK(n, f, d) struct tq_struct n = { \
-		list: LIST_HEAD_INIT(n.list),	     \
-		sync: 0,			     \
-		routine: f,			     \
-		data: d				     \
-}
-#define schedule_work schedule_task
-#define flush_scheduled_work flush_scheduled_tasks
-typedef task_queue workqueue;
+
+/* 2.4 kernels don't have workqueues, but we need them */
+struct workqueue_struct {
+	spinlock_t lock;
+	wait_queue_head_t wq_head;
+	/* how many work_structs pending? */
+	atomic_t pending;
+	const char *name;
+	int pid;
+	/* list of work_structs pending */
+	struct list_head work_list;
+};
+
+struct work_struct {
+	struct list_head list;
+	void (*func)(void *data);
+	void *data;
+	/* how many times scheduled but not yet executed */
+	u8 scheduled;
+};	
+
+#define INIT_WORK(work_struct, worker_func, worker_data)	\
+	do {							\
+		(work_struct)->func = worker_func;		\
+		(work_struct)->data = worker_data;		\
+		(work_struct)->pending = 0;			\
+	} while (0)
+
+struct workqueue_struct *create_singlethread_workqueue(const char *name);
+void destroy_workqueue(struct workqueue_struct *wq);
+void queue_work(struct workqueue_struct *wq, struct work_struct *work_struct);
+
 #include <linux/smp_lock.h>
 
 /* RedHat kernels #define irqs_disabled this way */
@@ -586,7 +606,7 @@ struct wrap_device {
  * within worker threads. So we should have separate workqueues to
  * make sure worker entries run properly */
 
-#if LINUX_VERSION_CODE > KERNEL_VERSION(2,6,0)
+#if LINUX_VERSION_CODE > KERNEL_VERSION(2,4,0)
 #define USE_OWN_WORKQUEUE 1
 extern struct workqueue_struct *wrap_wq;
 #define schedule_ndis_work(work_struct) queue_work(ndis_wq, (work_struct))
@@ -600,7 +620,10 @@ extern struct workqueue_struct *wrap_wq;
  * it are not supposed to wait; however, it helps to have separate
  * workqueue so keyboard etc. work when kernel crashes */
 
-//#define USE_OWN_NTOS_WORKQUEUE 1
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,7)
+/* workqueues appeared in 2.6.7 or thereabouts */
+#define USE_OWN_NTOS_WORKQUEUE 1
+#endif
 
 #ifdef USE_OWN_NTOS_WORKQUEUE
 extern struct workqueue_struct *ntos_wq;

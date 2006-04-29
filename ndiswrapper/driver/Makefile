@@ -233,6 +233,8 @@ distclean: clean
 	rm -f *_exports.h .\#* x86_64_stubs.h
 
 ifeq ($(KPSUB),24)
+OBJS += workqueue.o
+
 MODULE := ndiswrapper.o
 CFLAGS  += -DLINUX -D__KERNEL__ -DMODULE -I$(KSRC)/include \
 		  -Wall -Wstrict-prototypes -fomit-frame-pointer    \
