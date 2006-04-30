@@ -975,7 +975,6 @@ struct wrap_urb {
 #endif
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,0)
 	typeof(((struct urb *)0)->status) urb_status;
-	BOOLEAN int_urb_unlinked;
 #endif
 };
 
