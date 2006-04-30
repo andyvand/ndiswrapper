@@ -523,7 +523,7 @@ static void wrap_urb_complete_worker(void *dummy)
 			WARNING("urb %p in wrong state: %d",
 				urb, wrap_urb->state);
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,0)
-		if (usb_pipeint(urb->pipe) &&
+		if (0 && usb_pipeint(urb->pipe) &&
 		    wrap_urb->int_urb_unlinked == FALSE) {
 			/* set completion function and unlink */
 			urb->complete = int_urb_unlink_complete;
@@ -532,11 +532,11 @@ static void wrap_urb_complete_worker(void *dummy)
 		}
 #endif
 		USBTRACE("urb: %p, nt_urb: %p, status: %d",
-			 urb, nt_urb, urb->status);
+			 urb, nt_urb, URB_STATUS(wrap_urb));
 		irp = wrap_urb->irp;
 		DUMP_IRP(irp);
 		nt_urb = URB_FROM_IRP(irp);
-		switch (urb->status) {
+		switch (URB_STATUS(wrap_urb)) {
 		case 0:
 			/* succesfully transferred */
 			irp->io_status.info = urb->actual_length;
@@ -573,11 +573,11 @@ static void wrap_urb_complete_worker(void *dummy)
 			break;
 		default:
 			USBTRACE("irp: %p, urb: %p, status: %d",
-				 irp, urb, urb->status);
+				 irp, urb, URB_STATUS(wrap_urb));
 			irp->io_status.info = 0;
 			break;
 		}
-		NT_URB_STATUS(nt_urb) = wrap_urb_status(urb->status);
+		NT_URB_STATUS(nt_urb) = wrap_urb_status(URB_STATUS(wrap_urb));
 		irp->io_status.status =
 			nt_urb_irp_status(NT_URB_STATUS(nt_urb));
 		wrap_free_urb(urb);
@@ -664,10 +664,16 @@ static USBD_STATUS wrap_bulk_or_intr_trans(struct irp *irp)
 		USBTRACE("submitting bulk urb %p on pipe 0x%x (ep 0x%x)",
 			 urb, urb->pipe, pipe_handle->bEndpointAddress);
 	} else {
+		int interval;
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,0)
+		interval = 0;
+#else
+		interval = pipe_handle->bInterval;
+#endif
 		usb_fill_int_urb(urb, udev, pipe, urb->transfer_buffer,
 				 bulk_int_tx->transfer_buffer_length,
 				 wrap_urb_complete, urb->context,
-				 pipe_handle->bInterval);
+				 interval);
 		USBTRACE("submitting interrupt urb %p on pipe 0x%x (ep 0x%x), "
 			 "intvl: %d", urb, urb->pipe,
 			 pipe_handle->bEndpointAddress, pipe_handle->bInterval);
