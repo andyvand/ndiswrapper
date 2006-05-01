@@ -1036,7 +1036,6 @@ static void link_status_handler(struct wrap_ndis_device *wnd)
 
 	memset(&wrqu, 0, sizeof(wrqu));
 	wrqu.data.length = p - wpa_assoc_info;
-	DBGTRACE2("adding %d bytes", wrqu.data.length);
 	wireless_send_event(wnd->net_dev, IWEVCUSTOM, &wrqu, wpa_assoc_info);
 
 	kfree(wpa_assoc_info);
@@ -1046,7 +1045,7 @@ static void link_status_handler(struct wrap_ndis_device *wnd)
 	get_ap_address(wnd, (char *)&wrqu.ap_addr.sa_data);
 	wrqu.ap_addr.sa_family = ARPHRD_ETHER;
 	wireless_send_event(wnd->net_dev, SIOCGIWAP, &wrqu, NULL);
-	DBGTRACE2("associate to " MACSTR, MAC2STR(wrqu.ap_addr.sa_data));
+	DBGTRACE2("associatedd to " MACSTR, MAC2STR(wrqu.ap_addr.sa_data));
 	TRACEEXIT2(return);
 }
 

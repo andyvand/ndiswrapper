@@ -49,9 +49,8 @@ static int workqueue_thread(void *data)
 			work->workq = NULL;
 		}
 		spin_unlock_bh(&workq->lock);
-		if (!work)
-			continue;
-		work->func(work->data);
+		if (work)
+			work->func(work->data);
 	}
 	WORKTRACE("%s exiting", workq->name);
 	workq->pid = 0;
@@ -108,9 +107,10 @@ struct workqueue_struct *create_singlethread_workqueue(const char *name)
 
 void destroy_workqueue(struct workqueue_struct *workq)
 {
-	workq->pending = -1;
-	wake_up_interruptible(&workq->waitq_head);
-	while (workq->pid)
+	while (workq->pid) {
+		workq->pending = -1;
+		wake_up_interruptible(&workq->waitq_head);
 		schedule();
+	}
 	kfree(workq);
 }

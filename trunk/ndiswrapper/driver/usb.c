@@ -155,7 +155,7 @@ void usb_exit(void)
 #else
 	cancel_delayed_work(&wrap_urb_complete_work);
 #endif
-	TRACEEXIT1(return);
+	USBEXIT(return);
 }
 
 int usb_init_device(struct wrap_device *wd)
@@ -430,17 +430,6 @@ static USBD_STATUS wrap_submit_urb(struct irp *irp)
 }
 
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,0)
-/* 2.4 kernels automatically resubmit interrupt urbs, but that is not
- * Windows drivers expect, so we complete interrupt urbs in two
- * rounds: after an interrupt urb is completed, in the completion
- * worker, we copy the data from it etc., set the completion function
- * to int_urb_unlink_complete and unlink the URB. In that completion
- * function, urb is freed */
-static void int_urb_unlink_complete(struct urb *urb)
-{
-	USBTRACE("%p", urb);
-	wrap_free_urb(urb);
-}
 static void wrap_urb_complete(struct urb *urb)
 #else
 static void wrap_urb_complete(struct urb *urb, struct pt_regs *regs)
@@ -449,7 +438,18 @@ static void wrap_urb_complete(struct urb *urb, struct pt_regs *regs)
 	struct irp *irp;
 	struct wrap_urb *wrap_urb;
 
+	USBTRACE("urb %p completed", urb);
 	wrap_urb = urb->context;
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,0)
+	/* since we change urb status below, this urb may be completed
+	 * again (when usbcore resubmits the interrupt urb and
+	 * realizes that it is not valid for resubmission, it cancels
+	 * it and calls completion function) */
+	if (usb_pipeint(urb->pipe) && wrap_urb->state == URB_COMPLETED) {
+		USBTRACE("%p, %d", urb, urb->status);
+		return;
+	}
+#endif
 	irp = wrap_urb->irp;
 	DUMP_WRAP_URB(wrap_urb, USB_DIR_IN);
 	irp->cancel_routine = NULL;
@@ -458,8 +458,14 @@ static void wrap_urb_complete(struct urb *urb, struct pt_regs *regs)
 		wrap_urb->state = URB_COMPLETED;
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,0)
 		URB_STATUS(wrap_urb) = urb->status;
-		if (usb_pipeint(urb->pipe))
+		/* prevent 2.4 kernels from resubmitting interrupt
+		 * urbs; they won't, if interval is 0 and/or status is
+		 * -ENOENT */
+		if (usb_pipeint(urb->pipe)) {
 			USBTRACE("interrupt urb: %p, %d", urb, urb->status);
+			urb->interval = 0;
+			urb->status = -ENOENT;
+		}
 #endif
 		nt_spin_lock(&wrap_urb_complete_list_lock);
 		InsertTailList(&wrap_urb_complete_list,
@@ -471,10 +477,9 @@ static void wrap_urb_complete(struct urb *urb, struct pt_regs *regs)
 		schedule_work(&wrap_urb_complete_work);
 #endif
 		USBTRACE("scheduled worker for urb %p", urb);
-	} else {
-		WARNING("urb %p in wrong state: %d", urb, wrap_urb->state);
-	}
-	USBTRACE("urb %p (irp: %p) completed", urb, irp);
+	} else
+		USBTRACE("urb %p in wrong state: %d (%d)", urb,
+			 wrap_urb->state, urb->status);
 }
 
 /* one worker for all devices */
@@ -554,17 +559,7 @@ static void wrap_urb_complete_worker(void *dummy)
 		NT_URB_STATUS(nt_urb) = wrap_urb_status(URB_STATUS(wrap_urb));
 		irp->io_status.status =
 			nt_urb_irp_status(NT_URB_STATUS(nt_urb));
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,0)
-		if (usb_pipeint(urb->pipe) && urb->status == -EINPROGRESS) {
-			/* completion function will free urb */
-			USBTRACE("%p, %d", urb, urb->status);
-			urb->complete = int_urb_unlink_complete;
-			usb_unlink_urb(urb);
-		} else
-			wrap_free_urb(urb);
-#else
 		wrap_free_urb(urb);
-#endif
 		IoCompleteRequest(irp, IO_NO_INCREMENT);
 	}
 	USBEXIT(return);
@@ -648,16 +643,10 @@ static USBD_STATUS wrap_bulk_or_intr_trans(struct irp *irp)
 		USBTRACE("submitting bulk urb %p on pipe 0x%x (ep 0x%x)",
 			 urb, urb->pipe, pipe_handle->bEndpointAddress);
 	} else {
-		int interval;
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,0)
-		interval = 0;
-#else
-		interval = pipe_handle->bInterval;
-#endif
 		usb_fill_int_urb(urb, udev, pipe, urb->transfer_buffer,
 				 bulk_int_tx->transfer_buffer_length,
 				 wrap_urb_complete, urb->context,
-				 interval);
+				 pipe_handle->bInterval);
 		USBTRACE("submitting interrupt urb %p on pipe 0x%x (ep 0x%x), "
 			 "intvl: %d", urb, urb->pipe,
 			 pipe_handle->bEndpointAddress, pipe_handle->bInterval);
