@@ -1850,7 +1850,6 @@ static int thread_trampoline(void *data)
 #ifdef PF_NOFREEZE
 	current->flags |= PF_NOFREEZE;
 #endif
-
 	DBGTRACE2("thread: %p, task: %p (%d)", thread, thread->task,
 		  thread->pid);
 	ctx.start_routine(ctx.context);
@@ -1976,7 +1975,9 @@ wstdcall NTSTATUS WRAP_EXPORT(PsCreateSystemThread)
 		free_object(thread);
 		TRACEEXIT2(return STATUS_FAILURE);
 	}
-	task = NULL;
+	task = find_task_by_pid(pid);
+	strncpy(task->comm, "windisdrvr", sizeof(task->comm));
+	task->comm[sizeof(task->comm) - 1] = 0;
 	DBGTRACE2("created task: %p (%d)", find_task_by_pid(pid), pid);
 #else
 	task = KTHREAD_RUN(thread_trampoline, ctx, "windisdrvr");

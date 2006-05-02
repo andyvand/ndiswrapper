@@ -1434,13 +1434,13 @@ wstdcall NTSTATUS NdisDispatchPnp(struct device_object *fdo, struct irp *irp)
 static int set_task_offload(struct wrap_ndis_device *wnd, void *buf,
 			    const int buf_size)
 {
+#if 0
 	struct ndis_task_offload_header *task_offload_header;
 	struct ndis_task_offload *task_offload;
 	struct ndis_task_tcp_ip_checksum *task_tcp_ip_csum = NULL;
 	struct ndis_task_tcp_ip_checksum csum;
 	NDIS_STATUS status;
 
-	TRACEEXIT1(return 0);
 	memset(buf, 0, buf_size);
 	task_offload_header = buf;
 	task_offload_header->version = NDIS_TASK_OFFLOAD_VERSION;
@@ -1508,7 +1508,8 @@ static int set_task_offload(struct wrap_ndis_device *wnd, void *buf,
 		}
 	}
 	wnd->rx_csum = csum.v4_rx;
-	return 0;
+#endif
+	TRACEEXIT1(return 0);
 }
 
 static void get_supported_oids(struct wrap_ndis_device *wnd)
