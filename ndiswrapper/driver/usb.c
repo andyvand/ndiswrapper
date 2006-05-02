@@ -436,6 +436,9 @@ static void int_urb_unlink_complete(struct urb *urb)
 
 	wrap_urb = urb->context;
 	USBTRACE("%p, %d, %d", urb, urb->status, wrap_urb->state);
+	if (wrap_urb->state != URB_COMPLETED)
+		return;
+	wrap_urb->state = URB_INT_UNLINKED;
 	nt_spin_lock(&wrap_urb_complete_list_lock);
 	InsertTailList(&wrap_urb_complete_list, &wrap_urb->complete_list);
 	nt_spin_unlock(&wrap_urb_complete_list_lock);
@@ -465,13 +468,11 @@ static void wrap_urb_complete(struct urb *urb, struct pt_regs *regs)
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,0)
 		URB_STATUS(wrap_urb) = urb->status;
 		/* prevent 2.4 kernels from resubmitting interrupt
-		 * urbs; they won't, if interval is 0 and/or status is
-		 * -ENOENT */
+		 * urbs; completion function for unlink will process urb */
 		if (usb_pipeint(urb->pipe)) {
 			USBTRACE("%p, %d", urb, urb->status);
 			urb->complete = int_urb_unlink_complete;
-			urb->interval = 0;
-			urb->status = -ENOENT;
+			usb_unlink_urb(urb);
 			return;
 		}
 #endif
@@ -515,9 +516,12 @@ static void wrap_urb_complete_worker(void *dummy)
 			break;
 		wrap_urb = container_of(ent, struct wrap_urb, complete_list);
 		urb = wrap_urb->urb;
-		if (wrap_urb->state != URB_COMPLETED)
+#ifdef USB_DEBUG
+		if (wrap_urb->state != URB_COMPLETED &&
+			wrap_urb->state != URB_INT_UNLINKED)
 			WARNING("urb %p in wrong state: %d",
 				urb, wrap_urb->state);
+#endif
 		USBTRACE("urb: %p, nt_urb: %p, status: %d",
 			 urb, nt_urb, URB_STATUS(wrap_urb));
 		irp = wrap_urb->irp;
