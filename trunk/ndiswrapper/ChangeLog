@@ -4,6 +4,9 @@ Version 1.16 2006-XX-XX
 * Support for lck pathset (Con Kolivas's preempt patch) for 2.4 kernels added.
 * Added workqueue functions for 2.4 kernels so drivers that need more
   than one work workqueue can create them.
+* Added support for more USB devices with 2.4 kernels (so far, devices
+  which use interrupt URBs, such as ZyDas ZD1211, didn't work; now
+  some of them do).
 
 Version 1.15 2006-04-26
 =======================
