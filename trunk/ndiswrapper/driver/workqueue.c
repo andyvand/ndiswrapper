@@ -15,6 +15,8 @@
 
 #include "ntoskernel.h"
 
+spinlock_t workq_lock = SPIN_LOCK_UNLOCKED;
+
 /* workqueue implementation for 2.4 kernels */
 
 static int workqueue_thread(void *data)
@@ -35,10 +37,8 @@ static int workqueue_thread(void *data)
 			continue;
 		}
 		spin_lock_bh(&workq->lock);
-		if (workq->pending-- < 0) {
-			spin_unlock_bh(&workq->lock);
+		if (workq->pending-- < 0)
 			break;
-		}
 		if (list_empty(&workq->work_list))
 			work = NULL;
 		else {
@@ -52,6 +52,14 @@ static int workqueue_thread(void *data)
 		if (work)
 			work->func(work->data);
 	}
+	/* set workq for each work to NULL so if cancel_delayed_work
+	 * is called later, it won't access workq */
+	spin_lock_bh(&workq_lock);
+	list_for_each_entry(work, &workq->work_list, list) {
+		work->workq = NULL;
+	}
+	spin_unlock_bh(&workq_lock);
+	spin_unlock_bh(&workq->lock);
 	WORKTRACE("%s exiting", workq->name);
 	workq->pid = 0;
 	return 0;
@@ -71,7 +79,9 @@ void queue_work(struct workqueue_struct *workq, struct work_struct *work)
 
 void cancel_delayed_work(struct work_struct *work)
 {
-	struct workqueue_struct *workq = work->workq;
+	struct workqueue_struct *workq;
+	spin_lock_bh(&workq_lock);
+	workq = work->workq;
 	if (workq) {
 		spin_lock_bh(&workq->lock);
 		list_del(&work->list);
@@ -80,6 +90,7 @@ void cancel_delayed_work(struct work_struct *work)
 		 * above checks it without lock */
 		spin_unlock_bh(&workq->lock);
 	}
+	spin_unlock_bh(&workq_lock);
 }
 
 struct workqueue_struct *create_singlethread_workqueue(const char *name)

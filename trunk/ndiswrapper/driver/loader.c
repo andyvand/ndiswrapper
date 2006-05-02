@@ -268,6 +268,11 @@ struct wrap_bin_file *get_bin_file(char *bin_file_name)
 			      "for messages from 'loadndisdriver'", err);
 			TRACEEXIT1(return NULL);
 		}
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,0)
+		/* wait for the driver to load and initialize */
+		set_current_state(TASK_INTERRUPTIBLE);
+		schedule_timeout(HZ);
+#endif
 		DBGTRACE2("bin file: %s/%s",
 			  wrap_bin_file.driver_name, wrap_bin_file.name);
 		if (stricmp(driver->bin_files[i].name, wrap_bin_file.name) ||
