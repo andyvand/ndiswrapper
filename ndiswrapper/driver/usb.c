@@ -430,6 +430,22 @@ static USBD_STATUS wrap_submit_urb(struct irp *irp)
 }
 
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,0)
+static void int_urb_unlink_complete(struct urb *urb)
+{
+	struct wrap_urb *wrap_urb;
+
+	wrap_urb = urb->context;
+	USBTRACE("%p, %d, %d", urb, urb->status, wrap_urb->state);
+	nt_spin_lock(&wrap_urb_complete_list_lock);
+	InsertTailList(&wrap_urb_complete_list, &wrap_urb->complete_list);
+	nt_spin_unlock(&wrap_urb_complete_list_lock);
+#ifdef USB_TASKLET
+	tasklet_schedule(&wrap_urb_complete_work);
+#else
+	schedule_work(&wrap_urb_complete_work);
+#endif
+}
+
 static void wrap_urb_complete(struct urb *urb)
 #else
 static void wrap_urb_complete(struct urb *urb, struct pt_regs *regs)
@@ -440,16 +456,6 @@ static void wrap_urb_complete(struct urb *urb, struct pt_regs *regs)
 
 	USBTRACE("urb %p completed", urb);
 	wrap_urb = urb->context;
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,0)
-	/* since we change urb status below, this urb may be completed
-	 * again (when usbcore resubmits the interrupt urb and
-	 * realizes that it is not valid for resubmission, it cancels
-	 * it and calls completion function) */
-	if (usb_pipeint(urb->pipe) && wrap_urb->state == URB_COMPLETED) {
-		USBTRACE("%p, %d", urb, urb->status);
-		return;
-	}
-#endif
 	irp = wrap_urb->irp;
 	DUMP_WRAP_URB(wrap_urb, USB_DIR_IN);
 	irp->cancel_routine = NULL;
@@ -462,9 +468,11 @@ static void wrap_urb_complete(struct urb *urb, struct pt_regs *regs)
 		 * urbs; they won't, if interval is 0 and/or status is
 		 * -ENOENT */
 		if (usb_pipeint(urb->pipe)) {
-			USBTRACE("interrupt urb: %p, %d", urb, urb->status);
+			USBTRACE("%p, %d", urb, urb->status);
+			urb->complete = int_urb_unlink_complete;
 			urb->interval = 0;
 			urb->status = -ENOENT;
+			return;
 		}
 #endif
 		nt_spin_lock(&wrap_urb_complete_list_lock);

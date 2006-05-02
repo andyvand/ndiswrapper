@@ -960,7 +960,7 @@ struct kapc {
 
 enum urb_state {
 	URB_INVALID = 1, URB_ALLOCATED, URB_SUBMITTED, URB_CANCELED,
-	URB_COMPLETED, URB_FREE, URB_SUSPEND };
+	URB_COMPLETED, URB_FREE, URB_SUSPEND, URB_INT_UNLINKED };
 
 struct wrap_urb {
 	struct nt_list list;
