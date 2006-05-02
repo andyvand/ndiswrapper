@@ -1850,6 +1850,10 @@ static int thread_trampoline(void *data)
 #ifdef PF_NOFREEZE
 	current->flags |= PF_NOFREEZE;
 #endif
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,0)
+	strncpy(current->comm, "windisdrvr", sizeof(current->comm));
+	current->comm[sizeof(current->comm) - 1] = 0;
+#endif
 	DBGTRACE2("thread: %p, task: %p (%d)", thread, thread->task,
 		  thread->pid);
 	ctx.start_routine(ctx.context);
@@ -1975,10 +1979,8 @@ wstdcall NTSTATUS WRAP_EXPORT(PsCreateSystemThread)
 		free_object(thread);
 		TRACEEXIT2(return STATUS_FAILURE);
 	}
-	task = find_task_by_pid(pid);
-	strncpy(task->comm, "windisdrvr", sizeof(task->comm));
-	task->comm[sizeof(task->comm) - 1] = 0;
-	DBGTRACE2("created task: %p (%d)", find_task_by_pid(pid), pid);
+	task = NULL;
+	DBGTRACE2("created task: %p (%d)", task, pid);
 #else
 	task = KTHREAD_RUN(thread_trampoline, ctx, "windisdrvr");
 	if (IS_ERR(task)) {
