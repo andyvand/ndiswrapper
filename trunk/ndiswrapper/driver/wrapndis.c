@@ -478,6 +478,9 @@ static struct ndis_packet *alloc_tx_packet(struct wrap_ndis_device *wnd,
 		oob_data->extension.info[TcpIpChecksumPacketInfo] =
 			&wnd->tx_csum_info;
 #endif
+	DBG_BLOCK(4) {
+		dump_bytes(__FUNCTION__, skb->data, skb->len);
+	}
 	return packet;
 }
 

@@ -966,7 +966,6 @@ wstdcall void WRAP_EXPORT(IoInitializeRemoveLockEx)
 	UNIMPL();
 }
 
-
 wstdcall NTSTATUS WRAP_EXPORT(IoAcquireRemoveLockEx)
 	(struct io_remove_lock lock, void *tag, char *file, ULONG line,
 	 ULONG lock_size)
