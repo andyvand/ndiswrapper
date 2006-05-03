@@ -123,8 +123,8 @@ struct work_struct {
 
 struct workqueue_struct *create_singlethread_workqueue(const char *name);
 void destroy_workqueue(struct workqueue_struct *workq);
-void wfastcall queue_work(struct workqueue_struct *workq,
-			  struct work_struct *work_struct);
+void queue_work(struct workqueue_struct *workq,
+		struct work_struct *work_struct);
 void cancel_delayed_work(struct work_struct *work_struct);
 
 #include <linux/smp_lock.h>
