@@ -69,6 +69,9 @@ static unsigned int urb_id = 0;
 #define USB_CTRL_GET_TIMEOUT 5000
 #endif
 
+/* wrap_urb->alloc_flags */
+#define WRAP_URB_MIRROR_DATA 0x01
+
 static int inline wrap_cancel_urb(struct wrap_urb *wrap_urb)
 {
 	int ret;
@@ -87,7 +90,6 @@ static int inline wrap_cancel_urb(struct wrap_urb *wrap_urb)
 
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,0)
 
-#define URB_NO_TRANSFER_DMA_MAP		0x0004
 #define URB_STATUS(wrap_urb) (wrap_urb->urb_status)
 
 static void *usb_buffer_alloc(struct usb_device *udev, size_t size,
@@ -256,7 +258,7 @@ static void wrap_free_urb(struct urb *urb)
 	wrap_urb = urb->context;
 	irp = wrap_urb->irp;
 	if (urb->transfer_buffer &&
-	    (wrap_urb->alloc_flags & URB_NO_TRANSFER_DMA_MAP)) {
+	    (wrap_urb->alloc_flags & WRAP_URB_MIRROR_DATA)) {
 		USBTRACE("freeing DMA buffer for URB: %p %p",
 			 urb, urb->transfer_buffer);
 		usb_buffer_free(irp->wd->usb.udev,
@@ -372,8 +374,10 @@ static struct urb *wrap_alloc_urb(struct irp *irp, unsigned int pipe,
 			IoReleaseCancelSpinLock(irp->cancel_irql);
 			return NULL;
 		}
+#if defined(URB_NO_TRANSFER_DMA_MAP)
 		urb->transfer_flags |= URB_NO_TRANSFER_DMA_MAP;
-		wrap_urb->alloc_flags |= URB_NO_TRANSFER_DMA_MAP;
+#endif
+		wrap_urb->alloc_flags |= WRAP_URB_MIRROR_DATA;
 		if (usb_pipeout(pipe))
 			memcpy(urb->transfer_buffer, buf, buf_len);
 		USBTRACE("DMA buffer for urb %p is %p",
@@ -447,7 +451,7 @@ static void int_urb_unlink_complete(struct urb *urb)
 #ifdef USB_TASKLET
 	tasklet_schedule(&wrap_urb_complete_work);
 #else
-	schedule_work(&wrap_urb_complete_work);
+	schedule_ntos_work(&wrap_urb_complete_work);
 #endif
 }
 
@@ -466,10 +470,11 @@ static void wrap_urb_complete(struct urb *urb, struct pt_regs *regs)
 	irp->cancel_routine = NULL;
 #ifdef USB_DEBUG
 	if (wrap_urb->state != URB_SUBMITTED &&
-	    wrap_urb->state != URB_CANCELED)
+	    wrap_urb->state != URB_CANCELED) {
 		WARNING("urb %p in wrong state: %d (%d)", urb, wrap_urb->state,
 			urb->status);
-	return;
+		return;
+	}
 #endif
 	wrap_urb->state = URB_COMPLETED;
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,0)
@@ -489,7 +494,7 @@ static void wrap_urb_complete(struct urb *urb, struct pt_regs *regs)
 #ifdef USB_TASKLET
 	tasklet_schedule(&wrap_urb_complete_work);
 #else
-	schedule_work(&wrap_urb_complete_work);
+	schedule_ntos_work(&wrap_urb_complete_work);
 #endif
 	USBTRACE("scheduled worker for urb %p", urb);
 }
@@ -525,11 +530,11 @@ static void wrap_urb_complete_worker(void *dummy)
 			WARNING("urb %p in wrong state: %d",
 				urb, wrap_urb->state);
 #endif
-		USBTRACE("urb: %p, nt_urb: %p, status: %d",
-			 urb, nt_urb, URB_STATUS(wrap_urb));
 		irp = wrap_urb->irp;
 		DUMP_IRP(irp);
 		nt_urb = URB_FROM_IRP(irp);
+		USBTRACE("urb: %p, nt_urb: %p, status: %d",
+			 urb, nt_urb, URB_STATUS(wrap_urb));
 		switch (URB_STATUS(wrap_urb)) {
 		case 0:
 			/* succesfully transferred */
@@ -541,7 +546,7 @@ static void wrap_urb_complete_worker(void *dummy)
 					urb->actual_length;
 				DUMP_URB_BUFFER(urb, USB_DIR_IN);
 				if ((wrap_urb->alloc_flags &
-				     URB_NO_TRANSFER_DMA_MAP) &&
+				     WRAP_URB_MIRROR_DATA) &&
 				    usb_pipein(urb->pipe))
 					memcpy(bulk_int_tx->transfer_buffer,
 					       urb->transfer_buffer,
@@ -552,7 +557,7 @@ static void wrap_urb_complete_worker(void *dummy)
 					urb->actual_length;
 				DUMP_URB_BUFFER(urb, USB_DIR_IN);
 				if ((wrap_urb->alloc_flags &
-				     URB_NO_TRANSFER_DMA_MAP) &&
+				     WRAP_URB_MIRROR_DATA) &&
 				    usb_pipein(urb->pipe))
 					memcpy(vc_req->transfer_buffer,
 					       urb->transfer_buffer,
