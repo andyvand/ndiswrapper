@@ -1317,12 +1317,12 @@ wstdcall NTSTATUS NdisDispatchPower(struct device_object *fdo, struct irp *irp)
 	IOTRACE("fdo: %p, fn: %d:%d, wnd: %p", fdo, irp_sl->major_fn,
 		irp_sl->minor_fn, wnd);
 	if ((irp_sl->params.power.type == SystemPowerState &&
-	     irp_sl->params.power.state.system_state == PowerDeviceD0) ||
+	     irp_sl->params.power.state.system_state > PowerSystemWorking) ||
 	    (irp_sl->params.power.type == DevicePowerState &&
-	     irp_sl->params.power.state.device_state == PowerDeviceD0))
-		state = NdisDeviceStateD0;
-	else
+	     irp_sl->params.power.state.device_state > PowerDeviceD0))
 		state = NdisDeviceStateD3;
+	else
+		state = NdisDeviceStateD0;
 	switch (irp_sl->minor_fn) {
 	case IRP_MN_SET_POWER:
 		if (state == NdisDeviceStateD0) {

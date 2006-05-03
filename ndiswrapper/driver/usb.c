@@ -69,8 +69,13 @@ static unsigned int urb_id = 0;
 #define USB_CTRL_GET_TIMEOUT 5000
 #endif
 
-/* wrap_urb->alloc_flags */
-#define WRAP_URB_MIRROR_DATA 0x01
+#ifndef URB_NO_TRANSFER_DMA_MAP
+#define URB_NO_TRANSFER_DMA_MAP 0
+#endif
+
+/* wrap_urb->flags */
+/* transfer_buffer for urb is allocated; free it in wrap_free_urb */
+#define WRAP_URB_COPY_BUFFER 0x01
 
 static int inline wrap_cancel_urb(struct wrap_urb *wrap_urb)
 {
@@ -95,6 +100,7 @@ static int inline wrap_cancel_urb(struct wrap_urb *wrap_urb)
 static void *usb_buffer_alloc(struct usb_device *udev, size_t size,
 			      unsigned mem_flags, dma_addr_t *dma)
 {
+	*dma = 0;
 	return kmalloc(size, mem_flags);
 }
 
@@ -257,8 +263,7 @@ static void wrap_free_urb(struct urb *urb)
 	USBTRACE("freeing urb: %p", urb);
 	wrap_urb = urb->context;
 	irp = wrap_urb->irp;
-	if (urb->transfer_buffer &&
-	    (wrap_urb->alloc_flags & WRAP_URB_MIRROR_DATA)) {
+	if (wrap_urb->flags & WRAP_URB_COPY_BUFFER) {
 		USBTRACE("freeing DMA buffer for URB: %p %p",
 			 urb, urb->transfer_buffer);
 		usb_buffer_free(irp->wd->usb.udev,
@@ -276,7 +281,7 @@ static void wrap_free_urb(struct urb *urb)
 		kfree(wrap_urb);
 	} else {
 		wrap_urb->state = URB_FREE;
-		wrap_urb->alloc_flags = 0;
+		wrap_urb->flags = 0;
 		wrap_urb->irp = NULL;
 	}
 	return;
@@ -374,10 +379,9 @@ static struct urb *wrap_alloc_urb(struct irp *irp, unsigned int pipe,
 			IoReleaseCancelSpinLock(irp->cancel_irql);
 			return NULL;
 		}
-#if defined(URB_NO_TRANSFER_DMA_MAP)
-		urb->transfer_flags |= URB_NO_TRANSFER_DMA_MAP;
-#endif
-		wrap_urb->alloc_flags |= WRAP_URB_MIRROR_DATA;
+		if (urb->transfer_dma)
+			urb->transfer_flags |= URB_NO_TRANSFER_DMA_MAP;
+		wrap_urb->flags |= WRAP_URB_COPY_BUFFER;
 		if (usb_pipeout(pipe))
 			memcpy(urb->transfer_buffer, buf, buf_len);
 		USBTRACE("DMA buffer for urb %p is %p",
@@ -545,8 +549,7 @@ static void wrap_urb_complete_worker(void *dummy)
 				bulk_int_tx->transfer_buffer_length =
 					urb->actual_length;
 				DUMP_URB_BUFFER(urb, USB_DIR_IN);
-				if ((wrap_urb->alloc_flags &
-				     WRAP_URB_MIRROR_DATA) &&
+				if ((wrap_urb->flags & WRAP_URB_COPY_BUFFER) &&
 				    usb_pipein(urb->pipe))
 					memcpy(bulk_int_tx->transfer_buffer,
 					       urb->transfer_buffer,
@@ -556,8 +559,7 @@ static void wrap_urb_complete_worker(void *dummy)
 				vc_req->transfer_buffer_length =
 					urb->actual_length;
 				DUMP_URB_BUFFER(urb, USB_DIR_IN);
-				if ((wrap_urb->alloc_flags &
-				     WRAP_URB_MIRROR_DATA) &&
+				if ((wrap_urb->flags & WRAP_URB_COPY_BUFFER) &&
 				    usb_pipein(urb->pipe))
 					memcpy(vc_req->transfer_buffer,
 					       urb->transfer_buffer,
