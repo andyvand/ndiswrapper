@@ -388,8 +388,8 @@ wstdcall NTSTATUS pdoDispatchPower(struct device_object *pdo,
 	return status;
 }
 
-NTSTATUS pnp_set_power_state(struct wrap_device *wd,
-			     enum device_power_state state)
+NTSTATUS pnp_set_device_power_state(struct wrap_device *wd,
+				    enum device_power_state state)
 {
 	NTSTATUS status;
 	struct device_object *pdo;
@@ -399,7 +399,7 @@ NTSTATUS pnp_set_power_state(struct wrap_device *wd,
 	IOTRACE("%p, %p", pdo, IoGetAttachedDevice(pdo));
 	memset(&irp_sl, 0, sizeof(irp_sl));
 	irp_sl.params.power.state.device_state = state;
-	irp_sl.params.power.type = SystemPowerState;
+	irp_sl.params.power.type = DevicePowerState;
 	if (state > PowerDeviceD0) {
 		status = IoSendIrpTopDev(pdo, IRP_MJ_POWER, IRP_MN_QUERY_POWER,
 					 &irp_sl);
@@ -620,7 +620,7 @@ int wrap_pnp_suspend_pci_device(struct pci_dev *pdev, pm_message_t state)
 	struct wrap_device *wd;
 
 	wd = (struct wrap_device *)pci_get_drvdata(pdev);
-	return pnp_set_power_state(wd, PowerDeviceD3);
+	return pnp_set_device_power_state(wd, PowerDeviceD3);
 }
 
 int wrap_pnp_resume_pci_device(struct pci_dev *pdev)
@@ -628,7 +628,7 @@ int wrap_pnp_resume_pci_device(struct pci_dev *pdev)
 	struct wrap_device *wd;
 
 	wd = (struct wrap_device *)pci_get_drvdata(pdev);
-	return pnp_set_power_state(wd, PowerDeviceD0);
+	return pnp_set_device_power_state(wd, PowerDeviceD0);
 }
 
 #ifdef CONFIG_USB
@@ -741,7 +741,7 @@ int wrap_pnp_suspend_usb_device(struct usb_interface *intf, pm_message_t state)
 	if (!wd)
 		TRACEEXIT1(return 0);
 	pdo = wd->pdo;
-	if (pnp_set_power_state(wd, PowerDeviceD3))
+	if (pnp_set_device_power_state(wd, PowerDeviceD3))
 		return -1;
 	return 0;
 }
@@ -753,7 +753,7 @@ int wrap_pnp_resume_usb_device(struct usb_interface *intf)
 	TRACEENTER1("%p, %p", intf, wd);
 	if (!wd)
 		TRACEEXIT1(return 0);
-	if (pnp_set_power_state(wd, PowerDeviceD0))
+	if (pnp_set_device_power_state(wd, PowerDeviceD0))
 		return -1;
 	return 0;
 }

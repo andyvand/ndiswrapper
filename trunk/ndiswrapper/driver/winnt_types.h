@@ -966,7 +966,7 @@ struct wrap_urb {
 	struct nt_list list;
 	enum urb_state state;
 	struct nt_list complete_list;
-	unsigned int alloc_flags;
+	unsigned int flags;
 	struct urb *urb;
 	struct irp *irp;
 	unsigned int pipe;

@@ -1926,7 +1926,7 @@ struct nt_thread *get_current_nt_thread(void)
 		struct nt_thread *thread;
 		DBGTRACE5("header: %p, type: %d", header, header->type);
 		if (header->type != OBJECT_TYPE_NT_THREAD)
-			continue;
+			break;
 		thread = HEADER_TO_OBJECT(header);
 		DBGTRACE5("thread: %p, task: %p", thread, thread->task);
 		if (thread->task == task) {
