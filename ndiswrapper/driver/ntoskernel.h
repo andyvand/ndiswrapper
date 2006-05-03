@@ -122,8 +122,9 @@ struct work_struct {
 	} while (0)
 
 struct workqueue_struct *create_singlethread_workqueue(const char *name);
-void destroy_workqueue(struct workqueue_struct *wq);
-void queue_work(struct workqueue_struct *wq, struct work_struct *work_struct);
+void destroy_workqueue(struct workqueue_struct *workq);
+void wfastcall queue_work(struct workqueue_struct *workq,
+			  struct work_struct *work_struct);
 void cancel_delayed_work(struct work_struct *work_struct);
 
 #include <linux/smp_lock.h>
@@ -1132,10 +1133,6 @@ do {								       \
 #define TRACEEXIT4(stmt) do { DBGTRACE4("Exit"); stmt; } while(0)
 #define TRACEEXIT5(stmt) do { DBGTRACE5("Exit"); stmt; } while(0)
 #define TRACEEXIT6(stmt) do { DBGTRACE6("Exit"); stmt; } while(0)
-
-//#define USB_DEBUG 1
-//#define EVENT_DEBUG 1
-//#define IO_DEBUG 1
 
 #if defined(USB_DEBUG)
 #define USBTRACE DBGTRACE1

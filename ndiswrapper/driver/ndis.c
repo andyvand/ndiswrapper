@@ -31,6 +31,8 @@ static struct work_struct ndis_work;
 static struct nt_list ndis_worker_list;
 static NT_SPIN_LOCK ndis_work_list_lock;
 
+static void dump_ndis_buffer(ndis_buffer *buf);
+
 /* ndis_init is called once when module is loaded */
 int ndis_init(void)
 {
@@ -1289,13 +1291,13 @@ wstdcall void WRAP_EXPORT(NdisMStartBufferPhysicalMapping)
 	TRACEENTER3("map_index: %u", map_index);
 
 	if (!write_to_dev) {
-		ERROR( "dma from device not supported (%d)", write_to_dev);
+		ERROR("invalid dma direction (%d)", write_to_dev);
 		*array_size = 0;
 		return;
 	}
 
 	if (map_index >= wnd->dma_map_count) {
-		ERROR("map_register too big (%u >= %u)",
+		ERROR("invalid map register (%u >= %u)",
 		      map_index, wnd->dma_map_count);
 		*array_size = 0;
 		return;
@@ -1306,6 +1308,9 @@ wstdcall void WRAP_EXPORT(NdisMStartBufferPhysicalMapping)
 		return;
 	}
 
+	DBGTRACE3("%p, %p, %u", buf, MmGetSystemAddressForMdl(buf),
+		  MmGetMdlByteCount(buf));
+	dump_ndis_buffer(buf);
 	// map buffer
 	phy_addr_array[0].phy_addr =
 		PCI_DMA_MAP_SINGLE(wnd->wd->pci.pdev,
@@ -1314,7 +1319,8 @@ wstdcall void WRAP_EXPORT(NdisMStartBufferPhysicalMapping)
 	phy_addr_array[0].length = MmGetMdlByteCount(buf);
 
 	*array_size = 1;
-
+	DBGTRACE4("%Lx, %d, %d", phy_addr_array[0].phy_addr,
+		  phy_addr_array[0].length, map_index);
 	// save map address
 	wnd->dma_map_addr[map_index] = phy_addr_array[0].phy_addr;
 }
@@ -1323,14 +1329,15 @@ wstdcall void WRAP_EXPORT(NdisMCompleteBufferPhysicalMapping)
 	(struct ndis_miniport_block *nmb, ndis_buffer *buf, ULONG map_index)
 {
 	struct wrap_ndis_device *wnd = nmb->wnd;
-	TRACEENTER3("%p %u (%u)", wnd, map_index, wnd->dma_map_count);
+	TRACEENTER3("%p, %p %u (%u)", wnd, buf, map_index, wnd->dma_map_count);
 
 	if (map_index >= wnd->dma_map_count) {
-		ERROR("map_register too big (%u >= %u)",
+		ERROR("invalid map register (%u >= %u)",
 		      map_index, wnd->dma_map_count);
 		return;
 	}
-
+	DBGTRACE4("%x, %d, %d", wnd->dma_map_addr[map_index],
+		  MmGetMdlByteCount(buf), map_index);
 	if (wnd->dma_map_addr[map_index] == 0) {
 //		ERROR("map register not used (%lu)", map_index);
 		return;
@@ -2056,7 +2063,6 @@ wstdcall void return_packet(void *arg1, void *arg2)
 	TRACEEXIT4(return);
 }
 
-
 /* called via function pointer */
 wstdcall void
 NdisMIndicateReceivePacket(struct ndis_miniport_block *nmb,
@@ -2648,6 +2654,14 @@ wstdcall void WRAP_EXPORT(NdisMCoDeactivateVcComplete)(void)
 {
 	UNIMPL();
 	return;
+}
+
+static void dump_ndis_buffer(ndis_buffer *buf)
+{
+	DBG_BLOCK(4) {
+		dump_bytes(__FUNCTION__, MmGetSystemAddressForMdl(buf),
+			   MmGetMdlByteCount(buf));
+	}
 }
 
 #include "ndis_exports.h"

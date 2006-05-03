@@ -398,6 +398,7 @@ NTSTATUS pnp_set_power_state(struct wrap_device *wd,
 	pdo = wd->pdo;
 	IOTRACE("%p, %p", pdo, IoGetAttachedDevice(pdo));
 	memset(&irp_sl, 0, sizeof(irp_sl));
+	irp_sl.params.power.state.device_state = state;
 	irp_sl.params.power.type = SystemPowerState;
 	if (state > PowerDeviceD0) {
 		status = IoSendIrpTopDev(pdo, IRP_MJ_POWER, IRP_MN_QUERY_POWER,

@@ -1109,7 +1109,7 @@ wstdcall void WRAP_EXPORT(ExFreePool)
 	else {
 		if (in_interrupt())
 			schedule_ntos_work_item(vfree_nonatomic, addr,
-						NULL, FALSE);
+						NULL, WORKER_FUNC_LINUX);
 		else
 			vfree(addr);
 	}
