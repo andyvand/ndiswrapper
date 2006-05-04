@@ -1522,27 +1522,62 @@ static int iw_get_range(struct net_device *dev, struct iw_request_info *info,
 	return 0;
 }
 
-#if WIRELESS_EXT > 17
-static int wpa_disassociate(struct net_device *dev,
-			    struct iw_request_info *info,
-			    union iwreq_data *wrqu, char *extra);
-static int wpa_deauthenticate(struct net_device *dev,
-			      struct iw_request_info *info,
-			      union iwreq_data *wrqu, char *extra);
+static int disassociate(struct wrap_ndis_device *wnd)
+{
+	u8 buf[NDIS_ESSID_MAX_SIZE];
+	int i;
 
+	miniport_set_info(wnd, OID_802_11_DISASSOCIATE, NULL, 0);
+	get_random_bytes(buf, sizeof(buf));
+	for (i = 0; i < sizeof(buf); i++)
+		buf[i] = 'a' + (buf[i] % 26);
+	set_essid(wnd, buf, sizeof(buf));
+	return 0;
+}
+
+
+static int deauthenticate(struct wrap_ndis_device *wnd)
+{
+	int ret;
+
+	TRACEENTER2("");
+	ret = disassociate(wnd);
+	set_priv_filter(wnd, Ndis802_11PrivFilterAcceptAll);
+	set_auth_mode(wnd, Ndis802_11AuthModeOpen);
+	set_encr_mode(wnd, Ndis802_11EncryptionDisabled);
+	TRACEEXIT2(return ret);
+}
+
+int set_priv_filter(struct wrap_ndis_device *wnd, int flags)
+{
+	NDIS_STATUS res;
+
+	TRACEENTER2("filter: %d", flags);
+	res = miniport_set_int(wnd, OID_802_11_PRIVACY_FILTER, flags);
+	if (res == NDIS_STATUS_FAILURE)
+		return -EOPNOTSUPP;
+	if (res == NDIS_STATUS_INVALID_DATA) {
+		WARNING("setting privacy filter to %d failed (%08X)",
+			flags, res);
+		TRACEEXIT2(return -EINVAL);
+	}
+	TRACEEXIT2(return 0);
+}
+
+#if WIRELESS_EXT > 17
 static int iw_set_mlme(struct net_device *dev, struct iw_request_info *info,
 		       union iwreq_data *wrqu, char *extra)
 {
+	struct wrap_ndis_device *wnd = netdev_priv(dev);
 	struct iw_mlme *mlme = (struct iw_mlme *)extra;
 
 	TRACEENTER2("");
 	switch (mlme->cmd) {
 	case IW_MLME_DEAUTH:
-		return wpa_deauthenticate(dev, info, wrqu, extra);
+		return deauthenticate(wnd);
 	case IW_MLME_DISASSOC:
-		DBGTRACE2("cmd=%d reason_code=%d",
-			  mlme->cmd, mlme->reason_code);
-		return wpa_disassociate(dev, info, wrqu, extra);
+		DBGTRACE2("cmd=%d reason_code=%d", mlme->cmd, mlme->reason_code);
+		return disassociate(wnd);
 	default:
 		return -EOPNOTSUPP;
 	}
@@ -1975,7 +2010,8 @@ static int priv_set_auth_mode(struct net_device *dev,
 	TRACEEXIT2(return 0);
 }
 
-/* WPA support */
+#if WIRELESS_EXT <= 17
+/* WPA support through 'ndiswrapper' driver interface */
 
 static int wpa_init(struct net_device *dev, struct iw_request_info *info,
 		    union iwreq_data *wrqu, char *extra)
@@ -2142,14 +2178,7 @@ static int wpa_disassociate(struct net_device *dev,
 			    union iwreq_data *wrqu, char *extra)
 {
 	struct wrap_ndis_device *wnd = netdev_priv(dev);
-	u8 buf[NDIS_ESSID_MAX_SIZE];
-	int i;
-
-	miniport_set_info(wnd, OID_802_11_DISASSOCIATE, NULL, 0);
-	get_random_bytes(buf, sizeof(buf));
-	for (i = 0; i < sizeof(buf); i++)
-		buf[i] = 'a' + (buf[i] % 26);
-	set_essid(wnd, buf, sizeof(buf));
+	disassociate(wnd);
 	TRACEEXIT2(return 0);
 }
 
@@ -2162,10 +2191,6 @@ static int wpa_associate(struct net_device *dev, struct iw_request_info *info,
 	int infra_mode, auth_mode, encr_mode, priv_mode, size;
 
 	TRACEENTER2("");
-#if WIRELESS_EXT > 17
-	printk(KERN_INFO "%s: WPA support through 'ndiswrapper' interface "
-	       "is deprecated; use 'wext' interface\n", DRIVER_NAME);
-#endif
 	memset(&wpa_assoc_info, 0, sizeof(wpa_assoc_info));
 	wpa_assoc_info.mode = IEEE80211_MODE_INFRA;
 
@@ -2277,30 +2302,7 @@ static int wpa_deauthenticate(struct net_device *dev,
 			      union iwreq_data *wrqu, char *extra)
 {
 	struct wrap_ndis_device *wnd = netdev_priv(dev);
-	int ret;
-
-	TRACEENTER2("");
-	ret = wpa_disassociate(dev, info, wrqu, extra);
-	set_priv_filter(wnd, Ndis802_11PrivFilterAcceptAll);
-	set_auth_mode(wnd, Ndis802_11AuthModeOpen);
-	set_encr_mode(wnd, Ndis802_11EncryptionDisabled);
-	TRACEEXIT2(return ret);
-}
-
-int set_priv_filter(struct wrap_ndis_device *wnd, int flags)
-{
-	NDIS_STATUS res;
-
-	TRACEENTER2("filter: %d", flags);
-	res = miniport_set_int(wnd, OID_802_11_PRIVACY_FILTER, flags);
-	if (res == NDIS_STATUS_FAILURE)
-		return -EOPNOTSUPP;
-	if (res == NDIS_STATUS_INVALID_DATA) {
-		WARNING("setting privacy filter to %d failed (%08X)",
-			flags, res);
-		TRACEEXIT2(return -EINVAL);
-	}
-	TRACEEXIT2(return 0);
+	TRACEEXIT2(return deauthenticate(wnd));
 }
 
 static int wpa_set_priv_filter(struct net_device *dev,
@@ -2379,6 +2381,8 @@ static int wpa_get_capa(struct net_device *dev, struct iw_request_info *info,
 	TRACEEXIT2(return 0);
 }
 
+#endif // WIRELESS_EXT <= 17
+
 static const struct iw_priv_args priv_args[] = {
 	{WPA_DROP_UNENCRYPTED, IW_PRIV_TYPE_INT | IW_PRIV_SIZE_FIXED | 1, 0,
 	 "set_priv_filter"},
@@ -2401,6 +2405,7 @@ static const struct iw_priv_args priv_args[] = {
 };
 
 static const iw_handler priv_handler[] = {
+#if WIRELESS_EXT <= 17
 	[WPA_SET_WPA 		- SIOCIWFIRSTPRIV] = wpa_set_wpa,
 	[WPA_SET_KEY 		- SIOCIWFIRSTPRIV] = wpa_set_key,
 	[WPA_ASSOCIATE 		- SIOCIWFIRSTPRIV] = wpa_associate,
@@ -2412,7 +2417,7 @@ static const iw_handler priv_handler[] = {
 	[WPA_INIT 		- SIOCIWFIRSTPRIV] = wpa_init,
 	[WPA_DEINIT 		- SIOCIWFIRSTPRIV] = wpa_deinit,
 	[WPA_GET_CAPA 		- SIOCIWFIRSTPRIV] = wpa_get_capa,
-
+#endif
 	[PRIV_RESET 		- SIOCIWFIRSTPRIV] = priv_reset,
 	[PRIV_POWER_PROFILE 	- SIOCIWFIRSTPRIV] = priv_power_profile,
 	[PRIV_NETWORK_TYPE 	- SIOCIWFIRSTPRIV] = priv_network_type,
