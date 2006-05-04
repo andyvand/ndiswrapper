@@ -708,9 +708,12 @@ void wrap_pnp_remove_usb_device(struct usb_interface *intf)
 	TRACEENTER1("%p, %p", intf, wd);
 	if (wd == NULL)
 		TRACEEXIT1(return);
-	usb_set_intfdata(intf, NULL);
-	wd->usb.intf = NULL;
+	if (wd->surprise_removed == TRUE) {
+		usb_set_intfdata(intf, NULL);
+		wd->usb.intf = NULL;
+	}
 	pnp_remove_device(wd);
+	wd->usb.intf = NULL;
 }
 #else
 
@@ -725,8 +728,10 @@ void wrap_pnp_remove_usb_device(struct usb_device *udev, void *ptr)
 	if (wd == NULL)
 		TRACEEXIT1(return);
 	intf = wd->usb.intf;
-	wd->usb.intf = NULL;
+	if (wd->surprise_removed == TRUE) {
+		wd->usb.intf = NULL;
 	pnp_remove_device(wd);
+	wd->usb.intf = NULL;
 }
 #endif
 
