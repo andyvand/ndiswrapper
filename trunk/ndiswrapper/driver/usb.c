@@ -80,6 +80,9 @@ static unsigned int urb_id = 0;
 static int inline wrap_cancel_urb(struct wrap_urb *wrap_urb)
 {
 	int ret;
+	USBTRACE("%p, %d", wrap_urb, wrap_urb->state);
+	if (wrap_urb->state != URB_SUBMITTED)
+		USBEXIT(return -1);
 	ret = usb_unlink_urb(wrap_urb->urb);
 	if (ret == -EINPROGRESS) {
 		if (wrap_urb->state != URB_SUBMITTED)
@@ -193,6 +196,7 @@ void usb_exit_device(struct wrap_device *wd)
 		if (wrap_urb->state == URB_SUBMITTED) {
 			WARNING("Windows driver %s didn't free urb: %p",
 				wd->driver->name, wrap_urb->urb);
+			wrap_urb->urb->complete = NULL;
 			usb_kill_urb(wrap_urb->urb);
 		}
 		usb_free_urb(wrap_urb->urb);
@@ -824,7 +828,6 @@ static USBD_STATUS wrap_abort_pipe(struct usb_device *udev, struct irp *irp)
 {
 	union nt_urb *nt_urb;
 	usbd_pipe_handle pipe_handle;
-	struct urb *urb;
 	struct wrap_urb *wrap_urb;
 	struct wrap_device *wd;
 	KIRQL irql;
@@ -836,18 +839,17 @@ static USBD_STATUS wrap_abort_pipe(struct usb_device *udev, struct irp *irp)
 	nt_urb = URB_FROM_IRP(irp);
 	IoAcquireCancelSpinLock(&irql);
 	nt_list_for_each_entry(wrap_urb, &wd->usb.wrap_urb_list, list) {
-		urb = wrap_urb->urb;
+		USBTRACE("%p, %d", wrap_urb, wrap_urb->state);
+		/* TODO: should we set completion function to NULL so
+		 * the irp is not given back to Windows driver? */
 		if (usb_pipeendpoint(wrap_urb->pipe) ==
 		    pipe_handle->bEndpointAddress &&
-		    wrap_cancel_urb(irp->wrap_urb) == 0) {
-			USBTRACE("canceled urb: %p", urb);
+		    wrap_cancel_urb(wrap_urb) == 0) {
+			USBTRACE("canceled wrap_urb: %p", wrap_urb);
 		}
 	}
 	IoReleaseCancelSpinLock(irql);
-	if (wd->usb.intf == NULL)
-		USBEXIT(return USBD_STATUS_DEVICE_GONE);
-	else
-		USBEXIT(return USBD_STATUS_SUCCESS);
+	USBEXIT(return USBD_STATUS_SUCCESS);
 }
 
 static void set_intf_pipe_info(struct wrap_device *wd,
