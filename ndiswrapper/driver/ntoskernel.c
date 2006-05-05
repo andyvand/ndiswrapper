@@ -1113,7 +1113,7 @@ wstdcall void WRAP_EXPORT(ExFreePool)
 		else
 			vfree(addr);
 	}
-	return;
+	TRACEEXIT4(return);
 }
 
 wstdcall void WRAP_EXPORT(ExFreePoolWithTag)

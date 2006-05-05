@@ -969,7 +969,6 @@ struct wrap_urb {
 	unsigned int flags;
 	struct urb *urb;
 	struct irp *irp;
-	unsigned int pipe;
 #ifdef USB_DEBUG
 	unsigned int id;
 #endif

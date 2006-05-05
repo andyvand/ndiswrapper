@@ -80,7 +80,7 @@ static unsigned int urb_id = 0;
 static int inline wrap_cancel_urb(struct wrap_urb *wrap_urb)
 {
 	int ret;
-	USBTRACE("%p, %d", wrap_urb, wrap_urb->state);
+	USBTRACE("%p, %p, %d", wrap_urb, wrap_urb->urb, wrap_urb->state);
 	if (wrap_urb->state != URB_SUBMITTED)
 		USBEXIT(return -1);
 	ret = usb_unlink_urb(wrap_urb->urb);
@@ -179,7 +179,7 @@ int usb_init_device(struct wrap_device *wd)
 	USBEXIT(return 0);
 }
 
-void usb_exit_device(struct wrap_device *wd)
+static void kill_all_urbs(struct wrap_device *wd, int complete)
 {
 	struct nt_list *ent;
 	struct wrap_urb *wrap_urb;
@@ -196,13 +196,19 @@ void usb_exit_device(struct wrap_device *wd)
 		if (wrap_urb->state == URB_SUBMITTED) {
 			WARNING("Windows driver %s didn't free urb: %p",
 				wd->driver->name, wrap_urb->urb);
-			wrap_urb->urb->complete = NULL;
+			if (!complete)
+				wrap_urb->urb->complete = NULL;
 			usb_kill_urb(wrap_urb->urb);
 		}
 		usb_free_urb(wrap_urb->urb);
 		kfree(wrap_urb);
 	}
 	wd->usb.num_alloc_urbs = 0;
+}
+
+void usb_exit_device(struct wrap_device *wd)
+{
+	kill_all_urbs(wd, 0);
 	USBEXIT(return);
 }
 
@@ -359,7 +365,6 @@ static struct urb *wrap_alloc_urb(struct irp *irp, unsigned int pipe,
 #endif
 	urb->context = wrap_urb;
 	wrap_urb->irp = irp;
-	wrap_urb->pipe = pipe;
 	irp->wrap_urb = wrap_urb;
 	irp->cancel_routine = wrap_cancel_irp;
 	IoReleaseCancelSpinLock(irp->cancel_irql);
@@ -471,8 +476,8 @@ static void wrap_urb_complete(struct urb *urb, struct pt_regs *regs)
 	struct irp *irp;
 	struct wrap_urb *wrap_urb;
 
-	USBTRACE("urb %p completed", urb);
 	wrap_urb = urb->context;
+	USBTRACE("%p (%p) completed", wrap_urb, urb);
 	irp = wrap_urb->irp;
 	DUMP_WRAP_URB(wrap_urb, USB_DIR_IN);
 	irp->cancel_routine = NULL;
@@ -832,20 +837,23 @@ static USBD_STATUS wrap_abort_pipe(struct usb_device *udev, struct irp *irp)
 	struct wrap_device *wd;
 	KIRQL irql;
 
-	USBENTER("irp = %p", irp);
 	wd = irp->wd;
 	nt_urb = URB_FROM_IRP(irp);
 	pipe_handle = nt_urb->pipe_req.pipe_handle;
+	USBENTER("%p, %x", irp, pipe_handle->bEndpointAddress);
 	nt_urb = URB_FROM_IRP(irp);
 	IoAcquireCancelSpinLock(&irql);
 	nt_list_for_each_entry(wrap_urb, &wd->usb.wrap_urb_list, list) {
-		USBTRACE("%p, %d", wrap_urb, wrap_urb->state);
-		/* TODO: should we set completion function to NULL so
-		 * the irp is not given back to Windows driver? */
-		if (usb_pipeendpoint(wrap_urb->pipe) ==
-		    pipe_handle->bEndpointAddress &&
-		    wrap_cancel_urb(wrap_urb) == 0) {
-			USBTRACE("canceled wrap_urb: %p", wrap_urb);
+		USBTRACE("%p, %p, %d, %x, %x", wrap_urb, wrap_urb->urb,
+			 wrap_urb->state, wrap_urb->urb->pipe,
+			 usb_pipeendpoint(wrap_urb->urb->pipe));
+		/* for WG111T driver, urbs for endpoint 0 should also
+		 * be canceled */
+		if ((usb_pipeendpoint(wrap_urb->urb->pipe) ==
+		     pipe_handle->bEndpointAddress) ||
+		    (usb_pipeendpoint(wrap_urb->urb->pipe) == 0)) {
+			if (wrap_cancel_urb(wrap_urb) == 0)
+				USBTRACE("canceled wrap_urb: %p", wrap_urb);
 		}
 	}
 	IoReleaseCancelSpinLock(irql);
@@ -920,13 +928,23 @@ static USBD_STATUS wrap_select_configuration(struct wrap_device *wd,
 	if (config == NULL) {
 		/* TODO: set to unconfigured state (configuration 0):
 		 * is this correctt? */
+#if 0
+		ret = usb_control_msg(udev, usb_sndctrlpipe(udev, 0),
+				      USB_REQ_SET_CONFIGURATION, 0,
+				      0, 0, NULL, 0, USB_CTRL_SET_TIMEOUT);
+		ret = usb_reset_configuration(udev);
+		usb_disable_device(udev, 0);
+#endif
+		kill_all_urbs(wd, 1);
 		ret = usb_control_msg(udev, usb_sndctrlpipe(udev, 0),
 				      USB_REQ_SET_CONFIGURATION, 0,
 				      0, 0, NULL, 0, USB_CTRL_SET_TIMEOUT);
 		USBTRACE("ret: %d", ret);
+#if 0
 		if (ret < 0)
 			return wrap_urb_status(ret);
 		else
+#endif
 			return USBD_STATUS_SUCCESS;
 	}
 
@@ -939,7 +957,6 @@ static USBD_STATUS wrap_select_configuration(struct wrap_device *wd,
 			      USB_REQ_SET_CONFIGURATION, 0,
 			      config->bConfigurationValue, 0,
 			      NULL, 0, USB_CTRL_SET_TIMEOUT);
-	USBTRACE("ret: %d", ret);
 	if (ret < 0) {
 		ERROR("ret: %d", ret);
 		return wrap_urb_status(ret);
