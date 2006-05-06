@@ -2384,10 +2384,12 @@ static int wpa_get_capa(struct net_device *dev, struct iw_request_info *info,
 #endif // WIRELESS_EXT <= 17
 
 static const struct iw_priv_args priv_args[] = {
+#if WIRELESS_EXT <= 17
 	{WPA_DROP_UNENCRYPTED, IW_PRIV_TYPE_INT | IW_PRIV_SIZE_FIXED | 1, 0,
 	 "set_priv_filter"},
 	{WPA_SET_AUTH_ALG, IW_PRIV_TYPE_INT | IW_PRIV_SIZE_FIXED | 1, 0,
 	 "auth_alg"},
+#endif
 
 	{PRIV_RESET, 0, 0, "ndis_reset"},
 	{PRIV_POWER_PROFILE, IW_PRIV_TYPE_INT | IW_PRIV_SIZE_FIXED | 1, 0,

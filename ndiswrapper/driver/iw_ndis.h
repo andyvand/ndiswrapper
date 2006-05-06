@@ -176,14 +176,18 @@ int set_scan(struct wrap_ndis_device *wnd);
 #define PRIV_SET_ENCR_MODE		SIOCIWFIRSTPRIV+21
 #define PRIV_SET_AUTH_MODE		SIOCIWFIRSTPRIV+22
 
-/* WPA support */
+#define RSN_INFO_ELEM		0x30
 
 /* these have to match what is in wpa_supplicant */
+
 typedef enum { WPA_ALG_NONE, WPA_ALG_WEP, WPA_ALG_TKIP, WPA_ALG_CCMP } wpa_alg;
 typedef enum { CIPHER_NONE, CIPHER_WEP40, CIPHER_TKIP, CIPHER_CCMP,
 	       CIPHER_WEP104 } wpa_cipher;
 typedef enum { KEY_MGMT_802_1X, KEY_MGMT_PSK, KEY_MGMT_NONE,
 	       KEY_MGMT_802_1X_NO_WPA, KEY_MGMT_WPA_NONE } wpa_key_mgmt;
+
+#if WIRELESS_EXT <= 17
+/* WPA support through 'ndiswrapper' driver interface */
 
 #define AUTH_ALG_OPEN_SYSTEM	0x01
 #define AUTH_ALG_SHARED_KEY	0x02
@@ -191,8 +195,6 @@ typedef enum { KEY_MGMT_802_1X, KEY_MGMT_PSK, KEY_MGMT_NONE,
 
 #define IEEE80211_MODE_INFRA	0
 #define IEEE80211_MODE_IBSS	1
-
-#define RSN_INFO_ELEM		0x30
 
 struct wpa_key {
 	wpa_alg alg;
@@ -255,5 +257,7 @@ struct wpa_driver_capa {
 #define WPA_INIT			SIOCIWFIRSTPRIV+9
 #define WPA_DEINIT			SIOCIWFIRSTPRIV+10
 #define WPA_GET_CAPA			SIOCIWFIRSTPRIV+11
+
+#endif
 
 #endif // IW_NDIS_H

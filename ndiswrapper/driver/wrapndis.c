@@ -1287,7 +1287,7 @@ void get_encryption_capa(struct wrap_ndis_device *wnd)
 /* called as Windows function, so call WIN2LIN2 before accessing
  * arguments */
 wstdcall NTSTATUS NdisDispatchDeviceControl(struct device_object *fdo,
-					   struct irp *irp)
+					    struct irp *irp)
 {
 	struct wrap_ndis_device *wnd;
 
