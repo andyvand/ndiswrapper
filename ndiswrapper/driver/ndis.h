@@ -398,7 +398,6 @@ struct miniport_char {
 	void *reserved2;
 	void *reserved3;
 	void *reserved4;
-
 };
 
 struct ndis_spinlock {

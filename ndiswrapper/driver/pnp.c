@@ -708,34 +708,13 @@ void wrap_pnp_remove_usb_device(struct usb_interface *intf)
 	TRACEENTER1("%p, %p", intf, wd);
 	if (wd == NULL)
 		TRACEEXIT1(return);
-	if (wd->surprise_removed == TRUE) {
-		usb_set_intfdata(intf, NULL);
-		wd->usb.intf = NULL;
-	}
-	pnp_remove_device(wd);
-	wd->usb.intf = NULL;
-}
-#else
-
-extern struct usb_driver wrap_usb_driver;
-
-void wrap_pnp_remove_usb_device(struct usb_device *udev, void *ptr)
-{
-	struct wrap_device *wd = ptr;
-	struct usb_interface *intf;
-
-	TRACEENTER1("%p, %p", udev, wd);
-	if (wd == NULL)
-		TRACEEXIT1(return);
-	intf = wd->usb.intf;
-	if (wd->surprise_removed == TRUE) {
+	usb_set_intfdata(intf, NULL);
+	if (wd->surprise_removed == TRUE)
 		wd->usb.intf = NULL;
 	pnp_remove_device(wd);
 	wd->usb.intf = NULL;
 }
-#endif
 
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
 int wrap_pnp_suspend_usb_device(struct usb_interface *intf, pm_message_t state)
 {
 	struct wrap_device *wd;
@@ -761,6 +740,23 @@ int wrap_pnp_resume_usb_device(struct usb_interface *intf)
 	if (pnp_set_device_power_state(wd, PowerDeviceD0))
 		return -1;
 	return 0;
+}
+
+#else
+
+void wrap_pnp_remove_usb_device(struct usb_device *udev, void *ptr)
+{
+	struct wrap_device *wd = ptr;
+	struct usb_interface *intf;
+
+	TRACEENTER1("%p, %p", udev, wd);
+	if (wd == NULL)
+		TRACEEXIT1(return);
+	intf = wd->usb.intf;
+	if (wd->surprise_removed == TRUE)
+		wd->usb.intf = NULL;
+	pnp_remove_device(wd);
+	wd->usb.intf = NULL;
 }
 #endif
 
