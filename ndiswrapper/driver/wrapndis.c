@@ -573,7 +573,6 @@ static int miniport_tx_packets(struct wrap_ndis_device *wnd)
 					/* resubmit this packet and
 					 * the rest when resources
 					 * become available */
-					netif_stop_queue(wnd->net_dev);
 					sent--;
 					break;
 				case NDIS_STATUS_FAILURE:
@@ -599,30 +598,29 @@ static int miniport_tx_packets(struct wrap_ndis_device *wnd)
 		}
 		DBGTRACE3("sent: %d(%d)", sent, n);
 	} else {
-		packet = wnd->tx_ring[start];
-		if (!(wnd->attributes & NDIS_ATTRIBUTE_DESERIALIZE)) {
+		int i;
+		irql = PASSIVE_LEVEL;
+		if (!(wnd->attributes & NDIS_ATTRIBUTE_DESERIALIZE))
 			irql = raise_irql(DISPATCH_LEVEL);
+		/* copy packets from tx ring to linear tx array */
+		for (i = 0; i < n; i++) {
+			packet = wnd->tx_ring[(start + i) % TX_RING_SIZE];
 			res = LIN2WIN3(miniport->send, wnd->nmb->adapter_ctx,
 				       packet, packet->private.flags);
-			lower_irql(irql);
-		} else
-			res = LIN2WIN3(miniport->send, wnd->nmb->adapter_ctx,
-				       packet, packet->private.flags);
-		sent = 1;
-		switch (res) {
-		case NDIS_STATUS_SUCCESS:
-			free_tx_packet(wnd, packet, res);
-			break;
-		case NDIS_STATUS_PENDING:
-			break;
-		case NDIS_STATUS_RESOURCES:
-			wnd->tx_ok = 0;
-			sent = 0;
-			break;
-		case NDIS_STATUS_FAILURE:
-			free_tx_packet(wnd, packet, res);
-			break;
+			if (res == NDIS_STATUS_SUCCESS) {
+				free_tx_packet(wnd, packet, res);
+				continue;
+			} else {
+				DBGTRACE3("%08X", res);
+				i--;
+				if (res == NDIS_STATUS_RESOURCES)
+					wnd->tx_ok = 0;
+				break;
+			}
 		}
+		if (!(wnd->attributes & NDIS_ATTRIBUTE_DESERIALIZE))
+			lower_irql(irql);
+		sent = i + 1;
 	}
 	TRACEEXIT3(return sent);
 }
@@ -633,18 +631,13 @@ static void tx_worker(void *param)
 	int n;
 
 	TRACEENTER3("tx_ok %d", wnd->tx_ok);
-
-	/* we can use cmpxchg to update tx_ring_start, but we need to
-	 * send packets in given order, so serialize (even for
-	 * deserialized drivers) with mutex */
-
-	while (1) {
+	while (wnd->tx_ok) {
 		if (down_interruptible(&wnd->tx_ring_mutex))
 			break;
 		/* end == start if either ring is empty or full; in
 		 * the latter case is_tx_ring_full is set */
-		if ((wnd->tx_ring_end == wnd->tx_ring_start &&
-		     !wnd->is_tx_ring_full) || !wnd->tx_ok) {
+		if (wnd->tx_ring_end == wnd->tx_ring_start &&
+		    !wnd->is_tx_ring_full) {
 			up(&wnd->tx_ring_mutex);
 			break;
 		}
