@@ -849,6 +849,7 @@ struct wrap_ndis_device {
 	struct ndis_tcp_ip_checksum_packet_info tx_csum_info;
 	enum ndis_physical_medium physical_medium;
 	u32 ndis_wolopts;
+	BOOLEAN pm_capa;
 };
 
 struct ndis_pmkid_candidate {
