@@ -1876,7 +1876,7 @@ wstdcall void WRAP_EXPORT(NdisMDeregisterInterrupt)
 	if (!wnd)
 		TRACEEXIT1(return);
 
-	free_irq(ndis_irq->irq.irq, ndis_irq);
+	free_irq(ndis_irq->irq.irq, wnd);
 	tasklet_kill(&wnd->irq_tasklet);
 	ndis_irq->enabled = 0;
 	ndis_irq->wnd = NULL;
