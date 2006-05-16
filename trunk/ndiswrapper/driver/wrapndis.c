@@ -335,6 +335,9 @@ static NDIS_STATUS miniport_set_power_state(struct wrap_ndis_device *wnd,
 				WARNING("%s: setting power to state %d failed? "
 					"%08X", wnd->net_dev->name, state,
 					status);
+			if (wnd->ndis_wolopts &&
+			    wrap_is_pci_bus(wnd->wd->dev_bus_type))
+				pci_enable_wake(wnd->wd->pci.pdev, PCI_D0, 0);
 			status = NDIS_STATUS_SUCCESS;
 		}
 		if (status == NDIS_STATUS_SUCCESS) {
@@ -368,7 +371,11 @@ static NDIS_STATUS miniport_set_power_state(struct wrap_ndis_device *wnd,
 				status = miniport_set_int(wnd,
 							  OID_PNP_ENABLE_WAKE_UP,
 							  wnd->ndis_wolopts);
-				if (status != NDIS_STATUS_SUCCESS)
+				if (status == NDIS_STATUS_SUCCESS) {
+					if (wrap_is_pci_bus(wnd->wd->dev_bus_type))
+						pci_enable_wake(wnd->wd->pci.pdev,
+								PCI_D0, 1);
+				} else
 					WARNING("%s: couldn't enable WOL: %08x",
 						wnd->net_dev->name, status);
 			}
