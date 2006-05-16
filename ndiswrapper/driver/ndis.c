@@ -1795,31 +1795,27 @@ wstdcall void WRAP_EXPORT(NdisMDeregisterAdapterShutdownHandler)
 
 static void ndis_irq_handler(unsigned long data)
 {
-	struct ndis_irq *ndis_irq = (struct ndis_irq *)data;
-	struct wrap_ndis_device *wnd;
+	struct wrap_ndis_device *wnd = (struct wrap_ndis_device *)data;
 	struct miniport_char *miniport;
 
-	wnd = ndis_irq->wnd;
 	miniport = &wnd->wd->driver->ndis_driver->miniport;
 	LIN2WIN1(miniport->handle_interrupt, wnd->nmb->adapter_ctx);
 	if (miniport->enable_interrupts)
 		LIN2WIN1(miniport->enable_interrupts, wnd->nmb->adapter_ctx);
 }
 
-static irqreturn_t ndis_isr(int irq, void *data, struct pt_regs *pt_regs)
+irqreturn_t ndis_isr(int irq, void *data, struct pt_regs *pt_regs)
 {
+	struct wrap_ndis_device *wnd = (struct wrap_ndis_device *)data;
 	int recognized, queue_handler;
-	struct ndis_irq *ndis_irq = (struct ndis_irq *)data;
-	struct wrap_ndis_device *wnd;
 	struct miniport_char *miniport;
 
-	wnd = ndis_irq->wnd;
 	miniport = &wnd->wd->driver->ndis_driver->miniport;
 	/* this spinlock should be shared with NdisMSynchronizeWithInterrupt
 	 */
-	nt_spin_lock(&ndis_irq->lock);
+	nt_spin_lock(&wnd->ndis_irq->lock);
 	recognized = queue_handler = 0;
-	if (ndis_irq->req_isr)
+	if (wnd->ndis_irq->req_isr)
 		LIN2WIN3(miniport->isr, &recognized, &queue_handler,
 			 wnd->nmb->adapter_ctx);
 	else { //if (miniport->disable_interrupts)
@@ -1827,7 +1823,7 @@ static irqreturn_t ndis_isr(int irq, void *data, struct pt_regs *pt_regs)
 		/* it is not shared interrupt, so handler must be called */
 		recognized = queue_handler = 1;
 	}
-	nt_spin_unlock(&ndis_irq->lock);
+	nt_spin_unlock(&wnd->ndis_irq->lock);
 
 	if (recognized) {
 		if (queue_handler)
@@ -1855,10 +1851,9 @@ wstdcall NDIS_STATUS WRAP_EXPORT(NdisMRegisterInterrupt)
 	nt_spin_lock_init(&ndis_irq->lock);
 	wnd->ndis_irq = ndis_irq;
 
-	tasklet_init(&wnd->irq_tasklet, ndis_irq_handler,
-		     (unsigned long)ndis_irq);
+	tasklet_init(&wnd->irq_tasklet, ndis_irq_handler, (unsigned long)wnd);
 	if (request_irq(vector, ndis_isr, req_isr ? SA_SHIRQ : 0,
-			"ndiswrapper", ndis_irq)) {
+			"ndiswrapper", wnd)) {
 		printk(KERN_WARNING "%s: request for irq %d failed\n",
 		       DRIVER_NAME, vector);
 		TRACEEXIT1(return NDIS_STATUS_RESOURCES);

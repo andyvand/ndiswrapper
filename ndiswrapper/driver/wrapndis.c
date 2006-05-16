@@ -728,22 +728,27 @@ static int set_packet_filter(struct wrap_ndis_device *wnd, ULONG packet_filter)
 static int ndis_open(struct net_device *dev)
 {
 	ULONG packet_filter;
+	mac_address mac;
+	NDIS_STATUS status;
 	struct wrap_ndis_device *wnd = netdev_priv(dev);
 
 	TRACEENTER1("%p", wnd);
+	DBGTRACE1("%s: querying for mac", DRIVER_NAME);
+	status = miniport_query_info(wnd, OID_802_3_CURRENT_ADDRESS,
+				     mac, sizeof(mac));
+	if (status) {
+		ERROR("couldn't get mac address: %08X", status);
+		return -ENODEV;
+	}
+	DBGTRACE1("mac:" MACSTR, MAC2STR(mac));
+	memcpy(&dev->dev_addr, mac, ETH_ALEN);
+
 	packet_filter = NDIS_PACKET_TYPE_DIRECTED | NDIS_PACKET_TYPE_BROADCAST |
 		NDIS_PACKET_TYPE_ALL_FUNCTIONAL;
 	if (set_packet_filter(wnd, packet_filter)) {
 		WARNING("couldn't set packet filter");
 		return -ENODEV;
 	}
-	packet_filter = wnd->packet_filter;
-	/* add any dev specific filters */
-	if (dev->flags & IFF_PROMISC)
-		packet_filter |= NDIS_PACKET_TYPE_PROMISCUOUS |
-			NDIS_PACKET_TYPE_ALL_LOCAL;
-	set_packet_filter(wnd, packet_filter);
-
 	netif_device_attach(dev);
 	netif_start_queue(dev);
 	return 0;
@@ -757,6 +762,17 @@ static int ndis_close(struct net_device *dev)
 	}
 	return 0;
 }
+
+#ifdef CONFIG_NET_POLL_CONTROLLER
+static void ndis_poll_controller(struct net_device *dev)
+{
+	struct wrap_ndis_device *wnd = netdev_priv(dev);
+	/* TODO: disable and enable interrupts? */
+	disable_irq(dev->irq);
+	ndis_isr(dev->irq, wnd, NULL);
+	enable_irq(dev->irq);
+}
+#endif
 
 /* this function is called fom BH context */
 static struct net_device_stats *ndis_get_stats(struct net_device *dev)
@@ -1542,7 +1558,6 @@ static NDIS_STATUS ndis_start_device(struct wrap_ndis_device *wnd)
 	struct wrap_device *wd;
 	struct net_device *net_dev;
 	NDIS_STATUS ndis_status;
-	mac_address mac;
 	char *buf;
 	const int buf_size = 256;
 
@@ -1566,16 +1581,6 @@ static NDIS_STATUS ndis_start_device(struct wrap_ndis_device *wnd)
 	get_supported_oids(wnd);
 	strncpy(net_dev->name, if_name, IFNAMSIZ - 1);
 	net_dev->name[IFNAMSIZ - 1] = '\0';
-
-	DBGTRACE1("%s: querying for mac", DRIVER_NAME);
-	ndis_status = miniport_query_info(wnd, OID_802_3_CURRENT_ADDRESS,
-					  mac, sizeof(mac));
-	if (ndis_status) {
-		ERROR("couldn't get mac address: %08X", ndis_status);
-		goto err_start;
-	}
-	DBGTRACE1("mac:" MACSTR, MAC2STR(mac));
-	memcpy(&net_dev->dev_addr, mac, ETH_ALEN);
 
 	net_dev->open = ndis_open;
 	net_dev->hard_start_xmit = tx_skbuff;
@@ -1606,6 +1611,9 @@ static NDIS_STATUS ndis_start_device(struct wrap_ndis_device *wnd)
 		net_dev->flags |= IFF_MULTICAST;
 	else
 		net_dev->flags &= ~IFF_MULTICAST;
+#ifdef CONFIG_NET_POLL_CONTROLLER
+	net_dev->poll_controller = ndis_poll_controller;
+#endif
 
 	buf = kmalloc(buf_size, GFP_KERNEL);
 	if (!buf) {
