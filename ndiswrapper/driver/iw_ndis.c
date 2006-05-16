@@ -678,13 +678,11 @@ static int iw_set_ap_address(struct net_device *dev,
 	memcpy(ap_addr, wrqu->ap_addr.sa_data, ETH_ALEN);
 	DBGTRACE2(MACSTR, MAC2STR(ap_addr));
 	res = miniport_set_info(wnd, OID_802_11_BSSID, ap_addr, ETH_ALEN);
-
-	if (res == NDIS_STATUS_FAILURE)
-		return -EOPNOTSUPP;
-	if (res) {
+	/* user apps may set ap's mac address, which is not required;
+	 * they may fail to work if this function fails, so return
+	 * success */
+	if (res)
 		WARNING("setting AP mac address failed (%08X)", res);
-		TRACEEXIT2(return -EINVAL);
-	}
 
 	TRACEEXIT2(return 0);
 }
