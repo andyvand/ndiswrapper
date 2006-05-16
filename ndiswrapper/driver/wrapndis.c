@@ -34,8 +34,6 @@ static void add_stats_timer(struct wrap_ndis_device *wnd);
 static void del_stats_timer(struct wrap_ndis_device *wnd);
 static NDIS_STATUS ndis_start_device(struct wrap_ndis_device *wnd);
 static int ndis_remove_device(struct wrap_ndis_device *wnd);
-static NDIS_STATUS miniport_set_power_state(struct wrap_ndis_device *wnd,
-					    enum ndis_power_state state);
 static void set_multicast_list(struct wrap_ndis_device *wnd);
 
 static inline int ndis_wait_comm_completion(struct wrap_ndis_device *wnd)
@@ -331,8 +329,8 @@ static NDIS_STATUS miniport_set_power_state(struct wrap_ndis_device *wnd,
 			else
 				status = miniport_init(wnd);
 		} else if (test_and_clear_bit(HW_SUSPENDED, &wnd->hw_status)) {
-			status = miniport_set_info(wnd, OID_PNP_SET_POWER,
-						   &state, (ULONG)sizeof(state));
+			status = miniport_set_int(wnd, OID_PNP_SET_POWER,
+						  state);
 			if (status != NDIS_STATUS_SUCCESS)
 				WARNING("%s: setting power to state %d failed? "
 					"%08X", wnd->net_dev->name, state,
@@ -365,6 +363,7 @@ static NDIS_STATUS miniport_set_power_state(struct wrap_ndis_device *wnd,
 		del_stats_timer(wnd);
 		status = NDIS_STATUS_NOT_SUPPORTED;
 		if (wnd->pm_capa == TRUE) {
+			enum ndis_power_state pm_state = state;
 			if (wnd->ndis_wolopts) {
 				status = miniport_set_int(wnd,
 							  OID_PNP_ENABLE_WAKE_UP,
@@ -373,13 +372,14 @@ static NDIS_STATUS miniport_set_power_state(struct wrap_ndis_device *wnd,
 					WARNING("%s: couldn't enable WOL: %08x",
 						wnd->net_dev->name, status);
 			}
-			status = miniport_set_info(wnd, OID_PNP_SET_POWER,
-						   &state, (ULONG)sizeof(state));
-			if (status == NDIS_STATUS_SUCCESS)
-				set_bit(HW_SUSPENDED, &wnd->hw_status);
-			else
-				WARNING("setting power state to %d failed: %08X",
-					state, status);
+			status = miniport_query_int(wnd, OID_PNP_QUERY_POWER,
+						    &state);
+			if (status == NDIS_STATUS_SUCCESS) {
+				status = miniport_set_int(wnd, OID_PNP_SET_POWER,
+							  pm_state);
+				if (status == NDIS_STATUS_SUCCESS)
+					set_bit(HW_SUSPENDED, &wnd->hw_status);
+			}
 		}
 		if (status != NDIS_STATUS_SUCCESS) {
 			WARNING("%s does not support power management; "
@@ -598,7 +598,6 @@ static int miniport_tx_packets(struct wrap_ndis_device *wnd)
 		irql = PASSIVE_LEVEL;
 		if (!(wnd->attributes & NDIS_ATTRIBUTE_DESERIALIZE))
 			irql = raise_irql(DISPATCH_LEVEL);
-		/* copy packets from tx ring to linear tx array */
 		for (i = 0; i < n; i++) {
 			packet = wnd->tx_ring[(start + i) % TX_RING_SIZE];
 			res = LIN2WIN3(miniport->send, wnd->nmb->adapter_ctx,
@@ -793,9 +792,11 @@ static void ndis_get_drvinfo(struct net_device *dev,
 	if (wrap_is_pci_bus(wnd->wd->dev_bus_type))
 		strncpy(info->bus_info, pci_name(wnd->wd->pci.pdev),
 			sizeof(info->bus_info) - 1);
+#ifdef CONFIG_USB
 	else
 		usb_make_path(wnd->wd->usb.udev, info->bus_info,
 			      sizeof(info->bus_info) - 1);
+#endif
 	return;
 }
 
