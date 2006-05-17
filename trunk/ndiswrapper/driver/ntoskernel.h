@@ -559,11 +559,6 @@ struct wrap_driver {
 	struct wrap_ndis_driver *ndis_driver;
 };
 
-enum hw_status {
-	HW_NORMAL, HW_SUSPENDED, HW_HALTED, HW_RMMOD, HW_AVAILABLE,
-	HW_INITIALIZED,
-};
-
 struct wrap_device {
 	/* first part is (de)initialized once by loader */
 	int dev_bus_type;

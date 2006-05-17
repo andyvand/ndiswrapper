@@ -56,7 +56,7 @@ NDIS_STATUS miniport_reset(struct wrap_ndis_device *wnd)
 
 	TRACEENTER2("wnd: %p", wnd);
 
-	if (!test_bit(HW_AVAILABLE, &wnd->hw_status))
+	if (!test_bit(HW_INITIALIZED, &wnd->hw_status))
 		TRACEEXIT1(return NDIS_STATUS_FAILURE);
 
 	if (down_interruptible(&wnd->ndis_comm_mutex))
@@ -104,7 +104,7 @@ NDIS_STATUS miniport_query_info_needed(struct wrap_ndis_device *wnd,
 
 	DBGTRACE2("oid: %08X", oid);
 
-	if (!test_bit(HW_AVAILABLE, &wnd->hw_status))
+	if (!test_bit(HW_INITIALIZED, &wnd->hw_status))
 		TRACEEXIT1(return NDIS_STATUS_FAILURE);
 
 	if (down_interruptible(&wnd->ndis_comm_mutex))
@@ -153,7 +153,7 @@ NDIS_STATUS miniport_set_info(struct wrap_ndis_device *wnd, ndis_oid oid,
 
 	DBGTRACE2("oid: %08X", oid);
 
-	if (!test_bit(HW_AVAILABLE, &wnd->hw_status))
+	if (!test_bit(HW_INITIALIZED, &wnd->hw_status))
 		TRACEEXIT1(return NDIS_STATUS_FAILURE);
 
 	if (down_interruptible(&wnd->ndis_comm_mutex))
@@ -278,7 +278,6 @@ static NDIS_STATUS miniport_init(struct wrap_ndis_device *wnd)
 	sleep_hz(HZ / 2);
 
 	set_bit(HW_INITIALIZED, &wnd->hw_status);
-	set_bit(HW_AVAILABLE, &wnd->hw_status);
 	wnd->pm_capa = TRUE;
 	if (wnd->attributes & NDIS_ATTRIBUTE_NO_HALT_ON_SUSPEND) {
 		status = miniport_query_info(wnd, OID_PNP_CAPABILITIES,
@@ -296,13 +295,12 @@ static void miniport_halt(struct wrap_ndis_device *wnd)
 	struct miniport_char *miniport;
 
 	TRACEENTER1("%p", wnd);
-	clear_bit(HW_AVAILABLE, &wnd->hw_status);
-	hangcheck_del(wnd);
-	del_stats_timer(wnd);
 	if (!test_bit(HW_INITIALIZED, &wnd->hw_status)) {
 		WARNING("device %p is not initialized - not halting", wnd);
 		TRACEEXIT1(return);
 	}
+	hangcheck_del(wnd);
+	del_stats_timer(wnd);
 	miniport = &wnd->wd->driver->ndis_driver->miniport;
 	DBGTRACE1("halt: %p", miniport->miniport_halt);
 	LIN2WIN1(miniport->miniport_halt, wnd->nmb->adapter_ctx);
@@ -324,21 +322,24 @@ static NDIS_STATUS miniport_set_power_state(struct wrap_ndis_device *wnd,
 			/* sis163u driver crashes when resuming from
 			 * s3; USB devices will be restarted by USB
 			 * driver anyway, so for now just ignore  */
-			if (wrap_is_usb_bus(wnd->wd->dev_bus_type))
+			if (wrap_is_usb_bus(wnd->wd->dev_bus_type)) {
 				status = NDIS_STATUS_SUCCESS;
-			else
+				set_bit(HW_INITIALIZED, &wnd->hw_status);
+			} else
 				status = miniport_init(wnd);
 		} else if (test_and_clear_bit(HW_SUSPENDED, &wnd->hw_status)) {
+			set_bit(HW_INITIALIZED, &wnd->hw_status);
 			status = miniport_set_int(wnd, OID_PNP_SET_POWER,
 						  state);
-			if (status != NDIS_STATUS_SUCCESS)
+			if (status != NDIS_STATUS_SUCCESS) {
 				WARNING("%s: setting power to state %d failed? "
 					"%08X", wnd->net_dev->name, state,
 					status);
+				clear_bit(HW_INITIALIZED, &wnd->hw_status);
+			}
 			if (wnd->ndis_wolopts &&
 			    wrap_is_pci_bus(wnd->wd->dev_bus_type))
 				pci_enable_wake(wnd->wd->pci.pdev, PCI_D0, 0);
-			status = NDIS_STATUS_SUCCESS;
 		}
 		if (status == NDIS_STATUS_SUCCESS) {
 			set_packet_filter(wnd, wnd->packet_filter);
@@ -396,6 +397,7 @@ static NDIS_STATUS miniport_set_power_state(struct wrap_ndis_device *wnd,
 			set_bit(HW_HALTED, &wnd->hw_status);
 			status = STATUS_SUCCESS;
 		}
+		clear_bit(HW_INITIALIZED, &wnd->hw_status);
 		TRACEEXIT1(return status);
 	}
 }
@@ -774,7 +776,7 @@ static int ndis_close(struct net_device *dev)
 static void ndis_poll_controller(struct net_device *dev)
 {
 	struct wrap_ndis_device *wnd = netdev_priv(dev);
-	/* TODO: disable and enable interrupts? */
+
 	disable_irq(dev->irq);
 	ndis_isr(dev->irq, wnd, NULL);
 	enable_irq(dev->irq);
@@ -1001,12 +1003,6 @@ static void link_status_handler(struct wrap_ndis_device *wnd)
 		TRACEEXIT2(return);
 	}
 
-	/*
-	 * TODO: backwards compatibility would require that IWEVCUSTOM
-	 * is sent even if WIRELESS_EXT > 17. This version does not do
-	 * this in order to allow wpa_supplicant to be tested with
-	 * WE-18.
-	 */
 #if WIRELESS_EXT > 17
 	memset(&wrqu, 0, sizeof(wrqu));
 	wrqu.data.length = ndis_assoc_info->req_ie_length;
@@ -1432,7 +1428,7 @@ wstdcall NTSTATUS NdisDispatchPnp(struct device_object *fdo, struct irp *irp)
 			status = STATUS_FAILURE;
 			break;
 		}
-		/* wnd is not valid anymore */
+		/* wnd is already freed */
 		status = LIN2WIN2(IoAsyncForwardIrp, pdo, irp);
 		IoDetachDevice(fdo);
 		IoDeleteDevice(fdo);
@@ -1878,7 +1874,6 @@ static wstdcall NTSTATUS NdisAddDevice(struct driver_object *drv_obj,
 	wnd->infrastructure_mode = Ndis802_11Infrastructure;
 	INIT_WORK(&wnd->wrap_ndis_work, wrap_ndis_worker, wnd);
 	wnd->hw_status = 0;
-	set_bit(HW_AVAILABLE, &wnd->hw_status);
 	if (wd->driver->ndis_driver)
 		wd->driver->ndis_driver->miniport.shutdown = NULL;
 	wnd->stats_enabled = TRUE;
