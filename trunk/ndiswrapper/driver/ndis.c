@@ -30,8 +30,6 @@ static struct work_struct ndis_work;
 static struct nt_list ndis_worker_list;
 static NT_SPIN_LOCK ndis_work_list_lock;
 
-static void dump_ndis_buffer(ndis_buffer *buf);
-
 /* ndis_init is called once when module is loaded */
 int ndis_init(void)
 {
@@ -187,7 +185,7 @@ wstdcall NDIS_STATUS WRAP_EXPORT(NdisMRegisterDevice)
 
 	*dev_obj = tmp;
 	*dev_obj_handle = *dev_obj;
-	for (i = 0; i <= IRP_MJ_MAXIMUM_FUNCTION; i++)
+	for (i = 0; i < IRP_MJ_MAXIMUM_FUNCTION; i++)
 		if (funcs[i] && i != IRP_MJ_PNP && i != IRP_MJ_POWER) {
 			drv_obj->major_func[i] = funcs[i];
 			DBGTRACE1("mj_fn for 0x%x is at %p", i, funcs[i]);
@@ -1309,7 +1307,10 @@ wstdcall void WRAP_EXPORT(NdisMStartBufferPhysicalMapping)
 
 	DBGTRACE3("%p, %p, %u", buf, MmGetSystemAddressForMdl(buf),
 		  MmGetMdlByteCount(buf));
-	dump_ndis_buffer(buf);
+	DBG_BLOCK(4) {
+		dump_bytes(__FUNCTION__, MmGetSystemAddressForMdl(buf),
+			   MmGetMdlByteCount(buf));
+	}
 	// map buffer
 	phy_addr_array[0].phy_addr =
 		PCI_DMA_MAP_SINGLE(wnd->wd->pci.pdev,
@@ -2648,14 +2649,6 @@ wstdcall void WRAP_EXPORT(NdisMCoDeactivateVcComplete)(void)
 {
 	UNIMPL();
 	return;
-}
-
-static void dump_ndis_buffer(ndis_buffer *buf)
-{
-	DBG_BLOCK(4) {
-		dump_bytes(__FUNCTION__, MmGetSystemAddressForMdl(buf),
-			   MmGetMdlByteCount(buf));
-	}
 }
 
 #include "ndis_exports.h"
