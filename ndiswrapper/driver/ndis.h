@@ -680,7 +680,11 @@ struct auth_encr_capa {
 	unsigned long encr;
 };
 
-enum driver_type { DRIVER_WIRELESS, DRIVER_ETHERNET, };
+enum driver_type { DRIVER_WIRELESS = 1, DRIVER_ETHERNET, };
+
+enum hw_status {
+	HW_INITIALIZED = 1, HW_SUSPENDED, HW_HALTED,
+};
 
 /*
  * This struct contains function pointers that the drivers references
