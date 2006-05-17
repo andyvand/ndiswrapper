@@ -19,7 +19,6 @@
 #include "loader.h"
 
 extern NT_SPIN_LOCK loader_lock;
-extern struct nt_list ndis_drivers;
 extern struct wrap_device *wrap_devices;
 
 static NTSTATUS start_pdo(struct device_object *pdo)
