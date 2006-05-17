@@ -142,8 +142,7 @@ void cancel_delayed_work(struct work_struct *work_struct);
 #ifndef in_atomic
 #ifdef CONFIG_PREEMPT
 #define in_atomic()							\
-	(in_interrupt() ||						\
-	 (preempt_get_count() & ~PREEMPT_ACTIVE) != kernel_locked())
+	 ((preempt_get_count() & ~PREEMPT_ACTIVE) != 0)
 #else
 #define in_atomic() (in_interrupt())
 #endif // CONFIG_PREEMPT
