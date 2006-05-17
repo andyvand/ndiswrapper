@@ -22,8 +22,7 @@
 #define MAX_ALLOCATED_NDIS_PACKETS 20
 #define MAX_ALLOCATED_NDIS_BUFFERS 20
 
-extern struct nt_list wrap_drivers;
-extern NT_SPIN_LOCK ntoskernel_lock, loader_lock;
+extern NT_SPIN_LOCK loader_lock;
 
 static struct workqueue_struct *ndis_wq;
 static void ndis_worker(void *dummy);
@@ -2674,20 +2673,5 @@ void init_nmb_functions(struct ndis_miniport_block *nmb)
 	nmb->eth_rx_indicate = WRAP_FUNC_PTR(EthRxIndicateHandler);
 	nmb->eth_rx_complete = WRAP_FUNC_PTR(EthRxComplete);
 	nmb->td_complete = WRAP_FUNC_PTR(NdisMTransferDataComplete);
-
-	/* TODO: setup pointers to
-
-	   NdisMWanSendComplete
-	   NdisMWanIndicateReceive
-	   NdisMWanIndicateReceiveComplete
-	   
-	   NdisMTrIndicateReceive
-	   NdisMTrIndicateReceiveComplete
-
-	   NdisMFddiIndicateReceive
-	   NdisMFddiIndicateReceiveComplete
-	   NdisMArcIndicateReceive
-	   NdisMArcIndicateReceiveComplete
-	 */
 }
 

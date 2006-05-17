@@ -46,7 +46,7 @@ static struct guid class_guids[] = {
 NT_SPIN_LOCK loader_lock;
 struct wrap_device *wrap_devices;
 static unsigned int num_wrap_devices;
-struct nt_list wrap_drivers;
+static struct nt_list wrap_drivers;
 static struct pci_device_id *wrap_pci_devices;
 static struct pci_driver wrap_pci_driver;
 /* bin_file is used to load binary files */

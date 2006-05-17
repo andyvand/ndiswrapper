@@ -19,13 +19,8 @@
 #include "loader.h"
 #include "wrapndis.h"
 
-extern NT_SPIN_LOCK loader_lock;
-extern struct wrap_device *wrap_devices;
-extern struct nt_list wrap_drivers;
-
 extern char *if_name;
 extern int hangcheck_interval;
-extern int disable_stats;
 extern struct iw_handler_def ndis_handler_def;
 
 static int set_packet_filter(struct wrap_ndis_device *wnd,
@@ -1880,7 +1875,6 @@ static wstdcall NTSTATUS NdisAddDevice(struct driver_object *drv_obj,
 	wnd->rx_csum.value = 0;
 
 	fdo->reserved = wnd;
-	nmb = wnd->nmb;
 	nmb->fdo = fdo;
 	nmb->next_device = IoAttachDeviceToDeviceStack(fdo, pdo);
 	DBGTRACE1("nmb: %p, pdo: %p, fdo: %p, attached: %p, next: %p",
@@ -1892,8 +1886,7 @@ static wstdcall NTSTATUS NdisAddDevice(struct driver_object *drv_obj,
 	drv_obj->major_func[IRP_MJ_POWER] = NdisDispatchPower;
 	drv_obj->major_func[IRP_MJ_INTERNAL_DEVICE_CONTROL] =
 		NdisDispatchDeviceControl;
-	drv_obj->major_func[IRP_MJ_DEVICE_CONTROL] =
-		NdisDispatchDeviceControl;
+	drv_obj->major_func[IRP_MJ_DEVICE_CONTROL] = NdisDispatchDeviceControl;
 	TRACEEXIT2(return STATUS_SUCCESS);
 }
 

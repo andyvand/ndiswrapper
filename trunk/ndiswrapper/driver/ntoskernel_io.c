@@ -20,9 +20,6 @@
 #include "loader.h"
 
 extern NT_SPIN_LOCK ntoskernel_lock;
-extern NT_SPIN_LOCK loader_lock;
-extern struct nt_list object_list;
-
 extern NT_SPIN_LOCK irp_cancel_lock;
 
 wstdcall void WRAP_EXPORT(IoAcquireCancelSpinLock)
