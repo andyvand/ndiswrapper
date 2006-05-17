@@ -51,9 +51,6 @@ NDIS_STATUS miniport_reset(struct wrap_ndis_device *wnd)
 
 	TRACEENTER2("wnd: %p", wnd);
 
-	if (!test_bit(HW_INITIALIZED, &wnd->hw_status))
-		TRACEEXIT1(return NDIS_STATUS_FAILURE);
-
 	if (down_interruptible(&wnd->ndis_comm_mutex))
 		TRACEEXIT3(return NDIS_STATUS_FAILURE);
 	miniport = &wnd->wd->driver->ndis_driver->miniport;
@@ -98,9 +95,6 @@ NDIS_STATUS miniport_query_info_needed(struct wrap_ndis_device *wnd,
 	KIRQL irql;
 
 	DBGTRACE2("oid: %08X", oid);
-
-	if (!test_bit(HW_INITIALIZED, &wnd->hw_status))
-		TRACEEXIT1(return NDIS_STATUS_FAILURE);
 
 	if (down_interruptible(&wnd->ndis_comm_mutex))
 		TRACEEXIT3(return NDIS_STATUS_FAILURE);
@@ -147,9 +141,6 @@ NDIS_STATUS miniport_set_info(struct wrap_ndis_device *wnd, ndis_oid oid,
 	KIRQL irql;
 
 	DBGTRACE2("oid: %08X", oid);
-
-	if (!test_bit(HW_INITIALIZED, &wnd->hw_status))
-		TRACEEXIT1(return NDIS_STATUS_FAILURE);
 
 	if (down_interruptible(&wnd->ndis_comm_mutex))
 		TRACEEXIT3(return NDIS_STATUS_FAILURE);
@@ -312,25 +303,17 @@ static NDIS_STATUS miniport_set_power_state(struct wrap_ndis_device *wnd,
 	DBGTRACE1("state: %d", state);
 	if (state == NdisDeviceStateD0) {
 		status = STATUS_SUCCESS;
+		up(&wnd->ndis_comm_mutex);
 		if (test_and_clear_bit(HW_HALTED, &wnd->hw_status)) {
 			DBGTRACE1("starting device");
-			/* sis163u driver crashes when resuming from
-			 * s3; USB devices will be restarted by USB
-			 * driver anyway, so for now just ignore  */
-			if (wrap_is_usb_bus(wnd->wd->dev_bus_type)) {
-				status = NDIS_STATUS_SUCCESS;
-				set_bit(HW_INITIALIZED, &wnd->hw_status);
-			} else
-				status = miniport_init(wnd);
+			status = miniport_init(wnd);
 		} else if (test_and_clear_bit(HW_SUSPENDED, &wnd->hw_status)) {
-			set_bit(HW_INITIALIZED, &wnd->hw_status);
 			status = miniport_set_int(wnd, OID_PNP_SET_POWER,
 						  state);
 			if (status != NDIS_STATUS_SUCCESS) {
 				WARNING("%s: setting power to state %d failed? "
 					"%08X", wnd->net_dev->name, state,
 					status);
-				clear_bit(HW_INITIALIZED, &wnd->hw_status);
 			}
 			if (wnd->ndis_wolopts &&
 			    wrap_is_pci_bus(wnd->wd->dev_bus_type))
@@ -341,15 +324,18 @@ static NDIS_STATUS miniport_set_power_state(struct wrap_ndis_device *wnd,
 			set_multicast_list(wnd);
 			hangcheck_add(wnd);
 			add_stats_timer(wnd);
+			up(&wnd->tx_ring_mutex);
 			set_scan(wnd);
 			if (netif_running(wnd->net_dev)) {
 				netif_device_attach(wnd->net_dev);
 				netif_wake_queue(wnd->net_dev);
 			}
 			netif_poll_enable(wnd->net_dev);
-		} else
+		} else {
+			down_interruptible(&wnd->ndis_comm_mutex);
 			WARNING("%s: couldn't set power to state %d; device not"
 				" resumed", wnd->net_dev->name, state);
+		}
 		TRACEEXIT1(return status);
 	} else {
 		DBGTRACE2("irql: %d", current_irql());
@@ -358,6 +344,8 @@ static NDIS_STATUS miniport_set_power_state(struct wrap_ndis_device *wnd,
 			netif_tx_disable(wnd->net_dev);
 			netif_device_detach(wnd->net_dev);
 		}
+		if (down_interruptible(&wnd->tx_ring_mutex))
+			WARNING("couldn't obtain mutex");
 		hangcheck_del(wnd);
 		del_stats_timer(wnd);
 		status = NDIS_STATUS_NOT_SUPPORTED;
@@ -383,6 +371,8 @@ static NDIS_STATUS miniport_set_power_state(struct wrap_ndis_device *wnd,
 				if (status == NDIS_STATUS_SUCCESS)
 					set_bit(HW_SUSPENDED, &wnd->hw_status);
 			}
+			if (status != NDIS_STATUS_SUCCESS)
+				WARNING("suspend failed: %08X", status);
 		}
 		if (status != NDIS_STATUS_SUCCESS) {
 			WARNING("%s does not support power management; "
@@ -392,7 +382,8 @@ static NDIS_STATUS miniport_set_power_state(struct wrap_ndis_device *wnd,
 			set_bit(HW_HALTED, &wnd->hw_status);
 			status = STATUS_SUCCESS;
 		}
-		clear_bit(HW_INITIALIZED, &wnd->hw_status);
+		if (down_interruptible(&wnd->ndis_comm_mutex))
+			WARNING("couldn't obtain mutex");
 		TRACEEXIT1(return status);
 	}
 }
@@ -1740,7 +1731,9 @@ static int ndis_remove_device(struct wrap_ndis_device *wnd)
 	/* In 2.4 kernels, this function is called in atomic context,
 	 * so we can't (don't need to?) wait on mutex. */
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
-	down_interruptible(&wnd->tx_ring_mutex);
+	/* if device is suspended, but resume failed, tx_ring_mutex is
+	 * already locked */
+	down_trylock(&wnd->tx_ring_mutex);
 #endif
 	tx_pending = wnd->tx_ring_end - wnd->tx_ring_start;
 	if (tx_pending < 0)
