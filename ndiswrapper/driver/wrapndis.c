@@ -307,6 +307,10 @@ static NDIS_STATUS miniport_set_power_state(struct wrap_ndis_device *wnd,
 		if (test_and_clear_bit(HW_HALTED, &wnd->hw_status)) {
 			DBGTRACE1("starting device");
 			status = miniport_init(wnd);
+			if (status == NDIS_STATUS_SUCCESS) {
+				set_packet_filter(wnd, wnd->packet_filter);
+				set_multicast_list(wnd);
+			}
 		} else if (test_and_clear_bit(HW_SUSPENDED, &wnd->hw_status)) {
 			status = miniport_set_int(wnd, OID_PNP_SET_POWER,
 						  state);
@@ -320,8 +324,6 @@ static NDIS_STATUS miniport_set_power_state(struct wrap_ndis_device *wnd,
 				pci_enable_wake(wnd->wd->pci.pdev, PCI_D0, 0);
 		}
 		if (status == NDIS_STATUS_SUCCESS) {
-			set_packet_filter(wnd, wnd->packet_filter);
-			set_multicast_list(wnd);
 			hangcheck_add(wnd);
 			add_stats_timer(wnd);
 			up(&wnd->tx_ring_mutex);
