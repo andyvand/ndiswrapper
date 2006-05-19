@@ -402,12 +402,15 @@ NTSTATUS pnp_set_device_power_state(struct wrap_device *wd,
 	if (state > PowerDeviceD0) {
 		status = IoSendIrpTopDev(pdo, IRP_MJ_POWER, IRP_MN_QUERY_POWER,
 					 &irp_sl);
-		if (status != STATUS_SUCCESS)
-			DBGTRACE1("query power returns %08X", status);
+		if (status != STATUS_SUCCESS) {
+			DBGTRACE1("query of power to %d returns %08X",
+				  state, status);
+			TRACEEXIT1(return status);
+		}
 	}
 	status = IoSendIrpTopDev(pdo, IRP_MJ_POWER, IRP_MN_SET_POWER, &irp_sl);
 	if (status != STATUS_SUCCESS)
-		WARNING("set power returns %08X", status);
+		WARNING("setting power to %d failed: %08X", state, status);
 	TRACEEXIT1(return status);
 }
 
