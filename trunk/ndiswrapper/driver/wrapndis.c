@@ -43,7 +43,7 @@ static inline int ndis_wait_comm_completion(struct wrap_ndis_device *wnd)
 /* MiniportReset */
 NDIS_STATUS miniport_reset(struct wrap_ndis_device *wnd)
 {
-	NDIS_STATUS res = 0;
+	NDIS_STATUS res;
 	struct miniport_char *miniport;
 	UINT cur_lookahead, max_lookahead;
 	BOOLEAN reset_address;
@@ -58,8 +58,7 @@ NDIS_STATUS miniport_reset(struct wrap_ndis_device *wnd)
 	max_lookahead = wnd->nmb->max_lookahead;
 	irql = raise_irql(DISPATCH_LEVEL);
 	wnd->ndis_comm_done = 0;
-	res = LIN2WIN2(miniport->reset, &reset_address,
-		       wnd->nmb->adapter_ctx);
+	res = LIN2WIN2(miniport->reset, &reset_address, wnd->nmb->adapter_ctx);
 	lower_irql(irql);
 
 	DBGTRACE2("%08X, %08X", res, reset_address);
@@ -89,7 +88,7 @@ NDIS_STATUS miniport_query_info_needed(struct wrap_ndis_device *wnd,
 				       ndis_oid oid, void *buf,
 				       ULONG bufsize, ULONG *needed)
 {
-	NDIS_STATUS res = 0;
+	NDIS_STATUS res;
 	ULONG written;
 	struct miniport_char *miniport;
 	KIRQL irql;
@@ -135,7 +134,7 @@ NDIS_STATUS miniport_query_info(struct wrap_ndis_device *wnd, ndis_oid oid,
 NDIS_STATUS miniport_set_info(struct wrap_ndis_device *wnd, ndis_oid oid,
 			      void *buf, ULONG bufsize)
 {
-	NDIS_STATUS res = 0;
+	NDIS_STATUS res;
 	ULONG written, needed;
 	struct miniport_char *miniport;
 	KIRQL irql;
@@ -217,7 +216,6 @@ static NDIS_STATUS miniport_pnp_event(struct wrap_ndis_device *wnd,
 			return NDIS_STATUS_FAILURE;
 		}
 		power_profile = NdisPowerProfileAcOnLine;
-		DBGTRACE2("calling pnp_event_notify");
 		LIN2WIN4(miniport->pnp_event_notify, wnd->nmb->adapter_ctx,
 			 NdisDevicePnPEventPowerProfileChanged,
 			 &power_profile, (ULONG)sizeof(power_profile));
@@ -239,13 +237,13 @@ static NDIS_STATUS miniport_init(struct wrap_ndis_device *wnd)
 
 	TRACEENTER1("irql: %d", current_irql());
 	if (test_bit(HW_INITIALIZED, &wnd->hw_status)) {
-		ERROR("device %p already initialized!", wnd);
+		WARNING("device %p already initialized!", wnd);
 		return NDIS_STATUS_FAILURE;
 	}
 
 	if (!wnd->wd->driver->ndis_driver ||
 	    !wnd->wd->driver->ndis_driver->miniport.init) {
-		ERROR("assuming WDM (non-NDIS) driver");
+		WARNING("assuming WDM (non-NDIS) driver");
 		TRACEEXIT1(return NDIS_STATUS_NOT_RECOGNIZED);
 	}
 	miniport = &wnd->wd->driver->ndis_driver->miniport;
@@ -264,13 +262,14 @@ static NDIS_STATUS miniport_init(struct wrap_ndis_device *wnd)
 	sleep_hz(HZ / 2);
 
 	set_bit(HW_INITIALIZED, &wnd->hw_status);
-	wnd->pm_capa = TRUE;
-	if (wnd->attributes & NDIS_ATTRIBUTE_NO_HALT_ON_SUSPEND) {
-		status = miniport_query_info(wnd, OID_PNP_CAPABILITIES,
-					     &pnp_capa, sizeof(pnp_capa));
-		if (status != NDIS_STATUS_SUCCESS)
-			wnd->pm_capa = FALSE;
-	}
+	/* the description about NDIS_ATTRIBUTE_NO_HALT_ON_SUSPEND is
+	 * misleading/confusing; we just ignore it */
+	status = miniport_query_info(wnd, OID_PNP_CAPABILITIES,
+				     &pnp_capa, sizeof(pnp_capa));
+	if (status == NDIS_STATUS_SUCCESS)
+		wnd->pm_capa = TRUE;
+	else
+		wnd->pm_capa = FALSE;
 	hangcheck_add(wnd);
 	TRACEEXIT1(return NDIS_STATUS_SUCCESS);
 }
@@ -300,12 +299,11 @@ static NDIS_STATUS miniport_set_power_state(struct wrap_ndis_device *wnd,
 {
 	NDIS_STATUS status;
 
-	DBGTRACE1("state: %d", state);
+	DBGTRACE1("%d", state);
 	if (state == NdisDeviceStateD0) {
 		status = STATUS_SUCCESS;
 		up(&wnd->ndis_comm_mutex);
 		if (test_and_clear_bit(HW_HALTED, &wnd->hw_status)) {
-			DBGTRACE1("starting device");
 			status = miniport_init(wnd);
 			if (status == NDIS_STATUS_SUCCESS) {
 				set_packet_filter(wnd, wnd->packet_filter);
@@ -340,7 +338,6 @@ static NDIS_STATUS miniport_set_power_state(struct wrap_ndis_device *wnd,
 		}
 		TRACEEXIT1(return status);
 	} else {
-		DBGTRACE2("irql: %d", current_irql());
 		netif_poll_disable(wnd->net_dev);
 		if (netif_running(wnd->net_dev)) {
 			netif_tx_disable(wnd->net_dev);
@@ -365,15 +362,11 @@ static NDIS_STATUS miniport_set_power_state(struct wrap_ndis_device *wnd,
 					WARNING("%s: couldn't enable WOL: %08x",
 						wnd->net_dev->name, status);
 			}
-			status = miniport_query_int(wnd, OID_PNP_QUERY_POWER,
-						    &state);
-			if (status == NDIS_STATUS_SUCCESS) {
-				status = miniport_set_int(wnd, OID_PNP_SET_POWER,
-							  pm_state);
-				if (status == NDIS_STATUS_SUCCESS)
-					set_bit(HW_SUSPENDED, &wnd->hw_status);
-			}
-			if (status != NDIS_STATUS_SUCCESS)
+			status = miniport_set_int(wnd, OID_PNP_SET_POWER,
+						  pm_state);
+			if (status == NDIS_STATUS_SUCCESS)
+				set_bit(HW_SUSPENDED, &wnd->hw_status);
+			else
 				WARNING("suspend failed: %08X", status);
 		}
 		if (status != NDIS_STATUS_SUCCESS) {
@@ -730,7 +723,6 @@ static int ndis_open(struct net_device *dev)
 	struct wrap_ndis_device *wnd = netdev_priv(dev);
 
 	TRACEENTER1("%p", wnd);
-	DBGTRACE1("%s: querying for mac", DRIVER_NAME);
 	status = miniport_query_info(wnd, OID_802_3_CURRENT_ADDRESS,
 				     mac, sizeof(mac));
 	if (status) {
@@ -1345,18 +1337,17 @@ wstdcall NTSTATUS NdisDispatchPower(struct device_object *fdo, struct irp *irp)
 		}
 		break;
 	case IRP_MN_QUERY_POWER:
-		if (!(wnd->attributes & NDIS_ATTRIBUTE_NO_HALT_ON_SUSPEND)) {
+		if (wnd->pm_capa) {
 			ndis_status = miniport_query_info(wnd,
 							  OID_PNP_QUERY_POWER,
 							  &state, sizeof(state));
-			DBGTRACE2("query_power to state %d returns %08X",
-				  state, ndis_status);
-			if (ndis_status == NDIS_STATUS_SUCCESS)
-				irp->io_status.status = STATUS_SUCCESS;
-			else
-				irp->io_status.status = STATUS_FAILURE;
+			DBGTRACE2("%d, %08X", state, ndis_status);
+			/* this OID must always succeed */
+			if (ndis_status != NDIS_STATUS_SUCCESS)
+				DBGTRACE1("query power returns %08X", status);
+			irp->io_status.status = STATUS_SUCCESS;
 		} else
-			irp->io_status.status = STATUS_FAILURE;
+			irp->io_status.status = STATUS_SUCCESS;
 		status = LIN2WIN2(IoPassIrpDown, wnd->nmb->pdo, irp);
 		break;
 	case IRP_MN_WAIT_WAKE:
