@@ -1344,7 +1344,8 @@ wstdcall NTSTATUS NdisDispatchPower(struct device_object *fdo, struct irp *irp)
 			DBGTRACE2("%d, %08X", state, ndis_status);
 			/* this OID must always succeed */
 			if (ndis_status != NDIS_STATUS_SUCCESS)
-				DBGTRACE1("query power returns %08X", status);
+				DBGTRACE1("query power returns %08X",
+					  ndis_status);
 			irp->io_status.status = STATUS_SUCCESS;
 		} else
 			irp->io_status.status = STATUS_SUCCESS;

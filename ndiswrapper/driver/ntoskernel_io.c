@@ -101,7 +101,7 @@ wstdcall BOOLEAN WRAP_EXPORT(IoIs32bitProcess)
 wstdcall void WRAP_EXPORT(IoInitializeIrp)
 	(struct irp *irp, USHORT size, CCHAR stack_count)
 {
-	IOENTER("irp: %p, stack_count: %d", irp, stack_count);
+	IOENTER("irp: %p, count: %d", irp, stack_count);
 
 	memset(irp, 0, size);
 	irp->size = size;
@@ -116,7 +116,7 @@ wstdcall void WRAP_EXPORT(IoInitializeIrp)
 wstdcall void WRAP_EXPORT(IoReuseIrp)
 	(struct irp *irp, NTSTATUS status)
 {
-	IOENTER("irp: %p, status: %d", irp, status);
+	IOENTER("%p, %d", irp, status);
 	if (irp) {
 		UCHAR alloc_flags;
 
@@ -134,7 +134,7 @@ wstdcall struct irp *WRAP_EXPORT(IoAllocateIrp)
 	struct irp *irp;
 	int irp_size;
 
-	IOENTER("count: %d, quota: %d", stack_count, charge_quota);
+	IOENTER("count: %d", stack_count);
 	/* driver need not allocate stack location for itself, but we
 	 * need to allocate space for it so that driver can set major
 	 * function etc. even if stack_count is 0 */
@@ -518,8 +518,7 @@ wstdcall NTSTATUS IoInvalidDeviceRequest(struct device_object *dev_obj,
 	WIN2LIN2(dev_obj, irp);
 
 	irp_sl = IoGetCurrentIrpStackLocation(irp);
-	WARNING("IRP %d:%d not implemented",
-		irp_sl->major_fn, irp_sl->minor_fn);
+	WARNING("%d:%d not implemented", irp_sl->major_fn, irp_sl->minor_fn);
 	irp->io_status.status = STATUS_SUCCESS;
 	irp->io_status.info = 0;
 	status = irp->io_status.status;

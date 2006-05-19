@@ -1879,7 +1879,6 @@ static struct nt_thread *create_nt_thread(struct task_struct *task)
 		initialize_dh(&thread->dh, ThreadObject, 0);
 		thread->dh.size = sizeof(*thread);
 		nt_spin_unlock_irql(&dispatcher_lock, irql);
-
 		DBGTRACE2("thread: %p, task: %p, pid: %d",
 			  thread, thread->task, thread->pid);
 	} else
