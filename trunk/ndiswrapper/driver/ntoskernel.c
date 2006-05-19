@@ -1087,7 +1087,7 @@ wstdcall void *WRAP_EXPORT(ExAllocatePoolWithTag)
 		if (current_irql() < DISPATCH_LEVEL)
 			addr = vmalloc(size);
 		else
-			addr = __vmalloc(size, GFP_ATOMIC | __GFP_HIGHMEM,
+			addr = __vmalloc(size, GFP_KERNEL | __GFP_HIGHMEM,
 					 PAGE_KERNEL);
 	}
 	DBGTRACE4("addr: %p, %lu", addr, size);
