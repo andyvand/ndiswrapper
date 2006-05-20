@@ -1967,7 +1967,7 @@ wstdcall void WRAP_EXPORT(NdisMIndicateStatus)
 					&cand->candidates[i];
 				if ((u8 *)(c + 1) > end) {
 					DBGTRACE2("Truncated "
-						    "PMKID_CANDIDATE_LIST");
+						  "PMKID_CANDIDATE_LIST");
 					break;
 				}
 				DBGTRACE2("%ld: " MACSTR " 0x%lx",
