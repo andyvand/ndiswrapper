@@ -1,6 +1,0 @@
-#!/bin/sh
-set -e
-
-if [ `uname -r` = #KVERS# ] ; then
-    depmod -a
-fi

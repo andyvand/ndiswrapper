@@ -1,6 +1,0 @@
-ndiswrapper-source (#DRIVER_VERSION#-1) unstable; urgency=low
-
-  * With utils version #UTILS_VERSION#
-
- -- #MAINT#  #DATE#
-
