@@ -270,6 +270,7 @@ static NDIS_STATUS miniport_init(struct wrap_ndis_device *wnd)
 		wnd->pm_capa = TRUE;
 	else
 		wnd->pm_capa = FALSE;
+	DBGTRACE1("%d, %d", pnp_capa.wakeup_capa.min_magic_packet_wakeup);
 	hangcheck_add(wnd);
 	TRACEEXIT1(return NDIS_STATUS_SUCCESS);
 }
@@ -718,20 +719,9 @@ static int set_packet_filter(struct wrap_ndis_device *wnd, ULONG packet_filter)
 static int ndis_open(struct net_device *dev)
 {
 	ULONG packet_filter;
-	mac_address mac;
-	NDIS_STATUS status;
 	struct wrap_ndis_device *wnd = netdev_priv(dev);
 
 	TRACEENTER1("%p", wnd);
-	status = miniport_query_info(wnd, OID_802_3_CURRENT_ADDRESS,
-				     mac, sizeof(mac));
-	if (status) {
-		ERROR("couldn't get mac address: %08X", status);
-		return -ENODEV;
-	}
-	DBGTRACE1("mac:" MACSTR, MAC2STR(mac));
-	memcpy(&dev->dev_addr, mac, ETH_ALEN);
-
 	packet_filter = NDIS_PACKET_TYPE_DIRECTED | NDIS_PACKET_TYPE_BROADCAST |
 		NDIS_PACKET_TYPE_ALL_FUNCTIONAL;
 	if (set_packet_filter(wnd, packet_filter)) {
@@ -828,13 +818,15 @@ static int ndis_set_wol(struct net_device *dev, struct ethtool_wolinfo *wol)
 
 	if (!(wol->wolopts & WAKE_MAGIC))
 		return -EINVAL;
-	if (!(wnd->attributes & NDIS_ATTRIBUTE_NO_HALT_ON_SUSPEND))
+	if (!wnd->pm_capa)
 		return -EOPNOTSUPP;
 	status = miniport_query_info(wnd, OID_PNP_CAPABILITIES,
 				     &pnp_capa, sizeof(pnp_capa));
 	if (status != NDIS_STATUS_SUCCESS)
 		return -EOPNOTSUPP;
 	/* we always suspend to D3 */
+	DBGTRACE1("%d, %d", pnp_capa.wakeup_capa.min_magic_packet_wakeup,
+		  pnp_capa.wakeup_capa.min_pattern_wakeup);
 	if (pnp_capa.wakeup_capa.min_magic_packet_wakeup != NdisDeviceStateD3)
 		return -EOPNOTSUPP;
 	/* no other options supported */
@@ -1543,6 +1535,7 @@ static NDIS_STATUS ndis_start_device(struct wrap_ndis_device *wnd)
 	NDIS_STATUS ndis_status;
 	char *buf;
 	const int buf_size = 256;
+	mac_address mac;
 
 	ndis_status = miniport_init(wnd);
 	if (ndis_status == NDIS_STATUS_NOT_RECOGNIZED)
@@ -1564,6 +1557,15 @@ static NDIS_STATUS ndis_start_device(struct wrap_ndis_device *wnd)
 	get_supported_oids(wnd);
 	strncpy(net_dev->name, if_name, IFNAMSIZ - 1);
 	net_dev->name[IFNAMSIZ - 1] = '\0';
+
+	ndis_status = miniport_query_info(wnd, OID_802_3_CURRENT_ADDRESS,
+					  mac, sizeof(mac));
+	if (ndis_status) {
+		ERROR("couldn't get mac address: %08X", ndis_status);
+		return ndis_status;
+	}
+	DBGTRACE1("mac:" MACSTR, MAC2STR(mac));
+	memcpy(&net_dev->dev_addr, mac, ETH_ALEN);
 
 	net_dev->open = ndis_open;
 	net_dev->hard_start_xmit = tx_skbuff;
