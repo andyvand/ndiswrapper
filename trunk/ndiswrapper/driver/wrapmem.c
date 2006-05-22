@@ -29,7 +29,7 @@ struct alloc_info {
 	struct nt_list list;
 	const char *file;
 	int line;
-#if ALLOC_DEBUG > 1
+#if ALLOC_DEBUG > 2
 	ULONG tag;
 #endif
 #endif
@@ -39,7 +39,7 @@ static struct nt_list allocs;
 static struct nt_list slack_allocs;
 static NT_SPIN_LOCK alloc_lock;
 
-#ifdef ALLOC_INFO
+#ifdef ALLOC_DEBUG
 static atomic_t alloc_sizes[ALLOC_TYPE_MAX];
 #endif
 
@@ -61,14 +61,14 @@ void wrapmem_exit(void)
 	while ((ent = RemoveHeadList(&slack_allocs))) {
 		struct slack_alloc_info *info;
 		info = container_of(ent, struct slack_alloc_info, list);
-#ifdef ALLOC_INFO
+#ifdef ALLOC_DEBUG
 		atomic_sub(info->size, &alloc_sizes[ALLOC_TYPE_SLACK]);
 #endif
 		kfree(info);
 	}
 	nt_spin_unlock(&alloc_lock);
 	type = 0;
-#ifdef ALLOC_INFO
+#ifdef ALLOC_DEBUG
 	for (type = 0; type < ALLOC_TYPE_MAX; type++) {
 		int n = atomic_read(&alloc_sizes[type]);
 		if (n)
@@ -76,19 +76,19 @@ void wrapmem_exit(void)
 	}	
 #endif
 
-#ifdef ALLOC_DEBUG
+#if defined(ALLOC_DEBUG) && ALLOC_DEBUG > 1
 	nt_spin_lock(&alloc_lock);
 	while ((ent = RemoveHeadList(&allocs))) {
 		struct alloc_info *info;
 		info = container_of(ent, struct alloc_info, list);
 		atomic_sub(info->size, &alloc_sizes[ALLOC_TYPE_SLACK]);
 		WARNING("memory in %d of size %d allocated at %s(%d) "
-#if ALLOC_DEBUG > 1
+#if ALLOC_DEBUG > 2
 			"with tag 0x%08X "
 #endif
 			"leaking; freeing it now", info->type, info->size,
 			info->file, info->line
-#if ALLOC_DEBUG > 1
+#if ALLOC_DEBUG > 2
 			, info->tag
 #endif
 			);
@@ -108,7 +108,7 @@ void wrapmem_exit(void)
 
 void wrapmem_info(void)
 {
-#ifdef ALLOC_INFO
+#ifdef ALLOC_DEBUG
 	enum alloc_type type;
 	for (type = 0; type < ALLOC_TYPE_MAX; type++)
 		INFO("total size of allocations in %d: %d",
@@ -144,7 +144,7 @@ void *slack_kmalloc(size_t size)
 	nt_spin_lock(&alloc_lock);
 	InsertTailList(&slack_allocs, &info->list);
 	nt_spin_unlock(&alloc_lock);
-#ifdef ALLOC_INFO
+#ifdef ALLOC_DEBUG
 	atomic_add(size, &alloc_sizes[ALLOC_TYPE_SLACK]);
 #endif
 	DBGTRACE4("%p, %p", info, ptr);
@@ -161,14 +161,14 @@ void slack_kfree(void *ptr)
 	nt_spin_lock(&alloc_lock);
 	RemoveEntryList(&info->list);
 	nt_spin_unlock(&alloc_lock);
-#ifdef ALLOC_INFO
+#ifdef ALLOC_DEBUG
 	atomic_sub(info->size, &alloc_sizes[ALLOC_TYPE_SLACK]);
 #endif
 	kfree(info);
 	TRACEEXIT4(return);
 }
 
-#ifdef ALLOC_INFO
+#if defined(ALLOC_DEBUG)
 void *wrap_kmalloc(size_t size, unsigned flags, const char *file, int line)
 {
 	struct alloc_info *info;
@@ -183,10 +183,10 @@ void *wrap_kmalloc(size_t size, unsigned flags, const char *file, int line)
 		info->type = ALLOC_TYPE_NON_ATOMIC;
 	info->size = size;
 	atomic_add(size, &alloc_sizes[info->type]);
-#ifdef ALLOC_DEBUG
+#if ALLOC_DEBUG > 1
 	info->file = file;
 	info->line = line;
-#if ALLOC_DEBUG > 1
+#if ALLOC_DEBUG > 2
 	info->tag = 0;
 #endif
 	nt_spin_lock(&alloc_lock);
@@ -201,7 +201,7 @@ void wrap_kfree(void *ptr)
 	struct alloc_info *info;
 	info = ptr - sizeof(*info);
 	atomic_sub(info->size, &alloc_sizes[info->type]);
-#ifdef ALLOC_DEBUG
+#if ALLOC_DEBUG > 1
 	nt_spin_lock(&alloc_lock);
 	RemoveEntryList(&info->list);
 	nt_spin_unlock(&alloc_lock);
@@ -223,10 +223,10 @@ void *wrap_vmalloc(unsigned long size, const char *file, int line)
 	info->type = ALLOC_TYPE_VMALLOC;
 	info->size = size;
 	atomic_add(size, &alloc_sizes[info->type]);
-#ifdef ALLOC_DEBUG
+#if ALLOC_DEBUG > 1
 	info->file = file;
 	info->line = line;
-#if ALLOC_DEBUG > 1
+#if ALLOC_DEBUG > 2
 	info->tag = 0;
 #endif
 	nt_spin_lock(&alloc_lock);
@@ -248,10 +248,10 @@ void *wrap__vmalloc(unsigned long size, unsigned int gfp_mask, pgprot_t prot,
 	info->type = ALLOC_TYPE_VMALLOC;
 	info->size = size;
 	atomic_add(size, &alloc_sizes[info->type]);
-#ifdef ALLOC_DEBUG
+#if ALLOC_DEBUG > 1
 	info->file = file;
 	info->line = line;
-#if ALLOC_DEBUG > 1
+#if ALLOC_DEBUG > 2
 	info->tag = 0;
 #endif
 	nt_spin_lock(&alloc_lock);
@@ -276,7 +276,7 @@ void wrap_vfree(void *ptr)
 	vfree(info);
 }
 
-#ifdef ALLOC_DEBUG
+#if ALLOC_DEBUG > 1
 void *wrap_ExAllocatePoolWithTag(enum pool_type pool_type, SIZE_T size,
 				 ULONG tag, const char *file, int line)
 {
@@ -298,7 +298,7 @@ void *wrap_ExAllocatePoolWithTag(enum pool_type pool_type, SIZE_T size,
 			addr = wrap__vmalloc(size, GFP_ATOMIC | __GFP_HIGHMEM,
 					     PAGE_KERNEL, file, line);
 	}
-#if ALLOC_DEBUG > 1
+#if ALLOC_DEBUG > 2
 	info = addr - sizeof(*info);
 	info->tag = tag;
 #endif

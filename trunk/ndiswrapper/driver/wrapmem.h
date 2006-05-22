@@ -15,19 +15,14 @@
 
 #ifndef _WRAPMEM_H_
 
-/* define ALLOC_INFO below to get information about memory used by
+/* define ALLOC_DEBUG below to get information about memory used by
  * both ndiswrapper and Windows driver by reading
  * /proc/net/ndiswrapper/debug; this will also show memory leaks
  * (memory allocated but not freed) when ndiswrapper module is
- * unloaded. To identify leaks, define ALLOC_DEBUG, which will show
- * individual allocations that are not being freed */
+ * unloaded. To identify leaks, define ALLOC_DEBUG to 2, which will
+ * show individual allocations that are not being freed */
 
-#define ALLOC_INFO 1
-//#define ALLOC_DEBUG 1
-
-#ifdef ALLOC_DEBUG
-#define ALLOC_INFO 1
-#endif
+#define ALLOC_DEBUG 1
 
 enum alloc_type { ALLOC_TYPE_ATOMIC, ALLOC_TYPE_NON_ATOMIC,
 		  ALLOC_TYPE_VMALLOC, ALLOC_TYPE_SLACK, ALLOC_TYPE_MAX };
@@ -38,15 +33,13 @@ void *slack_kmalloc(size_t size);
 void slack_kfree(void *ptr);
 void wrapmem_info(void);
 
-#ifdef ALLOC_INFO
+#ifdef ALLOC_DEBUG
 void *wrap_kmalloc(size_t size, unsigned int flags, const char *file, int line);
 void wrap_kfree(void *ptr);
 void *wrap_vmalloc(unsigned long size, const char *file, int line);
 void *wrap__vmalloc(unsigned long size, unsigned int flags, pgprot_t prot,
 		    const char *file, int line);
 void wrap_vfree(void *ptr);
-void *wrap_ExAllocatePoolWithTag(enum pool_type pool_type, SIZE_T size,
-				 ULONG tag, const char *file, int line);
 int alloc_size(enum alloc_type type);
 
 #ifndef _WRAPMEM_C_
@@ -63,7 +56,9 @@ int alloc_size(enum alloc_type type);
 	wrap__vmalloc(size, flags, prot, __FILE__, __LINE__)
 #define kfree(ptr) wrap_kfree(ptr)
 #define vfree(ptr) wrap_vfree(ptr)
-#ifdef ALLOC_DEBUG
+#if defined(ALLOC_DEBUG) && ALLOC_DEBUG > 1
+void *wrap_ExAllocatePoolWithTag(enum pool_type pool_type, SIZE_T size,
+				 ULONG tag, const char *file, int line);
 #define ExAllocatePoolWithTag(pool_type, size, tag)			\
 	wrap_ExAllocatePoolWithTag(pool_type, size, tag, __FILE__, __LINE__)
 #endif

@@ -1604,12 +1604,9 @@ wstdcall void WRAP_EXPORT(NdisSend)
 
 	miniport = &wnd->wd->driver->ndis_driver->miniport;
 	if (miniport->send_packets) {
-		struct ndis_packet *packets[1];
-
-		packets[0] = packet;
 		irql = raise_irql(DISPATCH_LEVEL);
 		LIN2WIN3(miniport->send_packets, wnd->nmb->adapter_ctx,
-			 packets, 1);
+			 &packet, 1);
 		lower_irql(irql);
 		if (!(wnd->attributes & NDIS_ATTRIBUTE_DESERIALIZE)) {
 			struct ndis_packet_oob_data *oob_data;

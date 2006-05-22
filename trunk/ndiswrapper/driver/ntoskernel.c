@@ -1179,7 +1179,7 @@ wstdcall void WRAP_EXPORT(ExDeleteNPagedLookasideList)
 	TRACEEXIT3(return);
 }
 
-#ifdef ALLOC_DEBUG
+#if defined(ALLOC_DEBUG) && ALLOC_DEBUG > 1
 #define ExAllocatePoolWithTag(pool_type, size, tag)			\
 	wrap_ExAllocatePoolWithTag(pool_type, size, tag, __FILE__, __LINE__)
 #endif
