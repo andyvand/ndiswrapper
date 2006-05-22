@@ -656,7 +656,7 @@ wstdcall UCHAR READ_PORT_UCHAR(ULONG_PTR port);
 #undef ExAllocatePoolWithTag
 wstdcall void *ExAllocatePoolWithTag(enum pool_type pool_type, SIZE_T size,
 				    ULONG tag);
-#ifdef ALLOC_DEBUG
+#if defined(ALLOC_DEBUG) && ALLOC_DEBUG > 1
 #define ExAllocatePoolWithTag(pool_type, size, tag)			\
 	wrap_ExAllocatePoolWithTag(pool_type, size, tag, __FILE__, __LINE__)
 #endif
