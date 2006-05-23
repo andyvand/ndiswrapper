@@ -270,7 +270,7 @@ static NDIS_STATUS miniport_init(struct wrap_ndis_device *wnd)
 		wnd->pm_capa = TRUE;
 	else
 		wnd->pm_capa = FALSE;
-	DBGTRACE1("%d, %d", pnp_capa.wakeup_capa.min_magic_packet_wakeup);
+	DBGTRACE1("%d", pnp_capa.wakeup_capa.min_magic_packet_wakeup);
 	hangcheck_add(wnd);
 	TRACEEXIT1(return NDIS_STATUS_SUCCESS);
 }

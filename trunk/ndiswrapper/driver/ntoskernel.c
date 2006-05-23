@@ -1625,7 +1625,7 @@ wstdcall void WRAP_EXPORT(KeClearEvent)
 	(struct nt_event *nt_event)
 {
 	EVENTENTER("event = %p", nt_event);
-	xchg(&nt_event->dh.signal_state, 0);
+	(void)xchg(&nt_event->dh.signal_state, 0);
 	EVENTEXIT(return);
 }
 

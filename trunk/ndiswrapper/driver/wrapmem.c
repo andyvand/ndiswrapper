@@ -25,7 +25,7 @@ struct slack_alloc_info {
 struct alloc_info {
 	enum alloc_type type;
 	size_t size;
-#ifdef ALLOC_DEBUG
+#if defined(ALLOC_DEBUG) && ALLOC_DEBUG > 1
 	struct nt_list list;
 	const char *file;
 	int line;
@@ -266,7 +266,7 @@ void wrap_vfree(void *ptr)
 	struct alloc_info *info;
 	info = ptr - sizeof(*info);
 	atomic_sub(info->size, &alloc_sizes[info->type]);
-#ifdef ALLOC_DEBUG
+#if ALLOC_DEBUG > 1
 	nt_spin_lock(&alloc_lock);
 	RemoveEntryList(&info->list);
 	nt_spin_unlock(&alloc_lock);
