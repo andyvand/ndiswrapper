@@ -937,7 +937,6 @@ static void set_multicast_list(struct wrap_ndis_device *wnd)
 static void link_status_handler(struct wrap_ndis_device *wnd)
 {
 	struct ndis_assoc_info *ndis_assoc_info;
-	unsigned char *assoc_info;
 	union iwreq_data wrqu;
 	NDIS_STATUS res;
 	const int assoc_size = sizeof(*ndis_assoc_info) + IW_CUSTOM_MAX + 32;
@@ -959,19 +958,18 @@ static void link_status_handler(struct wrap_ndis_device *wnd)
 	}
 
 	wnd->tx_ok = 1;
-	assoc_info = kmalloc(assoc_size, GFP_KERNEL);
-	if (!assoc_info) {
+	ndis_assoc_info = kmalloc(assoc_size, GFP_KERNEL);
+	if (!ndis_assoc_info) {
 		ERROR("couldn't allocate memory");
 		TRACEEXIT2(return);
 	}
-	memset(assoc_info, 0, assoc_size);
+	memset(ndis_assoc_info, 0, assoc_size);
 
-	ndis_assoc_info = (struct ndis_assoc_info *)assoc_info;
 	res = miniport_query_info(wnd, OID_802_11_ASSOCIATION_INFORMATION,
-				  assoc_info, assoc_size);
+				  ndis_assoc_info, assoc_size);
 	if (res) {
 		DBGTRACE2("query assoc_info failed (%08X)", res);
-		kfree(assoc_info);
+		kfree(ndis_assoc_info);
 		TRACEEXIT2(return);
 	}
 
@@ -979,11 +977,11 @@ static void link_status_handler(struct wrap_ndis_device *wnd)
 	memset(&wrqu, 0, sizeof(wrqu));
 	wrqu.data.length = ndis_assoc_info->req_ie_length;
 	wireless_send_event(wnd->net_dev, IWEVASSOCREQIE, &wrqu,
-			    ((char *) ndis_assoc_info) +
+			    ((char *)ndis_assoc_info) +
 			    ndis_assoc_info->offset_req_ies);
 	wrqu.data.length = ndis_assoc_info->resp_ie_length;
 	wireless_send_event(wnd->net_dev, IWEVASSOCRESPIE, &wrqu,
-			    ((char *) ndis_assoc_info) +
+			    ((char *)ndis_assoc_info) +
 			    ndis_assoc_info->offset_resp_ies);
 #else
 	/* we need 28 extra bytes for the format strings */
@@ -993,26 +991,24 @@ static void link_status_handler(struct wrap_ndis_device *wnd)
 			"association information dropped",
 			ndis_assoc_info->req_ie_length,
 			ndis_assoc_info->resp_ie_length);
-		kfree(assoc_info);
+		kfree(ndis_assoc_info);
 		TRACEEXIT2(return);
 	}
 
 	wpa_assoc_info = kmalloc(IW_CUSTOM_MAX, GFP_KERNEL);
 	if (!wpa_assoc_info) {
 		ERROR("couldn't allocate memory");
-		kfree(assoc_info);
+		kfree(ndis_assoc_info);
 		TRACEEXIT2(return);
 	}
 	p = wpa_assoc_info;
 	p += sprintf(p, "ASSOCINFO(ReqIEs=");
-	ies = ((char *)ndis_assoc_info) +
-		ndis_assoc_info->offset_req_ies;
+	ies = ((char *)ndis_assoc_info) + ndis_assoc_info->offset_req_ies;
 	for (i = 0; i < ndis_assoc_info->req_ie_length; i++)
 		p += sprintf(p, "%02x", ies[i]);
 
 	p += sprintf(p, " RespIEs=");
-	ies = ((char *)ndis_assoc_info) +
-		ndis_assoc_info->offset_resp_ies;
+	ies = ((char *)ndis_assoc_info) + ndis_assoc_info->offset_resp_ies;
 	for (i = 0; i < ndis_assoc_info->resp_ie_length; i++)
 		p += sprintf(p, "%02x", ies[i]);
 
@@ -1024,7 +1020,7 @@ static void link_status_handler(struct wrap_ndis_device *wnd)
 
 	kfree(wpa_assoc_info);
 #endif
-	kfree(assoc_info);
+	kfree(ndis_assoc_info);
 
 	get_ap_address(wnd, (char *)&wrqu.ap_addr.sa_data);
 	wrqu.ap_addr.sa_family = ARPHRD_ETHER;

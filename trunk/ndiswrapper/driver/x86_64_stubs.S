@@ -64,10 +64,9 @@ In Linux it should look like:
 # 0x0010 arg8
 # 0x0008 arg7
 # 0x0000 ret
- 
 
 */
-	
+
 #
 # setup for Windows to Linux function call
 #
@@ -106,7 +105,7 @@ _win_to_lin:
 	mov     %rsp, %rdi	# = destination
 	mov     $5, %rcx	# 5 arguments
 	rep     movsq
-	
+
 	mov	%rax, %rdi	# arg1
 	mov	%rdx, %rsi	# arg2
 	mov	%r8, %rdx	# arg3
@@ -136,7 +135,7 @@ _win_to_lin:
 	.globl lin_to_win4
 	.globl lin_to_win5
 	.globl lin_to_win6
-	
+
 #
 # The linux to windows functions are called with argument 1
 # being the Windows function to call.
@@ -196,5 +195,3 @@ lin_to_win6:
 	call	*%rdi		# call Windows function
 	add	$0x30, %rsp
 	ret
-
-
