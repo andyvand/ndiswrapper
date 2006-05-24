@@ -383,7 +383,7 @@ static int iw_get_tx_power(struct net_device *dev,
 	TRACEENTER2("");
 	res = miniport_query_info(wnd, OID_802_11_TX_POWER_LEVEL,
 				  &ndis_power, sizeof(ndis_power));
-	if (res)
+	if (res == NDIS_STATUS_NOT_SUPPORTED)
 		return -EOPNOTSUPP;
 	wrqu->txpower.flags = IW_TXPOW_MWATT;
 	wrqu->txpower.disabled = 0;
@@ -432,7 +432,7 @@ static int iw_set_tx_power(struct net_device *dev,
 	res = miniport_set_info(wnd, OID_802_11_TX_POWER_LEVEL,
 				&ndis_power, sizeof(ndis_power));
 	if (res)
-		return -EOPNOTSUPP;
+		return -EINVAL;
 	return 0;
 }
 
@@ -542,11 +542,10 @@ static int iw_set_rts_threshold(struct net_device *dev,
 	threshold = wrqu->rts.value;
 	res = miniport_set_info(wnd, OID_802_11_RTS_THRESHOLD,
 				&threshold, sizeof(threshold));
-	if (res == NDIS_STATUS_INVALID_DATA)
-		return -EINVAL;
-	if (res)
+	if (res == NDIS_STATUS_NOT_SUPPORTED)
 		return -EOPNOTSUPP;
-
+	if (res)
+		return -EINVAL;
 	return 0;
 }
 
@@ -580,10 +579,10 @@ static int iw_set_frag_threshold(struct net_device *dev,
 	threshold = wrqu->frag.value;
 	res = miniport_set_info(wnd, OID_802_11_FRAGMENTATION_THRESHOLD,
 				&threshold, sizeof(threshold));
-	if (res == NDIS_STATUS_INVALID_DATA)
-		return -EINVAL;
-	if (res)
+	if (res == NDIS_STATUS_NOT_SUPPORTED)
 		return -EOPNOTSUPP;
+	if (res)
+		return -EINVAL;
 	return 0;
 }
 
@@ -1491,6 +1490,11 @@ int set_priv_filter(struct wrap_ndis_device *wnd, int flags)
 
 	TRACEENTER2("filter: %d", flags);
 	res = miniport_set_int(wnd, OID_802_11_PRIVACY_FILTER, flags);
+	if (res == NDIS_STATUS_NOT_SUPPORTED) {
+		DBGTRACE1("setting privacy filter to %d failed (%08X)",
+			  flags, res);
+		return -EOPNOTSUPP;
+	}
 	if (res) {
 		WARNING("setting privacy filter to %d failed (%08X)",
 			flags, res);
