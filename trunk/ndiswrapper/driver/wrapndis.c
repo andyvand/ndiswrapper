@@ -288,8 +288,8 @@ static void miniport_halt(struct wrap_ndis_device *wnd)
 	struct miniport_char *miniport;
 
 	TRACEENTER1("%p", wnd);
-	/* if device is suspended, but resume failed, ndis_comm_mutex
-	 * is already locked */
+	/* semaphores may already be locked, e.g., during suspend or
+	 * if device is suspended, but resume failed */
 	down_trylock(&wnd->ndis_comm_mutex);
 	down_trylock(&wnd->tx_ring_mutex);
 	if (test_bit(HW_INITIALIZED, &wnd->hw_status)) {
@@ -1108,8 +1108,7 @@ static void wrap_ndis_worker(void *param)
 
 	DBGTRACE2("%lu", wnd->wrap_ndis_pending_work);
 
-	if (test_bit(SHUTDOWN, &wnd->wrap_ndis_pending_work) ||
-	    !test_bit(HW_INITIALIZED, &wnd->hw_status))
+	if (test_bit(SHUTDOWN, &wnd->wrap_ndis_pending_work))
 		TRACEEXIT3(return);
 
 	if (test_and_clear_bit(SET_MULTICAST_LIST, &wnd->wrap_ndis_pending_work))

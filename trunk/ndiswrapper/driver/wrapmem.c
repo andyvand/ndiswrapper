@@ -22,10 +22,15 @@ struct slack_alloc_info {
 	size_t size;
 };
 
+static struct nt_list allocs;
+static struct nt_list slack_allocs;
+static NT_SPIN_LOCK alloc_lock;
+
+#if defined(ALLOC_DEBUG)
 struct alloc_info {
 	enum alloc_type type;
 	size_t size;
-#if defined(ALLOC_DEBUG) && ALLOC_DEBUG > 1
+#if ALLOC_DEBUG > 1
 	struct nt_list list;
 	const char *file;
 	int line;
@@ -35,11 +40,6 @@ struct alloc_info {
 #endif
 };
 
-static struct nt_list allocs;
-static struct nt_list slack_allocs;
-static NT_SPIN_LOCK alloc_lock;
-
-#ifdef ALLOC_DEBUG
 static atomic_t alloc_sizes[ALLOC_TYPE_MAX];
 #endif
 
@@ -74,9 +74,8 @@ void wrapmem_exit(void)
 		if (n)
 			WARNING("%d bytes of memory in %d leaking", n, type);
 	}	
-#endif
 
-#if defined(ALLOC_DEBUG) && ALLOC_DEBUG > 1
+#if ALLOC_DEBUG > 1
 	nt_spin_lock(&alloc_lock);
 	while ((ent = RemoveHeadList(&allocs))) {
 		struct alloc_info *info;
@@ -102,6 +101,7 @@ void wrapmem_exit(void)
 
 	}
 	nt_spin_unlock(&alloc_lock);
+#endif
 #endif
 	return;
 }
@@ -314,5 +314,4 @@ int alloc_size(enum alloc_type type)
 		return -EINVAL;
 }
 
-#endif
-
+#endif // ALLOC_DEBUG
