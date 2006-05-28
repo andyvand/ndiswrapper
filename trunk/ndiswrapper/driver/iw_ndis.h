@@ -53,6 +53,8 @@ struct ndis_variable_ies {
 	UCHAR data[1];
 };
 
+enum ndis_reload_defaults { Ndis802_11ReloadWEPKeys };
+
 struct ndis_assoc_info {
 	ULONG length;
 	USHORT req_ies;
@@ -161,8 +163,8 @@ int set_essid(struct wrap_ndis_device *wnd, const char *ssid, int ssid_len);
 int set_infra_mode(struct wrap_ndis_device *wnd,
 		   enum network_infrastructure mode);
 int get_ap_address(struct wrap_ndis_device *wnd, mac_address mac);
-int set_auth_mode(struct wrap_ndis_device *wnd, int auth_mode);
-int set_encr_mode(struct wrap_ndis_device *wnd, int encr_mode);
+int set_auth_mode(struct wrap_ndis_device *wnd, ULONG auth_mode);
+int set_encr_mode(struct wrap_ndis_device *wnd, ULONG encr_mode);
 int get_auth_mode(struct wrap_ndis_device *wnd);
 int get_encr_mode(struct wrap_ndis_device *wnd);
 int set_priv_filter(struct wrap_ndis_device *wnd, int flags);
@@ -175,6 +177,7 @@ int set_scan(struct wrap_ndis_device *wnd);
 #define PRIV_MEDIA_STREAM_MODE 		SIOCIWFIRSTPRIV+20
 #define PRIV_SET_ENCR_MODE		SIOCIWFIRSTPRIV+21
 #define PRIV_SET_AUTH_MODE		SIOCIWFIRSTPRIV+22
+#define PRIV_RELOAD_DEFAULTS		SIOCIWFIRSTPRIV+23
 
 #define RSN_INFO_ELEM		0x30
 
