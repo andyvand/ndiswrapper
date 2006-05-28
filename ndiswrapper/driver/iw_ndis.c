@@ -55,10 +55,11 @@ int set_essid(struct wrap_ndis_device *wnd, const char *ssid, int ssid_len)
 	}
 
 	res = miniport_set_info(wnd, OID_802_11_SSID, &req, sizeof(req));
-	if (res)
+	if (res) {
 		WARNING("setting essid failed (%08X)", res);
-	else
-		memcpy(&wnd->essid, &req, sizeof(req));
+		TRACEEXIT2(return -EINVAL);
+	}
+	memcpy(&wnd->essid, &req, sizeof(req));
 	TRACEEXIT2(return 0);
 }
 
@@ -383,7 +384,7 @@ static int iw_get_tx_power(struct net_device *dev,
 	TRACEENTER2("");
 	res = miniport_query_info(wnd, OID_802_11_TX_POWER_LEVEL,
 				  &ndis_power, sizeof(ndis_power));
-	if (res == NDIS_STATUS_NOT_SUPPORTED)
+	if (res)
 		return -EOPNOTSUPP;
 	wrqu->txpower.flags = IW_TXPOW_MWATT;
 	wrqu->txpower.disabled = 0;
@@ -432,7 +433,7 @@ static int iw_set_tx_power(struct net_device *dev,
 	res = miniport_set_info(wnd, OID_802_11_TX_POWER_LEVEL,
 				&ndis_power, sizeof(ndis_power));
 	if (res)
-		return -EINVAL;
+		return -EOPNOTSUPP;
 	return 0;
 }
 
@@ -542,10 +543,11 @@ static int iw_set_rts_threshold(struct net_device *dev,
 	threshold = wrqu->rts.value;
 	res = miniport_set_info(wnd, OID_802_11_RTS_THRESHOLD,
 				&threshold, sizeof(threshold));
-	if (res == NDIS_STATUS_NOT_SUPPORTED)
-		return -EOPNOTSUPP;
-	if (res)
+	if (res == NDIS_STATUS_INVALID_DATA)
 		return -EINVAL;
+	if (res)
+		return -EOPNOTSUPP;
+
 	return 0;
 }
 
@@ -579,10 +581,10 @@ static int iw_set_frag_threshold(struct net_device *dev,
 	threshold = wrqu->frag.value;
 	res = miniport_set_info(wnd, OID_802_11_FRAGMENTATION_THRESHOLD,
 				&threshold, sizeof(threshold));
-	if (res == NDIS_STATUS_NOT_SUPPORTED)
-		return -EOPNOTSUPP;
-	if (res)
+	if (res == NDIS_STATUS_INVALID_DATA)
 		return -EINVAL;
+	if (res)
+		return -EOPNOTSUPP;
 	return 0;
 }
 
@@ -640,65 +642,72 @@ static int iw_set_ap_address(struct net_device *dev,
 	TRACEEXIT2(return 0);
 }
 
-int set_auth_mode(struct wrap_ndis_device *wnd, int auth_mode)
+int set_auth_mode(struct wrap_ndis_device *wnd, ULONG auth_mode)
 {
 	NDIS_STATUS res;
 
 	TRACEENTER2("%d", auth_mode);
 	res = miniport_set_int(wnd, OID_802_11_AUTHENTICATION_MODE, auth_mode);
-	if (res == NDIS_STATUS_INVALID_DATA) {
+	if (res) {
 		WARNING("setting auth mode to %d failed (%08X)",
 			auth_mode, res);
-		TRACEEXIT2(return -EINVAL);
-	}
-	if (res)
+		if (res == NDIS_STATUS_INVALID_DATA)
+			TRACEEXIT2(return -EINVAL);
 		return -EOPNOTSUPP;
+	}
 	wnd->auth_mode = auth_mode;
 	TRACEEXIT2(return 0);
 }
 
 int get_auth_mode(struct wrap_ndis_device *wnd)
 {
-	int i;
+	ULONG mode;
+	NDIS_STATUS res;
 
 	TRACEENTER2("");
-	if (miniport_query_int(wnd, OID_802_11_AUTHENTICATION_MODE, &i))
-		TRACEEXIT2(return -EINVAL);
-	else
-		TRACEEXIT2(return i);
+	res = miniport_query_int(wnd, OID_802_11_AUTHENTICATION_MODE, &mode);
+	if (res) {
+		WARNING("getting authentication mode failed (%08X)", res);
+		TRACEEXIT2(return -EOPNOTSUPP);
+	} else
+		TRACEEXIT2(return mode);
 }
 
-int set_encr_mode(struct wrap_ndis_device *wnd, int encr_mode)
+int set_encr_mode(struct wrap_ndis_device *wnd, ULONG encr_mode)
 {
 	NDIS_STATUS res;
 
 	TRACEENTER2("%d", encr_mode);
 	res = miniport_set_int(wnd, OID_802_11_ENCRYPTION_STATUS, encr_mode);
-	if (res == NDIS_STATUS_INVALID_DATA)
-		TRACEEXIT2(return -EINVAL);
-	if (res)
+	if (res) {
+		WARNING("setting encryption status failed (%08X)", res);
+		if (res == NDIS_STATUS_INVALID_DATA)
+			TRACEEXIT2(return -EINVAL);
 		return -EOPNOTSUPP;
+	}
 	wnd->encr_mode = encr_mode;
 	TRACEEXIT2(return 0);
 }
 
 int get_encr_mode(struct wrap_ndis_device *wnd)
 {
-	int i;
+	ULONG mode;
+	NDIS_STATUS res;
 
 	TRACEENTER2("");
-	if (miniport_query_int(wnd, OID_802_11_ENCRYPTION_STATUS, &i))
-		TRACEEXIT2(return -EINVAL);
-	else
-		TRACEEXIT2(return i);
+	res = miniport_query_int(wnd, OID_802_11_ENCRYPTION_STATUS, &mode);
+	if (res) {
+		WARNING("getting encryption status failed (%08X)", res);
+		TRACEEXIT2(return -EOPNOTSUPP);
+	} else
+		TRACEEXIT2(return mode);
 }
 
 static int iw_get_encr(struct net_device *dev, struct iw_request_info *info,
 		       union iwreq_data *wrqu, char *extra)
 {
 	struct wrap_ndis_device *wnd = netdev_priv(dev);
-	NDIS_STATUS res;
-	int index, status;
+	int index, mode;
 	struct encr_info *encr_info = &wnd->encr_info;
 
 	TRACEENTER2("wnd = %p", wnd);
@@ -731,20 +740,17 @@ static int iw_get_encr(struct net_device *dev, struct iw_request_info *info,
 	}
 
 	/* transmit key */
-	res = miniport_query_int(wnd, OID_802_11_ENCRYPTION_STATUS,
-				 &status);
-	if (res) {
-		WARNING("getting encryption status failed (%08X)", res);
+	mode = get_encr_mode(wnd);
+	if (mode < 0)
 		TRACEEXIT2(return -EOPNOTSUPP);
-	}
 
-	if (status == Ndis802_11EncryptionDisabled ||
-	    status == Ndis802_11EncryptionNotSupported)
+	if (mode == Ndis802_11EncryptionDisabled ||
+	    mode == Ndis802_11EncryptionNotSupported)
 		wrqu->data.flags |= IW_ENCODE_DISABLED;
 	else {
-		if (status == Ndis802_11Encryption1KeyAbsent ||
-		    status == Ndis802_11Encryption2KeyAbsent ||
-		    status == Ndis802_11Encryption3KeyAbsent)
+		if (mode == Ndis802_11Encryption1KeyAbsent ||
+		    mode == Ndis802_11Encryption2KeyAbsent ||
+		    mode == Ndis802_11Encryption3KeyAbsent)
 			wrqu->data.flags |= IW_ENCODE_NOKEY;
 		else {
 			wrqu->data.flags |= IW_ENCODE_ENABLED;
@@ -754,15 +760,13 @@ static int iw_get_encr(struct net_device *dev, struct iw_request_info *info,
 			       encr_info->keys[index].length);
 		}
 	}
-	res = miniport_query_int(wnd, OID_802_11_AUTHENTICATION_MODE,
-				 &status);
-	if (res) {
-		WARNING("getting authentication mode failed (%08X)", res);
+	mode = get_auth_mode(wnd);
+	if (mode < 0)
 		TRACEEXIT2(return -EOPNOTSUPP);
-	}
-	if (status == Ndis802_11AuthModeOpen)
+
+	if (mode == Ndis802_11AuthModeOpen)
 		wrqu->data.flags |= IW_ENCODE_OPEN;
-	else if (status == Ndis802_11AuthModeAutoSwitch)
+	else if (mode == Ndis802_11AuthModeAutoSwitch)
 		wrqu->data.flags |= IW_ENCODE_RESTRICTED;
 	else // Ndis802_11AuthModeAutoSwitch, Ndis802_11AuthModeWPA etc.
 		wrqu->data.flags |= IW_ENCODE_RESTRICTED;
@@ -1252,11 +1256,8 @@ static int iw_set_power_mode(struct net_device *dev,
 
 	res = miniport_set_info(wnd, OID_802_11_POWER_MODE,
 				&power_mode, sizeof(power_mode));
-	if (res) {
+	if (res)
 		WARNING("setting power mode failed (%08X)", res);
-		return -EINVAL;
-	}
-
 	return 0;
 }
 
@@ -1490,16 +1491,9 @@ int set_priv_filter(struct wrap_ndis_device *wnd, int flags)
 
 	TRACEENTER2("filter: %d", flags);
 	res = miniport_set_int(wnd, OID_802_11_PRIVACY_FILTER, flags);
-	if (res == NDIS_STATUS_NOT_SUPPORTED) {
-		DBGTRACE1("setting privacy filter to %d failed (%08X)",
+	if (res)
+		DBGTRACE2("setting privacy filter to %d failed (%08X)",
 			  flags, res);
-		return -EOPNOTSUPP;
-	}
-	if (res) {
-		WARNING("setting privacy filter to %d failed (%08X)",
-			flags, res);
-		TRACEEXIT2(return -EINVAL);
-	}
 	TRACEEXIT2(return 0);
 }
 
@@ -1811,7 +1805,7 @@ static int priv_reset(struct net_device *dev, struct iw_request_info *info,
 	TRACEENTER2("");
 	res = miniport_reset(netdev_priv(dev));
 	if (res) {
-		WARNING("reset returns %08X", res);
+		WARNING("reset failed: %08X", res);
 		return -EOPNOTSUPP;
 	}
 	return 0;
@@ -1829,7 +1823,7 @@ static int priv_usb_reset(struct net_device *dev, struct iw_request_info *info,
 #if defined(CONFIG_USB) && LINUX_VERSION_CODE > KERNEL_VERSION(2,6,0)
 	res = usb_reset_configuration(wnd->wd->usb.udev);
 	if (res) {
-		WARNING("reset returns %08X", res);
+		WARNING("reset failed: %08X", res);
 		return -EOPNOTSUPP;
 	}
 #endif
@@ -1941,6 +1935,22 @@ static int priv_set_auth_mode(struct net_device *dev,
 	if (res < 0)
 		TRACEEXIT2(return -1);
 	TRACEEXIT2(return 0);
+}
+
+static int priv_reload_defaults(struct net_device *dev,
+				struct iw_request_info *info,
+				union iwreq_data *wrqu, char *extra)
+{
+	struct wrap_ndis_device *wnd = netdev_priv(dev);
+	int res;
+	TRACEENTER2("");
+	res = miniport_set_int(wnd, OID_802_11_RELOAD_DEFAULTS,
+			       Ndis802_11ReloadWEPKeys);
+	if (res) {
+		WARNING("reloading defaults failed: %08X", res);
+		return -EOPNOTSUPP;
+	}
+	return 0;
 }
 
 #if WIRELESS_EXT <= 17
@@ -2335,6 +2345,7 @@ static const struct iw_priv_args priv_args[] = {
 	 "set_encr_mode"},
 	{PRIV_SET_AUTH_MODE, IW_PRIV_TYPE_INT | IW_PRIV_SIZE_FIXED | 1, 0,
 	 "set_auth_mode"},
+	{PRIV_RELOAD_DEFAULTS, 0, 0, "reload_defaults"},
 };
 
 static const iw_handler priv_handler[] = {
@@ -2358,6 +2369,7 @@ static const iw_handler priv_handler[] = {
 	[PRIV_MEDIA_STREAM_MODE	- SIOCIWFIRSTPRIV] = priv_media_stream_mode,
 	[PRIV_SET_ENCR_MODE 	- SIOCIWFIRSTPRIV] = priv_set_encr_mode,
 	[PRIV_SET_AUTH_MODE 	- SIOCIWFIRSTPRIV] = priv_set_auth_mode,
+	[PRIV_RELOAD_DEFAULTS 	- SIOCIWFIRSTPRIV] = priv_reload_defaults,
 };
 
 const struct iw_handler_def ndis_handler_def = {

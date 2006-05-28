@@ -506,9 +506,6 @@ struct pe_image {
 	IMAGE_OPTIONAL_HEADER *opt_hdr;
 };
 
-extern NT_SPIN_LOCK atomic_lock;
-extern NT_SPIN_LOCK cancel_lock;
-
 struct wrap_timer {
 	long repeat;
 	struct nt_list list;
