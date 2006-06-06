@@ -4,7 +4,7 @@ distdir=ndiswrapper-${DRIVER_VERSION}
 distarchive=${distdir}.tar.gz
 
 DISTFILES=AUTHORS ChangeLog INSTALL Makefile README ndiswrapper.spec version ndiswrapper.8
-DIST_SUBDIRS=utils driver debian
+DIST_SUBDIRS=utils driver
 
 DESTDIR = 
 mandir = $(DESTDIR)$(shell [ -d /usr/man/man8 ] && echo /usr/man || echo /usr/share/man )
@@ -29,7 +29,7 @@ clean:
 	make -C driver clean
 	make -C utils clean
 	rm -f *~
-	rm -fr ${distdir} ${distdir}.tar.gz *.deb patch-stamp
+	rm -fr ${distdir} ${distdir}.tar.gz patch-stamp
 
 distclean: clean
 	make -C driver distclean
@@ -74,7 +74,7 @@ dist:
 	done
 	make -C driver distdir=../${distdir}/driver dist
 	make -C utils distdir=../${distdir}/utils dist
-	make -C debian distdir=../${distdir}/debian dist
+
 	# Update version in dist rpm spec file - don't crash if it fails
 	-sed -i "s/\%define\s\+ndiswrapper_version\s\+[^\}]\+\}/%define ndiswrapper_version $(DRIVER_VERSION)\}/" $(distdir)/ndiswrapper.spec
 	tar cfz ${distarchive} ${distdir}
@@ -82,10 +82,3 @@ dist:
 rpm: dist ndiswrapper.spec
 	rpmbuild -ta $(distarchive) --define="ndiswrapper_version $(DRIVER_VERSION)"
 
-deb:
-	@if [ -d debian ]; then \
-		echo -e "ndiswrapper (${DRIVER_VERSION}) unstable; urgency=low\n\n  * see ChangeLog for details\n\n -- NdisWrapper Team <ndiswrapper-general@lists.sourceforge.net>  `date '+%a, %d %b %Y %H:%M:%S %z'`" > debian/changelog; \
-		fakeroot make -f debian/rules binary; \
-	else \
-		 echo "Huh?"; \
-	fi

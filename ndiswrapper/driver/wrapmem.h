@@ -22,9 +22,9 @@
  * unloaded. To identify leaks, define ALLOC_DEBUG to 2, which will
  * show individual allocations that are not being freed */
 
-#ifndef ALLOC_DEBUG
-#define ALLOC_DEBUG 1
-#endif
+//#ifndef ALLOC_DEBUG
+//#define ALLOC_DEBUG 1
+//#endif
 
 enum alloc_type { ALLOC_TYPE_ATOMIC, ALLOC_TYPE_NON_ATOMIC,
 		  ALLOC_TYPE_VMALLOC, ALLOC_TYPE_SLACK, ALLOC_TYPE_MAX };

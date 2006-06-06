@@ -969,8 +969,7 @@ static void ntos_work_item_worker(void *data)
 		nt_spin_unlock_irql(&ntos_work_item_list_lock, irql);
 		if (!cur)
 			break;
-		ntos_work_item = container_of(cur, struct ntos_work_item,
-					      list);
+		ntos_work_item = container_of(cur, struct ntos_work_item, list);
 		func = ntos_work_item->func;
 		WORKTRACE("%p: executing %p, %p, %p", current, func,
 			  ntos_work_item->arg1, ntos_work_item->arg2);
