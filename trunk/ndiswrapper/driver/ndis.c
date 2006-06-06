@@ -2615,17 +2615,11 @@ wstdcall ULONG WRAP_EXPORT(NdisWritePcmciaAttributeMemory)
 
  /* Unimplemented...*/
 wstdcall void WRAP_EXPORT(NdisMSetAttributes)(void){UNIMPL();}
-wstdcall void WRAP_EXPORT(EthFilterDprIndicateReceiveComplete)
-	(void){UNIMPL();}
+wstdcall void WRAP_EXPORT(EthFilterDprIndicateReceiveComplete)(void){UNIMPL();}
 wstdcall void WRAP_EXPORT(EthFilterDprIndicateReceive)(void){UNIMPL();}
-wstdcall void WRAP_EXPORT(NdisMRemoveMiniport)(void) { UNIMPL(); }
+wstdcall void WRAP_EXPORT(NdisMRemoveMiniport)(void){UNIMPL();}
 wstdcall void WRAP_EXPORT(NdisMCoActivateVcComplete)(void){UNIMPL();}
-
-wstdcall void WRAP_EXPORT(NdisMCoDeactivateVcComplete)(void)
-{
-	UNIMPL();
-	return;
-}
+wstdcall void WRAP_EXPORT(NdisMCoDeactivateVcComplete)(void){UNIMPL();}
 
 #include "ndis_exports.h"
 

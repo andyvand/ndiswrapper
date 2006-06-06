@@ -1,10 +1,11 @@
-Version 1.17 2006-XX-XX
+Version 1.17 2006-06-04
 =======================
 * netpoll support added; with this netconsole can be used with ndiswrapper.
 * Suspend/resume improved: Until now devices are halted (which is similar to
   removing the device) during suspend and initialized during resume. Now,
   if a driver supports suspend and resume, that is used instead. With this,
   any wireless settings, such as encryption, may be preserved by the driver.
+* Support for RNDIS was broken in 1.16; they work now.
 
 Version 1.16 2006-05-06
 =======================
