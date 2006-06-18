@@ -959,7 +959,7 @@ struct kapc {
 #define IRP_ASSOCIATED_IRP		0x00000008
 
 enum urb_state {
-	URB_INVALID = 1, URB_ALLOCATED, URB_SUBMITTED, URB_CANCELED,
+	URB_INVALID = 1, URB_ALLOCATED, URB_SUBMITTED,
 	URB_COMPLETED, URB_FREE, URB_SUSPEND, URB_INT_UNLINKED };
 
 struct wrap_urb {
@@ -1012,7 +1012,7 @@ struct irp {
 		LARGE_INTEGER alloc_size;
 	} overlay;
 
-	void (*cancel_routine)(struct device_object *, struct irp *) wstdcall;
+	int (*cancel_routine)(struct device_object *, struct irp *) wstdcall;
 	void *user_buf;
 
 	union {
