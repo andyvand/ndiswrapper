@@ -127,8 +127,8 @@ static void usb_kill_urb(struct urb *urb)
 
 static struct nt_list wrap_urb_complete_list;
 static NT_SPIN_LOCK wrap_urb_complete_list_lock;
-static wstdcall int wrap_cancel_irp(struct device_object *dev_obj,
-				    struct irp *irp);
+static wstdcall void wrap_cancel_irp(struct device_object *dev_obj,
+				     struct irp *irp);
 
 /* use tasklet instead worker to process completed urbs */
 #define USB_TASKLET 1
@@ -600,8 +600,8 @@ static void wrap_urb_complete_worker(void *dummy)
 
 /* called as Windows function, so call WIN2LIN2 before accessing
  * arguments */
-static wstdcall int wrap_cancel_irp(struct device_object *dev_obj,
-				    struct irp *irp)
+static wstdcall void wrap_cancel_irp(struct device_object *dev_obj,
+				     struct irp *irp)
 {
 	struct urb *urb;
 	int ret;
@@ -616,10 +616,12 @@ static wstdcall int wrap_cancel_irp(struct device_object *dev_obj,
 	if (ret == 0) {
 		USBTRACE("urb %p canceled", urb);
 		/* this IRP will be returned in urb's completion function */
-	} else
+	} else {
+		irp->cancel = FALSE;
 		ERROR("urb %p can't be canceld: %d", urb, irp->wrap_urb->state);
+	}
 	IoReleaseCancelSpinLock(irp->cancel_irql);
-	return ret;
+	return;
 }
 
 static USBD_STATUS wrap_bulk_or_intr_trans(struct irp *irp)
