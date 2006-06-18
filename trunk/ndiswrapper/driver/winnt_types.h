@@ -1012,7 +1012,7 @@ struct irp {
 		LARGE_INTEGER alloc_size;
 	} overlay;
 
-	int (*cancel_routine)(struct device_object *, struct irp *) wstdcall;
+	void (*cancel_routine)(struct device_object *, struct irp *) wstdcall;
 	void *user_buf;
 
 	union {
