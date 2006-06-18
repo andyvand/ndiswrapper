@@ -159,17 +159,18 @@ wstdcall BOOLEAN WRAP_EXPORT(IoCancelIrp)
 		return FALSE;
 	DUMP_IRP(irp);
 	IoAcquireCancelSpinLock(&irp->cancel_irql);
-	cancel_routine = irp->cancel_routine;
+	cancel_routine = xchg(&irp->cancel_routine, NULL);
 	IOTRACE("%p", cancel_routine);
-	irp->cancel_routine = NULL;
 	irp->cancel = TRUE;
 	if (cancel_routine) {
 		struct io_stack_location *irp_sl;
 		irp_sl = IoGetCurrentIrpStackLocation(irp);
 		IOTRACE("%p, %p", irp_sl, irp_sl->dev_obj);
 		/* cancel_routine will release the spin lock */
-		LIN2WIN2(cancel_routine, irp_sl->dev_obj, irp);
-		IOEXIT(return TRUE);
+		if (LIN2WIN2(cancel_routine, irp_sl->dev_obj, irp))
+			IOEXIT(return FALSE);
+		else
+			IOEXIT(return TRUE);
 	} else {
 		IOTRACE("irp %p not canceled", irp);
 		IoReleaseCancelSpinLock(irp->cancel_irql);

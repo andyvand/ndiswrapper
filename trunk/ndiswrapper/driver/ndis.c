@@ -1780,7 +1780,7 @@ static void ndis_irq_handler(unsigned long data)
 
 	miniport = &wnd->wd->driver->ndis_driver->miniport;
 	LIN2WIN1(miniport->handle_interrupt, wnd->nmb->adapter_ctx);
-	if (miniport->enable_interrupts)
+	if (!wnd->ndis_irq->req_isr && miniport->enable_interrupts)
 		LIN2WIN1(miniport->enable_interrupts, wnd->nmb->adapter_ctx);
 }
 
