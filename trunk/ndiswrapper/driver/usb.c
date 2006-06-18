@@ -569,22 +569,29 @@ static void wrap_urb_complete_worker(void *dummy)
 					       urb->transfer_buffer,
 					       urb->actual_length);
 			}
+			NT_URB_STATUS(nt_urb) =
+				wrap_urb_status(URB_STATUS(wrap_urb));
+			irp->io_status.status =
+				nt_urb_irp_status(NT_URB_STATUS(nt_urb));
 			break;
 		case -ENOENT:
 		case -ECONNRESET:
 			/* urb canceled */
 			irp->io_status.info = 0;
 			USBTRACE("urb %p canceled", urb);
+			NT_URB_STATUS(nt_urb) = USBD_STATUS_SUCCESS;
+			irp->io_status.status = STATUS_CANCELLED;
 			break;
 		default:
 			USBTRACE("irp: %p, urb: %p, status: %d",
 				 irp, urb, URB_STATUS(wrap_urb));
 			irp->io_status.info = 0;
+			NT_URB_STATUS(nt_urb) =
+				wrap_urb_status(URB_STATUS(wrap_urb));
+			irp->io_status.status =
+				nt_urb_irp_status(NT_URB_STATUS(nt_urb));
 			break;
 		}
-		NT_URB_STATUS(nt_urb) = wrap_urb_status(URB_STATUS(wrap_urb));
-		irp->io_status.status =
-			nt_urb_irp_status(NT_URB_STATUS(nt_urb));
 		wrap_free_urb(urb);
 		IoCompleteRequest(irp, IO_NO_INCREMENT);
 	}
