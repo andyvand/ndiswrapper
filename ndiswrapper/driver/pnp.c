@@ -652,20 +652,6 @@ void *wrap_pnp_start_usb_device(struct usb_device *udev,
 		    usb_id->bDeviceProtocol, usb_id->bInterfaceClass,
 		    usb_id->bDeviceProtocol, usb_id->bInterfaceClass,
 		    usb_id->bInterfaceSubClass, wd->usb.intf);
-	/* TI 4150 needs a full reset */
-	if (usb_id->idVendor == 0x057c && usb_id->idProduct == 0x5601 &&
-	    (xchg(&wd->usb.reset, 1) == 0)) {
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
-		usb_set_intfdata(intf, NULL);
-		ret = usb_reset_device(interface_to_usbdev(intf));
-#else
-		ret = usb_reset_device(udev);
-#endif
-		if (ret) {
-			WARNING("reset failed: %d", ret);
-			goto out;
-		}
-	}
 	/* USB device (e.g., RNDIS) may have multiple interfaces;
 	  initialize one interface only (is there a way to know which
 	  of these interfaces is for network?) */
@@ -674,18 +660,24 @@ void *wrap_pnp_start_usb_device(struct usb_device *udev,
 		usb_set_intfdata(intf, NULL);
 		ret = 0;
 	} else {
+		/* some devices (e.g., TI 4150, RNDIS) need full reset */
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
+		ret = usb_reset_device(interface_to_usbdev(intf));
+		if (ret)
+			WARNING("reset failed: %d", ret);
 		wd->usb.udev = interface_to_usbdev(intf);
 		usb_set_intfdata(intf, wd);
 		wd->usb.intf = intf;
 #else
+		ret = usb_reset_device(udev);
+		if (ret)
+			WARNING("reset failed: %d", ret);
 		wd->usb.udev = udev;
 		wd->usb.intf = usb_ifnum_to_if(udev, ifnum);
 #endif
 		ret = wrap_pnp_start_device(wd);
 	}
 
-out:
 	DBGTRACE2("ret: %d", ret);
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
 	if (ret) {
