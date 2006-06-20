@@ -1813,7 +1813,7 @@ static void ndis_irq_handler_shared(unsigned long data)
 irqreturn_t ndis_isr_shared(int irq, void *data, struct pt_regs *pt_regs)
 {
 	struct wrap_ndis_device *wnd = (struct wrap_ndis_device *)data;
-	int recognized, queue_handler;
+	BOOLEAN recognized, queue_handler;
 	struct miniport_char *miniport;
 
 	miniport = &wnd->wd->driver->ndis_driver->miniport;
@@ -1828,8 +1828,8 @@ irqreturn_t ndis_isr_shared(int irq, void *data, struct pt_regs *pt_regs)
 		if (queue_handler)
 			tasklet_schedule(&wnd->irq_tasklet);
 		return IRQ_HANDLED;
-	}
-	return IRQ_NONE;
+	} else
+		return IRQ_NONE;
 }
 
 wstdcall NDIS_STATUS WRAP_EXPORT(NdisMRegisterInterrupt)
