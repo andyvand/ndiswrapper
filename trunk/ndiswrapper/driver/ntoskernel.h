@@ -583,7 +583,6 @@ struct wrap_device {
 			struct usb_interface *intf;
 			int num_alloc_urbs;
 			struct nt_list wrap_urb_list;
-			u8 reset;
 		} usb;
 	};
 	struct wrap_ndis_device *wnd;

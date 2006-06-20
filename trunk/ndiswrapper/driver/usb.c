@@ -272,8 +272,7 @@ static void wrap_free_urb(struct urb *urb)
 	if (wrap_urb->flags & WRAP_URB_COPY_BUFFER) {
 		USBTRACE("freeing DMA buffer for URB: %p %p",
 			 urb, urb->transfer_buffer);
-		usb_buffer_free(irp->wd->usb.udev,
-				urb->transfer_buffer_length,
+		usb_buffer_free(irp->wd->usb.udev, urb->transfer_buffer_length,
 				urb->transfer_buffer, urb->transfer_dma);
 	}
 	if (urb->setup_packet)
@@ -1287,8 +1286,7 @@ wstdcall union nt_urb *WRAP_EXPORT(USBD_CreateConfigurationRequestEx)
 	intf = &select_conf->intf;
 	/* handle points to beginning of interface information */
 	select_conf->handle = intf;
-	for (n = 0; n < config->bNumInterfaces && intf_list[n].intf_desc;
-	     n++) {
+	for (n = 0; n < config->bNumInterfaces && intf_list[n].intf_desc; n++) {
 		/* initialize 'intf' fields in intf_list so they point
 		 * to appropriate entry; these may be read/written by
 		 * driver after this function returns */
