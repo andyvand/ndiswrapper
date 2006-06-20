@@ -340,8 +340,8 @@ struct ndis_pnp_capabilities {
 	struct ndis_pm_wakeup_capabilities wakeup_capa;
 };
 
-typedef void (*ndis_isr_handler)(unsigned int *taken, unsigned int *callme,
-				 void *ctx) wstdcall;
+typedef void (*ndis_isr_handler)(BOOLEAN *recognized, BOOLEAN *queue_handler,
+				 void *handle) wstdcall;
 typedef void (*ndis_interrupt_handler)(void *ctx) wstdcall;
 
 struct miniport_char {
