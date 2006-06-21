@@ -568,7 +568,7 @@ static int miniport_tx_packets(struct wrap_ndis_device *wnd)
 					     NDIS_STATUS_NOT_RECOGNIZED)) {
 				case NDIS_STATUS_SUCCESS:
 					free_tx_packet(wnd, packet,
-						       oob_data->status);
+						       NDIS_STATUS_SUCCESS);
 					break;
 				case NDIS_STATUS_PENDING:
 					break;
@@ -581,7 +581,7 @@ static int miniport_tx_packets(struct wrap_ndis_device *wnd)
 					break;
 				case NDIS_STATUS_FAILURE:
 					free_tx_packet(wnd, packet,
-						       oob_data->status);
+						       NDIS_STATUS_FAILURE);
 					break;
 				default:
 					ERROR("packet %p: invalid status",

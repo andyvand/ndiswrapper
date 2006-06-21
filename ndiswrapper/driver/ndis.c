@@ -2164,17 +2164,17 @@ NdisMSendComplete(struct ndis_miniport_block *nmb, struct ndis_packet *packet,
 		free_tx_packet(wnd, packet, status);
 	else {
 		struct ndis_packet_oob_data *oob_data;
-		NDIS_STATUS old_status;
+
 		TRACEENTER3("%p, %08x", packet, status);
 		oob_data = NDIS_PACKET_OOB_DATA(packet);
-		switch ((old_status = xchg(&oob_data->status, status))) {
+		switch (xchg(&oob_data->status, status)) {
 		case NDIS_STATUS_PENDING:
 			break;
 		case NDIS_STATUS_NOT_RECOGNIZED:
 			free_tx_packet(wnd, packet, status);
 			break;
 		default:
-			WARNING("invalid status: %08X", old_status);
+			WARNING("invalid status");
 			break;
 		}
 		/* In case a serialized driver has earlier requested a
