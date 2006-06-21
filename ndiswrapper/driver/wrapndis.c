@@ -550,7 +550,6 @@ static int miniport_tx_packets(struct wrap_ndis_device *wnd)
 		for (i = 0; i < n; i++) {
 			int j = (start + i) % TX_RING_SIZE;
 			wnd->tx_array[i] = wnd->tx_ring[j];
-			DBGTRACE3("packet: %p", wnd->tx_array[i]);
 		}
 		if (wnd->attributes & NDIS_ATTRIBUTE_DESERIALIZE) {
 			LIN2WIN3(miniport->send_packets, wnd->nmb->adapter_ctx,
@@ -565,19 +564,15 @@ static int miniport_tx_packets(struct wrap_ndis_device *wnd)
 			for (sent = 0; sent < n && wnd->tx_ok; sent++) {
 				packet = wnd->tx_array[sent];
 				oob_data = NDIS_PACKET_OOB_DATA(packet);
-				DBGTRACE3("packet: %p", packet);
 				switch (xchg(&oob_data->status,
 					     NDIS_STATUS_NOT_RECOGNIZED)) {
 				case NDIS_STATUS_SUCCESS:
-					DBGTRACE3("packet: %p", packet);
 					free_tx_packet(wnd, packet,
 						       oob_data->status);
 					break;
 				case NDIS_STATUS_PENDING:
-					DBGTRACE3("packet: %p", packet);
 					break;
 				case NDIS_STATUS_RESOURCES:
-					DBGTRACE3("packet: %p", packet);
 					wnd->tx_ok = 0;
 					/* resubmit this packet and
 					 * the rest when resources
@@ -585,15 +580,14 @@ static int miniport_tx_packets(struct wrap_ndis_device *wnd)
 					sent--;
 					break;
 				case NDIS_STATUS_FAILURE:
-					WARNING("packet %p dropped", packet);
 					free_tx_packet(wnd, packet,
 						       oob_data->status);
 					break;
 				default:
-					ERROR("packet %p: unknown status %08X",
-					      packet, oob_data->status);
-					wnd->tx_ok = 0;
-					sent--;
+					ERROR("packet %p: invalid status",
+					      packet);
+					free_tx_packet(wnd, packet,
+						       oob_data->status);
 					break;
 				}
 			}
