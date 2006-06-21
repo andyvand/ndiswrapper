@@ -2168,7 +2168,6 @@ NdisMSendComplete(struct ndis_miniport_block *nmb, struct ndis_packet *packet,
 		TRACEENTER3("%p, %08x", packet, status);
 		oob_data = NDIS_PACKET_OOB_DATA(packet);
 		switch ((packet_status = xchg(&oob_data->status, status))) {
-		case NDIS_STATUS_NOT_COPIED:
 		case NDIS_STATUS_PENDING:
 			break;
 		case NDIS_STATUS_NOT_RECOGNIZED:
