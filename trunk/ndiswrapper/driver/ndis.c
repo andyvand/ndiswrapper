@@ -1319,7 +1319,7 @@ wstdcall void WRAP_EXPORT(NdisMCompleteBufferPhysicalMapping)
 		      map_index, wnd->dma_map_count);
 		return;
 	}
-	DBGTRACE4("%Lx, %d, %d", wnd->dma_map_addr[map_index],
+	DBGTRACE4("%lx, %d, %d", (unsigned long)wnd->dma_map_addr[map_index],
 		  MmGetMdlByteCount(buf), map_index);
 	if (wnd->dma_map_addr[map_index] == 0) {
 //		ERROR("map register not used (%lu)", map_index);
@@ -2160,16 +2160,34 @@ NdisMSendComplete(struct ndis_miniport_block *nmb, struct ndis_packet *packet,
 		  NDIS_STATUS status)
 {
 	struct wrap_ndis_device *wnd = nmb->wnd;
-	TRACEENTER3("%p, %08x", packet, status);
-	free_tx_packet(wnd, packet, status);
-	/* In case a serialized driver has earlier requested a pause
-	 * by returning NDIS_STATUS_RESOURCES during
-	 * MiniportSend(Packets), wakeup tx worker now.
-	 */
-	if (wnd->tx_ok == 0) {
-		wnd->tx_ok = 1;
-		DBGTRACE3("%d, %d", wnd->tx_ring_start, wnd->tx_ring_end);
-		schedule_wrap_work(&wnd->tx_work);
+	if (wnd->attributes & NDIS_ATTRIBUTE_DESERIALIZE)
+		free_tx_packet(wnd, packet, status);
+	else {
+		struct ndis_packet_oob_data *oob_data;
+		NDIS_STATUS packet_status;
+		TRACEENTER3("%p, %08x", packet, status);
+		oob_data = NDIS_PACKET_OOB_DATA(packet);
+		switch ((packet_status = xchg(&oob_data->status, status))) {
+		case NDIS_STATUS_NOT_COPIED:
+		case NDIS_STATUS_PENDING:
+			break;
+		case NDIS_STATUS_NOT_RECOGNIZED:
+			free_tx_packet(wnd, packet, status);
+			break;
+		default:
+			WARNING("invalid status: %08X", packet_status);
+			break;
+		}
+		/* In case a serialized driver has earlier requested a
+		 * pause by returning NDIS_STATUS_RESOURCES during
+		 * MiniportSend(Packets), wakeup tx worker now.
+		 */
+		if (wnd->tx_ok == 0) {
+			wnd->tx_ok = 1;
+			DBGTRACE3("%d, %d", wnd->tx_ring_start,
+				  wnd->tx_ring_end);
+			schedule_wrap_work(&wnd->tx_work);
+		}
 	}
 	TRACEEXIT3(return);
 }

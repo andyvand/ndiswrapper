@@ -603,7 +603,6 @@ static wstdcall void wrap_cancel_irp(struct device_object *dev_obj,
 				     struct irp *irp)
 {
 	struct urb *urb;
-	int ret;
 
 	WIN2LIN2(dev_obj, irp);
 
@@ -611,15 +610,12 @@ static wstdcall void wrap_cancel_irp(struct device_object *dev_obj,
 	USBENTER("irp: %p", irp);
 	urb = irp->wrap_urb->urb;
 	USBTRACE("canceling urb %p", urb);
-	ret = wrap_cancel_urb(irp->wrap_urb);
-	if (ret == 0) {
-		USBTRACE("urb %p canceled", urb);
-		/* this IRP will be returned in urb's completion function */
-	} else {
+	IoReleaseCancelSpinLock(irp->cancel_irql);
+	if (wrap_cancel_urb(irp->wrap_urb)) {
 		irp->cancel = FALSE;
 		ERROR("urb %p can't be canceld: %d", urb, irp->wrap_urb->state);
-	}
-	IoReleaseCancelSpinLock(irp->cancel_irql);
+	} else
+		USBTRACE("urb %p canceled", urb);
 	return;
 }
 
