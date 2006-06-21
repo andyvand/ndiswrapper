@@ -176,8 +176,7 @@ sub remove {
 }
 
 sub devid_driver {
-    my $devid = shift;
-    my $driver = shift;
+    my ($devid, $driver) = @_;
     my $done = 0;
 
     $devid = uc($devid);
@@ -380,8 +379,7 @@ sub getPresentCards {
 }
 
 sub installStatus {
-    my $cards = shift; 
-    my $driver = shift;	
+    my ($cards, $driver) = @_; 
 
     my $sys = 0;
     my $conf = 0;
@@ -459,11 +457,7 @@ sub processPCIFuzz {
 # Collect a list of supported PCI-Id's so we can add fuzzy entries if needed.
 #
 sub addPCIFuzzEntry {
-    my $vendor = shift;
-    my $device = shift;
-    my $subvendor = shift;
-    my $subdevice = shift;
-    my $bus = shift;
+    my ($vendor, $device, $subvendor, $subdevice, $bus) = @_;
 
     my $s = "$vendor:$device";
 
@@ -562,8 +556,7 @@ sub parseMfr {
 # Each poiting to a section with config info.
 #	
 sub parseVendor {
-    my $flavour = shift;
-    my $vendor_name = shift;
+    my ($flavour, $vendor_name) = @_;
     my $vend = getSection($vendor_name);
 
     if (!$vend) {
@@ -596,12 +589,7 @@ sub parseVendor {
 # This section contains pointers to registry sections and copyfiles sections. 
 #
 sub parseDevice {
-    my $flavour = shift;
-    my $device_sect = shift;
-    my $device = shift;
-    my $vendor = shift;
-    my $subvendor = shift;
-    my $subdevice = shift;
+    my ($flavour, $device_sect, $device, $vendor, $subvendor, $subdevice) = @_;
     my $dev;
 
     # for RNDIS INF file (for USR5420), vendor section names device
@@ -668,7 +656,10 @@ sub parseDevice {
 
     my $ver=$version{"DriverVer"};
     my $provider=$version{"Provider"};
-    my $providerstring = stripquotes(substStr(trim($provider)));
+    my $providerstring = trim(stripquotes(substStr(trim($provider))));
+    if (!$providerstring || length($providerstring) == 0) {
+	$providerstring = trim(stripquotes(getString(trim($provider))));
+    }
 
     printf CONF "NdisVersion|0x50001\n";
     printf CONF "Environment|1\n";
@@ -792,8 +783,7 @@ sub finddir {
 # Find a file in a case-insensitive way.
 #
 sub findfile {
-    my $dir = shift;
-    my $file = shift;
+    my ($dir, $file) = @_;
 
     if (!opendir(DIR, "$instdir/$dir")) {
 	print "Unable to open $instdir\n";
@@ -883,7 +873,7 @@ sub addReg {
 sub substStr {
     my $s = shift;
     if ($s =~ /^\%(.+)$\%/) {
-	return getString($1);
+	$s = getString($1);
     }
     return $s;
 }
