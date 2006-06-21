@@ -1849,9 +1849,9 @@ static int priv_power_profile(struct net_device *dev,
 	else
 		profile_inf = NdisPowerProfileBattery;
 
-	miniport->pnp_event_notify(wnd->nmb->adapter_ctx,
-				   NdisDevicePnPEventPowerProfileChanged,
-				   &profile_inf, sizeof(profile_inf));
+	LIN2WIN4(miniport->pnp_event_notify, wnd->nmb->adapter_ctx,
+		 NdisDevicePnPEventPowerProfileChanged,
+		 &profile_inf, sizeof(profile_inf));
 	TRACEEXIT2(return 0);
 }
 

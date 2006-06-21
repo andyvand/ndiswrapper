@@ -558,11 +558,6 @@ static int miniport_tx_packets(struct wrap_ndis_device *wnd)
 			sent = n;
 		} else {
 			struct ndis_packet_oob_data *oob_data;
-			for (i = 0; i < n; i++) {
-				packet = wnd->tx_array[i];
-				oob_data = NDIS_PACKET_OOB_DATA(packet);
-				oob_data->status = NDIS_STATUS_NOT_COPIED;
-			}
 			irql = raise_irql(DISPATCH_LEVEL);
 			LIN2WIN3(miniport->send_packets, wnd->nmb->adapter_ctx,
 				 wnd->tx_array, n);
@@ -593,9 +588,6 @@ static int miniport_tx_packets(struct wrap_ndis_device *wnd)
 					WARNING("packet %p dropped", packet);
 					free_tx_packet(wnd, packet,
 						       oob_data->status);
-					break;
-				case NDIS_STATUS_NOT_COPIED:
-					WARNING("invalid status");
 					break;
 				default:
 					ERROR("packet %p: unknown status %08X",
