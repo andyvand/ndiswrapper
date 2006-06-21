@@ -480,6 +480,7 @@ static struct ndis_packet *alloc_tx_packet(struct wrap_ndis_device *wnd,
 	DBG_BLOCK(4) {
 		dump_bytes(__FUNCTION__, skb->data, skb->len);
 	}
+	DBGTRACE4("packet: %p, buffer: %p, skb: %p", packet, buffer, skb);
 	return packet;
 }
 
@@ -549,25 +550,39 @@ static int miniport_tx_packets(struct wrap_ndis_device *wnd)
 		for (i = 0; i < n; i++) {
 			int j = (start + i) % TX_RING_SIZE;
 			wnd->tx_array[i] = wnd->tx_ring[j];
+			DBGTRACE3("packet: %p", wnd->tx_array[i]);
 		}
-		if (!(wnd->attributes & NDIS_ATTRIBUTE_DESERIALIZE)) {
+		if (wnd->attributes & NDIS_ATTRIBUTE_DESERIALIZE) {
+			LIN2WIN3(miniport->send_packets, wnd->nmb->adapter_ctx,
+				 wnd->tx_array, n);
+			sent = n;
+		} else {
+			struct ndis_packet_oob_data *oob_data;
+			for (i = 0; i < n; i++) {
+				packet = wnd->tx_array[i];
+				oob_data = NDIS_PACKET_OOB_DATA(packet);
+				oob_data->status = NDIS_STATUS_NOT_COPIED;
+			}
 			irql = raise_irql(DISPATCH_LEVEL);
 			LIN2WIN3(miniport->send_packets, wnd->nmb->adapter_ctx,
 				 wnd->tx_array, n);
 			lower_irql(irql);
 			for (sent = 0; sent < n && wnd->tx_ok; sent++) {
-				struct ndis_packet_oob_data *oob_data;
 				packet = wnd->tx_array[sent];
 				oob_data = NDIS_PACKET_OOB_DATA(packet);
-				switch (oob_data->status) {
+				DBGTRACE3("packet: %p", packet);
+				switch (xchg(&oob_data->status,
+					     NDIS_STATUS_NOT_RECOGNIZED)) {
 				case NDIS_STATUS_SUCCESS:
+					DBGTRACE3("packet: %p", packet);
 					free_tx_packet(wnd, packet,
 						       oob_data->status);
 					break;
 				case NDIS_STATUS_PENDING:
+					DBGTRACE3("packet: %p", packet);
 					break;
 				case NDIS_STATUS_RESOURCES:
-					DBGTRACE3("%d, %d", start, end);
+					DBGTRACE3("packet: %p", packet);
 					wnd->tx_ok = 0;
 					/* resubmit this packet and
 					 * the rest when resources
@@ -579,21 +594,17 @@ static int miniport_tx_packets(struct wrap_ndis_device *wnd)
 					free_tx_packet(wnd, packet,
 						       oob_data->status);
 					break;
+				case NDIS_STATUS_NOT_COPIED:
+					WARNING("invalid status");
+					break;
 				default:
 					ERROR("packet %p: unknown status %08X",
 					      packet, oob_data->status);
-					/* RT2500 driver seems to
-					 * corrupt packets with SMP
-					 * and by the time control
-					 * comes here, the buffer and
-					 * packet are already freed */
+					wnd->tx_ok = 0;
+					sent--;
 					break;
 				}
 			}
-		} else {
-			LIN2WIN3(miniport->send_packets, wnd->nmb->adapter_ctx,
-				 wnd->tx_array, n);
-			sent = n;
 		}
 		DBGTRACE3("sent: %d(%d)", sent, n);
 	} else {

@@ -168,13 +168,15 @@ wstdcall BOOLEAN WRAP_EXPORT(IoCancelIrp)
 		IOTRACE("%p, %p", irp_sl, irp_sl->dev_obj);
 		/* cancel_routine will release the spin lock */
 		LIN2WIN2(cancel_routine, irp_sl->dev_obj, irp);
+		/* in usb's cancel, irp->cancel is set to indicate
+		 * status of cancel */
 		if (irp->cancel == FALSE) {
 			irp->cancel = TRUE;
 			IOEXIT(return FALSE);
 		} else
 			IOEXIT(return TRUE);
 	} else {
-		IOTRACE("irp %p not canceled", irp);
+		IOTRACE("irp %p already canceled", irp);
 		IoReleaseCancelSpinLock(irp->cancel_irql);
 		IOEXIT(return FALSE);
 	}
