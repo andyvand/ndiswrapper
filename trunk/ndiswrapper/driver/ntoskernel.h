@@ -951,6 +951,66 @@ do {									\
 	preempt_enable();						\
 } while (0)
 
+static inline void _atomic_inc_(char *mem, unsigned int size)
+{								
+	if (size == 1)
+		__asm__ __volatile__(				
+			LOCK "incb %b0"
+			: "=m" (*mem)
+			: "m" (*mem));
+	else if (size == 2)
+		__asm__ __volatile__(
+			LOCK "incw %w0"
+			: "=m" (*mem)
+			: "m" (*mem));
+	else if (size == 4)
+		__asm__ __volatile__(
+			LOCK "incl %0"
+			: "=m" (*mem)
+			: "m" (*mem));
+#ifdef CONFIG_X86_64
+	else if (size == 8)
+		__asm__ __volatile__(
+			LOCK "incq %q0"
+			: "=m" (*mem)
+			: "m" (*mem));
+#endif
+	else
+		ERROR("invalid size %d", size);
+}
+
+#define atomic_inc(mem) _atomic_inc_((char *)mem, sizeof(*mem))
+
+static inline void _atomic_dec_(char *mem, unsigned int size)
+{								
+	if (size == 1)
+		__asm__ __volatile__(				
+			LOCK "decb %b0"
+			: "=m" (*mem)
+			: "m" (*mem));
+	else if (size == 2)
+		__asm__ __volatile__(
+			LOCK "decw %w0"
+			: "=m" (*mem)
+			: "m" (*mem));
+	else if (size == 4)
+		__asm__ __volatile__(
+			LOCK "decl %0"
+			: "=m" (*mem)
+			: "m" (*mem));
+#ifdef CONFIG_X86_64
+	else if (size == 8)
+		__asm__ __volatile__(
+			LOCK "decq %q0"
+			: "=m" (*mem)
+			: "m" (*mem));
+#endif
+	else
+		ERROR("invalid size %d", size);
+}
+
+#define atomic_dec(mem) _atomic_dec_((char *)mem, sizeof(*mem))
+
 static inline ULONG SPAN_PAGES(void *ptr, SIZE_T length)
 {
 	ULONG n;

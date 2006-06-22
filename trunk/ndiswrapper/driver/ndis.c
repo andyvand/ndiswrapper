@@ -1608,7 +1608,9 @@ wstdcall void WRAP_EXPORT(NdisSend)
 		LIN2WIN3(miniport->send_packets, wnd->nmb->adapter_ctx,
 			 &packet, 1);
 		lower_irql(irql);
-		if (!(wnd->attributes & NDIS_ATTRIBUTE_DESERIALIZE)) {
+		if (wnd->attributes & NDIS_ATTRIBUTE_DESERIALIZE)
+			*status = NDIS_STATUS_PENDING;
+		else {
 			struct ndis_packet_oob_data *oob_data;
 			oob_data = NDIS_PACKET_OOB_DATA(packet);
 			*status = oob_data->status;
@@ -1619,15 +1621,13 @@ wstdcall void WRAP_EXPORT(NdisSend)
 			case NDIS_STATUS_PENDING:
 				break;
 			case NDIS_STATUS_RESOURCES:
-				wnd->tx_ok = 0;
+				atomic_dec(&wnd->tx_ok);
 				break;
 			case NDIS_STATUS_FAILURE:
 			default:
 				free_tx_packet(wnd, packet, *status);
 				break;
 			}
-		} else {
-			*status = NDIS_STATUS_PENDING;
 		}
 	} else {
 		irql = raise_irql(DISPATCH_LEVEL);
@@ -1641,7 +1641,7 @@ wstdcall void WRAP_EXPORT(NdisSend)
 		case NDIS_STATUS_PENDING:
 			break;
 		case NDIS_STATUS_RESOURCES:
-			wnd->tx_ok = 0;
+			atomic_dec(&wnd->tx_ok);
 			break;
 		case NDIS_STATUS_FAILURE:
 		default:
@@ -2182,7 +2182,7 @@ NdisMSendComplete(struct ndis_miniport_block *nmb, struct ndis_packet *packet,
 		 * MiniportSend(Packets), wakeup tx worker now.
 		 */
 		if (wnd->tx_ok == 0) {
-			wnd->tx_ok = 1;
+			atomic_inc(&wnd->tx_ok);
 			DBGTRACE3("%d, %d", wnd->tx_ring_start,
 				  wnd->tx_ring_end);
 			schedule_wrap_work(&wnd->tx_work);
@@ -2207,7 +2207,7 @@ NdisMSendResourcesAvailable(struct ndis_miniport_block *nmb)
 	struct wrap_ndis_device *wnd = nmb->wnd;
 	TRACEENTER3("");
 	DBGTRACE3("%d, %d", wnd->tx_ring_start, wnd->tx_ring_end);
-	wnd->tx_ok = 1;
+	atomic_inc(&wnd->tx_ok);
 	schedule_wrap_work(&wnd->tx_work);
 	TRACEEXIT3(return);
 }
