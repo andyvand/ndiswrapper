@@ -649,7 +649,7 @@ int set_auth_mode(struct wrap_ndis_device *wnd, ULONG auth_mode)
 	TRACEENTER2("%d", auth_mode);
 	res = miniport_set_int(wnd, OID_802_11_AUTHENTICATION_MODE, auth_mode);
 	if (res) {
-		WARNING("setting auth mode to %d failed (%08X)",
+		WARNING("setting auth mode to %u failed (%08X)",
 			auth_mode, res);
 		if (res == NDIS_STATUS_INVALID_DATA)
 			TRACEEXIT2(return -EINVAL);
@@ -680,7 +680,8 @@ int set_encr_mode(struct wrap_ndis_device *wnd, ULONG encr_mode)
 	TRACEENTER2("%d", encr_mode);
 	res = miniport_set_int(wnd, OID_802_11_ENCRYPTION_STATUS, encr_mode);
 	if (res) {
-		WARNING("setting encryption status failed (%08X)", res);
+		WARNING("setting encryption mode to %u failed (%08X)",
+			encr_mode, res);
 		if (res == NDIS_STATUS_INVALID_DATA)
 			TRACEEXIT2(return -EINVAL);
 		return -EOPNOTSUPP;

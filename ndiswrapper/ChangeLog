@@ -1,4 +1,4 @@
-Version 1.18 2006-XX-XX
+Version 1.18 2006-06-22
 =======================
 * Kernel crash with RT2500 (and possibly other serialized drivers) under heavy
   traffic load fixed.
