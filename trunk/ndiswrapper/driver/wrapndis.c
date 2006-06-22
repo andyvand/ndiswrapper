@@ -614,8 +614,10 @@ static int miniport_tx_packets(struct wrap_ndis_device *wnd)
 			case NDIS_STATUS_PENDING:
 				break;
 			case NDIS_STATUS_RESOURCES:
-				i--;
 				wnd->tx_ok = 0;
+				/* resend this packet when resources
+				 * become available */
+				i--;
 				break;
 			case NDIS_STATUS_FAILURE:
 				free_tx_packet(wnd, packet, res);

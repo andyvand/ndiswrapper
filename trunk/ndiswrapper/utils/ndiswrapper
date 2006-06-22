@@ -657,9 +657,6 @@ sub parseDevice {
     my $ver=$version{"DriverVer"};
     my $provider=$version{"Provider"};
     my $providerstring = trim(stripquotes(substStr(trim($provider))));
-    if (!$providerstring || length($providerstring) == 0) {
-	$providerstring = trim(stripquotes(getString(trim($provider))));
-    }
 
     printf CONF "NdisVersion|0x50001\n";
     printf CONF "Environment|1\n";
