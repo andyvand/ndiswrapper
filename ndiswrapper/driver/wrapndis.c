@@ -573,7 +573,7 @@ static int miniport_tx_packets(struct wrap_ndis_device *wnd)
 				case NDIS_STATUS_PENDING:
 					break;
 				case NDIS_STATUS_RESOURCES:
-					wnd->tx_ok = 0;
+					atomic_dec(&wnd->tx_ok);
 					/* resubmit this packet and
 					 * the rest when resources
 					 * become available */
@@ -614,7 +614,7 @@ static int miniport_tx_packets(struct wrap_ndis_device *wnd)
 			case NDIS_STATUS_PENDING:
 				break;
 			case NDIS_STATUS_RESOURCES:
-				wnd->tx_ok = 0;
+				atomic_dec(&wnd->tx_ok);
 				/* resend this packet when resources
 				 * become available */
 				i--;
