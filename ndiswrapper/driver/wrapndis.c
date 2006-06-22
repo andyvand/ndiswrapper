@@ -596,25 +596,36 @@ static int miniport_tx_packets(struct wrap_ndis_device *wnd)
 	} else {
 		int i;
 		irql = PASSIVE_LEVEL;
-		if (!(wnd->attributes & NDIS_ATTRIBUTE_DESERIALIZE))
-			irql = raise_irql(DISPATCH_LEVEL);
-		for (i = 0; i < n; i++) {
+		for (i = 0; i < n && wnd->tx_ok; i++) {
+			struct ndis_packet_oob_data *oob_data;
 			packet = wnd->tx_ring[(start + i) % TX_RING_SIZE];
+			oob_data = NDIS_PACKET_OOB_DATA(packet);
+			oob_data->status = NDIS_STATUS_NOT_RECOGNIZED;
+			if (!(wnd->attributes & NDIS_ATTRIBUTE_DESERIALIZE))
+				irql = raise_irql(DISPATCH_LEVEL);
 			res = LIN2WIN3(miniport->send, wnd->nmb->adapter_ctx,
 				       packet, packet->private.flags);
-			if (res == NDIS_STATUS_SUCCESS) {
+			if (!(wnd->attributes & NDIS_ATTRIBUTE_DESERIALIZE))
+				lower_irql(irql);
+			switch (res) {
+			case NDIS_STATUS_SUCCESS:
 				free_tx_packet(wnd, packet, res);
-				continue;
-			} else {
-				DBGTRACE3("%08X", res);
+				break;
+			case NDIS_STATUS_PENDING:
+				break;
+			case NDIS_STATUS_RESOURCES:
 				i--;
-				if (res == NDIS_STATUS_RESOURCES)
-					wnd->tx_ok = 0;
+				wnd->tx_ok = 0;
+				break;
+			case NDIS_STATUS_FAILURE:
+				free_tx_packet(wnd, packet, res);
+				break;
+			default:
+				ERROR("packet %p: invalid status: %08X",
+				      packet, res);
 				break;
 			}
 		}
-		if (!(wnd->attributes & NDIS_ATTRIBUTE_DESERIALIZE))
-			lower_irql(irql);
 		sent = i + 1;
 	}
 	TRACEEXIT3(return sent);
