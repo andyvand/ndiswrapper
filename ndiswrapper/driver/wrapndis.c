@@ -594,11 +594,10 @@ static int miniport_tx_packets(struct wrap_ndis_device *wnd)
 		}
 		DBGTRACE3("sent: %d(%d)", sent, n);
 	} else {
-		int i;
 		irql = PASSIVE_LEVEL;
-		for (i = 0; i < n && wnd->tx_ok; i++) {
+		for (sent = 0; sent < n && wnd->tx_ok; sent++) {
 			struct ndis_packet_oob_data *oob_data;
-			packet = wnd->tx_ring[(start + i) % TX_RING_SIZE];
+			packet = wnd->tx_ring[(start + sent) % TX_RING_SIZE];
 			oob_data = NDIS_PACKET_OOB_DATA(packet);
 			oob_data->status = NDIS_STATUS_NOT_RECOGNIZED;
 			if (!(wnd->attributes & NDIS_ATTRIBUTE_DESERIALIZE))
@@ -617,7 +616,7 @@ static int miniport_tx_packets(struct wrap_ndis_device *wnd)
 				atomic_dec(&wnd->tx_ok);
 				/* resend this packet when resources
 				 * become available */
-				i--;
+				sent--;
 				break;
 			case NDIS_STATUS_FAILURE:
 				free_tx_packet(wnd, packet, res);
@@ -628,7 +627,6 @@ static int miniport_tx_packets(struct wrap_ndis_device *wnd)
 				break;
 			}
 		}
-		sent = i + 1;
 	}
 	TRACEEXIT3(return sent);
 }
