@@ -951,7 +951,7 @@ do {									\
 	preempt_enable();						\
 } while (0)
 
-static inline void _atomic_inc_(char *mem, unsigned int size)
+static inline void atomic_inc_size(char *mem, unsigned int size)
 {								
 	if (size == 1)
 		__asm__ __volatile__(				
@@ -979,9 +979,9 @@ static inline void _atomic_inc_(char *mem, unsigned int size)
 		ERROR("invalid size %d", size);
 }
 
-#define atomic_inc(mem) _atomic_inc_((char *)mem, sizeof(*mem))
+#define atomic_inc(mem) atomic_inc_size((char *)mem, sizeof(*mem))
 
-static inline void _atomic_dec_(char *mem, unsigned int size)
+static inline void atomic_dec_size(char *mem, unsigned int size)
 {								
 	if (size == 1)
 		__asm__ __volatile__(				
@@ -1009,7 +1009,7 @@ static inline void _atomic_dec_(char *mem, unsigned int size)
 		ERROR("invalid size %d", size);
 }
 
-#define atomic_dec(mem) _atomic_dec_((char *)mem, sizeof(*mem))
+#define atomic_dec(mem) atomic_dec_size((char *)mem, sizeof(*mem))
 
 static inline ULONG SPAN_PAGES(void *ptr, SIZE_T length)
 {
