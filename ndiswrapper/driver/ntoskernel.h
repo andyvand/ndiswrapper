@@ -511,6 +511,7 @@ struct wrap_timer {
 	struct nt_list list;
 	struct timer_list timer;
 	struct nt_timer *nt_timer;
+	struct wrap_device *wd;
 #ifdef DEBUG_TIMER
 	unsigned long wrap_timer_magic;
 #endif
