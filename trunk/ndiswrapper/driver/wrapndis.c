@@ -551,17 +551,17 @@ static int miniport_tx_packets(struct wrap_ndis_device *wnd)
 			int j = (start + i) % TX_RING_SIZE;
 			wnd->tx_array[i] = wnd->tx_ring[j];
 		}
-		if (serialized_miniport(wnd)) {
+		if (deserialized_driver(wnd)) {
 			LIN2WIN3(miniport->send_packets, wnd->nmb->adapter_ctx,
 				 wnd->tx_array, n);
 			sent = n;
 		} else {
 			struct ndis_packet_oob_data *oob_data;
-			irql = nt_spin_lock_irql(serialize_lock(wnd),
+			irql = nt_spin_lock_irql(&wnd->nmb->lock,
 						 DISPATCH_LEVEL);
 			LIN2WIN3(miniport->send_packets, wnd->nmb->adapter_ctx,
 				 wnd->tx_array, n);
-			nt_spin_unlock_irql(serialize_lock(wnd), irql);
+			nt_spin_unlock_irql(&wnd->nmb->lock, irql);
 			for (sent = 0; sent < n && wnd->tx_ok; sent++) {
 				packet = wnd->tx_array[sent];
 				oob_data = NDIS_PACKET_OOB_DATA(packet);
@@ -1634,7 +1634,7 @@ static NDIS_STATUS ndis_start_device(struct wrap_ndis_device *wnd)
 	       wnd->attributes & NDIS_ATTRIBUTE_DESERIALIZE ? "" : "serialized ",
 	       wnd->wd->driver->name, wnd->wd->conf_file_name);
 
-	if (serialized_miniport(wnd)) {
+	if (deserialized_driver(wnd)) {
 		/* deserialized drivers don't have a limit, but we
 		 * keep max at TX_RING_SIZE to allocate tx_array
 		 * below */
