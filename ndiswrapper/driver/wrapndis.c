@@ -767,10 +767,7 @@ static void ndis_poll_controller(struct net_device *dev)
 	struct wrap_ndis_device *wnd = netdev_priv(dev);
 
 	disable_irq(dev->irq);
-	if (wnd->ndis_irq->req_isr)
-		ndis_isr_shared(dev->irq, wnd, NULL);
-	else
-		ndis_isr_dynamic(dev->irq, wnd, NULL);
+	ndis_isr(dev->irq, wnd, NULL);
 	enable_irq(dev->irq);
 }
 #endif

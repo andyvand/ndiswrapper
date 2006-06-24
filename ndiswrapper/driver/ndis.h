@@ -901,8 +901,7 @@ wstdcall void NdisMResetComplete(struct ndis_miniport_block *nmb,
 wstdcall ULONG NDIS_BUFFER_TO_SPAN_PAGES(ndis_buffer *buffer);
 wstdcall BOOLEAN NdisWaitEvent(struct ndis_event *event, UINT timeout);
 wstdcall void NdisSetEvent(struct ndis_event *event);
-irqreturn_t ndis_isr_shared(int irq, void *data, struct pt_regs *pt_regs);
-irqreturn_t ndis_isr_dynamic(int irq, void *data, struct pt_regs *pt_regs);
+irqreturn_t ndis_isr(int irq, void *data, struct pt_regs *pt_regs);
 wstdcall void NdisMDeregisterInterrupt(struct ndis_irq *ndis_irq);
 wstdcall void EthRxIndicateHandler
 	(struct ndis_miniport_block *nmb, void *rx_ctx, char *header1,

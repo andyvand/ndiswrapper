@@ -1773,7 +1773,7 @@ wstdcall void WRAP_EXPORT(NdisMDeregisterAdapterShutdownHandler)
 	wnd->shutdown_ctx = NULL;
 }
 
-static void ndis_irq_handler_dynamic(unsigned long data)
+static void ndis_irq_handler(unsigned long data)
 {
 	struct wrap_ndis_device *wnd = (struct wrap_ndis_device *)data;
 	struct miniport_char *miniport;
@@ -1787,52 +1787,31 @@ static void ndis_irq_handler_dynamic(unsigned long data)
 	}
 }
 
-irqreturn_t ndis_isr_dynamic(int irq, void *data, struct pt_regs *pt_regs)
+irqreturn_t ndis_isr(int irq, void *data, struct pt_regs *pt_regs)
 {
 	struct wrap_ndis_device *wnd = (struct wrap_ndis_device *)data;
 	struct miniport_char *miniport;
-
-	miniport = &wnd->wd->driver->ndis_driver->miniport;
-	/* this spinlock should be shared with NdisMSynchronizeWithInterrupt
-	 */
-	nt_spin_lock(&wnd->ndis_irq->lock);
-	LIN2WIN1(miniport->disable_interrupts, wnd->nmb->adapter_ctx);
-	nt_spin_unlock(&wnd->ndis_irq->lock);
-
-	/* it is not shared interrupt, so handler must be called */
-	tasklet_schedule(&wnd->irq_tasklet);
-	return IRQ_HANDLED;
-}
-
-static void ndis_irq_handler_shared(unsigned long data)
-{
-	struct wrap_ndis_device *wnd = (struct wrap_ndis_device *)data;
-	struct miniport_char *miniport;
-
-	miniport = &wnd->wd->driver->ndis_driver->miniport;
-	LIN2WIN1(miniport->handle_interrupt, wnd->nmb->adapter_ctx);
-}
-
-irqreturn_t ndis_isr_shared(int irq, void *data, struct pt_regs *pt_regs)
-{
-	struct wrap_ndis_device *wnd = (struct wrap_ndis_device *)data;
 	BOOLEAN recognized, queue_handler;
-	struct miniport_char *miniport;
 
 	miniport = &wnd->wd->driver->ndis_driver->miniport;
 	/* this spinlock should be shared with NdisMSynchronizeWithInterrupt
 	 */
 	nt_spin_lock(&wnd->ndis_irq->lock);
-	LIN2WIN3(miniport->isr, &recognized, &queue_handler,
-		 wnd->nmb->adapter_ctx);
+	if (wnd->ndis_irq->req_isr)
+		LIN2WIN3(miniport->isr, &recognized, &queue_handler,
+			 wnd->nmb->adapter_ctx);
+	else { //if (miniport->disable_interrupts)
+		LIN2WIN1(miniport->disable_interrupts, wnd->nmb->adapter_ctx);
+		/* it is not shared interrupt, so handler must be called */
+		recognized = queue_handler = TRUE;
+	}
 	nt_spin_unlock(&wnd->ndis_irq->lock);
-
 	if (recognized) {
 		if (queue_handler)
 			tasklet_schedule(&wnd->irq_tasklet);
 		return IRQ_HANDLED;
-	} else
-		return IRQ_NONE;
+	}
+	return IRQ_NONE;
 }
 
 wstdcall NDIS_STATUS WRAP_EXPORT(NdisMRegisterInterrupt)
@@ -1853,14 +1832,9 @@ wstdcall NDIS_STATUS WRAP_EXPORT(NdisMRegisterInterrupt)
 	nt_spin_lock_init(&ndis_irq->lock);
 	wnd->ndis_irq = ndis_irq;
 
-	if (req_isr)
-		tasklet_init(&wnd->irq_tasklet, ndis_irq_handler_shared,
-			     (unsigned long)wnd);
-	else
-		tasklet_init(&wnd->irq_tasklet, ndis_irq_handler_dynamic,
-			     (unsigned long)wnd);
-	if (request_irq(vector, req_isr ? ndis_isr_shared : ndis_isr_dynamic,
-			req_isr ? SA_SHIRQ : 0, "ndiswrapper", wnd)) {
+	tasklet_init(&wnd->irq_tasklet, ndis_irq_handler, (unsigned long)wnd);
+	if (request_irq(vector, ndis_isr, req_isr ? SA_SHIRQ : 0,
+			"ndiswrapper", wnd)) {
 		printk(KERN_WARNING "%s: request for irq %d failed\n",
 		       DRIVER_NAME, vector);
 		TRACEEXIT1(return NDIS_STATUS_RESOURCES);
