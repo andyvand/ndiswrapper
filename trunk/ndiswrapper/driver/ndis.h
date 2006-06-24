@@ -1221,4 +1221,49 @@ void wrap_procfs_remove_ndis_device(struct wrap_ndis_device *wnd);
 
 #define OID_TCP_TASK_OFFLOAD			0xFC010201
 
+#define serialized_miniport(wnd) (wnd->attributes & NDIS_ATTRIBUTE_DESERIALIZE)
+#define serialize_lock(wnd) (&((wnd)->nmb->lock))
+
+static inline KIRQL serialize_lock_irql(struct wrap_ndis_device *wnd)
+{
+	if (wnd->attributes & NDIS_ATTRIBUTE_DESERIALIZE)
+		return raise_irql(DISPATCH_LEVEL);
+	else
+		return nt_spin_lock_irql(serialize_lock(wnd), DISPATCH_LEVEL);
+}
+
+static inline void serialize_unlock_irql(struct wrap_ndis_device *wnd,
+					    KIRQL irql)
+{
+	if (wnd->attributes & NDIS_ATTRIBUTE_DESERIALIZE)
+		return lower_irql(irql);
+	else
+		return nt_spin_unlock_irql(serialize_lock(wnd), irql);
+}
+
+static inline KIRQL if_serialize_lock_irql(struct wrap_ndis_device *wnd)
+{
+	if (!(wnd->attributes & NDIS_ATTRIBUTE_DESERIALIZE))
+		return nt_spin_lock_irql(serialize_lock(wnd), DISPATCH_LEVEL);
+}
+
+static inline void if_serialize_unlock_irql(struct wrap_ndis_device *wnd,
+					    KIRQL irql)
+{
+	if (!(wnd->attributes & NDIS_ATTRIBUTE_DESERIALIZE))
+		return nt_spin_unlock_irql(serialize_lock(wnd), irql);
+}
+
+static inline void if_serialize_lock(struct wrap_ndis_device *wnd)
+{
+	if (!(wnd->attributes & NDIS_ATTRIBUTE_DESERIALIZE))
+		nt_spin_lock(serialize_lock(wnd));
+}
+
+static inline void if_serialize_unlock(struct wrap_ndis_device *wnd)
+{
+	if (!(wnd->attributes & NDIS_ATTRIBUTE_DESERIALIZE))
+		nt_spin_unlock(serialize_lock(wnd));
+}
+
 #endif /* NDIS_H */

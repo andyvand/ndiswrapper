@@ -640,7 +640,7 @@ wfastcall void WRAP_EXPORT(ExInterlockedAddLargeStatistic)
 #ifdef CONFIG_X86_64
 	__asm__ __volatile__(
 		"\n"
-		LOCK_PREFIX "addq %0, %1\n\t"
+		LOCK_PREFIX "add %0, %1\n\t"
 		:
 		: "r" (n), "m" (*plint)
 		: "memory");
@@ -686,15 +686,26 @@ static void timer_proc(unsigned long data)
 	KeSetEvent((struct nt_event *)nt_timer, 0, FALSE);
 
 	kdpc = nt_timer->kdpc;
-	if (kdpc && kdpc->func)
+	if (kdpc && kdpc->func) {
+		struct wrap_ndis_device *wnd;
+		if (wrap_timer->wd) {
+			wnd = wrap_timer->wd->wnd;
+			if (serialized_miniport(wnd))
+				nt_spin_lock(serialize_lock(wnd));
+			else
+				wnd = NULL;
+		} else
+			wnd = NULL;
 //		queue_kdpc(kdpc);
 		LIN2WIN4(kdpc->func, kdpc, kdpc->ctx, kdpc->arg1, kdpc->arg2);
+		if (wnd)
+			nt_spin_unlock(serialize_lock(wnd));
+	}
 
 	nt_spin_lock(&timer_lock);
 	if (wrap_timer->repeat)
 		mod_timer(&wrap_timer->timer, jiffies + wrap_timer->repeat);
 	nt_spin_unlock(&timer_lock);
-
 
 	TRACEEXIT5(return);
 }
@@ -737,10 +748,12 @@ void wrap_init_timer(struct nt_timer *nt_timer, enum timer_type type,
 		irql = nt_spin_lock_irql(&wd->timer_lock, DISPATCH_LEVEL);
 		InsertTailList(&wd->timer_list, &wrap_timer->list);
 		nt_spin_unlock_irql(&wd->timer_lock, irql);
+		wrap_timer->wd = wd;
 	} else {
 		irql = nt_spin_lock_irql(&timer_lock, DISPATCH_LEVEL);
 		InsertTailList(&wrap_timer_list, &wrap_timer->list);
 		nt_spin_unlock_irql(&timer_lock, irql);
+		wrap_timer->wd = NULL;
 	}
 	DBGTRACE5("timer %p (%p)", wrap_timer, nt_timer);
 	TRACEEXIT5(return);
