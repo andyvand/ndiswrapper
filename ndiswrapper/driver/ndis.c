@@ -1608,7 +1608,7 @@ wstdcall void WRAP_EXPORT(NdisSend)
 		LIN2WIN3(miniport->send_packets, wnd->nmb->adapter_ctx,
 			 &packet, 1);
 		serialize_unlock_irql(wnd, irql);
-		if (serialized_miniport(wnd))
+		if (deserialized_driver(wnd))
 			*status = NDIS_STATUS_PENDING;
 		else {
 			struct ndis_packet_oob_data *oob_data;
@@ -2096,7 +2096,7 @@ NdisMIndicateReceivePacket(struct ndis_miniport_block *nmb,
 
 		/* serialized drivers check the status upon return
 		 * from this function */
-		if (!serialized_miniport(wnd)) {
+		if (!deserialized_driver(wnd)) {
 			oob_data->status = NDIS_STATUS_SUCCESS;
 			continue;
 		}
@@ -2137,7 +2137,7 @@ NdisMSendComplete(struct ndis_miniport_block *nmb, struct ndis_packet *packet,
 		  NDIS_STATUS status)
 {
 	struct wrap_ndis_device *wnd = nmb->wnd;
-	if (serialized_miniport(wnd))
+	if (deserialized_driver(wnd))
 		free_tx_packet(wnd, packet, status);
 	else {
 		struct ndis_packet_oob_data *oob_data;

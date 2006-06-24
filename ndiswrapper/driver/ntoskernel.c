@@ -690,16 +690,16 @@ static void timer_proc(unsigned long data)
 		struct wrap_ndis_device *wnd;
 		if (wrap_timer->wd) {
 			wnd = wrap_timer->wd->wnd;
-			if (serialized_miniport(wnd))
-				nt_spin_lock(serialize_lock(wnd));
-			else
+			if (deserialized_driver(wnd))
 				wnd = NULL;
+			else
+				nt_spin_lock(&wnd->nmb->lock);
 		} else
 			wnd = NULL;
 //		queue_kdpc(kdpc);
 		LIN2WIN4(kdpc->func, kdpc, kdpc->ctx, kdpc->arg1, kdpc->arg2);
 		if (wnd)
-			nt_spin_unlock(serialize_lock(wnd));
+			nt_spin_unlock(&wnd->nmb->lock);
 	}
 
 	nt_spin_lock(&timer_lock);
