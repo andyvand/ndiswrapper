@@ -937,10 +937,16 @@ wstdcall void alloc_shared_memory_async(void *arg1, void *arg2)
 	miniport = &wnd->wd->driver->ndis_driver->miniport;
 	NdisMAllocateSharedMemory(wnd->nmb, alloc_shared_mem->size,
 				  alloc_shared_mem->cached, &virt, &phys);
-	irql = raise_irql(DISPATCH_LEVEL);
+	if (wnd->attributes & NDIS_ATTRIBUTE_DESERIALIZE)
+		irql = raise_irql(DISPATCH_LEVEL);
+	else
+		irql = nt_spin_lock_irql(&wnd->nmb->lock, DISPATCH_LEVEL);
 	LIN2WIN5(miniport->alloc_complete, wnd->nmb, virt,
 		 &phys, alloc_shared_mem->size, alloc_shared_mem->ctx);
-	lower_irql(irql);
+	if (wnd->attributes & NDIS_ATTRIBUTE_DESERIALIZE)
+		lower_irql(irql);
+	else
+		nt_spin_unlock_irql(&wnd->nmb->lock, irql);
 	kfree(alloc_shared_mem);
 }
 
@@ -1605,9 +1611,17 @@ wstdcall void WRAP_EXPORT(NdisSend)
 	miniport = &wnd->wd->driver->ndis_driver->miniport;
 	if (miniport->send_packets) {
 		irql = raise_irql(DISPATCH_LEVEL);
+		if (wnd->attributes & NDIS_ATTRIBUTE_DESERIALIZE)
+			irql = raise_irql(DISPATCH_LEVEL);
+		else
+			irql = nt_spin_lock_irql(&wnd->nmb->lock,
+						 DISPATCH_LEVEL);
 		LIN2WIN3(miniport->send_packets, wnd->nmb->adapter_ctx,
 			 &packet, 1);
-		lower_irql(irql);
+		if (wnd->attributes & NDIS_ATTRIBUTE_DESERIALIZE)
+			lower_irql(irql);
+		else
+			nt_spin_unlock_irql(&wnd->nmb->lock, irql);
 		if (wnd->attributes & NDIS_ATTRIBUTE_DESERIALIZE)
 			*status = NDIS_STATUS_PENDING;
 		else {
@@ -1630,10 +1644,17 @@ wstdcall void WRAP_EXPORT(NdisSend)
 			}
 		}
 	} else {
-		irql = raise_irql(DISPATCH_LEVEL);
+		if (wnd->attributes & NDIS_ATTRIBUTE_DESERIALIZE)
+			irql = raise_irql(DISPATCH_LEVEL);
+		else
+			irql = nt_spin_lock_irql(&wnd->nmb->lock,
+						 DISPATCH_LEVEL);
 		*status = LIN2WIN3(miniport->send, wnd->nmb->adapter_ctx,
 				   packet, 0);
-		lower_irql(irql);
+		if (wnd->attributes & NDIS_ATTRIBUTE_DESERIALIZE)
+			lower_irql(irql);
+		else
+			nt_spin_unlock_irql(&wnd->nmb->lock, irql);
 		switch (*status) {
 		case NDIS_STATUS_SUCCESS:
 			free_tx_packet(wnd, packet, *status);
@@ -1780,8 +1801,13 @@ static void ndis_irq_handler_dynamic(unsigned long data)
 
 	miniport = &wnd->wd->driver->ndis_driver->miniport;
 	LIN2WIN1(miniport->handle_interrupt, wnd->nmb->adapter_ctx);
-	if (miniport->enable_interrupts)
+	if (miniport->enable_interrupts) {
+		if (!(wnd->attributes & NDIS_ATTRIBUTE_DESERIALIZE))
+			nt_spin_lock(&wnd->nmb->lock);
 		LIN2WIN1(miniport->enable_interrupts, wnd->nmb->adapter_ctx);
+		if (!(wnd->attributes & NDIS_ATTRIBUTE_DESERIALIZE))
+			nt_spin_unlock(&wnd->nmb->lock);
+	}
 }
 
 irqreturn_t ndis_isr_dynamic(int irq, void *data, struct pt_regs *pt_regs)
@@ -1807,7 +1833,13 @@ static void ndis_irq_handler_shared(unsigned long data)
 	struct miniport_char *miniport;
 
 	miniport = &wnd->wd->driver->ndis_driver->miniport;
-	LIN2WIN1(miniport->handle_interrupt, wnd->nmb->adapter_ctx);
+	if (miniport->enable_interrupts) {
+		if (!(wnd->attributes & NDIS_ATTRIBUTE_DESERIALIZE))
+			nt_spin_lock(&wnd->nmb->lock);
+		LIN2WIN1(miniport->enable_interrupts, wnd->nmb->adapter_ctx);
+		if (!(wnd->attributes & NDIS_ATTRIBUTE_DESERIALIZE))
+			nt_spin_unlock(&wnd->nmb->lock);
+	}
 }
 
 irqreturn_t ndis_isr_shared(int irq, void *data, struct pt_regs *pt_regs)
@@ -2056,9 +2088,15 @@ wstdcall void return_packet(void *arg1, void *arg2)
 	packet = arg2;
 	TRACEENTER4("%p, %p", wnd, packet);
 	miniport = &wnd->wd->driver->ndis_driver->miniport;
-	irql = raise_irql(DISPATCH_LEVEL);
+	if (wnd->attributes & NDIS_ATTRIBUTE_DESERIALIZE)
+		irql = raise_irql(DISPATCH_LEVEL);
+	else
+		irql = nt_spin_lock_irql(&wnd->nmb->lock, DISPATCH_LEVEL);
 	LIN2WIN2(miniport->return_packet, wnd->nmb->adapter_ctx, packet);
-	lower_irql(irql);
+	if (wnd->attributes & NDIS_ATTRIBUTE_DESERIALIZE)
+		lower_irql(irql);
+	else
+		nt_spin_unlock_irql(&wnd->nmb->lock, irql);
 	TRACEEXIT4(return);
 }
 
@@ -2250,10 +2288,17 @@ EthRxIndicateHandler(struct ndis_miniport_block *nmb, void *rx_ctx,
 		}
 		oob_data = NDIS_PACKET_OOB_DATA(packet);
 		miniport = &wnd->wd->driver->ndis_driver->miniport;
-		irql = raise_irql(DISPATCH_LEVEL);
+		if (wnd->attributes & NDIS_ATTRIBUTE_DESERIALIZE)
+			irql = raise_irql(DISPATCH_LEVEL);
+		else
+			irql = nt_spin_lock_irql(&wnd->nmb->lock,
+						 DISPATCH_LEVEL);
 		res = LIN2WIN6(miniport->tx_data, packet, &bytes_txed, nmb,
 			       rx_ctx, look_ahead_size, packet_size);
-		lower_irql(irql);
+		if (wnd->attributes & NDIS_ATTRIBUTE_DESERIALIZE)
+			lower_irql(irql);
+		else
+			nt_spin_unlock_irql(&wnd->nmb->lock, irql);
 		DBGTRACE3("%d, %d, %d", header_size, look_ahead_size,
 			  bytes_txed);
 		if (res == NDIS_STATUS_SUCCESS) {

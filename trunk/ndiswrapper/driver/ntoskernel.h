@@ -955,23 +955,23 @@ static inline void atomic_inc_size(char *mem, unsigned int size)
 {								
 	if (size == 1)
 		__asm__ __volatile__(				
-			LOCK_PREFIX "incb %b0"
+			LOCK_PREFIX "incb %b0\n\t"
 			: "=m" (*mem)
 			: "m" (*mem));
 	else if (size == 2)
 		__asm__ __volatile__(
-			LOCK_PREFIX "incw %w0"
+			LOCK_PREFIX "incw %w0\n\t"
 			: "=m" (*mem)
 			: "m" (*mem));
 	else if (size == 4)
 		__asm__ __volatile__(
-			LOCK_PREFIX "incl %0"
+			LOCK_PREFIX "incl %0\n\t"
 			: "=m" (*mem)
 			: "m" (*mem));
 #ifdef CONFIG_X86_64
 	else if (size == 8)
 		__asm__ __volatile__(
-			LOCK_PREFIX "incq %q0"
+			LOCK_PREFIX "incq %q0\n\t"
 			: "=m" (*mem)
 			: "m" (*mem));
 #endif
@@ -985,23 +985,23 @@ static inline void atomic_dec_size(char *mem, unsigned int size)
 {								
 	if (size == 1)
 		__asm__ __volatile__(				
-			LOCK_PREFIX "decb %b0"
+			LOCK_PREFIX "decb %b0\n\t"
 			: "=m" (*mem)
 			: "m" (*mem));
 	else if (size == 2)
 		__asm__ __volatile__(
-			LOCK_PREFIX "decw %w0"
+			LOCK_PREFIX "decw %w0\n\t"
 			: "=m" (*mem)
 			: "m" (*mem));
 	else if (size == 4)
 		__asm__ __volatile__(
-			LOCK_PREFIX "decl %0"
+			LOCK_PREFIX "decl %0\n\t"
 			: "=m" (*mem)
 			: "m" (*mem));
 #ifdef CONFIG_X86_64
 	else if (size == 8)
 		__asm__ __volatile__(
-			LOCK_PREFIX "decq %q0"
+			LOCK_PREFIX "decq %q0\n\t"
 			: "=m" (*mem)
 			: "m" (*mem));
 #endif
