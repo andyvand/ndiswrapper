@@ -589,8 +589,8 @@ wfastcall LONG WRAP_EXPORT(InterlockedIncrement)
 	TRACEENTER5("%p, %d", val, *val);
 	__asm__ __volatile__(
 		"\n"
-		LOCK_PREFIX "xadd %1, %2\n\t"
-		"inc %1\n\t"
+		LOCK_PREFIX "xaddl %0, %2\n\t"
+		"incl %0\n\t"
 		: "=r" (ret)
 		: "0" (1), "m" (*val)
 		: "memory");
@@ -605,8 +605,8 @@ wfastcall LONG WRAP_EXPORT(InterlockedDecrement)
 	TRACEENTER5("%p, %d", val, *val);
 	__asm__ __volatile__(
 		"\n"
-		LOCK_PREFIX "xadd %1, %2\n\t"
-		"dec %1\n\t"
+		LOCK_PREFIX "xaddl %0, %2\n\t"
+		"decl %0\n\t"
 		: "=r" (ret)
 		: "0" (-1), "m" (*val)
 		: "memory");
@@ -640,7 +640,7 @@ wfastcall void WRAP_EXPORT(ExInterlockedAddLargeStatistic)
 #ifdef CONFIG_X86_64
 	__asm__ __volatile__(
 		"\n"
-		LOCK_PREFIX "add %0, %1\n\t"
+		LOCK_PREFIX "addq %0, %1\n\t"
 		:
 		: "r" (n), "m" (*plint)
 		: "memory");
