@@ -57,10 +57,16 @@ NDIS_STATUS miniport_reset(struct wrap_ndis_device *wnd)
 	miniport = &wnd->wd->driver->ndis_driver->miniport;
 	cur_lookahead = wnd->nmb->cur_lookahead;
 	max_lookahead = wnd->nmb->max_lookahead;
-	irql = raise_irql(DISPATCH_LEVEL);
+	if (wnd->attributes & NDIS_ATTRIBUTE_DESERIALIZE)
+		irql = raise_irql(DISPATCH_LEVEL);
+	else
+		irql = nt_spin_lock_irql(&wnd->nmb->lock, DISPATCH_LEVEL);
 	wnd->ndis_comm_done = 0;
 	res = LIN2WIN2(miniport->reset, &reset_address, wnd->nmb->adapter_ctx);
-	lower_irql(irql);
+	if (wnd->attributes & NDIS_ATTRIBUTE_DESERIALIZE)
+		lower_irql(irql);
+	else
+		nt_spin_unlock_irql(&wnd->nmb->lock, irql);
 
 	DBGTRACE2("%08X, %08X", res, reset_address);
 	if (res == NDIS_STATUS_PENDING) {
@@ -102,9 +108,16 @@ NDIS_STATUS miniport_query_info_needed(struct wrap_ndis_device *wnd,
 	DBGTRACE2("%p, %08X", miniport->query, oid);
 	irql = raise_irql(DISPATCH_LEVEL);
 	wnd->ndis_comm_done = 0;
+	if (wnd->attributes & NDIS_ATTRIBUTE_DESERIALIZE)
+		irql = raise_irql(DISPATCH_LEVEL);
+	else
+		irql = nt_spin_lock_irql(&wnd->nmb->lock, DISPATCH_LEVEL);
 	res = LIN2WIN6(miniport->query, wnd->nmb->adapter_ctx, oid, buf,
 		       bufsize, &written, needed);
-	lower_irql(irql);
+	if (wnd->attributes & NDIS_ATTRIBUTE_DESERIALIZE)
+		lower_irql(irql);
+	else
+		nt_spin_unlock_irql(&wnd->nmb->lock, irql);
 
 	DBGTRACE2("%08X, %08X", res, oid);
 	if (res == NDIS_STATUS_PENDING) {
@@ -151,9 +164,16 @@ NDIS_STATUS miniport_set_info(struct wrap_ndis_device *wnd, ndis_oid oid,
 	DBGTRACE2("%p, %08X", miniport->query, oid);
 	irql = raise_irql(DISPATCH_LEVEL);
 	wnd->ndis_comm_done = 0;
+	if (wnd->attributes & NDIS_ATTRIBUTE_DESERIALIZE)
+		irql = raise_irql(DISPATCH_LEVEL);
+	else
+		irql = nt_spin_lock_irql(&wnd->nmb->lock, DISPATCH_LEVEL);
 	res = LIN2WIN6(miniport->setinfo, wnd->nmb->adapter_ctx, oid,
 		       buf, bufsize, &written, &needed);
-	lower_irql(irql);
+	if (wnd->attributes & NDIS_ATTRIBUTE_DESERIALIZE)
+		lower_irql(irql);
+	else
+		nt_spin_unlock_irql(&wnd->nmb->lock, irql);
 
 	DBGTRACE2("%08X, %08X", res, oid);
 	if (res == NDIS_STATUS_PENDING) {
@@ -557,10 +577,10 @@ static int miniport_tx_packets(struct wrap_ndis_device *wnd)
 			sent = n;
 		} else {
 			struct ndis_packet_oob_data *oob_data;
-			irql = raise_irql(DISPATCH_LEVEL);
+			irql = nt_spin_lock_irql(&wnd->nmb->lock, DISPATCH_LEVEL);
 			LIN2WIN3(miniport->send_packets, wnd->nmb->adapter_ctx,
 				 wnd->tx_array, n);
-			lower_irql(irql);
+			nt_spin_unlock_irql(&wnd->nmb->lock, irql);
 			for (sent = 0; sent < n && wnd->tx_ok; sent++) {
 				packet = wnd->tx_array[sent];
 				oob_data = NDIS_PACKET_OOB_DATA(packet);
@@ -601,11 +621,12 @@ static int miniport_tx_packets(struct wrap_ndis_device *wnd)
 			oob_data = NDIS_PACKET_OOB_DATA(packet);
 			oob_data->status = NDIS_STATUS_NOT_RECOGNIZED;
 			if (!(wnd->attributes & NDIS_ATTRIBUTE_DESERIALIZE))
-				irql = raise_irql(DISPATCH_LEVEL);
+				irql = nt_spin_lock_irql(&wnd->nmb->lock,
+							 DISPATCH_LEVEL);
 			res = LIN2WIN3(miniport->send, wnd->nmb->adapter_ctx,
 				       packet, packet->private.flags);
 			if (!(wnd->attributes & NDIS_ATTRIBUTE_DESERIALIZE))
-				lower_irql(irql);
+				nt_spin_unlock_irql(&wnd->nmb->lock, irql);
 			switch (res) {
 			case NDIS_STATUS_SUCCESS:
 				free_tx_packet(wnd, packet, res);
@@ -1138,9 +1159,16 @@ static void wrap_ndis_worker(void *param)
 		KIRQL irql;
 
 		miniport = &wnd->wd->driver->ndis_driver->miniport;
-		irql = raise_irql(DISPATCH_LEVEL);
+		if (wnd->attributes & NDIS_ATTRIBUTE_DESERIALIZE)
+			irql = raise_irql(DISPATCH_LEVEL);
+		else
+			irql = nt_spin_lock_irql(&wnd->nmb->lock,
+						 DISPATCH_LEVEL);
 		res = LIN2WIN1(miniport->hangcheck, wnd->nmb->adapter_ctx);
-		lower_irql(irql);
+		if (wnd->attributes & NDIS_ATTRIBUTE_DESERIALIZE)
+			lower_irql(irql);
+		else
+			nt_spin_unlock_irql(&wnd->nmb->lock, irql);
 		if (res) {
 			WARNING("%s is being reset", wnd->net_dev->name);
 			res = miniport_reset(wnd);
