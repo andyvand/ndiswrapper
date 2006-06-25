@@ -1239,19 +1239,6 @@ static inline void serialize_unlock_irql(struct wrap_ndis_device *wnd,
 		return nt_spin_unlock_irql(&wnd->nmb->lock, irql);
 }
 
-static inline KIRQL if_serialize_lock_irql(struct wrap_ndis_device *wnd)
-{
-	if (!deserialized_driver(wnd))
-		return nt_spin_lock_irql(&wnd->nmb->lock, DISPATCH_LEVEL);
-}
-
-static inline void if_serialize_unlock_irql(struct wrap_ndis_device *wnd,
-					    KIRQL irql)
-{
-	if (!deserialized_driver(wnd))
-		return nt_spin_unlock_irql(&wnd->nmb->lock, irql);
-}
-
 static inline void if_serialize_lock(struct wrap_ndis_device *wnd)
 {
 	if (!deserialized_driver(wnd))
