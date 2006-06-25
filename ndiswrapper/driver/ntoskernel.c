@@ -600,9 +600,9 @@ wfastcall LONG WRAP_EXPORT(InterlockedExchange)
 }
 
 wfastcall LONG WRAP_EXPORT(InterlockedCompareExchange)
-	(LONG volatile *dest, LONG xchg, LONG comperand)
+	(LONG volatile *dest, LONG new, LONG old)
 {
-	return cmpxchg(dest, comperand, xchg);
+	return cmpxchg(dest, old, new);
 }
 
 wfastcall void WRAP_EXPORT(ExInterlockedAddLargeStatistic)
