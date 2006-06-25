@@ -337,13 +337,13 @@ typedef u32 pm_message_t;
 
 //#define DEBUG_IRQL 1
 
+#if !defined(CONFIG_USB) && defined(CONFIG_USB_MODULE)
+#define CONFIG_USB 1
+#endif
+
 #if defined(DISABLE_USB)
 #undef CONFIG_USB
 #undef CONFIG_USB_MODULE
-#endif
-
-#if !defined(CONFIG_USB) && defined(CONFIG_USB_MODULE)
-#define CONFIG_USB 1
 #endif
 
 #ifdef CONFIG_X86_64
@@ -586,35 +586,31 @@ struct wrap_device {
 			struct nt_list wrap_urb_list;
 		} usb;
 	};
-	struct wrap_ndis_device *wnd;
+	union {
+		struct wrap_ndis_device *wnd;
+	};
 	struct nt_list timer_list;
-	NT_SPIN_LOCK timer_lock;
 	struct cm_resource_list *resource_list;
 	BOOLEAN surprise_removed;
 };
 
 /* Some drivers use worker entries to complete functions called from
- * within worker threads. So we should have separate workqueues to
- * make sure worker entries run properly */
+ * within other worker threads. So we should have separate workqueues
+ * to make sure worker entries run properly */
 
-#if LINUX_VERSION_CODE > KERNEL_VERSION(2,4,0)
 #define USE_OWN_WORKQUEUE 1
+
+#ifdef USE_OWN_WORKQUEUE
+
 extern struct workqueue_struct *wrap_wq;
 #define schedule_ndis_work(work_struct) queue_work(ndis_wq, (work_struct))
 #define schedule_wrap_work(work_struct) queue_work(wrap_wq, (work_struct))
-#else
-#define schedule_ndis_work(work_struct) schedule_work(work_struct)
-#define schedule_wrap_work(work_struct) schedule_work(work_struct)
-#endif
 
 /* Normally workqueue for ntos is not required, as worker entries in
  * it are not supposed to wait; however, it helps to have separate
  * workqueue so keyboard etc. work when kernel crashes */
 
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,7)
-/* workqueues appeared in 2.6.7 or thereabouts */
-#define USE_OWN_NTOS_WORKQUEUE 1
-#endif
+//#define USE_OWN_NTOS_WORKQUEUE 1
 
 #ifdef USE_OWN_NTOS_WORKQUEUE
 extern struct workqueue_struct *ntos_wq;
@@ -623,12 +619,17 @@ extern struct workqueue_struct *ntos_wq;
 #define schedule_ntos_work(work_struct) schedule_work(work_struct)
 #endif
 
+#else // USE_OWN_WORKQUEUE
+#define schedule_ndis_work(work_struct) schedule_work(work_struct)
+#define schedule_wrap_work(work_struct) schedule_work(work_struct)
+#endif // USE_OWN_WORKQUEUE
+
 int ntoskernel_init(void);
 void ntoskernel_exit(void);
 int ntoskernel_init_device(struct wrap_device *wd);
 void ntoskernel_exit_device(struct wrap_device *wd);
 void *allocate_object(ULONG size, enum common_object_type type, char *name);
-void  free_object(void *object);
+void free_object(void *object);
 
 int usb_init(void);
 void usb_exit(void);
