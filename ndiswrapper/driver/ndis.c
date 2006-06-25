@@ -1779,12 +1779,11 @@ static void ndis_irq_handler(unsigned long data)
 	struct miniport_char *miniport;
 
 	miniport = &wnd->wd->driver->ndis_driver->miniport;
+	if_serialize_lock(wnd);
 	LIN2WIN1(miniport->handle_interrupt, wnd->nmb->adapter_ctx);
-	if (miniport->enable_interrupts) {
-		if_serialize_lock(wnd);
+	if (miniport->enable_interrupts)
 		LIN2WIN1(miniport->enable_interrupts, wnd->nmb->adapter_ctx);
-		if_serialize_unlock(wnd);
-	}
+	if_serialize_unlock(wnd);
 }
 
 irqreturn_t ndis_isr(int irq, void *data, struct pt_regs *pt_regs)
@@ -1801,7 +1800,9 @@ irqreturn_t ndis_isr(int irq, void *data, struct pt_regs *pt_regs)
 		LIN2WIN3(miniport->isr, &recognized, &queue_handler,
 			 wnd->nmb->adapter_ctx);
 	else { //if (miniport->disable_interrupts)
+		if_serialize_lock(wnd);
 		LIN2WIN1(miniport->disable_interrupts, wnd->nmb->adapter_ctx);
+		if_serialize_unlock(wnd);
 		/* it is not shared interrupt, so handler must be called */
 		recognized = queue_handler = TRUE;
 	}
