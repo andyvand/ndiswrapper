@@ -2106,9 +2106,7 @@ NdisMIndicateReceivePacket(struct ndis_miniport_block *nmb,
 		if (oob_data->status == NDIS_STATUS_RESOURCES)
 			continue;
 
-		if (oob_data->status != NDIS_STATUS_SUCCESS)
-			WARNING("invalid packet status %08X",
-				oob_data->status);
+		assert (oob_data->status == NDIS_STATUS_SUCCESS);
 		/* deserialized driver doesn't check the status upon
 		 * return from this function; we need to call
 		 * MiniportReturnPacket later for this packet. Calling
@@ -2340,9 +2338,9 @@ NdisMTransferDataComplete(struct ndis_miniport_block *nmb,
 	       oob_data->look_ahead_size);
 	buffer = packet->private.buffer_head;
 	while (buffer) {
-		int length = MmGetMdlByteCount(buffer);
-		memcpy(skb_put(skb, length),
-		       MmGetSystemAddressForMdl(buffer), length);
+		memcpy(skb_put(skb, MmGetMdlByteCount(buffer)),
+		       MmGetSystemAddressForMdl(buffer),
+		       MmGetMdlByteCount(buffer));
 		buffer = buffer->next;
 	}
 	kfree(oob_data->look_ahead);
