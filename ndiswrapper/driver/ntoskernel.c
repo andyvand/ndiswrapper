@@ -717,7 +717,7 @@ void wrap_init_timer(struct nt_timer *nt_timer, enum timer_type type,
 	/* timer_proc needs to serialize MiniportTimer function of
 	 * serialized drivers, so we store wd only for serialized
 	 * drivers */
-	if (wd && deserialized_driver(wd->wnd))
+	if (wd && !deserialized_driver(wd->wnd))
 		wrap_timer->wd = wd;
 	else
 		wrap_timer->wd = NULL;
