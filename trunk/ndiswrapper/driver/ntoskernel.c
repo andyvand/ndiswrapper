@@ -165,7 +165,6 @@ int ntoskernel_init(void)
 int ntoskernel_init_device(struct wrap_device *wd)
 {
 	InitializeListHead(&wd->timer_list);
-	nt_spin_lock_init(&wd->timer_lock);
 #if defined(CONFIG_X86_64)
 	*((ULONG64 *)&kuser_shared_data.system_time) = ticks_1601();
 	shared_data_timer.data = (unsigned long)0;
