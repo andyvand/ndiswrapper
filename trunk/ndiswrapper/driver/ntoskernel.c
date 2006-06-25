@@ -584,52 +584,25 @@ wstdcall USHORT WRAP_EXPORT(ExQueryDepthSList)
 wfastcall LONG WRAP_EXPORT(InterlockedIncrement)
 	(LONG volatile *val)
 {
-	LONG ret;
-
-	TRACEENTER5("%p, %d", val, *val);
-	__asm__ __volatile__(
-		"\n"
-		LOCK_PREFIX "xaddl %0, %2\n\t"
-		"incl %0\n\t"
-		: "=r" (ret)
-		: "0" (1), "m" (*val)
-		: "memory");
-	TRACEEXIT5(return ret);
+	return post_atomic_add(*val, 1);
 }
 
 wfastcall LONG WRAP_EXPORT(InterlockedDecrement)
 	(LONG volatile *val)
 {
-	LONG ret;
-
-	TRACEENTER5("%p, %d", val, *val);
-	__asm__ __volatile__(
-		"\n"
-		LOCK_PREFIX "xaddl %0, %2\n\t"
-		"decl %0\n\t"
-		: "=r" (ret)
-		: "0" (-1), "m" (*val)
-		: "memory");
-	TRACEEXIT5(return ret);
+	return post_atomic_add(*val, -1);
 }
 
 wfastcall LONG WRAP_EXPORT(InterlockedExchange)
 	(LONG volatile *target, LONG val)
 {
-	LONG ret;
-	TRACEENTER5("");
-	ret = xchg(target, val);
-	TRACEEXIT5(return ret);
+	return xchg(target, val);
 }
 
 wfastcall LONG WRAP_EXPORT(InterlockedCompareExchange)
 	(LONG volatile *dest, LONG xchg, LONG comperand)
 {
-	LONG ret;
-
-	TRACEENTER5("");
-	ret = cmpxchg(dest, comperand, xchg);
-	TRACEEXIT5(return ret);
+	return cmpxchg(dest, comperand, xchg);
 }
 
 wfastcall void WRAP_EXPORT(ExInterlockedAddLargeStatistic)

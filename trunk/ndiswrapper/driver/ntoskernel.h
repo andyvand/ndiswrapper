@@ -1012,6 +1012,19 @@ static inline void atomic_dec_size(char *mem, unsigned int size)
 
 #define atomic_dec(mem) atomic_dec_size((char *)mem, sizeof(*mem))
 
+#define pre_atomic_add(var, i)					\
+({								\
+	typeof(var) pre;					\
+	__asm__ __volatile__(					\
+		LOCK_PREFIX "xadd %0, %1\n\t"			\
+		: "=g"(pre), "+m"(var)				\
+		: "0"(i)					\
+		: "cc");					\
+	pre;							\
+})
+
+#define post_atomic_add(var, i) (pre_atomic_add(var, i) + i)
+
 static inline ULONG SPAN_PAGES(void *ptr, SIZE_T length)
 {
 	ULONG n;
