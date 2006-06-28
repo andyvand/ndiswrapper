@@ -361,9 +361,7 @@ int wrap_procfs_add_ndis_device(struct wrap_ndis_device *wnd)
 		return -ENOMEM;
 
 	proc_iface = proc_mkdir(dev->name, wrap_procfs_entry);
-
 	wnd->procfs_iface = proc_iface;
-
 	if (proc_iface == NULL) {
 		ERROR("couldn't create proc directory");
 		return -ENOMEM;
