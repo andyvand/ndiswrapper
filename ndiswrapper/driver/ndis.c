@@ -98,7 +98,6 @@ wstdcall NDIS_STATUS WRAP_EXPORT(NdisMRegisterMiniport)
 	 struct miniport_char *miniport_char, UINT char_len)
 {
 	int min_length;
-	void **func;
 	struct wrap_driver *wrap_driver;
 	struct wrap_ndis_driver *ndis_driver;
 
@@ -128,10 +127,9 @@ wstdcall NDIS_STATUS WRAP_EXPORT(NdisMRegisterMiniport)
 		ERROR("couldn't get wrap_driver");
 		TRACEEXIT1(return NDIS_STATUS_RESOURCES);
 	}
-	if (IoAllocateDriverObjectExtension(drv_obj,
-					    (void *)CE_NDIS_DRIVER_CLIENT_ID,
-					    sizeof(*ndis_driver),
-					    (void **)&ndis_driver) !=
+	if (IoAllocateDriverObjectExtension(
+		    drv_obj, (void *)CE_NDIS_DRIVER_CLIENT_ID,
+		    sizeof(*ndis_driver), (void **)&ndis_driver) !=
 	    STATUS_SUCCESS)
 		TRACEEXIT1(return NDIS_STATUS_RESOURCES);
 	wrap_driver->ndis_driver = ndis_driver;
@@ -142,6 +140,7 @@ wstdcall NDIS_STATUS WRAP_EXPORT(NdisMRegisterMiniport)
 
 	DBG_BLOCK(2) {
 		int i;
+		void **func;
 		char *miniport_funcs[] = {
 			"query", "reconfig", "reset", "send", "setinfo",
 			"tx_data", "return_packet", "send_packets",
