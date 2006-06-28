@@ -1848,22 +1848,23 @@ static struct nt_thread *create_nt_thread(struct task_struct *task)
 	KIRQL irql;
 
 	thread = allocate_object(sizeof(*thread), OBJECT_TYPE_NT_THREAD, NULL);
-	if (thread) {
-		thread->task = task;
-		if (task)
-			thread->pid = task->pid;
-		else
-			thread->pid = 0;
-		nt_spin_lock_init(&thread->lock);
-		InitializeListHead(&thread->irps);
-		irql = nt_spin_lock_irql(&dispatcher_lock, DISPATCH_LEVEL);
-		initialize_dh(&thread->dh, ThreadObject, 0);
-		thread->dh.size = sizeof(*thread);
-		nt_spin_unlock_irql(&dispatcher_lock, irql);
-		DBGTRACE2("thread: %p, task: %p, pid: %d",
-			  thread, thread->task, thread->pid);
-	} else
+	if (!thread) {
 		ERROR("couldn't allocate thread object");
+		return NULL;
+	}
+	thread->task = task;
+	if (task)
+		thread->pid = task->pid;
+	else
+		thread->pid = 0;
+	nt_spin_lock_init(&thread->lock);
+	InitializeListHead(&thread->irps);
+	irql = nt_spin_lock_irql(&dispatcher_lock, DISPATCH_LEVEL);
+	initialize_dh(&thread->dh, ThreadObject, 0);
+	thread->dh.size = sizeof(*thread);
+	nt_spin_unlock_irql(&dispatcher_lock, irql);
+	DBGTRACE2("thread: %p, task: %p, pid: %d",
+		  thread, thread->task, thread->pid);
 	return thread;
 }
 
@@ -1873,7 +1874,7 @@ static void remove_nt_thread(struct nt_thread *thread)
 	KIRQL irql;
 
 	if (!thread) {
-		ERROR("couldn't find thread for task: %p", current);
+		ERROR("invalid thread");
 		return;
 	}
 	DBGTRACE1("terminating thread: %p, task: %p, pid: %d",
