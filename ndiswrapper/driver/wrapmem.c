@@ -172,9 +172,7 @@ void slack_kfree(void *ptr)
 void *wrap_kmalloc(size_t size, unsigned flags, const char *file, int line)
 {
 	struct alloc_info *info;
-	size_t n;
-	n = size + sizeof(*info);
-	info = kmalloc(n, flags);
+	info = kmalloc(size + sizeof(*info), flags);
 	if (!info)
 		return NULL;
 	if (flags & GFP_ATOMIC)
@@ -215,9 +213,7 @@ void wrap_kfree(void *ptr)
 void *wrap_vmalloc(unsigned long size, const char *file, int line)
 {
 	struct alloc_info *info;
-	size_t n;
-	n = size + sizeof(*info);
-	info = vmalloc(n);
+	info = vmalloc(size + sizeof(*info));
 	if (!info)
 		return NULL;
 	info->type = ALLOC_TYPE_VMALLOC;
@@ -240,9 +236,7 @@ void *wrap__vmalloc(unsigned long size, unsigned int gfp_mask, pgprot_t prot,
 		    const char *file, int line)
 {
 	struct alloc_info *info;
-	size_t n;
-	n = size + sizeof(*info);
-	info = __vmalloc(n, gfp_mask, prot);
+	info = __vmalloc(size + sizeof(*info), gfp_mask, prot);
 	if (!info)
 		return NULL;
 	info->type = ALLOC_TYPE_VMALLOC;

@@ -1,4 +1,4 @@
-Version 1.19 2006-XX-XX
+Version 1.19 2006-06-28
 =======================
 * Calls to Miniport functions with serialized drivers (such as RT2500) are
   serialized, so they should work with SMP.

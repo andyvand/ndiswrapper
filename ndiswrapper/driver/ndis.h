@@ -351,8 +351,8 @@ struct miniport_char {
 	USHORT filler;
 	UINT reserved;
 	BOOLEAN (*hangcheck)(void *ctx) wstdcall;
-	void (*disable_interrupts)(void *ctx) wstdcall;
-	void (*enable_interrupts)(void *ctx) wstdcall;
+	void (*disable_interrupt)(void *ctx) wstdcall;
+	void (*enable_interrupt)(void *ctx) wstdcall;
 	void (*miniport_halt)(void *ctx) wstdcall;
 	ndis_interrupt_handler handle_interrupt;
 	NDIS_STATUS (*init)(NDIS_STATUS *error_status, UINT *medium_index,
