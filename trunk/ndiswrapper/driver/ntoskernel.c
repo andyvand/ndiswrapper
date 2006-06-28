@@ -662,17 +662,13 @@ static void timer_proc(unsigned long data)
 
 	kdpc = nt_timer->kdpc;
 	if (kdpc && kdpc->func) {
-		struct wrap_ndis_device *wnd = NULL;
-		/* need to lock for NDIS timers of serialized drivers only */
-		if (wrap_timer->wd &&
-		    !deserialized_driver(wrap_timer->wd->wnd)) {
-			wnd = wrap_timer->wd->wnd;
-			nt_spin_lock(&wnd->nmb->lock);
-		}
+		/* nmb is set for NDIS timers of serialized drivers only */
+		if (wrap_timer->nmb)
+			nt_spin_lock(&wrap_timer->nmb->lock);
 //		queue_kdpc(kdpc);
 		LIN2WIN4(kdpc->func, kdpc, kdpc->ctx, kdpc->arg1, kdpc->arg2);
-		if (wnd)
-			nt_spin_unlock(&wnd->nmb->lock);
+		if (wrap_timer->nmb)
+			nt_spin_unlock(&wrap_timer->nmb->lock);
 	}
 
 	nt_spin_lock(&timer_lock);
@@ -683,7 +679,7 @@ static void timer_proc(unsigned long data)
 }
 
 void wrap_init_timer(struct nt_timer *nt_timer, enum timer_type type,
-		     struct wrap_device *wd)
+		     struct ndis_miniport_block *nmb)
 {
 	struct wrap_timer *wrap_timer;
 	KIRQL irql;
@@ -717,12 +713,15 @@ void wrap_init_timer(struct nt_timer *nt_timer, enum timer_type type,
 	initialize_dh(&nt_timer->dh, type, 0);
 	nt_timer->wrap_timer_magic = WRAP_TIMER_MAGIC;
 	irql = nt_spin_lock_irql(&timer_lock, DISPATCH_LEVEL);
-	if (wd)
-		InsertTailList(&wd->timer_list, &wrap_timer->list);
+	if (nmb)
+		InsertTailList(&nmb->wnd->wd->timer_list, &wrap_timer->list);
 	else
 		InsertTailList(&wrap_timer_list, &wrap_timer->list);
 	nt_spin_unlock_irql(&timer_lock, irql);
-	wrap_timer->wd = wd;
+	if (nmb && !deserialized_driver(nmb->wnd))
+		wrap_timer->nmb = nmb;
+	else
+		wrap_timer->nmb = NULL;
 	DBGTRACE5("timer %p (%p)", wrap_timer, nt_timer);
 	TRACEEXIT5(return);
 }

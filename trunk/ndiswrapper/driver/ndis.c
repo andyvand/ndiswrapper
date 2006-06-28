@@ -1657,7 +1657,7 @@ wstdcall void WRAP_EXPORT(NdisMInitializeTimer)
 {
 	TRACEENTER4("timer: %p, func: %p, ctx: %p, nmb: %p",
 		    &timer->nt_timer, func, ctx, nmb);
-	wrap_init_timer(&timer->nt_timer, NotificationTimer, nmb->wnd->wd);
+	wrap_init_timer(&timer->nt_timer, NotificationTimer, nmb);
 	timer->func = func;
 	timer->ctx = ctx;
 	timer->nmb = nmb;
