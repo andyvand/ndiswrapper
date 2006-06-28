@@ -572,12 +572,15 @@ wfastcall struct nt_slist *WRAP_EXPORT(InterlockedPopEntrySList)
 wstdcall USHORT WRAP_EXPORT(ExQueryDepthSList)
 	(nt_slist_header *head)
 {
+	USHORT depth;
 	TRACEENTER5("%p", head);
 #ifdef CONFIG_X86_64
-	return head->align & 0xffff;
+	depth = head->align & 0xffff;
+	DBGTRACE5("%d, %Lx", depth, head->region);
 #else
-	return head->depth;
+	depth = head->depth;
 #endif
+	return depth;
 }
 
 wfastcall LONG WRAP_EXPORT(InterlockedIncrement)
@@ -672,7 +675,6 @@ static void timer_proc(unsigned long data)
 	if (wrap_timer->repeat)
 		mod_timer(&wrap_timer->timer, jiffies + wrap_timer->repeat);
 	nt_spin_unlock(&timer_lock);
-
 	TRACEEXIT5(return);
 }
 
@@ -701,7 +703,7 @@ void wrap_init_timer(struct nt_timer *nt_timer, enum timer_type type,
 	memset(wrap_timer, 0, sizeof(*wrap_timer));
 	init_timer(&wrap_timer->timer);
 	wrap_timer->timer.data = (unsigned long)nt_timer;
-	wrap_timer->timer.function = &timer_proc;
+	wrap_timer->timer.function = timer_proc;
 	wrap_timer->nt_timer = nt_timer;
 #ifdef DEBUG_TIMER
 	wrap_timer->wrap_timer_magic = WRAP_TIMER_MAGIC;
@@ -773,6 +775,7 @@ BOOLEAN wrap_set_timer(struct nt_timer *nt_timer, unsigned long expires_hz,
 		ret = TRUE;
 	else
 		ret = FALSE;
+
 	TRACEEXIT5(return ret);
 }
 
@@ -1003,6 +1006,7 @@ wstdcall void WRAP_EXPORT(KeReleaseSpinLock)
 {
 	TRACEENTER6("%p", lock);
 	nt_spin_unlock_irql(lock, oldirql);
+	DBGTRACE5("%d, %d", oldirql, current_irql());
 }
 
 wstdcall void WRAP_EXPORT(KeAcquireSpinLockAtDpcLevel)

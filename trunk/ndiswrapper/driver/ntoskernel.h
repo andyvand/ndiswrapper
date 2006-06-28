@@ -1048,10 +1048,9 @@ static inline struct nt_slist *PushEntrySList(nt_slist_header *head,
 					      NT_SPIN_LOCK *lock)
 {
 	KIRQL irql = nt_spin_lock_irql(lock, DISPATCH_LEVEL);
-	entry->next = (struct nt_slist *)head->region;
-	head->region = (ULONGLONG)entry;
-	head->align = (head->align & 0x0000ffff) |
-		((head->align & 0xffff) + 1);
+	entry->next = head->next;
+	head->next = entry;
+	head->align++;
 	nt_spin_unlock_irql(lock, irql);
 	return entry->next;
 }
@@ -1061,11 +1060,10 @@ static inline struct nt_slist *PopEntrySList(nt_slist_header *head,
 {
 	struct nt_slist *entry;
 	KIRQL irql = nt_spin_lock_irql(lock, DISPATCH_LEVEL);
-	entry = (struct nt_slist *)head->region;
+	entry = head->next;
 	if (entry) {
-		head->region = (ULONGLONG)entry->next;
-		head->align = (head->align & 0x0000ffff) |
-			((head->align & 0xffff) - 1);
+		head->next = entry->next;
+		head->align--;
 	}
 	nt_spin_unlock_irql(lock, irql);
 	return entry;

@@ -196,7 +196,10 @@ struct nt_slist {
 #ifdef CONFIG_X86_64
 struct nt_slist_head {
 	ULONGLONG align;
-	ULONGLONG region;
+	union {
+		ULONGLONG region;
+		struct nt_slist *next;
+	};
 } __attribute__((aligned(16)));
 typedef struct nt_slist_head nt_slist_header;
 #else
