@@ -506,12 +506,13 @@ struct pe_image {
 	IMAGE_OPTIONAL_HEADER *opt_hdr;
 };
 
+struct ndis_miniport_block;
 struct wrap_timer {
 	long repeat;
 	struct nt_list list;
 	struct timer_list timer;
 	struct nt_timer *nt_timer;
-	struct wrap_device *wd;
+	struct ndis_miniport_block *nmb;
 #ifdef DEBUG_TIMER
 	unsigned long wrap_timer_magic;
 #endif
@@ -779,7 +780,7 @@ wstdcall void RtlCopyUnicodeString
 noregparm SIZE_T _win_wcslen(const wchar_t *s);
 
 void wrap_init_timer(struct nt_timer *nt_timer, enum timer_type type,
-		     struct wrap_device *wd);
+		     struct ndis_miniport_block *nmb);
 BOOLEAN wrap_set_timer(struct nt_timer *nt_timer, unsigned long expires_hz,
 		       unsigned long repeat_hz, struct kdpc *kdpc);
 
