@@ -402,7 +402,7 @@ ndis_encode_setting(struct wrap_device_setting *setting,
 	param = setting->encoded;
 	if (param) {
 		if (param->type == type)
-			return param;
+			TRACEEXIT2(return param);
 		if (param->type == NdisParameterString)
 			RtlFreeUnicodeString(&param->data.string);
 		setting->encoded = NULL;
@@ -412,7 +412,6 @@ ndis_encode_setting(struct wrap_device_setting *setting,
 		ERROR("couldn't allocate memory");
 		return NULL;
 	}
-	TRACEENTER2("%d", type);
 	switch(type) {
 	case NdisParameterInteger:
 		param->data.integer = simple_strtol(setting->value, NULL, 0);
@@ -445,8 +444,14 @@ static int ndis_decode_setting(struct wrap_device_setting *setting,
 			       struct ndis_configuration_parameter *param)
 {
 	struct ansi_string ansi;
+	struct ndis_configuration_parameter *prev;
 
 	TRACEENTER2("%p, %p", setting, param);
+	prev = setting->encoded;
+	if (prev && prev->type == NdisParameterString) {
+		RtlFreeUnicodeString(&prev->data.string);
+		setting->encoded = NULL;
+	}
 	switch(param->type) {
 	case NdisParameterInteger:
 		snprintf(setting->value, sizeof(u32), "%u", param->data.integer);
@@ -472,7 +477,8 @@ static int ndis_decode_setting(struct wrap_device_setting *setting,
 		DBGTRACE2("unknown setting type: %d", param->type);
 		return -1;
 	}
-	DBGTRACE2("setting changed %s=%s", setting->name, setting->value);
+	DBGTRACE2("setting changed %s='%s', %d", setting->name, setting->value,
+		  ansi.length);
 	return 0;
 }
 
@@ -494,13 +500,13 @@ wstdcall void WRAP_EXPORT(NdisReadConfiguration)
 		RtlFreeAnsiString(&ansi);
 		TRACEEXIT2(return);
 	}
-	DBGTRACE3("%s", ansi.buf);
+	DBGTRACE3("%d, %s", type, ansi.buf);
 	keyname = ansi.buf;
 
 	nt_spin_lock(&loader_lock);
 	nt_list_for_each_entry(setting, &nmb->wnd->wd->settings, list) {
 		if (strnicmp(keyname, setting->name, ansi.length) == 0) {
-			DBGTRACE2("setting %s=%s", keyname, setting->value);
+			DBGTRACE2("setting %s='%s'", keyname, setting->value);
 			nt_spin_unlock(&loader_lock);
 			*param = ndis_encode_setting(setting, type);
 			if (*param)
@@ -1738,13 +1744,15 @@ wstdcall void WRAP_EXPORT(NdisReadNetworkAddress)
 			TRACEEXIT1(return);
 
 		ret = sscanf(ansi.buf, MACSTR, MACINTADR(int_mac));
+		if (ret != ETH_ALEN)
+			ret = sscanf(ansi.buf, MACSTRSEP, MACINTADR(int_mac));
 		RtlFreeAnsiString(&ansi);
 		if (ret == ETH_ALEN) {
 			int i;
 			for (i = 0; i < ETH_ALEN; i++)
 				wnd->mac[i] = int_mac[i];
-			printk(KERN_INFO "%s: %s ethernet device " MACSTR "\n",
-			       wnd->net_dev->name, DRIVER_NAME,
+			printk(KERN_INFO "%s: %s ethernet device " MACSTRSEP
+			       "\n", wnd->net_dev->name, DRIVER_NAME,
 			       MAC2STR(wnd->mac));
 			*len = ETH_ALEN;
 			*addr = wnd->mac;
@@ -1919,7 +1927,7 @@ wstdcall void WRAP_EXPORT(NdisMIndicateStatus)
 			len -= sizeof(*si);
 			while (len > 0) {
 				auth_req = (struct ndis_auth_req *)buf;
-				DBGTRACE1(MACSTR, MAC2STR(auth_req->bssid));
+				DBGTRACE1(MACSTRSEP, MAC2STR(auth_req->bssid));
 				if (auth_req->flags & 0x01)
 					DBGTRACE2("reqauth");
 				if (auth_req->flags & 0x02)
@@ -1966,7 +1974,7 @@ wstdcall void WRAP_EXPORT(NdisMIndicateStatus)
 						  "PMKID_CANDIDATE_LIST");
 					break;
 				}
-				DBGTRACE2("%ld: " MACSTR " 0x%lx",
+				DBGTRACE2("%ld: " MACSTRSEP " 0x%lx",
 					  i, MAC2STR(c->bssid), c->flags);
 #if WIRELESS_EXT > 17
 				memset(&pcand, 0, sizeof(pcand));
