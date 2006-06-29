@@ -190,20 +190,26 @@ static NDIS_STATUS miniport_pnp_event(struct wrap_ndis_device *wnd,
 				      enum ndis_device_pnp_event event)
 {
 	struct miniport_char *miniport;
-	enum ndis_power_profile power_profile;
+	ULONG power_profile;
 
 	TRACEENTER1("%p, %d", wnd, event);
+	miniport = &wnd->wd->driver->ndis_driver->miniport;
+	if (!miniport->pnp_event_notify) {
+		DBGTRACE1("Windows driver %s doesn't support "
+			  "MiniportPnpEventNotify", wnd->wd->driver->name);
+		return NDIS_STATUS_FAILURE;
+	}
 	/* RNDIS driver doesn't like to be notified if device is
 	 * already halted */
 	if (!test_bit(HW_INITIALIZED, &wnd->hw_status))
 		TRACEEXIT1(return NDIS_STATUS_SUCCESS);
-	miniport = &wnd->wd->driver->ndis_driver->miniport;
 	switch (event) {
 	case NdisDevicePnPEventSurpriseRemoved:
 		DBGTRACE1("%u, %p",
 			  (wnd->attributes & NDIS_ATTRIBUTE_SURPRISE_REMOVE_OK),
 			  miniport->pnp_event_notify);
 		if ((wnd->attributes & NDIS_ATTRIBUTE_SURPRISE_REMOVE_OK) &&
+		    wnd->wd->surprise_removed == TRUE &&
 		    miniport->pnp_event_notify) {
 			DBGTRACE1("calling surprise_removed");
 			LIN2WIN4(miniport->pnp_event_notify,
@@ -215,12 +221,6 @@ static NDIS_STATUS miniport_pnp_event(struct wrap_ndis_device *wnd,
 				  wnd->wd->driver->name);
 		return NDIS_STATUS_SUCCESS;
 	case NdisDevicePnPEventPowerProfileChanged:
-		if (!miniport->pnp_event_notify) {
-			DBGTRACE1("Windows driver %s doesn't support "
-				  "MiniportPnpEventNotify",
-				  wnd->wd->driver->name);
-			return NDIS_STATUS_FAILURE;
-		}
 		power_profile = NdisPowerProfileAcOnLine;
 		LIN2WIN4(miniport->pnp_event_notify, wnd->nmb->adapter_ctx,
 			 NdisDevicePnPEventPowerProfileChanged,
@@ -267,9 +267,9 @@ static NDIS_STATUS miniport_init(struct wrap_ndis_device *wnd)
 	 * fail after boot */
 	sleep_hz(HZ / 2);
 	set_bit(HW_INITIALIZED, &wnd->hw_status);
-	hangcheck_add(wnd);
 	up(&wnd->ndis_comm_mutex);
 	up(&wnd->tx_ring_mutex);
+	hangcheck_add(wnd);
 	/* the description about NDIS_ATTRIBUTE_NO_HALT_ON_SUSPEND is
 	 * misleading/confusing; we just ignore it */
 	status = miniport_query_info(wnd, OID_PNP_CAPABILITIES,
@@ -396,7 +396,7 @@ static NDIS_STATUS miniport_set_power_state(struct wrap_ndis_device *wnd,
 	}
 }
 
-static int ndis_set_mac_addr(struct net_device *dev, void *p)
+static int ndis_set_mac_address(struct net_device *dev, void *p)
 {
 	struct wrap_ndis_device *wnd = netdev_priv(dev);
 	struct sockaddr *addr = p;
@@ -408,16 +408,11 @@ static int ndis_set_mac_addr(struct net_device *dev, void *p)
 	mac_address mac;
 
 	/* string <-> ansi <-> unicode conversion is driving me nuts */
-
 	memcpy(mac, addr->sa_data, sizeof(mac));
 	memset(mac_string, 0, sizeof(mac_string));
-	res = snprintf(mac_string, sizeof(mac_string), MACSTR,
-		       MAC2STR(mac));
-	if (res != (sizeof(mac_string) - 1))
-		TRACEEXIT1(return -EINVAL);
-
-	RtlInitAnsiString(&ansi, "mac_address");
-	if (RtlAnsiStringToUnicodeString(&key, &ansi, TRUE))
+	res = snprintf(mac_string, sizeof(mac_string), MACSTR, MAC2STR(mac));
+	DBGTRACE1("%d", res);
+	if (res != (2 * sizeof(mac)))
 		TRACEEXIT1(return -EINVAL);
 
 	RtlInitAnsiString(&ansi, mac_string);
@@ -426,17 +421,34 @@ static int ndis_set_mac_addr(struct net_device *dev, void *p)
 		TRACEEXIT1(return -EINVAL);
 	}
 	param.type = NdisParameterString;
+	RtlInitAnsiString(&ansi, "mac_address");
+	if (RtlAnsiStringToUnicodeString(&key, &ansi, TRUE))
+		TRACEEXIT1(return -EINVAL);
 	NdisWriteConfiguration(&res, wnd->nmb, &key, &param);
+	RtlFreeUnicodeString(&key);
 	if (res != NDIS_STATUS_SUCCESS) {
-		RtlFreeUnicodeString(&key);
 		RtlFreeUnicodeString(&param.data.string);
 		TRACEEXIT1(return -EINVAL);
 	}
-	if (pnp_stop_device(wnd->wd) == STATUS_SUCCESS &&
-	    pnp_start_device(wnd->wd) == STATUS_SUCCESS)
-		memcpy(dev->dev_addr, addr->sa_data, dev->addr_len);
+
+	RtlInitAnsiString(&ansi, "NetworkAddress");
+	if (RtlAnsiStringToUnicodeString(&key, &ansi, TRUE))
+		TRACEEXIT1(return -EINVAL);
+	NdisWriteConfiguration(&res, wnd->nmb, &key, &param);
 	RtlFreeUnicodeString(&key);
+
 	RtlFreeUnicodeString(&param.data.string);
+	if (res != NDIS_STATUS_SUCCESS)
+		TRACEEXIT1(return -EINVAL);
+	if (ndis_reinit(wnd) == NDIS_STATUS_SUCCESS) {
+		res = miniport_query_info(wnd, OID_802_3_CURRENT_ADDRESS,
+					  mac, sizeof(mac));
+		if (res == NDIS_STATUS_SUCCESS) {
+			DBGTRACE1("mac:" MACSTRSEP, MAC2STR(mac));
+			memcpy(dev->dev_addr, mac, sizeof(mac));
+		} else
+			ERROR("couldn't get mac address: %08X", res);
+	}
 	TRACEEXIT1(return 0);
 }
 
@@ -935,7 +947,7 @@ static void set_multicast_list(struct wrap_ndis_device *wnd)
 			if (mclist->dmi_addrlen != ETH_ALEN)
 				continue;
 			memcpy(buf + i * ETH_ALEN, mclist->dmi_addr, ETH_ALEN);
-			DBGTRACE2(MACSTR, MAC2STR(mclist->dmi_addr));
+			DBGTRACE2(MACSTRSEP, MAC2STR(mclist->dmi_addr));
 			i++;
 		}
 		res = miniport_set_info(wnd, OID_802_3_MULTICAST_LIST,
@@ -1044,7 +1056,7 @@ static void link_status_handler(struct wrap_ndis_device *wnd)
 	get_ap_address(wnd, (char *)&wrqu.ap_addr.sa_data);
 	wrqu.ap_addr.sa_family = ARPHRD_ETHER;
 	wireless_send_event(wnd->net_dev, SIOCGIWAP, &wrqu, NULL);
-	DBGTRACE2(MACSTR, MAC2STR(wrqu.ap_addr.sa_data));
+	DBGTRACE2(MACSTRSEP, MAC2STR(wrqu.ap_addr.sa_data));
 	TRACEEXIT2(return);
 }
 
@@ -1148,8 +1160,19 @@ static void wrap_ndis_worker(void *param)
 
 NDIS_STATUS ndis_reinit(struct wrap_ndis_device *wnd)
 {
-	pnp_stop_device(wnd->wd);
-	return pnp_start_device(wnd->wd);
+	NDIS_STATUS status;
+	wnd->pm_capa = FALSE;
+	status = miniport_set_power_state(wnd, NdisDeviceStateD3);
+	if (status != NDIS_STATUS_SUCCESS) {
+		ERROR("halting device %s failed: %08X", wnd->net_dev->name,
+		      status);
+		return status;
+	}
+	status = miniport_set_power_state(wnd, NdisDeviceStateD0);
+	if (status != NDIS_STATUS_SUCCESS)
+		ERROR("starting device %s failed: %08X", wnd->net_dev->name,
+		      status);
+	return status;
 }
 
 void get_encryption_capa(struct wrap_ndis_device *wnd)
@@ -1404,9 +1427,7 @@ wstdcall NTSTATUS NdisDispatchPnp(struct device_object *fdo, struct irp *irp)
 		break;
 	case IRP_MN_REMOVE_DEVICE:
 		DBGTRACE1("%s", wnd->net_dev->name);
-		if (wnd->wd->surprise_removed == TRUE)
-			miniport_pnp_event(wnd,
-					   NdisDevicePnPEventSurpriseRemoved);
+		miniport_pnp_event(wnd, NdisDevicePnPEventSurpriseRemoved);
 		if (ndis_remove_device(wnd)) {
 			status = STATUS_FAILURE;
 			break;
@@ -1575,7 +1596,7 @@ static NDIS_STATUS ndis_start_device(struct wrap_ndis_device *wnd)
 		ERROR("couldn't get mac address: %08X", ndis_status);
 		return ndis_status;
 	}
-	DBGTRACE1("mac:" MACSTR, MAC2STR(mac));
+	DBGTRACE1("mac:" MACSTRSEP, MAC2STR(mac));
 	memcpy(&net_dev->dev_addr, mac, ETH_ALEN);
 
 	net_dev->open = ndis_open;
@@ -1591,7 +1612,7 @@ static NDIS_STATUS ndis_start_device(struct wrap_ndis_device *wnd)
 	} else
 		wnd->tx_ok = 1;
 	net_dev->set_multicast_list = ndis_set_multicast_list;
-	net_dev->set_mac_address = ndis_set_mac_addr;
+	net_dev->set_mac_address = ndis_set_mac_address;
 #if defined(HAVE_ETHTOOL)
 	net_dev->ethtool_ops = &ndis_ethtool_ops;
 #endif
@@ -1629,8 +1650,9 @@ static NDIS_STATUS ndis_start_device(struct wrap_ndis_device *wnd)
 	if (ndis_status == NDIS_STATUS_SUCCESS)
 		printk(KERN_INFO "%s: vendor: '%s'\n", net_dev->name, buf);
 
-	printk(KERN_INFO "%s: %s ethernet device " MACSTR " using %sdriver %s,"
-	       " %s\n", net_dev->name, DRIVER_NAME, MAC2STR(net_dev->dev_addr),
+	printk(KERN_INFO "%s: %s ethernet device " MACSTRSEP
+	       " using %sdriver %s, %s\n", net_dev->name, DRIVER_NAME,
+	       MAC2STR(net_dev->dev_addr),
 	       wnd->attributes & NDIS_ATTRIBUTE_DESERIALIZE ? "" : "serialized ",
 	       wnd->wd->driver->name, wnd->wd->conf_file_name);
 

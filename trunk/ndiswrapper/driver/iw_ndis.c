@@ -598,7 +598,7 @@ int get_ap_address(struct wrap_ndis_device *wnd, mac_address ap_addr)
 	if (wnd->link_status)
 		res = miniport_query_info(wnd, OID_802_11_BSSID, ap_addr,
 					  ETH_ALEN);
-	DBGTRACE2(MACSTR, MAC2STR(ap_addr));
+	DBGTRACE2(MACSTRSEP, MAC2STR(ap_addr));
 	if (res) {
 		DBGTRACE2("res: %08X", res);
 		memset(ap_addr, 0x0, ETH_ALEN);
@@ -631,7 +631,7 @@ static int iw_set_ap_address(struct net_device *dev,
 
 	TRACEENTER2("");
 	memcpy(ap_addr, wrqu->ap_addr.sa_data, ETH_ALEN);
-	DBGTRACE2(MACSTR, MAC2STR(ap_addr));
+	DBGTRACE2(MACSTRSEP, MAC2STR(ap_addr));
 	res = miniport_set_info(wnd, OID_802_11_BSSID, ap_addr, ETH_ALEN);
 	/* user apps may set ap's mac address, which is not required;
 	 * they may fail to work if this function fails, so return
@@ -802,7 +802,7 @@ int add_wep_key(struct wrap_ndis_device *wnd, char *key, int key_len,
 		if (res)
 			WARNING("encryption couldn't be enabled (%08X)", res);
 	}
-	DBGTRACE2("key %d: " MACSTR, index, MAC2STR(key));
+	DBGTRACE2("key %d: " MACSTRSEP, index, MAC2STR(key));
 	res = miniport_set_info(wnd, OID_802_11_ADD_WEP, &ndis_key,
 				sizeof(ndis_key));
 	if (res) {
@@ -1660,7 +1660,7 @@ static int iw_set_encodeext(struct net_device *dev,
 	}
 
 	addr = ext.addr.sa_data;
-	DBGTRACE2("infra_mode = %d, addr = " MACSTR,
+	DBGTRACE2("infra_mode = %d, addr = " MACSTRSEP,
 		  wnd->infrastructure_mode, MAC2STR(addr));
 
 	if (memcmp(addr, "\xff\xff\xff\xff\xff\xff", ETH_ALEN) == 0) {
@@ -1675,7 +1675,7 @@ static int iw_set_encodeext(struct net_device *dev,
 		memcpy(&ndis_key.bssid, addr, ETH_ALEN);
 	}
 
-	DBGTRACE2("bssid " MACSTR, MAC2STR(ndis_key.bssid));
+	DBGTRACE2("bssid " MACSTRSEP, MAC2STR(ndis_key.bssid));
 
 	if (ext.ext_flags & IW_ENCODE_EXT_SET_TX_KEY)
 		ndis_key.index |= (1 << 31);
@@ -2062,7 +2062,7 @@ static int wpa_set_key(struct net_device *dev, struct iw_request_info *info,
 
 		ndis_key.index |= 1 << 29;
 	}
-	DBGTRACE2("infra_mode = %d, key.addr = %p, addr = " MACSTR,
+	DBGTRACE2("infra_mode = %d, key.addr = %p, addr = " MACSTRSEP,
 		  wnd->infrastructure_mode, wpa_key.addr, MAC2STR(addr));
 	if (wpa_key.addr == NULL ||
 	    memcmp(addr, "\xff\xff\xff\xff\xff\xff", ETH_ALEN) == 0) {
@@ -2076,7 +2076,7 @@ static int wpa_set_key(struct net_device *dev, struct iw_request_info *info,
 		ndis_key.index |= (1 << 30);
 		memcpy(&ndis_key.bssid, addr, ETH_ALEN);
 	}
-	DBGTRACE2("bssid " MACSTR, MAC2STR(ndis_key.bssid));
+	DBGTRACE2("bssid " MACSTRSEP, MAC2STR(ndis_key.bssid));
 
 	if (wpa_key.set_tx)
 		ndis_key.index |= (1 << 31);

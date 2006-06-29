@@ -74,7 +74,8 @@
 #define DEV_ANY_ID -1
 
 #define MAC2STR(a) (a)[0], (a)[1], (a)[2], (a)[3], (a)[4], (a)[5]
-#define MACSTR "%02x:%02x:%02x:%02x:%02x:%02x"
+#define MACSTRSEP "%02x:%02x:%02x:%02x:%02x:%02x"
+#define MACSTR "%02x%02x%02x%02x%02x%02x"
 #define MACINTADR(a) (int*)&((a)[0]), (int*)&((a)[1]), (int*)&((a)[2]), \
 		(int*)&((a)[3]), (int*)&((a)[4]), (int*)&((a)[5])
 
