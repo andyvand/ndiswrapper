@@ -854,6 +854,7 @@ struct wrap_ndis_device {
 	enum ndis_physical_medium physical_medium;
 	u32 ndis_wolopts;
 	BOOLEAN pm_capa;
+	struct nt_list timer_list;
 };
 
 struct ndis_pmkid_candidate {

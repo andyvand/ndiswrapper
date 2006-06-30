@@ -22,6 +22,7 @@
 extern char *if_name;
 extern int hangcheck_interval;
 extern struct iw_handler_def ndis_handler_def;
+extern NT_SPIN_LOCK timer_lock;
 
 static int set_packet_filter(struct wrap_ndis_device *wnd,
 			     ULONG packet_filter);
@@ -299,6 +300,28 @@ static void miniport_halt(struct wrap_ndis_device *wnd)
 		DBGTRACE1("halt: %p", miniport->miniport_halt);
 		LIN2WIN1(miniport->miniport_halt, wnd->nmb->adapter_ctx);
 		clear_bit(HW_INITIALIZED, &wnd->hw_status);
+		/* cancel any timers left by bugyy windows driver; also free
+		 * the memory for timers */
+		while (1) {
+			KIRQL irql;
+			struct nt_list *ent;
+			struct wrap_timer *wrap_timer;
+
+			irql = nt_spin_lock_irql(&timer_lock, DISPATCH_LEVEL);
+			ent = RemoveHeadList(&wnd->timer_list);
+			nt_spin_unlock_irql(&timer_lock, irql);
+			if (!ent)
+				break;
+			wrap_timer = container_of(ent, struct wrap_timer, list);
+			/* ktimer that this wrap_timer is associated to can't
+			 * be touched, as it may have been freed by the driver
+			 * already */
+			if (del_timer_sync(&wrap_timer->timer))
+				WARNING("Buggy Windows driver left timer %p running",
+					&wrap_timer->timer);
+			memset(wrap_timer, 0, sizeof(*wrap_timer));
+			slack_kfree(wrap_timer);
+		}
 	} else
 		WARNING("device %p is not initialized - not halting", wnd);
 	TRACEEXIT1(return);
@@ -407,7 +430,6 @@ static int ndis_set_mac_address(struct net_device *dev, void *p)
 	unsigned char mac_string[3 * ETH_ALEN];
 	mac_address mac;
 
-	/* string <-> ansi <-> unicode conversion is driving me nuts */
 	memcpy(mac, addr->sa_data, sizeof(mac));
 	memset(mac_string, 0, sizeof(mac_string));
 	res = snprintf(mac_string, sizeof(mac_string), MACSTR, MAC2STR(mac));
@@ -492,7 +514,7 @@ static struct ndis_packet *alloc_tx_packet(struct wrap_ndis_device *wnd,
 	DBG_BLOCK(4) {
 		dump_bytes(__FUNCTION__, skb->data, skb->len);
 	}
-	DBGTRACE4("packet: %p, buffer: %p, skb: %p", packet, buffer, skb);
+	DBGTRACE3("packet: %p, buffer: %p, skb: %p", packet, buffer, skb);
 	return packet;
 }
 
@@ -575,10 +597,12 @@ static int miniport_tx_packets(struct wrap_ndis_device *wnd)
 				 wnd->tx_array, n);
 			nt_spin_unlock_irql(&wnd->nmb->lock, irql);
 			for (sent = 0; sent < n && wnd->tx_ok; sent++) {
+				NDIS_STATUS pkt_status;
 				packet = wnd->tx_array[sent];
 				oob_data = NDIS_PACKET_OOB_DATA(packet);
-				switch (xchg(&oob_data->status,
-					     NDIS_STATUS_NOT_RECOGNIZED)) {
+				switch ((pkt_status =
+					 xchg(&oob_data->status,
+					      NDIS_STATUS_NOT_RECOGNIZED))) {
 				case NDIS_STATUS_SUCCESS:
 					free_tx_packet(wnd, packet,
 						       NDIS_STATUS_SUCCESS);
@@ -597,12 +621,13 @@ static int miniport_tx_packets(struct wrap_ndis_device *wnd)
 						       NDIS_STATUS_FAILURE);
 					break;
 				default:
-					ERROR("packet %p: invalid status",
-					      packet);
+					ERROR("%p: invalid status: %08X",
+					      packet, pkt_status);
 					free_tx_packet(wnd, packet,
 						       oob_data->status);
 					break;
 				}
+				DBGTRACE3("%p, %d", packet, pkt_status);
 			}
 		}
 		DBGTRACE3("sent: %d(%d)", sent, n);
@@ -1894,6 +1919,7 @@ static wstdcall NTSTATUS NdisAddDevice(struct driver_object *drv_obj,
 		wd->driver->ndis_driver->miniport.shutdown = NULL;
 	wnd->stats_enabled = TRUE;
 	wnd->rx_csum.value = 0;
+	InitializeListHead(&wnd->timer_list);
 
 	fdo->reserved = wnd;
 	nmb->fdo = fdo;

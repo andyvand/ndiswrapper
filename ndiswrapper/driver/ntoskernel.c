@@ -164,7 +164,6 @@ int ntoskernel_init(void)
 
 int ntoskernel_init_device(struct wrap_device *wd)
 {
-	InitializeListHead(&wd->timer_list);
 #if defined(CONFIG_X86_64)
 	*((ULONG64 *)&kuser_shared_data.system_time) = ticks_1601();
 	shared_data_timer.data = (unsigned long)0;
@@ -177,32 +176,9 @@ int ntoskernel_init_device(struct wrap_device *wd)
 
 void ntoskernel_exit_device(struct wrap_device *wd)
 {
-	struct nt_list *ent;
-	KIRQL irql;
-
 	TRACEENTER2("");
 
 	KeFlushQueuedDpcs();
-	/* cancel any timers left by bugyy windows driver; also free
-	 * the memory for timers */
-	while (1) {
-		struct wrap_timer *wrap_timer;
-
-		irql = nt_spin_lock_irql(&timer_lock, DISPATCH_LEVEL);
-		ent = RemoveHeadList(&wd->timer_list);
-		nt_spin_unlock_irql(&timer_lock, irql);
-		if (!ent)
-			break;
-		wrap_timer = container_of(ent, struct wrap_timer, list);
-		/* ktimer that this wrap_timer is associated to can't
-		 * be touched, as it may have been freed by the driver
-		 * already */
-		if (del_timer_sync(&wrap_timer->timer))
-			WARNING("Buggy Windows driver left timer %p running",
-				&wrap_timer->timer);
-		memset(wrap_timer, 0, sizeof(*wrap_timer));
-		slack_kfree(wrap_timer);
-	}
 	TRACEEXIT2(return);
 }
 
@@ -714,7 +690,7 @@ void wrap_init_timer(struct nt_timer *nt_timer, enum timer_type type,
 	nt_timer->wrap_timer_magic = WRAP_TIMER_MAGIC;
 	irql = nt_spin_lock_irql(&timer_lock, DISPATCH_LEVEL);
 	if (nmb)
-		InsertTailList(&nmb->wnd->wd->timer_list, &wrap_timer->list);
+		InsertTailList(&nmb->wnd->timer_list, &wrap_timer->list);
 	else
 		InsertTailList(&wrap_timer_list, &wrap_timer->list);
 	nt_spin_unlock_irql(&timer_lock, irql);
