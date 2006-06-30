@@ -590,7 +590,6 @@ struct wrap_device {
 	union {
 		struct wrap_ndis_device *wnd;
 	};
-	struct nt_list timer_list;
 	struct cm_resource_list *resource_list;
 	BOOLEAN surprise_removed;
 };

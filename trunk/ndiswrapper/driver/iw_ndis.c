@@ -186,12 +186,19 @@ int set_infra_mode(struct wrap_ndis_device *wnd,
 	unsigned int i;
 
 	TRACEENTER2("");
+	res = miniport_query_int(wnd, OID_802_11_INFRASTRUCTURE_MODE,
+				 &wnd->infrastructure_mode);
+	if (res != NDIS_STATUS_SUCCESS) {
+		WARNING("getting operating mode to failed (%08X)", res);
+		TRACEEXIT2(return -EINVAL);
+	}
 	if (wnd->infrastructure_mode == mode)
 		TRACEEXIT2(return 0);
 
 	res = miniport_set_int(wnd, OID_802_11_INFRASTRUCTURE_MODE, mode);
 	if (res) {
-		WARNING("setting operating mode failed (%08X)", res);
+		WARNING("setting operating mode to %d failed (%08X)",
+			mode, res);
 		TRACEEXIT2(return -EINVAL);
 	}
 
