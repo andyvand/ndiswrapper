@@ -561,7 +561,7 @@ static int load_user_space_driver(struct load_driver *load_driver)
 	InitializeListHead(&drv_obj->drv_ext->custom_ext);
 	DBGTRACE1("");
 	if (IoAllocateDriverObjectExtension(drv_obj,
-					    (void *)CE_WRAP_DRIVER_CLIENT_ID,
+					    (void *)WRAP_DRIVER_CLIENT_ID,
 					    sizeof(*wrap_driver),
 					    (void **)&wrap_driver) !=
 	    STATUS_SUCCESS)

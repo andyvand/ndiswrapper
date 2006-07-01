@@ -224,12 +224,8 @@ typedef ULONG_PTR NT_SPIN_LOCK;
 struct kdpc;
 typedef wstdcall void (*DPC)(struct kdpc *kdpc, void *ctx, void *arg1,
 			    void *arg2);
-
 struct kdpc {
 	SHORT type;
-	/* we don't implement kdpc executing on a specific processor;
-	 * until then number is used to represent if the dpc is queued
-	 * or not */
 	UCHAR nr_cpu;
 	UCHAR importance;
 	struct nt_list list;

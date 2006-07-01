@@ -507,13 +507,13 @@ struct pe_image {
 };
 
 struct ndis_miniport_block;
+
 struct wrap_timer {
 	long repeat;
 	struct nt_list list;
 	struct timer_list timer;
 	struct nt_timer *nt_timer;
-	struct ndis_miniport_block *nmb;
-#ifdef DEBUG_TIMER
+#ifdef TIMER_DEBUG
 	unsigned long wrap_timer_magic;
 #endif
 };
@@ -542,7 +542,7 @@ struct wrap_bin_file {
 	void *data;
 };
 
-#define CE_WRAP_DRIVER_CLIENT_ID 1
+#define WRAP_DRIVER_CLIENT_ID 1
 
 struct wrap_driver {
 	struct nt_list list;

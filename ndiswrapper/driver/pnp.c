@@ -489,7 +489,7 @@ NTSTATUS pnp_remove_device(struct wrap_device *wd)
 		DBGTRACE1("unloading driver: %p", fdo_drv_obj);
 		wrap_driver =
 			IoGetDriverObjectExtension(fdo_drv_obj,
-					   (void *)CE_WRAP_DRIVER_CLIENT_ID);
+					   (void *)WRAP_DRIVER_CLIENT_ID);
 		if (fdo_drv_obj->unload)
 			LIN2WIN1(fdo_drv_obj->unload, fdo_drv_obj);
 		if (wrap_driver) {
