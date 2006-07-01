@@ -122,13 +122,13 @@ wstdcall NDIS_STATUS WRAP_EXPORT(NdisMRegisterMiniport)
 		  (u32)sizeof(struct miniport_char));
 	wrap_driver =
 		IoGetDriverObjectExtension(drv_obj,
-					   (void *)CE_WRAP_DRIVER_CLIENT_ID);
+					   (void *)WRAP_DRIVER_CLIENT_ID);
 	if (!wrap_driver) {
 		ERROR("couldn't get wrap_driver");
 		TRACEEXIT1(return NDIS_STATUS_RESOURCES);
 	}
 	if (IoAllocateDriverObjectExtension(
-		    drv_obj, (void *)CE_NDIS_DRIVER_CLIENT_ID,
+		    drv_obj, (void *)NDIS_DRIVER_CLIENT_ID,
 		    sizeof(*ndis_driver), (void **)&ndis_driver) !=
 	    STATUS_SUCCESS)
 		TRACEEXIT1(return NDIS_STATUS_RESOURCES);
@@ -1657,6 +1657,24 @@ wstdcall void WRAP_EXPORT(NdisSend)
 	TRACEEXIT3(return);
 }
 
+wstdcall void wrap_miniport_timer_func(struct kdpc *kdpc, void *ctx, void *arg1,
+				       void *arg2)
+{
+	struct ndis_miniport_timer *timer;
+	struct ndis_miniport_block *nmb;
+
+	/* called as Windows function; we don't care about arg1, arg2 */
+	WIN2LIN2(kdpc, ctx);
+	timer = ctx;
+	nmb = timer->nmb;
+	/* already called at DISPATCH_LEVEL */
+	if (!deserialized_driver(nmb->wnd))
+		nt_spin_lock(&nmb->lock);
+	LIN2WIN4(timer->func, kdpc, timer->ctx, kdpc->arg1, kdpc->arg2);
+	if (!deserialized_driver(nmb->wnd))
+		nt_spin_unlock(&nmb->lock);
+}
+
 wstdcall void WRAP_EXPORT(NdisMInitializeTimer)
 	(struct ndis_miniport_timer *timer, struct ndis_miniport_block *nmb,
 	 void *func, void *ctx)
@@ -1667,7 +1685,7 @@ wstdcall void WRAP_EXPORT(NdisMInitializeTimer)
 	timer->func = func;
 	timer->ctx = ctx;
 	timer->nmb = nmb;
-	KeInitializeDpc(&timer->kdpc, func, ctx);
+	KeInitializeDpc(&timer->kdpc, wrap_miniport_timer_func, timer);
 	TRACEEXIT4(return);
 }
 
@@ -1689,21 +1707,38 @@ wstdcall void WRAP_EXPORT(NdisMCancelTimer)
 	TRACEEXIT4(return);
 }
 
+wstdcall void wrap_ndis_timer_func(struct kdpc *kdpc, void *ctx, void *arg1,
+				   void *arg2)
+{
+	DPC dpc_func;
+
+	/* called as Windows function; we don't care about arg1, arg2 */
+	WIN2LIN2(kdpc, ctx);
+	dpc_func = kdpc->arg2;
+	/* already called at DISPATCH_LEVEL */
+	LIN2WIN4(dpc_func, kdpc, ctx, NULL, NULL);
+}
+
 wstdcall void WRAP_EXPORT(NdisInitializeTimer)
 	(struct ndis_timer *timer, void *func, void *ctx)
 {
-	TRACEENTER4("%p, %p, %p, %p", timer, func, ctx, &timer->nt_timer);
-	KeInitializeTimer(&timer->nt_timer);
-	KeInitializeDpc(&timer->kdpc, func, ctx);
+	TRACEENTER4("%p, %p, %p, %p", timer, &timer->nt_timer, func, ctx);
+	KeInitializeDpc(&timer->kdpc, wrap_ndis_timer_func, ctx);
+	timer->kdpc.arg2 = func;
+	wrap_init_timer(&timer->nt_timer, NotificationTimer, NULL);
 	TRACEEXIT4(return);
 }
+
+/* NdisMSetTimer is a macro that calls NdisSetTimer with
+ * ndis_miniport_timer typecast to ndis_timer */
 
 wstdcall void WRAP_EXPORT(NdisSetTimer)
 	(struct ndis_timer *timer, UINT duetime_ms)
 {
 	unsigned long expires = MSEC_TO_HZ(duetime_ms) + 1;
 
-	DBGTRACE4("%p, %u, %ld", timer, duetime_ms, expires);
+	DBGTRACE4("%p, %p, %p, %u, %ld", timer, &timer->nt_timer,
+		  timer->nt_timer.wrap_timer, duetime_ms, expires);
 	wrap_set_timer(&timer->nt_timer, expires, 0, &timer->kdpc);
 	TRACEEXIT4(return);
 }

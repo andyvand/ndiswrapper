@@ -53,10 +53,19 @@ NT_SPIN_LOCK ntoskernel_lock;
 static kmem_cache_t *mdl_cache;
 static struct nt_list wrap_mdl_list;
 
-struct work_struct kdpc_work;
+/* use tasklet instead worker to execute kdpc's */
+#define KDPC_TASKLET 1
+
+#ifdef KDPC_TASKLET
+static struct tasklet_struct kdpc_work;
+static void kdpc_worker(unsigned long dummy);
+#else
+static struct work_struct kdpc_work;
+static void kdpc_worker(void *data);
+#endif
+
 static struct nt_list kdpc_list;
 static NT_SPIN_LOCK kdpc_list_lock;
-static void kdpc_worker(void *data);
 
 static struct nt_list callback_objects;
 
@@ -96,7 +105,6 @@ static void update_user_shared_data_proc(unsigned long data);
 static int add_bus_driver(const char *name);
 static void free_all_objects(void);
 static BOOLEAN queue_kdpc(struct kdpc *kdpc);
-BOOLEAN dequeue_kdpc(struct kdpc *kdpc);
 
 WRAP_EXPORT_MAP("KeTickCount", &jiffies);
 
@@ -122,9 +130,12 @@ int ntoskernel_init(void)
 	InitializeListHead(&object_list);
 	InitializeListHead(&ntos_work_item_list);
 
+#ifdef KDPC_TASKLET
+	tasklet_init(&kdpc_work, kdpc_worker, 0);
+#else
 	INIT_WORK(&kdpc_work, kdpc_worker, NULL);
+#endif
 	INIT_WORK(&ntos_work_item_work, ntos_work_item_worker, NULL);
-
 	nt_spin_lock_init(&timer_lock);
 	InitializeListHead(&wrap_timer_list);
 
@@ -630,27 +641,24 @@ static void timer_proc(unsigned long data)
 
 	wrap_timer = nt_timer->wrap_timer;
 	TRACEENTER5("%p(%p), %lu", wrap_timer, nt_timer, jiffies);
-#ifdef DEBUG_TIMER
+#ifdef TIMER_DEBUG
 	BUG_ON(wrap_timer->wrap_timer_magic != WRAP_TIMER_MAGIC);
 	BUG_ON(nt_timer->wrap_timer_magic != WRAP_TIMER_MAGIC);
 #endif
 	KeSetEvent((struct nt_event *)nt_timer, 0, FALSE);
-
 	kdpc = nt_timer->kdpc;
 	if (kdpc && kdpc->func) {
-		/* nmb is set for NDIS timers of serialized drivers only */
-		if (wrap_timer->nmb)
-			nt_spin_lock(&wrap_timer->nmb->lock);
-//		queue_kdpc(kdpc);
+#if 0
 		LIN2WIN4(kdpc->func, kdpc, kdpc->ctx, kdpc->arg1, kdpc->arg2);
-		if (wrap_timer->nmb)
-			nt_spin_unlock(&wrap_timer->nmb->lock);
+#else
+		queue_kdpc(kdpc);
+#endif
 	}
-
 	nt_spin_lock(&timer_lock);
 	if (wrap_timer->repeat)
 		mod_timer(&wrap_timer->timer, jiffies + wrap_timer->repeat);
 	nt_spin_unlock(&timer_lock);
+	DBGTRACE5("%lu, %ld", jiffies, wrap_timer->repeat);
 	TRACEEXIT5(return);
 }
 
@@ -681,7 +689,7 @@ void wrap_init_timer(struct nt_timer *nt_timer, enum timer_type type,
 	wrap_timer->timer.data = (unsigned long)nt_timer;
 	wrap_timer->timer.function = timer_proc;
 	wrap_timer->nt_timer = nt_timer;
-#ifdef DEBUG_TIMER
+#ifdef TIMER_DEBUG
 	wrap_timer->wrap_timer_magic = WRAP_TIMER_MAGIC;
 #endif
 	nt_timer->wrap_timer = wrap_timer;
@@ -694,10 +702,6 @@ void wrap_init_timer(struct nt_timer *nt_timer, enum timer_type type,
 	else
 		InsertTailList(&wrap_timer_list, &wrap_timer->list);
 	nt_spin_unlock_irql(&timer_lock, irql);
-	if (nmb && !deserialized_driver(nmb->wnd))
-		wrap_timer->nmb = nmb;
-	else
-		wrap_timer->nmb = NULL;
 	DBGTRACE5("timer %p (%p)", wrap_timer, nt_timer);
 	TRACEEXIT5(return);
 }
@@ -729,8 +733,11 @@ BOOLEAN wrap_set_timer(struct nt_timer *nt_timer, unsigned long expires_hz,
 
 	KeClearEvent((struct nt_event *)nt_timer);
 	wrap_timer = nt_timer->wrap_timer;
-
-#ifdef DEBUG_TIMER
+	DBGTRACE4("%p", wrap_timer);
+#ifdef TIMER_DEBUG
+	if (wrap_timer->nt_timer != nt_timer)
+		WARNING("bad timers: %p, %p, %p", wrap_timer, nt_timer,
+			wrap_timer->nt_timer);
 	if (nt_timer->wrap_timer_magic != WRAP_TIMER_MAGIC) {
 		WARNING("Buggy Windows timer didn't initialize timer %p",
 			nt_timer);
@@ -746,12 +753,11 @@ BOOLEAN wrap_set_timer(struct nt_timer *nt_timer, unsigned long expires_hz,
 	if (kdpc)
 		nt_timer->kdpc = kdpc;
 	wrap_timer->repeat = repeat_hz;
-	nt_spin_unlock_irql(&timer_lock, irql);
 	if (mod_timer(&wrap_timer->timer, jiffies + expires_hz))
 		ret = TRUE;
 	else
 		ret = FALSE;
-
+	nt_spin_unlock_irql(&timer_lock, irql);
 	TRACEEXIT5(return ret);
 }
 
@@ -780,6 +786,7 @@ wstdcall BOOLEAN WRAP_EXPORT(KeCancelTimer)
 {
 	BOOLEAN canceled;
 	struct wrap_timer *wrap_timer;
+	KIRQL irql;
 
 	TRACEENTER5("%p", nt_timer);
 	wrap_timer = nt_timer->wrap_timer;
@@ -787,22 +794,22 @@ wstdcall BOOLEAN WRAP_EXPORT(KeCancelTimer)
 		ERROR("invalid wrap_timer");
 		return TRUE;
 	}
-#ifdef DEBUG_TIMER
+#ifdef TIMER_DEBUG
 	DBGTRACE5("canceling timer %p", wrap_timer);
 	BUG_ON(wrap_timer->wrap_timer_magic != WRAP_TIMER_MAGIC);
 #endif
 	/* del_timer_sync may not be called here, as this function can
 	 * be called at DISPATCH_LEVEL */
-	nt_spin_lock(&timer_lock);
 	DBGTRACE5("deleting timer %p(%p)", wrap_timer, nt_timer);
 	/* disable timer before deleting so it won't be re-armed after
 	 * deleting */
+	irql = nt_spin_lock_irql(&timer_lock, DISPATCH_LEVEL);
 	wrap_timer->repeat = 0;
 	if (del_timer(&wrap_timer->timer))
 		canceled = TRUE;
 	else
 		canceled = FALSE;
-	nt_spin_unlock(&timer_lock);
+	nt_spin_unlock_irql(&timer_lock, irql);
 	DBGTRACE5("canceled (%p): %d", wrap_timer, canceled);
 	TRACEEXIT5(return canceled);
 }
@@ -818,7 +825,11 @@ wstdcall void WRAP_EXPORT(KeInitializeDpc)
 	InitializeListHead(&kdpc->list);
 }
 
+#ifdef KDPC_TASKLET
+static void kdpc_worker(unsigned long data)
+#else
 static void kdpc_worker(void *data)
+#endif
 {
 	struct nt_list *entry;
 	struct kdpc *kdpc;
@@ -832,11 +843,13 @@ static void kdpc_worker(void *data)
 			break;
 		}
 		kdpc = container_of(entry, struct kdpc, list);
-		kdpc->nr_cpu = FALSE;
-		nt_spin_unlock_irql(&kdpc_list_lock, irql);
+		/* initialize kdpc's list so queue/dequeue know if it
+		 * is in the queue or not */
+		InitializeListHead(&kdpc->list);
+		/* irql will be lowered below */
+		nt_spin_unlock(&kdpc_list_lock);
 		DBGTRACE5("%p, %p, %p, %p, %p", kdpc, kdpc->func, kdpc->ctx,
 			  kdpc->arg1, kdpc->arg2);
-		irql = raise_irql(DISPATCH_LEVEL);
 		LIN2WIN4(kdpc->func, kdpc, kdpc->ctx, kdpc->arg1, kdpc->arg2);
 		lower_irql(irql);
 	}
@@ -844,7 +857,11 @@ static void kdpc_worker(void *data)
 
 wstdcall void KeFlushQueuedDpcs(void)
 {
+#ifdef KDPC_TASKLET
+	kdpc_worker(0);
+#else
 	kdpc_worker(NULL);
+#endif
 }
 
 static BOOLEAN queue_kdpc(struct kdpc *kdpc)
@@ -856,20 +873,21 @@ static BOOLEAN queue_kdpc(struct kdpc *kdpc)
 	if (!kdpc)
 		return FALSE;
 	irql = nt_spin_lock_irql(&kdpc_list_lock, DISPATCH_LEVEL);
-	if (kdpc->nr_cpu) {
-		if (kdpc->nr_cpu != TRUE)
-			ERROR("kdpc->nr_cpu: %d", kdpc->nr_cpu);
-		ret = FALSE;
-	} else {
-		ret = kdpc->nr_cpu = TRUE;
+	if (IsListEmpty(&kdpc->list)) {
 		InsertTailList(&kdpc_list, &kdpc->list);
+#ifdef KDPC_TASKLET
+		tasklet_schedule(&kdpc_work);
+#else
 		schedule_ntos_work(&kdpc_work);
-	}
+#endif
+		ret = TRUE;
+	} else
+		ret = FALSE;
 	nt_spin_unlock_irql(&kdpc_list_lock, irql);
 	TRACEEXIT5(return ret);
 }
 
-BOOLEAN dequeue_kdpc(struct kdpc *kdpc)
+static BOOLEAN dequeue_kdpc(struct kdpc *kdpc)
 {
 	BOOLEAN ret;
 	KIRQL irql;
@@ -878,14 +896,12 @@ BOOLEAN dequeue_kdpc(struct kdpc *kdpc)
 	if (!kdpc)
 		return FALSE;
 	irql = nt_spin_lock_irql(&kdpc_list_lock, DISPATCH_LEVEL);
-	if (kdpc->nr_cpu) {
-		if (kdpc->nr_cpu != TRUE)
-			ERROR("kdpc->nr_cpu: %d", kdpc->nr_cpu);
-		kdpc->nr_cpu = FALSE;
+	if (IsListEmpty(&kdpc->list))
+		ret = FALSE;
+	else {
 		RemoveEntryList(&kdpc->list);
 		ret = TRUE;
-	} else
-		ret = FALSE;
+	}
 	nt_spin_unlock_irql(&kdpc_list_lock, irql);
 	return ret;
 }
@@ -982,7 +998,6 @@ wstdcall void WRAP_EXPORT(KeReleaseSpinLock)
 {
 	TRACEENTER6("%p", lock);
 	nt_spin_unlock_irql(lock, oldirql);
-	DBGTRACE5("%d, %d", oldirql, current_irql());
 }
 
 wstdcall void WRAP_EXPORT(KeAcquireSpinLockAtDpcLevel)

@@ -43,7 +43,7 @@ CFLAGS += -freg-struct-return
 
 # to produce debug trace, add option "DEBUG=<n>" where <n> is 1 to 6
 ifdef DEBUG
-CFLAGS += -DDEBUG=$(DEBUG) -g -DDEBUG_TIMER 
+CFLAGS += -DDEBUG=$(DEBUG) -g
 endif
 
 # to debug timers, add option "TIMER_DEBUG=1 DEBUG=<n>"
