@@ -1,9 +1,10 @@
-Version 1.19 2006-06-28
+Version 1.19 2006-07-02
 =======================
 * Calls to Miniport functions with serialized drivers (such as RT2500) are
   serialized, so they should work with SMP.
 * Enable interrupts in IRQ handler; otherwise, some drivers (e.g., Marvell
   8335) don't work.
+* Kernel crash with changing mac address (with 'ifconfig hw ether ...') fixed.
 
 Version 1.18 2006-06-22
 =======================
