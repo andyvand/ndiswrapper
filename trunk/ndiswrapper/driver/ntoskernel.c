@@ -648,7 +648,7 @@ static void timer_proc(unsigned long data)
 	KeSetEvent((struct nt_event *)nt_timer, 0, FALSE);
 	kdpc = nt_timer->kdpc;
 	if (kdpc && kdpc->func) {
-#if 0
+#if 1
 		LIN2WIN4(kdpc->func, kdpc, kdpc->ctx, kdpc->arg1, kdpc->arg2);
 #else
 		queue_kdpc(kdpc);
@@ -801,9 +801,9 @@ wstdcall BOOLEAN WRAP_EXPORT(KeCancelTimer)
 	/* del_timer_sync may not be called here, as this function can
 	 * be called at DISPATCH_LEVEL */
 	DBGTRACE5("deleting timer %p(%p)", wrap_timer, nt_timer);
-	/* disable timer before deleting so it won't be re-armed after
-	 * deleting */
 	irql = nt_spin_lock_irql(&timer_lock, DISPATCH_LEVEL);
+	/* disable timer before deleting so if it is periodic timer, it
+	 * won't be re-armed after deleting */
 	wrap_timer->repeat = 0;
 	if (del_timer(&wrap_timer->timer))
 		canceled = TRUE;

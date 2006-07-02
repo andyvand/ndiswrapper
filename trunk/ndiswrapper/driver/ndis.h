@@ -617,8 +617,6 @@ struct ndis_timer {
 struct ndis_miniport_timer {
 	struct nt_timer nt_timer;
 	struct kdpc kdpc;
-	/* since kdpc already can store func, ctx, I don't know what
-	 * the following two fields are for */
 	DPC func;
 	void *ctx;
 	void *nmb;
@@ -1232,7 +1230,7 @@ static inline KIRQL serialize_lock_irql(struct wrap_ndis_device *wnd)
 }
 
 static inline void serialize_unlock_irql(struct wrap_ndis_device *wnd,
-					    KIRQL irql)
+					 KIRQL irql)
 {
 	if (deserialized_driver(wnd))
 		return lower_irql(irql);
