@@ -1663,7 +1663,8 @@ wstdcall void wrap_miniport_timer_func(struct kdpc *kdpc, void *ctx, void *arg1,
 	struct ndis_miniport_timer *timer;
 	struct ndis_miniport_block *nmb;
 
-	/* called as Windows function; we don't care about arg1, arg2 */
+	/* called as Windows function, so call WIN2LIN before
+	 * accessing args; we don't care about arg1, arg2 */
 	WIN2LIN2(kdpc, ctx);
 	timer = ctx;
 	nmb = timer->nmb;
@@ -1707,24 +1708,11 @@ wstdcall void WRAP_EXPORT(NdisMCancelTimer)
 	TRACEEXIT4(return);
 }
 
-wstdcall void wrap_ndis_timer_func(struct kdpc *kdpc, void *ctx, void *arg1,
-				   void *arg2)
-{
-	DPC dpc_func;
-
-	/* called as Windows function; we don't care about arg1, arg2 */
-	WIN2LIN2(kdpc, ctx);
-	dpc_func = kdpc->arg2;
-	/* already called at DISPATCH_LEVEL */
-	LIN2WIN4(dpc_func, kdpc, ctx, NULL, NULL);
-}
-
 wstdcall void WRAP_EXPORT(NdisInitializeTimer)
 	(struct ndis_timer *timer, void *func, void *ctx)
 {
 	TRACEENTER4("%p, %p, %p, %p", timer, &timer->nt_timer, func, ctx);
-	KeInitializeDpc(&timer->kdpc, wrap_ndis_timer_func, ctx);
-	timer->kdpc.arg2 = func;
+	KeInitializeDpc(&timer->kdpc, func, ctx);
 	wrap_init_timer(&timer->nt_timer, NotificationTimer, NULL);
 	TRACEEXIT4(return);
 }

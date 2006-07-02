@@ -317,8 +317,8 @@ static void miniport_halt(struct wrap_ndis_device *wnd)
 			 * be touched, as it may have been freed by the driver
 			 * already */
 			if (del_timer_sync(&wrap_timer->timer))
-				WARNING("Buggy Windows driver left timer %p running",
-					&wrap_timer->timer);
+				WARNING("Buggy Windows driver left timer %p "
+					"running", &wrap_timer->timer);
 			memset(wrap_timer, 0, sizeof(*wrap_timer));
 			slack_kfree(wrap_timer);
 		}
