@@ -153,8 +153,7 @@ wstdcall BOOLEAN WRAP_EXPORT(IoCancelIrp)
 	typeof(irp->cancel_routine) cancel_routine;
 
 	/* NB: this function may be called at DISPATCH_LEVEL */
-	IOENTER("irp = %p", irp);
-
+	IOTRACE("irp: %p", irp);
 	if (!irp)
 		return FALSE;
 	DUMP_IRP(irp);

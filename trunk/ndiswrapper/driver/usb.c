@@ -84,6 +84,7 @@ static int inline wrap_cancel_urb(struct wrap_urb *wrap_urb)
 	if (wrap_urb->state != URB_SUBMITTED)
 		USBEXIT(return -1);
 	ret = usb_unlink_urb(wrap_urb->urb);
+	USBTRACE("ret: %d", ret);
 	if (ret == -EINPROGRESS)
 		return 0;
 	else {
@@ -230,6 +231,7 @@ static USBD_STATUS wrap_urb_status(int urb_status)
 		return USBD_STATUS_ERROR_SHORT_TRANSFER;;
 	case -ENODEV:
 	case -ESHUTDOWN:
+	case -ENOENT:
 		return USBD_STATUS_DEVICE_GONE;
 	case -ENOMEM:
 		return USBD_STATUS_NO_MEMORY;
@@ -609,12 +611,12 @@ static wstdcall void wrap_cancel_irp(struct device_object *dev_obj,
 	USBENTER("irp: %p", irp);
 	urb = irp->wrap_urb->urb;
 	USBTRACE("canceling urb %p", urb);
-	IoReleaseCancelSpinLock(irp->cancel_irql);
 	if (wrap_cancel_urb(irp->wrap_urb)) {
 		irp->cancel = FALSE;
 		ERROR("urb %p can't be canceld: %d", urb, irp->wrap_urb->state);
 	} else
 		USBTRACE("urb %p canceled", urb);
+	IoReleaseCancelSpinLock(irp->cancel_irql);
 	return;
 }
 

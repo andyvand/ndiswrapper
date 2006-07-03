@@ -1687,11 +1687,13 @@ wstdcall void WRAP_EXPORT(NdisMInitializeTimer)
 {
 	TRACEENTER4("timer: %p, func: %p, ctx: %p, nmb: %p",
 		    &timer->nt_timer, func, ctx, nmb);
-	wrap_init_timer(&timer->nt_timer, NotificationTimer, nmb);
 	timer->func = func;
 	timer->ctx = ctx;
 	timer->nmb = nmb;
-	KeInitializeDpc(&timer->kdpc, wrap_miniport_timer_func, timer);
+//	KeInitializeDpc(&timer->kdpc, wrap_miniport_timer_func, timer);
+	KeInitializeDpc(&timer->kdpc, func, ctx);
+	wrap_init_timer(&timer->nt_timer, NotificationTimer, &timer->kdpc,
+			nmb);
 	TRACEEXIT4(return);
 }
 
@@ -1701,7 +1703,7 @@ wstdcall void WRAP_EXPORT(NdisMSetPeriodicTimer)
 	unsigned long expires = MSEC_TO_HZ(period_ms) + 1;
 
 	DBGTRACE4("%p, %u, %ld", timer, period_ms, expires);
-	wrap_set_timer(&timer->nt_timer, expires, expires, &timer->kdpc);
+	wrap_set_timer(&timer->nt_timer, expires, expires, NULL);
 	TRACEEXIT4(return);
 }
 
@@ -1718,7 +1720,8 @@ wstdcall void WRAP_EXPORT(NdisInitializeTimer)
 {
 	TRACEENTER4("%p, %p, %p, %p", timer, &timer->nt_timer, func, ctx);
 	KeInitializeDpc(&timer->kdpc, func, ctx);
-	wrap_init_timer(&timer->nt_timer, NotificationTimer, NULL);
+	wrap_init_timer(&timer->nt_timer, NotificationTimer, &timer->kdpc,
+			NULL);
 	TRACEEXIT4(return);
 }
 
@@ -1732,7 +1735,7 @@ wstdcall void WRAP_EXPORT(NdisSetTimer)
 
 	DBGTRACE4("%p, %p, %p, %u, %ld", timer, &timer->nt_timer,
 		  timer->nt_timer.wrap_timer, duetime_ms, expires);
-	wrap_set_timer(&timer->nt_timer, expires, 0, &timer->kdpc);
+	wrap_set_timer(&timer->nt_timer, expires, 0, NULL);
 	TRACEEXIT4(return);
 }
 

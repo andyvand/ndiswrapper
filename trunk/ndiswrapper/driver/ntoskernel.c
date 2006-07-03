@@ -648,8 +648,15 @@ static void timer_proc(unsigned long data)
 	KeSetEvent((struct nt_event *)nt_timer, 0, FALSE);
 	kdpc = nt_timer->kdpc;
 	if (kdpc && kdpc->func) {
+		struct wrap_ndis_device *wnd = NULL;
 #if 1
+		if (wrap_timer->nmb) {
+			wnd = wrap_timer->nmb->wnd;
+			serialize_lock(wnd);
+		}
 		LIN2WIN4(kdpc->func, kdpc, kdpc->ctx, kdpc->arg1, kdpc->arg2);
+		if (wnd)
+			serialize_unlock(wnd);
 #else
 		queue_kdpc(kdpc);
 #endif
@@ -663,7 +670,7 @@ static void timer_proc(unsigned long data)
 }
 
 void wrap_init_timer(struct nt_timer *nt_timer, enum timer_type type,
-		     struct ndis_miniport_block *nmb)
+		     struct kdpc *kdpc, struct ndis_miniport_block *nmb)
 {
 	struct wrap_timer *wrap_timer;
 	KIRQL irql;
@@ -693,13 +700,16 @@ void wrap_init_timer(struct nt_timer *nt_timer, enum timer_type type,
 	wrap_timer->wrap_timer_magic = WRAP_TIMER_MAGIC;
 #endif
 	nt_timer->wrap_timer = wrap_timer;
-	nt_timer->kdpc = NULL;
+	nt_timer->kdpc = kdpc;
 	initialize_dh(&nt_timer->dh, type, 0);
 	nt_timer->wrap_timer_magic = WRAP_TIMER_MAGIC;
+	wrap_timer->nmb = NULL;
 	irql = nt_spin_lock_irql(&timer_lock, DISPATCH_LEVEL);
-	if (nmb)
+	if (nmb) {
 		InsertTailList(&nmb->wnd->timer_list, &wrap_timer->list);
-	else
+		if (!deserialized_driver(nmb->wnd))
+			wrap_timer->nmb = nmb;
+	} else
 		InsertTailList(&wrap_timer_list, &wrap_timer->list);
 	nt_spin_unlock_irql(&timer_lock, irql);
 	DBGTRACE5("timer %p (%p)", wrap_timer, nt_timer);
@@ -710,14 +720,14 @@ wstdcall void WRAP_EXPORT(KeInitializeTimerEx)
 	(struct nt_timer *nt_timer, enum timer_type type)
 {
 	TRACEENTER5("%p", nt_timer);
-	wrap_init_timer(nt_timer, type, NULL);
+	wrap_init_timer(nt_timer, type, NULL, NULL);
 }
 
 wstdcall void WRAP_EXPORT(KeInitializeTimer)
 	(struct nt_timer *nt_timer)
 {
 	TRACEENTER5("%p", nt_timer);
-	wrap_init_timer(nt_timer, NotificationTimer, NULL);
+	wrap_init_timer(nt_timer, NotificationTimer, NULL, NULL);
 }
 
 /* expires and repeat are in HZ */
