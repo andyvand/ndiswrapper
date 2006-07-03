@@ -894,7 +894,6 @@ wstdcall void WRAP_EXPORT(NdisMAllocateSharedMemory)
 
 	TRACEENTER3("count: %d, size: %u, cached: %d",
 		    nmb->wnd->dma_map_count, size, cached);
-
 	*virt = PCI_DMA_ALLOC_COHERENT(wd->pci.pdev, size, &dma_addr);
 	if (!*virt)
 		ERROR("couldn't allocate %d bytes of %scached DMA memory",
@@ -930,15 +929,20 @@ static void ndis_worker(void *dummy)
 	WORKEXIT(return);
 }
 
+/* called as Windows function, so call WIN2LIN2 before accessing
+ * arguments */
 wstdcall void alloc_shared_memory_async(void *arg1, void *arg2)
 {
-	struct wrap_ndis_device *wnd = arg1;
-	struct alloc_shared_mem *alloc_shared_mem = arg2;
+	struct wrap_ndis_device *wnd;
+	struct alloc_shared_mem *alloc_shared_mem;
 	struct miniport_char *miniport;
 	void *virt;
 	NDIS_PHY_ADDRESS phys;
 	KIRQL irql;
 
+	WIN2LIN2(arg1, arg2);
+	wnd = arg1;
+	alloc_shared_mem = arg2;
 	miniport = &wnd->wd->driver->ndis_driver->miniport;
 	NdisMAllocateSharedMemory(wnd->nmb, alloc_shared_mem->size,
 				  alloc_shared_mem->cached, &virt, &phys);
@@ -967,7 +971,7 @@ wstdcall NDIS_STATUS WRAP_EXPORT(NdisMAllocateSharedMemoryAsync)
 	alloc_shared_mem->cached = cached;
 	alloc_shared_mem->ctx = ctx;
 	if (schedule_ntos_work_item(alloc_shared_memory_async,
-				    wnd, alloc_shared_mem, WORKER_FUNC_LINUX))
+				    wnd, alloc_shared_mem))
 		TRACEEXIT3(return NDIS_STATUS_FAILURE);
 	TRACEEXIT3(return NDIS_STATUS_PENDING);
 }
@@ -1667,13 +1671,14 @@ wstdcall void wrap_miniport_timer_func(struct kdpc *kdpc, void *ctx, void *arg1,
 	 * accessing args; we don't care about arg1, arg2 */
 	WIN2LIN2(kdpc, ctx);
 	timer = ctx;
+	TRACEENTER5("%p, %p", timer, ctx);
 	nmb = timer->nmb;
 	/* already called at DISPATCH_LEVEL */
 	if (!deserialized_driver(nmb->wnd))
-		nt_spin_lock(&nmb->lock);
+		serialize_lock(nmb->wnd);
 	LIN2WIN4(timer->func, kdpc, timer->ctx, kdpc->arg1, kdpc->arg2);
 	if (!deserialized_driver(nmb->wnd))
-		nt_spin_unlock(&nmb->lock);
+		serialize_unlock(nmb->wnd);
 }
 
 wstdcall void WRAP_EXPORT(NdisMInitializeTimer)
@@ -2051,6 +2056,8 @@ wstdcall void WRAP_EXPORT(NdisMIndicateStatusComplete)
 		schedule_wrap_work(&wnd->tx_work);
 }
 
+/* called as Windows function, so call WIN2LIN2 before accessing
+ * arguments */
 wstdcall void return_packet(void *arg1, void *arg2)
 {
 	struct wrap_ndis_device *wnd;
@@ -2058,6 +2065,7 @@ wstdcall void return_packet(void *arg1, void *arg2)
 	struct miniport_char *miniport;
 	KIRQL irql;
 
+	WIN2LIN2(arg1, arg2);
 	wnd = arg1;
 	packet = arg2;
 	TRACEENTER4("%p, %p", wnd, packet);
@@ -2143,8 +2151,7 @@ NdisMIndicateReceivePacket(struct ndis_miniport_block *nmb,
 		 * MiniportReturnPacket from here is not correct - the
 		 * driver doesn't expect it (at least Centrino driver
 		 * crashes) */
-		schedule_ntos_work_item(return_packet, wnd, packet,
-					WORKER_FUNC_LINUX);
+		schedule_ntos_work_item(return_packet, wnd, packet);
 	}
 	TRACEEXIT3(return);
 }
