@@ -229,7 +229,6 @@ struct kdpc {
 	UCHAR nr_cpu;
 	UCHAR importance;
 	struct nt_list list;
-
 	DPC func;
 	void *ctx;
 	void *arg1;

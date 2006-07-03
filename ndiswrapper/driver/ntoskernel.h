@@ -516,6 +516,7 @@ struct wrap_timer {
 #ifdef TIMER_DEBUG
 	unsigned long wrap_timer_magic;
 #endif
+	struct ndis_miniport_block *nmb;
 };
 
 struct ntos_work_item {
@@ -775,7 +776,7 @@ wstdcall void RtlCopyUnicodeString
 noregparm SIZE_T _win_wcslen(const wchar_t *s);
 
 void wrap_init_timer(struct nt_timer *nt_timer, enum timer_type type,
-		     struct ndis_miniport_block *nmb);
+		     struct kdpc *kdpc, struct ndis_miniport_block *nmb);
 BOOLEAN wrap_set_timer(struct nt_timer *nt_timer, unsigned long expires_hz,
 		       unsigned long repeat_hz, struct kdpc *kdpc);
 
