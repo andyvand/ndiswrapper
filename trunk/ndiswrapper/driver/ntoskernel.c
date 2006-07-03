@@ -946,18 +946,13 @@ static void ntos_work_item_worker(void *data)
 		func = ntos_work_item->func;
 		WORKTRACE("%p: executing %p, %p, %p", current, func,
 			  ntos_work_item->arg1, ntos_work_item->arg2);
-		if (ntos_work_item->func_type == WORKER_FUNC_WIN)
-			LIN2WIN2(func, ntos_work_item->arg1,
-				 ntos_work_item->arg2);
-		else
-			func(ntos_work_item->arg1, ntos_work_item->arg2);
+		LIN2WIN2(func, ntos_work_item->arg1, ntos_work_item->arg2);
 		kfree(ntos_work_item);
 	}
 	return;
 }
 
-int schedule_ntos_work_item(NTOS_WORK_FUNC func, void *arg1, void *arg2,
-			    enum worker_func_type func_type)
+int schedule_ntos_work_item(NTOS_WORK_FUNC func, void *arg1, void *arg2)
 {
 	struct ntos_work_item *ntos_work_item;
 	KIRQL irql;
@@ -971,7 +966,6 @@ int schedule_ntos_work_item(NTOS_WORK_FUNC func, void *arg1, void *arg2,
 	ntos_work_item->func = func;
 	ntos_work_item->arg1 = arg1;
 	ntos_work_item->arg2 = arg2;
-	ntos_work_item->func_type = func_type;
 	irql = nt_spin_lock_irql(&ntos_work_item_list_lock, DISPATCH_LEVEL);
 	InsertTailList(&ntos_work_item_list, &ntos_work_item->list);
 	nt_spin_unlock_irql(&ntos_work_item_list_lock, irql);
@@ -1066,8 +1060,11 @@ wstdcall void *WRAP_EXPORT(ExAllocatePoolWithTag)
 	TRACEEXIT4(return addr);
 }
 
+/* called as Windows function, so call WIN2LIN2 before accessing
+ * arguments */
 static wstdcall void vfree_nonatomic(void *addr, void *ctx)
 {
+	WIN2LIN2(addr, ctx);
 	vfree(addr);
 }
 
@@ -1080,8 +1077,7 @@ wstdcall void WRAP_EXPORT(ExFreePool)
 		kfree(addr);
 	else {
 		if (in_interrupt())
-			schedule_ntos_work_item(vfree_nonatomic, addr,
-						NULL, WORKER_FUNC_LINUX);
+			schedule_ntos_work_item(vfree_nonatomic, addr, NULL);
 		else
 			vfree(addr);
 	}

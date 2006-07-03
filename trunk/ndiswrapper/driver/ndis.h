@@ -1221,6 +1221,16 @@ void wrap_procfs_remove_ndis_device(struct wrap_ndis_device *wnd);
 
 #define deserialized_driver(wnd) (wnd->attributes & NDIS_ATTRIBUTE_DESERIALIZE)
 
+static inline void serialize_lock(struct wrap_ndis_device *wnd)
+{
+	nt_spin_lock(&wnd->nmb->lock);
+}
+
+static inline void serialize_unlock(struct wrap_ndis_device *wnd)
+{
+	nt_spin_unlock(&wnd->nmb->lock);
+}
+
 static inline KIRQL serialize_lock_irql(struct wrap_ndis_device *wnd)
 {
 	if (deserialized_driver(wnd))

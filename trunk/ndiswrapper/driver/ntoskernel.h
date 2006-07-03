@@ -518,14 +518,11 @@ struct wrap_timer {
 #endif
 };
 
-enum worker_func_type { WORKER_FUNC_LINUX, WORKER_FUNC_WIN };
-
 struct ntos_work_item {
 	struct nt_list list;
 	void *arg1;
 	void *arg2;
 	void (*func)(void *arg1, void *arg2) wstdcall;
-	enum worker_func_type func_type;
 };
 
 struct wrap_device_setting {
@@ -742,8 +739,7 @@ wstdcall NTSTATUS IoInvalidDeviceRequest
 struct nt_thread *get_current_nt_thread(void);
 u64 ticks_1601(void);
 
-int schedule_ntos_work_item(NTOS_WORK_FUNC func, void *arg1, void *arg2,
-			    enum worker_func_type func_type);
+int schedule_ntos_work_item(NTOS_WORK_FUNC func, void *arg1, void *arg2);
 
 wstdcall KIRQL KeGetCurrentIrql(void);
 wstdcall void KeInitializeSpinLock(NT_SPIN_LOCK *lock);
@@ -1241,26 +1237,26 @@ do {								       \
 #define assert(expr)							\
 do {									\
 	if (!(expr))							\
-		ERROR("assertion failed: %s", (#expr));			\
+		ERROR("assertion '%s' failed", #expr);			\
 } while (0)
 #else
 #define assert(expr) do { } while (0)
 #endif
 
 #if defined(IO_DEBUG)
-#define DUMP_IRP(__irp)							\
+#define DUMP_IRP(irp)							\
 do {									\
-	struct io_stack_location *_irp_sl;				\
-	_irp_sl = IoGetCurrentIrpStackLocation(__irp);			\
+	struct io_stack_location *irp_sl;				\
+	irp_sl = IoGetCurrentIrpStackLocation(irp);			\
 	IOTRACE("irp: %p, stack size: %d, cl: %d, sl: %p, dev_obj: %p, " \
 		"mj_fn: %d, minor_fn: %d, nt_urb: %p, event: %p",	\
-		__irp, __irp->stack_count, (__irp)->current_location,	\
-		_irp_sl, _irp_sl->dev_obj, _irp_sl->major_fn,		\
-		_irp_sl->minor_fn, URB_FROM_IRP(__irp),			\
-		(__irp)->user_event);					\
+		irp, irp->stack_count, (irp)->current_location,		\
+		irp_sl, irp_sl->dev_obj, irp_sl->major_fn,		\
+		irp_sl->minor_fn, URB_FROM_IRP(irp),			\
+		(irp)->user_event);					\
 } while (0)
 #else
-#define DUMP_IRP(__irp) do { } while (0)
+#define DUMP_IRP(irp) do { } while (0)
 #endif
 
 #define sleep_hz(n)					\
