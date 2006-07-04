@@ -222,8 +222,8 @@ struct nt_list {
 typedef ULONG_PTR NT_SPIN_LOCK;
 
 struct kdpc;
-typedef wstdcall void (*DPC)(struct kdpc *kdpc, void *ctx, void *arg1,
-			    void *arg2);
+typedef void (*DPC)(struct kdpc *kdpc, void *ctx, void *arg1,
+		    void *arg2) wstdcall;
 struct kdpc {
 	SHORT type;
 	UCHAR nr_cpu;
@@ -1183,7 +1183,7 @@ enum work_queue_type {
 	MaximumWorkQueue
 };
 
-typedef wstdcall void (*NTOS_WORK_FUNC)(void *arg1, void *arg2);
+typedef void (*NTOS_WORK_FUNC)(void *arg1, void *arg2) wstdcall;
 
 struct io_workitem {
 	enum work_queue_type type;
@@ -1216,9 +1216,9 @@ enum ntos_wait_reason {
 
 typedef enum ntos_wait_reason KWAIT_REASON;
 
-typedef wstdcall void *LOOKASIDE_ALLOC_FUNC(enum pool_type pool_type,
-					   SIZE_T size, ULONG tag);
-typedef wstdcall void LOOKASIDE_FREE_FUNC(void *);
+typedef void *LOOKASIDE_ALLOC_FUNC(enum pool_type pool_type,
+				   SIZE_T size, ULONG tag) wstdcall;
+typedef void LOOKASIDE_FREE_FUNC(void *) wstdcall;
 
 struct npaged_lookaside_list {
 	nt_slist_header head;
@@ -1316,7 +1316,8 @@ struct object_attributes {
 	void *security_qos;
 };
 
-typedef void (*PCALLBACK_FUNCTION)(void *context, void *arg1, void *arg2);
+typedef void (*PCALLBACK_FUNCTION)(void *context, void *arg1,
+				   void *arg2) wstdcall;
 
 struct callback_object;
 struct callback_func {

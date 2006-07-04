@@ -1208,8 +1208,8 @@ NTSTATUS wrap_submit_irp(struct device_object *pdo, struct irp *irp)
 
 	USBTRACE("%p, %p", pdo, irp);
 	wd = pdo->reserved;
-	if (wd->usb.intf == NULL)
-		USBEXIT(return STATUS_DEVICE_REMOVED);
+//	if (wd->usb.intf == NULL)
+//		USBEXIT(return STATUS_DEVICE_REMOVED);
 	irp->wd = wd;
 	irp_sl = IoGetCurrentIrpStackLocation(irp);
 	switch (irp_sl->params.dev_ioctl.code) {

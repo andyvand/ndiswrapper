@@ -425,7 +425,7 @@ struct ndis_work_item {
 	void *ctx;
 	/* this should be NDIS_PROC, but we masquerade it as
 	 * NTOS_WORK_FUNC so we can use wrap_worker */
-	NTOS_WORK_FUNC func;
+	NTOS_WORK_FUNC func wstdcall;
 	UCHAR reserved[8 * sizeof(void *)];
 };
 
@@ -921,7 +921,6 @@ wstdcall void NdisReadConfiguration
 
 void init_nmb_functions(struct ndis_miniport_block *nmb);
 
-void *get_sp(void);
 int ndis_init(void);
 void ndis_exit_device(struct wrap_ndis_device *wnd);
 void ndis_exit(void);
