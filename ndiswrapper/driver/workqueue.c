@@ -65,7 +65,8 @@ static int workqueue_thread(void *data)
 	return 0;
 }
 
-void queue_work(struct workqueue_struct *workq, struct work_struct *work)
+wfastcall void queue_work(struct workqueue_struct *workq,
+			  struct work_struct *work)
 {
 	spin_lock_bh(&workq->lock);
 	if (!work->workq) {
