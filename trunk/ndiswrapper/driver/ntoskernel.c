@@ -658,7 +658,6 @@ static void timer_proc(unsigned long data)
 	if (wrap_timer->repeat)
 		mod_timer(&wrap_timer->timer, jiffies + wrap_timer->repeat);
 	nt_spin_unlock(&timer_lock);
-	DBGTRACE5("%lu, %ld", jiffies, wrap_timer->repeat);
 	TRACEEXIT5(return);
 }
 
@@ -819,7 +818,6 @@ wstdcall void WRAP_EXPORT(KeInitializeDpc)
 {
 	TRACEENTER3("%p, %p, %p", kdpc, func, ctx);
 	memset(kdpc, 0, sizeof(*kdpc));
-	kdpc->nr_cpu = FALSE;
 	kdpc->func = func;
 	kdpc->ctx  = ctx;
 	InitializeListHead(&kdpc->list);

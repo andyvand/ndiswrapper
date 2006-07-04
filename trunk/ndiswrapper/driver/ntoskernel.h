@@ -333,7 +333,11 @@ typedef u32 pm_message_t;
 #include "pe_linker.h"
 #include "wrapmem.h"
 
+#ifdef CONFIG_X86_64
+#define get_sp(sp) __asm__ __volatile__("mov %%rsp, %0\n\t" : "=m"(sp))
+#else
 #define get_sp(sp) __asm__ __volatile__("mov %%esp, %0\n\t" : "=m"(sp))
+#endif
 #define print_sp() do {				\
 		void *sp;			\
 		get_sp(sp);			\
