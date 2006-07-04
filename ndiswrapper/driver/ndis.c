@@ -1694,7 +1694,6 @@ wstdcall void WRAP_EXPORT(NdisMInitializeTimer)
 	timer->nmb = nmb;
 //	KeInitializeDpc(&timer->kdpc, func, ctx);
 	KeInitializeDpc(&timer->kdpc, wrap_miniport_timer, timer);
-	timer->kdpc.arg1 = timer;
 	wrap_init_timer(&timer->nt_timer, NotificationTimer, &timer->kdpc,
 			nmb);
 	TRACEEXIT4(return);
