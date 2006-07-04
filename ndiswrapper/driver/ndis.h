@@ -866,59 +866,7 @@ struct ndis_pmkid_candidate_list {
 	struct ndis_pmkid_candidate candidates[1];
 };
 
-wstdcall void NdisAllocatePacketPoolEx
-	(NDIS_STATUS *status, struct ndis_packet_pool **pool_handle,
-	 UINT num_descr, UINT overflowsize, UINT proto_rsvd_length);
-wstdcall void NdisFreePacketPool(struct ndis_packet_pool *pool);
-wstdcall void NdisAllocatePacket(NDIS_STATUS *status,
-				struct ndis_packet **packet,
-				struct ndis_packet_pool *pool);
-wstdcall void NdisFreePacket(struct ndis_packet *descr);
-wstdcall void NdisAllocateBufferPool
-	(NDIS_STATUS *status, struct ndis_buffer_pool **pool_handle,
-	 UINT num_descr);
-wstdcall void NdisFreeBufferPool(struct ndis_buffer_pool *pool);
-wstdcall void NdisAllocateBuffer
-	(NDIS_STATUS *status, ndis_buffer **buffer,
-	 struct ndis_buffer_pool *pool, void *virt, UINT length);
-wstdcall void NdisFreeBuffer(ndis_buffer *descr);
-wstdcall void NdisMIndicateReceivePacket(struct ndis_miniport_block *nmb,
-					struct ndis_packet **packets,
-					UINT nr_packets);
-wstdcall void NdisMSendComplete(struct ndis_miniport_block *nmb,
-			       struct ndis_packet *packet, NDIS_STATUS status);
-wstdcall void NdisMSendResourcesAvailable(struct ndis_miniport_block *nmb);
-wstdcall void NdisMIndicateStatus(struct ndis_miniport_block *nmb,
-				 NDIS_STATUS status, void *buf, UINT len);
-wstdcall void NdisMIndicateStatusComplete(struct ndis_miniport_block *nmb);
-wstdcall void NdisMQueryInformationComplete(struct ndis_miniport_block *nmb,
-					   NDIS_STATUS status);
-wstdcall void NdisMSetInformationComplete(struct ndis_miniport_block *nmb,
-					 NDIS_STATUS status);
-wstdcall void NdisMResetComplete(struct ndis_miniport_block *nmb,
-				NDIS_STATUS status, BOOLEAN address_reset);
-wstdcall ULONG NDIS_BUFFER_TO_SPAN_PAGES(ndis_buffer *buffer);
-wstdcall BOOLEAN NdisWaitEvent(struct ndis_event *event, UINT timeout);
-wstdcall void NdisSetEvent(struct ndis_event *event);
 irqreturn_t ndis_isr(int irq, void *data, struct pt_regs *pt_regs);
-wstdcall void NdisMDeregisterInterrupt(struct ndis_irq *ndis_irq);
-wstdcall void EthRxIndicateHandler
-	(struct ndis_miniport_block *nmb, void *rx_ctx, char *header1,
-	 char *header, UINT header_size, void *look_ahead,
-	 UINT look_ahead_size, UINT packet_size);
-wstdcall void EthRxComplete(struct ndis_miniport_block *nmb);
-wstdcall void NdisMTransferDataComplete
-	(struct ndis_miniport_block *nmb,
-	 struct ndis_packet *packet, NDIS_STATUS status, UINT bytes_txed);
-wstdcall void NdisWriteConfiguration
-	(NDIS_STATUS *status, struct ndis_miniport_block *nmb,
-	 struct unicode_string *key,
-	 struct ndis_configuration_parameter *param);
-wstdcall void NdisReadConfiguration
-	(NDIS_STATUS *status, struct ndis_configuration_parameter **param,
-	 struct ndis_miniport_block *nmb, struct unicode_string *key,
-	 enum ndis_parameter_type type);
-
 void init_nmb_functions(struct ndis_miniport_block *nmb);
 
 int ndis_init(void);
@@ -927,10 +875,60 @@ void ndis_exit(void);
 void insert_ndis_kdpc_work(struct kdpc *kdpc);
 BOOLEAN remove_ndis_kdpc_work(struct kdpc *kdpc);
 
-int load_pe_images(struct pe_image[], int n);
-
 int wrap_procfs_add_ndis_device(struct wrap_ndis_device *wnd);
 void wrap_procfs_remove_ndis_device(struct wrap_ndis_device *wnd);
+
+void NdisAllocatePacketPoolEx(NDIS_STATUS *status,
+			      struct ndis_packet_pool **pool_handle,
+			      UINT num_descr, UINT overflowsize,
+			      UINT proto_rsvd_length) wstdcall;
+void NdisFreePacketPool(struct ndis_packet_pool *pool) wstdcall;
+void NdisAllocatePacket(NDIS_STATUS *status, struct ndis_packet **packet,
+			struct ndis_packet_pool *pool) wstdcall;
+void NdisFreePacket(struct ndis_packet *descr) wstdcall;
+void NdisAllocateBufferPool(NDIS_STATUS *status,
+			    struct ndis_buffer_pool **pool_handle,
+			    UINT num_descr) wstdcall;
+void NdisFreeBufferPool(struct ndis_buffer_pool *pool) wstdcall;
+void NdisAllocateBuffer(NDIS_STATUS *status, ndis_buffer **buffer,
+			struct ndis_buffer_pool *pool, void *virt,
+			UINT length) wstdcall;
+void NdisFreeBuffer(ndis_buffer *descr) wstdcall;
+void NdisMIndicateReceivePacket(struct ndis_miniport_block *nmb,
+				struct ndis_packet **packets,
+				UINT nr_packets) wstdcall;
+void NdisMSendComplete(struct ndis_miniport_block *nmb,
+		       struct ndis_packet *packet, NDIS_STATUS status) wstdcall;
+void NdisMSendResourcesAvailable(struct ndis_miniport_block *nmb) wstdcall;
+void NdisMIndicateStatus(struct ndis_miniport_block *nmb,
+			 NDIS_STATUS status, void *buf, UINT len) wstdcall;
+void NdisMIndicateStatusComplete(struct ndis_miniport_block *nmb) wstdcall;
+void NdisMQueryInformationComplete(struct ndis_miniport_block *nmb,
+				   NDIS_STATUS status) wstdcall;
+void NdisMSetInformationComplete(struct ndis_miniport_block *nmb,
+				 NDIS_STATUS status) wstdcall;
+void NdisMResetComplete(struct ndis_miniport_block *nmb,
+			NDIS_STATUS status, BOOLEAN address_reset) wstdcall;
+ULONG NDIS_BUFFER_TO_SPAN_PAGES(ndis_buffer *buffer) wstdcall;
+BOOLEAN NdisWaitEvent(struct ndis_event *event, UINT timeout) wstdcall;
+void NdisSetEvent(struct ndis_event *event) wstdcall;
+void NdisMDeregisterInterrupt(struct ndis_irq *ndis_irq) wstdcall;
+void EthRxIndicateHandler(struct ndis_miniport_block *nmb, void *rx_ctx,
+			  char *header1, char *header, UINT header_size,
+			  void *look_ahead, UINT look_ahead_size,
+			  UINT packet_size) wstdcall;
+void EthRxComplete(struct ndis_miniport_block *nmb) wstdcall;
+void NdisMTransferDataComplete(struct ndis_miniport_block *nmb,
+			       struct ndis_packet *packet, NDIS_STATUS status,
+			       UINT bytes_txed) wstdcall;
+void NdisWriteConfiguration(NDIS_STATUS *status, struct ndis_miniport_block *nmb,
+			    struct unicode_string *key,
+			    struct ndis_configuration_parameter *param) wstdcall;
+void NdisReadConfiguration(NDIS_STATUS *status,
+			   struct ndis_configuration_parameter **param,
+			   struct ndis_miniport_block *nmb,
+			   struct unicode_string *key,
+			   enum ndis_parameter_type type) wstdcall;
 
 /* Required OIDs */
 #define OID_GEN_SUPPORTED_LIST			0x00010101

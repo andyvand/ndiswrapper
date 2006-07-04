@@ -327,21 +327,19 @@ NTSTATUS wrap_submit_irp(struct device_object *pdo, struct irp *irp);
 void wrap_suspend_urbs(struct wrap_device *wd);
 void wrap_resume_urbs(struct wrap_device *wd);
 
-wstdcall void
-USBD_InterfaceGetUSBDIVersion(void *context,
-			      struct usbd_version_info *version_info,
-			      ULONG *hcd_capa);
-wstdcall BOOLEAN USBD_InterfaceIsDeviceHighSpeed(void *context);
-wstdcall void USBD_InterfaceReference(void *context);
-wstdcall void USBD_InterfaceDereference(void *context);
-wstdcall NTSTATUS USBD_InterfaceQueryBusTime(void *context, ULONG *frame);
-wstdcall NTSTATUS USBD_InterfaceSubmitIsoOutUrb(void *context,
-					       union nt_urb *nt_urb);
-wstdcall NTSTATUS
-USBD_InterfaceQueryBusInformation(void *context, ULONG level, void *buf,
-				  ULONG *buf_length, ULONG *buf_actual_length);
-wstdcall NTSTATUS
-USBD_InterfaceLogEntry(void *context, ULONG driver_tag, ULONG enum_tag,
-		       ULONG p1, ULONG p2);
+void USBD_InterfaceGetUSBDIVersion(void *context,
+				   struct usbd_version_info *version_info,
+				   ULONG *hcd_capa) wstdcall;
+BOOLEAN USBD_InterfaceIsDeviceHighSpeed(void *context) wstdcall;
+void USBD_InterfaceReference(void *context) wstdcall;
+void USBD_InterfaceDereference(void *context) wstdcall;
+NTSTATUS USBD_InterfaceQueryBusTime(void *context, ULONG *frame) wstdcall;
+NTSTATUS USBD_InterfaceSubmitIsoOutUrb(void *context,
+				       union nt_urb *nt_urb) wstdcall;
+NTSTATUS USBD_InterfaceQueryBusInformation(void *context, ULONG level, void *buf,
+					   ULONG *buf_length,
+					   ULONG *buf_actual_length) wstdcall;
+NTSTATUS USBD_InterfaceLogEntry(void *context, ULONG driver_tag, ULONG enum_tag,
+				ULONG p1, ULONG p2) wstdcall;
 
 #endif /* USB_H */

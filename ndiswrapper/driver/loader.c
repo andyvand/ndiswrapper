@@ -58,6 +58,8 @@ struct usb_driver wrap_usb_driver;
 
 extern int debug;
 
+int load_pe_images(struct pe_image[], int n);
+
 int wrap_device_type(int data1)
 {
 	int i;
