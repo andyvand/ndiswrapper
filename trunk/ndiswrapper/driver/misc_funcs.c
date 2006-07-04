@@ -928,22 +928,11 @@ int stricmp(const char *s1, const char *s2)
 	return (int)*s1 - (int)*s2;
 }
 
-void *get_sp(void)
-{
-	ULONG_PTR i;
-
-#ifdef CONFIG_X86_64
-	__asm__ __volatile__("movq %%rsp, %0\n" : "=g"(i));
-#else
-	__asm__ __volatile__("movl %%esp, %0\n" : "=g"(i));
-#endif
-	return (void *)i;
-}
-
 void dump_stack(void)
 {
-	ULONG_PTR *sp = get_sp();
+	ULONG_PTR *sp;
 	int i;
+	get_sp(sp);
 	for (i = 0; i < 20; i++)
 		printk(KERN_DEBUG "sp[%d] = %p\n", i, (void *)sp[i]);
 }

@@ -1661,8 +1661,8 @@ wstdcall void WRAP_EXPORT(NdisSend)
 	TRACEEXIT3(return);
 }
 
-wstdcall void wrap_miniport_timer_func(struct kdpc *kdpc, void *ctx, void *arg1,
-				       void *arg2)
+wstdcall void wrap_miniport_timer(struct kdpc *kdpc, void *ctx, void *arg1,
+				  void *arg2)
 {
 	struct ndis_miniport_timer *timer;
 	struct ndis_miniport_block *nmb;
@@ -1671,27 +1671,30 @@ wstdcall void wrap_miniport_timer_func(struct kdpc *kdpc, void *ctx, void *arg1,
 	 * accessing args; we don't care about arg1, arg2 */
 	WIN2LIN2(kdpc, ctx);
 	timer = ctx;
-	TRACEENTER5("%p, %p", timer, ctx);
+	TRACEENTER5("timer: %p, func: %p, ctx: %p, nmb: %p",
+		    timer, timer->func, timer->ctx, timer->nmb);
 	nmb = timer->nmb;
 	/* already called at DISPATCH_LEVEL */
 	if (!deserialized_driver(nmb->wnd))
 		serialize_lock(nmb->wnd);
-	LIN2WIN4(timer->func, kdpc, timer->ctx, kdpc->arg1, kdpc->arg2);
+	LIN2WIN4(timer->func, NULL, timer->ctx, NULL, NULL);
 	if (!deserialized_driver(nmb->wnd))
 		serialize_unlock(nmb->wnd);
+	TRACEEXIT5(return);
 }
 
 wstdcall void WRAP_EXPORT(NdisMInitializeTimer)
 	(struct ndis_miniport_timer *timer, struct ndis_miniport_block *nmb,
-	 void *func, void *ctx)
+	 DPC func, void *ctx)
 {
 	TRACEENTER4("timer: %p, func: %p, ctx: %p, nmb: %p",
-		    &timer->nt_timer, func, ctx, nmb);
+		    timer, func, ctx, nmb);
 	timer->func = func;
 	timer->ctx = ctx;
 	timer->nmb = nmb;
-//	KeInitializeDpc(&timer->kdpc, wrap_miniport_timer_func, timer);
-	KeInitializeDpc(&timer->kdpc, func, ctx);
+//	KeInitializeDpc(&timer->kdpc, func, ctx);
+	KeInitializeDpc(&timer->kdpc, wrap_miniport_timer, timer);
+	timer->kdpc.arg1 = timer;
 	wrap_init_timer(&timer->nt_timer, NotificationTimer, &timer->kdpc,
 			nmb);
 	TRACEEXIT4(return);
@@ -1702,7 +1705,7 @@ wstdcall void WRAP_EXPORT(NdisMSetPeriodicTimer)
 {
 	unsigned long expires = MSEC_TO_HZ(period_ms) + 1;
 
-	DBGTRACE4("%p, %u, %ld", timer, period_ms, expires);
+	TRACEENTER4("%p, %u, %ld", timer, period_ms, expires);
 	wrap_set_timer(&timer->nt_timer, expires, expires, NULL);
 	TRACEEXIT4(return);
 }
@@ -1733,8 +1736,8 @@ wstdcall void WRAP_EXPORT(NdisSetTimer)
 {
 	unsigned long expires = MSEC_TO_HZ(duetime_ms) + 1;
 
-	DBGTRACE4("%p, %p, %p, %u, %ld", timer, &timer->nt_timer,
-		  timer->nt_timer.wrap_timer, duetime_ms, expires);
+	TRACEENTER4("%p, %p, %p, %u, %ld", timer, &timer->nt_timer,
+		    timer->nt_timer.wrap_timer, duetime_ms, expires);
 	wrap_set_timer(&timer->nt_timer, expires, 0, NULL);
 	TRACEEXIT4(return);
 }
@@ -1742,7 +1745,7 @@ wstdcall void WRAP_EXPORT(NdisSetTimer)
 wstdcall void WRAP_EXPORT(NdisCancelTimer)
 	(struct ndis_timer *timer, BOOLEAN *canceled)
 {
-	TRACEENTER4("");
+	TRACEENTER4("%p", timer);
 	*canceled = KeCancelTimer(&timer->nt_timer);
 	TRACEEXIT4(return);
 }

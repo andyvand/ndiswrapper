@@ -282,9 +282,6 @@ do {									\
 
 #endif // LINUX_VERSION_CODE < KERNEL_VERSION(2,6,0)
 
-#define addr_offset(drvr) (__builtin_return_address(0) -	\
-			   (drvr)->drv_obj->driver_start)
-
 #ifndef offset_in_page
 #define offset_in_page(p) ((unsigned long)(p) & ~PAGE_MASK)
 #endif
@@ -334,6 +331,13 @@ typedef u32 pm_message_t;
 #include "ndiswrapper.h"
 #include "pe_linker.h"
 #include "wrapmem.h"
+
+#define get_sp(sp) __asm__ __volatile__("mov %%esp, %0\n\t" : "=m"(sp))
+#define print_sp() do {				\
+		void *sp;			\
+		get_sp(sp);			\
+		INFO("sp: %p", sp);		\
+	} while (0)
 
 //#define DEBUG_IRQL 1
 
@@ -516,7 +520,6 @@ struct wrap_timer {
 #ifdef TIMER_DEBUG
 	unsigned long wrap_timer_magic;
 #endif
-	struct ndis_miniport_block *nmb;
 };
 
 struct ntos_work_item {

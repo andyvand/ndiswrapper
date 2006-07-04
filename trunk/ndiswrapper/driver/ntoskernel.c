@@ -648,15 +648,8 @@ static void timer_proc(unsigned long data)
 	KeSetEvent((struct nt_event *)nt_timer, 0, FALSE);
 	kdpc = nt_timer->kdpc;
 	if (kdpc && kdpc->func) {
-		struct wrap_ndis_device *wnd = NULL;
 #if 1
-		if (wrap_timer->nmb) {
-			wnd = wrap_timer->nmb->wnd;
-			serialize_lock(wnd);
-		}
 		LIN2WIN4(kdpc->func, kdpc, kdpc->ctx, kdpc->arg1, kdpc->arg2);
-		if (wnd)
-			serialize_unlock(wnd);
 #else
 		queue_kdpc(kdpc);
 #endif
@@ -703,13 +696,10 @@ void wrap_init_timer(struct nt_timer *nt_timer, enum timer_type type,
 	nt_timer->kdpc = kdpc;
 	initialize_dh(&nt_timer->dh, type, 0);
 	nt_timer->wrap_timer_magic = WRAP_TIMER_MAGIC;
-	wrap_timer->nmb = NULL;
 	irql = nt_spin_lock_irql(&timer_lock, DISPATCH_LEVEL);
-	if (nmb) {
+	if (nmb)
 		InsertTailList(&nmb->wnd->timer_list, &wrap_timer->list);
-		if (!deserialized_driver(nmb->wnd))
-			wrap_timer->nmb = nmb;
-	} else
+	else
 		InsertTailList(&wrap_timer_list, &wrap_timer->list);
 	nt_spin_unlock_irql(&timer_lock, irql);
 	DBGTRACE5("timer %p (%p)", wrap_timer, nt_timer);
@@ -942,7 +932,6 @@ static void ntos_work_item_worker(void *data)
 {
 	struct ntos_work_item *ntos_work_item;
 	struct nt_list *cur;
-	typeof(ntos_work_item->func) func;
 	KIRQL irql;
 
 	while (1) {
@@ -953,10 +942,11 @@ static void ntos_work_item_worker(void *data)
 		if (!cur)
 			break;
 		ntos_work_item = container_of(cur, struct ntos_work_item, list);
-		func = ntos_work_item->func;
-		WORKTRACE("%p: executing %p, %p, %p", current, func,
-			  ntos_work_item->arg1, ntos_work_item->arg2);
-		LIN2WIN2(func, ntos_work_item->arg1, ntos_work_item->arg2);
+		WORKTRACE("%p: executing %p, %p, %p", current,
+			  ntos_work_item->func, ntos_work_item->arg1,
+			  ntos_work_item->arg2);
+		LIN2WIN2(ntos_work_item->func, ntos_work_item->arg1,
+			 ntos_work_item->arg2);
 		kfree(ntos_work_item);
 	}
 	return;
