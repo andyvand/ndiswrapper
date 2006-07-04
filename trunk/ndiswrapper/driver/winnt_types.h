@@ -508,8 +508,8 @@ struct io_status_block32 {
 
 struct driver_extension;
 
-typedef NTSTATUS (driver_dispatch_t)(struct device_object *dev_obj,
-				     struct irp *irp) wstdcall;
+typedef NTSTATUS driver_dispatch_t(struct device_object *dev_obj,
+				   struct irp *irp) wstdcall;
 
 struct driver_object {
 	CSHORT type;
