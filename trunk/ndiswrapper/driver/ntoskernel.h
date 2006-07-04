@@ -46,6 +46,8 @@
 #include <linux/if_arp.h>
 #include <linux/rtnetlink.h>
 
+#include "winnt_types.h"
+
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,7)
 #include <linux/kthread.h>
 #endif
@@ -125,7 +127,7 @@ struct work_struct {
 struct workqueue_struct *create_singlethread_workqueue(const char *name);
 void destroy_workqueue(struct workqueue_struct *workq);
 void queue_work(struct workqueue_struct *workq,
-		struct work_struct *work_struct);
+		struct work_struct *work_struct) wfastcall;
 void cancel_delayed_work(struct work_struct *work_struct);
 
 #include <linux/smp_lock.h>
@@ -328,7 +330,6 @@ typedef u32 pm_message_t;
 #define netdev_priv(dev)  ((dev)->priv)
 #endif
 
-#include "winnt_types.h"
 #include "ndiswrapper.h"
 #include "pe_linker.h"
 #include "wrapmem.h"
@@ -616,7 +617,9 @@ extern struct workqueue_struct *wrap_wq;
  * it are not supposed to wait; however, it helps to have separate
  * workqueue so keyboard etc. work when kernel crashes */
 
-//#define USE_OWN_NTOS_WORKQUEUE 1
+#if LINUX_VERSION_CODE <= KERNEL_VERSION(2,5,41)
+#define USE_OWN_NTOS_WORKQUEUE 1
+#endif
 
 #ifdef USE_OWN_NTOS_WORKQUEUE
 extern struct workqueue_struct *ntos_wq;
