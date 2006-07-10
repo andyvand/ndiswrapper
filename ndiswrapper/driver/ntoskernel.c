@@ -630,7 +630,7 @@ static void initialize_dh(struct dispatcher_header *dh, enum dh_type type,
 
 static void timer_proc(unsigned long data)
 {
-	struct wrap_timer *wrap_timer = (struct nt_timer *)data;
+	struct wrap_timer *wrap_timer = (struct wrap_timer *)data;
 	struct nt_timer *nt_timer;
 	struct kdpc *kdpc;
 

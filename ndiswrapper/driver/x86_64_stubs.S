@@ -243,12 +243,13 @@ win2lin12:
 	win2lin_epilog
 	ret
 
-	.macro win2lin argc name
-	.globl x86_64_\name\argc
-x86_64_\name\argc:
-	lea	\name(%rip), %rax
-	jmp	*win2lin\argc(%rip)
-	.endm
+#define stringify2(a, b) a ## b
+
+#define win2lin(argc, name)				\
+	.globl stringify2(x86_64_ ## name,  _ ##argc) ; \
+stringify2(x86_64_ ## name, _ ## argc):	; 		\
+	lea	name(%rip), %rax ; 			\
+	jmp	*win2lin ## argc(%rip)
 
 #include "x86_64_stubs.h"
 
