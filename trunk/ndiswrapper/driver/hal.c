@@ -23,103 +23,103 @@
 
 #include "ntoskernel.h"
 
-wstdcall void WRAP_EXPORT(WRITE_PORT_ULONG,2)
+wstdcall void WIN_FUNC(WRITE_PORT_ULONG,2)
 	(ULONG_PTR port, ULONG value)
 {
 	outl(value, port);
 }
 
-wstdcall ULONG WRAP_EXPORT(READ_PORT_ULONG,1)
+wstdcall ULONG WIN_FUNC(READ_PORT_ULONG,1)
 	(ULONG_PTR port)
 {
 	return inl(port);
 }
 
-wstdcall void WRAP_EXPORT(WRITE_PORT_USHORT,2)
+wstdcall void WIN_FUNC(WRITE_PORT_USHORT,2)
 	(ULONG_PTR port, USHORT value)
 {
 	outw(value, port);
 }
 
-wstdcall USHORT WRAP_EXPORT(READ_PORT_USHORT,1)
+wstdcall USHORT WIN_FUNC(READ_PORT_USHORT,1)
 	(ULONG_PTR port)
 {
 	return inw(port);
 }
 
-wstdcall void WRAP_EXPORT(WRITE_PORT_UCHAR,2)
+wstdcall void WIN_FUNC(WRITE_PORT_UCHAR,2)
 	(ULONG_PTR port, UCHAR value)
 {
 	outb(value, port);
 }
 
-wstdcall UCHAR WRAP_EXPORT(READ_PORT_UCHAR,1)
+wstdcall UCHAR WIN_FUNC(READ_PORT_UCHAR,1)
 	(ULONG_PTR port)
 {
 	return inb(port);
 }
 
-wstdcall void WRAP_EXPORT(WRITE_PORT_BUFFER_USHORT,3)
+wstdcall void WIN_FUNC(WRITE_PORT_BUFFER_USHORT,3)
 	(ULONG_PTR port, USHORT *buf, ULONG count)
 {
 	outsw(port, buf, count);
 }
 
-wstdcall void WRAP_EXPORT(READ_PORT_BUFFER_USHORT,3)
+wstdcall void WIN_FUNC(READ_PORT_BUFFER_USHORT,3)
 	(ULONG_PTR port, USHORT *buf, ULONG count)
 {
 	insw(port, buf, count);
 }
 
-wstdcall void WRAP_EXPORT(WRITE_PORT_BUFFER_ULONG,3)
+wstdcall void WIN_FUNC(WRITE_PORT_BUFFER_ULONG,3)
 	(ULONG_PTR port, ULONG *buf, ULONG count)
 {
 	outsl(port, buf, count);
 }
 
-wstdcall void WRAP_EXPORT(READ_PORT_BUFFER_ULONG,3)
+wstdcall void WIN_FUNC(READ_PORT_BUFFER_ULONG,3)
 	(ULONG_PTR port, ULONG *buf, ULONG count)
 {
 	insl(port, buf, count);
 }
 
-wstdcall USHORT WRAP_EXPORT(READ_REGISTER_USHORT,1)
+wstdcall USHORT WIN_FUNC(READ_REGISTER_USHORT,1)
 	(void *reg)
 {
 	return readw(reg);
 }
 
-wstdcall void WRAP_EXPORT(WRITE_REGISTER_ULONG,2)
+wstdcall void WIN_FUNC(WRITE_REGISTER_ULONG,2)
 	(void *reg, UINT val)
 {
 	writel(val, reg);
 }
 
-wstdcall void WRAP_EXPORT(WRITE_REGISTER_USHORT,2)
+wstdcall void WIN_FUNC(WRITE_REGISTER_USHORT,2)
 	(void *reg, USHORT val)
 {
 	writew(val, reg);
 }
 
-wstdcall void WRAP_EXPORT(WRITE_REGISTER_UCHAR,2)
+wstdcall void WIN_FUNC(WRITE_REGISTER_UCHAR,2)
 	(void *reg, UCHAR val)
 {
 	writeb(val, reg);
 }
 
-wstdcall void WRAP_EXPORT(KeStallExecutionProcessor,1)
+wstdcall void WIN_FUNC(KeStallExecutionProcessor,1)
 	(ULONG usecs)
 {
 	udelay(usecs);
 }
 
-wstdcall KIRQL WRAP_EXPORT(KeGetCurrentIrql,0)
+wstdcall KIRQL WIN_FUNC(KeGetCurrentIrql,0)
 	(void)
 {
 	return current_irql();
 }
 
-wfastcall KIRQL WRAP_EXPORT(KfRaiseIrql,1)
+wfastcall KIRQL WIN_FUNC(KfRaiseIrql,1)
 	(KIRQL newirql)
 {
 	KIRQL irql;
@@ -129,7 +129,7 @@ wfastcall KIRQL WRAP_EXPORT(KfRaiseIrql,1)
 	TRACEEXIT5(return irql);
 }
 
-wfastcall void WRAP_EXPORT(KfLowerIrql,1)
+wfastcall void WIN_FUNC(KfLowerIrql,1)
 	(KIRQL oldirql)
 {
 	TRACEENTER5("irql = %d", oldirql);
@@ -137,21 +137,21 @@ wfastcall void WRAP_EXPORT(KfLowerIrql,1)
 	TRACEEXIT5(return);
 }
 
-wfastcall KIRQL WRAP_EXPORT(KfAcquireSpinLock,1)
+wfastcall KIRQL WIN_FUNC(KfAcquireSpinLock,1)
 	(NT_SPIN_LOCK *lock)
 {
 	TRACEENTER5("lock = %p", lock);
 	return nt_spin_lock_irql(lock, DISPATCH_LEVEL);
 }
 
-wfastcall void WRAP_EXPORT(KfReleaseSpinLock,2)
+wfastcall void WIN_FUNC(KfReleaseSpinLock,2)
 	(NT_SPIN_LOCK *lock, KIRQL oldirql)
 {
 	TRACEENTER5("lock = %p, irql = %d", lock, oldirql);
 	nt_spin_unlock_irql(lock, oldirql);
 }
 
-wfastcall void WRAP_EXPORT(KefAcquireSpinLockAtDpcLevel,1)
+wfastcall void WIN_FUNC(KefAcquireSpinLockAtDpcLevel,1)
 	(NT_SPIN_LOCK *lock)
 {
 	TRACEENTER5("lock = %p", lock);
@@ -163,7 +163,7 @@ wfastcall void WRAP_EXPORT(KefAcquireSpinLockAtDpcLevel,1)
 	TRACEEXIT5(return);
 }
 
-wfastcall void WRAP_EXPORT(KefReleaseSpinLockFromDpcLevel,1)
+wfastcall void WIN_FUNC(KefReleaseSpinLockFromDpcLevel,1)
 	(NT_SPIN_LOCK *lock)
 {
 	TRACEENTER5("lock = %p", lock);

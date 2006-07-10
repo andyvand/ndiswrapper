@@ -106,9 +106,9 @@ static int add_bus_driver(const char *name);
 static void free_all_objects(void);
 static BOOLEAN queue_kdpc(struct kdpc *kdpc);
 
-WRAP_EXPORT_MAP("KeTickCount", &jiffies);
+WIN_SYMBOL_MAP("KeTickCount", &jiffies);
 
-WRAP_EXPORT_MAP("NlsMbCodePageTag", FALSE);
+WIN_SYMBOL_MAP("NlsMbCodePageTag", FALSE);
 
 #ifdef USE_OWN_NTOS_WORKQUEUE
 struct workqueue_struct *ntos_wq;
@@ -406,7 +406,7 @@ struct driver_object *find_bus_driver(const char *name)
 	return drv_obj;
 }
 
-wfastcall struct nt_list *WRAP_EXPORT(ExfInterlockedInsertHeadList,3)
+wfastcall struct nt_list *WIN_FUNC(ExfInterlockedInsertHeadList,3)
 	(struct nt_list *head, struct nt_list *entry, NT_SPIN_LOCK *lock)
 {
 	struct nt_list *first;
@@ -420,14 +420,14 @@ wfastcall struct nt_list *WRAP_EXPORT(ExfInterlockedInsertHeadList,3)
 	return first;
 }
 
-wfastcall struct nt_list *WRAP_EXPORT(ExInterlockedInsertHeadList,3)
+wfastcall struct nt_list *WIN_FUNC(ExInterlockedInsertHeadList,3)
 	(struct nt_list *head, struct nt_list *entry, NT_SPIN_LOCK *lock)
 {
 	TRACEENTER5("%p", head);
 	return ExfInterlockedInsertHeadList(head, entry, lock);
 }
 
-wfastcall struct nt_list *WRAP_EXPORT(ExfInterlockedInsertTailList,3)
+wfastcall struct nt_list *WIN_FUNC(ExfInterlockedInsertTailList,3)
 	(struct nt_list *head, struct nt_list *entry, NT_SPIN_LOCK *lock)
 {
 	struct nt_list *last;
@@ -441,14 +441,14 @@ wfastcall struct nt_list *WRAP_EXPORT(ExfInterlockedInsertTailList,3)
 	return last;
 }
 
-wfastcall struct nt_list *WRAP_EXPORT(ExInterlockedInsertTailList,3)
+wfastcall struct nt_list *WIN_FUNC(ExInterlockedInsertTailList,3)
 	(struct nt_list *head, struct nt_list *entry, NT_SPIN_LOCK *lock)
 {
 	TRACEENTER5("%p", head);
 	return ExfInterlockedInsertTailList(head, entry, lock);
 }
 
-wfastcall struct nt_list *WRAP_EXPORT(ExfInterlockedRemoveHeadList,2)
+wfastcall struct nt_list *WIN_FUNC(ExfInterlockedRemoveHeadList,2)
 	(struct nt_list *head, NT_SPIN_LOCK *lock)
 {
 	struct nt_list *ret;
@@ -462,14 +462,14 @@ wfastcall struct nt_list *WRAP_EXPORT(ExfInterlockedRemoveHeadList,2)
 	return ret;
 }
 
-wfastcall struct nt_list *WRAP_EXPORT(ExInterlockedRemoveHeadList,2)
+wfastcall struct nt_list *WIN_FUNC(ExInterlockedRemoveHeadList,2)
 	(struct nt_list *head, NT_SPIN_LOCK *lock)
 {
 	TRACEENTER5("%p", head);
 	return ExfInterlockedRemoveHeadList(head, lock);
 }
 
-wfastcall struct nt_list *WRAP_EXPORT(ExfInterlockedRemoveTailList,2)
+wfastcall struct nt_list *WIN_FUNC(ExfInterlockedRemoveTailList,2)
 	(struct nt_list *head, NT_SPIN_LOCK *lock)
 {
 	struct nt_list *ret;
@@ -483,14 +483,14 @@ wfastcall struct nt_list *WRAP_EXPORT(ExfInterlockedRemoveTailList,2)
 	return ret;
 }
 
-wfastcall struct nt_list *WRAP_EXPORT(ExInterlockedRemoveTailList,2)
+wfastcall struct nt_list *WIN_FUNC(ExInterlockedRemoveTailList,2)
 	(struct nt_list *head, NT_SPIN_LOCK *lock)
 {
 	TRACEENTER5("%p", head);
 	return ExfInterlockedRemoveTailList(head, lock);
 }
 
-wfastcall struct nt_slist *WRAP_EXPORT(ExInterlockedPushEntrySList,3)
+wfastcall struct nt_slist *WIN_FUNC(ExInterlockedPushEntrySList,3)
 	(nt_slist_header *head, struct nt_slist *entry, NT_SPIN_LOCK *lock)
 {
 	struct nt_slist *ret;
@@ -501,7 +501,7 @@ wfastcall struct nt_slist *WRAP_EXPORT(ExInterlockedPushEntrySList,3)
 	return ret;
 }
 
-wstdcall struct nt_slist *WRAP_EXPORT(ExpInterlockedPushEntrySList,2)
+wstdcall struct nt_slist *WIN_FUNC(ExpInterlockedPushEntrySList,2)
 	(nt_slist_header *head, struct nt_slist *entry)
 {
 	struct nt_slist *ret;
@@ -512,7 +512,7 @@ wstdcall struct nt_slist *WRAP_EXPORT(ExpInterlockedPushEntrySList,2)
 	return ret;
 }
 
-wfastcall struct nt_slist *WRAP_EXPORT(InterlockedPushEntrySList,2)
+wfastcall struct nt_slist *WIN_FUNC(InterlockedPushEntrySList,2)
 	(nt_slist_header *head, struct nt_slist *entry)
 {
 	struct nt_slist *ret;
@@ -523,7 +523,7 @@ wfastcall struct nt_slist *WRAP_EXPORT(InterlockedPushEntrySList,2)
 	return ret;
 }
 
-wfastcall struct nt_slist *WRAP_EXPORT(ExInterlockedPopEntrySList,2)
+wfastcall struct nt_slist *WIN_FUNC(ExInterlockedPopEntrySList,2)
 	(nt_slist_header *head, NT_SPIN_LOCK *lock)
 {
 	struct nt_slist *ret;
@@ -534,7 +534,7 @@ wfastcall struct nt_slist *WRAP_EXPORT(ExInterlockedPopEntrySList,2)
 	return ret;
 }
 
-wstdcall struct nt_slist *WRAP_EXPORT(ExpInterlockedPopEntrySList,1)
+wstdcall struct nt_slist *WIN_FUNC(ExpInterlockedPopEntrySList,1)
 	(nt_slist_header *head)
 {
 	struct nt_slist *ret;
@@ -545,7 +545,7 @@ wstdcall struct nt_slist *WRAP_EXPORT(ExpInterlockedPopEntrySList,1)
 	return ret;
 }
 
-wfastcall struct nt_slist *WRAP_EXPORT(InterlockedPopEntrySList,1)
+wfastcall struct nt_slist *WIN_FUNC(InterlockedPopEntrySList,1)
 	(nt_slist_header *head)
 {
 	struct nt_slist *ret;
@@ -556,7 +556,7 @@ wfastcall struct nt_slist *WRAP_EXPORT(InterlockedPopEntrySList,1)
 	return ret;
 }
 
-wstdcall USHORT WRAP_EXPORT(ExQueryDepthSList,1)
+wstdcall USHORT WIN_FUNC(ExQueryDepthSList,1)
 	(nt_slist_header *head)
 {
 	USHORT depth;
@@ -566,31 +566,31 @@ wstdcall USHORT WRAP_EXPORT(ExQueryDepthSList,1)
 	return depth;
 }
 
-wfastcall LONG WRAP_EXPORT(InterlockedIncrement,1)
+wfastcall LONG WIN_FUNC(InterlockedIncrement,1)
 	(LONG volatile *val)
 {
 	return post_atomic_add(*val, 1);
 }
 
-wfastcall LONG WRAP_EXPORT(InterlockedDecrement,1)
+wfastcall LONG WIN_FUNC(InterlockedDecrement,1)
 	(LONG volatile *val)
 {
 	return post_atomic_add(*val, -1);
 }
 
-wfastcall LONG WRAP_EXPORT(InterlockedExchange,2)
+wfastcall LONG WIN_FUNC(InterlockedExchange,2)
 	(LONG volatile *target, LONG val)
 {
 	return xchg(target, val);
 }
 
-wfastcall LONG WRAP_EXPORT(InterlockedCompareExchange,3)
+wfastcall LONG WIN_FUNC(InterlockedCompareExchange,3)
 	(LONG volatile *dest, LONG new, LONG old)
 {
 	return cmpxchg(dest, old, new);
 }
 
-wfastcall void WRAP_EXPORT(ExInterlockedAddLargeStatistic,2)
+wfastcall void WIN_FUNC(ExInterlockedAddLargeStatistic,2)
 	(LARGE_INTEGER volatile *plint, ULONG n)
 {
 	unsigned long flags;
@@ -700,14 +700,14 @@ void wrap_init_timer(struct nt_timer *nt_timer, enum timer_type type,
 	TRACEEXIT5(return);
 }
 
-wstdcall void WRAP_EXPORT(KeInitializeTimerEx,2)
+wstdcall void WIN_FUNC(KeInitializeTimerEx,2)
 	(struct nt_timer *nt_timer, enum timer_type type)
 {
 	TRACEENTER5("%p", nt_timer);
 	wrap_init_timer(nt_timer, type, NULL, NULL);
 }
 
-wstdcall void WRAP_EXPORT(KeInitializeTimer,1)
+wstdcall void WIN_FUNC(KeInitializeTimer,1)
 	(struct nt_timer *nt_timer)
 {
 	TRACEENTER5("%p", nt_timer);
@@ -755,7 +755,7 @@ BOOLEAN wrap_set_timer(struct nt_timer *nt_timer, unsigned long expires_hz,
 	TRACEEXIT5(return ret);
 }
 
-wstdcall BOOLEAN WRAP_EXPORT(KeSetTimerEx,4)
+wstdcall BOOLEAN WIN_FUNC(KeSetTimerEx,4)
 	(struct nt_timer *nt_timer, LARGE_INTEGER duetime_ticks,
 	 LONG period_ms, struct kdpc *kdpc)
 {
@@ -767,7 +767,7 @@ wstdcall BOOLEAN WRAP_EXPORT(KeSetTimerEx,4)
 	return wrap_set_timer(nt_timer, expires_hz, repeat_hz, kdpc);
 }
 
-wstdcall BOOLEAN WRAP_EXPORT(KeSetTimer,3)
+wstdcall BOOLEAN WIN_FUNC(KeSetTimer,3)
 	(struct nt_timer *nt_timer, LARGE_INTEGER duetime_ticks,
 	 struct kdpc *kdpc)
 {
@@ -775,7 +775,7 @@ wstdcall BOOLEAN WRAP_EXPORT(KeSetTimer,3)
 	return KeSetTimerEx(nt_timer, duetime_ticks, 0, kdpc);
 }
 
-wstdcall BOOLEAN WRAP_EXPORT(KeCancelTimer,1)
+wstdcall BOOLEAN WIN_FUNC(KeCancelTimer,1)
 	(struct nt_timer *nt_timer)
 {
 	BOOLEAN canceled;
@@ -806,7 +806,7 @@ wstdcall BOOLEAN WRAP_EXPORT(KeCancelTimer,1)
 	TRACEEXIT5(return canceled);
 }
 
-wstdcall void WRAP_EXPORT(KeInitializeDpc,3)
+wstdcall void WIN_FUNC(KeInitializeDpc,3)
 	(struct kdpc *kdpc, void *func, void *ctx)
 {
 	TRACEENTER3("%p, %p, %p", kdpc, func, ctx);
@@ -897,7 +897,7 @@ static BOOLEAN dequeue_kdpc(struct kdpc *kdpc)
 	return ret;
 }
 
-wstdcall BOOLEAN WRAP_EXPORT(KeInsertQueueDpc,3)
+wstdcall BOOLEAN WIN_FUNC(KeInsertQueueDpc,3)
 	(struct kdpc *kdpc, void *arg1, void *arg2)
 {
 	BOOLEAN ret;
@@ -909,7 +909,7 @@ wstdcall BOOLEAN WRAP_EXPORT(KeInsertQueueDpc,3)
 	TRACEEXIT5(return ret);
 }
 
-wstdcall BOOLEAN WRAP_EXPORT(KeRemoveQueueDpc,1)
+wstdcall BOOLEAN WIN_FUNC(KeRemoveQueueDpc,1)
 	(struct kdpc *kdpc)
 {
 	BOOLEAN ret;
@@ -964,62 +964,62 @@ int schedule_ntos_work_item(NTOS_WORK_FUNC func, void *arg1, void *arg2)
 	WORKEXIT(return 0);
 }
 
-wstdcall void WRAP_EXPORT(KeInitializeSpinLock,1)
+wstdcall void WIN_FUNC(KeInitializeSpinLock,1)
 	(NT_SPIN_LOCK *lock)
 {
 	TRACEENTER6("%p", lock);
 	nt_spin_lock_init(lock);
 }
 
-wstdcall void WRAP_EXPORT(KeAcquireSpinLock,2)
+wstdcall void WIN_FUNC(KeAcquireSpinLock,2)
 	(NT_SPIN_LOCK *lock, KIRQL *irql)
 {
 	TRACEENTER6("%p", lock);
 	*irql = nt_spin_lock_irql(lock, DISPATCH_LEVEL);
 }
 
-wstdcall void WRAP_EXPORT(KeReleaseSpinLock,2)
+wstdcall void WIN_FUNC(KeReleaseSpinLock,2)
 	(NT_SPIN_LOCK *lock, KIRQL oldirql)
 {
 	TRACEENTER6("%p", lock);
 	nt_spin_unlock_irql(lock, oldirql);
 }
 
-wstdcall void WRAP_EXPORT(KeAcquireSpinLockAtDpcLevel,1)
+wstdcall void WIN_FUNC(KeAcquireSpinLockAtDpcLevel,1)
 	(NT_SPIN_LOCK *lock)
 {
 	TRACEENTER6("%p", lock);
 	nt_spin_lock(lock);
 }
 
-wstdcall void WRAP_EXPORT(KeReleaseSpinLockFromDpcLevel,1)
+wstdcall void WIN_FUNC(KeReleaseSpinLockFromDpcLevel,1)
 	(NT_SPIN_LOCK *lock)
 {
 	TRACEENTER6("%p", lock);
 	nt_spin_unlock(lock);
 }
 
-wstdcall void WRAP_EXPORT(KeRaiseIrql,2)
+wstdcall void WIN_FUNC(KeRaiseIrql,2)
 	(KIRQL newirql, KIRQL *oldirql)
 {
 	TRACEENTER6("%d", newirql);
 	*oldirql = raise_irql(newirql);
 }
 
-wstdcall KIRQL WRAP_EXPORT(KeRaiseIrqlToDpcLevel,0)
+wstdcall KIRQL WIN_FUNC(KeRaiseIrqlToDpcLevel,0)
 	(void)
 {
 	return raise_irql(DISPATCH_LEVEL);
 }
 
-wstdcall void WRAP_EXPORT(KeLowerIrql,1)
+wstdcall void WIN_FUNC(KeLowerIrql,1)
 	(KIRQL irql)
 {
 	TRACEENTER6("%d", irql);
 	lower_irql(irql);
 }
 
-wstdcall KIRQL WRAP_EXPORT(KeAcquireSpinLockRaiseToDpc,1)
+wstdcall KIRQL WIN_FUNC(KeAcquireSpinLockRaiseToDpc,1)
 	(NT_SPIN_LOCK *lock)
 {
 	TRACEENTER6("%p", lock);
@@ -1028,7 +1028,7 @@ wstdcall KIRQL WRAP_EXPORT(KeAcquireSpinLockRaiseToDpc,1)
 
 #undef ExAllocatePoolWithTag
 
-wstdcall void *WRAP_EXPORT(ExAllocatePoolWithTag,3)
+wstdcall void *WIN_FUNC(ExAllocatePoolWithTag,3)
 	(enum pool_type pool_type, SIZE_T size, ULONG tag)
 {
 	void *addr;
@@ -1059,7 +1059,7 @@ static wstdcall void vfree_nonatomic(void *addr, void *ctx)
 	vfree(addr);
 }
 
-wstdcall void WRAP_EXPORT(ExFreePool,1)
+wstdcall void WIN_FUNC(ExFreePool,1)
 	(void *addr)
 {
 	DBGTRACE4("addr: %p", addr);
@@ -1075,16 +1075,16 @@ wstdcall void WRAP_EXPORT(ExFreePool,1)
 	TRACEEXIT4(return);
 }
 
-wstdcall void WRAP_EXPORT(ExFreePoolWithTag,2)
+wstdcall void WIN_FUNC(ExFreePoolWithTag,2)
 	(void *addr, ULONG tag)
 {
 	ExFreePool(addr);
 }
 
-WRAP_FUNC_PTR_DECL(ExAllocatePoolWithTag,3);
-WRAP_FUNC_PTR_DECL(ExFreePool,1);
+WIN_FUNC_DECL(ExAllocatePoolWithTag,3);
+WIN_FUNC_DECL(ExFreePool,1);
 
-wstdcall void WRAP_EXPORT(ExInitializeNPagedLookasideList,7)
+wstdcall void WIN_FUNC(ExInitializeNPagedLookasideList,7)
 	(struct npaged_lookaside_list *lookaside,
 	 LOOKASIDE_ALLOC_FUNC *alloc_func, LOOKASIDE_FREE_FUNC *free_func,
 	 ULONG flags, SIZE_T size, ULONG tag, USHORT depth)
@@ -1105,12 +1105,12 @@ wstdcall void WRAP_EXPORT(ExInitializeNPagedLookasideList,7)
 		lookaside->alloc_func = alloc_func;
 	else
 		lookaside->alloc_func = (LOOKASIDE_ALLOC_FUNC *)
-			WRAP_FUNC_PTR(ExAllocatePoolWithTag,3);
+			WIN_FUNC(ExAllocatePoolWithTag,3);
 	if (free_func)
 		lookaside->free_func = free_func;
 	else
 		lookaside->free_func = (LOOKASIDE_FREE_FUNC *)
-			WRAP_FUNC_PTR(ExFreePool,1);
+			WIN_FUNC(ExFreePool,1);
 
 #ifndef CONFIG_X86_64
 	DBGTRACE3("lock: %p", &lookaside->obsolete);
@@ -1119,7 +1119,7 @@ wstdcall void WRAP_EXPORT(ExInitializeNPagedLookasideList,7)
 	TRACEEXIT3(return);
 }
 
-wstdcall void WRAP_EXPORT(ExDeleteNPagedLookasideList,1)
+wstdcall void WIN_FUNC(ExDeleteNPagedLookasideList,1)
 	(struct npaged_lookaside_list *lookaside)
 {
 	struct nt_slist *entry;
@@ -1129,7 +1129,7 @@ wstdcall void WRAP_EXPORT(ExDeleteNPagedLookasideList,1)
 	irql = raise_irql(DISPATCH_LEVEL);
 	while ((entry = ExpInterlockedPopEntrySList(&lookaside->head))) {
 		if (lookaside->free_func == (LOOKASIDE_FREE_FUNC *)
-		    WRAP_FUNC_PTR(ExFreePool,1))
+		    WIN_FUNC(ExFreePool,1))
 			ExFreePool(entry);
 		else
 			LIN2WIN1(lookaside->free_func, entry);
@@ -1143,7 +1143,7 @@ wstdcall void WRAP_EXPORT(ExDeleteNPagedLookasideList,1)
 	wrap_ExAllocatePoolWithTag(pool_type, size, tag, __FILE__, __LINE__)
 #endif
 
-wstdcall NTSTATUS WRAP_EXPORT(ExCreateCallback,3)
+wstdcall NTSTATUS WIN_FUNC(ExCreateCallback,3)
 	(struct callback_object **object, struct object_attributes *attributes,
 	 BOOLEAN create, BOOLEAN allow_multiple_callbacks)
 {
@@ -1172,7 +1172,7 @@ wstdcall NTSTATUS WRAP_EXPORT(ExCreateCallback,3)
 	TRACEEXIT2(return STATUS_SUCCESS);
 }
 
-wstdcall void *WRAP_EXPORT(ExRegisterCallback,3)
+wstdcall void *WIN_FUNC(ExRegisterCallback,3)
 	(struct callback_object *object, PCALLBACK_FUNCTION func, void *context)
 {
 	struct callback_func *callback;
@@ -1200,7 +1200,7 @@ wstdcall void *WRAP_EXPORT(ExRegisterCallback,3)
 	TRACEEXIT2(return callback);
 }
 
-wstdcall void WRAP_EXPORT(ExUnregisterCallback,1)
+wstdcall void WIN_FUNC(ExUnregisterCallback,1)
 	(struct callback_func *callback)
 {
 	struct callback_object *object;
@@ -1217,7 +1217,7 @@ wstdcall void WRAP_EXPORT(ExUnregisterCallback,1)
 	return;
 }
 
-wstdcall void WRAP_EXPORT(ExNotifyCallback,3)
+wstdcall void WIN_FUNC(ExNotifyCallback,3)
 	(struct callback_object *object, void *arg1, void *arg2)
 {
 	struct callback_func *callback;
@@ -1340,7 +1340,7 @@ static void put_thread_event_wait(struct thread_event_wait *thread_event_wait)
 	thread_event_wait->done = 0;
 }
 
-wstdcall NTSTATUS WRAP_EXPORT(KeWaitForMultipleObjects,8)
+wstdcall NTSTATUS WIN_FUNC(KeWaitForMultipleObjects,8)
 	(ULONG count, void *object[], enum wait_type wait_type,
 	 KWAIT_REASON wait_reason, KPROCESSOR_MODE wait_mode,
 	 BOOLEAN alertable, LARGE_INTEGER *timeout,
@@ -1540,7 +1540,7 @@ wstdcall NTSTATUS WRAP_EXPORT(KeWaitForMultipleObjects,8)
 	EVENTEXIT(return STATUS_SUCCESS);
 }
 
-wstdcall NTSTATUS WRAP_EXPORT(KeWaitForSingleObject,5)
+wstdcall NTSTATUS WIN_FUNC(KeWaitForSingleObject,5)
 	(void *object, KWAIT_REASON wait_reason, KPROCESSOR_MODE wait_mode,
 	 BOOLEAN alertable, LARGE_INTEGER *timeout)
 {
@@ -1548,7 +1548,7 @@ wstdcall NTSTATUS WRAP_EXPORT(KeWaitForSingleObject,5)
 					wait_mode, alertable, timeout, NULL);
 }
 
-wstdcall void WRAP_EXPORT(KeInitializeEvent,3)
+wstdcall void WIN_FUNC(KeInitializeEvent,3)
 	(struct nt_event *nt_event, enum event_type type, BOOLEAN state)
 {
 	KIRQL irql;
@@ -1560,7 +1560,7 @@ wstdcall void WRAP_EXPORT(KeInitializeEvent,3)
 	EVENTEXIT(return);
 }
 
-wstdcall LONG WRAP_EXPORT(KeSetEvent,3)
+wstdcall LONG WIN_FUNC(KeSetEvent,3)
 	(struct nt_event *nt_event, KPRIORITY incr, BOOLEAN wait)
 {
 	LONG old_state;
@@ -1579,7 +1579,7 @@ wstdcall LONG WRAP_EXPORT(KeSetEvent,3)
 	EVENTEXIT(return old_state);
 }
 
-wstdcall void WRAP_EXPORT(KeClearEvent,1)
+wstdcall void WIN_FUNC(KeClearEvent,1)
 	(struct nt_event *nt_event)
 {
 	EVENTENTER("event = %p", nt_event);
@@ -1587,7 +1587,7 @@ wstdcall void WRAP_EXPORT(KeClearEvent,1)
 	EVENTEXIT(return);
 }
 
-wstdcall LONG WRAP_EXPORT(KeResetEvent,1)
+wstdcall LONG WIN_FUNC(KeResetEvent,1)
 	(struct nt_event *nt_event)
 {
 	LONG old_state;
@@ -1596,7 +1596,7 @@ wstdcall LONG WRAP_EXPORT(KeResetEvent,1)
 	EVENTEXIT(return old_state);
 }
 
-wstdcall void WRAP_EXPORT(KeInitializeMutex,2)
+wstdcall void WIN_FUNC(KeInitializeMutex,2)
 	(struct nt_mutex *mutex, ULONG level)
 {
 	KIRQL irql;
@@ -1613,7 +1613,7 @@ wstdcall void WRAP_EXPORT(KeInitializeMutex,2)
 	EVENTEXIT(return);
 }
 
-wstdcall LONG WRAP_EXPORT(KeReleaseMutex,2)
+wstdcall LONG WIN_FUNC(KeReleaseMutex,2)
 	(struct nt_mutex *mutex, BOOLEAN wait)
 {
 	LONG ret;
@@ -1639,7 +1639,7 @@ wstdcall LONG WRAP_EXPORT(KeReleaseMutex,2)
 	EVENTEXIT(return ret);
 }
 
-wstdcall void WRAP_EXPORT(KeInitializeSemaphore,3)
+wstdcall void WIN_FUNC(KeInitializeSemaphore,3)
 	(struct nt_semaphore *semaphore, LONG count, LONG limit)
 {
 	KIRQL irql;
@@ -1656,7 +1656,7 @@ wstdcall void WRAP_EXPORT(KeInitializeSemaphore,3)
 	EVENTEXIT(return);
 }
 
-wstdcall LONG WRAP_EXPORT(KeReleaseSemaphore,4)
+wstdcall LONG WIN_FUNC(KeReleaseSemaphore,4)
 	(struct nt_semaphore *semaphore, KPRIORITY incr, LONG adjustment,
 	 BOOLEAN wait)
 {
@@ -1676,7 +1676,7 @@ wstdcall LONG WRAP_EXPORT(KeReleaseSemaphore,4)
 	EVENTEXIT(return ret);
 }
 
-wstdcall NTSTATUS WRAP_EXPORT(KeDelayExecutionThread,3)
+wstdcall NTSTATUS WIN_FUNC(KeDelayExecutionThread,3)
 	(KPROCESSOR_MODE wait_mode, BOOLEAN alertable, LARGE_INTEGER *interval)
 {
 	int res;
@@ -1705,7 +1705,7 @@ wstdcall NTSTATUS WRAP_EXPORT(KeDelayExecutionThread,3)
 		EVENTEXIT(return STATUS_ALERTED);
 }
 
-wstdcall KPRIORITY WRAP_EXPORT(KeQueryPriorityThread,1)
+wstdcall KPRIORITY WIN_FUNC(KeQueryPriorityThread,1)
 	(struct task_struct *task)
 {
 	KPRIORITY prio;
@@ -1722,32 +1722,32 @@ wstdcall KPRIORITY WRAP_EXPORT(KeQueryPriorityThread,1)
 	EVENTEXIT(return prio);
 }
 
-wstdcall ULONGLONG WRAP_EXPORT(KeQueryInterruptTime,0)
+wstdcall ULONGLONG WIN_FUNC(KeQueryInterruptTime,0)
 	(void)
 {
 	TRACEEXIT5(return jiffies * TICKSPERSEC / HZ);
 }
 
-wstdcall ULONG WRAP_EXPORT(KeQueryTimeIncrement,0)
+wstdcall ULONG WIN_FUNC(KeQueryTimeIncrement,0)
 	(void)
 {
 	TRACEEXIT5(return TICKSPERSEC / HZ);
 }
 
-wstdcall void WRAP_EXPORT(KeQuerySystemTime,1)
+wstdcall void WIN_FUNC(KeQuerySystemTime,1)
 	(LARGE_INTEGER *time)
 {
 	*time = ticks_1601();
 	return;
 }
 
-wstdcall void WRAP_EXPORT(KeQueryTickCount,1)
+wstdcall void WIN_FUNC(KeQueryTickCount,1)
 	(LARGE_INTEGER *j)
 {
 	*j = jiffies;
 }
 
-wstdcall LARGE_INTEGER WRAP_EXPORT(KeQueryPerformanceCounter,1)
+wstdcall LARGE_INTEGER WIN_FUNC(KeQueryPerformanceCounter,1)
 	(LARGE_INTEGER *counter)
 {
 	if (counter)
@@ -1755,7 +1755,7 @@ wstdcall LARGE_INTEGER WRAP_EXPORT(KeQueryPerformanceCounter,1)
 	return jiffies;
 }
 
-wstdcall struct task_struct *WRAP_EXPORT(KeGetCurrentThread,0)
+wstdcall struct task_struct *WIN_FUNC(KeGetCurrentThread,0)
 	(void)
 {
 	struct task_struct *task = current;
@@ -1764,7 +1764,7 @@ wstdcall struct task_struct *WRAP_EXPORT(KeGetCurrentThread,0)
 	return task;
 }
 
-wstdcall KPRIORITY WRAP_EXPORT(KeSetPriorityThread,2)
+wstdcall KPRIORITY WIN_FUNC(KeSetPriorityThread,2)
 	(struct task_struct *task, KPRIORITY priority)
 {
 	KPRIORITY old_prio;
@@ -1900,7 +1900,7 @@ struct nt_thread *get_current_nt_thread(void)
 	return ret;
 }
 
-wstdcall NTSTATUS WRAP_EXPORT(PsCreateSystemThread,7)
+wstdcall NTSTATUS WIN_FUNC(PsCreateSystemThread,7)
 	(void **phandle, ULONG access, void *obj_attr, void *process,
 	 void *client_id, void (*start_routine)(void *) wstdcall, void *context)
 {
@@ -1953,7 +1953,7 @@ wstdcall NTSTATUS WRAP_EXPORT(PsCreateSystemThread,7)
 	TRACEEXIT2(return STATUS_SUCCESS);
 }
 
-wstdcall NTSTATUS WRAP_EXPORT(PsTerminateSystemThread,1)
+wstdcall NTSTATUS WIN_FUNC(PsTerminateSystemThread,1)
 	(NTSTATUS status)
 {
 	struct nt_thread *thread;
@@ -1972,7 +1972,7 @@ wstdcall NTSTATUS WRAP_EXPORT(PsTerminateSystemThread,1)
 	return STATUS_FAILURE;
 }
 
-wstdcall BOOLEAN WRAP_EXPORT(KeRemoveEntryDeviceQueue,2)
+wstdcall BOOLEAN WIN_FUNC(KeRemoveEntryDeviceQueue,2)
 	(struct kdevice_queue *dev_queue, struct kdevice_queue_entry *entry)
 {
 	struct kdevice_queue_entry *e;
@@ -1990,7 +1990,7 @@ wstdcall BOOLEAN WRAP_EXPORT(KeRemoveEntryDeviceQueue,2)
 	return FALSE;
 }
 
-wstdcall BOOLEAN WRAP_EXPORT(KeSynchronizeExecution,3)
+wstdcall BOOLEAN WIN_FUNC(KeSynchronizeExecution,3)
 	(struct kinterrupt *interrupt, PKSYNCHRONIZE_ROUTINE synch_routine,
 	 void *synch_context)
 {
@@ -2008,7 +2008,7 @@ wstdcall BOOLEAN WRAP_EXPORT(KeSynchronizeExecution,3)
 	return ret;
 }
 
-wstdcall void *WRAP_EXPORT(MmAllocateContiguousMemorySpecifyCache,5)
+wstdcall void *WIN_FUNC(MmAllocateContiguousMemorySpecifyCache,5)
 	(SIZE_T size, PHYSICAL_ADDRESS lowest, PHYSICAL_ADDRESS highest,
 	 PHYSICAL_ADDRESS boundary, enum memory_caching_type cache_type)
 {
@@ -2020,14 +2020,14 @@ wstdcall void *WRAP_EXPORT(MmAllocateContiguousMemorySpecifyCache,5)
 	return addr;
 }
 
-wstdcall void WRAP_EXPORT(MmFreeContiguousMemorySpecifyCache,3)
+wstdcall void WIN_FUNC(MmFreeContiguousMemorySpecifyCache,3)
 	(void *base, SIZE_T size, enum memory_caching_type cache_type)
 {
 	DBGTRACE2("%p", base);
 	ExFreePool(base);
 }
 
-wstdcall PHYSICAL_ADDRESS WRAP_EXPORT(MmGetPhysicalAddress,1)
+wstdcall PHYSICAL_ADDRESS WIN_FUNC(MmGetPhysicalAddress,1)
 	(void *base)
 {
 	DBGTRACE2("%p", base);
@@ -2041,7 +2041,7 @@ wstdcall PHYSICAL_ADDRESS WRAP_EXPORT(MmGetPhysicalAddress,1)
  * probably get this device to work if we create a buffer with the
  * strings as required by the driver and return virtual address for
  * that address instead */
-wstdcall void *WRAP_EXPORT(MmMapIoSpace,3)
+wstdcall void *WIN_FUNC(MmMapIoSpace,3)
 	(PHYSICAL_ADDRESS phys_addr, SIZE_T size, enum memory_caching_type cache)
 {
 	void *virt;
@@ -2054,7 +2054,7 @@ wstdcall void *WRAP_EXPORT(MmMapIoSpace,3)
 	return virt;
 }
 
-wstdcall void WRAP_EXPORT(MmUnmapIoSpace,2)
+wstdcall void WIN_FUNC(MmUnmapIoSpace,2)
 	(void *addr, SIZE_T size)
 {
 	TRACEENTER1("%p, %lu", addr, size);
@@ -2062,7 +2062,7 @@ wstdcall void WRAP_EXPORT(MmUnmapIoSpace,2)
 	return;
 }
 
-wstdcall ULONG WRAP_EXPORT(MmSizeOfMdl,2)
+wstdcall ULONG WIN_FUNC(MmSizeOfMdl,2)
 	(void *base, ULONG length)
 {
 	return (sizeof(struct mdl) +
@@ -2149,7 +2149,7 @@ void free_mdl(struct mdl *mdl)
 	return;
 }
 
-wstdcall void WRAP_EXPORT(IoBuildPartialMdl,4)
+wstdcall void WIN_FUNC(IoBuildPartialMdl,4)
 	(struct mdl *source, struct mdl *target, void *virt, ULONG length)
 {
 	MmInitializeMdl(target, virt, length);
@@ -2159,7 +2159,7 @@ wstdcall void WRAP_EXPORT(IoBuildPartialMdl,4)
 /* FIXME: We don't update MDL to physical page mapping, since in Linux
  * the pages are in memory anyway; if a driver treats an MDL as
  * opaque, we should be safe; otherwise, the driver may break */
-wstdcall void WRAP_EXPORT(MmBuildMdlForNonPagedPool,1)
+wstdcall void WIN_FUNC(MmBuildMdlForNonPagedPool,1)
 	(struct mdl *mdl)
 {
 	PFN_NUMBER *mdl_pages;
@@ -2180,7 +2180,7 @@ wstdcall void WRAP_EXPORT(MmBuildMdlForNonPagedPool,1)
 	return;
 }
 
-wstdcall void *WRAP_EXPORT(MmMapLockedPages,2)
+wstdcall void *WIN_FUNC(MmMapLockedPages,2)
 	(struct mdl *mdl, KPROCESSOR_MODE access_mode)
 {
 	/* already mapped */
@@ -2192,7 +2192,7 @@ wstdcall void *WRAP_EXPORT(MmMapLockedPages,2)
 	return mdl->mappedsystemva;
 }
 
-wstdcall void *WRAP_EXPORT(MmMapLockedPagesSpecifyCache,6)
+wstdcall void *WIN_FUNC(MmMapLockedPagesSpecifyCache,6)
 	(struct mdl *mdl, KPROCESSOR_MODE access_mode,
 	 enum memory_caching_type cache_type, void *base_address,
 	 ULONG bug_check, enum mm_page_priority priority)
@@ -2200,14 +2200,14 @@ wstdcall void *WRAP_EXPORT(MmMapLockedPagesSpecifyCache,6)
 	return MmMapLockedPages(mdl, access_mode);
 }
 
-wstdcall void WRAP_EXPORT(MmUnmapLockedPages,2)
+wstdcall void WIN_FUNC(MmUnmapLockedPages,2)
 	(void *base, struct mdl *mdl)
 {
 	mdl->flags &= ~MDL_MAPPED_TO_SYSTEM_VA;
 	return;
 }
 
-wstdcall void WRAP_EXPORT(MmProbeAndLockPages,3)
+wstdcall void WIN_FUNC(MmProbeAndLockPages,3)
 	(struct mdl *mdl, KPROCESSOR_MODE access_mode,
 	 enum lock_operation operation)
 {
@@ -2216,14 +2216,14 @@ wstdcall void WRAP_EXPORT(MmProbeAndLockPages,3)
 	return;
 }
 
-wstdcall void WRAP_EXPORT(MmUnlockPages,1)
+wstdcall void WIN_FUNC(MmUnlockPages,1)
 	(struct mdl *mdl)
 {
 	mdl->flags &= ~MDL_PAGES_LOCKED;
 	return;
 }
 
-wstdcall BOOLEAN WRAP_EXPORT(MmIsAddressValid,1)
+wstdcall BOOLEAN WIN_FUNC(MmIsAddressValid,1)
 	(void *virt_addr)
 {
 	if (virt_addr_valid(virt_addr))
@@ -2232,19 +2232,19 @@ wstdcall BOOLEAN WRAP_EXPORT(MmIsAddressValid,1)
 		return FALSE;
 }
 
-wstdcall void *WRAP_EXPORT(MmLockPagableDataSection,1)
+wstdcall void *WIN_FUNC(MmLockPagableDataSection,1)
 	(void *address)
 {
 	return address;
 }
 
-wstdcall void WRAP_EXPORT(MmUnlockPagableImageSection,1)
+wstdcall void WIN_FUNC(MmUnlockPagableImageSection,1)
 	(void *handle)
 {
 	return;
 }
 
-wstdcall NTSTATUS WRAP_EXPORT(ObReferenceObjectByHandle,6)
+wstdcall NTSTATUS WIN_FUNC(ObReferenceObjectByHandle,6)
 	(void *handle, ACCESS_MASK desired_access, void *obj_type,
 	 KPROCESSOR_MODE access_mode, void **object, void *handle_info)
 {
@@ -2264,7 +2264,7 @@ wstdcall NTSTATUS WRAP_EXPORT(ObReferenceObjectByHandle,6)
 /* DDK doesn't say if return value should be before incrementing or
  * after incrementing reference count, but according to #reactos
  * devels, it should be return value after incrementing */
-wfastcall LONG WRAP_EXPORT(ObfReferenceObject,1)
+wfastcall LONG WIN_FUNC(ObfReferenceObject,1)
 	(void *object)
 {
 	struct common_object_header *hdr;
@@ -2279,7 +2279,7 @@ wfastcall LONG WRAP_EXPORT(ObfReferenceObject,1)
 	return ret;
 }
 
-wfastcall void WRAP_EXPORT(ObfDereferenceObject,1)
+wfastcall void WIN_FUNC(ObfDereferenceObject,1)
 	(void *object)
 {
 	struct common_object_header *hdr;
@@ -2301,7 +2301,7 @@ wfastcall void WRAP_EXPORT(ObfDereferenceObject,1)
 	}
 }
 
-wstdcall NTSTATUS WRAP_EXPORT(ZwCreateFile,11)
+wstdcall NTSTATUS WIN_FUNC(ZwCreateFile,11)
 	(void **handle, ULONG access_mask, struct object_attr *obj_attr,
 	 struct io_status_block *iosb, LARGE_INTEGER *size,
 	 ULONG file_attr, ULONG share_access, ULONG create_disposition,
@@ -2368,7 +2368,7 @@ wstdcall NTSTATUS WRAP_EXPORT(ZwCreateFile,11)
 	}
 }
 
-wstdcall NTSTATUS WRAP_EXPORT(ZwReadFile,9)
+wstdcall NTSTATUS WIN_FUNC(ZwReadFile,9)
 	(void *handle, struct nt_event *event, void *apc_routine,
 	 void *apc_context, struct io_status_block *iosb, void *buffer,
 	 ULONG length, LARGE_INTEGER *byte_offset, ULONG *key)
@@ -2400,7 +2400,7 @@ wstdcall NTSTATUS WRAP_EXPORT(ZwReadFile,9)
 	TRACEEXIT2(return STATUS_SUCCESS);
 }
 
-wstdcall NTSTATUS WRAP_EXPORT(ZwClose,1)
+wstdcall NTSTATUS WIN_FUNC(ZwClose,1)
 	(void *handle)
 {
 	struct object_attr *oa;
@@ -2426,7 +2426,7 @@ wstdcall NTSTATUS WRAP_EXPORT(ZwClose,1)
 	TRACEEXIT2(return STATUS_SUCCESS);
 }
 
-wstdcall NTSTATUS WRAP_EXPORT(ZwQueryInformationFile,5)
+wstdcall NTSTATUS WIN_FUNC(ZwQueryInformationFile,5)
 	(void *handle, struct io_status_block *iosb, void *info,
 	 ULONG length, enum file_info_class class)
 {
@@ -2466,7 +2466,7 @@ wstdcall NTSTATUS WRAP_EXPORT(ZwQueryInformationFile,5)
 	TRACEEXIT2(return STATUS_SUCCESS);
 }
 
-wstdcall NTSTATUS WRAP_EXPORT(ZwCreateKey,7)
+wstdcall NTSTATUS WIN_FUNC(ZwCreateKey,7)
 	(void **handle, ACCESS_MASK desired_access, struct object_attr *attr,
 	 ULONG title_index, struct unicode_string *class,
 	 ULONG create_options, ULONG *disposition)
@@ -2481,7 +2481,7 @@ wstdcall NTSTATUS WRAP_EXPORT(ZwCreateKey,7)
 	return STATUS_SUCCESS;
 }
 
-wstdcall NTSTATUS WRAP_EXPORT(ZwOpenKey,3)
+wstdcall NTSTATUS WIN_FUNC(ZwOpenKey,3)
 	(void **handle, ACCESS_MASK desired_access, struct object_attr *attr)
 {
 	struct ansi_string ansi;
@@ -2494,7 +2494,7 @@ wstdcall NTSTATUS WRAP_EXPORT(ZwOpenKey,3)
 	return STATUS_SUCCESS;
 }
 
-wstdcall NTSTATUS WRAP_EXPORT(ZwSetValueKey,6)
+wstdcall NTSTATUS WIN_FUNC(ZwSetValueKey,6)
 	(void *handle, struct unicode_string *name, ULONG title_index,
 	 ULONG type, void *data, ULONG data_size)
 {
@@ -2507,7 +2507,7 @@ wstdcall NTSTATUS WRAP_EXPORT(ZwSetValueKey,6)
 	return STATUS_SUCCESS;
 }
 
-wstdcall NTSTATUS WRAP_EXPORT(ZwQueryValueKey,6)
+wstdcall NTSTATUS WIN_FUNC(ZwQueryValueKey,6)
 	(void *handle, struct unicode_string *name,
 	 enum key_value_information_class class, void *info,
 	 ULONG length, ULONG *res_length)
@@ -2521,7 +2521,7 @@ wstdcall NTSTATUS WRAP_EXPORT(ZwQueryValueKey,6)
 	return STATUS_INVALID_PARAMETER;
 }
 
-wstdcall NTSTATUS WRAP_EXPORT(WmiSystemControl,4)
+wstdcall NTSTATUS WIN_FUNC(WmiSystemControl,4)
 	(struct wmilib_context *info, struct device_object *dev_obj,
 	 struct irp *irp, void *irp_disposition)
 {
@@ -2529,7 +2529,7 @@ wstdcall NTSTATUS WRAP_EXPORT(WmiSystemControl,4)
 	return STATUS_SUCCESS;
 }
 
-wstdcall NTSTATUS WRAP_EXPORT(WmiCompleteRequest,5)
+wstdcall NTSTATUS WIN_FUNC(WmiCompleteRequest,5)
 	(struct device_object *dev_obj, struct irp *irp, NTSTATUS status,
 	 ULONG buffer_used, CCHAR priority_boost)
 {
@@ -2537,7 +2537,7 @@ wstdcall NTSTATUS WRAP_EXPORT(WmiCompleteRequest,5)
 	return STATUS_SUCCESS;
 }
 
-noregparm NTSTATUS WRAP_EXPORT(WmiTraceMessage,12)
+noregparm NTSTATUS WIN_FUNC(WmiTraceMessage,12)
 	(void *tracehandle, ULONG message_flags,
 	 void *message_guid, USHORT message_no, ...)
 {
@@ -2545,7 +2545,7 @@ noregparm NTSTATUS WRAP_EXPORT(WmiTraceMessage,12)
 	TRACEEXIT2(return STATUS_SUCCESS);
 }
 
-wstdcall NTSTATUS WRAP_EXPORT(WmiQueryTraceInformation,4)
+wstdcall NTSTATUS WIN_FUNC(WmiQueryTraceInformation,4)
 	(enum trace_information_class trace_info_class, void *trace_info,
 	 ULONG *req_length, void *buf)
 {
@@ -2554,7 +2554,7 @@ wstdcall NTSTATUS WRAP_EXPORT(WmiQueryTraceInformation,4)
 }
 
 /* this function can't be wstdcall as it takes variable number of args */
-noregparm ULONG WRAP_EXPORT(DbgPrint,12)
+noregparm ULONG WIN_FUNC(DbgPrint,12)
 	(char *format, ...)
 {
 #ifdef DEBUG
@@ -2569,7 +2569,7 @@ noregparm ULONG WRAP_EXPORT(DbgPrint,12)
 	return STATUS_SUCCESS;
 }
 
-wstdcall void WRAP_EXPORT(KeBugCheckEx,5)
+wstdcall void WIN_FUNC(KeBugCheckEx,5)
 	(ULONG code, ULONG_PTR param1, ULONG_PTR param2,
 	 ULONG_PTR param3, ULONG_PTR param4)
 {
@@ -2577,22 +2577,22 @@ wstdcall void WRAP_EXPORT(KeBugCheckEx,5)
 	return;
 }
 
-wstdcall void WRAP_EXPORT(ExSystemTimeToLocalTime,2)
+wstdcall void WIN_FUNC(ExSystemTimeToLocalTime,2)
 	(LARGE_INTEGER *system_time, LARGE_INTEGER *local_time)
 {
 	*local_time = *system_time;
 }
 
-wstdcall ULONG WRAP_EXPORT(ExSetTimerResolution,2)
+wstdcall ULONG WIN_FUNC(ExSetTimerResolution,2)
 	(ULONG time, BOOLEAN set)
 {
 	/* yet another "innovation"! */
 	return time;
 }
 
-wstdcall void WRAP_EXPORT(DbgBreakPoint,0)(void){UNIMPL();}
-wstdcall void WRAP_EXPORT(_except_handler3,0)(void){UNIMPL();}
-wstdcall void WRAP_EXPORT(__C_specific_handler,0)(void){UNIMPL();}
-void WRAP_EXPORT(_purecall,0)(void) { UNIMPL(); }
+wstdcall void WIN_FUNC(DbgBreakPoint,0)(void){UNIMPL();}
+wstdcall void WIN_FUNC(_except_handler3,0)(void){UNIMPL();}
+wstdcall void WIN_FUNC(__C_specific_handler,0)(void){UNIMPL();}
+void WIN_FUNC(_purecall,0)(void) { UNIMPL(); }
 
 #include "ntoskernel_exports.h"
