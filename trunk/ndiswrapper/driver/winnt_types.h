@@ -194,8 +194,14 @@ struct nt_slist {
 };
 
 #ifdef CONFIG_X86_64
+/* it is not clear how nt_slist_head is used to store pointer to
+ * slists and depth; here we assume 'align' field is used to store
+ * depth and 'region' field is used to store slist pointers */
 struct nt_slist_head {
-	ULONGLONG align;
+	union {
+		USHORT depth;
+		ULONGLONG align;
+	};
 	union {
 		ULONGLONG region;
 		struct nt_slist *next;

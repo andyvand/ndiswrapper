@@ -1102,7 +1102,7 @@ static void add_stats_timer(struct wrap_ndis_device *wnd)
 	if (wnd->physical_medium != NdisPhysicalMediumWirelessLan)
 		return;
 	wnd->stats_timer.data = (unsigned long)wnd;
-	wnd->stats_timer.function = &stats_timer_proc;
+	wnd->stats_timer.function = stats_timer_proc;
 	wnd->stats_timer.expires = jiffies + 10 * HZ;
 	add_timer(&wnd->stats_timer);
 }
@@ -1135,7 +1135,7 @@ void hangcheck_add(struct wrap_ndis_device *wnd)
 		wnd->hangcheck_interval = hangcheck_interval * HZ;
 	init_timer(&wnd->hangcheck_timer);
 	wnd->hangcheck_timer.data = (unsigned long)wnd;
-	wnd->hangcheck_timer.function = &hangcheck_proc;
+	wnd->hangcheck_timer.function = hangcheck_proc;
 	wnd->hangcheck_timer.expires = jiffies + wnd->hangcheck_interval;
 	add_timer(&wnd->hangcheck_timer);
 	return;

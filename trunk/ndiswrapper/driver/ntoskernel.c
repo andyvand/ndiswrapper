@@ -168,7 +168,7 @@ int ntoskernel_init(void)
 #if defined(CONFIG_X86_64)
 	memset(&kuser_shared_data, 0, sizeof(kuser_shared_data));
 	init_timer(&shared_data_timer);
-	shared_data_timer.function = &update_user_shared_data_proc;
+	shared_data_timer.function = update_user_shared_data_proc;
 #endif
 	return 0;
 }
@@ -561,12 +561,8 @@ wstdcall USHORT WRAP_EXPORT(ExQueryDepthSList)
 {
 	USHORT depth;
 	TRACEENTER5("%p", head);
-#ifdef CONFIG_X86_64
-	depth = head->align & 0xffff;
-	DBGTRACE5("%d, %Lx", depth, head->region);
-#else
 	depth = head->depth;
-#endif
+	DBGTRACE5("%d, %Lx", depth, head->region);
 	return depth;
 }
 
@@ -623,7 +619,6 @@ wfastcall void WRAP_EXPORT(ExInterlockedAddLargeStatistic)
 	restore_local_irq(flags);
 }
 
-/* should be called with dispatcher_lock held at DISPATCH_LEVEL */
 static void initialize_dh(struct dispatcher_header *dh, enum dh_type type,
 			  int state)
 {
@@ -635,11 +630,11 @@ static void initialize_dh(struct dispatcher_header *dh, enum dh_type type,
 
 static void timer_proc(unsigned long data)
 {
-	struct nt_timer *nt_timer = (struct nt_timer *)data;
-	struct wrap_timer *wrap_timer;
+	struct wrap_timer *wrap_timer = (struct nt_timer *)data;
+	struct nt_timer *nt_timer;
 	struct kdpc *kdpc;
 
-	wrap_timer = nt_timer->wrap_timer;
+	nt_timer = wrap_timer->nt_timer;
 	TRACEENTER5("%p(%p), %lu", wrap_timer, nt_timer, jiffies);
 #ifdef TIMER_DEBUG
 	BUG_ON(wrap_timer->wrap_timer_magic != WRAP_TIMER_MAGIC);
@@ -685,7 +680,7 @@ void wrap_init_timer(struct nt_timer *nt_timer, enum timer_type type,
 
 	memset(wrap_timer, 0, sizeof(*wrap_timer));
 	init_timer(&wrap_timer->timer);
-	wrap_timer->timer.data = (unsigned long)nt_timer;
+	wrap_timer->timer.data = (unsigned long)wrap_timer;
 	wrap_timer->timer.function = timer_proc;
 	wrap_timer->nt_timer = nt_timer;
 #ifdef TIMER_DEBUG
@@ -797,14 +792,12 @@ wstdcall BOOLEAN WRAP_EXPORT(KeCancelTimer)
 	DBGTRACE5("canceling timer %p", wrap_timer);
 	BUG_ON(wrap_timer->wrap_timer_magic != WRAP_TIMER_MAGIC);
 #endif
-	/* del_timer_sync may not be called here, as this function can
-	 * be called at DISPATCH_LEVEL */
 	DBGTRACE5("deleting timer %p(%p)", wrap_timer, nt_timer);
-	irql = nt_spin_lock_irql(&timer_lock, DISPATCH_LEVEL);
 	/* disable timer before deleting so if it is periodic timer, it
 	 * won't be re-armed after deleting */
+	irql = nt_spin_lock_irql(&timer_lock, DISPATCH_LEVEL);
 	wrap_timer->repeat = 0;
-	if (del_timer(&wrap_timer->timer))
+	if (del_timer_sync(&wrap_timer->timer))
 		canceled = TRUE;
 	else
 		canceled = FALSE;
