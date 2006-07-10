@@ -1326,14 +1326,14 @@ void get_encryption_capa(struct wrap_ndis_device *wnd)
 	TRACEEXIT1(return);
 }
 
-/* called as Windows function, so call WIN2LIN2 before accessing
+/* called as Windows function, so call WIN2LIN2ARGS before accessing
  * arguments */
 wstdcall NTSTATUS NdisDispatchDeviceControl(struct device_object *fdo,
 					    struct irp *irp)
 {
 	struct wrap_ndis_device *wnd;
 
-	WIN2LIN2(fdo, irp);
+	WIN2LIN2ARGS(fdo, irp);
 
 	DBGTRACE3("fdo: %p", fdo);
 	/* for now, we don't have anything intresting here, so pass it
@@ -1342,7 +1342,7 @@ wstdcall NTSTATUS NdisDispatchDeviceControl(struct device_object *fdo,
 	return LIN2WIN2(IoPassIrpDown, wnd->nmb->pdo, irp);
 }
 
-/* called as Windows function, so call WIN2LIN2 before accessing
+/* called as Windows function, so call WIN2LIN2ARGS before accessing
  * arguments */
 wstdcall NTSTATUS NdisDispatchPower(struct device_object *fdo, struct irp *irp)
 {
@@ -1352,7 +1352,7 @@ wstdcall NTSTATUS NdisDispatchPower(struct device_object *fdo, struct irp *irp)
 	NTSTATUS status;
 	NDIS_STATUS ndis_status;
 
-	WIN2LIN2(fdo, irp);
+	WIN2LIN2ARGS(fdo, irp);
 
 	irp_sl = IoGetCurrentIrpStackLocation(irp);
 	wnd = fdo->reserved;
@@ -1415,7 +1415,7 @@ wstdcall NTSTATUS NdisDispatchPower(struct device_object *fdo, struct irp *irp)
 	IOEXIT(return status);
 }
 
-/* called as Windows function, so call WIN2LIN2 before accessing
+/* called as Windows function, so call WIN2LIN2ARGS before accessing
  * arguments */
 wstdcall NTSTATUS NdisDispatchPnp(struct device_object *fdo, struct irp *irp)
 {
@@ -1424,7 +1424,7 @@ wstdcall NTSTATUS NdisDispatchPnp(struct device_object *fdo, struct irp *irp)
 	struct device_object *pdo;
 	NTSTATUS status;
 
-	WIN2LIN2(fdo, irp);
+	WIN2LIN2ARGS(fdo, irp);
 
 	IOTRACE("fdo: %p, irp: %p", fdo, irp);
 	irp_sl = IoGetCurrentIrpStackLocation(irp);

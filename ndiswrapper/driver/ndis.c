@@ -927,7 +927,7 @@ static void ndis_worker(void *dummy)
 	WORKEXIT(return);
 }
 
-/* called as Windows function, so call WIN2LIN2 before accessing
+/* called as Windows function, so call WIN2LIN2ARGS before accessing
  * arguments */
 wstdcall void alloc_shared_memory_async(void *arg1, void *arg2)
 {
@@ -938,7 +938,7 @@ wstdcall void alloc_shared_memory_async(void *arg1, void *arg2)
 	NDIS_PHY_ADDRESS phys;
 	KIRQL irql;
 
-	WIN2LIN2(arg1, arg2);
+	WIN2LIN2ARGS(arg1, arg2);
 	wnd = arg1;
 	alloc_shared_mem = arg2;
 	miniport = &wnd->wd->driver->ndis_driver->miniport;
@@ -1665,9 +1665,9 @@ wstdcall void wrap_miniport_timer(struct kdpc *kdpc, void *ctx, void *arg1,
 	struct ndis_miniport_timer *timer;
 	struct ndis_miniport_block *nmb;
 
-	/* called as Windows function, so call WIN2LIN before
+	/* called as Windows function, so call WIN2LINARGS before
 	 * accessing args; we don't care about arg1, arg2 */
-	WIN2LIN2(kdpc, ctx);
+	WIN2LIN2ARGS(kdpc, ctx);
 	timer = ctx;
 	TRACEENTER5("timer: %p, func: %p, ctx: %p, nmb: %p",
 		    timer, timer->func, timer->ctx, timer->nmb);
@@ -2057,7 +2057,7 @@ NdisMIndicateStatusComplete(struct ndis_miniport_block *nmb)
 		schedule_wrap_work(&wnd->tx_work);
 }
 
-/* called as Windows function, so call WIN2LIN2 before accessing
+/* called as Windows function, so call WIN2LIN2ARGS before accessing
  * arguments */
 wstdcall void return_packet(void *arg1, void *arg2)
 {
@@ -2066,7 +2066,7 @@ wstdcall void return_packet(void *arg1, void *arg2)
 	struct miniport_char *miniport;
 	KIRQL irql;
 
-	WIN2LIN2(arg1, arg2);
+	WIN2LIN2ARGS(arg1, arg2);
 	wnd = arg1;
 	packet = arg2;
 	TRACEENTER4("%p, %p", wnd, packet);

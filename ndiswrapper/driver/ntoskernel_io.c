@@ -452,26 +452,26 @@ wfastcall void WRAP_EXPORT(IofCompleteRequest,2)
 wstdcall NTSTATUS IoPassIrpDown(struct device_object *dev_obj,
 			       struct irp *irp)
 {
-	WIN2LIN2(dev_obj, irp);
+	WIN2LIN2ARGS(dev_obj, irp);
 
 	IoSkipCurrentIrpStackLocation(irp);
 	IOEXIT(return IoCallDriver(dev_obj, irp));
 }
 
 
-/* called as Windows function, so call WIN2LIN3 before accessing
+/* called as Windows function, so call WIN2LIN3ARGS before accessing
  * arguments */
 wstdcall NTSTATUS IoIrpSyncComplete(struct device_object *dev_obj,
 				   struct irp *irp, void *context)
 {
-	WIN2LIN3(dev_obj, irp, context);
+	WIN2LIN3ARGS(dev_obj, irp, context);
 
 	if (irp->pending_returned == TRUE)
 		KeSetEvent(context, IO_NO_INCREMENT, FALSE);
 	IOEXIT(return STATUS_MORE_PROCESSING_REQUIRED);
 }
 
-/* called as Windows function, so call WIN2LIN2 before accessing
+/* called as Windows function, so call WIN2LIN2ARGS before accessing
  * arguments */
 wstdcall NTSTATUS IoSyncForwardIrp(struct device_object *dev_obj,
 				  struct irp *irp)
@@ -479,7 +479,7 @@ wstdcall NTSTATUS IoSyncForwardIrp(struct device_object *dev_obj,
 	struct nt_event event;
 	NTSTATUS status;
 
-	WIN2LIN2(dev_obj, irp);
+	WIN2LIN2ARGS(dev_obj, irp);
 
 	IoCopyCurrentIrpStackLocationToNext(irp);
 	KeInitializeEvent(&event, SynchronizationEvent, FALSE);
@@ -496,21 +496,21 @@ wstdcall NTSTATUS IoSyncForwardIrp(struct device_object *dev_obj,
 	IOEXIT(return status);
 }
 
-/* called as Windows function, so call WIN2LIN2 before accessing
+/* called as Windows function, so call WIN2LIN2ARGS before accessing
  * arguments */
 wstdcall NTSTATUS IoAsyncForwardIrp(struct device_object *dev_obj,
 				   struct irp *irp)
 {
 	NTSTATUS status;
 
-	WIN2LIN2(dev_obj, irp);
+	WIN2LIN2ARGS(dev_obj, irp);
 
 	IoCopyCurrentIrpStackLocationToNext(irp);
 	status = IoCallDriver(dev_obj, irp);
 	IOEXIT(return status);
 }
 
-/* called as Windows function, so call WIN2LIN2 before accessing
+/* called as Windows function, so call WIN2LIN2ARGS before accessing
  * arguments */
 wstdcall NTSTATUS IoInvalidDeviceRequest(struct device_object *dev_obj,
 					struct irp *irp)
@@ -518,7 +518,7 @@ wstdcall NTSTATUS IoInvalidDeviceRequest(struct device_object *dev_obj,
 	struct io_stack_location *irp_sl;
 	NTSTATUS status;
 
-	WIN2LIN2(dev_obj, irp);
+	WIN2LIN2ARGS(dev_obj, irp);
 
 	irp_sl = IoGetCurrentIrpStackLocation(irp);
 	WARNING("%d:%d not implemented", irp_sl->major_fn, irp_sl->minor_fn);
