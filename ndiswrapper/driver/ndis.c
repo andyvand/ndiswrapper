@@ -1731,7 +1731,7 @@ wstdcall void WIN_FUNC(NdisSetTimer,2)
 {
 	unsigned long expires = MSEC_TO_HZ(duetime_ms) + 1;
 
-	TRACEENTER4("%p, %%p, %u, %ld", timer, timer->nt_timer.wrap_timer,
+	TRACEENTER4("%p, %p, %u, %ld", timer, timer->nt_timer.wrap_timer,
 		    duetime_ms, expires);
 	wrap_set_timer(&timer->nt_timer, expires, 0, NULL);
 	TRACEEXIT4(return);
