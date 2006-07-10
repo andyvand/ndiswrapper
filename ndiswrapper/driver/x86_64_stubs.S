@@ -243,13 +243,42 @@ win2lin12:
 	win2lin_epilog
 	ret
 
+
+	.data
+_win2lin0:
+	.quad win2lin0
+_win2lin1:
+	.quad win2lin1
+_win2lin2:
+	.quad win2lin2
+_win2lin3:
+	.quad win2lin3
+_win2lin4:
+	.quad win2lin4
+_win2lin5:
+	.quad win2lin5
+_win2lin6:
+	.quad win2lin6
+_win2lin7:
+	.quad win2lin7
+_win2lin8:
+	.quad win2lin8
+_win2lin9:
+	.quad win2lin9
+_win2lin10:
+	.quad win2lin10
+_win2lin11:
+	.quad win2lin11
+_win2lin12:
+	.quad win2lin12
+
 #define stringify2(a, b) a ## b
 
 #define win2lin(name, argc)				\
 	.globl stringify2(x86_64_ ## name,  _ ##argc) ; \
 stringify2(x86_64_ ## name, _ ## argc):	; 		\
 	lea	name(%rip), %rax ; 			\
-	jmp	*win2lin ## argc(%rip)
+	jmp	*_win2lin ## argc(%rip)
 
 #include "x86_64_stubs.h"
 
@@ -274,7 +303,7 @@ stringify2(x86_64_ ## name, _ ## argc):	; 		\
 
 # n must be argument index, 1 through 6
 
-#define lin2win_arg(n) (n-4)*8(%rsp)
+#define lin2win_arg(n) (n-1)*8(%rsp)
 
 # Linux to Windows functions are called with argument 1 being the
 # Windows function to call.
@@ -287,29 +316,29 @@ lin2win2:
 				# Linux arg3 already in Win arg2 (%rdx)
 lin2win1:
 	mov	%rsi, %rcx	# Linux arg2 => Win arg1
-	sub	lin2win_args_on_stack(0), %rsp
+	sub	$lin2win_args_on_stack(0), %rsp
 	call	*%rdi		# call Windows function
-	add	lin2win_args_on_stack(0), %rsp
+	add	$lin2win_args_on_stack(0), %rsp
 	ret
 
 lin2win5:
 	# setup a new stack frame for Windows function and put the arguments
 	# where it expects them
-	sub	lin2win_args_on_stack(1), %rsp	# reserve stack space
+	sub	$lin2win_args_on_stack(1), %rsp	# reserve stack space
 	mov	%r9, lin2win_arg(5)	# Linux arg6 => Win arg5
 	mov	%r8, %r9	# Linux arg5 => Win arg4
 	mov	%rcx, %r8	# Linux arg4 => Win arg3
 				# Linux arg3 already in Win arg2 (%rdx)
 	mov	%rsi, %rcx	# Linux arg2 => Win arg1
 	call	*%rdi		# call Windows function
-	add	lin2win_args_on_stack(1), %rsp
+	add	$lin2win_args_on_stack(1), %rsp
 	ret
 
 lin2win6:
 	# setup a new stack frame for Windows function and put the arguments
 	# where it expects them
 	mov	8(%rsp), %rax	# get Linux arg7
-	sub	lin2win_args_on_stack(2), %rsp	# reserve stack space
+	sub	$lin2win_args_on_stack(2), %rsp	# reserve stack space
 	mov	%rax, lin2win_arg(6)	# Linux arg7 => Win arg6
 	mov	%r9, lin2win_arg(5) # Linux arg6 => Win arg5
 	mov	%r8, %r9	# Linux arg5 => Win arg4
@@ -317,5 +346,5 @@ lin2win6:
 				# Linux arg3 already in Win arg2 (%rdx)
 	mov	%rsi, %rcx	# Linux arg2 => Win arg1
 	call	*%rdi		# call Windows function
-	add	lin2win_args_on_stack(2), %rsp
+	add	$lin2win_args_on_stack(2), %rsp
 	ret

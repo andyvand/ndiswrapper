@@ -562,7 +562,7 @@ wstdcall USHORT WIN_FUNC(ExQueryDepthSList,1)
 	USHORT depth;
 	TRACEENTER5("%p", head);
 	depth = head->depth;
-	DBGTRACE5("%d, %Lx", depth, head->region);
+	DBGTRACE5("%d, %p", depth, head->next);
 	return depth;
 }
 
@@ -1081,8 +1081,8 @@ wstdcall void WIN_FUNC(ExFreePoolWithTag,2)
 	ExFreePool(addr);
 }
 
-WIN_FUNC_DECL(ExAllocatePoolWithTag,3);
-WIN_FUNC_DECL(ExFreePool,1);
+WIN_FUNC_PTR_DECL(ExAllocatePoolWithTag,3);
+WIN_FUNC_PTR_DECL(ExFreePool,1);
 
 wstdcall void WIN_FUNC(ExInitializeNPagedLookasideList,7)
 	(struct npaged_lookaside_list *lookaside,
@@ -1101,16 +1101,18 @@ wstdcall void WIN_FUNC(ExInitializeNPagedLookasideList,7)
 	lookaside->maxdepth = 256;
 	lookaside->pool_type = NonPagedPool;
 
+	/* alloc and free functions are called by driver directly (as
+	 * Windows functions), except in ExDeleteNPagedLookasideList */
 	if (alloc_func)
 		lookaside->alloc_func = alloc_func;
 	else
 		lookaside->alloc_func = (LOOKASIDE_ALLOC_FUNC *)
-			WIN_FUNC(ExAllocatePoolWithTag,3);
+			WIN_FUNC_PTR(ExAllocatePoolWithTag,3);
 	if (free_func)
 		lookaside->free_func = free_func;
 	else
 		lookaside->free_func = (LOOKASIDE_FREE_FUNC *)
-			WIN_FUNC(ExFreePool,1);
+			WIN_FUNC_PTR(ExFreePool,1);
 
 #ifndef CONFIG_X86_64
 	DBGTRACE3("lock: %p", &lookaside->obsolete);
@@ -1129,7 +1131,7 @@ wstdcall void WIN_FUNC(ExDeleteNPagedLookasideList,1)
 	irql = raise_irql(DISPATCH_LEVEL);
 	while ((entry = ExpInterlockedPopEntrySList(&lookaside->head))) {
 		if (lookaside->free_func == (LOOKASIDE_FREE_FUNC *)
-		    WIN_FUNC(ExFreePool,1))
+		    WIN_FUNC_PTR(ExFreePool,1))
 			ExFreePool(entry);
 		else
 			LIN2WIN1(lookaside->free_func, entry);

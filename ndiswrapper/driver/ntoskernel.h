@@ -396,7 +396,13 @@ typedef u32 pm_message_t;
 
 /* NOTE: these macros assume function arguments are quads and
  * arguments are not touched in any way before calling these macros */
-#define WIN2LIN2ARGS(arg1, arg2)						\
+#define WIN2LIN1ARGS(arg1)						\
+do {									\
+	__asm__ __volatile__("mov %%rcx, %0\n\t"			\
+			     : "=m" (arg1));				\
+} while (0)
+
+#define WIN2LIN2ARGS(arg1, arg2)					\
 do {									\
 	__asm__ __volatile__("mov %%rcx, %0\n\t"			\
 			     "mov %%rdx, %1\n\t"			\
@@ -443,6 +449,8 @@ do {									\
 	DBGTRACE6("calling %p", func);					\
 	func(arg1, arg2, arg3, arg4, arg5, arg6);			\
 })
+
+#define WIN2LIN1ARGS(arg1) do { } while (0)
 
 #define WIN2LIN2ARGS(arg1, arg2) do { } while (0)
 
@@ -491,12 +499,14 @@ struct wrap_export {
 	{#name, (win_func) stringify2(x86_64_ ## name, _ ## argc)}
 #define WIN_WIN_SYMBOL(name, argc)					\
 	{#name, (win_func) stringify2(x86_64__win_ ## name, _ ## argc)}
-#define WIN_FUNC_DECL(name, argc)				\
-	void stringify2(x86_64_ ## name, _ ## argc) (void)
+#define WIN_FUNC_PTR_DECL(name, argc)				\
+        void stringify2(x86_64_ ## name, _ ## argc) (void)
+#define WIN_FUNC_PTR(name, argc) stringify2(x86_64_ ## name, _ ## argc)
 #else
 #define WIN_SYMBOL(name, argc) {#name, (win_func)name}
 #define WIN_WIN_SYMBOL(name, argc) {#name, (win_func)_win_ ## name}
-#define WIN_FUNC_DECL(name, argc)
+#define WIN_FUNC_PTR_DECL(name, argc)
+#define WININ_FUNC(name, argc) name
 #endif
 
 /* map name s to f - if f is different from s */
