@@ -31,7 +31,7 @@
 struct pe_exports {
 	char *dll;
 	char *name;
-	WRAP_EXPORT_FUNC addr;
+	win_func addr;
 };
 
 static struct pe_exports pe_exports[40];

@@ -477,33 +477,31 @@ static inline u64 ticks_1601(void)
 	return wrap_ticks_to_boot + (u64)jiffies * TICKSPERSEC / HZ;
 }
 
-typedef void (*WRAP_EXPORT_FUNC)(void);
+typedef void (*win_func)(void);
 
 struct wrap_export {
 	const char *name;
-	WRAP_EXPORT_FUNC func;
+	win_func func;
 };
 
 #define stringify2(a, b) a ## b
 
 #ifdef CONFIG_X86_64
-#define WRAP_EXPORT_SYMBOL(name, argc)					\
-	{#name, (WRAP_EXPORT_FUNC) stringify2(x86_64_ ## name, _ ## argc)}
-#define WRAP_EXPORT_WIN_FUNC(name, argc)				\
-	{#name, (WRAP_EXPORT_FUNC) stringify2(x86_64__win_ ## name, _ ## argc)}
-#define WRAP_FUNC_PTR(name, argc) stringify2(&x86_64_ ## name, _ ## argc)
-#define WRAP_FUNC_PTR_DECL(name, argc)				\
+#define WIN_SYMBOL(name, argc)						\
+	{#name, (win_func) stringify2(x86_64_ ## name, _ ## argc)}
+#define WIN_WIN_SYMBOL(name, argc)					\
+	{#name, (win_func) stringify2(x86_64__win_ ## name, _ ## argc)}
+#define WIN_FUNC_DECL(name, argc)				\
 	void stringify2(x86_64_ ## name, _ ## argc) (void)
 #else
-#define WRAP_EXPORT_SYMBOL(name, argc) {#name, (WRAP_EXPORT_FUNC)name}
-#define WRAP_EXPORT_WIN_FUNC(name, argc) {#name, (WRAP_EXPORT_FUNC)_win_ ## name}
-#define WRAP_FUNC_PTR(name, argc) &name
-#define WRAP_FUNC_PTR_DECL(name, argc)
+#define WIN_SYMBOL(name, argc) {#name, (win_func)name}
+#define WIN_WIN_SYMBOL(name, argc) {#name, (win_func)_win_ ## name}
+#define WIN_FUNC_DECL(name, argc)
 #endif
 
-/* map name s to function f - if f is different from s */
-#define WRAP_EXPORT_MAP(s,f)
-#define WRAP_EXPORT(x,n) x
+/* map name s to f - if f is different from s */
+#define WIN_SYMBOL_MAP(s, f)
+#define WIN_FUNC(f, n) f
 
 #define POOL_TAG(A, B, C, D)					\
 	((ULONG)((A) + ((B) << 8) + ((C) << 16) + ((D) << 24)))
