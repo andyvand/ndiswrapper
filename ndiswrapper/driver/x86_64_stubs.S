@@ -14,7 +14,7 @@
  */
 
 # Windows <---> Linux register usage conversion when calling functions
-# V = Volatile 
+# V = Volatile
 # NV = Non Volatile (needs to be saved)
 # 
 #         Win                     Lin     
@@ -85,7 +85,7 @@ In Linux it should look like:
 	xor	%rax, %rax	# rax indicates number of SSE regs
 	call	*%r11
 .endm
-    
+
 .macro win2lin_epilog
 	pop	%r11
 	pop	%r10
@@ -245,7 +245,7 @@ win2lin12:
 
 #define stringify2(a, b) a ## b
 
-#define win2lin(argc, name)				\
+#define win2lin(name, argc)				\
 	.globl stringify2(x86_64_ ## name,  _ ##argc) ; \
 stringify2(x86_64_ ## name, _ ## argc):	; 		\
 	lea	name(%rip), %rax ; 			\
@@ -269,7 +269,7 @@ stringify2(x86_64_ ## name, _ ## argc):	; 		\
 # are stored
 
 # n must be number of args more than 4 (e.g., for 5 args, n must be 1)
-   
+
 #define lin2win_args_on_stack(n) (n+4)*8
 
 # n must be argument index, 1 through 6
