@@ -219,7 +219,7 @@ wstdcall NTSTATUS IoSendIrpTopDev(struct device_object *dev_obj, ULONG major_fn,
 	return status;
 }
 
-/* called as Windows function, so call WIN2LIN2 before accessing
+/* called as Windows function, so call WIN2LIN2ARGS before accessing
  * arguments */
 wstdcall NTSTATUS pdoDispatchDeviceControl(struct device_object *pdo,
 					  struct  irp *irp)
@@ -227,7 +227,7 @@ wstdcall NTSTATUS pdoDispatchDeviceControl(struct device_object *pdo,
 	struct io_stack_location *irp_sl;
 	NTSTATUS status;
 
-	WIN2LIN2(pdo, irp);
+	WIN2LIN2ARGS(pdo, irp);
 
 	DUMP_IRP(irp);
 	irp_sl = IoGetCurrentIrpStackLocation(irp);
@@ -243,7 +243,7 @@ wstdcall NTSTATUS pdoDispatchDeviceControl(struct device_object *pdo,
 	IOEXIT(return status);
 }
 
-/* called as Windows function, so call WIN2LIN2 before accessing
+/* called as Windows function, so call WIN2LIN2ARGS before accessing
  * arguments */
 wstdcall NTSTATUS pdoDispatchPnp(struct device_object *pdo,
 				struct irp *irp)
@@ -255,7 +255,7 @@ wstdcall NTSTATUS pdoDispatchPnp(struct device_object *pdo,
 	struct usbd_bus_interface_usbdi *usb_intf;
 #endif
 
-	WIN2LIN2(pdo, irp);
+	WIN2LIN2ARGS(pdo, irp);
 
 	irp_sl = IoGetCurrentIrpStackLocation(irp);
 	wd = pdo->reserved;
@@ -326,7 +326,7 @@ wstdcall NTSTATUS pdoDispatchPower(struct device_object *pdo,
 	struct pci_dev *pdev;
 	NTSTATUS status;
 
-	WIN2LIN2(pdo, irp);
+	WIN2LIN2ARGS(pdo, irp);
 
 	irp_sl = IoGetCurrentIrpStackLocation(irp);
 	wd = pdo->reserved;

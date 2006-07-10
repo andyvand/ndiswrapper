@@ -396,14 +396,14 @@ typedef u32 pm_message_t;
 
 /* NOTE: these macros assume function arguments are quads and
  * arguments are not touched in any way before calling these macros */
-#define WIN2LIN2(arg1, arg2)						\
+#define WIN2LIN2ARGS(arg1, arg2)						\
 do {									\
 	__asm__ __volatile__("mov %%rcx, %0\n\t"			\
 			     "mov %%rdx, %1\n\t"			\
 			     : "=m" (arg1), "=m" (arg2));		\
 } while (0)
 
-#define WIN2LIN3(arg1, arg2, arg3)					\
+#define WIN2LIN3ARGS(arg1, arg2, arg3)					\
 do {									\
 	__asm__ __volatile__("mov %%rcx, %0\n\t"			\
 			     "mov %%rdx, %1\n\t"			\
@@ -444,9 +444,9 @@ do {									\
 	func(arg1, arg2, arg3, arg4, arg5, arg6);			\
 })
 
-#define WIN2LIN2(arg1, arg2) do { } while (0)
+#define WIN2LIN2ARGS(arg1, arg2) do { } while (0)
 
-#define WIN2LIN3(arg1, arg2, arg3) do { } while (0)
+#define WIN2LIN3ARGS(arg1, arg2, arg3) do { } while (0)
 
 #endif // CONFIG_X86_64
 
@@ -456,9 +456,6 @@ do {									\
 #define TICKSPERSEC		10000000LL
 #define TICKSPERMSEC		10000
 #define SECSPERDAY		86400
-#define SECSPERHOUR		3600
-#define SECSPERMIN		60
-#define DAYSPERWEEK		7
 
 /* 1601 to 1970 is 369 years plus 89 leap days */
 #define SECS_1601_TO_1970	((369 * 365 + 89) * (u64)SECSPERDAY)
@@ -490,13 +487,13 @@ struct wrap_export {
 #define stringify2(a, b) a ## b
 
 #ifdef CONFIG_X86_64
-#define WRAP_EXPORT_SYMBOL(name, argc)				\
+#define WRAP_EXPORT_SYMBOL(name, argc)					\
 	{#name, (WRAP_EXPORT_FUNC) stringify2(x86_64_ ## name, _ ## argc)}
 #define WRAP_EXPORT_WIN_FUNC(name, argc)				\
 	{#name, (WRAP_EXPORT_FUNC) stringify2(x86_64__win_ ## name, _ ## argc)}
 #define WRAP_FUNC_PTR(name, argc) stringify2(&x86_64_ ## name, _ ## argc)
-#define WRAP_FUNC_PTR_DECL(name, argc) \
-	void stringify2(x86_64_ ## name, _ ## argc) (void);
+#define WRAP_FUNC_PTR_DECL(name, argc)				\
+	void stringify2(x86_64_ ## name, _ ## argc) (void)
 #else
 #define WRAP_EXPORT_SYMBOL(name, argc) {#name, (WRAP_EXPORT_FUNC)name}
 #define WRAP_EXPORT_WIN_FUNC(name, argc) {#name, (WRAP_EXPORT_FUNC)_win_ ## name}

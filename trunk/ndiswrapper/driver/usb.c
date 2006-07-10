@@ -598,14 +598,14 @@ static void wrap_urb_complete_worker(void *dummy)
 	USBEXIT(return);
 }
 
-/* called as Windows function, so call WIN2LIN2 before accessing
+/* called as Windows function, so call WIN2LIN2ARGS before accessing
  * arguments */
 static wstdcall void wrap_cancel_irp(struct device_object *dev_obj,
 				     struct irp *irp)
 {
 	struct urb *urb;
 
-	WIN2LIN2(dev_obj, irp);
+	WIN2LIN2ARGS(dev_obj, irp);
 
 	/* NB: this function is called holding Cancel spinlock */
 	USBENTER("irp: %p", irp);

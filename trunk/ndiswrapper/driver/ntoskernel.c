@@ -1051,11 +1051,11 @@ wstdcall void *WRAP_EXPORT(ExAllocatePoolWithTag,3)
 	TRACEEXIT4(return addr);
 }
 
-/* called as Windows function, so call WIN2LIN2 before accessing
+/* called as Windows function, so call WIN2LIN2ARGS before accessing
  * arguments */
 static wstdcall void vfree_nonatomic(void *addr, void *ctx)
 {
-	WIN2LIN2(addr, ctx);
+	WIN2LIN2ARGS(addr, ctx);
 	vfree(addr);
 }
 
@@ -1081,8 +1081,8 @@ wstdcall void WRAP_EXPORT(ExFreePoolWithTag,2)
 	ExFreePool(addr);
 }
 
-WRAP_FUNC_PTR_DECL(ExAllocatePoolWithTag,3)
-WRAP_FUNC_PTR_DECL(ExFreePool,1)
+WRAP_FUNC_PTR_DECL(ExAllocatePoolWithTag,3);
+WRAP_FUNC_PTR_DECL(ExFreePool,1);
 
 wstdcall void WRAP_EXPORT(ExInitializeNPagedLookasideList,7)
 	(struct npaged_lookaside_list *lookaside,
