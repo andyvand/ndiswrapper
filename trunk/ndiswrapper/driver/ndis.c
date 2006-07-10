@@ -2614,8 +2614,9 @@ wstdcall void WIN_FUNC(NdisMGetDeviceProperty,6)
 	 void **next_dev, void **alloc_res, void**trans_res)
 {
 	TRACEENTER2("nmb: %p, phy_dev = %p, func_dev = %p, next_dev = %p, "
-		    "alloc_res = %p, trans_res = %p", phy_dev, func_dev,
-		    nmb, next_dev, alloc_res, trans_res);
+		    "alloc_res = %p, trans_res = %p", nmb, phy_dev, func_dev,
+		    next_dev, alloc_res, trans_res);
+	DBGTRACE2("pdo: %p, fdo: %p, next_device: %p", nmb->pdo, nmb->fdo, nmb->next_device);
 	if (phy_dev)
 		*phy_dev = nmb->pdo;
 	if (func_dev)
@@ -2677,15 +2678,15 @@ wstdcall void WIN_FUNC(NdisMCoDeactivateVcComplete,0)(void){UNIMPL();}
 
 void init_nmb_functions(struct ndis_miniport_block *nmb)
 {
-	nmb->rx_packet = WIN_FUNC(NdisMIndicateReceivePacket,3);
-	nmb->send_complete = WIN_FUNC(NdisMSendComplete,3);
-	nmb->send_resource_avail = WIN_FUNC(NdisMSendResourcesAvailable,1);
-	nmb->status = WIN_FUNC(NdisMIndicateStatus,4);
-	nmb->status_complete = WIN_FUNC(NdisMIndicateStatusComplete,1);
-	nmb->query_complete = WIN_FUNC(NdisMQueryInformationComplete,2);
-	nmb->set_complete = WIN_FUNC(NdisMSetInformationComplete,2);
-	nmb->reset_complete = WIN_FUNC(NdisMResetComplete,3);
-	nmb->eth_rx_indicate = WIN_FUNC(EthRxIndicateHandler,8);
-	nmb->eth_rx_complete = WIN_FUNC(EthRxComplete,1);
-	nmb->td_complete = WIN_FUNC(NdisMTransferDataComplete,4);
+	nmb->rx_packet = WIN_FUNC_PTR(NdisMIndicateReceivePacket,3);
+	nmb->send_complete = WIN_FUNC_PTR(NdisMSendComplete,3);
+	nmb->send_resource_avail = WIN_FUNC_PTR(NdisMSendResourcesAvailable,1);
+	nmb->status = WIN_FUNC_PTR(NdisMIndicateStatus,4);
+	nmb->status_complete = WIN_FUNC_PTR(NdisMIndicateStatusComplete,1);
+	nmb->query_complete = WIN_FUNC_PTR(NdisMQueryInformationComplete,2);
+	nmb->set_complete = WIN_FUNC_PTR(NdisMSetInformationComplete,2);
+	nmb->reset_complete = WIN_FUNC_PTR(NdisMResetComplete,3);
+	nmb->eth_rx_indicate = WIN_FUNC_PTR(EthRxIndicateHandler,8);
+	nmb->eth_rx_complete = WIN_FUNC_PTR(EthRxComplete,1);
+	nmb->td_complete = WIN_FUNC_PTR(NdisMTransferDataComplete,4);
 }
