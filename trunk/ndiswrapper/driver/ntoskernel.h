@@ -487,14 +487,16 @@ struct wrap_export {
 	WRAP_EXPORT_FUNC func;
 };
 
+#define stringify2(a, b) a ## b
+
 #ifdef CONFIG_X86_64
 #define WRAP_EXPORT_SYMBOL(name, argc)				\
-	{#name, (WRAP_EXPORT_FUNC) x86_64_ ## name ## argc}
+	{#name, (WRAP_EXPORT_FUNC) stringify2(x86_64_ ## name, _ ## argc)}
 #define WRAP_EXPORT_WIN_FUNC(name, argc)				\
-	{#name, (WRAP_EXPORT_FUNC) x86_64__win_ ## name ## argc}
-#define WRAP_FUNC_PTR(name, argc) &x86_64_ ## name ## argc
+	{#name, (WRAP_EXPORT_FUNC) stringify2(x86_64__win_ ## name, _ ## argc)}
+#define WRAP_FUNC_PTR(name, argc) stringify2(&x86_64_ ## name, _ ## argc)
 #define WRAP_FUNC_PTR_DECL(name, argc) \
-	void x86_64_ ## name ## argc (void);
+	void stringify2(x86_64_ ## name, _ ## argc) (void);
 #else
 #define WRAP_EXPORT_SYMBOL(name, argc) {#name, (WRAP_EXPORT_FUNC)name}
 #define WRAP_EXPORT_WIN_FUNC(name, argc) {#name, (WRAP_EXPORT_FUNC)_win_ ## name}
