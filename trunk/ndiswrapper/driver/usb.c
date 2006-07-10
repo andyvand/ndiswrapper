@@ -1252,7 +1252,7 @@ NTSTATUS wrap_submit_irp(struct device_object *pdo, struct irp *irp)
  * description and examples elsewhere suggest that it should be
  * usbd_interface_list_entry structre. Which is correct? */
 
-wstdcall union nt_urb *WRAP_EXPORT(USBD_CreateConfigurationRequestEx)
+wstdcall union nt_urb *WRAP_EXPORT(USBD_CreateConfigurationRequestEx,2)
 	(struct usb_config_descriptor *config,
 	 struct usbd_interface_list_entry *intf_list)
 {
@@ -1317,7 +1317,7 @@ wstdcall union nt_urb *WRAP_EXPORT(USBD_CreateConfigurationRequestEx)
 WRAP_EXPORT_MAP("_USBD_CreateConfigurationRequestEx@8",	USBD_CreateConfigurationRequestEx);
 
 wstdcall struct usb_interface_descriptor *
-WRAP_EXPORT(USBD_ParseConfigurationDescriptorEx)
+WRAP_EXPORT(USBD_ParseConfigurationDescriptorEx,7)
 	(struct usb_config_descriptor *config, void *start,
 	 LONG bInterfaceNumber, LONG bAlternateSetting, LONG bInterfaceClass,
 	 LONG bInterfaceSubClass, LONG bInterfaceProtocol)
@@ -1355,7 +1355,7 @@ WRAP_EXPORT(USBD_ParseConfigurationDescriptorEx)
 
 WRAP_EXPORT_MAP("_USBD_ParseConfigurationDescriptorEx@28", USBD_ParseConfigurationDescriptorEx);
 
-wstdcall union nt_urb *WRAP_EXPORT(USBD_CreateConfigurationRequest)
+wstdcall union nt_urb *WRAP_EXPORT(USBD_CreateConfigurationRequest,2)
 	(struct usb_config_descriptor *config, USHORT *size)
 {
 	union nt_urb *nt_urb;
@@ -1379,7 +1379,7 @@ wstdcall union nt_urb *WRAP_EXPORT(USBD_CreateConfigurationRequest)
 }
 
 wstdcall struct usb_interface_descriptor *
-WRAP_EXPORT(USBD_ParseConfigurationDescriptor)
+WRAP_EXPORT(USBD_ParseConfigurationDescriptor,3)
 	(struct usb_config_descriptor *config, UCHAR bInterfaceNumber,
 	 UCHAR bAlternateSetting)
 {
@@ -1389,7 +1389,7 @@ WRAP_EXPORT(USBD_ParseConfigurationDescriptor)
 						   -1, -1, -1);
 }
 
-wstdcall void WRAP_EXPORT(USBD_GetUSBDIVersion)
+wstdcall void WRAP_EXPORT(USBD_GetUSBDIVersion,1)
 	(struct usbd_version_info *version_info)
 {
 	/* this function is obsolete in Windows XP */
