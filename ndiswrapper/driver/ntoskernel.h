@@ -360,38 +360,38 @@ typedef u32 pm_message_t;
 #define LIN2WIN1(func, arg1)						\
 ({									\
 	DBGTRACE6("calling %p", func);					\
-	lin_to_win1(func, (unsigned long)arg1);				\
+	lin2win1(func, (unsigned long)arg1);				\
 })
 #define LIN2WIN2(func, arg1, arg2)					\
 ({									\
 	DBGTRACE6("calling %p", func);					\
-	lin_to_win2(func, (unsigned long)arg1, (unsigned long)arg2);	\
+	lin2win2(func, (unsigned long)arg1, (unsigned long)arg2);	\
 })
 #define LIN2WIN3(func, arg1, arg2, arg3)				\
 ({									\
 	DBGTRACE6("calling %p", func);					\
-	lin_to_win3(func, (unsigned long)arg1, (unsigned long)arg2,	\
-		    (unsigned long)arg3);				\
+	lin2win3(func, (unsigned long)arg1, (unsigned long)arg2,	\
+		 (unsigned long)arg3);					\
 })
 #define LIN2WIN4(func, arg1, arg2, arg3, arg4)				\
 ({									\
 	DBGTRACE6("calling %p", func);					\
-	lin_to_win4(func, (unsigned long)arg1, (unsigned long)arg2,	\
-		    (unsigned long)arg3, (unsigned long)arg4);		\
+	lin2win4(func, (unsigned long)arg1, (unsigned long)arg2,	\
+		 (unsigned long)arg3, (unsigned long)arg4);		\
 })
 #define LIN2WIN5(func, arg1, arg2, arg3, arg4, arg5)			\
 ({									\
 	DBGTRACE6("calling %p", func);					\
-	lin_to_win5(func, (unsigned long)arg1, (unsigned long)arg2,	\
-		    (unsigned long)arg3, (unsigned long)arg4,		\
-		    (unsigned long)arg5);				\
+	lin2win5(func, (unsigned long)arg1, (unsigned long)arg2,	\
+		 (unsigned long)arg3, (unsigned long)arg4,		\
+		 (unsigned long)arg5);					\
 })
 #define LIN2WIN6(func, arg1, arg2, arg3, arg4, arg5, arg6)		\
 ({									\
 	DBGTRACE6("calling %p", func);					\
-	lin_to_win6(func, (unsigned long)arg1, (unsigned long)arg2,	\
-		    (unsigned long)arg3, (unsigned long)arg4,		\
-		    (unsigned long)arg5, (unsigned long)arg6);		\
+	lin2win6(func, (unsigned long)arg1, (unsigned long)arg2,	\
+		 (unsigned long)arg3, (unsigned long)arg4,		\
+		 (unsigned long)arg5, (unsigned long)arg6);		\
 })
 
 /* NOTE: these macros assume function arguments are quads and
@@ -488,20 +488,23 @@ struct wrap_export {
 };
 
 #ifdef CONFIG_X86_64
-#define WRAP_EXPORT_SYMBOL(f) {#f, (WRAP_EXPORT_FUNC)x86_64_ ## f}
-#define WRAP_EXPORT_WIN_FUNC(f) {#f, (WRAP_EXPORT_FUNC)x86_64__win_ ## f}
-#define WRAP_FUNC_PTR(f) &x86_64_ ## f
-#define WRAP_FUNC_PTR_DECL(f) void x86_64_ ## f(void);
+#define WRAP_EXPORT_SYMBOL(name, argc)				\
+	{#name, (WRAP_EXPORT_FUNC) x86_64_ ## name ## argc}
+#define WRAP_EXPORT_WIN_FUNC(name, argc)				\
+	{#name, (WRAP_EXPORT_FUNC) x86_64__win_ ## name ## argc}
+#define WRAP_FUNC_PTR(name, argc) &x86_64_ ## name ## argc
+#define WRAP_FUNC_PTR_DECL(name, argc) \
+	void x86_64_ ## name ## argc (void);
 #else
-#define WRAP_EXPORT_SYMBOL(f) {#f, (WRAP_EXPORT_FUNC)f}
-#define WRAP_EXPORT_WIN_FUNC(f) {#f, (WRAP_EXPORT_FUNC)_win_ ## f}
-#define WRAP_FUNC_PTR(f) &f
-#define WRAP_FUNC_PTR_DECL(f)
+#define WRAP_EXPORT_SYMBOL(name, argc) {#name, (WRAP_EXPORT_FUNC)name}
+#define WRAP_EXPORT_WIN_FUNC(name, argc) {#name, (WRAP_EXPORT_FUNC)_win_ ## name}
+#define WRAP_FUNC_PTR(name, argc) &name
+#define WRAP_FUNC_PTR_DECL(name, argc)
 #endif
 
 /* map name s to function f - if f is different from s */
 #define WRAP_EXPORT_MAP(s,f)
-#define WRAP_EXPORT(x) x
+#define WRAP_EXPORT(x,n) x
 
 #define POOL_TAG(A, B, C, D)					\
 	((ULONG)((A) + ((B) << 8) + ((C) << 16) + ((D) << 24)))
@@ -807,18 +810,17 @@ NTSTATUS ObReferenceObjectByHandle(void *handle, ACCESS_MASK desired_access,
 				   void *obj_type, KPROCESSOR_MODE access_mode,
 				   void **object, void *handle_info) wstdcall;
 
-
-unsigned long lin_to_win1(void *func, unsigned long);
-unsigned long lin_to_win2(void *func, unsigned long, unsigned long);
-unsigned long lin_to_win3(void *func, unsigned long, unsigned long,
-			  unsigned long);
-unsigned long lin_to_win4(void *func, unsigned long, unsigned long,
-			  unsigned long, unsigned long);
-unsigned long lin_to_win5(void *func, unsigned long, unsigned long,
-			  unsigned long, unsigned long, unsigned long);
-unsigned long lin_to_win6(void *func, unsigned long, unsigned long,
-			  unsigned long, unsigned long, unsigned long,
-			  unsigned long);
+unsigned long lin2win1(void *func, unsigned long);
+unsigned long lin2win2(void *func, unsigned long, unsigned long);
+unsigned long lin2win3(void *func, unsigned long, unsigned long,
+		       unsigned long);
+unsigned long lin2win4(void *func, unsigned long, unsigned long,
+		       unsigned long, unsigned long);
+unsigned long lin2win5(void *func, unsigned long, unsigned long,
+		       unsigned long, unsigned long, unsigned long);
+unsigned long lin2win6(void *func, unsigned long, unsigned long,
+		       unsigned long, unsigned long, unsigned long,
+		       unsigned long);
 
 #define MSG(level, fmt, ...)				\
 	printk(level "ndiswrapper (%s:%d): " fmt "\n",	\

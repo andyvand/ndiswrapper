@@ -22,21 +22,20 @@
 extern NT_SPIN_LOCK ntoskernel_lock;
 extern NT_SPIN_LOCK irp_cancel_lock;
 
-wstdcall void WRAP_EXPORT(IoAcquireCancelSpinLock)
+wstdcall void WRAP_EXPORT(IoAcquireCancelSpinLock,1)
 	(KIRQL *irql)
 {
 	*irql = nt_spin_lock_irql(&irp_cancel_lock, DISPATCH_LEVEL);
 }
 
-wstdcall void WRAP_EXPORT(IoReleaseCancelSpinLock)
+wstdcall void WRAP_EXPORT(IoReleaseCancelSpinLock,1)
 	(KIRQL irql)
 {
 	nt_spin_unlock_irql(&irp_cancel_lock, irql);
 }
 
-wstdcall NTSTATUS WRAP_EXPORT(IoGetDeviceProperty)
-	(struct device_object *pdo,
-	 enum device_registry_property dev_property,
+wstdcall NTSTATUS WRAP_EXPORT(IoGetDeviceProperty,5)
+	(struct device_object *pdo, enum device_registry_property dev_property,
 	 ULONG buffer_len, void *buffer, ULONG *result_len)
 {
 	struct ansi_string ansi;
@@ -76,7 +75,7 @@ wstdcall NTSTATUS WRAP_EXPORT(IoGetDeviceProperty)
 	}
 }
 
-wstdcall int WRAP_EXPORT(IoIsWdmVersionAvailable)
+wstdcall int WRAP_EXPORT(IoIsWdmVersionAvailable,2)
 	(UCHAR major, UCHAR minor)
 {
 	IOENTER("%d, %x", major, minor);
@@ -88,7 +87,7 @@ wstdcall int WRAP_EXPORT(IoIsWdmVersionAvailable)
 	IOEXIT(return 0);
 }
 
-wstdcall BOOLEAN WRAP_EXPORT(IoIs32bitProcess)
+wstdcall BOOLEAN WRAP_EXPORT(IoIs32bitProcess,1)
 	(struct irp *irp)
 {
 #ifdef CONFIG_X86_64
@@ -98,7 +97,7 @@ wstdcall BOOLEAN WRAP_EXPORT(IoIs32bitProcess)
 #endif
 }
 
-wstdcall void WRAP_EXPORT(IoInitializeIrp)
+wstdcall void WRAP_EXPORT(IoInitializeIrp,3)
 	(struct irp *irp, USHORT size, CCHAR stack_count)
 {
 	IOENTER("irp: %p, count: %d", irp, stack_count);
@@ -113,7 +112,7 @@ wstdcall void WRAP_EXPORT(IoInitializeIrp)
 	IOEXIT(return);
 }
 
-wstdcall void WRAP_EXPORT(IoReuseIrp)
+wstdcall void WRAP_EXPORT(IoReuseIrp,2)
 	(struct irp *irp, NTSTATUS status)
 {
 	IOENTER("%p, %d", irp, status);
@@ -128,7 +127,7 @@ wstdcall void WRAP_EXPORT(IoReuseIrp)
 	IOEXIT(return);
 }
 
-wstdcall struct irp *WRAP_EXPORT(IoAllocateIrp)
+wstdcall struct irp *WRAP_EXPORT(IoAllocateIrp,2)
 	(char stack_count, BOOLEAN charge_quota)
 {
 	struct irp *irp;
@@ -147,7 +146,7 @@ wstdcall struct irp *WRAP_EXPORT(IoAllocateIrp)
 	IOEXIT(return irp);
 }
 
-wstdcall BOOLEAN WRAP_EXPORT(IoCancelIrp)
+wstdcall BOOLEAN WRAP_EXPORT(IoCancelIrp,1)
 	(struct irp *irp)
 {
 	typeof(irp->cancel_routine) cancel_routine;
@@ -211,7 +210,7 @@ wstdcall void IoDequeueThreadIrp(struct irp *irp)
 	}
 }
 
-wstdcall void WRAP_EXPORT(IoFreeIrp)
+wstdcall void WRAP_EXPORT(IoFreeIrp,1)
 	(struct irp *irp)
 {
 	IOENTER("irp = %p", irp);
@@ -222,7 +221,7 @@ wstdcall void WRAP_EXPORT(IoFreeIrp)
 	IOEXIT(return);
 }
 
-wstdcall struct irp *WRAP_EXPORT(IoBuildAsynchronousFsdRequest)
+wstdcall struct irp *WRAP_EXPORT(IoBuildAsynchronousFsdRequest,6)
 	(ULONG major_fn, struct device_object *dev_obj, void *buffer,
 	 ULONG length, LARGE_INTEGER *offset,
 	 struct io_status_block *user_status)
@@ -277,7 +276,7 @@ wstdcall struct irp *WRAP_EXPORT(IoBuildAsynchronousFsdRequest)
 	return irp;
 }
 
-wstdcall struct irp *WRAP_EXPORT(IoBuildSynchronousFsdRequest)
+wstdcall struct irp *WRAP_EXPORT(IoBuildSynchronousFsdRequest,7)
 	(ULONG major_fn, struct device_object *dev_obj, void *buf,
 	 ULONG length, LARGE_INTEGER *offset, struct nt_event *event,
 	 struct io_status_block *user_status)
@@ -293,7 +292,7 @@ wstdcall struct irp *WRAP_EXPORT(IoBuildSynchronousFsdRequest)
 	return irp;
 }
 
-wstdcall struct irp *WRAP_EXPORT(IoBuildDeviceIoControlRequest)
+wstdcall struct irp *WRAP_EXPORT(IoBuildDeviceIoControlRequest,9)
 	(ULONG ioctl, struct device_object *dev_obj,
 	 void *input_buf, ULONG input_buf_len, void *output_buf,
 	 ULONG output_buf_len, BOOLEAN internal_ioctl,
@@ -332,7 +331,7 @@ wstdcall struct irp *WRAP_EXPORT(IoBuildDeviceIoControlRequest)
 	IOEXIT(return irp);
 }
 
-wfastcall NTSTATUS WRAP_EXPORT(IofCallDriver)
+wfastcall NTSTATUS WRAP_EXPORT(IofCallDriver,2)
 	(struct device_object *dev_obj, struct irp *irp)
 {
 	struct io_stack_location *irp_sl;
@@ -359,7 +358,7 @@ wfastcall NTSTATUS WRAP_EXPORT(IofCallDriver)
 	IOEXIT(return status);
 }
 
-wfastcall void WRAP_EXPORT(IofCompleteRequest)
+wfastcall void WRAP_EXPORT(IofCompleteRequest,2)
 	(struct irp *irp, CHAR prio_boost)
 {
 	NTSTATUS status;
@@ -551,7 +550,7 @@ static irqreturn_t io_irq_th(int irq, void *data, struct pt_regs *pt_regs)
 		return IRQ_NONE;
 }
 
-wstdcall NTSTATUS WRAP_EXPORT(IoConnectInterrupt)
+wstdcall NTSTATUS WRAP_EXPORT(IoConnectInterrupt,11)
 	(struct kinterrupt *interrupt, PKSERVICE_ROUTINE service_routine,
 	 void *service_context, NT_SPIN_LOCK *lock, ULONG vector,
 	 KIRQL irql, KIRQL synch_irql, enum kinterrupt_mode interrupt_mode,
@@ -579,13 +578,13 @@ wstdcall NTSTATUS WRAP_EXPORT(IoConnectInterrupt)
 	IOEXIT(return STATUS_SUCCESS);
 }
 
-wstdcall void WRAP_EXPORT(IoDisconnectInterrupt)
+wstdcall void WRAP_EXPORT(IoDisconnectInterrupt,1)
 	(struct kinterrupt *interrupt)
 {
 	free_irq(interrupt->vector, interrupt);
 }
 
-wstdcall struct mdl *WRAP_EXPORT(IoAllocateMdl)
+wstdcall struct mdl *WRAP_EXPORT(IoAllocateMdl,5)
 	(void *virt, ULONG length, BOOLEAN second_buf, BOOLEAN charge_quota,
 	 struct irp *irp)
 {
@@ -607,14 +606,14 @@ wstdcall struct mdl *WRAP_EXPORT(IoAllocateMdl)
 	return mdl;
 }
 
-wstdcall void WRAP_EXPORT(IoFreeMdl)
+wstdcall void WRAP_EXPORT(IoFreeMdl,1)
 	(struct mdl *mdl)
 {
 	free_mdl(mdl);
 	IOEXIT(return);
 }
 
-wstdcall struct io_workitem *WRAP_EXPORT(IoAllocateWorkItem)
+wstdcall struct io_workitem *WRAP_EXPORT(IoAllocateWorkItem,1)
 	(struct device_object *dev_obj)
 {
 	struct io_workitem *io_workitem;
@@ -627,14 +626,14 @@ wstdcall struct io_workitem *WRAP_EXPORT(IoAllocateWorkItem)
 	IOEXIT(return io_workitem);
 }
 
-wstdcall void WRAP_EXPORT(IoFreeWorkItem)
+wstdcall void WRAP_EXPORT(IoFreeWorkItem,1)
 	(struct io_workitem *io_workitem)
 {
 	kfree(io_workitem);
 	IOEXIT(return);
 }
 
-wstdcall void WRAP_EXPORT(IoQueueWorkItem)
+wstdcall void WRAP_EXPORT(IoQueueWorkItem,4)
 	(struct io_workitem *io_workitem, void *func,
 	 enum work_queue_type queue_type, void *context)
 {
@@ -645,7 +644,7 @@ wstdcall void WRAP_EXPORT(IoQueueWorkItem)
 	IOEXIT(return);
 }
 
-wstdcall void WRAP_EXPORT(ExQueueWorkItem)
+wstdcall void WRAP_EXPORT(ExQueueWorkItem,2)
 	(struct io_workitem *io_workitem, enum work_queue_type queue_type)
 {
 	IOENTER("%p", io_workitem);
@@ -653,7 +652,7 @@ wstdcall void WRAP_EXPORT(ExQueueWorkItem)
 				io_workitem->dev_obj, io_workitem->context);
 }
 
-wstdcall NTSTATUS WRAP_EXPORT(IoAllocateDriverObjectExtension)
+wstdcall NTSTATUS WRAP_EXPORT(IoAllocateDriverObjectExtension,4)
 	(struct driver_object *drv_obj, void *client_id, ULONG extlen,
 	 void **ext)
 {
@@ -676,7 +675,7 @@ wstdcall NTSTATUS WRAP_EXPORT(IoAllocateDriverObjectExtension)
 	IOEXIT(return STATUS_SUCCESS);
 }
 
-wstdcall void *WRAP_EXPORT(IoGetDriverObjectExtension)
+wstdcall void *WRAP_EXPORT(IoGetDriverObjectExtension,2)
 	(struct driver_object *drv_obj, void *client_id)
 {
 	struct custom_ext *ce;
@@ -710,7 +709,7 @@ void free_custom_extensions(struct driver_extension *drv_ext)
 	IOEXIT(return);
 }
 
-wstdcall NTSTATUS WRAP_EXPORT(IoCreateDevice)
+wstdcall NTSTATUS WRAP_EXPORT(IoCreateDevice,7)
 	(struct driver_object *drv_obj, ULONG dev_ext_length,
 	 struct unicode_string *dev_name, DEVICE_TYPE dev_type,
 	 ULONG dev_chars, BOOLEAN exclusive, struct device_object **newdev)
@@ -764,7 +763,7 @@ wstdcall NTSTATUS WRAP_EXPORT(IoCreateDevice)
 	IOEXIT(return STATUS_SUCCESS);
 }
 
-wstdcall NTSTATUS WRAP_EXPORT(IoCreateUnprotectedSymbolicLink)
+wstdcall NTSTATUS WRAP_EXPORT(IoCreateUnprotectedSymbolicLink,2)
 	(struct unicode_string *link, struct unicode_string *dev_name)
 {
 	struct ansi_string ansi;
@@ -784,13 +783,13 @@ wstdcall NTSTATUS WRAP_EXPORT(IoCreateUnprotectedSymbolicLink)
 	IOEXIT(return STATUS_SUCCESS);
 }
 
-wstdcall NTSTATUS WRAP_EXPORT(IoCreateSymbolicLink)
+wstdcall NTSTATUS WRAP_EXPORT(IoCreateSymbolicLink,2)
 	(struct unicode_string *link, struct unicode_string *dev_name)
 {
 	IOEXIT(return IoCreateUnprotectedSymbolicLink(link, dev_name));
 }
 
-wstdcall NTSTATUS WRAP_EXPORT(IoDeleteSymbolicLink)
+wstdcall NTSTATUS WRAP_EXPORT(IoDeleteSymbolicLink,1)
 	(struct unicode_string *link)
 {
 	struct ansi_string ansi;
@@ -804,7 +803,7 @@ wstdcall NTSTATUS WRAP_EXPORT(IoDeleteSymbolicLink)
 	IOEXIT(return STATUS_SUCCESS);
 }
 
-wstdcall void WRAP_EXPORT(IoDeleteDevice)
+wstdcall void WRAP_EXPORT(IoDeleteDevice,1)
 	(struct device_object *dev)
 {
 	IOENTER("%p", dev);
@@ -828,7 +827,7 @@ wstdcall void WRAP_EXPORT(IoDeleteDevice)
 	IOEXIT(return);
 }
 
-wstdcall void WRAP_EXPORT(IoDetachDevice)
+wstdcall void WRAP_EXPORT(IoDetachDevice,1)
 	(struct device_object *topdev)
 {
 	struct device_object *tail;
@@ -853,7 +852,7 @@ wstdcall void WRAP_EXPORT(IoDetachDevice)
 	IOEXIT(return);
 }
 
-wstdcall struct device_object *WRAP_EXPORT(IoGetAttachedDevice)
+wstdcall struct device_object *WRAP_EXPORT(IoGetAttachedDevice,1)
 	(struct device_object *dev)
 {
 	struct device_object *top_dev;
@@ -870,7 +869,7 @@ wstdcall struct device_object *WRAP_EXPORT(IoGetAttachedDevice)
 	IOEXIT(return top_dev);
 }
 
-wstdcall struct device_object *WRAP_EXPORT(IoGetAttachedDeviceReference)
+wstdcall struct device_object *WRAP_EXPORT(IoGetAttachedDeviceReference,1)
 	(struct device_object *dev)
 {
 	struct device_object *top_dev;
@@ -883,7 +882,7 @@ wstdcall struct device_object *WRAP_EXPORT(IoGetAttachedDeviceReference)
 	IOEXIT(return top_dev);
 }
 
-wstdcall struct device_object *WRAP_EXPORT(IoAttachDeviceToDeviceStack)
+wstdcall struct device_object *WRAP_EXPORT(IoAttachDeviceToDeviceStack,2)
 	(struct device_object *src, struct device_object *tgt)
 {
 	struct device_object *attached;
@@ -910,20 +909,20 @@ wstdcall struct device_object *WRAP_EXPORT(IoAttachDeviceToDeviceStack)
 
 /* NOTE: Make sure to compile with -freg-struct-return, so gcc will
  * return union in register, like Windows */
-wstdcall union power_state WRAP_EXPORT(PoSetPowerState)
+wstdcall union power_state WRAP_EXPORT(PoSetPowerState,3)
 	(struct device_object *dev_obj, enum power_state_type type,
 	 union power_state state)
 {
 	IOEXIT(return state);
 }
 
-wstdcall NTSTATUS WRAP_EXPORT(PoCallDriver)
+wstdcall NTSTATUS WRAP_EXPORT(PoCallDriver,2)
 	(struct device_object *dev_obj, struct irp *irp)
 {
 	return IoCallDriver(dev_obj, irp);
 }
 
-wstdcall NTSTATUS WRAP_EXPORT(PoRequestPowerIrp)
+wstdcall NTSTATUS WRAP_EXPORT(PoRequestPowerIrp,6)
 	(struct device_object *dev_obj, UCHAR minor_fn,
 	 union power_state power_state, void *completion_func,
 	 void *context, struct irp **pirp)
@@ -950,21 +949,21 @@ wstdcall NTSTATUS WRAP_EXPORT(PoRequestPowerIrp)
 	return PoCallDriver(dev_obj, irp);
 }
 
-wstdcall void WRAP_EXPORT(PoStartNextPowerIrp)
+wstdcall void WRAP_EXPORT(PoStartNextPowerIrp,1)
 	(struct irp *irp)
 {
 	IOENTER("irp = %p", irp);
 	IOEXIT(return);
 }
 
-wstdcall void WRAP_EXPORT(IoInitializeRemoveLockEx)
+wstdcall void WRAP_EXPORT(IoInitializeRemoveLockEx,5)
 	(struct io_remove_lock *lock, ULONG alloc_tag, ULONG max_locked_min,
 	 ULONG high_mark, ULONG lock_size)
 {
 	UNIMPL();
 }
 
-wstdcall NTSTATUS WRAP_EXPORT(IoAcquireRemoveLockEx)
+wstdcall NTSTATUS WRAP_EXPORT(IoAcquireRemoveLockEx,5)
 	(struct io_remove_lock lock, void *tag, char *file, ULONG line,
 	 ULONG lock_size)
 {
@@ -972,14 +971,14 @@ wstdcall NTSTATUS WRAP_EXPORT(IoAcquireRemoveLockEx)
 	IOEXIT(return STATUS_SUCCESS);
 }
 
-wstdcall NTSTATUS WRAP_EXPORT(IoReleaseRemoveLockEx)
+wstdcall NTSTATUS WRAP_EXPORT(IoReleaseRemoveLockEx,3)
 	(struct io_remove_lock lock, void *tag, ULONG lock_size)
 {
 	UNIMPL();
 	IOEXIT(return STATUS_SUCCESS);
 }
 
-wstdcall NTSTATUS WRAP_EXPORT(IoRegisterDeviceInterface)
+wstdcall NTSTATUS WRAP_EXPORT(IoRegisterDeviceInterface,4)
 	(struct device_object *pdo, struct guid *guid_class,
 	 struct unicode_string *reference, struct unicode_string *link)
 {
@@ -993,14 +992,14 @@ wstdcall NTSTATUS WRAP_EXPORT(IoRegisterDeviceInterface)
 	return RtlAnsiStringToUnicodeString(link, &ansi, TRUE);
 }
 
-wstdcall NTSTATUS WRAP_EXPORT(IoSetDeviceInterfaceState)
+wstdcall NTSTATUS WRAP_EXPORT(IoSetDeviceInterfaceState,2)
 	(struct unicode_string *link, BOOLEAN enable)
 {
 	TRACEENTER1("link: %p, enable: %d", link, enable);
 	return STATUS_SUCCESS;
 }
 
-wstdcall NTSTATUS WRAP_EXPORT(IoOpenDeviceRegistryKey)
+wstdcall NTSTATUS WRAP_EXPORT(IoOpenDeviceRegistryKey,4)
 	(struct device_object *dev_obj, ULONG type, ACCESS_MASK mask,
 	 void **handle)
 {
@@ -1009,21 +1008,21 @@ wstdcall NTSTATUS WRAP_EXPORT(IoOpenDeviceRegistryKey)
 	return STATUS_SUCCESS;
 }
 
-wstdcall NTSTATUS WRAP_EXPORT(IoWMIRegistrationControl)
+wstdcall NTSTATUS WRAP_EXPORT(IoWMIRegistrationControl,2)
 	(struct device_object *dev_obj, ULONG action)
 {
 	TRACEENTER2("%p, %d", dev_obj, action);
 	TRACEEXIT2(return STATUS_SUCCESS);
 }
 
-wstdcall void WRAP_EXPORT(IoInvalidateDeviceRelations)
+wstdcall void WRAP_EXPORT(IoInvalidateDeviceRelations,2)
 	(struct device_object *dev_obj, enum device_relation_type type)
 {
 	INFO("%p, %d", dev_obj, type);
 	UNIMPL();
 }
 
-wstdcall void WRAP_EXPORT(IoInvalidateDeviceState)
+wstdcall void WRAP_EXPORT(IoInvalidateDeviceState,1)
 	(struct device_object *pdo)
 {
 	INFO("%p", pdo);
