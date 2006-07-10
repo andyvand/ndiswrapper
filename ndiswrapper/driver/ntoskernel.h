@@ -342,7 +342,7 @@ typedef u32 pm_message_t;
 #define print_sp() do {				\
 		void *sp;			\
 		get_sp(sp);			\
-		INFO("sp: %p", sp);		\
+		DBGTRACE1("sp: %p", sp);	\
 	} while (0)
 
 //#define DEBUG_IRQL 1
@@ -498,6 +498,7 @@ struct wrap_export {
 #define WRAP_FUNC_PTR(f) &f
 #define WRAP_FUNC_PTR_DECL(f)
 #endif
+
 /* map name s to function f - if f is different from s */
 #define WRAP_EXPORT_MAP(s,f)
 #define WRAP_EXPORT(x) x
@@ -1039,9 +1040,6 @@ static inline ULONG SPAN_PAGES(void *ptr, SIZE_T length)
 }
 
 #ifdef CONFIG_X86_64
-/* it is not clear how nt_slist_header is used to store pointer to
- * slists and depth; here we assume 'align' field is used to store
- * depth and 'region' field is used to store slist pointers */
 
 /* TODO: can these be implemented without using spinlock? */
 
@@ -1052,7 +1050,7 @@ static inline struct nt_slist *PushEntrySList(nt_slist_header *head,
 	KIRQL irql = nt_spin_lock_irql(lock, DISPATCH_LEVEL);
 	entry->next = head->next;
 	head->next = entry;
-	head->align++;
+	head->depth++;
 	nt_spin_unlock_irql(lock, irql);
 	return entry->next;
 }
@@ -1065,7 +1063,7 @@ static inline struct nt_slist *PopEntrySList(nt_slist_header *head,
 	entry = head->next;
 	if (entry) {
 		head->next = entry->next;
-		head->align--;
+		head->depth--;
 	}
 	nt_spin_unlock_irql(lock, irql);
 	return entry;
