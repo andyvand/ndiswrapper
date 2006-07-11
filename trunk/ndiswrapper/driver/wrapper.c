@@ -92,13 +92,8 @@ static int __init wrapper_init(void)
 	int ret;
 
 	wrapmem_init();
-	printk(KERN_INFO "%s version %s loaded (%spreempt=%s,smp=%s)\n",
+	printk(KERN_INFO "%s version %s loaded (preempt=%s,smp=%s)\n",
 	       DRIVER_NAME, DRIVER_VERSION,
-#ifdef DEBUG
-	       UTS_RELEASE ",",
-#else
-	       "",
-#endif
 #if defined CONFIG_PREEMPT
 	       "yes",
 #else
