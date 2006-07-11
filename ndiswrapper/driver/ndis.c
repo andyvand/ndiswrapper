@@ -2004,7 +2004,7 @@ NdisMIndicateStatus(struct ndis_miniport_block *nmb, NDIS_STATUS status,
 				}
 				DBGTRACE2("%ld: " MACSTRSEP " 0x%lx",
 					  i, MAC2STR(c->bssid), c->flags);
-#if WIRELESS_EXT > 17
+#if defined(CONFIG_NET_RADIO) && WIRELESS_EXT > 17
 				memset(&pcand, 0, sizeof(pcand));
 				if (c->flags & 0x01)
 					pcand.flags |= IW_PMKID_CAND_PREAUTH;
