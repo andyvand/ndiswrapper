@@ -495,9 +495,7 @@ wfastcall struct nt_slist *WIN_FUNC(ExInterlockedPushEntrySList,3)
 {
 	struct nt_slist *ret;
 
-	TRACEENTER5("head = %p", head);
 	ret = PushEntrySList(head, entry, lock);
-	DBGTRACE5("head = %p, ret = %p", head, ret);
 	return ret;
 }
 
@@ -506,9 +504,7 @@ wstdcall struct nt_slist *WIN_FUNC(ExpInterlockedPushEntrySList,2)
 {
 	struct nt_slist *ret;
 
-	TRACEENTER5("head = %p", head);
 	ret = PushEntrySList(head, entry, &ntoskernel_lock);
-	DBGTRACE5("head = %p, ret = %p", head, ret);
 	return ret;
 }
 
@@ -517,9 +513,7 @@ wfastcall struct nt_slist *WIN_FUNC(InterlockedPushEntrySList,2)
 {
 	struct nt_slist *ret;
 
-	TRACEENTER5("head = %p", head);
 	ret = PushEntrySList(head, entry, &ntoskernel_lock);
-	DBGTRACE5("head = %p, ret = %p", head, ret);
 	return ret;
 }
 
@@ -528,9 +522,7 @@ wfastcall struct nt_slist *WIN_FUNC(ExInterlockedPopEntrySList,2)
 {
 	struct nt_slist *ret;
 
-	TRACEENTER5("head = %p", head);
 	ret = PopEntrySList(head, lock);
-	DBGTRACE5("head = %p, ret = %p", head, ret);
 	return ret;
 }
 
@@ -539,9 +531,7 @@ wstdcall struct nt_slist *WIN_FUNC(ExpInterlockedPopEntrySList,1)
 {
 	struct nt_slist *ret;
 
-	TRACEENTER5("head = %p", head);
 	ret = PopEntrySList(head, &ntoskernel_lock);
-	DBGTRACE5("head = %p, ret = %p", head, ret);
 	return ret;
 }
 
@@ -550,9 +540,7 @@ wfastcall struct nt_slist *WIN_FUNC(InterlockedPopEntrySList,1)
 {
 	struct nt_slist *ret;
 
-	TRACEENTER5("head = %p", head);
 	ret = PopEntrySList(head, &ntoskernel_lock);
-	DBGTRACE5("head = %p, ret = %p", head, ret);
 	return ret;
 }
 

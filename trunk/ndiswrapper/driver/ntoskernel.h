@@ -1032,6 +1032,7 @@ static inline struct nt_slist *PushEntrySList(nt_slist_header *head,
 	head->next = entry;
 	head->depth++;
 	nt_spin_unlock_irql(lock, irql);
+	DBGTRACE4("%p, %p, %p", head, entry, entry->next);
 	return entry->next;
 }
 
@@ -1046,6 +1047,7 @@ static inline struct nt_slist *PopEntrySList(nt_slist_header *head,
 		head->depth--;
 	}
 	nt_spin_unlock_irql(lock, irql);
+	DBGTRACE4("%p, %p, %p", head, entry);
 	return entry;
 }
 
@@ -1085,6 +1087,7 @@ static inline struct nt_slist *PushEntrySList(nt_slist_header *head,
 		new.next = entry;
 		new.depth = old.depth + 1;
 	} while (cmpxchg8b(&head->align, old.align, new.align) != old.align);
+	DBGTRACE4("%p, %p, %p", head, entry, old.next);
 	return old.next;
 }
 
@@ -1101,6 +1104,7 @@ static inline struct nt_slist *PopEntrySList(nt_slist_header *head,
 		new.next = entry->next;
 		new.depth = old.depth - 1;
 	} while (cmpxchg8b(&head->align, old.align, new.align) != old.align);
+	DBGTRACE4("%p, %p, %p", head, entry);
 	return entry;
 }
 

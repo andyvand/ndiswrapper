@@ -1677,7 +1677,7 @@ static NDIS_STATUS ndis_start_device(struct wrap_ndis_device *wnd)
 		ERROR("cannot register net device %s", net_dev->name);
 		goto err_register;
 	}
-
+	memcpy(wnd->netdev_name, net_dev->name, sizeof(wnd->netdev_name));
 	memset(buf, 0, buf_size);
 	ndis_status = miniport_query_info(wnd, OID_GEN_VENDOR_DESCRIPTION,
 					  buf, buf_size);

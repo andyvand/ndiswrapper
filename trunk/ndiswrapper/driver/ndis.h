@@ -853,6 +853,7 @@ struct wrap_ndis_device {
 	u32 ndis_wolopts;
 	BOOLEAN pm_capa;
 	struct nt_list timer_list;
+	char netdev_name[IFNAMSIZ];
 };
 
 struct ndis_pmkid_candidate {
