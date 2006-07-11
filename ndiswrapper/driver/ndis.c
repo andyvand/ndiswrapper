@@ -2088,8 +2088,7 @@ NdisMIndicateReceivePacket(struct ndis_miniport_block *nmb,
 	struct ndis_packet_oob_data *oob_data;
 	void *virt;
 	struct ndis_tcp_ip_checksum_packet_info *rx_csum_info;
-	NTOS_WORK_FUNC return_packet_func =
-		WIN_FUNC_PTR(return_packet,2);
+
 	TRACEENTER3("%p, %d", nmb, nr_packets);
 	wnd = nmb->wnd;
 	for (i = 0; i < nr_packets; i++) {
@@ -2151,7 +2150,7 @@ NdisMIndicateReceivePacket(struct ndis_miniport_block *nmb,
 		 * MiniportReturnPacket from here is not correct - the
 		 * driver doesn't expect it (at least Centrino driver
 		 * crashes) */
-		schedule_ntos_work_item(return_packet_func,
+		schedule_ntos_work_item(WIN_FUNC_PTR(return_packet,2),
 					wnd, packet);
 	}
 	TRACEEXIT3(return);
@@ -2172,9 +2171,15 @@ NdisMSendComplete(struct ndis_miniport_block *nmb, struct ndis_packet *packet,
 		  NDIS_STATUS status)
 {
 	struct wrap_ndis_device *wnd = nmb->wnd;
-	if (deserialized_driver(wnd))
-		free_tx_packet(wnd, packet, status);
-	else {
+	if (deserialized_driver(wnd)) {
+		/* 64-bit RNDIS driver for XP gives a packet that was
+		 * returned earlier, which would've been already
+		 * freed, so don't free it again */
+		if (status == NDIS_STATUS_INVALID_PACKET)
+			WARNING("invalid packet: %p", packet);
+		else
+			free_tx_packet(wnd, packet, status);
+	} else {
 		struct ndis_packet_oob_data *oob_data;
 		NDIS_STATUS pkt_status;
 		TRACEENTER3("%p, %08x", packet, status);

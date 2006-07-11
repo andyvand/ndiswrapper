@@ -1061,15 +1061,14 @@ WIN_FUNC_PTR_DECL(vfree_nonatomic,2);
 wstdcall void WIN_FUNC(ExFreePool,1)
 	(void *addr)
 {
-	NTOS_WORK_FUNC vfree_func =
-		(NTOS_WORK_FUNC)WIN_FUNC_PTR(vfree_nonatomic,2);
 	DBGTRACE4("addr: %p", addr);
 	if ((unsigned long)addr < VMALLOC_START ||
 	    (unsigned long)addr >= VMALLOC_END)
 		kfree(addr);
 	else {
 		if (in_interrupt())
-			schedule_ntos_work_item(vfree_func, addr, NULL);
+			schedule_ntos_work_item(WIN_FUNC_PTR(vfree_nonatomic,2),
+						addr, NULL);
 		else
 			vfree(addr);
 	}
@@ -1146,7 +1145,7 @@ wstdcall void WIN_FUNC(ExDeleteNPagedLookasideList,1)
 	wrap_ExAllocatePoolWithTag(pool_type, size, tag, __FILE__, __LINE__)
 #endif
 
-wstdcall NTSTATUS WIN_FUNC(ExCreateCallback,3)
+wstdcall NTSTATUS WIN_FUNC(ExCreateCallback,4)
 	(struct callback_object **object, struct object_attributes *attributes,
 	 BOOLEAN create, BOOLEAN allow_multiple_callbacks)
 {

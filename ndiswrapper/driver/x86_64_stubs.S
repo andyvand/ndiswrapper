@@ -290,19 +290,17 @@ stringify2(x86_64_ ## name, _ ## argc):	; 		\
 	.endif
 .endm
 
-# both lin2win_lin_arg and lin2win_win_arg compute address at which
-# the argument would be _after_ the stack frame has been allocated
-
 # Linux to Windows functions are called with argument 1 being the
 # Windows function to call, so Linux argument n should be moved to
 # Windows argument (n-1). Linux arg 7 (function arg 6) and above
-# are on stack
+# are on stack; at 0(%rsp) is return address, so at 8(%rsp) is arg 7 etc
 
 #define lin2win_lin_arg(n) (n-6)*8(%rsp)
 
 # m is index of Windows arg required, n is total number of args to function
-# Windows arg 1 is at 0(%rsp), arg 2 is at 8(%rsp) and so on, after stack
-# frame is allocated, which is of size n*8(%rsp), and n >= 4
+# Windows arg 1 should be at 0(%rsp), arg 2 at 8(%rsp) and so on, after stack
+# frame is allocated, which starts at -n*8(%rsp) when stack frame is
+# allocated. n should be >= 4
 
 #define lin2win_win_arg(m,n) (m-1-n)*8(%rsp)
 
@@ -328,8 +326,8 @@ lin2win0:
 	ret
 
 lin2win5:
-	# setup a new stack frame for Windows function and put the arguments
-	# where it expects them
+	# copy the arguments on stack where Windows function expects them
+	# and then set up the stack frame
 	lin2win_arg5(5)
 	lin2win_arg4
 	lin2win_arg3
@@ -341,8 +339,8 @@ lin2win5:
 	ret
 
 lin2win6:
-	# setup a new stack frame for Windows function and put the arguments
-	# where it expects them
+	# copy the arguments on stack where Windows function expects them
+	# and then set up the stack frame
 	mov	lin2win_lin_arg(7), %rax	# Linux arg7
 	mov	%rax, lin2win_win_arg(6,6)	# to Windows arg6
 	lin2win_arg5(6)

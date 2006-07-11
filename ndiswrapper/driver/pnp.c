@@ -512,15 +512,15 @@ static struct device_object *alloc_pdo(struct driver_object *drv_obj)
 		return NULL;
 	for (i = 0; i <= IRP_MJ_MAXIMUM_FUNCTION; i++)
 		drv_obj->major_func[i] =
-			(driver_dispatch_t *)WIN_FUNC_PTR(IoInvalidDeviceRequest,2);
+			WIN_FUNC_PTR(IoInvalidDeviceRequest,2);
 	drv_obj->major_func[IRP_MJ_INTERNAL_DEVICE_CONTROL] =
-		(driver_dispatch_t *)WIN_FUNC_PTR(pdoDispatchDeviceControl,2);
+		WIN_FUNC_PTR(pdoDispatchDeviceControl,2);
 	drv_obj->major_func[IRP_MJ_DEVICE_CONTROL] =
-		(driver_dispatch_t *)WIN_FUNC_PTR(pdoDispatchDeviceControl,2);
+		WIN_FUNC_PTR(pdoDispatchDeviceControl,2);
 	drv_obj->major_func[IRP_MJ_POWER] =
-		(driver_dispatch_t *)WIN_FUNC_PTR(pdoDispatchPower,2);
+		WIN_FUNC_PTR(pdoDispatchPower,2);
 	drv_obj->major_func[IRP_MJ_PNP] =
-		(driver_dispatch_t *)WIN_FUNC_PTR(pdoDispatchPnp,2);
+		WIN_FUNC_PTR(pdoDispatchPnp,2);
 	return pdo;
 }
 
