@@ -1051,24 +1051,25 @@ wstdcall void *WIN_FUNC(ExAllocatePoolWithTag,3)
 	TRACEEXIT4(return addr);
 }
 
-/* called as Windows function, so call WIN2LIN2ARGS before accessing
- * arguments */
-static wstdcall void vfree_nonatomic(void *addr, void *ctx)
+/* called as Windows function */
+wstdcall void vfree_nonatomic(void *addr, void *ctx)
 {
-	WIN2LIN2ARGS(addr, ctx);
 	vfree(addr);
 }
+WIN_FUNC_PTR_DECL(vfree_nonatomic,2);
 
 wstdcall void WIN_FUNC(ExFreePool,1)
 	(void *addr)
 {
+	NTOS_WORK_FUNC vfree_func =
+		(NTOS_WORK_FUNC)WIN_FUNC_PTR(vfree_nonatomic,2);
 	DBGTRACE4("addr: %p", addr);
 	if ((unsigned long)addr < VMALLOC_START ||
 	    (unsigned long)addr >= VMALLOC_END)
 		kfree(addr);
 	else {
 		if (in_interrupt())
-			schedule_ntos_work_item(vfree_nonatomic, addr, NULL);
+			schedule_ntos_work_item(vfree_func, addr, NULL);
 		else
 			vfree(addr);
 	}

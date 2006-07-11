@@ -155,9 +155,11 @@ x86_64_stubs.o: x86_64_stubs.h x86_64_stubs.S
 x86_64_stubs: x86_64_stubs.h
 
 ifdef DISABLE_USB
-x86_64_stubs.h: hal.c misc_funcs.c ndis.c ntoskernel.c ntoskernel_io.c
+x86_64_stubs.h: hal.c misc_funcs.c ndis.c ntoskernel.c ntoskernel_io.c \
+	pnp.c wrapndis.c
 else
-x86_64_stubs.h: hal.c misc_funcs.c ndis.c ntoskernel.c ntoskernel_io.c usb.c
+x86_64_stubs.h: hal.c misc_funcs.c ndis.c ntoskernel.c ntoskernel_io.c \
+	pnp.c usb.c wrapndis.c
 endif
 	@for file in $^; do \
 		echo; \
@@ -182,9 +184,9 @@ endif
 		echo "#ifdef CONFIG_X86_64"; \
 		sed -n \
 			-e 's/.*WIN_FUNC(\([^\,]\+\) *\, *\([0-9]\+\)).*/\
-			   extern void x86_64_\1_\2(void);/p' \
+			   typeof(\1) x86_64_\1_\2;/p' \
 			-e 's/.*WIN_FUNC_PTR(\([^\,]\+\) *\, *\([0-9]\+\)).*/\
-			   extern void x86_64_\1_\2(void);/p' \
+			   typeof(\1) x86_64_\1_\2;/p' \
 		   $< | sed -e 's/[ \t]\+//' | sort -u; \
 		echo "#endif"; \
 		echo "struct wrap_export $(basename $<)_exports[] = {";\
