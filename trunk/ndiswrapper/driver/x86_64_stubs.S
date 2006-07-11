@@ -93,16 +93,19 @@ In Linux it should look like:
 	pop	%rsi
 .endm
 
-# we have pushed 4 registers on stack in prolog, so args are at offset 4+
+# before prolog, 0(%rsp) is return address, 8(%rsp) would be arg1
+# (but it is in register) and so on, so n'th arg would be at n*8(%rsp)
+# for n > 4. But in prolog, we push 4 registers that are non-volaile in
+# Windows, but volatile in Linux. So after prolog, args are at (n+4)*8(%rsp)
 
-#define win2lin_arg(n) (n+4)*8(%rsp)
+#define win2lin_win_arg(n) (n+4)*8(%rsp)
 
 #define win2lin_arg1 mov %rcx, %rdi
 #define win2lin_arg2 mov %rdx, %rsi
 #define win2lin_arg3 mov %r8, %rdx
 #define win2lin_arg4 mov %r9, %rcx
-#define win2lin_arg5 mov win2lin_arg(5), %r8
-#define win2lin_arg6 mov win2lin_arg(6), %r9
+#define win2lin_arg5 mov win2lin_win_arg(5), %r8
+#define win2lin_arg6 mov win2lin_win_arg(6), %r9
 
 win2lin0:
 	win2lin_prolog
@@ -170,54 +173,48 @@ win2lin6:
 # allocate stack frame for Linux arguments - first 6 args are passed
 # through registers, so we need space for 7 to 12
 
-#define win2lin_stack_frame 6*8
+#define win2lin_stack_frame(n) (n-6)*8
 
-# 9 = 5 (stack reserved for Linux args) +
-#     4 (registers pushed onto stack in prolog)
-
-#define win2lin_arg_frame(n) (n+9)*8(%rsp)
-
-#define win2lin_arg5_frame mov win2lin_arg_frame(5), %r8
-#define win2lin_arg6_frame mov win2lin_arg_frame(6), %r9
+#define win2lin_lin_arg(n) (6-n)*8(%rsp)
 
 win2lin7:
 	win2lin_prolog
-	sub	$win2lin_stack_frame, %rsp
 	win2lin_arg1
 	win2lin_arg2
 	win2lin_arg3
 	win2lin_arg4
-	win2lin_arg5_frame
-	win2lin_arg6_frame
+	win2lin_arg5
+	win2lin_arg6
 
 	# copy windows argument 7 on the stack for the Linux function.
 
-	mov	win2lin_arg_frame(7), %r10
-	mov	%r10, (%rsp)
+	mov	win2lin_win_arg(7), %r10
+	mov	%r10, win2lin_lin_arg(7)
+	sub	$win2lin_stack_frame(7), %rsp
 	call_lin_func
-	add	$win2lin_stack_frame, %rsp
+	add	$win2lin_stack_frame(7), %rsp
 	win2lin_epilog
 	ret
 
 win2lin8:
 	win2lin_prolog
-	sub	$win2lin_stack_frame, %rsp
 	win2lin_arg1
 	win2lin_arg2
 	win2lin_arg3
 	win2lin_arg4
-	win2lin_arg5_frame
-	win2lin_arg6_frame
+	win2lin_arg5
+	win2lin_arg6
 
 	# copy windows arguments 7 and 8
 	# on the stack for the Linux function.
 
-	mov	win2lin_arg_frame(7), %r10
-	mov	%r10, (%rsp)
-	mov	win2lin_arg_frame(8), %r10
-	mov	%r10, 8(%rsp)
+	mov	win2lin_win_arg(7), %r10
+	mov	%r10, win2lin_lin_arg(7)
+	mov	win2lin_win_arg(8), %r10
+	mov	%r10, win2lin_lin_arg(8)
+	sub	$win2lin_stack_frame(8), %rsp
 	call_lin_func
-	add	$win2lin_stack_frame, %rsp
+	add	$win2lin_stack_frame(8), %rsp
 	win2lin_epilog
 	ret
 
@@ -226,28 +223,28 @@ win2lin10:
 win2lin11:
 win2lin12:
 	win2lin_prolog
-	sub	$win2lin_stack_frame, %rsp
 	mov	%rax, %r11	# function to call
 	mov	%rcx, %rax
 
 	# copy windows arguments 9 through 12
 	# on the stack for the Linux function.
 
-	lea	win2lin_arg_frame(7), %rsi
+	lea	win2lin_win_arg(7), %rsi
 				# source (windows arg 7 and up)
 	mov	%rsp, %rdi	# = destination
 	mov	$5, %rcx	# 5 arguments
 	rep	movsq
-
+	mov	%rax, %rcx
 	win2lin_arg1
 	win2lin_arg2
 	win2lin_arg3
 	win2lin_arg4
-	win2lin_arg5_frame
-	win2lin_arg6_frame
+	win2lin_arg5
+	win2lin_arg6
 	xor	%rax, %rax
+	sub	$win2lin_stack_frame(12), %rsp
 	call	*%r11
-	add	$win2lin_stack_frame, %rsp
+	add	$win2lin_stack_frame(12), %rsp
 	win2lin_epilog
 	ret
 
@@ -296,21 +293,21 @@ stringify2(x86_64_ ## name, _ ## argc):	; 		\
 # both lin2win_lin_arg and lin2win_win_arg compute address at which
 # the argument would be _after_ the stack frame has been allocated
 
-# n must be argument index, 1 through 6
-# Windows arg 1 is at 0(%rsp), arg 2 is at 8(%rsp) and so on
-
-#define lin2win_win_arg(n) (n-1)*8(%rsp)
-
 # Linux to Windows functions are called with argument 1 being the
 # Windows function to call, so Linux argument n should be moved to
-# Windows argument (n-1).
+# Windows argument (n-1). Linux arg 7 (function arg 6) and above
+# are on stack
 
-# m is index of Linux arg required, n is Windows stack frame allocated
-# Linux arg 6 and above are on stack, so m >= 6
+#define lin2win_lin_arg(n) (n-6)*8(%rsp)
 
-#define lin2win_lin_arg(m,n) (m-5+n)*8(%rsp)
+# m is index of Windows arg required, n is total number of args to function
+# Windows arg 1 is at 0(%rsp), arg 2 is at 8(%rsp) and so on, after stack
+# frame is allocated, which is of size n*8(%rsp), and n >= 4
 
-#define lin2win_arg5 mov %r9, lin2win_win_arg(5) # Linux arg6 to Windows arg5
+#define lin2win_win_arg(m,n) (m-1-n)*8(%rsp)
+
+#define lin2win_arg5(n) \
+	mov %r9, lin2win_win_arg(5,n) # Linux arg6 to Windows arg5
 #define lin2win_arg4 mov %r8, %r9	# Linux arg5 to Windows arg4
 #define lin2win_arg3 mov %rcx, %r8	# Linux arg4 to Windows arg3
 #define lin2win_arg2			# Linux arg3 is already in Windows arg2
@@ -333,12 +330,12 @@ lin2win0:
 lin2win5:
 	# setup a new stack frame for Windows function and put the arguments
 	# where it expects them
-	alloc_win_stack_frame 5
-	lin2win_arg5
+	lin2win_arg5(5)
 	lin2win_arg4
 	lin2win_arg3
 	lin2win_arg2
 	lin2win_arg1
+	alloc_win_stack_frame 5
 	call	*%rdi		# call Windows function
 	free_win_stack_frame 5
 	ret
@@ -346,14 +343,14 @@ lin2win5:
 lin2win6:
 	# setup a new stack frame for Windows function and put the arguments
 	# where it expects them
-	alloc_win_stack_frame 6
-	mov	lin2win_lin_arg(7,6), %rax	# Linux arg7
-	mov	%rax, lin2win_win_arg(6)	# to Windows arg6
-	lin2win_arg5
+	mov	lin2win_lin_arg(7), %rax	# Linux arg7
+	mov	%rax, lin2win_win_arg(6,6)	# to Windows arg6
+	lin2win_arg5(6)
 	lin2win_arg4
 	lin2win_arg3
 	lin2win_arg2
 	lin2win_arg1
+	alloc_win_stack_frame 6
 	call	*%rdi		# call Windows function
 	free_win_stack_frame 6
 	ret
