@@ -128,8 +128,6 @@ static void usb_kill_urb(struct urb *urb)
 
 static struct nt_list wrap_urb_complete_list;
 static NT_SPIN_LOCK wrap_urb_complete_list_lock;
-static wstdcall void wrap_cancel_irp(struct device_object *dev_obj,
-				     struct irp *irp);
 
 /* use tasklet instead worker to process completed urbs */
 #define USB_TASKLET 1
@@ -306,6 +304,25 @@ void wrap_resume_urbs(struct wrap_device *wd)
 	USBTRACE("%p, %d", wd, wd->usb.num_alloc_urbs);
 }
 
+/* called as Windows function */
+wstdcall void wrap_cancel_irp(struct device_object *dev_obj, struct irp *irp)
+{
+	struct urb *urb;
+
+	/* NB: this function is called holding Cancel spinlock */
+	USBENTER("irp: %p", irp);
+	urb = irp->wrap_urb->urb;
+	USBTRACE("canceling urb %p", urb);
+	if (wrap_cancel_urb(irp->wrap_urb)) {
+		irp->cancel = FALSE;
+		ERROR("urb %p can't be canceld: %d", urb, irp->wrap_urb->state);
+	} else
+		USBTRACE("urb %p canceled", urb);
+	IoReleaseCancelSpinLock(irp->cancel_irql);
+	return;
+}
+WIN_FUNC_PTR_DECL(wrap_cancel_irp,2);
+
 static struct urb *wrap_alloc_urb(struct irp *irp, unsigned int pipe,
 				  void *buf, unsigned int buf_len)
 {
@@ -363,7 +380,7 @@ static struct urb *wrap_alloc_urb(struct irp *irp, unsigned int pipe,
 	urb->context = wrap_urb;
 	wrap_urb->irp = irp;
 	irp->wrap_urb = wrap_urb;
-	irp->cancel_routine = wrap_cancel_irp;
+	irp->cancel_routine = WIN_FUNC_PTR(wrap_cancel_irp,2);
 	IoReleaseCancelSpinLock(irp->cancel_irql);
 	USBTRACE("allocated urb: %p", urb);
 
@@ -598,27 +615,6 @@ static void wrap_urb_complete_worker(void *dummy)
 	USBEXIT(return);
 }
 
-/* called as Windows function, so call WIN2LIN2ARGS before accessing
- * arguments */
-static wstdcall void wrap_cancel_irp(struct device_object *dev_obj,
-				     struct irp *irp)
-{
-	struct urb *urb;
-
-	WIN2LIN2ARGS(dev_obj, irp);
-
-	/* NB: this function is called holding Cancel spinlock */
-	USBENTER("irp: %p", irp);
-	urb = irp->wrap_urb->urb;
-	USBTRACE("canceling urb %p", urb);
-	if (wrap_cancel_urb(irp->wrap_urb)) {
-		irp->cancel = FALSE;
-		ERROR("urb %p can't be canceld: %d", urb, irp->wrap_urb->state);
-	} else
-		USBTRACE("urb %p canceled", urb);
-	IoReleaseCancelSpinLock(irp->cancel_irql);
-	return;
-}
 
 static USBD_STATUS wrap_bulk_or_intr_trans(struct irp *irp)
 {

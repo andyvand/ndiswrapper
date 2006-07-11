@@ -927,8 +927,7 @@ static void ndis_worker(void *dummy)
 	WORKEXIT(return);
 }
 
-/* called as Windows function, so call WIN2LIN2ARGS before accessing
- * arguments */
+/* called as Windows function */
 wstdcall void alloc_shared_memory_async(void *arg1, void *arg2)
 {
 	struct wrap_ndis_device *wnd;
@@ -938,7 +937,6 @@ wstdcall void alloc_shared_memory_async(void *arg1, void *arg2)
 	NDIS_PHY_ADDRESS phys;
 	KIRQL irql;
 
-	WIN2LIN2ARGS(arg1, arg2);
 	wnd = arg1;
 	alloc_shared_mem = arg2;
 	miniport = &wnd->wd->driver->ndis_driver->miniport;
@@ -950,6 +948,7 @@ wstdcall void alloc_shared_memory_async(void *arg1, void *arg2)
 	serialize_unlock_irql(wnd, irql);
 	kfree(alloc_shared_mem);
 }
+WIN_FUNC_PTR_DECL(alloc_shared_memory_async,2);
 
 wstdcall NDIS_STATUS WIN_FUNC(NdisMAllocateSharedMemoryAsync,4)
 	(struct ndis_miniport_block *nmb, ULONG size, BOOLEAN cached,
@@ -968,7 +967,7 @@ wstdcall NDIS_STATUS WIN_FUNC(NdisMAllocateSharedMemoryAsync,4)
 	alloc_shared_mem->size = size;
 	alloc_shared_mem->cached = cached;
 	alloc_shared_mem->ctx = ctx;
-	if (schedule_ntos_work_item(alloc_shared_memory_async,
+	if (schedule_ntos_work_item(WIN_FUNC_PTR(alloc_shared_memory_async,2),
 				    wnd, alloc_shared_mem))
 		TRACEEXIT3(return NDIS_STATUS_FAILURE);
 	TRACEEXIT3(return NDIS_STATUS_PENDING);
@@ -1659,15 +1658,13 @@ wstdcall void WIN_FUNC(NdisSend,3)
 	TRACEEXIT3(return);
 }
 
+/* called as Windows functionn */
 wstdcall void wrap_miniport_timer(struct kdpc *kdpc, void *ctx, void *arg1,
 				  void *arg2)
 {
 	struct ndis_miniport_timer *timer;
 	struct ndis_miniport_block *nmb;
 
-	/* called as Windows function, so call WIN2LINARGS before
-	 * accessing args; we don't care about arg1, arg2 */
-	WIN2LIN2ARGS(kdpc, ctx);
 	timer = ctx;
 	TRACEENTER5("timer: %p, func: %p, ctx: %p, nmb: %p",
 		    timer, timer->func, timer->ctx, timer->nmb);
@@ -1680,6 +1677,7 @@ wstdcall void wrap_miniport_timer(struct kdpc *kdpc, void *ctx, void *arg1,
 		serialize_unlock(nmb->wnd);
 	TRACEEXIT5(return);
 }
+WIN_FUNC_PTR_DECL(wrap_miniport_timer,4);
 
 wstdcall void WIN_FUNC(NdisMInitializeTimer,4)
 	(struct ndis_miniport_timer *timer, struct ndis_miniport_block *nmb,
@@ -1691,7 +1689,8 @@ wstdcall void WIN_FUNC(NdisMInitializeTimer,4)
 	timer->ctx = ctx;
 	timer->nmb = nmb;
 //	KeInitializeDpc(&timer->kdpc, func, ctx);
-	KeInitializeDpc(&timer->kdpc, wrap_miniport_timer, timer);
+	KeInitializeDpc(&timer->kdpc, WIN_FUNC_PTR(wrap_miniport_timer,4),
+			timer);
 	wrap_init_timer(&timer->nt_timer, NotificationTimer, &timer->kdpc, nmb);
 	TRACEEXIT4(return);
 }
@@ -2057,8 +2056,7 @@ NdisMIndicateStatusComplete(struct ndis_miniport_block *nmb)
 		schedule_wrap_work(&wnd->tx_work);
 }
 
-/* called as Windows function, so call WIN2LIN2ARGS before accessing
- * arguments */
+/* called as Windows function */
 wstdcall void return_packet(void *arg1, void *arg2)
 {
 	struct wrap_ndis_device *wnd;
@@ -2066,7 +2064,6 @@ wstdcall void return_packet(void *arg1, void *arg2)
 	struct miniport_char *miniport;
 	KIRQL irql;
 
-	WIN2LIN2ARGS(arg1, arg2);
 	wnd = arg1;
 	packet = arg2;
 	TRACEENTER4("%p, %p", wnd, packet);
@@ -2076,6 +2073,7 @@ wstdcall void return_packet(void *arg1, void *arg2)
 	serialize_unlock_irql(wnd, irql);
 	TRACEEXIT4(return);
 }
+WIN_FUNC_PTR_DECL(return_packet,2);
 
 /* called via function pointer */
 wstdcall void
@@ -2090,7 +2088,8 @@ NdisMIndicateReceivePacket(struct ndis_miniport_block *nmb,
 	struct ndis_packet_oob_data *oob_data;
 	void *virt;
 	struct ndis_tcp_ip_checksum_packet_info *rx_csum_info;
-
+	NTOS_WORK_FUNC return_packet_func =
+		WIN_FUNC_PTR(return_packet,2);
 	TRACEENTER3("%p, %d", nmb, nr_packets);
 	wnd = nmb->wnd;
 	for (i = 0; i < nr_packets; i++) {
@@ -2152,7 +2151,8 @@ NdisMIndicateReceivePacket(struct ndis_miniport_block *nmb,
 		 * MiniportReturnPacket from here is not correct - the
 		 * driver doesn't expect it (at least Centrino driver
 		 * crashes) */
-		schedule_ntos_work_item(return_packet, wnd, packet);
+		schedule_ntos_work_item(return_packet_func,
+					wnd, packet);
 	}
 	TRACEEXIT3(return);
 }

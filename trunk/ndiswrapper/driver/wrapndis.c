@@ -1330,24 +1330,25 @@ void get_encryption_capa(struct wrap_ndis_device *wnd)
 	TRACEEXIT1(return);
 }
 
-/* called as Windows function, so call WIN2LIN2ARGS before accessing
- * arguments */
+WIN_FUNC_PTR_DECL(IoPassIrpDown,2);
+WIN_FUNC_PTR_DECL(IoSyncForwardIrp,2);
+WIN_FUNC_PTR_DECL(IoAsyncForwardIrp,2);
+
+/* called as Windows function */
 wstdcall NTSTATUS NdisDispatchDeviceControl(struct device_object *fdo,
 					    struct irp *irp)
 {
 	struct wrap_ndis_device *wnd;
 
-	WIN2LIN2ARGS(fdo, irp);
-
 	DBGTRACE3("fdo: %p", fdo);
 	/* for now, we don't have anything intresting here, so pass it
 	 * down to bus driver */
 	wnd = fdo->reserved;
-	return LIN2WIN2(IoPassIrpDown, wnd->nmb->pdo, irp);
+	return LIN2WIN2(WIN_FUNC_PTR(IoPassIrpDown,2), wnd->nmb->pdo, irp);
 }
+WIN_FUNC_PTR_DECL(NdisDispatchDeviceControl,2);
 
-/* called as Windows function, so call WIN2LIN2ARGS before accessing
- * arguments */
+/* called as Windows function */
 wstdcall NTSTATUS NdisDispatchPower(struct device_object *fdo, struct irp *irp)
 {
 	struct io_stack_location *irp_sl;
@@ -1355,8 +1356,6 @@ wstdcall NTSTATUS NdisDispatchPower(struct device_object *fdo, struct irp *irp)
 	enum ndis_power_state state;
 	NTSTATUS status;
 	NDIS_STATUS ndis_status;
-
-	WIN2LIN2ARGS(fdo, irp);
 
 	irp_sl = IoGetCurrentIrpStackLocation(irp);
 	wnd = fdo->reserved;
@@ -1372,7 +1371,8 @@ wstdcall NTSTATUS NdisDispatchPower(struct device_object *fdo, struct irp *irp)
 	switch (irp_sl->minor_fn) {
 	case IRP_MN_SET_POWER:
 		if (state == NdisDeviceStateD0) {
-			status = LIN2WIN2(IoSyncForwardIrp, wnd->nmb->pdo, irp);
+			status = LIN2WIN2(WIN_FUNC_PTR(IoSyncForwardIrp,2),
+					  wnd->nmb->pdo, irp);
 			if (status != STATUS_SUCCESS)
 				break;
 			ndis_status = miniport_set_power_state(wnd, state);
@@ -1389,7 +1389,8 @@ wstdcall NTSTATUS NdisDispatchPower(struct device_object *fdo, struct irp *irp)
 			if (ndis_status != NDIS_STATUS_SUCCESS)
 				WARNING("setting power to %d failed: %08X",
 					state, ndis_status);
-			status = LIN2WIN2(IoAsyncForwardIrp, wnd->nmb->pdo, irp);
+			status = LIN2WIN2(WIN_FUNC_PTR(IoAsyncForwardIrp,2),
+					  wnd->nmb->pdo, irp);
 		}
 		break;
 	case IRP_MN_QUERY_POWER:
@@ -1405,22 +1406,25 @@ wstdcall NTSTATUS NdisDispatchPower(struct device_object *fdo, struct irp *irp)
 			irp->io_status.status = STATUS_SUCCESS;
 		} else
 			irp->io_status.status = STATUS_SUCCESS;
-		status = LIN2WIN2(IoPassIrpDown, wnd->nmb->pdo, irp);
+		status = LIN2WIN2(WIN_FUNC_PTR(IoPassIrpDown,2),
+				  wnd->nmb->pdo, irp);
 		break;
 	case IRP_MN_WAIT_WAKE:
 	case IRP_MN_POWER_SEQUENCE:
 		/* TODO: implement WAIT_WAKE */
-		status = LIN2WIN2(IoPassIrpDown, wnd->nmb->pdo, irp);
+		status = LIN2WIN2(WIN_FUNC_PTR(IoPassIrpDown,2),
+				  wnd->nmb->pdo, irp);
 		break;
 	default:
-		status = LIN2WIN2(IoPassIrpDown, wnd->nmb->pdo, irp);
+		status = LIN2WIN2(WIN_FUNC_PTR(IoPassIrpDown,2),
+				  wnd->nmb->pdo, irp);
 		break;
 	}
 	IOEXIT(return status);
 }
+WIN_FUNC_PTR_DECL(NdisDispatchPower,2);
 
-/* called as Windows function, so call WIN2LIN2ARGS before accessing
- * arguments */
+/* called as Windows function */
 wstdcall NTSTATUS NdisDispatchPnp(struct device_object *fdo, struct irp *irp)
 {
 	struct io_stack_location *irp_sl;
@@ -1428,15 +1432,13 @@ wstdcall NTSTATUS NdisDispatchPnp(struct device_object *fdo, struct irp *irp)
 	struct device_object *pdo;
 	NTSTATUS status;
 
-	WIN2LIN2ARGS(fdo, irp);
-
 	IOTRACE("fdo: %p, irp: %p", fdo, irp);
 	irp_sl = IoGetCurrentIrpStackLocation(irp);
 	wnd = fdo->reserved;
 	pdo = wnd->nmb->pdo;
 	switch (irp_sl->minor_fn) {
 	case IRP_MN_START_DEVICE:
-		status = LIN2WIN2(IoSyncForwardIrp, pdo, irp);
+		status = LIN2WIN2(WIN_FUNC_PTR(IoSyncForwardIrp,2), pdo, irp);
 		if (status != STATUS_SUCCESS)
 			break;
 		if (ndis_start_device(wnd) == NDIS_STATUS_SUCCESS)
@@ -1448,12 +1450,13 @@ wstdcall NTSTATUS NdisDispatchPnp(struct device_object *fdo, struct irp *irp)
 		break;
 	case IRP_MN_QUERY_STOP_DEVICE:
 		/* TODO: implement in NDIS */
-		status = LIN2WIN2(IoPassIrpDown, wnd->nmb->pdo, irp);
+		status = LIN2WIN2(WIN_FUNC_PTR(IoPassIrpDown,2),
+				  wnd->nmb->pdo, irp);
 		break;
 	case IRP_MN_STOP_DEVICE:
 		miniport_halt(wnd);
 		irp->io_status.status = STATUS_SUCCESS;
-		status = LIN2WIN2(IoAsyncForwardIrp, pdo, irp);
+		status = LIN2WIN2(WIN_FUNC_PTR(IoAsyncForwardIrp,2), pdo, irp);
 		break;
 	case IRP_MN_REMOVE_DEVICE:
 		DBGTRACE1("%s", wnd->net_dev->name);
@@ -1463,17 +1466,18 @@ wstdcall NTSTATUS NdisDispatchPnp(struct device_object *fdo, struct irp *irp)
 			break;
 		}
 		/* wnd is already freed */
-		status = LIN2WIN2(IoAsyncForwardIrp, pdo, irp);
+		status = LIN2WIN2(WIN_FUNC_PTR(IoAsyncForwardIrp,2), pdo, irp);
 		IoDetachDevice(fdo);
 		IoDeleteDevice(fdo);
 		break;
 	default:
-		status = LIN2WIN2(IoAsyncForwardIrp, pdo, irp);
+		status = LIN2WIN2(WIN_FUNC_PTR(IoAsyncForwardIrp,2), pdo, irp);
 		break;
 	}
 	IOTRACE("status: %08X", status);
 	IOEXIT(return status);
 }
+WIN_FUNC_PTR_DECL(NdisDispatchPnp,2);
 
 static int set_task_offload(struct wrap_ndis_device *wnd, void *buf,
 			    const int buf_size)
@@ -1933,12 +1937,16 @@ static wstdcall NTSTATUS NdisAddDevice(struct driver_object *drv_obj,
 		  nmb, pdo, fdo, fdo->attached, nmb->next_device);
 
 	for (i = 0; i <= IRP_MJ_MAXIMUM_FUNCTION; i++)
-		drv_obj->major_func[i] = IoPassIrpDown;
-	drv_obj->major_func[IRP_MJ_PNP] = NdisDispatchPnp;
-	drv_obj->major_func[IRP_MJ_POWER] = NdisDispatchPower;
+		drv_obj->major_func[i] =
+			WIN_FUNC_PTR(IoPassIrpDown,2);
+	drv_obj->major_func[IRP_MJ_PNP] =
+		WIN_FUNC_PTR(NdisDispatchPnp,2);
+	drv_obj->major_func[IRP_MJ_POWER] =
+		WIN_FUNC_PTR(NdisDispatchPower,2);
 	drv_obj->major_func[IRP_MJ_INTERNAL_DEVICE_CONTROL] =
-		NdisDispatchDeviceControl;
-	drv_obj->major_func[IRP_MJ_DEVICE_CONTROL] = NdisDispatchDeviceControl;
+		WIN_FUNC_PTR(NdisDispatchDeviceControl,2);
+	drv_obj->major_func[IRP_MJ_DEVICE_CONTROL] =
+		WIN_FUNC_PTR(NdisDispatchDeviceControl,2);
 	TRACEEXIT2(return STATUS_SUCCESS);
 }
 
