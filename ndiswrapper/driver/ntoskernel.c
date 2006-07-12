@@ -2167,7 +2167,7 @@ wstdcall void WIN_FUNC(MmBuildMdlForNonPagedPool,1)
 	mdl_pages = MmGetMdlPfnArray(mdl);
 	for (i = 0; i < n; i++)
 		mdl_pages[i] = (ULONG_PTR)mdl->startva + (i * PAGE_SIZE);
-	return;
+	TRACEEXIT4(return);
 }
 
 wstdcall void *WIN_FUNC(MmMapLockedPages,2)

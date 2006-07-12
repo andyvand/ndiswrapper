@@ -2171,6 +2171,7 @@ NdisMSendComplete(struct ndis_miniport_block *nmb, struct ndis_packet *packet,
 		  NDIS_STATUS status)
 {
 	struct wrap_ndis_device *wnd = nmb->wnd;
+	TRACEENTER4("%p, %08X", packet, status);
 	if (deserialized_driver(wnd)) {
 		/* 64-bit RNDIS driver for XP gives a packet that was
 		 * returned earlier, which would've been already
