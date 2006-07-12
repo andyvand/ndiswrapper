@@ -183,9 +183,9 @@ win2lin6:
 # After stack frame is allocated, Linux arg 7 should be at 0(%rsp),
 # arg 8 should be at 1*8(%rsp) and so on. So Linux arg m should be at (m-7)*8
 # Stack frame starts at -(n-6)*8(%rsp), so before stack frame is allocated
-# Linux arg m should be at (m-7-6-n)*8(%rsp)
+# Linux arg m should be at (6-n+m-7)*8(%rsp)
 
-#define win2lin_lin_arg(m,n) (m-13-n)*8(%rsp)
+#define win2lin_lin_arg(m,n) (m-1-n)*8(%rsp)
 
 win2lin7:
 	win2lin_prolog
