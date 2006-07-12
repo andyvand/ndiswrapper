@@ -1915,10 +1915,10 @@ wstdcall BOOLEAN WIN_FUNC(NdisMSynchronizeWithInterrupt,3)
 	TRACEEXIT6(return ret);
 }
 
-/* called via function pointer */
-wstdcall void
-NdisMIndicateStatus(struct ndis_miniport_block *nmb, NDIS_STATUS status,
-		    void *buf, UINT len)
+/* called via function pointer; but 64-bit RNDIS driver calls directly */
+wstdcall void WIN_FUNC(NdisMIndicateStatus,4)
+	(struct ndis_miniport_block *nmb, NDIS_STATUS status,
+	 void *buf, UINT len)
 {
 	struct wrap_ndis_device *wnd = nmb->wnd;
 	struct ndis_status_indication *si;
@@ -2045,9 +2045,9 @@ NdisMIndicateStatus(struct ndis_miniport_block *nmb, NDIS_STATUS status,
 	TRACEEXIT2(return);
 }
 
-/* called via function pointer */
-wstdcall void
-NdisMIndicateStatusComplete(struct ndis_miniport_block *nmb)
+/* called via function pointer; but 64-bit RNDIS driver calls directly */
+wstdcall void WIN_FUNC(NdisMIndicateStatusComplete,1)
+	(struct ndis_miniport_block *nmb)
 {
 	struct wrap_ndis_device *wnd = nmb->wnd;
 	TRACEENTER2("%p", wnd);
