@@ -79,6 +79,7 @@
 #define MACINTADR(a) (int*)&((a)[0]), (int*)&((a)[1]), (int*)&((a)[2]), \
 		(int*)&((a)[3]), (int*)&((a)[4]), (int*)&((a)[5])
 
+#ifdef __KERNEL__
 /* DEBUG macros */
 
 #define DBGTRACE(fmt, ...) do { } while (0)
@@ -215,5 +216,6 @@ do {									\
 #else
 #define DUMP_IRP(irp) do { } while (0)
 #endif
+#endif // __KERNEL__
 
 #endif // NDISWRAPPER_H
