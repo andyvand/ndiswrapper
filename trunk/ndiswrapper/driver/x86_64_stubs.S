@@ -77,6 +77,8 @@ In Linux it should look like:
 # setup for Windows to Linux function call
 #
 
+	.text
+
 .macro win2lin_prolog
 	push	%rsi
 	push	%rdi
@@ -235,35 +237,33 @@ win2lin10:
 win2lin11:
 win2lin12:
 	win2lin_prolog
-	mov	%rax, %r11	# function to call
-	mov	%rcx, %rax
+	mov	%rcx, %r11		# save rcx
 
 	# copy windows arguments 7 through 12
 	# on the stack for the Linux function.
 
 	lea	win2lin_win_arg(7), %rsi	# source (windows arg 7 and up)
-	mov	win2lin_lin_arg(7,12), %rdi	# = destination
+	lea	win2lin_lin_arg(7,12), %rdi	# = destination
 	mov	$6, %rcx			# 6 arguments
 	rep	movsq
-	mov	%rax, %rcx
+	mov	%r11, %rcx		# restore rcx
 	win2lin_arg1
 	win2lin_arg2
 	win2lin_arg3
 	win2lin_arg4
 	win2lin_arg5
 	win2lin_arg6
-	xor	%rax, %rax
 	sub	$win2lin_stack_frame(12), %rsp
-	call	*%r11
+	call_lin_func
 	add	$win2lin_stack_frame(12), %rsp
 	win2lin_epilog
 	ret
 
 #define stringify2(a, b) a ## b
 
-#define win2lin(name, argc)				\
-ENTRY(stringify2(x86_64_ ## name,  _ ##argc))	 \
-	lea	name(%rip), %rax ; 			\
+#define win2lin(name, argc)			\
+ENTRY(stringify2(x86_64_ ## name,  _ ##argc))	\
+	lea	name(%rip), %rax ; 		\
 	jmp	win2lin ## argc
 
 #include "x86_64_stubs.h"
@@ -313,7 +313,7 @@ ENTRY(stringify2(x86_64_ ## name,  _ ##argc))	 \
 #define lin2win_win_arg(m,n) (m-1-n)*8(%rsp)
 
 #define lin2win_arg5(n) \
-	mov %r9, lin2win_win_arg(5,n) # Linux arg6 to Windows arg5
+	mov %r9, lin2win_win_arg(5,n)	# Linux arg6 to Windows arg5
 #define lin2win_arg4 mov %r8, %r9	# Linux arg5 to Windows arg4
 #define lin2win_arg3 mov %rcx, %r8	# Linux arg4 to Windows arg3
 #define lin2win_arg2			# Linux arg3 is already in Windows arg2
