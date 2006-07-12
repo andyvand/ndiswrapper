@@ -13,6 +13,8 @@
  *
  */
 
+#include <linux/linkage.h>
+
 # Windows <---> Linux register usage conversion when calling functions
 # V = Volatile
 # NV = Non Volatile (needs to be saved)
@@ -240,7 +242,7 @@ win2lin12:
 	# on the stack for the Linux function.
 
 	lea	win2lin_win_arg(7), %rsi	# source (windows arg 7 and up)
-	mov	win2lin_lin_arg(7), %rdi	# = destination
+	mov	win2lin_lin_arg(7,12), %rdi	# = destination
 	mov	$6, %rcx			# 6 arguments
 	rep	movsq
 	mov	%rax, %rcx
@@ -260,8 +262,7 @@ win2lin12:
 #define stringify2(a, b) a ## b
 
 #define win2lin(name, argc)				\
-	.globl stringify2(x86_64_ ## name,  _ ##argc) ; \
-stringify2(x86_64_ ## name, _ ## argc):	; 		\
+ENTRY(stringify2(x86_64_ ## name,  _ ##argc))	 \
 	lea	name(%rip), %rax ; 			\
 	jmp	win2lin ## argc
 
@@ -271,12 +272,10 @@ stringify2(x86_64_ ## name, _ ## argc):	; 		\
 # setup for Linux to Windows function call
 #
 	.text
+	.globl lin2win0
 	.globl lin2win1
 	.globl lin2win2
 	.globl lin2win3
-	.globl lin2win4
-	.globl lin2win5
-	.globl lin2win6
 
 # right above return address, there must be space for 4 registers,
 # irrespective of number of arguments. After that, arguments 5 and above
@@ -320,7 +319,7 @@ stringify2(x86_64_ ## name, _ ## argc):	; 		\
 #define lin2win_arg2			# Linux arg3 is already in Windows arg2
 #define lin2win_arg1 mov %rsi, %rcx	# Linux arg2 to Windows arg1
 
-lin2win4:
+ENTRY(lin2win4)
 	lin2win_arg4
 lin2win3:
 	lin2win_arg3
@@ -334,7 +333,7 @@ lin2win0:
 	free_win_stack_frame 4
 	ret
 
-lin2win5:
+ENTRY(lin2win5)
 	# copy the arguments on stack where Windows function expects them
 	# and then set up the stack frame
 	lin2win_arg5(5)
@@ -347,7 +346,7 @@ lin2win5:
 	free_win_stack_frame 5
 	ret
 
-lin2win6:
+ENTRY(lin2win6)
 	# copy the arguments on stack where Windows function expects them
 	# and then set up the stack frame
 	mov	lin2win_lin_arg(7), %rax	# Linux arg7
