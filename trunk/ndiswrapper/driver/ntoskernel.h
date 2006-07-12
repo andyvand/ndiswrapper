@@ -1047,7 +1047,7 @@ static inline struct nt_slist *PopEntrySList(nt_slist_header *head,
 		head->depth--;
 	}
 	nt_spin_unlock_irql(lock, irql);
-	DBGTRACE4("%p, %p, %p", head, entry);
+	DBGTRACE4("%p, %p", head, entry);
 	return entry;
 }
 

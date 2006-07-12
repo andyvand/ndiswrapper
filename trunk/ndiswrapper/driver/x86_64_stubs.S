@@ -52,11 +52,15 @@ In a windows function, the stackframe/registers look like this:
 # 0x0038 arg7
 # 0x0030 arg6
 # 0x0028 arg5
-# 0x0020 arg4 %r9
-# 0x0018 arg3 %r8
-# 0x0010 arg2 %rdx
-# 0x0008 arg1 %rcx
+# 0x0020 arg4 register spill space
+# 0x0018 arg3 register spill space
+# 0x0010 arg2 register spill space
+# 0x0008 arg1 register spill space
 # 0x0000 ret
+
+# register spill space is same irrespective of number of arguments - even
+# if Windows function takes less than 4 arguments, 32 bytes above return
+# address is reserved for the function
 
 In Linux it should look like:
 
@@ -175,7 +179,13 @@ win2lin6:
 
 #define win2lin_stack_frame(n) (n-6)*8
 
-#define win2lin_lin_arg(n) (6-n)*8(%rsp)
+# m is index of Linux arg required, n is total number of args to function
+# After stack frame is allocated, Linux arg 7 should be at 0(%rsp),
+# arg 8 should be at 1*8(%rsp) and so on. So Linux arg m should be at (m-7)*8
+# Stack frame starts at -(n-6)*8(%rsp), so before stack frame is allocated
+# Linux arg m should be at (m-7-6-n)*8(%rsp)
+
+#define win2lin_lin_arg(m,n) (m-13-n)*8(%rsp)
 
 win2lin7:
 	win2lin_prolog
@@ -189,7 +199,7 @@ win2lin7:
 	# copy windows argument 7 on the stack for the Linux function.
 
 	mov	win2lin_win_arg(7), %r10
-	mov	%r10, win2lin_lin_arg(7)
+	mov	%r10, win2lin_lin_arg(7,7)
 	sub	$win2lin_stack_frame(7), %rsp
 	call_lin_func
 	add	$win2lin_stack_frame(7), %rsp
@@ -209,9 +219,9 @@ win2lin8:
 	# on the stack for the Linux function.
 
 	mov	win2lin_win_arg(7), %r10
-	mov	%r10, win2lin_lin_arg(7)
+	mov	%r10, win2lin_lin_arg(7,8)
 	mov	win2lin_win_arg(8), %r10
-	mov	%r10, win2lin_lin_arg(8)
+	mov	%r10, win2lin_lin_arg(8,8)
 	sub	$win2lin_stack_frame(8), %rsp
 	call_lin_func
 	add	$win2lin_stack_frame(8), %rsp
