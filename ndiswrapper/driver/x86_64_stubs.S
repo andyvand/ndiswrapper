@@ -236,13 +236,12 @@ win2lin12:
 	mov	%rax, %r11	# function to call
 	mov	%rcx, %rax
 
-	# copy windows arguments 9 through 12
+	# copy windows arguments 7 through 12
 	# on the stack for the Linux function.
 
-	lea	win2lin_win_arg(7), %rsi
-				# source (windows arg 7 and up)
-	mov	%rsp, %rdi	# = destination
-	mov	$5, %rcx	# 5 arguments
+	lea	win2lin_win_arg(7), %rsi	# source (windows arg 7 and up)
+	mov	win2lin_lin_arg(7), %rdi	# = destination
+	mov	$6, %rcx			# 6 arguments
 	rep	movsq
 	mov	%rax, %rcx
 	win2lin_arg1
