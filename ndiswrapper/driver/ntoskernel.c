@@ -1041,7 +1041,6 @@ wstdcall void *WIN_FUNC(ExAllocatePoolWithTag,3)
 	TRACEEXIT4(return addr);
 }
 
-/* called as Windows function */
 wstdcall void vfree_nonatomic(void *addr, void *ctx)
 {
 	vfree(addr);

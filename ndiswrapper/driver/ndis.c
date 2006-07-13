@@ -927,7 +927,6 @@ static void ndis_worker(void *dummy)
 	WORKEXIT(return);
 }
 
-/* called as Windows function */
 wstdcall void alloc_shared_memory_async(void *arg1, void *arg2)
 {
 	struct wrap_ndis_device *wnd;
@@ -1658,7 +1657,6 @@ wstdcall void WIN_FUNC(NdisSend,3)
 	TRACEEXIT3(return);
 }
 
-/* called as Windows functionn */
 wstdcall void wrap_miniport_timer(struct kdpc *kdpc, void *ctx, void *arg1,
 				  void *arg2)
 {
@@ -2056,7 +2054,6 @@ wstdcall void WIN_FUNC(NdisMIndicateStatusComplete,1)
 		schedule_wrap_work(&wnd->tx_work);
 }
 
-/* called as Windows function */
 wstdcall void return_packet(void *arg1, void *arg2)
 {
 	struct wrap_ndis_device *wnd;
@@ -2076,9 +2073,9 @@ wstdcall void return_packet(void *arg1, void *arg2)
 WIN_FUNC_PTR_DECL(return_packet,2);
 
 /* called via function pointer */
-wstdcall void
-NdisMIndicateReceivePacket(struct ndis_miniport_block *nmb,
-			   struct ndis_packet **packets, UINT nr_packets)
+wstdcall void NdisMIndicateReceivePacket(struct ndis_miniport_block *nmb,
+					 struct ndis_packet **packets,
+					 UINT nr_packets)
 {
 	struct wrap_ndis_device *wnd;
 	ndis_buffer *buffer;
@@ -2166,9 +2163,8 @@ wstdcall void WIN_FUNC(NdisMCoIndicateReceivePacket,3)
 }
 
 /* called via function pointer */
-wstdcall void
-NdisMSendComplete(struct ndis_miniport_block *nmb, struct ndis_packet *packet,
-		  NDIS_STATUS status)
+wstdcall void NdisMSendComplete(struct ndis_miniport_block *nmb,
+				struct ndis_packet *packet, NDIS_STATUS status)
 {
 	struct wrap_ndis_device *wnd = nmb->wnd;
 	TRACEENTER4("%p, %08X", packet, status);
@@ -2220,8 +2216,7 @@ wstdcall void WIN_FUNC(NdisMCoSendComplete,3)
 }
 
 /* called via function pointer */
-wstdcall void
-NdisMSendResourcesAvailable(struct ndis_miniport_block *nmb)
+wstdcall void NdisMSendResourcesAvailable(struct ndis_miniport_block *nmb)
 {
 	struct wrap_ndis_device *wnd = nmb->wnd;
 	TRACEENTER3("");
@@ -2233,10 +2228,10 @@ NdisMSendResourcesAvailable(struct ndis_miniport_block *nmb)
 
 /* called via function pointer (by NdisMEthIndicateReceive macro); the
  * first argument is nmb->eth_db */
-wstdcall void
-EthRxIndicateHandler(struct ndis_miniport_block *nmb, void *rx_ctx,
-		     char *header1, char *header, UINT header_size,
-		     void *look_ahead, UINT look_ahead_size, UINT packet_size)
+wstdcall void EthRxIndicateHandler(struct ndis_miniport_block *nmb, void *rx_ctx,
+				   char *header1, char *header, UINT header_size,
+				   void *look_ahead, UINT look_ahead_size,
+				   UINT packet_size)
 {
 	struct sk_buff *skb = NULL;
 	struct wrap_ndis_device *wnd;
@@ -2343,10 +2338,9 @@ EthRxIndicateHandler(struct ndis_miniport_block *nmb, void *rx_ctx,
 }
 
 /* called via function pointer */
-wstdcall void
-NdisMTransferDataComplete(struct ndis_miniport_block *nmb,
-			  struct ndis_packet *packet, NDIS_STATUS status,
-			  UINT bytes_txed)
+wstdcall void NdisMTransferDataComplete(struct ndis_miniport_block *nmb,
+					struct ndis_packet *packet,
+					NDIS_STATUS status, UINT bytes_txed)
 {
 	struct wrap_ndis_device *wnd = nmb->wnd;
 	struct sk_buff *skb;
@@ -2410,9 +2404,8 @@ wstdcall void EthRxComplete(struct ndis_miniport_block *nmb)
 }
 
 /* Called via function pointer if query returns NDIS_STATUS_PENDING */
-wstdcall void
-NdisMQueryInformationComplete(struct ndis_miniport_block *nmb,
-			      NDIS_STATUS status)
+wstdcall void NdisMQueryInformationComplete(struct ndis_miniport_block *nmb,
+					    NDIS_STATUS status)
 {
 	struct wrap_ndis_device *wnd = nmb->wnd;
 
@@ -2437,8 +2430,8 @@ wstdcall void WIN_FUNC(NdisMCoRequestComplete,3)
 }
 
 /* Called via function pointer if setinfo returns NDIS_STATUS_PENDING */
-wstdcall void
-NdisMSetInformationComplete(struct ndis_miniport_block *nmb, NDIS_STATUS status)
+wstdcall void NdisMSetInformationComplete(struct ndis_miniport_block *nmb,
+					  NDIS_STATUS status)
 {
 	struct wrap_ndis_device *wnd = nmb->wnd;
 	TRACEENTER2("status = %08X", status);
@@ -2582,9 +2575,8 @@ wstdcall void WIN_FUNC(NdisResetEvent,1)
 }
 
 /* called via function pointer */
-wstdcall void
-NdisMResetComplete(struct ndis_miniport_block *nmb, NDIS_STATUS status,
-		   BOOLEAN address_reset)
+wstdcall void NdisMResetComplete(struct ndis_miniport_block *nmb,
+				 NDIS_STATUS status, BOOLEAN address_reset)
 {
 	struct wrap_ndis_device *wnd = nmb->wnd;
 

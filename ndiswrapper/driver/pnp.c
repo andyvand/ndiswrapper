@@ -219,7 +219,6 @@ wstdcall NTSTATUS IoSendIrpTopDev(struct device_object *dev_obj, ULONG major_fn,
 	return status;
 }
 
-/* called as Windows function */
 wstdcall NTSTATUS pdoDispatchDeviceControl(struct device_object *pdo,
 					  struct  irp *irp)
 {
@@ -241,7 +240,6 @@ wstdcall NTSTATUS pdoDispatchDeviceControl(struct device_object *pdo,
 }
 WIN_FUNC_PTR_DECL(pdoDispatchDeviceControl,2);
 
-/* called as Windows function */
 wstdcall NTSTATUS pdoDispatchPnp(struct device_object *pdo, struct irp *irp)
 {
 	struct io_stack_location *irp_sl;
@@ -311,7 +309,6 @@ wstdcall NTSTATUS pdoDispatchPnp(struct device_object *pdo, struct irp *irp)
 }
 WIN_FUNC_PTR_DECL(pdoDispatchPnp,2);
 
-/* called as Windows function */
 wstdcall NTSTATUS pdoDispatchPower(struct device_object *pdo, struct irp *irp)
 {
 	struct io_stack_location *irp_sl;
@@ -510,6 +507,7 @@ static struct device_object *alloc_pdo(struct driver_object *drv_obj)
 	DBGTRACE1("%p, %d, %p", drv_obj, status, pdo);
 	if (status != STATUS_SUCCESS)
 		return NULL;
+	/* dispatch routines are called as Windows functions */
 	for (i = 0; i <= IRP_MJ_MAXIMUM_FUNCTION; i++)
 		drv_obj->major_func[i] =
 			WIN_FUNC_PTR(IoInvalidDeviceRequest,2);

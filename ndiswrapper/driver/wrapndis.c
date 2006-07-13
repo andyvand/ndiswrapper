@@ -31,6 +31,7 @@ static void del_stats_timer(struct wrap_ndis_device *wnd);
 static NDIS_STATUS ndis_start_device(struct wrap_ndis_device *wnd);
 static int ndis_remove_device(struct wrap_ndis_device *wnd);
 static void set_multicast_list(struct wrap_ndis_device *wnd);
+WIN_FUNC_PTR_DECL(IoPassIrpDown,2);
 
 static inline int ndis_wait_comm_completion(struct wrap_ndis_device *wnd)
 {
@@ -1330,11 +1331,6 @@ void get_encryption_capa(struct wrap_ndis_device *wnd)
 	TRACEEXIT1(return);
 }
 
-WIN_FUNC_PTR_DECL(IoPassIrpDown,2);
-WIN_FUNC_PTR_DECL(IoSyncForwardIrp,2);
-WIN_FUNC_PTR_DECL(IoAsyncForwardIrp,2);
-
-/* called as Windows function */
 wstdcall NTSTATUS NdisDispatchDeviceControl(struct device_object *fdo,
 					    struct irp *irp)
 {
@@ -1348,7 +1344,6 @@ wstdcall NTSTATUS NdisDispatchDeviceControl(struct device_object *fdo,
 }
 WIN_FUNC_PTR_DECL(NdisDispatchDeviceControl,2);
 
-/* called as Windows function */
 wstdcall NTSTATUS NdisDispatchPower(struct device_object *fdo, struct irp *irp)
 {
 	struct io_stack_location *irp_sl;
@@ -1419,7 +1414,6 @@ wstdcall NTSTATUS NdisDispatchPower(struct device_object *fdo, struct irp *irp)
 }
 WIN_FUNC_PTR_DECL(NdisDispatchPower,2);
 
-/* called as Windows function */
 wstdcall NTSTATUS NdisDispatchPnp(struct device_object *fdo, struct irp *irp)
 {
 	struct io_stack_location *irp_sl;
@@ -1930,6 +1924,7 @@ static wstdcall NTSTATUS NdisAddDevice(struct driver_object *drv_obj,
 	DBGTRACE1("nmb: %p, pdo: %p, fdo: %p, attached: %p, next: %p",
 		  nmb, pdo, fdo, fdo->attached, nmb->next_device);
 
+	/* dispatch routines are called as Windows functions */
 	for (i = 0; i <= IRP_MJ_MAXIMUM_FUNCTION; i++)
 		drv_obj->major_func[i] =
 			WIN_FUNC_PTR(IoPassIrpDown,2);
