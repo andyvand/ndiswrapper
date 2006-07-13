@@ -443,12 +443,6 @@ wfastcall void WIN_FUNC(IofCompleteRequest,2)
 	IOEXIT(return);
 }
 
-/* IRP functions are called as Windows functions. For 64-bit, this
- * means arguments are in rcx, rdx etc., but Linux functions expect
- * them in rdi, rsi etc. So we need to put arguments back correctly
- * before touching arguments. We also assume that all arguments are
- * pointers (or register width). */
-
 wstdcall NTSTATUS IoPassIrpDown(struct device_object *dev_obj,
 			       struct irp *irp)
 {
@@ -456,10 +450,8 @@ wstdcall NTSTATUS IoPassIrpDown(struct device_object *dev_obj,
 	IOEXIT(return IoCallDriver(dev_obj, irp));
 }
 
-
-/* called as Windows function */
 wstdcall NTSTATUS IoIrpSyncComplete(struct device_object *dev_obj,
-				   struct irp *irp, void *context)
+				    struct irp *irp, void *context)
 {
 	if (irp->pending_returned == TRUE)
 		KeSetEvent(context, IO_NO_INCREMENT, FALSE);
@@ -467,7 +459,6 @@ wstdcall NTSTATUS IoIrpSyncComplete(struct device_object *dev_obj,
 }
 WIN_FUNC_PTR_DECL(IoIrpSyncComplete,3);
 
-/* called as Windows function */
 wstdcall NTSTATUS IoSyncForwardIrp(struct device_object *dev_obj,
 				  struct irp *irp)
 {
@@ -476,6 +467,7 @@ wstdcall NTSTATUS IoSyncForwardIrp(struct device_object *dev_obj,
 
 	IoCopyCurrentIrpStackLocationToNext(irp);
 	KeInitializeEvent(&event, SynchronizationEvent, FALSE);
+	/* completion function is called as Windows function */
 	IoSetCompletionRoutine(irp, WIN_FUNC_PTR(IoIrpSyncComplete,3), &event,
 			       TRUE, TRUE, TRUE);
 	status = IoCallDriver(dev_obj, irp);
@@ -490,7 +482,6 @@ wstdcall NTSTATUS IoSyncForwardIrp(struct device_object *dev_obj,
 }
 WIN_FUNC_PTR_DECL(IoSyncForwardIrp,2);
 
-/* called as Windows function */
 wstdcall NTSTATUS IoAsyncForwardIrp(struct device_object *dev_obj,
 				   struct irp *irp)
 {
@@ -502,7 +493,6 @@ wstdcall NTSTATUS IoAsyncForwardIrp(struct device_object *dev_obj,
 }
 WIN_FUNC_PTR_DECL(IoAsyncForwardIrp,2);
 
-/* called as Windows function */
 wstdcall NTSTATUS IoInvalidDeviceRequest(struct device_object *dev_obj,
 					struct irp *irp)
 {

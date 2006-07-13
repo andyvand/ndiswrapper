@@ -304,7 +304,6 @@ void wrap_resume_urbs(struct wrap_device *wd)
 	USBTRACE("%p, %d", wd, wd->usb.num_alloc_urbs);
 }
 
-/* called as Windows function */
 wstdcall void wrap_cancel_irp(struct device_object *dev_obj, struct irp *irp)
 {
 	struct urb *urb;
@@ -380,6 +379,7 @@ static struct urb *wrap_alloc_urb(struct irp *irp, unsigned int pipe,
 	urb->context = wrap_urb;
 	wrap_urb->irp = irp;
 	irp->wrap_urb = wrap_urb;
+	/* called as Windows function */
 	irp->cancel_routine = WIN_FUNC_PTR(wrap_cancel_irp,2);
 	IoReleaseCancelSpinLock(irp->cancel_irql);
 	USBTRACE("allocated urb: %p", urb);
