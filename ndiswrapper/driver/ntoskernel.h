@@ -357,41 +357,45 @@ typedef u32 pm_message_t;
 #endif
 
 #ifdef CONFIG_X86_64
+
+u64 lin2win1(void *func, u64);
+u64 lin2win2(void *func, u64, u64);
+u64 lin2win3(void *func, u64, u64, u64);
+u64 lin2win4(void *func, u64, u64, u64, u64);
+u64 lin2win5(void *func, u64, u64, u64, u64, u64);
+u64 lin2win6(void *func, u64, u64, u64, u64, u64, u64);
+
 #define LIN2WIN1(func, arg1)						\
 ({									\
 	DBGTRACE6("calling %p", func);					\
-	lin2win1(func, (unsigned long)arg1);				\
+	lin2win1(func, (u64)arg1);					\
 })
 #define LIN2WIN2(func, arg1, arg2)					\
 ({									\
 	DBGTRACE6("calling %p", func);					\
-	lin2win2(func, (unsigned long)arg1, (unsigned long)arg2);	\
+	lin2win2(func, (u64)arg1, (u64)arg2);				\
 })
 #define LIN2WIN3(func, arg1, arg2, arg3)				\
 ({									\
 	DBGTRACE6("calling %p", func);					\
-	lin2win3(func, (unsigned long)arg1, (unsigned long)arg2,	\
-		 (unsigned long)arg3);					\
+	lin2win3(func, (u64)arg1, (u64)arg2, (u64)arg3);		\
 })
 #define LIN2WIN4(func, arg1, arg2, arg3, arg4)				\
 ({									\
 	DBGTRACE6("calling %p", func);					\
-	lin2win4(func, (unsigned long)arg1, (unsigned long)arg2,	\
-		 (unsigned long)arg3, (unsigned long)arg4);		\
+	lin2win4(func, (u64)arg1, (u64)arg2, (u64)arg3, (u64)arg4);	\
 })
 #define LIN2WIN5(func, arg1, arg2, arg3, arg4, arg5)			\
 ({									\
 	DBGTRACE6("calling %p", func);					\
-	lin2win5(func, (unsigned long)arg1, (unsigned long)arg2,	\
-		 (unsigned long)arg3, (unsigned long)arg4,		\
-		 (unsigned long)arg5);					\
+	lin2win5(func, (u64)arg1, (u64)arg2, (u64)arg3, (u64)arg4,	\
+		 (u64)arg5);						\
 })
 #define LIN2WIN6(func, arg1, arg2, arg3, arg4, arg5, arg6)		\
 ({									\
 	DBGTRACE6("calling %p", func);					\
-	lin2win6(func, (unsigned long)arg1, (unsigned long)arg2,	\
-		 (unsigned long)arg3, (unsigned long)arg4,		\
-		 (unsigned long)arg5, (unsigned long)arg6);		\
+	lin2win6(func, (u64)arg1, (u64)arg2, (u64)arg3, (u64)arg4,	\
+		 (u64)arg5, (u64)arg6);					\
 })
 
 #else // CONFIG_X86_64
@@ -787,18 +791,6 @@ struct task_struct *KeGetCurrentThread(void) wstdcall;
 NTSTATUS ObReferenceObjectByHandle(void *handle, ACCESS_MASK desired_access,
 				   void *obj_type, KPROCESSOR_MODE access_mode,
 				   void **object, void *handle_info) wstdcall;
-
-unsigned long lin2win1(void *func, unsigned long);
-unsigned long lin2win2(void *func, unsigned long, unsigned long);
-unsigned long lin2win3(void *func, unsigned long, unsigned long,
-		       unsigned long);
-unsigned long lin2win4(void *func, unsigned long, unsigned long,
-		       unsigned long, unsigned long);
-unsigned long lin2win5(void *func, unsigned long, unsigned long,
-		       unsigned long, unsigned long, unsigned long);
-unsigned long lin2win6(void *func, unsigned long, unsigned long,
-		       unsigned long, unsigned long, unsigned long,
-		       unsigned long);
 
 #define MSG(level, fmt, ...)				\
 	printk(level "ndiswrapper (%s:%d): " fmt "\n",	\
