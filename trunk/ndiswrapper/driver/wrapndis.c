@@ -1344,7 +1344,7 @@ wstdcall NTSTATUS NdisDispatchDeviceControl(struct device_object *fdo,
 	/* for now, we don't have anything intresting here, so pass it
 	 * down to bus driver */
 	wnd = fdo->reserved;
-	return LIN2WIN2(WIN_FUNC_PTR(IoPassIrpDown,2), wnd->nmb->pdo, irp);
+	return IoPassIrpDown(wnd->nmb->pdo, irp);
 }
 WIN_FUNC_PTR_DECL(NdisDispatchDeviceControl,2);
 
@@ -1371,8 +1371,7 @@ wstdcall NTSTATUS NdisDispatchPower(struct device_object *fdo, struct irp *irp)
 	switch (irp_sl->minor_fn) {
 	case IRP_MN_SET_POWER:
 		if (state == NdisDeviceStateD0) {
-			status = LIN2WIN2(WIN_FUNC_PTR(IoSyncForwardIrp,2),
-					  wnd->nmb->pdo, irp);
+			status = IoSyncForwardIrp(wnd->nmb->pdo, irp);
 			if (status != STATUS_SUCCESS)
 				break;
 			ndis_status = miniport_set_power_state(wnd, state);
@@ -1389,8 +1388,7 @@ wstdcall NTSTATUS NdisDispatchPower(struct device_object *fdo, struct irp *irp)
 			if (ndis_status != NDIS_STATUS_SUCCESS)
 				WARNING("setting power to %d failed: %08X",
 					state, ndis_status);
-			status = LIN2WIN2(WIN_FUNC_PTR(IoAsyncForwardIrp,2),
-					  wnd->nmb->pdo, irp);
+			status = IoAsyncForwardIrp(wnd->nmb->pdo, irp);
 		}
 		break;
 	case IRP_MN_QUERY_POWER:
@@ -1406,18 +1404,15 @@ wstdcall NTSTATUS NdisDispatchPower(struct device_object *fdo, struct irp *irp)
 			irp->io_status.status = STATUS_SUCCESS;
 		} else
 			irp->io_status.status = STATUS_SUCCESS;
-		status = LIN2WIN2(WIN_FUNC_PTR(IoPassIrpDown,2),
-				  wnd->nmb->pdo, irp);
+		status = IoPassIrpDown(wnd->nmb->pdo, irp);
 		break;
 	case IRP_MN_WAIT_WAKE:
 	case IRP_MN_POWER_SEQUENCE:
 		/* TODO: implement WAIT_WAKE */
-		status = LIN2WIN2(WIN_FUNC_PTR(IoPassIrpDown,2),
-				  wnd->nmb->pdo, irp);
+		status = IoPassIrpDown(wnd->nmb->pdo, irp);
 		break;
 	default:
-		status = LIN2WIN2(WIN_FUNC_PTR(IoPassIrpDown,2),
-				  wnd->nmb->pdo, irp);
+		status = IoPassIrpDown(wnd->nmb->pdo, irp);
 		break;
 	}
 	IOEXIT(return status);
@@ -1438,7 +1433,7 @@ wstdcall NTSTATUS NdisDispatchPnp(struct device_object *fdo, struct irp *irp)
 	pdo = wnd->nmb->pdo;
 	switch (irp_sl->minor_fn) {
 	case IRP_MN_START_DEVICE:
-		status = LIN2WIN2(WIN_FUNC_PTR(IoSyncForwardIrp,2), pdo, irp);
+		status = IoSyncForwardIrp(pdo, irp);
 		if (status != STATUS_SUCCESS)
 			break;
 		if (ndis_start_device(wnd) == NDIS_STATUS_SUCCESS)
@@ -1450,13 +1445,12 @@ wstdcall NTSTATUS NdisDispatchPnp(struct device_object *fdo, struct irp *irp)
 		break;
 	case IRP_MN_QUERY_STOP_DEVICE:
 		/* TODO: implement in NDIS */
-		status = LIN2WIN2(WIN_FUNC_PTR(IoPassIrpDown,2),
-				  wnd->nmb->pdo, irp);
+		status = IoPassIrpDown(wnd->nmb->pdo, irp);
 		break;
 	case IRP_MN_STOP_DEVICE:
 		miniport_halt(wnd);
 		irp->io_status.status = STATUS_SUCCESS;
-		status = LIN2WIN2(WIN_FUNC_PTR(IoAsyncForwardIrp,2), pdo, irp);
+		status = IoAsyncForwardIrp(pdo, irp);
 		break;
 	case IRP_MN_REMOVE_DEVICE:
 		DBGTRACE1("%s", wnd->net_dev->name);
@@ -1466,12 +1460,12 @@ wstdcall NTSTATUS NdisDispatchPnp(struct device_object *fdo, struct irp *irp)
 			break;
 		}
 		/* wnd is already freed */
-		status = LIN2WIN2(WIN_FUNC_PTR(IoAsyncForwardIrp,2), pdo, irp);
+		status = IoAsyncForwardIrp(pdo, irp);
 		IoDetachDevice(fdo);
 		IoDeleteDevice(fdo);
 		break;
 	default:
-		status = LIN2WIN2(WIN_FUNC_PTR(IoAsyncForwardIrp,2), pdo, irp);
+		status = IoAsyncForwardIrp(pdo, irp);
 		break;
 	}
 	IOTRACE("status: %08X", status);

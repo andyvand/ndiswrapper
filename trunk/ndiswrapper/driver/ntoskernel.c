@@ -937,7 +937,9 @@ int schedule_ntos_work_item(NTOS_WORK_FUNC func, void *arg1, void *arg2)
 	KIRQL irql;
 
 	WORKENTER("adding work: %p, %p, %p", func, arg1, arg2);
-	ntos_work_item = kmalloc(sizeof(*ntos_work_item), GFP_ATOMIC);
+	ntos_work_item = kmalloc(sizeof(*ntos_work_item),
+				 current_irql() < DISPATCH_LEVEL ?
+				 GFP_KERNEL : GFP_ATOMIC);
 	if (!ntos_work_item) {
 		ERROR("couldn't allocate memory");
 		return -ENOMEM;
@@ -1089,8 +1091,6 @@ wstdcall void WIN_FUNC(ExInitializeNPagedLookasideList,7)
 	lookaside->maxdepth = 256;
 	lookaside->pool_type = NonPagedPool;
 
-	/* alloc and free functions are called by driver directly (as
-	 * Windows functions), except in ExDeleteNPagedLookasideList */
 	if (alloc_func)
 		lookaside->alloc_func = alloc_func;
 	else
@@ -1103,7 +1103,6 @@ wstdcall void WIN_FUNC(ExInitializeNPagedLookasideList,7)
 			WIN_FUNC_PTR(ExFreePool,1);
 
 #ifndef CONFIG_X86_64
-	DBGTRACE3("lock: %p", &lookaside->obsolete);
 	nt_spin_lock_init(&lookaside->obsolete);
 #endif
 	TRACEEXIT3(return);
@@ -1113,18 +1112,10 @@ wstdcall void WIN_FUNC(ExDeleteNPagedLookasideList,1)
 	(struct npaged_lookaside_list *lookaside)
 {
 	struct nt_slist *entry;
-	KIRQL irql;
 
 	TRACEENTER3("lookaside = %p", lookaside);
-	irql = raise_irql(DISPATCH_LEVEL);
-	while ((entry = ExpInterlockedPopEntrySList(&lookaside->head))) {
-		if (lookaside->free_func == (LOOKASIDE_FREE_FUNC *)
-		    WIN_FUNC_PTR(ExFreePool,1))
-			ExFreePool(entry);
-		else
-			LIN2WIN1(lookaside->free_func, entry);
-	}
-	lower_irql(irql);
+	while ((entry = ExpInterlockedPopEntrySList(&lookaside->head)))
+		LIN2WIN1(lookaside->free_func, entry);
 	TRACEEXIT3(return);
 }
 
