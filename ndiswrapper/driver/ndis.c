@@ -2162,15 +2162,9 @@ wstdcall void NdisMSendComplete(struct ndis_miniport_block *nmb,
 {
 	struct wrap_ndis_device *wnd = nmb->wnd;
 	TRACEENTER4("%p, %08X", packet, status);
-	if (deserialized_driver(wnd)) {
-		/* 64-bit RNDIS driver for XP gives a packet that was
-		 * returned earlier, which would've been already
-		 * freed, so don't free it again */
-		if (status == NDIS_STATUS_INVALID_PACKET)
-			WARNING("invalid packet: %p", packet);
-		else
-			free_tx_packet(wnd, packet, status);
-	} else {
+	if (deserialized_driver(wnd))
+		free_tx_packet(wnd, packet, status);
+	else {
 		struct ndis_packet_oob_data *oob_data;
 		NDIS_STATUS pkt_status;
 		TRACEENTER3("%p, %08x", packet, status);

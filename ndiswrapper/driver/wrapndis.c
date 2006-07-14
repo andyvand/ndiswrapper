@@ -529,12 +529,6 @@ void free_tx_packet(struct wrap_ndis_device *wnd, struct ndis_packet *packet,
 	struct sk_buff *skb;
 
 	TRACEENTER3("%p, %08X", packet, status);
-	oob_data = NDIS_PACKET_OOB_DATA(packet);
-	skb = xchg(&oob_data->skb, NULL);
-	if (!skb) {
-		ERROR("invalid packet %p", packet);
-		return;
-	}
 	irql = nt_spin_lock_irql(&wnd->tx_stats_lock, DISPATCH_LEVEL);
 	if (status == NDIS_STATUS_SUCCESS) {
 		wnd->stats.tx_bytes += packet->private.len;
@@ -544,6 +538,7 @@ void free_tx_packet(struct wrap_ndis_device *wnd, struct ndis_packet *packet,
 		wnd->stats.tx_dropped++;
 	}
 	nt_spin_unlock_irql(&wnd->tx_stats_lock, irql);
+	oob_data = NDIS_PACKET_OOB_DATA(packet);
 	if (wnd->use_sg_dma)
 		PCI_DMA_UNMAP_SINGLE(wnd->wd->pci.pdev,
 				     oob_data->ndis_sg_element.address,
@@ -552,6 +547,7 @@ void free_tx_packet(struct wrap_ndis_device *wnd, struct ndis_packet *packet,
 	buffer = packet->private.buffer_head;
 	DBGTRACE3("freeing buffer %p", buffer);
 	NdisFreeBuffer(buffer);
+	skb = oob_data->skb;
 	dev_kfree_skb_any(skb);
 	DBGTRACE3("freeing packet %p", packet);
 	NdisFreePacket(packet);
