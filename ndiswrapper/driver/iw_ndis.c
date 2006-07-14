@@ -599,10 +599,9 @@ int get_ap_address(struct wrap_ndis_device *wnd, mac_address ap_addr)
 {
 	NDIS_STATUS res;
 
-	TRACEENTER2("%d", wnd->link_status);
 	res = NDIS_STATUS_ADAPTER_NOT_READY;
 	/* this OID is valid only when associated */
-	if (wnd->link_status)
+	if (netif_carrier_ok(wnd->net_dev))
 		res = miniport_query_info(wnd, OID_802_11_BSSID, ap_addr,
 					  ETH_ALEN);
 	DBGTRACE2(MACSTRSEP, MAC2STR(ap_addr));

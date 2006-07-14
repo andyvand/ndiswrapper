@@ -145,14 +145,14 @@ static int check_nt_hdr(IMAGE_NT_HEADERS *nt_hdr)
 	/* Make sure Image is PE32 or PE32+ */
 #ifdef CONFIG_X86_64
 	if (opt_hdr->Magic != IMAGE_NT_OPTIONAL_HDR64_MAGIC) {
-		ERROR("Windows driver is not 64-bit; bad magic: %04X",
-		      opt_hdr->Magic);
+		ERROR("kernel is 64-bit, but Windows driver is not 64-bit;"
+		      "bad magic: %04X", opt_hdr->Magic);
 		return -EINVAL;
 	}
 #else
 	if (opt_hdr->Magic != IMAGE_NT_OPTIONAL_HDR32_MAGIC) {
-		ERROR("Windows driver is not 32-bit; bad magic: %04X",
-		      opt_hdr->Magic);
+		ERROR("kernel is 32-bit, but Windows driver is not 32-bit;"
+		      "bad magic: %04X", opt_hdr->Magic);
 		return -EINVAL;
 	}
 #endif
@@ -160,13 +160,13 @@ static int check_nt_hdr(IMAGE_NT_HEADERS *nt_hdr)
 	/* Validate the image for the current architecture. */
 #ifdef CONFIG_X86_64
 	if (nt_hdr->FileHeader.Machine != IMAGE_FILE_MACHINE_AMD64) {
-		ERROR("Windows driver is not 64-bit;"
+		ERROR("kernel is 64-bit, but Windows driver is not 64-bit;"
 		      " (PE signature is %04X)", nt_hdr->FileHeader.Machine);
 		return -EINVAL;
 	}
 #else
 	if (nt_hdr->FileHeader.Machine != IMAGE_FILE_MACHINE_I386) {
-		ERROR("Windows driver is not 32-bit;"
+		ERROR("kernel is 32-bit, but Windows driver is not 32-bit;"
 		      " (PE signature is %04X)", nt_hdr->FileHeader.Machine);
 		return -EINVAL;
 	}
