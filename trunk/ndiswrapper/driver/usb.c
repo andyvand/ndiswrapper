@@ -814,10 +814,8 @@ static USBD_STATUS wrap_reset_pipe(struct usb_device *udev, struct irp *irp)
 	}
 	USBTRACE("endpoint: %d, pipe: 0x%x", ep, pipe1);
 	ret = usb_clear_halt(udev, pipe1);
-	if (ret) {
+	if (ret)
 		USBTRACE("resetting pipe %d failed: %d", pipe_type, ret);
-		return wrap_urb_status(ret);
-	}
 	if (pipe2 != pipe1) {
 		USBTRACE("endpoint: %d, pipe: 0x%x", ep, pipe2);
 		ret = usb_clear_halt(udev, pipe2);
@@ -912,7 +910,7 @@ static USBD_STATUS wrap_select_configuration(struct wrap_device *wd,
 					     union nt_urb *nt_urb,
 					     struct irp *irp)
 {
-	int n, ret;
+	int i, ret;
 	struct usbd_select_configuration *sel_conf;
 	struct usb_device *udev;
 	struct usbd_interface_information *intf;
@@ -923,33 +921,16 @@ static USBD_STATUS wrap_select_configuration(struct wrap_device *wd,
 	sel_conf = &nt_urb->select_conf;
 	config = sel_conf->config;
 	if (config == NULL) {
-		/* TODO: set to unconfigured state (configuration 0):
-		 * is this correctt? */
-#if 0
-		ret = usb_control_msg(udev, usb_sndctrlpipe(udev, 0),
-				      USB_REQ_SET_CONFIGURATION, 0,
-				      0, 0, NULL, 0, USB_CTRL_SET_TIMEOUT);
-		ret = usb_reset_configuration(udev);
-		usb_disable_device(udev, 0);
-#endif
 		kill_all_urbs(wd, 1);
-		ret = usb_control_msg(udev, usb_sndctrlpipe(udev, 0),
-				      USB_REQ_SET_CONFIGURATION, 0,
-				      0, 0, NULL, 0, USB_CTRL_SET_TIMEOUT);
-		USBTRACE("ret: %d", ret);
-#if 0
-		if (ret < 0)
-			return wrap_urb_status(ret);
-		else
-#endif
-			return USBD_STATUS_SUCCESS;
+		ret = usb_reset_configuration(udev);
+		return wrap_urb_status(ret);
 	}
 
 	USBTRACE("conf: %d, type: %d, length: %d, numif: %d, attr: %08x",
 		 config->bConfigurationValue, config->bDescriptorType,
 		 config->wTotalLength, config->bNumInterfaces,
 		 config->bmAttributes);
-
+#if 0
 	ret = usb_control_msg(udev, usb_sndctrlpipe(udev, 0),
 			      USB_REQ_SET_CONFIGURATION, 0,
 			      config->bConfigurationValue, 0,
@@ -958,28 +939,26 @@ static USBD_STATUS wrap_select_configuration(struct wrap_device *wd,
 		ERROR("ret: %d", ret);
 		return wrap_urb_status(ret);
 	}
-
+#endif
+	sel_conf->handle = udev->actconfig;
 	intf = &sel_conf->intf;
-	for (n = 0; n < config->bNumInterfaces && intf->bLength > 0;
-	     n++, intf = (((void *)intf) + intf->bLength)) {
+	for (i = 0; i < config->bNumInterfaces && intf->bLength > 0;
+	     i++, intf = (((void *)intf) + intf->bLength)) {
 
 		USBTRACE("intf: %d, alt setting: %d",
 			 intf->bInterfaceNumber, intf->bAlternateSetting);
-#if 0
 		ret = usb_set_interface(udev, intf->bInterfaceNumber,
 					intf->bAlternateSetting);
 		if (ret < 0) {
 			ERROR("failed with %d", ret);
 			return wrap_urb_status(ret);
 		}
-#endif
 		usb_intf = usb_ifnum_to_if(udev, intf->bInterfaceNumber);
 		if (!usb_intf) {
 			ERROR("couldn't obtain ifnum");
 			return USBD_STATUS_REQUEST_FAILED;
 		}
 		USBTRACE("intf: %p, num ep: %d", intf, intf->bNumEndpoints);
-
 		set_intf_pipe_info(wd, usb_intf, intf);
 	}
 	return USBD_STATUS_SUCCESS;
@@ -1010,9 +989,7 @@ static USBD_STATUS wrap_select_interface(struct wrap_device *wd,
 		ERROR("couldn't get interface information");
 		return USBD_STATUS_REQUEST_FAILED;
 	}
-	wd->usb.intf = usb_intf;
-	USBTRACE("intf: %p, num ep: %d", intf, intf->bNumEndpoints);
-
+	USBTRACE("intf: %p, num ep: %d", usb_intf, intf->bNumEndpoints);
 	set_intf_pipe_info(wd, usb_intf, intf);
 	return USBD_STATUS_SUCCESS;
 }
