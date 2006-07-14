@@ -930,7 +930,7 @@ static USBD_STATUS wrap_select_configuration(struct wrap_device *wd,
 		 config->bConfigurationValue, config->bDescriptorType,
 		 config->wTotalLength, config->bNumInterfaces,
 		 config->bmAttributes);
-#if 0
+#if 1
 	ret = usb_control_msg(udev, usb_sndctrlpipe(udev, 0),
 			      USB_REQ_SET_CONFIGURATION, 0,
 			      config->bConfigurationValue, 0,
