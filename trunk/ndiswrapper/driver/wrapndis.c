@@ -1014,12 +1014,13 @@ static void link_status_handler(struct wrap_ndis_device *wnd)
 	TRACEENTER2("link: %d", netif_carrier_ok(wnd->net_dev));
 	if (wnd->physical_medium != NdisPhysicalMediumWirelessLan)
 		TRACEEXIT2(return);
+#ifndef CONFIG_NET_RADIO
+	TRACEEXIT2(return);
+#endif
 	if (!netif_carrier_ok(wnd->net_dev)) {
-#ifdef CONFIG_NET_RADIO
 		memset(&wrqu, 0, sizeof(wrqu));
 		wrqu.ap_addr.sa_family = ARPHRD_ETHER;
 		wireless_send_event(wnd->net_dev, SIOCGIWAP, &wrqu, NULL);
-#endif
 		TRACEEXIT2(return);
 	}
 	ndis_assoc_info = kmalloc(assoc_size, GFP_KERNEL);
@@ -1037,7 +1038,6 @@ static void link_status_handler(struct wrap_ndis_device *wnd)
 		TRACEEXIT2(return);
 	}
 
-#ifdef CONFIG_NET_RADIO
 #if WIRELESS_EXT > 17
 	memset(&wrqu, 0, sizeof(wrqu));
 	wrqu.data.length = ndis_assoc_info->req_ie_length;
@@ -1090,7 +1090,6 @@ static void link_status_handler(struct wrap_ndis_device *wnd)
 	get_ap_address(wnd, (char *)&wrqu.ap_addr.sa_data);
 	wrqu.ap_addr.sa_family = ARPHRD_ETHER;
 	wireless_send_event(wnd->net_dev, SIOCGIWAP, &wrqu, NULL);
-#endif
 	DBGTRACE2(MACSTRSEP, MAC2STR(wrqu.ap_addr.sa_data));
 	TRACEEXIT2(return);
 }
