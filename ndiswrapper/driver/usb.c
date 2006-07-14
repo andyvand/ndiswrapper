@@ -794,7 +794,6 @@ static USBD_STATUS wrap_reset_pipe(struct usb_device *udev, struct irp *irp)
 	nt_urb = URB_FROM_IRP(irp);
 	pipe_handle = nt_urb->pipe_req.pipe_handle;
 	ep = pipe_handle->bEndpointAddress;
-	USBTRACE("irp: %p, ep: 0x%x", irp, ep);
 	/* TODO: not clear if both directions should be cleared? */
 	pipe_type = pipe_handle->bmAttributes & USB_ENDPOINT_XFERTYPE_MASK;
 	if (pipe_type == USB_ENDPOINT_XFER_BULK) {
@@ -813,12 +812,14 @@ static USBD_STATUS wrap_reset_pipe(struct usb_device *udev, struct irp *irp)
 		WARNING("invalid pipe type %d", pipe_type);
 		return USBD_STATUS_INVALID_PIPE_HANDLE;
 	}
+	USBTRACE("endpoint: %d, pipe: 0x%x", ep, pipe1);
 	ret = usb_clear_halt(udev, pipe1);
 	if (ret) {
 		USBTRACE("resetting pipe %d failed: %d", pipe_type, ret);
 		return wrap_urb_status(ret);
 	}
 	if (pipe2 != pipe1) {
+		USBTRACE("endpoint: %d, pipe: 0x%x", ep, pipe2);
 		ret = usb_clear_halt(udev, pipe2);
 		if (ret)
 			USBTRACE("resetting pipe %d failed: %d",
@@ -862,17 +863,15 @@ static void set_intf_pipe_info(struct wrap_device *wd,
 			       struct usb_interface *usb_intf,
 			       struct usbd_interface_information *intf)
 {
-	int i, pipe_num;
+	int i;
 	struct usb_endpoint_descriptor *ep;
 	struct usbd_pipe_information *pipe;
 
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
-	for (i = 0; i < CUR_ALT_SETTING(usb_intf)->desc.bNumEndpoints;
-	     i++, pipe_num++) {
+	for (i = 0; i < CUR_ALT_SETTING(usb_intf)->desc.bNumEndpoints; i++) {
 		ep = &(CUR_ALT_SETTING(usb_intf)->endpoint[i]).desc;
 #else
-	for (i = 0; i < CUR_ALT_SETTING(usb_intf).bNumEndpoints;
-	     i++, pipe_num++) {
+	for (i = 0; i < CUR_ALT_SETTING(usb_intf).bNumEndpoints; i++) {
 		ep = &((CUR_ALT_SETTING(usb_intf)).endpoint[i]);
 #endif
 		if (i >= intf->bNumEndpoints) {

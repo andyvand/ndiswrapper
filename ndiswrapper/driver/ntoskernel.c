@@ -785,7 +785,7 @@ wstdcall BOOLEAN WIN_FUNC(KeCancelTimer,1)
 	 * won't be re-armed after deleting */
 	irql = nt_spin_lock_irql(&timer_lock, DISPATCH_LEVEL);
 	wrap_timer->repeat = 0;
-	if (del_timer_sync(&wrap_timer->timer))
+	if (del_timer(&wrap_timer->timer))
 		canceled = TRUE;
 	else
 		canceled = FALSE;
