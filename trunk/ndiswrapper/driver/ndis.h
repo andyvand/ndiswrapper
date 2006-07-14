@@ -542,7 +542,7 @@ enum ndis_media_stream_mode {
 };
 
 enum wrapper_work {
-	LINK_STATUS_CHANGED, SET_MULTICAST_LIST, COLLECT_STATS, HANGCHECK,
+	LINK_STATUS_CHANGED, SET_MULTICAST_LIST, COLLECT_STATS, MINIPORT_RESET,
 	/* do not work when this is set */
 	SHUTDOWN
 };
@@ -823,7 +823,6 @@ struct wrap_ndis_device {
 	struct timer_list hangcheck_timer;
 	struct timer_list stats_timer;
 	unsigned long scan_timestamp;
-	unsigned char link_status;
 	struct encr_info encr_info;
 	char nick[IW_ESSID_MAX_SIZE+1];
 	struct ndis_essid essid;

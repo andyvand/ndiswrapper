@@ -467,16 +467,14 @@ struct wrap_export {
 	win_func func;
 };
 
-#define stringify2(a, b) a ## b
-
 #ifdef CONFIG_X86_64
 #define WIN_SYMBOL(name, argc)						\
-	{#name, (win_func) stringify2(x86_64_ ## name, _ ## argc)}
+	{#name, (win_func) x86_64_ ## name ## _ ## argc}
 #define WIN_WIN_SYMBOL(name, argc)					\
-	{#name, (win_func) stringify2(x86_64__win_ ## name, _ ## argc)}
+	{#name, (win_func) x86_64__win_ ## name ## _ ## argc}
 #define WIN_FUNC_PTR_DECL(name, argc)				\
-	typeof(name) stringify2(x86_64_ ## name, _ ## argc)
-#define WIN_FUNC_PTR(name, argc) stringify2(x86_64_ ## name, _ ## argc)
+	typeof(name) x86_64_ ## name ## _ ## argc
+#define WIN_FUNC_PTR(name, argc) x86_64_ ## name ## _ ## argc
 #else
 #define WIN_SYMBOL(name, argc) {#name, (win_func)name}
 #define WIN_WIN_SYMBOL(name, argc) {#name, (win_func)_win_ ## name}

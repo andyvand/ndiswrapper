@@ -260,10 +260,8 @@ win2lin12:
 	win2lin_epilog
 	ret
 
-#define stringify2(a, b) a ## b
-
 #define win2lin(name, argc)			\
-ENTRY(stringify2(x86_64_ ## name,  _ ##argc))	\
+ENTRY(x86_64_ ## name ##  _ ## argc)		\
 	lea	name(%rip), %rax ; 		\
 	jmp	win2lin ## argc
 
