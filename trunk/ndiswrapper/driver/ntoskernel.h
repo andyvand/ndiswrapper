@@ -460,25 +460,29 @@ static inline u64 ticks_1601(void)
 	return wrap_ticks_to_boot + (u64)jiffies * TICKSPERSEC / HZ;
 }
 
-typedef void (*win_func)(void);
+typedef void (*generic_func)(void);
 
 struct wrap_export {
 	const char *name;
-	win_func func;
+	generic_func func;
 };
 
 #ifdef CONFIG_X86_64
+
 #define WIN_SYMBOL(name, argc)						\
-	{#name, (win_func) x86_64_ ## name ## _ ## argc}
+	{#name, (generic_func) x86_64_ ## name ## _ ## argc}
 #define WIN_WIN_SYMBOL(name, argc)					\
-	{#name, (win_func) x86_64__win_ ## name ## _ ## argc}
-#define WIN_FUNC_PTR_DECL(name, argc)				\
-	typeof(name) x86_64_ ## name ## _ ## argc
+	{#name, (generic_func) x86_64__win_ ## name ## _ ## argc}
+#define WIN_FUNC_DECL(name, argc)			\
+	typeof(name) x86_64_ ## name ## _ ## argc ;
+
 #define WIN_FUNC_PTR(name, argc) x86_64_ ## name ## _ ## argc
+
 #else
-#define WIN_SYMBOL(name, argc) {#name, (win_func)name}
-#define WIN_WIN_SYMBOL(name, argc) {#name, (win_func)_win_ ## name}
-#define WIN_FUNC_PTR_DECL(name, argc)
+
+#define WIN_SYMBOL(name, argc) {#name, (generic_func)name}
+#define WIN_WIN_SYMBOL(name, argc) {#name, (generic_func)_win_ ## name}
+#define WIN_FUNC_DECL(name, argc)
 #define WIN_FUNC_PTR(name, argc) name
 #endif
 

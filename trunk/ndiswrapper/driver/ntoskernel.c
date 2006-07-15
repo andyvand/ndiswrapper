@@ -1040,15 +1040,16 @@ wstdcall void *WIN_FUNC(ExAllocatePoolWithTag,3)
 	DBGTRACE4("addr: %p, %lu", addr, size);
 	TRACEEXIT4(return addr);
 }
+WIN_FUNC_DECL(ExAllocatePoolWithTag,3)
 
 wstdcall void vfree_nonatomic(void *addr, void *ctx)
 {
 	vfree(addr);
 }
-WIN_FUNC_PTR_DECL(vfree_nonatomic,2);
+WIN_FUNC_DECL(vfree_nonatomic,2)
 
-wstdcall void WIN_FUNC(ExFreePool,1)
-	(void *addr)
+wstdcall void WIN_FUNC(ExFreePoolWithTag,2)
+	(void *addr, ULONG tag)
 {
 	DBGTRACE4("addr: %p", addr);
 	if ((unsigned long)addr < VMALLOC_START ||
@@ -1064,14 +1065,12 @@ wstdcall void WIN_FUNC(ExFreePool,1)
 	TRACEEXIT4(return);
 }
 
-wstdcall void WIN_FUNC(ExFreePoolWithTag,2)
-	(void *addr, ULONG tag)
+wstdcall void WIN_FUNC(ExFreePool,1)
+	(void *addr)
 {
-	ExFreePool(addr);
+	ExFreePoolWithTag(addr, 0);
 }
-
-WIN_FUNC_PTR_DECL(ExAllocatePoolWithTag,3);
-WIN_FUNC_PTR_DECL(ExFreePool,1);
+WIN_FUNC_DECL(ExFreePool,1)
 
 wstdcall void WIN_FUNC(ExInitializeNPagedLookasideList,7)
 	(struct npaged_lookaside_list *lookaside,

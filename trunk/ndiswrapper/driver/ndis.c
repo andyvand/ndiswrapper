@@ -947,7 +947,7 @@ wstdcall void alloc_shared_memory_async(void *arg1, void *arg2)
 	serialize_unlock_irql(wnd, irql);
 	kfree(alloc_shared_mem);
 }
-WIN_FUNC_PTR_DECL(alloc_shared_memory_async,2);
+WIN_FUNC_DECL(alloc_shared_memory_async,2)
 
 wstdcall NDIS_STATUS WIN_FUNC(NdisMAllocateSharedMemoryAsync,4)
 	(struct ndis_miniport_block *nmb, ULONG size, BOOLEAN cached,
@@ -1675,7 +1675,7 @@ wstdcall void wrap_miniport_timer(struct kdpc *kdpc, void *ctx, void *arg1,
 		serialize_unlock(nmb->wnd);
 	TRACEEXIT5(return);
 }
-WIN_FUNC_PTR_DECL(wrap_miniport_timer,4);
+WIN_FUNC_DECL(wrap_miniport_timer,4)
 
 wstdcall void WIN_FUNC(NdisMInitializeTimer,4)
 	(struct ndis_miniport_timer *timer, struct ndis_miniport_block *nmb,
@@ -2064,7 +2064,7 @@ wstdcall void return_packet(void *arg1, void *arg2)
 	serialize_unlock_irql(wnd, irql);
 	TRACEEXIT4(return);
 }
-WIN_FUNC_PTR_DECL(return_packet,2);
+WIN_FUNC_DECL(return_packet,2)
 
 /* called via function pointer */
 wstdcall void NdisMIndicateReceivePacket(struct ndis_miniport_block *nmb,
