@@ -297,9 +297,11 @@ static int procfs_write_ndis_settings(struct file *file, const char *buf,
 			return -EINVAL;
 		p++;
 		i = simple_strtol(p, NULL, 10);
-		hangcheck_interval = i;
 		hangcheck_del(wnd);
-		hangcheck_add(wnd);
+		if (i > 0) {
+			wnd->hangcheck_interval = i * HZ;
+			hangcheck_add(wnd);
+		}
 	} else if (!strcmp(setting, "suspend")) {
 		if (!p)
 			return -EINVAL;

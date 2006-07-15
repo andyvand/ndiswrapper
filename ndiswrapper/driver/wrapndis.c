@@ -31,7 +31,7 @@ static void del_stats_timer(struct wrap_ndis_device *wnd);
 static NDIS_STATUS ndis_start_device(struct wrap_ndis_device *wnd);
 static int ndis_remove_device(struct wrap_ndis_device *wnd);
 static void set_multicast_list(struct wrap_ndis_device *wnd);
-WIN_FUNC_PTR_DECL(IoPassIrpDown,2);
+WIN_FUNC_DECL(IoPassIrpDown,2)
 
 static inline int ndis_wait_comm_completion(struct wrap_ndis_device *wnd)
 {
@@ -1334,7 +1334,7 @@ wstdcall NTSTATUS NdisDispatchDeviceControl(struct device_object *fdo,
 	wnd = fdo->reserved;
 	return IoPassIrpDown(wnd->nmb->pdo, irp);
 }
-WIN_FUNC_PTR_DECL(NdisDispatchDeviceControl,2);
+WIN_FUNC_DECL(NdisDispatchDeviceControl,2)
 
 wstdcall NTSTATUS NdisDispatchPower(struct device_object *fdo, struct irp *irp)
 {
@@ -1404,7 +1404,7 @@ wstdcall NTSTATUS NdisDispatchPower(struct device_object *fdo, struct irp *irp)
 	}
 	IOEXIT(return status);
 }
-WIN_FUNC_PTR_DECL(NdisDispatchPower,2);
+WIN_FUNC_DECL(NdisDispatchPower,2)
 
 wstdcall NTSTATUS NdisDispatchPnp(struct device_object *fdo, struct irp *irp)
 {
@@ -1457,7 +1457,7 @@ wstdcall NTSTATUS NdisDispatchPnp(struct device_object *fdo, struct irp *irp)
 	IOTRACE("status: %08X", status);
 	IOEXIT(return status);
 }
-WIN_FUNC_PTR_DECL(NdisDispatchPnp,2);
+WIN_FUNC_DECL(NdisDispatchPnp,2)
 
 static int set_task_offload(struct wrap_ndis_device *wnd, void *buf,
 			    const int buf_size)
