@@ -1,7 +1,12 @@
+Version 1.21 2006-07-15
+=======================
+* Fix to a bug (in 1.20) that locked up when used with RT2500 with SMP.
+* RT2500 is supported with 64-bit.
+
 Version 1.20 2006-07-15
 =======================
-* Fixes to 64-bit drivers.
-* Fix to SMP kernel crash when USB device is plugged.
+* Fixes to 64-bit drivers; TI 1450 (used in AVM Fritz) is supported with 64-bit.
+* Fix to SMP kernel crash when USB device is unplugged.
 
 Version 1.19 2006-07-02
 =======================
