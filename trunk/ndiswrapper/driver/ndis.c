@@ -1670,7 +1670,7 @@ wstdcall void wrap_miniport_timer(struct kdpc *kdpc, void *ctx, void *arg1,
 	/* already called at DISPATCH_LEVEL */
 	if (!deserialized_driver(nmb->wnd))
 		serialize_lock(nmb->wnd);
-	LIN2WIN4(timer->func, NULL, timer->ctx, NULL, NULL);
+	LIN2WIN4(timer->func, kdpc, timer->ctx, kdpc->arg1, kdpc->arg2);
 	if (!deserialized_driver(nmb->wnd))
 		serialize_unlock(nmb->wnd);
 	TRACEEXIT5(return);

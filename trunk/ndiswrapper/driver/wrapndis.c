@@ -31,7 +31,6 @@ static void del_stats_timer(struct wrap_ndis_device *wnd);
 static NDIS_STATUS ndis_start_device(struct wrap_ndis_device *wnd);
 static int ndis_remove_device(struct wrap_ndis_device *wnd);
 static void set_multicast_list(struct wrap_ndis_device *wnd);
-WIN_FUNC_DECL(IoPassIrpDown,2)
 
 static inline int ndis_wait_comm_completion(struct wrap_ndis_device *wnd)
 {
@@ -526,7 +525,6 @@ void free_tx_packet(struct wrap_ndis_device *wnd, struct ndis_packet *packet,
 	ndis_buffer *buffer;
 	struct ndis_packet_oob_data *oob_data;
 	KIRQL irql;
-	struct sk_buff *skb;
 
 	TRACEENTER3("%p, %08X", packet, status);
 	irql = nt_spin_lock_irql(&wnd->tx_stats_lock, DISPATCH_LEVEL);
@@ -547,8 +545,7 @@ void free_tx_packet(struct wrap_ndis_device *wnd, struct ndis_packet *packet,
 	buffer = packet->private.buffer_head;
 	DBGTRACE3("freeing buffer %p", buffer);
 	NdisFreeBuffer(buffer);
-	skb = oob_data->skb;
-	dev_kfree_skb_any(skb);
+	dev_kfree_skb_any(oob_data->skb);
 	DBGTRACE3("freeing packet %p", packet);
 	NdisFreePacket(packet);
 	TRACEEXIT3(return);
@@ -595,12 +592,11 @@ static int miniport_tx_packets(struct wrap_ndis_device *wnd)
 			sent = n;
 		} else {
 			struct ndis_packet_oob_data *oob_data;
-			serialize_lock(wnd);
-			irql = raise_irql(DISPATCH_LEVEL);
+			irql = nt_spin_lock_irql(&wnd->nmb->lock,
+						 DISPATCH_LEVEL);
 			LIN2WIN3(miniport->send_packets, wnd->nmb->adapter_ctx,
 				 wnd->tx_array, n);
-			lower_irql(irql);
-			serialize_unlock(wnd);
+			nt_spin_unlock_irql(&wnd->nmb->lock, irql);
 			for (sent = 0; sent < n && wnd->tx_ok; sent++) {
 				NDIS_STATUS pkt_status;
 				packet = wnd->tx_array[sent];

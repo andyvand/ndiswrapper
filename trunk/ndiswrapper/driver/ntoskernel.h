@@ -746,6 +746,7 @@ struct irp *IoBuildAsynchronousFsdRequest
 NTSTATUS PoCallDriver(struct device_object *dev_obj, struct irp *irp) wstdcall;
 
 NTSTATUS IoPassIrpDown(struct device_object *dev_obj, struct irp *irp) wstdcall;
+WIN_FUNC_DECL(IoPassIrpDown,2)
 NTSTATUS IoSyncForwardIrp(struct device_object *dev_obj,
 			  struct irp *irp) wstdcall;
 NTSTATUS IoAsyncForwardIrp (struct device_object *dev_obj,
