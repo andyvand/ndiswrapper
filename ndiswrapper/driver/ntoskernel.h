@@ -475,7 +475,6 @@ struct wrap_export {
 	{#name, (generic_func) x86_64__win_ ## name ## _ ## argc}
 #define WIN_FUNC_DECL(name, argc)			\
 	typeof(name) x86_64_ ## name ## _ ## argc ;
-
 #define WIN_FUNC_PTR(name, argc) x86_64_ ## name ## _ ## argc
 
 #else
@@ -484,6 +483,7 @@ struct wrap_export {
 #define WIN_WIN_SYMBOL(name, argc) {#name, (generic_func)_win_ ## name}
 #define WIN_FUNC_DECL(name, argc)
 #define WIN_FUNC_PTR(name, argc) name
+
 #endif
 
 #define WIN_FUNC(name, argc) name
@@ -654,14 +654,14 @@ BOOLEAN wrap_set_timer(struct nt_timer *nt_timer, unsigned long expires_hz,
 
 LONG InterlockedDecrement(LONG volatile *val) wfastcall;
 LONG InterlockedIncrement(LONG volatile *val) wfastcall;
-struct nt_list *ExInterlockedInsertHeadList(struct nt_list *head,
-					    struct nt_list *entry,
-					    NT_SPIN_LOCK *lock) wfastcall;
-struct nt_list *ExInterlockedInsertTailList(struct nt_list *head,
-					    struct nt_list *entry,
-					    NT_SPIN_LOCK *lock) wfastcall;
-struct nt_list *ExInterlockedRemoveHeadList(struct nt_list *head,
-					    NT_SPIN_LOCK *lock) wfastcall;
+struct nt_list *ExInterlockedInsertHeadList
+	(struct nt_list *head, struct nt_list *entry,
+	 NT_SPIN_LOCK *lock) wfastcall;
+struct nt_list *ExInterlockedInsertTailList
+	(struct nt_list *head, struct nt_list *entry,
+	 NT_SPIN_LOCK *lock) wfastcall;
+struct nt_list *ExInterlockedRemoveHeadList
+	(struct nt_list *head, NT_SPIN_LOCK *lock) wfastcall;
 NTSTATUS IofCallDriver(struct device_object *dev_obj, struct irp *irp) wfastcall;
 KIRQL KfRaiseIrql(KIRQL newirql) wfastcall;
 void KfLowerIrql(KIRQL oldirql) wfastcall;
@@ -681,7 +681,7 @@ UCHAR READ_PORT_UCHAR(ULONG_PTR port) wstdcall;
 
 #undef ExAllocatePoolWithTag
 void *ExAllocatePoolWithTag(enum pool_type pool_type, SIZE_T size,
-				    ULONG tag) wstdcall;
+			    ULONG tag) wstdcall;
 #if defined(ALLOC_DEBUG) && ALLOC_DEBUG > 1
 #define ExAllocatePoolWithTag(pool_type, size, tag)			\
 	wrap_ExAllocatePoolWithTag(pool_type, size, tag, __FILE__, __LINE__)
@@ -721,28 +721,28 @@ NTSTATUS IoCreateSymbolicLink(struct unicode_string *link,
 void IoDeleteDevice(struct device_object *dev) wstdcall;
 void IoDetachDevice(struct device_object *topdev) wstdcall;
 struct device_object *IoGetAttachedDevice(struct device_object *dev) wstdcall;
-struct device_object *IoGetAttachedDeviceReference(
-	struct device_object *dev) wstdcall;
-NTSTATUS IoAllocateDriverObjectExtension(struct driver_object *drv_obj,
-					 void *client_id, ULONG extlen,
-					 void **ext) wstdcall;
+struct device_object *IoGetAttachedDeviceReference
+	(struct device_object *dev) wstdcall;
+NTSTATUS IoAllocateDriverObjectExtension
+	(struct driver_object *drv_obj, void *client_id, ULONG extlen,
+	 void **ext) wstdcall;
 void *IoGetDriverObjectExtension(struct driver_object *drv,
 				 void *client_id) wstdcall;
-struct device_object *IoAttachDeviceToDeviceStack(
-	struct device_object *src, struct device_object *dst) wstdcall;
+struct device_object *IoAttachDeviceToDeviceStack
+	(struct device_object *src, struct device_object *dst) wstdcall;
 void KeInitializeEvent(struct nt_event *nt_event, enum event_type type,
 		       BOOLEAN state) wstdcall;
 struct irp *IoAllocateIrp(char stack_count, BOOLEAN charge_quota) wstdcall;
 void IoFreeIrp(struct irp *irp) wstdcall;
 BOOLEAN IoCancelIrp(struct irp *irp) wstdcall;
-struct irp *IoBuildSynchronousFsdRequest(
-	ULONG major_func, struct device_object *dev_obj, void *buf,
-	ULONG length, LARGE_INTEGER *offset, struct nt_event *event,
-	struct io_status_block *status) wstdcall;
-struct irp *IoBuildAsynchronousFsdRequest(
-	ULONG major_func, struct device_object *dev_obj, void *buf,
-	ULONG length, LARGE_INTEGER *offset,
-	struct io_status_block *status) wstdcall;
+struct irp *IoBuildSynchronousFsdRequest
+	(ULONG major_func, struct device_object *dev_obj, void *buf,
+	 ULONG length, LARGE_INTEGER *offset, struct nt_event *event,
+	 struct io_status_block *status) wstdcall;
+struct irp *IoBuildAsynchronousFsdRequest
+	(ULONG major_func, struct device_object *dev_obj, void *buf,
+	 ULONG length, LARGE_INTEGER *offset,
+	 struct io_status_block *status) wstdcall;
 NTSTATUS PoCallDriver(struct device_object *dev_obj, struct irp *irp) wstdcall;
 
 NTSTATUS IoPassIrpDown(struct device_object *dev_obj, struct irp *irp) wstdcall;
@@ -763,12 +763,12 @@ void IoAcquireCancelSpinLock(KIRQL *irql) wstdcall;
 void IoReleaseCancelSpinLock(KIRQL irql) wstdcall;
 
 void RtlCopyMemory(void *dst, const void *src, SIZE_T length) wstdcall;
-NTSTATUS RtlUnicodeStringToAnsiString(struct ansi_string *dst,
-				      const struct unicode_string *src,
-				      BOOLEAN dup) wstdcall;
-NTSTATUS RtlAnsiStringToUnicodeString(struct unicode_string *dst,
-				      const struct ansi_string *src,
-				      BOOLEAN dup) wstdcall;
+NTSTATUS RtlUnicodeStringToAnsiString
+	(struct ansi_string *dst, const struct unicode_string *src,
+	 BOOLEAN dup) wstdcall;
+NTSTATUS RtlAnsiStringToUnicodeString
+	(struct unicode_string *dst, const struct ansi_string *src,
+	 BOOLEAN dup) wstdcall;
 void RtlInitAnsiString(struct ansi_string *dst, const char *src) wstdcall;
 void RtlInitString(struct ansi_string *dst, const char *src) wstdcall;
 void RtlInitUnicodeString(struct unicode_string *dest,
@@ -790,9 +790,9 @@ BOOLEAN KeSetTimer(struct nt_timer *nt_timer, LARGE_INTEGER duetime_ticks,
 BOOLEAN KeCancelTimer(struct nt_timer *nt_timer) wstdcall;
 void KeInitializeDpc(struct kdpc *kdpc, void *func, void *ctx) wstdcall;
 struct task_struct *KeGetCurrentThread(void) wstdcall;
-NTSTATUS ObReferenceObjectByHandle(void *handle, ACCESS_MASK desired_access,
-				   void *obj_type, KPROCESSOR_MODE access_mode,
-				   void **object, void *handle_info) wstdcall;
+NTSTATUS ObReferenceObjectByHandle
+	(void *handle, ACCESS_MASK desired_access, void *obj_type,
+	 KPROCESSOR_MODE access_mode, void **object, void *handle_info) wstdcall;
 
 #define MSG(level, fmt, ...)				\
 	printk(level "ndiswrapper (%s:%d): " fmt "\n",	\
