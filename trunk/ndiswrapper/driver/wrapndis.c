@@ -592,11 +592,12 @@ static int miniport_tx_packets(struct wrap_ndis_device *wnd)
 			sent = n;
 		} else {
 			struct ndis_packet_oob_data *oob_data;
-			irql = nt_spin_lock_irql(&wnd->nmb->lock,
-						 DISPATCH_LEVEL);
+			irql = raise_irql(DISPATCH_LEVEL);
+			serialize_lock(wnd);
 			LIN2WIN3(miniport->send_packets, wnd->nmb->adapter_ctx,
 				 wnd->tx_array, n);
-			nt_spin_unlock_irql(&wnd->nmb->lock, irql);
+			serialize_unlock(wnd);
+			lower_irql(irql);
 			for (sent = 0; sent < n && wnd->tx_ok; sent++) {
 				NDIS_STATUS pkt_status;
 				packet = wnd->tx_array[sent];
