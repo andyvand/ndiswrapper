@@ -931,65 +931,35 @@ do {									\
 	preempt_enable();						\
 } while (0)
 
-static inline void atomic_inc_size(char *mem, unsigned int size)
-{								
-	if (size == 1)
-		__asm__ __volatile__(				
-			LOCK_PREFIX "incb %b0\n\t"
-			: "=m" (*mem)
-			: "m" (*mem));
-	else if (size == 2)
-		__asm__ __volatile__(
-			LOCK_PREFIX "incw %w0\n\t"
-			: "=m" (*mem)
-			: "m" (*mem));
-	else if (size == 4)
-		__asm__ __volatile__(
-			LOCK_PREFIX "incl %0\n\t"
-			: "=m" (*mem)
-			: "m" (*mem));
-#ifdef CONFIG_X86_64
-	else if (size == 8)
-		__asm__ __volatile__(
-			LOCK_PREFIX "incq %q0\n\t"
-			: "=m" (*mem)
-			: "m" (*mem));
-#endif
-	else
-		ERROR("invalid size %d", size);
-}
+#define atomic_unary_op(var, size, oper)			\
+	do {							\
+		if (size == 1)					\
+			__asm__ __volatile__(			\
+				LOCK_PREFIX oper "b %b0\n\t"	\
+				: "+m" (var));			\
+		else if (size == 2)				\
+			__asm__ __volatile__(			\
+				LOCK_PREFIX oper "w %w0\n\t"	\
+				: "+m" (var));			\
+		else if (size == 4)				\
+			__asm__ __volatile__(			\
+				LOCK_PREFIX oper "l %0\n\t"	\
+				: "+m" (var));			\
+		else if (size == 8)				\
+			__asm__ __volatile__(			\
+				LOCK_PREFIX oper "q %q0\n\t"	\
+				: "+m" (var));			\
+		else						\
+			ERROR("invalid size %d", (int)size);	\
+	} while (0)
 
-#define atomic_inc(mem) atomic_inc_size((char *)mem, sizeof(*mem))
+#define atomic_inc_var_size(var, size) atomic_unary_op(var, size, "inc")
 
-static inline void atomic_dec_size(char *mem, unsigned int size)
-{								
-	if (size == 1)
-		__asm__ __volatile__(				
-			LOCK_PREFIX "decb %b0\n\t"
-			: "=m" (*mem)
-			: "m" (*mem));
-	else if (size == 2)
-		__asm__ __volatile__(
-			LOCK_PREFIX "decw %w0\n\t"
-			: "=m" (*mem)
-			: "m" (*mem));
-	else if (size == 4)
-		__asm__ __volatile__(
-			LOCK_PREFIX "decl %0\n\t"
-			: "=m" (*mem)
-			: "m" (*mem));
-#ifdef CONFIG_X86_64
-	else if (size == 8)
-		__asm__ __volatile__(
-			LOCK_PREFIX "decq %q0\n\t"
-			: "=m" (*mem)
-			: "m" (*mem));
-#endif
-	else
-		ERROR("invalid size %d", size);
-}
+#define atomic_inc_var(var) atomic_inc_var_size(var, sizeof(var))
 
-#define atomic_dec(mem) atomic_dec_size((char *)mem, sizeof(*mem))
+#define atomic_dec_var_size(var, size) atomic_unary_op(var, size, "dec")
+
+#define atomic_dec_var(var) atomic_dec_var_size(var, sizeof(var))
 
 #define pre_atomic_add(var, i)					\
 ({								\
