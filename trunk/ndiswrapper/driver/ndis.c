@@ -1626,7 +1626,7 @@ wstdcall void WIN_FUNC(NdisSend,3)
 			case NDIS_STATUS_PENDING:
 				break;
 			case NDIS_STATUS_RESOURCES:
-				atomic_dec(&wnd->tx_ok);
+				atomic_dec_var(wnd->tx_ok);
 				break;
 			case NDIS_STATUS_FAILURE:
 			default:
@@ -1646,7 +1646,7 @@ wstdcall void WIN_FUNC(NdisSend,3)
 		case NDIS_STATUS_PENDING:
 			break;
 		case NDIS_STATUS_RESOURCES:
-			atomic_dec(&wnd->tx_ok);
+			atomic_dec_var(wnd->tx_ok);
 			break;
 		case NDIS_STATUS_FAILURE:
 		default:
@@ -2185,7 +2185,7 @@ wstdcall void NdisMSendComplete(struct ndis_miniport_block *nmb,
 		 * MiniportSend(Packets), wakeup tx worker now.
 		 */
 		if (wnd->tx_ok == 0) {
-			atomic_inc(&wnd->tx_ok);
+			atomic_inc_var(wnd->tx_ok);
 			DBGTRACE3("%d, %d", wnd->tx_ring_start,
 				  wnd->tx_ring_end);
 			schedule_wrap_work(&wnd->tx_work);
@@ -2209,7 +2209,7 @@ wstdcall void NdisMSendResourcesAvailable(struct ndis_miniport_block *nmb)
 	struct wrap_ndis_device *wnd = nmb->wnd;
 	TRACEENTER3("");
 	DBGTRACE3("%d, %d", wnd->tx_ring_start, wnd->tx_ring_end);
-	atomic_inc(&wnd->tx_ok);
+	atomic_inc_var(wnd->tx_ok);
 	schedule_wrap_work(&wnd->tx_work);
 	TRACEEXIT3(return);
 }

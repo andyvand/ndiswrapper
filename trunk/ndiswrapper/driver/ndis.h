@@ -806,7 +806,7 @@ struct wrap_ndis_device {
 	struct semaphore tx_ring_mutex;
 	unsigned int max_tx_packets;
 
-	unsigned char tx_ok;
+	u8 tx_ok;
 	NT_SPIN_LOCK tx_stats_lock;
 
 	struct semaphore ndis_comm_mutex;
