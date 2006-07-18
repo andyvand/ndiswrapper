@@ -108,7 +108,7 @@ divdi3.o: divdi3.c longlong.h
 
 hal.o: hal.c ntoskernel.h
 
-iw_ndis..o:	iw_ndis.c iw_ndis.h wrapndis.h
+iw_ndis.o: iw_ndis.c iw_ndis.h wrapndis.h
 
 loader.o: loader.c loader.h ndis.h wrapndis.h
 
@@ -169,7 +169,7 @@ endif
 			   win2lin(\1, \2)/p'   \
 			-e 's/.*WIN_FUNC_PTR(\([^\,]\+\) *\, *\([0-9]\+\)).*/\
 			   win2lin(\1, \2)/p'   \
-		   $$file | sed -e 's/[ \t]\+//' | sort -u; \
+		   $$file | sed -e 's/[ \t	]\+//' | sort -u; \
 	done > $@
 else
 x86_64_stubs:
@@ -187,7 +187,7 @@ endif
 			   WIN_FUNC_DECL(\1, \2)/p' \
 			-e 's/.*WIN_FUNC_PTR(\([^\,]\+\) *\, *\([0-9]\+\)).*/\
 			   WIN_FUNC_DECL(\1, \2)/p' \
-		   $< | sed -e 's/[ \t]\+//' | sort -u; \
+		   $< | sed -e 's/[ \t	]\+//' | sort -u; \
 		echo "#endif"; \
 		echo "struct wrap_export $(basename $<)_exports[] = {";\
 		sed -n \
@@ -197,7 +197,7 @@ endif
 				WIN_SYMBOL(\1,\2),/p' \
 			-e 's/.*WIN_SYMBOL_MAP(\("[^"]\+"\)[ ,\n]\+\([^)]\+\)).*/\
 				{\1,(generic_func)\2},/p'  \
-			   $< | sed -e 's/[ \t]*/   /' | sort -u; \
+			   $< | sed -e 's/[ \t	]*/   /' | sort -u; \
 		echo "   {NULL, NULL}"; \
 		echo "};"; \
 	fi > $@
