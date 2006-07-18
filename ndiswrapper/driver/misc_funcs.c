@@ -790,6 +790,39 @@ wstdcall void WIN_FUNC(RtlFreeAnsiString,1)
 	string->buf = NULL;
 	return;
 }
+/* guid string is of the form: {XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX} */
+/* 47ef22e0-160a-11db-ac5d-0800200c9a66 */
+wstdcall NTSTATUS WIN_FUNC(RtlGUIDFromString,2)
+	(struct unicode_string *guid_string, struct guid *guid)
+{
+	struct ansi_string ansi;
+	NTSTATUS ret;
+	int i, j, k, l, m;
+	if (guid_string->length != 37 || guid_string->buf[0] != '{' ||
+	    guid_string->buf[36] != '}' || guid_string->buf[9] != '-' ||
+	    guid_string->buf[14] != '-' || guid_string->buf[19] != '-' ||
+	    guid_string->buf[24] != '-')
+		TRACEEXIT2(return STATUS_INVALID_PARAMETER);
+	ret = RtlUnicodeStringToAnsiString(&ansi, guid_string, FALSE);
+	if (ret != STATUS_SUCCESS)
+		return ret;
+	memcpy(&guid->data4, &ansi.buf[29], sizeof(guid->data3));
+	/* set end of data3 for scanf */
+	ansi.buf[29] = 0;
+	if (sscanf(&ansi.buf[1], "%x", &i) == 1 &&
+	    sscanf(&ansi.buf[10], "%x", &j) == 1 &&
+	    sscanf(&ansi.buf[15], "%x", &k) == 1 &&
+	    sscanf(&ansi.buf[20], "%x", &l) == 1 &&
+	    sscanf(&ansi.buf[25], "%x", &m) == 1) {
+		guid->data1 = (i << 16) | (j < 8) | k;
+		guid->data2 = l;
+		guid->data3 = m;
+		ret = STATUS_SUCCESS;
+	} else
+		ret = STATUS_INVALID_PARAMETER;
+	RtlFreeAnsiString(&ansi);
+	return ret;
+}
 
 wstdcall NTSTATUS WIN_FUNC(RtlQueryRegistryValues,5)
 	(ULONG relative, wchar_t *path, struct rtl_query_registry_table *tbl,

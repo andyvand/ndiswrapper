@@ -943,6 +943,33 @@ wstdcall void WIN_FUNC(IoInitializeRemoveLockEx,5)
 	UNIMPL();
 }
 
+wstdcall void *WIN_FUNC(IoAllocateErrorLogEntry,2)
+	(void *io_object, UCHAR entry_size)
+{
+	/* not implemented fully */
+	void *ret = kmalloc(sizeof(struct io_error_log_packet) + entry_size,
+			    gfp_irql());
+	DBGTRACE2("%p", ret);
+	if (ret)
+		return ret + sizeof(struct io_error_log_packet);
+	else
+		return NULL;
+}
+
+wstdcall void WIN_FUNC(IoWriteErrorLogEntry,1)
+	(void *entry)
+{
+	/* TODO: log error with codes and message */
+	ERROR("");
+}
+
+wstdcall void WIN_FUNC(IoFreeErrorLogEntry,1)
+	(void *entry)
+{
+	DBGTRACE2("%p", entry);
+	kfree(entry - sizeof(struct io_error_log_packet));
+}
+
 wstdcall NTSTATUS WIN_FUNC(IoAcquireRemoveLockEx,5)
 	(struct io_remove_lock lock, void *tag, char *file, ULONG line,
 	 ULONG lock_size)

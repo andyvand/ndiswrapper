@@ -831,6 +831,8 @@ static inline KIRQL raise_irql(KIRQL newirql)
 	return irql;
 }
 
+#define gfp_irql() (current_irql() < DISPATCH_LEVEL ? GFP_KERNEL : GFP_ATOMIC)
+
 static inline void lower_irql(KIRQL oldirql)
 {
 #ifdef DEBUG_IRQL
