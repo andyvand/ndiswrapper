@@ -1345,14 +1345,9 @@ wstdcall void WIN_FUNC(NdisAllocatePacketPoolEx,5)
 	 UINT num_descr, UINT overflowsize, UINT proto_rsvd_length)
 {
 	struct ndis_packet_pool *pool;
-	unsigned int alloc_flags;
 
 	TRACEENTER3("buffers: %d, length: %d", num_descr, proto_rsvd_length);
-	if (current_irql() < DISPATCH_LEVEL)
-		alloc_flags = GFP_KERNEL;
-	else
-		alloc_flags = GFP_ATOMIC;
-	pool = kmalloc(sizeof(*pool), alloc_flags);
+	pool = kmalloc(sizeof(*pool), gfp_irql());
 	if (!pool) {
 		*status = NDIS_STATUS_RESOURCES;
 		TRACEEXIT3(return);
@@ -1424,7 +1419,6 @@ wstdcall void WIN_FUNC(NdisAllocatePacket,3)
 	 struct ndis_packet_pool *pool)
 {
 	struct ndis_packet *ndis_packet;
-	unsigned int alloc_flags;
 	int packet_length;
 	KIRQL irql;
 
@@ -1448,11 +1442,7 @@ wstdcall void WIN_FUNC(NdisAllocatePacket,3)
 		pool->free_descr = oob_data->next;
 	} else {
 		nt_spin_unlock_irql(&pool->lock, irql);
-		if (current_irql() < DISPATCH_LEVEL)
-			alloc_flags = GFP_KERNEL;
-		else
-			alloc_flags = GFP_ATOMIC;
-		ndis_packet = kmalloc(packet_length, alloc_flags);
+		ndis_packet = kmalloc(packet_length, gfp_irql());
 		if (!ndis_packet) {
 			WARNING("couldn't allocate packet");
 			*status = NDIS_STATUS_RESOURCES;

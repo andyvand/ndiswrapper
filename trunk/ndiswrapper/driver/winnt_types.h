@@ -1442,6 +1442,22 @@ struct io_remove_lock {
 	struct nt_event remove_event;
 };
 
+struct io_error_log_packet {
+	UCHAR major_fn_code;
+	UCHAR retry_count;
+	USHORT dump_data_size;
+	USHORT nr_of_strings;
+	USHORT string_offset;
+	USHORT event_category;
+	NTSTATUS error_code;
+	ULONG unique_error_value;
+	NTSTATUS final_status;
+	ULONG sequence_number;
+	ULONG io_control_code;
+	LARGE_INTEGER device_offset;
+	ULONG dump_data[1];
+};
+
 /* some of the functions below are slightly different from DDK's
  * implementation; e.g., Insert functions return appropriate
  * pointer */

@@ -794,6 +794,12 @@ wstdcall BOOLEAN WIN_FUNC(KeCancelTimer,1)
 	TRACEEXIT5(return canceled);
 }
 
+wstdcall BOOLEAN WIN_FUNC(KeReadStateTimer,1)
+	(struct nt_timer *nt_timer)
+{
+	return nt_timer->dh.signal_state;
+}
+
 wstdcall void WIN_FUNC(KeInitializeDpc,3)
 	(struct kdpc *kdpc, void *func, void *ctx)
 {
@@ -938,9 +944,7 @@ int schedule_ntos_work_item(NTOS_WORK_FUNC func, void *arg1, void *arg2)
 	KIRQL irql;
 
 	WORKENTER("adding work: %p, %p, %p", func, arg1, arg2);
-	ntos_work_item = kmalloc(sizeof(*ntos_work_item),
-				 current_irql() < DISPATCH_LEVEL ?
-				 GFP_KERNEL : GFP_ATOMIC);
+	ntos_work_item = kmalloc(sizeof(*ntos_work_item), gfp_irql());
 	if (!ntos_work_item) {
 		ERROR("couldn't allocate memory");
 		return -ENOMEM;
@@ -1026,12 +1030,9 @@ wstdcall void *WIN_FUNC(ExAllocatePoolWithTag,3)
 
 	TRACEENTER4("pool_type: %d, size: %lu, tag: %u", pool_type,
 		    size, tag);
-	if (size <= KMALLOC_THRESHOLD) {
-		if (current_irql() < DISPATCH_LEVEL)
-			addr = kmalloc(size, GFP_KERNEL);
-		else
-			addr = kmalloc(size, GFP_ATOMIC);
-	} else {
+	if (size <= KMALLOC_THRESHOLD)
+		addr = kmalloc(size, gfp_irql());
+	else {
 		if (current_irql() < DISPATCH_LEVEL)
 			addr = vmalloc(size);
 		else
@@ -2058,13 +2059,7 @@ struct mdl *allocate_init_mdl(void *virt, ULONG length)
 	KIRQL irql;
 
 	if (mdl_size <= CACHE_MDL_SIZE) {
-		unsigned int alloc_flags;
-
-		if (current_irql() < DISPATCH_LEVEL)
-			alloc_flags = GFP_KERNEL;
-		else
-			alloc_flags = GFP_ATOMIC;
-		wrap_mdl = kmem_cache_alloc(mdl_cache, alloc_flags);
+		wrap_mdl = kmem_cache_alloc(mdl_cache, gfp_irql());
 		if (!wrap_mdl)
 			return NULL;
 		irql = nt_spin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL);
@@ -2081,7 +2076,7 @@ struct mdl *allocate_init_mdl(void *virt, ULONG length)
 	} else {
 		wrap_mdl =
 			kmalloc(sizeof(*wrap_mdl) + mdl_size - CACHE_MDL_SIZE,
-				GFP_ATOMIC);
+				gfp_irql());
 		if (!wrap_mdl)
 			return NULL;
 		mdl = (struct mdl *)wrap_mdl->mdl;
@@ -2137,14 +2132,12 @@ wstdcall void WIN_FUNC(IoBuildPartialMdl,4)
 	target->flags |= MDL_PARTIAL;
 }
 
-/* FIXME: We don't update MDL to physical page mapping, since in Linux
- * the pages are in memory anyway; if a driver treats an MDL as
- * opaque, we should be safe; otherwise, the driver may break */
 wstdcall void WIN_FUNC(MmBuildMdlForNonPagedPool,1)
 	(struct mdl *mdl)
 {
 	PFN_NUMBER *mdl_pages;
 	int i, n;
+
 	TRACEENTER4("%p", mdl);
 	/* already mapped */
 //	mdl->mappedsystemva = MmGetMdlVirtualAddress(mdl);
@@ -2294,6 +2287,7 @@ wstdcall NTSTATUS WIN_FUNC(ZwCreateFile,11)
 	struct wrap_bin_file *bin_file;
 	char *file_basename;
 	KIRQL irql;
+	NTSTATUS status;
 
 	TRACEENTER2("%p", *handle);
 	if (RtlUnicodeStringToAnsiString(&ansi, obj_attr->name, TRUE) !=
@@ -2339,14 +2333,15 @@ wstdcall NTSTATUS WIN_FUNC(ZwCreateFile,11)
 		oa->file = bin_file;
 		iosb->status = FILE_OPENED;
 		iosb->info = bin_file->size;
-		RtlFreeAnsiString(&ansi);
-		TRACEEXIT2(return STATUS_SUCCESS);
+		status = STATUS_SUCCESS;
 	} else {
+		/* TODO: allocate file */
 		iosb->status = FILE_DOES_NOT_EXIST;
 		iosb->info = 0;
-		RtlFreeAnsiString(&ansi);
-		TRACEEXIT2(return STATUS_FAILURE);
+		status = STATUS_FAILURE;
 	}
+	RtlFreeAnsiString(&ansi);
+	TRACEEXIT2(return status);
 }
 
 wstdcall NTSTATUS WIN_FUNC(ZwReadFile,9)
@@ -2378,6 +2373,29 @@ wstdcall NTSTATUS WIN_FUNC(ZwReadFile,9)
 	memcpy(buffer, ((void *)file->data) + offset, count);
 	iosb->status = STATUS_SUCCESS;
 	iosb->info = count;
+	TRACEEXIT2(return STATUS_SUCCESS);
+}
+
+wstdcall NTSTATUS WIN_FUNC(ZwWriteile,9)
+	(void *handle, struct nt_event *event, void *apc_routine,
+	 void *apc_context, struct io_status_block *iosb, void *buffer,
+	 ULONG length, LARGE_INTEGER *byte_offset, ULONG *key)
+{
+	struct object_attr *oa;
+	struct common_object_header *coh;
+	struct wrap_bin_file *file;
+
+	DBGTRACE2("%p", handle);
+	coh = handle;
+	if (coh->type != OBJECT_TYPE_FILE) {
+		ERROR("handle %p is not for a file: %d", handle, coh->type);
+		TRACEEXIT2(return STATUS_FAILURE);
+	}
+	oa = HANDLE_TO_OBJECT(coh);
+	file = oa->file;
+	DBGTRACE2("file: %s (%d), %d", file->name, file->size, length);
+	iosb->status = STATUS_SUCCESS;
+	iosb->info = length;
 	TRACEEXIT2(return STATUS_SUCCESS);
 }
 
@@ -2567,7 +2585,8 @@ wstdcall void WIN_FUNC(ExSystemTimeToLocalTime,2)
 wstdcall ULONG WIN_FUNC(ExSetTimerResolution,2)
 	(ULONG time, BOOLEAN set)
 {
-	/* yet another "innovation"! */
+	/* why a driver should change system wide timer resolution is
+	 * beyond me */
 	return time;
 }
 
