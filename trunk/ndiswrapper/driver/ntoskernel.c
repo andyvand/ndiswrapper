@@ -586,9 +586,9 @@ wfastcall void WIN_FUNC(ExInterlockedAddLargeStatistic,2)
 #ifdef CONFIG_X86_64
 	__asm__ __volatile__(
 		"\n"
-		LOCK_PREFIX "add %0, %1\n\t"
-		:
-		: "r" (n), "m" (*plint)
+		LOCK_PREFIX "add %1, %0\n\t"
+		: "+m" (*plint)
+		: "r" (n)
 		: "memory");
 #else
 	__asm__ __volatile__(
@@ -834,7 +834,8 @@ static void kdpc_worker(void *data)
 	}
 }
 
-wstdcall void KeFlushQueuedDpcs(void)
+wstdcall void WIN_FUNC(KeFlushQueuedDpcs,0)
+	(void)
 {
 #ifdef KDPC_TASKLET
 	kdpc_worker(0);
