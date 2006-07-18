@@ -549,6 +549,8 @@ struct custom_ext {
 	void *client_id;
 };
 
+struct wrap_bin_file;
+
 struct file_object {
 	CSHORT type;
 	CSHORT size;
@@ -559,7 +561,10 @@ struct file_object {
 	void *section_object_pointer;
 	void *private_cache_map;
 	NTSTATUS final_status;
-	struct file_object *related_file_object;
+	union {
+		struct file_object *related_file_object;
+		struct wrap_bin_file *wrap_bin_file;
+	};
 	BOOLEAN lock_operation;
 	BOOLEAN delete_pending;
 	BOOLEAN read_access;
@@ -569,7 +574,7 @@ struct file_object {
 	BOOLEAN shared_write;
 	BOOLEAN shared_delete;
 	ULONG flags;
-	struct unicode_string file_name;
+	struct unicode_string name;
 	LARGE_INTEGER current_byte_offset;
 	ULONG waiters;
 	ULONG busy;
@@ -1134,10 +1139,7 @@ struct object_attr {
 	void *root_dir;
 	struct unicode_string *name;
 	ULONG attr;
-	union {
-		void *security_descriptor;
-		void *file;
-	};
+	void *security_descriptor;
 	void *security_qos;
 };
 
