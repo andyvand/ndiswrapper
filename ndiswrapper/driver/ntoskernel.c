@@ -2276,13 +2276,13 @@ wfastcall void WIN_FUNC(ObfDereferenceObject,1)
 }
 
 wstdcall NTSTATUS WIN_FUNC(ZwCreateFile,11)
-	(void **handle, ULONG access_mask, struct object_attr *obj_attr,
+	(void **handle, ACCESS_MASK access_mask, struct object_attr *obj_attr,
 	 struct io_status_block *iosb, LARGE_INTEGER *size,
 	 ULONG file_attr, ULONG share_access, ULONG create_disposition,
 	 ULONG create_options, void *ea_buffer, ULONG ea_length)
 {
 	struct common_object_header *header;
-	struct object_attr *oa;
+	struct file_object *fo;
 	struct ansi_string ansi;
 	struct wrap_bin_file *bin_file;
 	char *file_basename;
@@ -2299,10 +2299,10 @@ wstdcall NTSTATUS WIN_FUNC(ZwCreateFile,11)
 	nt_list_for_each_entry(header, &object_list, list) {
 		if (header->type != OBJECT_TYPE_FILE)
 			continue;
-		oa = HEADER_TO_OBJECT(header);
-		if (!RtlCompareUnicodeString(oa->name, obj_attr->name,
+		fo = HEADER_TO_OBJECT(header);
+		if (!RtlCompareUnicodeString(&fo->name, obj_attr->name,
 					     FALSE)) {
-			bin_file = oa->file;
+			bin_file = fo->wrap_bin_file;
 			*handle = header;
 			iosb->status = FILE_OPENED;
 			iosb->info = bin_file->size;
@@ -2312,15 +2312,15 @@ wstdcall NTSTATUS WIN_FUNC(ZwCreateFile,11)
 	}
 	nt_spin_unlock_irql(&ntoskernel_lock, irql);
 
-	oa = allocate_object(sizeof(struct object_attr), OBJECT_TYPE_FILE,
+	fo = allocate_object(sizeof(struct file_object), OBJECT_TYPE_FILE,
 			     ansi.buf);
-	if (!oa) {
+	if (!fo) {
 		iosb->status = FILE_DOES_NOT_EXIST;
 		iosb->info = 0;
 		RtlFreeAnsiString(&ansi);
 		TRACEEXIT2(return STATUS_FAILURE);
 	}
-	*handle = OBJECT_TO_HEADER(oa);
+	*handle = OBJECT_TO_HEADER(fo);
 	DBGTRACE2("handle: %p", *handle);
 	file_basename = strrchr(ansi.buf, '\\');
 	if (file_basename)
@@ -2330,9 +2330,13 @@ wstdcall NTSTATUS WIN_FUNC(ZwCreateFile,11)
 	DBGTRACE2("file_basename: '%s'", file_basename);
 	bin_file = get_bin_file(file_basename);
 	if (bin_file) {
-		oa->file = bin_file;
+		fo->wrap_bin_file = bin_file;
 		iosb->status = FILE_OPENED;
 		iosb->info = bin_file->size;
+		if (access_mask & FILE_READ_DATA)
+			fo->read_access = TRUE;
+		if (access_mask & FILE_WRITE_DATA)
+			fo->write_access = TRUE;
 		status = STATUS_SUCCESS;
 	} else {
 		/* TODO: allocate file */
@@ -2349,7 +2353,7 @@ wstdcall NTSTATUS WIN_FUNC(ZwReadFile,9)
 	 void *apc_context, struct io_status_block *iosb, void *buffer,
 	 ULONG length, LARGE_INTEGER *byte_offset, ULONG *key)
 {
-	struct object_attr *oa;
+	struct file_object *fo;
 	struct common_object_header *coh;
 	ULONG count;
 	size_t offset;
@@ -2361,8 +2365,8 @@ wstdcall NTSTATUS WIN_FUNC(ZwReadFile,9)
 		ERROR("handle %p is not for a file: %d", handle, coh->type);
 		TRACEEXIT2(return STATUS_FAILURE);
 	}
-	oa = HANDLE_TO_OBJECT(coh);
-	file = oa->file;
+	fo = HANDLE_TO_OBJECT(coh);
+	file = fo->wrap_bin_file;
 	DBGTRACE2("file: %s (%d)", file->name, file->size);
 	if (byte_offset)
 		offset = *byte_offset;
@@ -2381,7 +2385,7 @@ wstdcall NTSTATUS WIN_FUNC(ZwWriteile,9)
 	 void *apc_context, struct io_status_block *iosb, void *buffer,
 	 ULONG length, LARGE_INTEGER *byte_offset, ULONG *key)
 {
-	struct object_attr *oa;
+	struct file_object *fo;
 	struct common_object_header *coh;
 	struct wrap_bin_file *file;
 
@@ -2391,8 +2395,8 @@ wstdcall NTSTATUS WIN_FUNC(ZwWriteile,9)
 		ERROR("handle %p is not for a file: %d", handle, coh->type);
 		TRACEEXIT2(return STATUS_FAILURE);
 	}
-	oa = HANDLE_TO_OBJECT(coh);
-	file = oa->file;
+	fo = HANDLE_TO_OBJECT(coh);
+	file = fo->wrap_bin_file;
 	DBGTRACE2("file: %s (%d), %d", file->name, file->size, length);
 	iosb->status = STATUS_SUCCESS;
 	iosb->info = length;
@@ -2402,7 +2406,7 @@ wstdcall NTSTATUS WIN_FUNC(ZwWriteile,9)
 wstdcall NTSTATUS WIN_FUNC(ZwClose,1)
 	(void *handle)
 {
-	struct object_attr *oa;
+	struct file_object *fo;
 	struct common_object_header *coh;
 	struct wrap_bin_file *bin_file;
 
@@ -2412,11 +2416,11 @@ wstdcall NTSTATUS WIN_FUNC(ZwClose,1)
 		TRACEEXIT2(return STATUS_SUCCESS);
 	}
 	coh = handle;
-	oa = HANDLE_TO_OBJECT(handle);
+	fo = HANDLE_TO_OBJECT(handle);
 	if (coh->type == OBJECT_TYPE_FILE) {
-		bin_file = oa->file;
+		bin_file = fo->wrap_bin_file;
 		free_bin_file(bin_file);
-		ObDereferenceObject(oa);
+		ObDereferenceObject(fo);
 	} else if (coh->type == OBJECT_TYPE_NT_THREAD) {
 		DBGTRACE1("thread: %p", handle);
 	}
@@ -2429,7 +2433,7 @@ wstdcall NTSTATUS WIN_FUNC(ZwQueryInformationFile,5)
 	(void *handle, struct io_status_block *iosb, void *info,
 	 ULONG length, enum file_info_class class)
 {
-	struct object_attr *oa;
+	struct file_object *fo;
 	struct file_name_info *fni;
 	struct file_std_info *fsi;
 	struct wrap_bin_file *file;
@@ -2441,17 +2445,17 @@ wstdcall NTSTATUS WIN_FUNC(ZwQueryInformationFile,5)
 		ERROR("handle %p is not for a file: %d", handle, coh->type);
 		TRACEEXIT2(return STATUS_FAILURE);
 	}
-	oa = HANDLE_TO_OBJECT(handle);
-	DBGTRACE2("attr: %p", oa);
+	fo = HANDLE_TO_OBJECT(handle);
+	DBGTRACE2("fo: %p", fo);
 	switch (class) {
 	case FileNameInformation:
 		fni = info;
-		fni->length = oa->name->max_length;
-		memcpy(fni->name, oa->name->buf, oa->name->max_length);
+		fni->length = fo->name.max_length;
+		memcpy(fni->name, fo->name.buf, fo->name.max_length);
 		break;
 	case FileStandardInformation:
 		fsi = info;
-		file = oa->file;
+		file = fo->wrap_bin_file;
 		fsi->alloc_size = file->size;
 		fsi->eof = file->size;
 		fsi->num_links = 1;
