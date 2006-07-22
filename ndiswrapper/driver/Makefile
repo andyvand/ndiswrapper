@@ -20,8 +20,8 @@ KSRC ?= $(shell if \
 		echo $(KBUILD); \
 	fi)
 
-DESTDIR =
-INST_DIR := $(DESTDIR)/lib/modules/$(KVERS)/misc
+DESTDIR ?= /
+INST_DIR ?= $(shell echo $(DESTDIR)/lib/modules/$(KVERS)/misc | sed 's^//^/^g')
 
 SRC_DIR=$(shell pwd)
 
@@ -284,10 +284,11 @@ stack_check:
 		fi
 
 install: prereq_check x86_64_stubs gen_exports default stack_check
+	echo $(INST_DIR)
 	mkdir -p $(INST_DIR)
 	install -m 0644 $(MODULE) $(INST_DIR)
 	-@/bin/rm -rf $(SRC_DIR)/.tmp_versions
-	-/sbin/depmod -a $(KVERS)
+	-/sbin/depmod -a $(KVERS) -b $(DESTDIR)
 
 dist:
 	@for file in $(DISTFILES); do \

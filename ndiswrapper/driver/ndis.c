@@ -957,7 +957,7 @@ wstdcall NDIS_STATUS WIN_FUNC(NdisMAllocateSharedMemoryAsync,4)
 	struct alloc_shared_mem *alloc_shared_mem;
 
 	TRACEENTER3("wnd: %p", wnd);
-	alloc_shared_mem = kmalloc(sizeof(*alloc_shared_mem), GFP_ATOMIC);
+	alloc_shared_mem = kmalloc(sizeof(*alloc_shared_mem), gfp_irql());
 	if (!alloc_shared_mem) {
 		WARNING("couldn't allocate memory");
 		return NDIS_STATUS_FAILURE;
@@ -1002,7 +1002,7 @@ wstdcall void WIN_FUNC(NdisAllocateBufferPool,3)
 	struct ndis_buffer_pool *pool;
 
 	TRACEENTER1("buffers: %d", num_descr);
-	pool = kmalloc(sizeof(*pool), GFP_ATOMIC);
+	pool = kmalloc(sizeof(*pool), gfp_irql());
 	if (!pool) {
 		*status = NDIS_STATUS_RESOURCES;
 		TRACEEXIT3(return);

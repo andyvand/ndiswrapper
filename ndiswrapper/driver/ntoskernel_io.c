@@ -138,7 +138,7 @@ wstdcall struct irp *WIN_FUNC(IoAllocateIrp,2)
 	 * need to allocate space for it so that driver can set major
 	 * function etc. even if stack_count is 0 */
 	irp_size = IoSizeOfIrp(stack_count + 1);
-	irp = kmalloc(irp_size, GFP_ATOMIC);
+	irp = kmalloc(irp_size, gfp_irql());
 	if (irp) {
 		IOTRACE("allocated irp %p", irp);
 		IoInitializeIrp(irp, irp_size, stack_count);
@@ -599,7 +599,7 @@ wstdcall struct io_workitem *WIN_FUNC(IoAllocateWorkItem,1)
 	struct io_workitem *io_workitem;
 
 	IOENTER("%p", dev_obj);
-	io_workitem = kmalloc(sizeof(*io_workitem), GFP_ATOMIC);
+	io_workitem = kmalloc(sizeof(*io_workitem), gfp_irql());
 	if (!io_workitem)
 		IOEXIT(return NULL);
 	io_workitem->dev_obj = dev_obj;
@@ -640,7 +640,7 @@ wstdcall NTSTATUS WIN_FUNC(IoAllocateDriverObjectExtension,4)
 	KIRQL irql;
 
 	IOENTER("%p, %p", drv_obj, client_id);
-	ce = kmalloc(sizeof(*ce) + extlen, GFP_ATOMIC);
+	ce = kmalloc(sizeof(*ce) + extlen, gfp_irql());
 	if (ce == NULL)
 		return STATUS_INSUFFICIENT_RESOURCES;
 
