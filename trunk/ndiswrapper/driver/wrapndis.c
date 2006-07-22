@@ -900,6 +900,28 @@ static struct ethtool_ops ndis_ethtool_ops = {
 };
 #endif
 
+static int netdev_event(struct notifier_block *notifier, unsigned long event,
+			void *ptr)
+{
+	struct net_device *net_dev = (struct net_device *)ptr;
+	struct wrap_ndis_device *wnd = netdev_priv(net_dev);
+
+	/* called with rtnl lock held, so no need to lock */
+	switch (event) {
+	case NETDEV_CHANGENAME:
+		wrap_procfs_remove_ndis_device(wnd);
+		memcpy(wnd->netdev_name, net_dev->name,
+		       sizeof(wnd->netdev_name));
+		wrap_procfs_add_ndis_device(wnd);
+		break;
+	}
+	return NOTIFY_DONE;
+}
+
+static struct notifier_block netdev_notifier = {
+	.notifier_call = netdev_event,
+};
+
 static void update_wireless_stats(struct wrap_ndis_device *wnd)
 {
 	struct iw_statistics *iw_stats = &wnd->wireless_stats;
@@ -1653,6 +1675,7 @@ static NDIS_STATUS ndis_start_device(struct wrap_ndis_device *wnd)
 		ERROR("cannot register net device %s", net_dev->name);
 		goto err_register;
 	}
+	register_netdevice_notifier(&netdev_notifier);
 	memcpy(wnd->netdev_name, net_dev->name, sizeof(wnd->netdev_name));
 	wnd->tx_ok = 1;
 	memset(buf, 0, buf_size);
@@ -1764,6 +1787,7 @@ static int ndis_remove_device(struct wrap_ndis_device *wnd)
 	int tx_pending;
 
 	set_bit(SHUTDOWN, &wnd->wrap_ndis_pending_work);
+	unregister_netdevice_notifier(&netdev_notifier);
 	wnd->tx_ok = 0;
 	ndis_close(wnd->net_dev);
 	netif_carrier_off(wnd->net_dev);
