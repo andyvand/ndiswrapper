@@ -518,7 +518,7 @@ static void wrap_urb_complete(struct urb *urb, struct pt_regs *regs)
 	InsertTailList(&wrap_urb_complete_list, &wrap_urb->complete_list);
 	nt_spin_unlock(&wrap_urb_complete_list_lock);
 #ifdef USB_TASKLET
-	tasklet_schedule(&wrap_urb_complete_work);
+	tasklet_hi_schedule(&wrap_urb_complete_work);
 #else
 	schedule_ntos_work(&wrap_urb_complete_work);
 #endif
@@ -1405,13 +1405,13 @@ wstdcall BOOLEAN USBD_InterfaceIsDeviceHighSpeed(void *context)
 wstdcall void USBD_InterfaceReference(void *context)
 {
 	USBTRACE("%p", context);
-	UNIMPL();
+	TODO();
 }
 
 wstdcall void USBD_InterfaceDereference(void *context)
 {
 	USBTRACE("%p", context);
-	UNIMPL();
+	TODO();
 }
 
 wstdcall NTSTATUS USBD_InterfaceQueryBusTime(void *context, ULONG *frame)
@@ -1426,7 +1426,7 @@ wstdcall NTSTATUS USBD_InterfaceSubmitIsoOutUrb(void *context,
 					       union nt_urb *nt_urb)
 {
 	/* TODO: implement this */
-	UNIMPL();
+	TODO();
 	USBEXIT(return STATUS_NOT_IMPLEMENTED);
 }
 
@@ -1440,7 +1440,7 @@ USBD_InterfaceQueryBusInformation(void *context, ULONG level, void *buf,
 
 	bus = wd->usb.udev->bus;
 	bus_info = buf;
-	UNIMPL();
+	TODO();
 	USBEXIT(return STATUS_NOT_IMPLEMENTED);
 }
 

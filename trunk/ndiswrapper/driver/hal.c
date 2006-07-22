@@ -111,6 +111,7 @@ wstdcall void WIN_FUNC(KeStallExecutionProcessor,1)
 	(ULONG usecs)
 {
 	udelay(usecs);
+	do_softirq();
 }
 
 wstdcall KIRQL WIN_FUNC(KeGetCurrentIrql,0)

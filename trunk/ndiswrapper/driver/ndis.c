@@ -1953,6 +1953,7 @@ wstdcall void WIN_FUNC(NdisMIndicateStatus,4)
 			break;
 		case Ndis802_11StatusType_MediaStreamMode:
 			break;
+#ifdef CONFIG_NET_RADIO
 		case Ndis802_11StatusType_PMKID_CandidateList:
 		{
 			u8 *end;
@@ -1986,7 +1987,7 @@ wstdcall void WIN_FUNC(NdisMIndicateStatus,4)
 				}
 				DBGTRACE2("%ld: " MACSTRSEP " 0x%lx",
 					  i, MAC2STR(c->bssid), c->flags);
-#if defined(CONFIG_NET_RADIO) && WIRELESS_EXT > 17
+#if WIRELESS_EXT > 17
 				memset(&pcand, 0, sizeof(pcand));
 				if (c->flags & 0x01)
 					pcand.flags |= IW_PMKID_CAND_PREAUTH;
@@ -2013,6 +2014,7 @@ wstdcall void WIN_FUNC(NdisMIndicateStatus,4)
 				 Ndis802_11RadioStatusSoftwareOff)
 				INFO("radio is turned off by software");
 			break;
+#endif
 		default:
 			/* is this RSSI indication? */
 			DBGTRACE2("unknown indication: %x", si->status_type);
@@ -2137,15 +2139,6 @@ wstdcall void NdisMIndicateReceivePacket(struct ndis_miniport_block *nmb,
 	TRACEEXIT3(return);
 }
 
-wstdcall void WIN_FUNC(NdisMCoIndicateReceivePacket,3)
-	(struct ndis_miniport_block *nmb, struct ndis_packet **packets,
-	 UINT nr_packets)
-{
-	TRACEENTER3("nmb = %p", nmb);
-	NdisMIndicateReceivePacket(nmb, packets, nr_packets);
-	TRACEEXIT3(return);
-}
-
 /* called via function pointer */
 wstdcall void NdisMSendComplete(struct ndis_miniport_block *nmb,
 				struct ndis_packet *packet, NDIS_STATUS status)
@@ -2181,15 +2174,6 @@ wstdcall void NdisMSendComplete(struct ndis_miniport_block *nmb,
 			schedule_wrap_work(&wnd->tx_work);
 		}
 	}
-	TRACEEXIT3(return);
-}
-
-wstdcall void WIN_FUNC(NdisMCoSendComplete,3)
-	(NDIS_STATUS status, struct ndis_miniport_block *nmb,
-	 struct ndis_packet *packet)
-{
-	TRACEENTER3("%08x", status);
-	NdisMSendComplete(nmb, packet, status);
 	TRACEEXIT3(return);
 }
 
@@ -2394,19 +2378,6 @@ wstdcall void NdisMQueryInformationComplete(struct ndis_miniport_block *nmb,
 	TRACEEXIT2(return);
 }
 
-wstdcall void WIN_FUNC(NdisMCoRequestComplete,3)
-	(NDIS_STATUS status, struct ndis_miniport_block *nmb,
-	 struct ndis_request *ndis_request)
-{
-	struct wrap_ndis_device *wnd = nmb->wnd;
-
-	TRACEENTER3("%08X", status);
-	wnd->ndis_comm_status = status;
-	wnd->ndis_comm_done = 1;
-	wake_up(&wnd->ndis_comm_wq);
-	TRACEEXIT3(return);
-}
-
 /* Called via function pointer if setinfo returns NDIS_STATUS_PENDING */
 wstdcall void NdisMSetInformationComplete(struct ndis_miniport_block *nmb,
 					  NDIS_STATUS status)
@@ -2592,7 +2563,6 @@ wstdcall void WIN_FUNC(NdisMGetDeviceProperty,6)
 	TRACEENTER2("nmb: %p, phy_dev = %p, func_dev = %p, next_dev = %p, "
 		    "alloc_res = %p, trans_res = %p", nmb, phy_dev, func_dev,
 		    next_dev, alloc_res, trans_res);
-	DBGTRACE2("pdo: %p, fdo: %p, next_device: %p", nmb->pdo, nmb->fdo, nmb->next_device);
 	if (phy_dev)
 		*phy_dev = nmb->pdo;
 	if (func_dev)
@@ -2625,30 +2595,6 @@ wstdcall NDIS_STATUS WIN_FUNC(NdisMQueryAdapterInstanceName,2)
 	else
 		TRACEEXIT2(return NDIS_STATUS_SUCCESS);
 }
-
-wstdcall ULONG WIN_FUNC(NdisReadPcmciaAttributeMemory,4)
-	(struct ndis_miniport_block *nmb, ULONG offset, void *buffer,
-	 ULONG length)
-{
-	UNIMPL();
-	return 0;
-}
-
-wstdcall ULONG WIN_FUNC(NdisWritePcmciaAttributeMemory,4)
-	(struct ndis_miniport_block *nmb, ULONG offset, void *buffer,
-	 ULONG length)
-{
-	UNIMPL();
-	return 0;
-}
-
- /* Unimplemented...*/
-wstdcall void WIN_FUNC(NdisMSetAttributes,0)(void){UNIMPL();}
-wstdcall void WIN_FUNC(EthFilterDprIndicateReceiveComplete,0)(void){UNIMPL();}
-wstdcall void WIN_FUNC(EthFilterDprIndicateReceive,0)(void){UNIMPL();}
-wstdcall void WIN_FUNC(NdisMRemoveMiniport,0)(void){UNIMPL();}
-wstdcall void WIN_FUNC(NdisMCoActivateVcComplete,0)(void){UNIMPL();}
-wstdcall void WIN_FUNC(NdisMCoDeactivateVcComplete,0)(void){UNIMPL();}
 
 #include "ndis_exports.h"
 

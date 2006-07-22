@@ -625,7 +625,7 @@ int ntoskernel_init(void);
 void ntoskernel_exit(void);
 int ntoskernel_init_device(struct wrap_device *wd);
 void ntoskernel_exit_device(struct wrap_device *wd);
-void *allocate_object(ULONG size, enum common_object_type type, char *name);
+void *allocate_object(ULONG size, enum common_object_type type);
 void free_object(void *object);
 
 int usb_init(void);
@@ -672,6 +672,7 @@ void KefReleaseSpinLockFromDpcLevel(NT_SPIN_LOCK *lock) wfastcall;
 
 LONG ObfReferenceObject(void *object) wfastcall;
 void ObfDereferenceObject(void *object) wfastcall;
+int dereference_object(void *object);
 
 #define ObReferenceObject(object) ObfReferenceObject(object)
 #define ObDereferenceObject(object) ObfDereferenceObject(object)
@@ -804,7 +805,7 @@ NTSTATUS ObReferenceObjectByHandle
 
 #define INFOEXIT(stmt) do { INFO("Exit"); stmt; } while(0)
 
-#define UNIMPL() ERROR("--UNIMPLEMENTED--")
+#define TODO() ERROR("not fully implemented (yet)")
 
 void adjust_user_shared_data_addr(char *driver, unsigned long length);
 
@@ -823,29 +824,26 @@ static inline KIRQL current_irql(void)
 static inline KIRQL raise_irql(KIRQL newirql)
 {
 	KIRQL irql = current_irql();
-	assert (newirql == DISPATCH_LEVEL);
-	if (irql < DISPATCH_LEVEL) {
+//	assert (newirql == DISPATCH_LEVEL);
+	if (irql < DISPATCH_LEVEL && newirql == DISPATCH_LEVEL) {
 		local_bh_disable();
 		preempt_disable();
 	}
 	return irql;
 }
 
-#define gfp_irql() (current_irql() < DISPATCH_LEVEL ? GFP_KERNEL : GFP_ATOMIC)
-
 static inline void lower_irql(KIRQL oldirql)
 {
-#ifdef DEBUG_IRQL
 	KIRQL irql = current_irql();
 	if (irql < oldirql)
 		ERROR("invalid irql: %d < %d", irql, oldirql);
-#endif
-	assert(irql == DISPATCH_LEVEL);
-	if (oldirql < DISPATCH_LEVEL) {
+	if (oldirql < DISPATCH_LEVEL && irql == DISPATCH_LEVEL) {
 		preempt_enable_no_resched();
 		local_bh_enable();
 	}
 }
+
+#define gfp_irql() (current_irql() < DISPATCH_LEVEL ? GFP_KERNEL : GFP_ATOMIC)
 
 /* Windows spinlocks are of type ULONG_PTR which is not big enough to
  * store Linux spinlocks; so we implement Windows spinlocks using
