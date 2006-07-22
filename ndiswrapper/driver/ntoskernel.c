@@ -291,7 +291,7 @@ static void update_user_shared_data_proc(unsigned long data)
 }
 #endif
 
-void *allocate_object(ULONG size, enum common_object_type type, char *name)
+void *allocate_object(ULONG size, enum common_object_type type)
 {
 	struct common_object_header *hdr;
 	void *body;
@@ -306,7 +306,6 @@ void *allocate_object(ULONG size, enum common_object_type type, char *name)
 	memset(hdr, 0, OBJECT_SIZE(size));
 	hdr->type = type;
 	hdr->ref_count = 1;
-	hdr->name = name;
 	irql = nt_spin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL);
 	/* threads are looked up often (in KeWaitForXXX), so optimize
 	 * for fast lookups of threads */
@@ -1142,7 +1141,7 @@ wstdcall NTSTATUS WIN_FUNC(ExCreateCallback,4)
 	}
 	nt_spin_unlock_irql(&ntoskernel_lock, irql);
 	obj = allocate_object(sizeof(struct callback_object),
-			      OBJECT_TYPE_CALLBACK, NULL);
+			      OBJECT_TYPE_CALLBACK);
 	if (!obj)
 		TRACEEXIT2(return STATUS_INSUFFICIENT_RESOURCES);
 	InitializeListHead(&obj->callback_funcs);
@@ -1806,7 +1805,7 @@ static struct nt_thread *create_nt_thread(struct task_struct *task)
 	struct nt_thread *thread;
 	KIRQL irql;
 
-	thread = allocate_object(sizeof(*thread), OBJECT_TYPE_NT_THREAD, NULL);
+	thread = allocate_object(sizeof(*thread), OBJECT_TYPE_NT_THREAD);
 	if (!thread) {
 		ERROR("couldn't allocate thread object");
 		return NULL;
@@ -2253,8 +2252,7 @@ wfastcall LONG WIN_FUNC(ObfReferenceObject,1)
 	return ret;
 }
 
-wfastcall void WIN_FUNC(ObfDereferenceObject,1)
-	(void *object)
+int dereference_object(void *object)
 {
 	struct common_object_header *hdr;
 	int ref_count;
@@ -2272,7 +2270,15 @@ wfastcall void WIN_FUNC(ObfDereferenceObject,1)
 		ERROR("invalid object: %p (%d)", object, ref_count);
 	if (ref_count <= 0) {
 		free_object(object);
-	}
+		return 1;
+	} else
+		return 0;
+}
+
+wfastcall void WIN_FUNC(ObfDereferenceObject,1)
+	(void *object)
+{
+	dereference_object(object);
 }
 
 wstdcall NTSTATUS WIN_FUNC(ZwCreateFile,11)
@@ -2287,7 +2293,6 @@ wstdcall NTSTATUS WIN_FUNC(ZwCreateFile,11)
 	struct wrap_bin_file *bin_file;
 	char *file_basename;
 	KIRQL irql;
-	NTSTATUS status;
 
 	TRACEENTER2("%p", *handle);
 	if (RtlUnicodeStringToAnsiString(&ansi, obj_attr->name, TRUE) !=
@@ -2300,28 +2305,27 @@ wstdcall NTSTATUS WIN_FUNC(ZwCreateFile,11)
 		if (header->type != OBJECT_TYPE_FILE)
 			continue;
 		fo = HEADER_TO_OBJECT(header);
-		if (!RtlCompareUnicodeString(&fo->name, obj_attr->name,
-					     FALSE)) {
+		if (!RtlCompareUnicodeString(&fo->name, obj_attr->name, FALSE)) {
 			bin_file = fo->wrap_bin_file;
 			*handle = header;
 			iosb->status = FILE_OPENED;
 			iosb->info = bin_file->size;
+			fo->current_byte_offset = 0;
 			nt_spin_unlock_irql(&ntoskernel_lock, irql);
+			ObReferenceObject(fo);
 			TRACEEXIT2(return STATUS_SUCCESS);
 		}
 	}
 	nt_spin_unlock_irql(&ntoskernel_lock, irql);
 
-	fo = allocate_object(sizeof(struct file_object), OBJECT_TYPE_FILE,
-			     ansi.buf);
+	fo = allocate_object(sizeof(struct file_object), OBJECT_TYPE_FILE);
 	if (!fo) {
-		iosb->status = FILE_DOES_NOT_EXIST;
+		iosb->status = STATUS_INSUFFICIENT_RESOURCES;
 		iosb->info = 0;
 		RtlFreeAnsiString(&ansi);
 		TRACEEXIT2(return STATUS_FAILURE);
 	}
-	*handle = OBJECT_TO_HEADER(fo);
-	DBGTRACE2("handle: %p", *handle);
+
 	file_basename = strrchr(ansi.buf, '\\');
 	if (file_basename)
 		file_basename++;
@@ -2329,23 +2333,58 @@ wstdcall NTSTATUS WIN_FUNC(ZwCreateFile,11)
 		file_basename = ansi.buf;
 	DBGTRACE2("file_basename: '%s'", file_basename);
 	bin_file = get_bin_file(file_basename);
-	if (bin_file) {
-		fo->wrap_bin_file = bin_file;
-		iosb->status = FILE_OPENED;
-		iosb->info = bin_file->size;
-		if (access_mask & FILE_READ_DATA)
-			fo->read_access = TRUE;
-		if (access_mask & FILE_WRITE_DATA)
-			fo->write_access = TRUE;
-		status = STATUS_SUCCESS;
-	} else {
-		/* TODO: allocate file */
+	if (bin_file)
+		fo->flags = FILE_OPENED;
+	else {
+		if (access_mask & FILE_WRITE_DATA) {
+			bin_file = vmalloc(sizeof(*bin_file) + *size);
+			if (bin_file) {
+				memset(bin_file, 0, sizeof(*bin_file) + *size);
+				bin_file->data = (void *)bin_file +
+					sizeof(*bin_file);
+				bin_file->size = *size;
+				fo->flags = FILE_CREATED;
+			}
+		}
+	}
+	if (!bin_file) {
 		iosb->status = FILE_DOES_NOT_EXIST;
 		iosb->info = 0;
-		status = STATUS_FAILURE;
+		RtlFreeAnsiString(&ansi);
+		TRACEEXIT2(return STATUS_FAILURE);
 	}
-	RtlFreeAnsiString(&ansi);
-	TRACEEXIT2(return status);
+
+	fo->wrap_bin_file = bin_file;
+	fo->current_byte_offset = 0;
+	if (access_mask & FILE_READ_DATA)
+		fo->read_access = TRUE;
+	if (access_mask & FILE_WRITE_DATA)
+		fo->write_access = TRUE;
+
+	fo->name.length = obj_attr->name->length;
+	fo->name.max_length = obj_attr->name->max_length;
+	fo->name.buf = ExAllocatePoolWithTag(NonPagedPool,
+					     obj_attr->name->max_length, 0);
+	if (fo->name.buf) {
+		memcpy(fo->name.buf, obj_attr->name->buf,
+		       obj_attr->name->max_length);
+		iosb->status = FILE_OPENED;
+		iosb->info = bin_file->size;
+		*handle = OBJECT_TO_HEADER(fo);
+		DBGTRACE2("handle: %p", *handle);
+		RtlFreeAnsiString(&ansi);
+		TRACEEXIT2(return STATUS_SUCCESS);
+	} else {
+		if (fo->flags == FILE_CREATED)
+			vfree(bin_file->data);
+		else
+			free_bin_file(bin_file);
+		free_object(fo);
+		iosb->status = FILE_DOES_NOT_EXIST;
+		iosb->info = 0;
+		RtlFreeAnsiString(&ansi);
+		TRACEEXIT2(return STATUS_FAILURE);
+	}
 }
 
 wstdcall NTSTATUS WIN_FUNC(ZwReadFile,9)
@@ -2371,10 +2410,11 @@ wstdcall NTSTATUS WIN_FUNC(ZwReadFile,9)
 	if (byte_offset)
 		offset = *byte_offset;
 	else
-		offset = 0;
+		offset = fo->current_byte_offset;
 	count = min((size_t)length, file->size - offset);
 	DBGTRACE2("count: %u, offset: %zu, length: %u", count, offset, length);
 	memcpy(buffer, ((void *)file->data) + offset, count);
+	fo->current_byte_offset = offset + count;
 	iosb->status = STATUS_SUCCESS;
 	iosb->info = count;
 	TRACEEXIT2(return STATUS_SUCCESS);
@@ -2388,6 +2428,7 @@ wstdcall NTSTATUS WIN_FUNC(ZwWriteile,9)
 	struct file_object *fo;
 	struct common_object_header *coh;
 	struct wrap_bin_file *file;
+	size_t offset;
 
 	DBGTRACE2("%p", handle);
 	coh = handle;
@@ -2398,17 +2439,29 @@ wstdcall NTSTATUS WIN_FUNC(ZwWriteile,9)
 	fo = HANDLE_TO_OBJECT(coh);
 	file = fo->wrap_bin_file;
 	DBGTRACE2("file: %s (%d), %d", file->name, file->size, length);
-	iosb->status = STATUS_SUCCESS;
-	iosb->info = length;
-	TRACEEXIT2(return STATUS_SUCCESS);
+	if (byte_offset)
+		offset = *byte_offset;
+	else
+		offset = fo->current_byte_offset;
+	if (length + offset > file->size) {
+		WARNING("%d, %d", length + offset, file->size);
+		/* TODO: implement writing past end of file */
+		iosb->status = STATUS_FAILURE;
+		iosb->info = 0;
+		TRACEEXIT2(return STATUS_FAILURE);
+	} else {
+		memcpy(file->data + offset, buffer, length);
+		iosb->status = STATUS_SUCCESS;
+		iosb->info = length;
+		fo->current_byte_offset = offset + length;
+		TRACEEXIT2(return STATUS_SUCCESS);
+	}
 }
 
 wstdcall NTSTATUS WIN_FUNC(ZwClose,1)
 	(void *handle)
 {
-	struct file_object *fo;
 	struct common_object_header *coh;
-	struct wrap_bin_file *bin_file;
 
 	DBGTRACE2("%p", handle);
 	if (handle == NULL) {
@@ -2416,16 +2469,27 @@ wstdcall NTSTATUS WIN_FUNC(ZwClose,1)
 		TRACEEXIT2(return STATUS_SUCCESS);
 	}
 	coh = handle;
-	fo = HANDLE_TO_OBJECT(handle);
 	if (coh->type == OBJECT_TYPE_FILE) {
+		struct file_object *fo;
+		struct wrap_bin_file *bin_file;
+		struct unicode_string *name;
+		typeof(fo->flags) flags;
+
+		fo = HANDLE_TO_OBJECT(handle);
 		bin_file = fo->wrap_bin_file;
-		free_bin_file(bin_file);
-		ObDereferenceObject(fo);
-	} else if (coh->type == OBJECT_TYPE_NT_THREAD) {
-		DBGTRACE1("thread: %p", handle);
+		name = &fo->name;
+		flags = fo->flags;
+		if (dereference_object(fo)) {
+			if (flags == FILE_CREATED)
+				vfree(bin_file->data);
+			else
+				free_bin_file(bin_file);
+			RtlFreeUnicodeString(name);
+		}
+	} else {
+		/* TODO: can we just dereference object here? */
+		WARNING("closing handle %d not implemented", coh->type);
 	}
-	else
-		WARNING("closing handle %p not implemented", handle);
 	TRACEEXIT2(return STATUS_SUCCESS);
 }
 
@@ -2520,7 +2584,7 @@ wstdcall NTSTATUS WIN_FUNC(ZwQueryValueKey,6)
 		DBGTRACE1("key: %s", ansi.buf);
 		RtlFreeAnsiString(&ansi);
 	}
-	UNIMPL();
+	TODO();
 	return STATUS_INVALID_PARAMETER;
 }
 
@@ -2528,7 +2592,7 @@ wstdcall NTSTATUS WIN_FUNC(WmiSystemControl,4)
 	(struct wmilib_context *info, struct device_object *dev_obj,
 	 struct irp *irp, void *irp_disposition)
 {
-	UNIMPL();
+	TODO();
 	return STATUS_SUCCESS;
 }
 
@@ -2536,7 +2600,7 @@ wstdcall NTSTATUS WIN_FUNC(WmiCompleteRequest,5)
 	(struct device_object *dev_obj, struct irp *irp, NTSTATUS status,
 	 ULONG buffer_used, CCHAR priority_boost)
 {
-	UNIMPL();
+	TODO();
 	return STATUS_SUCCESS;
 }
 
@@ -2544,7 +2608,7 @@ noregparm NTSTATUS WIN_FUNC(WmiTraceMessage,12)
 	(void *tracehandle, ULONG message_flags,
 	 void *message_guid, USHORT message_no, ...)
 {
-	UNIMPL();
+	TODO();
 	TRACEEXIT2(return STATUS_SUCCESS);
 }
 
@@ -2552,7 +2616,7 @@ wstdcall NTSTATUS WIN_FUNC(WmiQueryTraceInformation,4)
 	(enum trace_information_class trace_info_class, void *trace_info,
 	 ULONG *req_length, void *buf)
 {
-	UNIMPL();
+	TODO();
 	TRACEEXIT2(return STATUS_SUCCESS);
 }
 
@@ -2576,7 +2640,7 @@ wstdcall void WIN_FUNC(KeBugCheckEx,5)
 	(ULONG code, ULONG_PTR param1, ULONG_PTR param2,
 	 ULONG_PTR param3, ULONG_PTR param4)
 {
-	UNIMPL();
+	TODO();
 	return;
 }
 
@@ -2594,9 +2658,28 @@ wstdcall ULONG WIN_FUNC(ExSetTimerResolution,2)
 	return time;
 }
 
-wstdcall void WIN_FUNC(DbgBreakPoint,0)(void){UNIMPL();}
-wstdcall void WIN_FUNC(_except_handler3,0)(void){UNIMPL();}
-wstdcall void WIN_FUNC(__C_specific_handler,0)(void){UNIMPL();}
-void WIN_FUNC(_purecall,0)(void) { UNIMPL(); }
+wstdcall void WIN_FUNC(DbgBreakPoint,0)
+	(void)
+{
+	TODO();
+}
+
+wstdcall void WIN_FUNC(_except_handler3,0)
+	(void)
+{
+	TODO();
+}
+
+wstdcall void WIN_FUNC(__C_specific_handler,0)
+	(void)
+{
+	TODO();
+}
+
+void WIN_FUNC(_purecall,0)
+	(void)
+{
+	TODO();
+}
 
 #include "ntoskernel_exports.h"

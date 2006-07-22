@@ -49,7 +49,7 @@ noregparm INT WIN_FUNC(_win_sprintf,12)
 noregparm INT WIN_FUNC(swprintf,12)
 	(wchar_t *buf, const wchar_t *format, ...)
 {
-	UNIMPL();
+	TODO();
 	TRACEEXIT2(return 0);
 }
 noregparm INT WIN_FUNC(_win_vsprintf,3)
@@ -834,7 +834,7 @@ wstdcall NTSTATUS WIN_FUNC(RtlQueryRegistryValues,5)
 	static int i = 0;
 
 	TRACEENTER3("%x, %p", relative, tbl);
-//	UNIMPL();
+//	TODO();
 
 	RtlInitUnicodeString(&unicode, path);
 	if (RtlUnicodeStringToAnsiString(&ansi, &unicode, TRUE) ==
@@ -906,7 +906,7 @@ wstdcall NTSTATUS WIN_FUNC(RtlWriteRegistryValue,6)
 	struct unicode_string unicode;
 
 	TRACEENTER3("%d", relative);
-	UNIMPL();
+	TODO();
 
 	RtlInitUnicodeString(&unicode, path);
 	if (RtlUnicodeStringToAnsiString(&ansi, &unicode, TRUE) ==
@@ -949,7 +949,11 @@ wstdcall int WIN_FUNC(rand,0)
 	return r;
 }
 
-void WIN_FUNC(RtlUnwind,0)(void){UNIMPL();}
+void WIN_FUNC(RtlUnwind,0)
+	(void)
+{
+	TODO();
+}
 
 int stricmp(const char *s1, const char *s2)
 {

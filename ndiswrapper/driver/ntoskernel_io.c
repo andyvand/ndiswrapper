@@ -707,7 +707,7 @@ wstdcall NTSTATUS WIN_FUNC(IoCreateDevice,7)
 	}
 
 	size = sizeof(*dev) + dev_ext_length + sizeof(*dev_obj_ext);
-	dev = allocate_object(size, OBJECT_TYPE_DEVICE, ansi.buf);
+	dev = allocate_object(size, OBJECT_TYPE_DEVICE);
 	if (!dev)
 		IOEXIT(return STATUS_INSUFFICIENT_RESOURCES);
 	if (dev_ext_length)
@@ -759,7 +759,7 @@ wstdcall NTSTATUS WIN_FUNC(IoCreateUnprotectedSymbolicLink,2)
 		IOTRACE("link: %s", ansi.buf);
 		RtlFreeAnsiString(&ansi);
 	}
-//	UNIMPL();
+//	TODO();
 	IOEXIT(return STATUS_SUCCESS);
 }
 
@@ -940,7 +940,7 @@ wstdcall void WIN_FUNC(IoInitializeRemoveLockEx,5)
 	(struct io_remove_lock *lock, ULONG alloc_tag, ULONG max_locked_min,
 	 ULONG high_mark, ULONG lock_size)
 {
-	UNIMPL();
+	TODO();
 }
 
 wstdcall void *WIN_FUNC(IoAllocateErrorLogEntry,2)
@@ -974,14 +974,14 @@ wstdcall NTSTATUS WIN_FUNC(IoAcquireRemoveLockEx,5)
 	(struct io_remove_lock lock, void *tag, char *file, ULONG line,
 	 ULONG lock_size)
 {
-	UNIMPL();
+	TODO();
 	IOEXIT(return STATUS_SUCCESS);
 }
 
 wstdcall NTSTATUS WIN_FUNC(IoReleaseRemoveLockEx,3)
 	(struct io_remove_lock lock, void *tag, ULONG lock_size)
 {
-	UNIMPL();
+	TODO();
 	IOEXIT(return STATUS_SUCCESS);
 }
 
@@ -1026,14 +1026,14 @@ wstdcall void WIN_FUNC(IoInvalidateDeviceRelations,2)
 	(struct device_object *dev_obj, enum device_relation_type type)
 {
 	INFO("%p, %d", dev_obj, type);
-	UNIMPL();
+	TODO();
 }
 
 wstdcall void WIN_FUNC(IoInvalidateDeviceState,1)
 	(struct device_object *pdo)
 {
 	INFO("%p", pdo);
-	UNIMPL();
+	TODO();
 }
 
 #include "ntoskernel_io_exports.h"
