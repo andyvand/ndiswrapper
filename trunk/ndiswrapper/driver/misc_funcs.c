@@ -727,8 +727,9 @@ wstdcall void WIN_FUNC(RtlInitUnicodeString,2)
 		dst->buf = NULL;
 	} else {
 		int i = 0;
-		while (src[i])
-			i++;
+		char c;
+		while ((c = src[i++]))
+			;
 		dst->buf = (wchar_t *)src;
 		dst->length = i * sizeof(wchar_t);
 		dst->max_length = (i + 1) * sizeof(wchar_t);
@@ -747,8 +748,8 @@ wstdcall void WIN_FUNC(RtlInitAnsiString,2)
 		dst->buf = NULL;
 	} else {
 		int i = 0;
-		while (src[i])
-			i++;
+		while (src[i++])
+			;
 		dst->buf = (char *)src;
 		dst->length = i;
 		dst->max_length = i + 1;
@@ -790,6 +791,7 @@ wstdcall void WIN_FUNC(RtlFreeAnsiString,1)
 	string->buf = NULL;
 	return;
 }
+
 /* guid string is of the form: {XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX} */
 /* 47ef22e0-160a-11db-ac5d-0800200c9a66 */
 wstdcall NTSTATUS WIN_FUNC(RtlGUIDFromString,2)
@@ -978,8 +980,7 @@ void dump_bytes(const char *ctx, const u8 *from, int len)
 	int i, j;
 	u8 *buf;
 
-	buf = kmalloc(len * 3 + 1, current_irql() < DISPATCH_LEVEL ?
-		      GFP_KERNEL : GFP_ATOMIC);
+	buf = kmalloc(len * 3 + 1, gfp_irql());
 	if (!buf) {
 		ERROR("couldn't allocate memory");
 		return;

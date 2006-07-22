@@ -331,11 +331,8 @@ static struct urb *wrap_alloc_urb(struct irp *irp, unsigned int pipe,
 	struct wrap_device *wd;
 
 	USBENTER("irp: %p", irp);
-	if (current_irql() < DISPATCH_LEVEL)
-		alloc_flags = GFP_KERNEL;
-	else
-		alloc_flags = GFP_ATOMIC;
 	wd = irp->wd;
+	alloc_flags = gfp_irql();
 	IoAcquireCancelSpinLock(&irp->cancel_irql);
 	urb = NULL;
 	nt_list_for_each_entry(wrap_urb, &wd->usb.wrap_urb_list, list) {
@@ -418,13 +415,8 @@ static USBD_STATUS wrap_submit_urb(struct irp *irp)
 {
 	int ret;
 	struct urb *urb;
-	unsigned int alloc_flags;
 	union nt_urb *nt_urb;
 
-	if (current_irql() < DISPATCH_LEVEL)
-		alloc_flags = GFP_KERNEL;
-	else
-		alloc_flags = GFP_ATOMIC;
 	IoAcquireCancelSpinLock(&irp->cancel_irql);
 	urb = irp->wrap_urb->urb;
 	nt_urb = URB_FROM_IRP(irp);
@@ -448,7 +440,7 @@ static USBD_STATUS wrap_submit_urb(struct irp *irp)
 	DUMP_URB_BUFFER(urb, USB_DIR_OUT);
 	USBTRACE("%p", urb);
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
-	ret = usb_submit_urb(urb, alloc_flags);
+	ret = usb_submit_urb(urb, gfp_irql());
 #else
 	ret = usb_submit_urb(urb);
 #endif
