@@ -2596,6 +2596,22 @@ wstdcall NDIS_STATUS WIN_FUNC(NdisMQueryAdapterInstanceName,2)
 		TRACEEXIT2(return NDIS_STATUS_SUCCESS);
 }
 
+wstdcall ULONG WIN_FUNC(NdisReadPcmciaAttributeMemory,4)
+	(struct ndis_miniport_block *nmb, ULONG offset, void *buffer,
+	 ULONG length)
+{
+	TODO();
+	return 0;
+}
+
+wstdcall ULONG WIN_FUNC(NdisWritePcmciaAttributeMemory,4)
+	(struct ndis_miniport_block *nmb, ULONG offset, void *buffer,
+	 ULONG length)
+{
+	TODO();
+	return 0;
+}
+
 #include "ndis_exports.h"
 
 void init_nmb_functions(struct ndis_miniport_block *nmb)
