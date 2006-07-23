@@ -607,7 +607,6 @@ static void wrap_urb_complete_worker(void *dummy)
 	USBEXIT(return);
 }
 
-
 static USBD_STATUS wrap_bulk_or_intr_trans(struct irp *irp)
 {
 	usbd_pipe_handle pipe_handle;
@@ -1006,36 +1005,36 @@ static int wrap_usb_get_string(struct usb_device *udev, unsigned short langid,
 static USBD_STATUS wrap_get_descriptor(struct wrap_device *wd,
 				       union nt_urb *nt_urb, struct irp *irp)
 {
-	struct usbd_control_descriptor_request *ctrl_req;
+	struct usbd_control_descriptor_request *control_desc;
 	int ret = 0;
 	struct usb_device *udev;
 
 	udev = wd->usb.udev;
-	ctrl_req = &nt_urb->control_request;
+	control_desc = &nt_urb->control_desc;
 	USBTRACE("desctype = %d, descindex = %d, transfer_buffer = %p,"
-		 "transfer_buffer_length = %d", ctrl_req->desc_type,
-		 ctrl_req->index, ctrl_req->transfer_buffer,
-		 ctrl_req->transfer_buffer_length);
+		 "transfer_buffer_length = %d", control_desc->desc_type,
+		 control_desc->index, control_desc->transfer_buffer,
+		 control_desc->transfer_buffer_length);
 
-	if (ctrl_req->desc_type == USB_DT_STRING) {
-		USBTRACE("langid: %x", ctrl_req->language_id);
-		ret = wrap_usb_get_string(udev, ctrl_req->language_id,
-					  ctrl_req->index,
-					  ctrl_req->transfer_buffer,
-					  ctrl_req->transfer_buffer_length);
+	if (control_desc->desc_type == USB_DT_STRING) {
+		USBTRACE("langid: %x", control_desc->language_id);
+		ret = wrap_usb_get_string(udev, control_desc->language_id,
+					  control_desc->index,
+					  control_desc->transfer_buffer,
+					  control_desc->transfer_buffer_length);
 	} else {
-		ret = usb_get_descriptor(udev, ctrl_req->desc_type,
-					 ctrl_req->index,
-					 ctrl_req->transfer_buffer,
-					 ctrl_req->transfer_buffer_length);
+		ret = usb_get_descriptor(udev, control_desc->desc_type,
+					 control_desc->index,
+					 control_desc->transfer_buffer,
+					 control_desc->transfer_buffer_length);
 	}
 	if (ret < 0) {
-		USBTRACE("request %d failed: %d", ctrl_req->desc_type, ret);
-		ctrl_req->transfer_buffer_length = 0;
+		USBTRACE("request %d failed: %d", control_desc->desc_type, ret);
+		control_desc->transfer_buffer_length = 0;
 		return wrap_urb_status(ret);
 	} else {
 		USBTRACE("ret: %08x", ret);
-		ctrl_req->transfer_buffer_length = ret;
+		control_desc->transfer_buffer_length = ret;
 		irp->io_status.info = ret;
 		return USBD_STATUS_SUCCESS;
 	}

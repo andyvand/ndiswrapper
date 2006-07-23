@@ -1093,13 +1093,11 @@ wstdcall void WIN_FUNC(ExInitializeNPagedLookasideList,7)
 	if (alloc_func)
 		lookaside->alloc_func = alloc_func;
 	else
-		lookaside->alloc_func = (LOOKASIDE_ALLOC_FUNC *)
-			WIN_FUNC_PTR(ExAllocatePoolWithTag,3);
+		lookaside->alloc_func = WIN_FUNC_PTR(ExAllocatePoolWithTag,3);
 	if (free_func)
 		lookaside->free_func = free_func;
 	else
-		lookaside->free_func = (LOOKASIDE_FREE_FUNC *)
-			WIN_FUNC_PTR(ExFreePool,1);
+		lookaside->free_func = WIN_FUNC_PTR(ExFreePool,1);
 
 #ifndef CONFIG_X86_64
 	nt_spin_lock_init(&lookaside->obsolete);
