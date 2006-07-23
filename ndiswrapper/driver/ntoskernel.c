@@ -2294,23 +2294,17 @@ wstdcall NTSTATUS WIN_FUNC(ZwCreateFile,11)
 	char *file_basename;
 	KIRQL irql;
 
-	TRACEENTER2("%p", *handle);
-	if (RtlUnicodeStringToAnsiString(&ansi, obj_attr->name, TRUE) !=
-	    STATUS_SUCCESS)
-		TRACEEXIT2(return STATUS_INSUFFICIENT_RESOURCES);
-	DBGTRACE2("Filename: %s", ansi.buf);
-
 	irql = nt_spin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL);
 	nt_list_for_each_entry(header, &object_list, list) {
 		if (header->type != OBJECT_TYPE_FILE)
 			continue;
 		fo = HEADER_TO_OBJECT(header);
+		/* TODO: check if file is opened in shared mode */
 		if (!RtlCompareUnicodeString(&fo->name, obj_attr->name, FALSE)) {
 			bin_file = fo->wrap_bin_file;
 			*handle = header;
 			iosb->status = FILE_OPENED;
 			iosb->info = bin_file->size;
-			fo->current_byte_offset = 0;
 			nt_spin_unlock_irql(&ntoskernel_lock, irql);
 			ObReferenceObject(fo);
 			TRACEEXIT2(return STATUS_SUCCESS);
@@ -2318,14 +2312,18 @@ wstdcall NTSTATUS WIN_FUNC(ZwCreateFile,11)
 	}
 	nt_spin_unlock_irql(&ntoskernel_lock, irql);
 
+	iosb->status = STATUS_INSUFFICIENT_RESOURCES;
+	iosb->info = 0;
 	fo = allocate_object(sizeof(struct file_object), OBJECT_TYPE_FILE);
-	if (!fo) {
-		iosb->status = STATUS_INSUFFICIENT_RESOURCES;
-		iosb->info = 0;
-		RtlFreeAnsiString(&ansi);
+	if (!fo)
 		TRACEEXIT2(return STATUS_FAILURE);
-	}
 
+	if (RtlUnicodeStringToAnsiString(&ansi, obj_attr->name, TRUE) !=
+	    STATUS_SUCCESS) {
+		free_object(fo);
+		TRACEEXIT2(return STATUS_INSUFFICIENT_RESOURCES);
+	}
+	DBGTRACE2("Filename: %s", ansi.buf);
 	file_basename = strrchr(ansi.buf, '\\');
 	if (file_basename)
 		file_basename++;
@@ -2333,6 +2331,7 @@ wstdcall NTSTATUS WIN_FUNC(ZwCreateFile,11)
 		file_basename = ansi.buf;
 	DBGTRACE2("file_basename: '%s'", file_basename);
 	bin_file = get_bin_file(file_basename);
+	RtlFreeAnsiString(&ansi);
 	if (bin_file)
 		fo->flags = FILE_OPENED;
 	else {
@@ -2350,7 +2349,6 @@ wstdcall NTSTATUS WIN_FUNC(ZwCreateFile,11)
 	if (!bin_file) {
 		iosb->status = FILE_DOES_NOT_EXIST;
 		iosb->info = 0;
-		RtlFreeAnsiString(&ansi);
 		TRACEEXIT2(return STATUS_FAILURE);
 	}
 
@@ -2372,7 +2370,6 @@ wstdcall NTSTATUS WIN_FUNC(ZwCreateFile,11)
 		iosb->info = bin_file->size;
 		*handle = OBJECT_TO_HEADER(fo);
 		DBGTRACE2("handle: %p", *handle);
-		RtlFreeAnsiString(&ansi);
 		TRACEEXIT2(return STATUS_SUCCESS);
 	} else {
 		if (fo->flags == FILE_CREATED)
@@ -2382,7 +2379,6 @@ wstdcall NTSTATUS WIN_FUNC(ZwCreateFile,11)
 		free_object(fo);
 		iosb->status = FILE_DOES_NOT_EXIST;
 		iosb->info = 0;
-		RtlFreeAnsiString(&ansi);
 		TRACEEXIT2(return STATUS_FAILURE);
 	}
 }

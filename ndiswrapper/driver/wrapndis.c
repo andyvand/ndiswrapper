@@ -900,8 +900,8 @@ static struct ethtool_ops ndis_ethtool_ops = {
 };
 #endif
 
-static int netdev_event(struct notifier_block *notifier, unsigned long event,
-			void *ptr)
+static int notifier_event(struct notifier_block *notifier, unsigned long event,
+			  void *ptr)
 {
 	struct net_device *net_dev = (struct net_device *)ptr;
 	struct wrap_ndis_device *wnd = netdev_priv(net_dev);
@@ -910,6 +910,8 @@ static int netdev_event(struct notifier_block *notifier, unsigned long event,
 	switch (event) {
 	case NETDEV_CHANGENAME:
 		wrap_procfs_remove_ndis_device(wnd);
+		printk(KERN_INFO "%s: changing interface name from '%s' to "
+		       "'%s'\n", DRIVER_NAME, wnd->netdev_name, net_dev->name);
 		memcpy(wnd->netdev_name, net_dev->name,
 		       sizeof(wnd->netdev_name));
 		wrap_procfs_add_ndis_device(wnd);
@@ -919,7 +921,7 @@ static int netdev_event(struct notifier_block *notifier, unsigned long event,
 }
 
 static struct notifier_block netdev_notifier = {
-	.notifier_call = netdev_event,
+	.notifier_call = notifier_event,
 };
 
 static void update_wireless_stats(struct wrap_ndis_device *wnd)
