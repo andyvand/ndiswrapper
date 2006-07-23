@@ -76,20 +76,19 @@
 // USB 2.0 calls start at 0x0030
 #define URB_FUNCTION_SYNC_RESET_PIPE                 0x0030
 #define URB_FUNCTION_SYNC_CLEAR_STALL                0x0031
+#define URB_FUNCTION_CONTROL_TRANSFER_EX             0x0032
 
 #define USBD_PF_CHANGE_MAX_PACKET		0x00000001
 
-#define USBD_TRANSFER_DIRECTION_BIT		0
-#define USBD_SHORT_TRANSFER_OK_BIT		1
-
 #define USBD_TRANSFER_DIRECTION_OUT		0
-#define USBD_TRANSFER_DIRECTION_IN		\
-	(1 << USBD_TRANSFER_DIRECTION_BIT)
+#define USBD_TRANSFER_DIRECTION_IN		1
+
+#define USBD_SHORT_TRANSFER_OK			0x00000002
+#define USBD_START_ISO_TRANSFER_ASAP		0x00000004
+#define USBD_DEFAULT_PIPE_TRANSFER		0x00000008
+
 #define USBD_TRANSFER_DIRECTION(flags)		\
 	((flags) & USBD_TRANSFER_DIRECTION_IN)
-
-#define USBD_SHORT_TRANSFER_OK			\
-	(1 << USBD_SHORT_TRANSFER_OK_BIT)
 
 #define USBD_IS_BULK_PIPE(pipe_handle)					\
 	(((pipe_handle)->bmAttributes & USB_ENDPOINT_XFERTYPE_MASK) ==	\
@@ -200,17 +199,6 @@ struct usbd_select_configuration {
 	struct usbd_interface_information intf;
 };
 
-struct usbd_bulk_or_intr_transfer {
-	struct nt_urb_header header;
-	usbd_pipe_handle pipe_handle;
-	ULONG transfer_flags;
-	ULONG transfer_buffer_length;
-	void *transfer_buffer;
-	struct mdl *mdl;
-	union nt_urb *urb_link;
-	struct urb_hcd_area hca;
-};
-
 struct usbd_control_descriptor_request {
 	struct nt_urb_header header;
 	void *reserved;
@@ -225,6 +213,17 @@ struct usbd_control_descriptor_request {
 	UCHAR desc_type;
 	USHORT language_id;
 	USHORT reserved2;
+};
+
+struct usbd_bulk_or_intr_transfer {
+	struct nt_urb_header header;
+	usbd_pipe_handle pipe_handle;
+	ULONG transfer_flags;
+	ULONG transfer_buffer_length;
+	void *transfer_buffer;
+	struct mdl *mdl;
+	union nt_urb *urb_link;
+	struct urb_hcd_area hca;
 };
 
 struct usbd_pipe_request {
@@ -274,7 +273,7 @@ union nt_urb {
 	struct usbd_select_interface select_intf;
 	struct usbd_select_configuration select_conf;
 	struct usbd_bulk_or_intr_transfer bulk_int_transfer;
-	struct usbd_control_descriptor_request control_request;
+	struct usbd_control_descriptor_request control_desc;
 	struct usbd_vendor_or_class_request vendor_class_request;
 	struct usbd_isochronous_transfer isochronous;
 	struct usbd_pipe_request pipe_req;

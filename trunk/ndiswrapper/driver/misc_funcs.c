@@ -483,13 +483,27 @@ wstdcall void WIN_FUNC(RtlCopyUnicodeString,2)
 	(struct unicode_string *dst, struct unicode_string *src)
 {
 	TRACEENTER1("%p, %p", dst, src);
-	if (src) {
+	if (src && src->buf && dst->buf) {
 		dst->length = min(src->length, dst->max_length);
 		memcpy(dst->buf, src->buf, dst->length);
 		if (dst->length < dst->max_length)
-			dst->buf[dst->length / sizeof(wchar_t)] = 0;
+			dst->buf[dst->length / sizeof(dst->buf[0])] = 0;
 	} else
-		dst->max_length = 0;
+		dst->length = 0;
+	TRACEEXIT1(return);
+}
+
+wstdcall void WIN_FUNC(RtlCopyString,2)
+	(struct ansi_string *dst, struct ansi_string *src)
+{
+	TRACEENTER1("%p, %p", dst, src);
+	if (src && src->buf && dst->buf) {
+		dst->length = min(src->length, dst->max_length);
+		memcpy(dst->buf, src->buf, dst->length);
+		if (dst->length < dst->max_length)
+			dst->buf[dst->length] = 0;
+	} else
+		dst->length = 0;
 	TRACEEXIT1(return);
 }
 
@@ -500,12 +514,12 @@ wstdcall NTSTATUS WIN_FUNC(RtlAppendUnicodeToString,2)
 		int len;
 		for (len = 0; src[len]; len++)
 			;
-		if (dst->length + (len * sizeof(wchar_t)) > dst->max_length)
+		if (dst->length + (len * sizeof(dst->buf[0])) > dst->max_length)
 			return STATUS_BUFFER_TOO_SMALL;
-		memcpy(&dst->buf[dst->length], src, len * sizeof(wchar_t));
-		dst->length += len * sizeof(wchar_t);
+		memcpy(&dst->buf[dst->length], src, len * sizeof(dst->buf[0]));
+		dst->length += len * sizeof(dst->buf[0]);
 		if (dst->max_length > dst->length)
-			dst->buf[dst->length / sizeof(wchar_t)] = 0;
+			dst->buf[dst->length / sizeof(dst->buf[0])] = 0;
 	}
 	return STATUS_SUCCESS;
 }
@@ -519,7 +533,7 @@ wstdcall NTSTATUS WIN_FUNC(RtlAppendUnicodeStringToString,2)
 		memcpy(&dst->buf[dst->length], src->buf, src->length);
 		dst->length += src->length;
 		if (dst->max_length > dst->length)
-			dst->buf[dst->length / sizeof(wchar_t)] = 0;
+			dst->buf[dst->length / sizeof(dst->buf[0])] = 0;
 	}
 	TRACEEXIT2(return STATUS_SUCCESS);
 }
@@ -572,10 +586,10 @@ wstdcall NTSTATUS WIN_FUNC(RtlAnsiStringToUnicodeString,3)
 		TRACEEXIT2(return STATUS_BUFFER_TOO_SMALL);
 
 	dst->length = n;
-	n /= sizeof(wchar_t);
+	n /= sizeof(dst->buf[0]);
 	for (i = 0; i < n; i++)
 		dst->buf[i] = src->buf[i];
-	if (i * sizeof(wchar_t) < dst->max_length)
+	if (i * sizeof(dst->buf[0]) < dst->max_length)
 		dst->buf[i] = 0;
 	DBGTRACE2("dst: length: %d, max_length: %d, string: %p",
 		  dst->length, dst->max_length, src->buf);
@@ -686,14 +700,14 @@ wstdcall NTSTATUS WIN_FUNC(RtlUnicodeStringToInteger,3)
 wstdcall NTSTATUS WIN_FUNC(RtlIntegerToUnicodeString,3)
 	(ULONG value, ULONG base, struct unicode_string *ustring)
 {
-	wchar_t *buf = ustring->buf;
+	typeof(ustring->buf) buf = ustring->buf;
 	int i;
 
 	if (base == 0)
 		base = 10;
 	if (!(base == 2 || base == 8 || base == 10 || base == 16))
 		return STATUS_INVALID_PARAMETER;
-	for (i = 0; value && i * sizeof(wchar_t) < ustring->max_length; i++) {
+	for (i = 0; value && i * sizeof(buf[0]) < ustring->max_length; i++) {
 		int r;
 		r = value % base;
 		value /= base;
@@ -704,7 +718,7 @@ wstdcall NTSTATUS WIN_FUNC(RtlIntegerToUnicodeString,3)
 	}
 	if (value)
 		return STATUS_BUFFER_OVERFLOW;
-	ustring->length = i * sizeof(wchar_t);
+	ustring->length = i * sizeof(buf[0]);
 	return STATUS_SUCCESS;
 }
 
@@ -743,8 +757,8 @@ wstdcall void WIN_FUNC(RtlInitUnicodeString,2)
 		while ((c = src[i++]))
 			;
 		dst->buf = (wchar_t *)src;
-		dst->length = i * sizeof(wchar_t);
-		dst->max_length = (i + 1) * sizeof(wchar_t);
+		dst->length = i * sizeof(dst->buf[0]);
+		dst->max_length = (i + 1) * sizeof(dst->buf[0]);
 	}
 	TRACEEXIT1(return);
 }
