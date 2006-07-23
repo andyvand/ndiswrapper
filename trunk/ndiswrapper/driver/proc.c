@@ -355,23 +355,25 @@ static int procfs_write_ndis_settings(struct file *file, const char *buf,
 
 int wrap_procfs_add_ndis_device(struct wrap_ndis_device *wnd)
 {
-	struct proc_dir_entry *proc_iface, *procfs_entry;
+	struct proc_dir_entry *procfs_entry;
 
-	wnd->procfs_iface = NULL;
 	if (wrap_procfs_entry == NULL)
 		return -ENOMEM;
 
-	proc_iface = proc_mkdir(wnd->netdev_name, wrap_procfs_entry);
-	wnd->procfs_iface = proc_iface;
-	if (proc_iface == NULL) {
+	if (wnd->procfs_iface) {
+		ERROR("%s already registered?", wnd->netdev_name);
+		return -EINVAL;
+	}
+	wnd->procfs_iface = proc_mkdir(wnd->netdev_name, wrap_procfs_entry);
+	if (wnd->procfs_iface == NULL) {
 		ERROR("couldn't create proc directory");
 		return -ENOMEM;
 	}
-	proc_iface->uid = proc_uid;
-	proc_iface->gid = proc_gid;
+	wnd->procfs_iface->uid = proc_uid;
+	wnd->procfs_iface->gid = proc_gid;
 
 	procfs_entry = create_proc_entry("hw", S_IFREG | S_IRUSR | S_IRGRP,
-					 proc_iface);
+					 wnd->procfs_iface);
 	if (procfs_entry == NULL) {
 		ERROR("couldn't create proc entry for 'hw'");
 		return -ENOMEM;
@@ -383,7 +385,7 @@ int wrap_procfs_add_ndis_device(struct wrap_ndis_device *wnd)
 	}
 
 	procfs_entry = create_proc_entry("stats", S_IFREG | S_IRUSR | S_IRGRP,
-					 proc_iface);
+					 wnd->procfs_iface);
 	if (procfs_entry == NULL) {
 		ERROR("couldn't create proc entry for 'stats'");
 		return -ENOMEM;
@@ -395,7 +397,7 @@ int wrap_procfs_add_ndis_device(struct wrap_ndis_device *wnd)
 	}
 
 	procfs_entry = create_proc_entry("encr", S_IFREG | S_IRUSR | S_IRGRP,
-					 proc_iface);
+					 wnd->procfs_iface);
 	if (procfs_entry == NULL) {
 		ERROR("couldn't create proc entry for 'encr'");
 		return -ENOMEM;
@@ -408,7 +410,7 @@ int wrap_procfs_add_ndis_device(struct wrap_ndis_device *wnd)
 
 	procfs_entry = create_proc_entry("settings", S_IFREG |
 					 S_IRUSR | S_IRGRP |
-					 S_IWUSR | S_IWGRP, proc_iface);
+					 S_IWUSR | S_IWGRP, wnd->procfs_iface);
 	if (procfs_entry == NULL) {
 		ERROR("couldn't create proc entry for 'settings'");
 		return -ENOMEM;

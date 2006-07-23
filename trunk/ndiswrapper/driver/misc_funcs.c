@@ -400,6 +400,18 @@ wstdcall void WIN_FUNC(RtlSecureZeroMemory,2)
 	memset(dst, 0, length);
 }
 
+wstdcall void WIN_FUNC(RtlFillMemory,3)
+	(void *dest, SIZE_T length, UCHAR fill)
+{
+	memset(dest, fill, length);
+}
+
+wstdcall void WIN_FUNC(RtlMoveMemory,3)
+	(void *dest, const void *src, SIZE_T length)
+{
+	memmove(dest, src, length);
+}
+
 wstdcall LONG WIN_FUNC(RtlCompareString,3)
 	(const struct ansi_string *s1, const struct ansi_string *s2,
 	 BOOLEAN case_insensitive)
