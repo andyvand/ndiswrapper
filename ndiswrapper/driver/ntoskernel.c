@@ -587,8 +587,7 @@ wfastcall void WIN_FUNC(ExInterlockedAddLargeStatistic,2)
 		"\n"
 		LOCK_PREFIX "add %1, %0\n\t"
 		: "+m" (*plint)
-		: "r" (n)
-		: "memory");
+		: "r" (n));
 #else
 	__asm__ __volatile__(
 		"\n"
@@ -601,7 +600,7 @@ wfastcall void WIN_FUNC(ExInterlockedAddLargeStatistic,2)
 		"   jnz 1b\n\t"
 		: "+r" (plint)
 		: "m" (n), "a" (ll_low(*plint)), "d" (ll_high(*plint))
-		: "ebx", "ecx", "cc", "memory");
+		: "ebx", "ecx", "cc");
 #endif
 	restore_local_irq(flags);
 }
@@ -855,8 +854,6 @@ static BOOLEAN queue_kdpc(struct kdpc *kdpc)
 	KIRQL irql;
 
 	TRACEENTER5("%p", kdpc);
-	if (!kdpc)
-		return FALSE;
 	irql = nt_spin_lock_irql(&kdpc_list_lock, DISPATCH_LEVEL);
 	if (IsListEmpty(&kdpc->list)) {
 		InsertTailList(&kdpc_list, &kdpc->list);
@@ -878,8 +875,6 @@ static BOOLEAN dequeue_kdpc(struct kdpc *kdpc)
 	KIRQL irql;
 
 	TRACEENTER5("%p", kdpc);
-	if (!kdpc)
-		return FALSE;
 	irql = nt_spin_lock_irql(&kdpc_list_lock, DISPATCH_LEVEL);
 	if (IsListEmpty(&kdpc->list))
 		ret = FALSE;
@@ -1793,8 +1788,9 @@ static int thread_trampoline(void *data)
 #endif
 	DBGTRACE2("thread: %p, task: %p (%d)", thread, thread->task,
 		  thread->pid);
-	ctx.start_routine(ctx.context);
-
+	LIN2WIN1(ctx.start_routine, ctx.context);
+	DBGTRACE2("thread: %p, task: %p (%d)", thread, thread->task,
+		  thread->pid);
 	return 0;
 }
 
