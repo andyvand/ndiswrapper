@@ -796,17 +796,6 @@ NTSTATUS ObReferenceObjectByHandle
 	(void *handle, ACCESS_MASK desired_access, void *obj_type,
 	 KPROCESSOR_MODE access_mode, void **object, void *handle_info) wstdcall;
 
-#define MSG(level, fmt, ...)				\
-	printk(level "ndiswrapper (%s:%d): " fmt "\n",	\
-	       __FUNCTION__, __LINE__ , ## __VA_ARGS__)
-#define WARNING(fmt, ...) MSG(KERN_WARNING, fmt, ## __VA_ARGS__)
-#define ERROR(fmt, ...) MSG(KERN_ERR, fmt , ## __VA_ARGS__)
-#define INFO(fmt, ...) MSG(KERN_INFO, fmt , ## __VA_ARGS__)
-
-#define INFOEXIT(stmt) do { INFO("Exit"); stmt; } while(0)
-
-#define TODO() ERROR("not fully implemented (yet)")
-
 void adjust_user_shared_data_addr(char *driver, unsigned long length);
 
 #define IoCompleteRequest(irp, prio) IofCompleteRequest(irp, prio)
@@ -815,10 +804,10 @@ void adjust_user_shared_data_addr(char *driver, unsigned long length);
 static inline KIRQL current_irql(void)
 {
 	if (in_irq() || irqs_disabled())
-		return DEVICE_LEVEL;
+		TRACEEXIT5(return DEVICE_LEVEL);
 	if (in_atomic())
-		return DISPATCH_LEVEL;
-	return PASSIVE_LEVEL;
+		TRACEEXIT5(return DISPATCH_LEVEL);
+	TRACEEXIT5(return PASSIVE_LEVEL);
 }
 
 static inline KIRQL raise_irql(KIRQL newirql)
@@ -829,16 +818,18 @@ static inline KIRQL raise_irql(KIRQL newirql)
 		local_bh_disable();
 		preempt_disable();
 	}
+	DBGTRACE5("%d, %d", irql, newirql);
 	return irql;
 }
 
 static inline void lower_irql(KIRQL oldirql)
 {
 	KIRQL irql = current_irql();
+	DBGTRACE5("%d, %d", irql, oldirql);
 	if (irql < oldirql)
 		ERROR("invalid irql: %d < %d", irql, oldirql);
 	if (oldirql < DISPATCH_LEVEL && irql == DISPATCH_LEVEL) {
-		preempt_enable_no_resched();
+		preempt_enable();
 		local_bh_enable();
 	}
 }
@@ -877,9 +868,8 @@ static inline void nt_spin_lock(volatile NT_SPIN_LOCK *lock)
 		"  jne 2b\n\t"
 		"  jmp 1b\n"
 		"3:\n\t"
-		: "=m" (*lock)
-		: "r" (NT_SPIN_LOCK_LOCKED), "i" (NT_SPIN_LOCK_UNLOCKED)
-		: "memory");
+		: "+m" (*lock)
+		: "r" (NT_SPIN_LOCK_LOCKED), "i" (NT_SPIN_LOCK_UNLOCKED));
 }
 
 static inline void nt_spin_unlock(volatile NT_SPIN_LOCK *lock)

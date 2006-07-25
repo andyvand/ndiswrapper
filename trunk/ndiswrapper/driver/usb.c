@@ -510,7 +510,7 @@ static void wrap_urb_complete(struct urb *urb, struct pt_regs *regs)
 	InsertTailList(&wrap_urb_complete_list, &wrap_urb->complete_list);
 	nt_spin_unlock(&wrap_urb_complete_list_lock);
 #ifdef USB_TASKLET
-	tasklet_hi_schedule(&wrap_urb_complete_work);
+	tasklet_schedule(&wrap_urb_complete_work);
 #else
 	schedule_ntos_work(&wrap_urb_complete_work);
 #endif

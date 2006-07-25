@@ -121,7 +121,6 @@ static int set_assoc_params(struct wrap_ndis_device *wnd)
 	return 0;
 }
 
-
 static int iw_set_essid(struct net_device *dev, struct iw_request_info *info,
 			union iwreq_data *wrqu, char *extra)
 {

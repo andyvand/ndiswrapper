@@ -111,7 +111,6 @@ wstdcall void WIN_FUNC(KeStallExecutionProcessor,1)
 	(ULONG usecs)
 {
 	udelay(usecs);
-	do_softirq();
 }
 
 wstdcall KIRQL WIN_FUNC(KeGetCurrentIrql,0)
@@ -123,57 +122,45 @@ wstdcall KIRQL WIN_FUNC(KeGetCurrentIrql,0)
 wfastcall KIRQL WIN_FUNC(KfRaiseIrql,1)
 	(KIRQL newirql)
 {
-	KIRQL irql;
-
-	TRACEENTER5("irql = %d", newirql);
-	irql = raise_irql(newirql);
-	TRACEEXIT5(return irql);
+	return raise_irql(newirql);
 }
 
 wfastcall void WIN_FUNC(KfLowerIrql,1)
 	(KIRQL oldirql)
 {
-	TRACEENTER5("irql = %d", oldirql);
 	lower_irql(oldirql);
-	TRACEEXIT5(return);
 }
 
 wfastcall KIRQL WIN_FUNC(KfAcquireSpinLock,1)
 	(NT_SPIN_LOCK *lock)
 {
-	TRACEENTER5("lock = %p", lock);
 	return nt_spin_lock_irql(lock, DISPATCH_LEVEL);
 }
 
 wfastcall void WIN_FUNC(KfReleaseSpinLock,2)
 	(NT_SPIN_LOCK *lock, KIRQL oldirql)
 {
-	TRACEENTER5("lock = %p, irql = %d", lock, oldirql);
 	nt_spin_unlock_irql(lock, oldirql);
 }
 
 wfastcall void WIN_FUNC(KefAcquireSpinLockAtDpcLevel,1)
 	(NT_SPIN_LOCK *lock)
 {
-	TRACEENTER5("lock = %p", lock);
 #ifdef DEBUG_IRQL
 	if (current_irql() != DISPATCH_LEVEL)
 		ERROR("irql != DISPATCH_LEVEL");
 #endif
 	nt_spin_lock(lock);
-	TRACEEXIT5(return);
 }
 
 wfastcall void WIN_FUNC(KefReleaseSpinLockFromDpcLevel,1)
 	(NT_SPIN_LOCK *lock)
 {
-	TRACEENTER5("lock = %p", lock);
 #ifdef DEBUG_IRQL
 	if (current_irql() != DISPATCH_LEVEL)
 		ERROR("irql != DISPATCH_LEVEL");
 #endif
 	nt_spin_unlock(lock);
-	TRACEEXIT5(return);
 }
 
 #include "hal_exports.h"

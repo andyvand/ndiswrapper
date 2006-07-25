@@ -1040,13 +1040,13 @@ static void link_status_handler(struct wrap_ndis_device *wnd)
 		wireless_send_event(wnd->net_dev, SIOCGIWAP, &wrqu, NULL);
 		TRACEEXIT2(return);
 	}
+
 	ndis_assoc_info = kmalloc(assoc_size, GFP_KERNEL);
 	if (!ndis_assoc_info) {
 		ERROR("couldn't allocate memory");
 		TRACEEXIT2(return);
 	}
 	memset(ndis_assoc_info, 0, assoc_size);
-
 	res = miniport_query_info(wnd, OID_802_11_ASSOCIATION_INFORMATION,
 				  ndis_assoc_info, assoc_size);
 	if (res) {
@@ -1401,9 +1401,9 @@ wstdcall NTSTATUS NdisDispatchPower(struct device_object *fdo, struct irp *irp)
 		break;
 	case IRP_MN_QUERY_POWER:
 		if (wnd->pm_capa) {
-			ndis_status = miniport_query_info(wnd,
-							  OID_PNP_QUERY_POWER,
-							  &state, sizeof(state));
+			ndis_status =
+				miniport_query_info(wnd, OID_PNP_QUERY_POWER,
+						    &state, sizeof(state));
 			DBGTRACE2("%d, %08X", state, ndis_status);
 			/* this OID must always succeed */
 			if (ndis_status != NDIS_STATUS_SUCCESS)
@@ -1701,7 +1701,7 @@ static NDIS_STATUS ndis_start_device(struct wrap_ndis_device *wnd)
 		ndis_status =
 			miniport_query_int(wnd, OID_GEN_MAXIMUM_SEND_PACKETS,
 					   &wnd->max_tx_packets);
-		if (ndis_status == NDIS_STATUS_NOT_SUPPORTED)
+		if (ndis_status != NDIS_STATUS_SUCCESS)
 			wnd->max_tx_packets = 1;
 		if (wnd->max_tx_packets > TX_RING_SIZE)
 			wnd->max_tx_packets = TX_RING_SIZE;

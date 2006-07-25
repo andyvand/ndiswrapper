@@ -82,6 +82,18 @@
 #ifdef __KERNEL__
 /* DEBUG macros */
 
+#define MSG(level, fmt, ...)				\
+	printk(level "ndiswrapper (%s:%d): " fmt "\n",	\
+	       __FUNCTION__, __LINE__ , ## __VA_ARGS__)
+
+#define WARNING(fmt, ...) MSG(KERN_WARNING, fmt, ## __VA_ARGS__)
+#define ERROR(fmt, ...) MSG(KERN_ERR, fmt , ## __VA_ARGS__)
+#define INFO(fmt, ...) MSG(KERN_INFO, fmt , ## __VA_ARGS__)
+
+#define INFOEXIT(stmt) do { INFO("Exit"); stmt; } while(0)
+
+#define TODO() ERROR("not fully implemented (yet)")
+
 #define DBGTRACE(fmt, ...) do { } while (0)
 #define DBGTRACE1(fmt, ...) do { } while (0)
 #define DBGTRACE2(fmt, ...) do { } while (0)
