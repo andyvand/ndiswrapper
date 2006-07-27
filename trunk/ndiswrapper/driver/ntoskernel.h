@@ -390,13 +390,10 @@ typedef u32 pm_message_t;
 #define lin2win_arg6(arg)						\
 	__asm__ __volatile__("movq %0, " lin2win_win_arg(6) : : "ri" (arg))
 
-/* put volatile args for Windows and Linux functions in clobber list */
+/* put volatile args for Windows function in clobber list */
 #define call_win_func_ret(func, ret)					\
-	__asm__ __volatile__("call *%1"					\
-			     : "=a" (ret)				\
-			     : "0" (func)				\
-			     : "rcx", "rdx", "rsi", "rdi",		\
-			       "r8", "r9", "r10", "r11")
+	__asm__ __volatile__("call *%1" : "=a" (ret) : "0" (func)	\
+			     : "rcx", "rdx", "r8", "r9")
 
 #define LIN2WIN0(func)							\
 ({									\
