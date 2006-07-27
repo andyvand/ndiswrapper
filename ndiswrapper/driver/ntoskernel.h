@@ -360,6 +360,14 @@ typedef u32 pm_message_t;
 
 #if 1
 
+/* Windows functions must have 32 bytes of reserved space above return
+ * address, irrespective of number of args. So argc >= 4 */
+
+#define alloc_win_stack_frame(argc)					\
+	__asm__ __volatile__("sub $" stringify(argc) "*8, %rsp")
+#define free_win_stack_frame(argc)					\
+	__asm__ __volatile__("add $" stringify(argc) "*8, %rsp")
+
 /* m is index of Windows arg required. Windows arg 1 should be at
  * 0(%rsp), arg 2 at 8(%rsp) and so on, after stack frame is
  * allocated. n should be such that 4 < n <= 6
@@ -382,15 +390,11 @@ typedef u32 pm_message_t;
 #define lin2win_arg6(arg, n)						\
 	__asm__ __volatile__("movq %0, " lin2win_win_arg(6) : : "ri" (arg))
 
-/* put volatile args in clobber list */
+/* put volatile args for Windows and Linux functions in clobber list */
 #define call_win_func_ret(func, ret)					\
 	__asm__ __volatile__("call *%1" : "=a" (ret) : "a" (func) :	\
-			     "rcx", "rdx", "r8", "r9")
-
-#define alloc_win_stack_frame(argc)					\
-	__asm__ __volatile__("sub $" stringify(argc) "*8, %rsp")
-#define free_win_stack_frame(argc)					\
-	__asm__ __volatile__("add $" stringify(argc) "*8, %rsp")
+			     "rcx", "rdx", "rsi", "rdi",		\
+			     "r8", "r9", "r10", "r11")
 
 #define LIN2WIN0(func)							\
 ({									\
