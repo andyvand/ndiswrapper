@@ -358,6 +358,139 @@ typedef u32 pm_message_t;
 
 #ifdef CONFIG_X86_64
 
+#if 0
+
+/* m is index of Windows arg required. Windows arg 1 should be at
+ * 0(%rsp), arg 2 at 8(%rsp) and so on, after stack frame is
+ * allocated. n should be such that 4 < n <= 6
+*/
+
+#define stringify(x) #x
+
+#define lin2win_win_arg(m) stringify((m-1)*8) "(%%rsp)"
+
+#define lin2win_arg1(arg)			\
+	__asm__ __volatile__("" : : "c" (arg))
+#define lin2win_arg2(arg)			\
+	__asm__ __volatile__("" : : "d" (arg))
+#define lin2win_arg3(arg)						\
+	__asm__ __volatile__("mov %0, %%r8" : : "girm" (arg) : "r8")
+#define lin2win_arg4(arg)						\
+	__asm__ __volatile__("mov %0, %%r9" : : "girm" (arg) : "r9")
+#define lin2win_arg5(arg, n)						\
+	__asm__ __volatile__("mov %0, " lin2win_win_arg(5) : : "ri" (arg))
+#define lin2win_arg6(arg, n)						\
+	__asm__ __volatile__("mov %0, " lin2win_win_arg(6) : : "ri" (arg))
+
+#define call_win_func_ret(func, ret)					\
+	__asm__ __volatile__("call *%1" : "=a" (ret) : "a" (func))
+
+#define alloc_win_stack_frame(argc)			\
+	__asm__ __volatile__("sub $" stringify(argc) "*8, %rsp")
+#define free_win_stack_frame(argc)			\
+	__asm__ __volatile__("add $" stringify(argc) "*8, %rsp")
+
+#define LIN2WIN0(func)							\
+({									\
+	u64 ret;							\
+	alloc_win_stack_frame(4);					\
+	call_win_func_ret(func, ret);					\
+	free_win_stack_frame(4);					\
+	ret;								\
+})
+
+#define _LIN2WIN1_(func, arg1)						\
+({									\
+	u64 ret;							\
+	alloc_win_stack_frame(4);					\
+	lin2win_arg1(arg1);						\
+	call_win_func_ret(func, ret);					\
+	free_win_stack_frame(4);					\
+	ret;								\
+})
+#define LIN2WIN1(func, arg1)			\
+	_LIN2WIN1_(func, (u64)arg1)
+
+#define _LIN2WIN2_(func, arg1, arg2)					\
+({									\
+	u64 ret;							\
+	alloc_win_stack_frame(4);					\
+	lin2win_arg1(arg1);						\
+	lin2win_arg2(arg2);						\
+	call_win_func_ret(func, ret);					\
+	free_win_stack_frame(4);					\
+	ret;								\
+})
+#define LIN2WIN2(func, arg1, arg2)		\
+	_LIN2WIN2_(func, (u64)arg1, (u64)arg2)
+
+#define _LIN2WIN3_(func, arg1, arg2, arg3)				\
+({									\
+	u64 ret;							\
+	alloc_win_stack_frame(4);					\
+	lin2win_arg1(arg1);						\
+	lin2win_arg2(arg2);						\
+	lin2win_arg3(arg3);						\
+	call_win_func_ret(func, ret);					\
+	free_win_stack_frame(4);					\
+	ret;								\
+})
+#define LIN2WIN3(func, arg1, arg2, arg3)				\
+	_LIN2WIN3_(func, (u64)arg1, (u64)arg2, (u64)arg3)
+
+#define _LIN2WIN4_(func, arg1, arg2, arg3, arg4)			\
+({									\
+	u64 ret;							\
+	alloc_win_stack_frame(4);					\
+	lin2win_arg1(arg1);						\
+	lin2win_arg2(arg2);						\
+	lin2win_arg3(arg3);						\
+	lin2win_arg4(arg4);						\
+	call_win_func_ret(func, ret);					\
+	free_win_stack_frame(4);					\
+	ret;								\
+})
+#define LIN2WIN4(func, arg1, arg2, arg3, arg4)				\
+	_LIN2WIN4_(func, (u64)arg1, (u64)arg2, (u64)arg3, (u64)arg4)
+
+
+#define _LIN2WIN5_(func, arg1, arg2, arg3, arg4, arg5)			\
+({									\
+	u64 ret;							\
+	alloc_win_stack_frame(5);					\
+	lin2win_arg1(arg1);						\
+	lin2win_arg2(arg2);						\
+	lin2win_arg3(arg3);						\
+	lin2win_arg4(arg4);						\
+	lin2win_arg5(arg5, 5);						\
+	call_win_func_ret(func, ret);					\
+	free_win_stack_frame(5);					\
+	ret;								\
+})
+#define LIN2WIN5(func, arg1, arg2, arg3, arg4, arg5)			\
+	_LIN2WIN5_(func, (u64)arg1, (u64)arg2, (u64)arg3, (u64)arg4,	\
+		   (u64)arg5)
+
+#define _LIN2WIN6_(func, arg1, arg2, arg3, arg4, arg5, arg6)		\
+({									\
+	u64 ret;							\
+	alloc_win_stack_frame(6);					\
+	lin2win_arg1(arg1);						\
+	lin2win_arg2(arg2);						\
+	lin2win_arg3(arg3);						\
+	lin2win_arg4(arg4);						\
+	lin2win_arg5(arg5, 6);						\
+	lin2win_arg6(arg6, 6);						\
+	call_win_func_ret(func, ret);					\
+	free_win_stack_frame(6);					\
+	ret;								\
+})
+#define LIN2WIN6(func, arg1, arg2, arg3, arg4, arg5, arg6)		\
+	_LIN2WIN6_(func, (u64)arg1, (u64)arg2, (u64)arg3, (u64)arg4,	\
+		   (u64)arg5, (u64)arg6)
+
+#else
+
 u64 lin2win1(void *func, u64);
 u64 lin2win2(void *func, u64, u64);
 u64 lin2win3(void *func, u64, u64, u64);
@@ -430,6 +563,8 @@ u64 lin2win6(void *func, u64, u64, u64, u64, u64, u64);
 	DBGTRACE6("calling %p", func);					\
 	func(arg1, arg2, arg3, arg4, arg5, arg6);			\
 })
+
+#endif
 
 #endif // CONFIG_X86_64
 

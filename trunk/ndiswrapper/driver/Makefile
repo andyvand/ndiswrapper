@@ -1,5 +1,3 @@
--include ../version
-
 DISTFILES=divdi3.c hal.c iw_ndis.c iw_ndis.h loader.c loader.h \
 		longlong.h Makefile misc_funcs.c ndis.c ndis.h \
 		ndiswrapper.h ntoskernel.c ntoskernel.h ntoskernel_io.c \
@@ -77,8 +75,6 @@ endif
 ifdef ALLOC_DEBUG
 CFLAGS += -DALLOC_DEBUG=$(ALLOC_DEBUG)
 endif
-
-CFLAGS += -DDRIVER_VERSION=\"${DRIVER_VERSION}\"
 
 .PHONY: prereq_check gen_exports clean dist_clean \
 		 x86_64_stubs install stack_check
@@ -254,8 +250,7 @@ obj-m := ndiswrapper.o
 ndiswrapper-objs := $(OBJS)
 
 default:
-	$(MAKE) -C $(KBUILD) SUBDIRS=$(SRC_DIR) \
-		DRIVER_VERSION=$(DRIVER_VERSION)
+	$(MAKE) -C $(KBUILD) SUBDIRS=$(SRC_DIR)
 
 endif
 

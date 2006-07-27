@@ -34,7 +34,7 @@
 #include <linux/major.h>
 #include <linux/ioctl.h>
 
-#include "../driver/loader.h"
+#include "loader.h"
 
 #define PROG_NAME "loadndisdriver"
 

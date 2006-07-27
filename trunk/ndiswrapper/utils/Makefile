@@ -1,11 +1,11 @@
--include ../version
-
 DESTDIR =
 sbindir = $(DESTDIR)/sbin
 usrsbindir = $(DESTDIR)/usr/sbin
 
+DRIVER_DIR ?= ../driver
+
 CC = gcc
-CFLAGS = -g -Wall -DUTILS_VERSION=\"$(UTILS_VERSION)\" 
+CFLAGS = -g -Wall -I$(DRIVER_DIR)
 
 DISTFILES=Makefile ndiswrapper loadndisdriver.c ndiswrapper-buginfo
 
