@@ -459,8 +459,8 @@ static int ndis_set_mac_address(struct net_device *dev, void *p)
 		TRACEEXIT1(return -EINVAL);
 	NdisWriteConfiguration(&res, wnd->nmb, &key, &param);
 	RtlFreeUnicodeString(&key);
-
 	RtlFreeUnicodeString(&param.data.string);
+
 	if (res != NDIS_STATUS_SUCCESS)
 		TRACEEXIT1(return -EINVAL);
 	if (ndis_reinit(wnd) == NDIS_STATUS_SUCCESS) {
@@ -524,18 +524,15 @@ void free_tx_packet(struct wrap_ndis_device *wnd, struct ndis_packet *packet,
 {
 	ndis_buffer *buffer;
 	struct ndis_packet_oob_data *oob_data;
-	KIRQL irql;
 
 	TRACEENTER3("%p, %08X", packet, status);
-	irql = nt_spin_lock_irql(&wnd->tx_stats_lock, DISPATCH_LEVEL);
 	if (status == NDIS_STATUS_SUCCESS) {
-		wnd->stats.tx_bytes += packet->private.len;
-		wnd->stats.tx_packets++;
+		pre_atomic_add(wnd->stats.tx_bytes, packet->private.len);
+		atomic_inc_var(wnd->stats.tx_packets);
 	} else {
 		DBGTRACE1("packet dropped: %08X", status);
-		wnd->stats.tx_dropped++;
+		atomic_inc_var(wnd->stats.tx_dropped);
 	}
-	nt_spin_unlock_irql(&wnd->tx_stats_lock, irql);
 	oob_data = NDIS_PACKET_OOB_DATA(packet);
 	if (wnd->use_sg_dma)
 		PCI_DMA_UNMAP_SINGLE(wnd->wd->pci.pdev,
@@ -1908,7 +1905,6 @@ static wstdcall NTSTATUS NdisAddDevice(struct driver_object *drv_obj,
 	wnd->tx_ring_start = 0;
 	wnd->tx_ring_end = 0;
 	wnd->is_tx_ring_full = 0;
-	nt_spin_lock_init(&wnd->tx_stats_lock);
 	wnd->encr_mode = Ndis802_11EncryptionDisabled;
 	wnd->auth_mode = Ndis802_11AuthModeOpen;
 	wnd->capa.encr = 0;

@@ -2612,6 +2612,55 @@ wstdcall ULONG WIN_FUNC(NdisWritePcmciaAttributeMemory,4)
 	return 0;
 }
 
+wstdcall void WIN_FUNC(NdisMCoIndicateReceivePacket,3)
+	(struct ndis_miniport_block *nmb, struct ndis_packet **packets,
+	 UINT nr_packets)
+{
+	TRACEENTER3("nmb = %p", nmb);
+	NdisMIndicateReceivePacket(nmb, packets, nr_packets);
+	TRACEEXIT3(return);
+}
+
+wstdcall void WIN_FUNC(NdisMCoSendComplete,3)
+	(NDIS_STATUS status, struct ndis_miniport_block *nmb,
+	 struct ndis_packet *packet)
+{
+	TRACEENTER3("%08x", status);
+	NdisMSendComplete(nmb, packet, status);
+	TRACEEXIT3(return);
+}
+
+wstdcall void WIN_FUNC(NdisMCoRequestComplete,3)
+	(NDIS_STATUS status, struct ndis_miniport_block *nmb,
+	 struct ndis_request *ndis_request)
+{
+	struct wrap_ndis_device *wnd = nmb->wnd;
+
+	TRACEENTER3("%08X", status);
+	wnd->ndis_comm_status = status;
+	wnd->ndis_comm_done = 1;
+	wake_up(&wnd->ndis_comm_wq);
+	TRACEEXIT3(return);
+}
+
+wstdcall void WIN_FUNC(NdisMCoActivateVcComplete,3)
+	(NDIS_STATUS status, void *handle, void *params)
+{
+	TODO();
+}
+
+wstdcall void WIN_FUNC(NdisMCoDeactivateVcComplete,2)
+	(NDIS_STATUS status, void *handle)
+{
+	TODO();
+}
+
+wstdcall void WIN_FUNC(NdisMRemoveMiniport,1)
+	(void *handle)
+{
+	TODO();
+}
+
 #include "ndis_exports.h"
 
 void init_nmb_functions(struct ndis_miniport_block *nmb)

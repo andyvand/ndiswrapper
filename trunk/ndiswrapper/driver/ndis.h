@@ -805,10 +805,7 @@ struct wrap_ndis_device {
 	unsigned char is_tx_ring_full;
 	struct semaphore tx_ring_mutex;
 	unsigned int max_tx_packets;
-
 	u8 tx_ok;
-	NT_SPIN_LOCK tx_stats_lock;
-
 	struct semaphore ndis_comm_mutex;
 	wait_queue_head_t ndis_comm_wq;
 	int ndis_comm_done;
@@ -1240,9 +1237,9 @@ static inline void serialize_unlock_irql(struct wrap_ndis_device *wnd,
 					 KIRQL irql)
 {
 	if (deserialized_driver(wnd))
-		return lower_irql(irql);
+		lower_irql(irql);
 	else
-		return nt_spin_unlock_irql(&wnd->nmb->lock, irql);
+		nt_spin_unlock_irql(&wnd->nmb->lock, irql);
 }
 
 static inline void if_serialize_lock(struct wrap_ndis_device *wnd)
