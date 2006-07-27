@@ -417,7 +417,6 @@ static USBD_STATUS wrap_submit_urb(struct irp *irp)
 	struct urb *urb;
 	union nt_urb *nt_urb;
 
-	IoAcquireCancelSpinLock(&irp->cancel_irql);
 	urb = irp->wrap_urb->urb;
 	nt_urb = URB_FROM_IRP(irp);
 #ifdef USB_DEBUG
@@ -425,13 +424,10 @@ static USBD_STATUS wrap_submit_urb(struct irp *irp)
 		ERROR("urb %p is in wrong state: %d",
 		      urb, irp->wrap_urb->state);
 		NT_URB_STATUS(nt_urb) = USBD_STATUS_REQUEST_FAILED;
-		IoReleaseCancelSpinLock(irp->cancel_irql);
 		return NT_URB_STATUS(nt_urb);
 	}
-	irp->wrap_urb->id = urb_id++;
+	irp->wrap_urb->id = pre_atomic_add(urb_id, 1);
 #endif
-	irp->wrap_urb->state = URB_SUBMITTED;
-	IoReleaseCancelSpinLock(irp->cancel_irql);
 	DUMP_WRAP_URB(irp->wrap_urb, USB_DIR_OUT);
 	irp->io_status.status = STATUS_PENDING;
 	irp->io_status.info = 0;
@@ -439,6 +435,7 @@ static USBD_STATUS wrap_submit_urb(struct irp *irp)
 	IoMarkIrpPending(irp);
 	DUMP_URB_BUFFER(urb, USB_DIR_OUT);
 	USBTRACE("%p", urb);
+	irp->wrap_urb->state = URB_SUBMITTED;
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
 	ret = usb_submit_urb(urb, gfp_irql());
 #else

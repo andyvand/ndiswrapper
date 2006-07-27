@@ -228,7 +228,7 @@ prereq_check:
 clean:
 	rm -rf $(MODULE) ndiswrapper.o $(OBJS) usb.o x86_64_stubs.o \
 	   divdi3.o workqueue.o .*.ko.cmd .*.o.cmd \
-	   ndiswrapper.mod.[oc] *~ .tmp_versions
+	   ndiswrapper.mod.[oc] *~ .tmp_versions Module.symvers
 
 distclean: clean
 	rm -f *_exports.h .\#* x86_64_stubs.h

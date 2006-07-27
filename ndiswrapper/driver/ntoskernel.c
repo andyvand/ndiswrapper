@@ -1525,12 +1525,8 @@ wstdcall NTSTATUS WIN_FUNC(KeWaitForSingleObject,5)
 wstdcall void WIN_FUNC(KeInitializeEvent,3)
 	(struct nt_event *nt_event, enum event_type type, BOOLEAN state)
 {
-	KIRQL irql;
-
 	EVENTENTER("event = %p, type = %d, state = %d", nt_event, type, state);
-	irql = nt_spin_lock_irql(&dispatcher_lock, DISPATCH_LEVEL);
 	initialize_dh(&nt_event->dh, type, state);
-	nt_spin_unlock_irql(&dispatcher_lock, irql);
 	EVENTEXIT(return);
 }
 
@@ -1616,15 +1612,11 @@ wstdcall LONG WIN_FUNC(KeReleaseMutex,2)
 wstdcall void WIN_FUNC(KeInitializeSemaphore,3)
 	(struct nt_semaphore *semaphore, LONG count, LONG limit)
 {
-	KIRQL irql;
-
 	EVENTENTER("%p: %d", semaphore, count);
 	/* if limit > 1, we need to satisfy as many waits (until count
 	 * becomes 0); so we keep decrementing count everytime a wait
 	 * is satisified */
-	irql = nt_spin_lock_irql(&dispatcher_lock, DISPATCH_LEVEL);
 	initialize_dh(&semaphore->dh, SemaphoreObject, count);
-	nt_spin_unlock_irql(&dispatcher_lock, irql);
 	semaphore->dh.size = sizeof(*semaphore);
 	semaphore->limit = limit;
 	EVENTEXIT(return);
@@ -1797,7 +1789,6 @@ static int thread_trampoline(void *data)
 static struct nt_thread *create_nt_thread(struct task_struct *task)
 {
 	struct nt_thread *thread;
-	KIRQL irql;
 
 	thread = allocate_object(sizeof(*thread), OBJECT_TYPE_NT_THREAD);
 	if (!thread) {
@@ -1811,10 +1802,8 @@ static struct nt_thread *create_nt_thread(struct task_struct *task)
 		thread->pid = 0;
 	nt_spin_lock_init(&thread->lock);
 	InitializeListHead(&thread->irps);
-	irql = nt_spin_lock_irql(&dispatcher_lock, DISPATCH_LEVEL);
 	initialize_dh(&thread->dh, ThreadObject, 0);
 	thread->dh.size = sizeof(*thread);
-	nt_spin_unlock_irql(&dispatcher_lock, irql);
 	DBGTRACE2("thread: %p, task: %p, pid: %d",
 		  thread, thread->task, thread->pid);
 	return thread;
@@ -2216,14 +2205,11 @@ wstdcall NTSTATUS WIN_FUNC(ObReferenceObjectByHandle,6)
 	 KPROCESSOR_MODE access_mode, void **object, void *handle_info)
 {
 	struct common_object_header *hdr;
-	KIRQL irql;
 
 	DBGTRACE2("%p", handle);
-	irql = nt_spin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL);
 	hdr = HANDLE_TO_HEADER(handle);
-	hdr->ref_count++;
+	atomic_inc_var(hdr->ref_count);
 	*object = HEADER_TO_OBJECT(hdr);
-	nt_spin_unlock_irql(&ntoskernel_lock, irql);
 	DBGTRACE2("%p, %p, %d, %p", hdr, object, hdr->ref_count, *object);
 	return STATUS_SUCCESS;
 }
@@ -2236,13 +2222,10 @@ wfastcall LONG WIN_FUNC(ObfReferenceObject,1)
 {
 	struct common_object_header *hdr;
 	LONG ret;
-	KIRQL irql;
 
-	irql = nt_spin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL);
 	hdr = OBJECT_TO_HEADER(object);
-	ret = ++hdr->ref_count;
+	ret = post_atomic_add(hdr->ref_count, 1);
 	DBGTRACE2("%p, %d, %p", hdr, hdr->ref_count, object);
-	nt_spin_unlock_irql(&ntoskernel_lock, irql);
 	return ret;
 }
 
@@ -2250,16 +2233,12 @@ int dereference_object(void *object)
 {
 	struct common_object_header *hdr;
 	int ref_count;
-	KIRQL irql;
 
 	TRACEENTER2("object: %p", object);
-	irql = nt_spin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL);
 	hdr = OBJECT_TO_HEADER(object);
 	DBGTRACE2("hdr: %p", hdr);
-	hdr->ref_count--;
-	ref_count = hdr->ref_count;
+	ref_count = post_atomic_add(hdr->ref_count, -1);
 	DBGTRACE2("object: %p, %d", object, ref_count);
-	nt_spin_unlock_irql(&ntoskernel_lock, irql);
 	if (ref_count < 0)
 		ERROR("invalid object: %p (%d)", object, ref_count);
 	if (ref_count <= 0) {
@@ -2418,7 +2397,7 @@ wstdcall NTSTATUS WIN_FUNC(ZwWriteile,9)
 	struct file_object *fo;
 	struct common_object_header *coh;
 	struct wrap_bin_file *file;
-	size_t offset;
+	unsigned long offset;
 
 	DBGTRACE2("%p", handle);
 	coh = handle;
@@ -2434,7 +2413,7 @@ wstdcall NTSTATUS WIN_FUNC(ZwWriteile,9)
 	else
 		offset = fo->current_byte_offset;
 	if (length + offset > file->size) {
-		WARNING("%d, %d", length + offset, file->size);
+		WARNING("%lu, %d", length + offset, file->size);
 		/* TODO: implement writing past end of file */
 		iosb->status = STATUS_FAILURE;
 		iosb->info = 0;
