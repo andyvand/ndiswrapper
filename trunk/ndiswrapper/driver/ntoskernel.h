@@ -364,9 +364,9 @@ typedef u32 pm_message_t;
  * address, irrespective of number of args. So argc >= 4 */
 
 #define alloc_win_stack_frame(argc)					\
-	__asm__ __volatile__("sub $" stringify(argc) "*8, %rsp")
+	__asm__ __volatile__("sub $" #argc "*8, %rsp")
 #define free_win_stack_frame(argc)					\
-	__asm__ __volatile__("add $" stringify(argc) "*8, %rsp")
+	__asm__ __volatile__("add $" #argc "*8, %rsp")
 
 /* m is index of Windows arg required. Windows arg 1 should be at
  * 0(%rsp), arg 2 at 8(%rsp) and so on, after stack frame is
@@ -385,16 +385,18 @@ typedef u32 pm_message_t;
 	__asm__ __volatile__("movq %0, %%r8" : : "girm" (arg) : "r8")
 #define lin2win_arg4(arg)						\
 	__asm__ __volatile__("movq %0, %%r9" : : "girm" (arg) : "r9")
-#define lin2win_arg5(arg, n)						\
+#define lin2win_arg5(arg)						\
 	__asm__ __volatile__("movq %0, " lin2win_win_arg(5) : : "ri" (arg))
-#define lin2win_arg6(arg, n)						\
+#define lin2win_arg6(arg)						\
 	__asm__ __volatile__("movq %0, " lin2win_win_arg(6) : : "ri" (arg))
 
 /* put volatile args for Windows and Linux functions in clobber list */
 #define call_win_func_ret(func, ret)					\
-	__asm__ __volatile__("call *%1" : "=a" (ret) : "a" (func) :	\
-			     "rcx", "rdx", "rsi", "rdi",		\
-			     "r8", "r9", "r10", "r11")
+	__asm__ __volatile__("call *%1"					\
+			     : "=a" (ret)				\
+			     : "0" (func)				\
+			     : "rcx", "rdx", "rsi", "rdi",		\
+			       "r8", "r9", "r10", "r11")
 
 #define LIN2WIN0(func)							\
 ({									\
@@ -459,7 +461,6 @@ typedef u32 pm_message_t;
 #define LIN2WIN4(func, arg1, arg2, arg3, arg4)				\
 	_LIN2WIN4_(func, (u64)arg1, (u64)arg2, (u64)arg3, (u64)arg4)
 
-
 #define _LIN2WIN5_(func, arg1, arg2, arg3, arg4, arg5)			\
 ({									\
 	u64 ret;							\
@@ -468,7 +469,7 @@ typedef u32 pm_message_t;
 	lin2win_arg2(arg2);						\
 	lin2win_arg3(arg3);						\
 	lin2win_arg4(arg4);						\
-	lin2win_arg5(arg5, 5);						\
+	lin2win_arg5(arg5);						\
 	call_win_func_ret(func, ret);					\
 	free_win_stack_frame(5);					\
 	ret;								\
@@ -485,8 +486,8 @@ typedef u32 pm_message_t;
 	lin2win_arg2(arg2);						\
 	lin2win_arg3(arg3);						\
 	lin2win_arg4(arg4);						\
-	lin2win_arg5(arg5, 6);						\
-	lin2win_arg6(arg6, 6);						\
+	lin2win_arg5(arg5);						\
+	lin2win_arg6(arg6);						\
 	call_win_func_ret(func, ret);					\
 	free_win_stack_frame(6);					\
 	ret;								\
