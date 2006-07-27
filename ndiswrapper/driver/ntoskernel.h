@@ -537,6 +537,8 @@ u64 lin2win6(void *func, u64, u64, u64, u64, u64, u64);
 		 (u64)arg5, (u64)arg6);					\
 })
 
+#endif
+
 #else // CONFIG_X86_64
 
 #define LIN2WIN1(func, arg1)						\
@@ -569,8 +571,6 @@ u64 lin2win6(void *func, u64, u64, u64, u64, u64, u64);
 	DBGTRACE6("calling %p", func);					\
 	func(arg1, arg2, arg3, arg4, arg5, arg6);			\
 })
-
-#endif
 
 #endif // CONFIG_X86_64
 
