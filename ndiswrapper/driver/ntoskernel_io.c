@@ -21,6 +21,7 @@
 
 extern NT_SPIN_LOCK ntoskernel_lock;
 extern NT_SPIN_LOCK irp_cancel_lock;
+extern struct nt_list object_list;
 
 wstdcall void WIN_FUNC(IoAcquireCancelSpinLock,1)
 	(KIRQL *irql)
@@ -32,47 +33,6 @@ wstdcall void WIN_FUNC(IoReleaseCancelSpinLock,1)
 	(KIRQL irql)
 {
 	nt_spin_unlock_irql(&irp_cancel_lock, irql);
-}
-
-wstdcall NTSTATUS WIN_FUNC(IoGetDeviceProperty,5)
-	(struct device_object *pdo, enum device_registry_property dev_property,
-	 ULONG buffer_len, void *buffer, ULONG *result_len)
-{
-	struct ansi_string ansi;
-	struct unicode_string unicode;
-	struct wrap_device *wd;
-	ULONG need;
-
-	IOENTER("dev_obj = %p, dev_property = %d, buffer_len = %u, "
-		"buffer = %p, result_len = %p", pdo, dev_property,
-		buffer_len, buffer, result_len);
-
-	wd = pdo->reserved;
-	switch (dev_property) {
-	case DevicePropertyDeviceDescription:
-	case DevicePropertyFriendlyName:
-	case DevicePropertyDriverKeyName:
-		if (wrap_is_pci_bus(wd->dev_bus_type))
-			RtlInitAnsiString(&ansi, "PCI");
-		else // if (wrap_is_usb_bus(wd->dev_bus_type))
-			RtlInitAnsiString(&ansi, "USB");
-		need = sizeof(wchar_t) * (ansi.max_length + 1);
-		if (buffer_len < need) {
-			*result_len = need;
-			IOEXIT(return STATUS_BUFFER_TOO_SMALL);
-		}
-		unicode.max_length = buffer_len;
-		unicode.buf = buffer;
-		if (RtlAnsiStringToUnicodeString(&unicode, &ansi,
-						 FALSE) != STATUS_SUCCESS) {
-			*result_len = unicode.length;
-			IOEXIT(return STATUS_BUFFER_TOO_SMALL);
-		}
-		IOEXIT(return STATUS_SUCCESS);
-	default:
-		WARNING("%d not implemented", dev_property);
-		IOEXIT(return STATUS_INVALID_PARAMETER_2);
-	}
 }
 
 wstdcall int WIN_FUNC(IoIsWdmVersionAvailable,2)
@@ -698,13 +658,9 @@ wstdcall NTSTATUS WIN_FUNC(IoCreateDevice,7)
 	struct dev_obj_ext *dev_obj_ext;
 	int size;
 	struct ansi_string ansi;
+	struct common_object_header *coh;
 
 	IOENTER("%p, %u, %p", drv_obj, dev_ext_length, dev_name);
-	if (dev_name && (RtlUnicodeStringToAnsiString(&ansi, dev_name, TRUE)
-			 == STATUS_SUCCESS)) {
-		IOTRACE("dev_name: %s", ansi.buf);
-		RtlFreeAnsiString(&ansi);
-	}
 
 	size = sizeof(*dev) + dev_ext_length + sizeof(*dev_obj_ext);
 	dev = allocate_object(size, OBJECT_TYPE_DEVICE);
@@ -714,6 +670,27 @@ wstdcall NTSTATUS WIN_FUNC(IoCreateDevice,7)
 		dev->dev_ext = dev + 1;
 	else
 		dev->dev_ext = NULL;
+
+	coh = OBJECT_TO_HEADER(dev);
+	if (dev_name && RtlUnicodeStringToAnsiString(&ansi, dev_name, TRUE)
+	    == STATUS_SUCCESS) {
+		char *basename;
+
+		basename = strrchr(ansi.buf, '\\');
+		if (basename)
+			basename++;
+		else
+			basename = ansi.buf;
+		IOTRACE("dev_name: %s, %s", ansi.buf, basename);
+		coh->name = kmalloc(ansi.length + 1, GFP_KERNEL);
+		if (coh->name) {
+			memset(coh->name, 0, ansi.length + 1);
+			strncpy(coh->name, basename, ansi.length);
+		} else
+			WARNING("couldn't allocate memory");
+		RtlFreeAnsiString(&ansi);
+	} else
+		coh->name = NULL;
 
 	dev_obj_ext = ((void *)(dev + 1)) + dev_ext_length;
 	dev_obj_ext->dev_obj = dev;
@@ -886,6 +863,88 @@ wstdcall struct device_object *WIN_FUNC(IoAttachDeviceToDeviceStack,2)
 	IOEXIT(return attached);
 }
 
+wstdcall NTSTATUS WIN_FUNC(IoGetDeviceProperty,5)
+	(struct device_object *pdo, enum device_registry_property dev_property,
+	 ULONG buffer_len, void *buffer, ULONG *result_len)
+{
+	struct ansi_string ansi;
+	struct unicode_string unicode;
+	struct wrap_device *wd;
+	ULONG need;
+
+	IOENTER("dev_obj = %p, dev_property = %d, buffer_len = %u, "
+		"buffer = %p, result_len = %p", pdo, dev_property,
+		buffer_len, buffer, result_len);
+
+	wd = pdo->reserved;
+	switch (dev_property) {
+	case DevicePropertyDeviceDescription:
+	case DevicePropertyFriendlyName:
+	case DevicePropertyDriverKeyName:
+		if (wrap_is_pci_bus(wd->dev_bus_type))
+			RtlInitAnsiString(&ansi, "PCI");
+		else // if (wrap_is_usb_bus(wd->dev_bus_type))
+			RtlInitAnsiString(&ansi, "USB");
+		need = sizeof(wchar_t) * (ansi.max_length + 1);
+		if (buffer_len < need) {
+			*result_len = need;
+			IOEXIT(return STATUS_BUFFER_TOO_SMALL);
+		}
+		unicode.max_length = buffer_len;
+		unicode.buf = buffer;
+		if (RtlAnsiStringToUnicodeString(&unicode, &ansi,
+						 FALSE) != STATUS_SUCCESS) {
+			*result_len = unicode.length;
+			IOEXIT(return STATUS_BUFFER_TOO_SMALL);
+		}
+		IOEXIT(return STATUS_SUCCESS);
+	default:
+		WARNING("%d not implemented", dev_property);
+		IOEXIT(return STATUS_INVALID_PARAMETER_2);
+	}
+}
+
+wstdcall NTSTATUS WIN_FUNC(IoGetDeviceObjectPointer,4)
+	(struct unicode_string *name, ACCESS_MASK desired_access,
+	 void *file_obj, struct device_object *dev_obj)
+{
+	KIRQL irql;
+	struct common_object_header *coh;
+	struct ansi_string ansi;
+	char *basename;
+
+	dev_obj = NULL;
+	/* TODO: access is not checked and file_obj is set to NULL */
+	file_obj = NULL;
+	if (RtlUnicodeStringToAnsiString(&ansi, name, TRUE) != STATUS_SUCCESS) {
+		WARNING("couldn't convert name");
+		IOEXIT(return STATUS_INSUFFICIENT_RESOURCES);
+	}
+	basename = strrchr(ansi.buf, '\\');
+	if (basename)
+		basename++;
+	else
+		basename = ansi.buf;
+	IOTRACE("dev_name: %s, %s", ansi.buf, basename);
+	irql = nt_spin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL);
+	nt_list_for_each_entry(coh, &object_list, list) {
+		DBGTRACE5("header: %p, type: %d", coh, coh->type);
+		if (coh->type == OBJECT_TYPE_DEVICE) {
+			dev_obj = HEADER_TO_OBJECT(coh);
+			DBGTRACE5("dev_obj: %p", dev_obj);
+			if (stricmp(basename, coh->name))
+				dev_obj = NULL;
+			else
+				break;
+		}
+	}
+	nt_spin_unlock_irql(&ntoskernel_lock, irql);
+	RtlFreeAnsiString(&ansi);
+	if (dev_obj)
+		IOEXIT(return STATUS_SUCCESS);
+	else
+		IOEXIT(return STATUS_OBJECT_NAME_INVALID);
+}
 
 /* NOTE: Make sure to compile with -freg-struct-return, so gcc will
  * return union in register, like Windows */

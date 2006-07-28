@@ -390,7 +390,7 @@ typedef u32 pm_message_t;
 #define lin2win_arg6(arg)						\
 	__asm__ __volatile__("movq %0, " lin2win_win_arg(6) : : "ri" (arg))
 
-/* put volatile args for Windows function in clobber list */
+/* volatile args for Windows function must be in clobber list */
 #define call_win_func_ret(func, ret)					\
 	__asm__ __volatile__("call *%1" : "=a" (ret) : "0" (func)	\
 			     : "rcx", "rdx", "r8", "r9")
@@ -398,19 +398,23 @@ typedef u32 pm_message_t;
 #define LIN2WIN0(func)							\
 ({									\
 	u64 ret;							\
+	DBGTRACE6("calling %p", func);					\
 	alloc_win_stack_frame(4);					\
 	call_win_func_ret(func, ret);					\
 	free_win_stack_frame(4);					\
+	DBGTRACE6("%p done", func);					\
 	ret;								\
 })
 
 #define _LIN2WIN1_(func, arg1)						\
 ({									\
 	u64 ret;							\
+	DBGTRACE6("calling %p", func);					\
 	alloc_win_stack_frame(4);					\
 	lin2win_arg1(arg1);						\
 	call_win_func_ret(func, ret);					\
 	free_win_stack_frame(4);					\
+	DBGTRACE6("%p done", func);					\
 	ret;								\
 })
 #define LIN2WIN1(func, arg1)			\
@@ -419,11 +423,13 @@ typedef u32 pm_message_t;
 #define _LIN2WIN2_(func, arg1, arg2)					\
 ({									\
 	u64 ret;							\
+	DBGTRACE6("calling %p", func);					\
 	alloc_win_stack_frame(4);					\
 	lin2win_arg1(arg1);						\
 	lin2win_arg2(arg2);						\
 	call_win_func_ret(func, ret);					\
 	free_win_stack_frame(4);					\
+	DBGTRACE6("%p done", func);					\
 	ret;								\
 })
 #define LIN2WIN2(func, arg1, arg2)		\
@@ -432,12 +438,14 @@ typedef u32 pm_message_t;
 #define _LIN2WIN3_(func, arg1, arg2, arg3)				\
 ({									\
 	u64 ret;							\
+	DBGTRACE6("calling %p", func);					\
 	alloc_win_stack_frame(4);					\
 	lin2win_arg1(arg1);						\
 	lin2win_arg2(arg2);						\
 	lin2win_arg3(arg3);						\
 	call_win_func_ret(func, ret);					\
 	free_win_stack_frame(4);					\
+	DBGTRACE6("%p done", func);					\
 	ret;								\
 })
 #define LIN2WIN3(func, arg1, arg2, arg3)				\
@@ -446,6 +454,7 @@ typedef u32 pm_message_t;
 #define _LIN2WIN4_(func, arg1, arg2, arg3, arg4)			\
 ({									\
 	u64 ret;							\
+	DBGTRACE6("calling %p", func);					\
 	alloc_win_stack_frame(4);					\
 	lin2win_arg1(arg1);						\
 	lin2win_arg2(arg2);						\
@@ -453,6 +462,7 @@ typedef u32 pm_message_t;
 	lin2win_arg4(arg4);						\
 	call_win_func_ret(func, ret);					\
 	free_win_stack_frame(4);					\
+	DBGTRACE6("%p done", func);					\
 	ret;								\
 })
 #define LIN2WIN4(func, arg1, arg2, arg3, arg4)				\
@@ -461,6 +471,7 @@ typedef u32 pm_message_t;
 #define _LIN2WIN5_(func, arg1, arg2, arg3, arg4, arg5)			\
 ({									\
 	u64 ret;							\
+	DBGTRACE6("calling %p", func);					\
 	alloc_win_stack_frame(5);					\
 	lin2win_arg1(arg1);						\
 	lin2win_arg2(arg2);						\
@@ -469,6 +480,7 @@ typedef u32 pm_message_t;
 	lin2win_arg5(arg5);						\
 	call_win_func_ret(func, ret);					\
 	free_win_stack_frame(5);					\
+	DBGTRACE6("%p done", func);					\
 	ret;								\
 })
 #define LIN2WIN5(func, arg1, arg2, arg3, arg4, arg5)			\
@@ -478,6 +490,7 @@ typedef u32 pm_message_t;
 #define _LIN2WIN6_(func, arg1, arg2, arg3, arg4, arg5, arg6)		\
 ({									\
 	u64 ret;							\
+	DBGTRACE6("calling %p", func);					\
 	alloc_win_stack_frame(6);					\
 	lin2win_arg1(arg1);						\
 	lin2win_arg2(arg2);						\
@@ -487,6 +500,7 @@ typedef u32 pm_message_t;
 	lin2win_arg6(arg6);						\
 	call_win_func_ret(func, ret);					\
 	free_win_stack_frame(6);					\
+	DBGTRACE6("%p done", func);					\
 	ret;								\
 })
 #define LIN2WIN6(func, arg1, arg2, arg3, arg4, arg5, arg6)		\

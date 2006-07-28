@@ -1866,8 +1866,8 @@ static wstdcall NTSTATUS NdisAddDevice(struct driver_object *drv_obj,
 	if (wrap_is_usb_bus(wd->dev_bus_type))
 		SET_NETDEV_DEV(net_dev, &wd->usb.intf->dev);
 #endif
-	status = IoCreateDevice(drv_obj, 0, NULL, FILE_DEVICE_UNKNOWN, 0,
-				FALSE, &fdo);
+	status = IoCreateDevice(drv_obj, 0, NULL,
+				FILE_DEVICE_UNKNOWN, 0, FALSE, &fdo);
 	if (status != STATUS_SUCCESS) {
 		free_netdev(net_dev);
 		TRACEEXIT2(return status);
