@@ -819,7 +819,6 @@ wstdcall void WIN_FUNC(RtlFreeAnsiString,1)
 }
 
 /* guid string is of the form: {XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX} */
-/* 47ef22e0-160a-11db-ac5d-0800200c9a66 */
 wstdcall NTSTATUS WIN_FUNC(RtlGUIDFromString,2)
 	(struct unicode_string *guid_string, struct guid *guid)
 {

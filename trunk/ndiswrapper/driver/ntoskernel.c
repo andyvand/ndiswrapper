@@ -329,6 +329,8 @@ void free_object(void *object)
 	RemoveEntryList(&hdr->list);
 	nt_spin_unlock_irql(&ntoskernel_lock, irql);
 	DBGTRACE3("freed hdr: %p, body: %p", hdr, object);
+	if (hdr->name)
+		kfree(hdr->name);
 	ExFreePool(hdr);
 }
 
@@ -2260,26 +2262,39 @@ wstdcall NTSTATUS WIN_FUNC(ZwCreateFile,11)
 	 ULONG file_attr, ULONG share_access, ULONG create_disposition,
 	 ULONG create_options, void *ea_buffer, ULONG ea_length)
 {
-	struct common_object_header *header;
+	struct common_object_header *coh;
 	struct file_object *fo;
 	struct ansi_string ansi;
 	struct wrap_bin_file *bin_file;
 	char *file_basename;
 	KIRQL irql;
+	NTSTATUS status;
 
+	if (RtlUnicodeStringToAnsiString(&ansi, obj_attr->name, TRUE) !=
+	    STATUS_SUCCESS)
+		TRACEEXIT2(return STATUS_INSUFFICIENT_RESOURCES);
+
+	DBGTRACE2("Filename: %s", ansi.buf);
+	file_basename = strrchr(ansi.buf, '\\');
+	if (file_basename)
+		file_basename++;
+	else
+		file_basename = ansi.buf;
+	DBGTRACE2("file_basename: '%s'", file_basename);
 	irql = nt_spin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL);
-	nt_list_for_each_entry(header, &object_list, list) {
-		if (header->type != OBJECT_TYPE_FILE)
+	nt_list_for_each_entry(coh, &object_list, list) {
+		if (coh->type != OBJECT_TYPE_FILE)
 			continue;
-		fo = HEADER_TO_OBJECT(header);
+		fo = HEADER_TO_OBJECT(coh);
 		/* TODO: check if file is opened in shared mode */
-		if (!RtlCompareUnicodeString(&fo->name, obj_attr->name, FALSE)) {
+		if (!stricmp(coh->name, file_basename)) {
 			bin_file = fo->wrap_bin_file;
-			*handle = header;
+			*handle = coh;
 			iosb->status = FILE_OPENED;
 			iosb->info = bin_file->size;
 			nt_spin_unlock_irql(&ntoskernel_lock, irql);
 			ObReferenceObject(fo);
+			RtlFreeAnsiString(&ansi);
 			TRACEEXIT2(return STATUS_SUCCESS);
 		}
 	}
@@ -2288,23 +2303,12 @@ wstdcall NTSTATUS WIN_FUNC(ZwCreateFile,11)
 	iosb->status = STATUS_INSUFFICIENT_RESOURCES;
 	iosb->info = 0;
 	fo = allocate_object(sizeof(struct file_object), OBJECT_TYPE_FILE);
-	if (!fo)
+	if (!fo) {
+		RtlFreeAnsiString(&ansi);
 		TRACEEXIT2(return STATUS_FAILURE);
-
-	if (RtlUnicodeStringToAnsiString(&ansi, obj_attr->name, TRUE) !=
-	    STATUS_SUCCESS) {
-		free_object(fo);
-		TRACEEXIT2(return STATUS_INSUFFICIENT_RESOURCES);
 	}
-	DBGTRACE2("Filename: %s", ansi.buf);
-	file_basename = strrchr(ansi.buf, '\\');
-	if (file_basename)
-		file_basename++;
-	else
-		file_basename = ansi.buf;
-	DBGTRACE2("file_basename: '%s'", file_basename);
+
 	bin_file = get_bin_file(file_basename);
-	RtlFreeAnsiString(&ansi);
 	if (bin_file)
 		fo->flags = FILE_OPENED;
 	else {
@@ -2322,6 +2326,8 @@ wstdcall NTSTATUS WIN_FUNC(ZwCreateFile,11)
 	if (!bin_file) {
 		iosb->status = FILE_DOES_NOT_EXIST;
 		iosb->info = 0;
+		RtlFreeAnsiString(&ansi);
+		free_object(fo);
 		TRACEEXIT2(return STATUS_FAILURE);
 	}
 
@@ -2331,19 +2337,14 @@ wstdcall NTSTATUS WIN_FUNC(ZwCreateFile,11)
 		fo->read_access = TRUE;
 	if (access_mask & FILE_WRITE_DATA)
 		fo->write_access = TRUE;
-
-	fo->name.length = obj_attr->name->length;
-	fo->name.max_length = obj_attr->name->max_length;
-	fo->name.buf = ExAllocatePoolWithTag(NonPagedPool,
-					     obj_attr->name->max_length, 0);
-	if (fo->name.buf) {
-		memcpy(fo->name.buf, obj_attr->name->buf,
-		       obj_attr->name->max_length);
+	coh->name = kmalloc(ansi.length, GFP_KERNEL);
+	if (coh->name) {
+		strncpy(coh->name, file_basename, ansi.length);
 		iosb->status = FILE_OPENED;
 		iosb->info = bin_file->size;
 		*handle = OBJECT_TO_HEADER(fo);
 		DBGTRACE2("handle: %p", *handle);
-		TRACEEXIT2(return STATUS_SUCCESS);
+		status = STATUS_SUCCESS;
 	} else {
 		if (fo->flags == FILE_CREATED)
 			vfree(bin_file->data);
@@ -2352,8 +2353,10 @@ wstdcall NTSTATUS WIN_FUNC(ZwCreateFile,11)
 		free_object(fo);
 		iosb->status = FILE_DOES_NOT_EXIST;
 		iosb->info = 0;
-		TRACEEXIT2(return STATUS_FAILURE);
+		status = STATUS_FAILURE;
 	}
+	RtlFreeAnsiString(&ansi);
+	TRACEEXIT2(return status);
 }
 
 wstdcall NTSTATUS WIN_FUNC(ZwReadFile,9)
@@ -2407,7 +2410,7 @@ wstdcall NTSTATUS WIN_FUNC(ZwWriteile,9)
 	}
 	fo = HANDLE_TO_OBJECT(coh);
 	file = fo->wrap_bin_file;
-	DBGTRACE2("file: %s (%d), %d", file->name, file->size, length);
+	DBGTRACE2("file: %s (%d), %d", coh->name, file->size, length);
 	if (byte_offset)
 		offset = *byte_offset;
 	else
@@ -2441,19 +2444,16 @@ wstdcall NTSTATUS WIN_FUNC(ZwClose,1)
 	if (coh->type == OBJECT_TYPE_FILE) {
 		struct file_object *fo;
 		struct wrap_bin_file *bin_file;
-		struct unicode_string *name;
 		typeof(fo->flags) flags;
 
 		fo = HANDLE_TO_OBJECT(handle);
-		bin_file = fo->wrap_bin_file;
-		name = &fo->name;
 		flags = fo->flags;
+		bin_file = fo->wrap_bin_file;
 		if (dereference_object(fo)) {
 			if (flags == FILE_CREATED)
 				vfree(bin_file->data);
 			else
 				free_bin_file(bin_file);
-			RtlFreeUnicodeString(name);
 		}
 	} else {
 		/* TODO: can we just dereference object here? */
