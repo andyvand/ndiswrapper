@@ -237,23 +237,23 @@ win2lin10:
 win2lin11:
 win2lin12:
 	win2lin_prolog
-	mov	%rcx, %r11		# save rcx
-
-	# copy windows arguments 7 through 12
-	# on the stack for the Linux function.
-
-	lea	win2lin_win_arg(7), %rsi	# source (windows arg 7 and up)
-	lea	win2lin_lin_arg(7,12), %rdi	# = destination
-	mov	$6, %rcx			# 6 arguments
-	rep
-	movsq
-	mov	%r11, %rcx		# restore rcx
 	win2lin_arg1
 	win2lin_arg2
 	win2lin_arg3
 	win2lin_arg4
 	win2lin_arg5
 	win2lin_arg6
+
+	mov	%rcx, %r11		# save rcx
+	# copy windows arguments 7 through 12
+	# on the stack for the Linux function.
+	lea	win2lin_win_arg(7), %rsi	# source (windows arg 7 and up)
+	lea	win2lin_lin_arg(7,12), %rdi	# = destination
+	mov	$6, %rcx			# 6 arguments
+	rep
+	movsq
+	mov	%r11, %rcx		# restore rcx
+
 	sub	$win2lin_stack_frame(12), %rsp
 	call_lin_func
 	add	$win2lin_stack_frame(12), %rsp

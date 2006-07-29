@@ -1670,6 +1670,7 @@ static NDIS_STATUS ndis_start_device(struct wrap_ndis_device *wnd)
 	}
 
 	set_task_offload(wnd, buf, buf_size);
+
 	if (register_netdev(net_dev)) {
 		ERROR("cannot register net device %s", net_dev->name);
 		goto err_register;
@@ -1683,10 +1684,9 @@ static NDIS_STATUS ndis_start_device(struct wrap_ndis_device *wnd)
 	if (ndis_status == NDIS_STATUS_SUCCESS)
 		printk(KERN_INFO "%s: vendor: '%s'\n", net_dev->name, buf);
 
-	printk(KERN_INFO "%s: %s ethernet device " MACSTRSEP
-	       " using %sdriver %s, %s\n", net_dev->name, DRIVER_NAME,
-	       MAC2STR(net_dev->dev_addr),
-	       wnd->attributes & NDIS_ATTRIBUTE_DESERIALIZE ? "" : "serialized ",
+	printk(KERN_INFO "%s: ethernet device " MACSTRSEP " using %sNDIS "
+	       "driver %s, %s\n", net_dev->name, MAC2STR(net_dev->dev_addr),
+	       deserialized_driver(wnd) ? "" : "serialized ",
 	       wnd->wd->driver->name, wnd->wd->conf_file_name);
 
 	if (deserialized_driver(wnd)) {
