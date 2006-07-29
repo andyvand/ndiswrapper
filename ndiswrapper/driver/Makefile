@@ -18,7 +18,12 @@ KSRC ?= $(shell if \
 		echo $(KBUILD); \
 	fi)
 
+ifdef DIST_DESTDIR
+DESTDIR = $(DIST_DESTDIR)
+else
 DESTDIR ?= /
+endif
+
 INST_DIR ?= $(shell echo $(DESTDIR)/lib/modules/$(KVERS)/misc | sed 's^//^/^g')
 
 SRC_DIR=$(shell pwd)
@@ -224,7 +229,7 @@ prereq_check:
 clean:
 	rm -rf $(MODULE) ndiswrapper.o $(OBJS) usb.o x86_64_stubs.o \
 	   divdi3.o workqueue.o .*.ko.cmd .*.o.cmd \
-	   ndiswrapper.mod.[oc] *~ .tmp_versions Module.symvers
+	   ndiswrapper.mod.[oc] *~ .tmp_versions Modules.symvers
 
 distclean: clean
 	rm -f *_exports.h .\#* x86_64_stubs.h
@@ -283,7 +288,9 @@ install: prereq_check x86_64_stubs gen_exports default stack_check
 	mkdir -p $(INST_DIR)
 	install -m 0644 $(MODULE) $(INST_DIR)
 	-@/bin/rm -rf $(SRC_DIR)/.tmp_versions
+ifndef DIST_DESTDIR
 	-/sbin/depmod -a $(KVERS) -b $(DESTDIR)
+endif
 
 dist:
 	@for file in $(DISTFILES); do \
