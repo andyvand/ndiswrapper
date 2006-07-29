@@ -929,14 +929,14 @@ wstdcall NTSTATUS WIN_FUNC(IoGetDeviceObjectPointer,4)
 	irql = nt_spin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL);
 	nt_list_for_each_entry(coh, &object_list, list) {
 		DBGTRACE5("header: %p, type: %d", coh, coh->type);
-		if (coh->type == OBJECT_TYPE_DEVICE) {
-			dev_obj = HEADER_TO_OBJECT(coh);
-			DBGTRACE5("dev_obj: %p", dev_obj);
-			if (stricmp(basename, coh->name))
-				dev_obj = NULL;
-			else
-				break;
-		}
+		if (coh->type != OBJECT_TYPE_DEVICE)
+			continue;
+		dev_obj = HEADER_TO_OBJECT(coh);
+		DBGTRACE5("dev_obj: %p", dev_obj);
+		if (stricmp(basename, coh->name))
+			dev_obj = NULL;
+		else
+			break;
 	}
 	nt_spin_unlock_irql(&ntoskernel_lock, irql);
 	RtlFreeAnsiString(&ansi);

@@ -373,9 +373,7 @@ typedef u32 pm_message_t;
  * allocated. n should be such that 4 < n <= 6
 */
 
-#define stringify(x) #x
-
-#define lin2win_win_arg(m) stringify((m-1)) "*8(%%rsp)"
+#define lin2win_win_arg(m) "(" #m "-1)*8(%%rsp)"
 
 #define lin2win_arg1(arg)			\
 	__asm__ __volatile__("" : : "c" (arg))

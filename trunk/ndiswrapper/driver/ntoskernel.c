@@ -2274,13 +2274,12 @@ wstdcall NTSTATUS WIN_FUNC(ZwCreateFile,11)
 	    STATUS_SUCCESS)
 		TRACEEXIT2(return STATUS_INSUFFICIENT_RESOURCES);
 
-	DBGTRACE2("Filename: %s", ansi.buf);
 	file_basename = strrchr(ansi.buf, '\\');
 	if (file_basename)
 		file_basename++;
 	else
 		file_basename = ansi.buf;
-	DBGTRACE2("file_basename: '%s'", file_basename);
+	DBGTRACE2("file_: '%s', '%s'", ansi.buf, file_basename);
 	irql = nt_spin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL);
 	nt_list_for_each_entry(coh, &object_list, list) {
 		if (coh->type != OBJECT_TYPE_FILE)
@@ -2290,39 +2289,44 @@ wstdcall NTSTATUS WIN_FUNC(ZwCreateFile,11)
 		if (!stricmp(coh->name, file_basename)) {
 			bin_file = fo->wrap_bin_file;
 			*handle = coh;
-			iosb->status = FILE_OPENED;
-			iosb->info = bin_file->size;
 			nt_spin_unlock_irql(&ntoskernel_lock, irql);
 			ObReferenceObject(fo);
 			RtlFreeAnsiString(&ansi);
+			iosb->status = FILE_OPENED;
+			iosb->info = bin_file->size;
 			TRACEEXIT2(return STATUS_SUCCESS);
 		}
 	}
 	nt_spin_unlock_irql(&ntoskernel_lock, irql);
 
-	iosb->status = STATUS_INSUFFICIENT_RESOURCES;
-	iosb->info = 0;
 	fo = allocate_object(sizeof(struct file_object), OBJECT_TYPE_FILE);
 	if (!fo) {
 		RtlFreeAnsiString(&ansi);
+		iosb->status = STATUS_INSUFFICIENT_RESOURCES;
+		iosb->info = 0;
 		TRACEEXIT2(return STATUS_FAILURE);
 	}
 
 	bin_file = get_bin_file(file_basename);
 	if (bin_file)
 		fo->flags = FILE_OPENED;
-	else {
-		if (access_mask & FILE_WRITE_DATA) {
-			bin_file = vmalloc(sizeof(*bin_file) + *size);
-			if (bin_file) {
-				memset(bin_file, 0, sizeof(*bin_file) + *size);
-				bin_file->data = (void *)bin_file +
-					sizeof(*bin_file);
+	else if (access_mask & FILE_WRITE_DATA) {
+		bin_file = kmalloc(sizeof(*bin_file), GFP_KERNEL);
+		if (bin_file) {
+			memset(bin_file, 0, sizeof(*bin_file));
+			bin_file->data = vmalloc(*size);
+			if (bin_file->data) {
+				memset(bin_file->data, 0, *size);
 				bin_file->size = *size;
 				fo->flags = FILE_CREATED;
+			} else {
+				kfree(bin_file);
+				bin_file = NULL;
 			}
 		}
-	}
+	} else
+		bin_file = NULL;
+
 	if (!bin_file) {
 		iosb->status = FILE_DOES_NOT_EXIST;
 		iosb->info = 0;
@@ -2346,9 +2350,10 @@ wstdcall NTSTATUS WIN_FUNC(ZwCreateFile,11)
 		DBGTRACE2("handle: %p", *handle);
 		status = STATUS_SUCCESS;
 	} else {
-		if (fo->flags == FILE_CREATED)
+		if (fo->flags == FILE_CREATED) {
 			vfree(bin_file->data);
-		else
+			kfree(bin_file);
+		} else
 			free_bin_file(bin_file);
 		free_object(fo);
 		iosb->status = FILE_DOES_NOT_EXIST;
@@ -2369,6 +2374,7 @@ wstdcall NTSTATUS WIN_FUNC(ZwReadFile,9)
 	ULONG count;
 	size_t offset;
 	struct wrap_bin_file *file;
+	KIRQL irql;
 
 	DBGTRACE2("%p", handle);
 	coh = handle;
@@ -2379,6 +2385,7 @@ wstdcall NTSTATUS WIN_FUNC(ZwReadFile,9)
 	fo = HANDLE_TO_OBJECT(coh);
 	file = fo->wrap_bin_file;
 	DBGTRACE2("file: %s (%d)", file->name, file->size);
+	irql = nt_spin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL);
 	if (byte_offset)
 		offset = *byte_offset;
 	else
@@ -2387,6 +2394,7 @@ wstdcall NTSTATUS WIN_FUNC(ZwReadFile,9)
 	DBGTRACE2("count: %u, offset: %zu, length: %u", count, offset, length);
 	memcpy(buffer, ((void *)file->data) + offset, count);
 	fo->current_byte_offset = offset + count;
+	nt_spin_unlock_irql(&ntoskernel_lock, irql);
 	iosb->status = STATUS_SUCCESS;
 	iosb->info = count;
 	TRACEEXIT2(return STATUS_SUCCESS);
@@ -2401,6 +2409,7 @@ wstdcall NTSTATUS WIN_FUNC(ZwWriteile,9)
 	struct common_object_header *coh;
 	struct wrap_bin_file *file;
 	unsigned long offset;
+	KIRQL irql;
 
 	DBGTRACE2("%p", handle);
 	coh = handle;
@@ -2411,23 +2420,24 @@ wstdcall NTSTATUS WIN_FUNC(ZwWriteile,9)
 	fo = HANDLE_TO_OBJECT(coh);
 	file = fo->wrap_bin_file;
 	DBGTRACE2("file: %s (%d), %d", coh->name, file->size, length);
+	irql = nt_spin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL);
 	if (byte_offset)
 		offset = *byte_offset;
 	else
 		offset = fo->current_byte_offset;
 	if (length + offset > file->size) {
 		WARNING("%lu, %d", length + offset, file->size);
-		/* TODO: implement writing past end of file */
+		/* TODO: implement writing past end of current size */
 		iosb->status = STATUS_FAILURE;
 		iosb->info = 0;
-		TRACEEXIT2(return STATUS_FAILURE);
 	} else {
 		memcpy(file->data + offset, buffer, length);
 		iosb->status = STATUS_SUCCESS;
 		iosb->info = length;
 		fo->current_byte_offset = offset + length;
-		TRACEEXIT2(return STATUS_SUCCESS);
 	}
+	nt_spin_unlock_irql(&ntoskernel_lock, irql);
+	TRACEEXIT2(return iosb->status);
 }
 
 wstdcall NTSTATUS WIN_FUNC(ZwClose,1)
@@ -2450,9 +2460,10 @@ wstdcall NTSTATUS WIN_FUNC(ZwClose,1)
 		flags = fo->flags;
 		bin_file = fo->wrap_bin_file;
 		if (dereference_object(fo)) {
-			if (flags == FILE_CREATED)
+			if (flags == FILE_CREATED) {
 				vfree(bin_file->data);
-			else
+				kfree(bin_file);
+			} else
 				free_bin_file(bin_file);
 		}
 	} else {
