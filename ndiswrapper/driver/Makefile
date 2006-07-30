@@ -3,7 +3,7 @@ DISTFILES=divdi3.c hal.c iw_ndis.c iw_ndis.h loader.c loader.h \
 		ndiswrapper.h ntoskernel.c ntoskernel.h ntoskernel_io.c \
 		pe_linker.c pe_linker.h pnp.c pnp.h proc.c usb.c usb.h \
 		winnt_types.h workqueue.c wrapmem.h wrapmem.c wrapper.c \
-		wrapndis.h wrapndis.c x86_64_stubs.S
+		wrapndis.h wrapndis.c lin2win.h x86_64_stubs.S
 
 KVERS ?= $(shell uname -r)
 KPSUB := $(shell echo $(KVERS) | sed -e 's/\([^\.]*\)\.\([^\.]*\)\..*/\1\2/')
@@ -105,6 +105,18 @@ OBJS += usb.o
 endif
 endif
 
+ntoskernel.h: lin2win.h
+
+ndis.h: ntoskernel.h
+
+iw_ndis.h: ntoskernel.h
+
+pnp.h: ntoskernel.h ndis.h
+
+wrapndis.h: ndis.h pnp.h
+
+usb.h: ntoskernel.h
+
 divdi3.o: divdi3.c longlong.h
 
 hal.o: hal.c ntoskernel.h
@@ -133,18 +145,12 @@ usb.o: usb.c usb.h ndis.h
 
 wrapper.o: wrapper.c wrapndis.h iw_ndis.h ntoskernel.h loader.h
 
-iw_ndis.h: ndis.h
-loader.h: ndiswrapper.h
-ndis.h: ntoskernel.h
-ntoskernel.h: ndiswrapper.h winnt_types.h pe_linker.h wrapmem.h
-usb.h: ntoskernel.h
-wrapndis.h: ndis.h
-
 hal_exports.h: hal.c
 misc_funcs_exports.h: misc_funcs.c
 ndis_exports.h: ndis.c
 ntoskernel_exports.h: ntoskernel.c
 ntoskernel_io_exports.h: ntoskernel_io.c
+
 ifndef DISABLE_USB
 usb_exports.h: usb.c
 endif
