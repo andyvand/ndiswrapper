@@ -364,9 +364,9 @@ typedef u32 pm_message_t;
  * address, irrespective of number of args. So argc >= 4 */
 
 #define alloc_win_stack_frame(argc)					\
-	__asm__ __volatile__("sub $" #argc "*8, %rsp")
+	"subq $" #argc "*8, %%rsp\n\t"
 #define free_win_stack_frame(argc)					\
-	__asm__ __volatile__("add $" #argc "*8, %rsp")
+	"addq $" #argc "*8, %%rsp\n\t"
 
 /* m is index of Windows arg required. Windows arg 1 should be at
  * 0(%rsp), arg 2 at 8(%rsp) and so on, after stack frame is
@@ -375,31 +375,19 @@ typedef u32 pm_message_t;
 
 #define lin2win_win_arg(m) "(" #m "-1)*8(%%rsp)"
 
-#define lin2win_arg1(arg)			\
-	__asm__ __volatile__("" : : "c" (arg))
-#define lin2win_arg2(arg)			\
-	__asm__ __volatile__("" : : "d" (arg))
-#define lin2win_arg3(arg)						\
-	__asm__ __volatile__("movq %0, %%r8" : : "girm" (arg) : "r8")
-#define lin2win_arg4(arg)						\
-	__asm__ __volatile__("movq %0, %%r9" : : "girm" (arg) : "r9")
-#define lin2win_arg5(arg)						\
-	__asm__ __volatile__("movq %0, " lin2win_win_arg(5) : : "ri" (arg))
-#define lin2win_arg6(arg)						\
-	__asm__ __volatile__("movq %0, " lin2win_win_arg(6) : : "ri" (arg))
-
 /* volatile args for Windows function must be in clobber list */
-#define call_win_func_ret(func, ret)					\
-	__asm__ __volatile__("call *%1" : "=a" (ret) : "0" (func)	\
-			     : "rcx", "rdx", "r8", "r9")
 
 #define LIN2WIN0(func)							\
 ({									\
 	u64 ret;							\
 	DBGTRACE6("calling %p", func);					\
-	alloc_win_stack_frame(4);					\
-	call_win_func_ret(func, ret);					\
-	free_win_stack_frame(4);					\
+	__asm__ __volatile__(						\
+		alloc_win_stack_frame(4)				\
+		"callq *%%rax\n\t"					\
+		free_win_stack_frame(4)					\
+		: "=a" (ret)						\
+		: "a" (func)						\
+		: "rcx", "rdx", "r8", "r9");				\
 	DBGTRACE6("%p done", func);					\
 	ret;								\
 })
@@ -408,10 +396,14 @@ typedef u32 pm_message_t;
 ({									\
 	u64 ret;							\
 	DBGTRACE6("calling %p", func);					\
-	alloc_win_stack_frame(4);					\
-	lin2win_arg1(arg1);						\
-	call_win_func_ret(func, ret);					\
-	free_win_stack_frame(4);					\
+	__asm__ __volatile__(						\
+		alloc_win_stack_frame(4)				\
+		"callq *%%rax\n\t"					\
+		free_win_stack_frame(4)					\
+		: "=a" (ret)						\
+		: "c" (arg1),						\
+		  "a" (func)						\
+		: "rdx", "r8", "r9");					\
 	DBGTRACE6("%p done", func);					\
 	ret;								\
 })
@@ -422,11 +414,14 @@ typedef u32 pm_message_t;
 ({									\
 	u64 ret;							\
 	DBGTRACE6("calling %p", func);					\
-	alloc_win_stack_frame(4);					\
-	lin2win_arg1(arg1);						\
-	lin2win_arg2(arg2);						\
-	call_win_func_ret(func, ret);					\
-	free_win_stack_frame(4);					\
+	__asm__ __volatile__(						\
+		alloc_win_stack_frame(4)				\
+		"callq *%%rax\n\t"					\
+		free_win_stack_frame(4)					\
+		: "=a" (ret)						\
+		: "c" (arg1), "d" (arg2),				\
+		  "a" (func)						\
+		: "r8", "r9");						\
 	DBGTRACE6("%p done", func);					\
 	ret;								\
 })
@@ -437,12 +432,15 @@ typedef u32 pm_message_t;
 ({									\
 	u64 ret;							\
 	DBGTRACE6("calling %p", func);					\
-	alloc_win_stack_frame(4);					\
-	lin2win_arg1(arg1);						\
-	lin2win_arg2(arg2);						\
-	lin2win_arg3(arg3);						\
-	call_win_func_ret(func, ret);					\
-	free_win_stack_frame(4);					\
+	__asm__ __volatile__(						\
+		alloc_win_stack_frame(4)				\
+		"movq %3, %%r8\n\t"					\
+		"callq *%%rax\n\t"					\
+		free_win_stack_frame(4)					\
+		: "=a" (ret)						\
+		: "c" (arg1), "d" (arg2), "gir" (arg3),			\
+		  "a" (func)						\
+		: "r8", "r9");						\
 	DBGTRACE6("%p done", func);					\
 	ret;								\
 })
@@ -453,13 +451,17 @@ typedef u32 pm_message_t;
 ({									\
 	u64 ret;							\
 	DBGTRACE6("calling %p", func);					\
-	alloc_win_stack_frame(4);					\
-	lin2win_arg1(arg1);						\
-	lin2win_arg2(arg2);						\
-	lin2win_arg3(arg3);						\
-	lin2win_arg4(arg4);						\
-	call_win_func_ret(func, ret);					\
-	free_win_stack_frame(4);					\
+	__asm__ __volatile__(						\
+		alloc_win_stack_frame(4)				\
+		"movq %3, %%r8\n\t"					\
+		"movq %4, %%r9\n\t"					\
+		"callq *%%rax\n\t"					\
+		free_win_stack_frame(4)					\
+		: "=a" (ret)						\
+		: "c" (arg1), "d" (arg2), "gir" (arg3),			\
+		  "gir" (arg4),						\
+		  "a" (func)						\
+		: "r8", "r9");						\
 	DBGTRACE6("%p done", func);					\
 	ret;								\
 })
@@ -470,39 +472,47 @@ typedef u32 pm_message_t;
 ({									\
 	u64 ret;							\
 	DBGTRACE6("calling %p", func);					\
-	alloc_win_stack_frame(5);					\
-	lin2win_arg1(arg1);						\
-	lin2win_arg2(arg2);						\
-	lin2win_arg3(arg3);						\
-	lin2win_arg4(arg4);						\
-	lin2win_arg5(arg5);						\
-	call_win_func_ret(func, ret);					\
-	free_win_stack_frame(5);					\
+	__asm__ __volatile__(						\
+		alloc_win_stack_frame(5)				\
+		"movq %3, %%r8\n\t"					\
+		"movq %4, %%r9\n\t"					\
+		"movq %5, " lin2win_win_arg(5) "\n\t"			\
+		"callq *%%rax\n\t"					\
+		free_win_stack_frame(5)					\
+		: "=a" (ret)						\
+		: "c" (arg1), "d" (arg2), "gir" (arg3),			\
+		  "gir" (arg4), "ir" (arg5),				\
+		  "a" (func)						\
+		: "r8", "r9");						\
 	DBGTRACE6("%p done", func);					\
 	ret;								\
 })
 #define LIN2WIN5(func, arg1, arg2, arg3, arg4, arg5)			\
-	_LIN2WIN5_(func, (u64)arg1, (u64)arg2, (u64)arg3, (u64)arg4,	\
+	_LIN2WIN5_(func, (u64)arg1, (u64)arg2, (u64)arg3, (u64)arg4, \
 		   (u64)arg5)
 
 #define _LIN2WIN6_(func, arg1, arg2, arg3, arg4, arg5, arg6)		\
 ({									\
 	u64 ret;							\
 	DBGTRACE6("calling %p", func);					\
-	alloc_win_stack_frame(6);					\
-	lin2win_arg1(arg1);						\
-	lin2win_arg2(arg2);						\
-	lin2win_arg3(arg3);						\
-	lin2win_arg4(arg4);						\
-	lin2win_arg5(arg5);						\
-	lin2win_arg6(arg6);						\
-	call_win_func_ret(func, ret);					\
-	free_win_stack_frame(6);					\
+	__asm__ __volatile__(						\
+		alloc_win_stack_frame(6)				\
+		"movq %3, %%r8\n\t"					\
+		"movq %4, %%r9\n\t"					\
+		"movq %5, " lin2win_win_arg(5) "\n\t"			\
+		"movq %6, " lin2win_win_arg(6) "\n\t"			\
+		"callq *%%rax\n\t"					\
+		free_win_stack_frame(6)					\
+		: "=a" (ret)						\
+		: "c" (arg1), "d" (arg2), "gir" (arg3),			\
+		  "gir" (arg4), "ir" (arg5), "ir" (arg6),		\
+		  "a" (func)						\
+		: "r8", "r9");						\
 	DBGTRACE6("%p done", func);					\
 	ret;								\
 })
 #define LIN2WIN6(func, arg1, arg2, arg3, arg4, arg5, arg6)		\
-	_LIN2WIN6_(func, (u64)arg1, (u64)arg2, (u64)arg3, (u64)arg4,	\
+	_LIN2WIN6_(func, (u64)arg1, (u64)arg2, (u64)arg3, (u64)arg4, \
 		   (u64)arg5, (u64)arg6)
 
 #else
