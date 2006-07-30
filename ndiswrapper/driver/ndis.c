@@ -730,13 +730,23 @@ wstdcall void WIN_FUNC(NdisMQueryAdapterResources,4)
 		  &list->partial_descriptors[list->count-1],
 		  list->partial_descriptors[list->count-1].u.interrupt.level,
 		  list->partial_descriptors[list->count-1].u.interrupt.vector);
-	if (*size == 0) {
+	if (*size < sizeof(*list)) {
 		*size = resource_length;
 		*status = NDIS_STATUS_BUFFER_TOO_SHORT;
 	} else {
-		if (*size > resource_length)
+		ULONG count;
+		if (*size >= resource_length) {
 			*size = resource_length;
+			count = list->count;
+		} else {
+			UINT n = sizeof(*list);
+			count = 0;
+			while (++count < list->count && n < *size)
+				n += sizeof(list->partial_descriptors);
+			*size = n;
+		}
 		memcpy(resource_list, list, *size);
+		resource_list->count = count;
 		*status = NDIS_STATUS_SUCCESS;
 	}
 	TRACEEXIT2(return);
