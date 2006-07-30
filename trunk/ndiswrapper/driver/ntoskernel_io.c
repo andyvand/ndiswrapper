@@ -261,7 +261,7 @@ wstdcall struct irp *WIN_FUNC(IoBuildDeviceIoControlRequest,9)
 	struct irp *irp;
 	struct io_stack_location *irp_sl;
 
-	IOENTER("%p", dev_obj);
+	IOENTER("%p, 0x%08x, %d", dev_obj, ioctl, internal_ioctl);
 	if (!dev_obj)
 		IOEXIT(return NULL);
 	irp = IoAllocateIrp(dev_obj->stack_count, FALSE);
