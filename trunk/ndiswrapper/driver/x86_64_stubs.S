@@ -31,8 +31,8 @@
 # Rbp                     NV                      NV
 # R8      Arg3            V       Arg5            V
 # R9      Arg4            V       Arg6            V
-# R10                     NV                      V
-# R11                     NV                      V
+# R10                     V                       V
+# R11                     V                       V
 # R12                     NV                      NV
 # R13                     NV                      NV
 # R14                     NV                      NV
@@ -82,8 +82,6 @@ In Linux it should look like:
 .macro win2lin_prolog
 	push	%rsi
 	push	%rdi
-	push	%r10
-	push	%r11
 .endm
 
 # when Windows function calls Linux function, the function address is in %rax
@@ -95,18 +93,16 @@ In Linux it should look like:
 .endm
 
 .macro win2lin_epilog
-	pop	%r11
-	pop	%r10
 	pop	%rdi
 	pop	%rsi
 .endm
 
 # before prolog, 0(%rsp) is return address, 8(%rsp) would be arg1
 # (but it is in register) and so on, so n'th arg would be at n*8(%rsp)
-# for n > 4. But in prolog, we push 4 registers that are non-volaile in
-# Windows, but volatile in Linux. So after prolog, args are at (n+4)*8(%rsp)
+# for n > 4. But in prolog, we push 2 registers that are non-volaile in
+# Windows, but volatile in Linux. So after prolog, args are at (n+2)*8(%rsp)
 
-#define win2lin_win_arg(n) (n+4)*8(%rsp)
+#define win2lin_win_arg(n) (n+2)*8(%rsp)
 
 #define win2lin_arg1 mov %rcx, %rdi
 #define win2lin_arg2 mov %rdx, %rsi
