@@ -1,9 +1,11 @@
--include version
+DRIVER_VERSION = $(shell sed -n 's/^\#define[ \t]\+DRIVER_VERSION[ \t]\+"\([^"]\+\)"/\1/p' driver/ndiswrapper.h)
+
+UTILS_VERSION = $(shell sed -n 's/^\#define[ \t]\+UTILS_VERSION[ \t]\+"\([^"]\+\)"/\1/p' driver/ndiswrapper.h)
 
 distdir=ndiswrapper-${DRIVER_VERSION}
 distarchive=${distdir}.tar.gz
 
-DISTFILES=AUTHORS ChangeLog INSTALL Makefile README ndiswrapper.spec version ndiswrapper.8
+DISTFILES=AUTHORS ChangeLog INSTALL Makefile README ndiswrapper.spec ndiswrapper.8
 DIST_SUBDIRS=utils driver
 
 DESTDIR = 
