@@ -15,8 +15,6 @@
 
 #ifdef CONFIG_X86_64
 
-#if 1
-
 /* Windows functions must have 32 bytes of reserved space above return
  * address, irrespective of number of args. So argc >= 4 */
 
@@ -125,14 +123,13 @@
 	__asm__ __volatile__(						\
 		"movq %5, %%r8\n\t"					\
 		"movq %6, %%r9\n\t"					\
-		"movq %7, %%r10\n\t"					\
-		"movq %%r10, " lin2win_win_arg(5,5) "\n\t"		\
+		"movq %7, " lin2win_win_arg(5,5) "\n\t"			\
 		alloc_win_stack_frame(5)				\
 		"call *%8\n\t"						\
 		free_win_stack_frame(5)					\
 		: "=a" (ret), "=c" (dummy), "=d" (dummy)		\
 		: "c" (arg1), "d" (arg2), "g" ((u64)arg3),		\
-		  "g" ((u64)arg4), "g" ((u64)arg5),			\
+		  "g" ((u64)arg4), "ri" ((u64)arg5),			\
 		  "a" (func)						\
 		: "r8", "r9", "r10", "r11");				\
 	DBGTRACE6("%p done", func);					\
@@ -147,64 +144,19 @@
 		"movq %5, %%r8\n\t"					\
 		"movq %6, %%r9\n\t"					\
 		"movq %7, %%r10\n\t"					\
-		"movq %%r10, " lin2win_win_arg(5,6) "\n\t"		\
-		"movq %8, %%r10\n\t"					\
-		"movq %%r10, " lin2win_win_arg(6,6) "\n\t"		\
+		"movq %7, " lin2win_win_arg(5,6) "\n\t"			\
+		"movq %8, " lin2win_win_arg(6,6) "\n\t"			\
 		alloc_win_stack_frame(6)				\
 		"call *%9\n\t"						\
 		free_win_stack_frame(6)					\
 		: "=a" (ret), "=c" (dummy), "=d" (dummy)		\
 		: "c" (arg1), "d" (arg2), "g" ((u64)arg3),		\
-		  "g" ((u64)arg4), "g" ((u64)arg5), "g" ((u64)arg6),	\
+		  "g" ((u64)arg4), "ri" ((u64)arg5), "ri" ((u64)arg6),	\
 		  "a" (func)						\
 		: "r8", "r9", "r10", "r11");				\
 	DBGTRACE6("%p done", func);					\
 	ret;								\
 })
-
-#else
-
-u64 lin2win1(void *func, u64);
-u64 lin2win2(void *func, u64, u64);
-u64 lin2win3(void *func, u64, u64, u64);
-u64 lin2win4(void *func, u64, u64, u64, u64);
-u64 lin2win5(void *func, u64, u64, u64, u64, u64);
-u64 lin2win6(void *func, u64, u64, u64, u64, u64, u64);
-
-#define LIN2WIN1(func, arg1)						\
-({									\
-	DBGTRACE6("calling %p", func);					\
-	lin2win1(func, (u64)arg1);					\
-})
-#define LIN2WIN2(func, arg1, arg2)					\
-({									\
-	DBGTRACE6("calling %p", func);					\
-	lin2win2(func, (u64)arg1, (u64)arg2);				\
-})
-#define LIN2WIN3(func, arg1, arg2, arg3)				\
-({									\
-	DBGTRACE6("calling %p", func);					\
-	lin2win3(func, (u64)arg1, (u64)arg2, (u64)arg3);		\
-})
-#define LIN2WIN4(func, arg1, arg2, arg3, arg4)				\
-({									\
-	DBGTRACE6("calling %p", func);					\
-	lin2win4(func, (u64)arg1, (u64)arg2, (u64)arg3, (u64)arg4);	\
-})
-#define LIN2WIN5(func, arg1, arg2, arg3, arg4, arg5)			\
-({									\
-	DBGTRACE6("calling %p", func);					\
-	lin2win5(func, (u64)arg1, (u64)arg2, (u64)arg3, (u64)arg4,	\
-		 (u64)arg5);						\
-})
-#define LIN2WIN6(func, arg1, arg2, arg3, arg4, arg5, arg6)		\
-({									\
-	DBGTRACE6("calling %p", func);					\
-	lin2win6(func, (u64)arg1, (u64)arg2, (u64)arg3, (u64)arg4,	\
-		 (u64)arg5, (u64)arg6);					\
-})
-
-#endif
 
 #else // CONFIG_X86_64
 
