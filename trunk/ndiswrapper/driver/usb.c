@@ -910,7 +910,9 @@ static USBD_STATUS wrap_select_configuration(struct wrap_device *wd,
 	config = sel_conf->config;
 	if (config == NULL) {
 		kill_all_urbs(wd, 1);
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
 		ret = usb_reset_configuration(udev);
+#endif
 		return wrap_urb_status(ret);
 	}
 

@@ -26,7 +26,7 @@
 /* m is index of Windows arg required, n is total number of args to
  * function Windows arg 1 should be at 0(%rsp), arg 2 at 8(%rsp) and
  * so on, after stack frame is allocated, which starts at -n*8(%rsp)
- * when stack frame is allocated. n should be > 4
+ * when stack frame is allocated. 4 > m >= n.
 */
 
 #define lin2win_win_arg(m,n) "(" #m "-1-" #n ")*8(%%rsp)"

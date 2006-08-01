@@ -1,3 +1,12 @@
+Version 1.22 2006-XX-XX
+=======================	
+* Added support for Broadcom 802.11n (draft) driver
+* Added support for 64-bit Marvell driver
+* Optimizations for 64-bit drivers
+* If network interface name changes (through udev, ifrename etc),
+  ndiswrapper notices it and changes entry in procfs
+* Compilation issue with 2.4 issue fixed
+	
 Version 1.21 2006-07-15
 =======================
 * Fix to a bug (in 1.20) that locked up when used with RT2500 with SMP.
