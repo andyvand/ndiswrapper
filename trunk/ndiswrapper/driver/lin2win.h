@@ -31,7 +31,7 @@
 
 #define lin2win_win_arg(m,n) "(" #m "-1-" #n ")*8(%%rsp)"
 
-/* volatile args for Windows function must be in clobber list */
+/* volatile args for Windows function must be in clobber / output list */
 
 #define LIN2WIN0(func)							\
 ({									\
@@ -83,16 +83,16 @@
 #define LIN2WIN3(func, arg1, arg2, arg3)				\
 ({									\
 	u64 ret, dummy;							\
+	register u64 r8 __asm__("r8") = (u64)arg3;			\
 	DBGTRACE6("calling %p", func);					\
 	__asm__ __volatile__(						\
-		"movq %5, %%r8\n\t"					\
 		alloc_win_stack_frame(4)				\
-		"call *%6\n\t"						\
+		"call *%%rax\n\t"					\
 		free_win_stack_frame(4)					\
-		: "=a" (ret), "=c" (dummy), "=d" (dummy)		\
-		: "c" (arg1), "d" (arg2), "g" ((u64)arg3),		\
+		: "=a" (ret), "=c" (dummy), "=d" (dummy), "=r" (r8)	\
+		: "c" (arg1), "d" (arg2), "r" (r8),			\
 		  "a" (func)						\
-		: "r8", "r9", "r10", "r11");				\
+		: "r9", "r10", "r11");					\
 	DBGTRACE6("%p done", func);					\
 	ret;								\
 })
@@ -100,18 +100,18 @@
 #define LIN2WIN4(func, arg1, arg2, arg3, arg4)				\
 ({									\
 	u64 ret, dummy;							\
+	register u64 r8 __asm__("r8") = (u64)arg3;			\
+	register u64 r9 __asm__("r9") = (u64)arg4;			\
 	DBGTRACE6("calling %p", func);					\
 	__asm__ __volatile__(						\
-		"movq %5, %%r8\n\t"					\
-		"movq %6, %%r9\n\t"					\
 		alloc_win_stack_frame(4)				\
-		"call *%7\n\t"						\
+		"call *%%rax\n\t"					\
 		free_win_stack_frame(4)					\
-		: "=a" (ret), "=c" (dummy), "=d" (dummy)		\
-		: "c" (arg1), "d" (arg2), "g" ((u64)arg3),		\
-		  "g" ((u64)arg4),					\
+		: "=a" (ret), "=c" (dummy), "=d" (dummy),		\
+		  "=r" (r8), "=r" (r9)					\
+		: "c" (arg1), "d" (arg2), "r" (r8), "r" (r9),		\
 		  "a" (func)						\
-		: "r8", "r9", "r10", "r11");				\
+		: "r10", "r11");					\
 	DBGTRACE6("%p done", func);					\
 	ret;								\
 })
@@ -119,19 +119,20 @@
 #define LIN2WIN5(func, arg1, arg2, arg3, arg4, arg5)			\
 ({									\
 	u64 ret, dummy;							\
+	register u64 r8 __asm__("r8") = (u64)arg3;			\
+	register u64 r9 __asm__("r9") = (u64)arg4;			\
+	register u64 r10 __asm__("r10") = (u64)arg5;			\
 	DBGTRACE6("calling %p", func);					\
 	__asm__ __volatile__(						\
-		"movq %5, %%r8\n\t"					\
-		"movq %6, %%r9\n\t"					\
-		"movq %7, " lin2win_win_arg(5,5) "\n\t"			\
+		"movq %%r10, " lin2win_win_arg(5,5) "\n\t"		\
 		alloc_win_stack_frame(5)				\
-		"call *%8\n\t"						\
+		"call *%%rax\n\t"					\
 		free_win_stack_frame(5)					\
-		: "=a" (ret), "=c" (dummy), "=d" (dummy)		\
-		: "c" (arg1), "d" (arg2), "g" ((u64)arg3),		\
-		  "g" ((u64)arg4), "ri" ((u64)arg5),			\
+		: "=a" (ret), "=c" (dummy), "=d" (dummy),		\
+		  "=r" (r8), "=r" (r9), "=r" (r10)			\
+		: "c" (arg1), "d" (arg2), "r" (r8), "r" (r9), "r" (r10), \
 		  "a" (func)						\
-		: "r8", "r9", "r10", "r11");				\
+		: "r11");						\
 	DBGTRACE6("%p done", func);					\
 	ret;								\
 })
@@ -139,21 +140,22 @@
 #define LIN2WIN6(func, arg1, arg2, arg3, arg4, arg5, arg6)		\
 ({									\
 	u64 ret, dummy;							\
+	register u64 r8 __asm__("r8") = (u64)arg3;			\
+	register u64 r9 __asm__("r9") = (u64)arg4;			\
+	register u64 r10 __asm__("r10") = (u64)arg5;			\
+	register u64 r11 __asm__("r11") = (u64)arg6;			\
 	DBGTRACE6("calling %p", func);					\
 	__asm__ __volatile__(						\
-		"movq %5, %%r8\n\t"					\
-		"movq %6, %%r9\n\t"					\
-		"movq %7, %%r10\n\t"					\
-		"movq %7, " lin2win_win_arg(5,6) "\n\t"			\
-		"movq %8, " lin2win_win_arg(6,6) "\n\t"			\
+		"movq %%r10, " lin2win_win_arg(5,6) "\n\t"		\
+		"movq %%r11, " lin2win_win_arg(6,6) "\n\t"		\
 		alloc_win_stack_frame(6)				\
-		"call *%9\n\t"						\
+		"call *%%rax\n\t"					\
 		free_win_stack_frame(6)					\
-		: "=a" (ret), "=c" (dummy), "=d" (dummy)		\
-		: "c" (arg1), "d" (arg2), "g" ((u64)arg3),		\
-		  "g" ((u64)arg4), "ri" ((u64)arg5), "ri" ((u64)arg6),	\
-		  "a" (func)						\
-		: "r8", "r9", "r10", "r11");				\
+		: "=a" (ret), "=c" (dummy), "=d" (dummy),		\
+		  "=r" (r8), "=r" (r9), "=r" (r10), "=r" (r11)		\
+		: "c" (arg1), "d" (arg2), "r" (r8), "r" (r9),		\
+		  "r" (r10), "r" (r11),					\
+		  "a" (func));						\
 	DBGTRACE6("%p done", func);					\
 	ret;								\
 })
