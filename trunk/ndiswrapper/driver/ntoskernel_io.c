@@ -276,6 +276,8 @@ wstdcall struct irp *WIN_FUNC(IoBuildDeviceIoControlRequest,9)
 	irp_sl->params.dev_ioctl.output_buf_len = output_buf_len;
 	irp_sl->major_fn = (internal_ioctl) ?
 		IRP_MJ_INTERNAL_DEVICE_CONTROL : IRP_MJ_DEVICE_CONTROL;
+	IOTRACE("%d", IO_METHOD_FROM_CTL_CODE(ioctl));
+
 	switch (IO_METHOD_FROM_CTL_CODE(ioctl)) {
 	case METHOD_BUFFERED:
 		buf_len = max(input_buf_len, output_buf_len);
@@ -315,7 +317,10 @@ wstdcall struct irp *WIN_FUNC(IoBuildDeviceIoControlRequest,9)
 			irp->flags = IRP_BUFFERED_IO | IRP_DEALLOCATE_BUFFER;
 		} else
 			irp->flags = 0;
-		/* TODO: we are supposed to setup MDL */
+		/* TODO: we are supposed to setup MDL, but USB layer
+		 * doesn't use MDLs. Moreover, USB layer mirrors
+		 * non-DMAable buffers, so no need to allocate
+		 * buffer here */
 		if (output_buf) {
 			irp->associated_irp.system_buffer =
 				ExAllocatePoolWithTag(NonPagedPool,
@@ -324,7 +329,9 @@ wstdcall struct irp *WIN_FUNC(IoBuildDeviceIoControlRequest,9)
 				IoFreeIrp(irp);
 				IOEXIT(return NULL);
 			}
-		}
+			irp->flags = IRP_BUFFERED_IO | IRP_DEALLOCATE_BUFFER;
+		} else
+			irp->flags = 0;
 		break;
 	case METHOD_NEITHER:
 		irp->user_buf = output_buf;
