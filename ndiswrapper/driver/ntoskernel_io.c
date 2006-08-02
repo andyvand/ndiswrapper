@@ -260,6 +260,7 @@ wstdcall struct irp *WIN_FUNC(IoBuildDeviceIoControlRequest,9)
 {
 	struct irp *irp;
 	struct io_stack_location *irp_sl;
+	ULONG buf_len;
 
 	IOENTER("%p, 0x%08x, %d", dev_obj, ioctl, internal_ioctl);
 	if (!dev_obj)
@@ -269,22 +270,70 @@ wstdcall struct irp *WIN_FUNC(IoBuildDeviceIoControlRequest,9)
 		WARNING("couldn't allocate irp");
 		return NULL;
 	}
-	irp->user_status = io_status;
-	irp->user_event = event;
-	irp->user_buf = output_buf;
-	irp->associated_irp.system_buffer = input_buf;
-
 	irp_sl = IoGetNextIrpStackLocation(irp);
 	irp_sl->params.dev_ioctl.code = ioctl;
 	irp_sl->params.dev_ioctl.input_buf_len = input_buf_len;
 	irp_sl->params.dev_ioctl.output_buf_len = output_buf_len;
-	irp_sl->dev_obj = dev_obj;
 	irp_sl->major_fn = (internal_ioctl) ?
 		IRP_MJ_INTERNAL_DEVICE_CONTROL : IRP_MJ_DEVICE_CONTROL;
-	irp_sl->minor_fn = 0;
-	irp_sl->flags = 0;
-	irp_sl->file_obj = NULL;
-	irp_sl->completion_routine = NULL;
+	switch (IO_METHOD_FROM_CTL_CODE(ioctl)) {
+	case METHOD_BUFFERED:
+		buf_len = max(input_buf_len, output_buf_len);
+		if (buf_len) {
+			irp->associated_irp.system_buffer =
+				ExAllocatePoolWithTag(NonPagedPool,
+						      buf_len, 0);
+			if (!irp->associated_irp.system_buffer) {
+				IoFreeIrp(irp);
+				IOEXIT(return NULL);
+			}
+			irp->associated_irp.system_buffer = input_buf;
+			if (input_buf)
+				memcpy(irp->associated_irp.system_buffer,
+				       input_buf, input_buf_len);
+			irp->flags = IRP_BUFFERED_IO | IRP_DEALLOCATE_BUFFER;
+			if (output_buf)
+				irp->flags |= IRP_INPUT_OPERATION;
+			irp->user_buf = output_buf;
+		} else { // buf_len = 0
+			irp->flags = 0;
+			irp->user_buf = NULL;
+		}
+		break;
+	case METHOD_IN_DIRECT:
+	case METHOD_OUT_DIRECT:
+		if (input_buf) {
+			irp->associated_irp.system_buffer =
+				ExAllocatePoolWithTag(NonPagedPool,
+						      input_buf_len, 0);
+			if (!irp->associated_irp.system_buffer) {
+				IoFreeIrp(irp);
+				IOEXIT(return NULL);
+			}
+			memcpy(irp->associated_irp.system_buffer,
+			       input_buf, input_buf_len);
+			irp->flags = IRP_BUFFERED_IO | IRP_DEALLOCATE_BUFFER;
+		} else
+			irp->flags = 0;
+		/* TODO: we are supposed to setup MDL */
+		if (output_buf) {
+			irp->associated_irp.system_buffer =
+				ExAllocatePoolWithTag(NonPagedPool,
+						      output_buf_len, 0);
+			if (!irp->associated_irp.system_buffer) {
+				IoFreeIrp(irp);
+				IOEXIT(return NULL);
+			}
+		}
+		break;
+	case METHOD_NEITHER:
+		irp->user_buf = output_buf;
+		irp_sl->params.dev_ioctl.type3_input_buf = input_buf;
+		break;
+	}
+
+	irp->user_status = io_status;
+	irp->user_event = event;
 	IoQueueThreadIrp(irp);
 
 	IOTRACE("irp: %p", irp);

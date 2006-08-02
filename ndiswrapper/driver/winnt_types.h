@@ -796,6 +796,16 @@ enum device_usage_notification_type {
 	DeviceUsageTypeHibernation, DevbiceUsageTypeDumpFile,
 };
 
+#define METHOD_BUFFERED		0
+#define METHOD_IN_DIRECT	1
+#define METHOD_OUT_DIRECT	2
+#define METHOD_NEITHER		3
+
+#define CTL_CODE(dev_type, func, method, access)	\
+	(((dev_type) << 16) | ((access) << 14) | ((func) << 2) | (method))
+
+#define IO_METHOD_FROM_CTL_CODE(code) (code & 0x3)
+
 #ifndef CONFIG_X86_64
 #pragma pack(push,4)
 #endif
