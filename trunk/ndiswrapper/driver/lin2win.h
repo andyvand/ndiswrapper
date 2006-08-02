@@ -99,7 +99,7 @@
 		free_win_stack_frame(4)					\
 		: "=a" (ret), "=c" (dummy), "=d" (dummy),		\
 		  "=r" (r8), "=r" (r9), "=r" (r10), "=r" (r11)		\
-		: "c" (arg1), "d" (arg2),				\
+		: "c" (arg1), "d" (arg2), "r" (r8),			\
 		  [fptr] "r" (func));					\
 	ret;								\
 })
@@ -117,7 +117,7 @@
 		free_win_stack_frame(4)					\
 		: "=a" (ret), "=c" (dummy), "=d" (dummy),		\
 		  "=r" (r8), "=r" (r9), "=r" (r10), "=r" (r11)		\
-		: "c" (arg1), "d" (arg2),				\
+		: "c" (arg1), "d" (arg2), "r" (r8), "r" (r9),		\
 		  [fptr] "r" (func));					\
 	ret;								\
 })
@@ -136,7 +136,8 @@
 		free_win_stack_frame(5)					\
 		: "=a" (ret), "=c" (dummy), "=d" (dummy),		\
 		  "=r" (r8), "=r" (r9), "=r" (r10), "=r" (r11)		\
-		: "c" (arg1), "d" (arg2), [rarg5] "r" ((u64)arg5),	\
+		: "c" (arg1), "d" (arg2), "r" (r8), "r" (r9),		\
+		  [rarg5] "r" ((u64)arg5),				\
 		  [fptr] "r" (func));					\
 	ret;								\
 })
@@ -156,7 +157,7 @@
 		free_win_stack_frame(6)					\
 		: "=a" (ret), "=c" (dummy), "=d" (dummy),		\
 		  "=r" (r8), "=r" (r9), "=r" (r10), "=r" (r11)		\
-		: "c" (arg1), "d" (arg2),				\
+		: "c" (arg1), "d" (arg2), "r" (r8), "r" (r9),		\
 		  [rarg5] "r" ((u64)arg5), [rarg6] "r" ((u64)arg6),	\
 		  [fptr] "r" (func));					\
 	ret;								\
