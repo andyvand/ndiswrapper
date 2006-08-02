@@ -36,41 +36,53 @@
 #define LIN2WIN0(func)							\
 ({									\
 	u64 ret, dummy;							\
+	register u64 r8 __asm__("r8");					\
+	register u64 r9 __asm__("r9");					\
+	register u64 r10 __asm__("r10");				\
+	register u64 r11 __asm__("r11");				\
 	__asm__ __volatile__(						\
 		alloc_win_stack_frame(4)				\
-		"call *%%rax\n\t"					\
+		"call *%[fptr]\n\t"					\
 		free_win_stack_frame(4)					\
-		: "=a" (ret), "=c" (dummy), "=d" (dummy)		\
-		: "a" (func)						\
-		: "r8", "r9", "r10", "r11");				\
+		: "=a" (ret), "=c" (dummy), "=d" (dummy),		\
+		  "=r" (r8), "=r" (r9), "=r" (r10), "=r" (r11)		\
+		: [fptr] "r" (func));					\
 	ret;								\
 })
 
 #define LIN2WIN1(func, arg1)						\
 ({									\
 	u64 ret, dummy;							\
+	register u64 r8 __asm__("r8");					\
+	register u64 r9 __asm__("r9");					\
+	register u64 r10 __asm__("r10");				\
+	register u64 r11 __asm__("r11");				\
 	__asm__ __volatile__(						\
 		alloc_win_stack_frame(4)				\
-		"call *%%rax\n\t"					\
+		"call *%[fptr]\n\t"					\
 		free_win_stack_frame(4)					\
-		: "=a" (ret), "=c" (dummy), "=d" (dummy)		\
+		: "=a" (ret), "=c" (dummy), "=d" (dummy),		\
+		  "=r" (r8), "=r" (r9), "=r" (r10), "=r" (r11)		\
 		: "c" (arg1),						\
-		  "a" (func)						\
-		: "r8", "r9", "r10", "r11");				\
+		  [fptr] "r" (func));					\
 	ret;								\
 })
 
 #define LIN2WIN2(func, arg1, arg2)					\
 ({									\
 	u64 ret, dummy;							\
+	register u64 r8 __asm__("r8");					\
+	register u64 r9 __asm__("r9");					\
+	register u64 r10 __asm__("r10");				\
+	register u64 r11 __asm__("r11");				\
 	__asm__ __volatile__(						\
 		alloc_win_stack_frame(4)				\
-		"call *%%rax\n\t"					\
+		"call *%[fptr]\n\t"					\
 		free_win_stack_frame(4)					\
-		: "=a" (ret), "=c" (dummy), "=d" (dummy)		\
+		: "=a" (ret), "=c" (dummy), "=d" (dummy),		\
+		  "=r" (r8), "=r" (r9), "=r" (r10), "=r" (r11)		\
 		: "c" (arg1), "d" (arg2),				\
-		  "a" (func)						\
-		: "r8", "r9", "r10", "r11");				\
+		  [fptr] "r" (func));					\
 	ret;								\
 })
 
@@ -78,14 +90,17 @@
 ({									\
 	u64 ret, dummy;							\
 	register u64 r8 __asm__("r8") = (u64)arg3;			\
+	register u64 r9 __asm__("r9");					\
+	register u64 r10 __asm__("r10");				\
+	register u64 r11 __asm__("r11");				\
 	__asm__ __volatile__(						\
 		alloc_win_stack_frame(4)				\
-		"call *%%rax\n\t"					\
+		"call *%[fptr]\n\t"					\
 		free_win_stack_frame(4)					\
-		: "=a" (ret), "=c" (dummy), "=d" (dummy), "=r" (r8)	\
-		: "c" (arg1), "d" (arg2), "r" (r8),			\
-		  "a" (func)						\
-		: "r9", "r10", "r11");					\
+		: "=a" (ret), "=c" (dummy), "=d" (dummy),		\
+		  "=r" (r8), "=r" (r9), "=r" (r10), "=r" (r11)		\
+		: "c" (arg1), "d" (arg2),				\
+		  [fptr] "r" (func));					\
 	ret;								\
 })
 
@@ -94,15 +109,16 @@
 	u64 ret, dummy;							\
 	register u64 r8 __asm__("r8") = (u64)arg3;			\
 	register u64 r9 __asm__("r9") = (u64)arg4;			\
+	register u64 r10 __asm__("r10");				\
+	register u64 r11 __asm__("r11");				\
 	__asm__ __volatile__(						\
 		alloc_win_stack_frame(4)				\
-		"call *%%rax\n\t"					\
+		"call *%[fptr]\n\t"					\
 		free_win_stack_frame(4)					\
 		: "=a" (ret), "=c" (dummy), "=d" (dummy),		\
-		  "=r" (r8), "=r" (r9)					\
-		: "c" (arg1), "d" (arg2), "r" (r8), "r" (r9),		\
-		  "a" (func)						\
-		: "r10", "r11");					\
+		  "=r" (r8), "=r" (r9), "=r" (r10), "=r" (r11)		\
+		: "c" (arg1), "d" (arg2),				\
+		  [fptr] "r" (func));					\
 	ret;								\
 })
 
@@ -111,17 +127,17 @@
 	u64 ret, dummy;							\
 	register u64 r8 __asm__("r8") = (u64)arg3;			\
 	register u64 r9 __asm__("r9") = (u64)arg4;			\
-	register u64 r10 __asm__("r10") = (u64)arg5;			\
+	register u64 r10 __asm__("r10");				\
+	register u64 r11 __asm__("r11");				\
 	__asm__ __volatile__(						\
-		"movq %%r10, " lin2win_win_arg(5,5) "\n\t"		\
+		"movq %[rarg5], " lin2win_win_arg(5,5) "\n\t"		\
 		alloc_win_stack_frame(5)				\
-		"call *%%rax\n\t"					\
+		"call *%[fptr]\n\t"					\
 		free_win_stack_frame(5)					\
 		: "=a" (ret), "=c" (dummy), "=d" (dummy),		\
-		  "=r" (r8), "=r" (r9), "=r" (r10)			\
-		: "c" (arg1), "d" (arg2), "r" (r8), "r" (r9), "r" (r10), \
-		  "a" (func)						\
-		: "r11");						\
+		  "=r" (r8), "=r" (r9), "=r" (r10), "=r" (r11)		\
+		: "c" (arg1), "d" (arg2), [rarg5] "r" ((u64)arg5),	\
+		  [fptr] "r" (func));					\
 	ret;								\
 })
 
@@ -130,19 +146,19 @@
 	u64 ret, dummy;							\
 	register u64 r8 __asm__("r8") = (u64)arg3;			\
 	register u64 r9 __asm__("r9") = (u64)arg4;			\
-	register u64 r10 __asm__("r10") = (u64)arg5;			\
-	register u64 r11 __asm__("r11") = (u64)arg6;			\
+	register u64 r10 __asm__("r10");				\
+	register u64 r11 __asm__("r11");				\
 	__asm__ __volatile__(						\
-		"movq %%r10, " lin2win_win_arg(5,6) "\n\t"		\
-		"movq %%r11, " lin2win_win_arg(6,6) "\n\t"		\
+		"movq %[rarg5], " lin2win_win_arg(5,6) "\n\t"		\
+		"movq %[rarg6], " lin2win_win_arg(6,6) "\n\t"		\
 		alloc_win_stack_frame(6)				\
-		"call *%%rax\n\t"					\
+		"call *%[fptr]\n\t"					\
 		free_win_stack_frame(6)					\
 		: "=a" (ret), "=c" (dummy), "=d" (dummy),		\
 		  "=r" (r8), "=r" (r9), "=r" (r10), "=r" (r11)		\
-		: "c" (arg1), "d" (arg2), "r" (r8), "r" (r9),		\
-		  "r" (r10), "r" (r11),					\
-		  "a" (func));						\
+		: "c" (arg1), "d" (arg2),				\
+		  [rarg5] "r" ((u64)arg5), [rarg6] "r" ((u64)arg6),	\
+		  [fptr] "r" (func));					\
 	ret;								\
 })
 
