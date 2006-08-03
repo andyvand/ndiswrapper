@@ -257,8 +257,8 @@ win2lin12:
 	ret
 
 #define win2lin(name, argc)			\
-ENTRY(x86_64_ ## name ##  _ ## argc)		\
+ENTRY(win2lin_ ## name ##  _ ## argc)		\
 	lea	name(%rip), %rax ; 		\
 	jmp	win2lin ## argc
 
-#include "x86_64_stubs.h"
+#include "win2lin_stubs.h"
