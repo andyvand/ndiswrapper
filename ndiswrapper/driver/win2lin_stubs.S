@@ -84,12 +84,11 @@ In Linux it should look like:
 	push	%rdi
 .endm
 
-# when Windows function calls Linux function, the function address is in %rax
+# when Windows function calls Linux function, the function address is in %r10
 
 .macro call_lin_func
-	mov	%rax, %r11	# function to call
 	xor	%rax, %rax	# rax indicates number of SSE regs
-	call	*%r11
+	call	*%r10
 .endm
 
 .macro win2lin_epilog
@@ -198,8 +197,8 @@ win2lin7:
 
 	# copy windows argument 7 on the stack for the Linux function.
 
-	mov	win2lin_win_arg(7), %r10
-	mov	%r10, win2lin_lin_arg(7,7)
+	mov	win2lin_win_arg(7), %r11
+	mov	%r11, win2lin_lin_arg(7,7)
 	sub	$win2lin_stack_frame(7), %rsp
 	call_lin_func
 	add	$win2lin_stack_frame(7), %rsp
@@ -218,10 +217,10 @@ win2lin8:
 	# copy windows arguments 7 and 8
 	# on the stack for the Linux function.
 
-	mov	win2lin_win_arg(7), %r10
-	mov	%r10, win2lin_lin_arg(7,8)
-	mov	win2lin_win_arg(8), %r10
-	mov	%r10, win2lin_lin_arg(8,8)
+	mov	win2lin_win_arg(7), %r11
+	mov	%r11, win2lin_lin_arg(7,8)
+	mov	win2lin_win_arg(8), %r11
+	mov	%r11, win2lin_lin_arg(8,8)
 	sub	$win2lin_stack_frame(8), %rsp
 	call_lin_func
 	add	$win2lin_stack_frame(8), %rsp
@@ -258,7 +257,7 @@ win2lin12:
 
 #define win2lin(name, argc)			\
 ENTRY(win2lin_ ## name ##  _ ## argc)		\
-	lea	name(%rip), %rax ; 		\
+	lea	name(%rip), %r10 ; 		\
 	jmp	win2lin ## argc
 
 #include "win2lin_stubs.h"
