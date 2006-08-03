@@ -673,7 +673,7 @@ static USBD_STATUS wrap_bulk_or_intr_trans(struct irp *irp)
 
 static USBD_STATUS wrap_vendor_or_class_req(struct irp *irp)
 {
-	__u8 req_type;
+	u8 req_type;
 	unsigned int pipe;
 	struct usbd_vendor_or_class_request *vc_req;
 	struct usb_device *udev;

@@ -3,7 +3,7 @@ DISTFILES=divdi3.c hal.c iw_ndis.c iw_ndis.h loader.c loader.h \
 		ndiswrapper.h ntoskernel.c ntoskernel.h ntoskernel_io.c \
 		pe_linker.c pe_linker.h pnp.c pnp.h proc.c usb.c usb.h \
 		winnt_types.h workqueue.c wrapmem.h wrapmem.c wrapper.c \
-		wrapndis.h wrapndis.c lin2win.h x86_64_stubs.S
+		wrapndis.h wrapndis.c lin2win.h win2lin_stubs.S
 
 KVERS ?= $(shell uname -r)
 KPSUB := $(shell echo $(KVERS) | sed -e 's/\([^\.]*\)\.\([^\.]*\)\..*/\1\2/')
@@ -82,9 +82,9 @@ CFLAGS += -DALLOC_DEBUG=$(ALLOC_DEBUG)
 endif
 
 .PHONY: prereq_check gen_exports clean dist_clean \
-		 x86_64_stubs install stack_check
+		 win2lin_stubs install stack_check
 
-all : prereq_check x86_64_stubs gen_exports default stack_check
+all : prereq_check win2lin_stubs gen_exports default stack_check
 
 OBJS := hal.o iw_ndis.o loader.o misc_funcs.o ndis.o \
 	    ntoskernel.o ntoskernel_io.o pe_linker.o pnp.o proc.o \
@@ -156,16 +156,16 @@ usb_exports.h: usb.c
 endif
 
 ifeq ($(CONFIG_X86_64),y)
-OBJS += x86_64_stubs.o
-x86_64_stubs.o: x86_64_stubs.h x86_64_stubs.S
+OBJS += win2lin_stubs.o
+win2lin_stubs.o: win2lin_stubs.h win2lin_stubs.S
 
-x86_64_stubs: x86_64_stubs.h
+win2lin_stubs: win2lin_stubs.h
 
 ifdef DISABLE_USB
 x86_64_stubs.h: hal.c misc_funcs.c ndis.c ntoskernel.c ntoskernel_io.c \
 	pnp.c wrapndis.c
 else
-x86_64_stubs.h: hal.c misc_funcs.c ndis.c ntoskernel.c ntoskernel_io.c \
+win2lin_stubs.h: hal.c misc_funcs.c ndis.c ntoskernel.c ntoskernel_io.c \
 	pnp.c usb.c wrapndis.c
 endif
 	@for file in $^; do \
@@ -179,7 +179,7 @@ endif
 		   $$file | sed -e 's/[ \t	]\+//' | sort -u; \
 	done > $@
 else
-x86_64_stubs:
+win2lin_stubs:
 
 OBJS += divdi3.o
 endif
@@ -233,12 +233,12 @@ prereq_check:
 	fi
 
 clean:
-	rm -rf $(MODULE) ndiswrapper.o $(OBJS) usb.o x86_64_stubs.o \
+	rm -rf $(MODULE) ndiswrapper.o $(OBJS) usb.o win2lin_stubs.o \
 	   divdi3.o workqueue.o .*.ko.cmd .*.o.cmd \
 	   ndiswrapper.mod.[oc] *~ .tmp_versions Modules.symvers
 
 distclean: clean
-	rm -f *_exports.h .\#* x86_64_stubs.h
+	rm -f *_exports.h .\#* win2lin_stubs.h
 
 ifeq ($(KPSUB),24)
 OBJS += workqueue.o
@@ -289,7 +289,7 @@ stack_check:
 			fi;\
 		fi
 
-install: prereq_check x86_64_stubs gen_exports default stack_check
+install: prereq_check win2lin_stubs gen_exports default stack_check
 	echo $(INST_DIR)
 	mkdir -p $(INST_DIR)
 	install -m 0644 $(MODULE) $(INST_DIR)

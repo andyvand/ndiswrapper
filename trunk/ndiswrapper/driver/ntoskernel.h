@@ -950,7 +950,7 @@ static inline u64 cmpxchg8b(volatile void *ptr, u64 old, u64 new)
 		  "=a" (ll_low(prev)), "=d" (ll_high(prev))
 		: "a" (ll_low(old)), "d" (ll_high(old)),
 		  "b" (ll_low(new)), "c" (ll_high(new))
-		: "cc", "memory");
+		: "cc");
 	return prev;
 }
 
