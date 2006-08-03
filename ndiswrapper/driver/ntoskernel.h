@@ -395,12 +395,12 @@ struct wrap_export {
 #ifdef CONFIG_X86_64
 
 #define WIN_SYMBOL(name, argc)						\
-	{#name, (generic_func) x86_64_ ## name ## _ ## argc}
+	{#name, (generic_func) win2lin_ ## name ## _ ## argc}
 #define WIN_WIN_SYMBOL(name, argc)					\
-	{#name, (generic_func) x86_64__win_ ## name ## _ ## argc}
+	{#name, (generic_func) win2lin__win_ ## name ## _ ## argc}
 #define WIN_FUNC_DECL(name, argc)			\
-	typeof(name) x86_64_ ## name ## _ ## argc ;
-#define WIN_FUNC_PTR(name, argc) x86_64_ ## name ## _ ## argc
+	typeof(name) win2lin_ ## name ## _ ## argc ;
+#define WIN_FUNC_PTR(name, argc) win2lin_ ## name ## _ ## argc
 
 #else
 
