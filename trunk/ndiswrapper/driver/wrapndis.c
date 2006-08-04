@@ -1944,8 +1944,8 @@ static wstdcall NTSTATUS NdisAddDevice(struct driver_object *drv_obj,
 		WIN_FUNC_PTR(NdisDispatchPower,2);
 	drv_obj->major_func[IRP_MJ_INTERNAL_DEVICE_CONTROL] =
 		WIN_FUNC_PTR(NdisDispatchDeviceControl,2);
-	drv_obj->major_func[IRP_MJ_DEVICE_CONTROL] =
-		WIN_FUNC_PTR(NdisDispatchDeviceControl,2);
+//	drv_obj->major_func[IRP_MJ_DEVICE_CONTROL] =
+//		WIN_FUNC_PTR(NdisDispatchDeviceControl,2);
 	TRACEEXIT2(return STATUS_SUCCESS);
 }
 

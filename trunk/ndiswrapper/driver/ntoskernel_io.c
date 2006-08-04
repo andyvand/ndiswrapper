@@ -283,8 +283,7 @@ wstdcall struct irp *WIN_FUNC(IoBuildDeviceIoControlRequest,9)
 		buf_len = max(input_buf_len, output_buf_len);
 		if (buf_len) {
 			irp->associated_irp.system_buffer =
-				ExAllocatePoolWithTag(NonPagedPool,
-						      buf_len, 0);
+				ExAllocatePoolWithTag(NonPagedPool, buf_len, 0);
 			if (!irp->associated_irp.system_buffer) {
 				IoFreeIrp(irp);
 				IOEXIT(return NULL);
@@ -320,7 +319,7 @@ wstdcall struct irp *WIN_FUNC(IoBuildDeviceIoControlRequest,9)
 		/* TODO: we are supposed to setup MDL, but USB layer
 		 * doesn't use MDLs. Moreover, USB layer mirrors
 		 * non-DMAable buffers, so no need to allocate
-		 * buffer here */
+		 * DMAable buffer here */
 		if (output_buf) {
 			irp->associated_irp.system_buffer =
 				ExAllocatePoolWithTag(NonPagedPool,
