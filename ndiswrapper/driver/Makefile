@@ -219,18 +219,13 @@ gen_exports: ndis_exports.h hal_exports.h ntoskernel_exports.h \
 endif
 
 prereq_check:
-	@ if [ ! -f $(KBUILD)/include/linux/version.h ]; then \
+	@ if [ ! -f $(KBUILD)/include/linux/version.h -o \
+		! -f $(KSRC)/include/linux/kernel.h ]; then \
 		echo "Can't find kernel build files in $(KBUILD);"; \
 		echo "  give the path to kernel build directory with " ; \
 		echo "  KBUILD=<path> argument to make";\
 		exit 1;\
 	  fi
-	@ if [ ! -f $(KSRC)/include/linux/kernel.h ]; then \
-		echo "Can't find kernel source files in $(KSRC);"; \
-		echo "  give the path to kernel sources directory with " ; \
-		echo "  KSRC=<path> argument to make";\
-		exit 1;\
-	fi
 
 clean:
 	rm -rf $(MODULE) ndiswrapper.o $(OBJS) usb.o win2lin_stubs.o \
@@ -266,28 +261,17 @@ default:
 endif
 
 stack_check:
-	  @ if [ "x$(CONFIG_X86_64)" = "x" -a $(KPSUB) -eq 26 ]; then \
-		   if grep -q CONFIG_4KSTACKS $(KBUILD)/.config; then \
-			  if grep -q "CONFIG_4KSTACKS=y" $(KBUILD)/.config; then \
-				echo; echo; \
-			  	echo "*** WARNING: "\
-					 "Kernel is compiled with 4K stack size option"\
-					 "(CONFIG_4KSTACKS); many Windows drivers will"\
-					 "not work with this option enabled. Disable"\
-					 "CONFIG_4KSTACKS option, recompile and install"\
-					 "kernel";\
-				echo; echo; \
-			  fi;\
-			else \
-				echo; echo; \
-			    echo "*** WARNING: Kernel seems to have 4K size stack option" \
-			     "(CONFIG_4KSTACKS) removed; many Windows drivers will"\
-			     "need at least 8K size stacks."\
-			     "You should read wiki about 4K size stack issue."\
-				 "Don't complain about crashes until you resolve this."; \
-				echo; echo; \
-			fi;\
-		fi
+	@ if [ \( "x$(CONFIG_X86_64)" = "x" -a $(KPSUB) -eq 26 \) ] && \
+	     ! grep -q CONFIG_4KSTACKS $(KBUILD)/.config || \
+	     grep -q "CONFIG_4KSTACKS=y" $(KBUILD)/.config; then \
+		echo; echo; \
+		echo "*** WARNING: This kernel seems use 4K stack size"\
+		     "option (CONFIG_4KSTACKS); many Windows drivers"\
+		     "will not work with this option enabled. Disable"\
+		     "CONFIG_4KSTACKS option, recompile and install"\
+		     "kernel";\
+		echo; echo; \
+	fi
 
 install: prereq_check win2lin_stubs gen_exports default stack_check
 	echo $(INST_DIR)

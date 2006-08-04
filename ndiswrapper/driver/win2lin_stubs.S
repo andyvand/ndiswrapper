@@ -84,16 +84,16 @@ In Linux it should look like:
 	push	%rdi
 .endm
 
+.macro win2lin_epilog
+	pop	%rdi
+	pop	%rsi
+.endm
+
 # when Windows function calls Linux function, the function address is in %r10
 
 .macro call_lin_func
 	xor	%rax, %rax	# rax indicates number of SSE regs
 	call	*%r10
-.endm
-
-.macro win2lin_epilog
-	pop	%rdi
-	pop	%rsi
 .endm
 
 # before prolog, 0(%rsp) is return address, 8(%rsp) would be arg1

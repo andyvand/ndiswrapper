@@ -127,7 +127,7 @@ struct work_struct {
 struct workqueue_struct *create_singlethread_workqueue(const char *name);
 void destroy_workqueue(struct workqueue_struct *workq);
 void queue_work(struct workqueue_struct *workq,
-		struct work_struct *work_struct) wfastcall;
+		struct work_struct *work_struct) fastcall;
 void cancel_delayed_work(struct work_struct *work_struct);
 
 #include <linux/smp_lock.h>
@@ -793,8 +793,9 @@ static inline void nt_spin_lock(volatile NT_SPIN_LOCK *lock)
 		"  jne 2b\n\t"
 		"  jmp 1b\n"
 		"3:\n\t"
-		: "+m" (*lock)
-		: "r" (NT_SPIN_LOCK_LOCKED), "i" (NT_SPIN_LOCK_UNLOCKED));
+		: "=m" (*lock)
+		: "r" (NT_SPIN_LOCK_LOCKED), "i" (NT_SPIN_LOCK_UNLOCKED),
+		  "m" (*lock));
 }
 
 static inline void nt_spin_unlock(volatile NT_SPIN_LOCK *lock)
@@ -852,19 +853,19 @@ do {									\
 		if (size == 1)					\
 			__asm__ __volatile__(			\
 				LOCK_PREFIX oper "b %b0\n\t"	\
-				: "+m" (var));			\
+				: "=m" (var) : "m" (var));	\
 		else if (size == 2)				\
 			__asm__ __volatile__(			\
 				LOCK_PREFIX oper "w %w0\n\t"	\
-				: "+m" (var));			\
+				: "=m" (var) : "m" (var));	\
 		else if (size == 4)				\
 			__asm__ __volatile__(			\
 				LOCK_PREFIX oper "l %0\n\t"	\
-				: "+m" (var));			\
+				: "=m" (var) : "m" (var));	\
 		else if (size == 8)				\
 			__asm__ __volatile__(			\
 				LOCK_PREFIX oper "q %q0\n\t"	\
-				: "+m" (var));			\
+				: "=m" (var) : "m" (var));	\
 		else						\
 			ERROR("invalid size %d", (int)size);	\
 	} while (0)
@@ -882,9 +883,8 @@ do {									\
 	typeof(var) pre;					\
 	__asm__ __volatile__(					\
 		LOCK_PREFIX "xadd %0, %1\n\t"			\
-		: "=g"(pre), "+m"(var)				\
-		: "0"(i)					\
-		: "cc");					\
+		: "=r"(pre), "=m"(var)				\
+		: "0"(i), "m" (var));				\
 	pre;							\
 })
 
