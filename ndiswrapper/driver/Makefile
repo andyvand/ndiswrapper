@@ -219,18 +219,18 @@ gen_exports: ndis_exports.h hal_exports.h ntoskernel_exports.h \
 endif
 
 prereq_check:
-	@ if [ ! -f $(KBUILD)/include/linux/version.h -o \
+	@ if [ ! -f $(KBUILD)/include/linux/version.h ]; then \
 		echo "Can't find kernel build files in $(KBUILD);"; \
 		echo "  give the path to kernel build directory with " ; \
 		echo "  KBUILD=<path> argument to make";\
 		exit 1;\
-	  fi
-	@ if [ ! -f $(KSRC)/include/linux/kernel.h -o \
+	fi
+	@ if [ ! -f $(KSRC)/include/linux/kernel.h ]; then \
 		echo "Can't find kernel build files in $(KSRC);"; \
 		echo "  give the path to kernel build directory with " ; \
 		echo "  KSRC=<path> argument to make";\
 		exit 1;\
-	  fi
+	fi
 
 clean:
 	rm -rf $(MODULE) ndiswrapper.o $(OBJS) usb.o win2lin_stubs.o \
@@ -270,11 +270,10 @@ stack_check:
 	     ! grep -q CONFIG_4KSTACKS $(KBUILD)/.config || \
 	     grep -q "CONFIG_4KSTACKS=y" $(KBUILD)/.config; then \
 		echo; echo; \
-		echo "*** WARNING: This kernel seems use 4K stack size"\
-		     "option (CONFIG_4KSTACKS); many Windows drivers"\
-		     "will not work with this option enabled. Disable"\
-		     "CONFIG_4KSTACKS option, recompile and install"\
-		     "kernel";\
+		echo "*** WARNING: This kernel seems to use 4K stack size"\
+		     "option (CONFIG_4KSTACKS); many Windows drivers will"\
+		     "not work with this option enabled. Disable"\
+		     "CONFIG_4KSTACKS option, recompile and install kernel";\
 		echo; echo; \
 	fi
 
