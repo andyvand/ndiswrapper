@@ -220,10 +220,15 @@ endif
 
 prereq_check:
 	@ if [ ! -f $(KBUILD)/include/linux/version.h -o \
-		! -f $(KSRC)/include/linux/kernel.h ]; then \
 		echo "Can't find kernel build files in $(KBUILD);"; \
 		echo "  give the path to kernel build directory with " ; \
 		echo "  KBUILD=<path> argument to make";\
+		exit 1;\
+	  fi
+	@ if [ ! -f $(KSRC)/include/linux/kernel.h -o \
+		echo "Can't find kernel build files in $(KSRC);"; \
+		echo "  give the path to kernel build directory with " ; \
+		echo "  KSRC=<path> argument to make";\
 		exit 1;\
 	  fi
 
