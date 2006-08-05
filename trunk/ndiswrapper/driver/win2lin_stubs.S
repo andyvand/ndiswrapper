@@ -173,10 +173,14 @@ win2lin6:
 	win2lin_epilog
 	ret
 
-# allocate stack frame for Linux arguments - first 6 args are passed
-# through registers, so we need space for 7 to 12
+# Allocate stack frame for Linux arguments before calling function.
+# First 6 args are passed through registers, so we need space for 7 and above.
+# The arguments should have been copied onto stack already.
 
-#define win2lin_stack_frame(n) (n-6)*8
+#define call_lin_func_args(n)	\
+	sub (n-6)*8, %rsp	;\
+	call_lin_func		;\
+	add (n-6)*8, %rsp
 
 # m is index of Linux arg required, n is total number of args to function
 # After stack frame is allocated, Linux arg 7 should be at 0(%rsp),
@@ -199,9 +203,7 @@ win2lin7:
 
 	mov	win2lin_win_arg(7), %r11
 	mov	%r11, win2lin_lin_arg(7,7)
-	sub	$win2lin_stack_frame(7), %rsp
-	call_lin_func
-	add	$win2lin_stack_frame(7), %rsp
+	call_lin_func_args(7)
 	win2lin_epilog
 	ret
 
@@ -221,9 +223,7 @@ win2lin8:
 	mov	%r11, win2lin_lin_arg(7,8)
 	mov	win2lin_win_arg(8), %r11
 	mov	%r11, win2lin_lin_arg(8,8)
-	sub	$win2lin_stack_frame(8), %rsp
-	call_lin_func
-	add	$win2lin_stack_frame(8), %rsp
+	call_lin_func_args(8)
 	win2lin_epilog
 	ret
 
@@ -249,9 +249,7 @@ win2lin12:
 	movsq
 	mov	%r11, %rcx		# restore rcx
 
-	sub	$win2lin_stack_frame(12), %rsp
-	call_lin_func
-	add	$win2lin_stack_frame(12), %rsp
+	call_lin_func_args(12)
 	win2lin_epilog
 	ret
 
