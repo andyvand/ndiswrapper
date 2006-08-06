@@ -94,8 +94,12 @@ OBJS := hal.o iw_ndis.o loader.o misc_funcs.o ndis.o \
 # add option "DISABLE_USB=1"
 
 ifdef DISABLE_USB
+usb_exports.h:
+
 CFLAGS += -DDISABLE_USB
 else
+usb_exports.h: usb.c
+
 ifeq ($(CONFIG_USB),y)
 OBJS += usb.o
 endif
@@ -158,7 +162,6 @@ ifdef DISABLE_USB
 win2lin_stubs.h: hal.c misc_funcs.c ndis.c ntoskernel.c ntoskernel_io.c \
 	pnp.c wrapndis.c
 else
-usb_exports.h: usb.c
 win2lin_stubs.h: hal.c misc_funcs.c ndis.c ntoskernel.c ntoskernel_io.c \
 	pnp.c usb.c wrapndis.c
 endif
@@ -203,14 +206,9 @@ endif
 		echo "};"; \
 	fi > $@
 
-ifdef DISABLE_USB
-gen_exports: ndis_exports.h hal_exports.h ntoskernel_exports.h \
-			 ntoskernel_io_exports.h misc_funcs_exports.h
-else
 gen_exports: ndis_exports.h hal_exports.h ntoskernel_exports.h \
 			 ntoskernel_io_exports.h misc_funcs_exports.h \
 			 usb_exports.h
-endif
 
 prereq_check:
 	@if [ ! -f $(KBUILD)/include/linux/version.h ]; then \
