@@ -54,10 +54,14 @@
 
 #define wrap_is_pci_bus(dev_bus_type)				\
 	(WRAP_BUS_TYPE(dev_bus_type) == WRAP_PCI_BUS)
+#ifdef CONFIG_USB
 /* earlier versions of ndiswrapper used 0 as USB_BUS */
 #define wrap_is_usb_bus(dev_bus_type)				\
 	(WRAP_BUS_TYPE(dev_bus_type) == WRAP_USB_BUS ||		\
 	 WRAP_BUS_TYPE(dev_bus_type) == 0)
+#else
+#define wrap_is_usb_bus(dev_bus_type) 0
+#endif
 #define wrap_is_bluetooth_device(dev_bus_type)				\
 	(WRAP_DEVICE_TYPE(dev_bus_type) == WRAP_BLUETOOTH_DEVICE1 ||	\
 	 WRAP_DEVICE_TYPE(dev_bus_type) == WRAP_BLUETOOTH_DEVICE2)
