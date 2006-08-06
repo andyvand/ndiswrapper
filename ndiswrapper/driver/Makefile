@@ -81,10 +81,9 @@ ifdef ALLOC_DEBUG
 CFLAGS += -DALLOC_DEBUG=$(ALLOC_DEBUG)
 endif
 
-.PHONY: prereq_check gen_exports clean dist_clean \
-		 win2lin_stubs install stack_check
+.PHONY: prereq_check gen_exports clean dist_clean install stack_check
 
-all : prereq_check win2lin_stubs gen_exports default stack_check
+all : prereq_check win2lin_stubs.h gen_exports default stack_check
 
 OBJS := hal.o iw_ndis.o loader.o misc_funcs.o ndis.o \
 	    ntoskernel.o ntoskernel_io.o pe_linker.o pnp.o proc.o \
@@ -96,10 +95,13 @@ OBJS := hal.o iw_ndis.o loader.o misc_funcs.o ndis.o \
 
 ifdef DISABLE_USB
 CFLAGS += -DDISABLE_USB
-else ifeq ($(CONFIG_USB),y)
+else
+ifeq ($(CONFIG_USB),y)
 OBJS += usb.o
-else ifeq ($(CONFIG_USB),m)
+endif
+ifeq ($(CONFIG_USB),m)
 OBJS += usb.o
+endif
 endif
 
 ntoskernel.h: lin2win.h
@@ -160,7 +162,7 @@ usb_exports.h: usb.c
 win2lin_stubs.h: hal.c misc_funcs.c ndis.c ntoskernel.c ntoskernel_io.c \
 	pnp.c usb.c wrapndis.c
 endif
-	@for file in $^; do \
+	for file in $^; do \
 		echo; \
 		echo "# automatically generated from $$file"; \
 		sed -n \
