@@ -178,9 +178,9 @@ win2lin6:
 # The arguments should have been copied onto stack already.
 
 #define call_lin_func_args(n)	\
-	sub (n-6)*8, %rsp	;\
+	sub $(n-6)*8, %rsp	;\
 	call_lin_func		;\
-	add (n-6)*8, %rsp
+	add $(n-6)*8, %rsp
 
 # m is index of Linux arg required, n is total number of args to function
 # After stack frame is allocated, Linux arg 7 should be at 0(%rsp),
