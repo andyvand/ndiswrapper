@@ -162,7 +162,7 @@ win2lin_stubs.o: win2lin_stubs.h win2lin_stubs.S
 win2lin_stubs: win2lin_stubs.h
 
 ifdef DISABLE_USB
-x86_64_stubs.h: hal.c misc_funcs.c ndis.c ntoskernel.c ntoskernel_io.c \
+win2lin_stubs.h: hal.c misc_funcs.c ndis.c ntoskernel.c ntoskernel_io.c \
 	pnp.c wrapndis.c
 else
 win2lin_stubs.h: hal.c misc_funcs.c ndis.c ntoskernel.c ntoskernel_io.c \
