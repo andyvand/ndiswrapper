@@ -631,8 +631,10 @@ static int register_devices(struct load_devices *load_devices)
 	for (i = 0; i < load_devices->count; i++)
 		if (wrap_is_pci_bus(devices[i].bus_type))
 			num_pci++;
+#if defined(CONFIG_USB)
 		else if (wrap_is_usb_bus(devices[i].bus_type))
 			num_usb++;
+#endif
 		else
 			WARNING("bus type %d (%d) for %s is not valid",
 				devices[i].bus_type,
