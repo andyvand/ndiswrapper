@@ -173,6 +173,8 @@ endif
 		   $$file | sed -e 's/[ \t	]\+//' | sort -u; \
 	done > $@
 else
+win2lin_stubs.h:
+
 OBJS += divdi3.o
 endif
 
