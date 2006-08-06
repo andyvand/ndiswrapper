@@ -15,6 +15,8 @@
 
 #include <linux/linkage.h>
 
+#ifdef CONFIG_X86_64
+
 # Windows <---> Linux register usage conversion when calling functions
 # V = Volatile
 # NV = Non Volatile (needs to be saved)
@@ -259,3 +261,5 @@ ENTRY(win2lin_ ## name ## _ ## argc)		\
 	jmp	win2lin ## argc
 
 #include "win2lin_stubs.h"
+
+#endif // CONFIG_X86_64
