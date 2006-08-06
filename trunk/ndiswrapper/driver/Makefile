@@ -96,13 +96,10 @@ OBJS := hal.o iw_ndis.o loader.o misc_funcs.o ndis.o \
 
 ifdef DISABLE_USB
 CFLAGS += -DDISABLE_USB
-else
-ifeq ($(CONFIG_USB),y)
+else ifeq ($(CONFIG_USB),y)
 OBJS += usb.o
-endif
-ifeq ($(CONFIG_USB),m)
+else ifeq ($(CONFIG_USB),m)
 OBJS += usb.o
-endif
 endif
 
 ntoskernel.h: lin2win.h
@@ -151,20 +148,15 @@ ndis_exports.h: ndis.c
 ntoskernel_exports.h: ntoskernel.c
 ntoskernel_io_exports.h: ntoskernel_io.c
 
-ifndef DISABLE_USB
-usb_exports.h: usb.c
-endif
-
 ifeq ($(CONFIG_X86_64),y)
 OBJS += win2lin_stubs.o
 win2lin_stubs.o: win2lin_stubs.h win2lin_stubs.S
-
-win2lin_stubs: win2lin_stubs.h
 
 ifdef DISABLE_USB
 win2lin_stubs.h: hal.c misc_funcs.c ndis.c ntoskernel.c ntoskernel_io.c \
 	pnp.c wrapndis.c
 else
+usb_exports.h: usb.c
 win2lin_stubs.h: hal.c misc_funcs.c ndis.c ntoskernel.c ntoskernel_io.c \
 	pnp.c usb.c wrapndis.c
 endif
@@ -179,8 +171,6 @@ endif
 		   $$file | sed -e 's/[ \t	]\+//' | sort -u; \
 	done > $@
 else
-win2lin_stubs:
-
 OBJS += divdi3.o
 endif
 
@@ -277,7 +267,7 @@ stack_check:
 	    echo; echo; \
 	fi
 
-install: prereq_check win2lin_stubs gen_exports default stack_check
+install: prereq_check win2lin_stubs.h gen_exports default stack_check
 	echo $(INST_DIR)
 	mkdir -p $(INST_DIR)
 	install -m 0644 $(MODULE) $(INST_DIR)
