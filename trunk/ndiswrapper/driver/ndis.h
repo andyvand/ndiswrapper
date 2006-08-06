@@ -799,7 +799,6 @@ struct wrap_ndis_device {
 
 	struct work_struct tx_work;
 	struct ndis_packet *tx_ring[TX_RING_SIZE];
-	struct ndis_packet **tx_array;
 	unsigned int tx_ring_start;
 	unsigned int tx_ring_end;
 	unsigned char is_tx_ring_full;

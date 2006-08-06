@@ -567,37 +567,30 @@ static int miniport_tx_packets(struct wrap_ndis_device *wnd)
 	 * of packets are pending */
 	n = end - start;
 	if (n < 0)
-		n += TX_RING_SIZE;
+		n = TX_RING_SIZE - start;
 	else if (n == 0) {
 		assert(wnd->is_tx_ring_full == 1);
 		n = TX_RING_SIZE - 1;
 	}
 	if (unlikely(n > wnd->max_tx_packets))
 		n = wnd->max_tx_packets;
-	DBGTRACE3("%d, ring: %d, %d", n, start, end);
+	INFO("%d, ring: %d, %d", n, start, end);
 	if (miniport->send_packets) {
-		int i;
-		/* copy packets from tx ring to linear tx array */
-		for (i = 0; i < n; i++) {
-			int j = (start + i) % TX_RING_SIZE;
-			wnd->tx_array[i] = wnd->tx_ring[j];
-			DBGTRACE4("%p", wnd->tx_array[i]);
-		}
 		if (deserialized_driver(wnd)) {
 			LIN2WIN3(miniport->send_packets, wnd->nmb->adapter_ctx,
-				 wnd->tx_array, n);
+				 &wnd->tx_ring[start], n);
 			sent = n;
 		} else {
 			struct ndis_packet_oob_data *oob_data;
 			irql = raise_irql(DISPATCH_LEVEL);
 			serialize_lock(wnd);
 			LIN2WIN3(miniport->send_packets, wnd->nmb->adapter_ctx,
-				 wnd->tx_array, n);
+				 &wnd->tx_ring[start], n);
 			serialize_unlock(wnd);
 			lower_irql(irql);
 			for (sent = 0; sent < n && wnd->tx_ok; sent++) {
 				NDIS_STATUS pkt_status;
-				packet = wnd->tx_array[sent];
+				packet = wnd->tx_ring[sent];
 				oob_data = NDIS_PACKET_OOB_DATA(packet);
 				switch ((pkt_status =
 					 xchg(&oob_data->status,
@@ -1606,10 +1599,6 @@ static NDIS_STATUS ndis_start_device(struct wrap_ndis_device *wnd)
 		TRACEEXIT1(return NDIS_STATUS_SUCCESS);
 	if (ndis_status != NDIS_STATUS_SUCCESS)
 		TRACEEXIT1(return ndis_status);
-	/* NB: tx_array is used to recognize if device is being
-	 * started for the first time or being re-started */
-	if (wnd->tx_array)
-		TRACEEXIT2(return NDIS_STATUS_SUCCESS);
 	wd = wnd->wd;
 	net_dev = wnd->net_dev;
 
@@ -1691,8 +1680,7 @@ static NDIS_STATUS ndis_start_device(struct wrap_ndis_device *wnd)
 
 	if (deserialized_driver(wnd)) {
 		/* deserialized drivers don't have a limit, but we
-		 * keep max at TX_RING_SIZE to allocate tx_array
-		 * below */
+		 * keep max at TX_RING_SIZE */
 		wnd->max_tx_packets = TX_RING_SIZE;
 	} else {
 		ndis_status =
@@ -1703,15 +1691,7 @@ static NDIS_STATUS ndis_start_device(struct wrap_ndis_device *wnd)
 		if (wnd->max_tx_packets > TX_RING_SIZE)
 			wnd->max_tx_packets = TX_RING_SIZE;
 	}
-	DBGTRACE1("maximum send packets: %d", wnd->max_tx_packets);
-	wnd->tx_array =
-		kmalloc(sizeof(struct ndis_packet *) * wnd->max_tx_packets,
-			GFP_KERNEL);
-	if (!wnd->tx_array) {
-		ERROR("couldn't allocate memory for tx_packets");
-		goto err_start;
-
-	}
+	INFO("maximum send packets: %d/%d", wnd->max_tx_packets, TX_RING_SIZE);
 	/* we need at least one extra packet for
 	 * EthRxIndicateHandler */
 	NdisAllocatePacketPoolEx(&ndis_status, &wnd->tx_packet_pool,
@@ -1772,8 +1752,6 @@ buffer_pool_err:
 		wnd->tx_packet_pool = NULL;
 	}
 packet_pool_err:
-	kfree(wnd->tx_array);
-	wnd->tx_array = NULL;
 err_register:
 	kfree(buf);
 err_start:
@@ -1828,8 +1806,6 @@ static int ndis_remove_device(struct wrap_ndis_device *wnd)
 		NdisFreeBufferPool(wnd->tx_buffer_pool);
 		wnd->tx_buffer_pool = NULL;
 	}
-	if (wnd->tx_array)
-		kfree(wnd->tx_array);
 	printk(KERN_INFO "%s: device %s removed\n", DRIVER_NAME,
 	       wnd->net_dev->name);
 	unregister_netdev(wnd->net_dev);
