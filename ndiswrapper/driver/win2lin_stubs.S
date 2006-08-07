@@ -220,7 +220,6 @@ win2lin8:
 
 	# copy windows arguments 7 and 8
 	# on the stack for the Linux function.
-
 	mov	win2lin_win_arg(7), %r11
 	mov	%r11, win2lin_lin_arg(7,8)
 	mov	win2lin_win_arg(8), %r11
