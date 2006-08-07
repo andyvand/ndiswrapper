@@ -116,8 +116,7 @@ struct wrap_driver *load_wrap_driver(struct wrap_device *wd)
 
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,0)
 		/* wait for the driver to load and initialize */
-		set_current_state(TASK_INTERRUPTIBLE);
-		schedule_timeout(HZ);
+		sleep_hz(HZ);
 #endif
 		found = 0;
 		DBGTRACE1("%s", wd->driver_name);
@@ -272,8 +271,7 @@ struct wrap_bin_file *get_bin_file(char *bin_file_name)
 		}
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,0)
 		/* wait for the driver to load and initialize */
-		set_current_state(TASK_INTERRUPTIBLE);
-		schedule_timeout(HZ);
+		sleep_hz(HZ);
 #endif
 		DBGTRACE2("bin file: %s/%s",
 			  wrap_bin_file.driver_name, wrap_bin_file.name);

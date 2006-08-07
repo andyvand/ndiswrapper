@@ -2408,8 +2408,7 @@ wstdcall void WIN_FUNC(NdisMSleep,1)
 
 	TRACEENTER4("%p: us: %u", current, us);
 	delay = USEC_TO_HZ(us);
-	set_current_state(TASK_INTERRUPTIBLE);
-	schedule_timeout(delay);
+	sleep_hz(delay);
 	DBGTRACE4("%p: done", current);
 	TRACEEXIT4(return);
 }
