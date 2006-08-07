@@ -574,7 +574,7 @@ static int miniport_tx_packets(struct wrap_ndis_device *wnd)
 	}
 	if (unlikely(n > wnd->max_tx_packets))
 		n = wnd->max_tx_packets;
-	INFO("%d, ring: %d, %d", n, start, end);
+	DBGTRACE3("%d, ring: %d, %d", n, start, end);
 	if (miniport->send_packets) {
 		if (deserialized_driver(wnd)) {
 			LIN2WIN3(miniport->send_packets, wnd->nmb->adapter_ctx,
@@ -1691,7 +1691,7 @@ static NDIS_STATUS ndis_start_device(struct wrap_ndis_device *wnd)
 		if (wnd->max_tx_packets > TX_RING_SIZE)
 			wnd->max_tx_packets = TX_RING_SIZE;
 	}
-	INFO("maximum send packets: %d/%d", wnd->max_tx_packets, TX_RING_SIZE);
+	DBGTRACE2("maximum send packets: %d", wnd->max_tx_packets);
 	/* we need at least one extra packet for
 	 * EthRxIndicateHandler */
 	NdisAllocatePacketPoolEx(&ndis_status, &wnd->tx_packet_pool,
