@@ -549,9 +549,7 @@ void free_tx_packet(struct wrap_ndis_device *wnd, struct ndis_packet *packet,
 }
 
 /* MiniportSend and MiniportSendPackets */
-/* this function is called holding tx_ring_mutex, so safe to read
- * tx_ring_start (tx_ring_end is not updated in tx_worker or here, so
- * safe to read tx_ring_end, too) without lock */
+/* this function is called holding tx_ring_mutex */
 static int miniport_tx_packets(struct wrap_ndis_device *wnd, int start, int n)
 {
 	NDIS_STATUS res;
@@ -560,7 +558,7 @@ static int miniport_tx_packets(struct wrap_ndis_device *wnd, int start, int n)
 	int sent;
 	KIRQL irql;
 
-	DBGTRACE3("%d, ring: %d, %d", n, start, end);
+	DBGTRACE3("%d, %d", start, n);
 	miniport = &wnd->wd->driver->ndis_driver->miniport;
 	if (miniport->send_packets) {
 		if (deserialized_driver(wnd)) {
@@ -577,7 +575,7 @@ static int miniport_tx_packets(struct wrap_ndis_device *wnd, int start, int n)
 			lower_irql(irql);
 			for (sent = 0; sent < n && wnd->tx_ok; sent++) {
 				NDIS_STATUS pkt_status;
-				packet = wnd->tx_ring[sent];
+				packet = wnd->tx_ring[start + sent];
 				oob_data = NDIS_PACKET_OOB_DATA(packet);
 				switch ((pkt_status =
 					 xchg(&oob_data->status,
@@ -614,7 +612,7 @@ static int miniport_tx_packets(struct wrap_ndis_device *wnd, int start, int n)
 		irql = PASSIVE_LEVEL;
 		for (sent = 0; sent < n && wnd->tx_ok; sent++) {
 			struct ndis_packet_oob_data *oob_data;
-			packet = wnd->tx_ring[(start + sent) % TX_RING_SIZE];
+			packet = wnd->tx_ring[start + sent];
 			oob_data = NDIS_PACKET_OOB_DATA(packet);
 			oob_data->status = NDIS_STATUS_NOT_RECOGNIZED;
 			irql = serialize_lock_irql(wnd);
