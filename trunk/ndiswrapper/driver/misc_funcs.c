@@ -144,7 +144,7 @@ noregparm char *WIN_FUNC(_win_strncat,3)
 noregparm INT WIN_FUNC(_win_wcscmp,2)
 	(const wchar_t *s1, const wchar_t *s2)
 {
-	while (*s1 != L'\0' && *s1 == *s2) {
+	while (*s1 != '\0' && *s1 == *s2) {
 		s1++;
 		s2++;
 	}
@@ -154,7 +154,7 @@ noregparm INT WIN_FUNC(_win_wcscmp,2)
 noregparm INT WIN_FUNC(_win_wcsicmp,2)
 	(const wchar_t *s1, const wchar_t *s2)
 {
-	while (*s1 != L'\0' && tolower((char)*s1) == tolower((char)*s2)) {
+	while (*s1 != '\0' && tolower((char)*s1) == tolower((char)*s2)) {
 		s1++;
 		s2++;
 	}
@@ -165,7 +165,7 @@ noregparm SIZE_T WIN_FUNC(_win_wcslen,1)
 	(const wchar_t *s)
 {
 	SIZE_T i = 0;
-	while (s[i] != L'\0')
+	while (s[i] != '\0')
 		i++;
 	return i;
 }
@@ -174,7 +174,7 @@ noregparm wchar_t *WIN_FUNC(_win_wcsncpy,3)
 	(wchar_t *dest, const wchar_t *src, SIZE_T n)
 {
 	SIZE_T i;
-	for (i = 0; i < n && src[i] != L'\0'; i++)
+	for (i = 0; i < n && src[i] != '\0'; i++)
 		dest[i] = src[i];
 	if (i < n)
 		dest[i] = 0;
@@ -185,7 +185,7 @@ noregparm wchar_t *WIN_FUNC(_win_wcscpy,2)
 	(wchar_t *dest, const wchar_t *src)
 {
 	SIZE_T i;
-	for (i = 0; src[i] != L'\0'; i++)
+	for (i = 0; src[i] != '\0'; i++)
 		dest[i] = src[i];
 	dest[i] = src[i];
 	return dest;
@@ -196,12 +196,12 @@ noregparm wchar_t *WIN_FUNC(_win_wcscat,2)
 {
 	SIZE_T i;
 	wchar_t *destend;
-	for (i = 0; dest[i] != L'\0'; i++)
+	for (i = 0; dest[i] != '\0'; i++)
 		;
 	destend = &dest[i];
-	for (i = 0; src[i] != L'\0'; i++)
+	for (i = 0; src[i] != '\0'; i++)
 		destend[i] = src[i];
-	destend[i] = L'\0';
+	destend[i] = '\0';
 	return dest;
 }
 

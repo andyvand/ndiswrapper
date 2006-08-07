@@ -549,7 +549,9 @@ void free_tx_packet(struct wrap_ndis_device *wnd, struct ndis_packet *packet,
 }
 
 /* MiniportSend and MiniportSendPackets */
-/* this function is called holding tx_ring_mutex */
+/* this function is called holding tx_ring_mutex. start and n are such
+ * that start + n < TX_RING_SIZE; i.e., packets don't wrap around
+ * ring */
 static int miniport_tx_packets(struct wrap_ndis_device *wnd, int start, int n)
 {
 	NDIS_STATUS res;
