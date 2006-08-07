@@ -552,29 +552,16 @@ void free_tx_packet(struct wrap_ndis_device *wnd, struct ndis_packet *packet,
 /* this function is called holding tx_ring_mutex, so safe to read
  * tx_ring_start (tx_ring_end is not updated in tx_worker or here, so
  * safe to read tx_ring_end, too) without lock */
-static int miniport_tx_packets(struct wrap_ndis_device *wnd)
+static int miniport_tx_packets(struct wrap_ndis_device *wnd, int start, int n)
 {
 	NDIS_STATUS res;
 	struct miniport_char *miniport;
-	int n, sent, start, end;
 	struct ndis_packet *packet;
+	int sent;
 	KIRQL irql;
 
-	miniport = &wnd->wd->driver->ndis_driver->miniport;
-	start = wnd->tx_ring_start;
-	end = wnd->tx_ring_end;
-	/* end == start when ring is full: (TX_RING_SIZE - 1) number
-	 * of packets are pending */
-	n = end - start;
-	if (n < 0)
-		n = TX_RING_SIZE - start;
-	else if (n == 0) {
-		assert(wnd->is_tx_ring_full == 1);
-		n = TX_RING_SIZE - 1;
-	}
-	if (unlikely(n > wnd->max_tx_packets))
-		n = wnd->max_tx_packets;
 	DBGTRACE3("%d, ring: %d, %d", n, start, end);
+	miniport = &wnd->wd->driver->ndis_driver->miniport;
 	if (miniport->send_packets) {
 		if (deserialized_driver(wnd)) {
 			LIN2WIN3(miniport->send_packets, wnd->nmb->adapter_ctx,
@@ -670,12 +657,19 @@ static void tx_worker(void *param)
 			break;
 		/* end == start if either ring is empty or full; in
 		 * the latter case is_tx_ring_full is set */
-		if (wnd->tx_ring_end == wnd->tx_ring_start &&
-		    !wnd->is_tx_ring_full) {
-			up(&wnd->tx_ring_mutex);
-			break;
-		}
-		n = miniport_tx_packets(wnd);
+		n = wnd->tx_ring_end - wnd->tx_ring_start;
+		if (n == 0) {
+			if (wnd->is_tx_ring_full)
+				n = TX_RING_SIZE - 1;
+			else {
+				up(&wnd->tx_ring_mutex);
+				break;
+			}
+		} else if (n < 0)
+			n = TX_RING_SIZE - wnd->tx_ring_start;
+		if (unlikely(n > wnd->max_tx_packets))
+			n = wnd->max_tx_packets;
+		n = miniport_tx_packets(wnd, wnd->tx_ring_start, n);
 		if (n > 0) {
 			wnd->tx_ring_start =
 				(wnd->tx_ring_start + n) % TX_RING_SIZE;
