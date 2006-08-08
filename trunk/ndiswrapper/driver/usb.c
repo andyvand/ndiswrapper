@@ -505,12 +505,12 @@ static void wrap_urb_complete(struct urb *urb, struct pt_regs *regs)
 #endif
 	nt_spin_lock(&wrap_urb_complete_list_lock);
 	InsertTailList(&wrap_urb_complete_list, &wrap_urb->complete_list);
-	nt_spin_unlock(&wrap_urb_complete_list_lock);
 #ifdef USB_TASKLET
 	tasklet_schedule(&wrap_urb_complete_work);
 #else
 	schedule_ntos_work(&wrap_urb_complete_work);
 #endif
+	nt_spin_unlock(&wrap_urb_complete_list_lock);
 	USBTRACE("scheduled worker for urb %p", urb);
 }
 
@@ -631,12 +631,12 @@ static USBD_STATUS wrap_bulk_or_intr_trans(struct irp *irp)
 			pipe = usb_sndbulkpipe(udev,
 					       pipe_handle->bEndpointAddress);
 	} else {
-#ifdef USB_DEBUG
-		if (!(bulk_int_tx->transfer_flags &
-		      USBD_TRANSFER_DIRECTION_IN))
-			ERROR("invalid urb: %x", bulk_int_tx->transfer_flags);
-#endif
-		pipe = usb_rcvintpipe(udev, pipe_handle->bEndpointAddress);
+		if (bulk_int_tx->transfer_flags & USBD_TRANSFER_DIRECTION_IN)
+			pipe = usb_rcvintpipe(udev,
+					      pipe_handle->bEndpointAddress);
+		else
+			pipe = usb_sndintpipe(udev,
+					      pipe_handle->bEndpointAddress);
 	}
 
 	DUMP_IRP(irp);
@@ -876,6 +876,7 @@ static void set_intf_pipe_info(struct wrap_device *wd,
 
 		pipe->wMaxPacketSize = ep->wMaxPacketSize;
 		pipe->bEndpointAddress = ep->bEndpointAddress;
+		pipe->type = ep->bmAttributes & USB_ENDPOINT_XFERTYPE_MASK;
 		if (pipe->type == USB_ENDPOINT_XFER_INT) {
 			if (wd->usb.udev->speed == USB_SPEED_HIGH) {
 				u8 i, interval = ep->bInterval;
@@ -885,7 +886,6 @@ static void set_intf_pipe_info(struct wrap_device *wd,
 			} else
 				pipe->bInterval = ep->bInterval;
 		}
-		pipe->type = ep->bmAttributes & USB_ENDPOINT_XFERTYPE_MASK;
 		pipe->handle = ep;
 		USBTRACE("%d: ep 0x%x, type %d, pkt_sz %d, intv %d (%d),"
 			 "type: %d, handle %p", i, ep->bEndpointAddress,
