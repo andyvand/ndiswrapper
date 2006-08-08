@@ -544,7 +544,7 @@ static int load_user_space_driver(struct load_driver *load_driver)
 	struct wrap_driver *wrap_driver = NULL;
 
 	TRACEENTER1("");
-	drv_obj = allocate_object(sizeof(*drv_obj), OBJECT_TYPE_DRIVER);
+	drv_obj = allocate_object(sizeof(*drv_obj), OBJECT_TYPE_DRIVER, NULL);
 	if (!drv_obj) {
 		ERROR("couldn't allocate memory");
 		TRACEEXIT1(return -ENOMEM);

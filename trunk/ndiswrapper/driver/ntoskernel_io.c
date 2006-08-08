@@ -712,40 +712,17 @@ wstdcall NTSTATUS WIN_FUNC(IoCreateDevice,7)
 	struct device_object *dev;
 	struct dev_obj_ext *dev_obj_ext;
 	int size;
-	struct ansi_string ansi;
-	struct common_object_header *coh;
 
 	IOENTER("%p, %u, %p", drv_obj, dev_ext_length, dev_name);
 
 	size = sizeof(*dev) + dev_ext_length + sizeof(*dev_obj_ext);
-	dev = allocate_object(size, OBJECT_TYPE_DEVICE);
+	dev = allocate_object(size, OBJECT_TYPE_DEVICE, dev_name);
 	if (!dev)
 		IOEXIT(return STATUS_INSUFFICIENT_RESOURCES);
 	if (dev_ext_length)
 		dev->dev_ext = dev + 1;
 	else
 		dev->dev_ext = NULL;
-
-	coh = OBJECT_TO_HEADER(dev);
-	if (dev_name && RtlUnicodeStringToAnsiString(&ansi, dev_name, TRUE)
-	    == STATUS_SUCCESS) {
-		char *basename;
-
-		basename = strrchr(ansi.buf, '\\');
-		if (basename)
-			basename++;
-		else
-			basename = ansi.buf;
-		IOTRACE("dev_name: %s, %s", ansi.buf, basename);
-		coh->name = kmalloc(ansi.length + 1, GFP_KERNEL);
-		if (coh->name) {
-			memset(coh->name, 0, ansi.length + 1);
-			strncpy(coh->name, basename, ansi.length);
-		} else
-			WARNING("couldn't allocate memory");
-		RtlFreeAnsiString(&ansi);
-	} else
-		coh->name = NULL;
 
 	dev_obj_ext = ((void *)(dev + 1)) + dev_ext_length;
 	dev_obj_ext->dev_obj = dev;
@@ -965,36 +942,22 @@ wstdcall NTSTATUS WIN_FUNC(IoGetDeviceObjectPointer,4)
 {
 	KIRQL irql;
 	struct common_object_header *coh;
-	struct ansi_string ansi;
-	char *basename;
 
 	dev_obj = NULL;
 	/* TODO: access is not checked and file_obj is set to NULL */
 	file_obj = NULL;
-	if (RtlUnicodeStringToAnsiString(&ansi, name, TRUE) != STATUS_SUCCESS) {
-		WARNING("couldn't convert name");
-		IOEXIT(return STATUS_INSUFFICIENT_RESOURCES);
-	}
-	basename = strrchr(ansi.buf, '\\');
-	if (basename)
-		basename++;
-	else
-		basename = ansi.buf;
-	IOTRACE("dev_name: %s, %s", ansi.buf, basename);
 	irql = nt_spin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL);
 	nt_list_for_each_entry(coh, &object_list, list) {
 		DBGTRACE5("header: %p, type: %d", coh, coh->type);
 		if (coh->type != OBJECT_TYPE_DEVICE)
 			continue;
-		dev_obj = HEADER_TO_OBJECT(coh);
-		DBGTRACE5("dev_obj: %p", dev_obj);
-		if (stricmp(basename, coh->name))
-			dev_obj = NULL;
-		else
+		if (!RtlCompareUnicodeString(&coh->name, name, TRUE)) {
+			dev_obj = HEADER_TO_OBJECT(coh);
+			DBGTRACE5("dev_obj: %p", dev_obj);
 			break;
+		}
 	}
 	nt_spin_unlock_irql(&ntoskernel_lock, irql);
-	RtlFreeAnsiString(&ansi);
 	if (dev_obj)
 		IOEXIT(return STATUS_SUCCESS);
 	else

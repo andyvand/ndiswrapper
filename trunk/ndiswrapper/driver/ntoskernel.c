@@ -160,6 +160,7 @@ int ntoskernel_init(void)
 	}
 	mdl_cache = kmem_cache_create("wrap_mdl", sizeof(struct wrap_mdl),
 				      0, 0, NULL, NULL);
+	DBGTRACE2("%p", mdl_cache);
 	if (!mdl_cache) {
 		ERROR("couldn't allocate MDL cache");
 		ntoskernel_exit();
@@ -291,7 +292,8 @@ static void update_user_shared_data_proc(unsigned long data)
 }
 #endif
 
-void *allocate_object(ULONG size, enum common_object_type type)
+void *allocate_object(ULONG size, enum common_object_type type,
+		      struct unicode_string *name)
 {
 	struct common_object_header *hdr;
 	void *body;
@@ -304,6 +306,17 @@ void *allocate_object(ULONG size, enum common_object_type type)
 		return NULL;
 	}
 	memset(hdr, 0, OBJECT_SIZE(size));
+	if (name) {
+		hdr->name.buf = ExAllocatePoolWithTag(NonPagedPool,
+						      name->max_length, 0);
+		if (!hdr->name.buf) {
+			ExFreePool(hdr);
+			return NULL;
+		}
+		memcpy(hdr->name.buf, name->buf, name->max_length);
+		hdr->name.length = name->length;
+		hdr->name.max_length = name->max_length;
+	}
 	hdr->type = type;
 	hdr->ref_count = 1;
 	irql = nt_spin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL);
@@ -329,8 +342,8 @@ void free_object(void *object)
 	RemoveEntryList(&hdr->list);
 	nt_spin_unlock_irql(&ntoskernel_lock, irql);
 	DBGTRACE3("freed hdr: %p, body: %p", hdr, object);
-	if (hdr->name)
-		kfree(hdr->name);
+	if (hdr->name.buf)
+		ExFreePool(hdr->name.buf);
 	ExFreePool(hdr);
 }
 
@@ -1136,7 +1149,7 @@ wstdcall NTSTATUS WIN_FUNC(ExCreateCallback,4)
 	}
 	nt_spin_unlock_irql(&ntoskernel_lock, irql);
 	obj = allocate_object(sizeof(struct callback_object),
-			      OBJECT_TYPE_CALLBACK);
+			      OBJECT_TYPE_CALLBACK, NULL);
 	if (!obj)
 		TRACEEXIT2(return STATUS_INSUFFICIENT_RESOURCES);
 	InitializeListHead(&obj->callback_funcs);
@@ -1792,7 +1805,7 @@ static struct nt_thread *create_nt_thread(struct task_struct *task)
 {
 	struct nt_thread *thread;
 
-	thread = allocate_object(sizeof(*thread), OBJECT_TYPE_NT_THREAD);
+	thread = allocate_object(sizeof(*thread), OBJECT_TYPE_NT_THREAD, NULL);
 	if (!thread) {
 		ERROR("couldn't allocate thread object");
 		return NULL;
@@ -2270,6 +2283,24 @@ wstdcall NTSTATUS WIN_FUNC(ZwCreateFile,11)
 	KIRQL irql;
 	NTSTATUS status;
 
+	irql = nt_spin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL);
+	nt_list_for_each_entry(coh, &object_list, list) {
+		if (coh->type != OBJECT_TYPE_FILE)
+			continue;
+		/* TODO: check if file is opened in shared mode */
+		if (!RtlCompareUnicodeString(&coh->name, obj_attr->name, TRUE)) {
+			fo = HEADER_TO_OBJECT(coh);
+			bin_file = fo->wrap_bin_file;
+			*handle = coh;
+			nt_spin_unlock_irql(&ntoskernel_lock, irql);
+			ObReferenceObject(fo);
+			iosb->status = FILE_OPENED;
+			iosb->info = bin_file->size;
+			TRACEEXIT2(return STATUS_SUCCESS);
+		}
+	}
+	nt_spin_unlock_irql(&ntoskernel_lock, irql);
+
 	if (RtlUnicodeStringToAnsiString(&ansi, obj_attr->name, TRUE) !=
 	    STATUS_SUCCESS)
 		TRACEEXIT2(return STATUS_INSUFFICIENT_RESOURCES);
@@ -2279,41 +2310,27 @@ wstdcall NTSTATUS WIN_FUNC(ZwCreateFile,11)
 		file_basename++;
 	else
 		file_basename = ansi.buf;
-	DBGTRACE2("file_: '%s', '%s'", ansi.buf, file_basename);
-	irql = nt_spin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL);
-	nt_list_for_each_entry(coh, &object_list, list) {
-		if (coh->type != OBJECT_TYPE_FILE)
-			continue;
-		fo = HEADER_TO_OBJECT(coh);
-		/* TODO: check if file is opened in shared mode */
-		if (!stricmp(coh->name, file_basename)) {
-			bin_file = fo->wrap_bin_file;
-			*handle = coh;
-			nt_spin_unlock_irql(&ntoskernel_lock, irql);
-			ObReferenceObject(fo);
-			RtlFreeAnsiString(&ansi);
-			iosb->status = FILE_OPENED;
-			iosb->info = bin_file->size;
-			TRACEEXIT2(return STATUS_SUCCESS);
-		}
-	}
-	nt_spin_unlock_irql(&ntoskernel_lock, irql);
+	DBGTRACE2("file: '%s', '%s'", ansi.buf, file_basename);
 
-	fo = allocate_object(sizeof(struct file_object), OBJECT_TYPE_FILE);
+	fo = allocate_object(sizeof(struct file_object), OBJECT_TYPE_FILE,
+			     obj_attr->name);
 	if (!fo) {
 		RtlFreeAnsiString(&ansi);
 		iosb->status = STATUS_INSUFFICIENT_RESOURCES;
 		iosb->info = 0;
 		TRACEEXIT2(return STATUS_FAILURE);
 	}
-
+	coh = OBJECT_TO_HEADER(fo);
 	bin_file = get_bin_file(file_basename);
-	if (bin_file)
+	if (bin_file) {
+		DBGTRACE2("%s, %s", bin_file->name, file_basename);
 		fo->flags = FILE_OPENED;
-	else if (access_mask & FILE_WRITE_DATA) {
+	} else if (access_mask & FILE_WRITE_DATA) {
 		bin_file = kmalloc(sizeof(*bin_file), GFP_KERNEL);
 		if (bin_file) {
 			memset(bin_file, 0, sizeof(*bin_file));
+			strncpy(bin_file->name, file_basename,
+				sizeof(bin_file->name));
 			bin_file->data = vmalloc(*size);
 			if (bin_file->data) {
 				memset(bin_file->data, 0, *size);
@@ -2341,25 +2358,11 @@ wstdcall NTSTATUS WIN_FUNC(ZwCreateFile,11)
 		fo->read_access = TRUE;
 	if (access_mask & FILE_WRITE_DATA)
 		fo->write_access = TRUE;
-	coh->name = kmalloc(ansi.length, GFP_KERNEL);
-	if (coh->name) {
-		strncpy(coh->name, file_basename, ansi.length);
-		iosb->status = FILE_OPENED;
-		iosb->info = bin_file->size;
-		*handle = OBJECT_TO_HEADER(fo);
-		DBGTRACE2("handle: %p", *handle);
-		status = STATUS_SUCCESS;
-	} else {
-		if (fo->flags == FILE_CREATED) {
-			vfree(bin_file->data);
-			kfree(bin_file);
-		} else
-			free_bin_file(bin_file);
-		free_object(fo);
-		iosb->status = FILE_DOES_NOT_EXIST;
-		iosb->info = 0;
-		status = STATUS_FAILURE;
-	}
+	iosb->status = FILE_OPENED;
+	iosb->info = bin_file->size;
+	*handle = coh;
+	DBGTRACE2("handle: %p", *handle);
+	status = STATUS_SUCCESS;
 	RtlFreeAnsiString(&ansi);
 	TRACEEXIT2(return status);
 }
@@ -2379,7 +2382,7 @@ wstdcall NTSTATUS WIN_FUNC(ZwReadFile,9)
 	DBGTRACE2("%p", handle);
 	coh = handle;
 	if (coh->type != OBJECT_TYPE_FILE) {
-		ERROR("handle %p is not for a file: %d", handle, coh->type);
+		ERROR("handle %p is invalid: %d", handle, coh->type);
 		TRACEEXIT2(return STATUS_FAILURE);
 	}
 	fo = HANDLE_TO_OBJECT(coh);
@@ -2400,7 +2403,7 @@ wstdcall NTSTATUS WIN_FUNC(ZwReadFile,9)
 	TRACEEXIT2(return STATUS_SUCCESS);
 }
 
-wstdcall NTSTATUS WIN_FUNC(ZwWriteile,9)
+wstdcall NTSTATUS WIN_FUNC(ZwWriteFile,9)
 	(void *handle, struct nt_event *event, void *apc_routine,
 	 void *apc_context, struct io_status_block *iosb, void *buffer,
 	 ULONG length, LARGE_INTEGER *byte_offset, ULONG *key)
@@ -2414,12 +2417,12 @@ wstdcall NTSTATUS WIN_FUNC(ZwWriteile,9)
 	DBGTRACE2("%p", handle);
 	coh = handle;
 	if (coh->type != OBJECT_TYPE_FILE) {
-		ERROR("handle %p is not for a file: %d", handle, coh->type);
+		ERROR("handle %p is invalid: %d", handle, coh->type);
 		TRACEEXIT2(return STATUS_FAILURE);
 	}
 	fo = HANDLE_TO_OBJECT(coh);
 	file = fo->wrap_bin_file;
-	DBGTRACE2("file: %s (%d), %d", coh->name, file->size, length);
+	DBGTRACE2("file: %d, %d", file->size, length);
 	irql = nt_spin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL);
 	if (byte_offset)
 		offset = *byte_offset;
@@ -2486,7 +2489,7 @@ wstdcall NTSTATUS WIN_FUNC(ZwQueryInformationFile,5)
 	TRACEENTER2("%p", handle);
 	coh = handle;
 	if (coh->type != OBJECT_TYPE_FILE) {
-		ERROR("handle %p is not for a file: %d", handle, coh->type);
+		ERROR("handle %p is invalid: %d", coh, coh->type);
 		TRACEEXIT2(return STATUS_FAILURE);
 	}
 	fo = HANDLE_TO_OBJECT(handle);
@@ -2496,6 +2499,8 @@ wstdcall NTSTATUS WIN_FUNC(ZwQueryInformationFile,5)
 		fni = info;
 		fni->length = fo->name.max_length;
 		memcpy(fni->name, fo->name.buf, fo->name.max_length);
+		iosb->status = STATUS_SUCCESS;
+		iosb->info = fni->length;
 		break;
 	case FileStandardInformation:
 		fsi = info;
@@ -2505,12 +2510,15 @@ wstdcall NTSTATUS WIN_FUNC(ZwQueryInformationFile,5)
 		fsi->num_links = 1;
 		fsi->delete_pending = FALSE;
 		fsi->dir = FALSE;
+		iosb->status = STATUS_SUCCESS;
+		iosb->info = 0;
 		break;
 	default:
 		WARNING("type %d not implemented yet", class);
-		TRACEEXIT2(return STATUS_FAILURE);
+		iosb->status = STATUS_FAILURE;
+		iosb->info = 0;
 	}
-	TRACEEXIT2(return STATUS_SUCCESS);
+	TRACEEXIT2(return iosb->status);
 }
 
 wstdcall NTSTATUS WIN_FUNC(ZwCreateKey,7)

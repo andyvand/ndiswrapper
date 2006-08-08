@@ -115,7 +115,7 @@ struct work_struct {
 	void *data;
 	/* whether/on which workqueue scheduled */
 	struct workqueue_struct *workq;
-};	
+};
 
 #define INIT_WORK(work_struct, worker_func, worker_data)	\
 	do {							\
@@ -564,7 +564,8 @@ int ntoskernel_init(void);
 void ntoskernel_exit(void);
 int ntoskernel_init_device(struct wrap_device *wd);
 void ntoskernel_exit_device(struct wrap_device *wd);
-void *allocate_object(ULONG size, enum common_object_type type);
+void *allocate_object(ULONG size, enum common_object_type type,
+		      struct unicode_string *name);
 void free_object(void *object);
 
 int usb_init(void);

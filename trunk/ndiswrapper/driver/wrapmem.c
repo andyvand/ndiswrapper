@@ -73,7 +73,7 @@ void wrapmem_exit(void)
 		int n = atomic_read(&alloc_sizes[type]);
 		if (n)
 			WARNING("%d bytes of memory in %d leaking", n, type);
-	}	
+	}
 
 #if ALLOC_DEBUG > 1
 	nt_spin_lock(&alloc_lock);
@@ -113,7 +113,6 @@ void wrapmem_info(void)
 	for (type = 0; type < ALLOC_TYPE_MAX; type++)
 		INFO("total size of allocations in %d: %d",
 		       type, atomic_read(&alloc_sizes[type]));
-	
 #endif
 }
 

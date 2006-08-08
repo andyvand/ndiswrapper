@@ -1055,9 +1055,7 @@ wstdcall void WIN_FUNC(NdisAllocateBuffer,5)
 			descr->flags = MDL_CACHE_ALLOCATED;
 	} else {
 		nt_spin_unlock_irql(&pool->lock, irql);
-		DBGTRACE4("allocating mdl");
 		descr = allocate_init_mdl(virt, length);
-		DBGTRACE4("mdl: %p", descr);
 		if (!descr) {
 			WARNING("couldn't allocate buffer");
 			*status = NDIS_STATUS_FAILURE;
@@ -1067,10 +1065,8 @@ wstdcall void WIN_FUNC(NdisAllocateBuffer,5)
 			  descr, virt, length);
 		irql = nt_spin_lock_irql(&pool->lock, DISPATCH_LEVEL);
 		pool->num_allocated_descr++;
-		MmBuildMdlForNonPagedPool(descr);
 	}
-	descr->flags |= MDL_PAGES_LOCKED | MDL_MAPPED_TO_SYSTEM_VA |
-		MDL_SOURCE_IS_NONPAGED_POOL | MDL_ALLOCATED_FIXED_SIZE;
+	MmBuildMdlForNonPagedPool(descr);
 	/* NdisFreeBuffer doesn't pass pool, so we store pool
 	 * in unused field 'process' */
 	descr->process = pool;

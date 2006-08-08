@@ -1,6 +1,6 @@
 /*
- * This file is an excerpt of winnt.h from WINE, which bears the 
-following copyright:
+ * This file is an excerpt of winnt.h from WINE, which bears the
+ * following copyright:
  *
  * Win32 definitions for Windows NT
  *
@@ -18,8 +18,7 @@ following copyright:
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with this library; if not, write to the Free Software
- * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  
-USA
+ * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307 USA
  */
 
 /*
@@ -63,41 +62,33 @@ typedef struct
     WORD  ne_magic;             /* 00 NE signature 'NE' */
     BYTE  ne_ver;               /* 02 Linker version number */
     BYTE  ne_rev;               /* 03 Linker revision number */
-    WORD  ne_enttab;            /* 04 Offset to entry table relative to 
-NE */
+    WORD  ne_enttab;            /* 04 Offset to entry table relative to NE */
     WORD  ne_cbenttab;          /* 06 Length of entry table in bytes */
     LONG  ne_crc;               /* 08 Checksum */
-    WORD  ne_flags;             /* 0c Flags about segments in this file 
-*/
+    WORD  ne_flags;             /* 0c Flags about segments in this file */
     WORD  ne_autodata;          /* 0e Automatic data segment number */
     WORD  ne_heap;              /* 10 Initial size of local heap */
     WORD  ne_stack;             /* 12 Initial size of stack */
     DWORD ne_csip;              /* 14 Initial CS:IP */
     DWORD ne_sssp;              /* 18 Initial SS:SP */
     WORD  ne_cseg;              /* 1c # of entries in segment table */
-    WORD  ne_cmod;              /* 1e # of entries in module reference 
-tab. */
-    WORD  ne_cbnrestab;         /* 20 Length of nonresident-name table     
-*/
+    WORD  ne_cmod;              /* 1e # of entries in module reference tab. */
+    WORD  ne_cbnrestab;         /* 20 Length of nonresident-name table */
     WORD  ne_segtab;            /* 22 Offset to segment table */
     WORD  ne_rsrctab;           /* 24 Offset to resource table */
     WORD  ne_restab;            /* 26 Offset to resident-name table */
-    WORD  ne_modtab;            /* 28 Offset to module reference table 
-*/
+    WORD  ne_modtab;            /* 28 Offset to module reference table */
     WORD  ne_imptab;            /* 2a Offset to imported name table */
-    DWORD ne_nrestab;           /* 2c Offset to nonresident-name table 
-*/
+    DWORD ne_nrestab;           /* 2c Offset to nonresident-name table */
     WORD  ne_cmovent;           /* 30 # of movable entry points */
-    WORD  ne_align;             /* 32 Logical sector alignment shift 
-count */
+    WORD  ne_align;             /* 32 Logical sector alignment shift count */
     WORD  ne_cres;              /* 34 # of resource segments */
     BYTE  ne_exetyp;            /* 36 Flags indicating target OS */
     BYTE  ne_flagsothers;       /* 37 Additional information flags */
     WORD  ne_pretthunks;        /* 38 Offset to return thunks */
     WORD  ne_psegrefbytes;      /* 3a Offset to segment ref. bytes */
     WORD  ne_swaparea;          /* 3c Reserved by Microsoft */
-    WORD  ne_expver;            /* 3e Expected Windows version number 
-*/
+    WORD  ne_expver;            /* 3e Expected Windows version number */
 } IMAGE_OS2_HEADER, *PIMAGE_OS2_HEADER;
 
 typedef struct _IMAGE_VXD_HEADER {
@@ -154,9 +145,8 @@ typedef struct _IMAGE_VXD_HEADER {
   WORD  e32_ddkver;
 } IMAGE_VXD_HEADER, *PIMAGE_VXD_HEADER;
 
-/* These defines describe the meanings of the bits in the 
-Characteristics
-   field */
+/* These defines describe the meanings of the bits in the
+   Characteristics field */
 
 #define IMAGE_FILE_RELOCS_STRIPPED	0x0001 /* No relocation info */
 #define IMAGE_FILE_EXECUTABLE_IMAGE	0x0002
@@ -257,7 +247,7 @@ Characteristics
 #define	IMAGE_DIRECTORY_ENTRY_BASERELOC		5
 #define	IMAGE_DIRECTORY_ENTRY_DEBUG		6
 #define	IMAGE_DIRECTORY_ENTRY_COPYRIGHT		7
-#define	IMAGE_DIRECTORY_ENTRY_GLOBALPTR		8   /* (MIPS GP) */
+#define	IMAGE_DIRECTORY_ENTRY_GLOBALPTR		8  /* (MIPS GP) */
 #define	IMAGE_DIRECTORY_ENTRY_TLS		9
 #define	IMAGE_DIRECTORY_ENTRY_LOAD_CONFIG	10
 #define	IMAGE_DIRECTORY_ENTRY_BOUND_IMPORT	11
@@ -269,13 +259,12 @@ Characteristics
 
 #define	IMAGE_SUBSYSTEM_UNKNOWN			0
 #define	IMAGE_SUBSYSTEM_NATIVE			1
-#define	IMAGE_SUBSYSTEM_WINDOWS_GUI		2	/* Windows GUI subsystem */
-#define	IMAGE_SUBSYSTEM_WINDOWS_CUI		3	/* Windows character subsystem 
-*/
+#define	IMAGE_SUBSYSTEM_WINDOWS_GUI		2  /* Windows GUI subsystem */
+#define	IMAGE_SUBSYSTEM_WINDOWS_CUI		3  /* Windows character subsystem */
 #define	IMAGE_SUBSYSTEM_OS2_CUI			5
 #define	IMAGE_SUBSYSTEM_POSIX_CUI		7
-#define	IMAGE_SUBSYSTEM_NATIVE_WINDOWS		8	/* native Win9x driver */
-#define	IMAGE_SUBSYSTEM_WINDOWS_CE_GUI		9	/* Windows CE subsystem */
+#define	IMAGE_SUBSYSTEM_NATIVE_WINDOWS		8  /* native Win9x driver */
+#define	IMAGE_SUBSYSTEM_WINDOWS_CE_GUI		9  /* Windows CE subsystem */
 #define	IMAGE_SUBSYSTEM_EFI_APPLICATION		10
 #define	IMAGE_SUBSYSTEM_EFI_BOOT_SERVICE_DRIVER	11
 #define	IMAGE_SUBSYSTEM_EFI_RUNTIME_DRIVER	12
@@ -442,7 +431,7 @@ typedef struct _IMAGE_SECTION_HEADER {
 
 #define	IMAGE_SCN_LNK_OTHER			0x00000100
 #define	IMAGE_SCN_LNK_INFO			0x00000200
-/* #define	IMAGE_SCN_TYPE_OVER		0x00000400 - Reserved */
+/* #define IMAGE_SCN_TYPE_OVER		0x00000400 - Reserved */
 #define	IMAGE_SCN_LNK_REMOVE			0x00000800
 #define	IMAGE_SCN_LNK_COMDAT			0x00001000
 
@@ -704,9 +693,10 @@ typedef PIMAGE_THUNK_DATA64 PIMAGE_THUNK_DATA;
 
 typedef struct packed _IMAGE_IMPORT_DESCRIPTOR {
 	union {
-		DWORD	Characteristics; /* 0 for terminating null import descriptor  
-*/
-		DWORD   OriginalFirstThunk;	/* RVA to original unbound IAT */
+		DWORD	Characteristics; /* 0 for terminating null
+					  * import descriptor */
+		DWORD   OriginalFirstThunk; /* RVA to original unbound
+					     * IAT */
 	} u;
 	DWORD	TimeDateStamp;	/* 0 if not bound,
 				 * -1 if bound, and real date\time stamp
@@ -723,9 +713,9 @@ typedef struct packed _IMAGE_IMPORT_DESCRIPTOR {
 
 #define	IMAGE_ORDINAL_FLAG32		0x80000000
 #define	IMAGE_ORDINAL_FLAG64		0x8000000000000000
-#define	IMAGE_SNAP_BY_ORDINAL32(Ordinal)	((Ordinal & IMAGE_ORDINAL_FLAG32) != 0)
-#define	IMAGE_SNAP_BY_ORDINAL64(Ordinal)	((Ordinal & IMAGE_ORDINAL_FLAG64) != 0)
-#define	IMAGE_ORDINAL(Ordinal)		(Ordinal & 0xffff)
+#define	IMAGE_SNAP_BY_ORDINAL32(Ordinal) ((Ordinal & IMAGE_ORDINAL_FLAG32) != 0)
+#define	IMAGE_SNAP_BY_ORDINAL64(Ordinal) ((Ordinal & IMAGE_ORDINAL_FLAG64) != 0)
+#define	IMAGE_ORDINAL(Ordinal) (Ordinal & 0xffff)
 
 #ifdef CONFIG_X86_64
 #define IMAGE_ORDINAL_FLAG IMAGE_ORDINAL_FLAG64
