@@ -90,13 +90,16 @@
 #define USBD_TRANSFER_DIRECTION(flags)		\
 	((flags) & USBD_TRANSFER_DIRECTION_IN)
 
-#define USBD_IS_BULK_PIPE(pipe_handle)					\
-	(((pipe_handle)->bmAttributes & USB_ENDPOINT_XFERTYPE_MASK) ==	\
-	 USB_ENDPOINT_XFER_BULK)
+enum pipe_type {UsbdPipeTypeControl = USB_ENDPOINT_XFER_CONTROL,
+		UsbdPipeTypeIsochronous = USB_ENDPOINT_XFER_ISOC,
+		UsbdPipeTypeBulk = USB_ENDPOINT_XFER_BULK,
+		UsbdPipeTypeInterrupt = USB_ENDPOINT_XFER_INT};
 
-#define USBD_IS_INT_PIPE(pipe_handle)					\
-	(((pipe_handle)->bmAttributes & USB_ENDPOINT_XFERTYPE_MASK) ==	\
-	 USB_ENDPOINT_XFER_INT)
+#define USBD_IS_BULK_PIPE(pipe_handle)			\
+	((pipe_handle)->type == UsbdPipeTypeBulk)
+
+#define USBD_IS_INT_PIPE(pipe_handle)			\
+	((pipe_handle)->type == UsbdPipeTypeInterrupt)
 
 #define USBD_PORT_ENABLED			0x00000001
 #define USBD_PORT_CONNECTED			0x00000002
@@ -139,16 +142,11 @@ typedef LONG USBD_STATUS;
 
 #define USBD_DEFAULT_MAXIMUM_TRANSFER_SIZE	PAGE_SIZE
 
-typedef struct usb_endpoint_descriptor *usbd_pipe_handle;
-
 struct urb_hcd_area {
 	void *reserved8[8];
 };
 
-enum pipe_type {UsbdPipeTypeControl = USB_ENDPOINT_XFER_CONTROL,
-		UsbdPipeTypeIsochronous = USB_ENDPOINT_XFER_ISOC,
-		UsbdPipeTypeBulk = USB_ENDPOINT_XFER_BULK,
-		UsbdPipeTypeInterrupt = USB_ENDPOINT_XFER_INT};
+typedef struct usbd_pipe_information *usbd_pipe_handle;
 
 struct usbd_pipe_information {
 	USHORT wMaxPacketSize;

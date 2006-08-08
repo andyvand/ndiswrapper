@@ -658,13 +658,22 @@ static USBD_STATUS wrap_bulk_or_intr_trans(struct irp *irp)
 		USBTRACE("submitting bulk urb %p on pipe 0x%x (ep 0x%x)",
 			 urb, urb->pipe, pipe_handle->bEndpointAddress);
 	} else {
+		int interval;
+		if (udev->speed == USB_SPEED_LOW) {
+			int i = pipe_handle->bInterval;
+			interval = 1;
+			while (i >>= 1)
+				interval++;
+		} else
+			interval = pipe_handle->bInterval;
+
 		usb_fill_int_urb(urb, udev, pipe, urb->transfer_buffer,
 				 bulk_int_tx->transfer_buffer_length,
 				 wrap_urb_complete, urb->context,
-				 pipe_handle->bInterval);
+				 interval);
 		USBTRACE("submitting interrupt urb %p on pipe 0x%x (ep 0x%x), "
 			 "intvl: %d", urb, urb->pipe,
-			 pipe_handle->bEndpointAddress, pipe_handle->bInterval);
+			 pipe_handle->bEndpointAddress, interval);
 	}
 	status = wrap_submit_urb(irp);
 	USBTRACE("status: %08X", status);
@@ -775,43 +784,32 @@ static USBD_STATUS wrap_reset_pipe(struct usb_device *udev, struct irp *irp)
 	int ret;
 	union nt_urb *nt_urb;
 	usbd_pipe_handle pipe_handle;
-	unsigned int ep;
 	unsigned int pipe1, pipe2;
-	enum pipe_type pipe_type;
 
 	nt_urb = URB_FROM_IRP(irp);
 	pipe_handle = nt_urb->pipe_req.pipe_handle;
-	ep = pipe_handle->bEndpointAddress;
 	/* TODO: not clear if both directions should be cleared? */
-	pipe_type = pipe_handle->bmAttributes & USB_ENDPOINT_XFERTYPE_MASK;
-	if (pipe_type == USB_ENDPOINT_XFER_BULK) {
+	if (USBD_IS_BULK_PIPE(pipe_handle)) {
 		pipe1 = usb_rcvbulkpipe(udev, pipe_handle->bEndpointAddress);
 		pipe2 = usb_sndbulkpipe(udev, pipe_handle->bEndpointAddress);
-	} else if (pipe_type == USB_ENDPOINT_XFER_INT) {
+	} else if (USBD_IS_INT_PIPE(pipe_handle)) {
 		pipe1 = usb_rcvintpipe(udev, pipe_handle->bEndpointAddress);
-		/* no outgoing interrupt pipes */
 		pipe2 = pipe1;
-#if 0
-	} else if (pipe_type == USB_ENDPOINT_XFER_CONTROL) {
-		pipe1 = usb_rcvctrlpipe(udev, pipe_handle->bEndpointAddress);
-		pipe2 = usb_sndctrlpipe(udev, pipe_handle->bEndpointAddress);
-#endif
 	} else {
-		WARNING("invalid pipe type %d", pipe_type);
+		WARNING("invalid pipe %d", pipe_handle->bEndpointAddress);
 		return USBD_STATUS_INVALID_PIPE_HANDLE;
 	}
-	USBTRACE("endpoint: %d, pipe: 0x%x", ep, pipe1);
+	USBTRACE("ep: %d, pipe: 0x%x", pipe_handle->bEndpointAddress, pipe1);
 	ret = usb_clear_halt(udev, pipe1);
 	if (ret)
-		USBTRACE("resetting pipe %d failed: %d", pipe_type, ret);
+		USBTRACE("resetting pipe %d failed: %d", pipe1, ret);
 	if (pipe2 != pipe1) {
-		USBTRACE("endpoint: %d, pipe: 0x%x", ep, pipe2);
 		ret = usb_clear_halt(udev, pipe2);
 		if (ret)
-			USBTRACE("resetting pipe %d failed: %d",
-				 pipe_type, ret);
+			USBTRACE("resetting pipe %d failed: %d", pipe2, ret);
 	}
-	return wrap_urb_status(ret);
+//	return wrap_urb_status(ret);
+	return USBD_STATUS_SUCCESS;
 }
 
 static USBD_STATUS wrap_abort_pipe(struct usb_device *udev, struct irp *irp)
@@ -878,15 +876,15 @@ static void set_intf_pipe_info(struct wrap_device *wd,
 		pipe->bEndpointAddress = ep->bEndpointAddress;
 		pipe->type = ep->bmAttributes & USB_ENDPOINT_XFERTYPE_MASK;
 		if (pipe->type == USB_ENDPOINT_XFER_INT) {
-			if (wd->usb.udev->speed == USB_SPEED_HIGH) {
-				u8 i, interval = ep->bInterval;
-				for (i = 0; interval; i++)
-					interval /= 2;
-				pipe->bInterval = i;
-			} else
+			/* for low speed devices, Linux sets bInterval
+			 * as frames per second, whereas Windows
+			 * interprets it as milliseconds */
+			if (wd->usb.udev->speed == USB_SPEED_LOW)
+				pipe->bInterval = 1 << (ep->bInterval - 1);
+			else
 				pipe->bInterval = ep->bInterval;
 		}
-		pipe->handle = ep;
+		pipe->handle = pipe;
 		USBTRACE("%d: ep 0x%x, type %d, pkt_sz %d, intv %d (%d),"
 			 "type: %d, handle %p", i, ep->bEndpointAddress,
 			 ep->bmAttributes, ep->wMaxPacketSize, ep->bInterval,
@@ -912,6 +910,8 @@ static USBD_STATUS wrap_select_configuration(struct wrap_device *wd,
 		kill_all_urbs(wd, 1);
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
 		ret = usb_reset_configuration(udev);
+#else
+		ret = 0;
 #endif
 		return wrap_urb_status(ret);
 	}
@@ -921,10 +921,12 @@ static USBD_STATUS wrap_select_configuration(struct wrap_device *wd,
 		 config->wTotalLength, config->bNumInterfaces,
 		 config->bmAttributes);
 #if 1
+//	usb_lock_device(udev);
 	ret = usb_control_msg(udev, usb_sndctrlpipe(udev, 0),
 			      USB_REQ_SET_CONFIGURATION, 0,
 			      config->bConfigurationValue, 0,
 			      NULL, 0, USB_CTRL_SET_TIMEOUT);
+//	usb_unlock_device(udev);
 	if (ret < 0) {
 		ERROR("ret: %d", ret);
 		return wrap_urb_status(ret);
@@ -1243,8 +1245,7 @@ wstdcall union nt_urb *WIN_FUNC(USBD_CreateConfigurationRequestEx,2)
 	}
 	memset(select_conf, 0, size);
 	intf = &select_conf->intf;
-	/* handle points to beginning of interface information */
-	select_conf->handle = intf;
+	select_conf->handle = config;
 	for (n = 0; n < config->bNumInterfaces && intf_list[n].intf_desc; n++) {
 		/* initialize 'intf' fields in intf_list so they point
 		 * to appropriate entry; these may be read/written by
@@ -1268,6 +1269,7 @@ wstdcall union nt_urb *WIN_FUNC(USBD_CreateConfigurationRequestEx,2)
 			pipe[i].max_tx_size =
 				USBD_DEFAULT_MAXIMUM_TRANSFER_SIZE;
 		}
+		intf->handle = intf_desc;
 		intf = (((void *)intf) + intf->bLength);
 	}
 	select_conf->header.function = URB_FUNCTION_SELECT_CONFIGURATION;

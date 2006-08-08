@@ -299,6 +299,8 @@ struct mdl {
 #define MDL_NETWORK_HEADER		0x1000
 #define MDL_MAPPING_CAN_FAIL		0x2000
 #define MDL_ALLOCATED_MUST_SUCCEED	0x4000
+
+#define MDL_POOL_ALLOCATED		0x0400
 #define MDL_CACHE_ALLOCATED		0x8000
 
 #define page_start(ptr) ((void *)((ULONG_PTR)(ptr) & ~(PAGE_SIZE - 1)))
@@ -1184,7 +1186,7 @@ struct common_object_header {
 	UINT ref_count;
 	BOOLEAN close_in_process;
 	BOOLEAN permanent;
-	char *name;
+	struct unicode_string name;
 };
 
 #define OBJECT_TO_HEADER(object)					\
