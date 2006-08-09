@@ -1,3 +1,9 @@
+Version 1.23 2006-XX-XX
+=======================	
+* Bug fixes to recent changes in 64-bit driver support.
+* ZyDas ZD1211 driver uses interrupt-out URBs, so set them up properly.
+* Bug fixes to Atheros USB driver support.
+
 Version 1.22 2006-08-05
 =======================	
 * Added support for Broadcom 802.11n (draft) driver
