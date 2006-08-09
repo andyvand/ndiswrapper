@@ -505,12 +505,12 @@ static void wrap_urb_complete(struct urb *urb, struct pt_regs *regs)
 #endif
 	nt_spin_lock(&wrap_urb_complete_list_lock);
 	InsertTailList(&wrap_urb_complete_list, &wrap_urb->complete_list);
+	nt_spin_unlock(&wrap_urb_complete_list_lock);
 #ifdef USB_TASKLET
 	tasklet_schedule(&wrap_urb_complete_work);
 #else
 	schedule_ntos_work(&wrap_urb_complete_work);
 #endif
-	nt_spin_unlock(&wrap_urb_complete_list_lock);
 	USBTRACE("scheduled worker for urb %p", urb);
 }
 
@@ -875,7 +875,7 @@ static void set_intf_pipe_info(struct wrap_device *wd,
 		pipe->wMaxPacketSize = ep->wMaxPacketSize;
 		pipe->bEndpointAddress = ep->bEndpointAddress;
 		pipe->type = ep->bmAttributes & USB_ENDPOINT_XFERTYPE_MASK;
-		if (pipe->type == USB_ENDPOINT_XFER_INT) {
+		if (pipe->type == UsbdPipeTypeInterrupt) {
 			/* for low speed devices, Linux sets bInterval
 			 * as frames per second, whereas Windows
 			 * interprets it as milliseconds */
@@ -884,7 +884,7 @@ static void set_intf_pipe_info(struct wrap_device *wd,
 			else
 				pipe->bInterval = ep->bInterval;
 		}
-		pipe->handle = pipe;
+		pipe->handle = ep;
 		USBTRACE("%d: ep 0x%x, type %d, pkt_sz %d, intv %d (%d),"
 			 "type: %d, handle %p", i, ep->bEndpointAddress,
 			 ep->bmAttributes, ep->wMaxPacketSize, ep->bInterval,

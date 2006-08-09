@@ -548,6 +548,7 @@ extern struct workqueue_struct *wrap_wq;
 #define USE_OWN_NTOS_WORKQUEUE 1
 #endif
 
+//#define USE_OWN_NTOS_WORKQUEUE 1
 #ifdef USE_OWN_NTOS_WORKQUEUE
 extern struct workqueue_struct *ntos_wq;
 #define schedule_ntos_work(work_struct) queue_work(ntos_wq, (work_struct))

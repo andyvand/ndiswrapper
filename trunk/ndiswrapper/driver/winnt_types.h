@@ -578,7 +578,7 @@ struct file_object {
 	BOOLEAN shared_write;
 	BOOLEAN shared_delete;
 	ULONG flags;
-	struct unicode_string name;
+	struct unicode_string _name_;
 	LARGE_INTEGER current_byte_offset;
 	ULONG waiters;
 	ULONG busy;
