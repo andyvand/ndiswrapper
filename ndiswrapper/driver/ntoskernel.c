@@ -2493,12 +2493,12 @@ wstdcall NTSTATUS WIN_FUNC(ZwQueryInformationFile,5)
 		TRACEEXIT2(return STATUS_FAILURE);
 	}
 	fo = HANDLE_TO_OBJECT(handle);
-	DBGTRACE2("fo: %p", fo);
+	DBGTRACE2("fo: %p, %d", fo, class);
 	switch (class) {
 	case FileNameInformation:
 		fni = info;
-		fni->length = fo->name.max_length;
-		memcpy(fni->name, fo->name.buf, fo->name.max_length);
+		fni->length = min(length, (typeof (length))coh->name.length);
+		memcpy(fni->name, coh->name.buf, fni->length);
 		iosb->status = STATUS_SUCCESS;
 		iosb->info = fni->length;
 		break;

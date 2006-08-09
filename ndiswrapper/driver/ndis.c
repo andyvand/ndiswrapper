@@ -76,7 +76,6 @@ void ndis_exit_device(struct wrap_ndis_device *wnd)
 	nt_spin_unlock(&loader_lock);
 }
 
-/* Called from the driver entry. */
 wstdcall void WIN_FUNC(NdisInitializeWrapper,4)
 	(void **driver_handle, struct driver_object *driver,
 	 struct unicode_string *reg_path, void *unused)
@@ -92,7 +91,6 @@ wstdcall void WIN_FUNC(NdisTerminateWrapper,2)
 	TRACEEXIT1(return);
 }
 
-/* Register a miniport with NDIS. Called from driver entry */
 wstdcall NDIS_STATUS WIN_FUNC(NdisMRegisterMiniport,3)
 	(struct driver_object *drv_obj,
 	 struct miniport_char *miniport_char, UINT char_len)
@@ -2371,7 +2369,6 @@ wstdcall void EthRxComplete(struct ndis_miniport_block *nmb)
 	DBGTRACE3("");
 }
 
-/* Called via function pointer if query returns NDIS_STATUS_PENDING */
 wstdcall void NdisMQueryInformationComplete(struct ndis_miniport_block *nmb,
 					    NDIS_STATUS status)
 {
@@ -2384,7 +2381,6 @@ wstdcall void NdisMQueryInformationComplete(struct ndis_miniport_block *nmb,
 	TRACEEXIT2(return);
 }
 
-/* Called via function pointer if setinfo returns NDIS_STATUS_PENDING */
 wstdcall void NdisMSetInformationComplete(struct ndis_miniport_block *nmb,
 					  NDIS_STATUS status)
 {
