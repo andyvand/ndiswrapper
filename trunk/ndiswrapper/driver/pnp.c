@@ -250,8 +250,8 @@ wstdcall NTSTATUS pdoDispatchPnp(struct device_object *pdo, struct irp *irp)
 #endif
 
 	irp_sl = IoGetCurrentIrpStackLocation(irp);
+	DBGTRACE2("%p %d:%d", pdo, irp_sl->major_fn, irp_sl->minor_fn);
 	wd = pdo->reserved;
-	DBGTRACE2("fn %d:%d, wd: %p", irp_sl->major_fn, irp_sl->minor_fn, wd);
 	switch (irp_sl->minor_fn) {
 	case IRP_MN_START_DEVICE:
 		status = start_pdo(pdo);
