@@ -20,8 +20,8 @@
 # Windows <---> Linux register usage conversion when calling functions
 # V = Volatile
 # NV = Non Volatile (needs to be saved)
-# 
-#         Win                     Lin     
+#
+#         Win                     Lin
 # ---------------------------------------
 # Rax    Return           V       Return          V
 # Rbx                     NV                      NV
@@ -39,7 +39,7 @@
 # R13                     NV                      NV
 # R14                     NV                      NV
 # R15                     NV                      NV
-#     
+#
 # In addition, Linux uses %rax to indicate number of SSE registers used
 # when variadic functions are called. Since there is no way to obtain this
 # from Windows, for now, we just assume this is 0 (hence %rax is cleared).
@@ -194,6 +194,11 @@ win2lin6:
 
 win2lin7:
 	win2lin_prolog
+
+	# copy windows argument 7 on the stack for the Linux function.
+	mov	win2lin_win_arg(7), %r11
+	mov	%r11, win2lin_lin_arg(7,7)
+
 	win2lin_arg1
 	win2lin_arg2
 	win2lin_arg3
@@ -201,16 +206,19 @@ win2lin7:
 	win2lin_arg5
 	win2lin_arg6
 
-	# copy windows argument 7 on the stack for the Linux function.
-
-	mov	win2lin_win_arg(7), %r11
-	mov	%r11, win2lin_lin_arg(7,7)
 	call_lin_func_args(7)
 	win2lin_epilog
 	ret
 
 win2lin8:
 	win2lin_prolog
+
+	# copy windows arguments 7 and 8 onto stack for Linux function
+	mov	win2lin_win_arg(7), %r11
+	mov	%r11, win2lin_lin_arg(7,8)
+	mov	win2lin_win_arg(8), %r11
+	mov	%r11, win2lin_lin_arg(8,8)
+
 	win2lin_arg1
 	win2lin_arg2
 	win2lin_arg3
@@ -218,12 +226,6 @@ win2lin8:
 	win2lin_arg5
 	win2lin_arg6
 
-	# copy windows arguments 7 and 8
-	# on the stack for the Linux function.
-	mov	win2lin_win_arg(7), %r11
-	mov	%r11, win2lin_lin_arg(7,8)
-	mov	win2lin_win_arg(8), %r11
-	mov	%r11, win2lin_lin_arg(8,8)
 	call_lin_func_args(8)
 	win2lin_epilog
 	ret
@@ -233,22 +235,22 @@ win2lin10:
 win2lin11:
 win2lin12:
 	win2lin_prolog
-	win2lin_arg1
-	win2lin_arg2
-	win2lin_arg3
-	win2lin_arg4
-	win2lin_arg5
-	win2lin_arg6
 
+	# copy windows arguments 7 through 12 onto stack the Linux function
 	mov	%rcx, %r11		# save rcx
-	# copy windows arguments 7 through 12
-	# on the stack for the Linux function.
 	lea	win2lin_win_arg(7), %rsi	# source (windows arg 7 and up)
 	lea	win2lin_lin_arg(7,12), %rdi	# = destination
 	mov	$6, %rcx			# 6 arguments
 	rep
 	movsq
 	mov	%r11, %rcx		# restore rcx
+
+	win2lin_arg1
+	win2lin_arg2
+	win2lin_arg3
+	win2lin_arg4
+	win2lin_arg5
+	win2lin_arg6
 
 	call_lin_func_args(12)
 	win2lin_epilog
