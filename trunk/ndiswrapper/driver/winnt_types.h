@@ -113,11 +113,13 @@
 #ifdef CONFIG_X86_64
 #define wstdcall
 #define wfastcall
+#define noregparm
 
 #define KI_USER_SHARED_DATA 0xfffff78000000000
 
 #else
 
+#define noregparm __attribute__((regparm(0)))
 #define wstdcall __attribute__((__stdcall__, regparm(0)))
 #if defined(__GNUC__) && ((__GNUC__ == 3 && __GNUC_MINOR__ > 3) || __GNUC__ > 3)
 #undef fastcall
@@ -130,7 +132,6 @@
 
 #endif
 
-#define noregparm __attribute__((regparm(0)))
 #define packed __attribute__((packed))
 #define no_warn_unused __attribute((unused))
 
