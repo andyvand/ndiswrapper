@@ -171,6 +171,7 @@ int usb_init_device(struct wrap_device *wd)
 {
 	InitializeListHead(&wd->usb.wrap_urb_list);
 	wd->usb.num_alloc_urbs = 0;
+	wd->usb.pipe_info = NULL;
 	USBEXIT(return 0);
 }
 
@@ -195,6 +196,7 @@ static void kill_all_urbs(struct wrap_device *wd, int complete)
 				wrap_urb->urb->complete = NULL;
 			usb_kill_urb(wrap_urb->urb);
 		}
+		USBTRACE("%p, %p", wrap_urb, wrap_urb->urb);
 		usb_free_urb(wrap_urb->urb);
 		kfree(wrap_urb);
 	}
@@ -204,6 +206,9 @@ static void kill_all_urbs(struct wrap_device *wd, int complete)
 void usb_exit_device(struct wrap_device *wd)
 {
 	kill_all_urbs(wd, 0);
+	if (wd->usb.pipe_info)
+		kfree(wd->usb.pipe_info);
+	wd->usb.pipe_info = NULL;
 	USBEXIT(return);
 }
 
@@ -851,6 +856,14 @@ static void set_intf_pipe_info(struct wrap_device *wd,
 	struct usb_endpoint_descriptor *ep;
 	struct usbd_pipe_information *pipe;
 
+	if (wd->usb.pipe_info)
+		kfree(wd->usb.pipe_info);
+	wd->usb.pipe_info = kmalloc(intf->bNumEndpoints * sizeof(*pipe),
+				    GFP_KERNEL);
+	if (!wd->usb.pipe_info) {
+		WARNING("couldn't allocate memory");
+		return;
+	}
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
 	for (i = 0; i < CUR_ALT_SETTING(usb_intf)->desc.bNumEndpoints; i++) {
 		ep = &(CUR_ALT_SETTING(usb_intf)->endpoint[i]).desc;
@@ -884,7 +897,8 @@ static void set_intf_pipe_info(struct wrap_device *wd,
 			else
 				pipe->bInterval = ep->bInterval;
 		}
-		pipe->handle = ep;
+		memcpy(&wd->usb.pipe_info[i], pipe, sizeof(*pipe));
+		pipe->handle = &wd->usb.pipe_info[i];
 		USBTRACE("%d: ep 0x%x, type %d, pkt_sz %d, intv %d (%d),"
 			 "type: %d, handle %p", i, ep->bEndpointAddress,
 			 ep->bmAttributes, ep->wMaxPacketSize, ep->bInterval,
@@ -906,6 +920,7 @@ static USBD_STATUS wrap_select_configuration(struct wrap_device *wd,
 	udev = wd->usb.udev;
 	sel_conf = &nt_urb->select_conf;
 	config = sel_conf->config;
+	USBTRACE("%p", config);
 	if (config == NULL) {
 		kill_all_urbs(wd, 1);
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)

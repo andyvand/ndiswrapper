@@ -477,6 +477,8 @@ struct wrap_driver {
 	struct wrap_ndis_driver *ndis_driver;
 };
 
+struct usbd_pipe_information;
+
 struct wrap_device {
 	/* first part is (de)initialized once by loader */
 	int dev_bus_type;
@@ -505,6 +507,7 @@ struct wrap_device {
 			struct usb_interface *intf;
 			int num_alloc_urbs;
 			struct nt_list wrap_urb_list;
+			struct usbd_pipe_information *pipe_info;
 		} usb;
 	};
 	union {
