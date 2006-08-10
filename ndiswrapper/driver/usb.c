@@ -590,7 +590,7 @@ static void wrap_urb_complete_worker(void *dummy)
 			irp->io_status.status = STATUS_CANCELLED;
 			break;
 		default:
-			DBGTRACE1("irp: %p, urb: %p, status: %d/%d/%d",
+			DBGTRACE1("irp: %p, urb: %p, status: %d/%d",
 				  irp, urb, urb->status, wrap_urb->state);
 			irp->io_status.info = 0;
 			NT_URB_STATUS(nt_urb) = wrap_urb_status(urb->status);

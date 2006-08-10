@@ -658,16 +658,12 @@ wstdcall ULONG WIN_FUNC(NdisReadPciSlotInformation,5)
 {
 	struct wrap_device *wd = nmb->wnd->wd;
 	ULONG i;
-	TRACEENTER3("%d", len);
-	if (!wrap_is_pci_bus(wd->dev_bus_type)) {
-		WARNING("invalid device: %x", wd->dev_bus_type);
-		return 0;
-	}
+	TRACEENTER4("%d", len);
 	for (i = 0; i < len; i++)
 		if (pci_read_config_byte(wd->pci.pdev, offset + i, &buf[i]) !=
 		    PCIBIOS_SUCCESSFUL)
 			break;
-	TRACEEXIT3(return i);
+	TRACEEXIT4(return i);
 }
 
 wstdcall ULONG WIN_FUNC(NdisImmediateReadPciSlotInformation,5)
@@ -683,16 +679,12 @@ wstdcall ULONG WIN_FUNC(NdisWritePciSlotInformation,5)
 {
 	struct wrap_device *wd = nmb->wnd->wd;
 	ULONG i;
-	TRACEENTER3("%d", len);
-	if (!wrap_is_pci_bus(wd->dev_bus_type)) {
-		WARNING("invalid device: %x", wd->dev_bus_type);
-		return 0;
-	}
+	TRACEENTER4("%d", len);
 	for (i = 0; i < len; i++)
 		if (pci_write_config_byte(wd->pci.pdev, offset + i, buf[i]) !=
 		    PCIBIOS_SUCCESSFUL)
 			break;
-	TRACEEXIT3(return i);
+	TRACEEXIT4(return i);
 }
 
 wstdcall void WIN_FUNC(NdisReadPortUchar,3)
