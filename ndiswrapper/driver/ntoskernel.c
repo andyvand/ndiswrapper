@@ -106,9 +106,9 @@ static int add_bus_driver(const char *name);
 static void free_all_objects(void);
 static BOOLEAN queue_kdpc(struct kdpc *kdpc);
 
-WIN_SYMBOL_MAP("KeTickCount", &jiffies);
+WIN_SYMBOL_MAP("KeTickCount", &jiffies)
 
-WIN_SYMBOL_MAP("NlsMbCodePageTag", FALSE);
+WIN_SYMBOL_MAP("NlsMbCodePageTag", FALSE)
 
 #ifdef USE_OWN_NTOS_WORKQUEUE
 struct workqueue_struct *ntos_wq;

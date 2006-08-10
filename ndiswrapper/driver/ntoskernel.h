@@ -144,8 +144,8 @@ void cancel_delayed_work(struct work_struct *work_struct);
 
 #ifndef in_atomic
 #ifdef CONFIG_PREEMPT
-#define in_atomic()							\
-	 ((preempt_get_count() & ~PREEMPT_ACTIVE) != 0)
+#define in_atomic()					\
+	((preempt_get_count() & ~PREEMPT_ACTIVE) != 0)
 #else
 #define in_atomic() (in_interrupt())
 #endif // CONFIG_PREEMPT
@@ -507,7 +507,6 @@ struct wrap_device {
 			struct usb_interface *intf;
 			int num_alloc_urbs;
 			struct nt_list wrap_urb_list;
-			struct usbd_pipe_information *pipe_info;
 		} usb;
 	};
 	union {
@@ -736,9 +735,9 @@ BOOLEAN KeSetTimer(struct nt_timer *nt_timer, LARGE_INTEGER duetime_ticks,
 BOOLEAN KeCancelTimer(struct nt_timer *nt_timer) wstdcall;
 void KeInitializeDpc(struct kdpc *kdpc, void *func, void *ctx) wstdcall;
 struct task_struct *KeGetCurrentThread(void) wstdcall;
-NTSTATUS ObReferenceObjectByHandle
-	(void *handle, ACCESS_MASK desired_access, void *obj_type,
-	 KPROCESSOR_MODE access_mode, void **object, void *handle_info) wstdcall;
+NTSTATUS ObReferenceObjectByHandle(void *handle, ACCESS_MASK desired_access,
+				   void *obj_type, KPROCESSOR_MODE access_mode,
+				   void **object, void *handle_info) wstdcall;
 
 void adjust_user_shared_data_addr(char *driver, unsigned long length);
 

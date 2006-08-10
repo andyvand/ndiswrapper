@@ -237,7 +237,7 @@ win2lin12:
 	win2lin_prolog
 
 	# since we destroy rsi and rdi here, first copy windows
-	# arguments 7 through 12 onto stack the Linux function
+	# arguments 7 through 12 onto stack for Linux function
 	mov	%rcx, %r11		# save rcx
 	lea	win2lin_win_arg(7), %rsi	# source (windows arg 7 and up)
 	lea	win2lin_lin_arg(7,12), %rdi	# = destination
