@@ -1,4 +1,4 @@
-Version 1.23 2006-XX-XX
+Version 1.23 2006-08-10
 =======================	
 * Bug fixes to recent changes in 64-bit driver support.
 * ZyDas ZD1211 driver uses interrupt-out URBs, so set them up properly.

@@ -664,7 +664,7 @@ static USBD_STATUS wrap_bulk_or_intr_trans(struct irp *irp)
 				 pipe_handle->bInterval);
 		USBTRACE("submitting interrupt urb %p on pipe 0x%x (ep 0x%x), "
 			 "intvl: %d", urb, urb->pipe,
-			 pipe_handle->bEndpointAddress, interval);
+			 pipe_handle->bEndpointAddress, pipe_handle->bInterval);
 	}
 	status = wrap_submit_urb(irp);
 	USBTRACE("status: %08X", status);
