@@ -246,6 +246,10 @@ do {									\
 #define NETDEV_TX_BUSY 1
 #endif
 
+#ifndef CHECKSUM_HW
+#define CHECKSUM_HW CHECKSUM_PARTIAL
+#endif
+
 /* this ugly hack is to handle RH kernels; I don't know any better,
  * but this has to be fixed soon */
 #ifndef rt_task

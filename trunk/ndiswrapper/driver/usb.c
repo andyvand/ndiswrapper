@@ -912,12 +912,10 @@ static USBD_STATUS wrap_select_configuration(struct wrap_device *wd,
 		 config->bConfigurationValue, config->bDescriptorType,
 		 config->wTotalLength, config->bNumInterfaces,
 		 config->bmAttributes);
-	usb_lock_device(udev);
 	ret = usb_control_msg(udev, usb_sndctrlpipe(udev, 0),
 			      USB_REQ_SET_CONFIGURATION, 0,
 			      config->bConfigurationValue, 0,
 			      NULL, 0, USB_CTRL_SET_TIMEOUT);
-	usb_unlock_device(udev);
 	if (ret < 0) {
 		ERROR("ret: %d", ret);
 		return wrap_urb_status(ret);
