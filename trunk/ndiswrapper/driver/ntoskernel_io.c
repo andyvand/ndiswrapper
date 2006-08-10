@@ -128,11 +128,7 @@ wstdcall BOOLEAN WIN_FUNC(IoCancelIrp,1)
 		LIN2WIN2(cancel_routine, irp_sl->dev_obj, irp);
 		/* in usb's cancel, irp->cancel is set to indicate
 		 * status of cancel */
-		if (irp->cancel == FALSE) {
-			irp->cancel = TRUE;
-			IOEXIT(return FALSE);
-		} else
-			IOEXIT(return TRUE);
+		IOEXIT(return xchg(&irp->cancel, TRUE));
 	} else {
 		IOTRACE("irp %p already canceled", irp);
 		IoReleaseCancelSpinLock(irp->cancel_irql);

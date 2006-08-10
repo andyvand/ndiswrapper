@@ -658,9 +658,10 @@ static void tx_worker(void *param)
 		/* end == start if either ring is empty or full; in
 		 * the latter case is_tx_ring_full is set */
 		n = wnd->tx_ring_end - wnd->tx_ring_start;
+		DBGTRACE3("%d, %d, %d", wnd->tx_ring_start, wnd->tx_ring_end, n);
 		if (n == 0) {
 			if (wnd->is_tx_ring_full)
-				n = TX_RING_SIZE - 1;
+				n = TX_RING_SIZE - wnd->tx_ring_start;
 			else {
 				up(&wnd->tx_ring_mutex);
 				break;
@@ -678,8 +679,7 @@ static void tx_worker(void *param)
 				netif_wake_queue(wnd->net_dev);
 		}
 		up(&wnd->tx_ring_mutex);
-		DBGTRACE3("%d, ring: %d, %d", n, wnd->tx_ring_start,
-			  wnd->tx_ring_end);
+		DBGTRACE3("%d, %d, %d", wnd->tx_ring_start, wnd->tx_ring_end, n);
 	}
 	TRACEEXIT3(return);
 }
