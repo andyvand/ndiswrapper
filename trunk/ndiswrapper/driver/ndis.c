@@ -224,9 +224,6 @@ wstdcall void WIN_FUNC(NdisFreeMemory,3)
 	ExFreePool(addr);
 }
 
-/*
- * This function should not be wstdcall because it's a variable args function.
- */
 noregparm void WIN_FUNC(NdisWriteErrorLogEntry,12)
 	(struct driver_object *drv_obj, ULONG error, ULONG count, ...)
 {
@@ -1435,15 +1432,17 @@ wstdcall void WIN_FUNC(NdisAllocatePacket,3)
 	packet_length = sizeof(*ndis_packet) - 1 + pool->proto_rsvd_length +
 		sizeof(struct ndis_packet_oob_data);
 	irql = nt_spin_lock_irql(&pool->lock, DISPATCH_LEVEL);
-	if (pool->num_used_descr >= pool->max_descr)
-		DBGTRACE4("pool %p is full: %d(%d)", pool,
-			  pool->num_used_descr, pool->max_descr);
-	ndis_packet = NULL;
+	DBG_BLOCK(2) {
+		if (pool->num_used_descr >= pool->max_descr)
+			WARNING("pool %p is full: %d(%d)", pool,
+				pool->num_used_descr, pool->max_descr);
+	}
 	if (pool->free_descr) {
 		struct ndis_packet_oob_data *oob_data;
 		ndis_packet = pool->free_descr;
 		oob_data = NDIS_PACKET_OOB_DATA(ndis_packet);
 		pool->free_descr = oob_data->next;
+		DBGTRACE3("packet: %p", ndis_packet);
 	} else {
 		nt_spin_unlock_irql(&pool->lock, irql);
 		ndis_packet = kmalloc(packet_length, gfp_irql());
@@ -1452,7 +1451,7 @@ wstdcall void WIN_FUNC(NdisAllocatePacket,3)
 			*status = NDIS_STATUS_RESOURCES;
 			return;
 		}
-		DBGTRACE3("allocated packet: %p", ndis_packet);
+		DBGTRACE3("packet: %p", ndis_packet);
 		irql = nt_spin_lock_irql(&pool->lock, DISPATCH_LEVEL);
 		pool->num_allocated_descr++;
 	}
