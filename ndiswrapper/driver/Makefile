@@ -1,5 +1,5 @@
 DISTFILES=divdi3.c hal.c iw_ndis.c iw_ndis.h loader.c loader.h \
-		longlong.h Makefile misc_funcs.c ndis.c ndis.h \
+		longlong.h Makefile crtl.c ndis.c ndis.h \
 		ndiswrapper.h ntoskernel.c ntoskernel.h ntoskernel_io.c \
 		pe_linker.c pe_linker.h pnp.c pnp.h proc.c usb.c usb.h \
 		winnt_types.h workqueue.c wrapmem.h wrapmem.c wrapper.c \
@@ -85,7 +85,7 @@ endif
 
 all : prereq_check win2lin_stubs.h gen_exports default stack_check
 
-OBJS := hal.o iw_ndis.o loader.o misc_funcs.o ndis.o \
+OBJS := hal.o iw_ndis.o loader.o crtl.o ndis.o \
 	    ntoskernel.o ntoskernel_io.o pe_linker.o pnp.o proc.o \
 		wrapmem.o wrapndis.o wrapper.o
 
@@ -128,7 +128,7 @@ iw_ndis.o: iw_ndis.c iw_ndis.h wrapndis.h
 
 loader.o: loader.c loader.h ndis.h wrapndis.h
 
-misc_funcs.o: misc_funcs.c ndis.h
+crtl.o: crtl.c ndis.h
 
 ndis.o: ndis.c ndis.h iw_ndis.h wrapndis.h
 
@@ -149,7 +149,7 @@ usb.o: usb.c usb.h ndis.h
 wrapper.o: wrapper.c wrapndis.h iw_ndis.h ntoskernel.h loader.h
 
 hal_exports.h: hal.c
-misc_funcs_exports.h: misc_funcs.c
+crtl_exports.h: crtl.c
 ndis_exports.h: ndis.c
 ntoskernel_exports.h: ntoskernel.c
 ntoskernel_io_exports.h: ntoskernel_io.c
@@ -159,10 +159,10 @@ OBJS += win2lin_stubs.o
 win2lin_stubs.o: win2lin_stubs.h win2lin_stubs.S
 
 ifdef DISABLE_USB
-win2lin_stubs.h: hal.c misc_funcs.c ndis.c ntoskernel.c ntoskernel_io.c \
+win2lin_stubs.h: hal.c crtl.c ndis.c ntoskernel.c ntoskernel_io.c \
 	pnp.c wrapndis.c
 else
-win2lin_stubs.h: hal.c misc_funcs.c ndis.c ntoskernel.c ntoskernel_io.c \
+win2lin_stubs.h: hal.c crtl.c ndis.c ntoskernel.c ntoskernel_io.c \
 	pnp.c usb.c wrapndis.c
 endif
 	for file in $^; do \
@@ -207,8 +207,7 @@ endif
 	fi > $@
 
 gen_exports: ndis_exports.h hal_exports.h ntoskernel_exports.h \
-			 ntoskernel_io_exports.h misc_funcs_exports.h \
-			 usb_exports.h
+			 ntoskernel_io_exports.h crtl_exports.h usb_exports.h
 
 prereq_check:
 	@if [ ! -f $(KBUILD)/include/linux/version.h ]; then \
