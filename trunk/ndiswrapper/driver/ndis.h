@@ -799,16 +799,16 @@ struct wrap_ndis_device {
 
 	struct work_struct tx_work;
 	struct ndis_packet *tx_ring[TX_RING_SIZE];
-	unsigned int tx_ring_start;
-	unsigned int tx_ring_end;
-	unsigned char is_tx_ring_full;
+	u8 tx_ring_start;
+	u8 tx_ring_end;
+	u8 is_tx_ring_full;
 	struct semaphore tx_ring_mutex;
-	unsigned int max_tx_packets;
+	ULONG max_tx_packets;
 	u8 tx_ok;
 	struct semaphore ndis_comm_mutex;
 	wait_queue_head_t ndis_comm_wq;
-	int ndis_comm_done;
-	int ndis_comm_status;
+	short ndis_comm_done;
+	short ndis_comm_status;
 	ULONG packet_filter;
 
 	BOOLEAN use_sg_dma;

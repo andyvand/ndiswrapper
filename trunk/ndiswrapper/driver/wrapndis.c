@@ -648,7 +648,7 @@ static int miniport_tx_packets(struct wrap_ndis_device *wnd, int start, int n)
 
 static void tx_worker(void *param)
 {
-	struct wrap_ndis_device *wnd = (struct wrap_ndis_device *)param;
+	struct wrap_ndis_device *wnd = param;
 	int n;
 
 	TRACEENTER3("tx_ok %d", wnd->tx_ok);
@@ -1189,6 +1189,7 @@ static void wrap_ndis_worker(void *param)
 NDIS_STATUS ndis_reinit(struct wrap_ndis_device *wnd)
 {
 	NDIS_STATUS status;
+
 	wnd->pm_capa = FALSE;
 	status = miniport_set_power_state(wnd, NdisDeviceStateD3);
 	if (status != NDIS_STATUS_SUCCESS) {

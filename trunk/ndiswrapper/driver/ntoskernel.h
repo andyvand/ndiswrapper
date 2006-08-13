@@ -581,8 +581,8 @@ int usb_init_device(struct wrap_device *wd);
 void usb_exit_device(struct wrap_device *wd);
 void usb_cancel_pending_urbs(void);
 
-int misc_funcs_init(void);
-void misc_funcs_exit(void);
+int crtl_init(void);
+void crtl_exit(void);
 int wrap_procfs_init(void);
 void wrap_procfs_remove(void);
 int stricmp(const char *s1, const char *s2);

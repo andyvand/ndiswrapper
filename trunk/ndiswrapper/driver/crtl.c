@@ -23,13 +23,13 @@
 
 #include "ndis.h"
 
-int misc_funcs_init(void)
+int crtl_init(void)
 {
 	return 0;
 }
 
 /* called when module is being removed */
-void misc_funcs_exit(void)
+void crtl_exit(void)
 {
 	TRACEEXIT4(return);
 }
@@ -52,6 +52,7 @@ noregparm INT WIN_FUNC(swprintf,12)
 	TODO();
 	TRACEEXIT2(return 0);
 }
+
 noregparm INT WIN_FUNC(_win_vsprintf,3)
 	(char *str, const char *format, va_list ap)
 {
@@ -144,7 +145,7 @@ noregparm char *WIN_FUNC(_win_strncat,3)
 noregparm INT WIN_FUNC(_win_wcscmp,2)
 	(const wchar_t *s1, const wchar_t *s2)
 {
-	while (*s1 != '\0' && *s1 == *s2) {
+	while (*s1 && *s1 == *s2) {
 		s1++;
 		s2++;
 	}
@@ -154,54 +155,54 @@ noregparm INT WIN_FUNC(_win_wcscmp,2)
 noregparm INT WIN_FUNC(_win_wcsicmp,2)
 	(const wchar_t *s1, const wchar_t *s2)
 {
-	while (*s1 != '\0' && tolower((char)*s1) == tolower((char)*s2)) {
+	while (*s1 && tolower((char)*s1) == tolower((char)*s2)) {
 		s1++;
 		s2++;
 	}
-	return *s1 - *s2;
+	return tolower((char)*s1) - tolower((char)*s2);
 }
 
 noregparm SIZE_T WIN_FUNC(_win_wcslen,1)
 	(const wchar_t *s)
 {
-	SIZE_T i = 0;
-	while (s[i] != '\0')
-		i++;
-	return i;
+	const wchar_t *t = s;
+	while (*t)
+		t++;
+	return t - s;
 }
 
 noregparm wchar_t *WIN_FUNC(_win_wcsncpy,3)
 	(wchar_t *dest, const wchar_t *src, SIZE_T n)
 {
-	SIZE_T i;
-	for (i = 0; i < n && src[i] != '\0'; i++)
-		dest[i] = src[i];
-	if (i < n)
-		dest[i] = 0;
+	const wchar_t *s;
+	wchar_t *d;
+	s = src + n;
+	d = dest;
+	while (src < s && (*d++ = *src++))
+		;
+	if (s > src)
+		memset(d, 0, (s - src) * sizeof(wchar_t));
 	return dest;
 }
 
 noregparm wchar_t *WIN_FUNC(_win_wcscpy,2)
 	(wchar_t *dest, const wchar_t *src)
 {
-	SIZE_T i;
-	for (i = 0; src[i] != '\0'; i++)
-		dest[i] = src[i];
-	dest[i] = src[i];
+	wchar_t *d = dest;
+	while ((*d++ = *src++))
+	       ;
 	return dest;
 }
 
 noregparm wchar_t *WIN_FUNC(_win_wcscat,2)
 	(wchar_t *dest, const wchar_t *src)
 {
-	SIZE_T i;
-	wchar_t *destend;
-	for (i = 0; dest[i] != '\0'; i++)
+	wchar_t *d;
+	d = dest;
+	while (*d)
+		d++;
+	while ((*d++ = *src++))
 		;
-	destend = &dest[i];
-	for (i = 0; src[i] != '\0'; i++)
-		destend[i] = src[i];
-	destend[i] = '\0';
 	return dest;
 }
 
@@ -1018,4 +1019,4 @@ void dump_bytes(const char *ctx, const u8 *from, int len)
 	kfree(buf);
 }
 
-#include "misc_funcs_exports.h"
+#include "crtl_exports.h"

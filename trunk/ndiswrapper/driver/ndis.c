@@ -1036,18 +1036,20 @@ wstdcall void WIN_FUNC(NdisAllocateBuffer,5)
 		TRACEEXIT4(return);
 	}
 	irql = nt_spin_lock_irql(&pool->lock, DISPATCH_LEVEL);
-	if (pool->num_allocated_descr > pool->max_descr)
-		DBGTRACE4("pool %p is full: %d(%d)", pool,
-			  pool->num_allocated_descr, pool->max_descr);
+	DBG_BLOCK(2) {
+		if (pool->num_allocated_descr > pool->max_descr)
+			WARNING("pool %p is full: %d(%d)", pool,
+				pool->num_allocated_descr, pool->max_descr);
+	}
 	if (pool->free_descr) {
 		typeof(descr->flags) flags;
 		descr = pool->free_descr;
 		pool->free_descr = descr->next;
 		flags = descr->flags;
-		memset(descr, 0, sizeof(*descr));
 		MmInitializeMdl(descr, virt, length);
 		if (flags & MDL_CACHE_ALLOCATED)
 			descr->flags = MDL_CACHE_ALLOCATED;
+		descr->flags |= MDL_SOURCE_IS_NONPAGED_POOL;
 	} else {
 		nt_spin_unlock_irql(&pool->lock, irql);
 		descr = allocate_init_mdl(virt, length);
@@ -1060,10 +1062,10 @@ wstdcall void WIN_FUNC(NdisAllocateBuffer,5)
 			  descr, virt, length);
 		irql = nt_spin_lock_irql(&pool->lock, DISPATCH_LEVEL);
 		pool->num_allocated_descr++;
+		MmBuildMdlForNonPagedPool(descr);
 	}
-	MmBuildMdlForNonPagedPool(descr);
-	/* NdisFreeBuffer doesn't pass pool, so we store pool
-	 * in unused field 'process' */
+	/* NdisFreeBuffer doesn't pass pool, so we store pool in
+	 * unused field 'process' */
 	descr->process = pool;
 	nt_spin_unlock_irql(&pool->lock, irql);
 	*buffer = descr;
