@@ -1,7 +1,7 @@
 DISTFILES=divdi3.c hal.c iw_ndis.c iw_ndis.h loader.c loader.h \
-		longlong.h Makefile crtl.c ndis.c ndis.h \
+		longlong.h Makefile crt.c ndis.c ndis.h \
 		ndiswrapper.h ntoskernel.c ntoskernel.h ntoskernel_io.c \
-		pe_linker.c pe_linker.h pnp.c pnp.h proc.c usb.c usb.h \
+		pe_linker.c pe_linker.h pnp.c pnp.h proc.c rtl.c usb.c usb.h \
 		winnt_types.h workqueue.c wrapmem.h wrapmem.c wrapper.c \
 		wrapndis.h wrapndis.c lin2win.h win2lin_stubs.S
 
@@ -85,8 +85,8 @@ endif
 
 all : prereq_check win2lin_stubs.h gen_exports default stack_check
 
-OBJS := hal.o iw_ndis.o loader.o crtl.o ndis.o \
-	    ntoskernel.o ntoskernel_io.o pe_linker.o pnp.o proc.o \
+OBJS := hal.o iw_ndis.o loader.o crt.o ndis.o \
+	    ntoskernel.o ntoskernel_io.o pe_linker.o pnp.o proc.o rtl.o \
 		wrapmem.o wrapndis.o wrapper.o
 
 # by default, USB layer is compiled in if USB support is in kernel;
@@ -128,7 +128,7 @@ iw_ndis.o: iw_ndis.c iw_ndis.h wrapndis.h
 
 loader.o: loader.c loader.h ndis.h wrapndis.h
 
-crtl.o: crtl.c ndis.h
+crt.o: crt.c ndis.h
 
 ndis.o: ndis.c ndis.h iw_ndis.h wrapndis.h
 
@@ -144,26 +144,29 @@ pnp.o: pnp.c
 
 proc.o: proc.c ndis.h iw_ndis.h wrapndis.h
 
+rtl.o: rtl.c ndis.h
+
 usb.o: usb.c usb.h ndis.h
 
 wrapper.o: wrapper.c wrapndis.h iw_ndis.h ntoskernel.h loader.h
 
 hal_exports.h: hal.c
-crtl_exports.h: crtl.c
+crt_exports.h: crt.c
 ndis_exports.h: ndis.c
 ntoskernel_exports.h: ntoskernel.c
 ntoskernel_io_exports.h: ntoskernel_io.c
+rtl_exports.h: rtl.c
 
 ifeq ($(CONFIG_X86_64),y)
 OBJS += win2lin_stubs.o
 win2lin_stubs.o: win2lin_stubs.h win2lin_stubs.S
 
 ifdef DISABLE_USB
-win2lin_stubs.h: hal.c crtl.c ndis.c ntoskernel.c ntoskernel_io.c \
-	pnp.c wrapndis.c
+win2lin_stubs.h: hal.c crt.c ndis.c ntoskernel.c ntoskernel_io.c \
+	pnp.c rtl.c wrapndis.c
 else
-win2lin_stubs.h: hal.c crtl.c ndis.c ntoskernel.c ntoskernel_io.c \
-	pnp.c usb.c wrapndis.c
+win2lin_stubs.h: hal.c crt.c ndis.c ntoskernel.c ntoskernel_io.c \
+	pnp.c rtl.c usb.c wrapndis.c
 endif
 	for file in $^; do \
 		echo; \
@@ -206,8 +209,8 @@ endif
 		echo "};"; \
 	fi > $@
 
-gen_exports: ndis_exports.h hal_exports.h ntoskernel_exports.h \
-			 ntoskernel_io_exports.h crtl_exports.h usb_exports.h
+gen_exports: crt_exports.h ndis_exports.h hal_exports.h ntoskernel_exports.h \
+			 ntoskernel_io_exports.h rtl_exports.h usb_exports.h
 
 prereq_check:
 	@if [ ! -f $(KBUILD)/include/linux/version.h ]; then \

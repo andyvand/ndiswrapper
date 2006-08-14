@@ -144,8 +144,8 @@ wstdcall void IoQueueThreadIrp(struct irp *irp)
 	thread = get_current_nt_thread();
 	if (thread) {
 		IOTRACE("thread: %p, task: %p", thread, thread->task);
-		irql = nt_spin_lock_irql(&thread->lock, DISPATCH_LEVEL);
 		irp->flags |= IRP_SYNCHRONOUS_API;
+		irql = nt_spin_lock_irql(&thread->lock, DISPATCH_LEVEL);
 		InsertTailList(&thread->irps, &irp->threads);
 		IoIrpThread(irp) = thread;
 		nt_spin_unlock_irql(&thread->lock, irql);

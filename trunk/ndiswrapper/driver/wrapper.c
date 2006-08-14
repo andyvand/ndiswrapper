@@ -75,7 +75,8 @@ static void module_cleanup(void)
 	wrap_procfs_remove();
 	ndis_exit();
 	ntoskernel_exit();
-	crtl_exit();
+	crt_exit();
+	rtl_exit();
 	wrapmem_exit();
 }
 
@@ -109,7 +110,7 @@ static int __init wrapper_init(void)
 #ifdef USE_OWN_WORKQUEUE
 	wrap_wq = create_singlethread_workqueue("wrap_wq");
 #endif
-	if (crtl_init() || ntoskernel_init() || ndis_init()
+	if (crt_init() || rtl_init() || ntoskernel_init() || ndis_init()
 #ifdef CONFIG_USB
 	    || usb_init()
 #endif

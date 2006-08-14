@@ -279,7 +279,12 @@ struct mdl {
 	struct mdl *next;
 	CSHORT size;
 	CSHORT flags;
-	void *process;
+	/* NdisFreeBuffer doesn't pass pool, so we store pool in
+	 * unused field 'process' */
+	union {
+		void *process;
+		void *pool;
+	};
 	void *mappedsystemva;
 	void *startva;
 	ULONG bytecount;
