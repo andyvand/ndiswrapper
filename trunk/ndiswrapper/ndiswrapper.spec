@@ -4,7 +4,7 @@
 
 # Define kernel version if not already defined
 %{!?kernel: %define kernel %(uname -r)}
-%{!?ksrc: %define ksrc /lib/modules/%{kernel}/build}
+%{!?ksrc: %define ksrc /lib/modules/%{kernel}/source}
 %{!?_inst_dir: %define _inst_dir /lib/modules/%{kernel}/misc}
 
 %define _sbinrootdir /sbin
