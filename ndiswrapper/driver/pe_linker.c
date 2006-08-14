@@ -71,7 +71,7 @@ static const char *image_directory_name[] = {
 
 #ifndef TEST_LOADER
 extern struct wrap_export ntoskernel_exports[], ntoskernel_io_exports[],
-       ndis_exports[], crtl_exports[], hal_exports[];
+	ndis_exports[], crt_exports[], hal_exports[], rtl_exports[];
 #ifdef CONFIG_USB
 extern struct wrap_export usb_exports[];
 #endif
@@ -92,13 +92,17 @@ static char *get_export(char *name)
 		if (strcmp(ndis_exports[i].name, name) == 0)
 			return (char *)ndis_exports[i].func;
 
-	for (i = 0 ; crtl_exports[i].name != NULL; i++)
-		if (strcmp(crtl_exports[i].name, name) == 0)
-			return (char *)crtl_exports[i].func;
+	for (i = 0 ; crt_exports[i].name != NULL; i++)
+		if (strcmp(crt_exports[i].name, name) == 0)
+			return (char *)crt_exports[i].func;
 
 	for (i = 0 ; hal_exports[i].name != NULL; i++)
 		if (strcmp(hal_exports[i].name, name) == 0)
 			return (char *)hal_exports[i].func;
+
+	for (i = 0 ; rtl_exports[i].name != NULL; i++)
+		if (strcmp(rtl_exports[i].name, name) == 0)
+			return (char *)rtl_exports[i].func;
 
 #ifdef CONFIG_USB
 	for (i = 0 ; usb_exports[i].name != NULL; i++)

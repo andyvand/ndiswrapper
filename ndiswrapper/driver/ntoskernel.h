@@ -581,8 +581,10 @@ int usb_init_device(struct wrap_device *wd);
 void usb_exit_device(struct wrap_device *wd);
 void usb_cancel_pending_urbs(void);
 
-int crtl_init(void);
-void crtl_exit(void);
+int crt_init(void);
+void crt_exit(void);
+int rtl_init(void);
+void rtl_exit(void);
 int wrap_procfs_init(void);
 void wrap_procfs_remove(void);
 int stricmp(const char *s1, const char *s2);
@@ -912,6 +914,22 @@ do {									\
 
 #define post_atomic_add(var, i) (pre_atomic_add(var, i) + i)
 
+#define atomic_insert_list_head(head, oldhead, newhead)			\
+	do {								\
+		oldhead = head;						\
+	} while (cmpxchg(&(head), oldhead, newhead) != oldhead)
+
+#define atomic_remove_list_head(head, newhead)				\
+({									\
+	typeof(head) oldhead;						\
+	do {								\
+		oldhead = head;						\
+		if (!oldhead)						\
+			break;						\
+	} while (cmpxchg(&(head), oldhead, newhead) != oldhead);	\
+	oldhead;							\
+})
+
 static inline ULONG SPAN_PAGES(void *ptr, SIZE_T length)
 {
 	ULONG n;
@@ -956,23 +974,18 @@ static inline struct nt_slist *PopEntrySList(nt_slist_header *head,
 
 #else
 
-#ifndef ll_low
-#define ll_low(x) *(((u32 *)&(x)) + 0)
-#define ll_high(x) *(((u32 *)&(x)) + 1)
-#endif
+#define u64_low_32(x) ((unsigned long)x)
+#define u64_high_32(x) ((unsigned long)(x >> 32))
 
-static inline u64 cmpxchg8b(volatile void *ptr, u64 old, u64 new)
+static inline u64 cmpxchg8b(volatile u64 *ptr, u64 old, u64 new)
 {
 	u64 prev;
 
 	__asm__ __volatile__(
 		"\n"
-		LOCK_PREFIX "cmpxchg8b (%0)\n"
-		: "+r" (ptr),
-		  "=a" (ll_low(prev)), "=d" (ll_high(prev))
-		: "a" (ll_low(old)), "d" (ll_high(old)),
-		  "b" (ll_low(new)), "c" (ll_high(new))
-		: "cc");
+		LOCK_PREFIX "cmpxchg8b %0\n"
+		: "+m" (*ptr), "=A" (prev)
+		: "A" (old), "b" (u64_low_32(new)), "c" (u64_high_32(new)));
 	return prev;
 }
 

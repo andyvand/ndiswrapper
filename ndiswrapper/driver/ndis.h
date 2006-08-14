@@ -803,12 +803,12 @@ struct wrap_ndis_device {
 	u8 tx_ring_end;
 	u8 is_tx_ring_full;
 	struct semaphore tx_ring_mutex;
-	ULONG max_tx_packets;
+	unsigned int max_tx_packets;
 	u8 tx_ok;
 	struct semaphore ndis_comm_mutex;
 	wait_queue_head_t ndis_comm_wq;
-	short ndis_comm_done;
-	short ndis_comm_status;
+	s8 ndis_comm_done;
+	NDIS_STATUS ndis_comm_status;
 	ULONG packet_filter;
 
 	BOOLEAN use_sg_dma;

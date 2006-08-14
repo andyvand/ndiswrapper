@@ -611,11 +611,11 @@ wfastcall void WIN_FUNC(ExInterlockedAddLargeStatistic,2)
 		"   movl %%edx, %%ecx\n\t"
 		"   addl %%eax, %%ebx\n\t"
 		"   adcl $0, %%ecx\n\t"
-		    LOCK_PREFIX "cmpxchg8b (%0)\n\t"
+		    LOCK_PREFIX "cmpxchg8b %0\n\t"
 		"   jnz 1b\n\t"
-		: "+r" (plint)
-		: "m" (n), "a" (ll_low(*plint)), "d" (ll_high(*plint))
-		: "ebx", "ecx", "cc");
+		: "+m" (*plint)
+		: "m" (n), "A" (*plint)
+		: "ebx", "ecx");
 #endif
 	restore_local_irq(flags);
 }
@@ -2096,10 +2096,10 @@ void free_mdl(struct mdl *mdl)
 	 * with IoFreeMdl (e.g., 64-bit Broadcom). Since we need to
 	 * treat buffers allocated with Ndis calls differently, we
 	 * must call NdisFreeBuffer if it is allocated with Ndis
-	 * function. We set 'process' field in Ndis functions. */
+	 * function. We set 'pool' field in Ndis functions. */
 	if (!mdl)
 		return;
-	if (mdl->process)
+	if (mdl->pool)
 		NdisFreeBuffer(mdl);
 	else {
 		struct wrap_mdl *wrap_mdl;

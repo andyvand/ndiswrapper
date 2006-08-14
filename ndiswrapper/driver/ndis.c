@@ -1027,7 +1027,6 @@ wstdcall void WIN_FUNC(NdisAllocateBuffer,5)
 	 struct ndis_buffer_pool *pool, void *virt, UINT length)
 {
 	ndis_buffer *descr;
-	KIRQL irql;
 
 	TRACEENTER4("pool: %p, allocated: %d",
 		    pool, pool->num_allocated_descr);
@@ -1035,23 +1034,20 @@ wstdcall void WIN_FUNC(NdisAllocateBuffer,5)
 		*status = NDIS_STATUS_FAILURE;
 		TRACEEXIT4(return);
 	}
-	irql = nt_spin_lock_irql(&pool->lock, DISPATCH_LEVEL);
 	DBG_BLOCK(2) {
 		if (pool->num_allocated_descr > pool->max_descr)
 			WARNING("pool %p is full: %d(%d)", pool,
 				pool->num_allocated_descr, pool->max_descr);
 	}
-	if (pool->free_descr) {
+	descr = atomic_remove_list_head(pool->free_descr, oldhead->next);
+	if (descr) {
 		typeof(descr->flags) flags;
-		descr = pool->free_descr;
-		pool->free_descr = descr->next;
 		flags = descr->flags;
 		MmInitializeMdl(descr, virt, length);
 		if (flags & MDL_CACHE_ALLOCATED)
 			descr->flags = MDL_CACHE_ALLOCATED;
 		descr->flags |= MDL_SOURCE_IS_NONPAGED_POOL;
 	} else {
-		nt_spin_unlock_irql(&pool->lock, irql);
 		descr = allocate_init_mdl(virt, length);
 		if (!descr) {
 			WARNING("couldn't allocate buffer");
@@ -1060,14 +1056,10 @@ wstdcall void WIN_FUNC(NdisAllocateBuffer,5)
 		}
 		DBGTRACE4("allocated buffer %p for %p, %d",
 			  descr, virt, length);
-		irql = nt_spin_lock_irql(&pool->lock, DISPATCH_LEVEL);
-		pool->num_allocated_descr++;
+		atomic_inc_var(pool->num_allocated_descr);
 		MmBuildMdlForNonPagedPool(descr);
 	}
-	/* NdisFreeBuffer doesn't pass pool, so we store pool in
-	 * unused field 'process' */
-	descr->process = pool;
-	nt_spin_unlock_irql(&pool->lock, irql);
+	descr->pool = pool;
 	*buffer = descr;
 	*status = NDIS_STATUS_SUCCESS;
 	DBGTRACE4("buffer: %p", descr);
@@ -1078,32 +1070,26 @@ wstdcall void WIN_FUNC(NdisFreeBuffer,1)
 	(ndis_buffer *descr)
 {
 	struct ndis_buffer_pool *pool;
-	KIRQL irql;
 
 	TRACEENTER4("descr: %p", descr);
 	if (!descr) {
 		ERROR("buffer is NULL");
 		TRACEEXIT4(return);
 	}
-	pool = descr->process;
+	pool = descr->pool;
 	if (!pool) {
 		ERROR("pool for descriptor %p is invalid", descr);
 		TRACEEXIT4(return);
 	}
-	irql = nt_spin_lock_irql(&pool->lock, DISPATCH_LEVEL);
 	if (pool->num_allocated_descr > MAX_ALLOCATED_NDIS_BUFFERS) {
-		/* NB NB NB: set mdl's 'process' field to NULL before
+		/* NB NB NB: set mdl's 'pool' field to NULL before
 		 * calling free_mdl; otherwise free_mdl calls
 		 * NdisFreeBuffer causing deadlock (for spinlock) */
-		pool->num_allocated_descr--;
-		descr->process = NULL;
-		nt_spin_unlock_irql(&pool->lock, irql);
+		atomic_dec_var(pool->num_allocated_descr);
+		descr->pool = NULL;
 		free_mdl(descr);
-	} else {
-		descr->next = pool->free_descr;
-		pool->free_descr = descr;
-		nt_spin_unlock_irql(&pool->lock, irql);
-	}
+	} else
+		atomic_insert_list_head(pool->free_descr, descr->next, descr);
 	TRACEEXIT4(return);
 }
 
@@ -1122,7 +1108,7 @@ wstdcall void WIN_FUNC(NdisFreeBufferPool,1)
 	cur = pool->free_descr;
 	while (cur) {
 		next = cur->next;
-		cur->process = NULL;
+		cur->pool = NULL;
 		free_mdl(cur);
 		cur = next;
 	}
@@ -1407,14 +1393,7 @@ wstdcall void WIN_FUNC(NdisFreePacketPool,1)
 wstdcall UINT WIN_FUNC(NdisPacketPoolUsage,1)
 	(struct ndis_packet_pool *pool)
 {
-	UINT i;
-	KIRQL irql;
-
-	TRACEENTER4("");
-	irql = nt_spin_lock_irql(&pool->lock, DISPATCH_LEVEL);
-	i = pool->num_used_descr;
-	nt_spin_unlock_irql(&pool->lock, irql);
-	TRACEEXIT4(return i);
+	TRACEEXIT4(return pool->num_used_descr);
 }
 
 wstdcall void WIN_FUNC(NdisAllocatePacket,3)
@@ -1423,49 +1402,40 @@ wstdcall void WIN_FUNC(NdisAllocatePacket,3)
 {
 	struct ndis_packet *ndis_packet;
 	int packet_length;
-	KIRQL irql;
 
 	TRACEENTER4("pool: %p", pool);
 	if (!pool) {
 		*status = NDIS_STATUS_RESOURCES;
 		TRACEEXIT4(return);
 	}
-	/* packet has space for 1 byte in protocol_reserved field */
-	packet_length = sizeof(*ndis_packet) - 1 + pool->proto_rsvd_length +
-		sizeof(struct ndis_packet_oob_data);
-	irql = nt_spin_lock_irql(&pool->lock, DISPATCH_LEVEL);
 	DBG_BLOCK(2) {
 		if (pool->num_used_descr >= pool->max_descr)
 			WARNING("pool %p is full: %d(%d)", pool,
 				pool->num_used_descr, pool->max_descr);
 	}
-	if (pool->free_descr) {
-		struct ndis_packet_oob_data *oob_data;
-		ndis_packet = pool->free_descr;
-		oob_data = NDIS_PACKET_OOB_DATA(ndis_packet);
-		pool->free_descr = oob_data->next;
-		DBGTRACE3("packet: %p", ndis_packet);
-	} else {
-		nt_spin_unlock_irql(&pool->lock, irql);
+	/* packet has space for 1 byte in protocol_reserved field */
+	packet_length = sizeof(*ndis_packet) - 1 + pool->proto_rsvd_length +
+		sizeof(struct ndis_packet_oob_data);
+	ndis_packet =
+		atomic_remove_list_head(pool->free_descr,
+					(NDIS_PACKET_OOB_DATA(oldhead))->next);
+	if (!ndis_packet) {
 		ndis_packet = kmalloc(packet_length, gfp_irql());
 		if (!ndis_packet) {
 			WARNING("couldn't allocate packet");
 			*status = NDIS_STATUS_RESOURCES;
 			return;
 		}
-		DBGTRACE3("packet: %p", ndis_packet);
-		irql = nt_spin_lock_irql(&pool->lock, DISPATCH_LEVEL);
-		pool->num_allocated_descr++;
+		atomic_inc_var(pool->num_allocated_descr);
 	}
-	pool->num_used_descr++;
+	DBGTRACE3("packet: %p", ndis_packet);
+	atomic_inc_var(pool->num_used_descr);
 	memset(ndis_packet, 0, packet_length);
 	ndis_packet->private.oob_offset = packet_length -
 		sizeof(struct ndis_packet_oob_data);
-	ndis_packet->private.packet_flags =
-		fPACKET_ALLOCATED_BY_NDIS;
-//		fPACKET_ALLOCATED_BY_NDIS | NDIS_PROTOCOL_ID_TCP_IP;
+	ndis_packet->private.packet_flags = fPACKET_ALLOCATED_BY_NDIS;
+//		| NDIS_PROTOCOL_ID_TCP_IP;
 	ndis_packet->private.pool = pool;
-	nt_spin_unlock_irql(&pool->lock, irql);
 
 	*status = NDIS_STATUS_SUCCESS;
 	*packet = ndis_packet;
@@ -1484,7 +1454,6 @@ wstdcall void WIN_FUNC(NdisFreePacket,1)
 	(struct ndis_packet *descr)
 {
 	struct ndis_packet_pool *pool;
-	KIRQL irql;
 
 	TRACEENTER3("packet: %p, pool: %p", descr, descr->private.pool);
 	pool = descr->private.pool;
@@ -1492,20 +1461,14 @@ wstdcall void WIN_FUNC(NdisFreePacket,1)
 		ERROR("pool for descriptor %p is invalid", descr);
 		TRACEEXIT4(return);
 	}
-	irql = nt_spin_lock_irql(&pool->lock, DISPATCH_LEVEL);
-	pool->num_used_descr--;
+	atomic_dec_var(pool->num_used_descr);
 	if (pool->num_allocated_descr > MAX_ALLOCATED_NDIS_PACKETS) {
-		pool->num_allocated_descr--;
-		nt_spin_unlock_irql(&pool->lock, irql);
 		kfree(descr);
+		atomic_dec_var(pool->num_allocated_descr);
 	} else {
 		struct ndis_packet_oob_data *oob_data;
 		oob_data = NDIS_PACKET_OOB_DATA(descr);
-		descr->private.buffer_head = NULL;
-		descr->private.valid_counts = FALSE;
-		oob_data->next = pool->free_descr;
-		pool->free_descr = descr;
-		nt_spin_unlock_irql(&pool->lock, irql);
+		atomic_insert_list_head(pool->free_descr, oob_data->next, descr);
 	}
 	TRACEEXIT4(return);
 }
