@@ -983,7 +983,7 @@ sub loadinf {
 
 	$s =~ s/\s*$//;	#Remove trailing whitespace and \r
 	$s .= "\n";
-	if ($s =~ /^\[(.+)\]/) {
+	if ($s =~ /^[ \t]*\[(.+)\]/) {
 	    $sections[$i++] = $section;		
 	    my %new_section;
 	    $section = \%new_section;
