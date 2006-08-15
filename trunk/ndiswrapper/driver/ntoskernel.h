@@ -16,8 +16,6 @@
 #ifndef _NTOSKERNEL_H_
 #define _NTOSKERNEL_H_
 
-#define UTILS_VERSION "1.8"
-
 #include <linux/types.h>
 #include <linux/timer.h>
 #include <linux/time.h>
