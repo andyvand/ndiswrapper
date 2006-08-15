@@ -299,37 +299,37 @@ noregparm int WIN_FUNC(_win_isprint,1)
 }
 
 #ifndef CONFIG_X86_64
-noregparm s64 WIN_FUNC(_alldiv,2)
+wstdcall s64 WIN_FUNC(_alldiv,2)
 	(s64 a, s64 b)
 {
 	return (a / b);
 }
 
-noregparm u64 WIN_FUNC(_aulldiv,2)
+wstdcall u64 WIN_FUNC(_aulldiv,2)
 	(u64 a, u64 b)
 {
 	return (a / b);
 }
 
-noregparm s64 WIN_FUNC(_allmul,2)
+wstdcall s64 WIN_FUNC(_allmul,2)
 	(s64 a, s64 b)
 {
 	return (a * b);
 }
 
-noregparm u64 WIN_FUNC(_aullmul,2)
+wstdcall u64 WIN_FUNC(_aullmul,2)
 	(u64 a, u64 b)
 {
 	return (a * b);
 }
 
-noregparm s64 WIN_FUNC(_allrem,2)
+wstdcall s64 WIN_FUNC(_allrem,2)
 	(s64 a, s64 b)
 {
 	return (a % b);
 }
 
-noregparm u64 WIN_FUNC(_aullrem,2)
+wstdcall u64 WIN_FUNC(_aullrem,2)
 	(u64 a, u64 b)
 {
 	return (a % b);
@@ -374,7 +374,7 @@ noregparm int WIN_FUNC(rand,0)
 
 int stricmp(const char *s1, const char *s2)
 {
-	while (*s1 && *s2 && tolower(*s1) == tolower(*s2)) {
+	while (*s1 && tolower(*s1) == tolower(*s2)) {
 		s1++;
 		s2++;
 	}
