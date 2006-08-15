@@ -354,7 +354,7 @@ static int iw_set_freq(struct net_device *dev, struct iw_request_info *info,
 				  &req, sizeof(req));
 	if (res) {
 		WARNING("getting configuration failed (%08X)", res);
-		TRACEEXIT2(return -EOPNOTSUPP);
+		TRACEEXIT2(return 0);
 	}
 
 	if (wrqu->freq.m < 1000 && wrqu->freq.e == 0) {
@@ -365,17 +365,14 @@ static int iw_set_freq(struct net_device *dev, struct iw_request_info *info,
 			return -EINVAL;
 	} else {
 		int i;
-		for (req.ds_config = wrqu->freq.m, i = wrqu->freq.e ;
-		     i > 0 ; i--)
+		for (req.ds_config = wrqu->freq.m, i = wrqu->freq.e; i > 0; i--)
 			req.ds_config *= 10;
 		req.ds_config /= 1000;
 	}
 	res = miniport_set_info(wnd, OID_802_11_CONFIGURATION, &req,
 				sizeof(req));
-	if (res) {
+	if (res)
 		WARNING("setting configuration failed (%08X)", res);
-		return -EINVAL;
-	}
 	return 0;
 }
 
