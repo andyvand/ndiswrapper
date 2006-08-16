@@ -13,14 +13,6 @@
  *
  */
 
-#include <linux/types.h>
-#include <linux/module.h>
-#include <linux/delay.h>
-#include <asm/io.h>
-#include <linux/ctype.h>
-#include <linux/net.h>
-#include <linux/list.h>
-
 #include "ndis.h"
 
 int rtl_init(void)
@@ -502,14 +494,17 @@ wstdcall NTSTATUS WIN_FUNC(RtlGUIDFromString,2)
 	struct ansi_string ansi;
 	NTSTATUS ret;
 	int i, j, k, l, m;
-	if (guid_string->length != 37 || guid_string->buf[0] != '{' ||
-	    guid_string->buf[36] != '}' || guid_string->buf[9] != '-' ||
-	    guid_string->buf[14] != '-' || guid_string->buf[19] != '-' ||
-	    guid_string->buf[24] != '-')
-		TRACEEXIT2(return STATUS_INVALID_PARAMETER);
-	ret = RtlUnicodeStringToAnsiString(&ansi, guid_string, FALSE);
+
+	ret = RtlUnicodeStringToAnsiString(&ansi, guid_string, TRUE);
 	if (ret != STATUS_SUCCESS)
 		return ret;
+	if (ansi.length != 37 || ansi.buf[0] != '{' ||
+	    ansi.buf[36] != '}' || ansi.buf[9] != '-' ||
+	    ansi.buf[14] != '-' || ansi.buf[19] != '-' ||
+	    ansi.buf[24] != '-') {
+		RtlFreeAnsiString(&ansi);
+		TRACEEXIT2(return STATUS_INVALID_PARAMETER);
+	}
 	memcpy(&guid->data4, &ansi.buf[29], sizeof(guid->data3));
 	/* set end of data3 for scanf */
 	ansi.buf[29] = 0;
