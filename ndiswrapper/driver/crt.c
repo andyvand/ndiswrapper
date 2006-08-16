@@ -13,14 +13,6 @@
  *
  */
 
-#include <linux/types.h>
-#include <linux/module.h>
-#include <linux/delay.h>
-#include <asm/io.h>
-#include <linux/ctype.h>
-#include <linux/net.h>
-#include <linux/list.h>
-
 #include "ndis.h"
 
 int crt_init(void)
@@ -266,7 +258,6 @@ noregparm void *WIN_FUNC(_win_memchr,3)
 	return memchr(s, c, n);
 }
 
-/* memcpy and memset are macros so we can't map them */
 noregparm void *WIN_FUNC(_win_memcpy,3)
 	(void *to, const void *from, SIZE_T n)
 {
@@ -283,6 +274,18 @@ noregparm void WIN_FUNC(_win_srand,1)
 	(UINT seed)
 {
 	net_srandom(seed);
+}
+
+noregparm int WIN_FUNC(rand,0)
+	(void)
+{
+	char buf[6];
+	int i, n;
+
+	get_random_bytes(buf, sizeof(buf));
+	for (n = i = 0; i < sizeof(buf) ; i++)
+		n += buf[i];
+	return n;
 }
 
 noregparm int WIN_FUNC(_win_atoi,1)
@@ -359,18 +362,6 @@ __attribute__((regparm(3))) u64 WIN_FUNC(_aullshr,2)
 	return (a >> b);
 }
 #endif
-
-noregparm int WIN_FUNC(rand,0)
-	(void)
-{
-	char buf[6];
-	int i, r;
-
-	get_random_bytes(buf, sizeof(buf));
-	for (r = i = 0; i < sizeof(buf) ; i++)
-		r += buf[i];
-	return r;
-}
 
 int stricmp(const char *s1, const char *s2)
 {
