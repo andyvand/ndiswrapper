@@ -560,8 +560,7 @@ wstdcall void WIN_FUNC(NdisWriteConfiguration,4)
 		else {
 			*status = NDIS_STATUS_SUCCESS;
 			nt_spin_lock(&loader_lock);
-			InsertTailList(&nmb->wnd->wd->settings,
-				       &setting->list);
+			InsertTailList(&nmb->wnd->wd->settings, &setting->list);
 			nt_spin_unlock(&loader_lock);
 		}
 	} else
