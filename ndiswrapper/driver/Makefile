@@ -168,7 +168,7 @@ else
 win2lin_stubs.h: hal.c crt.c ndis.c ntoskernel.c ntoskernel_io.c \
 	pnp.c rtl.c usb.c wrapndis.c
 endif
-	for file in $^; do \
+	@for file in $^; do \
 		echo; \
 		echo "# automatically generated from $$file"; \
 		sed -n \

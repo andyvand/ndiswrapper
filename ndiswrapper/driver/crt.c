@@ -13,7 +13,7 @@
  *
  */
 
-#include "ndis.h"
+#include "ntoskernel.h"
 
 int crt_init(void)
 {
@@ -301,7 +301,6 @@ noregparm int WIN_FUNC(_win_isprint,1)
 	return isprint(c);
 }
 
-#ifndef CONFIG_X86_64
 wstdcall s64 WIN_FUNC(_alldiv,2)
 	(s64 a, s64 b)
 {
@@ -361,7 +360,6 @@ __attribute__((regparm(3))) u64 WIN_FUNC(_aullshr,2)
 {
 	return (a >> b);
 }
-#endif
 
 int stricmp(const char *s1, const char *s2)
 {

@@ -13,7 +13,7 @@
  *
  */
 
-#include "ndis.h"
+#include "ntoskernel.h"
 
 int rtl_init(void)
 {
