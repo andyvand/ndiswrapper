@@ -773,8 +773,10 @@ static inline void lower_irql(KIRQL oldirql)
 {
 	KIRQL irql = current_irql();
 	DBGTRACE5("%d, %d", irql, oldirql);
-	if (irql < oldirql)
-		ERROR("invalid irql: %d < %d", irql, oldirql);
+	DBG_BLOCK(2) {
+		if (irql < oldirql)
+			ERROR("invalid irql: %d < %d", irql, oldirql);
+	}
 	if (oldirql < DISPATCH_LEVEL && irql == DISPATCH_LEVEL) {
 		preempt_enable();
 		local_bh_enable();
@@ -815,9 +817,8 @@ static inline void nt_spin_lock(volatile NT_SPIN_LOCK *lock)
 		"  jne 2b\n\t"
 		"  jmp 1b\n"
 		"3:\n\t"
-		: "=m" (*lock)
-		: "r" (NT_SPIN_LOCK_LOCKED), "i" (NT_SPIN_LOCK_UNLOCKED),
-		  "m" (*lock));
+		: "+m" (*lock)
+		: "r" (NT_SPIN_LOCK_LOCKED), "i" (NT_SPIN_LOCK_UNLOCKED));
 }
 
 static inline void nt_spin_unlock(volatile NT_SPIN_LOCK *lock)
@@ -875,19 +876,19 @@ do {									\
 		if (size == 1)					\
 			__asm__ __volatile__(			\
 				LOCK_PREFIX oper "b %b0\n\t"	\
-				: "=m" (var) : "m" (var));	\
+				: "+m" (var));			\
 		else if (size == 2)				\
 			__asm__ __volatile__(			\
 				LOCK_PREFIX oper "w %w0\n\t"	\
-				: "=m" (var) : "m" (var));	\
+				: "+m" (var));			\
 		else if (size == 4)				\
 			__asm__ __volatile__(			\
 				LOCK_PREFIX oper "l %0\n\t"	\
-				: "=m" (var) : "m" (var));	\
+				: "+m" (var));			\
 		else if (size == 8)				\
 			__asm__ __volatile__(			\
 				LOCK_PREFIX oper "q %q0\n\t"	\
-				: "=m" (var) : "m" (var));	\
+				: "+m" (var));			\
 		else						\
 			ERROR("invalid size %d", (int)size);	\
 	} while (0)
@@ -905,8 +906,8 @@ do {									\
 	typeof(var) pre;					\
 	__asm__ __volatile__(					\
 		LOCK_PREFIX "xadd %0, %1\n\t"			\
-		: "=r"(pre), "=m"(var)				\
-		: "0"(i), "m" (var));				\
+		: "=r"(pre), "+m"(var)				\
+		: "0"(i));					\
 	pre;							\
 })
 
