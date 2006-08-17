@@ -752,9 +752,10 @@ static inline KIRQL current_irql(void)
 {
 	if (in_irq() || irqs_disabled())
 		TRACEEXIT5(return DEVICE_LEVEL);
-	if (in_atomic())
+	else if (in_atomic())
 		TRACEEXIT5(return DISPATCH_LEVEL);
-	TRACEEXIT5(return PASSIVE_LEVEL);
+	else
+		TRACEEXIT5(return PASSIVE_LEVEL);
 }
 
 static inline KIRQL raise_irql(KIRQL newirql)
