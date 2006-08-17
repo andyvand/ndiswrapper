@@ -378,7 +378,7 @@ typedef u32 pm_message_t;
 	  (((s64)HZ * ((sys_time) - ticks_1601())) / TICKSPERSEC)))
 
 #define MSEC_TO_HZ(ms) ((ms) * HZ / 1000)
-#define USEC_TO_HZ(ms) ((us) * HZ / 1000000)
+#define USEC_TO_HZ(us) ((us) * HZ / 1000000)
 
 extern u64 wrap_ticks_to_boot;
 
