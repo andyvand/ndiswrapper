@@ -349,6 +349,9 @@ static int iw_set_freq(struct net_device *dev, struct iw_request_info *info,
 	struct ndis_configuration req;
 
 	TRACEENTER2("");
+	/* this OID is valid only when not associated */
+	if (netif_carrier_ok(wnd->net_dev))
+		TRACEEXIT2(return 0);
 	memset(&req, 0, sizeof(req));
 	res = miniport_query_info(wnd, OID_802_11_CONFIGURATION,
 				  &req, sizeof(req));
@@ -359,18 +362,19 @@ static int iw_set_freq(struct net_device *dev, struct iw_request_info *info,
 
 	if (wrqu->freq.m < 1000 && wrqu->freq.e == 0) {
 		if (wrqu->freq.m >= 1 &&
-		    wrqu->freq.m <= (sizeof(freq_chan)/sizeof(freq_chan[0])))
+		    wrqu->freq.m <= (sizeof(freq_chan) / sizeof(freq_chan[0])))
 			req.ds_config = freq_chan[wrqu->freq.m - 1] * 1000;
 		else
 			return -EINVAL;
 	} else {
 		int i;
-		for (req.ds_config = wrqu->freq.m, i = wrqu->freq.e; i > 0; i--)
+		req.ds_config = wrqu->freq.m;
+		for (i = wrqu->freq.e; i > 0; i--)
 			req.ds_config *= 10;
 		req.ds_config /= 1000;
 	}
-	res = miniport_set_info(wnd, OID_802_11_CONFIGURATION, &req,
-				sizeof(req));
+	res = miniport_set_info(wnd, OID_802_11_CONFIGURATION,
+				&req, sizeof(req));
 	if (res)
 		WARNING("setting configuration failed (%08X)", res);
 	return 0;
