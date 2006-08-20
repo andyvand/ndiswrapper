@@ -17,8 +17,10 @@
 #*/
 
 use strict;
+use Fcntl ':mode';
 use File::Basename;
 use File::Copy;
+use File::Path;
 
 my $WRAP_PCI_BUS = 5;
 my $WRAP_PCMCIA_BUS = 8;
@@ -62,28 +64,33 @@ my $res;
 my $dbg_file;
 
 $dbg_file = ">/dev/null";
-#$dbg_file = ">/tmp/ndiswrapper.dbg";
+
+if ($ARGV[0] eq "-D") {
+    $dbg_file = ">/tmp/ndiswrapper.dbg";
+    $confdir = "/tmp/ndiswrapper";
+    shift;
+}
 
 open(DBG, $dbg_file) or die "couldn't open $dbg_file: $!";
 
-if($ARGV[0] eq "-i" and @ARGV == 2) {
+if ($ARGV[0] eq "-i" and @ARGV == 2) {
     $res = install($ARGV[1]);
-} elsif($ARGV[0] eq "-d" and @ARGV == 3) {
+} elsif ($ARGV[0] eq "-d" and @ARGV == 3) {
     $res = device_driver($ARGV[1], $ARGV[2]);
-} elsif($ARGV[0] eq "-e" and @ARGV == 2) {
-    $res = rmtree("$confdir/$ARGV[1]", 0, 1);
-} elsif($ARGV[0] eq "-l" and @ARGV == 1) {
+} elsif ($ARGV[0] eq "-e" and @ARGV == 2) {
+    $res = remove_driver($ARGV[1]);
+} elsif ($ARGV[0] eq "-l" and @ARGV == 1) {
     $res = list_drivers();
-} elsif($ARGV[0] eq "-m" and @ARGV == 1) {
+} elsif ($ARGV[0] eq "-m" and @ARGV == 1) {
     $res = modalias();
-} elsif($ARGV[0] eq "-v" and @ARGV == 1) {
+} elsif ($ARGV[0] eq "-v" and @ARGV == 1) {
     printf "utils "; system("/sbin/loadndisdriver -v");
     printf "driver ";
     system("modinfo ndiswrapper | grep -E '^version|^vermagic'");
     $res = 0;
-} elsif($ARGV[0] eq "-da" and @ARGV == 1) {
+} elsif ($ARGV[0] eq "-da" and @ARGV == 1) {
     $res = genmoddevconf(0);
-} elsif($ARGV[0] eq "-di" and @ARGV == 1) {
+} elsif ($ARGV[0] eq "-di" and @ARGV == 1) {
     $res = genmoddevconf(1);
 } else {
     usage();
@@ -91,12 +98,26 @@ if($ARGV[0] eq "-i" and @ARGV == 2) {
 close(DBG);
 exit $res;
 
-sub usage {
-    print "Usage: ndiswrapper OPTION\n\n" .
-      "Manage ndis drivers for ndiswrapper.\n"  .
-	"-i inffile        Install driver described by 'inffile'\n" .
-	"-v                Report version information\n" .
+sub usage() {
+    print "usage: ndiswrapper OPTION\n\n" .
+      "install/manage Windows drivers for ndiswrapper.\n"  .
+	"-i inffile        install driver described by 'inffile'\n" .
+	"-d devid driver   use installed 'driver' for 'devid'\n" .
+	"-e driver         remove 'driver'\n" .
+	"-l                list installed drivers\n" .
+	"-m                write configuration for modprobe\n" .
+	"-da               write module alias configuration for all devices\n" .
+	"-di               write module install configuration for all devices\n" .
+	"-v                report version information\n" .
 	"\n\nwhere 'devid' is either PCIID or USBID of the form XXXX:XXXX\n";
+}
+
+sub remove_driver {
+    my $driver = shift;
+    if (!rmtree("$confdir/$driver", 0, 1)) {
+	warn "couldn't delete $confdir/$driver\n";
+    }
+    return 0;
 }
 
 sub install {
@@ -109,7 +130,9 @@ sub install {
     if (! -d $confdir) {
 	mkdir($confdir) or die "couldn't create $confdir: $!";
     }
-    mkdir($confdir . "/" . $driver_name) or
+    (-d "$confdir/$driver_name") and
+      die "driver $driver_name is already installed\n";
+    mkdir("$confdir/$driver_name") or
       die "couldn't create $confdir/$driver_name: $!";
     print "installing $driver_name ...\n";
     read_sections($inf);
@@ -147,7 +170,7 @@ sub read_sections {
 
 	$line =~ s/^\s*//;
 	$line =~ s/\s*$//;
-	next if length $line == 0;
+	next if (length($line) == 0);
 	if ($line =~ /^\[(.+)\]/) {
 	    $name = $1;
 	    $sections{$name} = ();
@@ -207,8 +230,14 @@ sub parse_models {
 	}
     }
     foreach my $line (@lines) {
+	$line = del_comment($line);
+	next if (length($line) eq 0);
 	(my $dev_desc, my $val) = parse_key_value($line);
 	my @fields = split(",", $val);
+	if (@fields le 1) {
+	    printf "couldn't find install directive: %s\n", $line;
+	    next;
+	}
 	my $install_section = $fields[0];
 	my $hwid = $fields[1];
 	# TODO: deal with compatible IDs as hwid?
@@ -226,10 +255,11 @@ sub parse_install {
      my $subdevice) = @_;
     my @lines = get_section($secn . "." . $os);
     if (@lines eq 0) {
-	@lines = get_section($secn . ".NT");
+	@lines = get_section($secn);
     }
     if (@lines eq 0) {
-	@lines = get_section($secn);
+	printf "couldn't find install section \"%s\"\n", $secn;
+	return -1;
     }
 
     my $filename = "$vendor:$device";
@@ -327,7 +357,7 @@ sub parse_registry {
 	    if ($param_fixlist{"$param|$value"}) {
 		my $orig_value = $value;
 		$value = $param_fixlist{"$param|$value"};
-		print "forcing parameter $param from $orig_value to $value\n";
+		printf "forcing parameter $param from $orig_value to $value\n";
 	    }
 	    printf CONF "%s|%s\n", $param, $value;
 	}
@@ -348,7 +378,7 @@ sub parse_copy_files {
 
 	my @files = split(",", $line);
 	if (@files == 0) {
-	    print DBG "copyfiles section $copy_name has no files\n";
+	    printf DBG "copyfiles section $copy_name has no files\n";
 	    return -1;
 	}
 	my $file;
@@ -359,6 +389,7 @@ sub parse_copy_files {
 	}
 	$file = trim($file);
 	if ($file and length($file) > 0) {
+	    printf DBG "copyfile: %s, %s\n", $copy_name, $file;
 	    copy_file($file);
 	}
     }
@@ -375,6 +406,10 @@ sub copy_file {
 	copy("$src_dir/$real_file", "$confdir/$driver_name/$file") or
 	  warn "couldn't copy \"$real_file\" to \"$confdir/$driver_name\": $!";
 	chmod(0644, "$confdir/$driver_name/$file");
+    } else {
+	warn "couldn't find \"$file\" in \"$src_dir\"; make sure " .
+	  "all driver files, including .inf, .sys (and .bin, if any) " .
+	    "are in \"$src_dir\"\n";
     }
 }
 
@@ -390,7 +425,7 @@ sub get_file {
 	    }
 	}
     } else {
-	print "unable to open $src_dir\n";
+	printf "unable to open \"%s\"\n", $src_dir;
     }
     closedir(DIR);
     return "";
@@ -464,7 +499,7 @@ sub device_driver {
 
     $devid = uc($devid);
     if (!($devid =~ /[0-9A-Z]{4}:[0-9A-Z]{4}/)) {
-	print "'$devid' is not a valid device ID\n";
+	printf "'$devid' is not a valid device ID\n";
 	return 1;
     }
     open(LS, "ls -1 $confdir/$driver/ |") or
@@ -473,7 +508,7 @@ sub device_driver {
 	chomp($f);
 	if ($f =~ /\.([0-9A-F]+).conf$/) {
 	    if (symlink("$f", "$confdir/$driver/$devid.$1.conf")) {
-		print "driver '$driver' is used for '$devid'\n";
+		printf "driver '$driver' is used for '$devid'\n";
 		$done = 1;
 		last;
 	    } else {
@@ -483,7 +518,7 @@ sub device_driver {
     }
     close(LS);
     if ($done == 0) {
-	print "driver '$driver' is not installed (properly)!\n";
+	printf "driver '$driver' is not installed (properly)!\n";
 	return 1;
     }
     return 0;
@@ -539,7 +574,7 @@ sub genmoddevconf {
 					     $vendor, $device, $subvendor,
 					     $subdevice);
 		    } else {
-			print stderr "wrong bustype ($busid) for " .
+			warn "wrong bustype ($busid) for " .
 			  "configuration file $line - ignoring it\n";
 			next;
 		    }
@@ -558,7 +593,7 @@ sub genmoddevconf {
     close(CONF);
     close(LS);
 
-    print "module configuration information is stored in $moddevconf\n";
+    printf "module configuration information is stored in $moddevconf\n";
     return 0;
 }
 
@@ -575,9 +610,9 @@ sub list_drivers {
     }
     close(LS);
     if ($s) {
-	print "installed drivers:\n$s";
+	printf "installed drivers:\n$s";
     } else {
-	print "no drivers installed\n$s";
+	printf "no drivers installed\n$s";
     }
     return 0;
 }
@@ -588,13 +623,13 @@ sub modalias {
     open(MODPROBE, "modprobe -c|") or die "couldn't run modprobe: $!";
     while (my $line = <MODPROBE>) {
 	if ($line =~ /^alias\s.+\sndiswrapper/) {
-	    print "modprobe config already contains alias directive\n\n";
+	    printf "modprobe config already contains alias directive\n\n";
 	    $alias = 1;
 	} elsif ($line =~ /^install\s.*ndiswrapper/) {
-	    printf stderr "module configuration contains directive $line;" .
+	    warn "module configuration contains directive $line;" .
 	      "you should delete that";
 	} elsif ($line =~ /^post-install\s+ndiswrapper/) {
-	    printf stderr "module configuration contains directive $line;" .
+	    warn "module configuration contains directive $line;" .
 	      "you should delete that";
 	}
     }
@@ -604,7 +639,7 @@ sub modalias {
 	return 0;
     }
 
-    print "adding \"alias wlan0 ndiswrapper\" to $modconf ...\n";
+    printf "adding \"alias wlan0 ndiswrapper\" to $modconf ...\n";
     system("echo \"alias wlan0 ndiswrapper\" >>$modconf") or
       die "couldn't add module alias: $!";
     if (-x "/sbin/update-modules") {
@@ -717,7 +752,3 @@ sub install_status {
     }
     return $ret;
 }
-
-## Local Variables: ##
-## cperl-indent-level: 4 ##
-## End: ##
