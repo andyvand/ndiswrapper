@@ -52,7 +52,7 @@ make all KVERS=%{kernel} KSRC=%{ksrc}
 %define mandir $RPM_BUILD_ROOT%{_mandir}
 
 rm -rf $RPM_BUILD_ROOT
-make install DESTDIR=$RPM_BUILD_ROOT INST_DIR=%{inst_dir} KVERS=%{kernel} KSRC=%{ksrc} sbindir=%{sbindir} usrsbindir=%{usrsbindir} mandir=%{mandir}
+make install DIST_DESTDIR=$RPM_BUILD_ROOT INST_DIR=%{inst_dir} KVERS=%{kernel} KSRC=%{ksrc} sbindir=%{sbindir} usrsbindir=%{usrsbindir} mandir=%{mandir}
 
 %clean
 rm -rf $RPM_BUILD_ROOT

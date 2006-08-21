@@ -909,7 +909,7 @@ wstdcall NTSTATUS WIN_FUNC(IoGetDeviceProperty,5)
 	case DevicePropertyDeviceDescription:
 	case DevicePropertyFriendlyName:
 	case DevicePropertyDriverKeyName:
-		if (wrap_is_pci_bus(wd->dev_bus_type))
+		if (wrap_is_pci_bus(wd->bus_type))
 			RtlInitAnsiString(&ansi, "PCI");
 		else // if (wrap_is_usb_bus(wd->dev_bus_type))
 			RtlInitAnsiString(&ansi, "USB");

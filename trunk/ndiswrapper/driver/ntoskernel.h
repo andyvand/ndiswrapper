@@ -149,6 +149,9 @@ void cancel_delayed_work(struct work_struct *work_struct);
 #endif // CONFIG_PREEMPT
 #endif // in_atomic
 
+#define dev_get_drvdata(dev) NULL
+#define dev_set_drvdata(dev, data)
+
 #endif // LINUX_VERSION_CODE
 
 #ifndef __wait_event_interruptible_timeout
@@ -336,6 +339,7 @@ typedef u32 pm_message_t;
 #include "pe_linker.h"
 #include "wrapmem.h"
 #include "lin2win.h"
+#include "loader.h"
 
 #ifdef CONFIG_X86_64
 #define get_sp(sp) __asm__ __volatile__("mov %%rsp, %0\n\t" : "=m"(sp))
@@ -483,15 +487,15 @@ struct usbd_pipe_information;
 
 struct wrap_device {
 	/* first part is (de)initialized once by loader */
-	int dev_bus_type;
+	struct nt_list list;
+	int bus_type;
 	int vendor;
 	int device;
 	int subvendor;
 	int subdevice;
-	struct wrap_driver *driver;
-	/* we need driver_name before driver is loaded */
-	char driver_name[MAX_DRIVER_NAME_LEN];
 	char conf_file_name[MAX_DRIVER_NAME_LEN];
+	char driver_name[MAX_DRIVER_NAME_LEN];
+	struct wrap_driver *driver;
 	struct nt_list settings;
 
 	/* rest should be (de)initialized when a device is

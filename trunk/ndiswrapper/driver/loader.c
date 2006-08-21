@@ -44,19 +44,20 @@ static struct guid class_guids[] = {
 };
 
 NT_SPIN_LOCK loader_lock;
-struct wrap_device *wrap_devices;
-static unsigned int num_wrap_devices;
+static struct semaphore loader_mutex;
+static wait_queue_head_t loader_wq;
+static int loader_done;
+
+static struct nt_list wrap_devices;
 static struct nt_list wrap_drivers;
-static struct pci_device_id *wrap_pci_devices;
+static struct pci_device_id wrap_pci_device;
 static struct pci_driver wrap_pci_driver;
 /* bin_file is used to load binary files */
 static struct wrap_bin_file wrap_bin_file;
 #if defined(CONFIG_USB)
-static struct usb_device_id *wrap_usb_devices;
+static struct usb_device_id wrap_usb_device;
 struct usb_driver wrap_usb_driver;
 #endif
-
-extern int debug;
 
 int load_pe_images(struct pe_image[], int n);
 
@@ -73,7 +74,8 @@ int wrap_device_type(int data1)
 /* load driver for given device, if not already loaded */
 struct wrap_driver *load_wrap_driver(struct wrap_device *wd)
 {
-	int err, found;
+	int ret, found;
+	struct nt_list *cur;
 	struct wrap_driver *wrap_driver;
 
 	TRACEENTER1("device: %04X:%04X:%04X:%04X", wd->vendor, wd->device,
@@ -81,19 +83,20 @@ struct wrap_driver *load_wrap_driver(struct wrap_device *wd)
 	found = 0;
 	wrap_driver = NULL;
 	nt_spin_lock(&loader_lock);
-	nt_list_for_each_entry(wrap_driver, &wrap_drivers, list) {
-		if (strcmp(wrap_driver->name, wd->driver_name) == 0) {
+	nt_list_for_each(cur, &wrap_drivers) {
+		wrap_driver = container_of(cur, struct wrap_driver, list);
+		if (!strcmp(wrap_driver->name, wd->driver_name)) {
 			DBGTRACE1("driver %s already loaded",
 				  wrap_driver->name);
-			found = 1;
 			break;
-		}
+		} else
+			wrap_driver = NULL;
 	}
 	nt_spin_unlock(&loader_lock);
 
-	if (!found) {
+	if (!wrap_driver) {
 		char *argv[] = {"loadndisdriver", WRAP_CMD_LOAD_DRIVER,
-#if defined DEBUG && DEBUG >= 1
+#if defined(DEBUG) && DEBUG >= 1
 				"1",
 #else
 				"0",
@@ -103,37 +106,42 @@ struct wrap_driver *load_wrap_driver(struct wrap_device *wd)
 		char *env[] = {NULL};
 
 		DBGTRACE1("loading driver %s", wd->driver_name);
-		err = call_usermodehelper("/sbin/loadndisdriver", argv, env
+		if (down_interruptible(&loader_mutex)) {
+			WARNING("couldn't obtain mutex");
+			TRACEEXIT1(return NULL);
+		}
+		loader_done = 0;
+		ret = call_usermodehelper("/sbin/loadndisdriver", argv, env
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
 					  , 1
 #endif
 			);
-		if (err) {
+		if (ret) {
+			up(&loader_mutex);
 			ERROR("loadndiswrapper failed (%d); check system log "
-			      "for messages from 'loadndisdriver'", err);
+			      "for messages from 'loadndisdriver'", ret);
 			TRACEEXIT1(return NULL);
 		}
-
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,0)
-		/* wait for the driver to load and initialize */
-		sleep_hz(HZ);
-#endif
-		found = 0;
+		if (wait_event_interruptible(loader_wq, loader_done)) {
+			up(&loader_mutex);
+			TRACEEXIT1(return NULL);
+		}
+		up(&loader_mutex);
 		DBGTRACE1("%s", wd->driver_name);
 		nt_spin_lock(&loader_lock);
-		nt_list_for_each_entry(wrap_driver, &wrap_drivers, list) {
+		nt_list_for_each(cur, &wrap_drivers) {
+			wrap_driver = container_of(cur, struct wrap_driver, list);
 			if (!strcmp(wrap_driver->name, wd->driver_name)) {
 				wd->driver = wrap_driver;
-				found = 1;
 				break;
-			}
+			} else
+				wrap_driver = NULL;
 		}
 		nt_spin_unlock(&loader_lock);
-		if (!found) {
+		if (wrap_driver)
+			DBGTRACE1("driver %s is loaded", wrap_driver->name);
+		else
 			ERROR("couldn't load driver '%s'", wd->driver_name);
-			TRACEEXIT1(return NULL);
-		}
-		DBGTRACE1("driver %s is loaded", wrap_driver->name);
 	}
 	TRACEEXIT1(return wrap_driver);
 }
@@ -247,7 +255,7 @@ struct wrap_bin_file *get_bin_file(char *bin_file_name)
 
 	if (!driver->bin_files[i].data) {
 		char *argv[] = {"loadndisdriver", WRAP_CMD_LOAD_BIN_FILE,
-#if defined DEBUG && DEBUG >= 1
+#if defined(DEBUG) && DEBUG >= 1
 				"1",
 #else
 				"0",
@@ -255,24 +263,31 @@ struct wrap_bin_file *get_bin_file(char *bin_file_name)
 				UTILS_VERSION, driver->name,
 				bin_file_name, NULL};
 		char *env[] = {NULL};
-		int err;
+		int ret;
 
 		DBGTRACE1("loading bin file %s/%s", driver->name,
 			  bin_file_name);
-		err = call_usermodehelper("/sbin/loadndisdriver", argv, env
+		if (down_interruptible(&loader_mutex)) {
+			WARNING("couldn't obtain mutex");
+			TRACEEXIT1(return NULL);
+		}
+		loader_done = 0;
+		ret = call_usermodehelper("/sbin/loadndisdriver", argv, env
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
 					  , 1
 #endif
 			);
-		if (err) {
+		if (ret) {
+			up(&loader_mutex);
 			ERROR("loadndiswrapper failed (%d); check system log "
-			      "for messages from 'loadndisdriver'", err);
+			      "for messages from 'loadndisdriver'", ret);
 			TRACEEXIT1(return NULL);
 		}
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,0)
-		/* wait for the driver to load and initialize */
-		sleep_hz(HZ);
-#endif
+		if (wait_event_interruptible(loader_wq, loader_done)) {
+			up(&loader_mutex);
+			TRACEEXIT1(return NULL);
+		}
+		up(&loader_mutex);
 		DBGTRACE2("bin file: %s/%s",
 			  wrap_bin_file.driver_name, wrap_bin_file.name);
 		if (stricmp(driver->bin_files[i].name, wrap_bin_file.name) ||
@@ -363,21 +378,22 @@ static int load_settings(struct wrap_driver *wrap_driver,
 {
 	int i, nr_settings;
 	struct wrap_device *wd;
+	struct nt_list *cur;
 
 	TRACEENTER1("");
 
 	wd = NULL;
 	nt_spin_lock(&loader_lock);
-	for (i = 0; i < num_wrap_devices; i++) {
-		if (strcmp(wrap_devices[i].conf_file_name,
-			   load_driver->conf_file_name) == 0) {
-			wd = &wrap_devices[i];
+	nt_list_for_each(cur, &wrap_devices) {
+		wd = container_of(cur, struct wrap_device, list);
+		if (!strcmp(wd->conf_file_name, load_driver->conf_file_name)) {
 			break;
-		}
+		} else
+			wd = NULL;
 	}
 	nt_spin_unlock(&loader_lock);
 	if (!wd) {
-		ERROR("conf file %s not found", wrap_devices[i].conf_file_name);
+		ERROR("conf file %s not found", wd->conf_file_name);
 		TRACEEXIT1(return -EINVAL);
 	}
 
@@ -405,16 +421,15 @@ static int load_settings(struct wrap_driver *wrap_driver,
 			       sizeof(wrap_driver->version));
 		else if (strcmp(setting->name, "class_guid") == 0 &&
 			   (sscanf(setting->value, "%x", &data1) == 1)) {
-			int bus_type = WRAP_BUS_TYPE(wd->dev_bus_type);
+			int bus_type = WRAP_BUS_TYPE(wd->bus_type);
 			int dev_type = wrap_device_type(data1);
-			DBGTRACE2("old: %x", wd->dev_bus_type);
+			DBGTRACE2("old: %x", wd->bus_type);
 			if (dev_type > 0)
-				wd->dev_bus_type =
-					WRAP_DEVICE_BUS_TYPE(dev_type,
-							     bus_type);
+				wd->bus_type =
+					WRAP_DEVICE_BUS_TYPE(dev_type, bus_type);
 			DBGTRACE2("data1: %x, dev type: %x, bus type: %x, "
 				  "new: %x\n", data1, dev_type, bus_type,
-				  wd->dev_bus_type);
+				  wd->bus_type);
 		}
 		nt_spin_lock(&loader_lock);
 		InsertTailList(&wd->settings, &setting->list);
@@ -428,23 +443,24 @@ static int load_settings(struct wrap_driver *wrap_driver,
 		TRACEEXIT1(return -EINVAL);
 }
 
-/* this function is called while holding load_lock spinlock */
-static void unload_wrap_device(struct wrap_device *wd)
+void unload_wrap_device(struct wrap_device *wd)
 {
 	struct nt_list *cur;
 	TRACEENTER1("unloading device %p (%04X:%04X:%04X:%04X), driver %s",
 		    wd, wd->vendor, wd->device, wd->subvendor,
 		    wd->subdevice, wd->driver_name);
-
+	nt_spin_lock(&loader_lock);
 	while ((cur = RemoveHeadList(&wd->settings))) {
 		struct wrap_device_setting *setting;
 		setting = container_of(cur, struct wrap_device_setting, list);
 		kfree(setting);
 	}
+	RemoveEntryList(&wd->list);
+	nt_spin_unlock(&loader_lock);
+	kfree(wd);
 	TRACEEXIT1(return);
 }
 
-/* this function is called while holding load_lock spinlock */
 void unload_wrap_driver(struct wrap_driver *driver)
 {
 	int i;
@@ -452,6 +468,7 @@ void unload_wrap_driver(struct wrap_driver *driver)
 
 	TRACEENTER1("unloading driver: %s (%p)", driver->name, driver);
 	DBGTRACE1("freeing %d images", driver->num_pe_images);
+	nt_spin_lock(&loader_lock);
 	drv_obj = driver->drv_obj;
 	for (i = 0; i < driver->num_pe_images; i++)
 		if (driver->pe_images[i].image) {
@@ -473,6 +490,7 @@ void unload_wrap_driver(struct wrap_driver *driver)
 	/* this frees driver */
 	free_custom_extensions(drv_obj->drv_ext);
 	kfree(drv_obj->drv_ext);
+	nt_spin_unlock(&loader_lock);
 	DBGTRACE1("drv_obj: %p", drv_obj);
 
 	TRACEEXIT1(return);
@@ -531,7 +549,7 @@ static int add_wrap_driver(struct wrap_driver *driver)
 			TRACEEXIT1(return -EBUSY);
 		}
 	}
-	InsertTailList(&wrap_drivers, &driver->list);
+	InsertHeadList(&wrap_drivers, &driver->list);
 	nt_spin_unlock(&loader_lock);
 	TRACEEXIT1(return 0);
 }
@@ -601,236 +619,207 @@ static int load_user_space_driver(struct load_driver *load_driver)
 	}
 }
 
-/* register all devices (for all drivers) installed */
-static int register_devices(struct load_devices *load_devices)
+/* register drivers for pci and usb */
+void register_devices(void)
 {
-	int i, res, num_pci, num_usb;
-	struct load_device *devices;
+	int res;
 
-	devices = NULL;
-	wrap_pci_devices = NULL;
-#if defined(CONFIG_USB)
-	wrap_usb_devices = NULL;
-#endif
-	wrap_devices = NULL;
-	devices = vmalloc(load_devices->count * sizeof(struct load_device));
-	if (!devices) {
-		ERROR("couldn't allocate memory");
-		TRACEEXIT1(return -ENOMEM);
+	wrap_pci_device.vendor = PCI_ANY_ID;
+	wrap_pci_device.device = PCI_ANY_ID;
+	wrap_pci_device.subvendor = PCI_ANY_ID;
+	wrap_pci_device.subdevice = PCI_ANY_ID;
+
+	memset(&wrap_pci_driver, 0, sizeof(wrap_pci_driver));
+	wrap_pci_driver.name = DRIVER_NAME;
+	wrap_pci_driver.id_table = &wrap_pci_device;
+	wrap_pci_driver.probe = wrap_pnp_start_pci_device;
+	wrap_pci_driver.remove =
+		__devexit_p(wrap_pnp_remove_pci_device);
+	res = pci_register_driver(&wrap_pci_driver);
+	if (res < 0) {
+		ERROR("couldn't register pci driver: %d", res);
+		wrap_pci_driver.name = NULL;
 	}
 
-	if (copy_from_user(devices, load_devices->devices,
-			   load_devices->count * sizeof(struct load_device))) {
-		ERROR("couldn't copy from user space");
-		goto err;
-	}
-
-	num_pci = num_usb = 0;
-	for (i = 0; i < load_devices->count; i++)
-		if (wrap_is_pci_bus(devices[i].bus_type))
-			num_pci++;
-		else if (wrap_is_usb_bus(devices[i].bus_type))
-			num_usb++;
-		else
-			WARNING("bus type %d (%d) for %s is not valid",
-				devices[i].bus_type,
-				WRAP_BUS_TYPE(devices[i].bus_type),
-				devices[i].conf_file_name);
-	num_wrap_devices = num_pci + num_usb;
-	if (num_pci > 0) {
-		wrap_pci_devices =
-			kmalloc((num_pci + 1) * sizeof(struct pci_device_id),
-				GFP_KERNEL);
-		if (!wrap_pci_devices) {
-			ERROR("couldn't allocate memory");
-			goto err;
-		}
-		memset(wrap_pci_devices, 0,
-		       (num_pci + 1) * sizeof(struct pci_device_id));
-	}
-
-#if defined(CONFIG_USB)
-	if (num_usb > 0) {
-		wrap_usb_devices =
-			kmalloc((num_usb + 1) * sizeof(struct usb_device_id),
-				GFP_KERNEL);
-		if (!wrap_usb_devices) {
-			ERROR("couldn't allocate memory");
-			goto err;
-		}
-		memset(wrap_usb_devices, 0,
-		       (num_usb + 1) * sizeof(struct usb_device_id));
+#ifdef CONFIG_USB
+	memset(&wrap_usb_device, 0, sizeof(wrap_usb_device));
+	wrap_usb_device.driver_info = 1;
+	memset(&wrap_usb_driver, 0, sizeof(wrap_usb_driver));
+	wrap_usb_driver.name = DRIVER_NAME;
+	wrap_usb_driver.id_table = &wrap_usb_device;
+	wrap_usb_driver.probe = wrap_pnp_start_usb_device;
+	wrap_usb_driver.disconnect = wrap_pnp_remove_usb_device;
+	res = usb_register(&wrap_usb_driver);
+	if (res < 0) {
+		ERROR("couldn't register usb driver: %d", res);
+		wrap_usb_driver.name = NULL;
 	}
 #endif
+	TRACEEXIT1(return);
+}
 
-	wrap_devices = vmalloc(num_wrap_devices * sizeof(*wrap_devices));
-	if (!wrap_devices) {
-		ERROR("couldn't allocate memory");
-		goto err;
-	}
-
-	memset(wrap_devices, 0, num_wrap_devices * sizeof(*wrap_devices));
-	num_usb = num_pci = 0;
-	for (i = 0; i < load_devices->count; i++) {
-		struct load_device *device = &devices[i];
+static void unregister_devices(void)
+{
+	struct nt_list *cur, *next;
+	nt_spin_lock(&loader_lock);
+	nt_list_for_each_safe(cur, next, &wrap_devices) {
 		struct wrap_device *wd;
-
-		wd = &wrap_devices[num_pci + num_usb];
-		InitializeListHead(&wd->settings);
-		strncpy(wd->driver_name, device->driver_name,
-			sizeof(wd->driver_name));
-		memcpy(&wd->conf_file_name, device->conf_file_name,
-		       sizeof(wd->conf_file_name));
-		wd->dev_bus_type =
-			WRAP_DEVICE_BUS_TYPE(0, device->bus_type);
-
-		wd->vendor = device->vendor;
-		wd->device = device->device;
-		wd->subvendor = device->subvendor;
-		wd->subdevice = device->subdevice;
-
-		if (wrap_is_pci_bus(device->bus_type)) {
-			wrap_pci_devices[num_pci].vendor = device->vendor;
-			wrap_pci_devices[num_pci].device = device->device;
-			if (device->subvendor == DEV_ANY_ID)
-				wrap_pci_devices[num_pci].subvendor =
-					PCI_ANY_ID;
-			else
-				wrap_pci_devices[num_pci].subvendor =
-					device->subvendor;
-			if (device->subdevice == DEV_ANY_ID)
-				wrap_pci_devices[num_pci].subdevice =
-					PCI_ANY_ID;
-			else
-				wrap_pci_devices[num_pci].subdevice =
-					device->subdevice;
-			wrap_pci_devices[num_pci].class = 0;
-			wrap_pci_devices[num_pci].class_mask = 0;
-			wrap_pci_devices[num_pci].driver_data =
-				num_pci + num_usb;
-			DBGTRACE1("adding %04x:%04x:%04x:%04x (%s) to pci: %d",
-				  device->vendor, device->device,
-				  device->subvendor, device->subdevice,
-				  device->driver_name, num_pci);
-			num_pci++;
-#ifdef CONFIG_USB
-		} else if (wrap_is_usb_bus(device->bus_type)) {
-			wrap_usb_devices[num_usb].idVendor = device->vendor;
-			wrap_usb_devices[num_usb].idProduct = device->device;
-			wrap_usb_devices[num_usb].match_flags =
-				USB_DEVICE_ID_MATCH_DEVICE;
-			wrap_usb_devices[num_usb].driver_info =
-				num_pci + num_usb;
-			DBGTRACE1("adding %04x:%04x (%s) to usb: %d",
-				  device->vendor, device->device,
-				  device->driver_name, num_usb);
-			num_usb++;
-#endif
-		} else {
-			ERROR("type %d not supported: %s",
-			      device->bus_type, device->conf_file_name);
-		}
+		wd = container_of(cur, struct wrap_device, list);
+		wd->surprise_removed = FALSE;
+		DBGTRACE2("%p", wd);
 	}
+	nt_spin_unlock(&loader_lock);
 
-	if (wrap_pci_devices) {
-		memset(&wrap_pci_driver, 0, sizeof(wrap_pci_driver));
-		wrap_pci_driver.name = DRIVER_NAME;
-		wrap_pci_driver.id_table = wrap_pci_devices;
-		wrap_pci_driver.probe = wrap_pnp_start_pci_device;
-		wrap_pci_driver.remove =
-			__devexit_p(wrap_pnp_remove_pci_device);
-		wrap_pci_driver.suspend = wrap_pnp_suspend_pci_device;
-		wrap_pci_driver.resume = wrap_pnp_resume_pci_device;
-		res = pci_register_driver(&wrap_pci_driver);
-		if (res < 0) {
-			ERROR("couldn't register pci driver");
-			goto err;
-		}
-	}
+	if (wrap_pci_driver.name)
+		pci_unregister_driver(&wrap_pci_driver);
 #ifdef CONFIG_USB
-	if (wrap_usb_devices) {
-		memset(&wrap_usb_driver, 0, sizeof(wrap_usb_driver));
-#ifdef USB_DRIVER_OWNER
-		wrap_usb_driver.owner = THIS_MODULE;
+	if (wrap_usb_driver.name)
+		usb_deregister(&wrap_usb_driver);
 #endif
-		wrap_usb_driver.name = DRIVER_NAME;
-		wrap_usb_driver.id_table = wrap_usb_devices;
-		wrap_usb_driver.probe = wrap_pnp_start_usb_device;
-		wrap_usb_driver.disconnect = wrap_pnp_remove_usb_device;
+}
+
+struct wrap_device *load_wrap_device(struct load_device *load_device)
+{
+	int ret;
+	struct nt_list *cur;
+	struct wrap_device *wd = NULL;
+	char vendor[sizeof(int) + 1];
+	char device[sizeof(int) + 1];
+	char subvendor[sizeof(int) + 1];
+	char subdevice[sizeof(int) + 1];
+
+	TRACEENTER1("%04x/%d, %04x, %04x, %04x", load_device->vendor,
+		    load_device->vendor,
+		    load_device->device, load_device->subvendor,
+		    load_device->subdevice);
+	if (sprintf(vendor, "%04x", load_device->vendor) > 0 &&
+	    sprintf(device, "%04x", load_device->device) > 0 &&
+	    sprintf(subvendor, "%04x", load_device->subvendor) > 0 &&
+	    sprintf(subdevice, "%04x", load_device->subdevice) > 0) {
+		char *argv[] = {"loadndisdriver", WRAP_CMD_LOAD_DEVICE,
+#if defined(DEBUG) && DEBUG >= 1
+				"1",
+#else
+				"0",
+#endif
+				UTILS_VERSION, vendor, device,
+				subvendor, subdevice, NULL};
+		char *env[] = {NULL};
+		DBGTRACE2("%s, %s, %s, %s", vendor, device,
+			  subvendor, subdevice);
+		if (down_interruptible(&loader_mutex)) {
+			WARNING("couldn't obtain mutex");
+			TRACEEXIT1(return NULL);
+		}
+		loader_done = 0;
+		ret = call_usermodehelper("/sbin/loadndisdriver", argv, env
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
-		wrap_usb_driver.suspend = wrap_pnp_suspend_usb_device;
-		wrap_usb_driver.resume = wrap_pnp_resume_usb_device;
+					  , 1
 #endif
-		res = usb_register(&wrap_usb_driver);
-		if (res < 0) {
-			ERROR("couldn't register usb driver");
-			goto err;
+			);
+		if (ret) {
+			up(&loader_mutex);
+			ERROR("loadndiswrapper failed (%d); check system log "
+			      "for messages from 'loadndisdriver'", ret);
+			TRACEEXIT1(return NULL);
 		}
-	}
-#endif
-
-	vfree(devices);
-	TRACEEXIT1(return 0);
-
-err:
-	if (wrap_devices)
-		vfree(wrap_devices);
-	wrap_devices = NULL;
-#if defined(CONFIG_USB)
-	if (wrap_usb_devices)
-		kfree(wrap_usb_devices);
-	wrap_usb_devices = NULL;
-#endif
-	if (wrap_pci_devices)
-		kfree(wrap_pci_devices);
-	wrap_pci_devices = NULL;
-	if (devices)
-		vfree(devices);
-	TRACEEXIT1(return -EINVAL);
+		if (wait_event_interruptible(loader_wq, loader_done)) {
+			up(&loader_mutex);
+			TRACEEXIT1(return NULL);
+		}
+		up(&loader_mutex);
+		nt_spin_lock(&loader_lock);
+		nt_list_for_each(cur, &wrap_devices) {
+			wd = container_of(cur, struct wrap_device, list);
+			DBGTRACE2("%p, %04x, %04x",
+				  wd, wd->vendor, wd->device);
+			if (wd->vendor == load_device->vendor &&
+			    wd->device == load_device->device &&
+			    wd->subvendor == load_device->subvendor &&
+			    wd->subdevice == load_device->subdevice)
+				break;
+			else
+				wd = NULL;
+		}
+		nt_spin_unlock(&loader_lock);
+	} else
+		wd = NULL;
+	TRACEEXIT1(return wd);
 }
 
 static int wrapper_ioctl(struct inode *inode, struct file *file,
 			 unsigned int cmd, unsigned long arg)
 {
 	struct load_driver *load_driver;
-	struct load_devices devices;
+	struct load_device load_device;
 	struct load_driver_file load_bin_file;
-	int res;
+	int ret;
 
 	TRACEENTER1("cmd: %u", cmd);
 
-	res = 0;
+	ret = 0;
 	switch (cmd) {
-	case WRAP_IOCTL_REGISTER_DEVICES:
-		DBGTRACE1("adding devices at %p", (void *)arg);
-		res = copy_from_user(&devices, (void *)arg, sizeof(devices));
-		if (!res)
-			res = register_devices(&devices);
+	case WRAP_IOCTL_LOAD_DEVICE:
+		ret = copy_from_user(&load_device, (void *)arg,
+				     sizeof(load_device));
+		if (ret)
+			break;
+		DBGTRACE2("%04x, %04x, %04x, %04x", load_device.vendor,
+			  load_device.device, load_device.subvendor,
+			  load_device.subdevice);
+		if (load_device.vendor) {
+			struct wrap_device *wd;
+			wd = kmalloc(sizeof(*wd), GFP_KERNEL);
+			if (!wd) {
+				ret = -ENOMEM;
+				break;
+			}
+			memset(wd, 0, sizeof(*wd));
+			InitializeListHead(&wd->settings);
+			wd->bus_type = load_device.bus_type;
+			wd->vendor = load_device.vendor;
+			wd->device = load_device.device;
+			wd->subvendor = load_device.subvendor;
+			wd->subdevice = load_device.subdevice;
+			memcpy(wd->conf_file_name, load_device.conf_file_name,
+			       sizeof(wd->conf_file_name));
+			memcpy(wd->driver_name, load_device.driver_name,
+			       sizeof(wd->driver_name));
+			nt_spin_lock(&loader_lock);
+			InsertHeadList(&wrap_devices, &wd->list);
+			nt_spin_unlock(&loader_lock);
+			ret = 0;
+		} else
+			ret = -EINVAL;
 		break;
 	case WRAP_IOCTL_LOAD_DRIVER:
 		DBGTRACE1("loading driver at %p", (void *)arg);
 		load_driver = vmalloc(sizeof(*load_driver));
-		if (!load_driver)
-			TRACEEXIT1(return -ENOMEM);
-		res = copy_from_user(load_driver, (void *)arg,
+		if (!load_driver) {
+			ret = -ENOMEM;
+			break;
+		}
+		ret = copy_from_user(load_driver, (void *)arg,
 				     sizeof(*load_driver));
-		if (!res)
-			res = load_user_space_driver(load_driver);
+		if (!ret)
+			ret = load_user_space_driver(load_driver);
 		vfree(load_driver);
 		break;
 	case WRAP_IOCTL_LOAD_BIN_FILE:
-		res = copy_from_user(&load_bin_file, (void *)arg,
+		ret = copy_from_user(&load_bin_file, (void *)arg,
 				     sizeof(load_bin_file));
-		if (res)
+		if (ret)
 			break;
-		res = add_bin_file(&load_bin_file);
+		ret = add_bin_file(&load_bin_file);
 		break;
 	default:
 		ERROR("Unknown ioctl %u", cmd);
-		res = -EINVAL;
+		ret = -EINVAL;
 		break;
 	}
-	TRACEEXIT1(return res);
+	loader_done = 1;
+	wake_up(&loader_wq);
+	TRACEEXIT1(return ret);
 }
 
 static int wrapper_ioctl_release(struct inode *inode, struct file *file)
@@ -856,9 +845,13 @@ int loader_init(void)
 	int err;
 
 	InitializeListHead(&wrap_drivers);
+	InitializeListHead(&wrap_devices);
 	nt_spin_lock_init(&loader_lock);
+	init_MUTEX(&loader_mutex);
+	init_waitqueue_head(&loader_wq);
 	if ((err = misc_register(&wrapper_misc)) < 0 ) {
 		ERROR("couldn't register module (%d)", err);
+		unregister_devices();
 		TRACEEXIT1(return err);
 	}
 	TRACEEXIT1(return 0);
@@ -866,46 +859,19 @@ int loader_init(void)
 
 void loader_exit(void)
 {
-	int i;
-	struct nt_list *cur, *next;
-
 	TRACEENTER1("");
 	misc_deregister(&wrapper_misc);
-
-	/* mark so device's remove function knows it is called because
-	 * module is being removed (and not because device is
-	 * unplugged) */
-	/* TODO: is there a better way to infer this? */
-	for (i = 0; i < num_wrap_devices; i++)
-		wrap_devices[i].surprise_removed = FALSE;
-
-#ifdef CONFIG_USB
-	if (wrap_usb_devices) {
-		usb_deregister(&wrap_usb_driver);
-		kfree(wrap_usb_devices);
-		wrap_usb_devices = NULL;
-	}
-#endif
-	if (wrap_pci_devices) {
-		pci_unregister_driver(&wrap_pci_driver);
-		kfree(wrap_pci_devices);
-		wrap_pci_devices = NULL;
-	}
-	nt_spin_lock(&loader_lock);
-	if (wrap_devices) {
-		for (i = 0; i < num_wrap_devices; i++)
-			unload_wrap_device(&wrap_devices[i]);
-
-		vfree(wrap_devices);
-		wrap_devices = NULL;
-	}
-
-	nt_list_for_each_safe(cur, next, &wrap_drivers) {
+	unregister_devices();
+	while (1) {
+		struct nt_list *entry;
 		struct wrap_driver *driver;
-
-		driver = container_of(cur, struct wrap_driver, list);
+		nt_spin_lock(&loader_lock);
+		entry = RemoveHeadList(&wrap_drivers);
+		nt_spin_unlock(&loader_lock);
+		if (!entry)
+			break;
+		driver = container_of(entry, struct wrap_driver, list);
 		unload_wrap_driver(driver);
 	}
-	nt_spin_unlock(&loader_lock);
 	TRACEEXIT1(return);
 }

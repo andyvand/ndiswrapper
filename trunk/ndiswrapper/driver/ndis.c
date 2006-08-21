@@ -686,25 +686,25 @@ wstdcall ULONG WIN_FUNC(NdisWritePciSlotInformation,5)
 wstdcall void WIN_FUNC(NdisReadPortUchar,3)
 	(struct ndis_miniport_block *nmb, ULONG port, char *data)
 {
-	*data = READ_PORT_UCHAR(port);
+	*data = inb(port);
 }
 
 wstdcall void WIN_FUNC(NdisImmediateReadPortUchar,3)
 	(struct ndis_miniport_block *nmb, ULONG port, char *data)
 {
-	*data = READ_PORT_UCHAR(port);
+	*data = inb(port);
 }
 
 wstdcall void WIN_FUNC(NdisWritePortUchar,3)
 	(struct ndis_miniport_block *nmb, ULONG port, char data)
 {
-	WRITE_PORT_UCHAR(port, data);
+	outb(data, port);
 }
 
 wstdcall void WIN_FUNC(NdisImmediateWritePortUchar,3)
 	(struct ndis_miniport_block *nmb, ULONG port, char data)
 {
-	WRITE_PORT_UCHAR(port, data);
+	outb(data, port);
 }
 
 wstdcall void WIN_FUNC(NdisMQueryAdapterResources,4)
@@ -734,8 +734,8 @@ wstdcall void WIN_FUNC(NdisMQueryAdapterResources,4)
 			count = list->count;
 		} else {
 			UINT n = sizeof(*list);
-			count = 0;
-			while (++count < list->count && n < *size)
+			count = 1;
+			while (count++ < list->count && n < *size)
 				n += sizeof(list->partial_descriptors);
 			*size = n;
 		}
@@ -2549,7 +2549,7 @@ wstdcall NDIS_STATUS WIN_FUNC(NdisMQueryAdapterInstanceName,2)
 	struct wrap_ndis_device *wnd = nmb->wnd;
 	struct ansi_string ansi;
 
-	if (wrap_is_pci_bus(wnd->wd->dev_bus_type))
+	if (wrap_is_pci_bus(wnd->wd->bus_type))
 		RtlInitAnsiString(&ansi, "PCI Ethernet Adapter");
 	else
 		RtlInitAnsiString(&ansi, "USB Ethernet Adapter");
