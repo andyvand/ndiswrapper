@@ -32,7 +32,7 @@ my $confdir = "/etc/ndiswrapper";
 my $src_dir;
 my $driver_name;
 
-#Fixup list for parameters.
+# fixup list for parameters.
 my %param_fixlist = ("EnableRadio|0" => "1",
 		     "IBSSGMode|0" => "2",
                      "PrivacyMode|0" => "2",
@@ -166,13 +166,13 @@ sub read_sections {
     my $i = 0;
     $sections{$name} = ();
     while (my $line = <INF>) {
-	#Convert from unicode
+	# convert from unicode
 	$line =~ s/\xff\xfe//;
 	$line =~ s/\0//g;
 
 	$line =~ s/^\s*//;
 	$line =~ s/\s*$//;
-	next if (length($line) == 0);
+	next if ($line =~ /^$/);
 	if ($line =~ /^\[(.+)\]/) {
 	    $name = $1;
 	    $sections{$name} = ();
@@ -209,6 +209,8 @@ sub parse_section {
 
 sub parse_mfr() {
     my $lines = get_section("Manufacturer");
+    $lines or die "couldn't get manufacturer section - " .
+      "installation may be incomplete\n";
     foreach  my $line (@{$lines}) {
 	(my $strkey, my $val) = parse_key_value($line);
 	if ($strkey) {
@@ -258,6 +260,9 @@ sub parse_install {
     (my $bus_type, my $secn, my $os, my $vendor, my $device, my $subvendor,
      my $subdevice) = @_;
     my $lines = get_section($secn . "." . $os);
+    if (!$lines) {
+	$lines = get_section($secn . "." . "NT");
+    }
     if (!$lines) {
 	$lines = get_section($secn);
     }
@@ -383,7 +388,7 @@ sub parse_copy_files {
 	} else {
 	    $file = $files[0];
 	}
-	$file = trim($file);
+	$file = trim(del_comment($file));
 	if ($file and length($file) > 0) {
 	    printf DBG "copyfile: %s, %s\n", $copy_name, $file;
 	    copy_file($file);
@@ -433,7 +438,7 @@ sub get_string_value {
 
 sub copy_file {
     my $file = shift;
-
+    printf "$file\n";
     $file = trim(del_comment($file));
     my $real_file = get_file($file);
     if (length($real_file) gt 0) {
@@ -462,7 +467,7 @@ sub get_file {
 	    }
 	}
     } else {
-	printf "couldn't open \"%s\"\n", $src_dir;
+	warn "couldn't open \"$src_dir\" - installation may be incomplete\n";
     }
     closedir(DIR);
     return "";
@@ -470,17 +475,21 @@ sub get_file {
 
 sub find_target_os() {
     my @targets = @_;
-    my $arch = `uname -m`;
     my $target;
+    my $arch = `uname -m`;
     if ($arch eq "x86_64") {
-	$target = "NTamd64";
+	$target = "AMD64";
     } else {
-	$target = "NTx86";
+	$target = "X86";
     }
+
     foreach my $os (@targets) {
-	$os =~ /([^.]+)\.([^.]+)\.(.+)/;
-	if (uc($1) eq uc($target)) {
-	    return $os;
+	$os = trim($os);
+	if ($os =~ /([^.]+)/) {
+	    my $arch = $1;
+	    if (uc($arch) =~ /$target/) {
+		return $os;
+	    }
 	}
     }
     return "NT";
