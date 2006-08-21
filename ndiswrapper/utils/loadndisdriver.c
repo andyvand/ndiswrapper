@@ -363,180 +363,118 @@ err:
 	return -1;
 }
 
-/* check if a device is already in devices */
-static int duplicate_device(struct load_device *device, int n,
-			    struct load_device devices[])
+static int get_device(char *driver_name, int vendor, int device,
+		      int subvendor, int subdevice, struct load_device *ld)
 {
-	int i;
-
-	for (i = 0; i < n; i++)
-		if (device->vendor == devices[i].vendor &&
-		    device->device == devices[i].device &&
-		    device->subvendor == devices[i].subvendor &&
-		    device->subdevice == devices[i].subdevice)
-			return 1;
-
-	return 0;
-}
-
-/* add all devices (based on conf files) for a given driver */
-static int add_driver_devices(DIR *dir, char *driver_name, int from,
-			      struct load_device devices[])
-{
+	DIR *dir;
 	struct dirent *dirent;
-	int n;
+	int ret;
 
-	n = from;
-	if (!dir || !driver_name) {
-		ERROR("invalid driver");
-		return n;
+	DBG("%s", driver_name);
+	if (chdir(driver_name)) {
+		ERROR("couldn't chdir to %s: %s", driver_name, strerror(errno));
+		return -EINVAL;
 	}
-
-	DBG("adding devices for driver %s", driver_name);
+	if ((dir = opendir(".")) == NULL) {
+		ERROR("couldn't open directory %s: %s",
+		      driver_name, strerror(errno));
+		chdir("..");
+		return -1;
+	}
+	DBG("looking at devices for driver %s", driver_name);
+	ret = -1;
 	while ((dirent = readdir(dir))) {
 		int len;
+		char *s;
 
-		if (n >= MAX_WRAP_DEVICES) {
-			ERROR("too many devices; increase MAX_WRAP_DEVICES "
-			      "in ndiswrapper.h and recompile or remove "
-			      "unnecessary .conf files under '%s'", confdir);
+		if (strcmp(dirent->d_name, ".") == 0 ||
+		    strcmp(dirent->d_name, "..") == 0)
+			continue;
+
+		DBG("%s", dirent->d_name);
+		len = strlen(dirent->d_name);
+		if (len <= 5 || strcmp(&dirent->d_name[len-5], ".conf"))
+			continue;
+
+		s = basename(dirent->d_name);
+
+		if (strlen(s) >= 21 &&
+		    sscanf(s, "%04x:%04x:%04x:%04x.%X", &ld->vendor,
+			   &ld->device, &ld->subvendor, &ld->subdevice,
+			   &ld->bus_type) == 5) {
+			DBG("bus_type: %X", ld->bus_type);
+		} else if (strlen(s) >= 11 &&
+			   sscanf(s, "%04x:%04x.%X", &ld->vendor, &ld->device,
+				  &ld->bus_type) == 3) {
+			DBG("bus_type: %X", ld->bus_type);
+			ld->subvendor = 0;
+			ld->subdevice = 0;
+		} else {
+			ERROR("file %s is not valid - ignored",
+			      dirent->d_name);
+			continue;
+		}
+		DBG("%04x, %04x, %04x, %04x", ld->vendor, ld->device,
+		    ld->subvendor, ld->subdevice);
+		if (ld->vendor == vendor && ld->device == device &&
+		    ld->subvendor == subvendor && ld->subdevice == subdevice) {
+			strncpy(ld->driver_name, driver_name,
+				sizeof(ld->driver_name));
+			strncpy(ld->conf_file_name, dirent->d_name,
+				sizeof(ld->conf_file_name));
+			ret = 0;
 			break;
 		}
-		if (strcmp(dirent->d_name, ".") == 0 ||
-		    strcmp(dirent->d_name, "..") == 0)
-			continue;
-
-		len = strlen(dirent->d_name);
-		if (len > 5 && strcmp(&dirent->d_name[len-5], ".conf") == 0) {
-			struct stat statbuf;
-			char *s;
-			struct load_device *device;
-
-			if (lstat(dirent->d_name, &statbuf)) {
-				ERROR("unable to open config file: %s",
-				      strerror(errno));
-				continue;
-			}
-
-			s = basename(dirent->d_name);
-			/* remove ".conf" */
-			s[strlen(s)-5] = 0;
-
-			device = &devices[n];
-			if (strlen(s) >= 11 &&
-			    sscanf(s, "%04x:%04x.%X", &device->vendor,
-				   &device->device, &device->bus_type) == 3) {
-				DBG("bus_type: %X", device->bus_type);
-				device->subvendor = DEV_ANY_ID;
-				device->subdevice = DEV_ANY_ID;
-			} else if (strlen(s) >= 21 &&
-				   sscanf(s, "%04x:%04x:%04x:%04x.%X",
-					  &device->vendor, &device->device,
-					  &device->subvendor,
-					  &device->subdevice,
-					  &device->bus_type) == 5) {
-				DBG("bus_type: %X", device->bus_type);
-			} else {
-				ERROR("file %s is not valid - ignored",
-				      dirent->d_name);
-				continue;
-			}
-			if (duplicate_device(device, n, devices))
-				DBG("device %04X:%04X is duplicate - ignored",
-				    device->vendor, device->device);
-			else {
-				strncpy(device->driver_name, driver_name,
-					sizeof(device->driver_name));
-				strncpy(device->conf_file_name, dirent->d_name,
-					sizeof(device->conf_file_name));
-				strncat(device->conf_file_name, ".conf",
-					sizeof(device->conf_file_name) -
-					strlen(device->conf_file_name));
-				DBG("device %04X:%04X:%04X:%04X is added",
-				    device->vendor, device->device,
-				    device->subvendor, device->subdevice);
-				n++;
-			}
-		}
 	}
-	DBG("number of devices in %s: %d", driver_name, n - from);
-	return n;
+	closedir(dir);
+	chdir("..");
+	if (ret)
+		ld->vendor = 0;
+	DBG("%04x, %04x, %04x, %04x", ld->vendor, ld->device, ld->subvendor,
+	    ld->subdevice);
+	return ret;
 }
 
-/*
- * load all installed drivers
- * returns: number of drivers loadeed successfully
- */
-static int load_all_devices(int ioctl_device)
+static int load_device(int ioctl_device, int vendor, int device,
+		       int subvendor, int subdevice)
 {
-	struct stat statbuf;
 	struct dirent  *dirent;
-	DIR *dir, *driver;
-	int loaded, res;
-	struct load_device *devices;
-	struct load_devices load_devices;
+	DIR *dir;
+	int res;
+	struct load_device load_device;
 
+	DBG("%04x, %04x, %04x, %04x", vendor, device, subvendor, subdevice);
 	if (chdir(confdir)) {
+		ERROR("couldn't chdir to %s: %s", confdir, strerror(errno));
+		return -EINVAL;
+	}
+	if ((dir = opendir(".")) == NULL) {
 		ERROR("directory %s is not valid: %s",
 		      confdir, strerror(errno));
 		return -EINVAL;
 	}
-	if ((dir = opendir(confdir)) == NULL) {
-		ERROR("directory %s is not valid: %s",
-		      confdir, strerror(errno));
-		return -EINVAL;
-	}
-
-	devices = malloc(sizeof(*devices) * MAX_WRAP_DEVICES);
-	if (!devices) {
-		ERROR("couldn't allocate memory");
-		return -EINVAL;
-	}
-	loaded = 0;
 	while ((dirent = readdir(dir))) {
+		DBG("%s", dirent->d_name);
 		if (strcmp(dirent->d_name, ".") == 0 ||
 		    strcmp(dirent->d_name, "..") == 0)
 			continue;
 
-		if (stat(dirent->d_name, &statbuf) ||
-		    (!S_ISDIR(statbuf.st_mode)))
-			continue;
-		if ((driver = opendir(dirent->d_name)) == NULL) {
-			ERROR("directory %s is not valid: %s",
-			      dirent->d_name, strerror(errno));
-			continue;
-		}
-		if (chdir(dirent->d_name)) {
-			ERROR("directory %s is not valid: %s",
-			      dirent->d_name, strerror(errno));
-			closedir(driver);
-			continue;
-		}
-		loaded = add_driver_devices(driver, dirent->d_name, loaded,
-					    devices);
-		chdir("..");
-		closedir(driver);
+		if (!get_device(dirent->d_name, vendor, device,
+				subvendor, subdevice, &load_device))
+			break;
 	}
 	closedir(dir);
 
-	if (loaded == 0) {
-		ERROR("no valid drives found in %s; you may need to"
-		      " reinstall Windows drivers", confdir);
-		free(devices);
-		return -1;
-	}
-	load_devices.count = loaded;
-	load_devices.devices = devices;
-
-	res = ioctl(ioctl_device, WRAP_IOCTL_REGISTER_DEVICES, &load_devices);
+	DBG("%04x, %04x, %04x, %04x", load_device.vendor,
+	    load_device.device, load_device.subvendor,
+	    load_device.subdevice);
+	res = ioctl(ioctl_device, WRAP_IOCTL_LOAD_DEVICE, &load_device);
 	DBG("res: %d", res);
-	free(devices);
 
 	if (res) {
-		ERROR("couldn't load devices");
+		ERROR("couldn't load device");
 		return -1;
 	}
-	DBG("number of devices loaded: %d", loaded);
 	return 0;
 }
 
@@ -640,9 +578,18 @@ int main(int argc, char *argv[0])
 		goto out;
 	}
 
-	if (strcmp(cmd, WRAP_CMD_LOAD_DEVICES) == 0) {
-		if (load_all_devices(ioctl_device))
+	if (strcmp(cmd, WRAP_CMD_LOAD_DEVICE) == 0) {
+		if (argc != 8) {
+			ERROR("incorrect usage of %s (%d)", argv[0], argc);
 			res = 7;
+			goto out;
+		}
+		if (load_device(ioctl_device, strtol(argv[4], NULL, 16),
+				strtol(argv[5], NULL, 16),
+				strtol(argv[6], NULL, 16),
+				strtol(argv[7], NULL, 16)))
+
+			res = 8;
 		else
 			res = 0;
 	} else if (strcmp(cmd, WRAP_CMD_LOAD_DRIVER) == 0) {

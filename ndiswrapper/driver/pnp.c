@@ -19,7 +19,6 @@
 #include "loader.h"
 
 extern NT_SPIN_LOCK loader_lock;
-extern struct wrap_device *wrap_devices;
 
 static NTSTATUS start_pdo(struct device_object *pdo)
 {
@@ -34,8 +33,8 @@ static NTSTATUS start_pdo(struct device_object *pdo)
 	wd->surprise_removed = TRUE;
 	if (ntoskernel_init_device(wd))
 		TRACEEXIT1(return STATUS_FAILURE);
-	DBGTRACE1("%d, %d", WRAP_BUS_TYPE(wd->dev_bus_type), WRAP_USB_BUS);
-	if (wrap_is_usb_bus(wd->dev_bus_type)) {
+	DBGTRACE1("%d, %d", WRAP_BUS_TYPE(wd->bus_type), WRAP_USB_BUS);
+	if (wrap_is_usb_bus(wd->bus_type)) {
 #ifdef CONFIG_USB
 		if (usb_init_device(wd)) {
 			ntoskernel_exit_device(wd);
@@ -44,10 +43,9 @@ static NTSTATUS start_pdo(struct device_object *pdo)
 #endif
 		TRACEEXIT1(return STATUS_SUCCESS);
 	}
-	if (!wrap_is_pci_bus(wd->dev_bus_type))
+	if (!wrap_is_pci_bus(wd->bus_type))
 		TRACEEXIT1(return STATUS_SUCCESS);
 	pdev = wd->pci.pdev;
-	pci_set_drvdata(pdev, wd);
 	ret = pci_enable_device(pdev);
 	if (ret) {
 		ERROR("couldn't enable PCI device: %x", ret);
@@ -158,6 +156,7 @@ static NTSTATUS start_pdo(struct device_object *pdo)
 
 	DBGTRACE2("resource list count %d, irq: %d",
 		  partial_resource_list->count, pdev->irq);
+	pci_set_drvdata(pdev, wd);
 	TRACEEXIT1(return STATUS_SUCCESS);
 err_regions:
 	pci_release_regions(pdev);
@@ -173,13 +172,13 @@ static void remove_pdo(struct device_object *pdo)
 	struct wrap_device *wd = pdo->reserved;
 
 	ntoskernel_exit_device(wd);
-	if (wrap_is_pci_bus(wd->dev_bus_type)) {
+	if (wrap_is_pci_bus(wd->bus_type)) {
 		struct pci_dev *pdev = wd->pci.pdev;
 		pci_release_regions(pdev);
 		pci_disable_device(pdev);
 		wd->pci.pdev = NULL;
 		pci_set_drvdata(pdev, NULL);
-	} else if (wrap_is_usb_bus(wd->dev_bus_type)) {
+	} else if (wrap_is_usb_bus(wd->bus_type)) {
 #ifdef CONFIG_USB
 		usb_exit_device(wd);
 #endif
@@ -267,7 +266,7 @@ wstdcall NTSTATUS pdoDispatchPnp(struct device_object *pdo, struct irp *irp)
 		break;
 	case IRP_MN_QUERY_INTERFACE:
 #ifdef CONFIG_USB
-		if (!wrap_is_usb_bus(wd->dev_bus_type)) {
+		if (!wrap_is_usb_bus(wd->bus_type)) {
 			status = STATUS_NOT_IMPLEMENTED;
 			break;
 		}
@@ -334,7 +333,7 @@ wstdcall NTSTATUS pdoDispatchPower(struct device_object *pdo, struct irp *irp)
 		power_state = irp_sl->params.power.state;
 		if (power_state.device_state == PowerDeviceD0) {
 			DBGTRACE2("resuming device %p", wd);
-			if (wrap_is_pci_bus(wd->dev_bus_type)) {
+			if (wrap_is_pci_bus(wd->bus_type)) {
 				pdev = wd->pci.pdev;
 #if LINUX_VERSION_CODE > KERNEL_VERSION(2,6,9)
 				pci_restore_state(pdev);
@@ -348,7 +347,7 @@ wstdcall NTSTATUS pdoDispatchPower(struct device_object *pdo, struct irp *irp)
 			}
 		} else {
 			DBGTRACE2("suspending device %p", wd);
-			if (wrap_is_pci_bus(wd->dev_bus_type)) {
+			if (wrap_is_pci_bus(wd->bus_type)) {
 				pdev = wd->pci.pdev;
 #if LINUX_VERSION_CODE > KERNEL_VERSION(2,6,9)
 				pci_save_state(pdev);
@@ -491,6 +490,7 @@ NTSTATUS pnp_remove_device(struct wrap_device *wd)
 		ObDereferenceObject(fdo_drv_obj);
 	}
 	IoDeleteDevice(pdo);
+	unload_wrap_device(wd);
 	TRACEEXIT1(return status);
 }
 
@@ -544,18 +544,18 @@ static int wrap_pnp_start_device(struct wrap_device *wd)
 
 	TRACEENTER1("wd: %p", wd);
 
-	if (!((wrap_is_pci_bus(wd->dev_bus_type)) ||
-	      (wrap_is_usb_bus(wd->dev_bus_type)))) {
+	if (!((wrap_is_pci_bus(wd->bus_type)) ||
+	      (wrap_is_usb_bus(wd->bus_type)))) {
 		ERROR("bus type %d (%d) not supported",
-		      WRAP_BUS_TYPE(wd->dev_bus_type), wd->dev_bus_type);
+		      WRAP_BUS_TYPE(wd->bus_type), wd->bus_type);
 		TRACEEXIT1(return -EINVAL);
 	}
 
-	if (!((WRAP_DEVICE_TYPE(wd->dev_bus_type) == WRAP_NDIS_DEVICE) ||
-	      (WRAP_DEVICE_TYPE(wd->dev_bus_type) == WRAP_USB_DEVICE) ||
-	      (wrap_is_bluetooth_device(wd->dev_bus_type)))) {
+	if (!((WRAP_DEVICE_TYPE(wd->bus_type) == WRAP_NDIS_DEVICE) ||
+	      (WRAP_DEVICE_TYPE(wd->bus_type) == WRAP_USB_DEVICE) ||
+	      (wrap_is_bluetooth_device(wd->bus_type)))) {
 		ERROR("device type %d (%d) not supported",
-		      WRAP_DEVICE_TYPE(wd->dev_bus_type), wd->dev_bus_type);
+		      WRAP_DEVICE_TYPE(wd->bus_type), wd->bus_type);
 		TRACEEXIT1(return -EINVAL);
 	}
 	driver = load_wrap_driver(wd);
@@ -564,12 +564,13 @@ static int wrap_pnp_start_device(struct wrap_device *wd)
 
 	wd->driver = driver;
 	DBGTRACE1("dev type: %d, bus type: %d, %d",
-		  WRAP_DEVICE_TYPE(wd->dev_bus_type),
-		  WRAP_BUS_TYPE(wd->dev_bus_type), wd->dev_bus_type);
+		  WRAP_DEVICE_TYPE(wd->bus_type),
+		  WRAP_BUS_TYPE(wd->bus_type),
+		  wd->bus_type);
 	/* first create pdo */
-	if (wrap_is_pci_bus(wd->dev_bus_type))
+	if (wrap_is_pci_bus(wd->bus_type))
 		pdo_drv_obj = find_bus_driver("PCI");
-	else // if (wrap_is_usb_bus(wd->dev_bus_type))
+	else // if (wrap_is_usb_bus(wd->bus_type))
 		pdo_drv_obj = find_bus_driver("USB");
 	if (!pdo_drv_obj)
 		return -EINVAL;
@@ -578,7 +579,7 @@ static int wrap_pnp_start_device(struct wrap_device *wd)
 		return -ENOMEM;
 	wd->pdo = pdo;
 	pdo->reserved = wd;
-	if (WRAP_DEVICE_TYPE(wd->dev_bus_type) == WRAP_NDIS_DEVICE) {
+	if (WRAP_DEVICE_TYPE(wd->bus_type) == WRAP_NDIS_DEVICE) {
 		if (init_ndis_driver(driver->drv_obj)) {
 			IoDeleteDevice(pdo);
 			return -EINVAL;
@@ -606,12 +607,20 @@ static int wrap_pnp_start_device(struct wrap_device *wd)
 int wrap_pnp_start_pci_device(struct pci_dev *pdev,
 			      const struct pci_device_id *ent)
 {
+	struct load_device load_device;
 	struct wrap_device *wd;
 
 	TRACEENTER1("called for %04x:%04x:%04x:%04x", pdev->vendor,
 		    pdev->device, pdev->subsystem_vendor,
 		    pdev->subsystem_device);
-	wd = &wrap_devices[ent->driver_data];
+	load_device.bus_type = WRAP_PCI_BUS;
+	load_device.vendor = pdev->vendor;
+	load_device.device = pdev->device;
+	load_device.subvendor = pdev->subsystem_vendor;
+	load_device.subdevice = pdev->subsystem_device;
+	wd = load_wrap_device(&load_device);
+	if (!wd)
+		TRACEEXIT1(return -EINVAL);
 	wd->pci.pdev = pdev;
 	return wrap_pnp_start_device(wd);
 }
@@ -655,37 +664,51 @@ void *wrap_pnp_start_usb_device(struct usb_device *udev,
 {
 	struct wrap_device *wd;
 	int ret;
-	wd = &wrap_devices[usb_id->driver_info];
-	TRACEENTER1("%04x, %04x, %x, %x, %x, %x, %x, %x, %x, %p",
-		    usb_id->idVendor, usb_id->idProduct,
-		    usb_id->bDeviceClass, usb_id->bDeviceSubClass,
-		    usb_id->bDeviceProtocol, usb_id->bInterfaceClass,
-		    usb_id->bDeviceProtocol, usb_id->bInterfaceClass,
-		    usb_id->bInterfaceSubClass, wd->usb.intf);
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
+	struct usb_device *udev;
+	udev = interface_to_usbdev(intf);
+#endif
+	TRACEENTER1("%04x, %04x, %04x", udev->descriptor.idVendor,
+		    udev->descriptor.idProduct, udev->descriptor.bDeviceClass);
+
 	/* USB device (e.g., RNDIS) may have multiple interfaces;
 	  initialize one interface only (is there a way to know which
 	  of these interfaces is for network?) */
-	if (wd->usb.intf) {
-		DBGTRACE1("device already initialized: %p", wd->usb.intf);
+	if ((wd = dev_get_drvdata(&udev->dev))) {
+		DBGTRACE1("device already initialized: %p", wd);
 		usb_set_intfdata(intf, NULL);
 		ret = 0;
 	} else {
-		/* some devices (e.g., TI 4150, RNDIS) need full reset */
+		struct load_device load_device;
+
+		load_device.bus_type = WRAP_USB_BUS;
+		load_device.vendor = udev->descriptor.idVendor;
+		load_device.device = udev->descriptor.idProduct;
+		load_device.subvendor = 0;
+		load_device.subdevice = 0;
+		wd = load_wrap_device(&load_device);
+		DBGTRACE2("%p", wd);
+		if (wd) {
+			/* some devices (e.g., TI 4150, RNDIS) need
+			 * full reset */
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
-		ret = usb_reset_device(interface_to_usbdev(intf));
-		if (ret)
-			WARNING("reset failed: %d", ret);
-		wd->usb.udev = interface_to_usbdev(intf);
-		usb_set_intfdata(intf, wd);
-		wd->usb.intf = intf;
+			ret = usb_reset_device(udev);
+			if (ret)
+				WARNING("reset failed: %d", ret);
+			wd->usb.udev = udev;
+			usb_set_intfdata(intf, wd);
+			wd->usb.intf = intf;
 #else
-		ret = usb_reset_device(udev);
-		if (ret)
-			WARNING("reset failed: %d", ret);
-		wd->usb.udev = udev;
-		wd->usb.intf = usb_ifnum_to_if(udev, ifnum);
+			ret = usb_reset_device(udev);
+			if (ret)
+				WARNING("reset failed: %d", ret);
+			wd->usb.udev = udev;
+			wd->usb.intf = usb_ifnum_to_if(udev, ifnum);
 #endif
-		ret = wrap_pnp_start_device(wd);
+			dev_set_drvdata(&udev->dev, wd);
+			ret = wrap_pnp_start_device(wd);
+		} else
+			ret = -EINVAL;
 	}
 
 	DBGTRACE2("ret: %d", ret);

@@ -1,3 +1,8 @@
+Version 1.24 2006-XX-XX
+=======================	
+* Compilation issues with 2.4 fixed (yet again!)
+* Minor tweaks and optimizations
+
 Version 1.23 2006-08-10
 =======================	
 * Bug fixes to recent changes in 64-bit driver support.

@@ -82,16 +82,6 @@ static void module_cleanup(void)
 
 static int __init wrapper_init(void)
 {
-	char *argv[] = {"loadndisdriver", WRAP_CMD_LOAD_DEVICES,
-#if defined(DEBUG) && DEBUG >= 1
-			"1"
-#else
-			"0"
-#endif
-			, UTILS_VERSION, NULL};
-	char *env[] = {NULL};
-	int ret;
-
 	wrapmem_init();
 	printk(KERN_INFO "%s version %s loaded (preempt=%s,smp=%s)\n",
 	       DRIVER_NAME, DRIVER_VERSION,
@@ -119,17 +109,7 @@ static int __init wrapper_init(void)
 	wrap_procfs_init();
 	if (loader_init())
 		goto err;
-	DBGTRACE1("calling loadndisdriver");
-	ret = call_usermodehelper("/sbin/loadndisdriver", argv, env
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
-				  , 1
-#endif
-		);
-	if (ret) {
-		ERROR("loadndiswrapper failed (%d); check system log "
-		      "for messages from 'loadndisdriver'", ret);
-		goto err;
-	}
+	register_devices();
 	TRACEEXIT1(return 0);
 
 err:

@@ -133,7 +133,7 @@
 #endif
 
 #define packed __attribute__((packed))
-#define no_warn_unused __attribute((unused))
+#define no_warn_unused __attribute__((unused))
 
 typedef u8	BOOLEAN;
 typedef u8	BYTE;
@@ -437,7 +437,6 @@ struct nt_semaphore {
 	LONG limit;
 };
 
-//#pragma pack(push,1)
 struct nt_thread {
 	struct dispatcher_header dh;
 	/* the rest in Windows is a long structure; since this
@@ -448,7 +447,6 @@ struct nt_thread {
 	struct nt_list irps;
 	NT_SPIN_LOCK lock;
 };
-//#pragma pack(pop)
 
 #define set_dh_type(dh, type)		((dh)->type = (type))
 #define is_mutex_dh(dh)			((dh)->type == MutexObject)
@@ -962,7 +960,7 @@ struct io_stack_location {
 #pragma pack(pop)
 #endif
 
-#define URB_FROM_IRP(irp)					\
+#define URB_FROM_IRP(irp)						\
 	(union nt_urb *)(IoGetCurrentIrpStackLocation(irp)->params.others.arg1)
 
 struct kapc {
