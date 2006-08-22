@@ -152,7 +152,7 @@ static int read_conf_file(char *conf_file_name, struct load_driver *driver)
 	char setting_name[MAX_SETTING_NAME_LEN];
 	char setting_value[MAX_SETTING_VALUE_LEN];
 	int ret, nr_settings;
-	int i, vendor, device, subvendor, subdevice, bus_type;
+	int i, vendor, device, subvendor, subdevice, bus;
 
 	if (lstat(conf_file_name, &statbuf)) {
 		ERROR("unable to open config file: %s", strerror(errno));
@@ -160,12 +160,12 @@ static int read_conf_file(char *conf_file_name, struct load_driver *driver)
 	}
 
 	if (sscanf(conf_file_name, "%04X:%04X.%X.conf",
-		   &vendor, &device, &bus_type) == 3) {
-		DBG("bus_type: %X", bus_type);
+		   &vendor, &device, &bus) == 3) {
+		DBG("bus: %X", bus);
 	} else if (sscanf(conf_file_name, "%04X:%04X:%04X:%04X.%X.conf",
 			  &vendor, &device, &subvendor, &subdevice,
-			  &bus_type) == 5) {
-		DBG("bus_type: %X", bus_type);
+			  &bus) == 5) {
+		DBG("bus: %X", bus);
 	} else {
 		ERROR("unable to parse conf file name %s (%d)",
 		      conf_file_name, i);
@@ -401,12 +401,12 @@ static int get_device(char *driver_name, int vendor, int device,
 		if (strlen(s) >= 21 &&
 		    sscanf(s, "%04x:%04x:%04x:%04x.%X", &ld->vendor,
 			   &ld->device, &ld->subvendor, &ld->subdevice,
-			   &ld->bus_type) == 5) {
-			DBG("bus_type: %X", ld->bus_type);
+			   &ld->bus) == 5) {
+			DBG("bus: %X", ld->bus);
 		} else if (strlen(s) >= 11 &&
 			   sscanf(s, "%04x:%04x.%X", &ld->vendor, &ld->device,
-				  &ld->bus_type) == 3) {
-			DBG("bus_type: %X", ld->bus_type);
+				  &ld->bus) == 3) {
+			DBG("bus: %X", ld->bus);
 			ld->subvendor = 0;
 			ld->subdevice = 0;
 		} else {

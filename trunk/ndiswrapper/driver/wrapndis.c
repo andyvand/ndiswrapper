@@ -355,7 +355,7 @@ static NDIS_STATUS miniport_set_power_state(struct wrap_ndis_device *wnd,
 					status);
 			}
 			if (wnd->ndis_wolopts &&
-			    wrap_is_pci_bus(wnd->wd->bus_type))
+			    wrap_is_pci_bus(wnd->wd->dev_bus))
 				pci_enable_wake(wnd->wd->pci.pdev, PCI_D0, 0);
 		} else
 			return NDIS_STATUS_FAILURE;
@@ -392,7 +392,7 @@ static NDIS_STATUS miniport_set_power_state(struct wrap_ndis_device *wnd,
 							  OID_PNP_ENABLE_WAKE_UP,
 							  wnd->ndis_wolopts);
 				if (status == NDIS_STATUS_SUCCESS) {
-					if (wrap_is_pci_bus(wnd->wd->bus_type))
+					if (wrap_is_pci_bus(wnd->wd->dev_bus))
 						pci_enable_wake(wnd->wd->pci.pdev,
 								PCI_D0, 1);
 				} else
@@ -826,7 +826,7 @@ static void ndis_get_drvinfo(struct net_device *dev,
 	strncpy(info->version, DRIVER_VERSION, sizeof(info->version) - 1);
 	strncpy(info->fw_version, wnd->wd->driver->version,
 		sizeof(info->fw_version) - 1);
-	if (wrap_is_pci_bus(wnd->wd->bus_type))
+	if (wrap_is_pci_bus(wnd->wd->dev_bus))
 		strncpy(info->bus_info, pci_name(wnd->wd->pci.pdev),
 			sizeof(info->bus_info) - 1);
 #ifdef CONFIG_USB
@@ -1832,9 +1832,9 @@ static wstdcall NTSTATUS NdisAddDevice(struct driver_object *drv_obj,
 	wd = pdo->reserved;
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
 	SET_MODULE_OWNER(net_dev);
-	if (wrap_is_pci_bus(wd->bus_type))
+	if (wrap_is_pci_bus(wd->dev_bus))
 		SET_NETDEV_DEV(net_dev, &wd->pci.pdev->dev);
-	if (wrap_is_usb_bus(wd->bus_type))
+	if (wrap_is_usb_bus(wd->dev_bus))
 		SET_NETDEV_DEV(net_dev, &wd->usb.intf->dev);
 #endif
 	status = IoCreateDevice(drv_obj, 0, NULL,

@@ -48,9 +48,9 @@
 #define WRAP_BLUETOOTH_DEVICE1 2
 #define WRAP_BLUETOOTH_DEVICE2 3
 
-#define WRAP_DEVICE_BUS_TYPE(dev, bus) ((dev) << 8 | (bus))
-#define WRAP_BUS_TYPE(dev_bus_type) ((dev_bus_type) & 0x000FF)
-#define WRAP_DEVICE_TYPE(dev_bus_type) ((dev_bus_type) >> 8)
+#define WRAP_DEVICE_BUS(dev, bus) ((dev) << 8 | (bus))
+#define WRAP_BUS(dev_bus) ((dev_bus) & 0x000FF)
+#define WRAP_DEVICE(dev_bus) ((dev_bus) >> 8)
 
 #define MAX_DRIVER_NAME_LEN 32
 #define MAX_VERSION_STRING_LEN 64
@@ -60,7 +60,6 @@
 #define MAX_DRIVER_PE_IMAGES 4
 #define MAX_DRIVER_BIN_FILES 5
 #define MAX_DEVICE_SETTINGS 512
-#define MAX_WRAP_DEVICES 128
 
 #define MAX_ALLOCATED_URBS 15
 

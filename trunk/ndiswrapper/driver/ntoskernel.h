@@ -485,7 +485,7 @@ struct usbd_pipe_information;
 struct wrap_device {
 	/* first part is (de)initialized once by loader */
 	struct nt_list list;
-	int bus_type;
+	int dev_bus;
 	int vendor;
 	int device;
 	int subvendor;
@@ -519,19 +519,19 @@ struct wrap_device {
 	BOOLEAN surprise_removed;
 };
 
-#define wrap_is_pci_bus(dev_bus_type)				\
-	(WRAP_BUS_TYPE(dev_bus_type) == WRAP_PCI_BUS)
+#define wrap_is_pci_bus(dev_bus)			\
+	(WRAP_BUS(dev_bus) == WRAP_PCI_BUS)
 #ifdef CONFIG_USB
 /* earlier versions of ndiswrapper used 0 as USB_BUS */
-#define wrap_is_usb_bus(dev_bus_type)				\
-	(WRAP_BUS_TYPE(dev_bus_type) == WRAP_USB_BUS ||		\
-	 WRAP_BUS_TYPE(dev_bus_type) == 0)
+#define wrap_is_usb_bus(dev_bus)				\
+	(WRAP_BUS(dev_bus) == WRAP_USB_BUS ||		\
+	 WRAP_BUS(dev_bus) == 0)
 #else
-#define wrap_is_usb_bus(dev_bus_type) 0
+#define wrap_is_usb_bus(dev_bus) 0
 #endif
-#define wrap_is_bluetooth_device(dev_bus_type)				\
-	(WRAP_DEVICE_TYPE(dev_bus_type) == WRAP_BLUETOOTH_DEVICE1 ||	\
-	 WRAP_DEVICE_TYPE(dev_bus_type) == WRAP_BLUETOOTH_DEVICE2)
+#define wrap_is_bluetooth_device(dev_bus)			\
+	(WRAP_DEVICE(dev_bus) == WRAP_BLUETOOTH_DEVICE1 ||	\
+	 WRAP_DEVICE(dev_bus) == WRAP_BLUETOOTH_DEVICE2)
 
 /* Some drivers use worker entries to complete functions called from
  * within other worker threads. So we should have separate workqueues

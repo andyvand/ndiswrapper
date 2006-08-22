@@ -31,7 +31,7 @@ struct load_device_setting {
 };
 
 struct load_device {
-	int bus_type;
+	int bus;
 	int vendor;
 	int device;
 	int subvendor;

@@ -309,7 +309,7 @@ static int procfs_write_ndis_settings(struct file *file, const char *buf,
 		i = simple_strtol(p, NULL, 10);
 		if (i <= 0 || i > 3)
 			return -EINVAL;
-		if (wrap_is_pci_bus(wnd->wd->bus_type))
+		if (wrap_is_pci_bus(wnd->wd->dev_bus))
 			i = wrap_pnp_suspend_pci_device(wnd->wd->pci.pdev,
 							PMSG_SUSPEND);
 		else
@@ -322,7 +322,7 @@ static int procfs_write_ndis_settings(struct file *file, const char *buf,
 		if (i)
 			return -EINVAL;
 	} else if (!strcmp(setting, "resume")) {
-		if (wrap_is_pci_bus(wnd->wd->bus_type))
+		if (wrap_is_pci_bus(wnd->wd->dev_bus))
 			i = wrap_pnp_resume_pci_device(wnd->wd->pci.pdev);
 		else
 #if defined(CONFIG_USB) && LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
