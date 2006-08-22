@@ -18,8 +18,6 @@
 #include "wrapndis.h"
 #include "loader.h"
 
-extern NT_SPIN_LOCK loader_lock;
-
 static NTSTATUS start_pdo(struct device_object *pdo)
 {
 	int i, ret, count, resources_size;
@@ -481,11 +479,9 @@ NTSTATUS pnp_remove_device(struct wrap_device *wd)
 					   (void *)WRAP_DRIVER_CLIENT_ID);
 		if (fdo_drv_obj->unload)
 			LIN2WIN1(fdo_drv_obj->unload, fdo_drv_obj);
-		if (wrap_driver) {
-			nt_spin_lock(&loader_lock);
+		if (wrap_driver)
 			unload_wrap_driver(wrap_driver);
-			nt_spin_unlock(&loader_lock);
-		} else
+		else
 			ERROR("couldn't get wrap_driver");
 		ObDereferenceObject(fdo_drv_obj);
 	}

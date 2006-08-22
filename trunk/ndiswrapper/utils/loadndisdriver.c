@@ -579,17 +579,23 @@ int main(int argc, char *argv[0])
 	}
 
 	if (strcmp(cmd, WRAP_CMD_LOAD_DEVICE) == 0) {
+		int vendor, device, subvendor, subdevice;
 		if (argc != 8) {
 			ERROR("incorrect usage of %s (%d)", argv[0], argc);
 			res = 7;
 			goto out;
 		}
-		if (load_device(ioctl_device, strtol(argv[4], NULL, 16),
-				strtol(argv[5], NULL, 16),
-				strtol(argv[6], NULL, 16),
-				strtol(argv[7], NULL, 16)))
-
+		if (sscanf(argv[4], "%04x", &vendor) != 1 ||
+		    sscanf(argv[5], "%04x", &device) != 1 ||
+		    sscanf(argv[6], "%04x", &subvendor) != 1 ||
+		    sscanf(argv[7], "%04x", &subdevice) != 1) {
+			ERROR("couldn't get device info");
 			res = 8;
+			goto out;
+		}
+		if (load_device(ioctl_device, vendor, device,
+				subvendor, subdevice))
+			res = 9;
 		else
 			res = 0;
 	} else if (strcmp(cmd, WRAP_CMD_LOAD_DRIVER) == 0) {

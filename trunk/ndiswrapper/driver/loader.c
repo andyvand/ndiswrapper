@@ -43,8 +43,7 @@ static struct guid class_guids[] = {
 	{0xf12d3cf8, 0xb11d, 0x457e, },
 };
 
-NT_SPIN_LOCK loader_lock;
-static struct semaphore loader_mutex;
+struct semaphore loader_mutex;
 static wait_queue_head_t loader_wq;
 static int loader_done;
 
@@ -74,15 +73,17 @@ int wrap_device_type(int data1)
 /* load driver for given device, if not already loaded */
 struct wrap_driver *load_wrap_driver(struct wrap_device *wd)
 {
-	int ret, found;
+	int ret;
 	struct nt_list *cur;
 	struct wrap_driver *wrap_driver;
 
 	TRACEENTER1("device: %04X:%04X:%04X:%04X", wd->vendor, wd->device,
 		    wd->subvendor, wd->subdevice);
-	found = 0;
+	if (down_interruptible(&loader_mutex)) {
+		WARNING("couldn't obtain loader_mutex");
+		TRACEEXIT1(return NULL);
+	}
 	wrap_driver = NULL;
-	nt_spin_lock(&loader_lock);
 	nt_list_for_each(cur, &wrap_drivers) {
 		wrap_driver = container_of(cur, struct wrap_driver, list);
 		if (!strcmp(wrap_driver->name, wd->driver_name)) {
@@ -92,7 +93,7 @@ struct wrap_driver *load_wrap_driver(struct wrap_device *wd)
 		} else
 			wrap_driver = NULL;
 	}
-	nt_spin_unlock(&loader_lock);
+	up(&loader_mutex);
 
 	if (!wrap_driver) {
 		char *argv[] = {"loadndisdriver", WRAP_CMD_LOAD_DRIVER,
@@ -107,7 +108,7 @@ struct wrap_driver *load_wrap_driver(struct wrap_device *wd)
 
 		DBGTRACE1("loading driver %s", wd->driver_name);
 		if (down_interruptible(&loader_mutex)) {
-			WARNING("couldn't obtain mutex");
+			WARNING("couldn't obtain loader_mutex");
 			TRACEEXIT1(return NULL);
 		}
 		loader_done = 0;
@@ -126,9 +127,8 @@ struct wrap_driver *load_wrap_driver(struct wrap_device *wd)
 			up(&loader_mutex);
 			TRACEEXIT1(return NULL);
 		}
-		up(&loader_mutex);
 		DBGTRACE1("%s", wd->driver_name);
-		nt_spin_lock(&loader_lock);
+		wrap_driver = NULL;
 		nt_list_for_each(cur, &wrap_drivers) {
 			wrap_driver = container_of(cur, struct wrap_driver, list);
 			if (!strcmp(wrap_driver->name, wd->driver_name)) {
@@ -137,7 +137,7 @@ struct wrap_driver *load_wrap_driver(struct wrap_device *wd)
 			} else
 				wrap_driver = NULL;
 		}
-		nt_spin_unlock(&loader_lock);
+		up(&loader_mutex);
 		if (wrap_driver)
 			DBGTRACE1("driver %s is loaded", wrap_driver->name);
 		else
@@ -238,8 +238,11 @@ struct wrap_bin_file *get_bin_file(char *bin_file_name)
 	int i = 0;
 	struct wrap_driver *driver, *cur;
 
+	if (down_interruptible(&loader_mutex)) {
+		WARNING("couldn't obtain loader_mutex");
+		TRACEEXIT1(return NULL);
+	}
 	driver = NULL;
-	nt_spin_lock(&loader_lock);
 	nt_list_for_each_entry(cur, &wrap_drivers, list) {
 		for (i = 0; i < cur->num_bin_files; i++)
 			if (!stricmp(cur->bin_files[i].name, bin_file_name)) {
@@ -247,7 +250,7 @@ struct wrap_bin_file *get_bin_file(char *bin_file_name)
 				break;
 			}
 	}
-	nt_spin_unlock(&loader_lock);
+	up(&loader_mutex);
 	if (driver == NULL) {
 		DBGTRACE1("coudln't find bin file '%s'", bin_file_name);
 		return NULL;
@@ -268,7 +271,7 @@ struct wrap_bin_file *get_bin_file(char *bin_file_name)
 		DBGTRACE1("loading bin file %s/%s", driver->name,
 			  bin_file_name);
 		if (down_interruptible(&loader_mutex)) {
-			WARNING("couldn't obtain mutex");
+			WARNING("couldn't obtain loader_mutex");
 			TRACEEXIT1(return NULL);
 		}
 		loader_done = 0;
@@ -372,7 +375,7 @@ static int load_bin_files(struct wrap_driver *driver,
 	}
 }
 
-/* load settnigs for a device */
+/* load settnigs for a device. called with loader_mutex down */
 static int load_settings(struct wrap_driver *wrap_driver,
 			 struct load_driver *load_driver)
 {
@@ -383,15 +386,13 @@ static int load_settings(struct wrap_driver *wrap_driver,
 	TRACEENTER1("");
 
 	wd = NULL;
-	nt_spin_lock(&loader_lock);
 	nt_list_for_each(cur, &wrap_devices) {
 		wd = container_of(cur, struct wrap_device, list);
-		if (!strcmp(wd->conf_file_name, load_driver->conf_file_name)) {
-			break;
-		} else
+		if (strcmp(wd->conf_file_name, load_driver->conf_file_name))
 			wd = NULL;
+		else
+			break;
 	}
-	nt_spin_unlock(&loader_lock);
 	if (!wd) {
 		ERROR("conf file %s not found", wd->conf_file_name);
 		TRACEEXIT1(return -EINVAL);
@@ -431,9 +432,7 @@ static int load_settings(struct wrap_driver *wrap_driver,
 				  "new: %x\n", data1, dev_type, bus_type,
 				  wd->bus_type);
 		}
-		nt_spin_lock(&loader_lock);
 		InsertTailList(&wd->settings, &setting->list);
-		nt_spin_unlock(&loader_lock);
 		nr_settings++;
 	}
 	/* it is not a fatal error if some settings couldn't be loaded */
@@ -449,14 +448,15 @@ void unload_wrap_device(struct wrap_device *wd)
 	TRACEENTER1("unloading device %p (%04X:%04X:%04X:%04X), driver %s",
 		    wd, wd->vendor, wd->device, wd->subvendor,
 		    wd->subdevice, wd->driver_name);
-	nt_spin_lock(&loader_lock);
+	if (down_interruptible(&loader_mutex))
+		WARNING("couldn't obtain loader_mutex");
 	while ((cur = RemoveHeadList(&wd->settings))) {
 		struct wrap_device_setting *setting;
 		setting = container_of(cur, struct wrap_device_setting, list);
 		kfree(setting);
 	}
 	RemoveEntryList(&wd->list);
-	nt_spin_unlock(&loader_lock);
+	up(&loader_mutex);
 	kfree(wd);
 	TRACEEXIT1(return);
 }
@@ -468,7 +468,8 @@ void unload_wrap_driver(struct wrap_driver *driver)
 
 	TRACEENTER1("unloading driver: %s (%p)", driver->name, driver);
 	DBGTRACE1("freeing %d images", driver->num_pe_images);
-	nt_spin_lock(&loader_lock);
+	if (down_interruptible(&loader_mutex))
+		WARNING("couldn't obtain loader_mutex");
 	drv_obj = driver->drv_obj;
 	for (i = 0; i < driver->num_pe_images; i++)
 		if (driver->pe_images[i].image) {
@@ -490,7 +491,7 @@ void unload_wrap_driver(struct wrap_driver *driver)
 	/* this frees driver */
 	free_custom_extensions(drv_obj->drv_ext);
 	kfree(drv_obj->drv_ext);
-	nt_spin_unlock(&loader_lock);
+	up(&loader_mutex);
 	DBGTRACE1("drv_obj: %p", drv_obj);
 
 	TRACEEXIT1(return);
@@ -534,23 +535,20 @@ static int start_wrap_driver(struct wrap_driver *driver)
 
 /*
  * add driver to list of loaded driver but make sure this driver is
- * not loaded before.
+ * not loaded before. loader_mutex is already down
  */
 static int add_wrap_driver(struct wrap_driver *driver)
 {
 	struct wrap_driver *tmp;
 
 	TRACEENTER1("name: %s", driver->name);
-	nt_spin_lock(&loader_lock);
 	nt_list_for_each_entry(tmp, &wrap_drivers, list) {
 		if (strcmp(tmp->name, driver->name) == 0) {
-			nt_spin_unlock(&loader_lock);
 			ERROR("cannot add duplicate driver");
 			TRACEEXIT1(return -EBUSY);
 		}
 	}
 	InsertHeadList(&wrap_drivers, &driver->list);
-	nt_spin_unlock(&loader_lock);
 	TRACEEXIT1(return 0);
 }
 
@@ -661,14 +659,15 @@ void register_devices(void)
 static void unregister_devices(void)
 {
 	struct nt_list *cur, *next;
-	nt_spin_lock(&loader_lock);
+
+	if (down_interruptible(&loader_mutex))
+		WARNING("couldn't obtain loader_mutex");
 	nt_list_for_each_safe(cur, next, &wrap_devices) {
 		struct wrap_device *wd;
 		wd = container_of(cur, struct wrap_device, list);
 		wd->surprise_removed = FALSE;
-		DBGTRACE2("%p", wd);
 	}
-	nt_spin_unlock(&loader_lock);
+	up(&loader_mutex);
 
 	if (wrap_pci_driver.name)
 		pci_unregister_driver(&wrap_pci_driver);
@@ -708,7 +707,7 @@ struct wrap_device *load_wrap_device(struct load_device *load_device)
 		DBGTRACE2("%s, %s, %s, %s", vendor, device,
 			  subvendor, subdevice);
 		if (down_interruptible(&loader_mutex)) {
-			WARNING("couldn't obtain mutex");
+			WARNING("couldn't obtain loader_mutex");
 			TRACEEXIT1(return NULL);
 		}
 		loader_done = 0;
@@ -719,16 +718,16 @@ struct wrap_device *load_wrap_device(struct load_device *load_device)
 			);
 		if (ret) {
 			up(&loader_mutex);
-			ERROR("loadndiswrapper failed (%d); check system log "
-			      "for messages from 'loadndisdriver'", ret);
+			DBGTRACE1("loadndiswrapper failed (%d); check system log "
+				  "for messages from 'loadndisdriver'", ret);
 			TRACEEXIT1(return NULL);
 		}
 		if (wait_event_interruptible(loader_wq, loader_done)) {
+			DBGTRACE1("wait failed");
 			up(&loader_mutex);
 			TRACEEXIT1(return NULL);
 		}
-		up(&loader_mutex);
-		nt_spin_lock(&loader_lock);
+		wd = NULL;
 		nt_list_for_each(cur, &wrap_devices) {
 			wd = container_of(cur, struct wrap_device, list);
 			DBGTRACE2("%p, %04x, %04x",
@@ -741,7 +740,7 @@ struct wrap_device *load_wrap_device(struct load_device *load_device)
 			else
 				wd = NULL;
 		}
-		nt_spin_unlock(&loader_lock);
+		up(&loader_mutex);
 	} else
 		wd = NULL;
 	TRACEEXIT1(return wd);
@@ -785,9 +784,8 @@ static int wrapper_ioctl(struct inode *inode, struct file *file,
 			       sizeof(wd->conf_file_name));
 			memcpy(wd->driver_name, load_device.driver_name,
 			       sizeof(wd->driver_name));
-			nt_spin_lock(&loader_lock);
+			/* loader_mutex is already down */
 			InsertHeadList(&wrap_devices, &wd->list);
-			nt_spin_unlock(&loader_lock);
 			ret = 0;
 		} else
 			ret = -EINVAL;
@@ -846,7 +844,6 @@ int loader_init(void)
 
 	InitializeListHead(&wrap_drivers);
 	InitializeListHead(&wrap_devices);
-	nt_spin_lock_init(&loader_lock);
 	init_MUTEX(&loader_mutex);
 	init_waitqueue_head(&loader_wq);
 	if ((err = misc_register(&wrapper_misc)) < 0 ) {
@@ -865,12 +862,14 @@ void loader_exit(void)
 	while (1) {
 		struct nt_list *entry;
 		struct wrap_driver *driver;
-		nt_spin_lock(&loader_lock);
+		if (down_interruptible(&loader_mutex))
+			WARNING("couldn't obtain loader_mutex");
 		entry = RemoveHeadList(&wrap_drivers);
-		nt_spin_unlock(&loader_lock);
+		up(&loader_mutex);
 		if (!entry)
 			break;
 		driver = container_of(entry, struct wrap_driver, list);
+		DBGTRACE1("%p", driver);
 		unload_wrap_driver(driver);
 	}
 	TRACEEXIT1(return);

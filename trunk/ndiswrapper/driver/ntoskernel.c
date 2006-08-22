@@ -87,7 +87,6 @@ static void ntos_work_item_worker(void *data);
 
 NT_SPIN_LOCK irp_cancel_lock;
 
-extern NT_SPIN_LOCK loader_lock;
 extern struct nt_list wrap_drivers;
 static struct nt_list wrap_timer_list;
 NT_SPIN_LOCK timer_lock;
