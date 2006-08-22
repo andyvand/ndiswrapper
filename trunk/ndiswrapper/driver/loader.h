@@ -77,6 +77,7 @@ struct wrap_bin_file *get_bin_file(char *bin_file_name);
 void free_bin_file(struct wrap_bin_file *bin_file);
 void unload_wrap_driver(struct wrap_driver *driver);
 void unload_wrap_device(struct wrap_device *wd);
+struct wrap_device *get_wrap_device(void *dev, int bus_type);
 #endif
 
 #endif /* LOADER_H */

@@ -747,6 +747,27 @@ struct wrap_device *load_wrap_device(struct load_device *load_device)
 	TRACEEXIT1(return wd);
 }
 
+struct wrap_device *get_wrap_device(void *dev, int bus_type)
+{
+	struct nt_list *cur;
+	struct wrap_device *wd;
+
+	if (down_interruptible(&loader_mutex))
+		WARNING("couldn't obtain loader_mutex");
+	wd = NULL;
+	nt_list_for_each(cur, &wrap_devices) {
+		wd = container_of(cur, struct wrap_device, list);
+		if (bus_type == WRAP_PCI_BUS && wd->pci.pdev == dev)
+			break;
+		else if (bus_type == WRAP_USB_BUS && wd->usb.udev == dev)
+			break;
+		else
+			wd = NULL;
+	}
+	up(&loader_mutex);
+	return wd;
+}
+
 static int wrapper_ioctl(struct inode *inode, struct file *file,
 			 unsigned int cmd, unsigned long arg)
 {

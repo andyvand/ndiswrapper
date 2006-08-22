@@ -149,9 +149,6 @@ void cancel_delayed_work(struct work_struct *work_struct);
 #endif // CONFIG_PREEMPT
 #endif // in_atomic
 
-#define dev_get_drvdata(dev) NULL
-#define dev_set_drvdata(dev, data)
-
 #endif // LINUX_VERSION_CODE
 
 #ifndef __wait_event_interruptible_timeout
