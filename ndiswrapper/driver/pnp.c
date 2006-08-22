@@ -675,7 +675,8 @@ void *wrap_pnp_start_usb_device(struct usb_device *udev,
 	/* USB device (e.g., RNDIS) may have multiple interfaces;
 	  initialize one interface only (is there a way to know which
 	  of these interfaces is for network?) */
-	if ((wd = dev_get_drvdata(&udev->dev))) {
+
+	if ((wd = get_wrap_device(udev, WRAP_USB_BUS))) {
 		DBGTRACE1("device already initialized: %p", wd);
 		usb_set_intfdata(intf, NULL);
 		ret = 0;
@@ -706,7 +707,6 @@ void *wrap_pnp_start_usb_device(struct usb_device *udev,
 			wd->usb.udev = udev;
 			wd->usb.intf = usb_ifnum_to_if(udev, ifnum);
 #endif
-			dev_set_drvdata(&udev->dev, wd);
 			ret = wrap_pnp_start_device(wd);
 		} else
 			ret = -ENODEV;
