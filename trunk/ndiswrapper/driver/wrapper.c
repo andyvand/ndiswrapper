@@ -109,7 +109,6 @@ static int __init wrapper_init(void)
 	wrap_procfs_init();
 	if (loader_init())
 		goto err;
-	register_devices();
 	TRACEEXIT1(return 0);
 
 err:

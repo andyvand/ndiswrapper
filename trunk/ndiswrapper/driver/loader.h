@@ -71,7 +71,6 @@ int loader_init(void);
 void loader_exit(void);
 
 #ifdef __KERNEL__
-void register_devices(void);
 struct wrap_device *load_wrap_device(struct load_device *load_device);
 struct wrap_driver *load_wrap_driver(struct wrap_device *device);
 struct wrap_bin_file *get_bin_file(char *bin_file_name);
