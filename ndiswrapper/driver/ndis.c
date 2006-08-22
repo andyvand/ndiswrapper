@@ -22,13 +22,13 @@
 #define MAX_ALLOCATED_NDIS_PACKETS 20
 #define MAX_ALLOCATED_NDIS_BUFFERS 20
 
-extern NT_SPIN_LOCK loader_lock;
-
 static struct workqueue_struct *ndis_wq;
 static void ndis_worker(void *dummy);
 static struct work_struct ndis_work;
 static struct nt_list ndis_worker_list;
 static NT_SPIN_LOCK ndis_work_list_lock;
+
+extern struct semaphore loader_mutex;
 
 /* ndis_init is called once when module is loaded */
 int ndis_init(void)
@@ -62,7 +62,8 @@ void ndis_exit_device(struct wrap_ndis_device *wnd)
 	/* TI driver doesn't call NdisMDeregisterInterrupt during halt! */
 	if (wnd->ndis_irq)
 		NdisMDeregisterInterrupt(wnd->ndis_irq);
-	nt_spin_lock(&loader_lock);
+	if (down_interruptible(&loader_mutex))
+		WARNING("couldn't obtain loader_mutex");
 	nt_list_for_each_entry(setting, &wnd->wd->settings, list) {
 		struct ndis_configuration_parameter *param;
 		param = setting->encoded;
@@ -73,7 +74,7 @@ void ndis_exit_device(struct wrap_ndis_device *wnd)
 			setting->encoded = NULL;
 		}
 	}
-	nt_spin_unlock(&loader_lock);
+	up(&loader_mutex);
 }
 
 wstdcall void WIN_FUNC(NdisInitializeWrapper,4)
@@ -497,11 +498,12 @@ wstdcall void WIN_FUNC(NdisReadConfiguration,5)
 	DBGTRACE3("%d, %s", type, ansi.buf);
 	keyname = ansi.buf;
 
-	nt_spin_lock(&loader_lock);
+	if (down_interruptible(&loader_mutex))
+		WARNING("couldn't obtain loader_mutex");
 	nt_list_for_each_entry(setting, &nmb->wnd->wd->settings, list) {
 		if (strnicmp(keyname, setting->name, ansi.length) == 0) {
 			DBGTRACE2("setting %s='%s'", keyname, setting->value);
-			nt_spin_unlock(&loader_lock);
+			up(&loader_mutex);
 			*param = ndis_encode_setting(setting, type);
 			if (*param)
 				*status = NDIS_STATUS_SUCCESS;
@@ -512,7 +514,7 @@ wstdcall void WIN_FUNC(NdisReadConfiguration,5)
 			TRACEEXIT2(return);
 		}
 	}
-	nt_spin_unlock(&loader_lock);
+	up(&loader_mutex);
 	DBGTRACE2("setting %s not found (type:%d)", keyname, type);
 	*status = NDIS_STATUS_FAILURE;
 	RtlFreeAnsiString(&ansi);
@@ -535,10 +537,11 @@ wstdcall void WIN_FUNC(NdisWriteConfiguration,4)
 	keyname = ansi.buf;
 	DBGTRACE2("%s", keyname);
 
-	nt_spin_lock(&loader_lock);
+	if (down_interruptible(&loader_mutex))
+		WARNING("couldn't obtain loader_mutex");
 	nt_list_for_each_entry(setting, &nmb->wnd->wd->settings, list) {
 		if (strnicmp(keyname, setting->name, ansi.length) == 0) {
-			nt_spin_unlock(&loader_lock);
+			up(&loader_mutex);
 			if (ndis_decode_setting(setting, param))
 				*status = NDIS_STATUS_FAILURE;
 			else
@@ -547,7 +550,7 @@ wstdcall void WIN_FUNC(NdisWriteConfiguration,4)
 			TRACEEXIT2(return);
 		}
 	}
-	nt_spin_unlock(&loader_lock);
+	up(&loader_mutex);
 	setting = kmalloc(sizeof(*setting), GFP_KERNEL);
 	if (setting) {
 		memset(setting, 0, sizeof(*setting));
@@ -559,9 +562,10 @@ wstdcall void WIN_FUNC(NdisWriteConfiguration,4)
 			*status = NDIS_STATUS_FAILURE;
 		else {
 			*status = NDIS_STATUS_SUCCESS;
-			nt_spin_lock(&loader_lock);
+			if (down_interruptible(&loader_mutex))
+				WARNING("couldn't obtain loader_mutex");
 			InsertTailList(&nmb->wnd->wd->settings, &setting->list);
-			nt_spin_unlock(&loader_lock);
+			up(&loader_mutex);
 		}
 	} else
 		*status = NDIS_STATUS_RESOURCES;
