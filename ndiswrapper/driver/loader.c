@@ -419,15 +419,14 @@ static int load_settings(struct wrap_driver *wrap_driver,
 			       sizeof(wrap_driver->version));
 		else if (strcmp(setting->name, "class_guid") == 0 &&
 			   (sscanf(setting->value, "%x", &data1) == 1)) {
-			int bus_type = WRAP_BUS_TYPE(wd->bus_type);
-			int dev_type = wrap_device_type(data1);
-			DBGTRACE2("old: %x", wd->bus_type);
-			if (dev_type > 0)
-				wd->bus_type =
-					WRAP_DEVICE_BUS_TYPE(dev_type, bus_type);
+			int bus = WRAP_BUS(wd->dev_bus);
+			int dev = wrap_device_type(data1);
+			DBGTRACE2("old: %x", wd->dev_bus);
+			if (dev > 0)
+				wd->dev_bus = WRAP_DEVICE_BUS(dev, bus);
 			DBGTRACE2("data1: %x, dev type: %x, bus type: %x, "
-				  "new: %x\n", data1, dev_type, bus_type,
-				  wd->bus_type);
+				  "new: %x\n", data1, dev, bus,
+				  wd->dev_bus);
 		}
 		InsertTailList(&wd->settings, &setting->list);
 		nr_settings++;
@@ -684,18 +683,15 @@ struct wrap_device *load_wrap_device(struct load_device *load_device)
 	int ret;
 	struct nt_list *cur;
 	struct wrap_device *wd = NULL;
-	char vendor[sizeof(int) + 1];
-	char device[sizeof(int) + 1];
-	char subvendor[sizeof(int) + 1];
-	char subdevice[sizeof(int) + 1];
+	char vendor[5], device[5], subvendor[5], subdevice[5];
 
 	TRACEENTER1("%04x, %04x, %04x, %04x", load_device->vendor,
 		    load_device->device, load_device->subvendor,
 		    load_device->subdevice);
-	if (sprintf(vendor, "%04x", load_device->vendor) > 0 &&
-	    sprintf(device, "%04x", load_device->device) > 0 &&
-	    sprintf(subvendor, "%04x", load_device->subvendor) > 0 &&
-	    sprintf(subdevice, "%04x", load_device->subdevice) > 0) {
+	if (sprintf(vendor, "%04x", load_device->vendor) == 4 &&
+	    sprintf(device, "%04x", load_device->device) == 4 &&
+	    sprintf(subvendor, "%04x", load_device->subvendor) == 4 &&
+	    sprintf(subdevice, "%04x", load_device->subdevice) == 4) {
 		char *argv[] = {"loadndisdriver", WRAP_CMD_LOAD_DEVICE,
 #if defined(DEBUG) && DEBUG >= 1
 				"1",
@@ -747,19 +743,23 @@ struct wrap_device *load_wrap_device(struct load_device *load_device)
 	TRACEEXIT1(return wd);
 }
 
-struct wrap_device *get_wrap_device(void *dev, int bus_type)
+struct wrap_device *get_wrap_device(void *dev, int bus)
 {
 	struct nt_list *cur;
 	struct wrap_device *wd;
 
-	if (down_interruptible(&loader_mutex))
+	if (down_interruptible(&loader_mutex)) {
 		WARNING("couldn't obtain loader_mutex");
+		return NULL;
+	}
 	wd = NULL;
 	nt_list_for_each(cur, &wrap_devices) {
 		wd = container_of(cur, struct wrap_device, list);
-		if (bus_type == WRAP_PCI_BUS && wd->pci.pdev == dev)
+		if (bus == WRAP_PCI_BUS &&
+		    wrap_is_pci_bus(wd->dev_bus) && wd->pci.pdev == dev)
 			break;
-		else if (bus_type == WRAP_USB_BUS && wd->usb.udev == dev)
+		else if (bus == WRAP_USB_BUS &&
+			 wrap_is_usb_bus(wd->dev_bus) && wd->usb.udev == dev)
 			break;
 		else
 			wd = NULL;
@@ -797,7 +797,7 @@ static int wrapper_ioctl(struct inode *inode, struct file *file,
 			}
 			memset(wd, 0, sizeof(*wd));
 			InitializeListHead(&wd->settings);
-			wd->bus_type = load_device.bus_type;
+			wd->dev_bus = WRAP_BUS(load_device.bus);
 			wd->vendor = load_device.vendor;
 			wd->device = load_device.device;
 			wd->subvendor = load_device.subvendor;

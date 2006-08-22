@@ -1,6 +1,10 @@
 Version 1.24 2006-XX-XX
 =======================	
 * Compilation issues with 2.4 fixed (yet again!)
+* Devices are recognized when they are inserted, instead of registering when
+  module is loaded. With this, new Windows drivers can be installed / updated
+  without unloading ndiswrapper module, and any number of Windows drivers can
+  be installed without overhead.
 * Minor tweaks and optimizations
 
 Version 1.23 2006-08-10

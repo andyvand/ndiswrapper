@@ -2553,7 +2553,7 @@ wstdcall NDIS_STATUS WIN_FUNC(NdisMQueryAdapterInstanceName,2)
 	struct wrap_ndis_device *wnd = nmb->wnd;
 	struct ansi_string ansi;
 
-	if (wrap_is_pci_bus(wnd->wd->bus_type))
+	if (wrap_is_pci_bus(wnd->wd->dev_bus))
 		RtlInitAnsiString(&ansi, "PCI Ethernet Adapter");
 	else
 		RtlInitAnsiString(&ansi, "USB Ethernet Adapter");
