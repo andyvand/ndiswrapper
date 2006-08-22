@@ -458,6 +458,7 @@ void unload_wrap_device(struct wrap_device *wd)
 	TRACEEXIT1(return);
 }
 
+/* should be called with loader_mutex down */
 void unload_wrap_driver(struct wrap_driver *driver)
 {
 	int i;
@@ -465,8 +466,6 @@ void unload_wrap_driver(struct wrap_driver *driver)
 
 	TRACEENTER1("unloading driver: %s (%p)", driver->name, driver);
 	DBGTRACE1("freeing %d images", driver->num_pe_images);
-	if (down_interruptible(&loader_mutex))
-		WARNING("couldn't obtain loader_mutex");
 	drv_obj = driver->drv_obj;
 	for (i = 0; i < driver->num_pe_images; i++)
 		if (driver->pe_images[i].image) {
@@ -488,7 +487,6 @@ void unload_wrap_driver(struct wrap_driver *driver)
 	/* this frees driver */
 	free_custom_extensions(drv_obj->drv_ext);
 	kfree(drv_obj->drv_ext);
-	up(&loader_mutex);
 	DBGTRACE1("drv_obj: %p", drv_obj);
 
 	TRACEEXIT1(return);
@@ -860,21 +858,18 @@ int loader_init(void)
 
 void loader_exit(void)
 {
+	struct nt_list *cur, *next;
+
 	TRACEENTER1("");
 	misc_deregister(&wrapper_misc);
 	unregister_devices();
-	while (1) {
-		struct nt_list *entry;
+	if (down_interruptible(&loader_mutex))
+		WARNING("couldn't obtain loader_mutex");
+	nt_list_for_each_safe(cur, next, &wrap_drivers) {
 		struct wrap_driver *driver;
-		if (down_interruptible(&loader_mutex))
-			WARNING("couldn't obtain loader_mutex");
-		entry = RemoveHeadList(&wrap_drivers);
-		up(&loader_mutex);
-		if (!entry)
-			break;
-		driver = container_of(entry, struct wrap_driver, list);
-		DBGTRACE1("%p", driver);
+		driver = container_of(cur, struct wrap_driver, list);
 		unload_wrap_driver(driver);
 	}
+	up(&loader_mutex);
 	TRACEEXIT1(return);
 }

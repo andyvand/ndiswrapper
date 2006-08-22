@@ -18,6 +18,8 @@
 #include "wrapndis.h"
 #include "loader.h"
 
+extern struct semaphore loader_mutex;
+
 static NTSTATUS start_pdo(struct device_object *pdo)
 {
 	int i, ret, count, resources_size;
@@ -479,9 +481,12 @@ NTSTATUS pnp_remove_device(struct wrap_device *wd)
 					   (void *)WRAP_DRIVER_CLIENT_ID);
 		if (fdo_drv_obj->unload)
 			LIN2WIN1(fdo_drv_obj->unload, fdo_drv_obj);
-		if (wrap_driver)
+		if (wrap_driver) {
+			if (down_interruptible(&loader_mutex))
+				WARNING("couldn't obtain loader_mutex");
 			unload_wrap_driver(wrap_driver);
-		else
+			up(&loader_mutex);
+		} else
 			ERROR("couldn't get wrap_driver");
 		ObDereferenceObject(fdo_drv_obj);
 	}
@@ -723,7 +728,7 @@ void *wrap_pnp_start_usb_device(struct usb_device *udev,
 }
 
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
-void wrap_pnp_remove_usb_device(struct usb_interface *intf)
+void __devexit wrap_pnp_remove_usb_device(struct usb_interface *intf)
 {
 	struct wrap_device *wd;
 
@@ -767,7 +772,7 @@ int wrap_pnp_resume_usb_device(struct usb_interface *intf)
 
 #else
 
-void wrap_pnp_remove_usb_device(struct usb_device *udev, void *ptr)
+void __devexit wrap_pnp_remove_usb_device(struct usb_device *udev, void *ptr)
 {
 	struct wrap_device *wd = ptr;
 	struct usb_interface *intf;
