@@ -616,7 +616,7 @@ int wrap_pnp_start_pci_device(struct pci_dev *pdev,
 	load_device.subdevice = pdev->subsystem_device;
 	wd = load_wrap_device(&load_device);
 	if (!wd)
-		TRACEEXIT1(return -EINVAL);
+		TRACEEXIT1(return -ENODEV);
 	wd->pci.pdev = pdev;
 	return wrap_pnp_start_device(wd);
 }
@@ -704,14 +704,14 @@ void *wrap_pnp_start_usb_device(struct usb_device *udev,
 			dev_set_drvdata(&udev->dev, wd);
 			ret = wrap_pnp_start_device(wd);
 		} else
-			ret = -EINVAL;
+			ret = -ENODEV;
 	}
 
 	DBGTRACE2("ret: %d", ret);
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
 	if (ret) {
 		wd->usb.intf = NULL;
-		TRACEEXIT1(return -EINVAL);
+		TRACEEXIT1(return ret);
 	} else
 		return 0;
 #else

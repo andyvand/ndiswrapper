@@ -152,8 +152,6 @@ static int load_sys_files(struct wrap_driver *driver,
 {
 	int i, err;
 
-	TRACEENTER1("");
-
 	DBGTRACE1("num_pe_images = %d", load_driver->nr_sys_files);
 	DBGTRACE1("loading driver: %s", load_driver->name);
 	strncpy(driver->name, load_driver->name, MAX_DRIVER_NAME_LEN);
@@ -383,8 +381,7 @@ static int load_settings(struct wrap_driver *wrap_driver,
 	struct wrap_device *wd;
 	struct nt_list *cur;
 
-	TRACEENTER1("");
-
+	TRACEENTER1("%p, %p", wrap_driver, load_driver);
 	wd = NULL;
 	nt_list_for_each(cur, &wrap_devices) {
 		wd = container_of(cur, struct wrap_device, list);
@@ -535,7 +532,7 @@ static int start_wrap_driver(struct wrap_driver *driver)
 
 /*
  * add driver to list of loaded driver but make sure this driver is
- * not loaded before. loader_mutex is already down
+ * not loaded before. called with loader_mutex down
  */
 static int add_wrap_driver(struct wrap_driver *driver)
 {
@@ -552,14 +549,15 @@ static int add_wrap_driver(struct wrap_driver *driver)
 	TRACEEXIT1(return 0);
 }
 
-/* load a driver from userspace and initialize it */
+/* load a driver from userspace and initialize it. called with
+ * loader_mutex down */
 static int load_user_space_driver(struct load_driver *load_driver)
 {
 	struct driver_object *drv_obj;
 	struct ansi_string ansi_reg;
 	struct wrap_driver *wrap_driver = NULL;
 
-	TRACEENTER1("");
+	TRACEENTER1("%p", load_driver);
 	drv_obj = allocate_object(sizeof(*drv_obj), OBJECT_TYPE_DRIVER, NULL);
 	if (!drv_obj) {
 		ERROR("couldn't allocate memory");
@@ -574,7 +572,6 @@ static int load_user_space_driver(struct load_driver *load_driver)
 	}
 	memset(drv_obj->drv_ext, 0, sizeof(*(drv_obj->drv_ext)));
 	InitializeListHead(&drv_obj->drv_ext->custom_ext);
-	DBGTRACE1("");
 	if (IoAllocateDriverObjectExtension(drv_obj,
 					    (void *)WRAP_DRIVER_CLIENT_ID,
 					    sizeof(*wrap_driver),
@@ -618,10 +615,11 @@ static int load_user_space_driver(struct load_driver *load_driver)
 }
 
 /* register drivers for pci and usb */
-void register_devices(void)
+static void register_devices(void)
 {
 	int res;
 
+	memset(&wrap_pci_device, 0, sizeof(wrap_pci_device));
 	wrap_pci_device.vendor = PCI_ANY_ID;
 	wrap_pci_device.device = PCI_ANY_ID;
 	wrap_pci_device.subvendor = PCI_ANY_ID;
@@ -631,8 +629,9 @@ void register_devices(void)
 	wrap_pci_driver.name = DRIVER_NAME;
 	wrap_pci_driver.id_table = &wrap_pci_device;
 	wrap_pci_driver.probe = wrap_pnp_start_pci_device;
-	wrap_pci_driver.remove =
-		__devexit_p(wrap_pnp_remove_pci_device);
+	wrap_pci_driver.remove = __devexit_p(wrap_pnp_remove_pci_device);
+	wrap_pci_driver.suspend = wrap_pnp_suspend_pci_device;
+	wrap_pci_driver.resume = wrap_pnp_resume_pci_device;
 	res = pci_register_driver(&wrap_pci_driver);
 	if (res < 0) {
 		ERROR("couldn't register pci driver: %d", res);
@@ -642,11 +641,16 @@ void register_devices(void)
 #ifdef CONFIG_USB
 	memset(&wrap_usb_device, 0, sizeof(wrap_usb_device));
 	wrap_usb_device.driver_info = 1;
+
 	memset(&wrap_usb_driver, 0, sizeof(wrap_usb_driver));
 	wrap_usb_driver.name = DRIVER_NAME;
 	wrap_usb_driver.id_table = &wrap_usb_device;
 	wrap_usb_driver.probe = wrap_pnp_start_usb_device;
-	wrap_usb_driver.disconnect = wrap_pnp_remove_usb_device;
+	wrap_usb_driver.disconnect = __devexit_p(wrap_pnp_remove_usb_device);
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
+	wrap_usb_driver.suspend = wrap_pnp_suspend_usb_device;
+	wrap_usb_driver.resume = wrap_pnp_resume_usb_device;
+#endif
 	res = usb_register(&wrap_usb_driver);
 	if (res < 0) {
 		ERROR("couldn't register usb driver: %d", res);
@@ -687,8 +691,7 @@ struct wrap_device *load_wrap_device(struct load_device *load_device)
 	char subvendor[sizeof(int) + 1];
 	char subdevice[sizeof(int) + 1];
 
-	TRACEENTER1("%04x/%d, %04x, %04x, %04x", load_device->vendor,
-		    load_device->vendor,
+	TRACEENTER1("%04x, %04x, %04x, %04x", load_device->vendor,
 		    load_device->device, load_device->subvendor,
 		    load_device->subdevice);
 	if (sprintf(vendor, "%04x", load_device->vendor) > 0 &&
@@ -811,7 +814,7 @@ static int wrapper_ioctl(struct inode *inode, struct file *file,
 		ret = add_bin_file(&load_bin_file);
 		break;
 	default:
-		ERROR("Unknown ioctl %u", cmd);
+		ERROR("unknown ioctl %u", cmd);
 		ret = -EINVAL;
 		break;
 	}
@@ -851,6 +854,7 @@ int loader_init(void)
 		unregister_devices();
 		TRACEEXIT1(return err);
 	}
+	register_devices();
 	TRACEEXIT1(return 0);
 }
 
