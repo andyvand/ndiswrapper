@@ -290,10 +290,9 @@ static void miniport_halt(struct wrap_ndis_device *wnd)
 	struct miniport_char *miniport;
 
 	TRACEENTER1("%p", wnd);
-	/* semaphores may already be locked, e.g., during suspend or
+	/* ndis_comm_mutex may already be locked, e.g., during suspend or
 	 * if device is suspended, but resume failed */
 	down_trylock(&wnd->ndis_comm_mutex);
-	down_trylock(&wnd->tx_ring_mutex);
 	if (test_bit(HW_INITIALIZED, &wnd->hw_status)) {
 		hangcheck_del(wnd);
 		del_stats_timer(wnd);
@@ -1766,11 +1765,9 @@ static int ndis_remove_device(struct wrap_ndis_device *wnd)
 	cancel_delayed_work(&wnd->wrap_ndis_work);
 	/* In 2.4 kernels, this function is called in atomic context,
 	 * so we can't (don't need to?) wait on mutex. */
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
 	/* if device is suspended, but resume failed, tx_ring_mutex is
 	 * already locked */
 	down_trylock(&wnd->tx_ring_mutex);
-#endif
 	tx_pending = wnd->tx_ring_end - wnd->tx_ring_start;
 	if (tx_pending < 0)
 		tx_pending += TX_RING_SIZE;
@@ -1786,11 +1783,13 @@ static int ndis_remove_device(struct wrap_ndis_device *wnd)
 		wnd->tx_ring_start = (wnd->tx_ring_start + 1) % TX_RING_SIZE;
 		tx_pending--;
 	}
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
 	up(&wnd->tx_ring_mutex);
-#endif
 	wrap_procfs_remove_ndis_device(wnd);
 	miniport_halt(wnd);
+	/* miniport_halt grabs ndis_comm_mutex; release it, so
+	 * CONFIG_DEBUG_RT_MUTEXES doesn't complain about freeing
+	 * locked mutex */
+	up(&wnd->ndis_comm_mutex);
 	ndis_exit_device(wnd);
 
 	if (wnd->tx_packet_pool) {
