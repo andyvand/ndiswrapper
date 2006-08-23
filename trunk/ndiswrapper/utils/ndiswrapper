@@ -23,7 +23,6 @@ use File::Copy;
 use File::Path;
 
 my $WRAP_PCI_BUS = 5;
-my $WRAP_PCMCIA_BUS = 8;
 my $WRAP_USB_BUS = 15;
 
 my %sections;
@@ -150,6 +149,7 @@ sub get_section {
     my $name = shift;
     foreach my $key (keys %sections) {
 	if (lc($key) eq lc($name)) {
+	    printf DBG "section: $key\n";
 	    return \@{$sections{$key}};
 	}
     }
@@ -289,7 +289,7 @@ sub parse_install {
     printf CONF "NdisVersion|0x50001\n";
     printf CONF "Environment|1\n";
     printf CONF "class_guid|%s\n", $classguid;
-    printf CONF "mac_address|XX:XX:XX:XX:XX:XX\n";
+    printf CONF "NetworkAddress|XX:XX:XX:XX:XX:XX\n";
     printf CONF "driver_version|%s,%s\n", $providerstring, $version;
     printf CONF "\n";
     close(CONF);
@@ -349,7 +349,7 @@ sub parse_registry {
 	    $value = strip_quotes(trim($fields[4]));
 	}
 	$value = get_string_value($value);
-	if (length($param) gt 0 and $param ne "BusType") {
+	if (length($param) gt 0) {
 	    if ($param_fixlist{"$param|$value"}) {
 		my $orig_value = $value;
 		$value = $param_fixlist{"$param|$value"};
@@ -438,7 +438,7 @@ sub get_string_value {
 
 sub copy_file {
     my $file = shift;
-    printf "$file\n";
+
     $file = trim(del_comment($file));
     my $real_file = get_file($file);
     if (length($real_file) gt 0) {
@@ -477,7 +477,8 @@ sub find_target_os() {
     my @targets = @_;
     my $target;
     my $arch = `uname -m`;
-    if ($arch eq "x86_64") {
+    chomp($arch);
+    if ($arch =~ /64$/) {
 	$target = "AMD64";
     } else {
 	$target = "X86";
@@ -488,10 +489,12 @@ sub find_target_os() {
 	if ($os =~ /([^.]+)/) {
 	    my $arch = $1;
 	    if (uc($arch) =~ /$target/) {
+		printf DBG "target: $os\n";
 		return $os;
 	    }
 	}
     }
+    printf DBG "target: NT\n";
     return "NT";
 }
 
@@ -575,16 +578,16 @@ sub generate_module_device_map {
 		if ($file =~ /.conf$/) {
 		    if ($file =~ /^(.{4}):(.{4}):(.{4}):(.{4})\.([0-9A-F]+)\.conf$/) {
 			($vendor, $device, $subvendor, $subdevice, $busid) =
-			  ($1, $2, "0000$3", "0000$4", "$5");
+			  ($1, $2, "0000$3", "0000$4", $5);
 		    } elsif ($file =~ /(.{4}):(.{4})\.([0-9A-F]+)\.conf$/) {
 			($vendor, $device, $subvendor, $subdevice, $busid) =
 			  ($1, $2, "*", "*", "$3");
 		    }
 		    my $devstring;
-		    if ($busid eq "0" or $busid eq "F") {
+		    if ($busid eq $WRAP_USB_BUS) {
 			$devstring = sprintf("usb:v%sp%sd*dc*dsc*dp*ic*isc*ip*",
 					     $vendor, $device);
-		    } elsif ($busid eq "5") {
+		    } elsif ($busid eq $WRAP_PCI_BUS) {
 			$devstring = sprintf("pci:v0000%sd0000%ssv%ssd%sbc*sc*i*",
 					     $vendor, $device, $subvendor,
 					     $subdevice);
@@ -767,3 +770,7 @@ sub install_status {
     }
     return $ret;
 }
+
+## Local Variables: ##
+## cperl-indent-level: 4 ##
+## End: ##
