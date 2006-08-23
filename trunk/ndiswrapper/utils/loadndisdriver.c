@@ -155,7 +155,8 @@ static int read_conf_file(char *conf_file_name, struct load_driver *driver)
 	int i, vendor, device, subvendor, subdevice, bus;
 
 	if (lstat(conf_file_name, &statbuf)) {
-		ERROR("unable to open config file: %s", strerror(errno));
+		ERROR("unable to open config file %s: %s",
+		      conf_file_name, strerror(errno));
 		return -EINVAL;
 	}
 
@@ -283,8 +284,7 @@ static int load_driver(int ioctl_device, char *driver_name,
 		int len;
 		struct stat statbuf;
 
-		if (strcmp(dirent->d_name, ".") == 0 ||
-		    strcmp(dirent->d_name, "..") == 0)
+		if (dirent->d_name[0] == '.')
 			continue;
 
 		if (stat(dirent->d_name, &statbuf) ||
@@ -366,70 +366,49 @@ err:
 static int get_device(char *driver_name, int vendor, int device,
 		      int subvendor, int subdevice, struct load_device *ld)
 {
-	DIR *dir;
-	struct dirent *dirent;
 	int ret;
+	struct stat statbuf;
+	char file[32];
+	int i, bus_types[] = {WRAP_PCI_BUS, WRAP_USB_BUS};
 
 	DBG("%s", driver_name);
+	ret = -1;
 	if (chdir(driver_name)) {
-		ERROR("couldn't chdir to %s: %s", driver_name, strerror(errno));
+		DBG("couldn't chdir to %s: %s", driver_name, strerror(errno));
 		return -EINVAL;
 	}
-	if ((dir = opendir(".")) == NULL) {
-		ERROR("couldn't open directory %s: %s",
-		      driver_name, strerror(errno));
-		chdir("..");
-		return -1;
-	}
-	DBG("looking at devices for driver %s", driver_name);
-	ret = -1;
-	while ((dirent = readdir(dir))) {
-		int len;
-		char *s;
-
-		if (strcmp(dirent->d_name, ".") == 0 ||
-		    strcmp(dirent->d_name, "..") == 0)
-			continue;
-
-		DBG("%s", dirent->d_name);
-		len = strlen(dirent->d_name);
-		if (len <= 5 || strcmp(&dirent->d_name[len-5], ".conf"))
-			continue;
-
-		s = basename(dirent->d_name);
-
-		if (strlen(s) >= 21 &&
-		    sscanf(s, "%04x:%04x:%04x:%04x.%X", &ld->vendor,
-			   &ld->device, &ld->subvendor, &ld->subdevice,
-			   &ld->bus) == 5) {
-			DBG("bus: %X", ld->bus);
-		} else if (strlen(s) >= 11 &&
-			   sscanf(s, "%04x:%04x.%X", &ld->vendor, &ld->device,
-				  &ld->bus) == 3) {
-			DBG("bus: %X", ld->bus);
-			ld->subvendor = 0;
-			ld->subdevice = 0;
-		} else {
-			ERROR("file %s is not valid - ignored",
-			      dirent->d_name);
-			continue;
-		}
-		DBG("%04x, %04x, %04x, %04x", ld->vendor, ld->device,
-		    ld->subvendor, ld->subdevice);
-		if (ld->vendor == vendor && ld->device == device &&
-		    ld->subvendor == subvendor && ld->subdevice == subdevice) {
-			strncpy(ld->driver_name, driver_name,
-				sizeof(ld->driver_name));
-			strncpy(ld->conf_file_name, dirent->d_name,
-				sizeof(ld->conf_file_name));
+	for (i = 0; i < sizeof(bus_types) / sizeof(bus_types[0]); i++) {
+		if (snprintf(file, sizeof(file), "%04X:%04X:%04X:%04X.%X.conf",
+			     vendor, device, subvendor, subdevice,
+			     bus_types[i]) > 0 && stat(file, &statbuf) == 0) {
+			DBG("found %s", file);
+			ld->subvendor = subvendor;
+			ld->subdevice = subdevice;
 			ret = 0;
 			break;
+		} else {
+			if (snprintf(file, sizeof(file), "%04X:%04X.%X.conf",
+				     vendor, device, bus_types[i]) > 0 &&
+			    stat(file, &statbuf) == 0) {
+				DBG("found %s", file);
+				ld->subvendor = 0;
+				ld->subdevice = 0;
+				ret = 0;
+				break;
+			}
 		}
 	}
-	closedir(dir);
 	chdir("..");
 	if (ret)
 		ld->vendor = 0;
+	else {
+		DBG("found file: %s/%s", driver_name, file);
+		ld->vendor = vendor;
+		ld->device = device;
+		ld->bus = bus_types[i];
+		strncpy(ld->driver_name, driver_name, sizeof(ld->driver_name));
+		strncpy(ld->conf_file_name, file, sizeof(ld->conf_file_name));
+	}
 	DBG("%04x, %04x, %04x, %04x", ld->vendor, ld->device, ld->subvendor,
 	    ld->subdevice);
 	return ret;
@@ -444,6 +423,7 @@ static int load_device(int ioctl_device, int vendor, int device,
 	struct load_device load_device;
 
 	DBG("%04x, %04x, %04x, %04x", vendor, device, subvendor, subdevice);
+	memset(&load_device, 0, sizeof(load_device));
 	if (chdir(confdir)) {
 		ERROR("couldn't chdir to %s: %s", confdir, strerror(errno));
 		return -EINVAL;
@@ -455,8 +435,7 @@ static int load_device(int ioctl_device, int vendor, int device,
 	}
 	while ((dirent = readdir(dir))) {
 		DBG("%s", dirent->d_name);
-		if (strcmp(dirent->d_name, ".") == 0 ||
-		    strcmp(dirent->d_name, "..") == 0)
+		if (dirent->d_name[0] == '.')
 			continue;
 
 		if (!get_device(dirent->d_name, vendor, device,
@@ -530,11 +509,6 @@ static int get_ioctl_device()
 	return fd;
 }
 
-/* two ways to call this program:
- *  first, to load all devices, use "-a" argument
- *  later, load a specific driver and device (i.e., conf file) with
- *  arguments driver name, vendor, device, subvendor, subdevice
-*/
 int main(int argc, char *argv[0])
 {
 	int i, ioctl_device, res;
