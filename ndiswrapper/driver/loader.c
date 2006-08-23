@@ -344,8 +344,8 @@ void free_bin_file(struct wrap_bin_file *bin_file)
 }
 
 /* load firmware files from userspace */
-static int load_bin_files(struct wrap_driver *driver,
-			  struct load_driver *load_driver)
+static int load_bin_files_info(struct wrap_driver *driver,
+			       struct load_driver *load_driver)
 {
 	struct wrap_bin_file *bin_files;
 	int i;
@@ -359,26 +359,15 @@ static int load_bin_files(struct wrap_driver *driver,
 	}
 	memset(bin_files, 0, load_driver->nr_bin_files * sizeof(*bin_files));
 
-	driver->num_bin_files = 0;
 	for (i = 0; i < load_driver->nr_bin_files; i++) {
-		struct wrap_bin_file *bin_file = &bin_files[i];
-		struct load_driver_file *load_bin_file =
-			&load_driver->bin_files[i];
-
-		strncpy(bin_file->name, load_bin_file->name,
-			sizeof(bin_file->name));
-		bin_file->name[sizeof(bin_file->name)-1] = 0;
-		DBGTRACE2("loaded bin file %s", bin_file->name);
-		driver->num_bin_files++;
+		strncpy(bin_files[i].name, load_driver->bin_files[i].name,
+			sizeof(bin_files[i].name));
+		bin_files[i].name[sizeof(bin_files[i].name)-1] = 0;
+		DBGTRACE2("loaded bin file %s", bin_files[i].name);
 	}
-	if (driver->num_bin_files < load_driver->nr_bin_files) {
-		kfree(bin_files);
-		driver->num_bin_files = 0;
-		TRACEEXIT1(return -EINVAL);
-	} else {
-		driver->bin_files = bin_files;
-		TRACEEXIT1(return 0);
-	}
+	driver->num_bin_files = load_driver->nr_bin_files;
+	driver->bin_files = bin_files;
+	TRACEEXIT1(return 0);
 }
 
 /* load settnigs for a device. called with loader_mutex down */
@@ -600,7 +589,7 @@ static int load_user_space_driver(struct load_driver *load_driver)
 	strncpy(wrap_driver->name, load_driver->name,
 		sizeof(wrap_driver->name));
 	if (load_sys_files(wrap_driver, load_driver) ||
-	    load_bin_files(wrap_driver, load_driver) ||
+	    load_bin_files_info(wrap_driver, load_driver) ||
 	    load_settings(wrap_driver, load_driver) ||
 	    start_wrap_driver(wrap_driver) ||
 	    add_wrap_driver(wrap_driver)) {
@@ -734,12 +723,11 @@ struct wrap_device *load_wrap_device(struct load_device *load_device)
 		wd = NULL;
 		nt_list_for_each(cur, &wrap_devices) {
 			wd = container_of(cur, struct wrap_device, list);
-			DBGTRACE2("%p, %04x, %04x",
-				  wd, wd->vendor, wd->device);
+			DBGTRACE2("%p, %04x, %04x, %04x, %04x",
+				  wd, wd->vendor, wd->device,
+				  wd->subvendor, wd->subdevice);
 			if (wd->vendor == load_device->vendor &&
-			    wd->device == load_device->device &&
-			    wd->subvendor == load_device->subvendor &&
-			    wd->subdevice == load_device->subdevice)
+			    wd->device == load_device->device)
 				break;
 			else
 				wd = NULL;
@@ -875,7 +863,7 @@ int loader_init(void)
 
 	InitializeListHead(&wrap_drivers);
 	InitializeListHead(&wrap_devices);
-	init_MUTEX(&loader_mutex);
+	sema_init(&loader_mutex, 1);
 	init_waitqueue_head(&loader_wq);
 	if ((err = misc_register(&wrapper_misc)) < 0 ) {
 		ERROR("couldn't register module (%d)", err);
