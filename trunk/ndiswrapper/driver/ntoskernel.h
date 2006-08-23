@@ -519,12 +519,13 @@ struct wrap_device {
 };
 
 #define wrap_is_pci_bus(dev_bus)			\
-	(WRAP_BUS(dev_bus) == WRAP_PCI_BUS)
+	(WRAP_BUS(dev_bus) == WRAP_PCI_BUS ||		\
+	 WRAP_BUS(dev_bus) == WRAP_PCMCIA_BUS)
 #ifdef CONFIG_USB
 /* earlier versions of ndiswrapper used 0 as USB_BUS */
 #define wrap_is_usb_bus(dev_bus)				\
 	(WRAP_BUS(dev_bus) == WRAP_USB_BUS ||		\
-	 WRAP_BUS(dev_bus) == 0)
+	 WRAP_BUS(dev_bus) == WRAP_INTERNAL_BUS)
 #else
 #define wrap_is_usb_bus(dev_bus) 0
 #endif

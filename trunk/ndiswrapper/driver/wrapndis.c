@@ -1868,8 +1868,8 @@ static wstdcall NTSTATUS NdisAddDevice(struct driver_object *drv_obj,
 	init_nmb_functions(nmb);
 	wnd->net_dev = net_dev;
 	wnd->ndis_irq = NULL;
-	init_MUTEX_LOCKED(&wnd->tx_ring_mutex);
-	init_MUTEX_LOCKED(&wnd->ndis_comm_mutex);
+	sema_init(&wnd->tx_ring_mutex, 0);
+	sema_init(&wnd->ndis_comm_mutex, 0);
 	init_waitqueue_head(&wnd->ndis_comm_wq);
 	wnd->ndis_comm_done = 0;
 	INIT_WORK(&wnd->tx_work, tx_worker, wnd);
