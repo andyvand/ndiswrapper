@@ -459,7 +459,6 @@ struct wrap_device_setting {
 };
 
 struct wrap_bin_file {
-	char driver_name[MAX_DRIVER_NAME_LEN];
 	char name[MAX_DRIVER_NAME_LEN];
 	int size;
 	void *data;

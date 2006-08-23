@@ -51,8 +51,6 @@ static struct nt_list wrap_devices;
 static struct nt_list wrap_drivers;
 static struct pci_device_id wrap_pci_device;
 static struct pci_driver wrap_pci_driver;
-/* bin_file is used to load binary files */
-static struct wrap_bin_file wrap_bin_file;
 #if defined(CONFIG_USB)
 static struct usb_device_id wrap_usb_device;
 struct usb_driver wrap_usb_driver;
@@ -162,9 +160,9 @@ static int load_sys_files(struct wrap_driver *driver,
 		struct pe_image *pe_image;
 		pe_image = &driver->pe_images[driver->num_pe_images];
 
-		pe_image->name[MAX_DRIVER_NAME_LEN-1] = 0;
-		memcpy(pe_image->name, load_driver->sys_files[i].name,
-		       MAX_DRIVER_NAME_LEN);
+		strncpy(pe_image->name, load_driver->sys_files[i].name,
+			sizeof(pe_image->name));
+		pe_image->name[sizeof(pe_image->name)-1] = 0;
 		DBGTRACE1("image size: %lu bytes",
 			  (unsigned long)load_driver->sys_files[i].size);
 
@@ -247,6 +245,8 @@ struct wrap_bin_file *get_bin_file(char *bin_file_name)
 				driver = cur;
 				break;
 			}
+		if (i < cur->num_bin_files)
+			break;
 	}
 	up(&loader_mutex);
 	if (driver == NULL) {
@@ -289,35 +289,44 @@ struct wrap_bin_file *get_bin_file(char *bin_file_name)
 			TRACEEXIT1(return NULL);
 		}
 		up(&loader_mutex);
-		DBGTRACE2("bin file: %s/%s",
-			  wrap_bin_file.driver_name, wrap_bin_file.name);
-		if (stricmp(driver->bin_files[i].name, wrap_bin_file.name) ||
-		    strcmp(driver->name, wrap_bin_file.driver_name)) {
-			ERROR("invalid bin file: %s/%s",
-			      wrap_bin_file.driver_name, wrap_bin_file.name);
-			free_bin_file(&wrap_bin_file);
-			TRACEEXIT2(return NULL);
-		}
-		memcpy(&driver->bin_files[i], &wrap_bin_file,
-		       sizeof(wrap_bin_file));
+		if (!driver->bin_files[i].data)
+			TRACEEXIT1(return NULL);
 	}
 	TRACEEXIT2(return &(driver->bin_files[i]));
 }
 
+/* called with loader_mutex down */
 static int add_bin_file(struct load_driver_file *driver_file)
 {
-	memcpy(wrap_bin_file.name, driver_file->name,
-	       sizeof(wrap_bin_file.name));
-	memcpy(wrap_bin_file.driver_name, driver_file->driver_name,
-	       sizeof(wrap_bin_file.driver_name));
-	wrap_bin_file.size = driver_file->size;
-	wrap_bin_file.data = vmalloc(wrap_bin_file.size);
-	if (!wrap_bin_file.data) {
+	struct wrap_driver *driver, *cur;
+	struct wrap_bin_file *bin_file;
+	int i = 0;
+
+	driver = NULL;
+	nt_list_for_each_entry(cur, &wrap_drivers, list) {
+		for (i = 0; i < cur->num_bin_files; i++)
+			if (!stricmp(cur->bin_files[i].name,
+				     driver_file->name)) {
+				driver = cur;
+				break;
+			}
+		if (i < cur->num_bin_files)
+			break;
+	}
+	if (!driver) {
+		ERROR("couldn't find %s", driver_file->name);
+		return -EINVAL;
+	}
+	bin_file = &driver->bin_files[i];
+	strncpy(bin_file->name, driver_file->name, sizeof(bin_file->name));
+	bin_file->name[sizeof(bin_file->name)-1] = 0;
+	bin_file->size = driver_file->size;
+	bin_file->data = vmalloc(bin_file->size);
+	if (!bin_file->data) {
 		ERROR("couldn't allocate memory");
 		return -ENOMEM;
 	}
-	if (copy_from_user(wrap_bin_file.data, driver_file->data,
-			   wrap_bin_file.size)) {
+	if (copy_from_user(bin_file->data, driver_file->data, bin_file->size)) {
 		ERROR("couldn't copy data");
 		return -EINVAL;
 	}
@@ -356,10 +365,9 @@ static int load_bin_files(struct wrap_driver *driver,
 		struct load_driver_file *load_bin_file =
 			&load_driver->bin_files[i];
 
-		memcpy(bin_file->name, load_bin_file->name,
-		       MAX_DRIVER_NAME_LEN);
-		memcpy(bin_file->driver_name, load_bin_file->driver_name,
-		       MAX_DRIVER_NAME_LEN);
+		strncpy(bin_file->name, load_bin_file->name,
+			sizeof(bin_file->name));
+		bin_file->name[sizeof(bin_file->name)-1] = 0;
 		DBGTRACE2("loaded bin file %s", bin_file->name);
 		driver->num_bin_files++;
 	}
@@ -408,25 +416,24 @@ static int load_settings(struct wrap_driver *wrap_driver,
 			break;
 		}
 		memset(setting, 0, sizeof(*setting));
-		memcpy(setting->name, load_setting->name,
-		       MAX_SETTING_NAME_LEN);
-		memcpy(setting->value, load_setting->value,
-		       MAX_SETTING_VALUE_LEN);
+		strncpy(setting->name, load_setting->name,
+			sizeof(setting->name));
+		setting->name[sizeof(setting->name)-1] = 0;
+		strncpy(setting->value, load_setting->value,
+		       sizeof(setting->value));
+		setting->value[sizeof(setting->value)-1] = 0;
 		DBGTRACE2("setting %s=%s", setting->name, setting->value);
 
-		if (strcmp(setting->name, "driver_version") == 0)
-			memcpy(wrap_driver->version, setting->value,
-			       sizeof(wrap_driver->version));
-		else if (strcmp(setting->name, "class_guid") == 0 &&
+		if (strcmp(setting->name, "driver_version") == 0) {
+			strncpy(wrap_driver->version, setting->value,
+				sizeof(wrap_driver->version));
+			wrap_driver->version[sizeof(wrap_driver->version)-1] = 0;
+		} else if (strcmp(setting->name, "class_guid") == 0 &&
 			   (sscanf(setting->value, "%x", &data1) == 1)) {
 			int bus = WRAP_BUS(wd->dev_bus);
 			int dev = wrap_device_type(data1);
-			DBGTRACE2("old: %x", wd->dev_bus);
 			if (dev > 0)
 				wd->dev_bus = WRAP_DEVICE_BUS(dev, bus);
-			DBGTRACE2("data1: %x, dev type: %x, bus type: %x, "
-				  "new: %x\n", data1, dev, bus,
-				  wd->dev_bus);
 		}
 		InsertTailList(&wd->settings, &setting->list);
 		nr_settings++;
@@ -768,6 +775,7 @@ struct wrap_device *get_wrap_device(void *dev, int bus)
 	return wd;
 }
 
+/* called with loader_mutex is down */
 static int wrapper_ioctl(struct inode *inode, struct file *file,
 			 unsigned int cmd, unsigned long arg)
 {
@@ -802,11 +810,12 @@ static int wrapper_ioctl(struct inode *inode, struct file *file,
 			wd->device = load_device.device;
 			wd->subvendor = load_device.subvendor;
 			wd->subdevice = load_device.subdevice;
-			memcpy(wd->conf_file_name, load_device.conf_file_name,
-			       sizeof(wd->conf_file_name));
-			memcpy(wd->driver_name, load_device.driver_name,
+			strncpy(wd->conf_file_name, load_device.conf_file_name,
+				sizeof(wd->conf_file_name));
+			wd->conf_file_name[sizeof(wd->conf_file_name)-1] = 0;
+			strncpy(wd->driver_name, load_device.driver_name,
 			       sizeof(wd->driver_name));
-			/* loader_mutex is already down */
+			wd->driver_name[sizeof(wd->driver_name)-1] = 0;
 			InsertHeadList(&wrap_devices, &wd->list);
 			ret = 0;
 		} else
