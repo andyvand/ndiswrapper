@@ -16,26 +16,26 @@ KVERS ?= $(shell uname -r)
 .PHONY: all
 
 all: 
-	make -C driver
-	make -C utils
+	+make -C driver
+	+make -C utils
 
 .PHONY: install
 install:
-	make -C driver install
-	make -C utils install
+	+make -C driver install
+	+make -C utils install
 	mkdir -p -m 0755 $(mandir)/man8
 	install -m 644 ndiswrapper.8 $(mandir)/man8
 
 .PHONY: clean distclean
 clean:
-	make -C driver clean
-	make -C utils clean
+	+make -C driver clean
+	+make -C utils clean
 	rm -f *~
 	rm -fr ${distdir} ${distdir}.tar.gz patch-stamp
 
 distclean: clean
-	make -C driver distclean
-	make -C utils distclean
+	+make -C driver distclean
+	+make -C utils distclean
 	rm -f .\#*
 
 uninstall:
@@ -74,8 +74,8 @@ dist:
 	    || exit 1; \
 	  fi; \
 	done
-	make -C driver distdir=../${distdir}/driver dist
-	make -C utils distdir=../${distdir}/utils dist
+	+make -C driver distdir=../${distdir}/driver dist
+	+make -C utils distdir=../${distdir}/utils dist
 
 	# Update version in dist rpm spec file - don't crash if it fails
 	-sed -i "s/\%define\s\+ndiswrapper_version\s\+[^\}]\+\}/%define ndiswrapper_version $(DRIVER_VERSION)\}/" $(distdir)/ndiswrapper.spec
