@@ -1,4 +1,4 @@
-#!/usr/bin/perl
+#!/usr/bin/perl -d
 
 #/*
 #*  Copyright (C) 2005-2006 Pontus Fuchs, Giridhar Pemmasani
@@ -225,12 +225,12 @@ sub parse_mfr() {
 }
 
 sub parse_models {
-    (my $models, my $os) = @_;
-    my $lines = get_section($models . "." . $os);
+    (my $models, my $target_os) = @_;
+    my $lines = get_section($models . "." . $target_os);
     if (!$lines) {
 	$lines = get_section($models);
 	if (!$lines) {
-	    warn "couldn't find models section \"$models\" for \"$os\" -\n" .
+	    warn "couldn't find models section \"$models\" for \"$target_os\" -\n" .
 	      "installation may be incomplete\n";
 	    return;
 	}
@@ -251,15 +251,15 @@ sub parse_models {
 	  parse_hwid($hwid);
 	next if (!$vendor);
 	printf DBG "models: %s, %s\n", $install_section, $hwid;
-	parse_install($bus_type, $install_section, $os, $vendor, $device,
+	parse_install($bus_type, $install_section, $target_os, $vendor, $device,
 		      $subvendor, $subdevice);
     }
 }
 
 sub parse_install {
-    (my $bus_type, my $secn, my $os, my $vendor, my $device, my $subvendor,
-     my $subdevice) = @_;
-    my $lines = get_section($secn . "." . $os);
+    (my $bus_type, my $secn, my $target_os, my $vendor, my $device,
+     my $subvendor, my $subdevice) = @_;
+    my $lines = get_section($secn . "." . $target_os);
     if (!$lines) {
 	$lines = get_section($secn . "." . "NT");
     }
@@ -475,23 +475,30 @@ sub get_file {
 
 sub find_target_os() {
     my @targets = @_;
-    my $target;
     my $arch = `uname -m`;
     chomp($arch);
     if ($arch =~ /64$/) {
-	$target = "AMD64";
+	$arch = "amd64";
     } else {
-	$target = "X86";
+	$arch = "x86";
     }
 
-    foreach my $os (@targets) {
-	$os = trim($os);
-	if ($os =~ /([^.]+)/) {
-	    my $arch = $1;
-	    if (uc($arch) =~ /$target/) {
-		printf DBG "target: $os\n";
-		return $os;
-	    }
+    foreach my $target_os (@targets) {
+	$target_os = trim($target_os);
+	my $s = "NT" . $arch . ".5.1";
+	if (uc($target_os) =~ /$s/) {
+	    printf DBG "arch: $target_os\n";
+	    return $target_os;
+	}
+	$s = "NT" . $arch;
+	if (uc($target_os) =~ /$s/) {
+	    printf DBG "target: $target_os\n";
+	    return $target_os;
+	}
+	$s = "NT.5.1";
+	if (uc($target_os) =~ /$s/) {
+	    printf DBG "target: $target_os\n";
+	    return $target_os;
 	}
     }
     printf DBG "target: NT\n";
