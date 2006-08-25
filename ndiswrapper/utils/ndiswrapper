@@ -572,7 +572,7 @@ sub generate_module_device_map {
 	    while (my $file = <LS2>) {
 		chomp ($file);
 		if ($file =~ /.conf$/) {
-		    if ($file =~ /^(.{4}):(.{4}):(.{4}):(.{4})\.([0-9A-F]+)\.conf$/) {
+		    if ($file =~ /^(.{4}):(.{4}):(.{4}):(.{4})\.([^.]+)\.conf$/) {
 			($vendor, $device, $subvendor, $subdevice, $busid) =
 			  ($1, $2, "0000$3", "0000$4", $5);
 		    } elsif ($file =~ /(.{4}):(.{4})\.([0-9A-F]+)\.conf$/) {
@@ -707,6 +707,7 @@ sub install_status {
     my $sys = 0;
     my $conf = 0;
     my $inf = 0;
+    my $vendor, my $device, my $subvendor, my $subdevice, my $busid;
 
     if (!$cards) {
 	return;
@@ -723,9 +724,9 @@ sub install_status {
 	    $inf = 1;
 	} elsif ($file =~ /\.conf$/) {
 	    $conf = 1 if ($conf eq 0);
-	    if ($file =~ /(.{4}):(.{4}):(.{4}):(.{4})\./) {
-		(my $vendor, my $device, my $subvendor, my $subdevice) =
-		  (uc($1), uc($2), uc($3), uc($4));
+	    if ($file =~ /^(.{4}):(.{4}):(.{4}):(.{4})\.([^.]+)\.conf$/) {
+		($vendor, $device, $subvendor, $subdevice, $busid) =
+		  (uc($1), uc($2), uc($3), uc($4), uc($5));
 		foreach my $card (@{$cards}) {
 		    if ($card->{vendor} eq $vendor and
 			$card->{device} eq $device and
@@ -735,8 +736,9 @@ sub install_status {
 			last;
 		    }
 		}
-	    } elsif ($file =~ /(.{4}):(.{4})\./) {
-		(my $vendor, my $device) = (uc($1), uc($2));
+	    } elsif ($file =~ /(.{4}):(.{4})\.([^.]+)/) {
+		($vendor, $device, $subvendor, $subdevice, $busid) =
+		  (uc($1), uc($2), "\\*", "\\*", uc($3));
 		foreach my $card (@{$cards}) {
 		    if ($card->{vendor} eq $vendor and
 			$card->{device} eq $device) {
@@ -761,7 +763,21 @@ sub install_status {
 	if ($conf eq 1) {
 	    $ret = "\tdriver installed ";
 	} else {
-	    $ret = "\tdriver installed, hardware present ";
+	    $ret = "\tdriver installed, hardware ($vendor:$device) present ";
+	}
+
+	my $devstring;
+	if ($busid eq $WRAP_USB_BUS) {
+	    $devstring =
+	      sprintf("usb:v%sp%sd", $vendor, $device);
+	} elsif ($busid eq $WRAP_PCI_BUS) {
+	    $devstring =
+	      sprintf("pci:v0000%sd0000%ssv", $vendor, $device);
+	}
+	my $alt_driver = `modprobe -c | grep $devstring | sed -n 's/.* \\(.*\\)/\\1/p'`;
+	chomp($alt_driver);
+	if (length($alt_driver) gt 0) {
+	    $ret .= "(alternate driver: $alt_driver)";
 	}
     }
     return $ret;
