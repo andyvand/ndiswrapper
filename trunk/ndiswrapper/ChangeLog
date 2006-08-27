@@ -6,6 +6,7 @@ Version 1.24 2006-XX-XX
   without unloading ndiswrapper module, and any number of Windows drivers can
   be installed without overhead.
 * Minor tweaks and optimizations
+* Fixed issues with RT-Preempt patch
 
 Version 1.23 2006-08-10
 =======================	

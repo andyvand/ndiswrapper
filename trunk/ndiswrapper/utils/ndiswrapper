@@ -390,9 +390,9 @@ sub parse_hwid {
     if ($hwid =~ /PCI\\VEN_(\w+)&DEV_(\w+)&SUBSYS_(\w{4})(\S{4})/) {
 	return ($WRAP_PCI_BUS, $1, $2, $4, $3);
     } elsif ($hwid =~ /PCI\\VEN_(\w+)&DEV_(\w+)/) {
-	return ($WRAP_PCI_BUS, $1, $2);
+	return ($WRAP_PCI_BUS, $1, $2, 0, 0);
     } elsif ($hwid =~ /USB\\VID_(\w+)&PID_(\w+)/) {
-	return ($WRAP_USB_BUS, $1, $2);
+	return ($WRAP_USB_BUS, $1, $2, 0, 0);
     } else {
 	return 0;
     }

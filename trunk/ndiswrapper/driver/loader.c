@@ -679,7 +679,7 @@ struct wrap_device *load_wrap_device(struct load_device *load_device)
 	int ret;
 	struct nt_list *cur;
 	struct wrap_device *wd = NULL;
-	char vendor[5], device[5], subvendor[5], subdevice[5];
+	char vendor[5], device[5], subvendor[5], subdevice[5], bus[5];
 
 	TRACEENTER1("%04x, %04x, %04x, %04x", load_device->vendor,
 		    load_device->device, load_device->subvendor,
@@ -687,7 +687,8 @@ struct wrap_device *load_wrap_device(struct load_device *load_device)
 	if (sprintf(vendor, "%04x", load_device->vendor) == 4 &&
 	    sprintf(device, "%04x", load_device->device) == 4 &&
 	    sprintf(subvendor, "%04x", load_device->subvendor) == 4 &&
-	    sprintf(subdevice, "%04x", load_device->subdevice) == 4) {
+	    sprintf(subdevice, "%04x", load_device->subdevice) == 4 &&
+	    sprintf(bus, "%04x", load_device->bus) == 4) {
 		char *argv[] = {"loadndisdriver", WRAP_CMD_LOAD_DEVICE,
 #if defined(DEBUG) && DEBUG >= 1
 				"1",
@@ -695,10 +696,10 @@ struct wrap_device *load_wrap_device(struct load_device *load_device)
 				"0",
 #endif
 				UTILS_VERSION, vendor, device,
-				subvendor, subdevice, NULL};
+				subvendor, subdevice, bus, NULL};
 		char *env[] = {NULL};
-		DBGTRACE2("%s, %s, %s, %s", vendor, device,
-			  subvendor, subdevice);
+		DBGTRACE2("%s, %s, %s, %s, %s", vendor, device,
+			  subvendor, subdevice, bus);
 		if (down_interruptible(&loader_mutex)) {
 			WARNING("couldn't obtain loader_mutex");
 			TRACEEXIT1(return NULL);
@@ -863,7 +864,7 @@ int loader_init(void)
 
 	InitializeListHead(&wrap_drivers);
 	InitializeListHead(&wrap_devices);
-	sema_init(&loader_mutex, 1);
+	init_MUTEX(&loader_mutex);
 	init_waitqueue_head(&loader_wq);
 	if ((err = misc_register(&wrapper_misc)) < 0 ) {
 		ERROR("couldn't register module (%d)", err);

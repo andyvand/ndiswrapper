@@ -31,6 +31,8 @@ static void del_stats_timer(struct wrap_ndis_device *wnd);
 static NDIS_STATUS ndis_start_device(struct wrap_ndis_device *wnd);
 static int ndis_remove_device(struct wrap_ndis_device *wnd);
 static void set_multicast_list(struct wrap_ndis_device *wnd);
+static int ndis_net_dev_open(struct net_device *net_dev);
+static int ndis_net_dev_close(struct net_device *net_dev);
 
 static inline int ndis_wait_comm_completion(struct wrap_ndis_device *wnd)
 {
@@ -54,7 +56,10 @@ NDIS_STATUS miniport_reset(struct wrap_ndis_device *wnd)
 
 	if (down_interruptible(&wnd->ndis_comm_mutex))
 		TRACEEXIT3(return NDIS_STATUS_FAILURE);
-	down_interruptible(&wnd->tx_ring_mutex);
+	if (down_interruptible(&wnd->tx_ring_mutex)) {
+		up(&wnd->ndis_comm_mutex);
+		TRACEEXIT3(return NDIS_STATUS_FAILURE);
+	}		
 	miniport = &wnd->wd->driver->ndis_driver->miniport;
 	cur_lookahead = wnd->nmb->cur_lookahead;
 	max_lookahead = wnd->nmb->max_lookahead;
@@ -269,8 +274,6 @@ static NDIS_STATUS miniport_init(struct wrap_ndis_device *wnd)
 	 * fail after boot */
 	sleep_hz(HZ / 2);
 	set_bit(HW_INITIALIZED, &wnd->hw_status);
-	up(&wnd->ndis_comm_mutex);
-	up(&wnd->tx_ring_mutex);
 	hangcheck_add(wnd);
 	/* the description about NDIS_ATTRIBUTE_NO_HALT_ON_SUSPEND is
 	 * misleading/confusing; we just ignore it */
@@ -290,9 +293,6 @@ static void miniport_halt(struct wrap_ndis_device *wnd)
 	struct miniport_char *miniport;
 
 	TRACEENTER1("%p", wnd);
-	/* ndis_comm_mutex may already be locked, e.g., during suspend or
-	 * if device is suspended, but resume failed */
-	down_trylock(&wnd->ndis_comm_mutex);
 	if (test_bit(HW_INITIALIZED, &wnd->hw_status)) {
 		hangcheck_del(wnd);
 		del_stats_timer(wnd);
@@ -335,6 +335,7 @@ static NDIS_STATUS miniport_set_power_state(struct wrap_ndis_device *wnd,
 	DBGTRACE1("%d", state);
 	if (state == NdisDeviceStateD0) {
 		status = NDIS_STATUS_SUCCESS;
+		up(&wnd->ndis_comm_mutex);
 		if (test_and_clear_bit(HW_HALTED, &wnd->hw_status)) {
 			status = miniport_init(wnd);
 			if (status == NDIS_STATUS_SUCCESS) {
@@ -342,17 +343,12 @@ static NDIS_STATUS miniport_set_power_state(struct wrap_ndis_device *wnd,
 				set_multicast_list(wnd);
 			}
 		} else if (test_and_clear_bit(HW_SUSPENDED, &wnd->hw_status)) {
-			up(&wnd->ndis_comm_mutex);
 			status = miniport_set_int(wnd, OID_PNP_SET_POWER,
 						  state);
-			if (status == NDIS_STATUS_SUCCESS)
-				up(&wnd->tx_ring_mutex);
-			else {
-				down_interruptible(&wnd->ndis_comm_mutex);
+			if (status != NDIS_STATUS_SUCCESS)
 				WARNING("%s: setting power to state %d failed? "
 					"%08X", wnd->net_dev->name, state,
 					status);
-			}
 			if (wnd->ndis_wolopts &&
 			    wrap_is_pci_bus(wnd->wd->dev_bus))
 				pci_enable_wake(wnd->wd->pci.pdev, PCI_D0, 0);
@@ -360,27 +356,20 @@ static NDIS_STATUS miniport_set_power_state(struct wrap_ndis_device *wnd,
 			return NDIS_STATUS_FAILURE;
 
 		if (status == NDIS_STATUS_SUCCESS) {
+			up(&wnd->tx_ring_mutex);
+			netif_device_attach(wnd->net_dev);
 			hangcheck_add(wnd);
 			add_stats_timer(wnd);
 			set_scan(wnd);
-			if (netif_running(wnd->net_dev)) {
-				netif_device_attach(wnd->net_dev);
-				netif_wake_queue(wnd->net_dev);
-			}
-			netif_poll_enable(wnd->net_dev);
 		} else {
 			WARNING("%s: couldn't set power to state %d; device not"
 				" resumed", wnd->net_dev->name, state);
 		}
 		TRACEEXIT1(return status);
 	} else {
-		netif_poll_disable(wnd->net_dev);
-		if (netif_running(wnd->net_dev)) {
-			netif_tx_disable(wnd->net_dev);
-			netif_device_detach(wnd->net_dev);
-		}
 		if (down_interruptible(&wnd->tx_ring_mutex))
-			WARNING("couldn't lock tx_ring_mutex");
+			TRACEEXIT1(return NDIS_STATUS_FAILURE);
+		netif_device_detach(wnd->net_dev);
 		hangcheck_del(wnd);
 		del_stats_timer(wnd);
 		status = NDIS_STATUS_NOT_SUPPORTED;
@@ -402,19 +391,18 @@ static NDIS_STATUS miniport_set_power_state(struct wrap_ndis_device *wnd,
 						  pm_state);
 			if (status == NDIS_STATUS_SUCCESS) {
 				set_bit(HW_SUSPENDED, &wnd->hw_status);
-				if (down_interruptible(&wnd->ndis_comm_mutex))
-					WARNING("couldn't lock ndis_comm_mutex");
 			} else
 				WARNING("suspend failed: %08X", status);
 		}
 		if (status != NDIS_STATUS_SUCCESS) {
 			WARNING("%s does not support power management; "
 				"halting the device", wnd->net_dev->name);
-			/* TODO: should we use pnp_stop_device instead? */
 			miniport_halt(wnd);
 			set_bit(HW_HALTED, &wnd->hw_status);
 			status = STATUS_SUCCESS;
 		}
+		if (down_interruptible(&wnd->ndis_comm_mutex))
+			WARNING("couldn't lock ndis_comm_mutex");
 		TRACEEXIT1(return status);
 	}
 }
@@ -757,29 +745,24 @@ static int set_packet_filter(struct wrap_ndis_device *wnd, ULONG packet_filter)
 		TRACEEXIT3(return -1);
 }
 
-static int ndis_open(struct net_device *dev)
+static int ndis_net_dev_open(struct net_device *net_dev)
 {
-	ULONG packet_filter;
-	struct wrap_ndis_device *wnd = netdev_priv(dev);
+	struct wrap_ndis_device *wnd = netdev_priv(net_dev);
 
 	TRACEENTER1("%p", wnd);
-	packet_filter = NDIS_PACKET_TYPE_DIRECTED | NDIS_PACKET_TYPE_BROADCAST |
-		NDIS_PACKET_TYPE_ALL_FUNCTIONAL;
-	if (set_packet_filter(wnd, packet_filter)) {
+	if (set_packet_filter(wnd, wnd->packet_filter)) {
 		WARNING("couldn't set packet filter");
 		return -ENODEV;
 	}
-	netif_device_attach(dev);
-	netif_start_queue(dev);
+	netif_wake_queue(net_dev);
+	netif_poll_enable(wnd->net_dev);
 	return 0;
 }
 
-static int ndis_close(struct net_device *dev)
+static int ndis_net_dev_close(struct net_device *net_dev)
 {
-	if (netif_running(dev)) {
-		netif_tx_disable(dev);
-		netif_device_detach(dev);
-	}
+	netif_poll_disable(net_dev);
+	netif_tx_disable(net_dev);
 	return 0;
 }
 
@@ -1614,9 +1597,11 @@ static NDIS_STATUS ndis_start_device(struct wrap_ndis_device *wnd)
 	DBGTRACE1("mac:" MACSTRSEP, MAC2STR(mac));
 	memcpy(&net_dev->dev_addr, mac, ETH_ALEN);
 
-	net_dev->open = ndis_open;
+	wnd->packet_filter = NDIS_PACKET_TYPE_DIRECTED |
+		NDIS_PACKET_TYPE_BROADCAST | NDIS_PACKET_TYPE_ALL_FUNCTIONAL;
+	net_dev->open = ndis_net_dev_open;
 	net_dev->hard_start_xmit = tx_skbuff;
-	net_dev->stop = ndis_close;
+	net_dev->stop = ndis_net_dev_close;
 	net_dev->get_stats = ndis_get_stats;
 	net_dev->do_ioctl = NULL;
 	if (wnd->physical_medium == NdisPhysicalMediumWirelessLan) {
@@ -1760,11 +1745,9 @@ static int ndis_remove_device(struct wrap_ndis_device *wnd)
 	set_bit(SHUTDOWN, &wnd->wrap_ndis_pending_work);
 	unregister_netdevice_notifier(&netdev_notifier);
 	wnd->tx_ok = 0;
-	ndis_close(wnd->net_dev);
+	unregister_netdev(wnd->net_dev);
 	netif_carrier_off(wnd->net_dev);
 	cancel_delayed_work(&wnd->wrap_ndis_work);
-	/* In 2.4 kernels, this function is called in atomic context,
-	 * so we can't (don't need to?) wait on mutex. */
 	/* if device is suspended, but resume failed, tx_ring_mutex is
 	 * already locked */
 	down_trylock(&wnd->tx_ring_mutex);
@@ -1786,10 +1769,6 @@ static int ndis_remove_device(struct wrap_ndis_device *wnd)
 	up(&wnd->tx_ring_mutex);
 	wrap_procfs_remove_ndis_device(wnd);
 	miniport_halt(wnd);
-	/* miniport_halt grabs ndis_comm_mutex; release it, so
-	 * CONFIG_DEBUG_RT_MUTEXES doesn't complain about freeing
-	 * locked mutex */
-	up(&wnd->ndis_comm_mutex);
 	ndis_exit_device(wnd);
 
 	if (wnd->tx_packet_pool) {
@@ -1802,7 +1781,6 @@ static int ndis_remove_device(struct wrap_ndis_device *wnd)
 	}
 	printk(KERN_INFO "%s: device %s removed\n", DRIVER_NAME,
 	       wnd->net_dev->name);
-	unregister_netdev(wnd->net_dev);
 	free_netdev(wnd->net_dev);
 	TRACEEXIT2(return 0);
 }
@@ -1867,8 +1845,8 @@ static wstdcall NTSTATUS NdisAddDevice(struct driver_object *drv_obj,
 	init_nmb_functions(nmb);
 	wnd->net_dev = net_dev;
 	wnd->ndis_irq = NULL;
-	sema_init(&wnd->tx_ring_mutex, 0);
-	sema_init(&wnd->ndis_comm_mutex, 0);
+	init_MUTEX(&wnd->tx_ring_mutex);
+	init_MUTEX(&wnd->ndis_comm_mutex);
 	init_waitqueue_head(&wnd->ndis_comm_wq);
 	wnd->ndis_comm_done = 0;
 	INIT_WORK(&wnd->tx_work, tx_worker, wnd);

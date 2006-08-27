@@ -612,6 +612,7 @@ int wrap_pnp_start_pci_device(struct pci_dev *pdev,
 		    pdev->device, pdev->subsystem_vendor,
 		    pdev->subsystem_device);
 
+	load_device.bus = WRAP_PCI_BUS;
 	load_device.vendor = pdev->vendor;
 	load_device.device = pdev->device;
 	load_device.subvendor = pdev->subsystem_vendor;
@@ -681,6 +682,7 @@ void *wrap_pnp_start_usb_device(struct usb_device *udev,
 	} else {
 		struct load_device load_device;
 
+		load_device.bus = WRAP_USB_BUS;
 		load_device.vendor = udev->descriptor.idVendor;
 		load_device.device = udev->descriptor.idProduct;
 		load_device.subvendor = 0;
