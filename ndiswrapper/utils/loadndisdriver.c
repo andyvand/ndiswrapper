@@ -364,12 +364,12 @@ err:
 }
 
 static int get_device(char *driver_name, int vendor, int device,
-		      int subvendor, int subdevice, struct load_device *ld)
+		      int subvendor, int subdevice, int bus,
+		      struct load_device *ld)
 {
 	int ret;
 	struct stat statbuf;
 	char file[32];
-	int i, bus_types[] = {WRAP_PCI_BUS, WRAP_USB_BUS};
 
 	DBG("%s", driver_name);
 	ret = -1;
@@ -377,26 +377,20 @@ static int get_device(char *driver_name, int vendor, int device,
 		DBG("couldn't chdir to %s: %s", driver_name, strerror(errno));
 		return -EINVAL;
 	}
-	for (i = 0; i < sizeof(bus_types) / sizeof(bus_types[0]); i++) {
-		if (snprintf(file, sizeof(file), "%04X:%04X:%04X:%04X.%X.conf",
-			     vendor, device, subvendor, subdevice,
-			     bus_types[i]) > 0 && stat(file, &statbuf) == 0) {
-			DBG("found %s", file);
-			ld->subvendor = subvendor;
-			ld->subdevice = subdevice;
-			ret = 0;
-			break;
-		} else {
-			if (snprintf(file, sizeof(file), "%04X:%04X.%X.conf",
-				     vendor, device, bus_types[i]) > 0 &&
-			    stat(file, &statbuf) == 0) {
-				DBG("found %s", file);
-				ld->subvendor = 0;
-				ld->subdevice = 0;
-				ret = 0;
-				break;
-			}
-		}
+	if (snprintf(file, sizeof(file), "%04X:%04X:%04X:%04X.%X.conf",
+		     vendor, device, subvendor, subdevice, bus) > 0 &&
+	    stat(file, &statbuf) == 0) {
+		DBG("found %s", file);
+		ld->subvendor = subvendor;
+		ld->subdevice = subdevice;
+		ret = 0;
+	} else if (snprintf(file, sizeof(file), "%04X:%04X.%X.conf",
+			    vendor, device, bus) > 0 &&
+		   stat(file, &statbuf) == 0) {
+		DBG("found %s", file);
+		ld->subvendor = 0;
+		ld->subdevice = 0;
+		ret = 0;
 	}
 	chdir("..");
 	if (ret)
@@ -405,7 +399,7 @@ static int get_device(char *driver_name, int vendor, int device,
 		DBG("found file: %s/%s", driver_name, file);
 		ld->vendor = vendor;
 		ld->device = device;
-		ld->bus = bus_types[i];
+		ld->bus = bus;
 		strncpy(ld->driver_name, driver_name, sizeof(ld->driver_name));
 		strncpy(ld->conf_file_name, file, sizeof(ld->conf_file_name));
 	}
@@ -415,7 +409,7 @@ static int get_device(char *driver_name, int vendor, int device,
 }
 
 static int load_device(int ioctl_device, int vendor, int device,
-		       int subvendor, int subdevice)
+		       int subvendor, int subdevice, int bus)
 {
 	struct dirent  *dirent;
 	DIR *dir;
@@ -439,7 +433,7 @@ static int load_device(int ioctl_device, int vendor, int device,
 			continue;
 
 		if (!get_device(dirent->d_name, vendor, device,
-				subvendor, subdevice, &load_device))
+				subvendor, subdevice, bus, &load_device))
 			break;
 	}
 	closedir(dir);
@@ -553,8 +547,8 @@ int main(int argc, char *argv[0])
 	}
 
 	if (strcmp(cmd, WRAP_CMD_LOAD_DEVICE) == 0) {
-		int vendor, device, subvendor, subdevice;
-		if (argc != 8) {
+		int vendor, device, subvendor, subdevice, bus;
+		if (argc != 9) {
 			ERROR("incorrect usage of %s (%d)", argv[0], argc);
 			res = 7;
 			goto out;
@@ -562,13 +556,14 @@ int main(int argc, char *argv[0])
 		if (sscanf(argv[4], "%04x", &vendor) != 1 ||
 		    sscanf(argv[5], "%04x", &device) != 1 ||
 		    sscanf(argv[6], "%04x", &subvendor) != 1 ||
-		    sscanf(argv[7], "%04x", &subdevice) != 1) {
+		    sscanf(argv[7], "%04x", &subdevice) != 1 ||
+		    sscanf(argv[8], "%04x", &bus) != 1) {
 			ERROR("couldn't get device info");
 			res = 8;
 			goto out;
 		}
 		if (load_device(ioctl_device, vendor, device,
-				subvendor, subdevice))
+				subvendor, subdevice, bus))
 			res = 9;
 		else
 			res = 0;
