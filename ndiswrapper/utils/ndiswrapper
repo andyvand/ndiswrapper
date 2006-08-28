@@ -575,7 +575,7 @@ sub generate_module_device_map {
 		    if ($file =~ /^(.{4}):(.{4}):(.{4}):(.{4})\.([^.]+)\.conf$/) {
 			($vendor, $device, $subvendor, $subdevice, $busid) =
 			  ($1, $2, "0000$3", "0000$4", $5);
-		    } elsif ($file =~ /(.{4}):(.{4})\.([0-9A-F]+)\.conf$/) {
+		    } elsif ($file =~ /(.{4}):(.{4})\.([^.]+)\.conf$/) {
 			($vendor, $device, $subvendor, $subdevice, $busid) =
 			  ($1, $2, "*", "*", "$3");
 		    }
@@ -736,7 +736,7 @@ sub install_status {
 			last;
 		    }
 		}
-	    } elsif ($file =~ /(.{4}):(.{4})\.([^.]+)/) {
+	    } elsif ($file =~ /(.{4}):(.{4})\.([^.]+)\.conf/) {
 		($vendor, $device, $subvendor, $subdevice, $busid) =
 		  (uc($1), uc($2), "\\*", "\\*", uc($3));
 		foreach my $card (@{$cards}) {
