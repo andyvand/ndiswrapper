@@ -411,7 +411,7 @@ sub parse_key_value {
 
 sub get_target_os_section {
     my $secn = shift;
-    my $arch = `uname -r`;
+    my $arch = `uname -m`;
     chomp($arch);
     if ($arch =~ /64$/) {
 	$arch = "AMD64";
