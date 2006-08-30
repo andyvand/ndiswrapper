@@ -1691,6 +1691,8 @@ wstdcall KPRIORITY WIN_FUNC(KeQueryPriorityThread,1)
 	KPRIORITY prio;
 
 	EVENTENTER("task: %p", task);
+	return LOW_REALTIME_PRIORITY;
+
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,0)
 	prio = 1;
 #else
@@ -1750,6 +1752,8 @@ wstdcall KPRIORITY WIN_FUNC(KeSetPriorityThread,2)
 	KPRIORITY old_prio;
 
 	TRACEENTER3("task: %p, priority = %u", task, priority);
+
+	return LOW_REALTIME_PRIORITY;
 
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,0)
 	/* FIXME: is there a way to set kernel thread prio on 2.4? */
