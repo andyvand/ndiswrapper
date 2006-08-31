@@ -434,6 +434,10 @@ sub get_target_os_section {
     if ($lines) {
 	return $lines;
     }
+    $lines = get_section($secn . ".NT");
+    if ($lines) {
+	return $lines;
+    }
     $lines = get_section($secn);
     if ($lines) {
 	return $lines;
