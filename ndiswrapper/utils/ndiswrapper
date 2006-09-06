@@ -23,6 +23,7 @@ use File::Copy;
 use File::Path;
 
 my $WRAP_PCI_BUS = 5;
+my $WRAP_PCIMCIA_BUS = 8;
 my $WRAP_USB_BUS = 15;
 
 my %sections;
@@ -260,6 +261,35 @@ sub parse_install {
 	return -1;
     }
 
+    my @addregs;
+    my @copyfiles;
+    foreach my $line (@{$lines}) {
+	$line =~ s/^;\s*//;
+	$line = trim(del_comment($line));
+	(my $key, my $val) = parse_key_value($line);
+	my @array;
+	if ($key) {
+	    if (lc($key) eq "addreg") {
+		@array = split(",", $val);
+		foreach my $reg (@array) {
+		    push @addregs, trim($reg);
+		}
+	    } elsif (lc($key) eq "copyfiles") {
+		printf DBG "copyfiles: %s\n", $val;
+		@array = split(",", $val);
+		foreach my $copy_file (@array) {
+		    my @copy_sec = split(",", $copy_file);
+		    foreach my $file (@copy_sec) {
+			push @copyfiles, trim($file);
+		    }
+		}
+	    } elsif (lc($key) eq "bustype") {
+		printf DBG "bustype: %s\n", $val;
+		$bus_type = $val;
+	    }
+	}
+    }
+
     my $filename = "$vendor:$device";
     if ($subvendor) {
 	$filename .= ":$subvendor:$subdevice"
@@ -279,34 +309,20 @@ sub parse_install {
     printf CONF "class_guid|%s\n", $classguid;
     printf CONF "NetworkAddress|XX:XX:XX:XX:XX:XX\n";
     printf CONF "driver_version|%s,%s\n", $providerstring, $version;
+    printf CONF "BusType|%s\n", $bus_type;
     printf CONF "\n";
     close(CONF);
 
     open(CONF, "|sort|uniq >>$confdir/$driver_name/$filename") or
       die "couldn't create file $filename: $!";
 
-    foreach my $line (@{$lines}) {
-	$line =~ s/^;\s*//;
-	$line = trim(del_comment($line));
-	(my $key, my $val) = parse_key_value($line);
-	if ($key) {
-	    if (lc($key) eq "addreg") {
-		my @addregs = split(",", $val);
-		foreach my $reg (@addregs) {
-		    parse_registry(trim($reg));
-		}
-	    } elsif (lc($key) eq "copyfiles") {
-		printf DBG "copyfiles: %s\n", $val;
-		my @copy_files = split(",", $val);
-		foreach my $copy_file (@copy_files) {
-		    my @copy_sec = split(",", $copy_file);
-		    foreach my $file (@copy_sec) {
-			parse_copy_files(trim($file));
-		    }
-		}
-	    }
-	}
+    foreach my $reg (@addregs) {
+	parse_registry($reg);
     }
+    foreach my $file (@copyfiles) {
+	parse_copy_file($file);
+    }
+
     close(CONF);
 }
 
@@ -348,7 +364,7 @@ sub parse_registry {
     }
 }
 
-sub parse_copy_files {
+sub parse_copy_file {
     my $copy_name = shift;
 
     if ($copy_name =~ /^\@/) {
@@ -387,12 +403,12 @@ sub parse_copy_files {
 
 sub parse_hwid {
     my $hwid = uc(shift);
-    if ($hwid =~ /PCI\\VEN_(\w+)&DEV_(\w+)&SUBSYS_(\w{4})(\S{4})/) {
-	return ($WRAP_PCI_BUS, $1, $2, $4, $3);
-    } elsif ($hwid =~ /PCI\\VEN_(\w+)&DEV_(\w+)/) {
-	return ($WRAP_PCI_BUS, $1, $2, 0, 0);
-    } elsif ($hwid =~ /USB\\VID_(\w+)&PID_(\w+)/) {
-	return ($WRAP_USB_BUS, $1, $2, 0, 0);
+    if ($hwid =~ /(PCI\\)?VEN_(\w+)&DEV_(\w+)&SUBSYS_(\w{4})(\S{4})/) {
+	return ($WRAP_PCI_BUS, $2, $3, $4, $5);
+    } elsif ($hwid =~ /(PCI\\)?VEN_(\w+)&DEV_(\w+)/) {
+	return ($WRAP_PCI_BUS, $2, $3, 0, 0);
+    } elsif ($hwid =~ /(USB\\)?VID_(\w+)&PID_(\w+)/) {
+	return ($WRAP_USB_BUS, $2, $3, 0, 0);
     } else {
 	return 0;
     }
