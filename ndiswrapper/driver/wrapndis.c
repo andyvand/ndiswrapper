@@ -431,16 +431,6 @@ static int ndis_set_mac_address(struct net_device *dev, void *p)
 		TRACEEXIT1(return -EINVAL);
 	}
 	param.type = NdisParameterString;
-	RtlInitAnsiString(&ansi, "mac_address");
-	if (RtlAnsiStringToUnicodeString(&key, &ansi, TRUE))
-		TRACEEXIT1(return -EINVAL);
-	NdisWriteConfiguration(&res, wnd->nmb, &key, &param);
-	RtlFreeUnicodeString(&key);
-	if (res != NDIS_STATUS_SUCCESS) {
-		RtlFreeUnicodeString(&param.data.string);
-		TRACEEXIT1(return -EINVAL);
-	}
-
 	RtlInitAnsiString(&ansi, "NetworkAddress");
 	if (RtlAnsiStringToUnicodeString(&key, &ansi, TRUE))
 		TRACEEXIT1(return -EINVAL);
@@ -659,6 +649,7 @@ static void tx_worker(void *param)
 			n = wnd->max_tx_packets;
 		n = miniport_tx_packets(wnd, wnd->tx_ring_start, n);
 		if (n > 0) {
+			wnd->net_dev->trans_start = jiffies;
 			wnd->tx_ring_start =
 				(wnd->tx_ring_start + n) % TX_RING_SIZE;
 			wnd->is_tx_ring_full = 0;
@@ -1858,8 +1849,8 @@ static wstdcall NTSTATUS NdisAddDevice(struct driver_object *drv_obj,
 	wnd->capa.encr = 0;
 	wnd->capa.auth = 0;
 	wnd->attributes = 0;
-	wnd->dma_map_count = 0;
-	wnd->dma_map_addr = NULL;
+	wnd->tx_dma_count = 0;
+	wnd->tx_dma_addr = NULL;
 	wnd->nick[0] = 0;
 	init_timer(&wnd->hangcheck_timer);
 	wnd->scan_timestamp = 0;
@@ -1873,7 +1864,6 @@ static wstdcall NTSTATUS NdisAddDevice(struct driver_object *drv_obj,
 	if (wd->driver->ndis_driver)
 		wd->driver->ndis_driver->miniport.shutdown = NULL;
 	wnd->stats_enabled = TRUE;
-	wnd->rx_csum.value = 0;
 	InitializeListHead(&wnd->timer_list);
 
 	fdo->reserved = wnd;

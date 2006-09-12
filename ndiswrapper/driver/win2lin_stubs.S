@@ -179,10 +179,11 @@ win2lin6:
 # First 6 args are passed through registers, so we need space for 7 and above.
 # The arguments should have been copied onto stack already.
 
-#define call_lin_func_args(n)	\
-	sub $(n-6)*8, %rsp	;\
-	call_lin_func		;\
-	add $(n-6)*8, %rsp
+.macro call_lin_func_args n
+	sub $(\n-6)*8, %rsp
+	call_lin_func
+	add $(\n-6)*8, %rsp
+	.endm
 
 # m is index of Linux arg required, n is total number of args to function
 # After stack frame is allocated, Linux arg 7 should be at 0(%rsp),

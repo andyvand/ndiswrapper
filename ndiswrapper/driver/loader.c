@@ -44,8 +44,7 @@ static struct guid class_guids[] = {
 };
 
 struct semaphore loader_mutex;
-static wait_queue_head_t loader_wq;
-static int loader_done;
+static struct completion loader_complete;
 
 static struct nt_list wrap_devices;
 static struct nt_list wrap_drivers;
@@ -109,7 +108,7 @@ struct wrap_driver *load_wrap_driver(struct wrap_device *wd)
 			WARNING("couldn't obtain loader_mutex");
 			TRACEEXIT1(return NULL);
 		}
-		loader_done = 0;
+		INIT_COMPLETION(loader_complete);
 		ret = call_usermodehelper("/sbin/loadndisdriver", argv, env
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
 					  , 1
@@ -121,10 +120,7 @@ struct wrap_driver *load_wrap_driver(struct wrap_device *wd)
 			      "for messages from 'loadndisdriver'", ret);
 			TRACEEXIT1(return NULL);
 		}
-		if (wait_event_interruptible(loader_wq, loader_done)) {
-			up(&loader_mutex);
-			TRACEEXIT1(return NULL);
-		}
+		wait_for_completion(&loader_complete);
 		DBGTRACE1("%s", wd->driver_name);
 		wrap_driver = NULL;
 		nt_list_for_each(cur, &wrap_drivers) {
@@ -272,7 +268,7 @@ struct wrap_bin_file *get_bin_file(char *bin_file_name)
 			WARNING("couldn't obtain loader_mutex");
 			TRACEEXIT1(return NULL);
 		}
-		loader_done = 0;
+		INIT_COMPLETION(loader_complete);
 		ret = call_usermodehelper("/sbin/loadndisdriver", argv, env
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
 					  , 1
@@ -284,10 +280,7 @@ struct wrap_bin_file *get_bin_file(char *bin_file_name)
 			      "for messages from 'loadndisdriver'", ret);
 			TRACEEXIT1(return NULL);
 		}
-		if (wait_event_interruptible(loader_wq, loader_done)) {
-			up(&loader_mutex);
-			TRACEEXIT1(return NULL);
-		}
+		wait_for_completion(&loader_complete);
 		up(&loader_mutex);
 		if (!driver->bin_files[i].data)
 			TRACEEXIT1(return NULL);
@@ -704,7 +697,7 @@ struct wrap_device *load_wrap_device(struct load_device *load_device)
 			WARNING("couldn't obtain loader_mutex");
 			TRACEEXIT1(return NULL);
 		}
-		loader_done = 0;
+		INIT_COMPLETION(loader_complete);
 		ret = call_usermodehelper("/sbin/loadndisdriver", argv, env
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
 					  , 1
@@ -716,11 +709,7 @@ struct wrap_device *load_wrap_device(struct load_device *load_device)
 				  "for messages from 'loadndisdriver'", ret);
 			TRACEEXIT1(return NULL);
 		}
-		if (wait_event_interruptible(loader_wq, loader_done)) {
-			DBGTRACE1("wait failed");
-			up(&loader_mutex);
-			TRACEEXIT1(return NULL);
-		}
+		wait_for_completion(&loader_complete);
 		wd = NULL;
 		nt_list_for_each(cur, &wrap_devices) {
 			wd = container_of(cur, struct wrap_device, list);
@@ -835,8 +824,7 @@ static int wrapper_ioctl(struct inode *inode, struct file *file,
 		ret = -EINVAL;
 		break;
 	}
-	loader_done = 1;
-	wake_up(&loader_wq);
+	complete(&loader_complete);
 	TRACEEXIT1(return ret);
 }
 
@@ -865,7 +853,7 @@ int loader_init(void)
 	InitializeListHead(&wrap_drivers);
 	InitializeListHead(&wrap_devices);
 	init_MUTEX(&loader_mutex);
-	init_waitqueue_head(&loader_wq);
+	init_completion(&loader_complete);
 	if ((err = misc_register(&wrapper_misc)) < 0 ) {
 		ERROR("couldn't register module (%d)", err);
 		unregister_devices();
