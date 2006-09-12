@@ -523,7 +523,7 @@ struct wrap_device {
 	 WRAP_BUS(dev_bus) == WRAP_PCMCIA_BUS)
 #ifdef CONFIG_USB
 /* earlier versions of ndiswrapper used 0 as USB_BUS */
-#define wrap_is_usb_bus(dev_bus)				\
+#define wrap_is_usb_bus(dev_bus)			\
 	(WRAP_BUS(dev_bus) == WRAP_USB_BUS ||		\
 	 WRAP_BUS(dev_bus) == WRAP_INTERNAL_BUS)
 #else
