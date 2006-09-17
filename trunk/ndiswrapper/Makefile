@@ -25,6 +25,7 @@ install:
 	+make -C utils install
 	mkdir -p -m 0755 $(mandir)/man8
 	install -m 644 ndiswrapper.8 $(mandir)/man8
+	install -m 644 loadndisdriver.8 $(mandir)/man8
 
 .PHONY: clean distclean
 clean:
