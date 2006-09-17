@@ -244,8 +244,8 @@ sub parse_models {
 	# TODO: deal with compatible IDs as hwid?
 	(my $bus_type, my $vendor, my $device, my $subvendor, my $subdevice) =
 	  parse_hwid($hwid);
+	printf DBG "models: %s, %s\n", $install_section, $hwid, $vendor;
 	next if (!$vendor);
-	printf DBG "models: %s, %s\n", $install_section, $hwid;
 	parse_install($install_section, $bus_type, $vendor, $device,
 		      $subvendor, $subdevice);
     }
@@ -794,7 +794,13 @@ sub install_status {
 	    $devstring =
 	      sprintf("pci:v0000%sd0000%ssv", $vendor, $device);
 	}
-	my $alt_driver = `modprobe -c | grep $devstring | sed -n 's/.* \\(.*\\)/\\1/p'`;
+	my $alt_driver;
+	open(MODPROBE, "modprobe -c|") or die "couldn't run modprobe: $!";
+	while (my $line = <MODPROBE>) {
+	    chomp($line);
+	    $alt_driver = (split(' ', $line))[-1] if $line =~ /$devstring/;
+	}
+	close(MODPROBE);
 	chomp($alt_driver);
 	if (length($alt_driver) gt 0) {
 	    $ret .= "(alternate driver: $alt_driver)";

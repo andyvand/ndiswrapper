@@ -17,6 +17,7 @@
 
 #ifdef CONFIG_X86_64
 
+/*
 # Windows <---> Linux register usage conversion when calling functions
 # V = Volatile
 # NV = Non Volatile (needs to be saved)
@@ -48,7 +49,6 @@
 # variables and 4 and higher in case of floating point variabes (passed
 # in SSE registers).
 
-/*
 In a windows function, the stackframe/registers look like this:
 
 # 0x0048 ....
