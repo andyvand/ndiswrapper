@@ -92,6 +92,9 @@ wstdcall struct irp *WIN_FUNC(IoAllocateIrp,2)
 	int irp_size;
 
 	IOENTER("count: %d", stack_count);
+	if (stack_count == 0)
+		WARNING("stack_count is 0");
+	stack_count++;
 	irp_size = IoSizeOfIrp(stack_count);
 	irp = kmalloc(irp_size, gfp_irql());
 	if (irp) {
@@ -350,6 +353,12 @@ wfastcall NTSTATUS WIN_FUNC(IofCallDriver,2)
 
 	IoSetNextIrpStackLocation(irp);
 	DUMP_IRP(irp);
+#ifdef IO_DEBUG
+	if (irp->current_location < 0) {
+		ERROR("invalid irp: %p, %d", irp, irp->current_location);
+		return STATUS_INVALID_PARAMETER;
+	}
+#endif
 	irp_sl = IoGetCurrentIrpStackLocation(irp);
 	drv_obj = dev_obj->drv_obj;
 	irp_sl->dev_obj = dev_obj;
