@@ -421,11 +421,12 @@ struct ndis_rw_lock {
 	union ndis_rw_lock_refcount ref_count[MAXIMUM_PROCESSORS];
 };
 
+struct ndis_work_item;
+typedef void (*NDIS_PROC)(struct ndis_work_item *, void *) wstdcall;
+
 struct ndis_work_item {
 	void *ctx;
-	/* this should be NDIS_PROC, but we masquerade it as
-	 * NTOS_WORK_FUNC so we can use wrap_worker */
-	NTOS_WORK_FUNC func wstdcall;
+	NDIS_PROC func;
 	UCHAR reserved[8 * sizeof(void *)];
 };
 

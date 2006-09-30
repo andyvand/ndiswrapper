@@ -388,9 +388,9 @@ static struct urb *wrap_alloc_urb(struct irp *irp, unsigned int pipe,
 		    1 ||
 #endif
 		    !virt_addr_valid(buf))) {
-		urb->transfer_buffer = usb_buffer_alloc(wd->usb.udev,
-							buf_len, alloc_flags,
-							&urb->transfer_dma);
+		urb->transfer_buffer =
+			usb_buffer_alloc(wd->usb.udev, buf_len, alloc_flags,
+					 &urb->transfer_dma);
 		if (!urb->transfer_buffer) {
 			WARNING("couldn't allocate dma buf");
 			IoAcquireCancelSpinLock(&irp->cancel_irql);

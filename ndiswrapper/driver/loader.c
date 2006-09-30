@@ -124,7 +124,8 @@ struct wrap_driver *load_wrap_driver(struct wrap_device *wd)
 		DBGTRACE1("%s", wd->driver_name);
 		wrap_driver = NULL;
 		nt_list_for_each(cur, &wrap_drivers) {
-			wrap_driver = container_of(cur, struct wrap_driver, list);
+			wrap_driver = container_of(cur, struct wrap_driver,
+						   list);
 			if (!strcmp(wrap_driver->name, wd->driver_name)) {
 				wd->driver = wrap_driver;
 				break;
@@ -321,7 +322,7 @@ static int add_bin_file(struct load_driver_file *driver_file)
 	}
 	if (copy_from_user(bin_file->data, driver_file->data, bin_file->size)) {
 		ERROR("couldn't copy data");
-		return -EINVAL;
+		return -EFAULT;
 	}
 	return 0;
 }
@@ -411,11 +412,14 @@ static int load_settings(struct wrap_driver *wrap_driver,
 				sizeof(wrap_driver->version));
 			wrap_driver->version[sizeof(wrap_driver->version)-1] = 0;
 		} else if (strcmp(setting->name, "class_guid") == 0 &&
-			   (sscanf(setting->value, "%x", &data1) == 1)) {
+			   sscanf(setting->value, "%x", &data1) == 1) {
 			int bus = WRAP_BUS(wd->dev_bus);
 			int dev = wrap_device_type(data1);
-			if (dev > 0)
-				wd->dev_bus = WRAP_DEVICE_BUS(dev, bus);
+			if (dev < 0) {
+				WARNING("unknown guid: %x", data1);
+				dev = 0;
+			}
+			wd->dev_bus = WRAP_DEVICE_BUS(dev, bus);
 		}
 		InsertTailList(&wd->settings, &setting->list);
 		nr_settings++;
@@ -767,10 +771,11 @@ static int wrapper_ioctl(struct inode *inode, struct file *file,
 	ret = 0;
 	switch (cmd) {
 	case WRAP_IOCTL_LOAD_DEVICE:
-		ret = copy_from_user(&load_device, (void *)arg,
-				     sizeof(load_device));
-		if (ret)
+		if (copy_from_user(&load_device, (void *)arg,
+				   sizeof(load_device))) {
+			ret = -EFAULT;
 			break;
+		}
 		DBGTRACE2("%04x, %04x, %04x, %04x", load_device.vendor,
 			  load_device.device, load_device.subvendor,
 			  load_device.subdevice);
@@ -806,18 +811,19 @@ static int wrapper_ioctl(struct inode *inode, struct file *file,
 			ret = -ENOMEM;
 			break;
 		}
-		ret = copy_from_user(load_driver, (void *)arg,
-				     sizeof(*load_driver));
-		if (!ret)
+		if (copy_from_user(load_driver, (void *)arg,
+				   sizeof(*load_driver)))
+			ret = -EFAULT;
+		else
 			ret = load_user_space_driver(load_driver);
 		vfree(load_driver);
 		break;
 	case WRAP_IOCTL_LOAD_BIN_FILE:
-		ret = copy_from_user(&load_bin_file, (void *)arg,
-				     sizeof(load_bin_file));
-		if (ret)
-			break;
-		ret = add_bin_file(&load_bin_file);
+		if (copy_from_user(&load_bin_file, (void *)arg,
+				   sizeof(load_bin_file)))
+			ret = -EFAULT;
+		else
+			ret = add_bin_file(&load_bin_file);
 		break;
 	default:
 		ERROR("unknown ioctl %u", cmd);

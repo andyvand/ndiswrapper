@@ -746,7 +746,7 @@ static int ndis_net_dev_open(struct net_device *net_dev)
 		return -ENODEV;
 	}
 	netif_wake_queue(net_dev);
-	netif_poll_enable(wnd->net_dev);
+	netif_poll_enable(net_dev);
 	return 0;
 }
 
@@ -768,14 +768,14 @@ static void ndis_poll_controller(struct net_device *dev)
 }
 #endif
 
-/* this function is called fom BH context */
+/* called from BH context */
 static struct net_device_stats *ndis_get_stats(struct net_device *dev)
 {
 	struct wrap_ndis_device *wnd = netdev_priv(dev);
 	return &wnd->stats;
 }
 
-/* this function is called fom BH context */
+/* called from BH context */
 static void ndis_set_multicast_list(struct net_device *dev)
 {
 	struct wrap_ndis_device *wnd = netdev_priv(dev);
@@ -783,7 +783,7 @@ static void ndis_set_multicast_list(struct net_device *dev)
 	schedule_wrap_work(&wnd->wrap_ndis_work);
 }
 
-/* this function is called fom BH context */
+/* called from BH context */
 struct iw_statistics *get_wireless_stats(struct net_device *dev)
 {
 	struct wrap_ndis_device *wnd = netdev_priv(dev);
@@ -1733,6 +1733,8 @@ static int ndis_remove_device(struct wrap_ndis_device *wnd)
 {
 	int tx_pending;
 
+	if (wnd->physical_medium == NdisPhysicalMediumWirelessLan)
+		miniport_set_info(wnd, OID_802_11_DISASSOCIATE, NULL, 0);
 	set_bit(SHUTDOWN, &wnd->wrap_ndis_pending_work);
 	unregister_netdevice_notifier(&netdev_notifier);
 	wnd->tx_ok = 0;
@@ -1788,7 +1790,7 @@ static wstdcall NTSTATUS NdisAddDevice(struct driver_object *drv_obj,
 	unsigned long i;
 
 	TRACEENTER2("%p, %p", drv_obj, pdo);
-	if (strlen(if_name) > (IFNAMSIZ-1)) {
+	if (strlen(if_name) >= IFNAMSIZ) {
 		ERROR("interface name '%s' is too long", if_name);
 		return STATUS_INVALID_PARAMETER;
 	}
@@ -1889,6 +1891,7 @@ static wstdcall NTSTATUS NdisAddDevice(struct driver_object *drv_obj,
 
 int init_ndis_driver(struct driver_object *drv_obj)
 {
+	TRACEENTER1("%p", drv_obj);
 	drv_obj->drv_ext->add_device = NdisAddDevice;
 	return 0;
 }

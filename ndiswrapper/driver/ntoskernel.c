@@ -78,7 +78,6 @@ struct bus_driver {
 };
 
 static struct nt_list bus_driver_list;
-static void del_bus_drivers(void);
 
 static struct work_struct ntos_work_item_work;
 static struct nt_list ntos_work_item_list;
@@ -102,7 +101,6 @@ static void update_user_shared_data_proc(unsigned long data);
 #endif
 
 static int add_bus_driver(const char *name);
-static void free_all_objects(void);
 static BOOLEAN queue_kdpc(struct kdpc *kdpc);
 
 WIN_SYMBOL_MAP("KeTickCount", &jiffies)
@@ -199,6 +197,10 @@ void ntoskernel_exit(void)
 	KIRQL irql;
 
 	TRACEENTER2("");
+
+#ifdef KDPC_TASKLET
+	tasklet_kill(&kdpc_work);
+#endif
 	/* free kernel (Ke) timers */
 	DBGTRACE2("freeing timers");
 	while (1) {
@@ -220,19 +222,18 @@ void ntoskernel_exit(void)
 	DBGTRACE2("freeing MDLs");
 	if (mdl_cache) {
 		irql = nt_spin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL);
-		if (!IsListEmpty(&wrap_mdl_list)) {
+		if (!IsListEmpty(&wrap_mdl_list))
 			ERROR("Windows driver didn't free all MDLs; "
 			      "freeing them now");
-			while ((cur = RemoveHeadList(&wrap_mdl_list))) {
-				struct wrap_mdl *p;
-				struct mdl *mdl;
-				p = container_of(cur, struct wrap_mdl, list);
-				mdl = (struct mdl *)p->mdl;
-				if (mdl->flags & MDL_CACHE_ALLOCATED)
-					kmem_cache_free(mdl_cache, p);
-				else
-					kfree(p);
-			}
+		while ((cur = RemoveHeadList(&wrap_mdl_list))) {
+			struct wrap_mdl *p;
+			struct mdl *mdl;
+			p = container_of(cur, struct wrap_mdl, list);
+			mdl = (struct mdl *)p->mdl;
+			if (mdl->flags & MDL_CACHE_ALLOCATED)
+				kmem_cache_free(mdl_cache, p);
+			else
+				kfree(p);
 		}
 		nt_spin_unlock_irql(&ntoskernel_lock, irql);
 		kmem_cache_destroy(mdl_cache);
@@ -264,8 +265,26 @@ void ntoskernel_exit(void)
 	}
 	nt_spin_unlock_irql(&dispatcher_lock, irql);
 
-	del_bus_drivers();
-	free_all_objects();
+	irql = nt_spin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL);
+	while ((cur = RemoveHeadList(&bus_driver_list))) {
+		struct bus_driver *bus_driver;
+		bus_driver = container_of(cur, struct bus_driver, list);
+		/* TODO: make sure all all drivers are shutdown/removed */
+		kfree(bus_driver);
+	}
+	nt_spin_unlock_irql(&ntoskernel_lock, irql);
+
+	TRACEENTER2("freeing objects");
+	irql = nt_spin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL);
+	while ((cur = RemoveHeadList(&object_list))) {
+		struct common_object_header *hdr;
+		hdr = container_of(cur, struct common_object_header, list);
+		WARNING("object %p type %d was not freed, freeing it now",
+			HEADER_TO_OBJECT(hdr), hdr->type);
+		ExFreePool(hdr);
+	}
+	nt_spin_unlock_irql(&ntoskernel_lock, irql);
+
 #if defined(CONFIG_X86_64)
 	del_timer_sync(&shared_data_timer);
 #endif
@@ -346,29 +365,6 @@ void free_object(void *object)
 	ExFreePool(hdr);
 }
 
-static void free_all_objects(void)
-{
-	struct nt_list *cur;
-
-	TRACEENTER2("freeing objects");
-	/* delete all objects */
-	while (1) {
-		struct common_object_header *hdr;
-		KIRQL irql;
-
-		irql = nt_spin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL);
-		cur = RemoveHeadList(&object_list);
-		nt_spin_unlock_irql(&ntoskernel_lock, irql);
-		if (!cur)
-			break;
-		hdr = container_of(cur, struct common_object_header, list);
-		WARNING("object %p type %d was not freed, freeing it now",
-			HEADER_TO_OBJECT(hdr), hdr->type);
-		ExFreePool(hdr);
-	}
-	TRACEEXIT2(return);
-}
-
 static int add_bus_driver(const char *name)
 {
 	struct bus_driver *bus_driver;
@@ -386,21 +382,6 @@ static int add_bus_driver(const char *name)
 	nt_spin_unlock_irql(&ntoskernel_lock, irql);
 	DBGTRACE1("bus driver %s is at %p", name, &bus_driver->drv_obj);
 	return STATUS_SUCCESS;
-}
-
-static void del_bus_drivers(void)
-{
-	struct nt_list *ent;
-	KIRQL irql;
-
-	irql = nt_spin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL);
-	while ((ent = RemoveHeadList(&bus_driver_list))) {
-		struct bus_driver *bus_driver;
-		bus_driver = container_of(ent, struct bus_driver, list);
-		/* TODO: make sure all all drivers are shutdown/removed */
-		kfree(bus_driver);
-	}
-	nt_spin_unlock_irql(&ntoskernel_lock, irql);
 }
 
 struct driver_object *find_bus_driver(const char *name)
@@ -1261,6 +1242,7 @@ static void wakeup_threads(struct dispatcher_header *dh)
 	struct nt_list *cur, *next;
 	struct wait_block *wb = NULL;
 
+	EVENTENTER("%p", dh);
 	nt_list_for_each_safe(cur, next, &dh->wait_blocks) {
 		wb = container_of(cur, struct wait_block, list);
 		EVENTTRACE("%p: wait block: %p, thread: %p",
@@ -1343,7 +1325,7 @@ wstdcall NTSTATUS WIN_FUNC(KeWaitForMultipleObjects,8)
 	KIRQL irql;
 
 	thread = current;
-	EVENTTRACE("thread: %p count = %d, type: %d, reason = %u, "
+	EVENTENTER("thread: %p count = %d, type: %d, reason = %u, "
 		   "waitmode = %u, alertable = %u, timeout = %p", thread,
 		   count, wait_type, wait_reason, wait_mode, alertable,
 		   timeout);
@@ -1649,7 +1631,11 @@ wstdcall LONG WIN_FUNC(KeReleaseSemaphore,4)
 	assert(ret >= 0);
 	if (semaphore->dh.signal_state + adjustment <= semaphore->limit)
 		semaphore->dh.signal_state += adjustment;
-	/* else raise exception */
+	else {
+		WARNING("releasing %d over limit %d", adjustment,
+			semaphore->limit);
+		semaphore->dh.signal_state = semaphore->limit;
+	}
 	if (semaphore->dh.signal_state > 0)
 		wakeup_threads(&semaphore->dh);
 	nt_spin_unlock_irql(&dispatcher_lock, irql);

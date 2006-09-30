@@ -411,6 +411,22 @@ wfastcall ULONG WIN_FUNC(RtlUlongByteSwap,1)
 	return __swab32(src);
 }
 
+wstdcall NTSTATUS WIN_FUNC(NdisUpcaseUnicodeString,2)
+	(struct unicode_string *dst, struct unicode_string *src)
+{
+	USHORT i, n;
+
+	n = min(src->length, src->max_length);
+	n = min(n, dst->length);
+	n = min(n, dst->max_length);
+	n /= sizeof(dst->buf[0]);
+	for (i = 0; i < n; i++) {
+		char *c = (char *)&dst->buf[i];
+		*c = toupper(src->buf[i]);
+	}
+	TRACEEXIT3(return STATUS_SUCCESS);
+}
+
 wstdcall void WIN_FUNC(RtlInitUnicodeString,2)
 	(struct unicode_string *dst, const wchar_t *src)
 {
@@ -421,11 +437,10 @@ wstdcall void WIN_FUNC(RtlInitUnicodeString,2)
 		dst->max_length = dst->length = 0;
 		dst->buf = NULL;
 	} else {
-		int i = 0;
-		char c;
-		while ((c = src[i++]))
+		int i;
+		for (i = 0; (char)src[i]; i++)
 			;
-		dst->buf = (wchar_t *)src;
+		dst->buf = (typeof(dst->buf))src;
 		dst->length = i * sizeof(dst->buf[0]);
 		dst->max_length = (i + 1) * sizeof(dst->buf[0]);
 	}
@@ -442,10 +457,10 @@ wstdcall void WIN_FUNC(RtlInitAnsiString,2)
 		dst->max_length = dst->length = 0;
 		dst->buf = NULL;
 	} else {
-		int i = 0;
-		while (src[i++])
+		int i;
+		for (i = 0; src[i]; i++)
 			;
-		dst->buf = (char *)src;
+		dst->buf = (typeof(dst->buf))src;
 		dst->length = i;
 		dst->max_length = i + 1;
 	}
