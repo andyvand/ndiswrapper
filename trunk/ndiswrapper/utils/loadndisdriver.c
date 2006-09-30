@@ -444,10 +444,8 @@ static int load_device(int ioctl_device, int vendor, int device,
 	res = ioctl(ioctl_device, WRAP_IOCTL_LOAD_DEVICE, &load_device);
 	DBG("res: %d", res);
 
-	if (res) {
-		ERROR("couldn't load device");
+	if (res)
 		return -1;
-	}
 	return 0;
 }
 

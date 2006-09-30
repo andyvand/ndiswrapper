@@ -807,7 +807,7 @@ enum device_usage_notification_type {
 #define METHOD_OUT_DIRECT	2
 #define METHOD_NEITHER		3
 
-#define CTL_CODE(dev_type, func, method, access)	\
+#define CTL_CODE(dev_type, func, method, access)			\
 	(((dev_type) << 16) | ((access) << 14) | ((func) << 2) | (method))
 
 #define IO_METHOD_FROM_CTL_CODE(code) (code & 0x3)
@@ -1013,9 +1013,7 @@ struct irp {
 		LONG irp_count;
 		void *system_buffer;
 	} associated_irp;
-
 	struct nt_list threads;
-
 	struct io_status_block io_status;
 	KPROCESSOR_MODE requestor_mode;
 	BOOLEAN pending_returned;
@@ -1023,13 +1021,10 @@ struct irp {
 	CHAR current_location;
 	BOOLEAN cancel;
 	KIRQL cancel_irql;
-
 	CCHAR apc_env;
 	UCHAR alloc_flags;
-
 	struct io_status_block *user_status;
 	struct nt_event *user_event;
-
 	union {
 		struct {
 			void *user_apc_routine;
@@ -1037,10 +1032,8 @@ struct irp {
 		} async_params;
 		LARGE_INTEGER alloc_size;
 	} overlay;
-
 	void (*cancel_routine)(struct device_object *, struct irp *) wstdcall;
 	void *user_buf;
-
 	union {
 		struct {
 			union {
@@ -1080,16 +1073,16 @@ struct irp {
 #define IoGetPreviousIrpStackLocation(irp)	\
 	(IoGetCurrentIrpStackLocation(irp) + 1)
 
-#define IoSetNextIrpStackLocation(IRP)				\
+#define IoSetNextIrpStackLocation(irp)				\
 do {								\
-	(IRP)->current_location--;				\
-	IoGetCurrentIrpStackLocation(IRP)--;			\
+	(irp)->current_location--;				\
+	IoGetCurrentIrpStackLocation(irp)--;			\
 } while (0)
 
-#define IoSkipCurrentIrpStackLocation(IRP) 			\
+#define IoSkipCurrentIrpStackLocation(irp) 			\
 do {								\
-	(IRP)->current_location++;				\
-	IoGetCurrentIrpStackLocation(IRP)++;			\
+	(irp)->current_location++;				\
+	IoGetCurrentIrpStackLocation(irp)++;			\
 } while (0)
 
 static inline void
@@ -1149,7 +1142,6 @@ enum key_value_information_class {
 	KeyValuePartialInformation, KeyValueFullInformationAlign64,
 	KeyValuePartialInformationAlign64
 };
-
 
 struct object_attr {
 	ULONG length;

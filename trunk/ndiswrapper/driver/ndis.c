@@ -87,14 +87,14 @@ wstdcall void WIN_FUNC(NdisInitializeWrapper,4)
 }
 
 wstdcall void WIN_FUNC(NdisTerminateWrapper,2)
-	(struct device_object *dev_obj, void *SystemSpecific1)
+	(struct device_object *dev_obj, void *system_specific)
 {
 	TRACEEXIT1(return);
 }
 
 wstdcall NDIS_STATUS WIN_FUNC(NdisMRegisterMiniport,3)
 	(struct driver_object *drv_obj,
-	 struct miniport_char *miniport_char, UINT char_len)
+	 struct miniport_char *miniport_char, UINT length)
 {
 	int min_length;
 	struct wrap_driver *wrap_driver;
@@ -103,7 +103,7 @@ wstdcall NDIS_STATUS WIN_FUNC(NdisMRegisterMiniport,3)
 	min_length = ((char *)&miniport_char->co_create_vc) -
 		((char *)miniport_char);
 
-	TRACEENTER1("%p %p %d", drv_obj, miniport_char, char_len);
+	TRACEENTER1("%p %p %d", drv_obj, miniport_char, length);
 
 	if (miniport_char->major_version < 4) {
 		ERROR("Driver is using ndis version %d which is too old.",
@@ -111,13 +111,13 @@ wstdcall NDIS_STATUS WIN_FUNC(NdisMRegisterMiniport,3)
 		TRACEEXIT1(return NDIS_STATUS_BAD_VERSION);
 	}
 
-	if (char_len < min_length) {
-		ERROR("Characteristics length %d is too small", char_len);
+	if (length < min_length) {
+		ERROR("Characteristics length %d is too small", length);
 		TRACEEXIT1(return NDIS_STATUS_BAD_CHARACTERISTICS);
 	}
 
 	DBGTRACE1("%d.%d, %d, %u", miniport_char->major_version,
-		  miniport_char->minor_version, char_len,
+		  miniport_char->minor_version, length,
 		  (u32)sizeof(struct miniport_char));
 	wrap_driver =
 		IoGetDriverObjectExtension(drv_obj,
@@ -134,8 +134,8 @@ wstdcall NDIS_STATUS WIN_FUNC(NdisMRegisterMiniport,3)
 	wrap_driver->ndis_driver = ndis_driver;
 	TRACEENTER1("driver: %p", ndis_driver);
 	memcpy(&ndis_driver->miniport, miniport_char,
-	       char_len > sizeof(*miniport_char) ?
-	       sizeof(*miniport_char) : char_len);
+	       length > sizeof(*miniport_char) ?
+	       sizeof(*miniport_char) : length);
 
 	DBG_BLOCK(2) {
 		int i;
@@ -951,7 +951,7 @@ wstdcall void WIN_FUNC(NdisMCompleteBufferPhysicalMapping,3)
 		      index, wnd->tx_dma_count);
 		return;
 	}
-	DBGTRACE4("%lx, %d, %d", (unsigned long)wnd->dma_map_addr[index],
+	DBGTRACE4("%lx, %d, %d", (unsigned long)wnd->tx_dma_addr[index],
 		  MmGetMdlByteCount(buf), index);
 	if (wnd->tx_dma_addr[index] == 0) {
 //		ERROR("map register not used (%lu)", index);
@@ -1679,7 +1679,7 @@ wstdcall void WIN_FUNC(NdisReadNetworkAddress,4)
 	int ret;
 
 	TRACEENTER1("");
-	RtlInitAnsiString(&ansi, "mac_address");
+	RtlInitAnsiString(&ansi, "NetworkAddress");
 	*len = 0;
 	*status = NDIS_STATUS_FAILURE;
 	if (RtlAnsiStringToUnicodeString(&key, &ansi, TRUE) != STATUS_SUCCESS)
@@ -1906,8 +1906,7 @@ wstdcall void WIN_FUNC(NdisMIndicateStatus,4)
 			}
 
 			end = (u8 *)buf + len;
-			DBGTRACE2("PMKID_CANDIDATE_LIST ver %ld "
-				  "num_cand %ld",
+			DBGTRACE2("PMKID_CANDIDATE_LIST ver %ld num_cand %ld",
 				  cand->version, cand->num_candidates);
 			for (i = 0; i < cand->num_candidates; i++) {
 #if WIRELESS_EXT > 17
@@ -2003,7 +2002,7 @@ wstdcall void NdisMIndicateReceivePacket(struct ndis_miniport_block *nmb,
 	ndis_buffer *buffer;
 	struct ndis_packet *packet;
 	struct sk_buff *skb;
-	int i, length, total_length;
+	UINT i, length, total_length;
 	struct ndis_packet_oob_data *oob_data;
 	void *virt;
 
@@ -2025,9 +2024,8 @@ wstdcall void NdisMIndicateReceivePacket(struct ndis_miniport_block *nmb,
 		skb = dev_alloc_skb(total_length);
 		if (skb) {
 			while (buffer) {
-				virt = MmGetSystemAddressForMdl(buffer);
-				length = MmGetMdlByteCount(buffer);
-				memcpy(skb_put(skb, length), virt, length);
+				memcpy_skb(skb, MmGetSystemAddressForMdl(buffer),
+					   MmGetMdlByteCount(buffer));
 				buffer = buffer->next;
 			}
 			skb->dev = wnd->net_dev;
@@ -2128,10 +2126,9 @@ wstdcall void EthRxIndicateHandler(struct ndis_miniport_block *nmb, void *rx_ctx
 	KIRQL irql;
 	struct ndis_packet_oob_data *oob_data;
 
-	TRACEENTER3("nmb = %p, rx_ctx = %p, buf = %p, size = %d, "
-		    "buf = %p, size = %d, packet = %d",
-		    nmb, rx_ctx, header, header_size, look_ahead,
-		    look_ahead_size, packet_size);
+	TRACEENTER3("nmb = %p, rx_ctx = %p, buf = %p, size = %d, buf = %p, "
+		    "size = %d, packet = %d", nmb, rx_ctx, header, header_size,
+		    look_ahead, look_ahead_size, packet_size);
 
 	wnd = nmb->wnd;
 	DBGTRACE3("wnd = %p", wnd);
@@ -2165,16 +2162,13 @@ wstdcall void EthRxIndicateHandler(struct ndis_miniport_block *nmb, void *rx_ctx
 			skb = dev_alloc_skb(header_size + look_ahead_size +
 					    bytes_txed);
 			if (skb) {
-				memcpy(skb_put(skb, header_size), header,
-				       header_size);
-				memcpy(skb_put(skb, look_ahead_size),
-				       look_ahead, look_ahead_size);
+				memcpy_skb(skb, header, header_size);
+				memcpy_skb(skb, look_ahead, look_ahead_size);
 				buffer = packet->private.buffer_head;
 				while (buffer) {
-					int length = MmGetMdlByteCount(buffer);
-					memcpy(skb_put(skb, length),
-					       MmGetSystemAddressForMdl(buffer),
-					       length);
+					memcpy_skb(skb,
+						   MmGetSystemAddressForMdl(buffer),
+						   MmGetMdlByteCount(buffer));
 					buffer = buffer->next;
 				}
 				skb_size = header_size+look_ahead_size +
@@ -2207,9 +2201,8 @@ wstdcall void EthRxIndicateHandler(struct ndis_miniport_block *nmb, void *rx_ctx
 		skb_size = header_size + packet_size;
 		skb = dev_alloc_skb(skb_size);
 		if (skb) {
-			memcpy(skb_put(skb, header_size), header, header_size);
-			memcpy(skb_put(skb, packet_size), look_ahead,
-			       packet_size);
+			memcpy_skb(skb, header, header_size);
+			memcpy_skb(skb, look_ahead, packet_size);
 		}
 	}
 
@@ -2256,15 +2249,12 @@ wstdcall void NdisMTransferDataComplete(struct ndis_miniport_block *nmb,
 		atomic_inc_var(wnd->stats.rx_dropped);
 		TRACEEXIT3(return);
 	}
-	memcpy(skb_put(skb, sizeof(oob_data->header)), oob_data->header,
-	       sizeof(oob_data->header));
-	memcpy(skb_put(skb, oob_data->look_ahead_size), oob_data->look_ahead,
-	       oob_data->look_ahead_size);
+	memcpy_skb(skb, oob_data->header, sizeof(oob_data->header));
+	memcpy_skb(skb, oob_data->look_ahead, oob_data->look_ahead_size);
 	buffer = packet->private.buffer_head;
 	while (buffer) {
-		memcpy(skb_put(skb, MmGetMdlByteCount(buffer)),
-		       MmGetSystemAddressForMdl(buffer),
-		       MmGetMdlByteCount(buffer));
+		memcpy_skb(skb, MmGetSystemAddressForMdl(buffer),
+			   MmGetMdlByteCount(buffer));
 		buffer = buffer->next;
 	}
 	kfree(oob_data->look_ahead);
@@ -2484,7 +2474,7 @@ wstdcall NDIS_STATUS WIN_FUNC(NdisScheduleWorkItem,1)
 	KIRQL irql;
 
 	TRACEENTER3("%p", ndis_work_item);
-	ndis_work_entry = kmalloc(sizeof(*ndis_work_entry), GFP_ATOMIC);
+	ndis_work_entry = kmalloc(sizeof(*ndis_work_entry), gfp_irql());
 	if (!ndis_work_entry)
 		BUG();
 	ndis_work_entry->ndis_work_item = ndis_work_item;
@@ -2494,7 +2484,6 @@ wstdcall NDIS_STATUS WIN_FUNC(NdisScheduleWorkItem,1)
 	WORKTRACE("scheduling %p", ndis_work_item);
 	schedule_ndis_work(&ndis_work);
 	TRACEEXIT3(return NDIS_STATUS_SUCCESS);
-
 }
 
 wstdcall void WIN_FUNC(NdisMGetDeviceProperty,6)
@@ -2582,6 +2571,22 @@ wstdcall void WIN_FUNC(NdisMCoRequestComplete,3)
 	wnd->ndis_comm_done = 1;
 	wake_up(&wnd->ndis_comm_wq);
 	TRACEEXIT3(return);
+}
+
+wstdcall NDIS_STATUS WIN_FUNC(NdisMSetMiniportSecondary,2)
+	(struct ndis_miniport_block *nmb2, struct ndis_miniport_block *nmb1)
+{
+	TRACEENTER3("%p, %p", nmb1, nmb2);
+	TODO();
+	TRACEEXIT3(return NDIS_STATUS_SUCCESS);
+}
+
+wstdcall NDIS_STATUS WIN_FUNC(NdisMPromoteMiniport,1)
+	(struct ndis_miniport_block *nmb)
+{
+	TRACEENTER3("%p", nmb);
+	TODO();
+	TRACEEXIT3(return NDIS_STATUS_SUCCESS);
 }
 
 wstdcall void WIN_FUNC(NdisMCoActivateVcComplete,3)

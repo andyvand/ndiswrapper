@@ -65,10 +65,8 @@ wstdcall void WIN_FUNC(IoInitializeIrp,3)
 	memset(irp, 0, size);
 	irp->size = size;
 	irp->stack_count = stack_count;
-	/* IoAllocateIrp allocates space for one more than requested
-	 * stack_count */
-	irp->current_location = stack_count + 1;
-	IoGetCurrentIrpStackLocation(irp) = IRP_SL(irp, stack_count + 1);
+	irp->current_location = stack_count;
+	IoGetCurrentIrpStackLocation(irp) = IRP_SL(irp, stack_count);
 	IOEXIT(return);
 }
 
@@ -94,12 +92,12 @@ wstdcall struct irp *WIN_FUNC(IoAllocateIrp,2)
 	int irp_size;
 
 	IOENTER("count: %d", stack_count);
-	/* driver need not allocate stack location for itself, but we
-	 * need to allocate space for it so that driver can set major
-	 * function etc. even if stack_count is 0 */
-	irp_size = IoSizeOfIrp(stack_count + 1);
+	irp_size = IoSizeOfIrp(stack_count);
 	irp = kmalloc(irp_size, gfp_irql());
 	if (irp) {
+#ifdef IO_DEBUG
+		memset(irp, 0, irp_size);
+#endif
 		IOTRACE("allocated irp %p", irp);
 		IoInitializeIrp(irp, irp_size, stack_count);
 	}
@@ -372,10 +370,6 @@ wfastcall NTSTATUS WIN_FUNC(IofCallDriver,2)
 wfastcall void WIN_FUNC(IofCompleteRequest,2)
 	(struct irp *irp, CHAR prio_boost)
 {
-	NTSTATUS status;
-	struct io_stack_location *irp_sl;
-	struct mdl *mdl;
-
 #ifdef IO_DEBUG
 	DUMP_IRP(irp);
 	if (irp->io_status.status == STATUS_PENDING) {
@@ -387,10 +381,12 @@ wfastcall void WIN_FUNC(IofCompleteRequest,2)
 		return;
 	}
 #endif
-	for (irp_sl = IoGetCurrentIrpStackLocation(irp);
-	     irp->current_location <= irp->stack_count; irp_sl++) {
+	while (irp->current_location < irp->stack_count) {
+		struct io_stack_location *irp_sl;
 		struct device_object *dev_obj;
+		NTSTATUS status;
 
+		irp_sl = IoGetCurrentIrpStackLocation(irp);
 		if (irp_sl->control & SL_PENDING_RETURNED)
 			irp->pending_returned = TRUE;
 
@@ -400,13 +396,15 @@ wfastcall void WIN_FUNC(IofCompleteRequest,2)
 		 * is what we are going to call below; so we set
 		 * current_location and dev_obj for the previous
 		 * (higher) location */
+		DUMP_IRP(irp);
 		IoSkipCurrentIrpStackLocation(irp);
-
-		if (irp->current_location <= irp->stack_count)
+		if (irp->current_location < irp->stack_count)
 			dev_obj = IoGetCurrentIrpStackLocation(irp)->dev_obj;
 		else
 			dev_obj = NULL;
 
+		IOTRACE("%d, %d, %p", irp->current_location, irp->stack_count,
+			dev_obj);
 		if (irp_sl->completion_routine &&
 		    ((irp->io_status.status == STATUS_SUCCESS &&
 		       irp_sl->control & SL_INVOKE_ON_SUCCESS) ||
@@ -423,8 +421,8 @@ wfastcall void WIN_FUNC(IofCompleteRequest,2)
 				IOEXIT(return);
 		} else {
 			/* propagate pending status to next irp_sl */
-			if (irp->current_location <= irp->stack_count &&
-			    irp->pending_returned == TRUE)
+			if (irp->pending_returned &&
+			    irp->current_location < irp->stack_count)
 				IoMarkIrpPending(irp);
 		}
 	}
@@ -439,23 +437,23 @@ wfastcall void WIN_FUNC(IofCompleteRequest,2)
 		KeSetEvent(irp->user_event, prio_boost, FALSE);
 	}
 
-	IOTRACE("freeing irp %p", irp);
 	if (irp->associated_irp.system_buffer &&
 	    (irp->flags & IRP_DEALLOCATE_BUFFER))
 		ExFreePool(irp->associated_irp.system_buffer);
 	else {
+		struct mdl *mdl;
 		while ((mdl = irp->mdl)) {
 			irp->mdl = mdl->next;
 			MmUnlockPages(mdl);
 			IoFreeMdl(mdl);
 		}
 	}
+	IOTRACE("freeing irp %p", irp);
 	IoFreeIrp(irp);
 	IOEXIT(return);
 }
 
-wstdcall NTSTATUS IoPassIrpDown(struct device_object *dev_obj,
-			       struct irp *irp)
+wstdcall NTSTATUS IoPassIrpDown(struct device_object *dev_obj, struct irp *irp)
 {
 	IoSkipCurrentIrpStackLocation(irp);
 	IOEXIT(return IoCallDriver(dev_obj, irp));
@@ -471,7 +469,7 @@ wstdcall NTSTATUS IoIrpSyncComplete(struct device_object *dev_obj,
 WIN_FUNC_DECL(IoIrpSyncComplete,3)
 
 wstdcall NTSTATUS IoSyncForwardIrp(struct device_object *dev_obj,
-				  struct irp *irp)
+				   struct irp *irp)
 {
 	struct nt_event event;
 	NTSTATUS status;

@@ -1567,9 +1567,12 @@ static int iw_set_auth(struct net_device *dev,
 	case IW_AUTH_DROP_UNENCRYPTED:
 	case IW_AUTH_RX_UNENCRYPTED_EAPOL:
 	case IW_AUTH_PRIVACY_INVOKED:
+		DBGTRACE2("%d not implemented",
+			  wrqu->param.flags & IW_AUTH_INDEX);
 		/* TODO */
 		break;
 	default:
+		WARNING("invalid cmd %d", wrqu->param.flags & IW_AUTH_INDEX);
 		return -EOPNOTSUPP;
 	}
 	return 0;
@@ -1599,6 +1602,7 @@ static int iw_get_auth(struct net_device *dev,
 		wrqu->param.value = wnd->iw_auth_80211_auth_alg;
 		break;
 	default:
+		WARNING("invalid cmd %d", wrqu->param.flags & IW_AUTH_INDEX);
 		return -EOPNOTSUPP;
 	}
 	return 0;
@@ -1627,11 +1631,11 @@ static int iw_set_encodeext(struct net_device *dev,
 		return -EINVAL;
 
 	if (copy_from_user(&ext, wrqu->encoding.pointer, sizeof(ext)))
-		TRACEEXIT2(return -1);
+		TRACEEXIT2(return -EFAULT);
 
 	if (copy_from_user(key, wrqu->encoding.pointer + sizeof(ext),
 			   ext.key_len))
-		TRACEEXIT2(return -1);
+		TRACEEXIT2(return -EFAULT);
 
 	if (ext.alg == WPA_ALG_WEP) {
 		if (!test_bit(Ndis802_11Encryption1Enabled, &wnd->capa.encr))
@@ -2023,15 +2027,15 @@ static int wpa_set_key(struct net_device *dev, struct iw_request_info *info,
 	else
 		size = sizeof(wpa_key);
 	if (copy_from_user(&wpa_key, wrqu->data.pointer, size))
-		TRACEEXIT2(return -1);
+		TRACEEXIT2(return -EFAULT);
 	if (wpa_key.addr && copy_from_user(&addr, wpa_key.addr, ETH_ALEN))
-		TRACEEXIT2(return -1);
+		TRACEEXIT2(return -EFAULT);
 
 	if (wpa_key.seq && copy_from_user(&seq, wpa_key.seq, wpa_key.seq_len))
-		TRACEEXIT2(return -1);
+		TRACEEXIT2(return -EFAULT);
 
 	if (wpa_key.key && copy_from_user(&key, wpa_key.key, wpa_key.key_len))
-		TRACEEXIT2(return -1);
+		TRACEEXIT2(return -EFAULT);
 
 	TRACEENTER2("alg = %d, key_index = %d",
 		    wpa_key.alg, wpa_key.key_index);
@@ -2149,10 +2153,10 @@ static int wpa_associate(struct net_device *dev, struct iw_request_info *info,
 		size = min((size_t)wrqu->data.length, sizeof(wpa_assoc_info));
 
 	if (copy_from_user(&wpa_assoc_info, wrqu->data.pointer, size))
-		TRACEEXIT2(return -1);
+		TRACEEXIT2(return -EFAULT);
 	if (copy_from_user(&ssid, wpa_assoc_info.ssid,
 			   wpa_assoc_info.ssid_len))
-		TRACEEXIT2(return -1);
+		TRACEEXIT2(return -EFAULT);
 
 	if (wpa_assoc_info.mode == IEEE80211_MODE_IBSS)
 		infra_mode = Ndis802_11IBSS;

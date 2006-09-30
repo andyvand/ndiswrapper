@@ -332,6 +332,9 @@ typedef u32 pm_message_t;
 #define netdev_priv(dev)  ((dev)->priv)
 #endif
 
+#define memcpy_skb(skb, from, length)			\
+	memcpy(skb_put(skb, length), from, length)
+
 #include "ndiswrapper.h"
 #include "pe_linker.h"
 #include "wrapmem.h"
@@ -933,12 +936,8 @@ do {									\
 
 static inline ULONG SPAN_PAGES(void *ptr, SIZE_T length)
 {
-	ULONG n;
-
-	n = ((((ULONG_PTR)ptr) & (PAGE_SIZE - 1)) + length + (PAGE_SIZE - 1))
-		>> PAGE_SHIFT;
-
-	return n;
+	return PAGE_ALIGN(((unsigned long)ptr & (PAGE_SIZE - 1)) + length)
+			  >> PAGE_SHIFT;
 }
 
 #ifdef CONFIG_X86_64
@@ -975,8 +974,8 @@ static inline struct nt_slist *PopEntrySList(nt_slist_header *head,
 
 #else
 
-#define u64_low_32(x) ((unsigned long)x)
-#define u64_high_32(x) ((unsigned long)(x >> 32))
+#define u64_low_32(x) ((u32)x)
+#define u64_high_32(x) ((u32)(x >> 32))
 
 static inline u64 cmpxchg8b(volatile u64 *ptr, u64 old, u64 new)
 {

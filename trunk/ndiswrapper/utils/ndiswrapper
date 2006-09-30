@@ -303,6 +303,8 @@ sub parse_install {
     my $provider = get_section_value("Version", "Provider");
     my $classguid = get_section_value("Version", "ClassGUID");
     my $providerstring = trim(strip_quotes(get_string_value(trim($provider))));
+    $classguid =~ s/^\s*{//;
+    $classguid =~ s/}\s*$//;
 
     printf CONF "NdisVersion|0x50001\n";
     printf CONF "Environment|1\n";
@@ -485,8 +487,9 @@ sub copy_file {
     if (length($real_file) gt 0) {
 	$file = lc($real_file);
 	copy("$src_dir/$real_file", "$confdir/$driver_name/$file") or
-	  warn "couldn't copy \"$real_file\" to \"$confdir/$driver_name\": $! -\n" .
-	    "installation may be incomplete\n";
+	  warn "couldn't copy \"$src_dir/$real_file\" to " .
+	    "\"$confdir/$driver_name\": $! -\n" .
+	      "installation may be incomplete\n";
 	chmod(0644, "$confdir/$driver_name/$file");
     } else {
 	warn "couldn't find \"$file\" in \"$src_dir\"; make sure " .
@@ -507,10 +510,10 @@ sub get_file {
 		return $real_file;
 	    }
 	}
+	closedir(DIR);
     } else {
 	warn "couldn't open \"$src_dir\" - installation may be incomplete\n";
     }
-    closedir(DIR);
     return "";
 }
 
