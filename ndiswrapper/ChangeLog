@@ -1,4 +1,4 @@
-Version 1.24 2006-XX-XX
+Version 1.24 2006-10-01
 =======================	
 * Compilation issues with 2.4 fixed (yet again!)
 * Devices are recognized when they are inserted, instead of registering when
@@ -7,6 +7,7 @@ Version 1.24 2006-XX-XX
   be installed without overhead.
 * Minor tweaks and optimizations
 * Fixed issues with RT-Preempt patch
+* 64-bit RT2500 USB driver works
 
 Version 1.23 2006-08-10
 =======================	
