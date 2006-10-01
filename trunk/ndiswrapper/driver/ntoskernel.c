@@ -33,10 +33,7 @@
 			(sizeof(PFN_NUMBER) * CACHE_MDL_PAGES))
 struct wrap_mdl {
 	struct nt_list list;
-	union {
-		struct mdl *mdl;
-		char pad[CACHE_MDL_SIZE];
-	};
+	char mdl[CACHE_MDL_SIZE];
 };
 
 struct thread_event_waitq {
@@ -230,8 +227,10 @@ void ntoskernel_exit(void)
 			      "freeing them now");
 		while ((cur = RemoveHeadList(&wrap_mdl_list))) {
 			struct wrap_mdl *wrap_mdl;
+			struct mdl *mdl;
 			wrap_mdl = container_of(cur, struct wrap_mdl, list);
-			if (wrap_mdl->mdl->flags & MDL_CACHE_ALLOCATED)
+			mdl = (struct mdl *)wrap_mdl->mdl;
+			if (mdl->flags & MDL_CACHE_ALLOCATED)
 				kmem_cache_free(mdl_cache, wrap_mdl);
 			else
 				kfree(wrap_mdl);
@@ -2052,7 +2051,7 @@ struct mdl *allocate_init_mdl(void *virt, ULONG length)
 		irql = nt_spin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL);
 		InsertHeadList(&wrap_mdl_list, &wrap_mdl->list);
 		nt_spin_unlock_irql(&ntoskernel_lock, irql);
-		mdl = wrap_mdl->mdl;
+		mdl = (struct mdl *)wrap_mdl->mdl;
 		DBGTRACE3("allocated mdl from cache: %p(%p), %p(%d)",
 			  wrap_mdl, mdl, virt, length);
 		memset(mdl, 0, CACHE_MDL_SIZE);
@@ -2066,7 +2065,7 @@ struct mdl *allocate_init_mdl(void *virt, ULONG length)
 				gfp_irql());
 		if (!wrap_mdl)
 			return NULL;
-		mdl = wrap_mdl->mdl;
+		mdl = (struct mdl *)wrap_mdl->mdl;
 		DBGTRACE3("allocated mdl from memory: %p(%p), %p(%d)",
 			  wrap_mdl, mdl, virt, length);
 		irql = nt_spin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL);
