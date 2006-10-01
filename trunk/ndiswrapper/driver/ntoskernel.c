@@ -33,7 +33,10 @@
 			(sizeof(PFN_NUMBER) * CACHE_MDL_PAGES))
 struct wrap_mdl {
 	struct nt_list list;
-	char mdl[CACHE_MDL_SIZE];
+	union {
+		struct mdl *mdl;
+		char pad[CACHE_MDL_SIZE];
+	};
 };
 
 struct thread_event_waitq {
@@ -226,14 +229,12 @@ void ntoskernel_exit(void)
 			ERROR("Windows driver didn't free all MDLs; "
 			      "freeing them now");
 		while ((cur = RemoveHeadList(&wrap_mdl_list))) {
-			struct wrap_mdl *p;
-			struct mdl *mdl;
-			p = container_of(cur, struct wrap_mdl, list);
-			mdl = (struct mdl *)p->mdl;
-			if (mdl->flags & MDL_CACHE_ALLOCATED)
-				kmem_cache_free(mdl_cache, p);
+			struct wrap_mdl *wrap_mdl;
+			wrap_mdl = container_of(cur, struct wrap_mdl, list);
+			if (wrap_mdl->mdl->flags & MDL_CACHE_ALLOCATED)
+				kmem_cache_free(mdl_cache, wrap_mdl);
 			else
-				kfree(p);
+				kfree(wrap_mdl);
 		}
 		nt_spin_unlock_irql(&ntoskernel_lock, irql);
 		kmem_cache_destroy(mdl_cache);
@@ -2040,7 +2041,7 @@ wstdcall ULONG WIN_FUNC(MmSizeOfMdl,2)
 struct mdl *allocate_init_mdl(void *virt, ULONG length)
 {
 	struct wrap_mdl *wrap_mdl;
-	struct mdl *mdl = NULL;
+	struct mdl *mdl;
 	int mdl_size = MmSizeOfMdl(virt, length);
 	KIRQL irql;
 
@@ -2051,7 +2052,7 @@ struct mdl *allocate_init_mdl(void *virt, ULONG length)
 		irql = nt_spin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL);
 		InsertHeadList(&wrap_mdl_list, &wrap_mdl->list);
 		nt_spin_unlock_irql(&ntoskernel_lock, irql);
-		mdl = (struct mdl *)wrap_mdl->mdl;
+		mdl = wrap_mdl->mdl;
 		DBGTRACE3("allocated mdl from cache: %p(%p), %p(%d)",
 			  wrap_mdl, mdl, virt, length);
 		memset(mdl, 0, CACHE_MDL_SIZE);
@@ -2065,7 +2066,7 @@ struct mdl *allocate_init_mdl(void *virt, ULONG length)
 				gfp_irql());
 		if (!wrap_mdl)
 			return NULL;
-		mdl = (struct mdl *)wrap_mdl->mdl;
+		mdl = wrap_mdl->mdl;
 		DBGTRACE3("allocated mdl from memory: %p(%p), %p(%d)",
 			  wrap_mdl, mdl, virt, length);
 		irql = nt_spin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL);

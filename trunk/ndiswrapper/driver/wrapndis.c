@@ -293,13 +293,12 @@ static void miniport_halt(struct wrap_ndis_device *wnd)
 	struct miniport_char *miniport;
 
 	TRACEENTER1("%p", wnd);
-	if (test_bit(HW_INITIALIZED, &wnd->hw_status)) {
+	if (test_and_clear_bit(HW_INITIALIZED, &wnd->hw_status)) {
 		hangcheck_del(wnd);
 		del_stats_timer(wnd);
 		miniport = &wnd->wd->driver->ndis_driver->miniport;
 		DBGTRACE1("halt: %p", miniport->miniport_halt);
 		LIN2WIN1(miniport->miniport_halt, wnd->nmb->adapter_ctx);
-		clear_bit(HW_INITIALIZED, &wnd->hw_status);
 		/* cancel any timers left by bugyy windows driver; also free
 		 * the memory for timers */
 		while (1) {
@@ -1072,6 +1071,8 @@ static void stats_timer_proc(unsigned long data)
 {
 	struct wrap_ndis_device *wnd = (struct wrap_ndis_device *)data;
 
+	if (!test_bit(HW_INITIALIZED, &wnd->hw_status))
+		TRACEEXIT3(return);
 	set_bit(COLLECT_STATS, &wnd->wrap_ndis_pending_work);
 	schedule_wrap_work(&wnd->wrap_ndis_work);
 	wnd->stats_timer.expires += 10 * HZ;
@@ -1101,6 +1102,8 @@ static void hangcheck_proc(unsigned long data)
 	struct miniport_char *miniport;
 
 	TRACEENTER3("");
+	if (!test_bit(HW_INITIALIZED, &wnd->hw_status))
+		TRACEEXIT3(return);
 	miniport = &wnd->wd->driver->ndis_driver->miniport;
 	if_serialize_lock(wnd);
 	reset = LIN2WIN1(miniport->hangcheck, wnd->nmb->adapter_ctx);
