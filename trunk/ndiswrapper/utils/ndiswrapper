@@ -714,7 +714,7 @@ sub get_cards {
 	    my $card;
 	    while (my $line = <LSUSB>) {
 		if ($line =~ /.*: ID\s(.{4}):(.{4}).*/) {
-		    $card = { vendor => $1, device => $2};
+		    $card = {vendor => uc($1), device => uc($2)};
 		    push(@cards, $card);
 		}
 	    }
