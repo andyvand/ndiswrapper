@@ -730,7 +730,6 @@ void __devexit wrap_pnp_remove_usb_device(struct usb_interface *intf)
 	if (wd->surprise_removed == TRUE)
 		wd->usb.intf = NULL;
 	pnp_remove_device(wd);
-	wd->usb.intf = NULL;
 }
 
 int wrap_pnp_suspend_usb_device(struct usb_interface *intf, pm_message_t state)
@@ -774,7 +773,6 @@ void __devexit wrap_pnp_remove_usb_device(struct usb_device *udev, void *ptr)
 	if (wd->surprise_removed == TRUE)
 		wd->usb.intf = NULL;
 	pnp_remove_device(wd);
-	wd->usb.intf = NULL;
 }
 #endif
 

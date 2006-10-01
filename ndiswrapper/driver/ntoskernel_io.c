@@ -92,15 +92,10 @@ wstdcall struct irp *WIN_FUNC(IoAllocateIrp,2)
 	int irp_size;
 
 	IOENTER("count: %d", stack_count);
-	if (stack_count == 0)
-		WARNING("stack_count is 0");
 	stack_count++;
 	irp_size = IoSizeOfIrp(stack_count);
 	irp = kmalloc(irp_size, gfp_irql());
 	if (irp) {
-#ifdef IO_DEBUG
-		memset(irp, 0, irp_size);
-#endif
 		IOTRACE("allocated irp %p", irp);
 		IoInitializeIrp(irp, irp_size, stack_count);
 	}
@@ -291,12 +286,10 @@ wstdcall struct irp *WIN_FUNC(IoBuildDeviceIoControlRequest,9)
 				       input_buf, input_buf_len);
 			irp->flags = IRP_BUFFERED_IO | IRP_DEALLOCATE_BUFFER;
 			if (output_buf)
-				irp->flags |= IRP_INPUT_OPERATION;
+				irp->flags = IRP_INPUT_OPERATION;
 			irp->user_buf = output_buf;
-		} else { // buf_len = 0
-			irp->flags = 0;
+		} else
 			irp->user_buf = NULL;
-		}
 		break;
 	case METHOD_IN_DIRECT:
 	case METHOD_OUT_DIRECT:
@@ -311,8 +304,7 @@ wstdcall struct irp *WIN_FUNC(IoBuildDeviceIoControlRequest,9)
 			memcpy(irp->associated_irp.system_buffer,
 			       input_buf, input_buf_len);
 			irp->flags = IRP_BUFFERED_IO | IRP_DEALLOCATE_BUFFER;
-		} else
-			irp->flags = 0;
+		}
 		/* TODO: we are supposed to setup MDL, but USB layer
 		 * doesn't use MDLs. Moreover, USB layer mirrors
 		 * non-DMAable buffers, so no need to allocate
@@ -326,8 +318,7 @@ wstdcall struct irp *WIN_FUNC(IoBuildDeviceIoControlRequest,9)
 				IOEXIT(return NULL);
 			}
 			irp->flags = IRP_BUFFERED_IO | IRP_DEALLOCATE_BUFFER;
-		} else
-			irp->flags = 0;
+		}
 		break;
 	case METHOD_NEITHER:
 		irp->user_buf = output_buf;
