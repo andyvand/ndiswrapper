@@ -41,14 +41,13 @@ int set_essid(struct wrap_ndis_device *wnd, const char *ssid, int ssid_len)
 	struct ndis_essid req;
 
 	TRACEENTER2("");
-	memset(&req, 0, sizeof(req));
+	if (ssid_len > NDIS_ESSID_MAX_SIZE)
+		return -EINVAL;
 
+	memset(&req, 0, sizeof(req));
 	if (ssid_len == 0)
 		req.length = 1;
 	else {
-		if (ssid_len > NDIS_ESSID_MAX_SIZE)
-			return -EINVAL;
-
 		req.length = ssid_len;
 		memcpy(&req.essid, ssid, req.length);
 		DBGTRACE2("ssid = '%s'", req.essid);
@@ -126,19 +125,24 @@ static int iw_set_essid(struct net_device *dev, struct iw_request_info *info,
 {
 	struct wrap_ndis_device *wnd = netdev_priv(dev);
 	char ssid[IW_ESSID_MAX_SIZE];
+	int length;
 
 	TRACEENTER2("");
-	memset(ssid, 0, sizeof(ssid));
-	/* iwconfig adds 1 to the actual length */
-	/* there is no way to turn off essid other than to set to
-	 * random bytes; instead, we use off to mean any */
-	if (wrqu->essid.flags)
-		wrqu->essid.length--;
-	else
-		wrqu->essid.length = 0;
-
 	if (wrqu->essid.length > IW_ESSID_MAX_SIZE)
 		TRACEEXIT2(return -EINVAL);
+
+	memset(ssid, 0, sizeof(ssid));
+
+	/* there is no way to turn off essid other than to set to
+	 * random bytes; instead, we use off to mean any */
+	if (wrqu->essid.flags) {
+		/* wireless-tools prior to version 20 add extra 1, and
+		 * later than 20 don't! Deal with that mess */
+		for (length = 0; length < wrqu->essid.length; length++)
+			if (!extra[length])
+				break;
+	} else
+		length = 0;
 
 	if (wnd->iw_auth_set) {
 		int ret = set_assoc_params(wnd);
@@ -147,8 +151,8 @@ static int iw_set_essid(struct net_device *dev, struct iw_request_info *info,
 			TRACEEXIT2(return ret);
 	}
 
-	memcpy(ssid, extra, wrqu->essid.length);
-	if (set_essid(wnd, ssid, wrqu->essid.length))
+	memcpy(ssid, extra, length);
+	if (set_essid(wnd, ssid, length))
 		TRACEEXIT2(return -EINVAL);
 
 	TRACEEXIT2(return 0);
