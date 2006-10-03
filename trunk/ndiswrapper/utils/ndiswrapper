@@ -1,4 +1,4 @@
-#!/usr/bin/perl
+#!/usr/bin/perl -d
 
 #/*
 #*  Copyright (C) 2005-2006 Pontus Fuchs, Giridhar Pemmasani
@@ -21,6 +21,7 @@ use Fcntl ':mode';
 use File::Basename;
 use File::Copy;
 use File::Path;
+use Cwd;
 
 my $WRAP_PCI_BUS = 5;
 my $WRAP_PCIMCIA_BUS = 8;
@@ -124,10 +125,10 @@ sub remove_driver {
 
 sub install {
     my $inf = shift;
+    chomp($inf);
     $src_dir = dirname($inf);
     $driver_name = lc(basename($inf));
     $driver_name =~ s/\.inf//;
-    chomp($driver_name);
 
     if (! -d $confdir) {
 	mkdir($confdir) or die "couldn't create $confdir: $!";
@@ -142,6 +143,7 @@ sub install {
     parse_section("Version");
     parse_mfr();
     copy_file(basename($inf));
+    create_fuzzy_conf($driver_name);
     return 0;
 }
 
@@ -497,6 +499,29 @@ sub copy_file {
 	    "are in \"$src_dir\" -\n" .
 	      "installation may be incomplete\n";
     }
+}
+
+# for conf files with subvendor and subdevice, create conf files with just
+# vendor and device
+sub create_fuzzy_conf {
+    my $driver = shift;
+    my $cwd = cwd();
+    chdir("$confdir/$driver") or die "couldn't chdir to $confdir/$driver: $!";
+    open(LS, "ls -1 . |") or die "couldn't open $confdir/$driver: $!";
+    while (my $file = <LS>) {
+	chomp($file);
+	if ($file =~ /^(.{4}):(.{4}):(.{4}):(.{4})\.([^.]+)\.conf$/) {
+	    my $fuzzy_file = "$1:$2.$5.conf";
+	    printf DBG "file: $file, fuzzy file: $fuzzy_file\n";
+	    if (! -e "$confdir/$driver/$fuzzy_file") {
+		symlink("$file", "$fuzzy_file") or
+		  warn "couldn't link $confdir/$driver/$file " .
+		    "to $confdir/$driver/$fuzzy_file: $!\n";
+	    }
+	}
+    }
+    chdir($cwd) or warn "couldn't chdir to $cwd: $!";
+    return 0;
 }
 
 # find a file in a case-insensitive way.
