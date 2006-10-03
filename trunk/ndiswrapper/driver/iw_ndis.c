@@ -131,19 +131,18 @@ static int iw_set_essid(struct net_device *dev, struct iw_request_info *info,
 	if (wrqu->essid.length > IW_ESSID_MAX_SIZE)
 		TRACEEXIT2(return -EINVAL);
 
-	memset(ssid, 0, sizeof(ssid));
-
 	/* there is no way to turn off essid other than to set to
 	 * random bytes; instead, we use off to mean any */
 	if (wrqu->essid.flags) {
 		/* wireless-tools prior to version 20 add extra 1, and
 		 * later than 20 don't! Deal with that mess */
-		for (length = 0; length < wrqu->essid.length; length++)
+		for (length = 0; length <= wrqu->essid.length; length++)
 			if (!extra[length])
 				break;
 	} else
 		length = 0;
 
+	memset(ssid, 0, sizeof(ssid));
 	if (wnd->iw_auth_set) {
 		int ret = set_assoc_params(wnd);
 		wnd->iw_auth_set = 0;

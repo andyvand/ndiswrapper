@@ -312,6 +312,7 @@ static void miniport_halt(struct wrap_ndis_device *wnd)
 			if (!ent)
 				break;
 			wrap_timer = container_of(ent, struct wrap_timer, list);
+			wrap_timer->repeat = 0;
 			/* ktimer that this wrap_timer is associated to can't
 			 * be touched, as it may have been freed by the driver
 			 * already */
@@ -1071,28 +1072,33 @@ static void stats_timer_proc(unsigned long data)
 {
 	struct wrap_ndis_device *wnd = (struct wrap_ndis_device *)data;
 
-	if (!test_bit(HW_INITIALIZED, &wnd->hw_status))
-		TRACEEXIT3(return);
+	TRACEENTER2("");
+	if (wnd->stats_interval <= 0)
+		TRACEEXIT2(return);
 	set_bit(COLLECT_STATS, &wnd->wrap_ndis_pending_work);
 	schedule_wrap_work(&wnd->wrap_ndis_work);
-	wnd->stats_timer.expires += 10 * HZ;
+	wnd->stats_timer.expires += wnd->stats_interval;
 	add_timer(&wnd->stats_timer);
 }
 
 static void add_stats_timer(struct wrap_ndis_device *wnd)
 {
-	init_timer(&wnd->stats_timer);
 	if (wnd->physical_medium != NdisPhysicalMediumWirelessLan)
 		return;
+	if (wnd->stats_interval < 0)
+		wnd->stats_interval *= -1;
 	wnd->stats_timer.data = (unsigned long)wnd;
 	wnd->stats_timer.function = stats_timer_proc;
-	wnd->stats_timer.expires = jiffies + 10 * HZ;
+	wnd->stats_timer.expires = jiffies + wnd->stats_interval;
 	add_timer(&wnd->stats_timer);
 }
 
 static void del_stats_timer(struct wrap_ndis_device *wnd)
 {
+	TRACEENTER2("");
+	wnd->stats_interval *= -1;
 	del_timer_sync(&wnd->stats_timer);
+	TRACEEXIT2(return);
 }
 
 static void hangcheck_proc(unsigned long data)
@@ -1101,9 +1107,9 @@ static void hangcheck_proc(unsigned long data)
 	BOOLEAN reset;
 	struct miniport_char *miniport;
 
-	TRACEENTER3("");
-	if (!test_bit(HW_INITIALIZED, &wnd->hw_status))
-		TRACEEXIT3(return);
+	TRACEENTER2("");
+	if (wnd->hangcheck_interval <= 0)
+		TRACEEXIT2(return);
 	miniport = &wnd->wd->driver->ndis_driver->miniport;
 	if_serialize_lock(wnd);
 	reset = LIN2WIN1(miniport->hangcheck, wnd->nmb->adapter_ctx);
@@ -1124,7 +1130,8 @@ void hangcheck_add(struct wrap_ndis_device *wnd)
 		return;
 	if (hangcheck_interval > 0)
 		wnd->hangcheck_interval = hangcheck_interval * HZ;
-	init_timer(&wnd->hangcheck_timer);
+	if (wnd->hangcheck_interval < 0)
+		wnd->hangcheck_interval *= -1;
 	wnd->hangcheck_timer.data = (unsigned long)wnd;
 	wnd->hangcheck_timer.function = hangcheck_proc;
 	wnd->hangcheck_timer.expires = jiffies + wnd->hangcheck_interval;
@@ -1134,7 +1141,11 @@ void hangcheck_add(struct wrap_ndis_device *wnd)
 
 void hangcheck_del(struct wrap_ndis_device *wnd)
 {
+	TRACEENTER2("");
+	if (wnd->hangcheck_interval > 0)
+		wnd->hangcheck_interval *= -1;
 	del_timer_sync(&wnd->hangcheck_timer);
+	TRACEEXIT2(return);
 }
 
 /* worker procedure to take care of setting/checking various states */
@@ -1860,6 +1871,7 @@ static wstdcall NTSTATUS NdisAddDevice(struct driver_object *drv_obj,
 	init_timer(&wnd->hangcheck_timer);
 	wnd->scan_timestamp = 0;
 	init_timer(&wnd->stats_timer);
+	wnd->stats_interval = 10 * HZ;
 	wnd->wrap_ndis_pending_work = 0;
 	memset(&wnd->essid, 0, sizeof(wnd->essid));
 	memset(&wnd->encr_info, 0, sizeof(wnd->encr_info));

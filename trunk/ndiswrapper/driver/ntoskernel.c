@@ -33,7 +33,7 @@
 			(sizeof(PFN_NUMBER) * CACHE_MDL_PAGES))
 struct wrap_mdl {
 	struct nt_list list;
-	char mdl[CACHE_MDL_SIZE];
+	struct mdl mdl[0];
 };
 
 struct thread_event_waitq {
@@ -155,7 +155,8 @@ int ntoskernel_init(void)
 		ntoskernel_exit();
 		return -ENOMEM;
 	}
-	mdl_cache = kmem_cache_create("wrap_mdl", sizeof(struct wrap_mdl),
+	mdl_cache = kmem_cache_create("wrap_mdl",
+				      sizeof(struct wrap_mdl) + CACHE_MDL_SIZE,
 				      0, 0, NULL, NULL);
 	DBGTRACE2("%p", mdl_cache);
 	if (!mdl_cache) {
@@ -227,10 +228,8 @@ void ntoskernel_exit(void)
 			      "freeing them now");
 		while ((cur = RemoveHeadList(&wrap_mdl_list))) {
 			struct wrap_mdl *wrap_mdl;
-			struct mdl *mdl;
 			wrap_mdl = container_of(cur, struct wrap_mdl, list);
-			mdl = (struct mdl *)wrap_mdl->mdl;
-			if (mdl->flags & MDL_CACHE_ALLOCATED)
+			if (wrap_mdl->mdl->flags & MDL_CACHE_ALLOCATED)
 				kmem_cache_free(mdl_cache, wrap_mdl);
 			else
 				kfree(wrap_mdl);
@@ -1981,9 +1980,10 @@ wstdcall void *WIN_FUNC(MmAllocateContiguousMemorySpecifyCache,5)
 	 PHYSICAL_ADDRESS boundary, enum memory_caching_type cache_type)
 {
 	void *addr;
-	DBGTRACE2("%lu, %Lu, %Lu, %Lu, %d", size, lowest, highest, boundary,
-		  cache_type);
-	addr = ExAllocatePoolWithTag(NonPagedPool, size, 0);
+	size_t page_length = ((size + PAGE_SIZE - 1) / PAGE_SIZE) * PAGE_SIZE;
+	DBGTRACE2("%lu, %lu, %Lu, %Lu, %Lu, %d", size, page_length,
+		  lowest, highest, boundary, cache_type);
+	addr = ExAllocatePoolWithTag(NonPagedPool, page_length, 0);
 	DBGTRACE2("%p", addr);
 	return addr;
 }
@@ -2051,7 +2051,7 @@ struct mdl *allocate_init_mdl(void *virt, ULONG length)
 		irql = nt_spin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL);
 		InsertHeadList(&wrap_mdl_list, &wrap_mdl->list);
 		nt_spin_unlock_irql(&ntoskernel_lock, irql);
-		mdl = (struct mdl *)wrap_mdl->mdl;
+		mdl = wrap_mdl->mdl;
 		DBGTRACE3("allocated mdl from cache: %p(%p), %p(%d)",
 			  wrap_mdl, mdl, virt, length);
 		memset(mdl, 0, CACHE_MDL_SIZE);
@@ -2061,11 +2061,10 @@ struct mdl *allocate_init_mdl(void *virt, ULONG length)
 		mdl->flags = MDL_CACHE_ALLOCATED;
 	} else {
 		wrap_mdl =
-			kmalloc(sizeof(*wrap_mdl) + mdl_size - CACHE_MDL_SIZE,
-				gfp_irql());
+			kmalloc(sizeof(*wrap_mdl) + mdl_size, gfp_irql());
 		if (!wrap_mdl)
 			return NULL;
-		mdl = (struct mdl *)wrap_mdl->mdl;
+		mdl = wrap_mdl->mdl;
 		DBGTRACE3("allocated mdl from memory: %p(%p), %p(%d)",
 			  wrap_mdl, mdl, virt, length);
 		irql = nt_spin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL);
@@ -2091,8 +2090,7 @@ void free_mdl(struct mdl *mdl)
 	if (mdl->pool)
 		NdisFreeBuffer(mdl);
 	else {
-		struct wrap_mdl *wrap_mdl;
-		wrap_mdl = (struct wrap_mdl *)
+		struct wrap_mdl *wrap_mdl = (struct wrap_mdl *)
 			((char *)mdl - offsetof(struct wrap_mdl, mdl));
 		irql = nt_spin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL);
 		RemoveEntryList(&wrap_mdl->list);

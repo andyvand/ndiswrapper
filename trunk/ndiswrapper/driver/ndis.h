@@ -818,6 +818,7 @@ struct wrap_ndis_device {
 
 	int hangcheck_interval;
 	struct timer_list hangcheck_timer;
+	int stats_interval;
 	struct timer_list stats_timer;
 	unsigned long scan_timestamp;
 	struct encr_info encr_info;
