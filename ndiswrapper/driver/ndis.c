@@ -1789,7 +1789,6 @@ wstdcall NDIS_STATUS WIN_FUNC(NdisMRegisterInterrupt,7)
 	ndis_irq->shared = shared;
 	nt_spin_lock_init(&ndis_irq->lock);
 	wnd->ndis_irq = ndis_irq;
-
 	tasklet_init(&wnd->irq_tasklet, ndis_irq_handler, (unsigned long)wnd);
 	if (request_irq(vector, ndis_isr, req_isr ? SA_SHIRQ : 0,
 			wnd->net_dev->name, wnd)) {
