@@ -842,7 +842,7 @@ static int remove_key(struct wrap_ndis_device *wnd, int index,
 	 * called; other drivers seem to not require it, so for now,
 	 * don't remove the key from driver */
 	if (wnd->encr_mode == Ndis802_11Encryption2Enabled ||
-	    wnd->encr_mode == Ndis802_11Encryption2Enabled) {
+	    wnd->encr_mode == Ndis802_11Encryption3Enabled) {
 		struct ndis_remove_key remove_key;
 		remove_key.struct_size = sizeof(remove_key);
 		remove_key.index = index;
