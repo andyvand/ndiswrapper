@@ -136,7 +136,7 @@ static int iw_set_essid(struct net_device *dev, struct iw_request_info *info,
 	if (wrqu->essid.flags) {
 		/* wireless-tools prior to version 20 add extra 1, and
 		 * later than 20 don't! Deal with that mess */
-		for (length = 0; length <= wrqu->essid.length; length++)
+		for (length = 0; length < wrqu->essid.length; length++)
 			if (!extra[length])
 				break;
 	} else
