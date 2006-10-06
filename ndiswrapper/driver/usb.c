@@ -383,11 +383,11 @@ static struct urb *wrap_alloc_urb(struct irp *irp, unsigned int pipe,
 	USBTRACE("allocated urb: %p", urb);
 
 	urb->transfer_buffer_length = buf_len;
-	if (buf_len && buf && (
+	if (buf_len && buf && (!virt_addr_valid(buf)
 #if defined(CONFIG_HIGHMEM) || defined(CONFIG_HIGHMEM4G)
-		    1 ||
+		    || PageHighMem(virt_to_page(buf))
 #endif
-		    !virt_addr_valid(buf))) {
+		    )) {
 		urb->transfer_buffer =
 			usb_buffer_alloc(wd->usb.udev, buf_len, alloc_flags,
 					 &urb->transfer_dma);
