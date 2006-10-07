@@ -376,6 +376,7 @@ static int add_bus_driver(const char *name)
 	}
 	memset(bus_driver, 0, sizeof(*bus_driver));
 	strncpy(bus_driver->name, name, sizeof(bus_driver->name));
+	bus_driver->name[sizeof(bus_driver->name)-1] = 0;
 	irql = nt_spin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL);
 	InsertTailList(&bus_driver_list, &bus_driver->list);
 	nt_spin_unlock_irql(&ntoskernel_lock, irql);
@@ -1779,7 +1780,7 @@ static int thread_trampoline(void *data)
 #endif
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,0)
 	strncpy(current->comm, "windisdrvr", sizeof(current->comm));
-	current->comm[sizeof(current->comm) - 1] = 0;
+	current->comm[sizeof(current->comm)-1] = 0;
 #endif
 	DBGTRACE2("thread: %p, task: %p (%d)", thread, thread->task,
 		  thread->pid);
@@ -2318,6 +2319,7 @@ wstdcall NTSTATUS WIN_FUNC(ZwCreateFile,11)
 			memset(bin_file, 0, sizeof(*bin_file));
 			strncpy(bin_file->name, file_basename,
 				sizeof(bin_file->name));
+			bin_file->name[sizeof(bin_file->name)-1] = 0;
 			bin_file->data = vmalloc(*size);
 			if (bin_file->data) {
 				memset(bin_file->data, 0, *size);

@@ -149,7 +149,8 @@ static int load_sys_files(struct wrap_driver *driver,
 
 	DBGTRACE1("num_pe_images = %d", load_driver->nr_sys_files);
 	DBGTRACE1("loading driver: %s", load_driver->name);
-	strncpy(driver->name, load_driver->name, MAX_DRIVER_NAME_LEN);
+	strncpy(driver->name, load_driver->name, sizeof(driver->name));
+	driver->name[sizeof(driver->name)-1] = 0;
 	DBGTRACE1("driver: %s", driver->name);
 	err = 0;
 	driver->num_pe_images = 0;
@@ -583,8 +584,8 @@ static int load_user_space_driver(struct load_driver *load_driver)
 		ObDereferenceObject(drv_obj);
 		TRACEEXIT1(return -EINVAL);
 	}
-	strncpy(wrap_driver->name, load_driver->name,
-		sizeof(wrap_driver->name));
+	strncpy(wrap_driver->name, load_driver->name, sizeof(wrap_driver->name));
+	wrap_driver->name[sizeof(wrap_driver->name)-1] = 0;
 	if (load_sys_files(wrap_driver, load_driver) ||
 	    load_bin_files_info(wrap_driver, load_driver) ||
 	    load_settings(wrap_driver, load_driver) ||
