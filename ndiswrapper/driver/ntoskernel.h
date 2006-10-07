@@ -463,7 +463,7 @@ struct wrap_device_setting {
 
 struct wrap_bin_file {
 	char name[MAX_DRIVER_NAME_LEN];
-	int size;
+	size_t size;
 	void *data;
 };
 
@@ -474,9 +474,9 @@ struct wrap_driver {
 	struct driver_object *drv_obj;
 	char name[MAX_DRIVER_NAME_LEN];
 	char version[MAX_SETTING_VALUE_LEN];
-	unsigned int num_pe_images;
+	unsigned short num_pe_images;
 	struct pe_image pe_images[MAX_DRIVER_PE_IMAGES];
-	int num_bin_files;
+	unsigned short num_bin_files;
 	struct wrap_bin_file *bin_files;
 	struct nt_list wrap_devices;
 	struct wrap_ndis_driver *ndis_driver;
@@ -589,6 +589,9 @@ int rtl_init(void);
 void rtl_exit(void);
 int wrap_procfs_init(void);
 void wrap_procfs_remove(void);
+
+int link_pe_images(struct pe_image *pe_image, unsigned short n);
+
 int stricmp(const char *s1, const char *s2);
 void dump_bytes(const char *name, const u8 *from, int len);
 struct mdl *allocate_init_mdl(void *virt, ULONG length);

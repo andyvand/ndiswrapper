@@ -513,7 +513,7 @@ void fix_user_shared_data_addr(char *driver, unsigned long length)
 }
 #endif
 
-int load_pe_images(struct pe_image *pe_image, int n)
+int link_pe_images(struct pe_image *pe_image, unsigned short n)
 {
 	int i;
 	struct pe_image *pe;
