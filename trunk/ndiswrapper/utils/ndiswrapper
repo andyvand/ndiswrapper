@@ -318,7 +318,7 @@ sub parse_install {
     close(CONF);
 
     open(CONF, "|sort|uniq >>$confdir/$driver_name/$filename") or
-      die "couldn't create file $filename: $!";
+      die "couldn't create file $confdir/$driver_name/$filename: $!";
 
     foreach my $reg (@addregs) {
 	parse_registry($reg);
@@ -442,26 +442,22 @@ sub get_target_os_section {
     printf DBG "secn: %s\n", $secn;
     $secn =~ s/\.NT($arch)?(\.5\.1)?$//;
     printf DBG "secn: %s\n", $secn;
+
     my $lines = get_section($secn . ".NT" . $arch . ".5.1");
-    if ($lines) {
-	return $lines;
-    }
+    return $lines if ($lines);
+
     $lines = get_section($secn . ".NT" . $arch);
-    if ($lines) {
-	return $lines;
-    }
+    return $lines if ($lines);
+
     $lines = get_section($secn . ".NT.5.1");
-    if ($lines) {
-	return $lines;
-    }
+    return $lines if ($lines);
+
     $lines = get_section($secn . ".NT");
-    if ($lines) {
-	return $lines;
-    }
+    return $lines if ($lines);
+
     $lines = get_section($secn);
-    if ($lines) {
-	return $lines;
-    }
+    return $lines if ($lines);
+
     printf DBG "couldn't find section \"$secn\" for \"$arch\"\n";
     return 0;
 }
@@ -827,12 +823,13 @@ sub install_status {
 	while (my $line = <MODPROBE>) {
 	    chomp($line);
 	    $alt_driver = (split(' ', $line))[-1] if $line =~ /$devstring/;
+	    chomp($alt_driver);
+	    if (length($alt_driver) gt 0 and $alt_driver ne "ndiswrapper") {
+		$ret .= "(alternate driver: $alt_driver)";
+		last;
+	    }
 	}
 	close(MODPROBE);
-	chomp($alt_driver);
-	if (length($alt_driver) gt 0) {
-	    $ret .= "(alternate driver: $alt_driver)";
-	}
     }
     return $ret;
 }
