@@ -55,8 +55,6 @@ static struct usb_device_id wrap_usb_device;
 struct usb_driver wrap_usb_driver;
 #endif
 
-int load_pe_images(struct pe_image[], int n);
-
 int wrap_device_type(int data1)
 {
 	int i;
@@ -197,6 +195,7 @@ static int load_sys_files(struct wrap_driver *driver,
 #endif
 		if (!pe_image->image) {
 			ERROR("couldn't allocate memory");
+			err = -ENOMEM;
 			break;
 		}
 		DBGTRACE1("image is at %p", pe_image->image);
@@ -206,13 +205,14 @@ static int load_sys_files(struct wrap_driver *driver,
 				   load_driver->sys_files[i].size)) {
 			ERROR("couldn't load file %s",
 			      load_driver->sys_files[i].name);
+			err = -EFAULT;
 			break;
 		}
 		pe_image->size = load_driver->sys_files[i].size;
 		driver->num_pe_images++;
 	}
 
-	if (load_pe_images(driver->pe_images, driver->num_pe_images)) {
+	if (!err && link_pe_images(driver->pe_images, driver->num_pe_images)) {
 		ERROR("couldn't prepare driver '%s'", load_driver->name);
 		err = -EINVAL;
 	}
@@ -222,7 +222,7 @@ static int load_sys_files(struct wrap_driver *driver,
 			if (driver->pe_images[i].image)
 				vfree(driver->pe_images[i].image);
 		driver->num_pe_images = 0;
-		TRACEEXIT1(return -EINVAL);
+		TRACEEXIT1(return err);
 	} else
 		TRACEEXIT1(return 0);
 }
@@ -243,11 +243,11 @@ struct wrap_bin_file *get_bin_file(char *bin_file_name)
 				driver = cur;
 				break;
 			}
-		if (i < cur->num_bin_files)
+		if (driver)
 			break;
 	}
 	up(&loader_mutex);
-	if (driver == NULL) {
+	if (!driver) {
 		DBGTRACE1("coudln't find bin file '%s'", bin_file_name);
 		return NULL;
 	}
@@ -305,7 +305,7 @@ static int add_bin_file(struct load_driver_file *driver_file)
 				driver = cur;
 				break;
 			}
-		if (i < cur->num_bin_files)
+		if (driver)
 			break;
 	}
 	if (!driver) {
@@ -315,7 +315,6 @@ static int add_bin_file(struct load_driver_file *driver_file)
 	bin_file = &driver->bin_files[i];
 	strncpy(bin_file->name, driver_file->name, sizeof(bin_file->name));
 	bin_file->name[sizeof(bin_file->name)-1] = 0;
-	bin_file->size = driver_file->size;
 	bin_file->data = vmalloc(bin_file->size);
 	if (!bin_file->data) {
 		ERROR("couldn't allocate memory");
@@ -323,8 +322,10 @@ static int add_bin_file(struct load_driver_file *driver_file)
 	}
 	if (copy_from_user(bin_file->data, driver_file->data, bin_file->size)) {
 		ERROR("couldn't copy data");
+		free_bin_file(bin_file);
 		return -EFAULT;
 	}
+	bin_file->size = driver_file->size;
 	return 0;
 }
 
