@@ -838,9 +838,6 @@ static int remove_key(struct wrap_ndis_device *wnd, int index,
 	wnd->encr_info.keys[index].length = 0;
 	memset(&wnd->encr_info.keys[index].key, 0,
 	       sizeof(wnd->encr_info.keys[index].length));
-	/* TI driver crashes kernel if OID_802_11_REMOVE_KEY is
-	 * called; other drivers seem to not require it, so for now,
-	 * don't remove the key from driver */
 	if (wnd->encr_mode == Ndis802_11Encryption2Enabled ||
 	    wnd->encr_mode == Ndis802_11Encryption3Enabled) {
 		struct ndis_remove_key remove_key;

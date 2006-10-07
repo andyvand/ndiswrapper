@@ -385,7 +385,7 @@ static struct urb *wrap_alloc_urb(struct irp *irp, unsigned int pipe,
 	urb->transfer_buffer_length = buf_len;
 	if (buf_len && buf && (!virt_addr_valid(buf)
 #if defined(CONFIG_HIGHMEM) || defined(CONFIG_HIGHMEM4G)
-		    || PageHighMem(virt_to_page(buf))
+			       || PageHighMem(virt_to_page(buf))
 #endif
 		    )) {
 		urb->transfer_buffer =
