@@ -40,12 +40,12 @@
 
 #define SETTING_LEN (MAX_SETTING_NAME_LEN + MAX_SETTING_VALUE_LEN + 2)
 
-static const char *confdir = "/etc/ndiswrapper";
-static const char *ioctl_file = "/dev/ndiswrapper";
+static const char confdir[] = "/etc/ndiswrapper";
+static const char ioctl_file[] = "/dev/ndiswrapper";
 static int debug;
 
 #ifndef UTILS_VERSION
-#error Compile this file with 'make' in the 'utils' \
+#error compile this file with 'make' in the 'utils' \
 	directory only
 #endif
 
@@ -296,13 +296,13 @@ static int load_driver(int ioctl_device, char *driver_name,
 
 		len = strlen(dirent->d_name);
 		if (len > 4 &&
-		     strcmp(&dirent->d_name[len-4], ".inf") == 0)
+		     strcasecmp(&dirent->d_name[len-4], ".inf") == 0)
 			continue;
 		if (len > 5 &&
-		     strcmp(&dirent->d_name[len-5], ".conf") == 0)
+		     strcasecmp(&dirent->d_name[len-5], ".conf") == 0)
 			continue;
 
-		if (len > 4 && strcmp(&dirent->d_name[len-4], ".sys") == 0) {
+		if (len > 4 && strcasecmp(&dirent->d_name[len-4], ".sys") == 0) {
 			if (load_file(dirent->d_name,
 				      &driver->sys_files[nr_sys_files])) {
 				ERROR("couldn't load .sys file %s",
@@ -311,8 +311,8 @@ static int load_driver(int ioctl_device, char *driver_name,
 			} else
 				nr_sys_files++;
 		} else if (len > 4 &&
-			   ((strcmp(&dirent->d_name[len-4], ".bin") == 0) ||
-			     (strcmp(&dirent->d_name[len-4], ".out") == 0))) {
+			   ((strcasecmp(&dirent->d_name[len-4], ".bin") == 0) ||
+			    (strcasecmp(&dirent->d_name[len-4], ".out") == 0))) {
 			strcpy(driver->bin_files[nr_bin_files].name,
 			       dirent->d_name);
 			strcpy(driver->bin_files[nr_bin_files].driver_name,

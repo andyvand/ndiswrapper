@@ -1982,7 +1982,7 @@ wstdcall void *WIN_FUNC(MmAllocateContiguousMemorySpecifyCache,5)
 {
 	void *addr;
 	size_t page_length = ((size + PAGE_SIZE - 1) / PAGE_SIZE) * PAGE_SIZE;
-	DBGTRACE2("%lu, %lu, %Lu, %Lu, %Lu, %d", size, page_length,
+	DBGTRACE2("%lu, %u, %Lu, %Lu, %Lu, %d", size, page_length,
 		  lowest, highest, boundary, cache_type);
 	addr = ExAllocatePoolWithTag(NonPagedPool, page_length, 0);
 	DBGTRACE2("%p", addr);
@@ -2376,7 +2376,7 @@ wstdcall NTSTATUS WIN_FUNC(ZwReadFile,9)
 	}
 	fo = HANDLE_TO_OBJECT(coh);
 	file = fo->wrap_bin_file;
-	DBGTRACE2("file: %s (%d)", file->name, file->size);
+	DBGTRACE2("file: %s (%u)", file->name, file->size);
 	irql = nt_spin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL);
 	if (byte_offset)
 		offset = *byte_offset;
@@ -2411,14 +2411,14 @@ wstdcall NTSTATUS WIN_FUNC(ZwWriteFile,9)
 	}
 	fo = HANDLE_TO_OBJECT(coh);
 	file = fo->wrap_bin_file;
-	DBGTRACE2("file: %d, %d", file->size, length);
+	DBGTRACE2("file: %u, %u", file->size, length);
 	irql = nt_spin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL);
 	if (byte_offset)
 		offset = *byte_offset;
 	else
 		offset = fo->current_byte_offset;
 	if (length + offset > file->size) {
-		WARNING("%lu, %d", length + offset, file->size);
+		WARNING("%ld, %u", length + offset, file->size);
 		/* TODO: implement writing past end of current size */
 		iosb->status = STATUS_FAILURE;
 		iosb->info = 0;

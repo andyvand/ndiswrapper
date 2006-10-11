@@ -50,7 +50,12 @@ int set_essid(struct wrap_ndis_device *wnd, const char *ssid, int ssid_len)
 	else {
 		req.length = ssid_len;
 		memcpy(&req.essid, ssid, req.length);
-		DBGTRACE2("ssid = '%s'", req.essid);
+		DBG_BLOCK(2) {
+			char buf[NDIS_ESSID_MAX_SIZE+1];
+			memcpy(buf, ssid, ssid_len);
+			buf[ssid_len] = 0;
+			DBGTRACE2("ssid = '%s'", buf);
+		}
 	}
 
 	res = miniport_set_info(wnd, OID_802_11_SSID, &req, sizeof(req));
@@ -124,25 +129,28 @@ static int iw_set_essid(struct net_device *dev, struct iw_request_info *info,
 			union iwreq_data *wrqu, char *extra)
 {
 	struct wrap_ndis_device *wnd = netdev_priv(dev);
-	char ssid[IW_ESSID_MAX_SIZE];
+	char ssid[NDIS_ESSID_MAX_SIZE];
 	int length;
 
 	TRACEENTER2("");
-	if (wrqu->essid.length > IW_ESSID_MAX_SIZE)
-		TRACEEXIT2(return -EINVAL);
-
+	memset(ssid, 0, sizeof(ssid));
 	/* there is no way to turn off essid other than to set to
 	 * random bytes; instead, we use off to mean any */
 	if (wrqu->essid.flags) {
 		/* wireless-tools prior to version 20 add extra 1, and
 		 * later than 20 don't! Deal with that mess */
-		for (length = 0; length < wrqu->essid.length; length++)
+		length = wrqu->essid.length - 1;
+		if (length >= 1)
+			length--;
+		for (; length < wrqu->essid.length; length++)
 			if (!extra[length])
 				break;
+		DBGTRACE2("%d", length);
+		if (length <= 0 || length > NDIS_ESSID_MAX_SIZE)
+			TRACEEXIT2(return -EINVAL);
 	} else
 		length = 0;
 
-	memset(ssid, 0, sizeof(ssid));
 	if (wnd->iw_auth_set) {
 		int ret = set_assoc_params(wnd);
 		wnd->iw_auth_set = 0;
