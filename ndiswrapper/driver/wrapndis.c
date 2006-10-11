@@ -54,10 +54,10 @@ NDIS_STATUS miniport_reset(struct wrap_ndis_device *wnd)
 
 	TRACEENTER2("wnd: %p", wnd);
 
-	if (down_interruptible(&wnd->ndis_comm_mutex))
+	if (down_interruptible(&wnd->tx_ring_mutex))
 		TRACEEXIT3(return NDIS_STATUS_FAILURE);
-	if (down_interruptible(&wnd->tx_ring_mutex)) {
-		up(&wnd->ndis_comm_mutex);
+	if (down_interruptible(&wnd->ndis_comm_mutex)) {
+		up(&wnd->tx_ring_mutex);
 		TRACEEXIT3(return NDIS_STATUS_FAILURE);
 	}		
 	miniport = &wnd->wd->driver->ndis_driver->miniport;
@@ -1755,8 +1755,8 @@ static int ndis_remove_device(struct wrap_ndis_device *wnd)
 	unregister_netdev(wnd->net_dev);
 	netif_carrier_off(wnd->net_dev);
 	cancel_delayed_work(&wnd->wrap_ndis_work);
-	/* if device is suspended, but resume failed, tx_ring_mutex is
-	 * already locked */
+	/* if device is suspended, but resume failed, tx_ring_mutex
+	 * may already be locked */
 	down_trylock(&wnd->tx_ring_mutex);
 	tx_pending = wnd->tx_ring_end - wnd->tx_ring_start;
 	if (tx_pending < 0)

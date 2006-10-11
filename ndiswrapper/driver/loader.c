@@ -81,7 +81,7 @@ struct wrap_driver *load_wrap_driver(struct wrap_device *wd)
 	wrap_driver = NULL;
 	nt_list_for_each(cur, &wrap_drivers) {
 		wrap_driver = container_of(cur, struct wrap_driver, list);
-		if (!strcmp(wrap_driver->name, wd->driver_name)) {
+		if (!stricmp(wrap_driver->name, wd->driver_name)) {
 			DBGTRACE1("driver %s already loaded",
 				  wrap_driver->name);
 			break;
@@ -124,7 +124,7 @@ struct wrap_driver *load_wrap_driver(struct wrap_device *wd)
 		nt_list_for_each(cur, &wrap_drivers) {
 			wrap_driver = container_of(cur, struct wrap_driver,
 						   list);
-			if (!strcmp(wrap_driver->name, wd->driver_name)) {
+			if (!stricmp(wrap_driver->name, wd->driver_name)) {
 				wd->driver = wrap_driver;
 				break;
 			} else
@@ -378,7 +378,7 @@ static int load_settings(struct wrap_driver *wrap_driver,
 	wd = NULL;
 	nt_list_for_each(cur, &wrap_devices) {
 		wd = container_of(cur, struct wrap_device, list);
-		if (strcmp(wd->conf_file_name, load_driver->conf_file_name))
+		if (stricmp(wd->conf_file_name, load_driver->conf_file_name))
 			wd = NULL;
 		else
 			break;
@@ -532,7 +532,7 @@ static int add_wrap_driver(struct wrap_driver *driver)
 
 	TRACEENTER1("name: %s", driver->name);
 	nt_list_for_each_entry(tmp, &wrap_drivers, list) {
-		if (strcmp(tmp->name, driver->name) == 0) {
+		if (stricmp(tmp->name, driver->name) == 0) {
 			ERROR("cannot add duplicate driver");
 			TRACEEXIT1(return -EBUSY);
 		}

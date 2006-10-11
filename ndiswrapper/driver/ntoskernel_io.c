@@ -39,12 +39,13 @@ wstdcall int WIN_FUNC(IoIsWdmVersionAvailable,2)
 	(UCHAR major, UCHAR minor)
 {
 	IOENTER("%d, %x", major, minor);
-	if (major == 1 &&
-	    (minor == 0x30 || // Windows 2003
-	     minor == 0x20 || // Windows XP
-	     minor == 0x10)) // Windows 2000
-		IOEXIT(return 1);
-	IOEXIT(return 0);
+	if ((major == 6 && minor == 0x00) || // Vista
+	    (major == 1 &&
+	     (minor == 0x30 || // Windows 2003
+	      minor == 0x20 || // Windows XP
+	      minor == 0x10))) // Windows 2000
+		IOEXIT(return TRUE);
+	IOEXIT(return FALSE);
 }
 
 wstdcall BOOLEAN WIN_FUNC(IoIs32bitProcess,1)
