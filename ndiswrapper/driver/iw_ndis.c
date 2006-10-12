@@ -1666,14 +1666,14 @@ static int iw_set_encodeext(struct net_device *dev,
 
 	memset(&ndis_key, 0, sizeof(ndis_key));
 
-	ndis_key.struct_size = sizeof(ndis_key);
+	ndis_key.struct_size =
+		sizeof(ndis_key) - sizeof(ndis_key.key) + ext.key_len;
 	ndis_key.length = ext.key_len;
 	ndis_key.index = keyidx;
 
 	if (ext.ext_flags & IW_ENCODE_EXT_RX_SEQ_VALID) {
 		for (i = 0, ndis_key.rsc = 0 ; i < 6 ; i++)
 			ndis_key.rsc |= (ext.rx_seq[i] << (i * 8));
-
 		ndis_key.index |= 1 << 29;
 	}
 
@@ -1708,7 +1708,7 @@ static int iw_set_encodeext(struct net_device *dev,
 		memcpy(ndis_key.key, key, ext.key_len);
 
 	res = miniport_set_info(wnd, OID_802_11_ADD_KEY,
-				&ndis_key, sizeof(ndis_key));
+				&ndis_key, ndis_key.struct_size);
 	if (res) {
 		DBGTRACE2("adding key failed (%08X), %u",
 			  res, ndis_key.struct_size);
@@ -2071,7 +2071,8 @@ static int wpa_set_key(struct net_device *dev, struct iw_request_info *info,
 		  (u32)wpa_key.key_len);
 	memset(&ndis_key, 0, sizeof(ndis_key));
 
-	ndis_key.struct_size = sizeof(ndis_key);
+	ndis_key.struct_size =
+		sizeof(ndis_key) - sizeof(ndis_key.key) + ext.key_len;
 	ndis_key.length = wpa_key.key_len;
 	ndis_key.index = wpa_key.key_index;
 	if (wpa_key.seq && wpa_key.seq_len > 0) {
@@ -2116,7 +2117,7 @@ static int wpa_set_key(struct net_device *dev, struct iw_request_info *info,
 		DBGTRACE2("key %d removed", wpa_key.key_index);
 	} else {
 		res = miniport_set_info(wnd, OID_802_11_ADD_KEY,
-					&ndis_key, sizeof(ndis_key));
+					&ndis_key, ndis_key.struct_size);
 		if (res) {
 			DBGTRACE2("adding key failed (%08X), %u",
 				  res, ndis_key.struct_size);
