@@ -850,10 +850,10 @@ static int ndis_set_wol(struct net_device *dev, struct ethtool_wolinfo *wol)
 }
 
 static struct ethtool_ops ndis_ethtool_ops = {
-	.get_drvinfo		= ndis_get_drvinfo,
-	.get_link		= ndis_get_link,
-	.get_wol		= ndis_get_wol,
-	.set_wol		= ndis_set_wol,
+	.get_drvinfo	= ndis_get_drvinfo,
+	.get_link	= ndis_get_link,
+	.get_wol	= ndis_get_wol,
+	.set_wol	= ndis_set_wol,
 };
 #endif
 

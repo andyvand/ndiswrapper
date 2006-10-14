@@ -33,7 +33,10 @@ static int workqueue_thread(void *data)
 		if (wait_event_interruptible(workq->waitq_head,
 					     workq->pending != 0)) {
 			/* we don't want to terminate thread */
+			spin_lock_irq(&current->sigmask_lock);
 			flush_signals(current);
+			recalc_sigpending(current);
+			spin_unlock_irq(&current->sigmask_lock);
 			continue;
 		}
 		spin_lock_bh(&workq->lock);

@@ -1672,7 +1672,7 @@ static int iw_set_encodeext(struct net_device *dev,
 	ndis_key.index = keyidx;
 
 	if (ext.ext_flags & IW_ENCODE_EXT_RX_SEQ_VALID) {
-		for (i = 0, ndis_key.rsc = 0 ; i < 6 ; i++)
+		for (i = ndis_key.rsc = 0 ; i < 6 ; i++)
 			ndis_key.rsc |= (ext.rx_seq[i] << (i * 8));
 		ndis_key.index |= 1 << 29;
 	}
