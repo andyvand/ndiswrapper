@@ -332,6 +332,14 @@ typedef u32 pm_message_t;
 #define netdev_priv(dev)  ((dev)->priv)
 #endif
 
+#if LINUX_VERSION_CODE > KERNEL_VERSION(2,6,18)
+#define ISR_PT_REGS_PARAM_DECL
+#define ISR_PT_REGS_ARG
+#else
+#define ISR_PT_REGS_PARAM_DECL , struct pt_regs *regs
+#define ISR_PT_REGS_ARG , NULL
+#endif
+
 #define memcpy_skb(skb, from, length)			\
 	memcpy(skb_put(skb, length), from, length)
 
