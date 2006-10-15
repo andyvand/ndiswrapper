@@ -475,7 +475,11 @@ static void int_urb_unlink_complete(struct urb *urb)
 
 static void wrap_urb_complete(struct urb *urb)
 #else
+#if LINUX_VERSION_CODE > KERNEL_VERSION(2,6,18)
+static void wrap_urb_complete(struct urb *urb)
+#else
 static void wrap_urb_complete(struct urb *urb, struct pt_regs *regs)
+#endif
 #endif
 {
 	struct irp *irp;

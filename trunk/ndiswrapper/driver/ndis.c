@@ -1745,7 +1745,11 @@ static void ndis_irq_handler(unsigned long data)
 	if_serialize_unlock(wnd);
 }
 
+#if LINUX_VERSION_CODE > KERNEL_VERSION(2,6,18)
+irqreturn_t ndis_isr(int irq, void *data)
+#else
 irqreturn_t ndis_isr(int irq, void *data, struct pt_regs *pt_regs)
+#endif
 {
 	struct wrap_ndis_device *wnd = (struct wrap_ndis_device *)data;
 	struct miniport_char *miniport;
