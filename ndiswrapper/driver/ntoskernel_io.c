@@ -519,7 +519,11 @@ wstdcall NTSTATUS IoInvalidDeviceRequest(struct device_object *dev_obj,
 }
 WIN_FUNC_DECL(IoInvalidDeviceRequest,2)
 
-static irqreturn_t io_irq_th(int irq, void *data, struct pt_regs *pt_regs)
+#if LINUX_VERSION_CODE > KERNEL_VERSION(2,6,18)
+static irqreturn_t io_irq_handler(int irq, void *data)
+#else
+static irqreturn_t io_irq_handler(int irq, void *data, struct pt_regs *pt_regs)
+#endif
 {
 	struct kinterrupt *interrupt = (struct kinterrupt *)data;
 	NT_SPIN_LOCK *spinlock;
@@ -560,7 +564,7 @@ wstdcall NTSTATUS WIN_FUNC(IoConnectInterrupt,11)
 	InitializeListHead(&interrupt->list);
 	interrupt->synch_irql = synch_irql;
 	interrupt->interrupt_mode = interrupt_mode;
-	if (request_irq(vector, io_irq_th, shareable ? SA_SHIRQ : 0,
+	if (request_irq(vector, io_irq_handler, shareable ? SA_SHIRQ : 0,
 			"io_irq", interrupt)) {
 		WARNING("request for irq %d failed", vector);
 		IOEXIT(return STATUS_INSUFFICIENT_RESOURCES);

@@ -864,7 +864,11 @@ struct ndis_pmkid_candidate_list {
 	struct ndis_pmkid_candidate candidates[1];
 };
 
+#if LINUX_VERSION_CODE > KERNEL_VERSION(2,6,18)
+irqreturn_t ndis_isr(int irq, void *data);
+#else
 irqreturn_t ndis_isr(int irq, void *data, struct pt_regs *pt_regs);
+#endif
 void init_nmb_functions(struct ndis_miniport_block *nmb);
 
 int ndis_init(void);

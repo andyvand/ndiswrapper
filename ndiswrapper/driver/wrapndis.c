@@ -763,7 +763,11 @@ static void ndis_poll_controller(struct net_device *dev)
 	struct wrap_ndis_device *wnd = netdev_priv(dev);
 
 	disable_irq(dev->irq);
+#if LINUX_VERSION_CODE > KERNEL_VERSION(2,6,18)
+	ndis_isr(dev->irq, wnd);
+#else
 	ndis_isr(dev->irq, wnd, NULL);
+#endif
 	enable_irq(dev->irq);
 }
 #endif
