@@ -887,7 +887,7 @@ static void update_wireless_stats(struct wrap_ndis_device *wnd)
 	struct ndis_wireless_stats ndis_stats;
 	NDIS_STATUS res;
 	ndis_rssi rssi;
-	unsigned long frag;
+	int qual;
 
 	TRACEENTER2("%p", wnd);
 	if (wnd->stats_enabled == FALSE || !netif_carrier_ok(wnd->net_dev)) {
@@ -910,15 +910,13 @@ static void update_wireless_stats(struct wrap_ndis_device *wnd)
 		(unsigned long)ndis_stats.ack_fail +
 		(unsigned long)ndis_stats.frame_dup;
 
-	frag = 6 * (unsigned long)ndis_stats.tx_frag;
-	if (frag)
-		iw_stats->qual.qual =
-			100 - 100 * (((unsigned long)ndis_stats.retry +
-				      2*(unsigned long)ndis_stats.multi_retry +
-				      3*(unsigned long)ndis_stats.failed) /
-				     frag);
-	else
-		iw_stats->qual.qual = 100;
+	qual = 100 * (rssi - WL_NOISE) / (WL_SIGMAX - WL_NOISE);
+	if (qual < 0)
+		qual = 0;
+	else if (qual > 100)
+		qual = 100;
+	iw_stats->qual.noise = WL_NOISE;
+	iw_stats->qual.qual  = qual;
 	TRACEEXIT2(return);
 }
 

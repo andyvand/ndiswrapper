@@ -18,6 +18,9 @@
 
 #include "ndis.h"
 
+#define	WL_NOISE	-96	/* typical noise level in dBm */
+#define	WL_SIGMAX	-32	/* typical maximum signal level in dBm */
+
 struct ndis_encr_key {
 	ULONG struct_size;
 	ULONG index;

@@ -1057,9 +1057,14 @@ static char *ndis_translate_scan(struct net_device *dev, char *event,
 	/* add qual */
 	memset(&iwe, 0, sizeof(iwe));
 	iwe.cmd = IWEVQUAL;
+	i = 100 * (bssid->rssi - WL_NOISE) / (WL_SIGMAX - WL_NOISE);
+	if (i < 0)
+		i = 0;
+	else if (i > 100)
+		i = 100;
 	iwe.u.qual.level = bssid->rssi;
-	iwe.u.qual.noise = 0;
-	iwe.u.qual.qual = 0;
+	iwe.u.qual.noise = WL_NOISE;
+	iwe.u.qual.qual  = i;
 	iwe.len = IW_EV_QUAL_LEN;
 	event = iwe_stream_add_event(event, end_buf, &iwe, IW_EV_QUAL_LEN);
 

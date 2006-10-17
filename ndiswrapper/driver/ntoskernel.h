@@ -905,8 +905,10 @@ do {									\
 			__asm__ __volatile__(			\
 				LOCK_PREFIX oper "q %q0\n\t"	\
 				: "+m" (var));			\
-		else						\
-			ERROR("invalid size %d", (int)size);	\
+		else {						\
+			extern void _invalid_op_size_(void);	\
+			_invalid_op_size_();			\
+		}						\
 	} while (0)
 
 #define atomic_inc_var_size(var, size) atomic_unary_op(var, size, "inc")
