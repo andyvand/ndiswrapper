@@ -396,10 +396,15 @@ sub parse_copy_file {
 	} else {
 	    $file = $files[0];
 	}
-	$file = trim(del_comment($file));
+	printf DBG "file: '%s'\n", $file;
+	$file =~ s/^\s*;//;
+	$file = trim($file);
 	if ($file and length($file) > 0) {
-	    printf DBG "copyfile: %s, %s\n", $copy_name, $file;
-	    copy_file($file);
+	    if (valid_file_name($file)) {
+		copy_file($file);
+	    } else {
+		printf DBG "invalid file '%s' ignored\n", $file;
+	    }
 	}
     }
     return 0;
@@ -556,6 +561,13 @@ sub trim {
     $s =~ s/^\s*//;
     $s =~ s/\s*$//;
     return $s;
+}
+
+sub valid_file_name {
+    my $file = shift;
+    printf DBG "file name: %s\n", $file;
+    return 1 if ($file =~ /^[a-zA-Z][a-zA-Z0-9\.]*$/);
+    return 0;
 }
 
 sub device_driver_alias {
