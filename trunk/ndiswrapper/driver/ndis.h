@@ -685,6 +685,11 @@ enum hw_status {
 	HW_INITIALIZED = 1, HW_SUSPENDED, HW_HALTED,
 };
 
+struct tx_dma_map_reg {
+	dma_addr_t dma_addr;
+	unsigned int size;
+};
+
 /*
  * This struct contains function pointers that the drivers references
  * directly via macros, so it's important that they are at the correct
@@ -813,8 +818,9 @@ struct wrap_ndis_device {
 	ULONG packet_filter;
 
 	BOOLEAN use_sg_dma;
-	int tx_dma_count;
-	dma_addr_t *tx_dma_addr;
+	ULONG tx_dma_map_count;
+	struct tx_dma_map_reg *tx_dma_map_reg;
+	u8 tx_dma_map_reg_pages;
 
 	int hangcheck_interval;
 	struct timer_list hangcheck_timer;
