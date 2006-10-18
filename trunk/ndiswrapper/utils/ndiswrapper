@@ -37,6 +37,7 @@ my $driver_name;
 my %param_fixlist = ("EnableRadio|0" => "1",
 		     "IBSSGMode|0" => "2",
                      "PrivacyMode|0" => "2",
+		     "MapRegisters|256" => "64",
 		     "AdhocGMode|1" => "0");
 
 if (@ARGV < 1) {
