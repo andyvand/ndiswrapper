@@ -813,7 +813,7 @@ struct wrap_ndis_device {
 	ULONG packet_filter;
 
 	BOOLEAN use_sg_dma;
-	u8 tx_dma_count;
+	int tx_dma_count;
 	dma_addr_t *tx_dma_addr;
 
 	int hangcheck_interval;

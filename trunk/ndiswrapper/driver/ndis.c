@@ -849,11 +849,13 @@ wstdcall NDIS_STATUS WIN_FUNC(NdisMAllocateMapRegisters,5)
 	 NDIS_DMA_SIZE dmasize, ULONG basemap, ULONG max_buf_size)
 {
 	struct wrap_ndis_device *wnd = nmb->wnd;
-	TRACEENTER2("%d %d %d %d", dmachan, dmasize, basemap, max_buf_size);
 
+	TRACEENTER2("%p, %d %d %d %d",
+		    wnd, dmachan, dmasize, basemap, max_buf_size);
 	if (basemap > 64) {
-		WARNING("invalid request: %d", basemap);
-		TRACEEXIT1(return NDIS_STATUS_RESOURCES);
+		WARNING("Windows driver %s requesting too many (%u) "
+			"map registers", wnd->wd->driver->name, basemap);
+//		TRACEEXIT1(return NDIS_STATUS_RESOURCES);
 	}
 
 	/* TODO: should we allocate max_buf_size % PAGE_SIZE + 1
@@ -862,16 +864,17 @@ wstdcall NDIS_STATUS WIN_FUNC(NdisMAllocateMapRegisters,5)
 		WARNING("buffer size too big: %u", max_buf_size);
 
 	if (wnd->tx_dma_count > 0) {
-		DBGTRACE2("%s: map registers already allocated: %u",
-			  wnd->net_dev->name, wnd->tx_dma_count);
+		WARNING("%s: map registers already allocated: %u",
+			wnd->net_dev->name, wnd->tx_dma_count);
 		TRACEEXIT2(return NDIS_STATUS_RESOURCES);
 	}
-	wnd->tx_dma_count = basemap;
 	wnd->tx_dma_addr = kmalloc(basemap * sizeof(dma_addr_t),
 				   GFP_KERNEL);
 	if (!wnd->tx_dma_addr)
 		TRACEEXIT2(return NDIS_STATUS_RESOURCES);
 	memset(wnd->tx_dma_addr, 0, basemap * sizeof(dma_addr_t));
+	wnd->tx_dma_count = basemap;
+	DBGTRACE2("%u", wnd->tx_dma_count);
 	TRACEEXIT2(return NDIS_STATUS_SUCCESS);
 }
 
@@ -879,10 +882,10 @@ wstdcall void WIN_FUNC(NdisMFreeMapRegisters,1)
 	(struct ndis_miniport_block *nmb)
 {
 	struct wrap_ndis_device *wnd = nmb->wnd;
-	TRACEENTER2("wnd: %p", wnd);
 
+	TRACEENTER2("wnd: %p", wnd);
 	if (wnd->tx_dma_addr) {
-		u8 i;
+		int i;
 		for (i = 0; i < wnd->tx_dma_count; i++) {
 			if (wnd->tx_dma_addr[i])
 				WARNING("%s: dma addr %p not freed by "
@@ -902,22 +905,28 @@ wstdcall void WIN_FUNC(NdisMStartBufferPhysicalMapping,6)
 	 struct ndis_phy_addr_unit *phy_addr_array, UINT *array_size)
 {
 	struct wrap_ndis_device *wnd = nmb->wnd;
-	TRACEENTER3("index: %u", index);
 
+	TRACEENTER3("%p, %p, %u, %u", wnd, buf, index, wnd->tx_dma_count);
 	if (wnd->use_sg_dma)
 		WARNING("buffer %p must have been mapped already", buf);
 	if (!write_to_dev) {
 		ERROR("invalid dma direction (%d)", write_to_dev);
+		phy_addr_array[0].phy_addr = 0;
+		phy_addr_array[0].length = 0;
 		*array_size = 0;
 		return;
 	}
 	if (index >= wnd->tx_dma_count) {
 		ERROR("invalid map register (%u >= %u)",
 		      index, wnd->tx_dma_count);
+		phy_addr_array[0].phy_addr = 0;
+		phy_addr_array[0].length = 0;
 		*array_size = 0;
 		return;
 	}
-	if (wnd->tx_dma_addr[index] != 0) {
+	if (wnd->tx_dma_addr[index]) {
+		DBGTRACE2("buffer %p already mapped at %d: %lx",
+			  buf, index, (unsigned long)wnd->tx_dma_addr[index]);
 		*array_size = 1;
 		return;
 	}
