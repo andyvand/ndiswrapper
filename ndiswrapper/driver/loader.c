@@ -315,17 +315,17 @@ static int add_bin_file(struct load_driver_file *driver_file)
 	bin_file = &driver->bin_files[i];
 	strncpy(bin_file->name, driver_file->name, sizeof(bin_file->name));
 	bin_file->name[sizeof(bin_file->name)-1] = 0;
-	bin_file->data = vmalloc(bin_file->size);
+	bin_file->data = vmalloc(driver_file->size);
 	if (!bin_file->data) {
 		ERROR("couldn't allocate memory");
 		return -ENOMEM;
 	}
+	bin_file->size = driver_file->size;
 	if (copy_from_user(bin_file->data, driver_file->data, bin_file->size)) {
 		ERROR("couldn't copy data");
 		free_bin_file(bin_file);
 		return -EFAULT;
 	}
-	bin_file->size = driver_file->size;
 	return 0;
 }
 
