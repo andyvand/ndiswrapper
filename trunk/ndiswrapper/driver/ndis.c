@@ -849,40 +849,33 @@ wstdcall NDIS_STATUS WIN_FUNC(NdisMAllocateMapRegisters,5)
 	 NDIS_DMA_SIZE dmasize, ULONG basemap, ULONG max_buf_size)
 {
 	struct wrap_ndis_device *wnd = nmb->wnd;
-	u8 n;
 
 	TRACEENTER2("%p, %d %d %d %d",
 		    wnd, dmachan, dmasize, basemap, max_buf_size);
-	if (wnd->tx_dma_map_count > 0) {
+	if (wnd->dma_map_count > 0) {
 		WARNING("%s: map registers already allocated: %u",
-			wnd->net_dev->name, wnd->tx_dma_map_count);
+			wnd->net_dev->name, wnd->dma_map_count);
 		TRACEEXIT2(return NDIS_STATUS_RESOURCES);
 	}
-	/* TODO: should we allocate max_buf_size % PAGE_SIZE + 1
-	 * entries for each map? */
-	n = SPAN_PAGES((void *)(PAGE_SIZE - 1), max_buf_size);
-	DBGTRACE2("pages per reg: %d", n);
-
-	if (n * basemap > 64) {
+	/* since memory for buffer is allocated with kmalloc, buffer
+	 * is physically contiguous, so entire map will fit in one
+	 * register */
+	if (basemap > 64) {
 		WARNING("Windows driver %s requesting too many (%u) "
-			"map registers (%u)", wnd->wd->driver->name, basemap,
-			64 / n);
+			"map registers", wnd->wd->driver->name, basemap);
 		/* As per NDIS, NDIS_STATUS_RESOURCES should be
 		 * retrned, but with that Atheros PCI driver fails -
 		 * for now tolerate it */
 //		TRACEEXIT2(return NDIS_STATUS_RESOURCES);
 	}
 
-	wnd->tx_dma_map_reg =
-		kmalloc(basemap * n * sizeof(*(wnd->tx_dma_map_reg)),
-			GFP_KERNEL);
-	if (!wnd->tx_dma_map_reg)
+	wnd->dma_map_addr = kmalloc(basemap * sizeof(*(wnd->dma_map_addr)),
+				    GFP_KERNEL);
+	if (!wnd->dma_map_addr)
 		TRACEEXIT2(return NDIS_STATUS_RESOURCES);
-	memset(wnd->tx_dma_map_reg, 0,
-	       basemap * n * sizeof(*(wnd->tx_dma_map_reg)));
-	wnd->tx_dma_map_count = basemap;
-	wnd->tx_dma_map_reg_pages = n;
-	DBGTRACE2("%u", wnd->tx_dma_map_count);
+	memset(wnd->dma_map_addr, 0, basemap * sizeof(*(wnd->dma_map_addr)));
+	wnd->dma_map_count = basemap;
+	DBGTRACE2("%u", wnd->dma_map_count);
 	TRACEEXIT2(return NDIS_STATUS_SUCCESS);
 }
 
@@ -893,20 +886,18 @@ wstdcall void WIN_FUNC(NdisMFreeMapRegisters,1)
 	int i;
 
 	TRACEENTER2("wnd: %p", wnd);
-	if (!wnd->tx_dma_map_reg) {
+	if (wnd->dma_map_addr) {
+		for (i = 0; i < wnd->dma_map_count; i++) {
+			if (wnd->dma_map_addr[i])
+				WARNING("%s: dma addr %p not freed by "
+					"Windows driver", wnd->net_dev->name,
+					(void *)wnd->dma_map_addr[i]);
+		}
+		kfree(wnd->dma_map_addr);
+		wnd->dma_map_addr = NULL;
+	} else
 		WARNING("map registers already freed?");
-		wnd->tx_dma_map_count = 0;
-		return;
-	}
-	for (i = 0; i < wnd->tx_dma_map_count * wnd->tx_dma_map_reg_pages; i++) {
-		if (wnd->tx_dma_map_reg[i].dma_addr)
-			WARNING("%s: dma addr %p not freed by "
-				"Windows driver", wnd->net_dev->name,
-				(void *)wnd->tx_dma_map_reg[i].dma_addr);
-	}
-	kfree(wnd->tx_dma_map_reg);
-	wnd->tx_dma_map_reg = NULL;
-	wnd->tx_dma_map_count = 0;
+	wnd->dma_map_count = 0;
 	TRACEEXIT2(return);
 }
 
@@ -916,31 +907,20 @@ wstdcall void WIN_FUNC(NdisMStartBufferPhysicalMapping,6)
 	 struct ndis_phy_addr_unit *phy_addr_array, UINT *array_size)
 {
 	struct wrap_ndis_device *wnd = nmb->wnd;
-	u8 i, n;
-	ULONG remaining;
-	char *b;
 
-	TRACEENTER3("%p, %p, %u, %u", wnd, buf, index, wnd->tx_dma_map_count);
-	if (wnd->use_sg_dma)
-		WARNING("buffer %p must have been mapped already", buf);
-	if (!write_to_dev) {
-		ERROR("invalid dma direction (%d)", write_to_dev);
+	TRACEENTER3("%p, %p, %u, %u", wnd, buf, index, wnd->dma_map_count);
+	if (wnd->use_sg_dma || !write_to_dev ||
+	    index >= wnd->dma_map_count) {
+		WARNING("invalid request: %d, %d, %d, %d", wnd->use_sg_dma,
+			write_to_dev, index, wnd->dma_map_count);
 		phy_addr_array[0].phy_addr = 0;
 		phy_addr_array[0].length = 0;
 		*array_size = 0;
 		return;
 	}
-	if (index >= wnd->tx_dma_map_count) {
-		ERROR("invalid map register (%u >= %u)",
-		      index, wnd->tx_dma_map_count);
-		phy_addr_array[0].phy_addr = 0;
-		phy_addr_array[0].length = 0;
-		*array_size = 0;
-		return;
-	}
-	if (wnd->tx_dma_map_reg[index * wnd->tx_dma_map_reg_pages].dma_addr) {
-		DBGTRACE2("buffer %p already mapped at %d: %lx", buf, index,
-			  (unsigned long)wnd->tx_dma_map_reg[index].dma_addr);
+	if (wnd->dma_map_addr[index]) {
+		DBGTRACE2("buffer %p at %d is already mapped: %lx", buf, index,
+			  (unsigned long)wnd->dma_map_addr[index]);
 //		*array_size = 1;
 		return;
 	}
@@ -950,67 +930,41 @@ wstdcall void WIN_FUNC(NdisMStartBufferPhysicalMapping,6)
 		dump_bytes(__FUNCTION__, MmGetSystemAddressForMdl(buf),
 			   MmGetMdlByteCount(buf));
 	}
-	n = SPAN_PAGES(MmGetSystemAddressForMdl(buf), MmGetMdlByteCount(buf));
-	if (n > wnd->tx_dma_map_reg_pages) {
-		ERROR("invalid request: %u > %u", n, wnd->tx_dma_map_reg_pages);
-		phy_addr_array[0].phy_addr = 0;
-		phy_addr_array[0].length = 0;
-		*array_size = 0;
-		return;
-	}
-	b = MmGetSystemAddressForMdl(buf);
-	remaining = MmGetMdlByteCount(buf);
-	for (i = 0; remaining > 0; i++) {
-		ULONG m = min(remaining, (ULONG)PAGE_SIZE);
-		assert(i < n);
-		phy_addr_array[i].phy_addr =
-			PCI_DMA_MAP_SINGLE(wnd->wd->pci.pdev, b, m,
-					   PCI_DMA_TODEVICE);
-		phy_addr_array[i].length = m;
-		b += m;
-		remaining -= m;
-		DBGTRACE4("%Lx, %d, %d", phy_addr_array[i].phy_addr,
-			  phy_addr_array[i].length, index);
-		wnd->tx_dma_map_reg[index * wnd->tx_dma_map_reg_pages].dma_addr =
-			phy_addr_array[i].phy_addr;
-		wnd->tx_dma_map_reg[index * wnd->tx_dma_map_reg_pages].size = m;
-	}
-	if (i != n)
-		ERROR("bug: %u != %u, %d", i, n, remaining);
-	*array_size = n;
+	wnd->dma_map_addr[index] = 
+		PCI_DMA_MAP_SINGLE(wnd->wd->pci.pdev,
+				   MmGetSystemAddressForMdl(buf),
+				   MmGetMdlByteCount(buf),
+				   PCI_DMA_TODEVICE);
+	phy_addr_array[0].phy_addr = wnd->dma_map_addr[index];
+	phy_addr_array[0].length = MmGetMdlByteCount(buf);
+	DBGTRACE4("%Lx, %d, %d", phy_addr_array[0].phy_addr,
+		  phy_addr_array[0].length, index);
+	*array_size = 1;
 }
 
 wstdcall void WIN_FUNC(NdisMCompleteBufferPhysicalMapping,3)
 	(struct ndis_miniport_block *nmb, ndis_buffer *buf, ULONG index)
 {
 	struct wrap_ndis_device *wnd = nmb->wnd;
-	u8 i, n;
-	struct tx_dma_map_reg *tx_dma_map_reg;
 
-	TRACEENTER3("%p, %p %u (%u)", wnd, buf, index, wnd->tx_dma_map_count);
+	TRACEENTER3("%p, %p %u (%u)", wnd, buf, index, wnd->dma_map_count);
 
 	if (wnd->use_sg_dma)
 		WARNING("buffer %p may have been unmapped already", buf);
-	if (index >= wnd->tx_dma_map_count) {
+	if (index >= wnd->dma_map_count) {
 		ERROR("invalid map register (%u >= %u)",
-		      index, wnd->tx_dma_map_count);
+		      index, wnd->dma_map_count);
 		return;
 	}
-	n = SPAN_PAGES(MmGetSystemAddressForMdl(buf), MmGetMdlByteCount(buf));
-	tx_dma_map_reg = &wnd->tx_dma_map_reg[index * wnd->tx_dma_map_reg_pages];
-	for (i = 0; i < n; i++) {
-		DBGTRACE4("%lx, %d", (unsigned long)tx_dma_map_reg[i],
-			  tx_dma_map_reg[i].size);
-		if (tx_dma_map_reg[i].dma_addr == 0) {
-			WARNING("map registers at %u not used", index);
-			continue;
-		}
+	DBGTRACE4("%lx", (unsigned long)wnd->dma_map_addr[i]);
+	if (wnd->dma_map_addr[index]) {
 		PCI_DMA_UNMAP_SINGLE(wnd->wd->pci.pdev,
-				     tx_dma_map_reg[i].dma_addr,
-				     tx_dma_map_reg[i].size, PCI_DMA_TODEVICE);
-		tx_dma_map_reg[i].dma_addr = 0;
-		tx_dma_map_reg[i].size = 0;
-	}
+				     wnd->dma_map_addr[index],
+				     MmGetMdlByteCount(buf),
+				     PCI_DMA_TODEVICE);
+		wnd->dma_map_addr[index] = 0;
+	} else
+		WARNING("map registers at %u not used", index);
 }
 
 wstdcall void WIN_FUNC(NdisMAllocateSharedMemory,5)
