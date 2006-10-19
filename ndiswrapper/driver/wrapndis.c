@@ -1864,7 +1864,7 @@ static wstdcall NTSTATUS NdisAddDevice(struct driver_object *drv_obj,
 	wnd->capa.auth = 0;
 	wnd->attributes = 0;
 	wnd->tx_dma_map_count = 0;
-	wnd->tx_dma_map_addr = NULL;
+	wnd->tx_dma_map_reg = NULL;
 	wnd->nick[0] = 0;
 	init_timer(&wnd->hangcheck_timer);
 	wnd->scan_timestamp = 0;
