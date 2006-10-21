@@ -723,9 +723,8 @@ wstdcall void WIN_FUNC(NdisMQueryAdapterResources,4)
 	resource_length = sizeof(struct cm_partial_resource_list) +
 		sizeof(struct cm_partial_resource_descriptor) *
 		(list->count - 1);
-	DBGTRACE2("%p, %p,%d (%d), %p %d %d", wnd,
-		  resource_list, *size, resource_length,
-		  &list->partial_descriptors[list->count-1],
+	DBGTRACE2("%p, %p,%d (%d), %p %d %d", wnd, resource_list, *size,
+		  resource_length, &list->partial_descriptors[list->count-1],
 		  list->partial_descriptors[list->count-1].u.interrupt.level,
 		  list->partial_descriptors[list->count-1].u.interrupt.vector);
 	if (*size < sizeof(*list)) {
@@ -933,8 +932,7 @@ wstdcall void WIN_FUNC(NdisMStartBufferPhysicalMapping,6)
 	wnd->dma_map_addr[index] = 
 		PCI_DMA_MAP_SINGLE(wnd->wd->pci.pdev,
 				   MmGetSystemAddressForMdl(buf),
-				   MmGetMdlByteCount(buf),
-				   PCI_DMA_TODEVICE);
+				   MmGetMdlByteCount(buf), PCI_DMA_TODEVICE);
 	phy_addr_array[0].phy_addr = wnd->dma_map_addr[index];
 	phy_addr_array[0].length = MmGetMdlByteCount(buf);
 	DBGTRACE4("%Lx, %d, %d", phy_addr_array[0].phy_addr,
@@ -956,12 +954,10 @@ wstdcall void WIN_FUNC(NdisMCompleteBufferPhysicalMapping,3)
 		      index, wnd->dma_map_count);
 		return;
 	}
-	DBGTRACE4("%lx", (unsigned long)wnd->dma_map_addr[i]);
+	DBGTRACE4("%lx", (unsigned long)wnd->dma_map_addr[index]);
 	if (wnd->dma_map_addr[index]) {
-		PCI_DMA_UNMAP_SINGLE(wnd->wd->pci.pdev,
-				     wnd->dma_map_addr[index],
-				     MmGetMdlByteCount(buf),
-				     PCI_DMA_TODEVICE);
+		PCI_DMA_UNMAP_SINGLE(wnd->wd->pci.pdev, wnd->dma_map_addr[index],
+				     MmGetMdlByteCount(buf), PCI_DMA_TODEVICE);
 		wnd->dma_map_addr[index] = 0;
 	} else
 		WARNING("map registers at %u not used", index);

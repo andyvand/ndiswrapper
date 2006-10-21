@@ -1,3 +1,10 @@
+Version 1.27 2006-10-21
+=======================	
+* Bug fix to drivers that load binary firmware files (broken in 1.26). This
+  fixes issues with Atheros and TI drivers.
+* Atheros PCI driver requests more map registers for DMA than limit specified
+  in NDIS. Instead of failing such invalid requests, continue.
+
 Version 1.26 2006-10-14
 =======================	
 * Removed debug flag in ndiswrapper script
