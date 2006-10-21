@@ -2050,8 +2050,7 @@ static int wpa_set_key(struct net_device *dev, struct iw_request_info *info,
 	if (wpa_key.key && copy_from_user(&key, wpa_key.key, wpa_key.key_len))
 		TRACEEXIT2(return -EFAULT);
 
-	TRACEENTER2("alg = %d, key_index = %d",
-		    wpa_key.alg, wpa_key.key_index);
+	TRACEENTER2("alg = %d, key_index = %d", wpa_key.alg, wpa_key.key_index);
 
 	if (wpa_key.alg == WPA_ALG_WEP) {
 		if (!test_bit(Ndis802_11Encryption1Enabled, &wnd->capa.encr))
@@ -2077,7 +2076,7 @@ static int wpa_set_key(struct net_device *dev, struct iw_request_info *info,
 	memset(&ndis_key, 0, sizeof(ndis_key));
 
 	ndis_key.struct_size =
-		sizeof(ndis_key) - sizeof(ndis_key.key) + ext.key_len;
+		sizeof(ndis_key) - sizeof(ndis_key.key) + wpa_key.key_len;
 	ndis_key.length = wpa_key.key_len;
 	ndis_key.index = wpa_key.key_index;
 	if (wpa_key.seq && wpa_key.seq_len > 0) {
