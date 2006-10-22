@@ -232,6 +232,7 @@ struct wrap_bin_file *get_bin_file(char *bin_file_name)
 	int i = 0;
 	struct wrap_driver *driver, *cur;
 
+	TRACEENTER1("%s", bin_file_name);
 	if (down_interruptible(&loader_mutex)) {
 		WARNING("couldn't obtain loader_mutex");
 		TRACEEXIT1(return NULL);
@@ -260,12 +261,12 @@ struct wrap_bin_file *get_bin_file(char *bin_file_name)
 				"0",
 #endif
 				UTILS_VERSION, driver->name,
-				bin_file_name, NULL};
+				driver->bin_files[i].name, NULL};
 		char *env[] = {NULL};
 		int ret;
 
-		DBGTRACE1("loading bin file %s/%s", driver->name,
-			  bin_file_name);
+		DBGTRACE1("loading bin file %s/%s (%s)", driver->name,
+			  driver->bin_files[i].name, bin_file_name);
 		if (down_interruptible(&loader_mutex)) {
 			WARNING("couldn't obtain loader_mutex");
 			TRACEEXIT1(return NULL);

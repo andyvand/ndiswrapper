@@ -140,11 +140,10 @@ static int iw_set_essid(struct net_device *dev, struct iw_request_info *info,
 		/* wireless-tools prior to version 20 add extra 1, and
 		 * later than 20 don't! Deal with that mess */
 		length = wrqu->essid.length - 1;
-		if (length >= 1)
+		if (length > 0)
 			length--;
-		for (; length < wrqu->essid.length; length++)
-			if (!extra[length])
-				break;
+		while (length < wrqu->essid.length && extra[length])
+			length++;
 		DBGTRACE2("%d", length);
 		if (length <= 0 || length > NDIS_ESSID_MAX_SIZE)
 			TRACEEXIT2(return -EINVAL);
@@ -391,8 +390,7 @@ static int iw_set_freq(struct net_device *dev, struct iw_request_info *info,
 	return 0;
 }
 
-static int iw_get_tx_power(struct net_device *dev,
-			   struct iw_request_info *info,
+static int iw_get_tx_power(struct net_device *dev, struct iw_request_info *info,
 			   union iwreq_data *wrqu, char *extra)
 {
 	struct wrap_ndis_device *wnd = netdev_priv(dev);
@@ -411,8 +409,7 @@ static int iw_get_tx_power(struct net_device *dev,
 	return 0;
 }
 
-static int iw_set_tx_power(struct net_device *dev,
-			   struct iw_request_info *info,
+static int iw_set_tx_power(struct net_device *dev, struct iw_request_info *info,
 			   union iwreq_data *wrqu, char *extra)
 {
 	struct wrap_ndis_device *wnd = netdev_priv(dev);
@@ -1247,8 +1244,8 @@ static int iw_get_scan(struct net_device *dev, struct iw_request_info *info,
 	DBGTRACE2("%d", bssid_list->num_items);
 	cur_item = &bssid_list->bssid[0];
 	for (i = 0; i < bssid_list->num_items; i++) {
-		event = ndis_translate_scan(dev, event, extra + IW_SCAN_MAX_DATA,
-					    cur_item);
+		event = ndis_translate_scan(dev, event,
+					    extra + IW_SCAN_MAX_DATA, cur_item);
 		cur_item = (struct ndis_wlan_bssid *)((char *)cur_item +
 						      cur_item->length);
 	}
@@ -1739,8 +1736,7 @@ static int iw_get_encodeext(struct net_device *dev,
 	return 0;
 }
 
-static int iw_set_pmksa(struct net_device *dev,
-			struct iw_request_info *info,
+static int iw_set_pmksa(struct net_device *dev, struct iw_request_info *info,
 			union iwreq_data *wrqu, char *extra)
 {
 	struct iw_pmksa *pmksa = (struct iw_pmksa *) extra;
@@ -2067,12 +2063,10 @@ static int wpa_set_key(struct net_device *dev, struct iw_request_info *info,
 		TRACEEXIT2(return -1);
 	}
 	if (wpa_key.seq_len > IW_ENCODING_TOKEN_MAX) {
-		DBGTRACE2("incorrect seq? length = (%u)",
-			  (u32)wpa_key.seq_len);
+		DBGTRACE2("incorrect seq? length = (%u)", (u32)wpa_key.seq_len);
 		TRACEEXIT2(return -1);
 	}
-	DBGTRACE2("setting key %d, %u", wpa_key.key_index,
-		  (u32)wpa_key.key_len);
+	DBGTRACE2("setting key %d, %u", wpa_key.key_index, (u32)wpa_key.key_len);
 	memset(&ndis_key, 0, sizeof(ndis_key));
 
 	ndis_key.struct_size =
