@@ -15,8 +15,6 @@
 
 #include "ntoskernel.h"
 
-spinlock_t workq_lock = SPIN_LOCK_UNLOCKED;
-
 /* workqueue implementation for 2.4 kernels */
 
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,8)
@@ -29,6 +27,7 @@ static int workqueue_thread(void *data)
 {
 	workqueue_struct_t *workq = data;
 	work_struct_t *work;
+	unsigned long flags;
 
 #ifdef PF_NOFREEZE
 	current->flags |= PF_NOFREEZE;
@@ -57,30 +56,31 @@ static int workqueue_thread(void *data)
 			spin_unlock_irq(SIG_LOCK(current));
 			continue;
 		}
-		spin_lock_bh(&workq->lock);
+		spin_lock_irqsave(&workq->lock, flags);
 		if (workq->pending-- < 0)
 			break;
 		if (list_empty(&workq->work_list))
 			work = NULL;
 		else {
-			struct list_head *entry;
-			entry = workq->work_list.next;
+			struct list_head *entry = workq->work_list.next;
 			work = list_entry(entry, work_struct_t, list);
-			list_del_init(entry);
-			work->workq = NULL;
+			if (work->workq) {
+				assert(work->workq == workq);
+				work->workq = NULL;
+				list_del(entry);
+			} else
+				work = NULL;
 		}
-		spin_unlock_bh(&workq->lock);
+		spin_unlock_irqrestore(&workq->lock, flags);
 		if (work)
 			work->func(work->data);
 	}
 	/* set workq for each work to NULL so if cancel_delayed_work
 	 * is called later, it won't access workq */
-	spin_lock_bh(&workq_lock);
 	list_for_each_entry(work, &workq->work_list, list) {
 		work->workq = NULL;
 	}
-	spin_unlock_bh(&workq_lock);
-	spin_unlock_bh(&workq->lock);
+	spin_unlock_irqrestore(&workq->lock, flags);
 	WORKTRACE("%s exiting", workq->name);
 	workq->pid = 0;
 	return 0;
@@ -88,31 +88,32 @@ static int workqueue_thread(void *data)
 
 wfastcall void wrap_queue_work(workqueue_struct_t *workq, work_struct_t *work)
 {
-	spin_lock_bh(&workq->lock);
+	unsigned long flags;
+
+	spin_lock_irqsave(&workq->lock, flags);
 	if (!work->workq) {
 		work->workq = workq;
 		list_add_tail(&work->list, &workq->work_list);
 		workq->pending++;
 		wake_up_interruptible(&workq->waitq_head);
 	}
-	spin_unlock_bh(&workq->lock);
+	spin_unlock_irqrestore(&workq->lock, flags);
 }
 
 void wrap_cancel_delayed_work(work_struct_t *work)
 {
 	workqueue_struct_t *workq;
-	spin_lock_bh(&workq_lock);
-	workq = work->workq;
-	if (workq) {
-		spin_lock_bh(&workq->lock);
+	unsigned long flags;
+
+	if ((workq = xchg(&work->workq, NULL))) {
+		spin_lock_irqsave(&workq->lock, flags);
 		list_del(&work->list);
 		/* don't decrement workq->pending here; otherwise, it
 		 * may prematurely terminate the thread, as this work
 		 * may already have been done (pending may have been
 		 * decremented for it) */
-		spin_unlock_bh(&workq->lock);
+		spin_unlock_irqrestore(&workq->lock, flags);
 	}
-	spin_unlock_bh(&workq_lock);
 }
 
 workqueue_struct_t *wrap_create_wq(const char *name)

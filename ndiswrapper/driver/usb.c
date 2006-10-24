@@ -129,7 +129,7 @@ static void usb_kill_urb(struct urb *urb)
 static struct nt_list wrap_urb_complete_list;
 static NT_SPIN_LOCK wrap_urb_complete_list_lock;
 
-/* use tasklet instead worker to process completed urbs */
+/* use tasklet instead of worker to process completed urbs */
 #define USB_TASKLET 1
 
 #ifdef USB_TASKLET

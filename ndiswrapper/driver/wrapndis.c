@@ -898,7 +898,15 @@ static void update_wireless_stats(struct wrap_ndis_device *wnd)
 	if (res == NDIS_STATUS_SUCCESS)
 		iw_stats->qual.level = rssi;
 
-	memset(&ndis_stats, 0, sizeof(ndis_stats));
+	qual = 100 * (rssi - WL_NOISE) / (WL_SIGMAX - WL_NOISE);
+	if (qual < 0)
+		qual = 0;
+	else if (qual > 100)
+		qual = 100;
+
+	iw_stats->qual.noise = WL_NOISE;
+	iw_stats->qual.qual  = qual;
+
 	res = miniport_query_info(wnd, OID_802_11_STATISTICS,
 				  &ndis_stats, sizeof(ndis_stats));
 	if (res != NDIS_STATUS_SUCCESS)
@@ -910,13 +918,6 @@ static void update_wireless_stats(struct wrap_ndis_device *wnd)
 		(unsigned long)ndis_stats.ack_fail +
 		(unsigned long)ndis_stats.frame_dup;
 
-	qual = 100 * (rssi - WL_NOISE) / (WL_SIGMAX - WL_NOISE);
-	if (qual < 0)
-		qual = 0;
-	else if (qual > 100)
-		qual = 100;
-	iw_stats->qual.noise = WL_NOISE;
-	iw_stats->qual.qual  = qual;
 	TRACEEXIT2(return);
 }
 
