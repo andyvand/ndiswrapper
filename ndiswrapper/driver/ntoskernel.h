@@ -182,7 +182,7 @@ do {									\
 })
 #endif
 
-#if LINUX_VERSION_CODE > KERNEL_VERSION(2,6,18) || LINUX_VERSION_CODE < KERNEL_VERSION(2,5,41)
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,19) || LINUX_VERSION_CODE < KERNEL_VERSION(2,5,41)
 
 typedef struct {
 	spinlock_t lock;
@@ -218,13 +218,12 @@ typedef struct {
 
 workqueue_struct_t *wrap_create_wq(const char *name);
 void wrap_destroy_wq(workqueue_struct_t *workq);
-void wrap_queue_work(workqueue_struct_t *workq,
-		     work_struct_t *work_struct) wfastcall;
-void wrap_cancel_delayed_work(work_struct_t *work_struct);
+void wrap_queue_work(workqueue_struct_t *workq, work_struct_t *work) wfastcall;
+void wrap_cancel_delayed_work(work_struct_t *work);
 
 #else
 
-typedef struct workqueue_struvt workqueue_struct_t;
+typedef struct workqueue_struct workqueue_struct_t;
 typedef struct work_struct work_struct_t;
 #define initialize_work INIT_WORK
 
@@ -575,7 +574,7 @@ extern workqueue_struct_t *wrap_wq;
  * it are not supposed to wait; however, it helps to have separate
  * workqueue so keyboard etc. work when kernel crashes */
 
-#if LINUX_VERSION_CODE <= KERNEL_VERSION(2,5,41) || LINUX_VERSION_CODE > KERNEL_VERSION(2,6,18)
+#if LINUX_VERSION_CODE <= KERNEL_VERSION(2,5,41) || LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,19)
 #define USE_OWN_NTOS_WORKQUEUE 1
 #endif
 

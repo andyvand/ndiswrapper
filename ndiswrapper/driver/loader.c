@@ -285,8 +285,11 @@ struct wrap_bin_file *get_bin_file(char *bin_file_name)
 		}
 		wait_for_completion(&loader_complete);
 		up(&loader_mutex);
-		if (!driver->bin_files[i].data)
+		if (!driver->bin_files[i].data) {
+			WARNING("couldn't load binary file %s",
+				driver->bin_files[i].name);
 			TRACEEXIT1(return NULL);
+		}
 	}
 	TRACEEXIT2(return &(driver->bin_files[i]));
 }
