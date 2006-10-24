@@ -2418,7 +2418,7 @@ wstdcall NTSTATUS WIN_FUNC(ZwWriteFile,9)
 	else
 		offset = fo->current_byte_offset;
 	if (length + offset > file->size) {
-		WARNING("%ld, %u", length + offset, file->size);
+		WARNING("%lu, %u", length + offset, (unsigned int)file->size);
 		/* TODO: implement writing past end of current size */
 		iosb->status = STATUS_FAILURE;
 		iosb->info = 0;
@@ -2486,7 +2486,7 @@ wstdcall NTSTATUS WIN_FUNC(ZwQueryInformationFile,5)
 	switch (class) {
 	case FileNameInformation:
 		fni = info;
-		fni->length = min(length, (typeof (length))coh->name.length);
+		fni->length = min(length, (typeof(length))coh->name.length);
 		memcpy(fni->name, coh->name.buf, fni->length);
 		iosb->status = STATUS_SUCCESS;
 		iosb->info = fni->length;

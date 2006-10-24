@@ -31,7 +31,7 @@ SRC_DIR=$(shell pwd)
 KREV := $(shell echo $(KVERS) | sed -e 's/[^\.]*\.[^\.]*\.\([0-9]*\).*/\1/')
 
 ifeq ($(KPSUB),26)
-NEEDWQ := $(shell if [ $(KREV) -gt 18 ]; then echo 1; else echo 0; fi)
+NEEDWQ := $(shell if [ $(KREV) -ge 19 ]; then echo 1; else echo 0; fi)
 endif
 
 ifeq ($(KPSUB),24)
@@ -95,9 +95,8 @@ endif
 
 all : prereq_check win2lin_stubs.h gen_exports default stack_check
 
-OBJS := hal.o iw_ndis.o loader.o crt.o ndis.o \
-	    ntoskernel.o ntoskernel_io.o pe_linker.o pnp.o proc.o rtl.o \
-		wrapmem.o wrapndis.o wrapper.o
+OBJS := crt.o hal.o iw_ndis.o loader.o ndis.o ntoskernel.o ntoskernel_io.o \
+	pe_linker.o pnp.o proc.o rtl.o wrapmem.o wrapndis.o wrapper.o
 
 # by default, USB layer is compiled in if USB support is in kernel;
 # to disable USB support in ndiswrapper even if USB support is in kenrel,
