@@ -30,7 +30,7 @@ int debug = 0;
 
 /* use own workqueue instead of shared one, to avoid depriving
  * others */
-struct workqueue_struct *wrap_wq;
+workqueue_struct_t *wrap_wq;
 
 WRAP_MODULE_PARM_STRING(if_name, 0400);
 MODULE_PARM_DESC(if_name, "Network interface name or template "
@@ -125,4 +125,3 @@ static void __exit wrapper_exit(void)
 
 module_init(wrapper_init);
 module_exit(wrapper_exit);
-

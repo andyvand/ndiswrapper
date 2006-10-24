@@ -19,24 +19,42 @@ spinlock_t workq_lock = SPIN_LOCK_UNLOCKED;
 
 /* workqueue implementation for 2.4 kernels */
 
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,8)
+#define SIG_LOCK(t) (&(t)->sigmask_lock)
+#else
+#define SIG_LOCK(t) (&(t)->sighand->siglock)
+#endif
+
 static int workqueue_thread(void *data)
 {
-	struct workqueue_struct *workq = data;
-	struct work_struct *work;
+	workqueue_struct_t *workq = data;
+	work_struct_t *work;
 
+#ifdef PF_NOFREEZE
+	current->flags |= PF_NOFREEZE;
+	set_user_nice(current, -5);
+#endif
 	lock_kernel();
 	strncpy(current->comm, workq->name, sizeof(current->comm));
 	current->comm[sizeof(current->comm) - 1] = 0;
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,7)
 	daemonize();
+#else
+	daemonize(workq->name);
+#endif
 	unlock_kernel();
 	while (1) {
 		if (wait_event_interruptible(workq->waitq_head,
-					     workq->pending != 0)) {
-			/* we don't want to terminate thread */
-			spin_lock_irq(&current->sigmask_lock);
+					     workq->pending)) {
+			/* TODO: deal with signal */
+			spin_lock_irq(SIG_LOCK(current));
 			flush_signals(current);
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,7)
 			recalc_sigpending(current);
-			spin_unlock_irq(&current->sigmask_lock);
+#else
+			recalc_sigpending();
+#endif
+			spin_unlock_irq(SIG_LOCK(current));
 			continue;
 		}
 		spin_lock_bh(&workq->lock);
@@ -47,7 +65,7 @@ static int workqueue_thread(void *data)
 		else {
 			struct list_head *entry;
 			entry = workq->work_list.next;
-			work = list_entry(entry, struct work_struct, list);
+			work = list_entry(entry, work_struct_t, list);
 			list_del_init(entry);
 			work->workq = NULL;
 		}
@@ -68,8 +86,7 @@ static int workqueue_thread(void *data)
 	return 0;
 }
 
-wfastcall void queue_work(struct workqueue_struct *workq,
-			  struct work_struct *work)
+wfastcall void wrap_queue_work(workqueue_struct_t *workq, work_struct_t *work)
 {
 	spin_lock_bh(&workq->lock);
 	if (!work->workq) {
@@ -81,25 +98,26 @@ wfastcall void queue_work(struct workqueue_struct *workq,
 	spin_unlock_bh(&workq->lock);
 }
 
-void cancel_delayed_work(struct work_struct *work)
+void wrap_cancel_delayed_work(work_struct_t *work)
 {
-	struct workqueue_struct *workq;
+	workqueue_struct_t *workq;
 	spin_lock_bh(&workq_lock);
 	workq = work->workq;
 	if (workq) {
 		spin_lock_bh(&workq->lock);
 		list_del(&work->list);
-		/* don't decrement workq->pending here; otherwise, it may
-		 * prematurely terminate the thread, as wait_event
-		 * above checks it without lock */
+		/* don't decrement workq->pending here; otherwise, it
+		 * may prematurely terminate the thread, as this work
+		 * may already have been done (pending may have been
+		 * decremented for it) */
 		spin_unlock_bh(&workq->lock);
 	}
 	spin_unlock_bh(&workq_lock);
 }
 
-struct workqueue_struct *create_singlethread_workqueue(const char *name)
+workqueue_struct_t *wrap_create_wq(const char *name)
 {
-	struct workqueue_struct *workq = kmalloc(sizeof(*workq), GFP_KERNEL);
+	workqueue_struct_t *workq = kmalloc(sizeof(*workq), GFP_KERNEL);
 	if (!workq) {
 		WARNING("couldn't allocate memory");
 		return NULL;
@@ -120,7 +138,7 @@ struct workqueue_struct *create_singlethread_workqueue(const char *name)
 	return workq;
 }
 
-void destroy_workqueue(struct workqueue_struct *workq)
+void wrap_destroy_wq(workqueue_struct_t *workq)
 {
 	while (workq->pid) {
 		workq->pending = -1;

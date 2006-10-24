@@ -63,7 +63,6 @@
 /* pci functions in 2.6 kernels have problems allocating dma buffers,
  * but seem to work fine with dma functions
  */
-typedef struct workqueue_struct *workqueue;
 #include <asm/dma-mapping.h>
 
 #define PCI_DMA_ALLOC_COHERENT(pci_dev,size,dma_handle)			\
@@ -94,39 +93,6 @@ typedef struct workqueue_struct *workqueue;
 	pci_map_sg(dev, sglist, nents, direction)
 #define UNMAP_SG(dev, sglist, nents, direction)		\
 	pci_unmap_sg(dev, sglist, nents, direction)
-
-/* 2.4 kernels don't have workqueues, but we need them */
-struct workqueue_struct {
-	spinlock_t lock;
-	wait_queue_head_t waitq_head;
-	/* how many work_structs pending? */
-	int pending;
-	const char *name;
-	int pid;
-	/* list of work_structs pending */
-	struct list_head work_list;
-};
-
-struct work_struct {
-	struct list_head list;
-	void (*func)(void *data);
-	void *data;
-	/* whether/on which workqueue scheduled */
-	struct workqueue_struct *workq;
-};
-
-#define INIT_WORK(work_struct, worker_func, worker_data)	\
-	do {							\
-		(work_struct)->func = worker_func;		\
-		(work_struct)->data = worker_data;		\
-		(work_struct)->workq = NULL;			\
-	} while (0)
-
-struct workqueue_struct *create_singlethread_workqueue(const char *name);
-void destroy_workqueue(struct workqueue_struct *workq);
-void queue_work(struct workqueue_struct *workq,
-		struct work_struct *work_struct) wfastcall;
-void cancel_delayed_work(struct work_struct *work_struct);
 
 #include <linux/smp_lock.h>
 
@@ -215,6 +181,55 @@ do {									\
 	 __ret;								\
 })
 #endif
+
+#if LINUX_VERSION_CODE > KERNEL_VERSION(2,6,18) || LINUX_VERSION_CODE < KERNEL_VERSION(2,5,41)
+
+typedef struct {
+	spinlock_t lock;
+	wait_queue_head_t waitq_head;
+	/* how many work_structs pending? */
+	int pending;
+	const char *name;
+	int pid;
+	/* list of work_structs pending */
+	struct list_head work_list;
+} workqueue_struct_t;
+
+typedef struct {
+	struct list_head list;
+	void (*func)(void *data);
+	void *data;
+	/* whether/on which workqueue scheduled */
+	workqueue_struct_t *workq;
+} work_struct_t;
+
+#define initialize_work(work_struct, worker_func, worker_data)	\
+	do {							\
+		(work_struct)->func = worker_func;		\
+		(work_struct)->data = worker_data;		\
+		(work_struct)->workq = NULL;			\
+	} while (0)
+
+#undef create_singlethread_workqueue
+#define create_singlethread_workqueue wrap_create_wq
+#define destroy_workqueue wrap_destroy_wq
+#define queue_work wrap_queue_work
+#define cancel_delayed_work wrap_cancel_delayed_work
+
+workqueue_struct_t *wrap_create_wq(const char *name);
+void wrap_destroy_wq(workqueue_struct_t *workq);
+void wrap_queue_work(workqueue_struct_t *workq,
+		     work_struct_t *work_struct) wfastcall;
+void wrap_cancel_delayed_work(work_struct_t *work_struct);
+
+#else
+
+typedef struct workqueue_struvt workqueue_struct_t;
+typedef struct work_struct work_struct_t;
+#define initialize_work INIT_WORK
+
+#endif
+
 
 #if LINUX_VERSION_CODE > KERNEL_VERSION(2,6,9)
 #define WRAP_MODULE_PARM_INT(name, perm) module_param(name, int, perm)
@@ -552,7 +567,7 @@ struct wrap_device {
 
 #ifdef USE_OWN_WORKQUEUE
 
-extern struct workqueue_struct *wrap_wq;
+extern workqueue_struct_t *wrap_wq;
 #define schedule_ndis_work(work_struct) queue_work(ndis_wq, (work_struct))
 #define schedule_wrap_work(work_struct) queue_work(wrap_wq, (work_struct))
 
@@ -560,13 +575,13 @@ extern struct workqueue_struct *wrap_wq;
  * it are not supposed to wait; however, it helps to have separate
  * workqueue so keyboard etc. work when kernel crashes */
 
-#if LINUX_VERSION_CODE <= KERNEL_VERSION(2,5,41)
+#if LINUX_VERSION_CODE <= KERNEL_VERSION(2,5,41) || LINUX_VERSION_CODE > KERNEL_VERSION(2,6,18)
 #define USE_OWN_NTOS_WORKQUEUE 1
 #endif
 
 //#define USE_OWN_NTOS_WORKQUEUE 1
 #ifdef USE_OWN_NTOS_WORKQUEUE
-extern struct workqueue_struct *ntos_wq;
+extern workqueue_struct_t *ntos_wq;
 #define schedule_ntos_work(work_struct) queue_work(ntos_wq, (work_struct))
 #else
 #define schedule_ntos_work(work_struct) schedule_work(work_struct)
