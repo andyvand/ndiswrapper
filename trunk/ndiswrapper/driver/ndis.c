@@ -22,9 +22,9 @@
 #define MAX_ALLOCATED_NDIS_PACKETS 20
 #define MAX_ALLOCATED_NDIS_BUFFERS 20
 
-static struct workqueue_struct *ndis_wq;
+static workqueue_struct_t *ndis_wq;
 static void ndis_worker(void *dummy);
-static struct work_struct ndis_work;
+static work_struct_t ndis_work;
 static struct nt_list ndis_worker_list;
 static NT_SPIN_LOCK ndis_work_list_lock;
 
@@ -40,7 +40,7 @@ int ndis_init(void)
 #endif
 	InitializeListHead(&ndis_worker_list);
 	nt_spin_lock_init(&ndis_work_list_lock);
-	INIT_WORK(&ndis_work, ndis_worker, NULL);
+	initialize_work(&ndis_work, ndis_worker, NULL);
 
 	return 0;
 }

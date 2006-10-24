@@ -1854,7 +1854,7 @@ static wstdcall NTSTATUS NdisAddDevice(struct driver_object *drv_obj,
 	init_MUTEX(&wnd->ndis_comm_mutex);
 	init_waitqueue_head(&wnd->ndis_comm_wq);
 	wnd->ndis_comm_done = 0;
-	INIT_WORK(&wnd->tx_work, tx_worker, wnd);
+	initialize_work(&wnd->tx_work, tx_worker, wnd);
 	wnd->tx_ring_start = 0;
 	wnd->tx_ring_end = 0;
 	wnd->is_tx_ring_full = 0;
@@ -1874,7 +1874,7 @@ static wstdcall NTSTATUS NdisAddDevice(struct driver_object *drv_obj,
 	memset(&wnd->essid, 0, sizeof(wnd->essid));
 	memset(&wnd->encr_info, 0, sizeof(wnd->encr_info));
 	wnd->infrastructure_mode = Ndis802_11Infrastructure;
-	INIT_WORK(&wnd->wrap_ndis_work, wrap_ndis_worker, wnd);
+	initialize_work(&wnd->wrap_ndis_work, wrap_ndis_worker, wnd);
 	wnd->hw_status = 0;
 	if (wd->driver->ndis_driver)
 		wd->driver->ndis_driver->miniport.shutdown = NULL;

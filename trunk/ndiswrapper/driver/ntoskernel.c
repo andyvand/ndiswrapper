@@ -60,7 +60,7 @@ static struct nt_list wrap_mdl_list;
 static struct tasklet_struct kdpc_work;
 static void kdpc_worker(unsigned long dummy);
 #else
-static struct work_struct kdpc_work;
+static work_struct_t kdpc_work;
 static void kdpc_worker(void *data);
 #endif
 
@@ -79,7 +79,7 @@ struct bus_driver {
 
 static struct nt_list bus_driver_list;
 
-static struct work_struct ntos_work_item_work;
+static work_struct_t ntos_work_item_work;
 static struct nt_list ntos_work_item_list;
 static NT_SPIN_LOCK ntos_work_item_list_lock;
 static void ntos_work_item_worker(void *data);
@@ -108,7 +108,7 @@ WIN_SYMBOL_MAP("KeTickCount", &jiffies)
 WIN_SYMBOL_MAP("NlsMbCodePageTag", FALSE)
 
 #ifdef USE_OWN_NTOS_WORKQUEUE
-struct workqueue_struct *ntos_wq;
+workqueue_struct_t *ntos_wq;
 #endif
 
 int ntoskernel_init(void)
@@ -130,9 +130,9 @@ int ntoskernel_init(void)
 #ifdef KDPC_TASKLET
 	tasklet_init(&kdpc_work, kdpc_worker, 0);
 #else
-	INIT_WORK(&kdpc_work, kdpc_worker, NULL);
+	initialize_work(&kdpc_work, kdpc_worker, NULL);
 #endif
-	INIT_WORK(&ntos_work_item_work, ntos_work_item_worker, NULL);
+	initialize_work(&ntos_work_item_work, ntos_work_item_worker, NULL);
 	nt_spin_lock_init(&timer_lock);
 	InitializeListHead(&wrap_timer_list);
 

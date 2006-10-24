@@ -136,7 +136,7 @@ static NT_SPIN_LOCK wrap_urb_complete_list_lock;
 static struct tasklet_struct wrap_urb_complete_work;
 static void wrap_urb_complete_worker(unsigned long dummy);
 #else
-static struct work_struct wrap_urb_complete_work;
+static work_struct_t wrap_urb_complete_work;
 static void wrap_urb_complete_worker(void *dummy);
 #endif
 
@@ -149,7 +149,7 @@ int usb_init(void)
 #ifdef USB_TASKLET
 	tasklet_init(&wrap_urb_complete_work, wrap_urb_complete_worker, 0);
 #else
-	INIT_WORK(&wrap_urb_complete_work, wrap_urb_complete_worker, NULL);
+	initialize_work(&wrap_urb_complete_work, wrap_urb_complete_worker, NULL);
 #endif
 #ifdef USB_DEBUG
 	urb_id = 0;
