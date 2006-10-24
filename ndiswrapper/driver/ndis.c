@@ -369,11 +369,26 @@ wstdcall ULONG WIN_FUNC(NDIS_BUFFER_TO_SPAN_PAGES,1)
 	ULONG n, length;
 
 	if (buffer == NULL)
-		return 0;
+		TRACEEXIT2(return 0);
 	if (MmGetMdlByteCount(buffer) == 0)
-		return 1;
+		TRACEEXIT2(return 1);
 	length = MmGetMdlByteCount(buffer);
+
+#ifdef VT6655
+	/* VIA VT6655 works with this bogus computation, but not with
+	 * correct computation with SPAN_PAGES */
+	if (1) {
+		ULONG_PTR start, end;
+		unsigned long ptr;
+
+		ptr = (unsigned long)MmGetMdlVirtualAddress(buffer);
+		start = ptr & (PAGE_SIZE - 1);
+		end = (ptr + length + PAGE_SIZE - 1) & PAGE_MASK;
+		n = (end - start) / PAGE_SIZE;
+	}
+#else
 	n = SPAN_PAGES(MmGetMdlVirtualAddress(buffer), length);
+#endif
 	DBGTRACE4("%p, %p, %d, %d", buffer->startva, buffer->mappedsystemva,
 		  length, n);
 	TRACEEXIT3(return n);
