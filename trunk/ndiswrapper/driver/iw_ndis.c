@@ -45,17 +45,14 @@ int set_essid(struct wrap_ndis_device *wnd, const char *ssid, int ssid_len)
 		return -EINVAL;
 
 	memset(&req, 0, sizeof(req));
-	if (ssid_len == 0)
-		req.length = 1;
-	else {
-		req.length = ssid_len;
-		memcpy(&req.essid, ssid, req.length);
-		DBG_BLOCK(2) {
-			char buf[NDIS_ESSID_MAX_SIZE+1];
-			memcpy(buf, ssid, ssid_len);
-			buf[ssid_len] = 0;
-			DBGTRACE2("ssid = '%s'", buf);
-		}
+	req.length = ssid_len;
+	if (ssid_len)
+		memcpy(&req.essid, ssid, ssid_len);
+	DBG_BLOCK(2) {
+		char buf[NDIS_ESSID_MAX_SIZE+1];
+		memcpy(buf, ssid, ssid_len);
+		buf[ssid_len] = 0;
+		DBGTRACE2("ssid = '%s'", buf);
 	}
 
 	res = miniport_set_info(wnd, OID_802_11_SSID, &req, sizeof(req));
