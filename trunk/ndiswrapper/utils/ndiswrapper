@@ -1,4 +1,4 @@
-#!/usr/bin/perl
+#!/usr/bin/perl -d
 
 #/*
 #*  Copyright (C) 2005-2006 Pontus Fuchs, Giridhar Pemmasani
@@ -327,7 +327,10 @@ sub parse_install {
     foreach my $file (@copyfiles) {
 	parse_copy_file($file);
     }
-
+    # RTL8185L driver crashes if DriverDesc setting is not found
+    if ($vendor == "10EC" && $device == "8185") {
+	printf CONF "DriverDesc|Realtek RTL8185 54M Wireless LAN Network Adapter\n";
+    }
     close(CONF);
 }
 
