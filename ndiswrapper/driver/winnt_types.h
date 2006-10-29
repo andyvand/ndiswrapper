@@ -323,8 +323,8 @@ do {									\
 	(mdl)->next = NULL;						\
 	(mdl)->size = MmSizeOfMdl(baseva, length);			\
 	(mdl)->flags = 0;						\
-	(mdl)->startva = baseva;					\
-	(mdl)->byteoffset = 0;						\
+	(mdl)->startva = PAGE_START(baseva);				\
+	(mdl)->byteoffset = BYTE_OFFSET(baseva);			\
 	(mdl)->bytecount = length;					\
 	(mdl)->mappedsystemva = baseva;					\
 	DBGTRACE4("%p %p %p %d %d", (mdl), baseva, (mdl)->startva,	\

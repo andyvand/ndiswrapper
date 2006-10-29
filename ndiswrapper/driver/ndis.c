@@ -33,11 +33,7 @@ extern struct semaphore loader_mutex;
 /* ndis_init is called once when module is loaded */
 int ndis_init(void)
 {
-#ifdef USE_OWN_WORKQUEUE
 	ndis_wq = create_singlethread_workqueue("ndis_wq");
-#else
-	ndis_wq = NULL;
-#endif
 	InitializeListHead(&ndis_worker_list);
 	nt_spin_lock_init(&ndis_work_list_lock);
 	initialize_work(&ndis_work, ndis_worker, NULL);
@@ -48,9 +44,7 @@ int ndis_init(void)
 /* ndis_exit is called once when module is removed */
 void ndis_exit(void)
 {
-#ifdef USE_OWN_WORKQUEUE
 	destroy_workqueue(ndis_wq);
-#endif
 	TRACEEXIT1(return);
 }
 
@@ -237,7 +231,7 @@ noregparm void WIN_FUNC(NdisWriteErrorLogEntry,12)
 	      error, count, __builtin_return_address(0));
 	for (i = 0; i < count; i++) {
 		code = va_arg(args, ULONG);
-		ERROR("code: %u", code);
+		ERROR("code: 0x%x", code);
 	}
 	va_end(args);
 	TRACEEXIT2(return);
@@ -1103,13 +1097,14 @@ wstdcall void WIN_FUNC(NdisAllocateBuffer,5)
 				pool->num_allocated_descr, pool->max_descr);
 	}
 	descr = atomic_remove_list_head(pool->free_descr, oldhead->next);
+	/* TODO: make sure this mdl can map given buffer */
 	if (descr) {
-		typeof(descr->flags) flags;
-		flags = descr->flags;
+		typeof(descr->flags) flags = descr->flags;
 		MmInitializeMdl(descr, virt, length);
-		if (flags & MDL_CACHE_ALLOCATED)
-			descr->flags = MDL_CACHE_ALLOCATED;
+//		MmBuildMdlForNonPagedPool(descr);
 		descr->flags |= MDL_SOURCE_IS_NONPAGED_POOL;
+		if (flags & MDL_CACHE_ALLOCATED)
+			descr->flags |= MDL_CACHE_ALLOCATED;
 	} else {
 		descr = allocate_init_mdl(virt, length);
 		if (!descr) {
@@ -1122,6 +1117,8 @@ wstdcall void WIN_FUNC(NdisAllocateBuffer,5)
 		atomic_inc_var(pool->num_allocated_descr);
 		MmBuildMdlForNonPagedPool(descr);
 	}
+//	descr->flags |= MDL_ALLOCATED_FIXED_SIZE |
+//		MDL_MAPPED_TO_SYSTEM_VA | MDL_PAGES_LOCKED;
 	descr->pool = pool;
 	*buffer = descr;
 	*status = NDIS_STATUS_SUCCESS;

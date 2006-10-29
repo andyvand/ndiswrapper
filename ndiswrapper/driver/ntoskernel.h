@@ -182,7 +182,7 @@ do {									\
 })
 #endif
 
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,19) || LINUX_VERSION_CODE < KERNEL_VERSION(2,5,41)
+#ifdef USE_OWN_WQ
 
 typedef struct {
 	spinlock_t lock;
@@ -221,13 +221,13 @@ void wrap_destroy_wq(workqueue_struct_t *workq);
 void wrap_queue_work(workqueue_struct_t *workq, work_struct_t *work) wfastcall;
 void wrap_cancel_delayed_work(work_struct_t *work);
 
-#else
+#else // USE_OWN_WQ
 
 typedef struct workqueue_struct workqueue_struct_t;
 typedef struct work_struct work_struct_t;
 #define initialize_work INIT_WORK
 
-#endif
+#endif // USE_OWN_WQ
 
 
 #if LINUX_VERSION_CODE > KERNEL_VERSION(2,6,9)
@@ -558,14 +558,6 @@ struct wrap_device {
 	(WRAP_DEVICE(dev_bus) == WRAP_BLUETOOTH_DEVICE1 ||	\
 	 WRAP_DEVICE(dev_bus) == WRAP_BLUETOOTH_DEVICE2)
 
-/* Some drivers use worker entries to complete functions called from
- * within other worker threads. So we should have separate workqueues
- * to make sure worker entries run properly */
-
-#define USE_OWN_WORKQUEUE 1
-
-#ifdef USE_OWN_WORKQUEUE
-
 extern workqueue_struct_t *wrap_wq;
 #define schedule_ndis_work(work_struct) queue_work(ndis_wq, (work_struct))
 #define schedule_wrap_work(work_struct) queue_work(wrap_wq, (work_struct))
@@ -574,7 +566,7 @@ extern workqueue_struct_t *wrap_wq;
  * it are not supposed to wait; however, it helps to have separate
  * workqueue so keyboard etc. work when kernel crashes */
 
-#if LINUX_VERSION_CODE <= KERNEL_VERSION(2,5,41) || LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,19)
+#ifdef USE_OWN_WQ
 #define USE_OWN_NTOS_WORKQUEUE 1
 #endif
 
@@ -585,11 +577,6 @@ extern workqueue_struct_t *ntos_wq;
 #else
 #define schedule_ntos_work(work_struct) schedule_work(work_struct)
 #endif
-
-#else // USE_OWN_WORKQUEUE
-#define schedule_ndis_work(work_struct) schedule_work(work_struct)
-#define schedule_wrap_work(work_struct) schedule_work(work_struct)
-#endif // USE_OWN_WORKQUEUE
 
 int ntoskernel_init(void);
 void ntoskernel_exit(void);

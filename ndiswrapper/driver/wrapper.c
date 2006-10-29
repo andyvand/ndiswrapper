@@ -68,10 +68,8 @@ static void module_cleanup(void)
 	usb_exit();
 #endif
 
-#ifdef USE_OWN_WORKQUEUE
 	if (wrap_wq)
 		destroy_workqueue(wrap_wq);
-#endif
 	wrap_procfs_remove();
 	ndis_exit();
 	ntoskernel_exit();
@@ -82,7 +80,6 @@ static void module_cleanup(void)
 
 static int __init wrapper_init(void)
 {
-	wrapmem_init();
 	printk(KERN_INFO "%s version %s loaded (preempt=%s,smp=%s)\n",
 	       DRIVER_NAME, DRIVER_VERSION,
 #if defined CONFIG_PREEMPT
@@ -97,24 +94,19 @@ static int __init wrapper_init(void)
 #endif
 		);
 
-#ifdef USE_OWN_WORKQUEUE
 	wrap_wq = create_singlethread_workqueue("wrap_wq");
-#endif
-	if (crt_init() || rtl_init() || ntoskernel_init() || ndis_init()
-#ifdef CONFIG_USB
-	    || usb_init()
-#endif
-		)
-		goto err;
-	wrap_procfs_init();
-	if (loader_init())
-		goto err;
-	TRACEEXIT1(return 0);
 
-err:
-	module_cleanup();
-	ERROR("%s: initialization failed", DRIVER_NAME);
-	return -EINVAL;
+	if (!wrap_wq || wrapmem_init() || crt_init() || rtl_init() ||
+	    ntoskernel_init() || ndis_init() ||
+#ifdef CONFIG_USB
+	    usb_init() ||
+#endif
+	    wrap_procfs_init() || loader_init()) {
+		module_cleanup();
+		ERROR("%s: initialization failed", DRIVER_NAME);
+		return -EINVAL;
+	}
+	TRACEEXIT1(return 0);
 }
 
 static void __exit wrapper_exit(void)

@@ -23,7 +23,7 @@
 #define SIG_LOCK(t) (&(t)->sighand->siglock)
 #endif
 
-static int workqueue_thread(void *data)
+static int workq_thread(void *data)
 {
 	workqueue_struct_t *workq = data;
 	work_struct_t *work;
@@ -130,7 +130,7 @@ workqueue_struct_t *wrap_create_wq(const char *name)
 	INIT_LIST_HEAD(&workq->work_list);
 	/* we don't need to wait for thread to start, so completion
 	 * not used */
-	workq->pid = kernel_thread(workqueue_thread, workq, 0);
+	workq->pid = kernel_thread(workq_thread, workq, 0);
 	if (workq->pid <= 0) {
 		kfree(workq);
 		WARNING("couldn't start thread %s", name);

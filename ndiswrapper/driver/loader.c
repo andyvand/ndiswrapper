@@ -715,8 +715,8 @@ struct wrap_device *load_wrap_device(struct load_device *load_device)
 			);
 		if (ret) {
 			up(&loader_mutex);
-			DBGTRACE1("loadndiswrapper failed (%d); check system log "
-				  "for messages from 'loadndisdriver'", ret);
+			DBGTRACE1("loadndiswrapper failed (%d); check system "
+				  "log for messages from 'loadndisdriver'", ret);
 			TRACEEXIT1(return NULL);
 		}
 		wait_for_completion(&loader_complete);

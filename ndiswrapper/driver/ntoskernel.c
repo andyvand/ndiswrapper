@@ -2059,7 +2059,7 @@ struct mdl *allocate_init_mdl(void *virt, ULONG length)
 		MmInitializeMdl(mdl, virt, length);
 		/* mark the MDL as allocated from cache pool so when
 		 * it is freed, we free it back to the pool */
-		mdl->flags = MDL_CACHE_ALLOCATED;
+		mdl->flags = MDL_ALLOCATED_FIXED_SIZE | MDL_CACHE_ALLOCATED;
 	} else {
 		wrap_mdl =
 			kmalloc(sizeof(*wrap_mdl) + mdl_size, gfp_irql());
@@ -2073,6 +2073,7 @@ struct mdl *allocate_init_mdl(void *virt, ULONG length)
 		nt_spin_unlock_irql(&ntoskernel_lock, irql);
 		memset(mdl, 0, mdl_size);
 		MmInitializeMdl(mdl, virt, length);
+		mdl->flags = MDL_ALLOCATED_FIXED_SIZE;
 	}
 	return mdl;
 }
