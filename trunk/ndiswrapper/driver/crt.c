@@ -58,10 +58,11 @@ noregparm INT WIN_FUNC(_win_snprintf,12)
 	(char *buf, SIZE_T count, const char *format, ...)
 {
 	va_list args;
-	int res;
+	int res, n;
 
+	n = count > 9 ? 9 : count;
 	va_start(args, format);
-	res = vsnprintf(buf, count, format, args);
+	res = vsnprintf(buf, n, format, args);
 	va_end(args);
 	DBGTRACE2("buf: %p: %s", buf, buf);
 	return res;
@@ -71,10 +72,11 @@ noregparm INT WIN_FUNC(_win__snprintf,12)
 	(char *buf, SIZE_T count, const char *format, ...)
 {
 	va_list args;
-	int res;
+	int res, n;
 
+	n = count > 9 ? 9 : count;
 	va_start(args, format);
-	res = vsnprintf(buf, count, format, args);
+	res = vsnprintf(buf, n, format, args);
 	va_end(args);
 	DBGTRACE2("buf: %p: %s", buf, buf);
 	return res;

@@ -30,14 +30,6 @@ SRC_DIR=$(shell pwd)
 
 KREV := $(shell echo $(KVERS) | sed -e 's/[^\.]*\.[^\.]*\.\([0-9]*\).*/\1/')
 
-ifeq ($(KPSUB),26)
-NEEDWQ := $(shell if [ $(KREV) -ge 19 ]; then echo 1; else echo 0; fi)
-endif
-
-ifeq ($(KPSUB),24)
-NEEDWQ := 1
-endif
-
 -include $(KBUILD)/.config
 
 CFLAGS += $(shell [ -f $(KSRC)/include/linux/modversions.h ] && \
@@ -120,6 +112,11 @@ endif
 ifeq ($(CONFIG_USB),m)
 OBJS += usb.o
 endif
+endif
+
+ifeq ($(KPSUB),24)
+CFLAGS += -DUSE_OWN_WQ
+OBJS += workqueue.o
 endif
 
 ntoskernel.h: lin2win.h
@@ -247,10 +244,6 @@ clean:
 
 distclean: clean
 	rm -f *_exports.h .\#* win2lin_stubs.h
-
-ifeq ($(NEEDWQ),1)
-OBJS += workqueue.o
-endif
 
 ifeq ($(KPSUB),24)
 
