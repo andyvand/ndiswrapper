@@ -29,10 +29,6 @@ static int workq_thread(void *data)
 	work_struct_t *work;
 	unsigned long flags;
 
-#ifdef PF_NOFREEZE
-	current->flags |= PF_NOFREEZE;
-	set_user_nice(current, -5);
-#endif
 	lock_kernel();
 	strncpy(current->comm, workq->name, sizeof(current->comm));
 	current->comm[sizeof(current->comm) - 1] = 0;
@@ -42,6 +38,10 @@ static int workq_thread(void *data)
 	daemonize(workq->name);
 #endif
 	unlock_kernel();
+#ifdef PF_NOFREEZE
+	current->flags |= PF_NOFREEZE;
+	set_user_nice(current, -5);
+#endif
 	while (1) {
 		if (wait_event_interruptible(workq->waitq_head,
 					     workq->pending)) {
@@ -64,10 +64,10 @@ static int workq_thread(void *data)
 		else {
 			struct list_head *entry = workq->work_list.next;
 			work = list_entry(entry, work_struct_t, list);
+			list_del(entry);
 			if (work->workq) {
 				assert(work->workq == workq);
 				work->workq = NULL;
-				list_del(entry);
 			} else
 				work = NULL;
 		}

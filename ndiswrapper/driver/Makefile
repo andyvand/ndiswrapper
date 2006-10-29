@@ -119,6 +119,11 @@ CFLAGS += -DUSE_OWN_WQ
 OBJS += workqueue.o
 endif
 
+ifdef USE_OWN_WQ
+CFLAGS += -DUSE_OWN_WQ
+OBJS += workqueue.o
+endif
+
 ntoskernel.h: lin2win.h
 
 ndis.h: ntoskernel.h
