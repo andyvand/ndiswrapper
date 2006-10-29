@@ -1,3 +1,12 @@
+Version 1.28 2006-10-29
+=======================	
+* Windows drivers may request firmware to be loaded in either upper or lower
+  case (either full name or partially). Instead of using given name, use
+  installed name. This fixes firmware loading issue with Airgo networks
+  driver.
+* When compiling with 2.6.19-rc2 and possibly next rc(s), compile with
+  'make USE_OWN_WQ=1'. Final 2.6.19 may not need this (hopefully).
+
 Version 1.27 2006-10-21
 =======================	
 * Bug fix to drivers that load binary firmware files (broken in 1.26). This
