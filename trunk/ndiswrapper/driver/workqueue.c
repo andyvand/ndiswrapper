@@ -64,11 +64,10 @@ static int workq_thread(void *data)
 		else {
 			struct list_head *entry = workq->work_list.next;
 			work = list_entry(entry, work_struct_t, list);
-			list_del(entry);
-			if (work->workq) {
-				assert(work->workq == workq);
-				work->workq = NULL;
-			} else
+			BUG_ON(work->workq != workq);
+			if (xchg(&work->workq, NULL))
+				list_del(entry);
+			else
 				work = NULL;
 		}
 		spin_unlock_irqrestore(&workq->lock, flags);

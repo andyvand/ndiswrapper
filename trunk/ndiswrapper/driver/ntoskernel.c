@@ -630,10 +630,8 @@ static void timer_proc(unsigned long data)
 		queue_kdpc(kdpc);
 #endif
 	}
-	nt_spin_lock(&timer_lock);
 	if (wrap_timer->repeat)
 		mod_timer(&wrap_timer->timer, jiffies + wrap_timer->repeat);
-	nt_spin_unlock(&timer_lock);
 	TRACEEXIT5(return);
 }
 
@@ -701,7 +699,6 @@ BOOLEAN wrap_set_timer(struct nt_timer *nt_timer, unsigned long expires_hz,
 {
 	BOOLEAN ret;
 	struct wrap_timer *wrap_timer;
-	KIRQL irql;
 
 	TRACEENTER4("%p, %lu, %lu, %p, %lu",
 		    nt_timer, expires_hz, repeat_hz, kdpc, jiffies);
@@ -724,7 +721,6 @@ BOOLEAN wrap_set_timer(struct nt_timer *nt_timer, unsigned long expires_hz,
 		wrap_timer->wrap_timer_magic = WRAP_TIMER_MAGIC;
 	}
 #endif
-	irql = nt_spin_lock_irql(&timer_lock, DISPATCH_LEVEL);
 	if (kdpc)
 		nt_timer->kdpc = kdpc;
 	wrap_timer->repeat = repeat_hz;
@@ -732,7 +728,6 @@ BOOLEAN wrap_set_timer(struct nt_timer *nt_timer, unsigned long expires_hz,
 		ret = TRUE;
 	else
 		ret = FALSE;
-	nt_spin_unlock_irql(&timer_lock, irql);
 	TRACEEXIT5(return ret);
 }
 
@@ -761,7 +756,6 @@ wstdcall BOOLEAN WIN_FUNC(KeCancelTimer,1)
 {
 	BOOLEAN canceled;
 	struct wrap_timer *wrap_timer;
-	KIRQL irql;
 
 	TRACEENTER5("%p", nt_timer);
 	wrap_timer = nt_timer->wrap_timer;
@@ -776,13 +770,11 @@ wstdcall BOOLEAN WIN_FUNC(KeCancelTimer,1)
 	DBGTRACE5("deleting timer %p(%p)", wrap_timer, nt_timer);
 	/* disable timer before deleting so if it is periodic timer, it
 	 * won't be re-armed after deleting */
-	irql = nt_spin_lock_irql(&timer_lock, DISPATCH_LEVEL);
 	wrap_timer->repeat = 0;
 	if (del_timer(&wrap_timer->timer))
 		canceled = TRUE;
 	else
 		canceled = FALSE;
-	nt_spin_unlock_irql(&timer_lock, irql);
 	DBGTRACE5("canceled (%p): %d", wrap_timer, canceled);
 	TRACEEXIT5(return canceled);
 }
@@ -930,7 +922,7 @@ static void ntos_work_item_worker(void *data)
 int schedule_ntos_work_item(NTOS_WORK_FUNC func, void *arg1, void *arg2)
 {
 	struct ntos_work_item *ntos_work_item;
-	KIRQL irql;
+	unsigned long flags;
 
 	WORKENTER("adding work: %p, %p, %p", func, arg1, arg2);
 	ntos_work_item = kmalloc(sizeof(*ntos_work_item), gfp_irql());
@@ -941,9 +933,9 @@ int schedule_ntos_work_item(NTOS_WORK_FUNC func, void *arg1, void *arg2)
 	ntos_work_item->func = func;
 	ntos_work_item->arg1 = arg1;
 	ntos_work_item->arg2 = arg2;
-	irql = nt_spin_lock_irql(&ntos_work_item_list_lock, DISPATCH_LEVEL);
+	nt_spin_lock_irqsave(&ntos_work_item_list_lock, flags);
 	InsertTailList(&ntos_work_item_list, &ntos_work_item->list);
-	nt_spin_unlock_irql(&ntos_work_item_list_lock, irql);
+	nt_spin_unlock_irqrestore(&ntos_work_item_list_lock, flags);
 	schedule_ntos_work(&ntos_work_item_work);
 	WORKEXIT(return 0);
 }

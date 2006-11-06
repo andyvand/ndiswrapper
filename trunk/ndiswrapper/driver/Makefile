@@ -119,6 +119,11 @@ CFLAGS += -DUSE_OWN_WQ
 OBJS += workqueue.o
 endif
 
+CFLAGS += $(shell if grep -A1 'ndiswrapper' $(KSRC)/kernel/module.c | \
+			grep -q 'add_taint_module' ; then \
+			echo -DUSE_OWN_WQ; \
+		  fi)
+
 ifdef USE_OWN_WQ
 CFLAGS += -DUSE_OWN_WQ
 OBJS += workqueue.o

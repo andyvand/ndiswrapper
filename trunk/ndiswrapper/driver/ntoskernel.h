@@ -767,11 +767,11 @@ void adjust_user_shared_data_addr(char *driver, unsigned long length);
 static inline KIRQL current_irql(void)
 {
 	if (in_irq() || irqs_disabled())
-		TRACEEXIT5(return DEVICE_LEVEL);
+		TRACEEXIT6(return DEVICE_LEVEL);
 	else if (in_atomic())
-		TRACEEXIT5(return DISPATCH_LEVEL);
+		TRACEEXIT6(return DISPATCH_LEVEL);
 	else
-		TRACEEXIT5(return PASSIVE_LEVEL);
+		TRACEEXIT6(return PASSIVE_LEVEL);
 }
 
 static inline KIRQL raise_irql(KIRQL newirql)
@@ -782,14 +782,14 @@ static inline KIRQL raise_irql(KIRQL newirql)
 		local_bh_disable();
 		preempt_disable();
 	}
-	DBGTRACE5("%d, %d", irql, newirql);
+	DBGTRACE6("%d, %d", irql, newirql);
 	return irql;
 }
 
 static inline void lower_irql(KIRQL oldirql)
 {
 	KIRQL irql = current_irql();
-	DBGTRACE5("%d, %d", irql, oldirql);
+	DBGTRACE6("%d, %d", irql, oldirql);
 	DBG_BLOCK(2) {
 		if (irql < oldirql)
 			ERROR("invalid irql: %d < %d", irql, oldirql);
@@ -932,7 +932,7 @@ do {									\
 
 #define post_atomic_add(var, i) (pre_atomic_add(var, i) + i)
 
-#define atomic_insert_list_head(head, oldhead, newhead)			\
+#define atomic_insert_list_head(oldhead, head, newhead)			\
 	do {								\
 		oldhead = head;						\
 	} while (cmpxchg(&(head), oldhead, newhead) != oldhead)
