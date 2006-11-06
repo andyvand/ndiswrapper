@@ -1,4 +1,4 @@
-#!/usr/bin/perl -d
+#!/usr/bin/perl
 
 #/*
 #*  Copyright (C) 2005-2006 Pontus Fuchs, Giridhar Pemmasani
@@ -401,7 +401,10 @@ sub parse_copy_file {
 	    $file = $files[0];
 	}
 	printf DBG "file: '%s'\n", $file;
+	# some inf files have file names commented out; get file names from them
 	$file =~ s/^\s*;//;
+	# remove (trailing) comment
+	$file = del_comment($file);
 	$file = trim($file);
 	if ($file and length($file) > 0) {
 	    if (valid_file_name($file)) {
