@@ -150,11 +150,18 @@ static int procfs_read_ndis_hw(char *page, char **start, off_t off,
 	ndis_fragmentation_threshold frag_threshold;
 	ndis_antenna antenna;
 	ULONG packet_filter;
+	int n;
+	char *hw_status[] = {"ready", "initializing", "resetting", "closing",
+			     "not ready"};
 
 	if (off != 0) {
 		*eof = 1;
 		return 0;
 	}
+
+	res = miniport_query_int(wnd, OID_GEN_HARDWARE_STATUS, &n);
+	if (res >= 0 && res < sizeof(hw_status) / sizeof(hw_status[0]))
+		p += sprintf(p, "status=%s\n", hw_status[res]);
 
 	res = miniport_query_info(wnd, OID_802_11_CONFIGURATION,
 				  &config, sizeof(config));

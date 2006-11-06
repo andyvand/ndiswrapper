@@ -18,6 +18,7 @@
 #include "pnp.h"
 #include "loader.h"
 #include "wrapndis.h"
+#include <linux/inetdevice.h>
 
 extern char *if_name;
 extern int hangcheck_interval;
@@ -463,6 +464,7 @@ static struct ndis_packet *alloc_tx_packet(struct wrap_ndis_device *wnd,
 	NdisAllocatePacket(&status, &packet, wnd->tx_packet_pool);
 	if (status != NDIS_STATUS_SUCCESS)
 		return NULL;
+	packet->private.flags |= NDIS_MAC_OPTION_NO_LOOPBACK;
 	NdisAllocateBuffer(&status, &buffer, wnd->tx_buffer_pool,
 			   skb->data, skb->len);
 	if (status != NDIS_STATUS_SUCCESS) {
@@ -757,6 +759,26 @@ static int ndis_net_dev_close(struct net_device *net_dev)
 	return 0;
 }
 
+static int ndis_change_mtu(struct net_device *net_dev, int mtu)
+{
+	struct wrap_ndis_device *wnd = netdev_priv(net_dev);
+	int max;
+
+	if (mtu < ETH_ZLEN)
+		return -EINVAL;
+	if (miniport_query_int(wnd, OID_GEN_MAXIMUM_TOTAL_SIZE, &max) !=
+	    NDIS_STATUS_SUCCESS)
+		return -EOPNOTSUPP;
+	DBGTRACE2("%d", max);
+	max -= ETH_HLEN;
+	if (max <= ETH_ZLEN)
+		return -EINVAL;
+	if (mtu + ETH_HLEN > max)
+		return -EINVAL;
+	net_dev->mtu = mtu;
+	return 0;
+}
+
 #ifdef CONFIG_NET_POLL_CONTROLLER
 static void ndis_poll_controller(struct net_device *dev)
 {
@@ -872,6 +894,9 @@ static int notifier_event(struct notifier_block *notifier, unsigned long event,
 		memcpy(wnd->netdev_name, net_dev->name,
 		       sizeof(wnd->netdev_name));
 		wrap_procfs_add_ndis_device(wnd);
+		break;
+	default:
+		DBGTRACE2("%lx", event);
 		break;
 	}
 	return NOTIFY_DONE;
@@ -1574,6 +1599,8 @@ static NDIS_STATUS ndis_start_device(struct wrap_ndis_device *wnd)
 	char *buf;
 	const int buf_size = 256;
 	mac_address mac;
+	struct transport_header_offset transport_header_offset;
+	int n;
 
 	ndis_status = miniport_init(wnd);
 	if (ndis_status == NDIS_STATUS_NOT_RECOGNIZED)
@@ -1602,11 +1629,12 @@ static NDIS_STATUS ndis_start_device(struct wrap_ndis_device *wnd)
 	memcpy(&net_dev->dev_addr, mac, ETH_ALEN);
 
 	wnd->packet_filter = NDIS_PACKET_TYPE_DIRECTED |
-		NDIS_PACKET_TYPE_BROADCAST | NDIS_PACKET_TYPE_ALL_FUNCTIONAL;
+		NDIS_PACKET_TYPE_BROADCAST | NDIS_PACKET_TYPE_MULTICAST;
 	net_dev->open = ndis_net_dev_open;
 	net_dev->hard_start_xmit = tx_skbuff;
 	net_dev->stop = ndis_net_dev_close;
 	net_dev->get_stats = ndis_get_stats;
+	net_dev->change_mtu = ndis_change_mtu;
 	net_dev->do_ioctl = NULL;
 	if (wnd->physical_medium == NdisPhysicalMediumWirelessLan) {
 #if WIRELESS_EXT < 19
@@ -1653,8 +1681,15 @@ static NDIS_STATUS ndis_start_device(struct wrap_ndis_device *wnd)
 	memset(buf, 0, buf_size);
 	ndis_status = miniport_query_info(wnd, OID_GEN_VENDOR_DESCRIPTION,
 					  buf, buf_size);
+	wnd->drv_ndis_version = 0;
+	ndis_status |= miniport_query_int(wnd, OID_GEN_DRIVER_VERSION,
+					  &wnd->drv_ndis_version);
+	ndis_status |= miniport_query_int(wnd, OID_GEN_VENDOR_DRIVER_VERSION,
+					  &n);
 	if (ndis_status == NDIS_STATUS_SUCCESS)
-		printk(KERN_INFO "%s: vendor: '%s'\n", net_dev->name, buf);
+		printk(KERN_INFO "%s: vendor: '%s', version: 0x%x, "
+		       "NDIS version: 0x%x\n", net_dev->name, buf,
+		       n, wnd->drv_ndis_version);
 
 	printk(KERN_INFO "%s: ethernet device " MACSTRSEP " using %sNDIS "
 	       "driver %s, %s\n", net_dev->name, MAC2STR(net_dev->dev_addr),
@@ -1691,6 +1726,22 @@ static NDIS_STATUS ndis_start_device(struct wrap_ndis_device *wnd)
 		goto buffer_pool_err;
 	}
 	DBGTRACE1("pool: %p", wnd->tx_buffer_pool);
+
+	miniport_query_int(wnd, OID_GEN_MAXIMUM_TOTAL_SIZE, &n);
+	if (n > ETH_HLEN)
+		ndis_change_mtu(wnd->net_dev, n - ETH_HLEN);
+
+	miniport_query_int(wnd, OID_GEN_MAC_OPTIONS, &n);
+	if (n > 0)
+		DBGTRACE2("mac options supported: 0x%x", n);
+
+	transport_header_offset.protocol_type = NDIS_PROTOCOL_ID_TCP_IP;
+	transport_header_offset.header_offset = sizeof(ETH_HLEN);
+	ndis_status = miniport_set_info(wnd, OID_GEN_TRANSPORT_HEADER_OFFSET,
+					&transport_header_offset,
+					sizeof(transport_header_offset));
+	TRACEENTER2("%08X", ndis_status);
+
 	if (wnd->physical_medium == NdisPhysicalMediumWirelessLan) {
 		miniport_set_int(wnd, OID_802_11_POWER_MODE, NDIS_POWER_OFF);
 		miniport_set_int(wnd, OID_802_11_NETWORK_TYPE_IN_USE,
@@ -1792,7 +1843,7 @@ static int ndis_remove_device(struct wrap_ndis_device *wnd)
 }
 
 static wstdcall NTSTATUS NdisAddDevice(struct driver_object *drv_obj,
-				      struct device_object *pdo)
+				       struct device_object *pdo)
 {
 	struct device_object *fdo;
 	struct ndis_miniport_block *nmb;

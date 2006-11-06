@@ -83,6 +83,23 @@ struct ndis_buffer_pool {
 
 #define PROTOCOL_RESERVED_SIZE_IN_PACKET (4 * sizeof(void *))
 
+struct transport_header_offset {
+	USHORT protocol_type;
+	USHORT header_offset;
+};
+
+struct ndis_network_address {
+	USHORT length;
+	USHORT type;
+	UCHAR address[1];
+};
+
+struct ndis_network_address_list {
+	LONG count;
+	USHORT type;
+	struct ndis_network_address address[1];
+};
+
 struct ndis_tcp_ip_checksum_packet_info {
 	union {
 		struct {
@@ -851,6 +868,7 @@ struct wrap_ndis_device {
 	BOOLEAN pm_capa;
 	struct nt_list timer_list;
 	char netdev_name[IFNAMSIZ];
+	int drv_ndis_version;
 };
 
 struct ndis_pmkid_candidate {
@@ -1213,6 +1231,18 @@ void NdisReadConfiguration(NDIS_STATUS *status,
 #define NDIS_PROTOCOL_ID_TCP_IP			0x02
 
 #define OID_TCP_TASK_OFFLOAD			0xFC010201
+
+#define NDIS_MAC_OPTION_COPY_LOOKAHEAD_DATA	0x00000001
+#define NDIS_MAC_OPTION_RECEIVE_SERIALIZED	0x00000002
+#define NDIS_MAC_OPTION_TRANSFERS_NOT_PEND	0x00000004
+#define NDIS_MAC_OPTION_NO_LOOPBACK		0x00000008
+#define NDIS_MAC_OPTION_FULL_DUPLEX		0x00000010
+#define NDIS_MAC_OPTION_EOTX_INDICATION		0x00000020
+#define NDIS_MAC_OPTION_8021P_PRIORITY		0x00000040
+#define NDIS_MAC_OPTION_SUPPORTS_MAC_ADDRESS_OVERWRITE	0x00000080
+#define NDIS_MAC_OPTION_RECEIVE_AT_DPC		0x00000100
+#define NDIS_MAC_OPTION_8021Q_VLAN		0x00000200
+#define NDIS_MAC_OPTION_RESERVED		0x80000000
 
 #define deserialized_driver(wnd) (wnd->attributes & NDIS_ATTRIBUTE_DESERIALIZE)
 

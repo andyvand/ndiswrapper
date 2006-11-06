@@ -667,12 +667,15 @@ wstdcall ULONG WIN_FUNC(NdisReadPciSlotInformation,5)
 {
 	struct wrap_device *wd = nmb->wnd->wd;
 	ULONG i;
-	TRACEENTER4("%d", len);
 	for (i = 0; i < len; i++)
 		if (pci_read_config_byte(wd->pci.pdev, offset + i, &buf[i]) !=
 		    PCIBIOS_SUCCESSFUL)
 			break;
-	TRACEEXIT4(return i);
+	DBG_BLOCK(2) {
+		if (i != len)
+			WARNING("%u, %u", i, len);
+	}
+	return i;
 }
 
 wstdcall ULONG WIN_FUNC(NdisImmediateReadPciSlotInformation,5)
@@ -688,12 +691,15 @@ wstdcall ULONG WIN_FUNC(NdisWritePciSlotInformation,5)
 {
 	struct wrap_device *wd = nmb->wnd->wd;
 	ULONG i;
-	TRACEENTER4("%d", len);
 	for (i = 0; i < len; i++)
 		if (pci_write_config_byte(wd->pci.pdev, offset + i, buf[i]) !=
 		    PCIBIOS_SUCCESSFUL)
 			break;
-	TRACEEXIT4(return i);
+	DBG_BLOCK(2) {
+		if (i != len)
+			WARNING("%u, %u", i, len);
+	}
+	return i;
 }
 
 wstdcall void WIN_FUNC(NdisReadPortUchar,3)
@@ -872,7 +878,7 @@ wstdcall NDIS_STATUS WIN_FUNC(NdisMAllocateMapRegisters,5)
 		WARNING("Windows driver %s requesting too many (%u) "
 			"map registers", wnd->wd->driver->name, basemap);
 		/* As per NDIS, NDIS_STATUS_RESOURCES should be
-		 * retrned, but with that Atheros PCI driver fails -
+		 * returned, but with that Atheros PCI driver fails -
 		 * for now tolerate it */
 //		TRACEEXIT2(return NDIS_STATUS_RESOURCES);
 	}
@@ -1101,8 +1107,7 @@ wstdcall void WIN_FUNC(NdisAllocateBuffer,5)
 	if (descr) {
 		typeof(descr->flags) flags = descr->flags;
 		MmInitializeMdl(descr, virt, length);
-//		MmBuildMdlForNonPagedPool(descr);
-		descr->flags |= MDL_SOURCE_IS_NONPAGED_POOL;
+		MmBuildMdlForNonPagedPool(descr);
 		if (flags & MDL_CACHE_ALLOCATED)
 			descr->flags |= MDL_CACHE_ALLOCATED;
 	} else {
@@ -1145,7 +1150,7 @@ wstdcall void WIN_FUNC(NdisFreeBuffer,1)
 		descr->pool = NULL;
 		free_mdl(descr);
 	} else
-		atomic_insert_list_head(pool->free_descr, descr->next, descr);
+		atomic_insert_list_head(descr->next, pool->free_descr, descr);
 	TRACEEXIT4(return);
 }
 
@@ -1416,7 +1421,7 @@ wstdcall void WIN_FUNC(NdisAllocatePacket,3)
 	ndis_packet->private.oob_offset = packet_length -
 		sizeof(struct ndis_packet_oob_data);
 	ndis_packet->private.packet_flags = fPACKET_ALLOCATED_BY_NDIS;
-//		| NDIS_PROTOCOL_ID_TCP_IP;
+	ndis_packet->private.flags = NDIS_PROTOCOL_ID_TCP_IP;
 	ndis_packet->private.pool = pool;
 	*packet = ndis_packet;
 	*status = NDIS_STATUS_SUCCESS;
@@ -1449,7 +1454,7 @@ wstdcall void WIN_FUNC(NdisFreePacket,1)
 	} else {
 		struct ndis_packet_oob_data *oob_data;
 		oob_data = NDIS_PACKET_OOB_DATA(descr);
-		atomic_insert_list_head(pool->free_descr, oob_data->next, descr);
+		atomic_insert_list_head(oob_data->next, pool->free_descr, descr);
 	}
 	TRACEEXIT4(return);
 }
@@ -1865,11 +1870,13 @@ wstdcall void WIN_FUNC(NdisMIndicateStatus,4)
 	switch (status) {
 	case NDIS_STATUS_MEDIA_DISCONNECT:
 		netif_carrier_off(wnd->net_dev);
+		DBGTRACE2("%d", netif_carrier_ok(wnd->net_dev));
 		set_bit(LINK_STATUS_CHANGED, &wnd->wrap_ndis_pending_work);
 		schedule_wrap_work(&wnd->wrap_ndis_work);
 		break;
 	case NDIS_STATUS_MEDIA_CONNECT:
 		netif_carrier_on(wnd->net_dev);
+		DBGTRACE2("%d", netif_carrier_ok(wnd->net_dev));
 		set_bit(LINK_STATUS_CHANGED, &wnd->wrap_ndis_pending_work);
 		schedule_wrap_work(&wnd->wrap_ndis_work);
 		break;
