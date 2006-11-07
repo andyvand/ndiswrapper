@@ -377,16 +377,24 @@ static int get_device(char *driver_name, int vendor, int device,
 		DBG("couldn't chdir to %s: %s", driver_name, strerror(errno));
 		return -EINVAL;
 	}
-	if (snprintf(file, sizeof(file), "%04X:%04X:%04X:%04X.%X.conf",
-		     vendor, device, subvendor, subdevice, bus) > 0 &&
-	    stat(file, &statbuf) == 0) {
+	if ((snprintf(file, sizeof(file), "%04X:%04X:%04X:%04X.%X.conf", vendor,
+		      device, subvendor, subdevice, bus) &&
+	     stat(file, &statbuf) == 0) ||
+	    (bus == WRAP_USB_BUS &&
+	     snprintf(file, sizeof(file), "%04X:%04X:%04X:%04X.%X.conf", vendor,
+		      device, subvendor, subdevice, WRAP_INTERNAL_BUS) &&
+	     stat(file, &statbuf) == 0)) {
 		DBG("found %s", file);
 		ld->subvendor = subvendor;
 		ld->subdevice = subdevice;
 		ret = 0;
-	} else if (snprintf(file, sizeof(file), "%04X:%04X.%X.conf",
-			    vendor, device, bus) > 0 &&
-		   stat(file, &statbuf) == 0) {
+	} else if ((snprintf(file, sizeof(file), "%04X:%04X.%X.conf",
+			     vendor, device, bus) &&
+		    stat(file, &statbuf) == 0) ||
+		   (bus == WRAP_USB_BUS &&
+		    (snprintf(file, sizeof(file), "%04X:%04X.%X.conf",
+			      vendor, device, WRAP_INTERNAL_BUS) &&
+		     stat(file, &statbuf) == 0))) {
 		DBG("found %s", file);
 		ld->subvendor = 0;
 		ld->subdevice = 0;
