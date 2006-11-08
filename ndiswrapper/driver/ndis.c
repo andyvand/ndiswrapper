@@ -2033,6 +2033,9 @@ wstdcall void NdisMIndicateReceivePacket(struct ndis_miniport_block *nmb,
 			WARNING("empty packet ignored");
 			continue;
 		}
+		DBGTRACE3("0x%x, 0x%x, %Lu", packet->private.flags,
+			  packet->private.packet_flags,
+			  packet->private.time_rxed, packet->private.header_size);
 		wnd->net_dev->last_rx = jiffies;
 		/* get total number of bytes in packet */
 		NdisGetFirstBufferFromPacketSafe(packet, &buffer, &virt,

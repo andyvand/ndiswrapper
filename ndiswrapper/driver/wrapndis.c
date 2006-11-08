@@ -281,9 +281,9 @@ static NDIS_STATUS miniport_init(struct wrap_ndis_device *wnd)
 	status = miniport_query_info(wnd, OID_PNP_CAPABILITIES,
 				     &pnp_capa, sizeof(pnp_capa));
 	if (status == NDIS_STATUS_SUCCESS)
-		wnd->pm_capa = TRUE;
+		wnd->attributes |= NDIS_ATTRIBUTE_NO_HALT_ON_SUSPEND;
 	else
-		wnd->pm_capa = FALSE;
+		wnd->attributes &= ~NDIS_ATTRIBUTE_NO_HALT_ON_SUSPEND;
 	DBGTRACE1("%d", pnp_capa.wakeup_capa.min_magic_packet_wakeup);
 	TRACEEXIT1(return NDIS_STATUS_SUCCESS);
 }
@@ -374,7 +374,7 @@ static NDIS_STATUS miniport_set_power_state(struct wrap_ndis_device *wnd,
 		hangcheck_del(wnd);
 		del_stats_timer(wnd);
 		status = NDIS_STATUS_NOT_SUPPORTED;
-		if (wnd->pm_capa == TRUE) {
+		if (wnd->attributes & NDIS_ATTRIBUTE_NO_HALT_ON_SUSPEND) {
 			enum ndis_power_state pm_state = state;
 			if (wnd->ndis_wolopts) {
 				status = miniport_set_int(wnd,
@@ -855,7 +855,7 @@ static int ndis_set_wol(struct net_device *dev, struct ethtool_wolinfo *wol)
 
 	if (!(wol->wolopts & WAKE_MAGIC))
 		return -EINVAL;
-	if (!wnd->pm_capa)
+	if (!(wnd->attributes & NDIS_ATTRIBUTE_NO_HALT_ON_SUSPEND))
 		return -EOPNOTSUPP;
 	status = miniport_query_info(wnd, OID_PNP_CAPABILITIES,
 				     &pnp_capa, sizeof(pnp_capa));
@@ -1201,7 +1201,7 @@ NDIS_STATUS ndis_reinit(struct wrap_ndis_device *wnd)
 {
 	NDIS_STATUS status;
 
-	wnd->pm_capa = FALSE;
+	wnd->attributes &= ~NDIS_ATTRIBUTE_NO_HALT_ON_SUSPEND;
 	status = miniport_set_power_state(wnd, NdisDeviceStateD3);
 	if (status != NDIS_STATUS_SUCCESS) {
 		ERROR("halting device %s failed: %08X", wnd->net_dev->name,
@@ -1396,7 +1396,7 @@ wstdcall NTSTATUS NdisDispatchPower(struct device_object *fdo, struct irp *irp)
 		}
 		break;
 	case IRP_MN_QUERY_POWER:
-		if (wnd->pm_capa) {
+		if (wnd->attributes & NDIS_ATTRIBUTE_NO_HALT_ON_SUSPEND) {
 			ndis_status =
 				miniport_query_info(wnd, OID_PNP_QUERY_POWER,
 						    &state, sizeof(state));
@@ -1681,20 +1681,21 @@ static NDIS_STATUS ndis_start_device(struct wrap_ndis_device *wnd)
 	memset(buf, 0, buf_size);
 	ndis_status = miniport_query_info(wnd, OID_GEN_VENDOR_DESCRIPTION,
 					  buf, buf_size);
-	wnd->drv_ndis_version = 0;
-	ndis_status |= miniport_query_int(wnd, OID_GEN_DRIVER_VERSION,
-					  &wnd->drv_ndis_version);
-	ndis_status |= miniport_query_int(wnd, OID_GEN_VENDOR_DRIVER_VERSION,
-					  &n);
-	if (ndis_status == NDIS_STATUS_SUCCESS)
-		printk(KERN_INFO "%s: vendor: '%s', version: 0x%x, "
-		       "NDIS version: 0x%x\n", net_dev->name, buf,
-		       n, wnd->drv_ndis_version);
+	if (ndis_status != NDIS_STATUS_SUCCESS) {
+		WARNING("couldn't get vendor information: 0x%x", ndis_status);
+		buf[0] = 0;
+	}
+	wnd->drv_ndis_version = n = 0;
+	miniport_query_int(wnd, OID_GEN_DRIVER_VERSION,
+			   &wnd->drv_ndis_version);
+	miniport_query_int(wnd, OID_GEN_VENDOR_DRIVER_VERSION, &n);
 
 	printk(KERN_INFO "%s: ethernet device " MACSTRSEP " using %sNDIS "
-	       "driver %s, %s\n", net_dev->name, MAC2STR(net_dev->dev_addr),
+	       "driver: %s, version: 0x%x, NDIS version: 0x%x, vendor: '%s',"
+	       "%s\n", net_dev->name, MAC2STR(net_dev->dev_addr),
 	       deserialized_driver(wnd) ? "" : "serialized ",
-	       wnd->wd->driver->name, wnd->wd->conf_file_name);
+	       wnd->wd->driver->name, n, wnd->drv_ndis_version, buf,
+	       wnd->wd->conf_file_name);
 
 	if (deserialized_driver(wnd)) {
 		/* deserialized drivers don't have a limit, but we
