@@ -1691,7 +1691,7 @@ static NDIS_STATUS ndis_start_device(struct wrap_ndis_device *wnd)
 	miniport_query_int(wnd, OID_GEN_VENDOR_DRIVER_VERSION, &n);
 
 	printk(KERN_INFO "%s: ethernet device " MACSTRSEP " using %sNDIS "
-	       "driver: %s, version: 0x%x, NDIS version: 0x%x, vendor: '%s',"
+	       "driver: %s, version: 0x%x, NDIS version: 0x%x, vendor: '%s', "
 	       "%s\n", net_dev->name, MAC2STR(net_dev->dev_addr),
 	       deserialized_driver(wnd) ? "" : "serialized ",
 	       wnd->wd->driver->name, n, wnd->drv_ndis_version, buf,

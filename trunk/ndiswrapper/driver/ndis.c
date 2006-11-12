@@ -1107,7 +1107,6 @@ wstdcall void WIN_FUNC(NdisAllocateBuffer,5)
 	if (descr) {
 		typeof(descr->flags) flags = descr->flags;
 		MmInitializeMdl(descr, virt, length);
-		MmBuildMdlForNonPagedPool(descr);
 		if (flags & MDL_CACHE_ALLOCATED)
 			descr->flags |= MDL_CACHE_ALLOCATED;
 	} else {
@@ -1120,8 +1119,8 @@ wstdcall void WIN_FUNC(NdisAllocateBuffer,5)
 		DBGTRACE4("allocated buffer %p for %p, %d",
 			  descr, virt, length);
 		atomic_inc_var(pool->num_allocated_descr);
-		MmBuildMdlForNonPagedPool(descr);
 	}
+	MmBuildMdlForNonPagedPool(descr);
 //	descr->flags |= MDL_ALLOCATED_FIXED_SIZE |
 //		MDL_MAPPED_TO_SYSTEM_VA | MDL_PAGES_LOCKED;
 	descr->pool = pool;
@@ -1193,8 +1192,8 @@ wstdcall void WIN_FUNC(NdisQueryBuffer,3)
 	if (virt)
 		*virt = MmGetSystemAddressForMdl(buffer);
 	*length = MmGetMdlByteCount(buffer);
-	DBGTRACE4("%u", *length);
-	TRACEEXIT4(return);
+	DBGTRACE4("%p, %u", virt? *virt : NULL, *length);
+	return;
 }
 
 wstdcall void WIN_FUNC(NdisQueryBufferSafe,4)
@@ -1205,7 +1204,7 @@ wstdcall void WIN_FUNC(NdisQueryBufferSafe,4)
 	if (virt)
 		*virt = MmGetSystemAddressForMdlSafe(buffer, priority);
 	*length = MmGetMdlByteCount(buffer);
-	DBGTRACE4("%u", *length);
+	DBGTRACE4("%p, %u", virt? *virt : NULL, *length);
 }
 
 wstdcall void *WIN_FUNC(NdisBufferVirtualAddress,1)
@@ -1614,7 +1613,7 @@ wstdcall void wrap_miniport_timer(struct kdpc *kdpc, void *ctx, void *arg1,
 	/* already called at DISPATCH_LEVEL */
 	if (!deserialized_driver(nmb->wnd))
 		serialize_lock(nmb->wnd);
-	LIN2WIN4(timer->func, kdpc, timer->ctx, kdpc->arg1, kdpc->arg2);
+	LIN2WIN4(timer->func, NULL, timer->ctx, NULL, NULL);
 	if (!deserialized_driver(nmb->wnd))
 		serialize_unlock(nmb->wnd);
 	TRACEEXIT5(return);
@@ -1870,13 +1869,11 @@ wstdcall void WIN_FUNC(NdisMIndicateStatus,4)
 	switch (status) {
 	case NDIS_STATUS_MEDIA_DISCONNECT:
 		netif_carrier_off(wnd->net_dev);
-		DBGTRACE2("%d", netif_carrier_ok(wnd->net_dev));
 		set_bit(LINK_STATUS_CHANGED, &wnd->wrap_ndis_pending_work);
 		schedule_wrap_work(&wnd->wrap_ndis_work);
 		break;
 	case NDIS_STATUS_MEDIA_CONNECT:
 		netif_carrier_on(wnd->net_dev);
-		DBGTRACE2("%d", netif_carrier_ok(wnd->net_dev));
 		set_bit(LINK_STATUS_CHANGED, &wnd->wrap_ndis_pending_work);
 		schedule_wrap_work(&wnd->wrap_ndis_work);
 		break;
@@ -2033,9 +2030,6 @@ wstdcall void NdisMIndicateReceivePacket(struct ndis_miniport_block *nmb,
 			WARNING("empty packet ignored");
 			continue;
 		}
-		DBGTRACE3("0x%x, 0x%x, %Lu", packet->private.flags,
-			  packet->private.packet_flags,
-			  packet->private.time_rxed, packet->private.header_size);
 		wnd->net_dev->last_rx = jiffies;
 		/* get total number of bytes in packet */
 		NdisGetFirstBufferFromPacketSafe(packet, &buffer, &virt,
@@ -2043,6 +2037,8 @@ wstdcall void NdisMIndicateReceivePacket(struct ndis_miniport_block *nmb,
 						 NormalPagePriority);
 		DBGTRACE3("%d, %d", length, total_length);
 		oob_data = NDIS_PACKET_OOB_DATA(packet);
+		DBGTRACE3("0x%x, 0x%x, %Lu", packet->private.flags,
+			  packet->private.packet_flags, oob_data->time_rxed);
 		skb = dev_alloc_skb(total_length);
 		if (skb) {
 			while (buffer) {

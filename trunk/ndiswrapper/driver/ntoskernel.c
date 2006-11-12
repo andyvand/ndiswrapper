@@ -622,6 +622,8 @@ static void timer_proc(unsigned long data)
 	BUG_ON(nt_timer->wrap_timer_magic != WRAP_TIMER_MAGIC);
 #endif
 	KeSetEvent((struct nt_event *)nt_timer, 0, FALSE);
+	if (wrap_timer->repeat)
+		mod_timer(&wrap_timer->timer, jiffies + wrap_timer->repeat);
 	kdpc = nt_timer->kdpc;
 	if (kdpc && kdpc->func) {
 #if 1
@@ -630,8 +632,6 @@ static void timer_proc(unsigned long data)
 		queue_kdpc(kdpc);
 #endif
 	}
-	if (wrap_timer->repeat)
-		mod_timer(&wrap_timer->timer, jiffies + wrap_timer->repeat);
 	TRACEEXIT5(return);
 }
 
@@ -728,6 +728,7 @@ BOOLEAN wrap_set_timer(struct nt_timer *nt_timer, unsigned long expires_hz,
 		ret = TRUE;
 	else
 		ret = FALSE;
+	DBGTRACE4("%d", ret);
 	TRACEEXIT5(return ret);
 }
 
@@ -1974,7 +1975,7 @@ wstdcall void *WIN_FUNC(MmAllocateContiguousMemorySpecifyCache,5)
 {
 	void *addr;
 	size_t page_length = ((size + PAGE_SIZE - 1) / PAGE_SIZE) * PAGE_SIZE;
-	DBGTRACE2("%lu, %u, %Lu, %Lu, %Lu, %d", size, page_length,
+	DBGTRACE2("%lu, %zu, %Lu, %Lu, %Lu, %d", size, page_length,
 		  lowest, highest, boundary, cache_type);
 	addr = ExAllocatePoolWithTag(NonPagedPool, page_length, 0);
 	DBGTRACE2("%p", addr);
@@ -2369,7 +2370,7 @@ wstdcall NTSTATUS WIN_FUNC(ZwReadFile,9)
 	}
 	fo = HANDLE_TO_OBJECT(coh);
 	file = fo->wrap_bin_file;
-	DBGTRACE2("file: %s (%u)", file->name, file->size);
+	DBGTRACE2("file: %s (%zu)", file->name, file->size);
 	irql = nt_spin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL);
 	if (byte_offset)
 		offset = *byte_offset;
@@ -2404,7 +2405,7 @@ wstdcall NTSTATUS WIN_FUNC(ZwWriteFile,9)
 	}
 	fo = HANDLE_TO_OBJECT(coh);
 	file = fo->wrap_bin_file;
-	DBGTRACE2("file: %u, %u", file->size, length);
+	DBGTRACE2("file: %zu, %u", file->size, length);
 	irql = nt_spin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL);
 	if (byte_offset)
 		offset = *byte_offset;

@@ -618,7 +618,7 @@ static USBD_STATUS wrap_bulk_or_intr_trans(struct irp *irp)
 	udev = irp->wd->usb.udev;
 	bulk_int_tx = &nt_urb->bulk_int_transfer;
 	pipe_handle = bulk_int_tx->pipe_handle;
-	USBTRACE("flags = %X, length = %u, buffer = %p, handle: %p",
+	USBTRACE("flags: %X, length: %u, buffer: %p, handle: %p",
 		 bulk_int_tx->transfer_flags,
 		 bulk_int_tx->transfer_buffer_length,
 		 bulk_int_tx->transfer_buffer, pipe_handle);
@@ -685,8 +685,8 @@ static USBD_STATUS wrap_vendor_or_class_req(struct irp *irp)
 	nt_urb = URB_FROM_IRP(irp);
 	udev = irp->wd->usb.udev;
 	vc_req = &nt_urb->vendor_class_request;
-	USBTRACE("bits = %x, req = %x, val = %08x, index = %08x, flags = %x,"
-		 "tx_buf = %p, tx_buf_len = %d", vc_req->reserved_bits,
+	USBTRACE("bits: %x, req: %x, val: %08x, index: %08x, flags: %x,"
+		 "buf: %p, len: %d", vc_req->reserved_bits,
 		 vc_req->request, vc_req->value, vc_req->index,
 		 vc_req->transfer_flags, vc_req->transfer_buffer,
 		 vc_req->transfer_buffer_length);
