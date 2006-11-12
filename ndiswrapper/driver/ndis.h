@@ -217,7 +217,7 @@ struct ndis_packet_oob_data {
 	union {
 		ULONGLONG time_to_tx;
 		ULONGLONG time_txed;
-	} oob_tx;
+	};
 	ULONGLONG time_rxed;
 	UINT header_size;
 	UINT mediaspecific_size;
@@ -1225,9 +1225,6 @@ void NdisReadConfiguration(NDIS_STATUS *status,
 #define NDIS_ATTRIBUTE_SURPRISE_REMOVE_OK       0x00000080
 #define NDIS_ATTRIBUTE_NOT_CO_NDIS              0x00000100
 #define NDIS_ATTRIBUTE_USES_SAFE_BUFFER_APIS    0x00000200
-
-#define NDIS_FLAGS_PROTOCOL_ID_MASK		0x0000000F
-#define NDIS_PROTOCOL_ID_TCP_IP			0x02
 
 #define OID_TCP_TASK_OFFLOAD			0xFC010201
 

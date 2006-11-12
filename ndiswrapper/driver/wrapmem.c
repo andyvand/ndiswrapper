@@ -81,7 +81,7 @@ void wrapmem_exit(void)
 		struct alloc_info *info;
 		info = container_of(ent, struct alloc_info, list);
 		atomic_sub(info->size, &alloc_sizes[ALLOC_TYPE_SLACK]);
-		WARNING("memory in %d of size %lu allocated at %s(%d) "
+		WARNING("memory in %d of size %zu allocated at %s(%d) "
 #if ALLOC_DEBUG > 2
 			"with tag 0x%08X "
 #endif
