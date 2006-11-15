@@ -248,7 +248,7 @@ static NTSTATUS nt_urb_irp_status(USBD_STATUS nt_urb_status)
 	case USBD_STATUS_SUCCESS:
 		return STATUS_SUCCESS;
 	case USBD_STATUS_DEVICE_GONE:
-		return STATUS_DEVICE_REMOVED;
+		return STATUS_DEVICE_NOT_CONNECTED;
 	case USBD_STATUS_PENDING:
 		return STATUS_PENDING;
 	case USBD_STATUS_NOT_SUPPORTED:
@@ -831,6 +831,7 @@ static USBD_STATUS wrap_abort_pipe(struct usb_device *udev, struct irp *irp)
 		}
 	}
 	IoReleaseCancelSpinLock(irql);
+	NT_URB_STATUS(nt_urb) = USBD_STATUS_CANCELED;
 	USBEXIT(return USBD_STATUS_SUCCESS);
 }
 
@@ -1087,7 +1088,6 @@ static USBD_STATUS wrap_process_nt_urb(struct irp *irp)
 
 	case URB_FUNCTION_ABORT_PIPE:
 		status = wrap_abort_pipe(udev, irp);
-		NT_URB_STATUS(nt_urb) = status;
 		break;
 
 	default:
