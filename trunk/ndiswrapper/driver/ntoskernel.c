@@ -1318,10 +1318,10 @@ wstdcall NTSTATUS WIN_FUNC(KeWaitForMultipleObjects,8)
 	KIRQL irql;
 
 	thread = current;
-	EVENTENTER("thread: %p count = %d, type: %d, reason = %u, "
-		   "waitmode = %u, alertable = %u, timeout = %p", thread,
-		   count, wait_type, wait_reason, wait_mode, alertable,
-		   timeout);
+	EVENTENTER("thread: %p count: %d, type: %d, reason: %u, "
+		   "waitmode: %u, alertable: %u, timeout: %p, irql: %d",
+		   thread, count, wait_type, wait_reason, wait_mode, alertable,
+		   timeout, current_irql());
 
 	if (count > MAX_WAIT_OBJECTS)
 		EVENTEXIT(return STATUS_INVALID_PARAMETER);
