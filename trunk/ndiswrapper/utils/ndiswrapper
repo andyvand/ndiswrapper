@@ -119,7 +119,7 @@ sub usage() {
 sub remove_driver {
     my $driver = shift;
     if (!rmtree("$confdir/$driver", 0, 1)) {
-	warn "couldn't delete $confdir/$driver\n";
+	warn "couldn't delete $confdir/$driver: $!\n";
     }
     return 0;
 }
@@ -545,7 +545,7 @@ sub get_file {
 	}
 	closedir(DIR);
     } else {
-	warn "couldn't open \"$src_dir\" - installation may be incomplete\n";
+	warn "couldn't open \"$src_dir\": $! - installation may be incomplete\n";
     }
     return "";
 }
@@ -573,7 +573,8 @@ sub trim {
 sub valid_file_name {
     my $file = shift;
     printf DBG "file name: %s\n", $file;
-    return 1 if ($file =~ /^[a-zA-Z][a-zA-Z0-9\.]*$/);
+    # as of now, file name extensions known: .inf, .sys, .bin, .out
+    return 1 if ($file =~ /^[a-zA-Z0-9]*\.[a-zA-Z]{3}$/);
     return 0;
 }
 
@@ -596,7 +597,7 @@ sub device_driver_alias {
 		$done = 1;
 		last;
 	    } else {
-		warn "couldn't create symlink for \"$f\" -\n" .
+		warn "couldn't create symlink for \"$f\": $! -\n" .
 		  "installation may be incomplete\n";
 	    }
 	}
