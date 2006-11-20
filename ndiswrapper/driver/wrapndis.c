@@ -1003,10 +1003,10 @@ static void link_status_handler(struct wrap_ndis_device *wnd)
 	union iwreq_data wrqu;
 	NDIS_STATUS res;
 	const int assoc_size = sizeof(*ndis_assoc_info) + IW_CUSTOM_MAX + 32;
+	int i;
 #if WIRELESS_EXT <= 17
 	unsigned char *wpa_assoc_info, *ies;
 	unsigned char *p;
-	int i;
 #endif
 
 	TRACEENTER2("link: %d", netif_carrier_ok(wnd->net_dev));
@@ -1024,8 +1024,16 @@ static void link_status_handler(struct wrap_ndis_device *wnd)
 		 * disassociate if last node disassociates; to
 		 * configure again, set essid */
 		if (wnd->infrastructure_mode == Ndis802_11IBSS &&
-		    wnd->essid.length > 0)
+		    wnd->essid.length > 0) {
 			set_essid(wnd, wnd->essid.essid, wnd->essid.length);
+			for (i = 0; i < MAX_ENCR_KEYS; i++) {
+				if (wnd->encr_info.keys[i].length > 0)
+					add_wep_key(wnd,
+						    wnd->encr_info.keys[i].key,
+						    wnd->encr_info.keys[i].length,
+						    i);
+			}
+		}
 		TRACEEXIT2(return);
 	}
 
@@ -1617,6 +1625,13 @@ static NDIS_STATUS ndis_start_device(struct wrap_ndis_device *wnd)
 	wd = wnd->wd;
 	net_dev = wnd->net_dev;
 
+	ndis_status = miniport_query_info(wnd, OID_802_3_CURRENT_ADDRESS,
+					  mac, sizeof(mac));
+	if (ndis_status) {
+		ERROR("couldn't get mac address: %08X", ndis_status);
+		goto err_start;
+	}
+	DBGTRACE1("mac:" MACSTRSEP, MAC2STR(mac));
 	ndis_status = miniport_query_int(wnd, OID_GEN_PHYSICAL_MEDIUM,
 					 &wnd->physical_medium);
 	if (ndis_status != NDIS_STATUS_SUCCESS)
@@ -1625,13 +1640,6 @@ static NDIS_STATUS ndis_start_device(struct wrap_ndis_device *wnd)
 	get_supported_oids(wnd);
 	strncpy(net_dev->name, if_name, IFNAMSIZ - 1);
 	net_dev->name[IFNAMSIZ - 1] = '\0';
-	ndis_status = miniport_query_info(wnd, OID_802_3_CURRENT_ADDRESS,
-					  mac, sizeof(mac));
-	if (ndis_status) {
-		ERROR("couldn't get mac address: %08X", ndis_status);
-		return ndis_status;
-	}
-	DBGTRACE1("mac:" MACSTRSEP, MAC2STR(mac));
 	memcpy(&net_dev->dev_addr, mac, ETH_ALEN);
 
 	wnd->packet_filter = NDIS_PACKET_TYPE_DIRECTED |

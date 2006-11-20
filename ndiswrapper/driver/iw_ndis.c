@@ -190,6 +190,7 @@ int set_infra_mode(struct wrap_ndis_device *wnd,
 {
 	NDIS_STATUS res;
 	unsigned int i;
+	enum network_infrastructure prev_mode;
 
 	TRACEENTER2("");
 	res = miniport_query_int(wnd, OID_802_11_INFRASTRUCTURE_MODE,
@@ -201,10 +202,13 @@ int set_infra_mode(struct wrap_ndis_device *wnd,
 	if (wnd->infrastructure_mode == mode)
 		TRACEEXIT2(return 0);
 
+	prev_mode = wnd->infrastructure_mode;
+	wnd->infrastructure_mode = mode;
 	res = miniport_set_int(wnd, OID_802_11_INFRASTRUCTURE_MODE, mode);
 	if (res) {
 		WARNING("setting operating mode to %d failed (%08X)",
 			mode, res);
+		wnd->infrastructure_mode = prev_mode;
 		TRACEEXIT2(return -EINVAL);
 	}
 
@@ -216,7 +220,6 @@ int set_infra_mode(struct wrap_ndis_device *wnd,
 			add_wep_key(wnd, wnd->encr_info.keys[i].key,
 				    wnd->encr_info.keys[i].length, i);
 	}
-	wnd->infrastructure_mode = mode;
 	TRACEEXIT2(return 0);
 }
 
