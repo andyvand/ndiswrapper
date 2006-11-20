@@ -1771,10 +1771,8 @@ static int thread_trampoline(void *data)
 #ifdef PF_NOFREEZE
 	current->flags |= PF_NOFREEZE;
 #endif
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,0)
 	strncpy(current->comm, "windisdrvr", sizeof(current->comm));
 	current->comm[sizeof(current->comm)-1] = 0;
-#endif
 	DBGTRACE2("thread: %p, task: %p (%d)", thread, thread->task,
 		  thread->pid);
 	LIN2WIN1(ctx.start_routine, ctx.context);
@@ -1867,10 +1865,7 @@ wstdcall NTSTATUS WIN_FUNC(PsCreateSystemThread,7)
 {
 	struct trampoline_context *ctx;
 	struct nt_thread *thread;
-	struct task_struct *task;
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,7)
 	int pid;
-#endif
 
 	TRACEENTER2("phandle = %p, access = %u, obj_attr = %p, process = %p, "
 	            "client_id = %p, start_routine = %p, context = %p",
@@ -1889,26 +1884,13 @@ wstdcall NTSTATUS WIN_FUNC(PsCreateSystemThread,7)
 	}
 	ctx->thread = thread;
 
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,7)
-	pid = kernel_thread(thread_trampoline, ctx,
-			    CLONE_FS | CLONE_FILES | CLONE_SIGHAND);
+	pid = kernel_thread(thread_trampoline, ctx, 0);
 	DBGTRACE2("pid = %d", pid);
 	if (pid < 0) {
 		kfree(ctx);
 		free_object(thread);
 		TRACEEXIT2(return STATUS_FAILURE);
 	}
-	task = NULL;
-	DBGTRACE2("created task: %p (%d)", task, pid);
-#else
-	task = KTHREAD_RUN(thread_trampoline, ctx, "windisdrvr");
-	if (IS_ERR(task)) {
-		kfree(ctx);
-		free_object(thread);
-		TRACEEXIT2(return STATUS_FAILURE);
-	}
-	DBGTRACE2("created task: %p (%d)", task, task->pid);
-#endif
 	*phandle = OBJECT_TO_HEADER(thread);
 	DBGTRACE2("created thread: %p, %p", thread, *phandle);
 	TRACEEXIT2(return STATUS_SUCCESS);
@@ -2557,6 +2539,13 @@ wstdcall NTSTATUS WIN_FUNC(ZwQueryValueKey,6)
 	}
 	TODO();
 	return STATUS_INVALID_PARAMETER;
+}
+
+wstdcall NTSTATUS WIN_FUNC(ZwDeleteKey,1)
+	(void *handle)
+{
+	TRACEENTER2("%p", handle);
+	return STATUS_SUCCESS;
 }
 
 wstdcall NTSTATUS WIN_FUNC(WmiSystemControl,4)
