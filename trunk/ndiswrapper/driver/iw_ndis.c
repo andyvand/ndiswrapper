@@ -190,7 +190,6 @@ int set_infra_mode(struct wrap_ndis_device *wnd,
 {
 	NDIS_STATUS res;
 	unsigned int i;
-	enum network_infrastructure prev_mode;
 
 	TRACEENTER2("");
 	res = miniport_query_int(wnd, OID_802_11_INFRASTRUCTURE_MODE,
@@ -202,16 +201,14 @@ int set_infra_mode(struct wrap_ndis_device *wnd,
 	if (wnd->infrastructure_mode == mode)
 		TRACEEXIT2(return 0);
 
-	prev_mode = wnd->infrastructure_mode;
-	wnd->infrastructure_mode = mode;
+	memset(&wnd->essid, 0, sizeof(wnd->essid));
 	res = miniport_set_int(wnd, OID_802_11_INFRASTRUCTURE_MODE, mode);
 	if (res) {
 		WARNING("setting operating mode to %d failed (%08X)",
 			mode, res);
-		wnd->infrastructure_mode = prev_mode;
 		TRACEEXIT2(return -EINVAL);
 	}
-
+	wnd->infrastructure_mode = prev_mode;
 	/* NDIS drivers clear keys when infrastructure mode is
 	 * changed. But Linux tools assume otherwise. So set the
 	 * keys */
