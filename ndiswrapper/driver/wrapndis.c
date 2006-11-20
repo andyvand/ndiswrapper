@@ -1019,7 +1019,7 @@ static void link_status_handler(struct wrap_ndis_device *wnd)
 		memset(&wrqu, 0, sizeof(wrqu));
 		wrqu.ap_addr.sa_family = ARPHRD_ETHER;
 		wireless_send_event(wnd->net_dev, SIOCGIWAP, &wrqu, NULL);
-		/* in IBSS (ad-hoc) mode, it may be desirable to have
+		/* In IBSS (ad-hoc) mode, it may be desirable to have
 		 * one node configured for association, but drivers
 		 * disassociate if last node disassociates; to
 		 * configure again, set essid */
@@ -1804,9 +1804,9 @@ static int ndis_remove_device(struct wrap_ndis_device *wnd)
 {
 	int tx_pending;
 
+	set_bit(SHUTDOWN, &wnd->wrap_ndis_pending_work);
 	if (wnd->physical_medium == NdisPhysicalMediumWirelessLan)
 		miniport_set_info(wnd, OID_802_11_DISASSOCIATE, NULL, 0);
-	set_bit(SHUTDOWN, &wnd->wrap_ndis_pending_work);
 	unregister_netdevice_notifier(&netdev_notifier);
 	wnd->tx_ok = 0;
 	unregister_netdev(wnd->net_dev);
