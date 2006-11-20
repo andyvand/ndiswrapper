@@ -171,13 +171,6 @@ usb.o: usb.c usb.h ndis.h
 
 wrapper.o: wrapper.c wrapndis.h iw_ndis.h ntoskernel.h loader.h
 
-hal_exports.h: hal.c
-crt_exports.h: crt.c
-ndis_exports.h: ndis.c
-ntoskernel_exports.h: ntoskernel.c
-ntoskernel_io_exports.h: ntoskernel_io.c
-rtl_exports.h: rtl.c
-
 ifeq ($(CONFIG_X86_64),y)
 OBJS += win2lin_stubs.o
 win2lin_stubs.o: win2lin_stubs.h win2lin_stubs.S

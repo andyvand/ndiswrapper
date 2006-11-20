@@ -151,6 +151,7 @@ static int procfs_read_ndis_hw(char *page, char **start, off_t off,
 	ndis_antenna antenna;
 	ULONG packet_filter;
 	int n;
+	mac_address mac;
 	char *hw_status[] = {"ready", "initializing", "resetting", "closing",
 			     "not ready"};
 
@@ -163,6 +164,10 @@ static int procfs_read_ndis_hw(char *page, char **start, off_t off,
 	if (res >= 0 && res < sizeof(hw_status) / sizeof(hw_status[0]))
 		p += sprintf(p, "status=%s\n", hw_status[res]);
 
+	res = miniport_query_info(wnd, OID_802_3_CURRENT_ADDRESS,
+				  mac, sizeof(mac));
+	if (!res)
+		p += sprintf(p, "mac: " MACSTRSEP "\n", MAC2STR(mac));
 	res = miniport_query_info(wnd, OID_802_11_CONFIGURATION,
 				  &config, sizeof(config));
 	if (!res) {

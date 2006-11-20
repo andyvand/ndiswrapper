@@ -114,8 +114,9 @@ struct wrap_driver *load_wrap_driver(struct wrap_device *wd)
 			);
 		if (ret) {
 			up(&loader_mutex);
-			ERROR("loadndiswrapper failed (%d); check system log "
-			      "for messages from 'loadndisdriver'", ret);
+			ERROR("couldn't load driver %s; check system log "
+			      "for messages from 'loadndisdriver'",
+			      wd->driver_name);
 			TRACEEXIT1(return NULL);
 		}
 		wait_for_completion(&loader_complete);
@@ -279,8 +280,9 @@ struct wrap_bin_file *get_bin_file(char *bin_file_name)
 			);
 		if (ret) {
 			up(&loader_mutex);
-			ERROR("loadndiswrapper failed (%d); check system log "
-			      "for messages from 'loadndisdriver'", ret);
+			ERROR("couldn't load file %s/%s; check system log "
+			      "for messages from 'loadndisdriver'",
+			      driver->name, driver->bin_files[i].name);
 			TRACEEXIT1(return NULL);
 		}
 		wait_for_completion(&loader_complete);
@@ -715,8 +717,9 @@ struct wrap_device *load_wrap_device(struct load_device *load_device)
 			);
 		if (ret) {
 			up(&loader_mutex);
-			DBGTRACE1("loadndiswrapper failed (%d); check system "
-				  "log for messages from 'loadndisdriver'", ret);
+			DBGTRACE1("couldn't load device %04x:%04x; check system "
+				  "log for messages from 'loadndisdriver'",
+				  load_device->vendor, load_device->device);
 			TRACEEXIT1(return NULL);
 		}
 		wait_for_completion(&loader_complete);
