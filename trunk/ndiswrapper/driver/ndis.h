@@ -458,6 +458,8 @@ struct ndis_work_entry {
 	struct ndis_work_item *ndis_work_item;
 };
 
+struct ndis_miniport_block;
+
 struct ndis_irq {
 	/* void *intr_obj is used for irq */
 	union {
@@ -470,7 +472,7 @@ struct ndis_irq {
 	ndis_isr_handler isr;
 	void *dpc;
 	struct kdpc intr_dpc;
-	struct wrap_ndis_device *wnd;
+	struct ndis_miniport_block *nmb;
 	UCHAR dpc_count;
 	/* unsigned char filler1 is used for enabled */
 	UCHAR enabled;
@@ -536,8 +538,9 @@ struct ndis_wireless_stats {
 
 enum ndis_status_type {
 	Ndis802_11StatusType_Authentication,
-	Ndis802_11StatusType_PMKID_CandidateList = 2,
-	Ndis802_11StatusType_MediaStreamMode, Ndis802_11StatusType_RadioState,
+	Ndis802_11StatusType_MediaStreamMode,
+	Ndis802_11StatusType_PMKID_CandidateList,
+	Ndis802_11StatusType_RadioState,
 };
 
 struct ndis_status_indication {
@@ -637,7 +640,7 @@ struct ndis_miniport_timer {
 	struct kdpc kdpc;
 	DPC func;
 	void *ctx;
-	void *nmb;
+	struct ndis_miniport_block *nmb;
 	struct ndis_miniport_timer *next;
 };
 
@@ -658,8 +661,6 @@ struct ndis_reference {
 	BOOLEAN closing;
 };
 
-struct ndis_miniport_block;
-
 struct ndis_miniport_interrupt {
 	void *object;
 	NT_SPIN_LOCK dpc_count_lock;
@@ -667,7 +668,7 @@ struct ndis_miniport_interrupt {
 	ndis_isr_handler irq_th;
 	ndis_interrupt_handler irq_bh;
 	struct kdpc interrupt_dpc;
-	struct ndis_miniport_block *miniport;
+	struct ndis_miniport_block *nmb;
 	UCHAR dpc_count;
 	BOOLEAN filler1;
 	struct nt_event dpcs_completed_event;

@@ -392,6 +392,7 @@ typedef u32 pm_message_t;
 #define TICKSPERSEC		10000000LL
 #define TICKSPERMSEC		10000
 #define SECSPERDAY		86400
+#define TICKSPERJIFFY		((10000000 + HZ - 1) / HZ)
 
 /* 1601 to 1970 is 369 years plus 89 leap days */
 #define SECS_1601_TO_1970	((369 * 365 + 89) * (u64)SECSPERDAY)
@@ -410,7 +411,7 @@ extern u64 wrap_ticks_to_boot;
 
 static inline u64 ticks_1601(void)
 {
-	return wrap_ticks_to_boot + (u64)jiffies * TICKSPERSEC / HZ;
+	return wrap_ticks_to_boot + (u64)jiffies * TICKSPERJIFFY;
 }
 
 typedef void (*generic_func)(void);

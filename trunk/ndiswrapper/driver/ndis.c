@@ -371,7 +371,7 @@ wstdcall ULONG WIN_FUNC(NDIS_BUFFER_TO_SPAN_PAGES,1)
 #ifdef VT6655
 	/* VIA VT6655 works with this bogus computation, but not with
 	 * correct computation with SPAN_PAGES */
-	if (1) {
+	do {
 		ULONG_PTR start, end;
 		unsigned long ptr;
 
@@ -379,7 +379,7 @@ wstdcall ULONG WIN_FUNC(NDIS_BUFFER_TO_SPAN_PAGES,1)
 		start = ptr & (PAGE_SIZE - 1);
 		end = (ptr + length + PAGE_SIZE - 1) & PAGE_MASK;
 		n = (end - start) / PAGE_SIZE;
-	}
+	} while (0);
 #else
 	n = SPAN_PAGES(MmGetMdlVirtualAddress(buffer), length);
 #endif
@@ -1799,7 +1799,7 @@ wstdcall NDIS_STATUS WIN_FUNC(NdisMRegisterInterrupt,7)
 		    ndis_irq, vector, level, req_isr, shared, mode);
 
 	ndis_irq->irq.irq = vector;
-	ndis_irq->wnd = wnd;
+	ndis_irq->nmb = nmb;
 	ndis_irq->req_isr = req_isr;
 	if (shared && !req_isr)
 		WARNING("shared but dynamic interrupt!");
@@ -1821,21 +1821,21 @@ wstdcall NDIS_STATUS WIN_FUNC(NdisMRegisterInterrupt,7)
 wstdcall void WIN_FUNC(NdisMDeregisterInterrupt,1)
 	(struct ndis_irq *ndis_irq)
 {
-	struct wrap_ndis_device *wnd;
+	struct ndis_miniport_block *nmb;
 
 	TRACEENTER1("%p", ndis_irq);
 
 	if (!ndis_irq)
 		TRACEEXIT1(return);
-	wnd = ndis_irq->wnd;
-	if (!wnd)
+	nmb = ndis_irq->nmb;
+	if (!nmb)
 		TRACEEXIT1(return);
 
-	free_irq(ndis_irq->irq.irq, wnd);
-	tasklet_kill(&wnd->irq_tasklet);
+	free_irq(ndis_irq->irq.irq, nmb->wnd);
+	tasklet_kill(&nmb->wnd->irq_tasklet);
 	ndis_irq->enabled = 0;
-	ndis_irq->wnd = NULL;
-	wnd->ndis_irq = NULL;
+	ndis_irq->nmb = NULL;
+	nmb->wnd->ndis_irq = NULL;
 	TRACEEXIT1(return);
 }
 
@@ -1868,11 +1868,15 @@ wstdcall void WIN_FUNC(NdisMIndicateStatus,4)
 	TRACEENTER2("status=0x%x len=%d", status, len);
 	switch (status) {
 	case NDIS_STATUS_MEDIA_DISCONNECT:
+		if (!netif_carrier_ok(wnd->net_dev))
+			break;
 		netif_carrier_off(wnd->net_dev);
 		set_bit(LINK_STATUS_CHANGED, &wnd->wrap_ndis_pending_work);
 		schedule_wrap_work(&wnd->wrap_ndis_work);
 		break;
 	case NDIS_STATUS_MEDIA_CONNECT:
+		if (netif_carrier_ok(wnd->net_dev))
+			break;
 		netif_carrier_on(wnd->net_dev);
 		set_bit(LINK_STATUS_CHANGED, &wnd->wrap_ndis_pending_work);
 		schedule_wrap_work(&wnd->wrap_ndis_work);
@@ -1882,7 +1886,6 @@ wstdcall void WIN_FUNC(NdisMIndicateStatus,4)
 			break;
 		si = buf;
 		DBGTRACE2("status_type=%d", si->status_type);
-
 		switch (si->status_type) {
 		case Ndis802_11StatusType_Authentication:
 			buf = (char *)buf + sizeof(*si);
@@ -2323,13 +2326,13 @@ wstdcall void WIN_FUNC(NdisMSleep,1)
 	delay = USEC_TO_HZ(us);
 	sleep_hz(delay);
 	DBGTRACE4("%p: done", current);
-	TRACEEXIT4(return);
 }
 
 wstdcall void WIN_FUNC(NdisGetCurrentSystemTime,1)
 	(LARGE_INTEGER *time)
 {
 	*time = ticks_1601();
+	DBGTRACE5("%Lu, %lu", *time, jiffies);
 }
 
 wstdcall NDIS_STATUS WIN_FUNC(NdisMRegisterIoPortRange,4)

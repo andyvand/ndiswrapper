@@ -138,11 +138,11 @@ int ntoskernel_init(void)
 
 	thread_event_waitq_pool = NULL;
 	do_gettimeofday(&now);
-	wrap_ticks_to_boot = (u64)now.tv_sec * TICKSPERSEC;
+	wrap_ticks_to_boot = TICKS_1601_TO_1970;
+	wrap_ticks_to_boot += (u64)now.tv_sec * TICKSPERSEC;
 	wrap_ticks_to_boot += now.tv_usec * 10;
-	wrap_ticks_to_boot -= jiffies * TICKSPERSEC / HZ;
-	wrap_ticks_to_boot += TICKS_1601_TO_1970;
-
+	wrap_ticks_to_boot -= jiffies * TICKSPERJIFFY;
+	DBGTRACE2("%Lu", wrap_ticks_to_boot);
 #ifdef USE_OWN_NTOS_WORKQUEUE
 	ntos_wq = create_singlethread_workqueue("ntos_wq");
 #endif
@@ -621,9 +621,9 @@ static void timer_proc(unsigned long data)
 	BUG_ON(wrap_timer->wrap_timer_magic != WRAP_TIMER_MAGIC);
 	BUG_ON(nt_timer->wrap_timer_magic != WRAP_TIMER_MAGIC);
 #endif
-	KeSetEvent((struct nt_event *)nt_timer, 0, FALSE);
 	if (wrap_timer->repeat)
 		mod_timer(&wrap_timer->timer, jiffies + wrap_timer->repeat);
+	KeSetEvent((struct nt_event *)nt_timer, 0, FALSE);
 	kdpc = nt_timer->kdpc;
 	if (kdpc && kdpc->func) {
 #if 1
@@ -1686,7 +1686,7 @@ wstdcall KPRIORITY WIN_FUNC(KeQueryPriorityThread,1)
 wstdcall ULONGLONG WIN_FUNC(KeQueryInterruptTime,0)
 	(void)
 {
-	TRACEEXIT5(return jiffies * TICKSPERSEC / HZ);
+	TRACEEXIT5(return jiffies * TICKSPERJIFFY);
 }
 
 wstdcall ULONG WIN_FUNC(KeQueryTimeIncrement,0)
@@ -1699,7 +1699,7 @@ wstdcall void WIN_FUNC(KeQuerySystemTime,1)
 	(LARGE_INTEGER *time)
 {
 	*time = ticks_1601();
-	return;
+	DBGTRACE5("%Lu, %lu", *time, jiffies);
 }
 
 wstdcall void WIN_FUNC(KeQueryTickCount,1)
@@ -1838,16 +1838,16 @@ struct nt_thread *get_current_nt_thread(void)
 	struct common_object_header *header;
 	KIRQL irql;
 
-	DBGTRACE5("task: %p", task);
+	DBGTRACE6("task: %p", task);
 	ret = NULL;
 	irql = nt_spin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL);
 	nt_list_for_each_entry(header, &object_list, list) {
 		struct nt_thread *thread;
-		DBGTRACE5("header: %p, type: %d", header, header->type);
+		DBGTRACE6("header: %p, type: %d", header, header->type);
 		if (header->type != OBJECT_TYPE_NT_THREAD)
 			break;
 		thread = HEADER_TO_OBJECT(header);
-		DBGTRACE5("thread: %p, task: %p", thread, thread->task);
+		DBGTRACE6("thread: %p, task: %p", thread, thread->task);
 		if (thread->task == task) {
 			ret = thread;
 			break;
@@ -1855,9 +1855,9 @@ struct nt_thread *get_current_nt_thread(void)
 	}
 	nt_spin_unlock_irql(&ntoskernel_lock, irql);
 	if (ret == NULL)
-		DBGTRACE3("couldn't find thread for task %p, %d",
+		DBGTRACE6("couldn't find thread for task %p, %d",
 			  task, current->pid);
-	DBGTRACE5("current thread = %p", ret);
+	DBGTRACE6("current thread = %p", ret);
 	return ret;
 }
 
