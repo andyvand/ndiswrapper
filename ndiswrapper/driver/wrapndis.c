@@ -1019,6 +1019,13 @@ static void link_status_handler(struct wrap_ndis_device *wnd)
 		memset(&wrqu, 0, sizeof(wrqu));
 		wrqu.ap_addr.sa_family = ARPHRD_ETHER;
 		wireless_send_event(wnd->net_dev, SIOCGIWAP, &wrqu, NULL);
+		/* in IBSS (ad-hoc) mode, it may be desirable to have
+		 * one node configured for association, but drivers
+		 * disassociate if last node disassociates; to
+		 * configure again, set essid */
+		if (wnd->infrastructure_mode == Ndis802_11IBSS &&
+		    wnd->essid.length > 0)
+			set_essid(wnd, wnd->essid.essid, wnd->essid.length);
 		TRACEEXIT2(return);
 	}
 
@@ -1618,7 +1625,6 @@ static NDIS_STATUS ndis_start_device(struct wrap_ndis_device *wnd)
 	get_supported_oids(wnd);
 	strncpy(net_dev->name, if_name, IFNAMSIZ - 1);
 	net_dev->name[IFNAMSIZ - 1] = '\0';
-
 	ndis_status = miniport_query_info(wnd, OID_802_3_CURRENT_ADDRESS,
 					  mac, sizeof(mac));
 	if (ndis_status) {
