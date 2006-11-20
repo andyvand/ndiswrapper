@@ -1804,9 +1804,11 @@ static int ndis_remove_device(struct wrap_ndis_device *wnd)
 {
 	int tx_pending;
 
-	set_bit(SHUTDOWN, &wnd->wrap_ndis_pending_work);
+	/* prevent setting essid during disassociation */
+	memset(&wnd->essid, 0, sizeof(wnd->essid));
 	if (wnd->physical_medium == NdisPhysicalMediumWirelessLan)
 		miniport_set_info(wnd, OID_802_11_DISASSOCIATE, NULL, 0);
+	set_bit(SHUTDOWN, &wnd->wrap_ndis_pending_work);
 	unregister_netdevice_notifier(&netdev_notifier);
 	wnd->tx_ok = 0;
 	unregister_netdev(wnd->net_dev);
