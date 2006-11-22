@@ -208,7 +208,6 @@ int set_infra_mode(struct wrap_ndis_device *wnd,
 			mode, res);
 		TRACEEXIT2(return -EINVAL);
 	}
-	wnd->infrastructure_mode = prev_mode;
 	/* NDIS drivers clear keys when infrastructure mode is
 	 * changed. But Linux tools assume otherwise. So set the
 	 * keys */
