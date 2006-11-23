@@ -1027,11 +1027,10 @@ static void link_status_handler(struct wrap_ndis_device *wnd)
 		    wnd->essid.length > 0) {
 			set_essid(wnd, wnd->essid.essid, wnd->essid.length);
 			for (i = 0; i < MAX_ENCR_KEYS; i++) {
-				if (wnd->encr_info.keys[i].length > 0)
-					add_wep_key(wnd,
-						    wnd->encr_info.keys[i].key,
-						    wnd->encr_info.keys[i].length,
-						    i);
+				if (wnd->encr_info.keys[i].length <= 0)
+					continue;
+				add_wep_key(wnd, wnd->encr_info.keys[i].key,
+					    wnd->encr_info.keys[i].length, i);
 			}
 		}
 		TRACEEXIT2(return);
@@ -1742,12 +1741,12 @@ static NDIS_STATUS ndis_start_device(struct wrap_ndis_device *wnd)
 	}
 	DBGTRACE1("pool: %p", wnd->tx_buffer_pool);
 
-	miniport_query_int(wnd, OID_GEN_MAXIMUM_TOTAL_SIZE, &n);
-	if (n > ETH_HLEN)
+	if (miniport_query_int(wnd, OID_GEN_MAXIMUM_TOTAL_SIZE, &n) ==
+	    NDIS_STATUS_SUCCESS && n > ETH_HLEN)
 		ndis_change_mtu(wnd->net_dev, n - ETH_HLEN);
 
-	miniport_query_int(wnd, OID_GEN_MAC_OPTIONS, &n);
-	if (n > 0)
+	if (miniport_query_int(wnd, OID_GEN_MAC_OPTIONS, &n) ==
+	    NDIS_STATUS_SUCCESS && n > 0)
 		DBGTRACE2("mac options supported: 0x%x", n);
 
 	transport_header_offset.protocol_type = NDIS_PROTOCOL_ID_TCP_IP;
