@@ -1117,7 +1117,7 @@ IoSetCompletionRoutine(struct irp *irp, void *routine, void *context,
 #define IoUnmarkIrpPending(irp)						\
 	(IoGetCurrentIrpStackLocation((irp))->control &= ~SL_PENDING_RETURNED)
 
-#define IRP_SL(irp, i) (((struct io_stack_location *)((irp) + 1)) + (i))
+#define IRP_SL(irp, n) (((struct io_stack_location *)((irp) + 1)) + (n))
 #define IRP_DRIVER_CONTEXT(irp) (irp)->tail.overlay.driver_context
 #define IoIrpThread(irp) ((irp)->tail.overlay.thread)
 

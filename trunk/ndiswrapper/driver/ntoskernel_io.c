@@ -371,6 +371,7 @@ wfastcall NTSTATUS WIN_FUNC(IofCallDriver,2)
 wfastcall void WIN_FUNC(IofCompleteRequest,2)
 	(struct irp *irp, CHAR prio_boost)
 {
+
 #ifdef IO_DEBUG
 	DUMP_IRP(irp);
 	if (irp->io_status.status == STATUS_PENDING) {
@@ -388,6 +389,7 @@ wfastcall void WIN_FUNC(IofCompleteRequest,2)
 		NTSTATUS status;
 
 		irp_sl = IoGetCurrentIrpStackLocation(irp);
+		DUMP_IRP(irp);
 		if (irp_sl->control & SL_PENDING_RETURNED)
 			irp->pending_returned = TRUE;
 
@@ -397,7 +399,7 @@ wfastcall void WIN_FUNC(IofCompleteRequest,2)
 		 * is what we are going to call below; so we set
 		 * current_location and dev_obj for the previous
 		 * (higher) location */
-		DUMP_IRP(irp);
+
 		IoSkipCurrentIrpStackLocation(irp);
 		if (irp->current_location < irp->stack_count)
 			dev_obj = IoGetCurrentIrpStackLocation(irp)->dev_obj;
