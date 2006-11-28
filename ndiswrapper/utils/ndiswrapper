@@ -406,7 +406,7 @@ sub parse_copy_file {
 	# remove (trailing) comment
 	$file = del_comment($file);
 	$file = trim($file);
-	if ($file and length($file) > 0) {
+	if (length($file) > 0) {
 	    if (valid_copy_file_name($file)) {
 		copy_file($file);
 	    } else {
@@ -574,7 +574,7 @@ sub valid_copy_file_name {
     my $file = shift;
     printf DBG "file name: %s\n", $file;
     # as of now, copy file name extensions known: .sys, .bin, .out
-    return 1 if ($file =~ /^[a-zA-Z0-9]*\.((sys)|(bin)|(out))$/);
+    return 1 if (lc($file) =~ /^[a-z0-9]*\.((sys)|(bin)|(out))$/);
     return 0;
 }
 
