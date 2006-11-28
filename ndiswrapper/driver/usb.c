@@ -1345,13 +1345,14 @@ wstdcall usb_common_descriptor_t *
 WIN_FUNC(USBD_ParseDescriptors,4)
 	(void *buf, ULONG length, void *start, LONG type)
 {
-	int i;
-	usb_common_descriptor_t *descr;
+	usb_common_descriptor_t *descr = start;
 
-	for (i = 0; i < length; i += descr->bLength) {
-		descr = (void *)&(((char *)buf)[i]);
+	while ((void *)descr < buf + length) {
 		if (descr->bDescriptorType == type)
 			return descr;
+		if (descr->bLength == 0)
+			break;
+		descr = (void *)descr + descr->bLength;
 	}
 	USBEXIT(return NULL);
 }
