@@ -149,6 +149,7 @@ struct urb_hcd_area {
 };
 
 typedef struct usb_endpoint_descriptor *usbd_pipe_handle;
+typedef struct usb_descriptor_header usb_common_descriptor_t;
 
 struct usbd_pipe_information {
 	USHORT wMaxPacketSize;

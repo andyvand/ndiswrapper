@@ -1341,6 +1341,21 @@ WIN_FUNC(USBD_ParseConfigurationDescriptor,3)
 						   -1, -1, -1);
 }
 
+wstdcall usb_common_descriptor_t *
+WIN_FUNC(USBD_ParseDescriptors,4)
+	(void *buf, ULONG length, void *start, LONG type)
+{
+	int i;
+	usb_common_descriptor_t *descr;
+
+	for (i = 0; i < length; i += descr->bLength) {
+		descr = (void *)&(((char *)buf)[i]);
+		if (descr->bDescriptorType == type)
+			return descr;
+	}
+	USBEXIT(return NULL);
+}
+
 wstdcall void WIN_FUNC(USBD_GetUSBDIVersion,1)
 	(struct usbd_version_info *version_info)
 {
