@@ -31,7 +31,7 @@ static unsigned int urb_id = 0;
 #define DUMP_URB_BUFFER(urb, dir)					\
 	while (debug >= 2) {						\
 		int i;							\
-		char msg[100], *t;					\
+		char msg[20], *t;					\
 		if (!urb->transfer_buffer)				\
 			break;						\
 		if (!((usb_pipein(urb->pipe) && dir == USB_DIR_IN) ||	\
