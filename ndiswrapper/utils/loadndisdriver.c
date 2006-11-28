@@ -209,8 +209,7 @@ static int read_conf_file(char *conf_file_name, struct load_driver *driver)
 	return 0;
 }
 
-static int load_bin_file(int ioctl_device, char *driver_name,
-			 char *file_name)
+static int load_bin_file(int ioctl_device, char *driver_name, char *file_name)
 {
 	struct load_driver_file driver_file;
 	char lc_file_name[MAX_DRIVER_NAME_LEN];
@@ -242,8 +241,7 @@ static int load_bin_file(int ioctl_device, char *driver_name,
  * open a windows driver and pass it to the kernel module.
  * returns 0: on success, -1 on error
  */
-static int load_driver(int ioctl_device, char *driver_name,
-		       char *conf_file_name)
+static int load_driver(int ioctl_device, char *driver_name, char *conf_file_name)
 {
 	int i;
 	struct dirent *dirent;
@@ -363,9 +361,8 @@ err:
 	return -1;
 }
 
-static int get_device(char *driver_name, int vendor, int device,
-		      int subvendor, int subdevice, int bus,
-		      struct load_device *ld)
+static int get_device(char *driver_name, int vendor, int device, int subvendor,
+		      int subdevice, int bus, struct load_device *ld)
 {
 	int ret;
 	struct stat statbuf;
@@ -392,9 +389,9 @@ static int get_device(char *driver_name, int vendor, int device,
 			     vendor, device, bus) &&
 		    stat(file, &statbuf) == 0) ||
 		   (bus == WRAP_USB_BUS &&
-		    (snprintf(file, sizeof(file), "%04X:%04X.%X.conf",
-			      vendor, device, WRAP_INTERNAL_BUS) &&
-		     stat(file, &statbuf) == 0))) {
+		    snprintf(file, sizeof(file), "%04X:%04X.%X.conf",
+			     vendor, device, WRAP_INTERNAL_BUS) &&
+		    stat(file, &statbuf) == 0)) {
 		DBG("found %s", file);
 		ld->subvendor = 0;
 		ld->subdevice = 0;
@@ -491,8 +488,7 @@ static int get_ioctl_device()
 	}
 
 	unlink(ioctl_file);
-	if (mknod(ioctl_file, S_IFCHR | 0600, MISC_MAJOR << 8 | minor_dev) ==
-	    -1) {
+	if (mknod(ioctl_file, S_IFCHR | 0600, MISC_MAJOR << 8 | minor_dev)) {
 		ERROR("couldn't create file %s: %s",
 		      ioctl_file, strerror(errno));
 		return -1;
