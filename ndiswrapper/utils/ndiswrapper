@@ -641,10 +641,10 @@ sub generate_module_device_map {
 			  ($1, $2, "0000$3", "0000$4", $5);
 		    } elsif ($file =~ /(.{4}):(.{4})\.([^.]+)\.conf$/) {
 			($vendor, $device, $subvendor, $subdevice, $busid) =
-			  ($1, $2, "*", "*", "$3");
+			  ($1, $2, "*", "*", hex($3));
 		    }
 		    my $devstring;
-		    if ($busid eq $WRAP_USB_BUS) {
+		    if ($busid eq $WRAP_USB_BUS || $busid eq 0) {
 			$devstring = sprintf("usb:v%sp%sd*dc*dsc*dp*ic*isc*ip*",
 					     $vendor, $device);
 		    } elsif ($busid eq $WRAP_PCI_BUS) {
