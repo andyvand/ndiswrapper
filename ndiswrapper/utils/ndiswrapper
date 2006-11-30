@@ -638,10 +638,10 @@ sub generate_module_device_map {
 		if ($file =~ /.conf$/) {
 		    if ($file =~ /^(.{4}):(.{4}):(.{4}):(.{4})\.([^.]+)\.conf$/) {
 			($vendor, $device, $subvendor, $subdevice, $busid) =
-			  ($1, $2, "0000$3", "0000$4", $5);
+			  (uc($1), uc($2), "0000$3", "0000$4", hex($5));
 		    } elsif ($file =~ /(.{4}):(.{4})\.([^.]+)\.conf$/) {
 			($vendor, $device, $subvendor, $subdevice, $busid) =
-			  ($1, $2, "*", "*", hex($3));
+			  (uc($1), uc($2), "*", "*", hex($3));
 		    }
 		    my $devstring;
 		    if ($busid eq $WRAP_USB_BUS || $busid eq 0) {
@@ -790,7 +790,7 @@ sub install_status {
 	    $conf = 1 if ($conf eq 0);
 	    if ($file =~ /^(.{4}):(.{4}):(.{4}):(.{4})\.([^.]+)\.conf$/) {
 		($vendor, $device, $subvendor, $subdevice, $busid) =
-		  (uc($1), uc($2), uc($3), uc($4), uc($5));
+		  (uc($1), uc($2), uc($3), uc($4), hex($5));
 		foreach my $card (@{$cards}) {
 		    if ($card->{vendor} eq $vendor and
 			$card->{device} eq $device and
@@ -802,7 +802,7 @@ sub install_status {
 		}
 	    } elsif ($file =~ /(.{4}):(.{4})\.([^.]+)\.conf/) {
 		($vendor, $device, $subvendor, $subdevice, $busid) =
-		  (uc($1), uc($2), "\\*", "\\*", uc($3));
+		  (uc($1), uc($2), "\\*", "\\*", hex($3));
 		foreach my $card (@{$cards}) {
 		    if ($card->{vendor} eq $vendor and
 			$card->{device} eq $device) {
@@ -831,7 +831,7 @@ sub install_status {
 	}
 
 	my $devstring;
-	if ($busid eq $WRAP_USB_BUS) {
+	if ($busid eq $WRAP_USB_BUS || $busid eq 0) {
 	    $devstring =
 	      sprintf("usb:v%sp%sd", $vendor, $device);
 	} elsif ($busid eq $WRAP_PCI_BUS) {
