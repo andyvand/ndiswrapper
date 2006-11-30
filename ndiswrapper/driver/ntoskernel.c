@@ -1752,45 +1752,6 @@ wstdcall KPRIORITY WIN_FUNC(KeSetPriorityThread,2)
 	return old_prio;
 }
 
-struct trampoline_context {
-	void (*start_routine)(void *) wstdcall;
-	void *context;
-	struct nt_thread *thread;
-};
-
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,8)
-#define SIG_LOCK(t) (&(t)->sigmask_lock)
-#else
-#define SIG_LOCK(t) (&(t)->sighand->siglock)
-#endif
-
-static int thread_trampoline(void *data)
-{
-	struct trampoline_context ctx;
-	struct nt_thread *thread;
-	sigset_t blocked;
-
-	memcpy(&ctx, data, sizeof(ctx));
-	kfree(data);
-	thread = ctx.thread;
-	thread->task = current;
-	thread->pid = thread->task->pid;
-#ifdef PF_NOFREEZE
-	current->flags |= PF_NOFREEZE;
-#endif
-	strncpy(current->comm, "windisdrvr", sizeof(current->comm));
-	current->comm[sizeof(current->comm)-1] = 0;
-	DBGTRACE2("thread: %p, task: %p (%d)", thread, thread->task,
-		  thread->pid);
-	sigfillset(&blocked);
-	sigprocmask(SIG_BLOCK, &blocked, NULL);
-	flush_signals(current);
-	LIN2WIN1(ctx.start_routine, ctx.context);
-	DBGTRACE2("thread: %p, task: %p (%d)", thread, thread->task,
-		  thread->pid);
-	return 0;
-}
-
 static struct nt_thread *create_nt_thread(struct task_struct *task)
 {
 	struct nt_thread *thread;
@@ -1869,38 +1830,79 @@ struct nt_thread *get_current_nt_thread(void)
 	return ret;
 }
 
+struct thread_trampoline_info {
+	void (*func)(void *) wstdcall;
+	void *ctx;
+	struct nt_thread *thread;
+	struct completion started;
+};
+
+static int thread_trampoline(void *data)
+{
+	struct thread_trampoline_info *thread_info = data;
+	typeof(thread_info->func) func;
+	void *ctx;
+
+	func = thread_info->func;
+	ctx = thread_info->ctx;
+	thread_info->thread->task = current;
+	thread_info->thread->pid = current->pid;
+	DBGTRACE2("thread: %p, task: %p (%d)", thread_info->thread,
+		  current, current->pid);
+	complete(&thread_info->started);
+
+#ifdef PF_NOFREEZE
+	current->flags |= PF_NOFREEZE;
+#endif
+	strncpy(current->comm, "windisdrvr", sizeof(current->comm));
+	current->comm[sizeof(current->comm)-1] = 0;
+	LIN2WIN1(func, ctx);
+	ERROR("task: %p", current);
+	return 0;
+}
+
 wstdcall NTSTATUS WIN_FUNC(PsCreateSystemThread,7)
 	(void **phandle, ULONG access, void *obj_attr, void *process,
-	 void *client_id, void (*start_routine)(void *) wstdcall, void *context)
+	 void *client_id, void (*func)(void *) wstdcall, void *ctx)
 {
-	struct trampoline_context *ctx;
+	struct thread_trampoline_info thread_info;
 	struct nt_thread *thread;
+	struct task_struct *task;
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,7)
 	int pid;
+#endif
 
 	TRACEENTER2("phandle = %p, access = %u, obj_attr = %p, process = %p, "
-	            "client_id = %p, start_routine = %p, context = %p",
+	            "client_id = %p, func = %p, context = %p",
 	            phandle, access, obj_attr, process, client_id,
-	            start_routine, context);
+	            func, ctx);
 
-	ctx = kmalloc(sizeof(struct trampoline_context), GFP_KERNEL);
-	if (!ctx)
-		TRACEEXIT2(return STATUS_RESOURCES);
-	ctx->start_routine = start_routine;
-	ctx->context = context;
+	thread_info.func = func;
+	thread_info.ctx = ctx;
 	thread = create_nt_thread(NULL);
-	if (!thread) {
-		kfree(ctx);
+	if (!thread)
 		TRACEEXIT2(return STATUS_RESOURCES);
-	}
-	ctx->thread = thread;
+	thread_info.thread = thread;
+	init_completion(&thread_info.started);
 
-	pid = kernel_thread(thread_trampoline, ctx, 0);
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,7)
+	pid = kernel_thread(thread_trampoline, &thread_info, CLONE_SIGHAND);
 	DBGTRACE2("pid = %d", pid);
 	if (pid < 0) {
-		kfree(ctx);
 		free_object(thread);
 		TRACEEXIT2(return STATUS_FAILURE);
 	}
+	task = NULL;
+	DBGTRACE2("created task: %p (%d)", task, pid);
+#else
+	task = KTHREAD_RUN(thread_trampoline, &thread_info, "windisdrvr");
+	if (IS_ERR(task)) {
+		free_object(thread);
+		TRACEEXIT2(return STATUS_FAILURE);
+	}
+	DBGTRACE2("created task: %p (%d)", task, task->pid);
+#endif
+	wait_for_completion(&thread_info.started);
 	*phandle = OBJECT_TO_HEADER(thread);
 	DBGTRACE2("created thread: %p, %p", thread, *phandle);
 	TRACEEXIT2(return STATUS_SUCCESS);

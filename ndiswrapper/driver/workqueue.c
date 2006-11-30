@@ -41,23 +41,15 @@ static int workq_thread(void *data)
 #ifdef PF_NOFREEZE
 	current->flags |= PF_NOFREEZE;
 	set_user_nice(current, -5);
+#else
+	sigfillset(&current->blocked);
+	current->nice -= 5;
 #endif
 	while (1) {
 		if (wait_event_interruptible(workq->waitq_head,
 					     workq->pending)) {
 			/* TODO: deal with signal */
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,7)
-			spin_lock_irq(SIG_LOCK(current));
-#endif
-			flush_signals(current);
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,7)
-			recalc_sigpending(current);
-#else
-			recalc_sigpending();
-#endif
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,7)
-			spin_unlock_irq(SIG_LOCK(current));
-#endif
+			WARNING("signal not blocked?");
 			continue;
 		}
 		spin_lock_irqsave(&workq->lock, flags);
