@@ -1758,6 +1758,12 @@ struct trampoline_context {
 	struct nt_thread *thread;
 };
 
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,8)
+#define SIG_LOCK(t) (&(t)->sigmask_lock)
+#else
+#define SIG_LOCK(t) (&(t)->sighand->siglock)
+#endif
+
 static int thread_trampoline(void *data)
 {
 	struct trampoline_context ctx;
@@ -1775,6 +1781,15 @@ static int thread_trampoline(void *data)
 	current->comm[sizeof(current->comm)-1] = 0;
 	DBGTRACE2("thread: %p, task: %p (%d)", thread, thread->task,
 		  thread->pid);
+	spin_lock_irq(SIG_LOCK(current));
+	sigemptyset(&current->blocked);
+	flush_signals(current);
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,7)
+	recalc_sigpending(current);
+#else
+	recalc_sigpending();
+#endif
+	spin_unlock_irq(SIG_LOCK(current));
 	LIN2WIN1(ctx.start_routine, ctx.context);
 	DBGTRACE2("thread: %p, task: %p (%d)", thread, thread->task,
 		  thread->pid);
