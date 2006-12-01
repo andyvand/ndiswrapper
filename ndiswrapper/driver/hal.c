@@ -23,144 +23,149 @@
 
 #include "ntoskernel.h"
 
-wstdcall void WIN_FUNC(WRITE_PORT_ULONG,2)
+STDCALL void WRAP_EXPORT(WRITE_PORT_ULONG)
 	(ULONG_PTR port, ULONG value)
 {
 	outl(value, port);
 }
 
-wstdcall ULONG WIN_FUNC(READ_PORT_ULONG,1)
+STDCALL ULONG WRAP_EXPORT(READ_PORT_ULONG)
 	(ULONG_PTR port)
 {
-	return inl(port);
+	return inl((unsigned long)port);
 }
 
-wstdcall void WIN_FUNC(WRITE_PORT_USHORT,2)
+STDCALL void WRAP_EXPORT(WRITE_PORT_USHORT)
 	(ULONG_PTR port, USHORT value)
 {
-	outw(value, port);
+	outw(value, (unsigned long)port);
 }
 
-wstdcall USHORT WIN_FUNC(READ_PORT_USHORT,1)
+STDCALL USHORT WRAP_EXPORT(READ_PORT_USHORT)
 	(ULONG_PTR port)
 {
-	return inw(port);
+	return inw((unsigned long)port);
 }
 
-wstdcall void WIN_FUNC(WRITE_PORT_UCHAR,2)
+STDCALL void WRAP_EXPORT(WRITE_PORT_UCHAR)
 	(ULONG_PTR port, UCHAR value)
 {
-	outb(value, port);
+	outb(value, (unsigned long)port);
 }
 
-wstdcall UCHAR WIN_FUNC(READ_PORT_UCHAR,1)
+STDCALL UCHAR WRAP_EXPORT(READ_PORT_UCHAR)
 	(ULONG_PTR port)
 {
-	return inb(port);
+	return inb((unsigned long)port);
 }
 
-wstdcall void WIN_FUNC(WRITE_PORT_BUFFER_USHORT,3)
+STDCALL void WRAP_EXPORT(WRITE_PORT_BUFFER_USHORT)
 	(ULONG_PTR port, USHORT *buf, ULONG count)
 {
-	outsw(port, buf, count);
+	ULONG i;
+
+	for (i = 0 ; i < count ; i++)
+		outw(buf[i], (unsigned long)port);
 }
 
-wstdcall void WIN_FUNC(READ_PORT_BUFFER_USHORT,3)
+STDCALL void WRAP_EXPORT(READ_PORT_BUFFER_USHORT)
 	(ULONG_PTR port, USHORT *buf, ULONG count)
 {
-	insw(port, buf, count);
+	ULONG i;
+
+	for (i = 0 ; i < count; i++)
+		buf[i] = inw((unsigned long)port);
 }
 
-wstdcall void WIN_FUNC(WRITE_PORT_BUFFER_ULONG,3)
-	(ULONG_PTR port, ULONG *buf, ULONG count)
-{
-	outsl(port, buf, count);
-}
-
-wstdcall void WIN_FUNC(READ_PORT_BUFFER_ULONG,3)
-	(ULONG_PTR port, ULONG *buf, ULONG count)
-{
-	insl(port, buf, count);
-}
-
-wstdcall USHORT WIN_FUNC(READ_REGISTER_USHORT,1)
-	(void *reg)
-{
-	return readw(reg);
-}
-
-wstdcall void WIN_FUNC(WRITE_REGISTER_ULONG,2)
-	(void *reg, UINT val)
-{
-	writel(val, reg);
-}
-
-wstdcall void WIN_FUNC(WRITE_REGISTER_USHORT,2)
-	(void *reg, USHORT val)
-{
-	writew(val, reg);
-}
-
-wstdcall void WIN_FUNC(WRITE_REGISTER_UCHAR,2)
-	(void *reg, UCHAR val)
-{
-	writeb(val, reg);
-}
-
-wstdcall void WIN_FUNC(KeStallExecutionProcessor,1)
+STDCALL void WRAP_EXPORT(KeStallExecutionProcessor)
 	(ULONG usecs)
 {
 	udelay(usecs);
 }
 
-wstdcall KIRQL WIN_FUNC(KeGetCurrentIrql,0)
-	(void)
+_FASTCALL KIRQL WRAP_EXPORT(KfRaiseIrql)
+	(FASTCALL_DECL_1(KIRQL newirql))
 {
-	return current_irql();
+	KIRQL irql;
+
+	TRACEENTER4("irql = %d", newirql);
+
+	irql = KeGetCurrentIrql();
+	if (irql < DISPATCH_LEVEL) {
+		local_bh_disable();
+		preempt_disable();
+	}
+
+	TRACEEXIT4(return irql);
+}
+	
+_FASTCALL void WRAP_EXPORT(KfLowerIrql)
+	(FASTCALL_DECL_1(KIRQL oldirql))
+{
+	TRACEENTER4("irql = %d", oldirql);
+
+	if (oldirql < DISPATCH_LEVEL) {
+#if DEBUG_IRQL
+		KIRQL irql;
+		irql = KeGetCurrentIrql();
+		if (irql != DISPATCH_LEVEL) {
+			WARNING("IRQL %d != DISPATCH_LEVEL", irql);
+			return;
+		}
+#endif
+		preempt_enable();
+		local_bh_enable();
+	}
+
+	TRACEEXIT4(return);
 }
 
-wfastcall KIRQL WIN_FUNC(KfRaiseIrql,1)
-	(KIRQL newirql)
+_FASTCALL KIRQL WRAP_EXPORT(KfAcquireSpinLock)
+	(FASTCALL_DECL_1(KSPIN_LOCK *lock))
 {
-	return raise_irql(newirql);
+	KIRQL oldirql;
+
+	TRACEENTER4("lock = %p", lock);
+	oldirql = wrap_spin_lock(map_kspin_lock(lock), DISPATCH_LEVEL);
+	TRACEEXIT4(return oldirql);
 }
 
-wfastcall void WIN_FUNC(KfLowerIrql,1)
-	(KIRQL oldirql)
+_FASTCALL void WRAP_EXPORT(KfReleaseSpinLock)
+	(FASTCALL_DECL_2(KSPIN_LOCK *lock, KIRQL newirql))
 {
-	lower_irql(oldirql);
+	TRACEENTER4("lock = %p, irql = %d", lock, newirql);
+	wrap_spin_unlock_irql(map_kspin_lock(lock), newirql);
+
+	TRACEEXIT4(return);
 }
 
-wfastcall KIRQL WIN_FUNC(KfAcquireSpinLock,1)
-	(NT_SPIN_LOCK *lock)
+_FASTCALL void WRAP_EXPORT(KefAcquireSpinLockAtDpcLevel)
+	(FASTCALL_DECL_1(KSPIN_LOCK *lock))
 {
-	return nt_spin_lock_irql(lock, DISPATCH_LEVEL);
+	KIRQL irql;
+
+	TRACEENTER4("lock = %p", lock);
+
+#if DEBUG_IRQL
+	irql = KeGetCurrentIrql();
+	if (irql != DISPATCH_LEVEL)
+		ERROR("irql %d != DISPATCH_LEVEL", irql);
+#endif
+	wrap_spin_lock(map_kspin_lock(lock), DISPATCH_LEVEL);
+	TRACEEXIT4(return);
 }
 
-wfastcall void WIN_FUNC(KfReleaseSpinLock,2)
-	(NT_SPIN_LOCK *lock, KIRQL oldirql)
+_FASTCALL void WRAP_EXPORT(KefReleaseSpinLockFromDpcLevel)
+	(FASTCALL_DECL_1(KSPIN_LOCK *lock))
 {
-	nt_spin_unlock_irql(lock, oldirql);
-}
-
-wfastcall void WIN_FUNC(KefAcquireSpinLockAtDpcLevel,1)
-	(NT_SPIN_LOCK *lock)
-{
+	TRACEENTER4("lock = %p", lock);
 #ifdef DEBUG_IRQL
-	if (current_irql() != DISPATCH_LEVEL)
+	if (KeGetCurrentIrql() != DISPATCH_LEVEL)
 		ERROR("irql != DISPATCH_LEVEL");
 #endif
-	nt_spin_lock(lock);
-}
+	wrap_spin_lock(map_kspin_lock(lock), DISPATCH_LEVEL);
 
-wfastcall void WIN_FUNC(KefReleaseSpinLockFromDpcLevel,1)
-	(NT_SPIN_LOCK *lock)
-{
-#ifdef DEBUG_IRQL
-	if (current_irql() != DISPATCH_LEVEL)
-		ERROR("irql != DISPATCH_LEVEL");
-#endif
-	nt_spin_unlock(lock);
+	TRACEEXIT4(return);
 }
 
 #include "hal_exports.h"

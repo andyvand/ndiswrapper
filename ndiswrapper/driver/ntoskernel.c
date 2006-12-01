@@ -16,1054 +16,319 @@
 #include "ntoskernel.h"
 #include "ndis.h"
 #include "usb.h"
-#include "pnp.h"
-#include "loader.h"
+#include <linux/time.h>
 
-/* MDLs describe a range of virtual address with an array of physical
- * pages right after the header. For different ranges of virtual
- * addresses, the number of entries of physical pages may be different
- * (depending on number of entries required). If we want to allocate
- * MDLs from a pool, the size has to be constant. So we assume that
- * maximum range used by a driver is CACHE_MDL_PAGES; if a driver
- * requests an MDL for a bigger region, we allocate it with kmalloc;
- * otherwise, we allocate from the pool */
+DECLARE_WAIT_QUEUE_HEAD(dispatch_event_wq);
+static unsigned char global_signal_state = 0;
+static struct wrap_spinlock dispatch_event_lock;
+KSPIN_LOCK ntoskrnl_lock;
+struct wrap_spinlock irp_cancel_lock;
 
-#define CACHE_MDL_PAGES 3
-#define CACHE_MDL_SIZE (sizeof(struct mdl) + \
-			(sizeof(PFN_NUMBER) * CACHE_MDL_PAGES))
-struct wrap_mdl {
-	struct nt_list list;
-	struct mdl mdl[0];
-};
-
-struct thread_event_waitq {
-	wait_queue_head_t head;
-	BOOLEAN done;
-#ifdef EVENT_DEBUG
-	struct task_struct *task;
-#endif
-	struct thread_event_waitq *next;
-};
-
-/* everything here is for all drivers/devices - not per driver/device */
-static NT_SPIN_LOCK dispatcher_lock;
-static struct thread_event_waitq *thread_event_waitq_pool;
-
-NT_SPIN_LOCK ntoskernel_lock;
-static kmem_cache_t *mdl_cache;
-static struct nt_list wrap_mdl_list;
-
-/* use tasklet instead worker to execute kdpc's */
-#define KDPC_TASKLET 1
-
-#ifdef KDPC_TASKLET
-static struct tasklet_struct kdpc_work;
-static void kdpc_worker(unsigned long dummy);
-#else
-static work_struct_t kdpc_work;
-static void kdpc_worker(void *data);
-#endif
-
-static struct nt_list kdpc_list;
-static NT_SPIN_LOCK kdpc_list_lock;
-
-static struct nt_list callback_objects;
-
-struct nt_list object_list;
-
-struct bus_driver {
-	struct nt_list list;
-	char name[MAX_DRIVER_NAME_LEN];
-	struct driver_object drv_obj;
-};
-
-static struct nt_list bus_driver_list;
-
-static work_struct_t ntos_work_item_work;
-static struct nt_list ntos_work_item_list;
-static NT_SPIN_LOCK ntos_work_item_list_lock;
-static void ntos_work_item_worker(void *data);
-
-NT_SPIN_LOCK irp_cancel_lock;
-
-extern struct nt_list wrap_drivers;
-static struct nt_list wrap_timer_list;
-NT_SPIN_LOCK timer_lock;
-
-/* compute ticks (100ns) since 1601 until when system booted into
- * wrap_ticks_to_boot */
-u64 wrap_ticks_to_boot;
-
-#if defined(CONFIG_X86_64)
-static struct timer_list shared_data_timer;
-struct kuser_shared_data kuser_shared_data;
-static void update_user_shared_data_proc(unsigned long data);
-#endif
-
-static int add_bus_driver(const char *name);
-static BOOLEAN queue_kdpc(struct kdpc *kdpc);
-
-WIN_SYMBOL_MAP("KeTickCount", &jiffies)
-
-WIN_SYMBOL_MAP("NlsMbCodePageTag", FALSE)
-
-#ifdef USE_OWN_NTOS_WORKQUEUE
-workqueue_struct_t *ntos_wq;
-#endif
-
-int ntoskernel_init(void)
+int ntoskrnl_init(void)
 {
-	struct timeval now;
-
-	nt_spin_lock_init(&dispatcher_lock);
-	nt_spin_lock_init(&ntoskernel_lock);
-	nt_spin_lock_init(&ntos_work_item_list_lock);
-	nt_spin_lock_init(&kdpc_list_lock);
-	nt_spin_lock_init(&irp_cancel_lock);
-	InitializeListHead(&wrap_mdl_list);
-	InitializeListHead(&kdpc_list);
-	InitializeListHead(&callback_objects);
-	InitializeListHead(&bus_driver_list);
-	InitializeListHead(&object_list);
-	InitializeListHead(&ntos_work_item_list);
-
-#ifdef KDPC_TASKLET
-	tasklet_init(&kdpc_work, kdpc_worker, 0);
-#else
-	initialize_work(&kdpc_work, kdpc_worker, NULL);
-#endif
-	initialize_work(&ntos_work_item_work, ntos_work_item_worker, NULL);
-	nt_spin_lock_init(&timer_lock);
-	InitializeListHead(&wrap_timer_list);
-
-	thread_event_waitq_pool = NULL;
-	do_gettimeofday(&now);
-	wrap_ticks_to_boot = TICKS_1601_TO_1970;
-	wrap_ticks_to_boot += (u64)now.tv_sec * TICKSPERSEC;
-	wrap_ticks_to_boot += now.tv_usec * 10;
-	wrap_ticks_to_boot -= jiffies * TICKSPERJIFFY;
-	DBGTRACE2("%Lu", wrap_ticks_to_boot);
-#ifdef USE_OWN_NTOS_WORKQUEUE
-	ntos_wq = create_singlethread_workqueue("ntos_wq");
-#endif
-
-	if (add_bus_driver("PCI")
-#ifdef CONFIG_USB
-	    || add_bus_driver("USB")
-#endif
-		) {
-		ntoskernel_exit();
+	wrap_spin_lock_init(&dispatch_event_lock);
+	if (!map_kspin_lock(&ntoskrnl_lock))
 		return -ENOMEM;
-	}
-	mdl_cache = kmem_cache_create("wrap_mdl",
-				      sizeof(struct wrap_mdl) + CACHE_MDL_SIZE,
-				      0, 0, NULL, NULL);
-	DBGTRACE2("%p", mdl_cache);
-	if (!mdl_cache) {
-		ERROR("couldn't allocate MDL cache");
-		ntoskernel_exit();
-		return -ENOMEM;
-	}
-#if defined(CONFIG_X86_64)
-	memset(&kuser_shared_data, 0, sizeof(kuser_shared_data));
-	init_timer(&shared_data_timer);
-	shared_data_timer.function = update_user_shared_data_proc;
-#endif
+	wrap_spin_lock_init(&irp_cancel_lock);
 	return 0;
 }
 
-int ntoskernel_init_device(struct wrap_device *wd)
+void ntoskrnl_exit(void)
 {
-#if defined(CONFIG_X86_64)
-	*((ULONG64 *)&kuser_shared_data.system_time) = ticks_1601();
-	shared_data_timer.data = (unsigned long)0;
-	/* don't use add_timer - to avoid creating more than one
-	 * timer */
-	mod_timer(&shared_data_timer, jiffies + 1);
-#endif
-	return 0;
-}
-
-void ntoskernel_exit_device(struct wrap_device *wd)
-{
-	TRACEENTER2("");
-
-	KeFlushQueuedDpcs();
-	TRACEEXIT2(return);
-}
-
-void ntoskernel_exit(void)
-{
-	struct nt_list *cur;
-	KIRQL irql;
-
-	TRACEENTER2("");
-
-#ifdef KDPC_TASKLET
-	tasklet_kill(&kdpc_work);
-#endif
-	/* free kernel (Ke) timers */
-	DBGTRACE2("freeing timers");
-	while (1) {
-		struct wrap_timer *wrap_timer;
-
-		irql = nt_spin_lock_irql(&timer_lock, DISPATCH_LEVEL);
-		cur = RemoveTailList(&wrap_timer_list);
-		nt_spin_unlock_irql(&timer_lock, irql);
-		if (!cur)
-			break;
-		wrap_timer = container_of(cur, struct wrap_timer, list);
-		if (del_timer_sync(&wrap_timer->timer))
-			WARNING("Buggy Windows driver left timer %p running",
-				&wrap_timer->timer);
-		memset(wrap_timer, 0, sizeof(*wrap_timer));
-		slack_kfree(wrap_timer);
-	}
-
-	DBGTRACE2("freeing MDLs");
-	if (mdl_cache) {
-		irql = nt_spin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL);
-		if (!IsListEmpty(&wrap_mdl_list))
-			ERROR("Windows driver didn't free all MDLs; "
-			      "freeing them now");
-		while ((cur = RemoveHeadList(&wrap_mdl_list))) {
-			struct wrap_mdl *wrap_mdl;
-			wrap_mdl = container_of(cur, struct wrap_mdl, list);
-			if (wrap_mdl->mdl->flags & MDL_CACHE_ALLOCATED)
-				kmem_cache_free(mdl_cache, wrap_mdl);
-			else
-				kfree(wrap_mdl);
-		}
-		nt_spin_unlock_irql(&ntoskernel_lock, irql);
-		kmem_cache_destroy(mdl_cache);
-		mdl_cache = NULL;
-	}
-
-	DBGTRACE2("freeing callbacks");
-	irql = nt_spin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL);
-	while ((cur = RemoveHeadList(&callback_objects))) {
-		struct callback_object *object;
-		struct nt_list *ent;
-		object = container_of(cur, struct callback_object, list);
-		while ((ent = RemoveHeadList(&object->callback_funcs))) {
-			struct callback_func *f;
-			f = container_of(ent, struct callback_func, list);
-			kfree(f);
-		}
-		kfree(object);
-	}
-	nt_spin_unlock_irql(&ntoskernel_lock, irql);
-
-	irql = nt_spin_lock_irql(&dispatcher_lock, DISPATCH_LEVEL);
-	DBGTRACE2("freeing thread event pool");
-	while (thread_event_waitq_pool) {
-		struct thread_event_waitq *next;
-		next = thread_event_waitq_pool->next;
-		kfree(thread_event_waitq_pool);
-		thread_event_waitq_pool = next;
-	}
-	nt_spin_unlock_irql(&dispatcher_lock, irql);
-
-	irql = nt_spin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL);
-	while ((cur = RemoveHeadList(&bus_driver_list))) {
-		struct bus_driver *bus_driver;
-		bus_driver = container_of(cur, struct bus_driver, list);
-		/* TODO: make sure all all drivers are shutdown/removed */
-		kfree(bus_driver);
-	}
-	nt_spin_unlock_irql(&ntoskernel_lock, irql);
-
-	TRACEENTER2("freeing objects");
-	irql = nt_spin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL);
-	while ((cur = RemoveHeadList(&object_list))) {
-		struct common_object_header *hdr;
-		hdr = container_of(cur, struct common_object_header, list);
-		WARNING("object %p type %d was not freed, freeing it now",
-			HEADER_TO_OBJECT(hdr), hdr->type);
-		ExFreePool(hdr);
-	}
-	nt_spin_unlock_irql(&ntoskernel_lock, irql);
-
-#if defined(CONFIG_X86_64)
-	del_timer_sync(&shared_data_timer);
-#endif
-#ifdef USE_OWN_NTOS_WORKQUEUE
-	if (ntos_wq)
-		destroy_workqueue(ntos_wq);
-#endif
-	TRACEEXIT2(return);
-}
-
-#if defined(CONFIG_X86_64)
-static void update_user_shared_data_proc(unsigned long data)
-{
-	/* timer is supposed to be scheduled every 10ms, but bigger
-	 * intervals seem to work (tried upto 50ms) */
-	*((ULONG64 *)&kuser_shared_data.system_time) = ticks_1601();
-	*((ULONG64 *)&kuser_shared_data.interrupt_time) =
-		jiffies * TICKSPERSEC / HZ;
-	*((ULONG64 *)&kuser_shared_data.tick) = jiffies;
-
-	shared_data_timer.expires += 30 * HZ / 1000 + 1;
-	add_timer(&shared_data_timer);
-}
-#endif
-
-void *allocate_object(ULONG size, enum common_object_type type,
-		      struct unicode_string *name)
-{
-	struct common_object_header *hdr;
-	void *body;
-	KIRQL irql;
-
-	/* we pad header as prefix to body */
-	hdr = ExAllocatePoolWithTag(NonPagedPool, OBJECT_SIZE(size), 0);
-	if (!hdr) {
-		WARNING("couldn't allocate memory");
-		return NULL;
-	}
-	memset(hdr, 0, OBJECT_SIZE(size));
-	if (name) {
-		hdr->name.buf = ExAllocatePoolWithTag(NonPagedPool,
-						      name->max_length, 0);
-		if (!hdr->name.buf) {
-			ExFreePool(hdr);
-			return NULL;
-		}
-		memcpy(hdr->name.buf, name->buf, name->max_length);
-		hdr->name.length = name->length;
-		hdr->name.max_length = name->max_length;
-	}
-	hdr->type = type;
-	hdr->ref_count = 1;
-	irql = nt_spin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL);
-	/* threads are looked up often (in KeWaitForXXX), so optimize
-	 * for fast lookups of threads */
-	if (type == OBJECT_TYPE_NT_THREAD)
-		InsertHeadList(&object_list, &hdr->list);
-	else
-		InsertTailList(&object_list, &hdr->list);
-	nt_spin_unlock_irql(&ntoskernel_lock, irql);
-	body = HEADER_TO_OBJECT(hdr);
-	DBGTRACE3("allocated hdr: %p, body: %p", hdr, body);
-	return body;
-}
-
-void free_object(void *object)
-{
-	struct common_object_header *hdr;
-	KIRQL irql;
-
-	hdr = OBJECT_TO_HEADER(object);
-	irql = nt_spin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL);
-	RemoveEntryList(&hdr->list);
-	nt_spin_unlock_irql(&ntoskernel_lock, irql);
-	DBGTRACE3("freed hdr: %p, body: %p", hdr, object);
-	if (hdr->name.buf)
-		ExFreePool(hdr->name.buf);
-	ExFreePool(hdr);
-}
-
-static int add_bus_driver(const char *name)
-{
-	struct bus_driver *bus_driver;
-	KIRQL irql;
-
-	bus_driver = kmalloc(sizeof(*bus_driver), GFP_KERNEL);
-	if (!bus_driver) {
-		ERROR("couldn't allocate memory");
-		return -ENOMEM;
-	}
-	memset(bus_driver, 0, sizeof(*bus_driver));
-	strncpy(bus_driver->name, name, sizeof(bus_driver->name));
-	bus_driver->name[sizeof(bus_driver->name)-1] = 0;
-	irql = nt_spin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL);
-	InsertTailList(&bus_driver_list, &bus_driver->list);
-	nt_spin_unlock_irql(&ntoskernel_lock, irql);
-	DBGTRACE1("bus driver %s is at %p", name, &bus_driver->drv_obj);
-	return STATUS_SUCCESS;
-}
-
-struct driver_object *find_bus_driver(const char *name)
-{
-	struct bus_driver *bus_driver;
-	struct driver_object *drv_obj;
-	KIRQL irql;
-
-	irql = nt_spin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL);
-	drv_obj = NULL;
-	nt_list_for_each_entry(bus_driver, &bus_driver_list, list) {
-		if (strcmp(bus_driver->name, name) == 0)
-			drv_obj = &bus_driver->drv_obj;
-	}
-	nt_spin_unlock_irql(&ntoskernel_lock, irql);
-	return drv_obj;
-}
-
-wfastcall struct nt_list *WIN_FUNC(ExfInterlockedInsertHeadList,3)
-	(struct nt_list *head, struct nt_list *entry, NT_SPIN_LOCK *lock)
-{
-	struct nt_list *first;
-	unsigned long flags;
-
-	TRACEENTER5("head = %p, entry = %p", head, entry);
-	nt_spin_lock_irqsave(lock, flags);
-	first = InsertHeadList(head, entry);
-	nt_spin_unlock_irqrestore(lock, flags);
-	DBGTRACE5("head = %p, old = %p", head, first);
-	return first;
-}
-
-wfastcall struct nt_list *WIN_FUNC(ExInterlockedInsertHeadList,3)
-	(struct nt_list *head, struct nt_list *entry, NT_SPIN_LOCK *lock)
-{
-	TRACEENTER5("%p", head);
-	return ExfInterlockedInsertHeadList(head, entry, lock);
-}
-
-wfastcall struct nt_list *WIN_FUNC(ExfInterlockedInsertTailList,3)
-	(struct nt_list *head, struct nt_list *entry, NT_SPIN_LOCK *lock)
-{
-	struct nt_list *last;
-	unsigned long flags;
-
-	TRACEENTER5("head = %p, entry = %p", head, entry);
-	nt_spin_lock_irqsave(lock, flags);
-	last = InsertTailList(head, entry);
-	nt_spin_unlock_irqrestore(lock, flags);
-	DBGTRACE5("head = %p, old = %p", head, last);
-	return last;
-}
-
-wfastcall struct nt_list *WIN_FUNC(ExInterlockedInsertTailList,3)
-	(struct nt_list *head, struct nt_list *entry, NT_SPIN_LOCK *lock)
-{
-	TRACEENTER5("%p", head);
-	return ExfInterlockedInsertTailList(head, entry, lock);
-}
-
-wfastcall struct nt_list *WIN_FUNC(ExfInterlockedRemoveHeadList,2)
-	(struct nt_list *head, NT_SPIN_LOCK *lock)
-{
-	struct nt_list *ret;
-	unsigned long flags;
-
-	TRACEENTER5("head = %p", head);
-	nt_spin_lock_irqsave(lock, flags);
-	ret = RemoveHeadList(head);
-	nt_spin_unlock_irqrestore(lock, flags);
-	DBGTRACE5("head = %p, ret = %p", head, ret);
-	return ret;
-}
-
-wfastcall struct nt_list *WIN_FUNC(ExInterlockedRemoveHeadList,2)
-	(struct nt_list *head, NT_SPIN_LOCK *lock)
-{
-	TRACEENTER5("%p", head);
-	return ExfInterlockedRemoveHeadList(head, lock);
-}
-
-wfastcall struct nt_list *WIN_FUNC(ExfInterlockedRemoveTailList,2)
-	(struct nt_list *head, NT_SPIN_LOCK *lock)
-{
-	struct nt_list *ret;
-	unsigned long flags;
-
-	TRACEENTER5("head = %p", head);
-	nt_spin_lock_irqsave(lock, flags);
-	ret = RemoveTailList(head);
-	nt_spin_unlock_irqrestore(lock, flags);
-	DBGTRACE5("head = %p, ret = %p", head, ret);
-	return ret;
-}
-
-wfastcall struct nt_list *WIN_FUNC(ExInterlockedRemoveTailList,2)
-	(struct nt_list *head, NT_SPIN_LOCK *lock)
-{
-	TRACEENTER5("%p", head);
-	return ExfInterlockedRemoveTailList(head, lock);
-}
-
-wfastcall struct nt_slist *WIN_FUNC(ExInterlockedPushEntrySList,3)
-	(nt_slist_header *head, struct nt_slist *entry, NT_SPIN_LOCK *lock)
-{
-	struct nt_slist *ret;
-
-	ret = PushEntrySList(head, entry, lock);
-	return ret;
-}
-
-wstdcall struct nt_slist *WIN_FUNC(ExpInterlockedPushEntrySList,2)
-	(nt_slist_header *head, struct nt_slist *entry)
-{
-	struct nt_slist *ret;
-
-	ret = PushEntrySList(head, entry, &ntoskernel_lock);
-	return ret;
-}
-
-wfastcall struct nt_slist *WIN_FUNC(InterlockedPushEntrySList,2)
-	(nt_slist_header *head, struct nt_slist *entry)
-{
-	struct nt_slist *ret;
-
-	ret = PushEntrySList(head, entry, &ntoskernel_lock);
-	return ret;
-}
-
-wfastcall struct nt_slist *WIN_FUNC(ExInterlockedPopEntrySList,2)
-	(nt_slist_header *head, NT_SPIN_LOCK *lock)
-{
-	struct nt_slist *ret;
-
-	ret = PopEntrySList(head, lock);
-	return ret;
-}
-
-wstdcall struct nt_slist *WIN_FUNC(ExpInterlockedPopEntrySList,1)
-	(nt_slist_header *head)
-{
-	struct nt_slist *ret;
-
-	ret = PopEntrySList(head, &ntoskernel_lock);
-	return ret;
-}
-
-wfastcall struct nt_slist *WIN_FUNC(InterlockedPopEntrySList,1)
-	(nt_slist_header *head)
-{
-	struct nt_slist *ret;
-
-	ret = PopEntrySList(head, &ntoskernel_lock);
-	return ret;
-}
-
-wstdcall USHORT WIN_FUNC(ExQueryDepthSList,1)
-	(nt_slist_header *head)
-{
-	USHORT depth;
-	TRACEENTER5("%p", head);
-	depth = head->depth;
-	DBGTRACE5("%d, %p", depth, head->next);
-	return depth;
-}
-
-wfastcall LONG WIN_FUNC(InterlockedIncrement,1)
-	(LONG volatile *val)
-{
-	return post_atomic_add(*val, 1);
-}
-
-wfastcall LONG WIN_FUNC(InterlockedDecrement,1)
-	(LONG volatile *val)
-{
-	return post_atomic_add(*val, -1);
-}
-
-wfastcall LONG WIN_FUNC(InterlockedExchange,2)
-	(LONG volatile *target, LONG val)
-{
-	return xchg(target, val);
-}
-
-wfastcall LONG WIN_FUNC(InterlockedCompareExchange,3)
-	(LONG volatile *dest, LONG new, LONG old)
-{
-	return cmpxchg(dest, old, new);
-}
-
-wfastcall void WIN_FUNC(ExInterlockedAddLargeStatistic,2)
-	(LARGE_INTEGER volatile *plint, ULONG n)
-{
-	unsigned long flags;
-	save_local_irq(flags);
-#ifdef CONFIG_X86_64
-	__asm__ __volatile__(
-		"\n"
-		LOCK_PREFIX "add %1, %0\n\t"
-		: "+m" (*plint)
-		: "r" (n));
-#else
-	__asm__ __volatile__(
-		"\n"
-		"1:\t"
-		"   movl %1, %%ebx\n\t"
-		"   movl %%edx, %%ecx\n\t"
-		"   addl %%eax, %%ebx\n\t"
-		"   adcl $0, %%ecx\n\t"
-		    LOCK_PREFIX "cmpxchg8b %0\n\t"
-		"   jnz 1b\n\t"
-		: "+m" (*plint)
-		: "m" (n), "A" (*plint)
-		: "ebx", "ecx");
-#endif
-	restore_local_irq(flags);
-}
-
-static void initialize_dh(struct dispatcher_header *dh, enum dh_type type,
-			  int state)
-{
-	memset(dh, 0, sizeof(*dh));
-	set_dh_type(dh, type);
-	dh->signal_state = state;
-	InitializeListHead(&dh->wait_blocks);
-}
-
-static void timer_proc(unsigned long data)
-{
-	struct wrap_timer *wrap_timer = (struct wrap_timer *)data;
-	struct nt_timer *nt_timer;
-	struct kdpc *kdpc;
-
-	nt_timer = wrap_timer->nt_timer;
-	TRACEENTER5("%p(%p), %lu", wrap_timer, nt_timer, jiffies);
-#ifdef TIMER_DEBUG
-	BUG_ON(wrap_timer->wrap_timer_magic != WRAP_TIMER_MAGIC);
-	BUG_ON(nt_timer->wrap_timer_magic != WRAP_TIMER_MAGIC);
-#endif
-	if (wrap_timer->repeat)
-		mod_timer(&wrap_timer->timer, jiffies + wrap_timer->repeat);
-	KeSetEvent((struct nt_event *)nt_timer, 0, FALSE);
-	kdpc = nt_timer->kdpc;
-	if (kdpc && kdpc->func) {
-#if 1
-		LIN2WIN4(kdpc->func, kdpc, kdpc->ctx, kdpc->arg1, kdpc->arg2);
-#else
-		queue_kdpc(kdpc);
-#endif
-	}
-	TRACEEXIT5(return);
-}
-
-void wrap_init_timer(struct nt_timer *nt_timer, enum timer_type type,
-		     struct kdpc *kdpc, struct ndis_miniport_block *nmb)
-{
-	struct wrap_timer *wrap_timer;
-	KIRQL irql;
-
-	/* TODO: if a timer is initialized more than once, we allocate
-	 * memory for wrap_timer more than once for the same nt_timer,
-	 * wasting memory. We can check if nt_timer->wrap_timer_magic is
-	 * set and not allocate, but it is not guaranteed always to be
-	 * safe */
-	TRACEENTER5("%p", nt_timer);
-	/* we allocate memory for wrap_timer behind driver's back and
-	 * there is no NDIS/DDK function where this memory can be
-	 * freed, so we use slack_kmalloc so it gets freed when driver
-	 * is unloaded */
-	wrap_timer = slack_kmalloc(sizeof(*wrap_timer));
-	if (!wrap_timer) {
-		ERROR("couldn't allocate memory for timer");
-		return;
-	}
-
-	memset(wrap_timer, 0, sizeof(*wrap_timer));
-	init_timer(&wrap_timer->timer);
-	wrap_timer->timer.data = (unsigned long)wrap_timer;
-	wrap_timer->timer.function = timer_proc;
-	wrap_timer->nt_timer = nt_timer;
-#ifdef TIMER_DEBUG
-	wrap_timer->wrap_timer_magic = WRAP_TIMER_MAGIC;
-#endif
-	nt_timer->wrap_timer = wrap_timer;
-	nt_timer->kdpc = kdpc;
-	initialize_dh(&nt_timer->dh, type, 0);
-	nt_timer->wrap_timer_magic = WRAP_TIMER_MAGIC;
-	irql = nt_spin_lock_irql(&timer_lock, DISPATCH_LEVEL);
-	if (nmb)
-		InsertTailList(&nmb->wnd->timer_list, &wrap_timer->list);
-	else
-		InsertTailList(&wrap_timer_list, &wrap_timer->list);
-	nt_spin_unlock_irql(&timer_lock, irql);
-	DBGTRACE5("timer %p (%p)", wrap_timer, nt_timer);
-	TRACEEXIT5(return);
-}
-
-wstdcall void WIN_FUNC(KeInitializeTimerEx,2)
-	(struct nt_timer *nt_timer, enum timer_type type)
-{
-	TRACEENTER5("%p", nt_timer);
-	wrap_init_timer(nt_timer, type, NULL, NULL);
-}
-
-wstdcall void WIN_FUNC(KeInitializeTimer,1)
-	(struct nt_timer *nt_timer)
-{
-	TRACEENTER5("%p", nt_timer);
-	wrap_init_timer(nt_timer, NotificationTimer, NULL, NULL);
-}
-
-/* expires and repeat are in HZ */
-BOOLEAN wrap_set_timer(struct nt_timer *nt_timer, unsigned long expires_hz,
-		       unsigned long repeat_hz, struct kdpc *kdpc)
-{
-	BOOLEAN ret;
-	struct wrap_timer *wrap_timer;
-
-	TRACEENTER4("%p, %lu, %lu, %p, %lu",
-		    nt_timer, expires_hz, repeat_hz, kdpc, jiffies);
-
-	KeClearEvent((struct nt_event *)nt_timer);
-	wrap_timer = nt_timer->wrap_timer;
-	DBGTRACE4("%p", wrap_timer);
-#ifdef TIMER_DEBUG
-	if (wrap_timer->nt_timer != nt_timer)
-		WARNING("bad timers: %p, %p, %p", wrap_timer, nt_timer,
-			wrap_timer->nt_timer);
-	if (nt_timer->wrap_timer_magic != WRAP_TIMER_MAGIC) {
-		WARNING("Buggy Windows timer didn't initialize timer %p",
-			nt_timer);
-		return FALSE;
-	}
-	if (wrap_timer->wrap_timer_magic != WRAP_TIMER_MAGIC) {
-		WARNING("timer %p is not initialized (%lx)?",
-			wrap_timer, wrap_timer->wrap_timer_magic);
-		wrap_timer->wrap_timer_magic = WRAP_TIMER_MAGIC;
-	}
-#endif
-	if (kdpc)
-		nt_timer->kdpc = kdpc;
-	wrap_timer->repeat = repeat_hz;
-	if (mod_timer(&wrap_timer->timer, jiffies + expires_hz))
-		ret = TRUE;
-	else
-		ret = FALSE;
-	DBGTRACE4("%d", ret);
-	TRACEEXIT5(return ret);
-}
-
-wstdcall BOOLEAN WIN_FUNC(KeSetTimerEx,4)
-	(struct nt_timer *nt_timer, LARGE_INTEGER duetime_ticks,
-	 LONG period_ms, struct kdpc *kdpc)
-{
-	unsigned long expires_hz, repeat_hz;
-
-	DBGTRACE5("%p, %Ld, %d", nt_timer, duetime_ticks, period_ms);
-	expires_hz = SYSTEM_TIME_TO_HZ(duetime_ticks) + 1;
-	repeat_hz = MSEC_TO_HZ(period_ms);
-	return wrap_set_timer(nt_timer, expires_hz, repeat_hz, kdpc);
-}
-
-wstdcall BOOLEAN WIN_FUNC(KeSetTimer,3)
-	(struct nt_timer *nt_timer, LARGE_INTEGER duetime_ticks,
-	 struct kdpc *kdpc)
-{
-	TRACEENTER5("%p, %Ld, %p", nt_timer, duetime_ticks, kdpc);
-	return KeSetTimerEx(nt_timer, duetime_ticks, 0, kdpc);
-}
-
-wstdcall BOOLEAN WIN_FUNC(KeCancelTimer,1)
-	(struct nt_timer *nt_timer)
-{
-	BOOLEAN canceled;
-	struct wrap_timer *wrap_timer;
-
-	TRACEENTER5("%p", nt_timer);
-	wrap_timer = nt_timer->wrap_timer;
-	if (!wrap_timer) {
-		ERROR("invalid wrap_timer");
-		return TRUE;
-	}
-#ifdef TIMER_DEBUG
-	DBGTRACE5("canceling timer %p", wrap_timer);
-	BUG_ON(wrap_timer->wrap_timer_magic != WRAP_TIMER_MAGIC);
-#endif
-	DBGTRACE5("deleting timer %p(%p)", wrap_timer, nt_timer);
-	/* disable timer before deleting so if it is periodic timer, it
-	 * won't be re-armed after deleting */
-	wrap_timer->repeat = 0;
-	if (del_timer(&wrap_timer->timer))
-		canceled = TRUE;
-	else
-		canceled = FALSE;
-	DBGTRACE5("canceled (%p): %d", wrap_timer, canceled);
-	TRACEEXIT5(return canceled);
-}
-
-wstdcall BOOLEAN WIN_FUNC(KeReadStateTimer,1)
-	(struct nt_timer *nt_timer)
-{
-	return nt_timer->dh.signal_state;
-}
-
-wstdcall void WIN_FUNC(KeInitializeDpc,3)
-	(struct kdpc *kdpc, void *func, void *ctx)
-{
-	TRACEENTER3("%p, %p, %p", kdpc, func, ctx);
-	memset(kdpc, 0, sizeof(*kdpc));
-	kdpc->func = func;
-	kdpc->ctx  = ctx;
-	InitializeListHead(&kdpc->list);
-}
-
-#ifdef KDPC_TASKLET
-static void kdpc_worker(unsigned long data)
-#else
-static void kdpc_worker(void *data)
-#endif
-{
-	struct nt_list *entry;
-	struct kdpc *kdpc;
-	KIRQL irql;
-
-	while (1) {
-		irql = nt_spin_lock_irql(&kdpc_list_lock, DISPATCH_LEVEL);
-		entry = RemoveHeadList(&kdpc_list);
-		if (!entry) {
-			nt_spin_unlock_irql(&kdpc_list_lock, irql);
-			break;
-		}
-		kdpc = container_of(entry, struct kdpc, list);
-		/* initialize kdpc's list so queue/dequeue know if it
-		 * is in the queue or not */
-		InitializeListHead(&kdpc->list);
-		/* irql will be lowered below */
-		nt_spin_unlock(&kdpc_list_lock);
-		DBGTRACE5("%p, %p, %p, %p, %p", kdpc, kdpc->func, kdpc->ctx,
-			  kdpc->arg1, kdpc->arg2);
-		LIN2WIN4(kdpc->func, kdpc, kdpc->ctx, kdpc->arg1, kdpc->arg2);
-		lower_irql(irql);
-	}
-}
-
-wstdcall void WIN_FUNC(KeFlushQueuedDpcs,0)
-	(void)
-{
-#ifdef KDPC_TASKLET
-	kdpc_worker(0);
-#else
-	kdpc_worker(NULL);
-#endif
-}
-
-static BOOLEAN queue_kdpc(struct kdpc *kdpc)
-{
-	BOOLEAN ret;
-	KIRQL irql;
-
-	TRACEENTER5("%p", kdpc);
-	irql = nt_spin_lock_irql(&kdpc_list_lock, DISPATCH_LEVEL);
-	if (IsListEmpty(&kdpc->list)) {
-		InsertTailList(&kdpc_list, &kdpc->list);
-#ifdef KDPC_TASKLET
-		tasklet_schedule(&kdpc_work);
-#else
-		schedule_ntos_work(&kdpc_work);
-#endif
-		ret = TRUE;
-	} else
-		ret = FALSE;
-	nt_spin_unlock_irql(&kdpc_list_lock, irql);
-	TRACEEXIT5(return ret);
-}
-
-static BOOLEAN dequeue_kdpc(struct kdpc *kdpc)
-{
-	BOOLEAN ret;
-	KIRQL irql;
-
-	TRACEENTER5("%p", kdpc);
-	irql = nt_spin_lock_irql(&kdpc_list_lock, DISPATCH_LEVEL);
-	if (IsListEmpty(&kdpc->list))
-		ret = FALSE;
-	else {
-		RemoveEntryList(&kdpc->list);
-		ret = TRUE;
-	}
-	nt_spin_unlock_irql(&kdpc_list_lock, irql);
-	return ret;
-}
-
-wstdcall BOOLEAN WIN_FUNC(KeInsertQueueDpc,3)
-	(struct kdpc *kdpc, void *arg1, void *arg2)
-{
-	BOOLEAN ret;
-
-	TRACEENTER5("%p, %p, %p", kdpc, arg1, arg2);
-	kdpc->arg1 = arg1;
-	kdpc->arg2 = arg2;
-	ret = queue_kdpc(kdpc);
-	TRACEEXIT5(return ret);
-}
-
-wstdcall BOOLEAN WIN_FUNC(KeRemoveQueueDpc,1)
-	(struct kdpc *kdpc)
-{
-	BOOLEAN ret;
-
-	TRACEENTER3("%p", kdpc);
-	ret = dequeue_kdpc(kdpc);
-	TRACEEXIT3(return ret);
-}
-
-static void ntos_work_item_worker(void *data)
-{
-	struct ntos_work_item *ntos_work_item;
-	struct nt_list *cur;
-	KIRQL irql;
-
-	while (1) {
-		irql = nt_spin_lock_irql(&ntos_work_item_list_lock,
-					 DISPATCH_LEVEL);
-		cur = RemoveHeadList(&ntos_work_item_list);
-		nt_spin_unlock_irql(&ntos_work_item_list_lock, irql);
-		if (!cur)
-			break;
-		ntos_work_item = container_of(cur, struct ntos_work_item, list);
-		WORKTRACE("%p: executing %p, %p, %p", current,
-			  ntos_work_item->func, ntos_work_item->arg1,
-			  ntos_work_item->arg2);
-		LIN2WIN2(ntos_work_item->func, ntos_work_item->arg1,
-			 ntos_work_item->arg2);
-		kfree(ntos_work_item);
-	}
+	unmap_kspin_lock(&ntoskrnl_lock);
 	return;
 }
 
-int schedule_ntos_work_item(NTOS_WORK_FUNC func, void *arg1, void *arg2)
-{
-	struct ntos_work_item *ntos_work_item;
-	unsigned long flags;
+WRAP_EXPORT_MAP("KeTickCount", &jiffies);
 
-	WORKENTER("adding work: %p, %p, %p", func, arg1, arg2);
-	ntos_work_item = kmalloc(sizeof(*ntos_work_item), gfp_irql());
-	if (!ntos_work_item) {
-		ERROR("couldn't allocate memory");
-		return -ENOMEM;
-	}
-	ntos_work_item->func = func;
-	ntos_work_item->arg1 = arg1;
-	ntos_work_item->arg2 = arg2;
-	nt_spin_lock_irqsave(&ntos_work_item_list_lock, flags);
-	InsertTailList(&ntos_work_item_list, &ntos_work_item->list);
-	nt_spin_unlock_irqrestore(&ntos_work_item_list_lock, flags);
-	schedule_ntos_work(&ntos_work_item_work);
-	WORKEXIT(return 0);
+STDCALL void WRAP_EXPORT(WRITE_REGISTER_ULONG)
+	(void *reg, UINT val)
+{
+	writel(val, reg);
 }
 
-wstdcall void WIN_FUNC(KeInitializeSpinLock,1)
-	(NT_SPIN_LOCK *lock)
+STDCALL void WRAP_EXPORT(WRITE_REGISTER_USHORT)
+	(void *reg, USHORT val)
 {
-	TRACEENTER6("%p", lock);
-	nt_spin_lock_init(lock);
+	writew(val, reg);
 }
 
-wstdcall void WIN_FUNC(KeAcquireSpinLock,2)
-	(NT_SPIN_LOCK *lock, KIRQL *irql)
+STDCALL void WRAP_EXPORT(WRITE_REGISTER_UCHAR)
+	(void *reg, UCHAR val)
 {
-	TRACEENTER6("%p", lock);
-	*irql = nt_spin_lock_irql(lock, DISPATCH_LEVEL);
+	writeb(val, reg);
 }
 
-wstdcall void WIN_FUNC(KeReleaseSpinLock,2)
-	(NT_SPIN_LOCK *lock, KIRQL oldirql)
+STDCALL void WRAP_EXPORT(KeInitializeTimer)
+	(struct ktimer *ktimer)
 {
-	TRACEENTER6("%p", lock);
-	nt_spin_unlock_irql(lock, oldirql);
+	TRACEENTER4("%p", ktimer);
+
+	wrapper_init_timer(ktimer, NULL);
+	ktimer->dispatch_header.signal_state = 0;
 }
 
-wstdcall void WIN_FUNC(KeAcquireSpinLockAtDpcLevel,1)
-	(NT_SPIN_LOCK *lock)
+STDCALL void WRAP_EXPORT(KeInitializeDpc)
+	(struct kdpc *kdpc, void *func, void *ctx)
 {
-	TRACEENTER6("%p", lock);
-	nt_spin_lock(lock);
+	TRACEENTER4("%p, %p, %p", kdpc, func, ctx);
+	init_dpc(kdpc, func, ctx);
 }
 
-wstdcall void WIN_FUNC(KeReleaseSpinLockFromDpcLevel,1)
-	(NT_SPIN_LOCK *lock)
+STDCALL BOOLEAN WRAP_EXPORT(KeSetTimerEx)
+	(struct ktimer *ktimer, LARGE_INTEGER due_time, LONG period,
+	 struct kdpc *kdpc)
 {
-	TRACEENTER6("%p", lock);
-	nt_spin_unlock(lock);
+	unsigned long expires;
+	unsigned long repeat;
+	unsigned int ms;
+
+	TRACEENTER4("%p, %ld, %u, %p", ktimer, (long)due_time, period, kdpc);
+
+	if (ktimer == NULL)
+		return 0;
+	if (due_time < 0)
+		ms = jiffies + HZ * (-due_time) / 10000;
+	else
+		ms = HZ * due_time / 10000;
+	repeat = HZ * (period / 1000);
+	expires = HZ * ms / 1000;
+	return wrapper_set_timer(ktimer->wrapper_timer, expires, repeat, kdpc);
 }
 
-wstdcall void WIN_FUNC(KeRaiseIrql,2)
-	(KIRQL newirql, KIRQL *oldirql)
+STDCALL BOOLEAN WRAP_EXPORT(KeSetTimer)
+	(struct ktimer *ktimer, LARGE_INTEGER due_time, struct kdpc *kdpc)
 {
-	TRACEENTER6("%d", newirql);
-	*oldirql = raise_irql(newirql);
+	TRACEENTER4("%p, %ld, %p", ktimer, (long)due_time, kdpc);
+	return KeSetTimerEx(ktimer, due_time, 0, kdpc);
 }
 
-wstdcall KIRQL WIN_FUNC(KeRaiseIrqlToDpcLevel,0)
+STDCALL BOOLEAN WRAP_EXPORT(KeCancelTimer)
+	(struct ktimer *ktimer)
+{
+	char canceled;
+
+	TRACEENTER4("%p", ktimer);
+	wrapper_cancel_timer(ktimer->wrapper_timer, &canceled);
+	return canceled;
+}
+
+STDCALL KIRQL WRAP_EXPORT(KeGetCurrentIrql)
 	(void)
 {
-	return raise_irql(DISPATCH_LEVEL);
+	if (in_atomic() || irqs_disabled())
+		return DISPATCH_LEVEL;
+	else
+		return PASSIVE_LEVEL;
 }
 
-wstdcall void WIN_FUNC(KeLowerIrql,1)
-	(KIRQL irql)
+STDCALL void WRAP_EXPORT(KeInitializeSpinLock)
+	(KSPIN_LOCK *lock)
 {
-	TRACEENTER6("%d", irql);
-	lower_irql(irql);
+	/* if already mapped, use that; otherwise, allocate and initialize */
+	if (!map_kspin_lock(lock))
+		ERROR("couldn't allocate/initialize spinlock");
 }
 
-wstdcall KIRQL WIN_FUNC(KeAcquireSpinLockRaiseToDpc,1)
-	(NT_SPIN_LOCK *lock)
+STDCALL void WRAP_EXPORT(KeAcquireSpinLock)
+	(KSPIN_LOCK *lock, KIRQL *irql)
 {
-	TRACEENTER6("%p", lock);
-	return nt_spin_lock_irql(lock, DISPATCH_LEVEL);
+	*irql = KfAcquireSpinLock(FASTCALL_ARGS_1(lock));
 }
 
-#undef ExAllocatePoolWithTag
+STDCALL void WRAP_EXPORT(KeReleaseSpinLock)
+	(KSPIN_LOCK *lock, KIRQL oldirql)
+{
+	KfReleaseSpinLock(FASTCALL_ARGS_2(lock, oldirql));
+}
 
-wstdcall void *WIN_FUNC(ExAllocatePoolWithTag,3)
+STDCALL void WRAP_EXPORT(KeAcquireSpinLockAtDpcLevel)
+	(KSPIN_LOCK *lock)
+{
+	KfAcquireSpinLock(FASTCALL_ARGS_1(lock));
+}
+
+STDCALL KIRQL WRAP_EXPORT(KeAcquireSpinLockRaiseToDpc)
+        (KSPIN_LOCK *lock)
+{
+        return KfAcquireSpinLock(FASTCALL_ARGS_1(lock));
+}
+
+STDCALL void WRAP_EXPORT(KeReleaseSpinLockFromDpcLevel)
+	(KSPIN_LOCK *lock)
+{
+	KefReleaseSpinLockFromDpcLevel(FASTCALL_ARGS_1(lock));
+}
+
+_FASTCALL struct slist_entry *WRAP_EXPORT(ExInterlockedPushEntrySList)
+	(FASTCALL_DECL_3(union slist_head *head,struct slist_entry *entry, 
+			 KSPIN_LOCK *lock))
+{
+	struct slist_entry *oldhead;
+	KIRQL irql;
+
+	TRACEENTER3("head = %p, entry = %p", head, entry);
+
+	KeAcquireSpinLock(lock, &irql);
+	oldhead = head->list.next;
+	entry->next = head->list.next;
+	head->list.next = entry;
+	head->list.depth++;
+	KeReleaseSpinLock(lock, irql);
+	DBGTRACE3("head = %p, oldhead = %p", head, oldhead);
+	return(oldhead);
+}
+
+_FASTCALL struct slist_entry *WRAP_EXPORT(ExpInterlockedPushEntrySList)
+	(FASTCALL_DECL_3(union slist_head *head, struct slist_entry *entry, 
+			 KSPIN_LOCK *lock))
+{
+	return ExInterlockedPushEntrySList(FASTCALL_ARGS_3(head, entry, lock));
+}
+
+_FASTCALL struct slist_entry *WRAP_EXPORT(InterlockedPushEntrySList)
+	(FASTCALL_DECL_2(union slist_head *head, struct slist_entry *entry))
+{
+	return ExInterlockedPushEntrySList(FASTCALL_ARGS_3(head, entry,
+							   &ntoskrnl_lock));
+}
+
+_FASTCALL struct slist_entry * WRAP_EXPORT(ExInterlockedPopEntrySList)
+	(FASTCALL_DECL_2(union slist_head *head, KSPIN_LOCK *lock))
+{
+	struct slist_entry *first;
+	KIRQL irql;
+
+	TRACEENTER3("head = %p", head);
+
+	KeAcquireSpinLock(lock, &irql);
+	first = NULL;
+	if (head) {
+		first = head->list.next;
+		if (first) {
+			head->list.next = first->next;
+			head->list.depth--;
+		}
+	}
+	KeReleaseSpinLock(lock, irql);
+	DBGTRACE3("returning %p", first);
+	return first;
+}
+
+_FASTCALL struct slist_entry * WRAP_EXPORT(ExpInterlockedPopEntrySList)
+	(FASTCALL_DECL_2(union slist_head *head, KSPIN_LOCK *lock))
+{
+	return ExInterlockedPopEntrySList(FASTCALL_ARGS_2(head, lock));
+}
+
+_FASTCALL struct slist_entry * WRAP_EXPORT(InterlockedPopEntrySList)
+	(FASTCALL_DECL_1(union slist_head *head))
+{
+	return ExInterlockedPopEntrySList(FASTCALL_ARGS_2(head,
+							  &ntoskrnl_lock));
+
+}
+
+_FASTCALL struct list_entry *WRAP_EXPORT(ExfInterlockedInsertTailList)
+	(FASTCALL_DECL_3(struct list_entry *head, struct list_entry *entry, 
+			 KSPIN_LOCK *lock))
+{
+	struct list_entry *oldhead;
+	KIRQL irql;
+
+	TRACEENTER3("head = %p", head);
+
+	KeAcquireSpinLock(lock, &irql);
+	if (head == NULL)
+		oldhead = NULL;
+	else
+		oldhead = head->bwd_link;
+
+	entry->fwd_link = head;
+	entry->bwd_link = head->bwd_link;
+	head->bwd_link->fwd_link = entry;
+	head->bwd_link = entry;
+	KeReleaseSpinLock(lock, irql);
+	DBGTRACE3("head = %p, oldhead = %p", head, oldhead);
+	return(oldhead);
+}
+
+_FASTCALL struct list_entry *WRAP_EXPORT(ExfInterlockedRemoveHeadList)
+	(FASTCALL_DECL_2(struct list_entry *head, KSPIN_LOCK *lock))
+{
+	struct list_entry *entry, *tmp;
+	KIRQL irql;
+
+	TRACEENTER3("head = %p", head);
+
+	KeAcquireSpinLock(lock, &irql);
+	if (head == NULL)
+		TRACEEXIT3(return NULL);
+	
+	entry = head->fwd_link;
+	if (entry == NULL || entry->bwd_link == NULL ||
+	    entry->fwd_link == NULL ||
+	    entry->bwd_link->fwd_link != entry ||
+	    entry->fwd_link->bwd_link != entry) {
+		ERROR("illegal list_entry %p", entry);
+		TRACEEXIT3(return NULL);
+	}
+
+	tmp = entry->bwd_link;
+	entry->fwd_link->bwd_link = entry->bwd_link;
+	tmp->fwd_link = entry->fwd_link;
+
+	entry->fwd_link = NULL;
+	entry->bwd_link = NULL;
+	KeReleaseSpinLock(lock, irql);
+	DBGTRACE3("head = %p", head);
+	TRACEEXIT3(return entry);
+}
+
+_FASTCALL USHORT WRAP_EXPORT(ExQueryDepthSList)
+	(union slist_head *head)
+{
+	return head->list.depth;
+}
+
+STDCALL void *WRAP_EXPORT(ExAllocatePoolWithTag)
 	(enum pool_type pool_type, SIZE_T size, ULONG tag)
 {
-	void *addr;
+	void *ret;
 
-	TRACEENTER4("pool_type: %d, size: %lu, tag: %u", pool_type,
-		    size, tag);
-	if (size <= KMALLOC_THRESHOLD)
-		addr = kmalloc(size, gfp_irql());
-	else {
-		if (current_irql() < DISPATCH_LEVEL)
-			addr = vmalloc(size);
-		else
-			addr = __vmalloc(size, GFP_ATOMIC | __GFP_HIGHMEM,
-					 PAGE_KERNEL);
-	}
-	DBGTRACE4("addr: %p, %lu", addr, size);
-	TRACEEXIT4(return addr);
+	TRACEENTER1("pool_type: %d, size: %lu, tag: %u", pool_type,
+		    (unsigned long)size, tag);
+
+	/* FIXME: should this function allocate using kmem_cache/mem_pool
+	   instead? */
+	
+	if (KeGetCurrentIrql() == DISPATCH_LEVEL)
+		ret = kmalloc(size, GFP_ATOMIC);
+	else
+		ret = kmalloc(size, GFP_KERNEL);
+			
+	DBGTRACE2("return value = %p", ret);
+	return ret;
 }
-WIN_FUNC_DECL(ExAllocatePoolWithTag,3)
 
-wstdcall void vfree_nonatomic(void *addr, void *ctx)
+STDCALL void WRAP_EXPORT(ExFreePool)
+	(void *p)
 {
-	vfree(addr);
-}
-WIN_FUNC_DECL(vfree_nonatomic,2)
-
-wstdcall void WIN_FUNC(ExFreePoolWithTag,2)
-	(void *addr, ULONG tag)
-{
-	DBGTRACE4("addr: %p", addr);
-	if ((unsigned long)addr < VMALLOC_START ||
-	    (unsigned long)addr >= VMALLOC_END)
-		kfree(addr);
-	else {
-		if (in_interrupt())
-			schedule_ntos_work_item(WIN_FUNC_PTR(vfree_nonatomic,2),
-						addr, NULL);
-		else
-			vfree(addr);
-	}
-	TRACEEXIT4(return);
+	TRACEENTER2("%p", p);
+	kfree(p);
+	TRACEEXIT2(return);
 }
 
-wstdcall void WIN_FUNC(ExFreePool,1)
-	(void *addr)
-{
-	ExFreePoolWithTag(addr, 0);
-}
-WIN_FUNC_DECL(ExFreePool,1)
-
-wstdcall void WIN_FUNC(ExInitializeNPagedLookasideList,7)
+STDCALL void WRAP_EXPORT(ExInitializeNPagedLookasideList)
 	(struct npaged_lookaside_list *lookaside,
 	 LOOKASIDE_ALLOC_FUNC *alloc_func, LOOKASIDE_FREE_FUNC *free_func,
 	 ULONG flags, SIZE_T size, ULONG tag, USHORT depth)
 {
-	TRACEENTER3("lookaside: %p, size: %lu, flags: %u, head: %p, "
-		    "alloc: %p, free: %p", lookaside, size, flags,
-		    lookaside, alloc_func, free_func);
+	TRACEENTER3("lookaside: %p, size: %lu, flags: %u,"
+		    " head: %p, size of lookaside: %lu\n",
+		    lookaside, (unsigned long)size, flags,
+		    lookaside->head.list.next,
+		    (unsigned long)sizeof(struct npaged_lookaside_list));
 
 	memset(lookaside, 0, sizeof(*lookaside));
 
@@ -1071,1576 +336,1086 @@ wstdcall void WIN_FUNC(ExInitializeNPagedLookasideList,7)
 	lookaside->tag = tag;
 	lookaside->depth = 4;
 	lookaside->maxdepth = 256;
-	lookaside->pool_type = NonPagedPool;
 
 	if (alloc_func)
 		lookaside->alloc_func = alloc_func;
 	else
-		lookaside->alloc_func = WIN_FUNC_PTR(ExAllocatePoolWithTag,3);
+		lookaside->alloc_func = ExAllocatePoolWithTag;
 	if (free_func)
 		lookaside->free_func = free_func;
 	else
-		lookaside->free_func = WIN_FUNC_PTR(ExFreePool,1);
+		lookaside->free_func = ExFreePool;
 
-#ifndef CONFIG_X86_64
-	nt_spin_lock_init(&lookaside->obsolete);
-#endif
+	KeInitializeSpinLock(&lookaside->obsolete);
 	TRACEEXIT3(return);
 }
 
-wstdcall void WIN_FUNC(ExDeleteNPagedLookasideList,1)
+STDCALL void WRAP_EXPORT(ExDeleteNPagedLookasideList)
 	(struct npaged_lookaside_list *lookaside)
 {
-	struct nt_slist *entry;
+	struct slist_entry *entry, *p;
 
 	TRACEENTER3("lookaside = %p", lookaside);
-	while ((entry = ExpInterlockedPopEntrySList(&lookaside->head)))
-		LIN2WIN1(lookaside->free_func, entry);
-	TRACEEXIT3(return);
+	entry = lookaside->head.list.next;
+	while (entry) {
+		p = entry;
+		entry = entry->next;
+		lookaside->free_func(p);
+	}
+	TRACEEXIT4(return);
 }
 
-#if defined(ALLOC_DEBUG) && ALLOC_DEBUG > 1
-#define ExAllocatePoolWithTag(pool_type, size, tag)			\
-	wrap_ExAllocatePoolWithTag(pool_type, size, tag, __FILE__, __LINE__)
-#endif
-
-wstdcall NTSTATUS WIN_FUNC(ExCreateCallback,4)
-	(struct callback_object **object, struct object_attributes *attributes,
-	 BOOLEAN create, BOOLEAN allow_multiple_callbacks)
+_FASTCALL void WRAP_EXPORT(ExInterlockedAddLargeStatistic)
+	(FASTCALL_DECL_2(LARGE_INTEGER *plint, ULONG n))
 {
-	struct callback_object *obj;
-	KIRQL irql;
+	unsigned long flags;
+	TRACEENTER3("Stat %p = %llu, n = %u", plint, *plint, n);
+	wrap_spin_lock_irqsave(map_kspin_lock(&ntoskrnl_lock), flags);
+	*plint += n;
+	wrap_spin_unlock_irqrestore(map_kspin_lock(&ntoskrnl_lock), flags);
+}
 
-	TRACEENTER2("");
-	irql = nt_spin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL);
-	nt_list_for_each_entry(obj, &callback_objects, callback_funcs) {
-		if (obj->attributes == attributes) {
-			nt_spin_unlock_irql(&ntoskernel_lock, irql);
-			*object = obj;
-			return STATUS_SUCCESS;
+STDCALL void *WRAP_EXPORT(MmMapIoSpace)
+	(PHYSICAL_ADDRESS phys_addr, SIZE_T size,
+	 enum memory_caching_type cache)
+{
+	void *virt;
+	if (cache)
+		virt = ioremap(phys_addr, size);
+	else
+		virt = ioremap_nocache(phys_addr, size);
+	DBGTRACE3("%Lx, %lu, %d: %p", phys_addr, (unsigned long)size,
+		  cache, virt);
+	return virt;
+}
+
+STDCALL void WRAP_EXPORT(MmUnmapIoSpace)
+	(void *addr, SIZE_T size)
+{
+	TRACEENTER3("%p, %lu", addr, (unsigned long)size);
+	iounmap(addr);
+	return;
+}
+
+STDCALL int WRAP_EXPORT(IoIsWdmVersionAvailable)
+	(UCHAR major, UCHAR minor)
+{
+	TRACEENTER3("%d, %d", major, minor);
+	if (major == 1 &&
+	    (minor == 0x30 || // Windows 2003
+	     minor == 0x20 || // Windows XP
+	     minor == 0x10)) // Windows 2000
+		return 1;
+	return 0;
+}
+
+STDCALL void WRAP_EXPORT(KeInitializeEvent)
+	(struct kevent *kevent, enum event_type type, BOOLEAN state)
+{
+	TRACEENTER3("event = %p, type = %d, state = %d",
+		    kevent, type, state);
+	wrap_spin_lock(&dispatch_event_lock, PASSIVE_LEVEL);
+	kevent->header.type = type;
+	kevent->header.signal_state = state;
+	kevent->header.inserted = 0;
+	wrap_spin_unlock(&dispatch_event_lock);
+}
+
+STDCALL LONG WRAP_EXPORT(KeSetEvent)
+	(struct kevent *kevent, KPRIORITY incr, BOOLEAN wait)
+{
+	LONG old_state = kevent->header.signal_state;
+
+	TRACEENTER3("event = %p, type = %d, wait = %d",
+		    kevent, kevent->header.type, wait);
+	if (wait == TRUE)
+		WARNING("wait = %d, not yet implemented", wait);
+
+	wrap_spin_lock(&dispatch_event_lock, PASSIVE_LEVEL);
+	kevent->header.signal_state = TRUE;
+	kevent->header.absolute = TRUE;
+	global_signal_state = TRUE;
+	if (kevent->header.type == SynchronizationEvent)
+		wake_up_nr(&dispatch_event_wq, 1);
+	else
+		wake_up_all(&dispatch_event_wq);
+//	global_signal_state = FALSE;
+	DBGTRACE3("woken up %p", kevent);
+	wrap_spin_unlock(&dispatch_event_lock);
+	TRACEEXIT3(return old_state);
+}
+
+STDCALL void WRAP_EXPORT(KeClearEvent)
+	(struct kevent *kevent)
+{
+	TRACEENTER3("event = %p", kevent);
+	kevent->header.signal_state = FALSE;
+	kevent->header.absolute = FALSE;
+	global_signal_state = FALSE;
+}
+
+STDCALL LONG WRAP_EXPORT(KeResetEvent)
+	(struct kevent *kevent)
+{
+	LONG old_state;
+
+	TRACEENTER3("event = %p", kevent);
+
+	old_state = kevent->header.signal_state;
+	kevent->header.signal_state = FALSE;
+	kevent->header.absolute = FALSE;
+	/* FIXME: should we reset global signal state? */
+	global_signal_state = FALSE;
+
+	TRACEEXIT3(return old_state);
+}
+
+STDCALL NT_STATUS WRAP_EXPORT(KeWaitForSingleObject)
+	(void *object, KWAIT_REASON reason, KPROCESSOR_MODE waitmode,
+	 BOOLEAN alertable, LARGE_INTEGER *timeout)
+{
+	struct kevent *kevent = (struct kevent *)object;
+	struct dispatch_header *header = &kevent->header;
+	int res;
+	long wait_jiffies;
+
+	/* Note: for now, object can only point to an event */
+	TRACEENTER2("event = %p, reason = %u, waitmode = %u, alertable = %u,"
+		" timeout = %p", kevent, reason, waitmode, alertable,
+		timeout);
+
+	DBGTRACE2("object type = %d, size = %d", header->type, header->size);
+
+	if (header->size == NT_OBJ_MUTEX) {
+		struct kmutex *kmutex = (struct kmutex *)object;
+		if (kmutex->owner_thread == NULL ||
+		    kmutex->owner_thread == get_current()) {
+			header->signal_state = FALSE;
+			kmutex->u.count++;
+			kmutex->owner_thread = get_current();
+			TRACEEXIT1(return STATUS_SUCCESS);
+		}
+	} else if (header->signal_state == TRUE) {
+		if (header->type == SynchronizationEvent)
+			header->signal_state = FALSE;
+ 		TRACEEXIT3(return STATUS_SUCCESS);
+	}
+
+	if (timeout) {
+		DBGTRACE2("timeout = %Ld", *timeout);
+		if (*timeout == 0)
+			TRACEEXIT2(return STATUS_TIMEOUT);
+		else if (*timeout > 0) {
+			long d = (*timeout) - ticks_1601();
+			/* many drivers call this function with much
+			 * smaller numbers that suggest either drivers
+			 * are broken or explanation for this is
+			 * wrong */
+			if (d > 0)
+				wait_jiffies = HZ * d / 10000000;
+			else
+				wait_jiffies = 0;
+		} else
+			wait_jiffies = HZ * (-(*timeout)) / 10000000;
+	} else
+		wait_jiffies = 0;
+
+	header->inserted++;
+	if (wait_jiffies == 0) {
+		if (alertable)
+			res = wait_event_interruptible(
+				dispatch_event_wq,
+				(header->signal_state == TRUE));
+		else {
+			wait_event(dispatch_event_wq,
+				   (header->signal_state == TRUE));
+			res = 1;
+		}
+	} else {
+		if (alertable)
+			res = wait_event_interruptible_timeout(
+				dispatch_event_wq,
+				(header->signal_state == TRUE), wait_jiffies);
+		else
+			res = wait_event_timeout(
+				dispatch_event_wq,
+				(header->signal_state == TRUE), wait_jiffies);
+	}
+
+	header->inserted--;
+	/* check if it is last event in case of notification event */
+	if (header->inserted == 0)
+		header->signal_state = FALSE;
+
+	DBGTRACE3("%p, type = %d woke up (%d), res = %d",
+		  kevent, header->type, header->signal_state, res);
+	if (res < 0)
+		TRACEEXIT2(return STATUS_ALERTED);
+
+	if (res == 0)
+		TRACEEXIT2(return STATUS_TIMEOUT);
+
+	/* res > 0 */
+	if (header->size == NT_OBJ_MUTEX) {
+		struct kmutex *kmutex = (struct kmutex *)object;
+		if (kmutex->owner_thread == NULL) {
+			kmutex->owner_thread = get_current();
+			kmutex->u.count++;
 		}
 	}
-	nt_spin_unlock_irql(&ntoskernel_lock, irql);
-	obj = allocate_object(sizeof(struct callback_object),
-			      OBJECT_TYPE_CALLBACK, NULL);
-	if (!obj)
-		TRACEEXIT2(return STATUS_INSUFFICIENT_RESOURCES);
-	InitializeListHead(&obj->callback_funcs);
-	nt_spin_lock_init(&obj->lock);
-	obj->allow_multiple_callbacks = allow_multiple_callbacks;
-	obj->attributes = attributes;
-	*object = obj;
+	if (header->type == SynchronizationEvent)
+		header->signal_state = FALSE;
+
 	TRACEEXIT2(return STATUS_SUCCESS);
 }
 
-wstdcall void *WIN_FUNC(ExRegisterCallback,3)
-	(struct callback_object *object, PCALLBACK_FUNCTION func, void *context)
-{
-	struct callback_func *callback;
-	KIRQL irql;
-
-	TRACEENTER2("");
-	irql = nt_spin_lock_irql(&object->lock, DISPATCH_LEVEL);
-	if (object->allow_multiple_callbacks == FALSE &&
-	    !IsListEmpty(&object->callback_funcs)) {
-		nt_spin_unlock_irql(&object->lock, irql);
-		TRACEEXIT2(return NULL);
-	}
-	nt_spin_unlock_irql(&ntoskernel_lock, irql);
-	callback = kmalloc(sizeof(*callback), GFP_KERNEL);
-	if (!callback) {
-		ERROR("couldn't allocate memory");
-		return NULL;
-	}
-	callback->func = func;
-	callback->context = context;
-	callback->object = object;
-	irql = nt_spin_lock_irql(&object->lock, DISPATCH_LEVEL);
-	InsertTailList(&object->callback_funcs, &callback->list);
-	nt_spin_unlock_irql(&object->lock, irql);
-	TRACEEXIT2(return callback);
-}
-
-wstdcall void WIN_FUNC(ExUnregisterCallback,1)
-	(struct callback_func *callback)
-{
-	struct callback_object *object;
-	KIRQL irql;
-
-	TRACEENTER3("%p", callback);
-	if (!callback)
-		return;
-	object = callback->object;
-	irql = nt_spin_lock_irql(&object->lock, DISPATCH_LEVEL);
-	RemoveEntryList(&callback->list);
-	nt_spin_unlock_irql(&object->lock, irql);
-	kfree(callback);
-	return;
-}
-
-wstdcall void WIN_FUNC(ExNotifyCallback,3)
-	(struct callback_object *object, void *arg1, void *arg2)
-{
-	struct callback_func *callback;
-	KIRQL irql;
-
-	TRACEENTER3("%p", object);
-	irql = nt_spin_lock_irql(&object->lock, DISPATCH_LEVEL);
-	nt_list_for_each_entry(callback, &object->callback_funcs, list){
-		LIN2WIN3(callback->func, callback->context, arg1, arg2);
-	}
-	nt_spin_unlock_irql(&object->lock, irql);
-	return;
-}
-
-/* check and set signaled state; should be called with dispatcher_lock held */
-/* @grab indicates if the event should be put in not-signaled state
- * - note that a semaphore may stay in signaled state for multiple
- * 'grabs' if the count is > 1 */
-static int check_grab_signaled_state(struct dispatcher_header *dh,
-				     struct task_struct *thread, int grab)
-{
-	EVENTTRACE("%p, %p, %d, %d", dh, thread, grab, dh->signal_state);
-	if (is_mutex_dh(dh)) {
-		struct nt_mutex *nt_mutex;
-		/* either no thread owns the mutex or this thread owns
-		 * it */
-		nt_mutex = container_of(dh, struct nt_mutex, dh);
-		EVENTTRACE("%p, %p", nt_mutex, nt_mutex->owner_thread);
-		assert(dh->signal_state <= 1);
-		assert(nt_mutex->owner_thread == NULL &&
-		       dh->signal_state == 1);
-		if (dh->signal_state > 0 || nt_mutex->owner_thread == thread) {
-			if (grab) {
-				dh->signal_state--;
-				nt_mutex->owner_thread = thread;
-			}
-			EVENTEXIT(return 1);
-		}
-	} else if (dh->signal_state > 0) {
-		/* if grab, decrement signal_state for
-		 * synchronization or semaphore objects */
-		if (grab && (dh->type == SynchronizationObject ||
-			     is_semaphore_dh(dh)))
-			dh->signal_state--;
-		EVENTEXIT(return 1);
-	}
-	EVENTEXIT(return 0);
-}
-
-/* this function should be called holding dispatcher_lock spinlock at
- * DISPATCH_LEVEL */
-static void wakeup_threads(struct dispatcher_header *dh)
-{
-	struct nt_list *cur, *next;
-	struct wait_block *wb = NULL;
-
-	EVENTENTER("%p", dh);
-	nt_list_for_each_safe(cur, next, &dh->wait_blocks) {
-		wb = container_of(cur, struct wait_block, list);
-		EVENTTRACE("%p: wait block: %p, thread: %p",
-			   dh, wb, wb->thread);
-		assert(wb->thread != NULL);
-		assert(wb->object == NULL);
-		if (wb->thread &&
-		    check_grab_signaled_state(dh, wb->thread, 1)) {
-			struct thread_event_waitq *thread_waitq =
-				wb->thread_waitq;
-			EVENTTRACE("%p: waking up task %p for %p", thread_waitq,
-				   wb->thread, dh);
-			RemoveEntryList(&wb->list);
-			wb->object = dh;
-			thread_waitq->done = 1;
-			wake_up(&thread_waitq->head);
-			if (dh->type == SynchronizationObject)
-				break;
-		} else
-			EVENTTRACE("not waking up task: %p", wb->thread);
-	}
-	EVENTEXIT(return);
-}
-
-/* We need workqueue to implement KeWaitFor routines
- * below. (get/put)_thread_event_wait give/take back a workqueue. Both
- * these are called holding dispatcher spinlock, so no locking here */
-static inline struct thread_event_waitq *get_thread_event_waitq(void)
-{
-	struct thread_event_waitq *thread_event_waitq;
-
-	if (thread_event_waitq_pool) {
-		thread_event_waitq = thread_event_waitq_pool;
-		thread_event_waitq_pool = thread_event_waitq_pool->next;
-	} else {
-		thread_event_waitq = kmalloc(sizeof(*thread_event_waitq),
-					     GFP_ATOMIC);
-		if (!thread_event_waitq) {
-			WARNING("couldn't allocate memory");
-			return NULL;
-		}
-		EVENTTRACE("allocated wq: %p", thread_event_waitq);
-		init_waitqueue_head(&thread_event_waitq->head);
-	}
-#ifdef EVENT_DEBUG
-	thread_event_waitq->task = current;
-#endif
-	EVENTTRACE("%p, %p, %p", thread_event_waitq, current,
-		   thread_event_waitq_pool);
-	thread_event_waitq->done = 0;
-	return thread_event_waitq;
-}
-
-static void put_thread_event_waitq(struct thread_event_waitq *thread_event_waitq)
-{
-	EVENTENTER("%p, %p", thread_event_waitq, current);
-#ifdef EVENT_DEBUG
-	if (thread_event_waitq->task != current)
-		ERROR("argh, task %p should be %p",
-		      current, thread_event_waitq->task);
-	thread_event_waitq->task = NULL;
-#endif
-	thread_event_waitq->next = thread_event_waitq_pool;
-	thread_event_waitq_pool = thread_event_waitq;
-	thread_event_waitq->done = 0;
-}
-
-wstdcall NTSTATUS WIN_FUNC(KeWaitForMultipleObjects,8)
+/* implementation of this function is more for decorative purpose!
+ * not tested at all. notification events are not handled properly as
+ * yet
+ */
+STDCALL NT_STATUS WRAP_EXPORT(KeWaitForMultipleObjects)
 	(ULONG count, void *object[], enum wait_type wait_type,
-	 KWAIT_REASON wait_reason, KPROCESSOR_MODE wait_mode,
+	 KWAIT_REASON wait_reason, KPROCESSOR_MODE waitmode,
 	 BOOLEAN alertable, LARGE_INTEGER *timeout,
-	 struct wait_block *wait_block_array)
+	 struct wait_block *wait_block)
 {
-	int i, res = 0, wait_count;
-	long wait_jiffies = 0;
-	struct wait_block *wb, wb_array[THREAD_WAIT_OBJECTS];
-	struct dispatcher_header *dh;
-	struct task_struct *thread;
-	struct thread_event_waitq *thread_waitq;
-	KIRQL irql;
+	struct kevent *kevent = NULL;
+	struct kmutex *kmutex;
+	unsigned long wait_ms;
+	long wait_jiffies;
+	int i, sat_index = 0, wait_count;
+	int res = 0;
 
-	thread = current;
-	EVENTENTER("thread: %p count: %d, type: %d, reason: %u, "
-		   "waitmode: %u, alertable: %u, timeout: %p, irql: %d",
-		   thread, count, wait_type, wait_reason, wait_mode, alertable,
-		   timeout, current_irql());
+	/* FIXME: Do all objects have same dispatch header? If so,
+	 * signal_state of any object can be used to wait and wakeup;
+	 * otherwise, we need a global signal state; then we check
+	 * which objects have been signaled */
 
-	if (count > MAX_WAIT_OBJECTS)
-		EVENTEXIT(return STATUS_INVALID_PARAMETER);
-	if (count > THREAD_WAIT_OBJECTS && wait_block_array == NULL)
-		EVENTEXIT(return STATUS_INVALID_PARAMETER);
+	/* Note: for now, object can only point to an event */
+	TRACEENTER2("reason = %u, waitmode = %u, alertable = %u,"
+		" timeout = %p", wait_reason, waitmode, alertable,
+		timeout);
 
-	if (wait_block_array == NULL)
-		wb = &wb_array[0];
-	else
-		wb = wait_block_array;
+	if (count > MAX_WAIT_OBJECTS ||
+	    (count > THREAD_WAIT_OBJECTS && wait_block == NULL))
+		TRACEEXIT3(return STATUS_INVALID_PARAMETER);
 
-	/* TODO: should we allow threads to wait in non-alertable state? */
-	alertable = TRUE;
-	irql = nt_spin_lock_irql(&dispatcher_lock, DISPATCH_LEVEL);
-	/* If *timeout == 0: In the case of WaitAny, if an object can
-	 * be grabbed (object is in signaled state), grab and
-	 * return. In the case of WaitAll, we have to first make sure
-	 * all objects can be grabbed. If any/some of them can't be
-	 * grabbed, either we return STATUS_TIMEOUT or wait for them,
-	 * depending on how to satisfy wait. If all of them can be
-	 * grabbed, we will grab them in the next loop below */
-
-	for (i = wait_count = 0; i < count; i++) {
-		dh = object[i];
-		EVENTTRACE("%p: event %p state: %d",
-			   thread, dh, dh->signal_state);
-		/* wait_type == 1 for WaitAny, 0 for WaitAll */
-		if (check_grab_signaled_state(dh, thread, wait_type)) {
-			if (wait_type == WaitAny) {
-				nt_spin_unlock_irql(&dispatcher_lock, irql);
-				if (count > 1)
-					EVENTEXIT(return STATUS_WAIT_0 + i);
-				else
-					EVENTEXIT(return STATUS_SUCCESS);
+	for (i = 0, wait_count = 0; i < count; i++) {
+		kevent = (struct kevent *)object[i];
+		if (kevent->header.type == NT_OBJ_MUTEX) {
+			kmutex = (struct kmutex *)kevent;
+			if (kmutex->owner_thread == NULL ||
+			    kmutex->owner_thread == get_current()) {
+				kmutex->dispatch_header.signal_state = FALSE;
+				kmutex->u.count++;
+				kmutex->owner_thread = get_current();
+				if (wait_type == WaitAny)
+					return STATUS_WAIT_0 + i;
 			}
-		} else {
-			EVENTTRACE("%p: wait for %p", thread, dh);
+		} else if (kevent->header.signal_state == TRUE) {
+			if (kevent->header.type == SynchronizationEvent)
+				kevent->header.signal_state = FALSE;
+			if (wait_type == WaitAny)
+				return STATUS_WAIT_0 + i;
+		}
+		if (kevent->header.signal_state == FALSE)
 			wait_count++;
-		}
 	}
-
-	if (wait_count) {
-		if (timeout && *timeout == 0) {
-			nt_spin_unlock_irql(&dispatcher_lock, irql);
-			EVENTEXIT(return STATUS_TIMEOUT);
-		}
-		thread_waitq = get_thread_event_waitq();
-		if (!thread_waitq) {
-			nt_spin_unlock_irql(&dispatcher_lock, irql);
-			EVENTEXIT(return STATUS_RESOURCES);
-		}
+					
+	if (timeout) {
+		DBGTRACE2("timeout = %Ld", *timeout);
+		if (*timeout == 0)
+			TRACEEXIT2(return STATUS_TIMEOUT);
+		else if (*timeout > 0)
+			wait_ms = ((*timeout) - ticks_1601()) / 10000;
+		else
+			wait_ms = (-(*timeout)) / 10000;
 	} else
-		thread_waitq = NULL;
+		wait_ms = 0;
 
-	/* get the list of objects the thread needs to wait on and add
-	 * the thread on the wait list for each such object */
-	/* if *timeout == 0, this step will grab all the objects */
-	for (i = 0; i < count; i++) {
-		dh = object[i];
-		EVENTTRACE("%p: event %p state: %d",
-			   thread, dh, dh->signal_state);
-		wb[i].object = NULL;
-		wb[i].thread_waitq = thread_waitq;
-		if (check_grab_signaled_state(dh, thread, 1)) {
-			EVENTTRACE("%p: event %p already signaled: %d",
-				   thread, dh, dh->signal_state);
-			/* mark that we are not waiting on this object */
-			wb[i].thread = NULL;
-		} else {
-			assert(timeout == NULL || *timeout != 0);
-			assert(thread_waitq != NULL);
-			wb[i].thread = thread;
-			EVENTTRACE("%p: need to wait on event %p", thread, dh);
-			InsertTailList(&dh->wait_blocks, &wb[i].list);
-		}
-	}
-	nt_spin_unlock_irql(&dispatcher_lock, irql);
-	if (wait_count == 0) {
-		assert(thread_waitq == NULL);
-		EVENTEXIT(return STATUS_SUCCESS);
-	}
-	assert(thread_waitq);
+	DBGTRACE2("wait ms = %lu", wait_ms);
+	wait_jiffies = (wait_ms * HZ) / 1000;
 
-	assert(timeout == NULL || *timeout != 0);
-	if (timeout == NULL)
-		wait_jiffies = 0;
-	else
-		wait_jiffies = SYSTEM_TIME_TO_HZ(*timeout) + 1;
-	EVENTTRACE("%p: sleeping for %ld on %p",
-		   thread, wait_jiffies, thread_waitq);
-
-	while (wait_count) {
-		if (wait_jiffies) {
-			res = wait_event_interruptible_timeout(
-				thread_waitq->head, (thread_waitq->done == 1),
-				wait_jiffies);
-		} else {
-			wait_event_interruptible(
-				thread_waitq->head,(thread_waitq->done == 1));
-			/* mark that it didn't timeout */
-			res = 1;
-		}
-		thread_waitq->done = 0;
-		irql = nt_spin_lock_irql(&dispatcher_lock, DISPATCH_LEVEL);
-		if (signal_pending(current))
-			res = -ERESTARTSYS;
-		EVENTTRACE("%p woke up on %p, res = %d, done: %d", thread,
-			   thread_waitq, res, thread_waitq->done);
-#ifdef EVENT_DEBUG
-		if (thread_waitq->task != current)
-			ERROR("%p: argh, task %p should be %p", thread_waitq,
-			      thread_waitq->task, current);
-#endif
-//		assert(res < 0 && alertable);
-		if (res <= 0) {
-			/* timed out or interrupted; remove from wait list */
-			for (i = 0; i < count; i++) {
-				if (!wb[i].thread)
-					continue;
-				EVENTTRACE("%p: timedout, deq'ing %p (%p)",
-					   thread, object[i], wb[i].object);
-				RemoveEntryList(&wb[i].list);
+	global_signal_state = FALSE;
+	while (wait_count > 0) {
+		if (wait_jiffies == 0) {
+			if (alertable)
+				res = wait_event_interruptible(
+					dispatch_event_wq,
+					(global_signal_state == TRUE));
+			else {
+				wait_event(dispatch_event_wq,
+					   (global_signal_state == TRUE));
+				res = 1;
 			}
-			put_thread_event_waitq(thread_waitq);
-			nt_spin_unlock_irql(&dispatcher_lock, irql);
-			if (res < 0)
-				EVENTEXIT(return STATUS_ALERTED);
+		} else {
+			if (alertable)
+				res = wait_event_interruptible_timeout(
+					dispatch_event_wq,
+					(global_signal_state == TRUE),
+					wait_jiffies);
 			else
-				EVENTEXIT(return STATUS_TIMEOUT);
+				res = wait_event_timeout(
+					dispatch_event_wq,
+					(global_signal_state == TRUE),
+					wait_jiffies);
 		}
-		/* woken up by wakeup_threads */
-		for (i = 0; wait_count && i < count; i++) {
-			if (!wb[i].thread)
-				continue;
-			EVENTTRACE("object: %p, %p", object[i], wb[i].object);
-			if (!wb[i].object) {
-				EVENTTRACE("not woken for %p", object[i]);
-				continue;
-			}
-			DBG_BLOCK(1) {
-				if (wb[i].object != object[i]) {
-					ERROR("argh, event not signalled? "
-					      "%p, %p", wb[i].object,
-					      object[i]);
-					continue;
+		wrap_spin_lock(&dispatch_event_lock, PASSIVE_LEVEL);
+		if (res > 0) {
+			for (i = 0; i < count; i++) {
+				kevent = (struct kevent *)object[i];
+				if (kevent->header.absolute == TRUE) {
+					kevent->header.absolute = FALSE;
+					sat_index = i;
+					wait_count--;
+				}
+
+				kmutex = (struct kmutex *)object[i];
+				if (kmutex->owner_thread == NULL) {
+					kmutex->owner_thread = get_current();
+					kmutex->u.count++;
 				}
 			}
-			wb[i].object = NULL;
-			wb[i].thread = NULL;
-			wait_count--;
-			if (wait_type == WaitAny) {
-				int j;
-				/* done; remove from rest of wait list */
-				for (j = i; j < count; j++)
-					if (wb[j].thread)
-						RemoveEntryList(&wb[j].list);
-				put_thread_event_waitq(thread_waitq);
-				nt_spin_unlock_irql(&dispatcher_lock, irql);
-				EVENTEXIT(return STATUS_WAIT_0 + i);
-			}
 		}
-		if (wait_count == 0) {
-			put_thread_event_waitq(thread_waitq);
-			nt_spin_unlock_irql(&dispatcher_lock, irql);
-			EVENTEXIT(return STATUS_SUCCESS);
-		}
-		/* this thread is still waiting for more objects, so
-		 * let it wait for remaining time and those objects */
-		/* we already set res to 1 if timeout was NULL, so
-		 * reinitialize wait_jiffies accordingly */
-		if (timeout)
+		wrap_spin_unlock(&dispatch_event_lock);
+		if (res > 0)
 			wait_jiffies = res;
-		else
-			wait_jiffies = 0;
-		nt_spin_unlock_irql(&dispatcher_lock, irql);
+		if (wait_type == WaitAny)
+			break;
 	}
-	/* this should never reach, but compiler wants return value */
-	ERROR("%p: wait_jiffies: %ld", thread, wait_jiffies);
-	EVENTEXIT(return STATUS_SUCCESS);
+
+	if (res < 0)
+		TRACEEXIT2(return STATUS_ALERTED);
+
+	if (res == 0)
+		TRACEEXIT2(return STATUS_TIMEOUT);
+
+	/* res > 0 */
+	if (wait_type == WaitAny && wait_count > 0)
+		return STATUS_WAIT_0 + sat_index;
+
+	TRACEEXIT2(return STATUS_SUCCESS);
 }
 
-wstdcall NTSTATUS WIN_FUNC(KeWaitForSingleObject,5)
-	(void *object, KWAIT_REASON wait_reason, KPROCESSOR_MODE wait_mode,
-	 BOOLEAN alertable, LARGE_INTEGER *timeout)
+STDCALL void WRAP_EXPORT(IoReuseIrp)
+	(struct irp *irp, NT_STATUS status)
 {
-	return KeWaitForMultipleObjects(1, &object, WaitAny, wait_reason,
-					wait_mode, alertable, timeout, NULL);
+	TRACEENTER3("irp = %p, status = %d", irp, status);
+	if (irp)
+		irp->io_status.status = status;
+	TRACEEXIT3(return);
 }
 
-wstdcall void WIN_FUNC(KeInitializeEvent,3)
-	(struct nt_event *nt_event, enum event_type type, BOOLEAN state)
+STDCALL void WRAP_EXPORT(IoBuildSynchronousFsdRequest)
+	(void)
 {
-	EVENTENTER("event = %p, type = %d, state = %d", nt_event, type, state);
-	initialize_dh(&nt_event->dh, type, state);
-	EVENTEXIT(return);
+	UNIMPL();
 }
 
-wstdcall LONG WIN_FUNC(KeSetEvent,3)
-	(struct nt_event *nt_event, KPRIORITY incr, BOOLEAN wait)
+/* this function can't be STDCALL as it takes variable number of args */
+NOREGPARM ULONG WRAP_EXPORT(DbgPrint)
+	(char *format, ...)
 {
-	LONG old_state;
+#ifdef DEBUG
+	va_list args;
+	static char buf[1024];
+
+	va_start(args, format);
+	vsnprintf(buf, sizeof(buf), format, args);
+	printk("DbgPrint: ");
+	printk(buf);
+	va_end(args);
+#endif
+	return STATUS_SUCCESS;
+}
+
+STDCALL void WRAP_EXPORT(DbgBreakPoint)
+	(void)
+{
+	UNIMPL();
+}
+
+STDCALL struct irp *WRAP_EXPORT(IoAllocateIrp)
+	(char stack_size, BOOLEAN charge_quota)
+{
+	struct irp *irp;
+	int size;
+
+	TRACEENTER3("stack_size = %d, charge_quota = %d",
+		stack_size, charge_quota);
+
+	size = sizeof(struct irp) +
+		stack_size * sizeof(struct io_stack_location);
+	/* FIXME: we should better check what GFP_ is required */
+	irp = kmalloc(size, GFP_ATOMIC);
+	if (irp) {
+		DBGTRACE3("allocated irp %p", irp);
+		memset(irp, 0, size);
+
+		irp->size = size;
+		irp->stack_size = stack_size;
+		irp->stack_pos = stack_size;
+		IRP_CUR_STACK_LOC(irp) =
+			((struct io_stack_location *)(irp + 1)) + stack_size;
+	}
+
+	TRACEEXIT3(return irp);
+}
+
+STDCALL void WRAP_EXPORT(IoInitializeIrp)
+	(struct irp *irp, USHORT size, CHAR stack_size)
+{
+	TRACEENTER3("irp = %p, size = %d, stack_size = %d",
+		    irp, size, stack_size);
+
+	if (irp) {
+		DBGTRACE3("initializing irp %p", irp);
+		memset(irp, 0, size);
+
+		irp->size = size;
+		irp->stack_size = stack_size;
+		irp->stack_pos = stack_size;
+		IRP_CUR_STACK_LOC(irp) =
+			((struct io_stack_location *)(irp+1)) + stack_size;
+	}
+
+	TRACEEXIT3(return);
+}
+
+STDCALL struct irp *WRAP_EXPORT(IoBuildDeviceIoControlRequest)
+	(ULONG ioctl, struct device_object *dev_obj,
+	 void *input_buf, ULONG input_buf_len, void *output_buf,
+	 ULONG output_buf_len, BOOLEAN internal_ioctl,
+	 struct kevent *event, struct io_status_block *io_status)
+{
+	struct irp *irp;
+	struct io_stack_location *stack;
+
+	TRACEENTER3("");
+
+	irp = kmalloc(sizeof(struct irp) + sizeof(struct io_stack_location),
+		GFP_KERNEL); /* we are running at IRQL = PASSIVE_LEVEL */
+	if (irp) {
+		DBGTRACE3("allocated irp %p", irp);
+		memset(irp, 0, sizeof(struct irp) +
+		       sizeof(struct io_stack_location));
+
+		irp->size = sizeof(struct irp) +
+			sizeof(struct io_stack_location);
+		irp->stack_size = 1;
+		irp->stack_pos = 1;
+		irp->user_status = io_status;
+		irp->user_event = event;
+		irp->user_buf = output_buf;
+
+		stack = (struct io_stack_location *)(irp + 1);
+		IRP_CUR_STACK_LOC(irp) = stack + 1;
+
+		stack->params.ioctl.code = ioctl;
+		stack->params.ioctl.input_buf_len = input_buf_len;
+		stack->params.ioctl.output_buf_len = output_buf_len;
+		stack->params.ioctl.type3_input_buf = input_buf;
+		stack->dev_obj = dev_obj;
+
+		stack->major_fn = (internal_ioctl) ?
+			IRP_MJ_INTERNAL_DEVICE_CONTROL : IRP_MJ_DEVICE_CONTROL;
+	}
+
+	TRACEEXIT3(return irp);
+}
+
+_FASTCALL void WRAP_EXPORT(IofCompleteRequest)
+	(FASTCALL_DECL_2(struct irp *irp, CHAR prio_boost))
+{
+	struct io_stack_location *stack = IRP_CUR_STACK_LOC(irp) - 1;
+
+	TRACEENTER3("irp = %p", irp);
+
+	if (irp->user_status) {
+		irp->user_status->status = irp->io_status.status;
+		irp->user_status->status_info = irp->io_status.status_info;
+	}
+
+	if ((stack->completion_handler) &&
+	    ((((irp->io_status.status == 0) &&
+	       (stack->control & CALL_ON_SUCCESS)) ||
+	      ((irp->io_status.status == STATUS_CANCELLED) &&
+	       (stack->control & CALL_ON_CANCEL)) ||
+	      ((irp->io_status.status != 0) &&
+	       (stack->control & CALL_ON_ERROR))))) {
+		DBGTRACE3("calling %p", stack->completion_handler);
+
+		if (stack->completion_handler(stack->dev_obj, irp,
+		                              stack->handler_arg) ==
+		    STATUS_MORE_PROCESSING_REQUIRED)
+			TRACEEXIT3(return);
+	}
+
+	if (irp->user_event) {
+		DBGTRACE3("setting event %p", irp->user_event);
+		KeSetEvent(irp->user_event, 0, 0);
+	}
+
+	/* To-Do: what about IRP_DEALLOCATE_BUFFER...? */
+	DBGTRACE3("freeing irp %p", irp);
+	kfree(irp);
+	TRACEEXIT3(return);
+}
+
+STDCALL BOOLEAN WRAP_EXPORT(IoCancelIrp)
+	(struct irp *irp)
+{
+	struct io_stack_location *stack = IRP_CUR_STACK_LOC(irp) - 1;
+	void (*cancel_routine)(struct device_object *, struct irp *) STDCALL;
 	KIRQL irql;
 
-	EVENTENTER("event = %p, type = %d, wait = %d",
-		   nt_event, nt_event->dh.type, wait);
-	if (wait == TRUE)
-		WARNING("wait = %d, not yet implemented", wait);
-	irql = nt_spin_lock_irql(&dispatcher_lock, DISPATCH_LEVEL);
-	old_state = nt_event->dh.signal_state;
-	nt_event->dh.signal_state = 1;
-	if (old_state == 0)
-		wakeup_threads(&nt_event->dh);
-	nt_spin_unlock_irql(&dispatcher_lock, irql);
-	EVENTEXIT(return old_state);
+	TRACEENTER2("irp = %p", irp);
+
+	irql = KeGetCurrentIrql();
+	wrap_spin_lock(&irp_cancel_lock, PASSIVE_LEVEL);
+	cancel_routine = xchg(&irp->cancel_routine, NULL);
+
+	if (cancel_routine) {
+		irp->cancel_irql = irql;
+		irp->pending_returned = 1;
+		irp->cancel = 1;
+		wrap_spin_unlock(&irp_cancel_lock);
+		cancel_routine(stack->dev_obj, irp);
+		TRACEEXIT2(return 1);
+	} else {
+		wrap_spin_unlock(&irp_cancel_lock);
+		TRACEEXIT2(return 0);
+	}
 }
 
-wstdcall void WIN_FUNC(KeClearEvent,1)
-	(struct nt_event *nt_event)
+STDCALL void WRAP_EXPORT(IoFreeIrp)
+	(struct irp *irp)
 {
-	EVENTENTER("event = %p", nt_event);
-	(void)xchg(&nt_event->dh.signal_state, 0);
-	EVENTEXIT(return);
+	TRACEENTER3("irp = %p", irp);
+
+	kfree(irp);
+
+	TRACEEXIT3(return);
 }
 
-wstdcall LONG WIN_FUNC(KeResetEvent,1)
-	(struct nt_event *nt_event)
+_FASTCALL NT_STATUS WRAP_EXPORT(IofCallDriver)
+	(FASTCALL_DECL_2(struct device_object *dev_obj, struct irp *irp))
 {
-	LONG old_state;
-	old_state = xchg(&nt_event->dh.signal_state, 0);
-	EVENTTRACE("old state: %d", old_state);
-	EVENTEXIT(return old_state);
-}
+	struct io_stack_location *stack = IRP_CUR_STACK_LOC(irp) - 1;
+	NT_STATUS ret = STATUS_NOT_SUPPORTED;
+	unsigned long result;
 
-wstdcall void WIN_FUNC(KeInitializeMutex,2)
-	(struct nt_mutex *mutex, ULONG level)
-{
-	KIRQL irql;
 
-	EVENTENTER("%p", mutex);
-	irql = nt_spin_lock_irql(&dispatcher_lock, DISPATCH_LEVEL);
-	initialize_dh(&mutex->dh, MutexObject, 1);
-	mutex->dh.size = sizeof(*mutex);
-	InitializeListHead(&mutex->list);
-	mutex->abandoned = FALSE;
-	mutex->apc_disable = 1;
-	mutex->owner_thread = NULL;
-	nt_spin_unlock_irql(&dispatcher_lock, irql);
-	EVENTEXIT(return);
-}
+	TRACEENTER3("dev_obj = %p, irp = %p, major_fn = %x, ioctl = %u",
+		dev_obj, irp, stack->major_fn, stack->params.ioctl.code);
 
-wstdcall LONG WIN_FUNC(KeReleaseMutex,2)
-	(struct nt_mutex *mutex, BOOLEAN wait)
-{
-	LONG ret;
-	KIRQL irql;
-	struct task_struct *thread;
+	if (stack->major_fn == IRP_MJ_INTERNAL_DEVICE_CONTROL) {
+		switch (stack->params.ioctl.code) {
+#ifdef CONFIG_USB
+			case IOCTL_INTERNAL_USB_SUBMIT_URB:
+				ret = usb_submit_nt_urb(dev_obj->device.usb,
+					stack->params.generic.arg1, irp);
+				break;
 
-	EVENTENTER("%p, %d, %p", mutex, wait, current);
-	if (wait == TRUE)
-		WARNING("wait: %d", wait);
-	thread = current;
-	irql = nt_spin_lock_irql(&dispatcher_lock, DISPATCH_LEVEL);
-	EVENTTRACE("%p, %p, %d", thread, mutex->owner_thread,
-		   mutex->dh.signal_state);
-	if ((mutex->owner_thread == thread) && (mutex->dh.signal_state <= 0)) {
-		if ((ret = mutex->dh.signal_state++) == 0) {
-			mutex->owner_thread = NULL;
-			wakeup_threads(&mutex->dh);
+			case IOCTL_INTERNAL_USB_RESET_PORT:
+				ret = usb_reset_port(dev_obj->device.usb);
+				break;
+#endif
+
+			default:
+				ERROR("ioctl %08X NOT IMPLEMENTED!",
+					stack->params.ioctl.code);
 		}
 	} else
-		ret = STATUS_MUTANT_NOT_OWNED;
-	nt_spin_unlock_irql(&dispatcher_lock, irql);
-	EVENTTRACE("ret: %08X", ret);
-	EVENTEXIT(return ret);
-}
+		ERROR("major_fn %08X NOT IMPLEMENTED!\n", stack->major_fn);
 
-wstdcall void WIN_FUNC(KeInitializeSemaphore,3)
-	(struct nt_semaphore *semaphore, LONG count, LONG limit)
-{
-	EVENTENTER("%p: %d", semaphore, count);
-	/* if limit > 1, we need to satisfy as many waits (until count
-	 * becomes 0); so we keep decrementing count everytime a wait
-	 * is satisified */
-	initialize_dh(&semaphore->dh, SemaphoreObject, count);
-	semaphore->dh.size = sizeof(*semaphore);
-	semaphore->limit = limit;
-	EVENTEXIT(return);
-}
+	if (ret == STATUS_PENDING) {
+		stack->control |= IS_PENDING;
+		TRACEEXIT3(return ret);
+	} else {
+		irp->io_status.status = ret;
+		if (irp->user_status)
+			irp->user_status->status = ret;
 
-wstdcall LONG WIN_FUNC(KeReleaseSemaphore,4)
-	(struct nt_semaphore *semaphore, KPRIORITY incr, LONG adjustment,
-	 BOOLEAN wait)
-{
-	LONG ret;
-	KIRQL irql;
+		if ((stack->completion_handler) &&
+		    ((((ret == 0) && (stack->control & CALL_ON_SUCCESS)) ||
+		      ((ret != 0) && (stack->control & CALL_ON_ERROR))))) {
+			DBGTRACE3("calling %p", stack->completion_handler);
 
-	EVENTENTER("%p", semaphore);
-	irql = nt_spin_lock_irql(&dispatcher_lock, DISPATCH_LEVEL);
-	ret = semaphore->dh.signal_state;
-	assert(ret >= 0);
-	if (semaphore->dh.signal_state + adjustment <= semaphore->limit)
-		semaphore->dh.signal_state += adjustment;
-	else {
-		WARNING("releasing %d over limit %d", adjustment,
-			semaphore->limit);
-		semaphore->dh.signal_state = semaphore->limit;
+			result = stack->completion_handler(stack->dev_obj, irp,
+				stack->handler_arg);
+			if (result == STATUS_MORE_PROCESSING_REQUIRED)
+				TRACEEXIT3(return ret);
+		}
+
+		if (irp->user_event) {
+			DBGTRACE3("setting event %p", irp->user_event);
+			KeSetEvent(irp->user_event, 0, 0);
+		}
 	}
-	if (semaphore->dh.signal_state > 0)
-		wakeup_threads(&semaphore->dh);
-	nt_spin_unlock_irql(&dispatcher_lock, irql);
-	EVENTEXIT(return ret);
+
+	/* To-Do: what about IRP_DEALLOCATE_BUFFER...? */
+	DBGTRACE3("freeing irp %p", irp);
+	kfree(irp);
+
+	TRACEEXIT3(return ret);
 }
 
-wstdcall NTSTATUS WIN_FUNC(KeDelayExecutionThread,3)
-	(KPROCESSOR_MODE wait_mode, BOOLEAN alertable, LARGE_INTEGER *interval)
+STDCALL NT_STATUS WRAP_EXPORT(PoCallDriver)
+	(struct device_object *dev_obj, struct irp *irp)
+{
+	TRACEENTER5("irp = %p", irp);
+	TRACEEXIT5(return IofCallDriver(FASTCALL_ARGS_2(dev_obj, irp)));
+}
+
+struct trampoline_context {
+	void (*start_routine)(void *) STDCALL;
+	void *context;
+};
+
+int kthread_trampoline(void *data)
+{
+	struct trampoline_context ctx;
+
+	memcpy(&ctx, data, sizeof(ctx));
+	kfree(data);
+
+	ctx.start_routine(ctx.context);
+
+	return 0;
+}
+
+STDCALL NT_STATUS WRAP_EXPORT(PsCreateSystemThread)
+	(void **phandle, ULONG access, void *obj_attr, void *process,
+	 void *client_id, void (*start_routine)(void *) STDCALL, void *context)
+{
+	struct trampoline_context *ctx;
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,7)
+	int pid;
+#endif
+
+	TRACEENTER2("phandle = %p, access = %u, obj_attr = %p, process = %p, "
+	            "client_id = %p, start_routine = %p, context = %p",
+	            phandle, access, obj_attr, process, client_id,
+	            start_routine, context);
+
+	ctx = kmalloc(sizeof(struct trampoline_context), GFP_KERNEL);
+	if (!ctx)
+		TRACEEXIT2(return STATUS_RESOURCES);
+	ctx->start_routine = start_routine;
+	ctx->context = context;
+
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,7)
+	pid = kernel_thread(kthread_trampoline, ctx,
+		CLONE_FS|CLONE_FILES|CLONE_SIGHAND);
+	DBGTRACE2("pid = %d", pid);
+	if (pid < 0) {
+		kfree(ctx);
+		TRACEEXIT2(return STATUS_FAILURE);
+	}
+	*phandle = find_task_by_pid(pid);
+	DBGTRACE2("*phandle = %p", *phandle);
+#else
+	*phandle = KTHREAD_RUN(kthread_trampoline, ctx, DRIVER_NAME);
+	DBGTRACE2("*phandle = %p", *phandle);
+	if (IS_ERR(*phandle)) {
+		kfree(ctx);
+		TRACEEXIT2(return STATUS_FAILURE);
+	}
+#endif
+
+	TRACEEXIT2(return STATUS_SUCCESS);
+}
+
+STDCALL NT_STATUS WRAP_EXPORT(PsTerminateSystemThread)
+	(NT_STATUS status)
+{
+	TRACEENTER2("status = %u", status);
+	complete_and_exit(NULL, status);
+	return 0;
+}
+
+STDCALL void * WRAP_EXPORT(KeGetCurrentThread)
+	(void)
+{
+	void *thread = get_current();
+
+	TRACEENTER2("current thread = %p", thread);
+	return thread;
+}
+
+STDCALL KPRIORITY WRAP_EXPORT(KeSetPriorityThread)
+	(void *thread, KPRIORITY priority)
+{
+	KPRIORITY old_prio;
+
+	TRACEENTER2("thread = %p, priority = %u", thread, priority);
+
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,0)
+	/* FIXME: is there a way to set kernel thread prio on 2.4? */
+	old_prio = LOW_PRIORITY;
+#else
+	if (rt_task((task_t *)thread))
+		old_prio = LOW_REALTIME_PRIORITY;
+	else
+		old_prio = MAXIMUM_PRIORITY;
+	if (priority == LOW_REALTIME_PRIORITY)
+		set_user_nice((task_t *)thread, -20);
+	else
+		set_user_nice((task_t *)thread, 10);
+#endif
+	return old_prio;
+}
+
+STDCALL NT_STATUS WRAP_EXPORT(KeDelayExecutionThread)
+	(KPROCESSOR_MODE wait_mode, BOOLEAN alertable,
+	 LARGE_INTEGER *interval)
 {
 	int res;
 	long timeout;
+	long t = *interval;
 
+	TRACEENTER3("thread: %p", get_current());
 	if (wait_mode != 0)
-		ERROR("invalid wait_mode %d", wait_mode);
+		ERROR("illegal wait_mode %d", wait_mode);
 
-	timeout = SYSTEM_TIME_TO_HZ(*interval) + 1;
-	EVENTTRACE("thread: %p, interval: %Ld, timeout: %ld",
-		    current, *interval, timeout);
+	if (t < 0)
+		timeout = HZ * (-t) / 10000000;
+	else
+		timeout = HZ * t / 10000000 - jiffies;
+
 	if (timeout <= 0)
-		EVENTEXIT(return STATUS_SUCCESS);
+		TRACEEXIT3(return STATUS_SUCCESS);
 
-	alertable = TRUE;
 	if (alertable)
 		set_current_state(TASK_INTERRUPTIBLE);
 	else
 		set_current_state(TASK_UNINTERRUPTIBLE);
 
 	res = schedule_timeout(timeout);
-	EVENTTRACE("thread: %p, res: %d", current, res);
-	if (res == 0)
-		EVENTEXIT(return STATUS_SUCCESS);
+
+	if (res > 0)
+		TRACEEXIT3(return STATUS_ALERTED);
 	else
-		EVENTEXIT(return STATUS_ALERTED);
+		TRACEEXIT3(return STATUS_SUCCESS);
 }
 
-wstdcall KPRIORITY WIN_FUNC(KeQueryPriorityThread,1)
-	(struct task_struct *task)
+STDCALL KPRIORITY WRAP_EXPORT(KeQueryPriorityThread)
+	(void *thread)
 {
 	KPRIORITY prio;
 
-	EVENTENTER("task: %p", task);
-	return LOW_REALTIME_PRIORITY;
-
+	TRACEENTER5("thread = %p", thread);
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,0)
 	prio = 1;
 #else
-	if (rt_task(task))
+	if (rt_task((task_t *)thread))
 		prio = LOW_REALTIME_PRIORITY;
 	else
 		prio = MAXIMUM_PRIORITY;
 #endif
-	EVENTEXIT(return prio);
+	TRACEEXIT5(return prio);
 }
 
-wstdcall ULONGLONG WIN_FUNC(KeQueryInterruptTime,0)
+STDCALL ULONGLONG WRAP_EXPORT(KeQueryInterruptTime)
 	(void)
 {
-	TRACEEXIT5(return jiffies * TICKSPERJIFFY);
+	TRACEEXIT4(return jiffies);
 }
 
-wstdcall ULONG WIN_FUNC(KeQueryTimeIncrement,0)
+STDCALL ULONG WRAP_EXPORT(KeQueryTimeIncrement)
 	(void)
 {
-	TRACEEXIT5(return TICKSPERSEC / HZ);
+	TRACEEXIT5(return 10000000/HZ);
 }
 
-wstdcall void WIN_FUNC(KeQuerySystemTime,1)
-	(LARGE_INTEGER *time)
+STDCALL void WRAP_EXPORT(PoStartNextPowerIrp)
+	(struct irp *irp)
 {
-	*time = ticks_1601();
-	DBGTRACE5("%Lu, %lu", *time, jiffies);
+	TRACEENTER5("irp = %p", irp);
+	TRACEEXIT5(return);
 }
 
-wstdcall void WIN_FUNC(KeQueryTickCount,1)
-	(LARGE_INTEGER *j)
+_FASTCALL LONG WRAP_EXPORT(InterlockedDecrement)
+	(FASTCALL_DECL_1(LONG volatile *val))
 {
-	*j = jiffies;
+	LONG x;
+
+	TRACEENTER4("%s", "");
+	wrap_spin_lock(map_kspin_lock(&ntoskrnl_lock), PASSIVE_LEVEL);
+	(*val)--;
+	x = *val;
+	wrap_spin_unlock(map_kspin_lock(&ntoskrnl_lock));
+	TRACEEXIT4(return x);
 }
 
-wstdcall LARGE_INTEGER WIN_FUNC(KeQueryPerformanceCounter,1)
-	(LARGE_INTEGER *counter)
+_FASTCALL LONG WRAP_EXPORT(InterlockedIncrement)
+	(FASTCALL_DECL_1(LONG volatile *val))
 {
-	if (counter)
-		*counter = HZ;
-	return jiffies;
+	LONG x;
+
+	TRACEENTER4("%s", "");
+	wrap_spin_lock(map_kspin_lock(&ntoskrnl_lock), PASSIVE_LEVEL);
+	(*val)++;
+	x = *val;
+	wrap_spin_unlock(map_kspin_lock(&ntoskrnl_lock));
+	TRACEEXIT4(return x);
 }
 
-wstdcall struct task_struct *WIN_FUNC(KeGetCurrentThread,0)
-	(void)
+_FASTCALL LONG WRAP_EXPORT(InterlockedExchange)
+	(FASTCALL_DECL_2(LONG volatile *target, LONG val))
 {
-	struct task_struct *task = current;
+	LONG x;
 
-	DBGTRACE5("task: %p", task);
-	return task;
+	TRACEENTER4("%s", "");
+	wrap_spin_lock(map_kspin_lock(&ntoskrnl_lock), PASSIVE_LEVEL);
+	x = *target;
+	*target = val;
+	wrap_spin_unlock(map_kspin_lock(&ntoskrnl_lock));
+	TRACEEXIT4(return x);
 }
 
-wstdcall KPRIORITY WIN_FUNC(KeSetPriorityThread,2)
-	(struct task_struct *task, KPRIORITY priority)
+_FASTCALL LONG WRAP_EXPORT(InterlockedCompareExchange)
+	(FASTCALL_DECL_3(LONG volatile *dest, LONG xchg, LONG comperand))
 {
-	KPRIORITY old_prio;
+	LONG x;
 
-	TRACEENTER3("task: %p, priority = %u", task, priority);
-
-	return LOW_REALTIME_PRIORITY;
-
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,0)
-	/* FIXME: is there a way to set kernel thread prio on 2.4? */
-	old_prio = LOW_PRIORITY;
-#else
-	if (rt_task(task))
-		old_prio = LOW_REALTIME_PRIORITY;
-	else
-		old_prio = MAXIMUM_PRIORITY;
-#if 0
-	if (priority == LOW_REALTIME_PRIORITY)
-		set_user_nice(task, -20);
-	else
-		set_user_nice(task, 10);
-#endif
-#endif
-	return old_prio;
+	TRACEENTER4("%s", "");
+	wrap_spin_lock(map_kspin_lock(&ntoskrnl_lock), PASSIVE_LEVEL);
+	x = *dest;
+	if (*dest == comperand)
+		*dest = xchg;
+	wrap_spin_unlock(map_kspin_lock(&ntoskrnl_lock));
+	TRACEEXIT4(return x);
 }
 
-static struct nt_thread *create_nt_thread(void)
+STDCALL NT_STATUS WRAP_EXPORT(IoGetDeviceProperty)
+	(struct device_object *dev_obj,
+	 enum device_registry_property dev_property,
+	 ULONG buffer_len, void *buffer, ULONG *result_len)
 {
-	struct nt_thread *thread;
+	struct ansi_string ansi;
+	struct unicode_string unicode;
+	struct ndis_handle *handle;
+	char buf[32];
 
-	thread = allocate_object(sizeof(*thread), OBJECT_TYPE_NT_THREAD, NULL);
-	if (!thread) {
-		ERROR("couldn't allocate thread object");
-		return NULL;
-	}
-	thread->task = NULL;
-	thread->pid = 0;
-	nt_spin_lock_init(&thread->lock);
-	InitializeListHead(&thread->irps);
-	initialize_dh(&thread->dh, ThreadObject, 0);
-	thread->dh.size = sizeof(*thread);
-	DBGTRACE2("thread: %p", thread);
-	return thread;
-}
+	handle = (struct ndis_handle *)dev_obj->handle;
 
-static void remove_nt_thread(struct nt_thread *thread)
-{
-	struct nt_list *ent;
-	KIRQL irql;
+	TRACEENTER1("dev_obj = %p, dev_property = %d, buffer_len = %u, "
+		"buffer = %p, result_len = %p", dev_obj, dev_property,
+		buffer_len, buffer, result_len);
 
-	if (!thread) {
-		ERROR("invalid thread");
-		return;
-	}
-	DBGTRACE1("terminating thread: %p, task: %p, pid: %d",
-		  thread, thread->task, thread->task->pid);
-	/* TODO: make sure waitqueue is empty and destroy it */
-	while (1) {
-		struct irp *irp;
-		irql = nt_spin_lock_irql(&thread->lock, DISPATCH_LEVEL);
-		ent = RemoveHeadList(&thread->irps);
-		nt_spin_unlock_irql(&thread->lock, irql);
-		if (!ent)
-			break;
-		irp = container_of(ent, struct irp, threads);
-		IoCancelIrp(irp);
-	}
-	ObDereferenceObject(thread);
-}
-
-struct nt_thread *get_current_nt_thread(void)
-{
-	struct task_struct *task = current;
-	struct nt_thread *thread;
-	struct common_object_header *header;
-	KIRQL irql;
-
-	DBGTRACE6("task: %p", task);
-	thread = NULL;
-	irql = nt_spin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL);
-	nt_list_for_each_entry(header, &object_list, list) {
-		DBGTRACE6("header: %p, type: %d", header, header->type);
-		if (header->type != OBJECT_TYPE_NT_THREAD)
-			break;
-		thread = HEADER_TO_OBJECT(header);
-		DBGTRACE6("thread: %p, task: %p", thread, thread->task);
-		if (thread->task == task)
-			break;
-		else
-			thread = NULL;
-	}
-	nt_spin_unlock_irql(&ntoskernel_lock, irql);
-	if (thread == NULL)
-		DBGTRACE6("couldn't find thread for task %p, %d",
-			  task, task->pid);
-	DBGTRACE6("thread: %p", thread);
-	return thread;
-}
-
-struct thread_trampoline_info {
-	void (*func)(void *) wstdcall;
-	void *ctx;
-	struct nt_thread *thread;
-	struct completion started;
-};
-
-static int thread_trampoline(void *data)
-{
-	struct thread_trampoline_info *thread_info = data;
-	typeof(thread_info->func) func;
-	void *ctx;
-
-	func = thread_info->func;
-	ctx = thread_info->ctx;
-	thread_info->thread->task = current;
-	thread_info->thread->pid = current->pid;
-	DBGTRACE2("thread: %p, task: %p (%d)", thread_info->thread,
-		  current, current->pid);
-	complete(&thread_info->started);
-
-#ifdef PF_NOFREEZE
-	current->flags |= PF_NOFREEZE;
-#endif
-	strncpy(current->comm, "windisdrvr", sizeof(current->comm));
-	current->comm[sizeof(current->comm)-1] = 0;
-	LIN2WIN1(func, ctx);
-	ERROR("task: %p", current);
-	return 0;
-}
-
-wstdcall NTSTATUS WIN_FUNC(PsCreateSystemThread,7)
-	(void **phandle, ULONG access, void *obj_attr, void *process,
-	 void *client_id, void (*func)(void *) wstdcall, void *ctx)
-{
-	struct thread_trampoline_info thread_info;
-	no_warn_unused struct task_struct *task;
-	no_warn_unused int pid;
-
-	TRACEENTER2("phandle = %p, access = %u, obj_attr = %p, process = %p, "
-	            "client_id = %p, func = %p, context = %p", phandle, access,
-		    obj_attr, process, client_id, func, ctx);
-
-	thread_info.thread = create_nt_thread();
-	if (!thread_info.thread)
-		TRACEEXIT2(return STATUS_RESOURCES);
-	thread_info.func = func;
-	thread_info.ctx = ctx;
-	init_completion(&thread_info.started);
-
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,7)
-	pid = kernel_thread(thread_trampoline, &thread_info, CLONE_SIGHAND);
-	DBGTRACE2("pid = %d", pid);
-	if (pid < 0) {
-		free_object(thread_info.thread);
-		TRACEEXIT2(return STATUS_FAILURE);
-	}
-	DBGTRACE2("created task: %d", pid);
-#else
-	task = KTHREAD_RUN(thread_trampoline, &thread_info, "windisdrvr");
-	if (IS_ERR(task)) {
-		free_object(thread_info.thread);
-		TRACEEXIT2(return STATUS_FAILURE);
-	}
-	DBGTRACE2("created task: %p (%d)", task, task->pid);
-#endif
-	wait_for_completion(&thread_info.started);
-	*phandle = OBJECT_TO_HEADER(thread_info.thread);
-	DBGTRACE2("created thread: %p, %p", thread_info.thread, *phandle);
-	TRACEEXIT2(return STATUS_SUCCESS);
-}
-
-wstdcall NTSTATUS WIN_FUNC(PsTerminateSystemThread,1)
-	(NTSTATUS status)
-{
-	struct nt_thread *thread;
-
-	DBGTRACE2("%p, %08X", current, status);
-	thread = get_current_nt_thread();
-	if (thread) {
-		DBGTRACE2("setting event for thread: %p", thread);
-		KeSetEvent((struct nt_event *)&thread->dh, 0, FALSE);
-		DBGTRACE2("set event for thread: %p", thread);
-		remove_nt_thread(thread);
-		complete_and_exit(NULL, status);
-		ERROR("oops: %p, %d", thread->task, thread->pid);
-	} else
-		ERROR("couldn't find thread for task: %p", current);
-	return STATUS_FAILURE;
-}
-
-wstdcall BOOLEAN WIN_FUNC(KeRemoveEntryDeviceQueue,2)
-	(struct kdevice_queue *dev_queue, struct kdevice_queue_entry *entry)
-{
-	struct kdevice_queue_entry *e;
-	KIRQL irql;
-
-	irql = nt_spin_lock_irql(&dev_queue->lock, DISPATCH_LEVEL);
-	nt_list_for_each_entry(e, &dev_queue->list, list) {
-		if (e == entry) {
-			RemoveEntryList(&e->list);
-			nt_spin_unlock_irql(&dev_queue->lock, irql);
-			return TRUE;
-		}
-	}
-	nt_spin_unlock_irql(&dev_queue->lock, irql);
-	return FALSE;
-}
-
-wstdcall BOOLEAN WIN_FUNC(KeSynchronizeExecution,3)
-	(struct kinterrupt *interrupt, PKSYNCHRONIZE_ROUTINE synch_routine,
-	 void *synch_context)
-{
-	NT_SPIN_LOCK *spinlock;
-	BOOLEAN ret;
-	unsigned long flags;
-
-	if (interrupt->actual_lock)
-		spinlock = interrupt->actual_lock;
-	else
-		spinlock = &interrupt->lock;
-	nt_spin_lock_irqsave(spinlock, flags);
-	ret = synch_routine(synch_context);
-	nt_spin_unlock_irqrestore(spinlock, flags);
-	return ret;
-}
-
-wstdcall void *WIN_FUNC(MmAllocateContiguousMemorySpecifyCache,5)
-	(SIZE_T size, PHYSICAL_ADDRESS lowest, PHYSICAL_ADDRESS highest,
-	 PHYSICAL_ADDRESS boundary, enum memory_caching_type cache_type)
-{
-	void *addr;
-	size_t page_length = ((size + PAGE_SIZE - 1) / PAGE_SIZE) * PAGE_SIZE;
-	DBGTRACE2("%lu, %zu, %Lu, %Lu, %Lu, %d", size, page_length,
-		  lowest, highest, boundary, cache_type);
-	addr = ExAllocatePoolWithTag(NonPagedPool, page_length, 0);
-	DBGTRACE2("%p", addr);
-	return addr;
-}
-
-wstdcall void WIN_FUNC(MmFreeContiguousMemorySpecifyCache,3)
-	(void *base, SIZE_T size, enum memory_caching_type cache_type)
-{
-	DBGTRACE2("%p", base);
-	ExFreePool(base);
-}
-
-wstdcall PHYSICAL_ADDRESS WIN_FUNC(MmGetPhysicalAddress,1)
-	(void *base)
-{
-	DBGTRACE2("%p", base);
-	return virt_to_phys(base);
-}
-
-/* Atheros card with pciid 168C:0014 calls this function with 0xf0000
- * and 0xf6ef0 address, and then check for things that seem to be
- * related to ACPI: "_SM_" and "_DMI_". This may be the hack they do
- * to check if this card is installed in IBM thinkpads; we can
- * probably get this device to work if we create a buffer with the
- * strings as required by the driver and return virtual address for
- * that address instead */
-wstdcall void *WIN_FUNC(MmMapIoSpace,3)
-	(PHYSICAL_ADDRESS phys_addr, SIZE_T size, enum memory_caching_type cache)
-{
-	void *virt;
-	TRACEENTER1("cache type: %d", cache);
-	if (cache == MmCached)
-		virt = ioremap(phys_addr, size);
-	else
-		virt = ioremap_nocache(phys_addr, size);
-	DBGTRACE1("%Lx, %lu, %p", phys_addr, size, virt);
-	return virt;
-}
-
-wstdcall void WIN_FUNC(MmUnmapIoSpace,2)
-	(void *addr, SIZE_T size)
-{
-	TRACEENTER1("%p, %lu", addr, size);
-	iounmap(addr);
-	return;
-}
-
-wstdcall ULONG WIN_FUNC(MmSizeOfMdl,2)
-	(void *base, ULONG length)
-{
-	return (sizeof(struct mdl) +
-		(sizeof(PFN_NUMBER) * SPAN_PAGES(base, length)));
-}
-
-struct mdl *allocate_init_mdl(void *virt, ULONG length)
-{
-	struct wrap_mdl *wrap_mdl;
-	struct mdl *mdl;
-	int mdl_size = MmSizeOfMdl(virt, length);
-	KIRQL irql;
-
-	if (mdl_size <= CACHE_MDL_SIZE) {
-		wrap_mdl = kmem_cache_alloc(mdl_cache, gfp_irql());
-		if (!wrap_mdl)
-			return NULL;
-		irql = nt_spin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL);
-		InsertHeadList(&wrap_mdl_list, &wrap_mdl->list);
-		nt_spin_unlock_irql(&ntoskernel_lock, irql);
-		mdl = wrap_mdl->mdl;
-		DBGTRACE3("allocated mdl from cache: %p(%p), %p(%d)",
-			  wrap_mdl, mdl, virt, length);
-		memset(mdl, 0, CACHE_MDL_SIZE);
-		MmInitializeMdl(mdl, virt, length);
-		/* mark the MDL as allocated from cache pool so when
-		 * it is freed, we free it back to the pool */
-		mdl->flags = MDL_ALLOCATED_FIXED_SIZE | MDL_CACHE_ALLOCATED;
-	} else {
-		wrap_mdl =
-			kmalloc(sizeof(*wrap_mdl) + mdl_size, gfp_irql());
-		if (!wrap_mdl)
-			return NULL;
-		mdl = wrap_mdl->mdl;
-		DBGTRACE3("allocated mdl from memory: %p(%p), %p(%d)",
-			  wrap_mdl, mdl, virt, length);
-		irql = nt_spin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL);
-		InsertHeadList(&wrap_mdl_list, &wrap_mdl->list);
-		nt_spin_unlock_irql(&ntoskernel_lock, irql);
-		memset(mdl, 0, mdl_size);
-		MmInitializeMdl(mdl, virt, length);
-		mdl->flags = MDL_ALLOCATED_FIXED_SIZE;
-	}
-	return mdl;
-}
-
-void free_mdl(struct mdl *mdl)
-{
-	KIRQL irql;
-
-	/* A driver may allocate Mdl with NdisAllocateBuffer and free
-	 * with IoFreeMdl (e.g., 64-bit Broadcom). Since we need to
-	 * treat buffers allocated with Ndis calls differently, we
-	 * must call NdisFreeBuffer if it is allocated with Ndis
-	 * function. We set 'pool' field in Ndis functions. */
-	if (!mdl)
-		return;
-	if (mdl->pool)
-		NdisFreeBuffer(mdl);
-	else {
-		struct wrap_mdl *wrap_mdl = (struct wrap_mdl *)
-			((char *)mdl - offsetof(struct wrap_mdl, mdl));
-		irql = nt_spin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL);
-		RemoveEntryList(&wrap_mdl->list);
-		nt_spin_unlock_irql(&ntoskernel_lock, irql);
-
-		if (mdl->flags & MDL_CACHE_ALLOCATED) {
-			DBGTRACE3("freeing mdl cache: %p, %p, %p",
-				  wrap_mdl, mdl, mdl->mappedsystemva);
-			kmem_cache_free(mdl_cache, wrap_mdl);
+	switch (dev_property) {
+	case DevicePropertyDeviceDescription:
+		if (buffer_len > 0 && buffer) {
+			*result_len = 4;
+			memset(buffer, 0xFF, *result_len);
+			TRACEEXIT1(return STATUS_SUCCESS);
 		} else {
-			DBGTRACE3("freeing mdl: %p, %p, %p",
-				  wrap_mdl, mdl, mdl->mappedsystemva);
-			kfree(wrap_mdl);
+			*result_len = 4;
+			TRACEEXIT1(return STATUS_SUCCESS);
 		}
+		break;
+
+	case DevicePropertyFriendlyName:
+		if (buffer_len > 0 && buffer) {
+			ansi.len = snprintf(buf, sizeof(buf), "%d",
+					    handle->dev.usb->devnum);
+			ansi.buf = buf;
+			ansi.len = strlen(ansi.buf);
+			if (ansi.len <= 0) {
+				*result_len = 0;
+				TRACEEXIT1(return STATUS_BUFFER_TOO_SMALL);
+			}
+			ansi.buflen = ansi.len;
+			unicode.buf = buffer;
+			unicode.buflen = buffer_len;
+			DBGTRACE1("unicode.buflen = %d, ansi.len = %d",
+					unicode.buflen, ansi.len);
+			if (RtlAnsiStringToUnicodeString(&unicode, &ansi, 0)) {
+				*result_len = 0;
+				TRACEEXIT1(return STATUS_BUFFER_TOO_SMALL);
+			} else {
+				*result_len = unicode.len;
+				TRACEEXIT1(return STATUS_SUCCESS);
+			}
+		} else {
+			ansi.len = snprintf(buf, sizeof(buf), "%d",
+					    handle->dev.usb->devnum);
+			*result_len = 2 * (ansi.len + 1);
+			TRACEEXIT1(return STATUS_BUFFER_TOO_SMALL);
+		}
+		break;
+
+	case DevicePropertyDriverKeyName:
+//		ansi.buf = handle->driver->name;
+		ansi.buf = buf;
+		ansi.len = strlen(ansi.buf);
+		ansi.buflen = ansi.len;
+		if (buffer_len > 0 && buffer) {
+			unicode.buf = buffer;
+			unicode.buflen = buffer_len;
+			if (RtlAnsiStringToUnicodeString(&unicode, &ansi, 0)) {
+				*result_len = 0;
+				TRACEEXIT1(return STATUS_BUFFER_TOO_SMALL);
+			} else {
+				*result_len = unicode.len;
+				TRACEEXIT1(return STATUS_SUCCESS);
+			}
+		} else {
+				*result_len = 2 * (strlen(buf) + 1);
+				TRACEEXIT1(return STATUS_SUCCESS);
+		}
+		break;
+	default:
+		TRACEEXIT1(return STATUS_INVALID_PARAMETER_2);
 	}
-	return;
 }
 
-wstdcall void WIN_FUNC(IoBuildPartialMdl,4)
-	(struct mdl *source, struct mdl *target, void *virt, ULONG length)
-{
-	MmInitializeMdl(target, virt, length);
-	target->flags |= MDL_PARTIAL;
-}
-
-wstdcall void WIN_FUNC(MmBuildMdlForNonPagedPool,1)
+STDCALL void WRAP_EXPORT(IoFreeMdl)
 	(struct mdl *mdl)
 {
-	PFN_NUMBER *mdl_pages;
-	int i, n;
-
-	TRACEENTER4("%p", mdl);
-	/* already mapped */
-//	mdl->mappedsystemva = MmGetMdlVirtualAddress(mdl);
-	mdl->flags |= MDL_SOURCE_IS_NONPAGED_POOL;
-	DBGTRACE4("%p, %p, %p, %d, %d", mdl, mdl->mappedsystemva, mdl->startva,
-		  mdl->byteoffset, mdl->bytecount);
-	n = SPAN_PAGES(MmGetSystemAddressForMdl(mdl), MmGetMdlByteCount(mdl));
-	if (n > CACHE_MDL_PAGES)
-		WARNING("%p, %d, %d", MmGetSystemAddressForMdl(mdl),
-			MmGetMdlByteCount(mdl), n);
-	mdl_pages = MmGetMdlPfnArray(mdl);
-	for (i = 0; i < n; i++)
-		mdl_pages[i] = (ULONG_PTR)mdl->startva + (i * PAGE_SIZE);
-	TRACEEXIT4(return);
+	TRACEENTER3("%p", mdl);
+	TRACEEXIT3(return);
 }
 
-wstdcall void *WIN_FUNC(MmMapLockedPages,2)
-	(struct mdl *mdl, KPROCESSOR_MODE access_mode)
+STDCALL ULONG WRAP_EXPORT(MmSizeOfMdl)
+	(void *base, SIZE_T length)
 {
-	/* already mapped */
-//	mdl->mappedsystemva = MmGetMdlVirtualAddress(mdl);
-	mdl->flags |= MDL_MAPPED_TO_SYSTEM_VA;
-	/* what is the need for MDL_PARTIAL_HAS_BEEN_MAPPED? */
-	if (mdl->flags & MDL_PARTIAL)
-		mdl->flags |= MDL_PARTIAL_HAS_BEEN_MAPPED;
-	return mdl->mappedsystemva;
+	ULONG pages;
+	ULONG_PTR start;
+
+	start = (ULONG_PTR)base;
+	pages = SPAN_PAGES(start, length);
+	return (sizeof(struct mdl) + pages * sizeof(ULONG));
 }
 
-wstdcall void *WIN_FUNC(MmMapLockedPagesSpecifyCache,6)
-	(struct mdl *mdl, KPROCESSOR_MODE access_mode,
+STDCALL void WRAP_EXPORT(MmBuildMdlForNonPagedPool)
+	(struct mdl *mdl)
+{
+	mdl->mappedsystemva = MmGetMdlVirtualAddress(mdl);
+	return;
+}
+
+STDCALL void *WRAP_EXPORT(MmMapLockedPagesSpecifyCache)
+	(struct mdl *mdl, KPROCESSOR_MODE mode,
 	 enum memory_caching_type cache_type, void *base_address,
 	 ULONG bug_check, enum mm_page_priority priority)
 {
-	return MmMapLockedPages(mdl, access_mode);
+	return MmGetMdlVirtualAddress(mdl);
 }
 
-wstdcall void WIN_FUNC(MmUnmapLockedPages,2)
+STDCALL void WRAP_EXPORT(MmUnmapLockedPages)
 	(void *base, struct mdl *mdl)
 {
-	mdl->flags &= ~MDL_MAPPED_TO_SYSTEM_VA;
 	return;
 }
 
-wstdcall void WIN_FUNC(MmProbeAndLockPages,3)
-	(struct mdl *mdl, KPROCESSOR_MODE access_mode,
-	 enum lock_operation operation)
+STDCALL void WRAP_EXPORT(IoAllocateMdl)(void){UNIMPL();}
+
+STDCALL void WRAP_EXPORT(KeInitializeMutex)
+	(struct kmutex *mutex, BOOLEAN wait)
 {
-	/* already locked */
-	mdl->flags |= MDL_PAGES_LOCKED;
+	INIT_LIST_HEAD(&mutex->dispatch_header.wait_list_head);
+	mutex->abandoned = FALSE;
+	mutex->apc_disable = 1;
+	mutex->dispatch_header.signal_state = TRUE;
+	mutex->dispatch_header.type = SynchronizationEvent;
+	mutex->dispatch_header.size = NT_OBJ_MUTEX;
+	mutex->u.count = 0;
+	mutex->owner_thread = NULL;
 	return;
 }
 
-wstdcall void WIN_FUNC(MmUnlockPages,1)
-	(struct mdl *mdl)
+STDCALL LONG WRAP_EXPORT(KeReleaseMutex)
+	(struct kmutex *mutex, BOOLEAN wait)
 {
-	mdl->flags &= ~MDL_PAGES_LOCKED;
-	return;
-}
-
-wstdcall BOOLEAN WIN_FUNC(MmIsAddressValid,1)
-	(void *virt_addr)
-{
-	if (virt_addr_valid(virt_addr))
-		return TRUE;
-	else
-		return FALSE;
-}
-
-wstdcall void *WIN_FUNC(MmLockPagableDataSection,1)
-	(void *address)
-{
-	return address;
-}
-
-wstdcall void WIN_FUNC(MmUnlockPagableImageSection,1)
-	(void *handle)
-{
-	return;
-}
-
-wstdcall NTSTATUS WIN_FUNC(ObReferenceObjectByHandle,6)
-	(void *handle, ACCESS_MASK desired_access, void *obj_type,
-	 KPROCESSOR_MODE access_mode, void **object, void *handle_info)
-{
-	struct common_object_header *hdr;
-
-	DBGTRACE2("%p", handle);
-	hdr = HANDLE_TO_HEADER(handle);
-	atomic_inc_var(hdr->ref_count);
-	*object = HEADER_TO_OBJECT(hdr);
-	DBGTRACE2("%p, %p, %d, %p", hdr, object, hdr->ref_count, *object);
-	return STATUS_SUCCESS;
-}
-
-/* DDK doesn't say if return value should be before incrementing or
- * after incrementing reference count, but according to #reactos
- * devels, it should be return value after incrementing */
-wfastcall LONG WIN_FUNC(ObfReferenceObject,1)
-	(void *object)
-{
-	struct common_object_header *hdr;
-	LONG ret;
-
-	hdr = OBJECT_TO_HEADER(object);
-	ret = post_atomic_add(hdr->ref_count, 1);
-	DBGTRACE2("%p, %d, %p", hdr, hdr->ref_count, object);
-	return ret;
-}
-
-int dereference_object(void *object)
-{
-	struct common_object_header *hdr;
-	int ref_count;
-
-	TRACEENTER2("object: %p", object);
-	hdr = OBJECT_TO_HEADER(object);
-	DBGTRACE2("hdr: %p", hdr);
-	ref_count = post_atomic_add(hdr->ref_count, -1);
-	DBGTRACE2("object: %p, %d", object, ref_count);
-	if (ref_count < 0)
-		ERROR("invalid object: %p (%d)", object, ref_count);
-	if (ref_count <= 0) {
-		free_object(object);
-		return 1;
+	wrap_spin_lock(&dispatch_event_lock, PASSIVE_LEVEL);
+	mutex->u.count--;
+	if (mutex->u.count == 0) {
+		mutex->owner_thread = NULL;
+		wrap_spin_unlock(&dispatch_event_lock);
+		KeSetEvent((struct kevent *)&mutex->dispatch_header, 0, 0);
 	} else
-		return 0;
+		wrap_spin_unlock(&dispatch_event_lock);
+	return mutex->u.count;
 }
 
-wfastcall void WIN_FUNC(ObfDereferenceObject,1)
-	(void *object)
+_FASTCALL void WRAP_EXPORT(ObfDereferenceObject)
+	(FASTCALL_DECL_1(void *object))
 {
-	dereference_object(object);
+	struct object_header *header;
+	LONG ref_count;
+	BOOLEAN permanent;
+	ULONG handle_count;
+
+	if (!object)
+		TRACEEXIT3(return);
+
+	header = container_of(&((struct common_body_header *)object)->type,
+			      struct object_header, type);
+	permanent = header->permanent;
+	handle_count = header->handle_count;
+	ref_count = InterlockedDecrement(FASTCALL_ARGS_1(&header->ref_count));
+	if (ref_count < 0 || permanent)
+		TRACEEXIT3(return);
+	/* since we didn't allocate it, we don't free it */
+	/*
+	  if (ref_count == 0 && handle_count == 0)
+		kfree(header);
+	*/
+	TRACEEXIT3(return);
 }
 
-wstdcall NTSTATUS WIN_FUNC(ZwCreateFile,11)
-	(void **handle, ACCESS_MASK access_mask, struct object_attr *obj_attr,
-	 struct io_status_block *iosb, LARGE_INTEGER *size,
-	 ULONG file_attr, ULONG share_access, ULONG create_disposition,
-	 ULONG create_options, void *ea_buffer, ULONG ea_length)
+_FASTCALL void WRAP_EXPORT(ObDereferenceObject)
+	(FASTCALL_DECL_1(void *object))
 {
-	struct common_object_header *coh;
-	struct file_object *fo;
-	struct ansi_string ansi;
-	struct wrap_bin_file *bin_file;
-	char *file_basename;
-	KIRQL irql;
-	NTSTATUS status;
-
-	irql = nt_spin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL);
-	nt_list_for_each_entry(coh, &object_list, list) {
-		if (coh->type != OBJECT_TYPE_FILE)
-			continue;
-		/* TODO: check if file is opened in shared mode */
-		if (!RtlCompareUnicodeString(&coh->name, obj_attr->name, TRUE)) {
-			fo = HEADER_TO_OBJECT(coh);
-			bin_file = fo->wrap_bin_file;
-			*handle = coh;
-			nt_spin_unlock_irql(&ntoskernel_lock, irql);
-			ObReferenceObject(fo);
-			iosb->status = FILE_OPENED;
-			iosb->info = bin_file->size;
-			TRACEEXIT2(return STATUS_SUCCESS);
-		}
-	}
-	nt_spin_unlock_irql(&ntoskernel_lock, irql);
-
-	if (RtlUnicodeStringToAnsiString(&ansi, obj_attr->name, TRUE) !=
-	    STATUS_SUCCESS)
-		TRACEEXIT2(return STATUS_INSUFFICIENT_RESOURCES);
-
-	file_basename = strrchr(ansi.buf, '\\');
-	if (file_basename)
-		file_basename++;
-	else
-		file_basename = ansi.buf;
-	DBGTRACE2("file: '%s', '%s'", ansi.buf, file_basename);
-
-	fo = allocate_object(sizeof(struct file_object), OBJECT_TYPE_FILE,
-			     obj_attr->name);
-	if (!fo) {
-		RtlFreeAnsiString(&ansi);
-		iosb->status = STATUS_INSUFFICIENT_RESOURCES;
-		iosb->info = 0;
-		TRACEEXIT2(return STATUS_FAILURE);
-	}
-	coh = OBJECT_TO_HEADER(fo);
-	bin_file = get_bin_file(file_basename);
-	if (bin_file) {
-		DBGTRACE2("%s, %s", bin_file->name, file_basename);
-		fo->flags = FILE_OPENED;
-	} else if (access_mask & FILE_WRITE_DATA) {
-		bin_file = kmalloc(sizeof(*bin_file), GFP_KERNEL);
-		if (bin_file) {
-			memset(bin_file, 0, sizeof(*bin_file));
-			strncpy(bin_file->name, file_basename,
-				sizeof(bin_file->name));
-			bin_file->name[sizeof(bin_file->name)-1] = 0;
-			bin_file->data = vmalloc(*size);
-			if (bin_file->data) {
-				memset(bin_file->data, 0, *size);
-				bin_file->size = *size;
-				fo->flags = FILE_CREATED;
-			} else {
-				kfree(bin_file);
-				bin_file = NULL;
-			}
-		}
-	} else
-		bin_file = NULL;
-
-	if (!bin_file) {
-		iosb->status = FILE_DOES_NOT_EXIST;
-		iosb->info = 0;
-		RtlFreeAnsiString(&ansi);
-		free_object(fo);
-		TRACEEXIT2(return STATUS_FAILURE);
-	}
-
-	fo->wrap_bin_file = bin_file;
-	fo->current_byte_offset = 0;
-	if (access_mask & FILE_READ_DATA)
-		fo->read_access = TRUE;
-	if (access_mask & FILE_WRITE_DATA)
-		fo->write_access = TRUE;
-	iosb->status = FILE_OPENED;
-	iosb->info = bin_file->size;
-	*handle = coh;
-	DBGTRACE2("handle: %p", *handle);
-	status = STATUS_SUCCESS;
-	RtlFreeAnsiString(&ansi);
-	TRACEEXIT2(return status);
+	ObfDereferenceObject(FASTCALL_ARGS_1(object));
+	TRACEEXIT3(return);
 }
 
-wstdcall NTSTATUS WIN_FUNC(ZwReadFile,9)
-	(void *handle, struct nt_event *event, void *apc_routine,
-	 void *apc_context, struct io_status_block *iosb, void *buffer,
-	 ULONG length, LARGE_INTEGER *byte_offset, ULONG *key)
-{
-	struct file_object *fo;
-	struct common_object_header *coh;
-	ULONG count;
-	size_t offset;
-	struct wrap_bin_file *file;
-	KIRQL irql;
-
-	DBGTRACE2("%p", handle);
-	coh = handle;
-	if (coh->type != OBJECT_TYPE_FILE) {
-		ERROR("handle %p is invalid: %d", handle, coh->type);
-		TRACEEXIT2(return STATUS_FAILURE);
-	}
-	fo = HANDLE_TO_OBJECT(coh);
-	file = fo->wrap_bin_file;
-	DBGTRACE2("file: %s (%zu)", file->name, file->size);
-	irql = nt_spin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL);
-	if (byte_offset)
-		offset = *byte_offset;
-	else
-		offset = fo->current_byte_offset;
-	count = min((size_t)length, file->size - offset);
-	DBGTRACE2("count: %u, offset: %zu, length: %u", count, offset, length);
-	memcpy(buffer, ((void *)file->data) + offset, count);
-	fo->current_byte_offset = offset + count;
-	nt_spin_unlock_irql(&ntoskernel_lock, irql);
-	iosb->status = STATUS_SUCCESS;
-	iosb->info = count;
-	TRACEEXIT2(return STATUS_SUCCESS);
-}
-
-wstdcall NTSTATUS WIN_FUNC(ZwWriteFile,9)
-	(void *handle, struct nt_event *event, void *apc_routine,
-	 void *apc_context, struct io_status_block *iosb, void *buffer,
-	 ULONG length, LARGE_INTEGER *byte_offset, ULONG *key)
-{
-	struct file_object *fo;
-	struct common_object_header *coh;
-	struct wrap_bin_file *file;
-	unsigned long offset;
-	KIRQL irql;
-
-	DBGTRACE2("%p", handle);
-	coh = handle;
-	if (coh->type != OBJECT_TYPE_FILE) {
-		ERROR("handle %p is invalid: %d", handle, coh->type);
-		TRACEEXIT2(return STATUS_FAILURE);
-	}
-	fo = HANDLE_TO_OBJECT(coh);
-	file = fo->wrap_bin_file;
-	DBGTRACE2("file: %zu, %u", file->size, length);
-	irql = nt_spin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL);
-	if (byte_offset)
-		offset = *byte_offset;
-	else
-		offset = fo->current_byte_offset;
-	if (length + offset > file->size) {
-		WARNING("%lu, %u", length + offset, (unsigned int)file->size);
-		/* TODO: implement writing past end of current size */
-		iosb->status = STATUS_FAILURE;
-		iosb->info = 0;
-	} else {
-		memcpy(file->data + offset, buffer, length);
-		iosb->status = STATUS_SUCCESS;
-		iosb->info = length;
-		fo->current_byte_offset = offset + length;
-	}
-	nt_spin_unlock_irql(&ntoskernel_lock, irql);
-	TRACEEXIT2(return iosb->status);
-}
-
-wstdcall NTSTATUS WIN_FUNC(ZwClose,1)
-	(void *handle)
-{
-	struct common_object_header *coh;
-
-	DBGTRACE2("%p", handle);
-	if (handle == NULL) {
-		DBGTRACE1("");
-		TRACEEXIT2(return STATUS_SUCCESS);
-	}
-	coh = handle;
-	if (coh->type == OBJECT_TYPE_FILE) {
-		struct file_object *fo;
-		struct wrap_bin_file *bin_file;
-		typeof(fo->flags) flags;
-
-		fo = HANDLE_TO_OBJECT(handle);
-		flags = fo->flags;
-		bin_file = fo->wrap_bin_file;
-		if (dereference_object(fo)) {
-			if (flags == FILE_CREATED) {
-				vfree(bin_file->data);
-				kfree(bin_file);
-			} else
-				free_bin_file(bin_file);
-		}
-	} else {
-		/* TODO: can we just dereference object here? */
-		WARNING("closing handle %d not implemented", coh->type);
-	}
-	TRACEEXIT2(return STATUS_SUCCESS);
-}
-
-wstdcall NTSTATUS WIN_FUNC(ZwQueryInformationFile,5)
-	(void *handle, struct io_status_block *iosb, void *info,
-	 ULONG length, enum file_info_class class)
-{
-	struct file_object *fo;
-	struct file_name_info *fni;
-	struct file_std_info *fsi;
-	struct wrap_bin_file *file;
-	struct common_object_header *coh;
-
-	TRACEENTER2("%p", handle);
-	coh = handle;
-	if (coh->type != OBJECT_TYPE_FILE) {
-		ERROR("handle %p is invalid: %d", coh, coh->type);
-		TRACEEXIT2(return STATUS_FAILURE);
-	}
-	fo = HANDLE_TO_OBJECT(handle);
-	DBGTRACE2("fo: %p, %d", fo, class);
-	switch (class) {
-	case FileNameInformation:
-		fni = info;
-		fni->length = min(length, (typeof(length))coh->name.length);
-		memcpy(fni->name, coh->name.buf, fni->length);
-		iosb->status = STATUS_SUCCESS;
-		iosb->info = fni->length;
-		break;
-	case FileStandardInformation:
-		fsi = info;
-		file = fo->wrap_bin_file;
-		fsi->alloc_size = file->size;
-		fsi->eof = file->size;
-		fsi->num_links = 1;
-		fsi->delete_pending = FALSE;
-		fsi->dir = FALSE;
-		iosb->status = STATUS_SUCCESS;
-		iosb->info = 0;
-		break;
-	default:
-		WARNING("type %d not implemented yet", class);
-		iosb->status = STATUS_FAILURE;
-		iosb->info = 0;
-	}
-	TRACEEXIT2(return iosb->status);
-}
-
-wstdcall NTSTATUS WIN_FUNC(ZwCreateKey,7)
-	(void **handle, ACCESS_MASK desired_access, struct object_attr *attr,
-	 ULONG title_index, struct unicode_string *class,
-	 ULONG create_options, ULONG *disposition)
-{
-	struct ansi_string ansi;
-	if (RtlUnicodeStringToAnsiString(&ansi, attr->name, TRUE) ==
-	    STATUS_SUCCESS) {
-		DBGTRACE1("key: %s", ansi.buf);
-		RtlFreeAnsiString(&ansi);
-	}
-	*handle = NULL;
-	return STATUS_SUCCESS;
-}
-
-wstdcall NTSTATUS WIN_FUNC(ZwOpenKey,3)
-	(void **handle, ACCESS_MASK desired_access, struct object_attr *attr)
-{
-	struct ansi_string ansi;
-	if (RtlUnicodeStringToAnsiString(&ansi, attr->name, TRUE) ==
-	    STATUS_SUCCESS) {
-		DBGTRACE1("key: %s", ansi.buf);
-		RtlFreeAnsiString(&ansi);
-	}
-	*handle = NULL;
-	return STATUS_SUCCESS;
-}
-
-wstdcall NTSTATUS WIN_FUNC(ZwSetValueKey,6)
-	(void *handle, struct unicode_string *name, ULONG title_index,
-	 ULONG type, void *data, ULONG data_size)
-{
-	struct ansi_string ansi;
-	if (RtlUnicodeStringToAnsiString(&ansi, name, TRUE) ==
-	    STATUS_SUCCESS) {
-		DBGTRACE1("key: %s", ansi.buf);
-		RtlFreeAnsiString(&ansi);
-	}
-	return STATUS_SUCCESS;
-}
-
-wstdcall NTSTATUS WIN_FUNC(ZwQueryValueKey,6)
-	(void *handle, struct unicode_string *name,
-	 enum key_value_information_class class, void *info,
-	 ULONG length, ULONG *res_length)
-{
-	struct ansi_string ansi;
-	if (RtlUnicodeStringToAnsiString(&ansi, name, TRUE) == STATUS_SUCCESS) {
-		DBGTRACE1("key: %s", ansi.buf);
-		RtlFreeAnsiString(&ansi);
-	}
-	TODO();
-	return STATUS_INVALID_PARAMETER;
-}
-
-wstdcall NTSTATUS WIN_FUNC(ZwDeleteKey,1)
-	(void *handle)
-{
-	TRACEENTER2("%p", handle);
-	return STATUS_SUCCESS;
-}
-
-wstdcall NTSTATUS WIN_FUNC(WmiSystemControl,4)
-	(struct wmilib_context *info, struct device_object *dev_obj,
-	 struct irp *irp, void *irp_disposition)
-{
-	TODO();
-	return STATUS_SUCCESS;
-}
-
-wstdcall NTSTATUS WIN_FUNC(WmiCompleteRequest,5)
-	(struct device_object *dev_obj, struct irp *irp, NTSTATUS status,
-	 ULONG buffer_used, CCHAR priority_boost)
-{
-	TODO();
-	return STATUS_SUCCESS;
-}
-
-noregparm NTSTATUS WIN_FUNC(WmiTraceMessage,12)
+NOREGPARM NT_STATUS WRAP_EXPORT(WmiTraceMessage)
 	(void *tracehandle, ULONG message_flags,
 	 void *message_guid, USHORT message_no, ...)
 {
-	TODO();
+	TRACEENTER2("%s", "");
 	TRACEEXIT2(return STATUS_SUCCESS);
 }
 
-wstdcall NTSTATUS WIN_FUNC(WmiQueryTraceInformation,4)
+STDCALL NT_STATUS WRAP_EXPORT(WmiQueryTraceInformation)
 	(enum trace_information_class trace_info_class, void *trace_info,
 	 ULONG *req_length, void *buf)
 {
-	TODO();
+	TRACEENTER2("%s", "");
 	TRACEEXIT2(return STATUS_SUCCESS);
 }
 
-/* this function can't be wstdcall as it takes variable number of args */
-noregparm ULONG WIN_FUNC(DbgPrint,12)
-	(char *format, ...)
+STDCALL unsigned int WRAP_EXPORT(IoWMIRegistrationControl)
+	(struct device_object *dev_obj, ULONG action)
 {
-#ifdef DEBUG
-	va_list args;
-	static char buf[100];
-
-	va_start(args, format);
-	vsnprintf(buf, sizeof(buf), format, args);
-	printk(KERN_DEBUG "%s (%s): %s", DRIVER_NAME, __FUNCTION__, buf);
-	va_end(args);
-#endif
-	return STATUS_SUCCESS;
+	TRACEENTER2("%s", "");
+	TRACEEXIT2(return STATUS_SUCCESS);
 }
 
-wstdcall void WIN_FUNC(KeBugCheckEx,5)
+STDCALL void WRAP_EXPORT(KeBugCheckEx)
 	(ULONG code, ULONG_PTR param1, ULONG_PTR param2,
 	 ULONG_PTR param3, ULONG_PTR param4)
 {
-	TODO();
+	UNIMPL();
 	return;
 }
 
-wstdcall void WIN_FUNC(ExSystemTimeToLocalTime,2)
-	(LARGE_INTEGER *system_time, LARGE_INTEGER *local_time)
-{
-	*local_time = *system_time;
-}
-
-wstdcall ULONG WIN_FUNC(ExSetTimerResolution,2)
-	(ULONG time, BOOLEAN set)
-{
-	/* why a driver should change system wide timer resolution is
-	 * beyond me */
-	return time;
-}
-
-wstdcall void WIN_FUNC(DbgBreakPoint,0)
-	(void)
-{
-	TODO();
-}
-
-wstdcall void WIN_FUNC(_except_handler3,0)
-	(void)
-{
-	TODO();
-}
-
-wstdcall void WIN_FUNC(__C_specific_handler,0)
-	(void)
-{
-	TODO();
-}
-
-void WIN_FUNC(_purecall,0)
-	(void)
-{
-	TODO();
-}
+STDCALL void WRAP_EXPORT(IoReleaseCancelSpinLock)(void){UNIMPL();}
+STDCALL void WRAP_EXPORT(IoDeleteDevice)(void){UNIMPL();}
+STDCALL void WRAP_EXPORT(IoCreateSymbolicLink)(void){UNIMPL();}
+STDCALL void WRAP_EXPORT(IoCreateUnprotectedSymbolicLink)(void){UNIMPL();}
+STDCALL void WRAP_EXPORT(MmMapLockedPages)(void){UNIMPL();}
+STDCALL void WRAP_EXPORT(IoCreateDevice)(void){UNIMPL();}
+STDCALL void WRAP_EXPORT(IoDeleteSymbolicLink)(void){UNIMPL();}
+STDCALL void WRAP_EXPORT(MmProbeAndLockPages)(void){UNIMPL();}
+STDCALL void WRAP_EXPORT(MmUnlockPages)(void){UNIMPL();}
+STDCALL void WRAP_EXPORT(ObfReferenceObject)(void){UNIMPL();}
+STDCALL void WRAP_EXPORT(ObReferenceObjectByHandle)(void){UNIMPL();}
+STDCALL void WRAP_EXPORT(_except_handler3)(void){UNIMPL();}
 
 #include "ntoskernel_exports.h"

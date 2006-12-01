@@ -15,14 +15,16 @@
 
 #ifdef TEST_LOADER
 
-#include "usr_linker.h"
+#include <stdio.h>
+#include <stdint.h>
+#include <string.h>
+#include <linux/types.h>
+#include <asm/errno.h>
 
 #else
 
 #include <linux/types.h>
 #include <asm/errno.h>
-
-//#define DEBUGLINKER 2
 
 #include "ntoskernel.h"
 
@@ -31,47 +33,26 @@
 struct pe_exports {
 	char *dll;
 	char *name;
-	generic_func addr;
+	WRAP_EXPORT_FUNC addr;
 };
 
 static struct pe_exports pe_exports[40];
 static int num_pe_exports;
-#if defined(CONFIG_X86_64)
-extern struct kuser_shared_data kuser_shared_data;
-#endif
 
 #define RVA2VA(image, rva, type) (type)(ULONG_PTR)((void *)image + rva)
 #define CHECK_SZ(a,b) { if (sizeof(a) != b) {				\
 			ERROR("%s is bad, got %zd, expected %d",	\
 			      #a , sizeof(a), (b)); return -EINVAL; } }
 
-#if defined(DEBUGLINKER) && DEBUGLINKER > 0
-#define DBGLINKER(fmt, ...) printk(KERN_INFO "%s (%s:%d): " fmt "\n",	\
-				   DRIVER_NAME, __FUNCTION__,		\
-				   __LINE__ , ## __VA_ARGS__);
-static const char *image_directory_name[] = {
-	"EXPORT",
-	"IMPORT",
-	"RESOURCE",
-	"EXCEPTION",
-	"SECURITY",
-	"BASERELOC",
-	"DEBUG",
-	"COPYRIGHT",
-	"GLOBALPTR",
-	"TLS",
-	"LOAD_CONFIG",
-	"BOUND_IMPORT",
-	"IAT",
-	"DELAY_IMPORT",
-	"COM_DESCRIPTOR" };
+#ifdef TEST_LOADER
+#define WRAP_EXPORT_FUNC char *
+static WRAP_EXPORT_FUNC get_export(char *name)
+{
+	return name;
+}
 #else
-#define DBGLINKER(fmt, ...) do { } while (0)
-#endif
-
-#ifndef TEST_LOADER
-extern struct wrap_export ntoskernel_exports[], ntoskernel_io_exports[],
-	ndis_exports[], crt_exports[], hal_exports[], rtl_exports[];
+extern struct wrap_export ntoskernel_exports[], ndis_exports[],
+	misc_funcs_exports[], hal_exports[];
 #ifdef CONFIG_USB
 extern struct wrap_export usb_exports[];
 #endif
@@ -84,25 +65,17 @@ static char *get_export(char *name)
 		if (strcmp(ntoskernel_exports[i].name, name) == 0)
 			return (char *)ntoskernel_exports[i].func;
 
-	for (i = 0 ; ntoskernel_io_exports[i].name != NULL; i++)
-		if (strcmp(ntoskernel_io_exports[i].name, name) == 0)
-			return (char *)ntoskernel_io_exports[i].func;
-
 	for (i = 0 ; ndis_exports[i].name != NULL; i++)
 		if (strcmp(ndis_exports[i].name, name) == 0)
 			return (char *)ndis_exports[i].func;
 
-	for (i = 0 ; crt_exports[i].name != NULL; i++)
-		if (strcmp(crt_exports[i].name, name) == 0)
-			return (char *)crt_exports[i].func;
+	for (i = 0 ; misc_funcs_exports[i].name != NULL; i++)
+		if (strcmp(misc_funcs_exports[i].name, name) == 0)
+			return (char *)misc_funcs_exports[i].func;
 
 	for (i = 0 ; hal_exports[i].name != NULL; i++)
 		if (strcmp(hal_exports[i].name, name) == 0)
 			return (char *)hal_exports[i].func;
-
-	for (i = 0 ; rtl_exports[i].name != NULL; i++)
-		if (strcmp(rtl_exports[i].name, name) == 0)
-			return (char *)rtl_exports[i].func;
 
 #ifdef CONFIG_USB
 	for (i = 0 ; usb_exports[i].name != NULL; i++)
@@ -128,6 +101,25 @@ static void *get_dll_init(char *name)
 	return NULL;
 }
 
+#if DEBUG >= 3
+static const char *image_directory_name[] = {
+	"EXPORT",
+	"IMPORT",
+	"RESOURCE",
+	"EXCEPTION",
+	"SECURITY",
+	"BASERELOC",
+	"DEBUG",
+	"COPYRIGHT",
+	"GLOBALPTR",
+	"TLS",
+	"LOAD_CONFIG",
+	"BOUND_IMPORT",
+	"IAT",
+	"DELAY_IMPORT",
+	"COM_DESCRIPTOR" };
+#endif
+
 /*
  * Find and validate the coff header
  *
@@ -149,32 +141,30 @@ static int check_nt_hdr(IMAGE_NT_HEADERS *nt_hdr)
 	/* Make sure Image is PE32 or PE32+ */
 #ifdef CONFIG_X86_64
 	if (opt_hdr->Magic != IMAGE_NT_OPTIONAL_HDR64_MAGIC) {
-		ERROR("kernel is 64-bit, but Windows driver is not 64-bit;"
-		      "bad magic: %04X", opt_hdr->Magic);
+		ERROR("Windows driver is not 64-bit; bad magic: %04X",
+		      opt_hdr->Magic);
 		return -EINVAL;
 	}
 #else
 	if (opt_hdr->Magic != IMAGE_NT_OPTIONAL_HDR32_MAGIC) {
-		ERROR("kernel is 32-bit, but Windows driver is not 32-bit;"
-		      "bad magic: %04X", opt_hdr->Magic);
+		ERROR("Windows driver is not 32-bit; bad magic: %04X",
+		      opt_hdr->Magic);
 		return -EINVAL;
 	}
 #endif
 
 	/* Validate the image for the current architecture. */
+	if (nt_hdr->FileHeader.Machine !=
 #ifdef CONFIG_X86_64
-	if (nt_hdr->FileHeader.Machine != IMAGE_FILE_MACHINE_AMD64) {
-		ERROR("kernel is 64-bit, but Windows driver is not 64-bit;"
-		      " (PE signature is %04X)", nt_hdr->FileHeader.Machine);
-		return -EINVAL;
-	}
+	    IMAGE_FILE_MACHINE_AMD64
 #else
-	if (nt_hdr->FileHeader.Machine != IMAGE_FILE_MACHINE_I386) {
-		ERROR("kernel is 32-bit, but Windows driver is not 32-bit;"
+	    IMAGE_FILE_MACHINE_I386
+#endif
+		) {
+		ERROR("driver is not for current architecture "
 		      " (PE signature is %04X)", nt_hdr->FileHeader.Machine);
 		return -EINVAL;
 	}
-#endif
 
 	/* Must have attributes */
 #ifdef CONFIG_X86_64
@@ -200,10 +190,10 @@ static int check_nt_hdr(IMAGE_NT_HEADERS *nt_hdr)
 		return -EINVAL;
 	}
 
-	DBGLINKER("number of datadictionary entries %d",
+	DBGTRACE1("number of datadictionary entries %d",
 		  opt_hdr->NumberOfRvaAndSizes);
 	for (i = 0; i < opt_hdr->NumberOfRvaAndSizes; i++) {
-		DBGLINKER("datadirectory %s RVA:%X Size:%d",
+		DBGTRACE3("datadirectory %s RVA:%X Size:%d",
 			  (i<=IMAGE_DIRECTORY_ENTRY_COM_DESCRIPTOR)?
 			  image_directory_name[i] : "unknown",
 			  opt_hdr->DataDirectory[i].VirtualAddress,
@@ -241,14 +231,16 @@ static int import(void *image, IMAGE_IMPORT_DESCRIPTOR *dirent, char *dll)
 		}
 
 		adr = get_export(symname);
+		if (adr != NULL)
+			DBGTRACE1("found symbol: %s:%s, rva = %Lu",
+				  dll, symname, (uint64_t)address_tbl[i]);
 		if (adr == NULL) {
-			ERROR("unknown symbol: %s:'%s'", dll, symname);
+			ERROR("unknown symbol: %s:%s", dll, symname);
 			ret = -1;
-		} else {
-			DBGLINKER("found symbol: %s:%s: addr: %p, rva = %Lu",
-				  dll, symname, adr, (uint64_t)address_tbl[i]);
-			address_tbl[i] = (ULONG_PTR)adr;
 		}
+		DBGTRACE1("importing rva: %p, %p: %s : %s",
+			  (void *)(address_tbl[i]), adr, dll, symname);
+		address_tbl[i] = (ULONG_PTR)adr;
 	}
 	return ret;
 }
@@ -267,7 +259,7 @@ static int read_exports(struct pe_image *pe)
 		&opt_hdr->DataDirectory[IMAGE_DIRECTORY_ENTRY_EXPORT];
 
 	if (export_data_dir->Size == 0) {
-		DBGLINKER("no exports");
+		DBGTRACE1("no exports");
 		return 0;
 	}
 
@@ -285,9 +277,9 @@ static int read_exports(struct pe_image *pe)
 		if (export_data_dir->VirtualAddress <= *export_addr_table ||
 		    *export_addr_table >= (export_data_dir->VirtualAddress +
 					   export_data_dir->Size))
-			DBGLINKER("forwarder rva");
+			DBGTRACE1("forwarder rva");
 
-		DBGLINKER("export symbol: %s, at %p",
+		DBGTRACE1("export symbol: %s, at %p",
 			  (char *)(pe->image + *name_table),
 			  pe->image + *export_addr_table);
 
@@ -321,7 +313,7 @@ static int fixup_imports(void *image, IMAGE_NT_HEADERS *nt_hdr)
 	for (i = 0; dirent[i].Name; i++) {
 		name = RVA2VA(image, dirent[i].Name, char*);
 
-		DBGLINKER("imports from dll: %s", name);
+		DBGTRACE1("imports from dll: %s\n", name);
 		ret += import(image, &dirent[i], name);
 	}
 	return ret;
@@ -329,7 +321,7 @@ static int fixup_imports(void *image, IMAGE_NT_HEADERS *nt_hdr)
 
 static int fixup_reloc(void *image, IMAGE_NT_HEADERS *nt_hdr)
 {
-	ULONG_PTR base;
+        ULONG_PTR base;
 	ULONG_PTR size;
 	IMAGE_BASE_RELOCATION *fixup_block;
 	IMAGE_DATA_DIRECTORY *base_reloc_data_dir;
@@ -337,15 +329,15 @@ static int fixup_reloc(void *image, IMAGE_NT_HEADERS *nt_hdr)
 
 	opt_hdr = &nt_hdr->OptionalHeader;
 	base = opt_hdr->ImageBase;
-	base_reloc_data_dir =
+	base_reloc_data_dir = 
 		&opt_hdr->DataDirectory[IMAGE_DIRECTORY_ENTRY_BASERELOC];
 	if (base_reloc_data_dir->Size == 0)
 		return 0;
 
 	fixup_block = RVA2VA(image, base_reloc_data_dir->VirtualAddress,
 			     IMAGE_BASE_RELOCATION *);
-	DBGLINKER("fixup_block=%p, image=%p", fixup_block, image);
-	DBGLINKER("fixup_block info: %x %d",
+	DBGTRACE3("fixup_block=%p, image=%p", fixup_block, image);
+	DBGTRACE3("fixup_block info: %x %d", 
 		  fixup_block->VirtualAddress, fixup_block->SizeOfBlock);
 
 	while (fixup_block->SizeOfBlock) {
@@ -354,7 +346,7 @@ static int fixup_reloc(void *image, IMAGE_NT_HEADERS *nt_hdr)
 
 		size = (fixup_block->SizeOfBlock -
 			sizeof(IMAGE_BASE_RELOCATION)) / sizeof(WORD);
-		DBGLINKER("found %Lu relocations in this block",
+		DBGTRACE3("found %Lu relocations in this block",
 			  (uint64_t)size);
 
 		for (i = 0; i < size; i++) {
@@ -371,7 +363,7 @@ static int fixup_reloc(void *image, IMAGE_NT_HEADERS *nt_hdr)
 					       fixup_block->VirtualAddress +
 					       offset, uint32_t *);
 				addr = RVA2VA(image, (*loc - base), uint32_t);
-				DBGLINKER("relocation: *%p (Val:%X)= %X",
+				DBGTRACE3("relocation: *%p (Val:%X)= %X",
 					  loc, *loc, addr);
 				*loc = addr;
 			}
@@ -384,7 +376,7 @@ static int fixup_reloc(void *image, IMAGE_NT_HEADERS *nt_hdr)
 					       fixup_block->VirtualAddress +
 					       offset, uint64_t *);
 				addr = RVA2VA(image, (*loc - base), uint64_t);
-				DBGLINKER("relocation: *%p (Val:%llX)= %llx",
+				DBGTRACE3("relocation: *%p (Val:%llX)= %llx",
 					  loc, *loc, addr);
 				*loc = addr;
 			}
@@ -397,12 +389,12 @@ static int fixup_reloc(void *image, IMAGE_NT_HEADERS *nt_hdr)
 				break;
 			}
 		}
-		DBGLINKER("finished relocating block");
+		DBGTRACE1("finished relocating block");
 
 		fixup_block = (IMAGE_BASE_RELOCATION *)
 			((void *)fixup_block + fixup_block->SizeOfBlock);
 	};
-	DBGLINKER("done relocating all");
+	DBGTRACE1("done relocating all");	
 
 	return 0;
 }
@@ -436,17 +428,7 @@ static int fix_pe_image(struct pe_image *pe)
 #error x86_64 should have either PAGE_KERNEL_EXECUTABLE or PAGE_KERNEL_EXEC
 #endif
 #else
-#ifdef cpu_has_nx
-	/* hate to play with kernel macros, but PAGE_KERNEL_EXEC is
-	 * not available to modules! */
-	if (cpu_has_nx)
-		image = __vmalloc(image_size, GFP_KERNEL | __GFP_HIGHMEM,
-				  __pgprot(__PAGE_KERNEL & ~_PAGE_NX));
-	else
-		image = vmalloc(image_size);
-#else
-		image = vmalloc(image_size);
-#endif
+	image = vmalloc(image_size);
 #endif
 	if (image == NULL) {
 		ERROR("failed to allocate enough space for new image:"
@@ -459,13 +441,13 @@ static int fix_pe_image(struct pe_image *pe)
 	sections = pe->nt_hdr->FileHeader.NumberOfSections;
 	sect_hdr = IMAGE_FIRST_SECTION(pe->nt_hdr);
 
-	DBGLINKER("copying headers: %u bytes", sect_hdr->PointerToRawData);
+	DBGTRACE3("copying headers: %u bytes", sect_hdr->PointerToRawData);
 
 	memcpy(image, pe->image, sect_hdr->PointerToRawData);
 
 	/* Copy all the sections */
 	for (i = 0; i < sections; i++) {
-		DBGLINKER("Copy section %s from %x to %x",
+		DBGTRACE3("Copy section %s from %x to %x",
 			  sect_hdr->Name, sect_hdr->PointerToRawData,
 			  sect_hdr->VirtualAddress);
 		if (sect_hdr->VirtualAddress+sect_hdr->SizeOfRawData >
@@ -490,30 +472,13 @@ static int fix_pe_image(struct pe_image *pe)
 		(pe->image + ((IMAGE_DOS_HEADER *)pe->image)->e_lfanew);
 	pe->opt_hdr = &pe->nt_hdr->OptionalHeader;
 
-	DBGLINKER("set nt headers: nt_hdr=%p, opt_hdr=%p, image=%p",
+	DBGTRACE3("set nt headers: nt_hdr=%p, opt_hdr=%p, image=%p",
 		  pe->nt_hdr, pe->opt_hdr, pe->image);
 
 	return 0;
 }
 
-#if defined(CONFIG_X86_64)
-void fix_user_shared_data_addr(char *driver, unsigned long length)
-{
-	unsigned long i, n, max_addr, *addr;
-
-	n = length - sizeof(unsigned long);
-	max_addr = KI_USER_SHARED_DATA + sizeof(kuser_shared_data);
-	for (i = 0; i < n; i++) {
-		addr = (unsigned long *)(driver + i);
-		if (*addr >= KI_USER_SHARED_DATA && *addr < max_addr) {
-			*addr -= KI_USER_SHARED_DATA;
-			*addr += (unsigned long)&kuser_shared_data;
-		}
-	}
-}
-#endif
-
-int link_pe_images(struct pe_image *pe_image, unsigned short n)
+int load_pe_images(struct pe_image *pe_image, int n)
 {
 	int i;
 	struct pe_image *pe;
@@ -538,7 +503,7 @@ int link_pe_images(struct pe_image *pe_image, unsigned short n)
 
 		if (pe->size < sizeof(IMAGE_DOS_HEADER)) {
 			DBGTRACE1("image too small: %d", pe->size);
-			return -EINVAL;
+ 			return -EINVAL;
 		}
 
 		pe->nt_hdr =
@@ -573,16 +538,12 @@ int link_pe_images(struct pe_image *pe_image, unsigned short n)
 			DBGTRACE1("fixup imports failed");
 			return -EINVAL;
 		}
-#if defined(CONFIG_X86_64)
-		INFO("fixing KI_USER_SHARED_DATA address in the driver");
-		fix_user_shared_data_addr(pe_image[i].image, pe_image[i].size);
-#endif
 		flush_icache_range(pe->image, pe->size);
 
 		pe->entry =
 			RVA2VA(pe->image,
 			       pe->opt_hdr->AddressOfEntryPoint, void *);
-		DBGTRACE1("entry is at %p, rva at %08X", pe->entry,
+		DBGTRACE1("entry is at %p, rva at %08X", pe->entry, 
 			  pe->opt_hdr->AddressOfEntryPoint);
 	}
 
@@ -593,7 +554,7 @@ int link_pe_images(struct pe_image *pe_image, unsigned short n)
 			struct unicode_string ustring;
 			char *buf = "0/0t0m0p00";
 			int (*dll_entry)(struct unicode_string *ustring)
-				wstdcall;
+				STDCALL;
 
 			memset(&ustring, 0, sizeof(ustring));
 			ustring.buf = (wchar_t *)buf;

@@ -56,13 +56,6 @@ else
     log "kernel sources missing"
 fi
 
-newblock
-log "module information:"
-log_cmd 'modprobe -c | grep ndis'
-log "module(s):"
-log_cmd "find /lib/modules/$KVERS/ -name ndiswrapper\* | xargs ls -l"
-log ""
-
 # the verion of gcc
 newblock
 log "gcc --version:"
@@ -73,7 +66,7 @@ newblock
 log "installed drivers:"
 log_cmd 'ls -lR /etc/ndiswrapper'
 
-while :; do
+while(true); do
     echo "Is it okay to shutdown 'wlan0' interface and reload the module?"
     echo "If loading the module crashes kernel, then say N here"
     echo -n "Reload ndiswrapper module? [N/y]:"
@@ -89,13 +82,10 @@ while :; do
 	    log "Reloading ndiswrapper..."
 	    if [ $FULL -eq 1 ]; then
 		log_cmd 'ifconfig wlan0 down;  rmmod ndiswrapper;
-			 modprobe ndiswrapper;
-			 dmesg | grep ndiswrapper | tail -n 500'
+			modprobe ndiswrapper; dmesg |tail -n 100'
 	    else
 		log_cmd 'ifconfig wlan0 down;  rmmod ndiswrapper;
-			 modprobe ndiswrapper;
-			 dmesg | grep ndiswrapper | tail -n 50'
-
+			modprobe ndiswrapper; dmesg | tail -n 10'
 	    fi
 	    break
 	    ;;
@@ -103,9 +93,9 @@ while :; do
 	    log "Not reloading ndiswrapper..."
 	    log ""
 	    if [ $FULL -eq 1 ]; then
-		log_cmd 'dmesg | grep ndiswrapper | tail -n 100'
+		log_cmd 'dmesg | tail -n 100'
 	    else
-		log_cmd 'dmesg | grep ndiswrapper | tail -n 10'
+		log_cmd 'dmesg | tail -n 10'
 	    fi
 	    break
 	    ;;
@@ -118,6 +108,11 @@ done
 if [ $FULL -eq 1 ]; then
     # module information
     newblock
+    log "module information:"
+    log_cmd 'modprobe -c | grep ndis'
+    log "module is at:"
+    log_cmd "find /lib/modules/$KVERS/ -name ndiswrapper\* | xargs ls -l"
+    log ""
 
     # pci devices
     newblock
