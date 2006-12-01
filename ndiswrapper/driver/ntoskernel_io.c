@@ -410,11 +410,11 @@ wfastcall void WIN_FUNC(IofCompleteRequest,2)
 			dev_obj);
 		if (irp_sl->completion_routine &&
 		    ((irp->io_status.status == STATUS_SUCCESS &&
-		      irp_sl->control & SL_INVOKE_ON_SUCCESS) ||
-		     (irp->io_status.status != STATUS_SUCCESS &&
-		      irp_sl->control & SL_INVOKE_ON_ERROR) ||
-		     (irp->cancel == TRUE &&
-		      irp_sl->control & SL_INVOKE_ON_CANCEL))) {
+		       irp_sl->control & SL_INVOKE_ON_SUCCESS) ||
+		      (irp->io_status.status != STATUS_SUCCESS &&
+		       irp_sl->control & SL_INVOKE_ON_ERROR) ||
+		      (irp->cancel == TRUE &&
+		       irp_sl->control & SL_INVOKE_ON_CANCEL))) {
 			IOTRACE("calling completion_routine at: %p, %p",
 				irp_sl->completion_routine, irp_sl->context);
 			status = LIN2WIN3(irp_sl->completion_routine,
