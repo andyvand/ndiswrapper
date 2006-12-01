@@ -1866,30 +1866,25 @@ wstdcall NTSTATUS WIN_FUNC(PsCreateSystemThread,7)
 	 void *client_id, void (*func)(void *) wstdcall, void *ctx)
 {
 	struct thread_trampoline_info thread_info;
-	struct nt_thread *thread;
 	struct task_struct *task;
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,7)
-	int pid;
-#endif
+	no_warn_unused int pid;
 
 	TRACEENTER2("phandle = %p, access = %u, obj_attr = %p, process = %p, "
-	            "client_id = %p, func = %p, context = %p",
-	            phandle, access, obj_attr, process, client_id,
-	            func, ctx);
+	            "client_id = %p, func = %p, context = %p", phandle, access,
+		    obj_attr, process, client_id, func, ctx);
 
+	thread_info.thread = create_nt_thread(NULL);
+	if (!thread_info.thread)
+		TRACEEXIT2(return STATUS_RESOURCES);
 	thread_info.func = func;
 	thread_info.ctx = ctx;
-	thread = create_nt_thread(NULL);
-	if (!thread)
-		TRACEEXIT2(return STATUS_RESOURCES);
-	thread_info.thread = thread;
 	init_completion(&thread_info.started);
 
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,7)
 	pid = kernel_thread(thread_trampoline, &thread_info, CLONE_SIGHAND);
 	DBGTRACE2("pid = %d", pid);
 	if (pid < 0) {
-		free_object(thread);
+		free_object(thread_info.thread);
 		TRACEEXIT2(return STATUS_FAILURE);
 	}
 	task = NULL;
@@ -1897,14 +1892,14 @@ wstdcall NTSTATUS WIN_FUNC(PsCreateSystemThread,7)
 #else
 	task = KTHREAD_RUN(thread_trampoline, &thread_info, "windisdrvr");
 	if (IS_ERR(task)) {
-		free_object(thread);
+		free_object(thread_info.thread);
 		TRACEEXIT2(return STATUS_FAILURE);
 	}
 	DBGTRACE2("created task: %p (%d)", task, task->pid);
 #endif
 	wait_for_completion(&thread_info.started);
-	*phandle = OBJECT_TO_HEADER(thread);
-	DBGTRACE2("created thread: %p, %p", thread, *phandle);
+	*phandle = OBJECT_TO_HEADER(thread_info.thread);
+	DBGTRACE2("created thread: %p, %p", thread_info.thread, *phandle);
 	TRACEEXIT2(return STATUS_SUCCESS);
 }
 
