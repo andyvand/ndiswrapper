@@ -1,0 +1,6 @@
+ndiswrapper (#DRIVER_VERSION#-1) unstable; urgency=low
+
+  * Built for kernel #KVERS#.
+
+ -- #MAINT#  #DATE#
+
