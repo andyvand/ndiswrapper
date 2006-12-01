@@ -1,6 +1,5 @@
 /*
  *  Copyright (C) 2004 Jan Kiszka
- *  Copyright (C) 2005 Giridhar Pemmasani
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -14,16 +13,14 @@
  *
  */
 
-#ifndef _USB_H_
-#define _USB_H_
+#ifndef USB_H
+#define USB_H
 
 #include "ntoskernel.h"
 
-#define IOCTL_INTERNAL_USB_SUBMIT_URB			0x00220003
-#define IOCTL_INTERNAL_USB_RESET_PORT			0x00220007
-#define IOCTL_INTERNAL_USB_GET_PORT_STATUS		0x00220013
-#define IOCTL_INTERNAL_USB_CYCLE_PORT			0x0022001F
-#define IOCTL_INTERNAL_USB_SUBMIT_IDLE_NOTIFICATION	0x00220027
+#define IOCTL_INTERNAL_USB_SUBMIT_URB	0x00220003
+#define IOCTL_INTERNAL_USB_RESET_PORT	0x00220007
+#define IOCTL_INTERNAL_USB_GET_PORT_STATUS	0x00220013
 
 #define URB_FUNCTION_SELECT_CONFIGURATION            0x0000
 #define URB_FUNCTION_SELECT_INTERFACE                0x0001
@@ -73,35 +70,23 @@
 #define URB_FUNCTION_RESERVE_0X002D                  0x002D
 #define URB_FUNCTION_RESERVE_0X002E                  0x002E
 #define URB_FUNCTION_RESERVE_0X002F                  0x002F
-// USB 2.0 calls start at 0x0030
+// USB 2.0 calls start at 0x0030         
 #define URB_FUNCTION_SYNC_RESET_PIPE                 0x0030
 #define URB_FUNCTION_SYNC_CLEAR_STALL                0x0031
-#define URB_FUNCTION_CONTROL_TRANSFER_EX             0x0032
 
 #define USBD_PF_CHANGE_MAX_PACKET		0x00000001
 
+#define USBD_TRANSFER_DIRECTION_BIT		0
+#define USBD_SHORT_TRANSFER_OK_BIT		1
+
 #define USBD_TRANSFER_DIRECTION_OUT		0
-#define USBD_TRANSFER_DIRECTION_IN		1
-
-#define USBD_SHORT_TRANSFER_OK			0x00000002
-#define USBD_START_ISO_TRANSFER_ASAP		0x00000004
-#define USBD_DEFAULT_PIPE_TRANSFER		0x00000008
-
+#define USBD_TRANSFER_DIRECTION_IN		\
+	(1 << USBD_TRANSFER_DIRECTION_BIT)
 #define USBD_TRANSFER_DIRECTION(flags)		\
 	((flags) & USBD_TRANSFER_DIRECTION_IN)
 
-enum pipe_type {UsbdPipeTypeControl = USB_ENDPOINT_XFER_CONTROL,
-		UsbdPipeTypeIsochronous = USB_ENDPOINT_XFER_ISOC,
-		UsbdPipeTypeBulk = USB_ENDPOINT_XFER_BULK,
-		UsbdPipeTypeInterrupt = USB_ENDPOINT_XFER_INT};
-
-#define USBD_IS_BULK_PIPE(pipe_handle)					\
-	(((pipe_handle)->bmAttributes & USB_ENDPOINT_XFERTYPE_MASK)	\
-	 == USB_ENDPOINT_XFER_BULK)
-
-#define USBD_IS_INT_PIPE(pipe_handle)					\
-	(((pipe_handle)->bmAttributes & USB_ENDPOINT_XFERTYPE_MASK)	\
-	 == USB_ENDPOINT_XFER_INT)
+#define USBD_SHORT_TRANSFER_OK			\
+	(1 << USBD_SHORT_TRANSFER_OK_BIT)
 
 #define USBD_PORT_ENABLED			0x00000001
 #define USBD_PORT_CONNECTED			0x00000002
@@ -110,7 +95,7 @@ typedef LONG USBD_STATUS;
 
 #define USBD_STATUS_SUCCESS			0x0
 #define USBD_STATUS_PENDING			0x40000000
-#define USBD_STATUS_CANCELED			0x00010000
+#define USBD_STATUS_CANCELLED			0x00010000
 
 #define USBD_STATUS_CRC				0xC0000001
 #define USBD_STATUS_BTSTUFF			0xC0000002
@@ -130,9 +115,7 @@ typedef LONG USBD_STATUS;
 #define USBD_STATUS_XACT_ERROR			0xC0000011
 #define USBD_STATUS_BABBLE_DETECTED		0xC0000012
 #define USBD_STATUS_DATA_BUFFER_ERROR		0xC0000013
-
 #define USBD_STATUS_NOT_SUPPORTED		0xC0000E00
-#define USBD_STATUS_BUFFER_TOO_SMALL		0xC0003000
 #define USBD_STATUS_DEVICE_GONE			0xC0007000
 
 #define USBD_STATUS_NO_MEMORY			0x80000100
@@ -144,12 +127,16 @@ typedef LONG USBD_STATUS;
 
 #define USBD_DEFAULT_MAXIMUM_TRANSFER_SIZE	PAGE_SIZE
 
+typedef struct usb_endpoint_descriptor *usbd_pipe_handle;
+
 struct urb_hcd_area {
 	void *reserved8[8];
 };
 
-typedef struct usb_endpoint_descriptor *usbd_pipe_handle;
-typedef struct usb_descriptor_header usb_common_descriptor_t;
+enum pipe_type {ptControl = USB_ENDPOINT_XFER_CONTROL,
+		ptIsoc = USB_ENDPOINT_XFER_ISOC,
+		ptBulk = USB_ENDPOINT_XFER_BULK,
+		ptInt = USB_ENDPOINT_XFER_INT};
 
 struct usbd_pipe_information {
 	USHORT wMaxPacketSize;
@@ -187,17 +174,22 @@ struct nt_urb_header {
 	ULONG usbd_flags;
 };
 
-struct usbd_select_interface {
-	struct nt_urb_header header;
-	void *handle;
-	struct usbd_interface_information intf;
-};
-
 struct usbd_select_configuration {
 	struct nt_urb_header header;
 	struct usb_config_descriptor *config;
 	void *handle;
 	struct usbd_interface_information intf;
+};
+
+struct usbd_bulk_or_intr_transfer {
+	struct nt_urb_header header;
+	usbd_pipe_handle pipe_handle;
+	ULONG transfer_flags;
+	ULONG transfer_buffer_length;
+	void *transfer_buffer;
+	struct mdl *mdl;
+	union nt_urb *urb_link;
+	struct urb_hcd_area hca;
 };
 
 struct usbd_control_descriptor_request {
@@ -214,17 +206,6 @@ struct usbd_control_descriptor_request {
 	UCHAR desc_type;
 	USHORT language_id;
 	USHORT reserved2;
-};
-
-struct usbd_bulk_or_intr_transfer {
-	struct nt_urb_header header;
-	usbd_pipe_handle pipe_handle;
-	ULONG transfer_flags;
-	ULONG transfer_buffer_length;
-	void *transfer_buffer;
-	struct mdl *mdl;
-	union nt_urb *urb_link;
-	struct urb_hcd_area hca;
 };
 
 struct usbd_pipe_request {
@@ -271,75 +252,19 @@ struct usbd_isochronous_transfer {
 
 union nt_urb {
 	struct nt_urb_header header;
-	struct usbd_select_interface select_intf;
 	struct usbd_select_configuration select_conf;
 	struct usbd_bulk_or_intr_transfer bulk_int_transfer;
-	struct usbd_control_descriptor_request control_desc;
+	struct usbd_control_descriptor_request control_request;
 	struct usbd_vendor_or_class_request vendor_class_request;
 	struct usbd_isochronous_transfer isochronous;
 	struct usbd_pipe_request pipe_req;
 };
 
-struct usbd_bus_interface_usbdi {
-	USHORT Size;
-	USHORT Version;
-	void *Context;
-	void *InterfaceReference;
-	void *InterfaceDereference;
-	void *GetUSBDIVersion;
-	void *QueryBusTime;
-	void *SubmitIsoOutUrb;
-	void *QueryBusInformation;
-	/* version 1 and above have following field */
-	void *IsDeviceHighSpeed;
-	/* version 2 (and above) have following field */
-	void *LogEntry;
-};
-
-struct usbd_bus_information_level {
-	ULONG TotalBandwidth;
-	ULONG ConsumedBandwidth;
-	/* level 1 and above have following fields */
-	ULONG ControllerNameLength;
-	wchar_t ControllerName[1];
-};
-
-#define USBDI_VERSION				0x00000500 // Windows XP
-#define USB_HCD_CAPS_SUPPORTS_RT_THREADS	0x00000001
-#define USB_BUSIF_USBDI_VERSION_0		0x0000
-#define USB_BUSIF_USBDI_VERSION_1		0x0001
-#define USB_BUSIF_USBDI_VERSION_2		0x0002
-
-
-struct usbd_version_info {
-	ULONG usbdi_version;
-	ULONG supported_usb_version;
-};
-
-struct usbd_idle_callback {
-	void *callback;
-	void *context;
-};
-
 #define NT_URB_STATUS(nt_urb) ((nt_urb)->header.status)
 
 NTSTATUS wrap_submit_irp(struct device_object *pdo, struct irp *irp);
-void wrap_suspend_urbs(struct wrap_device *wd);
-void wrap_resume_urbs(struct wrap_device *wd);
-
-void USBD_InterfaceGetUSBDIVersion(void *context,
-				   struct usbd_version_info *version_info,
-				   ULONG *hcd_capa) wstdcall;
-BOOLEAN USBD_InterfaceIsDeviceHighSpeed(void *context) wstdcall;
-void USBD_InterfaceReference(void *context) wstdcall;
-void USBD_InterfaceDereference(void *context) wstdcall;
-NTSTATUS USBD_InterfaceQueryBusTime(void *context, ULONG *frame) wstdcall;
-NTSTATUS USBD_InterfaceSubmitIsoOutUrb(void *context,
-				       union nt_urb *nt_urb) wstdcall;
-NTSTATUS USBD_InterfaceQueryBusInformation(void *context, ULONG level, void *buf,
-					   ULONG *buf_length,
-					   ULONG *buf_actual_length) wstdcall;
-NTSTATUS USBD_InterfaceLogEntry(void *context, ULONG driver_tag, ULONG enum_tag,
-				ULONG p1, ULONG p2) wstdcall;
+NTSTATUS wrap_submit_urb(struct irp *irp);
+void wrap_suspend_urbs(struct wrapper_dev *wd);
+void wrap_resume_urbs(struct wrapper_dev *wd);
 
 #endif /* USB_H */

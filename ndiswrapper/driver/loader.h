@@ -13,25 +13,24 @@
  *
  */
 
-#ifndef _LOADER_H_
-#define _LOADER_H_
+#ifndef LOADER_H
+#define LOADER_H
 
 #include "ndiswrapper.h"
 
 struct load_driver_file {
-	char driver_name[MAX_DRIVER_NAME_LEN];
 	char name[MAX_DRIVER_NAME_LEN];
 	size_t size;
 	void *data;
 };
 
 struct load_device_setting {
-	char name[MAX_SETTING_NAME_LEN];
-	char value[MAX_SETTING_VALUE_LEN];
+	char name[MAX_NDIS_SETTING_NAME_LEN];
+	char value[MAX_NDIS_SETTING_VALUE_LEN];
 };
-
+		
 struct load_device {
-	int bus;
+	int bustype;
 	int vendor;
 	int device;
 	int subvendor;
@@ -49,36 +48,20 @@ struct load_driver {
 	char name[MAX_DRIVER_NAME_LEN];
 	char conf_file_name[MAX_DRIVER_NAME_LEN];
 	unsigned int nr_sys_files;
-	struct load_driver_file sys_files[MAX_DRIVER_PE_IMAGES];
+	struct load_driver_file sys_files[MAX_PE_IMAGES];
 	unsigned int nr_settings;
-	struct load_device_setting settings[MAX_DEVICE_SETTINGS];
+	struct load_device_setting settings[MAX_NDIS_SETTINGS];
 	unsigned int nr_bin_files;
-	struct load_driver_file bin_files[MAX_DRIVER_BIN_FILES];
+	struct load_driver_file bin_files[MAX_NDIS_BIN_FILES];
 };
 
-#define WRAP_IOCTL_LOAD_DEVICE _IOW(('N' + 'd' + 'i' + 'S'), 0,	\
-				    struct load_device *)
-#define WRAP_IOCTL_LOAD_DRIVER _IOW(('N' + 'd' + 'i' + 'S'), 1,	\
-				    struct load_driver *)
-#define WRAP_IOCTL_LOAD_BIN_FILE _IOW(('N' + 'd' + 'i' + 'S'), 2,	\
-				      struct load_driver_file *)
-
-#define WRAP_CMD_LOAD_DEVICE "load_device"
-#define WRAP_CMD_LOAD_DRIVER "load_driver"
-#define WRAP_CMD_LOAD_BIN_FILE "load_bin_file"
+#define NDIS_REGISTER_DEVICES	_IOW(('N' + 'd' + 'i' + 'S'), 0,	\
+				     struct load_devices *)
+#define NDIS_LOAD_DRIVER	_IOW(('N' + 'd' + 'i' + 'S'), 1,	\
+				     struct load_driver *)
 
 int loader_init(void);
 void loader_exit(void);
-
-#ifdef __KERNEL__
-struct wrap_device *load_wrap_device(struct load_device *load_device);
-struct wrap_driver *load_wrap_driver(struct wrap_device *device);
-struct wrap_bin_file *get_bin_file(char *bin_file_name);
-void free_bin_file(struct wrap_bin_file *bin_file);
-void unload_wrap_driver(struct wrap_driver *driver);
-void unload_wrap_device(struct wrap_device *wd);
-struct wrap_device *get_wrap_device(void *dev, int bus_type);
-#endif
 
 #endif /* LOADER_H */
 
