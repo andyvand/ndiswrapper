@@ -24,7 +24,7 @@
 #define MAX_PROC_STR_LEN 32
 
 static struct proc_dir_entry *wrap_procfs_entry;
-extern int proc_uid, proc_gid, hangcheck_interval;
+extern int proc_uid, proc_gid;
 
 static int procfs_read_ndis_stats(char *page, char **start, off_t off,
 				  int count, int *eof, void *data)
@@ -103,25 +103,30 @@ static int procfs_read_ndis_encr(char *page, char **start, off_t off,
 		essid.essid[essid.length] = '\0';
 		p += sprintf(p, "essid=%s\n", essid.essid);
 	}
+
 	res = miniport_query_int(wnd, OID_802_11_ENCRYPTION_STATUS,
 				 &encr_status);
+	res |= miniport_query_int(wnd, OID_802_11_AUTHENTICATION_MODE,
+				  &auth_mode);
+
 	if (!res) {
-		typeof(&wnd->encr_info.keys[0]) tx_key;
+		int t = wnd->encr_info.tx_key_index;
 		p += sprintf(p, "tx_key=%u\n", wnd->encr_info.tx_key_index);
 		p += sprintf(p, "key=");
-		tx_key = &wnd->encr_info.keys[wnd->encr_info.tx_key_index];
-		if (tx_key->length > 0)
-			for (i = 0; i < tx_key->length; i++)
-				p += sprintf(p, "%2.2X", tx_key->key[i]);
+		if (wnd->encr_info.keys[t].length > 0)
+			for (i = 0; i < NDIS_ENCODING_TOKEN_MAX &&
+				     i < wnd->encr_info.keys[t].length;
+			     i++)
+				p += sprintf(p, "%2.2X",
+					     wnd->encr_info.keys[t].key[i]);
 		else
 			p += sprintf(p, "off");
 		p += sprintf(p, "\n");
-		p += sprintf(p, "encr_mode=%d\n", encr_status);
-	}
-	res = miniport_query_int(wnd, OID_802_11_AUTHENTICATION_MODE,
-				  &auth_mode);
-	if (!res)
+
+		p += sprintf(p, "status=%d\n", encr_status);
 		p += sprintf(p, "auth_mode=%d\n", auth_mode);
+	}
+
 	res = miniport_query_int(wnd, OID_802_11_INFRASTRUCTURE_MODE,
 				 &infra_mode);
 	p += sprintf(p, "mode=%s\n", (infra_mode == Ndis802_11IBSS) ?
@@ -149,25 +154,12 @@ static int procfs_read_ndis_hw(char *page, char **start, off_t off,
 	ndis_rts_threshold rts_threshold;
 	ndis_fragmentation_threshold frag_threshold;
 	ndis_antenna antenna;
-	ULONG packet_filter;
-	int n;
-	mac_address mac;
-	char *hw_status[] = {"ready", "initializing", "resetting", "closing",
-			     "not ready"};
 
 	if (off != 0) {
 		*eof = 1;
 		return 0;
 	}
 
-	res = miniport_query_int(wnd, OID_GEN_HARDWARE_STATUS, &n);
-	if (res >= 0 && res < sizeof(hw_status) / sizeof(hw_status[0]))
-		p += sprintf(p, "status=%s\n", hw_status[res]);
-
-	res = miniport_query_info(wnd, OID_802_3_CURRENT_ADDRESS,
-				  mac, sizeof(mac));
-	if (!res)
-		p += sprintf(p, "mac: " MACSTRSEP "\n", MAC2STR(mac));
 	res = miniport_query_info(wnd, OID_802_11_CONFIGURATION,
 				  &config, sizeof(config));
 	if (!res) {
@@ -206,7 +198,8 @@ static int procfs_read_ndis_hw(char *page, char **start, off_t off,
 	res = miniport_query_int(wnd, OID_802_11_POWER_MODE, &power_mode);
 	if (!res)
 		p += sprintf(p, "power_mode=%s\n",
-			     (power_mode == NDIS_POWER_OFF) ? "always_on" :
+			     (power_mode == NDIS_POWER_OFF) ?
+			     "always_on" :
 			     (power_mode == NDIS_POWER_MAX) ?
 			     "max_savings" : "min_savings");
 
@@ -243,14 +236,6 @@ static int procfs_read_ndis_hw(char *page, char **start, off_t off,
 		     test_bit(Ndis802_11AuthModeWPA2PSK, &wnd->capa.auth) ?
 		     ", WPA2PSK" : "");
 
-	res = miniport_query_int(wnd, OID_GEN_CURRENT_PACKET_FILTER,
-				 &packet_filter);
-	if (!res) {
-		if (packet_filter != wnd->packet_filter)
-			WARNING("wrong packet_filter? 0x%08x, 0x%08x\n",
-				packet_filter, wnd->packet_filter);
-		p += sprintf(p, "packet_filter: 0x%08x\n", packet_filter);
-	}
 	if (p - page > count) {
 		WARNING("wrote %lu bytes (limit is %u)",
 			(unsigned long)(p - page), count);
@@ -273,8 +258,7 @@ static int procfs_read_ndis_settings(char *page, char **start, off_t off,
 	}
 
 	p += sprintf(p, "hangcheck_interval=%d\n",
-		     hangcheck_interval == 0 ?
-		     (int)(wnd->hangcheck_interval / HZ) : -1);
+		     (int)(wnd->hangcheck_interval / HZ));
 
 	list_for_each_entry(setting, &wnd->wd->settings, list) {
 		p += sprintf(p, "%s=%s\n", setting->name, setting->value);
@@ -288,8 +272,6 @@ static int procfs_write_ndis_settings(struct file *file, const char *buf,
 {
 	struct wrap_ndis_device *wnd = (struct wrap_ndis_device *)data;
 	char setting[MAX_PROC_STR_LEN], *p;
-	unsigned int i;
-	NTSTATUS res;
 
 	if (count > MAX_PROC_STR_LEN)
 		return -EINVAL;
@@ -305,23 +287,49 @@ static int procfs_write_ndis_settings(struct file *file, const char *buf,
 		*p = 0;
 
 	if (!strcmp(setting, "hangcheck_interval")) {
+		int i;
+
 		if (!p)
 			return -EINVAL;
 		p++;
 		i = simple_strtol(p, NULL, 10);
 		hangcheck_del(wnd);
-		if (i > 0) {
-			wnd->hangcheck_interval = i * HZ;
-			hangcheck_add(wnd);
-		}
+		wnd->hangcheck_interval = i * HZ;
+		hangcheck_add(wnd);
+	} else if (!strcmp(setting, "check_capa")) {
+		check_capa(wnd);
+		printk(KERN_INFO
+		       "%s: encryption modes supported: %s%s%s%s%s%s%s\n",
+		       wnd->net_dev->name,
+		       test_bit(Ndis802_11Encryption1Enabled,
+				&wnd->capa.encr) ?
+		       "WEP" : "none",
+
+		       test_bit(Ndis802_11Encryption2Enabled,
+				&wnd->capa.encr) ?
+		       "; TKIP with WPA" : "",
+		       test_bit(Ndis802_11AuthModeWPA2, &wnd->capa.auth) ?
+		       ", WPA2" : "",
+		       test_bit(Ndis802_11AuthModeWPA2PSK, &wnd->capa.auth) ?
+		       ", WPA2PSK" : "",
+
+		       test_bit(Ndis802_11Encryption3Enabled,
+				&wnd->capa.encr) ?
+		       "; AES/CCMP with WPA" : "",
+		       test_bit(Ndis802_11AuthModeWPA2, &wnd->capa.auth) ?
+		       ", WPA2" : "",
+		       test_bit(Ndis802_11AuthModeWPA2PSK, &wnd->capa.auth) ?
+		       ", WPA2PSK" : "");
 	} else if (!strcmp(setting, "suspend")) {
+		int i;
+
 		if (!p)
 			return -EINVAL;
 		p++;
 		i = simple_strtol(p, NULL, 10);
 		if (i <= 0 || i > 3)
 			return -EINVAL;
-		if (wrap_is_pci_bus(wnd->wd->dev_bus))
+		if (wrap_is_pci_bus(wnd->wd->dev_bus_type))
 			i = wrap_pnp_suspend_pci_device(wnd->wd->pci.pdev,
 							PMSG_SUSPEND);
 		else
@@ -334,7 +342,8 @@ static int procfs_write_ndis_settings(struct file *file, const char *buf,
 		if (i)
 			return -EINVAL;
 	} else if (!strcmp(setting, "resume")) {
-		if (wrap_is_pci_bus(wnd->wd->dev_bus))
+		int i;
+		if (wrap_is_pci_bus(wnd->wd->dev_bus_type))
 			i = wrap_pnp_resume_pci_device(wnd->wd->pci.pdev);
 		else
 #if defined(CONFIG_USB) && LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
@@ -344,7 +353,87 @@ static int procfs_write_ndis_settings(struct file *file, const char *buf,
 #endif
 		if (i)
 			return -EINVAL;
+	} else if (!strcmp(setting, "reinit")) {
+		if (ndis_reinit(wnd))
+			return -EINVAL;
+#ifdef USB_DEBUG
+	} else if (!strcmp(setting, "irp")) {
+		struct irp *irp;
+		struct io_stack_location *irp_sl;
+		NTSTATUS status;
+		int major_fn, minor_fn, n;
+		struct device_object *dev;
+		if (!p)
+			return -EINVAL;
+		p++;
+		n = sscanf(p, "%d,%d,%x", &major_fn, &minor_fn, (int *)&dev);
+		DBGTRACE1("n = %d, mj = %d, mn = %d, dev = %p", n, major_fn,
+			  minor_fn, dev);
+		if (n != 3)
+			return -EINVAL;
+		irp = IoAllocateIrp(dev->stack_size, FALSE);
+		DBGTRACE1("stack size: %d, irp = %p", dev->stack_size, irp);
+		DBGTRACE1("drv_obj: %p", dev->drv_obj);
+		irp_sl = IoGetNextIrpStackLocation(irp);
+		irp_sl->major_fn = major_fn;
+		irp_sl->minor_fn = minor_fn;
+		irp->io_status.status = STATUS_NOT_SUPPORTED;
+		status = 0;
+		status = IoCallDriver(dev, irp);
+		DBGTRACE1("status = %d", status);
+#endif
+	} else if (!strcmp(setting, "power_profile")) {
+		int i;
+		struct miniport_char *miniport;
+		ULONG profile_inf;
+
+		if (!p)
+			return -EINVAL;
+		p++;
+		i = simple_strtol(p, NULL, 10);
+		if (i < 0 || i > 1)
+			return -EINVAL;
+
+		miniport = &wnd->wd->driver->ndis_driver->miniport;
+		if (!miniport->pnp_event_notify)
+			return -EFAULT;
+
+		/* 1 for AC and 0 for Battery */
+		if (i)
+			profile_inf = NdisPowerProfileAcOnLine;
+		else
+			profile_inf = NdisPowerProfileBattery;
+		
+		miniport->pnp_event_notify(wnd->nmb->adapter_ctx,
+					   NdisDevicePnPEventPowerProfileChanged,
+					   &profile_inf, sizeof(profile_inf));
+	} else if (!strcmp(setting, "auth_mode")) {
+		int i;
+
+		if (!p)
+			return -EINVAL;
+		p++;
+		i = simple_strtol(p, NULL, 10);
+		if (i <= 0 || i > 5)
+			return -EINVAL;
+
+		if (set_auth_mode(wnd, i))
+			return -EINVAL;
+	} else if (!strcmp(setting, "encr_mode")) {
+		int i;
+
+		if (!p)
+			return -EINVAL;
+		p++;
+		i = simple_strtol(p, NULL, 10);
+		if (i <= 0 || i > 7)
+			return -EINVAL;
+
+		if (set_encr_mode(wnd, i))
+			return -EINVAL;
 	} else if (!strcmp(setting, "stats_enabled")) {
+		int i;
+
 		if (!p)
 			return -EINVAL;
 		p++;
@@ -353,39 +442,70 @@ static int procfs_write_ndis_settings(struct file *file, const char *buf,
 			wnd->stats_enabled = TRUE;
 		else
 			wnd->stats_enabled = FALSE;
-	} else if (!strcmp(setting, "packet_filter")) {
+	} else if (!strcmp(setting, "tx_antenna")) {
+		ndis_antenna antenna;
+		unsigned int i;
+		NTSTATUS res;
+
 		if (!p)
 			return -EINVAL;
 		p++;
-		i = simple_strtol(p, NULL, 10);
-		res = miniport_set_int(wnd, OID_GEN_CURRENT_PACKET_FILTER, i);
+		i = simple_strtol(p, NULL, 16);
+		res = miniport_query_info(wnd, OID_802_11_NUMBER_OF_ANTENNAS,
+					  &antenna, sizeof(antenna));
 		if (res)
-			WARNING("setting packet_filter failed: %08X", res);
+			return -EINVAL;
+		if (i >= -1 && i < antenna)
+			antenna = i;
+		res = miniport_set_info(wnd, OID_802_11_TX_ANTENNA_SELECTED,
+				  &antenna, sizeof(antenna));
+		if (res)
+			return -EINVAL;
+	} else if (!strcmp(setting, "rx_antenna")) {
+		ndis_antenna antenna;
+		unsigned int i;
+		NTSTATUS res;
+
+		if (!p)
+			return -EINVAL;
+		p++;
+		i = simple_strtol(p, NULL, 16);
+		res = miniport_query_info(wnd, OID_802_11_NUMBER_OF_ANTENNAS,
+					  &antenna, sizeof(antenna));
+		if (res)
+			return -EINVAL;
+		if (i >= -1 && i < antenna)
+			antenna = i;
+		res = miniport_set_info(wnd, OID_802_11_RX_ANTENNA_SELECTED,
+				  &antenna, sizeof(antenna));
+		if (res)
+			return -EINVAL;
 	}
 	return count;
 }
 
 int wrap_procfs_add_ndis_device(struct wrap_ndis_device *wnd)
 {
-	struct proc_dir_entry *procfs_entry;
+	struct net_device *dev = wnd->net_dev;
+	struct proc_dir_entry *proc_iface, *procfs_entry;
 
+	wnd->procfs_iface = NULL;
 	if (wrap_procfs_entry == NULL)
 		return -ENOMEM;
 
-	if (wnd->procfs_iface) {
-		ERROR("%s already registered?", wnd->netdev_name);
-		return -EINVAL;
-	}
-	wnd->procfs_iface = proc_mkdir(wnd->netdev_name, wrap_procfs_entry);
-	if (wnd->procfs_iface == NULL) {
+	proc_iface = proc_mkdir(dev->name, wrap_procfs_entry);
+
+	wnd->procfs_iface = proc_iface;
+
+	if (proc_iface == NULL) {
 		ERROR("couldn't create proc directory");
 		return -ENOMEM;
 	}
-	wnd->procfs_iface->uid = proc_uid;
-	wnd->procfs_iface->gid = proc_gid;
+	proc_iface->uid = proc_uid;
+	proc_iface->gid = proc_gid;
 
 	procfs_entry = create_proc_entry("hw", S_IFREG | S_IRUSR | S_IRGRP,
-					 wnd->procfs_iface);
+					 proc_iface);
 	if (procfs_entry == NULL) {
 		ERROR("couldn't create proc entry for 'hw'");
 		return -ENOMEM;
@@ -397,7 +517,7 @@ int wrap_procfs_add_ndis_device(struct wrap_ndis_device *wnd)
 	}
 
 	procfs_entry = create_proc_entry("stats", S_IFREG | S_IRUSR | S_IRGRP,
-					 wnd->procfs_iface);
+					 proc_iface);
 	if (procfs_entry == NULL) {
 		ERROR("couldn't create proc entry for 'stats'");
 		return -ENOMEM;
@@ -409,7 +529,7 @@ int wrap_procfs_add_ndis_device(struct wrap_ndis_device *wnd)
 	}
 
 	procfs_entry = create_proc_entry("encr", S_IFREG | S_IRUSR | S_IRGRP,
-					 wnd->procfs_iface);
+					 proc_iface);
 	if (procfs_entry == NULL) {
 		ERROR("couldn't create proc entry for 'encr'");
 		return -ENOMEM;
@@ -422,7 +542,7 @@ int wrap_procfs_add_ndis_device(struct wrap_ndis_device *wnd)
 
 	procfs_entry = create_proc_entry("settings", S_IFREG |
 					 S_IRUSR | S_IRGRP |
-					 S_IWUSR | S_IWGRP, wnd->procfs_iface);
+					 S_IWUSR | S_IWGRP, proc_iface);
 	if (procfs_entry == NULL) {
 		ERROR("couldn't create proc entry for 'settings'");
 		return -ENOMEM;
@@ -438,6 +558,7 @@ int wrap_procfs_add_ndis_device(struct wrap_ndis_device *wnd)
 
 void wrap_procfs_remove_ndis_device(struct wrap_ndis_device *wnd)
 {
+	struct net_device *dev = wnd->net_dev;
 	struct proc_dir_entry *procfs_iface = wnd->procfs_iface;
 
 	if (procfs_iface == NULL)
@@ -447,7 +568,7 @@ void wrap_procfs_remove_ndis_device(struct wrap_ndis_device *wnd)
 	remove_proc_entry("encr", procfs_iface);
 	remove_proc_entry("settings", procfs_iface);
 	if (wrap_procfs_entry != NULL)
-		remove_proc_entry(wnd->netdev_name, wrap_procfs_entry);
+		remove_proc_entry(dev->name, wrap_procfs_entry);
 	wnd->procfs_iface = NULL;
 }
 
@@ -455,19 +576,12 @@ static int procfs_read_debug(char *page, char **start, off_t off,
 			     int count, int *eof, void *data)
 {
 	char *p = page;
-	enum alloc_type type;
 
 	if (off != 0) {
 		*eof = 1;
 		return 0;
 	}
 	p += sprintf(p, "%d\n", debug);
-	type = 0;
-#ifdef ALLOC_DEBUG
-	for (type = 0; type < ALLOC_TYPE_MAX; type++)
-		p += sprintf(p, "total size of allocations in %d: %d\n",
-			     type, alloc_size(type));
-#endif
 	return (p - page);
 }
 
