@@ -1,19 +1,20 @@
+-include ../version
+
 DESTDIR =
 sbindir = $(DESTDIR)/sbin
 usrsbindir = $(DESTDIR)/usr/sbin
 
-DRIVER_DIR ?= ../driver
+OBJS = loadndisdriver.o
 
-CC = gcc
-CFLAGS = -g -Wall -I$(DRIVER_DIR)
+CFLAGS = -Wall -g -DUTILS_VERSION=\"$(UTILS_VERSION)\" 
 
 DISTFILES=Makefile ndiswrapper loadndisdriver.c ndiswrapper-buginfo
 
-all: loadndisdriver
+all: loadndisdriver 
 
-loadndisdriver: loadndisdriver.c
-	$(CC) $(CFLAGS) -o $@ $<
-
+loadndisdriver: $(OBJS) ../driver/wrapper.h
+	gcc -o loadndisdriver $(OBJS)
+	
 clean:
 	rm -f *~ *.o loadndisdriver
 
@@ -26,8 +27,8 @@ install: all
 	install -D -m 755 ndiswrapper-buginfo $(usrsbindir)/ndiswrapper-buginfo
 	@echo
 	@echo "NOTE: Windows driver configuration file format has changed since" \
-	      "1.5. You must re-install Windows drivers if they were" \
-	      "installed before."
+		  "1.0-rc2. You must re-install Windows drivers if they were" \
+		  "installed before."
 
 dist:
 	@for file in $(DISTFILES); do \
