@@ -4,7 +4,7 @@
 
 # Define kernel version if not already defined
 %{!?kernel: %define kernel %(uname -r)}
-%{!?ksrc: %define ksrc /lib/modules/%{kernel}/source}
+%{!?ksrc: %define ksrc /lib/modules/%{kernel}/build}
 %{!?_inst_dir: %define _inst_dir /lib/modules/%{kernel}/misc}
 
 %define _sbinrootdir /sbin
@@ -52,7 +52,7 @@ make all KVERS=%{kernel} KSRC=%{ksrc}
 %define mandir $RPM_BUILD_ROOT%{_mandir}
 
 rm -rf $RPM_BUILD_ROOT
-make install DIST_DESTDIR=$RPM_BUILD_ROOT INST_DIR=%{inst_dir} KVERS=%{kernel} KSRC=%{ksrc} sbindir=%{sbindir} usrsbindir=%{usrsbindir} mandir=%{mandir}
+make install DESTDIR=$RPM_BUILD_ROOT INST_DIR=%{inst_dir} KVERS=%{kernel} KSRC=%{ksrc} sbindir=%{sbindir} usrsbindir=%{usrsbindir} mandir=%{mandir}
 
 %clean
 rm -rf $RPM_BUILD_ROOT

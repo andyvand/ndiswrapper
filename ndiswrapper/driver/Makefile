@@ -1,110 +1,47 @@
+-include ../version
+
 DISTFILES=divdi3.c hal.c iw_ndis.c iw_ndis.h loader.c loader.h \
-		longlong.h Makefile crt.c ndis.c ndis.h \
-		ndiswrapper.h ntoskernel.c ntoskernel.h ntoskernel_io.c \
-		pe_linker.c pe_linker.h pnp.c pnp.h proc.c rtl.c usb.c usb.h \
-		winnt_types.h workqueue.c wrapmem.h wrapmem.c wrapper.c \
-		wrapndis.h wrapndis.c lin2win.h win2lin_stubs.S
+		longlong.h Makefile misc_funcs.c ndis.c ndis.h \
+		ndiswrapper.h ntoskernel.c ntoskernel.h \
+		pe_linker.c pe_linker.h proc.c usb.c usb.h winnt_types.h \
+		wrapper.c wrapper.h x86_64_stubs.S
 
 KVERS ?= $(shell uname -r)
-KPSUB := $(shell echo $(KVERS) | sed -e 's/\([^\.]*\)\.\([^\.]*\)\..*/\1\2/')
+KSRC  ?= /lib/modules/$(KVERS)/build
 
-# distros use different paths for kernel include files
+KPSUB := $(shell echo $(KVERS) |  sed -e 's/\([^\.]*\)\.\([^\.]*\)\..*/\1\2/')
 
-KBUILD  ?= /lib/modules/$(KVERS)/build
-KSRC ?= $(shell if \
-	[ -f /lib/modules/$(KVERS)/source/include/linux/kernel.h ]; then \
-		echo /lib/modules/$(KVERS)/source ; \
-	else \
-		echo $(KBUILD); \
-	fi)
-
-ifdef DIST_DESTDIR
-DESTDIR = $(DIST_DESTDIR)
-else
-DESTDIR ?= /
-endif
-
-INST_DIR ?= $(shell echo $(DESTDIR)/lib/modules/$(KVERS)/misc | sed 's^//^/^g')
+DESTDIR =
+INST_DIR := $(DESTDIR)/lib/modules/$(KVERS)/misc
 
 SRC_DIR=$(shell pwd)
 
-KREV := $(shell echo $(KVERS) | sed -e 's/[^\.]*\.[^\.]*\.\([0-9]*\).*/\1/')
-
--include $(KBUILD)/.config
+-include $(KSRC)/.config
 
 CFLAGS += $(shell [ -f $(KSRC)/include/linux/modversions.h ] && \
 		  echo -DEXPORT_SYMTAB -DMODVERSIONS \
 		  -include $(KSRC)/include/linux/modversions.h)
 
-ifndef DISABLE_USB
-CFLAGS += $(shell if grep -q 'struct module \*owner;' \
-		   $(KSRC)/include/linux/usb.h ; then \
-			echo -DUSB_DRIVER_OWNER; \
-		  fi)
-endif
-
-# returns of structs and unions in registers when possible, like Windows 
-CFLAGS += -freg-struct-return
-
-# to produce debug trace, add option "DEBUG=<n>" where <n> is 1 to 6
 ifdef DEBUG
-CFLAGS += -DDEBUG=$(DEBUG) -g
+CFLAGS += -DDEBUG=$(DEBUG) -g -DDEBUG_TIMER 
 endif
 
-# to debug timers, add option "TIMER_DEBUG=1 DEBUG=<n>"
-ifdef TIMER_DEBUG
-CFLAGS += -DTIMER_DEBUG
+ifdef DEBUG_TIMER
+CFLAGS += -DDEBUG_TIMER
 endif
 
-# to debug event layer, add option "EVENT_DEBUG=1 DEBUG=<n>"
-ifdef EVENT_DEBUG
-CFLAGS += -DEVENT_DEBUG
+ifdef NDISWRAPPER_VERSION
+CFLAGS += -DNDISWRAPPER_VERSION=\"${NDISWRAPPER_VERSION}\" \
+		  -DEXTRA_VERSION=\"${EXTRA_VERSION}\"
 endif
 
-# to debug USB layer, add option "USB_DEBUG=1 DEBUG=<n>"
-ifdef USB_DEBUG
-CFLAGS += -DUSB_DEBUG
-endif
+.PHONY: prereq_check gen_exports clean dist_clean \
+		 x86_64_stubs install stack_check
 
-# to debug I/O layer, add option "USB_DEBUG=1 DEBUG=<n>"
-ifdef IO_DEBUG
-CFLAGS += -DIO_DEBUG
-endif
+all : prereq_check x86_64_stubs gen_exports default stack_check
 
-# to debug worker threads
-ifdef WORK_DEBUG
-CFLAGS += -DWORK_DEBUG
-endif
-
-# if ALLOC_DEGUG=1 is defined, memory leak information is printed
-#if ALLOC_DEBUG=2, details about individual allocations leaking is printed
-#if ALLOC_DEBUG=3, tags in ExAllocatePoolWithTag leaking printed
-ifdef ALLOC_DEBUG
-CFLAGS += -DALLOC_DEBUG=$(ALLOC_DEBUG)
-endif
-
-# enable workaround for VIA VT6655
-ifdef VT6655
-CFLAGS += -DVT6655
-endif
-
-.PHONY: prereq_check gen_exports clean dist_clean install stack_check
-
-all : prereq_check win2lin_stubs.h gen_exports default stack_check
-
-OBJS := crt.o hal.o iw_ndis.o loader.o ndis.o ntoskernel.o ntoskernel_io.o \
-	pe_linker.o pnp.o proc.o rtl.o wrapmem.o wrapndis.o wrapper.o
-
-# by default, USB layer is compiled in if USB support is in kernel;
-# to disable USB support in ndiswrapper even if USB support is in kenrel,
-# add option "DISABLE_USB=1"
-
-ifdef DISABLE_USB
-usb_exports.h:
-
-CFLAGS += -DDISABLE_USB
-else
-usb_exports.h: usb.c
+OBJS := hal.o iw_ndis.o loader.o misc_funcs.o ndis.o ntoskernel.o \
+		pe_linker.o proc.o wrapper.o
 
 ifeq ($(CONFIG_USB),y)
 OBJS += usb.o
@@ -112,88 +49,72 @@ endif
 ifeq ($(CONFIG_USB),m)
 OBJS += usb.o
 endif
-endif
 
-ifeq ($(KPSUB),24)
-CFLAGS += -DUSE_OWN_WQ
-OBJS += workqueue.o
-endif
-
-CFLAGS += $(shell if grep -s -A1 'ndiswrapper' $(KSRC)/kernel/module.c | \
-			grep -q 'add_taint_module' ; then \
-			echo -DUSE_OWN_WQ; \
-		  fi)
-
-ifdef USE_OWN_WQ
-CFLAGS += -DUSE_OWN_WQ
-OBJS += workqueue.o
-endif
-
-ntoskernel.h: lin2win.h
-
-ndis.h: ntoskernel.h
-
-iw_ndis.h: ntoskernel.h
-
-pnp.h: ntoskernel.h ndis.h
-
-wrapndis.h: ndis.h pnp.h
-
-usb.h: ntoskernel.h
+#ifeq ($(CONFIG_DEBUG_SPINLOCK),y)
+#$(warning CONFIG_DEBUG_SPINLOCK conflicts with spinlocks used by \
+#  Windows driver. There is a workaround for it in ndiswrapper, but it \
+#  may not work correctly. Don't complain about kernel crashes until \
+#  CONFIG_DEBUG_SPINLOCK is disabled.)
+#endif
 
 divdi3.o: divdi3.c longlong.h
 
 hal.o: hal.c ntoskernel.h
 
-iw_ndis.o: iw_ndis.c iw_ndis.h wrapndis.h
+iw_ndis..o:	iw_ndis.c iw_ndis.h wrapper.h
 
-loader.o: loader.c loader.h ndis.h wrapndis.h
+loader.o: loader.c loader.h ndis.h wrapper.h
 
-crt.o: crt.c ndis.h
+misc_funcs.o: misc_funcs.c ndis.h
 
-ndis.o: ndis.c ndis.h iw_ndis.h wrapndis.h
-
-wrapndis.o: wrapndis.c wrapndis.h
+ndis.o: ndis.c ndis.h iw_ndis.h wrapper.h
 
 ntoskernel.o: ntoskernel.c ndis.h usb.h
 
-ntoskernel_io.o: ntoskernel_io.c ndis.h usb.h
-
 pe_linker.o: pe_linker.c
 
-pnp.o: pnp.c
-
-proc.o: proc.c ndis.h iw_ndis.h wrapndis.h
-
-rtl.o: rtl.c ndis.h
+proc.o: proc.c ndis.h iw_ndis.h wrapper.h
 
 usb.o: usb.c usb.h ndis.h
 
-wrapper.o: wrapper.c wrapndis.h iw_ndis.h ntoskernel.h loader.h
+wrapper.o: wrapper.c wrapper.h iw_ndis.h ntoskernel.h loader.h
+
+iw_ndis.h: ndis.h
+loader.h: ndiswrapper.h
+ndis.h: ntoskernel.h
+ntoskernel.h: ndiswrapper.h winnt_types.h pe_linker.h
+usb.h: ntoskernel.h
+wrapper.h: ndis.h
+
+hal_exports.h: hal.c
+misc_funcs_exports.h: misc_funcs.c
+ndis_exports.h: ndis.c
+ntoskerlen_exports.h: ntoskernel.c
+usb_exports.h: usb.c
 
 ifeq ($(CONFIG_X86_64),y)
-OBJS += win2lin_stubs.o
-win2lin_stubs.o: win2lin_stubs.h win2lin_stubs.S
+OBJS += x86_64_stubs.o
+x86_64_stubs.o: x86_64_stubs.h x86_64_stubs.S
 
-ifdef DISABLE_USB
-win2lin_stubs.h: hal.c crt.c ndis.c ntoskernel.c ntoskernel_io.c \
-	pnp.c rtl.c wrapndis.c
+x86_64_stubs: x86_64_stubs.h
+
+x86_64_stubs.h: hal.c misc_funcs.c ndis.c ntoskernel.c usb.c wrapper.c
+	@if :; then \
+		echo "# Do not edit this file; \
+			 it is automatically generated"; \
+		for file in $^; do \
+			echo; \
+			echo "# generated from $$file"; \
+			sed -n \
+				-e 's/.*WRAP_EXPORT(\([^)]\+\)).*/   \
+					  win_to_lin_stub \1/p'   \
+				-e 's/.*WRAP_FUNC_PTR(\([^)]\+\)).*/   \
+					  win_to_lin_stub \1/p'   \
+					   $$file | sort -u; \
+		done; \
+	fi > $@
 else
-win2lin_stubs.h: hal.c crt.c ndis.c ntoskernel.c ntoskernel_io.c \
-	pnp.c rtl.c usb.c wrapndis.c
-endif
-	@for file in $^; do \
-		echo; \
-		echo "# automatically generated from $$file"; \
-		sed -n \
-			-e 's/.*WIN_FUNC(\([^\,]\+\) *\, *\([0-9]\+\)).*/\
-			   win2lin(\1, \2)/p'   \
-			-e 's/.*WIN_FUNC_PTR(\([^\,]\+\) *\, *\([0-9]\+\)).*/\
-			   win2lin(\1, \2)/p'   \
-		   $$file | sed -e 's/[ \t	]\+//' | sort -u; \
-	done > $@
-else
-win2lin_stubs.h:
+x86_64_stubs:
 
 OBJS += divdi3.o
 endif
@@ -201,55 +122,47 @@ endif
 # generate exports symbol table from C files
 %_exports.h: %.c
 	@if :; then \
-		echo "/* automatically generated from $< */"; \
+		echo "/* Do not edit this file; \
+			 it is automatically generated from $< */"; \
 		echo "#ifdef CONFIG_X86_64"; \
 		sed -n \
-			-e 's/.*WIN_FUNC(\([^\,]\+\) *\, *\([0-9]\+\)).*/\
-			   WIN_FUNC_DECL(\1, \2)/p' \
-			-e 's/.*WIN_FUNC_PTR(\([^\,]\+\) *\, *\([0-9]\+\)).*/\
-			   WIN_FUNC_DECL(\1, \2)/p' \
-		   $< | sed -e 's/[ \t	]\+//' | sort -u; \
+			-e 's/.*WRAP_EXPORT(\([^)]\+\)).*/   \
+				   extern void x86_64_\1(void);/p' \
+			-e 's/.*WRAP_FUNC_PTR(\([^)]\+\)).*/   \
+				   extern void x86_64_\1(void);/p' \
+			   $< | sort; \
 		echo "#endif"; \
 		echo "struct wrap_export $(basename $<)_exports[] = {";\
 		sed -n \
-			-e 's/.*WIN_FUNC(_win_\([^\,]\+\) *\, *\([0-9]\+\)).*/\
-				WIN_WIN_SYMBOL(\1,\2),/p' \
-			-e 's/.*WIN_FUNC(\([^\,]\+\) *\, *\([0-9]\+\)).*/\
-				WIN_SYMBOL(\1,\2),/p' \
-			-e 's/.*WIN_SYMBOL_MAP(\("[^"]\+"\)[ ,\n]\+\([^)]\+\)).*/\
-				{\1,(generic_func)\2},/p'  \
-			   $< | sed -e 's/[ \t	]*/   /' | sort -u; \
-		echo "   {NULL, NULL}"; \
+			-e 's/.*WRAP_EXPORT(\(_win_\)\([^)]\+\)).*/     \
+				   WRAP_EXPORT_WIN_FUNC(\2),/p' \
+			-e 's/.*WRAP_EXPORT(\([^)]\+\)).*/   \
+				   WRAP_EXPORT_SYMBOL(\1),/p' \
+			-e 's/.*WRAP_EXPORT_MAP(\("[^"]\+"\)[ ,\n]\+\([^)]\+\)).*/   \
+				   {\1, (WRAP_EXPORT_FUNC)\2},/p' $< | sort; \
+		echo "    {NULL, NULL}"; \
 		echo "};"; \
 	fi > $@
 
-gen_exports: crt_exports.h ndis_exports.h hal_exports.h ntoskernel_exports.h \
-			 ntoskernel_io_exports.h rtl_exports.h usb_exports.h
+gen_exports: ndis_exports.h hal_exports.h ntoskernel_exports.h \
+			 misc_funcs_exports.h usb_exports.h wrapper_exports.h
 
 prereq_check:
-	@if [ ! -f $(KBUILD)/include/linux/version.h ]; then \
-		echo "Can't find kernel build files in $(KBUILD);"; \
-		echo "  give the path to kernel build directory with " ; \
-		echo "  KBUILD=<path> argument to make";\
+	@ if [ ! -f $(KSRC)/include/linux/version.h ]; then \
+		echo "Can't find kernel sources in $(KSRC);"; \
+		echo "  give the path to kernel sources with KSRC=<path>\
+		       argument to make";\
 		exit 1;\
-	fi
-	@if [ ! -f $(KSRC)/include/linux/kernel.h ]; then \
-		echo "Can't find kernel build files in $(KSRC);"; \
-		echo "  give the path to kernel build directory with " ; \
-		echo "  KSRC=<path> argument to make";\
-		exit 1;\
-	fi
+	  fi
 
 clean:
-	rm -rf $(MODULE) ndiswrapper.o $(OBJS) usb.o win2lin_stubs.o \
-	   divdi3.o workqueue.o .*.ko.cmd .*.o.cmd \
-	   ndiswrapper.mod.[oc] *~ .tmp_versions Modules.symvers Module.symvers
+	rm -rf $(MODULE) ndiswrapper.o $(OBJS) usb.o x86_64_stubs.o \
+	   divdi3.o .*.ko.cmd .*.o.cmd ndiswrapper.mod.[oc] *~ .tmp_versions
 
 distclean: clean
-	rm -f *_exports.h .\#* win2lin_stubs.h
+	rm -f *_exports.h .\#* x86_64_stubs.h
 
 ifeq ($(KPSUB),24)
-
 MODULE := ndiswrapper.o
 CFLAGS  += -DLINUX -D__KERNEL__ -DMODULE -I$(KSRC)/include \
 		  -Wall -Wstrict-prototypes -fomit-frame-pointer    \
@@ -268,30 +181,40 @@ obj-m := ndiswrapper.o
 ndiswrapper-objs := $(OBJS)
 
 default:
-	$(MAKE) -C $(KBUILD) SUBDIRS=$(SRC_DIR)
+	$(MAKE) -C $(KSRC) SUBDIRS=$(SRC_DIR) \
+		NDISWRAPPER_VERSION=$(NDISWRAPPER_VERSION) \
+		EXTRA_VERSION=$(EXTRA_VERSION) modules
 
 endif
 
 stack_check:
-	@if [ "x$(CONFIG_X86_64)" = "x" -a $(KPSUB) -eq 26 ] && \
-	     ! grep -q CONFIG_4KSTACKS $(KBUILD)/.config || \
-	       grep -q "CONFIG_4KSTACKS=y" $(KBUILD)/.config; then \
-	    echo; echo; \
-	    echo "*** WARNING: This kernel seems to use 4K stack size"\
-		 "option (CONFIG_4KSTACKS); many Windows drivers will"\
-		 "not work with this option enabled. Disable"\
-		 "CONFIG_4KSTACKS option, recompile and install kernel";\
-	    echo; echo; \
-	fi
+	  @ if [ "x$(CONFIG_X86_64)" = "x" -a $(KPSUB) -eq 26 ]; then \
+		   if grep -q CONFIG_4KSTACKS $(KSRC)/.config; then \
+			  if grep -q "CONFIG_4KSTACKS=y" $(KSRC)/.config; then \
+				echo; echo; \
+			  	echo "*** WARNING: "\
+					 "Kernel is compiled with 4K stack size option"\
+					 "(CONFIG_4KSTACKS); many Windows drivers will"\
+					 "not work with this option enabled. Disable"\
+					 "CONFIG_4KSTACKS option, recompile and install"\
+					 "kernel";\
+				echo; echo; \
+			  fi;\
+			else \
+				echo; echo; \
+			   echo "*** WARNING: Kernel seems to have 4K size stack option" \
+			     "(CONFIG_4KSTACKS) removed; many Windows drivers will"\
+			     "need at least 8K size stacks."\
+			     "You should read wiki about 4K size stack issue."\
+				 "Don't complain about crashes until you resolve this."; \
+				echo; echo; \
+			fi;\
+		fi
 
-install: prereq_check win2lin_stubs.h gen_exports default stack_check
-	echo $(INST_DIR)
+install: prereq_check x86_64_stubs gen_exports default stack_check
 	mkdir -p $(INST_DIR)
 	install -m 0644 $(MODULE) $(INST_DIR)
-	-@/bin/rm -rf $(SRC_DIR)/.tmp_versions
-ifndef DIST_DESTDIR
-	-/sbin/depmod -a $(KVERS) -b $(DESTDIR)
-endif
+	-/sbin/depmod -a
 
 dist:
 	@for file in $(DISTFILES); do \
