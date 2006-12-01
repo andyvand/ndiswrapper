@@ -144,10 +144,8 @@ typedef u8	UCHAR;
 typedef s16	SHORT;
 typedef u16	USHORT;
 typedef u16	WORD;
-typedef u16	UINT16;
 typedef s32	INT;
 typedef u32	UINT;
-typedef u32	UINT32;
 typedef u32	DWORD;
 typedef s32	LONG;
 typedef u32	ULONG;
@@ -596,15 +594,11 @@ struct file_object {
 
 #ifdef CONFIG_X86_64
 #define POINTER_ALIGN __attribute__((aligned(8)))
-#define MEMORY_ALLOCATION_ALIGNMENT 16
 #else
 #define POINTER_ALIGN
-#define MEMORY_ALLOCATION_ALIGNMENT 8
 #endif
 
 #define CACHE_ALIGN __attribute__((aligned(128)))
-
-#define _align_(x) __attribute__((aligned(x)))
 
 enum system_power_state {
 	PowerSystemUnspecified = 0,
@@ -1318,29 +1312,6 @@ struct kinterrupt {
 	KIRQL irql;
 	KIRQL synch_irql;
 	enum kinterrupt_mode interrupt_mode;
-};
-
-enum kinterrupt_polarity {
-	InterruptPolarityUnknown,
-	InterruptActiveHigh,
-	InterruptActiveLow,
-};
-
-struct io_interrupt_msg_info_entry {
-	PHYSICAL_ADDRESS msg_addr;
-	KAFFINITY tgt_processor_set;
-	struct kinterrupt *interrupt_obj;
-	ULONG msg_data;
-	ULONG vector;
-	KIRQL irql;
-	enum kinterrupt_mode mode;
-	enum kinterrupt_polarity polarity;
-};
-
-struct io_interrupt_msg_info {
-	KIRQL irql;
-	ULONG msg_count;
-	struct io_interrupt_msg_info_entry msg_info[1];
 };
 
 struct time_fields {
