@@ -76,32 +76,28 @@
 // USB 2.0 calls start at 0x0030
 #define URB_FUNCTION_SYNC_RESET_PIPE                 0x0030
 #define URB_FUNCTION_SYNC_CLEAR_STALL                0x0031
-#define URB_FUNCTION_CONTROL_TRANSFER_EX             0x0032
 
 #define USBD_PF_CHANGE_MAX_PACKET		0x00000001
 
+#define USBD_TRANSFER_DIRECTION_BIT		0
+#define USBD_SHORT_TRANSFER_OK_BIT		1
+
 #define USBD_TRANSFER_DIRECTION_OUT		0
-#define USBD_TRANSFER_DIRECTION_IN		1
-
-#define USBD_SHORT_TRANSFER_OK			0x00000002
-#define USBD_START_ISO_TRANSFER_ASAP		0x00000004
-#define USBD_DEFAULT_PIPE_TRANSFER		0x00000008
-
+#define USBD_TRANSFER_DIRECTION_IN		\
+	(1 << USBD_TRANSFER_DIRECTION_BIT)
 #define USBD_TRANSFER_DIRECTION(flags)		\
 	((flags) & USBD_TRANSFER_DIRECTION_IN)
 
-enum pipe_type {UsbdPipeTypeControl = USB_ENDPOINT_XFER_CONTROL,
-		UsbdPipeTypeIsochronous = USB_ENDPOINT_XFER_ISOC,
-		UsbdPipeTypeBulk = USB_ENDPOINT_XFER_BULK,
-		UsbdPipeTypeInterrupt = USB_ENDPOINT_XFER_INT};
+#define USBD_SHORT_TRANSFER_OK			\
+	(1 << USBD_SHORT_TRANSFER_OK_BIT)
 
 #define USBD_IS_BULK_PIPE(pipe_handle)					\
-	(((pipe_handle)->bmAttributes & USB_ENDPOINT_XFERTYPE_MASK)	\
-	 == USB_ENDPOINT_XFER_BULK)
+	(((pipe_handle)->bmAttributes & USB_ENDPOINT_XFERTYPE_MASK) ==	\
+	 USB_ENDPOINT_XFER_BULK)
 
 #define USBD_IS_INT_PIPE(pipe_handle)					\
-	(((pipe_handle)->bmAttributes & USB_ENDPOINT_XFERTYPE_MASK)	\
-	 == USB_ENDPOINT_XFER_INT)
+	(((pipe_handle)->bmAttributes & USB_ENDPOINT_XFERTYPE_MASK) ==	\
+	 USB_ENDPOINT_XFER_INT)
 
 #define USBD_PORT_ENABLED			0x00000001
 #define USBD_PORT_CONNECTED			0x00000002
@@ -110,7 +106,7 @@ typedef LONG USBD_STATUS;
 
 #define USBD_STATUS_SUCCESS			0x0
 #define USBD_STATUS_PENDING			0x40000000
-#define USBD_STATUS_CANCELED			0x00010000
+#define USBD_STATUS_CANCELLED			0x00010000
 
 #define USBD_STATUS_CRC				0xC0000001
 #define USBD_STATUS_BTSTUFF			0xC0000002
@@ -144,12 +140,16 @@ typedef LONG USBD_STATUS;
 
 #define USBD_DEFAULT_MAXIMUM_TRANSFER_SIZE	PAGE_SIZE
 
+typedef struct usb_endpoint_descriptor *usbd_pipe_handle;
+
 struct urb_hcd_area {
 	void *reserved8[8];
 };
 
-typedef struct usb_endpoint_descriptor *usbd_pipe_handle;
-typedef struct usb_descriptor_header usb_common_descriptor_t;
+enum pipe_type {UsbdPipeTypeControl = USB_ENDPOINT_XFER_CONTROL,
+		UsbdPipeTypeIsochronous = USB_ENDPOINT_XFER_ISOC,
+		UsbdPipeTypeBulk = USB_ENDPOINT_XFER_BULK,
+		UsbdPipeTypeInterrupt = USB_ENDPOINT_XFER_INT};
 
 struct usbd_pipe_information {
 	USHORT wMaxPacketSize;
@@ -200,6 +200,17 @@ struct usbd_select_configuration {
 	struct usbd_interface_information intf;
 };
 
+struct usbd_bulk_or_intr_transfer {
+	struct nt_urb_header header;
+	usbd_pipe_handle pipe_handle;
+	ULONG transfer_flags;
+	ULONG transfer_buffer_length;
+	void *transfer_buffer;
+	struct mdl *mdl;
+	union nt_urb *urb_link;
+	struct urb_hcd_area hca;
+};
+
 struct usbd_control_descriptor_request {
 	struct nt_urb_header header;
 	void *reserved;
@@ -214,17 +225,6 @@ struct usbd_control_descriptor_request {
 	UCHAR desc_type;
 	USHORT language_id;
 	USHORT reserved2;
-};
-
-struct usbd_bulk_or_intr_transfer {
-	struct nt_urb_header header;
-	usbd_pipe_handle pipe_handle;
-	ULONG transfer_flags;
-	ULONG transfer_buffer_length;
-	void *transfer_buffer;
-	struct mdl *mdl;
-	union nt_urb *urb_link;
-	struct urb_hcd_area hca;
 };
 
 struct usbd_pipe_request {
@@ -274,7 +274,7 @@ union nt_urb {
 	struct usbd_select_interface select_intf;
 	struct usbd_select_configuration select_conf;
 	struct usbd_bulk_or_intr_transfer bulk_int_transfer;
-	struct usbd_control_descriptor_request control_desc;
+	struct usbd_control_descriptor_request control_request;
 	struct usbd_vendor_or_class_request vendor_class_request;
 	struct usbd_isochronous_transfer isochronous;
 	struct usbd_pipe_request pipe_req;
@@ -327,19 +327,21 @@ NTSTATUS wrap_submit_irp(struct device_object *pdo, struct irp *irp);
 void wrap_suspend_urbs(struct wrap_device *wd);
 void wrap_resume_urbs(struct wrap_device *wd);
 
-void USBD_InterfaceGetUSBDIVersion(void *context,
-				   struct usbd_version_info *version_info,
-				   ULONG *hcd_capa) wstdcall;
-BOOLEAN USBD_InterfaceIsDeviceHighSpeed(void *context) wstdcall;
-void USBD_InterfaceReference(void *context) wstdcall;
-void USBD_InterfaceDereference(void *context) wstdcall;
-NTSTATUS USBD_InterfaceQueryBusTime(void *context, ULONG *frame) wstdcall;
-NTSTATUS USBD_InterfaceSubmitIsoOutUrb(void *context,
-				       union nt_urb *nt_urb) wstdcall;
-NTSTATUS USBD_InterfaceQueryBusInformation(void *context, ULONG level, void *buf,
-					   ULONG *buf_length,
-					   ULONG *buf_actual_length) wstdcall;
-NTSTATUS USBD_InterfaceLogEntry(void *context, ULONG driver_tag, ULONG enum_tag,
-				ULONG p1, ULONG p2) wstdcall;
+STDCALL void
+USBD_InterfaceGetUSBDIVersion(void *context,
+			      struct usbd_version_info *version_info,
+			      ULONG *hcd_capa);
+STDCALL BOOLEAN USBD_InterfaceIsDeviceHighSpeed(void *context);
+STDCALL void USBD_InterfaceReference(void *context);
+STDCALL void USBD_InterfaceDereference(void *context);
+STDCALL NTSTATUS USBD_InterfaceQueryBusTime(void *context, ULONG *frame);
+STDCALL NTSTATUS USBD_InterfaceSubmitIsoOutUrb(void *context,
+					       union nt_urb *nt_urb);
+STDCALL NTSTATUS
+USBD_InterfaceQueryBusInformation(void *context, ULONG level, void *buf,
+				  ULONG *buf_length, ULONG *buf_actual_length);
+STDCALL NTSTATUS
+USBD_InterfaceLogEntry(void *context, ULONG driver_tag, ULONG enum_tag,
+		       ULONG p1, ULONG p2);
 
 #endif /* USB_H */

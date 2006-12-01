@@ -35,7 +35,6 @@
 #define STATUS_MORE_PROCESSING_REQUIRED 0xC0000016
 #define STATUS_ACCESS_DENIED            0xC0000022
 #define STATUS_BUFFER_TOO_SMALL         0xC0000023
-#define STATUS_OBJECT_NAME_INVALID      0xC0000023
 #define STATUS_MUTANT_NOT_OWNED		0xC0000046
 #define STATUS_RESOURCES                0xC000009A
 #define STATUS_DELETE_PENDING		0xC0000056
@@ -45,7 +44,6 @@
 #define STATUS_NO_MEMORY		0xC0000017
 #define STATUS_CANCELLED                0xC0000120
 #define STATUS_DEVICE_REMOVED		0xC00002B6
-#define STATUS_DEVICE_NOT_CONNECTED	0xC000009D
 
 #define STATUS_BUFFER_OVERFLOW		0x80000005
 
@@ -112,29 +110,34 @@
 #define WMIUPDATE			1
 
 #ifdef CONFIG_X86_64
-#define wstdcall
-#define wfastcall
-#define noregparm
+#define STDCALL
+#define _FASTCALL
+#define FASTCALL_DECL_1(decl1) decl1
+#define FASTCALL_DECL_2(decl1,decl2) decl1, decl2
+#define FASTCALL_DECL_3(decl1,decl2,decl3) decl1, decl2, decl3
+#define FASTCALL_ARGS_1(arg1) arg1
+#define FASTCALL_ARGS_2(arg1,arg2) arg1, arg2
+#define FASTCALL_ARGS_3(arg1,arg2,arg3) arg1, arg2, arg3
 
 #define KI_USER_SHARED_DATA 0xfffff78000000000
 
 #else
 
-#define noregparm __attribute__((regparm(0)))
-#define wstdcall __attribute__((__stdcall__, regparm(0)))
-#if defined(__GNUC__) && ((__GNUC__ == 3 && __GNUC_MINOR__ > 3) || __GNUC__ > 3)
-#undef fastcall
-#define wfastcall __attribute__((fastcall))
-#else
-#error "gcc 3.4 or newer should be used for compiling this module"
-#endif
+#define STDCALL __attribute__((__stdcall__, regparm(0)))
+#define _FASTCALL __attribute__((__stdcall__)) __attribute__((regparm (3)))
+#define FASTCALL_DECL_1(decl1) int _dummy1_, int _dummy2_, decl1
+#define FASTCALL_DECL_2(decl1,decl2) int _dummy1_, decl2, decl1
+#define FASTCALL_DECL_3(decl1,decl2,decl3) int _dummy1_, decl2, decl1, decl3
+#define FASTCALL_ARGS_1(arg1) 0, 0, arg1
+#define FASTCALL_ARGS_2(arg1,arg2) 0, arg2, arg1
+#define FASTCALL_ARGS_3(arg1,arg2,arg3) 0, arg2, arg1, arg3
 
 #define KI_USER_SHARED_DATA 0xffdf0000
 
 #endif
 
+#define NOREGPARM __attribute__((regparm(0)))
 #define packed __attribute__((packed))
-#define no_warn_unused __attribute__((unused))
 
 typedef u8	BOOLEAN;
 typedef u8	BYTE;
@@ -197,18 +200,9 @@ struct nt_slist {
 };
 
 #ifdef CONFIG_X86_64
-/* it is not clear how nt_slist_head is used to store pointer to
- * slists and depth; here we assume 'align' field is used to store
- * depth and 'region' field is used to store slist pointers */
 struct nt_slist_head {
-	union {
-		USHORT depth;
-		ULONGLONG align;
-	};
-	union {
-		ULONGLONG region;
-		struct nt_slist *next;
-	};
+	ULONGLONG align;
+	ULONGLONG region;
 } __attribute__((aligned(16)));
 typedef struct nt_slist_head nt_slist_header;
 #else
@@ -231,13 +225,16 @@ struct nt_list {
 typedef ULONG_PTR NT_SPIN_LOCK;
 
 struct kdpc;
-typedef void (*DPC)(struct kdpc *kdpc, void *ctx, void *arg1,
-		    void *arg2) wstdcall;
+typedef STDCALL void (*DPC)(struct kdpc *kdpc, void *ctx, void *arg1,
+			    void *arg2);
+
 struct kdpc {
 	SHORT type;
-	UCHAR nr_cpu;
+	/* number is used to represent if the dpc is queued or not */
+	UCHAR number;
 	UCHAR importance;
 	struct nt_list list;
+
 	DPC func;
 	void *ctx;
 	void *arg1;
@@ -273,19 +270,16 @@ enum lock_operation {
 };
 
 enum mode {
-	KernelMode, UserMode, MaximumMode
+	KernelMode,
+	UserMode,
+	MaximumMode
 };
 
 struct mdl {
 	struct mdl *next;
 	CSHORT size;
 	CSHORT flags;
-	/* NdisFreeBuffer doesn't pass pool, so we store pool in
-	 * unused field 'process' */
-	union {
-		void *process;
-		void *pool;
-	};
+	void *process;
 	void *mappedsystemva;
 	void *startva;
 	ULONG bytecount;
@@ -306,15 +300,10 @@ struct mdl {
 #define MDL_NETWORK_HEADER		0x1000
 #define MDL_MAPPING_CAN_FAIL		0x2000
 #define MDL_ALLOCATED_MUST_SUCCEED	0x4000
-
-#define MDL_POOL_ALLOCATED		0x0400
 #define MDL_CACHE_ALLOCATED		0x8000
 
-#define PAGE_START(ptr) ((void *)((ULONG_PTR)(ptr) & ~(PAGE_SIZE - 1)))
-#define BYTE_OFFSET(ptr) ((ULONG)((ULONG_PTR)(ptr) & (PAGE_SIZE - 1)))
-
 #define MmGetMdlByteCount(mdl) ((mdl)->bytecount)
-#define MmGetMdlVirtualAddress(mdl) ((mdl)->startva + (mdl)->byteoffset)
+#define MmGetMdlVirtualAddress(mdl) ((mdl)->startva)
 #define MmGetMdlByteOffset(mdl) ((mdl)->byteoffset)
 #define MmGetSystemAddressForMdl(mdl) ((mdl)->mappedsystemva)
 #define MmGetSystemAddressForMdlSafe(mdl, priority) ((mdl)->mappedsystemva)
@@ -324,10 +313,9 @@ do {									\
 	(mdl)->next = NULL;						\
 	(mdl)->size = MmSizeOfMdl(baseva, length);			\
 	(mdl)->flags = 0;						\
-	(mdl)->startva = PAGE_START(baseva);				\
-	(mdl)->byteoffset = BYTE_OFFSET(baseva);			\
+	(mdl)->startva = baseva;					\
+	(mdl)->byteoffset = (ULONG)offset_in_page(baseva);		\
 	(mdl)->bytecount = length;					\
-	(mdl)->mappedsystemva = baseva;					\
 	DBGTRACE4("%p %p %p %d %d", (mdl), baseva, (mdl)->startva,	\
 		  (mdl)->byteoffset, length);				\
 } while (0)
@@ -360,7 +348,7 @@ struct wait_block {
 	struct nt_list list;
 	struct task_struct *thread;
 	void *object;
-	void *thread_waitq;
+	void *event_wait;
 	USHORT wait_key;
 	USHORT wait_type;
 };
@@ -438,6 +426,7 @@ struct nt_semaphore {
 	LONG limit;
 };
 
+//#pragma pack(push,1)
 struct nt_thread {
 	struct dispatcher_header dh;
 	/* the rest in Windows is a long structure; since this
@@ -448,6 +437,7 @@ struct nt_thread {
 	struct nt_list irps;
 	NT_SPIN_LOCK lock;
 };
+//#pragma pack(pop)
 
 #define set_dh_type(dh, type)		((dh)->type = (type))
 #define is_mutex_dh(dh)			((dh)->type == MutexObject)
@@ -500,30 +490,19 @@ struct dev_obj_ext {
 	CSHORT type;
 	CSHORT size;
 	struct device_object *dev_obj;
-	struct device_object *attached_to;
 };
 
 struct io_status_block {
-	union {
-		NTSTATUS status;
-		void *pointer;
-	};
-	ULONG_PTR info;
-};
-
-#ifdef CONFIG_X86_64
-struct io_status_block32 {
 	NTSTATUS status;
 	ULONG info;
 };
-#endif
 
 #define DEVICE_TYPE ULONG
 
 struct driver_extension;
 
-typedef NTSTATUS driver_dispatch_t(struct device_object *dev_obj,
-				   struct irp *irp) wstdcall;
+typedef NTSTATUS (driver_dispatch_t)(struct device_object *dev_obj,
+				     struct irp *irp) STDCALL;
 
 struct driver_object {
 	CSHORT type;
@@ -539,14 +518,14 @@ struct driver_object {
 	void *fast_io_dispatch;
 	void *init;
 	void *start_io;
-	void (*unload)(struct driver_object *driver) wstdcall;
+	void (*unload)(struct driver_object *driver) STDCALL;
 	driver_dispatch_t *major_func[IRP_MJ_MAXIMUM_FUNCTION + 1];
 };
 
 struct driver_extension {
 	struct driver_object *drv_obj;
 	NTSTATUS (*add_device)(struct driver_object *drv_obj,
-			       struct device_object *dev_obj) wstdcall;
+			       struct device_object *dev_obj) STDCALL;
 	ULONG count;
 	struct unicode_string service_key_name;
 	struct nt_list custom_ext;
@@ -556,8 +535,6 @@ struct custom_ext {
 	struct nt_list list;
 	void *client_id;
 };
-
-struct wrap_bin_file;
 
 struct file_object {
 	CSHORT type;
@@ -569,10 +546,7 @@ struct file_object {
 	void *section_object_pointer;
 	void *private_cache_map;
 	NTSTATUS final_status;
-	union {
-		struct file_object *related_file_object;
-		struct wrap_bin_file *wrap_bin_file;
-	};
+	struct file_object *related_file_object;
 	BOOLEAN lock_operation;
 	BOOLEAN delete_pending;
 	BOOLEAN read_access;
@@ -582,7 +556,7 @@ struct file_object {
 	BOOLEAN shared_write;
 	BOOLEAN shared_delete;
 	ULONG flags;
-	struct unicode_string _name_;
+	struct unicode_string file_name;
 	LARGE_INTEGER current_byte_offset;
 	ULONG waiters;
 	ULONG busy;
@@ -640,8 +614,8 @@ struct nt_interface {
 	USHORT size;
 	USHORT version;
 	void *context;
-	void (*reference)(void *context) wstdcall;
-	void (*dereference)(void *context) wstdcall;
+	void (*reference)(void *context) STDCALL;
+	void (*dereference)(void *context) STDCALL;
 };
 
 enum interface_type {
@@ -803,16 +777,6 @@ enum device_usage_notification_type {
 	DeviceUsageTypeHibernation, DevbiceUsageTypeDumpFile,
 };
 
-#define METHOD_BUFFERED		0
-#define METHOD_IN_DIRECT	1
-#define METHOD_OUT_DIRECT	2
-#define METHOD_NEITHER		3
-
-#define CTL_CODE(dev_type, func, method, access)			\
-	(((dev_type) << 16) | ((access) << 14) | ((func) << 2) | (method))
-
-#define IO_METHOD_FROM_CTL_CODE(code) (code & 0x3)
-
 #ifndef CONFIG_X86_64
 #pragma pack(push,4)
 #endif
@@ -954,14 +918,14 @@ struct io_stack_location {
 	struct device_object *dev_obj;
 	struct file_object *file_obj;
 	NTSTATUS (*completion_routine)(struct device_object *,
-				       struct irp *, void *) wstdcall;
+				       struct irp *, void *) STDCALL;
 	void *context;
 };
 #ifndef CONFIG_X86_64
 #pragma pack(pop)
 #endif
 
-#define URB_FROM_IRP(irp)						\
+#define URB_FROM_IRP(irp)					\
 	(union nt_urb *)(IoGetCurrentIrpStackLocation(irp)->params.others.arg1)
 
 struct kapc {
@@ -986,16 +950,17 @@ struct kapc {
 #define IRP_ASSOCIATED_IRP		0x00000008
 
 enum urb_state {
-	URB_INVALID = 1, URB_ALLOCATED, URB_SUBMITTED,
-	URB_COMPLETED, URB_FREE, URB_SUSPEND, URB_INT_UNLINKED };
+	URB_INVALID = 1, URB_ALLOCATED, URB_SUBMITTED, URB_CANCELED,
+	URB_COMPLETED, URB_FREE, URB_SUSPEND };
 
 struct wrap_urb {
 	struct nt_list list;
 	enum urb_state state;
 	struct nt_list complete_list;
-	unsigned int flags;
+	unsigned int alloc_flags;
 	struct urb *urb;
 	struct irp *irp;
+	unsigned int pipe;
 #ifdef USB_DEBUG
 	unsigned int id;
 #endif
@@ -1014,7 +979,9 @@ struct irp {
 		LONG irp_count;
 		void *system_buffer;
 	} associated_irp;
+
 	struct nt_list threads;
+
 	struct io_status_block io_status;
 	KPROCESSOR_MODE requestor_mode;
 	BOOLEAN pending_returned;
@@ -1022,10 +989,13 @@ struct irp {
 	CHAR current_location;
 	BOOLEAN cancel;
 	KIRQL cancel_irql;
+
 	CCHAR apc_env;
 	UCHAR alloc_flags;
+
 	struct io_status_block *user_status;
 	struct nt_event *user_event;
+
 	union {
 		struct {
 			void *user_apc_routine;
@@ -1033,8 +1003,10 @@ struct irp {
 		} async_params;
 		LARGE_INTEGER alloc_size;
 	} overlay;
-	void (*cancel_routine)(struct device_object *, struct irp *) wstdcall;
+
+	void (*cancel_routine)(struct device_object *, struct irp *) STDCALL;
 	void *user_buf;
+
 	union {
 		struct {
 			union {
@@ -1074,16 +1046,16 @@ struct irp {
 #define IoGetPreviousIrpStackLocation(irp)	\
 	(IoGetCurrentIrpStackLocation(irp) + 1)
 
-#define IoSetNextIrpStackLocation(irp)				\
+#define IoSetNextIrpStackLocation(IRP)				\
 do {								\
-	(irp)->current_location--;				\
-	IoGetCurrentIrpStackLocation(irp)--;			\
+	(IRP)->current_location--;				\
+	IoGetCurrentIrpStackLocation(IRP)--;			\
 } while (0)
 
-#define IoSkipCurrentIrpStackLocation(irp) 			\
+#define IoSkipCurrentIrpStackLocation(IRP) 			\
 do {								\
-	(irp)->current_location++;				\
-	IoGetCurrentIrpStackLocation(irp)++;			\
+	(IRP)->current_location++;				\
+	IoGetCurrentIrpStackLocation(IRP)++;			\
 } while (0)
 
 static inline void
@@ -1117,7 +1089,7 @@ IoSetCompletionRoutine(struct irp *irp, void *routine, void *context,
 #define IoUnmarkIrpPending(irp)						\
 	(IoGetCurrentIrpStackLocation((irp))->control &= ~SL_PENDING_RETURNED)
 
-#define IRP_SL(irp, n) (((struct io_stack_location *)((irp) + 1)) + (n))
+#define IRP_SL(irp, i) (((struct io_stack_location *)((irp) + 1)) + (i))
 #define IRP_DRIVER_CONTEXT(irp) (irp)->tail.overlay.driver_context
 #define IoIrpThread(irp) ((irp)->tail.overlay.thread)
 
@@ -1144,12 +1116,16 @@ enum key_value_information_class {
 	KeyValuePartialInformationAlign64
 };
 
+
 struct object_attr {
 	ULONG length;
 	void *root_dir;
 	struct unicode_string *name;
 	ULONG attr;
-	void *security_descriptor;
+	union {
+		void *security_descriptor;
+		void *file;
+	};
 	void *security_qos;
 };
 
@@ -1180,10 +1156,10 @@ struct common_object_header {
 	struct nt_list list;
 	enum common_object_type type;
 	UINT size;
+	char *name;
 	UINT ref_count;
 	BOOLEAN close_in_process;
 	BOOLEAN permanent;
-	struct unicode_string name;
 };
 
 #define OBJECT_TO_HEADER(object)					\
@@ -1201,7 +1177,7 @@ enum work_queue_type {
 	MaximumWorkQueue
 };
 
-typedef void (*NTOS_WORK_FUNC)(void *arg1, void *arg2) wstdcall;
+typedef STDCALL void (*NTOS_WORK_FUNC)(void *arg1, void *arg2);
 
 struct io_workitem {
 	enum work_queue_type type;
@@ -1234,9 +1210,9 @@ enum ntos_wait_reason {
 
 typedef enum ntos_wait_reason KWAIT_REASON;
 
-typedef void *LOOKASIDE_ALLOC_FUNC(enum pool_type pool_type,
-				   SIZE_T size, ULONG tag) wstdcall;
-typedef void LOOKASIDE_FREE_FUNC(void *) wstdcall;
+typedef STDCALL void *LOOKASIDE_ALLOC_FUNC(enum pool_type pool_type,
+					   SIZE_T size, ULONG tag);
+typedef STDCALL void LOOKASIDE_FREE_FUNC(void *);
 
 struct npaged_lookaside_list {
 	nt_slist_header head;
@@ -1295,8 +1271,8 @@ enum trace_information_class {
 
 struct kinterrupt;
 typedef BOOLEAN (*PKSERVICE_ROUTINE)(struct kinterrupt *interrupt,
-				     void *context) wstdcall;
-typedef BOOLEAN (*PKSYNCHRONIZE_ROUTINE)(void *context) wstdcall;
+				     void *context) STDCALL;
+typedef BOOLEAN (*PKSYNCHRONIZE_ROUTINE)(void *context) STDCALL;
 
 struct kinterrupt {
 	ULONG vector;
@@ -1334,8 +1310,7 @@ struct object_attributes {
 	void *security_qos;
 };
 
-typedef void (*PCALLBACK_FUNCTION)(void *context, void *arg1,
-				   void *arg2) wstdcall;
+typedef void (*PCALLBACK_FUNCTION)(void *context, void *arg1, void *arg2);
 
 struct callback_object;
 struct callback_func {
@@ -1435,7 +1410,7 @@ struct kuser_shared_data {
 typedef NTSTATUS (*PRTL_QUERY_REGISTRY_ROUTINE)(wchar_t *name, ULONG type,
 						void *data, ULONG length,
 						void *context,
-						void *entry) wstdcall;
+						void *entry) STDCALL;
 
 struct rtl_query_registry_table {
 	PRTL_QUERY_REGISTRY_ROUTINE query_func;
@@ -1452,22 +1427,6 @@ struct io_remove_lock {
 	BOOLEAN reserved[3];
 	LONG io_count;
 	struct nt_event remove_event;
-};
-
-struct io_error_log_packet {
-	UCHAR major_fn_code;
-	UCHAR retry_count;
-	USHORT dump_data_size;
-	USHORT nr_of_strings;
-	USHORT string_offset;
-	USHORT event_category;
-	NTSTATUS error_code;
-	ULONG unique_error_value;
-	NTSTATUS final_status;
-	ULONG sequence_number;
-	ULONG io_control_code;
-	LARGE_INTEGER device_offset;
-	ULONG dump_data[1];
 };
 
 /* some of the functions below are slightly different from DDK's

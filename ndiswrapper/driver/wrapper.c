@@ -30,7 +30,7 @@ int debug = 0;
 
 /* use own workqueue instead of shared one, to avoid depriving
  * others */
-workqueue_struct_t *wrap_wq;
+struct workqueue_struct *wrap_wq;
 
 WRAP_MODULE_PARM_STRING(if_name, 0400);
 MODULE_PARM_DESC(if_name, "Network interface name or template "
@@ -68,20 +68,35 @@ static void module_cleanup(void)
 	usb_exit();
 #endif
 
+#ifdef USE_OWN_WORKQUEUE
 	if (wrap_wq)
 		destroy_workqueue(wrap_wq);
+#endif
 	wrap_procfs_remove();
 	ndis_exit();
 	ntoskernel_exit();
-	crt_exit();
-	rtl_exit();
-	wrapmem_exit();
+	misc_funcs_exit();
 }
 
 static int __init wrapper_init(void)
 {
-	printk(KERN_INFO "%s version %s loaded (preempt=%s,smp=%s)\n",
+	char *argv[] = {"loadndisdriver", WRAP_CMD_LOAD_DEVICES,
+#if defined(DEBUG) && DEBUG >= 1
+			"1"
+#else
+			"0"
+#endif
+			, UTILS_VERSION, NULL};
+	char *env[] = {NULL};
+	int ret;
+
+	printk(KERN_INFO "%s version %s loaded (%spreempt=%s,smp=%s)\n",
 	       DRIVER_NAME, DRIVER_VERSION,
+#ifdef DEBUG
+	       UTS_RELEASE ",",
+#else
+	       "",
+#endif
 #if defined CONFIG_PREEMPT
 	       "yes",
 #else
@@ -94,19 +109,35 @@ static int __init wrapper_init(void)
 #endif
 		);
 
-	wrap_wq = create_singlethread_workqueue("wrap_wq");
-
-	if (!wrap_wq || wrapmem_init() || crt_init() || rtl_init() ||
-	    ntoskernel_init() || ndis_init() ||
+	if (misc_funcs_init() || ntoskernel_init() || ndis_init()
 #ifdef CONFIG_USB
-	    usb_init() ||
+	    || usb_init()
 #endif
-	    wrap_procfs_init() || loader_init()) {
-		module_cleanup();
-		ERROR("%s: initialization failed", DRIVER_NAME);
-		return -EINVAL;
+		)
+		goto err;
+#ifdef USE_OWN_WORKQUEUE
+	wrap_wq = create_singlethread_workqueue("wrap_wq");
+#endif
+	wrap_procfs_init();
+	if (loader_init())
+		goto err;
+	DBGTRACE1("calling loadndisdriver");
+	ret = call_usermodehelper("/sbin/loadndisdriver", argv, env
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
+				  , 1
+#endif
+		);
+	if (ret) {
+		ERROR("loadndiswrapper failed (%d); check system log "
+		      "for messages from 'loadndisdriver'", ret);
+		goto err;
 	}
 	TRACEEXIT1(return 0);
+
+err:
+	module_cleanup();
+	ERROR("%s: initialization failed", DRIVER_NAME);
+	return -EINVAL;
 }
 
 static void __exit wrapper_exit(void)
@@ -117,3 +148,4 @@ static void __exit wrapper_exit(void)
 
 module_init(wrapper_init);
 module_exit(wrapper_exit);
+

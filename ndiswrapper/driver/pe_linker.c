@@ -31,7 +31,7 @@
 struct pe_exports {
 	char *dll;
 	char *name;
-	generic_func addr;
+	WRAP_EXPORT_FUNC addr;
 };
 
 static struct pe_exports pe_exports[40];
@@ -71,7 +71,7 @@ static const char *image_directory_name[] = {
 
 #ifndef TEST_LOADER
 extern struct wrap_export ntoskernel_exports[], ntoskernel_io_exports[],
-	ndis_exports[], crt_exports[], hal_exports[], rtl_exports[];
+       ndis_exports[], misc_funcs_exports[], hal_exports[];
 #ifdef CONFIG_USB
 extern struct wrap_export usb_exports[];
 #endif
@@ -92,17 +92,13 @@ static char *get_export(char *name)
 		if (strcmp(ndis_exports[i].name, name) == 0)
 			return (char *)ndis_exports[i].func;
 
-	for (i = 0 ; crt_exports[i].name != NULL; i++)
-		if (strcmp(crt_exports[i].name, name) == 0)
-			return (char *)crt_exports[i].func;
+	for (i = 0 ; misc_funcs_exports[i].name != NULL; i++)
+		if (strcmp(misc_funcs_exports[i].name, name) == 0)
+			return (char *)misc_funcs_exports[i].func;
 
 	for (i = 0 ; hal_exports[i].name != NULL; i++)
 		if (strcmp(hal_exports[i].name, name) == 0)
 			return (char *)hal_exports[i].func;
-
-	for (i = 0 ; rtl_exports[i].name != NULL; i++)
-		if (strcmp(rtl_exports[i].name, name) == 0)
-			return (char *)rtl_exports[i].func;
 
 #ifdef CONFIG_USB
 	for (i = 0 ; usb_exports[i].name != NULL; i++)
@@ -149,14 +145,14 @@ static int check_nt_hdr(IMAGE_NT_HEADERS *nt_hdr)
 	/* Make sure Image is PE32 or PE32+ */
 #ifdef CONFIG_X86_64
 	if (opt_hdr->Magic != IMAGE_NT_OPTIONAL_HDR64_MAGIC) {
-		ERROR("kernel is 64-bit, but Windows driver is not 64-bit;"
-		      "bad magic: %04X", opt_hdr->Magic);
+		ERROR("Windows driver is not 64-bit; bad magic: %04X",
+		      opt_hdr->Magic);
 		return -EINVAL;
 	}
 #else
 	if (opt_hdr->Magic != IMAGE_NT_OPTIONAL_HDR32_MAGIC) {
-		ERROR("kernel is 32-bit, but Windows driver is not 32-bit;"
-		      "bad magic: %04X", opt_hdr->Magic);
+		ERROR("Windows driver is not 32-bit; bad magic: %04X",
+		      opt_hdr->Magic);
 		return -EINVAL;
 	}
 #endif
@@ -164,13 +160,13 @@ static int check_nt_hdr(IMAGE_NT_HEADERS *nt_hdr)
 	/* Validate the image for the current architecture. */
 #ifdef CONFIG_X86_64
 	if (nt_hdr->FileHeader.Machine != IMAGE_FILE_MACHINE_AMD64) {
-		ERROR("kernel is 64-bit, but Windows driver is not 64-bit;"
+		ERROR("Windows driver is not 64-bit;"
 		      " (PE signature is %04X)", nt_hdr->FileHeader.Machine);
 		return -EINVAL;
 	}
 #else
 	if (nt_hdr->FileHeader.Machine != IMAGE_FILE_MACHINE_I386) {
-		ERROR("kernel is 32-bit, but Windows driver is not 32-bit;"
+		ERROR("Windows driver is not 32-bit;"
 		      " (PE signature is %04X)", nt_hdr->FileHeader.Machine);
 		return -EINVAL;
 	}
@@ -513,7 +509,7 @@ void fix_user_shared_data_addr(char *driver, unsigned long length)
 }
 #endif
 
-int link_pe_images(struct pe_image *pe_image, unsigned short n)
+int load_pe_images(struct pe_image *pe_image, int n)
 {
 	int i;
 	struct pe_image *pe;
@@ -593,7 +589,7 @@ int link_pe_images(struct pe_image *pe_image, unsigned short n)
 			struct unicode_string ustring;
 			char *buf = "0/0t0m0p00";
 			int (*dll_entry)(struct unicode_string *ustring)
-				wstdcall;
+				STDCALL;
 
 			memset(&ustring, 0, sizeof(ustring));
 			ustring.buf = (wchar_t *)buf;
