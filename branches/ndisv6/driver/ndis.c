@@ -53,9 +53,6 @@ void ndis_exit_device(struct wrap_ndis_device *wnd)
 {
 	struct wrap_device_setting *setting;
 	DBGTRACE2("%p", wnd);
-	/* TI driver doesn't call NdisMDeregisterInterrupt during halt! */
-	if (wnd->ndis_irq)
-		NdisMDeregisterInterrupt(wnd->ndis_irq);
 	if (down_interruptible(&loader_mutex))
 		WARNING("couldn't obtain loader_mutex");
 	nt_list_for_each_entry(setting, &wnd->wd->settings, list) {
@@ -84,6 +81,70 @@ wstdcall void WIN_FUNC(NdisTerminateWrapper,2)
 	(struct device_object *dev_obj, void *system_specific)
 {
 	TRACEEXIT1(return);
+}
+
+wstdcall NDIS_STATUS WIN_FUNC(NdisMRegisterMiniportDriver,5)
+	(struct driver_object *drv_obj, struct unicode_string *registry_path,
+	 void *mp_driver_ctx, struct mp_driver_characteristics *mp_driver_chars,
+	 void **driver_handle)
+{
+	struct wrap_driver *wrap_driver;
+	struct wrap_ndis_driver *ndis_driver;
+
+	TRACEENTER2("%p, %p",drv_obj,  mp_driver_ctx);
+	if (mp_driver_chars->major_version != 0x6) {
+		WARNING("invalid version: 0x%x", mp_driver_chars->major_version);
+		return NDIS_STATUS_BAD_VERSION;
+	}
+	wrap_driver =
+		IoGetDriverObjectExtension(drv_obj,
+					   (void *)WRAP_DRIVER_CLIENT_ID);
+	if (!wrap_driver) {
+		ERROR("couldn't get wrap_driver");
+		TRACEEXIT1(return NDIS_STATUS_RESOURCES);
+	}
+	if (IoAllocateDriverObjectExtension(
+		    drv_obj, (void *)NDIS_DRIVER_CLIENT_ID,
+		    sizeof(*ndis_driver), (void **)&ndis_driver) !=
+	    STATUS_SUCCESS)
+		TRACEEXIT1(return NDIS_STATUS_RESOURCES);
+	wrap_driver->ndis_driver = ndis_driver;
+	ndis_driver->wrap_driver = wrap_driver;
+	ndis_driver->mp_driver_ctx = mp_driver_ctx;
+	memcpy(&ndis_driver->mp_driver_chars, mp_driver_chars,
+	       sizeof(ndis_driver->mp_driver_chars));
+	*driver_handle = wrap_driver;
+	if (mp_driver_chars->set_options) {
+		NDIS_STATUS status;
+		status = LIN2WIN2(mp_driver_chars->set_options, wrap_driver,
+				  mp_driver_ctx);
+		if (status != NDIS_STATUS_SUCCESS) {
+			WARNING("failed: 0x%x", status);
+			/* TODO: clean up */
+			return NDIS_STATUS_FAILURE;
+		}
+	}
+	TRACEEXIT2(return NDIS_STATUS_SUCCESS);
+}
+
+wstdcall void WIN_FUNC(NdisMDeregisterMiniportDriver,1)
+	(void *driver_handle)
+{
+//	struct wrap_driver *wrap_driver = driver_handle;
+	/* TODO */
+}
+
+wstdcall NDIS_STATUS WIN_FUNC(NdisSetOptionalHandlers,2)
+	(void *handle, struct ndis_driver_optional_handlers *opt_handlers)
+{
+	struct wrap_driver *wrap_driver = handle;
+	if (opt_handlers->header.type ==
+	    NDIS_OBJECT_TYPE_MINIPORT_PNP_CHARACTERISTICS) {
+		memcpy(&wrap_driver->ndis_driver->mp_pnp_chars, opt_handlers,
+		       sizeof(wrap_driver->ndis_driver->mp_pnp_chars));
+	} else
+		WARNING("%d not supported", opt_handlers->header.type);
+	return STATUS_SUCCESS;
 }
 
 wstdcall NDIS_STATUS WIN_FUNC(NdisMRegisterMiniport,3)
@@ -355,6 +416,12 @@ wstdcall void WIN_FUNC(NdisGetSystemUpTime,1)
 	TRACEENTER5("");
 	*ms = 1000 * jiffies / HZ;
 	TRACEEXIT5(return);
+}
+
+wstdcall void WIN_FUNC(NdisGetSystemUpTimeEx,1)
+	(LARGE_INTEGER *ms)
+{
+	*ms = 1000 * jiffies / HZ;
 }
 
 wstdcall ULONG WIN_FUNC(NDIS_BUFFER_TO_SPAN_PAGES,1)
@@ -637,6 +704,34 @@ wstdcall NDIS_STATUS WIN_FUNC(NdisUnicodeStringToAnsiString,2)
 		return NDIS_STATUS_FAILURE;
 }
 
+wstdcall NDIS_STATUS WIN_FUNC(NdisMSetMiniportAttributes,2)
+	(void *handle, union mp_adapter_attrs *mp_adapter_attrs)
+{
+	struct wrap_ndis_device *wnd = handle;
+	struct ndis_object_header *header = handle;
+
+	switch (header->type) {
+	case NDIS_OBJECT_TYPE_MINIPORT_ADAPTER_REGISTRATION_ATTRIBUTES:
+		memcpy(&wnd->registration_attrs, mp_adapter_attrs,
+		       sizeof(wnd->registration_attrs));
+		wnd->adapter_ctx = wnd->registration_attrs.ctx;
+		break;
+	case NDIS_OBJECT_TYPE_MINIPORT_ADD_DEVICE_REGISTRATION_ATTRIBUTES:
+		memcpy(&wnd->add_device_attrs, mp_adapter_attrs,
+		       sizeof(wnd->add_device_attrs));
+		break;
+	case NDIS_OBJECT_TYPE_MINIPORT_ADAPTER_GENERAL_ATTRIBUTES:
+		memcpy(&wnd->general_attrs, mp_adapter_attrs,
+		       sizeof(wnd->general_attrs));
+		break;
+	case NDIS_OBJECT_TYPE_MINIPORT_ADAPTER_NATIVE_802_11_ATTRIBUTES:
+		memcpy(&wnd->native_802_11_attrs, mp_adapter_attrs,
+		       sizeof(wnd->native_802_11_attrs));
+		break;
+	}
+	TRACEEXIT2(return NDIS_STATUS_SUCCESS);
+}
+
 wstdcall void WIN_FUNC(NdisMSetAttributesEx,5)
 	(struct ndis_miniport_block *nmb, void *adapter_ctx,
 	 UINT hangcheck_interval, UINT attributes, ULONG adaptortype)
@@ -726,47 +821,9 @@ wstdcall void WIN_FUNC(NdisImmediateWritePortUchar,3)
 	outb(data, port);
 }
 
-wstdcall void WIN_FUNC(NdisMQueryAdapterResources,4)
-	(NDIS_STATUS *status, struct ndis_miniport_block *nmb,
-	 NDIS_RESOURCE_LIST *resource_list, UINT *size)
-{
-	struct wrap_ndis_device *wnd = nmb->wnd;
-	NDIS_RESOURCE_LIST *list;
-	UINT resource_length;
-
-	list = &wnd->wd->resource_list->list->partial_resource_list;
-	resource_length = sizeof(struct cm_partial_resource_list) +
-		sizeof(struct cm_partial_resource_descriptor) *
-		(list->count - 1);
-	DBGTRACE2("%p, %p,%d (%d), %p %d %d", wnd, resource_list, *size,
-		  resource_length, &list->partial_descriptors[list->count-1],
-		  list->partial_descriptors[list->count-1].u.interrupt.level,
-		  list->partial_descriptors[list->count-1].u.interrupt.vector);
-	if (*size < sizeof(*list)) {
-		*size = resource_length;
-		*status = NDIS_STATUS_BUFFER_TOO_SHORT;
-	} else {
-		ULONG count;
-		if (*size >= resource_length) {
-			*size = resource_length;
-			count = list->count;
-		} else {
-			UINT n = sizeof(*list);
-			count = 1;
-			while (count++ < list->count && n < *size)
-				n += sizeof(list->partial_descriptors);
-			*size = n;
-		}
-		memcpy(resource_list, list, *size);
-		resource_list->count = count;
-		*status = NDIS_STATUS_SUCCESS;
-	}
-	TRACEEXIT2(return);
-}
-
 wstdcall NDIS_STATUS WIN_FUNC(NdisMPciAssignResources,3)
 	(struct ndis_miniport_block *nmb, ULONG slot_number,
-	 NDIS_RESOURCE_LIST **resources)
+	 ndis_resource_list **resources)
 {
 	struct wrap_ndis_device *wnd = nmb->wnd;
 
@@ -798,6 +855,44 @@ wstdcall void WIN_FUNC(NdisMUnmapIoSpace,3)
 {
 	TRACEENTER2("%p, %d", virt, len);
 	MmUnmapIoSpace(virt, len);
+	TRACEEXIT2(return);
+}
+
+wstdcall void WIN_FUNC(NdisMQueryAdapterResources,4)
+	(NDIS_STATUS *status, struct ndis_miniport_block *nmb,
+	 ndis_resource_list *resource_list, UINT *size)
+{
+	struct wrap_ndis_device *wnd = nmb->wnd;
+	ndis_resource_list *list;
+	UINT resource_length;
+
+	list = &wnd->wd->resource_list->list->partial_resource_list;
+	resource_length = sizeof(struct cm_partial_resource_list) +
+		sizeof(struct cm_partial_resource_descriptor) *
+		(list->count - 1);
+	DBGTRACE2("%p, %p,%d (%d), %p %d %d", wnd, resource_list, *size,
+		  resource_length, &list->partial_descriptors[list->count-1],
+		  list->partial_descriptors[list->count-1].u.interrupt.level,
+		  list->partial_descriptors[list->count-1].u.interrupt.vector);
+	if (*size < sizeof(*list)) {
+		*size = resource_length;
+		*status = NDIS_STATUS_BUFFER_TOO_SHORT;
+	} else {
+		ULONG count;
+		if (*size >= resource_length) {
+			*size = resource_length;
+			count = list->count;
+		} else {
+			UINT n = sizeof(*list);
+			count = 1;
+			while (count++ < list->count && n < *size)
+				n += sizeof(list->partial_descriptors);
+			*size = n;
+		}
+		memcpy(resource_list, list, *size);
+		resource_list->count = count;
+		*status = NDIS_STATUS_SUCCESS;
+	}
 	TRACEEXIT2(return);
 }
 
@@ -1047,6 +1142,190 @@ wstdcall NDIS_STATUS WIN_FUNC(NdisMAllocateSharedMemoryAsync,4)
 				    wnd, alloc_shared_mem))
 		TRACEEXIT3(return NDIS_STATUS_FAILURE);
 	TRACEEXIT3(return NDIS_STATUS_PENDING);
+}
+
+wstdcall struct ndis_pool_info *WIN_FUNC(NdisAllocateNetBufferPool,3)
+	(void *ndis_handle, struct net_buffer_pool_params *params)
+{
+	struct ndis_pool_info *pool_info;
+	struct wrap_ndis_device *wnd = ndis_handle;
+	KIRQL irql;
+
+	TRACEENTER2("%p, %u", ndis_handle, params->data_size);
+	pool_info = kmalloc(sizeof(*pool_info), gfp_irql());
+	if (!pool_info) {
+		WARNING("couldn't allocate memory");
+		return NULL;
+	}
+	pool_info->data_length = params->data_size;
+	pool_info->tag = params->tag;
+	pool_info->wnd = wnd;
+	DBGTRACE4("%p, %u, %u", pool_info, data_size, tag);
+	irql = nt_spin_lock_irql(&wnd->lock, DISPATCH_LEVEL);
+	InsertTailList(&wnd->pool_list, &pool_info->list);
+	nt_spin_unlock_irql(&wnd->lock, irql);
+	return pool_info;
+}
+
+wstdcall void WIN_FUNC(NdisFreeNetBufferPool,1)
+	(struct ndis_pool_info *pool_info)
+{
+	struct wrap_ndis_device *wnd;
+	KIRQL irql;
+
+	TRACEENTER2("%p", pool_info);
+	wnd = pool_info->wnd;
+	irql = nt_spin_lock_irql(&wnd->lock, DISPATCH_LEVEL);
+	RemoveEntryList(&pool_info->list);
+	nt_spin_unlock_irql(&wnd->lock, irql);
+	kfree(pool_info);
+	TRACEEXIT4(return);
+}
+
+wstdcall struct net_buffer *WIN_FUNC(NdisAllocateNetBuffer,4)
+	(struct ndis_pool_info *pool, struct mdl *mdl_chain,
+	 ULONG data_offset, SIZE_T data_length)
+{
+	struct net_buffer *buffer;
+
+	TRACEENTER4("%p, %p, %u, %zu", pool, mdl_chain, data_offset,
+		    data_length);
+	buffer = kmalloc(sizeof(*buffer), gfp_irql());
+	if (!buffer) {
+		WARNING("couldn't allocate memory");
+		return NULL;
+	}
+	memset(buffer, 0, sizeof(*buffer));
+	buffer->pool = pool;
+	/* TODO: set current_mdl based on data offset */
+	buffer->header.data.current_mdl = mdl_chain;
+	buffer->header.data.current_mdl_offset = data_offset;
+	buffer->header.data.data_length.szlength = data_length;
+	DBGTRACE4("%p", buffer);
+	TRACEEXIT4(return buffer);
+}
+
+wstdcall void WIN_FUNC(NdisFreeNetBuffer,1)
+	(struct net_buffer *buffer)
+{
+	struct ndis_pool_info *pool;
+	TRACEENTER3("%p", buffer);
+	pool = buffer->pool;
+	kfree(buffer);
+}
+
+wstdcall struct net_buffer *WIN_FUNC(NdisAllocateNetBufferMdlAndData,1)
+	(struct ndis_pool_info *pool_info)
+{
+	struct net_buffer *buffer;
+	struct mdl *mdl;
+	void *mem;
+	unsigned int size;
+
+	TRACEENTER4("%p", pool_info);
+	/* TODO: compute mdl size based on size */
+	size = sizeof(*mdl) + sizeof(*buffer) + pool_info->data_length;
+	mem = kmalloc(size, gfp_irql());
+	if (!mem) {
+		WARNING("couldn't allocate memory");
+		return NULL;
+	}
+	memset(mem, 0, size);
+	buffer = mem;
+	mdl = mem + sizeof(*buffer);
+	MmInitializeMdl(mdl, (void *)buffer + sizeof(*buffer),
+			pool_info->data_length);
+	buffer->header.data.current_mdl = mdl;
+	buffer->header.data.current_mdl_offset = 0;
+	buffer->header.data.data_length.szlength = pool_info->data_length;
+	DBGTRACE4("%p, %p", mdl, buffer);
+	return buffer;
+}
+
+wstdcall void *WIN_FUNC(NdisGetDataBuffer,5)
+	(struct net_buffer *buffer, ULONG bytes_needed, void *storage,
+	 UINT alignment, UINT align_offset)
+{
+	void *data;
+
+	TRACEENTER3("%p, %p, %u, %u, %u", buffer, bytes_needed, storage,
+		    alignment, align_offset);
+	data = MmGetSystemAddressForMdl(buffer->header.data.current_mdl);
+	DBGTRACE3("%p", data);
+	return data;
+}
+
+wstdcall struct ndis_pool_info *WIN_FUNC(NdisAllocateNetBufferListPool,2)
+	(struct wrap_ndis_device *wnd,
+	 struct net_buffer_list_pool_params *params)
+{
+	TODO();
+	return NULL;
+}
+
+wstdcall struct net_buffer_list *WIN_FUNC(NdisAllocateNetBufferList,3)
+	(struct ndis_pool_info *pool, USHORT ctx_size, USHORT ctx_back_fill)
+{
+	TODO();
+	return NULL;
+}
+
+wstdcall NDIS_STATUS WIN_FUNC(NdisAllocateTimerObject,3)
+	(struct wrap_ndis_device *wnd,
+	 struct ndis_timer_characteristics *timer_chars, void **timer_object)
+{
+	struct ndis_timer *timer;
+	timer = kmalloc(sizeof(*timer), gfp_irql());
+	if (!timer) {
+		WARNING("couldn't allocate memory");
+		return NDIS_STATUS_RESOURCES;
+	}
+	memset(timer, 0, sizeof(*timer));
+	KeInitializeDpc(&timer->kdpc, timer_chars->func, timer_chars->ctx);
+	wrap_init_timer(&timer->nt_timer, NotificationTimer, &timer->kdpc, NULL);
+	*timer_object = timer;
+	TRACEEXIT3(return NDIS_STATUS_SUCCESS);
+}
+
+wstdcall BOOLEAN WIN_FUNC(NdisSetTimerObject,4)
+	(struct ndis_timer *timer, LARGE_INTEGER duetime_ticks, ULONG period_ms,
+	 void *ctx)
+{
+	unsigned long expires_hz, repeat_hz;
+
+	expires_hz = SYSTEM_TIME_TO_HZ(duetime_ticks) + 1;
+	if (period_ms)
+		repeat_hz = MSEC_TO_HZ(period_ms);
+	else
+		repeat_hz = 0;
+	TRACEENTER4("%p, %u, %ld", timer, expires_hz, repeat_hz);
+	if (ctx)
+		timer->kdpc.ctx = ctx;
+	return wrap_set_timer(&timer->nt_timer, expires_hz, repeat_hz, NULL);
+}
+
+wstdcall BOOLEAN WIN_FUNC(NdisCancelTimerObject,1)
+	(struct ndis_timer *timer)
+{
+	return KeCancelTimer(&timer->nt_timer);
+}
+
+wstdcall void WIN_FUNC(NdisFreeTimerObject,1)
+	(struct ndis_timer *timer)
+{
+	wrap_free_timer(&timer->nt_timer);
+	kfree(timer);
+}
+
+wstdcall void WIN_FUNC(NdisMOidRequestComplete,3)
+	(struct wrap_ndis_device *wnd, struct ndis_oid_request *oid_request,
+	 NDIS_STATUS status)
+{
+	TRACEENTER2("wnd: %p, %08X", wnd, status);
+	wnd->ndis_comm_status = status;
+	wnd->ndis_comm_done = 1;
+	wake_up(&wnd->ndis_comm_wq);
+	TRACEEXIT2(return);
 }
 
 /* Some drivers allocate NDIS_BUFFER (aka MDL) very often; instead of
@@ -1762,6 +2041,33 @@ static void ndis_irq_handler(unsigned long data)
 	if_serialize_unlock(wnd);
 }
 
+irqreturn_t mp_isr(int irq, void *data ISR_PT_REGS_PARAM_DECL)
+{
+	struct ndis_interrupt *interrupt = data;
+	struct wrap_ndis_device *wnd = interrupt->wnd;
+	struct miniport_char *miniport;
+	BOOLEAN recognized, queue_handler;
+	ULONG proc = 0;
+
+	miniport = &wnd->wd->driver->ndis_driver->miniport;
+	/* this spinlock should be shared with NdisMSynchronizeWithInterrupt
+	 */
+	nt_spin_lock(&interrupt->lock);
+#if 0
+	recognized = LIN2WIN2(miniport->isr, &queue_handler, &proc);
+#else
+	recognized = queue_handler = 0;
+#endif
+	nt_spin_unlock(&ndis_irq->lock);
+	/* TODO: schedule worker on processors indicated */
+	if (recognized) {
+		if (queue_handler || proc)
+			tasklet_schedule(&wnd->irq_tasklet);
+		return IRQ_HANDLED;
+	}
+	return IRQ_NONE;
+}
+
 irqreturn_t ndis_isr(int irq, void *data ISR_PT_REGS_PARAM_DECL)
 {
 	struct wrap_ndis_device *wnd = data;
@@ -1787,6 +2093,30 @@ irqreturn_t ndis_isr(int irq, void *data ISR_PT_REGS_PARAM_DECL)
 		return IRQ_HANDLED;
 	}
 	return IRQ_NONE;
+}
+
+wstdcall NDIS_STATUS WIN_FUNC(NdisMRegisterInterruptEx,4)
+	(struct ndis_miniport_block *nmb, void *isr_ctx,
+	 struct mp_interrupt_characteristics *mp_interrupt_chars,
+	 void **handle)
+{
+	struct wrap_ndis_device *wnd = nmb->wnd;
+	struct ndis_interrupt *interrupt = &wnd->interrupt;
+
+	TRACEENTER1("%p, %p", nmb, isr_ctx);
+	interrupt->wnd = wnd;
+	nt_spin_lock_init(&interrupt->lock);
+	tasklet_init(&wnd->irq_tasklet, ndis_irq_handler, (unsigned long)wnd);
+	if (request_irq(wnd->interrupt.vector, mp_isr, SA_SHIRQ,
+			wnd->net_dev->name, interrupt)) {
+		printk(KERN_WARNING "%s: request for IRQ %d failed\n",
+		       DRIVER_NAME, wnd->interrupt.vector);
+		TRACEEXIT1(return NDIS_STATUS_RESOURCES);
+	}
+	printk(KERN_INFO "%s: using IRQ %d\n",
+	       DRIVER_NAME, wnd->interrupt.vector);
+	*handle = interrupt;
+	TRACEEXIT1(return NDIS_STATUS_SUCCESS);
 }
 
 wstdcall NDIS_STATUS WIN_FUNC(NdisMRegisterInterrupt,7)
@@ -1818,6 +2148,24 @@ wstdcall NDIS_STATUS WIN_FUNC(NdisMRegisterInterrupt,7)
 	TRACEEXIT1(return NDIS_STATUS_SUCCESS);
 }
 
+wstdcall void WIN_FUNC(NdisMDeregisterInterruptEx,1)
+	(struct ndis_interrupt *interrupt)
+{
+	struct wrap_ndis_device *wnd;
+
+	TRACEENTER1("%p", interrupt);
+
+	if (!interrupt)
+		TRACEEXIT1(return);
+	wnd = interrupt->wnd;
+	if (!wnd)
+		TRACEEXIT1(return);
+
+	free_irq(wnd->interrupt.vector, wnd);
+	tasklet_kill(&wnd->irq_tasklet);
+	TRACEEXIT1(return);
+}
+
 wstdcall void WIN_FUNC(NdisMDeregisterInterrupt,1)
 	(struct ndis_irq *ndis_irq)
 {
@@ -1839,8 +2187,8 @@ wstdcall void WIN_FUNC(NdisMDeregisterInterrupt,1)
 	TRACEEXIT1(return);
 }
 
-wstdcall BOOLEAN WIN_FUNC(NdisMSynchronizeWithInterrupt,3)
-	(struct ndis_irq *ndis_irq, void *func, void *ctx)
+wstdcall BOOLEAN WIN_FUNC(NdisMSynchronizeWithInterruptEx,3)
+	(struct ndis_interrupt *interrupt, ULONG msg_id, void *func, void *ctx)
 {
 	BOOLEAN ret;
 	BOOLEAN (*sync_func)(void *ctx) wstdcall;
@@ -1848,11 +2196,62 @@ wstdcall BOOLEAN WIN_FUNC(NdisMSynchronizeWithInterrupt,3)
 
 	TRACEENTER6("%p %p", func, ctx);
 	sync_func = func;
-	nt_spin_lock_irqsave(&ndis_irq->lock, flags);
+	nt_spin_lock_irqsave(&interrupt->lock, flags);
 	ret = LIN2WIN1(sync_func, ctx);
-	nt_spin_unlock_irqrestore(&ndis_irq->lock, flags);
+	nt_spin_unlock_irqrestore(&interrupt->lock, flags);
 	DBGTRACE6("ret: %d", ret);
 	TRACEEXIT6(return ret);
+}
+
+/* called via function pointer; but 64-bit RNDIS driver calls directly */
+wstdcall void WIN_FUNC(NdisMIndicateStatusEx,4)
+	(struct ndis_miniport_block *nmb, struct ndis_status_indication *status)
+{
+	struct wrap_ndis_device *wnd = nmb->wnd;
+//	struct ndis_auth_req *auth_req;
+//	struct ndis_radio_status_indication *radio_status;
+	struct ndis_link_state *link_state;
+
+	TRACEENTER2("status=0x%x", status->code);
+	if (status->header.type !=  NDIS_OBJECT_TYPE_STATUS_INDICATION) {
+		ERROR("invalid status: 0x%x", status->header.type);
+		return;
+	}
+
+	switch (status->code) {
+	case NDIS_STATUS_LINK_STATE:
+		link_state = status->buf;
+		if (link_state->media_connect_state ==
+		    MediaConnectStateConnected) {
+			netif_carrier_on(wnd->net_dev);
+			set_bit(LINK_STATUS_CHANGED,
+				&wnd->wrap_ndis_pending_work);
+			schedule_wrap_work(&wnd->wrap_ndis_work);
+		} else if (link_state->media_connect_state ==
+			   MediaConnectStateConnected) {
+			netif_carrier_on(wnd->net_dev);
+			set_bit(LINK_STATUS_CHANGED,
+				&wnd->wrap_ndis_pending_work);
+			schedule_wrap_work(&wnd->wrap_ndis_work);
+		}
+		break;
+	default:
+		DBGTRACE2("unknown status: %08X", status);
+		break;
+	}
+
+	TRACEEXIT2(return);
+}
+
+/* called via function pointer; but 64-bit RNDIS driver calls directly */
+wstdcall void WIN_FUNC(NdisMIndicateStatusComplete,1)
+	(struct ndis_miniport_block *nmb)
+{
+	struct wrap_ndis_device *wnd = nmb->wnd;
+	TRACEENTER2("%p", wnd);
+	schedule_wrap_work(&wnd->wrap_ndis_work);
+	if (wnd->tx_ok)
+		schedule_wrap_work(&wnd->tx_work);
 }
 
 /* called via function pointer; but 64-bit RNDIS driver calls directly */
@@ -1861,7 +2260,7 @@ wstdcall void WIN_FUNC(NdisMIndicateStatus,4)
 	 void *buf, UINT len)
 {
 	struct wrap_ndis_device *wnd = nmb->wnd;
-	struct ndis_status_indication *si;
+	struct ndis5_status_indication *si;
 	struct ndis_auth_req *auth_req;
 	struct ndis_radio_status_indication *radio_status;
 
@@ -1981,17 +2380,6 @@ wstdcall void WIN_FUNC(NdisMIndicateStatus,4)
 	}
 
 	TRACEEXIT2(return);
-}
-
-/* called via function pointer; but 64-bit RNDIS driver calls directly */
-wstdcall void WIN_FUNC(NdisMIndicateStatusComplete,1)
-	(struct ndis_miniport_block *nmb)
-{
-	struct wrap_ndis_device *wnd = nmb->wnd;
-	TRACEENTER2("%p", wnd);
-	schedule_wrap_work(&wnd->wrap_ndis_work);
-	if (wnd->tx_ok)
-		schedule_wrap_work(&wnd->tx_work);
 }
 
 wstdcall void return_packet(void *arg1, void *arg2)

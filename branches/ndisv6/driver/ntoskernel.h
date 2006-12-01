@@ -502,7 +502,9 @@ struct wrap_driver {
 	unsigned short num_bin_files;
 	struct wrap_bin_file *bin_files;
 	struct nt_list wrap_devices;
-	struct wrap_ndis_driver *ndis_driver;
+	union {
+		struct wrap_ndis_driver *ndis_driver;
+	};
 };
 
 struct usbd_pipe_information;
@@ -615,6 +617,7 @@ void wrap_init_timer(struct nt_timer *nt_timer, enum timer_type type,
 		     struct kdpc *kdpc, struct ndis_miniport_block *nmb);
 BOOLEAN wrap_set_timer(struct nt_timer *nt_timer, unsigned long expires_hz,
 		       unsigned long repeat_hz, struct kdpc *kdpc);
+void wrap_free_timer(struct nt_timer *timer);
 
 LONG InterlockedDecrement(LONG volatile *val) wfastcall;
 LONG InterlockedIncrement(LONG volatile *val) wfastcall;
