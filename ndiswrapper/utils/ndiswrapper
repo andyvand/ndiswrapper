@@ -36,7 +36,7 @@ my $driver_name;
 # fixup list for parameters.
 my %param_fixlist = ("EnableRadio|0" => "1",
 		     "IBSSGMode|0" => "2",
-                     "PrivacyMode|0" => "2",
+		     "PrivacyMode|0" => "2",
 		     "MapRegisters|256" => "64",
 		     "AdhocGMode|1" => "0");
 
@@ -528,6 +528,7 @@ sub create_fuzzy_conf {
 	    }
 	}
     }
+    close(LS);
     chdir($cwd) or warn "couldn't chdir to $cwd: $!";
     return 0;
 }
@@ -667,9 +668,8 @@ sub generate_module_device_map {
 	    close(LS2);
 	}
     }
-
-    close(CONF);
     close(LS);
+    close(CONF);
 
     printf "module configuration information is stored in $device_map\n";
     return 0;
@@ -745,6 +745,7 @@ sub get_cards {
 		    push(@cards, $card);
 		}
 	    }
+	    close(LSPCI);
 	    last;
 	}
     }
@@ -759,6 +760,7 @@ sub get_cards {
 		    push(@cards, $card);
 		}
 	    }
+	    close(LSUSB);
 	    last;
 	}
     }
