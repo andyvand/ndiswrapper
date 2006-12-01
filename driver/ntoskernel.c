@@ -679,6 +679,15 @@ void wrap_init_timer(struct nt_timer *nt_timer, enum timer_type type,
 	TRACEEXIT5(return);
 }
 
+void wrap_free_timer(struct nt_timer *timer)
+{
+	KIRQL irql;
+	irql = nt_spin_lock_irql(&timer_lock, DISPATCH_LEVEL);
+	RemoveEntryList(&timer->wrap_timer->list);
+	nt_spin_unlock_irql(&timer_lock, irql);
+	slack_kfree(timer->wrap_timer);
+}
+
 wstdcall void WIN_FUNC(KeInitializeTimerEx,2)
 	(struct nt_timer *nt_timer, enum timer_type type)
 {
@@ -1752,7 +1761,7 @@ wstdcall KPRIORITY WIN_FUNC(KeSetPriorityThread,2)
 	return old_prio;
 }
 
-static struct nt_thread *create_nt_thread(struct task_struct *task)
+static struct nt_thread *create_nt_thread(void)
 {
 	struct nt_thread *thread;
 
@@ -1761,17 +1770,13 @@ static struct nt_thread *create_nt_thread(struct task_struct *task)
 		ERROR("couldn't allocate thread object");
 		return NULL;
 	}
-	thread->task = task;
-	if (task)
-		thread->pid = task->pid;
-	else
-		thread->pid = 0;
+	thread->task = NULL;
+	thread->pid = 0;
 	nt_spin_lock_init(&thread->lock);
 	InitializeListHead(&thread->irps);
 	initialize_dh(&thread->dh, ThreadObject, 0);
 	thread->dh.size = sizeof(*thread);
-	DBGTRACE2("thread: %p, task: %p, pid: %d",
-		  thread, thread->task, thread->pid);
+	DBGTRACE2("thread: %p", thread);
 	return thread;
 }
 
@@ -1803,31 +1808,30 @@ static void remove_nt_thread(struct nt_thread *thread)
 struct nt_thread *get_current_nt_thread(void)
 {
 	struct task_struct *task = current;
-	struct nt_thread *ret;
+	struct nt_thread *thread;
 	struct common_object_header *header;
 	KIRQL irql;
 
 	DBGTRACE6("task: %p", task);
-	ret = NULL;
+	thread = NULL;
 	irql = nt_spin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL);
 	nt_list_for_each_entry(header, &object_list, list) {
-		struct nt_thread *thread;
 		DBGTRACE6("header: %p, type: %d", header, header->type);
 		if (header->type != OBJECT_TYPE_NT_THREAD)
 			break;
 		thread = HEADER_TO_OBJECT(header);
 		DBGTRACE6("thread: %p, task: %p", thread, thread->task);
-		if (thread->task == task) {
-			ret = thread;
+		if (thread->task == task)
 			break;
-		}
+		else
+			thread = NULL;
 	}
 	nt_spin_unlock_irql(&ntoskernel_lock, irql);
-	if (ret == NULL)
+	if (thread == NULL)
 		DBGTRACE6("couldn't find thread for task %p, %d",
-			  task, current->pid);
-	DBGTRACE6("current thread = %p", ret);
-	return ret;
+			  task, task->pid);
+	DBGTRACE6("thread: %p", thread);
+	return thread;
 }
 
 struct thread_trampoline_info {
@@ -1866,14 +1870,14 @@ wstdcall NTSTATUS WIN_FUNC(PsCreateSystemThread,7)
 	 void *client_id, void (*func)(void *) wstdcall, void *ctx)
 {
 	struct thread_trampoline_info thread_info;
-	struct task_struct *task;
+	no_warn_unused struct task_struct *task;
 	no_warn_unused int pid;
 
 	TRACEENTER2("phandle = %p, access = %u, obj_attr = %p, process = %p, "
 	            "client_id = %p, func = %p, context = %p", phandle, access,
 		    obj_attr, process, client_id, func, ctx);
 
-	thread_info.thread = create_nt_thread(NULL);
+	thread_info.thread = create_nt_thread();
 	if (!thread_info.thread)
 		TRACEEXIT2(return STATUS_RESOURCES);
 	thread_info.func = func;
@@ -1887,8 +1891,7 @@ wstdcall NTSTATUS WIN_FUNC(PsCreateSystemThread,7)
 		free_object(thread_info.thread);
 		TRACEEXIT2(return STATUS_FAILURE);
 	}
-	task = NULL;
-	DBGTRACE2("created task: %p (%d)", task, pid);
+	DBGTRACE2("created task: %d", pid);
 #else
 	task = KTHREAD_RUN(thread_trampoline, &thread_info, "windisdrvr");
 	if (IS_ERR(task)) {
