@@ -686,10 +686,9 @@ static USBD_STATUS wrap_vendor_or_class_req(struct irp *irp)
 	udev = irp->wd->usb.udev;
 	vc_req = &nt_urb->vendor_class_request;
 	USBTRACE("bits: %x, req: %x, val: %08x, index: %08x, flags: %x,"
-		 "buf: %p, len: %d", vc_req->reserved_bits,
-		 vc_req->request, vc_req->value, vc_req->index,
-		 vc_req->transfer_flags, vc_req->transfer_buffer,
-		 vc_req->transfer_buffer_length);
+		 "buf: %p, len: %d", vc_req->reserved_bits, vc_req->request,
+		 vc_req->value, vc_req->index, vc_req->transfer_flags,
+		 vc_req->transfer_buffer, vc_req->transfer_buffer_length);
 
 	USBTRACE("%x", nt_urb->header.function);
 	switch (nt_urb->header.function) {
@@ -762,8 +761,7 @@ static USBD_STATUS wrap_vendor_or_class_req(struct irp *irp)
 	dr->wLength = cpu_to_le16((u16)urb->transfer_buffer_length);
 
 	usb_fill_control_urb(urb, udev, pipe, (unsigned char *)dr,
-			     urb->transfer_buffer,
-			     urb->transfer_buffer_length,
+			     urb->transfer_buffer, urb->transfer_buffer_length,
 			     wrap_urb_complete, urb->context);
 	status = wrap_submit_urb(irp);
 	USBTRACE("status: %08X", status);
