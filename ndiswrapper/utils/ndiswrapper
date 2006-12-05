@@ -853,7 +853,8 @@ sub install_status {
 	while (my $line = <MODPROBE>) {
 	    my $alt;
 	    chomp($line);
-	    $alt = (split(' ', $line))[-1] if $line =~ /$devstring/;
+	    next if $line !~ /$devstring/;
+	    $alt = (split(' ', $line))[-1];
 	    chomp($alt);
 	    if (length($alt) gt 0 and $alt ne "ndiswrapper") {
 		$ret .= " (alternate driver: $alt)";
