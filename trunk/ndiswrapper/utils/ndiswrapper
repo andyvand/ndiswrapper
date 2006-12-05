@@ -33,6 +33,11 @@ my $confdir = "/etc/ndiswrapper";
 my $src_dir;
 my $driver_name;
 
+my $re_dev_id = "([[:xdigit:]]{4})";
+my $re_sub_dev_conf = "$re_dev_id:$re_dev_id:$re_dev_id:$re_dev_id" .
+  "\.([[:xdigit:]]+)\.conf";
+my $re_dev_conf = "$re_dev_id:$re_dev_id\.([[:xdigit:]]+)\.conf";
+
 # fixup list for parameters.
 my %param_fixlist = ("EnableRadio|0" => "1",
 		     "IBSSGMode|0" => "2",
@@ -584,7 +589,7 @@ sub device_driver_alias {
     my $done = 0;
 
     $devid = uc($devid);
-    if (!($devid =~ /[0-9A-Z]{4}:[0-9A-Z]{4}/)) {
+    if (!($devid =~ /^$re_dev_id:$re_dev_id$/)) {
 	printf "'$devid' is not a valid device ID\n";
 	return 1;
     }
@@ -592,7 +597,7 @@ sub device_driver_alias {
       die "couldn't open $confdir/$driver: $!";
     while (my $f = <LS>) {
 	chomp($f);
-	if ($f =~ /\.([0-9A-F]+).conf$/) {
+	if ($f =~ /\.([[:xdigit:]]+)\.conf$/) {
 	    if (symlink("$f", "$confdir/$driver/$devid.$1.conf")) {
 		printf "driver '$driver' is used for '$devid'\n";
 		$done = 1;
@@ -682,7 +687,7 @@ sub list_drivers {
     while (my $driver = <LS>) {
 	chomp($driver);
 	if (-e "$confdir/$driver") {
-	    printf "$driver: %s\n", install_status($cards, $driver);
+	    printf "%s : %s\n", $driver, install_status($cards, $driver);
 	}
     }
     close(LS);
@@ -695,7 +700,7 @@ sub add_module_alias {
     open(MODPROBE, "modprobe -c|") or die "couldn't run modprobe: $!";
     while (my $line = <MODPROBE>) {
 	if ($line =~ /^alias\s.+\sndiswrapper/) {
-	    printf "modprobe config already contains alias directive\n\n";
+	    printf "module configuration already contains alias directive\n\n";
 	    $alias = 1;
 	} elsif ($line =~ /^install\s.*ndiswrapper/) {
 	    warn "module configuration contains directive $line;" .
@@ -729,10 +734,10 @@ sub get_cards {
 	if (open(LSPCI, "$cmd -vn|")) {
 	    my $card;
 	    while (my $line = <LSPCI>) {
-		if ($line =~ /^[0-9a-f]+.+\s+([0-9a-f]{4}):([0-9a-f]{4})/i) {
+		if ($line =~ /^[0-9a-f]+.+\s$re_dev_id:$re_dev_id/) {
 		    $card = {vendor => uc($1), device => uc($2)};
 		    printf DBG "card: %s, %s\n", $1, $2;
-		} elsif ($line =~ /.+Subsystem:\s*([0-9a-f]{4}):([0-9a-f]{4})/i) {
+		} elsif ($line =~ /.+Subsystem:\s$re_dev_id:$re_dev_id/) {
 		    $card->{subvendor} = uc($1);
 		    $card->{subdevice} = uc($2);
 		    printf DBG "sub: %s, %s\n", $1, $2;
@@ -749,7 +754,7 @@ sub get_cards {
 	if (open(LSUSB, "$cmd |")) {
 	    my $card;
 	    while (my $line = <LSUSB>) {
-		if ($line =~ /.*: ID\s(.{4}):(.{4}).*/) {
+		if ($line =~ /.+: ID\s$re_dev_id:$re_dev_id/) {
 		    $card = {vendor => uc($1), device => uc($2)};
 		    push(@cards, $card);
 		}
@@ -780,21 +785,22 @@ sub install_status {
 	    $sys = 1;
 	} elsif ($file =~ /\.inf$/) {
 	    $inf = 1;
-	} elsif ($file =~ /^(.{4}):(.{4}):(.{4}):(.{4})\.([^.]+)\.conf$/) {
+	} elsif ($file =~ /^$re_sub_dev_conf$/) {
 	    $busid = hex($5);
 	    $conf = 1 if ($busid eq $WRAP_PCI_BUS);
-	} elsif ($file =~ /(.{4}):(.{4})\.([^.]+)\.conf/) {
+	} elsif ($file =~ /^$re_dev_conf$/) {
 	    $busid = hex($3);
 	    $conf = 1 if ($busid eq $WRAP_USB_BUS || $busid eq 0 ||
 			  $busid eq $WRAP_PCI_BUS);
 	}
     }
     close(LS2);
+    printf DBG "status: $sys, $inf, $conf\n";
     if ($sys eq 0 || $inf eq 0 || $conf eq 0) {
-	$ret = " invalid driver!";
+	$ret = "invalid driver!";
 	return $ret;
     }
-    $ret = " driver installed";
+    $ret = "driver installed";
     open(LS2, "ls -1 $confdir/$driver|") or
       die "couldn't open $confdir/$driver: $!";
 
@@ -802,7 +808,7 @@ sub install_status {
 	chomp($file);
 	next if ($file !~ /\.conf$/);
 	$conf = 0;
-	if ($file =~ /^(.{4}):(.{4}):(.{4}):(.{4})\.([^.]+)\.conf$/) {
+	if ($file =~ /^$re_sub_dev_conf$/) {
 	    ($vendor, $device, $subvendor, $subdevice, $busid) =
 	      (uc($1), uc($2), uc($3), uc($4), hex($5));
 	    $conf = 1;
@@ -818,7 +824,7 @@ sub install_status {
 		    last;
 		}
 	    }
-	} elsif ($file =~ /(.{4}):(.{4})\.([^.]+)\.conf/) {
+	} elsif ($file =~ /^$re_dev_conf/) {
 	    ($vendor, $device, $subvendor, $subdevice, $busid) =
 	      (uc($1), uc($2), "\\*", "\\*", hex($3));
 	    $conf = 1;
@@ -843,7 +849,7 @@ sub install_status {
 	} else {
 	    next;
 	}
-	open(MODPROBE, "modprobe -c|") or die "couldn't run modprobe: $!";
+	open(MODPROBE, "modprobe -c|") or next;
 	while (my $line = <MODPROBE>) {
 	    my $alt;
 	    chomp($line);
