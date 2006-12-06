@@ -33,10 +33,15 @@ my $confdir = "/etc/ndiswrapper";
 my $src_dir;
 my $driver_name;
 
+my $re_dev_id = "([[:xdigit:]]{4})";
+my $re_sub_dev_conf = "$re_dev_id:$re_dev_id:$re_dev_id:$re_dev_id" .
+  "\.([[:xdigit:]]+)\.conf";
+my $re_dev_conf = "$re_dev_id:$re_dev_id\.([[:xdigit:]]+)\.conf";
+
 # fixup list for parameters.
 my %param_fixlist = ("EnableRadio|0" => "1",
 		     "IBSSGMode|0" => "2",
-                     "PrivacyMode|0" => "2",
+		     "PrivacyMode|0" => "2",
 		     "MapRegisters|256" => "64",
 		     "AdhocGMode|1" => "0");
 
@@ -528,6 +533,7 @@ sub create_fuzzy_conf {
 	    }
 	}
     }
+    close(LS);
     chdir($cwd) or warn "couldn't chdir to $cwd: $!";
     return 0;
 }
@@ -583,7 +589,7 @@ sub device_driver_alias {
     my $done = 0;
 
     $devid = uc($devid);
-    if (!($devid =~ /[0-9A-Z]{4}:[0-9A-Z]{4}/)) {
+    if (!($devid =~ /^$re_dev_id:$re_dev_id$/)) {
 	printf "'$devid' is not a valid device ID\n";
 	return 1;
     }
@@ -591,7 +597,7 @@ sub device_driver_alias {
       die "couldn't open $confdir/$driver: $!";
     while (my $f = <LS>) {
 	chomp($f);
-	if ($f =~ /\.([0-9A-F]+).conf$/) {
+	if ($f =~ /\.([[:xdigit:]]+)\.conf$/) {
 	    if (symlink("$f", "$confdir/$driver/$devid.$1.conf")) {
 		printf "driver '$driver' is used for '$devid'\n";
 		$done = 1;
@@ -667,31 +673,24 @@ sub generate_module_device_map {
 	    close(LS2);
 	}
     }
-
-    close(CONF);
     close(LS);
+    close(CONF);
 
     printf "module configuration information is stored in $device_map\n";
     return 0;
 }
 
 sub list_drivers {
-    my $s;
     my $cards = get_cards();
 
     open(LS, "ls -1 $confdir|") or die "couldn't open $confdir: $!";
     while (my $driver = <LS>) {
 	chomp($driver);
 	if (-e "$confdir/$driver") {
-	    $s .= "$driver\t". install_status($cards, $driver) . "\n";
+	    printf "%s : %s\n", $driver, install_status($cards, $driver);
 	}
     }
     close(LS);
-    if ($s) {
-	printf "installed drivers:\n$s";
-    } else {
-	printf "no drivers installed\n$s";
-    }
     return 0;
 }
 
@@ -701,7 +700,7 @@ sub add_module_alias {
     open(MODPROBE, "modprobe -c|") or die "couldn't run modprobe: $!";
     while (my $line = <MODPROBE>) {
 	if ($line =~ /^alias\s.+\sndiswrapper/) {
-	    printf "modprobe config already contains alias directive\n\n";
+	    printf "module configuration already contains alias directive\n\n";
 	    $alias = 1;
 	} elsif ($line =~ /^install\s.*ndiswrapper/) {
 	    warn "module configuration contains directive $line;" .
@@ -735,16 +734,17 @@ sub get_cards {
 	if (open(LSPCI, "$cmd -vn|")) {
 	    my $card;
 	    while (my $line = <LSPCI>) {
-		if ($line =~ /^[0-9a-f]+.+\s+([0-9a-f]{4}):([0-9a-f]{4})/i) {
+		if ($line =~ /^[0-9a-f]+.+\s$re_dev_id:$re_dev_id/) {
 		    $card = {vendor => uc($1), device => uc($2)};
 		    printf DBG "card: %s, %s\n", $1, $2;
-		} elsif ($line =~ /.+Subsystem:\s*([0-9a-f]{4}):([0-9a-f]{4})/i) {
+		} elsif ($line =~ /.+Subsystem:\s$re_dev_id:$re_dev_id/) {
 		    $card->{subvendor} = uc($1);
 		    $card->{subdevice} = uc($2);
 		    printf DBG "sub: %s, %s\n", $1, $2;
 		    push(@cards, $card);
 		}
 	    }
+	    close(LSPCI);
 	    last;
 	}
     }
@@ -754,11 +754,12 @@ sub get_cards {
 	if (open(LSUSB, "$cmd |")) {
 	    my $card;
 	    while (my $line = <LSUSB>) {
-		if ($line =~ /.*: ID\s(.{4}):(.{4}).*/) {
+		if ($line =~ /.+: ID\s$re_dev_id:$re_dev_id/) {
 		    $card = {vendor => uc($1), device => uc($2)};
 		    push(@cards, $card);
 		}
 	    }
+	    close(LSUSB);
 	    last;
 	}
     }
@@ -768,89 +769,102 @@ sub get_cards {
 sub install_status {
     my ($cards, $driver) = @_;
 
-    my $sys = 0;
-    my $conf = 0;
-    my $inf = 0;
-    my $vendor, my $device, my $subvendor, my $subdevice, my $busid;
-
-    if (!$cards) {
+    if (!$cards || !$driver) {
 	return;
     }
 
+    my $sys, my $conf, my $inf;
+    my $vendor, my $device, my $subvendor, my $subdevice, my $busid, my $ret;
+
+    $sys = $conf = $inf = 0;
     open(LS2, "ls -1 $confdir/$driver|") or
       die "couldn't open $confdir/$driver: $!";
-
-    while (my $file = <LS2>) 	{
+    while (my $file = <LS2>) {
 	chomp($file);
 	if ($file =~ /\.sys$/) {
 	    $sys = 1;
 	} elsif ($file =~ /\.inf$/) {
 	    $inf = 1;
-	} elsif ($file =~ /\.conf$/) {
-	    $conf = 1 if ($conf eq 0);
-	    if ($file =~ /^(.{4}):(.{4}):(.{4}):(.{4})\.([^.]+)\.conf$/) {
-		($vendor, $device, $subvendor, $subdevice, $busid) =
-		  (uc($1), uc($2), uc($3), uc($4), hex($5));
-		foreach my $card (@{$cards}) {
-		    if ($card->{vendor} eq $vendor and
-			$card->{device} eq $device and
-			$card->{subvendor} eq $subvendor and
-			$card->{subdevice} eq $subdevice) {
-			$conf = 3;
-			last;
-		    }
-		}
-	    } elsif ($file =~ /(.{4}):(.{4})\.([^.]+)\.conf/) {
-		($vendor, $device, $subvendor, $subdevice, $busid) =
-		  (uc($1), uc($2), "\\*", "\\*", hex($3));
-		foreach my $card (@{$cards}) {
-		    if ($card->{vendor} eq $vendor and
-			$card->{device} eq $device) {
-			my $stat = (lstat("$confdir/$driver/$file"))[2];
-			if (S_ISLNK($stat)) {
-			    $conf = 2;
-			} else {
-			    $conf = 3;
-			}
-			last;
-		    }
-		}
-	    }
+	} elsif ($file =~ /^$re_sub_dev_conf$/) {
+	    $busid = hex($5);
+	    $conf = 1 if ($busid eq $WRAP_PCI_BUS);
+	} elsif ($file =~ /^$re_dev_conf$/) {
+	    $busid = hex($3);
+	    $conf = 1 if ($busid eq $WRAP_USB_BUS || $busid eq 0 ||
+			  $busid eq $WRAP_PCI_BUS);
 	}
     }
     close(LS2);
-
-    my $ret;
+    printf DBG "status: $sys, $inf, $conf\n";
     if ($sys eq 0 || $inf eq 0 || $conf eq 0) {
 	$ret = "invalid driver!";
-    } else {
-	if ($conf eq 1) {
-	    $ret = "\tdriver installed ";
-	} else {
-	    $ret = "\tdriver installed, hardware ($vendor:$device) present ";
-	}
+	return $ret;
+    }
+    $ret = "driver installed";
+    open(LS2, "ls -1 $confdir/$driver|") or
+      die "couldn't open $confdir/$driver: $!";
 
+    while (my $file = <LS2>) {
+	chomp($file);
+	next if ($file !~ /\.conf$/);
+	$conf = 0;
+	if ($file =~ /^$re_sub_dev_conf$/) {
+	    ($vendor, $device, $subvendor, $subdevice, $busid) =
+	      (uc($1), uc($2), uc($3), uc($4), hex($5));
+	    $conf = 1;
+	    foreach my $card (@{$cards}) {
+		if ($card->{vendor} eq $vendor and
+		    $card->{device} eq $device and
+		    $card->{subvendor} eq $subvendor and
+		    $card->{subdevice} eq $subdevice and
+		    $busid eq $WRAP_PCI_BUS) {
+		    $ret .= "\n\tdevice ($vendor:$device" .
+		      ":$subvendor:$subdevice) present";
+		    $conf = 2;
+		    last;
+		}
+	    }
+	} elsif ($file =~ /^$re_dev_conf/) {
+	    ($vendor, $device, $subvendor, $subdevice, $busid) =
+	      (uc($1), uc($2), "\\*", "\\*", hex($3));
+	    $conf = 1;
+	    foreach my $card (@{$cards}) {
+		if ($card->{vendor} eq $vendor and
+		    $card->{device} eq $device and
+		    ($busid eq $WRAP_USB_BUS || $busid eq 0 ||
+		     $busid eq $WRAP_PCI_BUS)) {
+		    $ret .= "\n\tdevice ($vendor:$device) present";
+		    $conf = 2;
+		    last;
+		}
+	    }
+	}
+	next if ($conf le 1);
+	# find if kernel knows of an alternate driver for this device
 	my $devstring;
 	if ($busid eq $WRAP_USB_BUS || $busid eq 0) {
-	    $devstring =
-	      sprintf("usb:v%sp%sd", $vendor, $device);
+	    $devstring = sprintf("usb:v%sp%sd", $vendor, $device);
 	} elsif ($busid eq $WRAP_PCI_BUS) {
-	    $devstring =
-	      sprintf("pci:v0000%sd0000%ssv", $vendor, $device);
+	    $devstring = sprintf("pci:v0000%sd0000%ssv", $vendor, $device);
+	} else {
+	    next;
 	}
-	my $alt_driver;
-	open(MODPROBE, "modprobe -c|") or die "couldn't run modprobe: $!";
+	open(MODPROBE, "modprobe -c|") or next;
 	while (my $line = <MODPROBE>) {
+	    my $alt;
 	    chomp($line);
-	    $alt_driver = (split(' ', $line))[-1] if $line =~ /$devstring/;
-	    chomp($alt_driver);
-	    if (length($alt_driver) gt 0 and $alt_driver ne "ndiswrapper") {
-		$ret .= "(alternate driver: $alt_driver)";
+	    next if $line !~ /$devstring/;
+	    $alt = (split(' ', $line))[-1];
+	    chomp($alt);
+	    if (length($alt) gt 0 and $alt ne "ndiswrapper") {
+		$ret .= " (alternate driver: $alt)";
 		last;
 	    }
 	}
 	close(MODPROBE);
     }
+    close(LS2);
+    printf DBG "driver: $driver, $ret\n";
     return $ret;
 }
 
