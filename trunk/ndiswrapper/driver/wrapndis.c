@@ -883,8 +883,12 @@ static int notifier_event(struct notifier_block *notifier, unsigned long event,
 			  void *ptr)
 {
 	struct net_device *net_dev = (struct net_device *)ptr;
-	struct wrap_ndis_device *wnd = netdev_priv(net_dev);
+	struct wrap_ndis_device *wnd;
 
+	if (net_dev->open != ndis_net_dev_open)
+		return NOTIFY_DONE;
+
+	wnd = netdev_priv(net_dev);
 	/* called with rtnl lock held, so no need to lock */
 	switch (event) {
 	case NETDEV_CHANGENAME:
