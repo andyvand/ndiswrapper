@@ -1339,8 +1339,7 @@ WIN_FUNC(USBD_ParseConfigurationDescriptor,3)
 						   -1, -1, -1);
 }
 
-wstdcall usb_common_descriptor_t *
-WIN_FUNC(USBD_ParseDescriptors,4)
+wstdcall usb_common_descriptor_t *WIN_FUNC(USBD_ParseDescriptors,4)
 	(void *buf, ULONG length, void *start, LONG type)
 {
 	usb_common_descriptor_t *descr = start;
