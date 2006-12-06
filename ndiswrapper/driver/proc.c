@@ -388,7 +388,7 @@ int wrap_procfs_add_ndis_device(struct wrap_ndis_device *wnd)
 					 wnd->procfs_iface);
 	if (procfs_entry == NULL) {
 		ERROR("couldn't create proc entry for 'hw'");
-		return -ENOMEM;
+		goto err_hw;
 	} else {
 		procfs_entry->uid = proc_uid;
 		procfs_entry->gid = proc_gid;
@@ -400,7 +400,7 @@ int wrap_procfs_add_ndis_device(struct wrap_ndis_device *wnd)
 					 wnd->procfs_iface);
 	if (procfs_entry == NULL) {
 		ERROR("couldn't create proc entry for 'stats'");
-		return -ENOMEM;
+		goto err_stats;
 	} else {
 		procfs_entry->uid = proc_uid;
 		procfs_entry->gid = proc_gid;
@@ -412,7 +412,7 @@ int wrap_procfs_add_ndis_device(struct wrap_ndis_device *wnd)
 					 wnd->procfs_iface);
 	if (procfs_entry == NULL) {
 		ERROR("couldn't create proc entry for 'encr'");
-		return -ENOMEM;
+		goto err_encr;
 	} else {
 		procfs_entry->uid = proc_uid;
 		procfs_entry->gid = proc_gid;
@@ -425,7 +425,7 @@ int wrap_procfs_add_ndis_device(struct wrap_ndis_device *wnd)
 					 S_IWUSR | S_IWGRP, wnd->procfs_iface);
 	if (procfs_entry == NULL) {
 		ERROR("couldn't create proc entry for 'settings'");
-		return -ENOMEM;
+		goto err_settings;
 	} else {
 		procfs_entry->uid = proc_uid;
 		procfs_entry->gid = proc_gid;
@@ -434,11 +434,22 @@ int wrap_procfs_add_ndis_device(struct wrap_ndis_device *wnd)
 		procfs_entry->write_proc = procfs_write_ndis_settings;
 	}
 	return 0;
+
+err_settings:
+	remove_proc_entry("encr", wnd->procfs_iface);
+err_encr:
+	remove_proc_entry("stats", wnd->procfs_iface);
+err_stats:
+	remove_proc_entry("hw", wnd->procfs_iface);
+err_hw:
+	remove_proc_entry(wnd->netdev_name, wrap_procfs_entry);
+	wnd->procfs_iface = NULL;
+	return -ENOMEM;
 }
 
 void wrap_procfs_remove_ndis_device(struct wrap_ndis_device *wnd)
 {
-	struct proc_dir_entry *procfs_iface = wnd->procfs_iface;
+	struct proc_dir_entry *procfs_iface = xchg(&wnd->procfs_iface, NULL);
 
 	if (procfs_iface == NULL)
 		return;
@@ -446,9 +457,8 @@ void wrap_procfs_remove_ndis_device(struct wrap_ndis_device *wnd)
 	remove_proc_entry("stats", procfs_iface);
 	remove_proc_entry("encr", procfs_iface);
 	remove_proc_entry("settings", procfs_iface);
-	if (wrap_procfs_entry != NULL)
+	if (wrap_procfs_entry)
 		remove_proc_entry(wnd->netdev_name, wrap_procfs_entry);
-	wnd->procfs_iface = NULL;
 }
 
 static int procfs_read_debug(char *page, char **start, off_t off,

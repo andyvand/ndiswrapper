@@ -41,8 +41,17 @@ typedef ULONG ndis_fragmentation_threshold;
 typedef ULONG ndis_rts_threshold;
 typedef ULONG ndis_antenna;
 typedef ULONG ndis_oid;
+typedef ULONG NET_IFINDEX;
+typedef ULONG NDIS_PORT_NUMBER;
+typedef ULONG NDIS_OID;
+typedef UINT16 NET_IFTYPE;
 
 typedef uint64_t NDIS_PHY_ADDRESS;
+
+#define IF_MAX_PHYS_ADDRESS_LENGTH 32
+#define NDIS_MAX_PHYS_ADDRESS_LENGTH IF_MAX_PHYS_ADDRESS_LENGTH
+
+typedef PHYSICAL_ADDRESS NDIS_PHYSICAL_ADDRESS;
 
 struct ndis_sg_element {
 	PHYSICAL_ADDRESS address;
@@ -284,7 +293,7 @@ enum ndis_device_pnp_event {
 	NdisDevicePnPEventQueryRemoved, NdisDevicePnPEventRemoved,
 	NdisDevicePnPEventSurpriseRemoved, NdisDevicePnPEventQueryStopped,
 	NdisDevicePnPEventStopped, NdisDevicePnPEventPowerProfileChanged,
-	NdisDevicePnPEventMaximum
+	NdisDevicePnPEventFilterListChanged, NdisDevicePnPEventMaximum
 };
 
 enum ndis_request_type {
@@ -292,8 +301,8 @@ enum ndis_request_type {
 	NdisRequestQueryStatistics, NdisRequestOpen, NdisRequestClose,
 	NdisRequestSend, NdisRequestTransferData, NdisRequestReset,
 	NdisRequestGeneric1, NdisRequestGeneric2, NdisRequestGeneric3,
-	NdisRequestGeneric4
-};
+	NdisRequestGeneric4, NdisRequestMethod,
+};	
 
 struct ndis_request {
 	mac_address mac;
@@ -360,6 +369,27 @@ struct ndis_pnp_capabilities {
 typedef void (*ndis_isr_handler)(BOOLEAN *recognized, BOOLEAN *queue_handler,
 				 void *handle) wstdcall;
 typedef void (*ndis_interrupt_handler)(void *ctx) wstdcall;
+
+struct ndis_irq {
+	/* void *intr_obj is used for irq */
+	union {
+		void *intr_obj;
+		unsigned int irq;
+	} irq;
+	/* Taken by ISR, DisableInterrupt and SynchronizeWithInterrupt */
+	NT_SPIN_LOCK lock;
+	void *id;
+	ndis_isr_handler isr;
+	void *dpc;
+	struct kdpc intr_dpc;
+	struct ndis_miniport_block *nmb;
+	UCHAR dpc_count;
+	/* unsigned char filler1 is used for enabled */
+	UCHAR enabled;
+	struct nt_event completed_event;
+	UCHAR shared;
+	UCHAR req_isr;
+};
 
 struct miniport_char {
 	/* NDIS 3.0 */
@@ -460,27 +490,6 @@ struct ndis_work_entry {
 
 struct ndis_miniport_block;
 
-struct ndis_irq {
-	/* void *intr_obj is used for irq */
-	union {
-		void *intr_obj;
-		unsigned int irq;
-	} irq;
-	/* Taken by ISR, DisableInterrupt and SynchronizeWithInterrupt */
-	NT_SPIN_LOCK lock;
-	void *id;
-	ndis_isr_handler isr;
-	void *dpc;
-	struct kdpc intr_dpc;
-	struct ndis_miniport_block *nmb;
-	UCHAR dpc_count;
-	/* unsigned char filler1 is used for enabled */
-	UCHAR enabled;
-	struct nt_event completed_event;
-	UCHAR shared;
-	UCHAR req_isr;
-};
-
 struct ndis_binary_data {
 	USHORT len;
 	void *buf;
@@ -499,10 +508,6 @@ struct ndis_configuration_parameter {
 		ULONG integer;
 		NDIS_STRING string;
 	} data;
-};
-
-struct wrap_ndis_driver {
-	struct miniport_char miniport;
 };
 
 /* IDs used to store extensions in driver_object's custom extension */
@@ -541,10 +546,6 @@ enum ndis_status_type {
 	Ndis802_11StatusType_MediaStreamMode,
 	Ndis802_11StatusType_PMKID_CandidateList,
 	Ndis802_11StatusType_RadioState,
-};
-
-struct ndis_status_indication {
-	enum ndis_status_type status_type;
 };
 
 enum ndis_radio_status {
@@ -644,7 +645,7 @@ struct ndis_miniport_timer {
 	struct ndis_miniport_timer *next;
 };
 
-typedef struct cm_partial_resource_list NDIS_RESOURCE_LIST;
+typedef struct cm_partial_resource_list ndis_resource_list_t;
 
 struct ndis_event {
 	struct nt_event nt_event;
@@ -672,8 +673,715 @@ struct ndis_miniport_interrupt {
 	UCHAR dpc_count;
 	BOOLEAN filler1;
 	struct nt_event dpcs_completed_event;
-        BOOLEAN shared_interrupt;
+	BOOLEAN shared_interrupt;
 	BOOLEAN isr_requested;
+};
+
+#define NDIS_OBJECT_TYPE_DEFAULT				0x80
+#define NDIS_OBJECT_TYPE_MINIPORT_INIT_PARAMETERS		0x81
+#define NDIS_OBJECT_TYPE_SG_DMA_DESCRIPTION			0x83
+#define NDIS_OBJECT_TYPE_MINIPORT_INTERRUPT			0x84
+#define NDIS_OBJECT_TYPE_DEVICE_OBJECT_ATTRIBUTES		0x85
+#define NDIS_OBJECT_TYPE_BIND_PARAMETERS			0x86
+#define NDIS_OBJECT_TYPE_OPEN_PARAMETERS			0x87
+#define NDIS_OBJECT_TYPE_RSS_CAPABILITIES			0x88
+#define NDIS_OBJECT_TYPE_RSS_PARAMETERS				0x89
+#define NDIS_OBJECT_TYPE_MINIPORT_DRIVER_CHARACTERISTICS	0x8A
+#define NDIS_OBJECT_TYPE_FILTER_DRIVER_CHARACTERISTICS		0x8B
+#define NDIS_OBJECT_TYPE_FILTER_PARTIAL_CHARACTERISTICS		0x8C
+#define NDIS_OBJECT_TYPE_FILTER_ATTRIBUTES			0x8D
+#define NDIS_OBJECT_TYPE_CLIENT_CHIMNEY_OFFLOAD_GENERIC_CHARACTERISTICS	0x8E
+#define NDIS_OBJECT_TYPE_PROVIDER_CHIMNEY_OFFLOAD_GENERIC_CHARACTERISTICS 0x8F
+#define NDIS_OBJECT_TYPE_CO_PROTOCOL_CHARACTERISTICS		0x90
+#define NDIS_OBJECT_TYPE_CO_MINIPORT_CHARACTERISTICS		0x91
+#define NDIS_OBJECT_TYPE_MINIPORT_PNP_CHARACTERISTICS		0x92
+#define NDIS_OBJECT_TYPE_CLIENT_CHIMNEY_OFFLOAD_CHARACTERISTICS	0x93
+#define NDIS_OBJECT_TYPE_PROVIDER_CHIMNEY_OFFLOAD_CHARACTERISTICS 0x94
+#define NDIS_OBJECT_TYPE_PROTOCOL_DRIVER_CHARACTERISTICS	0x95
+#define NDIS_OBJECT_TYPE_REQUEST_EX				0x96
+#define NDIS_OBJECT_TYPE_OID_REQUEST				0x96
+#define NDIS_OBJECT_TYPE_TIMER_CHARACTERISTICS			0x97
+#define NDIS_OBJECT_TYPE_STATUS_INDICATION			0x98
+#define NDIS_OBJECT_TYPE_FILTER_ATTACH_PARAMETERS		0x99
+#define NDIS_OBJECT_TYPE_FILTER_PAUSE_PARAMETERS		0x9A
+#define NDIS_OBJECT_TYPE_FILTER_RESTART_PARAMETERS		0x9B
+#define NDIS_OBJECT_TYPE_PORT_CHARACTERISTICS			0x9C
+#define NDIS_OBJECT_TYPE_PORT_STATE				0x9D
+#define NDIS_OBJECT_TYPE_MINIPORT_ADAPTER_REGISTRATION_ATTRIBUTES	0x9E
+#define NDIS_OBJECT_TYPE_MINIPORT_ADAPTER_GENERAL_ATTRIBUTES		0x9F
+#define NDIS_OBJECT_TYPE_MINIPORT_ADAPTER_OFFLOAD_ATTRIBUTES		0xA0
+#define NDIS_OBJECT_TYPE_MINIPORT_ADAPTER_NATIVE_802_11_ATTRIBUTES	0xA1
+#define NDIS_OBJECT_TYPE_RESTART_GENERAL_ATTRIBUTES			0xA2
+#define NDIS_OBJECT_TYPE_PROTOCOL_RESTART_PARAMETERS			0xA3
+#define NDIS_OBJECT_TYPE_MINIPORT_ADD_DEVICE_REGISTRATION_ATTRIBUTES	0xA4
+#define NDIS_OBJECT_TYPE_CO_CALL_MANAGER_OPTIONAL_HANDLERS		0xA5
+#define NDIS_OBJECT_TYPE_CO_CLIENT_OPTIONAL_HANDLERS			0xA6
+#define NDIS_OBJECT_TYPE_OFFLOAD					0xA7
+#define NDIS_OBJECT_TYPE_OFFLOAD_ENCAPSULATION				0xA8
+#define NDIS_OBJECT_TYPE_CONFIGURATION_OBJECT				0xA9
+#define NDIS_OBJECT_TYPE_DRIVER_WRAPPER_OBJECT				0xAA
+#define NDIS_OBJECT_TYPE_RESERVED					0xAB
+#define NDIS_OBJECT_TYPE_NSI_NETWORK_RW_STRUCT				0xAC
+#define NDIS_OBJECT_TYPE_NSI_COMPARTMENT_RW_STRUCT			0xAD
+#define NDIS_OBJECT_TYPE_NSI_INTERFACE_PERSIST_RW_STRUCT		0xAE
+
+struct ndis_object_header {
+	UCHAR type;
+	UCHAR revision;
+	USHORT size;
+};
+
+struct ndis_generic_object {
+	struct ndis_object_header header;
+	void *caller;
+	void *parent_caller;
+	struct driver_object *driver_obj;
+};
+
+enum ndis_interface_type {
+	NdisInterfaceInternal = Internal,
+	NdisInterfaceIsa = Isa,
+	NdisInterfaceEisa = Eisa,
+	NdisInterfaceMca = MicroChannel,
+	NdisInterfaceTurboChannel = TurboChannel,
+	NdisInterfacePci = PCIBus,
+	NdisInterfacePcMcia = PCMCIABus,
+	NdisInterfaceCBus = CBus,
+	NdisInterfaceMPIBus = MPIBus,
+	NdisInterfaceMPSABus = MPSABus,
+	NdisInterfaceProcessorInternal = ProcessorInternal,
+	NdisInterfaceInternalPowerBus = InternalPowerBus,
+	NdisInterfacePNPISABus = PNPISABus,
+	NdisInterfacePNPBus = PNPBus,
+	NdisInterfaceUSB,
+	NdisInterfaceIrda,
+	NdisInterface1394,
+	NdisMaximumInterfaceType
+};
+
+struct mp_registration_attributes {
+	struct ndis_object_header obj_header;
+	void *ctx;
+	ULONG flags;
+	UINT hang_check_secs;
+	enum ndis_interface_type interface_type;
+};
+
+typedef BOOLEAN (*mp_isr_handler)(void *, BOOLEAN *, ULONG *) wstdcall;
+typedef void (*mp_isr_dpc_handler)(void *, void *, ULONG *, ULONG *) wstdcall;
+typedef void (*mp_disable_interrupt_handler)(void *) wstdcall;
+typedef void (*mp_enable_interrupt_handler)(void *) wstdcall;
+typedef BOOLEAN (*mp_msi_isr_handler)(void *, BOOLEAN *, ULONG *) wstdcall;
+typedef void (*mp_msi_isr_dpc_handler)(void *, ULONG, void *,
+				       ULONG *, ULONG *) wstdcall;
+typedef void (*mp_disable_msi_interrupt_handler)(void *, ULONG) wstdcall;
+typedef void (*mp_enable_msi_interrupt_handler)(void *, ULONG) wstdcall;
+
+enum ndis_interrupt_type {
+	NDIS_CONNECT_LINE_BASED = 1,
+	NDIS_CONNECT_MESSAGE_BASED
+};
+
+struct mp_interrupt_characteristics {
+	struct ndis_object_header obj_header;
+	mp_isr_handler isr;
+	mp_isr_dpc_handler isr_dpc_handler;
+	mp_disable_interrupt_handler disable_interrupt_handler;
+	mp_enable_interrupt_handler enable_interrupt_handler;
+	BOOLEAN msi_supported;
+	BOOLEAN msi_sync_with_all_messages;
+	mp_msi_isr_handler msi_isr;
+	mp_msi_isr_dpc_handler msi_dpc_handler;
+	mp_disable_msi_interrupt_handler disable_msi_interrupt_handler;
+	mp_enable_msi_interrupt_handler enable_msi_interrupt_handler;
+	enum ndis_interrupt_type interrupt_type;
+	struct io_interrupt_message_info *message_info_table;
+};
+
+struct ndis_interrupt {
+	NT_SPIN_LOCK lock;
+	struct wrap_ndis_device *wnd;
+	int vector;
+};
+
+struct mp_add_device_registration_attrs {
+	struct ndis_object_header header;
+	void *ctx;
+};
+
+struct mp_pnp_characteristics {
+	struct ndis_object_header header;
+	NDIS_STATUS (*add_device)(void *, void *) wstdcall;
+	void (*remove_device)(void *) wstdcall;
+	NDIS_STATUS (*filter_resource_requirements)(void *,
+						    struct irp *) wstdcall;
+	NDIS_STATUS (*start_device)(void *, struct irp *) wstdcall;
+};
+
+struct mp_adapter_registration_attrs {
+	struct ndis_object_header header;
+	void *ctx;
+	ULONG attribute_flags;
+	UINT check_for_hang_time_seconds;
+	enum ndis_interface_type interface_type;
+};
+
+enum net_if_access_type {
+	NET_IF_ACCESS_LOOPBACK = 1,
+	NET_IF_ACCESS_BROADCAST = 2,
+	NET_IF_ACCESS_POINT_TO_POINT = 3,
+	NET_IF_ACCESS_POINT_TO_MULTI_POINT = 4,
+	NET_IF_ACCESS_MAXIMUM = 5
+};
+
+enum net_if_direction_type {
+	NET_IF_DIRECTION_SENDRECEIVE,
+	NET_IF_DIRECTION_SENDONLY,
+	NET_IF_DIRECTION_RECEIVEONLY,
+	NET_IF_DIRECTION_MAXIMUM
+};
+
+enum net_if_connection_type {
+	NET_IF_CONNECTION_DEDICATED = 1,
+	NET_IF_CONNECTION_PASSIVE = 2,
+	NET_IF_CONNECTION_DEMAND = 3,
+	NET_IF_CONNECTION_MAXIMUM = 4
+};
+
+enum ndis_media_connect_state {
+	MediaConnectStateUnknown, MediaConnectStateConnected,
+	MediaConnectStateDisconnected
+};
+
+enum ndis_media_duplex_state {
+	MediaDuplexStateUnknown, MediaDuplexStateHalf, MediaDuplexStateFull
+};
+
+enum ndis_supported_pause_functions {
+	NdisPauseFunctionsUnsupported, NdisPauseFunctionsSendOnly,
+	NdisPauseFunctionsReceiveOnly, NdisPauseFunctionsSendAndReceive,
+	NdisPauseFunctionsUnknown
+};
+
+struct mp_adapter_general_attrs {
+	struct ndis_object_header header;
+	ULONG flags;
+	enum ndis_medium media_type;
+	enum ndis_physical_medium physical_medium_type;
+	ULONG mtu_size;
+	ULONG64 max_tx_link_speed;
+	ULONG64 tx_link_speed;
+	ULONG64 max_rx_link_speed;
+	ULONG64 rx_link_speed;
+	enum ndis_media_connect_state media_connec_tstate;
+	enum ndis_media_duplex_state media_duplex_state;
+	ULONG lookahead_size;
+	struct ndis_pnp_capabilities *pm_capabilities;
+	ULONG mac_options;
+	ULONG supported_packet_filters;
+	ULONG max_multicast_list_size;
+	USHORT mac_address_length;
+	UCHAR permanent_mac_address[NDIS_MAX_PHYS_ADDRESS_LENGTH];
+	UCHAR current_mac_address[NDIS_MAX_PHYS_ADDRESS_LENGTH];
+	struct ndis_rx_scale_capabilities *rx_scale_capabilities;
+	enum net_if_access_type access_type;
+	enum net_if_direction_type direction_type; 
+	enum net_if_connection_type connection_type; 
+	NET_IFTYPE if_type;
+	BOOLEAN if_connector_present;
+	ULONG supported_statistics; 
+	ULONG supported_pause_functions;
+	ULONG data_back_fill_size;
+	ULONG context_back_fill_size;
+	NDIS_OID *supported_oid_list;
+	ULONG supported_oid_list_length;
+	ULONG auto_negotiation_flags;
+};
+
+struct ndis_tcp_ip_checksum_offload {
+	struct {
+		ULONG encapsulation;
+		ULONG ip_options_supported:2;
+		ULONG tcp_options_supported:2;
+		ULONG tcp_checksum:2;
+		ULONG udp_checksum:2;
+		ULONG ip_checksum:2;
+	} ipv4_tx;
+	struct {
+		ULONG encapsulation;
+		ULONG ip_options_supported:2;
+		ULONG tcp_options_supported:2;
+		ULONG tcp_checksum:2;
+		ULONG udp_checksum:2;
+		ULONG ip_checksum:2;
+	} ipv4_rx;
+	struct {
+		ULONG encapsulation;
+		ULONG ip_extension_headers_supported:2;
+		ULONG tcp_options_supported:2;
+		ULONG tcp_checksum:2;
+		ULONG udp_checksum:2;
+	} ipv6_tx;
+	struct {
+		ULONG encapsulation;
+		ULONG ip_extension_headers_supported:2;
+		ULONG tcp_options_supported:2;
+		ULONG tcp_checksum:2;
+		ULONG udp_checksum:2;
+	} ipv6_rx;
+};
+
+struct ndis_ipsec_offload_v1 {
+	struct {
+		ULONG encapsulation;
+		ULONG ah_esp_combined;
+		ULONG transport_tunnel_combined;
+		ULONG ipv4_options;
+		ULONG flags;
+	} supported;
+	struct {
+		ULONG md5:2;
+		ULONG sha_1:2;
+		ULONG transport:2;
+		ULONG tunnel:2;
+		ULONG tx:2;
+		ULONG rx:2;
+	} ipv4_ah;
+	struct {
+		ULONG des:2;
+		ULONG flags:2;
+		ULONG triple_des:2;
+		ULONG null_esp:2;
+		ULONG transport:2;
+		ULONG tunnel:2;
+		ULONG tx:2;
+		ULONG rx;
+	} ipv4_esp;
+};
+
+struct ndis_tcp_large_send_offload_v1 {
+	struct {
+		ULONG encapsulation;
+		ULONG max_offload_size;
+		ULONG min_segment_count;
+		ULONG tcp_options:2;
+		ULONG ip_options:2;
+	} ipv4;
+};
+
+struct ndis_tcp_large_send_offload_v2 {
+	struct {
+		ULONG encapsulation;
+		ULONG max_offload_size;
+		ULONG min_segment_count;
+	} ipv4;
+	struct {
+		ULONG encapsulation;
+		ULONG max_offload_size;
+		ULONG min_segment_count;
+		ULONG ip_extension_headers_supported:2;
+		ULONG tcp_options_supported:2;
+	} ipv6;
+};
+
+struct ndis_offload {
+	struct ndis_object_header header;
+	struct ndis_tcp_ip_checksum_offload checksum;
+	struct ndis_tcp_large_send_offload_v1 lso_v1;
+	struct ndis_ipsec_offload_v1 ipsec_v1;
+	struct ndis_tcp_large_send_offload_v2 lso_v2;
+	ULONG flags; 
+};
+
+struct mp_adapter_offload_attrs {
+	struct ndis_object_header header;
+	struct ndis_offload *default_offload_config;
+	struct ndis_offload *hw_offload_capa;
+	struct ndis_tcp_connection_offload *default_tcp_offload_conf;
+	struct ndis_tcp_connection_offload *tcp_offload_hw_capa;
+};
+
+#define NDIS_TCP_CONNECTION_OFFLOAD_REVISION_1 1
+struct ndis_tcp_connection_offload
+{
+	struct ndis_object_header header;
+	ULONG encapsulation;
+	ULONG supportipv4:2;
+	ULONG supportipv6:2;
+	ULONG supportipv6extensionheaders:2;
+	ULONG supportsack:2;
+	ULONG tcpconnectionoffloadcapacity;
+	ULONG flags;
+};
+
+enum dot11_phy_type {
+	dot11_phy_type_unknown = 0,
+	dot11_phy_type_any = dot11_phy_type_unknown,
+	dot11_phy_type_fhss = 1,
+	dot11_phy_type_dsss = 2,
+	dot11_phy_type_irbaseband = 3,
+	dot11_phy_type_ofdm = 4,
+	dot11_phy_type_hrdsss = 5,
+	dot11_phy_type_erp = 6,
+	dot11_phy_type_IHV_start = 0x80000000,
+	dot11_phy_type_IHV_end = 0xffffffff
+};
+
+enum dot11_temp_type {
+	dot11_temp_type_unknown = 0,
+	dot11_temp_type_1 = 1,
+	dot11_temp_type_2 = 2
+};
+
+enum dot11_diversity_support {
+	dot11_diversity_support_unknown = 0,
+	dot11_diversity_support_fixedlist = 1,
+	dot11_diversity_support_notsupported = 2,
+	dot11_diversity_support_dynamic = 3
+};
+
+struct dot11_hrdsss_phy_attributes {
+	BOOLEAN short_preamble_implemented;
+	BOOLEAN pbcco_implemented;
+	BOOLEAN channef_lagility_present;
+	ULONG hrcca_supported;
+};
+
+struct dot11_ofdm_phy_attributes {
+	ULONG freq_bands;
+};
+
+struct dot11_erp_phy_attributes {
+	struct dot11_hrdsss_phy_attributes hrdss_attributes;
+	BOOLEAN erppbcc_implemented;
+	BOOLEAN dsssofdm_implemented;
+	BOOLEAN short_slottime_implemented;
+};
+
+struct dot11_data_rate_mapping_entry {
+	UCHAR index;
+	UCHAR flag;
+	USHORT value;
+};
+
+#define MAX_NUM_SUPPORTED_RATES_V2	255
+
+struct dot11_supported_data_rates_value_v2 {
+	UCHAR ucSupportedTxDataRatesValue[MAX_NUM_SUPPORTED_RATES_V2];
+	UCHAR ucSupportedRxDataRatesValue[MAX_NUM_SUPPORTED_RATES_V2];
+};
+
+#define DOT11_RATE_SET_MAX_LENGTH		126
+#define DOT11_PHY_ATTRIBUTES_REVISION_1		1
+
+struct dot11_phy_attributes {
+	struct ndis_object_header header;
+	enum dot11_phy_type phy_type;
+	BOOLEAN hw_phy_state;
+	BOOLEAN sw_phy_state;
+	BOOLEAN cf_pollable;
+	ULONG mpdu_max_length;
+	enum dot11_temp_type temp_type;
+	enum dot11_diversity_support diversity_support;
+	union {
+		struct dot11_hrdsss_phy_attributes hrdsss_attrs;
+		struct dot11_ofdm_phy_attributes ofdm_attrs;
+		struct dot11_erp_phy_attributes erp_attrs;
+		ULONG supported_power_levels;
+		ULONG tx_power_levels[8];
+		ULONG num_data_rate_mapping_entries;
+		struct dot11_data_rate_mapping_entry data_rate_mapping_entries[DOT11_RATE_SET_MAX_LENGTH];
+		struct dot11_supported_data_rates_value_v2 supported_data_rates_value;
+	};
+};
+
+enum dot11_auth_algorithm {
+	DOT11_AUTH_ALGO_80211_OPEN = 1,
+	DOT11_AUTH_ALGO_80211_SHARED_KEY = 2,
+	DOT11_AUTH_ALGO_WPA = 3,
+	DOT11_AUTH_ALGO_WPA_PSK = 4,
+	DOT11_AUTH_ALGO_WPA_NONE = 5,               // used in NatSTA only
+	DOT11_AUTH_ALGO_RSNA = 6,
+	DOT11_AUTH_ALGO_RSNA_PSK = 7,
+	DOT11_AUTH_ALGO_IHV_START = 0x80000000,
+	DOT11_AUTH_ALGO_IHV_END = 0xffffffff
+};
+
+enum dot11_cipher_algorithm {
+    DOT11_CIPHER_ALGO_NONE = 0x00,
+    DOT11_CIPHER_ALGO_WEP40 = 0x01,
+    DOT11_CIPHER_ALGO_TKIP = 0x02,
+    DOT11_CIPHER_ALGO_CCMP = 0x04,
+    DOT11_CIPHER_ALGO_WEP104 = 0x05,
+    DOT11_CIPHER_ALGO_WPA_USE_GROUP = 0x100,
+    DOT11_CIPHER_ALGO_RSN_USE_GROUP = 0x100,
+    DOT11_CIPHER_ALGO_WEP = 0x101,
+    DOT11_CIPHER_ALGO_IHV_START = 0x80000000,
+    DOT11_CIPHER_ALGO_IHV_END = 0xffffffff
+};
+
+struct dot11_auth_cipher_pair {
+	enum dot11_auth_algorithm auth_algo_id;
+	enum dot11_cipher_algorithm cipher_algo_id;
+};
+
+typedef UCHAR dot11_country_region_string_t[3];
+
+#define DOT11_EXTSTA_ATTRIBUTES_REVISION_1  1
+struct dot11_extsta_attributes {
+	struct ndis_object_header header;
+	ULONG scan_ssid_size;
+	ULONG desired_bssid_size;
+	ULONG desired_ssid_size;
+	ULONG excluded_mac_size;
+	ULONG privacy_exemption_size;
+	ULONG key_mapping_size;
+	ULONG default_key__size;
+	ULONG wep_key_max_length;
+	ULONG pmkid_cache_size;
+	ULONG max_num_per_sta_default_key_tables;
+	BOOLEAN strictly_ordered_service_class;
+	UCHAR qos_protocol_flags;
+	BOOLEAN safe_mode;
+	ULONG num_country_region_strings;
+	dot11_country_region_string_t country_region_strings;
+	ULONG num_infra_ucast_algo_pairs;
+	struct dot11_auth_cipher_pair infra_ucast_algo_pairs;
+	ULONG num_infra_mcast_algo_pairs;
+	struct dot11_auth_cipher_pair infra_mcast_algo_pairs;
+	ULONG num_adhoc_ucast_algo_pairs;
+	struct dot11_auth_cipher_pair adhoc_ucast_algo_pairs;
+	ULONG num_adhoc_mcast_algo_pairs;
+	struct dot11_auth_cipher_pair adhoc_mcast_algo_pairs;
+};
+
+struct mp_adapter_native_802_11_attrs {
+	struct ndis_object_header header;
+	ULONG op_mode_capability;
+	ULONG num_tx_bufs;
+	ULONG num_rx_bufs;
+	BOOLEAN multi_domain_capability_implemented;
+	ULONG num_supported_phys;
+	struct dot11_phy_attributes supported_phy_attrs;
+	struct dot11_extsta_attributes *ext_sta_attrs;
+};
+
+union mp_adapter_attrs {
+	struct mp_add_device_registration_attrs add_device_reg_attrs;
+	struct mp_adapter_registration_attrs registration_attrs;
+	struct mp_adapter_general_attrs general_attrs;
+	struct mp_adapter_offload_attrs offload_attrs;
+	struct mp_adapter_native_802_11_attrs native_802_11_attrs;
+};
+
+struct nw_interrupt {
+	unsigned int vector;
+	NT_SPIN_LOCK lock;
+	struct wrap_ndis_device *wnd;
+};
+
+struct ndis_link_state {
+	struct ndis_object_header header;
+	enum ndis_media_connect_state media_connect_state;
+	enum ndis_media_duplex_state media_duplex_state;
+	ULONG64 tx_link_speed;
+	ULONG64 rx_link_speed;
+	enum ndis_supported_pause_functions pause_funcs;
+	ULONG auto_negotiation_flags;
+};
+
+struct ndis5_status_indication {
+	enum ndis_status_type status_type;
+};
+
+struct ndis_status_indication {
+	struct ndis_object_header header;
+	void *src_handle;
+	NDIS_PORT_NUMBER port;
+	NDIS_STATUS code;
+	ULONG flags;
+	void *dst_handle;
+	void *request_id;
+	void *buf;
+	ULONG buf_size;
+	struct guid guid;
+	void *reserved[4];
+};
+
+#define NDIS_MINIPORT_PAUSE_PARAMETERS_REVISION_1	1
+
+struct mp_pause_params {
+	struct ndis_object_header header;
+	ULONG flags;
+	ULONG reason;
+};
+
+struct ndis_restart_attrs {
+	struct ndis_restart_attrs *next;
+	NDIS_OID oid;
+	ULONG data_length;
+	unsigned char data[1] _align_(MEMORY_ALLOCATION_ALIGNMENT);
+};
+
+union net_luid {
+	ULONG64 value;
+	struct {
+		ULONG64 reserved:24;
+		ULONG64 net_luid_index:24;
+		ULONG64 if_type:16;
+	} info;
+};
+
+struct mp_restart_params {
+	struct ndis_object_header header;
+	char *filter_module_name;
+	ULONG *filter_module_name_length;
+	struct ndis_restart_attrs *attrs;
+	NET_IFINDEX bound_if_index;
+	union net_luid bound_if_net_luid;
+	ULONG flags;
+};
+
+struct ndis_restart_general_attrs {
+	struct ndis_object_header header;
+	ULONG mtusize;
+	ULONG64 max_tx_link_speed;
+	ULONG64 max_rx_link_speed;
+	ULONG lookahead_size;
+	ULONG mac_options;
+	ULONG supported_packet_filters;
+	ULONG max_multicastlist_size;
+	struct ndis_rx_scale_capabilities *rx_scale_capabilities;
+	enum net_if_access_type access_type;
+	enum net_if_direction_type direction_type; 
+	enum net_if_connection_type connection_type; 
+	ULONG supported_statistics; 
+	ULONG data_back_fill_size;
+	ULONG context_back_fill_size;
+	NDIS_OID *supported_oid_list;
+	ULONG supported_oid_list_length;
+};
+
+typedef struct unicode_string ndis_string_t;
+
+struct ndis_device_object_attributes {
+	struct ndis_object_header header;
+	ndis_string_t dev_name;
+	ndis_string_t symbolic_name;
+	driver_dispatch_t **major_funcs;
+	ULONG ext_size;
+	struct unicode_string default_sddl_string;
+	struct guid class_guid;
+};
+
+struct net_device_pnp_event {
+	struct ndis_object_header header;
+	NDIS_PORT_NUMBER port;
+	enum ndis_device_pnp_event device_pnp_event;
+	void *info_buf;
+	ULONG info_buf_length;
+	UCHAR reserved[2 * sizeof(void *)];
+};
+
+struct ndis_driver_optional_handlers {
+	struct ndis_object_header header;
+};
+
+/* IDs used to store extensions in driver_object's custom extension */
+#define NDIS_DRIVER_CLIENT_ID 10
+
+enum ndis_port_control_state {
+	NdisPortControlStateUnknown, NdisPortControlStateControlled,
+	NdisPortControlStateUncontrolled
+};
+
+enum ndis_port_authorization_state {
+	NdisPortAuthorizationUnknown, NdisPortAuthorized, NdisPortUnauthorized,
+	NdisPortReauthorizing
+};
+
+struct ndis_port_authentication_params {
+	struct ndis_object_header header;
+	enum ndis_port_control_state tx_control_state;
+	enum ndis_port_control_state rx_control_state;
+	enum ndis_port_authorization_state tx_auth_state;
+	enum ndis_port_authorization_state rx_auth_state;
+};
+
+struct ndis_pci_device_custom_props {
+	struct ndis_object_header header;
+	UINT32 device_type;
+	UINT32 current_speed_and_mode;
+	UINT32 current_payload_size;
+	UINT32 max_payload_size;
+	UINT32 max_read_request_size;
+	UINT32 current_link_speed;
+	UINT32 current_link_width;
+	UINT32 max_link_speed;
+	UINT32 max_link_width;
+};
+
+struct mp_init_params {
+	struct ndis_object_header header;
+	ULONG flags;
+	ndis_resource_list_t allocated_resources;
+	void *im_dev_instance_ctx;
+	void *mp_add_dev_ctx;
+	NET_IFINDEX if_index;
+	union net_luid net_luid;
+	struct ndis_port_authentication_params default_port_auth_states;
+	struct ndis_pci_device_custom_props pci_dev_custom_props;
+};
+
+enum ndis_halt_action  {
+	NdisHaltDeviceDisabled, NdisHaltDeviceInstanceDeInitialized,
+	NdisHaltDevicePoweredDown, NdisHaltDeviceSurpriseRemoved,
+	NdisHaltDeviceFailed, NdisHaltDeviceInitializationFailed,
+	NdisHaltDeviceStopped
+};
+
+#define NDIS_OID_REQUEST_REVISION_1             1
+#define NDIS_OID_REQUEST_TIMEOUT_INFINITE       0
+#define NDIS_OID_REQUEST_NDIS_RESERVED_SIZE     16
+
+struct ndis_oid_request {
+	struct ndis_object_header header;
+	enum ndis_request_type type;
+	NDIS_PORT_NUMBER port;
+	UINT timeout_sec;
+	void *id;
+	void *handle;
+	union request_data {
+		struct query {
+			NDIS_OID oid;
+			void *buf;
+			UINT buf_length;
+			UINT bytes_written;
+			UINT bytes_needed;
+		} query_info;
+		struct set {
+			NDIS_OID oid;
+			void *buf;
+			UINT buf_length;
+			UINT bytes_written;
+			UINT bytes_needed;
+		} set_info;
+		struct method {
+			NDIS_OID oid;
+			void *buf;
+			ULONG in_buf_length;
+			ULONG out_buf_length;
+			UINT bytes_written;
+			UINT bytes_read;
+			UINT bytes_needed;
+		} method_info;
+	} data;
+	UCHAR reserved[NDIS_OID_REQUEST_NDIS_RESERVED_SIZE * sizeof(void *)];
+	UCHAR mp_reserved[2 * sizeof(void *)];
+	UCHAR source_reserved[2 * sizeof(void *)];
+	UCHAR supported_revision;
+	UCHAR reserved1;
+	USHORT reserved2;
 };
 
 struct ndis_filterdbs {
@@ -684,12 +1392,6 @@ struct ndis_filterdbs {
 	void *tr_db;
 	void *fddi_db;
 	void *arc_db;
-};
-
-enum ndis_interface_type {
-	NdisInterfaceInternal, NdisInterfaceIsa, NdisInterfaceEisa,
-	NdisInterfaceMca, NdisInterfaceTurboChannel, NdisInterfacePci,
-	NdisInterfacePcMcia,
 };
 
 struct auth_encr_capa {
@@ -703,11 +1405,177 @@ enum hw_status {
 	HW_INITIALIZED = 1, HW_SUSPENDED, HW_HALTED,
 };
 
-/*
- * This struct contains function pointers that the drivers references
- * directly via macros, so it's important that they are at the correct
- * position.
- */
+struct ndis_rx_scale_capabilities {
+	struct ndis_object_header header;
+	ULONG flags;
+	ULONG num_interrupt_msgs;
+	ULONG num_recv_queues;
+};
+
+struct ndis_pool_info {
+	struct nt_list list;
+	ULONG tag;
+	ULONG data_length;
+	USHORT ctx_size;
+	void *pool;
+	BOOLEAN with_mdl;
+	struct wrap_ndis_device *wnd;
+};
+
+union net_buffer_data_length {
+	ULONG ulength;
+	SIZE_T szlength;
+};
+
+struct net_buffer_data {
+	struct net_buffer *next;
+	struct mdl *current_mdl;
+	ULONG current_mdl_offset;
+	union net_buffer_data_length data_length;
+	struct mdl *mdl_chain;
+	ULONG data_offset;
+};
+
+union net_buffer_header {
+	struct net_buffer_data data;
+	nt_slist_header link;
+};
+
+struct net_buffer {
+	union net_buffer_header header;
+	USHORT csum_bias;
+	USHORT reserved;
+	struct ndis_pool_info *pool;
+	void *ndis_reserved[2] _align_(MEMORY_ALLOCATION_ALIGNMENT);
+	void *proto_reserved[6] _align_(MEMORY_ALLOCATION_ALIGNMENT);
+	void *mp_reserved[4] _align_(MEMORY_ALLOCATION_ALIGNMENT);
+	NDIS_PHYSICAL_ADDRESS ndis_reserved1;
+};
+
+struct net_buffer_list_context {
+	struct net_buffer_list_context *next;
+	USHORT size;
+	USHORT offset;
+	UCHAR context_data[];
+};
+
+enum ndis_net_buffer_list_info {
+	TcpIpChecksumNetBufferListInfo,
+	TcpOffloadBytesTransferred = TcpIpChecksumNetBufferListInfo,
+	IPsecOffloadV1NetBufferListInfo,
+	TcpLargeSendNetBufferListInfo,
+	TcpReceiveNoPush = TcpLargeSendNetBufferListInfo,
+	ClassificationHandleNetBufferListInfo,
+	Ieee8021QNetBufferListInfo,
+	NetBufferListCancelId,
+	MediaSpecificInformation,
+	NetBufferListFrameType,
+	NetBufferListProtocolId = NetBufferListFrameType,
+	NetBufferListHashValue,
+	NetBufferListHashInfo,
+	WfpNetBufferListInfo,
+	MaxNetBufferListInfo
+};
+
+struct net_buffer_list;
+
+struct net_buffer_list_data {
+	struct net_buffer_list *next;
+	struct net_buffer *first_buffer;
+};
+
+union net_buffer_list_header {
+	struct net_buffer_list_data net_buffer_list_data;
+	nt_slist_header link;
+};
+
+struct net_buffer_list {
+	union net_buffer_list_header header;
+	struct net_buffer_list_context *context;
+	struct net_buffer_list *parent;
+	struct ndis_pool_info *pool_handle;
+	void *ndis_reserved[2] _align_(MEMORY_ALLOCATION_ALIGNMENT);
+	void *proto_reserved[4] _align_(MEMORY_ALLOCATION_ALIGNMENT);
+	void *mp_reserved[2] _align_(MEMORY_ALLOCATION_ALIGNMENT);
+	void *scratch;
+	void *source_handle;
+	ULONG nbl_flags;
+	LONG child_ref_count;
+	ULONG flags;
+	NDIS_STATUS status;
+	void *net_buffer_list_info[MaxNetBufferListInfo];
+};
+
+struct net_buffer_pool_params {
+	struct ndis_object_header header;
+	ULONG tag;
+	ULONG data_size;
+};
+
+struct net_buffer_list_ctx {
+	struct net_buffer_list_ctx *next;
+	USHORT size;
+	USHORT offset;
+	UCHAR ctx_data[0] _align_(MEMORY_ALLOCATION_ALIGNMENT);
+};
+
+struct net_buffer_list_pool_params {
+	struct ndis_object_header header;
+	UCHAR protocol_id;
+	BOOLEAN fallocate_net_buffer;
+	USHORT ctx_size;
+	ULONG pool_tag;
+	ULONG data_size;
+};
+
+struct ndis_timer_characteristics {
+	struct ndis_object_header header;
+	ULONG alloc_tag;
+	void *func;
+	void *ctx;
+};
+
+enum ndis_shutdown_action {
+	NdisShutdownPowerOff, NdisShutdownBugCheck
+};
+
+struct mp_driver_characteristics {
+	struct ndis_object_header header;
+	UCHAR major_version;
+	UCHAR minor_version;
+	UCHAR major_driver_version;
+	UCHAR minor_driver_version;
+	ULONG flags;
+	NDIS_STATUS (*set_options)(void *, void *) wstdcall;
+	NDIS_STATUS (*initialize)(void *, void *,
+				  struct mp_init_params *) wstdcall;
+	void (*halt)(void *, enum ndis_halt_action) wstdcall;
+	void (*unload)(struct driver_object *) wstdcall;
+	NDIS_STATUS (*pause)(void *, struct mp_pause_params *) wstdcall;
+	NDIS_STATUS (*restart)(void *, struct mp_restart_params *) wstdcall;
+	NDIS_STATUS (*oid_request)(void *,
+				   struct ndis_oid_request *) wstdcall;
+	void (*send_net_buffer_lists)(void *, struct net_buffer_list *,
+				      NDIS_PORT_NUMBER, ULONG) wstdcall;
+	void (*return_net_buffer_lists)(void *, struct net_buffer_list *,
+					ULONG) wstdcall;
+	void (*cancel_send)(void *, void *) wstdcall;
+	BOOLEAN (*check_for_hang)(void *) wstdcall;
+	NDIS_STATUS (*reset)(void *, BOOLEAN *) wstdcall;
+	void (*device_pnp_event_notify)(void *,
+					struct net_device_pnp_event *) wstdcall;
+	void (*shutdown)(void *, enum ndis_shutdown_action) wstdcall;
+	void (*cancel_oid)(void *, void *) wstdcall;
+};
+
+struct wrap_ndis_driver {
+	struct wrap_driver *wrap_driver;
+	struct mp_driver_characteristics mp_driver_chars;
+	struct mp_pnp_characteristics mp_pnp_chars;
+	struct miniport_char miniport;
+	void *mp_driver_ctx;
+};
+
 struct ndis_miniport_block {
 	void *signature;
 	struct ndis_miniport_block *next;
@@ -802,7 +1670,12 @@ struct ndis_miniport_block {
 
 struct wrap_ndis_device {
 	struct ndis_miniport_block *nmb;
+	void *adapter_ctx;
+	struct nt_list pool_list;
+	struct ndis_interrupt interrupt;
+	NT_SPIN_LOCK lock;
 	struct wrap_device *wd;
+	struct device_object *pdo;
 	struct net_device *net_dev;
 	unsigned long hw_status;
 	void *shutdown_ctx;
@@ -810,6 +1683,11 @@ struct wrap_ndis_device {
 	struct ndis_irq *ndis_irq;
 	unsigned long mem_start;
 	unsigned long mem_end;
+	struct mp_add_device_registration_attrs add_device_attrs;
+	struct mp_adapter_registration_attrs registration_attrs;
+	struct mp_adapter_general_attrs general_attrs;
+	struct mp_adapter_offload_attrs offload_attrs;
+	struct mp_adapter_native_802_11_attrs native_802_11_attrs;
 
 	struct net_device_stats stats;
 	struct iw_statistics wireless_stats;
@@ -868,6 +1746,7 @@ struct wrap_ndis_device {
 	u32 ndis_wolopts;
 	struct nt_list timer_list;
 	char netdev_name[IFNAMSIZ];
+	ULONG frame_length;
 	int drv_ndis_version;
 };
 
@@ -882,7 +1761,7 @@ struct ndis_pmkid_candidate_list {
 	struct ndis_pmkid_candidate candidates[1];
 };
 
-irqreturn_t ndis_isr(int irq, void *data ISR_PT_REGS_PARAM_DECL);
+irqreturn_t mp_isr(int irq, void *data ISR_PT_REGS_PARAM_DECL);
 void init_nmb_functions(struct ndis_miniport_block *nmb);
 
 int ndis_init(void);
@@ -1112,7 +1991,6 @@ void NdisReadConfiguration(NDIS_STATUS *status,
 #define NDIS_STATUS_HARD_ERRORS		0x80010004
 #define NDIS_STATUS_BUFFER_OVERFLOW	0x80000005
 #define NDIS_STATUS_FAILURE		0xC0000001
-#define NDIS_STATUS_INVALID_PARAMETER 0xC000000D
 #define NDIS_STATUS_RESOURCES		0xC000009A
 #define NDIS_STATUS_CLOSING		0xC0010002
 #define NDIS_STATUS_BAD_VERSION		0xC0010004
@@ -1157,7 +2035,7 @@ void NdisReadConfiguration(NDIS_STATUS *status,
 #define NDIS_STATUS_NO_ROUTE_TO_DESTINATION	0xC0010029
 #define NDIS_STATUS_TOKEN_RING_OPEN_ERROR	0xC0011000
 #define NDIS_STATUS_INVALID_DEVICE_REQUEST	0xC0000010
-#define NDIS_STATUS_NETWORK_UNREACHABLE         0xC000023C
+#define NDIS_STATUS_NETWORK_UNREACHABLE		0xC000023C
 
 /* Event codes */
 
@@ -1198,36 +2076,116 @@ void NdisReadConfiguration(NDIS_STATUS *status,
 #define EVENT_NDIS_RESET_FAILURE_CORRECTION	0x800013AA
 
 /* packet filter bits used by NDIS_OID_PACKET_FILTER */
-#define NDIS_PACKET_TYPE_DIRECTED               0x00000001
-#define NDIS_PACKET_TYPE_MULTICAST              0x00000002
-#define NDIS_PACKET_TYPE_ALL_MULTICAST          0x00000004
-#define NDIS_PACKET_TYPE_BROADCAST              0x00000008
-#define NDIS_PACKET_TYPE_SOURCE_ROUTING         0x00000010
-#define NDIS_PACKET_TYPE_PROMISCUOUS            0x00000020
-#define NDIS_PACKET_TYPE_SMT                    0x00000040
-#define NDIS_PACKET_TYPE_ALL_LOCAL              0x00000080
-#define NDIS_PACKET_TYPE_GROUP                  0x00001000
-#define NDIS_PACKET_TYPE_ALL_FUNCTIONAL         0x00002000
-#define NDIS_PACKET_TYPE_FUNCTIONAL             0x00004000
-#define NDIS_PACKET_TYPE_MAC_FRAME              0x00008000
+#define NDIS_PACKET_TYPE_DIRECTED		0x00000001
+#define NDIS_PACKET_TYPE_MULTICAST		0x00000002
+#define NDIS_PACKET_TYPE_ALL_MULTICAST		0x00000004
+#define NDIS_PACKET_TYPE_BROADCAST		0x00000008
+#define NDIS_PACKET_TYPE_SOURCE_ROUTING		0x00000010
+#define NDIS_PACKET_TYPE_PROMISCUOUS		0x00000020
+#define NDIS_PACKET_TYPE_SMT			0x00000040
+#define NDIS_PACKET_TYPE_ALL_LOCAL		0x00000080
+#define NDIS_PACKET_TYPE_GROUP			0x00001000
+#define NDIS_PACKET_TYPE_ALL_FUNCTIONAL		0x00002000
+#define NDIS_PACKET_TYPE_FUNCTIONAL		0x00004000
+#define NDIS_PACKET_TYPE_MAC_FRAME		0x00008000
 
 /* memory allocation flags */
 #define NDIS_MEMORY_CONTIGUOUS			0x00000001
 #define NDIS_MEMORY_NONCACHED			0x00000002
 
 /* Atrribute flags to NdisMSetAtrributesEx */
-#define NDIS_ATTRIBUTE_IGNORE_PACKET_TIMEOUT    0x00000001
-#define NDIS_ATTRIBUTE_IGNORE_REQUEST_TIMEOUT   0x00000002
-#define NDIS_ATTRIBUTE_IGNORE_TOKEN_RING_ERRORS 0x00000004
-#define NDIS_ATTRIBUTE_BUS_MASTER               0x00000008
-#define NDIS_ATTRIBUTE_INTERMEDIATE_DRIVER      0x00000010
-#define NDIS_ATTRIBUTE_DESERIALIZE              0x00000020
-#define NDIS_ATTRIBUTE_NO_HALT_ON_SUSPEND       0x00000040
-#define NDIS_ATTRIBUTE_SURPRISE_REMOVE_OK       0x00000080
-#define NDIS_ATTRIBUTE_NOT_CO_NDIS              0x00000100
-#define NDIS_ATTRIBUTE_USES_SAFE_BUFFER_APIS    0x00000200
+#define NDIS_ATTRIBUTE_IGNORE_PACKET_TIMEOUT	0x00000001
+#define NDIS_ATTRIBUTE_IGNORE_REQUEST_TIMEOUT	0x00000002
+#define NDIS_ATTRIBUTE_IGNORE_TOKEN_RING_ERRORS	0x00000004
+#define NDIS_ATTRIBUTE_BUS_MASTER		0x00000008
+#define NDIS_ATTRIBUTE_INTERMEDIATE_DRIVER	0x00000010
+#define NDIS_ATTRIBUTE_DESERIALIZE		0x00000020
+#define NDIS_ATTRIBUTE_NO_HALT_ON_SUSPEND	0x00000040
+#define NDIS_ATTRIBUTE_SURPRISE_REMOVE_OK	0x00000080
+#define NDIS_ATTRIBUTE_NOT_CO_NDIS		0x00000100
+#define NDIS_ATTRIBUTE_USES_SAFE_BUFFER_APIS	0x00000200
+
+#define NDIS_FLAGS_PROTOCOL_ID_MASK		0x0000000F
+#define NDIS_FLAGS_DONT_LOOPBACK		0x00000080
+
+#define NDIS_PROTOCOL_ID_TCP_IP			0x02
 
 #define OID_TCP_TASK_OFFLOAD			0xFC010201
+
+/* introduced in 6.0 */
+#define NDIS_STATUS_LINK_STATE			0x40010017L
+#define NDIS_STATUS_NETWORK_CHANGE		0x40010018L
+#define NDIS_STATUS_MEDIA_SPECIFIC_INDICATION_EX 0x40010019L
+#define NDIS_STATUS_PORT_STATE			0x40010022L
+#define NDIS_STATUS_OPER_STATUS			0x40010023L
+#define NDIS_STATUS_PACKET_FILTER		0x40010024L
+
+#define NDIS_STATUS_OFFLOAD_PAUSE		0x40020001L
+#define NDIS_STATUS_OFFLOAD_ALL			0x40020001L
+#define NDIS_STATUS_OFFLOAD_RESUME		0x40020001L
+#define NDIS_STATUS_OFFLOAD_PARTIAL_SUCCESS	0x40020001L
+#define NDIS_STATUS_OFFLOAD_STATE_INVALID	0x40020001L
+#define NDIS_STATUS_OFFLOAD_CURRENT_CONFIG	0x40020001L
+#define NDIS_STATUS_OFFLOAD_HARDWARE_CAPABILITIES 0x40020001L
+#define NDIS_STATUS_TCP_CONNECTION_OFFLOAD_HARDWARE_CAPABILITIES 0x4002000BL
+
+#define NDIS_STATUS_DOT11_SCAN_CONFIRM			0x40030000
+#define NDIS_STATUS_DOT11_MPDU_MAX_LENGTH_CHANGED	0x40030001
+#define NDIS_STATUS_DOT11_ASSOCIATION_START		0x40030002
+#define NDIS_STATUS_DOT11_ASSOCIATION_COMPLETION	0x40030003
+#define NDIS_STATUS_DOT11_CONNECTION_START		0x40030004
+#define NDIS_STATUS_DOT11_CONNECTION_COMPLETION		0x40030005
+#define NDIS_STATUS_DOT11_ROAMING_START			0x40030006
+#define NDIS_STATUS_DOT11_ROAMING_COMPLETION		0x40030007
+#define NDIS_STATUS_DOT11_DISASSOCIATION		0x40030008
+#define NDIS_STATUS_DOT11_TKIPMIC_FAILURE		0x40030009
+#define NDIS_STATUS_DOT11_PMKID_CANDIDATE_LIST		0x4003000A
+#define NDIS_STATUS_DOT11_PHY_STATE_CHANGED		0x4003000B
+#define NDIS_STATUS_DOT11_LINK_QUALITY			0x4003000C
+
+#define	NDIS_STATUS_SEND_ABORTED		STATUS_NDIS_REQUEST_ABORTED
+#define	NDIS_STATUS_PAUSED			STATUS_NDIS_PAUSED
+#define	NDIS_STATUS_INTERFACE_NOT_FOUND		STATUS_NDIS_INTERFACE_NOT_FOUND
+#define	NDIS_STATUS_INVALID_PARAMETER		STATUS_INVALID_PARAMETER
+#define	NDIS_STATUS_UNSUPPORTED_REVISION	STATUS_NDIS_UNSUPPORTED_REVISION
+#define	NDIS_STATUS_INVALID_PORT		STATUS_NDIS_INVALID_PORT
+#define	NDIS_STATUS_INVALID_PORT_STATE		STATUS_NDIS_INVALID_PORT_STATE
+#define	NDIS_STATUS_INVALID_STATE		STATUS_INVALID_DEVICE_STATE
+#define	NDIS_STATUS_MEDIA_DISCONNECTED		STATUS_NDIS_MEDIA_DISCONNECTED
+#define	NDIS_STATUS_LOW_POWER_STATE		STATUS_NDIS_LOW_POWER_STATE
+
+#define	NDIS_STATUS_DOT11_AUTO_CONFIG_ENABLED	STATUS_NDIS_DOT11_AUTO_CONFIG_ENABLED
+#define	NDIS_STATUS_DOT11_MEDIA_IN_USE		STATUS_NDIS_DOT11_MEDIA_IN_USE
+#define NDIS_STATUS_DOT11_POWER_STATE_INVALID	STATUS_NDIS_DOT11_POWER_STATE_INVALID
+
+#define NDIS_STATUS_UPLOAD_IN_PROGRESS			0xC0231001L
+#define NDIS_STATUS_REQUEST_UPLOAD			0xC0231002L
+#define NDIS_STATUS_UPLOAD_REQUESTED			0xC0231003L
+#define NDIS_STATUS_OFFLOAD_TCP_ENTRIES			0xC0231004L
+#define NDIS_STATUS_OFFLOAD_PATH_ENTRIES		0xC0231005L
+#define NDIS_STATUS_OFFLOAD_NEIGHBOR_ENTRIES		0xC0231006L
+#define NDIS_STATUS_OFFLOAD_IP_ADDRESS_ENTRIES		0xC0231007L
+#define NDIS_STATUS_OFFLOAD_HW_ADDRESS_ENTRIES		0xC0231008L
+#define NDIS_STATUS_OFFLOAD_VLAN_ENTRIES		0xC0231009L
+#define NDIS_STATUS_OFFLOAD_TCP_XMIT_BUFFER		0xC023100AL
+#define NDIS_STATUS_OFFLOAD_TCP_RCV_BUFFER		0xC023100BL
+#define NDIS_STATUS_OFFLOAD_TCP_RCV_WINDOW		0xC023100CL
+#define NDIS_STATUS_OFFLOAD_VLAN_MISMATCH		0xC023100DL
+#define NDIS_STATUS_OFFLOAD_DATA_NOT_ACCEPTED		0xC023100EL
+#define NDIS_STATUS_OFFLOAD_POLICY			0xC023100FL
+#define NDIS_STATUS_OFFLOAD_DATA_PARTIALLY_ACCEPTED	0xC0231010L
+#define NDIS_STATUS_OFFLOAD_REQUEST_RESET		0xC0231011L
+
+#define NDIS_RECEIVE_SCALE_CAPABILITIES_REVISION_1	1
+
+#define NDIS_RSS_CAPS_MESSAGE_SIGNALED_INTERRUPTS	0x01000000
+#define NDIS_RSS_CAPS_CLASSIFICATION_AT_ISR		0x02000000
+#define NDIS_RSS_CAPS_CLASSIFICATION_AT_DPC		0x04000000
+#define NDIS_RSS_CAPS_HASH_TYPE_TCP_IPV4		0x00000100
+#define NDIS_RSS_CAPS_HASH_TYPE_TCP_IPV6		0x00000200
+#define NDIS_RSS_CAPS_HASH_TYPE_TCP_IPV6_EX		0x00000400
+
+/* end of ndis 6.0 */
 
 #define NDIS_MAC_OPTION_COPY_LOOKAHEAD_DATA	0x00000001
 #define NDIS_MAC_OPTION_RECEIVE_SERIALIZED	0x00000002
