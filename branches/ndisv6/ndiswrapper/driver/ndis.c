@@ -200,9 +200,8 @@ wstdcall NDIS_STATUS WIN_FUNC(NdisMRegisterMiniport,3)
 			"tx_data", "return_packet", "send_packets",
 			"alloc_complete", "co_create_vc", "co_delete_vc",
 			"co_activate_vc", "co_deactivate_vc",
-			"co_send_packets", "co_request",
-			"cancel_send_packets", "pnp_event_notify",
-			"shutdown",
+			"co_send_packets", "co_request", "cancel_send_packets",
+			"pnp_event_notify", "shutdown",
 		};
 		func = (void **)&ndis_driver->miniport.query;
 		for (i = 0; i < (sizeof(miniport_funcs) /
@@ -856,6 +855,43 @@ wstdcall void WIN_FUNC(NdisMQueryAdapterResources,4)
 		resource_list->count = count;
 		*status = NDIS_STATUS_SUCCESS;
 	}
+	TRACEEXIT2(return);
+}
+
+wstdcall NDIS_STATUS WIN_FUNC(NdisMPciAssignResources,3)
+	(struct ndis_miniport_block *nmb, ULONG slot_number,
+	 ndis_resource_list_t **resources)
+{
+	struct wrap_ndis_device *wnd = nmb->wnd;
+
+	TRACEENTER2("%p, %p", wnd, wnd->wd->resource_list);
+	*resources = &wnd->wd->resource_list->list->partial_resource_list;
+	TRACEEXIT2(return NDIS_STATUS_SUCCESS);
+}
+
+wstdcall NDIS_STATUS WIN_FUNC(NdisMMapIoSpace,4)
+	(void **virt, struct ndis_miniport_block *nmb,
+	 NDIS_PHY_ADDRESS phy_addr, UINT len)
+{
+	struct wrap_ndis_device *wnd = nmb->wnd;
+
+	TRACEENTER2("%016llx, %d", phy_addr, len);
+	*virt = MmMapIoSpace(phy_addr, len, MmCached);
+	if (*virt == NULL) {
+		ERROR("ioremap failed");
+		TRACEEXIT2(return NDIS_STATUS_FAILURE);
+	}
+	wnd->mem_start = phy_addr;
+	wnd->mem_end = phy_addr + len;
+	DBGTRACE2("%p", *virt);
+	TRACEEXIT2(return NDIS_STATUS_SUCCESS);
+}
+
+wstdcall void WIN_FUNC(NdisMUnmapIoSpace,3)
+	(struct ndis_miniport_block *nmb, void *virt, UINT len)
+{
+	TRACEENTER2("%p, %d", virt, len);
+	MmUnmapIoSpace(virt, len);
 	TRACEEXIT2(return);
 }
 
@@ -1938,7 +1974,7 @@ wstdcall void WIN_FUNC(NdisReadNetworkAddress,4)
 	int ret;
 
 	TRACEENTER1("");
-	RtlInitAnsiString(&ansi, "NetworkAddress");
+	RtlInitAnsiString(&ansi, "mac_address");
 	*len = 0;
 	*status = NDIS_STATUS_FAILURE;
 	if (RtlAnsiStringToUnicodeString(&key, &ansi, TRUE) != STATUS_SUCCESS)
@@ -1954,9 +1990,9 @@ wstdcall void WIN_FUNC(NdisReadNetworkAddress,4)
 		if (ret != NDIS_STATUS_SUCCESS)
 			TRACEEXIT1(return);
 
-		ret = sscanf(ansi.buf, MACSTR, MACINTADR(int_mac));
+		ret = sscanf(ansi.buf, MACSTRSEP, MACINTADR(int_mac));
 		if (ret != ETH_ALEN)
-			ret = sscanf(ansi.buf, MACSTRSEP, MACINTADR(int_mac));
+			ret = sscanf(ansi.buf, MACSTR, MACINTADR(int_mac));
 		RtlFreeAnsiString(&ansi);
 		if (ret == ETH_ALEN) {
 			int i;
