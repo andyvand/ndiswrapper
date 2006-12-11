@@ -840,7 +840,7 @@ struct wrap_ndis_device {
 	struct timer_list stats_timer;
 	unsigned long scan_timestamp;
 	struct encr_info encr_info;
-	char nick[IW_ESSID_MAX_SIZE+1];
+	char nick[IW_ESSID_MAX_SIZE];
 	struct ndis_essid essid;
 	struct auth_encr_capa capa;
 	enum authentication_mode auth_mode;
