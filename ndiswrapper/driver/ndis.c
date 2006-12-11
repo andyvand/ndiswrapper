@@ -139,9 +139,8 @@ wstdcall NDIS_STATUS WIN_FUNC(NdisMRegisterMiniport,3)
 			"tx_data", "return_packet", "send_packets",
 			"alloc_complete", "co_create_vc", "co_delete_vc",
 			"co_activate_vc", "co_deactivate_vc",
-			"co_send_packets", "co_request",
-			"cancel_send_packets", "pnp_event_notify",
-			"shutdown",
+			"co_send_packets", "co_request", "cancel_send_packets",
+			"pnp_event_notify", "shutdown",
 		};
 		func = (void **)&ndis_driver->miniport.query;
 		for (i = 0; i < (sizeof(miniport_funcs) /
@@ -1696,7 +1695,7 @@ wstdcall void WIN_FUNC(NdisReadNetworkAddress,4)
 	int ret;
 
 	TRACEENTER1("");
-	RtlInitAnsiString(&ansi, "NetworkAddress");
+	RtlInitAnsiString(&ansi, "mac_address");
 	*len = 0;
 	*status = NDIS_STATUS_FAILURE;
 	if (RtlAnsiStringToUnicodeString(&key, &ansi, TRUE) != STATUS_SUCCESS)
@@ -1712,9 +1711,9 @@ wstdcall void WIN_FUNC(NdisReadNetworkAddress,4)
 		if (ret != NDIS_STATUS_SUCCESS)
 			TRACEEXIT1(return);
 
-		ret = sscanf(ansi.buf, MACSTR, MACINTADR(int_mac));
+		ret = sscanf(ansi.buf, MACSTRSEP, MACINTADR(int_mac));
 		if (ret != ETH_ALEN)
-			ret = sscanf(ansi.buf, MACSTRSEP, MACINTADR(int_mac));
+			ret = sscanf(ansi.buf, MACSTR, MACINTADR(int_mac));
 		RtlFreeAnsiString(&ansi);
 		if (ret == ETH_ALEN) {
 			int i;
