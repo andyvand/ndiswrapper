@@ -275,7 +275,6 @@ static NDIS_STATUS miniport_init(struct wrap_ndis_device *wnd)
 	 * fail after boot */
 	sleep_hz(HZ / 2);
 	set_bit(HW_INITIALIZED, &wnd->hw_status);
-	hangcheck_add(wnd);
 	/* the description about NDIS_ATTRIBUTE_NO_HALT_ON_SUSPEND is
 	 * misleading/confusing; we just ignore it */
 	status = miniport_query_info(wnd, OID_PNP_CAPABILITIES,
@@ -1170,6 +1169,10 @@ void hangcheck_add(struct wrap_ndis_device *wnd)
 	if (!wnd->wd->driver->ndis_driver->miniport.hangcheck ||
 	    hangcheck_interval < 0)
 		TRACEEXIT2(return);
+	if (timer_pending(&wnd->hangcheck_timer)) {
+		WARNING("timer is already running!");
+		return;
+	}
 	if (hangcheck_interval > 0)
 		wnd->hangcheck_interval = hangcheck_interval * HZ;
 	if (wnd->hangcheck_interval < 0)
@@ -1177,10 +1180,7 @@ void hangcheck_add(struct wrap_ndis_device *wnd)
 	wnd->hangcheck_timer.data = (unsigned long)wnd;
 	wnd->hangcheck_timer.function = hangcheck_proc;
 	wnd->hangcheck_timer.expires = jiffies + wnd->hangcheck_interval;
-	if (timer_pending(&wnd->hangcheck_timer))
-		WARNING("timer is already running!");
-	else
-		add_timer(&wnd->hangcheck_timer);
+	add_timer(&wnd->hangcheck_timer);
 	TRACEEXIT2(return);
 }
 
@@ -1797,6 +1797,7 @@ static NDIS_STATUS ndis_start_device(struct wrap_ndis_device *wnd)
 	}
 	kfree(buf);
 	wrap_procfs_add_ndis_device(wnd);
+	hangcheck_add(wnd);
 	add_stats_timer(wnd);
 	TRACEEXIT1(return NDIS_STATUS_SUCCESS);
 
