@@ -1019,7 +1019,7 @@ wstdcall void *WIN_FUNC(ExAllocatePoolWithTag,3)
 {
 	void *addr;
 
-	TRACEENTER4("pool_type: %d, size: %lu, tag: %u", pool_type,
+	TRACEENTER4("pool_type: %d, size: %lu, tag: 0x%x", pool_type,
 		    size, tag);
 	if (size <= KMALLOC_THRESHOLD)
 		addr = kmalloc(size, gfp_irql());
