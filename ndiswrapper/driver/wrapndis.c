@@ -624,11 +624,19 @@ static int miniport_tx_packets(struct wrap_ndis_device *wnd, int start, int n)
 	TRACEEXIT3(return sent);
 }
 
+#ifdef INIT_WORK_NAR
+static void tx_worker(struct work_struct *work)
+#else
 static void tx_worker(void *param)
+#endif
 {
-	struct wrap_ndis_device *wnd = param;
+	struct wrap_ndis_device *wnd;
 	int n;
 
+#ifdef INIT_WORK_NAR
+	void *param = container_of(work, struct wrap_ndis_device, tx_work);
+#endif
+	wnd = param;
 	TRACEENTER3("tx_ok %d", wnd->tx_ok);
 	while (wnd->tx_ok) {
 		if (down_interruptible(&wnd->tx_ring_mutex))
@@ -1194,10 +1202,18 @@ void hangcheck_del(struct wrap_ndis_device *wnd)
 }
 
 /* worker procedure to take care of setting/checking various states */
+#ifdef INIT_WORK_NAR
+static void wrap_ndis_worker(struct work_struct *work)
+#else
 static void wrap_ndis_worker(void *param)
+#endif
 {
-	struct wrap_ndis_device *wnd = (struct wrap_ndis_device *)param;
+	struct wrap_ndis_device *wnd;
 
+#ifdef INIT_WORK_NAR
+	void *param = container_of(work, struct wrap_ndis_device, wrap_ndis_work);
+#endif
+	wnd = param;
 	DBGTRACE2("%lu", wnd->wrap_ndis_pending_work);
 
 	if (test_bit(SHUTDOWN, &wnd->wrap_ndis_pending_work))
@@ -1828,7 +1844,6 @@ static int ndis_remove_device(struct wrap_ndis_device *wnd)
 	wnd->tx_ok = 0;
 	unregister_netdev(wnd->net_dev);
 	netif_carrier_off(wnd->net_dev);
-	cancel_delayed_work(&wnd->wrap_ndis_work);
 	/* if device is suspended, but resume failed, tx_ring_mutex
 	 * may already be locked */
 	down_trylock(&wnd->tx_ring_mutex);

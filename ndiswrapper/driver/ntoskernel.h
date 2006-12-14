@@ -225,7 +225,12 @@ void wrap_cancel_delayed_work(work_struct_t *work);
 
 typedef struct workqueue_struct workqueue_struct_t;
 typedef struct work_struct work_struct_t;
-#define initialize_work INIT_WORK
+
+#ifdef INIT_WORK_NAR
+#define initialize_work(work, func, data) INIT_WORK_NAR(work, func)
+#else
+#define initialize_work(work, func, data) INIT_WORK(work, func, data)
+#endif // INIT_WORK_NAR
 
 #endif // USE_OWN_WQ
 
@@ -352,6 +357,10 @@ typedef u32 pm_message_t;
 #else
 #define ISR_PT_REGS_PARAM_DECL , struct pt_regs *regs
 #define ISR_PT_REGS_ARG , NULL
+#endif
+
+#ifndef flush_icache_range
+#define flush_icache_range(start, end) do { } while (0)
 #endif
 
 #define memcpy_skb(skb, from, length)			\
