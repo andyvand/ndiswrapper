@@ -61,11 +61,7 @@ static struct tasklet_struct kdpc_work;
 static void kdpc_worker(unsigned long dummy);
 #else
 static work_struct_t kdpc_work;
-#ifdef INIT_WORK_NAR
-static void kdpc_worker(struct work_struct *dummy);
-#else
-static void kdpc_worker(void *dummy);
-#endif
+static void kdpc_worker(work_param_t dummy);
 #endif
 
 static struct nt_list kdpc_list;
@@ -86,11 +82,7 @@ static struct nt_list bus_driver_list;
 static work_struct_t ntos_work_item_work;
 static struct nt_list ntos_work_item_list;
 static NT_SPIN_LOCK ntos_work_item_list_lock;
-#ifdef INIT_WORK_NAR
-static void ntos_work_item_worker(struct work_struct *dummy);
-#else
-static void ntos_work_item_worker(void *dummy);
-#endif
+static void ntos_work_item_worker(work_param_t dummy);
 
 NT_SPIN_LOCK irp_cancel_lock;
 
@@ -806,10 +798,8 @@ wstdcall void WIN_FUNC(KeInitializeDpc,3)
 
 #ifdef KDPC_TASKLET
 static void kdpc_worker(unsigned long dummy)
-#elif defined(INIT_WORK_NAR)
-static void kdpc_worker(struct work_struct *dummy)
 #else
-static void kdpc_worker(void *dummy)
+static void kdpc_worker(work_param_t dummy)
 #endif
 {
 	struct nt_list *entry;
@@ -906,11 +896,7 @@ wstdcall BOOLEAN WIN_FUNC(KeRemoveQueueDpc,1)
 	TRACEEXIT3(return ret);
 }
 
-#ifdef INIT_WORK_NAR
-static void ntos_work_item_worker(struct work_struct *dummy)
-#else
-static void ntos_work_item_worker(void *dummy)
-#endif
+static void ntos_work_item_worker(work_param_t dummy)
 {
 	struct ntos_work_item *ntos_work_item;
 	struct nt_list *cur;

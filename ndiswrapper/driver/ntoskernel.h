@@ -228,8 +228,13 @@ typedef struct work_struct work_struct_t;
 
 #ifdef INIT_WORK_NAR
 #define initialize_work(work, func, data) INIT_WORK_NAR(work, func)
+typedef struct work_struct *work_param_t;
+#define work_param_data(param, type, member)	\
+	container_of(param, type, member)
 #else
 #define initialize_work(work, func, data) INIT_WORK(work, func, data)
+typedef void *work_param_t;
+#define work_param_data(param, type, member) param
 #endif // INIT_WORK_NAR
 
 #endif // USE_OWN_WQ
