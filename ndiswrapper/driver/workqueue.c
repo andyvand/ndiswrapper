@@ -77,8 +77,8 @@ static int workq_thread(void *data)
 		if (work)
 			work->func(work->data);
 	}
-	/* set workq for each work to NULL so if cancel_delayed_work
-	 * is called later, it won't access workq */
+	/* set workq for each work to NULL so if work is cancelled
+	 * later, it won't access workq */
 	list_for_each_entry(work, &workq->work_list, list) {
 		work->workq = NULL;
 	}
@@ -102,7 +102,7 @@ wfastcall void wrap_queue_work(workqueue_struct_t *workq, work_struct_t *work)
 	spin_unlock_irqrestore(&workq->lock, flags);
 }
 
-void wrap_cancel_delayed_work(work_struct_t *work)
+void wrap_cancel_work(work_struct_t *work)
 {
 	workqueue_struct_t *workq;
 	unsigned long flags;

@@ -161,8 +161,6 @@ void usb_exit(void)
 {
 #ifdef USB_TASKLET
 	tasklet_kill(&wrap_urb_complete_work);
-#else
-	cancel_delayed_work(&wrap_urb_complete_work);
 #endif
 	USBEXIT(return);
 }
