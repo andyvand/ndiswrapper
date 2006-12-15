@@ -137,7 +137,7 @@ static struct tasklet_struct wrap_urb_complete_work;
 static void wrap_urb_complete_worker(unsigned long dummy);
 #else
 static work_struct_t wrap_urb_complete_work;
-static void wrap_urb_complete_worker(void *dummy);
+static void wrap_urb_complete_worker(worker_param_t dummy);
 #endif
 
 static void wrap_free_urb(struct urb *urb);
@@ -520,7 +520,7 @@ static void wrap_urb_complete(struct urb *urb ISR_PT_REGS_PARAM_DECL)
 #ifdef USB_TASKLET
 static void wrap_urb_complete_worker(unsigned long dummy)
 #else
-static void wrap_urb_complete_worker(void *dummy)
+static void wrap_urb_complete_worker(worker_param_t dummy)
 #endif
 {
 	struct irp *irp;

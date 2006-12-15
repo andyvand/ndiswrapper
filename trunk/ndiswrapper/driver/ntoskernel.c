@@ -50,7 +50,7 @@ static NT_SPIN_LOCK dispatcher_lock;
 static struct thread_event_waitq *thread_event_waitq_pool;
 
 NT_SPIN_LOCK ntoskernel_lock;
-static struct kmem_cache *mdl_cache;
+static void *mdl_cache;
 static struct nt_list wrap_mdl_list;
 
 /* use tasklet instead worker to execute kdpc's */
@@ -61,7 +61,7 @@ static struct tasklet_struct kdpc_work;
 static void kdpc_worker(unsigned long dummy);
 #else
 static work_struct_t kdpc_work;
-static void kdpc_worker(work_param_t dummy);
+static void kdpc_worker(worker_param_t dummy);
 #endif
 
 static struct nt_list kdpc_list;
@@ -82,7 +82,7 @@ static struct nt_list bus_driver_list;
 static work_struct_t ntos_work_item_work;
 static struct nt_list ntos_work_item_list;
 static NT_SPIN_LOCK ntos_work_item_list_lock;
-static void ntos_work_item_worker(work_param_t dummy);
+static void ntos_work_item_worker(worker_param_t dummy);
 
 NT_SPIN_LOCK irp_cancel_lock;
 
@@ -799,7 +799,7 @@ wstdcall void WIN_FUNC(KeInitializeDpc,3)
 #ifdef KDPC_TASKLET
 static void kdpc_worker(unsigned long dummy)
 #else
-static void kdpc_worker(work_param_t dummy)
+static void kdpc_worker(worker_param_t dummy)
 #endif
 {
 	struct nt_list *entry;
@@ -896,7 +896,7 @@ wstdcall BOOLEAN WIN_FUNC(KeRemoveQueueDpc,1)
 	TRACEEXIT3(return ret);
 }
 
-static void ntos_work_item_worker(work_param_t dummy)
+static void ntos_work_item_worker(worker_param_t dummy)
 {
 	struct ntos_work_item *ntos_work_item;
 	struct nt_list *cur;
@@ -1017,7 +1017,7 @@ wstdcall void *WIN_FUNC(ExAllocatePoolWithTag,3)
 	else {
 		if (in_interrupt()) {
 			WARNING("Windows driver allocating %lu bytes in "
-				"interrupt context: %lu, %lu, %d", size,
+				"interrupt context: %ld, %ld, %d", size,
 				in_irq(), in_softirq(), in_atomic());
 			return NULL;
 		}

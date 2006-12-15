@@ -624,12 +624,12 @@ static int miniport_tx_packets(struct wrap_ndis_device *wnd, int start, int n)
 	TRACEEXIT3(return sent);
 }
 
-static void tx_worker(work_param_t param)
+static void tx_worker(worker_param_t param)
 {
 	struct wrap_ndis_device *wnd;
 	int n;
 
-	wnd = work_param_data(param, struct wrap_ndis_device, tx_work);
+	wnd = worker_param_data(param, struct wrap_ndis_device, tx_work);
 	TRACEENTER3("tx_ok %d", wnd->tx_ok);
 	while (wnd->tx_ok) {
 		if (down_interruptible(&wnd->tx_ring_mutex))
@@ -1195,11 +1195,11 @@ void hangcheck_del(struct wrap_ndis_device *wnd)
 }
 
 /* worker procedure to take care of setting/checking various states */
-static void wrap_ndis_worker(work_param_t param)
+static void wrap_ndis_worker(worker_param_t param)
 {
 	struct wrap_ndis_device *wnd;
 
-	wnd = work_param_data(param, struct wrap_ndis_device, wrap_ndis_work);
+	wnd = worker_param_data(param, struct wrap_ndis_device, wrap_ndis_work);
 
 	DBGTRACE2("%lu", wnd->wrap_ndis_pending_work);
 
