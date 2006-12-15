@@ -23,7 +23,7 @@
 #define MAX_ALLOCATED_NDIS_BUFFERS 20
 
 static workqueue_struct_t *ndis_wq;
-static void ndis_worker(work_param_t dummy);
+static void ndis_worker(worker_param_t dummy);
 static work_struct_t ndis_work;
 static struct nt_list ndis_worker_list;
 static NT_SPIN_LOCK ndis_work_list_lock;
@@ -2460,7 +2460,7 @@ wstdcall void NdisMResetComplete(struct ndis_miniport_block *nmb,
 	TRACEEXIT3(return);
 }
 
-static void ndis_worker(work_param_t dummy)
+static void ndis_worker(worker_param_t dummy)
 {
 	KIRQL irql;
 	struct ndis_work_entry *ndis_work_entry;
