@@ -1200,19 +1200,19 @@ wstdcall void WIN_FUNC(ExNotifyCallback,3)
 }
 
 /* check and set signaled state; should be called with dispatcher_lock held */
-/* @grab indicates if the event should be put in not-signaled state
+/* @grab indicates if the event should be grabbed or checked
  * - note that a semaphore may stay in signaled state for multiple
  * 'grabs' if the count is > 1 */
-static int check_grab_signaled_state(struct dispatcher_header *dh,
-				     struct task_struct *thread, int grab)
+static int grab_signaled_state(struct dispatcher_header *dh,
+			       struct task_struct *thread, int grab)
 {
 	EVENTTRACE("%p, %p, %d, %d", dh, thread, grab, dh->signal_state);
 	if (is_mutex_dh(dh)) {
 		struct nt_mutex *nt_mutex;
-		/* either no thread owns the mutex or this thread owns
-		 * it */
 		nt_mutex = container_of(dh, struct nt_mutex, dh);
 		EVENTTRACE("%p, %p", nt_mutex, nt_mutex->owner_thread);
+		/* either no thread owns the mutex or this thread owns
+		 * it */
 		assert(dh->signal_state <= 1);
 		assert(nt_mutex->owner_thread == NULL &&
 		       dh->signal_state == 1);
@@ -1248,8 +1248,7 @@ static void wakeup_threads(struct dispatcher_header *dh)
 			   dh, wb, wb->thread);
 		assert(wb->thread != NULL);
 		assert(wb->object == NULL);
-		if (wb->thread &&
-		    check_grab_signaled_state(dh, wb->thread, 1)) {
+		if (wb->thread && grab_signaled_state(dh, wb->thread, 1)) {
 			struct thread_event_waitq *thread_waitq =
 				wb->thread_waitq;
 			EVENTTRACE("%p: waking up task %p for %p", thread_waitq,
@@ -1355,7 +1354,7 @@ wstdcall NTSTATUS WIN_FUNC(KeWaitForMultipleObjects,8)
 		EVENTTRACE("%p: event %p state: %d",
 			   thread, dh, dh->signal_state);
 		/* wait_type == 1 for WaitAny, 0 for WaitAll */
-		if (check_grab_signaled_state(dh, thread, wait_type)) {
+		if (grab_signaled_state(dh, thread, wait_type)) {
 			if (wait_type == WaitAny) {
 				nt_spin_unlock_irql(&dispatcher_lock, irql);
 				if (count > 1)
@@ -1391,7 +1390,7 @@ wstdcall NTSTATUS WIN_FUNC(KeWaitForMultipleObjects,8)
 			   thread, dh, dh->signal_state);
 		wb[i].object = NULL;
 		wb[i].thread_waitq = thread_waitq;
-		if (check_grab_signaled_state(dh, thread, 1)) {
+		if (grab_signaled_state(dh, thread, 1)) {
 			EVENTTRACE("%p: event %p already signaled: %d",
 				   thread, dh, dh->signal_state);
 			/* mark that we are not waiting on this object */

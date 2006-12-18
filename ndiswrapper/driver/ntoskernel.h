@@ -228,7 +228,7 @@ typedef struct workqueue_struct workqueue_struct_t;
 typedef struct work_struct work_struct_t;
 
 #ifdef INIT_WORK_NAR
-#define initialize_work(work, func, data) INIT_WORK_NAR(work, func)
+#define initialize_work(work, func, data) INIT_WORK(work, func)
 typedef struct work_struct *worker_param_t;
 #define worker_param_data(param, type, member)	\
 	container_of(param, type, member)
@@ -520,8 +520,6 @@ struct wrap_driver {
 	struct wrap_ndis_driver *ndis_driver;
 };
 
-struct usbd_pipe_information;
-
 struct wrap_device {
 	/* first part is (de)initialized once by loader */
 	struct nt_list list;
@@ -729,8 +727,8 @@ NTSTATUS IoPassIrpDown(struct device_object *dev_obj, struct irp *irp) wstdcall;
 WIN_FUNC_DECL(IoPassIrpDown,2)
 NTSTATUS IoSyncForwardIrp(struct device_object *dev_obj,
 			  struct irp *irp) wstdcall;
-NTSTATUS IoAsyncForwardIrp (struct device_object *dev_obj,
-			    struct irp *irp) wstdcall;
+NTSTATUS IoAsyncForwardIrp(struct device_object *dev_obj,
+			   struct irp *irp) wstdcall;
 NTSTATUS IoInvalidDeviceRequest(struct device_object *dev_obj,
 				struct irp *irp) wstdcall;
 
@@ -905,28 +903,28 @@ do {									\
 } while (0)
 
 #define atomic_unary_op(var, size, oper)			\
-	do {							\
-		if (size == 1)					\
-			__asm__ __volatile__(			\
-				LOCK_PREFIX oper "b %b0\n\t"	\
-				: "+m" (var));			\
-		else if (size == 2)				\
-			__asm__ __volatile__(			\
-				LOCK_PREFIX oper "w %w0\n\t"	\
-				: "+m" (var));			\
-		else if (size == 4)				\
-			__asm__ __volatile__(			\
-				LOCK_PREFIX oper "l %0\n\t"	\
-				: "+m" (var));			\
-		else if (size == 8)				\
-			__asm__ __volatile__(			\
-				LOCK_PREFIX oper "q %q0\n\t"	\
-				: "+m" (var));			\
-		else {						\
-			extern void _invalid_op_size_(void);	\
-			_invalid_op_size_();			\
-		}						\
-	} while (0)
+do {								\
+	if (size == 1)						\
+		__asm__ __volatile__(				\
+			LOCK_PREFIX oper "b %b0\n\t"		\
+			: "+m" (var));				\
+	else if (size == 2)					\
+		__asm__ __volatile__(				\
+			LOCK_PREFIX oper "w %w0\n\t"		\
+			: "+m" (var));				\
+	else if (size == 4)					\
+		__asm__ __volatile__(				\
+			LOCK_PREFIX oper "l %0\n\t"		\
+			: "+m" (var));				\
+	else if (size == 8)					\
+		__asm__ __volatile__(				\
+			LOCK_PREFIX oper "q %q0\n\t"		\
+			: "+m" (var));				\
+	else {							\
+		extern void _invalid_op_size_(void);		\
+		_invalid_op_size_();				\
+	}							\
+} while (0)
 
 #define atomic_inc_var_size(var, size) atomic_unary_op(var, size, "inc")
 
