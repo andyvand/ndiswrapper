@@ -203,11 +203,11 @@ typedef struct {
 	workqueue_struct_t *workq;
 } work_struct_t;
 
-#define initialize_work(work_struct, worker_func, worker_data)	\
+#define initialize_work(work, func, data)			\
 	do {							\
-		(work_struct)->func = worker_func;		\
-		(work_struct)->data = worker_data;		\
-		(work_struct)->workq = NULL;			\
+		(work)->func = func;				\
+		(work)->data = data;				\
+		(work)->workq = NULL;				\
 	} while (0)
 
 #undef create_singlethread_workqueue

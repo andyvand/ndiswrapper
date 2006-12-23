@@ -697,7 +697,6 @@ wstdcall void WIN_FUNC(KeInitializeTimer,1)
 BOOLEAN wrap_set_timer(struct nt_timer *nt_timer, unsigned long expires_hz,
 		       unsigned long repeat_hz, struct kdpc *kdpc)
 {
-	BOOLEAN ret;
 	struct wrap_timer *wrap_timer;
 
 	TRACEENTER4("%p, %lu, %lu, %p, %lu",
@@ -725,11 +724,9 @@ BOOLEAN wrap_set_timer(struct nt_timer *nt_timer, unsigned long expires_hz,
 		nt_timer->kdpc = kdpc;
 	wrap_timer->repeat = repeat_hz;
 	if (mod_timer(&wrap_timer->timer, jiffies + expires_hz))
-		ret = TRUE;
+		TRACEEXIT5(return TRUE);
 	else
-		ret = FALSE;
-	DBGTRACE4("%d", ret);
-	TRACEEXIT5(return ret);
+		TRACEEXIT5(return FALSE);
 }
 
 wstdcall BOOLEAN WIN_FUNC(KeSetTimerEx,4)
@@ -755,7 +752,6 @@ wstdcall BOOLEAN WIN_FUNC(KeSetTimer,3)
 wstdcall BOOLEAN WIN_FUNC(KeCancelTimer,1)
 	(struct nt_timer *nt_timer)
 {
-	BOOLEAN canceled;
 	struct wrap_timer *wrap_timer;
 
 	TRACEENTER5("%p", nt_timer);
@@ -765,19 +761,16 @@ wstdcall BOOLEAN WIN_FUNC(KeCancelTimer,1)
 		return TRUE;
 	}
 #ifdef TIMER_DEBUG
-	DBGTRACE5("canceling timer %p", wrap_timer);
 	BUG_ON(wrap_timer->wrap_timer_magic != WRAP_TIMER_MAGIC);
 #endif
-	DBGTRACE5("deleting timer %p(%p)", wrap_timer, nt_timer);
+	DBGTRACE5("canceling timer %p(%p)", wrap_timer, nt_timer);
 	/* disable timer before deleting so if it is periodic timer, it
 	 * won't be re-armed after deleting */
 	wrap_timer->repeat = 0;
 	if (del_timer(&wrap_timer->timer))
-		canceled = TRUE;
+		TRACEEXIT5(return TRUE);
 	else
-		canceled = FALSE;
-	DBGTRACE5("canceled (%p): %d", wrap_timer, canceled);
-	TRACEEXIT5(return canceled);
+		TRACEEXIT5(return FALSE);
 }
 
 wstdcall BOOLEAN WIN_FUNC(KeReadStateTimer,1)
@@ -854,6 +847,7 @@ static BOOLEAN queue_kdpc(struct kdpc *kdpc)
 	} else
 		ret = FALSE;
 	nt_spin_unlock_irql(&kdpc_list_lock, irql);
+	DBGTRACE5("%d", ret);
 	TRACEEXIT5(return ret);
 }
 
@@ -871,29 +865,23 @@ static BOOLEAN dequeue_kdpc(struct kdpc *kdpc)
 		ret = TRUE;
 	}
 	nt_spin_unlock_irql(&kdpc_list_lock, irql);
+	DBGTRACE5("%d", ret);
 	return ret;
 }
 
 wstdcall BOOLEAN WIN_FUNC(KeInsertQueueDpc,3)
 	(struct kdpc *kdpc, void *arg1, void *arg2)
 {
-	BOOLEAN ret;
-
 	TRACEENTER5("%p, %p, %p", kdpc, arg1, arg2);
 	kdpc->arg1 = arg1;
 	kdpc->arg2 = arg2;
-	ret = queue_kdpc(kdpc);
-	TRACEEXIT5(return ret);
+	TRACEEXIT5(return queue_kdpc(kdpc));
 }
 
 wstdcall BOOLEAN WIN_FUNC(KeRemoveQueueDpc,1)
 	(struct kdpc *kdpc)
 {
-	BOOLEAN ret;
-
-	TRACEENTER3("%p", kdpc);
-	ret = dequeue_kdpc(kdpc);
-	TRACEEXIT3(return ret);
+	TRACEEXIT3(return dequeue_kdpc(kdpc));
 }
 
 static void ntos_work_item_worker(worker_param_t dummy)
@@ -1192,7 +1180,7 @@ wstdcall void WIN_FUNC(ExNotifyCallback,3)
 
 	TRACEENTER3("%p", object);
 	irql = nt_spin_lock_irql(&object->lock, DISPATCH_LEVEL);
-	nt_list_for_each_entry(callback, &object->callback_funcs, list){
+	nt_list_for_each_entry(callback, &object->callback_funcs, list) {
 		LIN2WIN3(callback->func, callback->context, arg1, arg2);
 	}
 	nt_spin_unlock_irql(&object->lock, irql);

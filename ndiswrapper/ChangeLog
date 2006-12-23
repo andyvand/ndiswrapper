@@ -1,3 +1,9 @@
+Version 1.32 2006-12-23
+=======================	
+* Added compatability with 2.6.20-rc1 kernel
+* Fixed crash when changing MAC address (with 'ifconfig hw ether')
+* Fixed crash when names of other network device are changed (e.g., by udev)
+
 Version 1.31 2006-12-05
 =======================	
 * Fixed crashes with shutting down computer without unloading ndiswrapper
