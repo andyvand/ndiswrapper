@@ -203,10 +203,10 @@ typedef struct {
 	workqueue_struct_t *workq;
 } work_struct_t;
 
-#define initialize_work(work, func, data)			\
+#define initialize_work(work, pfunc, pdata)			\
 	do {							\
-		(work)->func = func;				\
-		(work)->data = data;				\
+		(work)->func = (pfunc);				\
+		(work)->data = (pdata);				\
 		(work)->workq = NULL;				\
 	} while (0)
 
