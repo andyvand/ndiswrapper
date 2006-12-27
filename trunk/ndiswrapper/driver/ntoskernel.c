@@ -1003,15 +1003,16 @@ wstdcall void *WIN_FUNC(ExAllocatePoolWithTag,3)
 	if (size <= KMALLOC_THRESHOLD)
 		addr = kmalloc(size, gfp_irql());
 	else {
-		if (in_interrupt()) {
+		if (current_irql() < DISPATCH_LEVEL) {
 			WARNING("Windows driver allocating %lu bytes in "
 				"interrupt context: %ld, %ld, %d", size,
 				in_irq(), in_softirq(), in_atomic());
-			return NULL;
-		}
-		if (current_irql() < DISPATCH_LEVEL)
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,19)
+			if (in_interrupt())
+				return NULL;
+#endif
 			addr = vmalloc(size);
-		else
+		} else
 			addr = __vmalloc(size, GFP_ATOMIC | __GFP_HIGHMEM,
 					 PAGE_KERNEL);
 	}
