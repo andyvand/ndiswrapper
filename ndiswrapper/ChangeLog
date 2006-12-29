@@ -1,3 +1,9 @@
+Version 1.33 2006-12-28
+=======================	
+* Allow large memory allocations in older kernels; with 2.6.19 and newer
+  kernels, vmalloc in atomic allocations is not allowed (see 'patches' section
+  on project page for workaround on these newer kernels).
+
 Version 1.32 2006-12-23
 =======================	
 * Added compatability with 2.6.20-rc1 kernel
