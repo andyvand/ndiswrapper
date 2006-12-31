@@ -1003,18 +1003,40 @@ wstdcall void *WIN_FUNC(ExAllocatePoolWithTag,3)
 	if (size <= KMALLOC_THRESHOLD)
 		addr = kmalloc(size, gfp_irql());
 	else {
-		if (current_irql() < DISPATCH_LEVEL) {
+		if (in_irq()) {
 			WARNING("Windows driver allocating %lu bytes in "
 				"interrupt context: %ld, %ld, %d", size,
 				in_irq(), in_softirq(), in_atomic());
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,19)
-			if (in_interrupt())
-				return NULL;
-#endif
+			return NULL;
+		}
+		if (in_interrupt()) {
+			/* Hack alert: It seems some drivers (at least
+			 * Atheros) allocate large amount of memory
+			 * during Miniport(Query/Set)Information,
+			 * which runs at DISPATCH_LEVEL. This means
+			 * vmalloc is to be called at interrupt
+			 * context, which is not allowed in 2.6.19+
+			 * kernels. Ideally, kernel should allow
+			 * __vmalloc in interrupt context, but at
+			 * least for now, we circumvent this problem
+			 * by lowering IRQL to PASSIVE_LEVEL and
+			 * raising IRQL back to DISPATCH_LEVEL. This
+			 * has been tested to work with Atheros PCI
+			 * driver, but other drivers may break. */
+			KIRQL irql = current_irql();
+			DBGTRACE2("Windows driver allocating %lu bytes in "
+				  "interrupt context: %u, %d, %d, %d, %lu", size,
+				  irql, current_irql(), preempt_count(),
+				  in_atomic(), in_interrupt());
+			lower_irql(PASSIVE_LEVEL);
+			DBGTRACE2("%u, %d, %d, %d, %lu", irql, current_irql(),
+				  preempt_count(), in_atomic(), in_interrupt());
 			addr = vmalloc(size);
+			raise_irql(irql);
+			DBGTRACE2("%u, %d, %d, %d, %lu", irql, current_irql(),
+				  preempt_count(), in_atomic(), in_interrupt());
 		} else
-			addr = __vmalloc(size, GFP_ATOMIC | __GFP_HIGHMEM,
-					 PAGE_KERNEL);
+			addr = vmalloc(size);
 	}
 	DBGTRACE4("addr: %p, %lu", addr, size);
 	TRACEEXIT4(return addr);
