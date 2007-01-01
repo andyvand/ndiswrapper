@@ -401,8 +401,6 @@ typedef u32 pm_message_t;
 #undef CONFIG_USB_MODULE
 #endif
 
-#define KMALLOC_THRESHOLD 130000
-
 /* TICK is 100ns */
 #define TICKSPERSEC		10000000LL
 #define TICKSPERMSEC		10000
