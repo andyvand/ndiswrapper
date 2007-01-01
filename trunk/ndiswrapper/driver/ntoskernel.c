@@ -304,8 +304,7 @@ static void update_user_shared_data_proc(unsigned long data)
 		jiffies * TICKSPERSEC / HZ;
 	*((ULONG64 *)&kuser_shared_data.tick) = jiffies;
 
-	shared_data_timer.expires += 30 * HZ / 1000 + 1;
-	add_timer(&shared_data_timer);
+	mod_timer(&shared_data_timer, jiffies + MSEC_TO_HZ(30);
 }
 #endif
 
@@ -1000,46 +999,44 @@ wstdcall void *WIN_FUNC(ExAllocatePoolWithTag,3)
 
 	TRACEENTER4("pool_type: %d, size: %lu, tag: 0x%x", pool_type,
 		    size, tag);
-	if (size <= KMALLOC_THRESHOLD)
+	if (size <= (16 * 1024))
 		addr = kmalloc(size, gfp_irql());
 	else {
-		if (in_irq()) {
+		KIRQL irql = current_irql();
+		if (irql > DISPATCH_LEVEL) {
 			WARNING("Windows driver allocating %lu bytes in "
-				"interrupt context: %ld, %ld, %d", size,
+				"irq context: %ld, %ld, %d", size,
 				in_irq(), in_softirq(), in_atomic());
 			return NULL;
 		}
-		if (in_interrupt()) {
-			/* Hack alert: It seems some drivers (at least
-			 * Atheros) allocate large amount of memory
-			 * during Miniport(Query/Set)Information,
-			 * which runs at DISPATCH_LEVEL. This means
-			 * vmalloc is to be called at interrupt
-			 * context, which is not allowed in 2.6.19+
-			 * kernels. Ideally, kernel should allow
-			 * __vmalloc in interrupt context, but at
-			 * least for now, we circumvent this problem
-			 * by lowering IRQL to PASSIVE_LEVEL and
-			 * raising IRQL back to DISPATCH_LEVEL. This
-			 * has been tested to work with Atheros PCI
-			 * driver, but other drivers may break. */
-			KIRQL irql = current_irql();
-			DBGTRACE2("Windows driver allocating %lu bytes in "
-				  "interrupt context: %u, %d, %d, %d, %lu", size,
-				  irql, current_irql(), preempt_count(),
+		/* Hack alert: Some drivers (at least Atheros)
+		 * allocate large amount of memory during
+		 * Miniport(Query/Set)Information, which runs at
+		 * DISPATCH_LEVEL. This means vmalloc is to be called
+		 * at interrupt context, which is not allowed in
+		 * 2.6.19+ kernels. Ideally, kernel should allow
+		 * __vmalloc in interrupt context, but at least for
+		 * now, we circumvent this problem by lowering IRQL to
+		 * PASSIVE_LEVEL and raising IRQL back to
+		 * DISPATCH_LEVEL. This has been tested to work with
+		 * Atheros PCI driver, but other drivers may break. */
+		if (irql == DISPATCH_LEVEL) {
+			DBGTRACE1("Windows driver allocating %lu bytes in "
+				  "interrupt context: %u, %d, %d, %d, %lu",
+				  size, irql, current_irql(), preempt_count(),
 				  in_atomic(), in_interrupt());
 			lower_irql(PASSIVE_LEVEL);
-			DBGTRACE2("%u, %d, %d, %d, %lu", irql, current_irql(),
+			DBGTRACE1("%u, %d, %d, %d, %lu", irql, current_irql(),
 				  preempt_count(), in_atomic(), in_interrupt());
 			addr = vmalloc(size);
 			raise_irql(irql);
-			DBGTRACE2("%u, %d, %d, %d, %lu", irql, current_irql(),
+			DBGTRACE1("%u, %d, %d, %d, %lu", irql, current_irql(),
 				  preempt_count(), in_atomic(), in_interrupt());
 		} else
 			addr = vmalloc(size);
 	}
 	DBGTRACE4("addr: %p, %lu", addr, size);
-	TRACEEXIT4(return addr);
+	return addr;
 }
 WIN_FUNC_DECL(ExAllocatePoolWithTag,3)
 

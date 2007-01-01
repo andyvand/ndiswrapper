@@ -1119,8 +1119,7 @@ static void stats_timer_proc(unsigned long data)
 		TRACEEXIT2(return);
 	set_bit(COLLECT_STATS, &wnd->wrap_ndis_pending_work);
 	schedule_wrap_work(&wnd->wrap_ndis_work);
-	wnd->stats_timer.expires += wnd->stats_interval;
-	add_timer(&wnd->stats_timer);
+	mod_timer(&wnd->stats_timer, jiffies + wnd->stats_interval);
 }
 
 static void add_stats_timer(struct wrap_ndis_device *wnd)
@@ -1131,8 +1130,7 @@ static void add_stats_timer(struct wrap_ndis_device *wnd)
 		wnd->stats_interval *= -1;
 	wnd->stats_timer.data = (unsigned long)wnd;
 	wnd->stats_timer.function = stats_timer_proc;
-	wnd->stats_timer.expires = jiffies + wnd->stats_interval;
-	add_timer(&wnd->stats_timer);
+	mod_timer(&wnd->stats_timer, jiffies + wnd->stats_interval);
 }
 
 static void del_stats_timer(struct wrap_ndis_device *wnd)
@@ -1160,8 +1158,7 @@ static void hangcheck_proc(unsigned long data)
 		set_bit(MINIPORT_RESET, &wnd->wrap_ndis_pending_work);
 		schedule_wrap_work(&wnd->wrap_ndis_work);
 	}
-	wnd->hangcheck_timer.expires += wnd->hangcheck_interval;
-	add_timer(&wnd->hangcheck_timer);
+	mod_timer(&wnd->hangcheck_timer, jiffies + wnd->hangcheck_interval);
 	TRACEEXIT3(return);
 }
 
@@ -1180,8 +1177,7 @@ void hangcheck_add(struct wrap_ndis_device *wnd)
 		wnd->hangcheck_interval *= -1;
 	wnd->hangcheck_timer.data = (unsigned long)wnd;
 	wnd->hangcheck_timer.function = hangcheck_proc;
-	wnd->hangcheck_timer.expires = jiffies + wnd->hangcheck_interval;
-	add_timer(&wnd->hangcheck_timer);
+	mod_timer(&wnd->hangcheck_timer, jiffies + wnd->hangcheck_interval);
 	TRACEEXIT2(return);
 }
 
