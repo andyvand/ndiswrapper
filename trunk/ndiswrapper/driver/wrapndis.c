@@ -284,6 +284,10 @@ static NDIS_STATUS miniport_init(struct wrap_ndis_device *wnd)
 	else
 		wnd->attributes &= ~NDIS_ATTRIBUTE_NO_HALT_ON_SUSPEND;
 	DBGTRACE1("%d", pnp_capa.wakeup_capa.min_magic_packet_wakeup);
+	/* although some NDIS drivers support suspend, Linux kernel
+	 * has issues with suspending USB devices */
+	if (wrap_is_usb_bus(wnd->wd->dev_bus))
+		wnd->attributes &= ~NDIS_ATTRIBUTE_NO_HALT_ON_SUSPEND;
 	TRACEEXIT1(return NDIS_STATUS_SUCCESS);
 }
 
@@ -1820,8 +1824,11 @@ static int ndis_remove_device(struct wrap_ndis_device *wnd)
 
 	/* prevent setting essid during disassociation */
 	memset(&wnd->essid, 0, sizeof(wnd->essid));
-	if (wnd->physical_medium == NdisPhysicalMediumWirelessLan)
+	if (wnd->physical_medium == NdisPhysicalMediumWirelessLan) {
+		up(&wnd->ndis_comm_mutex);
 		miniport_set_info(wnd, OID_802_11_DISASSOCIATE, NULL, 0);
+		down_interruptible(&wnd->ndis_comm_mutex);
+	}
 	set_bit(SHUTDOWN, &wnd->wrap_ndis_pending_work);
 	unregister_netdevice_notifier(&netdev_notifier);
 	wnd->tx_ok = 0;

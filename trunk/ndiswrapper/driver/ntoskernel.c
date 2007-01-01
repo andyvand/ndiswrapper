@@ -1028,7 +1028,10 @@ wstdcall void *WIN_FUNC(ExAllocatePoolWithTag,3)
 			lower_irql(PASSIVE_LEVEL);
 			DBGTRACE1("%u, %d, %d, %d, %lu", irql, current_irql(),
 				  preempt_count(), in_atomic(), in_interrupt());
-			addr = vmalloc(size);
+			if (in_interrupt())
+				addr = NULL;
+			else
+				addr = vmalloc(size);
 			raise_irql(irql);
 			DBGTRACE1("%u, %d, %d, %d, %lu", irql, current_irql(),
 				  preempt_count(), in_atomic(), in_interrupt());
