@@ -304,7 +304,7 @@ static void update_user_shared_data_proc(unsigned long data)
 		jiffies * TICKSPERSEC / HZ;
 	*((ULONG64 *)&kuser_shared_data.tick) = jiffies;
 
-	mod_timer(&shared_data_timer, jiffies + MSEC_TO_HZ(30);
+	mod_timer(&shared_data_timer, jiffies + MSEC_TO_HZ(30));
 }
 #endif
 
@@ -1043,11 +1043,11 @@ wstdcall void *WIN_FUNC(ExAllocatePoolWithTag,3)
 }
 WIN_FUNC_DECL(ExAllocatePoolWithTag,3)
 
-wstdcall void vfree_nonatomic(void *addr, void *ctx)
+wstdcall void wrap_vfree(void *addr, void *ctx)
 {
 	vfree(addr);
 }
-WIN_FUNC_DECL(vfree_nonatomic,2)
+WIN_FUNC_DECL(wrap_vfree,2)
 
 wstdcall void WIN_FUNC(ExFreePoolWithTag,2)
 	(void *addr, ULONG tag)
@@ -1058,7 +1058,7 @@ wstdcall void WIN_FUNC(ExFreePoolWithTag,2)
 		kfree(addr);
 	else {
 		if (in_interrupt())
-			schedule_ntos_work_item(WIN_FUNC_PTR(vfree_nonatomic,2),
+			schedule_ntos_work_item(WIN_FUNC_PTR(wrap_vfree,2),
 						addr, NULL);
 		else
 			vfree(addr);
