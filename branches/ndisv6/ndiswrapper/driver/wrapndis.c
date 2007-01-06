@@ -349,6 +349,10 @@ static NDIS_STATUS miniport_init(struct wrap_ndis_device *wnd)
 	else
 		wnd->attributes &= ~NDIS_ATTRIBUTE_NO_HALT_ON_SUSPEND;
 	DBGTRACE1("%d", pnp_capa.wakeup_capa.min_magic_packet_wakeup);
+	/* although some NDIS drivers support suspend, Linux kernel
+	 * has issues with suspending USB devices */
+	if (wrap_is_usb_bus(wnd->wd->dev_bus))
+		wnd->attributes &= ~NDIS_ATTRIBUTE_NO_HALT_ON_SUSPEND;
 	TRACEEXIT1(return NDIS_STATUS_SUCCESS);
 }
 
@@ -1190,8 +1194,7 @@ static void stats_timer_proc(unsigned long data)
 		TRACEEXIT2(return);
 	set_bit(COLLECT_STATS, &wnd->wrap_ndis_pending_work);
 	schedule_wrap_work(&wnd->wrap_ndis_work);
-	wnd->stats_timer.expires += wnd->stats_interval;
-	add_timer(&wnd->stats_timer);
+	mod_timer(&wnd->stats_timer, jiffies + wnd->stats_interval);
 }
 
 static void add_stats_timer(struct wrap_ndis_device *wnd)
@@ -1202,8 +1205,7 @@ static void add_stats_timer(struct wrap_ndis_device *wnd)
 		wnd->stats_interval *= -1;
 	wnd->stats_timer.data = (unsigned long)wnd;
 	wnd->stats_timer.function = stats_timer_proc;
-	wnd->stats_timer.expires = jiffies + wnd->stats_interval;
-	add_timer(&wnd->stats_timer);
+	mod_timer(&wnd->stats_timer, jiffies + wnd->stats_interval);
 }
 
 static void del_stats_timer(struct wrap_ndis_device *wnd)
@@ -1231,8 +1233,7 @@ static void hangcheck_proc(unsigned long data)
 		set_bit(MINIPORT_RESET, &wnd->wrap_ndis_pending_work);
 		schedule_wrap_work(&wnd->wrap_ndis_work);
 	}
-	wnd->hangcheck_timer.expires += wnd->hangcheck_interval;
-	add_timer(&wnd->hangcheck_timer);
+	mod_timer(&wnd->hangcheck_timer, jiffies + wnd->hangcheck_interval);
 	TRACEEXIT3(return);
 }
 
@@ -1251,8 +1252,7 @@ void hangcheck_add(struct wrap_ndis_device *wnd)
 		wnd->hangcheck_interval *= -1;
 	wnd->hangcheck_timer.data = (unsigned long)wnd;
 	wnd->hangcheck_timer.function = hangcheck_proc;
-	wnd->hangcheck_timer.expires = jiffies + wnd->hangcheck_interval;
-	add_timer(&wnd->hangcheck_timer);
+	mod_timer(&wnd->hangcheck_timer, jiffies + wnd->hangcheck_interval);
 	TRACEEXIT2(return);
 }
 
@@ -1902,8 +1902,11 @@ static int ndis_remove_device(struct wrap_ndis_device *wnd)
 
 	/* prevent setting essid during disassociation */
 	memset(&wnd->essid, 0, sizeof(wnd->essid));
-	if (wnd->physical_medium == NdisPhysicalMediumWirelessLan)
+	if (wnd->physical_medium == NdisPhysicalMediumWirelessLan) {
+		up(&wnd->ndis_comm_mutex);
 		miniport_set_info(wnd, OID_802_11_DISASSOCIATE, NULL, 0);
+		down_interruptible(&wnd->ndis_comm_mutex);
+	}
 	set_bit(SHUTDOWN, &wnd->wrap_ndis_pending_work);
 	unregister_netdevice_notifier(&netdev_notifier);
 	wnd->tx_ok = 0;

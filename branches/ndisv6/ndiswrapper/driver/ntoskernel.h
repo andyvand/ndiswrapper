@@ -203,10 +203,10 @@ typedef struct {
 	workqueue_struct_t *workq;
 } work_struct_t;
 
-#define initialize_work(work, func, data)			\
+#define initialize_work(work, work_func, work_data)		\
 	do {							\
-		(work)->func = func;				\
-		(work)->data = data;				\
+		(work)->func = work_func;			\
+		(work)->data = work_data;			\
 		(work)->workq = NULL;				\
 	} while (0)
 
@@ -400,8 +400,6 @@ typedef u32 pm_message_t;
 #undef CONFIG_USB
 #undef CONFIG_USB_MODULE
 #endif
-
-#define KMALLOC_THRESHOLD 130000
 
 /* TICK is 100ns */
 #define TICKSPERSEC		10000000LL
@@ -790,7 +788,7 @@ static inline KIRQL current_irql(void)
 {
 	if (in_irq() || irqs_disabled())
 		TRACEEXIT6(return DEVICE_LEVEL);
-	else if (in_atomic())
+	else if (in_interrupt())
 		TRACEEXIT6(return DISPATCH_LEVEL);
 	else
 		TRACEEXIT6(return PASSIVE_LEVEL);
