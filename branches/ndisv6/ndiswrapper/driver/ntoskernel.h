@@ -203,29 +203,40 @@ typedef struct {
 	workqueue_struct_t *workq;
 } work_struct_t;
 
-#define initialize_work(work_struct, worker_func, worker_data)	\
+#define initialize_work(work, func, data)			\
 	do {							\
-		(work_struct)->func = worker_func;		\
-		(work_struct)->data = worker_data;		\
-		(work_struct)->workq = NULL;			\
+		(work)->func = func;				\
+		(work)->data = data;				\
+		(work)->workq = NULL;				\
 	} while (0)
 
 #undef create_singlethread_workqueue
 #define create_singlethread_workqueue wrap_create_wq
 #define destroy_workqueue wrap_destroy_wq
 #define queue_work wrap_queue_work
-#define cancel_delayed_work wrap_cancel_delayed_work
 
 workqueue_struct_t *wrap_create_wq(const char *name);
 void wrap_destroy_wq(workqueue_struct_t *workq);
 void wrap_queue_work(workqueue_struct_t *workq, work_struct_t *work) wfastcall;
-void wrap_cancel_delayed_work(work_struct_t *work);
+void wrap_cancel_work(work_struct_t *work);
+typedef void *worker_param_t;
+#define worker_param_data(param, type, member) param
 
 #else // USE_OWN_WQ
 
 typedef struct workqueue_struct workqueue_struct_t;
 typedef struct work_struct work_struct_t;
-#define initialize_work INIT_WORK
+
+#ifdef INIT_WORK_NAR
+#define initialize_work(work, func, data) INIT_WORK(work, func)
+typedef struct work_struct *worker_param_t;
+#define worker_param_data(param, type, member)	\
+	container_of(param, type, member)
+#else
+#define initialize_work(work, func, data) INIT_WORK(work, func, data)
+typedef void *worker_param_t;
+#define worker_param_data(param, type, member) param
+#endif // INIT_WORK_NAR
 
 #endif // USE_OWN_WQ
 
@@ -352,6 +363,10 @@ typedef u32 pm_message_t;
 #else
 #define ISR_PT_REGS_PARAM_DECL , struct pt_regs *regs
 #define ISR_PT_REGS_ARG , NULL
+#endif
+
+#ifndef flush_icache_range
+#define flush_icache_range(start, end) do { } while (0)
 #endif
 
 #define memcpy_skb(skb, from, length)			\
@@ -506,8 +521,6 @@ struct wrap_driver {
 		struct wrap_ndis_driver *ndis_driver;
 	};
 };
-
-struct usbd_pipe_information;
 
 struct wrap_device {
 	/* first part is (de)initialized once by loader */
@@ -717,8 +730,8 @@ NTSTATUS IoPassIrpDown(struct device_object *dev_obj, struct irp *irp) wstdcall;
 WIN_FUNC_DECL(IoPassIrpDown,2)
 NTSTATUS IoSyncForwardIrp(struct device_object *dev_obj,
 			  struct irp *irp) wstdcall;
-NTSTATUS IoAsyncForwardIrp (struct device_object *dev_obj,
-			    struct irp *irp) wstdcall;
+NTSTATUS IoAsyncForwardIrp(struct device_object *dev_obj,
+			   struct irp *irp) wstdcall;
 NTSTATUS IoInvalidDeviceRequest(struct device_object *dev_obj,
 				struct irp *irp) wstdcall;
 
@@ -767,6 +780,11 @@ void adjust_user_shared_data_addr(char *driver, unsigned long length);
 
 #define IoCompleteRequest(irp, prio) IofCompleteRequest(irp, prio)
 #define IoCallDriver(dev, irp) IofCallDriver(dev, irp)
+
+struct io_workitem *IoAllocateWorkItem(struct device_object *dev_obj) wstdcall;
+void IoQueueWorkItem(struct io_workitem *io_workitem, void *func,
+		     enum work_queue_type queue_type, void *context) wstdcall;
+void IoFreeWorkItem(struct io_workitem *io_workitem) wstdcall;
 
 static inline KIRQL current_irql(void)
 {
@@ -893,28 +911,28 @@ do {									\
 } while (0)
 
 #define atomic_unary_op(var, size, oper)			\
-	do {							\
-		if (size == 1)					\
-			__asm__ __volatile__(			\
-				LOCK_PREFIX oper "b %b0\n\t"	\
-				: "+m" (var));			\
-		else if (size == 2)				\
-			__asm__ __volatile__(			\
-				LOCK_PREFIX oper "w %w0\n\t"	\
-				: "+m" (var));			\
-		else if (size == 4)				\
-			__asm__ __volatile__(			\
-				LOCK_PREFIX oper "l %0\n\t"	\
-				: "+m" (var));			\
-		else if (size == 8)				\
-			__asm__ __volatile__(			\
-				LOCK_PREFIX oper "q %q0\n\t"	\
-				: "+m" (var));			\
-		else {						\
-			extern void _invalid_op_size_(void);	\
-			_invalid_op_size_();			\
-		}						\
-	} while (0)
+do {								\
+	if (size == 1)						\
+		__asm__ __volatile__(				\
+			LOCK_PREFIX oper "b %b0\n\t"		\
+			: "+m" (var));				\
+	else if (size == 2)					\
+		__asm__ __volatile__(				\
+			LOCK_PREFIX oper "w %w0\n\t"		\
+			: "+m" (var));				\
+	else if (size == 4)					\
+		__asm__ __volatile__(				\
+			LOCK_PREFIX oper "l %0\n\t"		\
+			: "+m" (var));				\
+	else if (size == 8)					\
+		__asm__ __volatile__(				\
+			LOCK_PREFIX oper "q %q0\n\t"		\
+			: "+m" (var));				\
+	else {							\
+		extern void _invalid_op_size_(void);		\
+		_invalid_op_size_();				\
+	}							\
+} while (0)
 
 #define atomic_inc_var_size(var, size) atomic_unary_op(var, size, "inc")
 

@@ -435,6 +435,24 @@ struct nt_mutex {
 	BOOLEAN apc_disable;
 };
 
+struct kgate {
+	struct dispatcher_header dh;
+};
+
+struct kguarded_mutex {
+	volatile LONG count;
+	void *owner_thread;
+	ULONG contention;
+	struct kgate gate;
+	union {
+		struct {
+			SHORT kernel_apc_disable;
+			SHORT special_apc_disable;
+		};
+		ULONG combined_apc_disable;
+	};
+};
+
 struct nt_semaphore {
 	struct dispatcher_header dh;
 	LONG limit;

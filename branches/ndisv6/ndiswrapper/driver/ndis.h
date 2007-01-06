@@ -53,6 +53,15 @@ typedef uint64_t NDIS_PHY_ADDRESS;
 
 typedef PHYSICAL_ADDRESS NDIS_PHYSICAL_ADDRESS;
 
+#define NDIS_SG_LIST_WRITE_TO_DEVICE	0x000000001
+#define NDIS_SG_LIST_WRAP_ALLOC		0x000100000
+
+struct ndis_object_header {
+	UCHAR type;
+	UCHAR revision;
+	USHORT size;
+};
+
 struct ndis_sg_element {
 	PHYSICAL_ADDRESS address;
 	ULONG length;
@@ -62,12 +71,31 @@ struct ndis_sg_element {
 struct ndis_sg_list {
 	ULONG nent;
 	ULONG_PTR reserved;
-	struct ndis_sg_element *elements;
+	struct ndis_sg_element elements[];
+};
+
+struct ndis_sg_dma_description {
+	struct ndis_object_header header;
+	ULONG flags;
+	ULONG max_physical_map;
+	void *sg_list_handler;
+	void *shared_mem_alloc_complete_handler;
+	ULONG sg_list_size;
 };
 
 struct ndis_phy_addr_unit {
 	NDIS_PHY_ADDRESS phy_addr;
 	UINT length;
+};
+
+struct ndis_sg_dma_handle {
+	struct ndis_miniport_block *nmb;
+	void (*sg_list_handler)(struct device_object *, void *,
+				struct ndis_sg_list *, void *) wstdcall;
+	void (*shared_mem_alloc_complete_handler)(void *, void *,
+						  NDIS_PHYSICAL_ADDRESS *,
+						  ULONG, void *) wstdcall;
+	ULONG max_physical_map;
 };
 
 typedef struct mdl ndis_buffer;
@@ -240,11 +268,9 @@ struct ndis_packet_oob_data {
 	struct scatterlist *sg_list;
 	unsigned int sg_ents;
 	struct ndis_sg_list ndis_sg_list;
-	struct ndis_sg_element *ndis_sg_elements;
-	/* RTL8180L overshoots past ndis_eg_elements (during
-	 * MiniportSendPackets) and overwrites what is below, if SG
-	 * DMA is used, so don't use ndis_sg_element in that
-	 * case. This structure is used only when SG is disabled */
+	/* keep ndis_sg_element right next to ndis_sg_list, so
+	 * ndis_sg_list's ndis_sg_elements is aligned with
+	 * ndis_sg_element */
 	struct ndis_sg_element ndis_sg_element;
 
 	unsigned char header[ETH_HLEN];
@@ -452,6 +478,11 @@ struct ndis_spinlock {
 	KIRQL irql;
 };
 
+struct lock_state {
+	USHORT state;
+	KIRQL irql;
+};
+
 union ndis_rw_lock_refcount {
 	UINT ref_count;
 	UCHAR cache_line[16];
@@ -508,6 +539,12 @@ struct ndis_configuration_parameter {
 		ULONG integer;
 		NDIS_STRING string;
 	} data;
+};
+
+struct ndis_configuration_object {
+	struct ndis_object_header header;
+	void *handle;
+	ULONG flags;
 };
 
 /* IDs used to store extensions in driver_object's custom extension */
@@ -724,12 +761,6 @@ struct ndis_miniport_interrupt {
 #define NDIS_OBJECT_TYPE_NSI_NETWORK_RW_STRUCT				0xAC
 #define NDIS_OBJECT_TYPE_NSI_COMPARTMENT_RW_STRUCT			0xAD
 #define NDIS_OBJECT_TYPE_NSI_INTERFACE_PERSIST_RW_STRUCT		0xAE
-
-struct ndis_object_header {
-	UCHAR type;
-	UCHAR revision;
-	USHORT size;
-};
 
 struct ndis_generic_object {
 	struct ndis_object_header header;
@@ -1412,14 +1443,21 @@ struct ndis_rx_scale_capabilities {
 	ULONG num_recv_queues;
 };
 
-struct ndis_pool_info {
-	struct nt_list list;
-	ULONG tag;
+#define NDIS_WRAPPER_POOL_FLAGS_ALLOC_BUFFER 0x00001
+
+struct net_buffer_pool {
+	nt_slist_header slist;
 	ULONG data_length;
-	USHORT ctx_size;
-	void *pool;
 	BOOLEAN with_mdl;
-	struct wrap_ndis_device *wnd;
+	unsigned int count;
+	NT_SPIN_LOCK lock;
+};
+
+struct net_buffer_list_pool {
+	struct net_buffer_pool list_pool;
+	ULONG flags;
+	USHORT ctx_length;
+	struct net_buffer_pool *buffer_pool;
 };
 
 union net_buffer_data_length {
@@ -1445,7 +1483,7 @@ struct net_buffer {
 	union net_buffer_header header;
 	USHORT csum_bias;
 	USHORT reserved;
-	struct ndis_pool_info *pool;
+	struct net_buffer_pool *pool;
 	void *ndis_reserved[2] _align_(MEMORY_ALLOCATION_ALIGNMENT);
 	void *proto_reserved[6] _align_(MEMORY_ALLOCATION_ALIGNMENT);
 	void *mp_reserved[4] _align_(MEMORY_ALLOCATION_ALIGNMENT);
@@ -1485,7 +1523,7 @@ struct net_buffer_list_data {
 };
 
 union net_buffer_list_header {
-	struct net_buffer_list_data net_buffer_list_data;
+	struct net_buffer_list_data data;
 	nt_slist_header link;
 };
 
@@ -1493,7 +1531,7 @@ struct net_buffer_list {
 	union net_buffer_list_header header;
 	struct net_buffer_list_context *context;
 	struct net_buffer_list *parent;
-	struct ndis_pool_info *pool_handle;
+	struct net_buffer_list_pool *pool;
 	void *ndis_reserved[2] _align_(MEMORY_ALLOCATION_ALIGNMENT);
 	void *proto_reserved[4] _align_(MEMORY_ALLOCATION_ALIGNMENT);
 	void *mp_reserved[2] _align_(MEMORY_ALLOCATION_ALIGNMENT);
@@ -1524,7 +1562,7 @@ struct net_buffer_list_pool_params {
 	UCHAR protocol_id;
 	BOOLEAN fallocate_net_buffer;
 	USHORT ctx_size;
-	ULONG pool_tag;
+	ULONG tag;
 	ULONG data_size;
 };
 

@@ -50,7 +50,7 @@ static NT_SPIN_LOCK dispatcher_lock;
 static struct thread_event_waitq *thread_event_waitq_pool;
 
 NT_SPIN_LOCK ntoskernel_lock;
-static kmem_cache_t *mdl_cache;
+static void *mdl_cache;
 static struct nt_list wrap_mdl_list;
 
 /* use tasklet instead worker to execute kdpc's */
@@ -61,7 +61,7 @@ static struct tasklet_struct kdpc_work;
 static void kdpc_worker(unsigned long dummy);
 #else
 static work_struct_t kdpc_work;
-static void kdpc_worker(void *data);
+static void kdpc_worker(worker_param_t dummy);
 #endif
 
 static struct nt_list kdpc_list;
@@ -82,7 +82,7 @@ static struct nt_list bus_driver_list;
 static work_struct_t ntos_work_item_work;
 static struct nt_list ntos_work_item_list;
 static NT_SPIN_LOCK ntos_work_item_list_lock;
-static void ntos_work_item_worker(void *data);
+static void ntos_work_item_worker(worker_param_t dummy);
 
 NT_SPIN_LOCK irp_cancel_lock;
 
@@ -706,7 +706,6 @@ wstdcall void WIN_FUNC(KeInitializeTimer,1)
 BOOLEAN wrap_set_timer(struct nt_timer *nt_timer, unsigned long expires_hz,
 		       unsigned long repeat_hz, struct kdpc *kdpc)
 {
-	BOOLEAN ret;
 	struct wrap_timer *wrap_timer;
 
 	TRACEENTER4("%p, %lu, %lu, %p, %lu",
@@ -734,11 +733,9 @@ BOOLEAN wrap_set_timer(struct nt_timer *nt_timer, unsigned long expires_hz,
 		nt_timer->kdpc = kdpc;
 	wrap_timer->repeat = repeat_hz;
 	if (mod_timer(&wrap_timer->timer, jiffies + expires_hz))
-		ret = TRUE;
+		TRACEEXIT5(return TRUE);
 	else
-		ret = FALSE;
-	DBGTRACE4("%d", ret);
-	TRACEEXIT5(return ret);
+		TRACEEXIT5(return FALSE);
 }
 
 wstdcall BOOLEAN WIN_FUNC(KeSetTimerEx,4)
@@ -764,7 +761,6 @@ wstdcall BOOLEAN WIN_FUNC(KeSetTimer,3)
 wstdcall BOOLEAN WIN_FUNC(KeCancelTimer,1)
 	(struct nt_timer *nt_timer)
 {
-	BOOLEAN canceled;
 	struct wrap_timer *wrap_timer;
 
 	TRACEENTER5("%p", nt_timer);
@@ -774,19 +770,16 @@ wstdcall BOOLEAN WIN_FUNC(KeCancelTimer,1)
 		return TRUE;
 	}
 #ifdef TIMER_DEBUG
-	DBGTRACE5("canceling timer %p", wrap_timer);
 	BUG_ON(wrap_timer->wrap_timer_magic != WRAP_TIMER_MAGIC);
 #endif
-	DBGTRACE5("deleting timer %p(%p)", wrap_timer, nt_timer);
+	DBGTRACE5("canceling timer %p(%p)", wrap_timer, nt_timer);
 	/* disable timer before deleting so if it is periodic timer, it
 	 * won't be re-armed after deleting */
 	wrap_timer->repeat = 0;
 	if (del_timer(&wrap_timer->timer))
-		canceled = TRUE;
+		TRACEEXIT5(return TRUE);
 	else
-		canceled = FALSE;
-	DBGTRACE5("canceled (%p): %d", wrap_timer, canceled);
-	TRACEEXIT5(return canceled);
+		TRACEEXIT5(return FALSE);
 }
 
 wstdcall BOOLEAN WIN_FUNC(KeReadStateTimer,1)
@@ -806,9 +799,9 @@ wstdcall void WIN_FUNC(KeInitializeDpc,3)
 }
 
 #ifdef KDPC_TASKLET
-static void kdpc_worker(unsigned long data)
+static void kdpc_worker(unsigned long dummy)
 #else
-static void kdpc_worker(void *data)
+static void kdpc_worker(worker_param_t dummy)
 #endif
 {
 	struct nt_list *entry;
@@ -863,6 +856,7 @@ static BOOLEAN queue_kdpc(struct kdpc *kdpc)
 	} else
 		ret = FALSE;
 	nt_spin_unlock_irql(&kdpc_list_lock, irql);
+	DBGTRACE5("%d", ret);
 	TRACEEXIT5(return ret);
 }
 
@@ -880,32 +874,26 @@ static BOOLEAN dequeue_kdpc(struct kdpc *kdpc)
 		ret = TRUE;
 	}
 	nt_spin_unlock_irql(&kdpc_list_lock, irql);
+	DBGTRACE5("%d", ret);
 	return ret;
 }
 
 wstdcall BOOLEAN WIN_FUNC(KeInsertQueueDpc,3)
 	(struct kdpc *kdpc, void *arg1, void *arg2)
 {
-	BOOLEAN ret;
-
 	TRACEENTER5("%p, %p, %p", kdpc, arg1, arg2);
 	kdpc->arg1 = arg1;
 	kdpc->arg2 = arg2;
-	ret = queue_kdpc(kdpc);
-	TRACEEXIT5(return ret);
+	TRACEEXIT5(return queue_kdpc(kdpc));
 }
 
 wstdcall BOOLEAN WIN_FUNC(KeRemoveQueueDpc,1)
 	(struct kdpc *kdpc)
 {
-	BOOLEAN ret;
-
-	TRACEENTER3("%p", kdpc);
-	ret = dequeue_kdpc(kdpc);
-	TRACEEXIT3(return ret);
+	TRACEEXIT3(return dequeue_kdpc(kdpc));
 }
 
-static void ntos_work_item_worker(void *data)
+static void ntos_work_item_worker(worker_param_t dummy)
 {
 	struct ntos_work_item *ntos_work_item;
 	struct nt_list *cur;
@@ -1024,6 +1012,12 @@ wstdcall void *WIN_FUNC(ExAllocatePoolWithTag,3)
 	if (size <= KMALLOC_THRESHOLD)
 		addr = kmalloc(size, gfp_irql());
 	else {
+		if (in_interrupt()) {
+			WARNING("Windows driver allocating %lu bytes in "
+				"interrupt context: %ld, %ld, %d", size,
+				in_irq(), in_softirq(), in_atomic());
+			return NULL;
+		}
 		if (current_irql() < DISPATCH_LEVEL)
 			addr = vmalloc(size);
 		else
@@ -1195,7 +1189,7 @@ wstdcall void WIN_FUNC(ExNotifyCallback,3)
 
 	TRACEENTER3("%p", object);
 	irql = nt_spin_lock_irql(&object->lock, DISPATCH_LEVEL);
-	nt_list_for_each_entry(callback, &object->callback_funcs, list){
+	nt_list_for_each_entry(callback, &object->callback_funcs, list) {
 		LIN2WIN3(callback->func, callback->context, arg1, arg2);
 	}
 	nt_spin_unlock_irql(&object->lock, irql);
@@ -1203,19 +1197,19 @@ wstdcall void WIN_FUNC(ExNotifyCallback,3)
 }
 
 /* check and set signaled state; should be called with dispatcher_lock held */
-/* @grab indicates if the event should be put in not-signaled state
+/* @grab indicates if the event should be grabbed or checked
  * - note that a semaphore may stay in signaled state for multiple
  * 'grabs' if the count is > 1 */
-static int check_grab_signaled_state(struct dispatcher_header *dh,
-				     struct task_struct *thread, int grab)
+static int grab_signaled_state(struct dispatcher_header *dh,
+			       struct task_struct *thread, int grab)
 {
 	EVENTTRACE("%p, %p, %d, %d", dh, thread, grab, dh->signal_state);
 	if (is_mutex_dh(dh)) {
 		struct nt_mutex *nt_mutex;
-		/* either no thread owns the mutex or this thread owns
-		 * it */
 		nt_mutex = container_of(dh, struct nt_mutex, dh);
 		EVENTTRACE("%p, %p", nt_mutex, nt_mutex->owner_thread);
+		/* either no thread owns the mutex or this thread owns
+		 * it */
 		assert(dh->signal_state <= 1);
 		assert(nt_mutex->owner_thread == NULL &&
 		       dh->signal_state == 1);
@@ -1251,8 +1245,7 @@ static void wakeup_threads(struct dispatcher_header *dh)
 			   dh, wb, wb->thread);
 		assert(wb->thread != NULL);
 		assert(wb->object == NULL);
-		if (wb->thread &&
-		    check_grab_signaled_state(dh, wb->thread, 1)) {
+		if (wb->thread && grab_signaled_state(dh, wb->thread, 1)) {
 			struct thread_event_waitq *thread_waitq =
 				wb->thread_waitq;
 			EVENTTRACE("%p: waking up task %p for %p", thread_waitq,
@@ -1358,7 +1351,7 @@ wstdcall NTSTATUS WIN_FUNC(KeWaitForMultipleObjects,8)
 		EVENTTRACE("%p: event %p state: %d",
 			   thread, dh, dh->signal_state);
 		/* wait_type == 1 for WaitAny, 0 for WaitAll */
-		if (check_grab_signaled_state(dh, thread, wait_type)) {
+		if (grab_signaled_state(dh, thread, wait_type)) {
 			if (wait_type == WaitAny) {
 				nt_spin_unlock_irql(&dispatcher_lock, irql);
 				if (count > 1)
@@ -1394,7 +1387,7 @@ wstdcall NTSTATUS WIN_FUNC(KeWaitForMultipleObjects,8)
 			   thread, dh, dh->signal_state);
 		wb[i].object = NULL;
 		wb[i].thread_waitq = thread_waitq;
-		if (check_grab_signaled_state(dh, thread, 1)) {
+		if (grab_signaled_state(dh, thread, 1)) {
 			EVENTTRACE("%p: event %p already signaled: %d",
 				   thread, dh, dh->signal_state);
 			/* mark that we are not waiting on this object */
@@ -1605,6 +1598,20 @@ wstdcall LONG WIN_FUNC(KeReleaseMutex,2)
 	nt_spin_unlock_irql(&dispatcher_lock, irql);
 	EVENTTRACE("ret: %08X", ret);
 	EVENTEXIT(return ret);
+}
+
+wstdcall void WIN_FUNC(KeAcquireGuardedMutex,1)
+	(struct kguarded_mutex *mutex)
+{
+	TODO();
+	EVENTEXIT(return);
+}
+
+wstdcall void WIN_FUNC(KeReleaseGuardedMutex,1)
+	(struct kguarded_mutex *mutex)
+{
+	TODO();
+	EVENTEXIT(return);
 }
 
 wstdcall void WIN_FUNC(KeInitializeSemaphore,3)
