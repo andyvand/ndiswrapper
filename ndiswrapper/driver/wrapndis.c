@@ -49,7 +49,6 @@ NDIS_STATUS miniport_reset(struct wrap_ndis_device *wnd)
 {
 	NDIS_STATUS res;
 	struct miniport_char *miniport;
-	UINT cur_lookahead, max_lookahead;
 	BOOLEAN reset_address;
 	KIRQL irql;
 
@@ -195,12 +194,12 @@ NDIS_STATUS miniport_oid_request(struct wrap_ndis_device *wnd,
 	NDIS_STATUS res;
 	struct mp_driver_characteristics *mp_chars;
 
-	DBGTRACE2("oid: %08X", oid);
+	DBGTRACE2("oid: %08X", oid_request->data.query_info.oid);
 
 	if (down_interruptible(&wnd->ndis_comm_mutex))
 		TRACEEXIT3(return NDIS_STATUS_FAILURE);
 	mp_chars = &wnd->wd->driver->ndis_driver->mp_driver_chars;
-	DBGTRACE2("%08X", oid_request->query_info.oid);
+	DBGTRACE2("%08X", oid_request->data.query_info.oid);
 	wnd->ndis_comm_done = 0;
 
 	oid_request->header.type = NDIS_OBJECT_TYPE_OID_REQUEST;
@@ -209,14 +208,14 @@ NDIS_STATUS miniport_oid_request(struct wrap_ndis_device *wnd,
 
 	res = LIN2WIN2(mp_chars->oid_request, wnd->adapter_ctx, oid_request);
 
-	DBGTRACE2("%08X, %08X", res, oid);
+	DBGTRACE2("%08X, %08X", res, oid_request->data.query_info.oid);
 	if (res == NDIS_STATUS_PENDING) {
 		/* wait for NdisMQueryInformationComplete */
 		if (ndis_wait_comm_completion(wnd))
 			res = NDIS_STATUS_FAILURE;
 		else
 			res = wnd->ndis_comm_status;
-		DBGTRACE2("%08X, %08X", oid_request->query_info.oid, res);
+		DBGTRACE2("%08X, %08X", oid_request->data.query_info.oid, res);
 	}
 	up(&wnd->ndis_comm_mutex);
 	DBG_BLOCK(2) {
@@ -1978,6 +1977,7 @@ static wstdcall NTSTATUS NdisAddDevice(struct driver_object *drv_obj,
 		TRACEEXIT2(return status);
 	}
 	fdo->reserved = wnd;
+	wd = pdo->reserved;
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
 	SET_MODULE_OWNER(net_dev);
 	if (wrap_is_pci_bus(wd->dev_bus))
@@ -1986,7 +1986,6 @@ static wstdcall NTSTATUS NdisAddDevice(struct driver_object *drv_obj,
 		SET_NETDEV_DEV(net_dev, &wd->usb.intf->dev);
 #endif
 
-	wd = pdo->reserved;
 	wd->wnd = wnd;
 	wnd->wd = wd;
 	wnd->net_dev = net_dev;

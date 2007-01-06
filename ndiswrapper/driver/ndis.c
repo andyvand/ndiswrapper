@@ -1207,7 +1207,7 @@ wstdcall struct net_buffer_pool *WIN_FUNC(NdisAllocateNetBufferPool,3)
 	pool->with_mdl = FALSE;
 	pool->slist.next = NULL;
 	pool->count = 0;
-	DBGTRACE4("%p, %u, %u", pool, data_size, tag);
+	DBGTRACE4("%p, %u", pool, pool->data_length);
 	nt_spin_lock_init(&pool->lock);
 	return pool;
 }
@@ -1230,8 +1230,7 @@ wstdcall struct net_buffer *WIN_FUNC(NdisAllocateNetBuffer,4)
 	KIRQL irql;
 
 	/* TODO: use pool */
-	TRACEENTER4("%p, %p, %u, %zu", pool, mdl_chain, data_offset,
-		    data_length);
+	TRACEENTER4("%p, %p, %u, %u", pool, mdl, data_offset, data_length);
 	irql = nt_spin_lock_irql(&pool->lock, DISPATCH_LEVEL);
 	if (pool->count) {
 		assert(pool->slist.next);
@@ -1307,7 +1306,7 @@ wstdcall void *WIN_FUNC(NdisGetDataBuffer,5)
 {
 	void *data;
 
-	TRACEENTER3("%p, %p, %u, %u, %u", buffer, bytes_needed, storage,
+	TRACEENTER3("%p, %u, %u, %u, %u", buffer, bytes_needed, storage,
 		    alignment, align_offset);
 	if (buffer->header.data.data_length.ulength < bytes_needed ||
 	    storage == NULL)
@@ -1374,7 +1373,7 @@ wstdcall struct net_buffer_list *WIN_FUNC(NdisAllocateNetBufferList,3)
 
 	irql = nt_spin_lock_irql(&pool->list_pool.lock, DISPATCH_LEVEL);
 	if (pool->list_pool.count) {
-		assert(pool->buffer_list.slist.next);
+		assert(pool->list_pool.slist.next);
 		buffer_list = container_of(pool->list_pool.slist.next,
 					   struct net_buffer_list,
 					   header.link.next);
@@ -1400,6 +1399,7 @@ wstdcall struct net_buffer_list *WIN_FUNC(NdisAllocateNetBufferList,3)
 			TRACEEXIT2(return NULL);
 		}
 	}
+	buffer_list->header.data.next = NULL;
 	return buffer_list;
 }
 
@@ -1433,14 +1433,52 @@ wstdcall NDIS_STATUS WIN_FUNC(NdisAllocateNetBufferListContext,4)
 	(struct net_buffer_list *buffer_list, USHORT ctx_size, USHORT backfill,
 	 ULONG pool_tag)
 {
-	TODO();
-	return NDIS_STATUS_FAILURE;
+	struct net_buffer_list_context *ctx;
+
+	TRACEENTER3("%p, %u, %u", buffer_list, ctx_size, backfill);
+
+	/* TODO: how is this context list organized in buffer_list? 
+	 * newer members are added to the end of list or front (as in
+	 * the case of MDL)? */
+	if (!buffer_list->context || buffer_list->context->offset < ctx_size) {
+		ctx = kmalloc(sizeof(*ctx) + ctx_size + backfill, GFP_ATOMIC);
+		if (!ctx) {
+			WARNING("couldn't allocate memory");
+			return NDIS_STATUS_RESOURCES;
+		}
+		DBGTRACE3("%p, %u, %u", ctx, ctx_size, backfill);
+		ctx->size = ctx->offset = ctx_size + backfill;
+		ctx->next = buffer_list->context;
+		buffer_list->context = ctx;
+	} else
+		ctx = buffer_list->context;
+
+	ctx->offset -= ctx_size;
+	DBGTRACE3("%p, %u, %u", ctx, ctx->offset, ctx->size);
+	TRACEEXIT2(return NDIS_STATUS_SUCCESS);
 }
 
 wstdcall void WIN_FUNC(NdisFreeNetBufferListContext,2)
 	(struct net_buffer_list *buffer_list, USHORT ctx_size)
 {
-	TODO();
+	struct net_buffer_list_context *next, *ctx = buffer_list->context;
+
+	TRACEENTER3("%p, %p", buffer_list, ctx);
+	if (!ctx) {
+		WARNING("invalid context");
+		return;
+	}
+	DBGTRACE3("%p, %u, %u, %u", ctx, ctx->offset, ctx->size, ctx_size);
+	if (ctx->offset + ctx_size < ctx->size) {
+		ctx->offset += ctx_size;
+		return;
+	}
+	while (ctx && ctx->offset + ctx_size >= ctx->size) {
+		ctx_size -= ctx->offset;
+		next = ctx->next;
+		kfree(ctx);
+		ctx = next;
+	}
 	return;
 }
 
@@ -1469,8 +1507,12 @@ wstdcall NDIS_STATUS WIN_FUNC(NdisRetreatNetBufferDataStart,4)
 		mdl->next = buffer->header.data.mdl_chain;
 		buffer->header.data.mdl_chain = mdl;
 		buffer->header.data.data_offset = length - offset;
-	} else
+	} else {
 		buffer->header.data.data_offset -= offset;
+		DBGTRACE3("%p, %u", buffer, buffer->header.data.data_offset);
+	}
+
+	return NDIS_STATUS_SUCCESS;
 }
 
 wstdcall void WIN_FUNC(NdisAdvanceNetBufferDataStart,4)
@@ -1500,15 +1542,36 @@ wstdcall NDIS_STATUS WIN_FUNC(NdisRetreatNetBufferListDataStart,5)
 	(struct net_buffer_list *buffer_list, ULONG offset, ULONG backfill,
 	 void *alloc_handler, void *free_handler)
 {
-	TODO();
-	return NDIS_STATUS_FAILURE;
+	struct net_buffer *buffer;
+	NDIS_STATUS status;
+
+	TRACEENTER3("%p, %u, %u, %p, %p", buffer_list, offset, backfill,
+		    alloc_handler, free_handler);
+
+	for ( ; buffer_list; buffer_list = buffer_list->header.data.next) {
+		buffer = buffer_list->header.data.first_buffer;
+		status = NdisRetreatNetBufferDataStart(buffer, offset, backfill,
+						       alloc_handler);
+		if (status != NDIS_STATUS_SUCCESS)
+			TRACEEXIT2(return status);
+	}
+	TRACEEXIT2(return NDIS_STATUS_SUCCESS);
 }
 
 wstdcall void WIN_FUNC(NdisAdvanceNetBufferListDataStart,4)
 	(struct net_buffer_list *buffer_list, ULONG offset,
 	 BOOLEAN need_free_mdl, void *free_handler)
 {
+	struct net_buffer *buffer;
 
+	TRACEENTER3("%p, %u, %d, %p", buffer_list, offset, need_free_mdl,
+		    free_handler);
+	for ( ; buffer_list; buffer_list = buffer_list->header.data.next) {
+		buffer = buffer_list->header.data.first_buffer;
+		NdisAdvanceNetBufferDataStart(buffer, offset, need_free_mdl,
+					      free_handler);
+	}
+	TRACEEXIT2(return);
 }
 
 wstdcall NDIS_STATUS WIN_FUNC(NdisMInitializeScatterGatherDma,3)
@@ -1668,7 +1731,7 @@ wstdcall BOOLEAN WIN_FUNC(NdisSetTimerObject,4)
 		repeat_hz = MSEC_TO_HZ(period_ms);
 	else
 		repeat_hz = 0;
-	TRACEENTER4("%p, %u, %ld", timer, expires_hz, repeat_hz);
+	TRACEENTER4("%p, %lu, %lu", timer, expires_hz, repeat_hz);
 	if (ctx)
 		timer->kdpc.ctx = ctx;
 	return wrap_set_timer(&timer->nt_timer, expires_hz, repeat_hz, NULL);
@@ -2643,7 +2706,7 @@ wstdcall void WIN_FUNC(NdisMIndicateStatusEx,4)
 		}
 		break;
 	default:
-		DBGTRACE2("unknown status: %08X", status);
+		DBGTRACE2("unknown status: %08X", status->code);
 		break;
 	}
 
