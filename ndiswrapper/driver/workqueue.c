@@ -50,13 +50,7 @@ static int workq_thread(void *data)
 					     workq->pending)) {
 			/* TODO: deal with signal */
 			WARNING("signal not blocked?");
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,7)
-			spin_lock_irq(&current->sigmask_lock);
 			flush_signals(current);
-			spin_unlock_irq(&current->sigmask_lock);
-#else
-			flush_signals();
-#endif
 			continue;
 		}
 		spin_lock_irqsave(&workq->lock, flags);

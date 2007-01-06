@@ -387,6 +387,22 @@ struct ndis_pm_wakeup_capabilities {
 #define NDIS_PNP_WAKE_UP_PATTERN_MATCH			0x00000002
 #define NDIS_PNP_WAKE_UP_LINK_CHANGE			0x00000004
 
+enum net_pnp_event_code {
+	NetEventSetPower, NetEventQueryPower, NetEventQueryRemoveDevice,
+	NetEventCancelRemoveDevice, NetEventReconfigure, NetEventBindList,
+	NetEventBindsComplete, NetEventPnPCapabilities, NetEventMaximum
+};
+
+struct net_pnp_event {
+	enum net_pnp_event_code code;
+	void *buf;
+	ULONG buf_length;
+	ULONG_PTR ndis_reserved[4];
+	ULONG_PTR transport_reserved[4];
+	ULONG_PTR tdi_reserved[4];
+	ULONG_PTR tdi_client_reserved[4];
+};
+
 struct ndis_pnp_capabilities {
 	ULONG flags;
 	struct ndis_pm_wakeup_capabilities wakeup_capa;

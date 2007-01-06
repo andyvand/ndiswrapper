@@ -3400,6 +3400,24 @@ wstdcall void WIN_FUNC(NdisMCoRequestComplete,3)
 	TRACEEXIT3(return);
 }
 
+wstdcall NDIS_STATUS WIN_FUNC(NdisIMNotifiyPnPEvent,2)
+	(struct ndis_miniport_block *nmb, struct net_pnp_event *event)
+{
+	TRACEENTER2("%p, %d", nmb, event->code);
+	/* NdisWrapper never calls protocol's pnp event notifier, so
+	 * nothing to do here */
+	TRACEEXIT2(return NDIS_STATUS_SUCCESS);
+}
+
+wstdcall void WIN_FUNC(NdisCompletePnPEvent,2)
+	(NDIS_STATUS status, void *handle, struct net_pnp_event *event)
+{
+	TRACEENTER2("%d, %p, %d", status, handle, event->code);
+	/* NdisWrapper never calls protocol's pnp event notifier, so
+	 * nothing to do here */
+	TRACEEXIT2(return);
+}
+
 wstdcall NDIS_STATUS WIN_FUNC(NdisMSetMiniportSecondary,2)
 	(struct ndis_miniport_block *nmb2, struct ndis_miniport_block *nmb1)
 {
