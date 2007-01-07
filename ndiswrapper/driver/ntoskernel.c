@@ -635,7 +635,7 @@ static void timer_proc(unsigned long data)
 }
 
 void wrap_init_timer(struct nt_timer *nt_timer, enum timer_type type,
-		     struct kdpc *kdpc, struct ndis_miniport_block *nmb)
+		     struct kdpc *kdpc, struct wrap_ndis_device *wnd)
 {
 	struct wrap_timer *wrap_timer;
 	KIRQL irql;
@@ -669,8 +669,8 @@ void wrap_init_timer(struct nt_timer *nt_timer, enum timer_type type,
 	initialize_dh(&nt_timer->dh, type, 0);
 	nt_timer->wrap_timer_magic = WRAP_TIMER_MAGIC;
 	irql = nt_spin_lock_irql(&timer_lock, DISPATCH_LEVEL);
-	if (nmb)
-		InsertTailList(&nmb->wnd->timer_list, &wrap_timer->list);
+	if (wnd)
+		InsertTailList(&wnd->timer_list, &wrap_timer->list);
 	else
 		InsertTailList(&wrap_timer_list, &wrap_timer->list);
 	nt_spin_unlock_irql(&timer_lock, irql);
@@ -2096,6 +2096,7 @@ struct mdl *allocate_init_mdl(void *virt, ULONG length)
 void free_mdl(struct mdl *mdl)
 {
 	KIRQL irql;
+	struct wrap_mdl *wrap_mdl;
 
 	/* A driver may allocate Mdl with NdisAllocateBuffer and free
 	 * with IoFreeMdl (e.g., 64-bit Broadcom). Since we need to
@@ -2104,24 +2105,21 @@ void free_mdl(struct mdl *mdl)
 	 * function. We set 'pool' field in Ndis functions. */
 	if (!mdl)
 		return;
-	if (mdl->pool)
-		NdisFreeBuffer(mdl);
-	else {
-		struct wrap_mdl *wrap_mdl = (struct wrap_mdl *)
-			((char *)mdl - offsetof(struct wrap_mdl, mdl));
-		irql = nt_spin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL);
-		RemoveEntryList(&wrap_mdl->list);
-		nt_spin_unlock_irql(&ntoskernel_lock, irql);
 
-		if (mdl->flags & MDL_CACHE_ALLOCATED) {
-			DBGTRACE3("freeing mdl cache: %p, %p, %p",
-				  wrap_mdl, mdl, mdl->mappedsystemva);
-			kmem_cache_free(mdl_cache, wrap_mdl);
-		} else {
-			DBGTRACE3("freeing mdl: %p, %p, %p",
-				  wrap_mdl, mdl, mdl->mappedsystemva);
-			kfree(wrap_mdl);
-		}
+	wrap_mdl = (struct wrap_mdl *)
+		((char *)mdl - offsetof(struct wrap_mdl, mdl));
+	irql = nt_spin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL);
+	RemoveEntryList(&wrap_mdl->list);
+	nt_spin_unlock_irql(&ntoskernel_lock, irql);
+
+	if (mdl->flags & MDL_CACHE_ALLOCATED) {
+		DBGTRACE3("freeing mdl cache: %p, %p, %p",
+			  wrap_mdl, mdl, mdl->mappedsystemva);
+		kmem_cache_free(mdl_cache, wrap_mdl);
+	} else {
+		DBGTRACE3("freeing mdl: %p, %p, %p",
+			  wrap_mdl, mdl, mdl->mappedsystemva);
+		kfree(wrap_mdl);
 	}
 	return;
 }
