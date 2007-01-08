@@ -43,6 +43,7 @@
 #include <linux/ethtool.h>
 #include <linux/if_arp.h>
 #include <linux/rtnetlink.h>
+#include <linux/highmem.h>
 
 #include "winnt_types.h"
 

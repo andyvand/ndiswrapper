@@ -1043,11 +1043,11 @@ wstdcall void *WIN_FUNC(ExAllocatePoolWithTag,3)
 }
 WIN_FUNC_DECL(ExAllocatePoolWithTag,3)
 
-wstdcall void wrap_vfree(void *addr, void *ctx)
+wstdcall void vfree_nonintr(void *addr, void *ctx)
 {
 	vfree(addr);
 }
-WIN_FUNC_DECL(wrap_vfree,2)
+WIN_FUNC_DECL(wrap_nonintr,2)
 
 wstdcall void WIN_FUNC(ExFreePoolWithTag,2)
 	(void *addr, ULONG tag)
@@ -1058,7 +1058,7 @@ wstdcall void WIN_FUNC(ExFreePoolWithTag,2)
 		kfree(addr);
 	else {
 		if (in_interrupt())
-			schedule_ntos_work_item(WIN_FUNC_PTR(wrap_vfree,2),
+			schedule_ntos_work_item(WIN_FUNC_PTR(vfree_nonintr,2),
 						addr, NULL);
 		else
 			vfree(addr);

@@ -279,7 +279,7 @@ void *wrap_ExAllocatePoolWithTag(enum pool_type pool_type, SIZE_T size,
 	TRACEENTER4("pool_type: %d, size: %lu, tag: %u", pool_type,
 		    size, tag);
 
-	if (size <= KMALLOC_THRESHOLD) {
+	if (size <= (16 * 1024 - 100)) {
 		if (current_irql() < DISPATCH_LEVEL)
 			addr = wrap_kmalloc(size, GFP_KERNEL, file, line);
 		else
