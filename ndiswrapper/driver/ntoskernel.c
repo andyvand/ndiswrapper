@@ -1047,7 +1047,7 @@ wstdcall void vfree_nonintr(void *addr, void *ctx)
 {
 	vfree(addr);
 }
-WIN_FUNC_DECL(wrap_nonintr,2)
+WIN_FUNC_DECL(vfree_nonintr,2)
 
 wstdcall void WIN_FUNC(ExFreePoolWithTag,2)
 	(void *addr, ULONG tag)
