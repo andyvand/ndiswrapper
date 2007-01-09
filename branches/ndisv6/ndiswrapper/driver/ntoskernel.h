@@ -708,6 +708,8 @@ NTSTATUS IoAllocateDriverObjectExtension
 	 void **ext) wstdcall;
 void *IoGetDriverObjectExtension(struct driver_object *drv,
 				 void *client_id) wstdcall;
+void IoFreeDriverObjectExtension(struct driver_object *drv_obj,
+				 void *client_id) wstdcall;
 struct device_object *IoAttachDeviceToDeviceStack
 	(struct device_object *src, struct device_object *dst) wstdcall;
 void KeInitializeEvent(struct nt_event *nt_event, enum event_type type,

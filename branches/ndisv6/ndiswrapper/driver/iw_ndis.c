@@ -1855,6 +1855,8 @@ static int priv_power_profile(struct net_device *dev,
 	ULONG profile_inf;
 
 	TRACEENTER2("");
+	TODO();
+#if 0
 	miniport = &wnd->wd->driver->ndis_driver->miniport;
 	if (!miniport->pnp_event_notify)
 		TRACEEXIT2(return -EOPNOTSUPP);
@@ -1868,6 +1870,7 @@ static int priv_power_profile(struct net_device *dev,
 	LIN2WIN4(miniport->pnp_event_notify, wnd->adapter_ctx,
 		 NdisDevicePnPEventPowerProfileChanged,
 		 &profile_inf, sizeof(profile_inf));
+#endif
 	TRACEEXIT2(return 0);
 }
 
