@@ -91,7 +91,9 @@ wstdcall NDIS_STATUS WIN_FUNC(NdisMRegisterMiniportDriver,5)
 	struct wrap_driver *wrap_driver;
 	struct wrap_ndis_driver *ndis_driver;
 
-	TRACEENTER2("%p, %p",drv_obj,  mp_driver_ctx);
+	TRACEENTER2("%p, %p, 0x%x, 0x%x", drv_obj, mp_driver_ctx,
+		    mp_driver_chars->major_version,
+		    mp_driver_chars->minor_version);
 	if (mp_driver_chars->major_version != 0x6) {
 		WARNING("invalid version: 0x%x", mp_driver_chars->major_version);
 		return NDIS_STATUS_BAD_VERSION;
@@ -110,6 +112,8 @@ wstdcall NDIS_STATUS WIN_FUNC(NdisMRegisterMiniportDriver,5)
 		TRACEEXIT1(return NDIS_STATUS_RESOURCES);
 	wrap_driver->ndis_driver = ndis_driver;
 	ndis_driver->wrap_driver = wrap_driver;
+	ndis_driver->major_version = mp_driver_chars->major_version;
+	ndis_driver->minor_version = mp_driver_chars->minor_version;
 	ndis_driver->mp_driver_ctx = mp_driver_ctx;
 	memcpy(&ndis_driver->mp_driver_chars, mp_driver_chars,
 	       sizeof(ndis_driver->mp_driver_chars));
@@ -120,7 +124,8 @@ wstdcall NDIS_STATUS WIN_FUNC(NdisMRegisterMiniportDriver,5)
 				  mp_driver_ctx);
 		if (status != NDIS_STATUS_SUCCESS) {
 			WARNING("failed: 0x%x", status);
-			/* TODO: clean up */
+			IoFreeDriverObjectExtension(
+				drv_obj, (void *)NDIS_DRIVER_CLIENT_ID);
 			return NDIS_STATUS_FAILURE;
 		}
 	}
@@ -128,16 +133,17 @@ wstdcall NDIS_STATUS WIN_FUNC(NdisMRegisterMiniportDriver,5)
 }
 
 wstdcall void WIN_FUNC(NdisMDeregisterMiniportDriver,1)
-	(void *driver_handle)
+	(struct wrap_driver *driver)
 {
-//	struct wrap_driver *wrap_driver = driver_handle;
-	/* TODO */
+	TRACEENTER1("%p", driver);
+	/* TOODO */
 }
 
 wstdcall NDIS_STATUS WIN_FUNC(NdisSetOptionalHandlers,2)
 	(void *handle, struct ndis_driver_optional_handlers *opt_handlers)
 {
 	struct wrap_driver *wrap_driver = handle;
+
 	if (opt_handlers->header.type ==
 	    NDIS_OBJECT_TYPE_MINIPORT_PNP_CHARACTERISTICS) {
 		memcpy(&wrap_driver->ndis_driver->mp_pnp_chars, opt_handlers,
@@ -160,7 +166,7 @@ wstdcall NDIS_STATUS WIN_FUNC(NdisAllocateMemoryWithTag,3)
 }
 
 wstdcall void *WIN_FUNC(NdisAllocateMemoryWithTagPriority,4)
-	(struct ndis_miniport_block *nmb, UINT length, ULONG tag,
+	(struct wrap_ndis_device *wnd, UINT length, ULONG tag,
 	 enum mm_page_priority priority)
 {
 	void *res;
@@ -202,11 +208,10 @@ noregparm void WIN_FUNC(NdisWriteErrorLogEntry,12)
 }
 
 wstdcall void WIN_FUNC(NdisOpenConfiguration,3)
-	(NDIS_STATUS *status, struct ndis_miniport_block **conf_handle,
-	 struct ndis_miniport_block *handle)
+	(NDIS_STATUS *status, void **conf_handle, struct wrap_ndis_device *wnd)
 {
 	TRACEENTER2("%p", conf_handle);
-	*conf_handle = handle;
+	*conf_handle = wnd;
 	*status = NDIS_STATUS_SUCCESS;
 	TRACEEXIT2(return);
 }
@@ -214,7 +219,8 @@ wstdcall void WIN_FUNC(NdisOpenConfiguration,3)
 wstdcall NDIS_STATUS WIN_FUNC(NdisOpenConfigurationEx,2)
 	(struct ndis_configuration_object *object, void **handle)
 {
-	TRACEENTER2("%p", object);
+	TRACEENTER2("%p, %p", object, object->handle);
+	/* TODO: the handle can be either wnd or wrap_driver */
 	*handle = object->handle;
 	TRACEEXIT2(return NDIS_STATUS_SUCCESS);
 }
@@ -261,6 +267,193 @@ wstdcall void WIN_FUNC(NdisCloseConfiguration,1)
 	 * removed */
 	TRACEENTER2("%p", handle);
 	return;
+}
+
+static struct ndis_configuration_parameter *
+ndis_encode_setting(struct wrap_device_setting *setting,
+		    enum ndis_parameter_type type)
+{
+	struct ansi_string ansi;
+	struct ndis_configuration_parameter *param;
+
+	param = setting->encoded;
+	if (param) {
+		if (param->type == type)
+			TRACEEXIT2(return param);
+		if (param->type == NdisParameterString)
+			RtlFreeUnicodeString(&param->data.string);
+		setting->encoded = NULL;
+	} else
+		param = ExAllocatePoolWithTag(NonPagedPool, sizeof(*param), 0);
+	if (!param) {
+		ERROR("couldn't allocate memory");
+		return NULL;
+	}
+	switch(type) {
+	case NdisParameterInteger:
+		param->data.integer = simple_strtol(setting->value, NULL, 0);
+		DBGTRACE2("%u", (ULONG)param->data.integer);
+		break;
+	case NdisParameterHexInteger:
+		param->data.integer = simple_strtol(setting->value, NULL, 16);
+		DBGTRACE2("%u", (ULONG)param->data.integer);
+		break;
+	case NdisParameterString:
+		RtlInitAnsiString(&ansi, setting->value);
+		DBGTRACE2("'%s'", ansi.buf);
+		if (RtlAnsiStringToUnicodeString(&param->data.string,
+						 &ansi, TRUE)) {
+			ExFreePool(param);
+			TRACEEXIT2(return NULL);
+		}
+		break;
+	default:
+		ERROR("unknown type: %d", type);
+		ExFreePool(param);
+		return NULL;
+	}
+	param->type = type;
+	setting->encoded = param;
+	TRACEEXIT2(return param);
+}
+
+static int ndis_decode_setting(struct wrap_device_setting *setting,
+			       struct ndis_configuration_parameter *param)
+{
+	struct ansi_string ansi;
+	struct ndis_configuration_parameter *prev;
+
+	TRACEENTER2("%p, %p", setting, param);
+	prev = setting->encoded;
+	if (prev && prev->type == NdisParameterString) {
+		RtlFreeUnicodeString(&prev->data.string);
+		setting->encoded = NULL;
+	}
+	switch(param->type) {
+	case NdisParameterInteger:
+		snprintf(setting->value, sizeof(u32), "%u", param->data.integer);
+		setting->value[sizeof(ULONG)] = 0;
+		break;
+	case NdisParameterHexInteger:
+		snprintf(setting->value, sizeof(u32), "%x", param->data.integer);
+		setting->value[sizeof(ULONG)] = 0;
+		break;
+	case NdisParameterString:
+		ansi.buf = setting->value;
+		ansi.max_length = MAX_SETTING_VALUE_LEN;
+		if ((RtlUnicodeStringToAnsiString(&ansi, &param->data.string,
+						  FALSE) != STATUS_SUCCESS)
+		    || ansi.length >= MAX_SETTING_VALUE_LEN) {
+			TRACEEXIT1(return -1);
+		}
+		if (ansi.length == ansi.max_length)
+			ansi.length--;
+		setting->value[ansi.length] = 0;
+		break;
+	default:
+		DBGTRACE2("unknown setting type: %d", param->type);
+		return -1;
+	}
+	DBGTRACE2("setting changed %s='%s', %d", setting->name, setting->value,
+		  ansi.length);
+	return 0;
+}
+
+wstdcall void WIN_FUNC(NdisReadConfiguration,5)
+	(NDIS_STATUS *status, struct ndis_configuration_parameter **param,
+	 struct wrap_ndis_device *wnd, struct unicode_string *key,
+	 enum ndis_parameter_type type)
+{
+	struct wrap_device_setting *setting;
+	struct ansi_string ansi;
+	char *keyname;
+	int ret;
+
+	TRACEENTER2("wnd: %p", wnd);
+	ret = RtlUnicodeStringToAnsiString(&ansi, key, TRUE);
+	if (ret || ansi.buf == NULL) {
+		*param = NULL;
+		*status = NDIS_STATUS_FAILURE;
+		RtlFreeAnsiString(&ansi);
+		TRACEEXIT2(return);
+	}
+	DBGTRACE3("%d, %s", type, ansi.buf);
+	keyname = ansi.buf;
+
+	if (down_interruptible(&loader_mutex))
+		WARNING("couldn't obtain loader_mutex");
+	nt_list_for_each_entry(setting, &wnd->wd->settings, list) {
+		if (strnicmp(keyname, setting->name, ansi.length) == 0) {
+			DBGTRACE2("setting %s='%s'", keyname, setting->value);
+			up(&loader_mutex);
+			*param = ndis_encode_setting(setting, type);
+			if (*param)
+				*status = NDIS_STATUS_SUCCESS;
+			else
+				*status = NDIS_STATUS_FAILURE;
+			RtlFreeAnsiString(&ansi);
+			DBGTRACE2("%d", *status);
+			TRACEEXIT2(return);
+		}
+	}
+	up(&loader_mutex);
+	DBGTRACE2("setting %s not found (type:%d)", keyname, type);
+	*status = NDIS_STATUS_FAILURE;
+	RtlFreeAnsiString(&ansi);
+	TRACEEXIT2(return);
+}
+
+wstdcall void WIN_FUNC(NdisWriteConfiguration,4)
+	(NDIS_STATUS *status, struct wrap_ndis_device *wnd,
+	 struct unicode_string *key, struct ndis_configuration_parameter *param)
+{
+	struct ansi_string ansi;
+	char *keyname;
+	struct wrap_device_setting *setting;
+
+	TRACEENTER2("wnd: %p", wnd);
+	if (RtlUnicodeStringToAnsiString(&ansi, key, TRUE)) {
+		*status = NDIS_STATUS_FAILURE;
+		TRACEEXIT2(return);
+	}
+	keyname = ansi.buf;
+	DBGTRACE2("%s", keyname);
+
+	if (down_interruptible(&loader_mutex))
+		WARNING("couldn't obtain loader_mutex");
+	nt_list_for_each_entry(setting, &wnd->wd->settings, list) {
+		if (strnicmp(keyname, setting->name, ansi.length) == 0) {
+			up(&loader_mutex);
+			if (ndis_decode_setting(setting, param))
+				*status = NDIS_STATUS_FAILURE;
+			else
+				*status = NDIS_STATUS_SUCCESS;
+			RtlFreeAnsiString(&ansi);
+			TRACEEXIT2(return);
+		}
+	}
+	up(&loader_mutex);
+	setting = kmalloc(sizeof(*setting), GFP_KERNEL);
+	if (setting) {
+		memset(setting, 0, sizeof(*setting));
+		if (ansi.length == ansi.max_length)
+			ansi.length--;
+		memcpy(setting->name, keyname, ansi.length);
+		setting->name[ansi.length] = 0;
+		if (ndis_decode_setting(setting, param))
+			*status = NDIS_STATUS_FAILURE;
+		else {
+			*status = NDIS_STATUS_SUCCESS;
+			if (down_interruptible(&loader_mutex))
+				WARNING("couldn't obtain loader_mutex");
+			InsertTailList(&wnd->wd->settings, &setting->list);
+			up(&loader_mutex);
+		}
+	} else
+		*status = NDIS_STATUS_RESOURCES;
+
+	RtlFreeAnsiString(&ansi);
+	TRACEEXIT2(return);
 }
 
 wstdcall void WIN_FUNC(NdisOpenFile,5)
@@ -374,193 +567,6 @@ wstdcall void WIN_FUNC(NdisGetBufferPhysicalArraySize,2)
 	TRACEEXIT3(return);
 }
 
-static struct ndis_configuration_parameter *
-ndis_encode_setting(struct wrap_device_setting *setting,
-		    enum ndis_parameter_type type)
-{
-	struct ansi_string ansi;
-	struct ndis_configuration_parameter *param;
-
-	param = setting->encoded;
-	if (param) {
-		if (param->type == type)
-			TRACEEXIT2(return param);
-		if (param->type == NdisParameterString)
-			RtlFreeUnicodeString(&param->data.string);
-		setting->encoded = NULL;
-	} else
-		param = ExAllocatePoolWithTag(NonPagedPool, sizeof(*param), 0);
-	if (!param) {
-		ERROR("couldn't allocate memory");
-		return NULL;
-	}
-	switch(type) {
-	case NdisParameterInteger:
-		param->data.integer = simple_strtol(setting->value, NULL, 0);
-		DBGTRACE2("%u", (ULONG)param->data.integer);
-		break;
-	case NdisParameterHexInteger:
-		param->data.integer = simple_strtol(setting->value, NULL, 16);
-		DBGTRACE2("%u", (ULONG)param->data.integer);
-		break;
-	case NdisParameterString:
-		RtlInitAnsiString(&ansi, setting->value);
-		DBGTRACE2("'%s'", ansi.buf);
-		if (RtlAnsiStringToUnicodeString(&param->data.string,
-						 &ansi, TRUE)) {
-			ExFreePool(param);
-			TRACEEXIT2(return NULL);
-		}
-		break;
-	default:
-		ERROR("unknown type: %d", type);
-		ExFreePool(param);
-		return NULL;
-	}
-	param->type = type;
-	setting->encoded = param;
-	TRACEEXIT2(return param);
-}
-
-static int ndis_decode_setting(struct wrap_device_setting *setting,
-			       struct ndis_configuration_parameter *param)
-{
-	struct ansi_string ansi;
-	struct ndis_configuration_parameter *prev;
-
-	TRACEENTER2("%p, %p", setting, param);
-	prev = setting->encoded;
-	if (prev && prev->type == NdisParameterString) {
-		RtlFreeUnicodeString(&prev->data.string);
-		setting->encoded = NULL;
-	}
-	switch(param->type) {
-	case NdisParameterInteger:
-		snprintf(setting->value, sizeof(u32), "%u", param->data.integer);
-		setting->value[sizeof(ULONG)] = 0;
-		break;
-	case NdisParameterHexInteger:
-		snprintf(setting->value, sizeof(u32), "%x", param->data.integer);
-		setting->value[sizeof(ULONG)] = 0;
-		break;
-	case NdisParameterString:
-		ansi.buf = setting->value;
-		ansi.max_length = MAX_SETTING_VALUE_LEN;
-		if ((RtlUnicodeStringToAnsiString(&ansi, &param->data.string,
-						  FALSE) != STATUS_SUCCESS)
-		    || ansi.length >= MAX_SETTING_VALUE_LEN) {
-			TRACEEXIT1(return -1);
-		}
-		if (ansi.length == ansi.max_length)
-			ansi.length--;
-		setting->value[ansi.length] = 0;
-		break;
-	default:
-		DBGTRACE2("unknown setting type: %d", param->type);
-		return -1;
-	}
-	DBGTRACE2("setting changed %s='%s', %d", setting->name, setting->value,
-		  ansi.length);
-	return 0;
-}
-
-wstdcall void WIN_FUNC(NdisReadConfiguration,5)
-	(NDIS_STATUS *status, struct ndis_configuration_parameter **param,
-	 struct wrap_ndis_device *wnd, struct unicode_string *key,
-	 enum ndis_parameter_type type)
-{
-	struct wrap_device_setting *setting;
-	struct ansi_string ansi;
-	char *keyname;
-	int ret;
-
-	TRACEENTER2("nmb: %p", nmb);
-	ret = RtlUnicodeStringToAnsiString(&ansi, key, TRUE);
-	if (ret || ansi.buf == NULL) {
-		*param = NULL;
-		*status = NDIS_STATUS_FAILURE;
-		RtlFreeAnsiString(&ansi);
-		TRACEEXIT2(return);
-	}
-	DBGTRACE3("%d, %s", type, ansi.buf);
-	keyname = ansi.buf;
-
-	if (down_interruptible(&loader_mutex))
-		WARNING("couldn't obtain loader_mutex");
-	nt_list_for_each_entry(setting, &wnd->wd->settings, list) {
-		if (strnicmp(keyname, setting->name, ansi.length) == 0) {
-			DBGTRACE2("setting %s='%s'", keyname, setting->value);
-			up(&loader_mutex);
-			*param = ndis_encode_setting(setting, type);
-			if (*param)
-				*status = NDIS_STATUS_SUCCESS;
-			else
-				*status = NDIS_STATUS_FAILURE;
-			RtlFreeAnsiString(&ansi);
-			DBGTRACE2("%d", *status);
-			TRACEEXIT2(return);
-		}
-	}
-	up(&loader_mutex);
-	DBGTRACE2("setting %s not found (type:%d)", keyname, type);
-	*status = NDIS_STATUS_FAILURE;
-	RtlFreeAnsiString(&ansi);
-	TRACEEXIT2(return);
-}
-
-wstdcall void WIN_FUNC(NdisWriteConfiguration,4)
-	(NDIS_STATUS *status, struct wrap_ndis_device *wnd,
-	 struct unicode_string *key, struct ndis_configuration_parameter *param)
-{
-	struct ansi_string ansi;
-	char *keyname;
-	struct wrap_device_setting *setting;
-
-	TRACEENTER2("wnd: %p", wnd);
-	if (RtlUnicodeStringToAnsiString(&ansi, key, TRUE)) {
-		*status = NDIS_STATUS_FAILURE;
-		TRACEEXIT2(return);
-	}
-	keyname = ansi.buf;
-	DBGTRACE2("%s", keyname);
-
-	if (down_interruptible(&loader_mutex))
-		WARNING("couldn't obtain loader_mutex");
-	nt_list_for_each_entry(setting, &wnd->wd->settings, list) {
-		if (strnicmp(keyname, setting->name, ansi.length) == 0) {
-			up(&loader_mutex);
-			if (ndis_decode_setting(setting, param))
-				*status = NDIS_STATUS_FAILURE;
-			else
-				*status = NDIS_STATUS_SUCCESS;
-			RtlFreeAnsiString(&ansi);
-			TRACEEXIT2(return);
-		}
-	}
-	up(&loader_mutex);
-	setting = kmalloc(sizeof(*setting), GFP_KERNEL);
-	if (setting) {
-		memset(setting, 0, sizeof(*setting));
-		if (ansi.length == ansi.max_length)
-			ansi.length--;
-		memcpy(setting->name, keyname, ansi.length);
-		setting->name[ansi.length] = 0;
-		if (ndis_decode_setting(setting, param))
-			*status = NDIS_STATUS_FAILURE;
-		else {
-			*status = NDIS_STATUS_SUCCESS;
-			if (down_interruptible(&loader_mutex))
-				WARNING("couldn't obtain loader_mutex");
-			InsertTailList(&wnd->wd->settings, &setting->list);
-			up(&loader_mutex);
-		}
-	} else
-		*status = NDIS_STATUS_RESOURCES;
-
-	RtlFreeAnsiString(&ansi);
-	TRACEEXIT2(return);
-}
-
 wstdcall void WIN_FUNC(NdisInitializeString,2)
 	(struct unicode_string *dest, UCHAR *src)
 {
@@ -623,13 +629,16 @@ wstdcall NDIS_STATUS WIN_FUNC(NdisMSetMiniportAttributes,2)
 
 	switch (header->type) {
 	case NDIS_OBJECT_TYPE_MINIPORT_ADAPTER_REGISTRATION_ATTRIBUTES:
-		memcpy(&wnd->registration_attrs, mp_adapter_attrs,
-		       sizeof(wnd->registration_attrs));
-		wnd->adapter_ctx = wnd->registration_attrs.ctx;
+		wnd->adapter_ctx = mp_adapter_attrs->reg_attrs.ctx;
+		wnd->attribute_flags =
+			mp_adapter_attrs->reg_attrs.attribute_flags;
+		wnd->hangcheck_interval =
+			mp_adapter_attrs->reg_attrs.hangcheck_secs * HZ;
+		wnd->interface_type =
+			mp_adapter_attrs->reg_attrs.interface_type;
 		break;
 	case NDIS_OBJECT_TYPE_MINIPORT_ADD_DEVICE_REGISTRATION_ATTRIBUTES:
-		memcpy(&wnd->add_device_attrs, mp_adapter_attrs,
-		       sizeof(wnd->add_device_attrs));
+		wnd->add_dev_ctx = mp_adapter_attrs->add_dev_attrs.ctx;
 		break;
 	case NDIS_OBJECT_TYPE_MINIPORT_ADAPTER_GENERAL_ATTRIBUTES:
 		memcpy(&wnd->general_attrs, mp_adapter_attrs,
@@ -641,27 +650,6 @@ wstdcall NDIS_STATUS WIN_FUNC(NdisMSetMiniportAttributes,2)
 		break;
 	}
 	return NDIS_STATUS_SUCCESS;
-}
-
-wstdcall void WIN_FUNC(NdisMSetAttributesEx,5)
-	(struct wrap_ndis_device *wnd, void *adapter_ctx,
-	 UINT hangcheck_interval, UINT attributes, ULONG adaptortype)
-{
-	TRACEENTER2("%p, %p %d %08x, %d", wnd, adapter_ctx,
-		    hangcheck_interval, attributes, adaptortype);
-	wnd->adapter_ctx = adapter_ctx;
-
-	if (attributes & NDIS_ATTRIBUTE_BUS_MASTER)
-		pci_set_master(wnd->wd->pci.pdev);
-
-	wnd->attributes = attributes;
-
-	if (hangcheck_interval > 0)
-		wnd->hangcheck_interval = 2 * hangcheck_interval * HZ;
-	else
-		wnd->hangcheck_interval = 2 * HZ;
-
-	TRACEEXIT2(return);
 }
 
 wstdcall ULONG WIN_FUNC(NdisReadPciSlotInformation,5)
@@ -859,10 +847,11 @@ wstdcall struct net_buffer *WIN_FUNC(NdisAllocateNetBuffer,4)
 	TRACEENTER4("%p, %p, %u, %lu", pool, mdl, data_offset, data_length);
 	irql = nt_spin_lock_irql(&pool->lock, DISPATCH_LEVEL);
 	if (pool->count) {
-		assert(pool->slist.next);
-		buffer = container_of(pool->slist.next, struct net_buffer,
+		void *entry = pool->slist.next;
+		assert(entry);
+		buffer = container_of(entry, struct net_buffer,
 				      header.link.next);
-		pool->slist.next = pool->slist.next->next;
+		pool->slist.next = ((struct nt_slist *)entry)->next;
 		pool->count--;
 	} else
 		buffer = NULL;
@@ -921,7 +910,7 @@ wstdcall struct net_buffer *WIN_FUNC(NdisAllocateNetBufferMdlAndData,1)
 		kfree(data);
 		return NULL;
 	}
-	buffer = NdisAllocateNetBuffer(pool, mdl, 0, pool->data_length);
+	buffer = NdisAllocateNetBuffer(pool, mdl, 0, 0);
 	DBGTRACE4("%p, %p", mdl, buffer);
 	return buffer;
 }
@@ -1032,11 +1021,11 @@ wstdcall struct net_buffer_list *WIN_FUNC(NdisAllocateNetBufferList,3)
 
 	irql = nt_spin_lock_irql(&pool->list_pool.lock, DISPATCH_LEVEL);
 	if (pool->list_pool.count) {
-		assert(pool->list_pool.slist.next);
-		buffer_list = container_of(pool->list_pool.slist.next,
-					   struct net_buffer_list,
+		void *entry = pool->list_pool.slist.next;
+		assert(entry);
+		buffer_list = container_of(entry, struct net_buffer_list,
 					   header.link.next);
-		pool->list_pool.slist.next = pool->list_pool.slist.next->next;
+		pool->list_pool.slist.next = ((struct nt_slist *)entry)->next;
 		pool->list_pool.count--;
 	} else
 		buffer_list = NULL;
@@ -1555,55 +1544,43 @@ wstdcall void WIN_FUNC(NdisMRegisterAdapterShutdownHandler,3)
 	(struct wrap_ndis_device *wnd, void *ctx, void *func)
 {
 	TRACEENTER1("%p", func);
-	wnd->wd->driver->ndis_driver->miniport.shutdown = func;
+//	wnd->wd->driver->ndis_driver->miniport.shutdown = func;
 	wnd->shutdown_ctx = ctx;
 }
 
 wstdcall void WIN_FUNC(NdisMDeregisterAdapterShutdownHandler,1)
 	(struct wrap_ndis_device *wnd)
 {
-	wnd->wd->driver->ndis_driver->miniport.shutdown = NULL;
+//	wnd->wd->driver->ndis_driver->miniport.shutdown = NULL;
 	wnd->shutdown_ctx = NULL;
 }
 
 static void ndis_irq_handler(unsigned long data)
 {
 	struct wrap_ndis_device *wnd = (struct wrap_ndis_device *)data;
-	struct miniport_char *miniport;
-
-	miniport = &wnd->wd->driver->ndis_driver->miniport;
-	if_serialize_lock(wnd);
-	LIN2WIN1(miniport->handle_interrupt, wnd->adapter_ctx);
-	if (miniport->enable_interrupt)
-		LIN2WIN1(miniport->enable_interrupt, wnd->adapter_ctx);
-	if_serialize_unlock(wnd);
+	LIN2WIN4(wnd->interrupt_chars.isr_dpc_handler, wnd->isr_ctx, NULL,
+		 0, 0);
 }
 
 irqreturn_t mp_isr(int irq, void *data ISR_PT_REGS_PARAM_DECL)
 {
-	struct ndis_interrupt *interrupt = data;
-	struct wrap_ndis_device *wnd = interrupt->wnd;
-	struct miniport_char *miniport;
+	struct wrap_ndis_device *wnd = data;
 	BOOLEAN recognized, queue_handler;
 	ULONG proc = 0;
 
-	miniport = &wnd->wd->driver->ndis_driver->miniport;
-	/* this spinlock should be shared with NdisMSynchronizeWithInterrupt
+	/* this spinlock should be shared with NdisMSynchronizeWithInterruptEx
 	 */
-	nt_spin_lock(&interrupt->lock);
-#if 0
-	recognized = LIN2WIN2(miniport->isr, &queue_handler, &proc);
-#else
-	recognized = queue_handler = 0;
-#endif
-	nt_spin_unlock(&ndis_irq->lock);
+	nt_spin_lock(&wnd->isr_lock);
+	recognized = LIN2WIN3(wnd->interrupt_chars.isr, wnd->isr_ctx,
+			      &queue_handler, &proc);
+	nt_spin_unlock(&wnd->isr_lock);
 	/* TODO: schedule worker on processors indicated */
-	if (recognized) {
-		if (queue_handler || proc)
-			tasklet_schedule(&wnd->irq_tasklet);
+	if (queue_handler || proc)
+		tasklet_schedule(&wnd->irq_tasklet);
+	if (recognized)
 		return IRQ_HANDLED;
-	}
-	return IRQ_NONE;
+	else
+		return IRQ_NONE;
 }
 
 wstdcall NDIS_STATUS WIN_FUNC(NdisMRegisterInterruptEx,4)
@@ -1611,44 +1588,37 @@ wstdcall NDIS_STATUS WIN_FUNC(NdisMRegisterInterruptEx,4)
 	 struct mp_interrupt_characteristics *mp_interrupt_chars,
 	 void **handle)
 {
-	struct ndis_interrupt *interrupt = &wnd->interrupt;
-
 	TRACEENTER1("%p, %p", wnd, isr_ctx);
-	interrupt->wnd = wnd;
-	nt_spin_lock_init(&interrupt->lock);
+	memcpy(&wnd->interrupt_chars, mp_interrupt_chars,
+	       sizeof(wnd->interrupt_chars));
+	wnd->isr_ctx = isr_ctx;
+	nt_spin_lock_init(&wnd->isr_lock);
 	tasklet_init(&wnd->irq_tasklet, ndis_irq_handler, (unsigned long)wnd);
-	if (request_irq(wnd->interrupt.vector, mp_isr, SA_SHIRQ,
-			wnd->net_dev->name, interrupt)) {
+	mp_interrupt_chars->interrupt_type = NDIS_CONNECT_LINE_BASED;
+	*handle = wnd;
+	if (request_irq(wnd->wd->pci.pdev->irq, mp_isr, SA_SHIRQ,
+			wnd->net_dev->name, wnd)) {
 		printk(KERN_WARNING "%s: request for IRQ %d failed\n",
-		       DRIVER_NAME, wnd->interrupt.vector);
+		       DRIVER_NAME, wnd->wd->pci.pdev->irq);
 		TRACEEXIT1(return NDIS_STATUS_RESOURCES);
 	}
 	printk(KERN_INFO "%s: using IRQ %d\n",
-	       DRIVER_NAME, wnd->interrupt.vector);
-	*handle = interrupt;
+	       DRIVER_NAME, wnd->wd->pci.pdev->irq);
 	TRACEEXIT1(return NDIS_STATUS_SUCCESS);
 }
 
 wstdcall void WIN_FUNC(NdisMDeregisterInterruptEx,1)
-	(struct ndis_interrupt *interrupt)
+	(struct wrap_ndis_device *wnd)
 {
-	struct wrap_ndis_device *wnd;
+	TRACEENTER1("%p", wnd);
 
-	TRACEENTER1("%p", interrupt);
-
-	if (!interrupt)
-		TRACEEXIT1(return);
-	wnd = interrupt->wnd;
-	if (!wnd)
-		TRACEEXIT1(return);
-
-	free_irq(wnd->interrupt.vector, wnd);
+	free_irq(wnd->wd->pci.pdev->irq, wnd);
 	tasklet_kill(&wnd->irq_tasklet);
 	TRACEEXIT1(return);
 }
 
 wstdcall BOOLEAN WIN_FUNC(NdisMSynchronizeWithInterruptEx,3)
-	(struct ndis_interrupt *interrupt, ULONG msg_id, void *func, void *ctx)
+	(struct wrap_ndis_device *wnd, ULONG msg_id, void *func, void *ctx)
 {
 	BOOLEAN ret;
 	BOOLEAN (*sync_func)(void *ctx) wstdcall;
@@ -1656,9 +1626,9 @@ wstdcall BOOLEAN WIN_FUNC(NdisMSynchronizeWithInterruptEx,3)
 
 	TRACEENTER6("%p %p", func, ctx);
 	sync_func = func;
-	nt_spin_lock_irqsave(&interrupt->lock, flags);
+	nt_spin_lock_irqsave(&wnd->isr_lock, flags);
 	ret = LIN2WIN1(sync_func, ctx);
-	nt_spin_unlock_irqrestore(&interrupt->lock, flags);
+	nt_spin_unlock_irqrestore(&wnd->isr_lock, flags);
 	DBGTRACE6("ret: %d", ret);
 	TRACEEXIT6(return ret);
 }
@@ -1706,7 +1676,7 @@ wstdcall void WIN_FUNC(NdisMIndicateReceiveNetBufferLists,5)
 	(struct wrap_ndis_device *wnd, struct net_buffer_list *buffer_list,
 	NDIS_PORT_NUMBER port, ULONG num_lists, ULONG rx_flags)
 {
-
+	TODO();
 }
 
 wstdcall void WIN_FUNC(NdisMSendNetBufferListsComplete,3)

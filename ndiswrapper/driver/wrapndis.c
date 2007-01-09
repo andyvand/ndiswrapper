@@ -34,6 +34,8 @@ static int ndis_remove_device(struct wrap_ndis_device *wnd);
 static void set_multicast_list(struct wrap_ndis_device *wnd);
 static int ndis_net_dev_open(struct net_device *net_dev);
 static int ndis_net_dev_close(struct net_device *net_dev);
+NDIS_STATUS miniport_pnp_event(struct wrap_ndis_device *wnd,
+			       enum ndis_device_pnp_event event);
 
 static inline int ndis_wait_comm_completion(struct wrap_ndis_device *wnd)
 {
@@ -157,9 +159,8 @@ NDIS_STATUS miniport_reset(struct wrap_ndis_device *wnd)
 static NDIS_STATUS miniport_init(struct wrap_ndis_device *wnd)
 {
 	NDIS_STATUS status;
-	struct mp_driver_characteristics *mp_driver;
+	struct wrap_ndis_driver *ndis_driver;
 	struct mp_init_params init_params;
-	struct ndis_pnp_capabilities pnp_capa;
 
 	TRACEENTER1("irql: %d", current_irql());
 	if (test_bit(HW_INITIALIZED, &wnd->hw_status)) {
@@ -167,13 +168,32 @@ static NDIS_STATUS miniport_init(struct wrap_ndis_device *wnd)
 		return NDIS_STATUS_FAILURE;
 	}
 
-	if (!wnd->wd->driver->ndis_driver ||
-	    !wnd->wd->driver->ndis_driver->miniport.init) {
+	if (!wnd->wd->driver->ndis_driver) {
 		WARNING("assuming WDM (non-NDIS) driver");
 		TRACEEXIT1(return NDIS_STATUS_NOT_RECOGNIZED);
 	}
-	mp_driver = &wnd->wd->driver->ndis_driver->mp_driver_chars;
-	status = LIN2WIN3(mp_driver->initialize, wnd, wnd, &init_params);
+	ndis_driver = wnd->wd->driver->ndis_driver;
+	memset(&init_params, 0, sizeof(init_params));
+	init_params.header.type = NDIS_OBJECT_TYPE_MINIPORT_INIT_PARAMETERS;
+	init_params.header.revision = NDIS_MINIPORT_INIT_PARAMETERS_REVISION_1;
+	init_params.header.size = sizeof(init_params);
+	init_params.allocated_resources =
+		&wnd->wd->resource_list->list[0].partial_resource_list;
+	init_params.mp_add_dev_ctx = wnd->add_dev_ctx;
+	init_params.if_index = 0;
+	init_params.net_luid.info.if_type = IF_TYPE_IEEE80211;
+	init_params.port_auth_states.header.type = NDIS_OBJECT_TYPE_DEFAULT;
+	init_params.port_auth_states.header.revision =
+		NDIS_PORT_AUTHENTICATION_PARAMETERS_REVISION_1;
+	init_params.port_auth_states.header.size =
+		sizeof(init_params.port_auth_states);
+	init_params.port_auth_states.tx_control_state =
+		NdisPortControlStateUnknown;
+	init_params.port_auth_states.rx_control_state =
+		NdisPortControlStateUnknown;
+
+	status = LIN2WIN3(ndis_driver->mp_driver_chars.initialize,
+			  wnd, wnd, &init_params);
 	DBGTRACE1("init returns: %08X, irql: %d", status, current_irql());
 	if (status != NDIS_STATUS_SUCCESS) {
 		WARNING("couldn't initialize device: %08X", status);
@@ -184,19 +204,13 @@ static NDIS_STATUS miniport_init(struct wrap_ndis_device *wnd)
 	 * fail after boot */
 	sleep_hz(HZ / 2);
 	set_bit(HW_INITIALIZED, &wnd->hw_status);
-	/* the description about NDIS_ATTRIBUTE_NO_HALT_ON_SUSPEND is
-	 * misleading/confusing; we just ignore it */
-	status = miniport_query_info(wnd, OID_PNP_CAPABILITIES,
-				     &pnp_capa, sizeof(pnp_capa));
-	if (status == NDIS_STATUS_SUCCESS)
-		wnd->attributes |= NDIS_ATTRIBUTE_NO_HALT_ON_SUSPEND;
-	else
-		wnd->attributes &= ~NDIS_ATTRIBUTE_NO_HALT_ON_SUSPEND;
-	DBGTRACE1("%d", pnp_capa.wakeup_capa.min_magic_packet_wakeup);
+	status = miniport_pnp_event(wnd, NdisDevicePnPEventPowerProfileChanged);
+	if (status != NDIS_STATUS_SUCCESS)
+		DBGTRACE1("couldn't set power profile: %08X", status);
 	/* although some NDIS drivers support suspend, Linux kernel
 	 * has issues with suspending USB devices */
 	if (wrap_is_usb_bus(wnd->wd->dev_bus))
-		wnd->attributes &= ~NDIS_ATTRIBUTE_NO_HALT_ON_SUSPEND;
+		wnd->attribute_flags &= ~NDIS_ATTRIBUTE_NO_HALT_ON_SUSPEND;
 	TRACEEXIT1(return NDIS_STATUS_SUCCESS);
 }
 
@@ -204,42 +218,48 @@ static NDIS_STATUS miniport_init(struct wrap_ndis_device *wnd)
 static void miniport_halt(struct wrap_ndis_device *wnd)
 {
 	struct mp_driver_characteristics *mp_driver;
+	enum ndis_halt_action halt_action;
 
 	TRACEENTER1("%p", wnd);
-	mp_driver = &wnd->wd->driver->ndis_driver->mp_driver_chars;
-	if (test_and_clear_bit(HW_INITIALIZED, &wnd->hw_status)) {
-		hangcheck_del(wnd);
-		del_stats_timer(wnd);
-		down_interruptible(&wnd->ndis_comm_mutex);
-		LIN2WIN2(mp_driver->halt, wnd->adapter_ctx,
-			 wnd->wd->surprise_removed == TRUE?
-			 NdisHaltDeviceSurpriseRemoved : NdisHaltDeviceDisabled);
-		up(&wnd->ndis_comm_mutex);
-		/* cancel any timers left by bugyy windows driver; also free
-		 * the memory for timers */
-		while (1) {
-			KIRQL irql;
-			struct nt_list *ent;
-			struct wrap_timer *wrap_timer;
 
-			irql = nt_spin_lock_irql(&timer_lock, DISPATCH_LEVEL);
-			ent = RemoveHeadList(&wnd->timer_list);
-			nt_spin_unlock_irql(&timer_lock, irql);
-			if (!ent)
-				break;
-			wrap_timer = container_of(ent, struct wrap_timer, list);
-			wrap_timer->repeat = 0;
-			/* ktimer that this wrap_timer is associated to can't
-			 * be touched, as it may have been freed by the driver
-			 * already */
-			if (del_timer_sync(&wrap_timer->timer))
-				WARNING("Buggy Windows driver left timer %p "
-					"running", &wrap_timer->timer);
-			memset(wrap_timer, 0, sizeof(*wrap_timer));
-			slack_kfree(wrap_timer);
-		}
-	} else
+	if (!test_and_clear_bit(HW_INITIALIZED, &wnd->hw_status)) {
 		WARNING("device %p is not initialized - not halting", wnd);
+		return;
+	}
+	mp_driver = &wnd->wd->driver->ndis_driver->mp_driver_chars;
+	if (wnd->wd->surprise_removed)
+		halt_action = NdisHaltDeviceSurpriseRemoved;
+	else
+		halt_action = NdisHaltDeviceDisabled;
+
+	hangcheck_del(wnd);
+	del_stats_timer(wnd);
+	down_interruptible(&wnd->ndis_comm_mutex);
+	LIN2WIN2(mp_driver->halt, wnd->adapter_ctx, halt_action);
+	up(&wnd->ndis_comm_mutex);
+	/* cancel any timers left by bugyy windows driver; also free
+	 * the memory for timers */
+	while (1) {
+		KIRQL irql;
+		struct nt_list *ent;
+		struct wrap_timer *wrap_timer;
+
+		irql = nt_spin_lock_irql(&timer_lock, DISPATCH_LEVEL);
+		ent = RemoveHeadList(&wnd->timer_list);
+		nt_spin_unlock_irql(&timer_lock, irql);
+		if (!ent)
+			break;
+		wrap_timer = container_of(ent, struct wrap_timer, list);
+		wrap_timer->repeat = 0;
+		/* ktimer that this wrap_timer is associated to can't
+		 * be touched, as it may have been freed by the driver
+		 * already */
+		if (del_timer_sync(&wrap_timer->timer))
+			WARNING("Buggy Windows driver left timer %p running",
+				&wrap_timer->timer);
+		memset(wrap_timer, 0, sizeof(*wrap_timer));
+		slack_kfree(wrap_timer);
+	}
 	TRACEEXIT1(return);
 }
 
@@ -247,65 +267,66 @@ static struct net_buffer_list *
 alloc_tx_buffer_list(struct wrap_ndis_device *wnd, struct sk_buff *skb)
 {
 	struct net_buffer_list *buffer_list;
-	ndis_buffer *buffer;
-	NDIS_STATUS status;
+	struct net_buffer *buffer;
+	struct mdl *mdl;
 
-	status = NdisAllocateNetBufferList(wnd->tx_buffer_list_pool,
-					   skb->data, skb->len);
-	if (status != NDIS_STATUS_SUCCESS)
+	buffer_list = NdisAllocateNetBufferList(wnd->tx_buffer_list_pool, 0, 0);
+	mdl = allocate_init_mdl(skb->data, skb->len);
+	if (unlikely(!mdl)) {
+		WARNING("couldn't allocate mdl");
+		NdisFreeNetBufferList(buffer_list);
 		return NULL;
-
+	}
+	buffer = NdisAllocateNetBuffer(wnd->tx_buffer_pool, mdl, 0, 0);
+	if (unlikely(!buffer)) {
+		WARNING("couldn't allocate buffer");
+		free_mdl(mdl);
+		NdisFreeNetBufferList(buffer_list);
+		return NULL;
+	}
+	buffer->ndis_reserved[0] = skb;
 	return buffer_list;
 }
 
 void free_tx_buffer_list(struct wrap_ndis_device *wnd,
-			     struct net_buffer_list *buffer_list)
+			 struct net_buffer_list *buffer_list)
 {
-	TODO();
-}
+	struct net_buffer *buffer, *next;
 
-int miniport_tx_packets(struct wrap_ndis_device *wnd, int start, int n)
-{
-	TODO();
-	return 0;
+	buffer = buffer_list->header.data.first_buffer;
+	while (buffer) {
+		struct mdl *mdl, *next_mdl;
+		struct sk_buff *skb;
+		next = buffer->header.data.next;
+		mdl = buffer->header.data.mdl_chain;
+		while (mdl) {
+			next_mdl = mdl->next;
+			free_mdl(mdl);
+			mdl = next_mdl;
+		}
+		skb = buffer->ndis_reserved[0];
+		dev_kfree_skb_any(skb);
+		NdisFreeNetBuffer(buffer);
+		buffer = next;
+	}
+	NdisFreeNetBufferList(buffer_list);
 }
 
 static void tx_worker(worker_param_t param)
 {
 	struct wrap_ndis_device *wnd;
-	int n;
 
 	wnd = worker_param_data(param, struct wrap_ndis_device, tx_work);
 	TRACEENTER3("tx_ok %d", wnd->tx_ok);
 	while (wnd->tx_ok) {
-		if (down_interruptible(&wnd->tx_ring_mutex))
-			break;
-		/* end == start if either ring is empty or full; in
-		 * the latter case is_tx_ring_full is set */
-		n = wnd->tx_ring_end - wnd->tx_ring_start;
-		DBGTRACE3("%d, %d, %d", wnd->tx_ring_start, wnd->tx_ring_end, n);
-		if (n == 0) {
-			if (wnd->is_tx_ring_full)
-				n = TX_RING_SIZE - wnd->tx_ring_start;
-			else {
-				up(&wnd->tx_ring_mutex);
-				break;
-			}
-		} else if (n < 0)
-			n = TX_RING_SIZE - wnd->tx_ring_start;
-		if (unlikely(n > wnd->max_tx_packets))
-			n = wnd->max_tx_packets;
-		n = miniport_tx_packets(wnd, wnd->tx_ring_start, n);
-		if (n > 0) {
-			wnd->net_dev->trans_start = jiffies;
-			wnd->tx_ring_start =
-				(wnd->tx_ring_start + n) % TX_RING_SIZE;
-			wnd->is_tx_ring_full = 0;
-			if (netif_queue_stopped(wnd->net_dev))
-				netif_wake_queue(wnd->net_dev);
-		}
-		up(&wnd->tx_ring_mutex);
-		DBGTRACE3("%d, %d, %d", wnd->tx_ring_start, wnd->tx_ring_end, n);
+		struct net_buffer_list *last;
+		struct mp_driver_characteristics *mp_driver;
+
+		last = xchg(&wnd->last_tx_buffer_list, NULL);
+		mp_driver = &wnd->wd->driver->ndis_driver->mp_driver_chars;
+		if (last)
+			LIN2WIN4(mp_driver->tx_net_buffer_lists,
+				 wnd->adapter_ctx, last, 0, 0);
 	}
 	TRACEEXIT3(return);
 }
@@ -320,17 +341,13 @@ static int tx_skbuff(struct sk_buff *skb, struct net_device *dev)
 		WARNING("couldn't allocate packet");
 		return NETDEV_TX_BUSY;
 	}
-	/* no need for lock here - already called holding
-	 * net_dev->xmit_lock and tx_ring_end is not updated
-	 * elsewhere */
-	wnd->tx_ring[wnd->tx_ring_end++] = buffer_list;
-	if (wnd->tx_ring_end == TX_RING_SIZE)
-		wnd->tx_ring_end = 0;
-	if (wnd->tx_ring_end == wnd->tx_ring_start) {
-		wnd->is_tx_ring_full = 1;
-		netif_stop_queue(wnd->net_dev);
+	/* TODO: do we need lock here? */
+	if (wnd->last_tx_buffer_list) {
+		buffer_list->ndis_reserved[0] =
+			wnd->last_tx_buffer_list->ndis_reserved[0];
+		wnd->last_tx_buffer_list->header.data.next = buffer_list;
 	}
-	DBGTRACE3("ring: %d, %d", wnd->tx_ring_start, wnd->tx_ring_end);
+	wnd->last_tx_buffer_list = buffer_list;
 	schedule_wrap_work(&wnd->tx_work);
 	return NETDEV_TX_OK;
 }
@@ -501,7 +518,7 @@ static int ndis_set_wol(struct net_device *dev, struct ethtool_wolinfo *wol)
 
 	if (!(wol->wolopts & WAKE_MAGIC))
 		return -EINVAL;
-	if (!(wnd->attributes & NDIS_ATTRIBUTE_NO_HALT_ON_SUSPEND))
+	if (!(wnd->attribute_flags & NDIS_ATTRIBUTE_NO_HALT_ON_SUSPEND))
 		return -EOPNOTSUPP;
 	status = miniport_query_info(wnd, OID_PNP_CAPABILITIES,
 				     &pnp_capa, sizeof(pnp_capa));
@@ -790,41 +807,22 @@ static void del_stats_timer(struct wrap_ndis_device *wnd)
 static void hangcheck_proc(unsigned long data)
 {
 	struct wrap_ndis_device *wnd = (struct wrap_ndis_device *)data;
-	BOOLEAN reset;
-	struct miniport_char *miniport;
 
 	TRACEENTER2("");
+	TRACEEXIT3(return);
 	if (wnd->hangcheck_interval <= 0)
 		TRACEEXIT2(return);
-	miniport = &wnd->wd->driver->ndis_driver->miniport;
-	if_serialize_lock(wnd);
-	reset = LIN2WIN1(miniport->hangcheck, wnd->adapter_ctx);
-	if_serialize_unlock(wnd);
-	if (reset) {
-		set_bit(MINIPORT_RESET, &wnd->wrap_ndis_pending_work);
-		schedule_wrap_work(&wnd->wrap_ndis_work);
-	}
-	mod_timer(&wnd->hangcheck_timer, jiffies + wnd->hangcheck_interval);
+	TODO();
 	TRACEEXIT3(return);
 }
 
 void hangcheck_add(struct wrap_ndis_device *wnd)
 {
-	if (!wnd->wd->driver->ndis_driver->miniport.hangcheck ||
-	    hangcheck_interval < 0)
-		TRACEEXIT2(return);
-	if (timer_pending(&wnd->hangcheck_timer)) {
-		WARNING("timer is already running!");
-		return;
-	}
-	if (hangcheck_interval > 0)
-		wnd->hangcheck_interval = hangcheck_interval * HZ;
-	if (wnd->hangcheck_interval < 0)
-		wnd->hangcheck_interval *= -1;
+	TODO();
+	TRACEEXIT2(return);
 	wnd->hangcheck_timer.data = (unsigned long)wnd;
 	wnd->hangcheck_timer.function = hangcheck_proc;
 	mod_timer(&wnd->hangcheck_timer, jiffies + wnd->hangcheck_interval);
-	TRACEEXIT2(return);
 }
 
 void hangcheck_del(struct wrap_ndis_device *wnd)
@@ -866,22 +864,140 @@ static void wrap_ndis_worker(worker_param_t param)
 NDIS_STATUS miniport_set_power_state(struct wrap_ndis_device *wnd,
 				     enum ndis_power_state state)
 {
-	TODO();
-	return NDIS_STATUS_SUCCESS;
+	NDIS_STATUS status;
+
+	DBGTRACE1("%d", state);
+	if (state == NdisDeviceStateD0) {
+		status = NDIS_STATUS_SUCCESS;
+		up(&wnd->ndis_comm_mutex);
+		if (test_and_clear_bit(HW_HALTED, &wnd->hw_status)) {
+			status = miniport_init(wnd);
+			if (status == NDIS_STATUS_SUCCESS) {
+				set_packet_filter(wnd, wnd->packet_filter);
+				set_multicast_list(wnd);
+			}
+		} else if (test_and_clear_bit(HW_SUSPENDED, &wnd->hw_status)) {
+			status = miniport_set_int(wnd, OID_PNP_SET_POWER,
+						  state);
+			if (status != NDIS_STATUS_SUCCESS)
+				WARNING("%s: setting power to state %d failed? "
+					"%08X", wnd->net_dev->name, state,
+					status);
+			miniport_pnp_event(wnd,
+					   NdisDevicePnPEventPowerProfileChanged);
+			if (wnd->ndis_wolopts &&
+			    wrap_is_pci_bus(wnd->wd->dev_bus))
+				pci_enable_wake(wnd->wd->pci.pdev, PCI_D0, 0);
+		} else
+			return NDIS_STATUS_FAILURE;
+
+		if (status == NDIS_STATUS_SUCCESS) {
+			netif_device_attach(wnd->net_dev);
+			hangcheck_add(wnd);
+			add_stats_timer(wnd);
+			set_scan(wnd);
+		} else {
+			WARNING("%s: couldn't set power to state %d; device not"
+				" resumed", wnd->net_dev->name, state);
+		}
+		TRACEEXIT1(return status);
+	} else {
+		netif_device_detach(wnd->net_dev);
+		hangcheck_del(wnd);
+		del_stats_timer(wnd);
+		status = NDIS_STATUS_NOT_SUPPORTED;
+		if (wnd->attribute_flags & NDIS_ATTRIBUTE_NO_HALT_ON_SUSPEND) {
+			enum ndis_power_state pm_state = state;
+			if (wnd->ndis_wolopts) {
+				status = miniport_set_int(wnd,
+							  OID_PNP_ENABLE_WAKE_UP,
+							  wnd->ndis_wolopts);
+				if (status == NDIS_STATUS_SUCCESS) {
+					if (wrap_is_pci_bus(wnd->wd->dev_bus))
+						pci_enable_wake(wnd->wd->pci.pdev,
+								PCI_D0, 1);
+				} else
+					WARNING("%s: couldn't enable WOL: %08x",
+						wnd->net_dev->name, status);
+			}
+			status = miniport_set_int(wnd, OID_PNP_SET_POWER,
+						  pm_state);
+			if (status == NDIS_STATUS_SUCCESS) {
+				set_bit(HW_SUSPENDED, &wnd->hw_status);
+			} else
+				WARNING("suspend failed: %08X", status);
+		}
+		if (status != NDIS_STATUS_SUCCESS) {
+			WARNING("%s does not support power management; "
+				"halting the device", wnd->net_dev->name);
+			miniport_halt(wnd);
+			set_bit(HW_HALTED, &wnd->hw_status);
+			status = STATUS_SUCCESS;
+		}
+		if (down_interruptible(&wnd->ndis_comm_mutex))
+			WARNING("couldn't lock ndis_comm_mutex");
+		TRACEEXIT1(return status);
+	}
 }
 
 NDIS_STATUS miniport_pnp_event(struct wrap_ndis_device *wnd,
 			       enum ndis_device_pnp_event event)
 {
-	TODO();
-	return NDIS_STATUS_SUCCESS;
+	ULONG power_profile;
+	struct wrap_ndis_driver *ndis_driver;
+	struct net_device_pnp_event net_event;
+
+	TRACEENTER1("%p, %d", wnd, event);
+	ndis_driver = wnd->wd->driver->ndis_driver;
+	if (!ndis_driver->mp_driver_chars.pnp_event_notify) {
+		DBGTRACE1("Windows driver %s doesn't support "
+			  "MiniportPnpEventNotify", wnd->wd->driver->name);
+		return NDIS_STATUS_FAILURE;
+	}
+	/* RNDIS driver doesn't like to be notified if device is
+	 * already halted */
+	if (!test_bit(HW_INITIALIZED, &wnd->hw_status))
+		TRACEEXIT1(return NDIS_STATUS_SUCCESS);
+	memset(&net_event, 0, sizeof(net_event));
+	net_event.header.type = NDIS_OBJECT_TYPE_DEFAULT;
+	net_event.header.revision = NET_DEVICE_PNP_EVENT_REVISION_1;
+	net_event.header.size = sizeof(net_event);
+	net_event.port = 0;
+	net_event.event = event;
+	
+	switch (event) {
+	case NdisDevicePnPEventSurpriseRemoved:
+		net_event.buf = NULL;
+		net_event.buf_length = 0;
+		if (wnd->wd->surprise_removed != TRUE)
+			TRACEEXIT1(return NDIS_STATUS_SUCCESS);
+		if (wnd->attribute_flags & NDIS_ATTRIBUTE_SURPRISE_REMOVE_OK)
+			LIN2WIN2(ndis_driver->mp_driver_chars.pnp_event_notify,
+				 wnd->adapter_ctx, &net_event);
+		else
+			DBGTRACE1("Windows driver %s doesn't support "
+				  "MiniportPnpEventNotify for safe unplugging",
+				  wnd->wd->driver->name);
+		return NDIS_STATUS_SUCCESS;
+	case NdisDevicePnPEventPowerProfileChanged:
+		/* TODO: get ac/battery status from kernel */
+		power_profile = NdisPowerProfileAcOnLine;
+		net_event.buf = &power_profile;
+		net_event.buf_length = sizeof(power_profile);
+		LIN2WIN2(ndis_driver->mp_driver_chars.pnp_event_notify,
+			 wnd->adapter_ctx, &net_event);
+		return NDIS_STATUS_SUCCESS;
+	default:
+		WARNING("event %d not yet implemented", event);
+		return NDIS_STATUS_SUCCESS;
+	}
 }
 
 NDIS_STATUS ndis_reinit(struct wrap_ndis_device *wnd)
 {
 	NDIS_STATUS status;
 
-	wnd->attributes &= ~NDIS_ATTRIBUTE_NO_HALT_ON_SUSPEND;
+	wnd->attribute_flags &= ~NDIS_ATTRIBUTE_NO_HALT_ON_SUSPEND;
 	status = miniport_set_power_state(wnd, NdisDeviceStateD3);
 	if (status != NDIS_STATUS_SUCCESS) {
 		ERROR("halting device %s failed: %08X", wnd->net_dev->name,
@@ -1076,7 +1192,7 @@ wstdcall NTSTATUS NdisDispatchPower(struct device_object *fdo, struct irp *irp)
 		}
 		break;
 	case IRP_MN_QUERY_POWER:
-		if (wnd->attributes & NDIS_ATTRIBUTE_NO_HALT_ON_SUSPEND) {
+		if (wnd->attribute_flags & NDIS_ATTRIBUTE_NO_HALT_ON_SUSPEND) {
 			ndis_status =
 				miniport_query_info(wnd, OID_PNP_QUERY_POWER,
 						    &state, sizeof(state));
@@ -1201,6 +1317,8 @@ static NDIS_STATUS ndis_start_device(struct wrap_ndis_device *wnd)
 	struct mp_pnp_characteristics *mp_pnp_chars;
 	struct transport_header_offset transport_header_offset;
 	int n;
+	struct net_buffer_pool_params nb_pool_params;
+	struct net_buffer_list_pool_params nbl_pool_params;
 
 	mp_pnp_chars = &wnd->wd->driver->ndis_driver->mp_pnp_chars;
 	if (mp_pnp_chars->add_device)
@@ -1251,8 +1369,7 @@ static NDIS_STATUS ndis_start_device(struct wrap_ndis_device *wnd)
 #if defined(HAVE_ETHTOOL)
 	net_dev->ethtool_ops = &ndis_ethtool_ops;
 #endif
-	if (wnd->ndis_irq)
-		net_dev->irq = wnd->ndis_irq->irq.irq;
+	net_dev->irq = wnd->wd->pci.pdev->irq;
 	net_dev->mem_start = wnd->mem_start;
 	net_dev->mem_end = wnd->mem_end;
 	ndis_status = miniport_query_int(wnd, OID_802_3_MAXIMUM_LIST_SIZE,
@@ -1315,12 +1432,32 @@ static NDIS_STATUS ndis_start_device(struct wrap_ndis_device *wnd)
 	DBGTRACE2("maximum send packets: %d", wnd->max_tx_packets);
 	/* we need at least one extra packet for
 	 * EthRxIndicateHandler */
-	ndis_status = NdisAllocateNetBufferListPool(&wnd->tx_buffer_list_pool,
-						    wnd->max_tx_packets + 4);
+
+	memset(&nbl_pool_params, 0, sizeof(nbl_pool_params));
+	nbl_pool_params.header.type = NDIS_OBJECT_TYPE_DEFAULT;
+	nbl_pool_params.header.revision =
+		NET_BUFFER_LIST_POOL_PARAMETERS_REVISION_1;
+	nbl_pool_params.header.size = sizeof(nbl_pool_params);
+	nbl_pool_params.fallocate_net_buffer = FALSE;
+	nbl_pool_params.ctx_size = 0;
+	nbl_pool_params.tag = 0;
+	nbl_pool_params.data_size = 0;
+
+	wnd->tx_buffer_list_pool =
+		NdisAllocateNetBufferListPool(wnd, &nbl_pool_params);
 	if (ndis_status != NDIS_STATUS_SUCCESS) {
 		ERROR("couldn't allocate buffer pool");
 		goto buffer_pool_err;
 	}
+
+	memset(&nb_pool_params, 0, sizeof(nb_pool_params));
+	nb_pool_params.header.type = NDIS_OBJECT_TYPE_DEFAULT;
+	nb_pool_params.header.revision = NET_BUFFER_POOL_PARAMETERS_REVISION_1;
+	nb_pool_params.header.size = sizeof(nb_pool_params);
+	nb_pool_params.tag = 0;
+	nb_pool_params.data_size = 0;
+
+	wnd->tx_buffer_pool = NdisAllocateNetBufferPool(wnd, &nb_pool_params);
 	DBGTRACE1("pool: %p", wnd->tx_buffer_pool);
 
 	if (miniport_query_int(wnd, OID_GEN_MAXIMUM_TOTAL_SIZE, &n) ==
@@ -1387,8 +1524,6 @@ err_start:
 
 static int ndis_remove_device(struct wrap_ndis_device *wnd)
 {
-	int tx_pending;
-
 	/* prevent setting essid during disassociation */
 	memset(&wnd->essid, 0, sizeof(wnd->essid));
 	if (wnd->physical_medium == NdisPhysicalMediumWirelessLan) {
@@ -1401,33 +1536,22 @@ static int ndis_remove_device(struct wrap_ndis_device *wnd)
 	wnd->tx_ok = 0;
 	unregister_netdev(wnd->net_dev);
 	netif_carrier_off(wnd->net_dev);
-	/* if device is suspended, but resume failed, tx_ring_mutex
-	 * may already be locked */
-	down_trylock(&wnd->tx_ring_mutex);
-	tx_pending = wnd->tx_ring_end - wnd->tx_ring_start;
-	if (tx_pending < 0)
-		tx_pending += TX_RING_SIZE;
-	else if (tx_pending == 0 && wnd->is_tx_ring_full)
-		tx_pending = TX_RING_SIZE - 1;
-	wnd->is_tx_ring_full = 0;
-	/* throw away pending packets */
-	while (tx_pending > 0) {
-		struct ndis_packet *packet;
-
-		packet = wnd->tx_ring[wnd->tx_ring_start];
-		TODO();
-//		free_tx_packet(wnd, packet, NDIS_STATUS_CLOSING);
-		wnd->tx_ring_start = (wnd->tx_ring_start + 1) % TX_RING_SIZE;
-		tx_pending--;
-	}
-	up(&wnd->tx_ring_mutex);
 	wrap_procfs_remove_ndis_device(wnd);
 	miniport_halt(wnd);
 	ndis_exit_device(wnd);
 
-	if (wnd->tx_buffer_pool) {
+	if (wnd->last_tx_buffer_list) {
+		struct net_buffer_list *buffer_list;
+		buffer_list = wnd->last_tx_buffer_list->ndis_reserved[0];
+		free_tx_buffer_list(wnd, buffer_list);
+	}
+	if (wnd->tx_buffer_list_pool) {
 		NdisFreeNetBufferListPool(wnd->tx_buffer_list_pool);
 		wnd->tx_buffer_list_pool = NULL;
+	}
+	if (wnd->tx_buffer_pool) {
+		NdisFreeNetBufferPool(wnd->tx_buffer_pool);
+		wnd->tx_buffer_pool = NULL;
 	}
 	printk(KERN_INFO "%s: device %s removed\n", DRIVER_NAME,
 	       wnd->net_dev->name);
@@ -1468,20 +1592,15 @@ static wstdcall NTSTATUS NdisAddDevice(struct driver_object *drv_obj,
 	wd->wnd = wnd;
 	wnd->wd = wd;
 	wnd->net_dev = net_dev;
-	wnd->ndis_irq = NULL;
-	init_MUTEX(&wnd->tx_ring_mutex);
 	init_MUTEX(&wnd->ndis_comm_mutex);
 	init_waitqueue_head(&wnd->ndis_comm_wq);
 	wnd->ndis_comm_done = 0;
 	initialize_work(&wnd->tx_work, tx_worker, wnd);
-	wnd->tx_ring_start = 0;
-	wnd->tx_ring_end = 0;
-	wnd->is_tx_ring_full = 0;
 	wnd->encr_mode = Ndis802_11EncryptionDisabled;
 	wnd->auth_mode = Ndis802_11AuthModeOpen;
 	wnd->capa.encr = 0;
 	wnd->capa.auth = 0;
-	wnd->attributes = 0;
+	wnd->attribute_flags = 0;
 	wnd->dma_map_count = 0;
 	wnd->dma_map_addr = NULL;
 	wnd->nick[0] = 0;
@@ -1496,11 +1615,10 @@ static wstdcall NTSTATUS NdisAddDevice(struct driver_object *drv_obj,
 	initialize_work(&wnd->wrap_ndis_work, wrap_ndis_worker, wnd);
 	wnd->hw_status = 0;
 	if (wd->driver->ndis_driver) {
-		struct mp_pnp_characteristics *mp_pnp_chars;
-		mp_pnp_chars = &wd->driver->ndis_driver->mp_pnp_chars;
-		if (mp_pnp_chars->add_device) {
-			status = LIN2WIN2(mp_pnp_chars->add_device, wnd,
-					  wd->driver->ndis_driver->mp_driver_ctx);
+		struct wrap_ndis_driver *ndis_driver = wd->driver->ndis_driver;
+		if (ndis_driver->mp_pnp_chars.add_device) {
+			status = LIN2WIN2(ndis_driver->mp_pnp_chars.add_device,
+					  wnd, ndis_driver->mp_driver_ctx);
 			if (status != NDIS_STATUS_SUCCESS) {
 				WARNING("failed: 0x%x", status);
 				free_netdev(net_dev);

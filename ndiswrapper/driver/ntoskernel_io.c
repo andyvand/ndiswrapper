@@ -688,6 +688,25 @@ wstdcall void *WIN_FUNC(IoGetDriverObjectExtension,2)
 	IOEXIT(return ret);
 }
 
+wstdcall void WIN_FUNC(IoFreeDriverObjectExtension,2)
+	(struct driver_object *drv_obj, void *client_id)
+{
+	struct custom_ext *ce;
+	KIRQL irql;
+
+	IOENTER("drv_obj: %p, client_id: %p", drv_obj, client_id);
+	irql = nt_spin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL);
+	nt_list_for_each_entry(ce, &drv_obj->drv_ext->custom_ext, list) {
+		if (ce->client_id == client_id) {
+			RemoveEntryList(&ce->list);
+			kfree(ce);
+			break;
+		}
+	}
+	nt_spin_unlock_irql(&ntoskernel_lock, irql);
+	IOEXIT(return);
+}
+
 void free_custom_extensions(struct driver_extension *drv_ext)
 {
 	struct nt_list *ent;
