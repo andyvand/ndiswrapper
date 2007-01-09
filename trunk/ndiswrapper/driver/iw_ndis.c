@@ -216,6 +216,7 @@ int set_infra_mode(struct wrap_ndis_device *wnd,
 			add_wep_key(wnd, wnd->encr_info.keys[i].key,
 				    wnd->encr_info.keys[i].length, i);
 	}
+	wnd->infrastructure_mode = mode;
 	TRACEEXIT2(return 0);
 }
 
