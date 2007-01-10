@@ -863,14 +863,15 @@ wstdcall struct net_buffer *WIN_FUNC(NdisAllocateNetBuffer,4)
 			return NULL;
 		}
 	}
+	DBGTRACE3("%p", buffer);
 	memset(buffer, 0, sizeof(*buffer));
 	buffer->pool = pool;
 	/* TODO: set current_mdl based on data offset */
-	buffer->header.data.current_mdl = mdl;
+	buffer->header.data.current_mdl = buffer->header.data.mdl_chain = mdl;
 	buffer->header.data.current_mdl_offset = data_offset;
-	buffer->header.data.data_length.szlength = data_length;
+	buffer->header.data.data_length.ulength = data_length;
+	buffer->header.data.data_offset = data_offset;
 	buffer->header.data.next = NULL;
-	DBGTRACE4("%p", buffer);
 	TRACEEXIT4(return buffer);
 }
 
@@ -910,7 +911,7 @@ wstdcall struct net_buffer *WIN_FUNC(NdisAllocateNetBufferMdlAndData,1)
 		kfree(data);
 		return NULL;
 	}
-	buffer = NdisAllocateNetBuffer(pool, mdl, 0, 0);
+	buffer = NdisAllocateNetBuffer(pool, mdl, 0, pool->data_length);
 	DBGTRACE4("%p, %p", mdl, buffer);
 	return buffer;
 }
@@ -920,16 +921,136 @@ wstdcall void *WIN_FUNC(NdisGetDataBuffer,5)
 	 UINT alignment, UINT align_offset)
 {
 	void *data;
+	struct mdl *mdl;
 
 	TRACEENTER3("%p, %u, %p, %u, %u", buffer, bytes_needed, storage,
 		    alignment, align_offset);
 	if (buffer->header.data.data_length.ulength < bytes_needed ||
 	    storage == NULL)
 		TRACEEXIT2(return NULL);
-	/* data is always contiguous, and only one MDL maps it */
-	data = MmGetSystemAddressForMdl(buffer->header.data.current_mdl);
+	/* TODO: what if this buffer has next buffer? */
+	mdl = buffer->header.data.current_mdl;
+	/* usually data is always contiguous, and only one MDL maps it */
+	if (mdl->next) {
+		data = storage;
+		while (mdl) {
+			memcpy(storage, MmGetSystemAddressForMdl(mdl),
+			       MmGetMdlByteCount(mdl));
+			storage += MmGetMdlByteCount(mdl);
+			mdl = mdl->next;
+		}
+	} else
+		data = MmGetSystemAddressForMdl(mdl);
 	DBGTRACE3("%p", data);
 	return data;
+}
+
+wstdcall NDIS_STATUS WIN_FUNC(NdisRetreatNetBufferDataStart,4)
+	(struct net_buffer *buffer, ULONG offset, ULONG backfill,
+	 struct mdl *(*alloc_handler)(void *, int) wstdcall)
+{
+	struct mdl *mdl, *last;
+	int length;
+	void *buf;
+
+	TRACEENTER2("%p, %d, %d, %p", buffer, offset, backfill, alloc_handler);
+	DBGTRACE2("%ud, %ud", buffer->header.data.data_offset,
+		  buffer->header.data.current_mdl_offset);
+	/* TODO: most definitely this is wrong */
+	assert(buffer->header.data.data_offset >=
+	       buffer->header.data.current_mdl_offset);
+	assert(buffer->header.data.data_offset >= offset);
+
+	if (buffer->header.data.current_mdl_offset >= offset) {
+		buffer->header.data.current_mdl_offset -= offset;
+		buffer->header.data.data_offset -= offset;
+		return NDIS_STATUS_SUCCESS;
+	}
+
+	offset -= buffer->header.data.current_mdl_offset;
+	last = buffer->header.data.current_mdl;
+	while (1) {
+		mdl = buffer->header.data.mdl_chain;
+		while (mdl->next && mdl->next != last)
+			mdl = mdl->next;
+		if (offset <= MmGetMdlByteCount(mdl)) {
+			buffer->header.data.current_mdl = mdl;
+			buffer->header.data.current_mdl_offset =
+				MmGetMdlByteCount(mdl) - offset;
+			buffer->header.data.data_offset -=
+				MmGetMdlByteCount(mdl) - offset;
+			return NDIS_STATUS_SUCCESS;
+		}
+		offset -= MmGetMdlByteCount(mdl);
+		buffer->header.data.data_offset -= MmGetMdlByteCount(mdl);
+		last = mdl;
+		if (last == buffer->header.data.mdl_chain)
+			break;
+	}
+	length = max_t(int, offset + backfill, 80);
+	buf = kmalloc(length, GFP_ATOMIC);
+	if (!buf) {
+		WARNING("couldn't allocate memory: %d", length);
+		return NDIS_STATUS_RESOURCES;
+	}
+	if (alloc_handler)
+		mdl = LIN2WIN2(alloc_handler, buf, length);
+	else
+		mdl = allocate_init_mdl(buf, length);
+
+	if (!mdl) {
+		kfree(buf);
+		return NDIS_STATUS_RESOURCES;
+	}
+	mdl->next = buffer->header.data.mdl_chain;
+	buffer->header.data.mdl_chain = mdl;
+	buffer->header.data.current_mdl = mdl;
+	buffer->header.data.current_mdl_offset = length - offset;
+	buffer->header.data.data_offset = length - offset;
+
+	return NDIS_STATUS_SUCCESS;
+}
+
+wstdcall void WIN_FUNC(NdisAdvanceNetBufferDataStart,4)
+	(struct net_buffer *buffer, ULONG offset, BOOLEAN need_free_mdl,
+	 void (*free_handler)(struct mdl *) wstdcall)
+{
+	struct mdl *mdl, *next;
+
+	/* what if need-free_mdl is TRUE and there are MDLs ahead of
+	 * current_mdl? */
+	if (need_free_mdl) {
+		mdl = buffer->header.data.mdl_chain;
+		while (mdl != buffer->header.data.current_mdl) {
+			next = mdl->next;
+			free_mdl(mdl);
+			mdl = next;
+		}
+	}
+	mdl = buffer->header.data.current_mdl;
+	if (offset > MmGetMdlByteCount(mdl) -
+	    buffer->header.data.current_mdl_offset) {
+		offset += buffer->header.data.current_mdl_offset;
+		while (mdl && offset < MmGetMdlByteCount(mdl)) {
+			offset -= MmGetMdlByteCount(mdl);
+			next = mdl->next;
+			if (need_free_mdl) {
+				if (free_handler)
+					LIN2WIN1(free_handler, mdl);
+				else
+					free_mdl(mdl);
+			}
+			mdl = next;
+		}
+	}
+	buffer->header.data.current_mdl = mdl;
+	if (mdl) {
+		buffer->header.data.current_mdl_offset =
+			buffer->header.data.data_offset =
+			MmGetMdlByteCount(mdl) - offset;
+	} else
+		buffer->header.data.current_mdl_offset =
+			buffer->header.data.data_offset = 0;
 }
 
 wstdcall struct net_buffer_list_pool *WIN_FUNC(NdisAllocateNetBufferListPool,2)
@@ -1114,62 +1235,6 @@ wstdcall void WIN_FUNC(NdisFreeNetBufferListContext,2)
 		ctx = next;
 	}
 	return;
-}
-
-wstdcall NDIS_STATUS WIN_FUNC(NdisRetreatNetBufferDataStart,4)
-	(struct net_buffer *buffer, ULONG offset, ULONG backfill,
-	 struct mdl *(*alloc_handler)(void *, int) wstdcall)
-{
-	TRACEENTER2("%p, %d, %d, %p", buffer, offset, backfill, alloc_handler);
-	/* TODO: most definitely this is wrong */
-	if (buffer->header.data.data_offset < offset) {
-		struct mdl *mdl;
-		int length = max_t(int, offset + backfill, 80);
-		void *buf = kmalloc(length, GFP_ATOMIC);
-		if (!buf) {
-			WARNING("couldn't allocate memory: %d", length);
-			return NDIS_STATUS_RESOURCES;
-		}
-		if (alloc_handler)
-			mdl = LIN2WIN2(alloc_handler, buf, length);
-		else
-			mdl = allocate_init_mdl(buf, length);
-		if (!mdl) {
-			kfree(buf);
-			return NDIS_STATUS_RESOURCES;
-		}
-		mdl->next = buffer->header.data.mdl_chain;
-		buffer->header.data.mdl_chain = mdl;
-		buffer->header.data.data_offset = length - offset;
-	} else {
-		buffer->header.data.data_offset -= offset;
-		DBGTRACE3("%p, %u", buffer, buffer->header.data.data_offset);
-	}
-
-	return NDIS_STATUS_SUCCESS;
-}
-
-wstdcall void WIN_FUNC(NdisAdvanceNetBufferDataStart,4)
-	(struct net_buffer *buffer, ULONG offset, BOOLEAN need_free_mdl,
-	 void (*free_handler)(struct mdl *) wstdcall)
-{
-	struct mdl *mdl;
-
-	/* TODO: most definitely this is wrong */
-	while (1) {
-		mdl = buffer->header.data.mdl_chain;
-		if (offset < MmGetMdlByteCount(mdl))
-			break;
-		buffer->header.data.mdl_chain = mdl->next;
-		offset -= MmGetMdlByteCount(mdl);
-		if (need_free_mdl) {
-			if (free_handler)
-				LIN2WIN1(free_handler, mdl);
-			else
-				free_mdl(mdl);
-		}
-	}
-	buffer->header.data.data_offset = offset;
 }
 
 wstdcall NDIS_STATUS WIN_FUNC(NdisRetreatNetBufferListDataStart,5)
@@ -1672,25 +1737,79 @@ wstdcall void WIN_FUNC(NdisMIndicateStatusEx,4)
 	TRACEEXIT2(return);
 }
 
+wstdcall void return_net_buffer_lists(void *arg1, void *arg2)
+{
+	struct wrap_ndis_device *wnd;
+	struct net_buffer_list *buffer_list;
+	struct wrap_ndis_driver *ndis_driver;
+
+	wnd = arg1;
+	buffer_list = arg2;
+	TRACEENTER4("%p, %p", wnd, buffer_list);
+	ndis_driver = wnd->wd->driver->ndis_driver;
+	LIN2WIN3(ndis_driver->mp_driver_chars.return_net_buffer_lists,
+		 wnd->adapter_ctx, buffer_list, 0);
+	TRACEEXIT4(return);
+}
+WIN_FUNC_DECL(return_net_buffer_lists,2)
+
 wstdcall void WIN_FUNC(NdisMIndicateReceiveNetBufferLists,5)
 	(struct wrap_ndis_device *wnd, struct net_buffer_list *buffer_list,
 	NDIS_PORT_NUMBER port, ULONG num_lists, ULONG rx_flags)
 {
-	TODO();
+	struct net_buffer_list *blist;
+	struct net_buffer *buffer;
+	struct mdl *mdl;
+	struct sk_buff *skb;
+	UINT i, total_length = 0;
+
+	TRACEENTER3("%p, %d", wnd, num_lists);
+	blist = buffer_list;
+	for (i = 0, blist = buffer_list; i < num_lists;
+	     i++, blist = blist->header.data.next) {
+		for (buffer = blist->header.data.first_buffer; buffer;
+		     buffer = buffer->header.data.next) {
+			for (mdl = buffer->header.data.mdl_chain; mdl;
+			     mdl = mdl->next) {
+				total_length += MmGetMdlByteCount(mdl);
+			}
+		}
+	}
+	skb = dev_alloc_skb(total_length);
+	if (skb) {
+		for (i = 0, blist = buffer_list; i < num_lists;
+		     i++, blist = blist->header.data.next) {
+			for (buffer = blist->header.data.first_buffer; buffer;
+			     buffer = buffer->header.data.next) {
+				for (mdl = buffer->header.data.mdl_chain; mdl;
+				     mdl = mdl->next) {
+					memcpy_skb(skb,
+						   MmGetSystemAddressForMdl(mdl),
+						   MmGetMdlByteCount(mdl));
+				}
+			}
+		}
+		skb->dev = wnd->net_dev;
+		skb->protocol = eth_type_trans(skb, wnd->net_dev);
+		pre_atomic_add(wnd->stats.rx_bytes, total_length);
+		atomic_inc_var(wnd->stats.rx_packets);
+		netif_rx(skb);
+	} else {
+		WARNING("couldn't allocate skb; packet dropped");
+		atomic_inc_var(wnd->stats.rx_dropped);
+	}
+	if (rx_flags & NDIS_RECEIVE_FLAGS_RESOURCES)
+		TRACEEXIT2(return);
+	schedule_ntos_work_item(WIN_FUNC_PTR(return_net_buffer_lists,2),
+				wnd, buffer_list);
+	TRACEEXIT3(return);
 }
 
 wstdcall void WIN_FUNC(NdisMSendNetBufferListsComplete,3)
 	(struct wrap_ndis_device *wnd, struct net_buffer_list *buffer_list,
 	 ULONG flags)
 {
-	struct net_buffer_list *blist, *next;
-
-	blist = buffer_list;
-	while (blist) {
-		next = blist->header.data.next;
-		free_tx_buffer_list(wnd, blist);
-		blist = next;
-	}
+	free_tx_buffer_list(wnd, buffer_list);
 }
 
 wstdcall void WIN_FUNC(NdisMSleep,1)

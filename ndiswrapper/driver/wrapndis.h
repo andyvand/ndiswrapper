@@ -39,6 +39,8 @@ NDIS_STATUS ndis_reinit(struct wrap_ndis_device *wnd);
 void get_encryption_capa(struct wrap_ndis_device *wnd);
 void hangcheck_add(struct wrap_ndis_device *wnd);
 void hangcheck_del(struct wrap_ndis_device *wnd);
+NDIS_STATUS miniport_pnp_event(struct wrap_ndis_device *wnd,
+			       enum ndis_device_pnp_event event, ULONG profile);
 
 driver_dispatch_t winNdisDispatchPnp;
 driver_dispatch_t winNdisDispatchPower;
