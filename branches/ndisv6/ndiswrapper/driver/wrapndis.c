@@ -34,8 +34,6 @@ static int ndis_remove_device(struct wrap_ndis_device *wnd);
 static void set_multicast_list(struct wrap_ndis_device *wnd);
 static int ndis_net_dev_open(struct net_device *net_dev);
 static int ndis_net_dev_close(struct net_device *net_dev);
-NDIS_STATUS miniport_pnp_event(struct wrap_ndis_device *wnd,
-			       enum ndis_device_pnp_event event);
 
 static inline int ndis_wait_comm_completion(struct wrap_ndis_device *wnd)
 {
@@ -204,7 +202,8 @@ static NDIS_STATUS miniport_init(struct wrap_ndis_device *wnd)
 	 * fail after boot */
 	sleep_hz(HZ / 2);
 	set_bit(HW_INITIALIZED, &wnd->hw_status);
-	status = miniport_pnp_event(wnd, NdisDevicePnPEventPowerProfileChanged);
+	status = miniport_pnp_event(wnd, NdisDevicePnPEventPowerProfileChanged,
+				    NdisPowerProfileAcOnLine);
 	if (status != NDIS_STATUS_SUCCESS)
 		DBGTRACE1("couldn't set power profile: %08X", status);
 	/* although some NDIS drivers support suspend, Linux kernel
@@ -277,7 +276,7 @@ alloc_tx_buffer_list(struct wrap_ndis_device *wnd, struct sk_buff *skb)
 		NdisFreeNetBufferList(buffer_list);
 		return NULL;
 	}
-	buffer = NdisAllocateNetBuffer(wnd->tx_buffer_pool, mdl, 0, 0);
+	buffer = NdisAllocateNetBuffer(wnd->tx_buffer_pool, mdl, 0, skb->len);
 	if (unlikely(!buffer)) {
 		WARNING("couldn't allocate buffer");
 		free_mdl(mdl);
@@ -291,25 +290,32 @@ alloc_tx_buffer_list(struct wrap_ndis_device *wnd, struct sk_buff *skb)
 void free_tx_buffer_list(struct wrap_ndis_device *wnd,
 			 struct net_buffer_list *buffer_list)
 {
-	struct net_buffer *buffer, *next;
+	struct net_buffer_list *blist, *next;
 
-	buffer = buffer_list->header.data.first_buffer;
-	while (buffer) {
-		struct mdl *mdl, *next_mdl;
-		struct sk_buff *skb;
-		next = buffer->header.data.next;
-		mdl = buffer->header.data.mdl_chain;
-		while (mdl) {
-			next_mdl = mdl->next;
-			free_mdl(mdl);
-			mdl = next_mdl;
+	blist = buffer_list;
+	while (blist) {
+		struct net_buffer *buffer, *next_buffer;
+
+		next = blist->header.data.next;
+		buffer = buffer_list->header.data.first_buffer;
+		while (buffer) {
+			struct mdl *mdl, *next_mdl;
+			struct sk_buff *skb;
+			next_buffer = buffer->header.data.next;
+			mdl = buffer->header.data.mdl_chain;
+			while (mdl) {
+				next_mdl = mdl->next;
+				free_mdl(mdl);
+				mdl = next_mdl;
+			}
+			skb = buffer->ndis_reserved[0];
+			dev_kfree_skb_any(skb);
+			NdisFreeNetBuffer(buffer);
+			buffer = next_buffer;
 		}
-		skb = buffer->ndis_reserved[0];
-		dev_kfree_skb_any(skb);
-		NdisFreeNetBuffer(buffer);
-		buffer = next;
+		NdisFreeNetBufferList(blist);
+		blist = next;
 	}
-	NdisFreeNetBufferList(buffer_list);
 }
 
 static void tx_worker(worker_param_t param)
@@ -884,7 +890,8 @@ NDIS_STATUS miniport_set_power_state(struct wrap_ndis_device *wnd,
 					"%08X", wnd->net_dev->name, state,
 					status);
 			miniport_pnp_event(wnd,
-					   NdisDevicePnPEventPowerProfileChanged);
+					   NdisDevicePnPEventPowerProfileChanged,
+					   NdisPowerProfileAcOnLine);
 			if (wnd->ndis_wolopts &&
 			    wrap_is_pci_bus(wnd->wd->dev_bus))
 				pci_enable_wake(wnd->wd->pci.pdev, PCI_D0, 0);
@@ -941,9 +948,8 @@ NDIS_STATUS miniport_set_power_state(struct wrap_ndis_device *wnd,
 }
 
 NDIS_STATUS miniport_pnp_event(struct wrap_ndis_device *wnd,
-			       enum ndis_device_pnp_event event)
+			       enum ndis_device_pnp_event event, ULONG profile)
 {
-	ULONG power_profile;
 	struct wrap_ndis_driver *ndis_driver;
 	struct net_device_pnp_event net_event;
 
@@ -981,9 +987,8 @@ NDIS_STATUS miniport_pnp_event(struct wrap_ndis_device *wnd,
 		return NDIS_STATUS_SUCCESS;
 	case NdisDevicePnPEventPowerProfileChanged:
 		/* TODO: get ac/battery status from kernel */
-		power_profile = NdisPowerProfileAcOnLine;
-		net_event.buf = &power_profile;
-		net_event.buf_length = sizeof(power_profile);
+		net_event.buf = &profile;
+		net_event.buf_length = sizeof(profile);
 		LIN2WIN2(ndis_driver->mp_driver_chars.pnp_event_notify,
 			 wnd->adapter_ctx, &net_event);
 		return NDIS_STATUS_SUCCESS;
@@ -1253,7 +1258,7 @@ wstdcall NTSTATUS NdisDispatchPnp(struct device_object *fdo, struct irp *irp)
 		break;
 	case IRP_MN_REMOVE_DEVICE:
 		DBGTRACE1("%s", wnd->net_dev->name);
-		miniport_pnp_event(wnd, NdisDevicePnPEventSurpriseRemoved);
+		miniport_pnp_event(wnd, NdisDevicePnPEventSurpriseRemoved, 0);
 		if (ndis_remove_device(wnd)) {
 			status = STATUS_FAILURE;
 			break;

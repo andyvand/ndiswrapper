@@ -216,6 +216,7 @@ int set_infra_mode(struct wrap_ndis_device *wnd,
 			add_wep_key(wnd, wnd->encr_info.keys[i].key,
 				    wnd->encr_info.keys[i].length, i);
 	}
+	wnd->infrastructure_mode = mode;
 	TRACEEXIT2(return 0);
 }
 
@@ -1851,15 +1852,10 @@ static int priv_power_profile(struct net_device *dev,
 			      union iwreq_data *wrqu, char *extra)
 {
 	struct wrap_ndis_device *wnd = netdev_priv(dev);
-	struct miniport_char *miniport;
 	ULONG profile_inf;
 
 	TRACEENTER2("");
 	TODO();
-#if 0
-	miniport = &wnd->wd->driver->ndis_driver->miniport;
-	if (!miniport->pnp_event_notify)
-		TRACEEXIT2(return -EOPNOTSUPP);
 
 	/* 1 for AC and 0 for Battery */
 	if (wrqu->param.value)
@@ -1867,11 +1863,11 @@ static int priv_power_profile(struct net_device *dev,
 	else
 		profile_inf = NdisPowerProfileBattery;
 
-	LIN2WIN4(miniport->pnp_event_notify, wnd->adapter_ctx,
-		 NdisDevicePnPEventPowerProfileChanged,
-		 &profile_inf, sizeof(profile_inf));
-#endif
-	TRACEEXIT2(return 0);
+	if (miniport_pnp_event(wnd, NdisDevicePnPEventPowerProfileChanged,
+			       profile_inf) != NDIS_STATUS_SUCCESS)
+		return -EINVAL;
+	else
+		TRACEEXIT2(return 0);
 }
 
 static int priv_network_type(struct net_device *dev,
