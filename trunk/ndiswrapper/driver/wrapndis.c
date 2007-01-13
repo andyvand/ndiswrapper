@@ -195,10 +195,10 @@ NDIS_STATUS miniport_set_int(struct wrap_ndis_device *wnd, ndis_oid oid,
 
 /* MiniportPnPEventNotify */
 static NDIS_STATUS miniport_pnp_event(struct wrap_ndis_device *wnd,
-				      enum ndis_device_pnp_event event)
+				      enum ndis_device_pnp_event event,
+				      ULONG power_profile)
 {
 	struct miniport_char *miniport;
-	ULONG power_profile;
 
 	TRACEENTER1("%p, %d", wnd, event);
 	miniport = &wnd->wd->driver->ndis_driver->miniport;
@@ -229,7 +229,8 @@ static NDIS_STATUS miniport_pnp_event(struct wrap_ndis_device *wnd,
 				  wnd->wd->driver->name);
 		return NDIS_STATUS_SUCCESS;
 	case NdisDevicePnPEventPowerProfileChanged:
-		power_profile = NdisPowerProfileAcOnLine;
+		if (power_profile)
+			power_profile = NdisPowerProfileAcOnLine;
 		LIN2WIN4(miniport->pnp_event_notify, wnd->nmb->adapter_ctx,
 			 NdisDevicePnPEventPowerProfileChanged,
 			 &power_profile, (ULONG)sizeof(power_profile));
@@ -274,6 +275,10 @@ static NDIS_STATUS miniport_init(struct wrap_ndis_device *wnd)
 	/* Wait a little to let card power up otherwise ifup might
 	 * fail after boot */
 	sleep_hz(HZ / 2);
+	status = miniport_pnp_event(wnd, NdisDevicePnPEventPowerProfileChanged,
+				    NdisPowerProfileAcOnLine);
+	if (status != NDIS_STATUS_SUCCESS)
+		DBGTRACE1("setting power failed: %08X", status);
 	set_bit(HW_INITIALIZED, &wnd->hw_status);
 	/* the description about NDIS_ATTRIBUTE_NO_HALT_ON_SUSPEND is
 	 * misleading/confusing; we just ignore it */
@@ -1481,7 +1486,7 @@ wstdcall NTSTATUS NdisDispatchPnp(struct device_object *fdo, struct irp *irp)
 		break;
 	case IRP_MN_REMOVE_DEVICE:
 		DBGTRACE1("%s", wnd->net_dev->name);
-		miniport_pnp_event(wnd, NdisDevicePnPEventSurpriseRemoved);
+		miniport_pnp_event(wnd, NdisDevicePnPEventSurpriseRemoved, 0);
 		if (ndis_remove_device(wnd)) {
 			status = STATUS_FAILURE;
 			break;

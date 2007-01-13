@@ -1571,6 +1571,16 @@ wstdcall LONG WIN_FUNC(KeResetEvent,1)
 	EVENTEXIT(return old_state);
 }
 
+wstdcall LONG WIN_FUNC(KeReadStateEvent,1)
+	(struct nt_event *nt_event)
+{
+	LONG state;
+	KIRQL irql = nt_spin_lock_irql(&dispatcher_lock, DISPATCH_LEVEL);
+	state = nt_event->dh.signal_state;
+	nt_spin_unlock_irql(&dispatcher_lock, irql);
+	return state;
+}
+
 wstdcall void WIN_FUNC(KeInitializeMutex,2)
 	(struct nt_mutex *mutex, ULONG level)
 {

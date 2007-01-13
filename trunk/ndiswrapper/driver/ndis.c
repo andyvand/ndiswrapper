@@ -18,6 +18,7 @@
 #include "wrapndis.h"
 #include "pnp.h"
 #include "loader.h"
+#include <linux/kernel_stat.h>
 
 #define MAX_ALLOCATED_NDIS_PACKETS 20
 #define MAX_ALLOCATED_NDIS_BUFFERS 20
@@ -853,8 +854,55 @@ wstdcall void WIN_FUNC(NdisInitializeReadWriteLock,1)
 {
 	TRACEENTER3("%p", rw_lock);
 	memset(rw_lock, 0, sizeof(*rw_lock));
-	KeInitializeSpinLock(&rw_lock->u.s.klock);
+	KeInitializeSpinLock(&rw_lock->klock);
 	TRACEEXIT3(return);
+}
+
+/* read/write locks are implemented in a rather simplisitic way - we
+ * should probably use Linux's rw_lock implementation */
+
+wstdcall void WIN_FUNC(NdisAcquireReadWriteLock,3)
+	(struct ndis_rw_lock *rw_lock, BOOLEAN write,
+	 struct lock_state *lock_state)
+{
+	typeof(rw_lock->ref_count[0].count) count;
+	if (write) {
+		while (cmpxchg(&rw_lock->ref_count[0].count, 0, -1) != 0)
+			cpu_relax();
+		return;
+	} else {
+		while (1) {
+			count = rw_lock->ref_count[0].count;
+			if (count < 0) {
+				cpu_relax();
+				continue;
+			}
+			if (cmpxchg(&rw_lock->ref_count[0].count, count,
+				    count + 1) == count)
+				return;
+		}
+	}
+}
+
+wstdcall void WIN_FUNC(NdisReleaseReadWriteLock,2)
+	(struct ndis_rw_lock *rw_lock, struct lock_state *lock_state)
+{
+	typeof(rw_lock->ref_count[0].count) count;
+	while (1) {
+		count = rw_lock->ref_count[0].count;
+		if (count < 0) {
+			assert(count == -1);
+			if (cmpxchg(&rw_lock->ref_count[0].count, count,
+				    0) == count)
+				return;
+		} else if (count > 0) {
+			assert(count > 0);
+			if (cmpxchg(&rw_lock->ref_count[0].count, count,
+				    count + 1) == count)
+				return;
+		} else
+			WARNING("invalid state: %d", count);
+	}
 }
 
 wstdcall NDIS_STATUS WIN_FUNC(NdisMAllocateMapRegisters,5)
@@ -2408,6 +2456,16 @@ wstdcall CHAR WIN_FUNC(NdisSystemProcessorCount,0)
 	(void)
 {
 	return NR_CPUS;
+}
+
+wstdcall void WIN_FUNC(NdisGetCurrentProcessorCounts,3)
+	(ULONG *idle, ULONG *kernel_user, ULONG *index)
+{
+	int cpu = smp_processor_id();
+	*idle = kstat_cpu(cpu).cpustat.idle;
+	*kernel_user = kstat_cpu(cpu).cpustat.system +
+		kstat_cpu(cpu).cpustat.user;
+	*index = cpu;
 }
 
 wstdcall void WIN_FUNC(NdisInitializeEvent,1)
