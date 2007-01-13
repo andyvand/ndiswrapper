@@ -439,7 +439,8 @@ struct ndis_spinlock {
 };
 
 union ndis_rw_lock_refcount {
-	UINT ref_count;
+	/* 'count' should be UINT, but in ndiswrapper it is 'INT' */
+	INT count;
 	UCHAR cache_line[16];
 };
 
@@ -448,10 +449,15 @@ struct ndis_rw_lock {
 		struct {
 			NT_SPIN_LOCK klock;
 			void *context;
-		} s;
+		};
 		UCHAR reserved[16];
-	} u;
+	};
 	union ndis_rw_lock_refcount ref_count[MAXIMUM_PROCESSORS];
+};
+
+struct lock_state {
+	USHORT state;
+	KIRQL irql;
 };
 
 struct ndis_work_item;
