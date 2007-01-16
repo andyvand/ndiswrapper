@@ -343,6 +343,7 @@ wfastcall NTSTATUS WIN_FUNC(IofCallDriver,2)
 	driver_dispatch_t *major_func;
 	struct driver_object *drv_obj;
 
+	IOENTER("%p, %p", dev_obj, irp);
 	IoSetNextIrpStackLocation(irp);
 	DUMP_IRP(irp);
 #ifdef IO_DEBUG
@@ -352,6 +353,7 @@ wfastcall NTSTATUS WIN_FUNC(IofCallDriver,2)
 	}
 #endif
 	irp_sl = IoGetCurrentIrpStackLocation(irp);
+	IOTRACE("%p, %p", irp_sl, dev_obj);
 	drv_obj = dev_obj->drv_obj;
 	irp_sl->dev_obj = dev_obj;
 	IOTRACE("drv_obj: %p", drv_obj);

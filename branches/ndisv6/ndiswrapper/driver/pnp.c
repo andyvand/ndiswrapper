@@ -418,9 +418,14 @@ NTSTATUS pnp_start_device(struct wrap_device *wd)
 	irp_sl.params.start_device.allocated_resources_translated =
 		wd->resource_list;
 	status = IoSendIrpTopDev(pdo, IRP_MJ_PNP, IRP_MN_START_DEVICE, &irp_sl);
+	DBGTRACE2("%08X, %p", status, pdo);
 	fdo = IoGetAttachedDevice(pdo);
+	DBGTRACE2("%p", fdo);
+	DBGTRACE2("%p", fdo->drv_obj);
+	DBGTRACE2("%p", fdo->drv_obj->drv_ext);
 	if (status == STATUS_SUCCESS)
-		fdo->drv_obj->drv_ext->count++;
+		(void)0;
+//		fdo->drv_obj->drv_ext->count++;
 	else
 		WARNING("Windows driver couldn't initialize the device (%08X)",
 			status);
@@ -605,7 +610,7 @@ int wrap_pnp_start_pci_device(struct pci_dev *pdev,
 	struct load_device load_device;
 	struct wrap_device *wd;
 
-	TRACEENTER1("called for %04x:%04x:%04x:%04x", pdev->vendor,
+	TRACEENTER1("%p: %04x:%04x:%04x:%04x", pdev, pdev->vendor,
 		    pdev->device, pdev->subsystem_vendor,
 		    pdev->subsystem_device);
 

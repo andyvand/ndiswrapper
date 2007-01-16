@@ -486,7 +486,6 @@ void unload_wrap_driver(struct wrap_driver *driver)
 	RemoveEntryList(&driver->list);
 	/* this frees driver */
 	free_custom_extensions(drv_obj->drv_ext);
-	kfree(drv_obj->drv_ext);
 	DBGTRACE1("drv_obj: %p", drv_obj);
 
 	TRACEEXIT1(return);
@@ -520,7 +519,6 @@ static int start_wrap_driver(struct wrap_driver *driver)
 		RtlFreeUnicodeString(&drv_obj->name);
 		/* this frees ndis_driver */
 		free_custom_extensions(drv_obj->drv_ext);
-		kfree(drv_obj->drv_ext);
 		DBGTRACE1("drv_obj: %p", drv_obj);
 		ObDereferenceObject(drv_obj);
 		TRACEEXIT1(return -EINVAL);
@@ -547,6 +545,23 @@ static int add_wrap_driver(struct wrap_driver *driver)
 	TRACEEXIT1(return 0);
 }
 
+struct driver_object *allocate_driver(void)
+{
+	struct driver_object *drv_obj;
+
+	drv_obj = allocate_object(sizeof(*drv_obj) + sizeof(drv_obj->drv_ext),
+				  OBJECT_TYPE_DRIVER, NULL);
+	if (!drv_obj) {
+		WARNING("couldn't allocate memory");
+		return NULL;
+	}
+	drv_obj->drv_ext = (void *)drv_obj + sizeof(*drv_obj);
+	memset(drv_obj->drv_ext, 0, sizeof(*(drv_obj->drv_ext)));
+	InitializeListHead(&drv_obj->drv_ext->custom_ext);
+	DBGTRACE2("%p, %p", drv_obj, drv_obj->drv_ext);
+	return drv_obj;
+}
+
 /* load a driver from userspace and initialize it. called with
  * loader_mutex down */
 static int load_user_space_driver(struct load_driver *load_driver)
@@ -556,20 +571,12 @@ static int load_user_space_driver(struct load_driver *load_driver)
 	struct wrap_driver *wrap_driver = NULL;
 
 	TRACEENTER1("%p", load_driver);
-	drv_obj = allocate_object(sizeof(*drv_obj), OBJECT_TYPE_DRIVER, NULL);
+	drv_obj = allocate_driver();
 	if (!drv_obj) {
 		ERROR("couldn't allocate memory");
 		TRACEEXIT1(return -ENOMEM);
 	}
 	DBGTRACE1("drv_obj: %p", drv_obj);
-	drv_obj->drv_ext = kmalloc(sizeof(*(drv_obj->drv_ext)), GFP_KERNEL);
-	if (!drv_obj->drv_ext) {
-		ERROR("couldn't allocate memory");
-		ObDereferenceObject(drv_obj);
-		TRACEEXIT1(return -ENOMEM);
-	}
-	memset(drv_obj->drv_ext, 0, sizeof(*(drv_obj->drv_ext)));
-	InitializeListHead(&drv_obj->drv_ext->custom_ext);
 	if (IoAllocateDriverObjectExtension(drv_obj,
 					    (void *)WRAP_DRIVER_CLIENT_ID,
 					    sizeof(*wrap_driver),
@@ -586,7 +593,6 @@ static int load_user_space_driver(struct load_driver *load_driver)
 	    STATUS_SUCCESS) {
 		ERROR("couldn't initialize registry path");
 		free_custom_extensions(drv_obj->drv_ext);
-		kfree(drv_obj->drv_ext);
 		DBGTRACE1("drv_obj: %p", drv_obj);
 		ObDereferenceObject(drv_obj);
 		TRACEEXIT1(return -EINVAL);

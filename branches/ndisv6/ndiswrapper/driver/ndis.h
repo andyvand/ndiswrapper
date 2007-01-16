@@ -1458,6 +1458,8 @@ struct wrap_ndis_device {
 	NT_SPIN_LOCK lock;
 	struct wrap_device *wd;
 	struct device_object *pdo;
+	struct device_object *fdo;
+	struct device_object *next_device;
 	struct net_device *net_dev;
 	unsigned long hw_status;
 	struct tasklet_struct irq_tasklet;

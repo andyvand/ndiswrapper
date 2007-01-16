@@ -434,7 +434,7 @@ static int iw_set_tx_power(struct net_device *dev, struct iw_request_info *info,
 			else if (wrqu->txpower.value < -43)
 				ndis_power = 127;
 			else {
-				signed char tmp;
+				char tmp;
 				tmp = wrqu->txpower.value;
 				tmp = -12 - tmp;
 				tmp <<= 2;
