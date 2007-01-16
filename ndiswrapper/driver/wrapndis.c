@@ -1596,6 +1596,8 @@ static wstdcall NTSTATUS NdisAddDevice(struct driver_object *drv_obj,
 	wd = pdo->reserved;
 	wd->wnd = wnd;
 	wnd->wd = wd;
+	wnd->pdo = pdo;
+	wnd->fdo = fdo;
 	wnd->net_dev = net_dev;
 	init_MUTEX(&wnd->ndis_comm_mutex);
 	init_waitqueue_head(&wnd->ndis_comm_wq);
@@ -1619,18 +1621,8 @@ static wstdcall NTSTATUS NdisAddDevice(struct driver_object *drv_obj,
 	wnd->infrastructure_mode = Ndis802_11Infrastructure;
 	initialize_work(&wnd->wrap_ndis_work, wrap_ndis_worker, wnd);
 	wnd->hw_status = 0;
-	if (wd->driver->ndis_driver) {
-		struct wrap_ndis_driver *ndis_driver = wd->driver->ndis_driver;
-		if (ndis_driver->mp_pnp_chars.add_device) {
-			status = LIN2WIN2(ndis_driver->mp_pnp_chars.add_device,
-					  wnd, ndis_driver->mp_driver_ctx);
-			if (status != NDIS_STATUS_SUCCESS) {
-				WARNING("failed: 0x%x", status);
-				free_netdev(net_dev);
-				return status;
-			}
-		}
-	}
+
+	wnd->next_device = IoAttachDeviceToDeviceStack(fdo, pdo);
 	wnd->stats_enabled = TRUE;
 	InitializeListHead(&wnd->timer_list);
 
@@ -1655,6 +1647,20 @@ static wstdcall NTSTATUS NdisAddDevice(struct driver_object *drv_obj,
 		SET_NETDEV_DEV(net_dev, &wd->usb.intf->dev);
 #endif
 	TRACEEXIT2(return STATUS_SUCCESS);
+	if (wd->driver->ndis_driver) {
+		struct wrap_ndis_driver *ndis_driver = wd->driver->ndis_driver;
+		DBGTRACE2("%p, %p", ndis_driver, ndis_driver->mp_pnp_chars.add_device);
+		if (ndis_driver->mp_pnp_chars.add_device) {
+			status = LIN2WIN2(ndis_driver->mp_pnp_chars.add_device,
+					  wnd, ndis_driver->mp_driver_ctx);
+			if (status != NDIS_STATUS_SUCCESS) {
+				WARNING("failed: 0x%x", status);
+				free_netdev(net_dev);
+				return status;
+			}
+		}
+	}
+
 }
 
 int init_ndis_driver(struct driver_object *drv_obj)

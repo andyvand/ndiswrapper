@@ -1623,17 +1623,28 @@ wstdcall LONG WIN_FUNC(KeReleaseMutex,2)
 	EVENTEXIT(return ret);
 }
 
+wstdcall void WIN_FUNC(KeInitializeGuardedMutex,1)
+	(struct kguarded_mutex *mutex)
+{
+	EVENTENTER("%p, %p", mutex, &mutex->gate.dh);
+	initialize_dh(&mutex->gate.dh, MutexObject, 1);
+	EVENTEXIT(return);
+}
+
 wstdcall void WIN_FUNC(KeAcquireGuardedMutex,1)
 	(struct kguarded_mutex *mutex)
 {
-	TODO();
+	EVENTENTER("%p, %p", mutex, &mutex->gate.dh);
+	KeWaitForSingleObject(&mutex->gate.dh, Executive, WaitAny,
+			      FALSE, NULL);
 	EVENTEXIT(return);
 }
 
 wstdcall void WIN_FUNC(KeReleaseGuardedMutex,1)
 	(struct kguarded_mutex *mutex)
 {
-	TODO();
+	EVENTENTER("%p, %p", mutex, &mutex->gate.dh);
+	KeReleaseMutex((struct nt_mutex *)&mutex->gate.dh, FALSE);
 	EVENTEXIT(return);
 }
 
@@ -2260,9 +2271,9 @@ int dereference_object(void *object)
 		ERROR("invalid object: %p (%d)", object, ref_count);
 	if (ref_count <= 0) {
 		free_object(object);
-		return 1;
+		TRACEEXIT2(return 1);
 	} else
-		return 0;
+		TRACEEXIT2(return 0);
 }
 
 wfastcall void WIN_FUNC(ObfDereferenceObject,1)
