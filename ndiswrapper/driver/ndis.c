@@ -648,7 +648,8 @@ wstdcall void WIN_FUNC(NdisMSetAttributesEx,5)
 	wnd = nmb->wnd;
 	nmb->adapter_ctx = adapter_ctx;
 
-	if (attributes & NDIS_ATTRIBUTE_BUS_MASTER)
+	if ((attributes & NDIS_ATTRIBUTE_BUS_MASTER) &&
+	    wrap_is_pci_bus(wnd->wd->dev_bus))
 		pci_set_master(wnd->wd->pci.pdev);
 
 	wnd->attributes = attributes;
@@ -1654,8 +1655,8 @@ wstdcall void wrap_miniport_timer(struct kdpc *kdpc, void *ctx, void *arg1,
 	struct ndis_miniport_block *nmb;
 
 	timer = ctx;
-	TRACEENTER5("timer: %p, func: %p, ctx: %p, nmb: %p",
-		    timer, timer->func, timer->ctx, timer->nmb);
+	TIMERENTER("timer: %p, func: %p, ctx: %p, nmb: %p",
+		   timer, timer->func, timer->ctx, timer->nmb);
 	nmb = timer->nmb;
 	/* already called at DISPATCH_LEVEL */
 	if (!deserialized_driver(nmb->wnd))
@@ -1663,7 +1664,7 @@ wstdcall void wrap_miniport_timer(struct kdpc *kdpc, void *ctx, void *arg1,
 	LIN2WIN4(timer->func, NULL, timer->ctx, NULL, NULL);
 	if (!deserialized_driver(nmb->wnd))
 		serialize_unlock(nmb->wnd);
-	TRACEEXIT5(return);
+	TIMEREXIT(return);
 }
 WIN_FUNC_DECL(wrap_miniport_timer,4)
 
@@ -1671,8 +1672,8 @@ wstdcall void WIN_FUNC(NdisMInitializeTimer,4)
 	(struct ndis_miniport_timer *timer, struct ndis_miniport_block *nmb,
 	 DPC func, void *ctx)
 {
-	TRACEENTER4("timer: %p, func: %p, ctx: %p, nmb: %p",
-		    timer, func, ctx, nmb);
+	TIMERENTER("timer: %p, func: %p, ctx: %p, nmb: %p",
+		   timer, func, ctx, nmb);
 	timer->func = func;
 	timer->ctx = ctx;
 	timer->nmb = nmb;
@@ -1680,7 +1681,7 @@ wstdcall void WIN_FUNC(NdisMInitializeTimer,4)
 	KeInitializeDpc(&timer->kdpc, WIN_FUNC_PTR(wrap_miniport_timer,4),
 			timer);
 	wrap_init_timer(&timer->nt_timer, NotificationTimer, &timer->kdpc, nmb);
-	TRACEEXIT4(return);
+	TIMEREXIT(return);
 }
 
 wstdcall void WIN_FUNC(NdisMSetPeriodicTimer,2)
@@ -1688,26 +1689,26 @@ wstdcall void WIN_FUNC(NdisMSetPeriodicTimer,2)
 {
 	unsigned long expires = MSEC_TO_HZ(period_ms) + 1;
 
-	TRACEENTER4("%p, %u, %ld", timer, period_ms, expires);
+	TIMERENTER("%p, %u, %ld", timer, period_ms, expires);
 	wrap_set_timer(&timer->nt_timer, expires, expires, NULL);
-	TRACEEXIT4(return);
+	TIMEREXIT(return);
 }
 
 wstdcall void WIN_FUNC(NdisMCancelTimer,2)
 	(struct ndis_miniport_timer *timer, BOOLEAN *canceled)
 {
-	TRACEENTER4("%p", timer);
+	TIMERENTER("%p", timer);
 	*canceled = KeCancelTimer(&timer->nt_timer);
-	TRACEEXIT4(return);
+	TIMEREXIT(return);
 }
 
 wstdcall void WIN_FUNC(NdisInitializeTimer,3)
 	(struct ndis_timer *timer, void *func, void *ctx)
 {
-	TRACEENTER4("%p, %p, %p", timer, func, ctx);
+	TIMERENTER("%p, %p, %p", timer, func, ctx);
 	KeInitializeDpc(&timer->kdpc, func, ctx);
 	wrap_init_timer(&timer->nt_timer, NotificationTimer, &timer->kdpc, NULL);
-	TRACEEXIT4(return);
+	TIMEREXIT(return);
 }
 
 /* NdisMSetTimer is a macro that calls NdisSetTimer with
@@ -1718,18 +1719,18 @@ wstdcall void WIN_FUNC(NdisSetTimer,2)
 {
 	unsigned long expires = MSEC_TO_HZ(duetime_ms) + 1;
 
-	TRACEENTER4("%p, %p, %u, %ld", timer, timer->nt_timer.wrap_timer,
-		    duetime_ms, expires);
+	TIMERENTER("%p, %p, %u, %ld", timer, timer->nt_timer.wrap_timer,
+		   duetime_ms, expires);
 	wrap_set_timer(&timer->nt_timer, expires, 0, NULL);
-	TRACEEXIT4(return);
+	TIMEREXIT(return);
 }
 
 wstdcall void WIN_FUNC(NdisCancelTimer,2)
 	(struct ndis_timer *timer, BOOLEAN *canceled)
 {
-	TRACEENTER4("%p", timer);
+	TIMERENTER("%p", timer);
 	*canceled = KeCancelTimer(&timer->nt_timer);
-	TRACEEXIT4(return);
+	TIMEREXIT(return);
 }
 
 wstdcall void WIN_FUNC(NdisReadNetworkAddress,4)
@@ -1804,7 +1805,7 @@ static void ndis_irq_handler(unsigned long data)
 	miniport = &wnd->wd->driver->ndis_driver->miniport;
 	if_serialize_lock(wnd);
 	LIN2WIN1(miniport->handle_interrupt, wnd->nmb->adapter_ctx);
-	if (miniport->enable_interrupt)
+	if ((!wnd->ndis_irq->req_isr) && miniport->enable_interrupt)
 		LIN2WIN1(miniport->enable_interrupt, wnd->nmb->adapter_ctx);
 	if_serialize_unlock(wnd);
 }
@@ -1831,9 +1832,9 @@ irqreturn_t ndis_isr(int irq, void *data ISR_PT_REGS_PARAM_DECL)
 	if (recognized) {
 		if (queue_handler)
 			tasklet_schedule(&wnd->irq_tasklet);
-		return IRQ_HANDLED;
+		TRACEEXIT6(return IRQ_HANDLED);
 	}
-	return IRQ_NONE;
+	TRACEEXIT6(return IRQ_NONE);
 }
 
 wstdcall NDIS_STATUS WIN_FUNC(NdisMRegisterInterrupt,7)
@@ -1842,6 +1843,7 @@ wstdcall NDIS_STATUS WIN_FUNC(NdisMRegisterInterrupt,7)
 	 BOOLEAN shared, enum kinterrupt_mode mode)
 {
 	struct wrap_ndis_device *wnd = nmb->wnd;
+
 	TRACEENTER1("%p, vector:%d, level:%d, req_isr:%d, shared:%d, mode:%d",
 		    ndis_irq, vector, level, req_isr, shared, mode);
 

@@ -61,7 +61,7 @@ wstdcall BOOLEAN WIN_FUNC(IoIs32bitProcess,1)
 wstdcall void WIN_FUNC(IoInitializeIrp,3)
 	(struct irp *irp, USHORT size, CCHAR stack_count)
 {
-	IOENTER("irp: %p, count: %d", irp, stack_count);
+	IOENTER("irp: %p, %d, %d", irp, size, stack_count);
 
 	memset(irp, 0, size);
 	irp->size = size;
@@ -96,10 +96,9 @@ wstdcall struct irp *WIN_FUNC(IoAllocateIrp,2)
 	stack_count++;
 	irp_size = IoSizeOfIrp(stack_count);
 	irp = kmalloc(irp_size, gfp_irql());
-	if (irp) {
-		IOTRACE("allocated irp %p", irp);
+	if (irp)
 		IoInitializeIrp(irp, irp_size, stack_count);
-	}
+	IOTRACE("irp %p", irp);
 	IOEXIT(return irp);
 }
 
@@ -343,18 +342,18 @@ wfastcall NTSTATUS WIN_FUNC(IofCallDriver,2)
 	driver_dispatch_t *major_func;
 	struct driver_object *drv_obj;
 
-	IoSetNextIrpStackLocation(irp);
-	DUMP_IRP(irp);
-#ifdef IO_DEBUG
-	if (irp->current_location < 0) {
+	IOTRACE("%p, %p, %p, %d, %d, %p", dev_obj, irp, dev_obj->drv_obj,
+		irp->current_location, irp->stack_count,
+		IoGetCurrentIrpStackLocation(irp));
+	if (irp->current_location <= 0) {
 		ERROR("invalid irp: %p, %d", irp, irp->current_location);
 		return STATUS_INVALID_PARAMETER;
 	}
-#endif
+	IoSetNextIrpStackLocation(irp);
+	DUMP_IRP(irp);
 	irp_sl = IoGetCurrentIrpStackLocation(irp);
 	drv_obj = dev_obj->drv_obj;
 	irp_sl->dev_obj = dev_obj;
-	IOTRACE("drv_obj: %p", drv_obj);
 	major_func = drv_obj->major_func[irp_sl->major_fn];
 	IOTRACE("major_func: %p, dev_obj: %p", major_func, dev_obj);
 	/* TODO: Linux functions must be called natively */
@@ -814,22 +813,22 @@ wstdcall void WIN_FUNC(IoDeleteDevice,1)
 }
 
 wstdcall void WIN_FUNC(IoDetachDevice,1)
-	(struct device_object *topdev)
+	(struct device_object *tgt)
 {
 	struct device_object *tail;
 	KIRQL irql;
 
-	IOENTER("%p", topdev);
-	if (!topdev)
+	IOENTER("%p", tgt);
+	if (!tgt)
 		IOEXIT(return);
-	tail = topdev->attached;
+	tail = tgt->attached;
 	if (!tail)
 		IOEXIT(return);
 	IOTRACE("tail: %p", tail);
 
 	irql = nt_spin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL);
-	topdev->attached = tail->attached;
-	IOTRACE("attached:%p", topdev->attached);
+	tgt->attached = tail->attached;
+	IOTRACE("attached:%p", tgt->attached);
 	for ( ; tail; tail = tail->attached) {
 		IOTRACE("tail:%p", tail);
 		tail->stack_count--;
@@ -841,31 +840,27 @@ wstdcall void WIN_FUNC(IoDetachDevice,1)
 wstdcall struct device_object *WIN_FUNC(IoGetAttachedDevice,1)
 	(struct device_object *dev)
 {
-	struct device_object *top_dev;
 	KIRQL irql;
 
 	IOENTER("%p", dev);
 	if (!dev)
 		IOEXIT(return NULL);
 	irql = nt_spin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL);
-	top_dev = dev;
-	while (top_dev->attached)
-		top_dev = top_dev->attached;
+	while (dev->attached)
+		dev = dev->attached;
 	nt_spin_unlock_irql(&ntoskernel_lock, irql);
-	IOEXIT(return top_dev);
+	IOEXIT(return dev);
 }
 
 wstdcall struct device_object *WIN_FUNC(IoGetAttachedDeviceReference,1)
 	(struct device_object *dev)
 {
-	struct device_object *top_dev;
-
 	IOENTER("%p", dev);
 	if (!dev)
 		IOEXIT(return NULL);
-	top_dev = IoGetAttachedDevice(dev);
-	ObReferenceObject(top_dev);
-	IOEXIT(return top_dev);
+	dev = IoGetAttachedDevice(dev);
+	ObReferenceObject(dev);
+	IOEXIT(return dev);
 }
 
 wstdcall struct device_object *WIN_FUNC(IoAttachDeviceToDeviceStack,2)

@@ -304,12 +304,11 @@ struct usbd_bus_information_level {
 	wchar_t ControllerName[1];
 };
 
-#define USBDI_VERSION				0x00000500 // Windows XP
+#define USBDI_VERSION_XP			0x00000500 // Windows XP
 #define USB_HCD_CAPS_SUPPORTS_RT_THREADS	0x00000001
 #define USB_BUSIF_USBDI_VERSION_0		0x0000
 #define USB_BUSIF_USBDI_VERSION_1		0x0001
 #define USB_BUSIF_USBDI_VERSION_2		0x0002
-
 
 struct usbd_version_info {
 	ULONG usbdi_version;

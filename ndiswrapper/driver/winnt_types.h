@@ -961,9 +961,6 @@ struct io_stack_location {
 #pragma pack(pop)
 #endif
 
-#define URB_FROM_IRP(irp)						\
-	(union nt_urb *)(IoGetCurrentIrpStackLocation(irp)->params.others.arg1)
-
 struct kapc {
 	CSHORT type;
 	CSHORT size;
@@ -1002,6 +999,12 @@ struct wrap_urb {
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,0)
 	typeof(((struct urb *)0)->status) urb_status;
 #endif
+};
+
+/* ndiswrapper fields in IRP replace kapc */
+struct wrap_irp {
+	struct wrap_urb *wrap_urb;
+	struct wrap_device *wd;
 };
 
 struct irp {
@@ -1048,27 +1051,25 @@ struct irp {
 			struct {
 				struct nt_list list;
 				union {
-					struct io_stack_location *
-					current_stack_location;
+					struct io_stack_location *csl;
 					ULONG packet_type;
 				};
 			};
 			struct file_object *file_object;
 		} overlay;
-		struct kapc apc;
+		union {
+			struct kapc apc;
+			struct wrap_irp wrap_irp;
+		};
 		void *completion_key;
 	} tail;
-
-	/* ndiswrapper extension */
-	struct wrap_urb *wrap_urb;
-	struct wrap_device *wd;
 };
 
 #define IoSizeOfIrp(stack_count)					\
 	((USHORT)(sizeof(struct irp) + ((stack_count) *			\
 					sizeof(struct io_stack_location))))
 #define IoGetCurrentIrpStackLocation(irp)		\
-	(irp)->tail.overlay.current_stack_location
+	(irp)->tail.overlay.csl
 #define IoGetNextIrpStackLocation(irp)		\
 	(IoGetCurrentIrpStackLocation(irp) - 1)
 #define IoGetPreviousIrpStackLocation(irp)	\
@@ -1120,6 +1121,12 @@ IoSetCompletionRoutine(struct irp *irp, void *routine, void *context,
 #define IRP_SL(irp, n) (((struct io_stack_location *)((irp) + 1)) + (n))
 #define IRP_DRIVER_CONTEXT(irp) (irp)->tail.overlay.driver_context
 #define IoIrpThread(irp) ((irp)->tail.overlay.thread)
+
+#define IRP_URB(irp)							\
+	(union nt_urb *)(IoGetCurrentIrpStackLocation(irp)->params.others.arg1)
+
+#define IRP_WD(irp) (irp)->tail.wrap_irp.wd
+#define IRP_WRAP_URB(irp) (irp)->tail.wrap_irp.wrap_urb
 
 struct wmi_guid_reg_info {
 	struct guid *guid;
