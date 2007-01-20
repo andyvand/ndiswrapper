@@ -615,7 +615,7 @@ static void timer_proc(unsigned long data)
 	struct kdpc *kdpc;
 
 	nt_timer = wrap_timer->nt_timer;
-	TRACEENTER5("%p(%p), %lu", wrap_timer, nt_timer, jiffies);
+	TIMERENTER("%p(%p), %lu", wrap_timer, nt_timer, jiffies);
 #ifdef TIMER_DEBUG
 	BUG_ON(wrap_timer->wrap_timer_magic != WRAP_TIMER_MAGIC);
 	BUG_ON(nt_timer->wrap_timer_magic != WRAP_TIMER_MAGIC);
@@ -631,7 +631,7 @@ static void timer_proc(unsigned long data)
 		queue_kdpc(kdpc);
 #endif
 	}
-	TRACEEXIT5(return);
+	TIMEREXIT(return);
 }
 
 void wrap_init_timer(struct nt_timer *nt_timer, enum timer_type type,
@@ -645,7 +645,7 @@ void wrap_init_timer(struct nt_timer *nt_timer, enum timer_type type,
 	 * wasting memory. We can check if nt_timer->wrap_timer_magic is
 	 * set and not allocate, but it is not guaranteed always to be
 	 * safe */
-	TRACEENTER5("%p", nt_timer);
+	TIMERENTER("%p", nt_timer);
 	/* we allocate memory for wrap_timer behind driver's back and
 	 * there is no NDIS/DDK function where this memory can be
 	 * freed, so we use slack_kmalloc so it gets freed when driver
@@ -674,21 +674,21 @@ void wrap_init_timer(struct nt_timer *nt_timer, enum timer_type type,
 	else
 		InsertTailList(&wrap_timer_list, &wrap_timer->list);
 	nt_spin_unlock_irql(&timer_lock, irql);
-	DBGTRACE5("timer %p (%p)", wrap_timer, nt_timer);
-	TRACEEXIT5(return);
+	TIMERTRACE("timer %p (%p)", wrap_timer, nt_timer);
+	TIMEREXIT(return);
 }
 
 wstdcall void WIN_FUNC(KeInitializeTimerEx,2)
 	(struct nt_timer *nt_timer, enum timer_type type)
 {
-	TRACEENTER5("%p", nt_timer);
+	TIMERENTER("%p", nt_timer);
 	wrap_init_timer(nt_timer, type, NULL, NULL);
 }
 
 wstdcall void WIN_FUNC(KeInitializeTimer,1)
 	(struct nt_timer *nt_timer)
 {
-	TRACEENTER5("%p", nt_timer);
+	TIMERENTER("%p", nt_timer);
 	wrap_init_timer(nt_timer, NotificationTimer, NULL, NULL);
 }
 
@@ -698,12 +698,12 @@ BOOLEAN wrap_set_timer(struct nt_timer *nt_timer, unsigned long expires_hz,
 {
 	struct wrap_timer *wrap_timer;
 
-	TRACEENTER4("%p, %lu, %lu, %p, %lu",
-		    nt_timer, expires_hz, repeat_hz, kdpc, jiffies);
+	TIMERENTER("%p, %lu, %lu, %p, %lu",
+		   nt_timer, expires_hz, repeat_hz, kdpc, jiffies);
 
 	KeClearEvent((struct nt_event *)nt_timer);
 	wrap_timer = nt_timer->wrap_timer;
-	DBGTRACE4("%p", wrap_timer);
+	TIMERTRACE("%p", wrap_timer);
 #ifdef TIMER_DEBUG
 	if (wrap_timer->nt_timer != nt_timer)
 		WARNING("bad timers: %p, %p, %p", wrap_timer, nt_timer,
@@ -723,9 +723,9 @@ BOOLEAN wrap_set_timer(struct nt_timer *nt_timer, unsigned long expires_hz,
 		nt_timer->kdpc = kdpc;
 	wrap_timer->repeat = repeat_hz;
 	if (mod_timer(&wrap_timer->timer, jiffies + expires_hz))
-		TRACEEXIT5(return TRUE);
+		TIMEREXIT(return TRUE);
 	else
-		TRACEEXIT5(return FALSE);
+		TIMEREXIT(return FALSE);
 }
 
 wstdcall BOOLEAN WIN_FUNC(KeSetTimerEx,4)
@@ -734,7 +734,7 @@ wstdcall BOOLEAN WIN_FUNC(KeSetTimerEx,4)
 {
 	unsigned long expires_hz, repeat_hz;
 
-	DBGTRACE5("%p, %Ld, %d", nt_timer, duetime_ticks, period_ms);
+	TIMERENTER("%p, %Ld, %d", nt_timer, duetime_ticks, period_ms);
 	expires_hz = SYSTEM_TIME_TO_HZ(duetime_ticks) + 1;
 	repeat_hz = MSEC_TO_HZ(period_ms);
 	return wrap_set_timer(nt_timer, expires_hz, repeat_hz, kdpc);
@@ -744,7 +744,7 @@ wstdcall BOOLEAN WIN_FUNC(KeSetTimer,3)
 	(struct nt_timer *nt_timer, LARGE_INTEGER duetime_ticks,
 	 struct kdpc *kdpc)
 {
-	TRACEENTER5("%p, %Ld, %p", nt_timer, duetime_ticks, kdpc);
+	TIMERENTER("%p, %Ld, %p", nt_timer, duetime_ticks, kdpc);
 	return KeSetTimerEx(nt_timer, duetime_ticks, 0, kdpc);
 }
 
@@ -753,7 +753,7 @@ wstdcall BOOLEAN WIN_FUNC(KeCancelTimer,1)
 {
 	struct wrap_timer *wrap_timer;
 
-	TRACEENTER5("%p", nt_timer);
+	TIMERENTER("%p", nt_timer);
 	wrap_timer = nt_timer->wrap_timer;
 	if (!wrap_timer) {
 		ERROR("invalid wrap_timer");
@@ -762,14 +762,14 @@ wstdcall BOOLEAN WIN_FUNC(KeCancelTimer,1)
 #ifdef TIMER_DEBUG
 	BUG_ON(wrap_timer->wrap_timer_magic != WRAP_TIMER_MAGIC);
 #endif
-	DBGTRACE5("canceling timer %p(%p)", wrap_timer, nt_timer);
+	TIMERTRACE("canceling timer %p(%p)", wrap_timer, nt_timer);
 	/* disable timer before deleting so if it is periodic timer, it
 	 * won't be re-armed after deleting */
 	wrap_timer->repeat = 0;
 	if (del_timer(&wrap_timer->timer))
-		TRACEEXIT5(return TRUE);
+		TIMEREXIT(return TRUE);
 	else
-		TRACEEXIT5(return FALSE);
+		TIMEREXIT(return FALSE);
 }
 
 wstdcall BOOLEAN WIN_FUNC(KeReadStateTimer,1)
@@ -1578,6 +1578,7 @@ wstdcall LONG WIN_FUNC(KeReadStateEvent,1)
 	KIRQL irql = nt_spin_lock_irql(&dispatcher_lock, DISPATCH_LEVEL);
 	state = nt_event->dh.signal_state;
 	nt_spin_unlock_irql(&dispatcher_lock, irql);
+	EVENTTRACE("%d", state);
 	return state;
 }
 

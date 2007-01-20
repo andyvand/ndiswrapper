@@ -175,6 +175,16 @@ do {								       \
 #define EVENTEXIT(stmt) stmt
 #endif
 
+#if defined(TIMER_DEBUG)
+#define TIMERTRACE DBGTRACE1
+#define TIMERENTER TRACEENTER1
+#define TIMEREXIT TRACEEXIT1
+#else
+#define TIMERTRACE(fmt, ...)
+#define TIMERENTER(fmt, ...)
+#define TIMEREXIT(stmt) stmt
+#endif
+
 #if defined(IO_DEBUG)
 #define IOTRACE DBGTRACE1
 #define IOENTER TRACEENTER1
@@ -205,21 +215,6 @@ do {									\
 #define assert(expr) do { } while (0)
 #endif
 
-#if defined(IO_DEBUG)
-#define DUMP_IRP(irp)							\
-do {									\
-	struct io_stack_location *irp_sl;				\
-	irp_sl = IoGetCurrentIrpStackLocation(irp);			\
-	IOTRACE("irp: %p, stack size: %d, cl: %d, sl: %p, dev_obj: %p, " \
-		"mj_fn: %d, minor_fn: %d, nt_urb: %p, event: %p",	\
-		irp, irp->stack_count, (irp)->current_location,		\
-		irp_sl, irp_sl->dev_obj, irp_sl->major_fn,		\
-		irp_sl->minor_fn, URB_FROM_IRP(irp),			\
-		(irp)->user_event);					\
-} while (0)
-#else
-#define DUMP_IRP(irp) do { } while (0)
-#endif
 #endif // __KERNEL__
 
 #endif // NDISWRAPPER_H

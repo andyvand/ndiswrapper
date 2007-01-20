@@ -777,6 +777,22 @@ void adjust_user_shared_data_addr(char *driver, unsigned long length);
 #define IoCompleteRequest(irp, prio) IofCompleteRequest(irp, prio)
 #define IoCallDriver(dev, irp) IofCallDriver(dev, irp)
 
+#if defined(IO_DEBUG)
+#define DUMP_IRP(irp)							\
+do {									\
+	struct io_stack_location *irp_sl;				\
+	irp_sl = IoGetCurrentIrpStackLocation(irp);			\
+	IOTRACE("irp: %p, stack size: %d, cl: %d, sl: %p, dev_obj: %p, " \
+		"mj_fn: %d, minor_fn: %d, nt_urb: %p, event: %p",	\
+		irp, irp->stack_count, (irp)->current_location,		\
+		irp_sl, irp_sl->dev_obj, irp_sl->major_fn,		\
+		irp_sl->minor_fn, IRP_URB(irp),				\
+		(irp)->user_event);					\
+} while (0)
+#else
+#define DUMP_IRP(irp) do { } while (0)
+#endif
+
 static inline KIRQL current_irql(void)
 {
 	if (in_irq() || irqs_disabled())
