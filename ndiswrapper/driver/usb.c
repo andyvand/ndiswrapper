@@ -271,16 +271,16 @@ static void wrap_free_urb(struct urb *urb)
 	if (wrap_urb->flags & WRAP_URB_COPY_BUFFER) {
 		USBTRACE("freeing DMA buffer for URB: %p %p",
 			 urb, urb->transfer_buffer);
-		usb_buffer_free(IRP_WD(irp)->usb.udev,
+		usb_buffer_free(IRP_WRAP_DEVICE(irp)->usb.udev,
 				urb->transfer_buffer_length,
 				urb->transfer_buffer, urb->transfer_dma);
 	}
 	if (urb->setup_packet)
 		kfree(urb->setup_packet);
-	if (IRP_WD(irp)->usb.num_alloc_urbs > MAX_ALLOCATED_URBS) {
+	if (IRP_WRAP_DEVICE(irp)->usb.num_alloc_urbs > MAX_ALLOCATED_URBS) {
 		IoAcquireCancelSpinLock(&irp->cancel_irql);
 		RemoveEntryList(&wrap_urb->list);
-		IRP_WD(irp)->usb.num_alloc_urbs--;
+		IRP_WRAP_DEVICE(irp)->usb.num_alloc_urbs--;
 		IoReleaseCancelSpinLock(irp->cancel_irql);
 		usb_free_urb(urb);
 		kfree(wrap_urb);
@@ -332,7 +332,7 @@ static struct urb *wrap_alloc_urb(struct irp *irp, unsigned int pipe,
 	struct wrap_device *wd;
 
 	USBENTER("irp: %p", irp);
-	wd = IRP_WD(irp);
+	wd = IRP_WRAP_DEVICE(irp);
 	alloc_flags = gfp_irql();
 	IoAcquireCancelSpinLock(&irp->cancel_irql);
 	urb = NULL;
@@ -615,7 +615,7 @@ static USBD_STATUS wrap_bulk_or_intr_trans(struct irp *irp)
 	union nt_urb *nt_urb;
 
 	nt_urb = IRP_URB(irp);
-	udev = IRP_WD(irp)->usb.udev;
+	udev = IRP_WRAP_DEVICE(irp)->usb.udev;
 	bulk_int_tx = &nt_urb->bulk_int_transfer;
 	pipe_handle = bulk_int_tx->pipe_handle;
 	USBTRACE("flags: %X, length: %u, buffer: %p, handle: %p",
@@ -683,7 +683,7 @@ static USBD_STATUS wrap_vendor_or_class_req(struct irp *irp)
 	struct usb_ctrlrequest *dr;
 
 	nt_urb = IRP_URB(irp);
-	udev = IRP_WD(irp)->usb.udev;
+	udev = IRP_WRAP_DEVICE(irp)->usb.udev;
 	vc_req = &nt_urb->vendor_class_request;
 	USBTRACE("bits: %x, req: %x, val: %08x, index: %08x, flags: %x,"
 		 "buf: %p, len: %d", vc_req->reserved_bits, vc_req->request,
@@ -809,7 +809,7 @@ static USBD_STATUS wrap_abort_pipe(struct usb_device *udev, struct irp *irp)
 	struct wrap_device *wd;
 	KIRQL irql;
 
-	wd = IRP_WD(irp);
+	wd = IRP_WRAP_DEVICE(irp);
 	nt_urb = IRP_URB(irp);
 	pipe_handle = nt_urb->pipe_req.pipe_handle;
 	USBENTER("%p, %x", irp, pipe_handle->bEndpointAddress);
@@ -1034,7 +1034,7 @@ static USBD_STATUS wrap_process_nt_urb(struct irp *irp)
 	USBD_STATUS status;
 	struct wrap_device *wd;
 
-	wd = IRP_WD(irp);
+	wd = IRP_WRAP_DEVICE(irp);
 	udev = wd->usb.udev;
 	nt_urb = IRP_URB(irp);
 	USBENTER("nt_urb = %p, irp = %p, length = %d, function = %x",
@@ -1101,7 +1101,7 @@ static USBD_STATUS wrap_reset_port(struct irp *irp)
 	no_warn_unused int ret, lock = 0;
 	struct wrap_device *wd;
 
-	wd = IRP_WD(irp);
+	wd = IRP_WRAP_DEVICE(irp);
 	USBENTER("%p, %p", wd, wd->usb.udev);
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,10)
 	lock = usb_lock_device_for_reset(wd->usb.udev, wd->usb.intf);
@@ -1126,7 +1126,7 @@ static USBD_STATUS wrap_get_port_status(struct irp *irp)
 	struct wrap_device *wd;
 	ULONG *status;
 
-	wd = IRP_WD(irp);
+	wd = IRP_WRAP_DEVICE(irp);
 	USBENTER("%p, %p", wd, wd->usb.udev);
 	status = IoGetCurrentIrpStackLocation(irp)->params.others.arg1;
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
@@ -1159,7 +1159,7 @@ NTSTATUS wrap_submit_irp(struct device_object *pdo, struct irp *irp)
 	wd = pdo->reserved;
 //	if (wd->usb.intf == NULL)
 //		USBEXIT(return STATUS_DEVICE_REMOVED);
-	IRP_WD(irp) = wd;
+	IRP_WRAP_DEVICE(irp) = wd;
 	irp_sl = IoGetCurrentIrpStackLocation(irp);
 	switch (irp_sl->params.dev_ioctl.code) {
 	case IOCTL_INTERNAL_USB_SUBMIT_URB:
