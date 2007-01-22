@@ -485,14 +485,15 @@ static struct ndis_packet *alloc_tx_packet(struct wrap_ndis_device *wnd,
 	oob_data = NDIS_PACKET_OOB_DATA(packet);
 	oob_data->skb = skb;
 	if (wnd->use_sg_dma) {
-		oob_data->ndis_sg_element.address =
+		struct ndis_sg_element *sg_element =
+			&oob_data->wrap_tx_sg_list.elements[0];
+		sg_element->address =
 			PCI_DMA_MAP_SINGLE(wnd->wd->pci.pdev, skb->data,
 					   skb->len, PCI_DMA_TODEVICE);
-		oob_data->ndis_sg_element.length = skb->len;
-		oob_data->ndis_sg_list.nent = 1;
-		oob_data->ndis_sg_list.elements = &oob_data->ndis_sg_element;
+		sg_element->length = skb->len;
+		oob_data->wrap_tx_sg_list.nent = 1;
 		oob_data->extension.info[ScatterGatherListPacketInfo] =
-			&oob_data->ndis_sg_list;
+			&oob_data->wrap_tx_sg_list;
 	}
 #if 0
 	if (wnd->tx_csum_info.value)
@@ -521,11 +522,12 @@ void free_tx_packet(struct wrap_ndis_device *wnd, struct ndis_packet *packet,
 		atomic_inc_var(wnd->stats.tx_dropped);
 	}
 	oob_data = NDIS_PACKET_OOB_DATA(packet);
-	if (wnd->use_sg_dma)
-		PCI_DMA_UNMAP_SINGLE(wnd->wd->pci.pdev,
-				     oob_data->ndis_sg_element.address,
-				     oob_data->ndis_sg_element.length,
-				     PCI_DMA_TODEVICE);
+	if (wnd->use_sg_dma) {
+		struct ndis_sg_element *sg_element =
+			&oob_data->wrap_tx_sg_list.elements[0];
+		PCI_DMA_UNMAP_SINGLE(wnd->wd->pci.pdev, sg_element->address,
+				     sg_element->length, PCI_DMA_TODEVICE);
+	}
 	buffer = packet->private.buffer_head;
 	DBGTRACE3("freeing buffer %p", buffer);
 	NdisFreeBuffer(buffer);

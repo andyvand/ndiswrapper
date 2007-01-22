@@ -53,7 +53,14 @@ struct ndis_sg_element {
 struct ndis_sg_list {
 	ULONG nent;
 	ULONG_PTR reserved;
-	struct ndis_sg_element *elements;
+	struct ndis_sg_element elements[];
+};
+
+/* when sending packets, ndiswrapper associates one sg element per list */
+struct wrap_tx_sg_list {
+	ULONG nent;
+	ULONG_PTR reserved;
+	struct ndis_sg_element elements[1];
 };
 
 struct ndis_phy_addr_unit {
@@ -212,38 +219,6 @@ struct ndis_packet_private {
 	USHORT oob_offset;
 };
 
-/* OOB data */
-struct ndis_packet_oob_data {
-	union {
-		ULONGLONG time_to_tx;
-		ULONGLONG time_txed;
-	};
-	ULONGLONG time_rxed;
-	UINT header_size;
-	UINT mediaspecific_size;
-	void *mediaspecific;
-	NDIS_STATUS status;
-
-	/* ndiswrapper specific info */
-	struct ndis_packet_extension extension;
-
-	struct ndis_packet *next;
-	struct scatterlist *sg_list;
-	unsigned int sg_ents;
-	struct ndis_sg_list ndis_sg_list;
-	struct ndis_sg_element *ndis_sg_elements;
-	/* RTL8180L overshoots past ndis_eg_elements (during
-	 * MiniportSendPackets) and overwrites what is below, if SG
-	 * DMA is used, so don't use ndis_sg_element in that
-	 * case. This structure is used only when SG is disabled */
-	struct ndis_sg_element ndis_sg_element;
-
-	unsigned char header[ETH_HLEN];
-	unsigned char *look_ahead;
-	UINT look_ahead_size;
-	struct sk_buff *skb;
-};
-
 struct ndis_packet {
 	struct ndis_packet_private private;
 	/* for use by miniport */
@@ -264,6 +239,32 @@ struct ndis_packet {
 	} u;
 	ULONG_PTR reserved[2];
 	UCHAR protocol_reserved[1];
+};
+
+/* OOB data */
+struct ndis_packet_oob_data {
+	union {
+		ULONGLONG time_to_tx;
+		ULONGLONG time_txed;
+	};
+	ULONGLONG time_rxed;
+	UINT header_size;
+	UINT mediaspecific_size;
+	void *mediaspecific;
+	NDIS_STATUS status;
+
+	/* ndiswrapper specific info */
+	struct ndis_packet_extension extension;
+	struct ndis_packet *next;
+	struct sk_buff *skb;
+	union {
+		struct wrap_tx_sg_list wrap_tx_sg_list;
+		struct {
+			unsigned char header[ETH_HLEN];
+			unsigned char *look_ahead;
+			UINT look_ahead_size;
+		};
+	};
 };
 
 #define NDIS_PACKET_OOB_DATA(packet)					\
@@ -439,8 +440,7 @@ struct ndis_spinlock {
 };
 
 union ndis_rw_lock_refcount {
-	/* 'count' should be UINT, but in ndiswrapper it is 'INT' */
-	INT count;
+	UINT count;
 	UCHAR cache_line[16];
 };
 
@@ -452,7 +452,11 @@ struct ndis_rw_lock {
 		};
 		UCHAR reserved[16];
 	};
-	union ndis_rw_lock_refcount ref_count[MAXIMUM_PROCESSORS];
+	union {
+		union ndis_rw_lock_refcount ref_count[MAXIMUM_PROCESSORS];
+		/* ndiswrapper specific */
+		int count;
+	};
 };
 
 struct lock_state {
