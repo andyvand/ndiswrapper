@@ -966,9 +966,9 @@ wstdcall void WIN_FUNC(NdisMStartBufferPhysicalMapping,6)
 	struct wrap_ndis_device *wnd = nmb->wnd;
 
 	TRACEENTER3("%p, %p, %u, %u", wnd, buf, index, wnd->dma_map_count);
-	if (wnd->use_sg_dma || !write_to_dev ||
-	    index >= wnd->dma_map_count) {
-		WARNING("invalid request: %d, %d, %d, %d", wnd->use_sg_dma,
+	if (unlikely(wnd->sg_dma_size || !write_to_dev ||
+		     index >= wnd->dma_map_count)) {
+		WARNING("invalid request: %d, %d, %d, %d", wnd->sg_dma_size,
 			write_to_dev, index, wnd->dma_map_count);
 		phy_addr_array[0].phy_addr = 0;
 		phy_addr_array[0].length = 0;
@@ -1005,7 +1005,7 @@ wstdcall void WIN_FUNC(NdisMCompleteBufferPhysicalMapping,3)
 
 	TRACEENTER3("%p, %p %u (%u)", wnd, buf, index, wnd->dma_map_count);
 
-	if (wnd->use_sg_dma)
+	if (unlikely(wnd->sg_dma_size))
 		WARNING("buffer %p may have been unmapped already", buf);
 	if (index >= wnd->dma_map_count) {
 		ERROR("invalid map register (%u >= %u)",
@@ -1407,7 +1407,7 @@ wstdcall void WIN_FUNC(NdisFreePacketPool,1)
 	irql = nt_spin_lock_irql(&pool->lock, DISPATCH_LEVEL);
 	packet = pool->free_descr;
 	while (packet) {
-		next = (NDIS_PACKET_OOB_DATA(packet))->next;
+		next = (struct ndis_packet *)packet->reserved[0];
 		kfree(packet);
 		packet = next;
 	}
@@ -1426,10 +1426,10 @@ wstdcall UINT WIN_FUNC(NdisPacketPoolUsage,1)
 }
 
 wstdcall void WIN_FUNC(NdisAllocatePacket,3)
-	(NDIS_STATUS *status, struct ndis_packet **packet,
+	(NDIS_STATUS *status, struct ndis_packet **ndis_packet,
 	 struct ndis_packet_pool *pool)
 {
-	struct ndis_packet *ndis_packet;
+	struct ndis_packet *packet;
 	int packet_length;
 
 	TRACEENTER4("pool: %p", pool);
@@ -1443,31 +1443,29 @@ wstdcall void WIN_FUNC(NdisAllocatePacket,3)
 				pool->num_used_descr, pool->max_descr);
 	}
 	/* packet has space for 1 byte in protocol_reserved field */
-	packet_length = sizeof(*ndis_packet) - 1 + pool->proto_rsvd_length +
+	packet_length = sizeof(*packet) - 1 + pool->proto_rsvd_length +
 		sizeof(struct ndis_packet_oob_data);
-	ndis_packet =
-		atomic_remove_list_head(pool->free_descr,
-					(NDIS_PACKET_OOB_DATA(oldhead))->next);
-	if (!ndis_packet) {
-		ndis_packet = kmalloc(packet_length, gfp_irql());
-		if (!ndis_packet) {
+	packet = atomic_remove_list_head(pool->free_descr, oldhead->reserved[0]);
+	if (!packet) {
+		packet = kmalloc(packet_length, gfp_irql());
+		if (!packet) {
 			WARNING("couldn't allocate packet");
 			*status = NDIS_STATUS_RESOURCES;
 			return;
 		}
 		atomic_inc_var(pool->num_allocated_descr);
 	}
-	DBGTRACE3("packet: %p", ndis_packet);
+	DBGTRACE3("packet: %p", packet);
 	atomic_inc_var(pool->num_used_descr);
-	memset(ndis_packet, 0, packet_length);
-	ndis_packet->private.oob_offset = packet_length -
+	memset(packet, 0, packet_length);
+	packet->private.oob_offset = packet_length -
 		sizeof(struct ndis_packet_oob_data);
-	ndis_packet->private.packet_flags = fPACKET_ALLOCATED_BY_NDIS;
-//	ndis_packet->private.flags = NDIS_PROTOCOL_ID_TCP_IP;
-	ndis_packet->private.pool = pool;
-	*packet = ndis_packet;
+	packet->private.packet_flags = fPACKET_ALLOCATED_BY_NDIS;
+//	packet->private.flags = NDIS_PROTOCOL_ID_TCP_IP;
+	packet->private.pool = pool;
+	*ndis_packet = packet;
 	*status = NDIS_STATUS_SUCCESS;
-	DBGTRACE4("packet: %p, pool: %p", ndis_packet, pool);
+	DBGTRACE4("packet: %p, pool: %p", packet, pool);
 	TRACEEXIT4(return);
 }
 
@@ -1479,24 +1477,24 @@ wstdcall void WIN_FUNC(NdisDprAllocatePacket,3)
 }
 
 wstdcall void WIN_FUNC(NdisFreePacket,1)
-	(struct ndis_packet *descr)
+	(struct ndis_packet *packet)
 {
 	struct ndis_packet_pool *pool;
 
-	TRACEENTER3("packet: %p, pool: %p", descr, descr->private.pool);
-	pool = descr->private.pool;
+	TRACEENTER3("packet: %p, pool: %p", packet, packet->private.pool);
+	pool = packet->private.pool;
 	if (!pool) {
-		ERROR("pool for descriptor %p is invalid", descr);
+		ERROR("pool for descriptor %p is invalid", packet);
 		TRACEEXIT4(return);
 	}
 	atomic_dec_var(pool->num_used_descr);
 	if (pool->num_allocated_descr > MAX_ALLOCATED_NDIS_PACKETS) {
-		kfree(descr);
+		kfree(packet);
 		atomic_dec_var(pool->num_allocated_descr);
 	} else {
-		struct ndis_packet_oob_data *oob_data;
-		oob_data = NDIS_PACKET_OOB_DATA(descr);
-		atomic_insert_list_head(oob_data->next, pool->free_descr, descr);
+		struct ndis_packet *next =
+			(struct ndis_packet *)packet->reserved[0];
+		atomic_insert_list_head(next, pool->free_descr, packet);
 	}
 	TRACEEXIT4(return);
 }
@@ -2435,7 +2433,7 @@ wstdcall NDIS_STATUS WIN_FUNC(NdisMInitializeScatterGatherDma,3)
 	if (dma_size != NDIS_DMA_64BITS)
 		ERROR("DMA size is not 64-bits");
 #endif
-	wnd->use_sg_dma = TRUE;
+	wnd->sg_dma_size = max_phy_map;
 	return NDIS_STATUS_SUCCESS;
 }
 

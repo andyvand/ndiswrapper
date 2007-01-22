@@ -484,7 +484,7 @@ static struct ndis_packet *alloc_tx_packet(struct wrap_ndis_device *wnd,
 
 	oob_data = NDIS_PACKET_OOB_DATA(packet);
 	oob_data->skb = skb;
-	if (wnd->use_sg_dma) {
+	if (wnd->sg_dma_size) {
 		struct ndis_sg_element *sg_element =
 			&oob_data->wrap_tx_sg_list.elements[0];
 		sg_element->address =
@@ -522,7 +522,7 @@ void free_tx_packet(struct wrap_ndis_device *wnd, struct ndis_packet *packet,
 		atomic_inc_var(wnd->stats.tx_dropped);
 	}
 	oob_data = NDIS_PACKET_OOB_DATA(packet);
-	if (wnd->use_sg_dma) {
+	if (wnd->sg_dma_size) {
 		struct ndis_sg_element *sg_element =
 			&oob_data->wrap_tx_sg_list.elements[0];
 		PCI_DMA_UNMAP_SINGLE(wnd->wd->pci.pdev, sg_element->address,

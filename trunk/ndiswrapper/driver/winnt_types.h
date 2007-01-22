@@ -1001,12 +1001,6 @@ struct wrap_urb {
 #endif
 };
 
-/* ndiswrapper fields in IRP replace kapc */
-struct wrap_irp {
-	struct wrap_urb *wrap_urb;
-	struct wrap_device *wd;
-};
-
 struct irp {
 	SHORT type;
 	USHORT size;
@@ -1059,7 +1053,12 @@ struct irp {
 		} overlay;
 		union {
 			struct kapc apc;
-			struct wrap_irp wrap_irp;
+			/* space for apc is used for ndiswrapper
+			 * specific fields */
+			struct {
+				struct wrap_urb *wrap_urb;
+				struct wrap_device *wrap_device;
+			};
 		};
 		void *completion_key;
 	} tail;
@@ -1125,8 +1124,8 @@ IoSetCompletionRoutine(struct irp *irp, void *routine, void *context,
 #define IRP_URB(irp)							\
 	(union nt_urb *)(IoGetCurrentIrpStackLocation(irp)->params.others.arg1)
 
-#define IRP_WD(irp) (irp)->tail.wrap_irp.wd
-#define IRP_WRAP_URB(irp) (irp)->tail.wrap_irp.wrap_urb
+#define IRP_WRAP_DEVICE(irp) (irp)->tail.wrap_device
+#define IRP_WRAP_URB(irp) (irp)->tail.wrap_urb
 
 struct wmi_guid_reg_info {
 	struct guid *guid;

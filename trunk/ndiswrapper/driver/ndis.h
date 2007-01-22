@@ -56,7 +56,8 @@ struct ndis_sg_list {
 	struct ndis_sg_element elements[];
 };
 
-/* when sending packets, ndiswrapper associates one sg element per list */
+/* when sending packets, ndiswrapper associates exactly one sg element
+ * in sg list */
 struct wrap_tx_sg_list {
 	ULONG nent;
 	ULONG_PTR reserved;
@@ -236,7 +237,7 @@ struct ndis_packet {
 		struct {
 			UCHAR mac_reserved[4 * sizeof(void *)];
 		} mac_reserved;
-	} u;
+	};
 	ULONG_PTR reserved[2];
 	UCHAR protocol_reserved[1];
 };
@@ -249,16 +250,18 @@ struct ndis_packet_oob_data {
 	};
 	ULONGLONG time_rxed;
 	UINT header_size;
-	UINT mediaspecific_size;
-	void *mediaspecific;
+	UINT media_size;
+	void *media;
 	NDIS_STATUS status;
 
-	/* ndiswrapper specific info */
+	/* ndiswrapper specific info; extension should be right after
+	 * ndis's oob_data */
 	struct ndis_packet_extension extension;
-	struct ndis_packet *next;
 	struct sk_buff *skb;
 	union {
+		/* used for tx only */
 		struct wrap_tx_sg_list wrap_tx_sg_list;
+		/* used for rx only */
 		struct {
 			unsigned char header[ETH_HLEN];
 			unsigned char *look_ahead;
@@ -856,7 +859,7 @@ struct wrap_ndis_device {
 	NDIS_STATUS ndis_comm_status;
 	ULONG packet_filter;
 
-	BOOLEAN use_sg_dma;
+	ULONG sg_dma_size;
 	ULONG dma_map_count;
 	dma_addr_t *dma_map_addr;
 
