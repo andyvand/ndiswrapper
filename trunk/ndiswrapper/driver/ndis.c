@@ -866,20 +866,19 @@ wstdcall void WIN_FUNC(NdisAcquireReadWriteLock,3)
 	(struct ndis_rw_lock *rw_lock, BOOLEAN write,
 	 struct lock_state *lock_state)
 {
-	typeof(rw_lock->ref_count[0].count) count;
+	typeof(rw_lock->count) count;
 	if (write) {
-		while (cmpxchg(&rw_lock->ref_count[0].count, 0, -1) != 0)
+		while (cmpxchg(&rw_lock->count, 0, -1) != 0)
 			cpu_relax();
 		return;
 	} else {
 		while (1) {
-			count = rw_lock->ref_count[0].count;
+			count = rw_lock->count;
 			if (count < 0) {
 				cpu_relax();
 				continue;
 			}
-			if (cmpxchg(&rw_lock->ref_count[0].count, count,
-				    count + 1) == count)
+			if (cmpxchg(&rw_lock->count, count, count + 1) == count)
 				return;
 		}
 	}
@@ -888,18 +887,14 @@ wstdcall void WIN_FUNC(NdisAcquireReadWriteLock,3)
 wstdcall void WIN_FUNC(NdisReleaseReadWriteLock,2)
 	(struct ndis_rw_lock *rw_lock, struct lock_state *lock_state)
 {
-	typeof(rw_lock->ref_count[0].count) count;
+	typeof(rw_lock->count) count;
 	while (1) {
-		count = rw_lock->ref_count[0].count;
-		if (count < 0) {
-			assert(count == -1);
-			if (cmpxchg(&rw_lock->ref_count[0].count, count,
-				    0) == count)
+		count = rw_lock->count;
+		if (count == -1) {
+			if (cmpxchg(&rw_lock->count, count, 0) == count)
 				return;
 		} else if (count > 0) {
-			assert(count > 0);
-			if (cmpxchg(&rw_lock->ref_count[0].count, count,
-				    count + 1) == count)
+			if (cmpxchg(&rw_lock->count, count, count + 1) == count)
 				return;
 		} else
 			WARNING("invalid state: %d", count);
@@ -1468,7 +1463,7 @@ wstdcall void WIN_FUNC(NdisAllocatePacket,3)
 	ndis_packet->private.oob_offset = packet_length -
 		sizeof(struct ndis_packet_oob_data);
 	ndis_packet->private.packet_flags = fPACKET_ALLOCATED_BY_NDIS;
-	ndis_packet->private.flags = NDIS_PROTOCOL_ID_TCP_IP;
+//	ndis_packet->private.flags = NDIS_PROTOCOL_ID_TCP_IP;
 	ndis_packet->private.pool = pool;
 	*packet = ndis_packet;
 	*status = NDIS_STATUS_SUCCESS;
@@ -2255,6 +2250,7 @@ wstdcall void EthRxIndicateHandler(struct ndis_miniport_block *nmb, void *rx_ctx
 				atomic_inc_var(wnd->stats.rx_dropped);
 				TRACEEXIT3(return);
 			}
+			assert(sizeof(oob_data->header) == header_size);
 			memcpy(oob_data->header, header,
 			       sizeof(oob_data->header));
 			memcpy(oob_data->look_ahead, look_ahead,
