@@ -366,23 +366,9 @@ wstdcall ULONG WIN_FUNC(NDIS_BUFFER_TO_SPAN_PAGES,1)
 		TRACEEXIT2(return 0);
 	if (MmGetMdlByteCount(buffer) == 0)
 		TRACEEXIT2(return 1);
+
 	length = MmGetMdlByteCount(buffer);
-
-#ifdef VT6655
-	/* VIA VT6655 works with this bogus computation, but not with
-	 * correct computation with SPAN_PAGES */
-	do {
-		ULONG_PTR start, end;
-		unsigned long ptr;
-
-		ptr = (unsigned long)MmGetMdlVirtualAddress(buffer);
-		start = ptr & (PAGE_SIZE - 1);
-		end = (ptr + length + PAGE_SIZE - 1) & PAGE_MASK;
-		n = (end - start) / PAGE_SIZE;
-	} while (0);
-#else
 	n = SPAN_PAGES(MmGetMdlVirtualAddress(buffer), length);
-#endif
 	DBGTRACE4("%p, %p, %d, %d", buffer->startva, buffer->mappedsystemva,
 		  length, n);
 	TRACEEXIT3(return n);
@@ -643,7 +629,7 @@ wstdcall void WIN_FUNC(NdisMSetAttributesEx,5)
 {
 	struct wrap_ndis_device *wnd;
 
-	TRACEENTER2("%p, %p %d %08x, %d", nmb, adapter_ctx,
+	TRACEENTER1("%p, %p %d %08x, %d", nmb, adapter_ctx,
 		    hangcheck_interval, attributes, adaptortype);
 	wnd = nmb->wnd;
 	nmb->adapter_ctx = adapter_ctx;
@@ -659,7 +645,7 @@ wstdcall void WIN_FUNC(NdisMSetAttributesEx,5)
 	else
 		wnd->hangcheck_interval = 2 * HZ;
 
-	TRACEEXIT2(return);
+	TRACEEXIT1(return);
 }
 
 wstdcall ULONG WIN_FUNC(NdisReadPciSlotInformation,5)
@@ -1790,17 +1776,32 @@ wstdcall void WIN_FUNC(NdisMDeregisterAdapterShutdownHandler,1)
 	wnd->shutdown_ctx = NULL;
 }
 
-static void ndis_irq_handler(unsigned long data)
+/* TODO: rt61 (serialized) driver doesn't want MiniportEnableInterrupt
+ * to be called in irq handler, but mrv800c (deserialized) driver
+ * wants. NDIS is confusing about when to call MiniportEnableInterrupt
+ * For now, handle these cases with two separate irq handlers based on
+ * observation of these two drivers. However, it is likely not
+ * correct. */
+static void deserialized_irq_handler(unsigned long data)
 {
 	struct wrap_ndis_device *wnd = (struct wrap_ndis_device *)data;
 	struct miniport_char *miniport;
 
 	miniport = &wnd->wd->driver->ndis_driver->miniport;
-	if_serialize_lock(wnd);
 	LIN2WIN1(miniport->handle_interrupt, wnd->nmb->adapter_ctx);
-	if ((!wnd->ndis_irq->req_isr) && miniport->enable_interrupt)
+	if (miniport->enable_interrupt)
 		LIN2WIN1(miniport->enable_interrupt, wnd->nmb->adapter_ctx);
-	if_serialize_unlock(wnd);
+}
+
+static void serialized_irq_handler(unsigned long data)
+{
+	struct wrap_ndis_device *wnd = (struct wrap_ndis_device *)data;
+	struct miniport_char *miniport;
+
+	miniport = &wnd->wd->driver->ndis_driver->miniport;
+	serialize_lock(wnd);
+	LIN2WIN1(miniport->handle_interrupt, wnd->nmb->adapter_ctx);
+	serialize_unlock(wnd);
 }
 
 irqreturn_t ndis_isr(int irq, void *data ISR_PT_REGS_PARAM_DECL)
@@ -1813,7 +1814,7 @@ irqreturn_t ndis_isr(int irq, void *data ISR_PT_REGS_PARAM_DECL)
 	/* this spinlock should be shared with NdisMSynchronizeWithInterrupt
 	 */
 	nt_spin_lock(&wnd->ndis_irq->lock);
-	if (wnd->ndis_irq->req_isr)
+	if (wnd->ndis_irq->shared)
 		LIN2WIN3(miniport->isr, &recognized, &queue_handler,
 			 wnd->nmb->adapter_ctx);
 	else { //if (miniport->disable_interrupt)
@@ -1848,7 +1849,9 @@ wstdcall NDIS_STATUS WIN_FUNC(NdisMRegisterInterrupt,7)
 	ndis_irq->shared = shared;
 	nt_spin_lock_init(&ndis_irq->lock);
 	wnd->ndis_irq = ndis_irq;
-	tasklet_init(&wnd->irq_tasklet, ndis_irq_handler, (unsigned long)wnd);
+	tasklet_init(&wnd->irq_tasklet, deserialized_driver(wnd) ?
+		     deserialized_irq_handler : serialized_irq_handler,
+		     (unsigned long)wnd);
 	if (request_irq(vector, ndis_isr, req_isr ? SA_SHIRQ : 0,
 			wnd->net_dev->name, wnd)) {
 		printk(KERN_WARNING "%s: request for IRQ %d failed\n",
@@ -2458,9 +2461,14 @@ wstdcall void WIN_FUNC(NdisGetCurrentProcessorCounts,3)
 	(ULONG *idle, ULONG *kernel_user, ULONG *index)
 {
 	int cpu = smp_processor_id();
+#if LINUX_VERSION_CODE > KERNEL_VERSION(2,6,10)
 	*idle = kstat_cpu(cpu).cpustat.idle;
 	*kernel_user = kstat_cpu(cpu).cpustat.system +
 		kstat_cpu(cpu).cpustat.user;
+#else
+	*idle = 0;
+	*kernel_user = 0;
+#endif
 	*index = cpu;
 }
 
