@@ -40,11 +40,10 @@ static int workq_thread(void *data)
 	unlock_kernel();
 #ifdef PF_NOFREEZE
 	current->flags |= PF_NOFREEZE;
-	set_user_nice(current, -5);
 #else
 	sigfillset(&current->blocked);
-	current->nice -= 5;
 #endif
+	set_user_nice(current, -5);
 	while (1) {
 		if (wait_event_interruptible(workq->waitq_head,
 					     workq->pending)) {

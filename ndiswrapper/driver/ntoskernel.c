@@ -2464,7 +2464,7 @@ wstdcall NTSTATUS WIN_FUNC(ZwClose,1)
 		}
 	} else {
 		/* TODO: can we just dereference object here? */
-		WARNING("closing handle %d not implemented", coh->type);
+		WARNING("closing handle 0x%x not implemented", coh->type);
 	}
 	TRACEEXIT2(return STATUS_SUCCESS);
 }

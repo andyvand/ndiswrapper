@@ -356,7 +356,6 @@ wfastcall NTSTATUS WIN_FUNC(IofCallDriver,2)
 	irp_sl->dev_obj = dev_obj;
 	major_func = drv_obj->major_func[irp_sl->major_fn];
 	IOTRACE("major_func: %p, dev_obj: %p", major_func, dev_obj);
-	/* TODO: Linux functions must be called natively */
 	if (major_func)
 		status = LIN2WIN2(major_func, dev_obj, irp);
 	else {
