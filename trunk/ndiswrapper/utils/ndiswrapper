@@ -23,6 +23,8 @@ use File::Copy;
 use File::Path;
 use Cwd;
 
+$ENV{PATH} = "/sbin:/usr/sbin:$ENV{PATH}";
+
 my $WRAP_PCI_BUS = 5;
 my $WRAP_PCIMCIA_BUS = 8;
 my $WRAP_USB_BUS = 15;
@@ -92,7 +94,7 @@ if ($ARGV[0] eq "-i" and @ARGV == 2) {
 } elsif ($ARGV[0] eq "-m" and @ARGV == 1) {
     $res = add_module_alias();
 } elsif ($ARGV[0] eq "-v" and @ARGV == 1) {
-    printf "utils "; system("/sbin/loadndisdriver -v");
+    printf "utils "; system("loadndisdriver -v");
     printf "driver ";
     system("modinfo ndiswrapper | grep -E '^version|^vermagic'");
     $res = 0;
@@ -717,7 +719,7 @@ sub add_module_alias {
     }
 
     printf "adding \"alias wlan0 ndiswrapper\" to $modconf ...\n";
-    system("echo \"alias wlan0 ndiswrapper\" >>$modconf") or
+    system("echo \"alias wlan0 ndiswrapper\" >>$modconf") == 0 or
       die "couldn't add module alias: $!";
     if (-x "/sbin/update-modules") {
 	system("/sbin/update-modules");
@@ -729,39 +731,31 @@ sub get_cards {
 #01:00.0 Class 0300: 1002:4c66 (rev 01)
 #        Subsystem: 1043:1732
     my @cards = ();
-    my @lspci = ("/sbin/lspci", "/usr/sbin/lspci", "lspci");
-    foreach my $cmd (@lspci) {
-	if (open(LSPCI, "$cmd -vn|")) {
-	    my $card;
-	    while (my $line = <LSPCI>) {
-		if ($line =~ /^[0-9a-f]+.+\s$re_dev_id:$re_dev_id/) {
-		    $card = {vendor => uc($1), device => uc($2)};
-		    printf DBG "card: %s, %s\n", $1, $2;
-		} elsif ($line =~ /.+Subsystem:\s$re_dev_id:$re_dev_id/) {
-		    $card->{subvendor} = uc($1);
-		    $card->{subdevice} = uc($2);
-		    printf DBG "sub: %s, %s\n", $1, $2;
-		    push(@cards, $card);
-		}
+    if (open(LSPCI, "lspci -vn|")) {
+	my $card;
+	while (my $line = <LSPCI>) {
+	    if ($line =~ /^[0-9a-f]+.+\s$re_dev_id:$re_dev_id/) {
+		$card = {vendor => uc($1), device => uc($2)};
+		printf DBG "card: %s, %s\n", $1, $2;
+	    } elsif ($line =~ /.+Subsystem:\s$re_dev_id:$re_dev_id/) {
+		$card->{subvendor} = uc($1);
+		$card->{subdevice} = uc($2);
+		printf DBG "sub: %s, %s\n", $1, $2;
+		push(@cards, $card);
 	    }
-	    close(LSPCI);
-	    last;
 	}
+	close(LSPCI);
     }
 
-    my @lsusb = ("/sbin/lsusb", "/usr/sbin/lsusb", "lsusb");
-    foreach my $cmd (@lsusb) {
-	if (open(LSUSB, "$cmd |")) {
-	    my $card;
-	    while (my $line = <LSUSB>) {
-		if ($line =~ /.+: ID\s$re_dev_id:$re_dev_id/) {
-		    $card = {vendor => uc($1), device => uc($2)};
-		    push(@cards, $card);
-		}
+    if (open(LSUSB, "lsusb |")) {
+	my $card;
+	while (my $line = <LSUSB>) {
+	    if ($line =~ /.+: ID\s$re_dev_id:$re_dev_id/) {
+		$card = {vendor => uc($1), device => uc($2)};
+		push(@cards, $card);
 	    }
-	    close(LSUSB);
-	    last;
 	}
+	close(LSUSB);
     }
     return \@cards;
 }
