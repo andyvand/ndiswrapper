@@ -1911,7 +1911,7 @@ wstdcall NTSTATUS WIN_FUNC(PsCreateSystemThread,7)
 	}
 	DBGTRACE2("created task: %d", pid);
 #else
-	task = KTHREAD_RUN(thread_trampoline, &thread_info, "windisdrvr");
+	task = kthread_run(thread_trampoline, &thread_info, "windisdrvr");
 	if (IS_ERR(task)) {
 		free_object(thread_info.thread);
 		TRACEEXIT2(return STATUS_FAILURE);
