@@ -1,7 +1,8 @@
-Version 1.35 2007-XX-XX
+Version 1.35 2007-01-28
 =======================	
-* Fixed a bug with scatter/gather. With this rt61 (from RaLink)
-  works. Other drivers that didn't transmit data may also work.
+* Fixed a bug with scatter/gather. With this rt61 from RaLink and VT6655 from
+  VIA drivers transmit data. Other drivers that associated but didn't transmit
+  data (e.g., RT8855, Airgo's Gen3 PCI with ID 17CB:0002) may also work.
 
 Version 1.34 2007-01-08
 =======================	
