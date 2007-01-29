@@ -486,25 +486,28 @@ static int setup_tx_sg_list(struct wrap_ndis_device *wnd, struct sk_buff *skb,
 		return 0;
 	}
 	tx_sg_list = kmalloc(sizeof(*tx_sg_list) +
-			       (skb_shinfo(skb)->nr_frags + 1) *
-			       sizeof(*sg_element), GFP_ATOMIC);
+			     (skb_shinfo(skb)->nr_frags + 1) *
+			     sizeof(*sg_element), GFP_ATOMIC);
 	if (!tx_sg_list)
 		return -ENOMEM;
+	tx_sg_list->nent = skb_shinfo(skb)->nr_frags + 1;
 	sg_element = tx_sg_list->elements;
-	tx_sg_list->nent = skb_shinfo(skb)->nr_frags;
-	for (i = 0; i < skb_shinfo(skb)->nr_frags; i++) {
+	sg_element->length = skb_headlen(skb);
+	sg_element->address =
+		PCI_DMA_MAP_SINGLE(wnd->wd->pci.pdev, skb->data,
+				   skb_headlen(skb), PCI_DMA_TODEVICE);
+	sg_element++;
+	for (i = 0; i < skb_shinfo(skb)->nr_frags; i++, sg_element++) {
 		skb_frag_t *frag = &skb_shinfo(skb)->frags[i];
 		sg_element->length = frag->size;
 		sg_element->address =
 			pci_map_page(wnd->wd->pci.pdev, frag->page,
 				     frag->page_offset, frag->size,
 				     PCI_DMA_TODEVICE);
-		DBGTRACE3("%Lx, %u", sg_element->address, sg_element->length);
-		sg_element++;
+		DBGTRACE1("%Lx, %u", sg_element->address, sg_element->length);
 	}
-	oob_data->extension.info[ScatterGatherListPacketInfo] =
-		tx_sg_list;
-	DBGTRACE3("%p, %d", tx_sg_list, tx_sg_list->nent);
+	oob_data->extension.info[ScatterGatherListPacketInfo] = tx_sg_list;
+	DBGTRACE1("%p, %d", tx_sg_list, tx_sg_list->nent);
 	return 0;
 }
 
@@ -512,21 +515,19 @@ static void free_tx_sg_list(struct wrap_ndis_device *wnd,
 			    struct ndis_packet_oob_data *oob_data)
 {
 	int i;
+	struct ndis_sg_element *sg_element;
 	struct ndis_sg_list *tx_sg_list =
 		oob_data->extension.info[ScatterGatherListPacketInfo];
-	struct ndis_sg_element *sg_element;
 	sg_element = tx_sg_list->elements;
 	DBGTRACE3("%p, %d", tx_sg_list, tx_sg_list->nent);
-	if (tx_sg_list->nent == 1) {
-		PCI_DMA_UNMAP_SINGLE(wnd->wd->pci.pdev, sg_element->address,
-				     sg_element->length, PCI_DMA_TODEVICE);
+	PCI_DMA_UNMAP_SINGLE(wnd->wd->pci.pdev, sg_element->address,
+			     sg_element->length, PCI_DMA_TODEVICE);
+	if (tx_sg_list->nent == 1)
 		TRACEEXIT3(return);
-	}
-	for (i = 0; i < tx_sg_list->nent; i++) {
-		DBGTRACE3("%Lx, %u", sg_element->address, sg_element->length);
+	for (i = 1; i < tx_sg_list->nent; i++, sg_element++) {
+		DBGTRACE1("%Lx, %u", sg_element->address, sg_element->length);
 		pci_unmap_page(wnd->wd->pci.pdev, sg_element->address,
 			       sg_element->length, PCI_DMA_TODEVICE);
-		sg_element++;
 	}
 	kfree(tx_sg_list);
 }
@@ -852,7 +853,7 @@ static int ndis_change_mtu(struct net_device *net_dev, int mtu)
 	if (miniport_query_int(wnd, OID_GEN_MAXIMUM_TOTAL_SIZE, &max) !=
 	    NDIS_STATUS_SUCCESS)
 		return -EOPNOTSUPP;
-	DBGTRACE2("%d", max);
+	DBGTRACE1("%d", max);
 	max -= ETH_HLEN;
 	if (max <= ETH_ZLEN)
 		return -EINVAL;
@@ -1649,9 +1650,13 @@ static int set_task_offload(struct wrap_ndis_device *wnd, void *buf,
 			wnd->tx_csum_info.tx.tcp = 1;
 			wnd->tx_csum_info.tx.ip = 1;
 			wnd->tx_csum_info.tx.udp = 1;
+			printk(KERN_INFO "%s: hardware checksum enabled on %s\n",
+			       DRIVER_NAME, wnd->net_dev->name);
 		} else {
 			wnd->net_dev->features |= NETIF_F_IP_CSUM;
 			wnd->tx_csum_info.tx.ip = 1;
+			printk(KERN_INFO "%s: IP checksum enabled on %s\n",
+			       DRIVER_NAME, wnd->net_dev->name);
 		}
 		if (wnd->sg_dma_size)
 			wnd->net_dev->features |= NETIF_F_SG;
