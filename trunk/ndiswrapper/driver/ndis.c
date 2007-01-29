@@ -2117,8 +2117,7 @@ wstdcall void NdisMIndicateReceivePacket(struct ndis_miniport_block *nmb,
 	ULONG i, length, total_length;
 	struct ndis_packet_oob_data *oob_data;
 	void *virt;
-	struct ndis_tcp_ip_checksum_packet_info *csum;
-	typeof(csum->value) csum_value;
+	struct ndis_tcp_ip_checksum_packet_info csum;
 
 	TRACEENTER3("%p, %d", nmb, nr_packets);
 	wnd = nmb->wnd;
@@ -2148,13 +2147,11 @@ wstdcall void NdisMIndicateReceivePacket(struct ndis_miniport_block *nmb,
 			skb->protocol = eth_type_trans(skb, wnd->net_dev);
 			pre_atomic_add(wnd->stats.rx_bytes, total_length);
 			atomic_inc_var(wnd->stats.rx_packets);
-			csum_value = (typeof(csum_value))
+			csum.value = (typeof(csum.value))
 				oob_data->extension.info[TcpIpChecksumPacketInfo];
-			csum = (void *)&csum_value;
-			DBGTRACE3("0x%0x", csum->value);
+			DBGTRACE3("0x%05x", csum.value);
 			if (wnd->rx_csum.value &&
-			    (csum->rx.tcp_succeeded || csum->rx.ip_succeeded ||
-			     csum->rx.udp_succeeded))
+			    (csum.rx.tcp_succeeded || csum.rx.udp_succeeded))
 				skb->ip_summed = CHECKSUM_UNNECESSARY;
 			else
 				skb->ip_summed = CHECKSUM_NONE;
