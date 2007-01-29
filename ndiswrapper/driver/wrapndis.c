@@ -560,27 +560,22 @@ static struct ndis_packet *alloc_tx_packet(struct wrap_ndis_device *wnd,
 			return NULL;
 		}
 	}
-#if 1
 	DBGTRACE2("%d, %d", wnd->tx_csum_info.tx.v4, skb->ip_summed);
 	if (wnd->tx_csum_info.tx.v4 && skb->ip_summed == CHECKSUM_PARTIAL) {
-		struct ndis_tcp_ip_checksum_packet_info *csum;
-		typeof(csum->value) value = 0;
+		struct ndis_tcp_ip_checksum_packet_info csum;
 		struct iphdr *ip = skb->nh.iph;
-		csum = (void *)&value;
-		csum->tx.v4 = 1;
+		csum.value = 0;
+		csum.tx.v4 = 1;
 		if (ip->protocol == IPPROTO_TCP)
-			TRACEEXIT2(csum->tx.tcp = 1);
+			csum.tx.tcp = 1;
 		else if (ip->protocol == IPPROTO_UDP)
-			TRACEEXIT2(csum->tx.udp = 1);
-		else
-			WARNING("");
-//		csum->tx.ip = 1;
+			csum.tx.udp = 1;
+//		csum.tx.ip = 1;
+		DBGTRACE3("0x%05x", value);
 		packet->private.flags |= NDIS_PROTOCOL_ID_TCP_IP;
-		DBGTRACE3("0x%x", value);
 		oob_data->extension.info[TcpIpChecksumPacketInfo] =
-			(void *)value;
+			(void *)csum.value;
 	}
-#endif
 	DBG_BLOCK(4) {
 		dump_bytes(__FUNCTION__, skb->data, skb->len);
 	}
@@ -1592,7 +1587,6 @@ WIN_FUNC_DECL(NdisDispatchPnp,2)
 static int set_task_offload(struct wrap_ndis_device *wnd, void *buf,
 			    const int buf_size)
 {
-#if 1
 	struct ndis_task_offload_header *task_offload_header;
 	struct ndis_task_offload *task_offload;
 	struct ndis_task_tcp_ip_checksum *csum = NULL;
@@ -1631,11 +1625,6 @@ static int set_task_offload(struct wrap_ndis_device *wnd, void *buf,
 	if (!csum)
 		TRACEEXIT1(return -1);
 	DBGTRACE1("%08x, %08x", csum->v4_tx.value, csum->v4_rx.value);
-	DBGTRACE1("%d, %d, %d, %d, %d", csum->v4_tx.ip_opts, csum->v4_tx.tcp_opts,
-		  csum->v4_tx.tcp_csum, csum->v4_tx.udp_csum, csum->v4_tx.ip_csum);
-	DBGTRACE1("%d, %d, %d, %d, %d", csum->v4_rx.ip_opts, csum->v4_rx.tcp_opts,
-		  csum->v4_rx.tcp_csum, csum.v4_rx.udp_csum, csum->v4_rx.ip_csum);
-
 	task_offload_header->encap_format.flags.fixed_header_size = 1;
 	task_offload_header->encap_format.header_size = sizeof(struct ethhdr);
 	task_offload_header->offset_first_task = sizeof(*task_offload_header);
@@ -1660,17 +1649,14 @@ static int set_task_offload(struct wrap_ndis_device *wnd, void *buf,
 			wnd->tx_csum_info.tx.tcp = 1;
 			wnd->tx_csum_info.tx.ip = 1;
 			wnd->tx_csum_info.tx.udp = 1;
-			DBGTRACE1("hw_csum");
 		} else {
 			wnd->net_dev->features |= NETIF_F_IP_CSUM;
 			wnd->tx_csum_info.tx.ip = 1;
-			DBGTRACE1("ip_csum");
 		}
 		if (wnd->sg_dma_size)
 			wnd->net_dev->features |= NETIF_F_SG;
 	}
 	wnd->rx_csum = csum->v4_rx;
-#endif
 	TRACEEXIT1(return 0);
 }
 
