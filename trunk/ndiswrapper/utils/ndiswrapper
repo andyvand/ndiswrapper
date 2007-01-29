@@ -357,11 +357,16 @@ sub parse_registry {
 	next if (@fields lt 4);
 	my $value;
 	my $param = trim($fields[1]);
-	if ($param =~ /ndi\\params\\(.+)/i) {
-	    $param = strip_quotes(trim($1));
-	    $param =~ s/\\.*$//;
-	    next if (lc(trim($fields[2])) ne "default");
-	    $value = strip_quotes(trim($fields[4]));
+	if ($param =~ /^ndi\\/i) {
+	    if ($param =~ /^ndi\\params\\(.+)/i) {
+		$param = strip_quotes(trim($1));
+		$param =~ s/\\.*$//;
+		next if (lc(trim($fields[2])) ne "default");
+		$value = strip_quotes(trim($fields[4]));
+	    } else {
+		printf DBG "ignoring parameter $line\n";
+		next;
+	    }
 	} else {
 	    $param = strip_quotes(trim($fields[2]));
 	    next if (length($param) eq 0);
