@@ -143,7 +143,7 @@ enum ndis_encapsulation {
 #define NDIS_TASK_OFFLOAD_VERSION 1
 
 struct ndis_encapsulation_format {
-	enum ndis_encapsulation encapsulation;
+	enum ndis_encapsulation encap;
 	struct {
 		ULONG fixed_header_size:1;
 		ULONG reserved:31;
@@ -156,7 +156,7 @@ struct ndis_task_offload_header {
 	ULONG size;
 	ULONG reserved;
 	ULONG offset_first_task;
-	struct ndis_encapsulation_format encapsulation_format;
+	struct ndis_encapsulation_format encap_format;
 };
 
 struct ndis_task_offload {
@@ -171,8 +171,8 @@ struct ndis_task_offload {
 struct v4_checksum {
 	union {
 		struct {
-			ULONG ip_supported:1;
-			ULONG tcp_supported:1;
+			ULONG ip_opts:1;
+			ULONG tcp_opts:1;
 			ULONG tcp_csum:1;
 			ULONG udp_csum:1;
 			ULONG ip_csum:1;
@@ -260,7 +260,10 @@ struct ndis_packet_oob_data {
 	struct sk_buff *skb;
 	union {
 		/* used for tx only */
-		struct wrap_tx_sg_list wrap_tx_sg_list;
+		union {
+			struct wrap_tx_sg_list wrap_tx_sg_list;
+			struct ndis_sg_list *tx_sg_list;
+		};
 		/* used for rx only */
 		struct {
 			unsigned char header[ETH_HLEN];

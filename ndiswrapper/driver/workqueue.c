@@ -29,15 +29,14 @@ static int workq_thread(void *data)
 	work_struct_t *work;
 	unsigned long flags;
 
-	lock_kernel();
 	strncpy(current->comm, workq->name, sizeof(current->comm));
 	current->comm[sizeof(current->comm) - 1] = 0;
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,7)
 	daemonize();
+	reparent_to_init();
 #else
 	daemonize(workq->name);
 #endif
-	unlock_kernel();
 #ifdef PF_NOFREEZE
 	current->flags |= PF_NOFREEZE;
 #else
