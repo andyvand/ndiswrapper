@@ -2306,7 +2306,7 @@ wstdcall void NdisMTransferDataComplete(struct ndis_miniport_block *nmb,
 	unsigned int skb_size;
 	struct ndis_packet_oob_data *oob_data;
 	ndis_buffer *buffer;
-	struct ndis_tcp_ip_checksum_packet_info *rx_csum_info;
+	struct ndis_tcp_ip_checksum_packet_info csum;
 
 	TRACEENTER3("wnd = %p, packet = %p, bytes_txed = %d",
 		    wnd, packet, bytes_txed);
@@ -2340,13 +2340,16 @@ wstdcall void NdisMTransferDataComplete(struct ndis_miniport_block *nmb,
 	skb->protocol = eth_type_trans(skb, wnd->net_dev);
 	pre_atomic_add(wnd->stats.rx_bytes, skb_size);
 	atomic_inc_var(wnd->stats.rx_packets);
-	rx_csum_info = oob_data->extension.info[TcpIpChecksumPacketInfo];
-	if (wnd->rx_csum.ip_csum && rx_csum_info &&
-	    (rx_csum_info->rx.tcp_succeeded || rx_csum_info->rx.ip_succeeded ||
-	     rx_csum_info->rx.udp_succeeded)) {
-		skb->ip_summed = CHECKSUM_HW;
-		skb->csum = rx_csum_info->value;
-	}
+
+	csum.value = (typeof(csum.value))
+		oob_data->extension.info[TcpIpChecksumPacketInfo];
+	DBGTRACE3("0x%05x", csum.value);
+	if (wnd->rx_csum.value &&
+	    (csum.rx.tcp_succeeded || csum.rx.udp_succeeded))
+		skb->ip_summed = CHECKSUM_UNNECESSARY;
+	else
+		skb->ip_summed = CHECKSUM_NONE;
+
 	netif_rx(skb);
 }
 
