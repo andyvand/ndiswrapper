@@ -2234,22 +2234,34 @@ wstdcall void EthRxIndicateHandler(struct ndis_miniport_block *nmb, void *rx_ctx
 			  bytes_txed);
 		if (res == NDIS_STATUS_SUCCESS) {
 			ndis_buffer *buffer;
+			struct ndis_tcp_ip_checksum_packet_info csum;
 			skb = dev_alloc_skb(header_size + look_ahead_size +
 					    bytes_txed);
-			if (skb) {
-				memcpy_skb(skb, header, header_size);
-				memcpy_skb(skb, look_ahead, look_ahead_size);
-				buffer = packet->private.buffer_head;
-				while (buffer) {
-					memcpy_skb(skb,
-						   MmGetSystemAddressForMdl(buffer),
-						   MmGetMdlByteCount(buffer));
-					buffer = buffer->next;
-				}
-				skb_size = header_size+look_ahead_size +
-					bytes_txed;
+			if (!skb) {
+				ERROR("couldn't allocate skb; packet dropped");
+				atomic_inc_var(wnd->stats.rx_dropped);
 				NdisFreePacket(packet);
+				return;
 			}
+			memcpy_skb(skb, header, header_size);
+			memcpy_skb(skb, look_ahead, look_ahead_size);
+			buffer = packet->private.buffer_head;
+			while (buffer) {
+				memcpy_skb(skb,
+					   MmGetSystemAddressForMdl(buffer),
+					   MmGetMdlByteCount(buffer));
+				buffer = buffer->next;
+			}
+			skb_size = header_size + look_ahead_size + bytes_txed;
+			csum.value = (typeof(csum.value))
+				oob_data->extension.info[TcpIpChecksumPacketInfo];
+			DBGTRACE3("0x%05x", csum.value);
+			if (wnd->rx_csum.value &&
+			    (csum.rx.tcp_succeeded || csum.rx.udp_succeeded))
+				skb->ip_summed = CHECKSUM_UNNECESSARY;
+			else
+				skb->ip_summed = CHECKSUM_NONE;
+			NdisFreePacket(packet);
 		} else if (res == NDIS_STATUS_PENDING) {
 			/* driver will call td_complete */
 			oob_data->look_ahead = kmalloc(look_ahead_size,
@@ -2269,8 +2281,8 @@ wstdcall void EthRxIndicateHandler(struct ndis_miniport_block *nmb, void *rx_ctx
 			TRACEEXIT3(return);
 		} else {
 			WARNING("packet dropped: %08X", res);
-			NdisFreePacket(packet);
 			atomic_inc_var(wnd->stats.rx_dropped);
+			NdisFreePacket(packet);
 			TRACEEXIT3(return);
 		}
 	} else {
@@ -2288,9 +2300,6 @@ wstdcall void EthRxIndicateHandler(struct ndis_miniport_block *nmb, void *rx_ctx
 		pre_atomic_add(wnd->stats.rx_bytes, skb_size);
 		atomic_inc_var(wnd->stats.rx_packets);
 		netif_rx(skb);
-	} else {
-		ERROR("couldn't allocate skb; packet dropped");
-		atomic_inc_var(wnd->stats.rx_dropped);
 	}
 
 	TRACEEXIT3(return);
