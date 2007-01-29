@@ -1447,7 +1447,6 @@ wstdcall void WIN_FUNC(NdisAllocatePacket,3)
 	packet->private.oob_offset = packet_length -
 		sizeof(struct ndis_packet_oob_data);
 	packet->private.packet_flags = fPACKET_ALLOCATED_BY_NDIS;
-//	packet->private.flags = NDIS_PROTOCOL_ID_TCP_IP;
 	packet->private.pool = pool;
 	*ndis_packet = packet;
 	*status = NDIS_STATUS_SUCCESS;
@@ -2039,97 +2038,6 @@ wstdcall void WIN_FUNC(NdisMIndicateStatusComplete,1)
 		schedule_wrap_work(&wnd->tx_work);
 }
 
-wstdcall void return_packet(void *arg1, void *arg2)
-{
-	struct wrap_ndis_device *wnd;
-	struct ndis_packet *packet;
-	struct miniport_char *miniport;
-	KIRQL irql;
-
-	wnd = arg1;
-	packet = arg2;
-	TRACEENTER4("%p, %p", wnd, packet);
-	miniport = &wnd->wd->driver->ndis_driver->miniport;
-	irql = serialize_lock_irql(wnd);
-	LIN2WIN2(miniport->return_packet, wnd->nmb->adapter_ctx, packet);
-	serialize_unlock_irql(wnd, irql);
-	TRACEEXIT4(return);
-}
-WIN_FUNC_DECL(return_packet,2)
-
-/* called via function pointer */
-wstdcall void NdisMIndicateReceivePacket(struct ndis_miniport_block *nmb,
-					 struct ndis_packet **packets,
-					 UINT nr_packets)
-{
-	struct wrap_ndis_device *wnd;
-	ndis_buffer *buffer;
-	struct ndis_packet *packet;
-	struct sk_buff *skb;
-	UINT i, length, total_length;
-	struct ndis_packet_oob_data *oob_data;
-	void *virt;
-
-	TRACEENTER3("%p, %d", nmb, nr_packets);
-	wnd = nmb->wnd;
-	for (i = 0; i < nr_packets; i++) {
-		packet = packets[i];
-		if (!packet) {
-			WARNING("empty packet ignored");
-			continue;
-		}
-		wnd->net_dev->last_rx = jiffies;
-		/* get total number of bytes in packet */
-		NdisGetFirstBufferFromPacketSafe(packet, &buffer, &virt,
-						 &length, &total_length,
-						 NormalPagePriority);
-		DBGTRACE3("%d, %d", length, total_length);
-		oob_data = NDIS_PACKET_OOB_DATA(packet);
-		DBGTRACE3("0x%x, 0x%x, %Lu", packet->private.flags,
-			  packet->private.packet_flags, oob_data->time_rxed);
-		skb = dev_alloc_skb(total_length);
-		if (skb) {
-			while (buffer) {
-				memcpy_skb(skb, MmGetSystemAddressForMdl(buffer),
-					   MmGetMdlByteCount(buffer));
-				buffer = buffer->next;
-			}
-			skb->dev = wnd->net_dev;
-			skb->protocol = eth_type_trans(skb, wnd->net_dev);
-			pre_atomic_add(wnd->stats.rx_bytes, total_length);
-			atomic_inc_var(wnd->stats.rx_packets);
-			netif_rx(skb);
-		} else {
-			WARNING("couldn't allocate skb; packet dropped");
-			atomic_inc_var(wnd->stats.rx_dropped);
-		}
-
-		/* serialized drivers check the status upon return
-		 * from this function */
-		if (!deserialized_driver(wnd)) {
-			oob_data->status = NDIS_STATUS_SUCCESS;
-			continue;
-		}
-
-		/* if a deserialized driver sets
-		 * NDIS_STATUS_RESOURCES, then it reclaims the packet
-		 * upon return from this function */
-		if (oob_data->status == NDIS_STATUS_RESOURCES)
-			continue;
-
-		assert(oob_data->status == NDIS_STATUS_SUCCESS);
-		/* deserialized driver doesn't check the status upon
-		 * return from this function; we need to call
-		 * MiniportReturnPacket later for this packet. Calling
-		 * MiniportReturnPacket from here is not correct - the
-		 * driver doesn't expect it (at least Centrino driver
-		 * crashes) */
-		schedule_ntos_work_item(WIN_FUNC_PTR(return_packet,2),
-					wnd, packet);
-	}
-	TRACEEXIT3(return);
-}
-
 /* called via function pointer */
 wstdcall void NdisMSendComplete(struct ndis_miniport_block *nmb,
 				struct ndis_packet *packet, NDIS_STATUS status)
@@ -2176,6 +2084,110 @@ wstdcall void NdisMSendResourcesAvailable(struct ndis_miniport_block *nmb)
 	DBGTRACE3("%d, %d", wnd->tx_ring_start, wnd->tx_ring_end);
 	atomic_inc_var(wnd->tx_ok);
 	schedule_wrap_work(&wnd->tx_work);
+	TRACEEXIT3(return);
+}
+
+wstdcall void return_packet(void *arg1, void *arg2)
+{
+	struct wrap_ndis_device *wnd;
+	struct ndis_packet *packet;
+	struct miniport_char *miniport;
+	KIRQL irql;
+
+	wnd = arg1;
+	packet = arg2;
+	TRACEENTER4("%p, %p", wnd, packet);
+	miniport = &wnd->wd->driver->ndis_driver->miniport;
+	irql = serialize_lock_irql(wnd);
+	LIN2WIN2(miniport->return_packet, wnd->nmb->adapter_ctx, packet);
+	serialize_unlock_irql(wnd, irql);
+	TRACEEXIT4(return);
+}
+WIN_FUNC_DECL(return_packet,2)
+
+/* called via function pointer */
+wstdcall void NdisMIndicateReceivePacket(struct ndis_miniport_block *nmb,
+					 struct ndis_packet **packets,
+					 UINT nr_packets)
+{
+	struct wrap_ndis_device *wnd;
+	ndis_buffer *buffer;
+	struct ndis_packet *packet;
+	struct sk_buff *skb;
+	ULONG i, length, total_length;
+	struct ndis_packet_oob_data *oob_data;
+	void *virt;
+	struct ndis_tcp_ip_checksum_packet_info *csum;
+	typeof(csum->value) csum_value;
+
+	TRACEENTER3("%p, %d", nmb, nr_packets);
+	wnd = nmb->wnd;
+	for (i = 0; i < nr_packets; i++) {
+		packet = packets[i];
+		if (!packet) {
+			WARNING("empty packet ignored");
+			continue;
+		}
+		wnd->net_dev->last_rx = jiffies;
+		/* get total number of bytes in packet */
+		NdisGetFirstBufferFromPacketSafe(packet, &buffer, &virt,
+						 &length, &total_length,
+						 NormalPagePriority);
+		DBGTRACE3("%d, %d", length, total_length);
+		oob_data = NDIS_PACKET_OOB_DATA(packet);
+		DBGTRACE3("0x%x, 0x%x, %Lu", packet->private.flags,
+			  packet->private.packet_flags, oob_data->time_rxed);
+		skb = dev_alloc_skb(total_length);
+		if (skb) {
+			while (buffer) {
+				memcpy_skb(skb, MmGetSystemAddressForMdl(buffer),
+					   MmGetMdlByteCount(buffer));
+				buffer = buffer->next;
+			}
+			skb->dev = wnd->net_dev;
+			skb->protocol = eth_type_trans(skb, wnd->net_dev);
+			pre_atomic_add(wnd->stats.rx_bytes, total_length);
+			atomic_inc_var(wnd->stats.rx_packets);
+			csum_value = (typeof(csum_value))
+				oob_data->extension.info[TcpIpChecksumPacketInfo];
+			csum = (void *)&csum_value;
+			DBGTRACE3("0x%0x", csum->value);
+			if (wnd->rx_csum.value &&
+			    (csum->rx.tcp_succeeded || csum->rx.ip_succeeded ||
+			     csum->rx.udp_succeeded))
+				skb->ip_summed = CHECKSUM_UNNECESSARY;
+			else
+				skb->ip_summed = CHECKSUM_NONE;
+
+			netif_rx(skb);
+		} else {
+			WARNING("couldn't allocate skb; packet dropped");
+			atomic_inc_var(wnd->stats.rx_dropped);
+		}
+
+		/* serialized drivers check the status upon return
+		 * from this function */
+		if (!deserialized_driver(wnd)) {
+			oob_data->status = NDIS_STATUS_SUCCESS;
+			continue;
+		}
+
+		/* if a deserialized driver sets
+		 * NDIS_STATUS_RESOURCES, then it reclaims the packet
+		 * upon return from this function */
+		if (oob_data->status == NDIS_STATUS_RESOURCES)
+			continue;
+
+		assert(oob_data->status == NDIS_STATUS_SUCCESS);
+		/* deserialized driver doesn't check the status upon
+		 * return from this function; we need to call
+		 * MiniportReturnPacket later for this packet. Calling
+		 * MiniportReturnPacket from here is not correct - the
+		 * driver doesn't expect it (at least Centrino driver
+		 * crashes) */
+		schedule_ntos_work_item(WIN_FUNC_PTR(return_packet,2),
+					wnd, packet);
+	}
 	TRACEEXIT3(return);
 }
 
@@ -2297,6 +2309,7 @@ wstdcall void NdisMTransferDataComplete(struct ndis_miniport_block *nmb,
 	unsigned int skb_size;
 	struct ndis_packet_oob_data *oob_data;
 	ndis_buffer *buffer;
+	struct ndis_tcp_ip_checksum_packet_info *rx_csum_info;
 
 	TRACEENTER3("wnd = %p, packet = %p, bytes_txed = %d",
 		    wnd, packet, bytes_txed);
@@ -2330,6 +2343,13 @@ wstdcall void NdisMTransferDataComplete(struct ndis_miniport_block *nmb,
 	skb->protocol = eth_type_trans(skb, wnd->net_dev);
 	pre_atomic_add(wnd->stats.rx_bytes, skb_size);
 	atomic_inc_var(wnd->stats.rx_packets);
+	rx_csum_info = oob_data->extension.info[TcpIpChecksumPacketInfo];
+	if (wnd->rx_csum.ip_csum && rx_csum_info &&
+	    (rx_csum_info->rx.tcp_succeeded || rx_csum_info->rx.ip_succeeded ||
+	     rx_csum_info->rx.udp_succeeded)) {
+		skb->ip_summed = CHECKSUM_HW;
+		skb->csum = rx_csum_info->value;
+	}
 	netif_rx(skb);
 }
 

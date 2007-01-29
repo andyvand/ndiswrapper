@@ -19,6 +19,10 @@
 #include "loader.h"
 #include "wrapndis.h"
 #include <linux/inetdevice.h>
+#include <linux/ip.h>
+#include <linux/tcp.h>
+#include <linux/udp.h>
+#include <linux/in.h>
 
 extern char *if_name;
 extern int hangcheck_interval;
@@ -461,6 +465,72 @@ static int ndis_set_mac_address(struct net_device *dev, void *p)
 	TRACEEXIT1(return 0);
 }
 
+static int setup_tx_sg_list(struct wrap_ndis_device *wnd, struct sk_buff *skb,
+			    struct ndis_packet_oob_data *oob_data)
+{
+	struct ndis_sg_element *sg_element;
+	struct ndis_sg_list *tx_sg_list;
+	int i;
+
+	TRACEENTER3("%p, %d", skb, skb_shinfo(skb)->nr_frags);
+	if (skb_shinfo(skb)->nr_frags <= 1) {
+		sg_element = &oob_data->wrap_tx_sg_list.elements[0];
+		sg_element->address =
+			PCI_DMA_MAP_SINGLE(wnd->wd->pci.pdev, skb->data,
+					   skb->len, PCI_DMA_TODEVICE);
+		sg_element->length = skb->len;
+		oob_data->wrap_tx_sg_list.nent = 1;
+		oob_data->extension.info[ScatterGatherListPacketInfo] =
+			&oob_data->wrap_tx_sg_list;
+		DBGTRACE3("%Lx, %u", sg_element->address, sg_element->length);
+		return 0;
+	}
+	tx_sg_list = kmalloc(sizeof(*tx_sg_list) +
+			       (skb_shinfo(skb)->nr_frags + 1) *
+			       sizeof(*sg_element), GFP_ATOMIC);
+	if (!tx_sg_list)
+		return -ENOMEM;
+	sg_element = tx_sg_list->elements;
+	tx_sg_list->nent = skb_shinfo(skb)->nr_frags;
+	for (i = 0; i < skb_shinfo(skb)->nr_frags; i++) {
+		skb_frag_t *frag = &skb_shinfo(skb)->frags[i];
+		sg_element->length = frag->size;
+		sg_element->address =
+			pci_map_page(wnd->wd->pci.pdev, frag->page,
+				     frag->page_offset, frag->size,
+				     PCI_DMA_TODEVICE);
+		DBGTRACE3("%Lx, %u", sg_element->address, sg_element->length);
+		sg_element++;
+	}
+	oob_data->extension.info[ScatterGatherListPacketInfo] =
+		tx_sg_list;
+	DBGTRACE3("%p, %d", tx_sg_list, tx_sg_list->nent);
+	return 0;
+}
+
+static void free_tx_sg_list(struct wrap_ndis_device *wnd,
+			    struct ndis_packet_oob_data *oob_data)
+{
+	int i;
+	struct ndis_sg_list *tx_sg_list =
+		oob_data->extension.info[ScatterGatherListPacketInfo];
+	struct ndis_sg_element *sg_element;
+	sg_element = tx_sg_list->elements;
+	DBGTRACE3("%p, %d", tx_sg_list, tx_sg_list->nent);
+	if (tx_sg_list->nent == 1) {
+		PCI_DMA_UNMAP_SINGLE(wnd->wd->pci.pdev, sg_element->address,
+				     sg_element->length, PCI_DMA_TODEVICE);
+		TRACEEXIT3(return);
+	}
+	for (i = 0; i < tx_sg_list->nent; i++) {
+		DBGTRACE3("%Lx, %u", sg_element->address, sg_element->length);
+		pci_unmap_page(wnd->wd->pci.pdev, sg_element->address,
+			       sg_element->length, PCI_DMA_TODEVICE);
+		sg_element++;
+	}
+	kfree(tx_sg_list);
+}
+
 static struct ndis_packet *alloc_tx_packet(struct wrap_ndis_device *wnd,
 					   struct sk_buff *skb)
 {
@@ -472,7 +542,6 @@ static struct ndis_packet *alloc_tx_packet(struct wrap_ndis_device *wnd,
 	NdisAllocatePacket(&status, &packet, wnd->tx_packet_pool);
 	if (status != NDIS_STATUS_SUCCESS)
 		return NULL;
-	packet->private.flags |= NDIS_MAC_OPTION_NO_LOOPBACK;
 	NdisAllocateBuffer(&status, &buffer, wnd->tx_buffer_pool,
 			   skb->data, skb->len);
 	if (status != NDIS_STATUS_SUCCESS) {
@@ -485,20 +554,32 @@ static struct ndis_packet *alloc_tx_packet(struct wrap_ndis_device *wnd,
 	oob_data = NDIS_PACKET_OOB_DATA(packet);
 	oob_data->skb = skb;
 	if (wnd->sg_dma_size) {
-		struct ndis_sg_element *sg_element =
-			&oob_data->wrap_tx_sg_list.elements[0];
-		sg_element->address =
-			PCI_DMA_MAP_SINGLE(wnd->wd->pci.pdev, skb->data,
-					   skb->len, PCI_DMA_TODEVICE);
-		sg_element->length = skb->len;
-		oob_data->wrap_tx_sg_list.nent = 1;
-		oob_data->extension.info[ScatterGatherListPacketInfo] =
-			&oob_data->wrap_tx_sg_list;
+		if (setup_tx_sg_list(wnd, skb, oob_data)) {
+			NdisFreeBuffer(buffer);
+			NdisFreePacket(packet);
+			return NULL;
+		}
 	}
-#if 0
-	if (wnd->tx_csum_info.value)
+#if 1
+	DBGTRACE2("%d, %d", wnd->tx_csum_info.tx.v4, skb->ip_summed);
+	if (wnd->tx_csum_info.tx.v4 && skb->ip_summed == CHECKSUM_PARTIAL) {
+		struct ndis_tcp_ip_checksum_packet_info *csum;
+		typeof(csum->value) value = 0;
+		struct iphdr *ip = skb->nh.iph;
+		csum = (void *)&value;
+		csum->tx.v4 = 1;
+		if (ip->protocol == IPPROTO_TCP)
+			TRACEEXIT2(csum->tx.tcp = 1);
+		else if (ip->protocol == IPPROTO_UDP)
+			TRACEEXIT2(csum->tx.udp = 1);
+		else
+			WARNING("");
+//		csum->tx.ip = 1;
+		packet->private.flags |= NDIS_PROTOCOL_ID_TCP_IP;
+		DBGTRACE3("0x%x", value);
 		oob_data->extension.info[TcpIpChecksumPacketInfo] =
-			&wnd->tx_csum_info;
+			(void *)value;
+	}
 #endif
 	DBG_BLOCK(4) {
 		dump_bytes(__FUNCTION__, skb->data, skb->len);
@@ -522,12 +603,8 @@ void free_tx_packet(struct wrap_ndis_device *wnd, struct ndis_packet *packet,
 		atomic_inc_var(wnd->stats.tx_dropped);
 	}
 	oob_data = NDIS_PACKET_OOB_DATA(packet);
-	if (wnd->sg_dma_size) {
-		struct ndis_sg_element *sg_element =
-			&oob_data->wrap_tx_sg_list.elements[0];
-		PCI_DMA_UNMAP_SINGLE(wnd->wd->pci.pdev, sg_element->address,
-				     sg_element->length, PCI_DMA_TODEVICE);
-	}
+	if (wnd->sg_dma_size)
+		free_tx_sg_list(wnd, oob_data);
 	buffer = packet->private.buffer_head;
 	DBGTRACE3("freeing buffer %p", buffer);
 	NdisFreeBuffer(buffer);
@@ -1515,19 +1592,19 @@ WIN_FUNC_DECL(NdisDispatchPnp,2)
 static int set_task_offload(struct wrap_ndis_device *wnd, void *buf,
 			    const int buf_size)
 {
-#if 0
+#if 1
 	struct ndis_task_offload_header *task_offload_header;
 	struct ndis_task_offload *task_offload;
-	struct ndis_task_tcp_ip_checksum *task_tcp_ip_csum = NULL;
-	struct ndis_task_tcp_ip_checksum csum;
+	struct ndis_task_tcp_ip_checksum *csum = NULL;
 	NDIS_STATUS status;
 
 	memset(buf, 0, buf_size);
 	task_offload_header = buf;
 	task_offload_header->version = NDIS_TASK_OFFLOAD_VERSION;
 	task_offload_header->size = sizeof(*task_offload_header);
-	task_offload_header->encapsulation_format.encapsulation =
-		IEEE_802_3_Encapsulation;
+	task_offload_header->encap_format.flags.fixed_header_size = 1;
+	task_offload_header->encap_format.header_size = sizeof(struct ethhdr);
+	task_offload_header->encap_format.encap = IEEE_802_3_Encapsulation;
 	status = miniport_query_info(wnd, OID_TCP_TASK_OFFLOAD, buf, buf_size);
 	DBGTRACE1("%08X", status);
 	if (status != NDIS_STATUS_SUCCESS)
@@ -1540,7 +1617,7 @@ static int set_task_offload(struct wrap_ndis_device *wnd, void *buf,
 		DBGTRACE1("%d, %d", task_offload->version, task_offload->task);
 		switch(task_offload->task) {
 		case TcpIpChecksumNdisTask:
-			task_tcp_ip_csum = (void *)task_offload->task_buf;
+			csum = (void *)task_offload->task_buf;
 			break;
 		default:
 			DBGTRACE1("%d", task_offload->task);
@@ -1551,32 +1628,34 @@ static int set_task_offload(struct wrap_ndis_device *wnd, void *buf,
 		task_offload = (void *)task_offload +
 			task_offload->offset_next_task;
 	}
-	if (!task_tcp_ip_csum)
+	if (!csum)
 		TRACEEXIT1(return -1);
-	memcpy(&csum, task_tcp_ip_csum, sizeof(csum));
+	DBGTRACE1("%08x, %08x", csum->v4_tx.value, csum->v4_rx.value);
+	DBGTRACE1("%d, %d, %d, %d, %d", csum->v4_tx.ip_opts, csum->v4_tx.tcp_opts,
+		  csum->v4_tx.tcp_csum, csum->v4_tx.udp_csum, csum->v4_tx.ip_csum);
+	DBGTRACE1("%d, %d, %d, %d, %d", csum->v4_rx.ip_opts, csum->v4_rx.tcp_opts,
+		  csum->v4_rx.tcp_csum, csum.v4_rx.udp_csum, csum->v4_rx.ip_csum);
 
-	task_offload_header->encapsulation_format.flags.fixed_header_size = 1;
-	task_offload_header->encapsulation_format.header_size =
-		sizeof(struct ethhdr);
+	task_offload_header->encap_format.flags.fixed_header_size = 1;
+	task_offload_header->encap_format.header_size = sizeof(struct ethhdr);
 	task_offload_header->offset_first_task = sizeof(*task_offload_header);
 	task_offload = ((void *)task_offload_header +
 			task_offload_header->offset_first_task);
-	memcpy(task_offload->task_buf, &csum, sizeof(csum));
 	task_offload->offset_next_task = 0;
 	task_offload->size = sizeof(*task_offload);
 	task_offload->task = TcpIpChecksumNdisTask;
-	task_offload->task_buf_length = sizeof(csum);
+	memcpy(task_offload->task_buf, csum, sizeof(*csum));
+	task_offload->task_buf_length = sizeof(*csum);
 	status = miniport_set_info(wnd, OID_TCP_TASK_OFFLOAD,
 				   task_offload_header,
 				   sizeof(*task_offload_header) +
-				   sizeof(*task_offload) + sizeof(csum));
+				   sizeof(*task_offload) + sizeof(*csum));
 	DBGTRACE1("%08X", status);
 	if (status != NDIS_STATUS_SUCCESS)
 		TRACEEXIT2(return -1);
-	DBGTRACE1("%08x, %08x", csum.v4_tx.value, csum.v4_rx.value);
-	if (csum.v4_tx.ip_csum) {
+	if (csum->v4_tx.ip_csum) {
 		wnd->tx_csum_info.tx.v4 = 1;
-		if (csum.v4_tx.tcp_csum && csum.v4_tx.udp_csum) {
+		if (csum->v4_tx.tcp_csum && csum->v4_tx.ip_csum) {
 			wnd->net_dev->features |= NETIF_F_HW_CSUM;
 			wnd->tx_csum_info.tx.tcp = 1;
 			wnd->tx_csum_info.tx.ip = 1;
@@ -1587,8 +1666,10 @@ static int set_task_offload(struct wrap_ndis_device *wnd, void *buf,
 			wnd->tx_csum_info.tx.ip = 1;
 			DBGTRACE1("ip_csum");
 		}
+		if (wnd->sg_dma_size)
+			wnd->net_dev->features |= NETIF_F_SG;
 	}
-	wnd->rx_csum = csum.v4_rx;
+	wnd->rx_csum = csum->v4_rx;
 #endif
 	TRACEEXIT1(return 0);
 }
