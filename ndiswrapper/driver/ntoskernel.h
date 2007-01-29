@@ -364,6 +364,10 @@ typedef u32 pm_message_t;
 #define flush_icache_range(start, end) do { } while (0)
 #endif
 
+#ifndef CHECKSUM_PARTIAL
+#define CHECKSUM_PARTIAL CHECKSUM_HW
+#endif
+
 #define memcpy_skb(skb, from, length)			\
 	memcpy(skb_put(skb, length), from, length)
 

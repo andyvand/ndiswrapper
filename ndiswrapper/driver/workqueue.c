@@ -34,6 +34,7 @@ static int workq_thread(void *data)
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,7)
 	daemonize();
 	reparent_to_init();
+	current->nice -= 5;
 #else
 	daemonize(workq->name);
 #endif
@@ -42,7 +43,6 @@ static int workq_thread(void *data)
 #else
 	sigfillset(&current->blocked);
 #endif
-	set_user_nice(current, -5);
 	while (1) {
 		if (wait_event_interruptible(workq->waitq_head,
 					     workq->pending)) {
