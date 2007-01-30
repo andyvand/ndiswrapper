@@ -633,12 +633,11 @@ wstdcall void WIN_FUNC(NdisMSetAttributesEx,5)
 		    hangcheck_interval, attributes, adaptortype);
 	wnd = nmb->wnd;
 	nmb->adapter_ctx = adapter_ctx;
+	wnd->attributes = attributes;
 
 	if ((attributes & NDIS_ATTRIBUTE_BUS_MASTER) &&
 	    wrap_is_pci_bus(wnd->wd->dev_bus))
 		pci_set_master(wnd->wd->pci.pdev);
-
-	wnd->attributes = attributes;
 
 	if (hangcheck_interval > 0)
 		wnd->hangcheck_interval = 2 * hangcheck_interval * HZ;
@@ -1563,8 +1562,7 @@ wstdcall void WIN_FUNC(NdisIMCopySendPerPacketInfo,2)
 	struct ndis_packet_oob_data *dst_oob, *src_oob;
 	dst_oob = NDIS_PACKET_OOB_DATA(dst);
 	src_oob = NDIS_PACKET_OOB_DATA(src);
-	memcpy(&dst_oob->extension, &src_oob->extension,
-	       sizeof(dst_oob->extension));
+	memcpy(&dst_oob->ext, &src_oob->ext, sizeof(dst_oob->ext));
 	return;
 }
 
@@ -1595,7 +1593,7 @@ wstdcall void WIN_FUNC(NdisSend,3)
 			case NDIS_STATUS_PENDING:
 				break;
 			case NDIS_STATUS_RESOURCES:
-				atomic_dec_var(wnd->tx_ok);
+				wnd->tx_ok = 0;
 				break;
 			case NDIS_STATUS_FAILURE:
 			default:
@@ -1615,7 +1613,7 @@ wstdcall void WIN_FUNC(NdisSend,3)
 		case NDIS_STATUS_PENDING:
 			break;
 		case NDIS_STATUS_RESOURCES:
-			atomic_dec_var(wnd->tx_ok);
+			wnd->tx_ok = 0;
 			break;
 		case NDIS_STATUS_FAILURE:
 		default:
@@ -1851,7 +1849,7 @@ wstdcall NDIS_STATUS WIN_FUNC(NdisMRegisterInterrupt,7)
 	tasklet_init(&wnd->irq_tasklet, deserialized_driver(wnd) ?
 		     deserialized_irq_handler : serialized_irq_handler,
 		     (unsigned long)wnd);
-	if (request_irq(vector, ndis_isr, req_isr ? SA_SHIRQ : 0,
+	if (request_irq(vector, ndis_isr, req_isr ? IRQF_SHARED : 0,
 			wnd->net_dev->name, wnd)) {
 		printk(KERN_WARNING "%s: request for IRQ %d failed\n",
 		       DRIVER_NAME, vector);
@@ -2066,8 +2064,7 @@ wstdcall void NdisMSendComplete(struct ndis_miniport_block *nmb,
 		 * pause by returning NDIS_STATUS_RESOURCES during
 		 * MiniportSend(Packets), wakeup tx worker now.
 		 */
-		if (wnd->tx_ok == 0) {
-			atomic_inc_var(wnd->tx_ok);
+		if (cmpxchg(&wnd->tx_ok, 0, 1) == 0) {
 			DBGTRACE3("%d, %d", wnd->tx_ring_start,
 				  wnd->tx_ring_end);
 			schedule_wrap_work(&wnd->tx_work);
@@ -2082,7 +2079,7 @@ wstdcall void NdisMSendResourcesAvailable(struct ndis_miniport_block *nmb)
 	struct wrap_ndis_device *wnd = nmb->wnd;
 	TRACEENTER3("");
 	DBGTRACE3("%d, %d", wnd->tx_ring_start, wnd->tx_ring_end);
-	atomic_inc_var(wnd->tx_ok);
+	wnd->tx_ok = 1;
 	schedule_wrap_work(&wnd->tx_work);
 	TRACEEXIT3(return);
 }
@@ -2148,7 +2145,7 @@ wstdcall void NdisMIndicateReceivePacket(struct ndis_miniport_block *nmb,
 			pre_atomic_add(wnd->stats.rx_bytes, total_length);
 			atomic_inc_var(wnd->stats.rx_packets);
 			csum.value = (typeof(csum.value))
-				oob_data->extension.info[TcpIpChecksumPacketInfo];
+				oob_data->ext.info[TcpIpChecksumPacketInfo];
 			DBGTRACE3("0x%05x", csum.value);
 			if (wnd->rx_csum.value &&
 			    (csum.rx.tcp_succeeded || csum.rx.udp_succeeded))
@@ -2254,7 +2251,7 @@ wstdcall void EthRxIndicateHandler(struct ndis_miniport_block *nmb, void *rx_ctx
 			}
 			skb_size = header_size + look_ahead_size + bytes_txed;
 			csum.value = (typeof(csum.value))
-				oob_data->extension.info[TcpIpChecksumPacketInfo];
+				oob_data->ext.info[TcpIpChecksumPacketInfo];
 			DBGTRACE3("0x%05x", csum.value);
 			if (wnd->rx_csum.value &&
 			    (csum.rx.tcp_succeeded || csum.rx.udp_succeeded))
@@ -2351,7 +2348,7 @@ wstdcall void NdisMTransferDataComplete(struct ndis_miniport_block *nmb,
 	atomic_inc_var(wnd->stats.rx_packets);
 
 	csum.value = (typeof(csum.value))
-		oob_data->extension.info[TcpIpChecksumPacketInfo];
+		oob_data->ext.info[TcpIpChecksumPacketInfo];
 	DBGTRACE3("0x%05x", csum.value);
 	if (wnd->rx_csum.value &&
 	    (csum.rx.tcp_succeeded || csum.rx.udp_succeeded))
@@ -2465,8 +2462,12 @@ wstdcall NDIS_STATUS WIN_FUNC(NdisMInitializeScatterGatherDma,3)
 	if (dma_size != NDIS_DMA_64BITS)
 		ERROR("DMA size is not 64-bits");
 #endif
-	wnd->sg_dma_size = max_phy_map;
-	return NDIS_STATUS_SUCCESS;
+	if ((wnd->attributes & NDIS_ATTRIBUTE_BUS_MASTER) &&
+	    wrap_is_pci_bus(wnd->wd->dev_bus)) {
+		wnd->sg_dma_size = max_phy_map;
+		return NDIS_STATUS_SUCCESS;
+	} else
+		TRACEEXIT1(return NDIS_STATUS_NOT_SUPPORTED);
 }
 
 wstdcall ULONG WIN_FUNC(NdisMGetDmaAlignment,1)

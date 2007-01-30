@@ -191,7 +191,7 @@ int set_infra_mode(struct wrap_ndis_device *wnd,
 	NDIS_STATUS res;
 	unsigned int i;
 
-	TRACEENTER2("");
+	TRACEENTER2("%d", mode);
 	res = miniport_query_int(wnd, OID_802_11_INFRASTRUCTURE_MODE,
 				 &wnd->infrastructure_mode);
 	if (res != NDIS_STATUS_SUCCESS) {

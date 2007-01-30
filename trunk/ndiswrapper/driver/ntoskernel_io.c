@@ -93,7 +93,7 @@ wstdcall struct irp *WIN_FUNC(IoAllocateIrp,2)
 	int irp_size;
 
 	IOENTER("count: %d", stack_count);
-	stack_count++;
+//	stack_count++;
 	irp_size = IoSizeOfIrp(stack_count);
 	irp = kmalloc(irp_size, gfp_irql());
 	if (irp)
@@ -493,7 +493,7 @@ wstdcall NTSTATUS IoSyncForwardIrp(struct device_object *dev_obj,
 WIN_FUNC_DECL(IoSyncForwardIrp,2)
 
 wstdcall NTSTATUS IoAsyncForwardIrp(struct device_object *dev_obj,
-				   struct irp *irp)
+				    struct irp *irp)
 {
 	NTSTATUS status;
 
@@ -504,7 +504,7 @@ wstdcall NTSTATUS IoAsyncForwardIrp(struct device_object *dev_obj,
 WIN_FUNC_DECL(IoAsyncForwardIrp,2)
 
 wstdcall NTSTATUS IoInvalidDeviceRequest(struct device_object *dev_obj,
-					struct irp *irp)
+					 struct irp *irp)
 {
 	struct io_stack_location *irp_sl;
 	NTSTATUS status;
@@ -560,7 +560,7 @@ wstdcall NTSTATUS WIN_FUNC(IoConnectInterrupt,11)
 	InitializeListHead(&interrupt->list);
 	interrupt->synch_irql = synch_irql;
 	interrupt->interrupt_mode = interrupt_mode;
-	if (request_irq(vector, io_irq_isr, shareable ? SA_SHIRQ : 0,
+	if (request_irq(vector, io_irq_isr, shareable ? IRQF_SHARED : 0,
 			"io_irq", interrupt)) {
 		WARNING("request for irq %d failed", vector);
 		IOEXIT(return STATUS_INSUFFICIENT_RESOURCES);
