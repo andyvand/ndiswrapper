@@ -1,3 +1,9 @@
+Version 1.36 2007-XX-XX
+=======================	
+* Fixed ndiswrapper script (broken since 1.23 for sis163u driver)
+* Implemented full scatter/gather lists (not tested)
+* Implemented support for hardware tcp/ip checksumming (through NDIS)
+
 Version 1.35 2007-01-28
 =======================	
 * Fixed a bug with scatter/gather. With this rt61 from RaLink and VT6655 from
