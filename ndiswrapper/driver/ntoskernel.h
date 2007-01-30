@@ -368,6 +368,10 @@ typedef u32 pm_message_t;
 #define CHECKSUM_PARTIAL CHECKSUM_HW
 #endif
 
+#ifndef IRQF_SHARED
+#define IRQF_SHARED SA_SHIRQ
+#endif
+
 #define memcpy_skb(skb, from, length)			\
 	memcpy(skb_put(skb, length), from, length)
 

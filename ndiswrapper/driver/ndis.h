@@ -256,13 +256,15 @@ struct ndis_packet_oob_data {
 
 	/* ndiswrapper specific info; extension should be right after
 	 * ndis's oob_data */
-	struct ndis_packet_extension extension;
-	struct sk_buff *skb;
+	struct ndis_packet_extension ext;
 	union {
 		/* used for tx only */
-		union {
-			struct wrap_tx_sg_list wrap_tx_sg_list;
-			struct ndis_sg_list *tx_sg_list;
+		struct {
+			struct sk_buff *tx_skb;
+			union {
+				struct wrap_tx_sg_list wrap_tx_sg_list;
+				struct ndis_sg_list *tx_sg_list;
+			};
 		};
 		/* used for rx only */
 		struct {
