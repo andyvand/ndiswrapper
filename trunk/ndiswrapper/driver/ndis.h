@@ -196,6 +196,14 @@ struct ndis_task_tcp_ip_checksum {
 	struct v6_checksum v6_rx;
 };
 
+struct ndis_task_tcp_large_send {
+	ULONG version;
+	ULONG max_size;
+	ULONG min_seg_count;
+	BOOLEAN tcp_opts;
+	BOOLEAN ip_opts;
+};
+
 enum ndis_per_packet_info {
 	TcpIpChecksumPacketInfo, IpSecPacketInfo, TcpLargeSendPacketInfo,
 	ClassificationHandlePacketInfo, NdisReserved,
@@ -897,7 +905,7 @@ struct wrap_ndis_device {
 	struct ndis_buffer_pool *tx_buffer_pool;
 	int multicast_size;
 	struct v4_checksum rx_csum;
-	struct ndis_tcp_ip_checksum_packet_info tx_csum_info;
+	struct v4_checksum tx_csum;
 	enum ndis_physical_medium physical_medium;
 	u32 ndis_wolopts;
 	struct nt_list timer_list;

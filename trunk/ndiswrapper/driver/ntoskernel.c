@@ -2014,7 +2014,8 @@ wstdcall PHYSICAL_ADDRESS WIN_FUNC(MmGetPhysicalAddress,1)
  * strings as required by the driver and return virtual address for
  * that address instead */
 wstdcall void *WIN_FUNC(MmMapIoSpace,3)
-	(PHYSICAL_ADDRESS phys_addr, SIZE_T size, enum memory_caching_type cache)
+	(PHYSICAL_ADDRESS phys_addr, SIZE_T size,
+	 enum memory_caching_type cache)
 {
 	void *virt;
 	TRACEENTER1("cache type: %d", cache);
