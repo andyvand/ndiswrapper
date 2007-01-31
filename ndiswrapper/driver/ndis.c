@@ -767,7 +767,7 @@ wstdcall NDIS_STATUS WIN_FUNC(NdisMMapIoSpace,4)
 {
 	struct wrap_ndis_device *wnd = nmb->wnd;
 
-	TRACEENTER2("%016llx, %d", phy_addr, len);
+	TRACEENTER2("%Lx, %d", phy_addr, len);
 	*virt = MmMapIoSpace(phy_addr, len, MmCached);
 	if (*virt == NULL) {
 		ERROR("ioremap failed");

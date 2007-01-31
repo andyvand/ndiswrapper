@@ -491,6 +491,7 @@ static int setup_tx_sg_list(struct wrap_ndis_device *wnd, struct sk_buff *skb,
 	if (!tx_sg_list)
 		return -ENOMEM;
 	tx_sg_list->nent = skb_shinfo(skb)->nr_frags + 1;
+	DBGTRACE3("%p, %d", tx_sg_list, tx_sg_list->nent);
 	sg_element = tx_sg_list->elements;
 	sg_element->length = skb_headlen(skb);
 	sg_element->address =
@@ -504,10 +505,9 @@ static int setup_tx_sg_list(struct wrap_ndis_device *wnd, struct sk_buff *skb,
 			pci_map_page(wnd->wd->pci.pdev, frag->page,
 				     frag->page_offset, frag->size,
 				     PCI_DMA_TODEVICE);
-		DBGTRACE1("%Lx, %u", sg_element->address, sg_element->length);
+		DBGTRACE3("%Lx, %u", sg_element->address, sg_element->length);
 	}
 	oob_data->ext.info[ScatterGatherListPacketInfo] = tx_sg_list;
-	DBGTRACE1("%p, %d", tx_sg_list, tx_sg_list->nent);
 	return 0;
 }
 
@@ -525,10 +525,11 @@ static void free_tx_sg_list(struct wrap_ndis_device *wnd,
 	if (tx_sg_list->nent == 1)
 		TRACEEXIT3(return);
 	for (i = 1; i < tx_sg_list->nent; i++, sg_element++) {
-		DBGTRACE1("%Lx, %u", sg_element->address, sg_element->length);
+		DBGTRACE3("%Lx, %u", sg_element->address, sg_element->length);
 		pci_unmap_page(wnd->wd->pci.pdev, sg_element->address,
 			       sg_element->length, PCI_DMA_TODEVICE);
 	}
+	DBGTRACE3("%p", tx_sg_list);
 	kfree(tx_sg_list);
 }
 
@@ -563,8 +564,8 @@ static struct ndis_packet *alloc_tx_packet(struct wrap_ndis_device *wnd,
 			return NULL;
 		}
 	}
-	DBGTRACE2("%d, %d", wnd->tx_csum_info.tx.v4, skb->ip_summed);
-	if (wnd->tx_csum_info.tx.v4 && skb->ip_summed == CHECKSUM_PARTIAL) {
+	DBGTRACE2("%d, %d", wnd->tx_csum.value, skb->ip_summed);
+	if (skb->ip_summed == CHECKSUM_PARTIAL) {
 		struct ndis_tcp_ip_checksum_packet_info csum;
 		struct iphdr *ip = skb->nh.iph;
 
@@ -617,12 +618,12 @@ void free_tx_packet(struct wrap_ndis_device *wnd, struct ndis_packet *packet,
 /* this function is called holding tx_ring_mutex. start and n are such
  * that start + n < TX_RING_SIZE; i.e., packets don't wrap around
  * ring */
-static int miniport_tx_packets(struct wrap_ndis_device *wnd, int start, int n)
+static u8 miniport_tx_packets(struct wrap_ndis_device *wnd, u8 start, u8 n)
 {
 	NDIS_STATUS res;
 	struct miniport_char *miniport;
 	struct ndis_packet *packet;
-	int sent;
+	u8 sent;
 	KIRQL irql;
 
 	DBGTRACE3("%d, %d", start, n);
@@ -633,7 +634,6 @@ static int miniport_tx_packets(struct wrap_ndis_device *wnd, int start, int n)
 				 &wnd->tx_ring[start], n);
 			sent = n;
 		} else {
-			struct ndis_packet_oob_data *oob_data;
 			irql = raise_irql(DISPATCH_LEVEL);
 			serialize_lock(wnd);
 			LIN2WIN3(miniport->send_packets, wnd->nmb->adapter_ctx,
@@ -641,10 +641,10 @@ static int miniport_tx_packets(struct wrap_ndis_device *wnd, int start, int n)
 			serialize_unlock(wnd);
 			lower_irql(irql);
 			for (sent = 0; sent < n && wnd->tx_ok; sent++) {
-				NDIS_STATUS pkt_status;
+				struct ndis_packet_oob_data *oob_data;
 				packet = wnd->tx_ring[start + sent];
 				oob_data = NDIS_PACKET_OOB_DATA(packet);
-				switch ((pkt_status =
+				switch ((res =
 					 xchg(&oob_data->status,
 					      NDIS_STATUS_NOT_RECOGNIZED))) {
 				case NDIS_STATUS_SUCCESS:
@@ -666,17 +666,16 @@ static int miniport_tx_packets(struct wrap_ndis_device *wnd, int start, int n)
 					break;
 				default:
 					ERROR("%p: invalid status: %08X",
-					      packet, pkt_status);
+					      packet, res);
 					free_tx_packet(wnd, packet,
 						       oob_data->status);
 					break;
 				}
-				DBGTRACE3("%p, %d", packet, pkt_status);
+				DBGTRACE3("%p, %d", packet, res);
 			}
 		}
 		DBGTRACE3("sent: %d(%d)", sent, n);
 	} else {
-		irql = PASSIVE_LEVEL;
 		for (sent = 0; sent < n && wnd->tx_ok; sent++) {
 			struct ndis_packet_oob_data *oob_data;
 			packet = wnd->tx_ring[start + sent];
@@ -714,7 +713,7 @@ static int miniport_tx_packets(struct wrap_ndis_device *wnd, int start, int n)
 static void tx_worker(worker_param_t param)
 {
 	struct wrap_ndis_device *wnd;
-	int n;
+	s8 n;
 
 	wnd = worker_param_data(param, struct wrap_ndis_device, tx_work);
 	TRACEENTER3("tx_ok %d", wnd->tx_ok);
@@ -755,24 +754,12 @@ static int tx_skbuff(struct sk_buff *skb, struct net_device *dev)
 {
 	struct wrap_ndis_device *wnd = netdev_priv(dev);
 	struct ndis_packet *packet;
-	struct miniport_char *miniport;
 
 	packet = alloc_tx_packet(wnd, skb);
 	if (!packet) {
 		WARNING("couldn't allocate packet");
 		return NETDEV_TX_BUSY;
 	}
-	/* TODO: for deserialized drivers, submit the packet right
-	 * away, instead of queueing in tx_ring? */
-	miniport = &wnd->wd->driver->ndis_driver->miniport;
-#if 0
-	if (deserialized_driver(wnd) && miniport->send_packets) {
-		LIN2WIN3(miniport->send_packets, wnd->nmb->adapter_ctx,
-			 &packet, 1);
-		return NETDEV_TX_OK;
-	}
-#endif
-
 	/* no need for lock here - already called holding
 	 * net_dev->xmit_lock and tx_ring_end is not updated
 	 * elsewhere */
@@ -1606,6 +1593,7 @@ static int set_task_offload(struct wrap_ndis_device *wnd, void *buf,
 	struct ndis_task_offload_header *task_offload_header;
 	struct ndis_task_offload *task_offload;
 	struct ndis_task_tcp_ip_checksum *csum = NULL;
+	struct ndis_task_tcp_large_send *tso = NULL;
 	NDIS_STATUS status;
 
 	memset(buf, 0, buf_size);
@@ -1629,6 +1617,9 @@ static int set_task_offload(struct wrap_ndis_device *wnd, void *buf,
 		case TcpIpChecksumNdisTask:
 			csum = (void *)task_offload->task_buf;
 			break;
+		case TcpLargeSendNdisTask:
+			tso = (void *)task_offload->task_buf;
+			break;
 		default:
 			DBGTRACE1("%d", task_offload->task);
 			break;
@@ -1638,6 +1629,9 @@ static int set_task_offload(struct wrap_ndis_device *wnd, void *buf,
 		task_offload = (void *)task_offload +
 			task_offload->offset_next_task;
 	}
+	if (tso)
+		DBGTRACE1("%u, %u, %d, %d", tso->max_size, tso->min_seg_count,
+			  tso->tcp_opts, tso->ip_opts);
 	if (!csum)
 		TRACEEXIT1(return -1);
 	DBGTRACE1("%08x, %08x", csum->v4_tx.value, csum->v4_rx.value);
@@ -1658,20 +1652,14 @@ static int set_task_offload(struct wrap_ndis_device *wnd, void *buf,
 	DBGTRACE1("%08X", status);
 	if (status != NDIS_STATUS_SUCCESS)
 		TRACEEXIT2(return -1);
-	if (csum->v4_tx.ip_csum) {
-		wnd->tx_csum_info.tx.v4 = 1;
-		if (csum->v4_tx.tcp_csum && csum->v4_tx.ip_csum) {
+	wnd->tx_csum = csum->v4_tx;
+	if (csum->v4_tx.tcp_csum && csum->v4_tx.udp_csum) {
+		if (csum->v4_tx.ip_csum) {
 			wnd->net_dev->features |= NETIF_F_HW_CSUM;
-			wnd->tx_csum_info.tx.tcp = 1;
-			wnd->tx_csum_info.tx.ip = 1;
-			wnd->tx_csum_info.tx.udp = 1;
-			printk(KERN_INFO "%s: hardware checksum enabled on %s\n",
-			       DRIVER_NAME, wnd->net_dev->name);
+			DBGTRACE1("hw checksum enabled");
 		} else {
 			wnd->net_dev->features |= NETIF_F_IP_CSUM;
-			wnd->tx_csum_info.tx.ip = 1;
-			printk(KERN_INFO "%s: IP checksum enabled on %s\n",
-			       DRIVER_NAME, wnd->net_dev->name);
+			DBGTRACE1("IP checksum enabled");
 		}
 		if (wnd->sg_dma_size)
 			wnd->net_dev->features |= NETIF_F_SG;
@@ -1791,13 +1779,14 @@ static NDIS_STATUS ndis_start_device(struct wrap_ndis_device *wnd)
 		goto err_start;
 	}
 
+	set_task_offload(wnd, buf, buf_size);
+
 	if (register_netdev(net_dev)) {
 		ERROR("cannot register net device %s", net_dev->name);
 		goto err_register;
 	}
 	register_netdevice_notifier(&netdev_notifier);
 	memcpy(wnd->netdev_name, net_dev->name, sizeof(wnd->netdev_name));
-	set_task_offload(wnd, buf, buf_size);
 	memset(buf, 0, buf_size);
 	ndis_status = miniport_query_info(wnd, OID_GEN_VENDOR_DESCRIPTION,
 					  buf, buf_size);
@@ -1831,10 +1820,8 @@ static NDIS_STATUS ndis_start_device(struct wrap_ndis_device *wnd)
 			wnd->max_tx_packets = TX_RING_SIZE;
 	}
 	DBGTRACE2("maximum send packets: %d", wnd->max_tx_packets);
-	/* we need at least one extra packet for
-	 * EthRxIndicateHandler */
 	NdisAllocatePacketPoolEx(&ndis_status, &wnd->tx_packet_pool,
-				 wnd->max_tx_packets + 1, 0,
+				 wnd->max_tx_packets, 0,
 				 PROTOCOL_RESERVED_SIZE_IN_PACKET);
 	if (ndis_status != NDIS_STATUS_SUCCESS) {
 		ERROR("couldn't allocate packet pool");
@@ -1918,7 +1905,7 @@ err_start:
 
 static int ndis_remove_device(struct wrap_ndis_device *wnd)
 {
-	int tx_pending;
+	s8 tx_pending;
 
 	/* prevent setting essid during disassociation */
 	memset(&wnd->essid, 0, sizeof(wnd->essid));
