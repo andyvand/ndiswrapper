@@ -957,11 +957,80 @@ static int ndis_set_wol(struct net_device *dev, struct ethtool_wolinfo *wol)
 	return 0;
 }
 
+static u32 ndis_get_tx_csum(struct net_device *dev)
+{
+	struct wrap_ndis_device *wnd = netdev_priv(dev);
+	if (wnd->tx_csum.tcp_csum && wnd->tx_csum.udp_csum)
+		return 1;
+	else
+		return 0;
+}
+
+static u32 ndis_get_rx_csum(struct net_device *dev)
+{
+	struct wrap_ndis_device *wnd = netdev_priv(dev);
+	if (wnd->rx_csum.value)
+		return 1;
+	else
+		return 0;
+} 
+
+static int ndis_set_tx_csum(struct net_device *dev, u32 data)
+{
+	struct wrap_ndis_device *wnd = netdev_priv(dev);
+
+	if (data && (wnd->tx_csum.value == 0))
+		return -EOPNOTSUPP;
+
+	if (wnd->tx_csum.ip_csum)
+		ethtool_op_set_tx_hw_csum(dev, data);
+	else
+		ethtool_op_set_tx_csum(dev, data);
+	return 0;
+}
+
+static int ndis_set_rx_csum(struct net_device *dev, u32 data)
+{
+	struct wrap_ndis_device *wnd = netdev_priv(dev);
+
+	if (data && (wnd->tx_csum.value == 0))
+		return -EOPNOTSUPP;
+
+	if (wnd->rx_csum.value)
+		return -EOPNOTSUPP;
+	/* TODO: enable/disable rx csum through NDIS */
+	return 0;
+}
+
+static u32 ndis_get_sg(struct net_device *dev)
+{
+	struct wrap_ndis_device *wnd = netdev_priv(dev);
+	if (wnd->sg_dma_size)
+		return ethtool_op_get_sg(dev);
+	else
+		return 0;
+} 
+
+static int ndis_set_sg(struct net_device *dev, u32 data)
+{
+	struct wrap_ndis_device *wnd = netdev_priv(dev);
+	if (wnd->sg_dma_size)
+		return ethtool_op_set_sg(dev, data);
+	else
+		return -EOPNOTSUPP;
+} 
+
 static struct ethtool_ops ndis_ethtool_ops = {
 	.get_drvinfo	= ndis_get_drvinfo,
 	.get_link	= ndis_get_link,
 	.get_wol	= ndis_get_wol,
 	.set_wol	= ndis_set_wol,
+	.get_tx_csum	= ndis_get_tx_csum,
+	.get_rx_csum	= ndis_get_rx_csum,
+	.set_tx_csum	= ndis_set_tx_csum,
+	.set_rx_csum	= ndis_set_rx_csum,
+	.get_sg		= ndis_get_sg,
+	.set_sg		= ndis_set_sg,
 };
 #endif
 
