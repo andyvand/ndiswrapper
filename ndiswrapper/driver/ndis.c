@@ -2148,7 +2148,8 @@ wstdcall void NdisMIndicateReceivePacket(struct ndis_miniport_block *nmb,
 				oob_data->ext.info[TcpIpChecksumPacketInfo];
 			DBGTRACE3("0x%05x", csum.value);
 			if (wnd->rx_csum.value &&
-			    (csum.rx.tcp_succeeded || csum.rx.udp_succeeded))
+			    (csum.rx.tcp_succeeded || csum.rx.udp_succeeded ||
+			     csum.rx.ip_succeeded))
 				skb->ip_summed = CHECKSUM_UNNECESSARY;
 			else
 				skb->ip_summed = CHECKSUM_NONE;
