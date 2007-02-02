@@ -1,4 +1,4 @@
-Version 1.36 2007-XX-XX
+Version 1.36 2007-02-01
 =======================	
 * Fixed ndiswrapper script (broken since 1.23 for sis163u driver)
 * Implemented full scatter/gather lists (not tested)
