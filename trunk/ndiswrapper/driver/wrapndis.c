@@ -285,7 +285,7 @@ static NDIS_STATUS miniport_init(struct wrap_ndis_device *wnd)
 		DBGTRACE1("setting power failed: %08X", status);
 	set_bit(HW_INITIALIZED, &wnd->hw_status);
 	/* the description about NDIS_ATTRIBUTE_NO_HALT_ON_SUSPEND is
-	 * misleading/confusing; we just ignore it */
+	 * misleading/confusing */
 	status = miniport_query_info(wnd, OID_PNP_CAPABILITIES,
 				     &pnp_capa, sizeof(pnp_capa));
 	if (status == NDIS_STATUS_SUCCESS)
@@ -898,178 +898,6 @@ struct iw_statistics *get_wireless_stats(struct net_device *dev)
 	return &wnd->wireless_stats;
 }
 
-#if defined(HAVE_ETHTOOL)
-static void ndis_get_drvinfo(struct net_device *dev,
-			     struct ethtool_drvinfo *info)
-{
-	struct wrap_ndis_device *wnd = netdev_priv(dev);
-	strncpy(info->driver, DRIVER_NAME, sizeof(info->driver) - 1);
-	strncpy(info->version, DRIVER_VERSION, sizeof(info->version) - 1);
-	strncpy(info->fw_version, wnd->wd->driver->version,
-		sizeof(info->fw_version) - 1);
-	if (wrap_is_pci_bus(wnd->wd->dev_bus))
-		strncpy(info->bus_info, pci_name(wnd->wd->pci.pdev),
-			sizeof(info->bus_info) - 1);
-#ifdef CONFIG_USB
-	else
-		usb_make_path(wnd->wd->usb.udev, info->bus_info,
-			      sizeof(info->bus_info) - 1);
-#endif
-	return;
-}
-
-static u32 ndis_get_link(struct net_device *dev)
-{
-	struct wrap_ndis_device *wnd = netdev_priv(dev);
-	return netif_carrier_ok(wnd->net_dev);
-}
-
-static void ndis_get_wol(struct net_device *dev, struct ethtool_wolinfo *wol)
-{
-	struct wrap_ndis_device *wnd = netdev_priv(dev);
-	if (wnd->ndis_wolopts & NDIS_PNP_WAKE_UP_MAGIC_PACKET)
-		wol->wolopts |= WAKE_MAGIC;
-	/* no other options supported */
-	return;
-}
-
-static int ndis_set_wol(struct net_device *dev, struct ethtool_wolinfo *wol)
-{
-	struct wrap_ndis_device *wnd = netdev_priv(dev);
-	struct ndis_pnp_capabilities pnp_capa;
-	NDIS_STATUS status;
-
-	if (!(wol->wolopts & WAKE_MAGIC))
-		return -EINVAL;
-	if (!(wnd->attributes & NDIS_ATTRIBUTE_NO_HALT_ON_SUSPEND))
-		return -EOPNOTSUPP;
-	status = miniport_query_info(wnd, OID_PNP_CAPABILITIES,
-				     &pnp_capa, sizeof(pnp_capa));
-	if (status != NDIS_STATUS_SUCCESS)
-		return -EOPNOTSUPP;
-	/* we always suspend to D3 */
-	DBGTRACE1("%d, %d", pnp_capa.wakeup_capa.min_magic_packet_wakeup,
-		  pnp_capa.wakeup_capa.min_pattern_wakeup);
-	if (pnp_capa.wakeup_capa.min_magic_packet_wakeup != NdisDeviceStateD3)
-		return -EOPNOTSUPP;
-	/* no other options supported */
-	wnd->ndis_wolopts = NDIS_PNP_WAKE_UP_MAGIC_PACKET;
-	return 0;
-}
-
-static u32 ndis_get_tx_csum(struct net_device *dev)
-{
-	struct wrap_ndis_device *wnd = netdev_priv(dev);
-	if (wnd->tx_csum.tcp_csum && wnd->tx_csum.udp_csum)
-		return 1;
-	else
-		return 0;
-}
-
-static u32 ndis_get_rx_csum(struct net_device *dev)
-{
-	struct wrap_ndis_device *wnd = netdev_priv(dev);
-	if (wnd->rx_csum.value)
-		return 1;
-	else
-		return 0;
-} 
-
-static int ndis_set_tx_csum(struct net_device *dev, u32 data)
-{
-	struct wrap_ndis_device *wnd = netdev_priv(dev);
-
-	if (data && (wnd->tx_csum.value == 0))
-		return -EOPNOTSUPP;
-
-	if (wnd->tx_csum.ip_csum)
-		ethtool_op_set_tx_hw_csum(dev, data);
-	else
-		ethtool_op_set_tx_csum(dev, data);
-	return 0;
-}
-
-static int ndis_set_rx_csum(struct net_device *dev, u32 data)
-{
-	struct wrap_ndis_device *wnd = netdev_priv(dev);
-
-	if (data && (wnd->tx_csum.value == 0))
-		return -EOPNOTSUPP;
-
-	if (wnd->rx_csum.value)
-		return -EOPNOTSUPP;
-	/* TODO: enable/disable rx csum through NDIS */
-	return 0;
-}
-
-static u32 ndis_get_sg(struct net_device *dev)
-{
-	struct wrap_ndis_device *wnd = netdev_priv(dev);
-	if (wnd->sg_dma_size)
-		return ethtool_op_get_sg(dev);
-	else
-		return 0;
-} 
-
-static int ndis_set_sg(struct net_device *dev, u32 data)
-{
-	struct wrap_ndis_device *wnd = netdev_priv(dev);
-	if (wnd->sg_dma_size)
-		return ethtool_op_set_sg(dev, data);
-	else
-		return -EOPNOTSUPP;
-} 
-
-static struct ethtool_ops ndis_ethtool_ops = {
-	.get_drvinfo	= ndis_get_drvinfo,
-	.get_link	= ndis_get_link,
-	.get_wol	= ndis_get_wol,
-	.set_wol	= ndis_set_wol,
-	.get_tx_csum	= ndis_get_tx_csum,
-	.get_rx_csum	= ndis_get_rx_csum,
-	.set_tx_csum	= ndis_set_tx_csum,
-	.set_rx_csum	= ndis_set_rx_csum,
-	.get_sg		= ndis_get_sg,
-	.set_sg		= ndis_set_sg,
-};
-#endif
-
-static int notifier_event(struct notifier_block *notifier, unsigned long event,
-			  void *ptr)
-{
-	struct net_device *net_dev = (struct net_device *)ptr;
-	struct wrap_ndis_device *wnd;
-
-	if (net_dev->open != ndis_net_dev_open)
-		return NOTIFY_DONE;
-
-	wnd = netdev_priv(net_dev);
-	/* called with rtnl lock held, so no need to lock */
-	switch (event) {
-	case NETDEV_CHANGENAME:
-		if (strcmp(wnd->netdev_name, net_dev->name) == 0) {
-			DBGTRACE1("same name: %s", net_dev->name);
-			return NOTIFY_BAD;
-		}
-		wrap_procfs_remove_ndis_device(wnd);
-		printk(KERN_INFO "%s: changing interface name from '%s' to "
-		       "'%s'\n", DRIVER_NAME, wnd->netdev_name, net_dev->name);
-		memcpy(wnd->netdev_name, net_dev->name,
-		       sizeof(wnd->netdev_name));
-		wrap_procfs_add_ndis_device(wnd);
-		return NOTIFY_OK;
-		break;
-	default:
-		DBGTRACE2("%lx", event);
-		break;
-	}
-	return NOTIFY_DONE;
-}
-
-static struct notifier_block netdev_notifier = {
-	.notifier_call = notifier_event,
-};
-
 static void update_wireless_stats(struct wrap_ndis_device *wnd)
 {
 	struct iw_statistics *iw_stats = &wnd->wireless_stats;
@@ -1395,7 +1223,7 @@ NDIS_STATUS ndis_reinit(struct wrap_ndis_device *wnd)
 	return status;
 }
 
-void get_encryption_capa(struct wrap_ndis_device *wnd)
+static void get_encryption_capa(struct wrap_ndis_device *wnd)
 {
 	int i, mode;
 	NDIS_STATUS res;
@@ -1656,8 +1484,8 @@ wstdcall NTSTATUS NdisDispatchPnp(struct device_object *fdo, struct irp *irp)
 }
 WIN_FUNC_DECL(NdisDispatchPnp,2)
 
-static int set_task_offload(struct wrap_ndis_device *wnd, void *buf,
-			    const int buf_size)
+static void set_task_offload(struct wrap_ndis_device *wnd, void *buf,
+			     const int buf_size)
 {
 	struct ndis_task_offload_header *task_offload_header;
 	struct ndis_task_offload *task_offload;
@@ -1675,9 +1503,9 @@ static int set_task_offload(struct wrap_ndis_device *wnd, void *buf,
 	status = miniport_query_info(wnd, OID_TCP_TASK_OFFLOAD, buf, buf_size);
 	DBGTRACE1("%08X", status);
 	if (status != NDIS_STATUS_SUCCESS)
-		TRACEEXIT1(return -1);
+		TRACEEXIT1(return);
 	if (task_offload_header->offset_first_task == 0)
-		TRACEEXIT1(return -1);
+		TRACEEXIT1(return);
 	task_offload = ((void *)task_offload_header +
 			task_offload_header->offset_first_task);
 	while (1) {
@@ -1702,7 +1530,7 @@ static int set_task_offload(struct wrap_ndis_device *wnd, void *buf,
 		DBGTRACE1("%u, %u, %d, %d", tso->max_size, tso->min_seg_count,
 			  tso->tcp_opts, tso->ip_opts);
 	if (!csum)
-		TRACEEXIT1(return -1);
+		TRACEEXIT1(return);
 	DBGTRACE1("%08x, %08x", csum->v4_tx.value, csum->v4_rx.value);
 	task_offload_header->encap_format.flags.fixed_header_size = 1;
 	task_offload_header->encap_format.header_size = sizeof(struct ethhdr);
@@ -1720,7 +1548,7 @@ static int set_task_offload(struct wrap_ndis_device *wnd, void *buf,
 				   sizeof(*task_offload) + sizeof(*csum));
 	DBGTRACE1("%08X", status);
 	if (status != NDIS_STATUS_SUCCESS)
-		TRACEEXIT2(return -1);
+		TRACEEXIT2(return);
 	wnd->tx_csum = csum->v4_tx;
 	if (csum->v4_tx.tcp_csum && csum->v4_tx.udp_csum) {
 		if (csum->v4_tx.ip_csum) {
@@ -1734,7 +1562,7 @@ static int set_task_offload(struct wrap_ndis_device *wnd, void *buf,
 			wnd->net_dev->features |= NETIF_F_SG;
 	}
 	wnd->rx_csum = csum->v4_rx;
-	TRACEEXIT1(return 0);
+	TRACEEXIT1(return);
 }
 
 static void get_supported_oids(struct wrap_ndis_device *wnd)
@@ -1770,6 +1598,172 @@ static void get_supported_oids(struct wrap_ndis_device *wnd)
 	kfree(oids);
 	TRACEEXIT1(return);
 }
+
+#if defined(HAVE_ETHTOOL)
+static void ndis_get_drvinfo(struct net_device *dev,
+			     struct ethtool_drvinfo *info)
+{
+	struct wrap_ndis_device *wnd = netdev_priv(dev);
+	strncpy(info->driver, DRIVER_NAME, sizeof(info->driver) - 1);
+	strncpy(info->version, DRIVER_VERSION, sizeof(info->version) - 1);
+	strncpy(info->fw_version, wnd->wd->driver->version,
+		sizeof(info->fw_version) - 1);
+	if (wrap_is_pci_bus(wnd->wd->dev_bus))
+		strncpy(info->bus_info, pci_name(wnd->wd->pci.pdev),
+			sizeof(info->bus_info) - 1);
+#ifdef CONFIG_USB
+	else
+		usb_make_path(wnd->wd->usb.udev, info->bus_info,
+			      sizeof(info->bus_info) - 1);
+#endif
+	return;
+}
+
+static u32 ndis_get_link(struct net_device *dev)
+{
+	struct wrap_ndis_device *wnd = netdev_priv(dev);
+	return netif_carrier_ok(wnd->net_dev);
+}
+
+static void ndis_get_wol(struct net_device *dev, struct ethtool_wolinfo *wol)
+{
+	struct wrap_ndis_device *wnd = netdev_priv(dev);
+	if (wnd->ndis_wolopts & NDIS_PNP_WAKE_UP_MAGIC_PACKET)
+		wol->wolopts |= WAKE_MAGIC;
+	/* no other options supported */
+	return;
+}
+
+static int ndis_set_wol(struct net_device *dev, struct ethtool_wolinfo *wol)
+{
+	struct wrap_ndis_device *wnd = netdev_priv(dev);
+	struct ndis_pnp_capabilities pnp_capa;
+	NDIS_STATUS status;
+
+	if (!(wol->wolopts & WAKE_MAGIC))
+		return -EINVAL;
+	if (!(wnd->attributes & NDIS_ATTRIBUTE_NO_HALT_ON_SUSPEND))
+		return -EOPNOTSUPP;
+	status = miniport_query_info(wnd, OID_PNP_CAPABILITIES,
+				     &pnp_capa, sizeof(pnp_capa));
+	if (status != NDIS_STATUS_SUCCESS)
+		return -EOPNOTSUPP;
+	/* we always suspend to D3 */
+	DBGTRACE1("%d, %d", pnp_capa.wakeup_capa.min_magic_packet_wakeup,
+		  pnp_capa.wakeup_capa.min_pattern_wakeup);
+	if (pnp_capa.wakeup_capa.min_magic_packet_wakeup != NdisDeviceStateD3)
+		return -EOPNOTSUPP;
+	/* no other options supported */
+	wnd->ndis_wolopts = NDIS_PNP_WAKE_UP_MAGIC_PACKET;
+	return 0;
+}
+
+static u32 ndis_get_tx_csum(struct net_device *dev)
+{
+	struct wrap_ndis_device *wnd = netdev_priv(dev);
+	if (wnd->tx_csum.tcp_csum && wnd->tx_csum.udp_csum)
+		return 1;
+	else
+		return 0;
+}
+
+static u32 ndis_get_rx_csum(struct net_device *dev)
+{
+	struct wrap_ndis_device *wnd = netdev_priv(dev);
+	if (wnd->rx_csum.value)
+		return 1;
+	else
+		return 0;
+} 
+
+static int ndis_set_tx_csum(struct net_device *dev, u32 data)
+{
+	struct wrap_ndis_device *wnd = netdev_priv(dev);
+
+	if (data && (wnd->tx_csum.value == 0))
+		return -EOPNOTSUPP;
+
+	if (wnd->tx_csum.ip_csum)
+		ethtool_op_set_tx_hw_csum(dev, data);
+	else
+		ethtool_op_set_tx_csum(dev, data);
+	return 0;
+}
+
+static int ndis_set_rx_csum(struct net_device *dev, u32 data)
+{
+	struct wrap_ndis_device *wnd = netdev_priv(dev);
+
+	if (data && (wnd->tx_csum.value == 0))
+		return -EOPNOTSUPP;
+
+	/* TODO: enable/disable rx csum through NDIS */
+	return 0;
+}
+
+static u32 ndis_get_sg(struct net_device *dev)
+{
+	struct wrap_ndis_device *wnd = netdev_priv(dev);
+	if (wnd->sg_dma_size)
+		return ethtool_op_get_sg(dev);
+	else
+		return 0;
+} 
+
+static int ndis_set_sg(struct net_device *dev, u32 data)
+{
+	struct wrap_ndis_device *wnd = netdev_priv(dev);
+	if (wnd->sg_dma_size)
+		return ethtool_op_set_sg(dev, data);
+	else
+		return -EOPNOTSUPP;
+} 
+
+static struct ethtool_ops ndis_ethtool_ops = {
+	.get_drvinfo	= ndis_get_drvinfo,
+	.get_link	= ndis_get_link,
+	.get_wol	= ndis_get_wol,
+	.set_wol	= ndis_set_wol,
+	.get_tx_csum	= ndis_get_tx_csum,
+	.get_rx_csum	= ndis_get_rx_csum,
+	.set_tx_csum	= ndis_set_tx_csum,
+	.set_rx_csum	= ndis_set_rx_csum,
+	.get_sg		= ndis_get_sg,
+	.set_sg		= ndis_set_sg,
+};
+#endif
+
+static int notifier_event(struct notifier_block *notifier, unsigned long event,
+			  void *ptr)
+{
+	struct net_device *net_dev = (struct net_device *)ptr;
+	struct wrap_ndis_device *wnd;
+
+	if (net_dev->open != ndis_net_dev_open)
+		return NOTIFY_DONE;
+
+	wnd = netdev_priv(net_dev);
+	/* called with rtnl lock held, so no need to lock */
+	switch (event) {
+	case NETDEV_CHANGENAME:
+		wrap_procfs_remove_ndis_device(wnd);
+		printk(KERN_INFO "%s: changing interface name from '%s' to "
+		       "'%s'\n", DRIVER_NAME, wnd->netdev_name, net_dev->name);
+		memcpy(wnd->netdev_name, net_dev->name,
+		       sizeof(wnd->netdev_name));
+		wrap_procfs_add_ndis_device(wnd);
+		return NOTIFY_OK;
+		break;
+	default:
+		DBGTRACE2("%lx", event);
+		break;
+	}
+	return NOTIFY_DONE;
+}
+
+static struct notifier_block netdev_notifier = {
+	.notifier_call = notifier_event,
+};
 
 static NDIS_STATUS ndis_start_device(struct wrap_ndis_device *wnd)
 {
