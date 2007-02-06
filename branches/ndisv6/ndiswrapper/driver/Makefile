@@ -1,5 +1,5 @@
 DISTFILES=divdi3.c hal.c iw_ndis.c iw_ndis.h loader.c loader.h \
-		longlong.h Makefile crt.c ndis.c ndis.h \
+		longlong.h Makefile crt.c ndis.c ndis.h ndisdot11.h \
 		ndiswrapper.h ntoskernel.c ntoskernel.h ntoskernel_io.c \
 		pe_linker.c pe_linker.h pnp.c pnp.h proc.c rtl.c usb.c usb.h \
 		winnt_types.h workqueue.c wrapmem.h wrapmem.c wrapper.c \
@@ -131,7 +131,7 @@ endif
 
 ntoskernel.h: lin2win.h
 
-ndis.h: ntoskernel.h
+ndis.h: ntoskernel.h ndisdot11.h
 
 iw_ndis.h: ntoskernel.h
 

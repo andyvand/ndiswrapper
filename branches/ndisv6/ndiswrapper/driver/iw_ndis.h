@@ -25,13 +25,14 @@
 int add_wep_key(struct wrap_ndis_device *wnd, char *key, int key_len,
 		int index);
 int set_essid(struct wrap_ndis_device *wnd, const char *ssid, int ssid_len);
-int set_infra_mode(struct wrap_ndis_device *wnd,
-		   enum network_infrastructure mode);
+int set_infra_mode(struct wrap_ndis_device *wnd, enum ndis_dot11_bss_type mode);
 int get_ap_address(struct wrap_ndis_device *wnd, mac_address mac);
-int set_auth_mode(struct wrap_ndis_device *wnd, ULONG auth_mode);
-int set_encr_mode(struct wrap_ndis_device *wnd, ULONG encr_mode);
-int get_auth_mode(struct wrap_ndis_device *wnd);
-int get_encr_mode(struct wrap_ndis_device *wnd);
+int set_auth_mode(struct wrap_ndis_device *wnd,
+		  enum ndis_dot11_auth_algorithm algo_id);
+int set_encr_mode(struct wrap_ndis_device *wnd,
+		  enum ndis_dot11_cipher_algorithm algo_id);
+enum ndis_dot11_auth_algorithm get_auth_mode(struct wrap_ndis_device *wnd);
+enum ndis_dot11_cipher_algorithm get_cipher_mode(struct wrap_ndis_device *wnd);
 int set_priv_filter(struct wrap_ndis_device *wnd, int flags);
 int set_scan(struct wrap_ndis_device *wnd);
 
@@ -40,7 +41,7 @@ int set_scan(struct wrap_ndis_device *wnd);
 #define PRIV_NETWORK_TYPE	 	SIOCIWFIRSTPRIV+18
 #define PRIV_USB_RESET	 		SIOCIWFIRSTPRIV+19
 #define PRIV_MEDIA_STREAM_MODE 		SIOCIWFIRSTPRIV+20
-#define PRIV_SET_ENCR_MODE		SIOCIWFIRSTPRIV+21
+#define PRIV_SET_CIPHER_MODE		SIOCIWFIRSTPRIV+21
 #define PRIV_SET_AUTH_MODE		SIOCIWFIRSTPRIV+22
 #define PRIV_RELOAD_DEFAULTS		SIOCIWFIRSTPRIV+23
 

@@ -32,6 +32,7 @@ enum ndis_dot11_bss_type {
 };
 	
 #define DOT11_RATE_SET_MAX_LENGTH               126
+
 struct ndis_dot11_rate_set {
 	ULONG length;
 	UCHAR rates[DOT11_RATE_SET_MAX_LENGTH];
