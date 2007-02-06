@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2003-2005 Pontus Fuchs, Giridhar Pemmasani
+ *  Copyright (C) 2006-2007 Giridhar Pemmasani
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -45,33 +45,36 @@ static inline int ndis_wait_comm_completion(struct wrap_ndis_device *wnd)
 }
 
 NDIS_STATUS miniport_oid_request(struct wrap_ndis_device *wnd,
-				 struct ndis_oid_request *oid_request)
+				 struct ndis_oid_request *oid_req)
 {
 	NDIS_STATUS res;
 	struct mp_driver_characteristics *mp_chars;
 
-	DBGTRACE2("oid: %08X", oid_request->data.query_info.oid);
+	DBGTRACE2("oid: %08X", oid_req->data.query.oid);
 
 	if (down_interruptible(&wnd->ndis_comm_mutex))
 		TRACEEXIT3(return NDIS_STATUS_FAILURE);
 	mp_chars = &wnd->wd->driver->ndis_driver->mp_driver_chars;
-	DBGTRACE2("%08X", oid_request->data.query_info.oid);
+	DBGTRACE2("%08X", oid_req->data.query.oid);
 	wnd->ndis_comm_done = 0;
 
-	oid_request->header.type = NDIS_OBJECT_TYPE_OID_REQUEST;
-	oid_request->header.revision = NDIS_OID_REQUEST_REVISION_1;
-	oid_request->header.size = sizeof(*oid_request);
+	oid_req->header.type = NDIS_OBJECT_TYPE_OID_REQUEST;
+	oid_req->header.revision = NDIS_OID_REQUEST_REVISION_1;
+	oid_req->header.size = sizeof(*oid_req);
+	oid_req->id = NULL;
+	oid_req->handle = oid_req;
 
-	res = LIN2WIN2(mp_chars->oid_request, wnd->adapter_ctx, oid_request);
+	res = LIN2WIN2(mp_chars->oid_request, wnd->adapter_ctx, oid_req);
 
-	DBGTRACE2("%08X, %08X", res, oid_request->data.query_info.oid);
-	if (res == NDIS_STATUS_PENDING) {
-		/* wait for NdisMQueryInformationComplete */
+	DBGTRACE2("%08X, %08X", res, oid_req->data.query.oid);
+	if (res == NDIS_STATUS_PENDING ||
+	    res == NDIS_STATUS_INDICATION_REQUIRED) {
+		/* wait for completion */
 		if (ndis_wait_comm_completion(wnd))
 			res = NDIS_STATUS_FAILURE;
 		else
 			res = wnd->ndis_comm_status;
-		DBGTRACE2("%08X, %08X", oid_request->data.query_info.oid, res);
+		DBGTRACE2("%08X, %08X", oid_req->data.query.oid, res);
 	}
 	up(&wnd->ndis_comm_mutex);
 	DBG_BLOCK(2) {
@@ -81,70 +84,74 @@ NDIS_STATUS miniport_oid_request(struct wrap_ndis_device *wnd,
 	TRACEEXIT3(return res);
 }
 
-static void prepare_mp_oid_request(struct ndis_oid_request *oid_request)
+static void prepare_mp_oid_request(struct ndis_oid_request *oid_req)
 {
-	memset(oid_request, 0, sizeof(*oid_request));
-	oid_request->port = 0;
-	oid_request->timeout_sec = 0;
+	memset(oid_req, 0, sizeof(*oid_req));
+	oid_req->port = 0;
+	oid_req->timeout_sec = 0;
 }
 
 NDIS_STATUS mp_oid_request_query(struct wrap_ndis_device *wnd, ndis_oid oid,
-				 void *buf, int buf_len)
+				 void *buf, int buf_len, UINT *bytes_needed)
 {
-	struct ndis_oid_request oid_request;
+	struct ndis_oid_request oid_req;
+	NDIS_STATUS status;
 
 	TRACEENTER2("%08X", oid);
-	prepare_mp_oid_request(&oid_request);
-	oid_request.type = NdisRequestQueryInformation;
-	oid_request.data.query_info.oid = oid;
-	oid_request.data.query_info.buf = buf;
-	oid_request.data.query_info.buf_length = buf_len;
-	return miniport_oid_request(wnd, &oid_request);
+	prepare_mp_oid_request(&oid_req);
+	oid_req.type = NdisRequestQueryInformation;
+	oid_req.data.query.oid = oid;
+	oid_req.data.query.buf = buf;
+	oid_req.data.query.buf_length = buf_len;
+	status = miniport_oid_request(wnd, &oid_req);
+	if (status != NDIS_STATUS_SUCCESS && bytes_needed)
+		*bytes_needed = oid_req.data.query.bytes_needed;
+	return status;
 }
 
 NDIS_STATUS miniport_query_info(struct wrap_ndis_device *wnd, ndis_oid oid,
-				void *buf, ULONG buf_len)
+				void *buf, UINT buf_len)
 {
-	return mp_oid_request_query(wnd, oid, buf, buf_len);
+	return mp_oid_request_query(wnd, oid, buf, buf_len, NULL);
 }
 
 NDIS_STATUS miniport_query_info_needed(struct wrap_ndis_device *wnd,
 				       ndis_oid oid, void *buf, ULONG buf_len,
-				       ULONG *needed)
+				       UINT *needed)
 {
-	return mp_oid_request_query(wnd, oid, buf, buf_len);
+	return mp_oid_request_query(wnd, oid, buf, buf_len, needed);
 }
 
 NDIS_STATUS miniport_query_int(struct wrap_ndis_device *wnd, ndis_oid oid,
-			       ULONG *value)
+			       UINT *value)
 {
-	return mp_oid_request_query(wnd, oid, (void *)value, sizeof(ULONG));
+	return mp_oid_request_query(wnd, oid, (void *)value, sizeof(UINT), NULL);
 }
 
 NDIS_STATUS mp_oid_request_set(struct wrap_ndis_device *wnd, ndis_oid oid,
-			       void *buf, ULONG buf_len)
+			       void *buf, UINT buf_len)
 {
-	struct ndis_oid_request oid_request;
+	struct ndis_oid_request oid_req;
 
 	TRACEENTER2("%08X", oid);
-	prepare_mp_oid_request(&oid_request);
-	oid_request.type = NdisRequestSetInformation;
-	oid_request.data.query_info.oid = oid;
-	oid_request.data.query_info.buf = buf;
-	oid_request.data.query_info.buf_length = buf_len;
-	return miniport_oid_request(wnd, &oid_request);
+	prepare_mp_oid_request(&oid_req);
+	oid_req.type = NdisRequestSetInformation;
+	oid_req.data.set.oid = oid;
+	oid_req.data.set.buf = buf;
+	oid_req.data.set.buf_length = buf_len;
+	return miniport_oid_request(wnd, &oid_req);
 }
 
 NDIS_STATUS miniport_set_info(struct wrap_ndis_device *wnd, ndis_oid oid,
-			      void *buf, ULONG buf_len)
+			      void *buf, UINT buf_len)
 {
 	return mp_oid_request_set(wnd, oid, buf, buf_len);
 }
 
 NDIS_STATUS miniport_set_int(struct wrap_ndis_device *wnd, ndis_oid oid,
-			     ULONG value)
+			     UINT value)
 {
-	return mp_oid_request_set(wnd, oid, (void *)&value, sizeof(ULONG));
+	return mp_oid_request_set(wnd, oid, (void *)&value, sizeof(UINT));
 }
 
 NDIS_STATUS miniport_reset(struct wrap_ndis_device *wnd)
@@ -592,6 +599,8 @@ static void update_wireless_stats(struct wrap_ndis_device *wnd)
 		memset(iw_stats, 0, sizeof(*iw_stats));
 		TRACEEXIT2(return);
 	}
+	memset(iw_stats, 0, sizeof(*iw_stats));
+	return;
 	res = miniport_query_info(wnd, OID_802_11_RSSI, &rssi, sizeof(rssi));
 	if (res == NDIS_STATUS_SUCCESS)
 		iw_stats->qual.level = rssi;
@@ -672,110 +681,9 @@ static void set_multicast_list(struct wrap_ndis_device *wnd)
 
 static void link_status_handler(struct wrap_ndis_device *wnd)
 {
-	struct ndis_assoc_info *ndis_assoc_info;
-	union iwreq_data wrqu;
-	NDIS_STATUS res;
-	const int assoc_size = sizeof(*ndis_assoc_info) + IW_CUSTOM_MAX + 32;
-	int i;
-#if WIRELESS_EXT <= 17
-	unsigned char *wpa_assoc_info, *ies;
-	unsigned char *p;
-#endif
-
 	TRACEENTER2("link: %d", netif_carrier_ok(wnd->net_dev));
-	if (wnd->physical_medium != NdisPhysicalMediumWirelessLan)
+	if (wnd->physical_medium == NdisPhysicalMediumNative802_11)
 		TRACEEXIT2(return);
-#ifndef CONFIG_NET_RADIO
-	TRACEEXIT2(return);
-#endif
-	if (!netif_carrier_ok(wnd->net_dev)) {
-		memset(&wrqu, 0, sizeof(wrqu));
-		wrqu.ap_addr.sa_family = ARPHRD_ETHER;
-		wireless_send_event(wnd->net_dev, SIOCGIWAP, &wrqu, NULL);
-		/* In IBSS (ad-hoc) mode, it may be desirable to have
-		 * one node configured for association, but drivers
-		 * disassociate if last node disassociates; to
-		 * configure again, set essid */
-		if (wnd->infrastructure_mode == Ndis802_11IBSS &&
-		    wnd->essid.length > 0) {
-			set_essid(wnd, wnd->essid.essid, wnd->essid.length);
-			for (i = 0; i < MAX_ENCR_KEYS; i++) {
-				if (wnd->encr_info.keys[i].length <= 0)
-					continue;
-				add_wep_key(wnd, wnd->encr_info.keys[i].key,
-					    wnd->encr_info.keys[i].length, i);
-			}
-		}
-		TRACEEXIT2(return);
-	}
-
-	ndis_assoc_info = kmalloc(assoc_size, GFP_KERNEL);
-	if (!ndis_assoc_info) {
-		ERROR("couldn't allocate memory");
-		TRACEEXIT2(return);
-	}
-	memset(ndis_assoc_info, 0, assoc_size);
-	res = miniport_query_info(wnd, OID_802_11_ASSOCIATION_INFORMATION,
-				  ndis_assoc_info, assoc_size);
-	if (res) {
-		DBGTRACE2("query assoc_info failed (%08X)", res);
-		kfree(ndis_assoc_info);
-		TRACEEXIT2(return);
-	}
-
-#if WIRELESS_EXT > 17
-	memset(&wrqu, 0, sizeof(wrqu));
-	wrqu.data.length = ndis_assoc_info->req_ie_length;
-	wireless_send_event(wnd->net_dev, IWEVASSOCREQIE, &wrqu,
-			    ((char *)ndis_assoc_info) +
-			    ndis_assoc_info->offset_req_ies);
-	wrqu.data.length = ndis_assoc_info->resp_ie_length;
-	wireless_send_event(wnd->net_dev, IWEVASSOCRESPIE, &wrqu,
-			    ((char *)ndis_assoc_info) +
-			    ndis_assoc_info->offset_resp_ies);
-#else
-	/* we need 28 extra bytes for the format strings */
-	if ((ndis_assoc_info->req_ie_length +
-	     ndis_assoc_info->resp_ie_length + 28) > IW_CUSTOM_MAX) {
-		WARNING("information element is too long! (%u,%u),"
-			"association information dropped",
-			ndis_assoc_info->req_ie_length,
-			ndis_assoc_info->resp_ie_length);
-		kfree(ndis_assoc_info);
-		TRACEEXIT2(return);
-	}
-
-	wpa_assoc_info = kmalloc(IW_CUSTOM_MAX, GFP_KERNEL);
-	if (!wpa_assoc_info) {
-		ERROR("couldn't allocate memory");
-		kfree(ndis_assoc_info);
-		TRACEEXIT2(return);
-	}
-	p = wpa_assoc_info;
-	p += sprintf(p, "ASSOCINFO(ReqIEs=");
-	ies = ((char *)ndis_assoc_info) + ndis_assoc_info->offset_req_ies;
-	for (i = 0; i < ndis_assoc_info->req_ie_length; i++)
-		p += sprintf(p, "%02x", ies[i]);
-
-	p += sprintf(p, " RespIEs=");
-	ies = ((char *)ndis_assoc_info) + ndis_assoc_info->offset_resp_ies;
-	for (i = 0; i < ndis_assoc_info->resp_ie_length; i++)
-		p += sprintf(p, "%02x", ies[i]);
-
-	p += sprintf(p, ")");
-
-	memset(&wrqu, 0, sizeof(wrqu));
-	wrqu.data.length = p - wpa_assoc_info;
-	wireless_send_event(wnd->net_dev, IWEVCUSTOM, &wrqu, wpa_assoc_info);
-
-	kfree(wpa_assoc_info);
-#endif
-	kfree(ndis_assoc_info);
-
-	get_ap_address(wnd, (char *)&wrqu.ap_addr.sa_data);
-	wrqu.ap_addr.sa_family = ARPHRD_ETHER;
-	wireless_send_event(wnd->net_dev, SIOCGIWAP, &wrqu, NULL);
-	DBGTRACE2(MACSTRSEP, MAC2STR(wrqu.ap_addr.sa_data));
 	TRACEEXIT2(return);
 }
 
@@ -1018,126 +926,7 @@ NDIS_STATUS ndis_reinit(struct wrap_ndis_device *wnd)
 
 void get_encryption_capa(struct wrap_ndis_device *wnd)
 {
-	int i, mode;
-	NDIS_STATUS res;
-	struct ndis_assoc_info ndis_assoc_info;
-	struct ndis_add_key ndis_key;
-	struct ndis_capability *c;
-	char *buf;
-	const int buf_len = 512;
-
 	TRACEENTER1("%p", wnd);
-	/* check if WEP is supported */
-	if (set_encr_mode(wnd, Ndis802_11Encryption1Enabled) == 0 &&
-	    get_encr_mode(wnd) == Ndis802_11Encryption1KeyAbsent)
-		set_bit(Ndis802_11Encryption1Enabled, &wnd->capa.encr);
-
-	/* check if WPA is supported */
-	if (set_auth_mode(wnd, Ndis802_11AuthModeWPA) == 0 &&
-	    get_auth_mode(wnd) == Ndis802_11AuthModeWPA)
-		set_bit(Ndis802_11AuthModeWPA, &wnd->capa.auth);
-	else
-		TRACEEXIT1(return);
-
-	if (set_auth_mode(wnd, Ndis802_11AuthModeWPAPSK) == 0 &&
-	    get_auth_mode(wnd) == Ndis802_11AuthModeWPAPSK)
-		set_bit(Ndis802_11AuthModeWPAPSK, &wnd->capa.auth);
-
-	/* check for highest encryption */
-	mode = 0;
-	if (set_encr_mode(wnd, Ndis802_11Encryption3Enabled) == 0 &&
-	    (i = get_encr_mode(wnd)) > 0 &&
-	    (i == Ndis802_11Encryption3KeyAbsent ||
-	     i == Ndis802_11Encryption3Enabled))
-		mode = Ndis802_11Encryption3Enabled;
-	else if (set_encr_mode(wnd, Ndis802_11Encryption2Enabled) == 0 &&
-		 (i = get_encr_mode(wnd)) > 0 &&
-		 (i == Ndis802_11Encryption2KeyAbsent ||
-		  i == Ndis802_11Encryption2Enabled))
-		mode = Ndis802_11Encryption2Enabled;
-	else if (set_encr_mode(wnd, Ndis802_11Encryption1Enabled) == 0 &&
-		 (i = get_encr_mode(wnd)) > 0 &&
-		 (i == Ndis802_11Encryption1KeyAbsent ||
-		  i == Ndis802_11Encryption1Enabled))
-		mode = Ndis802_11Encryption1Enabled;
-
-	DBGTRACE1("mode: %d", mode);
-	if (mode == 0)
-		TRACEEXIT1(return);
-	set_bit(Ndis802_11Encryption1Enabled, &wnd->capa.encr);
-	if (mode == Ndis802_11Encryption1Enabled)
-		TRACEEXIT1(return);
-
-	ndis_key.length = 32;
-	ndis_key.index = 0xC0000001;
-	ndis_key.struct_size = sizeof(ndis_key);
-	res = miniport_set_info(wnd, OID_802_11_ADD_KEY, &ndis_key,
-				ndis_key.struct_size);
-	DBGTRACE2("%08X, %lu", res, (unsigned long)sizeof(ndis_key));
-	if (res && res != NDIS_STATUS_INVALID_DATA)
-		TRACEEXIT1(return);
-	res = miniport_query_info(wnd, OID_802_11_ASSOCIATION_INFORMATION,
-				  &ndis_assoc_info, sizeof(ndis_assoc_info));
-	DBGTRACE1("%08X", res);
-	if (res == NDIS_STATUS_NOT_SUPPORTED)
-		TRACEEXIT1(return);
-
-	set_bit(Ndis802_11Encryption2Enabled, &wnd->capa.encr);
-	if (mode == Ndis802_11Encryption3Enabled)
-		set_bit(Ndis802_11Encryption3Enabled, &wnd->capa.encr);
-	/* not all drivers support OID_802_11_CAPABILITY, so we don't
-	 * know for sure if driver support WPA or WPAPSK; assume
-	 * WPA */
-	set_bit(Ndis802_11AuthModeWPA, &wnd->capa.auth);
-
-	/* check for wpa2 */
-	buf = kmalloc(buf_len, GFP_KERNEL);
-	if (!buf) {
-		ERROR("couldn't allocate memory");
-		TRACEEXIT1(return);
-	}
-	memset(buf, 0, buf_len);
-	c = (struct ndis_capability *)buf;
-	res = miniport_query_info(wnd, OID_802_11_CAPABILITY, buf, buf_len);
-	if (!(res == NDIS_STATUS_SUCCESS && c->version == 2)) {
-		kfree(buf);
-		TRACEEXIT1(return);
-	}
-	wnd->num_pmkids = c->num_PMKIDs;
-
-	for (i = 0; i < c->num_auth_encr_pair; i++) {
-		struct ndis_auth_encr_pair *ae;
-
-		ae = &c->auth_encr_pair[i];
-		if ((char *)(ae + 1) > buf + buf_len)
-			break;
-		switch (ae->auth_mode) {
-		case Ndis802_11AuthModeOpen:
-		case Ndis802_11AuthModeShared:
-		case Ndis802_11AuthModeWPA:
-		case Ndis802_11AuthModeWPAPSK:
-		case Ndis802_11AuthModeWPANone:
-		case Ndis802_11AuthModeWPA2:
-		case Ndis802_11AuthModeWPA2PSK:
-			set_bit(ae->auth_mode, &wnd->capa.auth);
-			break;
-		default:
-			WARNING("unknown auth_mode: %d", ae->auth_mode);
-			break;
-		}
-		switch (ae->encr_mode) {
-		case Ndis802_11EncryptionDisabled:
-		case Ndis802_11Encryption1Enabled:
-		case Ndis802_11Encryption2Enabled:
-		case Ndis802_11Encryption3Enabled:
-			set_bit(ae->encr_mode, &wnd->capa.encr);
-			break;
-		default:
-			WARNING("unknown encr_mode: %d", ae->encr_mode);
-			break;
-		}
-	}
-	kfree(buf);
 	TRACEEXIT1(return);
 }
 
@@ -1304,6 +1093,7 @@ static void get_supported_oids(struct wrap_ndis_device *wnd)
 		/* if a wireless device didn't say so for
 		 * OID_GEN_PHYSICAL_MEDIUM (they should, but in case) */
 		if (wnd->physical_medium != NdisPhysicalMediumWirelessLan &&
+		    wnd->physical_medium != NdisPhysicalMediumNative802_11 &&
 		    oids[i] == OID_802_11_SSID)
 			wnd->physical_medium = NdisPhysicalMediumWirelessLan;
 	}
@@ -1347,10 +1137,30 @@ static NDIS_STATUS ndis_start_device(struct wrap_ndis_device *wnd)
 	DBGTRACE1("mac:" MACSTRSEP, MAC2STR(mac));
 	ndis_status = miniport_query_int(wnd, OID_GEN_PHYSICAL_MEDIUM,
 					 &wnd->physical_medium);
+	DBGTRACE1("%d", wnd->physical_medium);
 	if (ndis_status != NDIS_STATUS_SUCCESS)
 		wnd->physical_medium = NdisPhysicalMediumUnspecified;
 
 	get_supported_oids(wnd);
+
+	ndis_status = miniport_query_info(wnd, OID_DOT11_COUNTRY_STRING,
+					  &wnd->country_string,
+					  sizeof(wnd->country_string));
+	if (ndis_status != NDIS_STATUS_SUCCESS)
+		memset(&wnd->country_string, 0, sizeof(wnd->country_string));
+
+	wnd->extsta_capa.header.type = NDIS_OBJECT_TYPE_DEFAULT;
+	wnd->extsta_capa.header.revision = DOT11_EXTSTA_CAPABILITY_REVISION_1;
+	wnd->extsta_capa.header.size = sizeof(struct ndis_dot11_extsta_capability);
+	ndis_status = miniport_query_info(wnd, OID_DOT11_EXTSTA_CAPABILITY,
+					  &wnd->extsta_capa,
+					  sizeof(wnd->extsta_capa));
+
+	if (ndis_status != NDIS_STATUS_SUCCESS)
+		WARNING("extsta_capability failed: %08X", ndis_status);
+
+//	wnd->physical_medium = NdisPhysicalMediumWirelessLan;
+
 	strncpy(net_dev->name, if_name, IFNAMSIZ - 1);
 	net_dev->name[IFNAMSIZ - 1] = '\0';
 	memcpy(&net_dev->dev_addr, mac, ETH_ALEN);
@@ -1363,7 +1173,8 @@ static NDIS_STATUS ndis_start_device(struct wrap_ndis_device *wnd)
 	net_dev->get_stats = ndis_get_stats;
 	net_dev->change_mtu = ndis_change_mtu;
 	net_dev->do_ioctl = NULL;
-	if (wnd->physical_medium == NdisPhysicalMediumWirelessLan) {
+	if (wnd->physical_medium == (NdisPhysicalMediumWirelessLan ||
+				     NdisPhysicalMediumNative802_11)) {
 #if WIRELESS_EXT < 19
 		net_dev->get_wireless_stats = get_wireless_stats;
 #endif
@@ -1480,10 +1291,8 @@ static NDIS_STATUS ndis_start_device(struct wrap_ndis_device *wnd)
 					sizeof(transport_header_offset));
 	TRACEENTER2("%08X", ndis_status);
 
-	if (wnd->physical_medium == NdisPhysicalMediumWirelessLan) {
-		miniport_set_int(wnd, OID_802_11_POWER_MODE, NDIS_POWER_OFF);
-		miniport_set_int(wnd, OID_802_11_NETWORK_TYPE_IN_USE,
-				 Ndis802_11Automode);
+	if (wnd->physical_medium == (NdisPhysicalMediumWirelessLan ||
+				     NdisPhysicalMediumNative802_11)) {
 		get_encryption_capa(wnd);
 		DBGTRACE1("capbilities = %ld", wnd->capa.encr);
 		printk(KERN_INFO "%s: encryption modes supported: "
@@ -1505,12 +1314,6 @@ static NDIS_STATUS ndis_start_device(struct wrap_ndis_device *wnd)
 		       test_bit(Ndis802_11AuthModeWPA2PSK, &wnd->capa.auth) ?
 		       ", WPA2PSK" : "");
 
-		set_infra_mode(wnd, Ndis802_11Infrastructure);
-		set_scan(wnd);
-		set_priv_filter(wnd, Ndis802_11PrivFilterAcceptAll);
-		set_auth_mode(wnd, Ndis802_11AuthModeOpen);
-		set_encr_mode(wnd, Ndis802_11EncryptionDisabled);
-		set_essid(wnd, "", 0);
 	}
 	kfree(buf);
 	wrap_procfs_add_ndis_device(wnd);
@@ -1531,7 +1334,8 @@ static int ndis_remove_device(struct wrap_ndis_device *wnd)
 {
 	/* prevent setting essid during disassociation */
 	memset(&wnd->essid, 0, sizeof(wnd->essid));
-	if (wnd->physical_medium == NdisPhysicalMediumWirelessLan) {
+	if (wnd->physical_medium == (NdisPhysicalMediumWirelessLan ||
+				     NdisPhysicalMediumNative802_11)) {
 		up(&wnd->ndis_comm_mutex);
 		miniport_set_info(wnd, OID_802_11_DISASSOCIATE, NULL, 0);
 		down_interruptible(&wnd->ndis_comm_mutex);

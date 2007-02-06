@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2003-2005 Pontus Fuchs, Giridhar Pemmasani
+ *  Copyright (C) 2006-2007 Giridhar Pemmasani
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -141,7 +141,6 @@ static int procfs_read_ndis_hw(char *page, char **start, off_t off,
 {
 	char *p = page;
 	struct wrap_ndis_device *wnd = (struct wrap_ndis_device *)data;
-	struct ndis_configuration config;
 	unsigned int power_mode;
 	NDIS_STATUS res;
 	ndis_tx_power_level tx_power;
@@ -168,20 +167,6 @@ static int procfs_read_ndis_hw(char *page, char **start, off_t off,
 				  mac, sizeof(mac));
 	if (!res)
 		p += sprintf(p, "mac: " MACSTRSEP "\n", MAC2STR(mac));
-	res = miniport_query_info(wnd, OID_802_11_CONFIGURATION,
-				  &config, sizeof(config));
-	if (!res) {
-		p += sprintf(p, "beacon_period=%u msec\n",
-			     config.beacon_period);
-		p += sprintf(p, "atim_window=%u msec\n", config.atim_window);
-		p += sprintf(p, "frequency=%u kHZ\n", config.ds_config);
-		p += sprintf(p, "hop_pattern=%u\n",
-			     config.fh_config.hop_pattern);
-		p += sprintf(p, "hop_set=%u\n",
-			     config.fh_config.hop_set);
-		p += sprintf(p, "dwell_time=%u msec\n",
-			     config.fh_config.dwell_time);
-	}
 
 	res = miniport_query_info(wnd, OID_802_11_TX_POWER_LEVEL,
 				  &tx_power, sizeof(tx_power));
@@ -202,13 +187,6 @@ static int procfs_read_ndis_hw(char *page, char **start, off_t off,
 				  &frag_threshold, sizeof(frag_threshold));
 	if (!res)
 		p += sprintf(p, "frag_threshold=%u bytes\n", frag_threshold);
-
-	res = miniport_query_int(wnd, OID_802_11_POWER_MODE, &power_mode);
-	if (!res)
-		p += sprintf(p, "power_mode=%s\n",
-			     (power_mode == NDIS_POWER_OFF) ? "always_on" :
-			     (power_mode == NDIS_POWER_MAX) ?
-			     "max_savings" : "min_savings");
 
 	res = miniport_query_info(wnd, OID_802_11_NUMBER_OF_ANTENNAS,
 				  &antenna, sizeof(antenna));
