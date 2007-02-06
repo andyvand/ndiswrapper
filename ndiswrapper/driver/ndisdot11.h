@@ -169,7 +169,7 @@ struct ndis_dot11_op_mode_capability {
 };
 
 #define OID_DOT11_CURRENT_OPERATION_MODE            (OID_DOT11_NDIS_START + 8)
-struct ndis_dot11_current_op_mode {
+struct ndis_dot11_current_operation_mode {
 	ULONG reserved;
 	ULONG mode;
 };
@@ -286,7 +286,7 @@ struct ndis_dot11_phy_type_list {
 	struct ndis_object_header header;
 	ULONG num_entries;
 	ULONG num_total_entries;
-	enum ndis_dot11_phy_type phy_type[1];
+	enum ndis_dot11_phy_type phy_types[1];
 };
 
 #define OID_DOT11_JOIN_REQUEST                      (OID_DOT11_NDIS_START + 13)
@@ -403,7 +403,7 @@ struct ndis_dot11_counters_entry {
 struct ndis_dot11_supported_phy_types {
 	ULONG num_entries;
 	ULONG num_total_entries;
-	enum ndis_dot11_phy_type phy_type[1];
+	enum ndis_dot11_phy_type types[1];
 };
 
 #define OID_DOT11_CURRENT_REG_DOMAIN                (OID_DOT11_NDIS_START + 39)
@@ -433,10 +433,12 @@ enum ndis_dot11_diversity_support {
 
 #define OID_DOT11_CURRENT_RX_ANTENNA                (OID_DOT11_NDIS_START + 43)
 
+#define OID_DOT11_MAX_TX_POWER_LEVELS 8
+
 #define OID_DOT11_SUPPORTED_POWER_LEVELS            (OID_DOT11_NDIS_START + 44)
 struct ndis_dot11_supported_power_levels {
 	ULONG num_levels;
-	ULONG tx_values[8];
+	ULONG levels[OID_DOT11_MAX_TX_POWER_LEVELS];
 };
 
 #define OID_DOT11_CURRENT_TX_POWER_LEVEL            (OID_DOT11_NDIS_START + 45)
