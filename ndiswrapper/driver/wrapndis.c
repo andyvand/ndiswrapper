@@ -926,7 +926,43 @@ NDIS_STATUS ndis_reinit(struct wrap_ndis_device *wnd)
 
 void get_encryption_capa(struct wrap_ndis_device *wnd)
 {
-	TRACEENTER1("%p", wnd);
+	struct ndis_dot11_auth_cipher_pair_list *auth_cipher_pairs;
+	NDIS_STATUS res;
+	int i;
+
+	res = miniport_query_info_needed(wnd,
+					 OID_DOT11_SUPPORTED_UNICAST_ALGORITHM_PAIR,
+					 NULL, 0, &i);
+	if (res != NDIS_STATUS_BUFFER_OVERFLOW) {
+		WARNING("authentication/cipher query failed: %08x", res);
+		return;
+	}
+	auth_cipher_pairs = kzalloc(i, GFP_KERNEL);
+	if (!auth_cipher_pairs) {
+		WARNING("couldn't allocate memory");
+		return;
+	}
+	init_ndis_object_header(auth_cipher_pairs, NDIS_OBJECT_TYPE_DEFAULT,
+				DOT11_AUTH_CIPHER_PAIR_LIST_REVISION_1);
+	res = miniport_query_info(wnd, OID_DOT11_SUPPORTED_UNICAST_ALGORITHM_PAIR,
+				  &auth_cipher_pairs, sizeof(auth_cipher_pairs));
+	if (res) {
+		WARNING("authentication/cipher query failed: %08X", res);
+		kfree(auth_cipher_pairs);
+		return;
+	}
+	for (i = 0; i < auth_cipher_pairs->num_entries; i++) {
+		struct ndis_dot11_auth_cipher_pair *pair =
+			&auth_cipher_pairs->pairs[i];
+		DBGTRACE2("%d, %d", pair->auth_algo_id, pair->cipher_algo_id);
+		if (pair->auth_algo_id >= DOT11_AUTH_ALGO_80211_OPEN &&
+		    pair->auth_algo_id <= DOT11_AUTH_ALGO_RSNA_PSK)
+			set_bit(pair->auth_algo_id, &wnd->capa.auth);
+		if (pair->cipher_algo_id >= DOT11_CIPHER_ALGO_WEP40 &&
+		    pair->cipher_algo_id <= DOT11_CIPHER_ALGO_WEP104)
+			set_bit(pair->cipher_algo_id, &wnd->capa.encr);
+	}
+	kfree(auth_cipher_pairs);
 	TRACEEXIT1(return);
 }
 
@@ -1296,22 +1332,33 @@ static NDIS_STATUS ndis_start_device(struct wrap_ndis_device *wnd)
 		get_encryption_capa(wnd);
 		DBGTRACE1("capbilities = %ld", wnd->capa.encr);
 		printk(KERN_INFO "%s: encryption modes supported: "
-		       "%s%s%s%s%s%s%s\n", net_dev->name,
-		       test_bit(Ndis802_11Encryption1Enabled, &wnd->capa.encr) ?
-		       "WEP" : "none",
+		       "%s%s%s%s%s%s%s%s%s%s%s%s\n", net_dev->name,
+		       test_bit(DOT11_CIPHER_ALGO_WEP40, &wnd->capa.encr) ?
+		       "WEP40" : "none",
 
-		       test_bit(Ndis802_11Encryption2Enabled, &wnd->capa.encr) ?
-		       "; TKIP with WPA" : "",
-		       test_bit(Ndis802_11AuthModeWPA2, &wnd->capa.auth) ?
+		       test_bit(DOT11_CIPHER_ALGO_WEP104, &wnd->capa.encr) ?
+		       "WEP104" : "none",
+
+		       test_bit(DOT11_CIPHER_ALGO_TKIP, &wnd->capa.encr) ?
+		       "; TKIP with" : "",
+		       test_bit(DOT11_AUTH_ALGO_WPA, &wnd->capa.auth) ?
+		       ", WPA" : "",
+		       test_bit(DOT11_AUTH_ALGO_WPA_PSK, &wnd->capa.auth) ?
+		       ", WPAPSK" : "",
+		       test_bit(DOT11_AUTH_ALGO_RSNA, &wnd->capa.auth) ?
 		       ", WPA2" : "",
-		       test_bit(Ndis802_11AuthModeWPA2PSK, &wnd->capa.auth) ?
+		       test_bit(DOT11_AUTH_ALGO_RSNA_PSK, &wnd->capa.auth) ?
 		       ", WPA2PSK" : "",
 
-		       test_bit(Ndis802_11Encryption3Enabled, &wnd->capa.encr) ?
-		       "; AES/CCMP with WPA" : "",
-		       test_bit(Ndis802_11AuthModeWPA2, &wnd->capa.auth) ?
+		       test_bit(DOT11_CIPHER_ALGO_CCMP, &wnd->capa.encr) ?
+		       "; AES/CCMP with" : "",
+		       test_bit(DOT11_AUTH_ALGO_WPA, &wnd->capa.auth) ?
+		       ", WPA" : "",
+		       test_bit(DOT11_AUTH_ALGO_WPA_PSK, &wnd->capa.auth) ?
+		       ", WPAPSK" : "",
+		       test_bit(DOT11_AUTH_ALGO_RSNA, &wnd->capa.auth) ?
 		       ", WPA2" : "",
-		       test_bit(Ndis802_11AuthModeWPA2PSK, &wnd->capa.auth) ?
+		       test_bit(DOT11_AUTH_ALGO_RSNA_PSK, &wnd->capa.auth) ?
 		       ", WPA2PSK" : "");
 
 	}
@@ -1407,8 +1454,6 @@ static wstdcall NTSTATUS NdisAddDevice(struct driver_object *drv_obj,
 	init_waitqueue_head(&wnd->ndis_comm_wq);
 	wnd->ndis_comm_done = 0;
 	initialize_work(&wnd->tx_work, tx_worker, wnd);
-	wnd->encr_mode = Ndis802_11EncryptionDisabled;
-	wnd->auth_mode = Ndis802_11AuthModeOpen;
 	wnd->capa.encr = 0;
 	wnd->capa.auth = 0;
 	wnd->attribute_flags = 0;
@@ -1421,8 +1466,10 @@ static wstdcall NTSTATUS NdisAddDevice(struct driver_object *drv_obj,
 	wnd->stats_interval = 10 * HZ;
 	wnd->wrap_ndis_pending_work = 0;
 	memset(&wnd->essid, 0, sizeof(wnd->essid));
-	memset(&wnd->encr_info, 0, sizeof(wnd->encr_info));
-	wnd->infrastructure_mode = Ndis802_11Infrastructure;
+	memset(&wnd->cipher_info, 0, sizeof(wnd->cipher_info));
+	wnd->cipher_info.algo = DOT11_CIPHER_ALGO_NONE;
+	wnd->auth_algo = DOT11_AUTH_ALGO_80211_OPEN;
+	wnd->bss_type = ndis_dot11_bss_type_infrastructure;
 	initialize_work(&wnd->wrap_ndis_work, wrap_ndis_worker, wnd);
 	wnd->hw_status = 0;
 

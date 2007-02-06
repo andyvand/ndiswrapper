@@ -61,6 +61,13 @@ struct ndis_object_header {
 	USHORT size;
 };
 
+#define init_ndis_object_header(object, htype, hrev)		  \
+	do {							  \
+		(object)->header.type = htype;			  \
+		(object)->header.revision = hrev;		  \
+		(object)->header.size = sizeof(*object);	  \
+	} while (0)
+
 struct ndis_sg_element {
 	PHYSICAL_ADDRESS address;
 	ULONG length;
@@ -458,58 +465,6 @@ enum wrapper_work {
 	SHUTDOWN
 };
 
-struct encr_info {
-	struct encr_key {
-		ULONG length;
-		UCHAR key[NDIS_ENCODING_TOKEN_MAX];
-	} keys[MAX_ENCR_KEYS];
-	unsigned short tx_key_index;
-};
-
-struct ndis_essid {
-	ULONG length;
-	UCHAR essid[NDIS_ESSID_MAX_SIZE];
-};
-
-enum network_infrastructure {
-	Ndis802_11IBSS, Ndis802_11Infrastructure, Ndis802_11AutoUnknown,
-	Ndis802_11InfrastructureMax
-};
-
-enum authentication_mode {
-	Ndis802_11AuthModeOpen, Ndis802_11AuthModeShared,
-	Ndis802_11AuthModeAutoSwitch, Ndis802_11AuthModeWPA,
-	Ndis802_11AuthModeWPAPSK, Ndis802_11AuthModeWPANone,
-	Ndis802_11AuthModeWPA2, Ndis802_11AuthModeWPA2PSK,
-	Ndis802_11AuthModeMax
-};
-
-enum encryption_status {
-	Ndis802_11WEPEnabled,
-	Ndis802_11Encryption1Enabled = Ndis802_11WEPEnabled,
-	Ndis802_11WEPDisabled,
-	Ndis802_11EncryptionDisabled = Ndis802_11WEPDisabled,
-	Ndis802_11WEPKeyAbsent,
-	Ndis802_11Encryption1KeyAbsent = Ndis802_11WEPKeyAbsent,
-	Ndis802_11WEPNotSupported,
-	Ndis802_11EncryptionNotSupported = Ndis802_11WEPNotSupported,
-	Ndis802_11Encryption2Enabled, Ndis802_11Encryption2KeyAbsent,
-	Ndis802_11Encryption3Enabled, Ndis802_11Encryption3KeyAbsent
-};
-
-struct ndis_auth_encr_pair {
-	enum authentication_mode auth_mode;
-	enum encryption_status encr_mode;
-};
-
-struct ndis_capability {
-	ULONG length;
-	ULONG version;
-	ULONG num_PMKIDs;
-	ULONG num_auth_encr_pair;
-	struct ndis_auth_encr_pair auth_encr_pair[1];
-};
-
 struct ndis_guid {
 	struct guid guid;
 	union {
@@ -875,6 +830,26 @@ struct ndis_tcp_connection_offload
 };
 
 #include "ndisdot11.h"
+
+struct cipher_info {
+	enum ndis_dot11_cipher_algorithm algo;
+	struct {
+		ULONG length;
+		union {
+			struct ndis_dot11_key_algo_ccmp ccmp;
+			struct ndis_dot11_key_algo_tkip_mic tkip;
+		};
+		/* key must be at least 32 bytes and immediately
+		 * follow ccmp/tkip union */
+		UCHAR key[NDIS_ENCODING_TOKEN_MAX];
+	} keys[MAX_CIPHER_KEYS];
+	unsigned short tx_index;
+};
+
+struct ndis_essid {
+	ULONG length;
+	UCHAR essid[NDIS_ESSID_MAX_SIZE];
+};
 
 struct mp_native_802_11_attrs {
 	struct ndis_object_header header;
@@ -1359,13 +1334,12 @@ struct wrap_ndis_device {
 	int stats_interval;
 	struct timer_list stats_timer;
 	unsigned long scan_timestamp;
-	struct encr_info encr_info;
+	enum ndis_dot11_bss_type bss_type;
+	enum ndis_dot11_auth_algorithm auth_algo;
+	struct cipher_info cipher_info;
 	char nick[IW_ESSID_MAX_SIZE];
 	struct ndis_essid essid;
 	struct auth_encr_capa capa;
-	enum authentication_mode auth_mode;
-	enum encryption_status encr_mode;
-	enum network_infrastructure infrastructure_mode;
 	int num_pmkids;
 	mac_address mac;
 	struct proc_dir_entry *procfs_iface;
