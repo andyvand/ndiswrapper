@@ -1141,7 +1141,7 @@ static NDIS_STATUS ndis_start_device(struct wrap_ndis_device *wnd)
 {
 	struct wrap_device *wd;
 	struct net_device *net_dev;
-	NDIS_STATUS ndis_status;
+	NDIS_STATUS res;
 	char *buf;
 	const int buf_size = 256;
 	mac_address mac;
@@ -1156,44 +1156,43 @@ static NDIS_STATUS ndis_start_device(struct wrap_ndis_device *wnd)
 		LIN2WIN2(mp_pnp_chars->add_device,
 			 wnd->wd->driver->ndis_driver->mp_driver_ctx, NULL);
 
-	ndis_status = miniport_init(wnd);
-	if (ndis_status == NDIS_STATUS_NOT_RECOGNIZED)
+	res = miniport_init(wnd);
+	if (res == NDIS_STATUS_NOT_RECOGNIZED)
 		TRACEEXIT1(return NDIS_STATUS_SUCCESS);
-	if (ndis_status != NDIS_STATUS_SUCCESS)
-		TRACEEXIT1(return ndis_status);
+	if (res != NDIS_STATUS_SUCCESS)
+		TRACEEXIT1(return res);
 	wd = wnd->wd;
 	net_dev = wnd->net_dev;
 
-	ndis_status = miniport_query_info(wnd, OID_802_3_CURRENT_ADDRESS,
-					  mac, sizeof(mac));
-	if (ndis_status) {
-		ERROR("couldn't get mac address: %08X", ndis_status);
+	res = miniport_query_info(wnd, OID_DOT11_CURRENT_ADDRESS,
+				  mac, sizeof(mac));
+	if (res) {
+		ERROR("couldn't get mac address: %08X", res);
 		goto err_start;
 	}
 	DBGTRACE1("mac:" MACSTRSEP, MAC2STR(mac));
-	ndis_status = miniport_query_int(wnd, OID_GEN_PHYSICAL_MEDIUM,
-					 &wnd->physical_medium);
+	res = miniport_query_int(wnd, OID_GEN_PHYSICAL_MEDIUM,
+				 &wnd->physical_medium);
 	DBGTRACE1("%d", wnd->physical_medium);
-	if (ndis_status != NDIS_STATUS_SUCCESS)
+	if (res != NDIS_STATUS_SUCCESS)
 		wnd->physical_medium = NdisPhysicalMediumUnspecified;
 
 	get_supported_oids(wnd);
 
-	ndis_status = miniport_query_info(wnd, OID_DOT11_COUNTRY_STRING,
-					  &wnd->country_string,
-					  sizeof(wnd->country_string));
-	if (ndis_status != NDIS_STATUS_SUCCESS)
+	res = miniport_query_info(wnd, OID_DOT11_COUNTRY_STRING,
+				  &wnd->country_string,
+				  sizeof(wnd->country_string));
+	if (res != NDIS_STATUS_SUCCESS)
 		memset(&wnd->country_string, 0, sizeof(wnd->country_string));
 
 	wnd->extsta_capa.header.type = NDIS_OBJECT_TYPE_DEFAULT;
 	wnd->extsta_capa.header.revision = DOT11_EXTSTA_CAPABILITY_REVISION_1;
 	wnd->extsta_capa.header.size = sizeof(struct ndis_dot11_extsta_capability);
-	ndis_status = miniport_query_info(wnd, OID_DOT11_EXTSTA_CAPABILITY,
-					  &wnd->extsta_capa,
-					  sizeof(wnd->extsta_capa));
+	res = miniport_query_info(wnd, OID_DOT11_EXTSTA_CAPABILITY,
+				  &wnd->extsta_capa, sizeof(wnd->extsta_capa));
 
-	if (ndis_status != NDIS_STATUS_SUCCESS)
-		WARNING("extsta_capability failed: %08X", ndis_status);
+	if (res != NDIS_STATUS_SUCCESS)
+		WARNING("extsta_capability failed: %08X", res);
 
 //	wnd->physical_medium = NdisPhysicalMediumWirelessLan;
 
@@ -1224,9 +1223,9 @@ static NDIS_STATUS ndis_start_device(struct wrap_ndis_device *wnd)
 	net_dev->irq = wnd->wd->pci.pdev->irq;
 	net_dev->mem_start = wnd->mem_start;
 	net_dev->mem_end = wnd->mem_end;
-	ndis_status = miniport_query_int(wnd, OID_802_3_MAXIMUM_LIST_SIZE,
-					 &wnd->multicast_size);
-	if (ndis_status != NDIS_STATUS_SUCCESS || wnd->multicast_size < 0)
+	res = miniport_query_int(wnd, OID_802_3_MAXIMUM_LIST_SIZE,
+				 &wnd->multicast_size);
+	if (res != NDIS_STATUS_SUCCESS || wnd->multicast_size < 0)
 		wnd->multicast_size = 0;
 	if (wnd->multicast_size > 0)
 		net_dev->flags |= IFF_MULTICAST;
@@ -1250,10 +1249,10 @@ static NDIS_STATUS ndis_start_device(struct wrap_ndis_device *wnd)
 	memcpy(wnd->netdev_name, net_dev->name, sizeof(wnd->netdev_name));
 	wnd->tx_ok = 1;
 	memset(buf, 0, buf_size);
-	ndis_status = miniport_query_info(wnd, OID_GEN_VENDOR_DESCRIPTION,
-					  buf, buf_size);
-	if (ndis_status != NDIS_STATUS_SUCCESS) {
-		WARNING("couldn't get vendor information: 0x%x", ndis_status);
+	res = miniport_query_info(wnd, OID_GEN_VENDOR_DESCRIPTION,
+				  buf, buf_size);
+	if (res != NDIS_STATUS_SUCCESS) {
+		WARNING("couldn't get vendor information: 0x%x", res);
 		buf[0] = 0;
 	}
 	wnd->drv_ndis_version = n = 0;
@@ -1273,10 +1272,9 @@ static NDIS_STATUS ndis_start_device(struct wrap_ndis_device *wnd)
 		 * keep max at TX_RING_SIZE */
 		wnd->max_tx_packets = TX_RING_SIZE;
 	} else {
-		ndis_status =
-			miniport_query_int(wnd, OID_GEN_MAXIMUM_SEND_PACKETS,
-					   &wnd->max_tx_packets);
-		if (ndis_status != NDIS_STATUS_SUCCESS)
+		res = miniport_query_int(wnd, OID_GEN_MAXIMUM_SEND_PACKETS,
+					 &wnd->max_tx_packets);
+		if (res != NDIS_STATUS_SUCCESS)
 			wnd->max_tx_packets = 1;
 		if (wnd->max_tx_packets > TX_RING_SIZE)
 			wnd->max_tx_packets = TX_RING_SIZE;
@@ -1297,7 +1295,7 @@ static NDIS_STATUS ndis_start_device(struct wrap_ndis_device *wnd)
 
 	wnd->tx_buffer_list_pool =
 		NdisAllocateNetBufferListPool(wnd, &nbl_pool_params);
-	if (ndis_status != NDIS_STATUS_SUCCESS) {
+	if (res != NDIS_STATUS_SUCCESS) {
 		ERROR("couldn't allocate buffer pool");
 		goto buffer_pool_err;
 	}
@@ -1322,13 +1320,15 @@ static NDIS_STATUS ndis_start_device(struct wrap_ndis_device *wnd)
 
 	transport_header_offset.protocol_type = NDIS_PROTOCOL_ID_TCP_IP;
 	transport_header_offset.header_offset = sizeof(ETH_HLEN);
-	ndis_status = miniport_set_info(wnd, OID_GEN_TRANSPORT_HEADER_OFFSET,
-					&transport_header_offset,
-					sizeof(transport_header_offset));
-	TRACEENTER2("%08X", ndis_status);
+	res = miniport_set_info(wnd, OID_GEN_TRANSPORT_HEADER_OFFSET,
+				&transport_header_offset,
+				sizeof(transport_header_offset));
+	TRACEENTER2("%08X", res);
 
 	if (wnd->physical_medium == (NdisPhysicalMediumWirelessLan ||
 				     NdisPhysicalMediumNative802_11)) {
+		struct ndis_dot11_current_operation_mode *op_mode;
+
 		get_encryption_capa(wnd);
 		DBGTRACE1("capbilities = %ld", wnd->capa.encr);
 		printk(KERN_INFO "%s: encryption modes supported: "
@@ -1361,6 +1361,14 @@ static NDIS_STATUS ndis_start_device(struct wrap_ndis_device *wnd)
 		       test_bit(DOT11_AUTH_ALGO_RSNA_PSK, &wnd->capa.auth) ?
 		       ", WPA2PSK" : "");
 
+		op_mode = (typeof(op_mode))buf;
+		op_mode->reserved = 0;
+		op_mode->mode = DOT11_OPERATION_MODE_EXTENSIBLE_STATION;
+		res = miniport_set_info(wnd, OID_DOT11_CURRENT_OPERATION_MODE,
+					op_mode, sizeof(*op_mode));
+		if (res)
+			WARNING("setting operation mode failed: %08x",
+				res);
 	}
 	kfree(buf);
 	wrap_procfs_add_ndis_device(wnd);
