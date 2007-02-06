@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2003-2005 Pontus Fuchs, Giridhar Pemmasani
+ *  Copyright (C) 2006-2007 Giridhar Pemmasani
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -267,7 +267,8 @@ enum ndis_medium {
 	NdisMediumLocalTalk, NdisMediumDix, NdisMediumArcnetRaw,
 	NdisMediumArcnet878_2, NdisMediumAtm, NdisMediumWirelessWan,
 	NdisMediumIrda, NdisMediumBpc, NdisMediumCoWan,
-	NdisMedium1394, NdisMediumMax
+	NdisMedium1394, NdisMediumInfiniBand, NdisMediumTunnel,
+	NdisMediumNative802_11, NdisMediumLoopback, NdisMediumMax
 };
 
 enum ndis_physical_medium {
@@ -275,7 +276,13 @@ enum ndis_physical_medium {
 	NdisPhysicalMediumCableModem, NdisPhysicalMediumPhoneLine,
 	NdisPhysicalMediumPowerLine, NdisPhysicalMediumDSL,
 	NdisPhysicalMediumFibreChannel, NdisPhysicalMedium1394,
-	NdisPhysicalMediumWirelessWan, NdisPhysicalMediumMax
+	NdisPhysicalMediumWirelessWan, NdisPhysicalMediumNative802_11,
+	NdisPhysicalMediumBluetooth, NdisPhysicalMediumInfiniband,
+	NdisPhysicalMediumWiMax, NdisPhysicalMediumUWB,
+	NdisPhysicalMedium802_3, NdisPhysicalMedium802_5,
+	NdisPhysicalMediumIrda, NdisPhysicalMediumWiredWAN,
+	NdisPhysicalMediumWiredCoWan, NdisPhysicalMediumOther,
+	NdisPhysicalMediumMax
 };
 
 enum ndis_power_state {
@@ -867,146 +874,7 @@ struct ndis_tcp_connection_offload
 	ULONG flags;
 };
 
-enum dot11_phy_type {
-	dot11_phy_type_unknown = 0,
-	dot11_phy_type_any = dot11_phy_type_unknown,
-	dot11_phy_type_fhss = 1,
-	dot11_phy_type_dsss = 2,
-	dot11_phy_type_irbaseband = 3,
-	dot11_phy_type_ofdm = 4,
-	dot11_phy_type_hrdsss = 5,
-	dot11_phy_type_erp = 6,
-	dot11_phy_type_IHV_start = 0x80000000,
-	dot11_phy_type_IHV_end = 0xffffffff
-};
-
-enum dot11_temp_type {
-	dot11_temp_type_unknown = 0,
-	dot11_temp_type_1 = 1,
-	dot11_temp_type_2 = 2
-};
-
-enum dot11_diversity_support {
-	dot11_diversity_support_unknown = 0,
-	dot11_diversity_support_fixedlist = 1,
-	dot11_diversity_support_notsupported = 2,
-	dot11_diversity_support_dynamic = 3
-};
-
-struct dot11_hrdsss_phy_attributes {
-	BOOLEAN short_preamble_implemented;
-	BOOLEAN pbcco_implemented;
-	BOOLEAN channef_lagility_present;
-	ULONG hrcca_supported;
-};
-
-struct dot11_ofdm_phy_attributes {
-	ULONG freq_bands;
-};
-
-struct dot11_erp_phy_attributes {
-	struct dot11_hrdsss_phy_attributes hrdss_attributes;
-	BOOLEAN erppbcc_implemented;
-	BOOLEAN dsssofdm_implemented;
-	BOOLEAN short_slottime_implemented;
-};
-
-struct dot11_data_rate_mapping_entry {
-	UCHAR index;
-	UCHAR flag;
-	USHORT value;
-};
-
-#define MAX_NUM_SUPPORTED_RATES_V2	255
-
-struct dot11_supported_data_rates_value_v2 {
-	UCHAR ucSupportedTxDataRatesValue[MAX_NUM_SUPPORTED_RATES_V2];
-	UCHAR ucSupportedRxDataRatesValue[MAX_NUM_SUPPORTED_RATES_V2];
-};
-
-#define DOT11_RATE_SET_MAX_LENGTH		126
-#define DOT11_PHY_ATTRIBUTES_REVISION_1		1
-
-struct dot11_phy_attributes {
-	struct ndis_object_header header;
-	enum dot11_phy_type phy_type;
-	BOOLEAN hw_phy_state;
-	BOOLEAN sw_phy_state;
-	BOOLEAN cf_pollable;
-	ULONG mpdu_max_length;
-	enum dot11_temp_type temp_type;
-	enum dot11_diversity_support diversity_support;
-	union {
-		struct dot11_hrdsss_phy_attributes hrdsss_attrs;
-		struct dot11_ofdm_phy_attributes ofdm_attrs;
-		struct dot11_erp_phy_attributes erp_attrs;
-		ULONG supported_power_levels;
-		ULONG tx_power_levels[8];
-		ULONG num_data_rate_mapping_entries;
-		struct dot11_data_rate_mapping_entry data_rate_mapping_entries[DOT11_RATE_SET_MAX_LENGTH];
-		struct dot11_supported_data_rates_value_v2 supported_data_rates_value;
-	};
-};
-
-enum dot11_auth_algorithm {
-	DOT11_AUTH_ALGO_80211_OPEN = 1,
-	DOT11_AUTH_ALGO_80211_SHARED_KEY = 2,
-	DOT11_AUTH_ALGO_WPA = 3,
-	DOT11_AUTH_ALGO_WPA_PSK = 4,
-	DOT11_AUTH_ALGO_WPA_NONE = 5,               // used in NatSTA only
-	DOT11_AUTH_ALGO_RSNA = 6,
-	DOT11_AUTH_ALGO_RSNA_PSK = 7,
-	DOT11_AUTH_ALGO_IHV_START = 0x80000000,
-	DOT11_AUTH_ALGO_IHV_END = 0xffffffff
-};
-
-enum dot11_cipher_algorithm {
-    DOT11_CIPHER_ALGO_NONE = 0x00,
-    DOT11_CIPHER_ALGO_WEP40 = 0x01,
-    DOT11_CIPHER_ALGO_TKIP = 0x02,
-    DOT11_CIPHER_ALGO_CCMP = 0x04,
-    DOT11_CIPHER_ALGO_WEP104 = 0x05,
-    DOT11_CIPHER_ALGO_WPA_USE_GROUP = 0x100,
-    DOT11_CIPHER_ALGO_RSN_USE_GROUP = 0x100,
-    DOT11_CIPHER_ALGO_WEP = 0x101,
-    DOT11_CIPHER_ALGO_IHV_START = 0x80000000,
-    DOT11_CIPHER_ALGO_IHV_END = 0xffffffff
-};
-
-struct dot11_auth_cipher_pair {
-	enum dot11_auth_algorithm auth_algo_id;
-	enum dot11_cipher_algorithm cipher_algo_id;
-};
-
-typedef UCHAR dot11_country_region_string_t[3];
-
-#define DOT11_EXTSTA_ATTRIBUTES_REVISION_1  1
-struct dot11_extsta_attributes {
-	struct ndis_object_header header;
-	ULONG scan_ssid_size;
-	ULONG desired_bssid_size;
-	ULONG desired_ssid_size;
-	ULONG excluded_mac_size;
-	ULONG privacy_exemption_size;
-	ULONG key_mapping_size;
-	ULONG default_key__size;
-	ULONG wep_key_max_length;
-	ULONG pmkid_cache_size;
-	ULONG max_num_per_sta_default_key_tables;
-	BOOLEAN strictly_ordered_service_class;
-	UCHAR qos_protocol_flags;
-	BOOLEAN safe_mode;
-	ULONG num_country_region_strings;
-	dot11_country_region_string_t country_region_strings;
-	ULONG num_infra_ucast_algo_pairs;
-	struct dot11_auth_cipher_pair infra_ucast_algo_pairs;
-	ULONG num_infra_mcast_algo_pairs;
-	struct dot11_auth_cipher_pair infra_mcast_algo_pairs;
-	ULONG num_adhoc_ucast_algo_pairs;
-	struct dot11_auth_cipher_pair adhoc_ucast_algo_pairs;
-	ULONG num_adhoc_mcast_algo_pairs;
-	struct dot11_auth_cipher_pair adhoc_mcast_algo_pairs;
-};
+#include "ndisdot11.h"
 
 struct mp_native_802_11_attrs {
 	struct ndis_object_header header;
@@ -1015,8 +883,8 @@ struct mp_native_802_11_attrs {
 	ULONG num_rx_bufs;
 	BOOLEAN multi_domain_capability_implemented;
 	ULONG num_supported_phys;
-	struct dot11_phy_attributes supported_phy_attrs;
-	struct dot11_extsta_attributes *ext_sta_attrs;
+	struct ndis_dot11_phy_attributes supported_phy_attrs;
+	struct ndis_dot11_extsta_attributes *ext_sta_attrs;
 };
 
 union mp_adapter_attrs {
@@ -1056,7 +924,7 @@ struct ndis_status_indication {
 	void *dst_handle;
 	void *request_id;
 	void *buf;
-	ULONG buf_size;
+	ULONG buf_len;
 	struct guid guid;
 	void *reserved[4];
 };
@@ -1218,14 +1086,14 @@ struct ndis_oid_request {
 			UINT buf_length;
 			UINT bytes_written;
 			UINT bytes_needed;
-		} query_info;
+		} query;
 		struct set {
 			ndis_oid oid;
 			void *buf;
 			UINT buf_length;
 			UINT bytes_written;
 			UINT bytes_needed;
-		} set_info;
+		} set;
 		struct method {
 			ndis_oid oid;
 			void *buf;
@@ -1234,7 +1102,7 @@ struct ndis_oid_request {
 			UINT bytes_written;
 			UINT bytes_read;
 			UINT bytes_needed;
-		} method_info;
+		} method;
 	} data;
 	UCHAR reserved[NDIS_OID_REQUEST_NDIS_RESERVED_SIZE * sizeof(void *)];
 	UCHAR mp_reserved[2 * sizeof(void *)];
@@ -1482,7 +1350,7 @@ struct wrap_ndis_device {
 	NDIS_STATUS ndis_comm_status;
 	ULONG packet_filter;
 
-	BOOLEAN use_sg_dma;
+	ULONG sg_dma_size;
 	ULONG dma_map_count;
 	dma_addr_t *dma_map_addr;
 
@@ -1521,6 +1389,8 @@ struct wrap_ndis_device {
 	char netdev_name[IFNAMSIZ];
 	ULONG frame_length;
 	int drv_ndis_version;
+	struct ndis_dot11_extsta_capability extsta_capa;
+	ndis_dot11_country_region_string_t country_string;
 };
 
 struct ndis_pmkid_candidate {
@@ -1739,6 +1609,8 @@ void NdisReadConfiguration(NDIS_STATUS *status,
 #define NDIS_STATUS_WAN_GET_STATS	0x40010014
 #define NDIS_STATUS_WAN_CO_FRAGMENT	0x40010015
 #define NDIS_STATUS_WAN_CO_LINKPARAMS	0x40010016
+#define STATUS_NDIS_INDICATION_REQUIRED	0x40230001
+#define NDIS_STATUS_INDICATION_REQUIRED STATUS_NDIS_INDICATION_REQUIRED
 #define NDIS_STATUS_NOT_RESETTABLE	0x80010001
 #define NDIS_STATUS_SOFT_ERRORS		0x80010003
 #define NDIS_STATUS_HARD_ERRORS		0x80010004
@@ -1908,7 +1780,9 @@ void NdisReadConfiguration(NDIS_STATUS *status,
 #define	NDIS_STATUS_LOW_POWER_STATE		STATUS_NDIS_LOW_POWER_STATE
 
 #define	NDIS_STATUS_DOT11_AUTO_CONFIG_ENABLED	STATUS_NDIS_DOT11_AUTO_CONFIG_ENABLED
+#define STATUS_NDIS_DOT11_MEDIA_IN_USE		0xC0232001
 #define	NDIS_STATUS_DOT11_MEDIA_IN_USE		STATUS_NDIS_DOT11_MEDIA_IN_USE
+#define STATUS_NDIS_DOT11_POWER_STATE_INVALID	0xC00002D3
 #define NDIS_STATUS_DOT11_POWER_STATE_INVALID	STATUS_NDIS_DOT11_POWER_STATE_INVALID
 
 #define NDIS_STATUS_UPLOAD_IN_PROGRESS			0xC0231001L

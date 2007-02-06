@@ -424,8 +424,7 @@ NTSTATUS pnp_start_device(struct wrap_device *wd)
 	DBGTRACE2("%p", fdo->drv_obj);
 	DBGTRACE2("%p", fdo->drv_obj->drv_ext);
 	if (status == STATUS_SUCCESS)
-		(void)0;
-//		fdo->drv_obj->drv_ext->count++;
+		fdo->drv_obj->drv_ext->count++;
 	else
 		WARNING("Windows driver couldn't initialize the device (%08X)",
 			status);
