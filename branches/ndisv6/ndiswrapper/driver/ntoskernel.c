@@ -2080,7 +2080,7 @@ struct mdl *allocate_init_mdl(void *virt, ULONG length)
 		InsertHeadList(&wrap_mdl_list, &wrap_mdl->list);
 		nt_spin_unlock_irql(&ntoskernel_lock, irql);
 		mdl = wrap_mdl->mdl;
-		DBGTRACE3("allocated mdl from cache: %p(%p), %p(%d)",
+		DBGTRACE4("allocated mdl from cache: %p(%p), %p(%d)",
 			  wrap_mdl, mdl, virt, length);
 		memset(mdl, 0, CACHE_MDL_SIZE);
 		MmInitializeMdl(mdl, virt, length);
@@ -2093,7 +2093,7 @@ struct mdl *allocate_init_mdl(void *virt, ULONG length)
 		if (!wrap_mdl)
 			return NULL;
 		mdl = wrap_mdl->mdl;
-		DBGTRACE3("allocated mdl from memory: %p(%p), %p(%d)",
+		DBGTRACE4("allocated mdl from memory: %p(%p), %p(%d)",
 			  wrap_mdl, mdl, virt, length);
 		irql = nt_spin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL);
 		InsertHeadList(&wrap_mdl_list, &wrap_mdl->list);
@@ -2125,11 +2125,11 @@ void free_mdl(struct mdl *mdl)
 	nt_spin_unlock_irql(&ntoskernel_lock, irql);
 
 	if (mdl->flags & MDL_CACHE_ALLOCATED) {
-		DBGTRACE3("freeing mdl cache: %p, %p, %p",
+		DBGTRACE4("freeing mdl cache: %p, %p, %p",
 			  wrap_mdl, mdl, mdl->mappedsystemva);
 		kmem_cache_free(mdl_cache, wrap_mdl);
 	} else {
-		DBGTRACE3("freeing mdl: %p, %p, %p",
+		DBGTRACE4("freeing mdl: %p, %p, %p",
 			  wrap_mdl, mdl, mdl->mappedsystemva);
 		kfree(wrap_mdl);
 	}
@@ -2668,13 +2668,13 @@ wstdcall ULONG WIN_FUNC(ExSetTimerResolution,2)
 	return time;
 }
 
-wstdcall void WIN_FUNC(DbgBreakPoint,0)
+void WIN_FUNC(DbgBreakPoint,0)
 	(void)
 {
 	TODO();
 }
 
-wstdcall void WIN_FUNC(_except_handler3,0)
+void WIN_FUNC(_except_handler3,0)
 	(void)
 {
 	TODO();
@@ -2690,6 +2690,21 @@ void WIN_FUNC(_purecall,0)
 	(void)
 {
 	TODO();
+}
+
+wstdcall NTSTATUS WIN_FUNC(WdfVersionBind,4)
+	(struct driver_object *drv_obj, struct unicode_string *reg_path,
+	 void *wdf_version, void *wdf_globals)
+{
+	TODO();
+	return STATUS_SUCCESS;
+}
+
+wstdcall NTSTATUS WIN_FUNC(WdfVersionUnbind,1)
+	(void *version)
+{
+	TODO();
+	return STATUS_SUCCESS;
 }
 
 #include "ntoskernel_exports.h"

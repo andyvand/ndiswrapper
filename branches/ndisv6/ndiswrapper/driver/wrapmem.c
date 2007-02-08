@@ -56,6 +56,7 @@ void wrapmem_exit(void)
 	enum alloc_type type;
 	struct nt_list *ent;
 
+	TRACEENTER1("");
 	/* free all pointers on the slack list */
 	nt_spin_lock(&alloc_lock);
 	while ((ent = RemoveHeadList(&slack_allocs))) {
@@ -103,7 +104,7 @@ void wrapmem_exit(void)
 	nt_spin_unlock(&alloc_lock);
 #endif
 #endif
-	return;
+	TRACEEXIT1(return);
 }
 
 void wrapmem_info(void)

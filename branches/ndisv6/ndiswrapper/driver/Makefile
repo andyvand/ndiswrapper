@@ -1,5 +1,5 @@
 DISTFILES=divdi3.c hal.c iw_ndis.c iw_ndis.h loader.c loader.h \
-		longlong.h Makefile crt.c ndis.c ndis.h ndisdot11.h \
+		longlong.h Makefile crt.c ndis.c ndis.h \
 		ndiswrapper.h ntoskernel.c ntoskernel.h ntoskernel_io.c \
 		pe_linker.c pe_linker.h pnp.c pnp.h proc.c rtl.c usb.c usb.h \
 		winnt_types.h workqueue.c wrapmem.h wrapmem.c wrapper.c \
@@ -83,11 +83,6 @@ ifdef ALLOC_DEBUG
 CFLAGS += -DALLOC_DEBUG=$(ALLOC_DEBUG)
 endif
 
-# enable workaround for VIA VT6655
-ifdef VT6655
-CFLAGS += -DVT6655
-endif
-
 .PHONY: prereq_check gen_exports clean dist_clean install stack_check
 
 all : prereq_check win2lin_stubs.h gen_exports default stack_check
@@ -131,7 +126,7 @@ endif
 
 ntoskernel.h: lin2win.h
 
-ndis.h: ntoskernel.h ndisdot11.h
+ndis.h: ntoskernel.h
 
 iw_ndis.h: ntoskernel.h
 
