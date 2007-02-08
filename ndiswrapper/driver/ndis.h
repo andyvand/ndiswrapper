@@ -248,27 +248,6 @@ enum ndis_request_type {
 	NdisRequestGeneric4, NdisRequestMethod,
 };	
 
-struct ndis_request {
-	mac_address mac;
-	enum ndis_request_type request_type;
-	union data {
-		struct query_info {
-			UINT oid;
-			void *buf;
-			UINT buf_len;
-			UINT written;
-			UINT needed;
-		} query_info;
-		struct set_info {
-			UINT oid;
-			void *buf;
-			UINT buf_len;
-			UINT written;
-			UINT needed;
-		} set_info;
-	} data;
-};
-
 enum ndis_medium {
 	NdisMedium802_3, NdisMedium802_5, NdisMediumFddi, NdisMediumWan,
 	NdisMediumLocalTalk, NdisMediumDix, NdisMediumArcnetRaw,
@@ -1334,6 +1313,7 @@ struct wrap_ndis_device {
 	int stats_interval;
 	struct timer_list stats_timer;
 	unsigned long scan_timestamp;
+	struct ndis_dot11_supported_phy_types *phy_types;
 	enum ndis_dot11_bss_type bss_type;
 	enum ndis_dot11_auth_algorithm auth_algo;
 	struct cipher_info cipher_info;

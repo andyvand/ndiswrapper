@@ -60,7 +60,7 @@ uninstall:
 	@for module in $(shell find /lib/modules/$(KVERS) \
 			-name "ndiswrapper*"); do \
 		echo "removing $$module"; \
-		/bin/rm -f $$module; \
+		-/bin/rm -f $$module; \
 	done
 
 dist:

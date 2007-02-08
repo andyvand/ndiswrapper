@@ -31,6 +31,11 @@ NDIS_STATUS miniport_query_int(struct wrap_ndis_device *wnd, ndis_oid oid,
 			       ULONG *data);
 NDIS_STATUS miniport_set_int(struct wrap_ndis_device *wnd, ndis_oid oid,
 			     ULONG data);
+NDIS_STATUS miniport_request_method_needed(struct wrap_ndis_device *wnd,
+					   ndis_oid oid, void *buf, int buf_len,
+					   UINT *bytes_needed);
+NDIS_STATUS miniport_request_method(struct wrap_ndis_device *wnd,
+				    ndis_oid oid, void *buf, int buf_len);
 void free_tx_buffer_list(struct wrap_ndis_device *wnd,
 			     struct net_buffer_list *buffer_list);
 int init_ndis_driver(struct driver_object *drv_obj);

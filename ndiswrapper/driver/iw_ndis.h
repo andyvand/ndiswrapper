@@ -24,13 +24,15 @@
 
 int add_wep_key(struct wrap_ndis_device *wnd, char *key, int key_len,
 		int index);
-int set_essid(struct wrap_ndis_device *wnd, const char *ssid, int ssid_len);
-int set_infra_mode(struct wrap_ndis_device *wnd, enum ndis_dot11_bss_type mode);
+NDIS_STATUS set_essid(struct wrap_ndis_device *wnd, const char *ssid,
+		      int ssid_len);
+NDIS_STATUS set_infra_mode(struct wrap_ndis_device *wnd,
+			   enum ndis_dot11_bss_type mode);
 int get_ap_address(struct wrap_ndis_device *wnd, mac_address mac);
-int set_auth_mode(struct wrap_ndis_device *wnd,
-		  enum ndis_dot11_auth_algorithm algo_id);
-int set_encr_mode(struct wrap_ndis_device *wnd,
-		  enum ndis_dot11_cipher_algorithm algo_id);
+NDIS_STATUS set_auth_algo(struct wrap_ndis_device *wnd,
+			  enum ndis_dot11_auth_algorithm algo_id);
+NDIS_STATUS set_cipher_algo(struct wrap_ndis_device *wnd,
+			    enum ndis_dot11_cipher_algorithm algo_id);
 enum ndis_dot11_auth_algorithm get_auth_mode(struct wrap_ndis_device *wnd);
 enum ndis_dot11_cipher_algorithm get_cipher_mode(struct wrap_ndis_device *wnd);
 int set_priv_filter(struct wrap_ndis_device *wnd, int flags);

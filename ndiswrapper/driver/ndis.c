@@ -193,7 +193,7 @@ wstdcall void *WIN_FUNC(NdisAllocateMemoryWithTagPriority,4)
 	 enum mm_page_priority priority)
 {
 	void *res;
-	TRACEENTER3("%p, %u", wnd, length);
+	TRACEENTER4("%p, %u", wnd, length);
 	res = ExAllocatePoolWithTag(NonPagedPool, length, tag);
 	TRACEEXIT4(return res);
 }
@@ -565,23 +565,9 @@ wstdcall ULONG WIN_FUNC(NDIS_BUFFER_TO_SPAN_PAGES,1)
 		TRACEEXIT2(return 0);
 	if (MmGetMdlByteCount(buffer) == 0)
 		TRACEEXIT2(return 1);
+
 	length = MmGetMdlByteCount(buffer);
-
-#ifdef VT6655
-	/* VIA VT6655 works with this bogus computation, but not with
-	 * correct computation with SPAN_PAGES */
-	do {
-		ULONG_PTR start, end;
-		unsigned long ptr;
-
-		ptr = (unsigned long)MmGetMdlVirtualAddress(buffer);
-		start = ptr & (PAGE_SIZE - 1);
-		end = (ptr + length + PAGE_SIZE - 1) & PAGE_MASK;
-		n = (end - start) / PAGE_SIZE;
-	} while (0);
-#else
 	n = SPAN_PAGES(MmGetMdlVirtualAddress(buffer), length);
-#endif
 	DBGTRACE4("%p, %p, %d, %d", buffer->startva, buffer->mappedsystemva,
 		  length, n);
 	TRACEEXIT3(return n);
@@ -1596,16 +1582,16 @@ wstdcall struct mdl *WIN_FUNC(NdisAllocateMdl,3)
 {
 	struct mdl *mdl;
 
-	TRACEENTER3("%p, %p, %u", handle, virt, length);
+	TRACEENTER4("%p, %p, %u", handle, virt, length);
 	mdl = allocate_init_mdl(virt, length);
-	DBGTRACE3("%p", mdl);
+	DBGTRACE4("%p", mdl);
 	return mdl;
 }
 
 wstdcall void WIN_FUNC(NdisFreeMdl,1)
 	(struct mdl *mdl)
 {
-	TRACEENTER3("%p", mdl);
+	TRACEENTER4("%p", mdl);
 	free_mdl(mdl);
 }
 
@@ -1837,9 +1823,9 @@ wstdcall BOOLEAN WIN_FUNC(NdisMSynchronizeWithInterruptEx,3)
 wstdcall void WIN_FUNC(NdisMIndicateStatusEx,4)
 	(struct wrap_ndis_device *wnd, struct ndis_status_indication *status)
 {
-//	struct ndis_auth_req *auth_req;
-//	struct ndis_radio_status_indication *radio_status;
 	struct ndis_link_state *link_state;
+	struct ndis_dot11_association_start_parameters *assoc_start;
+	struct ndis_dot11_association_completion_parameters *assoc_comp;
 
 	TRACEENTER2("status=0x%x", status->code);
 	if (status->header.type !=  NDIS_OBJECT_TYPE_STATUS_INDICATION) {
@@ -1850,6 +1836,7 @@ wstdcall void WIN_FUNC(NdisMIndicateStatusEx,4)
 	switch (status->code) {
 	case NDIS_STATUS_LINK_STATE:
 		link_state = status->buf;
+		DBGTRACE2("%d", link_state->media_connect_state);
 		if (link_state->media_connect_state ==
 		    MediaConnectStateConnected) {
 			netif_carrier_on(wnd->net_dev);
@@ -1857,20 +1844,39 @@ wstdcall void WIN_FUNC(NdisMIndicateStatusEx,4)
 				&wnd->wrap_ndis_pending_work);
 			schedule_wrap_work(&wnd->wrap_ndis_work);
 		} else if (link_state->media_connect_state ==
-			   MediaConnectStateConnected) {
-			netif_carrier_on(wnd->net_dev);
+			   MediaConnectStateDisconnected) {
+			netif_carrier_off(wnd->net_dev);
 			set_bit(LINK_STATUS_CHANGED,
 				&wnd->wrap_ndis_pending_work);
 			schedule_wrap_work(&wnd->wrap_ndis_work);
 		}
 		break;
+	case NDIS_STATUS_DOT11_DISASSOCIATION:
+		netif_carrier_off(wnd->net_dev);
+		set_bit(LINK_STATUS_CHANGED, &wnd->wrap_ndis_pending_work);
+		schedule_wrap_work(&wnd->wrap_ndis_work);
+		break;
+	case NDIS_STATUS_DOT11_CONNECTION_COMPLETION:
+		assoc_comp = status->buf;
+		DBGTRACE2("0x%x, 0x%x, 0x%x", assoc_comp->header.size,
+			  sizeof(*assoc_comp), status->buf_len);
+		DBGTRACE2("ap: " MACSTRSEP ", 0x%x, 0x%x, 0x%x",
+			  MAC2STR(assoc_comp->mac), assoc_comp->status,
+			  assoc_comp->auth_algo, assoc_comp->unicast_cipher);
+		netif_carrier_on(wnd->net_dev);
+		set_bit(LINK_STATUS_CHANGED, &wnd->wrap_ndis_pending_work);
+		schedule_wrap_work(&wnd->wrap_ndis_work);
+		break;
+	case NDIS_STATUS_DOT11_CONNECTION_START:
+		assoc_start = status->buf;
+		DBGTRACE2("0x%x, 0x%x", assoc_start->header.size,
+			  sizeof(*assoc_start));
+		DBGTRACE2("ap: " MACSTRSEP, MAC2STR(assoc_start->mac));
+		break;
 	default:
 		DBGTRACE2("unknown status: %08X, %p, %p, %p %u", status->code,
 			  status->dst_handle, status->request_id, status->buf,
 			  status->buf_len);
-		wnd->ndis_comm_status = status->code;
-		wnd->ndis_comm_done = 1;
-		wake_up(&wnd->ndis_comm_wq);
 		break;
 	}
 
@@ -2143,6 +2149,12 @@ wstdcall void WIN_FUNC(NdisFreeIoWorkItem,1)
 	(void *work_item_handle)
 {
 	IoFreeWorkItem(work_item_handle);
+}
+
+wstdcall UINT WIN_FUNC(NdisGetVersion,0)
+	(void)
+{
+	return (6 << 16 | 0);
 }
 
 wstdcall void WIN_FUNC(NdisMRemoveMiniport,1)

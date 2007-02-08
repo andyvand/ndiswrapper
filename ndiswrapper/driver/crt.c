@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2006-2007 Giridhar Pemmasani
+ *  Copyright (C) 2003-2005 Pontus Fuchs, Giridhar Pemmasani
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -383,20 +383,19 @@ void dump_stack(void)
 
 void dump_bytes(const char *ctx, const u8 *from, int len)
 {
-	int i, j;
-	u8 *buf;
+	int i;
+	u8 buf[16 * 3 + 1], *p;
 
-	buf = kmalloc(len * 3 + 1, gfp_irql());
-	if (!buf) {
-		ERROR("couldn't allocate memory");
-		return;
+	i = 0;
+	p = buf;
+	while (i < len) {
+		p += sprintf(p, "%02x ", from[i++]);
+		if (i % 16 == 0) {
+			*p = 0;
+			printk(KERN_DEBUG "%s: %p: %s\n", ctx, from, buf);
+			p = buf;
+		}
 	}
-	for (i = j = 0; i < len; i++, j += 3) {
-		sprintf(&buf[j], "%02x ", from[i]);
-	}
-	buf[j] = 0;
-	printk(KERN_DEBUG "%s: %p: %s\n", ctx, from, buf);
-	kfree(buf);
 }
 
 #include "crt_exports.h"

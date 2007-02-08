@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2006-2007 Giridhar Pemmasani
+ *  Copyright (C) 2003-2005 Pontus Fuchs, Giridhar Pemmasani
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -30,10 +30,38 @@ static int procfs_read_ndis_stats(char *page, char **start, off_t off,
 				  int count, int *eof, void *data)
 {
 	char *p = page;
+	struct wrap_ndis_device *wnd = (struct wrap_ndis_device *)data;
+	struct ndis_wireless_stats stats;
+	NDIS_STATUS res;
+	ndis_rssi rssi;
 
 	if (off != 0) {
 		*eof = 1;
 		return 0;
+	}
+
+	res = miniport_query_info(wnd, OID_802_11_RSSI, &rssi, sizeof(rssi));
+	if (!res)
+		p += sprintf(p, "signal_level=%d dBm\n", (s32)rssi);
+
+	res = miniport_query_info(wnd, OID_802_11_STATISTICS,
+				  &stats, sizeof(stats));
+	if (!res) {
+
+		p += sprintf(p, "tx_frames=%Lu\n", stats.tx_frag);
+		p += sprintf(p, "tx_multicast_frames=%Lu\n",
+			     stats.tx_multi_frag);
+		p += sprintf(p, "tx_failed=%Lu\n", stats.failed);
+		p += sprintf(p, "tx_retry=%Lu\n", stats.retry);
+		p += sprintf(p, "tx_multi_rerty=%Lu\n", stats.multi_retry);
+		p += sprintf(p, "tx_rtss_success=%Lu\n", stats.rtss_succ);
+		p += sprintf(p, "tx_rtss_fail=%Lu\n", stats.rtss_fail);
+		p += sprintf(p, "ack_fail=%Lu\n", stats.ack_fail);
+		p += sprintf(p, "frame_duplicates=%Lu\n", stats.frame_dup);
+		p += sprintf(p, "rx_frames=%Lu\n", stats.rx_frag);
+		p += sprintf(p, "rx_multicast_frames=%Lu\n",
+			     stats.rx_multi_frag);
+		p += sprintf(p, "fcs_errors=%Lu\n", stats.fcs_err);
 	}
 
 	if (p - page > count) {
@@ -55,6 +83,12 @@ static int procfs_read_ndis_encr(char *page, char **start, off_t off,
 		return 0;
 	}
 
+	if (p - page > count) {
+		WARNING("wrote %lu bytes (limit is %u)",
+			(unsigned long)(p - page), count);
+		*eof = 1;
+	}
+
 	return (p - page);
 }
 
@@ -66,6 +100,12 @@ static int procfs_read_ndis_hw(char *page, char **start, off_t off,
 	if (off != 0) {
 		*eof = 1;
 		return 0;
+	}
+
+	if (p - page > count) {
+		WARNING("wrote %lu bytes (limit is %u)",
+			(unsigned long)(p - page), count);
+		*eof = 1;
 	}
 
 	return (p - page);
@@ -180,6 +220,7 @@ int wrap_procfs_add_ndis_device(struct wrap_ndis_device *wnd)
 {
 	struct proc_dir_entry *procfs_entry;
 
+	TRACEENTER1("%p", wnd);
 	if (wrap_procfs_entry == NULL)
 		return -ENOMEM;
 
@@ -244,7 +285,7 @@ int wrap_procfs_add_ndis_device(struct wrap_ndis_device *wnd)
 		procfs_entry->read_proc = procfs_read_ndis_settings;
 		procfs_entry->write_proc = procfs_write_ndis_settings;
 	}
-	return 0;
+	TRACEEXIT1(return 0);
 
 err_settings:
 	remove_proc_entry("encr", wnd->procfs_iface);
