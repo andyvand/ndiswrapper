@@ -1155,10 +1155,7 @@ void hangcheck_add(struct wrap_ndis_device *wnd)
 	if (!wnd->wd->driver->ndis_driver->miniport.hangcheck ||
 	    hangcheck_interval < 0)
 		TRACEEXIT2(return);
-	if (timer_pending(&wnd->hangcheck_timer)) {
-		WARNING("timer is already running!");
-		return;
-	}
+
 	if (hangcheck_interval > 0)
 		wnd->hangcheck_interval = hangcheck_interval * HZ;
 	if (wnd->hangcheck_interval < 0)
