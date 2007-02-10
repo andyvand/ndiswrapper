@@ -85,13 +85,8 @@ static int iw_set_essid(struct net_device *dev, struct iw_request_info *info,
 	}
 
 	res = set_essid(wnd, extra, length);
-	if (!res) {
-		res = miniport_set_info(wnd, OID_DOT11_CONNECT_REQUEST,
-					NULL, 0);
-		DBGTRACE2("%08X", res);
-		if (res)
-			res = -EOPNOTSUPP;
-	}
+	if (res != NDIS_STATUS_SUCCESS)
+		res = -EOPNOTSUPP;
 	TRACEEXIT2(return res);
 }
 
@@ -117,7 +112,10 @@ static int iw_get_essid(struct net_device *dev, struct iw_request_info *info,
 			wrqu->essid.flags  = 1;
 		else
 			wrqu->essid.flags = 0;
-		DBGTRACE2("ssid(%d): " MACSTR, wrqu->essid.length, MAC2STR(extra));
+		if (ssid_list.ssids[0].length == DOT11_SSID_MAX_LENGTH)
+			ssid_list.ssids[0].length--;
+		ssid_list.ssids[0].ssid[ssid_list.ssids[0].length] = 0;
+		DBGTRACE2("\"%s\"", ssid_list.ssids[0].ssid);
 		res = 0;
 	} else
 		res = -EOPNOTSUPP;
@@ -146,11 +144,11 @@ static int iw_set_infra_mode(struct net_device *dev,
 
 	TRACEENTER2("");
 	switch (wrqu->mode) {
-	case IW_MODE_ADHOC:
-		bss_type = ndis_dot11_bss_type_independent;
-		break;
 	case IW_MODE_INFRA:
 		bss_type = ndis_dot11_bss_type_infrastructure;
+		break;
+	case IW_MODE_ADHOC:
+		bss_type = ndis_dot11_bss_type_independent;
 		break;
 	default:
 		TRACEEXIT2(return -EINVAL);
@@ -200,13 +198,13 @@ static const char *network_type_to_name(enum ndis_dot11_phy_type type)
 	case ndis_dot11_phy_type_fhss:
 		return "IEEE 802.11FH";
 	case ndis_dot11_phy_type_dsss:
-		return "IEEE 802.11b/g";
+		return "IEEE 802.11";
 	case ndis_dot11_phy_type_ofdm:
 		return "IEEE 802.11a";
 	case ndis_dot11_phy_type_hrdsss:
-		return "IEEE 802.11g";
+		return "IEEE 802.11b";
 	case ndis_dot11_phy_type_erp:
-		return "IEEE 802.11n";
+		return "IEEE 802.11g";
 	default:
 		WARNING("invalid type: %d", type);
 		return "Unkown";
@@ -223,10 +221,15 @@ static int iw_get_network_type(struct net_device *dev,
 
 	res = miniport_query_info(wnd, OID_DOT11_CURRENT_PHY_ID,
 				  &n, sizeof(ULONG));
+	DBGTRACE2("%08X, %d", res, n);
 	if (res || n > wnd->phy_types->num_entries)
 		TRACEEXIT2(return -EOPNOTSUPP);
-
-	strncpy(wrqu->name, network_type_to_name(wnd->phy_types->types[n - 1]),
+	if (n != wnd->phy_id) {
+		WARNING("%u != %u", n, wnd->phy_id);
+		wnd->phy_id = n;
+	}
+	strncpy(wrqu->name,
+		network_type_to_name(wnd->phy_types->phy_types[n]),
 		sizeof(wrqu->name) - 1);
 	wrqu->name[sizeof(wrqu->name)-1] = 0;
 	return 0;
@@ -292,6 +295,9 @@ static int iw_get_tx_power(struct net_device *dev, struct iw_request_info *info,
 	NDIS_STATUS res;
 	ULONG n;
 
+	res = miniport_query_info(wnd, OID_DOT11_CURRENT_TX_POWER_LEVEL,
+				  &n, sizeof(n));
+	DBGTRACE2("%08X, %d", res, n);
 	res = miniport_query_info_needed(wnd, OID_DOT11_SUPPORTED_POWER_LEVELS,
 					 NULL, 0, &n);
 	if (res != NDIS_STATUS_BUFFER_OVERFLOW) {
@@ -529,6 +535,7 @@ static int iw_set_ap_address(struct net_device *dev,
 	bssid_list.num_total_entries = 1;
 	memcpy(bssid_list.bssids[0], wrqu->ap_addr.sa_data,
 	       sizeof(bssid_list.bssids[0]));
+	DBGTRACE2("ap: " MACSTRSEP, MAC2STR(bssid_list.bssids[0]));
 	res = miniport_set_info(wnd, OID_DOT11_DESIRED_BSSID_LIST,
 				&bssid_list, sizeof(bssid_list));
 	if (res) {
@@ -609,12 +616,14 @@ enum ndis_dot11_cipher_algorithm get_cipher_mode(struct wrap_ndis_device *wnd)
 				DOT11_CIPHER_ALGORITHM_LIST_REVISION_1);
 	cipher_algos.num_entries = 1;
 	cipher_algos.num_total_entries = 1;
-	res = miniport_query_info(wnd, OID_DOT11_ENABLED_UNICAST_CIPHER_ALGORITHM,
+	res = miniport_query_info(wnd,
+				  OID_DOT11_ENABLED_UNICAST_CIPHER_ALGORITHM,
 				  &cipher_algos, sizeof(cipher_algos));
 	if (res) {
 		WARNING("getting cipher algorithm failed: %08X", res);
 		return DOT11_CIPHER_ALGO_NONE;
 	}
+	DBGTRACE2("%d, %d", cipher_algos.algo_ids[0], wnd->cipher_info.algo);
 	if (cipher_algos.algo_ids[0] != wnd->cipher_info.algo)
 		WARNING("%d != %d", cipher_algos.algo_ids[0],
 			wnd->cipher_info.algo);
@@ -840,9 +849,9 @@ static int iw_set_wep(struct net_device *dev, struct iw_request_info *info,
 		cipher_info->tx_index = index;
 	}
 
-	if (key_len == 8)
+	if (key_len == 5)
 		algo = DOT11_CIPHER_ALGO_WEP40;
-	else if (key_len == 16)
+	else if (key_len == 13)
 		algo = DOT11_CIPHER_ALGO_WEP104;
 	else
 		return -EINVAL;
@@ -903,6 +912,8 @@ static char *ndis_translate_scan(struct net_device *dev, char *event,
 
 	DBGTRACE2("0x%x, 0x%x, 0x%x", bss->phy_id, bss->bss_type,
 		  bss->in_reg_domain);
+	if (bss->phy_id > 2)
+		return event;
 	/* add mac address */
 	memset(&iwe, 0, sizeof(iwe));
 	iwe.cmd = SIOCGIWAP;
@@ -916,7 +927,7 @@ static char *ndis_translate_scan(struct net_device *dev, char *event,
 	memset(&iwe, 0, sizeof(iwe));
 	iwe.cmd = SIOCGIWNAME;
 	strncpy(iwe.u.name,
-		network_type_to_name(wnd->phy_types->types[bss->phy_id]),
+		network_type_to_name(wnd->phy_types->phy_types[bss->phy_id]),
 		IFNAMSIZ);
 	event = iwe_stream_add_event(event, end_buf, &iwe, IW_EV_CHAR_LEN);
 
@@ -951,6 +962,7 @@ static char *ndis_translate_scan(struct net_device *dev, char *event,
 	ie = (typeof(ie))bss->buffer;
 	while (i < bss->buffer_length) {
 		char *current_val;
+		DBGTRACE2("0x%x", ie->id);
 		switch (ie->id) {
 		case DOT11_INFO_ELEMENT_ID_SSID:
 			memset(&iwe, 0, sizeof(iwe));
@@ -1012,8 +1024,6 @@ int set_scan(struct wrap_ndis_device *wnd)
 	scan_req = kzalloc(len, GFP_KERNEL);
 	if (!scan_req)
 		return -ENOMEM;
-	DBGTRACE2("%d, %d", wnd->extsta_capa.scan_ssid_list_size,
-		  wnd->extsta_capa.wep_key_value_max_length);
 	DBGTRACE2("%d, %d, %d", sizeof(*scan_req), len,
 		  sizeof(struct ndis_dot11_ssid));
 	memset(scan_req, 0, len);
@@ -1069,14 +1079,13 @@ static int iw_get_scan(struct net_device *dev, struct iw_request_info *info,
 		return -EAGAIN;
 	/* try with space for a few scan items */
 	len = sizeof(*byte_array) + sizeof(*bss_entry) * 8;
+	len = 1024;
 	byte_array = kzalloc(len, GFP_KERNEL);
 	if (!byte_array) {
 		ERROR("couldn't allocate memory");
 		return -ENOMEM;
 	}
-	memcpy(byte_array, wnd->country_string, sizeof(wnd->country_string));
-	((char *)byte_array)[0] = 'U';
-	((char *)byte_array)[1] = 'S';
+	memcpy(byte_array, "USA", 3);
 	DBGTRACE2("%d", sizeof(*byte_array));
 	res = miniport_request_method_needed(wnd, OID_DOT11_ENUM_BSS_LIST,
 					     byte_array, len, &len);
@@ -1084,14 +1093,13 @@ static int iw_get_scan(struct net_device *dev, struct iw_request_info *info,
 	    res == NDIS_STATUS_BUFFER_OVERFLOW ||
 	    res == NDIS_STATUS_BUFFER_TOO_SHORT) {
 		/* now try with required space */
+		DBGTRACE2("%d", len);
 		kfree(byte_array);
 		byte_array = kzalloc(len, GFP_KERNEL);
 		if (!byte_array) {
 			ERROR("couldn't allocate memory");
 			return -ENOMEM;
 		}
-		memcpy(byte_array, wnd->country_string,
-		       sizeof(wnd->country_string));
 		res = miniport_request_method(wnd, OID_DOT11_ENUM_BSS_LIST,
 					      byte_array, len);
 	}
@@ -1106,10 +1114,11 @@ static int iw_get_scan(struct net_device *dev, struct iw_request_info *info,
 	while (i < byte_array->num_bytes) {
 		event = ndis_translate_scan(dev, event,
 					    extra + IW_SCAN_MAX_DATA, cur_item);
-		i += sizeof(*cur_item) + cur_item->buffer_length - 1;
+		i += sizeof(*cur_item) + cur_item->buffer_length;
 		cur_item = (typeof(cur_item))
 			((char *)cur_item + sizeof(*cur_item) +
-			 cur_item->buffer_length - 1);
+			 cur_item->buffer_length);
+		DBGTRACE2("%d", i);
 	}
 	wrqu->data.length = event - extra;
 	wrqu->data.flags = 0;
@@ -1124,12 +1133,20 @@ static int iw_set_power_mode(struct net_device *dev,
 	struct wrap_ndis_device *wnd = netdev_priv(dev);
 	NDIS_STATUS res;
 	ULONG power_mode;
+	BOOLEAN hw_state;
 
 	TRACEENTER2("");
-	if (wrqu->power.disabled == 1)
+	if (wrqu->power.disabled == 1) {
 		power_mode = DOT11_POWER_SAVING_NO_POWER_SAVING;
-	else
+		hw_state = FALSE;
+	} else {
 		power_mode = DOT11_POWER_SAVING_FAST_PSP;
+		hw_state = TRUE;
+	}
+
+	res = miniport_set_info(wnd, OID_DOT11_HARDWARE_PHY_STATE,
+				&hw_state, sizeof(hw_state));
+	DBGTRACE2("%d, %08X", hw_state, res);
 
 	res = miniport_set_info(wnd, OID_DOT11_POWER_MGMT_REQUEST,
 				&power_mode, sizeof(power_mode));
@@ -1146,11 +1163,16 @@ static int iw_get_power_mode(struct net_device *dev,
 	struct wrap_ndis_device *wnd = netdev_priv(dev);
 	NDIS_STATUS res;
 	ULONG power_mode;
+	BOOLEAN hw_state;
 
 	TRACEENTER2("");
 	res = miniport_query_info(wnd, OID_DOT11_POWER_MGMT_MODE,
 				  &power_mode, sizeof(power_mode));
 	DBGTRACE2("%d, %08X", power_mode, res);
+
+	res = miniport_query_info(wnd, OID_DOT11_HARDWARE_PHY_STATE,
+				  &hw_state, sizeof(hw_state));
+	DBGTRACE2("%d, %08X", hw_state, res);
 
 	res = miniport_query_info(wnd, OID_DOT11_POWER_MGMT_REQUEST,
 				  &power_mode, sizeof(power_mode));
@@ -1464,32 +1486,26 @@ static const iw_handler	ndis_handler[] = {
 static int priv_reset(struct net_device *dev, struct iw_request_info *info,
 		      union iwreq_data *wrqu, char *extra)
 {
+	struct wrap_ndis_device *wnd = netdev_priv(dev);
+	struct ndis_dot11_reset_request reset_req;
 	int res;
+
 	TRACEENTER2("");
-	res = miniport_reset(netdev_priv(dev));
+	if (wrqu->param.value == 0)
+		res = miniport_reset(netdev_priv(dev));
+	else if (wrqu->param.value == 1) {
+		reset_req.type = ndis_dot11_reset_type_phy_and_mac;
+		reset_req.set_default_mib = FALSE;
+		res = miniport_set_info(wnd, OID_DOT11_RESET_REQUEST,
+					&reset_req, sizeof(reset_req));
+	} else {
+		res = miniport_set_info(wnd, OID_DOT11_DISCONNECT_REQUEST,
+					NULL, 0);
+	}
 	if (res) {
 		WARNING("reset failed: %08X", res);
 		return -EOPNOTSUPP;
 	}
-	return 0;
-}
-
-static int priv_usb_reset(struct net_device *dev, struct iw_request_info *info,
-			  union iwreq_data *wrqu, char *extra)
-{
-	int res;
-	struct wrap_ndis_device *wnd;
-
-	TRACEENTER2("");
-	wnd = netdev_priv(dev);
-	res = 0;
-#if defined(CONFIG_USB) && LINUX_VERSION_CODE > KERNEL_VERSION(2,6,0)
-	res = usb_reset_configuration(wnd->wd->usb.udev);
-	if (res) {
-		WARNING("reset failed: %08X", res);
-		return -EOPNOTSUPP;
-	}
-#endif
 	return 0;
 }
 
@@ -1508,13 +1524,6 @@ static int priv_network_type(struct net_device *dev,
 	TRACEEXIT2(return 0);
 }
 
-static int priv_media_stream_mode(struct net_device *dev,
-				  struct iw_request_info *info,
-				  union iwreq_data *wrqu, char *extra)
-{
-	TRACEEXIT2(return 0);
-}
-
 static int priv_set_cipher_mode(struct net_device *dev,
 				struct iw_request_info *info,
 				union iwreq_data *wrqu, char *extra)
@@ -1529,6 +1538,91 @@ static int priv_set_auth_mode(struct net_device *dev,
 	TRACEEXIT2(return 0);
 }
 
+static int priv_set_phy_id(struct net_device *dev, struct iw_request_info *info,
+			   union iwreq_data *wrqu, char *extra)
+{
+	struct wrap_ndis_device *wnd = netdev_priv(dev);
+	ULONG id;
+	int res;
+
+	TRACEENTER2("");
+	res = miniport_query_info(wnd, OID_DOT11_CURRENT_PHY_ID,
+				  &id, sizeof(id));
+	DBGTRACE2("%08X, %u", res, id);
+	if (res)
+		return -EINVAL;
+	if (id != wnd->phy_id) {
+		WARNING("%u != %u", id, wnd->phy_id);
+		wnd->phy_id = id;
+	}
+	id = wrqu->param.value;
+	DBGTRACE2("%d, %d", id, wnd->phy_types->num_entries);
+	if (id > wnd->phy_types->num_entries) {
+		struct ndis_dot11_phy_id_list phy_id_list;
+		memset(&phy_id_list, 0, sizeof(phy_id_list));
+		init_ndis_object_header(&phy_id_list, NDIS_OBJECT_TYPE_DEFAULT,
+					DOT11_PHY_ID_LIST_REVISION_1);
+		phy_id_list.num_entries = 1;
+		phy_id_list.num_total_entries = 1;
+		phy_id_list.phy_ids[0] = DOT11_PHY_ID_ANY;
+		res = miniport_set_info(wnd, OID_DOT11_DESIRED_PHY_LIST,
+					&phy_id_list, sizeof(phy_id_list));
+	} else {
+		res = miniport_set_info(wnd, OID_DOT11_CURRENT_PHY_ID,
+					&id, sizeof(id));
+		if (res == NDIS_STATUS_SUCCESS)
+			wnd->phy_id = id;
+	}
+	if (res)
+		return -EINVAL;
+	else
+		return 0;
+}
+
+static int priv_set_nic_power(struct net_device *dev,
+			      struct iw_request_info *info,
+			      union iwreq_data *wrqu, char *extra)
+{
+	struct wrap_ndis_device *wnd = netdev_priv(dev);
+	BOOLEAN state;
+	NDIS_STATUS res;
+
+	res = miniport_query_info(wnd, OID_DOT11_HARDWARE_PHY_STATE,
+				  &state, sizeof(state));
+	DBGTRACE2("%08X, %d", res, state);
+	res = miniport_query_info(wnd, OID_DOT11_NIC_POWER_STATE,
+				  &state, sizeof(state));
+	DBGTRACE2("%08X, %d", res, state);
+	if (wrqu->param.value)
+		state = TRUE;
+	else
+		state = FALSE;
+	res = miniport_set_info(wnd, OID_DOT11_NIC_POWER_STATE,
+				&state, sizeof(state));
+	if (res)
+		return -EOPNOTSUPP;
+	else
+		return 0;
+}
+
+static int priv_connect(struct net_device *dev, struct iw_request_info *info,
+			union iwreq_data *wrqu, char *extra)
+{
+	struct wrap_ndis_device *wnd = netdev_priv(dev);
+	NDIS_STATUS res;
+
+	if (wrqu->param.value)
+		res = miniport_set_info(wnd, OID_DOT11_CONNECT_REQUEST,
+					NULL, 0);
+	else
+		res = miniport_set_info(wnd, OID_DOT11_DISCONNECT_REQUEST,
+					NULL, 0);
+	if (res)
+		return -EOPNOTSUPP;
+	else
+		return 0;
+}
+
 static int priv_reload_defaults(struct net_device *dev,
 				struct iw_request_info *info,
 				union iwreq_data *wrqu, char *extra)
@@ -1538,19 +1632,23 @@ static int priv_reload_defaults(struct net_device *dev,
 
 
 static const struct iw_priv_args priv_args[] = {
-	{PRIV_RESET, 0, 0, "ndis_reset"},
+	{PRIV_RESET, IW_PRIV_TYPE_INT | IW_PRIV_SIZE_FIXED | 1, 0,
+	 "reset"},
 	{PRIV_POWER_PROFILE, IW_PRIV_TYPE_INT | IW_PRIV_SIZE_FIXED | 1, 0,
 	 "power_profile"},
 	{PRIV_NETWORK_TYPE, IW_PRIV_TYPE_CHAR | IW_PRIV_SIZE_FIXED | 1, 0,
 	 "network_type"},
-	{PRIV_USB_RESET, 0, 0, "usb_reset"},
-	{PRIV_MEDIA_STREAM_MODE, IW_PRIV_TYPE_INT | IW_PRIV_SIZE_FIXED | 1, 0,
-	 "media_stream"},
 
 	{PRIV_SET_CIPHER_MODE, IW_PRIV_TYPE_INT | IW_PRIV_SIZE_FIXED | 1, 0,
 	 "set_cipher_mode"},
 	{PRIV_SET_AUTH_MODE, IW_PRIV_TYPE_INT | IW_PRIV_SIZE_FIXED | 1, 0,
 	 "set_auth_mode"},
+	{PRIV_SET_PHY_ID, IW_PRIV_TYPE_INT | IW_PRIV_SIZE_FIXED | 1, 0,
+	 "set_phy_id"},
+	{PRIV_SET_NIC_POWER, IW_PRIV_TYPE_INT | IW_PRIV_SIZE_FIXED | 1, 0,
+	 "nic_power"},
+	{PRIV_CONNECT, IW_PRIV_TYPE_INT | IW_PRIV_SIZE_FIXED | 1, 0,
+	 "connect"},
 	{PRIV_RELOAD_DEFAULTS, 0, 0, "reload_defaults"},
 };
 
@@ -1558,10 +1656,11 @@ static const iw_handler priv_handler[] = {
 	[PRIV_RESET 		- SIOCIWFIRSTPRIV] = priv_reset,
 	[PRIV_POWER_PROFILE 	- SIOCIWFIRSTPRIV] = priv_power_profile,
 	[PRIV_NETWORK_TYPE 	- SIOCIWFIRSTPRIV] = priv_network_type,
-	[PRIV_USB_RESET		- SIOCIWFIRSTPRIV] = priv_usb_reset,
-	[PRIV_MEDIA_STREAM_MODE	- SIOCIWFIRSTPRIV] = priv_media_stream_mode,
 	[PRIV_SET_CIPHER_MODE 	- SIOCIWFIRSTPRIV] = priv_set_cipher_mode,
 	[PRIV_SET_AUTH_MODE 	- SIOCIWFIRSTPRIV] = priv_set_auth_mode,
+	[PRIV_SET_PHY_ID 	- SIOCIWFIRSTPRIV] = priv_set_phy_id,
+	[PRIV_SET_NIC_POWER 	- SIOCIWFIRSTPRIV] = priv_set_nic_power,
+	[PRIV_CONNECT	 	- SIOCIWFIRSTPRIV] = priv_connect,
 	[PRIV_RELOAD_DEFAULTS 	- SIOCIWFIRSTPRIV] = priv_reload_defaults,
 };
 

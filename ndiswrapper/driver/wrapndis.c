@@ -103,8 +103,8 @@ NDIS_STATUS mp_oid_request_query(struct wrap_ndis_device *wnd, ndis_oid oid,
 	oid_req.data.query.buf = buf;
 	oid_req.data.query.buf_length = buf_len;
 	status = miniport_oid_request(wnd, &oid_req);
-	TRACEENTER2("%d/%d/%d", buf_len, oid_req.data.query.bytes_written,
-		    oid_req.data.query.bytes_needed);
+	DBGTRACE2("%d/%d/%d", buf_len, oid_req.data.query.bytes_written,
+		  oid_req.data.query.bytes_needed);
 	if (status != NDIS_STATUS_SUCCESS && bytes_needed)
 		*bytes_needed = oid_req.data.query.bytes_needed;
 	return status;
@@ -133,6 +133,7 @@ NDIS_STATUS mp_oid_request_set(struct wrap_ndis_device *wnd, ndis_oid oid,
 			       void *buf, UINT buf_len)
 {
 	struct ndis_oid_request oid_req;
+	NDIS_STATUS res;
 
 	TRACEENTER2("%08X", oid);
 	prepare_mp_oid_request(&oid_req);
@@ -140,9 +141,10 @@ NDIS_STATUS mp_oid_request_set(struct wrap_ndis_device *wnd, ndis_oid oid,
 	oid_req.data.set.oid = oid;
 	oid_req.data.set.buf = buf;
 	oid_req.data.set.buf_length = buf_len;
-	TRACEENTER2("%d/%d/%d", buf_len, oid_req.data.set.bytes_written,
-		    oid_req.data.set.bytes_needed);
-	return miniport_oid_request(wnd, &oid_req);
+	res = miniport_oid_request(wnd, &oid_req);
+	DBGTRACE2("%d/%d/%d", buf_len, oid_req.data.set.bytes_written,
+		  oid_req.data.set.bytes_needed);
+	return res;
 }
 
 NDIS_STATUS miniport_set_info(struct wrap_ndis_device *wnd, ndis_oid oid,
@@ -172,8 +174,8 @@ NDIS_STATUS miniport_request_method_needed(struct wrap_ndis_device *wnd,
 	oid_req.data.method.in_buf_length = buf_len;
 	oid_req.data.method.out_buf_length = buf_len;
 	status = miniport_oid_request(wnd, &oid_req);
-	TRACEENTER2("%d/%d/%d/%d", buf_len, oid_req.data.method.bytes_written,
-		    oid_req.data.method.bytes_read, oid_req.data.method.bytes_needed);
+	DBGTRACE2("%d/%d/%d/%d", buf_len, oid_req.data.method.bytes_written,
+		  oid_req.data.method.bytes_read, oid_req.data.method.bytes_needed);
 	if (status != NDIS_STATUS_SUCCESS && bytes_needed)
 		*bytes_needed = oid_req.data.method.bytes_needed;
 	return status;
@@ -189,8 +191,15 @@ NDIS_STATUS miniport_request_method(struct wrap_ndis_device *wnd,
 
 NDIS_STATUS miniport_reset(struct wrap_ndis_device *wnd)
 {
-	TODO();
-	return NDIS_STATUS_SUCCESS;
+	struct wrap_ndis_driver *ndis_driver;
+	NDIS_STATUS res;
+	BOOLEAN address_reset;
+
+	ndis_driver = wnd->wd->driver->ndis_driver;
+	res = LIN2WIN2(ndis_driver->mp_driver_chars.reset, wnd->adapter_ctx,
+		       &address_reset);
+	DBGTRACE2("%08X, %d", res, address_reset);
+	return res;
 }
 
 /* MiniportInitialize */
@@ -242,6 +251,13 @@ static NDIS_STATUS miniport_init(struct wrap_ndis_device *wnd)
 	 * fail after boot */
 	sleep_hz(HZ / 2);
 	set_bit(HW_INITIALIZED, &wnd->hw_status);
+	DBGTRACE1("%08X", miniport_query_info(wnd, OID_PNP_QUERY_POWER,
+					      &status, sizeof(ULONG)));
+	DBGTRACE1("%d", status);
+	status = NdisDeviceStateD0;
+	status = miniport_set_info(wnd, OID_PNP_SET_POWER,
+				   &status, sizeof(ULONG));
+	DBGTRACE1("%08X", status);
 	status = miniport_pnp_event(wnd, NdisDevicePnPEventPowerProfileChanged,
 				    NdisPowerProfileAcOnLine);
 	if (status != NDIS_STATUS_SUCCESS)
@@ -622,42 +638,64 @@ static struct notifier_block netdev_notifier = {
 static void update_wireless_stats(struct wrap_ndis_device *wnd)
 {
 	struct iw_statistics *iw_stats = &wnd->wireless_stats;
-	struct ndis_wireless_stats ndis_stats;
 	NDIS_STATUS res;
-	ndis_rssi rssi;
-	int qual;
+	struct ndis_dot11_statistics *ndis_stats;
+	struct ndis_dot11_phy_frame_statistics *phy_stats;
+	struct ndis_dot11_mac_frame_statistics *mac_stats;
+	int n;
 
 	TRACEENTER2("%p", wnd);
 	if (wnd->stats_enabled == FALSE || !netif_carrier_ok(wnd->net_dev)) {
 		memset(iw_stats, 0, sizeof(*iw_stats));
-		TRACEEXIT2(return);
+//		TRACEEXIT2(return);
 	}
-	memset(iw_stats, 0, sizeof(*iw_stats));
-	return;
-	res = miniport_query_info(wnd, OID_802_11_RSSI, &rssi, sizeof(rssi));
-	if (res == NDIS_STATUS_SUCCESS)
-		iw_stats->qual.level = rssi;
-
-	qual = 100 * (rssi - WL_NOISE) / (WL_SIGMAX - WL_NOISE);
-	if (qual < 0)
-		qual = 0;
-	else if (qual > 100)
-		qual = 100;
-
-	iw_stats->qual.noise = WL_NOISE;
-	iw_stats->qual.qual  = qual;
-
-	res = miniport_query_info(wnd, OID_802_11_STATISTICS,
-				  &ndis_stats, sizeof(ndis_stats));
+	n = sizeof(*ndis_stats) +
+		sizeof(*phy_stats) * (wnd->phy_types->num_entries - 1);
+	ndis_stats = kmalloc(n, GFP_KERNEL);
+	if (!ndis_stats) {
+		WARNING("couldn't allocate memory");
+		return;
+	}
+	memset(ndis_stats, 0, n);
+	init_ndis_object_header(ndis_stats, NDIS_OBJECT_TYPE_DEFAULT,
+				DOT11_STATISTICS_REVISION_1);
+	res = miniport_query_info(wnd, OID_DOT11_STATISTICS, ndis_stats, n);
+	DBGTRACE2("%08X", res);
 	if (res != NDIS_STATUS_SUCCESS)
-		TRACEEXIT2(return);
-	iw_stats->discard.retries = (unsigned long)ndis_stats.retry +
-		(unsigned long)ndis_stats.multi_retry;
-	iw_stats->discard.misc = (unsigned long)ndis_stats.fcs_err +
-		(unsigned long)ndis_stats.rtss_fail +
-		(unsigned long)ndis_stats.ack_fail +
-		(unsigned long)ndis_stats.frame_dup;
+		return;
+	mac_stats = &ndis_stats->mac_ucast_stats;
+	DBGTRACE2("%Lu, %Lu, %Lu, %Lu", mac_stats->tx_frames,
+		  mac_stats->rx_frames, mac_stats->tx_failure_frames,
+		  mac_stats->rx_failure_frames);
 
+	phy_stats = &ndis_stats->phy_stats[wnd->phy_id];
+	DBGTRACE2("%Lu, %Lu, %Lu, %Lu, %Lu, %Lu : "
+		  "%Lu, %Lu, %Lu, %Lu : "
+		  "%Lu, %Lu, %Lu, %Lu : "
+		  "%Lu, %Lu, %Lu, %Lu",
+		  phy_stats->tx_frames,
+		  phy_stats->multicast_tx_frames,
+		  phy_stats->failed,
+		  phy_stats->retry,
+		  phy_stats->multiple_retry,
+		  phy_stats->max_tx_lifetime_exceeded,
+
+		  phy_stats->tx_fragments,
+		  phy_stats->rts_success,
+		  phy_stats->rts_failure,
+		  phy_stats->ack_failure,
+
+		  phy_stats->rx_frames,
+		  phy_stats->multicast_rx_frames,
+		  phy_stats->promisc_rx_frames,
+		  phy_stats->max_rx_lifetime_exceeded,
+
+		  phy_stats->dup_frames,
+		  phy_stats->rx_fragments,
+		  phy_stats->promisc_rx_fragments,
+		  phy_stats->fcs_errors);
+
+	memset(iw_stats, 0, sizeof(*iw_stats));
 	TRACEEXIT2(return);
 }
 
@@ -754,18 +792,34 @@ static void del_stats_timer(struct wrap_ndis_device *wnd)
 static void hangcheck_proc(unsigned long data)
 {
 	struct wrap_ndis_device *wnd = (struct wrap_ndis_device *)data;
+	struct wrap_ndis_driver *ndis_driver;
+	BOOLEAN res;
 
 	TRACEENTER2("");
-	TRACEEXIT3(return);
 	if (wnd->hangcheck_interval <= 0)
 		TRACEEXIT2(return);
-	TODO();
+
+	ndis_driver = wnd->wd->driver->ndis_driver;
+	res = LIN2WIN1(ndis_driver->mp_driver_chars.check_for_hang,
+		       wnd->adapter_ctx);
+	if (res) {
+		set_bit(MINIPORT_RESET, &wnd->wrap_ndis_pending_work);
+		schedule_wrap_work(&wnd->wrap_ndis_work);
+	}
+	mod_timer(&wnd->hangcheck_timer, jiffies + wnd->hangcheck_interval);
 	TRACEEXIT3(return);
 }
 
 void hangcheck_add(struct wrap_ndis_device *wnd)
 {
-	TODO();
+	TRACEENTER2("%d, %d", wnd->hangcheck_interval, hangcheck_interval);
+	if (hangcheck_interval < 0)
+		TRACEEXIT2(return);
+	if (hangcheck_interval > 0)
+		wnd->hangcheck_interval = hangcheck_interval * HZ;
+	if (wnd->hangcheck_interval < 0)
+		wnd->hangcheck_interval *= -1;
+
 	TRACEEXIT2(return);
 	wnd->hangcheck_timer.data = (unsigned long)wnd;
 	wnd->hangcheck_timer.function = hangcheck_proc;
@@ -1052,10 +1106,12 @@ static void init_dot11_station(struct wrap_ndis_device *wnd, void *buf,
 	if (res || wnd->phy_types->num_entries == 0)
 		WARNING("query failed: %08X", res);
 	else {
-		int len;
+		int i, len;
 		len = sizeof(*wnd->phy_types) +
 			(wnd->phy_types->num_entries - 1) *
-			sizeof(wnd->phy_types->types);
+			sizeof(wnd->phy_types->phy_types);
+		for (i = 0; i < wnd->phy_types->num_entries; i++)
+			DBGTRACE2("%d: 0x%x", i, wnd->phy_types->phy_types[i]);
 		wnd->phy_types = kmalloc(len, GFP_KERNEL);
 		if (!wnd->phy_types)
 			WARNING("couldn't allocate memory");
@@ -1073,6 +1129,7 @@ static void init_dot11_station(struct wrap_ndis_device *wnd, void *buf,
 	res = miniport_query_info(wnd,
 				  OID_DOT11_SUPPORTED_COUNTRY_OR_REGION_STRING,
 				  buf, buf_len);
+	DBGTRACE2("%08X", res);
 	if (!res) {
 		int i;
 		for (i = 0; i < country_region_list->num_entries; i++) {
@@ -1080,10 +1137,28 @@ static void init_dot11_station(struct wrap_ndis_device *wnd, void *buf,
 				  country_region_list->entries[i][1]);
 		}
 	}
+	*((ULONG *)buf) = 0;
+	res = miniport_query_info(wnd,
+				  OID_DOT11_MULTI_DOMAIN_CAPABILITY_IMPLEMENTED,
+				  buf, sizeof(BOOLEAN));
+	DBGTRACE2("%08X, %u", res, *((BOOLEAN *)buf));
 
-	set_infra_mode(wnd, ndis_dot11_bss_type_infrastructure);
-	set_auth_algo(wnd, DOT11_AUTH_ALGO_80211_OPEN);
-	set_cipher_algo(wnd, DOT11_CIPHER_ALGO_NONE);
+	res = miniport_query_info(wnd,
+				  OID_DOT11_DESIRED_COUNTRY_OR_REGION_STRING,
+				  buf, buf_len);
+	DBGTRACE2("%08X, %c%c", res, ((char *)buf)[0], ((char *)buf)[1]);
+
+	res = miniport_query_info(wnd, OID_DOT11_CURRENT_PHY_ID,
+				  &wnd->phy_id, sizeof(wnd->phy_id));
+	DBGTRACE2("%08X, %u", res, wnd->phy_id);
+//	*((ULONG *)buf) = 1;
+//	res = miniport_set_info(wnd, OID_DOT11_CURRENT_PHY_ID,
+//				buf, sizeof(ULONG));
+//	DBGTRACE2("%08X, %u", res, *((ULONG *)buf));
+
+//	set_infra_mode(wnd, ndis_dot11_bss_type_infrastructure);
+//	set_auth_algo(wnd, DOT11_AUTH_ALGO_80211_OPEN);
+//	set_cipher_algo(wnd, DOT11_CIPHER_ALGO_NONE);
 	TRACEEXIT1(return);
 }
 
@@ -1271,6 +1346,7 @@ static NDIS_STATUS ndis_start_device(struct wrap_ndis_device *wnd)
 	int n;
 	struct net_buffer_pool_params nb_pool_params;
 	struct net_buffer_list_pool_params nbl_pool_params;
+	struct ndis_dot11_extsta_attributes *extsta_attrs;
 
 	mp_pnp_chars = &wnd->wd->driver->ndis_driver->mp_pnp_chars;
 	if (mp_pnp_chars->add_device)
@@ -1300,13 +1376,37 @@ static NDIS_STATUS ndis_start_device(struct wrap_ndis_device *wnd)
 
 	get_supported_oids(wnd);
 
-	init_ndis_object_header(&wnd->extsta_capa, NDIS_OBJECT_TYPE_DEFAULT,
-				DOT11_EXTSTA_CAPABILITY_REVISION_1);
-	res = miniport_query_info(wnd, OID_DOT11_EXTSTA_CAPABILITY,
-				  &wnd->extsta_capa, sizeof(wnd->extsta_capa));
+	extsta_attrs = wnd->native_802_11_attrs.extsta_attrs;
+	DBGTRACE2("0x%x, %u, %u, %u, %u : %u, %u, %u, %u, %u : %u, %u, %u, "
+		  "%u, %u : %u, 0x%x, %d, %u, %u : %u, %u, %u",
+		  wnd->native_802_11_attrs.op_mode_capability,
+		  wnd->native_802_11_attrs.num_tx_bufs,
+		  wnd->native_802_11_attrs.num_rx_bufs,
+		  wnd->native_802_11_attrs.multi_domain_capability_implemented,
+		  wnd->native_802_11_attrs.num_supported_phys,
 
-	if (res != NDIS_STATUS_SUCCESS)
-		WARNING("extsta_capability failed: %08X", res);
+		  extsta_attrs->scan_ssid_size,
+		  extsta_attrs->desired_bssid_size,
+		  extsta_attrs->desired_ssid_size,
+		  extsta_attrs->excluded_mac_size,
+		  extsta_attrs->privacy_exemption_size,
+
+		  extsta_attrs->key_mapping_size,
+		  extsta_attrs->default_key_size,
+		  extsta_attrs->wep_key_max_length,
+		  extsta_attrs->pmkid_cache_size,
+		  extsta_attrs->max_num_per_sta_default_key_tables,
+
+		  extsta_attrs->strictly_ordered_service_class,
+		  extsta_attrs->qos_protocol_flags,
+		  extsta_attrs->safe_mode,
+		  extsta_attrs->num_country_region_strings,
+		  extsta_attrs->num_infra_ucast_algo_pairs,
+
+		  extsta_attrs->num_infra_mcast_algo_pairs,
+		  extsta_attrs->num_adhoc_ucast_algo_pairs,
+		  extsta_attrs->num_adhoc_mcast_algo_pairs);
+
 
 //	wnd->physical_medium = NdisPhysicalMediumWirelessLan;
 
@@ -1444,16 +1544,6 @@ static NDIS_STATUS ndis_start_device(struct wrap_ndis_device *wnd)
 	if (wnd->physical_medium == NdisPhysicalMediumWirelessLan ||
 	    wnd->physical_medium == NdisPhysicalMediumNative802_11)
 		init_dot11_station(wnd, buf, buf_len);
-
-	res = miniport_query_info(wnd, OID_DOT11_COUNTRY_STRING,
-				  wnd->country_string,
-				  sizeof(wnd->country_string));
-	DBGTRACE2("%08X, %d", res, sizeof(wnd->country_string));
-	if (res != NDIS_STATUS_SUCCESS)
-		memset(wnd->country_string, 0, sizeof(wnd->country_string));
-	else
-		DBGTRACE1("%x:%x:%x", wnd->country_string[0], wnd->country_string[1],
-			  wnd->country_string[2]);
 
 	kfree(buf);
 	wrap_procfs_add_ndis_device(wnd);
