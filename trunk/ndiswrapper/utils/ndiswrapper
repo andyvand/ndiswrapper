@@ -164,7 +164,7 @@ sub get_section {
 	    return \@{$sections{$key}};
 	}
     }
-    printf DBG "couldn't find section $name\n";
+    printf DBG "couldn't find section \"$name\"\n";
     return 0;
 }
 
@@ -463,9 +463,11 @@ sub get_target_os_section {
 	$arch = "X86";
     }
     chomp($secn);
-    printf DBG "secn: %s\n", $secn;
+    $secn =~ s/^\s+//;
+    $secn =~ s/\s+$//;
+    printf DBG "secn: \"%s\"\n", $secn;
     $secn =~ s/\.NT($arch)?(\.5\.1)?$//;
-    printf DBG "secn: %s\n", $secn;
+    printf DBG "secn: \"%s\"\n", $secn;
 
     my $lines = get_section($secn . ".NT" . $arch . ".5.1");
     return $lines if ($lines);
