@@ -47,20 +47,20 @@ uninstall:
 		"\"removing\" messages appear below."
 	@if [ "x$(shell which loadndisdriver)" != "x" ]; then \
 		echo "removing $(shell which loadndisdriver)"; \
-		/bin/rm -f $(shell which loadndisdriver); \
+		-/bin/rm -f $(shell which loadndisdriver); \
 	fi
 	@if [ "x$(shell which ndiswrapper)" != "x" ]; then \
 		echo "removing $(shell which ndiswrapper)"; \
-		/bin/rm -f $(shell which ndiswrapper); \
+		-/bin/rm -f $(shell which ndiswrapper); \
 	fi
 	@if [ "x$(shell which ndiswrapper-buginfo)" != "x" ]; then \
 		echo "removing $(shell which ndiswrapper-buginfo)"; \
-		/bin/rm -f $(shell which ndiswrapper-buginfo); \
+		-/bin/rm -f $(shell which ndiswrapper-buginfo); \
 	fi
 	@for module in $(shell find /lib/modules/$(KVERS) \
 			-name "ndiswrapper*"); do \
 		echo "removing $$module"; \
-		/bin/rm -f $$module; \
+		-/bin/rm -f $$module; \
 	done
 
 dist:
