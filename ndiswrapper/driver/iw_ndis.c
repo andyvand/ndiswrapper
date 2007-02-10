@@ -201,7 +201,6 @@ int set_infra_mode(struct wrap_ndis_device *wnd,
 	if (wnd->infrastructure_mode == mode)
 		TRACEEXIT2(return 0);
 
-	memset(&wnd->essid, 0, sizeof(wnd->essid));
 	res = miniport_set_int(wnd, OID_802_11_INFRASTRUCTURE_MODE, mode);
 	if (res) {
 		WARNING("setting operating mode to %d failed (%08X)",
