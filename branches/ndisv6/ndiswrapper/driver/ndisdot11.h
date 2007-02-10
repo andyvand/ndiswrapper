@@ -403,7 +403,7 @@ struct ndis_dot11_counters_entry {
 struct ndis_dot11_supported_phy_types {
 	ULONG num_entries;
 	ULONG num_total_entries;
-	enum ndis_dot11_phy_type types[1];
+	enum ndis_dot11_phy_type phy_types[1];
 };
 
 #define OID_DOT11_CURRENT_REG_DOMAIN		(OID_DOT11_NDIS_START + 39)
@@ -727,12 +727,12 @@ struct ndis_dot11_mac_frame_statistics {
 struct ndis_dot11_statistics {
 	struct ndis_object_header header;
 	ULONGLONG four_way_handshake_failures;
-	ULONGLONG tkip_countermeasures_invoked;
+	ULONGLONG tkip_counter_measures_invoked;
 	ULONGLONG reserved;
 
-	struct ndis_dot11_mac_frame_statistics mac_ucast_counters;
-	struct ndis_dot11_mac_frame_statistics mac_mcast_counters;
-	struct ndis_dot11_phy_frame_statistics phy_counters[1];
+	struct ndis_dot11_mac_frame_statistics mac_ucast_stats;
+	struct ndis_dot11_mac_frame_statistics mac_mcast_stats;
+	struct ndis_dot11_phy_frame_statistics phy_stats[1];
 };
 
 #define OID_DOT11_PRIVACY_EXEMPTION_LIST				\
@@ -929,7 +929,7 @@ struct ndis_dot11_phy_id_list {
 	struct ndis_object_header header;
 	ULONG num_entries;
 	ULONG num_total_entries;
-	ULONG phy_id[1];
+	ULONG phy_ids[1];
 };
 
 #define DOT11_PHY_ID_ANY        (0xffffffffU)
@@ -953,7 +953,7 @@ struct ndis_dot11_phy_id_list {
 struct ndis_dot11_extsta_capability {
 	struct ndis_object_header header;
 	ULONG scan_ssid_list_size;
-	ULONG desired_bssid_lis_tsize;
+	ULONG desired_bssid_list_size;
 	ULONG desired_ssid_list_size;
 	ULONG excluded_mac_address_list_size;
 	ULONG privacy_exemption_list_size;
@@ -1295,20 +1295,20 @@ struct ndis_dot11_bssid_candidate {
 struct ndis_dot11_phy_state_parameters {
 	struct ndis_object_header header;
 	ULONG phy_id;
-	BOOLEAN hw_phy_state;
-	BOOLEAN sw_phy_state;
+	BOOLEAN hw_state;
+	BOOLEAN sw_state;
 };
 
 struct ndis_dot11_link_quality_entry {
 	mac_address peer_mac;
-	UCHAR link_quality;
+	UCHAR quality;
 };
 
 #define DOT11_LINK_QUALITY_PARAMETERS_REVISION_1	1
 struct ndis_dot11_link_quality_parameters {
 	struct ndis_object_header header;
-	ULONG link_quality_list_size;
-	ULONG link_quality_list_offset;
+	ULONG list_size;
+	ULONG list_offset;
 };
 
 #define DOT11_EXTSTA_SEND_CONTEXT_REVISION_1		1
@@ -1348,7 +1348,7 @@ struct ndis_dot11_extsta_attributes {
 	ULONG excluded_mac_size;
 	ULONG privacy_exemption_size;
 	ULONG key_mapping_size;
-	ULONG default_key__size;
+	ULONG default_key_size;
 	ULONG wep_key_max_length;
 	ULONG pmkid_cache_size;
 	ULONG max_num_per_sta_default_key_tables;
@@ -1356,15 +1356,15 @@ struct ndis_dot11_extsta_attributes {
 	UCHAR qos_protocol_flags;
 	BOOLEAN safe_mode;
 	ULONG num_country_region_strings;
-	ndis_dot11_country_region_string_t country_region_strings;
+	ndis_dot11_country_region_string_t *country_region_strings;
 	ULONG num_infra_ucast_algo_pairs;
-	struct ndis_dot11_auth_cipher_pair infra_ucast_algo_pairs;
+	struct ndis_dot11_auth_cipher_pair *infra_ucast_algo_pairs;
 	ULONG num_infra_mcast_algo_pairs;
-	struct ndis_dot11_auth_cipher_pair infra_mcast_algo_pairs;
+	struct ndis_dot11_auth_cipher_pair *infra_mcast_algo_pairs;
 	ULONG num_adhoc_ucast_algo_pairs;
-	struct ndis_dot11_auth_cipher_pair adhoc_ucast_algo_pairs;
+	struct ndis_dot11_auth_cipher_pair *adhoc_ucast_algo_pairs;
 	ULONG num_adhoc_mcast_algo_pairs;
-	struct ndis_dot11_auth_cipher_pair adhoc_mcast_algo_pairs;
+	struct ndis_dot11_auth_cipher_pair *adhoc_mcast_algo_pairs;
 };
 
 #define OID_DOT11_PRIVATE_OIDS_START	(OID_DOT11_NDIS_START + 1024)

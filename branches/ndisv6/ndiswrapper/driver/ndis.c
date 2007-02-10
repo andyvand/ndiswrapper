@@ -651,6 +651,7 @@ wstdcall NDIS_STATUS WIN_FUNC(NdisMSetMiniportAttributes,2)
 			mp_adapter_attrs->reg_attrs.hangcheck_secs * HZ;
 		wnd->interface_type =
 			mp_adapter_attrs->reg_attrs.interface_type;
+		DBGTRACE2("%d", mp_adapter_attrs->reg_attrs.hangcheck_secs);
 		break;
 	case NDIS_OBJECT_TYPE_MINIPORT_ADD_DEVICE_REGISTRATION_ATTRIBUTES:
 		wnd->add_dev_ctx = mp_adapter_attrs->add_dev_attrs.ctx;
@@ -660,6 +661,8 @@ wstdcall NDIS_STATUS WIN_FUNC(NdisMSetMiniportAttributes,2)
 		       sizeof(wnd->general_attrs));
 		break;
 	case NDIS_OBJECT_TYPE_MINIPORT_ADAPTER_NATIVE_802_11_ATTRIBUTES:
+		DBGTRACE2("%d, %d", header->size,
+			  sizeof(wnd->native_802_11_attrs));
 		memcpy(&wnd->native_802_11_attrs, mp_adapter_attrs,
 		       sizeof(wnd->native_802_11_attrs));
 		break;
@@ -714,24 +717,29 @@ wstdcall ULONG WIN_FUNC(NdisWritePciSlotInformation,5)
 }
 
 wstdcall ULONG WIN_FUNC(NdisMGetBusData,5)
-	(struct wrap_ndis_device *wnd, ULONG slot, ULONG offset, char *buf,
+	(struct wrap_ndis_device *wnd, ULONG from, ULONG offset, char *buf,
 	 ULONG len)
 {
-	TRACEENTER5("%p", __builtin_return_address(0));
+	TRACEENTER5("0x%x, %u, %u", from, offset, len);
 	DBG_BLOCK(5) {
 		void *p;
 		p = __builtin_return_address(0);
 		dump_bytes(__FUNCTION__, p, 20);
 		dump_bytes(__FUNCTION__, p - 0x330, 30);
 	}
-	return NdisReadPciSlotInformation(wnd, slot, offset, buf, len);
+	if (from != PCI_WHICHSPACE_CONFIG)
+		DBGTRACE4("reading from 0x%x not supported", from);
+	return NdisReadPciSlotInformation(wnd, from, offset, buf, len);
 }
 
 wstdcall ULONG WIN_FUNC(NdisMSetBusData,5)
-	(struct wrap_ndis_device *wnd, ULONG slot, ULONG offset, char *buf,
+	(struct wrap_ndis_device *wnd, ULONG from, ULONG offset, char *buf,
 	 ULONG len)
 {
-	return NdisWritePciSlotInformation(wnd, slot, offset, buf, len);
+	TRACEENTER5("0x%x, %u, %u", from, offset, len);
+	if (from != PCI_WHICHSPACE_CONFIG)
+		DBGTRACE4("reading from 0x%x not supported", from);
+	return NdisWritePciSlotInformation(wnd, from, offset, buf, len);
 }
 
 wstdcall void WIN_FUNC(NdisReadPortUchar,3)
@@ -1743,7 +1751,7 @@ wstdcall void WIN_FUNC(NdisMDeregisterAdapterShutdownHandler,1)
 static void ndis_irq_handler(unsigned long data)
 {
 	struct wrap_ndis_device *wnd = (struct wrap_ndis_device *)data;
-	TRACEENTER6("%p", wnd);
+	TRACEENTER4("%p", wnd);
 	LIN2WIN4(wnd->interrupt_chars.isr_dpc_handler, wnd->isr_ctx, NULL,
 		 0, 0);
 }
@@ -1765,7 +1773,7 @@ irqreturn_t mp_isr(int irq, void *data ISR_PT_REGS_PARAM_DECL)
 	if (queue_handler || proc)
 		tasklet_schedule(&wnd->irq_tasklet);
 	if (recognized)
-		return IRQ_HANDLED;
+		TRACEEXIT4(return IRQ_HANDLED);
 	else
 		return IRQ_NONE;
 }
@@ -1826,6 +1834,11 @@ wstdcall void WIN_FUNC(NdisMIndicateStatusEx,4)
 	struct ndis_link_state *link_state;
 	struct ndis_dot11_association_start_parameters *assoc_start;
 	struct ndis_dot11_association_completion_parameters *assoc_comp;
+	struct ndis_dot11_connection_start_parameters *conn_start;
+	struct ndis_dot11_connection_completion_parameters *conn_comp;
+	struct ndis_dot11_phy_state_parameters *phy_state;
+	struct ndis_dot11_link_quality_parameters *link_quality;
+	struct ndis_dot11_link_quality_entry *link_quality_entry;
 
 	TRACEENTER2("status=0x%x", status->code);
 	if (status->header.type !=  NDIS_OBJECT_TYPE_STATUS_INDICATION) {
@@ -1851,12 +1864,13 @@ wstdcall void WIN_FUNC(NdisMIndicateStatusEx,4)
 			schedule_wrap_work(&wnd->wrap_ndis_work);
 		}
 		break;
-	case NDIS_STATUS_DOT11_DISASSOCIATION:
-		netif_carrier_off(wnd->net_dev);
-		set_bit(LINK_STATUS_CHANGED, &wnd->wrap_ndis_pending_work);
-		schedule_wrap_work(&wnd->wrap_ndis_work);
+	case NDIS_STATUS_DOT11_ASSOCIATION_START:
+		assoc_start = status->buf;
+		DBGTRACE2("0x%x, 0x%x", assoc_start->header.size,
+			  sizeof(*assoc_start));
+		DBGTRACE2("ap: " MACSTRSEP, MAC2STR(assoc_start->mac));
 		break;
-	case NDIS_STATUS_DOT11_CONNECTION_COMPLETION:
+	case NDIS_STATUS_DOT11_ASSOCIATION_COMPLETION:
 		assoc_comp = status->buf;
 		DBGTRACE2("0x%x, 0x%x, 0x%x", assoc_comp->header.size,
 			  sizeof(*assoc_comp), status->buf_len);
@@ -1867,11 +1881,44 @@ wstdcall void WIN_FUNC(NdisMIndicateStatusEx,4)
 		set_bit(LINK_STATUS_CHANGED, &wnd->wrap_ndis_pending_work);
 		schedule_wrap_work(&wnd->wrap_ndis_work);
 		break;
+	case NDIS_STATUS_DOT11_DISASSOCIATION:
+		netif_carrier_off(wnd->net_dev);
+		set_bit(LINK_STATUS_CHANGED, &wnd->wrap_ndis_pending_work);
+		schedule_wrap_work(&wnd->wrap_ndis_work);
+		break;
 	case NDIS_STATUS_DOT11_CONNECTION_START:
-		assoc_start = status->buf;
-		DBGTRACE2("0x%x, 0x%x", assoc_start->header.size,
-			  sizeof(*assoc_start));
-		DBGTRACE2("ap: " MACSTRSEP, MAC2STR(assoc_start->mac));
+		conn_start = status->buf;
+		DBGTRACE2("0x%x, 0x%x, 0x%x", conn_start->header.size,
+			  sizeof(*conn_start), conn_start->bss_type);
+		break;
+	case NDIS_STATUS_DOT11_CONNECTION_COMPLETION:
+		conn_comp = status->buf;
+		DBGTRACE2("0x%x, 0x%x, 0x%x", conn_comp->header.size,
+			  sizeof(*conn_comp), conn_comp->status);
+		if (conn_comp->status == DOT11_ASSOC_STATUS_SUCCESS) {
+			netif_carrier_on(wnd->net_dev);
+			set_bit(LINK_STATUS_CHANGED,
+				&wnd->wrap_ndis_pending_work);
+			schedule_wrap_work(&wnd->wrap_ndis_work);
+		}
+		break;
+	case NDIS_STATUS_DOT11_SCAN_CONFIRM:
+		DBGTRACE2("status: %08X, %p, %p, %p %u", status->code,
+			  status->dst_handle, status->request_id, status->buf,
+			  status->buf_len);
+		break;
+	case NDIS_STATUS_DOT11_PHY_STATE_CHANGED:
+		phy_state = status->buf;
+		DBGTRACE2("%d, %d, %d", phy_state->phy_id, phy_state->hw_state,
+			  phy_state->sw_state);
+		break;
+	case NDIS_STATUS_DOT11_LINK_QUALITY:
+		link_quality = status->buf;
+		link_quality_entry = (typeof(link_quality_entry))
+			&((char *)status->buf)[link_quality->list_offset];
+		DBGTRACE2(MACSTRSEP ", %u",
+			  MAC2STR(link_quality_entry->peer_mac),
+			  link_quality_entry->quality);
 		break;
 	default:
 		DBGTRACE2("unknown status: %08X, %p, %p, %p %u", status->code,

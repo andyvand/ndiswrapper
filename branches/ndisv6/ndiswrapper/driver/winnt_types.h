@@ -675,6 +675,16 @@ enum interface_type {
 	PNPBus, MaximumInterfaceType,
 };
 
+#define PCI_WHICHSPACE_CONFIG		0x0
+#define PCI_WHICHSPACE_ROM		0x52696350
+
+#define PCCARD_PCI_CONFIGURATION_SPACE	0
+#define PCCARD_ATTRIBUTE_MEMORY		1
+#define PCCARD_COMMON_MEMORY		2
+#define PCCARD_ATTRIBUTE_MEMORY_INDIRECT 3
+#define PCCARD_COMMON_MEMORY_INDIRECT	4
+
+
 #define CmResourceTypeNull		0
 #define CmResourceTypePort		1
 #define CmResourceTypeInterrupt		2

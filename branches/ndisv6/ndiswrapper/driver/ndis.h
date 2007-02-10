@@ -837,8 +837,8 @@ struct mp_native_802_11_attrs {
 	ULONG num_rx_bufs;
 	BOOLEAN multi_domain_capability_implemented;
 	ULONG num_supported_phys;
-	struct ndis_dot11_phy_attributes supported_phy_attrs;
-	struct ndis_dot11_extsta_attributes *ext_sta_attrs;
+	struct ndis_dot11_phy_attributes *supported_phy_attrs;
+	struct ndis_dot11_extsta_attributes *extsta_attrs;
 };
 
 union mp_adapter_attrs {
@@ -1314,6 +1314,7 @@ struct wrap_ndis_device {
 	struct timer_list stats_timer;
 	unsigned long scan_timestamp;
 	struct ndis_dot11_supported_phy_types *phy_types;
+	ULONG phy_id;
 	enum ndis_dot11_bss_type bss_type;
 	enum ndis_dot11_auth_algorithm auth_algo;
 	struct cipher_info cipher_info;
@@ -1343,8 +1344,6 @@ struct wrap_ndis_device {
 	char netdev_name[IFNAMSIZ];
 	ULONG frame_length;
 	int drv_ndis_version;
-	struct ndis_dot11_extsta_capability extsta_capa;
-	ndis_dot11_country_region_string_t country_string;
 };
 
 struct ndis_pmkid_candidate {
