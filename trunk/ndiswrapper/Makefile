@@ -57,10 +57,10 @@ uninstall:
 		echo "removing $(shell which ndiswrapper-buginfo)"; \
 		/bin/rm -f $(shell which ndiswrapper-buginfo); \
 	fi
-	@for module in $(shell find /lib/modules/$(KVERS) \
-			-name "ndiswrapper*"); do \
+	@for module in $(shell find /lib/modules/$(KVERS) -type f | \
+			grep 'ndiswrapper.\(\(ko\)\|\(o\)\)'$); do \
 		echo "removing $$module"; \
-		/bin/rm -f $$module || true; \
+		/bin/rm -f $$module; \
 	done
 
 dist:
