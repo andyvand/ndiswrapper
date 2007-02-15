@@ -589,7 +589,7 @@ sub valid_copy_file_name {
     my $file = shift;
     printf DBG "file name: %s\n", $file;
     # as of now, copy file name extensions known: .sys, .bin, .out
-    return 1 if (lc($file) =~ /^[a-z0-9]*\.((sys)|(bin)|(out))$/);
+    return 1 if (lc($file) =~ /^[a-z0-9_]*\.((sys)|(bin)|(out))$/);
     return 0;
 }
 
