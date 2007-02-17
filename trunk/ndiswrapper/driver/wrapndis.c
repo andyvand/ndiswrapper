@@ -1680,9 +1680,13 @@ static int ndis_set_tx_csum(struct net_device *dev, u32 data)
 	if (data && (wnd->tx_csum.value == 0))
 		return -EOPNOTSUPP;
 
-	if (wnd->tx_csum.ip_csum)
+	if (wnd->tx_csum.ip_csum) {
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,12)
 		ethtool_op_set_tx_hw_csum(dev, data);
-	else
+#else
+		dev->features |= NETIF_F_HW_CSUM;
+#endif
+	} else
 		ethtool_op_set_tx_csum(dev, data);
 	return 0;
 }
