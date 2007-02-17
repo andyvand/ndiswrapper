@@ -251,6 +251,9 @@ sub parse_models {
 	}
 	my $install_section = trim($fields[0]);
 	my $hwid = trim($fields[1]);
+	if ($hwid =~ /^%.+%$/) {
+	    $hwid = get_string_value($hwid);
+	}
 	# TODO: deal with compatible IDs as hwid?
 	(my $bus_type, my $vendor, my $device, my $subvendor, my $subdevice) =
 	  parse_hwid($hwid);
@@ -463,8 +466,8 @@ sub get_target_os_section {
 	$arch = "X86";
     }
     chomp($secn);
-    $secn =~ s/^\s+//;
-    $secn =~ s/\s+$//;
+    $secn =~ s/^\s*"\s*//;
+    $secn =~ s/\s*"\s*$//;
     printf DBG "secn: \"%s\"\n", $secn;
     $secn =~ s/\.NT($arch)?(\.5\.1)?$//;
     printf DBG "secn: \"%s\"\n", $secn;
