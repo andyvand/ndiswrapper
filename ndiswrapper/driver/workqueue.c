@@ -34,7 +34,7 @@ static int workq_thread(void *data)
 	current->comm[sizeof(current->comm) - 1] = 0;
 	daemonize();
 	reparent_to_init();
-	set_user_nice(current, -5);
+	current->nice -= 5;
 #else
 	daemonize(workq->name);
 #endif
