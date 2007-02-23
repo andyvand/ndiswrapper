@@ -579,7 +579,7 @@ static struct ndis_packet *alloc_tx_packet(struct wrap_ndis_device *wnd,
 		DBGTRACE3("0x%05x", csum.value);
 		packet->private.flags |= NDIS_PROTOCOL_ID_TCP_IP;
 		oob_data->ext.info[TcpIpChecksumPacketInfo] =
-			(void *)csum.value;
+			(void *)(ULONG_PTR)csum.value;
 	}
 	DBG_BLOCK(4) {
 		dump_bytes(__FUNCTION__, skb->data, skb->len);
