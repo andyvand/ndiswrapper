@@ -1511,8 +1511,7 @@ wstdcall void WIN_FUNC(NdisCopyFromPacketToPacketSafe,7)
 	n = min(src_n, dst_n);
 	n = min(n, num_to_copy);
 	memcpy(MmGetSystemAddressForMdl(dst_buf) + dst_offset,
-	       MmGetSystemAddressForMdl(src_buf) + src_offset,
-	       n);
+	       MmGetSystemAddressForMdl(src_buf) + src_offset, n);
 
 	left = num_to_copy - n;
 	while (left > 0) {
@@ -1538,8 +1537,7 @@ wstdcall void WIN_FUNC(NdisCopyFromPacketToPacketSafe,7)
 		n = min(src_n, dst_n);
 		n = min(n, left);
 		memcpy(MmGetSystemAddressForMdl(dst_buf) + dst_offset,
-		       MmGetSystemAddressForMdl(src_buf) + src_offset,
-		       n);
+		       MmGetSystemAddressForMdl(src_buf) + src_offset, n);
 		left -= n;
 	}
 	*num_copied = num_to_copy - left;
@@ -2144,7 +2142,7 @@ wstdcall void NdisMIndicateReceivePacket(struct ndis_miniport_block *nmb,
 			skb->protocol = eth_type_trans(skb, wnd->net_dev);
 			pre_atomic_add(wnd->stats.rx_bytes, total_length);
 			atomic_inc_var(wnd->stats.rx_packets);
-			csum.value = (typeof(csum.value))
+			csum.value = (typeof(csum.value))(ULONG_PTR)
 				oob_data->ext.info[TcpIpChecksumPacketInfo];
 			DBGTRACE3("0x%05x", csum.value);
 			if (wnd->rx_csum.value &&
@@ -2251,7 +2249,7 @@ wstdcall void EthRxIndicateHandler(struct ndis_miniport_block *nmb, void *rx_ctx
 				buffer = buffer->next;
 			}
 			skb_size = header_size + look_ahead_size + bytes_txed;
-			csum.value = (typeof(csum.value))
+			csum.value = (typeof(csum.value))(ULONG_PTR)
 				oob_data->ext.info[TcpIpChecksumPacketInfo];
 			DBGTRACE3("0x%05x", csum.value);
 			if (wnd->rx_csum.value &&
@@ -2348,7 +2346,7 @@ wstdcall void NdisMTransferDataComplete(struct ndis_miniport_block *nmb,
 	pre_atomic_add(wnd->stats.rx_bytes, skb_size);
 	atomic_inc_var(wnd->stats.rx_packets);
 
-	csum.value = (typeof(csum.value))
+	csum.value = (typeof(csum.value))(ULONG_PTR)
 		oob_data->ext.info[TcpIpChecksumPacketInfo];
 	DBGTRACE3("0x%05x", csum.value);
 	if (wnd->rx_csum.value &&

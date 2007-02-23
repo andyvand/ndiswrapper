@@ -919,28 +919,24 @@ do {									\
 	preempt_enable();						\
 } while (0)
 
-#define atomic_unary_op(var, size, oper)			\
-do {								\
-	if (size == 1)						\
-		__asm__ __volatile__(				\
-			LOCK_PREFIX oper "b %b0\n\t"		\
-			: "+m" (var));				\
-	else if (size == 2)					\
-		__asm__ __volatile__(				\
-			LOCK_PREFIX oper "w %w0\n\t"		\
-			: "+m" (var));				\
-	else if (size == 4)					\
-		__asm__ __volatile__(				\
-			LOCK_PREFIX oper "l %0\n\t"		\
-			: "+m" (var));				\
-	else if (size == 8)					\
-		__asm__ __volatile__(				\
-			LOCK_PREFIX oper "q %q0\n\t"		\
-			: "+m" (var));				\
-	else {							\
-		extern void _invalid_op_size_(void);		\
-		_invalid_op_size_();				\
-	}							\
+#define atomic_unary_op(var, size, oper)				\
+do {									\
+	if (size == 1)							\
+		__asm__ __volatile__(					\
+			LOCK_PREFIX oper "b %b0\n\t" : "+m" (var));	\
+	else if (size == 2)						\
+		__asm__ __volatile__(					\
+			LOCK_PREFIX oper "w %w0\n\t" : "+m" (var));	\
+	else if (size == 4)						\
+		__asm__ __volatile__(					\
+			LOCK_PREFIX oper "l %0\n\t" : "+m" (var));	\
+	else if (size == 8)						\
+		__asm__ __volatile__(					\
+			LOCK_PREFIX oper "q %q0\n\t" : "+m" (var));	\
+	else {								\
+		extern void _invalid_op_size_(void);			\
+		_invalid_op_size_();					\
+	}								\
 } while (0)
 
 #define atomic_inc_var_size(var, size) atomic_unary_op(var, size, "inc")
