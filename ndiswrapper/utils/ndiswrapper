@@ -274,6 +274,12 @@ sub parse_install {
 	return -1;
     }
 
+    my $filename = "$vendor:$device";
+    if ($subvendor) {
+	$filename .= ":$subvendor:$subdevice"
+    }
+    $filename .= sprintf(".%X.conf", $bus_type);
+
     my @addregs;
     my @copyfiles;
     foreach my $line (@{$lines}) {
@@ -303,12 +309,6 @@ sub parse_install {
 	}
     }
 
-    my $filename = "$vendor:$device";
-    if ($subvendor) {
-	$filename .= ":$subvendor:$subdevice"
-    }
-    $filename .= sprintf(".%X.conf", $bus_type);
-
     open(CONF, ">$confdir/$driver_name/$filename") or
       die "couldn't create file $filename: $!";
 
@@ -325,7 +325,7 @@ sub parse_install {
     printf CONF "mac_address|XX:XX:XX:XX:XX:XX\n";
     printf CONF "driver_version|%s,%s\n", $providerstring, $version;
     printf CONF "BusType|%s\n", $bus_type;
-    printf CONF "SlotNumber|1\n";
+    printf CONF "SlotNumber|01\n";
     printf CONF "\n";
     close(CONF);
 
@@ -666,8 +666,7 @@ sub generate_module_device_map {
 		    if ($busid eq $WRAP_USB_BUS or $busid eq 0) {
 			$devstring = sprintf("usb:v%sp%sd*dc*dsc*dp*ic*isc*ip*",
 					     $vendor, $device);
-		    } elsif (($busid eq $WRAP_PCI_BUS) or
-			     ($busid eq $WRAP_PCMCIA_BUS)) {
+		    } elsif ($busid eq $WRAP_PCI_BUS) {
 			$devstring = sprintf("pci:v0000%sd0000%ssv%ssd%sbc*sc*i*",
 					     $vendor, $device, $subvendor,
 					     $subdevice);
@@ -793,13 +792,11 @@ sub install_status {
 	    $inf = 1;
 	} elsif ($file =~ /^$re_sub_dev_conf$/) {
 	    $busid = hex($5);
-	    $conf = 1 if (($busid eq $WRAP_PCI_BUS) or
-			  ($busid eq $WRAP_PCMCIA_BUS));
+	    $conf = 1 if ($busid eq $WRAP_PCI_BUS);
 	} elsif ($file =~ /^$re_dev_conf$/) {
 	    $busid = hex($3);
 	    $conf = 1 if ($busid eq $WRAP_USB_BUS or $busid eq 0 or
-			  $busid eq $WRAP_PCI_BUS or
-			  $busid eq $WRAP_PCMCIA_BUS);
+			  $busid eq $WRAP_PCI_BUS);
 	}
     }
     close(LS2);
@@ -825,7 +822,7 @@ sub install_status {
 		    $card->{device} eq $device and
 		    $card->{subvendor} eq $subvendor and
 		    $card->{subdevice} eq $subdevice and
-		    ($busid eq $WRAP_PCI_BUS or $busid eq $WRAP_PCMCIA_BUS)) {
+		    $busid eq $WRAP_PCI_BUS) {
 		    $ret .= "\n\tdevice ($vendor:$device" .
 		      ":$subvendor:$subdevice) present";
 		    $conf = 2;
@@ -840,7 +837,7 @@ sub install_status {
 		if ($card->{vendor} eq $vendor and
 		    $card->{device} eq $device and
 		    ($busid eq $WRAP_USB_BUS or $busid eq 0 or
-		     ($busid eq $WRAP_PCI_BUS or $busid eq $WRAP_PCMCIA_BUS))) {
+		     $busid eq $WRAP_PCI_BUS)) {
 		    $ret .= "\n\tdevice ($vendor:$device) present";
 		    $conf = 2;
 		    last;
@@ -852,7 +849,7 @@ sub install_status {
 	my $devstring;
 	if ($busid eq $WRAP_USB_BUS or $busid eq 0) {
 	    $devstring = sprintf("usb:v%sp%sd", $vendor, $device);
-	} elsif (($busid eq $WRAP_PCI_BUS) or ($busid eq $WRAP_PCMCIA_BUS)) {
+	} elsif ($busid eq $WRAP_PCI_BUS) {
 	    $devstring = sprintf("pci:v0000%sd0000%ssv", $vendor, $device);
 	} else {
 	    next;
