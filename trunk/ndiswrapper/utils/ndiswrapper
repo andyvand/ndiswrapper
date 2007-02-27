@@ -26,7 +26,7 @@ use Cwd;
 $ENV{PATH} = "/sbin:/usr/sbin:$ENV{PATH}";
 
 my $WRAP_PCI_BUS = 5;
-my $WRAP_PCIMCIA_BUS = 8;
+my $WRAP_PCMCIA_BUS = 8;
 my $WRAP_USB_BUS = 15;
 
 my %sections;
@@ -663,10 +663,11 @@ sub generate_module_device_map {
 			  (uc($1), uc($2), "*", "*", hex($3));
 		    }
 		    my $devstring;
-		    if ($busid eq $WRAP_USB_BUS || $busid eq 0) {
+		    if ($busid eq $WRAP_USB_BUS or $busid eq 0) {
 			$devstring = sprintf("usb:v%sp%sd*dc*dsc*dp*ic*isc*ip*",
 					     $vendor, $device);
-		    } elsif ($busid eq $WRAP_PCI_BUS) {
+		    } elsif (($busid eq $WRAP_PCI_BUS) or
+			     ($busid eq $WRAP_PCMCIA_BUS)) {
 			$devstring = sprintf("pci:v0000%sd0000%ssv%ssd%sbc*sc*i*",
 					     $vendor, $device, $subvendor,
 					     $subdevice);
@@ -774,7 +775,7 @@ sub get_cards {
 sub install_status {
     my ($cards, $driver) = @_;
 
-    if (!$cards || !$driver) {
+    if (!$cards or !$driver) {
 	return;
     }
 
@@ -792,16 +793,18 @@ sub install_status {
 	    $inf = 1;
 	} elsif ($file =~ /^$re_sub_dev_conf$/) {
 	    $busid = hex($5);
-	    $conf = 1 if ($busid eq $WRAP_PCI_BUS);
+	    $conf = 1 if (($busid eq $WRAP_PCI_BUS) or
+			  ($busid eq $WRAP_PCMCIA_BUS));
 	} elsif ($file =~ /^$re_dev_conf$/) {
 	    $busid = hex($3);
-	    $conf = 1 if ($busid eq $WRAP_USB_BUS || $busid eq 0 ||
-			  $busid eq $WRAP_PCI_BUS);
+	    $conf = 1 if ($busid eq $WRAP_USB_BUS or $busid eq 0 or
+			  $busid eq $WRAP_PCI_BUS or
+			  $busid eq $WRAP_PCMCIA_BUS);
 	}
     }
     close(LS2);
     printf DBG "status: $sys, $inf, $conf\n";
-    if ($sys eq 0 || $inf eq 0 || $conf eq 0) {
+    if ($sys eq 0 or $inf eq 0 or $conf eq 0) {
 	$ret = "invalid driver!";
 	return $ret;
     }
@@ -822,7 +825,7 @@ sub install_status {
 		    $card->{device} eq $device and
 		    $card->{subvendor} eq $subvendor and
 		    $card->{subdevice} eq $subdevice and
-		    $busid eq $WRAP_PCI_BUS) {
+		    ($busid eq $WRAP_PCI_BUS or $busid eq $WRAP_PCMCIA_BUS)) {
 		    $ret .= "\n\tdevice ($vendor:$device" .
 		      ":$subvendor:$subdevice) present";
 		    $conf = 2;
@@ -836,8 +839,8 @@ sub install_status {
 	    foreach my $card (@{$cards}) {
 		if ($card->{vendor} eq $vendor and
 		    $card->{device} eq $device and
-		    ($busid eq $WRAP_USB_BUS || $busid eq 0 ||
-		     $busid eq $WRAP_PCI_BUS)) {
+		    ($busid eq $WRAP_USB_BUS or $busid eq 0 or
+		     ($busid eq $WRAP_PCI_BUS or $busid eq $WRAP_PCMCIA_BUS))) {
 		    $ret .= "\n\tdevice ($vendor:$device) present";
 		    $conf = 2;
 		    last;
@@ -847,9 +850,9 @@ sub install_status {
 	next if ($conf le 1);
 	# find if kernel knows of an alternate driver for this device
 	my $devstring;
-	if ($busid eq $WRAP_USB_BUS || $busid eq 0) {
+	if ($busid eq $WRAP_USB_BUS or $busid eq 0) {
 	    $devstring = sprintf("usb:v%sp%sd", $vendor, $device);
-	} elsif ($busid eq $WRAP_PCI_BUS) {
+	} elsif (($busid eq $WRAP_PCI_BUS) or ($busid eq $WRAP_PCMCIA_BUS)) {
 	    $devstring = sprintf("pci:v0000%sd0000%ssv", $vendor, $device);
 	} else {
 	    next;
