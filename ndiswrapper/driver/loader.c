@@ -377,22 +377,8 @@ static int load_settings(struct wrap_driver *wrap_driver,
 			 struct load_driver *load_driver)
 {
 	int i, nr_settings;
-	struct wrap_device *wd;
-	struct nt_list *cur;
 
 	TRACEENTER1("%p, %p", wrap_driver, load_driver);
-	wd = NULL;
-	nt_list_for_each(cur, &wrap_devices) {
-		wd = container_of(cur, struct wrap_device, list);
-		if (stricmp(wd->conf_file_name, load_driver->conf_file_name))
-			wd = NULL;
-		else
-			break;
-	}
-	if (!wd) {
-		ERROR("conf file %s not found", wd->conf_file_name);
-		TRACEEXIT1(return -EINVAL);
-	}
 
 	nr_settings = 0;
 	for (i = 0; i < load_driver->nr_settings; i++) {
@@ -421,15 +407,13 @@ static int load_settings(struct wrap_driver *wrap_driver,
 			wrap_driver->version[sizeof(wrap_driver->version)-1] = 0;
 		} else if (strcmp(setting->name, "class_guid") == 0 &&
 			   sscanf(setting->value, "%x", &data1) == 1) {
-			int bus = WRAP_BUS(wd->dev_bus);
-			int dev = wrap_device_type(data1);
-			if (dev < 0) {
+			wrap_driver->dev_type = wrap_device_type(data1);
+			if (wrap_driver->dev_type < 0) {
 				WARNING("unknown guid: %x", data1);
-				dev = 0;
+				wrap_driver->dev_type = 0;
 			}
-			wd->dev_bus = WRAP_DEVICE_BUS(dev, bus);
 		}
-		InsertTailList(&wd->settings, &setting->list);
+		InsertTailList(&wrap_driver->settings, &setting->list);
 		nr_settings++;
 	}
 	/* it is not a fatal error if some settings couldn't be loaded */
@@ -463,6 +447,7 @@ void unload_wrap_driver(struct wrap_driver *driver)
 {
 	int i;
 	struct driver_object *drv_obj;
+	struct wrap_device_setting *setting;
 
 	TRACEENTER1("unloading driver: %s (%p)", driver->name, driver);
 	DBGTRACE1("freeing %d images", driver->num_pe_images);
@@ -484,6 +469,16 @@ void unload_wrap_driver(struct wrap_driver *driver)
 		kfree(driver->bin_files);
 	RtlFreeUnicodeString(&drv_obj->name);
 	RemoveEntryList(&driver->list);
+	nt_list_for_each_entry(setting, &driver->settings, list) {
+		struct ndis_configuration_parameter *param;
+		param = setting->encoded;
+		if (param) {
+			if (param->type == NdisParameterString)
+				RtlFreeUnicodeString(&param->data.string);
+			ExFreePool(param);
+			setting->encoded = NULL;
+		}
+	}
 	/* this frees driver */
 	free_custom_extensions(drv_obj->drv_ext);
 	kfree(drv_obj->drv_ext);
@@ -579,6 +574,7 @@ static int load_user_space_driver(struct load_driver *load_driver)
 	DBGTRACE1("driver: %p", wrap_driver);
 	memset(wrap_driver, 0, sizeof(*wrap_driver));
 	InitializeListHead(&wrap_driver->list);
+	InitializeListHead(&wrap_driver->settings);
 	InitializeListHead(&wrap_driver->wrap_devices);
 	wrap_driver->drv_obj = drv_obj;
 	RtlInitAnsiString(&ansi_reg, "/tmp");

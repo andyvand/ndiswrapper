@@ -606,10 +606,8 @@ void free_tx_packet(struct wrap_ndis_device *wnd, struct ndis_packet *packet,
 	if (wnd->sg_dma_size)
 		free_tx_sg_list(wnd, oob_data);
 	buffer = packet->private.buffer_head;
-	DBGTRACE3("freeing buffer %p", buffer);
 	NdisFreeBuffer(buffer);
 	dev_kfree_skb_any(oob_data->tx_skb);
-	DBGTRACE3("freeing packet %p", packet);
 	NdisFreePacket(packet);
 	TRACEEXIT3(return);
 }

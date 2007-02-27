@@ -547,14 +547,6 @@ static int wrap_pnp_start_device(struct wrap_device *wd)
 		      WRAP_BUS(wd->dev_bus), wd->dev_bus);
 		TRACEEXIT1(return -EINVAL);
 	}
-
-	if (!((WRAP_DEVICE(wd->dev_bus) == WRAP_NDIS_DEVICE) ||
-	      (WRAP_DEVICE(wd->dev_bus) == WRAP_USB_DEVICE) ||
-	      (wrap_is_bluetooth_device(wd->dev_bus)))) {
-		ERROR("device %d (%d) not supported",
-		      WRAP_DEVICE(wd->dev_bus), wd->dev_bus);
-		TRACEEXIT1(return -EINVAL);
-	}
 	driver = load_wrap_driver(wd);
 	if (!driver)
 		return -ENODEV;

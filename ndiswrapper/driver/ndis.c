@@ -472,12 +472,33 @@ static int ndis_decode_setting(struct wrap_device_setting *setting,
 	return 0;
 }
 
+static int read_setting(struct nt_list *setting_list, char *keyname, int length,
+			struct ndis_configuration_parameter **param,
+			enum ndis_parameter_type type)
+{
+	struct wrap_device_setting *setting;
+	if (down_interruptible(&loader_mutex))
+		WARNING("couldn't obtain loader_mutex");
+	nt_list_for_each_entry(setting, setting_list, list) {
+		if (strnicmp(keyname, setting->name, length) == 0) {
+			DBGTRACE2("setting %s='%s'", keyname, setting->value);
+			up(&loader_mutex);
+			*param = ndis_encode_setting(setting, type);
+			if (*param)
+				TRACEEXIT2(return 0);
+			else
+				TRACEEXIT2(return -1);
+		}
+	}
+	up(&loader_mutex);
+	TRACEEXIT2(return -1);
+}
+
 wstdcall void WIN_FUNC(NdisReadConfiguration,5)
 	(NDIS_STATUS *status, struct ndis_configuration_parameter **param,
 	 struct ndis_miniport_block *nmb, struct unicode_string *key,
 	 enum ndis_parameter_type type)
 {
-	struct wrap_device_setting *setting;
 	struct ansi_string ansi;
 	char *keyname;
 	int ret;
@@ -493,27 +514,18 @@ wstdcall void WIN_FUNC(NdisReadConfiguration,5)
 	DBGTRACE3("%d, %s", type, ansi.buf);
 	keyname = ansi.buf;
 
-	if (down_interruptible(&loader_mutex))
-		WARNING("couldn't obtain loader_mutex");
-	nt_list_for_each_entry(setting, &nmb->wnd->wd->settings, list) {
-		if (strnicmp(keyname, setting->name, ansi.length) == 0) {
-			DBGTRACE2("setting %s='%s'", keyname, setting->value);
-			up(&loader_mutex);
-			*param = ndis_encode_setting(setting, type);
-			if (*param)
-				*status = NDIS_STATUS_SUCCESS;
-			else
-				*status = NDIS_STATUS_FAILURE;
-			RtlFreeAnsiString(&ansi);
-			DBGTRACE2("%d", *status);
-			TRACEEXIT2(return);
-		}
+	if (read_setting(&nmb->wnd->wd->settings, keyname,
+			 ansi.length, param, type) == 0 ||
+	    read_setting(&nmb->wnd->wd->driver->settings, keyname,
+			 ansi.length, param, type) == 0)
+		*status = NDIS_STATUS_SUCCESS;
+	else {
+		DBGTRACE2("setting %s not found (type:%d)", keyname, type);
+		*status = NDIS_STATUS_FAILURE;
 	}
-	up(&loader_mutex);
-	DBGTRACE2("setting %s not found (type:%d)", keyname, type);
-	*status = NDIS_STATUS_FAILURE;
 	RtlFreeAnsiString(&ansi);
 	TRACEEXIT2(return);
+
 }
 
 wstdcall void WIN_FUNC(NdisWriteConfiguration,4)
@@ -1118,6 +1130,7 @@ wstdcall void WIN_FUNC(NdisAllocateBuffer,5)
 	 struct ndis_buffer_pool *pool, void *virt, UINT length)
 {
 	ndis_buffer *descr;
+	KIRQL irql;
 
 	TRACEENTER4("pool: %p, allocated: %d",
 		    pool, pool->num_allocated_descr);
@@ -1130,14 +1143,19 @@ wstdcall void WIN_FUNC(NdisAllocateBuffer,5)
 			WARNING("pool %p is full: %d(%d)", pool,
 				pool->num_allocated_descr, pool->max_descr);
 	}
-	descr = atomic_remove_list_head(pool->free_descr, oldhead->next);
-	/* TODO: make sure this mdl can map given buffer */
-	if (descr) {
-		typeof(descr->flags) flags = descr->flags;
+	irql = nt_spin_lock_irql(&pool->lock, DISPATCH_LEVEL);
+	if (pool->free_descr) {
+		typeof(descr->flags) flags;
+		descr = pool->free_descr;
+		pool->free_descr = descr->next;
+		nt_spin_unlock_irql(&pool->lock, irql);
+		flags = descr->flags;
+		memset(descr, 0, sizeof(*descr));
 		MmInitializeMdl(descr, virt, length);
 		if (flags & MDL_CACHE_ALLOCATED)
 			descr->flags |= MDL_CACHE_ALLOCATED;
 	} else {
+		nt_spin_unlock_irql(&pool->lock, irql);
 		descr = allocate_init_mdl(virt, length);
 		if (!descr) {
 			WARNING("couldn't allocate buffer");
@@ -1148,6 +1166,7 @@ wstdcall void WIN_FUNC(NdisAllocateBuffer,5)
 			  descr, virt, length);
 		atomic_inc_var(pool->num_allocated_descr);
 	}
+	/* TODO: make sure this mdl can map given buffer */
 	MmBuildMdlForNonPagedPool(descr);
 //	descr->flags |= MDL_ALLOCATED_FIXED_SIZE |
 //		MDL_MAPPED_TO_SYSTEM_VA | MDL_PAGES_LOCKED;
@@ -1159,25 +1178,31 @@ wstdcall void WIN_FUNC(NdisAllocateBuffer,5)
 }
 
 wstdcall void WIN_FUNC(NdisFreeBuffer,1)
-	(ndis_buffer *descr)
+	(ndis_buffer *buffer)
 {
 	struct ndis_buffer_pool *pool;
+	KIRQL irql;
 
 	TRACEENTER4("descr: %p", descr);
-	if (!descr || !descr->pool) {
+	if (!buffer || !buffer->pool) {
 		ERROR("invalid buffer");
 		TRACEEXIT4(return);
 	}
-	pool = descr->pool;
+	pool = buffer->pool;
+	irql = nt_spin_lock_irql(&pool->lock, DISPATCH_LEVEL);
 	if (pool->num_allocated_descr > MAX_ALLOCATED_NDIS_BUFFERS) {
 		/* NB NB NB: set mdl's 'pool' field to NULL before
 		 * calling free_mdl; otherwise free_mdl calls
 		 * NdisFreeBuffer causing deadlock (for spinlock) */
-		atomic_dec_var(pool->num_allocated_descr);
-		descr->pool = NULL;
-		free_mdl(descr);
-	} else
-		atomic_insert_list_head(descr->next, pool->free_descr, descr);
+		pool->num_allocated_descr--;
+		buffer->pool = NULL;
+		nt_spin_unlock_irql(&pool->lock, irql);
+		free_mdl(buffer);
+	} else {
+		buffer->next = pool->free_descr;
+		pool->free_descr = buffer;
+		nt_spin_unlock_irql(&pool->lock, irql);
+	}
 	TRACEEXIT4(return);
 }
 
@@ -1416,6 +1441,7 @@ wstdcall void WIN_FUNC(NdisAllocatePacket,3)
 {
 	struct ndis_packet *packet;
 	int packet_length;
+	KIRQL irql;
 
 	TRACEENTER4("pool: %p", pool);
 	if (!pool) {
@@ -1430,8 +1456,13 @@ wstdcall void WIN_FUNC(NdisAllocatePacket,3)
 	/* packet has space for 1 byte in protocol_reserved field */
 	packet_length = sizeof(*packet) - 1 + pool->proto_rsvd_length +
 		sizeof(struct ndis_packet_oob_data);
-	packet = atomic_remove_list_head(pool->free_descr, oldhead->reserved[0]);
-	if (!packet) {
+	irql = nt_spin_lock_irql(&pool->lock, DISPATCH_LEVEL);
+	if (pool->free_descr) {
+		packet = pool->free_descr;
+		pool->free_descr = (void *)(ULONG_PTR)packet->reserved[0];
+		nt_spin_unlock_irql(&pool->lock, irql);
+	} else {
+		nt_spin_unlock_irql(&pool->lock, irql);
 		packet = kmalloc(packet_length, gfp_irql());
 		if (!packet) {
 			WARNING("couldn't allocate packet");
@@ -1464,6 +1495,7 @@ wstdcall void WIN_FUNC(NdisFreePacket,1)
 	(struct ndis_packet *packet)
 {
 	struct ndis_packet_pool *pool;
+	KIRQL irql;
 
 	TRACEENTER3("packet: %p, pool: %p", packet, packet->private.pool);
 	pool = packet->private.pool;
@@ -1472,13 +1504,15 @@ wstdcall void WIN_FUNC(NdisFreePacket,1)
 		TRACEEXIT4(return);
 	}
 	atomic_dec_var(pool->num_used_descr);
+	irql = nt_spin_lock_irql(&pool->lock, DISPATCH_LEVEL);
 	if (pool->num_allocated_descr > MAX_ALLOCATED_NDIS_PACKETS) {
-		kfree(packet);
+		nt_spin_unlock_irql(&pool->lock, irql);
 		atomic_dec_var(pool->num_allocated_descr);
+		kfree(packet);
 	} else {
-		struct ndis_packet *next =
-			(struct ndis_packet *)packet->reserved[0];
-		atomic_insert_list_head(next, pool->free_descr, packet);
+		packet->reserved[0] = (ULONG_PTR)pool->free_descr;
+		pool->free_descr = packet;
+		nt_spin_unlock_irql(&pool->lock, irql);
 	}
 	TRACEEXIT4(return);
 }
@@ -2062,7 +2096,7 @@ wstdcall void NdisMSendComplete(struct ndis_miniport_block *nmb,
 		 * pause by returning NDIS_STATUS_RESOURCES during
 		 * MiniportSend(Packets), wakeup tx worker now.
 		 */
-		if (cmpxchg(&wnd->tx_ok, 0, 1) == 0) {
+		if (xchg(&wnd->tx_ok, 1) == 0) {
 			DBGTRACE3("%d, %d", wnd->tx_ring_start,
 				  wnd->tx_ring_end);
 			schedule_wrap_work(&wnd->tx_work);

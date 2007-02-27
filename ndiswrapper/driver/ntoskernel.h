@@ -518,6 +518,8 @@ struct wrap_driver {
 	unsigned short num_bin_files;
 	struct wrap_bin_file *bin_files;
 	struct nt_list wrap_devices;
+	struct nt_list settings;
+	int dev_type;
 	struct wrap_ndis_driver *ndis_driver;
 };
 
@@ -961,8 +963,8 @@ do {									\
 
 #define atomic_insert_list_head(oldhead, head, newhead)			\
 	do {								\
-		oldhead = head;						\
-	} while (cmpxchg(&(head), oldhead, newhead) != oldhead)
+		oldhead = (typeof(oldhead))head;			\
+	} while (cmpxchg(&(head), oldhead, newhead) != (typeof(head))oldhead)
 
 #define atomic_remove_list_head(head, newhead)				\
 ({									\
