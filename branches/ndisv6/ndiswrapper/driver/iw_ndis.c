@@ -142,7 +142,7 @@ static int iw_set_infra_mode(struct net_device *dev,
 	struct wrap_ndis_device *wnd = netdev_priv(dev);
 	enum ndis_dot11_bss_type bss_type;
 
-	TRACEENTER2("");
+	TRACEENTER2("%d", wrqu->mode);
 	switch (wrqu->mode) {
 	case IW_MODE_INFRA:
 		bss_type = ndis_dot11_bss_type_infrastructure;
@@ -601,8 +601,19 @@ NDIS_STATUS set_cipher_algo(struct wrap_ndis_device *wnd,
 	if (res)
 		WARNING("setting cipher algorithm to %d failed: %08X",
 			algo_id, res);
-	else
-		wnd->cipher_info.algo = algo_id;
+	else {
+		BOOLEAN exclude_unencr;
+		if (algo_id == DOT11_CIPHER_ALGO_NONE)
+			exclude_unencr = FALSE;
+		else
+			exclude_unencr = TRUE;
+		res = miniport_set_info(wnd, OID_DOT11_EXCLUDE_UNENCRYPTED,
+					&exclude_unencr, sizeof(ULONG));
+		if (res)
+			WARNING("setting cipher failed: %08X", res);
+		else
+			wnd->cipher_info.algo = algo_id;
+	}
 	TRACEEXIT2(return res);
 }
 
@@ -616,6 +627,12 @@ enum ndis_dot11_cipher_algorithm get_cipher_mode(struct wrap_ndis_device *wnd)
 				DOT11_CIPHER_ALGORITHM_LIST_REVISION_1);
 	cipher_algos.num_entries = 1;
 	cipher_algos.num_total_entries = 1;
+	res = miniport_query_info(wnd,
+				  OID_DOT11_ENABLED_MULTICAST_CIPHER_ALGORITHM,
+				  &cipher_algos, sizeof(cipher_algos));
+	if (res)
+		WARNING("getting cipher algorithm failed: %08X", res);
+	DBGTRACE2("%d, %d", cipher_algos.algo_ids[0], wnd->cipher_info.algo);
 	res = miniport_query_info(wnd,
 				  OID_DOT11_ENABLED_UNICAST_CIPHER_ALGORITHM,
 				  &cipher_algos, sizeof(cipher_algos));
@@ -962,7 +979,7 @@ static char *ndis_translate_scan(struct net_device *dev, char *event,
 	ie = (typeof(ie))bss->buffer;
 	while (i < bss->buffer_length) {
 		char *current_val;
-		DBGTRACE2("0x%x", ie->id);
+		DBGTRACE2("0x%x, %u", ie->id, ie->length);
 		switch (ie->id) {
 		case DOT11_INFO_ELEMENT_ID_SSID:
 			memset(&iwe, 0, sizeof(iwe));
@@ -1004,6 +1021,9 @@ static char *ndis_translate_scan(struct net_device *dev, char *event,
 			event = iwe_stream_add_point(event, end_buf,
 						     &iwe, cbuf);
 			break;
+		default:
+			DBGTRACE2("unknown element: 0x%x, %u",
+				  ie->id, ie->length);
 		}
 		i += ie->length;
 		ie = (void *)ie + ie->length;
@@ -1031,18 +1051,12 @@ int set_scan(struct wrap_ndis_device *wnd)
 	memset(scan_req->bssid, 0xff, sizeof(scan_req->bssid));
 	scan_req->scan_type = ndis_dot11_scan_type_auto;
 	scan_req->restricted_scan = FALSE;
-	DBGTRACE1("");
-	dump_bytes(__FUNCTION__, (void *)scan_req, len);
 	scan_req->num_ssids = 1;
-	DBGTRACE1("");
-	dump_bytes(__FUNCTION__, (void *)scan_req, len);
 //	scan_req->phy_types_offset = sizeof(struct ndis_dot11_ssid);
 //	DBGTRACE1("");
 //	dump_bytes(__FUNCTION__, (void *)scan_req, len);
 //	scan_req->num_phy_types = 0;
 //	((char *)scan_req)[15] = 0x80;
-	DBGTRACE1("");
-	dump_bytes(__FUNCTION__, (void *)scan_req, len);
 	res = miniport_set_info(wnd, OID_DOT11_SCAN_REQUEST, scan_req, len);
 	kfree(scan_req);
 	if (res && res != NDIS_STATUS_DOT11_MEDIA_IN_USE) {
@@ -1072,13 +1086,13 @@ static int iw_get_scan(struct net_device *dev, struct iw_request_info *info,
 	NDIS_STATUS res;
 	char *event = extra;
 	struct ndis_dot11_byte_array *byte_array;
-	struct ndis_dot11_bss_entry *bss_entry, *cur_item;
+	struct ndis_dot11_bss_entry *bss;
 
 	TRACEENTER2("");
 	if (time_before(jiffies, wnd->scan_timestamp + 3 * HZ))
 		return -EAGAIN;
 	/* try with space for a few scan items */
-	len = sizeof(*byte_array) + sizeof(*bss_entry) * 8;
+	len = sizeof(*byte_array) + sizeof(*bss) * 8;
 	len = 1024;
 	byte_array = kzalloc(len, GFP_KERNEL);
 	if (!byte_array) {
@@ -1109,16 +1123,14 @@ static int iw_get_scan(struct net_device *dev, struct iw_request_info *info,
 		TRACEEXIT2(return -EOPNOTSUPP);
 	}
 	DBGTRACE2("%d, %d", byte_array->num_bytes, byte_array->num_total_bytes);
-	cur_item = (typeof(cur_item))byte_array->buffer;
 	i = 0;
 	while (i < byte_array->num_bytes) {
+		bss = (typeof(bss))(&byte_array->buffer[i]);
+		DBGTRACE2("%d, %p", i, bss);
 		event = ndis_translate_scan(dev, event,
-					    extra + IW_SCAN_MAX_DATA, cur_item);
-		i += sizeof(*cur_item) + cur_item->buffer_length;
-		cur_item = (typeof(cur_item))
-			((char *)cur_item + sizeof(*cur_item) +
-			 cur_item->buffer_length);
-		DBGTRACE2("%d", i);
+					    extra + IW_SCAN_MAX_DATA, bss);
+		DBGTRACE2("%d, %d", i, bss->buffer_length);
+		i += sizeof(*bss) + bss->buffer_length - 1;
 	}
 	wrqu->data.length = event - extra;
 	wrqu->data.flags = 0;
@@ -1335,20 +1347,6 @@ static int iw_get_range(struct net_device *dev, struct iw_request_info *info,
 	return 0;
 }
 
-static int disassociate(struct wrap_ndis_device *wnd)
-{
-	NDIS_STATUS res;
-
-	res = miniport_set_info(wnd, OID_DOT11_DISCONNECT_REQUEST, NULL, 0);
-	return res;
-}
-
-
-static int deauthenticate(struct wrap_ndis_device *wnd)
-{
-	TRACEEXIT2(return 0);
-}
-
 int set_priv_filter(struct wrap_ndis_device *wnd, int flags)
 {
 	TRACEEXIT2(return 0);
@@ -1494,6 +1492,11 @@ static int priv_reset(struct net_device *dev, struct iw_request_info *info,
 	if (wrqu->param.value == 0)
 		res = miniport_reset(netdev_priv(dev));
 	else if (wrqu->param.value == 1) {
+		reset_req.type = ndis_dot11_reset_type_phy;
+		reset_req.set_default_mib = FALSE;
+		res = miniport_set_info(wnd, OID_DOT11_RESET_REQUEST,
+					&reset_req, sizeof(reset_req));
+	} else if (wrqu->param.value == 2) {
 		reset_req.type = ndis_dot11_reset_type_phy_and_mac;
 		reset_req.set_default_mib = FALSE;
 		res = miniport_set_info(wnd, OID_DOT11_RESET_REQUEST,
@@ -1507,35 +1510,6 @@ static int priv_reset(struct net_device *dev, struct iw_request_info *info,
 		return -EOPNOTSUPP;
 	}
 	return 0;
-}
-
-static int priv_power_profile(struct net_device *dev,
-			      struct iw_request_info *info,
-			      union iwreq_data *wrqu, char *extra)
-{
-	TRACEENTER2("");
-	TRACEEXIT2(return 0);
-}
-
-static int priv_network_type(struct net_device *dev,
-			     struct iw_request_info *info,
-			     union iwreq_data *wrqu, char *extra)
-{
-	TRACEEXIT2(return 0);
-}
-
-static int priv_set_cipher_mode(struct net_device *dev,
-				struct iw_request_info *info,
-				union iwreq_data *wrqu, char *extra)
-{
-	TRACEEXIT2(return 0);
-}
-
-static int priv_set_auth_mode(struct net_device *dev,
-			      struct iw_request_info *info,
-			      union iwreq_data *wrqu, char *extra)
-{
-	TRACEEXIT2(return 0);
 }
 
 static int priv_set_phy_id(struct net_device *dev, struct iw_request_info *info,
@@ -1611,10 +1585,18 @@ static int priv_connect(struct net_device *dev, struct iw_request_info *info,
 	struct wrap_ndis_device *wnd = netdev_priv(dev);
 	NDIS_STATUS res;
 
-	if (wrqu->param.value)
+	if (wrqu->param.value) {
+		struct ndis_dot11_mac_address_list excl_mac;
+		memset(&excl_mac, 0, sizeof(excl_mac));
+		init_ndis_object_header(&excl_mac, NDIS_OBJECT_TYPE_DEFAULT,
+					DOT11_MAC_ADDRESS_LIST_REVISION_1);
+		res = miniport_set_info(wnd, OID_DOT11_EXCLUDED_MAC_ADDRESS_LIST,
+					&excl_mac, sizeof(excl_mac));
+		if (res)
+			WARNING("excluding mac list failed: %08X", res);
 		res = miniport_set_info(wnd, OID_DOT11_CONNECT_REQUEST,
 					NULL, 0);
-	else
+	} else
 		res = miniport_set_info(wnd, OID_DOT11_DISCONNECT_REQUEST,
 					NULL, 0);
 	if (res)
@@ -1623,45 +1605,22 @@ static int priv_connect(struct net_device *dev, struct iw_request_info *info,
 		return 0;
 }
 
-static int priv_reload_defaults(struct net_device *dev,
-				struct iw_request_info *info,
-				union iwreq_data *wrqu, char *extra)
-{
-	return 0;
-}
-
-
 static const struct iw_priv_args priv_args[] = {
 	{PRIV_RESET, IW_PRIV_TYPE_INT | IW_PRIV_SIZE_FIXED | 1, 0,
 	 "reset"},
-	{PRIV_POWER_PROFILE, IW_PRIV_TYPE_INT | IW_PRIV_SIZE_FIXED | 1, 0,
-	 "power_profile"},
-	{PRIV_NETWORK_TYPE, IW_PRIV_TYPE_CHAR | IW_PRIV_SIZE_FIXED | 1, 0,
-	 "network_type"},
-
-	{PRIV_SET_CIPHER_MODE, IW_PRIV_TYPE_INT | IW_PRIV_SIZE_FIXED | 1, 0,
-	 "set_cipher_mode"},
-	{PRIV_SET_AUTH_MODE, IW_PRIV_TYPE_INT | IW_PRIV_SIZE_FIXED | 1, 0,
-	 "set_auth_mode"},
 	{PRIV_SET_PHY_ID, IW_PRIV_TYPE_INT | IW_PRIV_SIZE_FIXED | 1, 0,
 	 "set_phy_id"},
 	{PRIV_SET_NIC_POWER, IW_PRIV_TYPE_INT | IW_PRIV_SIZE_FIXED | 1, 0,
 	 "nic_power"},
 	{PRIV_CONNECT, IW_PRIV_TYPE_INT | IW_PRIV_SIZE_FIXED | 1, 0,
 	 "connect"},
-	{PRIV_RELOAD_DEFAULTS, 0, 0, "reload_defaults"},
 };
 
 static const iw_handler priv_handler[] = {
 	[PRIV_RESET 		- SIOCIWFIRSTPRIV] = priv_reset,
-	[PRIV_POWER_PROFILE 	- SIOCIWFIRSTPRIV] = priv_power_profile,
-	[PRIV_NETWORK_TYPE 	- SIOCIWFIRSTPRIV] = priv_network_type,
-	[PRIV_SET_CIPHER_MODE 	- SIOCIWFIRSTPRIV] = priv_set_cipher_mode,
-	[PRIV_SET_AUTH_MODE 	- SIOCIWFIRSTPRIV] = priv_set_auth_mode,
 	[PRIV_SET_PHY_ID 	- SIOCIWFIRSTPRIV] = priv_set_phy_id,
 	[PRIV_SET_NIC_POWER 	- SIOCIWFIRSTPRIV] = priv_set_nic_power,
 	[PRIV_CONNECT	 	- SIOCIWFIRSTPRIV] = priv_connect,
-	[PRIV_RELOAD_DEFAULTS 	- SIOCIWFIRSTPRIV] = priv_reload_defaults,
 };
 
 const struct iw_handler_def ndis_handler_def = {
