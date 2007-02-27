@@ -620,8 +620,6 @@ static void timer_proc(unsigned long data)
 	BUG_ON(wrap_timer->wrap_timer_magic != WRAP_TIMER_MAGIC);
 	BUG_ON(nt_timer->wrap_timer_magic != WRAP_TIMER_MAGIC);
 #endif
-	if (wrap_timer->repeat)
-		mod_timer(&wrap_timer->timer, jiffies + wrap_timer->repeat);
 	KeSetEvent((struct nt_event *)nt_timer, 0, FALSE);
 	kdpc = nt_timer->kdpc;
 	if (kdpc && kdpc->func) {
@@ -631,6 +629,8 @@ static void timer_proc(unsigned long data)
 		queue_kdpc(kdpc);
 #endif
 	}
+	if (wrap_timer->repeat)
+		mod_timer(&wrap_timer->timer, jiffies + wrap_timer->repeat);
 	TRACEEXIT5(return);
 }
 
@@ -2080,7 +2080,7 @@ struct mdl *allocate_init_mdl(void *virt, ULONG length)
 		InsertHeadList(&wrap_mdl_list, &wrap_mdl->list);
 		nt_spin_unlock_irql(&ntoskernel_lock, irql);
 		mdl = wrap_mdl->mdl;
-		DBGTRACE4("allocated mdl from cache: %p(%p), %p(%d)",
+		DBGTRACE4("mdl cache: %p(%p), %p(%d)",
 			  wrap_mdl, mdl, virt, length);
 		memset(mdl, 0, CACHE_MDL_SIZE);
 		MmInitializeMdl(mdl, virt, length);
@@ -2093,7 +2093,7 @@ struct mdl *allocate_init_mdl(void *virt, ULONG length)
 		if (!wrap_mdl)
 			return NULL;
 		mdl = wrap_mdl->mdl;
-		DBGTRACE4("allocated mdl from memory: %p(%p), %p(%d)",
+		DBGTRACE4("mdl memory: %p(%p), %p(%d)",
 			  wrap_mdl, mdl, virt, length);
 		irql = nt_spin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL);
 		InsertHeadList(&wrap_mdl_list, &wrap_mdl->list);
@@ -2125,11 +2125,11 @@ void free_mdl(struct mdl *mdl)
 	nt_spin_unlock_irql(&ntoskernel_lock, irql);
 
 	if (mdl->flags & MDL_CACHE_ALLOCATED) {
-		DBGTRACE4("freeing mdl cache: %p, %p, %p",
+		DBGTRACE4("mdl cache: %p, %p, %p",
 			  wrap_mdl, mdl, mdl->mappedsystemva);
 		kmem_cache_free(mdl_cache, wrap_mdl);
 	} else {
-		DBGTRACE4("freeing mdl: %p, %p, %p",
+		DBGTRACE4("mdl: %p, %p, %p",
 			  wrap_mdl, mdl, mdl->mappedsystemva);
 		kfree(wrap_mdl);
 	}

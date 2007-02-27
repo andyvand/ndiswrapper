@@ -63,7 +63,7 @@ NDIS_STATUS miniport_oid_request(struct wrap_ndis_device *wnd,
 	oid_req->id = NULL;
 	oid_req->handle = oid_req;
 
-	res = LIN2WIN2(mp_chars->oid_request, wnd->adapter_ctx, oid_req);
+	res = LIN2WIN2(mp_chars->oid_request, wnd->nmb->adapter_ctx, oid_req);
 
 	DBGTRACE2("%08X, %08X", res, oid_req->data.query.oid);
 	if (res == NDIS_STATUS_PENDING ||
@@ -196,7 +196,7 @@ NDIS_STATUS miniport_reset(struct wrap_ndis_device *wnd)
 	BOOLEAN address_reset;
 
 	ndis_driver = wnd->wd->driver->ndis_driver;
-	res = LIN2WIN2(ndis_driver->mp_driver_chars.reset, wnd->adapter_ctx,
+	res = LIN2WIN2(ndis_driver->mp_driver_chars.reset, wnd->nmb->adapter_ctx,
 		       &address_reset);
 	DBGTRACE2("%08X, %d", res, address_reset);
 	return res;
@@ -240,7 +240,7 @@ static NDIS_STATUS miniport_init(struct wrap_ndis_device *wnd)
 		NdisPortControlStateUnknown;
 
 	status = LIN2WIN3(ndis_driver->mp_driver_chars.initialize,
-			  wnd, wnd, &init_params);
+			  wnd->nmb, wnd->nmb, &init_params);
 	DBGTRACE1("init returns: %08X, irql: %d", status, current_irql());
 	if (status != NDIS_STATUS_SUCCESS) {
 		WARNING("couldn't initialize device: %08X", status);
@@ -290,7 +290,7 @@ static void miniport_halt(struct wrap_ndis_device *wnd)
 	hangcheck_del(wnd);
 	del_stats_timer(wnd);
 	down_interruptible(&wnd->ndis_comm_mutex);
-	LIN2WIN2(mp_driver->halt, wnd->adapter_ctx, halt_action);
+	LIN2WIN2(mp_driver->halt, wnd->nmb->adapter_ctx, halt_action);
 	up(&wnd->ndis_comm_mutex);
 	/* cancel any timers left by bugyy windows driver; also free
 	 * the memory for timers */
@@ -388,7 +388,7 @@ static void tx_worker(worker_param_t param)
 		mp_driver = &wnd->wd->driver->ndis_driver->mp_driver_chars;
 		if (last)
 			LIN2WIN4(mp_driver->tx_net_buffer_lists,
-				 wnd->adapter_ctx, last, 0, 0);
+				 wnd->nmb->adapter_ctx, last, 0, 0);
 	}
 	TRACEEXIT3(return);
 }
@@ -801,7 +801,7 @@ static void hangcheck_proc(unsigned long data)
 
 	ndis_driver = wnd->wd->driver->ndis_driver;
 	res = LIN2WIN1(ndis_driver->mp_driver_chars.check_for_hang,
-		       wnd->adapter_ctx);
+		       wnd->nmb->adapter_ctx);
 	if (res) {
 		set_bit(MINIPORT_RESET, &wnd->wrap_ndis_pending_work);
 		schedule_wrap_work(&wnd->wrap_ndis_work);
@@ -974,7 +974,7 @@ NDIS_STATUS miniport_pnp_event(struct wrap_ndis_device *wnd,
 			TRACEEXIT1(return NDIS_STATUS_SUCCESS);
 		if (wnd->attribute_flags & NDIS_ATTRIBUTE_SURPRISE_REMOVE_OK)
 			LIN2WIN2(ndis_driver->mp_driver_chars.pnp_event_notify,
-				 wnd->adapter_ctx, &net_event);
+				 wnd->nmb->adapter_ctx, &net_event);
 		else
 			DBGTRACE1("Windows driver %s doesn't support "
 				  "MiniportPnpEventNotify for safe unplugging",
@@ -985,7 +985,7 @@ NDIS_STATUS miniport_pnp_event(struct wrap_ndis_device *wnd,
 		net_event.buf = &profile;
 		net_event.buf_length = sizeof(profile);
 		LIN2WIN2(ndis_driver->mp_driver_chars.pnp_event_notify,
-			 wnd->adapter_ctx, &net_event);
+			 wnd->nmb->adapter_ctx, &net_event);
 		return NDIS_STATUS_SUCCESS;
 	default:
 		WARNING("event %d not yet implemented", event);
@@ -1156,9 +1156,9 @@ static void init_dot11_station(struct wrap_ndis_device *wnd, void *buf,
 //				buf, sizeof(ULONG));
 //	DBGTRACE2("%08X, %u", res, *((ULONG *)buf));
 
-//	set_infra_mode(wnd, ndis_dot11_bss_type_infrastructure);
-//	set_auth_algo(wnd, DOT11_AUTH_ALGO_80211_OPEN);
-//	set_cipher_algo(wnd, DOT11_CIPHER_ALGO_NONE);
+	set_infra_mode(wnd, ndis_dot11_bss_type_infrastructure);
+	set_auth_algo(wnd, DOT11_AUTH_ALGO_80211_OPEN);
+	set_cipher_algo(wnd, DOT11_CIPHER_ALGO_NONE);
 	TRACEEXIT1(return);
 }
 
@@ -1508,12 +1508,12 @@ static NDIS_STATUS ndis_start_device(struct wrap_ndis_device *wnd)
 	nbl_pool_params.data_size = 0;
 
 	wnd->tx_buffer_list_pool =
-		NdisAllocateNetBufferListPool(wnd, &nbl_pool_params);
+		NdisAllocateNetBufferListPool(wnd->nmb, &nbl_pool_params);
 	if (res != NDIS_STATUS_SUCCESS) {
 		ERROR("couldn't allocate buffer pool");
 		goto buffer_pool_err;
 	}
-
+	DBGTRACE3("%p", wnd->tx_buffer_list_pool);
 	memset(&nb_pool_params, 0, sizeof(nb_pool_params));
 	nb_pool_params.header.type = NDIS_OBJECT_TYPE_DEFAULT;
 	nb_pool_params.header.revision = NET_BUFFER_POOL_PARAMETERS_REVISION_1;
@@ -1521,7 +1521,8 @@ static NDIS_STATUS ndis_start_device(struct wrap_ndis_device *wnd)
 	nb_pool_params.tag = 0;
 	nb_pool_params.data_size = 0;
 
-	wnd->tx_buffer_pool = NdisAllocateNetBufferPool(wnd, &nb_pool_params);
+	wnd->tx_buffer_pool = NdisAllocateNetBufferPool(wnd->nmb,
+							&nb_pool_params);
 	DBGTRACE1("pool: %p", wnd->tx_buffer_pool);
 
 	if (miniport_query_int(wnd, OID_GEN_MAXIMUM_TOTAL_SIZE, &n) ==
@@ -1606,6 +1607,7 @@ static wstdcall NTSTATUS NdisAddDevice(struct driver_object *drv_obj,
 	struct device_object *fdo;
 	NTSTATUS status;
 	struct wrap_ndis_device *wnd;
+	struct ndis_miniport_block *nmb;
 	struct net_device *net_dev;
 	struct wrap_device *wd;
 	unsigned long i;
@@ -1615,12 +1617,13 @@ static wstdcall NTSTATUS NdisAddDevice(struct driver_object *drv_obj,
 		ERROR("interface name '%s' is too long", if_name);
 		return STATUS_INVALID_PARAMETER;
 	}
-	net_dev = alloc_etherdev(sizeof(*wnd));
+	net_dev = alloc_etherdev(sizeof(*wnd) + sizeof(*nmb));
 	if (!net_dev) {
 		ERROR("couldn't allocate device");
 		return STATUS_RESOURCES;
 	}
 	wnd = netdev_priv(net_dev);
+	nmb = (struct ndis_miniport_block *)(wnd + 1);
 	DBGTRACE1("wnd: %p", wnd);
 	status = IoCreateDevice(drv_obj, 0, NULL,
 				FILE_DEVICE_UNKNOWN, 0, FALSE, &fdo);
@@ -1632,6 +1635,8 @@ static wstdcall NTSTATUS NdisAddDevice(struct driver_object *drv_obj,
 	wd = pdo->reserved;
 	wd->wnd = wnd;
 	wnd->wd = wd;
+	nmb->wnd = wnd;
+	wnd->nmb = nmb;
 	wnd->pdo = pdo;
 	wnd->fdo = fdo;
 	wnd->net_dev = net_dev;
@@ -1681,7 +1686,8 @@ static wstdcall NTSTATUS NdisAddDevice(struct driver_object *drv_obj,
 	if (wrap_is_usb_bus(wd->dev_bus))
 		SET_NETDEV_DEV(net_dev, &wd->usb.intf->dev);
 #endif
-	TRACEEXIT2(return STATUS_SUCCESS);
+
+	init_nmb_functions(nmb);
 	if (wd->driver->ndis_driver) {
 		struct wrap_ndis_driver *ndis_driver = wd->driver->ndis_driver;
 		DBGTRACE2("%p, %p", ndis_driver, ndis_driver->mp_pnp_chars.add_device);
@@ -1695,7 +1701,7 @@ static wstdcall NTSTATUS NdisAddDevice(struct driver_object *drv_obj,
 			}
 		}
 	}
-
+	TRACEEXIT2(return NDIS_STATUS_SUCCESS);
 }
 
 int init_ndis_driver(struct driver_object *drv_obj)
