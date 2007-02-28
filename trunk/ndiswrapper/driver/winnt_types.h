@@ -328,7 +328,7 @@ do {									\
 	(mdl)->byteoffset = BYTE_OFFSET(baseva);			\
 	(mdl)->bytecount = length;					\
 	(mdl)->mappedsystemva = baseva;					\
-	DBGTRACE4("%p %p %p %d %d", (mdl), baseva, (mdl)->startva,	\
+	TRACE4("%p %p %p %d %d", (mdl), baseva, (mdl)->startva,	\
 		  (mdl)->byteoffset, length);				\
 } while (0)
 

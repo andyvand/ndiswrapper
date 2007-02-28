@@ -939,12 +939,12 @@ wstdcall NTSTATUS WIN_FUNC(IoGetDeviceObjectPointer,4)
 	file_obj = NULL;
 	irql = nt_spin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL);
 	nt_list_for_each_entry(coh, &object_list, list) {
-		DBGTRACE5("header: %p, type: %d", coh, coh->type);
+		TRACE5("header: %p, type: %d", coh, coh->type);
 		if (coh->type != OBJECT_TYPE_DEVICE)
 			continue;
 		if (!RtlCompareUnicodeString(&coh->name, name, TRUE)) {
 			dev_obj = HEADER_TO_OBJECT(coh);
-			DBGTRACE5("dev_obj: %p", dev_obj);
+			TRACE5("dev_obj: %p", dev_obj);
 			break;
 		}
 	}
@@ -978,8 +978,7 @@ wstdcall NTSTATUS WIN_FUNC(PoRequestPowerIrp,6)
 	struct irp *irp;
 	struct io_stack_location *irp_sl;
 
-	DBGTRACE1("%p: stack size: %d", dev_obj, dev_obj->stack_count);
-	DBGTRACE1("drv_obj: %p", dev_obj->drv_obj);
+	TRACE1("%p, %d, %p", dev_obj, dev_obj->stack_count, dev_obj->drv_obj);
 	irp = IoAllocateIrp(dev_obj->stack_count, FALSE);
 	if (!irp)
 		return STATUS_INSUFFICIENT_RESOURCES;
@@ -1017,7 +1016,7 @@ wstdcall void *WIN_FUNC(IoAllocateErrorLogEntry,2)
 	/* not implemented fully */
 	void *ret = kmalloc(sizeof(struct io_error_log_packet) + entry_size,
 			    gfp_irql());
-	DBGTRACE2("%p", ret);
+	TRACE2("%p", ret);
 	if (ret)
 		return ret + sizeof(struct io_error_log_packet);
 	else
@@ -1034,7 +1033,7 @@ wstdcall void WIN_FUNC(IoWriteErrorLogEntry,1)
 wstdcall void WIN_FUNC(IoFreeErrorLogEntry,1)
 	(void *entry)
 {
-	DBGTRACE2("%p", entry);
+	TRACE2("%p", entry);
 	kfree(entry - sizeof(struct io_error_log_packet));
 }
 
@@ -1061,16 +1060,15 @@ wstdcall NTSTATUS WIN_FUNC(IoRegisterDeviceInterface,4)
 
 	/* TODO: check if pdo is valid */
 	RtlInitAnsiString(&ansi, "ndis");
-	TRACEENTER1("pdo: %p, ref: %p, link: %p, %x, %x, %x",
-		    pdo, reference, link, guid_class->data1,
-		    guid_class->data2, guid_class->data3);
+	ENTER1("pdo: %p, ref: %p, link: %p, %x, %x, %x", pdo, reference, link,
+	       guid_class->data1, guid_class->data2, guid_class->data3);
 	return RtlAnsiStringToUnicodeString(link, &ansi, TRUE);
 }
 
 wstdcall NTSTATUS WIN_FUNC(IoSetDeviceInterfaceState,2)
 	(struct unicode_string *link, BOOLEAN enable)
 {
-	TRACEENTER1("link: %p, enable: %d", link, enable);
+	ENTER1("link: %p, enable: %d", link, enable);
 	return STATUS_SUCCESS;
 }
 
@@ -1078,7 +1076,7 @@ wstdcall NTSTATUS WIN_FUNC(IoOpenDeviceRegistryKey,4)
 	(struct device_object *dev_obj, ULONG type, ACCESS_MASK mask,
 	 void **handle)
 {
-	TRACEENTER1("dev_obj: %p", dev_obj);
+	ENTER1("dev_obj: %p", dev_obj);
 	*handle = dev_obj;
 	return STATUS_SUCCESS;
 }
@@ -1086,8 +1084,8 @@ wstdcall NTSTATUS WIN_FUNC(IoOpenDeviceRegistryKey,4)
 wstdcall NTSTATUS WIN_FUNC(IoWMIRegistrationControl,2)
 	(struct device_object *dev_obj, ULONG action)
 {
-	TRACEENTER2("%p, %d", dev_obj, action);
-	TRACEEXIT2(return STATUS_SUCCESS);
+	ENTER2("%p, %d", dev_obj, action);
+	EXIT2(return STATUS_SUCCESS);
 }
 
 wstdcall void WIN_FUNC(IoInvalidateDeviceRelations,2)

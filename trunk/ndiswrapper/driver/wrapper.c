@@ -106,12 +106,12 @@ static int __init wrapper_init(void)
 		ERROR("%s: initialization failed", DRIVER_NAME);
 		return -EINVAL;
 	}
-	TRACEEXIT1(return 0);
+	EXIT1(return 0);
 }
 
 static void __exit wrapper_exit(void)
 {
-	TRACEENTER1("");
+	ENTER1("");
 	module_cleanup();
 }
 
