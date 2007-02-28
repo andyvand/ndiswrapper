@@ -23,7 +23,7 @@ int rtl_init(void)
 /* called when module is being removed */
 void rtl_exit(void)
 {
-	TRACEEXIT4(return);
+	EXIT4(return);
 }
 
 wstdcall SIZE_T WIN_FUNC(RtlCompareMemory,3)
@@ -32,7 +32,7 @@ wstdcall SIZE_T WIN_FUNC(RtlCompareMemory,3)
 	size_t i;
 	char *x, *y;
 
-	TRACEENTER1("");
+	ENTER1("");
 
 	x = (char *)a;
 	y = (char *)b;
@@ -89,7 +89,7 @@ wstdcall LONG WIN_FUNC(RtlCompareString,3)
 	LONG ret = 0;
 	const char *p1, *p2;
 
-	TRACEENTER2("");
+	ENTER2("");
 	len = min(s1->length, s2->length);
 	p1 = s1->buf;
 	p2 = s2->buf;
@@ -101,7 +101,7 @@ wstdcall LONG WIN_FUNC(RtlCompareString,3)
 			ret = *p1++ - *p2++;
 	if (!ret)
 		ret = s1->length - s2->length;
-	TRACEEXIT2(return ret);
+	EXIT2(return ret);
 }
 
 wstdcall LONG WIN_FUNC(RtlCompareUnicodeString,3)
@@ -112,7 +112,7 @@ wstdcall LONG WIN_FUNC(RtlCompareUnicodeString,3)
 	LONG ret = 0;
 	const wchar_t *p1, *p2;
 
-	TRACEENTER2("");
+	ENTER2("");
 
 	len = min(s1->length, s2->length) / sizeof(wchar_t);
 	p1 = s1->buf;
@@ -125,15 +125,15 @@ wstdcall LONG WIN_FUNC(RtlCompareUnicodeString,3)
 			ret = (u8)*p1++ - (u8)*p2++;
 	if (!ret)
 		ret = s1->length - s2->length;
-	DBGTRACE2("len: %d, ret: %d", len, ret);
-	TRACEEXIT2(return ret);
+	TRACE2("len: %d, ret: %d", len, ret);
+	EXIT2(return ret);
 }
 
 wstdcall BOOLEAN WIN_FUNC(RtlEqualString,3)
 	(const struct ansi_string *s1, const struct ansi_string *s2,
 	 BOOLEAN case_insensitive)
 {
-	TRACEENTER1("");
+	ENTER1("");
 	if (s1->length != s2->length)
 		return FALSE;
 	return !RtlCompareString(s1, s2, case_insensitive);
@@ -151,7 +151,7 @@ wstdcall BOOLEAN WIN_FUNC(RtlEqualUnicodeString,3)
 wstdcall void WIN_FUNC(RtlCopyUnicodeString,2)
 	(struct unicode_string *dst, struct unicode_string *src)
 {
-	TRACEENTER1("%p, %p", dst, src);
+	ENTER1("%p, %p", dst, src);
 	if (src && src->buf && dst->buf) {
 		dst->length = min(src->length, dst->max_length);
 		memcpy(dst->buf, src->buf, dst->length);
@@ -159,13 +159,13 @@ wstdcall void WIN_FUNC(RtlCopyUnicodeString,2)
 			dst->buf[dst->length / sizeof(dst->buf[0])] = 0;
 	} else
 		dst->length = 0;
-	TRACEEXIT1(return);
+	EXIT1(return);
 }
 
 wstdcall void WIN_FUNC(RtlCopyString,2)
 	(struct ansi_string *dst, struct ansi_string *src)
 {
-	TRACEENTER1("%p, %p", dst, src);
+	ENTER1("%p, %p", dst, src);
 	if (src && src->buf && dst->buf) {
 		dst->length = min(src->length, dst->max_length);
 		memcpy(dst->buf, src->buf, dst->length);
@@ -173,7 +173,7 @@ wstdcall void WIN_FUNC(RtlCopyString,2)
 			dst->buf[dst->length] = 0;
 	} else
 		dst->length = 0;
-	TRACEEXIT1(return);
+	EXIT1(return);
 }
 
 wstdcall NTSTATUS WIN_FUNC(RtlAppendUnicodeToString,2)
@@ -204,7 +204,7 @@ wstdcall NTSTATUS WIN_FUNC(RtlAppendUnicodeStringToString,2)
 		if (dst->max_length > dst->length)
 			dst->buf[dst->length / sizeof(dst->buf[0])] = 0;
 	}
-	TRACEEXIT2(return STATUS_SUCCESS);
+	EXIT2(return STATUS_SUCCESS);
 }
 
 wstdcall ULONG WIN_FUNC(RtlxAnsiStringToUnicodeSize,1)
@@ -234,14 +234,14 @@ wstdcall NTSTATUS WIN_FUNC(RtlAnsiStringToUnicodeString,3)
 	int i, n;
 
 	n = RtlxAnsiStringToUnicodeSize(src);
-	DBGTRACE2("%d, %d, %d, %d, %p", n, dst->max_length, src->length,
-		  src->max_length, src->buf);
+	TRACE2("%d, %d, %d, %d, %p", n, dst->max_length, src->length,
+	       src->max_length, src->buf);
 	if (alloc == TRUE) {
 #if 0
 		if (n == 0) {
 			dst->length = dst->max_length = 0;
 			dst->buf = NULL;
-			TRACEEXIT2(return STATUS_SUCCESS);
+			EXIT2(return STATUS_SUCCESS);
 		}
 #endif
 		dst->max_length = n + sizeof(dst->buf[0]);
@@ -249,10 +249,10 @@ wstdcall NTSTATUS WIN_FUNC(RtlAnsiStringToUnicodeString,3)
 						 dst->max_length, 0);
 		if (!dst->buf) {
 			dst->max_length = dst->length = 0;
-			TRACEEXIT2(return STATUS_NO_MEMORY);
+			EXIT2(return STATUS_NO_MEMORY);
 		}
 	} else if (dst->max_length < n)
-		TRACEEXIT2(return STATUS_BUFFER_TOO_SMALL);
+		EXIT2(return STATUS_BUFFER_TOO_SMALL);
 
 	dst->length = n;
 	n /= sizeof(dst->buf[0]);
@@ -260,9 +260,9 @@ wstdcall NTSTATUS WIN_FUNC(RtlAnsiStringToUnicodeString,3)
 		dst->buf[i] = src->buf[i];
 	if (i * sizeof(dst->buf[0]) < dst->max_length)
 		dst->buf[i] = 0;
-	DBGTRACE2("dst: length: %d, max_length: %d, string: %p",
-		  dst->length, dst->max_length, src->buf);
-	TRACEEXIT2(return STATUS_SUCCESS);
+	TRACE2("dst: length: %d, max_length: %d, string: %p",
+	       dst->length, dst->max_length, src->buf);
+	EXIT2(return STATUS_SUCCESS);
 }
 
 wstdcall NTSTATUS WIN_FUNC(RtlUnicodeStringToAnsiString,3)
@@ -272,14 +272,14 @@ wstdcall NTSTATUS WIN_FUNC(RtlUnicodeStringToAnsiString,3)
 	int i, n;
 
 	n = RtlxUnicodeStringToAnsiSize(src);
-	DBGTRACE2("%d, %d, %d, %d, %p", n, dst->max_length, src->length,
-		  src->max_length, src->buf);
+	TRACE2("%d, %d, %d, %d, %p", n, dst->max_length, src->length,
+	       src->max_length, src->buf);
 	if (alloc == TRUE) {
 #if 0
 		if (n == 0) {
 			dst->length = dst->max_length = 0;
 			dst->buf = NULL;
-			TRACEEXIT2(return STATUS_SUCCESS);
+			EXIT2(return STATUS_SUCCESS);
 		}
 #endif
 		dst->max_length = n + sizeof(dst->buf[0]);
@@ -287,19 +287,19 @@ wstdcall NTSTATUS WIN_FUNC(RtlUnicodeStringToAnsiString,3)
 						 dst->max_length, 0);
 		if (!dst->buf) {
 			dst->max_length = dst->length = 0;
-			TRACEEXIT1(return STATUS_NO_MEMORY);
+			EXIT1(return STATUS_NO_MEMORY);
 		}
 	} else if (dst->max_length < n)
-		TRACEEXIT2(return STATUS_BUFFER_TOO_SMALL);
+		EXIT2(return STATUS_BUFFER_TOO_SMALL);
 
 	dst->length = n;
 	for (i = 0; i < n; i++)
 		dst->buf[i] = src->buf[i];
 	if (i < dst->max_length)
 		dst->buf[i] = 0;
-	DBGTRACE2("string: %p, len: %d(%d)", dst->buf, dst->length,
-		  dst->max_length);
-	TRACEEXIT2(return STATUS_SUCCESS);
+	TRACE2("string: %p, len: %d(%d)", dst->buf, dst->length,
+	       dst->max_length);
+	EXIT2(return STATUS_SUCCESS);
 }
 
 wstdcall NTSTATUS WIN_FUNC(RtlUnicodeStringToInteger,3)
@@ -424,15 +424,15 @@ wstdcall NTSTATUS WIN_FUNC(NdisUpcaseUnicodeString,2)
 		char *c = (char *)&dst->buf[i];
 		*c = toupper(src->buf[i]);
 	}
-	TRACEEXIT3(return STATUS_SUCCESS);
+	EXIT3(return STATUS_SUCCESS);
 }
 
 wstdcall void WIN_FUNC(RtlInitUnicodeString,2)
 	(struct unicode_string *dst, const wchar_t *src)
 {
-	TRACEENTER2("%p", dst);
+	ENTER2("%p", dst);
 	if (dst == NULL)
-		TRACEEXIT1(return);
+		EXIT1(return);
 	if (src == NULL) {
 		dst->max_length = dst->length = 0;
 		dst->buf = NULL;
@@ -444,15 +444,15 @@ wstdcall void WIN_FUNC(RtlInitUnicodeString,2)
 		dst->length = i * sizeof(dst->buf[0]);
 		dst->max_length = (i + 1) * sizeof(dst->buf[0]);
 	}
-	TRACEEXIT1(return);
+	EXIT1(return);
 }
 
 wstdcall void WIN_FUNC(RtlInitAnsiString,2)
 	(struct ansi_string *dst, const char *src)
 {
-	TRACEENTER2("%p", dst);
+	ENTER2("%p", dst);
 	if (dst == NULL)
-		TRACEEXIT2(return);
+		EXIT2(return);
 	if (src == NULL) {
 		dst->max_length = dst->length = 0;
 		dst->buf = NULL;
@@ -464,22 +464,22 @@ wstdcall void WIN_FUNC(RtlInitAnsiString,2)
 		dst->length = i;
 		dst->max_length = i + 1;
 	}
-	DBGTRACE2("%p", dst->buf);
-	TRACEEXIT2(return);
+	TRACE2("%p", dst->buf);
+	EXIT2(return);
 }
 
 wstdcall void WIN_FUNC(RtlInitString,2)
 	(struct ansi_string *dst, const char *src)
 {
-	TRACEENTER2("%p", dst);
+	ENTER2("%p", dst);
 	RtlInitAnsiString(dst, src);
-	TRACEEXIT2(return);
+	EXIT2(return);
 }
 
 wstdcall void WIN_FUNC(RtlFreeUnicodeString,1)
 	(struct unicode_string *string)
 {
-	TRACEENTER2("%p", string);
+	ENTER2("%p", string);
 	if (string == NULL)
 		return;
 	if (string->buf)
@@ -492,7 +492,7 @@ wstdcall void WIN_FUNC(RtlFreeUnicodeString,1)
 wstdcall void WIN_FUNC(RtlFreeAnsiString,1)
 	(struct ansi_string *string)
 {
-	TRACEENTER2("%p", string);
+	ENTER2("%p", string);
 	if (string == NULL)
 		return;
 	if (string->buf)
@@ -518,7 +518,7 @@ wstdcall NTSTATUS WIN_FUNC(RtlGUIDFromString,2)
 	    ansi.buf[14] != '-' || ansi.buf[19] != '-' ||
 	    ansi.buf[24] != '-') {
 		RtlFreeAnsiString(&ansi);
-		TRACEEXIT2(return STATUS_INVALID_PARAMETER);
+		EXIT2(return STATUS_INVALID_PARAMETER);
 	}
 	memcpy(&guid->data4, &ansi.buf[29], sizeof(guid->data3));
 	/* set end of data3 for scanf */
@@ -547,13 +547,13 @@ wstdcall NTSTATUS WIN_FUNC(RtlQueryRegistryValues,5)
 	NTSTATUS status, ret;
 	static int i = 0;
 
-	TRACEENTER3("%x, %p", relative, tbl);
+	ENTER3("%x, %p", relative, tbl);
 //	TODO();
 
 	RtlInitUnicodeString(&unicode, path);
 	if (RtlUnicodeStringToAnsiString(&ansi, &unicode, TRUE) ==
 	    STATUS_SUCCESS) {
-		DBGTRACE2("%s", ansi.buf);
+		TRACE2("%s", ansi.buf);
 		RtlFreeAnsiString(&ansi);
 	}
 	ret = STATUS_SUCCESS;
@@ -561,19 +561,19 @@ wstdcall NTSTATUS WIN_FUNC(RtlQueryRegistryValues,5)
 		RtlInitUnicodeString(&unicode, tbl->name);
 		if (RtlUnicodeStringToAnsiString(&ansi, &unicode, TRUE) ==
 		    STATUS_SUCCESS) {
-			DBGTRACE2("name: %s", ansi.buf);
+			TRACE2("name: %s", ansi.buf);
 			RtlFreeAnsiString(&ansi);
 		}
-		DBGTRACE2("flags: %08X", tbl->flags);
+		TRACE2("flags: %08X", tbl->flags);
 		if (tbl->flags == RTL_QUERY_REGISTRY_DIRECT) {
-			DBGTRACE2("type: %08X", tbl->def_type);
+			TRACE2("type: %08X", tbl->def_type);
 			if (tbl->def_type == REG_DWORD) {
 				/* Atheros USB driver needs this, but
 				 * don't know where and how to get its
 				 * value */
 				if (tbl->def_data) {
-					DBGTRACE2("def_data: %x",
-						  *(int *)tbl->def_data);
+					TRACE2("def_data: %x",
+					       *(int *)tbl->def_data);
 					*(DWORD *)tbl->context = 0x5f292a + i++;
 //						*(DWORD *)tbl->def_data;
 				} else
@@ -597,19 +597,19 @@ wstdcall NTSTATUS WIN_FUNC(RtlQueryRegistryValues,5)
 				type = tbl->def_type;
 				length = tbl->def_length;;
 			}
-			DBGTRACE2("calling query_func: %p", tbl->query_func);
+			TRACE2("calling query_func: %p", tbl->query_func);
 			status = LIN2WIN6(tbl->query_func, tbl->name, type,
 					  data, length, context, env);
-			DBGTRACE2("status: %08X", status);
+			TRACE2("status: %08X", status);
 			if (status) {
 				if (status == STATUS_BUFFER_TOO_SMALL)
 					ret = STATUS_BUFFER_TOO_SMALL;
 				else
-					TRACEEXIT2(return STATUS_INVALID_PARAMETER);
+					EXIT2(return STATUS_INVALID_PARAMETER);
 			}
 		}
 	}
-	TRACEEXIT3(return ret);
+	EXIT3(return ret);
 }
 
 wstdcall NTSTATUS WIN_FUNC(RtlWriteRegistryValue,6)
@@ -619,22 +619,22 @@ wstdcall NTSTATUS WIN_FUNC(RtlWriteRegistryValue,6)
 	struct ansi_string ansi;
 	struct unicode_string unicode;
 
-	TRACEENTER3("%d", relative);
+	ENTER3("%d", relative);
 	TODO();
 
 	RtlInitUnicodeString(&unicode, path);
 	if (RtlUnicodeStringToAnsiString(&ansi, &unicode, TRUE) ==
 	    STATUS_SUCCESS) {
-		DBGTRACE2("%s", ansi.buf);
+		TRACE2("%s", ansi.buf);
 		RtlFreeAnsiString(&ansi);
 	}
 	RtlInitUnicodeString(&unicode, name);
 	if (RtlUnicodeStringToAnsiString(&ansi, &unicode, TRUE) ==
 	    STATUS_SUCCESS) {
-		DBGTRACE2("%s", ansi.buf);
+		TRACE2("%s", ansi.buf);
 		RtlFreeAnsiString(&ansi);
 	}
-	TRACEEXIT5(return STATUS_SUCCESS);
+	EXIT5(return STATUS_SUCCESS);
 }
 
 wstdcall NTSTATUS WIN_FUNC(RtlDeleteRegistryValue,3)

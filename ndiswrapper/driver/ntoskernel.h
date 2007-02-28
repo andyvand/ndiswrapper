@@ -390,7 +390,7 @@ typedef u32 pm_message_t;
 #define print_sp() do {				\
 		void *sp;			\
 		get_sp(sp);			\
-		DBGTRACE1("sp: %p", sp);	\
+		TRACE1("sp: %p", sp);	\
 	} while (0)
 
 //#define DEBUG_IRQL 1
@@ -800,11 +800,11 @@ do {									\
 static inline KIRQL current_irql(void)
 {
 	if (in_irq() || irqs_disabled())
-		TRACEEXIT6(return DEVICE_LEVEL);
+		EXIT6(return DEVICE_LEVEL);
 	else if (in_interrupt())
-		TRACEEXIT6(return DISPATCH_LEVEL);
+		EXIT6(return DISPATCH_LEVEL);
 	else
-		TRACEEXIT6(return PASSIVE_LEVEL);
+		EXIT6(return PASSIVE_LEVEL);
 }
 
 static inline KIRQL raise_irql(KIRQL newirql)
@@ -815,14 +815,14 @@ static inline KIRQL raise_irql(KIRQL newirql)
 		local_bh_disable();
 		preempt_disable();
 	}
-	DBGTRACE6("%d, %d", irql, newirql);
+	TRACE6("%d, %d", irql, newirql);
 	return irql;
 }
 
 static inline void lower_irql(KIRQL oldirql)
 {
 	KIRQL irql = current_irql();
-	DBGTRACE6("%d, %d", irql, oldirql);
+	TRACE6("%d, %d", irql, oldirql);
 	DBG_BLOCK(2) {
 		if (irql < oldirql)
 			ERROR("invalid irql: %d < %d", irql, oldirql);
@@ -1006,7 +1006,7 @@ static inline struct nt_slist *PushEntrySList(nt_slist_header *head,
 	head->next = entry;
 	head->depth++;
 	nt_spin_unlock_irql(lock, irql);
-	DBGTRACE4("%p, %p, %p", head, entry, entry->next);
+	TRACE4("%p, %p, %p", head, entry, entry->next);
 	return entry->next;
 }
 
@@ -1021,7 +1021,7 @@ static inline struct nt_slist *PopEntrySList(nt_slist_header *head,
 		head->depth--;
 	}
 	nt_spin_unlock_irql(lock, irql);
-	DBGTRACE4("%p, %p", head, entry);
+	TRACE4("%p, %p", head, entry);
 	return entry;
 }
 
@@ -1056,7 +1056,7 @@ static inline struct nt_slist *PushEntrySList(nt_slist_header *head,
 		new.next = entry;
 		new.depth = old.depth + 1;
 	} while (cmpxchg8b(&head->align, old.align, new.align) != old.align);
-	DBGTRACE4("%p, %p, %p", head, entry, old.next);
+	TRACE4("%p, %p, %p", head, entry, old.next);
 	return old.next;
 }
 
@@ -1073,7 +1073,7 @@ static inline struct nt_slist *PopEntrySList(nt_slist_header *head,
 		new.next = entry->next;
 		new.depth = old.depth - 1;
 	} while (cmpxchg8b(&head->align, old.align, new.align) != old.align);
-	DBGTRACE4("%p, %p", head, entry);
+	TRACE4("%p, %p", head, entry);
 	return entry;
 }
 

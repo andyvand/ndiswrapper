@@ -537,7 +537,7 @@ int link_pe_images(struct pe_image *pe_image, unsigned short n)
 		dos_hdr = pe->image;
 
 		if (pe->size < sizeof(IMAGE_DOS_HEADER)) {
-			DBGTRACE1("image too small: %d", pe->size);
+			TRACE1("image too small: %d", pe->size);
 			return -EINVAL;
 		}
 
@@ -547,17 +547,17 @@ int link_pe_images(struct pe_image *pe_image, unsigned short n)
 
 		pe->type = check_nt_hdr(pe->nt_hdr);
 		if (pe->type <= 0) {
-			DBGTRACE1("type <= 0");
+			TRACE1("type <= 0");
 			return -EINVAL;
 		}
 
 		if (fix_pe_image(pe)) {
-			DBGTRACE1("bad PE image");
+			TRACE1("bad PE image");
 			return -EINVAL;
 		}
 
 		if (read_exports(pe)) {
-			DBGTRACE1("read exports failed");
+			TRACE1("read exports failed");
 			return -EINVAL;
 		}
 	}
@@ -566,11 +566,11 @@ int link_pe_images(struct pe_image *pe_image, unsigned short n)
 	        pe = &pe_image[i];
 
 		if (fixup_reloc(pe->image, pe->nt_hdr)) {
-			DBGTRACE1("fixup reloc failed");
+			TRACE1("fixup reloc failed");
 			return -EINVAL;
 		}
 		if (fixup_imports(pe->image, pe->nt_hdr)) {
-			DBGTRACE1("fixup imports failed");
+			TRACE1("fixup imports failed");
 			return -EINVAL;
 		}
 #if defined(CONFIG_X86_64)
@@ -582,8 +582,8 @@ int link_pe_images(struct pe_image *pe_image, unsigned short n)
 		pe->entry =
 			RVA2VA(pe->image,
 			       pe->opt_hdr->AddressOfEntryPoint, void *);
-		DBGTRACE1("entry is at %p, rva at %08X", pe->entry,
-			  pe->opt_hdr->AddressOfEntryPoint);
+		TRACE1("entry is at %p, rva at %08X", pe->entry,
+		       pe->opt_hdr->AddressOfEntryPoint);
 	}
 
 	for (i = 0; i < n; i++) {
@@ -599,7 +599,7 @@ int link_pe_images(struct pe_image *pe_image, unsigned short n)
 			ustring.buf = (wchar_t *)buf;
 			dll_entry = (void *)get_dll_init(pe->name);
 
-			DBGTRACE1("calling dll_init at %p", dll_entry);
+			TRACE1("calling dll_init at %p", dll_entry);
 			if (!dll_entry || dll_entry(&ustring))
 				ERROR("DLL initialize failed for %s",
 				      pe->name);

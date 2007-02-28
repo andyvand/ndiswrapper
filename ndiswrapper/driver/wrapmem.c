@@ -128,7 +128,7 @@ void *slack_kmalloc(size_t size)
 	unsigned int flags, n;
 	void *ptr;
 
-	TRACEENTER4("size = %lu", (unsigned long)size);
+	ENTER4("size = %lu", (unsigned long)size);
 
 	if (current_irql() < DISPATCH_LEVEL)
 		flags = GFP_KERNEL;
@@ -146,8 +146,8 @@ void *slack_kmalloc(size_t size)
 #ifdef ALLOC_DEBUG
 	atomic_add(size, &alloc_sizes[ALLOC_TYPE_SLACK]);
 #endif
-	DBGTRACE4("%p, %p", info, ptr);
-	TRACEEXIT4(return ptr);
+	TRACE4("%p, %p", info, ptr);
+	EXIT4(return ptr);
 }
 
 /* free pointer and remove from list of allocated pointers */
@@ -155,7 +155,7 @@ void slack_kfree(void *ptr)
 {
 	struct slack_alloc_info *info;
 
-	TRACEENTER4("%p", ptr);
+	ENTER4("%p", ptr);
 	info = ptr - sizeof(*info);
 	nt_spin_lock(&alloc_lock);
 	RemoveEntryList(&info->list);
@@ -164,7 +164,7 @@ void slack_kfree(void *ptr)
 	atomic_sub(info->size, &alloc_sizes[ALLOC_TYPE_SLACK]);
 #endif
 	kfree(info);
-	TRACEEXIT4(return);
+	EXIT4(return);
 }
 
 #if defined(ALLOC_DEBUG)
@@ -276,8 +276,7 @@ void *wrap_ExAllocatePoolWithTag(enum pool_type pool_type, SIZE_T size,
 	void *addr;
 	no_warn_unused struct alloc_info *info;
 
-	TRACEENTER4("pool_type: %d, size: %lu, tag: %u", pool_type,
-		    size, tag);
+	ENTER4("pool_type: %d, size: %lu, tag: %u", pool_type, size, tag);
 
 	if (size <= (16 * 1024 - 100)) {
 		if (current_irql() < DISPATCH_LEVEL)
@@ -295,7 +294,7 @@ void *wrap_ExAllocatePoolWithTag(enum pool_type pool_type, SIZE_T size,
 	info = addr - sizeof(*info);
 	info->tag = tag;
 #endif
-	TRACEEXIT4(return addr);
+	EXIT4(return addr);
 }
 #endif
 

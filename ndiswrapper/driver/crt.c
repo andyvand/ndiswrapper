@@ -23,7 +23,7 @@ int crt_init(void)
 /* called when module is being removed */
 void crt_exit(void)
 {
-	TRACEEXIT4(return);
+	EXIT4(return);
 }
 
 noregparm INT WIN_FUNC(_win_sprintf,12)
@@ -34,7 +34,7 @@ noregparm INT WIN_FUNC(_win_sprintf,12)
 	va_start(args, format);
 	res = vsprintf(buf, format, args);
 	va_end(args);
-	DBGTRACE2("buf: %p: %s", buf, buf);
+	TRACE2("buf: %p: %s", buf, buf);
 	return res;
 }
 
@@ -42,7 +42,7 @@ noregparm INT WIN_FUNC(swprintf,12)
 	(wchar_t *buf, const wchar_t *format, ...)
 {
 	TODO();
-	TRACEEXIT2(return 0);
+	EXIT2(return 0);
 }
 
 noregparm INT WIN_FUNC(_win_vsprintf,3)
@@ -50,8 +50,8 @@ noregparm INT WIN_FUNC(_win_vsprintf,3)
 {
 	INT i;
 	i = vsprintf(str, format, ap);
-	DBGTRACE2("str: %p: %s", str, str);
-	TRACEEXIT2(return i);
+	TRACE2("str: %p: %s", str, str);
+	EXIT2(return i);
 }
 
 noregparm INT WIN_FUNC(_win_snprintf,12)
@@ -64,7 +64,7 @@ noregparm INT WIN_FUNC(_win_snprintf,12)
 	va_start(args, format);
 	res = vsnprintf(buf, n, format, args);
 	va_end(args);
-	DBGTRACE2("buf: %p: %s", buf, buf);
+	TRACE2("buf: %p: %s", buf, buf);
 	return res;
 }
 
@@ -78,7 +78,7 @@ noregparm INT WIN_FUNC(_win__snprintf,12)
 	va_start(args, format);
 	res = vsnprintf(buf, n, format, args);
 	va_end(args);
-	DBGTRACE2("buf: %p: %s", buf, buf);
+	TRACE2("buf: %p: %s", buf, buf);
 	return res;
 }
 
@@ -87,8 +87,8 @@ noregparm INT WIN_FUNC(_win_vsnprintf,4)
 {
 	INT i;
 	i = vsnprintf(str, size, format, ap);
-	DBGTRACE2("str: %p: %s", str, str);
-	TRACEEXIT2(return i);
+	TRACE2("str: %p: %s", str, str);
+	EXIT2(return i);
 }
 
 noregparm INT WIN_FUNC(_win__vsnprintf,4)
@@ -96,8 +96,8 @@ noregparm INT WIN_FUNC(_win__vsnprintf,4)
 {
 	INT i;
 	i = vsnprintf(str, size, format, ap);
-	DBGTRACE2("str: %p: %s", str, str);
-	TRACEEXIT2(return i);
+	TRACE2("str: %p: %s", str, str);
+	EXIT2(return i);
 }
 
 noregparm char *WIN_FUNC(_win_strncpy,3)
