@@ -58,11 +58,10 @@ noregparm INT WIN_FUNC(_win_snprintf,12)
 	(char *buf, SIZE_T count, const char *format, ...)
 {
 	va_list args;
-	int res, n;
+	int res;
 
-	n = count > 9 ? 9 : count;
 	va_start(args, format);
-	res = vsnprintf(buf, n, format, args);
+	res = vsnprintf(buf, count, format, args);
 	va_end(args);
 	TRACE2("buf: %p: %s", buf, buf);
 	return res;
@@ -72,11 +71,10 @@ noregparm INT WIN_FUNC(_win__snprintf,12)
 	(char *buf, SIZE_T count, const char *format, ...)
 {
 	va_list args;
-	int res, n;
+	int res;
 
-	n = count > 9 ? 9 : count;
 	va_start(args, format);
-	res = vsnprintf(buf, n, format, args);
+	res = vsnprintf(buf, count, format, args);
 	va_end(args);
 	TRACE2("buf: %p: %s", buf, buf);
 	return res;
@@ -370,15 +368,6 @@ int stricmp(const char *s1, const char *s2)
 		s2++;
 	}
 	return *s1 - *s2;
-}
-
-void dump_stack(void)
-{
-	ULONG_PTR *sp;
-	int i;
-	get_sp(sp);
-	for (i = 0; i < 20; i++)
-		printk(KERN_DEBUG "sp[%d] = %p\n", i, (void *)sp[i]);
 }
 
 void dump_bytes(const char *ctx, const u8 *from, int len)

@@ -17,12 +17,6 @@
 
 /* workqueue implementation for 2.4 kernels */
 
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,8)
-#define SIG_LOCK(t) (&(t)->sigmask_lock)
-#else
-#define SIG_LOCK(t) (&(t)->sighand->siglock)
-#endif
-
 static int workq_thread(void *data)
 {
 	workqueue_struct_t *workq = data;
