@@ -228,7 +228,7 @@ struct nt_list {
 	struct nt_list *prev;
 };
 
-typedef ULONG_PTR NT_SPIN_LOCK;
+typedef volatile ULONG_PTR NT_SPIN_LOCK;
 
 struct kdpc;
 typedef void (*DPC)(struct kdpc *kdpc, void *ctx, void *arg1,
