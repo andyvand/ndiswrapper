@@ -846,14 +846,14 @@ static inline void lower_irql(KIRQL oldirql)
 #define NT_SPIN_LOCK_UNLOCKED 0
 #define NT_SPIN_LOCK_LOCKED 1
 
-static inline void  nt_spin_lock_init(volatile NT_SPIN_LOCK *lock)
+static inline void  nt_spin_lock_init(NT_SPIN_LOCK *lock)
 {
 	*lock = NT_SPIN_LOCK_UNLOCKED;
 }
 
 #ifdef CONFIG_SMP
 
-static inline void nt_spin_lock(volatile NT_SPIN_LOCK *lock)
+static inline void nt_spin_lock(NT_SPIN_LOCK *lock)
 {
 	__asm__ __volatile__(
 		"\n"
@@ -871,7 +871,7 @@ static inline void nt_spin_lock(volatile NT_SPIN_LOCK *lock)
 		: "r" (NT_SPIN_LOCK_LOCKED), "i" (NT_SPIN_LOCK_UNLOCKED));
 }
 
-static inline void nt_spin_unlock(volatile NT_SPIN_LOCK *lock)
+static inline void nt_spin_unlock(NT_SPIN_LOCK *lock)
 {
 	*lock = NT_SPIN_LOCK_UNLOCKED;
 }
