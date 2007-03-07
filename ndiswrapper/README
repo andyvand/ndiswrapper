@@ -35,7 +35,7 @@ Follow the instructions below when sending a bug report:
      possible.  Include details about your card, chipset (reported by lspci),
      distribution, kernel version in the post.
 
-   * Check if latest CVS works.
+   * Check if latest SVN works.
 
    * Use an alternate windows driver; see the link in Status section above
      for a driver that is known to work for your chipset. You may also
