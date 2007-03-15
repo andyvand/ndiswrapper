@@ -398,7 +398,7 @@ wstdcall LARGE_INTEGER WIN_FUNC(RtlConvertUlongToLargeInteger,1)
 	return li;
 }
 
-wfastcall USHORT WIN_FUNC(RtlUShortByteSwap,1)
+wfastcall USHORT WIN_FUNC(RtlUshortByteSwap,1)
 	(USHORT src)
 {
 	return __swab16(src);
