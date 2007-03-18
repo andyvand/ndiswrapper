@@ -80,13 +80,8 @@ static void module_cleanup(void)
 
 static int __init wrapper_init(void)
 {
-	printk(KERN_INFO "%s version %s loaded (preempt=%s,smp=%s)\n",
+	printk(KERN_INFO "%s version %s loaded (smp=%s)\n",
 	       DRIVER_NAME, DRIVER_VERSION,
-#if defined CONFIG_PREEMPT
-	       "yes",
-#else
-	       "no",
-#endif
 #ifdef CONFIG_SMP
 	       "yes"
 #else
