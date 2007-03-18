@@ -139,6 +139,11 @@ enum network_type {
 	Ndis802_11Automode, Ndis802_11NetworkTypeMax = Ndis802_11Automode
 };
 
+struct network_type_list {
+	ULONG num;
+	enum network_type types[1];
+};
+
 enum ndis_power {
 	NDIS_POWER_OFF = 0, NDIS_POWER_MAX, NDIS_POWER_MIN,
 };
