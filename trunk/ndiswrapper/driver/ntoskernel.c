@@ -2337,10 +2337,10 @@ wstdcall NTSTATUS WIN_FUNC(ZwCreateFile,11)
 	} else
 		bin_file = NULL;
 
+	RtlFreeAnsiString(&ansi);
 	if (!bin_file) {
 		iosb->status = FILE_DOES_NOT_EXIST;
 		iosb->info = 0;
-		RtlFreeAnsiString(&ansi);
 		free_object(fo);
 		EXIT2(return STATUS_FAILURE);
 	}
@@ -2356,7 +2356,6 @@ wstdcall NTSTATUS WIN_FUNC(ZwCreateFile,11)
 	*handle = coh;
 	TRACE2("handle: %p", *handle);
 	status = STATUS_SUCCESS;
-	RtlFreeAnsiString(&ansi);
 	EXIT2(return status);
 }
 

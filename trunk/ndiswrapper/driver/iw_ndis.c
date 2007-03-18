@@ -40,7 +40,6 @@ int set_essid(struct wrap_ndis_device *wnd, const char *ssid, int ssid_len)
 	NDIS_STATUS res;
 	struct ndis_essid req;
 
-	ENTER2("");
 	if (ssid_len > NDIS_ESSID_MAX_SIZE)
 		return -EINVAL;
 
@@ -1477,6 +1476,7 @@ static int disassociate(struct wrap_ndis_device *wnd)
 	u8 buf[NDIS_ESSID_MAX_SIZE];
 	int i;
 
+	TRACE2("");
 	miniport_set_info(wnd, OID_802_11_DISASSOCIATE, NULL, 0);
 	get_random_bytes(buf, sizeof(buf));
 	for (i = 0; i < sizeof(buf); i++)
@@ -1887,7 +1887,7 @@ static int priv_network_type(struct net_device *dev,
 		network_type = Ndis802_11DS;
 	else if (type == 'a')
 		network_type = Ndis802_11OFDM5;
-	else if (type == 'g')
+	else if (type == 'g' || type == 'n')
 		network_type = Ndis802_11OFDM24;
 	else
 		network_type = Ndis802_11Automode;
