@@ -50,7 +50,7 @@ static int debug;
 #endif
 
 #define LOG_MSG(where, fmt, ...)					\
-	syslog(LOG_KERN | (where), "%s: %s(%d): " fmt "\n",		\
+	syslog(LOG_KERN | where, "%s: %s(%d): " fmt "\n",		\
 	       PROG_NAME, __FUNCTION__, __LINE__ , ## __VA_ARGS__)
 #define ERROR(fmt, ...) LOG_MSG(LOG_INFO, fmt, ## __VA_ARGS__)
 #define INFO(fmt, ...) LOG_MSG(LOG_INFO, fmt, ## __VA_ARGS__)
@@ -437,15 +437,14 @@ static int load_device(int ioctl_device, int vendor, int device,
 		if (dirent->d_name[0] == '.')
 			continue;
 
-		if (!get_device(dirent->d_name, vendor, device,
-				subvendor, subdevice, bus, &load_device))
+		if (!get_device(dirent->d_name, vendor, device, subvendor,
+				subdevice, bus, &load_device))
 			break;
 	}
 	closedir(dir);
 
 	DBG("%04x, %04x, %04x, %04x", load_device.vendor,
-	    load_device.device, load_device.subvendor,
-	    load_device.subdevice);
+	    load_device.device, load_device.subvendor, load_device.subdevice);
 	res = ioctl(ioctl_device, WRAP_IOCTL_LOAD_DEVICE, &load_device);
 	DBG("res: %d", res);
 
