@@ -1,3 +1,10 @@
+Version 1.39 2007-XX-XX
+=======================	
+* An smp issue is fixed
+* When initializing a card that supports 802.11a and either 802.11g or b, set
+  the mode to 802.11g or b, as 802.11a is far less common
+* Added support for driver for Atheros device with PCI ID 168C:1014
+
 Version 1.38 2007-02-28
 =======================	
 * Fixed ndiswrapper script so it installs drivers for certain PCMCIA cards
