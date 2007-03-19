@@ -718,12 +718,12 @@ static void tx_worker(worker_param_t param)
 	while (wnd->tx_ok) {
 		if (down_interruptible(&wnd->tx_ring_mutex))
 			break;
-		/* end == start if either ring is empty or full; in
-		 * the latter case is_tx_ring_full is set */
 		read_lock_bh(&wnd->tx_ring_lock);
 		n = wnd->tx_ring_end - wnd->tx_ring_start;
 		TRACE3("%d, %d, %d", wnd->tx_ring_start, wnd->tx_ring_end, n);
 		read_unlock_bh(&wnd->tx_ring_lock);
+		/* end == start if either ring is empty or full; in
+		 * the latter case is_tx_ring_full is set */
 		if (n == 0) {
 			if (wnd->is_tx_ring_full)
 				n = TX_RING_SIZE - wnd->tx_ring_start;
@@ -1853,7 +1853,9 @@ static NDIS_STATUS ndis_start_device(struct wrap_ndis_device *wnd)
 	}
 
 	set_task_offload(wnd, buf, buf_len);
+#ifdef NETIF_F_LLTX
 	net_dev->features |= NETIF_F_LLTX;
+#endif
 
 	if (register_netdev(net_dev)) {
 		ERROR("cannot register net device %s", net_dev->name);
