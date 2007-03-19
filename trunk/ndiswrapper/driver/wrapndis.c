@@ -59,8 +59,12 @@ NDIS_STATUS miniport_reset(struct wrap_ndis_device *wnd)
 
 	ENTER2("wnd: %p", wnd);
 
-	if (down_interruptible(&wnd->ndis_comm_mutex))
+	if (down_interruptible(&wnd->tx_ring_mutex))
 		EXIT3(return NDIS_STATUS_FAILURE);
+	if (down_interruptible(&wnd->ndis_comm_mutex)) {
+		up(&wnd->tx_ring_mutex);
+		EXIT3(return NDIS_STATUS_FAILURE);
+	}
 	miniport = &wnd->wd->driver->ndis_driver->miniport;
 	cur_lookahead = wnd->nmb->cur_lookahead;
 	max_lookahead = wnd->nmb->max_lookahead;
@@ -88,6 +92,7 @@ NDIS_STATUS miniport_reset(struct wrap_ndis_device *wnd)
 		set_packet_filter(wnd, wnd->packet_filter);
 		set_multicast_list(wnd);
 	}
+	up(&wnd->tx_ring_mutex);
 	EXIT3(return res);
 }
 
@@ -364,6 +369,7 @@ static NDIS_STATUS miniport_set_power_state(struct wrap_ndis_device *wnd,
 			return NDIS_STATUS_FAILURE;
 
 		if (status == NDIS_STATUS_SUCCESS) {
+			up(&wnd->tx_ring_mutex);
 			netif_device_attach(wnd->net_dev);
 			hangcheck_add(wnd);
 			add_stats_timer(wnd);
@@ -373,6 +379,8 @@ static NDIS_STATUS miniport_set_power_state(struct wrap_ndis_device *wnd,
 				" resumed", wnd->net_dev->name, state);
 		EXIT1(return status);
 	} else {
+		if (down_interruptible(&wnd->tx_ring_mutex))
+			EXIT1(return NDIS_STATUS_FAILURE);
 		netif_device_detach(wnd->net_dev);
 		hangcheck_del(wnd);
 		del_stats_timer(wnd);
@@ -614,6 +622,7 @@ static u8 miniport_tx_packets(struct wrap_ndis_device *wnd, u8 start, u8 n)
 	struct miniport_char *miniport;
 	struct ndis_packet *packet;
 	u8 sent;
+	KIRQL irql;
 
 	TRACE3("%d, %d", start, n);
 	miniport = &wnd->wd->driver->ndis_driver->miniport;
@@ -623,10 +632,12 @@ static u8 miniport_tx_packets(struct wrap_ndis_device *wnd, u8 start, u8 n)
 				 &wnd->tx_ring[start], n);
 			sent = n;
 		} else {
+			irql = raise_irql(DISPATCH_LEVEL);
 			serialize_lock(wnd);
 			LIN2WIN3(miniport->send_packets, wnd->nmb->adapter_ctx,
 				 &wnd->tx_ring[start], n);
 			serialize_unlock(wnd);
+			lower_irql(irql);
 			for (sent = 0; sent < n && wnd->tx_ok; sent++) {
 				struct ndis_packet_oob_data *oob_data;
 				packet = wnd->tx_ring[start + sent];
@@ -668,10 +679,10 @@ static u8 miniport_tx_packets(struct wrap_ndis_device *wnd, u8 start, u8 n)
 			packet = wnd->tx_ring[start + sent];
 			oob_data = NDIS_PACKET_OOB_DATA(packet);
 			oob_data->status = NDIS_STATUS_NOT_RECOGNIZED;
-			serialize_lock(wnd);
+			irql = serialize_lock_irql(wnd);
 			res = LIN2WIN3(miniport->send, wnd->nmb->adapter_ctx,
 				       packet, packet->private.flags);
-			serialize_unlock(wnd);
+			serialize_unlock_irql(wnd, irql);
 			switch (res) {
 			case NDIS_STATUS_SUCCESS:
 				free_tx_packet(wnd, packet, res);
@@ -701,21 +712,23 @@ static void tx_worker(worker_param_t param)
 {
 	struct wrap_ndis_device *wnd;
 	s8 n;
-	KIRQL irql;
 
 	wnd = worker_param_data(param, struct wrap_ndis_device, tx_work);
 	ENTER3("tx_ok %d", wnd->tx_ok);
 	while (wnd->tx_ok) {
-		irql = nt_spin_lock_irql(&wnd->tx_ring_lock, DISPATCH_LEVEL);
+		if (down_interruptible(&wnd->tx_ring_mutex))
+			break;
 		/* end == start if either ring is empty or full; in
 		 * the latter case is_tx_ring_full is set */
+		read_lock_bh(&wnd->tx_ring_lock);
 		n = wnd->tx_ring_end - wnd->tx_ring_start;
 		TRACE3("%d, %d, %d", wnd->tx_ring_start, wnd->tx_ring_end, n);
+		read_unlock_bh(&wnd->tx_ring_lock);
 		if (n == 0) {
 			if (wnd->is_tx_ring_full)
 				n = TX_RING_SIZE - wnd->tx_ring_start;
 			else {
-				nt_spin_unlock_irql(&wnd->tx_ring_lock, irql);
+				up(&wnd->tx_ring_mutex);
 				break;
 			}
 		} else if (n < 0)
@@ -731,7 +744,7 @@ static void tx_worker(worker_param_t param)
 			if (netif_queue_stopped(wnd->net_dev))
 				netif_wake_queue(wnd->net_dev);
 		}
-		nt_spin_unlock_irql(&wnd->tx_ring_lock, irql);
+		up(&wnd->tx_ring_mutex);
 		TRACE3("%d, %d, %d", wnd->tx_ring_start, wnd->tx_ring_end, n);
 	}
 	EXIT3(return);
@@ -747,7 +760,7 @@ static int tx_skbuff(struct sk_buff *skb, struct net_device *dev)
 		WARNING("couldn't allocate packet");
 		return NETDEV_TX_BUSY;
 	}
-	nt_spin_lock(&wnd->tx_ring_lock);
+	write_lock(&wnd->tx_ring_lock);
 	wnd->tx_ring[wnd->tx_ring_end++] = packet;
 	if (wnd->tx_ring_end == TX_RING_SIZE)
 		wnd->tx_ring_end = 0;
@@ -755,7 +768,7 @@ static int tx_skbuff(struct sk_buff *skb, struct net_device *dev)
 		wnd->is_tx_ring_full = 1;
 		netif_stop_queue(wnd->net_dev);
 	}
-	nt_spin_unlock(&wnd->tx_ring_lock);
+	write_unlock(&wnd->tx_ring_lock);
 	TRACE3("ring: %d, %d", wnd->tx_ring_start, wnd->tx_ring_end);
 	schedule_wrap_work(&wnd->tx_work);
 	return NETDEV_TX_OK;
@@ -1840,6 +1853,7 @@ static NDIS_STATUS ndis_start_device(struct wrap_ndis_device *wnd)
 	}
 
 	set_task_offload(wnd, buf, buf_len);
+	net_dev->features |= NETIF_F_LLTX;
 
 	if (register_netdev(net_dev)) {
 		ERROR("cannot register net device %s", net_dev->name);
@@ -1963,7 +1977,6 @@ err_start:
 static int ndis_remove_device(struct wrap_ndis_device *wnd)
 {
 	s8 tx_pending;
-	KIRQL irql;
 
 	/* prevent setting essid during disassociation */
 	memset(&wnd->essid, 0, sizeof(wnd->essid));
@@ -1979,7 +1992,8 @@ static int ndis_remove_device(struct wrap_ndis_device *wnd)
 	netif_carrier_off(wnd->net_dev);
 	/* if device is suspended, but resume failed, tx_ring_mutex
 	 * may already be locked */
-	irql = nt_spin_lock_irql(&wnd->tx_ring_lock, DISPATCH_LEVEL);
+	down_trylock(&wnd->tx_ring_mutex);
+	read_lock_bh(&wnd->tx_ring_lock);
 	tx_pending = wnd->tx_ring_end - wnd->tx_ring_start;
 	if (tx_pending < 0)
 		tx_pending += TX_RING_SIZE;
@@ -1995,7 +2009,8 @@ static int ndis_remove_device(struct wrap_ndis_device *wnd)
 		wnd->tx_ring_start = (wnd->tx_ring_start + 1) % TX_RING_SIZE;
 		tx_pending--;
 	}
-	nt_spin_unlock_irql(&wnd->tx_ring_lock, irql);
+	read_unlock_bh(&wnd->tx_ring_lock);
+	up(&wnd->tx_ring_mutex);
 	wrap_procfs_remove_ndis_device(wnd);
 	miniport_halt(wnd);
 	ndis_exit_device(wnd);
@@ -2074,7 +2089,8 @@ static wstdcall NTSTATUS NdisAddDevice(struct driver_object *drv_obj,
 	init_nmb_functions(nmb);
 	wnd->net_dev = net_dev;
 	wnd->ndis_irq = NULL;
-	nt_spin_lock_init(&wnd->tx_ring_lock);
+	rwlock_init(&wnd->tx_ring_lock);
+	init_MUTEX(&wnd->tx_ring_mutex);
 	init_MUTEX(&wnd->ndis_comm_mutex);
 	init_waitqueue_head(&wnd->ndis_comm_wq);
 	wnd->ndis_comm_done = 0;
