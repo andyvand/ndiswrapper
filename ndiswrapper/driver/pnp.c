@@ -552,6 +552,7 @@ static int wrap_pnp_start_device(struct wrap_device *wd)
 		return -ENODEV;
 
 	wd->driver = driver;
+	wd->dev_bus = WRAP_DEVICE_BUS(driver->dev_type, WRAP_BUS(wd->dev_bus));
 	TRACE1("dev type: %d, bus type: %d, %d", WRAP_DEVICE(wd->dev_bus),
 	       WRAP_BUS(wd->dev_bus), wd->dev_bus);
 	/* first create pdo */

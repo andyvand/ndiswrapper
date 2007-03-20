@@ -712,16 +712,17 @@ static void tx_worker(worker_param_t param)
 {
 	struct wrap_ndis_device *wnd;
 	s8 n;
+	KIRQL irql;
 
 	wnd = worker_param_data(param, struct wrap_ndis_device, tx_work);
 	ENTER3("tx_ok %d", wnd->tx_ok);
 	while (wnd->tx_ok) {
 		if (down_interruptible(&wnd->tx_ring_mutex))
 			break;
-		read_lock_bh(&wnd->tx_ring_lock);
+		irql = nt_spin_lock_irql(&wnd->tx_ring_lock, DISPATCH_LEVEL);
 		n = wnd->tx_ring_end - wnd->tx_ring_start;
+		nt_spin_unlock_irql(&wnd->tx_ring_lock, irql);
 		TRACE3("%d, %d, %d", wnd->tx_ring_start, wnd->tx_ring_end, n);
-		read_unlock_bh(&wnd->tx_ring_lock);
 		/* end == start if either ring is empty or full; in
 		 * the latter case is_tx_ring_full is set */
 		if (n == 0) {
@@ -760,7 +761,7 @@ static int tx_skbuff(struct sk_buff *skb, struct net_device *dev)
 		WARNING("couldn't allocate packet");
 		return NETDEV_TX_BUSY;
 	}
-	write_lock(&wnd->tx_ring_lock);
+	nt_spin_lock(&wnd->tx_ring_lock);
 	wnd->tx_ring[wnd->tx_ring_end++] = packet;
 	if (wnd->tx_ring_end == TX_RING_SIZE)
 		wnd->tx_ring_end = 0;
@@ -768,7 +769,7 @@ static int tx_skbuff(struct sk_buff *skb, struct net_device *dev)
 		wnd->is_tx_ring_full = 1;
 		netif_stop_queue(wnd->net_dev);
 	}
-	write_unlock(&wnd->tx_ring_lock);
+	nt_spin_unlock(&wnd->tx_ring_lock);
 	TRACE3("ring: %d, %d", wnd->tx_ring_start, wnd->tx_ring_end);
 	schedule_wrap_work(&wnd->tx_work);
 	return NETDEV_TX_OK;
@@ -1979,6 +1980,7 @@ err_start:
 static int ndis_remove_device(struct wrap_ndis_device *wnd)
 {
 	s8 tx_pending;
+	KIRQL irql;
 
 	/* prevent setting essid during disassociation */
 	memset(&wnd->essid, 0, sizeof(wnd->essid));
@@ -1995,7 +1997,7 @@ static int ndis_remove_device(struct wrap_ndis_device *wnd)
 	/* if device is suspended, but resume failed, tx_ring_mutex
 	 * may already be locked */
 	down_trylock(&wnd->tx_ring_mutex);
-	read_lock_bh(&wnd->tx_ring_lock);
+	irql = nt_spin_lock_irql(&wnd->tx_ring_lock, DISPATCH_LEVEL);
 	tx_pending = wnd->tx_ring_end - wnd->tx_ring_start;
 	if (tx_pending < 0)
 		tx_pending += TX_RING_SIZE;
@@ -2011,7 +2013,7 @@ static int ndis_remove_device(struct wrap_ndis_device *wnd)
 		wnd->tx_ring_start = (wnd->tx_ring_start + 1) % TX_RING_SIZE;
 		tx_pending--;
 	}
-	read_unlock_bh(&wnd->tx_ring_lock);
+	nt_spin_unlock_irql(&wnd->tx_ring_lock, irql);
 	up(&wnd->tx_ring_mutex);
 	wrap_procfs_remove_ndis_device(wnd);
 	miniport_halt(wnd);
@@ -2091,7 +2093,7 @@ static wstdcall NTSTATUS NdisAddDevice(struct driver_object *drv_obj,
 	init_nmb_functions(nmb);
 	wnd->net_dev = net_dev;
 	wnd->ndis_irq = NULL;
-	rwlock_init(&wnd->tx_ring_lock);
+	nt_spin_lock_init(&wnd->tx_ring_lock);
 	init_MUTEX(&wnd->tx_ring_mutex);
 	init_MUTEX(&wnd->ndis_comm_mutex);
 	init_waitqueue_head(&wnd->ndis_comm_wq);
