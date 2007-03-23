@@ -469,7 +469,7 @@ static int setup_tx_sg_list(struct wrap_ndis_device *wnd, struct sk_buff *skb,
 			    struct ndis_packet_oob_data *oob_data)
 {
 	struct ndis_sg_element *sg_element;
-	struct ndis_sg_list *tx_sg_list;
+	struct ndis_sg_list *sg_list;
 	int i;
 
 	ENTER3("%p, %d", skb, skb_shinfo(skb)->nr_frags);
@@ -485,14 +485,14 @@ static int setup_tx_sg_list(struct wrap_ndis_device *wnd, struct sk_buff *skb,
 		TRACE3("%Lx, %u", sg_element->address, sg_element->length);
 		return 0;
 	}
-	tx_sg_list = kmalloc(sizeof(*tx_sg_list) +
-			     (skb_shinfo(skb)->nr_frags + 1) *
-			     sizeof(*sg_element), GFP_ATOMIC);
-	if (!tx_sg_list)
+	sg_list = kmalloc(sizeof(*sg_list) +
+			  (skb_shinfo(skb)->nr_frags + 1) * sizeof(*sg_element),
+			  GFP_ATOMIC);
+	if (!sg_list)
 		return -ENOMEM;
-	tx_sg_list->nent = skb_shinfo(skb)->nr_frags + 1;
-	TRACE3("%p, %d", tx_sg_list, tx_sg_list->nent);
-	sg_element = tx_sg_list->elements;
+	sg_list->nent = skb_shinfo(skb)->nr_frags + 1;
+	TRACE3("%p, %d", sg_list, sg_list->nent);
+	sg_element = sg_list->elements;
 	sg_element->length = skb_headlen(skb);
 	sg_element->address =
 		PCI_DMA_MAP_SINGLE(wnd->wd->pci.pdev, skb->data,
@@ -507,7 +507,7 @@ static int setup_tx_sg_list(struct wrap_ndis_device *wnd, struct sk_buff *skb,
 				     PCI_DMA_TODEVICE);
 		TRACE3("%Lx, %u", sg_element->address, sg_element->length);
 	}
-	oob_data->ext.info[ScatterGatherListPacketInfo] = tx_sg_list;
+	oob_data->ext.info[ScatterGatherListPacketInfo] = sg_list;
 	return 0;
 }
 
@@ -516,21 +516,21 @@ static void free_tx_sg_list(struct wrap_ndis_device *wnd,
 {
 	int i;
 	struct ndis_sg_element *sg_element;
-	struct ndis_sg_list *tx_sg_list =
+	struct ndis_sg_list *sg_list =
 		oob_data->ext.info[ScatterGatherListPacketInfo];
-	sg_element = tx_sg_list->elements;
-	TRACE3("%p, %d", tx_sg_list, tx_sg_list->nent);
+	sg_element = sg_list->elements;
+	TRACE3("%p, %d", sg_list, sg_list->nent);
 	PCI_DMA_UNMAP_SINGLE(wnd->wd->pci.pdev, sg_element->address,
 			     sg_element->length, PCI_DMA_TODEVICE);
-	if (tx_sg_list->nent == 1)
+	if (sg_list->nent == 1)
 		EXIT3(return);
-	for (i = 1; i < tx_sg_list->nent; i++, sg_element++) {
+	for (i = 1; i < sg_list->nent; i++, sg_element++) {
 		TRACE3("%Lx, %u", sg_element->address, sg_element->length);
 		pci_unmap_page(wnd->wd->pci.pdev, sg_element->address,
 			       sg_element->length, PCI_DMA_TODEVICE);
 	}
-	TRACE3("%p", tx_sg_list);
-	kfree(tx_sg_list);
+	TRACE3("%p", sg_list);
+	kfree(sg_list);
 }
 
 static struct ndis_packet *alloc_tx_packet(struct wrap_ndis_device *wnd,
@@ -564,7 +564,6 @@ static struct ndis_packet *alloc_tx_packet(struct wrap_ndis_device *wnd,
 			return NULL;
 		}
 	}
-	TRACE2("%d, %d", wnd->tx_csum.value, skb->ip_summed);
 	if (skb->ip_summed == CHECKSUM_PARTIAL) {
 		struct ndis_tcp_ip_checksum_packet_info csum;
 		struct iphdr *ip = skb->nh.iph;
@@ -576,7 +575,6 @@ static struct ndis_packet *alloc_tx_packet(struct wrap_ndis_device *wnd,
 		else if (ip->protocol == IPPROTO_UDP)
 			csum.tx.udp = 1;
 //		csum->tx.ip = 1;
-		TRACE3("0x%05x", csum.value);
 		packet->private.flags |= NDIS_PROTOCOL_ID_TCP_IP;
 		oob_data->ext.info[TcpIpChecksumPacketInfo] =
 			(void *)(ULONG_PTR)csum.value;
