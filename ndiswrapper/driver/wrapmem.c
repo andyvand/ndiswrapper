@@ -55,9 +55,10 @@ void wrapmem_exit(void)
 {
 	enum alloc_type type;
 	struct nt_list *ent;
+	KIRQL irql;
 
 	/* free all pointers on the slack list */
-	nt_spin_lock(&alloc_lock);
+	irql = nt_spin_lock_irql(&alloc_lock, DISPATCH_LEVEL);
 	while ((ent = RemoveHeadList(&slack_allocs))) {
 		struct slack_alloc_info *info;
 		info = container_of(ent, struct slack_alloc_info, list);
@@ -66,7 +67,7 @@ void wrapmem_exit(void)
 #endif
 		kfree(info);
 	}
-	nt_spin_unlock(&alloc_lock);
+	nt_spin_unlock_irql(&alloc_lock, irql);
 	type = 0;
 #ifdef ALLOC_DEBUG
 	for (type = 0; type < ALLOC_TYPE_MAX; type++) {
@@ -76,7 +77,7 @@ void wrapmem_exit(void)
 	}
 
 #if ALLOC_DEBUG > 1
-	nt_spin_lock(&alloc_lock);
+	irql = nt_spin_lock_irql(&alloc_lock, DISPATCH_LEVEL);
 	while ((ent = RemoveHeadList(&allocs))) {
 		struct alloc_info *info;
 		info = container_of(ent, struct alloc_info, list);
@@ -100,7 +101,7 @@ void wrapmem_exit(void)
 			WARNING("invalid type: %d; not freed", info->type);
 
 	}
-	nt_spin_unlock(&alloc_lock);
+	nt_spin_unlock_irql(&alloc_lock, irql);
 #endif
 #endif
 	return;
@@ -127,6 +128,7 @@ void *slack_kmalloc(size_t size)
 	struct slack_alloc_info *info;
 	unsigned int flags, n;
 	void *ptr;
+	KIRQL irql;
 
 	ENTER4("size = %lu", (unsigned long)size);
 
@@ -140,9 +142,9 @@ void *slack_kmalloc(size_t size)
 		return NULL;
 	info->size = size;
 	ptr = info + 1;
-	nt_spin_lock(&alloc_lock);
+	irql = nt_spin_lock_irql(&alloc_lock, DISPATCH_LEVEL);
 	InsertTailList(&slack_allocs, &info->list);
-	nt_spin_unlock(&alloc_lock);
+	nt_spin_unlock_irql(&alloc_lock, irql);
 #ifdef ALLOC_DEBUG
 	atomic_add(size, &alloc_sizes[ALLOC_TYPE_SLACK]);
 #endif
@@ -154,12 +156,13 @@ void *slack_kmalloc(size_t size)
 void slack_kfree(void *ptr)
 {
 	struct slack_alloc_info *info;
+	KIRQL irql;
 
 	ENTER4("%p", ptr);
 	info = ptr - sizeof(*info);
-	nt_spin_lock(&alloc_lock);
+	irql = nt_spin_lock_irql(&alloc_lock, DISPATCH_LEVEL);
 	RemoveEntryList(&info->list);
-	nt_spin_unlock(&alloc_lock);
+	nt_spin_unlock_irql(&alloc_lock, irql);
 #ifdef ALLOC_DEBUG
 	atomic_sub(info->size, &alloc_sizes[ALLOC_TYPE_SLACK]);
 #endif
@@ -171,6 +174,8 @@ void slack_kfree(void *ptr)
 void *wrap_kmalloc(size_t size, unsigned flags, const char *file, int line)
 {
 	struct alloc_info *info;
+	KIRQL irql;
+
 	info = kmalloc(size + sizeof(*info), flags);
 	if (!info)
 		return NULL;
@@ -186,9 +191,9 @@ void *wrap_kmalloc(size_t size, unsigned flags, const char *file, int line)
 #if ALLOC_DEBUG > 2
 	info->tag = 0;
 #endif
-	nt_spin_lock(&alloc_lock);
+	irql = nt_spin_lock_irql(&alloc_lock, DISPATCH_LEVEL);
 	InsertTailList(&allocs, &info->list);
-	nt_spin_unlock(&alloc_lock);
+	nt_spin_unlock_irql(&alloc_lock, irql);
 #endif
 	return (info + 1);
 }
@@ -196,12 +201,14 @@ void *wrap_kmalloc(size_t size, unsigned flags, const char *file, int line)
 void wrap_kfree(void *ptr)
 {
 	struct alloc_info *info;
+	KIRQL irql;
+
 	info = ptr - sizeof(*info);
 	atomic_sub(info->size, &alloc_sizes[info->type]);
 #if ALLOC_DEBUG > 1
-	nt_spin_lock(&alloc_lock);
+	irql = nt_spin_lock_irql(&alloc_lock, DISPATCH_LEVEL);
 	RemoveEntryList(&info->list);
-	nt_spin_unlock(&alloc_lock);
+	nt_spin_unlock_irql(&alloc_lock, irql);
 	if (!(info->type == ALLOC_TYPE_ATOMIC ||
 	      info->type == ALLOC_TYPE_NON_ATOMIC))
 		WARNING("invliad type: %d", info->type);
@@ -212,6 +219,8 @@ void wrap_kfree(void *ptr)
 void *wrap_vmalloc(unsigned long size, const char *file, int line)
 {
 	struct alloc_info *info;
+	KIRQL irql;
+
 	info = vmalloc(size + sizeof(*info));
 	if (!info)
 		return NULL;
@@ -224,9 +233,9 @@ void *wrap_vmalloc(unsigned long size, const char *file, int line)
 #if ALLOC_DEBUG > 2
 	info->tag = 0;
 #endif
-	nt_spin_lock(&alloc_lock);
+	irql = nt_spin_lock_irql(&alloc_lock, DISPATCH_LEVEL);
 	InsertTailList(&allocs, &info->list);
-	nt_spin_unlock(&alloc_lock);
+	nt_spin_unlock_irql(&alloc_lock, irql);
 #endif
 	return (info + 1);
 }
@@ -235,6 +244,8 @@ void *wrap__vmalloc(unsigned long size, unsigned int gfp_mask, pgprot_t prot,
 		    const char *file, int line)
 {
 	struct alloc_info *info;
+	KIRQL irql;
+
 	info = __vmalloc(size + sizeof(*info), gfp_mask, prot);
 	if (!info)
 		return NULL;
@@ -247,9 +258,9 @@ void *wrap__vmalloc(unsigned long size, unsigned int gfp_mask, pgprot_t prot,
 #if ALLOC_DEBUG > 2
 	info->tag = 0;
 #endif
-	nt_spin_lock(&alloc_lock);
+	irql = nt_spin_lock_irql(&alloc_lock, DISPATCH_LEVEL);
 	InsertTailList(&allocs, &info->list);
-	nt_spin_unlock(&alloc_lock);
+	nt_spin_unlock_irql(&alloc_lock, irql);
 #endif
 	return (info + 1);
 }
@@ -257,12 +268,14 @@ void *wrap__vmalloc(unsigned long size, unsigned int gfp_mask, pgprot_t prot,
 void wrap_vfree(void *ptr)
 {
 	struct alloc_info *info;
+	KIRQL irql;
+
 	info = ptr - sizeof(*info);
 	atomic_sub(info->size, &alloc_sizes[info->type]);
 #if ALLOC_DEBUG > 1
-	nt_spin_lock(&alloc_lock);
+	irql = nt_spin_lock_irql(&alloc_lock, DISPATCH_LEVEL);
 	RemoveEntryList(&info->list);
-	nt_spin_unlock(&alloc_lock);
+	nt_spin_unlock_irql(&alloc_lock, irql);
 	if (info->type != ALLOC_TYPE_VMALLOC)
 		WARNING("invliad type: %d", info->type);
 #endif
@@ -270,28 +283,19 @@ void wrap_vfree(void *ptr)
 }
 
 #if ALLOC_DEBUG > 1
+#undef ExAllocatePoolWithTag
 void *wrap_ExAllocatePoolWithTag(enum pool_type pool_type, SIZE_T size,
 				 ULONG tag, const char *file, int line)
 {
 	void *addr;
-	no_warn_unused struct alloc_info *info;
+	struct alloc_info *info;
 
 	ENTER4("pool_type: %d, size: %lu, tag: %u", pool_type, size, tag);
-
-	if (size <= (16 * 1024 - 100)) {
-		if (current_irql() < DISPATCH_LEVEL)
-			addr = wrap_kmalloc(size, GFP_KERNEL, file, line);
-		else
-			addr = wrap_kmalloc(size, GFP_ATOMIC, file, line);
-	} else {
-		if (current_irql() < DISPATCH_LEVEL)
-			addr = wrap_vmalloc(size, file, line);
-		else
-			addr = wrap__vmalloc(size, GFP_ATOMIC | __GFP_HIGHMEM,
-					     PAGE_KERNEL, file, line);
-	}
+	addr = ExAllocatePoolWithTag(pool_type, size, tag);
+	info = (addr - 2 * sizeof(unsigned long)) - sizeof(*info);
+	info->file = file;
+	info->line = line;
 #if ALLOC_DEBUG > 2
-	info = addr - sizeof(*info);
 	info->tag = tag;
 #endif
 	EXIT4(return addr);
