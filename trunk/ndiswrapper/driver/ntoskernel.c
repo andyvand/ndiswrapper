@@ -1070,9 +1070,7 @@ wstdcall void WIN_FUNC(ExFreePoolWithTag,2)
 	(unsigned long *addr, ULONG tag)
 {
 	TRACE4("addr: %p", addr);
-	if (*(addr - 2) == WRAP_ALLOC_PAGES)
-		free_pages((unsigned long)(addr - 2), get_order(*(addr - 1)));
-	else if (*(addr - 2) == WRAP_ALLOC_KMALLOC)
+	if (*(addr - 2) == WRAP_ALLOC_KMALLOC)
 		kfree(addr - 2);
 	else if (*(addr - 2) == WRAP_ALLOC_VMALLOC) {
 		assert((unsigned long)addr >= VMALLOC_START &&
@@ -1082,7 +1080,9 @@ wstdcall void WIN_FUNC(ExFreePoolWithTag,2)
 						addr - 2, NULL);
 		else
 			vfree(addr - 2);
-	} else {
+	} else if (*(addr - 2) == WRAP_ALLOC_PAGES)
+		free_pages((unsigned long)(addr - 2), get_order(*(addr - 1)));
+	else {
 		WARNING("invalid memory: %p, %p, 0x%lx, 0x%lx", addr, addr - 2,
 			*(addr - 2), *(addr - 1));
 		dump_stack();
@@ -2007,19 +2007,16 @@ wstdcall void *WIN_FUNC(MmAllocateContiguousMemorySpecifyCache,5)
 	 PHYSICAL_ADDRESS boundary, enum memory_caching_type cache_type)
 {
 	void *addr;
-	size_t page_length = ((size + PAGE_SIZE - 1) / PAGE_SIZE) * PAGE_SIZE;
-	TRACE2("%lu, %zu, %Lu, %Lu, %Lu, %d", size, page_length,
-	       lowest, highest, boundary, cache_type);
-	addr = ExAllocatePoolWithTag(NonPagedPool, page_length, 0);
-	TRACE2("%p", addr);
+	addr = (void *)__get_free_pages(gfp_irql(), get_order(size));
+	TRACE2("%p, %lu", addr, size);
 	return addr;
 }
 
 wstdcall void WIN_FUNC(MmFreeContiguousMemorySpecifyCache,3)
 	(void *base, SIZE_T size, enum memory_caching_type cache_type)
 {
-	TRACE2("%p", base);
-	ExFreePool(base);
+	TRACE2("%p, %lu", base, size);
+	free_pages((unsigned long)base, get_order(size));
 }
 
 wstdcall PHYSICAL_ADDRESS WIN_FUNC(MmGetPhysicalAddress,1)
