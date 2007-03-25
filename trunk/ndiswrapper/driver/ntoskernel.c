@@ -995,13 +995,18 @@ wstdcall KIRQL WIN_FUNC(KeAcquireSpinLockRaiseToDpc,1)
 wstdcall void *WIN_FUNC(ExAllocatePoolWithTag,3)
 	(enum pool_type pool_type, SIZE_T size, ULONG tag)
 {
-	void *addr;
+	unsigned long *addr;
 
 	ENTER4("pool_type: %d, size: %lu, tag: 0x%x", pool_type,
 		    size, tag);
-	if (size <= (16 * 1024))
+	size += 2 * sizeof(unsigned long);
+	if (size <= (16 * 1024)) {
 		addr = kmalloc(size, gfp_irql());
-	else {
+		if (addr) {
+			*addr = WRAP_ALLOC_KMALLOC;
+			*(addr + 1) = size;
+		}
+	} else {
 		KIRQL irql = current_irql();
 		if (irql > DISPATCH_LEVEL) {
 			WARNING("Windows driver allocating %lu bytes in "
@@ -1014,32 +1019,44 @@ wstdcall void *WIN_FUNC(ExAllocatePoolWithTag,3)
 		 * Miniport(Query/Set)Information, which runs at
 		 * DISPATCH_LEVEL. This means vmalloc is to be called
 		 * at interrupt context, which is not allowed in
-		 * 2.6.19+ kernels. Ideally, kernel should allow
-		 * __vmalloc in interrupt context, but at least for
-		 * now, we circumvent this problem by lowering IRQL to
-		 * PASSIVE_LEVEL and raising IRQL back to
-		 * DISPATCH_LEVEL. This has been tested to work with
-		 * Atheros PCI driver, but other drivers may break. */
+		 * 2.6.19+ kernels. Kernel should allow __vmalloc in
+		 * interrupt context. */
 		if (irql == DISPATCH_LEVEL) {
 			TRACE1("Windows driver allocating %lu bytes in "
 			       "interrupt context: %u, %d, %d, %d, %lu",
 			       size, irql, current_irql(), preempt_count(),
 			       in_atomic(), in_interrupt());
-			lower_irql(PASSIVE_LEVEL);
+			DBG_BLOCK(4) {
+				dump_stack();
+			}
+#if LINUX_VERSION_CODE > KERNEL_VERSION(2,6,18)
+			addr = (void *)__get_free_pages(GFP_ATOMIC,
+							get_order(size));
+			if (addr) {
+				*addr = WRAP_ALLOC_PAGES;
+				*(addr + 1) = size;
+			}
+#else
+			addr = __vmalloc(size, GFP_ATOMIC | __GFP_HIGHMEM,
+					 PAGE_KERNEL);
+			if (addr) {
+				*addr = WRAP_ALLOC_VMALLOC;
+				*(addr + 1) = size;
+			}
+#endif
 			TRACE1("%u, %d, %d, %d, %lu", irql, current_irql(),
 			       preempt_count(), in_atomic(), in_interrupt());
-			if (in_interrupt())
-				addr = NULL;
-			else
-				addr = vmalloc(size);
-			raise_irql(irql);
-			TRACE1("%u, %d, %d, %d, %lu", irql, current_irql(),
-			       preempt_count(), in_atomic(), in_interrupt());
-		} else
+		} else {
 			addr = vmalloc(size);
+			TRACE4("%p", addr);
+			if (addr) {
+				*addr = WRAP_ALLOC_VMALLOC;
+				*(addr + 1) = size;
+			}
+		}
 	}
-	TRACE4("addr: %p, %lu", addr, size);
-	return addr;
+	TRACE4("addr: %p, %p, %lu", addr, addr + 2, size);
+	return addr + 2;
 }
 WIN_FUNC_DECL(ExAllocatePoolWithTag,3)
 
@@ -1050,18 +1067,25 @@ wstdcall void vfree_nonintr(void *addr, void *ctx)
 WIN_FUNC_DECL(vfree_nonintr,2)
 
 wstdcall void WIN_FUNC(ExFreePoolWithTag,2)
-	(void *addr, ULONG tag)
+	(unsigned long *addr, ULONG tag)
 {
 	TRACE4("addr: %p", addr);
-	if ((unsigned long)addr < VMALLOC_START ||
-	    (unsigned long)addr >= VMALLOC_END)
-		kfree(addr);
-	else {
+	if (*(addr - 2) == WRAP_ALLOC_PAGES)
+		free_pages((unsigned long)(addr - 2), get_order(*(addr - 1)));
+	else if (*(addr - 2) == WRAP_ALLOC_KMALLOC)
+		kfree(addr - 2);
+	else if (*(addr - 2) == WRAP_ALLOC_VMALLOC) {
+		assert((unsigned long)addr >= VMALLOC_START &&
+		       (unsigned long)addr < VMALLOC_END);
 		if (in_interrupt())
 			schedule_ntos_work_item(WIN_FUNC_PTR(vfree_nonintr,2),
-						addr, NULL);
+						addr - 2, NULL);
 		else
-			vfree(addr);
+			vfree(addr - 2);
+	} else {
+		WARNING("invalid memory: %p, %p, 0x%lx, 0x%lx", addr, addr - 2,
+			*(addr - 2), *(addr - 1));
+		dump_stack();
 	}
 	EXIT4(return);
 }
