@@ -2010,7 +2010,7 @@ wstdcall void WIN_FUNC(MmFreeContiguousMemorySpecifyCache,3)
 	(void *base, SIZE_T size, enum memory_caching_type cache_type)
 {
 	TRACE4("%p, %lu", base, size);
-	wrap_free_pages((unsigned long)base, get_order(size));
+	free_pages((unsigned long)base, get_order(size));
 }
 
 wstdcall PHYSICAL_ADDRESS WIN_FUNC(MmGetPhysicalAddress,1)
