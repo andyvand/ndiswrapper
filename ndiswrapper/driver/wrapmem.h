@@ -65,6 +65,7 @@ int alloc_size(enum alloc_type type);
 
 #define wrap_get_free_pages(flags, size)			\
 	wrap_alloc_pages(flags, size, __FILE__, __LINE__)
+#undef free_pages
 #define free_pages(ptr, order) wrap_free_pages(ptr, order)
 
 #if ALLOC_DEBUG > 1
@@ -74,11 +75,11 @@ void *wrap_ExAllocatePoolWithTag(enum pool_type pool_type, SIZE_T size,
 	wrap_ExAllocatePoolWithTag(pool_type, size, tag, __FILE__, __LINE__)
 #endif
 
-#else
-#define wrap_get_free_pages(flags, size)	\
-	__get_free_pages(flags, get_order(size))
 #endif // _WRAPMEM_C_
 
+#else
+#define wrap_get_free_pages(flags, size)		\
+	__get_free_pages(flags, get_order(size))
 #endif // ALLOC_DEBUG
 
 #endif
