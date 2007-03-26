@@ -1,3 +1,9 @@
+Version 1.40 2007-XX-XX
+=======================	
+* The workaround for large memory allocations (needed by Atheros drivers)
+  with 2.6.19+ kernels, introduced in version 1.33, causes soft-lockup
+  with smp. This is now fixed.
+
 Version 1.39 2007-03-23
 =======================	
 * An smp issue is fixed

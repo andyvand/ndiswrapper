@@ -292,7 +292,7 @@ void *wrap_ExAllocatePoolWithTag(enum pool_type pool_type, SIZE_T size,
 
 	ENTER4("pool_type: %d, size: %lu, tag: %u", pool_type, size, tag);
 	addr = ExAllocatePoolWithTag(pool_type, size, tag);
-	info = (addr - 2 * sizeof(unsigned long)) - sizeof(*info);
+	info = addr - 2 * sizeof(unsigned long) - sizeof(*info);
 	info->file = file;
 	info->line = line;
 #if ALLOC_DEBUG > 2
