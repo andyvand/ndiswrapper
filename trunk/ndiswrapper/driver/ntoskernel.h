@@ -595,10 +595,6 @@ extern workqueue_struct_t *ntos_wq;
 #define schedule_ntos_work(work_struct) schedule_work(work_struct)
 #endif
 
-#define WRAP_ALLOC_PAGES 0x70616765
-#define WRAP_ALLOC_KMALLOC 0x6b616c6f
-#define WRAP_ALLOC_VMALLOC 0x76616c63
-
 int ntoskernel_init(void);
 void ntoskernel_exit(void);
 int ntoskernel_init_device(struct wrap_device *wd);

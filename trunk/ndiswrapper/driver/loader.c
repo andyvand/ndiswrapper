@@ -477,6 +477,7 @@ void unload_wrap_driver(struct wrap_driver *driver)
 			ExFreePool(param);
 			setting->encoded = NULL;
 		}
+		kfree(setting);
 	}
 	/* this frees driver */
 	free_custom_extensions(drv_obj->drv_ext);

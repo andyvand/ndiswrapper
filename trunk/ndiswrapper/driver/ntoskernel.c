@@ -998,10 +998,10 @@ wstdcall void *WIN_FUNC(ExAllocatePoolWithTag,3)
 	unsigned long *addr, alloc_type;
 
 	ENTER4("pool_type: %d, size: %lu, tag: 0x%x", pool_type, size, tag);
-	size += 2 * sizeof(unsigned long);
+	size += sizeof(unsigned long);
 	if (size <= (16 * 1024)) {
 		addr = kmalloc(size, gfp_irql());
-		alloc_type = WRAP_ALLOC_KMALLOC;
+		alloc_type = ALLOC_TYPE_KMALLOC;
 	} else {
 		KIRQL irql = current_irql();
 		if (irql > DISPATCH_LEVEL) {
@@ -1027,24 +1027,27 @@ wstdcall void *WIN_FUNC(ExAllocatePoolWithTag,3)
 				dump_stack();
 			}
 #if LINUX_VERSION_CODE > KERNEL_VERSION(2,6,18)
+			/* encode type and order of size in alloc_type */
+			alloc_type = get_order(size) << 8;
 			addr = (unsigned long *)
-				__get_free_pages(GFP_ATOMIC, get_order(size));
-			alloc_type = WRAP_ALLOC_PAGES;
+				wrap_get_free_pages(GFP_ATOMIC, size);
+			alloc_type |= ALLOC_TYPE_PAGES;
+			INFO("%lu, %lu, %lu", size, alloc_type >> 8,
+			     (1 << (alloc_type >> 8)) * PAGE_SIZE);
 #else
 			addr = __vmalloc(size, GFP_ATOMIC | __GFP_HIGHMEM,
 					 PAGE_KERNEL);
-			alloc_type = WRAP_ALLOC_VMALLOC;
+			alloc_type = ALLOC_TYPE_VMALLOC;
 #endif
 		} else {
 			addr = vmalloc(size);
-			alloc_type = WRAP_ALLOC_VMALLOC;
+			alloc_type = ALLOC_TYPE_VMALLOC;
 		}
 	}
-	TRACE4("addr: %p, %p, %lu", addr, addr + 2, size);
+	TRACE4("addr: %p, %p, %lu", addr, addr + 1, size);
 	if (addr) {
 		*addr = alloc_type;
-		*(addr + 1) = size;
-		return addr + 2;
+		return addr + 1;
 	} else
 		EXIT1(return NULL);
 }
@@ -1059,24 +1062,23 @@ WIN_FUNC_DECL(vfree_nonintr,2)
 wstdcall void WIN_FUNC(ExFreePoolWithTag,2)
 	(unsigned long *addr, ULONG tag)
 {
-	unsigned long alloc_type = *(addr - 2);
+	unsigned long alloc_type = *(--addr);
 
-	TRACE4("%p, %d", addr, alloc_type);
-	if (alloc_type == WRAP_ALLOC_KMALLOC)
-		kfree(addr - 2);
-	else if (alloc_type == WRAP_ALLOC_VMALLOC) {
-		assert((unsigned long)(addr - 2) >= VMALLOC_START &&
-		       (unsigned long)(addr - 2) < VMALLOC_END);
+	TRACE4("%p, 0x%lx", addr, alloc_type);
+	if (alloc_type == ALLOC_TYPE_KMALLOC)
+		kfree(addr);
+	else if (alloc_type == ALLOC_TYPE_VMALLOC) {
+		assert((unsigned long)addr >= VMALLOC_START &&
+		       (unsigned long)addr < VMALLOC_END);
 		if (in_interrupt())
 			schedule_ntos_work_item(WIN_FUNC_PTR(vfree_nonintr,2),
-						addr - 2, NULL);
+						addr, NULL);
 		else
-			vfree(addr - 2);
-	} else if (alloc_type == WRAP_ALLOC_PAGES)
-		free_pages((unsigned long)(addr - 2), get_order(*(addr - 1)));
+			vfree(addr);
+	} else if ((alloc_type & 0xff) == ALLOC_TYPE_PAGES)
+		free_pages((unsigned long)addr, alloc_type >> 8);
 	else {
-		WARNING("invalid memory: %p, %p, 0x%lx, 0x%lx", addr, addr - 2,
-			alloc_type, *(addr - 1));
+		WARNING("invalid memory: %p, 0x%lx", addr, alloc_type);
 		dump_stack();
 	}
 	EXIT4(return);
@@ -1999,16 +2001,16 @@ wstdcall void *WIN_FUNC(MmAllocateContiguousMemorySpecifyCache,5)
 	 PHYSICAL_ADDRESS boundary, enum memory_caching_type cache_type)
 {
 	void *addr;
-	addr = (void *)__get_free_pages(gfp_irql(), get_order(size));
-	TRACE2("%p, %lu", addr, size);
+	addr = (void *)wrap_get_free_pages(gfp_irql(), size);
+	TRACE4("%p, %lu", addr, size);
 	return addr;
 }
 
 wstdcall void WIN_FUNC(MmFreeContiguousMemorySpecifyCache,3)
 	(void *base, SIZE_T size, enum memory_caching_type cache_type)
 {
-	TRACE2("%p, %lu", base, size);
-	free_pages((unsigned long)base, get_order(size));
+	TRACE4("%p, %lu", base, size);
+	wrap_free_pages((unsigned long)base, get_order(size));
 }
 
 wstdcall PHYSICAL_ADDRESS WIN_FUNC(MmGetPhysicalAddress,1)

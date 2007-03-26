@@ -26,8 +26,9 @@
 //#define ALLOC_DEBUG 1
 //#endif
 
-enum alloc_type { ALLOC_TYPE_ATOMIC, ALLOC_TYPE_NON_ATOMIC,
-		  ALLOC_TYPE_VMALLOC, ALLOC_TYPE_SLACK, ALLOC_TYPE_MAX };
+enum alloc_type { ALLOC_TYPE_KMALLOC, ALLOC_TYPE_ATOMIC, ALLOC_TYPE_NON_ATOMIC,
+		  ALLOC_TYPE_VMALLOC, ALLOC_TYPE_SLACK, ALLOC_TYPE_PAGES,
+		  ALLOC_TYPE_MAX };
 
 int wrapmem_init(void);
 void wrapmem_exit(void);
@@ -42,6 +43,9 @@ void *wrap_vmalloc(unsigned long size, const char *file, int line);
 void *wrap__vmalloc(unsigned long size, unsigned int flags, pgprot_t prot,
 		    const char *file, int line);
 void wrap_vfree(void *ptr);
+unsigned long wrap_alloc_pages(unsigned flags, unsigned int size,
+			       const char *file, int line);
+void wrap_free_pages(unsigned long ptr, int order);
 int alloc_size(enum alloc_type type);
 
 #ifndef _WRAPMEM_C_
@@ -58,13 +62,23 @@ int alloc_size(enum alloc_type type);
 	wrap__vmalloc(size, flags, prot, __FILE__, __LINE__)
 #define kfree(ptr) wrap_kfree(ptr)
 #define vfree(ptr) wrap_vfree(ptr)
-#if defined(ALLOC_DEBUG) && ALLOC_DEBUG > 1
+
+#define wrap_get_free_pages(flags, size)			\
+	wrap_alloc_pages(flags, size, __FILE__, __LINE__)
+#define free_pages(ptr, order) wrap_free_pages(ptr, order)
+
+#if ALLOC_DEBUG > 1
 void *wrap_ExAllocatePoolWithTag(enum pool_type pool_type, SIZE_T size,
 				 ULONG tag, const char *file, int line);
 #define ExAllocatePoolWithTag(pool_type, size, tag)			\
 	wrap_ExAllocatePoolWithTag(pool_type, size, tag, __FILE__, __LINE__)
 #endif
-#endif
-#endif
+
+#else
+#define wrap_get_free_pages(flags, size)	\
+	__get_free_pages(flags, get_order(size))
+#endif // _WRAPMEM_C_
+
+#endif // ALLOC_DEBUG
 
 #endif
