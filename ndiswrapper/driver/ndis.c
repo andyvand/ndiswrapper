@@ -195,10 +195,11 @@ wstdcall NDIS_STATUS WIN_FUNC(NdisMDeregisterDevice,1)
 wstdcall NDIS_STATUS WIN_FUNC(NdisAllocateMemoryWithTag,3)
 	(void **dest, UINT length, ULONG tag)
 {
-	void *res;
-	res = ExAllocatePoolWithTag(NonPagedPool, length, tag);
-	if (res) {
-		*dest = res;
+	void *addr;
+	addr = ExAllocatePoolWithTag(NonPagedPool, length, tag);
+	TRACE4("%p", addr);
+	if (addr) {
+		*dest = addr;
 		EXIT4(return NDIS_STATUS_SUCCESS);
 	} else
 		EXIT4(return NDIS_STATUS_FAILURE);
@@ -216,6 +217,7 @@ wstdcall NDIS_STATUS WIN_FUNC(NdisAllocateMemory,4)
 wstdcall void WIN_FUNC(NdisFreeMemory,3)
 	(void *addr, UINT length_tag, UINT flags)
 {
+	TRACE4("%p", addr);
 	ExFreePool(addr);
 }
 
