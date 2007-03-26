@@ -995,17 +995,13 @@ wstdcall KIRQL WIN_FUNC(KeAcquireSpinLockRaiseToDpc,1)
 wstdcall void *WIN_FUNC(ExAllocatePoolWithTag,3)
 	(enum pool_type pool_type, SIZE_T size, ULONG tag)
 {
-	unsigned long *addr;
+	unsigned long *addr, alloc_type;
 
-	ENTER4("pool_type: %d, size: %lu, tag: 0x%x", pool_type,
-		    size, tag);
+	ENTER4("pool_type: %d, size: %lu, tag: 0x%x", pool_type, size, tag);
 	size += 2 * sizeof(unsigned long);
 	if (size <= (16 * 1024)) {
 		addr = kmalloc(size, gfp_irql());
-		if (addr) {
-			*addr = WRAP_ALLOC_KMALLOC;
-			*(addr + 1) = size;
-		}
+		alloc_type = WRAP_ALLOC_KMALLOC;
 	} else {
 		KIRQL irql = current_irql();
 		if (irql > DISPATCH_LEVEL) {
@@ -1014,49 +1010,43 @@ wstdcall void *WIN_FUNC(ExAllocatePoolWithTag,3)
 				in_irq(), in_softirq(), in_atomic());
 			return NULL;
 		}
-		/* Hack alert: Some drivers (at least Atheros)
-		 * allocate large amount of memory during
+		/* Some drivers (at least Atheros) allocate large
+		 * amount of memory during
 		 * Miniport(Query/Set)Information, which runs at
 		 * DISPATCH_LEVEL. This means vmalloc is to be called
 		 * at interrupt context, which is not allowed in
-		 * 2.6.19+ kernels. Kernel should allow __vmalloc in
-		 * interrupt context. */
+		 * 2.6.19+ kernels. For now, we use __get_free_pages
+		 * which may fail, since it needs to find contiguous
+		 * block */
 		if (irql == DISPATCH_LEVEL) {
 			TRACE1("Windows driver allocating %lu bytes in "
-			       "interrupt context: %u, %d, %d, %d, %lu",
+			       "interrupt context: %u, %d, 0x%x, %d, %lu",
 			       size, irql, current_irql(), preempt_count(),
 			       in_atomic(), in_interrupt());
 			DBG_BLOCK(4) {
 				dump_stack();
 			}
 #if LINUX_VERSION_CODE > KERNEL_VERSION(2,6,18)
-			addr = (void *)__get_free_pages(GFP_ATOMIC,
-							get_order(size));
-			if (addr) {
-				*addr = WRAP_ALLOC_PAGES;
-				*(addr + 1) = size;
-			}
+			addr = (unsigned long *)
+				__get_free_pages(GFP_ATOMIC, get_order(size));
+			alloc_type = WRAP_ALLOC_PAGES;
 #else
 			addr = __vmalloc(size, GFP_ATOMIC | __GFP_HIGHMEM,
 					 PAGE_KERNEL);
-			if (addr) {
-				*addr = WRAP_ALLOC_VMALLOC;
-				*(addr + 1) = size;
-			}
+			alloc_type = WRAP_ALLOC_VMALLOC;
 #endif
-			TRACE1("%u, %d, %d, %d, %lu", irql, current_irql(),
-			       preempt_count(), in_atomic(), in_interrupt());
 		} else {
 			addr = vmalloc(size);
-			TRACE4("%p", addr);
-			if (addr) {
-				*addr = WRAP_ALLOC_VMALLOC;
-				*(addr + 1) = size;
-			}
+			alloc_type = WRAP_ALLOC_VMALLOC;
 		}
 	}
 	TRACE4("addr: %p, %p, %lu", addr, addr + 2, size);
-	return addr + 2;
+	if (addr) {
+		*addr = alloc_type;
+		*(addr + 1) = size;
+		return addr + 2;
+	} else
+		EXIT1(return NULL);
 }
 WIN_FUNC_DECL(ExAllocatePoolWithTag,3)
 
@@ -1069,22 +1059,24 @@ WIN_FUNC_DECL(vfree_nonintr,2)
 wstdcall void WIN_FUNC(ExFreePoolWithTag,2)
 	(unsigned long *addr, ULONG tag)
 {
-	TRACE4("addr: %p", addr);
-	if (*(addr - 2) == WRAP_ALLOC_KMALLOC)
+	unsigned long alloc_type = *(addr - 2);
+
+	TRACE4("%p, %d", addr, alloc_type);
+	if (alloc_type == WRAP_ALLOC_KMALLOC)
 		kfree(addr - 2);
-	else if (*(addr - 2) == WRAP_ALLOC_VMALLOC) {
-		assert((unsigned long)addr >= VMALLOC_START &&
-		       (unsigned long)addr < VMALLOC_END);
+	else if (alloc_type == WRAP_ALLOC_VMALLOC) {
+		assert((unsigned long)(addr - 2) >= VMALLOC_START &&
+		       (unsigned long)(addr - 2) < VMALLOC_END);
 		if (in_interrupt())
 			schedule_ntos_work_item(WIN_FUNC_PTR(vfree_nonintr,2),
 						addr - 2, NULL);
 		else
 			vfree(addr - 2);
-	} else if (*(addr - 2) == WRAP_ALLOC_PAGES)
+	} else if (alloc_type == WRAP_ALLOC_PAGES)
 		free_pages((unsigned long)(addr - 2), get_order(*(addr - 1)));
 	else {
 		WARNING("invalid memory: %p, %p, 0x%lx, 0x%lx", addr, addr - 2,
-			*(addr - 2), *(addr - 1));
+			alloc_type, *(addr - 1));
 		dump_stack();
 	}
 	EXIT4(return);
