@@ -864,39 +864,39 @@ wstdcall void WIN_FUNC(NdisAcquireReadWriteLock,3)
 	(struct ndis_rw_lock *rw_lock, BOOLEAN write,
 	 struct lock_state *lock_state)
 {
-	typeof(rw_lock->count) count;
 	if (write) {
-		while (cmpxchg(&rw_lock->count, 0, -1) != 0)
-			cpu_relax();
-		return;
-	} else {
 		while (1) {
-			count = rw_lock->count;
-			if (count < 0) {
-				cpu_relax();
-				continue;
-			}
-			if (cmpxchg(&rw_lock->count, count, count + 1) == count)
+			if (cmpxchg(&rw_lock->count, 0, -1) == 0)
 				return;
+			while (rw_lock->count)
+				cpu_relax();
 		}
+		return;
+	}
+	while (1) {
+		typeof(rw_lock->count) count;
+		while ((count = rw_lock->count) < 0)
+			cpu_relax();
+		if (cmpxchg(&rw_lock->count, count, count + 1) == count)
+			return;
 	}
 }
 
 wstdcall void WIN_FUNC(NdisReleaseReadWriteLock,2)
 	(struct ndis_rw_lock *rw_lock, struct lock_state *lock_state)
 {
-	typeof(rw_lock->count) count;
-	while (1) {
-		count = rw_lock->count;
-		if (count == -1) {
-			if (cmpxchg(&rw_lock->count, count, 0) == count)
+	if (rw_lock->count > 0) {
+		while (1) {
+			typeof(rw_lock->count) count = rw_lock->count;
+			if (cmpxchg(&rw_lock->count, count, count - 1) == count)
 				return;
-		} else if (count > 0) {
-			if (cmpxchg(&rw_lock->count, count, count + 1) == count)
-				return;
-		} else
-			WARNING("invalid state: %d", count);
+		}
 	}
+	if (rw_lock->count == -1) {
+		rw_lock->count = 0;
+		return;
+	}
+	WARNING("invalid state: %d", rw_lock->count);
 }
 
 wstdcall NDIS_STATUS WIN_FUNC(NdisMAllocateMapRegisters,5)

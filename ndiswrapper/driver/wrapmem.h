@@ -43,8 +43,8 @@ void *wrap_vmalloc(unsigned long size, const char *file, int line);
 void *wrap__vmalloc(unsigned long size, unsigned int flags, pgprot_t prot,
 		    const char *file, int line);
 void wrap_vfree(void *ptr);
-unsigned long wrap_alloc_pages(unsigned flags, unsigned int size,
-			       const char *file, int line);
+void *wrap_alloc_pages(unsigned flags, unsigned int size,
+		       const char *file, int line);
 void wrap_free_pages(unsigned long ptr, int order);
 int alloc_size(enum alloc_type type);
 
@@ -79,7 +79,7 @@ void *wrap_ExAllocatePoolWithTag(enum pool_type pool_type, SIZE_T size,
 
 #else
 #define wrap_get_free_pages(flags, size)		\
-	__get_free_pages(flags, get_order(size))
+	(void *)__get_free_pages(flags, get_order(size))
 #endif // ALLOC_DEBUG
 
 #endif

@@ -58,7 +58,6 @@ NDIS_STATUS miniport_reset(struct wrap_ndis_device *wnd)
 	KIRQL irql;
 
 	ENTER2("wnd: %p", wnd);
-
 	if (down_interruptible(&wnd->tx_ring_mutex))
 		EXIT3(return NDIS_STATUS_FAILURE);
 	if (down_interruptible(&wnd->ndis_comm_mutex)) {
@@ -107,7 +106,6 @@ NDIS_STATUS miniport_query_info_needed(struct wrap_ndis_device *wnd,
 	KIRQL irql;
 
 	ENTER2("oid: %08X", oid);
-
 	if (down_interruptible(&wnd->ndis_comm_mutex))
 		EXIT3(return NDIS_STATUS_FAILURE);
 	miniport = &wnd->wd->driver->ndis_driver->miniport;
@@ -156,7 +154,6 @@ NDIS_STATUS miniport_set_info(struct wrap_ndis_device *wnd, ndis_oid oid,
 	KIRQL irql;
 
 	ENTER2("oid: %08X", oid);
-
 	if (down_interruptible(&wnd->ndis_comm_mutex))
 		EXIT3(return NDIS_STATUS_FAILURE);
 	miniport = &wnd->wd->driver->ndis_driver->miniport;

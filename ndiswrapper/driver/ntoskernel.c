@@ -164,23 +164,20 @@ int ntoskernel_init(void)
 		ntoskernel_exit();
 		return -ENOMEM;
 	}
+
 #if defined(CONFIG_X86_64)
 	memset(&kuser_shared_data, 0, sizeof(kuser_shared_data));
+	*((ULONG64 *)&kuser_shared_data.system_time) = ticks_1601();
 	init_timer(&shared_data_timer);
 	shared_data_timer.function = update_user_shared_data_proc;
+	shared_data_timer.data = (unsigned long)0;
+	mod_timer(&shared_data_timer, jiffies + MSEC_TO_HZ(30));
 #endif
 	return 0;
 }
 
 int ntoskernel_init_device(struct wrap_device *wd)
 {
-#if defined(CONFIG_X86_64)
-	*((ULONG64 *)&kuser_shared_data.system_time) = ticks_1601();
-	shared_data_timer.data = (unsigned long)0;
-	/* don't use add_timer - to avoid creating more than one
-	 * timer */
-	mod_timer(&shared_data_timer, jiffies + 1);
-#endif
 	return 0;
 }
 
@@ -1016,8 +1013,8 @@ wstdcall void *WIN_FUNC(ExAllocatePoolWithTag,3)
 		 * DISPATCH_LEVEL. This means vmalloc is to be called
 		 * at interrupt context, which is not allowed in
 		 * 2.6.19+ kernels. For now, we use __get_free_pages
-		 * which may fail, since it needs to find contiguous
-		 * block */
+		 * which is more likely to fail (since it needs to
+		 * find contiguous block) than __vmalloc */
 		if (irql == DISPATCH_LEVEL) {
 			TRACE1("Windows driver allocating %lu bytes in "
 			       "interrupt context: %u, %d, 0x%x, %d, %lu",
@@ -1027,13 +1024,10 @@ wstdcall void *WIN_FUNC(ExAllocatePoolWithTag,3)
 				dump_stack();
 			}
 #if LINUX_VERSION_CODE > KERNEL_VERSION(2,6,18)
-			/* encode type and order of size in alloc_type */
-			alloc_type = get_order(size) << 8;
-			addr = (unsigned long *)
-				wrap_get_free_pages(GFP_ATOMIC, size);
-			alloc_type |= ALLOC_TYPE_PAGES;
-			INFO("%lu, %lu, %lu", size, alloc_type >> 8,
-			     (1 << (alloc_type >> 8)) * PAGE_SIZE);
+			addr = wrap_get_free_pages(GFP_ATOMIC | __GFP_HIGHMEM,
+						   size);
+			alloc_type = (get_order(size) << 8) |
+				(ALLOC_TYPE_PAGES & 0xff);
 #else
 			addr = __vmalloc(size, GFP_ATOMIC | __GFP_HIGHMEM,
 					 PAGE_KERNEL);
@@ -2001,7 +1995,7 @@ wstdcall void *WIN_FUNC(MmAllocateContiguousMemorySpecifyCache,5)
 	 PHYSICAL_ADDRESS boundary, enum memory_caching_type cache_type)
 {
 	void *addr;
-	addr = (void *)wrap_get_free_pages(gfp_irql(), size);
+	addr = wrap_get_free_pages(gfp_irql(), size);
 	TRACE4("%p, %lu", addr, size);
 	return addr;
 }
