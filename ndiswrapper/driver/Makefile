@@ -241,7 +241,7 @@ clean:
 	   ndiswrapper.mod.[oc] *~ .tmp_versions Modules.symvers Module.symvers
 
 distclean: clean
-	rm -f *_exports.h .\#* win2lin_stubs.h
+	rm -f *_exports.h .\#* win2lin_stubs.h built-in.o
 
 ifeq ($(KPSUB),24)
 
