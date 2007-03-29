@@ -292,22 +292,21 @@ void wrap_vfree(void *ptr)
 	vfree(info);
 }
 
-unsigned long wrap_alloc_pages(unsigned flags, unsigned int size,
-			       const char *file, int line)
+void *wrap_alloc_pages(unsigned flags, unsigned int size,
+		       const char *file, int line)
 {
 	struct alloc_info *info;
-	int order;
 #if ALLOC_DEBUG > 1
 	KIRQL irql;
 #endif
 
-	order = get_order(size + sizeof(*info));
-	info = (struct alloc_info *)__get_free_pages(flags, order);
+	size += sizeof(*info);
+	info = (struct alloc_info *)__get_free_pages(flags, get_order(size));
 	if (!info)
-		return 0;
+		return NULL;
 	info->type = ALLOC_TYPE_PAGES;
-	info->size = size + sizeof(*info);
-	atomic_add(info->size, &alloc_sizes[info->type]);
+	info->size = size;
+	atomic_add(size, &alloc_sizes[info->type]);
 #if ALLOC_DEBUG > 1
 	info->file = file;
 	info->line = line;
@@ -318,7 +317,7 @@ unsigned long wrap_alloc_pages(unsigned flags, unsigned int size,
 	InsertTailList(&allocs, &info->list);
 	nt_spin_unlock_irql(&alloc_lock, irql);
 #endif
-	return (unsigned long)(info + 1);
+	return info + 1;
 }
 
 void wrap_free_pages(unsigned long ptr, int order)
@@ -350,12 +349,14 @@ void *wrap_ExAllocatePoolWithTag(enum pool_type pool_type, SIZE_T size,
 
 	ENTER4("pool_type: %d, size: %lu, tag: %u", pool_type, size, tag);
 	addr = ExAllocatePoolWithTag(pool_type, size, tag);
-	info = addr - sizeof(unsigned long) - sizeof(*info);
-	info->file = file;
-	info->line = line;
+	if (addr) {
+		info = addr - sizeof(unsigned long) - sizeof(*info);
+		info->file = file;
+		info->line = line;
 #if ALLOC_DEBUG > 2
-	info->tag = tag;
+		info->tag = tag;
 #endif
+	}
 	EXIT4(return addr);
 }
 #endif
