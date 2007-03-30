@@ -1752,6 +1752,10 @@ static int notifier_event(struct notifier_block *notifier, unsigned long event,
 	/* called with rtnl lock held, so no need to lock */
 	switch (event) {
 	case NETDEV_CHANGENAME:
+		if (strcmp(wnd->netdev_name, net_dev->name) == 0) {
+			TRACE1("same name: %s", net_dev->name);
+			return NOTIFY_BAD;
+		}
 		wrap_procfs_remove_ndis_device(wnd);
 		printk(KERN_INFO "%s: changing interface name from '%s' to "
 		       "'%s'\n", DRIVER_NAME, wnd->netdev_name, net_dev->name);
