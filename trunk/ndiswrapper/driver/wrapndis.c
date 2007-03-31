@@ -39,6 +39,19 @@ static void set_multicast_list(struct wrap_ndis_device *wnd);
 static int ndis_net_dev_open(struct net_device *net_dev);
 static int ndis_net_dev_close(struct net_device *net_dev);
 
+static struct notifier_block netdev_notifier;
+
+int wrapndis_init(void)
+{
+	register_netdevice_notifier(&netdev_notifier);
+	return 0;
+}
+
+void wrapndis_exit(void)
+{
+	unregister_netdevice_notifier(&netdev_notifier);
+}
+
 static inline int ndis_wait_comm_completion(struct wrap_ndis_device *wnd)
 {
 	if ((wait_event_interruptible(wnd->ndis_comm_wq,
@@ -1752,10 +1765,6 @@ static int notifier_event(struct notifier_block *notifier, unsigned long event,
 	/* called with rtnl lock held, so no need to lock */
 	switch (event) {
 	case NETDEV_CHANGENAME:
-		if (strcmp(wnd->netdev_name, net_dev->name) == 0) {
-			TRACE1("same name: %s", net_dev->name);
-			return NOTIFY_BAD;
-		}
 		wrap_procfs_remove_ndis_device(wnd);
 		printk(KERN_INFO "%s: changing interface name from '%s' to "
 		       "'%s'\n", DRIVER_NAME, wnd->netdev_name, net_dev->name);
@@ -1765,7 +1774,7 @@ static int notifier_event(struct notifier_block *notifier, unsigned long event,
 		return NOTIFY_OK;
 		break;
 	default:
-		TRACE2("%lx", event);
+		TRACE2("%s: %lx", wnd->netdev_name, event);
 		break;
 	}
 	return NOTIFY_DONE;
@@ -1861,7 +1870,6 @@ static NDIS_STATUS ndis_start_device(struct wrap_ndis_device *wnd)
 		ERROR("cannot register net device %s", net_dev->name);
 		goto err_register;
 	}
-	register_netdevice_notifier(&netdev_notifier);
 	memcpy(wnd->netdev_name, net_dev->name, sizeof(wnd->netdev_name));
 	memset(buf, 0, buf_len);
 	status = miniport_query_info(wnd, OID_GEN_VENDOR_DESCRIPTION,
@@ -1989,7 +1997,6 @@ static int ndis_remove_device(struct wrap_ndis_device *wnd)
 		down_interruptible(&wnd->ndis_comm_mutex);
 	}
 	set_bit(SHUTDOWN, &wnd->wrap_ndis_pending_work);
-	unregister_netdevice_notifier(&netdev_notifier);
 	wnd->tx_ok = 0;
 	unregister_netdev(wnd->net_dev);
 	netif_carrier_off(wnd->net_dev);

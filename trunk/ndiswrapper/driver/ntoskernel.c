@@ -996,17 +996,10 @@ wstdcall void *WIN_FUNC(ExAllocatePoolWithTag,3)
 
 	ENTER4("pool_type: %d, size: %lu, tag: 0x%x", pool_type, size, tag);
 	size += sizeof(unsigned long);
-	if (size <= (16 * 1024)) {
+	if (size < PAGE_SIZE) {
 		addr = kmalloc(size, gfp_irql());
 		alloc_type = ALLOC_TYPE_KMALLOC;
-	} else {
-		KIRQL irql = current_irql();
-		if (irql > DISPATCH_LEVEL) {
-			WARNING("Windows driver allocating %lu bytes in "
-				"irq context: %ld, %ld, %d", size,
-				in_irq(), in_softirq(), in_atomic());
-			return NULL;
-		}
+	} else if (in_interrupt()) {
 		/* Some drivers (at least Atheros) allocate large
 		 * amount of memory during
 		 * Miniport(Query/Set)Information, which runs at
@@ -1015,28 +1008,22 @@ wstdcall void *WIN_FUNC(ExAllocatePoolWithTag,3)
 		 * 2.6.19+ kernels. For now, we use __get_free_pages
 		 * which is more likely to fail (since it needs to
 		 * find contiguous block) than __vmalloc */
-		if (irql == DISPATCH_LEVEL) {
-			TRACE1("Windows driver allocating %lu bytes in "
-			       "interrupt context: %u, %d, 0x%x, %d, %lu",
-			       size, irql, current_irql(), preempt_count(),
-			       in_atomic(), in_interrupt());
-			DBG_BLOCK(4) {
-				dump_stack();
-			}
-#if LINUX_VERSION_CODE > KERNEL_VERSION(2,6,18)
-			addr = wrap_get_free_pages(GFP_ATOMIC | __GFP_HIGHMEM,
-						   size);
-			alloc_type = (get_order(size) << 8) |
-				(ALLOC_TYPE_PAGES & 0xff);
-#else
-			addr = __vmalloc(size, GFP_ATOMIC | __GFP_HIGHMEM,
-					 PAGE_KERNEL);
-			alloc_type = ALLOC_TYPE_VMALLOC;
-#endif
-		} else {
-			addr = vmalloc(size);
-			alloc_type = ALLOC_TYPE_VMALLOC;
+		TRACE1("Windows driver allocating %lu bytes in interrupt "
+		       "context: 0x%x, %lu", size, preempt_count(),
+		       in_interrupt());
+		DBG_BLOCK(4) {
+			dump_stack();
 		}
+#if LINUX_VERSION_CODE > KERNEL_VERSION(2,6,18)
+		addr = wrap_get_free_pages(GFP_ATOMIC | __GFP_HIGHMEM, size);
+		alloc_type = (get_order(size) << 8) | (ALLOC_TYPE_PAGES & 0xff);
+#else
+		addr = __vmalloc(size, GFP_ATOMIC | __GFP_HIGHMEM, PAGE_KERNEL);
+		alloc_type = ALLOC_TYPE_VMALLOC;
+#endif
+	} else {
+		addr = vmalloc(size);
+		alloc_type = ALLOC_TYPE_VMALLOC;
 	}
 	TRACE4("addr: %p, %p, %lu", addr, addr + 1, size);
 	if (addr) {
