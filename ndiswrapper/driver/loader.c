@@ -398,7 +398,7 @@ static int load_settings(struct wrap_driver *wrap_driver,
 		strncpy(setting->value, load_setting->value,
 		       sizeof(setting->value));
 		setting->value[sizeof(setting->value)-1] = 0;
-		TRACE2("setting %s=%s", setting->name, setting->value);
+		TRACE2("%p: %s=%s", setting, setting->name, setting->value);
 
 		if (strcmp(setting->name, "driver_version") == 0) {
 			strncpy(wrap_driver->version, setting->value,
@@ -446,7 +446,7 @@ void unload_wrap_driver(struct wrap_driver *driver)
 {
 	int i;
 	struct driver_object *drv_obj;
-	struct wrap_device_setting *setting;
+	struct nt_list *cur, *next;
 
 	ENTER1("unloading driver: %s (%p)", driver->name, driver);
 	TRACE1("freeing %d images", driver->num_pe_images);
@@ -468,10 +468,15 @@ void unload_wrap_driver(struct wrap_driver *driver)
 		kfree(driver->bin_files);
 	RtlFreeUnicodeString(&drv_obj->name);
 	RemoveEntryList(&driver->list);
-	nt_list_for_each_entry(setting, &driver->settings, list) {
+	nt_list_for_each_safe(cur, next, &driver->settings) {
+		struct wrap_device_setting *setting;
 		struct ndis_configuration_parameter *param;
+
+		setting = container_of(cur, struct wrap_device_setting, list);
+		TRACE2("%p", setting);
 		param = setting->encoded;
 		if (param) {
+			TRACE2("%p", param);
 			if (param->type == NdisParameterString)
 				RtlFreeUnicodeString(&param->data.string);
 			ExFreePool(param);

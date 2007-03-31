@@ -75,6 +75,7 @@ static void module_cleanup(void)
 	ntoskernel_exit();
 	crt_exit();
 	rtl_exit();
+	wrapndis_exit();
 	wrapmem_exit();
 }
 
@@ -92,7 +93,7 @@ static int __init wrapper_init(void)
 	wrap_wq = create_singlethread_workqueue("wrap_wq");
 
 	if (!wrap_wq || wrapmem_init() || crt_init() || rtl_init() ||
-	    ntoskernel_init() || ndis_init() ||
+	    ntoskernel_init() || ndis_init() || wrapndis_init() ||
 #ifdef CONFIG_USB
 	    usb_init() ||
 #endif
