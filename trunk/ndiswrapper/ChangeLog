@@ -1,4 +1,10 @@
-Version 1.40 2007-XX-XX
+Version 1.41 2007-03-31
+=======================	
+* Fixed soft-lockup issue when multiple network devices are used
+* Fixed a bug when unloading driver
+* Fixed issues with recent RT-preempt patch
+
+Version 1.40 2007-03-29
 =======================	
 * The workaround for large memory allocations (needed by Atheros drivers)
   with 2.6.19+ kernels, introduced in version 1.33, causes soft-lockup
