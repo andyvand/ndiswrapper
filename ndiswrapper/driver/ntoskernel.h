@@ -801,10 +801,13 @@ static inline KIRQL current_irql(void)
 {
 	if (in_irq() || irqs_disabled())
 		EXIT6(return DEVICE_LEVEL);
-	else if (in_interrupt())
+	if (in_interrupt()
+#ifdef CONFIG_PREEMPT_RT
+	    || in_atomic()
+#endif
+		)
 		EXIT6(return DISPATCH_LEVEL);
-	else
-		EXIT6(return PASSIVE_LEVEL);
+	EXIT6(return PASSIVE_LEVEL);
 }
 
 static inline KIRQL raise_irql(KIRQL newirql)
