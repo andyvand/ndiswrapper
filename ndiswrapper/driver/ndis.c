@@ -31,47 +31,6 @@ static NT_SPIN_LOCK ndis_work_list_lock;
 
 extern struct semaphore loader_mutex;
 
-/* ndis_init is called once when module is loaded */
-int ndis_init(void)
-{
-	ndis_wq = create_singlethread_workqueue("ndis_wq");
-	InitializeListHead(&ndis_worker_list);
-	nt_spin_lock_init(&ndis_work_list_lock);
-	initialize_work(&ndis_work, ndis_worker, NULL);
-
-	return 0;
-}
-
-/* ndis_exit is called once when module is removed */
-void ndis_exit(void)
-{
-	destroy_workqueue(ndis_wq);
-	EXIT1(return);
-}
-
-/* ndis_exit_device is called for each handle */
-void ndis_exit_device(struct wrap_ndis_device *wnd)
-{
-	struct wrap_device_setting *setting;
-	ENTER2("%p", wnd);
-	/* TI driver doesn't call NdisMDeregisterInterrupt during halt! */
-	if (wnd->ndis_irq)
-		NdisMDeregisterInterrupt(wnd->ndis_irq);
-	if (down_interruptible(&loader_mutex))
-		WARNING("couldn't obtain loader_mutex");
-	nt_list_for_each_entry(setting, &wnd->wd->settings, list) {
-		struct ndis_configuration_parameter *param;
-		param = setting->encoded;
-		if (param) {
-			if (param->type == NdisParameterString)
-				RtlFreeUnicodeString(&param->data.string);
-			ExFreePool(param);
-			setting->encoded = NULL;
-		}
-	}
-	up(&loader_mutex);
-}
-
 wstdcall void WIN_FUNC(NdisInitializeWrapper,4)
 	(void **driver_handle, struct driver_object *driver,
 	 struct unicode_string *reg_path, void *unused)
@@ -885,18 +844,12 @@ wstdcall void WIN_FUNC(NdisAcquireReadWriteLock,3)
 wstdcall void WIN_FUNC(NdisReleaseReadWriteLock,2)
 	(struct ndis_rw_lock *rw_lock, struct lock_state *lock_state)
 {
-	if (rw_lock->count > 0) {
-		while (1) {
-			typeof(rw_lock->count) count = rw_lock->count;
-			if (cmpxchg(&rw_lock->count, count, count - 1) == count)
-				return;
-		}
-	}
-	if (rw_lock->count == -1) {
+	if (rw_lock->count > 0)
+		pre_atomic_add(rw_lock->count, -1);
+	else if (rw_lock->count == -1)
 		rw_lock->count = 0;
-		return;
-	}
-	WARNING("invalid state: %d", rw_lock->count);
+	else
+		WARNING("invalid state: %d", rw_lock->count);
 }
 
 wstdcall NDIS_STATUS WIN_FUNC(NdisMAllocateMapRegisters,5)
@@ -2780,4 +2733,45 @@ void init_nmb_functions(struct ndis_miniport_block *nmb)
 	nmb->eth_rx_indicate = WIN_FUNC_PTR(EthRxIndicateHandler,8);
 	nmb->eth_rx_complete = WIN_FUNC_PTR(EthRxComplete,1);
 	nmb->td_complete = WIN_FUNC_PTR(NdisMTransferDataComplete,4);
+}
+
+/* ndis_exit_device is called for each handle */
+void ndis_exit_device(struct wrap_ndis_device *wnd)
+{
+	struct wrap_device_setting *setting;
+	ENTER2("%p", wnd);
+	/* TI driver doesn't call NdisMDeregisterInterrupt during halt! */
+	if (wnd->ndis_irq)
+		NdisMDeregisterInterrupt(wnd->ndis_irq);
+	if (down_interruptible(&loader_mutex))
+		WARNING("couldn't obtain loader_mutex");
+	nt_list_for_each_entry(setting, &wnd->wd->settings, list) {
+		struct ndis_configuration_parameter *param;
+		param = setting->encoded;
+		if (param) {
+			if (param->type == NdisParameterString)
+				RtlFreeUnicodeString(&param->data.string);
+			ExFreePool(param);
+			setting->encoded = NULL;
+		}
+	}
+	up(&loader_mutex);
+}
+
+/* ndis_init is called once when module is loaded */
+int ndis_init(void)
+{
+	ndis_wq = create_singlethread_workqueue("ndis_wq");
+	InitializeListHead(&ndis_worker_list);
+	nt_spin_lock_init(&ndis_work_list_lock);
+	initialize_work(&ndis_work, ndis_worker, NULL);
+
+	return 0;
+}
+
+/* ndis_exit is called once when module is removed */
+void ndis_exit(void)
+{
+	destroy_workqueue(ndis_wq);
+	EXIT1(return);
 }

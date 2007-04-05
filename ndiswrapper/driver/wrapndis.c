@@ -39,19 +39,6 @@ static void set_multicast_list(struct wrap_ndis_device *wnd);
 static int ndis_net_dev_open(struct net_device *net_dev);
 static int ndis_net_dev_close(struct net_device *net_dev);
 
-static struct notifier_block netdev_notifier;
-
-int wrapndis_init(void)
-{
-	register_netdevice_notifier(&netdev_notifier);
-	return 0;
-}
-
-void wrapndis_exit(void)
-{
-	unregister_netdevice_notifier(&netdev_notifier);
-}
-
 static inline int ndis_wait_comm_completion(struct wrap_ndis_device *wnd)
 {
 	if ((wait_event_interruptible(wnd->ndis_comm_wq,
@@ -1763,8 +1750,7 @@ static int notifier_event(struct notifier_block *notifier, unsigned long event,
 
 	wnd = netdev_priv(net_dev);
 	/* called with rtnl lock held, so no need to lock */
-	switch (event) {
-	case NETDEV_CHANGENAME:
+	if (event == NETDEV_CHANGENAME) {
 		wrap_procfs_remove_ndis_device(wnd);
 		printk(KERN_INFO "%s: changing interface name from '%s' to "
 		       "'%s'\n", DRIVER_NAME, wnd->netdev_name, net_dev->name);
@@ -1772,11 +1758,8 @@ static int notifier_event(struct notifier_block *notifier, unsigned long event,
 		       sizeof(wnd->netdev_name));
 		wrap_procfs_add_ndis_device(wnd);
 		return NOTIFY_OK;
-		break;
-	default:
-		TRACE2("%s: %lx", wnd->netdev_name, event);
-		break;
 	}
+	TRACE2("%s: %lx", wnd->netdev_name, event);
 	return NOTIFY_DONE;
 }
 
@@ -2157,4 +2140,15 @@ int init_ndis_driver(struct driver_object *drv_obj)
 	ENTER1("%p", drv_obj);
 	drv_obj->drv_ext->add_device = NdisAddDevice;
 	return 0;
+}
+
+int wrapndis_init(void)
+{
+	register_netdevice_notifier(&netdev_notifier);
+	return 0;
+}
+
+void wrapndis_exit(void)
+{
+	unregister_netdevice_notifier(&netdev_notifier);
 }
