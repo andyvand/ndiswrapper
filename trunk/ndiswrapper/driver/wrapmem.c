@@ -43,70 +43,6 @@ struct alloc_info {
 static atomic_t alloc_sizes[ALLOC_TYPE_MAX];
 #endif
 
-int wrapmem_init(void)
-{
-	InitializeListHead(&allocs);
-	InitializeListHead(&slack_allocs);
-	nt_spin_lock_init(&alloc_lock);
-	return 0;
-}
-
-void wrapmem_exit(void)
-{
-	enum alloc_type type;
-	struct nt_list *ent;
-	KIRQL irql;
-
-	/* free all pointers on the slack list */
-	irql = nt_spin_lock_irql(&alloc_lock, DISPATCH_LEVEL);
-	while ((ent = RemoveHeadList(&slack_allocs))) {
-		struct slack_alloc_info *info;
-		info = container_of(ent, struct slack_alloc_info, list);
-#ifdef ALLOC_DEBUG
-		atomic_sub(info->size, &alloc_sizes[ALLOC_TYPE_SLACK]);
-#endif
-		kfree(info);
-	}
-	nt_spin_unlock_irql(&alloc_lock, irql);
-	type = 0;
-#ifdef ALLOC_DEBUG
-	for (type = 0; type < ALLOC_TYPE_MAX; type++) {
-		int n = atomic_read(&alloc_sizes[type]);
-		if (n)
-			WARNING("%d bytes of memory in %d leaking", n, type);
-	}
-
-#if ALLOC_DEBUG > 1
-	irql = nt_spin_lock_irql(&alloc_lock, DISPATCH_LEVEL);
-	while ((ent = RemoveHeadList(&allocs))) {
-		struct alloc_info *info;
-		info = container_of(ent, struct alloc_info, list);
-		atomic_sub(info->size, &alloc_sizes[ALLOC_TYPE_SLACK]);
-		WARNING("%p in %d of size %zu allocated at %s(%d) "
-#if ALLOC_DEBUG > 2
-			"with tag 0x%08X "
-#endif
-			"leaking; freeing it now", info + 1, info->type,
-			info->size, info->file, info->line
-#if ALLOC_DEBUG > 2
-			, info->tag
-#endif
-			);
-		if (info->type == ALLOC_TYPE_ATOMIC ||
-		    info->type == ALLOC_TYPE_NON_ATOMIC)
-			kfree(info);
-		else if (info->type == ALLOC_TYPE_VMALLOC)
-			vfree(info);
-		else
-			WARNING("invalid type: %d; not freed", info->type);
-
-	}
-	nt_spin_unlock_irql(&alloc_lock, irql);
-#endif
-#endif
-	return;
-}
-
 void wrapmem_info(void)
 {
 #ifdef ALLOC_DEBUG
@@ -370,3 +306,67 @@ int alloc_size(enum alloc_type type)
 }
 
 #endif // ALLOC_DEBUG
+
+int wrapmem_init(void)
+{
+	InitializeListHead(&allocs);
+	InitializeListHead(&slack_allocs);
+	nt_spin_lock_init(&alloc_lock);
+	return 0;
+}
+
+void wrapmem_exit(void)
+{
+	enum alloc_type type;
+	struct nt_list *ent;
+	KIRQL irql;
+
+	/* free all pointers on the slack list */
+	irql = nt_spin_lock_irql(&alloc_lock, DISPATCH_LEVEL);
+	while ((ent = RemoveHeadList(&slack_allocs))) {
+		struct slack_alloc_info *info;
+		info = container_of(ent, struct slack_alloc_info, list);
+#ifdef ALLOC_DEBUG
+		atomic_sub(info->size, &alloc_sizes[ALLOC_TYPE_SLACK]);
+#endif
+		kfree(info);
+	}
+	nt_spin_unlock_irql(&alloc_lock, irql);
+	type = 0;
+#ifdef ALLOC_DEBUG
+	for (type = 0; type < ALLOC_TYPE_MAX; type++) {
+		int n = atomic_read(&alloc_sizes[type]);
+		if (n)
+			WARNING("%d bytes of memory in %d leaking", n, type);
+	}
+
+#if ALLOC_DEBUG > 1
+	irql = nt_spin_lock_irql(&alloc_lock, DISPATCH_LEVEL);
+	while ((ent = RemoveHeadList(&allocs))) {
+		struct alloc_info *info;
+		info = container_of(ent, struct alloc_info, list);
+		atomic_sub(info->size, &alloc_sizes[ALLOC_TYPE_SLACK]);
+		WARNING("%p in %d of size %zu allocated at %s(%d) "
+#if ALLOC_DEBUG > 2
+			"with tag 0x%08X "
+#endif
+			"leaking; freeing it now", info + 1, info->type,
+			info->size, info->file, info->line
+#if ALLOC_DEBUG > 2
+			, info->tag
+#endif
+			);
+		if (info->type == ALLOC_TYPE_ATOMIC ||
+		    info->type == ALLOC_TYPE_NON_ATOMIC)
+			kfree(info);
+		else if (info->type == ALLOC_TYPE_VMALLOC)
+			vfree(info);
+		else
+			WARNING("invalid type: %d; not freed", info->type);
+
+	}
+	nt_spin_unlock_irql(&alloc_lock, irql);
+#endif
+#endif
+	return;
+}

@@ -52,7 +52,7 @@ static struct pci_device_id wrap_pci_device;
 static struct pci_driver wrap_pci_driver;
 #if defined(CONFIG_USB)
 static struct usb_device_id wrap_usb_device;
-struct usb_driver wrap_usb_driver;
+static struct usb_driver wrap_usb_driver;
 #endif
 
 int wrap_device_type(int data1)
@@ -480,7 +480,6 @@ void unload_wrap_driver(struct wrap_driver *driver)
 			if (param->type == NdisParameterString)
 				RtlFreeUnicodeString(&param->data.string);
 			ExFreePool(param);
-			setting->encoded = NULL;
 		}
 		kfree(setting);
 	}

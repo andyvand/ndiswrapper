@@ -673,13 +673,13 @@ int get_auth_mode(struct wrap_ndis_device *wnd)
 	ULONG mode;
 	NDIS_STATUS res;
 
-	ENTER2("");
 	res = miniport_query_int(wnd, OID_802_11_AUTHENTICATION_MODE, &mode);
 	if (res) {
 		WARNING("getting authentication mode failed (%08X)", res);
 		EXIT2(return -EOPNOTSUPP);
-	} else
-		EXIT2(return mode);
+	}
+	TRACE2("%d", mode);
+	return mode;
 }
 
 int set_encr_mode(struct wrap_ndis_device *wnd, ULONG encr_mode)

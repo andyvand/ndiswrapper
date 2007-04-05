@@ -15,17 +15,6 @@
 
 #include "ntoskernel.h"
 
-int crt_init(void)
-{
-	return 0;
-}
-
-/* called when module is being removed */
-void crt_exit(void)
-{
-	EXIT4(return);
-}
-
 noregparm INT WIN_FUNC(_win_sprintf,12)
 	(char *buf, const char *format, ...)
 {
@@ -389,3 +378,14 @@ void dump_bytes(const char *ctx, const u8 *from, int len)
 }
 
 #include "crt_exports.h"
+
+int crt_init(void)
+{
+	return 0;
+}
+
+/* called when module is being removed */
+void crt_exit(void)
+{
+	EXIT4(return);
+}

@@ -140,38 +140,6 @@ static work_struct_t wrap_urb_complete_work;
 static void wrap_urb_complete_worker(worker_param_t dummy);
 #endif
 
-static void wrap_free_urb(struct urb *urb);
-
-int usb_init(void)
-{
-	InitializeListHead(&wrap_urb_complete_list);
-	nt_spin_lock_init(&wrap_urb_complete_list_lock);
-#ifdef USB_TASKLET
-	tasklet_init(&wrap_urb_complete_work, wrap_urb_complete_worker, 0);
-#else
-	initialize_work(&wrap_urb_complete_work, wrap_urb_complete_worker, NULL);
-#endif
-#ifdef USB_DEBUG
-	urb_id = 0;
-#endif
-	return 0;
-}
-
-void usb_exit(void)
-{
-#ifdef USB_TASKLET
-	tasklet_kill(&wrap_urb_complete_work);
-#endif
-	USBEXIT(return);
-}
-
-int usb_init_device(struct wrap_device *wd)
-{
-	InitializeListHead(&wd->usb.wrap_urb_list);
-	wd->usb.num_alloc_urbs = 0;
-	USBEXIT(return 0);
-}
-
 static void kill_all_urbs(struct wrap_device *wd, int complete)
 {
 	struct nt_list *ent;
@@ -198,12 +166,6 @@ static void kill_all_urbs(struct wrap_device *wd, int complete)
 		kfree(wrap_urb);
 	}
 	wd->usb.num_alloc_urbs = 0;
-}
-
-void usb_exit_device(struct wrap_device *wd)
-{
-	kill_all_urbs(wd, 0);
-	USBEXIT(return);
 }
 
 /* for a given Linux urb status code, return corresponding NT urb status */
@@ -1447,3 +1409,39 @@ USBD_InterfaceLogEntry(void *context, ULONG driver_tag, ULONG enum_tag,
 }
 
 #include "usb_exports.h"
+
+int usb_init(void)
+{
+	InitializeListHead(&wrap_urb_complete_list);
+	nt_spin_lock_init(&wrap_urb_complete_list_lock);
+#ifdef USB_TASKLET
+	tasklet_init(&wrap_urb_complete_work, wrap_urb_complete_worker, 0);
+#else
+	initialize_work(&wrap_urb_complete_work, wrap_urb_complete_worker, NULL);
+#endif
+#ifdef USB_DEBUG
+	urb_id = 0;
+#endif
+	return 0;
+}
+
+void usb_exit(void)
+{
+#ifdef USB_TASKLET
+	tasklet_kill(&wrap_urb_complete_work);
+#endif
+	USBEXIT(return);
+}
+
+int usb_init_device(struct wrap_device *wd)
+{
+	InitializeListHead(&wd->usb.wrap_urb_list);
+	wd->usb.num_alloc_urbs = 0;
+	USBEXIT(return 0);
+}
+
+void usb_exit_device(struct wrap_device *wd)
+{
+	kill_all_urbs(wd, 0);
+	USBEXIT(return);
+}

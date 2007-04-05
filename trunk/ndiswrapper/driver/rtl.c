@@ -15,17 +15,6 @@
 
 #include "ntoskernel.h"
 
-int rtl_init(void)
-{
-	return 0;
-}
-
-/* called when module is being removed */
-void rtl_exit(void)
-{
-	EXIT4(return);
-}
-
 wstdcall SIZE_T WIN_FUNC(RtlCompareMemory,3)
 	(const void *a, const void *b, SIZE_T len)
 {
@@ -658,3 +647,14 @@ void WIN_FUNC(RtlUnwind,0)
 }
 
 #include "rtl_exports.h"
+
+int rtl_init(void)
+{
+	return 0;
+}
+
+/* called when module is being removed */
+void rtl_exit(void)
+{
+	EXIT4(return);
+}

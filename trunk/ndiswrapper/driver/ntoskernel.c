@@ -100,9 +100,6 @@ struct kuser_shared_data kuser_shared_data;
 static void update_user_shared_data_proc(unsigned long data);
 #endif
 
-static int add_bus_driver(const char *name);
-static BOOLEAN queue_kdpc(struct kdpc *kdpc);
-
 WIN_SYMBOL_MAP("KeTickCount", &jiffies)
 
 WIN_SYMBOL_MAP("NlsMbCodePageTag", FALSE)
@@ -110,186 +107,6 @@ WIN_SYMBOL_MAP("NlsMbCodePageTag", FALSE)
 #ifdef USE_OWN_NTOS_WORKQUEUE
 workqueue_struct_t *ntos_wq;
 #endif
-
-int ntoskernel_init(void)
-{
-	struct timeval now;
-
-	nt_spin_lock_init(&dispatcher_lock);
-	nt_spin_lock_init(&ntoskernel_lock);
-	nt_spin_lock_init(&ntos_work_item_list_lock);
-	nt_spin_lock_init(&kdpc_list_lock);
-	nt_spin_lock_init(&irp_cancel_lock);
-	InitializeListHead(&wrap_mdl_list);
-	InitializeListHead(&kdpc_list);
-	InitializeListHead(&callback_objects);
-	InitializeListHead(&bus_driver_list);
-	InitializeListHead(&object_list);
-	InitializeListHead(&ntos_work_item_list);
-
-#ifdef KDPC_TASKLET
-	tasklet_init(&kdpc_work, kdpc_worker, 0);
-#else
-	initialize_work(&kdpc_work, kdpc_worker, NULL);
-#endif
-	initialize_work(&ntos_work_item_work, ntos_work_item_worker, NULL);
-	nt_spin_lock_init(&timer_lock);
-	InitializeListHead(&wrap_timer_list);
-
-	thread_event_waitq_pool = NULL;
-	do_gettimeofday(&now);
-	wrap_ticks_to_boot = TICKS_1601_TO_1970;
-	wrap_ticks_to_boot += (u64)now.tv_sec * TICKSPERSEC;
-	wrap_ticks_to_boot += now.tv_usec * 10;
-	wrap_ticks_to_boot -= jiffies * TICKSPERJIFFY;
-	TRACE2("%Lu", wrap_ticks_to_boot);
-#ifdef USE_OWN_NTOS_WORKQUEUE
-	ntos_wq = create_singlethread_workqueue("ntos_wq");
-#endif
-
-	if (add_bus_driver("PCI")
-#ifdef CONFIG_USB
-	    || add_bus_driver("USB")
-#endif
-		) {
-		ntoskernel_exit();
-		return -ENOMEM;
-	}
-	mdl_cache = kmem_cache_create("wrap_mdl",
-				      sizeof(struct wrap_mdl) + CACHE_MDL_SIZE,
-				      0, 0, NULL, NULL);
-	TRACE2("%p", mdl_cache);
-	if (!mdl_cache) {
-		ERROR("couldn't allocate MDL cache");
-		ntoskernel_exit();
-		return -ENOMEM;
-	}
-
-#if defined(CONFIG_X86_64)
-	memset(&kuser_shared_data, 0, sizeof(kuser_shared_data));
-	*((ULONG64 *)&kuser_shared_data.system_time) = ticks_1601();
-	init_timer(&shared_data_timer);
-	shared_data_timer.function = update_user_shared_data_proc;
-	shared_data_timer.data = (unsigned long)0;
-	mod_timer(&shared_data_timer, jiffies + MSEC_TO_HZ(30));
-#endif
-	return 0;
-}
-
-int ntoskernel_init_device(struct wrap_device *wd)
-{
-	return 0;
-}
-
-void ntoskernel_exit_device(struct wrap_device *wd)
-{
-	ENTER2("");
-
-	KeFlushQueuedDpcs();
-	EXIT2(return);
-}
-
-void ntoskernel_exit(void)
-{
-	struct nt_list *cur;
-	KIRQL irql;
-
-	ENTER2("");
-
-#ifdef KDPC_TASKLET
-	tasklet_kill(&kdpc_work);
-#endif
-	/* free kernel (Ke) timers */
-	TRACE2("freeing timers");
-	while (1) {
-		struct wrap_timer *wrap_timer;
-
-		irql = nt_spin_lock_irql(&timer_lock, DISPATCH_LEVEL);
-		cur = RemoveTailList(&wrap_timer_list);
-		nt_spin_unlock_irql(&timer_lock, irql);
-		if (!cur)
-			break;
-		wrap_timer = container_of(cur, struct wrap_timer, list);
-		if (del_timer_sync(&wrap_timer->timer))
-			WARNING("Buggy Windows driver left timer %p running",
-				&wrap_timer->timer);
-		memset(wrap_timer, 0, sizeof(*wrap_timer));
-		slack_kfree(wrap_timer);
-	}
-
-	TRACE2("freeing MDLs");
-	if (mdl_cache) {
-		irql = nt_spin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL);
-		if (!IsListEmpty(&wrap_mdl_list))
-			ERROR("Windows driver didn't free all MDLs; "
-			      "freeing them now");
-		while ((cur = RemoveHeadList(&wrap_mdl_list))) {
-			struct wrap_mdl *wrap_mdl;
-			wrap_mdl = container_of(cur, struct wrap_mdl, list);
-			if (wrap_mdl->mdl->flags & MDL_CACHE_ALLOCATED)
-				kmem_cache_free(mdl_cache, wrap_mdl);
-			else
-				kfree(wrap_mdl);
-		}
-		nt_spin_unlock_irql(&ntoskernel_lock, irql);
-		kmem_cache_destroy(mdl_cache);
-		mdl_cache = NULL;
-	}
-
-	TRACE2("freeing callbacks");
-	irql = nt_spin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL);
-	while ((cur = RemoveHeadList(&callback_objects))) {
-		struct callback_object *object;
-		struct nt_list *ent;
-		object = container_of(cur, struct callback_object, list);
-		while ((ent = RemoveHeadList(&object->callback_funcs))) {
-			struct callback_func *f;
-			f = container_of(ent, struct callback_func, list);
-			kfree(f);
-		}
-		kfree(object);
-	}
-	nt_spin_unlock_irql(&ntoskernel_lock, irql);
-
-	irql = nt_spin_lock_irql(&dispatcher_lock, DISPATCH_LEVEL);
-	TRACE2("freeing thread event pool");
-	while (thread_event_waitq_pool) {
-		struct thread_event_waitq *next;
-		next = thread_event_waitq_pool->next;
-		kfree(thread_event_waitq_pool);
-		thread_event_waitq_pool = next;
-	}
-	nt_spin_unlock_irql(&dispatcher_lock, irql);
-
-	irql = nt_spin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL);
-	while ((cur = RemoveHeadList(&bus_driver_list))) {
-		struct bus_driver *bus_driver;
-		bus_driver = container_of(cur, struct bus_driver, list);
-		/* TODO: make sure all all drivers are shutdown/removed */
-		kfree(bus_driver);
-	}
-	nt_spin_unlock_irql(&ntoskernel_lock, irql);
-
-	ENTER2("freeing objects");
-	irql = nt_spin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL);
-	while ((cur = RemoveHeadList(&object_list))) {
-		struct common_object_header *hdr;
-		hdr = container_of(cur, struct common_object_header, list);
-		WARNING("object %p type %d was not freed, freeing it now",
-			HEADER_TO_OBJECT(hdr), hdr->type);
-		ExFreePool(hdr);
-	}
-	nt_spin_unlock_irql(&ntoskernel_lock, irql);
-
-#if defined(CONFIG_X86_64)
-	del_timer_sync(&shared_data_timer);
-#endif
-#ifdef USE_OWN_NTOS_WORKQUEUE
-	if (ntos_wq)
-		destroy_workqueue(ntos_wq);
-#endif
-	EXIT2(return);
-}
 
 #if defined(CONFIG_X86_64)
 static void update_user_shared_data_proc(unsigned long data)
@@ -907,7 +724,7 @@ static void ntos_work_item_worker(worker_param_t dummy)
 int schedule_ntos_work_item(NTOS_WORK_FUNC func, void *arg1, void *arg2)
 {
 	struct ntos_work_item *ntos_work_item;
-	unsigned long flags;
+	KIRQL irql;
 
 	WORKENTER("adding work: %p, %p, %p", func, arg1, arg2);
 	ntos_work_item = kmalloc(sizeof(*ntos_work_item), gfp_irql());
@@ -918,9 +735,9 @@ int schedule_ntos_work_item(NTOS_WORK_FUNC func, void *arg1, void *arg2)
 	ntos_work_item->func = func;
 	ntos_work_item->arg1 = arg1;
 	ntos_work_item->arg2 = arg2;
-	nt_spin_lock_irqsave(&ntos_work_item_list_lock, flags);
+	irql = nt_spin_lock_irql(&ntos_work_item_list_lock, DISPATCH_LEVEL);
 	InsertTailList(&ntos_work_item_list, &ntos_work_item->list);
-	nt_spin_unlock_irqrestore(&ntos_work_item_list_lock, flags);
+	nt_spin_unlock_irql(&ntos_work_item_list_lock, irql);
 	schedule_ntos_work(&ntos_work_item_work);
 	WORKEXIT(return 0);
 }
@@ -1009,8 +826,7 @@ wstdcall void *WIN_FUNC(ExAllocatePoolWithTag,3)
 		 * which is more likely to fail (since it needs to
 		 * find contiguous block) than __vmalloc */
 		TRACE1("Windows driver allocating %lu bytes in interrupt "
-		       "context: 0x%x, %lu", size, preempt_count(),
-		       in_interrupt());
+		       "context: 0x%x", size, preempt_count());
 		DBG_BLOCK(4) {
 			dump_stack();
 		}
@@ -1025,8 +841,9 @@ wstdcall void *WIN_FUNC(ExAllocatePoolWithTag,3)
 		addr = vmalloc(size);
 		alloc_type = ALLOC_TYPE_VMALLOC;
 	}
-	TRACE4("addr: %p, %p, %lu", addr, addr + 1, size);
 	if (addr) {
+		TRACE4("addr: %p, %p, %d, %lu", addr, addr + 1, alloc_type,
+		       size);
 		*addr = alloc_type;
 		return addr + 1;
 	} else
@@ -1972,7 +1789,7 @@ wstdcall BOOLEAN WIN_FUNC(KeSynchronizeExecution,3)
 	else
 		spinlock = &interrupt->lock;
 	nt_spin_lock_irqsave(spinlock, flags);
-	ret = synch_routine(synch_context);
+	ret = LIN2WIN1(synch_routine, synch_context);
 	nt_spin_unlock_irqrestore(spinlock, flags);
 	return ret;
 }
@@ -2666,3 +2483,183 @@ void WIN_FUNC(_purecall,0)
 }
 
 #include "ntoskernel_exports.h"
+
+int ntoskernel_init(void)
+{
+	struct timeval now;
+
+	nt_spin_lock_init(&dispatcher_lock);
+	nt_spin_lock_init(&ntoskernel_lock);
+	nt_spin_lock_init(&ntos_work_item_list_lock);
+	nt_spin_lock_init(&kdpc_list_lock);
+	nt_spin_lock_init(&irp_cancel_lock);
+	InitializeListHead(&wrap_mdl_list);
+	InitializeListHead(&kdpc_list);
+	InitializeListHead(&callback_objects);
+	InitializeListHead(&bus_driver_list);
+	InitializeListHead(&object_list);
+	InitializeListHead(&ntos_work_item_list);
+
+#ifdef KDPC_TASKLET
+	tasklet_init(&kdpc_work, kdpc_worker, 0);
+#else
+	initialize_work(&kdpc_work, kdpc_worker, NULL);
+#endif
+	initialize_work(&ntos_work_item_work, ntos_work_item_worker, NULL);
+	nt_spin_lock_init(&timer_lock);
+	InitializeListHead(&wrap_timer_list);
+
+	thread_event_waitq_pool = NULL;
+	do_gettimeofday(&now);
+	wrap_ticks_to_boot = TICKS_1601_TO_1970;
+	wrap_ticks_to_boot += (u64)now.tv_sec * TICKSPERSEC;
+	wrap_ticks_to_boot += now.tv_usec * 10;
+	wrap_ticks_to_boot -= jiffies * TICKSPERJIFFY;
+	TRACE2("%Lu", wrap_ticks_to_boot);
+#ifdef USE_OWN_NTOS_WORKQUEUE
+	ntos_wq = create_singlethread_workqueue("ntos_wq");
+#endif
+
+	if (add_bus_driver("PCI")
+#ifdef CONFIG_USB
+	    || add_bus_driver("USB")
+#endif
+		) {
+		ntoskernel_exit();
+		return -ENOMEM;
+	}
+	mdl_cache = kmem_cache_create("wrap_mdl",
+				      sizeof(struct wrap_mdl) + CACHE_MDL_SIZE,
+				      0, 0, NULL, NULL);
+	TRACE2("%p", mdl_cache);
+	if (!mdl_cache) {
+		ERROR("couldn't allocate MDL cache");
+		ntoskernel_exit();
+		return -ENOMEM;
+	}
+
+#if defined(CONFIG_X86_64)
+	memset(&kuser_shared_data, 0, sizeof(kuser_shared_data));
+	*((ULONG64 *)&kuser_shared_data.system_time) = ticks_1601();
+	init_timer(&shared_data_timer);
+	shared_data_timer.function = update_user_shared_data_proc;
+	shared_data_timer.data = (unsigned long)0;
+	mod_timer(&shared_data_timer, jiffies + MSEC_TO_HZ(30));
+#endif
+	return 0;
+}
+
+int ntoskernel_init_device(struct wrap_device *wd)
+{
+	return 0;
+}
+
+void ntoskernel_exit_device(struct wrap_device *wd)
+{
+	ENTER2("");
+
+	KeFlushQueuedDpcs();
+	EXIT2(return);
+}
+
+void ntoskernel_exit(void)
+{
+	struct nt_list *cur;
+	KIRQL irql;
+
+	ENTER2("");
+
+#ifdef KDPC_TASKLET
+	tasklet_kill(&kdpc_work);
+#endif
+	/* free kernel (Ke) timers */
+	TRACE2("freeing timers");
+	while (1) {
+		struct wrap_timer *wrap_timer;
+
+		irql = nt_spin_lock_irql(&timer_lock, DISPATCH_LEVEL);
+		cur = RemoveTailList(&wrap_timer_list);
+		nt_spin_unlock_irql(&timer_lock, irql);
+		if (!cur)
+			break;
+		wrap_timer = container_of(cur, struct wrap_timer, list);
+		if (del_timer_sync(&wrap_timer->timer))
+			WARNING("Buggy Windows driver left timer %p running",
+				&wrap_timer->timer);
+		memset(wrap_timer, 0, sizeof(*wrap_timer));
+		slack_kfree(wrap_timer);
+	}
+
+	TRACE2("freeing MDLs");
+	if (mdl_cache) {
+		irql = nt_spin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL);
+		if (!IsListEmpty(&wrap_mdl_list))
+			ERROR("Windows driver didn't free all MDLs; "
+			      "freeing them now");
+		while ((cur = RemoveHeadList(&wrap_mdl_list))) {
+			struct wrap_mdl *wrap_mdl;
+			wrap_mdl = container_of(cur, struct wrap_mdl, list);
+			if (wrap_mdl->mdl->flags & MDL_CACHE_ALLOCATED)
+				kmem_cache_free(mdl_cache, wrap_mdl);
+			else
+				kfree(wrap_mdl);
+		}
+		nt_spin_unlock_irql(&ntoskernel_lock, irql);
+		kmem_cache_destroy(mdl_cache);
+		mdl_cache = NULL;
+	}
+
+	TRACE2("freeing callbacks");
+	irql = nt_spin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL);
+	while ((cur = RemoveHeadList(&callback_objects))) {
+		struct callback_object *object;
+		struct nt_list *ent;
+		object = container_of(cur, struct callback_object, list);
+		while ((ent = RemoveHeadList(&object->callback_funcs))) {
+			struct callback_func *f;
+			f = container_of(ent, struct callback_func, list);
+			kfree(f);
+		}
+		kfree(object);
+	}
+	nt_spin_unlock_irql(&ntoskernel_lock, irql);
+
+	irql = nt_spin_lock_irql(&dispatcher_lock, DISPATCH_LEVEL);
+	TRACE2("freeing thread event pool");
+	while (thread_event_waitq_pool) {
+		struct thread_event_waitq *next;
+		next = thread_event_waitq_pool->next;
+		kfree(thread_event_waitq_pool);
+		thread_event_waitq_pool = next;
+	}
+	nt_spin_unlock_irql(&dispatcher_lock, irql);
+
+	irql = nt_spin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL);
+	while ((cur = RemoveHeadList(&bus_driver_list))) {
+		struct bus_driver *bus_driver;
+		bus_driver = container_of(cur, struct bus_driver, list);
+		/* TODO: make sure all all drivers are shutdown/removed */
+		kfree(bus_driver);
+	}
+	nt_spin_unlock_irql(&ntoskernel_lock, irql);
+
+	ENTER2("freeing objects");
+	irql = nt_spin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL);
+	while ((cur = RemoveHeadList(&object_list))) {
+		struct common_object_header *hdr;
+		hdr = container_of(cur, struct common_object_header, list);
+		WARNING("object %p type %d was not freed, freeing it now",
+			HEADER_TO_OBJECT(hdr), hdr->type);
+		ExFreePool(hdr);
+	}
+	nt_spin_unlock_irql(&ntoskernel_lock, irql);
+
+#if defined(CONFIG_X86_64)
+	del_timer_sync(&shared_data_timer);
+#endif
+#ifdef USE_OWN_NTOS_WORKQUEUE
+	if (ntos_wq)
+		destroy_workqueue(ntos_wq);
+#endif
+	EXIT2(return);
+}
