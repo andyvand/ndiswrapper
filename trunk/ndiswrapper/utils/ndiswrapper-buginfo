@@ -68,6 +68,10 @@ newblock
 log "gcc --version:"
 log_cmd 'gcc --version'
 
+newblock
+log "ndiswrapper -v:"
+log_cmd 'ndiswrapper -v'
+
 # installed drivers
 newblock
 log "installed drivers:"
@@ -105,7 +109,7 @@ while :; do
 	    if [ $FULL -eq 1 ]; then
 		log_cmd 'dmesg | grep ndiswrapper | tail -n 100'
 	    else
-		log_cmd 'dmesg | grep ndiswrapper | tail -n 10'
+		log_cmd 'dmesg | grep ndiswrapper | tail -n 20'
 	    fi
 	    break
 	    ;;
