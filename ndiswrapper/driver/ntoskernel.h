@@ -983,11 +983,8 @@ do {									\
 
 static inline ULONG SPAN_PAGES(void *ptr, SIZE_T length)
 {
-	/* all allocations in ndiswrapper are with kmalloc, so memory
-	 * at ptr is physically contiguous - which can be mapped to
-	 * DMA / physicall address with one register */
 	return PAGE_ALIGN(((unsigned long)ptr & (PAGE_SIZE - 1)) + length)
-			  >> PAGE_SHIFT;
+		>> PAGE_SHIFT;
 }
 
 #ifdef CONFIG_X86_64

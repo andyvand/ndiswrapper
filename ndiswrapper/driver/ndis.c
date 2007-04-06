@@ -26,7 +26,7 @@
 static workqueue_struct_t *ndis_wq;
 static void ndis_worker(worker_param_t dummy);
 static work_struct_t ndis_work;
-static struct nt_list ndis_worker_list;
+static struct nt_list ndis_work_list;
 static NT_SPIN_LOCK ndis_work_list_lock;
 
 extern struct semaphore loader_mutex;
@@ -2536,26 +2536,22 @@ wstdcall void NdisMResetComplete(struct ndis_miniport_block *nmb,
 static void ndis_worker(worker_param_t dummy)
 {
 	KIRQL irql;
-	struct ndis_work_entry *ndis_work_entry;
 	struct nt_list *ent;
 	struct ndis_work_item *ndis_work_item;
 
 	WORKENTER("");
 	while (1) {
 		irql = nt_spin_lock_irql(&ndis_work_list_lock, DISPATCH_LEVEL);
-		ent = RemoveHeadList(&ndis_worker_list);
+		ent = RemoveHeadList(&ndis_work_list);
 		nt_spin_unlock_irql(&ndis_work_list_lock, irql);
 		if (!ent)
 			break;
-		ndis_work_entry = container_of(ent, struct ndis_work_entry,
-					       list);
-		ndis_work_item = ndis_work_entry->ndis_work_item;
+		ndis_work_item = container_of(ent, struct ndis_work_item, list);
 		WORKTRACE("%p: %p, %p", ndis_work_item,
 			  ndis_work_item->func, ndis_work_item->ctx);
 		LIN2WIN2(ndis_work_item->func, ndis_work_item,
 			 ndis_work_item->ctx);
 		WORKTRACE("%p done", ndis_work_item);
-		kfree(ndis_work_entry);
 	}
 	WORKEXIT(return);
 }
@@ -2563,16 +2559,11 @@ static void ndis_worker(worker_param_t dummy)
 wstdcall NDIS_STATUS WIN_FUNC(NdisScheduleWorkItem,1)
 	(struct ndis_work_item *ndis_work_item)
 {
-	struct ndis_work_entry *ndis_work_entry;
 	KIRQL irql;
 
 	ENTER3("%p", ndis_work_item);
-	ndis_work_entry = kmalloc(sizeof(*ndis_work_entry), gfp_irql());
-	if (!ndis_work_entry)
-		BUG();
-	ndis_work_entry->ndis_work_item = ndis_work_item;
 	irql = nt_spin_lock_irql(&ndis_work_list_lock, DISPATCH_LEVEL);
-	InsertTailList(&ndis_worker_list, &ndis_work_entry->list);
+	InsertTailList(&ndis_work_list, &ndis_work_item->list);
 	nt_spin_unlock_irql(&ndis_work_list_lock, irql);
 	WORKTRACE("scheduling %p", ndis_work_item);
 	schedule_ndis_work(&ndis_work);
@@ -2720,8 +2711,21 @@ wstdcall void WIN_FUNC(NdisMRemoveMiniport,1)
 
 #include "ndis_exports.h"
 
-void init_nmb_functions(struct ndis_miniport_block *nmb)
+int ndis_init_device(struct wrap_ndis_device *wnd)
 {
+	struct ndis_miniport_block *nmb = wnd->nmb;
+
+	KeInitializeSpinLock(&nmb->lock);
+	wnd->ndis_irq = NULL;
+	InitializeListHead(&wnd->timer_list);
+	if (wnd->wd->driver->ndis_driver)
+		wnd->wd->driver->ndis_driver->miniport.shutdown = NULL;
+
+	nmb->filterdbs.eth_db = nmb;
+	nmb->filterdbs.tr_db = nmb;
+	nmb->filterdbs.fddi_db = nmb;
+	nmb->filterdbs.arc_db = nmb;
+
 	nmb->rx_packet = WIN_FUNC_PTR(NdisMIndicateReceivePacket,3);
 	nmb->send_complete = WIN_FUNC_PTR(NdisMSendComplete,3);
 	nmb->send_resource_avail = WIN_FUNC_PTR(NdisMSendResourcesAvailable,1);
@@ -2733,6 +2737,7 @@ void init_nmb_functions(struct ndis_miniport_block *nmb)
 	nmb->eth_rx_indicate = WIN_FUNC_PTR(EthRxIndicateHandler,8);
 	nmb->eth_rx_complete = WIN_FUNC_PTR(EthRxComplete,1);
 	nmb->td_complete = WIN_FUNC_PTR(NdisMTransferDataComplete,4);
+	return 0;
 }
 
 /* ndis_exit_device is called for each handle */
@@ -2762,7 +2767,7 @@ void ndis_exit_device(struct wrap_ndis_device *wnd)
 int ndis_init(void)
 {
 	ndis_wq = create_singlethread_workqueue("ndis_wq");
-	InitializeListHead(&ndis_worker_list);
+	InitializeListHead(&ndis_work_list);
 	nt_spin_lock_init(&ndis_work_list_lock);
 	initialize_work(&ndis_work, ndis_worker, NULL);
 

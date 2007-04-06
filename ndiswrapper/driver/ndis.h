@@ -485,18 +485,17 @@ typedef void (*NDIS_PROC)(struct ndis_work_item *, void *) wstdcall;
 struct ndis_work_item {
 	void *ctx;
 	NDIS_PROC func;
-	UCHAR reserved[8 * sizeof(void *)];
+	union {
+		UCHAR reserved[8 * sizeof(void *)];
+		/* ndiswrapper specific */
+		struct nt_list list;
+	};
 };
 
 struct alloc_shared_mem {
 	void *ctx;
 	ULONG size;
 	BOOLEAN cached;
-};
-
-struct ndis_work_entry {
-	struct nt_list list;
-	struct ndis_work_item *ndis_work_item;
 };
 
 struct ndis_miniport_block;
@@ -925,11 +924,11 @@ struct ndis_pmkid_candidate_list {
 };
 
 irqreturn_t ndis_isr(int irq, void *data ISR_PT_REGS_PARAM_DECL);
-void init_nmb_functions(struct ndis_miniport_block *nmb);
 
 int ndis_init(void);
-void ndis_exit_device(struct wrap_ndis_device *wnd);
 void ndis_exit(void);
+int ndis_init_device(struct wrap_ndis_device *wnd);
+void ndis_exit_device(struct wrap_ndis_device *wnd);
 void insert_ndis_kdpc_work(struct kdpc *kdpc);
 BOOLEAN remove_ndis_kdpc_work(struct kdpc *kdpc);
 

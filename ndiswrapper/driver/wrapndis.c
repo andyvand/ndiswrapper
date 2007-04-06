@@ -2061,7 +2061,6 @@ static wstdcall NTSTATUS NdisAddDevice(struct driver_object *drv_obj,
 	TRACE1("wnd: %p", wnd);
 
 	nmb = ((void *)wnd) + sizeof(*wnd);
-	wnd->nmb = nmb;
 #if defined(DEBUG) && DEBUG >= 6
 	/* poison nmb so if a driver accesses uninitialized pointers, we
 	 * know what it is */
@@ -2069,19 +2068,20 @@ static wstdcall NTSTATUS NdisAddDevice(struct driver_object *drv_obj,
 		((unsigned long *)nmb)[i] = i + 0x8a3fc1;
 #endif
 
+	wnd->nmb = nmb;
 	nmb->wnd = wnd;
 	nmb->pdo = pdo;
 	wd->wnd = wnd;
 	wnd->wd = wd;
-	nmb->filterdbs.eth_db = nmb;
-	nmb->filterdbs.tr_db = nmb;
-	nmb->filterdbs.fddi_db = nmb;
-	nmb->filterdbs.arc_db = nmb;
-
-	KeInitializeSpinLock(&nmb->lock);
-	init_nmb_functions(nmb);
 	wnd->net_dev = net_dev;
-	wnd->ndis_irq = NULL;
+	fdo->reserved = wnd;
+	nmb->fdo = fdo;
+	nmb->next_device = IoAttachDeviceToDeviceStack(fdo, pdo);
+	if (ndis_init_device(wnd)) {
+		free_netdev(net_dev);
+		EXIT1(return STATUS_RESOURCES);
+	}
+
 	nt_spin_lock_init(&wnd->tx_ring_lock);
 	init_MUTEX(&wnd->tx_ring_mutex);
 	init_MUTEX(&wnd->ndis_comm_mutex);
@@ -2109,25 +2109,17 @@ static wstdcall NTSTATUS NdisAddDevice(struct driver_object *drv_obj,
 	wnd->infrastructure_mode = Ndis802_11Infrastructure;
 	initialize_work(&wnd->wrap_ndis_work, wrap_ndis_worker, wnd);
 	wnd->hw_status = 0;
-	if (wd->driver->ndis_driver)
-		wd->driver->ndis_driver->miniport.shutdown = NULL;
 	wnd->stats_enabled = TRUE;
-	InitializeListHead(&wnd->timer_list);
 
-	fdo->reserved = wnd;
-	nmb->fdo = fdo;
-	nmb->next_device = IoAttachDeviceToDeviceStack(fdo, pdo);
 	TRACE1("nmb: %p, pdo: %p, fdo: %p, attached: %p, next: %p",
 	       nmb, pdo, fdo, fdo->attached, nmb->next_device);
 
 	/* dispatch routines are called as Windows functions */
 	for (i = 0; i <= IRP_MJ_MAXIMUM_FUNCTION; i++)
-		drv_obj->major_func[i] =
-			WIN_FUNC_PTR(IoPassIrpDown,2);
-	drv_obj->major_func[IRP_MJ_PNP] =
-		WIN_FUNC_PTR(NdisDispatchPnp,2);
-	drv_obj->major_func[IRP_MJ_POWER] =
-		WIN_FUNC_PTR(NdisDispatchPower,2);
+		drv_obj->major_func[i] = WIN_FUNC_PTR(IoPassIrpDown,2);
+
+	drv_obj->major_func[IRP_MJ_PNP] = WIN_FUNC_PTR(NdisDispatchPnp,2);
+	drv_obj->major_func[IRP_MJ_POWER] = WIN_FUNC_PTR(NdisDispatchPower,2);
 	drv_obj->major_func[IRP_MJ_INTERNAL_DEVICE_CONTROL] =
 		WIN_FUNC_PTR(NdisDispatchDeviceControl,2);
 //	drv_obj->major_func[IRP_MJ_DEVICE_CONTROL] =
