@@ -13,14 +13,6 @@
  *
  */
 
-#include <linux/version.h>
-#include <linux/module.h>
-#include <linux/netdevice.h>
-#include <linux/etherdevice.h>
-#include <linux/wireless.h>
-#include <linux/delay.h>
-#include <linux/usb.h>
-
 #include "ntoskernel.h"
 
 wstdcall void WIN_FUNC(WRITE_PORT_ULONG,2)
