@@ -30,7 +30,6 @@ static NTSTATUS start_pdo(struct device_object *pdo)
 
 	ENTER1("%p, %p", pdo, pdo->reserved);
 	wd = pdo->reserved;
-	wd->surprise_removed = TRUE;
 	if (ntoskernel_init_device(wd))
 		EXIT1(return STATUS_FAILURE);
 	if (wrap_is_usb_bus(wd->dev_bus)) {
@@ -716,8 +715,6 @@ void __devexit wrap_pnp_remove_usb_device(struct usb_interface *intf)
 	if (wd == NULL)
 		EXIT1(return);
 	usb_set_intfdata(intf, NULL);
-	if (wd->surprise_removed == TRUE)
-		wd->usb.intf = NULL;
 	pnp_remove_device(wd);
 }
 

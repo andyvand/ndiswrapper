@@ -667,7 +667,7 @@ static void unregister_devices(void)
 	nt_list_for_each_safe(cur, next, &wrap_devices) {
 		struct wrap_device *wd;
 		wd = container_of(cur, struct wrap_device, list);
-		wd->surprise_removed = FALSE;
+		set_bit(HW_PRESENT, &wd->hw_status);
 	}
 	up(&loader_mutex);
 

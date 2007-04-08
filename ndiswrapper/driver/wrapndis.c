@@ -210,7 +210,7 @@ static NDIS_STATUS miniport_pnp_event(struct wrap_ndis_device *wnd,
 	}
 	/* RNDIS driver doesn't like to be notified if device is
 	 * already halted */
-	if (!test_bit(HW_INITIALIZED, &wnd->hw_status))
+	if (!test_bit(HW_INITIALIZED, &wnd->wd->hw_status))
 		EXIT1(return NDIS_STATUS_SUCCESS);
 	switch (event) {
 	case NdisDevicePnPEventSurpriseRemoved:
@@ -218,7 +218,7 @@ static NDIS_STATUS miniport_pnp_event(struct wrap_ndis_device *wnd,
 		       (wnd->attributes & NDIS_ATTRIBUTE_SURPRISE_REMOVE_OK),
 		       miniport->pnp_event_notify);
 		if ((wnd->attributes & NDIS_ATTRIBUTE_SURPRISE_REMOVE_OK) &&
-		    wnd->wd->surprise_removed == TRUE &&
+		    !test_bit(HW_PRESENT, &wnd->wd->hw_status) &&
 		    miniport->pnp_event_notify) {
 			TRACE1("calling surprise_removed");
 			LIN2WIN4(miniport->pnp_event_notify,
@@ -246,13 +246,12 @@ static NDIS_STATUS miniport_pnp_event(struct wrap_ndis_device *wnd,
 static NDIS_STATUS miniport_init(struct wrap_ndis_device *wnd)
 {
 	NDIS_STATUS error_status, status;
-	UINT medium_index;
-	UINT medium_array[] = {NdisMedium802_3};
+	UINT medium_index, medium_array[] = {NdisMedium802_3};
 	struct miniport_char *miniport;
 	struct ndis_pnp_capabilities pnp_capa;
 
 	ENTER1("irql: %d", current_irql());
-	if (test_bit(HW_INITIALIZED, &wnd->hw_status)) {
+	if (test_bit(HW_INITIALIZED, &wnd->wd->hw_status)) {
 		WARNING("device %p already initialized!", wnd);
 		return NDIS_STATUS_FAILURE;
 	}
@@ -275,12 +274,12 @@ static NDIS_STATUS miniport_init(struct wrap_ndis_device *wnd)
 
 	/* Wait a little to let card power up otherwise ifup might
 	 * fail after boot */
-	sleep_hz(HZ / 2);
+	sleep_hz(HZ / 5);
 	status = miniport_pnp_event(wnd, NdisDevicePnPEventPowerProfileChanged,
 				    NdisPowerProfileAcOnLine);
 	if (status != NDIS_STATUS_SUCCESS)
 		TRACE1("setting power failed: %08X", status);
-	set_bit(HW_INITIALIZED, &wnd->hw_status);
+	set_bit(HW_INITIALIZED, &wnd->wd->hw_status);
 	/* the description about NDIS_ATTRIBUTE_NO_HALT_ON_SUSPEND is
 	 * misleading/confusing */
 	status = miniport_query_info(wnd, OID_PNP_CAPABILITIES,
@@ -303,7 +302,7 @@ static void miniport_halt(struct wrap_ndis_device *wnd)
 	struct miniport_char *miniport;
 
 	ENTER1("%p", wnd);
-	if (test_and_clear_bit(HW_INITIALIZED, &wnd->hw_status)) {
+	if (test_and_clear_bit(HW_INITIALIZED, &wnd->wd->hw_status)) {
 		hangcheck_del(wnd);
 		del_stats_timer(wnd);
 		miniport = &wnd->wd->driver->ndis_driver->miniport;
@@ -346,13 +345,14 @@ static NDIS_STATUS miniport_set_power_state(struct wrap_ndis_device *wnd,
 	if (state == NdisDeviceStateD0) {
 		status = NDIS_STATUS_SUCCESS;
 		up(&wnd->ndis_comm_mutex);
-		if (test_and_clear_bit(HW_HALTED, &wnd->hw_status)) {
+		if (test_and_clear_bit(HW_HALTED, &wnd->wd->hw_status)) {
 			status = miniport_init(wnd);
 			if (status == NDIS_STATUS_SUCCESS) {
 				set_packet_filter(wnd, wnd->packet_filter);
 				set_multicast_list(wnd);
 			}
-		} else if (test_and_clear_bit(HW_SUSPENDED, &wnd->hw_status)) {
+		} else if (test_and_clear_bit(HW_SUSPENDED,
+					      &wnd->wd->hw_status)) {
 			status = miniport_set_int(wnd, OID_PNP_SET_POWER,
 						  state);
 			if (status != NDIS_STATUS_SUCCESS)
@@ -383,24 +383,23 @@ static NDIS_STATUS miniport_set_power_state(struct wrap_ndis_device *wnd,
 		del_stats_timer(wnd);
 		status = NDIS_STATUS_NOT_SUPPORTED;
 		if (wnd->attributes & NDIS_ATTRIBUTE_NO_HALT_ON_SUSPEND) {
-			enum ndis_power_state pm_state = state;
 			if (wnd->ndis_wolopts) {
 				status =
 					miniport_set_int(wnd,
 							 OID_PNP_ENABLE_WAKE_UP,
 							 wnd->ndis_wolopts);
-				if (status == NDIS_STATUS_SUCCESS) {
-					if (wrap_is_pci_bus(wnd->wd->dev_bus))
-						pci_enable_wake(wnd->wd->pci.pdev,
-								PCI_D0, 1);
-				} else
+				if (status == NDIS_STATUS_SUCCESS &&
+				    wrap_is_pci_bus(wnd->wd->dev_bus))
+					pci_enable_wake(wnd->wd->pci.pdev,
+							PCI_D0, 1);
+				else
 					WARNING("%s: couldn't enable WOL: %08x",
 						wnd->net_dev->name, status);
 			}
 			status = miniport_set_int(wnd, OID_PNP_SET_POWER,
-						  pm_state);
+						  state);
 			if (status == NDIS_STATUS_SUCCESS)
-				set_bit(HW_SUSPENDED, &wnd->hw_status);
+				set_bit(HW_SUSPENDED, &wnd->wd->hw_status);
 			else
 				WARNING("suspend failed: %08X", status);
 		}
@@ -408,7 +407,7 @@ static NDIS_STATUS miniport_set_power_state(struct wrap_ndis_device *wnd,
 			WARNING("%s does not support power management; "
 				"halting the device", wnd->net_dev->name);
 			miniport_halt(wnd);
-			set_bit(HW_HALTED, &wnd->hw_status);
+			set_bit(HW_HALTED, &wnd->wd->hw_status);
 			status = STATUS_SUCCESS;
 		}
 		if (down_interruptible(&wnd->ndis_comm_mutex))
@@ -2108,7 +2107,6 @@ static wstdcall NTSTATUS NdisAddDevice(struct driver_object *drv_obj,
 	memset(&wnd->encr_info, 0, sizeof(wnd->encr_info));
 	wnd->infrastructure_mode = Ndis802_11Infrastructure;
 	initialize_work(&wnd->wrap_ndis_work, wrap_ndis_worker, wnd);
-	wnd->hw_status = 0;
 	wnd->stats_enabled = TRUE;
 
 	TRACE1("nmb: %p, pdo: %p, fdo: %p, attached: %p, next: %p",

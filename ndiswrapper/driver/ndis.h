@@ -723,10 +723,6 @@ struct auth_encr_capa {
 
 enum driver_type { DRIVER_WIRELESS = 1, DRIVER_ETHERNET, };
 
-enum hw_status {
-	HW_INITIALIZED = 1, HW_SUSPENDED, HW_HALTED,
-};
-
 /*
  * This struct contains function pointers that the drivers references
  * directly via macros, so it's important that they are at the correct
@@ -828,7 +824,6 @@ struct wrap_ndis_device {
 	struct ndis_miniport_block *nmb;
 	struct wrap_device *wd;
 	struct net_device *net_dev;
-	unsigned long hw_status;
 	void *shutdown_ctx;
 	struct tasklet_struct irq_tasklet;
 	struct ndis_mp_interrupt *mp_interrupt;
