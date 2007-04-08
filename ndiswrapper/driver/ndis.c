@@ -1764,45 +1764,47 @@ wstdcall void WIN_FUNC(NdisMDeregisterAdapterShutdownHandler,1)
  * correct. */
 static void deserialized_irq_handler(unsigned long data)
 {
-	struct wrap_ndis_device *wnd = (struct wrap_ndis_device *)data;
-	struct miniport_char *miniport;
+	struct ndis_mp_interrupt *mp_interrupt = (typeof(mp_interrupt))data;
+	struct wrap_ndis_device *wnd = mp_interrupt->nmb->wnd;
 
-	miniport = &wnd->wd->driver->ndis_driver->miniport;
-	LIN2WIN1(miniport->handle_interrupt, wnd->nmb->adapter_ctx);
-	if (miniport->enable_interrupt)
+	LIN2WIN1(mp_interrupt->mp_dpc, wnd->nmb->adapter_ctx);
+	if (mp_interrupt->enable) {
+		struct miniport_char *miniport;
+		miniport = &wnd->wd->driver->ndis_driver->miniport;
 		LIN2WIN1(miniport->enable_interrupt, wnd->nmb->adapter_ctx);
+	}
 }
 
 static void serialized_irq_handler(unsigned long data)
 {
-	struct wrap_ndis_device *wnd = (struct wrap_ndis_device *)data;
-	struct miniport_char *miniport;
+	struct ndis_mp_interrupt *mp_interrupt = (typeof(mp_interrupt))data;
+	struct wrap_ndis_device *wnd = mp_interrupt->nmb->wnd;
 
-	miniport = &wnd->wd->driver->ndis_driver->miniport;
 	serialize_lock(wnd);
-	LIN2WIN1(miniport->handle_interrupt, wnd->nmb->adapter_ctx);
+	LIN2WIN1(mp_interrupt->mp_dpc, wnd->nmb->adapter_ctx);
 	serialize_unlock(wnd);
 }
 
 irqreturn_t ndis_isr(int irq, void *data ISR_PT_REGS_PARAM_DECL)
 {
-	struct wrap_ndis_device *wnd = data;
-	struct miniport_char *miniport;
+	struct ndis_mp_interrupt *mp_interrupt = data;
+	struct wrap_ndis_device *wnd = mp_interrupt->nmb->wnd;
 	BOOLEAN recognized, queue_handler;
 
-	miniport = &wnd->wd->driver->ndis_driver->miniport;
 	/* this spinlock should be shared with NdisMSynchronizeWithInterrupt
 	 */
-	nt_spin_lock(&wnd->ndis_irq->lock);
-	if (wnd->ndis_irq->shared)
-		LIN2WIN3(miniport->isr, &recognized, &queue_handler,
+	nt_spin_lock(&mp_interrupt->lock);
+	if (mp_interrupt->shared)
+		LIN2WIN3(mp_interrupt->isr, &recognized, &queue_handler,
 			 wnd->nmb->adapter_ctx);
-	else { //if (miniport->disable_interrupt)
+	else {
+		struct miniport_char *miniport;
+		miniport = &wnd->wd->driver->ndis_driver->miniport;
 		LIN2WIN1(miniport->disable_interrupt, wnd->nmb->adapter_ctx);
 		/* it is not shared interrupt, so handler must be called */
 		recognized = queue_handler = TRUE;
 	}
-	nt_spin_unlock(&wnd->ndis_irq->lock);
+	nt_spin_unlock(&mp_interrupt->lock);
 	if (recognized) {
 		if (queue_handler)
 			tasklet_schedule(&wnd->irq_tasklet);
@@ -1812,70 +1814,76 @@ irqreturn_t ndis_isr(int irq, void *data ISR_PT_REGS_PARAM_DECL)
 }
 
 wstdcall NDIS_STATUS WIN_FUNC(NdisMRegisterInterrupt,7)
-	(struct ndis_irq *ndis_irq, struct ndis_miniport_block *nmb,
-	 UINT vector, UINT level, BOOLEAN req_isr,
-	 BOOLEAN shared, enum kinterrupt_mode mode)
+	(struct ndis_mp_interrupt *mp_interrupt,
+	 struct ndis_miniport_block *nmb, UINT vector, UINT level,
+	 BOOLEAN req_isr, BOOLEAN shared, enum kinterrupt_mode mode)
 {
 	struct wrap_ndis_device *wnd = nmb->wnd;
+	struct miniport_char *miniport;
 
 	ENTER1("%p, vector:%d, level:%d, req_isr:%d, shared:%d, mode:%d",
-	       ndis_irq, vector, level, req_isr, shared, mode);
+	       mp_interrupt, vector, level, req_isr, shared, mode);
 
-	ndis_irq->irq.irq = vector;
-	ndis_irq->nmb = nmb;
-	ndis_irq->req_isr = req_isr;
+	mp_interrupt->irq = vector;
+	mp_interrupt->nmb = nmb;
+	mp_interrupt->req_isr = req_isr;
 	if (shared && !req_isr)
 		WARNING("shared but dynamic interrupt!");
-	ndis_irq->shared = shared;
-	nt_spin_lock_init(&ndis_irq->lock);
-	wnd->ndis_irq = ndis_irq;
+	mp_interrupt->shared = shared;
+	nt_spin_lock_init(&mp_interrupt->lock);
+	wnd->mp_interrupt = mp_interrupt;
+	miniport = &wnd->wd->driver->ndis_driver->miniport;
+	mp_interrupt->isr = miniport->isr;
+	mp_interrupt->mp_dpc = miniport->handle_interrupt;
+	if (miniport->enable_interrupt)
+		mp_interrupt->enable = TRUE;
+	else
+		mp_interrupt->enable = FALSE;
+
 	tasklet_init(&wnd->irq_tasklet, deserialized_driver(wnd) ?
 		     deserialized_irq_handler : serialized_irq_handler,
-		     (unsigned long)wnd);
+		     (unsigned long)mp_interrupt);
 	if (request_irq(vector, ndis_isr, req_isr ? IRQF_SHARED : 0,
-			wnd->net_dev->name, wnd)) {
+			wnd->net_dev->name, mp_interrupt)) {
 		printk(KERN_WARNING "%s: request for IRQ %d failed\n",
 		       DRIVER_NAME, vector);
 		EXIT1(return NDIS_STATUS_RESOURCES);
 	}
-	ndis_irq->enabled = 1;
 	printk(KERN_INFO "%s: using IRQ %d\n", DRIVER_NAME, vector);
 	EXIT1(return NDIS_STATUS_SUCCESS);
 }
 
 wstdcall void WIN_FUNC(NdisMDeregisterInterrupt,1)
-	(struct ndis_irq *ndis_irq)
+	(struct ndis_mp_interrupt *mp_interrupt)
 {
 	struct ndis_miniport_block *nmb;
 
-	ENTER1("%p", ndis_irq);
+	ENTER1("%p", mp_interrupt);
 
-	if (!ndis_irq)
+	if (!mp_interrupt)
 		EXIT1(return);
-	nmb = ndis_irq->nmb;
+	nmb = mp_interrupt->nmb;
 	if (!nmb)
 		EXIT1(return);
 
-	free_irq(ndis_irq->irq.irq, nmb->wnd);
+	free_irq(mp_interrupt->irq, mp_interrupt);
 	tasklet_kill(&nmb->wnd->irq_tasklet);
-	ndis_irq->enabled = 0;
-	ndis_irq->nmb = NULL;
-	nmb->wnd->ndis_irq = NULL;
+	mp_interrupt->nmb = NULL;
+	nmb->wnd->mp_interrupt = NULL;
 	EXIT1(return);
 }
 
 wstdcall BOOLEAN WIN_FUNC(NdisMSynchronizeWithInterrupt,3)
-	(struct ndis_irq *ndis_irq, void *func, void *ctx)
+	(struct ndis_mp_interrupt *mp_interrupt,
+	 PKSYNCHRONIZE_ROUTINE sync_func, void *ctx)
 {
 	BOOLEAN ret;
-	BOOLEAN (*sync_func)(void *ctx) wstdcall;
 	unsigned long flags;
 
 	ENTER6("%p %p", func, ctx);
-	sync_func = func;
-	nt_spin_lock_irqsave(&ndis_irq->lock, flags);
+	nt_spin_lock_irqsave(&mp_interrupt->lock, flags);
 	ret = LIN2WIN1(sync_func, ctx);
-	nt_spin_unlock_irqrestore(&ndis_irq->lock, flags);
+	nt_spin_unlock_irqrestore(&mp_interrupt->lock, flags);
 	TRACE6("ret: %d", ret);
 	EXIT6(return ret);
 }
@@ -2716,7 +2724,7 @@ int ndis_init_device(struct wrap_ndis_device *wnd)
 	struct ndis_miniport_block *nmb = wnd->nmb;
 
 	KeInitializeSpinLock(&nmb->lock);
-	wnd->ndis_irq = NULL;
+	wnd->mp_interrupt = NULL;
 	InitializeListHead(&wnd->timer_list);
 	if (wnd->wd->driver->ndis_driver)
 		wnd->wd->driver->ndis_driver->miniport.shutdown = NULL;
@@ -2746,8 +2754,8 @@ void ndis_exit_device(struct wrap_ndis_device *wnd)
 	struct wrap_device_setting *setting;
 	ENTER2("%p", wnd);
 	/* TI driver doesn't call NdisMDeregisterInterrupt during halt! */
-	if (wnd->ndis_irq)
-		NdisMDeregisterInterrupt(wnd->ndis_irq);
+	if (wnd->mp_interrupt)
+		NdisMDeregisterInterrupt(wnd->mp_interrupt);
 	if (down_interruptible(&loader_mutex))
 		WARNING("couldn't obtain loader_mutex");
 	nt_list_for_each_entry(setting, &wnd->wd->settings, list) {

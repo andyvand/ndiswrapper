@@ -500,25 +500,24 @@ struct alloc_shared_mem {
 
 struct ndis_miniport_block;
 
-struct ndis_irq {
-	/* void *intr_obj is used for irq */
-	union {
-		void *intr_obj;
-		unsigned int irq;
-	} irq;
+/* this is opaque to drivers, so we can use it as we please */
+struct ndis_mp_interrupt {
+	struct kinterrupt *kinterrupt;
 	/* Taken by ISR, DisableInterrupt and SynchronizeWithInterrupt */
 	NT_SPIN_LOCK lock;
-	void *id;
+	union {
+		void *reserved;
+		unsigned int irq;
+	};
 	ndis_isr_handler isr;
-	void *dpc;
+	ndis_interrupt_handler mp_dpc;
 	struct kdpc intr_dpc;
 	struct ndis_miniport_block *nmb;
 	UCHAR dpc_count;
-	/* unsigned char filler1 is used for enabled */
-	UCHAR enabled;
-	struct nt_event completed_event;
-	UCHAR shared;
-	UCHAR req_isr;
+	BOOLEAN enable;
+	struct nt_event dpc_completed_event;
+	BOOLEAN shared;
+	BOOLEAN req_isr;
 };
 
 struct ndis_binary_data {
@@ -701,21 +700,6 @@ struct ndis_reference {
 	BOOLEAN closing;
 };
 
-struct ndis_miniport_interrupt {
-	void *object;
-	NT_SPIN_LOCK dpc_count_lock;
-	void *reserved;
-	ndis_isr_handler irq_th;
-	ndis_interrupt_handler irq_bh;
-	struct kdpc interrupt_dpc;
-	struct ndis_miniport_block *nmb;
-	UCHAR dpc_count;
-	BOOLEAN filler1;
-	struct nt_event dpcs_completed_event;
-        BOOLEAN shared_interrupt;
-	BOOLEAN isr_requested;
-};
-
 struct ndis_filterdbs {
 	union {
 		void *eth_db;
@@ -847,7 +831,7 @@ struct wrap_ndis_device {
 	unsigned long hw_status;
 	void *shutdown_ctx;
 	struct tasklet_struct irq_tasklet;
-	struct ndis_irq *ndis_irq;
+	struct ndis_mp_interrupt *mp_interrupt;
 	unsigned long mem_start;
 	unsigned long mem_end;
 
@@ -929,8 +913,6 @@ int ndis_init(void);
 void ndis_exit(void);
 int ndis_init_device(struct wrap_ndis_device *wnd);
 void ndis_exit_device(struct wrap_ndis_device *wnd);
-void insert_ndis_kdpc_work(struct kdpc *kdpc);
-BOOLEAN remove_ndis_kdpc_work(struct kdpc *kdpc);
 
 int wrap_procfs_add_ndis_device(struct wrap_ndis_device *wnd);
 void wrap_procfs_remove_ndis_device(struct wrap_ndis_device *wnd);
@@ -969,7 +951,7 @@ void NdisMResetComplete(struct ndis_miniport_block *nmb,
 ULONG NDIS_BUFFER_TO_SPAN_PAGES(ndis_buffer *buffer) wstdcall;
 BOOLEAN NdisWaitEvent(struct ndis_event *event, UINT timeout) wstdcall;
 void NdisSetEvent(struct ndis_event *event) wstdcall;
-void NdisMDeregisterInterrupt(struct ndis_irq *ndis_irq) wstdcall;
+void NdisMDeregisterInterrupt(struct ndis_mp_interrupt *mp_interrupt) wstdcall;
 void EthRxIndicateHandler(struct ndis_miniport_block *nmb, void *rx_ctx,
 			  char *header1, char *header, UINT header_size,
 			  void *look_ahead, UINT look_ahead_size,

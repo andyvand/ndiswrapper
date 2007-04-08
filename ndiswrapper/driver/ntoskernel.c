@@ -1778,19 +1778,14 @@ wstdcall BOOLEAN WIN_FUNC(KeRemoveEntryDeviceQueue,2)
 
 wstdcall BOOLEAN WIN_FUNC(KeSynchronizeExecution,3)
 	(struct kinterrupt *interrupt, PKSYNCHRONIZE_ROUTINE synch_routine,
-	 void *synch_context)
+	 void *ctx)
 {
-	NT_SPIN_LOCK *spinlock;
 	BOOLEAN ret;
 	unsigned long flags;
 
-	if (interrupt->actual_lock)
-		spinlock = interrupt->actual_lock;
-	else
-		spinlock = &interrupt->lock;
-	nt_spin_lock_irqsave(spinlock, flags);
-	ret = LIN2WIN1(synch_routine, synch_context);
-	nt_spin_unlock_irqrestore(spinlock, flags);
+	nt_spin_lock_irqsave(&interrupt->lock, flags);
+	ret = LIN2WIN1(synch_routine, ctx);
+	nt_spin_unlock_irqrestore(&interrupt->lock, flags);
 	return ret;
 }
 
