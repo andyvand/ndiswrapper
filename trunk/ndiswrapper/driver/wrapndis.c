@@ -33,8 +33,8 @@ static int set_packet_filter(struct wrap_ndis_device *wnd,
 			     ULONG packet_filter);
 static void add_stats_timer(struct wrap_ndis_device *wnd);
 static void del_stats_timer(struct wrap_ndis_device *wnd);
-static NDIS_STATUS ndis_start_device(struct wrap_ndis_device *wnd);
-static int ndis_remove_device(struct wrap_ndis_device *wnd);
+static NDIS_STATUS wrap_ndis_start_device(struct wrap_ndis_device *wnd);
+static int wrap_ndis_remove_device(struct wrap_ndis_device *wnd);
 static void set_multicast_list(struct wrap_ndis_device *wnd);
 static int ndis_net_dev_open(struct net_device *net_dev);
 static int ndis_net_dev_close(struct net_device *net_dev);
@@ -1231,7 +1231,7 @@ static void get_encryption_capa(struct wrap_ndis_device *wnd, char *buf,
 	if (res == NDIS_STATUS_SUCCESS) {
 		struct network_type_list *net_types;
 		unsigned long types = 0;
-		net_types = (struct network_type_list *)buf;
+		net_types = (typeof(net_types))buf;
 		for (i = 0; i < net_types->num; i++) {
 			TRACE2("%d", net_types->types[i]);
 			set_bit(net_types->types[i], &types);
@@ -1449,7 +1449,7 @@ wstdcall NTSTATUS NdisDispatchPnp(struct device_object *fdo, struct irp *irp)
 		status = IoSyncForwardIrp(pdo, irp);
 		if (status != STATUS_SUCCESS)
 			break;
-		if (ndis_start_device(wnd) == NDIS_STATUS_SUCCESS)
+		if (wrap_ndis_start_device(wnd) == NDIS_STATUS_SUCCESS)
 			status = STATUS_SUCCESS;
 		else
 			status = STATUS_FAILURE;
@@ -1468,7 +1468,7 @@ wstdcall NTSTATUS NdisDispatchPnp(struct device_object *fdo, struct irp *irp)
 	case IRP_MN_REMOVE_DEVICE:
 		TRACE1("%s", wnd->net_dev->name);
 		miniport_pnp_event(wnd, NdisDevicePnPEventSurpriseRemoved, 0);
-		if (ndis_remove_device(wnd)) {
+		if (wrap_ndis_remove_device(wnd)) {
 			status = STATUS_FAILURE;
 			break;
 		}
@@ -1767,7 +1767,7 @@ static struct notifier_block netdev_notifier = {
 	.notifier_call = notifier_event,
 };
 
-static NDIS_STATUS ndis_start_device(struct wrap_ndis_device *wnd)
+static NDIS_STATUS wrap_ndis_start_device(struct wrap_ndis_device *wnd)
 {
 	struct wrap_device *wd;
 	struct net_device *net_dev;
@@ -1775,7 +1775,7 @@ static NDIS_STATUS ndis_start_device(struct wrap_ndis_device *wnd)
 	char *buf;
 	const int buf_len = 256;
 	mac_address mac;
-	struct transport_header_offset transport_header_offset;
+	struct transport_header_offset *tx_header_offset;
 	int n;
 
 	status = miniport_init(wnd);
@@ -1822,8 +1822,8 @@ static NDIS_STATUS ndis_start_device(struct wrap_ndis_device *wnd)
 #if defined(HAVE_ETHTOOL)
 	net_dev->ethtool_ops = &ndis_ethtool_ops;
 #endif
-	if (wnd->ndis_irq)
-		net_dev->irq = wnd->ndis_irq->irq.irq;
+	if (wnd->mp_interrupt)
+		net_dev->irq = wnd->mp_interrupt->irq;
 	net_dev->mem_start = wnd->mem_start;
 	net_dev->mem_end = wnd->mem_end;
 	status = miniport_query_int(wnd, OID_802_3_MAXIMUM_LIST_SIZE,
@@ -1909,11 +1909,11 @@ static NDIS_STATUS ndis_start_device(struct wrap_ndis_device *wnd)
 	    NDIS_STATUS_SUCCESS && n > 0)
 		TRACE2("mac options supported: 0x%x", n);
 
-	transport_header_offset.protocol_type = NDIS_PROTOCOL_ID_TCP_IP;
-	transport_header_offset.header_offset = sizeof(ETH_HLEN);
+	tx_header_offset = (typeof(tx_header_offset))buf;
+	tx_header_offset->protocol_type = NDIS_PROTOCOL_ID_TCP_IP;
+	tx_header_offset->header_offset = sizeof(ETH_HLEN);
 	status = miniport_set_info(wnd, OID_GEN_TRANSPORT_HEADER_OFFSET,
-				   &transport_header_offset,
-				   sizeof(transport_header_offset));
+				   tx_header_offset, sizeof(*tx_header_offset));
 	TRACE2("%08X", status);
 
 	wnd->tx_ok = 1;
@@ -1963,11 +1963,11 @@ packet_pool_err:
 err_register:
 	kfree(buf);
 err_start:
-	ndis_remove_device(wnd);
+	wrap_ndis_remove_device(wnd);
 	EXIT1(return NDIS_STATUS_FAILURE);
 }
 
-static int ndis_remove_device(struct wrap_ndis_device *wnd)
+static int wrap_ndis_remove_device(struct wrap_ndis_device *wnd)
 {
 	s8 tx_pending;
 	KIRQL irql;
@@ -2076,12 +2076,12 @@ static wstdcall NTSTATUS NdisAddDevice(struct driver_object *drv_obj,
 	wnd->net_dev = net_dev;
 	fdo->reserved = wnd;
 	nmb->fdo = fdo;
-	nmb->next_device = IoAttachDeviceToDeviceStack(fdo, pdo);
 	if (ndis_init_device(wnd)) {
+		IoDeleteDevice(fdo);
 		free_netdev(net_dev);
 		EXIT1(return STATUS_RESOURCES);
 	}
-
+	nmb->next_device = IoAttachDeviceToDeviceStack(fdo, pdo);
 	nt_spin_lock_init(&wnd->tx_ring_lock);
 	init_MUTEX(&wnd->tx_ring_mutex);
 	init_MUTEX(&wnd->ndis_comm_mutex);

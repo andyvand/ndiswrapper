@@ -522,18 +522,12 @@ WIN_FUNC_DECL(IoInvalidDeviceRequest,2)
 static irqreturn_t io_irq_isr(int irq, void *data ISR_PT_REGS_PARAM_DECL)
 {
 	struct kinterrupt *interrupt = data;
-	NT_SPIN_LOCK *spinlock;
 	BOOLEAN ret;
 
-	if (interrupt->actual_lock)
-		spinlock = interrupt->actual_lock;
-	else
-		spinlock = &interrupt->lock;
-	nt_spin_lock(spinlock);
+	nt_spin_lock(&interrupt->lock);
 	ret = LIN2WIN2(interrupt->service_routine, interrupt,
 		       interrupt->service_context);
-	nt_spin_unlock(spinlock);
-
+	nt_spin_unlock(&interrupt->lock);
 	if (ret == TRUE)
 		return IRQ_HANDLED;
 	else
@@ -541,30 +535,40 @@ static irqreturn_t io_irq_isr(int irq, void *data ISR_PT_REGS_PARAM_DECL)
 }
 
 wstdcall NTSTATUS WIN_FUNC(IoConnectInterrupt,11)
-	(struct kinterrupt *interrupt, PKSERVICE_ROUTINE service_routine,
+	(struct kinterrupt **kinterrupt, PKSERVICE_ROUTINE service_routine,
 	 void *service_context, NT_SPIN_LOCK *lock, ULONG vector,
 	 KIRQL irql, KIRQL synch_irql, enum kinterrupt_mode interrupt_mode,
 	 BOOLEAN shareable, KAFFINITY processor_enable_mask,
 	 BOOLEAN floating_save)
 {
+	struct kinterrupt *interrupt;
 	IOENTER("");
-
+	interrupt = kmalloc(sizeof(*interrupt), GFP_KERNEL);
+	if (!interrupt)
+		IOEXIT(return STATUS_INSUFFICIENT_RESOURCES);
+	memset(interrupt, 0, sizeof(*interrupt));
 	interrupt->vector = vector;
 	interrupt->processor_enable_mask = processor_enable_mask;
-//	nt_spin_lock_init(&interrupt->lock);
-	interrupt->actual_lock = lock;
+	nt_spin_lock_init(&interrupt->lock);
+	if (lock)
+		interrupt->actual_lock = lock;
+	else
+		interrupt->actual_lock = &interrupt->lock;
 	interrupt->shareable = shareable;
 	interrupt->floating_save = floating_save;
 	interrupt->service_routine = service_routine;
 	interrupt->service_context = service_context;
 	InitializeListHead(&interrupt->list);
+	interrupt->irql = irql;
 	interrupt->synch_irql = synch_irql;
 	interrupt->interrupt_mode = interrupt_mode;
 	if (request_irq(vector, io_irq_isr, shareable ? IRQF_SHARED : 0,
 			"io_irq", interrupt)) {
 		WARNING("request for irq %d failed", vector);
+		kfree(interrupt);
 		IOEXIT(return STATUS_INSUFFICIENT_RESOURCES);
 	}
+	*kinterrupt = interrupt;
 	IOEXIT(return STATUS_SUCCESS);
 }
 
@@ -572,6 +576,7 @@ wstdcall void WIN_FUNC(IoDisconnectInterrupt,1)
 	(struct kinterrupt *interrupt)
 {
 	free_irq(interrupt->vector, interrupt);
+	kfree(interrupt);
 }
 
 wstdcall struct mdl *WIN_FUNC(IoAllocateMdl,5)
@@ -593,14 +598,15 @@ wstdcall struct mdl *WIN_FUNC(IoAllocateMdl,5)
 		} else
 			irp->mdl = mdl;
 	}
+	IOTRACE("%p", mdl);
 	return mdl;
 }
 
 wstdcall void WIN_FUNC(IoFreeMdl,1)
 	(struct mdl *mdl)
 {
+	IOTRACE("%p", mdl);
 	free_mdl(mdl);
-	IOEXIT(return);
 }
 
 wstdcall struct io_workitem *WIN_FUNC(IoAllocateWorkItem,1)
