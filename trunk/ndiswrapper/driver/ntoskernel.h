@@ -523,6 +523,10 @@ struct wrap_driver {
 	struct wrap_ndis_driver *ndis_driver;
 };
 
+enum hw_status {
+	HW_INITIALIZED = 1, HW_SUSPENDED, HW_HALTED, HW_PRESENT,
+};
+
 struct wrap_device {
 	/* first part is (de)initialized once by loader */
 	struct nt_list list;
@@ -538,6 +542,8 @@ struct wrap_device {
 
 	/* rest should be (de)initialized when a device is
 	 * (un)plugged */
+	struct cm_resource_list *resource_list;
+	unsigned long hw_status;
 	struct device_object *pdo;
 	union {
 		struct {
@@ -556,8 +562,6 @@ struct wrap_device {
 	union {
 		struct wrap_ndis_device *wnd;
 	};
-	struct cm_resource_list *resource_list;
-	BOOLEAN surprise_removed;
 };
 
 #define wrap_is_pci_bus(dev_bus)			\

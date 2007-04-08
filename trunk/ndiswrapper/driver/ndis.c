@@ -1425,8 +1425,8 @@ wstdcall void WIN_FUNC(NdisAllocatePacket,3)
 	TRACE3("packet: %p", packet);
 	atomic_inc_var(pool->num_used_descr);
 	memset(packet, 0, packet_length);
-	packet->private.oob_offset = packet_length -
-		sizeof(struct ndis_packet_oob_data);
+	packet->private.oob_offset =
+		packet_length - sizeof(struct ndis_packet_oob_data);
 	packet->private.packet_flags = fPACKET_ALLOCATED_BY_NDIS;
 	packet->private.pool = pool;
 	*ndis_packet = packet;
@@ -1859,13 +1859,7 @@ wstdcall void WIN_FUNC(NdisMDeregisterInterrupt,1)
 	struct ndis_miniport_block *nmb;
 
 	ENTER1("%p", mp_interrupt);
-
-	if (!mp_interrupt)
-		EXIT1(return);
 	nmb = mp_interrupt->nmb;
-	if (!nmb)
-		EXIT1(return);
-
 	free_irq(mp_interrupt->irq, mp_interrupt);
 	tasklet_kill(&nmb->wnd->irq_tasklet);
 	mp_interrupt->nmb = NULL;
@@ -2066,8 +2060,7 @@ wstdcall void NdisMSendComplete(struct ndis_miniport_block *nmb,
 wstdcall void NdisMSendResourcesAvailable(struct ndis_miniport_block *nmb)
 {
 	struct wrap_ndis_device *wnd = nmb->wnd;
-	ENTER3("");
-	TRACE3("%d, %d", wnd->tx_ring_start, wnd->tx_ring_end);
+	ENTER3("%d, %d", wnd->tx_ring_start, wnd->tx_ring_end);
 	wnd->tx_ok = 1;
 	schedule_wrap_work(&wnd->tx_work);
 	EXIT3(return);
