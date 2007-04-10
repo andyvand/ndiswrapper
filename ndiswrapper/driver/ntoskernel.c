@@ -2619,8 +2619,8 @@ void ntoskernel_exit(void)
 	}
 	nt_spin_unlock_irql(&ntoskernel_lock, irql);
 
-	irql = nt_spin_lock_irql(&dispatcher_lock, DISPATCH_LEVEL);
 	TRACE2("freeing thread event pool");
+	irql = nt_spin_lock_irql(&dispatcher_lock, DISPATCH_LEVEL);
 	while (thread_event_waitq_pool) {
 		struct thread_event_waitq *next;
 		next = thread_event_waitq_pool->next;
