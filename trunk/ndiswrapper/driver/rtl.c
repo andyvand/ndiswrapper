@@ -296,7 +296,7 @@ wstdcall NTSTATUS WIN_FUNC(RtlUnicodeStringToInteger,3)
 {
 	int i, sign = 1;
 	ULONG res;
-	wchar_t *string;
+	typeof(ustring->buf) string;
 
 	if (ustring->length == 0) {
 		*value = 0;
@@ -305,7 +305,7 @@ wstdcall NTSTATUS WIN_FUNC(RtlUnicodeStringToInteger,3)
 
 	string = ustring->buf;
 	i = 0;
-	while (i < ustring->length && string[i] == ' ')
+	while (i < (ustring->length / sizeof(*string)) && string[i] == ' ')
 		i++;
 	if (string[i] == '+')
 		i++;
@@ -315,7 +315,7 @@ wstdcall NTSTATUS WIN_FUNC(RtlUnicodeStringToInteger,3)
 	}
 	if (base == 0) {
 		base = 10;
-		if (i < ustring->length - 2 * sizeof(*string) &&
+		if (i <= ((ustring->length / sizeof(*string)) - 2) &&
 		    string[i] == '0') {
 			i++;
 			if (string[i] == 'b') {
@@ -333,7 +333,7 @@ wstdcall NTSTATUS WIN_FUNC(RtlUnicodeStringToInteger,3)
 	if (!(base == 2 || base == 8 || base == 10 || base == 16))
 		EXIT2(return STATUS_INVALID_PARAMETER);
 
-	for (res = 0; i < ustring->length; i++) {
+	for (res = 0; i < (ustring->length / sizeof(*string)); i++) {
 		int v;
 		if (isdigit((char)string[i]))
 			v = string[i] - '0';
