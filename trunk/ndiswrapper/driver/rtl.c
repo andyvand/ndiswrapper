@@ -294,110 +294,59 @@ wstdcall NTSTATUS WIN_FUNC(RtlUnicodeStringToAnsiString,3)
 wstdcall NTSTATUS WIN_FUNC(RtlUnicodeStringToInteger,3)
 	(struct unicode_string *ustring, ULONG base, ULONG *value)
 {
-	int i, negsign;
-	wchar_t *str;
+	int i, sign = 1;
+	ULONG res;
+	wchar_t *string;
 
-	*value = 0;
-	if (ustring->length == 0)
+	if (ustring->length == 0) {
+		*value = 0;
 		return STATUS_SUCCESS;
-
-	str = ustring->buf;
-	negsign = 0;
-	i = 0;
-	switch ((char)str[i]) {
-	case '-':
-		negsign = 1;
-		/* fall through */
-	case '+':
-		i++;
-		break;
 	}
 
-	if (base == 0 && i < ustring->length && str[i]) {
-		switch(tolower((char)str[i])) {
-		case 'x':
-			base = 16;
+	string = ustring->buf;
+	i = 0;
+	while (i < ustring->length && string[i] == ' ')
+		i++;
+	if (string[i] == '+')
+		i++;
+	else if (string[i] == '-') {
+		i++;
+		sign = -1;
+	}
+	if (base == 0) {
+		base = 10;
+		if (i < ustring->length - 2 * sizeof(*string) &&
+		    string[i] == '0') {
 			i++;
-			break;
-		case 'o':
-			base = 8;
-			i++;
-			break;
-		case 'b':
-			base = 2;
-			i++;
-			break;
-		default:
-			base = 10;
-			break;
+			if (string[i] == 'b') {
+				base = 2;
+				i++;
+			} else if (string[i] == 'o') {
+				base = 8;
+				i++;
+			} else if (string[i] == 'x') {
+				base = 16;
+				i++;
+			}
 		}
 	}
 	if (!(base == 2 || base == 8 || base == 10 || base == 16))
-		return STATUS_INVALID_PARAMETER;
+		EXIT2(return STATUS_INVALID_PARAMETER);
 
-	for ( ; i < ustring->length && str[i]; i++) {
-		int r;
-		char c = tolower((char)str[i]);
-
-		if (c >= '0' && c <= '9')
-			r = c - '0';
-		else if (c >= 'a' && c <= 'f')
-			r = c - 'a' + 10;
+	for (res = 0; i < ustring->length; i++) {
+		int v;
+		if (isdigit((char)string[i]))
+			v = string[i] - '0';
+		else if (isxdigit((char)string[i]))
+			v = tolower((char)string[i]) - 'a' + 10;
 		else
-			break;
-		if (r >= base)
-			break;
-		*value = *value * base + r;
+			v = base;
+		if (v >= base)
+			EXIT2(return STATUS_INVALID_PARAMETER);
+		res = res * base + v;
 	}
-	if (negsign)
-		*value *= -1;
-
-	return STATUS_SUCCESS;
-}
-
-wstdcall NTSTATUS WIN_FUNC(RtlIntegerToUnicodeString,3)
-	(ULONG value, ULONG base, struct unicode_string *ustring)
-{
-	typeof(ustring->buf) buf = ustring->buf;
-	int i;
-
-	if (base == 0)
-		base = 10;
-	if (!(base == 2 || base == 8 || base == 10 || base == 16))
-		return STATUS_INVALID_PARAMETER;
-	for (i = 0; value && i * sizeof(buf[0]) < ustring->max_length; i++) {
-		int r;
-		r = value % base;
-		value /= base;
-		if (r < 10)
-			buf[i] = r + '0';
-		else
-			buf[i] = r + 'a' - 10;
-	}
-	if (value)
-		return STATUS_BUFFER_OVERFLOW;
-	ustring->length = i * sizeof(buf[0]);
-	return STATUS_SUCCESS;
-}
-
-wstdcall LARGE_INTEGER WIN_FUNC(RtlConvertUlongToLargeInteger,1)
-	(ULONG ul)
-{
-	LARGE_INTEGER li = ul;
-	return li;
-}
-
-wfastcall USHORT WIN_FUNC(RtlUshortByteSwap,1)
-	(USHORT src)
-{
-	return __swab16(src);
-}
-
-wfastcall ULONG WIN_FUNC(RtlUlongByteSwap,1)
-	(ULONG src)
-{
-	/* ULONG is 32 bits for both 32-bit and 64-bit architectures */
-	return __swab32(src);
+	*value = sign * res;
+	EXIT3(return STATUS_SUCCESS);
 }
 
 wstdcall NTSTATUS WIN_FUNC(RtlCharToInteger,3)
@@ -449,6 +398,51 @@ wstdcall NTSTATUS WIN_FUNC(RtlCharToInteger,3)
 	}
 	*value = sign * res;
 	EXIT3(return STATUS_SUCCESS);
+}
+
+wstdcall NTSTATUS WIN_FUNC(RtlIntegerToUnicodeString,3)
+	(ULONG value, ULONG base, struct unicode_string *ustring)
+{
+	typeof(ustring->buf) buf = ustring->buf;
+	int i;
+
+	if (base == 0)
+		base = 10;
+	if (!(base == 2 || base == 8 || base == 10 || base == 16))
+		return STATUS_INVALID_PARAMETER;
+	for (i = 0; value && i * sizeof(buf[0]) < ustring->max_length; i++) {
+		int r;
+		r = value % base;
+		value /= base;
+		if (r < 10)
+			buf[i] = r + '0';
+		else
+			buf[i] = r + 'a' - 10;
+	}
+	if (value)
+		return STATUS_BUFFER_OVERFLOW;
+	ustring->length = i * sizeof(buf[0]);
+	return STATUS_SUCCESS;
+}
+
+wstdcall LARGE_INTEGER WIN_FUNC(RtlConvertUlongToLargeInteger,1)
+	(ULONG ul)
+{
+	LARGE_INTEGER li = ul;
+	return li;
+}
+
+wfastcall USHORT WIN_FUNC(RtlUshortByteSwap,1)
+	(USHORT src)
+{
+	return __swab16(src);
+}
+
+wfastcall ULONG WIN_FUNC(RtlUlongByteSwap,1)
+	(ULONG src)
+{
+	/* ULONG is 32 bits for both 32-bit and 64-bit architectures */
+	return __swab32(src);
 }
 
 wstdcall NTSTATUS WIN_FUNC(NdisUpcaseUnicodeString,2)
