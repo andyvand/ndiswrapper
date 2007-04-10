@@ -2121,8 +2121,8 @@ wstdcall void NdisMIndicateReceivePacket(struct ndis_miniport_block *nmb,
 			}
 			skb->dev = wnd->net_dev;
 			skb->protocol = eth_type_trans(skb, wnd->net_dev);
-			pre_atomic_add(wnd->stats.rx_bytes, total_length);
-			atomic_inc_var(wnd->stats.rx_packets);
+			pre_atomic_add(wnd->net_stats.rx_bytes, total_length);
+			atomic_inc_var(wnd->net_stats.rx_packets);
 			csum.value = (typeof(csum.value))(ULONG_PTR)
 				oob_data->ext.info[TcpIpChecksumPacketInfo];
 			TRACE3("0x%05x", csum.value);
@@ -2136,7 +2136,7 @@ wstdcall void NdisMIndicateReceivePacket(struct ndis_miniport_block *nmb,
 			netif_rx(skb);
 		} else {
 			WARNING("couldn't allocate skb; packet dropped");
-			atomic_inc_var(wnd->stats.rx_dropped);
+			atomic_inc_var(wnd->net_stats.rx_dropped);
 		}
 
 		/* serialized drivers check the status upon return
@@ -2198,7 +2198,7 @@ wstdcall void EthRxIndicateHandler(struct ndis_miniport_block *nmb, void *rx_ctx
 
 		NdisAllocatePacket(&res, &packet, wnd->tx_packet_pool);
 		if (res != NDIS_STATUS_SUCCESS) {
-			atomic_inc_var(wnd->stats.rx_dropped);
+			atomic_inc_var(wnd->net_stats.rx_dropped);
 			EXIT3(return);
 		}
 		oob_data = NDIS_PACKET_OOB_DATA(packet);
@@ -2215,7 +2215,7 @@ wstdcall void EthRxIndicateHandler(struct ndis_miniport_block *nmb, void *rx_ctx
 					    bytes_txed);
 			if (!skb) {
 				ERROR("couldn't allocate skb; packet dropped");
-				atomic_inc_var(wnd->stats.rx_dropped);
+				atomic_inc_var(wnd->net_stats.rx_dropped);
 				NdisFreePacket(packet);
 				return;
 			}
@@ -2245,7 +2245,7 @@ wstdcall void EthRxIndicateHandler(struct ndis_miniport_block *nmb, void *rx_ctx
 			if (!oob_data->look_ahead) {
 				NdisFreePacket(packet);
 				ERROR("packet dropped");
-				atomic_inc_var(wnd->stats.rx_dropped);
+				atomic_inc_var(wnd->net_stats.rx_dropped);
 				EXIT3(return);
 			}
 			assert(sizeof(oob_data->header) == header_size);
@@ -2257,7 +2257,7 @@ wstdcall void EthRxIndicateHandler(struct ndis_miniport_block *nmb, void *rx_ctx
 			EXIT3(return);
 		} else {
 			WARNING("packet dropped: %08X", res);
-			atomic_inc_var(wnd->stats.rx_dropped);
+			atomic_inc_var(wnd->net_stats.rx_dropped);
 			NdisFreePacket(packet);
 			EXIT3(return);
 		}
@@ -2273,8 +2273,8 @@ wstdcall void EthRxIndicateHandler(struct ndis_miniport_block *nmb, void *rx_ctx
 	if (skb) {
 		skb->dev = wnd->net_dev;
 		skb->protocol = eth_type_trans(skb, wnd->net_dev);
-		pre_atomic_add(wnd->stats.rx_bytes, skb_size);
-		atomic_inc_var(wnd->stats.rx_packets);
+		pre_atomic_add(wnd->net_stats.rx_bytes, skb_size);
+		atomic_inc_var(wnd->net_stats.rx_packets);
 		netif_rx(skb);
 	}
 
@@ -2308,7 +2308,7 @@ wstdcall void NdisMTransferDataComplete(struct ndis_miniport_block *nmb,
 		kfree(oob_data->look_ahead);
 		NdisFreePacket(packet);
 		ERROR("couldn't allocate skb; packet dropped");
-		atomic_inc_var(wnd->stats.rx_dropped);
+		atomic_inc_var(wnd->net_stats.rx_dropped);
 		EXIT3(return);
 	}
 	memcpy_skb(skb, oob_data->header, sizeof(oob_data->header));
@@ -2323,8 +2323,8 @@ wstdcall void NdisMTransferDataComplete(struct ndis_miniport_block *nmb,
 	NdisFreePacket(packet);
 	skb->dev = wnd->net_dev;
 	skb->protocol = eth_type_trans(skb, wnd->net_dev);
-	pre_atomic_add(wnd->stats.rx_bytes, skb_size);
-	atomic_inc_var(wnd->stats.rx_packets);
+	pre_atomic_add(wnd->net_stats.rx_bytes, skb_size);
+	atomic_inc_var(wnd->net_stats.rx_packets);
 
 	csum.value = (typeof(csum.value))(ULONG_PTR)
 		oob_data->ext.info[TcpIpChecksumPacketInfo];

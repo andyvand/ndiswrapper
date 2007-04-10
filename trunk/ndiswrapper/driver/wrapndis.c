@@ -31,8 +31,8 @@ extern NT_SPIN_LOCK timer_lock;
 
 static int set_packet_filter(struct wrap_ndis_device *wnd,
 			     ULONG packet_filter);
-static void add_stats_timer(struct wrap_ndis_device *wnd);
-static void del_stats_timer(struct wrap_ndis_device *wnd);
+static void add_iw_stats_timer(struct wrap_ndis_device *wnd);
+static void del_iw_stats_timer(struct wrap_ndis_device *wnd);
 static NDIS_STATUS wrap_ndis_start_device(struct wrap_ndis_device *wnd);
 static int wrap_ndis_remove_device(struct wrap_ndis_device *wnd);
 static void set_multicast_list(struct wrap_ndis_device *wnd);
@@ -304,7 +304,7 @@ static void miniport_halt(struct wrap_ndis_device *wnd)
 	ENTER1("%p", wnd);
 	if (test_and_clear_bit(HW_INITIALIZED, &wnd->wd->hw_status)) {
 		hangcheck_del(wnd);
-		del_stats_timer(wnd);
+		del_iw_stats_timer(wnd);
 		miniport = &wnd->wd->driver->ndis_driver->miniport;
 		TRACE1("halt: %p", miniport->miniport_halt);
 		LIN2WIN1(miniport->miniport_halt, wnd->nmb->adapter_ctx);
@@ -369,7 +369,7 @@ static NDIS_STATUS miniport_set_power_state(struct wrap_ndis_device *wnd,
 			up(&wnd->tx_ring_mutex);
 			netif_device_attach(wnd->net_dev);
 			hangcheck_add(wnd);
-			add_stats_timer(wnd);
+			add_iw_stats_timer(wnd);
 			set_scan(wnd);
 		} else
 			WARNING("%s: couldn't set power to state %d; device not"
@@ -380,7 +380,7 @@ static NDIS_STATUS miniport_set_power_state(struct wrap_ndis_device *wnd,
 			EXIT1(return NDIS_STATUS_FAILURE);
 		netif_device_detach(wnd->net_dev);
 		hangcheck_del(wnd);
-		del_stats_timer(wnd);
+		del_iw_stats_timer(wnd);
 		status = NDIS_STATUS_NOT_SUPPORTED;
 		if (wnd->attributes & NDIS_ATTRIBUTE_NO_HALT_ON_SUSPEND) {
 			if (wnd->ndis_wolopts) {
@@ -590,11 +590,11 @@ void free_tx_packet(struct wrap_ndis_device *wnd, struct ndis_packet *packet,
 
 	ENTER3("%p, %08X", packet, status);
 	if (status == NDIS_STATUS_SUCCESS) {
-		pre_atomic_add(wnd->stats.tx_bytes, packet->private.len);
-		atomic_inc_var(wnd->stats.tx_packets);
+		pre_atomic_add(wnd->net_stats.tx_bytes, packet->private.len);
+		atomic_inc_var(wnd->net_stats.tx_packets);
 	} else {
 		TRACE1("packet dropped: %08X", status);
-		atomic_inc_var(wnd->stats.tx_dropped);
+		atomic_inc_var(wnd->net_stats.tx_dropped);
 	}
 	oob_data = NDIS_PACKET_OOB_DATA(packet);
 	if (wnd->sg_dma_size)
@@ -874,7 +874,7 @@ static void ndis_poll_controller(struct net_device *dev)
 static struct net_device_stats *ndis_get_stats(struct net_device *dev)
 {
 	struct wrap_ndis_device *wnd = netdev_priv(dev);
-	return &wnd->stats;
+	return &wnd->net_stats;
 }
 
 /* called from BH context */
@@ -886,22 +886,22 @@ static void ndis_set_multicast_list(struct net_device *dev)
 }
 
 /* called from BH context */
-struct iw_statistics *get_wireless_stats(struct net_device *dev)
+struct iw_statistics *get_iw_stats(struct net_device *dev)
 {
 	struct wrap_ndis_device *wnd = netdev_priv(dev);
-	return &wnd->wireless_stats;
+	return &wnd->iw_stats;
 }
 
-static void update_wireless_stats(struct wrap_ndis_device *wnd)
+static void update_iw_stats(struct wrap_ndis_device *wnd)
 {
-	struct iw_statistics *iw_stats = &wnd->wireless_stats;
+	struct iw_statistics *iw_stats = &wnd->iw_stats;
 	struct ndis_wireless_stats ndis_stats;
 	NDIS_STATUS res;
 	ndis_rssi rssi;
 	int qual;
 
 	ENTER2("%p", wnd);
-	if (wnd->stats_enabled == FALSE || !netif_carrier_ok(wnd->net_dev)) {
+	if (wnd->iw_stats_enabled == FALSE || !netif_carrier_ok(wnd->net_dev)) {
 		memset(iw_stats, 0, sizeof(*iw_stats));
 		EXIT2(return);
 	}
@@ -1092,34 +1092,34 @@ static void link_status_handler(struct wrap_ndis_device *wnd)
 	EXIT2(return);
 }
 
-static void stats_timer_proc(unsigned long data)
+static void iw_stats_timer_proc(unsigned long data)
 {
 	struct wrap_ndis_device *wnd = (struct wrap_ndis_device *)data;
 
 	ENTER2("");
-	if (wnd->stats_interval <= 0)
+	if (wnd->iw_stats_interval <= 0)
 		EXIT2(return);
-	set_bit(COLLECT_STATS, &wnd->wrap_ndis_pending_work);
+	set_bit(COLLECT_IW_STATS, &wnd->wrap_ndis_pending_work);
 	schedule_wrap_work(&wnd->wrap_ndis_work);
-	mod_timer(&wnd->stats_timer, jiffies + wnd->stats_interval);
+	mod_timer(&wnd->iw_stats_timer, jiffies + wnd->iw_stats_interval);
 }
 
-static void add_stats_timer(struct wrap_ndis_device *wnd)
+static void add_iw_stats_timer(struct wrap_ndis_device *wnd)
 {
 	if (wnd->physical_medium != NdisPhysicalMediumWirelessLan)
 		return;
-	if (wnd->stats_interval < 0)
-		wnd->stats_interval *= -1;
-	wnd->stats_timer.data = (unsigned long)wnd;
-	wnd->stats_timer.function = stats_timer_proc;
-	mod_timer(&wnd->stats_timer, jiffies + wnd->stats_interval);
+	if (wnd->iw_stats_interval < 0)
+		wnd->iw_stats_interval *= -1;
+	wnd->iw_stats_timer.data = (unsigned long)wnd;
+	wnd->iw_stats_timer.function = iw_stats_timer_proc;
+	mod_timer(&wnd->iw_stats_timer, jiffies + wnd->iw_stats_interval);
 }
 
-static void del_stats_timer(struct wrap_ndis_device *wnd)
+static void del_iw_stats_timer(struct wrap_ndis_device *wnd)
 {
 	ENTER2("");
-	wnd->stats_interval *= -1;
-	del_timer_sync(&wnd->stats_timer);
+	wnd->iw_stats_interval *= -1;
+	del_timer_sync(&wnd->iw_stats_timer);
 	EXIT2(return);
 }
 
@@ -1184,8 +1184,8 @@ static void wrap_ndis_worker(worker_param_t param)
 	if (test_and_clear_bit(SET_MULTICAST_LIST, &wnd->wrap_ndis_pending_work))
 		set_multicast_list(wnd);
 
-	if (test_and_clear_bit(COLLECT_STATS, &wnd->wrap_ndis_pending_work))
-		update_wireless_stats(wnd);
+	if (test_and_clear_bit(COLLECT_IW_STATS, &wnd->wrap_ndis_pending_work))
+		update_iw_stats(wnd);
 
 	if (test_and_clear_bit(LINK_STATUS_CHANGED,
 			       &wnd->wrap_ndis_pending_work))
@@ -1812,7 +1812,7 @@ static NDIS_STATUS wrap_ndis_start_device(struct wrap_ndis_device *wnd)
 	net_dev->do_ioctl = NULL;
 	if (wnd->physical_medium == NdisPhysicalMediumWirelessLan) {
 #if WIRELESS_EXT < 19
-		net_dev->get_wireless_stats = get_wireless_stats;
+		net_dev->get_wireless_stats = get_iw_stats;
 #endif
 		net_dev->wireless_handlers = &ndis_handler_def;
 	}
@@ -1949,7 +1949,7 @@ static NDIS_STATUS wrap_ndis_start_device(struct wrap_ndis_device *wnd)
 	kfree(buf);
 	wrap_procfs_add_ndis_device(wnd);
 	hangcheck_add(wnd);
-	add_stats_timer(wnd);
+	add_iw_stats_timer(wnd);
 	EXIT1(return NDIS_STATUS_SUCCESS);
 
 buffer_pool_err:
@@ -2100,14 +2100,14 @@ static wstdcall NTSTATUS NdisAddDevice(struct driver_object *drv_obj,
 	wnd->nick[0] = 0;
 	init_timer(&wnd->hangcheck_timer);
 	wnd->scan_timestamp = 0;
-	init_timer(&wnd->stats_timer);
-	wnd->stats_interval = 10 * HZ;
+	init_timer(&wnd->iw_stats_timer);
+	wnd->iw_stats_interval = 10 * HZ;
 	wnd->wrap_ndis_pending_work = 0;
 	memset(&wnd->essid, 0, sizeof(wnd->essid));
 	memset(&wnd->encr_info, 0, sizeof(wnd->encr_info));
 	wnd->infrastructure_mode = Ndis802_11Infrastructure;
 	initialize_work(&wnd->wrap_ndis_work, wrap_ndis_worker, wnd);
-	wnd->stats_enabled = TRUE;
+	wnd->iw_stats_enabled = TRUE;
 
 	TRACE1("nmb: %p, pdo: %p, fdo: %p, attached: %p, next: %p",
 	       nmb, pdo, fdo, fdo->attached, nmb->next_device);

@@ -602,9 +602,8 @@ enum ndis_media_stream_mode {
 };
 
 enum wrapper_work {
-	LINK_STATUS_CHANGED, SET_MULTICAST_LIST, COLLECT_STATS, MINIPORT_RESET,
-	/* do not work when this is set */
-	SHUTDOWN
+	LINK_STATUS_CHANGED, SET_MULTICAST_LIST, COLLECT_IW_STATS,
+	MINIPORT_RESET, SHUTDOWN
 };
 
 struct encr_info {
@@ -830,9 +829,9 @@ struct wrap_ndis_device {
 	unsigned long mem_start;
 	unsigned long mem_end;
 
-	struct net_device_stats stats;
-	struct iw_statistics wireless_stats;
-	BOOLEAN stats_enabled;
+	struct net_device_stats net_stats;
+	struct iw_statistics iw_stats;
+	BOOLEAN iw_stats_enabled;
 	struct ndis_wireless_stats ndis_stats;
 
 	work_struct_t tx_work;
@@ -856,8 +855,8 @@ struct wrap_ndis_device {
 
 	int hangcheck_interval;
 	struct timer_list hangcheck_timer;
-	int stats_interval;
-	struct timer_list stats_timer;
+	int iw_stats_interval;
+	struct timer_list iw_stats_timer;
 	unsigned long scan_timestamp;
 	struct encr_info encr_info;
 	char nick[IW_ESSID_MAX_SIZE];

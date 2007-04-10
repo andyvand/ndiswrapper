@@ -46,6 +46,6 @@ driver_dispatch_t winNdisDispatchPnp;
 driver_dispatch_t winNdisDispatchPower;
 driver_dispatch_t winNdisDispatchDeviceControl;
 
-struct iw_statistics *get_wireless_stats(struct net_device *dev);
+struct iw_statistics *get_iw_stats(struct net_device *dev);
 
 #endif
