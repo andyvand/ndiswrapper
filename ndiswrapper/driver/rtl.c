@@ -434,17 +434,18 @@ wstdcall NTSTATUS WIN_FUNC(RtlCharToInteger,3)
 	}
 	if (!(base == 2 || base == 8 || base == 10 || base == 16))
 		EXIT2(return STATUS_INVALID_PARAMETER);
-	res = 0;
-	while (*string) {
+
+	for (res = 0; *string; string++) {
 		int v;
-		if (base <= 10)
+		if (isdigit(*string))
 			v = *string - '0';
-		else
+		else if (isxdigit(*string))
 			v = tolower(*string) - 'a' + 10;
+		else
+			v = base;
 		if (v >= base)
 			EXIT2(return STATUS_INVALID_PARAMETER);
 		res = res * base + v;
-		string++;
 	}
 	*value = sign * res;
 	EXIT3(return STATUS_SUCCESS);
