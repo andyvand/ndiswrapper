@@ -400,6 +400,56 @@ wfastcall ULONG WIN_FUNC(RtlUlongByteSwap,1)
 	return __swab32(src);
 }
 
+wstdcall NTSTATUS WIN_FUNC(RtlCharToInteger,3)
+	(const char *string, ULONG base, ULONG *value)
+{
+	int sign = 1;
+	ULONG res;
+
+	if (!string || !value)
+		EXIT2(return STATUS_INVALID_PARAMETER);
+	while (*string == ' ')
+		string++;
+	if (*string == '+')
+		string++;
+	else if (*string == '-') {
+		string++;
+		sign = -1;
+	}
+	if (base == 0) {
+		base = 10;
+		if (*string == '0') {
+			string++;
+			if (*string == 'b') {
+				base = 2;
+				string++;
+			} else if (*string == 'o') {
+				base = 8;
+				string++;
+			} else if (*string == 'x') {
+				base = 16;
+				string++;
+			}
+		}
+	}
+	if (!(base == 2 || base == 8 || base == 10 || base == 16))
+		EXIT2(return STATUS_INVALID_PARAMETER);
+	res = 0;
+	while (*string) {
+		int v;
+		if (base <= 10)
+			v = *string - '0';
+		else
+			v = tolower(*string) - 'a' + 10;
+		if (v >= base)
+			EXIT2(return STATUS_INVALID_PARAMETER);
+		res = res * base + v;
+		string++;
+	}
+	*value = sign * res;
+	EXIT3(return STATUS_SUCCESS);
+}
+
 wstdcall NTSTATUS WIN_FUNC(NdisUpcaseUnicodeString,2)
 	(struct unicode_string *dst, struct unicode_string *src)
 {

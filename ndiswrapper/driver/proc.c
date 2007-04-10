@@ -350,9 +350,9 @@ static int procfs_write_ndis_settings(struct file *file, const char *buf,
 		p++;
 		i = simple_strtol(p, NULL, 10);
 		if (i > 0)
-			wnd->stats_enabled = TRUE;
+			wnd->iw_stats_enabled = TRUE;
 		else
-			wnd->stats_enabled = FALSE;
+			wnd->iw_stats_enabled = FALSE;
 	} else if (!strcmp(setting, "packet_filter")) {
 		if (!p)
 			return -EINVAL;

@@ -1351,7 +1351,7 @@ static int iw_get_ndis_stats(struct net_device *dev,
 			     union iwreq_data *wrqu, char *extra)
 {
 	struct wrap_ndis_device *wnd = netdev_priv(dev);
-	struct iw_statistics *stats = &wnd->wireless_stats;
+	struct iw_statistics *stats = &wnd->iw_stats;
 	memcpy(&wrqu->qual, &stats->qual, sizeof(stats->qual));
 	return 0;
 }
@@ -2394,6 +2394,6 @@ const struct iw_handler_def ndis_handler_def = {
 	.private	= (iw_handler *)priv_handler,
 	.private_args	= (struct iw_priv_args *)priv_args,
 #if WIRELESS_EXT >= 19
-	.get_wireless_stats = get_wireless_stats,
+	.get_wireless_stats = get_iw_stats,
 #endif
 };
