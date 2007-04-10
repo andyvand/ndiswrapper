@@ -1,3 +1,7 @@
+Version 1.42 2007-XX-XX
+=======================	
+* Yet another smp fix
+
 Version 1.41 2007-03-31
 =======================	
 * Fixed soft-lockup issue when multiple network devices are used

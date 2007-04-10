@@ -809,8 +809,7 @@ static inline KIRQL current_irql(void)
 #ifdef CONFIG_PREEMPT_RT
 		in_atomic() ||
 #endif
-		in_interrupt()
-		)
+		in_interrupt())
 		EXIT6(return DISPATCH_LEVEL);
 	EXIT6(return PASSIVE_LEVEL);
 }

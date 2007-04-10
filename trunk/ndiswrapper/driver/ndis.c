@@ -73,9 +73,8 @@ wstdcall NDIS_STATUS WIN_FUNC(NdisMRegisterMiniport,3)
 	TRACE1("%d.%d, %d, %u", miniport_char->major_version,
 	       miniport_char->minor_version, length,
 	       (u32)sizeof(struct miniport_char));
-	wrap_driver =
-		IoGetDriverObjectExtension(drv_obj,
-					   (void *)WRAP_DRIVER_CLIENT_ID);
+	wrap_driver = IoGetDriverObjectExtension(drv_obj,
+						 (void *)WRAP_DRIVER_CLIENT_ID);
 	if (!wrap_driver) {
 		ERROR("couldn't get wrap_driver");
 		EXIT1(return NDIS_STATUS_RESOURCES);
@@ -312,7 +311,6 @@ wstdcall void WIN_FUNC(NdisCloseFile,1)
 wstdcall void WIN_FUNC(NdisGetSystemUpTime,1)
 	(ULONG *ms)
 {
-	ENTER5("");
 	*ms = 1000 * jiffies / HZ;
 	EXIT5(return);
 }
@@ -465,7 +463,7 @@ wstdcall void WIN_FUNC(NdisReadConfiguration,5)
 
 	ENTER2("nmb: %p", nmb);
 	ret = RtlUnicodeStringToAnsiString(&ansi, key, TRUE);
-	if (ret || ansi.buf == NULL) {
+	if (ret != STATUS_SUCCESS || ansi.buf == NULL) {
 		*param = NULL;
 		*status = NDIS_STATUS_FAILURE;
 		RtlFreeAnsiString(&ansi);
@@ -1020,8 +1018,7 @@ wstdcall void alloc_shared_memory_async(void *arg1, void *arg2)
 WIN_FUNC_DECL(alloc_shared_memory_async,2)
 
 wstdcall NDIS_STATUS WIN_FUNC(NdisMAllocateSharedMemoryAsync,4)
-	(struct ndis_miniport_block *nmb, ULONG size, BOOLEAN cached,
-	 void *ctx)
+	(struct ndis_miniport_block *nmb, ULONG size, BOOLEAN cached, void *ctx)
 {
 	struct wrap_ndis_device *wnd = nmb->wnd;
 	struct alloc_shared_mem *alloc_shared_mem;
