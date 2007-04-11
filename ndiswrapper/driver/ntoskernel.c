@@ -36,7 +36,7 @@ struct wrap_mdl {
 	struct mdl mdl[0];
 };
 
-struct thread_event_waitq {
+struct thread_event {
 	BOOLEAN done;
 	struct task_struct *task;
 };
@@ -1071,14 +1071,14 @@ static void wakeup_threads(struct dispatcher_header *dh)
 		assert(wb->thread != NULL);
 		assert(wb->object == NULL);
 		if (wb->thread && grab_signaled_state(dh, wb->thread, 1)) {
-			struct thread_event_waitq *thread_waitq =
-				wb->thread_waitq;
-			EVENTTRACE("%p: waking up task %p for %p", thread_waitq,
+			struct thread_event *thread_event =
+				wb->thread_event;
+			EVENTTRACE("%p: waking up task %p for %p", thread_event,
 				   wb->thread, dh);
 			RemoveEntryList(cur);
 			wb->object = dh;
-			thread_waitq->done = 1;
-			wake_up_process(thread_waitq->task);
+			thread_event->done = 1;
+			wake_up_process(thread_event->task);
 			if (dh->type == SynchronizationObject)
 				break;
 		} else
@@ -1098,7 +1098,7 @@ wstdcall NTSTATUS WIN_FUNC(KeWaitForMultipleObjects,8)
 	struct wait_block *wb, wb_array[THREAD_WAIT_OBJECTS];
 	struct dispatcher_header *dh;
 	struct task_struct *thread;
-	struct thread_event_waitq thread_waitq;
+	struct thread_event thread_event;
 	KIRQL irql;
 
 	thread = current;
@@ -1155,15 +1155,15 @@ wstdcall NTSTATUS WIN_FUNC(KeWaitForMultipleObjects,8)
 	/* get the list of objects the thread needs to wait on and add
 	 * the thread on the wait list for each such object */
 	/* if *timeout == 0, this step will grab all the objects */
-	thread_waitq.done = 0;
-	thread_waitq.task = thread;
-	EVENTTRACE("%p, %p", &thread_waitq, current);
+	thread_event.done = 0;
+	thread_event.task = thread;
+	EVENTTRACE("%p, %p", &thread_event, current);
 	for (i = 0; i < count; i++) {
 		dh = object[i];
 		EVENTTRACE("%p: event %p state: %d",
 			   thread, dh, dh->signal_state);
 		wb[i].object = NULL;
-		wb[i].thread_waitq = &thread_waitq;
+		wb[i].thread_event = &thread_event;
 		if (grab_signaled_state(dh, thread, 1)) {
 			EVENTTRACE("%p: event %p already signaled: %d",
 				   thread, dh, dh->signal_state);
@@ -1186,30 +1186,30 @@ wstdcall NTSTATUS WIN_FUNC(KeWaitForMultipleObjects,8)
 	else
 		wait_hz = SYSTEM_TIME_TO_HZ(*timeout) + 1;
 	EVENTTRACE("%p: sleeping for %ld on %p",
-		   thread, wait_hz, &thread_waitq);
+		   thread, wait_hz, &thread_event);
 
 	while (wait_count) {
 		if (wait_hz) {
-			res = wrap_wait_event_timeout(thread_waitq.done,
+			res = wrap_wait_event_timeout(thread_event.done,
 						      wait_hz,
 						      TASK_INTERRUPTIBLE);
 		} else {
-			res = wrap_wait_event(thread_waitq.done,
+			res = wrap_wait_event(thread_event.done,
 					      TASK_INTERRUPTIBLE);
 			/* mark that it didn't timeout */
 			if (res == 0)
 				res = 1;
 		}
-		thread_waitq.done = 0;
+		thread_event.done = 0;
 		irql = nt_spin_lock_irql(&dispatcher_lock, DISPATCH_LEVEL);
 		if (signal_pending(current))
 			res = -ERESTARTSYS;
 		EVENTTRACE("%p woke up on %p, res = %d, done: %d", thread,
-			   &thread_waitq, res, thread_waitq.done);
+			   &thread_event, res, thread_event.done);
 #ifdef EVENT_DEBUG
-		if (thread_waitq.task != current)
-			ERROR("%p: argh, task %p should be %p", &thread_waitq,
-			      thread_waitq.task, current);
+		if (thread_event.task != current)
+			ERROR("%p: argh, task %p should be %p", &thread_event,
+			      thread_event.task, current);
 #endif
 //		assert(res < 0 && alertable);
 		if (res <= 0) {
@@ -2260,6 +2260,7 @@ wstdcall NTSTATUS WIN_FUNC(ZwQueryInformationFile,5)
 		WARNING("type %d not implemented yet", class);
 		iosb->status = STATUS_FAILURE;
 		iosb->info = 0;
+		break;
 	}
 	EXIT2(return iosb->status);
 }

@@ -140,6 +140,7 @@ void wrap_flush_wq(workqueue_struct_t *workq)
 void wrap_destroy_wq(workqueue_struct_t *workq)
 {
 	struct completion finished;
+
 	INIT_COMPLETION(finished);
 	workq->pending = -1;
 	workq->completion = &finished;
