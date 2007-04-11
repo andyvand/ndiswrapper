@@ -1077,7 +1077,7 @@ static void wakeup_threads(struct dispatcher_header *dh)
 				wb->thread_waitq;
 			EVENTTRACE("%p: waking up task %p for %p", thread_waitq,
 				   wb->thread, dh);
-			RemoveEntryList(&wb->list);
+			RemoveEntryList(cur);
 			wb->object = dh;
 			thread_waitq->done = 1;
 			wake_up(&thread_waitq->wq);
@@ -1096,7 +1096,7 @@ wstdcall NTSTATUS WIN_FUNC(KeWaitForMultipleObjects,8)
 	 struct wait_block *wait_block_array)
 {
 	int i, res = 0, wait_count;
-	long wait_jiffies = 0;
+	typeof(jiffies) wait_hz = 0;
 	struct wait_block *wb, wb_array[THREAD_WAIT_OBJECTS];
 	struct dispatcher_header *dh;
 	struct task_struct *thread;
@@ -1115,7 +1115,7 @@ wstdcall NTSTATUS WIN_FUNC(KeWaitForMultipleObjects,8)
 		EVENTEXIT(return STATUS_INVALID_PARAMETER);
 
 	if (wait_block_array == NULL)
-		wb = &wb_array[0];
+		wb = wb_array;
 	else
 		wb = wait_block_array;
 
@@ -1149,22 +1149,20 @@ wstdcall NTSTATUS WIN_FUNC(KeWaitForMultipleObjects,8)
 		}
 	}
 
-	if (wait_count) {
-		if (timeout && *timeout == 0) {
-			nt_spin_unlock_irql(&dispatcher_lock, irql);
-			EVENTEXIT(return STATUS_TIMEOUT);
-		}
+	if (timeout && *timeout == 0 && wait_count) {
+		nt_spin_unlock_irql(&dispatcher_lock, irql);
+		EVENTEXIT(return STATUS_TIMEOUT);
 	}
 
 	/* get the list of objects the thread needs to wait on and add
 	 * the thread on the wait list for each such object */
 	/* if *timeout == 0, this step will grab all the objects */
 	init_waitqueue_head(&thread_waitq.wq);
+	thread_waitq.done = 0;
 #ifdef EVENT_DEBUG
 	thread_waitq.task = current;
 #endif
 	EVENTTRACE("%p, %p", &thread_waitq, current);
-	thread_waitq.done = 0;
 	for (i = 0; i < count; i++) {
 		dh = object[i];
 		EVENTTRACE("%p: event %p state: %d",
@@ -1189,17 +1187,17 @@ wstdcall NTSTATUS WIN_FUNC(KeWaitForMultipleObjects,8)
 
 	assert(timeout == NULL || *timeout != 0);
 	if (timeout == NULL)
-		wait_jiffies = 0;
+		wait_hz = 0;
 	else
-		wait_jiffies = SYSTEM_TIME_TO_HZ(*timeout) + 1;
+		wait_hz = SYSTEM_TIME_TO_HZ(*timeout) + 1;
 	EVENTTRACE("%p: sleeping for %ld on %p",
-		   thread, wait_jiffies, thread_waitq);
+		   thread, wait_hz, &thread_waitq);
 
 	while (wait_count) {
-		if (wait_jiffies) {
+		if (wait_hz) {
 			res = wait_event_interruptible_timeout(
 				thread_waitq.wq, (thread_waitq.done == 1),
-				wait_jiffies);
+				wait_hz);
 		} else {
 			wait_event_interruptible(
 				thread_waitq.wq, (thread_waitq.done == 1));
@@ -1249,36 +1247,36 @@ wstdcall NTSTATUS WIN_FUNC(KeWaitForMultipleObjects,8)
 					      object[i]);
 					continue;
 				}
+				wb[i].object = NULL;
+				wb[i].thread = NULL;
 			}
-			wb[i].object = NULL;
-			wb[i].thread = NULL;
+			RemoveEntryList(&wb[i].list);
 			wait_count--;
 			if (wait_type == WaitAny) {
 				int j;
 				/* done; remove from rest of wait list */
-				for (j = i; j < count; j++)
+				for (j = i + 1; j < count; j++)
 					if (wb[j].thread)
 						RemoveEntryList(&wb[j].list);
 				nt_spin_unlock_irql(&dispatcher_lock, irql);
 				EVENTEXIT(return STATUS_WAIT_0 + i);
 			}
 		}
-		if (wait_count == 0) {
-			nt_spin_unlock_irql(&dispatcher_lock, irql);
+		nt_spin_unlock_irql(&dispatcher_lock, irql);
+		if (wait_count == 0)
 			EVENTEXIT(return STATUS_SUCCESS);
-		}
+
 		/* this thread is still waiting for more objects, so
 		 * let it wait for remaining time and those objects */
 		/* we already set res to 1 if timeout was NULL, so
-		 * reinitialize wait_jiffies accordingly */
+		 * reinitialize wait_hz accordingly */
 		if (timeout)
-			wait_jiffies = res;
+			wait_hz = res;
 		else
-			wait_jiffies = 0;
-		nt_spin_unlock_irql(&dispatcher_lock, irql);
+			wait_hz = 0;
 	}
 	/* this should never reach, but compiler wants return value */
-	ERROR("%p: wait_jiffies: %ld", thread, wait_jiffies);
+	ERROR("%p: wait_hz: %ld", thread, wait_hz);
 	EVENTEXIT(return STATUS_SUCCESS);
 }
 
