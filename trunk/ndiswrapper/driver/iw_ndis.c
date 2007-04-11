@@ -1478,9 +1478,6 @@ NDIS_STATUS disassociate(struct wrap_ndis_device *wnd, int reset_ssid)
 
 	TRACE2("");
 	res = miniport_set_info(wnd, OID_802_11_DISASSOCIATE, NULL, 0);
-	/* am772 driver requires sometime for ndis worker to finish
-	 * after disassoicate */
-	sleep_hz(HZ / 2);
 	/* disassociate causes radio to be turned off; if reset_ssid
 	 * is given, set ssid to random to enable radio */
 	if (reset_ssid) {

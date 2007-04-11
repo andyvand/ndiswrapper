@@ -360,7 +360,7 @@ struct wait_block {
 	struct nt_list list;
 	struct task_struct *thread;
 	void *object;
-	void *thread_waitq;
+	void *thread_event;
 	USHORT wait_key;
 	USHORT wait_type;
 };
