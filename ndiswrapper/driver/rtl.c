@@ -410,7 +410,7 @@ wstdcall NTSTATUS WIN_FUNC(RtlIntegerToUnicodeString,3)
 		base = 10;
 	if (!(base == 2 || base == 8 || base == 10 || base == 16))
 		return STATUS_INVALID_PARAMETER;
-	for (i = 0; value && i * sizeof(buf[0]) < ustring->max_length; i++) {
+	for (i = 0; value && i < ustring->max_length / sizeof(*buf); i++) {
 		int r;
 		r = value % base;
 		value /= base;
@@ -421,7 +421,7 @@ wstdcall NTSTATUS WIN_FUNC(RtlIntegerToUnicodeString,3)
 	}
 	if (value)
 		return STATUS_BUFFER_OVERFLOW;
-	ustring->length = i * sizeof(buf[0]);
+	ustring->length = i * sizeof(*buf);
 	return STATUS_SUCCESS;
 }
 
