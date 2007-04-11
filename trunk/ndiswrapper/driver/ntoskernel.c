@@ -37,18 +37,15 @@ struct wrap_mdl {
 };
 
 struct thread_event_waitq {
-	wait_queue_head_t head;
+	wait_queue_head_t wq;
 	BOOLEAN done;
 #ifdef EVENT_DEBUG
 	struct task_struct *task;
 #endif
-	struct thread_event_waitq *next;
 };
 
 /* everything here is for all drivers/devices - not per driver/device */
 static NT_SPIN_LOCK dispatcher_lock;
-static struct thread_event_waitq *thread_event_waitq_pool;
-
 NT_SPIN_LOCK ntoskernel_lock;
 static void *mdl_cache;
 static struct nt_list wrap_mdl_list;
@@ -1083,56 +1080,13 @@ static void wakeup_threads(struct dispatcher_header *dh)
 			RemoveEntryList(&wb->list);
 			wb->object = dh;
 			thread_waitq->done = 1;
-			wake_up(&thread_waitq->head);
+			wake_up(&thread_waitq->wq);
 			if (dh->type == SynchronizationObject)
 				break;
 		} else
 			EVENTTRACE("not waking up task: %p", wb->thread);
 	}
 	EVENTEXIT(return);
-}
-
-/* We need workqueue to implement KeWaitFor routines
- * below. (get/put)_thread_event_wait give/take back a workqueue. Both
- * these are called holding dispatcher spinlock, so no locking here */
-static inline struct thread_event_waitq *get_thread_event_waitq(void)
-{
-	struct thread_event_waitq *thread_event_waitq;
-
-	if (thread_event_waitq_pool) {
-		thread_event_waitq = thread_event_waitq_pool;
-		thread_event_waitq_pool = thread_event_waitq_pool->next;
-	} else {
-		thread_event_waitq = kmalloc(sizeof(*thread_event_waitq),
-					     GFP_ATOMIC);
-		if (!thread_event_waitq) {
-			WARNING("couldn't allocate memory");
-			return NULL;
-		}
-		EVENTTRACE("allocated wq: %p", thread_event_waitq);
-		init_waitqueue_head(&thread_event_waitq->head);
-	}
-#ifdef EVENT_DEBUG
-	thread_event_waitq->task = current;
-#endif
-	EVENTTRACE("%p, %p, %p", thread_event_waitq, current,
-		   thread_event_waitq_pool);
-	thread_event_waitq->done = 0;
-	return thread_event_waitq;
-}
-
-static void put_thread_event_waitq(struct thread_event_waitq *thread_event_waitq)
-{
-	EVENTENTER("%p, %p", thread_event_waitq, current);
-#ifdef EVENT_DEBUG
-	if (thread_event_waitq->task != current)
-		ERROR("argh, task %p should be %p",
-		      current, thread_event_waitq->task);
-	thread_event_waitq->task = NULL;
-#endif
-	thread_event_waitq->next = thread_event_waitq_pool;
-	thread_event_waitq_pool = thread_event_waitq;
-	thread_event_waitq->done = 0;
 }
 
 wstdcall NTSTATUS WIN_FUNC(KeWaitForMultipleObjects,8)
@@ -1146,7 +1100,7 @@ wstdcall NTSTATUS WIN_FUNC(KeWaitForMultipleObjects,8)
 	struct wait_block *wb, wb_array[THREAD_WAIT_OBJECTS];
 	struct dispatcher_header *dh;
 	struct task_struct *thread;
-	struct thread_event_waitq *thread_waitq;
+	struct thread_event_waitq thread_waitq;
 	KIRQL irql;
 
 	thread = current;
@@ -1200,23 +1154,23 @@ wstdcall NTSTATUS WIN_FUNC(KeWaitForMultipleObjects,8)
 			nt_spin_unlock_irql(&dispatcher_lock, irql);
 			EVENTEXIT(return STATUS_TIMEOUT);
 		}
-		thread_waitq = get_thread_event_waitq();
-		if (!thread_waitq) {
-			nt_spin_unlock_irql(&dispatcher_lock, irql);
-			EVENTEXIT(return STATUS_RESOURCES);
-		}
-	} else
-		thread_waitq = NULL;
+	}
 
 	/* get the list of objects the thread needs to wait on and add
 	 * the thread on the wait list for each such object */
 	/* if *timeout == 0, this step will grab all the objects */
+	init_waitqueue_head(&thread_waitq.wq);
+#ifdef EVENT_DEBUG
+	thread_waitq.task = current;
+#endif
+	EVENTTRACE("%p, %p", &thread_waitq, current);
+	thread_waitq.done = 0;
 	for (i = 0; i < count; i++) {
 		dh = object[i];
 		EVENTTRACE("%p: event %p state: %d",
 			   thread, dh, dh->signal_state);
 		wb[i].object = NULL;
-		wb[i].thread_waitq = thread_waitq;
+		wb[i].thread_waitq = &thread_waitq;
 		if (grab_signaled_state(dh, thread, 1)) {
 			EVENTTRACE("%p: event %p already signaled: %d",
 				   thread, dh, dh->signal_state);
@@ -1224,18 +1178,14 @@ wstdcall NTSTATUS WIN_FUNC(KeWaitForMultipleObjects,8)
 			wb[i].thread = NULL;
 		} else {
 			assert(timeout == NULL || *timeout != 0);
-			assert(thread_waitq != NULL);
 			wb[i].thread = thread;
 			EVENTTRACE("%p: need to wait on event %p", thread, dh);
 			InsertTailList(&dh->wait_blocks, &wb[i].list);
 		}
 	}
 	nt_spin_unlock_irql(&dispatcher_lock, irql);
-	if (wait_count == 0) {
-		assert(thread_waitq == NULL);
+	if (wait_count == 0)
 		EVENTEXIT(return STATUS_SUCCESS);
-	}
-	assert(thread_waitq);
 
 	assert(timeout == NULL || *timeout != 0);
 	if (timeout == NULL)
@@ -1248,24 +1198,24 @@ wstdcall NTSTATUS WIN_FUNC(KeWaitForMultipleObjects,8)
 	while (wait_count) {
 		if (wait_jiffies) {
 			res = wait_event_interruptible_timeout(
-				thread_waitq->head, (thread_waitq->done == 1),
+				thread_waitq.wq, (thread_waitq.done == 1),
 				wait_jiffies);
 		} else {
 			wait_event_interruptible(
-				thread_waitq->head,(thread_waitq->done == 1));
+				thread_waitq.wq, (thread_waitq.done == 1));
 			/* mark that it didn't timeout */
 			res = 1;
 		}
-		thread_waitq->done = 0;
+		thread_waitq.done = 0;
 		irql = nt_spin_lock_irql(&dispatcher_lock, DISPATCH_LEVEL);
 		if (signal_pending(current))
 			res = -ERESTARTSYS;
 		EVENTTRACE("%p woke up on %p, res = %d, done: %d", thread,
-			   thread_waitq, res, thread_waitq->done);
+			   &thread_waitq, res, thread_waitq->done);
 #ifdef EVENT_DEBUG
-		if (thread_waitq->task != current)
-			ERROR("%p: argh, task %p should be %p", thread_waitq,
-			      thread_waitq->task, current);
+		if (thread_waitq.task != current)
+			ERROR("%p: argh, task %p should be %p", &thread_waitq,
+			      thread_waitq.task, current);
 #endif
 //		assert(res < 0 && alertable);
 		if (res <= 0) {
@@ -1277,7 +1227,6 @@ wstdcall NTSTATUS WIN_FUNC(KeWaitForMultipleObjects,8)
 					   thread, object[i], wb[i].object);
 				RemoveEntryList(&wb[i].list);
 			}
-			put_thread_event_waitq(thread_waitq);
 			nt_spin_unlock_irql(&dispatcher_lock, irql);
 			if (res < 0)
 				EVENTEXIT(return STATUS_ALERTED);
@@ -1310,13 +1259,11 @@ wstdcall NTSTATUS WIN_FUNC(KeWaitForMultipleObjects,8)
 				for (j = i; j < count; j++)
 					if (wb[j].thread)
 						RemoveEntryList(&wb[j].list);
-				put_thread_event_waitq(thread_waitq);
 				nt_spin_unlock_irql(&dispatcher_lock, irql);
 				EVENTEXIT(return STATUS_WAIT_0 + i);
 			}
 		}
 		if (wait_count == 0) {
-			put_thread_event_waitq(thread_waitq);
 			nt_spin_unlock_irql(&dispatcher_lock, irql);
 			EVENTEXIT(return STATUS_SUCCESS);
 		}
@@ -2504,7 +2451,6 @@ int ntoskernel_init(void)
 	nt_spin_lock_init(&timer_lock);
 	InitializeListHead(&wrap_timer_list);
 
-	thread_event_waitq_pool = NULL;
 	do_gettimeofday(&now);
 	wrap_ticks_to_boot = TICKS_1601_TO_1970;
 	wrap_ticks_to_boot += (u64)now.tv_sec * TICKSPERSEC;
@@ -2618,16 +2564,6 @@ void ntoskernel_exit(void)
 		kfree(object);
 	}
 	nt_spin_unlock_irql(&ntoskernel_lock, irql);
-
-	TRACE2("freeing thread event pool");
-	irql = nt_spin_lock_irql(&dispatcher_lock, DISPATCH_LEVEL);
-	while (thread_event_waitq_pool) {
-		struct thread_event_waitq *next;
-		next = thread_event_waitq_pool->next;
-		kfree(thread_event_waitq_pool);
-		thread_event_waitq_pool = next;
-	}
-	nt_spin_unlock_irql(&dispatcher_lock, irql);
 
 	irql = nt_spin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL);
 	while ((cur = RemoveHeadList(&bus_driver_list))) {
