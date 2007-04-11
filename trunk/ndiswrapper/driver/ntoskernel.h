@@ -183,11 +183,13 @@ typedef struct {
 #define create_singlethread_workqueue wrap_create_wq
 #define destroy_workqueue wrap_destroy_wq
 #define queue_work wrap_queue_work
+#define flush_workqueue wrap_flush_wq
 
 workqueue_struct_t *wrap_create_wq(const char *name);
 void wrap_destroy_wq(workqueue_struct_t *workq);
 void wrap_queue_work(workqueue_struct_t *workq, work_struct_t *work) wfastcall;
 void wrap_cancel_work(work_struct_t *work);
+void wrap_flush_wq(workqueue_struct_t *workq);
 typedef void *worker_param_t;
 #define worker_param_data(param, type, member) param
 
