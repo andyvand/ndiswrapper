@@ -72,6 +72,7 @@ static int workq_thread(void *data)
 	}
 	spin_unlock_irqrestore(&workq->lock, flags);
 	WORKTRACE("%s exiting", workq->name);
+	workq->pid = 0;
 	if (workq->completion)
 		complete(workq->completion);
 	return 0;
@@ -119,8 +120,8 @@ workqueue_struct_t *wrap_create_wq(const char *name)
 	spin_lock_init(&workq->lock);
 	workq->name = name;
 	INIT_LIST_HEAD(&workq->work_list);
-	INIT_COMPLETION(&started);
-	work->completion = &started;
+	INIT_COMPLETION(started);
+	workq->completion = &started;
 	workq->pid = kernel_thread(workq_thread, workq, 0);
 	if (workq->pid <= 0) {
 		kfree(workq);
@@ -131,12 +132,19 @@ workqueue_struct_t *wrap_create_wq(const char *name)
 	return workq;
 }
 
+void wrap_flush_wq(workqueue_struct_t *workq)
+{
+	/* TODO */
+}
+
 void wrap_destroy_wq(workqueue_struct_t *workq)
 {
 	struct completion finished;
-	INIT_COMPLETION(&finished);
+	INIT_COMPLETION(finished);
 	workq->pending = -1;
+	workq->completion = &finished;
 	wake_up_process(workq->task);
-	wait_for_completion(&finished);
+	if (workq->pid > 0)
+		wait_for_completion(&finished);
 	kfree(workq);
 }

@@ -756,8 +756,6 @@ void __devexit wrap_pnp_remove_usb_device(struct usb_device *udev, void *ptr)
 	if (wd == NULL)
 		EXIT1(return);
 	intf = wd->usb.intf;
-	if (wd->surprise_removed == TRUE)
-		wd->usb.intf = NULL;
 	pnp_remove_device(wd);
 }
 #endif
