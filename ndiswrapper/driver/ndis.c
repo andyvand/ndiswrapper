@@ -2352,7 +2352,7 @@ wstdcall void NdisMQueryInformationComplete(struct ndis_miniport_block *nmb,
 	ENTER2("nmb: %p, wnd: %p, %08X", nmb, wnd, status);
 	wnd->ndis_comm_status = status;
 	wnd->ndis_comm_done = 1;
-	wake_up(&wnd->ndis_comm_wq);
+	wake_up_process(wnd->ndis_comm_task);
 	EXIT2(return);
 }
 
@@ -2364,7 +2364,7 @@ wstdcall void NdisMSetInformationComplete(struct ndis_miniport_block *nmb,
 
 	wnd->ndis_comm_status = status;
 	wnd->ndis_comm_done = 1;
-	wake_up(&wnd->ndis_comm_wq);
+	wake_up_process(wnd->ndis_comm_task);
 	EXIT3(return);
 }
 
@@ -2527,7 +2527,7 @@ wstdcall void NdisMResetComplete(struct ndis_miniport_block *nmb,
 	ENTER3("status: %08X, %u", status, address_reset);
 	wnd->ndis_comm_status = status;
 	wnd->ndis_comm_done = 1 + address_reset;
-	wake_up(&wnd->ndis_comm_wq);
+	wake_up_process(wnd->ndis_comm_task);
 	EXIT3(return);
 }
 
@@ -2651,7 +2651,7 @@ wstdcall void WIN_FUNC(NdisMCoRequestComplete,3)
 	ENTER3("%08X", status);
 	wnd->ndis_comm_status = status;
 	wnd->ndis_comm_done = 1;
-	wake_up(&wnd->ndis_comm_wq);
+	wake_up_process(wnd->ndis_comm_task);
 	EXIT3(return);
 }
 
@@ -2746,6 +2746,7 @@ void ndis_exit_device(struct wrap_ndis_device *wnd)
 	/* TI driver doesn't call NdisMDeregisterInterrupt during halt! */
 	if (wnd->mp_interrupt)
 		NdisMDeregisterInterrupt(wnd->mp_interrupt);
+	flush_workqueue(ndis_wq);
 	if (down_interruptible(&loader_mutex))
 		WARNING("couldn't obtain loader_mutex");
 	nt_list_for_each_entry(setting, &wnd->wd->settings, list) {
@@ -2775,6 +2776,7 @@ int ndis_init(void)
 /* ndis_exit is called once when module is removed */
 void ndis_exit(void)
 {
+	ENTER1("");
 	destroy_workqueue(ndis_wq);
 	EXIT1(return);
 }

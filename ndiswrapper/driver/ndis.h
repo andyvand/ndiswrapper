@@ -844,7 +844,7 @@ struct wrap_ndis_device {
 	unsigned int max_tx_packets;
 	u8 tx_ok;
 	struct semaphore ndis_comm_mutex;
-	wait_queue_head_t ndis_comm_wq;
+	struct task_struct *ndis_comm_task;
 	s8 ndis_comm_done;
 	NDIS_STATUS ndis_comm_status;
 	ULONG packet_filter;

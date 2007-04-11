@@ -37,9 +37,11 @@ static int workq_thread(void *data)
 #else
 	sigfillset(&current->blocked);
 #endif
+	workq->task = current;
+	complete(workq->completion);
+	workq->completion = NULL;
 	while (1) {
-		if (wait_event_interruptible(workq->waitq_head,
-					     workq->pending)) {
+		if (wrap_wait_event(workq->pending, TASK_INTERRUPTIBLE)) {
 			/* TODO: deal with signal */
 			WARNING("signal not blocked?");
 			flush_signals(current);
@@ -70,7 +72,8 @@ static int workq_thread(void *data)
 	}
 	spin_unlock_irqrestore(&workq->lock, flags);
 	WORKTRACE("%s exiting", workq->name);
-	workq->pid = 0;
+	if (workq->completion)
+		complete(workq->completion);
 	return 0;
 }
 
@@ -83,7 +86,7 @@ wfastcall void wrap_queue_work(workqueue_struct_t *workq, work_struct_t *work)
 		work->workq = workq;
 		list_add_tail(&work->list, &workq->work_list);
 		workq->pending++;
-		wake_up_interruptible(&workq->waitq_head);
+		wake_up_process(workq->task);
 	}
 	spin_unlock_irqrestore(&workq->lock, flags);
 }
@@ -106,33 +109,34 @@ void wrap_cancel_work(work_struct_t *work)
 
 workqueue_struct_t *wrap_create_wq(const char *name)
 {
+	struct completion started;
 	workqueue_struct_t *workq = kmalloc(sizeof(*workq), GFP_KERNEL);
 	if (!workq) {
 		WARNING("couldn't allocate memory");
 		return NULL;
 	}
 	memset(workq, 0, sizeof(*workq));
-	init_waitqueue_head(&workq->waitq_head);
 	spin_lock_init(&workq->lock);
 	workq->name = name;
 	INIT_LIST_HEAD(&workq->work_list);
-	/* we don't need to wait for thread to start, so completion
-	 * not used */
+	INIT_COMPLETION(&started);
+	work->completion = &started;
 	workq->pid = kernel_thread(workq_thread, workq, 0);
 	if (workq->pid <= 0) {
 		kfree(workq);
 		WARNING("couldn't start thread %s", name);
 		return NULL;
 	}
+	wait_for_completion(&started);
 	return workq;
 }
 
 void wrap_destroy_wq(workqueue_struct_t *workq)
 {
-	while (workq->pid) {
-		workq->pending = -1;
-		wake_up_interruptible(&workq->waitq_head);
-		schedule();
-	}
+	struct completion finished;
+	INIT_COMPLETION(&finished);
+	workq->pending = -1;
+	wake_up_process(workq->task);
+	wait_for_completion(&finished);
 	kfree(workq);
 }

@@ -177,6 +177,7 @@ int get_auth_mode(struct wrap_ndis_device *wnd);
 int get_encr_mode(struct wrap_ndis_device *wnd);
 int set_priv_filter(struct wrap_ndis_device *wnd, int flags);
 int set_scan(struct wrap_ndis_device *wnd);
+NDIS_STATUS disassociate(struct wrap_ndis_device *wnd, int reset_ssid);
 
 #define PRIV_RESET	 		SIOCIWFIRSTPRIV+16
 #define PRIV_POWER_PROFILE	 	SIOCIWFIRSTPRIV+17

@@ -37,11 +37,8 @@ struct wrap_mdl {
 };
 
 struct thread_event_waitq {
-	wait_queue_head_t wq;
 	BOOLEAN done;
-#ifdef EVENT_DEBUG
 	struct task_struct *task;
-#endif
 };
 
 /* everything here is for all drivers/devices - not per driver/device */
@@ -839,7 +836,7 @@ wstdcall void *WIN_FUNC(ExAllocatePoolWithTag,3)
 		alloc_type = ALLOC_TYPE_VMALLOC;
 	}
 	if (addr) {
-		TRACE4("addr: %p, %p, %d, %lu", addr, addr + 1, alloc_type,
+		TRACE4("addr: %p, %p, %lu, %lu", addr, addr + 1, alloc_type,
 		       size);
 		*addr = alloc_type;
 		return addr + 1;
@@ -1034,12 +1031,13 @@ static int grab_signaled_state(struct dispatcher_header *dh,
 	if (is_mutex_dh(dh)) {
 		struct nt_mutex *nt_mutex;
 		nt_mutex = container_of(dh, struct nt_mutex, dh);
-		EVENTTRACE("%p, %p", nt_mutex, nt_mutex->owner_thread);
+		EVENTTRACE("%p, %p, %d, %p, %d", nt_mutex,
+			   nt_mutex->owner_thread, dh->signal_state,
+			   thread, grab);
 		/* either no thread owns the mutex or this thread owns
 		 * it */
 		assert(dh->signal_state <= 1);
-		assert(nt_mutex->owner_thread == NULL &&
-		       dh->signal_state == 1);
+		assert(dh->signal_state < 1 || nt_mutex->owner_thread == NULL);
 		if (dh->signal_state > 0 || nt_mutex->owner_thread == thread) {
 			if (grab) {
 				dh->signal_state--;
@@ -1080,7 +1078,7 @@ static void wakeup_threads(struct dispatcher_header *dh)
 			RemoveEntryList(cur);
 			wb->object = dh;
 			thread_waitq->done = 1;
-			wake_up(&thread_waitq->wq);
+			wake_up_process(thread_waitq->task);
 			if (dh->type == SynchronizationObject)
 				break;
 		} else
@@ -1157,11 +1155,8 @@ wstdcall NTSTATUS WIN_FUNC(KeWaitForMultipleObjects,8)
 	/* get the list of objects the thread needs to wait on and add
 	 * the thread on the wait list for each such object */
 	/* if *timeout == 0, this step will grab all the objects */
-	init_waitqueue_head(&thread_waitq.wq);
 	thread_waitq.done = 0;
-#ifdef EVENT_DEBUG
-	thread_waitq.task = current;
-#endif
+	thread_waitq.task = thread;
 	EVENTTRACE("%p, %p", &thread_waitq, current);
 	for (i = 0; i < count; i++) {
 		dh = object[i];
@@ -1195,21 +1190,22 @@ wstdcall NTSTATUS WIN_FUNC(KeWaitForMultipleObjects,8)
 
 	while (wait_count) {
 		if (wait_hz) {
-			res = wait_event_interruptible_timeout(
-				thread_waitq.wq, (thread_waitq.done == 1),
-				wait_hz);
+			res = wrap_wait_event_timeout(thread_waitq.done,
+						      wait_hz,
+						      TASK_INTERRUPTIBLE);
 		} else {
-			wait_event_interruptible(
-				thread_waitq.wq, (thread_waitq.done == 1));
+			res = wrap_wait_event(thread_waitq.done,
+					      TASK_INTERRUPTIBLE);
 			/* mark that it didn't timeout */
-			res = 1;
+			if (res == 0)
+				res = 1;
 		}
 		thread_waitq.done = 0;
 		irql = nt_spin_lock_irql(&dispatcher_lock, DISPATCH_LEVEL);
 		if (signal_pending(current))
 			res = -ERESTARTSYS;
 		EVENTTRACE("%p woke up on %p, res = %d, done: %d", thread,
-			   &thread_waitq, res, thread_waitq->done);
+			   &thread_waitq, res, thread_waitq.done);
 #ifdef EVENT_DEBUG
 		if (thread_waitq.task != current)
 			ERROR("%p: argh, task %p should be %p", &thread_waitq,
@@ -1221,7 +1217,7 @@ wstdcall NTSTATUS WIN_FUNC(KeWaitForMultipleObjects,8)
 			for (i = 0; i < count; i++) {
 				if (!wb[i].thread)
 					continue;
-				EVENTTRACE("%p: timedout, deq'ing %p (%p)",
+				WARNING("%p: timedout, deq'ing %p (%p)",
 					   thread, object[i], wb[i].object);
 				RemoveEntryList(&wb[i].list);
 			}
@@ -1247,9 +1243,9 @@ wstdcall NTSTATUS WIN_FUNC(KeWaitForMultipleObjects,8)
 					      object[i]);
 					continue;
 				}
-				wb[i].object = NULL;
-				wb[i].thread = NULL;
 			}
+			wb[i].object = NULL;
+			wb[i].thread = NULL;
 			RemoveEntryList(&wb[i].list);
 			wait_count--;
 			if (wait_type == WaitAny) {
@@ -1381,6 +1377,8 @@ wstdcall LONG WIN_FUNC(KeReleaseMutex,2)
 		}
 	} else
 		ret = STATUS_MUTANT_NOT_OWNED;
+	EVENTTRACE("%p, %p, %d", mutex, mutex->owner_thread,
+		   mutex->dh.signal_state);
 	nt_spin_unlock_irql(&dispatcher_lock, irql);
 	EVENTTRACE("ret: %08X", ret);
 	EVENTEXIT(return ret);

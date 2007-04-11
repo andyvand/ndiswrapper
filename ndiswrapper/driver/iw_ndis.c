@@ -418,8 +418,7 @@ static int iw_set_tx_power(struct net_device *dev, struct iw_request_info *info,
 					&ndis_power, sizeof(ndis_power));
 		if (res)
 			return -EOPNOTSUPP;
-		res = miniport_set_info(wnd, OID_802_11_DISASSOCIATE,
-					NULL, 0);
+		res = disassociate(wnd, 1);
 		if (res)
 			return -EOPNOTSUPP;
 		return 0;
@@ -1471,18 +1470,26 @@ static int iw_get_range(struct net_device *dev, struct iw_request_info *info,
 	return 0;
 }
 
-static int disassociate(struct wrap_ndis_device *wnd)
+NDIS_STATUS disassociate(struct wrap_ndis_device *wnd, int reset_ssid)
 {
+	NDIS_STATUS res;
 	u8 buf[NDIS_ESSID_MAX_SIZE];
 	int i;
 
 	TRACE2("");
-	miniport_set_info(wnd, OID_802_11_DISASSOCIATE, NULL, 0);
-	get_random_bytes(buf, sizeof(buf));
-	for (i = 0; i < sizeof(buf); i++)
-		buf[i] = 'a' + (buf[i] % 26);
-	set_essid(wnd, buf, sizeof(buf));
-	return 0;
+	res = miniport_set_info(wnd, OID_802_11_DISASSOCIATE, NULL, 0);
+	/* am772 driver requires sometime for ndis worker to finish
+	 * after disassoicate */
+	sleep_hz(HZ / 2);
+	/* disassociate causes radio to be turned off; if reset_ssid
+	 * is given, set ssid to random to enable radio */
+	if (reset_ssid) {
+		get_random_bytes(buf, sizeof(buf));
+		for (i = 0; i < sizeof(buf); i++)
+			buf[i] = 'a' + (buf[i] % 26);
+		set_essid(wnd, buf, sizeof(buf));
+	}
+	return res;
 }
 
 
@@ -1491,7 +1498,7 @@ static int deauthenticate(struct wrap_ndis_device *wnd)
 	int ret;
 
 	ENTER2("");
-	ret = disassociate(wnd);
+	ret = disassociate(wnd, 1);
 	set_priv_filter(wnd, Ndis802_11PrivFilterAcceptAll);
 	set_auth_mode(wnd, Ndis802_11AuthModeOpen);
 	set_encr_mode(wnd, Ndis802_11EncryptionDisabled);
@@ -1523,7 +1530,7 @@ static int iw_set_mlme(struct net_device *dev, struct iw_request_info *info,
 		return deauthenticate(wnd);
 	case IW_MLME_DISASSOC:
 		TRACE2("cmd=%d reason_code=%d", mlme->cmd, mlme->reason_code);
-		return disassociate(wnd);
+		return disassociate(wnd, 1);
 	default:
 		return -EOPNOTSUPP;
 	}
@@ -2132,7 +2139,7 @@ static int wpa_disassociate(struct net_device *dev,
 			    union iwreq_data *wrqu, char *extra)
 {
 	struct wrap_ndis_device *wnd = netdev_priv(dev);
-	disassociate(wnd);
+	disassociate(wnd, 1);
 	EXIT2(return 0);
 }
 
