@@ -33,16 +33,18 @@ static int workq_thread(void *data)
 	daemonize(workq->name);
 	set_user_nice(current, -5);
 #endif
+
 #ifdef PF_NOFREEZE
 	current->flags |= PF_NOFREEZE;
 #else
 	sigfillset(&current->blocked);
 #endif
+
 	workq->task = current;
 	complete(workq->completion);
 	workq->completion = NULL;
 	WORKTRACE("%s (%d) started", workq->name, workq->pid);
-	while (1) {
+	while (workq->pending >= 0) {
 		if (wrap_wait_event(workq->pending, TASK_INTERRUPTIBLE)) {
 			/* TODO: deal with signal */
 			WARNING("signal not blocked?");
@@ -54,9 +56,8 @@ static int workq_thread(void *data)
 
 			spin_lock_irqsave(&workq->lock, flags);
 			if (list_empty(&workq->work_list)) {
-				if (workq->pending < 0)
-					goto done;
-				workq->pending = 0;
+				if (workq->pending > 0)
+					workq->pending = 0;
 				spin_unlock_irqrestore(&workq->lock, flags);
 				if (workq->completion) {
 					complete(workq->completion);
@@ -76,8 +77,6 @@ static int workq_thread(void *data)
 		}
 	}
 
-done:
-	spin_unlock_irqrestore(&workq->lock, flags);
 	WORKTRACE("%s exiting", workq->name);
 	workq->pid = 0;
 	return 0;
@@ -105,10 +104,6 @@ void wrap_cancel_work(work_struct_t *work)
 	if ((workq = xchg(&work->workq, NULL))) {
 		spin_lock_irqsave(&workq->lock, flags);
 		list_del(&work->list);
-		/* don't decrement workq->pending here; otherwise, it
-		 * may prematurely terminate the thread, as this work
-		 * may already have been done (pending may have been
-		 * decremented for it) */
 		spin_unlock_irqrestore(&workq->lock, flags);
 	}
 }
