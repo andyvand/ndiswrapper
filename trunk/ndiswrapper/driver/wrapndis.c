@@ -39,18 +39,6 @@ static void set_multicast_list(struct wrap_ndis_device *wnd);
 static int ndis_net_dev_open(struct net_device *net_dev);
 static int ndis_net_dev_close(struct net_device *net_dev);
 
-/* wait for communication (query/set/reset) to complete */
-#define ndis_wait_comm_complete(wnd)				\
-({								\
-	long ret;						\
-	if (wrap_wait_event((wnd->ndis_comm_done > 0),		\
-			    TASK_INTERRUPTIBLE))		\
-		ret = -1;					\
-	else							\
-		ret = 0;					\
-	ret;							\
-})
-
 /* MiniportReset */
 NDIS_STATUS miniport_reset(struct wrap_ndis_device *wnd)
 {
@@ -80,8 +68,8 @@ NDIS_STATUS miniport_reset(struct wrap_ndis_device *wnd)
 	TRACE2("%08X, %08X", res, reset_address);
 	if (res == NDIS_STATUS_PENDING) {
 		/* wait for NdisMResetComplete */
-		if (wrap_wait_event((wnd->ndis_comm_done > 0),
-				    TASK_INTERRUPTIBLE))
+		if (wrap_wait_event((wnd->ndis_comm_done > 0), 0,
+				    TASK_INTERRUPTIBLE) < 0)
 			res = NDIS_STATUS_FAILURE;
 		else {
 			res = wnd->ndis_comm_status;
@@ -125,8 +113,8 @@ NDIS_STATUS miniport_query_info_needed(struct wrap_ndis_device *wnd,
 	TRACE2("%08X, %08X", res, oid);
 	if (res == NDIS_STATUS_PENDING) {
 		/* wait for NdisMQueryInformationComplete */
-		if (wrap_wait_event((wnd->ndis_comm_done > 0),
-				    TASK_INTERRUPTIBLE))
+		if (wrap_wait_event((wnd->ndis_comm_done > 0), 0,
+				    TASK_INTERRUPTIBLE) < 0)
 			res = NDIS_STATUS_FAILURE;
 		else
 			res = wnd->ndis_comm_status;
@@ -175,8 +163,8 @@ NDIS_STATUS miniport_set_info(struct wrap_ndis_device *wnd, ndis_oid oid,
 	TRACE2("%08X, %08X", res, oid);
 	if (res == NDIS_STATUS_PENDING) {
 		/* wait for NdisMQueryInformationComplete */
-		if (wrap_wait_event((wnd->ndis_comm_done > 0),
-				    TASK_INTERRUPTIBLE))
+		if (wrap_wait_event((wnd->ndis_comm_done > 0), 0,
+				    TASK_INTERRUPTIBLE) < 0)
 			res = NDIS_STATUS_FAILURE;
 		else
 			res = wnd->ndis_comm_status;
