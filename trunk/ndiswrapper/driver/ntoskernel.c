@@ -1202,8 +1202,6 @@ wstdcall NTSTATUS WIN_FUNC(KeWaitForMultipleObjects,8)
 		}
 		thread_event.done = 0;
 		irql = nt_spin_lock_irql(&dispatcher_lock, DISPATCH_LEVEL);
-		if (signal_pending(current))
-			res = -ERESTARTSYS;
 		EVENTTRACE("%p woke up on %p, res = %d, done: %d", thread,
 			   &thread_event, res, thread_event.done);
 #ifdef EVENT_DEBUG
@@ -1217,7 +1215,7 @@ wstdcall NTSTATUS WIN_FUNC(KeWaitForMultipleObjects,8)
 			for (i = 0; i < count; i++) {
 				if (!wb[i].thread)
 					continue;
-				WARNING("%p: timedout, deq'ing %p (%p)",
+				EVENTTRACE("%p: timedout, deq'ing %p (%p)",
 					   thread, object[i], wb[i].object);
 				RemoveEntryList(&wb[i].list);
 			}

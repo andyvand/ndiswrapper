@@ -1,6 +1,7 @@
 Version 1.42 2007-XX-XX
 =======================	
 * Yet another smp fix
+* Bug fix related to events (no driver seems to be affected by this)
 
 Version 1.41 2007-03-31
 =======================	
