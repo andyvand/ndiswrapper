@@ -411,7 +411,7 @@ sub parse_copy_file {
 	    return -1;
 	}
 	my $file;
-	if (@files > 1 and length($files[1]) > 0) {
+	if (@files > 1 and length(trim($files[1])) > 0) {
 	    $file = $files[1];
 	} else {
 	    $file = $files[0];
