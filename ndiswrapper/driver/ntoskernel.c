@@ -1038,7 +1038,8 @@ static int grab_signaled_state(struct dispatcher_header *dh,
 		 * it */
 		assert(dh->signal_state <= 1);
 		assert(dh->signal_state < 1 || nt_mutex->owner_thread == NULL);
-		if (dh->signal_state > 0 || nt_mutex->owner_thread == thread) {
+		if ((dh->signal_state > 0 && nt_mutex->owner_thread == NULL) ||
+		    nt_mutex->owner_thread == thread) {
 			if (grab) {
 				dh->signal_state--;
 				nt_mutex->owner_thread = thread;
@@ -1244,14 +1245,15 @@ wstdcall NTSTATUS WIN_FUNC(KeWaitForMultipleObjects,8)
 			}
 			wb[i].object = NULL;
 			wb[i].thread = NULL;
-			RemoveEntryList(&wb[i].list);
 			wait_count--;
+			RemoveEntryList(&wb[i].list);
 			if (wait_type == WaitAny) {
 				int j;
 				/* done; remove from rest of wait list */
-				for (j = i + 1; j < count; j++)
+				for (j = i + 1; j < count; j++) {
 					if (wb[j].thread)
 						RemoveEntryList(&wb[j].list);
+				}
 				nt_spin_unlock_irql(&dispatcher_lock, irql);
 				EVENTEXIT(return STATUS_WAIT_0 + i);
 			}
@@ -1312,8 +1314,12 @@ wstdcall LONG WIN_FUNC(KeSetEvent,3)
 wstdcall void WIN_FUNC(KeClearEvent,1)
 	(struct nt_event *nt_event)
 {
+	KIRQL irql;
+
 	EVENTENTER("event = %p", nt_event);
-	(void)xchg(&nt_event->dh.signal_state, 0);
+	irql = nt_spin_lock_irql(&dispatcher_lock, DISPATCH_LEVEL);
+	nt_event->dh.signal_state = 0;
+	nt_spin_unlock_irql(&dispatcher_lock, irql);
 	EVENTEXIT(return);
 }
 
@@ -1321,7 +1327,13 @@ wstdcall LONG WIN_FUNC(KeResetEvent,1)
 	(struct nt_event *nt_event)
 {
 	LONG old_state;
-	old_state = xchg(&nt_event->dh.signal_state, 0);
+	KIRQL irql;
+
+	EVENTENTER("event = %p", nt_event);
+	irql = nt_spin_lock_irql(&dispatcher_lock, DISPATCH_LEVEL);
+	old_state = nt_event->dh.signal_state;
+	nt_event->dh.signal_state = 0;
+	nt_spin_unlock_irql(&dispatcher_lock, irql);
 	EVENTTRACE("old state: %d", old_state);
 	EVENTEXIT(return old_state);
 }
@@ -1366,19 +1378,22 @@ wstdcall LONG WIN_FUNC(KeReleaseMutex,2)
 		WARNING("wait: %d", wait);
 	thread = current;
 	irql = nt_spin_lock_irql(&dispatcher_lock, DISPATCH_LEVEL);
-	EVENTTRACE("%p, %p, %d", thread, mutex->owner_thread,
+	EVENTTRACE("%p, %p, %p, %d", mutex, thread, mutex->owner_thread,
 		   mutex->dh.signal_state);
 	if ((mutex->owner_thread == thread) && (mutex->dh.signal_state <= 0)) {
-		if ((ret = mutex->dh.signal_state++) == 0) {
+		ret = mutex->dh.signal_state++;
+		if (ret == 0) {
 			mutex->owner_thread = NULL;
 			wakeup_threads(&mutex->dh);
 		}
-	} else
+	} else {
 		ret = STATUS_MUTANT_NOT_OWNED;
-	EVENTTRACE("%p, %p, %d", mutex, mutex->owner_thread,
+		WARNING("invalid mutex: %p, %p, %p", mutex, mutex->owner_thread,
+			thread);
+	}
+	EVENTTRACE("%p, %p, %p, %d", mutex, thread, mutex->owner_thread,
 		   mutex->dh.signal_state);
 	nt_spin_unlock_irql(&dispatcher_lock, irql);
-	EVENTTRACE("ret: %08X", ret);
 	EVENTEXIT(return ret);
 }
 
