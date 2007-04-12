@@ -1871,7 +1871,7 @@ wstdcall BOOLEAN WIN_FUNC(NdisMSynchronizeWithInterrupt,3)
 	BOOLEAN ret;
 	unsigned long flags;
 
-	ENTER6("%p %p", func, ctx);
+	ENTER6("%p %p", sync_func, ctx);
 	nt_spin_lock_irqsave(&mp_interrupt->lock, flags);
 	ret = LIN2WIN1(sync_func, ctx);
 	nt_spin_unlock_irqrestore(&mp_interrupt->lock, flags);
