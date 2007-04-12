@@ -37,8 +37,8 @@ struct wrap_mdl {
 };
 
 struct thread_event {
-	BOOLEAN done;
 	struct task_struct *task;
+	BOOLEAN done;
 };
 
 /* everything here is for all drivers/devices - not per driver/device */
@@ -1190,18 +1190,8 @@ wstdcall NTSTATUS WIN_FUNC(KeWaitForMultipleObjects,8)
 		   thread, wait_hz, &thread_event);
 
 	while (wait_count) {
-		if (wait_hz) {
-			res = wrap_wait_event_timeout(thread_event.done,
-						      wait_hz,
-						      TASK_INTERRUPTIBLE);
-		} else {
-			res = wrap_wait_event(thread_event.done,
-					      TASK_INTERRUPTIBLE);
-			/* mark that it didn't timeout */
-			if (res == 0)
-				res = 1;
-		}
-		thread_event.done = 0;
+		res = wrap_wait_event(thread_event.done, wait_hz,
+				      TASK_INTERRUPTIBLE);
 		irql = nt_spin_lock_irql(&dispatcher_lock, DISPATCH_LEVEL);
 		EVENTTRACE("%p woke up on %p, res = %d, done: %d", thread,
 			   &thread_event, res, thread_event.done);
@@ -1210,8 +1200,10 @@ wstdcall NTSTATUS WIN_FUNC(KeWaitForMultipleObjects,8)
 			ERROR("%p: argh, task %p should be %p", &thread_event,
 			      thread_event.task, current);
 #endif
-//		assert(res < 0 && alertable);
-		if (res <= 0) {
+		/* don't rely on value of 'res' to check if woken up
+		 * by wakeup_threads */
+		if (!thread_event.done) {
+			assert(res <= 0);
 			/* timed out or interrupted; remove from wait list */
 			for (i = 0; i < count; i++) {
 				if (!wb[i].thread)
@@ -1226,6 +1218,7 @@ wstdcall NTSTATUS WIN_FUNC(KeWaitForMultipleObjects,8)
 			else
 				EVENTEXIT(return STATUS_TIMEOUT);
 		}
+		assert(res > 0);
 		/* woken up by wakeup_threads */
 		for (i = 0; wait_count && i < count; i++) {
 			if (!wb[i].thread)
@@ -1258,6 +1251,7 @@ wstdcall NTSTATUS WIN_FUNC(KeWaitForMultipleObjects,8)
 				EVENTEXIT(return STATUS_WAIT_0 + i);
 			}
 		}
+		thread_event.done = 0;
 		nt_spin_unlock_irql(&dispatcher_lock, irql);
 		if (wait_count == 0)
 			EVENTEXIT(return STATUS_SUCCESS);

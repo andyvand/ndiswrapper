@@ -118,33 +118,33 @@
 
 #endif // LINUX_VERSION_CODE
 
-#define wrap_wait_event_timeout(condition, timeout, wait_state)	\
-({								\
-	long ret = timeout;					\
-	while (!(condition)) {					\
-		if (signal_pending(current)) {			\
-			ret = -ERESTARTSYS;			\
-			break;					\
-		}						\
-		set_current_state(wait_state);			\
-		ret = schedule_timeout(ret);			\
-		if (!ret)					\
-			break;					\
-	}							\
-	current->state = TASK_RUNNING;				\
-	ret;							\
-})
+/* Wait in wait_state (e.g., TASK_INTERRUPTIBLE) for condition to
+ * become true; timeout is either jiffies (> 0) to wait or 0 to wait
+ * forever.
+ * When timeout == 0, return value is
+ *    > 0 if condition becomes true, or
+ *    < 0 if signal is pending on the thread.
+ * When timeout > 0, return value is
+ *    > 0 if condition becomes true before timeout,
+ *    < 0 if signal is pending on the thread before timeout, or
+ *    0 if timedout (condition may have become true at the same time)
+ */
 
-#define wrap_wait_event(condition, wait_state)			\
+#define wrap_wait_event(condition, timeout, wait_state)		\
 ({								\
-	long ret = 0;						\
+	long ret = timeout ? timeout : 1;			\
 	while (!(condition)) {					\
 		if (signal_pending(current)) {			\
 			ret = -ERESTARTSYS;			\
 			break;					\
 		}						\
 		set_current_state(wait_state);			\
-		schedule();					\
+		if (timeout) {					\
+			ret = schedule_timeout(ret);		\
+			if (!ret)				\
+				break;				\
+		} else						\
+			schedule();				\
 	}							\
 	current->state = TASK_RUNNING;				\
 	ret;							\
@@ -156,10 +156,10 @@ typedef struct {
 	spinlock_t lock;
 	struct task_struct *task;
 	struct completion *completion;
-	/* how many work_structs pending? */
-	int pending;
 	const char *name;
 	int pid;
+	/* whether any work_structs pending? <0 implies quit */
+	int pending;
 	/* list of work_structs pending */
 	struct list_head work_list;
 } workqueue_struct_t;

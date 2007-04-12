@@ -45,7 +45,8 @@ static int workq_thread(void *data)
 	workq->completion = NULL;
 	WORKTRACE("%s (%d) started", workq->name, workq->pid);
 	while (workq->pending >= 0) {
-		if (wrap_wait_event(workq->pending, TASK_INTERRUPTIBLE)) {
+		if (wrap_wait_event(workq->pending, 0,
+				    TASK_INTERRUPTIBLE) < 0) {
 			/* TODO: deal with signal */
 			WARNING("signal not blocked?");
 			flush_signals(current);
@@ -59,10 +60,6 @@ static int workq_thread(void *data)
 				if (workq->pending > 0)
 					workq->pending = 0;
 				spin_unlock_irqrestore(&workq->lock, flags);
-				if (workq->completion) {
-					complete(workq->completion);
-					workq->completion = NULL;
-				}
 				break;
 			}
 			entry = workq->work_list.next;
@@ -134,13 +131,10 @@ workqueue_struct_t *wrap_create_wq(const char *name)
 
 void wrap_flush_wq(workqueue_struct_t *workq)
 {
-	struct completion done;
-
-	init_completion(&done);
-	workq->completion = &done;
 	workq->pending = 1;
 	wake_up_process(workq->task);
-	wait_for_completion(&done);
+	while (workq->pending > 0)
+		schedule();
 }
 
 void wrap_destroy_wq(workqueue_struct_t *workq)
