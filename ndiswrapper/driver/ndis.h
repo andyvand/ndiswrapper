@@ -885,7 +885,7 @@ struct wrap_ndis_device {
 	struct v4_checksum tx_csum;
 	enum ndis_physical_medium physical_medium;
 	u32 ndis_wolopts;
-	struct nt_list timer_list;
+	struct nt_list wrap_timer_list;
 	char netdev_name[IFNAMSIZ];
 	int drv_ndis_version;
 };

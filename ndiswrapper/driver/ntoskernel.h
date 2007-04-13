@@ -447,10 +447,10 @@ struct pe_image {
 struct ndis_miniport_block;
 
 struct wrap_timer {
-	long repeat;
 	struct nt_list list;
 	struct timer_list timer;
 	struct nt_timer *nt_timer;
+	long repeat;
 #ifdef TIMER_DEBUG
 	unsigned long wrap_timer_magic;
 #endif
