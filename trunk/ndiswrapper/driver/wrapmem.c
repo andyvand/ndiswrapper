@@ -62,8 +62,7 @@ void wrapmem_info(void)
 void *slack_kmalloc(size_t size)
 {
 	struct slack_alloc_info *info;
-	unsigned int flags, n;
-	void *ptr;
+	unsigned int flags;
 	KIRQL irql;
 
 	ENTER4("size = %lu", (unsigned long)size);
@@ -72,20 +71,18 @@ void *slack_kmalloc(size_t size)
 		flags = GFP_KERNEL;
 	else
 		flags = GFP_ATOMIC;
-	n = size + sizeof(*info);
-	info = kmalloc(n, flags);
+	info = kmalloc(size + sizeof(*info), flags);
 	if (!info)
 		return NULL;
 	info->size = size;
-	ptr = info + 1;
 	irql = nt_spin_lock_irql(&alloc_lock, DISPATCH_LEVEL);
 	InsertTailList(&slack_allocs, &info->list);
 	nt_spin_unlock_irql(&alloc_lock, irql);
 #ifdef ALLOC_DEBUG
 	atomic_add(size, &alloc_sizes[ALLOC_TYPE_SLACK]);
 #endif
-	TRACE4("%p, %p", info, ptr);
-	EXIT4(return ptr);
+	TRACE4("%p, %p", info, info + 1);
+	EXIT4(return info + 1);
 }
 
 /* free pointer and remove from list of allocated pointers */

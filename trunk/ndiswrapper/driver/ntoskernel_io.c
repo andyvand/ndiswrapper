@@ -142,7 +142,7 @@ wstdcall void IoQueueThreadIrp(struct irp *irp)
 		IOTRACE("thread: %p, task: %p", thread, thread->task);
 		irp->flags |= IRP_SYNCHRONOUS_API;
 		irql = nt_spin_lock_irql(&thread->lock, DISPATCH_LEVEL);
-		InsertTailList(&thread->irps, &irp->threads);
+		InsertTailList(&thread->irps, &irp->thread_list);
 		IoIrpThread(irp) = thread;
 		nt_spin_unlock_irql(&thread->lock, irql);
 	} else
@@ -157,7 +157,7 @@ wstdcall void IoDequeueThreadIrp(struct irp *irp)
 	thread = IoIrpThread(irp);
 	if (thread) {
 		irql = nt_spin_lock_irql(&thread->lock, DISPATCH_LEVEL);
-		RemoveEntryList(&irp->threads);
+		RemoveEntryList(&irp->thread_list);
 		nt_spin_unlock_irql(&thread->lock, irql);
 	}
 }

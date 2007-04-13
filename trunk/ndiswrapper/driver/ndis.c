@@ -2715,7 +2715,7 @@ int ndis_init_device(struct wrap_ndis_device *wnd)
 
 	KeInitializeSpinLock(&nmb->lock);
 	wnd->mp_interrupt = NULL;
-	InitializeListHead(&wnd->timer_list);
+	InitializeListHead(&wnd->wrap_timer_list);
 	if (wnd->wd->driver->ndis_driver)
 		wnd->wd->driver->ndis_driver->miniport.shutdown = NULL;
 

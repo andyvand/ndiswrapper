@@ -417,7 +417,7 @@ struct nt_timer {
 		ULONGLONG due_time;
 		struct wrap_timer *wrap_timer;
 	};
-	struct nt_list list;
+	struct nt_list nt_timer_list;
 	struct kdpc *kdpc;
 	union {
 		LONG period;
@@ -444,6 +444,7 @@ struct nt_thread {
 	 * structure is opaque to drivers, we just define what we
 	 * need */
 	int pid;
+	NTSTATUS status;
 	struct task_struct *task;
 	struct nt_list irps;
 	NT_SPIN_LOCK lock;
@@ -1011,7 +1012,7 @@ struct irp {
 		LONG irp_count;
 		void *system_buffer;
 	} associated_irp;
-	struct nt_list threads;
+	struct nt_list thread_list;
 	struct io_status_block io_status;
 	KPROCESSOR_MODE requestor_mode;
 	BOOLEAN pending_returned;

@@ -24,13 +24,13 @@
  * addresses, the number of entries of physical pages may be different
  * (depending on number of entries required). If we want to allocate
  * MDLs from a pool, the size has to be constant. So we assume that
- * maximum range used by a driver is CACHE_MDL_PAGES; if a driver
+ * maximum range used by a driver is MDL_CACHE_PAGES; if a driver
  * requests an MDL for a bigger region, we allocate it with kmalloc;
  * otherwise, we allocate from the pool */
 
-#define CACHE_MDL_PAGES 3
-#define CACHE_MDL_SIZE (sizeof(struct mdl) + \
-			(sizeof(PFN_NUMBER) * CACHE_MDL_PAGES))
+#define MDL_CACHE_PAGES 3
+#define MDL_CACHE_SIZE (sizeof(struct mdl) + \
+			(sizeof(PFN_NUMBER) * MDL_CACHE_PAGES))
 struct wrap_mdl {
 	struct nt_list list;
 	struct mdl mdl[0];
@@ -458,7 +458,10 @@ void wrap_init_timer(struct nt_timer *nt_timer, enum timer_type type,
 	 * there is no NDIS/DDK function where this memory can be
 	 * freed, so we use slack_kmalloc so it gets freed when driver
 	 * is unloaded */
-	wrap_timer = slack_kmalloc(sizeof(*wrap_timer));
+	if (nmb)
+		wrap_timer = kmalloc(sizeof(*wrap_timer), gfp_irql());
+	else
+		wrap_timer = slack_kmalloc(sizeof(*wrap_timer));
 	if (!wrap_timer) {
 		ERROR("couldn't allocate memory for timer");
 		return;
@@ -478,7 +481,7 @@ void wrap_init_timer(struct nt_timer *nt_timer, enum timer_type type,
 	nt_timer->wrap_timer_magic = WRAP_TIMER_MAGIC;
 	irql = nt_spin_lock_irql(&timer_lock, DISPATCH_LEVEL);
 	if (nmb)
-		InsertTailList(&nmb->wnd->timer_list, &wrap_timer->list);
+		InsertTailList(&nmb->wnd->wrap_timer_list, &wrap_timer->list);
 	else
 		InsertTailList(&wrap_timer_list, &wrap_timer->list);
 	nt_spin_unlock_irql(&timer_lock, irql);
@@ -583,7 +586,10 @@ wstdcall BOOLEAN WIN_FUNC(KeCancelTimer,1)
 wstdcall BOOLEAN WIN_FUNC(KeReadStateTimer,1)
 	(struct nt_timer *nt_timer)
 {
-	return nt_timer->dh.signal_state;
+	if (nt_timer->dh.signal_state)
+		return TRUE;
+	else
+		return FALSE;
 }
 
 wstdcall void WIN_FUNC(KeInitializeDpc,3)
@@ -1200,8 +1206,9 @@ wstdcall NTSTATUS WIN_FUNC(KeWaitForMultipleObjects,8)
 			ERROR("%p: argh, task %p should be %p", &thread_event,
 			      thread_event.task, current);
 #endif
-		/* don't rely on value of 'res' to check if woken up
-		 * by wakeup_threads */
+		/* the event may have been set by the time
+		 * wrap_wait_event returned and spinlock obtained, so
+		 * don't rely on value of 'res' - check event status */
 		if (!thread_event.done) {
 			assert(res <= 0);
 			/* timed out or interrupted; remove from wait list */
@@ -1443,7 +1450,6 @@ wstdcall NTSTATUS WIN_FUNC(KeDelayExecutionThread,3)
 	if (timeout <= 0)
 		EVENTEXIT(return STATUS_SUCCESS);
 
-	alertable = TRUE;
 	if (alertable)
 		set_current_state(TASK_INTERRUPTIBLE);
 	else
@@ -1496,9 +1502,9 @@ wstdcall void WIN_FUNC(KeQuerySystemTime,1)
 }
 
 wstdcall void WIN_FUNC(KeQueryTickCount,1)
-	(LARGE_INTEGER *j)
+	(LARGE_INTEGER *count)
 {
-	*j = jiffies;
+	*count = jiffies;
 }
 
 wstdcall LARGE_INTEGER WIN_FUNC(KeQueryPerformanceCounter,1)
@@ -1562,31 +1568,6 @@ static struct nt_thread *create_nt_thread(void)
 	thread->dh.size = sizeof(*thread);
 	TRACE2("thread: %p", thread);
 	return thread;
-}
-
-static void remove_nt_thread(struct nt_thread *thread)
-{
-	struct nt_list *ent;
-	KIRQL irql;
-
-	if (!thread) {
-		ERROR("invalid thread");
-		return;
-	}
-	TRACE1("terminating thread: %p, task: %p, pid: %d",
-		  thread, thread->task, thread->task->pid);
-	/* TODO: make sure waitqueue is empty and destroy it */
-	while (1) {
-		struct irp *irp;
-		irql = nt_spin_lock_irql(&thread->lock, DISPATCH_LEVEL);
-		ent = RemoveHeadList(&thread->irps);
-		nt_spin_unlock_irql(&thread->lock, irql);
-		if (!ent)
-			break;
-		irp = container_of(ent, struct irp, threads);
-		IoCancelIrp(irp);
-	}
-	ObDereferenceObject(thread);
 }
 
 struct nt_thread *get_current_nt_thread(void)
@@ -1696,15 +1677,31 @@ wstdcall NTSTATUS WIN_FUNC(PsTerminateSystemThread,1)
 
 	TRACE2("%p, %08X", current, status);
 	thread = get_current_nt_thread();
-	if (thread) {
-		TRACE2("setting event for thread: %p", thread);
-		KeSetEvent((struct nt_event *)&thread->dh, 0, FALSE);
-		TRACE2("set event for thread: %p", thread);
-		remove_nt_thread(thread);
-		complete_and_exit(NULL, status);
-		ERROR("oops: %p, %d", thread->task, thread->pid);
-	} else
+	if (!thread) {
 		ERROR("couldn't find thread for task: %p", current);
+		return STATUS_FAILURE;
+	}
+	TRACE2("setting event for thread: %p", thread);
+	KeSetEvent((struct nt_event *)&thread->dh, 0, FALSE);
+	TRACE2("set event for thread: %p", thread);
+	while (1) {
+		struct nt_list *ent;
+		struct irp *irp;
+		KIRQL irql;
+		irql = nt_spin_lock_irql(&thread->lock, DISPATCH_LEVEL);
+		ent = RemoveHeadList(&thread->irps);
+		nt_spin_unlock_irql(&thread->lock, irql);
+		if (!ent)
+			break;
+		irp = container_of(ent, struct irp, thread_list);
+		IOTRACE("%p", irp);
+		IoCancelIrp(irp);
+	}
+	/* the driver may later query this status with
+	 * ZwQueryInformationThread */
+	thread->status = status;
+	complete_and_exit(NULL, status);
+	ERROR("oops: %p, %d", thread->task, thread->pid);
 	return STATUS_FAILURE;
 }
 
@@ -1806,7 +1803,7 @@ struct mdl *allocate_init_mdl(void *virt, ULONG length)
 	int mdl_size = MmSizeOfMdl(virt, length);
 	KIRQL irql;
 
-	if (mdl_size <= CACHE_MDL_SIZE) {
+	if (mdl_size <= MDL_CACHE_SIZE) {
 		wrap_mdl = kmem_cache_alloc(mdl_cache, gfp_irql());
 		if (!wrap_mdl)
 			return NULL;
@@ -1816,7 +1813,7 @@ struct mdl *allocate_init_mdl(void *virt, ULONG length)
 		mdl = wrap_mdl->mdl;
 		TRACE3("allocated mdl from cache: %p(%p), %p(%d)",
 		       wrap_mdl, mdl, virt, length);
-		memset(mdl, 0, CACHE_MDL_SIZE);
+		memset(mdl, 0, MDL_CACHE_SIZE);
 		MmInitializeMdl(mdl, virt, length);
 		/* mark the MDL as allocated from cache pool so when
 		 * it is freed, we free it back to the pool */
@@ -1892,7 +1889,7 @@ wstdcall void WIN_FUNC(MmBuildMdlForNonPagedPool,1)
 	TRACE4("%p, %p, %p, %d, %d", mdl, mdl->mappedsystemva, mdl->startva,
 	       mdl->byteoffset, mdl->bytecount);
 	n = SPAN_PAGES(MmGetSystemAddressForMdl(mdl), MmGetMdlByteCount(mdl));
-	if (n > CACHE_MDL_PAGES)
+	if (n > MDL_CACHE_PAGES)
 		WARNING("%p, %d, %d", MmGetSystemAddressForMdl(mdl),
 			MmGetMdlByteCount(mdl), n);
 	mdl_pages = MmGetMdlPfnArray(mdl);
@@ -2016,6 +2013,7 @@ int dereference_object(void *object)
 wfastcall void WIN_FUNC(ObfDereferenceObject,1)
 	(void *object)
 {
+	TRACE2("%p", object);
 	dereference_object(object);
 }
 
@@ -2219,6 +2217,10 @@ wstdcall NTSTATUS WIN_FUNC(ZwClose,1)
 			} else
 				free_bin_file(bin_file);
 		}
+	} else if (coh->type == OBJECT_TYPE_NT_THREAD) {
+		struct nt_thread *thread = HANDLE_TO_OBJECT(handle);
+		TRACE2("thread: %p (%p)", thread, handle);
+		ObDereferenceObject(thread);
 	} else {
 		/* TODO: can we just dereference object here? */
 		WARNING("closing handle 0x%x not implemented", coh->type);
@@ -2474,7 +2476,7 @@ int ntoskernel_init(void)
 		return -ENOMEM;
 	}
 	mdl_cache = kmem_cache_create("wrap_mdl",
-				      sizeof(struct wrap_mdl) + CACHE_MDL_SIZE,
+				      sizeof(struct wrap_mdl) + MDL_CACHE_SIZE,
 				      0, 0, NULL, NULL);
 	TRACE2("%p", mdl_cache);
 	if (!mdl_cache) {
@@ -2530,7 +2532,7 @@ void ntoskernel_exit(void)
 		wrap_timer = container_of(cur, struct wrap_timer, list);
 		if (del_timer_sync(&wrap_timer->timer))
 			WARNING("Buggy Windows driver left timer %p running",
-				&wrap_timer->timer);
+				wrap_timer->nt_timer);
 		memset(wrap_timer, 0, sizeof(*wrap_timer));
 		slack_kfree(wrap_timer);
 	}
