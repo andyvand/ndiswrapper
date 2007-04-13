@@ -611,6 +611,11 @@ sub device_driver_alias {
     while (my $f = <LS>) {
 	chomp($f);
 	if ($f =~ /\.([[:xdigit:]]+)\.conf$/) {
+	    if (stat("$confdir/$driver/$devid.$1.conf")) {
+		printf "driver '$driver' is already used for '$devid'\n";
+		$done = 1;
+		last;
+	    }
 	    if (symlink("$f", "$confdir/$driver/$devid.$1.conf")) {
 		printf "driver '$driver' is used for '$devid'\n";
 		$done = 1;
