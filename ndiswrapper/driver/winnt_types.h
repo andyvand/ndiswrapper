@@ -242,7 +242,12 @@ struct kdpc {
 	void *ctx;
 	void *arg1;
 	void *arg2;
-	NT_SPIN_LOCK *lock;
+	union {
+		NT_SPIN_LOCK *lock;
+		/* 'lock' is not used; 'queued' represents whether
+		 * kdpc is queued or not */
+		int queued;
+	};
 };
 
 enum pool_type {
