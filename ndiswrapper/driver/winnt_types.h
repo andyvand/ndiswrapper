@@ -230,6 +230,8 @@ struct nt_list {
 
 typedef volatile ULONG_PTR NT_SPIN_LOCK;
 
+enum kdpc_importance {LowImportance, MediumImportance, HighImportance};
+
 struct kdpc;
 typedef void (*DPC)(struct kdpc *kdpc, void *ctx, void *arg1,
 		    void *arg2) wstdcall;
