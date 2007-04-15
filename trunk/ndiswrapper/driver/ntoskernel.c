@@ -1073,8 +1073,7 @@ static void wakeup_threads(struct dispatcher_header *dh)
 	EVENTENTER("%p", dh);
 	nt_list_for_each_safe(cur, next, &dh->wait_blocks) {
 		wb = container_of(cur, struct wait_block, list);
-		EVENTTRACE("%p: wait block: %p, thread: %p",
-			   dh, wb, wb->thread);
+		EVENTTRACE("%p: wb: %p, thread: %p", dh, wb, wb->thread);
 		assert(wb->thread != NULL);
 		assert(wb->object == NULL);
 		if (wb->thread && grab_signaled_state(dh, wb->thread, 1)) {
@@ -1125,7 +1124,6 @@ wstdcall NTSTATUS WIN_FUNC(KeWaitForMultipleObjects,8)
 		wb = wait_block_array;
 
 	/* TODO: should we allow threads to wait in non-alertable state? */
-	alertable = TRUE;
 	irql = nt_spin_lock_irql(&dispatcher_lock, DISPATCH_LEVEL);
 	/* If *timeout == 0: In the case of WaitAny, if an object can
 	 * be grabbed (object is in signaled state), grab and
@@ -1137,8 +1135,7 @@ wstdcall NTSTATUS WIN_FUNC(KeWaitForMultipleObjects,8)
 
 	for (i = wait_count = 0; i < count; i++) {
 		dh = object[i];
-		EVENTTRACE("%p: event %p state: %d",
-			   thread, dh, dh->signal_state);
+		EVENTTRACE("%p: event %p (%d)", thread, dh, dh->signal_state);
 		/* wait_type == 1 for WaitAny, 0 for WaitAll */
 		if (grab_signaled_state(dh, thread, wait_type)) {
 			if (wait_type == WaitAny) {
@@ -1167,19 +1164,18 @@ wstdcall NTSTATUS WIN_FUNC(KeWaitForMultipleObjects,8)
 	EVENTTRACE("%p, %p", &thread_event, current);
 	for (i = 0; i < count; i++) {
 		dh = object[i];
-		EVENTTRACE("%p: event %p state: %d",
-			   thread, dh, dh->signal_state);
+		EVENTTRACE("%p: event %p (%d)", thread, dh, dh->signal_state);
 		wb[i].object = NULL;
 		wb[i].thread_event = &thread_event;
 		if (grab_signaled_state(dh, thread, 1)) {
-			EVENTTRACE("%p: event %p already signaled: %d",
+			EVENTTRACE("%p: no wait for %p (%d)",
 				   thread, dh, dh->signal_state);
 			/* mark that we are not waiting on this object */
 			wb[i].thread = NULL;
 		} else {
 			assert(timeout == NULL || *timeout != 0);
 			wb[i].thread = thread;
-			EVENTTRACE("%p: need to wait on event %p", thread, dh);
+			EVENTTRACE("%p: wait for %p", thread, dh);
 			InsertTailList(&dh->wait_blocks, &wb[i].list);
 		}
 	}
@@ -1192,14 +1188,16 @@ wstdcall NTSTATUS WIN_FUNC(KeWaitForMultipleObjects,8)
 		wait_hz = 0;
 	else
 		wait_hz = SYSTEM_TIME_TO_HZ(*timeout) + 1;
-	EVENTTRACE("%p: sleeping for %ld on %p",
-		   thread, wait_hz, &thread_event);
+	EVENTTRACE("%p: sleep for %ld on %p", thread, wait_hz, &thread_event);
 
+	/* we don't honor 'alertable' - according to decription for
+	 * this, even if waiting in non-alertable state, thread may be
+	 * alerted in some circumstances */
 	while (wait_count) {
 		res = wrap_wait_event(thread_event.done, wait_hz,
 				      TASK_INTERRUPTIBLE);
 		irql = nt_spin_lock_irql(&dispatcher_lock, DISPATCH_LEVEL);
-		EVENTTRACE("%p woke up on %p, res = %d, done: %d", thread,
+		EVENTTRACE("%p woke up: %p, %d, %d", thread,
 			   &thread_event, res, thread_event.done);
 #ifdef EVENT_DEBUG
 		if (thread_event.task != current)
@@ -1215,7 +1213,7 @@ wstdcall NTSTATUS WIN_FUNC(KeWaitForMultipleObjects,8)
 			for (i = 0; i < count; i++) {
 				if (!wb[i].thread)
 					continue;
-				EVENTTRACE("%p: timedout, deq'ing %p (%p)",
+				EVENTTRACE("%p: timedout, dequeue %p (%p)",
 					   thread, object[i], wb[i].object);
 				RemoveEntryList(&wb[i].list);
 			}
@@ -1272,7 +1270,7 @@ wstdcall NTSTATUS WIN_FUNC(KeWaitForMultipleObjects,8)
 		else
 			wait_hz = 0;
 	}
-	/* this should never reach, but compiler wants return value */
+	/* should never reach here, but compiler wants return value */
 	ERROR("%p: wait_hz: %ld", thread, wait_hz);
 	EVENTEXIT(return STATUS_SUCCESS);
 }
@@ -1547,25 +1545,6 @@ wstdcall KPRIORITY WIN_FUNC(KeSetPriorityThread,2)
 	return old_prio;
 }
 
-static struct nt_thread *create_nt_thread(void)
-{
-	struct nt_thread *thread;
-
-	thread = allocate_object(sizeof(*thread), OBJECT_TYPE_NT_THREAD, NULL);
-	if (!thread) {
-		ERROR("couldn't allocate thread object");
-		return NULL;
-	}
-	thread->task = NULL;
-	thread->pid = 0;
-	nt_spin_lock_init(&thread->lock);
-	InitializeListHead(&thread->irps);
-	initialize_dh(&thread->dh, ThreadObject, 0);
-	thread->dh.size = sizeof(*thread);
-	TRACE2("thread: %p", thread);
-	return thread;
-}
-
 struct nt_thread *get_current_nt_thread(void)
 {
 	struct task_struct *task = current;
@@ -1629,6 +1608,7 @@ wstdcall NTSTATUS WIN_FUNC(PsCreateSystemThread,7)
 	(void **phandle, ULONG access, void *obj_attr, void *process,
 	 void *client_id, void (*func)(void *) wstdcall, void *ctx)
 {
+	struct nt_thread *thread;
 	struct thread_trampoline_info thread_info;
 	no_warn_unused struct task_struct *task;
 	no_warn_unused int pid;
@@ -1637,9 +1617,19 @@ wstdcall NTSTATUS WIN_FUNC(PsCreateSystemThread,7)
 	       "client_id = %p, func = %p, context = %p", phandle, access,
 	       obj_attr, process, client_id, func, ctx);
 
-	thread_info.thread = create_nt_thread();
-	if (!thread_info.thread)
+	thread = allocate_object(sizeof(*thread), OBJECT_TYPE_NT_THREAD, NULL);
+	if (!thread) {
+		ERROR("couldn't allocate thread object");
 		EXIT2(return STATUS_RESOURCES);
+	}
+	thread->task = NULL;
+	thread->pid = 0;
+	nt_spin_lock_init(&thread->lock);
+	InitializeListHead(&thread->irps);
+	initialize_dh(&thread->dh, ThreadObject, 0);
+	thread->dh.size = sizeof(*thread);
+	TRACE2("thread: %p", thread);
+	thread_info.thread = thread;
 	thread_info.func = func;
 	thread_info.ctx = ctx;
 	init_completion(&thread_info.started);
@@ -1660,6 +1650,7 @@ wstdcall NTSTATUS WIN_FUNC(PsCreateSystemThread,7)
 	}
 	TRACE2("created task: %p (%d)", task, task->pid);
 #endif
+
 	wait_for_completion(&thread_info.started);
 	*phandle = OBJECT_TO_HEADER(thread_info.thread);
 	TRACE2("created thread: %p, %p", thread_info.thread, *phandle);
