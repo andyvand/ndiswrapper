@@ -326,7 +326,7 @@ static void miniport_halt(struct wrap_ndis_device *wnd)
 				WARNING("Buggy Windows driver left timer %p "
 					"running", wrap_timer->nt_timer);
 			memset(wrap_timer, 0, sizeof(*wrap_timer));
-			slack_kfree(wrap_timer);
+			kfree(wrap_timer);
 		}
 	} else
 		WARNING("device %p is not initialized - not halting", wnd);
@@ -1971,7 +1971,6 @@ static int wrap_ndis_remove_device(struct wrap_ndis_device *wnd)
 	/* prevent setting essid during disassociation */
 	memset(&wnd->essid, 0, sizeof(wnd->essid));
 	if (wnd->physical_medium == NdisPhysicalMediumWirelessLan) {
-		NDIS_STATUS res;
 		up(&wnd->ndis_comm_mutex);
 		disassociate(wnd, 0);
 		/* am772 driver requires sometime for ndis worker to
