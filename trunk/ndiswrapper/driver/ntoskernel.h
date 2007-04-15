@@ -181,8 +181,11 @@ typedef struct {
 
 #undef create_singlethread_workqueue
 #define create_singlethread_workqueue wrap_create_wq
+#undef destroy_workqueue
 #define destroy_workqueue wrap_destroy_wq
+#undef queue_work
 #define queue_work wrap_queue_work
+#undef flush_workqueue
 #define flush_workqueue wrap_flush_wq
 
 workqueue_struct_t *wrap_create_wq(const char *name);
@@ -383,10 +386,10 @@ typedef u32 pm_message_t;
 #endif
 
 /* TICK is 100ns */
-#define TICKSPERSEC		10000000LL
+#define TICKSPERSEC		10000000
 #define TICKSPERMSEC		10000
 #define SECSPERDAY		86400
-#define TICKSPERJIFFY		((10000000 + HZ - 1) / HZ)
+#define TICKSPERJIFFY		((TICKSPERSEC + HZ - 1) / HZ)
 
 /* 1601 to 1970 is 369 years plus 89 leap days */
 #define SECS_1601_TO_1970	((369 * 365 + 89) * (u64)SECSPERDAY)

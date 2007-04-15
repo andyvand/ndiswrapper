@@ -591,7 +591,6 @@ wstdcall void WIN_FUNC(KeInitializeDpc,3)
 	memset(kdpc, 0, sizeof(*kdpc));
 	kdpc->func = func;
 	kdpc->ctx  = ctx;
-	kdpc->queued = 0;
 }
 
 static void kdpc_worker(worker_param_t dummy)
@@ -637,7 +636,10 @@ static BOOLEAN queue_kdpc(struct kdpc *kdpc)
 	if (kdpc->queued)
 		ret = FALSE;
 	else {
-		InsertTailList(&kdpc_list, &kdpc->list);
+		if (kdpc->importance == HighImportance)
+			InsertHeadList(&kdpc_list, &kdpc->list);
+		else
+			InsertTailList(&kdpc_list, &kdpc->list);
 		kdpc->queued = 1;
 		schedule_ntos_work(&kdpc_work);
 		ret = TRUE;
@@ -678,6 +680,12 @@ wstdcall BOOLEAN WIN_FUNC(KeRemoveQueueDpc,1)
 	(struct kdpc *kdpc)
 {
 	return dequeue_kdpc(kdpc);
+}
+
+wstdcall void WIN_FUNC(KeSetImportanceDpc,2)
+	(struct kdpc *kdpc, enum kdpc_importance importance)
+{
+	kdpc->importance = importance;
 }
 
 static void ntos_work_worker(worker_param_t dummy)
