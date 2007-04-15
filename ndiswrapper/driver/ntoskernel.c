@@ -47,16 +47,8 @@ NT_SPIN_LOCK ntoskernel_lock;
 static void *mdl_cache;
 static struct nt_list wrap_mdl_list;
 
-/* use tasklet instead worker to execute kdpc's */
-#define KDPC_TASKLET 1
-
-#ifdef KDPC_TASKLET
-static struct tasklet_struct kdpc_work;
-static void kdpc_worker(unsigned long dummy);
-#else
 static work_struct_t kdpc_work;
 static void kdpc_worker(worker_param_t dummy);
-#endif
 
 static struct nt_list kdpc_list;
 static NT_SPIN_LOCK kdpc_list_lock;
@@ -73,10 +65,10 @@ struct bus_driver {
 
 static struct nt_list bus_driver_list;
 
-static work_struct_t ntos_work_item_work;
-static struct nt_list ntos_work_item_list;
-static NT_SPIN_LOCK ntos_work_item_list_lock;
-static void ntos_work_item_worker(worker_param_t dummy);
+static work_struct_t ntos_work;
+static struct nt_list ntos_work_list;
+static NT_SPIN_LOCK ntos_work_lock;
+static void ntos_work_worker(worker_param_t dummy);
 
 NT_SPIN_LOCK irp_cancel_lock;
 
@@ -602,29 +594,27 @@ wstdcall void WIN_FUNC(KeInitializeDpc,3)
 	InitializeListHead(&kdpc->list);
 }
 
-#ifdef KDPC_TASKLET
-static void kdpc_worker(unsigned long dummy)
-#else
 static void kdpc_worker(worker_param_t dummy)
-#endif
 {
 	struct nt_list *entry;
 	struct kdpc *kdpc;
+	unsigned long flags;
 	KIRQL irql;
 
 	while (1) {
-		irql = nt_spin_lock_irql(&kdpc_list_lock, DISPATCH_LEVEL);
+		nt_spin_lock_irqsave(&kdpc_list_lock, flags);
 		entry = RemoveHeadList(&kdpc_list);
-		if (!entry) {
-			nt_spin_unlock_irql(&kdpc_list_lock, irql);
+		if (entry) {
+			kdpc = container_of(entry, struct kdpc, list);
+			/* initialize kdpc's list so queue/dequeue
+			 * know if it is in the queue or not */
+			InitializeListHead(&kdpc->list);
+		} else
+			kdpc = NULL;
+		nt_spin_unlock_irqrestore(&kdpc_list_lock, flags);
+		if (!kdpc)
 			break;
-		}
-		kdpc = container_of(entry, struct kdpc, list);
-		/* initialize kdpc's list so queue/dequeue know if it
-		 * is in the queue or not */
-		InitializeListHead(&kdpc->list);
-		/* irql will be lowered below */
-		nt_spin_unlock(&kdpc_list_lock);
+		irql = raise_irql(DISPATCH_LEVEL);
 		TRACE5("%p, %p, %p, %p, %p", kdpc, kdpc->func, kdpc->ctx,
 		       kdpc->arg1, kdpc->arg2);
 		LIN2WIN4(kdpc->func, kdpc, kdpc->ctx, kdpc->arg1, kdpc->arg2);
@@ -635,49 +625,41 @@ static void kdpc_worker(worker_param_t dummy)
 wstdcall void WIN_FUNC(KeFlushQueuedDpcs,0)
 	(void)
 {
-#ifdef KDPC_TASKLET
-	kdpc_worker(0);
-#else
 	kdpc_worker(NULL);
-#endif
 }
 
 static BOOLEAN queue_kdpc(struct kdpc *kdpc)
 {
 	BOOLEAN ret;
-	KIRQL irql;
+	unsigned long flags;
 
 	ENTER5("%p", kdpc);
-	irql = nt_spin_lock_irql(&kdpc_list_lock, DISPATCH_LEVEL);
+	nt_spin_lock_irqsave(&kdpc_list_lock, flags);
 	if (IsListEmpty(&kdpc->list)) {
 		InsertTailList(&kdpc_list, &kdpc->list);
-#ifdef KDPC_TASKLET
-		tasklet_schedule(&kdpc_work);
-#else
 		schedule_ntos_work(&kdpc_work);
-#endif
 		ret = TRUE;
 	} else
 		ret = FALSE;
-	nt_spin_unlock_irql(&kdpc_list_lock, irql);
+	nt_spin_unlock_irqrestore(&kdpc_list_lock, flags);
 	TRACE5("%d", ret);
-	EXIT5(return ret);
+	return ret;
 }
 
 static BOOLEAN dequeue_kdpc(struct kdpc *kdpc)
 {
 	BOOLEAN ret;
-	KIRQL irql;
+	unsigned long flags;
 
 	ENTER5("%p", kdpc);
-	irql = nt_spin_lock_irql(&kdpc_list_lock, DISPATCH_LEVEL);
+	nt_spin_lock_irqsave(&kdpc_list_lock, flags);
 	if (IsListEmpty(&kdpc->list))
 		ret = FALSE;
 	else {
 		RemoveEntryList(&kdpc->list);
 		ret = TRUE;
 	}
-	nt_spin_unlock_irql(&kdpc_list_lock, irql);
+	nt_spin_unlock_irqrestore(&kdpc_list_lock, flags);
 	TRACE5("%d", ret);
 	return ret;
 }
@@ -688,26 +670,25 @@ wstdcall BOOLEAN WIN_FUNC(KeInsertQueueDpc,3)
 	ENTER5("%p, %p, %p", kdpc, arg1, arg2);
 	kdpc->arg1 = arg1;
 	kdpc->arg2 = arg2;
-	EXIT5(return queue_kdpc(kdpc));
+	return queue_kdpc(kdpc);
 }
 
 wstdcall BOOLEAN WIN_FUNC(KeRemoveQueueDpc,1)
 	(struct kdpc *kdpc)
 {
-	EXIT3(return dequeue_kdpc(kdpc));
+	return dequeue_kdpc(kdpc);
 }
 
-static void ntos_work_item_worker(worker_param_t dummy)
+static void ntos_work_worker(worker_param_t dummy)
 {
 	struct ntos_work_item *ntos_work_item;
 	struct nt_list *cur;
 	KIRQL irql;
 
 	while (1) {
-		irql = nt_spin_lock_irql(&ntos_work_item_list_lock,
-					 DISPATCH_LEVEL);
-		cur = RemoveHeadList(&ntos_work_item_list);
-		nt_spin_unlock_irql(&ntos_work_item_list_lock, irql);
+		irql = nt_spin_lock_irql(&ntos_work_lock, DISPATCH_LEVEL);
+		cur = RemoveHeadList(&ntos_work_list);
+		nt_spin_unlock_irql(&ntos_work_lock, irql);
 		if (!cur)
 			break;
 		ntos_work_item = container_of(cur, struct ntos_work_item, list);
@@ -735,10 +716,10 @@ int schedule_ntos_work_item(NTOS_WORK_FUNC func, void *arg1, void *arg2)
 	ntos_work_item->func = func;
 	ntos_work_item->arg1 = arg1;
 	ntos_work_item->arg2 = arg2;
-	irql = nt_spin_lock_irql(&ntos_work_item_list_lock, DISPATCH_LEVEL);
-	InsertTailList(&ntos_work_item_list, &ntos_work_item->list);
-	nt_spin_unlock_irql(&ntos_work_item_list_lock, irql);
-	schedule_ntos_work(&ntos_work_item_work);
+	irql = nt_spin_lock_irql(&ntos_work_lock, DISPATCH_LEVEL);
+	InsertTailList(&ntos_work_list, &ntos_work_item->list);
+	nt_spin_unlock_irql(&ntos_work_lock, irql);
+	schedule_ntos_work(&ntos_work);
 	WORKEXIT(return 0);
 }
 
@@ -1123,8 +1104,6 @@ wstdcall NTSTATUS WIN_FUNC(KeWaitForMultipleObjects,8)
 	else
 		wb = wait_block_array;
 
-	/* TODO: should we allow threads to wait in non-alertable state? */
-	irql = nt_spin_lock_irql(&dispatcher_lock, DISPATCH_LEVEL);
 	/* If *timeout == 0: In the case of WaitAny, if an object can
 	 * be grabbed (object is in signaled state), grab and
 	 * return. In the case of WaitAll, we have to first make sure
@@ -1133,6 +1112,7 @@ wstdcall NTSTATUS WIN_FUNC(KeWaitForMultipleObjects,8)
 	 * depending on how to satisfy wait. If all of them can be
 	 * grabbed, we will grab them in the next loop below */
 
+	irql = nt_spin_lock_irql(&dispatcher_lock, DISPATCH_LEVEL);
 	for (i = wait_count = 0; i < count; i++) {
 		dh = object[i];
 		EVENTTRACE("%p: event %p (%d)", thread, dh, dh->signal_state);
@@ -2425,7 +2405,7 @@ int ntoskernel_init(void)
 
 	nt_spin_lock_init(&dispatcher_lock);
 	nt_spin_lock_init(&ntoskernel_lock);
-	nt_spin_lock_init(&ntos_work_item_list_lock);
+	nt_spin_lock_init(&ntos_work_lock);
 	nt_spin_lock_init(&kdpc_list_lock);
 	nt_spin_lock_init(&irp_cancel_lock);
 	InitializeListHead(&wrap_mdl_list);
@@ -2433,14 +2413,10 @@ int ntoskernel_init(void)
 	InitializeListHead(&callback_objects);
 	InitializeListHead(&bus_driver_list);
 	InitializeListHead(&object_list);
-	InitializeListHead(&ntos_work_item_list);
+	InitializeListHead(&ntos_work_list);
 
-#ifdef KDPC_TASKLET
-	tasklet_init(&kdpc_work, kdpc_worker, 0);
-#else
 	initialize_work(&kdpc_work, kdpc_worker, NULL);
-#endif
-	initialize_work(&ntos_work_item_work, ntos_work_item_worker, NULL);
+	initialize_work(&ntos_work, ntos_work_worker, NULL);
 	nt_spin_lock_init(&timer_lock);
 	InitializeListHead(&wrap_timer_list);
 
@@ -2507,9 +2483,6 @@ void ntoskernel_exit(void)
 
 	ENTER2("");
 
-#ifdef KDPC_TASKLET
-	tasklet_kill(&kdpc_work);
-#endif
 	/* free kernel (Ke) timers */
 	TRACE2("freeing timers");
 	while (1) {
