@@ -554,6 +554,7 @@ static int wrap_pnp_start_device(struct wrap_device *wd)
 	wd->dev_bus = WRAP_DEVICE_BUS(driver->dev_type, WRAP_BUS(wd->dev_bus));
 	TRACE1("dev type: %d, bus type: %d, %d", WRAP_DEVICE(wd->dev_bus),
 	       WRAP_BUS(wd->dev_bus), wd->dev_bus);
+	TRACE1("%d, %d", driver->dev_type, wrap_is_usb_bus(wd->dev_bus));
 	/* first create pdo */
 	if (wrap_is_pci_bus(wd->dev_bus))
 		pdo_drv_obj = find_bus_driver("PCI");

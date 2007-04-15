@@ -1463,25 +1463,6 @@ wstdcall NTSTATUS WIN_FUNC(KeDelayExecutionThread,3)
 		EVENTEXIT(return STATUS_ALERTED);
 }
 
-wstdcall KPRIORITY WIN_FUNC(KeQueryPriorityThread,1)
-	(struct task_struct *task)
-{
-	KPRIORITY prio;
-
-	EVENTENTER("task: %p", task);
-	return LOW_REALTIME_PRIORITY;
-
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,0)
-	prio = 1;
-#else
-	if (rt_task(task))
-		prio = LOW_REALTIME_PRIORITY;
-	else
-		prio = MAXIMUM_PRIORITY;
-#endif
-	EVENTEXIT(return prio);
-}
-
 wstdcall ULONGLONG WIN_FUNC(KeQueryInterruptTime,0)
 	(void)
 {
@@ -1520,8 +1501,25 @@ wstdcall struct task_struct *WIN_FUNC(KeGetCurrentThread,0)
 {
 	struct task_struct *task = current;
 
-	TRACE5("task: %p", task);
+	TRACE2("task: %p, %d", task, task->pid);
 	return task;
+}
+
+wstdcall KPRIORITY WIN_FUNC(KeQueryPriorityThread,1)
+	(struct task_struct *task)
+{
+	KPRIORITY prio;
+
+	TRACE2("task: %p, %d", task, task->pid);
+	if (thread_priority(task) <= 0)
+		prio = LOW_PRIORITY;
+	else if (thread_priority(task) <= -5)
+		prio = LOW_REALTIME_PRIORITY;
+	else
+		prio = MAXIMUM_PRIORITY;
+
+	TRACE2("%d", prio);
+	return prio;
 }
 
 wstdcall KPRIORITY WIN_FUNC(KeSetPriorityThread,2)
@@ -1529,25 +1527,23 @@ wstdcall KPRIORITY WIN_FUNC(KeSetPriorityThread,2)
 {
 	KPRIORITY old_prio;
 
-	ENTER3("task: %p, priority = %u", task, priority);
+	TRACE2("task: %p, %d, priority = %u", task, task->pid, priority);
 
-	return LOW_REALTIME_PRIORITY;
-
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,0)
-	/* FIXME: is there a way to set kernel thread prio on 2.4? */
-	old_prio = LOW_PRIORITY;
-#else
-	if (rt_task(task))
+	if (thread_priority(task) <= 0)
+		old_prio = LOW_PRIORITY;
+	else if (thread_priority(task) <= -5)
 		old_prio = LOW_REALTIME_PRIORITY;
 	else
 		old_prio = MAXIMUM_PRIORITY;
-#if 0
-	if (priority == LOW_REALTIME_PRIORITY)
-		set_user_nice(task, -20);
-	else
-		set_user_nice(task, 10);
-#endif
-#endif
+
+	if (priority == LOW_PRIORITY)
+		set_thread_priority(task, 0);
+	else if (priority == LOW_REALTIME_PRIORITY)
+		set_thread_priority(task, -5);
+	else if (priority == HIGH_PRIORITY)
+		set_thread_priority(task, -10);
+
+	TRACE2("%d, %d", old_prio, thread_priority(task));
 	return old_prio;
 }
 
@@ -1593,7 +1589,7 @@ struct nt_thread *get_current_nt_thread(void)
 	}
 	nt_spin_unlock_irql(&ntoskernel_lock, irql);
 	if (thread == NULL)
-		TRACE6("couldn't find thread for task %p, %d", task, task->pid);
+		TRACE4("couldn't find thread for task %p, %d", task, task->pid);
 	TRACE6("thread: %p", thread);
 	return thread;
 }
@@ -2465,6 +2461,10 @@ int ntoskernel_init(void)
 	TRACE2("%Lu", wrap_ticks_to_boot);
 #ifdef USE_OWN_NTOS_WORKQUEUE
 	ntos_wq = create_singlethread_workqueue("ntos_wq");
+	if (!ntos_wq) {
+		WARNING("couldn't create ntos_wq thread");
+		return -ENOMEM;
+	}
 #endif
 
 	if (add_bus_driver("PCI")

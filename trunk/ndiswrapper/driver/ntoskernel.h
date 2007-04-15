@@ -97,7 +97,7 @@
 
 #include <linux/smp_lock.h>
 
-/* RedHat kernels #define irqs_disabled this way */
+/* RedHat kernels define irqs_disabled this way */
 #ifndef irqs_disabled
 #define irqs_disabled()                \
 ({                                     \
@@ -344,6 +344,14 @@ typedef u32 pm_message_t;
 
 #define memcpy_skb(skb, from, length)			\
 	memcpy(skb_put(skb, length), from, length)
+
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,9)
+#define thread_priority(thread) (thread)->nice
+#define set_thread_priority(thread, prio) (thread)->nice = (prio)
+#else
+#define thread_priority(thread) task_nice(thread)
+#define set_thread_priority(thread, prio) set_user_nice(thread, prio)
+#endif
 
 #include "ndiswrapper.h"
 #include "pe_linker.h"
