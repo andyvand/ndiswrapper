@@ -591,7 +591,7 @@ wstdcall void WIN_FUNC(KeInitializeDpc,3)
 	memset(kdpc, 0, sizeof(*kdpc));
 	kdpc->func = func;
 	kdpc->ctx  = ctx;
-	InitializeListHead(&kdpc->list);
+	kdpc->queued = 0;
 }
 
 static void kdpc_worker(worker_param_t dummy)
@@ -606,9 +606,8 @@ static void kdpc_worker(worker_param_t dummy)
 		entry = RemoveHeadList(&kdpc_list);
 		if (entry) {
 			kdpc = container_of(entry, struct kdpc, list);
-			/* initialize kdpc's list so queue/dequeue
-			 * know if it is in the queue or not */
-			InitializeListHead(&kdpc->list);
+			assert(kdpc->queued);
+			kdpc->queued = 0;
 		} else
 			kdpc = NULL;
 		nt_spin_unlock_irqrestore(&kdpc_list_lock, flags);
@@ -635,12 +634,14 @@ static BOOLEAN queue_kdpc(struct kdpc *kdpc)
 
 	ENTER5("%p", kdpc);
 	nt_spin_lock_irqsave(&kdpc_list_lock, flags);
-	if (IsListEmpty(&kdpc->list)) {
+	if (kdpc->queued)
+		ret = FALSE;
+	else {
 		InsertTailList(&kdpc_list, &kdpc->list);
+		kdpc->queued = 1;
 		schedule_ntos_work(&kdpc_work);
 		ret = TRUE;
-	} else
-		ret = FALSE;
+	}
 	nt_spin_unlock_irqrestore(&kdpc_list_lock, flags);
 	TRACE5("%d", ret);
 	return ret;
@@ -653,12 +654,12 @@ static BOOLEAN dequeue_kdpc(struct kdpc *kdpc)
 
 	ENTER5("%p", kdpc);
 	nt_spin_lock_irqsave(&kdpc_list_lock, flags);
-	if (IsListEmpty(&kdpc->list))
-		ret = FALSE;
-	else {
+	if (kdpc->queued) {
 		RemoveEntryList(&kdpc->list);
+		kdpc->queued = 0;
 		ret = TRUE;
-	}
+	} else
+		ret = FALSE;
 	nt_spin_unlock_irqrestore(&kdpc_list_lock, flags);
 	TRACE5("%d", ret);
 	return ret;
