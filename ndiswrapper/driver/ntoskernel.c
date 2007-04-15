@@ -399,11 +399,11 @@ wfastcall void WIN_FUNC(ExInterlockedAddLargeStatistic,2)
 	restore_local_irq(flags);
 }
 
-static void initialize_dh(struct dispatcher_header *dh, enum dh_type type,
-			  int state)
+static void initialize_object(struct dispatcher_header *dh, enum dh_type type,
+			      int state)
 {
 	memset(dh, 0, sizeof(*dh));
-	set_dh_type(dh, type);
+	set_object_type(dh, type);
 	dh->signal_state = state;
 	InitializeListHead(&dh->wait_blocks);
 }
@@ -469,7 +469,7 @@ void wrap_init_timer(struct nt_timer *nt_timer, enum timer_type type,
 #endif
 	nt_timer->wrap_timer = wrap_timer;
 	nt_timer->kdpc = kdpc;
-	initialize_dh(&nt_timer->dh, type, 0);
+	initialize_object(&nt_timer->dh, type, 0);
 	nt_timer->wrap_timer_magic = WRAP_TIMER_MAGIC;
 	irql = nt_spin_lock_irql(&timer_lock, DISPATCH_LEVEL);
 	if (nmb)
@@ -1020,11 +1020,11 @@ wstdcall void WIN_FUNC(ExNotifyCallback,3)
 /* @grab indicates if the event should be grabbed or checked
  * - note that a semaphore may stay in signaled state for multiple
  * 'grabs' if the count is > 1 */
-static int grab_signaled_state(struct dispatcher_header *dh,
-			       struct task_struct *thread, int grab)
+static int grab_object(struct dispatcher_header *dh,
+		       struct task_struct *thread, int grab)
 {
 	EVENTTRACE("%p, %p, %d, %d", dh, thread, grab, dh->signal_state);
-	if (is_mutex_dh(dh)) {
+	if (is_mutex_object(dh)) {
 		struct nt_mutex *nt_mutex;
 		nt_mutex = container_of(dh, struct nt_mutex, dh);
 		EVENTTRACE("%p, %p, %d, %p, %d", nt_mutex,
@@ -1045,17 +1045,15 @@ static int grab_signaled_state(struct dispatcher_header *dh,
 	} else if (dh->signal_state > 0) {
 		/* if grab, decrement signal_state for
 		 * synchronization or semaphore objects */
-		if (grab && (dh->type == SynchronizationObject ||
-			     is_semaphore_dh(dh)))
+		if (grab && (is_synch_object(dh) || is_semaphore_object(dh)))
 			dh->signal_state--;
 		EVENTEXIT(return 1);
 	}
 	EVENTEXIT(return 0);
 }
 
-/* this function should be called holding dispatcher_lock spinlock at
- * DISPATCH_LEVEL */
-static void wakeup_threads(struct dispatcher_header *dh)
+/* this function should be called holding dispatcher_lock */
+static void object_signalled(struct dispatcher_header *dh)
 {
 	struct nt_list *cur, *next;
 	struct wait_block *wb = NULL;
@@ -1066,17 +1064,14 @@ static void wakeup_threads(struct dispatcher_header *dh)
 		EVENTTRACE("%p: wb: %p, thread: %p", dh, wb, wb->thread);
 		assert(wb->thread != NULL);
 		assert(wb->object == NULL);
-		if (wb->thread && grab_signaled_state(dh, wb->thread, 1)) {
+		if (wb->thread) {
 			struct thread_event *thread_event =
 				wb->thread_event;
 			EVENTTRACE("%p: waking up task %p for %p", thread_event,
 				   wb->thread, dh);
-			RemoveEntryList(cur);
 			wb->object = dh;
 			thread_event->done = 1;
 			wake_up_process(thread_event->task);
-			if (dh->type == SynchronizationObject)
-				break;
 		} else
 			EVENTTRACE("not waking up task: %p", wb->thread);
 	}
@@ -1126,13 +1121,10 @@ wstdcall NTSTATUS WIN_FUNC(KeWaitForMultipleObjects,8)
 		dh = object[i];
 		EVENTTRACE("%p: event %p (%d)", thread, dh, dh->signal_state);
 		/* wait_type == 1 for WaitAny, 0 for WaitAll */
-		if (grab_signaled_state(dh, thread, wait_type)) {
+		if (grab_object(dh, thread, wait_type)) {
 			if (wait_type == WaitAny) {
 				nt_spin_unlock_irql(&dispatcher_lock, irql);
-				if (count > 1)
-					EVENTEXIT(return STATUS_WAIT_0 + i);
-				else
-					EVENTEXIT(return STATUS_SUCCESS);
+				EVENTEXIT(return STATUS_WAIT_0 + i);
 			}
 		} else {
 			EVENTTRACE("%p: wait for %p", thread, dh);
@@ -1150,19 +1142,19 @@ wstdcall NTSTATUS WIN_FUNC(KeWaitForMultipleObjects,8)
 	/* if *timeout == 0, this step will grab all the objects */
 	thread_event.done = 0;
 	thread_event.task = thread;
-	EVENTTRACE("%p, %p", &thread_event, current);
+	EVENTTRACE("%p, %p", &thread_event, thread);
 	for (i = 0; i < count; i++) {
 		dh = object[i];
 		EVENTTRACE("%p: event %p (%d)", thread, dh, dh->signal_state);
 		wb[i].object = NULL;
-		wb[i].thread_event = &thread_event;
-		if (grab_signaled_state(dh, thread, 1)) {
+		if (grab_object(dh, thread, 1)) {
 			EVENTTRACE("%p: no wait for %p (%d)",
 				   thread, dh, dh->signal_state);
 			/* mark that we are not waiting on this object */
 			wb[i].thread = NULL;
 		} else {
 			assert(timeout == NULL || *timeout != 0);
+			wb[i].thread_event = &thread_event;
 			wb[i].thread = thread;
 			EVENTTRACE("%p: wait for %p", thread, dh);
 			InsertTailList(&dh->wait_blocks, &wb[i].list);
@@ -1189,9 +1181,9 @@ wstdcall NTSTATUS WIN_FUNC(KeWaitForMultipleObjects,8)
 		EVENTTRACE("%p woke up: %p, %d, %d", thread,
 			   &thread_event, res, thread_event.done);
 #ifdef EVENT_DEBUG
-		if (thread_event.task != current)
+		if (thread_event.task != thread)
 			ERROR("%p: argh, task %p should be %p", &thread_event,
-			      thread_event.task, current);
+			      thread_event.task, thread);
 #endif
 		/* the event may have been set by the time
 		 * wrap_wait_event returned and spinlock obtained, so
@@ -1213,27 +1205,21 @@ wstdcall NTSTATUS WIN_FUNC(KeWaitForMultipleObjects,8)
 				EVENTEXIT(return STATUS_TIMEOUT);
 		}
 		assert(res > 0);
-		/* woken up by wakeup_threads */
+		/* woken because object(s) signalled */
 		for (i = 0; wait_count && i < count; i++) {
 			if (!wb[i].thread)
 				continue;
-			EVENTTRACE("object: %p, %p", object[i], wb[i].object);
-			if (!wb[i].object) {
+			if (wb[i].object != object[i]) {
 				EVENTTRACE("not woken for %p", object[i]);
 				continue;
 			}
-			DBG_BLOCK(1) {
-				if (wb[i].object != object[i]) {
-					ERROR("argh, event not signalled? "
-					      "%p, %p", wb[i].object,
-					      object[i]);
-					continue;
-				}
-			}
+			if (!grab_object(object[i], thread, 1))
+				continue;
+			EVENTTRACE("object: %p, %p", object[i], wb[i].object);
 			wb[i].object = NULL;
 			wb[i].thread = NULL;
-			wait_count--;
 			RemoveEntryList(&wb[i].list);
+			wait_count--;
 			if (wait_type == WaitAny) {
 				int j;
 				/* done; remove from rest of wait list */
@@ -1276,7 +1262,7 @@ wstdcall void WIN_FUNC(KeInitializeEvent,3)
 	(struct nt_event *nt_event, enum event_type type, BOOLEAN state)
 {
 	EVENTENTER("event = %p, type = %d, state = %d", nt_event, type, state);
-	initialize_dh(&nt_event->dh, type, state);
+	initialize_object(&nt_event->dh, type, state);
 	EVENTEXIT(return);
 }
 
@@ -1294,7 +1280,7 @@ wstdcall LONG WIN_FUNC(KeSetEvent,3)
 	old_state = nt_event->dh.signal_state;
 	nt_event->dh.signal_state = 1;
 	if (old_state == 0)
-		wakeup_threads(&nt_event->dh);
+		object_signalled(&nt_event->dh);
 	nt_spin_unlock_irql(&dispatcher_lock, irql);
 	EVENTEXIT(return old_state);
 }
@@ -1344,7 +1330,7 @@ wstdcall void WIN_FUNC(KeInitializeMutex,2)
 
 	EVENTENTER("%p", mutex);
 	irql = nt_spin_lock_irql(&dispatcher_lock, DISPATCH_LEVEL);
-	initialize_dh(&mutex->dh, MutexObject, 1);
+	initialize_object(&mutex->dh, MutexObject, 1);
 	mutex->dh.size = sizeof(*mutex);
 	InitializeListHead(&mutex->list);
 	mutex->abandoned = FALSE;
@@ -1372,7 +1358,7 @@ wstdcall LONG WIN_FUNC(KeReleaseMutex,2)
 		ret = mutex->dh.signal_state++;
 		if (ret == 0) {
 			mutex->owner_thread = NULL;
-			wakeup_threads(&mutex->dh);
+			object_signalled(&mutex->dh);
 		}
 	} else {
 		ret = STATUS_MUTANT_NOT_OWNED;
@@ -1392,7 +1378,7 @@ wstdcall void WIN_FUNC(KeInitializeSemaphore,3)
 	/* if limit > 1, we need to satisfy as many waits (until count
 	 * becomes 0); so we keep decrementing count everytime a wait
 	 * is satisified */
-	initialize_dh(&semaphore->dh, SemaphoreObject, count);
+	initialize_object(&semaphore->dh, SemaphoreObject, count);
 	semaphore->dh.size = sizeof(*semaphore);
 	semaphore->limit = limit;
 	EVENTEXIT(return);
@@ -1417,7 +1403,7 @@ wstdcall LONG WIN_FUNC(KeReleaseSemaphore,4)
 		semaphore->dh.signal_state = semaphore->limit;
 	}
 	if (semaphore->dh.signal_state > 0)
-		wakeup_threads(&semaphore->dh);
+		object_signalled(&semaphore->dh);
 	nt_spin_unlock_irql(&dispatcher_lock, irql);
 	EVENTEXIT(return ret);
 }
@@ -1615,7 +1601,7 @@ wstdcall NTSTATUS WIN_FUNC(PsCreateSystemThread,7)
 	thread->pid = 0;
 	nt_spin_lock_init(&thread->lock);
 	InitializeListHead(&thread->irps);
-	initialize_dh(&thread->dh, ThreadObject, 0);
+	initialize_object(&thread->dh, ThreadObject, 0);
 	thread->dh.size = sizeof(*thread);
 	TRACE2("thread: %p", thread);
 	thread_info.thread = thread;

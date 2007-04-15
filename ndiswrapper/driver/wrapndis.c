@@ -1973,9 +1973,6 @@ static int wrap_ndis_remove_device(struct wrap_ndis_device *wnd)
 	if (wnd->physical_medium == NdisPhysicalMediumWirelessLan) {
 		up(&wnd->ndis_comm_mutex);
 		disassociate(wnd, 0);
-		/* am772 driver requires sometime for ndis worker to
-		 * finish after disassoication */
-		sleep_hz(HZ / 2);
 		down_interruptible(&wnd->ndis_comm_mutex);
 	}
 	set_bit(SHUTDOWN, &wnd->wrap_ndis_pending_work);

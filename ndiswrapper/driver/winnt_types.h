@@ -457,10 +457,12 @@ struct nt_thread {
 	NT_SPIN_LOCK lock;
 };
 
-#define set_dh_type(dh, type)		((dh)->type = (type))
-#define is_mutex_dh(dh)			((dh)->type == MutexObject)
-#define is_semaphore_dh(dh)		((dh)->type == SemaphoreObject)
-#define is_nt_thread_dh(dh)		((dh)->type == ThreadObject)
+#define set_object_type(dh, type)	((dh)->type = (type))
+#define is_notify_object(dh)		((dh)->type == NotificationObject)
+#define is_synch_object(dh)		((dh)->type == SynchronizationObject)
+#define is_mutex_object(dh)		((dh)->type == MutexObject)
+#define is_semaphore_object(dh)		((dh)->type == SemaphoreObject)
+#define is_nt_thread_object(dh)		((dh)->type == ThreadObject)
 
 #define IO_TYPE_ADAPTER				1
 #define IO_TYPE_CONTROLLER			2
