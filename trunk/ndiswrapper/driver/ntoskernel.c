@@ -1055,25 +1055,18 @@ static int grab_object(struct dispatcher_header *dh,
 /* this function should be called holding dispatcher_lock */
 static void object_signalled(struct dispatcher_header *dh)
 {
-	struct nt_list *cur, *next;
-	struct wait_block *wb = NULL;
+	struct wait_block *wb;
+	struct thread_event *thread_event;
 
 	EVENTENTER("%p", dh);
-	nt_list_for_each_safe(cur, next, &dh->wait_blocks) {
-		wb = container_of(cur, struct wait_block, list);
-		EVENTTRACE("%p: wb: %p, thread: %p", dh, wb, wb->thread);
+	nt_list_for_each_entry(wb, &dh->wait_blocks, list) {
+		EVENTTRACE("%p (%p): waking %p", dh, wb, wb->thread);
 		assert(wb->thread != NULL);
 		assert(wb->object == NULL);
-		if (wb->thread) {
-			struct thread_event *thread_event =
-				wb->thread_event;
-			EVENTTRACE("%p: waking up task %p for %p", thread_event,
-				   wb->thread, dh);
-			wb->object = dh;
-			thread_event->done = 1;
-			wake_up_process(thread_event->task);
-		} else
-			EVENTTRACE("not waking up task: %p", wb->thread);
+		wb->object = dh;
+		thread_event = wb->thread_event;
+		thread_event->done = 1;
+		wake_up_process(thread_event->task);
 	}
 	EVENTEXIT(return);
 }
@@ -1207,17 +1200,18 @@ wstdcall NTSTATUS WIN_FUNC(KeWaitForMultipleObjects,8)
 		assert(res > 0);
 		/* woken because object(s) signalled */
 		for (i = 0; wait_count && i < count; i++) {
-			if (!wb[i].thread)
+			if (!wb[i].thread || !wb[i].object)
 				continue;
-			if (wb[i].object != object[i]) {
-				EVENTTRACE("not woken for %p", object[i]);
-				continue;
+			DBG_BLOCK(1) {
+				if (wb[i].object != object[i]) {
+					EVENTTRACE("oops %p != %p",
+						   wb[i].object, object[i]);
+					continue;
+				}
 			}
-			if (!grab_object(object[i], thread, 1))
+			if (!grab_object(wb[i].object, thread, 1))
 				continue;
 			EVENTTRACE("object: %p, %p", object[i], wb[i].object);
-			wb[i].object = NULL;
-			wb[i].thread = NULL;
 			RemoveEntryList(&wb[i].list);
 			wait_count--;
 			if (wait_type == WaitAny) {
