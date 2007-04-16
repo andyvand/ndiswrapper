@@ -1081,14 +1081,12 @@ wstdcall NTSTATUS WIN_FUNC(KeWaitForMultipleObjects,8)
 	typeof(jiffies) wait_hz = 0;
 	struct wait_block *wb, wb_array[THREAD_WAIT_OBJECTS];
 	struct dispatcher_header *dh;
-	struct task_struct *thread;
 	struct thread_event thread_event;
 	KIRQL irql;
 
-	thread = current;
 	EVENTENTER("thread: %p count: %d, type: %d, reason: %u, "
 		   "waitmode: %u, alertable: %u, timeout: %p, irql: %d",
-		   thread, count, wait_type, wait_reason, wait_mode, alertable,
+		   current, count, wait_type, wait_reason, wait_mode, alertable,
 		   timeout, current_irql());
 
 	if (count > MAX_WAIT_OBJECTS)
@@ -1112,15 +1110,15 @@ wstdcall NTSTATUS WIN_FUNC(KeWaitForMultipleObjects,8)
 	irql = nt_spin_lock_irql(&dispatcher_lock, DISPATCH_LEVEL);
 	for (i = wait_count = 0; i < count; i++) {
 		dh = object[i];
-		EVENTTRACE("%p: event %p (%d)", thread, dh, dh->signal_state);
+		EVENTTRACE("%p: event %p (%d)", current, dh, dh->signal_state);
 		/* wait_type == 1 for WaitAny, 0 for WaitAll */
-		if (grab_object(dh, thread, wait_type)) {
+		if (grab_object(dh, current, wait_type)) {
 			if (wait_type == WaitAny) {
 				nt_spin_unlock_irql(&dispatcher_lock, irql);
 				EVENTEXIT(return STATUS_WAIT_0 + i);
 			}
 		} else {
-			EVENTTRACE("%p: wait for %p", thread, dh);
+			EVENTTRACE("%p: wait for %p", current, dh);
 			wait_count++;
 		}
 	}
@@ -1134,22 +1132,22 @@ wstdcall NTSTATUS WIN_FUNC(KeWaitForMultipleObjects,8)
 	 * the thread on the wait list for each such object */
 	/* if *timeout == 0, this step will grab all the objects */
 	thread_event.done = 0;
-	thread_event.task = thread;
-	EVENTTRACE("%p, %p", &thread_event, thread);
+	thread_event.task = current;
+	EVENTTRACE("%p, %p", &thread_event, current);
 	for (i = 0; i < count; i++) {
 		dh = object[i];
-		EVENTTRACE("%p: event %p (%d)", thread, dh, dh->signal_state);
+		EVENTTRACE("%p: event %p (%d)", current, dh, dh->signal_state);
 		wb[i].object = NULL;
-		if (grab_object(dh, thread, 1)) {
+		if (grab_object(dh, current, 1)) {
 			EVENTTRACE("%p: no wait for %p (%d)",
-				   thread, dh, dh->signal_state);
+				   current, dh, dh->signal_state);
 			/* mark that we are not waiting on this object */
 			wb[i].thread = NULL;
 		} else {
 			assert(timeout == NULL || *timeout != 0);
 			wb[i].thread_event = &thread_event;
-			wb[i].thread = thread;
-			EVENTTRACE("%p: wait for %p", thread, dh);
+			wb[i].thread = current;
+			EVENTTRACE("%p: wait for %p", current, dh);
 			InsertTailList(&dh->wait_blocks, &wb[i].list);
 		}
 	}
@@ -1162,8 +1160,8 @@ wstdcall NTSTATUS WIN_FUNC(KeWaitForMultipleObjects,8)
 		wait_hz = 0;
 	else
 		wait_hz = SYSTEM_TIME_TO_HZ(*timeout) + 1;
-	EVENTTRACE("%p: sleep for %ld on %p", thread, wait_hz, &thread_event);
 
+	EVENTTRACE("%p: sleep for %ld on %p", current, wait_hz, &thread_event);
 	/* we don't honor 'alertable' - according to decription for
 	 * this, even if waiting in non-alertable state, thread may be
 	 * alerted in some circumstances */
@@ -1171,12 +1169,12 @@ wstdcall NTSTATUS WIN_FUNC(KeWaitForMultipleObjects,8)
 		res = wrap_wait_event(thread_event.done, wait_hz,
 				      TASK_INTERRUPTIBLE);
 		irql = nt_spin_lock_irql(&dispatcher_lock, DISPATCH_LEVEL);
-		EVENTTRACE("%p woke up: %p, %d, %d", thread,
+		EVENTTRACE("%p woke up: %p, %d, %d", current,
 			   &thread_event, res, thread_event.done);
 #ifdef EVENT_DEBUG
-		if (thread_event.task != thread)
+		if (thread_event.task != current)
 			ERROR("%p: argh, task %p should be %p", &thread_event,
-			      thread_event.task, thread);
+			      thread_event.task, current);
 #endif
 		/* the event may have been set by the time
 		 * wrap_wait_event returned and spinlock obtained, so
@@ -1188,7 +1186,7 @@ wstdcall NTSTATUS WIN_FUNC(KeWaitForMultipleObjects,8)
 				if (!wb[i].thread)
 					continue;
 				EVENTTRACE("%p: timedout, dequeue %p (%p)",
-					   thread, object[i], wb[i].object);
+					   current, object[i], wb[i].object);
 				RemoveEntryList(&wb[i].list);
 			}
 			nt_spin_unlock_irql(&dispatcher_lock, irql);
@@ -1209,7 +1207,7 @@ wstdcall NTSTATUS WIN_FUNC(KeWaitForMultipleObjects,8)
 					continue;
 				}
 			}
-			if (!grab_object(wb[i].object, thread, 1))
+			if (!grab_object(wb[i].object, current, 1))
 				continue;
 			EVENTTRACE("object: %p, %p", object[i], wb[i].object);
 			RemoveEntryList(&wb[i].list);
@@ -1240,7 +1238,7 @@ wstdcall NTSTATUS WIN_FUNC(KeWaitForMultipleObjects,8)
 			wait_hz = 0;
 	}
 	/* should never reach here, but compiler wants return value */
-	ERROR("%p: wait_hz: %ld", thread, wait_hz);
+	ERROR("%p: wait_hz: %ld", current, wait_hz);
 	EVENTEXIT(return STATUS_SUCCESS);
 }
 

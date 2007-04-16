@@ -156,7 +156,7 @@ typedef struct {
 	spinlock_t lock;
 	struct task_struct *task;
 	struct completion *completion;
-	const char *name;
+	char name[16];
 	int pid;
 	/* whether any work_structs pending? <0 implies quit */
 	int pending;

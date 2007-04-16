@@ -115,7 +115,8 @@ workqueue_struct_t *wrap_create_wq(const char *name)
 	}
 	memset(workq, 0, sizeof(*workq));
 	spin_lock_init(&workq->lock);
-	workq->name = name;
+	strncpy(workq->name, name, sizeof(workq->name));
+	workq->name[sizeof(workq->name) - 1] = 0;
 	INIT_LIST_HEAD(&workq->work_list);
 	init_completion(&started);
 	workq->completion = &started;
