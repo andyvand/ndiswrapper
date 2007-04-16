@@ -130,15 +130,22 @@
  *    0 if timedout (condition may have become true at the same time)
  */
 
-#define wrap_wait_event(condition, timeout, wait_state)		\
+#define wait_condition(condition, timeout, wait_state)		\
 ({								\
 	long ret = timeout ? timeout : 1;			\
-	while (!(condition)) {					\
+	while (1) {						\
 		if (signal_pending(current)) {			\
 			ret = -ERESTARTSYS;			\
 			break;					\
 		}						\
+		preempt_disable();				\
 		set_current_state(wait_state);			\
+		if (condition) {				\
+			__set_current_state(TASK_RUNNING);	\
+			preempt_enable();			\
+			break;					\
+		}						\
+		preempt_enable();				\
 		if (timeout) {					\
 			ret = schedule_timeout(ret);		\
 			if (!ret)				\
@@ -146,7 +153,6 @@
 		} else						\
 			schedule();				\
 	}							\
-	current->state = TASK_RUNNING;				\
 	ret;							\
 })
 
@@ -245,12 +251,6 @@ typedef void *worker_param_t;
 
 #ifndef CHECKSUM_HW
 #define CHECKSUM_HW CHECKSUM_PARTIAL
-#endif
-
-/* this ugly hack is to handle RH kernels; I don't know any better,
- * but this has to be fixed soon */
-#ifndef rt_task
-#define rt_task(p) ((p)->prio < MAX_RT_PRIO)
 #endif
 
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,0)
@@ -371,7 +371,7 @@ typedef u32 pm_message_t;
 #define print_sp() do {				\
 		void *sp;			\
 		get_sp(sp);			\
-		TRACE1("sp: %p", sp);	\
+		TRACE1("sp: %p", sp);		\
 	} while (0)
 
 //#define DEBUG_IRQL 1

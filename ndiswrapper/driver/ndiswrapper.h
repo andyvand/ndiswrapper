@@ -81,9 +81,6 @@
 #define WARNING(fmt, ...) MSG(KERN_WARNING, fmt, ## __VA_ARGS__)
 #define ERROR(fmt, ...) MSG(KERN_ERR, fmt , ## __VA_ARGS__)
 #define INFO(fmt, ...) MSG(KERN_INFO, fmt , ## __VA_ARGS__)
-
-#define INFOEXIT(stmt) do { INFO("Exit"); stmt; } while(0)
-
 #define TODO() ERROR("not fully implemented (yet)")
 
 #define TRACE(fmt, ...) do { } while (0)
