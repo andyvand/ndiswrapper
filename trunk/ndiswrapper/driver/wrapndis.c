@@ -68,8 +68,8 @@ NDIS_STATUS miniport_reset(struct wrap_ndis_device *wnd)
 	TRACE2("%08X, %08X", res, reset_address);
 	if (res == NDIS_STATUS_PENDING) {
 		/* wait for NdisMResetComplete */
-		if (wrap_wait_event((wnd->ndis_comm_done > 0), 0,
-				    TASK_INTERRUPTIBLE) < 0)
+		if (wait_condition((wnd->ndis_comm_done > 0), 0,
+				   TASK_INTERRUPTIBLE) < 0)
 			res = NDIS_STATUS_FAILURE;
 		else {
 			res = wnd->ndis_comm_status;
@@ -113,8 +113,8 @@ NDIS_STATUS miniport_query_info_needed(struct wrap_ndis_device *wnd,
 	TRACE2("%08X, %08X", res, oid);
 	if (res == NDIS_STATUS_PENDING) {
 		/* wait for NdisMQueryInformationComplete */
-		if (wrap_wait_event((wnd->ndis_comm_done > 0), 0,
-				    TASK_INTERRUPTIBLE) < 0)
+		if (wait_condition((wnd->ndis_comm_done > 0), 0,
+				   TASK_INTERRUPTIBLE) < 0)
 			res = NDIS_STATUS_FAILURE;
 		else
 			res = wnd->ndis_comm_status;
@@ -163,8 +163,8 @@ NDIS_STATUS miniport_set_info(struct wrap_ndis_device *wnd, ndis_oid oid,
 	TRACE2("%08X, %08X", res, oid);
 	if (res == NDIS_STATUS_PENDING) {
 		/* wait for NdisMQueryInformationComplete */
-		if (wrap_wait_event((wnd->ndis_comm_done > 0), 0,
-				    TASK_INTERRUPTIBLE) < 0)
+		if (wait_condition((wnd->ndis_comm_done > 0), 0,
+				   TASK_INTERRUPTIBLE) < 0)
 			res = NDIS_STATUS_FAILURE;
 		else
 			res = wnd->ndis_comm_status;

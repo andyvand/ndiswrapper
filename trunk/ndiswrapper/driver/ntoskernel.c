@@ -1166,8 +1166,8 @@ wstdcall NTSTATUS WIN_FUNC(KeWaitForMultipleObjects,8)
 	 * this, even if waiting in non-alertable state, thread may be
 	 * alerted in some circumstances */
 	while (wait_count) {
-		res = wrap_wait_event(thread_event.done, wait_hz,
-				      TASK_INTERRUPTIBLE);
+		res = wait_condition(thread_event.done, wait_hz,
+				     TASK_INTERRUPTIBLE);
 		irql = nt_spin_lock_irql(&dispatcher_lock, DISPATCH_LEVEL);
 		EVENTTRACE("%p woke up: %p, %d, %d", current,
 			   &thread_event, res, thread_event.done);
@@ -1230,8 +1230,6 @@ wstdcall NTSTATUS WIN_FUNC(KeWaitForMultipleObjects,8)
 
 		/* this thread is still waiting for more objects, so
 		 * let it wait for remaining time and those objects */
-		/* we already set res to 1 if timeout was NULL, so
-		 * reinitialize wait_hz accordingly */
 		if (timeout)
 			wait_hz = res;
 		else
