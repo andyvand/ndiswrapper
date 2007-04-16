@@ -45,8 +45,7 @@ static int workq_thread(void *data)
 	workq->completion = NULL;
 	WORKTRACE("%s (%d) started", workq->name, workq->pid);
 	while (workq->pending >= 0) {
-		if (wrap_wait_event(workq->pending, 0,
-				    TASK_INTERRUPTIBLE) < 0) {
+		if (wait_condition(workq->pending, 0, TASK_INTERRUPTIBLE) < 0) {
 			/* TODO: deal with signal */
 			WARNING("signal not blocked?");
 			flush_signals(current);

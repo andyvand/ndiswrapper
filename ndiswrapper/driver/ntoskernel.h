@@ -138,14 +138,11 @@
 			ret = -ERESTARTSYS;			\
 			break;					\
 		}						\
-		preempt_disable();				\
 		set_current_state(wait_state);			\
 		if (condition) {				\
 			__set_current_state(TASK_RUNNING);	\
-			preempt_enable();			\
 			break;					\
 		}						\
-		preempt_enable();				\
 		if (timeout) {					\
 			ret = schedule_timeout(ret);		\
 			if (!ret)				\
