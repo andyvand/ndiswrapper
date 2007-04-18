@@ -34,6 +34,7 @@ my %parsed_sections;
 my $confdir = "/etc/ndiswrapper";
 my $src_dir;
 my $driver_name;
+my @source_disk_files;
 
 my $re_dev_id = "([[:xdigit:]]{4})";
 my $re_sub_dev_conf = "$re_dev_id:$re_dev_id:$re_dev_id:$re_dev_id" .
@@ -131,6 +132,11 @@ sub remove_driver {
     return 0;
 }
 
+sub abort {
+    remove_driver($driver_name);
+    exit 1;
+}
+
 sub install {
     my $inf = shift;
     chomp($inf);
@@ -149,8 +155,9 @@ sub install {
     read_sections($inf);
     parse_section("Strings");
     parse_section("Version");
+    parse_source_disk_files();
     parse_mfr();
-    copy_file(basename($inf));
+    copy_file(basename($inf), basename($inf));
     create_fuzzy_conf($driver_name);
     return 0;
 }
@@ -296,8 +303,8 @@ sub parse_install {
 	    } elsif (lc($key) eq "copyfiles") {
 		printf DBG "copyfiles: %s\n", $val;
 		@array = split(",", $val);
-		foreach my $copy_file (@array) {
-		    my @copy_sec = split(",", $copy_file);
+		foreach my $copy_file_dirs (@array) {
+		    my @copy_sec = split(",", $copy_file_dirs);
 		    foreach my $file (@copy_sec) {
 			push @copyfiles, trim($file);
 		    }
@@ -310,7 +317,7 @@ sub parse_install {
     }
 
     open(CONF, ">$confdir/$driver_name/$filename") or
-      die "couldn't create file $filename: $!";
+      die "couldn't create file $confdir/$driver_name/$filename: $!";
 
     my $version = get_section_value("Version", "DriverVer");
     my $provider = get_section_value("Version", "Provider");
@@ -393,7 +400,9 @@ sub parse_copy_file {
 
     if ($copy_name =~ /^\@/) {
 	$copy_name =~ s/^\@//;
-	return copy_file($copy_name);
+	if (valid_copy_file_name($copy_name)) {
+	    return copy_file($copy_name, $copy_name);
+	}
     }
 
     my $lines = get_section($copy_name);
@@ -405,29 +414,34 @@ sub parse_copy_file {
     foreach my $line (@{$lines}) {
 	$line = trim($line);
 
+	# some inf files have file names commented out; get file names from them
+	$line =~ s/^\s*;//;
 	my @files = split(",", $line);
 	if (@files == 0) {
 	    printf DBG "copyfiles section $copy_name has no files\n";
 	    return -1;
 	}
-	my $file;
+	my $src, my $dst;
 	if (@files > 1 and length(trim($files[1])) > 0) {
-	    $file = $files[1];
-	} else {
-	    $file = $files[0];
-	}
-	printf DBG "file: '%s'\n", $file;
-	# some inf files have file names commented out; get file names from them
-	$file =~ s/^\s*;//;
-	# remove (trailing) comment
-	$file = del_comment($file);
-	$file = trim($file);
-	if (length($file) > 0) {
-	    if (valid_copy_file_name($file)) {
-		copy_file($file);
+	    $src = $files[1];
+	    if (length(trim($files[0])) > 0) {
+		$dst = $files[0];
 	    } else {
-		printf DBG "invalid file '%s' ignored\n", $file;
+		$dst = $src;
 	    }
+	} else {
+	    $src = $files[0];
+	    $dst = $src;
+	}
+	printf DBG "src: '%s', dst: '%s'\n", $src, $dst;
+	$src = trim(del_comment($src));
+	next if (length($src) eq 0);
+	if (valid_copy_file_name($src)) {
+	    $dst = trim(del_comment($dst));
+	    printf DBG "src: '%s', dst: '%s'\n", $src, $dst;
+	    copy_file($src, $dst);
+	} else {
+	    printf DBG "invalid file '%s' ignored\n", $src;
 	}
     }
     return 0;
@@ -508,20 +522,24 @@ sub get_string_value {
 }
 
 sub copy_file {
-    my $file = shift;
+    (my $src, my $dst) = @_;
 
-    $file = trim(del_comment($file));
-    my $real_file = get_file($file);
+    $src = trim(del_comment($src));
+    $dst = trim(del_comment($dst));
+    my $real_file = get_file($src);
     if (length($real_file) gt 0) {
-	$file = lc($real_file);
-	copy("$src_dir/$real_file", "$confdir/$driver_name/$file") or
+	$dst = lc($dst);
+	printf DBG "copying \"$src_dir/$real_file\" to " .
+	  "\"$confdir/$driver_name/$dst\"\n";
+	copy("$src_dir/$real_file", "$confdir/$driver_name/$dst") or
 	  warn "couldn't copy \"$src_dir/$real_file\" to " .
 	    "\"$confdir/$driver_name\": $! -\n" .
 	      "installation may be incomplete\n";
-	chmod(0644, "$confdir/$driver_name/$file");
+	printf DBG "chmod: $confdir/$driver_name/$dst\n";
+	chmod(0644, "$confdir/$driver_name/$dst");
     } else {
-	warn "couldn't find \"$file\" in \"$src_dir\"; make sure " .
-	  "all driver files, including .inf, .sys (and .bin, if any) " .
+	warn "couldn't find \"$src\" in \"$src_dir\"; make sure " .
+	  "all driver files, including .inf, .sys (and any firmware files) " .
 	    "are in \"$src_dir\" -\n" .
 	      "installation may be incomplete\n";
     }
@@ -592,8 +610,44 @@ sub trim {
 sub valid_copy_file_name {
     my $file = shift;
     printf DBG "file name: %s\n", $file;
-    # as of now, copy file name extensions known: .sys, .bin, .out
-    return 1 if (lc($file) =~ /^[a-z0-9_]*\.((sys)|(bin)|(out))$/);
+    foreach my $disk_file (@source_disk_files) {
+	return 1 if (lc($file) eq $disk_file);
+    }
+    return 0;
+}
+
+sub parse_source_disk_files {
+    my $lines = get_source_disk_files();
+    if ($lines) {
+	foreach my $line (@{$lines}) {
+	    $line = del_comment($line);
+	    next if (length($line) eq 0);
+	    my @file = split("=", $line);
+	    next if (@file eq 0 or length($file[0] eq 0));
+	    printf DBG "source disk file: \"%s\"\n", trim($file[0]);
+	    push (@source_disk_files, lc(trim($file[0])));
+	}
+    } else {
+	warn "couldn't find SourceDisksFiles section\n";
+	abort();
+    }
+}
+
+sub get_source_disk_files {
+    my $arch = `uname -m`;
+    chomp($arch);
+    if ($arch =~ /64$/) {
+	$arch = "AMD64";
+    } else {
+	$arch = "X86";
+    }
+
+    my $lines = get_section("SourceDisksFiles." . $arch);
+    return $lines if ($lines);
+
+    $lines = get_section("SourceDisksFiles");
+    return $lines if ($lines);
+
     return 0;
 }
 
