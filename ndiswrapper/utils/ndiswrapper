@@ -228,9 +228,9 @@ sub parse_mfr() {
     $lines or die "couldn't get manufacturer section - " .
       "installation may be incomplete\n";
     foreach  my $line (@{$lines}) {
-	(my $strkey, my $val) = parse_key_value($line);
+	my ($strkey, $val) = parse_key_value($line);
 	if ($strkey) {
-	    (my $models, my @targets) = split(",", $val);
+	    my ($models, @targets) = split(",", $val);
 	    if ($models) {
 		printf DBG "mfr: %s, %s\n", $line, $models;
 		parse_models($models);
@@ -262,18 +262,17 @@ sub parse_models {
 	    $hwid = get_string_value($hwid);
 	}
 	# TODO: deal with compatible IDs as hwid?
-	(my $bus_type, my $vendor, my $device, my $subvendor, my $subdevice) =
+	my ($bus_type, $vendor, $device, $subvendor, $subdevice) =
 	  parse_hwid($hwid);
-	printf DBG "models: %s, %s\n", $install_section, $hwid, $vendor;
 	next if (!$vendor);
+	printf DBG "models: %s, %s, %s\n", $install_section, $hwid, $vendor;
 	parse_install($install_section, $bus_type, $vendor, $device,
 		      $subvendor, $subdevice);
     }
 }
 
 sub parse_install {
-    (my $secn, my $bus_type, my $vendor, my $device,
-     my $subvendor, my $subdevice) = @_;
+    my ($secn, $bus_type, $vendor, $device, $subvendor, $subdevice) = @_;
     my $lines = get_target_os_section($secn);
     if (!$lines) {
 	warn "couldn't find install section \"$secn\" -\n" .
@@ -287,12 +286,11 @@ sub parse_install {
     }
     $filename .= sprintf(".%X.conf", $bus_type);
 
-    my @addregs;
-    my @copyfiles;
+    my (@addregs, @copyfiles);
     foreach my $line (@{$lines}) {
 	$line =~ s/^;\s*//;
 	$line = trim(del_comment($line));
-	(my $key, my $val) = parse_key_value($line);
+	my ($key, $val) = parse_key_value($line);
 	my @array;
 	if ($key) {
 	    if (lc($key) eq "addreg") {
@@ -319,6 +317,12 @@ sub parse_install {
     open(CONF, ">$confdir/$driver_name/$filename") or
       die "couldn't create file $confdir/$driver_name/$filename: $!";
 
+    printf CONF "sys_files|";
+    foreach my $file (@copyfiles) {
+	parse_copy_file($file);
+    }
+    printf CONF "\n";
+
     my $version = get_section_value("Version", "DriverVer");
     my $provider = get_section_value("Version", "Provider");
     my $classguid = get_section_value("Version", "ClassGUID");
@@ -342,19 +346,15 @@ sub parse_install {
     foreach my $reg (@addregs) {
 	parse_registry($reg);
     }
-    foreach my $file (@copyfiles) {
-	parse_copy_file($file);
-    }
     # RTL8185L driver crashes if DriverDesc setting is not found
     if ($vendor == "10EC" && $device == "8185") {
-	printf CONF "DriverDesc|Realtek RTL8185 54M Wireless LAN Network Adapter\n";
+	printf CONF "DriverDesc|Realtek RTL8185 Wireless LAN Network Adapter\n";
     }
     close(CONF);
 }
 
 sub parse_registry {
-    my $reg = shift;
-    my $conf = shift;
+    my ($reg, $conf) = @_;
     my $lines = get_section($reg);
     if (!$lines) {
 	warn "couldn't find section \"$reg\" -\n" .
@@ -400,6 +400,7 @@ sub parse_copy_file {
 
     if ($copy_name =~ /^\@/) {
 	$copy_name =~ s/^\@//;
+	$copy_name = trim($copy_name);
 	if (valid_copy_file_name($copy_name)) {
 	    return copy_file($copy_name, $copy_name);
 	}
@@ -522,10 +523,8 @@ sub get_string_value {
 }
 
 sub copy_file {
-    (my $src, my $dst) = @_;
+    my ($src, $dst) = @_;
 
-    $src = trim(del_comment($src));
-    $dst = trim(del_comment($dst));
     my $real_file = get_file($src);
     if (length($real_file) gt 0) {
 	$dst = lc($dst);
@@ -537,6 +536,9 @@ sub copy_file {
 	      "installation may be incomplete\n";
 	printf DBG "chmod: $confdir/$driver_name/$dst\n";
 	chmod(0644, "$confdir/$driver_name/$dst");
+	if ($dst =~ /\.sys$/) {
+	    printf CONF "%s ", $dst;
+	}
     } else {
 	warn "couldn't find \"$src\" in \"$src_dir\"; make sure " .
 	  "all driver files, including .inf, .sys (and any firmware files) " .
@@ -690,7 +692,7 @@ sub device_driver_alias {
 
 sub generate_module_device_map {
     my $mode = shift;
-    my $vendor, my $device, my $subvendor, my $subdevice, my $bustype, my $busid;
+    my ($vendor, $device, $subvendor, $subdevice, $bustype, $busid);
 
     my $device_map;
     if (-d "/etc/modprobe.d") {
