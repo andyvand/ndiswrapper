@@ -152,7 +152,7 @@ static int read_conf_file(char *conf_file_name, struct load_driver *driver)
 	char setting_name[MAX_SETTING_NAME_LEN];
 	char setting_value[MAX_SETTING_VALUE_LEN];
 	int ret, nr_settings;
-	int i, vendor, device, subvendor, subdevice, bus;
+	int vendor, device, subvendor, subdevice, bus;
 
 	if (lstat(conf_file_name, &statbuf)) {
 		ERROR("unable to open config file %s: %s",
@@ -168,8 +168,7 @@ static int read_conf_file(char *conf_file_name, struct load_driver *driver)
 			  &bus) == 5) {
 		DBG("bus: %X", bus);
 	} else {
-		ERROR("unable to parse conf file name %s (%d)",
-		      conf_file_name, i);
+		ERROR("unable to parse conf file name %s", conf_file_name);
 		return -EINVAL;
 	}
 
