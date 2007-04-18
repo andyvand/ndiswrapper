@@ -34,7 +34,7 @@ my %parsed_sections;
 my $confdir = "/etc/ndiswrapper";
 my $src_dir;
 my $driver_name;
-my @source_disk_files;
+my @source_disks_files;
 
 my $re_dev_id = "([[:xdigit:]]{4})";
 my $re_sub_dev_conf = "$re_dev_id:$re_dev_id:$re_dev_id:$re_dev_id" .
@@ -57,9 +57,9 @@ my $modconf;
 if (`uname -r` =~ /(\d+)\.(\d+)\.(\d+)/) {
     if ($2 > 4) {
 	if (-d "/etc/modprobe.d") {
-	    $modconf = "/etc/modprobe.d/ndiswrapper"
+	    $modconf = "/etc/modprobe.d/ndiswrapper";
 	} else {
-	    $modconf = "/etc/modprobe.conf"
+	    $modconf = "/etc/modprobe.conf";
 	}
     } else {
 	if (-d "/etc/modutils") {
@@ -73,16 +73,16 @@ if (`uname -r` =~ /(\d+)\.(\d+)\.(\d+)/) {
 my $res;
 my $dbg_file;
 
-$dbg_file = ">/dev/null";
+$dbg_file = "/dev/null";
 
 # "-D" is for development/debugging only
 if ($ARGV[0] eq "-D") {
-    $dbg_file = ">/tmp/ndiswrapper.dbg";
+    $dbg_file = "/tmp/ndiswrapper.dbg";
     $confdir = "/tmp/ndiswrapper";
     shift;
 }
 
-open(DBG, $dbg_file) or die "couldn't open $dbg_file: $!";
+open(DBG, "> $dbg_file") or die "couldn't open $dbg_file: $!";
 
 if ($ARGV[0] eq "-i" and @ARGV == 2) {
     $res = install($ARGV[1]);
@@ -155,7 +155,7 @@ sub install {
     read_sections($inf);
     parse_section("Strings");
     parse_section("Version");
-    parse_source_disk_files();
+    parse_source_disks_files();
     parse_mfr();
     copy_file(basename($inf), basename($inf));
     create_fuzzy_conf($driver_name);
@@ -556,7 +556,7 @@ sub create_fuzzy_conf {
     open(LS, "ls -1 . |") or die "couldn't open $confdir/$driver: $!";
     while (my $file = <LS>) {
 	chomp($file);
-	if ($file =~ /^(.{4}):(.{4}):(.{4}):(.{4})\.([^.]+)\.conf$/) {
+	if ($file =~ /$re_sub_dev_conf/) {
 	    my $fuzzy_file = "$1:$2.$5.conf";
 	    printf DBG "file: $file, fuzzy file: $fuzzy_file\n";
 	    if (! -e "$confdir/$driver/$fuzzy_file") {
@@ -612,14 +612,14 @@ sub trim {
 sub valid_copy_file_name {
     my $file = shift;
     printf DBG "file name: %s\n", $file;
-    foreach my $disk_file (@source_disk_files) {
+    foreach my $disk_file (@source_disks_files) {
 	return 1 if (lc($file) eq $disk_file);
     }
     return 0;
 }
 
-sub parse_source_disk_files {
-    my $lines = get_source_disk_files();
+sub parse_source_disks_files {
+    my $lines = get_source_disks_files();
     if ($lines) {
 	foreach my $line (@{$lines}) {
 	    $line = del_comment($line);
@@ -627,7 +627,7 @@ sub parse_source_disk_files {
 	    my @file = split("=", $line);
 	    next if (@file eq 0 or length($file[0] eq 0));
 	    printf DBG "source disk file: \"%s\"\n", trim($file[0]);
-	    push (@source_disk_files, lc(trim($file[0])));
+	    push (@source_disks_files, lc(trim($file[0])));
 	}
     } else {
 	warn "couldn't find SourceDisksFiles section\n";
@@ -635,7 +635,7 @@ sub parse_source_disk_files {
     }
 }
 
-sub get_source_disk_files {
+sub get_source_disks_files {
     my $arch = `uname -m`;
     chomp($arch);
     if ($arch =~ /64$/) {
@@ -696,7 +696,7 @@ sub generate_module_device_map {
 
     my $device_map;
     if (-d "/etc/modprobe.d") {
-	$device_map = "/etc/modprobe.d/ndiswrapper";
+	$device_map = $modconf;
     } elsif (-d "/etc/modules.d") {
 	$device_map = "/etc/modules.d/ndiswrapper";
     } else {
@@ -715,11 +715,11 @@ sub generate_module_device_map {
 	      die "couldn't open $confdir/$driver: $!";
 	    while (my $file = <LS2>) {
 		chomp ($file);
-		if ($file =~ /.conf$/) {
-		    if ($file =~ /^(.{4}):(.{4}):(.{4}):(.{4})\.([^.]+)\.conf$/) {
+		if ($file =~ /\.conf$/) {
+		    if ($file =~ /^$re_sub_dev_conf$/) {
 			($vendor, $device, $subvendor, $subdevice, $busid) =
 			  (uc($1), uc($2), "0000$3", "0000$4", hex($5));
-		    } elsif ($file =~ /(.{4}):(.{4})\.([^.]+)\.conf$/) {
+		    } elsif ($file =~ /^$re_dev_conf$/) {
 			($vendor, $device, $subvendor, $subdevice, $busid) =
 			  (uc($1), uc($2), "*", "*", hex($3));
 		    }
