@@ -113,7 +113,7 @@ sub usage() {
     print "install/manage Windows drivers for ndiswrapper\n\n" .
         "usage: ndiswrapper OPTION\n" .
 	"-i inffile       install driver described by 'inffile'\n" .
-	"-a devid driver  use installed 'driver' for 'devid'\n" .
+	"-a devid driver  use installed 'driver' for 'devid' (dangerous)\n" .
 	"-r driver        remove 'driver'\n" .
 	"-l               list installed drivers\n" .
 	"-m               write configuration for modprobe\n" .
@@ -664,16 +664,19 @@ sub device_driver_alias {
     }
     open(LS, "ls -1 $confdir/$driver/ |") or
       die "couldn't open $confdir/$driver: $!";
+
     while (my $f = <LS>) {
 	chomp($f);
 	if ($f =~ /\.([[:xdigit:]]+)\.conf$/) {
 	    if (stat("$confdir/$driver/$devid.$1.conf")) {
-		printf "driver '$driver' is already used for '$devid'\n";
+		printf "Driver '$driver' is already used for '$devid'\n";
 		$done = 1;
 		last;
 	    }
 	    if (symlink("$f", "$confdir/$driver/$devid.$1.conf")) {
-		printf "driver '$driver' is used for '$devid'\n";
+		printf "WARNING: Driver '$driver' will be used for '$devid'\n" .
+		  "This is safe _only_ if driver $driver is meant for " .
+		    "chip in device $devid\n";
 		$done = 1;
 		last;
 	    } else {
