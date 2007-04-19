@@ -525,6 +525,8 @@ sub get_string_value {
 sub copy_file {
     my ($src, $dst) = @_;
 
+    # ignore files not needed
+    return 0 if (lc($src) =~ /\.((exe)|(dll)|(cpl)|(hlp))$/);
     my $real_file = get_file($src);
     if (length($real_file) gt 0) {
 	$dst = lc($dst);
@@ -584,7 +586,8 @@ sub get_file {
 	}
 	closedir(DIR);
     } else {
-	warn "couldn't open \"$src_dir\": $! - installation may be incomplete\n";
+	warn "couldn't open \"$src_dir\": $! -\n" .
+	  "installation may be incomplete\n";
     }
     return "";
 }
@@ -611,10 +614,14 @@ sub trim {
 
 sub valid_copy_file_name {
     my $file = shift;
+    $file = lc($file);
     printf DBG "file name: %s\n", $file;
     foreach my $disk_file (@source_disks_files) {
-	return 1 if (lc($file) eq $disk_file);
+	return 1 if ($file eq $disk_file);
     }
+    # some inf files may not have SourceDisksFiles section, so use
+    # known file names
+    return 1 if ($file =~ /\.((sys)|(bin)|(out))$/);
     return 0;
 }
 
@@ -630,8 +637,8 @@ sub parse_source_disks_files {
 	    push (@source_disks_files, lc(trim($file[0])));
 	}
     } else {
-	warn "couldn't find SourceDisksFiles section\n";
-	abort();
+	warn "couldn't find SourceDisksFiles section - " .
+	  "continuing anyway...\n";
     }
 }
 
