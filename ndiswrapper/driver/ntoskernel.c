@@ -827,6 +827,9 @@ wstdcall void *WIN_FUNC(ExAllocatePoolWithTag,3)
 		addr = __vmalloc(size, GFP_ATOMIC | __GFP_HIGHMEM, PAGE_KERNEL);
 		alloc_type = ALLOC_TYPE_VMALLOC;
 #endif
+		if (!addr)
+			WARNING("couldn't allocate %lu bytes of memory in "
+				"atomic context", size);
 	} else {
 		addr = vmalloc(size);
 		alloc_type = ALLOC_TYPE_VMALLOC;
@@ -2502,6 +2505,22 @@ int ntoskernel_init(void)
 
 int ntoskernel_init_device(struct wrap_device *wd)
 {
+	/* Atheros drivers allocate large chunks in atomic context
+	 * during initialization. Due to memory fragmentation, these
+	 * chunks are unlikely to be available, so try allocating a
+	 * large chunk in non-atomic context, forching kernel to
+	 * defragment memory. TODO: How about atheros USB drviers? 
+	 * Also, see comment in ExAllocatePoolWithTag. */
+	if (wd->vendor == 0x168c) {
+		int n = 3 * 1024 * 1024;
+		void *ptr;
+
+		TRACE2("");
+		ptr = wrap_get_free_pages(GFP_KERNEL | __GFP_REPEAT, n);
+		TRACE2("%p", ptr);
+		if (ptr)
+			free_pages((unsigned long)ptr, get_order(n));
+	}
 	return 0;
 }
 
