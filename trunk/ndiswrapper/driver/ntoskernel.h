@@ -753,7 +753,7 @@ BOOLEAN KeSetTimer(struct nt_timer *nt_timer, LARGE_INTEGER duetime_ticks,
 		   struct kdpc *kdpc) wstdcall;
 BOOLEAN KeCancelTimer(struct nt_timer *nt_timer) wstdcall;
 void KeInitializeDpc(struct kdpc *kdpc, void *func, void *ctx) wstdcall;
-struct task_struct *KeGetCurrentThread(void) wstdcall;
+struct nt_thread *KeGetCurrentThread(void) wstdcall;
 NTSTATUS ObReferenceObjectByHandle(void *handle, ACCESS_MASK desired_access,
 				   void *obj_type, KPROCESSOR_MODE access_mode,
 				   void **object, void *handle_info) wstdcall;

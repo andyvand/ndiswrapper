@@ -1043,8 +1043,8 @@ static int grab_object(struct dispatcher_header *dh,
 			EVENTEXIT(return 1);
 		}
 	} else if (dh->signal_state > 0) {
-		/* if grab, decrement signal_state for
-		 * synchronization or semaphore objects */
+		/* to grab, decrement signal_state for synchronization
+		 * or semaphore objects */
 		if (grab && (is_synch_object(dh) || is_semaphore_object(dh)))
 			dh->signal_state--;
 		EVENTEXIT(return 1);
@@ -1459,57 +1459,6 @@ wstdcall LARGE_INTEGER WIN_FUNC(KeQueryPerformanceCounter,1)
 	return jiffies;
 }
 
-wstdcall struct task_struct *WIN_FUNC(KeGetCurrentThread,0)
-	(void)
-{
-	struct task_struct *task = current;
-
-	TRACE2("task: %p, %d", task, task->pid);
-	return task;
-}
-
-wstdcall KPRIORITY WIN_FUNC(KeQueryPriorityThread,1)
-	(struct task_struct *task)
-{
-	KPRIORITY prio;
-
-	TRACE2("task: %p, %d", task, task->pid);
-	if (thread_priority(task) <= 0)
-		prio = LOW_PRIORITY;
-	else if (thread_priority(task) <= -5)
-		prio = LOW_REALTIME_PRIORITY;
-	else
-		prio = MAXIMUM_PRIORITY;
-
-	TRACE2("%d", prio);
-	return prio;
-}
-
-wstdcall KPRIORITY WIN_FUNC(KeSetPriorityThread,2)
-	(struct task_struct *task, KPRIORITY priority)
-{
-	KPRIORITY old_prio;
-
-	TRACE2("task: %p, %d, priority = %u", task, task->pid, priority);
-
-	if (thread_priority(task) <= 0)
-		old_prio = LOW_PRIORITY;
-	else if (thread_priority(task) <= -5)
-		old_prio = LOW_REALTIME_PRIORITY;
-	else
-		old_prio = MAXIMUM_PRIORITY;
-
-	if (priority == LOW_PRIORITY)
-		set_thread_priority(task, 0);
-	else if (priority == LOW_REALTIME_PRIORITY)
-		set_thread_priority(task, -5);
-	else if (priority == HIGH_PRIORITY)
-		set_thread_priority(task, -10);
-
-	TRACE2("%d, %d", old_prio, thread_priority(task));
-	return old_prio;
-}
-
 struct nt_thread *get_current_nt_thread(void)
 {
 	struct task_struct *task = current;
@@ -1536,6 +1485,115 @@ struct nt_thread *get_current_nt_thread(void)
 		TRACE4("couldn't find thread for task %p, %d", task, task->pid);
 	TRACE6("thread: %p", thread);
 	return thread;
+}
+
+struct task_struct *get_nt_thread_task(struct nt_thread *thread)
+{
+	struct task_struct *task;
+	struct common_object_header *header;
+	KIRQL irql;
+
+	TRACE6("thread: %p", thread);
+	task = NULL;
+	irql = nt_spin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL);
+	nt_list_for_each_entry(header, &object_list, list) {
+		TRACE6("header: %p, type: %d", header, header->type);
+		if (header->type != OBJECT_TYPE_NT_THREAD)
+			break;
+		if (thread == HEADER_TO_OBJECT(header)) {
+			task = thread->task;
+			break;
+		}
+	}
+	nt_spin_unlock_irql(&ntoskernel_lock, irql);
+	if (task == NULL)
+		TRACE2("%p: couldn't find task for %p", current, thread);
+	return task;
+}
+
+struct nt_thread *create_nt_thread(struct task_struct *task)
+{
+	struct nt_thread *thread;
+	thread = allocate_object(sizeof(*thread),
+				 OBJECT_TYPE_NT_THREAD, NULL);
+	if (!thread) {
+		ERROR("couldn't allocate thread object");
+		EXIT2(return NULL);
+	}
+	thread->task = task;
+	if (task)
+		thread->pid = task->pid;
+	else
+		thread->pid = 0;
+	nt_spin_lock_init(&thread->lock);
+	InitializeListHead(&thread->irps);
+	initialize_object(&thread->dh, ThreadObject, 0);
+	thread->dh.size = sizeof(*thread);
+	return thread;
+}
+
+wstdcall struct nt_thread *WIN_FUNC(KeGetCurrentThread,0)
+	(void)
+{
+	struct nt_thread *thread = get_current_nt_thread();
+	TRACE2("thread: %p, %p", thread, current);
+	return thread;
+}
+
+wstdcall KPRIORITY WIN_FUNC(KeQueryPriorityThread,1)
+	(struct nt_thread *thread)
+{
+	KPRIORITY prio;
+	struct task_struct *task;
+
+	TRACE2("thread: %p", thread);
+	if (!thread)
+		EXIT2(return LOW_REALTIME_PRIORITY);
+	task = get_nt_thread_task(thread);
+	if (!task)
+		EXIT2(return LOW_REALTIME_PRIORITY);
+
+	if (thread_priority(thread->task) <= 0)
+		prio = LOW_PRIORITY;
+	else if (thread_priority(thread->task) <= -5)
+		prio = LOW_REALTIME_PRIORITY;
+	else
+		prio = MAXIMUM_PRIORITY;
+
+	TRACE2("%d", prio);
+	return prio;
+}
+
+wstdcall KPRIORITY WIN_FUNC(KeSetPriorityThread,2)
+	(struct nt_thread *thread, KPRIORITY prio)
+{
+	KPRIORITY old_prio;
+	struct task_struct *task;
+
+	TRACE2("thread: %p, priority = %u", thread, prio);
+
+	if (!thread)
+		EXIT2(return LOW_REALTIME_PRIORITY);
+	task = get_nt_thread_task(thread);
+	if (!task)
+		EXIT2(return LOW_REALTIME_PRIORITY);
+
+	if (thread_priority(task) <= 0)
+		old_prio = LOW_PRIORITY;
+	else if (thread_priority(task) <= -5)
+		old_prio = LOW_REALTIME_PRIORITY;
+	else
+		old_prio = MAXIMUM_PRIORITY;
+
+	if (prio == LOW_PRIORITY)
+		set_thread_priority(task, 0);
+	else if (prio == LOW_REALTIME_PRIORITY)
+		set_thread_priority(task, -5);
+	else if (prio == HIGH_PRIORITY)
+		set_thread_priority(task, -10);
+
+	TRACE2("%d, %d", old_prio, thread_priority(task));
+	return old_prio;
 }
 
 struct thread_trampoline_info {
@@ -1582,17 +1640,11 @@ wstdcall NTSTATUS WIN_FUNC(PsCreateSystemThread,7)
 	       "client_id = %p, func = %p, context = %p", phandle, access,
 	       obj_attr, process, client_id, func, ctx);
 
-	thread = allocate_object(sizeof(*thread), OBJECT_TYPE_NT_THREAD, NULL);
+	thread = create_nt_thread(NULL);
 	if (!thread) {
 		ERROR("couldn't allocate thread object");
 		EXIT2(return STATUS_RESOURCES);
 	}
-	thread->task = NULL;
-	thread->pid = 0;
-	nt_spin_lock_init(&thread->lock);
-	InitializeListHead(&thread->irps);
-	initialize_object(&thread->dh, ThreadObject, 0);
-	thread->dh.size = sizeof(*thread);
 	TRACE2("thread: %p", thread);
 	thread_info.thread = thread;
 	thread_info.func = func;
