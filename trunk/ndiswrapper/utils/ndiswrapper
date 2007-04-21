@@ -97,7 +97,7 @@ if ($ARGV[0] eq "-i" and @ARGV == 2) {
 } elsif ($ARGV[0] eq "-v" and @ARGV == 1) {
     printf "utils "; system("loadndisdriver -v");
     printf "driver ";
-    system("modinfo ndiswrapper | grep -E '^version|^vermagic'");
+    system("modinfo ndiswrapper | grep -E '^version|^vermagic|^filename'");
     $res = 0;
 } elsif ($ARGV[0] eq "-ma" and @ARGV == 1) {
     $res = generate_module_device_map(0);
@@ -713,7 +713,7 @@ sub generate_module_device_map {
 	$device_map = "/etc/ndiswrapper/ndiswrapper";
     }
 
-    open(CONF, "| sort >$device_map") or
+    open(DEVMAP, "| sort >$device_map") or
       die "couldn't create modules alias file $device_map: $!";
     open(LS, "ls -1 $confdir|") or
       die "couldn't open $confdir: $!";
@@ -747,9 +747,9 @@ sub generate_module_device_map {
 			next;
 		    }
 		    if ($mode == 0) {
-			printf CONF "alias %s ndiswrapper\n", $devstring;
+			printf DEVMAP "alias %s ndiswrapper\n", $devstring;
 		    } else {
-			printf CONF "install %s /sbin/modprobe ndiswrapper\n",
+			printf DEVMAP "install %s /sbin/modprobe ndiswrapper\n",
 			  $devstring;
 		    }
 		}
@@ -758,7 +758,7 @@ sub generate_module_device_map {
 	}
     }
     close(LS);
-    close(CONF);
+    close(DEVMAP);
 
     printf "module configuration information is stored in $device_map\n";
     return 0;
