@@ -815,9 +815,9 @@ wstdcall void *WIN_FUNC(ExAllocatePoolWithTag,3)
 		 * 2.6.19+ kernels. For now, we use __get_free_pages
 		 * which is more likely to fail (since it needs to
 		 * find contiguous block) than __vmalloc */
-		TRACE1("Windows driver allocating %lu bytes in interrupt "
-		       "context: 0x%x", size, preempt_count());
-		DBG_BLOCK(4) {
+		TRACE1("Windows driver allocating %lu bytes (%d) in interrupt "
+		       "context: 0x%x", size, get_order(size), preempt_count());
+		DBG_BLOCK(2) {
 			dump_stack();
 		}
 #if LINUX_VERSION_CODE > KERNEL_VERSION(2,6,18)
@@ -827,7 +827,9 @@ wstdcall void *WIN_FUNC(ExAllocatePoolWithTag,3)
 		addr = __vmalloc(size, GFP_ATOMIC | __GFP_HIGHMEM, PAGE_KERNEL);
 		alloc_type = ALLOC_TYPE_VMALLOC;
 #endif
-		if (!addr)
+		if (addr)
+			TRACE2("%p, %lu", addr, size);
+		else
 			WARNING("couldn't allocate %lu bytes of memory in "
 				"atomic context", size);
 	} else {
@@ -866,9 +868,10 @@ wstdcall void WIN_FUNC(ExFreePoolWithTag,2)
 						addr, NULL);
 		else
 			vfree(addr);
-	} else if ((alloc_type & 0xff) == ALLOC_TYPE_PAGES)
+	} else if ((alloc_type & 0xff) == ALLOC_TYPE_PAGES) {
+		TRACE2("%p, %lu", addr, alloc_type >> 8);
 		free_pages((unsigned long)addr, alloc_type >> 8);
-	else {
+	} else {
 		WARNING("invalid memory: %p, 0x%lx", addr, alloc_type);
 		dump_stack();
 	}
@@ -2505,22 +2508,25 @@ int ntoskernel_init(void)
 
 int ntoskernel_init_device(struct wrap_device *wd)
 {
+	int size;
+	void *ptr;
+
 	/* Atheros drivers allocate large chunks in atomic context
 	 * during initialization. Due to memory fragmentation, these
 	 * chunks are unlikely to be available, so try allocating a
 	 * large chunk in non-atomic context, forching kernel to
-	 * defragment memory. TODO: How about atheros USB drviers? 
-	 * Also, see comment in ExAllocatePoolWithTag. */
-	if (wd->vendor == 0x168c) {
-		int n = 3 * 1024 * 1024;
-		void *ptr;
+	 * defragment memory. Also, see comment in
+	 * ExAllocatePoolWithTag. */
+	if (wd->vendor == 0x168c)
+		size = 2 * 1024 * 1024;
+	else
+		size = 512 * 1024;
 
-		TRACE2("");
-		ptr = wrap_get_free_pages(GFP_KERNEL | __GFP_REPEAT, n);
-		TRACE2("%p", ptr);
-		if (ptr)
-			free_pages((unsigned long)ptr, get_order(n));
-	}
+	TRACE1("");
+	ptr = wrap_get_free_pages(GFP_KERNEL | __GFP_REPEAT, size);
+	TRACE1("%p", ptr);
+	if (ptr)
+		free_pages((unsigned long)ptr, get_order(size));
 	return 0;
 }
 
