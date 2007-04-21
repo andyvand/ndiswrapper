@@ -1937,7 +1937,6 @@ static NDIS_STATUS wrap_ndis_start_device(struct wrap_ndis_device *wnd)
 		       ", WPA2PSK" : "");
 
 		set_infra_mode(wnd, Ndis802_11Infrastructure);
-		set_scan(wnd);
 		set_priv_filter(wnd, Ndis802_11PrivFilterAcceptAll);
 		set_auth_mode(wnd, Ndis802_11AuthModeOpen);
 		set_encr_mode(wnd, Ndis802_11EncryptionDisabled);
