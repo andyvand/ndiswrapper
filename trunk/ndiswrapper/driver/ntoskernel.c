@@ -1553,6 +1553,10 @@ wstdcall KPRIORITY WIN_FUNC(KeQueryPriorityThread,1)
 	struct task_struct *task;
 
 	TRACE2("thread: %p", thread);
+	/* sis163u driver for amd64 passes 0x1f from thread created by
+	 * PsCreateSystemThread - no idea what is 0x1f */
+	if (thread == (void *)0x1f)
+		thread = get_current_nt_thread();
 	if (!thread)
 		EXIT2(return LOW_REALTIME_PRIORITY);
 	task = get_nt_thread_task(thread);
@@ -1577,7 +1581,8 @@ wstdcall KPRIORITY WIN_FUNC(KeSetPriorityThread,2)
 	struct task_struct *task;
 
 	TRACE2("thread: %p, priority = %u", thread, prio);
-
+	if (thread == (void *)0x1f)
+		thread = get_current_nt_thread();
 	if (!thread)
 		EXIT2(return LOW_REALTIME_PRIORITY);
 	task = get_nt_thread_task(thread);
@@ -2508,25 +2513,36 @@ int ntoskernel_init(void)
 
 int ntoskernel_init_device(struct wrap_device *wd)
 {
-	int size;
-	void *ptr;
+	int size, i, n;
+	void **ptr;
 
 	/* Atheros drivers allocate large chunks in atomic context
 	 * during initialization. Due to memory fragmentation, these
 	 * chunks are unlikely to be available, so try allocating a
-	 * large chunk in non-atomic context, forching kernel to
+	 * large chunk in non-atomic context, forcing kernel to
 	 * defragment memory. Also, see comment in
 	 * ExAllocatePoolWithTag. */
-	if (wd->vendor == 0x168c)
-		size = 2 * 1024 * 1024;
-	else
-		size = 512 * 1024;
+	if (wd->vendor == 0x168c) {
+		void *p[2];
+		size = 1 * 1024 * 1024;
+		n = sizeof(p) / sizeof(p[0]);
+		ptr = p;
+	} else {
+		void *p[2];
+		size = 256 * 1024;
+		n = sizeof(p) / sizeof(p[0]);
+		ptr = p;
+	}
 
 	TRACE1("");
-	ptr = wrap_get_free_pages(GFP_KERNEL | __GFP_REPEAT, size);
-	TRACE1("%p", ptr);
-	if (ptr)
-		free_pages((unsigned long)ptr, get_order(size));
+	for (i = 0; i < n; i++) {
+		ptr[i] = wrap_get_free_pages(GFP_KERNEL | __GFP_REPEAT, size);
+		TRACE1("%p", ptr[i]);
+	}
+	for (i = 0; i < n; i++) {
+		if (ptr[i])
+			free_pages((unsigned long)ptr[i], get_order(size));
+	}
 	return 0;
 }
 
