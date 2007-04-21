@@ -708,7 +708,7 @@ static void ntos_work_worker(worker_param_t dummy)
 			 ntos_work_item->arg2);
 		kfree(ntos_work_item);
 	}
-	return;
+	WORKEXIT(return);
 }
 
 int schedule_ntos_work_item(NTOS_WORK_FUNC func, void *arg1, void *arg2)
