@@ -828,7 +828,7 @@ wstdcall void *WIN_FUNC(ExAllocatePoolWithTag,3)
 		alloc_type = ALLOC_TYPE_VMALLOC;
 #endif
 		if (addr)
-			TRACE2("%p, %lu", addr, size);
+			TRACE1("%p, %lu", addr, size);
 		else
 			WARNING("couldn't allocate %lu bytes of memory in "
 				"atomic context", size);
@@ -869,7 +869,7 @@ wstdcall void WIN_FUNC(ExFreePoolWithTag,2)
 		else
 			vfree(addr);
 	} else if ((alloc_type & 0xff) == ALLOC_TYPE_PAGES) {
-		TRACE2("%p, %lu", addr, alloc_type >> 8);
+		TRACE1("%p, %lu", addr, alloc_type >> 8);
 		free_pages((unsigned long)addr, alloc_type >> 8);
 	} else {
 		WARNING("invalid memory: %p, 0x%lx", addr, alloc_type);
@@ -2529,7 +2529,7 @@ int ntoskernel_init_device(struct wrap_device *wd)
 		ptr = p;
 	} else {
 		void *p[2];
-		size = 256 * 1024;
+		size = 512 * 1024;
 		n = sizeof(p) / sizeof(p[0]);
 		ptr = p;
 	}
