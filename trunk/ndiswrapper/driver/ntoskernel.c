@@ -86,8 +86,6 @@ struct kuser_shared_data kuser_shared_data;
 static void update_user_shared_data_proc(unsigned long data);
 #endif
 
-static BOOLEAN queue_kdpc(struct kdpc *kdpc);
-
 WIN_SYMBOL_MAP("KeTickCount", &jiffies)
 
 WIN_SYMBOL_MAP("NlsMbCodePageTag", FALSE)
@@ -628,7 +626,7 @@ wstdcall void WIN_FUNC(KeFlushQueuedDpcs,0)
 	kdpc_worker(NULL);
 }
 
-static BOOLEAN queue_kdpc(struct kdpc *kdpc)
+BOOLEAN queue_kdpc(struct kdpc *kdpc)
 {
 	BOOLEAN ret;
 	unsigned long flags;
@@ -651,7 +649,7 @@ static BOOLEAN queue_kdpc(struct kdpc *kdpc)
 	return ret;
 }
 
-static BOOLEAN dequeue_kdpc(struct kdpc *kdpc)
+BOOLEAN dequeue_kdpc(struct kdpc *kdpc)
 {
 	BOOLEAN ret;
 	unsigned long flags;
@@ -808,36 +806,50 @@ wstdcall void *WIN_FUNC(ExAllocatePoolWithTag,3)
 	if (size < PAGE_SIZE) {
 		addr = kmalloc(size, gfp_irql());
 		alloc_type = ALLOC_TYPE_KMALLOC;
-	} else if (in_interrupt()) {
-		/* Some drivers (at least Atheros) allocate large
-		 * amount of memory during
-		 * Miniport(Query/Set)Information, which runs at
-		 * DISPATCH_LEVEL. This means vmalloc is to be called
-		 * at interrupt context, which is not allowed in
-		 * 2.6.19+ kernels. For now, we use __get_free_pages
-		 * which is more likely to fail (since it needs to
-		 * find contiguous block) than __vmalloc */
-		TRACE1("Windows driver allocating %lu bytes (%d) in interrupt "
-		       "context: 0x%x", size, get_order(size), preempt_count());
-		DBG_BLOCK(2) {
-			dump_stack();
-		}
-#if LINUX_VERSION_CODE > KERNEL_VERSION(2,6,18)
-		addr = wrap_get_free_pages(GFP_ATOMIC | __GFP_HIGHMEM, size);
-		alloc_type = (get_order(size) << 8) | (ALLOC_TYPE_PAGES & 0xff);
-#else
-		addr = __vmalloc(size, GFP_ATOMIC | __GFP_HIGHMEM, PAGE_KERNEL);
-		alloc_type = ALLOC_TYPE_VMALLOC;
-#endif
-		if (addr)
-			TRACE1("%p, %lu", addr, size);
-		else
-			WARNING("couldn't allocate %lu bytes of memory in "
-				"atomic context", size);
 	} else {
-		addr = vmalloc(size);
-		TRACE1("%p, %lu", addr, size);
-		alloc_type = ALLOC_TYPE_VMALLOC;
+		KIRQL irql = current_irql();
+
+		if (irql < DISPATCH_LEVEL) {
+			addr = vmalloc(size);
+			TRACE1("%p, %lu", addr, size);
+			alloc_type = ALLOC_TYPE_VMALLOC;
+		} else if (irql == DISPATCH_LEVEL) {
+			addr = __vmalloc(size, GFP_ATOMIC | __GFP_HIGHMEM,
+					 PAGE_KERNEL);
+			TRACE1("%p, %lu", addr, size);
+			alloc_type = ALLOC_TYPE_VMALLOC;
+		} else {
+			/* Some drivers (at least Atheros) allocate
+			 * large amount of memory during
+			 * Miniport(Query/Set)Information, which runs
+			 * at DISPATCH_LEVEL. This means vmalloc is to
+			 * be called at interrupt context, which is
+			 * not allowed in 2.6.19+ kernels. For now, we
+			 * use __get_free_pages which is more likely
+			 * to fail (since it needs to find contiguous
+			 * block) than __vmalloc */
+			TRACE1("Windows driver allocating %lu bytes (%d) in "
+			       "interrupt context: 0x%x", size,
+			       get_order(size), preempt_count());
+			DBG_BLOCK(2) {
+				dump_stack();
+			}
+#if LINUX_VERSION_CODE > KERNEL_VERSION(2,6,18)
+			addr = wrap_get_free_pages(GFP_ATOMIC | __GFP_HIGHMEM,
+						   size);
+			alloc_type = (get_order(size) << 8) |
+				(ALLOC_TYPE_PAGES & 0xff);
+#else
+			addr = __vmalloc(size, GFP_ATOMIC | __GFP_HIGHMEM,
+					 PAGE_KERNEL);
+			alloc_type = ALLOC_TYPE_VMALLOC;
+#endif
+			if (addr)
+				TRACE1("%p, %lu", addr, size);
+			else
+				WARNING("couldn't allocate %lu bytes of memory "
+					"at %d", size, irql);
+		}
 	}
 	if (addr) {
 		TRACE4("addr: %p, %p, %lu, %lu", addr, addr + 1, alloc_type,
