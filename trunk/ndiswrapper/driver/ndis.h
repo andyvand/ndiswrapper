@@ -204,6 +204,11 @@ struct ndis_task_tcp_large_send {
 	BOOLEAN ip_opts;
 };
 
+struct ndis_packet_stack {
+	ULONG_PTR IM_reserved[2];
+	ULONG_PTR ndis_reserved[4];
+};
+
 enum ndis_per_packet_info {
 	TcpIpChecksumPacketInfo, IpSecPacketInfo, TcpLargeSendPacketInfo,
 	ClassificationHandlePacketInfo, NdisReserved,

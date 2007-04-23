@@ -1165,15 +1165,6 @@ enum key_value_information_class {
 	KeyValuePartialInformationAlign64
 };
 
-struct object_attr {
-	ULONG length;
-	void *root_dir;
-	struct unicode_string *name;
-	ULONG attr;
-	void *security_descriptor;
-	void *security_qos;
-};
-
 struct file_name_info {
 	ULONG length;
 	wchar_t *name;
@@ -1372,6 +1363,10 @@ struct callback_object {
 	struct nt_list callback_funcs;
 	BOOLEAN allow_multiple_callbacks;
 	struct object_attributes *attributes;
+};
+
+enum section_inherit {
+	ViewShare = 1, ViewUnmap = 2
 };
 
 struct ksystem_time {

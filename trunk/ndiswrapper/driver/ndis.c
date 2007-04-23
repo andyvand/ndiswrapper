@@ -1452,6 +1452,10 @@ wstdcall void WIN_FUNC(NdisFreePacket,1)
 		EXIT4(return);
 	}
 	atomic_dec_var(pool->num_used_descr);
+	if (packet->reserved[1]) {
+		kfree((void *)packet->reserved[1]);
+		packet->reserved[1] = 0;
+	}
 	irql = nt_spin_lock_irql(&pool->lock, DISPATCH_LEVEL);
 	if (pool->num_allocated_descr > MAX_ALLOCATED_NDIS_PACKETS) {
 		nt_spin_unlock_irql(&pool->lock, irql);
@@ -1463,6 +1467,20 @@ wstdcall void WIN_FUNC(NdisFreePacket,1)
 		nt_spin_unlock_irql(&pool->lock, irql);
 	}
 	EXIT4(return);
+}
+
+wstdcall struct ndis_packet_stack *WIN_FUNC(NdisIMGetCurrentPacketStack,2)
+	(struct ndis_packet *packet, BOOLEAN *stacks_remain)
+{
+	struct ndis_packet_stack *stack;
+	if (packet->reserved[1]) {
+		*stacks_remain = FALSE;
+		EXIT3(return NULL);
+	}
+	stack = kmalloc(sizeof(*stack), gfp_irql());
+	packet->reserved[1] = (typeof(packet->reserved[1]))stack;
+	*stacks_remain = TRUE;
+	EXIT3(return stack);
 }
 
 wstdcall void WIN_FUNC(NdisCopyFromPacketToPacketSafe,7)
