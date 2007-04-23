@@ -1639,10 +1639,10 @@ wstdcall void wrap_miniport_timer(struct kdpc *kdpc, void *ctx, void *arg1,
 		   timer, timer->func, timer->ctx, timer->nmb);
 	nmb = timer->nmb;
 	/* already called at DISPATCH_LEVEL */
-	if (!derialized_driver(nmb->wnd))
+	if (!deserialized_driver(nmb->wnd))
 		serialize_lock(nmb->wnd);
 	LIN2WIN4(timer->func, &timer->kdpc, timer->ctx, NULL, NULL);
-	if (!derialized_driver(nmb->wnd))
+	if (!deserialized_driver(nmb->wnd))
 		serialize_unlock(nmb->wnd);
 	TIMEREXIT(return);
 }
@@ -1657,9 +1657,9 @@ wstdcall void WIN_FUNC(NdisMInitializeTimer,4)
 	timer->func = func;
 	timer->ctx = ctx;
 	timer->nmb = nmb;
-//	KeInitializeDpc(&timer->kdpc, func, ctx);
-	KeInitializeDpc(&timer->kdpc, WIN_FUNC_PTR(wrap_miniport_timer,4),
-			timer);
+	KeInitializeDpc(&timer->kdpc, func, ctx);
+//	KeInitializeDpc(&timer->kdpc, WIN_FUNC_PTR(wrap_miniport_timer,4),
+//			timer);
 	wrap_init_timer(&timer->nt_timer, NotificationTimer, &timer->kdpc, nmb);
 	TIMEREXIT(return);
 }
