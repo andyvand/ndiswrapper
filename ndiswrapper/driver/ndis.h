@@ -603,7 +603,7 @@ enum ndis_media_stream_mode {
 
 enum wrapper_work {
 	LINK_STATUS_CHANGED, SET_MULTICAST_LIST, COLLECT_IW_STATS,
-	MINIPORT_RESET, SHUTDOWN
+	HANGCHECK, SHUTDOWN
 };
 
 struct encr_info {
@@ -824,7 +824,7 @@ struct wrap_ndis_device {
 	struct wrap_device *wd;
 	struct net_device *net_dev;
 	void *shutdown_ctx;
-	struct tasklet_struct irq_tasklet;
+	work_struct_t irq_work;
 	struct ndis_mp_interrupt *mp_interrupt;
 	unsigned long mem_start;
 	unsigned long mem_end;

@@ -86,6 +86,8 @@ struct kuser_shared_data kuser_shared_data;
 static void update_user_shared_data_proc(unsigned long data);
 #endif
 
+static BOOLEAN queue_kdpc(struct kdpc *kdpc);
+
 WIN_SYMBOL_MAP("KeTickCount", &jiffies)
 
 WIN_SYMBOL_MAP("NlsMbCodePageTag", FALSE)
@@ -425,7 +427,7 @@ static void timer_proc(unsigned long data)
 	KeSetEvent((struct nt_event *)nt_timer, 0, FALSE);
 	kdpc = nt_timer->kdpc;
 	if (kdpc && kdpc->func) {
-#if 1
+#if 0
 		LIN2WIN4(kdpc->func, kdpc, kdpc->ctx, kdpc->arg1, kdpc->arg2);
 #else
 		queue_kdpc(kdpc);
@@ -471,7 +473,7 @@ void wrap_init_timer(struct nt_timer *nt_timer, enum timer_type type,
 	nt_timer->kdpc = kdpc;
 	initialize_object(&nt_timer->dh, type, 0);
 	nt_timer->wrap_timer_magic = WRAP_TIMER_MAGIC;
-	irql = nt_spin_lock_irql(&timer_lock, DISPATCH_LEVEL);
+	irql = nt_spin_lock_irql(&timer_lock, SIRQL);
 	if (nmb)
 		InsertTailList(&nmb->wnd->wrap_timer_list, &wrap_timer->list);
 	else
@@ -834,6 +836,7 @@ wstdcall void *WIN_FUNC(ExAllocatePoolWithTag,3)
 				"atomic context", size);
 	} else {
 		addr = vmalloc(size);
+		TRACE1("%p, %lu", addr, size);
 		alloc_type = ALLOC_TYPE_VMALLOC;
 	}
 	if (addr) {
@@ -863,6 +866,7 @@ wstdcall void WIN_FUNC(ExFreePoolWithTag,2)
 	else if (alloc_type == ALLOC_TYPE_VMALLOC) {
 		assert((unsigned long)addr >= VMALLOC_START &&
 		       (unsigned long)addr < VMALLOC_END);
+		TRACE1("%p", addr);
 		if (in_interrupt())
 			schedule_ntos_work_item(WIN_FUNC_PTR(vfree_nonintr,2),
 						addr, NULL);
@@ -1167,6 +1171,7 @@ wstdcall NTSTATUS WIN_FUNC(KeWaitForMultipleObjects,8)
 	else
 		wait_hz = SYSTEM_TIME_TO_HZ(*timeout) + 1;
 
+	assert(current_irql() < DISPATCH_LEVEL);
 	EVENTTRACE("%p: sleep for %ld on %p", current, wait_hz, &thread_event);
 	/* we don't honor 'alertable' - according to decription for
 	 * this, even if waiting in non-alertable state, thread may be
@@ -2513,6 +2518,7 @@ int ntoskernel_init(void)
 
 int ntoskernel_init_device(struct wrap_device *wd)
 {
+#if 0
 	int size, i, n;
 	void **ptr;
 
@@ -2543,6 +2549,7 @@ int ntoskernel_init_device(struct wrap_device *wd)
 		if (ptr[i])
 			free_pages((unsigned long)ptr[i], get_order(size));
 	}
+#endif
 	return 0;
 }
 
@@ -2566,7 +2573,7 @@ void ntoskernel_exit(void)
 	while (1) {
 		struct wrap_timer *wrap_timer;
 
-		irql = nt_spin_lock_irql(&timer_lock, DISPATCH_LEVEL);
+		irql = nt_spin_lock_irql(&timer_lock, SIRQL);
 		cur = RemoveTailList(&wrap_timer_list);
 		nt_spin_unlock_irql(&timer_lock, irql);
 		if (!cur)

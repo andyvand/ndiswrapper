@@ -1759,27 +1759,37 @@ wstdcall void WIN_FUNC(NdisMDeregisterAdapterShutdownHandler,1)
  * For now, handle these cases with two separate irq handlers based on
  * observation of these two drivers. However, it is likely not
  * correct. */
-static void deserialized_irq_handler(unsigned long data)
+static void deserialized_irq_handler(worker_param_t param)
 {
-	struct ndis_mp_interrupt *mp_interrupt = (typeof(mp_interrupt))data;
-	struct wrap_ndis_device *wnd = mp_interrupt->nmb->wnd;
+	struct wrap_ndis_device *wnd;
+	struct ndis_mp_interrupt *mp_interrupt;
+	KIRQL irql;
 
+	wnd = worker_param_data(param, struct wrap_ndis_device, irq_work);
+	mp_interrupt = wnd->mp_interrupt;
+	irql = raise_irql(DISPATCH_LEVEL);
 	LIN2WIN1(mp_interrupt->mp_dpc, wnd->nmb->adapter_ctx);
 	if (mp_interrupt->enable) {
 		struct miniport_char *miniport;
 		miniport = &wnd->wd->driver->ndis_driver->miniport;
 		LIN2WIN1(miniport->enable_interrupt, wnd->nmb->adapter_ctx);
 	}
+	lower_irql(irql);
 }
 
-static void serialized_irq_handler(unsigned long data)
+static void serialized_irq_handler(worker_param_t param)
 {
-	struct ndis_mp_interrupt *mp_interrupt = (typeof(mp_interrupt))data;
-	struct wrap_ndis_device *wnd = mp_interrupt->nmb->wnd;
+	struct wrap_ndis_device *wnd;
+	struct ndis_mp_interrupt *mp_interrupt;
+	KIRQL irql;
 
+	wnd = worker_param_data(param, struct wrap_ndis_device, irq_work);
+	mp_interrupt = wnd->mp_interrupt;
+	irql = raise_irql(DISPATCH_LEVEL);
 	serialize_lock(wnd);
 	LIN2WIN1(mp_interrupt->mp_dpc, wnd->nmb->adapter_ctx);
 	serialize_unlock(wnd);
+	lower_irql(irql);
 }
 
 irqreturn_t ndis_isr(int irq, void *data ISR_PT_REGS_PARAM_DECL)
@@ -1804,7 +1814,7 @@ irqreturn_t ndis_isr(int irq, void *data ISR_PT_REGS_PARAM_DECL)
 	nt_spin_unlock(&mp_interrupt->lock);
 	if (recognized) {
 		if (queue_handler)
-			tasklet_schedule(&wnd->irq_tasklet);
+			schedule_ntos_work(&wnd->irq_work);
 		EXIT6(return IRQ_HANDLED);
 	}
 	EXIT6(return IRQ_NONE);
@@ -1837,9 +1847,11 @@ wstdcall NDIS_STATUS WIN_FUNC(NdisMRegisterInterrupt,7)
 	else
 		mp_interrupt->enable = FALSE;
 
-	tasklet_init(&wnd->irq_tasklet, deserialized_driver(wnd) ?
-		     deserialized_irq_handler : serialized_irq_handler,
-		     (unsigned long)mp_interrupt);
+	if (deserialized_driver(wnd))
+		initialize_work(&wnd->irq_work, deserialized_irq_handler, wnd);
+	else
+		initialize_work(&wnd->irq_work, serialized_irq_handler, wnd);
+
 	if (request_irq(vector, ndis_isr, req_isr ? IRQF_SHARED : 0,
 			wnd->net_dev->name, mp_interrupt)) {
 		printk(KERN_WARNING "%s: request for IRQ %d failed\n",
@@ -1857,8 +1869,10 @@ wstdcall void WIN_FUNC(NdisMDeregisterInterrupt,1)
 
 	ENTER1("%p", mp_interrupt);
 	nmb = mp_interrupt->nmb;
-	free_irq(mp_interrupt->irq, mp_interrupt);
-	tasklet_kill(&nmb->wnd->irq_tasklet);
+#ifdef USE_OWN_NTOS_WORKQUEUE
+	flush_workqueue(ntos_wq);
+#endif
+	free_irq(mp_interrupt->irq, nmb->wnd);
 	mp_interrupt->nmb = NULL;
 	nmb->wnd->mp_interrupt = NULL;
 	EXIT1(return);
