@@ -795,16 +795,19 @@ static inline KIRQL current_irql(void)
 static inline KIRQL raise_irql(KIRQL newirql)
 {
 	KIRQL irql = current_irql();
+	TRACE6("%d, %d", irql, newirql);
+	assert(irql <= newirql);
 	if (irql < DISPATCH_LEVEL) {
 		if (newirql == DISPATCH_LEVEL)
 			preempt_disable();
 		else if (newirql == SIRQL) {
 			preempt_disable();
 			local_bh_disable();
-		} else
-			WARNING("invalid IRQL: %d, %d", irql, newirql);
+		} else {
+			dump_stack();
+			TRACE6("invalid IRQL: %d, %d", irql, newirql);
+		}
 	}
-	TRACE6("%d, %d", irql, newirql);
 	return irql;
 }
 
@@ -812,18 +815,17 @@ static inline void lower_irql(KIRQL oldirql)
 {
 	KIRQL irql = current_irql();
 	TRACE6("%d, %d", irql, oldirql);
-	DBG_BLOCK(2) {
-		if (irql < oldirql)
-			ERROR("invalid irql: %d < %d", irql, oldirql);
-	}
+	assert(oldirql <= irql);
 	if (oldirql < DISPATCH_LEVEL) {
 		if (irql == DISPATCH_LEVEL)
 			preempt_enable();
 		else if (irql == SIRQL) {
 			local_bh_enable();
 			preempt_enable();
-		} else
-			WARNING("invalid irql: %d, %d", irql, oldirql);
+		} else {
+			dump_stack();
+			TRACE6("invalid irql: %d, %d", irql, oldirql);
+		}
 	}
 }
 
