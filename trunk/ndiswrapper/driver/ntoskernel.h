@@ -782,23 +782,26 @@ do {									\
 static inline KIRQL current_irql(void)
 {
 	if (in_irq() || irqs_disabled())
-		EXIT6(return DEVICE_LEVEL);
-	if (
-#ifdef CONFIG_PREEMPT_RT
-		in_atomic() ||
-#endif
-		in_interrupt())
+		EXIT6(return DIRQL);
+	if (in_interrupt())
+		EXIT6(return SIRQL);
+	if (!preemptible())
 		EXIT6(return DISPATCH_LEVEL);
-	EXIT6(return PASSIVE_LEVEL);
+	else
+		EXIT6(return PASSIVE_LEVEL);
 }
 
 static inline KIRQL raise_irql(KIRQL newirql)
 {
 	KIRQL irql = current_irql();
-//	assert (newirql == DISPATCH_LEVEL);
-	if (irql < DISPATCH_LEVEL && newirql == DISPATCH_LEVEL) {
-		local_bh_disable();
-		preempt_disable();
+	if (irql < DISPATCH_LEVEL) {
+		if (newirql == DISPATCH_LEVEL)
+			preempt_disable();
+		else if (newirql == SIRQL) {
+			preempt_disable();
+			local_bh_disable();
+		} else
+			WARNING("invalid IRQL: %d, %d", irql, newirql);
 	}
 	TRACE6("%d, %d", irql, newirql);
 	return irql;
@@ -812,13 +815,18 @@ static inline void lower_irql(KIRQL oldirql)
 		if (irql < oldirql)
 			ERROR("invalid irql: %d < %d", irql, oldirql);
 	}
-	if (oldirql < DISPATCH_LEVEL && irql == DISPATCH_LEVEL) {
-		preempt_enable();
-		local_bh_enable();
+	if (oldirql < DISPATCH_LEVEL) {
+		if (irql == DISPATCH_LEVEL)
+			preempt_enable();
+		else if (irql == SIRQL) {
+			preempt_enable();
+			local_bh_enable();
+		} else
+			WARNING("invalid irql: %d, %d", irql, oldirql);
 	}
 }
 
-#define gfp_irql() (current_irql() < DISPATCH_LEVEL ? GFP_KERNEL : GFP_ATOMIC)
+#define gfp_irql() (current_irql() < SIRQL ? GFP_KERNEL : GFP_ATOMIC)
 
 /* Windows spinlocks are of type ULONG_PTR which is not big enough to
  * store Linux spinlocks; so we implement Windows spinlocks using

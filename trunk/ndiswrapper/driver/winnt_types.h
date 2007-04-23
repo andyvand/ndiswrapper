@@ -20,8 +20,13 @@
 #define FALSE				0
 
 #define PASSIVE_LEVEL			0
+#define APC_LEVEL			1
 #define DISPATCH_LEVEL			2
-#define DEVICE_LEVEL			(DISPATCH_LEVEL + 1)
+#define DEVICE_LEVEL_BASE		4
+
+/* soft interrupts / bottom-half's are disabled at SIRQL */
+#define SIRQL				(DEVICE_LEVEL_BASE + 1)
+#define DIRQL				(DEVICE_LEVEL_BASE + 2)
 
 #define STATUS_WAIT_0			0
 #define STATUS_SUCCESS                  0

@@ -26,6 +26,13 @@ static struct nt_list allocs;
 static struct nt_list slack_allocs;
 static NT_SPIN_LOCK alloc_lock;
 
+struct vmem_block {
+	struct nt_list list;
+	int size;
+};
+
+static struct nt_list vmem_list;
+
 #if defined(ALLOC_DEBUG)
 struct alloc_info {
 	enum alloc_type type;
@@ -304,10 +311,81 @@ int alloc_size(enum alloc_type type)
 
 #endif // ALLOC_DEBUG
 
+#define VMEM_BLOCK_SIZE (2 * 1024 * 1024)
+
+void *vmem_alloc(int size)
+{
+	struct nt_list *cur, *next;
+	struct vmem_block *vmem_block, *block, *best;
+	KIRQL irql;
+	void *ptr;
+
+	irql = nt_spin_lock_irql(&alloc_lock, DISPATCH_LEVEL);
+	best = ptr = NULL;
+	nt_list_for_each_safe(cur, next, &vmem_list) {
+		vmem_block = container_of(cur, struct vmem_block, list);
+		if (vmem_block->size < size)
+			continue;
+		if (!best || best->size > vmem_block->size)
+			best = vmem_block;
+	}
+	if (best) {
+		ptr = best + 1;
+		block = (struct vmem_block *)(ptr + size);
+		block->size = best->size - size - sizeof(*block);
+		block->list = best->list;
+		best->list.prev->next = &block->list;
+	}
+	nt_spin_unlock_irql(&alloc_lock, irql);
+	return ptr;
+}
+
+int wrapmem_init_device(struct wrap_device *wd)
+{
+	struct vmem_block *vmem_block;
+	if (wd->vendor != 0x168c)
+		return 0;
+
+	vmem_block = vmalloc(VMEM_BLOCK_SIZE);
+	if (vmem_block) {
+		TRACE1("%p", vmem_block);
+		vmem_block->size = VMEM_BLOCK_SIZE - sizeof(*vmem_block);
+		InsertTailList(&vmem_block->list, &vmem_list);
+	} else
+		WARNING("couldn't allocate memory");
+	return 0;
+}
+
+void wrapmem_exit_device(struct wrap_device *wd)
+{
+	struct nt_list *cur, *next;
+	struct vmem_block *vmem_block;
+	KIRQL irql;
+
+	if (wd->vendor != 0x168c)
+		return;
+	
+	irql = nt_spin_lock_irql(&alloc_lock, DISPATCH_LEVEL);
+	vmem_block = NULL;
+	nt_list_for_each_safe(cur, next, &vmem_list) {
+		vmem_block = container_of(cur, struct vmem_block, list);
+		TRACE1("%p, %d", vmem_block, vmem_block->size);
+		if (vmem_block->size == VMEM_BLOCK_SIZE - sizeof(*vmem_block)) {
+			RemoveEntryList(&vmem_block->list);
+			break;
+		} else
+			vmem_block = NULL;
+	}
+	nt_spin_unlock_irql(&alloc_lock, irql);
+	if (vmem_block)
+		vfree(vmem_block);
+}
+
 int wrapmem_init(void)
 {
 	InitializeListHead(&allocs);
 	InitializeListHead(&slack_allocs);
+	InitializeListHead(&vmem_list);
 	nt_spin_lock_init(&alloc_lock);
 	return 0;
 }
