@@ -829,8 +829,8 @@ struct wrap_ndis_device {
 	struct wrap_device *wd;
 	struct net_device *net_dev;
 	void *shutdown_ctx;
-	work_struct_t irq_work;
 	struct ndis_mp_interrupt *mp_interrupt;
+	struct kdpc irq_kdpc;
 	unsigned long mem_start;
 	unsigned long mem_end;
 

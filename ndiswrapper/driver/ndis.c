@@ -154,6 +154,12 @@ wstdcall NDIS_STATUS WIN_FUNC(NdisAllocateMemoryWithTag,3)
 	(void **dest, UINT length, ULONG tag)
 {
 	void *addr;
+	KIRQL irql = current_irql();
+
+	if (irql > DISPATCH_LEVEL) {
+		WARNING("invalid irql: %d", irql);
+		dump_stack();
+	}
 	addr = ExAllocatePoolWithTag(NonPagedPool, length, tag);
 	TRACE4("%p", addr);
 	if (addr) {
@@ -1633,10 +1639,10 @@ wstdcall void wrap_miniport_timer(struct kdpc *kdpc, void *ctx, void *arg1,
 		   timer, timer->func, timer->ctx, timer->nmb);
 	nmb = timer->nmb;
 	/* already called at DISPATCH_LEVEL */
-	if (!deserialized_driver(nmb->wnd))
+	if (!derialized_driver(nmb->wnd))
 		serialize_lock(nmb->wnd);
 	LIN2WIN4(timer->func, &timer->kdpc, timer->ctx, NULL, NULL);
-	if (!deserialized_driver(nmb->wnd))
+	if (!derialized_driver(nmb->wnd))
 		serialize_unlock(nmb->wnd);
 	TIMEREXIT(return);
 }
@@ -1777,37 +1783,32 @@ wstdcall void WIN_FUNC(NdisMDeregisterAdapterShutdownHandler,1)
  * For now, handle these cases with two separate irq handlers based on
  * observation of these two drivers. However, it is likely not
  * correct. */
-static void deserialized_irq_handler(worker_param_t param)
+wstdcall static void deserialized_irq_handler(struct kdpc *kdpc, void *ctx,
+					      void *arg1, void *arg2)
 {
 	struct wrap_ndis_device *wnd;
-	struct ndis_mp_interrupt *mp_interrupt;
-	KIRQL irql;
+	ndis_interrupt_handler irq_handler;
+	struct miniport_char *miniport;
 
-	wnd = worker_param_data(param, struct wrap_ndis_device, irq_work);
-	mp_interrupt = wnd->mp_interrupt;
-	irql = raise_irql(DISPATCH_LEVEL);
-	LIN2WIN1(mp_interrupt->mp_dpc, wnd->nmb->adapter_ctx);
-	if (mp_interrupt->enable) {
-		struct miniport_char *miniport;
-		miniport = &wnd->wd->driver->ndis_driver->miniport;
+	wnd = ctx;
+	irq_handler = arg1;
+	LIN2WIN1(irq_handler, wnd->nmb->adapter_ctx);
+	miniport = arg2;
+	if (miniport->enable_interrupt)
 		LIN2WIN1(miniport->enable_interrupt, wnd->nmb->adapter_ctx);
-	}
-	lower_irql(irql);
 }
 
-static void serialized_irq_handler(worker_param_t param)
+wstdcall static void serialized_irq_handler(struct kdpc *kdpc, void *ctx,
+					    void *arg1, void *arg2)
 {
 	struct wrap_ndis_device *wnd;
-	struct ndis_mp_interrupt *mp_interrupt;
-	KIRQL irql;
+	ndis_interrupt_handler irq_handler;
 
-	wnd = worker_param_data(param, struct wrap_ndis_device, irq_work);
-	mp_interrupt = wnd->mp_interrupt;
-	irql = raise_irql(DISPATCH_LEVEL);
+	wnd = ctx;
+	irq_handler = arg1;
 	serialize_lock(wnd);
-	LIN2WIN1(mp_interrupt->mp_dpc, wnd->nmb->adapter_ctx);
+	LIN2WIN1(irq_handler, arg2);
 	serialize_unlock(wnd);
-	lower_irql(irql);
 }
 
 irqreturn_t ndis_isr(int irq, void *data ISR_PT_REGS_PARAM_DECL)
@@ -1832,7 +1833,7 @@ irqreturn_t ndis_isr(int irq, void *data ISR_PT_REGS_PARAM_DECL)
 	nt_spin_unlock(&mp_interrupt->lock);
 	if (recognized) {
 		if (queue_handler)
-			schedule_ntos_work(&wnd->irq_work);
+			queue_kdpc(&wnd->irq_kdpc);
 		EXIT6(return IRQ_HANDLED);
 	}
 	EXIT6(return IRQ_NONE);
@@ -1865,10 +1866,19 @@ wstdcall NDIS_STATUS WIN_FUNC(NdisMRegisterInterrupt,7)
 	else
 		mp_interrupt->enable = FALSE;
 
-	if (deserialized_driver(wnd))
-		initialize_work(&wnd->irq_work, deserialized_irq_handler, wnd);
-	else
-		initialize_work(&wnd->irq_work, serialized_irq_handler, wnd);
+	if (deserialized_driver(wnd)) {
+		KeInitializeDpc(&wnd->irq_kdpc,
+				WIN_FUNC_PTR(deserialized_irq_handler,4),
+				nmb->wnd);
+		wnd->irq_kdpc.arg1 = miniport->handle_interrupt;
+		wnd->irq_kdpc.arg2 = miniport;
+	} else {
+		KeInitializeDpc(&wnd->irq_kdpc,
+				WIN_FUNC_PTR(serialized_irq_handler,4),
+				nmb->wnd);
+		wnd->irq_kdpc.arg1 = miniport->handle_interrupt;
+		wnd->irq_kdpc.arg2 = nmb->adapter_ctx;
+	}
 
 	if (request_irq(vector, ndis_isr, req_isr ? IRQF_SHARED : 0,
 			wnd->net_dev->name, mp_interrupt)) {
@@ -1887,10 +1897,9 @@ wstdcall void WIN_FUNC(NdisMDeregisterInterrupt,1)
 
 	ENTER1("%p", mp_interrupt);
 	nmb = mp_interrupt->nmb;
-#ifdef USE_OWN_NTOS_WORKQUEUE
-	flush_workqueue(ntos_wq);
-#endif
-	free_irq(mp_interrupt->irq, nmb->wnd);
+	if (dequeue_kdpc(&nmb->wnd->irq_kdpc))
+		TRACE2("interrupt kdpc was pending");
+	free_irq(mp_interrupt->irq, mp_interrupt);
 	mp_interrupt->nmb = NULL;
 	nmb->wnd->mp_interrupt = NULL;
 	EXIT1(return);

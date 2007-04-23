@@ -665,8 +665,9 @@ LONG KeSetEvent(struct nt_event *nt_event, KPRIORITY incr,
 LONG KeResetEvent(struct nt_event *nt_event) wstdcall;
 void KeClearEvent(struct nt_event *nt_event) wstdcall;
 void KeInitializeDpc(struct kdpc *kdpc, void *func, void *ctx) wstdcall;
-BOOLEAN KeInsertQueueDpc(struct kdpc *kdpc, void *arg1, void *arg2) wstdcall;
-BOOLEAN KeRemoveQueueDpc(struct kdpc *kdpc) wstdcall;
+BOOLEAN queue_kdpc(struct kdpc *kdpc);
+BOOLEAN dequeue_kdpc(struct kdpc *kdpc);
+
 void KeFlushQueuedDpcs(void) wstdcall;
 NTSTATUS KeWaitForSingleObject(void *object, KWAIT_REASON reason,
 			       KPROCESSOR_MODE waitmode, BOOLEAN alertable,
@@ -785,7 +786,7 @@ static inline KIRQL current_irql(void)
 		EXIT6(return DIRQL);
 	if (in_interrupt())
 		EXIT6(return SIRQL);
-	if (!preemptible())
+	if (in_atomic())
 		EXIT6(return DISPATCH_LEVEL);
 	else
 		EXIT6(return PASSIVE_LEVEL);
@@ -819,14 +820,14 @@ static inline void lower_irql(KIRQL oldirql)
 		if (irql == DISPATCH_LEVEL)
 			preempt_enable();
 		else if (irql == SIRQL) {
-			preempt_enable();
 			local_bh_enable();
+			preempt_enable();
 		} else
 			WARNING("invalid irql: %d, %d", irql, oldirql);
 	}
 }
 
-#define gfp_irql() (current_irql() < SIRQL ? GFP_KERNEL : GFP_ATOMIC)
+#define gfp_irql() (current_irql() < DISPATCH_LEVEL ? GFP_KERNEL : GFP_ATOMIC)
 
 /* Windows spinlocks are of type ULONG_PTR which is not big enough to
  * store Linux spinlocks; so we implement Windows spinlocks using
