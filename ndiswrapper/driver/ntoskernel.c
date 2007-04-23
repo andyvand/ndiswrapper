@@ -2038,10 +2038,11 @@ wfastcall void WIN_FUNC(ObfDereferenceObject,1)
 }
 
 wstdcall NTSTATUS WIN_FUNC(ZwCreateFile,11)
-	(void **handle, ACCESS_MASK access_mask, struct object_attr *obj_attr,
-	 struct io_status_block *iosb, LARGE_INTEGER *size,
-	 ULONG file_attr, ULONG share_access, ULONG create_disposition,
-	 ULONG create_options, void *ea_buffer, ULONG ea_length)
+	(void **handle, ACCESS_MASK access_mask,
+	 struct object_attributes *obj_attr,struct io_status_block *iosb,
+	 LARGE_INTEGER *size, ULONG file_attr, ULONG share_access,
+	 ULONG create_disposition, ULONG create_options, void *ea_buffer,
+	 ULONG ea_length)
 {
 	struct common_object_header *coh;
 	struct file_object *fo;
@@ -2294,10 +2295,39 @@ wstdcall NTSTATUS WIN_FUNC(ZwQueryInformationFile,5)
 	EXIT2(return iosb->status);
 }
 
+wstdcall NTSTATUS WIN_FUNC(ZwOpenSection,3)
+	(void **handle, ACCESS_MASK access, struct object_attributes *obj_attrs)
+{
+	INFO("%p, 0x%x, %d", obj_attrs, obj_attrs->attributes, access);
+	TODO();
+	*handle = obj_attrs;
+	return STATUS_SUCCESS;
+}
+
+wstdcall NTSTATUS WIN_FUNC(ZwMapViewOfSection,10)
+	(void *secn_handle, void *process_handle, void **base_address,
+	 ULONG zero_bits, LARGE_INTEGER *secn_offset, SIZE_T *view_size,
+	 enum section_inherit inherit, ULONG alloc_type, ULONG protect)
+{
+	INFO("%p, %p, %p", secn_handle, process_handle, base_address);
+	TODO();
+	*base_address = (void *)0xdeadbeef;
+	return STATUS_SUCCESS;
+}
+
+wstdcall NTSTATUS WIN_FUNC(ZwUnmapViewOfSection,2)
+	(void *process_handle, void *base_address)
+{
+	INFO("%p, %p", process_handle, base_address);
+	TODO();
+	return STATUS_SUCCESS;
+}
+
 wstdcall NTSTATUS WIN_FUNC(ZwCreateKey,7)
-	(void **handle, ACCESS_MASK desired_access, struct object_attr *attr,
-	 ULONG title_index, struct unicode_string *class,
-	 ULONG create_options, ULONG *disposition)
+	(void **handle, ACCESS_MASK desired_access,
+	 struct object_attributes *attr, ULONG title_index,
+	 struct unicode_string *class, ULONG create_options,
+	 ULONG *disposition)
 {
 	struct ansi_string ansi;
 	if (RtlUnicodeStringToAnsiString(&ansi, attr->name, TRUE) ==
@@ -2310,7 +2340,8 @@ wstdcall NTSTATUS WIN_FUNC(ZwCreateKey,7)
 }
 
 wstdcall NTSTATUS WIN_FUNC(ZwOpenKey,3)
-	(void **handle, ACCESS_MASK desired_access, struct object_attr *attr)
+	(void **handle, ACCESS_MASK desired_access,
+	 struct object_attributes *attr)
 {
 	struct ansi_string ansi;
 	if (RtlUnicodeStringToAnsiString(&ansi, attr->name, TRUE) ==
@@ -2354,6 +2385,15 @@ wstdcall NTSTATUS WIN_FUNC(ZwDeleteKey,1)
 {
 	ENTER2("%p", handle);
 	return STATUS_SUCCESS;
+}
+
+wstdcall NTSTATUS WIN_FUNC(ZwPowerInformation,4)
+	(INT info_level, void *in_buf, ULONG in_buf_len, void *out_buf,
+	 ULONG out_buf_len)
+{
+	INFO("%d, %u, %u", info_level, in_buf_len, out_buf_len);
+	TODO();
+	return STATUS_ACCESS_DENIED;
 }
 
 wstdcall NTSTATUS WIN_FUNC(WmiSystemControl,4)
