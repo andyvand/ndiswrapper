@@ -1791,6 +1791,7 @@ wstdcall static void deserialized_irq_handler(struct kdpc *kdpc, void *ctx,
 	if (miniport->enable_interrupt)
 		LIN2WIN1(miniport->enable_interrupt, wnd->nmb->adapter_ctx);
 }
+WIN_FUNC_DECL(deserialized_irq_handler,4)
 
 wstdcall static void serialized_irq_handler(struct kdpc *kdpc, void *ctx,
 					    void *arg1, void *arg2)
@@ -1804,6 +1805,7 @@ wstdcall static void serialized_irq_handler(struct kdpc *kdpc, void *ctx,
 	LIN2WIN1(irq_handler, arg2);
 	serialize_unlock(wnd);
 }
+WIN_FUNC_DECL(serialized_irq_handler,4)
 
 irqreturn_t ndis_isr(int irq, void *data ISR_PT_REGS_PARAM_DECL)
 {
