@@ -1092,11 +1092,11 @@ static void iw_stats_timer_proc(unsigned long data)
 {
 	struct wrap_ndis_device *wnd = (struct wrap_ndis_device *)data;
 
-	ENTER2("");
-	if (wnd->iw_stats_interval <= 0)
-		EXIT2(return);
-	set_bit(COLLECT_IW_STATS, &wnd->wrap_ndis_pending_work);
-	schedule_wrap_work(&wnd->wrap_ndis_work);
+	ENTER2("%d", wnd->iw_stats_interval);
+	if (wnd->iw_stats_interval > 0) {
+		set_bit(COLLECT_IW_STATS, &wnd->wrap_ndis_pending_work);
+		schedule_wrap_work(&wnd->wrap_ndis_work);
+	}
 	mod_timer(&wnd->iw_stats_timer, jiffies + wnd->iw_stats_interval);
 }
 
@@ -1113,7 +1113,7 @@ static void add_iw_stats_timer(struct wrap_ndis_device *wnd)
 
 static void del_iw_stats_timer(struct wrap_ndis_device *wnd)
 {
-	ENTER2("");
+	ENTER2("%d", wnd->iw_stats_interval);
 	wnd->iw_stats_interval *= -1;
 	del_timer_sync(&wnd->iw_stats_timer);
 	EXIT2(return);
@@ -1123,7 +1123,7 @@ static void hangcheck_proc(unsigned long data)
 {
 	struct wrap_ndis_device *wnd = (struct wrap_ndis_device *)data;
 
-	ENTER2("");
+	ENTER3("%d", wnd->hangcheck_interval);
 	if (wnd->hangcheck_interval > 0) {
 		set_bit(HANGCHECK, &wnd->wrap_ndis_pending_work);
 		schedule_wrap_work(&wnd->wrap_ndis_work);
@@ -1150,7 +1150,7 @@ void hangcheck_add(struct wrap_ndis_device *wnd)
 
 void hangcheck_del(struct wrap_ndis_device *wnd)
 {
-	ENTER2("");
+	ENTER2("%d", wnd->hangcheck_interval);
 	if (wnd->hangcheck_interval > 0)
 		wnd->hangcheck_interval *= -1;
 	del_timer_sync(&wnd->hangcheck_timer);
@@ -1163,11 +1163,10 @@ static void wrap_ndis_worker(worker_param_t param)
 	struct wrap_ndis_device *wnd;
 
 	wnd = worker_param_data(param, struct wrap_ndis_device, wrap_ndis_work);
-
-	TRACE2("%lu", wnd->wrap_ndis_pending_work);
+	WORKTRACE("0x%lx", wnd->wrap_ndis_pending_work);
 
 	if (test_bit(SHUTDOWN, &wnd->wrap_ndis_pending_work))
-		EXIT3(return);
+		WORKEXIT(return);
 
 	if (test_and_clear_bit(SET_MULTICAST_LIST, &wnd->wrap_ndis_pending_work))
 		set_multicast_list(wnd);
@@ -1188,10 +1187,12 @@ static void wrap_ndis_worker(worker_param_t param)
 		irql = serialize_lock_irql(wnd);
 		reset = LIN2WIN1(miniport->hangcheck, wnd->nmb->adapter_ctx);
 		serialize_unlock_irql(wnd, irql);
-		if (reset)
+		if (reset) {
+			TRACE2("%s needs reset", wnd->net_dev->name);
 			miniport_reset(wnd);
+		}
 	}
-	EXIT3(return);
+	WORKEXIT(return);
 }
 
 NDIS_STATUS ndis_reinit(struct wrap_ndis_device *wnd)

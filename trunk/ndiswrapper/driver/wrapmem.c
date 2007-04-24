@@ -289,14 +289,14 @@ void *wrap_ExAllocatePoolWithTag(enum pool_type pool_type, SIZE_T size,
 
 	ENTER4("pool_type: %d, size: %lu, tag: %u", pool_type, size, tag);
 	addr = ExAllocatePoolWithTag(pool_type, size, tag);
-	if (addr) {
-		info = addr - sizeof(*info);
-		info->file = file;
-		info->line = line;
+	if (!addr)
+		return NULL;
+	info = addr - sizeof(*info);
+	info->file = file;
+	info->line = line;
 #if ALLOC_DEBUG > 2
-		info->tag = tag;
+	info->tag = tag;
 #endif
-	}
 	EXIT4(return addr);
 }
 #endif
