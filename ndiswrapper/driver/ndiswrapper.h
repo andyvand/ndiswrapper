@@ -205,8 +205,10 @@ do {								       \
 #if defined DEBUG
 #define assert(expr)							\
 do {									\
-	if (!(expr))							\
+	if (!(expr)) {							\
 		ERROR("assertion '%s' failed", #expr);			\
+		dump_stack();						\
+	}								\
 } while (0)
 #else
 #define assert(expr) do { } while (0)

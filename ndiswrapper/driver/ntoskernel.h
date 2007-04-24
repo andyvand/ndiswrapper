@@ -800,6 +800,7 @@ static inline KIRQL raise_irql(KIRQL newirql)
 	assert(irql <= newirql);
 	if (irql < DISPATCH_LEVEL && newirql == DISPATCH_LEVEL)
 		preempt_disable();
+
 	return irql;
 }
 
@@ -877,6 +878,20 @@ static inline void nt_spin_unlock_irql(NT_SPIN_LOCK *lock, KIRQL oldirql)
 {
 	nt_spin_unlock(lock);
 	lower_irql(oldirql);
+}
+
+static inline void nt_spin_lock_bh(NT_SPIN_LOCK *lock)
+{
+	preempt_disable();
+	local_bh_disable();
+	nt_spin_lock(lock);
+}
+
+static inline void nt_spin_unlock_bh(NT_SPIN_LOCK *lock)
+{
+	nt_spin_unlock(lock);
+	local_bh_enable();
+	preempt_enable();
 }
 
 #ifdef CONFIG_PREEMPT_RT

@@ -42,7 +42,7 @@ struct thread_event {
 };
 
 /* everything here is for all drivers/devices - not per driver/device */
-static spinlock_t dispatcher_lock;
+static NT_SPIN_LOCK dispatcher_lock;
 NT_SPIN_LOCK ntoskernel_lock;
 static void *mdl_cache;
 static struct nt_list wrap_mdl_list;
@@ -1090,14 +1090,14 @@ wstdcall NTSTATUS WIN_FUNC(KeWaitForMultipleObjects,8)
 	 * depending on how to satisfy wait. If all of them can be
 	 * grabbed, we will grab them in the next loop below */
 
-	spin_lock_bh(&dispatcher_lock);
+	nt_spin_lock_bh(&dispatcher_lock);
 	for (i = wait_count = 0; i < count; i++) {
 		dh = object[i];
 		EVENTTRACE("%p: event %p (%d)", current, dh, dh->signal_state);
 		/* wait_type == 1 for WaitAny, 0 for WaitAll */
 		if (grab_object(dh, current, wait_type)) {
 			if (wait_type == WaitAny) {
-				spin_unlock_bh(&dispatcher_lock);
+				nt_spin_unlock_bh(&dispatcher_lock);
 				EVENTEXIT(return STATUS_WAIT_0 + i);
 			}
 		} else {
@@ -1107,7 +1107,7 @@ wstdcall NTSTATUS WIN_FUNC(KeWaitForMultipleObjects,8)
 	}
 
 	if (timeout && *timeout == 0 && wait_count) {
-		spin_unlock_bh(&dispatcher_lock);
+		nt_spin_unlock_bh(&dispatcher_lock);
 		EVENTEXIT(return STATUS_TIMEOUT);
 	}
 
@@ -1134,7 +1134,7 @@ wstdcall NTSTATUS WIN_FUNC(KeWaitForMultipleObjects,8)
 			InsertTailList(&dh->wait_blocks, &wb[i].list);
 		}
 	}
-	spin_unlock_bh(&dispatcher_lock);
+	nt_spin_unlock_bh(&dispatcher_lock);
 	if (wait_count == 0)
 		EVENTEXIT(return STATUS_SUCCESS);
 
@@ -1152,7 +1152,7 @@ wstdcall NTSTATUS WIN_FUNC(KeWaitForMultipleObjects,8)
 	while (wait_count) {
 		res = wait_condition(thread_event.done, wait_hz,
 				     TASK_INTERRUPTIBLE);
-		spin_lock_bh(&dispatcher_lock);
+		nt_spin_lock_bh(&dispatcher_lock);
 		EVENTTRACE("%p woke up: %p, %d, %d", current,
 			   &thread_event, res, thread_event.done);
 #ifdef EVENT_DEBUG
@@ -1173,7 +1173,7 @@ wstdcall NTSTATUS WIN_FUNC(KeWaitForMultipleObjects,8)
 					   current, object[i], wb[i].object);
 				RemoveEntryList(&wb[i].list);
 			}
-			spin_unlock_bh(&dispatcher_lock);
+			nt_spin_unlock_bh(&dispatcher_lock);
 			if (res < 0)
 				EVENTEXIT(return STATUS_ALERTED);
 			else
@@ -1203,12 +1203,12 @@ wstdcall NTSTATUS WIN_FUNC(KeWaitForMultipleObjects,8)
 					if (wb[j].thread)
 						RemoveEntryList(&wb[j].list);
 				}
-				spin_unlock_bh(&dispatcher_lock);
+				nt_spin_unlock_bh(&dispatcher_lock);
 				EVENTEXIT(return STATUS_WAIT_0 + i);
 			}
 		}
 		thread_event.done = 0;
-		spin_unlock_bh(&dispatcher_lock);
+		nt_spin_unlock_bh(&dispatcher_lock);
 		if (wait_count == 0)
 			EVENTEXIT(return STATUS_SUCCESS);
 
@@ -1249,12 +1249,12 @@ wstdcall LONG WIN_FUNC(KeSetEvent,3)
 		   nt_event, nt_event->dh.type, wait);
 	if (wait == TRUE)
 		WARNING("wait = %d, not yet implemented", wait);
-	spin_lock_bh(&dispatcher_lock);
+	nt_spin_lock_bh(&dispatcher_lock);
 	old_state = nt_event->dh.signal_state;
 	nt_event->dh.signal_state = 1;
 	if (old_state == 0)
 		object_signalled(&nt_event->dh);
-	spin_unlock_bh(&dispatcher_lock);
+	nt_spin_unlock_bh(&dispatcher_lock);
 	EVENTEXIT(return old_state);
 }
 
@@ -1262,9 +1262,9 @@ wstdcall void WIN_FUNC(KeClearEvent,1)
 	(struct nt_event *nt_event)
 {
 	EVENTENTER("event = %p", nt_event);
-	spin_lock_bh(&dispatcher_lock);
+	nt_spin_lock_bh(&dispatcher_lock);
 	nt_event->dh.signal_state = 0;
-	spin_unlock_bh(&dispatcher_lock);
+	nt_spin_unlock_bh(&dispatcher_lock);
 	EVENTEXIT(return);
 }
 
@@ -1274,10 +1274,10 @@ wstdcall LONG WIN_FUNC(KeResetEvent,1)
 	LONG old_state;
 
 	EVENTENTER("event = %p", nt_event);
-	spin_lock_bh(&dispatcher_lock);
+	nt_spin_lock_bh(&dispatcher_lock);
 	old_state = nt_event->dh.signal_state;
 	nt_event->dh.signal_state = 0;
-	spin_unlock_bh(&dispatcher_lock);
+	nt_spin_unlock_bh(&dispatcher_lock);
 	EVENTTRACE("old state: %d", old_state);
 	EVENTEXIT(return old_state);
 }
@@ -1287,9 +1287,9 @@ wstdcall LONG WIN_FUNC(KeReadStateEvent,1)
 {
 	LONG state;
 
-	spin_lock_bh(&dispatcher_lock);
+	nt_spin_lock_bh(&dispatcher_lock);
 	state = nt_event->dh.signal_state;
-	spin_unlock_bh(&dispatcher_lock);
+	nt_spin_unlock_bh(&dispatcher_lock);
 	EVENTTRACE("%d", state);
 	return state;
 }
@@ -1298,14 +1298,14 @@ wstdcall void WIN_FUNC(KeInitializeMutex,2)
 	(struct nt_mutex *mutex, ULONG level)
 {
 	EVENTENTER("%p", mutex);
-	spin_lock_bh(&dispatcher_lock);
+	nt_spin_lock_bh(&dispatcher_lock);
 	initialize_object(&mutex->dh, MutexObject, 1);
 	mutex->dh.size = sizeof(*mutex);
 	InitializeListHead(&mutex->list);
 	mutex->abandoned = FALSE;
 	mutex->apc_disable = 1;
 	mutex->owner_thread = NULL;
-	spin_unlock_bh(&dispatcher_lock);
+	nt_spin_unlock_bh(&dispatcher_lock);
 	EVENTEXIT(return);
 }
 
@@ -1319,7 +1319,7 @@ wstdcall LONG WIN_FUNC(KeReleaseMutex,2)
 	if (wait == TRUE)
 		WARNING("wait: %d", wait);
 	thread = current;
-	spin_lock_bh(&dispatcher_lock);
+	nt_spin_lock_bh(&dispatcher_lock);
 	EVENTTRACE("%p, %p, %p, %d", mutex, thread, mutex->owner_thread,
 		   mutex->dh.signal_state);
 	if ((mutex->owner_thread == thread) && (mutex->dh.signal_state <= 0)) {
@@ -1335,7 +1335,7 @@ wstdcall LONG WIN_FUNC(KeReleaseMutex,2)
 	}
 	EVENTTRACE("%p, %p, %p, %d", mutex, thread, mutex->owner_thread,
 		   mutex->dh.signal_state);
-	spin_unlock_bh(&dispatcher_lock);
+	nt_spin_unlock_bh(&dispatcher_lock);
 	EVENTEXIT(return ret);
 }
 
@@ -1359,7 +1359,7 @@ wstdcall LONG WIN_FUNC(KeReleaseSemaphore,4)
 	LONG ret;
 
 	EVENTENTER("%p", semaphore);
-	spin_lock_bh(&dispatcher_lock);
+	nt_spin_lock_bh(&dispatcher_lock);
 	ret = semaphore->dh.signal_state;
 	assert(ret >= 0);
 	if (semaphore->dh.signal_state + adjustment <= semaphore->limit)
@@ -1371,7 +1371,7 @@ wstdcall LONG WIN_FUNC(KeReleaseSemaphore,4)
 	}
 	if (semaphore->dh.signal_state > 0)
 		object_signalled(&semaphore->dh);
-	spin_unlock_bh(&dispatcher_lock);
+	nt_spin_unlock_bh(&dispatcher_lock);
 	EVENTEXIT(return ret);
 }
 
@@ -1787,15 +1787,14 @@ struct mdl *allocate_init_mdl(void *virt, ULONG length)
 	struct wrap_mdl *wrap_mdl;
 	struct mdl *mdl;
 	int mdl_size = MmSizeOfMdl(virt, length);
-	KIRQL irql;
 
 	if (mdl_size <= MDL_CACHE_SIZE) {
 		wrap_mdl = kmem_cache_alloc(mdl_cache, gfp_irql());
 		if (!wrap_mdl)
 			return NULL;
-		irql = nt_spin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL);
+		nt_spin_lock_bh(&dispatcher_lock);
 		InsertHeadList(&wrap_mdl_list, &wrap_mdl->list);
-		nt_spin_unlock_irql(&ntoskernel_lock, irql);
+		nt_spin_unlock_bh(&dispatcher_lock);
 		mdl = wrap_mdl->mdl;
 		TRACE3("allocated mdl from cache: %p(%p), %p(%d)",
 		       wrap_mdl, mdl, virt, length);
@@ -1812,9 +1811,9 @@ struct mdl *allocate_init_mdl(void *virt, ULONG length)
 		mdl = wrap_mdl->mdl;
 		TRACE3("allocated mdl from memory: %p(%p), %p(%d)",
 		       wrap_mdl, mdl, virt, length);
-		irql = nt_spin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL);
+		nt_spin_lock_bh(&dispatcher_lock);
 		InsertHeadList(&wrap_mdl_list, &wrap_mdl->list);
-		nt_spin_unlock_irql(&ntoskernel_lock, irql);
+		nt_spin_unlock_bh(&ntoskernel_lock);
 		memset(mdl, 0, mdl_size);
 		MmInitializeMdl(mdl, virt, length);
 		mdl->flags = MDL_ALLOCATED_FIXED_SIZE;
@@ -1824,8 +1823,6 @@ struct mdl *allocate_init_mdl(void *virt, ULONG length)
 
 void free_mdl(struct mdl *mdl)
 {
-	KIRQL irql;
-
 	/* A driver may allocate Mdl with NdisAllocateBuffer and free
 	 * with IoFreeMdl (e.g., 64-bit Broadcom). Since we need to
 	 * treat buffers allocated with Ndis calls differently, we
@@ -1838,9 +1835,9 @@ void free_mdl(struct mdl *mdl)
 	else {
 		struct wrap_mdl *wrap_mdl = (struct wrap_mdl *)
 			((char *)mdl - offsetof(struct wrap_mdl, mdl));
-		irql = nt_spin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL);
+		nt_spin_lock_bh(&dispatcher_lock);
 		RemoveEntryList(&wrap_mdl->list);
-		nt_spin_unlock_irql(&ntoskernel_lock, irql);
+		nt_spin_unlock_bh(&dispatcher_lock);
 
 		if (mdl->flags & MDL_CACHE_ALLOCATED) {
 			TRACE3("freeing mdl cache: %p, %p, %p",
@@ -2462,7 +2459,7 @@ int ntoskernel_init(void)
 {
 	struct timeval now;
 
-	spin_lock_init(&dispatcher_lock);
+	nt_spin_lock_init(&dispatcher_lock);
 	nt_spin_lock_init(&ntoskernel_lock);
 	nt_spin_lock_init(&ntos_work_lock);
 	nt_spin_lock_init(&kdpc_list_lock);
