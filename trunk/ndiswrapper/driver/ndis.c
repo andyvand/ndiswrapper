@@ -1086,7 +1086,6 @@ wstdcall void WIN_FUNC(NdisAllocateBuffer,5)
 	 struct ndis_buffer_pool *pool, void *virt, UINT length)
 {
 	ndis_buffer *descr;
-	KIRQL irql;
 
 	ENTER4("pool: %p, allocated: %d", pool, pool->num_allocated_descr);
 	if (!pool) {
@@ -1098,19 +1097,19 @@ wstdcall void WIN_FUNC(NdisAllocateBuffer,5)
 			WARNING("pool %p is full: %d(%d)", pool,
 				pool->num_allocated_descr, pool->max_descr);
 	}
-	irql = nt_spin_lock_irql(&pool->lock, DISPATCH_LEVEL);
+	nt_spin_lock_bh(&pool->lock);
 	if (pool->free_descr) {
 		typeof(descr->flags) flags;
 		descr = pool->free_descr;
 		pool->free_descr = descr->next;
-		nt_spin_unlock_irql(&pool->lock, irql);
+		nt_spin_unlock_bh(&pool->lock);
 		flags = descr->flags;
 		memset(descr, 0, sizeof(*descr));
 		MmInitializeMdl(descr, virt, length);
 		if (flags & MDL_CACHE_ALLOCATED)
 			descr->flags |= MDL_CACHE_ALLOCATED;
 	} else {
-		nt_spin_unlock_irql(&pool->lock, irql);
+		nt_spin_unlock_bh(&pool->lock);
 		descr = allocate_init_mdl(virt, length);
 		if (!descr) {
 			WARNING("couldn't allocate buffer");
@@ -1135,7 +1134,6 @@ wstdcall void WIN_FUNC(NdisFreeBuffer,1)
 	(ndis_buffer *buffer)
 {
 	struct ndis_buffer_pool *pool;
-	KIRQL irql;
 
 	ENTER4("%p", buffer);
 	if (!buffer || !buffer->pool) {
@@ -1143,19 +1141,19 @@ wstdcall void WIN_FUNC(NdisFreeBuffer,1)
 		EXIT4(return);
 	}
 	pool = buffer->pool;
-	irql = nt_spin_lock_irql(&pool->lock, DISPATCH_LEVEL);
+	nt_spin_lock_bh(&pool->lock);
 	if (pool->num_allocated_descr > MAX_ALLOCATED_NDIS_BUFFERS) {
 		/* NB NB NB: set mdl's 'pool' field to NULL before
 		 * calling free_mdl; otherwise free_mdl calls
 		 * NdisFreeBuffer causing deadlock (for spinlock) */
 		pool->num_allocated_descr--;
 		buffer->pool = NULL;
-		nt_spin_unlock_irql(&pool->lock, irql);
+		nt_spin_unlock_bh(&pool->lock);
 		free_mdl(buffer);
 	} else {
 		buffer->next = pool->free_descr;
 		pool->free_descr = buffer;
-		nt_spin_unlock_irql(&pool->lock, irql);
+		nt_spin_unlock_bh(&pool->lock);
 	}
 	EXIT4(return);
 }
@@ -1164,14 +1162,13 @@ wstdcall void WIN_FUNC(NdisFreeBufferPool,1)
 	(struct ndis_buffer_pool *pool)
 {
 	ndis_buffer *cur, *next;
-	KIRQL irql;
 
 	TRACE3("pool: %p", pool);
 	if (!pool) {
 		WARNING("invalid pool");
 		EXIT3(return);
 	}
-	irql = nt_spin_lock_irql(&pool->lock, DISPATCH_LEVEL);
+	nt_spin_lock_bh(&pool->lock);
 	cur = pool->free_descr;
 	while (cur) {
 		next = cur->next;
@@ -1179,7 +1176,7 @@ wstdcall void WIN_FUNC(NdisFreeBufferPool,1)
 		free_mdl(cur);
 		cur = next;
 	}
-	nt_spin_unlock_irql(&pool->lock, irql);
+	nt_spin_unlock_bh(&pool->lock);
 	kfree(pool);
 	pool = NULL;
 	EXIT3(return);
@@ -1361,14 +1358,13 @@ wstdcall void WIN_FUNC(NdisFreePacketPool,1)
 	(struct ndis_packet_pool *pool)
 {
 	struct ndis_packet *packet, *next;
-	KIRQL irql;
 
 	ENTER3("pool: %p", pool);
 	if (!pool) {
 		WARNING("invalid pool");
 		EXIT3(return);
 	}
-	irql = nt_spin_lock_irql(&pool->lock, DISPATCH_LEVEL);
+	nt_spin_lock_bh(&pool->lock);
 	packet = pool->free_descr;
 	while (packet) {
 		next = (struct ndis_packet *)packet->reserved[0];
@@ -1378,7 +1374,7 @@ wstdcall void WIN_FUNC(NdisFreePacketPool,1)
 	pool->num_allocated_descr = 0;
 	pool->num_used_descr = 0;
 	pool->free_descr = NULL;
-	nt_spin_unlock_irql(&pool->lock, irql);
+	nt_spin_unlock_bh(&pool->lock);
 	kfree(pool);
 	EXIT3(return);
 }
@@ -1395,7 +1391,6 @@ wstdcall void WIN_FUNC(NdisAllocatePacket,3)
 {
 	struct ndis_packet *packet;
 	int packet_length;
-	KIRQL irql;
 
 	ENTER4("pool: %p", pool);
 	if (!pool) {
@@ -1410,13 +1405,13 @@ wstdcall void WIN_FUNC(NdisAllocatePacket,3)
 	/* packet has space for 1 byte in protocol_reserved field */
 	packet_length = sizeof(*packet) - 1 + pool->proto_rsvd_length +
 		sizeof(struct ndis_packet_oob_data);
-	irql = nt_spin_lock_irql(&pool->lock, DISPATCH_LEVEL);
+	nt_spin_lock_bh(&pool->lock);
 	if (pool->free_descr) {
 		packet = pool->free_descr;
 		pool->free_descr = (void *)(ULONG_PTR)packet->reserved[0];
-		nt_spin_unlock_irql(&pool->lock, irql);
+		nt_spin_unlock_bh(&pool->lock);
 	} else {
-		nt_spin_unlock_irql(&pool->lock, irql);
+		nt_spin_unlock_bh(&pool->lock);
 		packet = kmalloc(packet_length, gfp_irql());
 		if (!packet) {
 			WARNING("couldn't allocate packet");
@@ -1449,7 +1444,6 @@ wstdcall void WIN_FUNC(NdisFreePacket,1)
 	(struct ndis_packet *packet)
 {
 	struct ndis_packet_pool *pool;
-	KIRQL irql;
 
 	ENTER3("packet: %p, pool: %p", packet, packet->private.pool);
 	pool = packet->private.pool;
@@ -1462,15 +1456,15 @@ wstdcall void WIN_FUNC(NdisFreePacket,1)
 		kfree((void *)packet->reserved[1]);
 		packet->reserved[1] = 0;
 	}
-	irql = nt_spin_lock_irql(&pool->lock, DISPATCH_LEVEL);
+	nt_spin_lock_bh(&pool->lock);
 	if (pool->num_allocated_descr > MAX_ALLOCATED_NDIS_PACKETS) {
-		nt_spin_unlock_irql(&pool->lock, irql);
+		nt_spin_unlock_bh(&pool->lock);
 		atomic_dec_var(pool->num_allocated_descr);
 		kfree(packet);
 	} else {
 		packet->reserved[0] = (ULONG_PTR)pool->free_descr;
 		pool->free_descr = packet;
-		nt_spin_unlock_irql(&pool->lock, irql);
+		nt_spin_unlock_bh(&pool->lock);
 	}
 	EXIT4(return);
 }
