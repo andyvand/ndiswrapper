@@ -1477,7 +1477,7 @@ wstdcall struct ndis_packet_stack *WIN_FUNC(NdisIMGetCurrentPacketStack,2)
 		*stacks_remain = FALSE;
 		EXIT3(return NULL);
 	}
-	stack = kmalloc(sizeof(*stack), gfp_irql());
+	stack = kmalloc(2 * sizeof(*stack), gfp_irql());
 	packet->reserved[1] = (typeof(packet->reserved[1]))stack;
 	*stacks_remain = TRUE;
 	EXIT3(return stack);
@@ -1651,9 +1651,9 @@ wstdcall void WIN_FUNC(NdisMInitializeTimer,4)
 	timer->func = func;
 	timer->ctx = ctx;
 	timer->nmb = nmb;
-	KeInitializeDpc(&timer->kdpc, func, ctx);
-//	KeInitializeDpc(&timer->kdpc, WIN_FUNC_PTR(wrap_miniport_timer,4),
-//			timer);
+//	KeInitializeDpc(&timer->kdpc, func, ctx);
+	KeInitializeDpc(&timer->kdpc, WIN_FUNC_PTR(wrap_miniport_timer,4),
+			timer);
 	wrap_init_timer(&timer->nt_timer, NotificationTimer, &timer->kdpc, nmb);
 	TIMEREXIT(return);
 }
