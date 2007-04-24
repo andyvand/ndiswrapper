@@ -1091,14 +1091,20 @@ struct irp {
 
 #define IoSetNextIrpStackLocation(irp)				\
 do {								\
+	KIRQL _irql_;						\
+	IoAcquireCancelSpinLock(&_irql_);			\
 	(irp)->current_location--;				\
 	IoGetCurrentIrpStackLocation(irp)--;			\
+	IoReleaseCancelSpinLock(_irql_);			\
 } while (0)
 
 #define IoSkipCurrentIrpStackLocation(irp) 			\
 do {								\
+	KIRQL _irql_;						\
+	IoAcquireCancelSpinLock(&_irql_);			\
 	(irp)->current_location++;				\
 	IoGetCurrentIrpStackLocation(irp)++;			\
+	IoReleaseCancelSpinLock(_irql_);			\
 } while (0)
 
 static inline void

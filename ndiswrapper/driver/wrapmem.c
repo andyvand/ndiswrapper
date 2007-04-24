@@ -311,8 +311,6 @@ int alloc_size(enum alloc_type type)
 
 #endif // ALLOC_DEBUG
 
-#define VMEM_BLOCK_SIZE (2 * 1024 * 1024)
-
 int wrapmem_init(void)
 {
 	InitializeListHead(&allocs);
