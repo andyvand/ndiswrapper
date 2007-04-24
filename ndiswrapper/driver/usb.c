@@ -129,16 +129,8 @@ static void usb_kill_urb(struct urb *urb)
 static struct nt_list wrap_urb_complete_list;
 static NT_SPIN_LOCK wrap_urb_complete_list_lock;
 
-/* use tasklet instead of worker to process completed urbs */
-//#define USB_TASKLET 1
-
-#ifdef USB_TASKLET
-static struct tasklet_struct wrap_urb_complete_work;
-static void wrap_urb_complete_worker(unsigned long dummy);
-#else
 static work_struct_t wrap_urb_complete_work;
 static void wrap_urb_complete_worker(worker_param_t dummy);
-#endif
 
 static void kill_all_urbs(struct wrap_device *wd, int complete)
 {
@@ -428,11 +420,7 @@ static void int_urb_unlink_complete(struct urb *urb)
 	nt_spin_lock(&wrap_urb_complete_list_lock);
 	InsertTailList(&wrap_urb_complete_list, &wrap_urb->complete_list);
 	nt_spin_unlock(&wrap_urb_complete_list_lock);
-#ifdef USB_TASKLET
-	tasklet_schedule(&wrap_urb_complete_work);
-#else
 	schedule_ntos_work(&wrap_urb_complete_work);
-#endif
 }
 
 static void wrap_urb_complete(struct urb *urb)
@@ -470,20 +458,12 @@ static void wrap_urb_complete(struct urb *urb ISR_PT_REGS_PARAM_DECL)
 	nt_spin_lock(&wrap_urb_complete_list_lock);
 	InsertTailList(&wrap_urb_complete_list, &wrap_urb->complete_list);
 	nt_spin_unlock(&wrap_urb_complete_list_lock);
-#ifdef USB_TASKLET
-	tasklet_schedule(&wrap_urb_complete_work);
-#else
 	schedule_ntos_work(&wrap_urb_complete_work);
-#endif
 	USBTRACE("scheduled worker for urb %p", urb);
 }
 
 /* one worker for all devices */
-#ifdef USB_TASKLET
-static void wrap_urb_complete_worker(unsigned long dummy)
-#else
 static void wrap_urb_complete_worker(worker_param_t dummy)
-#endif
 {
 	struct irp *irp;
 	struct urb *urb;
@@ -1417,11 +1397,7 @@ int usb_init(void)
 {
 	InitializeListHead(&wrap_urb_complete_list);
 	nt_spin_lock_init(&wrap_urb_complete_list_lock);
-#ifdef USB_TASKLET
-	tasklet_init(&wrap_urb_complete_work, wrap_urb_complete_worker, 0);
-#else
 	initialize_work(&wrap_urb_complete_work, wrap_urb_complete_worker, NULL);
-#endif
 #ifdef USB_DEBUG
 	urb_id = 0;
 #endif
@@ -1430,9 +1406,6 @@ int usb_init(void)
 
 void usb_exit(void)
 {
-#ifdef USB_TASKLET
-	tasklet_kill(&wrap_urb_complete_work);
-#endif
 	USBEXIT(return);
 }
 

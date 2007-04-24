@@ -796,18 +796,10 @@ static inline KIRQL raise_irql(KIRQL newirql)
 {
 	KIRQL irql = current_irql();
 	TRACE6("%d, %d", irql, newirql);
+	assert(newirql <= DISPATCH_LEVEL);
 	assert(irql <= newirql);
-	if (irql < DISPATCH_LEVEL) {
-		if (newirql == DISPATCH_LEVEL)
-			preempt_disable();
-		else if (newirql == SIRQL) {
-			preempt_disable();
-			local_bh_disable();
-		} else {
-			dump_stack();
-			TRACE6("invalid IRQL: %d, %d", irql, newirql);
-		}
-	}
+	if (irql < DISPATCH_LEVEL && newirql == DISPATCH_LEVEL)
+		preempt_disable();
 	return irql;
 }
 
@@ -815,18 +807,10 @@ static inline void lower_irql(KIRQL oldirql)
 {
 	KIRQL irql = current_irql();
 	TRACE6("%d, %d", irql, oldirql);
+	assert(irql <= DISPATCH_LEVEL);
 	assert(oldirql <= irql);
-	if (oldirql < DISPATCH_LEVEL) {
-		if (irql == DISPATCH_LEVEL)
-			preempt_enable();
-		else if (irql == SIRQL) {
-			local_bh_enable();
-			preempt_enable();
-		} else {
-			dump_stack();
-			TRACE6("invalid irql: %d, %d", irql, oldirql);
-		}
-	}
+	if (oldirql < DISPATCH_LEVEL && irql == DISPATCH_LEVEL)
+		preempt_enable();
 }
 
 #define gfp_irql() (current_irql() < DISPATCH_LEVEL ? GFP_KERNEL : GFP_ATOMIC)
@@ -907,6 +891,7 @@ static inline void nt_spin_unlock_irql(NT_SPIN_LOCK *lock, KIRQL oldirql)
 do {									\
 	save_local_irq(flags);						\
 	preempt_disable();						\
+	local_bh_disable();						\
 	nt_spin_lock(lock);						\
 } while (0)
 
@@ -914,6 +899,7 @@ do {									\
 do {									\
 	nt_spin_unlock(lock);						\
 	restore_local_irq(flags);					\
+	local_bh_enable();						\
 	preempt_enable();						\
 } while (0)
 
