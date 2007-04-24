@@ -551,6 +551,7 @@ wstdcall BOOLEAN WIN_FUNC(KeCancelTimer,1)
 	(struct nt_timer *nt_timer)
 {
 	struct wrap_timer *wrap_timer;
+	int ret;
 
 	TIMERENTER("%p", nt_timer);
 	wrap_timer = nt_timer->wrap_timer;
@@ -565,7 +566,10 @@ wstdcall BOOLEAN WIN_FUNC(KeCancelTimer,1)
 	/* disable timer before deleting so if it is periodic timer, it
 	 * won't be re-armed after deleting */
 	wrap_timer->repeat = 0;
-	if (del_timer(&wrap_timer->timer))
+	ret = del_timer_sync(&wrap_timer->timer);
+	if (nt_timer->kdpc)
+		dequeue_kdpc(nt_timer->kdpc);
+	if (ret)
 		TIMEREXIT(return TRUE);
 	else
 		TIMEREXIT(return FALSE);
@@ -834,7 +838,7 @@ wstdcall void *WIN_FUNC(ExAllocatePoolWithTag,3)
 
 	DBG_BLOCK(1) {
 		if (addr)
-			TRACE4("addr: %p, %lu", addr, alloc_type, size);
+			TRACE4("addr: %p, %lu", addr, size);
 		else
 			TRACE1("failed: %lu", size);
 	}

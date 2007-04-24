@@ -709,7 +709,6 @@ static void tx_worker(worker_param_t param)
 			break;
 		nt_spin_lock_bh(&wnd->tx_ring_lock);
 		n = wnd->tx_ring_end - wnd->tx_ring_start;
-		nt_spin_unlock_bh(&wnd->tx_ring_lock);
 		TRACE3("%d, %d, %d", wnd->tx_ring_start, wnd->tx_ring_end, n);
 		/* end == start if either ring is empty or full; in
 		 * the latter case is_tx_ring_full is set */
@@ -717,6 +716,7 @@ static void tx_worker(worker_param_t param)
 			if (wnd->is_tx_ring_full)
 				n = TX_RING_SIZE - wnd->tx_ring_start;
 			else {
+				nt_spin_unlock_bh(&wnd->tx_ring_lock);
 				up(&wnd->tx_ring_mutex);
 				break;
 			}
@@ -724,6 +724,7 @@ static void tx_worker(worker_param_t param)
 			n = TX_RING_SIZE - wnd->tx_ring_start;
 		if (unlikely(n > wnd->max_tx_packets))
 			n = wnd->max_tx_packets;
+		nt_spin_unlock_bh(&wnd->tx_ring_lock);
 		irql = raise_irql(DISPATCH_LEVEL);
 		n = miniport_tx_packets(wnd, wnd->tx_ring_start, n);
 		if (n > 0) {
