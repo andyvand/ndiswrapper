@@ -98,7 +98,6 @@ NDIS_STATUS miniport_query_info_needed(struct wrap_ndis_device *wnd,
 	struct miniport_char *miniport;
 	KIRQL irql;
 
-	ENTER2("oid: %08X", oid);
 	if (down_interruptible(&wnd->ndis_comm_mutex))
 		EXIT3(return NDIS_STATUS_FAILURE);
 	miniport = &wnd->wd->driver->ndis_driver->miniport;
@@ -148,7 +147,6 @@ NDIS_STATUS miniport_set_info(struct wrap_ndis_device *wnd, ndis_oid oid,
 	struct miniport_char *miniport;
 	KIRQL irql;
 
-	ENTER2("oid: %08X", oid);
 	if (down_interruptible(&wnd->ndis_comm_mutex))
 		EXIT3(return NDIS_STATUS_FAILURE);
 	miniport = &wnd->wd->driver->ndis_driver->miniport;
@@ -722,9 +720,9 @@ static void tx_worker(worker_param_t param)
 			}
 		} else if (n < 0)
 			n = TX_RING_SIZE - wnd->tx_ring_start;
+		nt_spin_unlock_bh(&wnd->tx_ring_lock);
 		if (unlikely(n > wnd->max_tx_packets))
 			n = wnd->max_tx_packets;
-		nt_spin_unlock_bh(&wnd->tx_ring_lock);
 		irql = raise_irql(DISPATCH_LEVEL);
 		n = miniport_tx_packets(wnd, wnd->tx_ring_start, n);
 		if (n > 0) {

@@ -90,9 +90,7 @@ WIN_SYMBOL_MAP("KeTickCount", &jiffies)
 
 WIN_SYMBOL_MAP("NlsMbCodePageTag", FALSE)
 
-#ifdef USE_OWN_NTOS_WORKQUEUE
 workqueue_struct_t *ntos_wq;
-#endif
 
 #if defined(CONFIG_X86_64)
 static void update_user_shared_data_proc(unsigned long data)
@@ -600,6 +598,7 @@ static void kdpc_worker(worker_param_t dummy)
 	unsigned long flags;
 	KIRQL irql;
 
+	WORKENTER("");
 	while (1) {
 		nt_spin_lock_irqsave(&kdpc_list_lock, flags);
 		entry = RemoveHeadList(&kdpc_list);
@@ -613,11 +612,12 @@ static void kdpc_worker(worker_param_t dummy)
 		if (!kdpc)
 			break;
 		irql = raise_irql(DISPATCH_LEVEL);
-		TRACE5("%p, %p, %p, %p, %p", kdpc, kdpc->func, kdpc->ctx,
-		       kdpc->arg1, kdpc->arg2);
+		WORKTRACE("%p, %p, %p, %p, %p", kdpc, kdpc->func, kdpc->ctx,
+			  kdpc->arg1, kdpc->arg2);
 		LIN2WIN4(kdpc->func, kdpc, kdpc->ctx, kdpc->arg1, kdpc->arg2);
 		lower_irql(irql);
 	}
+	WORKEXIT(return);
 }
 
 wstdcall void WIN_FUNC(KeFlushQueuedDpcs,0)
@@ -631,7 +631,7 @@ BOOLEAN queue_kdpc(struct kdpc *kdpc)
 	BOOLEAN ret;
 	unsigned long flags;
 
-	ENTER5("%p", kdpc);
+	WORKENTER("%p", kdpc);
 	nt_spin_lock_irqsave(&kdpc_list_lock, flags);
 	if (kdpc->queued)
 		ret = FALSE;
@@ -645,7 +645,7 @@ BOOLEAN queue_kdpc(struct kdpc *kdpc)
 		ret = TRUE;
 	}
 	nt_spin_unlock_irqrestore(&kdpc_list_lock, flags);
-	TRACE5("%d", ret);
+	WORKTRACE("%d", ret);
 	return ret;
 }
 
@@ -654,7 +654,7 @@ BOOLEAN dequeue_kdpc(struct kdpc *kdpc)
 	BOOLEAN ret;
 	unsigned long flags;
 
-	ENTER5("%p", kdpc);
+	WORKENTER("%p", kdpc);
 	nt_spin_lock_irqsave(&kdpc_list_lock, flags);
 	if (kdpc->queued) {
 		RemoveEntryList(&kdpc->list);
@@ -663,14 +663,14 @@ BOOLEAN dequeue_kdpc(struct kdpc *kdpc)
 	} else
 		ret = FALSE;
 	nt_spin_unlock_irqrestore(&kdpc_list_lock, flags);
-	TRACE5("%d", ret);
+	WORKTRACE("%d", ret);
 	return ret;
 }
 
 wstdcall BOOLEAN WIN_FUNC(KeInsertQueueDpc,3)
 	(struct kdpc *kdpc, void *arg1, void *arg2)
 {
-	ENTER5("%p, %p, %p", kdpc, arg1, arg2);
+	WORKENTER("%p, %p, %p", kdpc, arg1, arg2);
 	kdpc->arg1 = arg1;
 	kdpc->arg2 = arg2;
 	return queue_kdpc(kdpc);
@@ -2486,13 +2486,11 @@ int ntoskernel_init(void)
 	wrap_ticks_to_boot += now.tv_usec * 10;
 	wrap_ticks_to_boot -= jiffies * TICKSPERJIFFY;
 	TRACE2("%Lu", wrap_ticks_to_boot);
-#ifdef USE_OWN_NTOS_WORKQUEUE
 	ntos_wq = create_singlethread_workqueue("ntos_wq");
 	if (!ntos_wq) {
 		WARNING("couldn't create ntos_wq thread");
 		return -ENOMEM;
 	}
-#endif
 
 	if (add_bus_driver("PCI")
 #ifdef CONFIG_USB
@@ -2651,9 +2649,7 @@ void ntoskernel_exit(void)
 #if defined(CONFIG_X86_64)
 	del_timer_sync(&shared_data_timer);
 #endif
-#ifdef USE_OWN_NTOS_WORKQUEUE
 	if (ntos_wq)
 		destroy_workqueue(ntos_wq);
-#endif
 	EXIT2(return);
 }
