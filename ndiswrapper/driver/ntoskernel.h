@@ -891,7 +891,6 @@ static inline void nt_spin_unlock_irql(NT_SPIN_LOCK *lock, KIRQL oldirql)
 do {									\
 	save_local_irq(flags);						\
 	preempt_disable();						\
-	local_bh_disable();						\
 	nt_spin_lock(lock);						\
 } while (0)
 
@@ -899,7 +898,6 @@ do {									\
 do {									\
 	nt_spin_unlock(lock);						\
 	restore_local_irq(flags);					\
-	local_bh_enable();						\
 	preempt_enable();						\
 } while (0)
 
