@@ -558,24 +558,10 @@ struct wrap_device {
 	 WRAP_DEVICE(dev_bus) == WRAP_BLUETOOTH_DEVICE2)
 
 extern workqueue_struct_t *wrap_wq;
-#define schedule_ndis_work(work_struct) queue_work(ndis_wq, (work_struct))
 #define schedule_wrap_work(work_struct) queue_work(wrap_wq, (work_struct))
 
-/* Normally workqueue for ntos is not required, as worker entries in
- * it are not supposed to wait; however, it helps to have separate
- * workqueue so keyboard etc. work when kernel crashes */
-
-#ifdef USE_OWN_WQ
-#define USE_OWN_NTOS_WORKQUEUE 1
-#endif
-
-//#define USE_OWN_NTOS_WORKQUEUE 1
-#ifdef USE_OWN_NTOS_WORKQUEUE
 extern workqueue_struct_t *ntos_wq;
 #define schedule_ntos_work(work_struct) queue_work(ntos_wq, (work_struct))
-#else
-#define schedule_ntos_work(work_struct) schedule_work(work_struct)
-#endif
 
 int ntoskernel_init(void);
 void ntoskernel_exit(void);
@@ -785,7 +771,7 @@ static inline KIRQL current_irql(void)
 	if (in_irq() || irqs_disabled())
 		EXIT6(return DIRQL);
 	if (in_interrupt())
-		EXIT6(return SIRQL);
+		EXIT6(return SOFT_IRQL);
 	if (in_atomic())
 		EXIT6(return DISPATCH_LEVEL);
 	else

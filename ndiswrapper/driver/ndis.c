@@ -23,7 +23,6 @@
 #define MAX_ALLOCATED_NDIS_PACKETS 20
 #define MAX_ALLOCATED_NDIS_BUFFERS 20
 
-static workqueue_struct_t *ndis_wq;
 static void ndis_worker(worker_param_t dummy);
 static work_struct_t ndis_work;
 static struct nt_list ndis_work_list;
@@ -1828,8 +1827,10 @@ irqreturn_t ndis_isr(int irq, void *data ISR_PT_REGS_PARAM_DECL)
 	}
 	nt_spin_unlock(&mp_interrupt->lock);
 	if (recognized) {
-		if (queue_handler)
+		if (queue_handler) {
+			TRACE3("%p", &wnd->irq_kdpc);
 			queue_kdpc(&wnd->irq_kdpc);
+		}
 		EXIT6(return IRQ_HANDLED);
 	}
 	EXIT6(return IRQ_NONE);
@@ -2049,7 +2050,6 @@ wstdcall void WIN_FUNC(NdisMIndicateStatusComplete,1)
 {
 	struct wrap_ndis_device *wnd = nmb->wnd;
 	ENTER2("%p", wnd);
-	schedule_wrap_work(&wnd->wrap_ndis_work);
 	if (wnd->tx_ok)
 		schedule_wrap_work(&wnd->tx_work);
 }
@@ -2601,7 +2601,7 @@ wstdcall NDIS_STATUS WIN_FUNC(NdisScheduleWorkItem,1)
 	InsertTailList(&ndis_work_list, &ndis_work_item->list);
 	nt_spin_unlock_irql(&ndis_work_list_lock, irql);
 	WORKTRACE("scheduling %p", ndis_work_item);
-	schedule_ndis_work(&ndis_work);
+	schedule_ntos_work(&ndis_work);
 	EXIT3(return NDIS_STATUS_SUCCESS);
 }
 
@@ -2801,11 +2801,9 @@ void ndis_exit_device(struct wrap_ndis_device *wnd)
 /* ndis_init is called once when module is loaded */
 int ndis_init(void)
 {
-	ndis_wq = create_singlethread_workqueue("ndis_wq");
 	InitializeListHead(&ndis_work_list);
 	nt_spin_lock_init(&ndis_work_list_lock);
 	initialize_work(&ndis_work, ndis_worker, NULL);
-
 	return 0;
 }
 
@@ -2813,6 +2811,5 @@ int ndis_init(void)
 void ndis_exit(void)
 {
 	ENTER1("");
-	destroy_workqueue(ndis_wq);
 	EXIT1(return);
 }

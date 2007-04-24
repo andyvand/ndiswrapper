@@ -24,8 +24,8 @@
 #define DISPATCH_LEVEL			2
 #define DEVICE_LEVEL_BASE		4
 
-/* soft interrupts / bottom-half's are disabled at SIRQL */
-#define SIRQL				(DEVICE_LEVEL_BASE + 1)
+/* soft interrupts / bottom-half's are disabled at SOFT_IRQL */
+#define SOFT_IRQL			(DEVICE_LEVEL_BASE + 1)
 #define DIRQL				(DEVICE_LEVEL_BASE + 2)
 
 #define STATUS_WAIT_0			0
