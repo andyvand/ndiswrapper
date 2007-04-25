@@ -688,8 +688,8 @@ wstdcall void *WIN_FUNC(IoGetDriverObjectExtension,2)
 		}
 	}
 	nt_spin_unlock_irql(&ntoskernel_lock, irql);
-	IOENTER("ret: %p", ret);
-	IOEXIT(return ret);
+	IOTRACE("ret: %p", ret);
+	return ret;
 }
 
 void free_custom_extensions(struct driver_extension *drv_ext)

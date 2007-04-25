@@ -1471,15 +1471,34 @@ wstdcall void WIN_FUNC(NdisFreePacket,1)
 wstdcall struct ndis_packet_stack *WIN_FUNC(NdisIMGetCurrentPacketStack,2)
 	(struct ndis_packet *packet, BOOLEAN *stacks_remain)
 {
+#if 0
 	struct ndis_packet_stack *stack;
-	if (packet->reserved[1]) {
-		*stacks_remain = FALSE;
-		EXIT3(return NULL);
+	if (!packet->reserved[1]) {
+		stack = kmalloc(2 * sizeof(*stack), gfp_irql());
+		if (stack)
+			memset(stack, 0, 2 * sizeof(*stack));
+		TRACE3("%p", stack);
+		packet->reserved[1] = (typeof(packet->reserved[1]))stack;
+	} else {
+		stack = (void *)packet->reserved[1];;
+		if (xchg(&stack->ndis_reserved[0], 1)) {
+			stack++;
+			if (xchg(&stack->ndis_reserved[0], 1))
+				stack = NULL;
+		}
+		TRACE3("%p", stack);
 	}
-	stack = kmalloc(2 * sizeof(*stack), gfp_irql());
-	packet->reserved[1] = (typeof(packet->reserved[1]))stack;
-	*stacks_remain = TRUE;
+	if (stack)
+		*stacks_remain = FALSE;
+	else
+		*stacks_remain = TRUE;
+
 	EXIT3(return stack);
+#else
+	TRACE3("%p", packet);
+	*stacks_remain = FALSE;
+	EXIT3(return NULL);
+#endif
 }
 
 wstdcall void WIN_FUNC(NdisCopyFromPacketToPacketSafe,7)
