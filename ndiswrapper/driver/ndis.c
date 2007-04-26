@@ -1791,8 +1791,8 @@ wstdcall void WIN_FUNC(NdisMDeregisterAdapterShutdownHandler,1)
  * For now, handle these cases with two separate irq handlers based on
  * observation of these two drivers. However, it is likely not
  * correct. */
-wstdcall static void deserialized_irq_handler(struct kdpc *kdpc, void *ctx,
-					      void *arg1, void *arg2)
+wstdcall void deserialized_irq_handler(struct kdpc *kdpc, void *ctx,
+				       void *arg1, void *arg2)
 {
 	struct wrap_ndis_device *wnd;
 	ndis_interrupt_handler irq_handler;
@@ -1807,8 +1807,8 @@ wstdcall static void deserialized_irq_handler(struct kdpc *kdpc, void *ctx,
 }
 WIN_FUNC_DECL(deserialized_irq_handler,4)
 
-wstdcall static void serialized_irq_handler(struct kdpc *kdpc, void *ctx,
-					    void *arg1, void *arg2)
+wstdcall void serialized_irq_handler(struct kdpc *kdpc, void *ctx,
+				     void *arg1, void *arg2)
 {
 	struct wrap_ndis_device *wnd;
 	ndis_interrupt_handler irq_handler;
