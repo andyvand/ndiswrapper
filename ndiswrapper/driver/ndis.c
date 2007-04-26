@@ -1949,14 +1949,14 @@ wstdcall void WIN_FUNC(NdisMIndicateStatus,4)
 			break;
 		netif_carrier_off(wnd->net_dev);
 		set_bit(LINK_STATUS_CHANGED, &wnd->wrap_ndis_pending_work);
-		schedule_ndis_work(&wnd->wrap_ndis_work);
+		schedule_work(&wnd->wrap_ndis_work);
 		break;
 	case NDIS_STATUS_MEDIA_CONNECT:
 		if (netif_carrier_ok(wnd->net_dev))
 			break;
 		netif_carrier_on(wnd->net_dev);
 		set_bit(LINK_STATUS_CHANGED, &wnd->wrap_ndis_pending_work);
-		schedule_ndis_work(&wnd->wrap_ndis_work);
+		schedule_work(&wnd->wrap_ndis_work);
 		break;
 	case NDIS_STATUS_MEDIA_SPECIFIC_INDICATION:
 		if (!buf)
@@ -2066,7 +2066,7 @@ wstdcall void WIN_FUNC(NdisMIndicateStatusComplete,1)
 	struct wrap_ndis_device *wnd = nmb->wnd;
 	ENTER2("%p", wnd);
 	if (wnd->tx_ok)
-		schedule_ndis_work(&wnd->tx_work);
+		schedule_work(&wnd->tx_work);
 }
 
 /* called via function pointer */
@@ -2099,7 +2099,7 @@ wstdcall void NdisMSendComplete(struct ndis_miniport_block *nmb,
 		 */
 		if (xchg(&wnd->tx_ok, 1) == 0) {
 			TRACE3("%d, %d", wnd->tx_ring_start, wnd->tx_ring_end);
-			schedule_ndis_work(&wnd->tx_work);
+			schedule_work(&wnd->tx_work);
 		}
 	}
 	EXIT3(return);
@@ -2111,7 +2111,7 @@ wstdcall void NdisMSendResourcesAvailable(struct ndis_miniport_block *nmb)
 	struct wrap_ndis_device *wnd = nmb->wnd;
 	ENTER3("%d, %d", wnd->tx_ring_start, wnd->tx_ring_end);
 	wnd->tx_ok = 1;
-	schedule_ndis_work(&wnd->tx_work);
+	schedule_work(&wnd->tx_work);
 	EXIT3(return);
 }
 
@@ -2616,7 +2616,7 @@ wstdcall NDIS_STATUS WIN_FUNC(NdisScheduleWorkItem,1)
 	InsertTailList(&ndis_work_list, &ndis_work_item->list);
 	nt_spin_unlock_irql(&ndis_work_list_lock, irql);
 	WORKTRACE("scheduling %p", ndis_work_item);
-	schedule_ntos_work(&ndis_work);
+	schedule_ndis_work(&ndis_work);
 	EXIT3(return NDIS_STATUS_SUCCESS);
 }
 

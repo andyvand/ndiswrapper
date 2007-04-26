@@ -760,7 +760,7 @@ static int tx_skbuff(struct sk_buff *skb, struct net_device *dev)
 	}
 	nt_spin_unlock(&wnd->tx_ring_lock);
 	TRACE3("ring: %d, %d", wnd->tx_ring_start, wnd->tx_ring_end);
-	schedule_ndis_work(&wnd->tx_work);
+	schedule_work(&wnd->tx_work);
 	return NETDEV_TX_OK;
 }
 
@@ -877,7 +877,7 @@ static void ndis_set_multicast_list(struct net_device *dev)
 {
 	struct wrap_ndis_device *wnd = netdev_priv(dev);
 	set_bit(SET_MULTICAST_LIST, &wnd->wrap_ndis_pending_work);
-	schedule_ndis_work(&wnd->wrap_ndis_work);
+	schedule_work(&wnd->wrap_ndis_work);
 }
 
 /* called from BH context */
@@ -1094,7 +1094,7 @@ static void iw_stats_timer_proc(unsigned long data)
 	ENTER2("%d", wnd->iw_stats_interval);
 	if (wnd->iw_stats_interval > 0) {
 		set_bit(COLLECT_IW_STATS, &wnd->wrap_ndis_pending_work);
-		schedule_ndis_work(&wnd->wrap_ndis_work);
+		schedule_work(&wnd->wrap_ndis_work);
 	}
 	mod_timer(&wnd->iw_stats_timer, jiffies + wnd->iw_stats_interval);
 }
@@ -1125,7 +1125,7 @@ static void hangcheck_proc(unsigned long data)
 	ENTER3("%d", wnd->hangcheck_interval);
 	if (wnd->hangcheck_interval > 0) {
 		set_bit(HANGCHECK, &wnd->wrap_ndis_pending_work);
-		schedule_ndis_work(&wnd->wrap_ndis_work);
+		schedule_work(&wnd->wrap_ndis_work);
 	}
 	mod_timer(&wnd->hangcheck_timer, jiffies + wnd->hangcheck_interval);
 	EXIT3(return);

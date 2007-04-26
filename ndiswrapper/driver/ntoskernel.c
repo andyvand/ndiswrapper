@@ -36,11 +36,6 @@ struct wrap_mdl {
 	struct mdl mdl[0];
 };
 
-struct thread_event {
-	struct task_struct *task;
-	BOOLEAN done;
-};
-
 /* everything here is for all drivers/devices - not per driver/device */
 static NT_SPIN_LOCK dispatcher_lock;
 NT_SPIN_LOCK ntoskernel_lock;
@@ -1043,18 +1038,21 @@ static int grab_object(struct dispatcher_header *dh,
 /* this function should be called holding dispatcher_lock */
 static void object_signalled(struct dispatcher_header *dh)
 {
+	struct nt_list *cur, *next;
 	struct wait_block *wb;
-	struct thread_event *thread_event;
 
 	EVENTENTER("%p", dh);
-	nt_list_for_each_entry(wb, &dh->wait_blocks, list) {
-		EVENTTRACE("%p (%p): waking %p", dh, wb, wb->thread);
+	nt_list_for_each_safe(cur, next, &dh->wait_blocks) {
+		wb = container_of(cur, struct wait_block, list);
 		assert(wb->thread != NULL);
 		assert(wb->object == NULL);
+		if (!grab_object(dh, wb->thread, 1))
+			continue;
+		EVENTTRACE("%p (%p): waking %p", dh, wb, wb->thread);
+		RemoveEntryList(cur);
 		wb->object = dh;
-		thread_event = wb->thread_event;
-		thread_event->done = 1;
-		wake_up_process(thread_event->task);
+		*(wb->wait_done) = 1;
+		wake_up_process(wb->thread);
 	}
 	EVENTEXIT(return);
 }
@@ -1065,11 +1063,10 @@ wstdcall NTSTATUS WIN_FUNC(KeWaitForMultipleObjects,8)
 	 BOOLEAN alertable, LARGE_INTEGER *timeout,
 	 struct wait_block *wait_block_array)
 {
-	int i, res = 0, wait_count;
+	int i, res = 0, wait_count, wait_done;
 	typeof(jiffies) wait_hz = 0;
 	struct wait_block *wb, wb_array[THREAD_WAIT_OBJECTS];
 	struct dispatcher_header *dh;
-	struct thread_event thread_event;
 
 	EVENTENTER("thread: %p count: %d, type: %d, reason: %u, "
 		   "waitmode: %u, alertable: %u, timeout: %p, irql: %d",
@@ -1118,9 +1115,7 @@ wstdcall NTSTATUS WIN_FUNC(KeWaitForMultipleObjects,8)
 	/* get the list of objects the thread needs to wait on and add
 	 * the thread on the wait list for each such object */
 	/* if *timeout == 0, this step will grab all the objects */
-	thread_event.done = 0;
-	thread_event.task = current;
-	EVENTTRACE("%p, %p", &thread_event, current);
+	wait_done = 0;
 	for (i = 0; i < count; i++) {
 		dh = object[i];
 		EVENTTRACE("%p: event %p (%d)", current, dh, dh->signal_state);
@@ -1131,8 +1126,7 @@ wstdcall NTSTATUS WIN_FUNC(KeWaitForMultipleObjects,8)
 			/* mark that we are not waiting on this object */
 			wb[i].thread = NULL;
 		} else {
-			assert(timeout == NULL || *timeout != 0);
-			wb[i].thread_event = &thread_event;
+			wb[i].wait_done = &wait_done;
 			wb[i].thread = current;
 			EVENTTRACE("%p: wait for %p", current, dh);
 			InsertTailList(&dh->wait_blocks, &wb[i].list);
@@ -1149,25 +1143,18 @@ wstdcall NTSTATUS WIN_FUNC(KeWaitForMultipleObjects,8)
 		wait_hz = SYSTEM_TIME_TO_HZ(*timeout) + 1;
 
 	assert(current_irql() < DISPATCH_LEVEL);
-	EVENTTRACE("%p: sleep for %ld on %p", current, wait_hz, &thread_event);
+	EVENTTRACE("%p: sleep for %ld on %p", current, wait_hz, &wait_done);
 	/* we don't honor 'alertable' - according to decription for
 	 * this, even if waiting in non-alertable state, thread may be
 	 * alerted in some circumstances */
 	while (wait_count) {
-		res = wait_condition(thread_event.done, wait_hz,
-				     TASK_INTERRUPTIBLE);
+		res = wait_condition(wait_done, wait_hz, TASK_INTERRUPTIBLE);
 		nt_spin_lock_bh(&dispatcher_lock);
-		EVENTTRACE("%p woke up: %p, %d, %d", current,
-			   &thread_event, res, thread_event.done);
-#ifdef EVENT_DEBUG
-		if (thread_event.task != current)
-			ERROR("%p: argh, task %p should be %p", &thread_event,
-			      thread_event.task, current);
-#endif
+		EVENTTRACE("%p woke up: %d, %d", current, res, wait_done);
 		/* the event may have been set by the time
 		 * wrap_wait_event returned and spinlock obtained, so
 		 * don't rely on value of 'res' - check event status */
-		if (!thread_event.done) {
+		if (!wait_done) {
 			assert(res <= 0);
 			/* timed out or interrupted; remove from wait list */
 			for (i = 0; i < count; i++) {
@@ -1195,10 +1182,6 @@ wstdcall NTSTATUS WIN_FUNC(KeWaitForMultipleObjects,8)
 					continue;
 				}
 			}
-			if (!grab_object(wb[i].object, current, 1))
-				continue;
-			EVENTTRACE("object: %p, %p", object[i], wb[i].object);
-			RemoveEntryList(&wb[i].list);
 			wait_count--;
 			if (wait_type == WaitAny) {
 				int j;
@@ -1211,7 +1194,7 @@ wstdcall NTSTATUS WIN_FUNC(KeWaitForMultipleObjects,8)
 				EVENTEXIT(return STATUS_WAIT_0 + i);
 			}
 		}
-		thread_event.done = 0;
+		wait_done = 0;
 		nt_spin_unlock_bh(&dispatcher_lock);
 		if (wait_count == 0)
 			EVENTEXIT(return STATUS_SUCCESS);
@@ -1817,7 +1800,7 @@ struct mdl *allocate_init_mdl(void *virt, ULONG length)
 		       wrap_mdl, mdl, virt, length);
 		nt_spin_lock_bh(&dispatcher_lock);
 		InsertHeadList(&wrap_mdl_list, &wrap_mdl->list);
-		nt_spin_unlock_bh(&ntoskernel_lock);
+		nt_spin_unlock_bh(&dispatcher_lock);
 		memset(mdl, 0, mdl_size);
 		MmInitializeMdl(mdl, virt, length);
 		mdl->flags = MDL_ALLOCATED_FIXED_SIZE;
