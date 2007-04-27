@@ -1009,7 +1009,7 @@ static int grab_object(struct dispatcher_header *dh,
 		       struct task_struct *thread, int grab)
 {
 	EVENTTRACE("%p, %p, %d, %d", dh, thread, grab, dh->signal_state);
-	if (is_mutex_object(dh)) {
+	if (unlikely(is_mutex_object(dh))) {
 		struct nt_mutex *nt_mutex;
 		nt_mutex = container_of(dh, struct nt_mutex, dh);
 		EVENTTRACE("%p, %p, %d, %p, %d", nt_mutex,
@@ -1017,9 +1017,9 @@ static int grab_object(struct dispatcher_header *dh,
 			   thread, grab);
 		/* either no thread owns the mutex or this thread owns
 		 * it */
-		assert(dh->signal_state <= 1);
-		assert(dh->signal_state < 1 || nt_mutex->owner_thread == NULL);
-		if ((dh->signal_state > 0 && nt_mutex->owner_thread == NULL) ||
+		assert(dh->signal_state == 1 && nt_mutex->owner_thread == NULL);
+		assert(dh->signal_state < 1 && nt_mutex->owner_thread != NULL);
+		if ((dh->signal_state == 1 && nt_mutex->owner_thread == NULL) ||
 		    nt_mutex->owner_thread == thread) {
 			if (grab) {
 				dh->signal_state--;
@@ -1070,14 +1070,10 @@ wstdcall NTSTATUS WIN_FUNC(KeWaitForMultipleObjects,8)
 	struct wait_block *wb, wb_array[THREAD_WAIT_OBJECTS];
 	struct dispatcher_header *dh;
 
-	EVENTENTER("thread: %p count: %d, type: %d, reason: %u, "
-		   "waitmode: %u, alertable: %u, timeout: %p, irql: %d",
-		   current, count, wait_type, wait_reason, wait_mode, alertable,
-		   timeout, current_irql());
+	EVENTENTER("%p, %d, %u, %p", current, count, wait_type, timeout);
 
-	if (count > MAX_WAIT_OBJECTS)
-		EVENTEXIT(return STATUS_INVALID_PARAMETER);
-	if (count > THREAD_WAIT_OBJECTS && wait_block_array == NULL)
+	if (count > MAX_WAIT_OBJECTS ||
+	    (count > THREAD_WAIT_OBJECTS && wait_block_array == NULL))
 		EVENTEXIT(return STATUS_INVALID_PARAMETER);
 
 	if (wait_block_array == NULL)
@@ -1234,8 +1230,7 @@ wstdcall LONG WIN_FUNC(KeSetEvent,3)
 {
 	LONG old_state;
 
-	EVENTENTER("event = %p, type = %d, wait = %d",
-		   nt_event, nt_event->dh.type, wait);
+	EVENTENTER("%p, %d", nt_event, nt_event->dh.type);
 	if (wait == TRUE)
 		WARNING("wait = %d, not yet implemented", wait);
 	nt_spin_lock_bh(&dispatcher_lock);
@@ -1250,7 +1245,7 @@ wstdcall LONG WIN_FUNC(KeSetEvent,3)
 wstdcall void WIN_FUNC(KeClearEvent,1)
 	(struct nt_event *nt_event)
 {
-	EVENTENTER("event = %p", nt_event);
+	EVENTENTER("%p", nt_event);
 	nt_spin_lock_bh(&dispatcher_lock);
 	nt_event->dh.signal_state = 0;
 	nt_spin_unlock_bh(&dispatcher_lock);
@@ -1262,12 +1257,12 @@ wstdcall LONG WIN_FUNC(KeResetEvent,1)
 {
 	LONG old_state;
 
-	EVENTENTER("event = %p", nt_event);
+	EVENTENTER("%p", nt_event);
 	nt_spin_lock_bh(&dispatcher_lock);
 	old_state = nt_event->dh.signal_state;
 	nt_event->dh.signal_state = 0;
 	nt_spin_unlock_bh(&dispatcher_lock);
-	EVENTTRACE("old state: %d", old_state);
+	EVENTTRACE("%d", old_state);
 	EVENTEXIT(return old_state);
 }
 
@@ -1374,8 +1369,7 @@ wstdcall NTSTATUS WIN_FUNC(KeDelayExecutionThread,3)
 		ERROR("invalid wait_mode %d", wait_mode);
 
 	timeout = SYSTEM_TIME_TO_HZ(*interval) + 1;
-	EVENTTRACE("thread: %p, interval: %Ld, timeout: %ld",
-		    current, *interval, timeout);
+	EVENTTRACE("%p, %Ld, %ld", current, *interval, timeout);
 	if (timeout <= 0)
 		EVENTEXIT(return STATUS_SUCCESS);
 
@@ -1385,7 +1379,7 @@ wstdcall NTSTATUS WIN_FUNC(KeDelayExecutionThread,3)
 		set_current_state(TASK_UNINTERRUPTIBLE);
 
 	res = schedule_timeout(timeout);
-	EVENTTRACE("thread: %p, res: %d", current, res);
+	EVENTTRACE("%p, %d", current, res);
 	if (res == 0)
 		EVENTEXIT(return STATUS_SUCCESS);
 	else
@@ -1436,11 +1430,11 @@ struct nt_thread *get_current_nt_thread(void)
 	thread = NULL;
 	irql = nt_spin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL);
 	nt_list_for_each_entry(header, &object_list, list) {
-		TRACE6("header: %p, type: %d", header, header->type);
+		TRACE6("%p, %d", header, header->type);
 		if (header->type != OBJECT_TYPE_NT_THREAD)
 			break;
 		thread = HEADER_TO_OBJECT(header);
-		TRACE6("thread: %p, task: %p", thread, thread->task);
+		TRACE6("%p, %p", thread, thread->task);
 		if (thread->task == task)
 			break;
 		else
@@ -1449,7 +1443,7 @@ struct nt_thread *get_current_nt_thread(void)
 	nt_spin_unlock_irql(&ntoskernel_lock, irql);
 	if (thread == NULL)
 		TRACE4("couldn't find thread for task %p, %d", task, task->pid);
-	TRACE6("thread: %p", thread);
+	TRACE6("%p", thread);
 	return thread;
 }
 
@@ -1459,11 +1453,11 @@ struct task_struct *get_nt_thread_task(struct nt_thread *thread)
 	struct common_object_header *header;
 	KIRQL irql;
 
-	TRACE6("thread: %p", thread);
+	TRACE6("%p", thread);
 	task = NULL;
 	irql = nt_spin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL);
 	nt_list_for_each_entry(header, &object_list, list) {
-		TRACE6("header: %p, type: %d", header, header->type);
+		TRACE6("%p, %d", header, header->type);
 		if (header->type != OBJECT_TYPE_NT_THREAD)
 			break;
 		if (thread == HEADER_TO_OBJECT(header)) {
@@ -1502,7 +1496,7 @@ wstdcall struct nt_thread *WIN_FUNC(KeGetCurrentThread,0)
 	(void)
 {
 	struct nt_thread *thread = get_current_nt_thread();
-	TRACE2("thread: %p, %p", thread, current);
+	TRACE2("%p, %p", thread, current);
 	return thread;
 }
 
@@ -1512,7 +1506,7 @@ wstdcall KPRIORITY WIN_FUNC(KeQueryPriorityThread,1)
 	KPRIORITY prio;
 	struct task_struct *task;
 
-	TRACE2("thread: %p", thread);
+	TRACE2("%p", thread);
 	/* sis163u driver for amd64 passes 0x1f from thread created by
 	 * PsCreateSystemThread - no idea what is 0x1f */
 	if (thread == (void *)0x1f)
@@ -1577,11 +1571,7 @@ struct thread_trampoline_info {
 static int thread_trampoline(void *data)
 {
 	struct thread_trampoline_info *thread_info = data;
-	typeof(thread_info->func) func;
-	void *ctx;
 
-	func = thread_info->func;
-	ctx = thread_info->ctx;
 	thread_info->thread->task = current;
 	thread_info->thread->pid = current->pid;
 	TRACE2("thread: %p, task: %p (%d)", thread_info->thread,
@@ -1593,7 +1583,7 @@ static int thread_trampoline(void *data)
 #endif
 	strncpy(current->comm, "windisdrvr", sizeof(current->comm));
 	current->comm[sizeof(current->comm)-1] = 0;
-	LIN2WIN1(func, ctx);
+	LIN2WIN1(thread_info->func, thread_info->ctx);
 	ERROR("task: %p", current);
 	return 0;
 }
@@ -1652,13 +1642,12 @@ wstdcall NTSTATUS WIN_FUNC(PsTerminateSystemThread,1)
 
 	TRACE2("%p, %08X", current, status);
 	thread = get_current_nt_thread();
+	TRACE2("%p", thread);
 	if (!thread) {
 		ERROR("couldn't find thread for task: %p", current);
 		return STATUS_FAILURE;
 	}
-	TRACE2("setting event for thread: %p", thread);
 	KeSetEvent((struct nt_event *)&thread->dh, 0, FALSE);
-	TRACE2("set event for thread: %p", thread);
 	while (1) {
 		struct nt_list *ent;
 		struct irp *irp;
