@@ -28,6 +28,8 @@ static work_struct_t ndis_work;
 static struct nt_list ndis_work_list;
 static NT_SPIN_LOCK ndis_work_list_lock;
 
+workqueue_struct_t *ndis_wq;
+
 extern struct semaphore loader_mutex;
 
 wstdcall void WIN_FUNC(NdisInitializeWrapper,4)
@@ -1843,7 +1845,7 @@ irqreturn_t ndis_isr(int irq, void *data ISR_PT_REGS_PARAM_DECL)
 	nt_spin_unlock(&mp_interrupt->lock);
 	if (recognized) {
 		if (queue_handler) {
-			TRACE3("%p", &wnd->irq_kdpc);
+			TRACE5("%p", &wnd->irq_kdpc);
 			queue_kdpc(&wnd->irq_kdpc);
 		}
 		EXIT6(return IRQ_HANDLED);
@@ -1949,14 +1951,14 @@ wstdcall void WIN_FUNC(NdisMIndicateStatus,4)
 			break;
 		netif_carrier_off(wnd->net_dev);
 		set_bit(LINK_STATUS_CHANGED, &wnd->wrap_ndis_pending_work);
-		schedule_work(&wnd->wrap_ndis_work);
+		schedule_wrapndis_work(&wnd->wrap_ndis_work);
 		break;
 	case NDIS_STATUS_MEDIA_CONNECT:
 		if (netif_carrier_ok(wnd->net_dev))
 			break;
 		netif_carrier_on(wnd->net_dev);
 		set_bit(LINK_STATUS_CHANGED, &wnd->wrap_ndis_pending_work);
-		schedule_work(&wnd->wrap_ndis_work);
+		schedule_wrapndis_work(&wnd->wrap_ndis_work);
 		break;
 	case NDIS_STATUS_MEDIA_SPECIFIC_INDICATION:
 		if (!buf)
@@ -2066,7 +2068,7 @@ wstdcall void WIN_FUNC(NdisMIndicateStatusComplete,1)
 	struct wrap_ndis_device *wnd = nmb->wnd;
 	ENTER2("%p", wnd);
 	if (wnd->tx_ok)
-		schedule_work(&wnd->tx_work);
+		schedule_wrapndis_work(&wnd->tx_work);
 }
 
 /* called via function pointer */
@@ -2099,7 +2101,7 @@ wstdcall void NdisMSendComplete(struct ndis_miniport_block *nmb,
 		 */
 		if (xchg(&wnd->tx_ok, 1) == 0) {
 			TRACE3("%d, %d", wnd->tx_ring_start, wnd->tx_ring_end);
-			schedule_work(&wnd->tx_work);
+			schedule_wrapndis_work(&wnd->tx_work);
 		}
 	}
 	EXIT3(return);
@@ -2111,7 +2113,7 @@ wstdcall void NdisMSendResourcesAvailable(struct ndis_miniport_block *nmb)
 	struct wrap_ndis_device *wnd = nmb->wnd;
 	ENTER3("%d, %d", wnd->tx_ring_start, wnd->tx_ring_end);
 	wnd->tx_ok = 1;
-	schedule_work(&wnd->tx_work);
+	schedule_wrapndis_work(&wnd->tx_work);
 	EXIT3(return);
 }
 
@@ -2819,6 +2821,9 @@ int ndis_init(void)
 	InitializeListHead(&ndis_work_list);
 	nt_spin_lock_init(&ndis_work_list_lock);
 	initialize_work(&ndis_work, ndis_worker, NULL);
+	ndis_wq = create_singlethread_workqueue("ndis_wq");
+	if (!ndis_wq)
+		EXIT1(return -ENOMEM);
 	return 0;
 }
 
@@ -2826,5 +2831,7 @@ int ndis_init(void)
 void ndis_exit(void)
 {
 	ENTER1("");
+	if (ndis_wq)
+		destroy_workqueue(ndis_wq);
 	EXIT1(return);
 }

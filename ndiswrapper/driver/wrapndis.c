@@ -29,6 +29,10 @@ extern int hangcheck_interval;
 extern struct iw_handler_def ndis_handler_def;
 extern NT_SPIN_LOCK timer_lock;
 
+/* use own workqueue instead of shared one, to avoid depriving
+ * others */
+workqueue_struct_t *wrapndis_wq;
+
 static int set_packet_filter(struct wrap_ndis_device *wnd,
 			     ULONG packet_filter);
 static void add_iw_stats_timer(struct wrap_ndis_device *wnd);
@@ -760,7 +764,7 @@ static int tx_skbuff(struct sk_buff *skb, struct net_device *dev)
 	}
 	nt_spin_unlock(&wnd->tx_ring_lock);
 	TRACE3("ring: %d, %d", wnd->tx_ring_start, wnd->tx_ring_end);
-	schedule_work(&wnd->tx_work);
+	schedule_wrapndis_work(&wnd->tx_work);
 	return NETDEV_TX_OK;
 }
 
@@ -877,7 +881,7 @@ static void ndis_set_multicast_list(struct net_device *dev)
 {
 	struct wrap_ndis_device *wnd = netdev_priv(dev);
 	set_bit(SET_MULTICAST_LIST, &wnd->wrap_ndis_pending_work);
-	schedule_work(&wnd->wrap_ndis_work);
+	schedule_wrapndis_work(&wnd->wrap_ndis_work);
 }
 
 /* called from BH context */
@@ -1094,7 +1098,7 @@ static void iw_stats_timer_proc(unsigned long data)
 	ENTER2("%d", wnd->iw_stats_interval);
 	if (wnd->iw_stats_interval > 0) {
 		set_bit(COLLECT_IW_STATS, &wnd->wrap_ndis_pending_work);
-		schedule_work(&wnd->wrap_ndis_work);
+		schedule_wrapndis_work(&wnd->wrap_ndis_work);
 	}
 	mod_timer(&wnd->iw_stats_timer, jiffies + wnd->iw_stats_interval);
 }
@@ -1125,7 +1129,7 @@ static void hangcheck_proc(unsigned long data)
 	ENTER3("%d", wnd->hangcheck_interval);
 	if (wnd->hangcheck_interval > 0) {
 		set_bit(HANGCHECK, &wnd->wrap_ndis_pending_work);
-		schedule_work(&wnd->wrap_ndis_work);
+		schedule_wrapndis_work(&wnd->wrap_ndis_work);
 	}
 	mod_timer(&wnd->hangcheck_timer, jiffies + wnd->hangcheck_interval);
 	EXIT3(return);
@@ -2129,6 +2133,9 @@ int init_ndis_driver(struct driver_object *drv_obj)
 
 int wrapndis_init(void)
 {
+	wrapndis_wq = create_singlethread_workqueue("wrapndis_wq");
+	if (!wrapndis_wq)
+		EXIT1(return -ENOMEM);
 	register_netdevice_notifier(&netdev_notifier);
 	return 0;
 }
@@ -2136,4 +2143,6 @@ int wrapndis_init(void)
 void wrapndis_exit(void)
 {
 	unregister_netdevice_notifier(&netdev_notifier);
+	if (wrapndis_wq)
+		destroy_workqueue(wrapndis_wq);
 }

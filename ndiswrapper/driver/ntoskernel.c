@@ -85,7 +85,9 @@ WIN_SYMBOL_MAP("KeTickCount", &jiffies)
 
 WIN_SYMBOL_MAP("NlsMbCodePageTag", FALSE)
 
+#ifdef USE_NTOS_WQ
 workqueue_struct_t *ntos_wq;
+#endif
 
 #if defined(CONFIG_X86_64)
 static void update_user_shared_data_proc(unsigned long data)
@@ -631,7 +633,7 @@ BOOLEAN queue_kdpc(struct kdpc *kdpc)
 	if (kdpc->queued)
 		ret = FALSE;
 	else {
-		if (kdpc->importance == HighImportance)
+		if (unlikely(kdpc->importance == HighImportance))
 			InsertHeadList(&kdpc_list, &kdpc->list);
 		else
 			InsertTailList(&kdpc_list, &kdpc->list);
@@ -2469,11 +2471,13 @@ int ntoskernel_init(void)
 	wrap_ticks_to_boot += now.tv_usec * 10;
 	wrap_ticks_to_boot -= jiffies * TICKSPERJIFFY;
 	TRACE2("%Lu", wrap_ticks_to_boot);
+#ifdef USE_NTOS_WQ
 	ntos_wq = create_singlethread_workqueue("ntos_wq");
 	if (!ntos_wq) {
 		WARNING("couldn't create ntos_wq thread");
 		return -ENOMEM;
 	}
+#endif
 
 	if (add_bus_driver("PCI")
 #ifdef CONFIG_USB
@@ -2632,7 +2636,10 @@ void ntoskernel_exit(void)
 #if defined(CONFIG_X86_64)
 	del_timer_sync(&shared_data_timer);
 #endif
+
+#ifdef USE_NTOS_WQ
 	if (ntos_wq)
 		destroy_workqueue(ntos_wq);
+#endif
 	EXIT2(return);
 }
