@@ -867,7 +867,7 @@ static inline void nt_spin_lock(NT_SPIN_LOCK *lock)
 		"\n"
 		"1:\t"
 		"  xchgl %1, %0\n\t"
-		"  cmpl %2, %1\n\t"
+		"  testl %1, %1\n\t"
 		"  je 3f\n"
 		"2:\t"
 		"  rep; nop\n\t"
