@@ -1,3 +1,16 @@
+Version 1.43 2007-XX-XX
+=======================	
+* Fixed long standing memory allocation issues with some
+  drivers, Atheros especially. With this fix, Atheros cards in Macbook
+  with Core 2 Duo are known to work
+* The above fix changes core architecture of ndiswrapper and improves
+  memory allocation issues with all drivers, as well as executes
+  mostly with bottom-half's enabled for better system response and
+  performance. Many drivers have been tested to work with these
+  changes; however, some drivers may have been broken
+* Added support for Marvell Gigabit ethernet drivers (apparently
+  in-kernel sky2 driver has some issues)
+
 Version 1.42 2007-04-16
 =======================	
 * Yet another smp fix
