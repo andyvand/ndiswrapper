@@ -1460,8 +1460,8 @@ wstdcall void WIN_FUNC(NdisFreePacket,1)
 	}
 	nt_spin_lock_bh(&pool->lock);
 	if (pool->num_allocated_descr > MAX_ALLOCATED_NDIS_PACKETS) {
+		pool->num_allocated_descr--;
 		nt_spin_unlock_bh(&pool->lock);
-		atomic_dec_var(pool->num_allocated_descr);
 		kfree(packet);
 	} else {
 		packet->reserved[0] = (ULONG_PTR)pool->free_descr;

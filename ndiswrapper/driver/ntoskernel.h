@@ -107,15 +107,6 @@
 })
 #endif
 
-#ifndef in_atomic
-#ifdef CONFIG_PREEMPT
-#define in_atomic()					\
-	((preempt_get_count() & ~PREEMPT_ACTIVE) != 0)
-#else
-#define in_atomic() (in_interrupt())
-#endif // CONFIG_PREEMPT
-#endif // in_atomic
-
 #endif // LINUX_VERSION_CODE
 
 /* Wait in wait_state (e.g., TASK_INTERRUPTIBLE) for condition to
@@ -250,13 +241,53 @@ typedef void *worker_param_t;
 #define CHECKSUM_HW CHECKSUM_PARTIAL
 #endif
 
+#define atomic_unary_op(var, size, oper)				\
+do {									\
+	if (size == 1)							\
+		__asm__ __volatile__(					\
+			LOCK_PREFIX oper "b %b0\n\t" : "+m" (var));	\
+	else if (size == 2)						\
+		__asm__ __volatile__(					\
+			LOCK_PREFIX oper "w %w0\n\t" : "+m" (var));	\
+	else if (size == 4)						\
+		__asm__ __volatile__(					\
+			LOCK_PREFIX oper "l %0\n\t" : "+m" (var));	\
+	else if (size == 8)						\
+		__asm__ __volatile__(					\
+			LOCK_PREFIX oper "q %q0\n\t" : "+m" (var));	\
+	else {								\
+		extern void _invalid_op_size_(void);			\
+		_invalid_op_size_();					\
+	}								\
+} while (0)
+
+#define atomic_inc_var_size(var, size) atomic_unary_op(var, size, "inc")
+
+#define atomic_inc_var(var) atomic_inc_var_size(var, sizeof(var))
+
+#define atomic_dec_var_size(var, size) atomic_unary_op(var, size, "dec")
+
+#define atomic_dec_var(var) atomic_dec_var_size(var, sizeof(var))
+
+#define pre_atomic_add(var, i)					\
+({								\
+	typeof(var) pre;					\
+	__asm__ __volatile__(					\
+		LOCK_PREFIX "xadd %0, %1\n\t"			\
+		: "=r"(pre), "+m"(var)				\
+		: "0"(i));					\
+	pre;							\
+})
+
+#define post_atomic_add(var, i) (pre_atomic_add(var, i) + i)
+
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,0)
 
-#ifndef preempt_enable
-#define preempt_enable()  do { } while (0)
-#endif
-#ifndef preempt_disable
-#define preempt_disable() do { } while (0)
+#if !defined(CONFIG_PREEMPT) && !defined(preempt_enable)
+extern volatile int preempt_count;
+#define preempt_enable()  do { atomic_inc_var(preempt_count); } while (0)
+#define preempt_disable()  do { atomic_dec_var(preempt_count); } while (0)
+#define in_atomic() preempt_count
 #endif
 
 #ifndef preempt_enable_no_resched
@@ -878,16 +909,16 @@ static inline void nt_spin_unlock_irql(NT_SPIN_LOCK *lock, KIRQL oldirql)
 
 static inline void nt_spin_lock_bh(NT_SPIN_LOCK *lock)
 {
-	preempt_disable();
 	local_bh_disable();
+	preempt_disable();
 	nt_spin_lock(lock);
 }
 
 static inline void nt_spin_unlock_bh(NT_SPIN_LOCK *lock)
 {
 	nt_spin_unlock(lock);
+	preempt_enable_no_resched();
 	local_bh_enable();
-	preempt_enable();
 }
 
 #ifdef CONFIG_PREEMPT_RT
@@ -911,46 +942,6 @@ do {									\
 	restore_local_irq(flags);					\
 	preempt_enable();						\
 } while (0)
-
-#define atomic_unary_op(var, size, oper)				\
-do {									\
-	if (size == 1)							\
-		__asm__ __volatile__(					\
-			LOCK_PREFIX oper "b %b0\n\t" : "+m" (var));	\
-	else if (size == 2)						\
-		__asm__ __volatile__(					\
-			LOCK_PREFIX oper "w %w0\n\t" : "+m" (var));	\
-	else if (size == 4)						\
-		__asm__ __volatile__(					\
-			LOCK_PREFIX oper "l %0\n\t" : "+m" (var));	\
-	else if (size == 8)						\
-		__asm__ __volatile__(					\
-			LOCK_PREFIX oper "q %q0\n\t" : "+m" (var));	\
-	else {								\
-		extern void _invalid_op_size_(void);			\
-		_invalid_op_size_();					\
-	}								\
-} while (0)
-
-#define atomic_inc_var_size(var, size) atomic_unary_op(var, size, "inc")
-
-#define atomic_inc_var(var) atomic_inc_var_size(var, sizeof(var))
-
-#define atomic_dec_var_size(var, size) atomic_unary_op(var, size, "dec")
-
-#define atomic_dec_var(var) atomic_dec_var_size(var, sizeof(var))
-
-#define pre_atomic_add(var, i)					\
-({								\
-	typeof(var) pre;					\
-	__asm__ __volatile__(					\
-		LOCK_PREFIX "xadd %0, %1\n\t"			\
-		: "=r"(pre), "+m"(var)				\
-		: "0"(i));					\
-	pre;							\
-})
-
-#define post_atomic_add(var, i) (pre_atomic_add(var, i) + i)
 
 #define atomic_insert_list_head(oldhead, head, newhead)			\
 	do {								\

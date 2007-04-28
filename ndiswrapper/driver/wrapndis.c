@@ -828,14 +828,15 @@ static int ndis_net_dev_open(struct net_device *net_dev)
 	}
 	netif_wake_queue(net_dev);
 	netif_poll_enable(net_dev);
-	return 0;
+	EXIT1(return 0);
 }
 
 static int ndis_net_dev_close(struct net_device *net_dev)
 {
+	ENTER1("%p", netdev_priv(net_dev));
 	netif_poll_disable(net_dev);
 	netif_tx_disable(net_dev);
-	return 0;
+	EXIT1(return 0);
 }
 
 static int ndis_change_mtu(struct net_device *net_dev, int mtu)
