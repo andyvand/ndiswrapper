@@ -89,6 +89,11 @@ WIN_SYMBOL_MAP("NlsMbCodePageTag", FALSE)
 workqueue_struct_t *ntos_wq;
 #endif
 
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(2,6,0)) && \
+	!defined(preempt_enable) && !defined(CONFIG_PREEMPT)
+volatile int preempt_count;
+#endif
+
 #if defined(CONFIG_X86_64)
 static void update_user_shared_data_proc(unsigned long data)
 {
@@ -561,7 +566,7 @@ wstdcall BOOLEAN WIN_FUNC(KeCancelTimer,1)
 	/* disable timer before deleting so if it is periodic timer, it
 	 * won't be re-armed after deleting */
 	wrap_timer->repeat = 0;
-	ret = del_timer_sync(&wrap_timer->timer);
+	ret = del_timer(&wrap_timer->timer);
 	if (nt_timer->kdpc)
 		dequeue_kdpc(nt_timer->kdpc);
 	if (ret)
@@ -638,10 +643,11 @@ BOOLEAN queue_kdpc(struct kdpc *kdpc)
 		else
 			InsertTailList(&kdpc_list, &kdpc->list);
 		kdpc->queued = 1;
-		schedule_ntos_work(&kdpc_work);
 		ret = TRUE;
 	}
 	nt_spin_unlock_irqrestore(&kdpc_list_lock, flags);
+	if (ret == TRUE)
+		schedule_ntos_work(&kdpc_work);
 	WORKTRACE("%d", ret);
 	return ret;
 }
@@ -2460,6 +2466,11 @@ int ntoskernel_init(void)
 	wrap_ticks_to_boot += now.tv_usec * 10;
 	wrap_ticks_to_boot -= jiffies * TICKSPERJIFFY;
 	TRACE2("%Lu", wrap_ticks_to_boot);
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(2,6,0)) && \
+	!defined(preempt_enable) && !defined(CONFIG_PREEMPT)
+	preempt_count = 0;
+#endif
+
 #ifdef USE_NTOS_WQ
 	ntos_wq = create_singlethread_workqueue("ntos_wq");
 	if (!ntos_wq) {
@@ -2499,38 +2510,6 @@ int ntoskernel_init(void)
 
 int ntoskernel_init_device(struct wrap_device *wd)
 {
-#if 0
-	int size, i, n;
-	void **ptr;
-
-	/* Atheros drivers allocate large chunks in atomic context
-	 * during initialization. Due to memory fragmentation, these
-	 * chunks are unlikely to be available, so try allocating a
-	 * large chunk in non-atomic context, forcing kernel to
-	 * defragment memory. Also, see comment in
-	 * ExAllocatePoolWithTag. */
-	if (wd->vendor == 0x168c) {
-		void *p[2];
-		size = 1 * 1024 * 1024;
-		n = sizeof(p) / sizeof(p[0]);
-		ptr = p;
-	} else {
-		void *p[2];
-		size = 512 * 1024;
-		n = sizeof(p) / sizeof(p[0]);
-		ptr = p;
-	}
-
-	TRACE1("");
-	for (i = 0; i < n; i++) {
-		ptr[i] = wrap_get_free_pages(GFP_KERNEL | __GFP_REPEAT, size);
-		TRACE1("%p", ptr[i]);
-	}
-	for (i = 0; i < n; i++) {
-		if (ptr[i])
-			free_pages((unsigned long)ptr[i], get_order(size));
-	}
-#endif
 	return 0;
 }
 
