@@ -1191,7 +1191,7 @@ wstdcall NTSTATUS WIN_FUNC(KeWaitForMultipleObjects,8)
 				int j;
 				/* done; remove from rest of wait list */
 				for (j = i + 1; j < count; j++) {
-					if (wb[j].thread)
+					if (wb[j].thread && !wb[j].object)
 						RemoveEntryList(&wb[j].list);
 				}
 				nt_spin_unlock_bh(&dispatcher_lock);
