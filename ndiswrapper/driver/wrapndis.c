@@ -32,6 +32,7 @@ extern NT_SPIN_LOCK timer_lock;
 /* use own workqueue instead of shared one, to avoid depriving
  * others */
 workqueue_struct_t *wrapndis_wq;
+static struct nt_thread *wrapndis_worker_thread;
 
 static int set_packet_filter(struct wrap_ndis_device *wnd,
 			     ULONG packet_filter);
@@ -2137,6 +2138,8 @@ int wrapndis_init(void)
 	wrapndis_wq = create_singlethread_workqueue("wrapndis_wq");
 	if (!wrapndis_wq)
 		EXIT1(return -ENOMEM);
+	wrapndis_worker_thread = wrap_worker_init(wrapndis_wq);
+	TRACE1("%p", wrapndis_worker_thread);
 	register_netdevice_notifier(&netdev_notifier);
 	return 0;
 }
@@ -2146,4 +2149,7 @@ void wrapndis_exit(void)
 	unregister_netdevice_notifier(&netdev_notifier);
 	if (wrapndis_wq)
 		destroy_workqueue(wrapndis_wq);
+	TRACE1("%p", wrapndis_worker_thread);
+	if (wrapndis_worker_thread)
+		ObDereferenceObject(wrapndis_worker_thread);
 }

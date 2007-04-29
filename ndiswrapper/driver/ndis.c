@@ -29,6 +29,7 @@ static struct nt_list ndis_work_list;
 static NT_SPIN_LOCK ndis_work_list_lock;
 
 workqueue_struct_t *ndis_wq;
+static struct nt_thread *ndis_worker_thread;
 
 extern struct semaphore loader_mutex;
 
@@ -2038,13 +2039,13 @@ wstdcall void WIN_FUNC(NdisMIndicateStatus,4)
 			radio_status = buf;
 			if (radio_status->radio_state ==
 			    Ndis802_11RadioStatusOn)
-				INFO("radio is turned on");
+				TRACE2("radio is turned on");
 			else if (radio_status->radio_state ==
 				 Ndis802_11RadioStatusHardwareOff)
-				INFO("radio is turned off by hardware");
+				TRACE2("radio is turned off by hardware");
 			else if (radio_status->radio_state ==
 				 Ndis802_11RadioStatusSoftwareOff)
-				INFO("radio is turned off by software");
+				TRACE2("radio is turned off by software");
 			break;
 #endif
 		default:
@@ -2763,6 +2764,7 @@ wstdcall void WIN_FUNC(NdisMRemoveMiniport,1)
 
 #include "ndis_exports.h"
 
+/* ndis_init_device is called for each device */
 int ndis_init_device(struct wrap_ndis_device *wnd)
 {
 	struct ndis_miniport_block *nmb = wnd->nmb;
@@ -2792,7 +2794,7 @@ int ndis_init_device(struct wrap_ndis_device *wnd)
 	return 0;
 }
 
-/* ndis_exit_device is called for each handle */
+/* ndis_exit_device is called for each device */
 void ndis_exit_device(struct wrap_ndis_device *wnd)
 {
 	struct wrap_device_setting *setting;
@@ -2821,9 +2823,15 @@ int ndis_init(void)
 	InitializeListHead(&ndis_work_list);
 	nt_spin_lock_init(&ndis_work_list_lock);
 	initialize_work(&ndis_work, ndis_worker, NULL);
+
 	ndis_wq = create_singlethread_workqueue("ndis_wq");
-	if (!ndis_wq)
+	if (!ndis_wq) {
+		WARNING("couldn't create worker thread");
 		EXIT1(return -ENOMEM);
+	}
+
+	ndis_worker_thread = wrap_worker_init(ndis_wq);
+	TRACE1("%p", ndis_worker_thread);
 	return 0;
 }
 
@@ -2833,5 +2841,8 @@ void ndis_exit(void)
 	ENTER1("");
 	if (ndis_wq)
 		destroy_workqueue(ndis_wq);
+	TRACE1("%p", ndis_worker_thread);
+	if (ndis_worker_thread)
+		ObDereferenceObject(ndis_worker_thread);
 	EXIT1(return);
 }
