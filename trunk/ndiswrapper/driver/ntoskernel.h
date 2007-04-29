@@ -208,6 +208,7 @@ typedef void *worker_param_t;
 
 #endif // USE_OWN_WQ
 
+struct nt_thread *wrap_worker_init(workqueue_struct_t *wq);
 
 #if LINUX_VERSION_CODE > KERNEL_VERSION(2,6,9)
 #define WRAP_MODULE_PARM_INT(name, perm) module_param(name, int, perm)
@@ -499,7 +500,7 @@ struct ntos_work_item {
 	struct nt_list list;
 	void *arg1;
 	void *arg2;
-	void (*func)(void *arg1, void *arg2) wstdcall;
+	NTOS_WORK_FUNC func;
 };
 
 struct wrap_device_setting {
@@ -864,7 +865,6 @@ static inline void  nt_spin_lock_init(NT_SPIN_LOCK *lock)
 static inline void nt_spin_lock(NT_SPIN_LOCK *lock)
 {
 	__asm__ __volatile__(
-		"\n"
 		"1:\t"
 		"  xchgl %1, %0\n\t"
 		"  testl %1, %1\n\t"

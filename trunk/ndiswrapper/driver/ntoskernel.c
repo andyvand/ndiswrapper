@@ -64,6 +64,7 @@ static work_struct_t ntos_work;
 static struct nt_list ntos_work_list;
 static NT_SPIN_LOCK ntos_work_lock;
 static void ntos_work_worker(worker_param_t dummy);
+static struct nt_thread *ntos_worker_thread;
 
 NT_SPIN_LOCK irp_cancel_lock;
 
@@ -1477,7 +1478,7 @@ struct task_struct *get_nt_thread_task(struct nt_thread *thread)
 	return task;
 }
 
-struct nt_thread *create_nt_thread(struct task_struct *task)
+static struct nt_thread *create_nt_thread(struct task_struct *task)
 {
 	struct nt_thread *thread;
 	thread = allocate_object(sizeof(*thread),
@@ -2439,6 +2440,43 @@ void WIN_FUNC(_purecall,0)
 
 #include "ntoskernel_exports.h"
 
+struct worker_init_struct {
+	work_struct_t work;
+	struct completion completion;
+	struct nt_thread *nt_thread;
+};
+
+static void wrap_worker_init_func(worker_param_t param)
+{
+	struct worker_init_struct *worker_init_struct;
+
+	worker_init_struct = worker_param_data(param, struct worker_init_struct,
+					       work);
+	TRACE1("%p", worker_init_struct);
+	worker_init_struct->nt_thread = create_nt_thread(current);
+	if (!worker_init_struct->nt_thread)
+		WARNING("couldn't create worker thread");
+	complete(&worker_init_struct->completion);
+}
+
+struct nt_thread *wrap_worker_init(workqueue_struct_t *wq)
+{
+	struct worker_init_struct worker_init_struct;
+
+	TRACE1("%p", &worker_init_struct);
+	init_completion(&worker_init_struct.completion);
+	initialize_work(&worker_init_struct.work, wrap_worker_init_func,
+			&worker_init_struct);
+	worker_init_struct.nt_thread = NULL;
+	if (wq)
+		queue_work(wq, &worker_init_struct.work);
+	else
+		schedule_work(&worker_init_struct.work);
+	wait_for_completion(&worker_init_struct.completion);
+	TRACE1("%p", worker_init_struct.nt_thread);
+	return worker_init_struct.nt_thread;
+}
+
 int ntoskernel_init(void)
 {
 	struct timeval now;
@@ -2477,7 +2515,11 @@ int ntoskernel_init(void)
 		WARNING("couldn't create ntos_wq thread");
 		return -ENOMEM;
 	}
+	ntos_worker_thread = wrap_worker_init(ntos_wq);
+#else
+	ntos_worker_thread = wrap_worker_init(NULL);
 #endif
+	TRACE1("%p", ntos_worker_thread);
 
 	if (add_bus_driver("PCI")
 #ifdef CONFIG_USB
@@ -2590,6 +2632,16 @@ void ntoskernel_exit(void)
 	}
 	nt_spin_unlock_irql(&ntoskernel_lock, irql);
 
+#if defined(CONFIG_X86_64)
+	del_timer_sync(&shared_data_timer);
+#endif
+#ifdef USE_NTOS_WQ
+	if (ntos_wq)
+		destroy_workqueue(ntos_wq);
+#endif
+	TRACE1("%p", ntos_worker_thread);
+	if (ntos_worker_thread)
+		ObDereferenceObject(ntos_worker_thread);
 	ENTER2("freeing objects");
 	irql = nt_spin_lock_irql(&ntoskernel_lock, DISPATCH_LEVEL);
 	while ((cur = RemoveHeadList(&object_list))) {
@@ -2601,13 +2653,6 @@ void ntoskernel_exit(void)
 	}
 	nt_spin_unlock_irql(&ntoskernel_lock, irql);
 
-#if defined(CONFIG_X86_64)
-	del_timer_sync(&shared_data_timer);
-#endif
 
-#ifdef USE_NTOS_WQ
-	if (ntos_wq)
-		destroy_workqueue(ntos_wq);
-#endif
 	EXIT2(return);
 }
