@@ -601,6 +601,7 @@ extern workqueue_struct_t *wrapndis_wq;
 #ifdef USE_NTOS_WQ
 extern workqueue_struct_t *ntos_wq;
 #define schedule_ntos_work(work_struct) queue_work(ntos_wq, (work_struct))
+#define schedule_work(work_struct) queue_work(ntos_wq, (work_struct))
 #else
 #define schedule_ntos_work(work_struct) schedule_work(work_struct)
 #endif
@@ -662,7 +663,6 @@ void KefReleaseSpinLockFromDpcLevel(NT_SPIN_LOCK *lock) wfastcall;
 
 LONG ObfReferenceObject(void *object) wfastcall;
 void ObfDereferenceObject(void *object) wfastcall;
-int dereference_object(void *object);
 
 #define ObReferenceObject(object) ObfReferenceObject(object)
 #define ObDereferenceObject(object) ObfDereferenceObject(object)
