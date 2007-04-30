@@ -1,4 +1,4 @@
-Version 1.43 2007-XX-XX
+Version 1.43 2007-04-30
 =======================	
 * Fixed long standing memory allocation issues with some
   drivers, Atheros especially. With this fix, Atheros cards in Macbook

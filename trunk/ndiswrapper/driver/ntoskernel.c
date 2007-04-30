@@ -385,7 +385,6 @@ wfastcall void WIN_FUNC(ExInterlockedAddLargeStatistic,2)
 		: "r" (n));
 #else
 	__asm__ __volatile__(
-		"\n"
 		"1:\t"
 		"   movl %1, %%ebx\n\t"
 		"   movl %%edx, %%ecx\n\t"
@@ -2450,8 +2449,8 @@ static void wrap_worker_init_func(worker_param_t param)
 {
 	struct worker_init_struct *worker_init_struct;
 
-	worker_init_struct = worker_param_data(param, struct worker_init_struct,
-					       work);
+	worker_init_struct =
+		worker_param_data(param, struct worker_init_struct, work);
 	TRACE1("%p", worker_init_struct);
 	worker_init_struct->nt_thread = create_nt_thread(current);
 	if (!worker_init_struct->nt_thread)
@@ -2652,7 +2651,6 @@ void ntoskernel_exit(void)
 		ExFreePool(hdr);
 	}
 	nt_spin_unlock_irql(&ntoskernel_lock, irql);
-
 
 	EXIT2(return);
 }
