@@ -90,9 +90,8 @@ WIN_SYMBOL_MAP("NlsMbCodePageTag", FALSE)
 workqueue_struct_t *ntos_wq;
 #endif
 
-#if (LINUX_VERSION_CODE < KERNEL_VERSION(2,6,0)) && \
-	!defined(preempt_enable) && !defined(CONFIG_PREEMPT)
-volatile int preempt_count;
+#ifdef WARP_PREEMPT
+volatile int warp_preempt_count;
 #endif
 
 #if defined(CONFIG_X86_64)
@@ -447,7 +446,7 @@ void wrap_init_timer(struct nt_timer *nt_timer, enum timer_type type,
 	 * freed, so we use slack_kmalloc so it gets freed when driver
 	 * is unloaded */
 	if (nmb)
-		wrap_timer = kmalloc(sizeof(*wrap_timer), gfp_irql());
+		wrap_timer = kmalloc(sizeof(*wrap_timer), irql_gfp());
 	else
 		wrap_timer = slack_kmalloc(sizeof(*wrap_timer));
 	if (!wrap_timer) {
@@ -720,7 +719,7 @@ int schedule_ntos_work_item(NTOS_WORK_FUNC func, void *arg1, void *arg2)
 	KIRQL irql;
 
 	WORKENTER("adding work: %p, %p, %p", func, arg1, arg2);
-	ntos_work_item = kmalloc(sizeof(*ntos_work_item), gfp_irql());
+	ntos_work_item = kmalloc(sizeof(*ntos_work_item), irql_gfp());
 	if (!ntos_work_item) {
 		ERROR("couldn't allocate memory");
 		return -ENOMEM;
@@ -806,7 +805,7 @@ wstdcall void *WIN_FUNC(ExAllocatePoolWithTag,3)
 
 	ENTER4("pool_type: %d, size: %lu, tag: 0x%x", pool_type, size, tag);
 	if (size < PAGE_SIZE)
-		addr = kmalloc(size, gfp_irql());
+		addr = kmalloc(size, irql_gfp());
 	else {
 		KIRQL irql = current_irql();
 
@@ -819,7 +818,8 @@ wstdcall void *WIN_FUNC(ExAllocatePoolWithTag,3)
 			TRACE1("%p, %lu", addr, size);
 		} else {
 			TRACE1("Windows driver allocating %lu bytes in "
-			       "interrupt context: 0x%x", size, preempt_count());
+			       "interrupt context: 0x%x", size,
+			       warp_preempt_count());
 			DBG_BLOCK(2) {
 				dump_stack();
 			}
@@ -1166,6 +1166,7 @@ wstdcall NTSTATUS WIN_FUNC(KeWaitForMultipleObjects,8)
 					continue;
 				EVENTTRACE("%p: timedout, dequeue %p (%p)",
 					   current, object[i], wb[i].object);
+				assert(wb[i].object == NULL);
 				RemoveEntryList(&wb[i].list);
 			}
 			nt_spin_unlock_bh(&dispatcher_lock);
@@ -1711,7 +1712,7 @@ wstdcall void *WIN_FUNC(MmAllocateContiguousMemorySpecifyCache,5)
 	 PHYSICAL_ADDRESS boundary, enum memory_caching_type cache_type)
 {
 	void *addr;
-	addr = wrap_get_free_pages(gfp_irql(), size);
+	addr = wrap_get_free_pages(irql_gfp(), size);
 	TRACE4("%p, %lu", addr, size);
 	return addr;
 }
@@ -1773,7 +1774,7 @@ struct mdl *allocate_init_mdl(void *virt, ULONG length)
 	int mdl_size = MmSizeOfMdl(virt, length);
 
 	if (mdl_size <= MDL_CACHE_SIZE) {
-		wrap_mdl = kmem_cache_alloc(mdl_cache, gfp_irql());
+		wrap_mdl = kmem_cache_alloc(mdl_cache, irql_gfp());
 		if (!wrap_mdl)
 			return NULL;
 		nt_spin_lock_bh(&dispatcher_lock);
@@ -1789,7 +1790,7 @@ struct mdl *allocate_init_mdl(void *virt, ULONG length)
 		mdl->flags = MDL_ALLOCATED_FIXED_SIZE | MDL_CACHE_ALLOCATED;
 	} else {
 		wrap_mdl =
-			kmalloc(sizeof(*wrap_mdl) + mdl_size, gfp_irql());
+			kmalloc(sizeof(*wrap_mdl) + mdl_size, irql_gfp());
 		if (!wrap_mdl)
 			return NULL;
 		mdl = wrap_mdl->mdl;
@@ -2503,9 +2504,8 @@ int ntoskernel_init(void)
 	wrap_ticks_to_boot += now.tv_usec * 10;
 	wrap_ticks_to_boot -= jiffies * TICKSPERJIFFY;
 	TRACE2("%Lu", wrap_ticks_to_boot);
-#if (LINUX_VERSION_CODE < KERNEL_VERSION(2,6,0)) && \
-	!defined(preempt_enable) && !defined(CONFIG_PREEMPT)
-	preempt_count = 0;
+#ifdef WARP_PREEMPT
+	warp_preempt_count = 0;
 #endif
 
 #ifdef USE_NTOS_WQ

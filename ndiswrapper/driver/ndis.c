@@ -1032,7 +1032,7 @@ wstdcall NDIS_STATUS WIN_FUNC(NdisMAllocateSharedMemoryAsync,4)
 	struct alloc_shared_mem *alloc_shared_mem;
 
 	ENTER3("wnd: %p", wnd);
-	alloc_shared_mem = kmalloc(sizeof(*alloc_shared_mem), gfp_irql());
+	alloc_shared_mem = kmalloc(sizeof(*alloc_shared_mem), irql_gfp());
 	if (!alloc_shared_mem) {
 		WARNING("couldn't allocate memory");
 		return NDIS_STATUS_FAILURE;
@@ -1068,7 +1068,7 @@ wstdcall void WIN_FUNC(NdisAllocateBufferPool,3)
 	struct ndis_buffer_pool *pool;
 
 	ENTER1("buffers: %d", num_descr);
-	pool = kmalloc(sizeof(*pool), gfp_irql());
+	pool = kmalloc(sizeof(*pool), irql_gfp());
 	if (!pool) {
 		*status = NDIS_STATUS_RESOURCES;
 		EXIT3(return);
@@ -1099,19 +1099,15 @@ wstdcall void WIN_FUNC(NdisAllocateBuffer,5)
 			WARNING("pool %p is full: %d(%d)", pool,
 				pool->num_allocated_descr, pool->max_descr);
 	}
-	nt_spin_lock_bh(&pool->lock);
-	if (pool->free_descr) {
+	descr = atomic_remove_list_head(pool->free_descr, oldhead->next);
+	if (descr) {
 		typeof(descr->flags) flags;
-		descr = pool->free_descr;
-		pool->free_descr = descr->next;
-		nt_spin_unlock_bh(&pool->lock);
 		flags = descr->flags;
 		memset(descr, 0, sizeof(*descr));
 		MmInitializeMdl(descr, virt, length);
 		if (flags & MDL_CACHE_ALLOCATED)
 			descr->flags |= MDL_CACHE_ALLOCATED;
 	} else {
-		nt_spin_unlock_bh(&pool->lock);
 		descr = allocate_init_mdl(virt, length);
 		if (!descr) {
 			WARNING("couldn't allocate buffer");
@@ -1143,20 +1139,15 @@ wstdcall void WIN_FUNC(NdisFreeBuffer,1)
 		EXIT4(return);
 	}
 	pool = buffer->pool;
-	nt_spin_lock_bh(&pool->lock);
 	if (pool->num_allocated_descr > MAX_ALLOCATED_NDIS_BUFFERS) {
 		/* NB NB NB: set mdl's 'pool' field to NULL before
 		 * calling free_mdl; otherwise free_mdl calls
 		 * NdisFreeBuffer causing deadlock (for spinlock) */
-		pool->num_allocated_descr--;
+		atomic_dec_var(pool->num_allocated_descr);
 		buffer->pool = NULL;
-		nt_spin_unlock_bh(&pool->lock);
 		free_mdl(buffer);
-	} else {
-		buffer->next = pool->free_descr;
-		pool->free_descr = buffer;
-		nt_spin_unlock_bh(&pool->lock);
-	}
+	} else
+		atomic_insert_list_head(pool->free_descr, buffer, buffer->next);
 	EXIT4(return);
 }
 
@@ -1329,7 +1320,7 @@ wstdcall void WIN_FUNC(NdisAllocatePacketPoolEx,5)
 	struct ndis_packet_pool *pool;
 
 	ENTER3("buffers: %d, length: %d", num_descr, proto_rsvd_length);
-	pool = kmalloc(sizeof(*pool), gfp_irql());
+	pool = kmalloc(sizeof(*pool), irql_gfp());
 	if (!pool) {
 		*status = NDIS_STATUS_RESOURCES;
 		EXIT3(return);
@@ -1407,14 +1398,9 @@ wstdcall void WIN_FUNC(NdisAllocatePacket,3)
 	/* packet has space for 1 byte in protocol_reserved field */
 	packet_length = sizeof(*packet) - 1 + pool->proto_rsvd_length +
 		sizeof(struct ndis_packet_oob_data);
-	nt_spin_lock_bh(&pool->lock);
-	if (pool->free_descr) {
-		packet = pool->free_descr;
-		pool->free_descr = (void *)(ULONG_PTR)packet->reserved[0];
-		nt_spin_unlock_bh(&pool->lock);
-	} else {
-		nt_spin_unlock_bh(&pool->lock);
-		packet = kmalloc(packet_length, gfp_irql());
+	packet = atomic_remove_list_head(pool->free_descr, oldhead->reserved[0]);
+	if (!packet) {
+		packet = kmalloc(packet_length, irql_gfp());
 		if (!packet) {
 			WARNING("couldn't allocate packet");
 			*status = NDIS_STATUS_RESOURCES;
@@ -1459,16 +1445,12 @@ wstdcall void WIN_FUNC(NdisFreePacket,1)
 		kfree((void *)packet->reserved[1]);
 		packet->reserved[1] = 0;
 	}
-	nt_spin_lock_bh(&pool->lock);
 	if (pool->num_allocated_descr > MAX_ALLOCATED_NDIS_PACKETS) {
-		pool->num_allocated_descr--;
-		nt_spin_unlock_bh(&pool->lock);
+		atomic_dec_var(pool->num_allocated_descr);
 		kfree(packet);
-	} else {
-		packet->reserved[0] = (ULONG_PTR)pool->free_descr;
-		pool->free_descr = packet;
-		nt_spin_unlock_bh(&pool->lock);
-	}
+	} else
+		atomic_insert_list_head(pool->free_descr, packet,
+					packet->reserved[0]);
 	EXIT4(return);
 }
 
@@ -1478,7 +1460,7 @@ wstdcall struct ndis_packet_stack *WIN_FUNC(NdisIMGetCurrentPacketStack,2)
 	struct ndis_packet_stack *stack;
 
 	if (!packet->reserved[1]) {
-		stack = kmalloc(2 * sizeof(*stack), gfp_irql());
+		stack = kmalloc(2 * sizeof(*stack), irql_gfp());
 		if (stack)
 			memset(stack, 0, 2 * sizeof(*stack));
 		TRACE3("%p, %p", packet, stack);
@@ -1832,7 +1814,9 @@ irqreturn_t ndis_isr(int irq, void *data ISR_PT_REGS_PARAM_DECL)
 
 	/* this spinlock should be shared with NdisMSynchronizeWithInterrupt
 	 */
-	nt_spin_lock(&mp_interrupt->lock);
+	/* use nt_spin_lock_preempt so driver thinks it is at right
+	 * IRQL */
+	nt_spin_lock_preempt(&mp_interrupt->lock);
 	if (mp_interrupt->shared)
 		LIN2WIN3(mp_interrupt->isr, &recognized, &queue_handler,
 			 wnd->nmb->adapter_ctx);
@@ -1843,7 +1827,7 @@ irqreturn_t ndis_isr(int irq, void *data ISR_PT_REGS_PARAM_DECL)
 		/* it is not shared interrupt, so handler must be called */
 		recognized = queue_handler = TRUE;
 	}
-	nt_spin_unlock(&mp_interrupt->lock);
+	nt_spin_unlock_preempt(&mp_interrupt->lock);
 	if (recognized) {
 		if (queue_handler) {
 			TRACE5("%p", &wnd->irq_kdpc);

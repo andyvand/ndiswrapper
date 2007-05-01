@@ -95,7 +95,7 @@ wstdcall struct irp *WIN_FUNC(IoAllocateIrp,2)
 	IOENTER("count: %d", stack_count);
 	stack_count++;
 	irp_size = IoSizeOfIrp(stack_count);
-	irp = kmalloc(irp_size, gfp_irql());
+	irp = kmalloc(irp_size, irql_gfp());
 	if (irp)
 		IoInitializeIrp(irp, irp_size, stack_count);
 	IOTRACE("irp %p", irp);
@@ -524,10 +524,10 @@ static irqreturn_t io_irq_isr(int irq, void *data ISR_PT_REGS_PARAM_DECL)
 	struct kinterrupt *interrupt = data;
 	BOOLEAN ret;
 
-	nt_spin_lock(&interrupt->lock);
+	nt_spin_lock_preempt(&interrupt->lock);
 	ret = LIN2WIN2(interrupt->service_routine, interrupt,
 		       interrupt->service_context);
-	nt_spin_unlock(&interrupt->lock);
+	nt_spin_unlock_preempt(&interrupt->lock);
 	if (ret == TRUE)
 		return IRQ_HANDLED;
 	else
@@ -615,7 +615,7 @@ wstdcall struct io_workitem *WIN_FUNC(IoAllocateWorkItem,1)
 	struct io_workitem *io_workitem;
 
 	IOENTER("%p", dev_obj);
-	io_workitem = kmalloc(sizeof(*io_workitem), gfp_irql());
+	io_workitem = kmalloc(sizeof(*io_workitem), irql_gfp());
 	if (!io_workitem)
 		IOEXIT(return NULL);
 	io_workitem->dev_obj = dev_obj;
@@ -656,7 +656,7 @@ wstdcall NTSTATUS WIN_FUNC(IoAllocateDriverObjectExtension,4)
 	KIRQL irql;
 
 	IOENTER("%p, %p", drv_obj, client_id);
-	ce = kmalloc(sizeof(*ce) + extlen, gfp_irql());
+	ce = kmalloc(sizeof(*ce) + extlen, irql_gfp());
 	if (ce == NULL)
 		return STATUS_INSUFFICIENT_RESOURCES;
 
@@ -1021,7 +1021,7 @@ wstdcall void *WIN_FUNC(IoAllocateErrorLogEntry,2)
 {
 	/* not implemented fully */
 	void *ret = kmalloc(sizeof(struct io_error_log_packet) + entry_size,
-			    gfp_irql());
+			    irql_gfp());
 	TRACE2("%p", ret);
 	if (ret)
 		return ret + sizeof(struct io_error_log_packet);
