@@ -364,7 +364,7 @@ void dump_bytes(const char *ctx, const u8 *from, int len)
 	int i, j;
 	u8 *buf;
 
-	buf = kmalloc(len * 3 + 1, gfp_irql());
+	buf = kmalloc(len * 3 + 1, irql_gfp());
 	if (!buf) {
 		ERROR("couldn't allocate memory");
 		return;
