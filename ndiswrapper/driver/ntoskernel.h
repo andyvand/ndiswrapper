@@ -426,7 +426,7 @@ typedef u32 pm_message_t;
 		TRACE1("sp: %p", sp);		\
 	} while (0)
 
-#define DEBUG_IRQL 1
+//#define DEBUG_IRQL 1
 
 #if !defined(CONFIG_USB) && defined(CONFIG_USB_MODULE)
 #define CONFIG_USB 1
@@ -833,10 +833,12 @@ do {									\
 
 static inline KIRQL current_irql(void)
 {
+#ifdef DEBUG_IRQL
 	if (in_irq() || irqs_disabled())
-		EXIT6(return DIRQL);
+		EXIT2(return DIRQL);
 	if (in_interrupt())
-		EXIT6(return SOFT_IRQL);
+		EXIT2(return SOFT_IRQL);
+#endif
 	if (warp_in_atomic())
 		EXIT6(return DISPATCH_LEVEL);
 	else

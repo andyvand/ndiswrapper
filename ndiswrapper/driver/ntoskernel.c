@@ -807,35 +807,13 @@ wstdcall void *WIN_FUNC(ExAllocatePoolWithTag,3)
 	if (size < PAGE_SIZE)
 		addr = kmalloc(size, irql_gfp());
 	else {
-		KIRQL irql = current_irql();
-
-		if (irql < DISPATCH_LEVEL) {
-			addr = vmalloc(size);
-			TRACE1("%p, %lu", addr, size);
-		} else if (irql == DISPATCH_LEVEL) {
+		if (irql_gfp() & GFP_ATOMIC) {
 			addr = __vmalloc(size, GFP_ATOMIC | __GFP_HIGHMEM,
 					 PAGE_KERNEL);
 			TRACE1("%p, %lu", addr, size);
 		} else {
-			TRACE1("Windows driver allocating %lu bytes in "
-			       "interrupt context: 0x%x", size,
-			       warp_preempt_count());
-			DBG_BLOCK(2) {
-				dump_stack();
-			}
-#if LINUX_VERSION_CODE > KERNEL_VERSION(2,6,18)
-			/* 2.6.19+ kernels don't allow __vmalloc (even
-			 * with GFP_ATOMIC) in interrupt context */
-			addr = NULL;
-#else
-			addr = __vmalloc(size, GFP_ATOMIC | __GFP_HIGHMEM,
-					 PAGE_KERNEL);
-#endif
-			if (addr)
-				TRACE1("%p, %lu", addr, size);
-			else
-				WARNING("couldn't allocate %lu bytes of memory "
-					"at %d", size, irql);
+			addr = vmalloc(size);
+			TRACE1("%p, %lu", addr, size);
 		}
 	}
 
@@ -854,11 +832,11 @@ wstdcall void WIN_FUNC(ExFreePoolWithTag,2)
 	(void *addr, ULONG tag)
 {
 	TRACE4("%p", addr);
-	if ((unsigned long)addr >= VMALLOC_START &&
-	    (unsigned long)addr < VMALLOC_END)
-		vfree(addr);
-	else
+	if ((unsigned long)addr < VMALLOC_START ||
+	    (unsigned long)addr >= VMALLOC_END)
 		kfree(addr);
+	else
+		vfree(addr);
 
 	EXIT4(return);
 }
