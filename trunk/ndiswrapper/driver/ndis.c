@@ -156,12 +156,7 @@ wstdcall NDIS_STATUS WIN_FUNC(NdisAllocateMemoryWithTag,3)
 	(void **dest, UINT length, ULONG tag)
 {
 	void *addr;
-	KIRQL irql = current_irql();
 
-	if (irql > DISPATCH_LEVEL) {
-		WARNING("invalid irql: %d", irql);
-		dump_stack();
-	}
 	addr = ExAllocatePoolWithTag(NonPagedPool, length, tag);
 	TRACE4("%p", addr);
 	if (addr) {

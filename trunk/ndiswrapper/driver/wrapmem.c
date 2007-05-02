@@ -74,10 +74,10 @@ void *slack_kmalloc(size_t size)
 
 	ENTER4("size = %lu", (unsigned long)size);
 
-	if (current_irql() < DISPATCH_LEVEL)
-		flags = GFP_KERNEL;
-	else
+	if (irql_gfp() & GFP_ATOMIC)
 		flags = GFP_ATOMIC;
+	else
+		flags = GFP_KERNEL;
 	info = kmalloc(size + sizeof(*info), flags);
 	if (!info)
 		return NULL;
