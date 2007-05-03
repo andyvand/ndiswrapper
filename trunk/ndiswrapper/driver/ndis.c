@@ -2386,7 +2386,10 @@ wstdcall void NdisMQueryInformationComplete(struct ndis_miniport_block *nmb,
 	ENTER2("nmb: %p, wnd: %p, %08X", nmb, wnd, status);
 	wnd->ndis_comm_status = status;
 	wnd->ndis_comm_done = 1;
-	wake_up_process(wnd->ndis_comm_task);
+	if (wnd->ndis_comm_task)
+		wake_up_process(wnd->ndis_comm_task);
+	else
+		WARNING("invalid task");
 	EXIT2(return);
 }
 
@@ -2398,7 +2401,10 @@ wstdcall void NdisMSetInformationComplete(struct ndis_miniport_block *nmb,
 
 	wnd->ndis_comm_status = status;
 	wnd->ndis_comm_done = 1;
-	wake_up_process(wnd->ndis_comm_task);
+	if (wnd->ndis_comm_task)
+		wake_up_process(wnd->ndis_comm_task);
+	else
+		WARNING("invalid task");
 	EXIT3(return);
 }
 
@@ -2561,7 +2567,10 @@ wstdcall void NdisMResetComplete(struct ndis_miniport_block *nmb,
 	ENTER3("status: %08X, %u", status, address_reset);
 	wnd->ndis_comm_status = status;
 	wnd->ndis_comm_done = 1 + address_reset;
-	wake_up_process(wnd->ndis_comm_task);
+	if (wnd->ndis_comm_task)
+		wake_up_process(wnd->ndis_comm_task);
+	else
+		WARNING("invalid task");
 	EXIT3(return);
 }
 
@@ -2685,7 +2694,10 @@ wstdcall void WIN_FUNC(NdisMCoRequestComplete,3)
 	ENTER3("%08X", status);
 	wnd->ndis_comm_status = status;
 	wnd->ndis_comm_done = 1;
-	wake_up_process(wnd->ndis_comm_task);
+	if (wnd->ndis_comm_task)
+		wake_up_process(wnd->ndis_comm_task);
+	else
+		WARNING("invalid task");
 	EXIT3(return);
 }
 

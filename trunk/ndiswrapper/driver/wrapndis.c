@@ -63,8 +63,7 @@ NDIS_STATUS miniport_reset(struct wrap_ndis_device *wnd)
 	miniport = &wnd->wd->driver->ndis_driver->miniport;
 	cur_lookahead = wnd->nmb->cur_lookahead;
 	max_lookahead = wnd->nmb->max_lookahead;
-	wnd->ndis_comm_done = 0;
-	wnd->ndis_comm_task = current;
+	prepare_wait_condition(wnd->ndis_comm_task, wnd->ndis_comm_done, 0);
 	WARNING("%s is being reset", wnd->net_dev->name);
 	irql = serialize_lock_irql(wnd);
 	res = LIN2WIN2(miniport->reset, &reset_address, wnd->nmb->adapter_ctx);
@@ -107,8 +106,7 @@ NDIS_STATUS miniport_query_info_needed(struct wrap_ndis_device *wnd,
 		EXIT3(return NDIS_STATUS_FAILURE);
 	miniport = &wnd->wd->driver->ndis_driver->miniport;
 	TRACE2("%p, %08X", miniport->query, oid);
-	wnd->ndis_comm_done = 0;
-	wnd->ndis_comm_task = current;
+	prepare_wait_condition(wnd->ndis_comm_task, wnd->ndis_comm_done, 0);
 	irql = serialize_lock_irql(wnd);
 	res = LIN2WIN6(miniport->query, wnd->nmb->adapter_ctx, oid, buf,
 		       bufsize, &written, needed);
@@ -156,8 +154,7 @@ NDIS_STATUS miniport_set_info(struct wrap_ndis_device *wnd, ndis_oid oid,
 		EXIT3(return NDIS_STATUS_FAILURE);
 	miniport = &wnd->wd->driver->ndis_driver->miniport;
 	TRACE2("%p, %08X", miniport->query, oid);
-	wnd->ndis_comm_done = 0;
-	wnd->ndis_comm_task = current;
+	prepare_wait_condition(wnd->ndis_comm_task, wnd->ndis_comm_done, 0);
 	irql = serialize_lock_irql(wnd);
 	res = LIN2WIN6(miniport->setinfo, wnd->nmb->adapter_ctx, oid,
 		       buf, bufsize, &written, &needed);
