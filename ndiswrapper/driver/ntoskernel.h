@@ -109,6 +109,13 @@
 
 #endif // LINUX_VERSION_CODE
 
+#define prepare_wait_condition(task, var, value)	\
+do {							\
+	var = value;					\
+	task = current;					\
+	mb();						\
+} while (0)
+
 /* Wait in wait_state (e.g., TASK_INTERRUPTIBLE) for condition to
  * become true; timeout is either jiffies (> 0) to wait or 0 to wait
  * forever.
