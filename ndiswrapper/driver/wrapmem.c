@@ -122,9 +122,9 @@ void *wrap_kmalloc(size_t size, unsigned flags, const char *file, int line)
 	if (!info)
 		return NULL;
 	if (flags & GFP_ATOMIC)
-		info->type = ALLOC_TYPE_ATOMIC;
+		info->type = ALLOC_TYPE_KMALLOC_ATOMIC;
 	else
-		info->type = ALLOC_TYPE_NON_ATOMIC;
+		info->type = ALLOC_TYPE_KMALLOC_NON_ATOMIC;
 	info->size = size;
 	atomic_add(size, &alloc_sizes[info->type]);
 #if ALLOC_DEBUG > 1
@@ -153,8 +153,8 @@ void wrap_kfree(void *ptr)
 	irql = nt_spin_lock_irql(&alloc_lock, DISPATCH_LEVEL);
 	RemoveEntryList(&info->list);
 	nt_spin_unlock_irql(&alloc_lock, irql);
-	if (!(info->type == ALLOC_TYPE_ATOMIC ||
-	      info->type == ALLOC_TYPE_NON_ATOMIC))
+	if (!(info->type == ALLOC_TYPE_KMALLOC_ATOMIC ||
+	      info->type == ALLOC_TYPE_KMALLOC_NON_ATOMIC))
 		WARNING("invliad type: %d", info->type);
 #endif
 	kfree(info);
@@ -170,7 +170,7 @@ void *wrap_vmalloc(unsigned long size, const char *file, int line)
 	info = vmalloc(size + sizeof(*info));
 	if (!info)
 		return NULL;
-	info->type = ALLOC_TYPE_VMALLOC;
+	info->type = ALLOC_TYPE_VMALLOC_NON_ATOMIC;
 	info->size = size;
 	atomic_add(size, &alloc_sizes[info->type]);
 #if ALLOC_DEBUG > 1
@@ -197,7 +197,10 @@ void *wrap__vmalloc(unsigned long size, unsigned int gfp_mask, pgprot_t prot,
 	info = __vmalloc(size + sizeof(*info), gfp_mask, prot);
 	if (!info)
 		return NULL;
-	info->type = ALLOC_TYPE_VMALLOC;
+	if (gfp_mask & GFP_ATOMIC)
+		info->type = ALLOC_TYPE_VMALLOC_ATOMIC;
+	else
+		info->type = ALLOC_TYPE_VMALLOC_NON_ATOMIC;
 	info->size = size;
 	atomic_add(size, &alloc_sizes[info->type]);
 #if ALLOC_DEBUG > 1
@@ -226,7 +229,8 @@ void wrap_vfree(void *ptr)
 	irql = nt_spin_lock_irql(&alloc_lock, DISPATCH_LEVEL);
 	RemoveEntryList(&info->list);
 	nt_spin_unlock_irql(&alloc_lock, irql);
-	if (info->type != ALLOC_TYPE_VMALLOC)
+	if (!(info->type == ALLOC_TYPE_VMALLOC_ATOMIC ||
+	      info->type == ALLOC_TYPE_VMALLOC_NON_ATOMIC))
 		WARNING("invliad type: %d", info->type);
 #endif
 	vfree(info);
@@ -346,9 +350,14 @@ void wrapmem_exit(void)
 	}
 
 #if ALLOC_DEBUG > 1
-	irql = nt_spin_lock_irql(&alloc_lock, DISPATCH_LEVEL);
-	while ((ent = RemoveHeadList(&allocs))) {
+	while (1) {
 		struct alloc_info *info;
+
+		irql = nt_spin_lock_irql(&alloc_lock, DISPATCH_LEVEL);
+		ent = RemoveHeadList(&allocs);
+		nt_spin_unlock_irql(&alloc_lock, irql);
+		if (!ent)
+			break;
 		info = container_of(ent, struct alloc_info, list);
 		atomic_sub(info->size, &alloc_sizes[ALLOC_TYPE_SLACK]);
 		WARNING("%p in %d of size %zu allocated at %s(%d) "
@@ -361,16 +370,18 @@ void wrapmem_exit(void)
 			, info->tag
 #endif
 			);
-		if (info->type == ALLOC_TYPE_ATOMIC ||
-		    info->type == ALLOC_TYPE_NON_ATOMIC)
+		if (info->type == ALLOC_TYPE_KMALLOC_ATOMIC ||
+		    info->type == ALLOC_TYPE_KMALLOC_NON_ATOMIC)
 			kfree(info);
-		else if (info->type == ALLOC_TYPE_VMALLOC)
+		else if (info->type == ALLOC_TYPE_VMALLOC_ATOMIC ||
+			 info->type == ALLOC_TYPE_VMALLOC_NON_ATOMIC)
 			vfree(info);
+		else if (info->type == ALLOC_TYPE_PAGES)
+			free_pages((unsigned long)info, get_order(info->size));
 		else
 			WARNING("invalid type: %d; not freed", info->type);
 
 	}
-	nt_spin_unlock_irql(&alloc_lock, irql);
 #endif
 #endif
 	return;
