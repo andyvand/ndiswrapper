@@ -469,23 +469,28 @@ static int iw_set_bitrate(struct net_device *dev, struct iw_request_info *info,
 			  union iwreq_data *wrqu, char *extra)
 {
 	struct wrap_ndis_device *wnd = netdev_priv(dev);
-	int i;
+	int i, n;
 	NDIS_STATUS res;
-	ndis_rates rates;
+	ndis_rates_ex rates;
 
 	ENTER2("");
 	if (wrqu->bitrate.fixed == 0)
 		EXIT2(return 0);
 
-	res = miniport_query_info(wnd, OID_802_11_SUPPORTED_RATES,
-				  &rates, sizeof(ndis_rates));
-
+	res = miniport_query_info_needed(wnd, OID_802_11_SUPPORTED_RATES,
+					 NULL, 0, &n);
+	if ((res != NDIS_STATUS_INVALID_LENGTH &&
+	     res != NDIS_STATUS_BUFFER_TOO_SHORT) ||
+	    (n != sizeof(ndis_rates) && n != sizeof(ndis_rates_ex))) {
+		WARNING("getting bit rate failed (%08X), %d", res, n);
+		EXIT2(return 0);
+	}
+	res = miniport_query_info(wnd, OID_802_11_SUPPORTED_RATES, &rates, n);
 	if (res) {
 		WARNING("getting bit rate failed (%08X)", res);
 		EXIT2(return 0);
 	}
-
-	for (i = 0; i < NDIS_MAX_RATES; i++) {
+	for (i = 0; i < n; i++) {
 		if (rates[i] & 0x80)
 			continue;
 		if ((rates[i] & 0x7f) * 500000 > wrqu->bitrate.value) {
@@ -495,8 +500,7 @@ static int iw_set_bitrate(struct net_device *dev, struct iw_request_info *info,
 		}
 	}
 
-	res = miniport_set_info(wnd, OID_802_11_DESIRED_RATES,
-				&rates, sizeof(ndis_rates));
+	res = miniport_set_info(wnd, OID_802_11_DESIRED_RATES, &rates, n);
 	if (res) {
 		WARNING("setting bit rate failed (%08X)", res);
 		EXIT2(return 0);
@@ -1353,7 +1357,7 @@ static int iw_get_range(struct net_device *dev, struct iw_request_info *info,
 	struct wrap_ndis_device *wnd = netdev_priv(dev);
 	unsigned int i;
 	NDIS_STATUS res;
-	ndis_rates rates;
+	ndis_rates_ex rates;
 	ndis_tx_power_level tx_power;
 
 	ENTER2("");
@@ -1391,12 +1395,13 @@ static int iw_get_range(struct net_device *dev, struct iw_request_info *info,
 	range->encoding_size[1] = 13;
 
 	range->num_bitrates = 0;
+	memset(&rates, 0, sizeof(rates));
 	res = miniport_query_info(wnd, OID_802_11_SUPPORTED_RATES,
-				  rates, sizeof(ndis_rates));
+				  &rates, sizeof(rates));
 	if (res)
 		WARNING("getting bit rates failed: %08X", res);
 	else {
-		for (i = 0; i < NDIS_MAX_RATES &&
+		for (i = 0; i < NDIS_MAX_RATES_EX &&
 			     range->num_bitrates < IW_MAX_BITRATES; i++)
 			if (rates[i] & 0x80)
 				continue;
