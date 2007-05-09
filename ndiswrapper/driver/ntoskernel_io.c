@@ -466,7 +466,7 @@ wstdcall NTSTATUS IoIrpSyncComplete(struct device_object *dev_obj,
 		KeSetEvent(context, IO_NO_INCREMENT, FALSE);
 	IOEXIT(return STATUS_MORE_PROCESSING_REQUIRED);
 }
-WIN_FUNC_DECL(IoIrpSyncComplete,3)
+WIN_FUNC_DECL(IoIrpSyncComplete,3);
 
 wstdcall NTSTATUS IoSyncForwardIrp(struct device_object *dev_obj,
 				   struct irp *irp)
@@ -489,7 +489,7 @@ wstdcall NTSTATUS IoSyncForwardIrp(struct device_object *dev_obj,
 	IOTRACE("%08X", status);
 	IOEXIT(return status);
 }
-WIN_FUNC_DECL(IoSyncForwardIrp,2)
+WIN_FUNC_DECL(IoSyncForwardIrp,2);
 
 wstdcall NTSTATUS IoAsyncForwardIrp(struct device_object *dev_obj,
 				    struct irp *irp)
@@ -500,7 +500,7 @@ wstdcall NTSTATUS IoAsyncForwardIrp(struct device_object *dev_obj,
 	status = IoCallDriver(dev_obj, irp);
 	IOEXIT(return status);
 }
-WIN_FUNC_DECL(IoAsyncForwardIrp,2)
+WIN_FUNC_DECL(IoAsyncForwardIrp,2);
 
 wstdcall NTSTATUS IoInvalidDeviceRequest(struct device_object *dev_obj,
 					 struct irp *irp)
@@ -516,7 +516,7 @@ wstdcall NTSTATUS IoInvalidDeviceRequest(struct device_object *dev_obj,
 	IoCompleteRequest(irp, IO_NO_INCREMENT);
 	IOEXIT(return status);
 }
-WIN_FUNC_DECL(IoInvalidDeviceRequest,2)
+WIN_FUNC_DECL(IoInvalidDeviceRequest,2);
 
 static irqreturn_t io_irq_isr(int irq, void *data ISR_PT_REGS_PARAM_DECL)
 {

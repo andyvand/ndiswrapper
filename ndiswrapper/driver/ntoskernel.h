@@ -323,6 +323,16 @@ extern volatile int warp_preempt_count;
 
 #endif // WARP_PREEMPT
 
+#ifdef CONFIG_PREEMPT
+#define real_preempt_disable() preempt_disable()
+#define real_preempt_enable() preempt_enable()
+#define real_preempt_enable_no_resched() preempt_enable_no_resched()
+#else
+#define real_preempt_disable() warp_preempt_disable()
+#define real_preempt_enable() warp_preempt_enable()
+#define real_preempt_enable_no_resched() warp_preempt_enable_no_resched()
+#endif
+
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,0)
 
 #ifndef container_of
@@ -421,19 +431,7 @@ typedef u32 pm_message_t;
 #include "lin2win.h"
 #include "loader.h"
 
-#ifdef CONFIG_X86_64
-#define get_sp(sp) __asm__ __volatile__("mov %%rsp, %0\n\t" : "=m"(sp))
-#else
-#define get_sp(sp) __asm__ __volatile__("mov %%esp, %0\n\t" : "=m"(sp))
-#endif
-
-#define print_sp() do {				\
-		void *sp;			\
-		get_sp(sp);			\
-		TRACE1("sp: %p", sp);		\
-	} while (0)
-
-//#define DEBUG_IRQL 1
+#define DEBUG_IRQL 1
 
 #if !defined(CONFIG_USB) && defined(CONFIG_USB_MODULE)
 #define CONFIG_USB 1
@@ -479,12 +477,12 @@ struct wrap_export {
 
 #ifdef CONFIG_X86_64
 
-#define WIN_SYMBOL(name, argc)					\
+#define WIN_SYMBOL(name, argc)						\
 	{#name, (generic_func) win2lin_ ## name ## _ ## argc}
 #define WIN_WIN_SYMBOL(name, argc)					\
 	{#name, (generic_func) win2lin__win_ ## name ## _ ## argc}
 #define WIN_FUNC_DECL(name, argc)			\
-	typeof(name) win2lin_ ## name ## _ ## argc ;
+	typeof(name) win2lin_ ## name ## _ ## argc
 #define WIN_FUNC_PTR(name, argc) win2lin_ ## name ## _ ## argc
 
 #else
@@ -768,7 +766,7 @@ struct irp *IoBuildAsynchronousFsdRequest
 NTSTATUS PoCallDriver(struct device_object *dev_obj, struct irp *irp) wstdcall;
 
 NTSTATUS IoPassIrpDown(struct device_object *dev_obj, struct irp *irp) wstdcall;
-WIN_FUNC_DECL(IoPassIrpDown,2)
+WIN_FUNC_DECL(IoPassIrpDown,2);
 NTSTATUS IoSyncForwardIrp(struct device_object *dev_obj,
 			  struct irp *irp) wstdcall;
 NTSTATUS IoAsyncForwardIrp(struct device_object *dev_obj,
@@ -967,7 +965,7 @@ static inline void nt_spin_unlock_irql(NT_SPIN_LOCK *lock, KIRQL oldirql)
 
 static inline void nt_spin_lock_bh(NT_SPIN_LOCK *lock)
 {
-	warp_preempt_disable();
+	real_preempt_disable();
 	local_bh_disable();
 	nt_spin_lock(lock);
 }
@@ -975,8 +973,8 @@ static inline void nt_spin_lock_bh(NT_SPIN_LOCK *lock)
 static inline void nt_spin_unlock_bh(NT_SPIN_LOCK *lock)
 {
 	nt_spin_unlock(lock);
+	real_preempt_enable_no_resched();
 	local_bh_enable();
-	warp_preempt_enable_no_resched();
 }
 
 #ifdef CONFIG_PREEMPT_RT
@@ -990,7 +988,7 @@ static inline void nt_spin_unlock_bh(NT_SPIN_LOCK *lock)
 #define nt_spin_lock_irqsave(lock, flags)				\
 do {									\
 	save_local_irq(flags);						\
-	warp_preempt_disable();						\
+	real_preempt_disable();						\
 	nt_spin_lock(lock);						\
 } while (0)
 
@@ -998,7 +996,7 @@ do {									\
 do {									\
 	nt_spin_unlock(lock);						\
 	restore_local_irq(flags);					\
-	warp_preempt_enable();						\
+	real_preempt_enable();						\
 } while (0)
 
 #define atomic_insert_list_head(head, newhead, oldhead)			\

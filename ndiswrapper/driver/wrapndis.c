@@ -388,7 +388,7 @@ static NDIS_STATUS miniport_set_power_state(struct wrap_ndis_device *wnd,
 				if (status == NDIS_STATUS_SUCCESS &&
 				    wrap_is_pci_bus(wnd->wd->dev_bus))
 					pci_enable_wake(wnd->wd->pci.pdev,
-							PCI_D0, 1);
+							PCI_D3hot, 1);
 				else
 					WARNING("%s: couldn't enable WOL: %08x",
 						wnd->net_dev->name, status);
@@ -1362,7 +1362,7 @@ wstdcall NTSTATUS NdisDispatchDeviceControl(struct device_object *fdo,
 	wnd = fdo->reserved;
 	return IoPassIrpDown(wnd->nmb->pdo, irp);
 }
-WIN_FUNC_DECL(NdisDispatchDeviceControl,2)
+WIN_FUNC_DECL(NdisDispatchDeviceControl,2);
 
 wstdcall NTSTATUS NdisDispatchPower(struct device_object *fdo, struct irp *irp)
 {
@@ -1431,7 +1431,7 @@ wstdcall NTSTATUS NdisDispatchPower(struct device_object *fdo, struct irp *irp)
 	}
 	IOEXIT(return status);
 }
-WIN_FUNC_DECL(NdisDispatchPower,2)
+WIN_FUNC_DECL(NdisDispatchPower,2);
 
 wstdcall NTSTATUS NdisDispatchPnp(struct device_object *fdo, struct irp *irp)
 {
@@ -1484,7 +1484,7 @@ wstdcall NTSTATUS NdisDispatchPnp(struct device_object *fdo, struct irp *irp)
 	IOTRACE("status: %08X", status);
 	IOEXIT(return status);
 }
-WIN_FUNC_DECL(NdisDispatchPnp,2)
+WIN_FUNC_DECL(NdisDispatchPnp,2);
 
 static void set_task_offload(struct wrap_ndis_device *wnd, void *buf,
 			     const int buf_size)
