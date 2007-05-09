@@ -605,12 +605,10 @@ do {									\
 
 #ifdef WARP_PREEMPT
 extern volatile int warp_preempt_count;
-#define warp_preempt_disable()					\
-	do { atomic_inc_var(warp_preempt_count); } while (0)
-#define warp_preempt_enable()					\
-	do { atomic_dec_var(warp_preempt_count); } while (0)
+#define warp_preempt_disable() atomic_inc_var(warp_preempt_count)
+#define warp_preempt_enable() atomic_dec_var(warp_preempt_count)
 #define warp_preempt_enable_no_resched()  warp_preempt_enable()
-#define warp_in_atomic() warp_preempt_count
+#define warp_in_atomic() (warp_preempt_count || preempt_count())
 
 #else
 
@@ -621,8 +619,8 @@ extern volatile int warp_preempt_count;
 #define warp_preempt_disable() preempt_disable()
 #define warp_preempt_enable() preempt_enable()
 #define warp_preempt_enable_no_resched() preempt_enable_no_resched()
-#define warp_in_atomic() in_atomic()
 #define warp_preempt_count() preempt_count()
+#define warp_in_atomic() in_atomic()
 
 #endif // WARP_PREEMPT
 

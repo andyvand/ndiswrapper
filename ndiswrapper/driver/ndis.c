@@ -1780,13 +1780,11 @@ wstdcall void deserialized_irq_handler(struct kdpc *kdpc, void *ctx,
 	ndis_interrupt_handler irq_handler = arg1;
 	struct miniport_char *miniport = arg2;
 
-	debug = 6;
-	TRACE2("%p", irq_handler);
+	TRACE6("%p", irq_handler);
 	LIN2WIN1(irq_handler, wnd->nmb->adapter_ctx);
-	TRACE2("%p", miniport->enable_interrupt);
 	if (miniport->enable_interrupt)
 		LIN2WIN1(miniport->enable_interrupt, wnd->nmb->adapter_ctx);
-	EXIT2(return);
+	EXIT6(return);
 }
 WIN_FUNC_DECL(deserialized_irq_handler,4);
 
@@ -1796,9 +1794,11 @@ wstdcall void serialized_irq_handler(struct kdpc *kdpc, void *ctx,
 	struct wrap_ndis_device *wnd = ctx;
 	ndis_interrupt_handler irq_handler = arg1;
 
+	TRACE6("%p", irq_handler);
 	serialize_lock(wnd);
 	LIN2WIN1(irq_handler, arg2);
 	serialize_unlock(wnd);
+	EXIT6(return);
 }
 WIN_FUNC_DECL(serialized_irq_handler,4);
 
@@ -1875,6 +1875,8 @@ wstdcall NDIS_STATUS WIN_FUNC(NdisMRegisterInterrupt,7)
 				nmb->wnd);
 		wnd->irq_kdpc.arg1 = miniport->handle_interrupt;
 		wnd->irq_kdpc.arg2 = nmb->adapter_ctx;
+		TRACE2("%p, %p, %p, %p", wnd->irq_kdpc.arg1, wnd->irq_kdpc.arg2,
+		       nmb->wnd, nmb->adapter_ctx);
 	}
 
 	if (request_irq(vector, ndis_isr, req_isr ? IRQF_SHARED : 0,
