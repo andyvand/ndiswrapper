@@ -235,7 +235,7 @@ wstdcall NTSTATUS pdoDispatchDeviceControl(struct device_object *pdo,
 #endif
 	IOEXIT(return status);
 }
-WIN_FUNC_DECL(pdoDispatchDeviceControl,2)
+WIN_FUNC_DECL(pdoDispatchDeviceControl,2);
 
 wstdcall NTSTATUS pdoDispatchPnp(struct device_object *pdo, struct irp *irp)
 {
@@ -304,7 +304,7 @@ wstdcall NTSTATUS pdoDispatchPnp(struct device_object *pdo, struct irp *irp)
 	IoCompleteRequest(irp, IO_NO_INCREMENT);
 	IOEXIT(return status);
 }
-WIN_FUNC_DECL(pdoDispatchPnp,2)
+WIN_FUNC_DECL(pdoDispatchPnp,2);
 
 wstdcall NTSTATUS pdoDispatchPower(struct device_object *pdo, struct irp *irp)
 {
@@ -372,7 +372,7 @@ wstdcall NTSTATUS pdoDispatchPower(struct device_object *pdo, struct irp *irp)
 	IoCompleteRequest(irp, IO_NO_INCREMENT);
 	return status;
 }
-WIN_FUNC_DECL(pdoDispatchPower,2)
+WIN_FUNC_DECL(pdoDispatchPower,2);
 
 NTSTATUS pnp_set_device_power_state(struct wrap_device *wd,
 				    enum device_power_state state)
@@ -493,7 +493,7 @@ NTSTATUS pnp_remove_device(struct wrap_device *wd)
 	EXIT1(return status);
 }
 
-WIN_FUNC_DECL(IoInvalidDeviceRequest,2)
+WIN_FUNC_DECL(IoInvalidDeviceRequest,2);
 
 static struct device_object *alloc_pdo(struct driver_object *drv_obj)
 {

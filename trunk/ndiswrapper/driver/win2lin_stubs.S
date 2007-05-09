@@ -56,10 +56,10 @@ In a windows function, the stackframe/registers look like this:
 # 0x0038 arg7
 # 0x0030 arg6
 # 0x0028 arg5
-# 0x0020 register spill space
-# 0x0018 register spill space
-# 0x0010 register spill space
-# 0x0008 register spill space
+# 0x0020 shadow/spill space for arg4
+# 0x0018 shadow/spill space for arg3
+# 0x0010 shadow/spill space for arg2
+# 0x0008 shadow/spill space for arg1
 # 0x0000 ret
 
 # register spill space is same irrespective of number of arguments - even

@@ -826,7 +826,7 @@ wstdcall void *WIN_FUNC(ExAllocatePoolWithTag,3)
 
 	return addr;
 }
-WIN_FUNC_DECL(ExAllocatePoolWithTag,3)
+WIN_FUNC_DECL(ExAllocatePoolWithTag,3);
 
 wstdcall void WIN_FUNC(ExFreePoolWithTag,2)
 	(void *addr, ULONG tag)
@@ -846,7 +846,7 @@ wstdcall void WIN_FUNC(ExFreePool,1)
 {
 	ExFreePoolWithTag(addr, 0);
 }
-WIN_FUNC_DECL(ExFreePool,1)
+WIN_FUNC_DECL(ExFreePool,1);
 
 wstdcall void WIN_FUNC(ExInitializeNPagedLookasideList,7)
 	(struct npaged_lookaside_list *lookaside,
@@ -1124,7 +1124,14 @@ wstdcall NTSTATUS WIN_FUNC(KeWaitForMultipleObjects,8)
 	else
 		wait_hz = SYSTEM_TIME_TO_HZ(*timeout) + 1;
 
-	assert(current_irql() < DISPATCH_LEVEL);
+//	assert(current_irql() < DISPATCH_LEVEL);
+	do {
+		KIRQL irql = current_irql();
+		if (irql >= DISPATCH_LEVEL) {
+			WARNING("invalid irql: %d", irql);
+			dump_stack();
+		}
+	} while (0);
 	EVENTTRACE("%p: sleep for %ld on %p", current, wait_hz, &wait_done);
 	/* we don't honor 'alertable' - according to decription for
 	 * this, even if waiting in non-alertable state, thread may be
@@ -1402,6 +1409,18 @@ wstdcall LARGE_INTEGER WIN_FUNC(KeQueryPerformanceCounter,1)
 	if (counter)
 		*counter = HZ;
 	return jiffies;
+}
+
+wstdcall KAFFINITY WIN_FUNC(KeQueryActiveProcessors,0)
+	(void)
+{
+	int i, n;
+	KAFFINITY bits = 0;
+
+	n = num_online_cpus();
+	for (i = 0; i < n; i++)
+		bits = (bits << 1) | 1;
+	return bits;
 }
 
 struct nt_thread *get_current_nt_thread(void)
@@ -1965,7 +1984,7 @@ wfastcall void WIN_FUNC(ObfDereferenceObject,1)
 
 wstdcall NTSTATUS WIN_FUNC(ZwCreateFile,11)
 	(void **handle, ACCESS_MASK access_mask,
-	 struct object_attributes *obj_attr,struct io_status_block *iosb,
+	 struct object_attributes *obj_attr, struct io_status_block *iosb,
 	 LARGE_INTEGER *size, ULONG file_attr, ULONG share_access,
 	 ULONG create_disposition, ULONG create_options, void *ea_buffer,
 	 ULONG ea_length)
@@ -2060,6 +2079,16 @@ wstdcall NTSTATUS WIN_FUNC(ZwCreateFile,11)
 	TRACE2("handle: %p", *handle);
 	status = STATUS_SUCCESS;
 	EXIT2(return status);
+}
+
+wstdcall NTSTATUS WIN_FUNC(ZwOpenFile,6)
+	(void **handle, ACCESS_MASK access_mask,
+	 struct object_attributes *obj_attr, struct io_status_block *iosb,
+	 ULONG share_access, ULONG open_options)
+{
+	LARGE_INTEGER size;
+	return ZwCreateFile(handle, access_mask, obj_attr, iosb, &size, 0,
+			    share_access, 0, open_options, NULL, 0);
 }
 
 wstdcall NTSTATUS WIN_FUNC(ZwReadFile,9)

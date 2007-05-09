@@ -15,8 +15,9 @@
 
 #ifdef CONFIG_X86_64
 
-/* Windows functions must have 32 bytes of reserved space above return
- * address, irrespective of number of args. So argc >= 4 */
+/* Windows functions must have 32 bytes of shadow space for arguments
+ * above return address, irrespective of number of args. So argc >= 4
+ */
 
 #define alloc_win_stack_frame(argc)		\
 	"subq $" #argc "*8, %%rsp\n\t"
