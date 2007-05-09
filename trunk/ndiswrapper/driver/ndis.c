@@ -2527,7 +2527,7 @@ wstdcall void WIN_FUNC(NdisGetCurrentProcessorCounts,3)
 wstdcall void WIN_FUNC(NdisInitializeEvent,1)
 	(struct ndis_event *ndis_event)
 {
-	ENTER3("%p", ndis_event);
+	EVENTENTER("%p", ndis_event);
 	KeInitializeEvent(&ndis_event->nt_event, NotificationEvent, 0);
 }
 
@@ -2537,7 +2537,7 @@ wstdcall BOOLEAN WIN_FUNC(NdisWaitEvent,2)
 	LARGE_INTEGER ticks;
 	NTSTATUS res;
 
-	ENTER3("%p %u", ndis_event, ms);
+	EVENTENTER("%p %u", ndis_event, ms);
 	ticks = -((LARGE_INTEGER)ms * TICKSPERMSEC);
 	res = KeWaitForSingleObject(&ndis_event->nt_event, 0, 0, TRUE,
 				    ms == 0 ? NULL : &ticks);
@@ -2550,14 +2550,14 @@ wstdcall BOOLEAN WIN_FUNC(NdisWaitEvent,2)
 wstdcall void WIN_FUNC(NdisSetEvent,1)
 	(struct ndis_event *ndis_event)
 {
-	ENTER3("%p", ndis_event);
+	EVENTENTER("%p", ndis_event);
 	KeSetEvent(&ndis_event->nt_event, 0, 0);
 }
 
 wstdcall void WIN_FUNC(NdisResetEvent,1)
 	(struct ndis_event *ndis_event)
 {
-	ENTER3("%p", ndis_event);
+	EVENTENTER("%p", ndis_event);
 	KeResetEvent(&ndis_event->nt_event);
 }
 
