@@ -480,12 +480,12 @@ static int iw_set_bitrate(struct net_device *dev, struct iw_request_info *info,
 	res = miniport_query_info_needed(wnd, OID_802_11_SUPPORTED_RATES,
 					 NULL, 0, &n);
 	if ((res != NDIS_STATUS_INVALID_LENGTH &&
-	     res != NDIS_STATUS_BUFFER_TOO_SHORT) ||
-	    (n != sizeof(ndis_rates) && n != sizeof(ndis_rates_ex))) {
+	     res != NDIS_STATUS_BUFFER_TOO_SHORT) || n > sizeof(rates)) {
 		WARNING("getting bit rate failed (%08X), %d", res, n);
 		EXIT2(return 0);
 	}
-	res = miniport_query_info(wnd, OID_802_11_SUPPORTED_RATES, &rates, n);
+	res = miniport_query_info(wnd, OID_802_11_SUPPORTED_RATES,
+				  &rates, n);
 	if (res) {
 		WARNING("getting bit rate failed (%08X)", res);
 		EXIT2(return 0);

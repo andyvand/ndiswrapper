@@ -1124,14 +1124,7 @@ wstdcall NTSTATUS WIN_FUNC(KeWaitForMultipleObjects,8)
 	else
 		wait_hz = SYSTEM_TIME_TO_HZ(*timeout) + 1;
 
-//	assert(current_irql() < DISPATCH_LEVEL);
-	do {
-		KIRQL irql = current_irql();
-		if (irql >= DISPATCH_LEVEL) {
-			WARNING("invalid irql: %d", irql);
-			dump_stack();
-		}
-	} while (0);
+	assert(current_irql() < DISPATCH_LEVEL);
 	EVENTTRACE("%p: sleep for %ld on %p", current, wait_hz, &wait_done);
 	/* we don't honor 'alertable' - according to decription for
 	 * this, even if waiting in non-alertable state, thread may be
