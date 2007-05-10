@@ -179,7 +179,6 @@ struct v4_checksum {
 		};
 		ULONG value;
 	};
-
 };
 
 struct v6_checksum {
