@@ -2837,9 +2837,6 @@ void ndis_exit_device(struct wrap_ndis_device *wnd)
 {
 	struct wrap_device_setting *setting;
 	ENTER2("%p", wnd);
-	/* TI driver doesn't call NdisMDeregisterInterrupt during halt! */
-	if (wnd->mp_interrupt)
-		NdisMDeregisterInterrupt(wnd->mp_interrupt);
 	if (down_interruptible(&loader_mutex))
 		WARNING("couldn't obtain loader_mutex");
 	nt_list_for_each_entry(setting, &wnd->wd->settings, list) {
