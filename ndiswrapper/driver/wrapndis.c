@@ -574,17 +574,17 @@ static struct ndis_packet *alloc_tx_packet(struct wrap_ndis_device *wnd,
 	}
 	if (skb->ip_summed == CHECKSUM_PARTIAL) {
 		struct ndis_tcp_ip_checksum_packet_info csum;
+		int protocol;
 #if LINUX_VERSION_CODE > KERNEL_VERSION(2,6,21)
-		struct sk_buff *ip = skb;
+		protocol = ntohs(skb->protocol);
 #else
-		struct iphdr *ip = skb->nh.iph;
+		protocol = skb->nh.iph->protocol;
 #endif
-
 		csum.value = 0;
 		csum.tx.v4 = 1;
-		if (ip->protocol == IPPROTO_TCP)
+		if (protocol == IPPROTO_TCP)
 			csum.tx.tcp = 1;
-		else if (ip->protocol == IPPROTO_UDP)
+		else if (protocol == IPPROTO_UDP)
 			csum.tx.udp = 1;
 //		csum->tx.ip = 1;
 		packet->private.flags |= NDIS_PROTOCOL_ID_TCP_IP;
