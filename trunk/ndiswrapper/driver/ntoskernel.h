@@ -592,25 +592,26 @@ do {									\
 
 #define post_atomic_add(var, i) (pre_atomic_add(var, i) + i)
 
-/* if either PREEMPT is not used or PREEMPT_RT is used, we fake
- * preempt so that the driver gets IRQL as required. When PREEMPT is
- * not used kernel won't preempt; when CONFIG_PREEMPT_RT is used, if
- * driver raises IRQL to DISPATCH_LEVEL, kernel is free to preempt,
- * but due to RT, we will get our turn quickly and hopefully driver
- * doesn't mind the short delay */
-
-#if (defined(CONFIG_PREEMPT_RT) || !defined(CONFIG_PREEMPT))
-#define WARP_PREEMPT 1
+#ifndef in_atomic
+#define in_atomic() in_interrupt()
 #endif
 
-#ifdef WARP_PREEMPT
+/* if either PREEMPT is not available or PREEMPT_RT is used, we fake
+ * preempt so that the driver gets IRQL as required. When PREEMPT is
+ * not available, kernel won't preempt; when CONFIG_PREEMPT_RT is
+ * used, if driver raises IRQL to DISPATCH_LEVEL, kernel is free to
+ * preempt, but due to RT, we will get our turn quickly and hopefully
+ * driver doesn't mind the short delay */
+
+#if defined(CONFIG_PREEMPT_RT) || !defined(inc_preempt_count)
+
+#define WARP_PREEMPT 1
 extern volatile int warp_preempt_count;
 #define warp_preempt_disable() atomic_inc_var(warp_preempt_count)
 #define warp_preempt_enable() atomic_dec_var(warp_preempt_count)
-#define warp_preempt_enable_no_resched()  warp_preempt_enable()
-#define warp_in_atomic() (warp_preempt_count || preempt_count())
+#define warp_preempt_enable_no_resched() warp_preempt_enable()
 
-#else
+#elif defined(CONFIG_PREEMPT)
 
 #ifndef preempt_enable_no_resched
 #define preempt_enable_no_resched() preempt_enable()
@@ -619,19 +620,15 @@ extern volatile int warp_preempt_count;
 #define warp_preempt_disable() preempt_disable()
 #define warp_preempt_enable() preempt_enable()
 #define warp_preempt_enable_no_resched() preempt_enable_no_resched()
-#define warp_preempt_count() preempt_count()
-#define warp_in_atomic() in_atomic()
+#define warp_preempt_count 0
 
-#endif // WARP_PREEMPT
-
-#ifdef CONFIG_PREEMPT
-#define real_preempt_disable() preempt_disable()
-#define real_preempt_enable() preempt_enable()
-#define real_preempt_enable_no_resched() preempt_enable_no_resched()
 #else
-#define real_preempt_disable() warp_preempt_disable()
-#define real_preempt_enable() warp_preempt_enable()
-#define real_preempt_enable_no_resched() warp_preempt_enable_no_resched()
+
+#define warp_preempt_disable() inc_preempt_count()
+#define warp_preempt_enable() dec_preempt_count()
+#define warp_preempt_enable_no_resched() warp_preempt_enable()
+#define warp_preempt_count 0
+
 #endif
 
 static inline KIRQL current_irql(void)
@@ -642,7 +639,7 @@ static inline KIRQL current_irql(void)
 	if (in_interrupt())
 		EXIT2(return SOFT_IRQL);
 #endif
-	if (warp_in_atomic())
+	if (warp_preempt_count || in_atomic())
 		EXIT6(return DISPATCH_LEVEL);
 	else
 		EXIT6(return PASSIVE_LEVEL);
@@ -675,7 +672,6 @@ static inline void lower_irql(KIRQL oldirql)
 	warp_preempt_enable();
 }
 
-/* don't use warp_in_atomic - use kernel's idea of atomic */
 #define irql_gfp() (in_atomic() ? GFP_ATOMIC : GFP_KERNEL)
 
 /* Windows spinlocks are of type ULONG_PTR which is not big enough to
@@ -768,7 +764,7 @@ static inline void nt_spin_unlock_irql(NT_SPIN_LOCK *lock, KIRQL oldirql)
 
 static inline void nt_spin_lock_bh(NT_SPIN_LOCK *lock)
 {
-	real_preempt_disable();
+	warp_preempt_disable();
 	local_bh_disable();
 	nt_spin_lock(lock);
 }
@@ -776,7 +772,7 @@ static inline void nt_spin_lock_bh(NT_SPIN_LOCK *lock)
 static inline void nt_spin_unlock_bh(NT_SPIN_LOCK *lock)
 {
 	nt_spin_unlock(lock);
-	real_preempt_enable_no_resched();
+	warp_preempt_enable_no_resched();
 	local_bh_enable();
 }
 
@@ -791,7 +787,7 @@ static inline void nt_spin_unlock_bh(NT_SPIN_LOCK *lock)
 #define nt_spin_lock_irqsave(lock, flags)				\
 do {									\
 	save_local_irq(flags);						\
-	real_preempt_disable();						\
+	warp_preempt_disable();						\
 	nt_spin_lock(lock);						\
 } while (0)
 
@@ -799,7 +795,7 @@ do {									\
 do {									\
 	nt_spin_unlock(lock);						\
 	restore_local_irq(flags);					\
-	real_preempt_enable();						\
+	warp_preempt_enable();						\
 } while (0)
 
 #define atomic_insert_list_head(head, newhead, oldhead)			\
