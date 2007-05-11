@@ -184,8 +184,8 @@ NDIS_STATUS miniport_set_info(struct wrap_ndis_device *wnd, ndis_oid oid,
 	up(&wnd->ndis_comm_mutex);
 	DBG_BLOCK(2) {
 		if (res && needed)
-			TRACE2("%08X, %d, %d, %d", res, bufsize, written,
-			       needed);
+			TRACE2("%08X, %d, %d, %d", res, bufsize, *written,
+			       *needed);
 	}
 	EXIT3(return res);
 }
@@ -1619,7 +1619,10 @@ static void ndis_get_drvinfo(struct net_device *dev,
 			     struct ethtool_drvinfo *info)
 {
 	struct wrap_ndis_device *wnd = netdev_priv(dev);
-	strncpy(info->driver, DRIVER_NAME, sizeof(info->driver) - 1);
+	strncpy(info->driver, DRIVER_NAME, sizeof(info->driver) - 2);
+	strcat(info->driver, "+");
+	strncat(info->driver, wnd->wd->driver->name,
+		sizeof(info->driver) - strlen(DRIVER_NAME) - 1);
 	strncpy(info->version, DRIVER_VERSION, sizeof(info->version) - 1);
 	strncpy(info->fw_version, wnd->wd->driver->version,
 		sizeof(info->fw_version) - 1);

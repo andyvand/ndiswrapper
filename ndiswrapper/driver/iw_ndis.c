@@ -2091,8 +2091,8 @@ static int wpa_set_key(struct net_device *dev, struct iw_request_info *info,
 		       wpa_key.key_len);
 		TRACE2("key %d removed", wpa_key.key_index);
 	} else {
-		res = miniport_set_info(wnd, OID_802_11_ADD_KEY,
-					&ndis_key, ndis_key.struct_size);
+		res = miniport_set(wnd, OID_802_11_ADD_KEY,
+				   &ndis_key, ndis_key.struct_size);
 		if (res) {
 			TRACE2("adding key failed (%08X), %u",
 			       res, ndis_key.struct_size);

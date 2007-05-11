@@ -331,16 +331,19 @@ void wrapmem_exit(void)
 	KIRQL irql;
 
 	/* free all pointers on the slack list */
-	irql = nt_spin_lock_irql(&alloc_lock, DISPATCH_LEVEL);
-	while ((ent = RemoveHeadList(&slack_allocs))) {
+	while (1) {
 		struct slack_alloc_info *info;
+		irql = nt_spin_lock_irql(&alloc_lock, DISPATCH_LEVEL);
+		ent = RemoveHeadList(&slack_allocs);
+		nt_spin_unlock_irql(&alloc_lock, irql);
+		if (!ent)
+			break;
 		info = container_of(ent, struct slack_alloc_info, list);
 #ifdef ALLOC_DEBUG
 		atomic_sub(info->size, &alloc_sizes[ALLOC_TYPE_SLACK]);
 #endif
 		kfree(info);
 	}
-	nt_spin_unlock_irql(&alloc_lock, irql);
 	type = 0;
 #ifdef ALLOC_DEBUG
 	for (type = 0; type < ALLOC_TYPE_MAX; type++) {
