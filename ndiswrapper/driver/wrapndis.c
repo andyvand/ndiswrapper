@@ -1015,7 +1015,7 @@ static void link_status_handler(struct wrap_ndis_device *wnd)
 	ENTER2("link: %d", netif_carrier_ok(wnd->net_dev));
 	if (wnd->physical_medium != NdisPhysicalMediumWirelessLan)
 		EXIT2(return);
-#ifndef CONFIG_NET_RADIO
+#ifndef WRAP_CONFIG_WLAN
 	EXIT2(return);
 #endif
 	if (!netif_carrier_ok(wnd->net_dev)) {

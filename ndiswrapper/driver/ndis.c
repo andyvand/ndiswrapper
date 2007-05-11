@@ -1972,7 +1972,7 @@ wstdcall void WIN_FUNC(NdisMIndicateStatus,4)
 			break;
 		case Ndis802_11StatusType_MediaStreamMode:
 			break;
-#ifdef CONFIG_NET_RADIO
+#ifdef WRAP_CONFIG_WLAN
 		case Ndis802_11StatusType_PMKID_CandidateList:
 		{
 			u8 *end;
