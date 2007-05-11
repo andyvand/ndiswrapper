@@ -574,7 +574,11 @@ static struct ndis_packet *alloc_tx_packet(struct wrap_ndis_device *wnd,
 	}
 	if (skb->ip_summed == CHECKSUM_PARTIAL) {
 		struct ndis_tcp_ip_checksum_packet_info csum;
+#if LINUX_VERSION_CODE > KERNEL_VERSION(2,6,21)
+		struct sk_buff *ip = skb;
+#else
 		struct iphdr *ip = skb->nh.iph;
+#endif
 
 		csum.value = 0;
 		csum.tx.v4 = 1;
