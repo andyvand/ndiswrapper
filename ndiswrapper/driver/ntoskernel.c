@@ -1407,16 +1407,16 @@ wstdcall LARGE_INTEGER WIN_FUNC(KeQueryPerformanceCounter,1)
 wstdcall KAFFINITY WIN_FUNC(KeQueryActiveProcessors,0)
 	(void)
 {
-#ifdef cpu_online_map
-	return cpu_online_map;
-#else
 	int i, n;
-	KAFFINITY bits;
+	KAFFINITY bits = 0;
+#ifdef num_online_cpus
+	n = num_online_cpus();
+#else
 	n = NR_CPUS;
+#endif
 	for (i = 0; i < n; i++)
 		bits = (bits << 1) | 1;
 	return bits;
-#endif
 }
 
 struct nt_thread *get_current_nt_thread(void)
@@ -1557,7 +1557,7 @@ wstdcall KPRIORITY WIN_FUNC(KeSetPriorityThread,2)
 	else if (prio == HIGH_PRIORITY)
 		set_thread_priority(task, -10);
 
-	TRACE2("%d, %ld", old_prio, thread_priority(task));
+	TRACE2("%d, %d", old_prio, (int)thread_priority(task));
 	return old_prio;
 }
 
