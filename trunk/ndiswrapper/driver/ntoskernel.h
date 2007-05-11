@@ -341,6 +341,12 @@ typedef u32 pm_message_t;
 #define set_thread_priority(thread, prio) set_user_nice(thread, prio)
 #endif
 
+#ifdef CONFIG_NET_RADIO
+#define WRAP_CONFIG_WLAN 1
+#elif defined(CONFIG_WLAN_PRE80211) || defined(CONFIG_WLAN_80211)
+#define WRAP_CONFIG_WLAN 1
+#endif
+
 #include "ndiswrapper.h"
 #include "pe_linker.h"
 #include "wrapmem.h"
