@@ -1899,7 +1899,7 @@ wstdcall void WIN_FUNC(NdisMDeregisterInterrupt,1)
 	struct ndis_miniport_block *nmb;
 
 	ENTER1("%p", mp_interrupt);
-	nmb = xchg(mp_interrupt->nmb, NULL);
+	nmb = xchg(&mp_interrupt->nmb, NULL);
 	TRACE1("%p", nmb);
 	if (!nmb) {
 		WARNING("interrupt already freed?");
