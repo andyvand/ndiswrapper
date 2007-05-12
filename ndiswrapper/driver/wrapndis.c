@@ -294,7 +294,7 @@ static NDIS_STATUS miniport_init(struct wrap_ndis_device *wnd)
 				&pnp_capa, sizeof(pnp_capa));
 	if (status == NDIS_STATUS_SUCCESS)
 		wnd->attributes |= NDIS_ATTRIBUTE_NO_HALT_ON_SUSPEND;
-	else
+	else if (status == NDIS_STATUS_NOT_SUPPORTED)
 		wnd->attributes &= ~NDIS_ATTRIBUTE_NO_HALT_ON_SUSPEND;
 	TRACE1("%d", pnp_capa.wakeup_capa.min_magic_packet_wakeup);
 	/* although some NDIS drivers support suspend, Linux kernel
@@ -1673,7 +1673,7 @@ static int ndis_set_wol(struct net_device *dev, struct ethtool_wolinfo *wol)
 	/* we always suspend to D3 */
 	TRACE1("%d, %d", pnp_capa.wakeup_capa.min_magic_packet_wakeup,
 	       pnp_capa.wakeup_capa.min_pattern_wakeup);
-	if (pnp_capa.wakeup_capa.min_magic_packet_wakeup != NdisDeviceStateD3)
+	if (pnp_capa.wakeup_capa.min_magic_packet_wakeup < NdisDeviceStateD1)
 		return -EOPNOTSUPP;
 	/* no other options supported */
 	wnd->ndis_wolopts = NDIS_PNP_WAKE_UP_MAGIC_PACKET;
