@@ -1963,7 +1963,6 @@ static NDIS_STATUS wrap_ndis_start_device(struct wrap_ndis_device *wnd)
 		set_priv_filter(wnd, Ndis802_11PrivFilterAcceptAll);
 		set_auth_mode(wnd, Ndis802_11AuthModeOpen);
 		set_encr_mode(wnd, Ndis802_11EncryptionDisabled);
-		set_essid(wnd, "", 0);
 	}
 	kfree(buf);
 	wrap_procfs_add_ndis_device(wnd);
