@@ -1845,17 +1845,21 @@ wstdcall NDIS_STATUS WIN_FUNC(NdisMRegisterInterrupt,7)
 	ENTER1("%p, vector:%d, level:%d, req_isr:%d, shared:%d, mode:%d",
 	       mp_interrupt, vector, level, req_isr, shared, mode);
 
+	miniport = &wnd->wd->driver->ndis_driver->miniport;
+	/* if kinterrupt is not initialized, 64-bit Broadcom driver
+	 * seems to corrupt mp_interrupt structure -
+	 * NdisMDeregisterInterrupt crashes */
+	mp_interrupt->kinterrupt = (void *)nmb;
+	nt_spin_lock_init(&mp_interrupt->lock);
 	mp_interrupt->irq = vector;
+	mp_interrupt->isr = miniport->isr;
+	mp_interrupt->mp_dpc = miniport->handle_interrupt;
 	mp_interrupt->nmb = nmb;
 	mp_interrupt->req_isr = req_isr;
 	if (shared && !req_isr)
 		WARNING("shared but dynamic interrupt!");
 	mp_interrupt->shared = shared;
-	nt_spin_lock_init(&mp_interrupt->lock);
 	wnd->mp_interrupt = mp_interrupt;
-	miniport = &wnd->wd->driver->ndis_driver->miniport;
-	mp_interrupt->isr = miniport->isr;
-	mp_interrupt->mp_dpc = miniport->handle_interrupt;
 	if (miniport->enable_interrupt)
 		mp_interrupt->enable = TRUE;
 	else
@@ -1895,12 +1899,16 @@ wstdcall void WIN_FUNC(NdisMDeregisterInterrupt,1)
 	struct ndis_miniport_block *nmb;
 
 	ENTER1("%p", mp_interrupt);
-	nmb = mp_interrupt->nmb;
+	nmb = xchg(mp_interrupt->nmb, NULL);
+	TRACE1("%p", nmb);
+	if (!nmb) {
+		WARNING("interrupt already freed?");
+		return;
+	}
+	nmb->wnd->mp_interrupt = NULL;
 	if (dequeue_kdpc(&nmb->wnd->irq_kdpc))
 		TRACE2("interrupt kdpc was pending");
 	free_irq(mp_interrupt->irq, mp_interrupt);
-	mp_interrupt->nmb = NULL;
-	nmb->wnd->mp_interrupt = NULL;
 	EXIT1(return);
 }
 
