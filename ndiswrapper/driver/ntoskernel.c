@@ -1709,17 +1709,21 @@ wstdcall void *WIN_FUNC(MmAllocateContiguousMemorySpecifyCache,5)
 	ENTER2("%lu, %p, %p, %p, %d", size, (void *)lowest, (void *)highest,
 	       (void *)boundary, cache_type);
 	flags = irql_gfp();
+	addr = wrap_get_free_pages(flags, size);
+	TRACE2("%p, %lu, 0x%x", addr, size, flags);
+	if (addr && ((virt_to_bus(addr) + size) <= highest))
+		EXIT2(return addr);
 #ifdef CONFIG_X86_64
 	/* GFP_DMA is really only 16MB even on x86-64, but there is no
 	 * other zone available */
-	if (size <= (1024 * 1024 * 1024))
+	if (highest <= (1024 * 1024 * 1024))
 		flags |= __GFP_DMA;
-	else if (size <= (4UL * 1024 * 1024 * 1024))
+	else if (highest <= (4UL * 1024 * 1024 * 1024))
 		flags |= __GFP_DMA32;
 #else
-	if (size <= (16 * 1024 * 1024))
+	if (highest <= (16 * 1024 * 1024))
 		flags |= __GFP_DMA;
-	else if (size >= (1024 * 1024 * 1024))
+	else if (highest >= (1024 * 1024 * 1024))
 		flags |= __GFP_HIGHMEM;
 #endif
 	addr = wrap_get_free_pages(flags, size);
