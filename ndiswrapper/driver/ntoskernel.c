@@ -1705,9 +1705,9 @@ wstdcall void *WIN_FUNC(MmAllocateContiguousMemorySpecifyCache,5)
 	 PHYSICAL_ADDRESS boundary, enum memory_caching_type cache_type)
 {
 	void *addr;
-	gfp_t flags;
-	ENTER2("%lu, %p, %p, %p, %d", size, (void *)lowest, (void *)highest,
-	       (void *)boundary, cache_type);
+	unsigned int flags;
+	ENTER2("%lu, 0x%lx, 0x%lx, 0x%lx, %d", size, (long)lowest,
+	       (long)highest, (long)boundary, cache_type);
 	flags = irql_gfp();
 	addr = wrap_get_free_pages(flags, size);
 	TRACE2("%p, %lu, 0x%x", addr, size, flags);
