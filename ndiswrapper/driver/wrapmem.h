@@ -78,8 +78,10 @@ void *wrap_ExAllocatePoolWithTag(enum pool_type pool_type, SIZE_T size,
 #endif // _WRAPMEM_C_
 
 #else
-#define wrap_get_free_pages(flags, size)		\
+
+#define wrap_get_free_pages(flags, size)			\
 	(void *)__get_free_pages(flags, get_order(size))
+
 #endif // ALLOC_DEBUG
 
 #endif

@@ -1705,23 +1705,41 @@ wstdcall void *WIN_FUNC(MmAllocateContiguousMemorySpecifyCache,5)
 	 PHYSICAL_ADDRESS boundary, enum memory_caching_type cache_type)
 {
 	void *addr;
-	addr = wrap_get_free_pages(irql_gfp(), size);
-	TRACE4("%p, %lu", addr, size);
+	gfp_t flags;
+	ENTER2("%lu, %p, %p, %p, %d", size, (void *)lowest, (void *)highest,
+	       (void *)boundary, cache_type);
+	flags = irql_gfp();
+#ifdef CONFIG_X86_64
+	/* GFP_DMA is really only 16MB even on x86-64, but there is no
+	 * other zone available */
+	if (size <= (1024 * 1024 * 1024))
+		flags |= __GFP_DMA;
+	else if (size <= (4UL * 1024 * 1024 * 1024))
+		flags |= __GFP_DMA32;
+#else
+	if (size <= (16 * 1024 * 1024))
+		flags |= __GFP_DMA;
+	else if (size >= (1024 * 1024 * 1024))
+		flags |= __GFP_HIGHMEM;
+#endif
+	addr = wrap_get_free_pages(flags, size);
+	TRACE2("%p, %lu, 0x%x", addr, size, flags);
 	return addr;
 }
 
 wstdcall void WIN_FUNC(MmFreeContiguousMemorySpecifyCache,3)
 	(void *base, SIZE_T size, enum memory_caching_type cache_type)
 {
-	TRACE4("%p, %lu", base, size);
+	TRACE2("%p, %lu", base, size);
 	free_pages((unsigned long)base, get_order(size));
 }
 
 wstdcall PHYSICAL_ADDRESS WIN_FUNC(MmGetPhysicalAddress,1)
 	(void *base)
 {
-	TRACE2("%p", base);
-	return virt_to_phys(base);
+	unsigned long phy = virt_to_phys(base);
+	TRACE2("%p, %p", base, (void *)phy);
+	return phy;
 }
 
 /* Atheros card with pciid 168C:0014 calls this function with 0xf0000
