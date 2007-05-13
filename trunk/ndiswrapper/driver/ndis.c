@@ -368,11 +368,11 @@ ndis_encode_setting(struct wrap_device_setting *setting,
 	switch(type) {
 	case NdisParameterInteger:
 		param->data.integer = simple_strtol(setting->value, NULL, 0);
-		TRACE2("%u", (ULONG)param->data.integer);
+		TRACE2("0x%x", (ULONG)param->data.integer);
 		break;
 	case NdisParameterHexInteger:
 		param->data.integer = simple_strtol(setting->value, NULL, 16);
-		TRACE2("%u", (ULONG)param->data.integer);
+		TRACE2("0x%x", (ULONG)param->data.integer);
 		break;
 	case NdisParameterString:
 		RtlInitAnsiString(&ansi, setting->value);
@@ -382,6 +382,10 @@ ndis_encode_setting(struct wrap_device_setting *setting,
 			ExFreePool(param);
 			EXIT2(return NULL);
 		}
+		break;
+	case NdisParameterBinary:
+		param->data.integer = simple_strtol(setting->value, NULL, 2);
+		TRACE2("0x%x", (ULONG)param->data.integer);
 		break;
 	default:
 		ERROR("unknown type: %d", type);
@@ -407,11 +411,13 @@ static int ndis_decode_setting(struct wrap_device_setting *setting,
 	}
 	switch(param->type) {
 	case NdisParameterInteger:
-		snprintf(setting->value, sizeof(u32), "%u", param->data.integer);
+		snprintf(setting->value, sizeof(u32), "%u",
+			 param->data.integer);
 		setting->value[sizeof(ULONG)] = 0;
 		break;
 	case NdisParameterHexInteger:
-		snprintf(setting->value, sizeof(u32), "%x", param->data.integer);
+		snprintf(setting->value, sizeof(u32), "%x",
+			 param->data.integer);
 		setting->value[sizeof(ULONG)] = 0;
 		break;
 	case NdisParameterString:
@@ -425,6 +431,11 @@ static int ndis_decode_setting(struct wrap_device_setting *setting,
 		if (ansi.length == ansi.max_length)
 			ansi.length--;
 		setting->value[ansi.length] = 0;
+		break;
+	case NdisParameterBinary:
+		snprintf(setting->value, sizeof(u32), "%u",
+			 param->data.integer);
+		setting->value[sizeof(ULONG)] = 0;
 		break;
 	default:
 		TRACE2("unknown setting type: %d", param->type);
