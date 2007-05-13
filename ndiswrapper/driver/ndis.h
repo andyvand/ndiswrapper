@@ -531,7 +531,7 @@ struct ndis_binary_data {
 
 enum ndis_parameter_type {
 	NdisParameterInteger, NdisParameterHexInteger,
-	NdisParameterString, NdisParameterMultiString,
+	NdisParameterString, NdisParameterMultiString, NdisParameterBinary,
 };
 
 typedef struct unicode_string NDIS_STRING;

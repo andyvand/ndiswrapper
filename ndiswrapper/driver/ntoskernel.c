@@ -1706,12 +1706,13 @@ wstdcall void *WIN_FUNC(MmAllocateContiguousMemorySpecifyCache,5)
 {
 	void *addr;
 	unsigned int flags;
+
 	ENTER2("%lu, 0x%lx, 0x%lx, 0x%lx, %d", size, (long)lowest,
 	       (long)highest, (long)boundary, cache_type);
 	flags = irql_gfp();
 	addr = wrap_get_free_pages(flags, size);
 	TRACE2("%p, %lu, 0x%x", addr, size, flags);
-	if (addr && ((virt_to_bus(addr) + size) <= highest))
+	if (addr && ((virt_to_phys(addr) + size) <= highest))
 		EXIT2(return addr);
 #ifdef CONFIG_X86_64
 	/* GFP_DMA is really only 16MB even on x86-64, but there is no
