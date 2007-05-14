@@ -523,22 +523,21 @@ static irqreturn_t io_irq_isr(int irq, void *data ISR_PT_REGS_PARAM_DECL)
 	struct kinterrupt *interrupt = data;
 	BOOLEAN ret;
 
-	nt_spin_lock_preempt(&interrupt->lock);
-	ret = LIN2WIN2(interrupt->service_routine, interrupt,
-		       interrupt->service_context);
-	nt_spin_unlock_preempt(&interrupt->lock);
+	TRACE6("%p", interrupt);
+	nt_spin_lock_preempt(interrupt->actual_lock);
+	ret = LIN2WIN2(interrupt->isr, interrupt, interrupt->isr_ctx);
+	nt_spin_unlock_preempt(interrupt->actual_lock);
 	if (ret == TRUE)
-		return IRQ_HANDLED;
+		EXIT6(return IRQ_HANDLED);
 	else
-		return IRQ_NONE;
+		EXIT6(return IRQ_NONE);
 }
 
 wstdcall NTSTATUS WIN_FUNC(IoConnectInterrupt,11)
-	(struct kinterrupt **kinterrupt, PKSERVICE_ROUTINE service_routine,
-	 void *service_context, NT_SPIN_LOCK *lock, ULONG vector,
-	 KIRQL irql, KIRQL synch_irql, enum kinterrupt_mode interrupt_mode,
-	 BOOLEAN shareable, KAFFINITY processor_enable_mask,
-	 BOOLEAN floating_save)
+	(struct kinterrupt **kinterrupt, PKSERVICE_ROUTINE isr, void *isr_ctx,
+	 NT_SPIN_LOCK *lock, ULONG vector, KIRQL irql, KIRQL synch_irql,
+	 enum kinterrupt_mode mode, BOOLEAN shareable,
+	 KAFFINITY cpu_mask, BOOLEAN floating_save)
 {
 	struct kinterrupt *interrupt;
 	IOENTER("");
@@ -547,7 +546,7 @@ wstdcall NTSTATUS WIN_FUNC(IoConnectInterrupt,11)
 		IOEXIT(return STATUS_INSUFFICIENT_RESOURCES);
 	memset(interrupt, 0, sizeof(*interrupt));
 	interrupt->vector = vector;
-	interrupt->processor_enable_mask = processor_enable_mask;
+	interrupt->cpu_mask = cpu_mask;
 	nt_spin_lock_init(&interrupt->lock);
 	if (lock)
 		interrupt->actual_lock = lock;
@@ -555,12 +554,12 @@ wstdcall NTSTATUS WIN_FUNC(IoConnectInterrupt,11)
 		interrupt->actual_lock = &interrupt->lock;
 	interrupt->shareable = shareable;
 	interrupt->floating_save = floating_save;
-	interrupt->service_routine = service_routine;
-	interrupt->service_context = service_context;
+	interrupt->isr = isr;
+	interrupt->isr_ctx = isr_ctx;
 	InitializeListHead(&interrupt->list);
 	interrupt->irql = irql;
 	interrupt->synch_irql = synch_irql;
-	interrupt->interrupt_mode = interrupt_mode;
+	interrupt->mode = mode;
 	if (request_irq(vector, io_irq_isr, shareable ? IRQF_SHARED : 0,
 			"io_irq", interrupt)) {
 		WARNING("request for irq %d failed", vector);
