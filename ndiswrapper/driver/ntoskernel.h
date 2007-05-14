@@ -406,7 +406,7 @@ struct wrap_export {
 #define WIN_WIN_SYMBOL(name, argc)					\
 	{#name, (generic_func) win2lin__win_ ## name ## _ ## argc}
 #define WIN_FUNC_DECL(name, argc)			\
-	typeof(name) win2lin_ ## name ## _ ## argc
+	typeof(name) win2lin_ ## name ## _ ## argc;
 #define WIN_FUNC_PTR(name, argc) win2lin_ ## name ## _ ## argc
 
 #else

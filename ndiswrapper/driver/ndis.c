@@ -1031,7 +1031,7 @@ wstdcall void alloc_shared_memory_async(void *arg1, void *arg2)
 	serialize_unlock_irql(wnd, irql);
 	kfree(alloc_shared_mem);
 }
-WIN_FUNC_DECL(alloc_shared_memory_async,2);
+WIN_FUNC_DECL(alloc_shared_memory_async,2)
 
 wstdcall NDIS_STATUS WIN_FUNC(NdisMAllocateSharedMemoryAsync,4)
 	(struct ndis_miniport_block *nmb, ULONG size, BOOLEAN cached, void *ctx)
@@ -1647,7 +1647,7 @@ wstdcall void wrap_miniport_timer(struct kdpc *kdpc, void *ctx, void *arg1,
 		serialize_unlock(nmb->wnd);
 	TIMEREXIT(return);
 }
-WIN_FUNC_DECL(wrap_miniport_timer,4);
+WIN_FUNC_DECL(wrap_miniport_timer,4)
 
 wstdcall void WIN_FUNC(NdisMInitializeTimer,4)
 	(struct ndis_miniport_timer *timer, struct ndis_miniport_block *nmb,
@@ -1797,7 +1797,7 @@ wstdcall void deserialized_irq_handler(struct kdpc *kdpc, void *ctx,
 		LIN2WIN1(miniport->enable_interrupt, wnd->nmb->adapter_ctx);
 	EXIT6(return);
 }
-WIN_FUNC_DECL(deserialized_irq_handler,4);
+WIN_FUNC_DECL(deserialized_irq_handler,4)
 
 wstdcall void serialized_irq_handler(struct kdpc *kdpc, void *ctx,
 				     void *arg1, void *arg2)
@@ -1811,7 +1811,7 @@ wstdcall void serialized_irq_handler(struct kdpc *kdpc, void *ctx,
 	serialize_unlock(wnd);
 	EXIT6(return);
 }
-WIN_FUNC_DECL(serialized_irq_handler,4);
+WIN_FUNC_DECL(serialized_irq_handler,4)
 
 wstdcall BOOLEAN ndis_isr(struct kinterrupt *kinterrupt, void *ctx)
 {
@@ -1839,7 +1839,7 @@ wstdcall BOOLEAN ndis_isr(struct kinterrupt *kinterrupt, void *ctx)
 	}
 	EXIT6(return FALSE);
 }
-WIN_FUNC_DECL(ndis_isr,2);
+WIN_FUNC_DECL(ndis_isr,2)
 
 wstdcall NDIS_STATUS WIN_FUNC(NdisMRegisterInterrupt,7)
 	(struct ndis_mp_interrupt *mp_interrupt,
@@ -2123,7 +2123,7 @@ wstdcall void return_packet(void *arg1, void *arg2)
 	serialize_unlock_irql(wnd, irql);
 	EXIT4(return);
 }
-WIN_FUNC_DECL(return_packet,2);
+WIN_FUNC_DECL(return_packet,2)
 
 /* called via function pointer */
 wstdcall void NdisMIndicateReceivePacket(struct ndis_miniport_block *nmb,
