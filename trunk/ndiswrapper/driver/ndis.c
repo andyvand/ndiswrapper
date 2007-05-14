@@ -1841,6 +1841,7 @@ wstdcall BOOLEAN ndis_isr(struct kinterrupt *kinterrupt, void *ctx)
 	}
 	EXIT6(return FALSE);
 }
+WIN_FUNC_DECL(ndis_isr,2);
 
 wstdcall NDIS_STATUS WIN_FUNC(NdisMRegisterInterrupt,7)
 	(struct ndis_mp_interrupt *mp_interrupt,
@@ -1887,9 +1888,10 @@ wstdcall NDIS_STATUS WIN_FUNC(NdisMRegisterInterrupt,7)
 		       nmb->wnd, nmb->adapter_ctx);
 	}
 
-	if (IoConnectInterrupt(&mp_interrupt->kinterrupt, ndis_isr,
-			       mp_interrupt, NULL, vector, DIRQL, DIRQL, mode,
-			       shared, 0, FALSE) != STATUS_SUCCESS) {
+	if (IoConnectInterrupt(&mp_interrupt->kinterrupt,
+			       WIN_FUNC_PTR(ndis_isr,2), mp_interrupt, NULL,
+			       vector, DIRQL, DIRQL, mode, shared, 0, FALSE) !=
+	    STATUS_SUCCESS) {
 		printk(KERN_WARNING "%s: request for IRQ %d failed\n",
 		       DRIVER_NAME, vector);
 		return NDIS_STATUS_RESOURCES;
