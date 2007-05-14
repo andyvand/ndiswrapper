@@ -538,8 +538,8 @@ static irqreturn_t io_irq_isr(int irq, void *data ISR_PT_REGS_PARAM_DECL)
 wstdcall NTSTATUS WIN_FUNC(IoConnectInterrupt,11)
 	(struct kinterrupt **kinterrupt, PKSERVICE_ROUTINE isr, void *isr_ctx,
 	 NT_SPIN_LOCK *lock, ULONG vector, KIRQL irql, KIRQL synch_irql,
-	 enum kinterrupt_mode mode, BOOLEAN shareable,
-	 KAFFINITY cpu_mask, BOOLEAN floating_save)
+	 enum kinterrupt_mode mode, BOOLEAN shared, KAFFINITY cpu_mask,
+	 BOOLEAN save_fp)
 {
 	struct kinterrupt *interrupt;
 	IOENTER("");
@@ -554,15 +554,15 @@ wstdcall NTSTATUS WIN_FUNC(IoConnectInterrupt,11)
 		interrupt->actual_lock = lock;
 	else
 		interrupt->actual_lock = &interrupt->lock;
-	interrupt->shareable = shareable;
-	interrupt->floating_save = floating_save;
+	interrupt->shared = shared;
+	interrupt->save_fp = save_fp;
 	interrupt->isr = isr;
 	interrupt->isr_ctx = isr_ctx;
 	InitializeListHead(&interrupt->list);
 	interrupt->irql = irql;
 	interrupt->synch_irql = synch_irql;
 	interrupt->mode = mode;
-	if (request_irq(vector, io_irq_isr, shareable ? IRQF_SHARED : 0,
+	if (request_irq(vector, io_irq_isr, shared ? IRQF_SHARED : 0,
 			"io_irq", interrupt)) {
 		WARNING("request for irq %d failed", vector);
 		kfree(interrupt);
