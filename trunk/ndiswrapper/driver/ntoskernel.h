@@ -770,8 +770,8 @@ static inline void nt_spin_unlock_irql(NT_SPIN_LOCK *lock, KIRQL oldirql)
 
 static inline void nt_spin_lock_bh(NT_SPIN_LOCK *lock)
 {
-	warp_preempt_disable();
 	local_bh_disable();
+	warp_preempt_disable();
 	nt_spin_lock(lock);
 }
 
