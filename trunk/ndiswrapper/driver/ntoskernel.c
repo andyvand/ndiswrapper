@@ -826,7 +826,7 @@ wstdcall void *WIN_FUNC(ExAllocatePoolWithTag,3)
 
 	return addr;
 }
-WIN_FUNC_DECL(ExAllocatePoolWithTag,3);
+WIN_FUNC_DECL(ExAllocatePoolWithTag,3)
 
 wstdcall void WIN_FUNC(ExFreePoolWithTag,2)
 	(void *addr, ULONG tag)
@@ -846,7 +846,7 @@ wstdcall void WIN_FUNC(ExFreePool,1)
 {
 	ExFreePoolWithTag(addr, 0);
 }
-WIN_FUNC_DECL(ExFreePool,1);
+WIN_FUNC_DECL(ExFreePool,1)
 
 wstdcall void WIN_FUNC(ExInitializeNPagedLookasideList,7)
 	(struct npaged_lookaside_list *lookaside,
