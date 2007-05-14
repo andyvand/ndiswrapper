@@ -1819,8 +1819,6 @@ wstdcall BOOLEAN ndis_isr(struct kinterrupt *kinterrupt, void *ctx)
 	struct wrap_ndis_device *wnd = mp_interrupt->nmb->wnd;
 	BOOLEAN recognized, queue_handler;
 
-	/* use nt_spin_lock_preempt so driver thinks it is at right
-	 * IRQL */
 	TRACE6("%p", wnd);
 	if (mp_interrupt->shared)
 		LIN2WIN3(mp_interrupt->isr, &recognized, &queue_handler,
