@@ -202,7 +202,7 @@ typedef void *worker_param_t;
 typedef struct workqueue_struct workqueue_struct_t;
 typedef struct work_struct work_struct_t;
 
-#ifdef INIT_WORK_NAR
+#if defined(INIT_WORK_NAR) || defined(INIT_DELAYED_WORK_DEFERRABLE)
 #define initialize_work(work, func, data) INIT_WORK(work, func)
 typedef struct work_struct *worker_param_t;
 #define worker_param_data(param, type, member)	\

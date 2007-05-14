@@ -1321,8 +1321,8 @@ struct kinterrupt {
 	KAFFINITY cpu_mask;
 	NT_SPIN_LOCK lock;
 	NT_SPIN_LOCK *actual_lock;
-	BOOLEAN shareable;
-	BOOLEAN floating_save;
+	BOOLEAN shared;
+	BOOLEAN save_fp;
 	CHAR processor_number;
 	PKSERVICE_ROUTINE isr;
 	void *isr_ctx;
