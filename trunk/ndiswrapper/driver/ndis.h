@@ -905,7 +905,7 @@ struct ndis_pmkid_candidate_list {
 	struct ndis_pmkid_candidate candidates[1];
 };
 
-irqreturn_t ndis_isr(int irq, void *data ISR_PT_REGS_PARAM_DECL);
+BOOLEAN ndis_isr(struct kinterrupt *kinterrupt, void *ctx) wstdcall;
 
 int ndis_init(void);
 void ndis_exit(void);

@@ -1694,9 +1694,10 @@ wstdcall BOOLEAN WIN_FUNC(KeSynchronizeExecution,3)
 	BOOLEAN ret;
 	unsigned long flags;
 
-	nt_spin_lock_irqsave(&interrupt->lock, flags);
+	nt_spin_lock_irqsave(interrupt->actual_lock, flags);
 	ret = LIN2WIN1(synch_routine, ctx);
-	nt_spin_unlock_irqrestore(&interrupt->lock, flags);
+	nt_spin_unlock_irqrestore(interrupt->actual_lock, flags);
+	TRACE6("%d", ret);
 	return ret;
 }
 

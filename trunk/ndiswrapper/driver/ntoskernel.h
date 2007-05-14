@@ -1009,6 +1009,18 @@ BOOLEAN queue_kdpc(struct kdpc *kdpc);
 BOOLEAN dequeue_kdpc(struct kdpc *kdpc);
 
 void KeFlushQueuedDpcs(void) wstdcall;
+NTSTATUS IoConnectInterrupt(struct kinterrupt **kinterrupt,
+			    PKSERVICE_ROUTINE service_routine,
+			    void *service_context, NT_SPIN_LOCK *lock,
+			    ULONG vector, KIRQL irql, KIRQL synch_irql,
+			    enum kinterrupt_mode interrupt_mode,
+			    BOOLEAN shareable, KAFFINITY processor_enable_mask,
+			    BOOLEAN floating_save) wstdcall;
+void IoDisconnectInterrupt(struct kinterrupt *interrupt) wstdcall;
+BOOLEAN KeSynchronizeExecution(struct kinterrupt *interrupt,
+			       PKSYNCHRONIZE_ROUTINE synch_routine,
+			       void *ctx) wstdcall;
+
 NTSTATUS KeWaitForSingleObject(void *object, KWAIT_REASON reason,
 			       KPROCESSOR_MODE waitmode, BOOLEAN alertable,
 			       LARGE_INTEGER *timeout) wstdcall;

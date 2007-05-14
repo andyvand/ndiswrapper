@@ -1813,17 +1813,15 @@ wstdcall void serialized_irq_handler(struct kdpc *kdpc, void *ctx,
 }
 WIN_FUNC_DECL(serialized_irq_handler,4);
 
-irqreturn_t ndis_isr(int irq, void *data ISR_PT_REGS_PARAM_DECL)
+wstdcall BOOLEAN ndis_isr(struct kinterrupt *kinterrupt, void *ctx)
 {
-	struct ndis_mp_interrupt *mp_interrupt = data;
+	struct ndis_mp_interrupt *mp_interrupt = ctx;
 	struct wrap_ndis_device *wnd = mp_interrupt->nmb->wnd;
 	BOOLEAN recognized, queue_handler;
 
-	/* this spinlock should be shared with NdisMSynchronizeWithInterrupt
-	 */
 	/* use nt_spin_lock_preempt so driver thinks it is at right
 	 * IRQL */
-	nt_spin_lock_preempt(&mp_interrupt->lock);
+	TRACE6("%p", wnd);
 	if (mp_interrupt->shared)
 		LIN2WIN3(mp_interrupt->isr, &recognized, &queue_handler,
 			 wnd->nmb->adapter_ctx);
@@ -1834,15 +1832,14 @@ irqreturn_t ndis_isr(int irq, void *data ISR_PT_REGS_PARAM_DECL)
 		/* it is not shared interrupt, so handler must be called */
 		recognized = queue_handler = TRUE;
 	}
-	nt_spin_unlock_preempt(&mp_interrupt->lock);
 	if (recognized) {
 		if (queue_handler) {
 			TRACE5("%p", &wnd->irq_kdpc);
 			queue_kdpc(&wnd->irq_kdpc);
 		}
-		EXIT6(return IRQ_HANDLED);
+		EXIT6(return TRUE);
 	}
-	EXIT6(return IRQ_NONE);
+	EXIT6(return FALSE);
 }
 
 wstdcall NDIS_STATUS WIN_FUNC(NdisMRegisterInterrupt,7)
@@ -1857,10 +1854,6 @@ wstdcall NDIS_STATUS WIN_FUNC(NdisMRegisterInterrupt,7)
 	       mp_interrupt, vector, level, req_isr, shared, mode);
 
 	miniport = &wnd->wd->driver->ndis_driver->miniport;
-	/* if kinterrupt is not initialized, 64-bit Broadcom driver
-	 * seems to corrupt mp_interrupt structure -
-	 * NdisMDeregisterInterrupt crashes */
-	mp_interrupt->kinterrupt = (void *)nmb;
 	nt_spin_lock_init(&mp_interrupt->lock);
 	mp_interrupt->irq = vector;
 	mp_interrupt->isr = miniport->isr;
@@ -1894,11 +1887,12 @@ wstdcall NDIS_STATUS WIN_FUNC(NdisMRegisterInterrupt,7)
 		       nmb->wnd, nmb->adapter_ctx);
 	}
 
-	if (request_irq(vector, ndis_isr, req_isr ? IRQF_SHARED : 0,
-			wnd->net_dev->name, mp_interrupt)) {
+	if (IoConnectInterrupt(&mp_interrupt->kinterrupt, ndis_isr,
+			       mp_interrupt, NULL, vector, DIRQL, DIRQL, mode,
+			       shared, 0, FALSE) != STATUS_SUCCESS) {
 		printk(KERN_WARNING "%s: request for IRQ %d failed\n",
 		       DRIVER_NAME, vector);
-		EXIT1(return NDIS_STATUS_RESOURCES);
+		return NDIS_STATUS_RESOURCES;
 	}
 	printk(KERN_INFO "%s: using IRQ %d\n", DRIVER_NAME, vector);
 	EXIT1(return NDIS_STATUS_SUCCESS);
@@ -1919,7 +1913,7 @@ wstdcall void WIN_FUNC(NdisMDeregisterInterrupt,1)
 	nmb->wnd->mp_interrupt = NULL;
 	if (dequeue_kdpc(&nmb->wnd->irq_kdpc))
 		TRACE2("interrupt kdpc was pending");
-	free_irq(mp_interrupt->irq, mp_interrupt);
+	IoDisconnectInterrupt(mp_interrupt->kinterrupt);
 	EXIT1(return);
 }
 
@@ -1927,15 +1921,7 @@ wstdcall BOOLEAN WIN_FUNC(NdisMSynchronizeWithInterrupt,3)
 	(struct ndis_mp_interrupt *mp_interrupt,
 	 PKSYNCHRONIZE_ROUTINE sync_func, void *ctx)
 {
-	BOOLEAN ret;
-	unsigned long flags;
-
-	ENTER6("%p %p", sync_func, ctx);
-	nt_spin_lock_irqsave(&mp_interrupt->lock, flags);
-	ret = LIN2WIN1(sync_func, ctx);
-	nt_spin_unlock_irqrestore(&mp_interrupt->lock, flags);
-	TRACE6("ret: %d", ret);
-	EXIT6(return ret);
+	return KeSynchronizeExecution(mp_interrupt->kinterrupt, sync_func, ctx);
 }
 
 /* called via function pointer; but 64-bit RNDIS driver calls directly */

@@ -1318,18 +1318,18 @@ typedef BOOLEAN (*PKSYNCHRONIZE_ROUTINE)(void *context) wstdcall;
 
 struct kinterrupt {
 	ULONG vector;
-	KAFFINITY processor_enable_mask;
+	KAFFINITY cpu_mask;
 	NT_SPIN_LOCK lock;
 	NT_SPIN_LOCK *actual_lock;
 	BOOLEAN shareable;
 	BOOLEAN floating_save;
 	CHAR processor_number;
-	PKSERVICE_ROUTINE service_routine;
-	void *service_context;
+	PKSERVICE_ROUTINE isr;
+	void *isr_ctx;
 	struct nt_list list;
 	KIRQL irql;
 	KIRQL synch_irql;
-	enum kinterrupt_mode interrupt_mode;
+	enum kinterrupt_mode mode;
 };
 
 struct time_fields {
