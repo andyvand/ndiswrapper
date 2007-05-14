@@ -337,6 +337,7 @@ sub parse_install {
     printf CONF "driver_version|%s,%s\n", $providerstring, $version;
     printf CONF "BusType|%s\n", $bus_type;
     printf CONF "SlotNumber|01\n";
+    printf CONF "NetCfgInstanceId|{28022A01-1234-5678-ABCDE-123813291A00}\n";
     printf CONF "\n";
     close(CONF);
 
@@ -345,10 +346,6 @@ sub parse_install {
 
     foreach my $reg (@addregs) {
 	parse_registry($reg);
-    }
-    # RTL8185L driver crashes if DriverDesc setting is not found
-    if ($vendor == "10EC" && $device == "8185") {
-	printf CONF "DriverDesc|Realtek RTL8185 Wireless LAN Network Adapter\n";
     }
     close(CONF);
 }
@@ -362,6 +359,7 @@ sub parse_registry {
 	return -1;
     }
 
+    my $driver_desc = 0;
     foreach my $line (@{$lines}) {
 	$line = del_comment($line);
 	my @fields = split(",", $line);
@@ -391,7 +389,13 @@ sub parse_registry {
 		printf "forcing parameter $param from $orig_value to $value\n";
 	    }
 	    printf CONF "%s|%s\n", $param, $value;
+	    if ($param =~ /^DriverDesc$/) {
+		$driver_desc = 1;
+	    }
 	}
+    }
+    if ($driver_desc == 0) {
+	printf CONF "DriverDesc|NDIS Network Adapter\n";
     }
 }
 
@@ -849,8 +853,8 @@ sub install_status {
 	return;
     }
 
-    my $sys, my $conf, my $inf;
-    my $vendor, my $device, my $subvendor, my $subdevice, my $busid, my $ret;
+    my ($sys, $conf, $inf);
+    my ($vendor, $device, $subvendor, $subdevice, $busid, $ret);
 
     $sys = $conf = $inf = 0;
     open(LS2, "ls -1 $confdir/$driver|") or
