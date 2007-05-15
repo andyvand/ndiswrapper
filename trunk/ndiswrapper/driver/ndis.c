@@ -610,15 +610,15 @@ wstdcall NDIS_STATUS WIN_FUNC(NdisUnicodeStringToAnsiString,2)
 }
 
 wstdcall void WIN_FUNC(NdisMSetAttributesEx,5)
-	(struct ndis_miniport_block *nmb, void *adapter_ctx,
+	(struct ndis_miniport_block *nmb, void *mp_ctx,
 	 UINT hangcheck_interval, UINT attributes, ULONG adaptertype)
 {
 	struct wrap_ndis_device *wnd;
 
-	ENTER1("%p, %p, %d, %08x, %d", nmb, adapter_ctx, hangcheck_interval,
+	ENTER1("%p, %p, %d, %08x, %d", nmb, mp_ctx, hangcheck_interval,
 	       attributes, adaptertype);
 	wnd = nmb->wnd;
-	nmb->adapter_ctx = adapter_ctx;
+	nmb->mp_ctx = mp_ctx;
 	wnd->attributes = attributes;
 
 	if ((attributes & NDIS_ATTRIBUTE_BUS_MASTER) &&
@@ -1582,8 +1582,7 @@ wstdcall void WIN_FUNC(NdisSend,3)
 	miniport = &wnd->wd->driver->ndis_driver->miniport;
 	if (miniport->send_packets) {
 		irql = serialize_lock_irql(wnd);
-		LIN2WIN3(miniport->send_packets, wnd->nmb->adapter_ctx,
-			 &packet, 1);
+		LIN2WIN3(miniport->send_packets, wnd->nmb->mp_ctx, &packet, 1);
 		serialize_unlock_irql(wnd, irql);
 		if (deserialized_driver(wnd))
 			*status = NDIS_STATUS_PENDING;
@@ -1608,8 +1607,7 @@ wstdcall void WIN_FUNC(NdisSend,3)
 		}
 	} else {
 		irql = serialize_lock_irql(wnd);
-		*status = LIN2WIN3(miniport->send, wnd->nmb->adapter_ctx,
-				   packet, 0);
+		*status = LIN2WIN3(miniport->send, wnd->nmb->mp_ctx, packet, 0);
 		serialize_unlock_irql(wnd, irql);
 		switch (*status) {
 		case NDIS_STATUS_SUCCESS:
@@ -1792,9 +1790,9 @@ wstdcall void deserialized_irq_handler(struct kdpc *kdpc, void *ctx,
 	struct miniport_char *miniport = arg2;
 
 	TRACE6("%p", irq_handler);
-	LIN2WIN1(irq_handler, wnd->nmb->adapter_ctx);
+	LIN2WIN1(irq_handler, wnd->nmb->mp_ctx);
 	if (miniport->enable_interrupt)
-		LIN2WIN1(miniport->enable_interrupt, wnd->nmb->adapter_ctx);
+		LIN2WIN1(miniport->enable_interrupt, wnd->nmb->mp_ctx);
 	EXIT6(return);
 }
 WIN_FUNC_DECL(deserialized_irq_handler,4)
@@ -1822,11 +1820,11 @@ wstdcall BOOLEAN ndis_isr(struct kinterrupt *kinterrupt, void *ctx)
 	TRACE6("%p", wnd);
 	if (mp_interrupt->shared)
 		LIN2WIN3(mp_interrupt->isr, &recognized, &queue_handler,
-			 wnd->nmb->adapter_ctx);
+			 wnd->nmb->mp_ctx);
 	else {
 		struct miniport_char *miniport;
 		miniport = &wnd->wd->driver->ndis_driver->miniport;
-		LIN2WIN1(miniport->disable_interrupt, wnd->nmb->adapter_ctx);
+		LIN2WIN1(miniport->disable_interrupt, wnd->nmb->mp_ctx);
 		/* it is not shared interrupt, so handler must be called */
 		recognized = queue_handler = TRUE;
 	}
@@ -1875,15 +1873,15 @@ wstdcall NDIS_STATUS WIN_FUNC(NdisMRegisterInterrupt,7)
 		wnd->irq_kdpc.arg1 = miniport->handle_interrupt;
 		wnd->irq_kdpc.arg2 = miniport;
 		TRACE2("%p, %p, %p, %p", wnd->irq_kdpc.arg1, wnd->irq_kdpc.arg2,
-		       nmb->wnd, nmb->adapter_ctx);
+		       nmb->wnd, nmb->mp_ctx);
 	} else {
 		KeInitializeDpc(&wnd->irq_kdpc,
 				WIN_FUNC_PTR(serialized_irq_handler,4),
 				nmb->wnd);
 		wnd->irq_kdpc.arg1 = miniport->handle_interrupt;
-		wnd->irq_kdpc.arg2 = nmb->adapter_ctx;
+		wnd->irq_kdpc.arg2 = nmb->mp_ctx;
 		TRACE2("%p, %p, %p, %p", wnd->irq_kdpc.arg1, wnd->irq_kdpc.arg2,
-		       nmb->wnd, nmb->adapter_ctx);
+		       nmb->wnd, nmb->mp_ctx);
 	}
 
 	if (IoConnectInterrupt(&mp_interrupt->kinterrupt,
@@ -2119,7 +2117,7 @@ wstdcall void return_packet(void *arg1, void *arg2)
 	ENTER4("%p, %p", wnd, packet);
 	miniport = &wnd->wd->driver->ndis_driver->miniport;
 	irql = serialize_lock_irql(wnd);
-	LIN2WIN2(miniport->return_packet, wnd->nmb->adapter_ctx, packet);
+	LIN2WIN2(miniport->return_packet, wnd->nmb->mp_ctx, packet);
 	serialize_unlock_irql(wnd, irql);
 	EXIT4(return);
 }
