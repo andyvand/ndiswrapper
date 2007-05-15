@@ -283,6 +283,12 @@ wfastcall struct nt_list *WIN_FUNC(ExInterlockedRemoveTailList,2)
 	return ExfInterlockedRemoveTailList(head, lock);
 }
 
+wfastcall void WIN_FUNC(InitializeSListHead,1)
+	(nt_slist_header *head)
+{
+	memset(head, 0, sizeof(*head));
+}
+
 wfastcall struct nt_slist *WIN_FUNC(ExInterlockedPushEntrySList,3)
 	(nt_slist_header *head, struct nt_slist *entry, NT_SPIN_LOCK *lock)
 {

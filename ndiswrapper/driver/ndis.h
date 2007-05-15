@@ -424,9 +424,8 @@ struct miniport_char {
 			       ULONG buflen, ULONG *written,
 			       ULONG *needed) wstdcall;
 	NDIS_STATUS (*tx_data)(struct ndis_packet *ndis_packet,
-			       UINT *bytes_txed, void *adapter_ctx,
-			       void *rx_ctx, UINT offset,
-			       UINT bytes_to_tx) wstdcall;
+			       UINT *bytes_txed, void *mp_ctx, void *rx_ctx,
+			       UINT offset, UINT bytes_to_tx) wstdcall;
 	/* NDIS 4.0 extensions */
 	void (*return_packet)(void *ctx, void *packet) wstdcall;
 	void (*send_packets)(void *ctx, struct ndis_packet **packets,
@@ -735,7 +734,7 @@ struct ndis_miniport_block {
 	void *signature;
 	struct ndis_miniport_block *next;
 	struct driver_object *drv_obj;
-	void *adapter_ctx;
+	void *mp_ctx;
 	struct unicode_string name;
 	struct ndis_bind_paths *bindpaths;
 	void *openqueue;

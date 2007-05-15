@@ -66,7 +66,7 @@ NDIS_STATUS miniport_reset(struct wrap_ndis_device *wnd)
 	prepare_wait_condition(wnd->ndis_comm_task, wnd->ndis_comm_done, 0);
 	WARNING("%s is being reset", wnd->net_dev->name);
 	irql = serialize_lock_irql(wnd);
-	res = LIN2WIN2(miniport->reset, &reset_address, wnd->nmb->adapter_ctx);
+	res = LIN2WIN2(miniport->reset, &reset_address, wnd->nmb->mp_ctx);
 	serialize_unlock_irql(wnd, irql);
 
 	TRACE2("%08X, %08X", res, reset_address);
@@ -112,7 +112,7 @@ NDIS_STATUS miniport_query_info(struct wrap_ndis_device *wnd, ndis_oid oid,
 	TRACE2("%p, %08X", miniport->query, oid);
 	prepare_wait_condition(wnd->ndis_comm_task, wnd->ndis_comm_done, 0);
 	irql = serialize_lock_irql(wnd);
-	res = LIN2WIN6(miniport->query, wnd->nmb->adapter_ctx, oid, buf,
+	res = LIN2WIN6(miniport->query, wnd->nmb->mp_ctx, oid, buf,
 		       bufsize, written, needed);
 	serialize_unlock_irql(wnd, irql);
 
@@ -167,7 +167,7 @@ NDIS_STATUS miniport_set_info(struct wrap_ndis_device *wnd, ndis_oid oid,
 	TRACE2("%p, %08X", miniport->query, oid);
 	prepare_wait_condition(wnd->ndis_comm_task, wnd->ndis_comm_done, 0);
 	irql = serialize_lock_irql(wnd);
-	res = LIN2WIN6(miniport->setinfo, wnd->nmb->adapter_ctx, oid,
+	res = LIN2WIN6(miniport->setinfo, wnd->nmb->mp_ctx, oid,
 		       buf, bufsize, written, needed);
 	serialize_unlock_irql(wnd, irql);
 
@@ -229,8 +229,7 @@ static NDIS_STATUS miniport_pnp_event(struct wrap_ndis_device *wnd,
 		    !test_bit(HW_PRESENT, &wnd->wd->hw_status) &&
 		    miniport->pnp_event_notify) {
 			TRACE1("calling surprise_removed");
-			LIN2WIN4(miniport->pnp_event_notify,
-				 wnd->nmb->adapter_ctx,
+			LIN2WIN4(miniport->pnp_event_notify, wnd->nmb->mp_ctx,
 				 NdisDevicePnPEventSurpriseRemoved, NULL, 0);
 		} else
 			TRACE1("Windows driver %s doesn't support "
@@ -240,7 +239,7 @@ static NDIS_STATUS miniport_pnp_event(struct wrap_ndis_device *wnd,
 	case NdisDevicePnPEventPowerProfileChanged:
 		if (power_profile)
 			power_profile = NdisPowerProfileAcOnLine;
-		LIN2WIN4(miniport->pnp_event_notify, wnd->nmb->adapter_ctx,
+		LIN2WIN4(miniport->pnp_event_notify, wnd->nmb->mp_ctx,
 			 NdisDevicePnPEventPowerProfileChanged,
 			 &power_profile, (ULONG)sizeof(power_profile));
 		return NDIS_STATUS_SUCCESS;
@@ -315,7 +314,7 @@ static void miniport_halt(struct wrap_ndis_device *wnd)
 		del_iw_stats_timer(wnd);
 		miniport = &wnd->wd->driver->ndis_driver->miniport;
 		TRACE1("halt: %p", miniport->miniport_halt);
-		LIN2WIN1(miniport->miniport_halt, wnd->nmb->adapter_ctx);
+		LIN2WIN1(miniport->miniport_halt, wnd->nmb->mp_ctx);
 		/* if a driver doesn't call NdisMDeregisterInterrupt
 		 * during halt, deregister it now */
 		if (wnd->mp_interrupt)
@@ -637,12 +636,12 @@ static u8 miniport_tx_packets(struct wrap_ndis_device *wnd, u8 start, u8 n)
 	miniport = &wnd->wd->driver->ndis_driver->miniport;
 	if (miniport->send_packets) {
 		if (deserialized_driver(wnd)) {
-			LIN2WIN3(miniport->send_packets, wnd->nmb->adapter_ctx,
+			LIN2WIN3(miniport->send_packets, wnd->nmb->mp_ctx,
 				 &wnd->tx_ring[start], n);
 			sent = n;
 		} else {
 			serialize_lock(wnd);
-			LIN2WIN3(miniport->send_packets, wnd->nmb->adapter_ctx,
+			LIN2WIN3(miniport->send_packets, wnd->nmb->mp_ctx,
 				 &wnd->tx_ring[start], n);
 			serialize_unlock(wnd);
 			for (sent = 0; sent < n && wnd->tx_ok; sent++) {
@@ -687,7 +686,7 @@ static u8 miniport_tx_packets(struct wrap_ndis_device *wnd, u8 start, u8 n)
 			oob_data = NDIS_PACKET_OOB_DATA(packet);
 			oob_data->status = NDIS_STATUS_NOT_RECOGNIZED;
 			if_serialize_lock(wnd);
-			res = LIN2WIN3(miniport->send, wnd->nmb->adapter_ctx,
+			res = LIN2WIN3(miniport->send, wnd->nmb->mp_ctx,
 				       packet, packet->private.flags);
 			if_serialize_unlock(wnd);
 			switch (res) {
@@ -1206,7 +1205,7 @@ static void wrap_ndis_worker(worker_param_t param)
 
 		miniport = &wnd->wd->driver->ndis_driver->miniport;
 		irql = serialize_lock_irql(wnd);
-		reset = LIN2WIN1(miniport->hangcheck, wnd->nmb->adapter_ctx);
+		reset = LIN2WIN1(miniport->hangcheck, wnd->nmb->mp_ctx);
 		serialize_unlock_irql(wnd, irql);
 		if (reset) {
 			TRACE2("%s needs reset", wnd->net_dev->name);
