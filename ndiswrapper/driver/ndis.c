@@ -19,6 +19,7 @@
 #include "pnp.h"
 #include "loader.h"
 #include <linux/kernel_stat.h>
+#include <asm/dma.h>
 
 #define MAX_ALLOCATED_NDIS_PACKETS 20
 #define MAX_ALLOCATED_NDIS_BUFFERS 20
@@ -2486,8 +2487,11 @@ wstdcall NDIS_STATUS WIN_FUNC(NdisMInitializeScatterGatherDma,3)
 	struct wrap_ndis_device *wnd = nmb->wnd;
 	ENTER2("dma_size=%d, maxtransfer=%u", dma_size, max_phy_map);
 #ifdef CONFIG_X86_64
-	if (dma_size != NDIS_DMA_64BITS)
-		ERROR("DMA size is not 64-bits");
+	if (dma_size != NDIS_DMA_64BITS) {
+		TRACE1("DMA size is not 64-bits");
+		pci_set_dma_mask(wnd->wd->pci.pdev, DMA_32BIT_MASK);
+		pci_set_consistent_dma_mask(wnd->wd->pci.pdev, DMA_32BIT_MASK);
+	}
 #endif
 	if ((wnd->attributes & NDIS_ATTRIBUTE_BUS_MASTER) &&
 	    wrap_is_pci_bus(wnd->wd->dev_bus)) {

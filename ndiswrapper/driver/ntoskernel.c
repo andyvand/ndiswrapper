@@ -1724,14 +1724,14 @@ wstdcall void *WIN_FUNC(MmAllocateContiguousMemorySpecifyCache,5)
 #ifdef CONFIG_X86_64
 	/* GFP_DMA is really only 16MB even on x86-64, but there is no
 	 * other zone available */
-	if (highest <= (1024 * 1024 * 1024))
+	if (highest <= DMA_31BIT_MASK)
 		flags |= __GFP_DMA;
-	else if (highest <= (4UL * 1024 * 1024 * 1024))
+	else if (highest <= DMA_32BIT_MASK)
 		flags |= __GFP_DMA32;
 #else
-	if (highest <= (16 * 1024 * 1024))
+	if (highest <= DMA_24BIT_MASK)
 		flags |= __GFP_DMA;
-	else if (highest >= (1024 * 1024 * 1024))
+	else if (highest > DMA_30BIT_MASK)
 		flags |= __GFP_HIGHMEM;
 #endif
 	addr = wrap_get_free_pages(flags, size);

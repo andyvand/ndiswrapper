@@ -82,7 +82,7 @@
 
 #else // linux version <= 2.5.41
 
-#define PCI_DMA_ALLOC_COHERENT(dev,size,dma_handle)	\
+#define PCI_DMA_ALLOC_COHERENT(dev,size,dma_handle,flags)	\
 	pci_alloc_consistent(dev,size,dma_handle)
 #define PCI_DMA_FREE_COHERENT(dev,size,cpu_addr,dma_handle)	\
 	pci_free_consistent(dev,size,cpu_addr,dma_handle)
@@ -510,6 +510,7 @@ struct wrap_device {
 	union {
 		struct {
 			struct pci_dev *pdev;
+			enum device_power_state wake_state;
 #if LINUX_VERSION_CODE <= KERNEL_VERSION(2,6,9)
 			u32 pci_state[16];
 #endif

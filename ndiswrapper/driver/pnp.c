@@ -59,8 +59,8 @@ static NTSTATUS start_pdo(struct device_object *pdo)
 	/* 64-bit broadcom driver doesn't work if DMA is allocated
 	 * from over 1GB */
 	if (wd->vendor == 0x14e4) {
-		if (pci_set_dma_mask(pdev, 0x3fffffff) ||
-		    pci_set_consistent_dma_mask(pdev, 0x3fffffff))
+		if (pci_set_dma_mask(pdev, DMA_30BIT_MASK) ||
+		    pci_set_consistent_dma_mask(pdev, DMA_30BIT_MASK))
 			WARNING("couldn't set DMA mask; this driver "
 				"may not work with more than 1GB RAM");
 	}
@@ -330,7 +330,7 @@ wstdcall NTSTATUS pdoDispatchPower(struct device_object *pdo, struct irp *irp)
 	case IRP_MN_SET_POWER:
 		power_state = irp_sl->params.power.state;
 		if (power_state.device_state == PowerDeviceD0) {
-			TRACE2("resuming device %p", wd);
+			TRACE2("resuming %p", wd);
 			if (wrap_is_pci_bus(wd->dev_bus)) {
 				pdev = wd->pci.pdev;
 #if LINUX_VERSION_CODE > KERNEL_VERSION(2,6,9)
@@ -338,6 +338,13 @@ wstdcall NTSTATUS pdoDispatchPower(struct device_object *pdo, struct irp *irp)
 #else
 				pci_restore_state(pdev, wd->pci.pci_state);
 #endif
+				if (wd->pci.wake_state == PowerDeviceD3) {
+					pci_enable_wake(wd->pci.pdev,
+							PCI_D3hot, 0);
+					pci_enable_wake(wd->pci.pdev,
+							PCI_D3cold, 0);
+				}
+				pci_set_power_state(pdev, PCI_D0);
 			} else { // usb device
 #ifdef CONFIG_USB
 				wrap_resume_urbs(wd);
@@ -352,6 +359,14 @@ wstdcall NTSTATUS pdoDispatchPower(struct device_object *pdo, struct irp *irp)
 #else
 				pci_save_state(pdev, wd->pci.pci_state);
 #endif
+				TRACE2("%d", wd->pci.wake_state);
+				if (wd->pci.wake_state == PowerDeviceD3) {
+					pci_enable_wake(wd->pci.pdev,
+							PCI_D3hot, 1);
+					pci_enable_wake(wd->pci.pdev,
+							PCI_D3cold, 1);
+				}
+				pci_set_power_state(pdev, PCI_D3hot);
 			} else { // usb device
 #ifdef CONFIG_USB
 				wrap_suspend_urbs(wd);
