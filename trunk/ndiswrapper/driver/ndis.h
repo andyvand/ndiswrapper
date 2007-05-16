@@ -391,7 +391,7 @@ struct net_pnp_event {
 
 struct ndis_pnp_capabilities {
 	ULONG flags;
-	struct ndis_pm_wakeup_capabilities wakeup_capa;
+	struct ndis_pm_wakeup_capabilities wakeup;
 };
 
 typedef void (*ndis_isr_handler)(BOOLEAN *recognized, BOOLEAN *queue_handler,
@@ -887,10 +887,11 @@ struct wrap_ndis_device {
 	struct v4_checksum rx_csum;
 	struct v4_checksum tx_csum;
 	enum ndis_physical_medium physical_medium;
-	u32 ndis_wolopts;
+	ULONG ndis_wolopts;
 	struct nt_list wrap_timer_list;
 	char netdev_name[IFNAMSIZ];
 	int drv_ndis_version;
+	struct ndis_pnp_capabilities pnp_capa;
 };
 
 struct ndis_pmkid_candidate {

@@ -255,7 +255,6 @@ static NDIS_STATUS miniport_init(struct wrap_ndis_device *wnd)
 	NDIS_STATUS error_status, status;
 	UINT medium_index, medium_array[] = {NdisMedium802_3};
 	struct miniport_char *miniport;
-	struct ndis_pnp_capabilities pnp_capa;
 
 	ENTER1("irql: %d", current_irql());
 	if (test_bit(HW_INITIALIZED, &wnd->wd->hw_status)) {
@@ -290,16 +289,23 @@ static NDIS_STATUS miniport_init(struct wrap_ndis_device *wnd)
 	/* the description about NDIS_ATTRIBUTE_NO_HALT_ON_SUSPEND is
 	 * misleading/confusing */
 	status = miniport_query(wnd, OID_PNP_CAPABILITIES,
-				&pnp_capa, sizeof(pnp_capa));
-	if (status == NDIS_STATUS_SUCCESS)
+				&wnd->pnp_capa, sizeof(wnd->pnp_capa));
+	if (status == NDIS_STATUS_SUCCESS) {
+		TRACE1("%d, %d", wnd->pnp_capa.wakeup.min_magic_packet_wakeup,
+		       wnd->pnp_capa.wakeup.min_pattern_wakeup);
 		wnd->attributes |= NDIS_ATTRIBUTE_NO_HALT_ON_SUSPEND;
-	else if (status == NDIS_STATUS_NOT_SUPPORTED)
+		status = miniport_query_int(wnd, OID_PNP_ENABLE_WAKE_UP,
+					    &wnd->ndis_wolopts);
+		TRACE1("%08X, %x", status, wnd->ndis_wolopts);
+	} else if (status == NDIS_STATUS_NOT_SUPPORTED)
 		wnd->attributes &= ~NDIS_ATTRIBUTE_NO_HALT_ON_SUSPEND;
-	TRACE1("%d", pnp_capa.wakeup_capa.min_magic_packet_wakeup);
+	TRACE1("%d", wnd->pnp_capa.wakeup.min_magic_packet_wakeup);
 	/* although some NDIS drivers support suspend, Linux kernel
 	 * has issues with suspending USB devices */
-	if (wrap_is_usb_bus(wnd->wd->dev_bus))
+	if (wrap_is_usb_bus(wnd->wd->dev_bus)) {
 		wnd->attributes &= ~NDIS_ATTRIBUTE_NO_HALT_ON_SUSPEND;
+		wnd->ndis_wolopts = 0;
+	}
 	EXIT1(return NDIS_STATUS_SUCCESS);
 }
 
@@ -370,18 +376,18 @@ static NDIS_STATUS miniport_set_power_state(struct wrap_ndis_device *wnd,
 				WARNING("%s: setting power to state %d failed? "
 					"%08X", wnd->net_dev->name, state,
 					status);
-			if (wnd->ndis_wolopts &&
-			    wrap_is_pci_bus(wnd->wd->dev_bus))
-				pci_enable_wake(wnd->wd->pci.pdev, PCI_D0, 0);
 		} else
 			return NDIS_STATUS_FAILURE;
 
+		if (wrap_is_pci_bus(wnd->wd->dev_bus)) {
+			pci_enable_wake(wnd->wd->pci.pdev, PCI_D3hot, 0);
+			pci_enable_wake(wnd->wd->pci.pdev, PCI_D3cold, 0);
+		}
 		if (status == NDIS_STATUS_SUCCESS) {
 			up(&wnd->tx_ring_mutex);
 			netif_device_attach(wnd->net_dev);
 			hangcheck_add(wnd);
 			add_iw_stats_timer(wnd);
-			set_scan(wnd);
 		} else
 			WARNING("%s: couldn't set power to state %d; device not"
 				" resumed", wnd->net_dev->name, state);
@@ -394,19 +400,19 @@ static NDIS_STATUS miniport_set_power_state(struct wrap_ndis_device *wnd,
 		del_iw_stats_timer(wnd);
 		status = NDIS_STATUS_NOT_SUPPORTED;
 		if (wnd->attributes & NDIS_ATTRIBUTE_NO_HALT_ON_SUSPEND) {
-			if (wnd->ndis_wolopts) {
-				status =
-					miniport_set_int(wnd,
-							 OID_PNP_ENABLE_WAKE_UP,
-							 wnd->ndis_wolopts);
-				if (status == NDIS_STATUS_SUCCESS &&
-				    wrap_is_pci_bus(wnd->wd->dev_bus))
-					pci_enable_wake(wnd->wd->pci.pdev,
-							PCI_D3hot, 1);
+			status = miniport_set_int(wnd, OID_PNP_ENABLE_WAKE_UP,
+						  wnd->ndis_wolopts);
+			TRACE2("0x%x, 0x%x", status, wnd->ndis_wolopts);
+			if (status == NDIS_STATUS_SUCCESS) {
+				if (wnd->ndis_wolopts)
+					wnd->wd->pci.wake_state =
+						PowerDeviceD3;
 				else
-					WARNING("%s: couldn't enable WOL: %08x",
-						wnd->net_dev->name, status);
-			}
+					wnd->wd->pci.wake_state =
+						PowerDeviceUnspecified;
+			} else
+				WARNING("couldn't set wake-on-lan options: "
+					"0x%x, %08X", wnd->ndis_wolopts, status);
 			status = miniport_set_int(wnd, OID_PNP_SET_POWER,
 						  state);
 			if (status == NDIS_STATUS_SUCCESS)
@@ -1649,33 +1655,41 @@ static u32 ndis_get_link(struct net_device *dev)
 static void ndis_get_wol(struct net_device *dev, struct ethtool_wolinfo *wol)
 {
 	struct wrap_ndis_device *wnd = netdev_priv(dev);
+
+	wol->supported = 0;
+	wol->wolopts = 0;
+	if (!(wnd->attributes & NDIS_ATTRIBUTE_NO_HALT_ON_SUSPEND))
+		EXIT2(return);
+	if (!wrap_is_pci_bus(wnd->wd->dev_bus))
+		EXIT2(return);
+	/* we always suspend to D3 */
+	if (wnd->pnp_capa.wakeup.min_magic_packet_wakeup < NdisDeviceStateD3)
+		return;
+	wol->supported |= WAKE_MAGIC;
 	if (wnd->ndis_wolopts & NDIS_PNP_WAKE_UP_MAGIC_PACKET)
 		wol->wolopts |= WAKE_MAGIC;
-	/* no other options supported */
 	return;
 }
 
 static int ndis_set_wol(struct net_device *dev, struct ethtool_wolinfo *wol)
 {
 	struct wrap_ndis_device *wnd = netdev_priv(dev);
-	struct ndis_pnp_capabilities pnp_capa;
-	NDIS_STATUS status;
 
-	if (!(wol->wolopts & WAKE_MAGIC))
-		return -EINVAL;
 	if (!(wnd->attributes & NDIS_ATTRIBUTE_NO_HALT_ON_SUSPEND))
 		return -EOPNOTSUPP;
-	status = miniport_query(wnd, OID_PNP_CAPABILITIES,
-				&pnp_capa, sizeof(pnp_capa));
-	if (status != NDIS_STATUS_SUCCESS)
+	if (wnd->pnp_capa.wakeup.min_magic_packet_wakeup < NdisDeviceStateD3)
+		EXIT2(return -EOPNOTSUPP);
+	TRACE2("0x%x", wol->wolopts);
+	if (wol->wolopts & WAKE_MAGIC) {
+		wnd->ndis_wolopts |= NDIS_PNP_WAKE_UP_MAGIC_PACKET;
+		if (wol->wolopts != WAKE_MAGIC)
+			WARNING("ignored wake-on-lan options: 0x%x",
+				wol->wolopts & ~WAKE_MAGIC);
+	} else if (!wol->wolopts)
+		wnd->ndis_wolopts = 0;
+	else
 		return -EOPNOTSUPP;
-	/* we always suspend to D3 */
-	TRACE1("%d, %d", pnp_capa.wakeup_capa.min_magic_packet_wakeup,
-	       pnp_capa.wakeup_capa.min_pattern_wakeup);
-	if (pnp_capa.wakeup_capa.min_magic_packet_wakeup < NdisDeviceStateD1)
-		return -EOPNOTSUPP;
-	/* no other options supported */
-	wnd->ndis_wolopts = NDIS_PNP_WAKE_UP_MAGIC_PACKET;
+	TRACE2("0x%x", wnd->ndis_wolopts);
 	return 0;
 }
 
