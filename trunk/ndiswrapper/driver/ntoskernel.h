@@ -341,9 +341,7 @@ typedef u32 pm_message_t;
 #define set_thread_priority(thread, prio) set_user_nice(thread, prio)
 #endif
 
-#ifdef CONFIG_NET_RADIO
-#define WRAP_CONFIG_WLAN 1
-#elif defined(CONFIG_WLAN_PRE80211) || defined(CONFIG_WLAN_80211)
+#if defined(CONFIG_NET_RADIO) || defined(CONFIG_WIRELESS_EXT)
 #define WRAP_CONFIG_WLAN 1
 #endif
 
@@ -752,7 +750,6 @@ do {						\
 #define nt_spin_unlock_preempt(lock) nt_spin_unlock(lock)
 
 #endif
-		
 
 /* raise IRQL to given (higher) IRQL if necessary before locking */
 static inline KIRQL nt_spin_lock_irql(NT_SPIN_LOCK *lock, KIRQL newirql)
