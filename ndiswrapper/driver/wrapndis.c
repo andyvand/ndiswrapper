@@ -1007,6 +1007,7 @@ static void set_multicast_list(struct wrap_ndis_device *wnd)
 
 static void link_status_handler(struct wrap_ndis_device *wnd)
 {
+#ifdef CONFIG_WIRELESS_EXT
 	struct ndis_assoc_info *ndis_assoc_info;
 	union iwreq_data wrqu;
 	NDIS_STATUS res;
@@ -1020,9 +1021,6 @@ static void link_status_handler(struct wrap_ndis_device *wnd)
 	ENTER2("link: %d", netif_carrier_ok(wnd->net_dev));
 	if (wnd->physical_medium != NdisPhysicalMediumWirelessLan)
 		EXIT2(return);
-#ifndef WRAP_CONFIG_WLAN
-	EXIT2(return);
-#endif
 	if (!netif_carrier_ok(wnd->net_dev)) {
 		memset(&wrqu, 0, sizeof(wrqu));
 		wrqu.ap_addr.sa_family = ARPHRD_ETHER;
@@ -1111,6 +1109,7 @@ static void link_status_handler(struct wrap_ndis_device *wnd)
 	wrqu.ap_addr.sa_family = ARPHRD_ETHER;
 	wireless_send_event(wnd->net_dev, SIOCGIWAP, &wrqu, NULL);
 	TRACE2(MACSTRSEP, MAC2STR(wrqu.ap_addr.sa_data));
+#endif
 	EXIT2(return);
 }
 
