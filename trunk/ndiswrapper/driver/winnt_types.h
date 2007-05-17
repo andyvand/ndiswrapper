@@ -233,7 +233,7 @@ struct nt_list {
 	struct nt_list *prev;
 };
 
-typedef volatile ULONG_PTR NT_SPIN_LOCK;
+typedef ULONG_PTR NT_SPIN_LOCK;
 
 enum kdpc_importance {LowImportance, MediumImportance, HighImportance};
 
@@ -1080,9 +1080,9 @@ struct irp {
 };
 
 #define IoSizeOfIrp(stack_count)					\
-	((USHORT)(sizeof(struct irp) + ((stack_count) *			\
-					sizeof(struct io_stack_location))))
-#define IoGetCurrentIrpStackLocation(irp)		\
+	((USHORT)(sizeof(struct irp) +					\
+		  ((stack_count) * sizeof(struct io_stack_location))))
+#define IoGetCurrentIrpStackLocation(irp)	\
 	(irp)->tail.overlay.csl
 #define IoGetNextIrpStackLocation(irp)		\
 	(IoGetCurrentIrpStackLocation(irp) - 1)

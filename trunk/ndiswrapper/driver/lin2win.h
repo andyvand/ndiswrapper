@@ -32,7 +32,7 @@
 
 #define lin2win_win_arg(m,n) "(" #m "-1-" #n ")*8(%%rsp)"
 
-/* volatile args for Windows function must be in clobber / output list */
+/* args for Windows function must be in clobber / output list */
 
 #define LIN2WIN0(func)							\
 ({									\

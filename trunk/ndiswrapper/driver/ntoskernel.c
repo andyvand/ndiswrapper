@@ -91,7 +91,7 @@ workqueue_struct_t *ntos_wq;
 #endif
 
 #ifdef WARP_PREEMPT
-volatile int warp_preempt_count;
+int warp_preempt_count;
 #endif
 
 #if defined(CONFIG_X86_64)

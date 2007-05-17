@@ -24,19 +24,19 @@ void wrapndis_exit(void);
 
 NDIS_STATUS miniport_reset(struct wrap_ndis_device *wnd);
 NDIS_STATUS miniport_query_info(struct wrap_ndis_device *wnd, ndis_oid oid,
-				void *buf, ULONG bufsize, ULONG *written,
+				void *buf, ULONG buflen, ULONG *written,
 				ULONG *needed);
 NDIS_STATUS miniport_query_int(struct wrap_ndis_device *wnd, ndis_oid oid,
 			       ULONG *data);
 NDIS_STATUS miniport_query(struct wrap_ndis_device *wnd, ndis_oid oid,
-			   void *buf, ULONG bufsize);
+			   void *buf, ULONG buflen);
 NDIS_STATUS miniport_set_info(struct wrap_ndis_device *wnd, ndis_oid oid,
-			      void *buf, ULONG bufsize, ULONG *written,
+			      void *buf, ULONG buflen, ULONG *written,
 			      ULONG *needed);
 NDIS_STATUS miniport_set_int(struct wrap_ndis_device *wnd, ndis_oid oid,
 			     ULONG data);
 NDIS_STATUS miniport_set(struct wrap_ndis_device *wnd, ndis_oid oid,
-			 void *buf, ULONG bufsize);
+			 void *buf, ULONG buflen);
 void free_tx_packet(struct wrap_ndis_device *wnd, struct ndis_packet *packet,
 		    NDIS_STATUS status);
 int init_ndis_driver(struct driver_object *drv_obj);
