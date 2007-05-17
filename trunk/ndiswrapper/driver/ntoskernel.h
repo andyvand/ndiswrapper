@@ -16,6 +16,11 @@
 #ifndef _NTOSKERNEL_H_
 #define _NTOSKERNEL_H_
 
+#ifndef CONFIG_WIRELESS_EXT
+#warning "wirelss devices are not supported by this kernel "\
+	"as CONFIG_WIRELESS_EXT is not enabled"
+#endif
+
 #include <linux/types.h>
 #include <linux/timer.h>
 #include <linux/time.h>
@@ -82,7 +87,7 @@
 
 #else // linux version <= 2.5.41
 
-#define PCI_DMA_ALLOC_COHERENT(dev,size,dma_handle,flags)	\
+#define PCI_DMA_ALLOC_COHERENT(dev,size,dma_handle)	\
 	pci_alloc_consistent(dev,size,dma_handle)
 #define PCI_DMA_FREE_COHERENT(dev,size,cpu_addr,dma_handle)	\
 	pci_free_consistent(dev,size,cpu_addr,dma_handle)
@@ -295,7 +300,14 @@ typedef u32 pm_message_t;
 
 #ifndef PCI_D0
 #define PCI_D0 0
+#endif
+
+#ifndef PCI_D3hot
 #define PCI_D3hot 3
+#endif
+
+#ifndef PCI_D3cold
+#define PCI_D3cold 3
 #endif
 
 #ifndef PM_EVENT_SUSPEND
@@ -341,8 +353,12 @@ typedef u32 pm_message_t;
 #define set_thread_priority(thread, prio) set_user_nice(thread, prio)
 #endif
 
-#if defined(CONFIG_NET_RADIO) || defined(CONFIG_WIRELESS_EXT)
-#define WRAP_CONFIG_WLAN 1
+#ifndef DMA_24BIT_MASK
+#define DMA_24BIT_MASK 0x0000000000ffffffULL
+#endif
+
+#ifndef DMA_30BIT_MASK
+#define DMA_30BIT_MASK 0x000000003fffffffULL
 #endif
 
 #include "ndiswrapper.h"

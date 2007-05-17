@@ -1955,6 +1955,9 @@ wstdcall void WIN_FUNC(NdisMIndicateStatus,4)
 		si = buf;
 		TRACE2("status_type=%d", si->status_type);
 		switch (si->status_type) {
+		case Ndis802_11StatusType_MediaStreamMode:
+			break;
+#ifdef CONFIG_WIRELESS_EXT
 		case Ndis802_11StatusType_Authentication:
 			buf = (char *)buf + sizeof(*si);
 			len -= sizeof(*si);
@@ -1974,9 +1977,6 @@ wstdcall void WIN_FUNC(NdisMIndicateStatus,4)
 				buf = (char *)buf + auth_req->length;
 			}
 			break;
-		case Ndis802_11StatusType_MediaStreamMode:
-			break;
-#ifdef WRAP_CONFIG_WLAN
 		case Ndis802_11StatusType_PMKID_CandidateList:
 		{
 			u8 *end;
