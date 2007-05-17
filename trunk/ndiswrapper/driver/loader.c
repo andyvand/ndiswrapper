@@ -814,7 +814,7 @@ static int wrapper_ioctl(struct inode *inode, struct file *file,
 		break;
 	case WRAP_IOCTL_LOAD_DRIVER:
 		TRACE1("loading driver at %p", (void *)arg);
-		load_driver = kmalloc(sizeof(*load_driver), GFP_KERNEL);
+		load_driver = vmalloc(sizeof(*load_driver));
 		if (!load_driver) {
 			ret = -ENOMEM;
 			break;
@@ -824,7 +824,7 @@ static int wrapper_ioctl(struct inode *inode, struct file *file,
 			ret = -EFAULT;
 		else
 			ret = load_user_space_driver(load_driver);
-		kfree(load_driver);
+		vfree(load_driver);
 		break;
 	case WRAP_IOCTL_LOAD_BIN_FILE:
 		if (copy_from_user(&load_bin_file, (void *)arg,
