@@ -425,13 +425,12 @@ static void timer_proc(unsigned long data)
 	BUG_ON(wrap_timer->wrap_timer_magic != WRAP_TIMER_MAGIC);
 	BUG_ON(nt_timer->wrap_timer_magic != WRAP_TIMER_MAGIC);
 #endif
+	kdpc = nt_timer->kdpc;
+	if (kdpc)
+		queue_kdpc(kdpc);
+	KeSetEvent((struct nt_event *)nt_timer, 0, FALSE);
 	if (wrap_timer->repeat)
 		mod_timer(&wrap_timer->timer, jiffies + wrap_timer->repeat);
-	KeSetEvent((struct nt_event *)nt_timer, 0, FALSE);
-	kdpc = nt_timer->kdpc;
-	if (kdpc && kdpc->func)
-		queue_kdpc(kdpc);
-
 	TIMEREXIT(return);
 }
 
@@ -513,7 +512,7 @@ BOOLEAN wrap_set_timer(struct nt_timer *nt_timer, unsigned long expires_hz,
 		WARNING("bad timers: %p, %p, %p", wrap_timer, nt_timer,
 			wrap_timer->nt_timer);
 	if (nt_timer->wrap_timer_magic != WRAP_TIMER_MAGIC) {
-		WARNING("Buggy Windows timer didn't initialize timer %p",
+		WARNING("buggy Windows timer didn't initialize timer %p",
 			nt_timer);
 		return FALSE;
 	}
@@ -572,8 +571,8 @@ wstdcall BOOLEAN WIN_FUNC(KeCancelTimer,1)
 	 * won't be re-armed after deleting */
 	wrap_timer->repeat = 0;
 	ret = del_timer(&wrap_timer->timer);
-	if (nt_timer->kdpc)
-		dequeue_kdpc(nt_timer->kdpc);
+	/* the documentation for KeCancelTimer suggests the DPC is
+	 * deqeued, but actually DPC is left to run */
 	if (ret)
 		TIMEREXIT(return TRUE);
 	else
