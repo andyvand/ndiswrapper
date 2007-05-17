@@ -473,7 +473,7 @@ struct ndis_rw_lock {
 	union {
 		union ndis_rw_lock_refcount ref_count[MAXIMUM_PROCESSORS];
 		/* ndiswrapper specific */
-		volatile int count;
+		int count;
 	};
 };
 

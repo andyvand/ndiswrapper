@@ -675,6 +675,20 @@ wstdcall ULONG WIN_FUNC(NdisWritePciSlotInformation,5)
 	return i;
 }
 
+wstdcall NDIS_STATUS WIN_FUNC(NdisMRegisterIoPortRange,4)
+	(void **virt, struct ndis_miniport_block *nmb, UINT start, UINT len)
+{
+	ENTER3("%08x %08x", start, len);
+	*virt = (void *)(ULONG_PTR)start;
+	return NDIS_STATUS_SUCCESS;
+}
+
+wstdcall void WIN_FUNC(NdisMDeregisterIoPortRange,4)
+	(struct ndis_miniport_block *nmb, UINT start, UINT len, void* virt)
+{
+	ENTER1("%08x %08x", start, len);
+}
+
 wstdcall void WIN_FUNC(NdisReadPortUchar,3)
 	(struct ndis_miniport_block *nmb, ULONG port, char *data)
 {
@@ -1638,10 +1652,10 @@ wstdcall void wrap_miniport_timer(struct kdpc *kdpc, void *ctx, void *arg1,
 	TIMERENTER("timer: %p, func: %p, ctx: %p, nmb: %p",
 		   timer, timer->func, timer->ctx, timer->nmb);
 	nmb = timer->nmb;
-	/* already called at DISPATCH_LEVEL */
+	assert(current_irql() == DISPATCH_LEVEL);
 	if (!deserialized_driver(nmb->wnd))
 		serialize_lock(nmb->wnd);
-	LIN2WIN4(timer->func, &timer->kdpc, timer->ctx, NULL, NULL);
+	LIN2WIN4(timer->func, NULL, timer->ctx, NULL, NULL);
 	if (!deserialized_driver(nmb->wnd))
 		serialize_unlock(nmb->wnd);
 	TIMEREXIT(return);
@@ -2387,6 +2401,7 @@ wstdcall void EthRxComplete(struct ndis_miniport_block *nmb)
 	TRACE3("");
 }
 
+/* called via function pointer */
 wstdcall void NdisMQueryInformationComplete(struct ndis_miniport_block *nmb,
 					    NDIS_STATUS status)
 {
@@ -2402,6 +2417,7 @@ wstdcall void NdisMQueryInformationComplete(struct ndis_miniport_block *nmb,
 	EXIT2(return);
 }
 
+/* called via function pointer */
 wstdcall void NdisMSetInformationComplete(struct ndis_miniport_block *nmb,
 					  NDIS_STATUS status)
 {
@@ -2410,6 +2426,22 @@ wstdcall void NdisMSetInformationComplete(struct ndis_miniport_block *nmb,
 
 	wnd->ndis_comm_status = status;
 	wnd->ndis_comm_done = 1;
+	if (wnd->ndis_comm_task)
+		wake_up_process(wnd->ndis_comm_task);
+	else
+		WARNING("invalid task");
+	EXIT3(return);
+}
+
+/* called via function pointer */
+wstdcall void NdisMResetComplete(struct ndis_miniport_block *nmb,
+				 NDIS_STATUS status, BOOLEAN address_reset)
+{
+	struct wrap_ndis_device *wnd = nmb->wnd;
+
+	ENTER3("status: %08X, %u", status, address_reset);
+	wnd->ndis_comm_status = status;
+	wnd->ndis_comm_done = address_reset + 1;
 	if (wnd->ndis_comm_task)
 		wake_up_process(wnd->ndis_comm_task);
 	else
@@ -2433,20 +2465,6 @@ wstdcall void WIN_FUNC(NdisGetCurrentSystemTime,1)
 {
 	*time = ticks_1601();
 	TRACE5("%Lu, %lu", *time, jiffies);
-}
-
-wstdcall NDIS_STATUS WIN_FUNC(NdisMRegisterIoPortRange,4)
-	(void **virt, struct ndis_miniport_block *nmb, UINT start, UINT len)
-{
-	ENTER3("%08x %08x", start, len);
-	*virt = (void *)(ULONG_PTR)start;
-	return NDIS_STATUS_SUCCESS;
-}
-
-wstdcall void WIN_FUNC(NdisMDeregisterIoPortRange,4)
-	(struct ndis_miniport_block *nmb, UINT start, UINT len, void* virt)
-{
-	ENTER1("%08x %08x", start, len);
 }
 
 wstdcall LONG WIN_FUNC(NdisInterlockedDecrement,1)
@@ -2568,22 +2586,6 @@ wstdcall void WIN_FUNC(NdisResetEvent,1)
 {
 	EVENTENTER("%p", ndis_event);
 	KeResetEvent(&ndis_event->nt_event);
-}
-
-/* called via function pointer */
-wstdcall void NdisMResetComplete(struct ndis_miniport_block *nmb,
-				 NDIS_STATUS status, BOOLEAN address_reset)
-{
-	struct wrap_ndis_device *wnd = nmb->wnd;
-
-	ENTER3("status: %08X, %u", status, address_reset);
-	wnd->ndis_comm_status = status;
-	wnd->ndis_comm_done = 1 + address_reset;
-	if (wnd->ndis_comm_task)
-		wake_up_process(wnd->ndis_comm_task);
-	else
-		WARNING("invalid task");
-	EXIT3(return);
 }
 
 static void ndis_worker(worker_param_t dummy)

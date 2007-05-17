@@ -629,7 +629,7 @@ do {									\
 #endif
 
 #ifdef WARP_PREEMPT
-extern volatile int warp_preempt_count;
+extern int warp_preempt_count;
 #define warp_preempt_disable() atomic_inc_var(warp_preempt_count)
 #define warp_preempt_enable() atomic_dec_var(warp_preempt_count)
 #define warp_preempt_enable_no_resched() warp_preempt_enable()

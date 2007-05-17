@@ -49,7 +49,6 @@ NDIS_STATUS miniport_reset(struct wrap_ndis_device *wnd)
 {
 	NDIS_STATUS res;
 	struct miniport_char *miniport;
-	UINT cur_lookahead, max_lookahead;
 	BOOLEAN reset_address;
 	KIRQL irql;
 
@@ -61,8 +60,6 @@ NDIS_STATUS miniport_reset(struct wrap_ndis_device *wnd)
 		EXIT3(return NDIS_STATUS_FAILURE);
 	}
 	miniport = &wnd->wd->driver->ndis_driver->miniport;
-	cur_lookahead = wnd->nmb->cur_lookahead;
-	max_lookahead = wnd->nmb->max_lookahead;
 	prepare_wait_condition(wnd->ndis_comm_task, wnd->ndis_comm_done, 0);
 	WARNING("%s is being reset", wnd->net_dev->name);
 	irql = serialize_lock_irql(wnd);
@@ -83,8 +80,6 @@ NDIS_STATUS miniport_reset(struct wrap_ndis_device *wnd)
 	}
 	up(&wnd->ndis_comm_mutex);
 	if (res == NDIS_STATUS_SUCCESS && reset_address) {
-		wnd->nmb->cur_lookahead = cur_lookahead;
-		wnd->nmb->max_lookahead = max_lookahead;
 		set_packet_filter(wnd, wnd->packet_filter);
 		set_multicast_list(wnd);
 	}
@@ -92,10 +87,11 @@ NDIS_STATUS miniport_reset(struct wrap_ndis_device *wnd)
 	EXIT3(return res);
 }
 
-/* MiniportQueryInformation */
-NDIS_STATUS miniport_query_info(struct wrap_ndis_device *wnd, ndis_oid oid,
-				void *buf, ULONG bufsize, ULONG *written,
-				ULONG *needed)
+/* MiniportRequest(Query/Set)Information */
+NDIS_STATUS miniport_request(enum ndis_request_type request,
+			     struct wrap_ndis_device *wnd, ndis_oid oid,
+			     void *buf, ULONG buflen, ULONG *written,
+			     ULONG *needed)
 {
 	NDIS_STATUS res;
 	ULONG w, n;
@@ -112,8 +108,20 @@ NDIS_STATUS miniport_query_info(struct wrap_ndis_device *wnd, ndis_oid oid,
 	TRACE2("%p, %08X", miniport->query, oid);
 	prepare_wait_condition(wnd->ndis_comm_task, wnd->ndis_comm_done, 0);
 	irql = serialize_lock_irql(wnd);
-	res = LIN2WIN6(miniport->query, wnd->nmb->mp_ctx, oid, buf,
-		       bufsize, written, needed);
+	switch (request) {
+	case NdisRequestQueryInformation:
+		res = LIN2WIN6(miniport->query, wnd->nmb->mp_ctx, oid, buf,
+			       buflen, written, needed);
+		break;
+	case NdisRequestSetInformation:
+		res = LIN2WIN6(miniport->setinfo, wnd->nmb->mp_ctx, oid, buf,
+			       buflen, written, needed);
+		break;
+	default:
+		WARNING("request %d not implemented", request);
+		res = NDIS_STATUS_NOT_SUPPORTED;
+		break;
+	}
 	serialize_unlock_irql(wnd, irql);
 
 	TRACE2("%08X, %08X", res, oid);
@@ -135,71 +143,50 @@ NDIS_STATUS miniport_query_info(struct wrap_ndis_device *wnd, ndis_oid oid,
 	EXIT3(return res);
 }
 
-NDIS_STATUS miniport_query_int(struct wrap_ndis_device *wnd, ndis_oid oid,
-			       ULONG *data)
+/* MiniportQueryInformation */
+NDIS_STATUS miniport_query_info(struct wrap_ndis_device *wnd, ndis_oid oid,
+			     void *buf, ULONG buflen, ULONG *written,
+			     ULONG *needed)
 {
-	return miniport_query_info(wnd, oid, data, sizeof(ULONG), NULL, NULL);
-}
-
-NDIS_STATUS miniport_query(struct wrap_ndis_device *wnd, ndis_oid oid,
-			   void *buf, ULONG bufsize)
-{
-	return miniport_query_info(wnd, oid, buf, bufsize, NULL, NULL);
+	return miniport_request(NdisRequestQueryInformation, wnd, oid,
+				buf, buflen, written, needed);
 }
 
 /* MiniportSetInformation */
 NDIS_STATUS miniport_set_info(struct wrap_ndis_device *wnd, ndis_oid oid,
-			      void *buf, ULONG bufsize, ULONG *written,
+			      void *buf, ULONG buflen, ULONG *written,
 			      ULONG *needed)
 {
-	NDIS_STATUS res;
-	ULONG w, n;
-	struct miniport_char *miniport;
-	KIRQL irql;
+	return miniport_request(NdisRequestSetInformation, wnd, oid,
+				buf, buflen, written, needed);
+}
 
-	if (down_interruptible(&wnd->ndis_comm_mutex))
-		EXIT3(return NDIS_STATUS_FAILURE);
-	if (!written)
-		written = &w;
-	if (!needed)
-		needed = &n;
-	miniport = &wnd->wd->driver->ndis_driver->miniport;
-	TRACE2("%p, %08X", miniport->query, oid);
-	prepare_wait_condition(wnd->ndis_comm_task, wnd->ndis_comm_done, 0);
-	irql = serialize_lock_irql(wnd);
-	res = LIN2WIN6(miniport->setinfo, wnd->nmb->mp_ctx, oid,
-		       buf, bufsize, written, needed);
-	serialize_unlock_irql(wnd, irql);
+NDIS_STATUS miniport_query(struct wrap_ndis_device *wnd, ndis_oid oid,
+			   void *buf, ULONG buflen)
+{
+	return miniport_request(NdisRequestQueryInformation, wnd, oid,
+				buf, buflen, NULL, NULL);
+}
 
-	TRACE2("%08X, %08X", res, oid);
-	if (res == NDIS_STATUS_PENDING) {
-		/* wait for NdisMQueryInformationComplete */
-		if (wait_condition((wnd->ndis_comm_done > 0), 0,
-				   TASK_INTERRUPTIBLE) < 0)
-			res = NDIS_STATUS_FAILURE;
-		else
-			res = wnd->ndis_comm_status;
-		TRACE2("%08X, %08X", res, oid);
-	}
-	up(&wnd->ndis_comm_mutex);
-	DBG_BLOCK(2) {
-		if (res && needed)
-			TRACE2("%08X, %d, %d, %d", res, bufsize, *written,
-			       *needed);
-	}
-	EXIT3(return res);
+NDIS_STATUS miniport_query_int(struct wrap_ndis_device *wnd, ndis_oid oid,
+			       ULONG *data)
+{
+	return miniport_request(NdisRequestQueryInformation, wnd, oid,
+				data, sizeof(ULONG), NULL, NULL);
+}
+
+NDIS_STATUS miniport_set(struct wrap_ndis_device *wnd, ndis_oid oid,
+			   void *buf, ULONG buflen)
+{
+	return miniport_request(NdisRequestSetInformation, wnd, oid,
+				buf, buflen, NULL, NULL);
 }
 
 NDIS_STATUS miniport_set_int(struct wrap_ndis_device *wnd, ndis_oid oid,
 			     ULONG data)
 {
-	return miniport_set_info(wnd, oid, &data, sizeof(data), NULL, NULL);
-}
-
-NDIS_STATUS miniport_set(struct wrap_ndis_device *wnd, ndis_oid oid,
-			   void *buf, ULONG bufsize)
-{
-	return miniport_set_info(wnd, oid, buf, bufsize, NULL, NULL);
+	return miniport_request(NdisRequestSetInformation, wnd, oid,
+				&data, sizeof(ULONG), NULL, NULL);
 }
 
 /* MiniportPnPEventNotify */
