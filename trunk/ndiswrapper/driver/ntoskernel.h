@@ -609,8 +609,10 @@ do {									\
  * driver doesn't mind the short delay */
 
 #if defined(CONFIG_PREEMPT_RT) || !defined(inc_preempt_count)
-
 #define WARP_PREEMPT 1
+#endif
+
+#ifdef WARP_PREEMPT
 extern volatile int warp_preempt_count;
 #define warp_preempt_disable() atomic_inc_var(warp_preempt_count)
 #define warp_preempt_enable() atomic_dec_var(warp_preempt_count)
