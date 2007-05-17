@@ -1631,9 +1631,10 @@ static void ndis_get_drvinfo(struct net_device *dev,
 	strcat(info->driver, "+");
 	strncat(info->driver, wnd->wd->driver->name,
 		sizeof(info->driver) - strlen(DRIVER_NAME) - 1);
-	strncpy(info->version, DRIVER_VERSION, sizeof(info->version) - 1);
-	strncpy(info->fw_version, wnd->wd->driver->version,
-		sizeof(info->fw_version) - 1);
+	strncpy(info->version, DRIVER_VERSION, sizeof(info->version) - 2);
+	strcat(info->version, "+");
+	strncat(info->version, wnd->wd->driver->version,
+		sizeof(info->version) - strlen(DRIVER_VERSION) - 1);
 	if (wrap_is_pci_bus(wnd->wd->dev_bus))
 		strncpy(info->bus_info, pci_name(wnd->wd->pci.pdev),
 			sizeof(info->bus_info) - 1);

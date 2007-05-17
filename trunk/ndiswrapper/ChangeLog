@@ -1,3 +1,11 @@
+Version 1.44 2007-05-17
+=======================	
+* Fixed issues with Ubuntu kernels (where PREEMPT is not enabled)
+* Issues with combination of DEBUG_PREEMPT and RT-preempt fixed
+* Fixed issues with newer 64-bit Broadcom driver when more than 1GB RAM is
+  present
+* Added support for upcoming 2.6.22 kernels
+
 Version 1.43 2007-04-30
 =======================	
 * Fixed long standing memory allocation issues with some

@@ -97,7 +97,7 @@ if ($ARGV[0] eq "-i" and @ARGV == 2) {
 } elsif ($ARGV[0] eq "-v" and @ARGV == 1) {
     printf "utils "; system("loadndisdriver -v");
     printf "driver ";
-    system("modinfo ndiswrapper | grep -E '^version|^vermagic|^filename'");
+    system("modinfo ndiswrapper | grep -E '^(version|vermagic|filename)'");
     $res = 0;
 } elsif ($ARGV[0] eq "-ma" and @ARGV == 1) {
     $res = generate_module_device_map(0);
