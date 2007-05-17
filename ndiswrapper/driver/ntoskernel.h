@@ -750,13 +750,13 @@ static inline void nt_spin_unlock(NT_SPIN_LOCK *lock)
  * at right IRQL */
 
 #ifdef WARP_PREEMPT
-#define nt_spin_lock_preempt(lock)		\
+#define nt_spin_lock_warp_preempt(lock)		\
 do {						\
 	warp_preempt_disable();			\
 	nt_spin_lock(lock);			\
 } while (0)
 
-#define nt_spin_unlock_preempt(lock)		\
+#define nt_spin_unlock_warp_preempt(lock)	\
 do {						\
 	nt_spin_unlock(lock);			\
 	warp_preempt_enable();			\
@@ -764,8 +764,8 @@ do {						\
 
 #else
 
-#define nt_spin_lock_preempt(lock) nt_spin_lock(lock)
-#define nt_spin_unlock_preempt(lock) nt_spin_unlock(lock)
+#define nt_spin_lock_warp_preempt(lock) nt_spin_lock(lock)
+#define nt_spin_unlock_warp_preempt(lock) nt_spin_unlock(lock)
 
 #endif
 

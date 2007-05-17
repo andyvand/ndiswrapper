@@ -504,7 +504,6 @@ BOOLEAN wrap_set_timer(struct nt_timer *nt_timer, unsigned long expires_hz,
 	TIMERENTER("%p, %lu, %lu, %p, %lu",
 		   nt_timer, expires_hz, repeat_hz, kdpc, jiffies);
 
-	KeClearEvent((struct nt_event *)nt_timer);
 	wrap_timer = nt_timer->wrap_timer;
 	TIMERTRACE("%p", wrap_timer);
 #ifdef TIMER_DEBUG
@@ -522,6 +521,7 @@ BOOLEAN wrap_set_timer(struct nt_timer *nt_timer, unsigned long expires_hz,
 		wrap_timer->wrap_timer_magic = WRAP_TIMER_MAGIC;
 	}
 #endif
+	KeClearEvent((struct nt_event *)nt_timer);
 	if (kdpc)
 		nt_timer->kdpc = kdpc;
 	wrap_timer->repeat = repeat_hz;
@@ -1236,9 +1236,7 @@ wstdcall void WIN_FUNC(KeClearEvent,1)
 	(struct nt_event *nt_event)
 {
 	EVENTENTER("%p", nt_event);
-	nt_spin_lock_bh(&dispatcher_lock);
 	nt_event->dh.signal_state = 0;
-	nt_spin_unlock_bh(&dispatcher_lock);
 	EVENTEXIT(return);
 }
 
@@ -1248,11 +1246,7 @@ wstdcall LONG WIN_FUNC(KeResetEvent,1)
 	LONG old_state;
 
 	EVENTENTER("%p", nt_event);
-	nt_spin_lock_bh(&dispatcher_lock);
-	old_state = nt_event->dh.signal_state;
-	nt_event->dh.signal_state = 0;
-	nt_spin_unlock_bh(&dispatcher_lock);
-	EVENTTRACE("%d", old_state);
+	old_state = xchg(&nt_event->dh.signal_state, 0);
 	EVENTEXIT(return old_state);
 }
 
@@ -1261,9 +1255,7 @@ wstdcall LONG WIN_FUNC(KeReadStateEvent,1)
 {
 	LONG state;
 
-	nt_spin_lock_bh(&dispatcher_lock);
 	state = nt_event->dh.signal_state;
-	nt_spin_unlock_bh(&dispatcher_lock);
 	EVENTTRACE("%d", state);
 	return state;
 }

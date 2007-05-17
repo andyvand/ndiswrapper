@@ -524,11 +524,11 @@ static irqreturn_t io_irq_isr(int irq, void *data ISR_PT_REGS_PARAM_DECL)
 	BOOLEAN ret;
 
 	TRACE6("%p", interrupt);
-	/* use nt_spin_lock_preempt so driver thinks it is at right
-	 * IRQL */
-	nt_spin_lock_preempt(interrupt->actual_lock);
+	/* use nt_spin_lock_warp_preempt so ISR runs at IRQL
+	 * DISPATCH_LEVEL */
+	nt_spin_lock_warp_preempt(interrupt->actual_lock);
 	ret = LIN2WIN2(interrupt->isr, interrupt, interrupt->isr_ctx);
-	nt_spin_unlock_preempt(interrupt->actual_lock);
+	nt_spin_unlock_warp_preempt(interrupt->actual_lock);
 	if (ret == TRUE)
 		EXIT6(return IRQ_HANDLED);
 	else
